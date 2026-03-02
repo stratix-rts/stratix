@@ -64,8 +64,8 @@ export async function startGatewayService(
   dotenv.config({ path: path.resolve(__dirname, '.env') });
   
   const {
-    port = parseInt(process.env.PORT || '3010', 10),
-    bindAddress = process.env.BIND_ADDRESS || '0.0.0.0',
+    port = parseInt(process.env.PORT || '7524', 10),
+    bindAddress = process.env.BIND_ADDRESS || '127.0.0.1',
     dataDir = process.env.DATA_DIR || 'stratix-data',
     mode = 'standalone',
   } = options;
