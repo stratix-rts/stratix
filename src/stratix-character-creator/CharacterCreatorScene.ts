@@ -29,6 +29,7 @@ import { SKILL_TREE_CONFIG } from './config/skillTreeConfig';
 import { PartSelector, CharacterPreview, CharacterList, OpenClawConnectionPanel, AgentChatPanel } from './ui';
 import type { SavedCharacter, PartSelection, PartMetadata, BodyType, AnimationName, CreatorStep } from './types';
 import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClawConnectionManager';
+import { textureManager } from '@/stratix-core/services';
 
 const THEME = {
   bg: 0x0d0d14,
@@ -1084,9 +1085,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
 
       this.characterPreview.setTexture(textureKey);
 
-      if (!this.currentCharacter.thumbnail) {
-        this.currentCharacter.thumbnail = characterComposer.generateThumbnail(result.canvas);
-      }
+      this.currentCharacter.thumbnail = textureManager.generateThumbnail(result.canvas, 128);
 
       this.updateCreditsDisplay();
 
@@ -1226,6 +1225,19 @@ export class CharacterCreatorScene extends Phaser.Scene {
       this.currentCharacter.attributes = this.skillTree.calculateAttributes();
     }
 
+    const texture = await textureManager.generateAndUploadTexture({
+      characterId: this.currentCharacter.characterId,
+      bodyType: this.currentCharacter.bodyType,
+      parts: this.currentCharacter.parts,
+      thumbnail: this.currentCharacter.thumbnail,
+      createdAt: this.currentCharacter.createdAt,
+      updatedAt: this.currentCharacter.updatedAt
+    });
+
+    if (texture) {
+      this.currentCharacter.texture = texture;
+    }
+
     this.currentCharacter.updatedAt = Date.now();
 
     const existingChar = await characterStorage.load(this.currentCharacter.characterId);
@@ -1295,6 +1307,14 @@ export class CharacterCreatorScene extends Phaser.Scene {
   }
 
   private async onCharacterDeleted(characterId: string): Promise<void> {
+    const character = await characterStorage.load(characterId);
+
+    if (character) {
+      await textureManager.deleteTexture(character);
+    }
+
+    await characterStorage.delete(characterId);
+
     characterCreatorEvents.emitCharacterDeleted(characterId);
     this.callbacks.onCharacterDeleted?.(characterId);
 

@@ -4,6 +4,7 @@
 
 export type { BodyType, PartCategory } from '../constants';
 import type { BodyType, PartCategory } from '../constants';
+import type { CharacterTexture } from '@/stratix-core/stratix-protocol';
 
 export interface PartSelection {
   itemId: string;
@@ -76,7 +77,8 @@ export interface SavedCharacter {
   skillTree: SkillTreeState;
   attributes: Record<string, number>;
   isDefault: boolean;
-  thumbnail?: string;
+  thumbnail: string;              // 头像（从可选改为必填）
+  texture?: CharacterTexture;     // 雪碧图元数据
   createdAt: number;
   updatedAt: number;
   soul?: {

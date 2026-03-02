@@ -5,91 +5,32 @@ import {
   SHEET_WIDTH,
   ANIMATION_OFFSETS
 } from '@/stratix-character-creator/constants';
+import { textureManager } from '@/stratix-core/services';
+import { services } from '@/stratix-core/services/ServiceLocator';
 
 const RTS_ANIMATIONS = ['walk', 'idle', 'run'];
 
+/**
+ * @deprecated Use textureManager from '@/stratix-core/services' instead
+ * This class is maintained for backward compatibility only
+ */
 class TextureService {
   private textureCache: Map<string, HTMLCanvasElement> = new Map();
 
   async generateAndUploadTexture(characterData: CharacterData): Promise<CharacterTexture | null> {
-    try {
-      const result = await characterComposer.composeCharacter(
-        characterData.parts,
-        {
-          bodyType: characterData.bodyType as any,
-          animations: RTS_ANIMATIONS
-        }
-      );
-
-      const canvas = result.canvas;
-      const imageData = canvas.toDataURL('image/png');
-      
-      const filename = `${characterData.characterId}.png`;
-      
-      const response = await fetch('/api/stratix/texture/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          characterId: characterData.characterId,
-          imageData,
-          filename
-        })
-      });
-
-      const json = await response.json();
-      
-      if (json.code === 200 && json.data) {
-        this.textureCache.set(characterData.characterId, canvas);
-        
-        return {
-          filePath: json.data.filePath,
-          width: canvas.width,
-          height: canvas.height,
-          animations: RTS_ANIMATIONS,
-          generatedAt: json.data.generatedAt
-        };
-      }
-      
-      return null;
-    } catch (error) {
-      console.error('[TextureService] Failed to generate texture:', error);
-      return null;
-    }
+    console.warn('[TextureService] DEPRECATED: Use textureManager.generateAndUploadTexture() instead');
+    return textureManager.generateAndUploadTexture(characterData);
   }
 
   async checkTexture(filePath: string): Promise<{ exists: boolean; url: string | null }> {
-    try {
-      const response = await fetch(`/api/stratix/texture/check/${filePath}`);
-      const json = await response.json();
-      
-      if (json.code === 200 && json.data) {
-        return {
-          exists: json.data.exists,
-          url: json.data.url
-        };
-      }
-      
-      return { exists: false, url: null };
-    } catch (error) {
-      console.error('[TextureService] Failed to check texture:', error);
-      return { exists: false, url: null };
-    }
+    console.warn('[TextureService] DEPRECATED: Use services.checkTexture() instead');
+    const { exists, url } = await services.checkTexture(filePath);
+    return { exists, url };
   }
 
   async ensureTexture(characterData: CharacterData): Promise<string | null> {
-    if (characterData.texture?.filePath) {
-      const { exists, url } = await this.checkTexture(characterData.texture.filePath);
-      if (exists && url) {
-        return url;
-      }
-    }
-
-    const texture = await this.generateAndUploadTexture(characterData);
-    if (texture) {
-      return `/textures/${texture.filePath}`;
-    }
-    
-    return null;
+    console.warn('[TextureService] DEPRECATED: Use textureManager.ensureTexture() instead');
+    return textureManager.ensureTexture(characterData);
   }
 
   generateRTSTextureUrl(characterId: string): string {
@@ -125,10 +66,13 @@ class TextureService {
   }
 
   getCachedCanvas(characterId: string): HTMLCanvasElement | undefined {
-    return this.textureCache.get(characterId);
+    console.warn('[TextureService] DEPRECATED: Use textureManager.getCachedCanvas() instead');
+    return textureManager.getCachedCanvas(characterId);
   }
 
   clearCache(): void {
+    console.warn('[TextureService] DEPRECATED: Use textureManager.clearCache() instead');
+    textureManager.clearCache();
     this.textureCache.clear();
   }
 }

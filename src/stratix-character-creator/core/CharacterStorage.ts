@@ -173,6 +173,7 @@ class CharacterStorage {
         unlockedNodes: []
       },
       attributes: {},
+      thumbnail: '',  // 默认空字符串，后续生成
       isDefault: false,
       createdAt: Date.now(),
       updatedAt: Date.now()

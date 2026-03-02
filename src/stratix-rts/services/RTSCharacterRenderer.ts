@@ -2,9 +2,8 @@ import Phaser from 'phaser';
 import type { StratixAgentConfig, BodyType } from '@/stratix-core/stratix-protocol';
 import { textureLoadQueue, TextureLoadTask } from './TextureLoadQueue';
 import { baseBodyTextureManager } from './BaseBodyTextureManager';
-import { textureService } from './TextureService';
+import { textureManager } from '@/stratix-core/services';
 import { FRAME_SIZE, ANIMATION_OFFSETS } from '@/stratix-character-creator/constants';
-import { characterComposer } from '@/stratix-character-creator/core/CharacterComposer';
 
 const SCALE = 0.75;
 
@@ -78,15 +77,20 @@ class RTSCharacterRenderer {
       return { type: 'ready', textureKey };
     }
 
-    if (character.texture?.filePath) {
-      const textureUrl = `/textures/${character.texture.filePath}`;
-      
+    const textureUrl = await textureManager.ensureTexture(character);
+    if (textureUrl) {
       try {
         await this.loadTextureFromUrl(textureKey, textureUrl);
         this.loadedTextures.add(textureKey);
+        
+        const canvas = textureManager.getCachedCanvas(characterId);
+        if (canvas) {
+          this.createAnimationFrames(textureKey, canvas);
+        }
+        
         return { type: 'ready', textureKey };
       } catch (error) {
-        console.warn(`[RTSCharacterRenderer] Cached texture not found, will generate...`);
+        console.warn(`[RTSCharacterRenderer] Failed to load texture from URL:`, error);
       }
     }
 
@@ -144,36 +148,6 @@ class RTSCharacterRenderer {
     if (callbacks) {
       callbacks.forEach(callback => callback(characterId, textureKey));
       this.pendingCallbacks.delete(characterId);
-    }
-  }
-
-  private async generateAndLoadTexture(config: StratixAgentConfig): Promise<string | null> {
-    if (!config.character) return null;
-
-    const character = config.character;
-    const textureKey = `char-${character.characterId}`;
-
-    try {
-      const result = await characterComposer.composeCharacter(
-        character.parts,
-        {
-          bodyType: character.bodyType as any,
-          animations: ['walk', 'idle', 'run']
-        }
-      );
-
-      const canvas = result.canvas;
-      
-      this.scene.textures.addCanvas(textureKey, canvas);
-      this.createAnimationFrames(textureKey, canvas);
-      this.loadedTextures.add(textureKey);
-
-      textureService['textureCache'].set(character.characterId, canvas);
-
-      return textureKey;
-    } catch (error) {
-      console.error('[RTSCharacterRenderer] Failed to generate texture:', error);
-      return null;
     }
   }
 
