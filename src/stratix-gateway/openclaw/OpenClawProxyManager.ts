@@ -1,6 +1,7 @@
 import { WebSocket, RawData } from 'ws';
 import { EventEmitter } from 'events';
 import type { OpenClawConnectionRecord, ConnectionPoolStatus } from '../../stratix-data-store/types';
+import { serverDeviceIdentityManager } from './ServerDeviceIdentityManager';
 
 interface PoolEntry {
   connectionId: string;
@@ -12,22 +13,25 @@ interface PoolEntry {
   pendingClients: Set<WebSocket>;
 }
 
-interface PendingAuth {
-  resolve: (success: boolean) => void;
-  timeout: NodeJS.Timeout;
-}
-
 const RECONNECT_DELAY = 5000;
 const HEARTBEAT_INTERVAL = 30000;
 const AUTH_TIMEOUT = 15000;
 
+const CLIENT_ID = 'stratix-gateway';
+const CLIENT_MODE = 'ui';
+const CLIENT_VERSION = '1.0.0';
+const CLIENT_PLATFORM = 'node';
+const ROLE = 'operator';
+const SCOPES = ['operator.read', 'operator.write', 'operator.admin', 'operator.approvals', 'operator.pairing'];
+
 class OpenClawProxyManager extends EventEmitter {
   private pool: Map<string, PoolEntry> = new Map();
-  private pendingAuths: Map<string, PendingAuth> = new Map();
-  private deviceId: string = '';
+  private initPromise: Promise<void> | null = null;
 
-  setDeviceId(deviceId: string): void {
-    this.deviceId = deviceId;
+  async initialize(dataDir: string): Promise<void> {
+    if (this.initPromise) return this.initPromise;
+    this.initPromise = serverDeviceIdentityManager.initialize(dataDir);
+    return this.initPromise;
   }
 
   async connect(record: OpenClawConnectionRecord): Promise<{ success: boolean; error?: string }> {
@@ -107,23 +111,27 @@ class OpenClawProxyManager extends EventEmitter {
     entry: PoolEntry,
     resolve: (result: { success: boolean; error?: string }) => void
   ): void {
-    const authHandler = (data: RawData) => {
+    let authHandler: (data: RawData) => void;
+
+    authHandler = async (data: RawData) => {
       try {
         const msg = JSON.parse(data.toString());
         
         if (msg.event === 'connect.challenge') {
           const { nonce } = msg.payload || {};
-          this.sendAuthResponse(ws, record, nonce);
+          await this.sendAuthResponse(ws, record, nonce);
           return;
         }
 
-        if (msg.type === 'res' && msg.id === 'connect-1') {
+        if ((msg.type === 'res' || msg.ok !== undefined) && msg.id === 'connect-1') {
           if (msg.ok) {
             entry.status.status = 'connected';
             entry.status.lastConnected = Date.now();
-            if (msg.result?.deviceToken) {
-              entry.record.deviceToken = msg.result.deviceToken;
-              this.emit('deviceToken', record.id, msg.result.deviceToken);
+            
+            const deviceToken = msg.result?.auth?.deviceToken || msg.payload?.auth?.deviceToken;
+            if (deviceToken) {
+              entry.record.deviceToken = deviceToken;
+              this.emit('deviceToken', record.id, deviceToken);
             }
             this.startHeartbeat(entry);
             this.emitStatusChange(record.id);
@@ -154,22 +162,63 @@ class OpenClawProxyManager extends EventEmitter {
     }, AUTH_TIMEOUT);
   }
 
-  private sendAuthResponse(ws: WebSocket, record: OpenClawConnectionRecord, nonce: string): void {
-    const token = record.deviceToken || record.sharedToken;
-    
-    ws.send(JSON.stringify({
-      type: 'req',
-      id: 'connect-1',
-      method: 'connect',
-      params: {
-        minProtocol: 3,
-        maxProtocol: 3,
-        auth: token ? { token } : undefined,
-        device: {
-          id: this.deviceId || 'stratix-gateway',
+  private async sendAuthResponse(
+    ws: WebSocket, 
+    record: OpenClawConnectionRecord, 
+    nonce: string
+  ): Promise<void> {
+    try {
+      const token = record.deviceToken || record.sharedToken;
+      const signedAtMs = Date.now();
+
+      const deviceId = await serverDeviceIdentityManager.getDeviceId();
+      const publicKey = await serverDeviceIdentityManager.getPublicKeyBase64();
+      const signature = await serverDeviceIdentityManager.signChallenge({
+        clientId: CLIENT_ID,
+        clientMode: CLIENT_MODE,
+        role: ROLE,
+        scopes: SCOPES,
+        signedAtMs,
+        token: token || null,
+        nonce,
+      });
+
+      console.log('[ProxyManager] Sending auth response:', {
+        deviceId,
+        hasToken: !!token,
+        nonce,
+      });
+
+      ws.send(JSON.stringify({
+        type: 'req',
+        id: 'connect-1',
+        method: 'connect',
+        params: {
+          minProtocol: 3,
+          maxProtocol: 3,
+          auth: token ? { token } : undefined,
+          role: ROLE,
+          scopes: SCOPES,
+          client: {
+            id: CLIENT_ID,
+            version: CLIENT_VERSION,
+            platform: CLIENT_PLATFORM,
+            mode: CLIENT_MODE,
+          },
+          device: {
+            id: deviceId,
+            publicKey,
+            signature,
+            signedAt: signedAtMs,
+            nonce,
+          },
+          locale: 'zh-CN',
+          userAgent: 'stratix-gateway/1.0.0',
         },
-      },
-    }));
+      }));
+    } catch (error) {
+      console.error('[ProxyManager] Failed to send auth response:', error);
+    }
   }
 
   private handleMessage(entry: PoolEntry, data: RawData): void {

@@ -17,6 +17,7 @@ import commandRoutes from './api/routes/command';
 import templateRoutes from './api/routes/template';
 import textureRoutes from './api/routes/texture';
 import openclawRoutes, { initWebSocketServer, initConnectionStore } from './api/routes/openclaw';
+import { openClawProxyManager } from './openclaw/OpenClawProxyManager';
 import { dataStoreService } from './dataStoreService';
 import { OpenClawConnectionStore } from '../stratix-data-store/OpenClawConnectionStore';
 import { ensureDirSync } from 'fs-extra';
@@ -133,6 +134,10 @@ export async function startGatewayService(
   await openClawConnectionStore.initialize();
   initConnectionStore(openClawConnectionStore);
   console.log('OpenClaw connection store initialized');
+  
+  // 初始化 OpenClaw 代理管理器
+  await openClawProxyManager.initialize(dataDir);
+  console.log('OpenClaw proxy manager initialized');
   
   // 创建 HTTP 服务器
   const server = http.createServer(app);
