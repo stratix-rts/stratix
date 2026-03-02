@@ -26,9 +26,9 @@ import { characterCreatorEvents } from './core/EventEmitter';
 import { SkillTree } from './core/SkillTree';
 import { EVENTS, DEFAULT_BODY_TYPE, FRAME_SIZE, SHEET_WIDTH, SHEET_HEIGHT, BODY_TYPES } from './constants';
 import { SKILL_TREE_CONFIG } from './config/skillTreeConfig';
-import { PartSelector, CharacterPreview, CharacterList, OpenClawConfigPanel, AgentChatPanel } from './ui';
+import { PartSelector, CharacterPreview, CharacterList, OpenClawConnectionPanel, AgentChatPanel } from './ui';
 import type { SavedCharacter, PartSelection, PartMetadata, BodyType, AnimationName, CreatorStep } from './types';
-import { openClawService } from './core/OpenClawService';
+import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClawConnectionManager';
 
 const THEME = {
   bg: 0x0d0d14,
@@ -55,7 +55,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
   private currentCharacter: SavedCharacter | null = null;
   private currentStep: CreatorStep = 'appearance';
   private partSelector: PartSelector | null = null;
-  private openClawConfigPanel: OpenClawConfigPanel | null = null;
+  private openClawConnectionPanel: OpenClawConnectionPanel | null = null;
   private agentChatPanel: AgentChatPanel | null = null;
   private characterPreview: CharacterPreview | null = null;
   private characterList: CharacterList | null = null;
@@ -258,7 +258,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
         if (this.currentStep !== step.key) {
           if (step.key === 'appearance' || 
               (step.key === 'openclaw') ||
-              (step.key === 'agent' && openClawService.isConnected())) {
+              (step.key === 'agent' && unifiedOpenClawConnectionManager.isConnected())) {
             this.setStep(step.key);
           } else {
             this.showMessage('请先完成上一步 Complete previous step first', 'error');
@@ -924,7 +924,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
     if (!this.mainPanelContainer) return;
 
     this.partSelector?.destroy?.();
-    this.openClawConfigPanel?.destroy?.();
+    this.openClawConnectionPanel?.destroy?.();
     this.agentChatPanel?.destroy?.();
 
     const container = this.mainPanelContainer;
@@ -967,18 +967,21 @@ export class CharacterCreatorScene extends Phaser.Scene {
   private buildOpenClawPanel(panelW: number, panelH: number): void {
     if (!this.mainPanelContainer) return;
 
-    this.openClawConfigPanel = new OpenClawConfigPanel(this, {
+    this.openClawConnectionPanel = new OpenClawConnectionPanel(this, {
       x: 16,
       y: 16,
       width: panelW - 32,
       height: panelH - 32,
-      onConfigured: () => {
+      onConnected: (connectionId) => {
+        if (this.currentCharacter && connectionId) {
+          this.currentCharacter.openClawConnectionId = connectionId;
+          this.isDirty = true;
+        }
         this.setStep('agent');
       }
     });
-    this.openClawConfigPanel.create().then(dom => {
-      this.mainPanelContainer?.add(dom);
-    });
+    const dom = this.openClawConnectionPanel.create();
+    this.mainPanelContainer.add(dom);
   }
 
   private buildAgentPanel(panelW: number, panelH: number): void {
@@ -1374,7 +1377,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
     this.eventUnsubscribers = [];
 
     this.partSelector?.destroy?.();
-    this.openClawConfigPanel?.destroy?.();
+    this.openClawConnectionPanel?.destroy?.();
     this.agentChatPanel?.destroy?.();
     this.characterPreview?.destroy();
     this.characterList?.destroy();

@@ -52,6 +52,22 @@ export interface PartMetadata {
   matchBodyColor?: boolean;
 }
 
+export interface OpenClawConfigLocal {
+  endpoint: string;
+  accountId: string;
+  apiKey?: string;
+  agentId?: string;
+}
+
+export interface DirectLLMConfigLocal {
+  provider: 'openai' | 'anthropic' | 'ollama' | 'custom';
+  model: string;
+  endpoint?: string;
+  apiKey?: string;
+  temperature?: number;
+  maxTokens?: number;
+}
+
 export interface SavedCharacter {
   characterId: string;
   name: string;
@@ -63,7 +79,19 @@ export interface SavedCharacter {
   thumbnail?: string;
   createdAt: number;
   updatedAt: number;
+  soul?: {
+    identity: string;
+    goals: string[];
+    personality: string;
+  };
+  rules?: string[];
+  backendType?: 'openclaw' | 'direct';
+  openClawConfig?: OpenClawConfigLocal;
+  directConfig?: DirectLLMConfigLocal;
+  openClawConnectionId?: string;
 }
+
+export type { OpenClawConnectionMode, UnifiedOpenClawConfig } from '@/stratix-core/stratix-protocol';
 
 export interface SkillTreeState {
   selectedNodes: string[];

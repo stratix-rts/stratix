@@ -2,8 +2,9 @@ import { StratixDataStore } from './StratixDataStore';
 import { TemplateLibrary } from './TemplateLibrary';
 import { LogStore } from './LogStore';
 import { BackupManager } from './BackupManager';
+import { OpenClawConnectionStore } from './OpenClawConnectionStore';
 
-export { StratixDataStore, TemplateLibrary, LogStore, BackupManager };
+export { StratixDataStore, TemplateLibrary, LogStore, BackupManager, OpenClawConnectionStore };
 export * from './types';
 
 export function createDataStore(dataDir?: string): {

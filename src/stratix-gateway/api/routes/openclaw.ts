@@ -1,11 +1,16 @@
 import { Router, Request, Response } from 'express';
 import { StratixRequestHelper } from '../../../stratix-core/utils';
-import http from 'http';
-import https from 'https';
-import WebSocket, { WebSocketServer } from 'ws';
+import { openClawConnectionManager } from '../../openclaw/OpenClawConnectionManager';
+import { OpenClawConnectionStore } from '../../../stratix-data-store/OpenClawConnectionStore';
+import { openClawProxyManager } from '../../openclaw/OpenClawProxyManager';
+import type { OpenClawConnectionRecord, ConnectionPoolStatus } from '../../../stratix-data-store/types';
+import * as http from 'http';
+import * as https from 'https';
+import { WebSocket, WebSocketServer } from 'ws';
 
 const router = Router();
 const requestHelper = StratixRequestHelper.getInstance();
+let connectionStore: OpenClawConnectionStore | null = null;
 
 interface ProxyConfig {
   endpoint: string;
@@ -38,6 +43,36 @@ router.post('/connect', async (req: Request, res: Response) => {
     }, 'OpenClaw connection configured'));
   } catch {
     res.status(500).json(requestHelper.serverError('Internal server error'));
+  }
+});
+
+router.post('/ws-connect', async (req: Request, res: Response) => {
+  try {
+    const { endpoint, accountId, apiKey } = req.body;
+    
+    if (!endpoint) {
+      res.status(400).json(requestHelper.badRequest('endpoint is required'));
+      return;
+    }
+
+    const result = await openClawConnectionManager.testConnection({
+      endpoint,
+      accountId: accountId || 'stratix',
+      apiKey,
+    });
+
+    if (result.success) {
+      res.json(requestHelper.success({
+        endpoint,
+        connected: true,
+        deviceId: result.deviceId,
+      }, result.message));
+    } else {
+      res.json(requestHelper.error(502, result.error || result.message));
+    }
+  } catch (error) {
+    const err = error as Error;
+    res.status(500).json(requestHelper.serverError(err.message));
   }
 });
 
@@ -191,8 +226,331 @@ router.get('/connections', async (_req: Request, res: Response) => {
   }
 });
 
+router.get('/tailscale/nodes', async (_req: Request, res: Response) => {
+  try {
+    const response = await fetch('http://127.0.0.1:4243/localapi/v0/machines', {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json'
+      },
+      signal: AbortSignal.timeout(5000)
+    });
+
+    if (!response.ok) {
+      res.json(requestHelper.success([], 'Tailscale not available or not running'));
+      return;
+    }
+
+    const data = await response.json();
+    
+    const nodes = (data || []).map((machine: any) => ({
+      nodeId: machine.ID || machine.NodeId,
+      name: machine.Name || machine.HostName,
+      ipAddress: machine.IPAddresses?.[0] || machine.TailscaleIPs?.[0],
+      online: machine.Online ?? true,
+      latency: machine.Latency
+    }));
+
+    res.json(requestHelper.success(nodes, 'Tailscale nodes discovered'));
+  } catch (error) {
+    console.warn('[OpenClaw] Failed to discover Tailscale nodes:', error);
+    res.json(requestHelper.success([], 'Tailscale discovery failed - ensure Tailscale is running'));
+  }
+});
+
+export function initConnectionStore(store: OpenClawConnectionStore): void {
+  connectionStore = store;
+  connectionStore.startWatching();
+  
+  openClawProxyManager.onDeviceToken(async (connectionId, deviceToken) => {
+    if (connectionStore) {
+      await connectionStore.updateDeviceToken(connectionId, deviceToken);
+    }
+  });
+}
+
+router.get('/connections/list', async (_req: Request, res: Response) => {
+  try {
+    if (!connectionStore) {
+      res.status(503).json(requestHelper.error(503, 'Connection store not initialized'));
+      return;
+    }
+    
+    const connections = await connectionStore.list();
+    const statuses = openClawProxyManager.getAllStatuses();
+    
+    const statusMap = new Map(statuses.map(s => [s.connectionId, s]));
+    
+    const result = connections.map(conn => ({
+      ...conn,
+      status: statusMap.get(conn.id)?.status || 'disconnected',
+      clientCount: statusMap.get(conn.id)?.clientCount || 0,
+      latency: statusMap.get(conn.id)?.latency,
+    }));
+    
+    res.json(requestHelper.success(result, 'Connections fetched'));
+  } catch (error) {
+    console.error('[OpenClaw] Error listing connections:', error);
+    res.status(500).json(requestHelper.serverError('Internal server error'));
+  }
+});
+
+router.get('/connections/:id', async (req: Request, res: Response) => {
+  try {
+    if (!connectionStore) {
+      res.status(503).json(requestHelper.error(503, 'Connection store not initialized'));
+      return;
+    }
+    
+    const { id } = req.params;
+    const connectionId = Array.isArray(id) ? id[0] : id;
+    const connection = await connectionStore.get(connectionId);
+    
+    if (!connection) {
+      res.json(requestHelper.notFound('Connection not found'));
+      return;
+    }
+    
+    const status = openClawProxyManager.getStatus(connectionId);
+    
+    res.json(requestHelper.success({
+      ...connection,
+      status: status?.status || 'disconnected',
+      clientCount: status?.clientCount || 0,
+      latency: status?.latency,
+    }, 'Connection fetched'));
+  } catch (error) {
+    console.error('[OpenClaw] Error getting connection:', error);
+    res.status(500).json(requestHelper.serverError('Internal server error'));
+  }
+});
+
+router.post('/connections/check', async (req: Request, res: Response) => {
+  try {
+    if (!connectionStore) {
+      res.status(503).json(requestHelper.error(503, 'Connection store not initialized'));
+      return;
+    }
+    
+    const { endpoint } = req.body;
+    
+    if (!endpoint) {
+      res.status(400).json(requestHelper.badRequest('endpoint is required'));
+      return;
+    }
+    
+    const result = await connectionStore.checkEndpointExists(endpoint);
+    
+    if (result.exists && result.connection) {
+      const status = openClawProxyManager.getStatus(result.connection.id);
+      res.json(requestHelper.success({
+        exists: true,
+        connection: {
+          ...result.connection,
+          status: status?.status || 'disconnected',
+        },
+      }, 'Connection already exists'));
+    } else {
+      res.json(requestHelper.success({ exists: false }, 'Endpoint not found'));
+    }
+  } catch (error) {
+    console.error('[OpenClaw] Error checking endpoint:', error);
+    res.status(500).json(requestHelper.serverError('Internal server error'));
+  }
+});
+
+router.post('/connections', async (req: Request, res: Response) => {
+  try {
+    if (!connectionStore) {
+      res.status(503).json(requestHelper.error(503, 'Connection store not initialized'));
+      return;
+    }
+    
+    const { name, method, endpoint, sharedToken, deviceToken, deviceId } = req.body;
+    
+    if (!endpoint || !method) {
+      res.status(400).json(requestHelper.badRequest('endpoint and method are required'));
+      return;
+    }
+    
+    if (method !== 'pairing' && method !== 'tailscale') {
+      res.status(400).json(requestHelper.badRequest('method must be "pairing" or "tailscale"'));
+      return;
+    }
+    
+    const existing = await connectionStore.findByEndpoint(endpoint);
+    if (existing) {
+      res.status(409).json(requestHelper.error(409, 'Connection with this endpoint already exists'));
+      return;
+    }
+    
+    const connection = await connectionStore.create({
+      name: name || extractNameFromEndpoint(endpoint),
+      method,
+      endpoint,
+      sharedToken,
+      deviceToken,
+      deviceId,
+    });
+    
+    res.json(requestHelper.success(connection, 'Connection created'));
+  } catch (error) {
+    console.error('[OpenClaw] Error creating connection:', error);
+    res.status(500).json(requestHelper.serverError('Internal server error'));
+  }
+});
+
+router.put('/connections/:id', async (req: Request, res: Response) => {
+  try {
+    if (!connectionStore) {
+      res.status(503).json(requestHelper.error(503, 'Connection store not initialized'));
+      return;
+    }
+    
+    const { id } = req.params;
+    const connectionId = Array.isArray(id) ? id[0] : id;
+    const updates = req.body;
+    
+    delete updates.id;
+    delete updates.createdAt;
+    
+    const connection = await connectionStore.update(connectionId, updates);
+    
+    if (!connection) {
+      res.json(requestHelper.notFound('Connection not found'));
+      return;
+    }
+    
+    res.json(requestHelper.success(connection, 'Connection updated'));
+  } catch (error) {
+    console.error('[OpenClaw] Error updating connection:', error);
+    res.status(500).json(requestHelper.serverError('Internal server error'));
+  }
+});
+
+router.delete('/connections/:id', async (req: Request, res: Response) => {
+  try {
+    if (!connectionStore) {
+      res.status(503).json(requestHelper.error(503, 'Connection store not initialized'));
+      return;
+    }
+    
+    const { id } = req.params;
+    const connectionId = Array.isArray(id) ? id[0] : id;
+    
+    openClawProxyManager.remove(connectionId);
+    
+    const deleted = await connectionStore.delete(connectionId);
+    
+    if (!deleted) {
+      res.json(requestHelper.notFound('Connection not found'));
+      return;
+    }
+    
+    res.json(requestHelper.success(null, 'Connection deleted'));
+  } catch (error) {
+    console.error('[OpenClaw] Error deleting connection:', error);
+    res.status(500).json(requestHelper.serverError('Internal server error'));
+  }
+});
+
+router.post('/connections/:id/connect', async (req: Request, res: Response) => {
+  try {
+    if (!connectionStore) {
+      res.status(503).json(requestHelper.error(503, 'Connection store not initialized'));
+      return;
+    }
+    
+    const { id } = req.params;
+    const connectionId = Array.isArray(id) ? id[0] : id;
+    const connection = await connectionStore.get(connectionId);
+    
+    if (!connection) {
+      res.json(requestHelper.notFound('Connection not found'));
+      return;
+    }
+    
+    const result = await openClawProxyManager.connect(connection);
+    
+    if (result.success) {
+      res.json(requestHelper.success({
+        connectionId,
+        status: 'connected',
+      }, 'Connected successfully'));
+    } else {
+      res.json(requestHelper.error(502, result.error || 'Connection failed'));
+    }
+  } catch (error) {
+    console.error('[OpenClaw] Error connecting:', error);
+    res.status(500).json(requestHelper.serverError('Internal server error'));
+  }
+});
+
+router.post('/connections/:id/disconnect', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const connectionId = Array.isArray(id) ? id[0] : id;
+    
+    await openClawProxyManager.disconnect(connectionId);
+    
+    res.json(requestHelper.success({
+      connectionId,
+      status: 'disconnected',
+    }, 'Disconnected'));
+  } catch (error) {
+    console.error('[OpenClaw] Error disconnecting:', error);
+    res.status(500).json(requestHelper.serverError('Internal server error'));
+  }
+});
+
+router.get('/status', async (_req: Request, res: Response) => {
+  try {
+    const statuses = openClawProxyManager.getAllStatuses();
+    res.json(requestHelper.success(statuses, 'Connection statuses'));
+  } catch (error) {
+    console.error('[OpenClaw] Error getting statuses:', error);
+    res.status(500).json(requestHelper.serverError('Internal server error'));
+  }
+});
+
+router.get('/status/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const connectionId = Array.isArray(id) ? id[0] : id;
+    const status = openClawProxyManager.getStatus(connectionId);
+    
+    if (!status) {
+      res.json(requestHelper.notFound('Connection status not found'));
+      return;
+    }
+    
+    res.json(requestHelper.success(status, 'Connection status'));
+  } catch (error) {
+    console.error('[OpenClaw] Error getting status:', error);
+    res.status(500).json(requestHelper.serverError('Internal server error'));
+  }
+});
+
+function extractNameFromEndpoint(endpoint: string): string {
+  try {
+    const url = new URL(endpoint.replace(/^ws/, 'http'));
+    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') {
+      return '本地连接';
+    }
+    if (url.hostname.includes('.ts.net') || url.hostname.includes('.tailscale')) {
+      return url.hostname.split('.')[0];
+    }
+    return url.hostname;
+  } catch {
+    return '自定义连接';
+  }
+}
+
+let connectionStoreWss: WebSocketServer | null = null;
+
 export function initWebSocketServer(server: http.Server) {
   wss = new WebSocketServer({ noServer: true });
+  connectionStoreWss = new WebSocketServer({ noServer: true });
   
   wss.on('connection', (clientWs: WebSocket, req: http.IncomingMessage, proxyKey: string, targetPath: string) => {
     const config = activeProxies.get(proxyKey);
@@ -226,7 +584,7 @@ export function initWebSocketServer(server: http.Server) {
       }
     });
     
-    targetWs.on('close', (code, reason) => {
+    targetWs.on('close', (code: number, reason: Buffer) => {
       if (clientWs.readyState === WebSocket.OPEN) {
         clientWs.close(code, reason);
       }
@@ -258,23 +616,65 @@ export function initWebSocketServer(server: http.Server) {
       }
     });
   });
-  
-  server.on('upgrade', (req: http.IncomingMessage, socket: any, head: Buffer) => {
-    const url = req.url || '';
-    const match = url.match(/\/api\/stratix\/openclaw\/proxy\/([^\/]+)(\/.*)?$/);
+
+  connectionStoreWss.on('connection', async (clientWs: WebSocket, req: http.IncomingMessage, connectionId: string) => {
+    console.log('[WS Proxy] Client connected to:', connectionId);
     
-    if (!match || !wss) {
+    if (!connectionStore) {
+      clientWs.close(1011, 'Connection store not initialized');
       return;
     }
     
-    const proxyKey = match[1];
-    const targetPath = match[2] || '/';
+    const connection = await connectionStore.get(connectionId);
+    if (!connection) {
+      clientWs.close(1008, 'Connection not found');
+      return;
+    }
     
-    console.log('[WS Proxy] Upgrade request for proxy:', proxyKey);
+    const isConnected = openClawProxyManager.isConnected(connectionId);
+    if (!isConnected) {
+      const result = await openClawProxyManager.connect(connection);
+      if (!result.success) {
+        clientWs.close(1011, result.error || 'Failed to connect');
+        return;
+      }
+    }
     
-    wss.handleUpgrade(req, socket, head, (clientWs) => {
-      wss!.emit('connection', clientWs, req, proxyKey, targetPath);
-    });
+    const attached = openClawProxyManager.attachClient(connectionId, clientWs);
+    if (!attached) {
+      clientWs.close(1011, 'Failed to attach to connection');
+      return;
+    }
+    
+    console.log('[WS Proxy] Client attached to connection:', connectionId);
+  });
+  
+  server.on('upgrade', (req: http.IncomingMessage, socket: any, head: Buffer) => {
+    const url = req.url || '';
+    
+    const connectionMatch = url.match(/\/api\/stratix\/openclaw\/ws-proxy\/([^\/]+)$/);
+    if (connectionMatch && connectionStoreWss) {
+      const connectionId = connectionMatch[1];
+      console.log('[WS Proxy] Upgrade request for connection:', connectionId);
+      
+      connectionStoreWss.handleUpgrade(req, socket, head, (clientWs) => {
+        connectionStoreWss!.emit('connection', clientWs, req, connectionId);
+      });
+      return;
+    }
+    
+    const proxyMatch = url.match(/\/api\/stratix\/openclaw\/proxy\/([^\/]+)(\/.*)?$/);
+    if (proxyMatch && wss) {
+      const proxyKey = proxyMatch[1];
+      const targetPath = proxyMatch[2] || '/';
+      
+      console.log('[WS Proxy] Upgrade request for proxy:', proxyKey);
+      
+      wss.handleUpgrade(req, socket, head, (clientWs) => {
+        wss!.emit('connection', clientWs, req, proxyKey, targetPath);
+      });
+      return;
+    }
   });
 }
 
