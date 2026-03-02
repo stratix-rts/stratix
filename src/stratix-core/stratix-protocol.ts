@@ -6,6 +6,16 @@
  */
 
 /**
+ * Agent 后端类型
+ */
+export type AgentBackendType = 'openclaw' | 'direct';
+
+/**
+ * LLM Provider 类型
+ */
+export type LLMProvider = 'openai' | 'anthropic' | 'ollama' | 'custom';
+
+/**
  * BodyType - 角色体型类型
  */
 export type BodyType = 'male' | 'female' | 'teen' | 'muscular' | 'pregnant' | 'child';
@@ -38,27 +48,121 @@ export interface CharacterTexture {
 }
 
 /**
- * CharacterAppearance - 角色外观配置
- */
-export interface CharacterAppearance {
-  bodyType: BodyType;
-  parts: Record<string, PartSelection>;
-  thumbnail?: string;
-}
-
-/**
- * CharacterData - 角色扩展数据（来自 Character Creator）
+ * CharacterData - 角色外观数据
  */
 export interface CharacterData {
   characterId: string;
   bodyType: BodyType;
   parts: Record<string, PartSelection>;
-  skillTree: SkillTreeState;
-  attributes: Record<string, number>;
   thumbnail?: string;
   texture?: CharacterTexture;
   createdAt: number;
   updatedAt: number;
+}
+
+/**
+ * OpenClaw 连接方式
+ */
+export type OpenClawConnectionMethod = 'pairing' | 'tailscale';
+
+/**
+ * @deprecated Use OpenClawConnectionMethod instead
+ */
+export type OpenClawConnectionMode = 'auto' | 'local' | 'remote' | 'tailscale';
+
+/**
+ * OpenClawConfig - OpenClaw 后端配置
+ */
+export interface OpenClawConfig {
+  endpoint: string;
+  accountId: string;
+  apiKey?: string;
+  agentId?: string;
+}
+
+/**
+ * @deprecated Use OpenClawConfig instead
+ */
+export type StratixOpenClawConfig = OpenClawConfig;
+
+/**
+ * OpenClawConnectionConfig - 新的统一配置
+ */
+export interface OpenClawConnectionConfig {
+  id?: string;
+  name?: string;
+  method: OpenClawConnectionMethod;
+  endpoint: string;
+  sharedToken?: string;
+  deviceToken?: string;
+}
+
+/**
+ * @deprecated Use OpenClawConnectionConfig instead
+ */
+export interface UnifiedOpenClawConfig {
+  mode: OpenClawConnectionMode;
+  localEndpoint?: string;
+  remoteEndpoint?: string;
+  tailscaleNodeId?: string;
+  credentials?: {
+    token?: string;
+    accountId?: string;
+    apiKey?: string;
+  };
+}
+
+/**
+ * DirectLLMConfig - 直连 LLM 配置
+ */
+export interface DirectLLMConfig {
+  provider: LLMProvider;
+  model: string;
+  endpoint?: string;
+  apiKey?: string;
+  temperature?: number;
+  maxTokens?: number;
+}
+
+/**
+ * StratixSoulConfig - Soul 配置
+ */
+export interface StratixSoulConfig {
+  identity: string;
+  goals: string[];
+  personality: string;
+}
+
+/**
+ * StratixMemoryConfig - 记忆配置
+ */
+export interface StratixMemoryConfig {
+  shortTerm: string[];
+  longTerm: string[];
+  context: string;
+}
+
+/**
+ * StratixSkillConfig - 技能配置
+ */
+export interface StratixSkillConfig {
+  skillId: string;
+  name: string;
+  description: string;
+  parameters: StratixSkillParameter[];
+  executeScript?: string;
+  prompt?: string;
+}
+
+/**
+ * StratixSkillParameter - 技能参数
+ */
+export interface StratixSkillParameter {
+  paramId: string;
+  name: string;
+  type: 'string' | 'number' | 'boolean' | 'object';
+  required: boolean;
+  defaultValue: any;
 }
 
 /**
@@ -78,78 +182,39 @@ export interface StratixAgentConfig {
   agentId: string;
   name: string;
   type: 'writer' | 'dev' | 'analyst' | 'custom' | string;
-  soul: StratixSoulConfig;
-  memory: StratixMemoryConfig;
-  skills: StratixSkillConfig[];
-  model: StratixModelConfig;
-  openClawConfig: StratixOpenClawConfig;
+  
+  // 外观数据
   character?: CharacterData;
+  
+  // 后端类型
+  backendType: AgentBackendType;
+  
+  // OpenClaw 配置 (backendType = 'openclaw' 时使用)
+  openClawConfig?: OpenClawConfig;
+  
+  // 直连 LLM 配置 (backendType = 'direct' 时使用)
+  directConfig?: DirectLLMConfig;
+  
+  // 能力定义 (direct 模式需要)
+  soul?: StratixSoulConfig;
+  memory?: StratixMemoryConfig;
+  skills?: StratixSkillConfig[];
+  skillTree?: SkillTreeState;
+  attributes?: Record<string, number>;
+  rules?: string[];
+  
+  // 位置
   position?: { x: number; y: number };
+  
+  // 时间戳
   createdAt?: number;
   updatedAt?: number;
-}
-
-/**
- * Soul 配置
- */
-export interface StratixSoulConfig {
-  identity: string;
-  goals: string[];
-  personality: string;
-}
-
-/**
- * 记忆配置
- */
-export interface StratixMemoryConfig {
-  shortTerm: string[];
-  longTerm: string[];
-  context: string;
-}
-
-/**
- * 技能配置
- */
-export interface StratixSkillConfig {
-  skillId: string;
-  name: string;
-  description: string;
-  parameters: StratixSkillParameter[];
-  executeScript: string;
-}
-
-/**
- * 技能参数
- */
-export interface StratixSkillParameter {
-  paramId: string;
-  name: string;
-  type: 'string' | 'number' | 'boolean' | 'object';
-  required: boolean;
-  defaultValue: any;
-}
-
-/**
- * 模型配置
- */
-export interface StratixModelConfig {
-  name: string;
-  params: {
-    temperature?: number;
-    topP?: number;
-    maxTokens?: number;
-    [key: string]: any;
+  
+  // 兼容旧数据 (deprecated)
+  model?: {
+    name: string;
+    params: Record<string, any>;
   };
-}
-
-/**
- * OpenClaw 对接配置
- */
-export interface StratixOpenClawConfig {
-  accountId: string;
-  endpoint: string;
-  apiKey?: string;
-  connectionMode?: 'direct' | 'gateway';
 }
 
 /**

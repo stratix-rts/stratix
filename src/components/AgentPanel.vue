@@ -1,9 +1,17 @@
 <script setup lang="ts">
-import { StratixAgentConfig } from '../stratix-core';
+import { SvgIcon } from '@/components/ui';
+import { computed } from 'vue';
+import { agentStore } from '../stores/agentStore';
+import { StratixPanel, StratixButton } from '@/components/ui';
+import { getToken } from '@/design-system/config';
 
+// 图标名称常量
+const plus = 'plus';
+const refresh = 'refresh';
+const settings = 'settings';
 const props = defineProps<{
-  agents: StratixAgentConfig[];
-  selectedIds: string[];
+  selectedIds?: string[];
+  isRefreshing?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -11,41 +19,103 @@ const emit = defineEmits<{
   (e: 'delete', agentId: string): void;
   (e: 'select', agentId: string): void;
   (e: 'open-character-creator'): void;
+  (e: 'refresh'): void;
 }>();
 
+const agents = computed(() => agentStore.agents.value);
+const storeRefreshing = computed(() => agentStore.isRefreshing.value);
+const lastRefreshTime = computed(() => agentStore.lastRefreshTime.value);
+const isRefreshing = computed(() => props.isRefreshing || storeRefreshing.value);
+
+// 使用 SVG 图标替代 Emoji
+// Agent 类型配置（使用 SVG 图标）
 const heroTypes = [
-  { type: 'writer' as const, name: '文案英雄', color: '#00ff88', icon: '✍' },
-  { type: 'dev' as const, name: '开发英雄', color: '#00d4ff', icon: '💻' },
-  { type: 'analyst' as const, name: '数据英雄', color: '#ff6b9d', icon: '📊' }
+  { type: 'writer' as const, name: '文案英雄', color: getToken('colors.semantic.success') },
+  { type: 'dev' as const, name: '开发英雄', color: getToken('colors.info') },
+  { type: 'analyst' as const, name: '数据英雄', color: '#ff6b9d' }
 ];
 
 const getHeroTypeColor = (type: string) => {
-  return heroTypes.find(h => h.type === type)?.color || '#888';
+  if (type === 'custom') return getToken('colors.accent');
+  return heroTypes.find(h => h.type === type)?.color || getToken('colors.text.muted');
 };
 
-const getHeroTypeIcon = (type: string) => {
-  return heroTypes.find(h => h.type === type)?.icon || '⭐';
+const isSelected = (agentId: string) => {
+  return props.selectedIds?.includes(agentId) || false;
 };
 
-const isSelected = (agentId: string) => props.selectedIds.includes(agentId);
+const getAgentThumbnail = (agent: any) => {
+  return agent.character?.thumbnail || null;
+};
+
+const getAgentStatus = (agent: any) => {
+  return agent.status || 'online';
+};
+
+const getStatusColor = (status: string) => {
+  const colors: Record<string, string> = {
+    online: getToken('colors.semantic.success'),
+    offline: getToken('colors.text.muted'),
+    busy: getToken('colors.warning'),
+    error: getToken('colors.semantic.danger')
+  };
+  return colors[status] || getToken('colors.text.muted');
+};
+
+const getStatusText = (status: string) => {
+  const texts: Record<string, string> = {
+    online: '在线',
+    offline: '离线',
+    busy: '忙碌',
+    error: '错误'
+  };
+  return texts[status] || '未知';
+};
+
+const handleRefresh = () => {
+  if (isRefreshing.value) return;
+  emit('refresh');
+  agentStore.refreshAgents();
+};
+
+const formatTime = (date: Date | null) => {
+  if (!date) return '--:--:--';
+  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+};
+
+const panelStyle = computed(() => getToken('panel.default'));
 </script>
 
 <template>
-  <div class="agent-panel">
+  <StratixPanel variant="default" class="agent-panel">
     <div class="panel-header">
-      <h3>英雄列表</h3>
+      <h3 class="panel-title">英雄列表</h3>
       <div class="header-actions">
-        <button 
-          class="custom-char-btn" 
+        <StratixButton 
+          variant="secondary" 
+          size="sm"
+          :loading="isRefreshing"
+          @click="handleRefresh"
+          :icon="refresh"
+          title="刷新列表"
+        >
+          刷新
+        </StratixButton>
+        
+        <StratixButton 
+          variant="secondary" 
+          size="sm"
           @click="emit('open-character-creator')"
+          :icon="settings"
           title="自定义角色"
         >
-          🎭
-        </button>
+          自定义
+        </StratixButton>
+        
         <el-dropdown @command="emit('create', $event)" trigger="click">
-          <el-button type="primary" size="small">
-            + 新建
-          </el-button>
+          <StratixButton variant="primary" size="sm" :icon="plus">
+            新建
+          </StratixButton>
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item 
@@ -53,15 +123,22 @@ const isSelected = (agentId: string) => props.selectedIds.includes(agentId);
                 :key="hero.type"
                 :command="hero.type"
               >
-                {{ hero.icon }} {{ hero.name }}
+                <span class="type-indicator" :style="{ background: hero.color }"></span>
+                {{ hero.name }}
               </el-dropdown-item>
               <el-dropdown-item divided @click="emit('open-character-creator')">
-                🎭 自定义角色
+                <span class="type-indicator" :style="{ background: getToken('colors.accent') }"></span>
+                自定义角色
               </el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
       </div>
+    </div>
+    
+    <div class="refresh-info" v-if="lastRefreshTime">
+      <span class="refresh-label">上次刷新:</span>
+      <span class="refresh-time">{{ formatTime(lastRefreshTime) }}</span>
     </div>
     
     <div class="agent-list">
@@ -72,127 +149,149 @@ const isSelected = (agentId: string) => props.selectedIds.includes(agentId);
         :class="{ selected: isSelected(agent.agentId) }"
         @click="emit('select', agent.agentId)"
       >
-        <div class="agent-icon" :style="{ color: getHeroTypeColor(agent.type) }">
-          {{ getHeroTypeIcon(agent.type) }}
+        <div class="agent-avatar">
+          <img 
+            v-if="getAgentThumbnail(agent)" 
+            :src="getAgentThumbnail(agent)!" 
+            class="avatar-img"
+          />
+          <div 
+            v-else 
+            class="avatar-placeholder"
+            :style="{ background: getHeroTypeColor(agent.type) + '20' }"
+          >
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" :stroke="getHeroTypeColor(agent.type)" stroke-width="2">
+              <SvgIcon :name="user" size="16" />
+            </svg>
+          </div>
         </div>
+        
         <div class="agent-info">
           <div class="agent-name">{{ agent.name }}</div>
-          <div class="agent-skills">{{ agent.skills.length }} 技能</div>
+          <div class="agent-meta">
+            <span class="agent-type" :style="{ color: getHeroTypeColor(agent.type) }">
+              {{ agent.type }}
+            </span>
+            <span class="agent-status" :style="{ color: getStatusColor(getAgentStatus(agent)) }">
+              {{ getStatusText(getAgentStatus(agent)) }}
+            </span>
+          </div>
         </div>
-        <button 
-          class="delete-btn"
-          @click.stop="emit('delete', agent.agentId)"
-          title="删除"
-        >×</button>
+        
+        <div class="agent-actions">
+          <button 
+            class="action-btn"
+            @click.stop="emit('delete', agent.agentId)"
+            title="删除"
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <path :d="'trash'" />
+            </svg>
+          </button>
+        </div>
       </div>
       
       <div v-if="agents.length === 0" class="empty-state">
-        <div class="empty-icon">🎭</div>
-        <div class="empty-title">还没有英雄</div>
-        <div class="empty-desc">点击上方按钮创建你的第一个英雄</div>
-        <div class="empty-actions">
-          <el-dropdown @command="emit('create', $event)" trigger="click">
-            <el-button type="primary" size="small">
-              + 创建英雄
-            </el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item 
-                  v-for="hero in heroTypes" 
-                  :key="hero.type"
-                  :command="hero.type"
-                >
-                  {{ hero.icon }} {{ hero.name }}
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-          <el-button size="small" @click="emit('open-character-creator')">
-            🎭 自定义
-          </el-button>
-        </div>
+        <p>暂无英雄</p>
+        <p class="empty-hint">点击右上角"新建"创建第一个英雄</p>
       </div>
     </div>
-  </div>
+  </StratixPanel>
 </template>
 
 <style scoped>
 .agent-panel {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
+  padding: v-bind('panelStyle.padding');
+  background: v-bind('panelStyle.background');
+  border: v-bind('panelStyle.border');
+  border-radius: v-bind('panelStyle.borderRadius');
+  max-width: 400px;
 }
 
 .panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
-.panel-header h3 {
+.panel-title {
   margin: 0;
-  font-size: 14px;
-  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ds-text);
 }
 
 .header-actions {
   display: flex;
-  align-items: center;
   gap: 8px;
 }
 
-.custom-char-btn {
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: linear-gradient(135deg, #2a2a4e 0%, #1a1a2e 100%);
-  color: #00d4ff;
-  font-size: 16px;
-  cursor: pointer;
-  border-radius: 6px;
-  transition: all 0.2s;
+.refresh-info {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ds-text-secondary);
+  margin-bottom: 16px;
 }
 
-.custom-char-btn:hover {
-  background: linear-gradient(135deg, #3a3a5e 0%, #2a2a3e 100%);
-  transform: scale(1.1);
+.refresh-label {
+  font-weight: 500;
+}
+
+.refresh-time {
+  font-family: 'SF Mono', 'Monaco', monospace;
 }
 
 .agent-list {
-  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  overflow-y: auto;
 }
 
 .agent-card {
   display: flex;
   align-items: center;
+  gap: 12px;
   padding: 12px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
+  background: var(--ds-bg-tertiary);
   border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 
 .agent-card:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--ds-bg-secondary);
+  border-color: var(--ds-border);
 }
 
 .agent-card.selected {
-  border-color: #00d4ff;
+  border-color: var(--ds-accent);
   background: rgba(0, 212, 255, 0.1);
 }
 
-.agent-icon {
-  font-size: 24px;
-  margin-right: 12px;
+.agent-avatar {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--ds-bg-secondary);
+}
+
+.avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .agent-info {
@@ -202,67 +301,66 @@ const isSelected = (agentId: string) => props.selectedIds.includes(agentId);
 
 .agent-name {
   font-size: 14px;
-  color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-weight: 500;
+  color: var(--ds-text);
+  margin-bottom: 4px;
 }
 
-.agent-skills {
+.agent-meta {
+  display: flex;
+  gap: 8px;
   font-size: 12px;
-  color: #666;
 }
 
-.delete-btn {
-  width: 24px;
-  height: 24px;
-  border: none;
+.agent-type,
+.agent-status {
+  font-weight: 500;
+}
+
+.agent-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.action-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
-  color: #666;
-  font-size: 18px;
-  cursor: pointer;
+  border: 1px solid var(--ds-border);
   border-radius: 4px;
-  opacity: 0;
-  transition: all 0.2s;
+  color: var(--ds-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 
-.agent-card:hover .delete-btn {
-  opacity: 1;
-}
-
-.delete-btn:hover {
-  background: rgba(255, 107, 107, 0.2);
-  color: #ff6b6b;
+.action-btn:hover {
+  background: var(--ds-danger);
+  border-color: var(--ds-danger);
+  color: white;
 }
 
 .empty-state {
   text-align: center;
   padding: 40px 20px;
-  color: #666;
-  line-height: 1.8;
+  color: var(--ds-text-muted);
 }
 
-.empty-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-  opacity: 0.6;
+.empty-state p {
+  margin: 8px 0;
 }
 
-.empty-title {
-  font-size: 16px;
-  color: #888;
-  margin-bottom: 8px;
+.empty-hint {
+  font-size: 12px;
 }
 
-.empty-desc {
-  font-size: 13px;
-  color: #555;
-  margin-bottom: 20px;
-}
-
-.empty-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
+.type-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
 }
 </style>

@@ -43,6 +43,7 @@ function createAgentConfig(type: string): StratixAgentConfig {
     agentId: `agent-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
     name: `${type.charAt(0).toUpperCase() + type.slice(1)} ${++agentCounter}`,
     type: type,
+    backendType: 'openclaw',
     soul: { identity: 'test', goals: [], personality: 'test' },
     memory: { shortTerm: [], longTerm: [], context: '' },
     skills: [],

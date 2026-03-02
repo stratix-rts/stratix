@@ -1,16 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, provide } from 'vue';
+import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { createStratixRTS } from './stratix-rts';
 import { StratixEventBus, StratixAgentConfig, StratixFrontendOperationEvent } from './stratix-core';
 import MainLayout from './components/MainLayout.vue';
 import CharacterCreatorModal from './components/CharacterCreatorModal.vue';
-import { WriterHeroTemplate, DevHeroTemplate, AnalystHeroTemplate, generateAgentId } from './stratix-designer';
+import { agentStore } from './stores/agentStore';
 import type { SavedCharacter } from './stratix-character-creator/types';
 
 const gameContainer = ref<HTMLElement | null>(null);
 const isGameReady = ref(false);
-const agents = ref<StratixAgentConfig[]>([]);
-const selectedAgentIds = ref<string[]>([]);
 const currentSkill = ref<any>(null);
 const commandLogs = ref<any[]>([]);
 const showCharacterCreator = ref(false);
@@ -19,13 +17,13 @@ const editCharacterId = ref<string | undefined>(undefined);
 let game: Phaser.Game | null = null;
 let eventBus: StratixEventBus;
 
-provide('agents', agents);
-provide('selectedAgentIds', selectedAgentIds);
-provide('currentSkill', currentSkill);
-provide('commandLogs', commandLogs);
+// 从 store 获取状态
+const agents = computed(() => agentStore.agents.value);
+const selectedAgentIds = computed(() => agentStore.selectedIds.value);
+const isRefreshing = computed(() => agentStore.isRefreshing.value);
 
 const handleAgentSelect = (event: StratixFrontendOperationEvent) => {
-  selectedAgentIds.value = event.payload.agentIds || [];
+  agentStore.setSelectedIds(event.payload.agentIds || []);
 };
 
 const handleCommandExecute = async (event: StratixFrontendOperationEvent) => {
@@ -57,11 +55,17 @@ const handleCommandExecute = async (event: StratixFrontendOperationEvent) => {
   }
 };
 
-const addAgentToRTS = (config: StratixAgentConfig) => {
+const addAgentToRTS = (config: StratixAgentConfig, centerOnScreen: boolean = false) => {
   if (!game) return;
   const scene = game.scene.getScene('StratixRTSGameScene') as any;
   if (scene) {
-    scene.events.emit('stratix:create-agent', config);
+    if (centerOnScreen) {
+      scene.addAgentSprite(config, true).catch(err => {
+        console.error('[RTS] Failed to create agent sprite:', err);
+      });
+    } else {
+      scene.events.emit('stratix:create-agent', config);
+    }
   }
 };
 
@@ -75,38 +79,11 @@ const selectAgentInRTS = (agentId: string) => {
 };
 
 const createAgent = async (type: 'writer' | 'dev' | 'analyst') => {
-  const TemplateClass = type === 'writer' ? WriterHeroTemplate 
-    : type === 'dev' ? DevHeroTemplate 
-    : AnalystHeroTemplate;
-  
-  const t = new TemplateClass();
-  const config = t.getTemplate(generateAgentId(type));
-  
-  try {
-    await fetch('/api/stratix/config/agent/create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(config)
-    });
-  } catch (e) {
-    console.warn('Failed to save agent:', e);
-  }
-  
-  agents.value.push(config);
-  addAgentToRTS(config);
+  await agentStore.createAgent(type);
 };
 
 const deleteAgent = async (agentId: string) => {
-  try {
-    await fetch(`/api/stratix/config/agent/delete?agentId=${agentId}`, {
-      method: 'DELETE'
-    });
-  } catch (e) {
-    console.warn('Failed to delete agent:', e);
-  }
-  
-  agents.value = agents.value.filter(a => a.agentId !== agentId);
-  selectedAgentIds.value = selectedAgentIds.value.filter(id => id !== agentId);
+  await agentStore.deleteAgent(agentId);
 };
 
 const openCharacterCreator = (characterId?: string) => {
@@ -119,17 +96,21 @@ const closeCharacterCreator = () => {
   editCharacterId.value = undefined;
 };
 
-const handleCharacterCreated = (character: SavedCharacter) => {
+const handleCharacterCreated = async (character: SavedCharacter) => {
   console.log('Character created:', character);
+  await agentStore.createCustomAgent(character);
   closeCharacterCreator();
 };
 
 const handleCharacterUpdated = (character: SavedCharacter) => {
   console.log('Character updated:', character);
+  agentStore.updateCustomAgent(character);
 };
 
 const handleCharacterDeleted = (characterId: string) => {
   console.log('Character deleted:', characterId);
+  const agentId = `custom-${characterId}`;
+  agentStore.deleteAgent(agentId);
 };
 
 onMounted(async () => {
@@ -138,15 +119,17 @@ onMounted(async () => {
   eventBus.subscribe('stratix:agent_select', handleAgentSelect);
   eventBus.subscribe('stratix:command_execute', handleCommandExecute as any);
   
-  try {
-    const response = await fetch('/api/stratix/config/agent/list');
-    const result = await response.json();
-    if (result.code === 200 && result.data) {
-      agents.value = result.data;
-    }
-  } catch (e) {
-    console.warn('Failed to load agents from backend:', e);
-  }
+  // 设置 agent 创建/删除回调
+  agentStore.setOnAgentCreated((config, centerOnScreen) => {
+    addAgentToRTS(config, centerOnScreen);
+  });
+  
+  agentStore.setOnAgentDeleted((agentId) => {
+    // 可以在这里处理删除后的逻辑
+  });
+  
+  // 加载 agents
+  await agentStore.loadAgents();
   
   if (gameContainer.value) {
     game = createStratixRTS({
@@ -169,9 +152,15 @@ onMounted(async () => {
       }, 100);
     }
   }
+  
+  // 启动自动刷新
+  agentStore.startAutoRefresh(30000);
 });
 
 onUnmounted(() => {
+  agentStore.stopAutoRefresh();
+  agentStore.clear();
+  
   if (eventBus) {
     eventBus.unsubscribe('stratix:agent_select', handleAgentSelect);
     eventBus.unsubscribe('stratix:command_execute', handleCommandExecute as any);
@@ -189,10 +178,12 @@ onUnmounted(() => {
     :agents="agents"
     :selected-agent-ids="selectedAgentIds"
     :command-logs="commandLogs"
+    :is-refreshing="isRefreshing"
     @create-agent="createAgent"
     @delete-agent="deleteAgent"
     @select-agent="selectAgentInRTS"
     @open-character-creator="openCharacterCreator()"
+    @refresh-agents="agentStore.refreshAgents()"
   >
     <template #game>
       <div ref="gameContainer" class="game-container"></div>

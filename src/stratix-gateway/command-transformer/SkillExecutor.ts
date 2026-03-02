@@ -96,6 +96,11 @@ export class SkillExecutor {
       }
 
       const action = this.buildAction(processedContext);
+      
+      if (!processedContext.agentConfig.openClawConfig) {
+        throw new Error('OpenClaw config is required for OpenClaw backend');
+      }
+      
       const adapter = await this.connectionPool.getAdapter(processedContext.agentConfig.openClawConfig);
       const response = await adapter.execute(action as OpenClawAction);
 
@@ -179,7 +184,7 @@ export class SkillExecutor {
   }
 
   private buildAction(context: SkillExecutionContext): any {
-    let executeScript = context.skill.executeScript;
+    let executeScript = context.skill.executeScript || context.skill.prompt || '';
 
     Object.entries(context.params).forEach(([key, value]) => {
       const regex = new RegExp(`{{${key}}}`, 'g');

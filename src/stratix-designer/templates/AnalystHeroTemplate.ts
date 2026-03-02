@@ -24,6 +24,13 @@ export class AnalystHeroTemplate implements HeroTemplateBase {
       agentId: id,
       name: AnalystHeroTemplate.NAME,
       type: AnalystHeroTemplate.TYPE,
+      backendType: 'direct',
+      directConfig: {
+        provider: 'openai',
+        model: 'gpt-4',
+        temperature: 0.5,
+        maxTokens: 4096,
+      },
       soul: {
         identity: '专业数据分析师，擅长数据处理、分析与可视化，能够从数据中提取有价值的信息',
         goals: [
@@ -47,11 +54,19 @@ export class AnalystHeroTemplate implements HeroTemplateBase {
             { paramId: 'data', name: '原始数据', type: 'string', required: true, defaultValue: '' },
             { paramId: 'analysisType', name: '分析类型', type: 'string', required: false, defaultValue: '趋势分析' },
           ],
-          executeScript: '{"action":"analyze_data","params":{"data":"{{data}}","analysisType":"{{analysisType}}"}}',
+          prompt: `你是一位专业的数据分析师。请对以下数据进行分析：
+
+数据：{{data}}
+分析类型：{{analysisType}}
+
+请提供详细的数据分析结果，包括趋势、异常值、关键指标等。`,
         },
       ],
-      model: { name: 'claude-3-opus', params: { temperature: 0.5, topP: 0.7 } },
-      openClawConfig: { accountId: id, endpoint: 'http://localhost:8000' },
+      rules: [
+        '确保分析结果客观准确',
+        '使用数据支撑分析结论',
+        '以清晰易懂的方式呈现结果',
+      ],
     };
   }
 }

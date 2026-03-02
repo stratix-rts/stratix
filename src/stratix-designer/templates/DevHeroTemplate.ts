@@ -24,6 +24,13 @@ export class DevHeroTemplate implements HeroTemplateBase {
       agentId: id,
       name: DevHeroTemplate.NAME,
       type: DevHeroTemplate.TYPE,
+      backendType: 'direct',
+      directConfig: {
+        provider: 'openai',
+        model: 'gpt-4',
+        temperature: 0.6,
+        maxTokens: 4096,
+      },
       soul: {
         identity: '资深程序员，擅长多种编程语言，能够编写可靠、高效的代码，解决开发中的各类问题',
         goals: [
@@ -47,11 +54,19 @@ export class DevHeroTemplate implements HeroTemplateBase {
             { paramId: 'demand', name: '开发需求', type: 'string', required: true, defaultValue: '' },
             { paramId: 'language', name: '编程语言', type: 'string', required: true, defaultValue: 'javascript' },
           ],
-          executeScript: '{"action":"generate_code","params":{"demand":"{{demand}}","language":"{{language}}","withComment":true}}',
+          prompt: `你是一位资深程序员。请根据以下需求编写代码：
+
+需求：{{demand}}
+编程语言：{{language}}
+
+请生成高质量、可读性强、带有必要注释的代码。`,
         },
       ],
-      model: { name: 'gpt-4o', params: { temperature: 0.6, topP: 0.8 } },
-      openClawConfig: { accountId: id, endpoint: 'http://localhost:8000' },
+      rules: [
+        '确保代码可运行、无语法错误',
+        '添加必要的注释说明',
+        '遵循最佳实践和代码规范',
+      ],
     };
   }
 }

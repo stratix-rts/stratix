@@ -21,15 +21,16 @@ export default defineConfig({
   publicDir: 'assets',
 
   server: {
+    host: '127.0.0.1',
     port: 7523,
     proxy: {
       '/api': {
-        target: 'http://localhost:7524',
+        target: 'http://127.0.0.1:7524',
         changeOrigin: true,
         ws: true,
       },
       '/textures': {
-        target: 'http://localhost:7524',
+        target: 'http://127.0.0.1:7524',
         changeOrigin: true,
       },
     },

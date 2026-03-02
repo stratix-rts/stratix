@@ -1,131 +1,60 @@
-/**
- * Stratix Gateway - 指令转换器
- * 
- * 将前端游戏化指令转换为 OpenClaw 标准调用格式
- * 支持模板变量替换和参数验证
- */
-
-import { StratixCommandData, StratixAgentConfig, StratixSkillConfig } from '../../stratix-core/stratix-protocol';
-import { ConnectionPool, OpenClawAction } from '../../stratix-openclaw-adapter';
+import { StratixCommandData, StratixAgentConfig } from '../../stratix-core/stratix-protocol';
+import { ExecutorFactory } from '../../stratix-core/executor';
+import type { ExecutorResult } from '../../stratix-core/executor';
+import { ConnectionPool } from '../../stratix-openclaw-adapter';
 
 export class CommandTransformer {
+  private executorFactory: ExecutorFactory;
   private connectionPool: ConnectionPool;
 
   constructor(connectionPool?: ConnectionPool) {
     this.connectionPool = connectionPool || new ConnectionPool();
+    this.executorFactory = ExecutorFactory.getInstance(this.connectionPool);
   }
 
   public async transformAndExecute(
     command: StratixCommandData,
     agentConfig: StratixAgentConfig
   ): Promise<any> {
-    const skill = this.findSkill(agentConfig, command.skillId);
-    if (!skill) {
-      throw new Error(`Skill not found: ${command.skillId}`);
+    const executor = this.executorFactory.getExecutor(agentConfig);
+    const result: ExecutorResult = await executor.execute(command, agentConfig);
+
+    if (!result.success) {
+      throw new Error(result.error || 'Execution failed');
     }
 
-    const executeScript = this.replaceTemplateVariables(
-      skill.executeScript,
-      command.params
-    );
-
-    const action = this.parseExecuteScript(executeScript);
-
-    const adapter = await this.connectionPool.getAdapter(agentConfig.openClawConfig);
-    const response = await adapter.execute(action as OpenClawAction);
-
-    if (!response.success) {
-      throw new Error(response.error || 'Execution failed');
-    }
-
-    return response.data;
+    return result.data;
   }
 
-  private findSkill(
-    agentConfig: StratixAgentConfig,
-    skillId: string
-  ): StratixSkillConfig | null {
-    return agentConfig.skills.find(s => s.skillId === skillId) || null;
-  }
-
-  private replaceTemplateVariables(
-    template: string,
-    params: Record<string, any>
-  ): string {
-    let result = template;
-
-    Object.entries(params).forEach(([key, value]) => {
-      const regex = new RegExp(`{{${key}}}`, 'g');
-      result = result.replace(regex, String(value));
-    });
-
-    const missingParams = this.findMissingParameters(result);
-    if (missingParams.length > 0) {
-      throw new Error(`Missing parameters: ${missingParams.join(', ')}`);
-    }
-
-    return result;
-  }
-
-  private findMissingParameters(template: string): string[] {
-    const regex = /{{([^}]+)}}/g;
-    const matches: string[] = [];
-    let match;
-
-    while ((match = regex.exec(template)) !== null) {
-      matches.push(match[1]);
-    }
-
-    return [...new Set(matches)];
-  }
-
-  private parseExecuteScript(script: string): any {
-    try {
-      return JSON.parse(script);
-    } catch (error) {
-      throw new Error(`Failed to parse executeScript: ${error}`);
-    }
+  public async executeWithResult(
+    command: StratixCommandData,
+    agentConfig: StratixAgentConfig
+  ): Promise<ExecutorResult> {
+    const executor = this.executorFactory.getExecutor(agentConfig);
+    return executor.execute(command, agentConfig);
   }
 
   public validateCommand(
     command: StratixCommandData,
     agentConfig: StratixAgentConfig
   ): { valid: boolean; errors: string[] } {
-    const errors: string[] = [];
-
-    const skill = this.findSkill(agentConfig, command.skillId);
-    if (!skill) {
-      errors.push(`Skill not found: ${command.skillId}`);
-      return { valid: false, errors };
-    }
-
-    const requiredParams = this.extractRequiredParameters(skill.executeScript);
-    requiredParams.forEach(param => {
-      if (!(param in command.params)) {
-        errors.push(`Missing required parameter: ${param}`);
-      }
-    });
-
-    return {
-      valid: errors.length === 0,
-      errors
-    };
+    const executor = this.executorFactory.getExecutor(agentConfig);
+    return executor.validate(command, agentConfig);
   }
 
-  private extractRequiredParameters(template: string): string[] {
-    const regex = /{{([^}]+)}}/g;
-    const params: string[] = [];
-    let match;
-
-    while ((match = regex.exec(template)) !== null) {
-      params.push(match[1]);
-    }
-
-    return [...new Set(params)];
+  public async testConnection(
+    agentConfig: StratixAgentConfig
+  ): Promise<{ success: boolean; message: string }> {
+    const executor = this.executorFactory.getExecutor(agentConfig);
+    return executor.testConnection(agentConfig);
   }
 
   public getConnectionPool(): ConnectionPool {
     return this.connectionPool;
+  }
+
+  public getExecutorFactory(): ExecutorFactory {
+    return this.executorFactory;
   }
 }
 

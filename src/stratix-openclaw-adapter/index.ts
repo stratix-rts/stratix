@@ -9,6 +9,7 @@ import type { OpenClawAdapterInterface } from './types';
 import { LocalOpenClawAdapter } from './LocalOpenClawAdapter';
 import { RemoteOpenClawAdapter } from './RemoteOpenClawAdapter';
 import { GatewayOpenClawAdapter } from './GatewayOpenClawAdapter';
+import { WebSocketOpenClawAdapter } from './WebSocketOpenClawAdapter';
 import { ConnectionPool } from './ConnectionPool';
 
 export type {
@@ -30,13 +31,14 @@ export type {
 export { LocalOpenClawAdapter } from './LocalOpenClawAdapter';
 export { RemoteOpenClawAdapter } from './RemoteOpenClawAdapter';
 export { GatewayOpenClawAdapter } from './GatewayOpenClawAdapter';
+export { WebSocketOpenClawAdapter } from './WebSocketOpenClawAdapter';
 export { ConnectionPool } from './ConnectionPool';
 export type { ConnectionInfo, ConnectionPoolOptions, PoolStats, InvokeAllResult } from './ConnectionPool';
 
 const isBrowser = typeof window !== 'undefined';
 
 export function createOpenClawAdapter(config: StratixOpenClawConfig): OpenClawAdapterInterface {
-  if (config.connectionMode === 'gateway' || (isBrowser && config.connectionMode !== 'direct')) {
+  if (isBrowser) {
     return new GatewayOpenClawAdapter(config);
   }
   
@@ -45,6 +47,10 @@ export function createOpenClawAdapter(config: StratixOpenClawConfig): OpenClawAd
   return isLocal
     ? new LocalOpenClawAdapter(config)
     : new RemoteOpenClawAdapter(config);
+}
+
+export function createWebSocketAdapter(config: StratixOpenClawConfig): WebSocketOpenClawAdapter {
+  return new WebSocketOpenClawAdapter(config);
 }
 
 export function createConnectionPool(options?: import('./ConnectionPool').ConnectionPoolOptions): ConnectionPool {

@@ -1,18 +1,19 @@
+/**
+ * SelectBox - 迁移版本
+ * 使用设计系统 Token
+ */
+
 import Phaser from 'phaser';
+import { getToken } from '@/design-system/config';
+import { Depth } from '@/design-system/tokens/depth';
 
 export interface SelectBoxConfig {
-  lineColor: number;
-  fillColor: number;
   lineWidth: number;
-  fillAlpha: number;
   minSize: number;
 }
 
 const DEFAULT_CONFIG: SelectBoxConfig = {
-  lineColor: 0x00ff00,
-  fillColor: 0x00ff00,
   lineWidth: 2,
-  fillAlpha: 0.2,
   minSize: 10
 };
 
@@ -28,7 +29,7 @@ export class SelectBox {
     this.config = { ...DEFAULT_CONFIG, ...config };
     
     this.graphics = scene.add.graphics();
-    this.graphics.setDepth(1000);
+    this.graphics.setDepth(Depth.UI_ZONE_HANDLES);
   }
 
   public start(x: number, y: number): void {
@@ -43,11 +44,14 @@ export class SelectBox {
     this.graphics.clear();
 
     const rect = this.getRectangle(x, y);
+    const theme = getToken('');
+    const lineColor = parseInt(theme.colors.semantic.success.slice(1), 16);
+    const fillColor = parseInt(theme.colors.semantic.success.slice(1), 16);
 
-    this.graphics.fillStyle(this.config.fillColor, this.config.fillAlpha);
+    this.graphics.fillStyle(fillColor, 0.2);
     this.graphics.fillRect(rect.x, rect.y, rect.width, rect.height);
 
-    this.graphics.lineStyle(this.config.lineWidth, this.config.lineColor, 1);
+    this.graphics.lineStyle(this.config.lineWidth, lineColor, 1);
     this.graphics.strokeRect(rect.x, rect.y, rect.width, rect.height);
   }
 

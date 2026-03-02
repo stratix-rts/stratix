@@ -4,23 +4,21 @@
       <h3 class="log-title">指令日志</h3>
       <div class="log-actions">
         <div v-if="logs.length > 5" class="log-search">
-          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <circle cx="11" cy="11" r="8"></circle>
-            <path d="M21 21l-4.35-4.35"></path>
-          </svg>
-          <input
+          <StratixInput
             v-model="searchQuery"
             placeholder="搜索日志..."
+            size="small"
+            :show-label="false"
             class="search-input"
-            type="text"
           />
         </div>
         <div class="filter-dropdown">
-          <button class="filter-btn" @click="showFilterMenu = !showFilterMenu">
-            <svg class="filter-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path>
-            </svg>
-          </button>
+          <StratixButton
+            variant="ghost"
+            size="small"
+            :icon="'filter'"
+            @click="showFilterMenu = !showFilterMenu"
+          />
           <transition name="dropdown-fade">
             <div v-if="showFilterMenu" class="filter-menu">
               <button
@@ -57,8 +55,8 @@
     </div>
 
     <div v-if="filteredLogs.length === 0" class="empty-state">
-      <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-        <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+      <svg class="empty-icon" :viewBox="getIconViewBox('file')" :stroke="getToken('color.foreground.muted')">
+        <SvgIcon :name="'file'" size="16" />
       </svg>
       <p>{{ searchQuery || statusFilter !== 'all' ? '未找到匹配的日志' : '暂无指令日志' }}</p>
     </div>
@@ -74,17 +72,17 @@
         @keydown.enter="showLogDetail(log)"
       >
         <div class="log-status-icon">
-          <svg v-if="log.status === 'pending'" class="status-svg pending" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+          <svg v-if="log.status === 'pending'" class="status-svg pending" :viewBox="getIconViewBox('clock')" :stroke="getToken('color.status.info')">
+            <SvgIcon :name="'clock'" size="16" />
           </svg>
-          <svg v-else-if="log.status === 'running'" class="status-svg running" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+          <svg v-else-if="log.status === 'running'" class="status-svg running" :viewBox="getIconViewBox('zap')" :stroke="getToken('color.status.warning')">
+            <SvgIcon :name="'zap'" size="16" />
           </svg>
-          <svg v-else-if="log.status === 'success'" class="status-svg success" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path d="M5 13l4 4L19 7"></path>
+          <svg v-else-if="log.status === 'success'" class="status-svg success" :viewBox="getIconViewBox('check')" :stroke="getToken('color.status.success')">
+            <SvgIcon :name="'check'" size="16" />
           </svg>
-          <svg v-else-if="log.status === 'failed'" class="status-svg failed" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path d="M6 18L18 6M6 6l12 12"></path>
+          <svg v-else-if="log.status === 'failed'" class="status-svg failed" :viewBox="getIconViewBox('x')" :stroke="getToken('color.status.error')">
+            <SvgIcon :name="'x'" size="16" />
           </svg>
         </div>
 
@@ -99,21 +97,18 @@
           </div>
         </div>
 
-        <button
+        <StratixButton
           v-if="canCancel(log.status)"
+          variant="ghost"
+          size="small"
+          :icon="'x'"
           class="cancel-btn"
-          type="button"
           @click.stop="showCancelConfirm(log)"
-          title="取消指令"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path d="M6 18L18 6M6 6l12 12"></path>
-          </svg>
-        </button>
+        />
 
         <div v-else class="log-arrow">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path d="M9 5l7 7-7 7"></path>
+          <svg :viewBox="getIconViewBox('chevron-right')" :stroke="getToken('color.foreground.muted')">
+            <SvgIcon :name="'chevron-right'" size="16" />
           </svg>
         </div>
       </div>
@@ -135,12 +130,15 @@
 </template>
 
 <script setup lang="ts">
+import { SvgIcon } from '@/components/ui';
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import type { StratixStateSyncEvent, StratixFrontendOperationEvent } from '@/stratix-core/stratix-protocol';
-import StratixEventBus from '@/stratix-core/StratixEventBus';
+import StratixEventBus from '../../stratix-core/StratixEventBus';
 import LogDetailModal from './LogDetailModal.vue';
 import CancelConfirmDialog from './CancelConfirmDialog.vue';
-
+import StratixInput from '../../components/ui/StratixInput.vue';
+import StratixButton from '../../components/ui/StratixButton.vue';
+import { getToken } from '@/design-system/config';
 export interface CommandLogItem {
   commandId: string;
   agentId: string;
@@ -250,7 +248,7 @@ const confirmCancel = () => {
     requestId: `stratix-req-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   };
 
-  StratixEventBus.emit(event);
+  StratixEventBus.getInstance().emit(event);
 
   updateLogStatus(
     logToCancel.value.commandId,
@@ -300,14 +298,14 @@ const handleClickOutside = (event: MouseEvent) => {
 };
 
 onMounted(() => {
-  StratixEventBus.subscribe('stratix:command_status_update', handleCommandStatusUpdate);
-  StratixEventBus.subscribe('stratix:command_execute', handleCommandExecute);
+  StratixEventBus.getInstance().subscribe('stratix:command_status_update', handleCommandStatusUpdate);
+  StratixEventBus.getInstance().subscribe('stratix:command_execute', handleCommandExecute);
   document.addEventListener('click', handleClickOutside);
 });
 
 onUnmounted(() => {
-  StratixEventBus.unsubscribe('stratix:command_status_update', handleCommandStatusUpdate);
-  StratixEventBus.unsubscribe('stratix:command_execute', handleCommandExecute);
+  StratixEventBus.getInstance().unsubscribe('stratix:command_status_update', handleCommandStatusUpdate);
+  StratixEventBus.getInstance().unsubscribe('stratix:command_execute', handleCommandExecute);
   document.removeEventListener('click', handleClickOutside);
 });
 
@@ -322,10 +320,10 @@ defineExpose({
 
 .command-log {
   font-family: 'Fira Sans', sans-serif;
-  background: #020617;
-  border-radius: 12px;
-  padding: 16px;
-  color: #F8FAFC;
+  background: v-bind("getToken('panel.default')");
+  border-radius: v-bind("getToken('radius.md')");
+  padding: v-bind("getToken('space.4')");
+  color: v-bind("getToken('color.foreground.default')");
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -335,9 +333,9 @@ defineExpose({
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #1E293B;
+  margin-bottom: v-bind("getToken('space.4')");
+  padding-bottom: v-bind("getToken('space.3')");
+  border-bottom: v-bind("getToken('border.default')");
 }
 
 .log-title {
@@ -345,103 +343,51 @@ defineExpose({
   font-size: 16px;
   font-weight: 600;
   margin: 0;
-  color: #F8FAFC;
+  color: v-bind("getToken('color.foreground.default')");
 }
 
 .log-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: v-bind("getToken('space.3')");
 }
 
 .log-search {
   position: relative;
 }
 
-.search-icon {
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 14px;
-  height: 14px;
-  color: #64748B;
-  stroke-width: 2;
-}
-
 .search-input {
   width: 140px;
-  padding: 6px 10px 6px 32px;
-  background: #0F172A;
-  border: 1px solid #1E293B;
-  border-radius: 6px;
-  color: #F8FAFC;
-  font-size: 12px;
-  transition: border-color 200ms ease;
-}
-
-.search-input::placeholder {
-  color: #64748B;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: #22C55E;
 }
 
 .filter-dropdown {
   position: relative;
 }
 
-.filter-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  background: #0F172A;
-  border: 1px solid #1E293B;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 200ms ease;
-}
-
-.filter-btn:hover {
-  background: #1E293B;
-  border-color: #334155;
-}
-
-.filter-icon {
-  width: 16px;
-  height: 16px;
-  color: #94A3B8;
-  stroke-width: 2;
-}
-
 .filter-menu {
   position: absolute;
   top: 100%;
   right: 0;
-  margin-top: 4px;
-  background: #0F172A;
-  border: 1px solid #1E293B;
-  border-radius: 8px;
-  padding: 4px;
+  margin-top: v-bind("getToken('space.1')");
+  background: v-bind("getToken('panel.default')");
+  border: v-bind("getToken('border.default')");
+  border-radius: v-bind("getToken('radius.md')");
+  padding: v-bind("getToken('space.1')");
   min-width: 140px;
   z-index: 100;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+  box-shadow: v-bind("getToken('shadow.lg')");
 }
 
 .filter-option {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: v-bind("getToken('space.2')");
   width: 100%;
-  padding: 8px 12px;
+  padding: v-bind("getToken('space.2')") v-bind("getToken('space.3')");
   background: transparent;
   border: none;
-  border-radius: 6px;
-  color: #94A3B8;
+  border-radius: v-bind("getToken('radius.sm')");
+  color: v-bind("getToken('color.foreground.muted')");
   font-size: 13px;
   cursor: pointer;
   transition: all 150ms ease;
@@ -449,13 +395,13 @@ defineExpose({
 }
 
 .filter-option:hover {
-  background: #1E293B;
-  color: #F8FAFC;
+  background: v-bind("getToken('panel.ghost')");
+  color: v-bind("getToken('color.foreground.default')");
 }
 
 .filter-option.active {
-  background: rgba(34, 197, 94, 0.1);
-  color: #22C55E;
+  background: v-bind("getToken('color.status.success.bg')");
+  color: v-bind("getToken('color.status.success')");
 }
 
 .status-dot {
@@ -465,26 +411,25 @@ defineExpose({
   flex-shrink: 0;
 }
 
-.status-dot.success { background: #22C55E; }
-.status-dot.failed { background: #EF4444; }
-.status-dot.running { background: #F59E0B; }
+.status-dot.success { background: v-bind("getToken('color.status.success')"); }
+.status-dot.failed { background: v-bind("getToken('color.status.error')"); }
+.status-dot.running { background: v-bind("getToken('color.status.warning')"); }
 
 .empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px 20px;
-  color: #64748B;
+  padding: v-bind("getToken('space.10')") v-bind("getToken('space.5')");
+  color: v-bind("getToken('color.foreground.muted')");
   flex: 1;
 }
 
 .empty-icon {
   width: 48px;
   height: 48px;
-  color: #475569;
   stroke-width: 2;
-  margin-bottom: 12px;
+  margin-bottom: v-bind("getToken('space.3')");
 }
 
 .empty-state p {
@@ -501,25 +446,25 @@ defineExpose({
 .log-item {
   display: flex;
   align-items: center;
-  padding: 12px;
-  margin-bottom: 8px;
-  background: #0F172A;
-  border: 1px solid #1E293B;
-  border-radius: 8px;
+  padding: v-bind("getToken('space.3')");
+  margin-bottom: v-bind("getToken('space.2')");
+  background: v-bind("getToken('panel.subtle')");
+  border: v-bind("getToken('border.default')");
+  border-radius: v-bind("getToken('radius.md')");
   cursor: pointer;
   transition: all 200ms ease;
-  gap: 12px;
+  gap: v-bind("getToken('space.3')");
 }
 
 .log-item:hover {
-  background: #1E293B;
-  border-color: #334155;
+  background: v-bind("getToken('panel.ghost')");
+  border-color: v-bind("getToken('color.border.hover')");
   transform: translateX(4px);
 }
 
 .log-item:focus {
   outline: none;
-  border-color: #22C55E;
+  border-color: v-bind("getToken('color.status.success')");
 }
 
 .log-status-icon {
@@ -533,19 +478,19 @@ defineExpose({
 }
 
 .log-item.status-pending .log-status-icon {
-  background: rgba(34, 211, 238, 0.15);
+  background: v-bind("getToken('color.status.info.bg')");
 }
 
 .log-item.status-running .log-status-icon {
-  background: rgba(245, 158, 11, 0.15);
+  background: v-bind("getToken('color.status.warning.bg')");
 }
 
 .log-item.status-success .log-status-icon {
-  background: rgba(34, 197, 94, 0.15);
+  background: v-bind("getToken('color.status.success.bg')");
 }
 
 .log-item.status-failed .log-status-icon {
-  background: rgba(239, 68, 68, 0.15);
+  background: v-bind("getToken('color.status.error.bg')");
 }
 
 .status-svg {
@@ -554,13 +499,13 @@ defineExpose({
   stroke-width: 2.5;
 }
 
-.status-svg.pending { color: #22D3EE; }
+.status-svg.pending { color: v-bind("getToken('color.status.info')"); }
 .status-svg.running { 
-  color: #F59E0B; 
+  color: v-bind("getToken('color.status.warning')"); 
   animation: pulse 1.5s ease-in-out infinite;
 }
-.status-svg.success { color: #22C55E; }
-.status-svg.failed { color: #EF4444; }
+.status-svg.success { color: v-bind("getToken('color.status.success')"); }
+.status-svg.failed { color: v-bind("getToken('color.status.error')"); }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }
@@ -575,14 +520,14 @@ defineExpose({
 .log-main {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
+  gap: v-bind("getToken('space.2')");
+  margin-bottom: v-bind("getToken('space.1')");
 }
 
 .log-skill {
   font-weight: 600;
   font-size: 13px;
-  color: #F8FAFC;
+  color: v-bind("getToken('color.foreground.default')");
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -590,28 +535,28 @@ defineExpose({
 
 .log-agent {
   font-size: 11px;
-  color: #64748B;
-  padding: 2px 6px;
-  background: #1E293B;
-  border-radius: 4px;
+  color: v-bind("getToken('color.foreground.muted')");
+  padding: v-bind("getToken('space.0\\.5')") v-bind("getToken('space.1\\.5')");
+  background: v-bind("getToken('panel.subtle')");
+  border-radius: v-bind("getToken('radius.sm')");
   flex-shrink: 0;
 }
 
 .log-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: v-bind("getToken('space.2')");
 }
 
 .log-time {
   font-size: 11px;
-  color: #64748B;
+  color: v-bind("getToken('color.foreground.muted')");
 }
 
 .log-id {
   font-family: 'Fira Code', monospace;
   font-size: 10px;
-  color: #475569;
+  color: v-bind("getToken('color.foreground.muted')");
 }
 
 .log-arrow {
@@ -621,38 +566,15 @@ defineExpose({
 .log-arrow svg {
   width: 16px;
   height: 16px;
-  color: #475569;
   stroke-width: 2;
 }
 
 .log-item:hover .log-arrow svg {
-  color: #22C55E;
+  color: v-bind("getToken('color.status.success')");
 }
 
 .cancel-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 200ms ease;
   flex-shrink: 0;
-}
-
-.cancel-btn:hover {
-  background: rgba(239, 68, 68, 0.2);
-  border-color: #EF4444;
-}
-
-.cancel-btn svg {
-  width: 14px;
-  height: 14px;
-  color: #EF4444;
-  stroke-width: 2.5;
 }
 
 .logs-container::-webkit-scrollbar {
@@ -660,17 +582,17 @@ defineExpose({
 }
 
 .logs-container::-webkit-scrollbar-track {
-  background: #0F172A;
-  border-radius: 3px;
+  background: v-bind("getToken('panel.subtle')");
+  border-radius: v-bind("getToken('radius.sm')");
 }
 
 .logs-container::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 3px;
+  background: v-bind("getToken('color.border.default')");
+  border-radius: v-bind("getToken('radius.sm')");
 }
 
 .logs-container::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: v-bind("getToken('color.border.hover')");
 }
 
 .dropdown-fade-enter-active,
@@ -699,13 +621,13 @@ defineExpose({
 
 @media (max-width: 768px) {
   .command-log {
-    padding: 12px;
+    padding: v-bind("getToken('space.3')");
   }
 
   .log-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 12px;
+    gap: v-bind("getToken('space.3')");
   }
 
   .log-actions {
@@ -718,7 +640,7 @@ defineExpose({
   }
 
   .log-item {
-    padding: 10px;
+    padding: v-bind("getToken('space.2\\.5')");
   }
 }
 </style>

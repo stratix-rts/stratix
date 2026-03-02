@@ -24,6 +24,13 @@ export class WriterHeroTemplate implements HeroTemplateBase {
       agentId: id,
       name: WriterHeroTemplate.NAME,
       type: WriterHeroTemplate.TYPE,
+      backendType: 'direct',
+      directConfig: {
+        provider: 'openai',
+        model: 'gpt-4',
+        temperature: 0.7,
+        maxTokens: 4096,
+      },
       soul: {
         identity: '专业文案创作者，擅长各类文案撰写，语言生动、贴合主题，高效产出高质量内容',
         goals: [
@@ -48,11 +55,20 @@ export class WriterHeroTemplate implements HeroTemplateBase {
             { paramId: 'wordCount', name: '文案字数', type: 'number', required: true, defaultValue: 500 },
             { paramId: 'tone', name: '语气风格', type: 'string', required: false, defaultValue: '正式' },
           ],
-          executeScript: '{"action":"generate_content","params":{"prompt":"写一篇关于{{topic}}的文案，字数{{wordCount}}字，语气{{tone}}"}}',
+          prompt: `你是一位专业的文案创作者。请根据以下要求撰写文案：
+
+主题：{{topic}}
+字数：{{wordCount}}字左右
+语气：{{tone}}
+
+请生成高质量、有吸引力的文案内容。`,
         },
       ],
-      model: { name: 'claude-3-sonnet', params: { temperature: 0.7, topP: 0.9 } },
-      openClawConfig: { accountId: id, endpoint: 'http://localhost:8000' },
+      rules: [
+        '始终保持专业和友好的语气',
+        '确保文案内容准确、无错误',
+        '根据用户反馈及时调整文案',
+      ],
     };
   }
 }

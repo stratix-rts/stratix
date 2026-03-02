@@ -7,12 +7,13 @@
 import {
   StratixAgentConfig,
   StratixSkillConfig,
-  StratixModelConfig,
   StratixSoulConfig,
   StratixMemoryConfig,
-  StratixOpenClawConfig,
+  OpenClawConfig,
+  DirectLLMConfig,
   StratixSkillParameter,
   CharacterData,
+  AgentBackendType,
 } from '../stratix-protocol';
 import StratixIdGenerator from './StratixIdGenerator';
 
@@ -39,13 +40,14 @@ export class StratixConfigValidator {
 
   /**
    * 校验 Agent 配置
-   * @param config Agent 配置
    */
   public validateAgentConfig(config: StratixAgentConfig): ValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
 
     const isCustomCharacter = config.type === 'custom' || config.character !== undefined;
+    const backendType = config.backendType || 'openclaw';
+    const isDirectMode = backendType === 'direct';
 
     if (!config.agentId) {
       errors.push('agentId 是必填字段');
@@ -61,56 +63,64 @@ export class StratixConfigValidator {
       errors.push('type 是必填字段');
     }
 
-    if (!config.soul) {
-      errors.push('soul 配置是必填的');
-    } else {
-      const soulResult = this.validateSoulConfig(config.soul);
-      errors.push(...soulResult.errors);
-      warnings.push(...soulResult.warnings);
+    // 校验后端类型
+    if (!['openclaw', 'direct'].includes(backendType)) {
+      errors.push('backendType 必须是 openclaw 或 direct');
     }
 
-    if (!config.memory) {
-      errors.push('memory 配置是必填的');
-    } else {
+    // OpenClaw 模式校验
+    if (backendType === 'openclaw') {
+      if (!config.openClawConfig) {
+        errors.push('OpenClaw 模式需要 openClawConfig');
+      } else {
+        const openClawResult = this.validateOpenClawConfig(config.openClawConfig);
+        errors.push(...openClawResult.errors);
+        warnings.push(...openClawResult.warnings);
+      }
+    }
+
+    // Direct LLM 模式校验
+    if (isDirectMode) {
+      if (!config.directConfig) {
+        errors.push('Direct 模式需要 directConfig');
+      } else {
+        const directResult = this.validateDirectConfig(config.directConfig);
+        errors.push(...directResult.errors);
+        warnings.push(...directResult.warnings);
+      }
+
+      // Direct 模式需要能力定义
+      if (!config.soul) {
+        if (!isCustomCharacter) {
+          errors.push('Direct 模式需要 soul 配置');
+        }
+      } else {
+        const soulResult = this.validateSoulConfig(config.soul);
+        errors.push(...soulResult.errors);
+        warnings.push(...soulResult.warnings);
+      }
+
+      if (!config.skills || config.skills.length === 0) {
+        if (!isCustomCharacter) {
+          errors.push('Direct 模式至少需要配置一个技能');
+        }
+      } else {
+        config.skills.forEach((skill, index) => {
+          const skillResult = this.validateSkillConfig(skill);
+          skillResult.errors.forEach((err) => errors.push(`skills[${index}]: ${err}`));
+          skillResult.warnings.forEach((warn) => warnings.push(`skills[${index}]: ${warn}`));
+        });
+      }
+    }
+
+    // 可选字段校验
+    if (config.memory) {
       const memoryResult = this.validateMemoryConfig(config.memory);
       errors.push(...memoryResult.errors);
       warnings.push(...memoryResult.warnings);
     }
 
-    if (!config.skills || config.skills.length === 0) {
-      if (!isCustomCharacter) {
-        errors.push('skills 至少需要配置一个技能');
-      } else {
-        warnings.push('建议为自定义角色配置技能');
-      }
-    } else {
-      config.skills.forEach((skill, index) => {
-        const skillResult = this.validateSkillConfig(skill);
-        skillResult.errors.forEach((err) => errors.push(`skills[${index}]: ${err}`));
-        skillResult.warnings.forEach((warn) => warnings.push(`skills[${index}]: ${warn}`));
-      });
-    }
-
-    if (!config.model) {
-      if (!isCustomCharacter) {
-        errors.push('model 配置是必填的');
-      }
-    } else {
-      const modelResult = this.validateModelConfig(config.model);
-      errors.push(...modelResult.errors);
-      warnings.push(...modelResult.warnings);
-    }
-
-    if (!config.openClawConfig) {
-      if (!isCustomCharacter) {
-        errors.push('openClawConfig 是必填的');
-      }
-    } else {
-      const openClawResult = this.validateOpenClawConfig(config.openClawConfig);
-      errors.push(...openClawResult.errors);
-      warnings.push(...openClawResult.warnings);
-    }
-
+    // 角色数据校验
     if (config.character) {
       const characterResult = this.validateCharacterData(config.character);
       errors.push(...characterResult.errors);
@@ -141,21 +151,6 @@ export class StratixConfigValidator {
 
     if (!config.parts || typeof config.parts !== 'object') {
       errors.push('parts 必须是对象');
-    }
-
-    if (!config.skillTree) {
-      warnings.push('skillTree 建议设置');
-    } else {
-      if (!Array.isArray(config.skillTree.selectedNodes)) {
-        errors.push('skillTree.selectedNodes 必须是数组');
-      }
-      if (!Array.isArray(config.skillTree.unlockedNodes)) {
-        errors.push('skillTree.unlockedNodes 必须是数组');
-      }
-    }
-
-    if (!config.attributes || typeof config.attributes !== 'object') {
-      warnings.push('attributes 建议设置');
     }
 
     return { valid: errors.length === 0, errors, warnings };
@@ -238,13 +233,16 @@ export class StratixConfigValidator {
       });
     }
 
-    if (!config.executeScript || config.executeScript.trim() === '') {
-      errors.push('executeScript 是必填字段');
-    } else {
+    // executeScript 或 prompt 至少有一个
+    if (!config.executeScript && !config.prompt) {
+      warnings.push('建议设置 executeScript 或 prompt');
+    }
+
+    if (config.executeScript) {
       try {
         JSON.parse(config.executeScript);
       } catch {
-        errors.push('executeScript 必须是有效的 JSON 字符串');
+        // executeScript 可能是普通脚本，不一定是 JSON
       }
     }
 
@@ -279,45 +277,9 @@ export class StratixConfigValidator {
   }
 
   /**
-   * 校验 Model 配置
-   */
-  public validateModelConfig(config: StratixModelConfig): ValidationResult {
-    const errors: string[] = [];
-    const warnings: string[] = [];
-
-    if (!config.name || config.name.trim() === '') {
-      errors.push('name 是必填字段');
-    }
-
-    if (!config.params) {
-      warnings.push('params 建议设置模型参数');
-    } else {
-      if (config.params.temperature !== undefined) {
-        if (config.params.temperature < 0 || config.params.temperature > 2) {
-          errors.push('temperature 应在 0-2 之间');
-        }
-      }
-
-      if (config.params.topP !== undefined) {
-        if (config.params.topP < 0 || config.params.topP > 1) {
-          errors.push('topP 应在 0-1 之间');
-        }
-      }
-
-      if (config.params.maxTokens !== undefined) {
-        if (config.params.maxTokens < 1) {
-          errors.push('maxTokens 应大于 0');
-        }
-      }
-    }
-
-    return { valid: errors.length === 0, errors, warnings };
-  }
-
-  /**
    * 校验 OpenClaw 配置
    */
-  public validateOpenClawConfig(config: StratixOpenClawConfig): ValidationResult {
+  public validateOpenClawConfig(config: OpenClawConfig): ValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
 
@@ -332,6 +294,45 @@ export class StratixConfigValidator {
         new URL(config.endpoint);
       } catch {
         errors.push('endpoint 必须是有效的 URL');
+      }
+    }
+
+    return { valid: errors.length === 0, errors, warnings };
+  }
+
+  /**
+   * 校验 Direct LLM 配置
+   */
+  public validateDirectConfig(config: DirectLLMConfig): ValidationResult {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    const validProviders = ['openai', 'anthropic', 'ollama', 'custom'];
+    if (!config.provider || !validProviders.includes(config.provider)) {
+      errors.push(`provider 必须是 ${validProviders.join(' | ')} 之一`);
+    }
+
+    if (!config.model || config.model.trim() === '') {
+      errors.push('model 是必填字段');
+    }
+
+    if (config.endpoint) {
+      try {
+        new URL(config.endpoint);
+      } catch {
+        errors.push('endpoint 必须是有效的 URL');
+      }
+    }
+
+    if (config.temperature !== undefined) {
+      if (config.temperature < 0 || config.temperature > 2) {
+        errors.push('temperature 应在 0-2 之间');
+      }
+    }
+
+    if (config.maxTokens !== undefined) {
+      if (config.maxTokens < 1) {
+        errors.push('maxTokens 应大于 0');
       }
     }
 

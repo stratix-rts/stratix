@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue';
+import { StratixModal, StratixButton, SvgIcon } from '@/components/ui';
+import { getToken } from '@/design-system/config';
 import { createCharacterCreator } from '../stratix-character-creator';
 import type { SavedCharacter } from '../stratix-character-creator/types';
 import { StratixEventBus } from '../stratix-core';
+
+const x = 'x';
 
 const props = defineProps<{
   visible: boolean;
@@ -68,126 +72,26 @@ onUnmounted(() => {
 const handleClose = () => {
   emit('close');
 };
-
-const handleBackdropClick = (e: MouseEvent) => {
-  if (e.target === e.currentTarget) {
-    handleClose();
-  }
-};
 </script>
 
 <template>
-  <Teleport to="body">
-    <Transition name="modal">
-      <div 
-        v-if="visible" 
-        class="character-creator-modal" 
-        @click="handleBackdropClick"
-      >
-        <div class="modal-content">
-          <header class="modal-header">
-            <h2>🎭 角色创建器</h2>
-            <button class="close-btn" @click="handleClose" title="关闭">
-              ✕
-            </button>
-          </header>
-          <div class="modal-body" ref="containerRef"></div>
-        </div>
-      </div>
-    </Transition>
-  </Teleport>
+  <StratixModal
+    :visible="visible"
+    @update:visible="$emit('close')"
+    :title="editCharacterId ? '编辑角色' : '创建角色'"
+    size="fullscreen"
+    :closable="true"
+    @close="handleClose"
+  >
+    <div ref="containerRef" class="game-container"></div>
+  </StratixModal>
 </template>
 
 <style scoped>
-.character-creator-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
+.game-container {
   width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.9);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2000;
-  padding: 20px;
-  box-sizing: border-box;
-}
-
-.modal-content {
-  width: 100%;
-  height: 100%;
-  max-width: 1400px;
-  max-height: 900px;
-  background: #0f0f1a;
-  border-radius: 12px;
-  border: 1px solid #2a2a4e;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-}
-
-.modal-header {
-  height: 48px;
-  padding: 0 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  border-bottom: 1px solid #2a2a4e;
-  flex-shrink: 0;
-}
-
-.modal-header h2 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  background: linear-gradient(90deg, #00d4ff, #00ff88);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.close-btn {
-  width: 32px;
-  height: 32px;
-  border: none;
-  background: rgba(255, 255, 255, 0.1);
-  color: #888;
-  font-size: 18px;
-  cursor: pointer;
-  border-radius: 6px;
-  transition: all 0.2s;
-}
-
-.close-btn:hover {
-  background: rgba(255, 107, 107, 0.2);
-  color: #ff6b6b;
-}
-
-.modal-body {
-  flex: 1;
-  overflow: hidden;
-  background: #0f0f1a;
-}
-
-.modal-enter-active,
-.modal-leave-active {
-  transition: opacity 0.3s ease;
-}
-
-.modal-enter-from,
-.modal-leave-to {
-  opacity: 0;
-}
-
-.modal-enter-active .modal-content,
-.modal-leave-active .modal-content {
-  transition: transform 0.3s ease;
-}
-
-.modal-enter-from .modal-content,
-.modal-leave-to .modal-content {
-  transform: scale(0.95);
+  height: calc(100vh - 48px);
+  background: #0d0d14;
+  position: relative;
 }
 </style>

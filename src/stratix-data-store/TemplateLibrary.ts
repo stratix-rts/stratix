@@ -6,6 +6,7 @@ const PRESET_TEMPLATES: StratixAgentConfig[] = [
     agentId: 'stratix-template-writer',
     name: '文案英雄（模板）',
     type: 'writer',
+    backendType: 'openclaw',
     soul: {
       identity: '专业文案创作者，擅长各类文案撰写，语言生动、贴合主题',
       goals: ['快速生成高质量文案', '优化文案语言', '保持文案风格统一'],
@@ -42,6 +43,7 @@ const PRESET_TEMPLATES: StratixAgentConfig[] = [
     agentId: 'stratix-template-dev',
     name: '开发英雄（模板）',
     type: 'dev',
+    backendType: 'openclaw',
     soul: {
       identity: '资深程序员，擅长多种编程语言，编写可靠高效的代码',
       goals: ['编写符合需求的代码', '调试和修复bug', '优化代码性能'],
@@ -67,6 +69,7 @@ const PRESET_TEMPLATES: StratixAgentConfig[] = [
     agentId: 'stratix-template-analyst',
     name: '数据分析英雄（模板）',
     type: 'analyst',
+    backendType: 'openclaw',
     soul: {
       identity: '专业数据分析师，擅长数据处理、分析与可视化',
       goals: ['处理原始数据', '分析数据趋势', '生成分析报告'],
@@ -141,7 +144,7 @@ export class TemplateLibrary {
       ...template,
       agentId: this.generateId(),
       name: name || template.name.replace('（模板）', ''),
-      openClawConfig: { ...template.openClawConfig, accountId: '' }
+      openClawConfig: template.openClawConfig ? { ...template.openClawConfig, accountId: '' } : undefined
     };
   }
 }

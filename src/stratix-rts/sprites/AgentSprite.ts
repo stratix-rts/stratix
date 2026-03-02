@@ -287,6 +287,136 @@ export class AgentSprite extends Phaser.GameObjects.Container {
     });
   }
 
+  public playSpawnAnimation(): void {
+    // 初始状态：透明 + 缩小
+    this.setAlpha(0);
+    this.setScale(0.3);
+    this.setDepth(10000);
+
+    // 创建光柱效果
+    const lightBeam = this.scene.add.graphics();
+    lightBeam.setDepth(9999);
+    this.add(lightBeam);
+
+    // 光柱动画参数
+    const beamHeight = 200;
+    const beamData = { alpha: 0 };
+
+    // 光柱展开动画
+    this.scene.tweens.add({
+      targets: beamData,
+      alpha: 0.8,
+      duration: 300,
+      onUpdate: () => {
+        lightBeam.clear();
+        
+        // 外层光柱（青色）
+        lightBeam.fillStyle(0x00ffff, beamData.alpha * 0.3);
+        lightBeam.fillRoundedRect(-30, -beamHeight / 2, 60, beamHeight, 10);
+        
+        // 内层光柱（白色）
+        lightBeam.fillStyle(0xffffff, beamData.alpha * 0.5);
+        lightBeam.fillRoundedRect(-15, -beamHeight / 3, 30, beamHeight * 0.66, 5);
+      },
+      onComplete: () => {
+        // 光柱保持后淡出
+        this.scene.tweens.add({
+          targets: beamData,
+          alpha: 0,
+          duration: 500,
+          delay: 200,
+          onUpdate: () => {
+            lightBeam.setAlpha(beamData.alpha);
+          },
+          onComplete: () => {
+            lightBeam.destroy();
+          }
+        });
+      }
+    });
+
+    // 角色显现动画
+    this.scene.tweens.add({
+      targets: this,
+      alpha: { from: 0, to: 1 },
+      scale: { from: 0.3, to: 1 },
+      duration: 600,
+      ease: 'Back.easeOut',
+      delay: 200,
+      onComplete: () => {
+        this.setScale(1);
+        this.updateDepth();
+        
+        // 角色显现时的闪光效果
+        this.sprite.setTint(0xffffff);
+        this.scene.time.delayedCall(100, () => {
+          this.sprite.setTint(0x00ffff);
+          this.scene.time.delayedCall(100, () => {
+            this.setAgentStatus(this.currentStatus);
+          });
+        });
+      }
+    });
+
+    // 生成上升粒子
+    for (let i = 0; i < 12; i++) {
+      const particle = this.scene.add.graphics();
+      particle.setDepth(9998);
+      this.add(particle);
+
+      const angle = (i / 12) * Math.PI * 2;
+      const radius = 40 + Math.random() * 20;
+      const startX = Math.cos(angle) * radius;
+      const startY = 50;
+
+      particle.fillStyle(0x00ffff, 0.8);
+      particle.fillCircle(0, 0, 3 + Math.random() * 3);
+      particle.setPosition(startX, startY);
+
+      // 粒子动画
+      const particleData = { y: startY, alpha: 0.8 };
+      this.scene.tweens.add({
+        targets: particleData,
+        y: startY - 80 - Math.random() * 40,
+        alpha: 0,
+        duration: 800 + Math.random() * 400,
+        delay: 100 + i * 50,
+        ease: 'Cubic.easeOut',
+        onUpdate: () => {
+          particle.setPosition(startX, particleData.y);
+          particle.setAlpha(particleData.alpha);
+        },
+        onComplete: () => {
+          particle.destroy();
+        }
+      });
+    }
+
+    // 地面光环效果
+    const groundRing = this.scene.add.graphics();
+    groundRing.setDepth(9997);
+    this.add(groundRing);
+
+    // 光环扩散动画
+    const ringData = { radius: 0, alpha: 0.8 };
+    this.scene.tweens.add({
+      targets: ringData,
+      radius: 60,
+      alpha: 0,
+      duration: 800,
+      ease: 'Cubic.easeOut',
+      delay: 100,
+      onUpdate: () => {
+        groundRing.clear();
+        groundRing.lineStyle(3, 0x00ffff, ringData.alpha);
+        groundRing.strokeCircle(0, 0, ringData.radius);
+      },
+      onComplete: () => {
+        groundRing.destroy();
+      }
+    });
+  }
+
   public getAgentId(): string {
     return this.agentId;
   }

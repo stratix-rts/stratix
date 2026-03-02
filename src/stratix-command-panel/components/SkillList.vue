@@ -12,11 +12,10 @@
         <circle cx="11" cy="11" r="8"></circle>
         <path d="M21 21l-4.35-4.35"></path>
       </svg>
-      <input
+      <StratixInput
         v-model="searchQuery"
         placeholder="搜索技能..."
         class="search-input"
-        type="text"
       />
     </div>
 
@@ -56,8 +55,10 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { StratixInput } from '@/components/ui';
+import { getToken } from '@/design-system/config';
 import type { StratixSkillConfig, StratixFrontendOperationEvent } from '@/stratix-core/stratix-protocol';
-import StratixEventBus from '@/stratix-core/StratixEventBus';
+import StratixEventBus from '../../stratix-core/StratixEventBus';
 import axios from 'axios';
 
 const skills = ref<StratixSkillConfig[]>([]);
@@ -88,16 +89,16 @@ const selectSkill = (skill: StratixSkillConfig) => {
     timestamp: Date.now(),
     requestId: `stratix-req-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   };
-  StratixEventBus.emit(event);
+  StratixEventBus.getInstance().emit(event);
 };
 
 const getSkillColor = (skill: StratixSkillConfig): string => {
   const skillType = skill.skillId.split('-')[2];
   const colors: Record<string, string> = {
-    writer: '#4A90E2',
+    writer: getToken('colors.info'),
     dev: '#9B59B6',
     analyst: '#E67E22',
-    default: '#64748B'
+    default: getToken('colors.text.muted')
   };
   return colors[skillType] || colors.default;
 };
@@ -129,23 +130,21 @@ const handleAgentSelect = (event: StratixFrontendOperationEvent) => {
 };
 
 onMounted(() => {
-  StratixEventBus.subscribe('stratix:agent_select', handleAgentSelect);
+  StratixEventBus.getInstance().subscribe('stratix:agent_select', handleAgentSelect);
 });
 
 onUnmounted(() => {
-  StratixEventBus.unsubscribe('stratix:agent_select', handleAgentSelect);
+  StratixEventBus.getInstance().unsubscribe('stratix:agent_select', handleAgentSelect);
 });
 </script>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap');
-
 .skill-list {
-  font-family: 'Fira Sans', sans-serif;
-  background: #020617;
+  font-family: v-bind('getToken("typography.fontFamily.sans")');
+  background: v-bind('getToken("colors.background.secondary")');
   border-radius: 12px;
   padding: 16px;
-  color: #F8FAFC;
+  color: v-bind('getToken("colors.text.primary")');
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -157,21 +156,21 @@ onUnmounted(() => {
   align-items: center;
   margin-bottom: 16px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #1E293B;
+  border-bottom: 1px solid v-bind('getToken("colors.border.default")');
 }
 
 .skill-title {
-  font-family: 'Fira Code', monospace;
+  font-family: v-bind('getToken("typography.fontFamily.mono")');
   font-size: 16px;
   font-weight: 600;
   margin: 0;
-  color: #F8FAFC;
+  color: v-bind('getToken("colors.text.primary")');
 }
 
 .agent-count {
   font-size: 12px;
-  color: #22C55E;
-  background: rgba(34, 197, 94, 0.1);
+  color: v-bind('getToken("colors.semantic.success")');
+  background: v-bind('getToken("colors.semantic.success") + "1A"');
   padding: 4px 12px;
   border-radius: 12px;
   font-weight: 500;
@@ -189,28 +188,13 @@ onUnmounted(() => {
   transform: translateY(-50%);
   width: 16px;
   height: 16px;
-  color: #64748B;
+  color: v-bind('getToken("colors.text.muted")');
   stroke-width: 2;
+  z-index: 10;
 }
 
 .search-input {
   width: 100%;
-  padding: 8px 12px 8px 36px;
-  background: #0F172A;
-  border: 1px solid #1E293B;
-  border-radius: 8px;
-  color: #F8FAFC;
-  font-size: 14px;
-  transition: border-color 200ms ease;
-}
-
-.search-input::placeholder {
-  color: #64748B;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: #22C55E;
 }
 
 .skills-container {
@@ -224,28 +208,28 @@ onUnmounted(() => {
   align-items: center;
   padding: 12px;
   margin-bottom: 8px;
-  background: #0F172A;
-  border: 1px solid #1E293B;
+  background: v-bind('getToken("colors.background.tertiary")');
+  border: 1px solid v-bind('getToken("colors.border.default")');
   border-radius: 8px;
   cursor: pointer;
   transition: all 200ms ease;
 }
 
 .skill-card:hover {
-  background: #1E293B;
-  border-color: #334155;
+  background: v-bind('getToken("colors.background.primary")');
+  border-color: v-bind('getToken("colors.border.default")');
   transform: translateX(4px);
 }
 
 .skill-card.selected {
-  border-color: #22C55E;
-  background: rgba(34, 197, 94, 0.1);
-  box-shadow: 0 0 0 1px #22C55E;
+  border-color: v-bind('getToken("colors.semantic.success")');
+  background: v-bind('getToken("colors.semantic.success") + "1A"');
+  box-shadow: 0 0 0 1px v-bind('getToken("colors.semantic.success")');
 }
 
 .skill-card:focus {
   outline: none;
-  border-color: #22C55E;
+  border-color: v-bind('getToken("colors.semantic.success")');
 }
 
 .skill-icon {
@@ -271,12 +255,12 @@ onUnmounted(() => {
   font-weight: 600;
   font-size: 14px;
   margin-bottom: 4px;
-  color: #F8FAFC;
+  color: v-bind('getToken("colors.text.primary")');
 }
 
 .skill-desc {
   font-size: 12px;
-  color: #94A3B8;
+  color: v-bind('getToken("colors.text.secondary")');
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -289,14 +273,14 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   padding: 40px 20px;
-  color: #64748B;
+  color: v-bind('getToken("colors.text.muted")');
 }
 
 .loading-spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid #1E293B;
-  border-top-color: #22C55E;
+  border: 3px solid v-bind('getToken("colors.border.default")');
+  border-top-color: v-bind('getToken("colors.semantic.success")');
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 12px;
@@ -309,7 +293,7 @@ onUnmounted(() => {
 .empty-icon {
   width: 48px;
   height: 48px;
-  color: #475569;
+  color: v-bind('getToken("colors.text.muted")');
   stroke-width: 2;
   margin-bottom: 12px;
 }
@@ -325,17 +309,17 @@ onUnmounted(() => {
 }
 
 .skills-container::-webkit-scrollbar-track {
-  background: #0F172A;
+  background: v-bind('getToken("colors.background.tertiary")');
   border-radius: 3px;
 }
 
 .skills-container::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: v-bind('getToken("colors.border.default")');
   border-radius: 3px;
 }
 
 .skills-container::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: v-bind('getToken("colors.text.muted")');
 }
 
 @media (prefers-reduced-motion: reduce) {

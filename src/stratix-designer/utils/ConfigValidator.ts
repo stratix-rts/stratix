@@ -2,8 +2,8 @@ import {
   StratixAgentConfig,
   StratixSoulConfig,
   StratixSkillConfig,
-  StratixModelConfig,
-  StratixOpenClawConfig,
+  OpenClawConfig,
+  DirectLLMConfig,
 } from '@/stratix-core/stratix-protocol';
 
 export interface ValidationError {
@@ -35,24 +35,44 @@ export class ConfigValidator {
       errors.push({ field: 'type', message: '英雄类型不能为空' });
     }
 
-    const soulResult = this.validateSoul(config.soul);
-    if (!soulResult.valid) {
-      errors.push(...(soulResult.errors || []));
+    if (!config.backendType) {
+      errors.push({ field: 'backendType', message: '后端类型不能为空' });
     }
 
-    const skillsResult = this.validateSkills(config.skills);
-    if (!skillsResult.valid) {
-      errors.push(...(skillsResult.errors || []));
-    }
+    // Validate based on backend type
+    if (config.backendType === 'openclaw') {
+      if (!config.openClawConfig) {
+        errors.push({ field: 'openClawConfig', message: 'OpenClaw 配置不能为空' });
+      } else {
+        const openClawResult = this.validateOpenClawConfig(config.openClawConfig);
+        if (!openClawResult.valid) {
+          errors.push(...(openClawResult.errors || []));
+        }
+      }
+    } else if (config.backendType === 'direct') {
+      if (!config.directConfig) {
+        errors.push({ field: 'directConfig', message: 'Direct LLM 配置不能为空' });
+      } else {
+        const directResult = this.validateDirectConfig(config.directConfig);
+        if (!directResult.valid) {
+          errors.push(...(directResult.errors || []));
+        }
+      }
 
-    const modelResult = this.validateModel(config.model);
-    if (!modelResult.valid) {
-      errors.push(...(modelResult.errors || []));
-    }
+      // Direct mode needs soul and skills
+      if (config.soul) {
+        const soulResult = this.validateSoul(config.soul);
+        if (!soulResult.valid) {
+          errors.push(...(soulResult.errors || []));
+        }
+      }
 
-    const openClawResult = this.validateOpenClawConfig(config.openClawConfig);
-    if (!openClawResult.valid) {
-      errors.push(...(openClawResult.errors || []));
+      if (config.skills) {
+        const skillsResult = this.validateSkills(config.skills);
+        if (!skillsResult.valid) {
+          errors.push(...(skillsResult.errors || []));
+        }
+      }
     }
 
     if (errors.length > 0) {
@@ -129,29 +149,7 @@ export class ConfigValidator {
     return { valid: true, message: '技能配置校验通过' };
   }
 
-  static validateModel(model: StratixModelConfig): ValidationResult {
-    const errors: ValidationError[] = [];
-
-    if (!model) {
-      return {
-        valid: false,
-        message: '模型配置不能为空',
-        errors: [{ field: 'model', message: '模型配置不能为空' }],
-      };
-    }
-
-    if (!model.name || model.name.trim() === '') {
-      errors.push({ field: 'model.name', message: '模型名称不能为空' });
-    }
-
-    if (errors.length > 0) {
-      return { valid: false, message: errors[0].message, errors };
-    }
-
-    return { valid: true, message: '模型配置校验通过' };
-  }
-
-  static validateOpenClawConfig(config: StratixOpenClawConfig): ValidationResult {
+  static validateOpenClawConfig(config: OpenClawConfig): ValidationResult {
     const errors: ValidationError[] = [];
 
     if (!config) {
@@ -175,5 +173,39 @@ export class ConfigValidator {
     }
 
     return { valid: true, message: 'OpenClaw 配置校验通过' };
+  }
+
+  static validateDirectConfig(config: DirectLLMConfig): ValidationResult {
+    const errors: ValidationError[] = [];
+
+    if (!config) {
+      return {
+        valid: false,
+        message: 'Direct LLM 配置不能为空',
+        errors: [{ field: 'directConfig', message: 'Direct LLM 配置不能为空' }],
+      };
+    }
+
+    if (!config.provider) {
+      errors.push({ field: 'directConfig.provider', message: 'LLM Provider 不能为空' });
+    }
+
+    if (!config.model || config.model.trim() === '') {
+      errors.push({ field: 'directConfig.model', message: '模型名称不能为空' });
+    }
+
+    if (config.temperature !== undefined && (config.temperature < 0 || config.temperature > 2)) {
+      errors.push({ field: 'directConfig.temperature', message: 'temperature 应在 0-2 之间' });
+    }
+
+    if (config.maxTokens !== undefined && config.maxTokens < 1) {
+      errors.push({ field: 'directConfig.maxTokens', message: 'maxTokens 应大于 0' });
+    }
+
+    if (errors.length > 0) {
+      return { valid: false, message: errors[0].message, errors };
+    }
+
+    return { valid: true, message: 'Direct LLM 配置校验通过' };
   }
 }
