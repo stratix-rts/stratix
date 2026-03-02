@@ -1,20 +1,24 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { StratixAgentConfig, StratixSkillConfig } from '../stratix-core';
-import AgentPanel from './AgentPanel.vue';
-import CommandPanel from './CommandPanel.vue';
-import SkillList from '../stratix-command-panel/components/SkillList.vue';
-import ParamForm from '../stratix-command-panel/components/ParamForm.vue';
+import { ref, computed, onUnmounted } from 'vue';
+import { StratixSkillConfig } from '../stratix-core';
+import type { Skill } from '../stratix-rts/ui/v2/CommandPanelV2';
+import { StratixButton, StratixPanel } from '@/components/ui';
+import { getToken } from '@/design-system/config';
 import CommandLog from '../stratix-command-panel/components/CommandLog.vue';
 import { StratixEventBus, StratixFrontendOperationEvent } from '../stratix-core';
 import { StratixRequestHelper } from '../stratix-core/utils';
+import { agentStore } from '../stores/agentStore';
+import { rtsBridge } from '../stratix-rts';
+import HeroManagementModal from './HeroManagementModal.vue';
+import LogPanelModal from './LogPanelModal.vue';
+import StatusPanelModal from './StatusPanelModal.vue';
+import ParamFormModal from './ParamFormModal.vue';
 
 const props = defineProps<{
   gameContainer: HTMLElement | null;
   isGameReady: boolean;
-  agents: StratixAgentConfig[];
-  selectedAgentIds: string[];
   commandLogs: any[];
+  isRefreshing?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -22,46 +26,65 @@ const emit = defineEmits<{
   (e: 'delete-agent', agentId: string): void;
   (e: 'select-agent', agentId: string): void;
   (e: 'open-character-creator'): void;
+  (e: 'refresh-agents'): void;
 }>();
 
-const activeTab = ref<'agents' | 'command' | 'logs'>('agents');
+const showHeroModal = ref(false);
+const showLogModal = ref(false);
+const showStatusModal = ref(false);
+const showParamFormModal = ref(false);
+
 const selectedSkill = ref<StratixSkillConfig | null>(null);
 const paramValues = ref<Record<string, any>>({});
-const showParamForm = ref(false);
 const eventBus = StratixEventBus.getInstance();
 const requestHelper = StratixRequestHelper.getInstance();
 
-const selectedAgents = computed(() => 
-  props.agents.filter(a => props.selectedAgentIds.includes(a.agentId))
-);
+const agents = computed(() => agentStore.agents.value);
+const selectedAgentIds = computed(() => agentStore.selectedIds.value);
+const selectedAgents = computed(() => agentStore.selectedAgents.value);
+const agentCount = computed(() => agentStore.agentCount.value);
 
-const currentSkills = computed(() => {
-  if (selectedAgents.value.length === 0) return [];
-  return selectedAgents.value[0].skills;
-});
-
-const handleSelectSkill = (skill: StratixSkillConfig) => {
-  selectedSkill.value = skill;
-  paramValues.value = {};
-  skill.parameters.forEach(p => {
-    paramValues.value[p.paramId] = p.defaultValue;
-  });
-  showParamForm.value = true;
+const handleOpenHeroModal = () => {
+  showHeroModal.value = true;
 };
 
-const handleExecuteCommand = () => {
-  if (!selectedSkill.value || props.selectedAgentIds.length === 0) return;
+const handleOpenLogModal = () => {
+  showLogModal.value = true;
+};
+
+const handleOpenStatusModal = () => {
+  showStatusModal.value = true;
+};
+
+const handleExecuteSkill = (skill: StratixSkillConfig | Skill) => {
+  if (selectedAgentIds.value.length === 0) return;
+
+  const parameters = 'parameters' in skill ? skill.parameters : undefined;
+  const needsParams = parameters && parameters.length > 0;
   
+  if (!needsParams) {
+    executeCommand(skill as StratixSkillConfig, {});
+  } else {
+    selectedSkill.value = skill as StratixSkillConfig;
+    paramValues.value = {};
+    parameters.forEach(p => {
+      paramValues.value[p.paramId] = p.defaultValue;
+    });
+    showParamFormModal.value = true;
+  }
+};
+
+const executeCommand = (skill: StratixSkillConfig, params: Record<string, any>) => {
   const event: StratixFrontendOperationEvent = {
     eventType: 'stratix:command_execute',
     payload: {
-      agentIds: props.selectedAgentIds,
-      skill: selectedSkill.value,
+      agentIds: selectedAgentIds.value,
+      skill: skill,
       command: {
         commandId: requestHelper.generateRequestId().replace('req', 'cmd'),
-        skillId: selectedSkill.value.skillId,
-        agentId: props.selectedAgentIds[0],
-        params: { ...paramValues.value },
+        skillId: skill.skillId,
+        agentId: selectedAgentIds.value[0],
+        params: { ...params },
         executeAt: Date.now()
       }
     },
@@ -70,127 +93,127 @@ const handleExecuteCommand = () => {
   };
   
   eventBus.emit(event);
-  showParamForm.value = false;
+  showParamFormModal.value = false;
   selectedSkill.value = null;
 };
 
+const handleExecuteCommand = () => {
+  if (!selectedSkill.value) return;
+  executeCommand(selectedSkill.value, paramValues.value);
+};
+
 const handleCancelCommand = () => {
-  showParamForm.value = false;
+  showParamFormModal.value = false;
   selectedSkill.value = null;
 };
+
+const unsubscribeSkillSelected = rtsBridge.onSkillSelected((data) => {
+  handleExecuteSkill(data.skill);
+});
+
+onUnmounted(() => {
+  unsubscribeSkillSelected();
+});
+
+// Icons - 直接使用 SVG 路径数据
+const icons = {
+  star: 'M12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2Z',
+  users: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75',
+  'file-text': 'M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2Z M14 2v6h6',
+  activity: 'M22 12h-4l-3 9L9 3l-3 9H2',
+} as const;
 </script>
 
 <template>
   <div class="main-layout">
     <header class="header">
       <div class="logo">
-        <span class="logo-icon">★</span>
+        <svg class="logo-icon" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2">
+          <path :d="icons.star" />
+        </svg>
         <span class="logo-text">Stratix 星策系统</span>
       </div>
+      
+      <div class="toolbar">
+        <StratixButton 
+          variant="secondary"
+          @click="handleOpenHeroModal"
+          title="英雄管理"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path :d="icons.users" />
+          </svg>
+          <span>英雄</span>
+          <span v-if="agentCount > 0" class="btn-badge">{{ agentCount }}</span>
+        </StratixButton>
+        
+        <StratixButton 
+          variant="secondary"
+          @click="handleOpenLogModal"
+          title="日志"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path :d="icons['file-text']" />
+          </svg>
+          <span>日志</span>
+        </StratixButton>
+        
+        <StratixButton 
+          variant="secondary"
+          @click="handleOpenStatusModal"
+          title="状态"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path :d="icons.activity" />
+          </svg>
+          <span>状态</span>
+        </StratixButton>
+      </div>
+      
       <div class="header-info">
         <span class="status" :class="{ ready: isGameReady }">
           {{ isGameReady ? '● 系统就绪' : '○ 加载中...' }}
         </span>
-        <span class="agent-count">Agents: {{ agents.length }}</span>
       </div>
     </header>
     
     <main class="main-content">
-      <aside class="sidebar left-sidebar">
-        <div class="sidebar-tabs">
-          <button 
-            :class="{ active: activeTab === 'agents' }" 
-            @click="activeTab = 'agents'"
-          >英雄</button>
-          <button 
-            :class="{ active: activeTab === 'command' }" 
-            @click="activeTab = 'command'"
-          >指令</button>
-          <button 
-            :class="{ active: activeTab === 'logs' }" 
-            @click="activeTab = 'logs'"
-          >日志</button>
-        </div>
-        
-        <div class="sidebar-content">
-          <AgentPanel 
-            v-if="activeTab === 'agents'"
-            :agents="agents"
-            :selected-ids="selectedAgentIds"
-            @create="emit('create-agent', $event)"
-            @delete="emit('delete-agent', $event)"
-            @select="emit('select-agent', $event)"
-            @open-character-creator="emit('open-character-creator')"
-          />
-          
-          <div v-else-if="activeTab === 'command'" class="command-tab">
-            <div v-if="selectedAgents.length === 0" class="empty-state">
-              请先选择一个英雄
-            </div>
-            <template v-else>
-              <div class="selected-agent-info">
-                <h4>已选中: {{ selectedAgents[0].name }}</h4>
-                <p>{{ selectedAgents[0].soul.identity }}</p>
-              </div>
-              <SkillList 
-                :skills="currentSkills"
-                @select="handleSelectSkill"
-              />
-              <ParamForm
-                v-if="showParamForm && selectedSkill"
-                :skill="selectedSkill"
-                v-model="paramValues"
-                @execute="handleExecuteCommand"
-                @cancel="handleCancelCommand"
-              />
-            </template>
-          </div>
-          
-          <CommandLog 
-            v-else-if="activeTab === 'logs'"
-            :logs="commandLogs"
-          />
-        </div>
-      </aside>
-      
       <section class="game-area">
         <slot name="game"></slot>
       </section>
-      
-      <aside class="sidebar right-sidebar">
-        <h3>状态面板</h3>
-        <div class="status-section">
-          <h4>选中英雄</h4>
-          <div v-if="selectedAgents.length > 0" class="selected-info">
-            <div v-for="agent in selectedAgents" :key="agent.agentId" class="agent-item">
-              <span class="agent-name">{{ agent.name }}</span>
-              <span class="agent-type">{{ agent.type }}</span>
-            </div>
-          </div>
-          <div v-else class="empty-state">未选中</div>
-        </div>
-        
-        <div class="status-section">
-          <h4>系统状态</h4>
-          <div class="system-status">
-            <div class="status-item">
-              <span class="label">RTS 引擎</span>
-              <span class="value" :class="{ ok: isGameReady }">
-                {{ isGameReady ? '运行中' : '加载中' }}
-              </span>
-            </div>
-            <div class="status-item">
-              <span class="label">事件总线</span>
-              <span class="value ok">已连接</span>
-            </div>
-            <div class="status-item">
-              <span class="label">数据存储</span>
-              <span class="value ok">本地模式</span>
-            </div>
-          </div>
-        </div>
-      </aside>
     </main>
+    
+    <HeroManagementModal
+      v-model:visible="showHeroModal"
+      :selected-ids="selectedAgentIds"
+      :is-refreshing="isRefreshing"
+      @create="emit('create-agent', $event)"
+      @delete="emit('delete-agent', $event)"
+      @select="emit('select-agent', $event)"
+      @open-character-creator="emit('open-character-creator')"
+      @refresh="emit('refresh-agents')"
+    />
+    
+    <LogPanelModal
+      v-model:visible="showLogModal"
+      :logs="commandLogs"
+    />
+    
+    <StatusPanelModal
+      v-model:visible="showStatusModal"
+      :selected-agents="selectedAgents"
+      :agent-count="agentCount"
+      :is-game-ready="isGameReady"
+    />
+    
+    <ParamFormModal
+      v-model:visible="showParamFormModal"
+      :skill="selectedSkill"
+      :param-values="paramValues"
+      @execute="handleExecuteCommand"
+      @cancel="handleCancelCommand"
+      @update:param-values="paramValues = $event"
+    />
   </div>
 </template>
 
@@ -200,210 +223,92 @@ const handleCancelCommand = () => {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: #0f0f1a;
+  background: var(--ds-bg-primary);
 }
 
 .header {
-  height: 48px;
+  height: 56px;
   background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  border-bottom: 1px solid #2a2a4e;
+  border-bottom: 1px solid var(--ds-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 20px;
+  gap: 20px;
 }
 
 .logo {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-shrink: 0;
 }
 
 .logo-icon {
-  font-size: 24px;
-  color: #00d4ff;
-  text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+  color: var(--ds-info);
+  filter: drop-shadow(0 0 10px rgba(0, 212, 255, 0.5));
 }
 
 .logo-text {
   font-size: 18px;
   font-weight: 600;
-  background: linear-gradient(90deg, #00d4ff, #00ff88);
+  background: linear-gradient(90deg, var(--ds-info), var(--ds-success));
   -webkit-background-clip: text;
+  color: #00d4ff;
   -webkit-text-fill-color: transparent;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  justify-content: center;
+}
+
+.btn-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  background: linear-gradient(135deg, var(--ds-info), var(--ds-success));
+  color: var(--ds-bg-primary);
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .header-info {
   display: flex;
   align-items: center;
   gap: 20px;
+  flex-shrink: 0;
 }
 
 .status {
   font-size: 14px;
-  color: #888;
+  color: var(--ds-text-muted);
 }
 
 .status.ready {
-  color: #00ff88;
-}
-
-.agent-count {
-  font-size: 14px;
-  color: #888;
+  color: var(--ds-success);
 }
 
 .main-content {
-  flex: 1;
-  display: flex;
-  overflow: hidden;
-}
-
-.sidebar {
-  width: 280px;
-  background: #1a1a2e;
-  border-right: 1px solid #2a2a4e;
-  display: flex;
-  flex-direction: column;
-}
-
-.right-sidebar {
-  border-right: none;
-  border-left: 1px solid #2a2a4e;
-  padding: 16px;
-}
-
-.sidebar-tabs {
-  display: flex;
-  border-bottom: 1px solid #2a2a4e;
-}
-
-.sidebar-tabs button {
-  flex: 1;
-  padding: 12px;
-  background: transparent;
-  border: none;
-  color: #888;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.sidebar-tabs button:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.sidebar-tabs button.active {
-  color: #00d4ff;
-  border-bottom: 2px solid #00d4ff;
-}
-
-.sidebar-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 12px;
-}
-
-.game-area {
   flex: 1;
   position: relative;
   overflow: hidden;
 }
 
-.command-tab {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.selected-agent-info {
-  padding: 12px;
-  background: rgba(0, 212, 255, 0.1);
-  border-radius: 8px;
-  border: 1px solid rgba(0, 212, 255, 0.2);
-}
-
-.selected-agent-info h4 {
-  margin: 0 0 4px 0;
-  color: #00d4ff;
-}
-
-.selected-agent-info p {
-  margin: 0;
-  font-size: 12px;
-  color: #888;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 40px 20px;
-  color: #666;
-}
-
-.right-sidebar h3 {
-  margin: 0 0 16px 0;
-  font-size: 16px;
-  color: #fff;
-}
-
-.status-section {
-  margin-bottom: 20px;
-}
-
-.status-section h4 {
-  margin: 0 0 10px 0;
-  font-size: 13px;
-  color: #888;
-  text-transform: uppercase;
-}
-
-.selected-info {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.agent-item {
-  display: flex;
-  justify-content: space-between;
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 6px;
-}
-
-.agent-name {
-  color: #fff;
-}
-
-.agent-type {
-  color: #00d4ff;
-  font-size: 12px;
-}
-
-.system-status {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.status-item {
-  display: flex;
-  justify-content: space-between;
-  padding: 8px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.status-item .label {
-  color: #888;
-  font-size: 13px;
-}
-
-.status-item .value {
-  font-size: 13px;
-  color: #ff6b6b;
-}
-
-.status-item .value.ok {
-  color: #00ff88;
+.game-area {
+  width: 100%;
+  height: 100%;
+  position: relative;
 }
 </style>

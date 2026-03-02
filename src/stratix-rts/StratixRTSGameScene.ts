@@ -10,6 +10,9 @@ import { TaskZonePreview } from './zones/TaskZonePreview';
 import { CommandSystem, Command, CommandType } from './systems/CommandSystem';
 import { ControlGroupSystem } from './systems/ControlGroupSystem';
 import RTSCharacterRenderer, { TextureLoadResult } from './services/RTSCharacterRenderer';
+import { rtsEventBus } from './events/core/RTSEventBus';
+import type { TopBarStats, AgentInfo, ViewportState } from './events/types/RTSEventTypes';
+import type { Skill } from './ui/v2/CommandPanelV2';
 
 export { MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, DEFAULT_ZOOM, MIN_ZOOM, MAX_ZOOM, BG_COLOR } from './constants';
 
@@ -28,6 +31,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   private isZoneDrawingMode: boolean = false;
   private currentCommandType: CommandType | null = null;
   private characterRenderer: RTSCharacterRenderer;
+  private eventUnsubscribers: (() => void)[] = [];
 
   constructor() {
     super({ key: 'StratixRTSGameScene' });
@@ -67,6 +71,8 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   }
 
   create(): void {
+    rtsEventBus.registerScene('game', this);
+    
     this.characterRenderer = new RTSCharacterRenderer(this);
     this.initStratixMap();
     this.initCamera();
@@ -75,6 +81,12 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     this.initTaskZonePreview();
     this.initInputHandler();
     this.initEventManager();
+    this.initEventBusListeners();
+    
+    rtsEventBus.emit('scene:ui:game_ready', {
+      width: this.cameras.main.width,
+      height: this.cameras.main.height,
+    } as any);
   }
 
   update(_time: number, _delta: number): void {
@@ -201,6 +213,87 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     this.events.on('stratix:create-agent', this.onCreateAgent, this);
     this.events.on('stratix:update-agent-status', this.onUpdateAgentStatus, this);
     this.events.on('stratix:update-command-status', this.onUpdateCommandStatus, this);
+  }
+
+  private initEventBusListeners(): void {
+    this.eventUnsubscribers.push(
+      rtsEventBus.on('vue:game:create_agent', async (data: any) => {
+        await this.addAgentSprite(data.config);
+      })
+    );
+    
+    this.eventUnsubscribers.push(
+      rtsEventBus.on('vue:game:select_agents', (data: any) => {
+        if (data.addToSelection) {
+          data.agentIds.forEach((id: string) => this.selectAgent(id));
+        } else {
+          this.clearSelection();
+          data.agentIds.forEach((id: string) => this.selectAgent(id));
+        }
+      })
+    );
+    
+    this.eventUnsubscribers.push(
+      rtsEventBus.on('vue:game:deselect_all', () => {
+        this.clearSelection();
+      })
+    );
+    
+    rtsEventBus.respond('request:get_stats', () => this.getTopBarStats());
+    rtsEventBus.respond('request:get_camera_state', () => this.getCameraState());
+    
+    rtsEventBus.emit('game:vue:game_ready', {
+      width: this.cameras.main.width,
+      height: this.cameras.main.height,
+    } as any);
+    
+    this.time.addEvent({
+      delay: 100,
+      callback: () => this.emitStats(),
+      loop: true,
+    });
+  }
+
+  private emitStats(): void {
+    rtsEventBus.emit('scene:ui:update_stats', this.getTopBarStats() as any);
+  }
+
+  private getTopBarStats(): TopBarStats {
+    let onlineCount = 0;
+    let busyCount = 0;
+    
+    this.agentSprites.forEach((sprite) => {
+      const status = sprite.getCurrentStatus();
+      if (status === 'online') onlineCount++;
+      else if (status === 'busy') busyCount++;
+    });
+    
+    let totalProgress = 0;
+    this.taskZones.forEach((zone) => {
+      totalProgress += zone.getTaskProgress();
+    });
+    if (this.taskZones.size > 0) {
+      totalProgress /= this.taskZones.size;
+    }
+    
+    return {
+      totalAgents: this.agentSprites.size,
+      onlineAgents: onlineCount,
+      busyAgents: busyCount,
+      totalZones: this.taskZones.size,
+      overallProgress: totalProgress,
+    };
+  }
+
+  private getCameraState(): ViewportState {
+    const camera = this.cameras.main;
+    return {
+      scrollX: camera.scrollX,
+      scrollY: camera.scrollY,
+      zoom: camera.zoom,
+      width: camera.width,
+      height: camera.height,
+    };
   }
 
   private handleSelect(agentIds: string[], shiftKey: boolean = false): void {
@@ -814,7 +907,15 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     this.events.off('stratix:update-agent-status');
     this.events.off('stratix:update-command-status');
     
+    this.eventUnsubscribers.forEach(unsub => unsub());
+    this.eventUnsubscribers = [];
+    rtsEventBus.unregisterScene('game');
+    
     this.taskZones.forEach(zone => zone.destroy());
     this.taskZones.clear();
+  }
+
+  public resize(width: number, height: number): void {
+    this.cameras.main.setSize(width, height);
   }
 }

@@ -1,5 +1,11 @@
 import Phaser from 'phaser';
 import StratixRTSGameScene, { BG_COLOR } from './StratixRTSGameScene';
+import StratixRTSUIScene from './StratixRTSUIScene';
+import { rtsEventBus, RTSEventBus } from './events/core/RTSEventBus';
+import { rtsBridge } from './events/bridge/RTSBridge';
+
+export { rtsEventBus, RTSEventBus, rtsBridge };
+export * from './events/types/RTSEventTypes';
 
 export interface StratixRTSConfig {
   parent: string | HTMLElement;
@@ -22,7 +28,7 @@ export function createStratixRTS(config: StratixRTSConfig): Phaser.Game {
     height: height,
     backgroundColor: BG_COLOR,
     pixelArt: true,
-    scene: [StratixRTSGameScene],
+    scene: [StratixRTSGameScene, StratixRTSUIScene],
     scale: {
       mode: Phaser.Scale.RESIZE,
       width: width,
@@ -33,6 +39,15 @@ export function createStratixRTS(config: StratixRTSConfig): Phaser.Game {
 
   const game = new Phaser.Game(gameConfig);
   
+  game.events.once('ready', () => {
+    const uiScene = game.scene.getScene('StratixRTSUIScene');
+    if (uiScene && !game.scene.isActive('StratixRTSUIScene')) {
+      game.scene.start('StratixRTSUIScene');
+    }
+    
+    rtsEventBus.emit('game:vue:game_ready', { width, height });
+  });
+  
   const handleResize = () => {
     if (!parentEl) return;
     
@@ -40,6 +55,16 @@ export function createStratixRTS(config: StratixRTSConfig): Phaser.Game {
     const newHeight = config.height ?? parentEl.clientHeight;
     
     game.scale.resize(newWidth, newHeight);
+    
+    for (const scenePlugin of game.scene.scenes) {
+      const scene = scenePlugin.scene;
+      if (scene.key === 'StratixRTSGameScene' && 'resize' in scene) {
+        (scene as any).resize(newWidth, newHeight);
+      }
+      if (scene.key === 'StratixRTSUIScene' && 'resize' in scene) {
+        (scene as any).resize(newWidth, newHeight);
+      }
+    }
   };
   
   window.addEventListener('resize', handleResize);
@@ -47,12 +72,10 @@ export function createStratixRTS(config: StratixRTSConfig): Phaser.Game {
   const originalDestroy = game.destroy.bind(game);
   game.destroy = (removeCanvas: boolean = false, noReturn: boolean = false) => {
     window.removeEventListener('resize', handleResize);
+    rtsEventBus.unregisterScene('game');
+    rtsEventBus.unregisterScene('ui');
     originalDestroy(removeCanvas, noReturn);
   };
-  
-  game.events.once('ready', () => {
-    game.events.emit('ready');
-  });
   
   return game;
 }
@@ -66,14 +89,14 @@ export { InputHandler } from './utils/InputHandler';
 export type { InputConfig, InputCallbacks, InputMode } from './utils/InputHandler';
 export { SelectBox } from './ui/SelectBox';
 export type { SelectBoxConfig } from './ui/SelectBox';
-export { StatusBar } from './ui/StatusBar';
-export { Toolbar } from './ui/Toolbar';
-export type { ToolbarConfig } from './ui/Toolbar';
 export { TaskZone } from './zones/TaskZone';
-export type { TaskZoneConfig, CornerPosition } from './zones/TaskZone';
+export type { TaskZoneConfig, CornerPosition, TaskZoneStatus, TaskZoneType } from './zones/TaskZone';
 export { TaskZonePreview } from './zones/TaskZonePreview';
 export type { TaskZonePreviewConfig } from './zones/TaskZonePreview';
 export { CommandSystem } from './systems/CommandSystem';
 export type { Command, CommandType, MoveCommand, AttackCommand, AttackMoveCommand, StopCommand, PatrolCommand, HoldPositionCommand, GatherCommand, CommandContext } from './systems/CommandSystem';
 export { ControlGroupSystem } from './systems/ControlGroupSystem';
 export type { ControlGroup } from './systems/ControlGroupSystem';
+
+export { TopBarV2 as TopBar, MinimapV2 as Minimap, DetailPanelV2 as DetailPanel, CommandPanelV2 as CommandPanel, RTSUIFactory } from './ui/v2';
+export type { TopBarStats, UnitInfo, Skill, RTSUIComponents, RTSUIConfig } from './ui/v2';
