@@ -1,0 +1,1251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <!-- SEO -->
+  <title>Stratix 星策 - 一人成军，万智听命 | AI Agent 可视化指挥平台</title>
+  <meta name="description" content="小白也能指挥海量 Agent 的游戏化平台。基于 RTS 游戏化界面，框选、编队、批量操作，让 AI Agent 管理像玩游戏一样简单。">
+  <meta name="keywords" content="AI Agent, Agent管理, RTS界面, OpenClaw, 可视化指挥, 多Agent协同">
+  
+  <!-- Open Graph -->
+  <meta property="og:title" content="Stratix 星策 - AI Agent 可视化指挥平台">
+  <meta property="og:description" content="小白也能指挥海量 Agent 的游戏化平台">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://github.com/stratix-rts/stratix">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@300;400;500;600;700&family=Russo+One&display=swap" rel="stylesheet">
+  
+  <!-- TailwindCSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#7C3AED',
+            'primary-light': '#A78BFA',
+            'primary-dark': '#5B21B6',
+            cta: '#F43F5E',
+            'cta-light': '#FB7185',
+            background: '#0F0F23',
+            'background-light': '#1A1A2E',
+          },
+          fontFamily: {
+            'heading': ['Russo One', 'sans-serif'],
+            'body': ['Chakra Petch', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+  
+  <style>
+    /* CSS Variables */
+    :root {
+      --primary: #7C3AED;
+      --primary-light: #A78BFA;
+      --primary-dark: #5B21B6;
+      --cta: #F43F5E;
+      --cta-light: #FB7185;
+      --background: #0F0F23;
+      --background-light: #1A1A2E;
+      --text-primary: #E2E8F0;
+      --text-secondary: #A0AEC0;
+      --text-muted: #718096;
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Chakra Petch', sans-serif;
+      background: var(--background);
+      color: var(--text-primary);
+      overflow-x: hidden;
+      line-height: 1.6;
+    }
+    
+    /* CRT Scanlines */
+    .crt-overlay::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0.15),
+        rgba(0, 0, 0, 0.15) 1px,
+        transparent 1px,
+        transparent 2px
+      );
+      pointer-events: none;
+      z-index: 9999;
+    }
+    
+    @media (prefers-reduced-motion: reduce) {
+      .crt-overlay::before {
+        display: none;
+      }
+    }
+    
+    /* Neon Effects */
+    .neon-text {
+      text-shadow: 
+        0 0 10px rgba(124, 58, 237, 0.8),
+        0 0 20px rgba(124, 58, 237, 0.6),
+        0 0 30px rgba(124, 58, 237, 0.4);
+    }
+    
+    .neon-box {
+      box-shadow: 
+        0 0 10px rgba(124, 58, 237, 0.8),
+        0 0 20px rgba(124, 58, 237, 0.6),
+        inset 0 0 10px rgba(124, 58, 237, 0.2);
+      border: 1px solid rgba(124, 58, 237, 0.5);
+    }
+    
+    .neon-box:hover {
+      box-shadow: 
+        0 0 15px rgba(124, 58, 237, 1),
+        0 0 30px rgba(124, 58, 237, 0.8),
+        inset 0 0 15px rgba(124, 58, 237, 0.3);
+    }
+    
+    /* Glitch Effect */
+    @keyframes glitch {
+      0%, 100% {
+        transform: translate(0);
+      }
+      20% {
+        transform: translate(-2px, 2px);
+      }
+      40% {
+        transform: translate(-2px, -2px);
+      }
+      60% {
+        transform: translate(2px, 2px);
+      }
+      80% {
+        transform: translate(2px, -2px);
+      }
+    }
+    
+    .glitch-effect:hover {
+      animation: glitch 0.3s ease-in-out;
+    }
+    
+    /* Animations */
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.5;
+      }
+    }
+    
+    .animate-in {
+      animation: fadeInUp 0.6s ease-out forwards;
+    }
+    
+    .animate-delay-1 {
+      animation-delay: 0.1s;
+    }
+    
+    .animate-delay-2 {
+      animation-delay: 0.2s;
+    }
+    
+    .animate-delay-3 {
+      animation-delay: 0.3s;
+    }
+    
+    /* Canvas */
+    #particle-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: -1;
+    }
+    
+    /* Language Switcher */
+    .lang-switcher {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 1000;
+      display: flex;
+      gap: 8px;
+      background: rgba(26, 26, 46, 0.9);
+      padding: 8px 16px;
+      border-radius: 8px;
+      border: 1px solid rgba(124, 58, 237, 0.3);
+    }
+    
+    .lang-btn {
+      padding: 4px 12px;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--text-secondary);
+      border: none;
+      cursor: pointer;
+      font-family: 'Chakra Petch', sans-serif;
+      transition: all 0.3s ease;
+    }
+    
+    .lang-btn.active {
+      background: var(--primary);
+      color: white;
+    }
+    
+    .lang-btn:hover:not(.active) {
+      background: rgba(124, 58, 237, 0.2);
+    }
+    
+    /* Responsive */
+    @media (max-width: 768px) {
+      .lang-switcher {
+        top: 10px;
+        right: 10px;
+        padding: 6px 12px;
+      }
+      
+      .lang-btn {
+        padding: 3px 8px;
+        font-size: 14px;
+      }
+    }
+    
+    /* Agent Demo */
+    .agent-card {
+      background: rgba(26, 26, 46, 0.8);
+      border: 2px solid rgba(124, 58, 237, 0.3);
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      transition: all 0.3s ease;
+      cursor: pointer;
+    }
+    
+    .agent-card:hover {
+      border-color: var(--primary);
+      transform: translateY(-5px);
+    }
+    
+    .agent-card.selected {
+      border-color: var(--primary);
+      background: rgba(124, 58, 237, 0.2);
+      box-shadow: 0 0 20px rgba(124, 58, 237, 0.5);
+    }
+    
+    .agent-icon {
+      width: 60px;
+      height: 60px;
+      margin: 0 auto 10px;
+      background: linear-gradient(135deg, var(--primary), var(--primary-light));
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+    }
+    
+    .status-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-top: 8px;
+    }
+    
+    .status-active {
+      background: rgba(16, 185, 129, 0.2);
+      color: #10B981;
+      border: 1px solid rgba(16, 185, 129, 0.5);
+    }
+    
+    .status-idle {
+      background: rgba(124, 58, 237, 0.2);
+      color: var(--primary-light);
+      border: 1px solid rgba(124, 58, 237, 0.5);
+    }
+    
+    /* Selection Box */
+    .selection-box {
+      position: fixed;
+      border: 2px dashed var(--primary);
+      background: rgba(124, 58, 237, 0.1);
+      pointer-events: none;
+      z-index: 100;
+    }
+    
+    /* Cards */
+    .feature-card {
+      background: rgba(26, 26, 46, 0.6);
+      border: 1px solid rgba(124, 58, 237, 0.2);
+      border-radius: 16px;
+      padding: 32px;
+      transition: all 0.3s ease;
+    }
+    
+    .feature-card:hover {
+      border-color: var(--primary);
+      transform: translateY(-5px);
+      box-shadow: 0 10px 30px rgba(124, 58, 237, 0.2);
+    }
+    
+    .pain-point-card {
+      background: rgba(244, 63, 94, 0.05);
+      border: 2px solid rgba(244, 63, 94, 0.2);
+      border-radius: 12px;
+      padding: 24px;
+    }
+    
+    .pain-point-card:hover {
+      border-color: rgba(244, 63, 94, 0.5);
+    }
+    
+    /* Buttons */
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: white;
+      padding: 12px 32px;
+      border-radius: 8px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: inline-block;
+      text-decoration: none;
+    }
+    
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 30px rgba(124, 58, 237, 0.4);
+    }
+    
+    .btn-secondary {
+      background: transparent;
+      color: var(--text-primary);
+      padding: 12px 32px;
+      border-radius: 8px;
+      font-weight: 600;
+      border: 2px solid var(--primary);
+      cursor: pointer;
+      transition: all 0.3s ease;
+      display: inline-block;
+      text-decoration: none;
+    }
+    
+    .btn-secondary:hover {
+      background: rgba(124, 58, 237, 0.1);
+      transform: translateY(-2px);
+    }
+    
+    /* Gradient Text */
+    .gradient-text {
+      background: linear-gradient(135deg, var(--primary-light), var(--cta));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    
+    /* Market Chart */
+    .chart-bar {
+      background: linear-gradient(135deg, var(--primary), var(--primary-light));
+      border-radius: 8px 8px 0 0;
+      transition: all 0.3s ease;
+    }
+    
+    .chart-bar:hover {
+      box-shadow: 0 0 20px rgba(124, 58, 237, 0.6);
+    }
+    
+    /* Scroll Animation */
+    .scroll-section {
+      opacity: 0;
+      transform: translateY(30px);
+      transition: all 0.6s ease-out;
+    }
+    
+    .scroll-section.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    
+    /* Timeline */
+    .timeline-item {
+      position: relative;
+      padding-left: 32px;
+      margin-bottom: 32px;
+    }
+    
+    .timeline-item::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 8px;
+      width: 16px;
+      height: 16px;
+      background: var(--primary);
+      border-radius: 50%;
+      border: 3px solid var(--background);
+    }
+    
+    .timeline-item::after {
+      content: '';
+      position: absolute;
+      left: 7px;
+      top: 24px;
+      width: 2px;
+      height: calc(100% - 8px);
+      background: rgba(124, 58, 237, 0.3);
+    }
+    
+    .timeline-item:last-child::after {
+      display: none;
+    }
+  </style>
+</head>
+<body class="crt-overlay">
+  <!-- Particle Canvas -->
+  <canvas id="particle-canvas"></canvas>
+  
+  <!-- Language Switcher -->
+  <div class="lang-switcher">
+    <button class="lang-btn active" data-lang="zh">中文</button>
+    <button class="lang-btn" data-lang="en">EN</button>
+  </div>
+  
+  <!-- Hero Section -->
+  <section id="hero" class="min-h-screen flex items-center justify-center px-4 py-20">
+    <div class="max-w-6xl mx-auto text-center">
+      <h1 class="font-heading text-5xl md:text-7xl mb-6 neon-text" data-i18n="hero.title">
+        一人成军，万智听命
+      </h1>
+      <p class="text-xl md:text-2xl mb-4 text-gray-300" data-i18n="hero.subtitle">
+        基于 RTS 游戏化的多 Agent 可视化指挥平台
+      </p>
+      <p class="text-lg md:text-xl mb-8 text-gray-400" data-i18n="hero.tagline">
+        小白也能指挥海量 OpenClaw 或其他 Agent 的游戏化平台
+      </p>
+      
+      <div class="flex gap-4 justify-center flex-wrap mb-12">
+        <a href="https://github.com/stratix-rts/stratix" target="_blank" class="btn-primary glitch-effect">
+          <span data-i18n="hero.cta1">访问 GitHub</span>
+        </a>
+        <a href="https://github.com/stratix-rts/stratix" target="_blank" class="btn-secondary">
+          <span data-i18n="hero.cta2">查看文档</span>
+        </a>
+      </div>
+      
+      <!-- RTS Demo Preview -->
+      <div class="neon-box rounded-xl p-8 bg-background-light/50">
+        <h3 class="font-heading text-2xl mb-6 gradient-text" data-i18n="demo.title">Stratix 指挥中心</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6" id="agent-grid">
+          <div class="agent-card" data-agent="1">
+            <div class="agent-icon">👨‍💻</div>
+            <div class="font-semibold mt-2" data-i18n="demo.agent1">软件工程师</div>
+            <span class="status-badge status-active">
+              <span data-i18n="status.active">执行中</span>
+            </span>
+          </div>
+          <div class="agent-card" data-agent="2">
+            <div class="agent-icon">📊</div>
+            <div class="font-semibold mt-2" data-i18n="demo.agent2">数据分析师</div>
+            <span class="status-badge status-idle">
+              <span data-i18n="status.idle">待命</span>
+            </span>
+          </div>
+          <div class="agent-card" data-agent="3">
+            <div class="agent-icon">✍️</div>
+            <div class="font-semibold mt-2" data-i18n="demo.agent3">文案专员</div>
+            <span class="status-badge status-active">
+              <span data-i18n="status.active">执行中</span>
+            </span>
+          </div>
+          <div class="agent-card" data-agent="4">
+            <div class="agent-icon">🔍</div>
+            <div class="font-semibold mt-2" data-i18n="demo.agent4">测试工程师</div>
+            <span class="status-badge status-idle">
+              <span data-i18n="status.idle">待命</span>
+            </span>
+          </div>
+        </div>
+        <p class="text-gray-400 text-sm" data-i18n="demo.hint">💡 框选多个 Agent，一键批量操作</p>
+      </div>
+    </div>
+  </section>
+  
+  <!-- Pain Points Section -->
+  <section id="pain-points" class="py-20 px-4 scroll-section">
+    <div class="max-w-6xl mx-auto">
+      <h2 class="font-heading text-4xl md:text-5xl text-center mb-4 neon-text" data-i18n="pain.title">
+        你是否也在经历这些痛点？
+      </h2>
+      <p class="text-center text-gray-400 mb-12" data-i18n="pain.subtitle">
+        传统 Agent 管理方式的三大困境
+      </p>
+      
+      <div class="grid md:grid-cols-3 gap-8">
+        <div class="pain-point-card">
+          <div class="text-4xl mb-4">😰</div>
+          <h3 class="font-heading text-xl mb-4 text-cta-light" data-i18n="pain1.title">管理混乱</h3>
+          <p class="text-gray-300 mb-4" data-i18n="pain1.desc">开了 10 个 Agent，不知道谁在摸鱼</p>
+          <ul class="text-gray-400 text-sm space-y-2">
+            <li>❌ <span data-i18n="pain1.item1">10+ 终端窗口</span></li>
+            <li>❌ <span data-i18n="pain1.item2">手动切换找消息</span></li>
+            <li>❌ <span data-i18n="pain1.item3">状态分散难追踪</span></li>
+          </ul>
+        </div>
+        
+        <div class="pain-point-card">
+          <div class="text-4xl mb-4">😤</div>
+          <h3 class="font-heading text-xl mb-4 text-cta-light" data-i18n="pain2.title">配置繁琐</h3>
+          <p class="text-gray-300 mb-4" data-i18n="pain2.desc">AI 一分钟出结果，你花十分钟配置</p>
+          <ul class="text-gray-400 text-sm space-y-2">
+            <li>❌ <span data-i18n="pain2.item1">手写 JSON 配置</span></li>
+            <li>❌ <span data-i18n="pain2.item2">重复劳动浪费时间</span></li>
+            <li>❌ <span data-i18n="pain2.item3">出错率高难维护</span></li>
+          </ul>
+        </div>
+        
+        <div class="pain-point-card">
+          <div class="text-4xl mb-4">🤯</div>
+          <h3 class="font-heading text-xl mb-4 text-cta-light" data-i18n="pain3.title">操作低效</h3>
+          <p class="text-gray-300 mb-4" data-i18n="pain3.desc">每次下发指令，都要逐个手动操作</p>
+          <ul class="text-gray-400 text-sm space-y-2">
+            <li>❌ <span data-i18n="pain3.item1">无法批量执行</span></li>
+            <li>❌ <span data-i18n="pain3.item2">缺乏统一视图</span></li>
+            <li>❌ <span data-i18n="pain3.item3">协作效率低下</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+  
+  <!-- Solution Section -->
+  <section id="solution" class="py-20 px-4 scroll-section">
+    <div class="max-w-6xl mx-auto">
+      <h2 class="font-heading text-4xl md:text-5xl text-center mb-4 neon-text" data-i18n="solution.title">
+        Stratix 解决方案
+      </h2>
+      <p class="text-center text-gray-400 mb-12" data-i18n="solution.subtitle">
+        四大核心特性，重新定义 Agent 管理
+      </p>
+      
+      <div class="grid md:grid-cols-2 gap-8">
+        <div class="feature-card">
+          <div class="text-4xl mb-4">🎮</div>
+          <h3 class="font-heading text-2xl mb-4 gradient-text" data-i18n="feature1.title">RTS 可视化界面</h3>
+          <p class="text-gray-300 mb-4" data-i18n="feature1.desc">框选 · 编队 · 批量操作</p>
+          <ul class="text-gray-400 space-y-2">
+            <li>✓ <span data-i18n="feature1.item1">像玩游戏一样简单</span></li>
+            <li>✓ <span data-i18n="feature1.item2">实时状态一目了然</span></li>
+            <li>✓ <span data-i18n="feature1.item3">小白也能快速上手</span></li>
+          </ul>
+        </div>
+        
+        <div class="feature-card">
+          <div class="text-4xl mb-4">🦸</div>
+          <h3 class="font-heading text-2xl mb-4 gradient-text" data-i18n="feature2.title">英雄设计器</h3>
+          <p class="text-gray-300 mb-4" data-i18n="feature2.desc">可视化配置 Agent</p>
+          <ul class="text-gray-400 space-y-2">
+            <li>✓ <span data-i18n="feature2.item1">告别 JSON 手写</span></li>
+            <li>✓ <span data-i18n="feature2.item2">一键导出/导入</span></li>
+            <li>✓ <span data-i18n="feature2.item3">模板库快速创建</span></li>
+          </ul>
+        </div>
+        
+        <div class="feature-card">
+          <div class="text-4xl mb-4">🌐</div>
+          <h3 class="font-heading text-2xl mb-4 gradient-text" data-i18n="feature3.title">星策网关</h3>
+          <p class="text-gray-300 mb-4" data-i18n="feature3.desc">统一连接所有 Agent</p>
+          <ul class="text-gray-400 space-y-2">
+            <li>✓ <span data-i18n="feature3.item1">支持多实例混合部署</span></li>
+            <li>✓ <span data-i18n="feature3.item2">WebSocket 实时通信</span></li>
+            <li>✓ <span data-i18n="feature3.item3">兼容 OpenClaw 等</span></li>
+          </ul>
+        </div>
+        
+        <div class="feature-card">
+          <div class="text-4xl mb-4">⚡</div>
+          <h3 class="font-heading text-2xl mb-4 gradient-text" data-i18n="feature4.title">50ms 极速响应</h3>
+          <p class="text-gray-300 mb-4" data-i18n="feature4.desc">从点击到执行</p>
+          <ul class="text-gray-400 space-y-2">
+            <li>✓ <span data-i18n="feature4.item1">延迟控制在 50ms 内</span></li>
+            <li>✓ <span data-i18n="feature4.item2">支持 100+ Agent</span></li>
+            <li>✓ <span data-i18n="feature4.item3">实时双向通信</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+  
+  <!-- Market Opportunity Section -->
+  <section id="market" class="py-20 px-4 scroll-section">
+    <div class="max-w-6xl mx-auto">
+      <h2 class="font-heading text-4xl md:text-5xl text-center mb-4 neon-text" data-i18n="market.title">
+        市场机会
+      </h2>
+      <p class="text-center text-gray-400 mb-12" data-i18n="market.subtitle">
+        AI Agent 市场爆发式增长
+      </p>
+      
+      <div class="grid md:grid-cols-2 gap-12 mb-12">
+        <!-- Market Size Chart -->
+        <div class="neon-box rounded-xl p-8 bg-background-light/30">
+          <h3 class="font-heading text-2xl mb-6" data-i18n="market.chartTitle">市场规模增长趋势</h3>
+          <div class="space-y-6">
+            <div>
+              <div class="flex justify-between mb-2">
+                <span class="text-gray-400">2025</span>
+                <span class="font-semibold">73.8 <span data-i18n="market.unit">亿美元</span></span>
+              </div>
+              <div class="h-8 bg-gray-800 rounded overflow-hidden">
+                <div class="chart-bar h-full" style="width: 7%;"></div>
+              </div>
+            </div>
+            <div>
+              <div class="flex justify-between mb-2">
+                <span class="text-gray-400">2032</span>
+                <span class="font-semibold">1036 <span data-i18n="market.unit">亿美元</span></span>
+              </div>
+              <div class="h-8 bg-gray-800 rounded overflow-hidden">
+                <div class="chart-bar h-full" style="width: 100%;"></div>
+              </div>
+            </div>
+          </div>
+          <div class="mt-6 grid grid-cols-2 gap-4 text-center">
+            <div>
+              <div class="text-3xl font-bold gradient-text">45.3%</div>
+              <div class="text-gray-400 text-sm" data-i18n="market.cagr">年复合增长率</div>
+            </div>
+            <div>
+              <div class="text-3xl font-bold gradient-text">85%</div>
+              <div class="text-gray-400 text-sm" data-i18n="market.adoption">企业采用率</div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Target Users -->
+        <div class="neon-box rounded-xl p-8 bg-background-light/30">
+          <h3 class="font-heading text-2xl mb-6" data-i18n="market.targetTitle">目标用户</h3>
+          <div class="space-y-6">
+            <div class="border border-primary/30 rounded-lg p-4">
+              <div class="font-semibold mb-2" data-i18n="market.target1.title">个人开发者</div>
+              <div class="text-gray-400 text-sm mb-2" data-i18n="market.target1.desc">一人成军</div>
+              <div class="text-primary-light">1-10 Agent</div>
+            </div>
+            <div class="border border-primary/30 rounded-lg p-4">
+              <div class="font-semibold mb-2" data-i18n="market.target2.title">小团队</div>
+              <div class="text-gray-400 text-sm mb-2" data-i18n="market.target2.desc">协作高效</div>
+              <div class="text-primary-light">10-50 Agent</div>
+            </div>
+            <div class="border border-primary/30 rounded-lg p-4">
+              <div class="font-semibold mb-2" data-i18n="market.target3.title">企业级</div>
+              <div class="text-gray-400 text-sm mb-2" data-i18n="market.target3.desc">集群管理</div>
+              <div class="text-primary-light">100+ Agent</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  
+  <!-- Use Cases Section -->
+  <section id="use-cases" class="py-20 px-4 scroll-section">
+    <div class="max-w-6xl mx-auto">
+      <h2 class="font-heading text-4xl md:text-5xl text-center mb-4 neon-text" data-i18n="cases.title">
+        使用场景
+      </h2>
+      <p class="text-center text-gray-400 mb-12" data-i18n="cases.subtitle">
+        从个人到企业，全面覆盖
+      </p>
+      
+      <div class="grid md:grid-cols-3 gap-8">
+        <div class="feature-card">
+          <h3 class="font-heading text-2xl mb-4 gradient-text" data-i18n="case1.title">个人开发者</h3>
+          <p class="text-gray-400 mb-4" data-i18n="case1.quote">"一人成军"</p>
+          <div class="text-gray-300 space-y-3 text-sm">
+            <p>🤖 <span data-i18n="case1.agent1">开发 Agent - 写代码、Review</span></p>
+            <p>✍️ <span data-i18n="case1.agent2">文案 Agent - 写文档、邮件</span></p>
+            <p>📊 <span data-i18n="case1.agent3">数据 Agent - 分析日志</span></p>
+          </div>
+          <div class="mt-6 p-4 bg-cta/10 border border-cta/30 rounded">
+            <div class="text-cta-light font-semibold mb-2" data-i18n="case1.comparison">效率对比</div>
+            <div class="text-gray-400 text-sm">
+              <div class="mb-1">❌ <span data-i18n="case1.old">传统：3个终端，手动切换</span></div>
+              <div>✅ <span data-i18n="case1.new">Stratix：框选3个，一键下发</span></div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="feature-card">
+          <h3 class="font-heading text-2xl mb-4 gradient-text" data-i18n="case2.title">小团队协作</h3>
+          <p class="text-gray-400 mb-4" data-i18n="case2.quote">"5人管理20+ Agent"</p>
+          <div class="text-gray-300 space-y-3 text-sm">
+            <p>✓ <span data-i18n="case2.item1">统一指挥中心，全员可见</span></p>
+            <p>✓ <span data-i18n="case2.item2">实时同步谁在忙、谁空闲</span></p>
+            <p>✓ <span data-i18n="case2.item3">任务队列管理，避免冲突</span></p>
+          </div>
+          <div class="mt-6 p-4 bg-primary/10 border border-primary/30 rounded">
+            <div class="text-primary-light font-semibold mb-2" data-i18n="case2.benefit">核心价值</div>
+            <div class="text-gray-400 text-sm" data-i18n="case2.benefitDesc">打破信息孤岛，提升团队协作效率</div>
+          </div>
+        </div>
+        
+        <div class="feature-card">
+          <h3 class="font-heading text-2xl mb-4 gradient-text" data-i18n="case3.title">企业级集群</h3>
+          <p class="text-gray-400 mb-4" data-i18n="case3.quote">"管理100+ Agent"</p>
+          <div class="text-gray-300 space-y-3 text-sm">
+            <p>✓ <span data-i18n="case3.item1">星策网关统一接入</span></p>
+            <p>✓ <span data-i18n="case3.item2">分布式部署，跨服务器</span></p>
+            <p>✓ <span data-i18n="case3.item3">实时监控，异常告警</span></p>
+          </div>
+          <div class="mt-6 p-4 bg-primary/10 border border-primary/30 rounded">
+            <div class="text-primary-light font-semibold mb-2" data-i18n="case3.benefit">核心价值</div>
+            <div class="text-gray-400 text-sm" data-i18n="case3.benefitDesc">集中化管理，降低运维成本</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  
+  <!-- Roadmap Section -->
+  <section id="roadmap" class="py-20 px-4 scroll-section">
+    <div class="max-w-6xl mx-auto">
+      <h2 class="font-heading text-4xl md:text-5xl text-center mb-4 neon-text" data-i18n="roadmap.title">
+        发展路线图
+      </h2>
+      <p class="text-center text-gray-400 mb-12" data-i18n="roadmap.subtitle">
+        从 MVP 到生态系统的演进之路
+      </p>
+      
+      <div class="max-w-3xl mx-auto">
+        <div class="timeline-item">
+          <div class="font-heading text-xl mb-2 gradient-text" data-i18n="roadmap.mvp.title">MVP（当前）</div>
+          <ul class="text-gray-400 space-y-1">
+            <li>✓ <span data-i18n="roadmap.mvp.item1">基础 RTS 界面</span></li>
+            <li>✓ <span data-i18n="roadmap.mvp.item2">OpenClaw 对接</span></li>
+            <li>✓ <span data-i18n="roadmap.mvp.item3">英雄设计器</span></li>
+            <li>✓ <span data-i18n="roadmap.mvp.item4">星策网关</span></li>
+          </ul>
+        </div>
+        
+        <div class="timeline-item">
+          <div class="font-heading text-xl mb-2 text-primary-light" data-i18n="roadmap.v1.title">v1.0（规划中）</div>
+          <ul class="text-gray-400 space-y-1">
+            <li>○ <span data-i18n="roadmap.v1.item1">Agent 模板市场</span></li>
+            <li>○ <span data-i18n="roadmap.v1.item2">任务编排（DAG 工作流）</span></li>
+            <li>○ <span data-i18n="roadmap.v1.item3">多人协作（实时同步）</span></li>
+          </ul>
+        </div>
+        
+        <div class="timeline-item">
+          <div class="font-heading text-xl mb-2 text-primary-light" data-i18n="roadmap.v2.title">v2.0（未来）</div>
+          <ul class="text-gray-400 space-y-1">
+            <li>○ <span data-i18n="roadmap.v2.item1">AI 自动编排（AI 指挥 AI）</span></li>
+            <li>○ <span data-i18n="roadmap.v2.item2">插件系统</span></li>
+            <li>○ <span data-i18n="roadmap.v2.item3">企业版（SSO、RBAC）</span></li>
+          </ul>
+        </div>
+        
+        <div class="timeline-item">
+          <div class="font-heading text-xl mb-2 text-primary-light" data-i18n="roadmap.v3.title">v3.0（愿景）</div>
+          <ul class="text-gray-400 space-y-1">
+            <li>○ <span data-i18n="roadmap.v3.item1">Agent 生态系统</span></li>
+            <li>○ <span data-i18n="roadmap.v3.item2">第三方插件市场</span></li>
+            <li>○ <span data-i18n="roadmap.v3.item3">跨平台支持</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+  
+  <!-- CTA Section -->
+  <section id="cta" class="py-20 px-4 scroll-section">
+    <div class="max-w-4xl mx-auto text-center">
+      <h2 class="font-heading text-4xl md:text-5xl mb-6 neon-text" data-i18n="cta.title">
+        开始你的指挥官之旅
+      </h2>
+      <p class="text-gray-400 mb-8" data-i18n="cta.subtitle">
+        加入 Stratix，让 AI Agent 管理变得简单有趣
+      </p>
+      
+      <div class="flex gap-4 justify-center flex-wrap mb-12">
+        <a href="https://github.com/stratix-rts/stratix" target="_blank" class="btn-primary glitch-effect text-lg">
+          <span data-i18n="cta.btn1">访问 GitHub</span>
+        </a>
+        <a href="https://github.com/stratix-rts/stratix" target="_blank" class="btn-secondary text-lg">
+          <span data-i18n="cta.btn2">查看文档</span>
+        </a>
+      </div>
+      
+      <div class="neon-box rounded-xl p-8 bg-background-light/30">
+        <h3 class="font-heading text-xl mb-6" data-i18n="contact.title">联系方式</h3>
+        <div class="grid md:grid-cols-2 gap-6 text-left">
+          <div>
+            <div class="text-gray-400 text-sm mb-2" data-i18n="contact.founder">创始人</div>
+            <div class="font-semibold">枫余</div>
+          </div>
+          <div>
+            <div class="text-gray-400 text-sm mb-2" data-i18n="contact.phone">电话</div>
+            <div class="font-semibold">18563129063</div>
+          </div>
+          <div>
+            <div class="text-gray-400 text-sm mb-2" data-i18n="contact.email">邮箱</div>
+            <a href="mailto:hotjp@126.com" class="font-semibold text-primary-light hover:text-primary">hotjp@126.com</a>
+          </div>
+          <div>
+            <div class="text-gray-400 text-sm mb-2" data-i18n="contact.discord">社区</div>
+            <a href="https://discord.gg/3NysCNbe" target="_blank" class="font-semibold text-primary-light hover:text-primary">Discord</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  
+  <!-- Footer -->
+  <footer class="py-12 px-4 border-t border-primary/20">
+    <div class="max-w-6xl mx-auto text-center">
+      <div class="mb-4">
+        <span class="gradient-text font-heading text-xl">Stratix 星策</span>
+      </div>
+      <div class="text-gray-400 text-sm mb-4">
+        Made with ⚡ for AI Commanders
+      </div>
+      <div class="text-gray-500 text-sm">
+        License: MIT | 
+        <a href="https://github.com/stratix-rts/stratix" target="_blank" class="text-primary-light hover:text-primary">GitHub</a> | 
+        <a href="https://discord.gg/3NysCNbe" target="_blank" class="text-primary-light hover:text-primary">Discord</a>
+      </div>
+    </div>
+  </footer>
+  
+  <script>
+    // Particle System
+    class ParticleSystem {
+      constructor(canvas) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext('2d');
+        this.particles = [];
+        this.resize();
+        this.init();
+        
+        window.addEventListener('resize', () => this.resize());
+      }
+      
+      resize() {
+        this.canvas.width = window.innerWidth;
+        this.canvas.height = window.innerHeight;
+      }
+      
+      init() {
+        const particleCount = Math.min(100, Math.floor((this.canvas.width * this.canvas.height) / 10000));
+        
+        for (let i = 0; i < particleCount; i++) {
+          this.particles.push({
+            x: Math.random() * this.canvas.width,
+            y: Math.random() * this.canvas.height,
+            vx: (Math.random() - 0.5) * 0.5,
+            vy: (Math.random() - 0.5) * 0.5,
+            radius: Math.random() * 2,
+            opacity: Math.random() * 0.5 + 0.2
+          });
+        }
+      }
+      
+      update() {
+        this.particles.forEach(p => {
+          p.x += p.vx;
+          p.y += p.vy;
+          
+          if (p.x < 0 || p.x > this.canvas.width) p.vx *= -1;
+          if (p.y < 0 || p.y > this.canvas.height) p.vy *= -1;
+        });
+      }
+      
+      draw() {
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        this.particles.forEach(p => {
+          this.ctx.beginPath();
+          this.ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+          this.ctx.fillStyle = 'rgba(124, 58, 237, ' + p.opacity + ')';
+          this.ctx.fill();
+        });
+        
+        this.particles.forEach((p1, i) => {
+          this.particles.slice(i + 1).forEach(p2 => {
+            const dx = p1.x - p2.x;
+            const dy = p1.y - p2.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            
+            if (dist < 150) {
+              this.ctx.beginPath();
+              this.ctx.moveTo(p1.x, p1.y);
+              this.ctx.lineTo(p2.x, p2.y);
+              this.ctx.strokeStyle = 'rgba(124, 58, 237, ' + (0.2 * (1 - dist / 150)) + ')';
+              this.ctx.stroke();
+            }
+          });
+        });
+      }
+      
+      animate() {
+        if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          this.update();
+          this.draw();
+        }
+        requestAnimationFrame(() => this.animate());
+      }
+    }
+    
+    // Initialize particles
+    const canvas = document.getElementById('particle-canvas');
+    const particleSystem = new ParticleSystem(canvas);
+    particleSystem.animate();
+    
+    // Scroll Animation
+    const observerOptions = {
+      threshold: 0.1,
+      rootMargin: '0px 0px -100px 0px'
+    };
+    
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+        }
+      });
+    }, observerOptions);
+    
+    document.querySelectorAll('.scroll-section').forEach(section => {
+      observer.observe(section);
+    });
+    
+    // Agent Selection Demo
+    const agentCards = document.querySelectorAll('.agent-card');
+    let isSelecting = false;
+    let selectionStart = { x: 0, y: 0 };
+    let selectionBox = null;
+    
+    agentCards.forEach(card => {
+      card.addEventListener('click', () => {
+        card.classList.toggle('selected');
+      });
+    });
+    
+    // Language Switching
+    const translations = {
+      zh: {
+        'hero.title': '一人成军，万智听命',
+        'hero.subtitle': '基于 RTS 游戏化的多 Agent 可视化指挥平台',
+        'hero.tagline': '小白也能指挥海量 OpenClaw 或其他 Agent 的游戏化平台',
+        'hero.cta1': '访问 GitHub',
+        'hero.cta2': '查看文档',
+        'demo.title': 'Stratix 指挥中心',
+        'demo.agent1': '软件工程师',
+        'demo.agent2': '数据分析师',
+        'demo.agent3': '文案专员',
+        'demo.agent4': '测试工程师',
+        'status.active': '执行中',
+        'status.idle': '待命',
+        'demo.hint': '💡 框选多个 Agent，一键批量操作',
+        'pain.title': '你是否也在经历这些痛点？',
+        'pain.subtitle': '传统 Agent 管理方式的三大困境',
+        'pain1.title': '管理混乱',
+        'pain1.desc': '开了 10 个 Agent，不知道谁在摸鱼',
+        'pain1.item1': '10+ 终端窗口',
+        'pain1.item2': '手动切换找消息',
+        'pain1.item3': '状态分散难追踪',
+        'pain2.title': '配置繁琐',
+        'pain2.desc': 'AI 一分钟出结果，你花十分钟配置',
+        'pain2.item1': '手写 JSON 配置',
+        'pain2.item2': '重复劳动浪费时间',
+        'pain2.item3': '出错率高难维护',
+        'pain3.title': '操作低效',
+        'pain3.desc': '每次下发指令，都要逐个手动操作',
+        'pain3.item1': '无法批量执行',
+        'pain3.item2': '缺乏统一视图',
+        'pain3.item3': '协作效率低下',
+        'solution.title': 'Stratix 解决方案',
+        'solution.subtitle': '四大核心特性，重新定义 Agent 管理',
+        'feature1.title': 'RTS 可视化界面',
+        'feature1.desc': '框选 · 编队 · 批量操作',
+        'feature1.item1': '像玩游戏一样简单',
+        'feature1.item2': '实时状态一目了然',
+        'feature1.item3': '小白也能快速上手',
+        'feature2.title': '英雄设计器',
+        'feature2.desc': '可视化配置 Agent',
+        'feature2.item1': '告别 JSON 手写',
+        'feature2.item2': '一键导出/导入',
+        'feature2.item3': '模板库快速创建',
+        'feature3.title': '星策网关',
+        'feature3.desc': '统一连接所有 Agent',
+        'feature3.item1': '支持多实例混合部署',
+        'feature3.item2': 'WebSocket 实时通信',
+        'feature3.item3': '兼容 OpenClaw 等',
+        'feature4.title': '50ms 极速响应',
+        'feature4.desc': '从点击到执行',
+        'feature4.item1': '延迟控制在 50ms 内',
+        'feature4.item2': '支持 100+ Agent',
+        'feature4.item3': '实时双向通信',
+        'market.title': '市场机会',
+        'market.subtitle': 'AI Agent 市场爆发式增长',
+        'market.chartTitle': '市场规模增长趋势',
+        'market.unit': '亿美元',
+        'market.cagr': '年复合增长率',
+        'market.adoption': '企业采用率',
+        'market.targetTitle': '目标用户',
+        'market.target1.title': '个人开发者',
+        'market.target1.desc': '一人成军',
+        'market.target2.title': '小团队',
+        'market.target2.desc': '协作高效',
+        'market.target3.title': '企业级',
+        'market.target3.desc': '集群管理',
+        'cases.title': '使用场景',
+        'cases.subtitle': '从个人到企业，全面覆盖',
+        'case1.title': '个人开发者',
+        'case1.quote': '"一人成军"',
+        'case1.agent1': '开发 Agent - 写代码、Review',
+        'case1.agent2': '文案 Agent - 写文档、邮件',
+        'case1.agent3': '数据 Agent - 分析日志',
+        'case1.comparison': '效率对比',
+        'case1.old': '传统：3个终端，手动切换',
+        'case1.new': 'Stratix：框选3个，一键下发',
+        'case2.title': '小团队协作',
+        'case2.quote': '"5人管理20+ Agent"',
+        'case2.item1': '统一指挥中心，全员可见',
+        'case2.item2': '实时同步谁在忙、谁空闲',
+        'case2.item3': '任务队列管理，避免冲突',
+        'case2.benefit': '核心价值',
+        'case2.benefitDesc': '打破信息孤岛，提升团队协作效率',
+        'case3.title': '企业级集群',
+        'case3.quote': '"管理100+ Agent"',
+        'case3.item1': '星策网关统一接入',
+        'case3.item2': '分布式部署，跨服务器',
+        'case3.item3': '实时监控，异常告警',
+        'case3.benefit': '核心价值',
+        'case3.benefitDesc': '集中化管理，降低运维成本',
+        'roadmap.title': '发展路线图',
+        'roadmap.subtitle': '从 MVP 到生态系统的演进之路',
+        'roadmap.mvp.title': 'MVP（当前）',
+        'roadmap.mvp.item1': '基础 RTS 界面',
+        'roadmap.mvp.item2': 'OpenClaw 对接',
+        'roadmap.mvp.item3': '英雄设计器',
+        'roadmap.mvp.item4': '星策网关',
+        'roadmap.v1.title': 'v1.0（规划中）',
+        'roadmap.v1.item1': 'Agent 模板市场',
+        'roadmap.v1.item2': '任务编排（DAG 工作流）',
+        'roadmap.v1.item3': '多人协作（实时同步）',
+        'roadmap.v2.title': 'v2.0（未来）',
+        'roadmap.v2.item1': 'AI 自动编排（AI 指挥 AI）',
+        'roadmap.v2.item2': '插件系统',
+        'roadmap.v2.item3': '企业版（SSO、RBAC）',
+        'roadmap.v3.title': 'v3.0（愿景）',
+        'roadmap.v3.item1': 'Agent 生态系统',
+        'roadmap.v3.item2': '第三方插件市场',
+        'roadmap.v3.item3': '跨平台支持',
+        'cta.title': '开始你的指挥官之旅',
+        'cta.subtitle': '加入 Stratix，让 AI Agent 管理变得简单有趣',
+        'cta.btn1': '访问 GitHub',
+        'cta.btn2': '查看文档',
+        'contact.title': '联系方式',
+        'contact.founder': '创始人',
+        'contact.phone': '电话',
+        'contact.email': '邮箱',
+        'contact.discord': '社区'
+      },
+      en: {
+        'hero.title': 'Command Thousands with One',
+        'hero.subtitle': 'RTS-Gamified Multi-Agent Visual Command Platform',
+        'hero.tagline': 'Even beginners can command massive OpenClaw or other agents',
+        'hero.cta1': 'Visit GitHub',
+        'hero.cta2': 'View Docs',
+        'demo.title': 'Stratix Command Center',
+        'demo.agent1': 'Software Engineer',
+        'demo.agent2': 'Data Analyst',
+        'demo.agent3': 'Content Writer',
+        'demo.agent4': 'Test Engineer',
+        'status.active': 'Active',
+        'status.idle': 'Idle',
+        'demo.hint': '💡 Select multiple agents for batch operations',
+        'pain.title': 'Are You Facing These Pain Points?',
+        'pain.subtitle': 'Three major challenges in traditional agent management',
+        'pain1.title': 'Chaotic Management',
+        'pain1.desc': 'Running 10 agents, unsure who\'s working',
+        'pain1.item1': '10+ terminal windows',
+        'pain1.item2': 'Manual switching to find messages',
+        'pain1.item3': 'Scattered status tracking',
+        'pain2.title': 'Complex Configuration',
+        'pain2.desc': 'AI delivers in 1 minute, you spend 10 configuring',
+        'pain2.item1': 'Hand-writing JSON configs',
+        'pain2.item2': 'Repetitive work wastes time',
+        'pain2.item3': 'High error rate, hard to maintain',
+        'pain3.title': 'Inefficient Operations',
+        'pain3.desc': 'Manually executing commands one by one',
+        'pain3.item1': 'No batch execution',
+        'pain3.item2': 'Lack of unified view',
+        'pain3.item3': 'Low collaboration efficiency',
+        'solution.title': 'Stratix Solution',
+        'solution.subtitle': 'Four core features redefining agent management',
+        'feature1.title': 'RTS Visual Interface',
+        'feature1.desc': 'Select · Group · Batch Operate',
+        'feature1.item1': 'As simple as playing a game',
+        'feature1.item2': 'Real-time status at a glance',
+        'feature1.item3': 'Beginners can start quickly',
+        'feature2.title': 'Hero Designer',
+        'feature2.desc': 'Visual agent configuration',
+        'feature2.item1': 'No more manual JSON',
+        'feature2.item2': 'One-click export/import',
+        'feature2.item3': 'Quick creation from template library',
+        'feature3.title': 'Stratix Gateway',
+        'feature3.desc': 'Unified connection for all agents',
+        'feature3.item1': 'Multi-instance hybrid deployment',
+        'feature3.item2': 'WebSocket real-time communication',
+        'feature3.item3': 'Compatible with OpenClaw, etc.',
+        'feature4.title': '50ms Ultra-Fast Response',
+        'feature4.desc': 'From click to execution',
+        'feature4.item1': 'Latency under 50ms',
+        'feature4.item2': 'Support 100+ agents',
+        'feature4.item3': 'Real-time bidirectional communication',
+        'market.title': 'Market Opportunity',
+        'market.subtitle': 'Explosive growth in AI Agent market',
+        'market.chartTitle': 'Market Size Growth Trend',
+        'market.unit': 'Billion USD',
+        'market.cagr': 'CAGR',
+        'market.adoption': 'Enterprise Adoption',
+        'market.targetTitle': 'Target Users',
+        'market.target1.title': 'Individual Developers',
+        'market.target1.desc': 'Command alone',
+        'market.target2.title': 'Small Teams',
+        'market.target2.desc': 'Efficient collaboration',
+        'market.target3.title': 'Enterprise',
+        'market.target3.desc': 'Cluster management',
+        'cases.title': 'Use Cases',
+        'cases.subtitle': 'Comprehensive coverage from individual to enterprise',
+        'case1.title': 'Individual Developers',
+        'case1.quote': '"Command alone"',
+        'case1.agent1': 'Dev Agent - Code, Review',
+        'case1.agent2': 'Content Agent - Docs, Emails',
+        'case1.agent3': 'Data Agent - Log Analysis',
+        'case1.comparison': 'Efficiency Comparison',
+        'case1.old': 'Traditional: 3 terminals, manual switching',
+        'case1.new': 'Stratix: Select 3, batch execute',
+        'case2.title': 'Team Collaboration',
+        'case2.quote': '"5 people manage 20+ agents"',
+        'case2.item1': 'Unified command center, visible to all',
+        'case2.item2': 'Real-time sync of who\'s busy or idle',
+        'case2.item3': 'Task queue management, avoid conflicts',
+        'case2.benefit': 'Core Value',
+        'case2.benefitDesc': 'Break information silos, boost team efficiency',
+        'case3.title': 'Enterprise Clusters',
+        'case3.quote': '"Manage 100+ agents"',
+        'case3.item1': 'Unified Stratix gateway access',
+        'case3.item2': 'Distributed deployment, cross-server',
+        'case3.item3': 'Real-time monitoring, anomaly alerts',
+        'case3.benefit': 'Core Value',
+        'case3.benefitDesc': 'Centralized management, reduce ops costs',
+        'roadmap.title': 'Roadmap',
+        'roadmap.subtitle': 'Evolution from MVP to ecosystem',
+        'roadmap.mvp.title': 'MVP (Current)',
+        'roadmap.mvp.item1': 'Basic RTS interface',
+        'roadmap.mvp.item2': 'OpenClaw integration',
+        'roadmap.mvp.item3': 'Hero designer',
+        'roadmap.mvp.item4': 'Stratix gateway',
+        'roadmap.v1.title': 'v1.0 (Planned)',
+        'roadmap.v1.item1': 'Agent template marketplace',
+        'roadmap.v1.item2': 'Task orchestration (DAG workflow)',
+        'roadmap.v1.item3': 'Multi-user collaboration (real-time sync)',
+        'roadmap.v2.title': 'v2.0 (Future)',
+        'roadmap.v2.item1': 'AI auto-orchestration (AI commands AI)',
+        'roadmap.v2.item2': 'Plugin system',
+        'roadmap.v2.item3': 'Enterprise edition (SSO, RBAC)',
+        'roadmap.v3.title': 'v3.0 (Vision)',
+        'roadmap.v3.item1': 'Agent ecosystem',
+        'roadmap.v3.item2': 'Third-party plugin marketplace',
+        'roadmap.v3.item3': 'Cross-platform support',
+        'cta.title': 'Start Your Commander Journey',
+        'cta.subtitle': 'Join Stratix, make AI agent management simple and fun',
+        'cta.btn1': 'Visit GitHub',
+        'cta.btn2': 'View Docs',
+        'contact.title': 'Contact',
+        'contact.founder': 'Founder',
+        'contact.phone': 'Phone',
+        'contact.email': 'Email',
+        'contact.discord': 'Community'
+      }
+    };
+    
+    let currentLang = 'zh';
+    
+    function switchLanguage(lang) {
+      currentLang = lang;
+      document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+      
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (translations[lang][key]) {
+          el.textContent = translations[lang][key];
+        }
+      });
+      
+      document.querySelectorAll('.lang-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.getAttribute('data-lang') === lang) {
+          btn.classList.add('active');
+        }
+      });
+    }
+    
+    document.querySelectorAll('.lang-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const lang = btn.getAttribute('data-lang');
+        switchLanguage(lang);
+      });
+    });
+    
+    // Smooth scroll
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+      anchor.addEventListener('click', function(e) {
+        e.preventDefault();
+        const target = document.querySelector(this.getAttribute('href'));
+        if (target) {
+          target.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start'
+          });
+        }
+      });
+    });
+  </script>
+</body>
+</html>
