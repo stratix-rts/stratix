@@ -161,6 +161,7 @@ class RTSCharacterRenderer {
   }
 
   private createAnimationFrames(key: string, canvas: HTMLCanvasElement): void {
+    console.log(`[RTSCharacterRenderer] 🎨 Creating animation frames for: ${key}`);
     const frameWidth = FRAME_SIZE;
     const frameHeight = FRAME_SIZE;
 
@@ -217,9 +218,11 @@ class RTSCharacterRenderer {
             frameRate: frameRate,
             repeat: -1
           });
+          console.log(`[RTSCharacterRenderer] ✅ Created animation: ${animKeyName}, frames: ${frameNames.length}`);
         }
       }
     }
+    console.log(`[RTSCharacterRenderer] ✅ All animations created for ${key}`);
   }
 
   private createAnimationFramesFromTexture(key: string, texture: Phaser.Textures.Texture): void {
