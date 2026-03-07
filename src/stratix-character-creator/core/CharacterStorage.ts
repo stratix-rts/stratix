@@ -39,7 +39,6 @@ class CharacterStorage {
           const store = db.createObjectStore(STORE_NAME, { keyPath: 'characterId' });
           store.createIndex('name', 'name', { unique: false });
           store.createIndex('createdAt', 'createdAt', { unique: false });
-          store.createIndex('isDefault', 'isDefault', { unique: false });
         }
       };
     });
@@ -116,25 +115,6 @@ class CharacterStorage {
     return characters.find(c => c.name === name) ?? null;
   }
 
-  async getDefault(): Promise<SavedCharacter | null> {
-    const characters = await this.list();
-    return characters.find(c => c.isDefault) ?? null;
-  }
-
-  async setDefault(characterId: string): Promise<void> {
-    const characters = await this.list();
-
-    for (const char of characters) {
-      if (char.characterId === characterId && !char.isDefault) {
-        char.isDefault = true;
-        await this.save(char);
-      } else if (char.characterId !== characterId && char.isDefault) {
-        char.isDefault = false;
-        await this.save(char);
-      }
-    }
-  }
-
   async export(characterId: string): Promise<string> {
     const character = await this.load(characterId);
     if (!character) {
@@ -173,8 +153,8 @@ class CharacterStorage {
         unlockedNodes: []
       },
       attributes: {},
-      thumbnail: '',  // 默认空字符串，后续生成
       isDefault: false,
+      thumbnail: '',
       createdAt: Date.now(),
       updatedAt: Date.now()
     };

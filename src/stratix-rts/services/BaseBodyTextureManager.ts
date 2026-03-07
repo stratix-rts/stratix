@@ -1,13 +1,7 @@
 import Phaser from 'phaser';
 import type { BodyType } from '@/stratix-core/stratix-protocol';
-import { FRAME_SIZE, ANIMATION_OFFSETS } from '@/stratix-character-creator/constants';
+import { FRAME_SIZE, ANIMATION_OFFSETS, ANIMATION_CONFIGS, ALL_ANIMATIONS, ANIMATION_FRAMERATES } from '@/stratix-character-creator/constants';
 import { generateBaseTextureInBrowser } from '../scripts/BaseTextureGenerator';
-
-const RTS_ANIMATION_CONFIGS = [
-  { key: 'idle', row: 22, frames: 4, frameRate: 4 },
-  { key: 'walk', row: 8, frames: 8, frameRate: 8 },
-  { key: 'run', row: 38, frames: 8, frameRate: 10 }
-] as const;
 
 const BODY_COLORS: Record<BodyType, { primary: string; secondary: string; outline: string }> = {
   male: { primary: '#4a7c7c', secondary: '#3d6666', outline: '#2d4f4f' },
@@ -24,15 +18,31 @@ class BaseBodyTextureManager {
   private scene: Phaser.Scene | null = null;
   private loadedTextures: Map<BodyType, string> = new Map();
   private loadingPromises: Map<BodyType, Promise<string>> = new Map();
+  private currentSceneId: symbol | null = null;
+  private initPromise: Promise<void> | null = null;
 
   async initialize(scene: Phaser.Scene): Promise<void> {
+    const sceneId = (scene as any).scene?.key || Symbol('scene');
+    
+    if (this.scene && this.currentSceneId !== sceneId) {
+      this.destroy();
+      this.currentSceneId = sceneId;
+      this.initPromise = null;
+    }
+    
+    if (this.loadedTextures.size > 0) return;
+    
+    if (this.initPromise) return this.initPromise;
+    
     this.scene = scene;
-    await this.preloadAllBaseBodyTextures();
+    this.currentSceneId = sceneId;
+    
+    this.initPromise = this.preloadAllBaseBodyTextures();
+    await this.initPromise;
   }
 
   private async preloadAllBaseBodyTextures(): Promise<void> {
     const bodyTypes: BodyType[] = ['male', 'female', 'teen', 'muscular', 'pregnant', 'child'];
-    
     await Promise.all(bodyTypes.map(bodyType => this.loadBaseBodyTexture(bodyType)));
   }
 
@@ -49,8 +59,7 @@ class BaseBodyTextureManager {
     this.loadingPromises.set(bodyType, promise);
     
     try {
-      const result = await promise;
-      return result;
+      return await promise;
     } finally {
       this.loadingPromises.delete(bodyType);
     }
@@ -73,10 +82,8 @@ class BaseBodyTextureManager {
     try {
       await this.loadTextureFromUrl(textureKey, assetUrl);
       this.loadedTextures.set(bodyType, textureKey);
-      console.log(`[BaseBodyTextureManager] Loaded from assets: ${bodyType}`);
       return textureKey;
     } catch (error) {
-      console.warn(`[BaseBodyTextureManager] Asset not found for ${bodyType}, generating procedurally...`);
       return this.generateBaseBodyTexture(bodyType);
     }
   }
@@ -90,7 +97,12 @@ class BaseBodyTextureManager {
 
       this.scene.load.image(key, url);
       
+      const timeoutId = setTimeout(() => {
+        reject(new Error(`Timeout loading texture: ${url}`));
+      }, 10000);
+      
       this.scene.load.once(`filecomplete-image-${key}`, () => {
+        clearTimeout(timeoutId);
         const texture = this.scene!.textures.get(key);
         if (texture) {
           this.createAnimationsForTexture(key);
@@ -99,6 +111,7 @@ class BaseBodyTextureManager {
       });
       
       this.scene.load.once(`loaderror-image-${key}`, () => {
+        clearTimeout(timeoutId);
         reject(new Error(`Failed to load texture: ${url}`));
       });
       
@@ -137,35 +150,44 @@ class BaseBodyTextureManager {
     const frameWidth = FRAME_SIZE;
     const frameHeight = FRAME_SIZE;
 
-    for (const animConfig of RTS_ANIMATION_CONFIGS) {
-      const yPos = ANIMATION_OFFSETS[animConfig.key];
-      if (yPos === undefined) continue;
+    for (const animKey of ALL_ANIMATIONS) {
+      const animConfig = ANIMATION_CONFIGS[animKey];
+      const yPos = ANIMATION_OFFSETS[animKey];
+      if (yPos === undefined || !animConfig) continue;
+
+      const frameRate = ANIMATION_FRAMERATES[animKey] || 8;
 
       for (let direction = 0; direction < 4; direction++) {
-        const frames: Phaser.Types.Animations.AnimationFrame[] = [];
-
-        for (let f = 0; f < animConfig.frames; f++) {
-          const frameName = `${animConfig.key}_${direction}_${f}`;
+        const uniqueFrameIndexes = [...new Set(animConfig.cycle)];
+        
+        for (const frameIndex of uniqueFrameIndexes) {
+          const frameName = `${animKey}_${direction}_${frameIndex}`;
           texture.add(
             frameName,
             0,
-            f * frameWidth,
+            frameIndex * frameWidth,
             yPos + direction * frameHeight,
             frameWidth,
             frameHeight
           );
+        }
+
+        const frames: Phaser.Types.Animations.AnimationFrame[] = [];
+        for (const frameIndex of animConfig.cycle) {
+          const frameName = `${animKey}_${direction}_${frameIndex}`;
           frames.push({ key: textureKey, frame: frameName });
         }
 
-        const animKey = `${textureKey}_${animConfig.key}_${direction}`;
+        const animKeyName = `${textureKey}_${animKey}_${direction}`;
         
-        if (!this.scene!.anims.exists(animKey)) {
+        if (!this.scene!.anims.exists(animKeyName)) {
           this.scene!.anims.create({
-            key: animKey,
+            key: animKeyName,
             frames,
-            frameRate: animConfig.frameRate,
+            frameRate: frameRate,
             repeat: -1
           });
+          console.log(`[BaseBodyTextureManager] ✅ Created animation: ${animKeyName}, frames: ${frames.length}`);
         }
       }
     }

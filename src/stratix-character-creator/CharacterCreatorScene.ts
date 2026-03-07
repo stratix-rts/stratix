@@ -426,7 +426,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
     this.uiElements.nameInput = this.add.dom(24, y).createFromHTML(html).setOrigin(0, 0);
     panel.add(this.uiElements.nameInput);
 
-    const input = this.uiElements.nameInput.node.querySelector('input') as HTMLInputElement;
+    const input = this.uiElements.nameInput.node?.querySelector('input') as HTMLInputElement;
     input?.addEventListener('input', (e) => {
       if (this.currentCharacter) {
         this.currentCharacter.name = (e.target as HTMLInputElement).value;
@@ -481,7 +481,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
     panel.add(dirLabel);
 
     const dirs = ['↓', '←', '↑', '→'];
-    const dirValues = [0, 1, 2, 3];
+    const dirValues = [2, 1, 0, 3];  // 与 LPC 行号一致: 下=2, 左=1, 上=0, 右=3
     dirs.forEach((dir, i) => {
       const isActive = i === 0;
       const btn = this.add.text(24 + i * 50, y + 75, dir, {
@@ -959,7 +959,9 @@ export class CharacterCreatorScene extends Phaser.Scene {
       width: panelW - 32,
       height: panelH - 32,
       bodyType: this.currentCharacter?.bodyType ?? DEFAULT_BODY_TYPE,
-      onPartSelected: (category, itemId, variant) => this.onPartSelected(category, itemId, variant)
+      onPartSelected: (category, itemId, variant) => this.onPartSelected(category, itemId, variant),
+      onRandomize: () => this.randomizeCharacter('normal'),
+      onNext: () => this.setStep('openclaw')
     });
     const dom = this.partSelector.create();
     this.mainPanelContainer.add(dom);
@@ -974,8 +976,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
       width: panelW - 32,
       height: panelH - 32,
       onConnected: (connectionId) => {
-        if (this.currentCharacter && connectionId) {
-          this.currentCharacter.openClawConnectionId = connectionId;
+        if (connectionId) {
           this.isDirty = true;
         }
         this.setStep('agent');
@@ -994,9 +995,32 @@ export class CharacterCreatorScene extends Phaser.Scene {
       width: panelW - 32,
       height: panelH - 32,
       character: this.currentCharacter,
-      onComplete: () => {
-        this.saveCharacter();
-        this.showMessage('角色创建完成 Character created!', 'success');
+      onComplete: async () => {
+        console.log('========================================');
+        console.log('[CharacterCreatorScene] 🔵 onComplete callback triggered');
+        
+        const characterSnapshot = this.prepareCharacterForCreation();
+        console.log('[CharacterCreatorScene] 📦 Character snapshot:', {
+          id: characterSnapshot?.characterId,
+          name: characterSnapshot?.name
+        });
+        
+        if (characterSnapshot && this.currentCharacter) {
+          console.log('[CharacterCreatorScene] 🚀 Step 1: Emitting scene event');
+          this.events.emit('character:created', characterSnapshot);
+          console.log('[CharacterCreatorScene] ✅ Scene event emitted');
+          
+          console.log('[CharacterCreatorScene] 💾 Step 2: Starting async save (non-blocking)');
+          this.saveCharacter().catch(err => {
+            console.error('[CharacterCreatorScene] ❌ Failed to save character:', err);
+          });
+          
+          console.log('[CharacterCreatorScene] ✅ onComplete completed (弹窗应该关闭了)');
+          console.log('========================================');
+        } else {
+          console.error('[CharacterCreatorScene] ❌ No character to create');
+          console.log('========================================');
+        }
       },
       onBack: () => {
         this.setStep('openclaw');
@@ -1217,45 +1241,58 @@ export class CharacterCreatorScene extends Phaser.Scene {
     return allHeads.length > 0 ? allHeads[Math.floor(Math.random() * allHeads.length)] : null;
   }
 
-  async saveCharacter(): Promise<void> {
-    if (!this.currentCharacter) return;
+  prepareCharacterForCreation(): SavedCharacter | null {
+    if (!this.currentCharacter) return null;
 
     if (this.skillTree) {
       this.currentCharacter.skillTree = this.skillTree.getState();
       this.currentCharacter.attributes = this.skillTree.calculateAttributes();
     }
 
-    const texture = await textureManager.generateAndUploadTexture({
-      characterId: this.currentCharacter.characterId,
-      bodyType: this.currentCharacter.bodyType,
-      parts: this.currentCharacter.parts,
-      thumbnail: this.currentCharacter.thumbnail,
-      createdAt: this.currentCharacter.createdAt,
-      updatedAt: this.currentCharacter.updatedAt
-    });
+    return { ...this.currentCharacter };
+  }
 
-    if (texture) {
-      this.currentCharacter.texture = texture;
+  async saveCharacter(): Promise<void> {
+    if (!this.currentCharacter) return;
+
+    try {
+      if (this.skillTree) {
+        this.currentCharacter.skillTree = this.skillTree.getState();
+        this.currentCharacter.attributes = this.skillTree.calculateAttributes();
+      }
+
+      const texture = await textureManager.generateAndUploadTexture({
+        characterId: this.currentCharacter.characterId,
+        name: this.currentCharacter.name,
+        bodyType: this.currentCharacter.bodyType,
+        parts: this.currentCharacter.parts,
+        thumbnail: this.currentCharacter.thumbnail,
+        createdAt: this.currentCharacter.createdAt,
+        updatedAt: this.currentCharacter.updatedAt
+      });
+
+      if (texture) {
+        this.currentCharacter.texture = texture;
+      }
+
+      this.currentCharacter.updatedAt = Date.now();
+
+      const existingChar = await characterStorage.load(this.currentCharacter.characterId);
+      const isNew = !existingChar;
+
+      await characterStorage.save(this.currentCharacter);
+      this.isDirty = false;
+
+      if (this.characterList) {
+        this.characterList.refresh();
+      }
+      
+      if (this.cameras && this.cameras.main) {
+        this.showMessage('角色已保存 Character saved', 'success');
+      }
+    } catch (error) {
+      console.error('[CharacterCreatorScene] Failed to save character:', error);
     }
-
-    this.currentCharacter.updatedAt = Date.now();
-
-    const existingChar = await characterStorage.load(this.currentCharacter.characterId);
-    const isNew = !existingChar;
-
-    await characterStorage.save(this.currentCharacter);
-    this.isDirty = false;
-
-    if (isNew) {
-      characterCreatorEvents.emitCharacterCreated(this.currentCharacter);
-      this.callbacks.onCharacterCreated?.(this.currentCharacter);
-    } else {
-      characterCreatorEvents.emitCharacterUpdated(this.currentCharacter);
-      this.callbacks.onCharacterUpdated?.(this.currentCharacter);
-    }
-
-    this.characterList?.refresh();
-    this.showMessage('角色已保存 Character saved', 'success');
   }
 
   setBodyType(bodyType: BodyType): void {
@@ -1289,7 +1326,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
   async loadCharacter(character: SavedCharacter): Promise<void> {
     this.currentCharacter = character;
 
-    if (this.uiElements.nameInput) {
+    if (this.uiElements.nameInput?.node) {
       const input = this.uiElements.nameInput.node.querySelector('input') as HTMLInputElement;
       if (input) input.value = character.name;
     }

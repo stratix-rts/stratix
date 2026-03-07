@@ -3,22 +3,9 @@ import type { StratixAgentConfig, BodyType } from '@/stratix-core/stratix-protoc
 import { textureLoadQueue, TextureLoadTask } from './TextureLoadQueue';
 import { baseBodyTextureManager } from './BaseBodyTextureManager';
 import { textureManager } from '@/stratix-core/services';
-import { FRAME_SIZE, ANIMATION_OFFSETS } from '@/stratix-character-creator/constants';
+import { FRAME_SIZE, ANIMATION_OFFSETS, ANIMATION_CONFIGS, ANIMATION_FRAMERATES, CORE_RTS_ANIMATIONS } from '@/stratix-character-creator/constants';
 
 const SCALE = 0.75;
-
-interface AnimationConfig {
-  key: string;
-  row: number;
-  frames: number;
-  frameRate: number;
-}
-
-const RTS_ANIMATION_CONFIGS: AnimationConfig[] = [
-  { key: 'idle', row: 22, frames: 4, frameRate: 4 },
-  { key: 'walk', row: 8, frames: 8, frameRate: 8 },
-  { key: 'run', row: 38, frames: 8, frameRate: 10 }
-];
 
 export type TextureLoadResult = 
   | { type: 'ready'; textureKey: string }
@@ -63,13 +50,13 @@ class RTSCharacterRenderer {
     config: StratixAgentConfig,
     onTextureReady?: TextureReadyCallback
   ): Promise<TextureLoadResult> {
-    if (!config.character) {
+    if (!config.profile) {
       return { type: 'fallback', textureKey: 'stratix-agent' };
     }
 
     await this.initialize();
 
-    const character = config.character;
+    const character = config.profile;
     const characterId = character.characterId;
     const textureKey = `char-${characterId}`;
 
@@ -177,49 +164,57 @@ class RTSCharacterRenderer {
     const frameWidth = FRAME_SIZE;
     const frameHeight = FRAME_SIZE;
 
-    for (const animConfig of RTS_ANIMATION_CONFIGS) {
-      const yPos = ANIMATION_OFFSETS[animConfig.key];
-      if (yPos === undefined) continue;
+    for (const animKey of CORE_RTS_ANIMATIONS) {
+      const animConfig = ANIMATION_CONFIGS[animKey];
+      const yPos = ANIMATION_OFFSETS[animKey];
+      if (yPos === undefined || !animConfig) continue;
+
+      const frameRate = ANIMATION_FRAMERATES[animKey] || 8;
+      const uniqueFrameIndexes = [...new Set(animConfig.cycle)];
+      const maxFrame = Math.max(...uniqueFrameIndexes);
 
       for (let direction = 0; direction < 4; direction++) {
-        const frameNames: string[] = [];
-        
-        for (let f = 0; f < animConfig.frames; f++) {
-          const frameKey = `${key}_${animConfig.key}_${direction}_${f}`;
-          const frameCanvas = document.createElement('canvas');
-          frameCanvas.width = frameWidth;
-          frameCanvas.height = frameHeight;
-          
-          const ctx = frameCanvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(
-              canvas,
-              f * frameWidth,
-              yPos + direction * frameHeight,
-              frameWidth,
-              frameHeight,
-              0, 0,
-              frameWidth,
-              frameHeight
-            );
-          }
+        for (const frameIndex of uniqueFrameIndexes) {
+          const frameKey = `${key}_${animKey}_${direction}_${frameIndex}`;
           
           if (!this.scene.textures.exists(frameKey)) {
+            const frameCanvas = document.createElement('canvas');
+            frameCanvas.width = frameWidth;
+            frameCanvas.height = frameHeight;
+            
+            const ctx = frameCanvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(
+                canvas,
+                frameIndex * frameWidth,
+                yPos + direction * frameHeight,
+                frameWidth,
+                frameHeight,
+                0, 0,
+                frameWidth,
+                frameHeight
+              );
+            }
+            
             this.scene.textures.addCanvas(frameKey, frameCanvas);
           }
-          frameNames.push(frameKey);
         }
 
-        const animKey = `${key}_${animConfig.key}_${direction}`;
+        const frameNames: string[] = [];
+        for (const frameIndex of animConfig.cycle) {
+          frameNames.push(`${key}_${animKey}_${direction}_${frameIndex}`);
+        }
+
+        const animKeyName = `${key}_${animKey}_${direction}`;
         
-        if (!this.scene.anims.exists(animKey)) {
+        if (!this.scene.anims.exists(animKeyName)) {
           this.scene.anims.create({
-            key: animKey,
+            key: animKeyName,
             frames: frameNames.map((frameName) => ({
-              key,
-              frame: frameName
+              key: frameName,
+              frame: 0
             })),
-            frameRate: animConfig.frameRate,
+            frameRate: frameRate,
             repeat: -1
           });
         }
@@ -231,36 +226,43 @@ class RTSCharacterRenderer {
     const frameWidth = FRAME_SIZE;
     const frameHeight = FRAME_SIZE;
 
-    for (const animConfig of RTS_ANIMATION_CONFIGS) {
-      const yPos = ANIMATION_OFFSETS[animConfig.key];
-      if (yPos === undefined) continue;
+    for (const animKey of CORE_RTS_ANIMATIONS) {
+      const animConfig = ANIMATION_CONFIGS[animKey];
+      const yPos = ANIMATION_OFFSETS[animKey];
+      if (yPos === undefined || !animConfig) continue;
+
+      const frameRate = ANIMATION_FRAMERATES[animKey] || 8;
+      const uniqueFrameIndexes = [...new Set(animConfig.cycle)];
 
       for (let direction = 0; direction < 4; direction++) {
-        const animKey = `${key}_${animConfig.key}_${direction}`;
-        
-        if (this.scene.anims.exists(animKey)) continue;
-
-        const frames: Phaser.Types.Animations.AnimationFrame[] = [];
-        
-        for (let f = 0; f < animConfig.frames; f++) {
-          const frameName = `${animConfig.key}_${direction}_${f}`;
+        for (const frameIndex of uniqueFrameIndexes) {
+          const frameName = `${animKey}_${direction}_${frameIndex}`;
           texture.add(
             frameName,
             0,
-            f * frameWidth,
+            frameIndex * frameWidth,
             yPos + direction * frameHeight,
             frameWidth,
             frameHeight
           );
-          frames.push({ key, frame: frameName });
         }
 
-        this.scene.anims.create({
-          key: animKey,
-          frames,
-          frameRate: animConfig.frameRate,
-          repeat: -1
-        });
+        const frames: Phaser.Types.Animations.AnimationFrame[] = [];
+        for (const frameIndex of animConfig.cycle) {
+          const frameName = `${animKey}_${direction}_${frameIndex}`;
+          frames.push({ key: key, frame: frameName });
+        }
+
+        const animKeyName = `${key}_${animKey}_${direction}`;
+        
+        if (!this.scene.anims.exists(animKeyName)) {
+          this.scene.anims.create({
+            key: animKeyName,
+            frames,
+            frameRate: frameRate,
+            repeat: -1
+          });
+        }
       }
     }
   }

@@ -278,7 +278,7 @@ export class PartSelector {
   }
 
   private showCategory(category: PartCategory): void {
-    if (!this.container) return;
+    if (!this.container || !this.container.node) return;
 
     this.currentCategory = category;
 
@@ -340,7 +340,7 @@ export class PartSelector {
     this.currentSelections[category] = { itemId, variant };
     this.config.onPartSelected(category, itemId, variant);
 
-    if (this.container && this.currentCategory === category) {
+    if (this.container?.node && this.currentCategory === category) {
       const listNode = this.container.node.querySelector('.parts-list');
       listNode?.querySelectorAll('.part-item').forEach(item => {
         item.classList.toggle('selected', (item as HTMLElement).dataset.itemId === itemId);

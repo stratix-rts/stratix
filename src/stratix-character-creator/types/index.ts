@@ -2,8 +2,8 @@
  * CharacterCreator 类型定义
  */
 
-export type { BodyType, PartCategory } from '../constants';
-import type { BodyType, PartCategory } from '../constants';
+import type { BodyType, PartCategory, AnimationName } from '../constants';
+export type { BodyType, PartCategory, AnimationName };
 import type { CharacterTexture } from '@/stratix-core/stratix-protocol';
 
 export interface PartSelection {
@@ -147,8 +147,6 @@ export interface PartCategoryInfo {
   icon?: string;
   parts: PartMetadata[];
 }
-
-export type AnimationName = keyof typeof import('../constants').ANIMATION_OFFSETS;
 
 export interface AnimationFrame {
   x: number;

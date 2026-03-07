@@ -215,7 +215,7 @@ export class CharacterList {
   }
 
   private renderList(): void {
-    if (!this.container) return;
+    if (!this.container || !this.container.node) return;
 
     const contentNode = this.container.node.querySelector('.list-content');
     if (!contentNode) return;
@@ -232,24 +232,23 @@ export class CharacterList {
     contentNode.innerHTML = this.characters.map(char => {
       const date = new Date(char.updatedAt).toLocaleDateString();
       const bodyLabel = bodyLabels[char.bodyType] || char.bodyType[0].toUpperCase();
-      const defaultClass = char.isDefault ? 'default' : '';
 
       return `
-        <div class="char-item ${defaultClass}" data-id="${char.characterId}">
-          <div class="char-thumb">
-            ${char.thumbnail ? `<img src="${char.thumbnail}">` : bodyLabel}
+          <div class="char-item" data-id="${char.characterId}"">
+            <div class="char-thumb">
+              ${char.thumbnail ? `<img src="${char.thumbnail}">` : bodyLabel}
+            </div>
+            <div class="char-info">
+              <div class="char-name">${char.name}</div>
+              <div class="char-meta">${bodyLabel} | ${date}</div>
+            </div>
+            <div class="char-actions">
+              <button class="action-btn select-btn" data-id="${char.characterId}">加载</button>
+              <button class="action-btn delete" data-id="${char.characterId}">删除</button>
+            </div>
           </div>
-          <div class="char-info">
-            <div class="char-name">${char.name}${char.isDefault ? ' *' : ''}</div>
-            <div class="char-meta">${bodyLabel} | ${date}</div>
-          </div>
-          <div class="char-actions">
-            <button class="action-btn select-btn" data-id="${char.characterId}">加载</button>
-            <button class="action-btn delete" data-id="${char.characterId}">删除</button>
-          </div>
-        </div>
-      `;
-    }).join('');
+        `;
+      }).join('');
 
     contentNode.querySelectorAll('.select-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -274,7 +273,7 @@ export class CharacterList {
       });
     });
 
-    const refreshBtn = this.container.node.querySelector('.refresh-btn');
+    const refreshBtn = this.container.node?.querySelector('.refresh-btn');
     refreshBtn?.addEventListener('click', () => this.loadCharacters());
   }
 
