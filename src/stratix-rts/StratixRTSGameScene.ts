@@ -10,6 +10,7 @@ import { TaskZonePreview } from './zones/TaskZonePreview';
 import { CommandSystem, Command, CommandType } from './systems/CommandSystem';
 import { ControlGroupSystem } from './systems/ControlGroupSystem';
 import { MovementSystem } from './systems/MovementSystem';
+import { StatsCollector } from './debug/StatsCollector';
 import RTSCharacterRenderer, { TextureLoadResult } from './services/RTSCharacterRenderer';
 import { rtsEventBus } from './events/core/RTSEventBus';
 import type { TopBarStats, AgentInfo, ViewportState } from './events/types/RTSEventTypes';
@@ -25,6 +26,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   private commandSystem: CommandSystem;
   private controlGroupSystem: ControlGroupSystem;
   private movementSystem: MovementSystem;
+  private statsCollector: StatsCollector;
   private agentSprites: Map<string, AgentSprite> = new Map();
   private selectedAgentIds: Set<string> = new Set();
   private previewSelection: Set<string> = new Set();
@@ -115,6 +117,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     this.commandSystem = new CommandSystem();
     this.controlGroupSystem = new ControlGroupSystem();
     this.movementSystem = new MovementSystem();
+    this.statsCollector = new StatsCollector();
   }
 
   private initSelectBox(): void {
@@ -877,6 +880,20 @@ export default class StratixRTSGameScene extends Phaser.Scene {
 
   public getEventManager(): StratixRTSEventManager {
     return this.eventManager;
+  }
+
+  public getStatsCollector(): StatsCollector {
+    return this.statsCollector;
+  }
+
+  public getSelectedAgent(): AgentSprite | undefined {
+    const agentIds = Array.from(this.selectedAgentIds);
+    return agentIds.length > 0 ? this.agentSprites.get(agentIds[0]) : undefined;
+  }
+
+  public getSelectedZone(): TaskZone | undefined {
+    const zoneIds = Array.from(this.selectedZoneIds);
+    return zoneIds.length > 0 ? this.taskZones.get(zoneIds[0]) : undefined;
   }
 
   public selectAgent(agentId: string): void {
