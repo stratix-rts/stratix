@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { StratixAgentConfig } from '../../stratix-core/stratix-protocol';
+import { LPC_DIRECTION_ROWS } from '@/stratix-character-creator/constants';
 
 export type AgentStatus = 'online' | 'offline' | 'busy' | 'error';
 export type CommandStatus = 'pending' | 'running' | 'success' | 'failed';
@@ -44,6 +45,10 @@ export class AgentSprite extends Phaser.GameObjects.Container {
   private currentDirection: number = 0;
   private currentAnimation: 'idle' | 'walk' | 'run' = 'idle';
   private isUsingPlaceholder: boolean = false;
+  private renderMode: 'full' | 'thumbnail' = 'full';
+  private thumbnailSprite: Phaser.GameObjects.Image | null = null;
+  private thumbnailKey: string | null = null;
+  private characterThumbnail: string | null = null;
 
   constructor(
     scene: Phaser.Scene, 
@@ -61,8 +66,13 @@ export class AgentSprite extends Phaser.GameObjects.Container {
     this.customTextureKey = textureKey || null;
     this.isUsingPlaceholder = isPlaceholder;
     
-    if (config.character) {
-      this.characterId = config.character.characterId;
+    console.log(`[AgentSprite] 🎭 Creating agent ${config.agentId}, textureKey: ${textureKey}, isPlaceholder: ${isPlaceholder}`);
+    
+    if (config.profile) {
+      this.characterId = config.profile.characterId;
+      if (config.profile.thumbnail) {
+        this.characterThumbnail = config.profile.thumbnail;
+      }
     }
 
     this.selectionRing = scene.add.graphics();
@@ -73,9 +83,9 @@ export class AgentSprite extends Phaser.GameObjects.Container {
     const texture = textureKey || 'stratix-agent';
     this.sprite = scene.add.sprite(0, 0, texture);
     
-    if (textureKey && config.character) {
+    if (textureKey && config.profile) {
       this.sprite.setScale(0.75);
-      this.playAnimation('idle', 0);
+      this.playAnimation('idle', LPC_DIRECTION_ROWS.RIGHT);
     }
     
     this.add(this.sprite);
@@ -144,15 +154,22 @@ export class AgentSprite extends Phaser.GameObjects.Container {
   }
 
   public playAnimation(animation: 'idle' | 'walk' | 'run', direction?: number): void {
-    if (!this.customTextureKey) return;
+    if (!this.customTextureKey) {
+      return;
+    }
     
     const dir = direction ?? this.currentDirection;
     this.currentDirection = dir;
     this.currentAnimation = animation;
     
     const animKey = `${this.customTextureKey}_${animation}_${dir}`;
+    
     if (this.scene.anims.exists(animKey)) {
-      this.sprite.play(animKey);
+      try {
+        this.sprite.play(animKey);
+      } catch (error) {
+        console.error(`[AgentSprite] ❌ Error playing ${animKey}:`, error);
+      }
     }
   }
 
@@ -467,8 +484,108 @@ export class AgentSprite extends Phaser.GameObjects.Container {
     return this.customTextureKey !== null;
   }
 
+  public setRenderMode(mode: 'full' | 'thumbnail'): void {
+    if (this.renderMode === mode) return;
+    
+    this.renderMode = mode;
+    
+    if (mode === 'thumbnail') {
+      this.sprite.setVisible(false);
+      this.nameText.setVisible(false);
+      this.typeIcon.setVisible(false);
+      this.statusIndicator.setVisible(false);
+      this.showThumbnail();
+    } else {
+      this.sprite.setVisible(true);
+      this.nameText.setVisible(this.getData('showName') !== false);
+      this.typeIcon.setVisible(true);
+      this.statusIndicator.setVisible(true);
+      this.hideThumbnail();
+    }
+  }
+
+  public setShowName(show: boolean): void {
+    this.setData('showName', show);
+    if (this.renderMode === 'full') {
+      this.nameText.setVisible(show);
+    }
+  }
+
+  private showThumbnail(): void {
+    if (!this.thumbnailSprite) {
+      this.createThumbnail();
+    }
+    
+    if (this.thumbnailSprite) {
+      this.thumbnailSprite.setVisible(true);
+    }
+  }
+
+  private hideThumbnail(): void {
+    if (this.thumbnailSprite) {
+      this.thumbnailSprite.setVisible(false);
+    }
+  }
+
+  private createThumbnail(): void {
+    if (this.thumbnailSprite) return;
+
+    const thumbnailKey = this.getThumbnailKey();
+    
+    if (thumbnailKey && this.scene.textures.exists(thumbnailKey)) {
+      this.thumbnailSprite = this.scene.add.image(0, 0, thumbnailKey);
+      this.thumbnailSprite.setScale(0.5);
+      this.add(this.thumbnailSprite);
+      this.thumbnailSprite.setDepth(-1);
+    }
+  }
+
+  private getThumbnailKey(): string | null {
+    if (this.thumbnailKey) {
+      return this.thumbnailKey;
+    }
+
+    if (this.characterThumbnail) {
+      this.thumbnailKey = `thumbnail-${this.agentId}`;
+      return this.thumbnailKey;
+    }
+
+    this.thumbnailKey = `type-${this.agentType}-thumbnail`;
+    return this.thumbnailKey;
+  }
+
+  public async loadThumbnail(): Promise<void> {
+    if (!this.characterThumbnail) return;
+
+    try {
+      const { thumbnailGenerator } = await import('../services/ThumbnailGenerator');
+      const textureKey = await thumbnailGenerator.loadCharacterThumbnail(
+        this.characterThumbnail,
+        this.agentId
+      );
+      
+      this.thumbnailKey = textureKey;
+      
+      if (this.renderMode === 'thumbnail' && this.thumbnailSprite) {
+        this.thumbnailSprite.setTexture(textureKey);
+      }
+    } catch (error) {
+      console.warn(`[AgentSprite] Failed to load thumbnail for ${this.agentId}:`, error);
+    }
+  }
+
+  public getRenderMode(): 'full' | 'thumbnail' {
+    return this.renderMode;
+  }
+
   public destroy(): void {
     this.stopBusyAnimation();
+    
+    if (this.thumbnailSprite) {
+      this.thumbnailSprite.destroy();
+      this.thumbnailSprite = null;
+    }
+    
     super.destroy();
   }
 }
