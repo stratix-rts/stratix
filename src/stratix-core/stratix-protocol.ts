@@ -48,16 +48,51 @@ export interface CharacterTexture {
 }
 
 /**
- * CharacterData - 角色外观数据
+ * CharacterProfile - 角色配置（与 SavedCharacter 对齐）
+ * 标准化的角色外观和能力数据结构
  */
-export interface CharacterData {
+export interface CharacterProfile {
   characterId: string;
+  name: string;
   bodyType: BodyType;
   parts: Record<string, PartSelection>;
+  skillTree?: SkillTreeState;
+  attributes?: Record<string, number>;
   thumbnail?: string;
   texture?: CharacterTexture;
-  createdAt: number;
-  updatedAt: number;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+/**
+ * @deprecated Use CharacterProfile instead
+ */
+export type CharacterData = CharacterProfile;
+
+/**
+ * Agent 配置状态（持久化）
+ */
+export type AgentConfigStatus = 'draft' | 'ready';
+
+/**
+ * Agent 连接状态（运行时）
+ */
+export type AgentConnectionStatus = 'connected' | 'disconnected' | 'connecting' | 'error';
+
+/**
+ * Agent 工作状态（运行时）
+ */
+export type AgentActivityStatus = 'idle' | 'busy' | 'error';
+
+/**
+ * Agent 完整状态信息
+ */
+export interface AgentStatusInfo {
+  config: AgentConfigStatus;
+  connection: AgentConnectionStatus;
+  activity: AgentActivityStatus;
+  lastError?: string;
+  lastActiveAt?: number;
 }
 
 /**
@@ -177,44 +212,36 @@ export interface StratixApiResponse<T = any> {
 
 /**
  * Agent 配置（Stratix 核心数据结构）
+ * 
+ * 设计原则：
+ * 1. profile 为必填字段，包含完整的角色配置
+ * 2. 以 LLM 直连为优先设计，OpenClaw 为兼容模式
+ * 3. configStatus 标识配置完成度（draft/ready）
  */
 export interface StratixAgentConfig {
   agentId: string;
   name: string;
   type: 'writer' | 'dev' | 'analyst' | 'custom' | string;
   
-  // 外观数据
-  character?: CharacterData;
+  profile: CharacterProfile;
   
-  // 后端类型
   backendType: AgentBackendType;
-  
-  // OpenClaw 配置 (backendType = 'openclaw' 时使用)
+  directConfig?: DirectLLMConfig;
   openClawConfig?: OpenClawConfig;
   
-  // 直连 LLM 配置 (backendType = 'direct' 时使用)
-  directConfig?: DirectLLMConfig;
-  
-  // 能力定义 (direct 模式需要)
   soul?: StratixSoulConfig;
   memory?: StratixMemoryConfig;
   skills?: StratixSkillConfig[];
-  skillTree?: SkillTreeState;
-  attributes?: Record<string, number>;
   rules?: string[];
   
-  // 位置
-  position?: { x: number; y: number };
+  configStatus: AgentConfigStatus;
   
-  // 时间戳
+  lastError?: string;
+  lastActiveAt?: number;
+  
+  position?: { x: number; y: number };
   createdAt?: number;
   updatedAt?: number;
-  
-  // 兼容旧数据 (deprecated)
-  model?: {
-    name: string;
-    params: Record<string, any>;
-  };
 }
 
 /**
@@ -269,7 +296,7 @@ export interface StratixStateSyncEvent {
   eventType: StratixStateSyncEventType;
   payload: {
     agentId?: string;
-    status?: 'online' | 'offline' | 'busy' | 'error';
+    status?: AgentStatusInfo;
     commandStatus?: 'pending' | 'running' | 'success' | 'failed';
     commandId?: string;
     data?: any;

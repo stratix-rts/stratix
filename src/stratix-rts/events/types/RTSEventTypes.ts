@@ -99,6 +99,53 @@ export interface VueToGameEvents {
   'vue:game:request_stats': Record<string, never>;
   'vue:game:request_selection': Record<string, never>;
   'vue:game:request_agents_list': Record<string, never>;
+  'settings:render_mode_changed': {
+    mode: 'auto' | 'full' | 'thumbnail' | null;
+    threshold?: number;
+    showNames?: boolean;
+  };
+  'settings:render_density_changed': {
+    threshold: number;
+  };
+  'settings:collision_enabled_changed': {
+    enabled: boolean;
+  };
+  'settings:collision_radius_changed': {
+    radius: number;
+  };
+}
+
+export interface ZoneSyncEvents {
+  'zone:status_change': {
+    zoneId: string;
+    oldStatus: string;
+    newStatus: string;
+    timestamp: number;
+  };
+  'zone:synced': {
+    zoneId: string;
+    status: string;
+  };
+  'zone:sync_complete': {
+    zoneId: string;
+    status: string;
+    version: number;
+  };
+  'zone:sync_failed': {
+    zoneId: string;
+    error: string;
+  };
+}
+
+export interface ErrorEvents {
+  'error:occurred': {
+    error: Error;
+    classified: any;
+    context?: any;
+  };
+  'toast:updated': {
+    toasts: any[];
+  };
 }
 
 export interface GameToVueEvents {
@@ -141,6 +188,10 @@ export interface GameToVueEvents {
   'game:vue:skill_selected': {
     skill: Skill;
   };
+'game:ui:project_created': {
+    project: any;
+    needsConfig: boolean;
+  };
 }
 
 export interface RequestResponseMap {
@@ -173,7 +224,7 @@ export interface RequestResponseMap {
   };
 }
 
-export type AllRTSEvents = SceneToUIEvents & UIToGameEvents & VueToGameEvents & GameToVueEvents;
+export type AllRTSEvents = SceneToUIEvents & UIToGameEvents & VueToGameEvents & GameToVueEvents & ZoneSyncEvents & ErrorEvents;
 
 export type RTSEventName = keyof AllRTSEvents;
 

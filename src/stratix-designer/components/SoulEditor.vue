@@ -39,7 +39,7 @@ const updateGoal = (index: number, value: string) => {
   <div class="soul-editor">
     <div class="section-header">
       <svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <SvgIcon :name="heart" size="16" />
+        <SvgIcon name="heart" size="16" />
       </svg>
       <span class="section-title">Soul 灵魂配置</span>
     </div>

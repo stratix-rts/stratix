@@ -8,13 +8,11 @@
 import Phaser from 'phaser';
 import { TopBarV2, TopBarStats } from './TopBarV2';
 import { MinimapV2 } from './MinimapV2';
-import { DetailPanelV2 } from './DetailPanelV2';
-import { CommandPanelV2, UnitInfo, Skill } from './CommandPanelV2';
+import { CommandPanelV2, UnitInfo, Skill, AgentInfo, ZoneInfo } from './CommandPanelV2';
 
 export interface RTSUIComponents {
   topBar: TopBarV2;
   minimap: MinimapV2;
-  detailPanel: DetailPanelV2;
   commandPanel: CommandPanelV2;
 }
 
@@ -30,6 +28,7 @@ export interface RTSUIConfig {
   getSelectedZone: () => any | null;
   onSkillSelect: (skill: Skill) => void;
   onCommandExecute: (command: string) => void;
+  statsCollector?: any;
 }
 
 export class RTSUIFactory {
@@ -45,13 +44,11 @@ export class RTSUIFactory {
   createAll(): RTSUIComponents {
     const topBar = this.createTopBar();
     const minimap = this.createMinimap();
-    const detailPanel = this.createDetailPanel();
     const commandPanel = this.createCommandPanel();
     
     this.components = {
       topBar,
       minimap,
-      detailPanel,
       commandPanel,
     };
     
@@ -66,7 +63,8 @@ export class RTSUIFactory {
       0,
       0,
       this.config.screenWidth,
-      this.config.getStats
+      this.config.getStats,
+      this.config.statsCollector
     );
     topBar.create();
     return topBar;
@@ -86,26 +84,12 @@ export class RTSUIFactory {
     return minimap;
   }
   
-  private createDetailPanel(): DetailPanelV2 {
-    const detailPanel = new DetailPanelV2(
-      this.scene,
-      0,
-      50,
-      300,
-      this.config.screenHeight - 240,
-      this.config.getSelectedAgent,
-      this.config.getSelectedZone
-    );
-    detailPanel.create();
-    return detailPanel;
-  }
-  
   private createCommandPanel(): CommandPanelV2 {
     const commandPanel = new CommandPanelV2(
       this.scene,
-      320,
+      0,
       this.config.screenHeight - 200,
-      this.config.screenWidth - 540,
+      this.config.screenWidth - 220,
       180,
       this.config.onSkillSelect,
       this.config.onCommandExecute
@@ -119,7 +103,6 @@ export class RTSUIFactory {
     
     this.components.topBar.mount();
     this.components.minimap.mount();
-    this.components.detailPanel.mount();
     this.components.commandPanel.mount();
   }
   
@@ -133,9 +116,7 @@ export class RTSUIFactory {
     this.components.topBar.resize(width);
     this.components.minimap.resize(200, 120);
     
-    this.components.detailPanel.getConfig().height = height - 240;
-    
-    this.components.commandPanel.getConfig().width = width - 540;
+    this.components.commandPanel.getConfig().width = width - 220;
     this.components.commandPanel.getConfig().y = height - 200;
   }
   
@@ -144,9 +125,10 @@ export class RTSUIFactory {
     
     this.components.topBar.destroy();
     this.components.minimap.destroy();
-    this.components.detailPanel.destroy();
     this.components.commandPanel.destroy();
     
     this.components = null;
   }
 }
+
+export type { AgentInfo, ZoneInfo } from './CommandPanelV2';

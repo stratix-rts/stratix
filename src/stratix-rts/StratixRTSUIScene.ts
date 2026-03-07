@@ -10,10 +10,12 @@ import type {
   ZoneInfo,
 } from './events/types/RTSEventTypes';
 import type { Skill } from './ui/v2/CommandPanelV2';
+import { HelpPanel } from './ui/HelpPanel';
 
 export default class StratixRTSUIScene extends Phaser.Scene {
   private uiFactory: RTSUIFactory | null = null;
   private uiComponents: RTSUIComponents | null = null;
+  private helpPanel: HelpPanel | null = null;
   private currentStats: TopBarStats = {
     totalAgents: 0,
     onlineAgents: 0,
@@ -63,6 +65,7 @@ export default class StratixRTSUIScene extends Phaser.Scene {
       getSelectedZoneIds: () => Set<string>;
       getSelectedAgent: () => unknown;
       getSelectedZone: () => unknown;
+      getStatsCollector: () => any;
       cameras: { main: Phaser.Cameras.Scene2D.Camera };
     };
 
@@ -83,9 +86,20 @@ export default class StratixRTSUIScene extends Phaser.Scene {
       getSelectedZone: () => gameScene.getSelectedZone(),
       onSkillSelect: (skill: Skill) => this.handleSkillSelect(skill),
       onCommandExecute: (command: string) => this.handleCommandExecute(command),
+      statsCollector: gameScene.getStatsCollector(),
     });
 
     this.uiComponents = this.uiFactory.createAll();
+    
+    this.helpPanel = new HelpPanel({
+      width: 600,
+      maxHeight: 500,
+      position: 'center',
+      showSearch: true,
+      showCategories: true,
+    });
+    this.helpPanel.mount(document.body);
+    
     this.isUIInitialized = true;
   }
 
@@ -109,8 +123,8 @@ export default class StratixRTSUIScene extends Phaser.Scene {
     this.eventUnsubscribers.push(
       rtsEventBus.on('scene:ui:agent_info', (data) => {
         this.selectedAgentInfo = data;
-        if (this.uiComponents?.detailPanel) {
-          (this.uiComponents.detailPanel as any).updateAgentInfo?.(data);
+        if (this.uiComponents?.commandPanel) {
+          this.uiComponents.commandPanel.updateAgentInfo(data);
         }
       })
     );
@@ -118,8 +132,8 @@ export default class StratixRTSUIScene extends Phaser.Scene {
     this.eventUnsubscribers.push(
       rtsEventBus.on('scene:ui:zone_info', (data) => {
         this.selectedZoneInfo = data;
-        if (this.uiComponents?.detailPanel) {
-          (this.uiComponents.detailPanel as any).updateZoneInfo?.(data);
+        if (this.uiComponents?.commandPanel) {
+          this.uiComponents.commandPanel.updateZoneInfo(data);
         }
       })
     );
@@ -174,6 +188,11 @@ export default class StratixRTSUIScene extends Phaser.Scene {
   shutdown(): void {
     this.eventUnsubscribers.forEach((unsub) => unsub());
     this.eventUnsubscribers = [];
+
+    if (this.helpPanel) {
+      this.helpPanel.destroy();
+      this.helpPanel = null;
+    }
 
     if (this.uiFactory) {
       this.uiFactory.destroy();

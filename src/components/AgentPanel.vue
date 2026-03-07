@@ -45,7 +45,7 @@ const isSelected = (agentId: string) => {
 };
 
 const getAgentThumbnail = (agent: any) => {
-  return agent.character?.thumbnail || null;
+  return agent.profile?.thumbnail || null;
 };
 
 const getAgentStatus = (agent: any) => {

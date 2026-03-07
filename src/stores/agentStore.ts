@@ -1,13 +1,14 @@
 import { reactive, readonly, computed } from 'vue';
 import type { 
   StratixAgentConfig, 
-  SkillTreeState, 
+  CharacterProfile,
   AgentBackendType,
+  AgentConfigStatus,
   DirectLLMConfig,
   OpenClawConfig
 } from '@/stratix-core';
-import type { SavedCharacter } from '@/stratix-character-creator/types';
 import { WriterHeroTemplate, DevHeroTemplate, AnalystHeroTemplate, generateAgentId } from '@/stratix-designer';
+import type { SavedCharacter } from '@/stratix-character-creator/types';
 
 interface AgentState {
   agents: StratixAgentConfig[];
@@ -30,6 +31,47 @@ const state = reactive<AgentState>({
 let autoRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let onAgentCreatedCallback: ((config: StratixAgentConfig, centerOnScreen: boolean) => void) | null = null;
 let onAgentDeletedCallback: ((agentId: string) => void) | null = null;
+let onAgentUpdatedCallback: ((config: StratixAgentConfig) => void) | null = null;
+
+const pendingPositionUpdates: Map<string, { x: number; y: number }> = new Map();
+let positionSaveTimer: ReturnType<typeof setTimeout> | null = null;
+const POSITION_SAVE_DELAY = 5000;
+
+function savedCharacterToProfile(character: SavedCharacter): CharacterProfile {
+  return {
+    characterId: character.characterId,
+    name: character.name,
+    bodyType: character.bodyType,
+    parts: character.parts,
+    skillTree: character.skillTree,
+    attributes: character.attributes,
+    thumbnail: character.thumbnail,
+    texture: character.texture,
+    createdAt: character.createdAt,
+    updatedAt: character.updatedAt
+  };
+}
+
+function determineConfigStatus(
+  profile: CharacterProfile | undefined,
+  backendType: AgentBackendType,
+  directConfig?: DirectLLMConfig,
+  openClawConfig?: OpenClawConfig
+): AgentConfigStatus {
+  if (!profile) return 'draft';
+  
+  if (backendType === 'direct') {
+    if (!directConfig?.provider || !directConfig?.model) {
+      return 'draft';
+    }
+  } else {
+    if (!openClawConfig?.endpoint || !openClawConfig?.accountId) {
+      return 'draft';
+    }
+  }
+  
+  return 'ready';
+}
 
 export const agentStore = {
   state: readonly(state),
@@ -38,6 +80,12 @@ export const agentStore = {
   selectedIds: computed(() => state.selectedIds),
   selectedAgents: computed(() => 
     state.agents.filter(a => state.selectedIds.includes(a.agentId))
+  ),
+  readyAgents: computed(() => 
+    state.agents.filter(a => a.configStatus === 'ready')
+  ),
+  draftAgents: computed(() => 
+    state.agents.filter(a => a.configStatus === 'draft')
   ),
   isLoading: computed(() => state.isLoading),
   isRefreshing: computed(() => state.isRefreshing),
@@ -51,6 +99,45 @@ export const agentStore = {
 
   setOnAgentDeleted(callback: (agentId: string) => void) {
     onAgentDeletedCallback = callback;
+  },
+
+  setOnAgentUpdated(callback: (config: StratixAgentConfig) => void) {
+    onAgentUpdatedCallback = callback;
+  },
+
+  updateAgentPosition(agentId: string, position: { x: number; y: number }): void {
+    const agent = state.agents.find(a => a.agentId === agentId);
+    if (!agent) return;
+
+    agent.position = position;
+    pendingPositionUpdates.set(agentId, position);
+
+    if (!positionSaveTimer) {
+      positionSaveTimer = setTimeout(() => {
+        this.flushPositionUpdates();
+      }, POSITION_SAVE_DELAY);
+    }
+  },
+
+  async flushPositionUpdates(): Promise<void> {
+    positionSaveTimer = null;
+
+    if (pendingPositionUpdates.size === 0) return;
+
+    const updates = Array.from(pendingPositionUpdates.entries());
+    pendingPositionUpdates.clear();
+
+    for (const [agentId, position] of updates) {
+      try {
+        await fetch('/api/stratix/config/agent/update', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agentId, position })
+        });
+      } catch (e) {
+        console.warn(`[AgentStore] Failed to save position for ${agentId}:`, e);
+      }
+    }
   },
 
   async loadAgents(): Promise<void> {
@@ -84,7 +171,30 @@ export const agentStore = {
       const result = await response.json();
       
       if (result.code === 200 && result.data) {
-        state.agents = result.data;
+        const oldAgents = state.agents;
+        const newAgents: StratixAgentConfig[] = result.data;
+        
+        const oldIds = new Set(oldAgents.map(a => a.agentId));
+        const newIds = new Set(newAgents.map(a => a.agentId));
+        
+        for (const newAgent of newAgents) {
+          if (!oldIds.has(newAgent.agentId)) {
+            onAgentCreatedCallback?.(newAgent, false);
+          } else {
+            const oldAgent = oldAgents.find(a => a.agentId === newAgent.agentId);
+            if (oldAgent && onAgentUpdatedCallback) {
+              onAgentUpdatedCallback(newAgent);
+            }
+          }
+        }
+        
+        for (const oldId of oldIds) {
+          if (!newIds.has(oldId)) {
+            onAgentDeletedCallback?.(oldId);
+          }
+        }
+        
+        state.agents = newAgents;
         state.lastRefreshTime = new Date();
       }
     } catch (e) {
@@ -124,44 +234,43 @@ export const agentStore = {
     return config;
   },
 
-  async createCustomAgent(
+  async createAgentFromCharacter(
     character: SavedCharacter, 
     options?: {
       backendType?: AgentBackendType;
       openClawConfig?: OpenClawConfig;
       directConfig?: DirectLLMConfig;
       soul?: StratixAgentConfig['soul'];
+      memory?: StratixAgentConfig['memory'];
       skills?: StratixAgentConfig['skills'];
       rules?: string[];
     }
   ): Promise<StratixAgentConfig | null> {
-    const backendType = options?.backendType || 'openclaw';
+    const backendType = options?.backendType || 'direct';
+    const profile = savedCharacterToProfile(character);
+    
+    const configStatus = determineConfigStatus(
+      profile,
+      backendType,
+      options?.directConfig,
+      options?.openClawConfig
+    );
     
     const config: StratixAgentConfig = {
-      agentId: `custom-${character.characterId}`,
-      name: character.name || character.characterId.split('-')[0] || 'Hero',
+      agentId: character.characterId,
+      name: character.name || 'Hero',
       type: 'custom',
+      profile,
       backendType,
-      openClawConfig: backendType === 'openclaw' 
-        ? (options?.openClawConfig || { accountId: '', endpoint: '' })
-        : undefined,
-      directConfig: backendType === 'direct' 
-        ? options?.directConfig 
-        : undefined,
-      character: {
-        characterId: character.characterId,
-        bodyType: character.bodyType,
-        parts: character.parts,
-        thumbnail: character.thumbnail,
-        texture: character.texture,
-        createdAt: character.createdAt,
-        updatedAt: character.updatedAt
-      },
-      skillTree: character.skillTree,
-      attributes: character.attributes,
+      directConfig: backendType === 'direct' ? options?.directConfig : undefined,
+      openClawConfig: backendType === 'openclaw' ? options?.openClawConfig : undefined,
       soul: options?.soul,
+      memory: options?.memory,
       skills: options?.skills,
       rules: options?.rules,
+      configStatus,
+      createdAt: character.createdAt,
+      updatedAt: Date.now()
     };
     
     try {
@@ -171,7 +280,7 @@ export const agentStore = {
         body: JSON.stringify(config)
       });
     } catch (e) {
-      console.warn('[AgentStore] Failed to save custom agent:', e);
+      console.warn('[AgentStore] Failed to save agent from character:', e);
     }
     
     state.agents.push(config);
@@ -181,6 +290,21 @@ export const agentStore = {
     await this.refreshAgents();
     
     return config;
+  },
+
+  async createCustomAgent(
+    character: SavedCharacter,
+    options?: {
+      backendType?: AgentBackendType;
+      openClawConfig?: OpenClawConfig;
+      directConfig?: DirectLLMConfig;
+      soul?: StratixAgentConfig['soul'];
+      memory?: StratixAgentConfig['memory'];
+      skills?: StratixAgentConfig['skills'];
+      rules?: string[];
+    }
+  ): Promise<StratixAgentConfig | null> {
+    return this.createAgentFromCharacter(character, options);
   },
 
   async createDirectAgent(config: {
@@ -194,27 +318,35 @@ export const agentStore = {
   }): Promise<StratixAgentConfig | null> {
     const agentId = `stratix-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-custom`;
     
+    const profile: CharacterProfile | undefined = config.character 
+      ? savedCharacterToProfile(config.character)
+      : undefined;
+    
+    const configStatus = determineConfigStatus(
+      profile,
+      'direct',
+      config.directConfig
+    );
+    
     const agentConfig: StratixAgentConfig = {
       agentId,
       name: config.name,
       type: 'custom',
+      profile: profile || {
+        characterId: agentId,
+        name: config.name,
+        bodyType: 'male',
+        parts: {}
+      },
       backendType: 'direct',
       directConfig: config.directConfig,
       soul: config.soul,
       memory: config.memory,
       skills: config.skills,
       rules: config.rules,
-      character: config.character ? {
-        characterId: config.character.characterId,
-        bodyType: config.character.bodyType,
-        parts: config.character.parts,
-        thumbnail: config.character.thumbnail,
-        texture: config.character.texture,
-        createdAt: config.character.createdAt,
-        updatedAt: config.character.updatedAt
-      } : undefined,
-      skillTree: config.character?.skillTree,
-      attributes: config.character?.attributes,
+      configStatus,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
     };
     
     try {
@@ -262,53 +394,60 @@ export const agentStore = {
     }
   },
 
-  async updateCustomAgent(
-    character: SavedCharacter, 
+  async updateAgentProfile(
+    agentId: string, 
+    character: SavedCharacter,
     options?: {
       backendType?: AgentBackendType;
       openClawConfig?: OpenClawConfig;
       directConfig?: DirectLLMConfig;
       soul?: StratixAgentConfig['soul'];
+      memory?: StratixAgentConfig['memory'];
       skills?: StratixAgentConfig['skills'];
       rules?: string[];
     }
   ): Promise<void> {
-    const agentId = `custom-${character.characterId}`;
     const index = state.agents.findIndex(a => a.agentId === agentId);
     
     if (index >= 0) {
-      state.agents[index].character = {
-        characterId: character.characterId,
-        bodyType: character.bodyType,
-        parts: character.parts,
-        thumbnail: character.thumbnail,
-        texture: character.texture,
-        createdAt: character.createdAt,
-        updatedAt: character.updatedAt
-      };
-      state.agents[index].skillTree = character.skillTree;
-      state.agents[index].attributes = character.attributes;
+      const profile = savedCharacterToProfile(character);
+      const backendType = options?.backendType || state.agents[index].backendType;
+      
+      state.agents[index].profile = profile;
+      state.agents[index].name = character.name;
       
       if (options) {
         if (options.backendType) {
           state.agents[index].backendType = options.backendType;
         }
-        if (options.openClawConfig) {
+        if (options.openClawConfig !== undefined) {
           state.agents[index].openClawConfig = options.openClawConfig;
         }
-        if (options.directConfig) {
+        if (options.directConfig !== undefined) {
           state.agents[index].directConfig = options.directConfig;
         }
-        if (options.soul) {
+        if (options.soul !== undefined) {
           state.agents[index].soul = options.soul;
         }
-        if (options.skills) {
+        if (options.memory !== undefined) {
+          state.agents[index].memory = options.memory;
+        }
+        if (options.skills !== undefined) {
           state.agents[index].skills = options.skills;
         }
-        if (options.rules) {
+        if (options.rules !== undefined) {
           state.agents[index].rules = options.rules;
         }
       }
+      
+      state.agents[index].configStatus = determineConfigStatus(
+        profile,
+        state.agents[index].backendType,
+        state.agents[index].directConfig,
+        state.agents[index].openClawConfig
+      );
+      
+      state.agents[index].updatedAt = Date.now();
     }
     
     await this.refreshAgents();
@@ -327,6 +466,15 @@ export const agentStore = {
         updatedAt: Date.now()
       };
       
+      if (updates.backendType || updates.directConfig || updates.openClawConfig || updates.profile) {
+        state.agents[index].configStatus = determineConfigStatus(
+          state.agents[index].profile,
+          state.agents[index].backendType,
+          state.agents[index].directConfig,
+          state.agents[index].openClawConfig
+        );
+      }
+      
       try {
         await fetch('/api/stratix/config/agent/update', {
           method: 'PUT',
@@ -339,6 +487,14 @@ export const agentStore = {
     }
     
     await this.refreshAgents();
+  },
+
+  async markAgentReady(agentId: string): Promise<void> {
+    await this.updateAgentConfig(agentId, { configStatus: 'ready' });
+  },
+
+  async markAgentDraft(agentId: string): Promise<void> {
+    await this.updateAgentConfig(agentId, { configStatus: 'draft' });
   },
 
   async deleteAgent(agentId: string): Promise<void> {
@@ -372,6 +528,14 @@ export const agentStore = {
 
   clearSelection(): void {
     state.selectedIds = [];
+  },
+
+  getAgentById(agentId: string): StratixAgentConfig | undefined {
+    return state.agents.find(a => a.agentId === agentId);
+  },
+
+  getAgentByCharacterId(characterId: string): StratixAgentConfig | undefined {
+    return state.agents.find(a => a.profile?.characterId === characterId);
   },
 
   startAutoRefresh(intervalMs: number = 30000): void {

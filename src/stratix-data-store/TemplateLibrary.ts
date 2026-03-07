@@ -6,7 +6,14 @@ const PRESET_TEMPLATES: StratixAgentConfig[] = [
     agentId: 'stratix-template-writer',
     name: '文案英雄（模板）',
     type: 'writer',
+    profile: {
+      characterId: 'template-writer',
+      name: '文案英雄',
+      bodyType: 'male',
+      parts: {},
+    },
     backendType: 'openclaw',
+    configStatus: 'draft',
     soul: {
       identity: '专业文案创作者，擅长各类文案撰写，语言生动、贴合主题',
       goals: ['快速生成高质量文案', '优化文案语言', '保持文案风格统一'],
@@ -36,14 +43,21 @@ const PRESET_TEMPLATES: StratixAgentConfig[] = [
         executeScript: '{"action":"optimize_content","params":{"content":"{{content}}","optimizeType":"{{optimizeType}}"}}'
       }
     ],
-    model: { name: 'claude-3-sonnet', params: { temperature: 0.7, topP: 0.9 } },
+    directConfig: { provider: 'openai', model: 'claude-3-sonnet', temperature: 0.7 },
     openClawConfig: { accountId: '', endpoint: 'http://localhost:8000' }
   },
   {
     agentId: 'stratix-template-dev',
     name: '开发英雄（模板）',
     type: 'dev',
+    profile: {
+      characterId: 'template-dev',
+      name: '开发英雄',
+      bodyType: 'male',
+      parts: {},
+    },
     backendType: 'openclaw',
+    configStatus: 'draft',
     soul: {
       identity: '资深程序员，擅长多种编程语言，编写可靠高效的代码',
       goals: ['编写符合需求的代码', '调试和修复bug', '优化代码性能'],
@@ -62,14 +76,21 @@ const PRESET_TEMPLATES: StratixAgentConfig[] = [
         executeScript: '{"action":"generate_code","params":{"demand":"{{demand}}","language":"{{language}}"}}'
       }
     ],
-    model: { name: 'gpt-4o', params: { temperature: 0.6, topP: 0.8 } },
+    directConfig: { provider: 'openai', model: 'gpt-4o', temperature: 0.6 },
     openClawConfig: { accountId: '', endpoint: 'http://localhost:8000' }
   },
   {
     agentId: 'stratix-template-analyst',
     name: '数据分析英雄（模板）',
     type: 'analyst',
+    profile: {
+      characterId: 'template-analyst',
+      name: '数据分析英雄',
+      bodyType: 'male',
+      parts: {},
+    },
     backendType: 'openclaw',
+    configStatus: 'draft',
     soul: {
       identity: '专业数据分析师，擅长数据处理、分析与可视化',
       goals: ['处理原始数据', '分析数据趋势', '生成分析报告'],
@@ -88,7 +109,7 @@ const PRESET_TEMPLATES: StratixAgentConfig[] = [
         executeScript: '{"action":"analyze_data","params":{"data":"{{data}}","analysisType":"{{analysisType}}"}}'
       }
     ],
-    model: { name: 'claude-3-opus', params: { temperature: 0.5, topP: 0.7 } },
+    directConfig: { provider: 'openai', model: 'claude-3-opus', temperature: 0.5 },
     openClawConfig: { accountId: '', endpoint: 'http://localhost:8000' }
   }
 ];

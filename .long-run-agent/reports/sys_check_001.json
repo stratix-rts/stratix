@@ -1,0 +1,22 @@
+{
+  "project_id": "Stratix",
+  "check_time": "2026-03-04T15:28:43.255488",
+  "code_total_size_mb": 202.73,
+  "code_file_count": 9783,
+  "git_valid_ratio": 0,
+  "git_error": "GitPython not installed",
+  "doc_coverage_ratio": 0.0,
+  "doc_code_modules": 6,
+  "doc_modules": 115,
+  "doc_matched_modules": 0,
+  "func_comment_ratio": 1.0,
+  "func_total": 16,
+  "func_commented": 16,
+  "decision": "incremental",
+  "reason": "所有条件均不满足（代码体积202.73MB > 5.0MB，文档覆盖率0% < 40%，Git 规范提交0% < 30%），触发增量处理",
+  "suggestions": [
+    "分模块分析代码，优先处理核心模块",
+    "内置任务要求 Agent 同步更新模块文档",
+    "按用户需求范围动态生成子任务，避免全量 Token 消耗"
+  ]
+}

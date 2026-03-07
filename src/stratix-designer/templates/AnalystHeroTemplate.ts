@@ -24,6 +24,12 @@ export class AnalystHeroTemplate implements HeroTemplateBase {
       agentId: id,
       name: AnalystHeroTemplate.NAME,
       type: AnalystHeroTemplate.TYPE,
+      profile: {
+        characterId: id,
+        name: AnalystHeroTemplate.NAME,
+        bodyType: 'male',
+        parts: {},
+      },
       backendType: 'direct',
       directConfig: {
         provider: 'openai',
@@ -67,6 +73,7 @@ export class AnalystHeroTemplate implements HeroTemplateBase {
         '使用数据支撑分析结论',
         '以清晰易懂的方式呈现结果',
       ],
+      configStatus: 'ready',
     };
   }
 }

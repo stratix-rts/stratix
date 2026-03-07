@@ -20,7 +20,6 @@ class CharacterCreatorEventEmitter {
         parts: character.parts,
         skillTree: character.skillTree,
         attributes: character.attributes,
-        isDefault: character.isDefault
       },
       timestamp: Date.now(),
       requestId: `char-creator-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -37,7 +36,6 @@ class CharacterCreatorEventEmitter {
         parts: character.parts,
         skillTree: character.skillTree,
         attributes: character.attributes,
-        isDefault: character.isDefault
       },
       timestamp: Date.now(),
       requestId: `char-creator-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`

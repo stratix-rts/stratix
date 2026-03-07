@@ -1,0 +1,92 @@
+import { ProjectManager } from '../core/ProjectManager';
+import { ProjectStore } from '../storage/ProjectStore';
+import { ParsedTask, TaskType } from '../../stratix-ai-service/types';
+import mitt from 'mitt';
+
+export async function exampleTaskExecution(): Promise<void> {
+  const eventBus = mitt();
+  const store = new ProjectStore('stratix-data');
+  await store.initialize();
+  
+  const projectManager = new ProjectManager(store, eventBus);
+  
+  console.log('=== 任务执行集成示例 ===\n');
+
+  const project = await projectManager.createProject({
+    name: '示例项目',
+    description: '测试任务执行集成',
+    priority: 1,
+    localFolderPath: '/tmp/example-project',
+    agentMode: 'llm',
+    planningRule: 'sequential',
+    executionPermission: 'auto',
+    requirement: {
+      type: 'text',
+      content: '创建一个简单的示例项目'
+    },
+    progressRule: 'average'
+  });
+  
+  console.log('✓ 项目创建:', project.id);
+
+  (eventBus as any).on('project:task-started', ({ taskId, task }: any) => {
+    console.log(`  ▶ 任务开始: ${task.name}`);
+  });
+
+  (eventBus as any).on('project:task-progress', ({ taskId, progress }: any) => {
+    console.log(`  ⏳ 任务进度: ${progress}%`);
+  });
+
+  (eventBus as any).on('project:task-completed', ({ taskId, success }: any) => {
+    console.log(`  ${success ? '✓' : '✗'} 任务完成: ${taskId}`);
+  });
+
+  (eventBus as any).on('project:execution-completed', ({ projectId }: any) => {
+    console.log(`\n✓ 项目执行完成: ${projectId}`);
+  });
+
+  const tasks: ParsedTask[] = [
+    {
+      id: '001',
+      name: '需求分析',
+      type: TaskType.RESEARCH,
+      description: '分析项目需求',
+      dependencies: [],
+      estimatedTime: 5000,
+      priority: 1
+    },
+    {
+      id: '002',
+      name: '架构设计',
+      type: TaskType.DESIGN,
+      description: '设计系统架构',
+      dependencies: ['001'],
+      estimatedTime: 8000,
+      priority: 1
+    },
+    {
+      id: '003',
+      name: '代码实现',
+      type: TaskType.DEVELOPMENT,
+      description: '实现核心功能',
+      dependencies: ['002'],
+      estimatedTime: 10000,
+      priority: 1
+    }
+  ];
+
+  console.log('\n📦 加载任务...');
+  await projectManager.loadProjectTasks(project.id, tasks);
+  console.log(`  ✓ 已加载 ${tasks.length} 个任务\n`);
+
+  console.log('🚀 启动项目执行...\n');
+  await projectManager.startProjectExecution(project.id);
+
+  await new Promise(resolve => setTimeout(resolve, 15000));
+
+  console.log('\n✓ 示例执行完成');
+}
+
+if (require.main === module) {
+  exampleTaskExecution().catch(console.error);
+}

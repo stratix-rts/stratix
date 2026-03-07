@@ -13,12 +13,16 @@ import HeroManagementModal from './HeroManagementModal.vue';
 import LogPanelModal from './LogPanelModal.vue';
 import StatusPanelModal from './StatusPanelModal.vue';
 import ParamFormModal from './ParamFormModal.vue';
+import TaskPanel from './TaskPanel.vue';
 
 const props = defineProps<{
   gameContainer: HTMLElement | null;
   isGameReady: boolean;
   commandLogs: any[];
   isRefreshing?: boolean;
+  showTaskModal?: boolean;
+  selectedProjectId?: string | null;
+  selectedProjectPath?: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -27,6 +31,7 @@ const emit = defineEmits<{
   (e: 'select-agent', agentId: string): void;
   (e: 'open-character-creator'): void;
   (e: 'refresh-agents'): void;
+  (e: 'update:show-task-modal', value: boolean): void;
 }>();
 
 const showHeroModal = ref(false);
@@ -54,6 +59,12 @@ const handleOpenLogModal = () => {
 
 const handleOpenStatusModal = () => {
   showStatusModal.value = true;
+};
+
+const handleOpenTaskModal = (projectId: string, projectPath: string) => {
+  selectedProjectId.value = projectId;
+  selectedProjectPath.value = projectPath;
+  showTaskModal.value = true;
 };
 
 const handleExecuteSkill = (skill: StratixSkillConfig | Skill) => {
@@ -213,6 +224,13 @@ const icons = {
       @execute="handleExecuteCommand"
       @cancel="handleCancelCommand"
       @update:param-values="paramValues = $event"
+    />
+    
+    <TaskPanel
+      :visible="showTaskModal || false"
+      :project-id="selectedProjectId || null"
+      :project-path="selectedProjectPath || null"
+      @update:visible="$emit('update:show-task-modal', $event)"
     />
   </div>
 </template>

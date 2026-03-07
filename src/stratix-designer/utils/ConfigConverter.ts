@@ -55,11 +55,20 @@ export class ConfigConverter {
   }
 
   static fromOpenClawFormat(openClawConfig: OpenClawAgentConfig, baseConfig: Partial<StratixAgentConfig> = {}): StratixAgentConfig {
+    const name = baseConfig.name || '导入的英雄';
+    
     return {
       agentId: baseConfig.agentId || `stratix-${Date.now()}-imported`,
-      name: baseConfig.name || '导入的英雄',
+      name,
       type: baseConfig.type || 'custom',
+      profile: baseConfig.profile || {
+        characterId: `char-${Date.now()}`,
+        name,
+        bodyType: 'male',
+        parts: {},
+      },
       backendType: 'openclaw',
+      configStatus: 'draft',
       soul: baseConfig.soul || {
         identity: '',
         goals: [],
@@ -96,12 +105,15 @@ export class ConfigConverter {
 
   static mergeConfigs(base: StratixAgentConfig, override: Partial<StratixAgentConfig>): StratixAgentConfig {
     const backendType: AgentBackendType = override.backendType || base.backendType;
+    const name = override.name || base.name;
     
     const result: StratixAgentConfig = {
       agentId: override.agentId || base.agentId,
-      name: override.name || base.name,
+      name,
       type: override.type || base.type,
+      profile: override.profile || base.profile,
       backendType,
+      configStatus: override.configStatus || base.configStatus,
     };
 
     // Merge soul
@@ -155,19 +167,6 @@ export class ConfigConverter {
     // Skills and rules
     result.skills = override.skills !== undefined ? override.skills : base.skills;
     result.rules = override.rules !== undefined ? override.rules : base.rules;
-
-    // Character data
-    if (base.character || override.character) {
-      result.character = override.character || base.character;
-    }
-
-    // SkillTree and attributes
-    if (base.skillTree || override.skillTree) {
-      result.skillTree = override.skillTree || base.skillTree;
-    }
-    if (base.attributes || override.attributes) {
-      result.attributes = override.attributes || base.attributes;
-    }
 
     return result;
   }
@@ -233,12 +232,20 @@ export class ConfigConverter {
 
   private static applyDefaults(raw: any): StratixAgentConfig {
     const backendType: AgentBackendType = raw.backendType || 'openclaw';
+    const name = raw.name || '导入的英雄';
     
     return {
       agentId: raw.agentId || `stratix-${Date.now()}-imported`,
-      name: raw.name || '导入的英雄',
+      name,
       type: raw.type || 'custom',
+      profile: raw.profile || {
+        characterId: `char-${Date.now()}`,
+        name,
+        bodyType: 'male',
+        parts: {},
+      },
       backendType,
+      configStatus: raw.configStatus || 'draft',
       soul: raw.soul || { identity: '', goals: [], personality: '' },
       memory: raw.memory || { shortTerm: [], longTerm: [], context: '' },
       skills: raw.skills || [],

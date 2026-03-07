@@ -1,4 +1,4 @@
-import { FRAME_SIZE, SHEET_WIDTH, SHEET_HEIGHT, ANIMATION_OFFSETS } from '@/stratix-character-creator/constants';
+import { FRAME_SIZE, SHEET_WIDTH, SHEET_HEIGHT, ANIMATION_OFFSETS, LPC_DIRECTION_ROWS, ANIMATION_CONFIGS } from '@/stratix-character-creator/constants';
 import type { BodyType } from '@/stratix-core/stratix-protocol';
 
 const BODY_COLORS: Record<BodyType, { primary: string; secondary: string; outline: string }> = {
@@ -9,12 +9,6 @@ const BODY_COLORS: Record<BodyType, { primary: string; secondary: string; outlin
   pregnant: { primary: '#4a7c4a', secondary: '#3d663d', outline: '#2d4f2d' },
   child: { primary: '#7c9c7c', secondary: '#668066', outline: '#4f604f' }
 };
-
-const RTS_ANIMATION_CONFIGS = [
-  { key: 'idle', frames: 4 },
-  { key: 'walk', frames: 8 },
-  { key: 'run', frames: 8 }
-] as const;
 
 function drawBaseBodyFrame(
   ctx: CanvasRenderingContext2D,
@@ -68,7 +62,7 @@ function drawBaseBodyFrame(
   ctx.stroke();
 
   ctx.fillStyle = '#2a2a2a';
-  const eyeDirOffset = direction === 1 ? 2 : direction === 3 ? -2 : 0;
+  const eyeDirOffset = direction === LPC_DIRECTION_ROWS.LEFT ? 2 : direction === LPC_DIRECTION_ROWS.RIGHT ? -2 : 0;
   ctx.beginPath();
   ctx.arc(centerX - 3 + eyeDirOffset, 4 + bodyOffset, 1.5, 0, Math.PI * 2);
   ctx.arc(centerX + 3 + eyeDirOffset, 4 + bodyOffset, 1.5, 0, Math.PI * 2);
@@ -125,16 +119,21 @@ function generateBaseBodyTexture(bodyType: BodyType): HTMLCanvasElement {
 
   const colors = BODY_COLORS[bodyType] ?? BODY_COLORS.male;
 
-  for (const animConfig of RTS_ANIMATION_CONFIGS) {
-    const yPos = ANIMATION_OFFSETS[animConfig.key];
-    if (yPos === undefined) continue;
+  const animationKeys = ['idle', 'walk', 'run'] as const;
+
+  for (const animKey of animationKeys) {
+    const animConfig = ANIMATION_CONFIGS[animKey];
+    const yPos = ANIMATION_OFFSETS[animKey];
+    if (yPos === undefined || !animConfig) continue;
+
+    const maxFrame = Math.max(...animConfig.cycle);
 
     for (let direction = 0; direction < 4; direction++) {
-      for (let frame = 0; frame < animConfig.frames; frame++) {
+      for (let frame = 0; frame <= maxFrame; frame++) {
         const x = frame * FRAME_SIZE;
         const y = yPos + direction * FRAME_SIZE;
         
-        drawBaseBodyFrame(ctx, x, y, colors, animConfig.key, frame, direction);
+        drawBaseBodyFrame(ctx, x, y, colors, animKey, frame, direction);
       }
     }
   }

@@ -37,7 +37,7 @@ const removeItem = (type: 'shortTerm' | 'longTerm', index: number) => {
   <div class="memory-editor">
     <div class="section-header">
       <svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <SvgIcon :name="brain" size="16" />
+        <SvgIcon name="brain" size="16" />
       </svg>
       <span class="section-title">记忆配置 Memory</span>
     </div>
@@ -47,12 +47,12 @@ const removeItem = (type: 'shortTerm' | 'longTerm', index: number) => {
       <div class="panel" :class="{ expanded: activePanel.includes('shortTerm') }">
         <div class="panel-header" @click="activePanel.includes('shortTerm') ? activePanel = activePanel.filter(p => p !== 'shortTerm') : activePanel.push('shortTerm')">
           <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <SvgIcon :name="clock" size="16" />
+            <SvgIcon name="clock" size="16" />
           </svg>
           <span class="panel-title">短期记忆</span>
           <span class="panel-count">{{ modelValue.shortTerm.length }}</span>
           <svg class="chevron" :class="{ rotated: activePanel.includes('shortTerm') }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <SvgIcon :name="chevronDown" size="16" />
+            <SvgIcon name="chevron-down" size="16" />
           </svg>
         </div>
         <div class="panel-body" v-show="activePanel.includes('shortTerm')">
@@ -60,13 +60,13 @@ const removeItem = (type: 'shortTerm' | 'longTerm', index: number) => {
             <div v-for="(item, index) in modelValue.shortTerm" :key="index" class="memory-tag">
               <span class="tag-text">{{ item }}</span>
               <button class="tag-remove" @click="removeItem('shortTerm', index)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><SvgIcon :name="x" size="16" /></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><SvgIcon name="x" size="16" /></svg>
               </button>
             </div>
           </div>
           <div class="add-input-row">
             <StratixInput v-model="newShortTerm" placeholder="添加短期记忆..." @keydown.enter.prevent="addItem('shortTerm')" class="flex-1" />
-            <StratixButton variant="secondary" size="sm" :icon="plus" @click="addItem('shortTerm')" />
+            <StratixButton variant="secondary" size="sm" icon="plus" @click="addItem('shortTerm')" />
           </div>
           <span class="hint">短期记忆用于存储当前对话的临时信息</span>
         </div>
@@ -76,12 +76,12 @@ const removeItem = (type: 'shortTerm' | 'longTerm', index: number) => {
       <div class="panel" :class="{ expanded: activePanel.includes('longTerm') }">
         <div class="panel-header" @click="activePanel.includes('longTerm') ? activePanel = activePanel.filter(p => p !== 'longTerm') : activePanel.push('longTerm')">
           <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <SvgIcon :name="bookmark" size="16" />
+            <SvgIcon name="bookmark" size="16" />
           </svg>
           <span class="panel-title">长期记忆</span>
           <span class="panel-count">{{ modelValue.longTerm.length }}</span>
           <svg class="chevron" :class="{ rotated: activePanel.includes('longTerm') }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <SvgIcon :name="chevronDown" size="16" />
+            <SvgIcon name="chevron-down" size="16" />
           </svg>
         </div>
         <div class="panel-body" v-show="activePanel.includes('longTerm')">
@@ -89,13 +89,13 @@ const removeItem = (type: 'shortTerm' | 'longTerm', index: number) => {
             <div v-for="(item, index) in modelValue.longTerm" :key="index" class="memory-tag long-term">
               <span class="tag-text">{{ item }}</span>
               <button class="tag-remove" @click="removeItem('longTerm', index)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><SvgIcon :name="x" size="16" /></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><SvgIcon name="x" size="16" /></svg>
               </button>
             </div>
           </div>
           <div class="add-input-row">
             <StratixInput v-model="newLongTerm" placeholder="添加长期记忆..." @keydown.enter.prevent="addItem('longTerm')" class="flex-1" />
-            <StratixButton variant="secondary" size="sm" :icon="plus" @click="addItem('longTerm')" />
+            <StratixButton variant="secondary" size="sm" icon="plus" @click="addItem('longTerm')" />
           </div>
           <span class="hint">长期记忆用于存储持久化的知识信息</span>
         </div>

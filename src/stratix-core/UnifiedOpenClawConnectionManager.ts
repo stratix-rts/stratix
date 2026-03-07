@@ -126,12 +126,14 @@ class UnifiedOpenClawConnectionManager {
   }
 
   async connectViaProxy(connectionId: string): Promise<ConnectionResult> {
+    console.log('[UnifiedOpenClaw] connectViaProxy called with connectionId:', connectionId);
     try {
       const response = await fetch(`/api/stratix/openclaw/connections/${connectionId}/connect`, {
         method: 'POST',
       });
       
       const result = await response.json();
+      console.log('[UnifiedOpenClaw] connectViaProxy response:', result);
       
       if (result.code === 200) {
         this.connectionId = connectionId;
@@ -149,6 +151,7 @@ class UnifiedOpenClawConnectionManager {
       };
     } catch (error) {
       const err = error as Error;
+      console.error('[UnifiedOpenClaw] connectViaProxy error:', err);
       return {
         success: false,
         state: 'error',
@@ -355,19 +358,69 @@ class UnifiedOpenClawConnectionManager {
         ws.onmessage = (event) => {
           try {
             const msg = JSON.parse(event.data);
+            console.log('[UnifiedOpenClaw] Received message:', JSON.stringify(msg).slice(0, 300));
             
-            if (msg.event === 'chat.delta' && msg.payload?.text) {
-              accumulatedText = msg.payload.text;
-            } else if (msg.event === 'chat.complete') {
-              ws.close();
-              resolve({
-                messageId: msg.payload?.messageId || '',
-                content: accumulatedText || msg.payload?.content || '',
-                role: 'assistant',
-                sessionId,
-                done: true,
-              });
-            } else if (msg.type === 'error') {
+            // 处理 chat.send 请求的响应
+            if (msg.type === 'res' && msg.ok !== undefined) {
+              if (!msg.ok) {
+                ws.close();
+                reject(new Error(msg.error?.message || 'Request failed'));
+              }
+              return;
+            }
+            
+            // 处理 chat 事件 - OpenClaw 实际返回格式
+            // { type: 'event', event: 'chat', payload: { state: 'delta'|'final', message: {...} } }
+            if (msg.type === 'event' && msg.event === 'chat') {
+              const payload = msg.payload;
+              if (!payload) return;
+              
+              switch (payload.state) {
+                case 'delta':
+                  const text = this.extractTextContent(payload.message);
+                  if (text) {
+                    accumulatedText = text;
+                    console.log('[UnifiedOpenClaw] Delta text:', text.slice(-50));
+                  }
+                  break;
+                  
+                case 'final':
+                  const finalText = this.extractTextContent(payload.message) || accumulatedText;
+                  console.log('[UnifiedOpenClaw] Final text:', finalText?.slice(-100));
+                  ws.close();
+                  resolve({
+                    messageId: payload.runId || '',
+                    content: finalText,
+                    role: 'assistant',
+                    sessionId,
+                    done: true,
+                  });
+                  break;
+                  
+                case 'error':
+                  ws.close();
+                  reject(new Error(payload.errorMessage || 'Chat error'));
+                  break;
+                  
+                case 'aborted':
+                  ws.close();
+                  reject(new Error('Chat aborted'));
+                  break;
+              }
+              return;
+            }
+            
+            // 处理流式格式 - { stream: 'assistant', data: { text, delta }, runId }
+            if (msg.stream === 'assistant' && msg.data) {
+              const data = msg.data as { text?: string; delta?: string };
+              if (data.text) {
+                accumulatedText = data.text;
+              }
+              return;
+            }
+            
+            // 错误处理
+            if (msg.type === 'error') {
               ws.close();
               reject(new Error(msg.error?.message || 'Unknown error'));
             }
@@ -381,12 +434,20 @@ class UnifiedOpenClawConnectionManager {
         };
         
         ws.onopen = () => {
-          ws.send(JSON.stringify({
+          const idempotencyKey = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+          const payload = {
             type: 'req',
             id: `chat-${Date.now()}`,
             method: 'chat.send',
-            params: { message, sessionKey: sessionId },
-          }));
+            params: { 
+              message, 
+              sessionKey: sessionId,
+              idempotencyKey,
+              deliver: false,
+            },
+          };
+          console.log('[UnifiedOpenClaw] sendMessageProxy sending:', JSON.stringify(payload, null, 2));
+          ws.send(JSON.stringify(payload));
         };
         
         setTimeout(() => {
@@ -407,6 +468,42 @@ class UnifiedOpenClawConnectionManager {
     } catch (error) {
       throw error;
     }
+  }
+  
+  /**
+   * 从 OpenClaw 消息中提取文本内容
+   */
+  private extractTextContent(content: any): string {
+    if (!content) return '';
+    
+    // 字符串
+    if (typeof content === 'string') return content;
+    
+    // 数组：[{type: 'text', text: '...'}]
+    if (Array.isArray(content)) {
+      return content
+        .filter((c): c is { type: string; text: string } => c?.type === 'text' && typeof c.text === 'string')
+        .map(c => c.text)
+        .join('');
+    }
+    
+    // 对象
+    if (typeof content === 'object') {
+      // 格式：{ role: 'assistant', content: [{type: 'text', text: '...'}], timestamp: ... }
+      if (content.content) {
+        return this.extractTextContent(content.content);
+      }
+      
+      // 其他可能的字段
+      if (typeof content.text === 'string') return content.text;
+      if (typeof content.delta === 'string') return content.delta;
+      
+      // 递归检查
+      if (content.message) return this.extractTextContent(content.message);
+      if (content.data) return this.extractTextContent(content.data);
+    }
+    
+    return '';
   }
 
   private async sendMessageDirect(message: string, options?: ChatOptions): Promise<ChatResponse> {

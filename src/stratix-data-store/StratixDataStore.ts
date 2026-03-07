@@ -77,6 +77,10 @@ export class StratixDataStore {
     return this.db.data.agents.find(a => a.agentId === agentId) || null;
   }
 
+  public async loadAgent(agentId: string): Promise<StratixAgentConfig | null> {
+    return this.getAgent(agentId);
+  }
+
   public async listAgents(): Promise<StratixAgentConfig[]> {
     await this.ensureInitialized();
     await this.refresh();

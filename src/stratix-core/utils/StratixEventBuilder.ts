@@ -10,6 +10,7 @@ import {
   StratixCommandData,
   StratixFrontendEventType,
   StratixStateSyncEventType,
+  AgentStatusInfo,
 } from '../stratix-protocol';
 import StratixIdGenerator from './StratixIdGenerator';
 
@@ -87,7 +88,7 @@ export class StratixEventBuilder {
    */
   public buildAgentStatusUpdateEvent(
     agentId: string,
-    status: 'online' | 'offline' | 'busy' | 'error'
+    status: AgentStatusInfo
   ): StratixStateSyncEvent {
     return {
       eventType: 'stratix:agent_status_update',

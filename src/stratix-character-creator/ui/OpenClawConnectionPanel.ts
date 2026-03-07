@@ -623,7 +623,7 @@ export class OpenClawConnectionPanel {
           font-size: 11px;
           cursor: pointer;
         ">使用已有配置</button>
-        <button id="create-new-btn" style="
+        <button id="update-existing-btn" style="
           flex: 1;
           padding: 8px 12px;
           background: transparent;
@@ -632,26 +632,39 @@ export class OpenClawConnectionPanel {
           color: ${THEME.textMuted};
           font-size: 11px;
           cursor: pointer;
-        ">创建新配置</button>
+        ">更新现有配置</button>
       </div>
     `;
 
     const useExistingBtn = statusHint.querySelector('#use-existing-btn');
-    const createNewBtn = statusHint.querySelector('#create-new-btn');
+    const updateExistingBtn = statusHint.querySelector('#update-existing-btn');
 
     useExistingBtn?.addEventListener('click', async () => {
-      this.connectionId = existingConn.id;
-      this.showPairingStatus('connected', '使用已有配置');
-      this.updateStatus('connected', '已连接');
-      this.config.onConnected?.(existingConn.id);
+      this.updateStatus('connecting', '正在连接...');
+
+      const result = await unifiedOpenClawConnectionManager.connectViaProxy(existingConn.id);
+
+      if (result.success) {
+        this.connectionId = existingConn.id;
+        this.showPairingStatus('connected', '使用已有配置');
+        this.updateStatus('connected', '已连接');
+        this.config.onConnected?.(existingConn.id);
+      } else {
+        this.showPairingStatus('error', result.message || '连接失败');
+        this.updateStatus('error', result.message || '连接失败');
+      }
     });
 
-    createNewBtn?.addEventListener('click', async () => {
-      if (!sharedToken) {
+    updateExistingBtn?.addEventListener('click', async () => {
+      // 重新从输入框获取 token，因为用户可能在弹窗显示后修改了
+      const tokenInput = node.querySelector('#shared-token') as HTMLInputElement;
+      const currentToken = tokenInput?.value?.trim() || sharedToken;
+      
+      if (!currentToken) {
         this.updateStatus('error', '请输入 Shared Token');
         return;
       }
-      await this.doPairConnect(endpoint, sharedToken);
+      await this.doUpdateAndConnect(existingConn.id, endpoint, currentToken);
     });
   }
 
@@ -685,6 +698,64 @@ export class OpenClawConnectionPanel {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : '连接失败';
+      this.showPairingStatus('error', message);
+      this.updateStatus('error', message);
+    }
+  }
+
+  private async doUpdateAndConnect(connectionId: string, endpoint: string, sharedToken: string): Promise<void> {
+    console.log('[OpenClawPanel] doUpdateAndConnect called:', { connectionId, endpoint, hasToken: !!sharedToken });
+    
+    this.updateStatus('connecting', '正在更新配置...');
+    this.showPairingStatus('connecting', '正在更新配置...');
+
+    try {
+      // 调用 API 更新现有连接的 sharedToken
+      console.log('[OpenClawPanel] Calling PUT /api/stratix/openclaw/connections/' + connectionId);
+      const response = await fetch(`/api/stratix/openclaw/connections/${connectionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sharedToken }),
+      });
+
+      const result = await response.json();
+      console.log('[OpenClawPanel] PUT response:', result);
+
+      if (result.code !== 200) {
+        this.showPairingStatus('error', result.message || '更新失败');
+        this.updateStatus('error', result.message || '更新失败');
+        return;
+      }
+
+      // 重新连接
+      console.log('[OpenClawPanel] Calling connectViaProxy');
+      const connectResult = await unifiedOpenClawConnectionManager.connectViaProxy(connectionId);
+      console.log('[OpenClawPanel] connectViaProxy result:', connectResult);
+
+      if (connectResult.success) {
+        this.connectionId = connectionId;
+        this.showPairingStatus('connected', `更新并连接成功 (${connectResult.latency || 0}ms)`);
+        this.updateStatus('connected', `已连接 (${connectResult.latency || 0}ms)`);
+        this.config.onConnected?.(connectionId);
+      } else if (connectResult.state === 'pairing') {
+        this.showPairingStatus('waiting', '等待管理员批准...', connectResult.pairingRequestId);
+        this.updateStatus('connecting', '等待批准...');
+
+        unifiedOpenClawConnectionManager.startPairingPolling((pollResult) => {
+          if (pollResult.success) {
+            this.connectionId = unifiedOpenClawConnectionManager.getConnectionId();
+            this.showPairingStatus('connected', '配对成功！');
+            this.updateStatus('connected', '已连接');
+            this.config.onConnected?.(this.connectionId || undefined);
+          }
+        }, 3000);
+      } else {
+        this.showPairingStatus('error', connectResult.message);
+        this.updateStatus('error', connectResult.message);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '更新失败';
+      console.error('[OpenClawPanel] doUpdateAndConnect error:', error);
       this.showPairingStatus('error', message);
       this.updateStatus('error', message);
     }

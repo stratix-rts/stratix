@@ -11,6 +11,55 @@ export const SHEET_HEIGHT = 3456;
 export const FRAMES_PER_ROW = 13;
 export const DIRECTIONS = 4;
 
+/**
+ * LPC Sprite Sheet 方向布局 (行号)
+ * ↓ (下) = 2, ← (左) = 1, ↑ (上) = 0, → (右) = 3
+ */
+export const LPC_DIRECTION_ROWS = {
+  UP: 0,
+  LEFT: 1,
+  DOWN: 2,
+  RIGHT: 3
+} as const;
+
+/**
+ * 角度 (度数) 直接转 LPC 行号
+ * @param normalizedDegrees 已归一化的角度 (0-360)
+ * @returns LPC 行号 (0=上, 1=左, 2=下, 3=右)
+ */
+export function angleToLPCRow(normalizedDegrees: number): number {
+  // 0° = 右, 90° = 下, 180° = 左, 270° = 上
+  if (normalizedDegrees >= 315 || normalizedDegrees < 45) return LPC_DIRECTION_ROWS.RIGHT;   // 右 → 3
+  if (normalizedDegrees >= 45 && normalizedDegrees < 135) return LPC_DIRECTION_ROWS.DOWN;    // 下 → 2
+  if (normalizedDegrees >= 135 && normalizedDegrees < 225) return LPC_DIRECTION_ROWS.LEFT;   // 左 → 1
+  return LPC_DIRECTION_ROWS.UP;  // 上 → 0 (225°-315°)
+}
+
+/**
+ * 逻辑方向到 LPC 行号的映射
+ * 用于 CharacterPreview 等组件
+ * 
+ * CharacterCreatorScene 中的按钮布局:
+ * const dirs = ['↓', '←', '↑', '→'];
+ * const dirValues = [2, 1, 0, 3];  // 与 LPC 行号一致
+ * 
+ * 逻辑方向值 = LPC 行号:
+ * 2 = ↓ (下)
+ * 1 = ← (左)
+ * 0 = ↑ (上)
+ * 3 = → (右)
+ * 
+ * 由于按钮值已与 LPC 行号一致，此映射为 1:1
+ */
+export const LOGICAL_TO_LPC: Record<number, number> = {
+  0: 0,  // ↑ 上
+  1: 1,  // ← 左
+  2: 2,  // ↓ 下
+  3: 3,  // → 右
+};
+
+export type LogicalDirection = number;
+
 export const BODY_TYPES = ['male', 'female', 'teen', 'muscular', 'pregnant'] as const;
 export type BodyType = typeof BODY_TYPES[number];
 
@@ -48,6 +97,62 @@ export const ANIMATION_CONFIGS: Record<string, { row: number; num: number; cycle
   combat_idle: { row: 42, num: 4, cycle: [0, 0, 1] },
   backslash: { row: 46, num: 4, cycle: [0, 1, 2, 3, 4, 5, 6] },
   halfslash: { row: 50, num: 4, cycle: [0, 1, 2, 3, 4, 5] }
+};
+
+export const ANIMATION_NAMES = {
+  SPELLCAST: 'spellcast',
+  THRUST: 'thrust',
+  WALK: 'walk',
+  SLASH: 'slash',
+  SHOOT: 'shoot',
+  HURT: 'hurt',
+  CLIMB: 'climb',
+  IDLE: 'idle',
+  JUMP: 'jump',
+  SIT: 'sit',
+  EMOTE: 'emote',
+  RUN: 'run',
+  COMBAT_IDLE: 'combat_idle',
+  BACKSLASH: 'backslash',
+  HALFSLASH: 'halfslash'
+} as const;
+
+export type AnimationName = typeof ANIMATION_NAMES[keyof typeof ANIMATION_NAMES];
+
+export const ALL_ANIMATIONS: AnimationName[] = Object.values(ANIMATION_NAMES);
+
+export const CORE_RTS_ANIMATIONS: AnimationName[] = [
+  ANIMATION_NAMES.WALK,
+  ANIMATION_NAMES.IDLE,
+  ANIMATION_NAMES.RUN
+];
+
+export const COMBAT_ANIMATIONS: AnimationName[] = [
+  ANIMATION_NAMES.SPELLCAST,
+  ANIMATION_NAMES.THRUST,
+  ANIMATION_NAMES.SLASH,
+  ANIMATION_NAMES.SHOOT,
+  ANIMATION_NAMES.BACKSLASH,
+  ANIMATION_NAMES.HALFSLASH,
+  ANIMATION_NAMES.COMBAT_IDLE
+];
+
+export const ANIMATION_FRAMERATES: Record<AnimationName, number> = {
+  [ANIMATION_NAMES.SPELLCAST]: 8,
+  [ANIMATION_NAMES.THRUST]: 8,
+  [ANIMATION_NAMES.WALK]: 10,
+  [ANIMATION_NAMES.SLASH]: 8,
+  [ANIMATION_NAMES.SHOOT]: 10,
+  [ANIMATION_NAMES.HURT]: 6,
+  [ANIMATION_NAMES.CLIMB]: 8,
+  [ANIMATION_NAMES.IDLE]: 3,
+  [ANIMATION_NAMES.JUMP]: 8,
+  [ANIMATION_NAMES.SIT]: 1,
+  [ANIMATION_NAMES.EMOTE]: 6,
+  [ANIMATION_NAMES.RUN]: 12,
+  [ANIMATION_NAMES.COMBAT_IDLE]: 3,
+  [ANIMATION_NAMES.BACKSLASH]: 8,
+  [ANIMATION_NAMES.HALFSLASH]: 8
 };
 
 export const PART_CATEGORIES = [

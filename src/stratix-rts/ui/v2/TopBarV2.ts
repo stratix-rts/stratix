@@ -9,6 +9,8 @@ import Phaser from 'phaser';
 import { EnhancedUIComponent } from '@/stratix-core/ui/components/base/EnhancedUIComponent';
 import type { UIComponentConfig } from '@/stratix-core/ui/core/types/component.types';
 import { ReactiveToken } from '@/stratix-core/ui/foundation/theme/ReactiveToken';
+import type { StatsCollector } from '../../debug/StatsCollector';
+import { PerformanceWidget } from '../debug/PerformanceWidget';
 
 export interface TopBarStats {
   totalAgents: number;
@@ -26,13 +28,12 @@ export class TopBarV2 extends EnhancedUIComponent {
   private busyText: Phaser.GameObjects.Text | null = null;
   private zoneIcon: Phaser.GameObjects.Graphics | null = null;
   private zoneText: Phaser.GameObjects.Text | null = null;
-  private progressContainer: Phaser.GameObjects.Container | null = null;
-  private progressBg: Phaser.GameObjects.Graphics | null = null;
-  private progressFill: Phaser.GameObjects.Graphics | null = null;
-  private progressText: Phaser.GameObjects.Text | null = null;
+  private performanceWidget: PerformanceWidget | null = null;
+  private helpButton: Phaser.GameObjects.Container | null = null;
   
   private updateTimer: Phaser.Time.TimerEvent | null = null;
   private getStats: () => TopBarStats;
+  private statsCollector?: StatsCollector;
   
   // 响应式Token
   private backgroundColor: ReactiveToken<string>;
@@ -42,14 +43,14 @@ export class TopBarV2 extends EnhancedUIComponent {
   private warningColor: ReactiveToken<string>;
   private infoColor: ReactiveToken<string>;
   private borderColor: ReactiveToken<string>;
-  private progressBgColor: ReactiveToken<string>;
   
   constructor(
     scene: Phaser.Scene,
     x: number,
     y: number,
     width: number,
-    getStats: () => TopBarStats
+    getStats: () => TopBarStats,
+    statsCollector?: StatsCollector
   ) {
     super(scene, {
       x,
@@ -60,6 +61,7 @@ export class TopBarV2 extends EnhancedUIComponent {
     });
     
     this.getStats = getStats;
+    this.statsCollector = statsCollector;
     
     // 创建响应式Token
     this.backgroundColor = this.useToken('colors.background.primary');
@@ -69,7 +71,6 @@ export class TopBarV2 extends EnhancedUIComponent {
     this.warningColor = this.useToken('colors.semantic.warning');
     this.infoColor = this.useToken('colors.semantic.info');
     this.borderColor = this.useToken('colors.border.default');
-    this.progressBgColor = this.useToken('colors.background.tertiary');
     
     // 订阅颜色变化，自动重绘
     this.backgroundColor.subscribe(() => this.redraw());
@@ -85,11 +86,28 @@ export class TopBarV2 extends EnhancedUIComponent {
     this.createAgentSection(20, 12);
     this.createBusySection(140, 12);
     this.createZoneSection(260, 12);
-    this.createProgressSection((this.config.width || 1920) - 180, 8);
+    this.createHelpButton();
+    
+    if (this.statsCollector) {
+      this.createPerformanceWidget();
+    }
     
     this.startAutoUpdate();
     
     this.onCreate();
+  }
+  
+  private createPerformanceWidget(): void {
+    if (!this.statsCollector) return;
+    
+    this.performanceWidget = new PerformanceWidget(
+      this.scene,
+      (this.config.width || 1920) - 50,
+      20,
+      this.statsCollector
+    );
+    this.performanceWidget.create();
+    this.performanceWidget.mount();
   }
   
   private createBackground(): void {
@@ -146,25 +164,57 @@ export class TopBarV2 extends EnhancedUIComponent {
     (this.container as Phaser.GameObjects.Container).add(this.zoneText);
   }
   
-  private createProgressSection(x: number, y: number): void {
-    this.progressContainer = this.scene.add.container(x, y);
-    (this.container as Phaser.GameObjects.Container).add(this.progressContainer);
+  private createHelpButton(): void {
+    const buttonX = (this.config.width || 1920) - 150;
+    const buttonY = 8;
+    const buttonWidth = 32;
+    const buttonHeight = 24;
     
-    const progressBgClr = this.hexToNumber(this.progressBgColor.get());
-    this.progressBg = this.scene.add.graphics();
-    this.progressBg.fillStyle(progressBgClr, 1);
-    this.progressBg.fillRoundedRect(0, 8, 150, 16, 4);
-    this.progressContainer.add(this.progressBg);
+    this.helpButton = this.scene.add.container(buttonX, buttonY);
     
-    this.progressFill = this.scene.add.graphics();
-    this.progressContainer.add(this.progressFill);
+    const bg = this.scene.add.graphics();
+    bg.fillStyle(this.hexToNumber(this.borderColor.get()), 0.3);
+    bg.fillRoundedRect(0, 0, buttonWidth, buttonHeight, 4);
+    bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.5);
+    bg.strokeRoundedRect(0, 0, buttonWidth, buttonHeight, 4);
     
-    this.progressText = this.createText(75, 8, '0%', {
-      fontSize: '12px',
+    const hitArea = this.scene.add.rectangle(0, 0, buttonWidth, buttonHeight, 0x000000, 0);
+    hitArea.setOrigin(0, 0);
+    hitArea.setInteractive({ useHandCursor: true });
+    
+    const questionMark = this.scene.add.text(buttonWidth / 2, buttonHeight / 2, '?', {
+      fontFamily: this.theme.typography.fontFamily.sans,
+      fontSize: '16px',
       color: this.textPrimaryColor.get(),
     });
-    this.progressText.setOrigin(0.5, 0);
-    this.progressContainer.add(this.progressText);
+    questionMark.setOrigin(0.5, 0.5);
+    
+    this.helpButton.add([bg, hitArea, questionMark]);
+    
+    hitArea.on('pointerover', () => {
+      bg.clear();
+      bg.fillStyle(this.hexToNumber(this.infoColor.get()), 0.2);
+      bg.fillRoundedRect(0, 0, buttonWidth, buttonHeight, 4);
+      bg.lineStyle(1, this.hexToNumber(this.infoColor.get()), 0.8);
+      bg.strokeRoundedRect(0, 0, buttonWidth, buttonHeight, 4);
+    });
+    
+    hitArea.on('pointerout', () => {
+      bg.clear();
+      bg.fillStyle(this.hexToNumber(this.borderColor.get()), 0.3);
+      bg.fillRoundedRect(0, 0, buttonWidth, buttonHeight, 4);
+      bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.5);
+      bg.strokeRoundedRect(0, 0, buttonWidth, buttonHeight, 4);
+    });
+    
+    hitArea.on('pointerdown', () => {
+      const helpPanel = (window as any).helpPanel;
+      if (helpPanel) {
+        helpPanel.toggle();
+      }
+    });
+    
+    (this.container as Phaser.GameObjects.Container).add(this.helpButton);
   }
   
   private createIcon(x: number, y: number, color: string): Phaser.GameObjects.Graphics {
@@ -215,23 +265,6 @@ export class TopBarV2 extends EnhancedUIComponent {
     
     // 更新Zone显示
     this.zoneText?.setText(`${stats.totalZones} 个区域`);
-    
-    // 更新进度
-    this.updateProgress(stats.overallProgress);
-  }
-  
-  private updateProgress(progress: number): void {
-    const clampedProgress = Math.max(0, Math.min(100, progress));
-    const fillWidth = Math.floor((clampedProgress / 100) * 150);
-    
-    this.progressFill?.clear();
-    if (fillWidth > 0) {
-      const progressFillColor = this.hexToNumber(this.successColor.get());
-      this.progressFill?.fillStyle(progressFillColor, 1);
-      this.progressFill?.fillRoundedRect(0, 8, fillWidth, 16, 4);
-    }
-    
-    this.progressText?.setText(`${Math.floor(clampedProgress)}%`);
   }
   
   public setStats(stats: TopBarStats): void {
@@ -240,7 +273,6 @@ export class TopBarV2 extends EnhancedUIComponent {
   
   public resize(width: number): void {
     this.config.width = width;
-    this.progressContainer?.setX(width - 180);
     this.drawBackground();
   }
   
@@ -296,10 +328,7 @@ export class TopBarV2 extends EnhancedUIComponent {
     this.agentText?.destroy();
     this.busyText?.destroy();
     this.zoneText?.destroy();
-    this.progressContainer?.destroy();
-    this.progressBg?.destroy();
-    this.progressFill?.destroy();
-    this.progressText?.destroy();
+    this.helpButton?.destroy();
     
     super.destroy();
   }

@@ -5,7 +5,7 @@
  */
 
 import { WebSocketServer, WebSocket } from 'ws';
-import { StratixStateSyncEvent } from '../../../stratix-core/stratix-protocol';
+import { StratixStateSyncEvent, AgentStatusInfo } from '../../../stratix-core/stratix-protocol';
 
 export class StatusSyncService {
   private wss: WebSocketServer;
@@ -78,7 +78,7 @@ export class StatusSyncService {
 
   public notifyAgentStatus(
     agentId: string,
-    status: 'online' | 'offline' | 'busy' | 'error'
+    status: AgentStatusInfo
   ): void {
     this.broadcast({
       eventType: 'stratix:agent_status_update',

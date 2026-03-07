@@ -1,0 +1,111 @@
+<script setup lang="ts">
+import { computed } from 'vue';
+import StratixModal from './StratixModal.vue';
+import SvgIcon from './SvgIcon.vue';
+
+type ConfirmType = 'info' | 'success' | 'warning' | 'error' | 'confirm';
+
+interface Props {
+  visible: boolean;
+  type?: ConfirmType;
+  title?: string;
+  content?: string;
+  icon?: string;
+  okText?: string;
+  cancelText?: string;
+  showCancel?: boolean;
+  okDanger?: boolean;
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  type: 'confirm',
+  showCancel: true,
+  okDanger: false,
+});
+
+const emit = defineEmits<{
+  'update:visible': [value: boolean];
+  'ok': [];
+  'cancel': [];
+}>();
+
+const TYPE_CONFIG = {
+  info: { icon: 'info', color: '#00d4ff' },
+  success: { icon: 'check-circle', color: '#00ff88' },
+  warning: { icon: 'alert-triangle', color: '#fbbf24' },
+  error: { icon: 'x-circle', color: '#ff4444' },
+  confirm: { icon: 'help-circle', color: '#00d4ff' },
+};
+
+const config = computed(() => TYPE_CONFIG[props.type]);
+
+const handleOk = () => {
+  emit('ok');
+  emit('update:visible', false);
+};
+
+const handleCancel = () => {
+  emit('cancel');
+  emit('update:visible', false);
+};
+</script>
+
+<template>
+  <StratixModal
+    :visible="visible"
+    @update:visible="$emit('update:visible', $event)"
+    :title="title"
+    width="420px"
+    :closable="false"
+    :mask-closable="false"
+    size="sm"
+  >
+    <div class="confirm-content">
+      <div class="confirm-icon" :style="{ color: config.color }">
+        <SvgIcon :name="icon || config.icon" :size="48" />
+      </div>
+      <div v-if="content" class="confirm-text">{{ content }}</div>
+      <slot />
+    </div>
+    
+    <template #footer>
+      <StratixButton 
+        v-if="showCancel"
+        size="sm" 
+        variant="secondary"
+        @click="handleCancel"
+      >
+        {{ cancelText || '取消' }}
+      </StratixButton>
+      <StratixButton 
+        size="sm" 
+        :variant="okDanger ? 'danger' : 'primary'"
+        @click="handleOk"
+      >
+        {{ okText || '确定' }}
+      </StratixButton>
+    </template>
+  </StratixModal>
+</template>
+
+<style scoped>
+.confirm-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 20px 0;
+}
+
+.confirm-icon {
+  margin-bottom: 16px;
+  opacity: 0.9;
+}
+
+.confirm-text {
+  font-size: 14px;
+  color: var(--ds-text-secondary);
+  line-height: 1.6;
+  max-width: 320px;
+}
+</style>

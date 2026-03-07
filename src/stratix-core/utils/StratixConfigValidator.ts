@@ -12,8 +12,9 @@ import {
   OpenClawConfig,
   DirectLLMConfig,
   StratixSkillParameter,
-  CharacterData,
+  CharacterProfile,
   AgentBackendType,
+  AgentConfigStatus,
 } from '../stratix-protocol';
 import StratixIdGenerator from './StratixIdGenerator';
 
@@ -45,14 +46,13 @@ export class StratixConfigValidator {
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    const isCustomCharacter = config.type === 'custom' || config.character !== undefined;
-    const backendType = config.backendType || 'openclaw';
+    const backendType = config.backendType || 'direct';
     const isDirectMode = backendType === 'direct';
 
     if (!config.agentId) {
       errors.push('agentId 是必填字段');
     } else if (!this.idGenerator.isValidAgentId(config.agentId)) {
-      errors.push('agentId 格式无效，应为 stratix-{timestamp}-{random}');
+      warnings.push('agentId 建议使用 stratix-{timestamp}-{random} 格式');
     }
 
     if (!config.name || config.name.trim() === '') {
@@ -63,15 +63,29 @@ export class StratixConfigValidator {
       errors.push('type 是必填字段');
     }
 
-    // 校验后端类型
     if (!['openclaw', 'direct'].includes(backendType)) {
       errors.push('backendType 必须是 openclaw 或 direct');
     }
 
-    // OpenClaw 模式校验
+    if (!config.configStatus) {
+      warnings.push('configStatus 建议设置为 draft 或 ready');
+    } else if (!['draft', 'ready'].includes(config.configStatus)) {
+      errors.push('configStatus 必须是 draft 或 ready');
+    }
+
+    if (!config.profile) {
+      errors.push('profile 是必填字段');
+    } else {
+      const profileResult = this.validateCharacterProfile(config.profile);
+      errors.push(...profileResult.errors);
+      warnings.push(...profileResult.warnings);
+    }
+
     if (backendType === 'openclaw') {
       if (!config.openClawConfig) {
-        errors.push('OpenClaw 模式需要 openClawConfig');
+        if (config.configStatus === 'ready') {
+          errors.push('OpenClaw ready 状态需要 openClawConfig');
+        }
       } else {
         const openClawResult = this.validateOpenClawConfig(config.openClawConfig);
         errors.push(...openClawResult.errors);
@@ -79,32 +93,33 @@ export class StratixConfigValidator {
       }
     }
 
-    // Direct LLM 模式校验
     if (isDirectMode) {
       if (!config.directConfig) {
-        errors.push('Direct 模式需要 directConfig');
+        if (config.configStatus === 'ready') {
+          errors.push('Direct ready 状态需要 directConfig');
+        }
       } else {
         const directResult = this.validateDirectConfig(config.directConfig);
         errors.push(...directResult.errors);
         warnings.push(...directResult.warnings);
       }
 
-      // Direct 模式需要能力定义
-      if (!config.soul) {
-        if (!isCustomCharacter) {
-          errors.push('Direct 模式需要 soul 配置');
+      if (config.configStatus === 'ready') {
+        if (!config.soul) {
+          warnings.push('Direct ready 状态建议配置 soul');
         }
-      } else {
+        if (!config.skills || config.skills.length === 0) {
+          warnings.push('Direct ready 状态建议至少配置一个技能');
+        }
+      }
+
+      if (config.soul) {
         const soulResult = this.validateSoulConfig(config.soul);
         errors.push(...soulResult.errors);
         warnings.push(...soulResult.warnings);
       }
 
-      if (!config.skills || config.skills.length === 0) {
-        if (!isCustomCharacter) {
-          errors.push('Direct 模式至少需要配置一个技能');
-        }
-      } else {
+      if (config.skills && config.skills.length > 0) {
         config.skills.forEach((skill, index) => {
           const skillResult = this.validateSkillConfig(skill);
           skillResult.errors.forEach((err) => errors.push(`skills[${index}]: ${err}`));
@@ -113,18 +128,10 @@ export class StratixConfigValidator {
       }
     }
 
-    // 可选字段校验
     if (config.memory) {
       const memoryResult = this.validateMemoryConfig(config.memory);
       errors.push(...memoryResult.errors);
       warnings.push(...memoryResult.warnings);
-    }
-
-    // 角色数据校验
-    if (config.character) {
-      const characterResult = this.validateCharacterData(config.character);
-      errors.push(...characterResult.errors);
-      warnings.push(...characterResult.warnings);
     }
 
     return {
@@ -135,22 +142,30 @@ export class StratixConfigValidator {
   }
 
   /**
-   * 校验 Character 数据
+   * 校验 CharacterProfile
    */
-  public validateCharacterData(config: CharacterData): ValidationResult {
+  public validateCharacterProfile(profile: CharacterProfile): ValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    if (!config.characterId) {
-      errors.push('characterId 是必填字段');
+    if (!profile.characterId) {
+      errors.push('profile.characterId 是必填字段');
     }
 
-    if (!config.bodyType) {
-      errors.push('bodyType 是必填字段');
+    if (!profile.name || profile.name.trim() === '') {
+      errors.push('profile.name 是必填字段');
     }
 
-    if (!config.parts || typeof config.parts !== 'object') {
-      errors.push('parts 必须是对象');
+    if (!profile.bodyType) {
+      errors.push('profile.bodyType 是必填字段');
+    }
+
+    if (!profile.parts || typeof profile.parts !== 'object') {
+      errors.push('profile.parts 必须是对象');
+    }
+
+    if (!profile.thumbnail) {
+      warnings.push('profile.thumbnail 建议设置头像');
     }
 
     return { valid: errors.length === 0, errors, warnings };
@@ -233,7 +248,6 @@ export class StratixConfigValidator {
       });
     }
 
-    // executeScript 或 prompt 至少有一个
     if (!config.executeScript && !config.prompt) {
       warnings.push('建议设置 executeScript 或 prompt');
     }
@@ -242,7 +256,6 @@ export class StratixConfigValidator {
       try {
         JSON.parse(config.executeScript);
       } catch {
-        // executeScript 可能是普通脚本，不一定是 JSON
       }
     }
 
@@ -351,6 +364,19 @@ export class StratixConfigValidator {
    */
   public isValidSkillConfig(config: StratixSkillConfig): boolean {
     return this.validateSkillConfig(config).valid;
+  }
+
+  /**
+   * 校验配置是否为 ready 状态
+   */
+  public isReadyConfig(config: StratixAgentConfig): boolean {
+    if (config.configStatus !== 'ready') return false;
+    
+    if (config.backendType === 'direct') {
+      return !!(config.directConfig?.provider && config.directConfig?.model);
+    } else {
+      return !!(config.openClawConfig?.endpoint && config.openClawConfig?.accountId);
+    }
   }
 }
 

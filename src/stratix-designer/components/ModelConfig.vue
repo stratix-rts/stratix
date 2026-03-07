@@ -52,7 +52,7 @@ const modelOptions = [
   <div class="model-config">
     <div class="section-header">
       <svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <SvgIcon :name="cpu" size="16" />
+        <SvgIcon name="cpu" size="16" />
       </svg>
       <span class="section-title">模型配置 Model</span>
     </div>
@@ -80,7 +80,7 @@ const modelOptions = [
     <div class="params-section">
       <div class="params-header">
         <svg class="params-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <SvgIcon :name="sliders" size="16" />
+          <SvgIcon name="sliders-horizontal" size="16" />
         </svg>
         <span class="params-title">模型参数</span>
       </div>

@@ -1,0 +1,121 @@
+<script setup lang="ts">
+import { computed, toRef } from 'vue';
+import { getButtonToken, type ButtonVariant, ButtonSizes } from '@/design-system/components/shared/button';
+import { provideSizeContext } from '@/design-system/composables/useSizeContext';
+import SvgIcon from './SvgIcon.vue';
+
+interface Props {
+  variant?: ButtonVariant;
+  size?: SizeVariant;
+  disabled?: boolean;
+  loading?: boolean;
+  icon?: string;
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  variant: 'primary',
+  size: 'md',
+  disabled: false,
+  loading: false,
+});
+
+const emit = defineEmits<{
+  click: [];
+}>();
+
+provideSizeContext(toRef(props, 'size'));
+
+const token = computed(() => getButtonToken(props.variant));
+const sizeConfig = computed(() => ButtonSizes[props.size]);
+
+const handleClick = () => {
+  if (!props.disabled && !props.loading) {
+    emit('click');
+  }
+};
+</script>
+
+<template>
+  <button
+    class="stratix-btn"
+    :class="[
+      `stratix-btn--${variant}`,
+      `stratix-btn--${size}`,
+      { 'stratix-btn--disabled': disabled || loading },
+    ]"
+    :disabled="disabled || loading"
+    @click="handleClick"
+  >
+    <span v-if="loading" class="stratix-btn__loader"></span>
+    <SvgIcon v-if="icon && !loading" :name="icon" class="stratix-btn__icon" />
+    <span class="stratix-btn__text">
+      <slot />
+    </span>
+  </button>
+</template>
+
+<style scoped>
+.stratix-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: v-bind('sizeConfig.padding');
+  font-size: v-bind('sizeConfig.fontSize');
+  font-family: 'SF Mono', 'Monaco', monospace;
+  font-weight: 500;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: v-bind('token.style.border');
+  background: v-bind('token.style.background');
+  color: v-bind('token.style.text || "#ffffff"');
+}
+
+.stratix-btn:hover:not(.stratix-btn--disabled) {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.stratix-btn:active:not(.stratix-btn--disabled) {
+  transform: translateY(0);
+}
+
+.stratix-btn--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.stratix-btn__loader {
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.stratix-btn__icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stratix-btn__text {
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+}
+
+.stratix-btn__text {
+  line-height: 1;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+</style>

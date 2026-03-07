@@ -33,7 +33,7 @@ export interface InputCallbacks {
   onSpriteDragEnd?: () => void;
   onZoneDrawStart?: (x: number, y: number) => void;
   onZoneDrawUpdate?: (x: number, y: number) => void;
-  onZoneDrawEnd?: () => Phaser.Geom.Rectangle | null;
+  onZoneDrawEnd?: () => Phaser.Geom.Rectangle | null | Promise<Phaser.Geom.Rectangle | null>;
   onZoneDrawCancel?: () => void;
   onModeChange?: (mode: InputMode) => void;
   onSelectAllSameType?: (agentId: string) => void;
@@ -87,6 +87,9 @@ export class InputHandler {
   private lastClickedAgentId: string | null = null;
   private lastZoneClickTime: number = 0;
   private lastClickedZoneId: string | null = null;
+  private pendingZoneDragId: string | null = null;
+  private zoneDragStartPoint: { x: number; y: number } | null = null;
+  private readonly zoneDragThreshold: number = 4;
   private shiftKey: Phaser.Input.Keyboard.Key;
   private ctrlKey: Phaser.Input.Keyboard.Key;
   private boundHandlers: {
@@ -271,19 +274,6 @@ export class InputHandler {
         }
       }
 
-      const centerHandleHit = this.getCenterHandleAtPointer(pointer);
-      if (centerHandleHit) {
-        const zoneId = centerHandleHit.getData('zoneId');
-        if (zoneId) {
-          this.isZoneDragging = true;
-          this.draggedZoneId = zoneId;
-          if (this.callbacks.onZoneDragStart) {
-            this.callbacks.onZoneDragStart(zoneId, pointer.worldX, pointer.worldY);
-          }
-          return;
-        }
-      }
-
       const hitSprite = this.getSpriteAtPointer(pointer);
       const agentId = hitSprite?.getData('agentId');
 
@@ -298,11 +288,14 @@ export class InputHandler {
 
       const taskZoneHit = this.getTaskZoneAtPointer(pointer);
       if (taskZoneHit) {
-        const zoneId = taskZoneHit.getData('zoneId');
+        const zoneId = taskZoneHit.getData('zoneId') || taskZoneHit.getData('projectId');
         if (zoneId) {
           if (this.callbacks.onZoneClick) {
             this.callbacks.onZoneClick(zoneId);
           }
+          
+          this.pendingZoneDragId = zoneId;
+          this.zoneDragStartPoint = { x: pointer.x, y: pointer.y };
           
           const now = Date.now();
           if (zoneId === this.lastClickedZoneId && 
@@ -357,20 +350,16 @@ export class InputHandler {
   private getCornerHandleAtPointer(pointer: Phaser.Input.Pointer): Phaser.GameObjects.GameObject | null {
     const gameObjects = this.scene.input.hitTestPointer(pointer);
     
+    console.log('[DEBUG getCornerHandle] hitTest results:', gameObjects.map((obj: any) => ({
+      type: obj.constructor.name,
+      isCornerHandle: obj.getData('isCornerHandle'),
+      visible: obj.visible,
+      alpha: obj.alpha
+    })));
+    
     for (const obj of gameObjects) {
       if (obj.getData('isCornerHandle') === true) {
-        return obj;
-      }
-    }
-    
-    return null;
-  }
-
-  private getCenterHandleAtPointer(pointer: Phaser.Input.Pointer): Phaser.GameObjects.GameObject | null {
-    const gameObjects = this.scene.input.hitTestPointer(pointer);
-    
-    for (const obj of gameObjects) {
-      if (obj.getData('isCenterHandle') === true) {
+        console.log('[DEBUG getCornerHandle] Found corner handle:', obj.getData('cornerPosition'));
         return obj;
       }
     }
@@ -381,18 +370,34 @@ export class InputHandler {
   private getTaskZoneAtPointer(pointer: Phaser.Input.Pointer): Phaser.GameObjects.GameObject | null {
     const gameObjects = this.scene.input.hitTestPointer(pointer);
     
+    console.log('[DEBUG getTaskZone] hitTest results:', gameObjects.map((obj: any) => ({
+      type: obj.constructor.name,
+      isBaseZone: obj.getData('isBaseZone'),
+      isTaskZone: obj.getData('isTaskZone'),
+      zoneId: obj.getData('zoneId'),
+      hasParent: !!obj.parentContainer
+    })));
+    
     for (const obj of gameObjects) {
       if (obj.getData('isCornerHandle') === true) {
         continue;
       }
-      if (obj.getData('isCenterHandle') === true) {
-        continue;
-      }
-      if (obj.getData('isTaskZone') === true) {
+      
+      if (obj.getData('isTaskZone') === true || obj.getData('isProjectZone') === true || obj.getData('isBaseZone') === true) {
+        console.log('[DEBUG getTaskZone] Found zone directly:', obj.getData('zoneId'));
         return obj;
       }
-      if (obj.parentContainer?.getData('isTaskZone') === true) {
-        return obj.parentContainer;
+      
+      let current: Phaser.GameObjects.Container | null = obj.parentContainer;
+      while (current) {
+        if (current.getData('isTaskZone') === true || 
+            current.getData('isProjectZone') === true || 
+            current.getData('isBaseZone') === true ||
+            current.getData('zoneId')) {
+          console.log('[DEBUG getTaskZone] Found zone via parent:', current.getData('zoneId'));
+          return current;
+        }
+        current = current.parentContainer;
       }
     }
     
@@ -400,10 +405,14 @@ export class InputHandler {
       const zoneId = this.callbacks.getTaskZoneAtPoint(pointer.worldX, pointer.worldY);
       if (zoneId) {
         const zone = this.scene.children.getFirst('zoneId', zoneId);
-        if (zone) return zone;
+        if (zone) {
+          console.log('[DEBUG getTaskZone] Found zone via callback:', zoneId);
+          return zone;
+        }
       }
     }
     
+    console.log('[DEBUG getTaskZone] No zone found');
     return null;
   }
 
@@ -419,11 +428,34 @@ export class InputHandler {
 
     this.handleEdgeScroll(pointer);
 
+    if (this.pendingZoneDragId && this.zoneDragStartPoint && pointer.leftButtonDown()) {
+      const dx = pointer.x - this.zoneDragStartPoint.x;
+      const dy = pointer.y - this.zoneDragStartPoint.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      console.log('[DEBUG ZoneDrag] Distance:', distance, 'Threshold:', this.zoneDragThreshold, 
+        'PendingZoneId:', this.pendingZoneDragId);
+      
+      if (distance >= this.zoneDragThreshold) {
+        console.log('[DEBUG ZoneDrag] Threshold exceeded, starting drag for zone:', this.pendingZoneDragId);
+        this.isZoneDragging = true;
+        this.draggedZoneId = this.pendingZoneDragId;
+        
+        if (this.callbacks.onZoneDragStart) {
+          this.callbacks.onZoneDragStart(this.pendingZoneDragId, pointer.worldX, pointer.worldY);
+        }
+        
+        this.pendingZoneDragId = null;
+        this.zoneDragStartPoint = null;
+      }
+    }
+
     if (this.isZoneResizing && pointer.leftButtonDown()) {
       if (this.callbacks.onZoneResizeUpdate) {
         this.callbacks.onZoneResizeUpdate(pointer.worldX, pointer.worldY);
       }
     } else if (this.isZoneDragging && pointer.leftButtonDown()) {
+      console.log('[DEBUG InputHandler] Calling onZoneDragUpdate, isZoneDragging:', this.isZoneDragging);
       if (this.callbacks.onZoneDragUpdate) {
         this.callbacks.onZoneDragUpdate(pointer.worldX, pointer.worldY);
       }
@@ -475,6 +507,11 @@ export class InputHandler {
     const isShiftDown = this.shiftKey.isDown;
 
     if (pointer.leftButtonReleased()) {
+      if (this.pendingZoneDragId) {
+        this.pendingZoneDragId = null;
+        this.zoneDragStartPoint = null;
+      }
+
       if (this.isZoneResizing) {
         this.isZoneResizing = false;
         this.draggedZoneId = null;

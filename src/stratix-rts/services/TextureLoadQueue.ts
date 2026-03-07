@@ -1,6 +1,6 @@
-import type { StratixAgentConfig, CharacterData } from '@/stratix-core/stratix-protocol';
+import type { StratixAgentConfig, CharacterProfile } from '@/stratix-core/stratix-protocol';
 import { characterComposer } from '@/stratix-character-creator/core/CharacterComposer';
-import { FRAME_SIZE, ANIMATION_OFFSETS } from '@/stratix-character-creator/constants';
+import { FRAME_SIZE, ANIMATION_OFFSETS, ALL_ANIMATIONS } from '@/stratix-character-creator/constants';
 
 export interface TextureLoadTask {
   id: string;
@@ -40,11 +40,11 @@ class TextureLoadQueue {
     priority: number = 5,
     callbacks?: { onComplete?: (canvas: HTMLCanvasElement) => void; onError?: (error: Error) => void }
   ): string {
-    if (!config.character) {
-      throw new Error('Cannot enqueue task without character data');
+    if (!config.profile) {
+      throw new Error('Cannot enqueue task without profile data');
     }
 
-    const taskId = config.character.characterId;
+    const taskId = config.profile.characterId;
     
     if (this.completed.has(taskId)) {
       callbacks?.onComplete?.(this.completed.get(taskId)!);
@@ -106,13 +106,13 @@ class TextureLoadQueue {
 
     for (let attempt = 0; attempt <= this.retryAttempts; attempt++) {
       try {
-        const character = task.config.character!;
+        const profile = task.config.profile!;
         
         const result = await characterComposer.composeCharacter(
-          character.parts,
+          profile.parts,
           {
-            bodyType: character.bodyType as any,
-            animations: ['walk', 'idle', 'run']
+            bodyType: profile.bodyType as any,
+            animations: ALL_ANIMATIONS
           }
         );
 

@@ -57,12 +57,12 @@ export class AgentConfigPanel {
     this.scene = scene;
     this.config = config;
 
-    this.soul = config.character.soul || {
+    this.soul = {
       identity: '',
       goals: [],
       personality: '',
     };
-    this.rules = config.character.rules || [];
+    this.rules = [];
 
     this.skillTree = new SkillTree(SKILL_TREE_CONFIG);
     if (config.character.skillTree) {

@@ -24,6 +24,12 @@ export class WriterHeroTemplate implements HeroTemplateBase {
       agentId: id,
       name: WriterHeroTemplate.NAME,
       type: WriterHeroTemplate.TYPE,
+      profile: {
+        characterId: id,
+        name: WriterHeroTemplate.NAME,
+        bodyType: 'male',
+        parts: {},
+      },
       backendType: 'direct',
       directConfig: {
         provider: 'openai',
@@ -69,6 +75,7 @@ export class WriterHeroTemplate implements HeroTemplateBase {
         '确保文案内容准确、无错误',
         '根据用户反馈及时调整文案',
       ],
+      configStatus: 'ready',
     };
   }
 }

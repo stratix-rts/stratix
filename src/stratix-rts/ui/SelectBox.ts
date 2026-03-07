@@ -4,7 +4,7 @@
  */
 
 import Phaser from 'phaser';
-import { getToken } from '@/design-system/config';
+import { getCurrentTheme } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
 
 export interface SelectBoxConfig {
@@ -44,7 +44,7 @@ export class SelectBox {
     this.graphics.clear();
 
     const rect = this.getRectangle(x, y);
-    const theme = getToken('');
+    const theme = getCurrentTheme();
     const lineColor = parseInt(theme.colors.semantic.success.slice(1), 16);
     const fillColor = parseInt(theme.colors.semantic.success.slice(1), 16);
 

@@ -1,8 +1,8 @@
 /**
  * CommandPanel V2 - 响应式版本
  * 
+ * 集成详情和技能面板的Tab切换界面
  * 使用EnhancedUIComponent和响应式Token
- * 自动响应主题变化
  */
 
 import Phaser from 'phaser';
@@ -17,6 +17,27 @@ export interface UnitInfo {
   thumbnail?: string;
   health?: number;
   maxHealth?: number;
+  currentTask?: string;
+  taskProgress?: number;
+  skills?: Record<string, number>;
+}
+
+export interface ZoneInfo {
+  zoneId: string;
+  name: string;
+  status: string;
+  agentCount: number;
+}
+
+export interface AgentInfo {
+  agentId: string;
+  name: string;
+  type: string;
+  status: string;
+  position: { x: number; y: number };
+  currentTask?: string;
+  taskProgress?: number;
+  skills?: Record<string, number>;
 }
 
 export interface Skill {
@@ -27,22 +48,22 @@ export interface Skill {
   hotkey?: string;
 }
 
-interface SkillButton {
-  container: Phaser.GameObjects.Container;
-  skill: Skill;
-}
+type TabType = 'detail' | 'skills';
+type SelectionType = 'none' | 'agent' | 'zone';
 
 export class CommandPanelV2 extends EnhancedUIComponent {
-  private unitInfoContainer: Phaser.GameObjects.Container | null = null;
-  private skillsContainer: Phaser.GameObjects.Container | null = null;
-  private commandsContainer: Phaser.GameObjects.Container | null = null;
-  private skillButtons: Map<string, SkillButton> = new Map();
-  private currentUnit: UnitInfo | null = null;
+  private tabContainer: Phaser.GameObjects.Container | null = null;
+  private contentContainer: Phaser.GameObjects.Container | null = null;
+  private currentTab: TabType = 'detail';
+  private currentSelectionType: SelectionType = 'none';
+  private currentAgent: AgentInfo | null = null;
+  private currentZone: ZoneInfo | null = null;
   private currentSkills: Skill[] = [];
   private onSkillSelect: (skill: Skill) => void;
   private onCommandExecute: (command: string) => void;
   
   private backgroundColor: ReactiveToken<string>;
+  private backgroundSecondaryColor: ReactiveToken<string>;
   private backgroundTertiaryColor: ReactiveToken<string>;
   private textPrimaryColor: ReactiveToken<string>;
   private textSecondaryColor: ReactiveToken<string>;
@@ -51,6 +72,8 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   private accentColor: ReactiveToken<string>;
   private infoColor: ReactiveToken<string>;
   private successColor: ReactiveToken<string>;
+  private warningColor: ReactiveToken<string>;
+  private dangerColor: ReactiveToken<string>;
   
   constructor(
     scene: Phaser.Scene,
@@ -73,6 +96,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     this.onCommandExecute = onCommandExecute;
     
     this.backgroundColor = this.useToken('colors.background.primary');
+    this.backgroundSecondaryColor = this.useToken('colors.background.secondary');
     this.backgroundTertiaryColor = this.useToken('colors.background.tertiary');
     this.textPrimaryColor = this.useToken('colors.text.primary');
     this.textSecondaryColor = this.useToken('colors.text.secondary');
@@ -81,6 +105,8 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     this.accentColor = this.useToken('colors.accent');
     this.infoColor = this.useToken('colors.semantic.info');
     this.successColor = this.useToken('colors.semantic.success');
+    this.warningColor = this.useToken('colors.warning');
+    this.dangerColor = this.useToken('colors.semantic.danger');
   }
   
   create(): void {
@@ -89,9 +115,8 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     this.container.setDepth(1000);
     
     this.createBackground();
-    this.createUnitInfoPanel();
-    this.createSkillsContainer();
-    this.createCommandsContainer();
+    this.createTabBar();
+    this.createContentContainer();
     this.showEmptyState();
     
     this.onCreate();
@@ -102,120 +127,302 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     const bgColor = this.hexToNumber(this.backgroundColor.get());
     bg.fillStyle(bgColor, 0.95);
     bg.fillRoundedRect(0, 0, this.config.width || 500, this.config.height || 180, 8);
+    bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.3);
+    bg.strokeRoundedRect(0, 0, this.config.width || 500, this.config.height || 180, 8);
     (this.container as Phaser.GameObjects.Container).add(bg);
   }
   
-  private createUnitInfoPanel(): void {
-    const unitInfoWidth = 140;
+  private createTabBar(): void {
+    this.tabContainer = this.scene.add.container(0, 0);
+    (this.container as Phaser.GameObjects.Container).add(this.tabContainer);
     
-    this.unitInfoContainer = this.scene.add.container(8, 8);
-    this.renderUnitInfoBackground(unitInfoWidth);
-    (this.container as Phaser.GameObjects.Container).add(this.unitInfoContainer);
+    this.renderTabs();
   }
   
-  private renderUnitInfoBackground(width: number): void {
-    const height = (this.config.height || 180) - 16;
+  private renderTabs(): void {
+    this.tabContainer?.removeAll(true);
     
-    const bg = this.scene.add.graphics();
-    bg.fillStyle(this.hexToNumber(this.backgroundTertiaryColor.get()), 1);
-    bg.fillRoundedRect(0, 0, width, height - 64, 8);
-    bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.3);
-    bg.strokeRoundedRect(0, 0, width, height - 64, 8);
-    this.unitInfoContainer?.add(bg);
+    const tabWidth = 80;
+    const tabHeight = 32;
+    const tabSpacing = 4;
     
-    const avatar = this.scene.add.graphics();
-    avatar.fillStyle(0x2a2a4e, 1);
-    avatar.fillRoundedRect(16, 16, 60, 60, 8);
-    avatar.lineStyle(2, this.hexToNumber(this.borderColor.get()), 0.5);
-    avatar.strokeRoundedRect(16, 16, 60, 60, 8);
-    this.unitInfoContainer?.add(avatar);
+    const tabs: { key: TabType; label: string }[] = [
+      { key: 'detail', label: '详情' },
+      { key: 'skills', label: '技能' },
+    ];
     
-    const typeIcon = this.scene.add.text(46, 36, '👤', {
-      fontSize: '32px',
-      fontFamily: 'Arial, sans-serif',
+    tabs.forEach((tab, index) => {
+      const x = 12 + index * (tabWidth + tabSpacing);
+      const isActive = this.currentTab === tab.key;
+      
+      const tabBg = this.scene.add.graphics();
+      if (isActive) {
+        tabBg.fillStyle(this.hexToNumber(this.backgroundTertiaryColor.get()), 1);
+      } else {
+        tabBg.fillStyle(this.hexToNumber(this.backgroundSecondaryColor.get()), 0.5);
+      }
+      tabBg.fillRoundedRect(x, 8, tabWidth, tabHeight, { tl: 4, tr: 4, bl: 0, br: 0 });
+      
+      const tabHitArea = this.scene.add.rectangle(x, 8, tabWidth, tabHeight, 0x000000, 0);
+      tabHitArea.setOrigin(0, 0);
+      tabHitArea.setInteractive({ useHandCursor: true });
+      
+      const tabText = this.createText(x + tabWidth / 2, 8 + tabHeight / 2, tab.label, {
+        fontSize: '13px',
+        fontStyle: isActive ? 'bold' : 'normal',
+        color: isActive ? this.textPrimaryColor.get() : this.textMutedColor.get(),
+      });
+      tabText.setOrigin(0.5);
+      
+      tabHitArea.on('pointerdown', () => {
+        this.switchTab(tab.key);
+      });
+      
+      tabHitArea.on('pointerover', () => {
+        if (!isActive) {
+          tabBg.clear();
+          tabBg.fillStyle(this.hexToNumber(this.backgroundTertiaryColor.get()), 0.7);
+          tabBg.fillRoundedRect(x, 8, tabWidth, tabHeight, { tl: 4, tr: 4, bl: 0, br: 0 });
+        }
+      });
+      
+      tabHitArea.on('pointerout', () => {
+        if (!isActive) {
+          tabBg.clear();
+          tabBg.fillStyle(this.hexToNumber(this.backgroundSecondaryColor.get()), 0.5);
+          tabBg.fillRoundedRect(x, 8, tabWidth, tabHeight, { tl: 4, tr: 4, bl: 0, br: 0 });
+        }
+      });
+      
+      this.tabContainer?.add([tabBg, tabHitArea, tabText]);
+    });
+  }
+  
+  private createContentContainer(): void {
+    this.contentContainer = this.scene.add.container(12, 48);
+    (this.container as Phaser.GameObjects.Container).add(this.contentContainer);
+  }
+  
+  private switchTab(tab: TabType): void {
+    if (this.currentTab === tab) return;
+    
+    this.currentTab = tab;
+    this.renderTabs();
+    this.renderContent();
+  }
+  
+  private renderContent(): void {
+    this.contentContainer?.removeAll(true);
+    
+    if (this.currentTab === 'detail') {
+      this.renderDetailContent();
+    } else {
+      this.renderSkillsContent();
+    }
+  }
+  
+  private renderDetailContent(): void {
+    if (this.currentSelectionType === 'none') {
+      this.showEmptyState();
+      return;
+    }
+    
+    if (this.currentSelectionType === 'agent' && this.currentAgent) {
+      this.renderAgentDetail(this.currentAgent);
+    } else if (this.currentSelectionType === 'zone' && this.currentZone) {
+      this.renderZoneDetail(this.currentZone);
+    }
+  }
+  
+  private renderAgentDetail(agent: AgentInfo): void {
+    const contentWidth = (this.config.width || 500) - 24;
+    let yOffset = 0;
+    
+    const avatarBg = this.scene.add.graphics();
+    avatarBg.fillStyle(0x2a2a4e, 1);
+    avatarBg.fillRoundedRect(0, yOffset, 60, 60, 8);
+    avatarBg.lineStyle(2, this.hexToNumber(this.borderColor.get()), 0.5);
+    avatarBg.strokeRoundedRect(0, yOffset, 60, 60, 8);
+    this.contentContainer?.add(avatarBg);
+    
+    const typeIcon = this.scene.add.text(30, yOffset + 30, '👤', {
+      fontSize: '28px',
     });
     typeIcon.setOrigin(0.5);
-    this.unitInfoContainer?.add(typeIcon);
+    this.contentContainer?.add(typeIcon);
     
-    const nameText = this.createText(88, 20, '未选中', {
-      fontSize: '14px',
+    const nameText = this.createText(72, yOffset + 8, agent.name, {
+      fontSize: '16px',
       fontStyle: 'bold',
     });
-    this.unitInfoContainer?.add(nameText);
+    this.contentContainer?.add(nameText);
     
-    const statusText = this.createText(88, 40, '-', {
+    const typeText = this.createText(72, yOffset + 30, `类型: ${agent.type}`, {
       fontSize: '12px',
       color: this.textSecondaryColor.get(),
     });
-    this.unitInfoContainer?.add(statusText);
+    this.contentContainer?.add(typeText);
     
-    const healthBarBg = this.scene.add.graphics();
-    healthBarBg.fillStyle(this.hexToNumber(this.borderColor.get()), 1);
-    healthBarBg.fillRoundedRect(16, 88, width - 32, 6, 3);
-    this.unitInfoContainer?.add(healthBarBg);
+    const statusColor = this.getStatusColor(agent.status);
+    const statusDot = this.scene.add.graphics();
+    statusDot.fillStyle(this.hexToNumber(statusColor), 1);
+    statusDot.fillCircle(78, yOffset + 54, 5);
+    this.contentContainer?.add(statusDot);
     
-    const healthBarFill = this.scene.add.graphics();
-    healthBarFill.fillStyle(this.hexToNumber(this.successColor.get()), 1);
-    healthBarFill.fillRoundedRect(16, 88, width - 32, 6, 3);
-    this.unitInfoContainer?.add(healthBarFill);
+    const statusText = this.createText(90, yOffset + 48, this.getStatusText(agent.status), {
+      fontSize: '12px',
+      color: statusColor,
+    });
+    this.contentContainer?.add(statusText);
     
-    const unitLabel = this.createText(16, 102, '单位', {
-      fontSize: '10px',
+    yOffset += 75;
+    
+    if (agent.currentTask) {
+      const taskLabel = this.createText(0, yOffset, '当前任务', {
+        fontSize: '12px',
+        fontStyle: 'bold',
+        color: this.textSecondaryColor.get(),
+      });
+      this.contentContainer?.add(taskLabel);
+      yOffset += 18;
+      
+      const taskText = this.createText(0, yOffset, agent.currentTask, {
+        fontSize: '11px',
+        color: this.textMutedColor.get(),
+        wordWrap: { width: contentWidth },
+      });
+      this.contentContainer?.add(taskText);
+      yOffset += 20;
+      
+      if (agent.taskProgress !== undefined) {
+        this.renderProgressBar(0, yOffset, contentWidth, agent.taskProgress);
+        yOffset += 25;
+      }
+    }
+    
+    if (agent.skills && Object.keys(agent.skills).length > 0) {
+      const skillsLabel = this.createText(0, yOffset, '技能', {
+        fontSize: '12px',
+        fontStyle: 'bold',
+        color: this.textSecondaryColor.get(),
+      });
+      this.contentContainer?.add(skillsLabel);
+      yOffset += 18;
+      
+      const skillEntries = Object.entries(agent.skills).slice(0, 4);
+      const skillWidth = (contentWidth - (skillEntries.length - 1) * 8) / skillEntries.length;
+      
+      skillEntries.forEach(([skillName, level], index) => {
+        const x = index * (skillWidth + 8);
+        const skillBg = this.scene.add.graphics();
+        skillBg.fillStyle(this.hexToNumber(this.backgroundTertiaryColor.get()), 1);
+        skillBg.fillRoundedRect(x, yOffset, skillWidth, 24, 4);
+        this.contentContainer?.add(skillBg);
+        
+        const skillText = this.createText(x + 8, yOffset + 6, `${skillName}`, {
+          fontSize: '10px',
+          color: this.textSecondaryColor.get(),
+        });
+        this.contentContainer?.add(skillText);
+        
+        const levelText = this.createText(x + skillWidth - 8, yOffset + 6, `Lv.${level}`, {
+          fontSize: '10px',
+          fontStyle: 'bold',
+          color: this.accentColor.get(),
+        });
+        levelText.setOrigin(1, 0);
+        this.contentContainer?.add(levelText);
+      });
+    }
+  }
+  
+  private renderZoneDetail(zone: ZoneInfo): void {
+    const contentWidth = (this.config.width || 500) - 24;
+    let yOffset = 0;
+    
+    const zoneIconBg = this.scene.add.graphics();
+    zoneIconBg.fillStyle(this.hexToNumber(this.accentColor.get()), 0.2);
+    zoneIconBg.fillRoundedRect(0, yOffset, 60, 60, 8);
+    zoneIconBg.lineStyle(2, this.hexToNumber(this.accentColor.get()), 0.5);
+    zoneIconBg.strokeRoundedRect(0, yOffset, 60, 60, 8);
+    this.contentContainer?.add(zoneIconBg);
+    
+    const zoneIcon = this.scene.add.text(30, yOffset + 30, '📦', {
+      fontSize: '28px',
+    });
+    zoneIcon.setOrigin(0.5);
+    this.contentContainer?.add(zoneIcon);
+    
+    const nameText = this.createText(72, yOffset + 8, zone.name, {
+      fontSize: '16px',
+      fontStyle: 'bold',
+    });
+    this.contentContainer?.add(nameText);
+    
+    const statusColor = this.getZoneStatusColor(zone.status);
+    const statusText = this.createText(72, yOffset + 30, `状态: ${this.getZoneStatusText(zone.status)}`, {
+      fontSize: '12px',
+      color: statusColor,
+    });
+    this.contentContainer?.add(statusText);
+    
+    const agentsText = this.createText(72, yOffset + 48, `代理数量: ${zone.agentCount}`, {
+      fontSize: '12px',
       color: this.textSecondaryColor.get(),
     });
-    this.unitInfoContainer?.add(unitLabel);
+    this.contentContainer?.add(agentsText);
   }
   
-  private createSkillsContainer(): void {
-    const unitInfoWidth = 140;
-    this.skillsContainer = this.scene.add.container(unitInfoWidth + 16, 8);
-    (this.container as Phaser.GameObjects.Container).add(this.skillsContainer);
-  }
-  
-  private createCommandsContainer(): void {
-    this.commandsContainer = this.scene.add.container(8, (this.config.height || 180) - 64);
-    (this.container as Phaser.GameObjects.Container).add(this.commandsContainer);
-  }
-  
-  private showEmptyState(): void {
-    const label = this.createText(
-      (this.config.width || 500) / 2,
-      (this.config.height || 180) / 2,
-      '未选中单位',
-      {
-        fontSize: '14px',
-        color: this.textMutedColor.get(),
-      }
-    );
-    label.setOrigin(0.5);
-    (this.container as Phaser.GameObjects.Container).add(label);
-  }
-  
-  public setUnit(unit: UnitInfo): void {
-    this.currentUnit = unit;
-  }
-  
-  public setSkills(skills: Skill[]): void {
-    this.currentSkills = skills;
-    this.createSkillButtons(skills);
-  }
-  
-  private createSkillButtons(skills: Skill[]): void {
-    (this.skillsContainer as Phaser.GameObjects.Container)?.removeAll(true);
+  private renderProgressBar(x: number, y: number, width: number, progress: number): void {
+    const barHeight = 6;
     
+    const progressBg = this.scene.add.graphics();
+    progressBg.fillStyle(this.hexToNumber(this.borderColor.get()), 1);
+    progressBg.fillRoundedRect(x, y, width, barHeight, 3);
+    this.contentContainer?.add(progressBg);
+    
+    const progressFill = this.scene.add.graphics();
+    progressFill.fillStyle(this.hexToNumber(this.successColor.get()), 1);
+    progressFill.fillRoundedRect(x, y, width * Math.min(progress, 100) / 100, barHeight, 3);
+    this.contentContainer?.add(progressFill);
+    
+    const progressText = this.createText(x + width + 8, y - 2, `${Math.round(progress)}%`, {
+      fontSize: '11px',
+      color: this.textSecondaryColor.get(),
+    });
+    this.contentContainer?.add(progressText);
+  }
+  
+  private renderSkillsContent(): void {
+    if (this.currentSkills.length === 0) {
+      const emptyText = this.createText(
+        ((this.config.width || 500) - 24) / 2,
+        40,
+        '无可用技能',
+        {
+          fontSize: '14px',
+          color: this.textMutedColor.get(),
+        }
+      );
+      emptyText.setOrigin(0.5);
+      this.contentContainer?.add(emptyText);
+      return;
+    }
+    
+    const contentWidth = (this.config.width || 500) - 24;
     const buttonWidth = 72;
     const buttonHeight = 72;
     const spacing = 8;
-    const buttonsPerRow = Math.floor(((this.config.width || 500) - 156) / (buttonWidth + spacing));
+    const buttonsPerRow = Math.floor((contentWidth + spacing) / (buttonWidth + spacing));
     
-    skills.forEach((skill, index) => {
+    this.currentSkills.forEach((skill, index) => {
       const row = Math.floor(index / buttonsPerRow);
       const col = index % buttonsPerRow;
       const x = col * (buttonWidth + spacing);
       const y = row * (buttonHeight + spacing);
       
       const button = this.createSkillButton(x, y, buttonWidth, buttonHeight, skill);
-      this.skillsContainer?.add(button);
+      this.contentContainer?.add(button);
     });
   }
   
@@ -228,58 +435,171 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   ): Phaser.GameObjects.Container {
     const container = this.scene.add.container(x, y);
     
-    const bg = this.scene.add.rectangle(
-      width / 2,
-      height / 2,
-      width,
-      height,
-      this.hexToNumber(this.backgroundTertiaryColor.get())
-    );
-    bg.setOrigin(0.5);
-    bg.setInteractive({ useHandCursor: true });
+    const bg = this.scene.add.graphics();
+    bg.fillStyle(this.hexToNumber(this.backgroundTertiaryColor.get()), 1);
+    bg.fillRoundedRect(0, 0, width, height, 6);
+    bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.3);
+    bg.strokeRoundedRect(0, 0, width, height, 6);
     container.add(bg);
     
-    const nameText = this.createText(width / 2, height / 2 - 10, skill.name, {
+    const hitArea = this.scene.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0);
+    hitArea.setInteractive({ useHandCursor: true });
+    container.add(hitArea);
+    
+    const nameText = this.createText(width / 2, height / 2 - 8, skill.name, {
       fontSize: '11px',
       wordWrap: { width: width - 8 },
+      align: 'center',
     });
     nameText.setOrigin(0.5);
     container.add(nameText);
     
     if (skill.hotkey) {
-      const hotkeyText = this.createText(width - 8, 8, skill.hotkey, {
+      const hotkeyBg = this.scene.add.graphics();
+      hotkeyBg.fillStyle(this.hexToNumber(this.infoColor.get()), 0.2);
+      hotkeyBg.fillRoundedRect(width - 22, 4, 18, 16, 3);
+      container.add(hotkeyBg);
+      
+      const hotkeyText = this.createText(width - 13, 12, skill.hotkey, {
         fontSize: '10px',
+        fontStyle: 'bold',
         color: this.infoColor.get(),
       });
+      hotkeyText.setOrigin(0.5);
       container.add(hotkeyText);
     }
     
-    bg.on('pointerdown', () => {
+    hitArea.on('pointerdown', () => {
       this.onSkillSelect(skill);
     });
     
-    bg.on('pointerover', () => {
-      bg.setFillStyle(this.hexToNumber(this.accentColor.get()));
+    hitArea.on('pointerover', () => {
+      bg.clear();
+      bg.fillStyle(this.hexToNumber(this.accentColor.get()), 0.3);
+      bg.fillRoundedRect(0, 0, width, height, 6);
+      bg.lineStyle(1, this.hexToNumber(this.accentColor.get()), 0.6);
+      bg.strokeRoundedRect(0, 0, width, height, 6);
     });
     
-    bg.on('pointerout', () => {
-      bg.setFillStyle(this.hexToNumber(this.backgroundTertiaryColor.get()));
+    hitArea.on('pointerout', () => {
+      bg.clear();
+      bg.fillStyle(this.hexToNumber(this.backgroundTertiaryColor.get()), 1);
+      bg.fillRoundedRect(0, 0, width, height, 6);
+      bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.3);
+      bg.strokeRoundedRect(0, 0, width, height, 6);
     });
     
     return container;
   }
   
+  private showEmptyState(): void {
+    const contentWidth = (this.config.width || 500) - 24;
+    const contentHeight = (this.config.height || 180) - 60;
+    
+    const emptyIcon = this.scene.add.text(contentWidth / 2, contentHeight / 2 - 20, '📋', {
+      fontSize: '32px',
+    });
+    emptyIcon.setOrigin(0.5);
+    this.contentContainer?.add(emptyIcon);
+    
+    const emptyText = this.createText(contentWidth / 2, contentHeight / 2 + 20, '未选中任何对象', {
+      fontSize: '14px',
+      color: this.textMutedColor.get(),
+    });
+    emptyText.setOrigin(0.5);
+    this.contentContainer?.add(emptyText);
+  }
+  
+  public updateAgentInfo(agent: AgentInfo | null): void {
+    this.currentSelectionType = agent ? 'agent' : 'none';
+    this.currentAgent = agent;
+    
+    if (this.currentTab === 'detail') {
+      this.renderContent();
+    }
+  }
+  
+  public updateZoneInfo(zone: ZoneInfo | null): void {
+    this.currentSelectionType = zone ? 'zone' : 'none';
+    this.currentZone = zone;
+    
+    if (this.currentTab === 'detail') {
+      this.renderContent();
+    }
+  }
+  
+  public setSkills(skills: Skill[]): void {
+    this.currentSkills = skills;
+    
+    if (this.currentTab === 'skills') {
+      this.renderContent();
+    }
+  }
+  
+  public setUnit(unit: UnitInfo): void {
+    this.currentSelectionType = 'agent';
+    this.currentAgent = {
+      agentId: '',
+      name: unit.name,
+      type: unit.type,
+      status: unit.status,
+      position: { x: 0, y: 0 },
+      currentTask: unit.currentTask,
+      taskProgress: unit.taskProgress,
+      skills: unit.skills,
+    };
+    
+    if (this.currentTab === 'detail') {
+      this.renderContent();
+    }
+  }
+  
+  private getStatusColor(status: string): string {
+    const colors: Record<string, string> = {
+      online: this.successColor.get(),
+      offline: this.textMutedColor.get(),
+      busy: this.warningColor.get(),
+      error: this.dangerColor.get(),
+    };
+    return colors[status] || this.textMutedColor.get();
+  }
+  
+  private getStatusText(status: string): string {
+    const texts: Record<string, string> = {
+      online: '在线',
+      offline: '离线',
+      busy: '忙碌',
+      error: '错误',
+    };
+    return texts[status] || '未知';
+  }
+  
+  private getZoneStatusColor(status: string): string {
+    const colors: Record<string, string> = {
+      idle: this.textMutedColor.get(),
+      busy: this.warningColor.get(),
+      active: this.successColor.get(),
+      error: this.dangerColor.get(),
+    };
+    return colors[status] || this.textMutedColor.get();
+  }
+  
+  private getZoneStatusText(status: string): string {
+    const texts: Record<string, string> = {
+      idle: '空闲',
+      busy: '忙碌',
+      active: '活跃',
+      error: '错误',
+    };
+    return texts[status] || '未知';
+  }
+  
   protected updateThemeStyles(): void {
     (this.container as Phaser.GameObjects.Container)?.removeAll(true);
     this.createBackground();
-    this.createUnitInfoPanel();
-    this.createSkillsContainer();
-    this.createCommandsContainer();
-    if (this.currentSkills.length > 0) {
-      this.createSkillButtons(this.currentSkills);
-    } else {
-      this.showEmptyState();
-    }
+    this.createTabBar();
+    this.createContentContainer();
+    this.renderContent();
   }
   
   private createText(
@@ -301,9 +621,8 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   }
   
   destroy(): void {
-    this.unitInfoContainer?.destroy();
-    this.skillsContainer?.destroy();
-    this.commandsContainer?.destroy();
+    this.tabContainer?.destroy();
+    this.contentContainer?.destroy();
     super.destroy();
   }
 }

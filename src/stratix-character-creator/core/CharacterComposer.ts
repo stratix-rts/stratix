@@ -33,9 +33,13 @@ class CharacterComposer {
   ): Promise<ComposeResult> {
     const { bodyType, animations = Object.keys(ANIMATION_OFFSETS), targetCanvas } = options;
 
+    console.log(`[CharacterComposer] 🎨 Composing character with ${animations.length} animations:`, animations);
+
     const canvas = targetCanvas ?? document.createElement('canvas');
     canvas.width = SHEET_WIDTH;
     canvas.height = SHEET_HEIGHT;
+
+    console.log(`[CharacterComposer] Canvas size: ${canvas.width}x${canvas.height}`);
 
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) {
@@ -72,6 +76,8 @@ class CharacterComposer {
     }));
 
     const credits = this.collectCredits(selections);
+
+    console.log(`[CharacterComposer] ✅ Character composition complete`);
 
     return { canvas, parts, credits };
   }

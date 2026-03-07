@@ -7,7 +7,15 @@
 import Phaser from 'phaser';
 import { getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
-import { FRAME_SIZE, SHEET_WIDTH, SHEET_HEIGHT, FRAMES_PER_ROW, ANIMATION_CONFIGS } from '../constants';
+import { 
+  FRAME_SIZE, 
+  SHEET_WIDTH, 
+  SHEET_HEIGHT, 
+  FRAMES_PER_ROW, 
+  ANIMATION_CONFIGS,
+  LOGICAL_TO_LPC,
+  LPC_DIRECTION_ROWS
+} from '../constants';
 import type { AnimationName } from '../types';
 
 const THEME = {
@@ -24,13 +32,6 @@ export interface CharacterPreviewConfig {
   size: number;
   scale?: number;
 }
-
-const DIRECTION_FRAMES: Record<number, number> = {
-  0: 2,
-  1: 1,
-  2: 0,
-  3: 3
-};
 
 export class CharacterPreview {
   private scene: Phaser.Scene;
@@ -89,7 +90,8 @@ export class CharacterPreview {
     }
 
     const { row, cycle } = animConfig;
-    const dirRow = row + DIRECTION_FRAMES[this.currentDirection];
+    const lpcRow = LOGICAL_TO_LPC[this.currentDirection] ?? LPC_DIRECTION_ROWS.DOWN;
+    const dirRow = row + lpcRow;
 
     const frameIndexes = cycle.map(col => dirRow * FRAMES_PER_ROW + col);
 

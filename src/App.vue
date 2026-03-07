@@ -4,8 +4,11 @@ import { createStratixRTS } from './stratix-rts';
 import { StratixEventBus, StratixAgentConfig, StratixFrontendOperationEvent } from './stratix-core';
 import MainLayout from './components/MainLayout.vue';
 import CharacterCreatorModal from './components/CharacterCreatorModal.vue';
+import ProjectConfigPanel from './stratix-project/ui/ProjectConfigPanel.vue';
 import { agentStore } from './stores/agentStore';
 import type { SavedCharacter } from './stratix-character-creator/types';
+import type { ProjectConfig, Project } from './stratix-project/types';
+import { rtsEventBus } from './stratix-rts/events/core/RTSEventBus';
 
 const gameContainer = ref<HTMLElement | null>(null);
 const isGameReady = ref(false);
@@ -13,6 +16,11 @@ const currentSkill = ref<any>(null);
 const commandLogs = ref<any[]>([]);
 const showCharacterCreator = ref(false);
 const editCharacterId = ref<string | undefined>(undefined);
+const showTaskModal = ref(false);
+const selectedProjectId = ref<string | null>(null);
+const selectedProjectPath = ref<string | null>(null);
+const showProjectConfig = ref(false);
+const currentProject = ref<Project | null>(null);
 
 let game: Phaser.Game | null = null;
 let eventBus: StratixEventBus;
@@ -97,9 +105,63 @@ const closeCharacterCreator = () => {
 };
 
 const handleCharacterCreated = async (character: SavedCharacter) => {
-  console.log('Character created:', character);
-  await agentStore.createCustomAgent(character);
+  console.log('========================================');
+  console.log('[App] 🔵 handleCharacterCreated called');
+  console.log('[App] 📦 Character:', character);
+  console.log('[App] 🎮 Game instance exists:', !!game);
+  
+  // 🚨 立即关闭弹窗
   closeCharacterCreator();
+  console.log('[App] ✅ Modal closed');
+  
+  if (game) {
+    const scene = game.scene.getScene('StratixRTSGameScene') as any;
+    console.log('[App] 🎬 Scene exists:', !!scene);
+    
+    if (scene) {
+      console.log('[App] 🚀 Emitting character:spawning event');
+      scene.events.emit('character:spawning', {
+        characterId: character.characterId,
+        name: character.name,
+        bodyType: character.bodyType,
+        parts: character.parts,
+        thumbnail: character.thumbnail
+      });
+    } else {
+      console.error('[App] ❌ Scene not found');
+    }
+  } else {
+    console.error('[App] ❌ Game instance not found');
+  }
+  
+  console.log('[App] 🔄 Starting async agent creation...');
+  agentStore.createCustomAgent(character)
+    .then(config => {
+      console.log('[App] ✅ Agent created successfully:', config);
+      if (game) {
+        const scene = game.scene.getScene('StratixRTSGameScene') as any;
+        if (scene) {
+          console.log('[App] 🎉 Emitting character:spawn-complete event');
+          scene.events.emit('character:spawn-complete', config);
+        }
+      }
+    })
+    .catch(err => {
+      console.error('[App] ❌ Failed to create agent:', err);
+      if (game) {
+        const scene = game.scene.getScene('StratixRTSGameScene') as any;
+        if (scene) {
+          console.log('[App] 🔴 Emitting character:spawn-failed event');
+          scene.events.emit('character:spawn-failed', {
+            characterId: character.characterId,
+            error: err.message || 'Unknown error'
+          });
+        }
+      }
+    });
+  
+  console.log('[App] ✅ handleCharacterCreated completed (async operations running in background)');
+  console.log('========================================');
 };
 
 const handleCharacterUpdated = (character: SavedCharacter) => {
@@ -111,6 +173,62 @@ const handleCharacterDeleted = (characterId: string) => {
   console.log('Character deleted:', characterId);
   const agentId = `custom-${characterId}`;
   agentStore.deleteAgent(agentId);
+};
+
+const handleOpenTaskModal = (projectId: string, projectPath: string) => {
+  selectedProjectId.value = projectId;
+  selectedProjectPath.value = projectPath;
+  showTaskModal.value = true;
+};
+
+const handleProjectCreated = (data: { project: Project; needsConfig: boolean }) => {
+  console.log('[App] Project created:', data.project.id, 'needs config:', data.needsConfig);
+  
+  currentProject.value = data.project;
+  
+  if (data.needsConfig) {
+    showProjectConfig.value = true;
+  }
+};
+
+const handleProjectConfigSave = async (config: ProjectConfig) => {
+  if (!currentProject.value) return;
+  
+  console.log('[App] Saving project config:', currentProject.value.id, config);
+  
+  try {
+    const response = await fetch(`/api/projects/${currentProject.value.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        updates: {
+          name: config.name,
+          description: config.description,
+          priority: config.priority,
+          config: config,
+          path: config.localFolderPath
+        }
+      })
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      console.log('[App] Project config saved successfully');
+      showProjectConfig.value = false;
+      currentProject.value = null;
+    } else {
+      throw new Error(result.error || 'Failed to save project config');
+    }
+  } catch (error: any) {
+    console.error('[App] Failed to save project config:', error);
+    throw error;
+  }
+};
+
+const handleProjectConfigClose = () => {
+  showProjectConfig.value = false;
+  currentProject.value = null;
 };
 
 onMounted(async () => {
@@ -125,7 +243,19 @@ onMounted(async () => {
   });
   
   agentStore.setOnAgentDeleted((agentId) => {
-    // 可以在这里处理删除后的逻辑
+    if (!game) return;
+    const scene = game.scene.getScene('StratixRTSGameScene') as any;
+    if (scene) {
+      scene.removeAgent(agentId);
+    }
+  });
+  
+  agentStore.setOnAgentUpdated((config) => {
+    if (!game) return;
+    const scene = game.scene.getScene('StratixRTSGameScene') as any;
+    if (scene && config.position) {
+      scene.updateAgentPosition(config.agentId, config.position);
+    }
   });
   
   // 加载 agents
@@ -143,6 +273,23 @@ onMounted(async () => {
       setTimeout(() => {
         agents.value.forEach(config => addAgentToRTS(config));
       }, 100);
+      
+      const scene = game!.scene.getScene('StratixRTSGameScene') as any;
+      if (scene) {
+        scene.events.on('zone:double-click', async (zoneId: string) => {
+          console.log('[App] Zone double-clicked:', zoneId);
+          
+          const projectManagerIntegration = scene.projectManagerIntegration;
+          if (projectManagerIntegration) {
+            const project = await projectManagerIntegration.getProjectClient().getProject(zoneId);
+            if (project) {
+              handleOpenTaskModal(zoneId, project.path);
+            }
+          }
+        });
+      }
+      
+      rtsEventBus.on('game:ui:project_created', handleProjectCreated);
     });
     
     if (game.isBooted) {
@@ -165,6 +312,9 @@ onUnmounted(() => {
     eventBus.unsubscribe('stratix:agent_select', handleAgentSelect);
     eventBus.unsubscribe('stratix:command_execute', handleCommandExecute as any);
   }
+  
+  rtsEventBus.off('game:ui:project_created', handleProjectCreated);
+  
   if (game) {
     game.destroy(true);
   }
@@ -179,11 +329,15 @@ onUnmounted(() => {
     :selected-agent-ids="selectedAgentIds"
     :command-logs="commandLogs"
     :is-refreshing="isRefreshing"
+    :show-task-modal="showTaskModal"
+    :selected-project-id="selectedProjectId"
+    :selected-project-path="selectedProjectPath"
     @create-agent="createAgent"
     @delete-agent="deleteAgent"
     @select-agent="selectAgentInRTS"
     @open-character-creator="openCharacterCreator()"
     @refresh-agents="agentStore.refreshAgents()"
+    @update:show-task-modal="showTaskModal = $event"
   >
     <template #game>
       <div ref="gameContainer" class="game-container"></div>
@@ -197,6 +351,15 @@ onUnmounted(() => {
     @created="handleCharacterCreated"
     @updated="handleCharacterUpdated"
     @deleted="handleCharacterDeleted"
+  />
+  
+  <ProjectConfigPanel
+    :visible="showProjectConfig"
+    :project-id="currentProject?.id"
+    :initial-config="currentProject?.config"
+    :project-status="currentProject?.status"
+    @close="handleProjectConfigClose"
+    @save="handleProjectConfigSave"
   />
 </template>
 

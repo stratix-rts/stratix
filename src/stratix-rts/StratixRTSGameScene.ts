@@ -9,6 +9,7 @@ import { TaskZone, TaskZoneConfig } from './zones/TaskZone';
 import { TaskZonePreview } from './zones/TaskZonePreview';
 import { CommandSystem, Command, CommandType } from './systems/CommandSystem';
 import { ControlGroupSystem } from './systems/ControlGroupSystem';
+import { MovementSystem } from './systems/MovementSystem';
 import RTSCharacterRenderer, { TextureLoadResult } from './services/RTSCharacterRenderer';
 import { rtsEventBus } from './events/core/RTSEventBus';
 import type { TopBarStats, AgentInfo, ViewportState } from './events/types/RTSEventTypes';
@@ -23,6 +24,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   private taskZonePreview: TaskZonePreview;
   private commandSystem: CommandSystem;
   private controlGroupSystem: ControlGroupSystem;
+  private movementSystem: MovementSystem;
   private agentSprites: Map<string, AgentSprite> = new Map();
   private selectedAgentIds: Set<string> = new Set();
   private previewSelection: Set<string> = new Set();
@@ -91,6 +93,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
 
   update(_time: number, _delta: number): void {
     this.inputHandler?.update();
+    this.movementSystem?.update(_delta, this.agentSprites);
   }
 
   private initStratixMap(): void {
@@ -111,6 +114,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   private initSystems(): void {
     this.commandSystem = new CommandSystem();
     this.controlGroupSystem = new ControlGroupSystem();
+    this.movementSystem = new MovementSystem();
   }
 
   private initSelectBox(): void {
@@ -799,6 +803,12 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     
     const actualCommandType = commandType || 'move';
     console.log('[StratixRTS] Command:', actualCommandType, 'to:', target, 'agents:', Array.from(this.selectedAgentIds));
+    
+    if (actualCommandType === 'move') {
+      this.selectedAgentIds.forEach(agentId => {
+        this.movementSystem.moveTo(agentId, target.x, target.y);
+      });
+    }
   }
 
   private onCreateAgent(config: StratixAgentConfig): void {
@@ -828,7 +838,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     let textureKey: string | undefined;
     let isPlaceholder = false;
     
-    if (config.type === 'custom' && config.character) {
+    if (config.type === 'custom' && config.profile) {
       const result = await this.characterRenderer.loadCharacterTexture(
         config,
         (characterId, newTextureKey) => {

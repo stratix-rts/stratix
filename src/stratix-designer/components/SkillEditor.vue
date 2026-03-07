@@ -80,11 +80,11 @@ const typeOptions = [
   <div class="skill-editor">
     <div class="section-header">
       <svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <SvgIcon :name="zap" size="16" />
+        <SvgIcon name="zap" size="16" />
       </svg>
       <span class="section-title">技能配置 Skills</span>
       <span class="skill-count">{{ modelValue.length }} 个技能</span>
-      <StratixButton variant="primary" size="sm" :icon="plus" @click="addSkill">
+      <StratixButton variant="primary" size="sm" icon="plus" @click="addSkill">
         添加技能
       </StratixButton>
     </div>
@@ -108,12 +108,12 @@ const typeOptions = [
               {{ skill.parameters.length }} 参数
             </span>
             <svg class="chevron-icon" :class="{ rotated: activeSkill === skill.skillId }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <SvgIcon :name="chevronDown" size="16" />
+              <SvgIcon name="chevron-down" size="16" />
             </svg>
             <StratixButton
               variant="secondary"
               size="sm"
-              :icon="trash"
+              icon="trash"
               @click.stop="removeSkill(sIndex)"
               :disabled="modelValue.length <= 1"
             />
@@ -186,12 +186,12 @@ const typeOptions = [
                 <StratixButton
                   variant="secondary"
                   size="sm"
-                  :icon="trash"
+                  icon="trash"
                   @click="removeParameter(sIndex, pIndex)"
                 />
               </div>
             </div>
-            <StratixButton variant="secondary" :icon="plus" @click="addParameter(sIndex)" class="btn-add">
+            <StratixButton variant="secondary" icon="plus" @click="addParameter(sIndex)" class="btn-add">
               添加参数
             </StratixButton>
           </div>

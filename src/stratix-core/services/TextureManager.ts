@@ -11,6 +11,7 @@
 
 import { services } from './ServiceLocator';
 import { characterComposer } from '@/stratix-character-creator/core/CharacterComposer';
+import { ALL_ANIMATIONS } from '@/stratix-character-creator/constants';
 import type { CharacterData, CharacterTexture } from '@/stratix-core/stratix-protocol';
 
 interface CacheEntry {
@@ -24,7 +25,6 @@ class TextureManager {
   private uploadPromises: Map<string, Promise<CharacterTexture | null>> = new Map();
   
   private readonly MAX_CACHE_SIZE = 20;
-  private readonly RTS_ANIMATIONS = ['walk', 'idle', 'run'];
 
   /**
    * 生成并上传纹理（自动防重复）
@@ -73,7 +73,7 @@ class TextureManager {
           characterData.parts,
           {
             bodyType: characterData.bodyType as any,
-            animations: this.RTS_ANIMATIONS
+            animations: ALL_ANIMATIONS
           }
         );
 

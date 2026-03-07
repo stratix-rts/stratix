@@ -39,7 +39,16 @@ export function createStratixRTS(config: StratixRTSConfig): Phaser.Game {
 
   const game = new Phaser.Game(gameConfig);
   
+  const handleContextMenu = (e: Event) => {
+    e.preventDefault();
+  };
+  
   game.events.once('ready', () => {
+    const canvas = game.canvas;
+    if (canvas) {
+      canvas.addEventListener('contextmenu', handleContextMenu);
+    }
+    
     const uiScene = game.scene.getScene('StratixRTSUIScene');
     if (uiScene && !game.scene.isActive('StratixRTSUIScene')) {
       game.scene.start('StratixRTSUIScene');
@@ -71,6 +80,11 @@ export function createStratixRTS(config: StratixRTSConfig): Phaser.Game {
   
   const originalDestroy = game.destroy.bind(game);
   game.destroy = (removeCanvas: boolean = false, noReturn: boolean = false) => {
+    const canvas = game.canvas;
+    if (canvas) {
+      canvas.removeEventListener('contextmenu', handleContextMenu);
+    }
+    
     window.removeEventListener('resize', handleResize);
     rtsEventBus.unregisterScene('game');
     rtsEventBus.unregisterScene('ui');
@@ -98,5 +112,15 @@ export type { Command, CommandType, MoveCommand, AttackCommand, AttackMoveComman
 export { ControlGroupSystem } from './systems/ControlGroupSystem';
 export type { ControlGroup } from './systems/ControlGroupSystem';
 
-export { TopBarV2 as TopBar, MinimapV2 as Minimap, DetailPanelV2 as DetailPanel, CommandPanelV2 as CommandPanel, RTSUIFactory } from './ui/v2';
-export type { TopBarStats, UnitInfo, Skill, RTSUIComponents, RTSUIConfig } from './ui/v2';
+export { TopBarV2 as TopBar, MinimapV2 as Minimap, CommandPanelV2 as CommandPanel, RTSUIFactory } from './ui/v2';
+export type { TopBarStats, UnitInfo, Skill, AgentInfo, ZoneInfo, RTSUIComponents, RTSUIConfig } from './ui/v2';
+
+export { ShortcutManager, shortcutManager, HelpPanel, ShortcutBar } from './ui';
+export type { 
+  ShortcutDefinition, 
+  ShortcutCategory, 
+  ActiveShortcut, 
+  ShortcutContext,
+  HelpPanelConfig,
+  ShortcutBarConfig
+} from './ui';

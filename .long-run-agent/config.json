@@ -1,9 +1,6 @@
 {
-  "project_name": "Stratix",
-  "spec": "项目: Stratix",
-  "created_at": "2026-02-22T22:28:49.931966",
-  "version": "2.0.7",
-  "schema_version": "2026-02-21",
-  "upgraded_at": "2026-02-22T22:28:49.931983",
-  "upgrade_history": []
+  "project_name": "Stratix RTS Zone Optimization",
+  "created_at": "2026-03-04T15:28:43.255349",
+  "version": "3.4.0",
+  "default_template": "task"
 }

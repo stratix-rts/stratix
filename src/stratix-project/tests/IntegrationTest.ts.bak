@@ -1,0 +1,264 @@
+import fs from 'fs-extra';
+import path from 'path';
+import { ProjectManager } from '../core/ProjectManager';
+import { ProjectStore } from '../storage/ProjectStore';
+import { TaskType } from '../../stratix-ai-service/types';
+import mitt from 'mitt';
+
+interface TestResult {
+  testName: string;
+  passed: boolean;
+  error?: string;
+  duration?: number;
+}
+
+export class IntegrationTest {
+  private projectManager: ProjectManager;
+  private store: ProjectStore;
+  private eventBus: ReturnType<typeof mitt>;
+  private results: TestResult[] = [];
+  private testDir: string;
+
+  constructor() {
+    this.eventBus = mitt();
+    this.testDir = '/tmp/stratix-test-' + Date.now();
+    this.store = new ProjectStore(this.testDir);
+    this.projectManager = new ProjectManager(this.store, this.eventBus);
+  }
+
+  async runAllTests(): Promise<void> {
+    console.log('🧪 Phase 3 集成测试\n');
+    console.log(`测试目录: ${this.testDir}\n`);
+
+    try {
+      await this.store.initialize();
+
+      await this.test('项目创建', () => this.testProjectCreation());
+      await this.test('任务加载', () => this.testTaskLoading());
+      await this.test('任务执行', () => this.testTaskExecution());
+      await this.test('进度更新', () => this.testProgressUpdate());
+      await this.test('暂停/恢复', () => this.testPauseResume());
+      await this.test('多任务依赖', () => this.testTaskDependencies());
+      await this.test('事件系统', () => this.testEventSystem());
+
+      this.printResults();
+    } finally {
+      await this.cleanup();
+    }
+  }
+
+  private async test(name: string, testFn: () => Promise<void>): Promise<void> {
+    const startTime = Date.now();
+    try {
+      await testFn();
+      const duration = Date.now() - startTime;
+      this.results.push({ testName: name, passed: true, duration });
+      console.log(`✅ ${name} (${duration}ms)`);
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.results.push({ testName: name, passed: false, error: errorMessage, duration });
+      console.log(`❌ ${name} (${duration}ms)`);
+      console.log(`   错误: ${errorMessage}`);
+    }
+  }
+
+  private async testProjectCreation(): Promise<void> {
+    const project = await this.projectManager.createProject({
+      name: '测试项目',
+      description: '集成测试',
+      priority: 1,
+      localFolderPath: path.join(this.testDir, 'test-project'),
+      agentMode: 'llm',
+      planningRule: 'sequential',
+      executionPermission: 'auto',
+      requirement: { type: 'text', content: '测试需求' },
+      progressRule: 'average'
+    });
+
+    if (!project.id) throw new Error('项目 ID 为空');
+    if (project.name !== '测试项目') throw new Error('项目名称不匹配');
+    if (project.status !== 'pending') throw new Error('初始状态应为 pending');
+
+    const retrieved = await this.projectManager.getProject(project.id);
+    if (!retrieved) throw new Error('无法检索项目');
+  }
+
+  private async testTaskLoading(): Promise<void> {
+    const project = await this.createTestProject();
+
+    const tasks = [
+      { id: '001', name: '任务1', type: TaskType.RESEARCH, description: '研究任务', dependencies: [], priority: 1 },
+      { id: '002', name: '任务2', type: TaskType.DEVELOPMENT, description: '开发任务', dependencies: ['001'], priority: 1 }
+    ];
+
+    await this.projectManager.loadProjectTasks(project.id, tasks);
+
+    const updated = await this.projectManager.getProject(project.id);
+    if (!updated) throw new Error('项目不存在');
+    if (updated.taskCount !== 2) throw new Error(`任务数量应为 2，实际为 ${updated.taskCount}`);
+  }
+
+  private async testTaskExecution(): Promise<void> {
+    const project = await this.createTestProject();
+
+    const tasks = [
+      { id: '001', name: '快速任务', type: TaskType.RESEARCH, description: '快速测试任务', dependencies: [], priority: 1 }
+    ];
+
+    await this.projectManager.loadProjectTasks(project.id, tasks);
+
+    const executor = this.projectManager.getProjectExecutor(project.id);
+    if (!executor) throw new Error('执行器未创建');
+
+    const startPromise = new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('执行超时')), 5000);
+
+      (this.eventBus as any).on('project:task-started', () => {
+        console.log('      ▶ 任务已启动');
+      });
+
+      (this.eventBus as any).on('project:execution-completed', () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+    });
+
+    await this.projectManager.startProjectExecution(project.id);
+    await startPromise;
+
+    const updated = await this.projectManager.getProject(project.id);
+    if (!updated) throw new Error('项目不存在');
+    if (updated.status !== 'completed') throw new Error(`项目状态应为 completed，实际为 ${updated.status}`);
+  }
+
+  private async testProgressUpdate(): Promise<void> {
+    const project = await this.createTestProject();
+
+    await this.projectManager.updateProjectProgress(project.id, 50, 5);
+
+    const updated = await this.projectManager.getProject(project.id);
+    if (!updated) throw new Error('项目不存在');
+    if (updated.progress !== 50) throw new Error(`进度应为 50，实际为 ${updated.progress}`);
+    if (updated.completedTaskCount !== 5) throw new Error(`完成任务数应为 5，实际为 ${updated.completedTaskCount}`);
+  }
+
+  private async testPauseResume(): Promise<void> {
+    const project = await this.createTestProject();
+
+    const tasks = [
+      { id: '001', name: '长任务', type: TaskType.DEVELOPMENT, description: '长时间运行任务', dependencies: [], priority: 1 }
+    ];
+
+    await this.projectManager.loadProjectTasks(project.id, tasks);
+    await this.projectManager.startProjectExecution(project.id);
+
+    await this.projectManager.pauseProjectExecution(project.id);
+
+    let updated = await this.projectManager.getProject(project.id);
+    if (!updated) throw new Error('项目不存在');
+    if (updated.status !== 'paused') throw new Error(`状态应为 paused，实际为 ${updated.status}`);
+
+    await this.projectManager.resumeProjectExecution(project.id);
+
+    updated = await this.projectManager.getProject(project.id);
+    if (!updated) throw new Error('项目不存在');
+    if (updated.status !== 'active') throw new Error(`状态应为 active，实际为 ${updated.status}`);
+
+    await this.projectManager.stopProjectExecution(project.id);
+  }
+
+  private async testTaskDependencies(): Promise<void> {
+    const project = await this.createTestProject();
+
+    const tasks = [
+      { id: '001', name: '任务A', type: TaskType.RESEARCH, description: '研究任务A', dependencies: [], priority: 1 },
+      { id: '002', name: '任务B', type: TaskType.DESIGN, description: '设计任务B', dependencies: ['001'], priority: 1 },
+      { id: '003', name: '任务C', type: TaskType.DEVELOPMENT, description: '开发任务C', dependencies: ['002'], priority: 1 }
+    ];
+
+    await this.projectManager.loadProjectTasks(project.id, tasks);
+
+    const executionOrder: string[] = [];
+    (this.eventBus as any).on('project:task-started', ({ taskId }: any) => {
+      executionOrder.push(taskId);
+    });
+
+    await this.projectManager.startProjectExecution(project.id);
+
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    if (executionOrder.length < 2) {
+      throw new Error('依赖顺序未正确执行');
+    }
+  }
+
+  private async testEventSystem(): Promise<void> {
+    const project = await this.createTestProject();
+
+    const events: string[] = [];
+
+    (this.eventBus as any).on('project:updated', () => events.push('updated'));
+    (this.eventBus as any).on('project:status-changed', () => events.push('status-changed'));
+
+    await this.projectManager.startProject(project.id);
+
+    if (!events.includes('updated')) throw new Error('未触发 updated 事件');
+    if (!events.includes('status-changed')) throw new Error('未触发 status-changed 事件');
+  }
+
+  private async createTestProject() {
+    return await this.projectManager.createProject({
+      name: `测试项目-${Date.now()}`,
+      priority: 1,
+      localFolderPath: path.join(this.testDir, `project-${Date.now()}`),
+      agentMode: 'llm',
+      planningRule: 'sequential',
+      executionPermission: 'auto',
+      requirement: { type: 'text', content: '测试' },
+      progressRule: 'average'
+    });
+  }
+
+  private printResults(): void {
+    console.log('\n' + '='.repeat(50));
+    console.log('测试结果汇总\n');
+
+    const passed = this.results.filter(r => r.passed).length;
+    const failed = this.results.filter(r => !r.passed).length;
+    const totalDuration = this.results.reduce((sum, r) => sum + (r.duration || 0), 0);
+
+    console.log(`总计: ${this.results.length} 个测试`);
+    console.log(`✅ 通过: ${passed}`);
+    console.log(`❌ 失败: ${failed}`);
+    console.log(`⏱  总耗时: ${totalDuration}ms`);
+    console.log(`📊 通过率: ${((passed / this.results.length) * 100).toFixed(1)}%`);
+
+    if (failed > 0) {
+      console.log('\n失败的测试:');
+      this.results.filter(r => !r.passed).forEach(r => {
+        console.log(`  - ${r.testName}: ${r.error}`);
+      });
+    }
+
+    console.log('='.repeat(50) + '\n');
+  }
+
+  private async cleanup(): Promise<void> {
+    try {
+      await fs.remove(this.testDir);
+      console.log('🧹 测试环境已清理\n');
+    } catch (error) {
+      console.warn('清理测试目录失败:', error);
+    }
+  }
+}
+
+export async function runIntegrationTests(): Promise<void> {
+  const test = new IntegrationTest();
+  await test.runAllTests();
+}
+
+if (require.main === module) {
+  runIntegrationTests().catch(console.error);
+}

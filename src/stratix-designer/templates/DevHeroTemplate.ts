@@ -24,6 +24,12 @@ export class DevHeroTemplate implements HeroTemplateBase {
       agentId: id,
       name: DevHeroTemplate.NAME,
       type: DevHeroTemplate.TYPE,
+      profile: {
+        characterId: id,
+        name: DevHeroTemplate.NAME,
+        bodyType: 'male',
+        parts: {},
+      },
       backendType: 'direct',
       directConfig: {
         provider: 'openai',
@@ -67,6 +73,7 @@ export class DevHeroTemplate implements HeroTemplateBase {
         '添加必要的注释说明',
         '遵循最佳实践和代码规范',
       ],
+      configStatus: 'ready',
     };
   }
 }

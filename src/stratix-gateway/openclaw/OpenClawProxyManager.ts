@@ -17,7 +17,7 @@ const RECONNECT_DELAY = 5000;
 const HEARTBEAT_INTERVAL = 30000;
 const AUTH_TIMEOUT = 15000;
 
-const CLIENT_ID = 'stratix-gateway';
+const CLIENT_ID = 'gateway-client';
 const CLIENT_MODE = 'ui';
 const CLIENT_VERSION = '1.0.0';
 const CLIENT_PLATFORM = 'node';
@@ -35,9 +35,28 @@ class OpenClawProxyManager extends EventEmitter {
   }
 
   async connect(record: OpenClawConnectionRecord): Promise<{ success: boolean; error?: string }> {
+    console.log('[ProxyManager] connect called with record:', {
+      id: record.id,
+      endpoint: record.endpoint,
+      method: record.method,
+      hasSharedToken: !!record.sharedToken,
+      hasDeviceToken: !!record.deviceToken,
+    });
+    
     const existing = this.pool.get(record.id);
-    if (existing && existing.ws?.readyState === WebSocket.OPEN) {
-      return { success: true };
+    if (existing) {
+      // 更新 entry 中的 record，确保使用最新的 sharedToken
+      console.log('[ProxyManager] Updating existing entry with new record');
+      existing.record = record;
+      
+      if (existing.ws?.readyState === WebSocket.OPEN) {
+        console.log('[ProxyManager] WebSocket already open, returning success');
+        return { success: true };
+      }
+      
+      // 连接已断开，需要重新连接
+      console.log('[ProxyManager] WebSocket not open, disconnecting and reconnecting');
+      await this.disconnect(record.id);
     }
 
     return this.createConnection(record);
@@ -223,6 +242,7 @@ class OpenClawProxyManager extends EventEmitter {
 
   private handleMessage(entry: PoolEntry, data: RawData): void {
     const message = data.toString();
+    console.log('[ProxyManager] handleMessage from OpenClaw:', message.slice(0, 500));
     
     entry.pendingClients.forEach((client) => {
       if (client.readyState === WebSocket.OPEN) {

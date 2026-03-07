@@ -17,6 +17,9 @@ import commandRoutes from './api/routes/command';
 import templateRoutes from './api/routes/template';
 import textureRoutes from './api/routes/texture';
 import openclawRoutes, { initWebSocketServer, initConnectionStore } from './api/routes/openclaw';
+import lraRoutes from './api/routes/lra';
+import projectRoutes from './api/routes/project';
+import agentOrchestrationRoutes from './api/routes/agentOrchestration';
 import { openClawProxyManager } from './openclaw/OpenClawProxyManager';
 import { dataStoreService } from './dataStoreService';
 import { OpenClawConnectionStore } from '../stratix-data-store/OpenClawConnectionStore';
@@ -98,6 +101,9 @@ export async function startGatewayService(
   app.use('/api/stratix/config/template', templateRoutes);
   app.use('/api/stratix/texture', textureRoutes);
   app.use('/api/stratix/openclaw', openclawRoutes);
+  app.use('/api/lra', lraRoutes);
+  app.use('/api/projects', projectRoutes);
+  app.use('/api/agents/orchestration', agentOrchestrationRoutes);
   
   // 健康检查
   app.get('/health', (req, res) => {

@@ -1,0 +1,60 @@
+{
+  "types": [
+    {
+      "id": "requirement",
+      "name": "需求分析",
+      "color": "#4A90E2",
+      "icon": "📋",
+      "description": "分析和理解项目需求"
+    },
+    {
+      "id": "design",
+      "name": "设计",
+      "color": "#9B59B6",
+      "icon": "🎨",
+      "description": "系统设计和架构设计"
+    },
+    {
+      "id": "development",
+      "name": "开发",
+      "color": "#2ECC71",
+      "icon": "💻",
+      "description": "代码开发和实现"
+    },
+    {
+      "id": "test",
+      "name": "测试",
+      "color": "#E67E22",
+      "icon": "🧪",
+      "description": "功能测试和质量保证"
+    },
+    {
+      "id": "deploy",
+      "name": "部署",
+      "color": "#E74C3C",
+      "icon": "🚀",
+      "description": "部署和发布"
+    },
+    {
+      "id": "writing",
+      "name": "写作",
+      "color": "#1ABC9C",
+      "icon": "✍️",
+      "description": "文档写作和内容创作"
+    },
+    {
+      "id": "research",
+      "name": "研究",
+      "color": "#F1C40F",
+      "icon": "🔍",
+      "description": "技术调研和可行性分析"
+    },
+    {
+      "id": "custom",
+      "name": "自定义",
+      "color": "#95A5A6",
+      "icon": "⚙️",
+      "description": "用户自定义任务类型"
+    }
+  ]
+}

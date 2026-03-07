@@ -11,7 +11,16 @@ export * from './stratix-protocol';
 export { default as StratixEventBus } from './StratixEventBus';
 
 // 导出类型定义 (global declarations)
-export type { AgentStatus, CommandStatus, AgentType, SkillParameterType } from './types/stratix-types';
+export type { 
+  AgentStatus, 
+  CommandStatus, 
+  AgentType, 
+  SkillParameterType,
+  AgentConfigStatus,
+  AgentConnectionStatus,
+  AgentActivityStatus,
+  AgentStatusInfo
+} from './types/stratix-types';
 
 // 导出工具类
 export * from './utils/index';

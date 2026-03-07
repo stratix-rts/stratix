@@ -114,12 +114,18 @@ router.delete('/delete', async (req: Request, res: Response) => {
 
 router.get('/list', async (req: Request, res: Response) => {
   try {
+    if (!dataStoreService.isInitialized()) {
+      console.error('[Agent API] DataStore not initialized');
+      res.json(requestHelper.serviceUnavailable('DataStore not initialized. Please ensure gateway is running.'));
+      return;
+    }
     const store = dataStoreService.getStore();
     const agents = await store.listAgents();
+    console.log('[Agent API] Listed agents:', agents.length);
     res.json(requestHelper.success(agents, 'Agents fetched'));
   } catch (error) {
     console.error('[Agent API] Error listing agents:', error);
-    res.status(500).json(requestHelper.serverError('Internal server error'));
+    res.status(500).json(requestHelper.serverError(`Internal server error: ${error instanceof Error ? error.message : 'Unknown error'}`));
   }
 });
 
