@@ -75,7 +75,7 @@ export class MovementSystem {
         state.startDirection = direction;
       }
 
-      agent.playAnimation('walk', direction);
+      agent.playAnimation('run', direction);
 
       const velocity = new Phaser.Math.Vector2(dx, dy).normalize();
       const moveDistance = state.speed * (delta / 1000);
