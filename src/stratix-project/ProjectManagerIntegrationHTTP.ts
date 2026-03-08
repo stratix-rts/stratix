@@ -80,30 +80,42 @@ export class ProjectManagerIntegration {
   }
 
   private createProjectZone(project: Project): ProjectZone | null {
+    console.log(`[ProjectManager] Creating zone for project: ${project.id}`, project.zoneConfig);
+    
     const existing = this.unifiedZoneManager.getZone(project.id);
     if (existing) {
       console.warn(`[ProjectManager] Project zone already exists: ${project.id}`);
       return null;
     }
 
-    const projectZone = new ProjectZone(this.scene, project, project.zoneConfig);
-    this.scene.add.existing(projectZone);
-    
-    this.unifiedZoneManager.register(projectZone);
+    try {
+      const projectZone = new ProjectZone(this.scene, project, project.zoneConfig);
+      console.log(`[ProjectManager] ProjectZone created successfully: ${project.id}`);
+      
+      this.scene.add.existing(projectZone);
+      console.log(`[ProjectManager] ProjectZone added to scene: ${project.id}`);
+      
+      this.unifiedZoneManager.register(projectZone);
+      console.log(`[ProjectManager] ProjectZone registered: ${project.id}`);
 
-    projectZone.setInteractive();
-    projectZone.on('pointerdown', () => {
-      if (!this.isDrawingProjectZone) {
-        this.selectProjectZone(project.id);
-      }
-    });
+      projectZone.setInteractive();
+      projectZone.on('pointerdown', () => {
+        if (!this.isDrawingProjectZone) {
+          this.selectProjectZone(project.id);
+        }
+      });
 
-    projectZone.on('zone-moved', (data: any) => {
-      console.log(`[ProjectManager] Zone moved: ${project.id}`, data);
-      this.eventBus.emit('project:zone-moved', { project, ...data });
-    });
+      projectZone.on('zone-moved', (data: any) => {
+        console.log(`[ProjectManager] Zone moved: ${project.id}`, data);
+        this.eventBus.emit('project:zone-moved', { project, ...data });
+      });
 
-    return projectZone;
+      console.log(`[ProjectManager] ✅ ProjectZone setup complete: ${project.id}`);
+      return projectZone;
+    } catch (error) {
+      console.error(`[ProjectManager] ❌ Failed to create zone for project ${project.id}:`, error);
+      return null;
+    }
   }
 
   private updateProjectZone(project: Project): void {

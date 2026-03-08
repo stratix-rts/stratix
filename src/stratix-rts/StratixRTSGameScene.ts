@@ -7,10 +7,13 @@ import { InputHandler, InputCallbacks, InputMode } from './utils/InputHandler';
 import { SelectBox } from './ui/SelectBox';
 import { TaskZone, TaskZoneConfig } from './zones/TaskZone';
 import { TaskZonePreview } from './zones/TaskZonePreview';
+import { UnifiedZoneManager } from './zones/UnifiedZoneManager';
+import { BaseZone } from './zones/BaseZone';
 import { CommandSystem, Command, CommandType } from './systems/CommandSystem';
 import { ControlGroupSystem } from './systems/ControlGroupSystem';
 import { MovementSystem } from './systems/MovementSystem';
 import { StatsCollector } from './debug/StatsCollector';
+import { ProjectManagerIntegration } from '../stratix-project/ProjectManagerIntegrationHTTP';
 import RTSCharacterRenderer, { TextureLoadResult } from './services/RTSCharacterRenderer';
 import { rtsEventBus } from './events/core/RTSEventBus';
 import type { TopBarStats, AgentInfo, ViewportState } from './events/types/RTSEventTypes';
@@ -30,7 +33,8 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   private agentSprites: Map<string, AgentSprite> = new Map();
   private selectedAgentIds: Set<string> = new Set();
   private previewSelection: Set<string> = new Set();
-  private taskZones: Map<string, TaskZone> = new Map();
+  private unifiedZoneManager: UnifiedZoneManager;
+  private projectManagerIntegration: ProjectManagerIntegration;
   private selectedZoneIds: Set<string> = new Set();
   private isZoneDrawingMode: boolean = false;
   private currentCommandType: CommandType | null = null;
@@ -81,6 +85,8 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     this.initStratixMap();
     this.initCamera();
     this.initSystems();
+    this.unifiedZoneManager = new UnifiedZoneManager(this);
+    this.initProjectManager();
     this.initSelectBox();
     this.initTaskZonePreview();
     this.initInputHandler();
@@ -261,6 +267,19 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     });
   }
 
+
+  private initProjectManager(): void {
+    this.projectManagerIntegration = new ProjectManagerIntegration(
+      this,
+      this.unifiedZoneManager,
+      {
+        autoLoad: true
+      }
+    );
+    
+    console.log('[StratixRTS] ProjectManager initialized');
+  }
+
   private emitStats(): void {
     rtsEventBus.emit('scene:ui:update_stats', this.getTopBarStats() as any);
   }
@@ -276,18 +295,20 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     });
     
     let totalProgress = 0;
-    this.taskZones.forEach((zone) => {
+    const taskZones = this.unifiedZoneManager.getTaskZones();
+    taskZones.forEach((zone: TaskZone) => {
       totalProgress += zone.getTaskProgress();
     });
-    if (this.taskZones.size > 0) {
-      totalProgress /= this.taskZones.size;
+    if (taskZones.size > 0) {
+      totalProgress /= taskZones.size;
     }
     
+    const allZones = this.unifiedZoneManager.getAllZones();
     return {
       totalAgents: this.agentSprites.size,
       onlineAgents: onlineCount,
       busyAgents: busyCount,
-      totalZones: this.taskZones.size,
+      totalZones: allZones.size,
       overallProgress: totalProgress,
     };
   }
@@ -458,7 +479,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   }
 
   private checkZoneOverlap(rect: Phaser.Geom.Rectangle, excludeZoneId?: string): boolean {
-    for (const [zoneId, zone] of this.taskZones) {
+    for (const [zoneId, zone] of this.unifiedZoneManager.getAllZones()) {
       if (excludeZoneId && zoneId === excludeZoneId) continue;
       if (zone.overlapsRect(rect)) {
         return true;
@@ -468,14 +489,14 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   }
 
   private handleZoneDragStart(zoneId: string, worldX: number, worldY: number): void {
-    const zone = this.taskZones.get(zoneId);
+    const zone = this.unifiedZoneManager.getZone(zoneId);
     if (zone) {
       zone.startDrag(worldX, worldY);
     }
   }
 
   private handleZoneDragUpdate(worldX: number, worldY: number): void {
-    this.taskZones.forEach(zone => {
+    this.unifiedZoneManager.getAllZones().forEach(zone => {
       if (zone.isZoneDragging()) {
         zone.updateDrag(worldX, worldY);
         
@@ -487,7 +508,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   }
 
   private handleZoneDragEnd(): void {
-    this.taskZones.forEach(zone => {
+    this.unifiedZoneManager.getAllZones().forEach(zone => {
       if (zone.isZoneDragging()) {
         zone.endDrag();
         
@@ -500,12 +521,12 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     });
   }
 
-  private findNonOverlappingPosition(zone: TaskZone): void {
+  private findNonOverlappingPosition(zone: BaseZone): void {
     const bounds = zone.getBounds();
     const zoneId = zone.getZoneId();
     
-    const overlappingZones: TaskZone[] = [];
-    for (const [id, otherZone] of this.taskZones) {
+    const overlappingZones: BaseZone[] = [];
+    for (const [id, otherZone] of this.unifiedZoneManager.getAllZones()) {
       if (id !== zoneId && otherZone.overlapsZone(zone)) {
         overlappingZones.push(otherZone);
       }
@@ -606,14 +627,14 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   }
 
   private handleZoneResizeStart(zoneId: string, corner: string, worldX: number, worldY: number): void {
-    const zone = this.taskZones.get(zoneId);
+    const zone = this.unifiedZoneManager.getZone(zoneId);
     if (zone) {
       zone.startResize(corner as any, worldX, worldY);
     }
   }
 
   private handleZoneResizeUpdate(worldX: number, worldY: number): void {
-    this.taskZones.forEach(zone => {
+    this.unifiedZoneManager.getAllZones().forEach(zone => {
       if (zone.isZoneResizing()) {
         zone.updateResize(worldX, worldY);
         
@@ -625,7 +646,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   }
 
   private handleZoneResizeEnd(): void {
-    this.taskZones.forEach(zone => {
+    this.unifiedZoneManager.getAllZones().forEach(zone => {
       if (zone.isZoneResizing()) {
         zone.endResize();
         
@@ -638,7 +659,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     });
   }
 
-  private revertZoneToNonOverlappingSize(zone: TaskZone): void {
+  private revertZoneToNonOverlappingSize(zone: BaseZone): void {
     const currentWidth = zone.getBounds().width;
     const currentHeight = zone.getBounds().height;
     const originalX = zone.x;
@@ -693,10 +714,10 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     if (confirmed) {
       const zoneIdsToDelete = Array.from(this.selectedZoneIds);
       zoneIdsToDelete.forEach(zoneId => {
-        const zone = this.taskZones.get(zoneId);
+        const zone = this.unifiedZoneManager.getZone(zoneId);
         if (zone) {
           zone.destroy();
-          this.taskZones.delete(zoneId);
+          this.unifiedZoneManager.unregister(zoneId);
         }
       });
       this.selectedZoneIds.clear();
@@ -705,7 +726,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   }
 
   private getTaskZoneAtPoint(worldX: number, worldY: number): string | null {
-    for (const [zoneId, zone] of this.taskZones) {
+    for (const [zoneId, zone] of this.unifiedZoneManager.getAllZones()) {
       if (zone.containsPoint(worldX, worldY)) {
         return zoneId;
       }
@@ -727,12 +748,12 @@ export default class StratixRTSGameScene extends Phaser.Scene {
       y: bounds.y + bounds.height / 2,
       width: bounds.width,
       height: bounds.height,
-      name: `Task Zone ${this.taskZones.size + 1}`
+      name: `Task Zone ${this.unifiedZoneManager.getAllZones().size + 1}`
     };
 
     const taskZone = new TaskZone(this, config);
     this.add.existing(taskZone);
-    this.taskZones.set(zoneId, taskZone);
+    this.unifiedZoneManager.register(taskZone);
 
     taskZone.setInteractive();
     taskZone.on('pointerdown', () => {
@@ -747,7 +768,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
 
   public selectZone(zoneId: string): void {
     this.clearZoneSelection();
-    const zone = this.taskZones.get(zoneId);
+    const zone = this.unifiedZoneManager.getZone(zoneId);
     if (zone) {
       zone.setHighlight(true);
       this.selectedZoneIds.add(zoneId);
@@ -755,7 +776,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   }
 
   public deselectZone(zoneId: string): void {
-    const zone = this.taskZones.get(zoneId);
+    const zone = this.unifiedZoneManager.getZone(zoneId);
     if (zone) {
       zone.setHighlight(false);
       this.selectedZoneIds.delete(zoneId);
@@ -764,7 +785,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
 
   public clearZoneSelection(): void {
     this.selectedZoneIds.forEach(zoneId => {
-      const zone = this.taskZones.get(zoneId);
+      const zone = this.unifiedZoneManager.getZone(zoneId);
       if (zone) {
         zone.setHighlight(false);
       }
@@ -773,16 +794,16 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   }
 
   public deleteZone(zoneId: string): void {
-    const zone = this.taskZones.get(zoneId);
+    const zone = this.unifiedZoneManager.getZone(zoneId);
     if (zone) {
       zone.destroy();
-      this.taskZones.delete(zoneId);
+      this.unifiedZoneManager.unregister(zoneId);
       this.selectedZoneIds.delete(zoneId);
     }
   }
 
   public getTaskZones(): Map<string, TaskZone> {
-    return this.taskZones;
+    return this.unifiedZoneManager.getTaskZones();
   }
 
   public getSelectedZoneIds(): Set<string> {
@@ -893,7 +914,8 @@ export default class StratixRTSGameScene extends Phaser.Scene {
 
   public getSelectedZone(): TaskZone | undefined {
     const zoneIds = Array.from(this.selectedZoneIds);
-    return zoneIds.length > 0 ? this.taskZones.get(zoneIds[0]) : undefined;
+    const zone = zoneIds.length > 0 ? this.unifiedZoneManager.getZone(zoneIds[0]) : undefined;
+    return zone instanceof TaskZone ? zone : undefined;
   }
 
   public selectAgent(agentId: string): void {
@@ -938,8 +960,8 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     this.eventUnsubscribers = [];
     rtsEventBus.unregisterScene('game');
     
-    this.taskZones.forEach(zone => zone.destroy());
-    this.taskZones.clear();
+    this.unifiedZoneManager.getAllZones().forEach(zone => zone.destroy());
+    this.unifiedZoneManager.destroy();
   }
 
   public resize(width: number, height: number): void {

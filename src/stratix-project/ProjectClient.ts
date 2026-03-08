@@ -9,7 +9,7 @@ export class ProjectClient {
   private baseURL: string;
   
   constructor(config?: ProjectClientConfig) {
-    this.baseURL = config?.baseURL || '/api/projects';
+    this.baseURL = config?.baseURL || 'http://localhost:7524/api/projects';
   }
   
   async initialize(): Promise<void> {
