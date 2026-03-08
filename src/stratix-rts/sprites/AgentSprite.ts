@@ -83,8 +83,13 @@ export class AgentSprite extends Phaser.GameObjects.Container {
     const texture = textureKey || 'stratix-agent';
     this.sprite = scene.add.sprite(0, 0, texture);
     
+    console.log(`[AgentSprite] Sprite created with texture: ${texture}`);
+    console.log(`[AgentSprite] Sprite bounds:`, this.sprite.getBounds());
+    console.log(`[AgentSprite] Sprite displayWidth: ${this.sprite.displayWidth}, displayHeight: ${this.sprite.displayHeight}`);
+    
     if (textureKey && config.profile) {
       this.sprite.setScale(0.75);
+      console.log(`[AgentSprite] Applied scale 0.75, new size: ${this.sprite.displayWidth}x${this.sprite.displayHeight}`);
       this.playAnimation('idle', LPC_DIRECTION_ROWS.RIGHT);
     }
     
@@ -155,28 +160,26 @@ export class AgentSprite extends Phaser.GameObjects.Container {
 
   public playAnimation(animation: 'idle' | 'walk' | 'run', direction?: number): void {
     if (!this.customTextureKey) {
-      console.warn(`[AgentSprite] ⚠️ No custom texture key for ${this.agentId}`);
       return;
     }
     
     const dir = direction ?? this.currentDirection;
+    
+    if (this.currentAnimation === animation && this.currentDirection === dir) {
+      return;
+    }
+    
     this.currentDirection = dir;
     this.currentAnimation = animation;
     
     const animKey = `${this.customTextureKey}_${animation}_${dir}`;
     
-    console.log(`[AgentSprite] 🎬 Attempting to play animation: ${animKey}`);
-    console.log(`[AgentSprite] Animation exists: ${this.scene.anims.exists(animKey)}`);
-    
     if (this.scene.anims.exists(animKey)) {
       try {
         this.sprite.play(animKey);
-        console.log(`[AgentSprite] ✅ Playing animation: ${animKey}`);
       } catch (error) {
         console.error(`[AgentSprite] ❌ Error playing ${animKey}:`, error);
       }
-    } else {
-      console.warn(`[AgentSprite] ⚠️ Animation not found: ${animKey}`);
     }
   }
 

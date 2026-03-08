@@ -232,8 +232,11 @@ class RTSCharacterRenderer {
 
   private createAnimationFramesFromTexture(key: string, texture: Phaser.Textures.Texture): void {
     console.log(`[RTSCharacterRenderer] 🎨 Creating animation frames from texture: ${key}`);
+    console.log(`[RTSCharacterRenderer] Texture source:`, texture.source[0]?.width, 'x', texture.source[0]?.height);
+    
     const frameWidth = FRAME_SIZE;
     const frameHeight = FRAME_SIZE;
+    console.log(`[RTSCharacterRenderer] Frame size: ${frameWidth}x${frameHeight}`);
 
     for (const animKey of CORE_RTS_ANIMATIONS) {
       const animConfig = ANIMATION_CONFIGS[animKey];
@@ -242,6 +245,7 @@ class RTSCharacterRenderer {
 
       const frameRate = ANIMATION_FRAMERATES[animKey] || 8;
       const uniqueFrameIndexes = [...new Set(animConfig.cycle)];
+      console.log(`[RTSCharacterRenderer] Processing animation: ${animKey}, y-offset: ${yPos}, unique frames: ${uniqueFrameIndexes.length}`);
 
       for (let direction = 0; direction < 4; direction++) {
         for (const frameIndex of uniqueFrameIndexes) {
@@ -272,6 +276,8 @@ class RTSCharacterRenderer {
             repeat: -1
           });
           console.log(`[RTSCharacterRenderer] ✅ Created animation from texture: ${animKeyName}, frames: ${frames.length}`);
+        } else {
+          console.log(`[RTSCharacterRenderer] ⚠️ Animation already exists: ${animKeyName}`);
         }
       }
     }
