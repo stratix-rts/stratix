@@ -64,17 +64,30 @@ class RTSCharacterRenderer {
       return { type: 'ready', textureKey };
     }
 
+    const cachedCanvas = textureManager.getCachedCanvas(characterId);
+    if (cachedCanvas) {
+      console.log(`[RTSCharacterRenderer] 📦 Using cached canvas for ${characterId}`);
+      this.scene.textures.addCanvas(textureKey, cachedCanvas);
+      this.createAnimationFrames(textureKey, cachedCanvas);
+      this.loadedTextures.add(textureKey);
+      return { type: 'ready', textureKey };
+    }
+
     const textureUrl = await textureManager.ensureTexture(character);
     if (textureUrl) {
+      const canvas = textureManager.getCachedCanvas(characterId);
+      if (canvas) {
+        console.log(`[RTSCharacterRenderer] 🎨 Canvas generated and cached for ${characterId}`);
+        this.scene.textures.addCanvas(textureKey, canvas);
+        this.createAnimationFrames(textureKey, canvas);
+        this.loadedTextures.add(textureKey);
+        return { type: 'ready', textureKey };
+      }
+      
       try {
+        console.log(`[RTSCharacterRenderer] 🌐 Loading from URL for ${characterId}`);
         await this.loadTextureFromUrl(textureKey, textureUrl);
         this.loadedTextures.add(textureKey);
-        
-        const canvas = textureManager.getCachedCanvas(characterId);
-        if (canvas) {
-          this.createAnimationFrames(textureKey, canvas);
-        }
-        
         return { type: 'ready', textureKey };
       } catch (error) {
         console.warn(`[RTSCharacterRenderer] Failed to load texture from URL:`, error);
@@ -141,6 +154,10 @@ class RTSCharacterRenderer {
   private loadTextureFromUrl(key: string, url: string): Promise<void> {
     return new Promise((resolve, reject) => {
       if (this.scene.textures.exists(key)) {
+        const texture = this.scene.textures.get(key);
+        if (texture) {
+          this.createAnimationFramesFromTexture(key, texture);
+        }
         resolve();
         return;
       }
@@ -161,7 +178,14 @@ class RTSCharacterRenderer {
   }
 
   private createAnimationFrames(key: string, canvas: HTMLCanvasElement): void {
-    console.log(`[RTSCharacterRenderer] 🎨 Creating animation frames for: ${key}`);
+    if (this.scene.textures.exists(key)) {
+      this.scene.textures.remove(key);
+    }
+    
+    this.scene.textures.addCanvas(key, canvas);
+    const texture = this.scene.textures.get(key);
+    if (!texture) return;
+
     const frameWidth = FRAME_SIZE;
     const frameHeight = FRAME_SIZE;
 
@@ -172,38 +196,24 @@ class RTSCharacterRenderer {
 
       const frameRate = ANIMATION_FRAMERATES[animKey] || 8;
       const uniqueFrameIndexes = [...new Set(animConfig.cycle)];
-      const maxFrame = Math.max(...uniqueFrameIndexes);
 
       for (let direction = 0; direction < 4; direction++) {
         for (const frameIndex of uniqueFrameIndexes) {
-          const frameKey = `${key}_${animKey}_${direction}_${frameIndex}`;
-          
-          if (!this.scene.textures.exists(frameKey)) {
-            const frameCanvas = document.createElement('canvas');
-            frameCanvas.width = frameWidth;
-            frameCanvas.height = frameHeight;
-            
-            const ctx = frameCanvas.getContext('2d');
-            if (ctx) {
-              ctx.drawImage(
-                canvas,
-                frameIndex * frameWidth,
-                yPos + direction * frameHeight,
-                frameWidth,
-                frameHeight,
-                0, 0,
-                frameWidth,
-                frameHeight
-              );
-            }
-            
-            this.scene.textures.addCanvas(frameKey, frameCanvas);
-          }
+          const frameName = `${animKey}_${direction}_${frameIndex}`;
+          texture.add(
+            frameName,
+            0,
+            frameIndex * frameWidth,
+            yPos + direction * frameHeight,
+            frameWidth,
+            frameHeight
+          );
         }
 
-        const frameNames: string[] = [];
+        const frames: Phaser.Types.Animations.AnimationFrame[] = [];
         for (const frameIndex of animConfig.cycle) {
-          frameNames.push(`${key}_${animKey}_${direction}_${frameIndex}`);
+          const frameName = `${animKey}_${direction}_${frameIndex}`;
+          frames.push({ key: key, frame: frameName });
         }
 
         const animKeyName = `${key}_${animKey}_${direction}`;
@@ -211,18 +221,13 @@ class RTSCharacterRenderer {
         if (!this.scene.anims.exists(animKeyName)) {
           this.scene.anims.create({
             key: animKeyName,
-            frames: frameNames.map((frameName) => ({
-              key: frameName,
-              frame: 0
-            })),
+            frames,
             frameRate: frameRate,
             repeat: -1
           });
-          console.log(`[RTSCharacterRenderer] ✅ Created animation: ${animKeyName}, frames: ${frameNames.length}`);
         }
       }
     }
-    console.log(`[RTSCharacterRenderer] ✅ All animations created for ${key}`);
   }
 
   private createAnimationFramesFromTexture(key: string, texture: Phaser.Textures.Texture): void {
