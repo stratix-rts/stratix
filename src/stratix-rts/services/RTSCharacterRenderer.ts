@@ -231,6 +231,7 @@ class RTSCharacterRenderer {
   }
 
   private createAnimationFramesFromTexture(key: string, texture: Phaser.Textures.Texture): void {
+    console.log(`[RTSCharacterRenderer] 🎨 Creating animation frames from texture: ${key}`);
     const frameWidth = FRAME_SIZE;
     const frameHeight = FRAME_SIZE;
 
@@ -270,9 +271,11 @@ class RTSCharacterRenderer {
             frameRate: frameRate,
             repeat: -1
           });
+          console.log(`[RTSCharacterRenderer] ✅ Created animation from texture: ${animKeyName}, frames: ${frames.length}`);
         }
       }
     }
+    console.log(`[RTSCharacterRenderer] ✅ All animations created from texture for ${key}`);
   }
 
   getAnimationKey(textureKey: string, animation: string, direction: number): string {

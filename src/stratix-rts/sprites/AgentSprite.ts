@@ -155,6 +155,7 @@ export class AgentSprite extends Phaser.GameObjects.Container {
 
   public playAnimation(animation: 'idle' | 'walk' | 'run', direction?: number): void {
     if (!this.customTextureKey) {
+      console.warn(`[AgentSprite] ⚠️ No custom texture key for ${this.agentId}`);
       return;
     }
     
@@ -164,12 +165,18 @@ export class AgentSprite extends Phaser.GameObjects.Container {
     
     const animKey = `${this.customTextureKey}_${animation}_${dir}`;
     
+    console.log(`[AgentSprite] 🎬 Attempting to play animation: ${animKey}`);
+    console.log(`[AgentSprite] Animation exists: ${this.scene.anims.exists(animKey)}`);
+    
     if (this.scene.anims.exists(animKey)) {
       try {
         this.sprite.play(animKey);
+        console.log(`[AgentSprite] ✅ Playing animation: ${animKey}`);
       } catch (error) {
         console.error(`[AgentSprite] ❌ Error playing ${animKey}:`, error);
       }
+    } else {
+      console.warn(`[AgentSprite] ⚠️ Animation not found: ${animKey}`);
     }
   }
 
