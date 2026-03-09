@@ -94,6 +94,10 @@ export class ProjectClient {
       throw new Error(`Failed to update project ${id}: ${error}`);
     }
   }
+
+  async updateZoneConfig(id: string, zoneConfig: Partial<ProjectZoneConfig>): Promise<Project> {
+    return this.updateProject(id, { zoneConfig } as Partial<Project>);
+  }
   
   async deleteProject(id: string): Promise<boolean> {
     try {

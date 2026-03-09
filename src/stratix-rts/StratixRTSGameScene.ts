@@ -40,6 +40,8 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   private currentCommandType: CommandType | null = null;
   private characterRenderer: RTSCharacterRenderer;
   private eventUnsubscribers: (() => void)[] = [];
+  private zoneDragAgentOffsets: Map<string, Map<string, { offsetX: number; offsetY: number }>> = new Map();
+  private zoneResizeAgentPositions: Map<string, Map<string, { ratioX: number; ratioY: number }>> = new Map();
 
   constructor() {
     super({ key: 'StratixRTSGameScene' });
@@ -252,6 +254,12 @@ export default class StratixRTSGameScene extends Phaser.Scene {
       })
     );
     
+    this.eventUnsubscribers.push(
+      rtsEventBus.on('vue:game:zone_delete_confirmed', (data: any) => {
+        this.handleZoneDeleteConfirmed(data.zoneIds);
+      })
+    );
+    
     rtsEventBus.respond('request:get_stats', () => this.getTopBarStats());
     rtsEventBus.respond('request:get_camera_state', () => this.getCameraState());
     
@@ -327,6 +335,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   private handleSelect(agentIds: string[], shiftKey: boolean = false): void {
     if (!shiftKey) {
       this.clearSelection();
+      this.clearZoneSelection();
     }
     
     agentIds.forEach(id => {
@@ -346,6 +355,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   private handleBoxSelect(bounds: Phaser.Geom.Rectangle, shiftKey: boolean): void {
     if (!shiftKey) {
       this.clearSelection();
+      this.clearZoneSelection();
     }
     
     this.agentSprites.forEach((sprite, agentId) => {
@@ -492,6 +502,19 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     const zone = this.unifiedZoneManager.getZone(zoneId);
     if (zone) {
       zone.startDrag(worldX, worldY);
+      
+      const agentsInZone = this.getAgentsInZone(zone);
+      const offsets = new Map<string, { offsetX: number; offsetY: number }>();
+      const bounds = zone.getBounds();
+      
+      agentsInZone.forEach((sprite, agentId) => {
+        offsets.set(agentId, {
+          offsetX: sprite.x - bounds.x,
+          offsetY: sprite.y - bounds.y
+        });
+      });
+      
+      this.zoneDragAgentOffsets.set(zoneId, offsets);
     }
   }
 
@@ -503,6 +526,17 @@ export default class StratixRTSGameScene extends Phaser.Scene {
         const bounds = zone.getBounds();
         const hasOverlap = this.checkZoneOverlap(bounds, zone.getZoneId());
         zone.setWarning(hasOverlap);
+        
+        const offsets = this.zoneDragAgentOffsets.get(zone.getZoneId());
+        if (offsets) {
+          offsets.forEach((offset, agentId) => {
+            const sprite = this.agentSprites.get(agentId);
+            if (sprite) {
+              sprite.x = bounds.x + offset.offsetX;
+              sprite.y = bounds.y + offset.offsetY;
+            }
+          });
+        }
       }
     });
   }
@@ -516,9 +550,44 @@ export default class StratixRTSGameScene extends Phaser.Scene {
         if (this.checkZoneOverlap(bounds, zone.getZoneId())) {
           this.findNonOverlappingPosition(zone);
         }
+        
+        const offsets = this.zoneDragAgentOffsets.get(zone.getZoneId());
+        if (offsets) {
+          const finalBounds = zone.getBounds();
+          offsets.forEach((offset, agentId) => {
+            const sprite = this.agentSprites.get(agentId);
+            if (sprite) {
+              sprite.x = finalBounds.x + offset.offsetX;
+              sprite.y = finalBounds.y + offset.offsetY;
+            }
+          });
+        }
+        
+        const finalBounds = zone.getBounds();
+        rtsEventBus.emit('zone:moved' as any, {
+          zoneId: zone.getZoneId(),
+          position: { x: zone.x, y: zone.y },
+          bounds: finalBounds,
+        });
+        
         zone.setWarning(false);
+        
+        this.zoneDragAgentOffsets.delete(zone.getZoneId());
       }
     });
+  }
+
+  private getAgentsInZone(zone: BaseZone): Map<string, AgentSprite> {
+    const result = new Map<string, AgentSprite>();
+    const bounds = zone.getBounds();
+    
+    this.agentSprites.forEach((sprite, agentId) => {
+      if (Phaser.Geom.Rectangle.Contains(bounds, sprite.x, sprite.y)) {
+        result.set(agentId, sprite);
+      }
+    });
+    
+    return result;
   }
 
   private findNonOverlappingPosition(zone: BaseZone): void {
@@ -630,6 +699,19 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     const zone = this.unifiedZoneManager.getZone(zoneId);
     if (zone) {
       zone.startResize(corner as any, worldX, worldY);
+      
+      const agentsInZone = this.getAgentsInZone(zone);
+      const positions = new Map<string, { ratioX: number; ratioY: number }>();
+      const bounds = zone.getBounds();
+      
+      agentsInZone.forEach((sprite, agentId) => {
+        positions.set(agentId, {
+          ratioX: (sprite.x - bounds.x) / bounds.width,
+          ratioY: (sprite.y - bounds.y) / bounds.height
+        });
+      });
+      
+      this.zoneResizeAgentPositions.set(zoneId, positions);
     }
   }
 
@@ -641,6 +723,17 @@ export default class StratixRTSGameScene extends Phaser.Scene {
         const bounds = zone.getBounds();
         const hasOverlap = this.checkZoneOverlap(bounds, zone.getZoneId());
         zone.setWarning(hasOverlap);
+        
+        const positions = this.zoneResizeAgentPositions.get(zone.getZoneId());
+        if (positions) {
+          positions.forEach((pos, agentId) => {
+            const sprite = this.agentSprites.get(agentId);
+            if (sprite) {
+              sprite.x = bounds.x + bounds.width * pos.ratioX;
+              sprite.y = bounds.y + bounds.height * pos.ratioY;
+            }
+          });
+        }
       }
     });
   }
@@ -654,7 +747,18 @@ export default class StratixRTSGameScene extends Phaser.Scene {
         if (this.checkZoneOverlap(bounds, zone.getZoneId())) {
           this.revertZoneToNonOverlappingSize(zone);
         }
+        
+        const finalBounds = zone.getBounds();
+        rtsEventBus.emit('zone:resized' as any, {
+          zoneId: zone.getZoneId(),
+          position: { x: zone.x, y: zone.y },
+          size: { width: finalBounds.width, height: finalBounds.height },
+          bounds: finalBounds,
+        });
+        
         zone.setWarning(false);
+        
+        this.zoneResizeAgentPositions.delete(zone.getZoneId());
       }
     });
   }
@@ -708,21 +812,26 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   private handleDeleteSelectedZones(): void {
     if (this.selectedZoneIds.size === 0) return;
     
-    const zoneCount = this.selectedZoneIds.size;
-    const confirmed = confirm(`确定要删除 ${zoneCount} 个任务区吗？`);
-    
-    if (confirmed) {
-      const zoneIdsToDelete = Array.from(this.selectedZoneIds);
-      zoneIdsToDelete.forEach(zoneId => {
-        const zone = this.unifiedZoneManager.getZone(zoneId);
-        if (zone) {
-          zone.destroy();
-          this.unifiedZoneManager.unregister(zoneId);
-        }
-      });
-      this.selectedZoneIds.clear();
-      console.log('[StratixRTS] Deleted', zoneCount, 'task zones');
-    }
+    const zoneIdsToDelete = Array.from(this.selectedZoneIds);
+    rtsEventBus.emit('vue:game:confirm_delete_zones' as any, {
+      zoneIds: zoneIdsToDelete
+    });
+  }
+  
+  private handleZoneDeleteConfirmed(zoneIds: string[]): void {
+    zoneIds.forEach(zoneId => {
+      const zone = this.unifiedZoneManager.getZone(zoneId);
+      if (zone) {
+        rtsEventBus.emit('zone:deleted' as any, {
+          zoneId: zoneId,
+          zoneConfig: zone.getBounds()
+        });
+        zone.destroy();
+        this.unifiedZoneManager.unregister(zoneId);
+      }
+    });
+    this.selectedZoneIds.delete(zoneIds[0]);
+    console.log('[StratixRTS] Deleted', zoneIds.length, 'task zones');
   }
 
   private getTaskZoneAtPoint(worldX: number, worldY: number): string | null {
@@ -767,6 +876,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   }
 
   public selectZone(zoneId: string): void {
+    this.clearSelection();
     this.clearZoneSelection();
     const zone = this.unifiedZoneManager.getZone(zoneId);
     if (zone) {

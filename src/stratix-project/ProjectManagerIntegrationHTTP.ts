@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
 import { ProjectClient } from './ProjectClient';
-import { Project, ProjectConfig } from './types';
+import { Project, ProjectConfig, ProjectZoneConfig } from './types';
 import { ProjectZone } from './core/ProjectZone';
 import { ProjectZonePreview } from './core/ProjectZonePreview';
 import { throttle } from './utils/helpers';
 import { UnifiedZoneManager } from '../stratix-rts/zones/UnifiedZoneManager';
+import { rtsEventBus } from '../stratix-rts/events/core/RTSEventBus';
 import mitt from 'mitt';
 
 export interface ProjectManagerIntegrationConfig {
@@ -61,6 +62,57 @@ export class ProjectManagerIntegration {
     (this.eventBus as any).on('project:deleted', ({ projectId }: any) => {
       console.log('[ProjectManager] Project deleted:', projectId);
       this.removeProjectZone(projectId);
+    });
+
+    rtsEventBus.on('zone:moved' as any, async (event: any) => {
+      const zoneId = event.zoneId;
+      const projectZone = this.unifiedZoneManager.getZone(zoneId) as ProjectZone | undefined;
+      if (projectZone) {
+        const bounds = event.bounds;
+        try {
+          await this.projectClient.updateZoneConfig(zoneId, {
+            x: bounds.x,
+            y: bounds.y,
+            width: bounds.width,
+            height: bounds.height,
+          });
+          console.log(`[ProjectManager] Zone position saved: ${zoneId}`);
+        } catch (error) {
+          console.error(`[ProjectManager] Failed to save zone position: ${zoneId}`, error);
+        }
+      }
+    });
+
+    rtsEventBus.on('zone:resized' as any, async (event: any) => {
+      const zoneId = event.zoneId;
+      const projectZone = this.unifiedZoneManager.getZone(zoneId) as ProjectZone | undefined;
+      if (projectZone) {
+        const bounds = event.bounds;
+        try {
+          await this.projectClient.updateZoneConfig(zoneId, {
+            x: bounds.x,
+            y: bounds.y,
+            width: bounds.width,
+            height: bounds.height,
+          });
+          console.log(`[ProjectManager] Zone size saved: ${zoneId}`);
+        } catch (error) {
+          console.error(`[ProjectManager] Failed to save zone size: ${zoneId}`, error);
+        }
+      }
+    });
+
+    rtsEventBus.on('zone:deleted' as any, async (event: any) => {
+      const zoneId = event.zoneId;
+      const projectZone = this.unifiedZoneManager.getZone(zoneId) as ProjectZone | undefined;
+      if (projectZone) {
+        try {
+          await this.projectClient.deleteProject(zoneId);
+          console.log(`[ProjectManager] Zone deleted: ${zoneId}`);
+        } catch (error) {
+          console.error(`[ProjectManager] Failed to delete zone: ${zoneId}`, error);
+        }
+      }
     });
   }
 

@@ -2,13 +2,13 @@
 import { ref, computed, onUnmounted } from 'vue';
 import { StratixSkillConfig } from '../stratix-core';
 import type { Skill } from '../stratix-rts/ui/v2/CommandPanelV2';
-import { StratixButton, StratixPanel } from '@/components/ui';
+import { StratixButton, StratixPanel, StratixConfirmDialog } from '@/components/ui';
 import { getToken } from '@/design-system/config';
 import CommandLog from '../stratix-command-panel/components/CommandLog.vue';
 import { StratixEventBus, StratixFrontendOperationEvent } from '../stratix-core';
 import { StratixRequestHelper } from '../stratix-core/utils';
 import { agentStore } from '../stores/agentStore';
-import { rtsBridge } from '../stratix-rts';
+import { rtsBridge, rtsEventBus } from '../stratix-rts';
 import HeroManagementModal from './HeroManagementModal.vue';
 import LogPanelModal from './LogPanelModal.vue';
 import StatusPanelModal from './StatusPanelModal.vue';
@@ -122,8 +122,30 @@ const unsubscribeSkillSelected = rtsBridge.onSkillSelected((data) => {
   handleExecuteSkill(data.skill);
 });
 
+const showDeleteZoneConfirm = ref(false);
+const pendingDeleteZoneIds = ref<string[]>([]);
+
+const unsubscribeZoneDeleteConfirm = rtsEventBus.on('vue:game:confirm_delete_zones' as any, (data: { zoneIds: string[] }) => {
+  pendingDeleteZoneIds.value = data.zoneIds;
+  showDeleteZoneConfirm.value = true;
+});
+
+const handleConfirmDeleteZones = () => {
+  rtsEventBus.emit('vue:game:zone_delete_confirmed' as any, {
+    zoneIds: pendingDeleteZoneIds.value
+  });
+  showDeleteZoneConfirm.value = false;
+  pendingDeleteZoneIds.value = [];
+};
+
+const handleCancelDeleteZones = () => {
+  showDeleteZoneConfirm.value = false;
+  pendingDeleteZoneIds.value = [];
+};
+
 onUnmounted(() => {
   unsubscribeSkillSelected();
+  unsubscribeZoneDeleteConfirm();
 });
 
 // Icons - 直接使用 SVG 路径数据
@@ -231,6 +253,17 @@ const icons = {
       :project-id="selectedProjectId || null"
       :project-path="selectedProjectPath || null"
       @update:visible="$emit('update:show-task-modal', $event)"
+    />
+    
+    <StratixConfirmDialog
+      v-model:visible="showDeleteZoneConfirm"
+      type="warning"
+      title="确认删除"
+      :content="`确定要删除 ${pendingDeleteZoneIds.length} 个任务区吗？此操作不可撤销。`"
+      ok-text="删除"
+      ok-danger
+      @ok="handleConfirmDeleteZones"
+      @cancel="handleCancelDeleteZones"
     />
   </div>
 </template>

@@ -274,7 +274,8 @@ export class InputHandler {
         }
       }
 
-      const hitSprite = this.getSpriteAtPointer(pointer);
+      const hitTestResults = this.scene.input.hitTestPointer(pointer);
+      const hitSprite = this.getSpriteFromHitTest(hitTestResults);
       const agentId = hitSprite?.getData('agentId');
 
       if (agentId && this.isAgentSelected(agentId)) {
@@ -286,7 +287,16 @@ export class InputHandler {
         return;
       }
 
-      const taskZoneHit = this.getTaskZoneAtPointer(pointer);
+      if (agentId) {
+        this.lastClickTime = Date.now();
+        this.lastClickedAgentId = agentId;
+        if (this.callbacks.onSelect) {
+          this.callbacks.onSelect([agentId], isShiftDown);
+        }
+        return;
+      }
+
+      const taskZoneHit = this.getZoneFromHitTest(hitTestResults);
       if (taskZoneHit) {
         const zoneId = taskZoneHit.getData('zoneId') || taskZoneHit.getData('projectId');
         if (zoneId) {
@@ -332,59 +342,37 @@ export class InputHandler {
         return;
       }
 
-      if (agentId) {
-        this.lastClickTime = Date.now();
-        this.lastClickedAgentId = agentId;
-        if (this.callbacks.onSelect) {
-          this.callbacks.onSelect([agentId], isShiftDown);
-        }
-      } else {
-        this.isDragging = true;
-        if (this.callbacks.onDragStart) {
-          this.callbacks.onDragStart(pointer.worldX, pointer.worldY);
-        }
+      this.isDragging = true;
+      if (this.callbacks.onDragStart) {
+        this.callbacks.onDragStart(pointer.worldX, pointer.worldY);
       }
     }
   }
 
-  private getCornerHandleAtPointer(pointer: Phaser.Input.Pointer): Phaser.GameObjects.GameObject | null {
-    const gameObjects = this.scene.input.hitTestPointer(pointer);
-    
-    console.log('[DEBUG getCornerHandle] hitTest results:', gameObjects.map((obj: any) => ({
-      type: obj.constructor.name,
-      isCornerHandle: obj.getData('isCornerHandle'),
-      visible: obj.visible,
-      alpha: obj.alpha
-    })));
-    
+  private getSpriteFromHitTest(gameObjects: Phaser.GameObjects.GameObject[]): Phaser.GameObjects.GameObject | null {
     for (const obj of gameObjects) {
-      if (obj.getData('isCornerHandle') === true) {
-        console.log('[DEBUG getCornerHandle] Found corner handle:', obj.getData('cornerPosition'));
+      const agentId = obj.getData('agentId');
+      if (agentId) {
         return obj;
       }
+      
+      if (obj.parentContainer) {
+        const parentAgentId = obj.parentContainer.getData('agentId');
+        if (parentAgentId) {
+          return obj.parentContainer;
+        }
+      }
     }
-    
     return null;
   }
 
-  private getTaskZoneAtPointer(pointer: Phaser.Input.Pointer): Phaser.GameObjects.GameObject | null {
-    const gameObjects = this.scene.input.hitTestPointer(pointer);
-    
-    console.log('[DEBUG getTaskZone] hitTest results:', gameObjects.map((obj: any) => ({
-      type: obj.constructor.name,
-      isBaseZone: obj.getData('isBaseZone'),
-      isTaskZone: obj.getData('isTaskZone'),
-      zoneId: obj.getData('zoneId'),
-      hasParent: !!obj.parentContainer
-    })));
-    
+  private getZoneFromHitTest(gameObjects: Phaser.GameObjects.GameObject[]): Phaser.GameObjects.GameObject | null {
     for (const obj of gameObjects) {
       if (obj.getData('isCornerHandle') === true) {
         continue;
       }
       
       if (obj.getData('isTaskZone') === true || obj.getData('isProjectZone') === true || obj.getData('isBaseZone') === true) {
-        console.log('[DEBUG getTaskZone] Found zone directly:', obj.getData('zoneId'));
         return obj;
       }
       
@@ -394,7 +382,6 @@ export class InputHandler {
             current.getData('isProjectZone') === true || 
             current.getData('isBaseZone') === true ||
             current.getData('zoneId')) {
-          console.log('[DEBUG getTaskZone] Found zone via parent:', current.getData('zoneId'));
           return current;
         }
         current = current.parentContainer;
@@ -402,18 +389,34 @@ export class InputHandler {
     }
     
     if (this.callbacks.getTaskZoneAtPoint) {
+      const pointer = this.scene.input.activePointer;
       const zoneId = this.callbacks.getTaskZoneAtPoint(pointer.worldX, pointer.worldY);
       if (zoneId) {
         const zone = this.scene.children.getFirst('zoneId', zoneId);
         if (zone) {
-          console.log('[DEBUG getTaskZone] Found zone via callback:', zoneId);
           return zone;
         }
       }
     }
     
-    console.log('[DEBUG getTaskZone] No zone found');
     return null;
+  }
+
+  private getCornerHandleAtPointer(pointer: Phaser.Input.Pointer): Phaser.GameObjects.GameObject | null {
+    const gameObjects = this.scene.input.hitTestPointer(pointer);
+    
+    for (const obj of gameObjects) {
+      if (obj.getData('isCornerHandle') === true) {
+        return obj;
+      }
+    }
+    
+    return null;
+  }
+
+  private getTaskZoneAtPointer(pointer: Phaser.Input.Pointer): Phaser.GameObjects.GameObject | null {
+    const gameObjects = this.scene.input.hitTestPointer(pointer);
+    return this.getZoneFromHitTest(gameObjects);
   }
 
   private isAgentSelected(agentId: string): boolean {
@@ -433,11 +436,7 @@ export class InputHandler {
       const dy = pointer.y - this.zoneDragStartPoint.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
       
-      console.log('[DEBUG ZoneDrag] Distance:', distance, 'Threshold:', this.zoneDragThreshold, 
-        'PendingZoneId:', this.pendingZoneDragId);
-      
       if (distance >= this.zoneDragThreshold) {
-        console.log('[DEBUG ZoneDrag] Threshold exceeded, starting drag for zone:', this.pendingZoneDragId);
         this.isZoneDragging = true;
         this.draggedZoneId = this.pendingZoneDragId;
         
@@ -455,7 +454,6 @@ export class InputHandler {
         this.callbacks.onZoneResizeUpdate(pointer.worldX, pointer.worldY);
       }
     } else if (this.isZoneDragging && pointer.leftButtonDown()) {
-      console.log('[DEBUG InputHandler] Calling onZoneDragUpdate, isZoneDragging:', this.isZoneDragging);
       if (this.callbacks.onZoneDragUpdate) {
         this.callbacks.onZoneDragUpdate(pointer.worldX, pointer.worldY);
       }

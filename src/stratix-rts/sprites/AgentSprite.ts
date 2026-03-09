@@ -159,22 +159,40 @@ export class AgentSprite extends Phaser.GameObjects.Container {
   }
 
   public playAnimation(animation: 'idle' | 'walk' | 'run', direction?: number): void {
-    if (!this.customTextureKey) {
+    if (!this.customTextureKey || !this.sprite) {
       return;
     }
-    
+
     const dir = direction ?? this.currentDirection;
     
     if (this.currentAnimation === animation && this.currentDirection === dir) {
       return;
     }
-    
+
     this.currentDirection = dir;
     this.currentAnimation = animation;
     
     const animKey = `${this.customTextureKey}_${animation}_${dir}`;
     
     if (this.scene.anims.exists(animKey)) {
+      const anim = this.scene.anims.get(animKey);
+      if (!anim || !anim.frames || anim.frames.length === 0) {
+        console.warn(`[AgentSprite] Animation ${animKey} has no valid frames`);
+        return;
+      }
+
+      const textureManager = this.scene.textures;
+      if (!textureManager.exists(this.customTextureKey)) {
+        console.warn(`[AgentSprite] Texture ${this.customTextureKey} not loaded yet`);
+        return;
+      }
+
+      const texture = textureManager.get(this.customTextureKey);
+      if (!texture || !texture.source) {
+        console.warn(`[AgentSprite] Texture ${this.customTextureKey} source not ready`);
+        return;
+      }
+
       try {
         this.sprite.play(animKey);
       } catch (error) {

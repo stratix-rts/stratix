@@ -99,6 +99,12 @@ export interface VueToGameEvents {
   'vue:game:request_stats': Record<string, never>;
   'vue:game:request_selection': Record<string, never>;
   'vue:game:request_agents_list': Record<string, never>;
+  'vue:game:confirm_delete_zones': {
+    zoneIds: string[];
+  };
+  'vue:game:zone_delete_confirmed': {
+    zoneIds: string[];
+  };
   'settings:render_mode_changed': {
     mode: 'auto' | 'full' | 'thumbnail' | null;
     threshold?: number;
@@ -221,6 +227,10 @@ export interface RequestResponseMap {
   'request:get_stats': {
     request: Record<string, never>;
     response: TopBarStats;
+  };
+  'request:confirm_delete_zones': {
+    request: { zoneIds: string[] };
+    response: boolean;
   };
 }
 
