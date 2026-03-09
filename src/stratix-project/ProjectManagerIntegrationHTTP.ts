@@ -48,6 +48,10 @@ export class ProjectManagerIntegration {
     }, 100);
   }
 
+  public onLoaded(callback: () => void): void {
+    (this.eventBus as any).on('projects:loaded', callback);
+  }
+
   private setupEventListeners(): void {
     (this.eventBus as any).on('project:created', ({ project }: any) => {
       console.log('[ProjectManager] Project created:', project.id);
@@ -129,6 +133,8 @@ export class ProjectManagerIntegration {
     projects.forEach(project => {
       this.createProjectZone(project);
     });
+
+    (this.eventBus as any).emit('projects:loaded');
   }
 
   private createProjectZone(project: Project): ProjectZone | null {

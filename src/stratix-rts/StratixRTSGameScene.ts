@@ -286,6 +286,23 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     );
     
     console.log('[StratixRTS] ProjectManager initialized');
+    
+    this.projectManagerIntegration.onLoaded(() => {
+      console.log('[StratixRTS] Projects loaded, checking zone bounds...');
+      this.clampAllZonesToBounds();
+    });
+  }
+
+  private clampAllZonesToBounds(): void {
+    for (const [id, zone] of this.unifiedZoneManager.getAllZones()) {
+      const bounds = zone.getBounds();
+      const clamped = this.clampToMapBounds(bounds.x, bounds.y, bounds.width, bounds.height);
+      if (clamped.x !== bounds.x || clamped.y !== bounds.y) {
+        zone.x = clamped.x;
+        zone.y = clamped.y;
+        console.log(`[StratixRTS] Zone ${id} clamped to bounds: (${clamped.x}, ${clamped.y})`);
+      }
+    }
   }
 
   private emitStats(): void {
@@ -590,6 +607,15 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     return result;
   }
 
+  private isZoneWithinBounds(x: number, y: number, width: number, height: number): boolean {
+    const halfWidth = width / 2;
+    const halfHeight = height / 2;
+    return x - halfWidth >= 0 &&
+           x + halfWidth <= MAP_WIDTH &&
+           y - halfHeight >= 0 &&
+           y + halfHeight <= MAP_HEIGHT;
+  }
+
   private findNonOverlappingPosition(zone: BaseZone): void {
     const bounds = zone.getBounds();
     const zoneId = zone.getZoneId();
@@ -632,6 +658,10 @@ export default class StratixRTSGameScene extends Phaser.Scene {
       const testX = zone.x + dir.dx;
       const testY = zone.y + dir.dy;
       
+      if (!this.isZoneWithinBounds(testX, testY, bounds.width, bounds.height)) {
+        continue;
+      }
+
       const testBounds = new Phaser.Geom.Rectangle(
         testX - bounds.width / 2,
         testY - bounds.height / 2,
@@ -651,6 +681,10 @@ export default class StratixRTSGameScene extends Phaser.Scene {
       for (let scale = 2; scale <= 10; scale++) {
         const testX = zone.x + dir.dx * scale;
         const testY = zone.y + dir.dy * scale;
+        
+        if (!this.isZoneWithinBounds(testX, testY, bounds.width, bounds.height)) {
+          continue;
+        }
         
         const testBounds = new Phaser.Geom.Rectangle(
           testX - bounds.width / 2,
@@ -678,6 +712,10 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     for (const dir of fallbackDirections) {
       const testX = zone.x + dir.dx;
       const testY = zone.y + dir.dy;
+      
+      if (!this.isZoneWithinBounds(testX, testY, bounds.width, bounds.height)) {
+        continue;
+      }
       
       const testBounds = new Phaser.Geom.Rectangle(
         testX - bounds.width / 2,
@@ -848,13 +886,42 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     console.log('[StratixRTS] Mode changed to:', mode);
   }
 
+  private clampToMapBounds(x: number, y: number, width: number, height: number): { x: number; y: number } {
+    const halfWidth = width / 2;
+    const halfHeight = height / 2;
+    
+    let clampedX = x;
+    let clampedY = y;
+    
+    if (x - halfWidth < 0) {
+      clampedX = halfWidth;
+    } else if (x + halfWidth > MAP_WIDTH) {
+      clampedX = MAP_WIDTH - halfWidth;
+    }
+    
+    if (y - halfHeight < 0) {
+      clampedY = halfHeight;
+    } else if (y + halfHeight > MAP_HEIGHT) {
+      clampedY = MAP_HEIGHT - halfHeight;
+    }
+    
+    return { x: clampedX, y: clampedY };
+  }
+
   private createTaskZone(bounds: Phaser.Geom.Rectangle): string {
     const zoneId = `zone-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     
+    let zoneX = bounds.x + bounds.width / 2;
+    let zoneY = bounds.y + bounds.height / 2;
+    
+    const clamped = this.clampToMapBounds(zoneX, zoneY, bounds.width, bounds.height);
+    zoneX = clamped.x;
+    zoneY = clamped.y;
+    
     const config: TaskZoneConfig = {
       id: zoneId,
-      x: bounds.x + bounds.width / 2,
-      y: bounds.y + bounds.height / 2,
+      x: zoneX,
+      y: zoneY,
       width: bounds.width,
       height: bounds.height,
       name: `Task Zone ${this.unifiedZoneManager.getAllZones().size + 1}`
@@ -966,6 +1033,12 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   }
 
   public async addAgentSprite(config: StratixAgentConfig): Promise<AgentSprite> {
+    const existingSprite = this.agentSprites.get(config.agentId);
+    if (existingSprite) {
+      console.warn(`[StratixRTS] Agent ${config.agentId} already exists, replacing`);
+      existingSprite.destroy();
+    }
+    
     const x = Phaser.Math.Between(100, MAP_WIDTH - 100);
     const y = Phaser.Math.Between(100, MAP_HEIGHT - 100);
     
@@ -999,6 +1072,15 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     this.agentSprites.set(config.agentId, agentSprite);
     
     return agentSprite;
+  }
+
+  public removeAgent(agentId: string): void {
+    const sprite = this.agentSprites.get(agentId);
+    if (sprite) {
+      sprite.destroy();
+      this.agentSprites.delete(agentId);
+      this.selectedAgentIds.delete(agentId);
+    }
   }
 
   public getAgentSprites(): Map<string, AgentSprite> {
