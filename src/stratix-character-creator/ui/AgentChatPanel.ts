@@ -126,8 +126,8 @@ export class AgentChatPanel {
           padding: 16px;
           border-top: 1px solid ${THEME.panelBorder};
         ">
-          <div style="display: flex; gap: 8px;">
-            <input type="text" id="chat-input" placeholder="输入消息..." style="
+          <div style="display: flex; gap: 8px; align-items: flex-end;">
+            <textarea id="chat-input" rows="1" placeholder="输入消息..." style="
               flex: 1;
               padding: 10px 12px;
               background: ${THEME.bg};
@@ -136,7 +136,15 @@ export class AgentChatPanel {
               color: ${THEME.text};
               font-family: inherit;
               font-size: 12px;
-            ">
+              line-height: 1.5;
+              resize: none;
+              overflow: hidden;
+              min-height: 40px;
+              max-height: 120px;
+              box-sizing: border-box;
+              outline: none;
+              transition: border-color 0.2s;
+            "></textarea>
             <button id="send-btn" style="
               padding: 10px 16px;
               background: ${THEME.accent};
@@ -146,6 +154,7 @@ export class AgentChatPanel {
               font-family: inherit;
               font-size: 12px;
               cursor: pointer;
+              flex-shrink: 0;
             ">发送</button>
           </div>
         </div>
@@ -199,7 +208,7 @@ export class AgentChatPanel {
 
     const node = this.container.node as HTMLElement;
 
-    const chatInput = node.querySelector('#chat-input') as HTMLInputElement;
+    const chatInput = node.querySelector('#chat-input') as HTMLTextAreaElement;
     const sendBtn = node.querySelector('#send-btn') as HTMLButtonElement;
     const resetBtn = node.querySelector('#reset-btn') as HTMLButtonElement;
     const backBtn = node.querySelector('#back-btn') as HTMLButtonElement;
@@ -220,6 +229,7 @@ export class AgentChatPanel {
       this.messages.push(userMessage);
       this.renderMessage(messagesContainer, userMessage);
       chatInput.value = '';
+      this.resetTextareaHeight(chatInput);
 
       // 禁用输入
       sendBtn.disabled = true;
@@ -295,8 +305,13 @@ export class AgentChatPanel {
 
     sendBtn?.addEventListener('click', sendMessage);
     
-    chatInput?.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter' && !sendBtn.disabled) {
+    chatInput?.addEventListener('input', () => {
+      this.adjustTextareaHeight(chatInput);
+    });
+
+    chatInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey && !sendBtn.disabled) {
+        e.preventDefault();
         sendMessage();
       }
     });
@@ -563,6 +578,24 @@ export class AgentChatPanel {
 
   destroy(): void {
     this.container?.destroy();
+  }
+
+  private adjustTextareaHeight(textarea: HTMLTextAreaElement): void {
+    textarea.style.height = 'auto';
+    const newHeight = Math.min(textarea.scrollHeight, 120);
+    textarea.style.height = `${newHeight}px`;
+    
+    if (textarea.scrollHeight > 120) {
+      textarea.style.overflowY = 'auto';
+    } else {
+      textarea.style.overflowY = 'hidden';
+    }
+  }
+
+  private resetTextareaHeight(textarea: HTMLTextAreaElement): void {
+    textarea.style.height = 'auto';
+    textarea.style.height = '40px';
+    textarea.style.overflowY = 'hidden';
   }
 }
 
