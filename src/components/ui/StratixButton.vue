@@ -27,6 +27,10 @@ provideSizeContext(toRef(props, 'size'));
 
 const token = computed(() => getButtonToken(props.variant));
 const sizeConfig = computed(() => ButtonSizes[props.size]);
+const iconSize = computed(() => {
+  const sizes: Record<string, number> = { sm: 14, md: 16, lg: 18 };
+  return sizes[props.size] || 16;
+});
 
 const handleClick = () => {
   if (!props.disabled && !props.loading) {
@@ -47,7 +51,7 @@ const handleClick = () => {
     @click="handleClick"
   >
     <span v-if="loading" class="stratix-btn__loader"></span>
-    <SvgIcon v-if="icon && !loading" :name="icon" class="stratix-btn__icon" />
+    <SvgIcon v-if="icon && !loading" :name="icon" :size="iconSize" class="stratix-btn__icon" />
     <span class="stratix-btn__text">
       <slot />
     </span>
@@ -56,6 +60,7 @@ const handleClick = () => {
 
 <style scoped>
 .stratix-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -101,6 +106,7 @@ const handleClick = () => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  overflow: visible;
 }
 
 .stratix-btn__text {

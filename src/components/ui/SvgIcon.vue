@@ -22,7 +22,7 @@ const iconPath = computed(() => getIconPath(props.name) || '');
 <template>
   <svg
     class="svg-icon"
-    :viewBox="`0 0 ${resolvedSize} ${resolvedSize}`"
+    viewBox="0 0 24 24"
     :width="resolvedSize"
     :height="resolvedSize"
     fill="none"
@@ -39,5 +39,6 @@ const iconPath = computed(() => getIconPath(props.name) || '');
   display: inline-flex;
   vertical-align: middle;
   flex-shrink: 0;
+  overflow: visible;
 }
 </style>
