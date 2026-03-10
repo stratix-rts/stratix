@@ -6,6 +6,7 @@ import { ModalBaseConfig, POSITION_CONFIG, type ModalPosition } from '@/design-s
 import { getCurrentTheme, getToken } from '@/design-system/config';
 import StratixButton from './StratixButton.vue';
 import SvgIcon from './SvgIcon.vue';
+import { useModalState } from '@/composables/useModalState';
 
 interface Props {
   visible: boolean;
@@ -60,6 +61,7 @@ const emit = defineEmits<{
 }>();
 
 const { acquire, release } = useZIndexManager();
+const { openModal, closeModal } = useModalState();
 const internalZIndex = ref(3000);
 
 provideSizeContext(toRef(props, 'size'));
@@ -144,8 +146,10 @@ watch(() => props.visible, (newVal) => {
       internalVisible.value = true;
     }, 0);
     document.body.style.overflow = 'hidden';
+    openModal();
   } else {
     internalVisible.value = false;
+    closeModal();
   }
 }, { immediate: true });
 
@@ -405,7 +409,7 @@ onUnmounted(() => {
   position: relative;
   display: flex;
   flex-direction: column;
-  background: v-bind('getToken("colors.background.secondary")');
+  background: var(--ds-bg-secondary, #12121a);
   border: 1px solid v-bind('getToken("colors.border.default")');
   box-shadow: v-bind('ModalBaseConfig.style.shadow');
   box-sizing: border-box;
@@ -472,6 +476,7 @@ onUnmounted(() => {
   padding: v-bind('sizeConfig.padding');
   overflow-y: auto;
   overflow-x: hidden;
+  background: var(--ds-bg-secondary, #12121a);
 }
 
 .stratix-modal__footer {
@@ -483,6 +488,7 @@ onUnmounted(() => {
   gap: 10px;
   border-top: 1px solid v-bind('getToken("colors.border.default")');
   flex-shrink: 0;
+  background: var(--ds-bg-secondary, #12121a);
 }
 
 /* Zoom animation (center) */

@@ -14,6 +14,7 @@ import { ControlGroupSystem } from './systems/ControlGroupSystem';
 import { MovementSystem } from './systems/MovementSystem';
 import { StatsCollector } from './debug/StatsCollector';
 import { ProjectManagerIntegration } from '../stratix-project/ProjectManagerIntegrationHTTP';
+import { ProjectClient } from '../stratix-project/ProjectClient';
 import RTSCharacterRenderer, { TextureLoadResult } from './services/RTSCharacterRenderer';
 import { rtsEventBus } from './events/core/RTSEventBus';
 import type { TopBarStats, AgentInfo, ViewportState } from './events/types/RTSEventTypes';
@@ -42,6 +43,8 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   private eventUnsubscribers: (() => void)[] = [];
   private zoneDragAgentOffsets: Map<string, Map<string, { offsetX: number; offsetY: number }>> = new Map();
   private zoneResizeAgentPositions: Map<string, Map<string, { ratioX: number; ratioY: number }>> = new Map();
+  private agentZoneTracking: Map<string, string> = new Map();
+  private projectZoneCheckTimer: NodeJS.Timeout | null = null;
 
   constructor() {
     super({ key: 'StratixRTSGameScene' });
@@ -260,6 +263,18 @@ export default class StratixRTSGameScene extends Phaser.Scene {
       })
     );
     
+    this.eventUnsubscribers.push(
+      rtsEventBus.on('vue:modal:state_changed' as any, (data: any) => {
+        if (this.inputHandler) {
+          if (data.hasOpenModal) {
+            this.inputHandler.disable();
+          } else {
+            this.inputHandler.enable();
+          }
+        }
+      })
+    );
+    
     rtsEventBus.respond('request:get_stats', () => this.getTopBarStats());
     rtsEventBus.respond('request:get_camera_state', () => this.getCameraState());
     
@@ -290,7 +305,57 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     this.projectManagerIntegration.onLoaded(() => {
       console.log('[StratixRTS] Projects loaded, checking zone bounds...');
       this.clampAllZonesToBounds();
+      this.startProjectZoneAgentTracking();
     });
+  }
+
+  private startProjectZoneAgentTracking(): void {
+    if (this.projectZoneCheckTimer) {
+      clearInterval(this.projectZoneCheckTimer);
+    }
+    
+    this.projectZoneCheckTimer = setInterval(() => {
+      this.checkAgentsInProjectZones();
+    }, 2000);
+    
+    console.log('[StratixRTS] Project zone agent tracking started');
+  }
+
+  private async checkAgentsInProjectZones(): Promise<void> {
+    const projectZones = this.projectManagerIntegration.getAllProjectZones();
+    const projectClient = this.projectManagerIntegration.getProjectClient();
+    
+    for (const [agentId, sprite] of this.agentSprites) {
+      let currentProjectZoneId: string | null = null;
+      
+      for (const [zoneId, zone] of projectZones) {
+        const bounds = zone.getBounds();
+        if (Phaser.Geom.Rectangle.Contains(bounds, sprite.x, sprite.y)) {
+          currentProjectZoneId = zoneId;
+          break;
+        }
+      }
+      
+      const previousZoneId = this.agentZoneTracking.get(agentId);
+      
+      if (currentProjectZoneId && currentProjectZoneId !== previousZoneId) {
+        try {
+          await projectClient.agentEnterProject(currentProjectZoneId, agentId);
+          console.log(`[StratixRTS] Agent ${agentId} entered project zone ${currentProjectZoneId}`);
+          this.agentZoneTracking.set(agentId, currentProjectZoneId);
+        } catch (error) {
+          console.error(`[StratixRTS] Failed to register agent ${agentId} to project ${currentProjectZoneId}:`, error);
+        }
+      } else if (!currentProjectZoneId && previousZoneId) {
+        try {
+          await projectClient.agentLeaveProject(previousZoneId, agentId);
+          console.log(`[StratixRTS] Agent ${agentId} left project zone ${previousZoneId}`);
+          this.agentZoneTracking.delete(agentId);
+        } catch (error) {
+          console.error(`[StratixRTS] Failed to unregister agent ${agentId} from project ${previousZoneId}:`, error);
+        }
+      }
+    }
   }
 
   private clampAllZonesToBounds(): void {
@@ -1140,6 +1205,11 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   }
 
   shutdown(): void {
+    if (this.projectZoneCheckTimer) {
+      clearInterval(this.projectZoneCheckTimer);
+      this.projectZoneCheckTimer = null;
+    }
+    
     this.inputHandler?.destroy();
     this.selectBox?.destroy();
     this.taskZonePreview?.destroy();
