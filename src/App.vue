@@ -291,13 +291,6 @@ onMounted(async () => {
       
       rtsEventBus.on('game:ui:project_created', handleProjectCreated);
     });
-    
-    if (game.isBooted) {
-      isGameReady.value = true;
-      setTimeout(() => {
-        agents.value.forEach(config => addAgentToRTS(config));
-      }, 100);
-    }
   }
   
   // 启动自动刷新

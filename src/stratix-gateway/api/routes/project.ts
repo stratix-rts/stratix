@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { ProjectService } from '../../project/ProjectService';
-import { ProjectConfig, ProjectZoneConfig, ProjectStatus } from '../../../stratix-project/types';
+import { ProjectConfig, ProjectZoneConfig, ProjectStatus, ProjectChannel, ProjectChannelMessage, MessageSender } from '../../../stratix-project/types';
 
 const router = Router();
 const projectService = new ProjectService();
@@ -350,6 +350,230 @@ router.get('/metadata/info', async (req: Request, res: Response): Promise<void> 
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to get metadata'
+    });
+  }
+});
+
+// ============================================
+// Channel API
+// ============================================
+
+/**
+ * GET /api/projects/:id/channels
+ * 获取项目的Channel列表
+ */
+router.get('/:id/channels', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const projectId = req.params.id as string;
+    const channels = await projectService.getChannels(projectId);
+    
+    res.json({
+      success: true,
+      channels
+    });
+  } catch (error) {
+    console.error('[Project API] Get channels failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get channels'
+    });
+  }
+});
+
+/**
+ * POST /api/projects/:id/channels
+ * 创建Channel
+ */
+router.post('/:id/channels', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const projectId = req.params.id as string;
+    const { name, type, description } = req.body;
+    
+    if (!name || !type) {
+      res.status(400).json({
+        success: false,
+        error: 'Missing required fields: name, type'
+      });
+      return;
+    }
+    
+    const channel = await projectService.createChannel(projectId, name as string, type as ProjectChannel['type'], description as string | undefined);
+    
+    res.json({
+      success: true,
+      channel
+    });
+  } catch (error) {
+    console.error('[Project API] Create channel failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to create channel'
+    });
+  }
+});
+
+/**
+ * PUT /api/projects/:id/channels/:channelId/subscribe
+ * 订阅Channel
+ */
+router.put('/:id/channels/:channelId/subscribe', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const projectId = req.params.id as string;
+    const channelId = req.params.channelId as string;
+    const { agentId } = req.body;
+    
+    if (!agentId) {
+      res.status(400).json({
+        success: false,
+        error: 'Missing required field: agentId'
+      });
+      return;
+    }
+    
+    const channel = await projectService.subscribeChannel(projectId, channelId, agentId as string);
+    
+    res.json({
+      success: true,
+      channel
+    });
+  } catch (error) {
+    console.error('[Project API] Subscribe channel failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to subscribe channel'
+    });
+  }
+});
+
+/**
+ * PUT /api/projects/:id/channels/:channelId/unsubscribe
+ * 取消订阅Channel
+ */
+router.put('/:id/channels/:channelId/unsubscribe', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const projectId = req.params.id as string;
+    const channelId = req.params.channelId as string;
+    const { agentId } = req.body;
+    
+    if (!agentId) {
+      res.status(400).json({
+        success: false,
+        error: 'Missing required field: agentId'
+      });
+      return;
+    }
+
+    const channel = await projectService.unsubscribeChannel(projectId, channelId, agentId as string);
+    
+    res.json({
+      success: true,
+      channel
+    });
+  } catch (error) {
+    console.error('[Project API] Unsubscribe channel failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to unsubscribe channel'
+    });
+  }
+});
+
+// ============================================
+// Message API
+// ============================================
+
+/**
+ * GET /api/projects/:id/messages
+ * 获取项目消息
+ */
+router.get('/:id/messages', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const projectId = req.params.id as string;
+    const { channelId, since } = req.query;
+    
+    const messages = await projectService.getMessages(
+      projectId,
+      channelId as string | undefined,
+      since ? parseInt(since as string) : undefined
+    );
+    
+    res.json({
+      success: true,
+      messages
+    });
+  } catch (error) {
+    console.error('[Project API] Get messages failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get messages'
+    });
+  }
+});
+
+/**
+ * POST /api/projects/:id/messages
+ * 发送消息
+ */
+router.post('/:id/messages', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const projectId = req.params.id as string;
+    const { channelId, sender, content, messageType, taskId, sessionKey, runId, source } = req.body;
+    
+    if (!channelId || !sender || !content) {
+      res.status(400).json({
+        success: false,
+        error: 'Missing required fields: channelId, sender, content'
+      });
+      return;
+    }
+    
+    const message = await projectService.sendMessage(
+      projectId,
+      channelId as string,
+      sender as MessageSender,
+      content as string,
+      {
+        messageType,
+        taskId,
+        sessionKey,
+        runId,
+        source
+      }
+    );
+    
+    res.json({
+      success: true,
+      message
+    });
+  } catch (error) {
+    console.error('[Project API] Send message failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to send message'
+    });
+  }
+});
+
+/**
+ * GET /api/projects/:id/messages/mentions/:agentId
+ * 获取@Mention消息
+ */
+router.get('/:id/messages/mentions/:agentId', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const projectId = req.params.id as string;
+    const agentId = req.params.agentId as string;
+    
+    const messages = await projectService.getMessagesByMention(projectId, agentId);
+    
+    res.json({
+      success: true,
+      messages
+    });
+  } catch (error) {
+    console.error('[Project API] Get mentions failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get mentions'
     });
   }
 });

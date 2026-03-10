@@ -6,6 +6,7 @@
 
 import { WebSocketServer, WebSocket } from 'ws';
 import { StratixStateSyncEvent, AgentStatusInfo } from '../../../stratix-core/stratix-protocol';
+import { ProjectChannelMessage } from '../../../stratix-project/types';
 
 export class StatusSyncService {
   private wss: WebSocketServer;
@@ -103,6 +104,47 @@ export class StatusSyncService {
         commandId,
         commandStatus: status,
         data: { progress, result, error }
+      },
+      timestamp: Date.now(),
+      requestId: `stratix-req-${Date.now()}`
+    });
+  }
+
+  public notifyNewMessage(message: ProjectChannelMessage): void {
+    console.log('[StatusSync] Broadcasting new message:', {
+      id: message.id,
+      projectId: message.projectId,
+      channelId: message.channelId,
+      sender: message.sender.name,
+      content: message.content.slice(0, 50),
+      mentions: message.mentions
+    });
+
+    this.broadcast({
+      eventType: 'stratix:project_message_new',
+      payload: {
+        projectId: message.projectId,
+        channelId: message.channelId,
+        message
+      },
+      timestamp: Date.now(),
+      requestId: `stratix-req-${Date.now()}`
+    });
+  }
+
+  public notifyMessageSync(projectId: string, channelId: string, messages: ProjectChannelMessage[]): void {
+    console.log('[StatusSync] Broadcasting message sync:', {
+      projectId,
+      channelId,
+      count: messages.length
+    });
+
+    this.broadcast({
+      eventType: 'stratix:project_message_sync',
+      payload: {
+        projectId,
+        channelId,
+        messages
       },
       timestamp: Date.now(),
       requestId: `stratix-req-${Date.now()}`

@@ -81,16 +81,19 @@ class OpenAIAdapter implements LLMProviderAdapter {
       throw new Error(`OpenAI API error: ${response.status} - ${error}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as {
+      choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+    };
     
     return {
-      content: data.choices[0]?.message?.content || '',
+      content: data.choices?.[0]?.message?.content || '',
       usage: data.usage ? {
-        promptTokens: data.usage.prompt_tokens,
-        completionTokens: data.usage.completion_tokens,
-        totalTokens: data.usage.total_tokens,
+        promptTokens: data.usage.prompt_tokens || 0,
+        completionTokens: data.usage.completion_tokens || 0,
+        totalTokens: data.usage.total_tokens || 0,
       } : undefined,
-      finishReason: data.choices[0]?.finish_reason || 'stop',
+      finishReason: (data.choices?.[0]?.finish_reason as 'stop' | 'length' | 'error') || 'stop',
     };
   }
 
@@ -214,16 +217,20 @@ class AnthropicAdapter implements LLMProviderAdapter {
       throw new Error(`Anthropic API error: ${response.status} - ${error}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as {
+      content?: Array<{ text?: string }>;
+      usage?: { input_tokens?: number; output_tokens?: number };
+      stop_reason?: string;
+    };
     
     return {
-      content: data.content[0]?.text || '',
+      content: data.content?.[0]?.text || '',
       usage: data.usage ? {
-        promptTokens: data.usage.input_tokens,
-        completionTokens: data.usage.output_tokens,
-        totalTokens: data.usage.input_tokens + data.usage.output_tokens,
+        promptTokens: data.usage.input_tokens || 0,
+        completionTokens: data.usage.output_tokens || 0,
+        totalTokens: (data.usage.input_tokens || 0) + (data.usage.output_tokens || 0),
       } : undefined,
-      finishReason: data.stop_reason || 'stop',
+      finishReason: (data.stop_reason as 'stop' | 'length' | 'error') || 'stop',
     };
   }
 }
@@ -264,7 +271,11 @@ class OllamaAdapter implements LLMProviderAdapter {
       throw new Error(`Ollama API error: ${response.status} - ${error}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as {
+      message?: { content?: string };
+      prompt_eval_count?: number;
+      eval_count?: number;
+    };
     
     return {
       content: data.message?.content || '',
@@ -387,14 +398,14 @@ class CustomAdapter implements LLMProviderAdapter {
       throw new Error(`Custom API error: ${response.status} - ${error}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as Record<string, unknown>;
     
     // Try common response formats
-    const content = data.choices?.[0]?.message?.content 
-      || data.content?.[0]?.text 
-      || data.message?.content 
-      || data.text 
-      || data.response 
+    const content = ((data.choices as Array<{ message?: { content?: string } }>)?.[0]?.message?.content)
+      || ((data.content as Array<{ text?: string }>)?.[0]?.text)
+      || ((data.message as { content?: string })?.content)
+      || (data.text as string)
+      || (data.response as string)
       || '';
 
     return {

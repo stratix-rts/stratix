@@ -1,12 +1,14 @@
 import { Low } from 'lowdb';
 import { JSONFile } from 'lowdb/node';
-import { Project, ProjectConfig, ProjectStatus } from '../../stratix-project/types';
+import { Project, ProjectConfig, ProjectStatus, ProjectChannel, ProjectChannelMessage, MessageSender } from '../../stratix-project/types';
 import fs from 'fs-extra';
 import path from 'path';
 import { generateId } from '../../stratix-project/utils/helpers';
 
 export interface ProjectDatabase {
   projects: Project[];
+  channels: Record<string, ProjectChannel[]>;
+  messages: Record<string, ProjectChannelMessage[]>;
   metadata: {
     createdAt: number;
     updatedAt: number;
@@ -16,6 +18,8 @@ export interface ProjectDatabase {
 
 const DEFAULT_DB: ProjectDatabase = {
   projects: [],
+  channels: {},
+  messages: {},
   metadata: {
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -49,6 +53,13 @@ export class ProjectService {
       this.db.data.metadata.updatedAt = Date.now();
       await this.db.write();
     }
+    
+    if (!this.db.data.channels) {
+      this.db.data.channels = {};
+    }
+    if (!this.db.data.messages) {
+      this.db.data.messages = {};
+    }
 
     this.initialized = true;
     console.log(`[ProjectService] Initialized with database at: ${this.dbPath}`);
@@ -62,6 +73,16 @@ export class ProjectService {
 
   private async refresh(): Promise<void> {
     await this.db.read();
+    
+    if (!this.db.data) {
+      this.db.data = JSON.parse(JSON.stringify(DEFAULT_DB));
+    }
+    if (!this.db.data.channels) {
+      this.db.data.channels = {};
+    }
+    if (!this.db.data.messages) {
+      this.db.data.messages = {};
+    }
   }
 
   private async persist(): Promise<void> {
@@ -201,6 +222,57 @@ export class ProjectService {
     });
   }
 
+  // ============================================
+  // Agent Zone 进入/离开 - 自动 Channel 订阅
+  // ============================================
+
+  private async ensureProjectChannel(projectId: string): Promise<void> {
+    const channels = this.db.data.channels[projectId] || [];
+    if (channels.length === 0) {
+      const defaultChannel: ProjectChannel = {
+        id: generateId('ch'),
+        projectId,
+        name: 'general',
+        type: 'general',
+        description: 'General discussion',
+        subscriberIds: [],
+        isPrivate: false,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+      this.db.data.channels[projectId] = [defaultChannel];
+      await this.persist();
+      console.log(`[ProjectService] Created default channel for project ${projectId}`);
+    }
+  }
+
+  private async autoSubscribeChannels(projectId: string, agentId: string): Promise<void> {
+    await this.ensureProjectChannel(projectId);
+    const channels = this.db.data.channels[projectId] || [];
+    
+    for (const channel of channels) {
+      if (!channel.subscriberIds.includes(agentId)) {
+        channel.subscriberIds.push(agentId);
+        console.log(`[ProjectService] Auto-subscribed agent ${agentId} to channel ${channel.name}`);
+      }
+    }
+    
+    await this.persist();
+  }
+
+  private async autoUnsubscribeChannels(projectId: string, agentId: string): Promise<void> {
+    const channels = this.db.data.channels[projectId] || [];
+    
+    for (const channel of channels) {
+      if (channel.subscriberIds.includes(agentId)) {
+        channel.subscriberIds = channel.subscriberIds.filter(id => id !== agentId);
+        console.log(`[ProjectService] Auto-unsubscribed agent ${agentId} from channel ${channel.name}`);
+      }
+    }
+    
+    await this.persist();
+  }
+
   public async agentEnterProject(projectId: string, agentId: string): Promise<Project> {
     const project = await this.getProject(projectId);
     if (!project) {
@@ -212,6 +284,9 @@ export class ProjectService {
       const updated = await this.updateProject(projectId, {
         presentAgentIds: project.presentAgentIds
       });
+      
+      await this.autoSubscribeChannels(projectId, agentId);
+      
       console.log(`[ProjectService] Agent ${agentId} entered project ${projectId}`);
       return updated;
     }
@@ -231,6 +306,8 @@ export class ProjectService {
       presentAgentIds: project.presentAgentIds
     });
 
+    await this.autoUnsubscribeChannels(projectId, agentId);
+
     console.log(`[ProjectService] Agent ${agentId} left project ${projectId}`);
     return updated;
   }
@@ -243,5 +320,226 @@ export class ProjectService {
     await this.ensureInitialized();
     await this.refresh();
     return { ...this.db.data.metadata };
+  }
+
+  // ============================================
+  // Channel 管理方法
+  // ============================================
+
+  public async getChannels(projectId: string): Promise<ProjectChannel[]> {
+    await this.ensureInitialized();
+    await this.refresh();
+    return this.db.data.channels[projectId] || [];
+  }
+
+  public async getChannel(projectId: string, channelId: string): Promise<ProjectChannel | null> {
+    await this.ensureInitialized();
+    await this.refresh();
+    const channels = this.db.data.channels[projectId] || [];
+    return channels.find(c => c.id === channelId) || null;
+  }
+
+  public async createChannel(projectId: string, name: string, type: ProjectChannel['type'], description?: string): Promise<ProjectChannel> {
+    await this.ensureInitialized();
+    await this.refresh();
+
+    if (!this.db.data.channels[projectId]) {
+      this.db.data.channels[projectId] = [];
+    }
+
+    const channel: ProjectChannel = {
+      id: generateId('ch'),
+      projectId,
+      name,
+      type,
+      description,
+      subscriberIds: [],
+      isPrivate: type === 'agent_dm',
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+
+    this.db.data.channels[projectId].push(channel);
+    await this.persist();
+
+    console.log('[ProjectService] Channel created:', JSON.stringify({
+      id: channel.id,
+      projectId,
+      name,
+      type
+    }));
+
+    return channel;
+  }
+
+  public async subscribeChannel(projectId: string, channelId: string, agentId: string): Promise<ProjectChannel> {
+    await this.ensureInitialized();
+    await this.refresh();
+
+    const channels = this.db.data.channels[projectId];
+    if (!channels) {
+      throw new Error(`Project ${projectId} has no channels`);
+    }
+
+    const channel = channels.find(c => c.id === channelId);
+    if (!channel) {
+      throw new Error(`Channel ${channelId} not found`);
+    }
+
+    if (!channel.subscriberIds.includes(agentId)) {
+      channel.subscriberIds.push(agentId);
+      channel.updatedAt = Date.now();
+      await this.persist();
+
+      console.log('[ProjectService] Subscribed to channel:', {
+        channelId,
+        agentId,
+        subscriberIds: channel.subscriberIds
+      });
+    }
+
+    return channel;
+  }
+
+  public async unsubscribeChannel(projectId: string, channelId: string, agentId: string): Promise<ProjectChannel> {
+    await this.ensureInitialized();
+    await this.refresh();
+
+    const channels = this.db.data.channels[projectId];
+    if (!channels) {
+      throw new Error(`Project ${projectId} has no channels`);
+    }
+
+    const channel = channels.find(c => c.id === channelId);
+    if (!channel) {
+      throw new Error(`Channel ${channelId} not found`);
+    }
+
+    channel.subscriberIds = channel.subscriberIds.filter(id => id !== agentId);
+    channel.updatedAt = Date.now();
+    await this.persist();
+
+    console.log('[ProjectService] Unsubscribed from channel:', {
+      channelId,
+      agentId,
+      subscriberIds: channel.subscriberIds
+    });
+
+    return channel;
+  }
+
+  // ============================================
+  // Message 管理方法
+  // ============================================
+
+  public async getMessages(projectId: string, channelId?: string, since?: number): Promise<ProjectChannelMessage[]> {
+    await this.ensureInitialized();
+    await this.refresh();
+
+    const messages = this.db.data.messages[projectId] || [];
+    let filtered = channelId ? messages.filter(m => m.channelId === channelId) : messages;
+
+    if (since) {
+      filtered = filtered.filter(m => m.timestamp > since);
+    }
+
+    return filtered.sort((a, b) => a.timestamp - b.timestamp);
+  }
+
+  public async sendMessage(
+    projectId: string,
+    channelId: string,
+    sender: MessageSender,
+    content: string,
+    options?: {
+      rawContent?: string;
+      mentions?: string[];
+      messageType?: ProjectChannelMessage['messageType'];
+      taskId?: string;
+      sessionKey?: string;
+      runId?: string;
+      source?: 'openclaw' | 'local' | 'user';
+    }
+  ): Promise<ProjectChannelMessage> {
+    await this.ensureInitialized();
+    await this.refresh();
+
+    if (!this.db.data.messages[projectId]) {
+      this.db.data.messages[projectId] = [];
+    }
+
+    const mentions = options?.mentions || this.extractMentions(content);
+    const message: ProjectChannelMessage = {
+      id: generateId('msg'),
+      projectId,
+      channelId,
+      role: sender.type === 'agent' ? 'assistant' : 'user',
+      content: this.processContent(content),
+      timestamp: Date.now(),
+      sender,
+      mentions,
+      rawContent: options?.rawContent || content,
+      messageType: options?.messageType || 'chat',
+      taskId: options?.taskId,
+      sessionKey: options?.sessionKey,
+      runId: options?.runId,
+      metadata: {
+        source: options?.source || 'local',
+        createdAt: new Date().toISOString()
+      }
+    };
+
+    this.db.data.messages[projectId].push(message);
+    await this.persist();
+
+    console.log('[ProjectService] Message sent:', JSON.stringify({
+      id: message.id,
+      projectId,
+      channelId,
+      sender: sender.name,
+      content: content.slice(0, 50),
+      mentions,
+      timestamp: message.timestamp
+    }));
+
+    return message;
+  }
+
+  public async getMessagesByMention(projectId: string, agentId: string): Promise<ProjectChannelMessage[]> {
+    await this.ensureInitialized();
+    await this.refresh();
+
+    const messages = this.db.data.messages[projectId] || [];
+    return messages.filter(m => m.mentions.includes(agentId));
+  }
+
+  public async getLastMessageTime(projectId: string): Promise<number> {
+    await this.ensureInitialized();
+    await this.refresh();
+
+    const messages = this.db.data.messages[projectId] || [];
+    if (messages.length === 0) return 0;
+
+    return Math.max(...messages.map(m => m.timestamp));
+  }
+
+  // ============================================
+  // 私有辅助方法
+  // ============================================
+
+  private extractMentions(content: string): string[] {
+    const mentionRegex = /@(\w+)/g;
+    const mentions: string[] = [];
+    let match;
+
+    while ((match = mentionRegex.exec(content)) !== null) {
+      mentions.push(match[1]);
+    }
+
+    return mentions;
+  }
+
+  private processContent(content: string): string {
+    return content.replace(/@(\w+)/g, '$1');
   }
 }

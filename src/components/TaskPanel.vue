@@ -4,6 +4,7 @@ import { StratixModal, StratixButton } from '@/components/ui';
 import type { LraTask } from '../stratix-lra-bridge/types';
 import { LRAClient } from '../stratix-lra-bridge/LRAClient';
 import { LRAWatcher } from '../stratix-lra-bridge/LRAWatcher';
+import ChatPanel from './ChatPanel.vue';
 
 const props = defineProps<{
   visible: boolean;
@@ -15,6 +16,9 @@ const emit = defineEmits<{
   (e: 'close'): void;
   (e: 'update:visible', value: boolean): void;
 }>();
+
+type TabType = 'tasks' | 'chat';
+const activeTab = ref<TabType>('tasks');
 
 const lraClient = ref<LRAClient | null>(null);
 const lraWatcher = ref<LRAWatcher | null>(null);
@@ -184,25 +188,43 @@ onUnmounted(() => {
   <StratixModal
     :visible="visible"
     @update:visible="$emit('update:visible', $event)"
-    title="任务面板"
+    title="项目面板"
     size="xl"
     @close="handleClose"
   >
     <div class="task-panel">
-      <div class="panel-header">
-        <div class="project-info" v-if="projectName">
-          <h3>{{ projectName }}</h3>
-          <span class="project-path">{{ projectPath }}</span>
-        </div>
-        
-        <div class="task-stats">
-          <div class="stat-item">
-            <span class="stat-label">总计</span>
-            <span class="stat-value">{{ taskStats.total }}</span>
+      <div class="panel-tabs">
+        <button
+          class="tab-button"
+          :class="{ active: activeTab === 'tasks' }"
+          @click="activeTab = 'tasks'"
+        >
+          任务
+        </button>
+        <button
+          class="tab-button"
+          :class="{ active: activeTab === 'chat' }"
+          @click="activeTab = 'chat'"
+        >
+          聊天
+        </button>
+      </div>
+
+      <div v-if="activeTab === 'tasks'" class="tab-content">
+        <div class="panel-header">
+          <div class="project-info" v-if="projectName">
+            <h3>{{ projectName }}</h3>
+            <span class="project-path">{{ projectPath }}</span>
           </div>
-          <div class="stat-item">
-            <span class="stat-label">进行中</span>
-            <span class="stat-value in-progress">{{ taskStats.in_progress }}</span>
+          
+          <div class="task-stats">
+            <div class="stat-item">
+              <span class="stat-label">总计</span>
+              <span class="stat-value">{{ taskStats.total }}</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">进行中</span>
+              <span class="stat-value in-progress">{{ taskStats.in_progress }}</span>
           </div>
           <div class="stat-item">
             <span class="stat-label">已完成</span>
@@ -212,77 +234,85 @@ onUnmounted(() => {
             <span class="stat-label">失败</span>
             <span class="stat-value failed">{{ taskStats.failed }}</span>
           </div>
-        </div>
-      </div>
-
-      <div class="panel-body">
-        <div v-if="loading" class="loading">
-          <div class="loading-spinner"></div>
-          <span>加载任务中...</span>
+          </div>
         </div>
 
-        <div v-else-if="error" class="error">
-          <div class="error-icon">⚠️</div>
-          <div class="error-message">{{ error }}</div>
-          <StratixButton @click="loadTasks">重试</StratixButton>
-        </div>
+        <div class="panel-body">
+          <div v-if="loading" class="loading">
+            <div class="loading-spinner"></div>
+            <span>加载任务中...</span>
+          </div>
 
-        <div v-else-if="tasks.length === 0" class="empty">
-          <div class="empty-icon">📋</div>
-          <div>暂无任务</div>
-          <div class="empty-hint">使用 LRA 创建任务</div>
-        </div>
+          <div v-else-if="error" class="error">
+            <div class="error-icon">⚠️</div>
+            <div class="error-message">{{ error }}</div>
+            <StratixButton @click="loadTasks">重试</StratixButton>
+          </div>
 
-        <div v-else class="task-list">
-          <div
-            v-for="task in sortedTasks"
-            :key="task.id"
-            class="task-item"
-            :class="{ selected: selectedTaskId === task.id }"
-            @click="selectedTaskId = task.id"
-          >
-            <div class="task-header">
-              <span class="status-icon">{{ getStatusIcon(task.status) }}</span>
-              <span class="task-id">{{ task.id }}</span>
-              <span
-                class="priority-badge"
-                :style="{ backgroundColor: getPriorityColor(task.priority) }"
-              >
-                {{ task.priority }}
-              </span>
-            </div>
+          <div v-else-if="tasks.length === 0" class="empty">
+            <div class="empty-icon">📋</div>
+            <div>暂无任务</div>
+            <div class="empty-hint">使用 LRA 创建任务</div>
+          </div>
 
-            <div class="task-description">{{ task.description }}</div>
-
-            <div class="task-meta">
-              <div class="meta-item">
-                <span class="meta-label">模板:</span>
-                <span class="meta-value">{{ task.template }}</span>
-              </div>
-              <div class="meta-item" v-if="task.lock_info">
-                <span class="meta-label">执行者:</span>
-                <span class="meta-value">{{ task.lock_info.session_id }}</span>
-              </div>
-              <div class="meta-item">
-                <span class="meta-label">更新:</span>
-                <span class="meta-value">{{ formatTime(task.updated_at) }}</span>
-              </div>
-            </div>
-
+          <div v-else class="task-list">
             <div
-              class="task-progress"
-              :style="{ backgroundColor: getStatusColor(task.status) + '33' }"
+              v-for="task in sortedTasks"
+              :key="task.id"
+              class="task-item"
+              :class="{ selected: selectedTaskId === task.id }"
+              @click="selectedTaskId = task.id"
             >
+              <div class="task-header">
+                <span class="status-icon">{{ getStatusIcon(task.status) }}</span>
+                <span class="task-id">{{ task.id }}</span>
+                <span
+                  class="priority-badge"
+                  :style="{ backgroundColor: getPriorityColor(task.priority) }"
+                >
+                  {{ task.priority }}
+                </span>
+              </div>
+
+              <div class="task-description">{{ task.description }}</div>
+
+              <div class="task-meta">
+                <div class="meta-item">
+                  <span class="meta-label">模板:</span>
+                  <span class="meta-value">{{ task.template }}</span>
+                </div>
+                <div class="meta-item" v-if="task.lock_info">
+                  <span class="meta-label">执行者:</span>
+                  <span class="meta-value">{{ task.lock_info.session_id }}</span>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-label">更新:</span>
+                  <span class="meta-value">{{ formatTime(task.updated_at) }}</span>
+                </div>
+              </div>
+
               <div
-                class="task-progress-fill"
-                :style="{
-                  backgroundColor: getStatusColor(task.status),
-                  width: task.status === 'completed' ? '100%' : task.status === 'in_progress' ? '50%' : '0%'
-                }"
-              ></div>
+                class="task-progress"
+                :style="{ backgroundColor: getStatusColor(task.status) + '33' }"
+              >
+                <div
+                  class="task-progress-fill"
+                  :style="{
+                    backgroundColor: getStatusColor(task.status),
+                    width: task.status === 'completed' ? '100%' : task.status === 'in_progress' ? '50%' : '0%'
+                  }"
+                ></div>
+              </div>
             </div>
           </div>
         </div>
+      </div>
+
+      <div v-if="activeTab === 'chat'" class="tab-content chat-tab">
+        <ChatPanel
+          :project-id="projectId"
+          :project-path="projectPath"
+        />
       </div>
     </div>
   </StratixModal>
@@ -294,6 +324,46 @@ onUnmounted(() => {
   flex-direction: column;
   height: 70vh;
   min-height: 500px;
+}
+
+.panel-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid #2a2a4e;
+  background: #1a1a2e;
+  padding: 0 20px;
+}
+
+.tab-button {
+  padding: 14px 24px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #888;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tab-button:hover {
+  color: #ccc;
+  background: #2a2a4e22;
+}
+
+.tab-button.active {
+  color: #00aaff;
+  border-bottom-color: #00aaff;
+}
+
+.tab-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-tab {
+  padding: 0;
 }
 
 .panel-header {

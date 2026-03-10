@@ -20,7 +20,7 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const emit = defineEmits<{
-  click: [];
+  click: [event: MouseEvent];
 }>();
 
 provideSizeContext(toRef(props, 'size'));
@@ -32,9 +32,9 @@ const iconSize = computed(() => {
   return sizes[props.size] || 16;
 });
 
-const handleClick = () => {
+const handleClick = (event: MouseEvent) => {
   if (!props.disabled && !props.loading) {
-    emit('click');
+    emit('click', event);
   }
 };
 </script>

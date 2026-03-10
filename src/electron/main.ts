@@ -8,8 +8,66 @@
  * - OpenClaw 直连支持
  */
 
+// Path alias resolution - must be at the top before any imports
+const Module = require('module');
+const pathResolve = require('path');
+const fsResolve = require('fs');
+
+console.log('[Electron] Starting path resolution setup...');
+console.log('[Electron] baseDir:', pathResolve.join(__dirname, '..'));
+
+const originalResolve = Module._resolveFilename;
+const baseDir = pathResolve.join(__dirname, '..');
+
+Module._resolveFilename = function(request: string, parent: any, isMain: any, options: any) {
+  console.log('[Resolve]', request);
+  if (request.startsWith('@stratix-') || request.startsWith('@/')) {
+    let moduleName: string;
+    let modulePath: string;
+    
+    if (request.startsWith('@/')) {
+      moduleName = '@/';
+      modulePath = request.slice(2);
+    } else {
+      const parts = request.split('/');
+      moduleName = parts[0];
+      modulePath = parts.slice(1).join('/');
+    }
+    
+    const aliasMap: Record<string, string> = {
+      '@stratix-core': pathResolve.join(baseDir, 'stratix-core'),
+      '@stratix-openclaw-adapter': pathResolve.join(baseDir, 'stratix-openclaw-adapter'),
+      '@stratix-gateway': pathResolve.join(baseDir, 'stratix-gateway'),
+      '@stratix-tailscale': pathResolve.join(baseDir, 'stratix-tailscale'),
+      '@stratix-data-store': pathResolve.join(baseDir, 'stratix-data-store'),
+      '@/': baseDir,
+    };
+    
+    if (aliasMap[moduleName]) {
+      let newPath = modulePath 
+        ? pathResolve.join(aliasMap[moduleName], modulePath) 
+        : aliasMap[moduleName];
+      
+      // If the resolved path is a directory, add /index
+      if (fsResolve.existsSync(newPath) && fsResolve.statSync(newPath).isDirectory()) {
+        newPath = pathResolve.join(newPath, 'index.js');
+      } else if (!newPath.endsWith('.js')) {
+        // Add .js extension if not present
+        newPath = newPath + '.js';
+      }
+      
+      console.log('[Path Resolve]', request, '->', newPath);
+      return newPath;
+    } else {
+      console.log('[Path Resolve] No alias for:', moduleName);
+    }
+  }
+  return originalResolve.call(this, request, parent, isMain, options);
+};
+
 import { app, BrowserWindow, ipcMain } from 'electron';
-import * as path from 'path';
+import path from 'path';
+
 import { startGatewayService } from '../stratix-gateway';
 import { dataStoreService } from '../stratix-gateway/dataStoreService';
 import { EmbeddedTailscale } from '../stratix-tailscale/EmbeddedTailscale';
@@ -72,12 +130,33 @@ function createWindow() {
     title: 'Stratix',
   });
   
-  if (process.env.NODE_ENV === 'development') {
-    mainWindow.loadURL('http://localhost:5173');
-    mainWindow.webContents.openDevTools();
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '../frontend/index.html'));
-  }
+  // 尝试从 Vite 开发服务器加载（端口 7523-7530）
+  const loadDevUrl = async () => {
+    const ports = [7523, 7524, 7525, 7526, 7527, 7528, 7529, 7530];
+    for (const port of ports) {
+      try {
+        const url = `http://127.0.0.1:${port}`;
+        const response = await fetch(url, { method: 'HEAD' });
+        if (response.ok) {
+          console.log('[Electron] Loading from Vite dev server:', url);
+          await mainWindow!.loadURL(url);
+          mainWindow!.webContents.openDevTools();
+          return true;
+        }
+      } catch {
+        // 端口没有服务，继续尝试下一个
+      }
+    }
+    return false;
+  };
+
+  // 尝试开发服务器，失败则加载本地文件
+  loadDevUrl().then(success => {
+    if (!success) {
+      console.log('[Electron] Loading from local file');
+      mainWindow!.loadFile(path.join(__dirname, '../frontend/index.html'));
+    }
+  });
   
   mainWindow.on('closed', () => {
     mainWindow = null;

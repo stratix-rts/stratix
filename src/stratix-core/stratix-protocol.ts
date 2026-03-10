@@ -272,7 +272,9 @@ export type StratixStateSyncEventType =
   | 'stratix:agent_status_update'
   | 'stratix:command_status_update'
   | 'stratix:agent_create'
-  | 'stratix:config_updated';
+  | 'stratix:config_updated'
+  | 'stratix:project_message_new'
+  | 'stratix:project_message_sync';
 
 /**
  * 前端操作事件（Stratix RTS / 指令面板 → 事件总线）
@@ -300,6 +302,11 @@ export interface StratixStateSyncEvent {
     commandStatus?: 'pending' | 'running' | 'success' | 'failed';
     commandId?: string;
     data?: any;
+    // 项目消息相关
+    projectId?: string;
+    channelId?: string;
+    message?: any;
+    messages?: any[];
   };
   timestamp: number;
   requestId: string;

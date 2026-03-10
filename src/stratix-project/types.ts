@@ -218,3 +218,74 @@ export interface ChatMessage {
   content: string;
   timestamp?: Date;
 }
+
+// ============================================
+// 项目Channel消息系统类型定义
+// 基于OpenClaw消息结构扩展
+// ============================================
+
+// 消息角色 - 兼容OpenClaw
+export type MessageRole = 'user' | 'assistant' | 'tool' | 'system' | 'other';
+
+// 发送者信息
+export interface MessageSender {
+  id: string;
+  type: 'agent' | 'user';
+  name: string;
+  avatar?: string;
+  role?: string;
+}
+
+// 消息类型
+export type ProjectMessageType = 'chat' | 'task_assign' | 'task_update' | 'system';
+
+// 项目Channel消息
+export interface ProjectChannelMessage {
+  id: string;
+  projectId: string;
+  channelId: string;
+  role: MessageRole;
+  content: string;
+  timestamp: number;
+  sender: MessageSender;
+  mentions: string[];
+  rawContent?: string;
+  messageType: ProjectMessageType;
+  taskId?: string;
+  sessionKey?: string;
+  runId?: string;
+  metadata: {
+    source: 'openclaw' | 'local' | 'user';
+    createdAt: string;
+  };
+}
+
+// Channel类型
+export type ProjectChannelType = 'general' | 'tasks' | 'agent_dm';
+
+// Channel配置
+export interface ProjectChannel {
+  id: string;
+  projectId: string;
+  name: string;
+  type: ProjectChannelType;
+  description?: string;
+  subscriberIds: string[];
+  isPrivate: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// Agent工牌
+export interface AgentBadge {
+  agentId: string;
+  name: string;
+  avatar?: string;
+  role: string;
+  status: 'online' | 'offline' | 'busy';
+  roleDefinition?: {
+    personality?: string;
+    responsibilities?: string[];
+    communicationStyle?: string;
+  };
+}
