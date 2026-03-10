@@ -11,10 +11,17 @@ interface MovementState {
   startDirection?: number;
 }
 
+type MovementCompleteCallback = (agentId: string, x: number, y: number) => void;
+
 export class MovementSystem {
   private movingAgents: Map<string, MovementState> = new Map();
   private readonly DEFAULT_SPEED = 300;
   private readonly ARRIVAL_THRESHOLD = 5;
+  private onMovementComplete: MovementCompleteCallback | null = null;
+
+  setOnMovementComplete(callback: MovementCompleteCallback): void {
+    this.onMovementComplete = callback;
+  }
 
   moveTo(agentId: string, targetX: number, targetY: number, speed?: number): void {
     const movementSpeed = speed ?? this.DEFAULT_SPEED;
@@ -93,6 +100,10 @@ export class MovementSystem {
     });
 
     completedMoves.forEach(agentId => {
+      const state = this.movingAgents.get(agentId);
+      if (state && this.onMovementComplete) {
+        this.onMovementComplete(agentId, state.targetX, state.targetY);
+      }
       this.movingAgents.delete(agentId);
     });
   }

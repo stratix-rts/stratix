@@ -128,7 +128,23 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     this.commandSystem = new CommandSystem();
     this.controlGroupSystem = new ControlGroupSystem();
     this.movementSystem = new MovementSystem();
+    this.movementSystem.setOnMovementComplete((agentId, x, y) => {
+      this.saveAgentPosition(agentId, x, y);
+    });
     this.statsCollector = new StatsCollector();
+  }
+
+  private async saveAgentPosition(agentId: string, x: number, y: number): Promise<void> {
+    try {
+      await fetch('/api/stratix/config/agent/update', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId, position: { x, y } })
+      });
+      console.log(`[StratixRTS] Saved agent position: ${agentId}`, { x, y });
+    } catch (e) {
+      console.warn(`[StratixRTS] Failed to save agent position: ${agentId}`, e);
+    }
   }
 
   private initSelectBox(): void {
@@ -1104,8 +1120,24 @@ export default class StratixRTSGameScene extends Phaser.Scene {
       existingSprite.destroy();
     }
     
-    const x = Phaser.Math.Between(100, MAP_WIDTH - 100);
-    const y = Phaser.Math.Between(100, MAP_HEIGHT - 100);
+    let x = config.position?.x;
+    let y = config.position?.y;
+    
+    if (x === undefined || y === undefined) {
+      x = Phaser.Math.Between(100, MAP_WIDTH - 100);
+      y = Phaser.Math.Between(100, MAP_HEIGHT - 100);
+      
+      try {
+        await fetch('/api/stratix/config/agent/update', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...config, position: { x, y } })
+        });
+        console.log(`[StratixRTS] Saved initial position for agent ${config.agentId}:`, { x, y });
+      } catch (e) {
+        console.warn(`[StratixRTS] Failed to save initial position for agent ${config.agentId}:`, e);
+      }
+    }
     
     let textureKey: string | undefined;
     let isPlaceholder = false;

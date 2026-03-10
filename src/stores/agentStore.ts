@@ -128,11 +128,14 @@ export const agentStore = {
     pendingPositionUpdates.clear();
 
     for (const [agentId, position] of updates) {
+      const agent = state.agents.find(a => a.agentId === agentId);
+      if (!agent) continue;
+      
       try {
         await fetch('/api/stratix/config/agent/update', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ agentId, position })
+          body: JSON.stringify({ ...agent, position })
         });
       } catch (e) {
         console.warn(`[AgentStore] Failed to save position for ${agentId}:`, e);

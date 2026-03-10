@@ -75,8 +75,8 @@ export class ProjectManagerIntegration {
         const bounds = event.bounds;
         try {
           await this.projectClient.updateZoneConfig(zoneId, {
-            x: bounds.x,
-            y: bounds.y,
+            x: bounds.x + bounds.width / 2,
+            y: bounds.y + bounds.height / 2,
             width: bounds.width,
             height: bounds.height,
           });
@@ -94,8 +94,8 @@ export class ProjectManagerIntegration {
         const bounds = event.bounds;
         try {
           await this.projectClient.updateZoneConfig(zoneId, {
-            x: bounds.x,
-            y: bounds.y,
+            x: bounds.x + bounds.width / 2,
+            y: bounds.y + bounds.height / 2,
             width: bounds.width,
             height: bounds.height,
           });
