@@ -23,6 +23,11 @@ export class ProjectRepository {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     
+    const createdAt = project.createdAt instanceof Date ? project.createdAt.getTime() : project.createdAt;
+    const updatedAt = project.updatedAt instanceof Date ? project.updatedAt.getTime() : project.updatedAt;
+    const startedAt = project.startedAt ? (project.startedAt instanceof Date ? project.startedAt.getTime() : project.startedAt) : null;
+    const completedAt = project.completedAt ? (project.completedAt instanceof Date ? project.completedAt.getTime() : project.completedAt) : null;
+    
     stmt.run(
       project.id,
       project.name,
@@ -33,10 +38,10 @@ export class ProjectRepository {
       project.path,
       JSON.stringify(project.presentAgentIds),
       JSON.stringify(project.zoneConfig),
-      project.createdAt,
-      project.updatedAt,
-      project.startedAt || null,
-      project.completedAt || null
+      createdAt,
+      updatedAt,
+      startedAt,
+      completedAt
     );
     
     return project;
@@ -55,6 +60,10 @@ export class ProjectRepository {
       WHERE project_id = ?
     `);
     
+    const updatedAt = updated.updatedAt instanceof Date ? updated.updatedAt.getTime() : updated.updatedAt;
+    const startedAt = updated.startedAt ? (updated.startedAt instanceof Date ? updated.startedAt.getTime() : updated.startedAt) : null;
+    const completedAt = updated.completedAt ? (updated.completedAt instanceof Date ? updated.completedAt.getTime() : updated.completedAt) : null;
+    
     stmt.run(
       updated.name,
       updated.description,
@@ -64,9 +73,9 @@ export class ProjectRepository {
       updated.path,
       JSON.stringify(updated.presentAgentIds),
       JSON.stringify(updated.zoneConfig),
-      updated.updatedAt.getTime(),
-      updated.startedAt?.getTime() || null,
-      updated.completedAt?.getTime() || null,
+      updatedAt,
+      startedAt,
+      completedAt,
       projectId
     );
     
