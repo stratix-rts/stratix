@@ -30,20 +30,42 @@ import { PartSelector, CharacterPreview, CharacterList, OpenClawConnectionPanel,
 import type { SavedCharacter, PartSelection, PartMetadata, BodyType, AnimationName, CreatorStep } from './types';
 import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClawConnectionManager';
 import { textureManager } from '@/stratix-core/services';
+import { getToken, getCurrentTheme } from '@/design-system/config';
 
-const THEME = {
-  bg: 0x0d0d14,
-  panelBg: 0x12121a,
-  panelBorder: 0x2a2a3e,
-  accent: 0x00ffff,
-  accentSecondary: 0xff00ff,
-  success: 0x00ff88,
-  text: '#ffffff',
-  textMuted: '#6a6a8a',
-  headerHeight: 56,
-  leftPanelWidth: 280,
-  rightPanelWidth: 280
-};
+// 辅助函数：将十六进制颜色字符串转换为 Phaser 数字格式
+function hexToNumber(hex: string): number {
+  return parseInt(hex.replace('#', ''), 16);
+}
+
+// 辅助函数：将颜色值转换为 CSS 字符串格式
+function toCssColor(color: string | number): string {
+  if (typeof color === 'string') return color;
+  return '#' + color.toString(16).padStart(6, '0');
+}
+
+// 动态获取主题的 THEME 函数
+function THEME() {
+  const theme = getCurrentTheme();
+  const colors = theme.colors;
+  
+  return {
+    // 数字格式（用于 Phaser）
+    bg: hexToNumber(colors.background.base),
+    panelBg: hexToNumber(colors.background.elevated),
+    panelBorder: hexToNumber(colors.border.default),
+    panelBorderCss: colors.border.default,
+    accent: hexToNumber(colors.brand.primary),
+    accentCss: colors.brand.primary,
+    accentSecondary: hexToNumber(colors.brand.secondary),
+    success: hexToNumber(colors.status.success),
+    text: colors.text.primary,
+    textMuted: colors.text.muted,
+    textSecondary: colors.text.secondary,
+    headerHeight: 56,
+    leftPanelWidth: 280,
+    rightPanelWidth: 280
+  };
+}
 
 export interface CharacterCreatorSceneData {
   targetCharacterId?: string;
@@ -146,11 +168,11 @@ export class CharacterCreatorScene extends Phaser.Scene {
     const width = this.cameras.main.width;
     const height = this.cameras.main.height;
 
-    const progressBar = this.add.rectangle(width / 2, height / 2, 0, 4, THEME.accent);
+    const progressBar = this.add.rectangle(width / 2, height / 2, 0, 4, THEME().accent);
     const loadingText = this.add.text(width / 2, height / 2 - 30, 'INITIALIZING', {
       fontSize: '14px',
       fontFamily: 'monospace',
-      color: '#00ffff'
+      color: THEME().accent
     }).setOrigin(0.5);
 
     let progress = 0;
@@ -174,10 +196,10 @@ export class CharacterCreatorScene extends Phaser.Scene {
   }
 
   private createBackground(width: number, height: number): void {
-    this.add.rectangle(width / 2, height / 2, width, height, THEME.bg);
+    this.add.rectangle(width / 2, height / 2, width, height, THEME().bg);
 
     const grid = this.add.graphics();
-    grid.lineStyle(1, 0x1a1a24, 0.5);
+    grid.lineStyle(1, THEME().panelBorder, 0.5);
     for (let x = 0; x <= width; x += 40) {
       grid.moveTo(x, 0);
       grid.lineTo(x, height);
@@ -193,24 +215,24 @@ export class CharacterCreatorScene extends Phaser.Scene {
     const header = this.add.container(0, 0);
 
     const headerBg = this.add.graphics();
-    headerBg.fillStyle(THEME.panelBg, 1);
-    headerBg.fillRect(0, 0, width, THEME.headerHeight);
-    headerBg.lineStyle(1, THEME.panelBorder, 1);
-    headerBg.lineBetween(0, THEME.headerHeight, width, THEME.headerHeight);
+    headerBg.fillStyle(THEME().panelBg, 1);
+    headerBg.fillRect(0, 0, width, THEME().headerHeight);
+    headerBg.lineStyle(1, THEME().panelBorder, 1);
+    headerBg.lineBetween(0, THEME().headerHeight, width, THEME().headerHeight);
     header.add(headerBg);
 
-    const title = this.add.text(24, THEME.headerHeight / 2, '角色创建器 CHARACTER CREATOR', {
+    const title = this.add.text(24, THEME().headerHeight / 2, '角色创建器 CHARACTER CREATOR', {
       fontSize: '14px',
       fontFamily: 'monospace',
-      color: '#00ffff',
+      color: THEME().accent,
       fontStyle: 'bold'
     }).setOrigin(0, 0.5);
     header.add(title);
 
-    const glow = this.add.text(24, THEME.headerHeight / 2, '角色创建器 CHARACTER CREATOR', {
+    const glow = this.add.text(24, THEME().headerHeight / 2, '角色创建器 CHARACTER CREATOR', {
       fontSize: '14px',
       fontFamily: 'monospace',
-      color: '#00ffff',
+      color: THEME().accent,
       fontStyle: 'bold'
     }).setOrigin(0, 0.5).setAlpha(0.3);
     header.add(glow);
@@ -229,7 +251,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
     ];
 
     const startX = width * 0.3;
-    const y = THEME.headerHeight / 2;
+    const y = THEME().headerHeight / 2;
 
     steps.forEach((step, index) => {
       const isActive = this.currentStep === step.key;
@@ -238,20 +260,20 @@ export class CharacterCreatorScene extends Phaser.Scene {
       const btn = this.add.text(btnX, y, `${index + 1}. ${step.labelCn}`, {
         fontSize: '11px',
         fontFamily: 'monospace',
-        color: isActive ? '#00ffff' : THEME.textMuted,
-        backgroundColor: isActive ? '#1a3a3a' : 'transparent',
+        color: isActive ? THEME().accent : THEME().textMuted,
+        backgroundColor: isActive ? 'rgba(0,0,0,0.1)' : 'transparent',
         padding: { x: 10, y: 5 }
       }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
 
       btn.on('pointerover', () => {
         if (this.currentStep !== step.key) {
-          btn.setColor('#ffffff');
+          btn.setColor(THEME().text);
         }
       });
 
       btn.on('pointerout', () => {
         if (this.currentStep !== step.key) {
-          btn.setColor(THEME.textMuted);
+          btn.setColor(THEME().textMuted);
         }
       });
 
@@ -290,30 +312,30 @@ export class CharacterCreatorScene extends Phaser.Scene {
     const steps: CreatorStep[] = ['appearance', 'openclaw', 'agent'];
     this.stepIndicators.forEach((btn, index) => {
       const isActive = this.currentStep === steps[index];
-      btn.setColor(isActive ? '#00ffff' : THEME.textMuted);
-      btn.setBackgroundColor(isActive ? '#1a3a3a' : 'transparent');
+      btn.setColor(isActive ? THEME().accent : THEME().textMuted);
+      btn.setBackgroundColor(isActive ? 'rgba(0,0,0,0.1)' : 'transparent');
     });
   }
 
   private createActionButtons(header: Phaser.GameObjects.Container, width: number): void {
     const buttons = [
-      { label: '随机 RANDOM', action: () => this.randomizeCharacter('normal'), color: '#00ff88' },
-      { label: '保存 SAVE', action: () => this.saveCharacter(), color: '#00ffff' },
+      { label: '随机 RANDOM', action: () => this.randomizeCharacter('normal'), color: THEME().accentSecondary },
+      { label: '保存 SAVE', action: () => this.saveCharacter(), color: THEME().accent },
     ];
 
     let btnX = width - 24;
-    const y = THEME.headerHeight / 2;
+    const y = THEME().headerHeight / 2;
 
     buttons.reverse().forEach(({ label, action, color }) => {
       const btn = this.add.text(btnX, y, label, {
         fontSize: '12px',
         fontFamily: 'monospace',
-        color: THEME.textMuted,
+        color: THEME().textMuted,
         padding: { x: 12, y: 6 }
       }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true });
 
       btn.on('pointerover', () => btn.setColor(color));
-      btn.on('pointerout', () => btn.setColor(THEME.textMuted));
+      btn.on('pointerout', () => btn.setColor(THEME().textMuted));
       btn.on('pointerdown', action);
 
       header.add(btn);
@@ -323,16 +345,16 @@ export class CharacterCreatorScene extends Phaser.Scene {
 
   private createLeftPanel(width: number, height: number): void {
     const panelX = 0;
-    const panelY = THEME.headerHeight;
-    const panelW = THEME.leftPanelWidth;
-    const panelH = height - THEME.headerHeight;
+    const panelY = THEME().headerHeight;
+    const panelW = THEME().leftPanelWidth;
+    const panelH = height - THEME().headerHeight;
 
     const panel = this.add.container(panelX, panelY);
 
     const bg = this.add.graphics();
-    bg.fillStyle(THEME.panelBg, 1);
+    bg.fillStyle(THEME().panelBg, 1);
     bg.fillRect(0, 0, panelW, panelH);
-    bg.lineStyle(1, THEME.panelBorder, 1);
+    bg.lineStyle(1, THEME().panelBorder, 1);
     bg.lineBetween(panelW, 0, panelW, panelH);
     panel.add(bg);
 
@@ -358,7 +380,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
     for (let y = 0; y < height; y += size) {
       for (let x = 0; x < width; x += size) {
         const isLight = ((x / size) + (y / size)) % 2 === 0;
-        ctx.fillStyle = isLight ? '#ffffff' : '#cccccc';
+        ctx.fillStyle = isLight ? THEME().text : THEME().textSecondary;
         ctx.fillRect(x, y, size, size);
       }
     }
@@ -377,13 +399,13 @@ export class CharacterCreatorScene extends Phaser.Scene {
     panel.add(previewBg);
 
     const border = this.add.graphics();
-    border.lineStyle(1, THEME.panelBorder, 1);
+    border.lineStyle(1, THEME().panelBorder, 1);
     border.strokeRoundedRect(x, previewY, previewSize, previewSize, 8);
     panel.add(border);
 
     const cornerSize = 12;
     const corners = this.add.graphics();
-    corners.lineStyle(2, THEME.accent, 1);
+    corners.lineStyle(2, THEME().accent, 1);
     [20, 20 + previewSize - cornerSize].forEach(x => {
       [previewY, previewY + previewSize - cornerSize].forEach(y => {
         corners.strokeRect(x, y, cornerSize, cornerSize);
@@ -408,18 +430,18 @@ export class CharacterCreatorScene extends Phaser.Scene {
         style="
           width: ${panelW - 48}px;
           padding: 10px 14px;
-          background: #0a0a12;
-          border: 1px solid #2a2a3e;
+          background: var(--ds-bg-primary);
+          border: 1px solid var(--ds-border);
           border-radius: 6px;
-          color: #ffffff;
+          color: var(--ds-text-primary);
           font-size: 14px;
           font-family: monospace;
           outline: none;
           transition: border-color 0.2s;
         " 
         placeholder="输入角色名称 Enter name..."
-        onfocus="this.style.borderColor='#00ffff'"
-        onblur="this.style.borderColor='#2a2a3e'"
+        onfocus="this.style.borderColor='${THEME().accentCss}'"
+        onblur="this.style.borderColor='${THEME().panelBorderCss}'"
       />
     `;
 
@@ -441,7 +463,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
     const animLabel = this.add.text(24, y, '动画 ANIMATION', {
       fontSize: '10px',
       fontFamily: 'monospace',
-      color: THEME.textMuted
+      color: THEME().textMuted
     });
     panel.add(animLabel);
 
@@ -453,20 +475,20 @@ export class CharacterCreatorScene extends Phaser.Scene {
       const btn = this.add.text(24 + i * 58, y + 20, animLabels[anim], {
         fontSize: '11px',
         fontFamily: 'monospace',
-        color: isActive ? '#00ffff' : THEME.textMuted,
-        backgroundColor: isActive ? '#1a3a3a' : 'transparent',
+        color: isActive ? THEME().accent : THEME().textMuted,
+        backgroundColor: isActive ? 'rgba(0,0,0,0.1)' : 'transparent',
         padding: { x: 10, y: 5 }
       }).setOrigin(0, 0).setInteractive({ useHandCursor: true });
 
       btn.on('pointerdown', () => {
         panel.each((child: any) => {
           if (child.getData?.('animBtn')) {
-            child.setColor(THEME.textMuted);
+            child.setColor(THEME().textMuted);
             child.setBackgroundColor('transparent');
           }
         });
-        btn.setColor('#00ffff');
-        btn.setBackgroundColor('#1a3a3a');
+        btn.setColor(THEME().accent);
+        btn.setBackgroundColor('rgba(0,0,0,0.1)');
         this.setAnimation(anim as AnimationName);
       });
       btn.setData('animBtn', true);
@@ -476,7 +498,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
     const dirLabel = this.add.text(24, y + 55, '方向 DIRECTION', {
       fontSize: '10px',
       fontFamily: 'monospace',
-      color: THEME.textMuted
+      color: THEME().textMuted
     });
     panel.add(dirLabel);
 
@@ -487,20 +509,20 @@ export class CharacterCreatorScene extends Phaser.Scene {
       const btn = this.add.text(24 + i * 50, y + 75, dir, {
         fontSize: '14px',
         fontFamily: 'monospace',
-        color: isActive ? '#00ffff' : THEME.textMuted,
-        backgroundColor: isActive ? '#1a3a3a' : 'transparent',
+        color: isActive ? THEME().accent : THEME().textMuted,
+        backgroundColor: isActive ? 'rgba(0,0,0,0.1)' : 'transparent',
         padding: { x: 10, y: 5 }
       }).setOrigin(0, 0).setInteractive({ useHandCursor: true });
 
       btn.on('pointerdown', () => {
         panel.each((child: any) => {
           if (child.getData?.('dirBtn')) {
-            child.setColor(THEME.textMuted);
+            child.setColor(THEME().textMuted);
             child.setBackgroundColor('transparent');
           }
         });
-        btn.setColor('#00ffff');
-        btn.setBackgroundColor('#1a3a3a');
+        btn.setColor(THEME().accent);
+        btn.setBackgroundColor('rgba(0,0,0,0.1)');
         this.setDirection(dirValues[i]);
       });
       btn.setData('dirBtn', true);
@@ -510,7 +532,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
     const scaleLabel = this.add.text(24, y + 110, '缩放 SCALE', {
       fontSize: '10px',
       fontFamily: 'monospace',
-      color: THEME.textMuted
+      color: THEME().textMuted
     });
     panel.add(scaleLabel);
 
@@ -520,20 +542,20 @@ export class CharacterCreatorScene extends Phaser.Scene {
       const btn = this.add.text(24 + i * 50, y + 130, scale, {
         fontSize: '11px',
         fontFamily: 'monospace',
-        color: isActive ? '#00ffff' : THEME.textMuted,
-        backgroundColor: isActive ? '#1a3a3a' : 'transparent',
+        color: isActive ? THEME().accent : THEME().textMuted,
+        backgroundColor: isActive ? 'rgba(0,0,0,0.1)' : 'transparent',
         padding: { x: 10, y: 5 }
       }).setOrigin(0, 0).setInteractive({ useHandCursor: true });
 
       btn.on('pointerdown', () => {
         panel.each((child: any) => {
           if (child.getData?.('scaleBtn')) {
-            child.setColor(THEME.textMuted);
+            child.setColor(THEME().textMuted);
             child.setBackgroundColor('transparent');
           }
         });
-        btn.setColor('#00ffff');
-        btn.setBackgroundColor('#1a3a3a');
+        btn.setColor(THEME().accent);
+        btn.setBackgroundColor('rgba(0,0,0,0.1)');
         const scaleVal = parseFloat(scale);
         this.setScale(scaleVal);
       });
@@ -553,14 +575,14 @@ export class CharacterCreatorScene extends Phaser.Scene {
     }
 
     const divider = this.add.graphics();
-    divider.lineStyle(1, THEME.panelBorder, 0.5);
+    divider.lineStyle(1, THEME().panelBorder, 0.5);
     divider.lineBetween(24, startY, panelW - 24, startY);
     panel.add(divider);
 
     const label = this.add.text(24, startY + 12, '致谢 CREDITS', {
       fontSize: '10px',
       fontFamily: 'monospace',
-      color: THEME.textMuted
+      color: THEME().textMuted
     });
     panel.add(label);
 
@@ -628,7 +650,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
       const text = this.add.text(0, yOffset, line, {
         fontSize: '9px',
         fontFamily: 'monospace',
-        color: '#8888aa'
+        color: THEME().textMuted
       });
       container.add(text);
       yOffset += lineHeight;
@@ -642,11 +664,11 @@ export class CharacterCreatorScene extends Phaser.Scene {
       const moreText = this.add.text(0, yOffset, remaining, {
         fontSize: '9px',
         fontFamily: 'monospace',
-        color: '#00aaff'
+        color: THEME().accentCss
       }).setInteractive({ useHandCursor: true });
       
-      moreText.on('pointerover', () => moreText.setColor('#00ccff'));
-      moreText.on('pointerout', () => moreText.setColor('#00aaff'));
+      moreText.on('pointerover', () => moreText.setColor(THEME().accentCss));
+      moreText.on('pointerout', () => moreText.setColor(THEME().accentCss));
       moreText.on('pointerdown', () => this.openCreditsModal(authorsArray, licensesArray));
       container.add(moreText);
     }
@@ -657,7 +679,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
       const licenseText = this.add.text(0, licenseY, `License: ${licensesStr}`, {
         fontSize: '8px',
         fontFamily: 'monospace',
-        color: '#666688'
+        color: THEME().textMuted
       });
       container.add(licenseText);
     }
@@ -666,7 +688,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
       const noCredits = this.add.text(0, 0, 'No credits available', {
         fontSize: '9px',
         fontFamily: 'monospace',
-        color: THEME.textMuted
+        color: THEME().textMuted
       });
       container.add(noCredits);
     }
@@ -698,38 +720,38 @@ export class CharacterCreatorScene extends Phaser.Scene {
         font-family: monospace;
       ">
         <div style="
-          background: #12121a;
-          border: 2px solid #00aaff;
+          background: var(--ds-bg-secondary);
+          border: 2px solid '${THEME().accentCss}';
           border-radius: 8px;
           width: ${modalW}px;
           max-height: ${modalH}px;
           display: flex;
           flex-direction: column;
         ">
-          <div style="padding: 16px; text-align: center; border-bottom: 1px solid #2a2a3e;">
-            <div style="font-size: 16px; color: #00aaff; font-weight: bold;">致谢 CREDITS</div>
-            <div style="font-size: 10px; color: #6a6a8a; margin-top: 4px;">(排名不分先后 In No Particular Order)</div>
+          <div style="padding: 16px; text-align: center; border-bottom: 1px solid var(--ds-border);">
+            <div style="font-size: 16px; color: '${THEME().accentCss}'; font-weight: bold;">致谢 CREDITS</div>
+            <div style="font-size: 10px; color: var(--ds-text-muted); margin-top: 4px;">(排名不分先后 In No Particular Order)</div>
           </div>
           <div style="
             flex: 1;
             overflow-y: auto;
             padding: 12px 16px;
-            background: #0a0a12;
+            background: var(--ds-bg-primary);
             margin: 12px;
             border-radius: 4px;
-            border: 1px solid #2a2a3e;
+            border: 1px solid var(--ds-border);
           ">
-            <div style="font-size: 11px; color: #cccccc; line-height: 1.8;">${authorsList}</div>
+            <div style="font-size: 11px; color: '${THEME().textSecondary}'; line-height: 1.8;">${authorsList}</div>
           </div>
           <div style="padding: 0 16px 8px 16px;">
-            <div style="font-size: 10px; color: #6a6a8a;">Licenses:</div>
-            <div style="font-size: 9px; color: #666688; margin-top: 4px;">${licensesList}</div>
+            <div style="font-size: 10px; color: var(--ds-text-muted);">Licenses:</div>
+            <div style="font-size: 9px; color: var(--ds-text-muted); margin-top: 4px;">${licensesList}</div>
           </div>
-          <div style="padding: 12px; text-align: center; border-top: 1px solid #2a2a3e;">
+          <div style="padding: 12px; text-align: center; border-top: 1px solid var(--ds-border);">
             <button id="credits-close-btn" style="
-              background: #1a2a3a;
+              background: var(--ds-bg-tertiary);
               border: none;
-              color: #00aaff;
+              color: '${THEME().accentCss}';
               padding: 8px 24px;
               font-family: monospace;
               font-size: 12px;
@@ -764,27 +786,27 @@ export class CharacterCreatorScene extends Phaser.Scene {
     const y = panelH - 80;
 
     const divider = this.add.graphics();
-    divider.lineStyle(1, THEME.panelBorder, 0.5);
+    divider.lineStyle(1, THEME().panelBorder, 0.5);
     divider.lineBetween(24, y, panelW - 24, y);
     panel.add(divider);
 
     const label = this.add.text(24, y + 16, 'JSON 编辑器 JSON EDITOR', {
       fontSize: '10px',
       fontFamily: 'monospace',
-      color: THEME.textMuted
+      color: THEME().textMuted
     });
     panel.add(label);
 
     const btn = this.add.text(24, y + 36, '打开 JSON 编辑 OPEN', {
       fontSize: '12px',
       fontFamily: 'monospace',
-      color: '#00ff88',
-      backgroundColor: '#1a2a1a',
+      color: THEME().accentSecondary,
+      backgroundColor: 'var(--ds-status-success-bg)',
       padding: { x: 12, y: 6 }
     }).setOrigin(0, 0).setInteractive({ useHandCursor: true });
 
-    btn.on('pointerover', () => btn.setColor('#00ffaa'));
-    btn.on('pointerout', () => btn.setColor('#00ff88'));
+    btn.on('pointerover', () => btn.setColor(THEME().accentSecondary));
+    btn.on('pointerout', () => btn.setColor(THEME().accentSecondary));
     btn.on('pointerdown', () => this.openJsonEditor());
     panel.add(btn);
   }
@@ -813,25 +835,25 @@ export class CharacterCreatorScene extends Phaser.Scene {
         font-family: monospace;
       ">
         <div style="
-          background: #12121a;
-          border: 1px solid #2a2a3e;
+          background: var(--ds-bg-secondary);
+          border: 1px solid var(--ds-border);
           border-radius: 8px;
           width: ${modalW}px;
           height: ${modalH}px;
           display: flex;
           flex-direction: column;
         ">
-          <div style="padding: 12px 16px; border-bottom: 1px solid #2a2a3e;">
-            <span style="font-size: 14px; color: #00ffff;">角色配置 JSON EDITOR</span>
+          <div style="padding: 12px 16px; border-bottom: 1px solid var(--ds-border);">
+            <span style="font-size: 14px; color: '${THEME().accentCss}';">角色配置 JSON EDITOR</span>
           </div>
           <div style="flex: 1; padding: 12px 16px;">
             <textarea id="json-editor" style="
               width: 100%;
               height: 100%;
-              background: #0a0a12;
-              border: 1px solid #2a2a3e;
+              background: var(--ds-bg-primary);
+              border: 1px solid var(--ds-border);
               border-radius: 4px;
-              color: #ffffff;
+              color: var(--ds-text-primary);
               font-size: 12px;
               font-family: monospace;
               resize: none;
@@ -839,11 +861,11 @@ export class CharacterCreatorScene extends Phaser.Scene {
               box-sizing: border-box;
             ">${partsJson}</textarea>
           </div>
-          <div style="padding: 12px 16px; display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid #2a2a3e;">
+          <div style="padding: 12px 16px; display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--ds-border);">
             <button id="json-cancel-btn" style="
-              background: #2a2a3e;
+              background: var(--ds-bg-tertiary);
               border: none;
-              color: #6a6a8a;
+              color: var(--ds-text-muted);
               padding: 8px 16px;
               font-family: monospace;
               font-size: 12px;
@@ -851,9 +873,9 @@ export class CharacterCreatorScene extends Phaser.Scene {
               border-radius: 4px;
             ">取消 CANCEL</button>
             <button id="json-save-btn" style="
-              background: #1a3a1a;
+              background: var(--ds-status-success-bg, rgba(0,255,0,0.1));
               border: none;
-              color: #00ff88;
+              color: var(--ds-status-success);
               padding: 8px 16px;
               font-family: monospace;
               font-size: 12px;
@@ -906,15 +928,15 @@ export class CharacterCreatorScene extends Phaser.Scene {
   }
 
   private createMainPanel(width: number, height: number): void {
-    const panelX = THEME.leftPanelWidth;
-    const panelY = THEME.headerHeight;
-    const panelW = width - THEME.leftPanelWidth - THEME.rightPanelWidth;
-    const panelH = height - THEME.headerHeight;
+    const panelX = THEME().leftPanelWidth;
+    const panelY = THEME().headerHeight;
+    const panelW = width - THEME().leftPanelWidth - THEME().rightPanelWidth;
+    const panelH = height - THEME().headerHeight;
 
     this.mainPanelContainer = this.add.container(panelX, panelY);
 
     const bg = this.add.graphics();
-    bg.fillStyle(THEME.panelBg, 1);
+    bg.fillStyle(THEME().panelBg, 1);
     bg.fillRect(0, 0, panelW, panelH);
     this.mainPanelContainer.add(bg);
 
@@ -1032,23 +1054,23 @@ export class CharacterCreatorScene extends Phaser.Scene {
 
   private rebuildMainPanel(): void {
     const { width, height } = this.cameras.main;
-    const panelW = width - THEME.leftPanelWidth - THEME.rightPanelWidth;
-    const panelH = height - THEME.headerHeight;
+    const panelW = width - THEME().leftPanelWidth - THEME().rightPanelWidth;
+    const panelH = height - THEME().headerHeight;
     this.buildStepPanel(panelW, panelH);
   }
 
   private createRightPanel(width: number, height: number): void {
-    const panelX = width - THEME.rightPanelWidth;
-    const panelY = THEME.headerHeight;
-    const panelW = THEME.rightPanelWidth;
-    const panelH = height - THEME.headerHeight;
+    const panelX = width - THEME().rightPanelWidth;
+    const panelY = THEME().headerHeight;
+    const panelW = THEME().rightPanelWidth;
+    const panelH = height - THEME().headerHeight;
 
     const panel = this.add.container(panelX, panelY);
 
     const bg = this.add.graphics();
-    bg.fillStyle(THEME.panelBg, 1);
+    bg.fillStyle(THEME().panelBg, 1);
     bg.fillRect(0, 0, panelW, panelH);
-    bg.lineStyle(1, THEME.panelBorder, 1);
+    bg.lineStyle(1, THEME().panelBorder, 1);
     bg.lineBetween(0, 0, 0, panelH);
     panel.add(bg);
 
@@ -1304,8 +1326,8 @@ export class CharacterCreatorScene extends Phaser.Scene {
 
     this.uiElements.bodyTypeButtons?.forEach((btn, i) => {
       const isActive = BODY_TYPES[i] === bodyType;
-      btn.setColor(isActive ? '#00ffff' : THEME.textMuted);
-      btn.setBackgroundColor(isActive ? '#1a3a3a' : 'transparent');
+      btn.setColor(isActive ? THEME().accent : THEME().textMuted);
+      btn.setBackgroundColor(isActive ? 'rgba(0,0,0,0.1)' : 'transparent');
     });
 
     this.updatePreview();
@@ -1396,9 +1418,9 @@ export class CharacterCreatorScene extends Phaser.Scene {
     const { width, height } = this.cameras.main;
 
     const colors: Record<string, string> = {
-      success: '#00ff88',
-      error: '#ff4444',
-      info: '#00ffff'
+      success: THEME().accentSecondary,
+      error: 'var(--ds-status-danger)',
+      info: THEME().accent
     };
 
     const bg = this.add.rectangle(width / 2, height - 40, 200, 32, 0x000000, 0.8);

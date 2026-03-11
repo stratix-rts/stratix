@@ -111,7 +111,7 @@ function initializeGame() {
     parent: canvasContainer.value,
     width: canvasContainer.value.clientWidth,
     height: canvasContainer.value.clientHeight,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: 'var(--ds-bg-secondary)',
     scene: BlueprintCanvas,
   };
 
@@ -232,7 +232,7 @@ function getTaskTypeName(type: string): string {
   left: 0;
   right: 0;
   bottom: 0;
-  background: #0a0a0a;
+  background: var(--ds-bg-primary);
   display: flex;
   flex-direction: column;
   z-index: 2000;
@@ -243,13 +243,13 @@ function getTaskTypeName(type: string): string {
   justify-content: space-between;
   align-items: center;
   padding: 16px 20px;
-  background: #1a1a1a;
-  border-bottom: 1px solid #333;
+  background: var(--ds-bg-secondary);
+  border-bottom: 1px solid var(--ds-border);
 }
 
 .preview-header h3 {
   margin: 0;
-  color: #fff;
+  color: var(--ds-text-primary);
   font-size: 18px;
 }
 
@@ -261,9 +261,9 @@ function getTaskTypeName(type: string): string {
 .btn-icon {
   width: 32px;
   height: 32px;
-  border: 1px solid #333;
-  background: #1a1a1a;
-  color: #fff;
+  border: 1px solid var(--ds-border);
+  background: var(--ds-bg-secondary);
+  color: var(--ds-text-primary);
   border-radius: 4px;
   cursor: pointer;
   display: flex;
@@ -273,8 +273,8 @@ function getTaskTypeName(type: string): string {
 }
 
 .btn-icon:hover {
-  background: #2a2a2a;
-  border-color: #00aaff;
+  background: var(--ds-bg-tertiary);
+  border-color: var(--ds-brand-primary);
 }
 
 .preview-canvas {
@@ -288,20 +288,20 @@ function getTaskTypeName(type: string): string {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.8);
+  background: var(--ds-bg-overlay);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 16px;
-  color: #fff;
+  color: var(--ds-text-primary);
 }
 
 .loading-spinner {
   width: 48px;
   height: 48px;
-  border: 4px solid #333;
-  border-top-color: #00aaff;
+  border: 4px solid var(--ds-border);
+  border-top-color: var(--ds-brand-primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -315,10 +315,10 @@ function getTaskTypeName(type: string): string {
   top: 60px;
   right: 20px;
   width: 300px;
-  background: #1a1a1a;
-  border: 1px solid #333;
+  background: var(--ds-bg-secondary);
+  border: 1px solid var(--ds-border);
   border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--ds-shadow-lg);
 }
 
 .sidebar-header {
@@ -326,12 +326,12 @@ function getTaskTypeName(type: string): string {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--ds-border);
 }
 
 .sidebar-header h4 {
   margin: 0;
-  color: #fff;
+  color: var(--ds-text-primary);
   font-size: 14px;
 }
 
@@ -340,13 +340,13 @@ function getTaskTypeName(type: string): string {
   height: 24px;
   border: none;
   background: transparent;
-  color: #888;
+  color: var(--ds-text-muted);
   font-size: 24px;
   cursor: pointer;
 }
 
 .btn-close:hover {
-  color: #fff;
+  color: var(--ds-text-primary);
 }
 
 .sidebar-body {
@@ -360,7 +360,7 @@ function getTaskTypeName(type: string): string {
 .form-group label {
   display: block;
   margin-bottom: 8px;
-  color: #888;
+  color: var(--ds-text-muted);
   font-size: 12px;
   text-transform: uppercase;
 }
@@ -370,10 +370,10 @@ function getTaskTypeName(type: string): string {
 .form-group select {
   width: 100%;
   padding: 8px 12px;
-  background: #0a0a0a;
-  border: 1px solid #333;
+  background: var(--ds-bg-primary);
+  border: 1px solid var(--ds-border);
   border-radius: 4px;
-  color: #fff;
+  color: var(--ds-text-primary);
   font-size: 14px;
 }
 
@@ -403,12 +403,12 @@ function getTaskTypeName(type: string): string {
   justify-content: space-between;
   align-items: center;
   padding: 16px 20px;
-  background: #1a1a1a;
-  border-top: 1px solid #333;
+  background: var(--ds-bg-secondary);
+  border-top: 1px solid var(--ds-border);
 }
 
 .footer-left {
-  color: #888;
+  color: var(--ds-text-muted);
   font-size: 14px;
 }
 
@@ -419,23 +419,23 @@ function getTaskTypeName(type: string): string {
 
 .btn-secondary {
   padding: 8px 16px;
-  background: #333;
-  border: 1px solid #444;
-  color: #fff;
+  background: var(--ds-bg-tertiary);
+  border: 1px solid var(--ds-border);
+  color: var(--ds-text-primary);
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
 }
 
 .btn-secondary:hover {
-  background: #444;
+  background: var(--ds-bg-hover);
 }
 
 .btn-primary {
   padding: 8px 16px;
-  background: #00aaff;
+  background: var(--ds-brand-primary);
   border: none;
-  color: #fff;
+  color: var(--ds-text-inverse);
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
@@ -443,6 +443,6 @@ function getTaskTypeName(type: string): string {
 }
 
 .btn-primary:hover {
-  background: #0088cc;
+  background: var(--ds-brand-secondary);
 }
 </style>

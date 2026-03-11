@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@stratix-core/*": ["dist/electron/stratix-core/*"],
+      "@stratix-openclaw-adapter/*": ["dist/electron/stratix-openclaw-adapter/*"],
+      "@stratix-gateway/*": ["dist/electron/stratix-gateway/*"],
+      "@stratix-tailscale/*": ["dist/electron/stratix-tailscale/*"],
+      "@stratix-data-store/*": ["dist/electron/stratix-data-store/*"]
+    }
+  }
+}

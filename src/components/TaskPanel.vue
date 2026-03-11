@@ -112,13 +112,13 @@ const handleClose = () => {
 
 const getStatusColor = (status: string) => {
   const colors: Record<string, string> = {
-    pending: '#888888',
-    in_progress: '#00aaff',
-    completed: '#00ff00',
-    failed: '#ff4444',
-    paused: '#ffaa00'
+    pending: 'var(--ds-text-muted)',
+    in_progress: 'var(--ds-brand-primary)',
+    completed: 'var(--ds-status-success)',
+    failed: 'var(--ds-status-danger)',
+    paused: 'var(--ds-status-warning)'
   };
-  return colors[status] || '#888888';
+  return colors[status] || 'var(--ds-text-muted)';
 };
 
 const getStatusIcon = (status: string) => {
@@ -134,11 +134,11 @@ const getStatusIcon = (status: string) => {
 
 const getPriorityColor = (priority: string) => {
   const colors: Record<string, string> = {
-    high: '#ff4444',
-    medium: '#ffaa00',
-    low: '#4488ff'
+    high: 'var(--ds-status-danger)',
+    medium: 'var(--ds-status-warning)',
+    low: 'var(--ds-brand-secondary)'
   };
-  return colors[priority] || '#888888';
+  return colors[priority] || 'var(--ds-text-muted)';
 };
 
 const formatTime = (dateStr: string) => {
@@ -329,8 +329,8 @@ onUnmounted(() => {
 .panel-tabs {
   display: flex;
   gap: 0;
-  border-bottom: 1px solid #2a2a4e;
-  background: #1a1a2e;
+  border-bottom: 1px solid var(--ds-border);
+  background: var(--ds-bg-secondary);
   padding: 0 20px;
 }
 
@@ -339,20 +339,20 @@ onUnmounted(() => {
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
-  color: #888;
+  color: var(--ds-text-muted);
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .tab-button:hover {
-  color: #ccc;
-  background: #2a2a4e22;
+  color: var(--ds-text-secondary);
+  background: var(--ds-bg-hover);
 }
 
 .tab-button.active {
-  color: #00aaff;
-  border-bottom-color: #00aaff;
+  color: var(--ds-brand-primary);
+  border-bottom-color: var(--ds-brand-primary);
 }
 
 .tab-content {
@@ -368,8 +368,8 @@ onUnmounted(() => {
 
 .panel-header {
   padding: 20px;
-  border-bottom: 1px solid #2a2a4e;
-  background: #1a1a2e;
+  border-bottom: 1px solid var(--ds-border);
+  background: var(--ds-bg-secondary);
 }
 
 .project-info {
@@ -379,12 +379,12 @@ onUnmounted(() => {
 .project-info h3 {
   margin: 0 0 4px 0;
   font-size: 18px;
-  color: #ffffff;
+  color: var(--ds-text-primary);
 }
 
 .project-path {
   font-size: 12px;
-  color: #888;
+  color: var(--ds-text-muted);
   font-family: monospace;
 }
 
@@ -398,32 +398,32 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   padding: 8px 16px;
-  background: #2a2a4e;
+  background: var(--ds-bg-tertiary);
   border-radius: 6px;
 }
 
 .stat-label {
   font-size: 11px;
-  color: #888;
+  color: var(--ds-text-muted);
   margin-bottom: 4px;
 }
 
 .stat-value {
   font-size: 18px;
   font-weight: bold;
-  color: #fff;
+  color: var(--ds-text-primary);
 }
 
 .stat-value.in-progress {
-  color: #00aaff;
+  color: var(--ds-brand-primary);
 }
 
 .stat-value.completed {
-  color: #00ff00;
+  color: var(--ds-status-success);
 }
 
 .stat-value.failed {
-  color: #ff4444;
+  color: var(--ds-status-danger);
 }
 
 .panel-body {
@@ -440,14 +440,14 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   height: 300px;
-  color: #888;
+  color: var(--ds-text-muted);
 }
 
 .loading-spinner {
   width: 40px;
   height: 40px;
-  border: 3px solid #2a2a4e;
-  border-top-color: #00aaff;
+  border: 3px solid var(--ds-border);
+  border-top-color: var(--ds-brand-primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   margin-bottom: 16px;
@@ -466,7 +466,7 @@ onUnmounted(() => {
 
 .error-message {
   margin-bottom: 16px;
-  color: #ff4444;
+  color: var(--ds-status-danger);
 }
 
 .empty-icon {
@@ -487,21 +487,21 @@ onUnmounted(() => {
 
 .task-item {
   padding: 16px;
-  background: #1a1a2e;
-  border: 1px solid #2a2a4e;
+  background: var(--ds-bg-secondary);
+  border: 1px solid var(--ds-border);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .task-item:hover {
-  background: #2a2a4e;
-  border-color: #00aaff;
+  background: var(--ds-bg-tertiary);
+  border-color: var(--ds-brand-primary);
 }
 
 .task-item.selected {
-  background: #2a2a4e;
-  border-color: #00ff00;
+  background: var(--ds-bg-tertiary);
+  border-color: var(--ds-status-success);
 }
 
 .task-header {
@@ -517,7 +517,7 @@ onUnmounted(() => {
 
 .task-id {
   font-weight: bold;
-  color: #00aaff;
+  color: var(--ds-brand-primary);
   font-family: monospace;
 }
 
@@ -531,7 +531,7 @@ onUnmounted(() => {
 }
 
 .task-description {
-  color: #ccc;
+  color: var(--ds-text-secondary);
   font-size: 14px;
   margin-bottom: 12px;
   line-height: 1.4;
@@ -550,11 +550,11 @@ onUnmounted(() => {
 }
 
 .meta-label {
-  color: #888;
+  color: var(--ds-text-muted);
 }
 
 .meta-value {
-  color: #ccc;
+  color: var(--ds-text-secondary);
 }
 
 .task-progress {

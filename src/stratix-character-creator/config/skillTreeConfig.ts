@@ -134,11 +134,11 @@ export const SKILL_TREE_CONFIG = {
 };
 
 export const SKILL_CATEGORIES = {
-  combat: { name: '战斗', color: '#ff6b6b', icon: '⚔️' },
-  defense: { name: '防御', color: '#4ecdc4', icon: '🛡️' },
-  mobility: { name: '机动', color: '#45b7d1', icon: '💨' },
-  magic: { name: '魔法', color: '#a55eea', icon: '✨' },
-  utility: { name: '辅助', color: '#95a5a6', icon: '🔧' }
+  combat: { name: '战斗', color: 'var(--ds-status-danger)', icon: '⚔️' },
+  defense: { name: '防御', color: 'var(--ds-status-info)', icon: '🛡️' },
+  mobility: { name: '机动', color: 'var(--ds-brand-primary)', icon: '💨' },
+  magic: { name: '魔法', color: 'var(--ds-brand-secondary)', icon: '✨' },
+  utility: { name: '辅助', color: 'var(--ds-text-muted)', icon: '🔧' }
 };
 
 export const ATTRIBUTE_LABELS: Record<string, string> = {

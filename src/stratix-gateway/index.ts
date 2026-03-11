@@ -11,7 +11,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import http from 'http';
 import { StatusSyncService } from './api/websocket/StatusSync';
-import { setStatusSyncService } from './api/routes/command';
+import { setStatusSyncService as setCommandStatusSyncService } from './api/routes/command';
+import { setStatusSyncService as setProjectStatusSyncService } from './api/routes/project';
 import agentRoutes from './api/routes/agent';
 import commandRoutes from './api/routes/command';
 import templateRoutes from './api/routes/template';
@@ -23,6 +24,7 @@ import agentOrchestrationRoutes from './api/routes/agentOrchestration';
 import { openClawProxyManager } from './openclaw/OpenClawProxyManager';
 import { dataStoreService } from './dataStoreService';
 import { OpenClawConnectionStore } from '../stratix-data-store/OpenClawConnectionStore';
+import { initializeDatabase } from '../stratix-database';
 import { ensureDirSync } from 'fs-extra';
 import path from 'path';
 
@@ -115,6 +117,7 @@ export async function startGatewayService(
         http: 'running',
         websocket: 'running',
         dataStore: dataStoreService.isInitialized() ? 'initialized' : 'not initialized',
+        sqlite: 'initialized',
       },
     });
   });
@@ -134,6 +137,11 @@ export async function startGatewayService(
   console.log('Initializing data store...');
   await dataStoreService.initialize(dataDir);
   console.log('Data store initialized');
+  
+  // 初始化SQLite数据库
+  console.log('Initializing SQLite database...');
+  const db = initializeDatabase({ dataDir });
+  console.log('SQLite database initialized:', db.getPath());
   
   // 初始化 OpenClaw 连接配置存储
   const openClawConnectionStore = new OpenClawConnectionStore(dataDir);
@@ -165,7 +173,8 @@ export async function startGatewayService(
   
   // 启动状态同步服务
   const statusSyncService = new StatusSyncService(WS_PORT);
-  setStatusSyncService(statusSyncService);
+  setCommandStatusSyncService(statusSyncService);
+  setProjectStatusSyncService(statusSyncService);
   console.log(`WebSocket status sync running on port ${WS_PORT}`);
   
   // 优雅关闭处理

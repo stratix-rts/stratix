@@ -28,12 +28,12 @@ export interface AgentFullConfig {
 }
 
 const THEME = {
-  bg: getToken('colors.background.secondary'),
-  border: getToken('colors.border.default'),
-  accent: getToken('colors.primary'),
-  text: getToken('colors.text.primary'),
-  textMuted: getToken('colors.text.muted'),
-  activeTab: getToken('colors.secondary'),
+  bg: 'var(--ds-bg-secondary)',
+  border: 'var(--ds-border)',
+  accent: 'var(--ds-brand-primary)',
+  text: 'var(--ds-text-primary)',
+  textMuted: 'var(--ds-text-muted)',
+  activeTab: 'var(--ds-brand-secondary)',
 };
 
 type TabKey = 'skills' | 'rules' | 'soul';
@@ -96,7 +96,7 @@ export class AgentConfigPanel {
         <div class="tabs" style="
           display: flex;
           border-bottom: 1px solid ${THEME.border};
-          background: #0d0d14;
+          background: var(--ds-bg-primary);
         ">
           <button class="tab-btn" data-tab="soul" style="
             flex: 1;
@@ -169,7 +169,7 @@ export class AgentConfigPanel {
 
         <div class="attributes-bar" style="
           padding: 8px 16px;
-          background: #0d0d14;
+          background: var(--ds-bg-primary);
           border-top: 1px solid ${THEME.border};
           display: flex;
           align-items: center;
@@ -189,7 +189,7 @@ export class AgentConfigPanel {
 
         <div class="actions" style="
           padding: 12px 16px;
-          background: #0d0d14;
+          background: var(--ds-bg-primary);
           border-top: 1px solid ${THEME.border};
           display: flex;
           justify-content: space-between;
@@ -206,7 +206,7 @@ export class AgentConfigPanel {
           ">← 返回</button>
           <button id="complete-btn" style="
             padding: 8px 24px;
-            background: #1a3a3a;
+            background: var(--ds-bg-tertiary);
             border: 1px solid ${THEME.accent};
             border-radius: 6px;
             color: ${THEME.accent};

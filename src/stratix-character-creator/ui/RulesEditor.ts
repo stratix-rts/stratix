@@ -14,13 +14,13 @@ export interface RulesEditorConfig {
 }
 
 const THEME = {
-  bg: getToken('colors.background.secondary'),
-  border: getToken('colors.border.default'),
-  accent: getToken('colors.primary'),
-  text: getToken('colors.text.primary'),
-  textMuted: getToken('colors.text.muted'),
-  inputBg: getToken('colors.background.tertiary'),
-  success: getToken('colors.semantic.success'),
+  bg: 'var(--ds-bg-secondary)',
+  border: 'var(--ds-border)',
+  accent: 'var(--ds-brand-primary)',
+  text: 'var(--ds-text-primary)',
+  textMuted: 'var(--ds-text-muted)',
+  inputBg: 'var(--ds-bg-tertiary)',
+  success: 'var(--ds-status-success)',
 };
 
 export class RulesEditor {
@@ -49,7 +49,7 @@ export class RulesEditor {
       (t) => `
       <button class="template-btn" data-template-id="${t.id}" title="${t.description}" style="
         padding: 6px 12px;
-        background: #1a2a3a;
+        background: var(--ds-bg-tertiary);
         border: 1px solid ${THEME.border};
         border-radius: 6px;
         color: ${THEME.text};
@@ -92,7 +92,7 @@ export class RulesEditor {
           <button class="remove-rule-btn" data-index="${i}" style="
             background: transparent;
             border: none;
-            color: #ff6666;
+            color: var(--ds-status-danger);
             cursor: pointer;
             font-size: 11px;
             padding: 2px 6px;
@@ -149,7 +149,7 @@ export class RulesEditor {
             " />
             <button id="add-rule-btn" style="
               padding: 8px 16px;
-              background: #1a3a3a;
+              background: var(--ds-bg-tertiary);
               border: 1px solid ${THEME.accent};
               border-radius: 6px;
               color: ${THEME.accent};
@@ -163,9 +163,9 @@ export class RulesEditor {
           <button id="clear-all-btn" style="
             padding: 6px 12px;
             background: transparent;
-            border: 1px solid #ff6666;
+            border: 1px solid var(--ds-status-danger);
             border-radius: 6px;
-            color: #ff6666;
+            color: var(--ds-status-danger);
             font-size: 11px;
             cursor: pointer;
           ">清空所有规则</button>
@@ -314,7 +314,7 @@ export class RulesEditor {
           <button class="remove-rule-btn" data-index="${i}" style="
             background: transparent;
             border: none;
-            color: #ff6666;
+            color: var(--ds-status-danger);
             cursor: pointer;
             font-size: 11px;
             padding: 2px 6px;

@@ -44,9 +44,9 @@ export class SelectBox {
     this.graphics.clear();
 
     const rect = this.getRectangle(x, y);
-    const theme = getCurrentTheme();
-    const lineColor = parseInt(theme.colors.semantic.success.slice(1), 16);
-    const fillColor = parseInt(theme.colors.semantic.success.slice(1), 16);
+    const successColor = getToken('colors.status.success') || '#00ff88';
+    const lineColor = parseInt(successColor.slice(1), 16);
+    const fillColor = parseInt(successColor.slice(1), 16);
 
     this.graphics.fillStyle(fillColor, 0.2);
     this.graphics.fillRect(rect.x, rect.y, rect.width, rect.height);

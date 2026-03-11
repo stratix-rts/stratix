@@ -24,10 +24,10 @@ const handleClose = () => {
 
 const getHeroTypeColor = (type: string) => {
   const colors: Record<string, string> = {
-    writer: '#00ff88',
-    dev: '#00d4ff',
-    analyst: '#ff6b9d',
-    custom: getToken('colors.accent')
+    writer: 'var(--ds-status-success)',
+    dev: 'var(--ds-status-info)',
+    analyst: 'var(--ds-status-warning)',
+    custom: 'var(--ds-accent)'
   };
   return colors[type] || getToken('colors.text.muted');
 };

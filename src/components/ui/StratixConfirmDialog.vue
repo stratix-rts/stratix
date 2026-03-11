@@ -30,11 +30,11 @@ const emit = defineEmits<{
 }>();
 
 const TYPE_CONFIG = {
-  info: { icon: 'info', color: '#00d4ff' },
-  success: { icon: 'check-circle', color: '#00ff88' },
-  warning: { icon: 'alert-triangle', color: '#fbbf24' },
-  error: { icon: 'x-circle', color: '#ff4444' },
-  confirm: { icon: 'help-circle', color: '#00d4ff' },
+  info: { icon: 'info', color: 'var(--ds-status-info)' },
+  success: { icon: 'check-circle', color: 'var(--ds-status-success)' },
+  warning: { icon: 'alert-triangle', color: 'var(--ds-status-warning)' },
+  error: { icon: 'x-circle', color: 'var(--ds-status-danger)' },
+  confirm: { icon: 'help-circle', color: 'var(--ds-status-info)' },
 };
 
 const config = computed(() => TYPE_CONFIG[props.type]);

@@ -15,13 +15,13 @@ export interface SoulEditorConfig {
 }
 
 const THEME = {
-  bg: getToken('colors.background.secondary'),
-  border: getToken('colors.border.default'),
-  accent: getToken('colors.primary'),
-  text: getToken('colors.text.primary'),
-  textMuted: getToken('colors.text.muted'),
-  inputBg: getToken('colors.background.tertiary'),
-  success: getToken('colors.semantic.success'),
+  bg: 'var(--ds-bg-secondary)',
+  border: 'var(--ds-border)',
+  accent: 'var(--ds-brand-primary)',
+  text: 'var(--ds-text-primary)',
+  textMuted: 'var(--ds-text-muted)',
+  inputBg: 'var(--ds-bg-tertiary)',
+  success: 'var(--ds-status-success)',
 };
 
 export class SoulEditor {
@@ -56,9 +56,9 @@ export class SoulEditor {
         <div class="goal-item" data-index="${i}" style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
           <span style="flex: 1; color: ${THEME.text}; font-size: 12px;">${this.escapeHtml(goal)}</span>
           <button class="remove-goal-btn" data-index="${i}" style="
-            background: #3a2a2a;
+            background: var(--ds-status-danger-bg, rgba(255,0,0,0.1));
             border: none;
-            color: #ff6666;
+            color: var(--ds-status-danger);
             padding: 2px 8px;
             border-radius: 4px;
             cursor: pointer;
@@ -137,7 +137,7 @@ export class SoulEditor {
             " />
             <button id="add-goal-btn" style="
               padding: 8px 16px;
-              background: #1a3a3a;
+              background: var(--ds-bg-tertiary);
               border: 1px solid ${THEME.accent};
               border-radius: 6px;
               color: ${THEME.accent};
@@ -261,9 +261,9 @@ export class SoulEditor {
         <div class="goal-item" data-index="${i}" style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
           <span style="flex: 1; color: ${THEME.text}; font-size: 12px;">${this.escapeHtml(goal)}</span>
           <button class="remove-goal-btn" data-index="${i}" style="
-            background: #3a2a2a;
+            background: var(--ds-status-danger-bg, rgba(255,0,0,0.1));
             border: none;
-            color: #ff6666;
+            color: var(--ds-status-danger);
             padding: 2px 8px;
             border-radius: 4px;
             cursor: pointer;

@@ -43,13 +43,14 @@ export abstract class ContainerComponentBase extends UIComponentBase {
     const width = this.config.width || 0;
     const height = this.config.height || 0;
     
-    const theme = getToken('');
+    const bgElevated = getToken('colors.background.secondary') || '#12121a';
+    const borderDefault = getToken('colors.border.default') || '#2a2a3e';
     
     const bg = this.scene.add.rectangle(
       0, 0,
       width,
       height,
-      bgConfig.color ?? parseInt(theme.colors.background.secondary.slice(1), 16),
+      bgConfig.color ?? parseInt(bgElevated.slice(1), 16),
       bgConfig.alpha ?? 1
     );
     
@@ -58,7 +59,7 @@ export abstract class ContainerComponentBase extends UIComponentBase {
     if (bgConfig.borderThickness) {
       bg.setStrokeStyle(
         bgConfig.borderThickness,
-        bgConfig.borderColor ?? parseInt(theme.colors.border.default.slice(1), 16)
+        bgConfig.borderColor ?? parseInt(borderDefault.slice(1), 16)
       );
     }
     
@@ -75,12 +76,12 @@ export abstract class ContainerComponentBase extends UIComponentBase {
     content: string,
     style?: Phaser.Types.GameObjects.Text.TextStyle
   ): Phaser.GameObjects.Text {
-    const theme = getToken('');
+    const textPrimary = getToken('colors.text.primary') || '#ffffff';
     
     const defaultStyle: Phaser.Types.GameObjects.Text.TextStyle = {
-      fontFamily: theme.typography.fontFamily.mono,
-      fontSize: theme.typography.fontSize.md,
-      color: theme.colors.text.primary,
+      fontFamily: "'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', monospace",
+      fontSize: '14px',
+      color: textPrimary,
       ...style,
     };
     

@@ -409,7 +409,7 @@ onUnmounted(() => {
   position: relative;
   display: flex;
   flex-direction: column;
-  background: var(--ds-bg-secondary, #12121a);
+  background: var(--ds-bg-secondary);
   border: 1px solid v-bind('getToken("colors.border.default")');
   box-shadow: v-bind('ModalBaseConfig.style.shadow');
   box-sizing: border-box;
@@ -444,10 +444,7 @@ onUnmounted(() => {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  background: linear-gradient(90deg, var(--ds-info), var(--ds-success));
-  -webkit-background-clip: text;
-  color: #00d4ff;
-  -webkit-text-fill-color: transparent;
+  color: var(--ds-text-primary);
   line-height: 1.2;
 }
 
@@ -476,7 +473,7 @@ onUnmounted(() => {
   padding: v-bind('sizeConfig.padding');
   overflow-y: auto;
   overflow-x: hidden;
-  background: var(--ds-bg-secondary, #12121a);
+  background: var(--ds-bg-secondary);
 }
 
 .stratix-modal__footer {
@@ -488,7 +485,7 @@ onUnmounted(() => {
   gap: 10px;
   border-top: 1px solid v-bind('getToken("colors.border.default")');
   flex-shrink: 0;
-  background: var(--ds-bg-secondary, #12121a);
+  background: var(--ds-bg-secondary);
 }
 
 /* Zoom animation (center) */

@@ -12,18 +12,19 @@ import { partRegistry } from '../core/PartRegistry';
 import { PART_CATEGORY_CONFIGS } from '../config/partConfig';
 import type { PartMetadata, BodyType, PartCategory, PartSelection } from '../types';
 
+// 使用 CSS 变量以支持主题动态切换
 const THEME = {
-  bg: getToken('colors.background.secondary'),
-  panelBg: getToken('colors.background.secondary'),
-  panelBorder: getToken('colors.border.default'),
-  accent: getToken('colors.primary'),
-  accentDim: getToken('colors.secondary'),
-  text: getToken('colors.text.primary'),
-  textMuted: getToken('colors.text.muted'),
-  hoverBg: '#1a1a24',
-  selectedBg: getToken('colors.secondary'),
-  danger: getToken('colors.semantic.danger'),
-  success: getToken('colors.semantic.success')
+  bg: 'var(--ds-bg-secondary)',
+  panelBg: 'var(--ds-bg-secondary)',
+  panelBorder: 'var(--ds-border)',
+  accent: 'var(--ds-brand-primary)',
+  accentDim: 'var(--ds-brand-secondary)',
+  text: 'var(--ds-text-primary)',
+  textMuted: 'var(--ds-text-muted)',
+  hoverBg: 'var(--ds-bg-tertiary)',
+  selectedBg: 'var(--ds-brand-secondary)',
+  danger: 'var(--ds-status-danger)',
+  success: 'var(--ds-status-success)'
 };
 
 const CATEGORY_ICONS: Record<string, string> = {
@@ -242,10 +243,10 @@ export class PartSelector {
           font-size: 12px;
         }
         #random-btn:hover {
-          background: #1a4a1a;
+          opacity: 0.9;
         }
         #next-btn:hover {
-          background: #00ffaa;
+          opacity: 0.9;
         }
       </style>
     `;

@@ -1,80 +1,31 @@
-import { Low } from 'lowdb';
-import { JSONFile } from 'lowdb/node';
-import { StratixAgentConfig } from '../stratix-core/stratix-protocol';
-import { 
-  StratixDatabase, 
-  StratixCommandLog, 
-  DEFAULT_DB,
-  StratixTemplates,
-  LogQueryOptions 
-} from './types';
-import fs from 'fs-extra';
-import path from 'path';
+import { agentRepository } from '../stratix-database/AgentRepository';
+import { getDatabase } from '../stratix-database';
+import type { StratixAgentConfig } from '../stratix-core/stratix-protocol';
+import type { StratixCommandLog, StratixTemplates, LogQueryOptions } from './types';
 
 export class StratixDataStore {
-  public db: Low<StratixDatabase>;
-  private dbPath: string;
   private initialized: boolean = false;
-
-  constructor(dataDir: string = 'stratix-data') {
-    this.dbPath = path.join(dataDir, 'stratix.db.json');
-    this.db = new Low<StratixDatabase>(new JSONFile(this.dbPath), DEFAULT_DB);
-  }
 
   public async initialize(): Promise<void> {
     if (this.initialized) return;
     
-    await fs.ensureDir(path.dirname(this.dbPath));
-    
-    try {
-      await this.db.read();
-    } catch {
-      // File doesn't exist or is invalid, use default
-    }
-    
-    if (!this.db.data || !this.db.data.metadata) {
-      this.db.data = JSON.parse(JSON.stringify(DEFAULT_DB));
-      this.db.data.metadata.createdAt = Date.now();
-      this.db.data.metadata.updatedAt = Date.now();
-      await this.db.write();
-    }
-    
+    getDatabase();
     this.initialized = true;
+    console.log('[StratixDataStore] Initialized with SQLite');
   }
 
-  private async ensureInitialized(): Promise<void> {
-    if (!this.initialized) {
-      await this.initialize();
-    }
-  }
-
-  private async refresh(): Promise<void> {
-    await this.db.read();
-  }
-
-  private async persist(): Promise<void> {
-    this.db.data.metadata.updatedAt = Date.now();
-    await this.db.write();
+  public isInitialized(): boolean {
+    return this.initialized;
   }
 
   public async saveAgent(config: StratixAgentConfig): Promise<void> {
     await this.ensureInitialized();
-    await this.refresh();
-    
-    const index = this.db.data.agents.findIndex(a => a.agentId === config.agentId);
-    if (index >= 0) {
-      this.db.data.agents[index] = config;
-    } else {
-      this.db.data.agents.push(config);
-    }
-    
-    await this.persist();
+    agentRepository.saveAgent(config);
   }
 
   public async getAgent(agentId: string): Promise<StratixAgentConfig | null> {
     await this.ensureInitialized();
-    await this.refresh();
-    return this.db.data.agents.find(a => a.agentId === agentId) || null;
+    return agentRepository.getAgent(agentId);
   }
 
   public async loadAgent(agentId: string): Promise<StratixAgentConfig | null> {
@@ -83,147 +34,166 @@ export class StratixDataStore {
 
   public async listAgents(): Promise<StratixAgentConfig[]> {
     await this.ensureInitialized();
-    await this.refresh();
-    return [...this.db.data.agents];
+    return agentRepository.getAllAgents();
   }
 
   public async deleteAgent(agentId: string): Promise<boolean> {
     await this.ensureInitialized();
-    await this.refresh();
-    
-    const initialLength = this.db.data.agents.length;
-    this.db.data.agents = this.db.data.agents.filter(a => a.agentId !== agentId);
-    
-    if (this.db.data.agents.length < initialLength) {
-      await this.persist();
-      return true;
-    }
-    return false;
+    return agentRepository.deleteAgent(agentId);
   }
 
   public async saveCustomTemplate(config: StratixAgentConfig): Promise<void> {
-    await this.ensureInitialized();
-    await this.refresh();
-    
-    const index = this.db.data.templates.custom.findIndex(t => t.agentId === config.agentId);
-    if (index >= 0) {
-      this.db.data.templates.custom[index] = config;
-    } else {
-      this.db.data.templates.custom.push(config);
-    }
-    
-    await this.persist();
+    await this.saveAgent(config);
   }
 
   public async listTemplates(): Promise<StratixTemplates> {
     await this.ensureInitialized();
-    await this.refresh();
     return {
-      preset: [...this.db.data.templates.preset],
-      custom: [...this.db.data.templates.custom]
+      preset: [],
+      custom: []
     };
   }
 
   public async deleteCustomTemplate(agentId: string): Promise<boolean> {
-    await this.ensureInitialized();
-    await this.refresh();
-    
-    const initialLength = this.db.data.templates.custom.length;
-    this.db.data.templates.custom = this.db.data.templates.custom.filter(t => t.agentId !== agentId);
-    
-    if (this.db.data.templates.custom.length < initialLength) {
-      await this.persist();
-      return true;
-    }
-    return false;
+    return this.deleteAgent(agentId);
   }
 
-  public async setPresetTemplates(templates: StratixAgentConfig[]): Promise<void> {
+  public async saveLog(log: StratixCommandLog): Promise<void> {
     await this.ensureInitialized();
-    await this.refresh();
-    this.db.data.templates.preset = templates;
-    await this.persist();
+    const db = getDatabase().getDatabase();
+    const stmt = db.prepare(`
+      INSERT INTO command_logs (log_id, command_id, agent_id, skill_id, skill_name, params, status, result, error, start_time, end_time, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(
+      log.logId,
+      log.commandId,
+      log.agentId,
+      log.skillId,
+      log.skillName,
+      JSON.stringify(log.params),
+      log.status,
+      log.result || null,
+      log.error || null,
+      log.startTime,
+      log.endTime || null,
+      Date.now()
+    );
+  }
+
+  public async getLogs(options?: LogQueryOptions): Promise<StratixCommandLog[]> {
+    await this.ensureInitialized();
+    const db = getDatabase().getDatabase();
+    
+    let query = 'SELECT * FROM command_logs WHERE 1=1';
+    const params: any[] = [];
+    
+    if (options?.agentId) {
+      query += ' AND agent_id = ?';
+      params.push(options.agentId);
+    }
+    if (options?.status) {
+      query += ' AND status = ?';
+      params.push(options.status);
+    }
+    
+    query += ' ORDER BY start_time DESC';
+    
+    if (options?.limit) {
+      query += ' LIMIT ?';
+      params.push(options.limit);
+    }
+    
+    const rows = db.prepare(query).all(...params) as any[];
+    return rows.map(row => ({
+      logId: row.log_id,
+      commandId: row.command_id,
+      agentId: row.agent_id,
+      skillId: row.skill_id,
+      skillName: row.skill_name,
+      params: JSON.parse(row.params || '{}'),
+      status: row.status,
+      result: row.result,
+      error: row.error,
+      startTime: row.start_time,
+      endTime: row.end_time
+    }));
+  }
+
+  public async exportData(): Promise<any> {
+    await this.ensureInitialized();
+    const agents = await this.listAgents();
+    const templates = await this.listTemplates();
+    const logs = await this.getLogs();
+    return { agents, templates, logs, exportedAt: Date.now() };
+  }
+
+  public async importData(data: any): Promise<void> {
+    await this.ensureInitialized();
+    if (data.agents) {
+      for (const agent of data.agents) {
+        await this.saveAgent(agent);
+      }
+    }
   }
 
   public async addLog(log: StratixCommandLog): Promise<void> {
-    await this.ensureInitialized();
-    await this.refresh();
-    
-    this.db.data.logs.unshift(log);
-    
-    if (this.db.data.logs.length > 100) {
-      this.db.data.logs = this.db.data.logs.slice(0, 100);
-    }
-    
-    await this.persist();
+    await this.saveLog(log);
   }
 
-  public async updateLog(logId: string, updates: Partial<StratixCommandLog>): Promise<boolean> {
+  public async updateLog(logId: string, updates: Partial<StratixCommandLog>): Promise<void> {
     await this.ensureInitialized();
-    await this.refresh();
+    const db = getDatabase().getDatabase();
+    const fields: string[] = [];
+    const values: any[] = [];
     
-    const index = this.db.data.logs.findIndex(l => l.logId === logId);
-    if (index >= 0) {
-      this.db.data.logs[index] = { ...this.db.data.logs[index], ...updates };
-      await this.persist();
-      return true;
+    if (updates.status !== undefined) {
+      fields.push('status = ?');
+      values.push(updates.status);
     }
-    return false;
+    if (updates.result !== undefined) {
+      fields.push('result = ?');
+      values.push(updates.result);
+    }
+    if (updates.error !== undefined) {
+      fields.push('error = ?');
+      values.push(updates.error);
+    }
+    if (updates.endTime !== undefined) {
+      fields.push('end_time = ?');
+      values.push(updates.endTime);
+    }
+    
+    if (fields.length > 0) {
+      values.push(logId);
+      db.prepare(`UPDATE command_logs SET ${fields.join(', ')} WHERE log_id = ?`).run(...values);
+    }
   }
 
   public async getLog(logId: string): Promise<StratixCommandLog | null> {
-    await this.ensureInitialized();
-    await this.refresh();
-    return this.db.data.logs.find(l => l.logId === logId) || null;
+    const logs = await this.getLogs();
+    return logs.find(l => l.logId === logId) || null;
   }
 
-  public async getLogs(options: LogQueryOptions = {}): Promise<StratixCommandLog[]> {
+  public async clearLogs(agentId?: string): Promise<void> {
     await this.ensureInitialized();
-    await this.refresh();
-    
-    let logs = [...this.db.data.logs];
-    
-    if (options.agentId) {
-      logs = logs.filter(l => l.agentId === options.agentId);
+    const db = getDatabase().getDatabase();
+    if (agentId) {
+      db.prepare('DELETE FROM command_logs WHERE agent_id = ?').run(agentId);
+    } else {
+      db.prepare('DELETE FROM command_logs').run();
     }
-    
-    if (options.status) {
-      logs = logs.filter(l => l.status === options.status);
+  }
+
+  public async setPresetTemplates(templates: StratixAgentConfig[]): Promise<void> {
+    console.log('[StratixDataStore] setPresetTemplates not implemented in SQLite');
+  }
+
+  private async ensureInitialized(): Promise<void> {
+    if (!this.initialized) {
+      await this.initialize();
     }
-    
-    const offset = options.offset || 0;
-    const limit = options.limit || 20;
-    
-    return logs.slice(offset, offset + limit);
-  }
-
-  public async clearLogs(): Promise<void> {
-    await this.ensureInitialized();
-    await this.refresh();
-    this.db.data.logs = [];
-    await this.persist();
-  }
-
-  public async exportData(): Promise<string> {
-    await this.ensureInitialized();
-    await this.refresh();
-    return JSON.stringify(this.db.data, null, 2);
-  }
-
-  public async importData(jsonData: string): Promise<void> {
-    await this.ensureInitialized();
-    const data = JSON.parse(jsonData) as StratixDatabase;
-    this.db.data = data;
-    await this.persist();
-  }
-
-  public getDbPath(): string {
-    return this.dbPath;
-  }
-
-  public async getMetadata(): Promise<{ createdAt: number; updatedAt: number }> {
-    await this.ensureInitialized();
-    await this.refresh();
-    return { ...this.db.data.metadata };
   }
 }
+
+export const dataStoreService = new StratixDataStore();

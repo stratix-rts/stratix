@@ -6,17 +6,17 @@ import type { ChatMessage, SavedCharacter } from '../types';
 import { marked } from 'marked';
 
 const THEME = {
-  bg: getToken('colors.background.secondary'),
-  panelBg: getToken('colors.background.secondary'),
-  panelBorder: getToken('colors.border.default'),
-  accent: getToken('colors.primary'),
-  accentDim: getToken('colors.secondary'),
-  text: getToken('colors.text.primary'),
-  textMuted: getToken('colors.text.muted'),
-  success: getToken('colors.semantic.success'),
-  error: getToken('colors.semantic.danger'),
-  userBg: getToken('colors.background.tertiary'),
-  aiBg: getToken('colors.background.tertiary'),
+  bg: 'var(--ds-bg-secondary)',
+  panelBg: 'var(--ds-bg-secondary)',
+  panelBorder: 'var(--ds-border)',
+  accent: 'var(--ds-brand-primary)',
+  accentDim: 'var(--ds-brand-secondary)',
+  text: 'var(--ds-text-primary)',
+  textMuted: 'var(--ds-text-muted)',
+  success: 'var(--ds-status-success)',
+  error: 'var(--ds-status-danger)',
+  userBg: 'var(--ds-bg-tertiary)',
+  aiBg: 'var(--ds-bg-tertiary)',
 };
 
 export interface AgentChatPanelConfig {
@@ -473,7 +473,7 @@ export class AgentChatPanel {
     const errorDiv = document.createElement('div');
     errorDiv.style.cssText = `
       padding: 10px 12px;
-      background: #2a1a1a;
+      background: var(--ds-bg-secondary);
       border-radius: 4px;
       border-left: 3px solid ${THEME.error};
       font-size: 11px;
@@ -530,7 +530,7 @@ export class AgentChatPanel {
           color: ${THEME.accent};
         }
         .markdown-content pre {
-          background: #0a0a12;
+          background: var(--ds-bg-primary);
           padding: 12px;
           border-radius: 4px;
           overflow-x: auto;

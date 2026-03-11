@@ -18,12 +18,16 @@ import {
 } from '../constants';
 import type { AnimationName } from '../types';
 
+// Phaser 图形对象使用数字颜色（运行时获取）
+const getPhaserColor = (tokenPath: string) => parseInt(getToken(tokenPath).replace('#', '0x'));
+
+// DOM 样式使用 CSS 变量
 const THEME = {
-  bg: parseInt(getToken('colors.background.tertiary').replace('#', '0x')),
-  border: parseInt(getToken('colors.border.default').replace('#', '0x')),
-  accent: parseInt(getToken('colors.primary').replace('#', '0x')),
-  text: getToken('colors.text.primary'),
-  textMuted: getToken('colors.text.muted')
+  bg: () => getPhaserColor('colors.background.tertiary'),
+  border: () => getPhaserColor('colors.border.default'),
+  accent: () => getPhaserColor('colors.primary'),
+  text: 'var(--ds-text-primary)',
+  textMuted: 'var(--ds-text-muted)'
 };
 
 export interface CharacterPreviewConfig {
@@ -162,7 +166,7 @@ export class CharacterPreview {
       frameCanvas.height = FRAME_SIZE;
       const ctx = frameCanvas.getContext('2d');
       if (ctx) {
-        ctx.fillStyle = '#1a1a2e';
+        ctx.fillStyle = getToken('colors.background.tertiary');
         ctx.fillRect(0, 0, FRAME_SIZE, FRAME_SIZE);
         this.scene.textures.addCanvas(frameKey, frameCanvas);
       }

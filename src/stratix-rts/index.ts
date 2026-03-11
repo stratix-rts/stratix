@@ -26,7 +26,7 @@ export function createStratixRTS(config: StratixRTSConfig): Phaser.Game {
     parent: config.parent,
     width: width,
     height: height,
-    backgroundColor: BG_COLOR,
+    backgroundColor: BG_COLOR(),
     pixelArt: true,
     scene: [StratixRTSGameScene, StratixRTSUIScene],
     scale: {

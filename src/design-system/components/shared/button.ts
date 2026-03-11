@@ -57,54 +57,54 @@ export type ButtonVariant = 'primary' | 'secondary' | 'success' | 'danger' | 'wa
 
 /**
  * 获取 Button Token
+ * 使用 CSS 变量以支持主题切换
  */
 export function getButtonToken(variant: ButtonVariant) {
-  const colors = getToken('colors');
-  
   const variants = {
     primary: {
-      background: colors.primary,
-      hover: '#00e6e6',
-      active: '#00cccc',
-      text: '#0d0d14',
+      background: 'var(--ds-btn-primary-bg)',
+      hover: 'var(--ds-btn-primary-bg-hover)',
+      text: 'var(--ds-btn-primary-text)',
       border: 'none',
     },
     secondary: {
-      background: 'transparent',
-      hover: 'rgba(0, 212, 255, 0.1)',
-      active: 'rgba(0, 212, 255, 0.2)',
-      text: '#ffffff',
-      border: '1px solid #2a2a3e',
+      background: 'var(--ds-btn-secondary-bg)',
+      hover: 'var(--ds-btn-secondary-bg-hover)',
+      text: 'var(--ds-btn-secondary-text)',
+      border: '1px solid var(--ds-border)',
     },
     success: {
-      background: '#00ff88',
-      hover: '#00e67a',
-      active: '#00cc70',
-      text: '#0d0d14',
+      background: 'var(--ds-status-success)',
+      hover: 'var(--ds-status-success)',
+      text: 'var(--ds-text-inverse)',
       border: 'none',
     },
     danger: {
-      background: '#ff4444',
-      hover: '#ff3333',
-      active: '#ff2222',
-      text: '#ffffff',
+      background: 'var(--ds-status-danger)',
+      hover: 'var(--ds-status-danger)',
+      text: 'var(--ds-text-inverse)',
       border: 'none',
     },
     warning: {
-      background: '#fbbf24',
-      hover: '#fbbf24',
-      active: '#fbbf24',
-      text: '#0d0d14',
+      background: 'var(--ds-status-warning)',
+      hover: 'var(--ds-status-warning)',
+      text: 'var(--ds-text-inverse)',
       border: 'none',
     },
   };
+  
+  const variantConfig = variants[variant];
   
   return {
     ...ButtonBaseConfig,
     style: {
       ...ButtonBaseConfig.style,
-      background: variants[variant].background,
-      border: variants[variant].border,
+      background: variantConfig.background,
+      border: variantConfig.border,
+      text: variantConfig.text,
+    },
+    hover: {
+      background: variantConfig.hover,
     },
   };
 }

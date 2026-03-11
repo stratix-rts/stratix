@@ -279,7 +279,7 @@ const icons = {
 
 .header {
   height: 56px;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  background: var(--ds-bg-secondary);
   border-bottom: 1px solid var(--ds-border);
   display: flex;
   align-items: center;
@@ -296,17 +296,13 @@ const icons = {
 }
 
 .logo-icon {
-  color: var(--ds-info);
-  filter: drop-shadow(0 0 10px rgba(0, 212, 255, 0.5));
+  color: var(--ds-brand-primary);
 }
 
 .logo-text {
   font-size: 18px;
   font-weight: 600;
-  background: linear-gradient(90deg, var(--ds-info), var(--ds-success));
-  -webkit-background-clip: text;
-  color: #00d4ff;
-  -webkit-text-fill-color: transparent;
+  color: var(--ds-text-primary);
 }
 
 .toolbar {

@@ -33,7 +33,7 @@ class DataStoreService {
   }
 
   private async doInitialize(dataDir?: string): Promise<void> {
-    const { store, templates, logs, backup } = await initializeDataStore(dataDir);
+    const { store, templates, logs, backup } = await initializeDataStore();
     
     this.dataStore = store;
     this.templateLibrary = templates;

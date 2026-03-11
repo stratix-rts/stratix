@@ -1,9 +1,15 @@
 import { Router, Request, Response } from 'express';
 import { ProjectService } from '../../project/ProjectService';
 import { ProjectConfig, ProjectZoneConfig, ProjectStatus, ProjectChannel, ProjectChannelMessage, MessageSender } from '../../../stratix-project/types';
+import { StatusSyncService } from '../websocket/StatusSync';
 
 const router = Router();
 const projectService = new ProjectService();
+let statusSyncService: StatusSyncService | null = null;
+
+export function setStatusSyncService(service: StatusSyncService) {
+  statusSyncService = service;
+}
 
 /**
  * POST /api/projects/initialize
@@ -39,7 +45,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
     } else if (priority) {
       projects = await projectService.getProjectsByPriority(parseInt(priority as string));
     } else {
-      projects = await projectService.getAllProjects();
+      projects = await projectService.getProjects();
     }
     
     res.json({
@@ -540,6 +546,15 @@ router.post('/:id/messages', async (req: Request, res: Response): Promise<void> 
         source
       }
     );
+
+    if (statusSyncService) {
+      statusSyncService.notifyNewMessage(message);
+      
+      const channel = await projectService.getChannel(projectId, channelId as string);
+      if (channel && channel.subscriberIds.length > 0) {
+        statusSyncService.notifyAgentsInChannel(channelId as string, channel.subscriberIds, message);
+      }
+    }
     
     res.json({
       success: true,

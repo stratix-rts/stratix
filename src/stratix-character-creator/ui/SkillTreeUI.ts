@@ -12,6 +12,12 @@ import { SkillTree } from '../core/SkillTree';
 import { SKILL_CATEGORIES, ATTRIBUTE_LABELS } from '../config/skillTreeConfig';
 import type { SkillNode, SkillTreeState } from '../types';
 
+const THEME = {
+  text: 'var(--ds-text-primary)',
+  textMuted: 'var(--ds-text-muted)',
+  textSecondary: 'var(--ds-text-secondary)',
+};
+
 export interface SkillTreeUIConfig {
   x: number;
   y: number;
@@ -91,25 +97,25 @@ export class SkillTreeUI {
       <div class="skill-tree-ui" style="
         width: ${this.config.width}px;
         height: ${this.config.height}px;
-        background: #1a1a2e;
-        border: 1px solid #4a4a6e;
+        background: var(--ds-bg-secondary);
+        border: 1px solid var(--ds-border);
         border-radius: 8px;
         overflow: hidden;
         font-family: system-ui, sans-serif;
-        color: #fff;
+        color: var(--ds-text-primary);
         display: flex;
         flex-direction: column;
       ">
         <div class="header" style="
           padding: 10px;
-          background: #2a2a3e;
-          border-bottom: 1px solid #4a4a6e;
+          background: var(--ds-bg-tertiary);
+          border-bottom: 1px solid var(--ds-border);
           display: flex;
           justify-content: space-between;
           align-items: center;
         ">
           <span style="font-size: 14px; font-weight: bold;">技能树</span>
-          <span class="points-info" style="font-size: 12px; color: #aaa;">
+          <span class="points-info" style="font-size: 12px; color: var(--ds-text-muted);">
             可用点数: <span class="remaining-points">${this.skillTree.getRemainingPoints()}</span>/${this.skillTree.getMaxPoints()}
           </span>
         </div>
@@ -133,8 +139,8 @@ export class SkillTreeUI {
         </div>
         <div class="attributes-panel" style="
           padding: 10px;
-          background: #2a2a3e;
-          border-top: 1px solid #4a4a6e;
+          background: var(--ds-bg-tertiary);
+          border-top: 1px solid var(--ds-border);
           max-height: 80px;
           overflow-y: auto;
         ">
@@ -160,8 +166,8 @@ export class SkillTreeUI {
           box-shadow: 0 0 15px currentColor;
         }
         .skill-node.selected {
-          box-shadow: 0 0 10px #00ff88;
-          border-color: #00ff88 !important;
+          box-shadow: 0 0 10px var(--ds-status-success);
+          border-color: var(--ds-status-success) !important;
         }
         .skill-node.locked {
           opacity: 0.4;
@@ -181,23 +187,23 @@ export class SkillTreeUI {
           line-height: 1.2;
         }
         .connection-line {
-          stroke: #4a4a6e;
+          stroke: var(--ds-border);
           stroke-width: 2;
         }
         .connection-line.active {
-          stroke: #00ff88;
+          stroke: var(--ds-status-success);
         }
         .attr-item {
           padding: 4px 8px;
-          background: #3a3a4e;
+          background: var(--ds-bg-tertiary);
           border-radius: 4px;
           font-size: 11px;
         }
         .attr-name {
-          color: #aaa;
+          color: ${THEME.textMuted};
         }
         .attr-value {
-          color: #00ff88;
+          color: var(--ds-status-success);
           font-weight: bold;
           margin-left: 4px;
         }
@@ -230,7 +236,7 @@ export class SkillTreeUI {
 
   private generateAttributesHtml(): string {
     if (Object.keys(this.currentAttributes).length === 0) {
-      return '<span style="color: #888; font-size: 12px;">选择技能节点以查看属性加成</span>';
+      return '<span style="color: ${THEME.textMuted}; font-size: 12px;">选择技能节点以查看属性加成</span>';
     }
 
     return Object.entries(this.currentAttributes)
@@ -327,8 +333,8 @@ export class SkillTreeUI {
     tooltip.className = 'skill-tooltip';
     tooltip.innerHTML = `
       <div style="font-weight: bold; margin-bottom: 4px;">${skill.name}</div>
-      <div style="font-size: 11px; color: #aaa; margin-bottom: 6px;">${skill.description}</div>
-      <div style="font-size: 10px; color: #00ff88;">
+      <div style="font-size: 11px; color: ${THEME.textMuted}; margin-bottom: 6px;">${skill.description}</div>
+      <div style="font-size: 10px; color: var(--ds-status-success);">
         ${Object.entries(skill.attributes).map(([k, v]) => `${ATTRIBUTE_LABELS[k] ?? k}: +${v}`).join(' | ')}
       </div>
     `;
@@ -336,12 +342,12 @@ export class SkillTreeUI {
       position: fixed;
       left: ${event.clientX + 10}px;
       top: ${event.clientY + 10}px;
-      background: #2a2a3e;
-      border: 1px solid #4a4a6e;
+      background: var(--ds-bg-tertiary);
+      border: 1px solid var(--ds-border);
       border-radius: 6px;
       padding: 10px;
       font-size: 12px;
-      color: #fff;
+      color: ${THEME.text};
       z-index: 10000;
       max-width: 200px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.3);

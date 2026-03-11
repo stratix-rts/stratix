@@ -7,13 +7,13 @@ import { OpenClawConnectionStore } from './OpenClawConnectionStore';
 export { StratixDataStore, TemplateLibrary, LogStore, BackupManager, OpenClawConnectionStore };
 export * from './types';
 
-export function createDataStore(dataDir?: string): {
+export function createDataStore(): {
   store: StratixDataStore;
   templates: TemplateLibrary;
   logs: LogStore;
   backup: BackupManager;
 } {
-  const store = new StratixDataStore(dataDir);
+  const store = new StratixDataStore();
   const templates = new TemplateLibrary(store);
   const logs = new LogStore(store);
   const backup = new BackupManager(store);
@@ -21,13 +21,13 @@ export function createDataStore(dataDir?: string): {
   return { store, templates, logs, backup };
 }
 
-export async function initializeDataStore(dataDir?: string): Promise<{
+export async function initializeDataStore(): Promise<{
   store: StratixDataStore;
   templates: TemplateLibrary;
   logs: LogStore;
   backup: BackupManager;
 }> {
-  const instance = createDataStore(dataDir);
+  const instance = createDataStore();
   await instance.store.initialize();
   await instance.templates.initialize();
   return instance;

@@ -13,15 +13,15 @@ import { unifiedOpenClawConnectionManager, type TailscaleNode, type ConnectionRe
 import type { OpenClawConnectionMethod } from '@/stratix-core/stratix-protocol';
 
 const THEME = {
-  bg: getToken('colors.background.secondary'),
-  border: getToken('colors.border.default'),
-  accent: getToken('colors.primary'),
-  accentDim: getToken('colors.secondary'),
-  text: getToken('colors.text.primary'),
-  textMuted: getToken('colors.text.muted'),
-  success: getToken('colors.semantic.success'),
-  error: getToken('colors.semantic.danger'),
-  warning: '#fbbf24',
+  bg: 'var(--ds-bg-secondary)',
+  border: 'var(--ds-border)',
+  accent: 'var(--ds-brand-primary)',
+  accentDim: 'var(--ds-brand-secondary)',
+  text: 'var(--ds-text-primary)',
+  textMuted: 'var(--ds-text-muted)',
+  success: 'var(--ds-status-success)',
+  error: 'var(--ds-status-danger)',
+  warning: 'var(--ds-status-warning)',
 };
 
 type PanelMode = 'pairing' | 'tailscale';
@@ -155,7 +155,7 @@ export class OpenClawConnectionPanel {
 
         <div class="status-bar" style="
           padding: 12px 16px;
-          background: #0d0d14;
+          background: var(--ds-bg-primary);
           border-top: 1px solid ${THEME.border};
           display: flex;
           align-items: center;
@@ -178,7 +178,7 @@ export class OpenClawConnectionPanel {
 
         <div class="actions" style="
           padding: 12px 16px;
-          background: #0d0d14;
+          background: var(--ds-bg-primary);
           border-top: 1px solid ${THEME.border};
           display: flex;
           justify-content: flex-end;
@@ -199,7 +199,7 @@ export class OpenClawConnectionPanel {
             background: ${THEME.success};
             border: none;
             border-radius: 4px;
-            color: #0d0d14;
+            color: var(--ds-bg-primary);
             font-size: 12px;
             font-family: inherit;
             cursor: pointer;
@@ -213,14 +213,14 @@ export class OpenClawConnectionPanel {
           border-color: ${THEME.accent} !important;
         }
         #connect-btn:hover {
-          background: #00ffaa !important;
+          background: var(--ds-status-success) !important;
         }
         .saved-connection-item {
           display: flex;
           align-items: center;
           padding: 8px 12px;
           margin-bottom: 4px;
-          background: #0a0a12;
+          background: var(--ds-bg-primary);
           border: 1px solid ${THEME.border};
           border-radius: 4px;
           cursor: pointer;
@@ -239,7 +239,7 @@ export class OpenClawConnectionPanel {
           align-items: center;
           padding: 10px 12px;
           margin-bottom: 4px;
-          background: #0a0a12;
+          background: var(--ds-bg-primary);
           border: 1px solid ${THEME.border};
           border-radius: 4px;
           cursor: pointer;
@@ -261,7 +261,7 @@ export class OpenClawConnectionPanel {
     return `
       <div id="config-pairing" class="config-section" style="display: ${this.currentMode === 'pairing' ? 'block' : 'none'};">
         <div class="prerequisite-box" style="
-          background: #1a1a2e;
+          background: var(--ds-bg-secondary);
           border: 1px solid ${THEME.border};
           border-radius: 4px;
           padding: 12px;
@@ -279,7 +279,7 @@ export class OpenClawConnectionPanel {
           <input type="text" id="pairing-endpoint" value="ws://127.0.0.1:18789" placeholder="ws://127.0.0.1:18789 或 wss://remote.server.com" style="
             width: 100%;
             padding: 10px 12px;
-            background: #0a0a12;
+            background: var(--ds-bg-primary);
             border: 1px solid ${THEME.border};
             border-radius: 4px;
             color: ${THEME.text};
@@ -296,7 +296,7 @@ export class OpenClawConnectionPanel {
           <input type="password" id="shared-token" placeholder="输入 gateway.auth.token" style="
             width: 100%;
             padding: 10px 12px;
-            background: #0a0a12;
+            background: var(--ds-bg-primary);
             border: 1px solid ${THEME.border};
             border-radius: 4px;
             color: ${THEME.text};
@@ -308,7 +308,7 @@ export class OpenClawConnectionPanel {
 
         <div id="pairing-status-box" style="
           display: none;
-          background: #1a1a2e;
+          background: var(--ds-bg-secondary);
           border: 1px solid ${THEME.border};
           border-radius: 4px;
           padding: 12px;
@@ -320,7 +320,7 @@ export class OpenClawConnectionPanel {
             display: none;
             margin-top: 8px;
             padding: 8px;
-            background: #0a0a12;
+            background: var(--ds-bg-primary);
             border-radius: 4px;
             font-size: 11px;
             font-family: monospace;
@@ -335,7 +335,7 @@ export class OpenClawConnectionPanel {
     return `
       <div id="config-tailscale" class="config-section" style="display: ${this.currentMode === 'tailscale' ? 'block' : 'none'};">
         <div class="prerequisite-box" style="
-          background: #1a1a2e;
+          background: var(--ds-bg-secondary);
           border: 1px solid ${THEME.border};
           border-radius: 4px;
           padding: 12px;
@@ -353,7 +353,7 @@ export class OpenClawConnectionPanel {
           <input type="text" id="tailscale-endpoint" placeholder="my-server.tailnet.ts.net" style="
             width: 100%;
             padding: 10px 12px;
-            background: #0a0a12;
+            background: var(--ds-bg-primary);
             border: 1px solid ${THEME.border};
             border-radius: 4px;
             color: ${THEME.text};
@@ -386,7 +386,7 @@ export class OpenClawConnectionPanel {
         <div id="tailscale-nodes-list" style="
           min-height: 60px;
           padding: 8px;
-          background: #0a0a12;
+          background: var(--ds-bg-primary);
           border: 1px solid ${THEME.border};
           border-radius: 4px;
         ">
@@ -619,7 +619,7 @@ export class OpenClawConnectionPanel {
           background: ${THEME.success};
           border: none;
           border-radius: 4px;
-          color: #0d0d14;
+          color: var(--ds-bg-primary);
           font-size: 11px;
           cursor: pointer;
         ">使用已有配置</button>

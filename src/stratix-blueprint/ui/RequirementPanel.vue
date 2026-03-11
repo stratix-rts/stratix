@@ -343,8 +343,8 @@ function getTaskTypeName(type: string): string {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: #333;
-  color: #888;
+  background: var(--ds-bg-tertiary);
+  color: var(--ds-text-muted);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -354,34 +354,34 @@ function getTaskTypeName(type: string): string {
 }
 
 .step.active .step-number {
-  background: #00aaff;
-  color: #fff;
+  background: var(--ds-brand-primary);
+  color: var(--ds-text-inverse);
 }
 
 .step.completed .step-number {
-  background: #00aa00;
-  color: #fff;
+  background: var(--ds-status-success);
+  color: var(--ds-text-inverse);
 }
 
 .step-label {
   font-size: 12px;
-  color: #888;
+  color: var(--ds-text-muted);
 }
 
 .step.active .step-label {
-  color: #00aaff;
+  color: var(--ds-brand-primary);
 }
 
 .step-line {
   width: 60px;
   height: 2px;
-  background: #333;
+  background: var(--ds-border);
   margin: 0 16px;
   margin-bottom: 24px;
 }
 
 .step-line.active {
-  background: #00aaff;
+  background: var(--ds-brand-primary);
 }
 
 .step-content {
@@ -406,7 +406,7 @@ function getTaskTypeName(type: string): string {
 }
 
 .file-name {
-  color: #00aaff;
+  color: var(--ds-brand-primary);
   font-size: 14px;
 }
 
@@ -421,16 +421,16 @@ function getTaskTypeName(type: string): string {
   align-items: flex-start;
   gap: 12px;
   padding: 12px;
-  background: #0a0a0a;
-  border: 1px solid #2a2a2a;
+  background: var(--ds-bg-primary);
+  border: 1px solid var(--ds-border);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .strategy-option:hover {
-  border-color: #00aaff;
-  background: #0f0f0f;
+  border-color: var(--ds-brand-primary);
+  background: var(--ds-bg-secondary);
 }
 
 .strategy-option input[type="radio"] {
@@ -444,12 +444,12 @@ function getTaskTypeName(type: string): string {
 }
 
 .option-label strong {
-  color: #fff;
+  color: var(--ds-text-primary);
   font-size: 14px;
 }
 
 .option-label small {
-  color: #888;
+  color: var(--ds-text-muted);
   font-size: 12px;
 }
 
@@ -466,8 +466,8 @@ function getTaskTypeName(type: string): string {
   width: 64px;
   height: 64px;
   margin: 0 auto;
-  border: 4px solid #333;
-  border-top-color: #00aaff;
+  border: 4px solid var(--ds-border);
+  border-top-color: var(--ds-brand-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -477,14 +477,14 @@ function getTaskTypeName(type: string): string {
 }
 
 .ai-processing h3 {
-  color: #fff;
+  color: var(--ds-text-primary);
   font-size: 18px;
   margin-bottom: 24px;
 }
 
 .streaming-output {
-  background: #0a0a0a;
-  border: 1px solid #2a2a2a;
+  background: var(--ds-bg-primary);
+  border: 1px solid var(--ds-border);
   border-radius: 6px;
   padding: 16px;
   margin-bottom: 24px;
@@ -495,7 +495,7 @@ function getTaskTypeName(type: string): string {
 
 .streaming-output pre {
   margin: 0;
-  color: #888;
+  color: var(--ds-text-muted);
   font-size: 12px;
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -508,7 +508,7 @@ function getTaskTypeName(type: string): string {
 
 .progress-bar {
   height: 8px;
-  background: #2a2a2a;
+  background: var(--ds-bg-tertiary);
   border-radius: 4px;
   overflow: hidden;
   margin-bottom: 8px;
@@ -516,13 +516,13 @@ function getTaskTypeName(type: string): string {
 
 .progress-fill {
   height: 100%;
-  background: #00aaff;
+  background: var(--ds-brand-primary);
   transition: width 0.3s;
 }
 
 .progress-text {
   font-size: 14px;
-  color: #888;
+  color: var(--ds-text-muted);
 }
 
 .blueprint-summary {
@@ -537,18 +537,18 @@ function getTaskTypeName(type: string): string {
 }
 
 .summary-item .label {
-  color: #888;
+  color: var(--ds-text-muted);
   font-size: 14px;
 }
 
 .summary-item .value {
-  color: #00aaff;
+  color: var(--ds-brand-primary);
   font-size: 14px;
   font-weight: bold;
 }
 
 .task-preview h4 {
-  color: #fff;
+  color: var(--ds-text-primary);
   font-size: 14px;
   margin-bottom: 12px;
 }
@@ -566,16 +566,16 @@ function getTaskTypeName(type: string): string {
   align-items: center;
   gap: 12px;
   padding: 12px;
-  background: #0a0a0a;
-  border: 1px solid #2a2a2a;
+  background: var(--ds-bg-primary);
+  border: 1px solid var(--ds-border);
   border-radius: 6px;
 }
 
 .task-priority {
   padding: 4px 8px;
-  background: #2c3e50;
+  background: var(--ds-bg-tertiary);
   border-radius: 4px;
-  color: #fff;
+  color: var(--ds-text-primary);
   font-size: 12px;
   font-weight: bold;
 }
@@ -585,7 +585,7 @@ function getTaskTypeName(type: string): string {
 }
 
 .task-name {
-  color: #fff;
+  color: var(--ds-text-primary);
   font-size: 14px;
   margin-bottom: 4px;
 }
@@ -607,7 +607,7 @@ function getTaskTypeName(type: string): string {
 .type-custom { background: #95A5A6; color: #fff; }
 
 .task-time {
-  color: #888;
+  color: var(--ds-text-muted);
   font-size: 12px;
 }
 
@@ -618,7 +618,7 @@ function getTaskTypeName(type: string): string {
 }
 
 .error-message {
-  color: #ff4444;
+  color: var(--ds-status-danger);
   font-size: 12px;
   margin-top: 4px;
 }

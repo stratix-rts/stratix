@@ -10,12 +10,12 @@ import {
   OpenAIChatCompletionRequest,
   OpenAIChatCompletionResponse,
 } from './types';
-import axios from 'axios';
+import axios, { AxiosInstance } from 'axios';
 
 export class RemoteOpenClawAdapter implements OpenClawAdapterInterface {
   private config: StratixOpenClawConfig;
   private subscribers: ((event: OpenClawEvent) => void)[] = [];
-  private axiosInstance;
+  private axiosInstance: AxiosInstance;
 
   constructor(config: StratixOpenClawConfig) {
     this.config = config;

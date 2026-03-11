@@ -5,6 +5,7 @@
 
 import Phaser from 'phaser';
 import CharacterCreatorScene from './CharacterCreatorScene';
+import { getToken } from '@/design-system/config';
 
 export interface CharacterCreatorConfig {
   parent: string | HTMLElement;
@@ -25,7 +26,7 @@ export function createCharacterCreator(config: CharacterCreatorConfig): Phaser.G
     parent: config.parent,
     width,
     height,
-    backgroundColor: 0x1a1a2e,
+    backgroundColor: parseInt(getToken('colors.background.base').replace('#', ''), 16),
     pixelArt: true,
     scene: [CharacterCreatorScene],
     scale: {

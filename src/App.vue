@@ -360,6 +360,6 @@ onUnmounted(() => {
 .game-container {
   width: 100%;
   height: 100%;
-  background: #1a1a2e;
+  background: var(--ds-bg-primary);
 }
 </style>

@@ -32,9 +32,9 @@ const storeRefreshing = computed(() => agentStore.isRefreshing.value);
 const lastRefreshTime = computed(() => agentStore.lastRefreshTime.value);
 
 const heroTypes = [
-  { type: 'writer' as const, name: '文案英雄', color: '#00ff88' },
-  { type: 'dev' as const, name: '开发英雄', color: '#00d4ff' },
-  { type: 'analyst' as const, name: '数据英雄', color: '#ff6b9d' }
+  { type: 'writer' as const, name: '文案英雄', color: 'var(--ds-status-success)' },
+  { type: 'dev' as const, name: '开发英雄', color: 'var(--ds-status-info)' },
+  { type: 'analyst' as const, name: '数据英雄', color: 'var(--ds-status-warning)' }
 ];
 
 const isRefreshing = computed(() => props.isRefreshing || storeRefreshing.value);
@@ -54,12 +54,12 @@ const getAgentStatus = (agent: any) => {
 
 const getStatusColor = (status: string) => {
   const colors: Record<string, string> = {
-    online: '#00ff88',
-    offline: getToken('colors.text.muted'),
-    busy: getToken('colors.warning'),
-    error: getToken('colors.semantic.danger')
+    online: 'var(--ds-status-success)',
+    offline: 'var(--ds-text-muted)',
+    busy: 'var(--ds-status-warning)',
+    error: 'var(--ds-status-danger)'
   };
-  return colors[status] || getToken('colors.text.muted');
+  return colors[status] || 'var(--ds-text-muted)';
 };
 
 const getStatusText = (status: string) => {
@@ -293,8 +293,8 @@ const handleClose = () => {
 }
 
 .agent-card.selected {
-  border-color: v-bind('getToken("colors.accent")');
-  background: rgba(0, 212, 255, 0.1);
+  border-color: var(--ds-brand-primary);
+  background: var(--ds-bg-tertiary);
 }
 
 .agent-avatar {

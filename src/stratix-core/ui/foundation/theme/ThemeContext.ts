@@ -159,6 +159,38 @@ export class ThemeContext {
   }
   
   /**
+   * 旧路径到新路径的映射表（向后兼容）
+   */
+  private tokenPathMapping: Record<string, string> = {
+    // 背景色映射
+    'colors.background.primary': 'colors.background.base',
+    'colors.background.secondary': 'colors.background.elevated',
+    'colors.background.tertiary': 'colors.background.overlay',
+    
+    // 品牌色映射
+    'colors.primary': 'colors.brand.primary',
+    'colors.secondary': 'colors.brand.secondary',
+    'colors.accent': 'colors.brand.accent',
+    
+    // 状态色映射
+    'colors.semantic.success': 'colors.status.success',
+    'colors.semantic.warning': 'colors.status.warning',
+    'colors.semantic.danger': 'colors.status.danger',
+    'colors.semantic.info': 'colors.status.info',
+    'colors.info': 'colors.status.info',
+    'colors.warning': 'colors.status.warning',
+    'colors.success': 'colors.status.success',
+    'colors.danger': 'colors.status.danger',
+  };
+
+  /**
+   * 将旧路径转换为新路径
+   */
+  private mapTokenPath(path: string): string {
+    return this.tokenPathMapping[path] || path;
+  }
+
+  /**
    * 获取Token值
    * 
    * @param path - Token路径，如 'colors.primary'
@@ -166,9 +198,19 @@ export class ThemeContext {
    */
   getTokenValue(path: string): any {
     const theme = this.getTheme();
-    return path.split('.').reduce((obj, key) => {
-      return obj?.[key as keyof typeof obj];
-    }, theme as any);
+    const mappedPath = this.mapTokenPath(path);
+    const parts = mappedPath.split('.');
+    
+    let result: any = theme;
+    for (const part of parts) {
+      if (result === undefined || result === null) {
+        console.warn(`[ThemeContext] Token path not found: "${path}" (mapped to "${mappedPath}")`);
+        return undefined;
+      }
+      result = result[part];
+    }
+    
+    return result;
   }
   
   /**

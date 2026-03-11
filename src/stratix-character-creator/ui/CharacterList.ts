@@ -12,16 +12,16 @@ import { characterStorage } from '../core/CharacterStorage';
 import type { SavedCharacter } from '../types';
 
 const THEME = {
-  bg: getToken('colors.background.secondary'),
-  panelBg: getToken('colors.background.secondary'),
-  panelBorder: getToken('colors.border.default'),
-  accent: getToken('colors.primary'),
-  accentDim: getToken('colors.secondary'),
-  text: getToken('colors.text.primary'),
-  textMuted: getToken('colors.text.muted'),
-  hoverBg: '#1a1a24',
-  success: getToken('colors.semantic.success'),
-  danger: getToken('colors.semantic.danger')
+  bg: 'var(--ds-bg-secondary)',
+  panelBg: 'var(--ds-bg-secondary)',
+  panelBorder: 'var(--ds-border)',
+  accent: 'var(--ds-brand-primary)',
+  accentDim: 'var(--ds-brand-secondary)',
+  text: 'var(--ds-text-primary)',
+  textMuted: 'var(--ds-text-muted)',
+  hoverBg: 'var(--ds-bg-tertiary)',
+  success: 'var(--ds-status-success)',
+  danger: 'var(--ds-status-danger)'
 };
 
 export interface CharacterListConfig {

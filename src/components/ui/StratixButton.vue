@@ -27,6 +27,13 @@ provideSizeContext(toRef(props, 'size'));
 
 const token = computed(() => getButtonToken(props.variant));
 const sizeConfig = computed(() => ButtonSizes[props.size]);
+
+// 按钮样式计算属性（处理默认值）
+const buttonStyle = computed(() => ({
+  background: token.value.style.background || 'transparent',
+  border: token.value.style.border || 'none',
+  text: token.value.style.text || '#ffffff',
+}));
 const iconSize = computed(() => {
   const sizes: Record<string, number> = { sm: 14, md: 16, lg: 18 };
   return sizes[props.size] || 16;
@@ -72,9 +79,9 @@ const handleClick = (event: MouseEvent) => {
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.15s ease;
-  border: v-bind('token.style.border');
-  background: v-bind('token.style.background');
-  color: v-bind('token.style.text || "#ffffff"');
+  border: v-bind('buttonStyle.border');
+  background: v-bind('buttonStyle.background');
+  color: v-bind('buttonStyle.text');
 }
 
 .stratix-btn:hover:not(.stratix-btn--disabled) {

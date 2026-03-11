@@ -200,10 +200,10 @@ watch(
   top: 80px;
   width: 320px;
   max-height: 600px;
-  background: #1a1a1a;
-  border: 1px solid #333;
+  background: var(--ds-bg-secondary);
+  border: 1px solid var(--ds-border);
   border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--ds-shadow-lg);
   z-index: 1000;
   display: flex;
   flex-direction: column;
@@ -214,17 +214,17 @@ watch(
   justify-content: space-between;
   align-items: center;
   padding: 16px;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--ds-border);
 }
 
 .panel-header h3 {
   margin: 0;
-  color: #fff;
+  color: var(--ds-text-primary);
   font-size: 16px;
 }
 
 .project-count {
-  color: #888;
+  color: var(--ds-text-muted);
   font-size: 12px;
 }
 
@@ -238,7 +238,7 @@ watch(
 .empty {
   text-align: center;
   padding: 40px 20px;
-  color: #888;
+  color: var(--ds-text-muted);
 }
 
 .loading {
@@ -251,8 +251,8 @@ watch(
 .loading-spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid #333;
-  border-top-color: #00aaff;
+  border: 3px solid var(--ds-border);
+  border-top-color: var(--ds-brand-primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -268,7 +268,7 @@ watch(
 
 .empty-hint {
   font-size: 12px;
-  color: #666;
+  color: var(--ds-text-muted);
   margin-top: 8px;
 }
 
@@ -279,8 +279,8 @@ watch(
 }
 
 .project-item {
-  background: #0a0a0a;
-  border: 1px solid #2a2a2a;
+  background: var(--ds-bg-primary);
+  border: 1px solid var(--ds-border);
   border-radius: 6px;
   padding: 12px;
   cursor: pointer;
@@ -288,15 +288,15 @@ watch(
 }
 
 .project-item:hover {
-  border-color: #00aaff;
-  background: #0f0f0f;
+  border-color: var(--ds-brand-primary);
+  background: var(--ds-bg-secondary);
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0, 170, 255, 0.2);
+  box-shadow: var(--ds-shadow-md);
 }
 
 .project-item.selected {
-  border-color: #00aaff;
-  background: #0a1a2a;
+  border-color: var(--ds-brand-primary);
+  background: var(--ds-bg-tertiary);
 }
 
 .project-header {
@@ -307,7 +307,7 @@ watch(
 }
 
 .project-name {
-  color: #fff;
+  color: var(--ds-text-primary);
   font-size: 14px;
   font-weight: 500;
   display: flex;
@@ -322,24 +322,24 @@ watch(
 }
 
 .status-pending {
-  background: #888888;
+  background: var(--ds-text-muted);
 }
 
 .status-active {
-  background: #00aaff;
+  background: var(--ds-brand-primary);
   animation: pulse 2s infinite;
 }
 
 .status-paused {
-  background: #ffaa00;
+  background: var(--ds-status-warning);
 }
 
 .status-completed {
-  background: #00ff00;
+  background: var(--ds-status-success);
 }
 
 .status-failed {
-  background: #ff4444;
+  background: var(--ds-status-danger);
 }
 
 @keyframes pulse {
@@ -353,8 +353,8 @@ watch(
 
 .project-priority {
   font-size: 11px;
-  color: #ffaa00;
-  background: rgba(255, 170, 0, 0.1);
+  color: var(--ds-status-warning);
+  background: var(--ds-bg-tertiary);
   padding: 2px 6px;
   border-radius: 3px;
 }
@@ -368,7 +368,7 @@ watch(
 
 .project-status {
   font-size: 12px;
-  color: #888;
+  color: var(--ds-text-muted);
 }
 
 .project-progress {
@@ -380,25 +380,25 @@ watch(
 .progress-bar {
   width: 80px;
   height: 4px;
-  background: #333;
+  background: var(--ds-bg-tertiary);
   border-radius: 2px;
   overflow: hidden;
 }
 
 .progress-fill {
   height: 100%;
-  background: #00ff88;
+  background: var(--ds-status-success);
   transition: width 0.3s;
 }
 
 .progress-text {
   font-size: 11px;
-  color: #00ff88;
+  color: var(--ds-status-success);
 }
 
 .project-tasks {
   font-size: 11px;
-  color: #666;
+  color: var(--ds-text-muted);
   margin-bottom: 8px;
 }
 
@@ -407,7 +407,7 @@ watch(
   gap: 6px;
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid #222;
+  border-top: 1px solid var(--ds-border);
 }
 
 .project-actions button {
@@ -421,39 +421,43 @@ watch(
 }
 
 .btn-start {
-  background: #00aa00;
-  color: #fff;
+  background: var(--ds-status-success);
+  color: var(--ds-text-inverse);
 }
 
 .btn-start:hover {
-  background: #00cc00;
+  background: var(--ds-status-success);
+  opacity: 0.9;
 }
 
 .btn-pause {
-  background: #ffaa00;
-  color: #000;
+  background: var(--ds-status-warning);
+  color: var(--ds-text-inverse);
 }
 
 .btn-pause:hover {
-  background: #ffcc00;
+  background: var(--ds-status-warning);
+  opacity: 0.9;
 }
 
 .btn-edit {
-  background: #00aaff;
-  color: #fff;
+  background: var(--ds-brand-primary);
+  color: var(--ds-text-inverse);
 }
 
 .btn-edit:hover {
-  background: #00ccff;
+  background: var(--ds-brand-primary);
+  opacity: 0.9;
 }
 
 .btn-delete {
-  background: #ff4444;
-  color: #fff;
+  background: var(--ds-status-danger);
+  color: var(--ds-text-inverse);
 }
 
 .btn-delete:hover {
-  background: #ff4444;
+  background: var(--ds-status-danger);
+  opacity: 0.9;
 }
 
 .list-enter-active,

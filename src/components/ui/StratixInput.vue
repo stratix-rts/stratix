@@ -76,19 +76,19 @@ const handleBlur = () => {
   align-items: center;
   gap: 8px;
   padding: v-bind('sizeConfig.padding');
-  background: #1a1a2e;
-  border: 1px solid #2a2a3e;
+  background: var(--ds-bg-secondary);
+  border: 1px solid var(--ds-border);
   border-radius: 4px;
   transition: all 0.15s ease;
 }
 
 .stratix-input-wrapper--focused {
-  border-color: #00ffff;
-  box-shadow: 0 0 0 2px rgba(0, 255, 255, 0.1);
+  border-color: var(--ds-brand-primary);
+  box-shadow: 0 0 0 2px var(--ds-shadow-sm);
 }
 
 .stratix-input-wrapper--error {
-  border-color: #ff4444;
+  border-color: var(--ds-status-danger);
 }
 
 .stratix-input {

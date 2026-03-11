@@ -1,6 +1,7 @@
 {
   "appId": "com.stratix.app",
   "productName": "Stratix",
+  "main": "dist/electron/electron/main.js",
   "directories": {
     "output": "release",
     "buildResources": "electron/resources"

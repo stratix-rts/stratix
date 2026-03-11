@@ -54,7 +54,8 @@ export class LogStore {
       updates.endTime = Date.now();
     }
     
-    return this.dataStore.updateLog(logId, updates);
+    await this.dataStore.updateLog(logId, updates);
+    return true;
   }
 
   public async markRunning(logId: string): Promise<boolean> {

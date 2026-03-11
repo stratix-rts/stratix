@@ -241,9 +241,18 @@ router.get('/tailscale/nodes', async (_req: Request, res: Response) => {
       return;
     }
 
-    const data = await response.json();
+    const data = await response.json() as Array<{
+      ID?: string;
+      NodeId?: string;
+      Name?: string;
+      HostName?: string;
+      IPAddresses?: string[];
+      TailscaleIPs?: string[];
+      Online?: boolean;
+      Latency?: unknown;
+    }>;
     
-    const nodes = (data || []).map((machine: any) => ({
+    const nodes = data.map((machine) => ({
       nodeId: machine.ID || machine.NodeId,
       name: machine.Name || machine.HostName,
       ipAddress: machine.IPAddresses?.[0] || machine.TailscaleIPs?.[0],

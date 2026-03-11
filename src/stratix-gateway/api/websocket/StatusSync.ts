@@ -8,9 +8,16 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { StratixStateSyncEvent, AgentStatusInfo } from '../../../stratix-core/stratix-protocol';
 import { ProjectChannelMessage } from '../../../stratix-project/types';
 
+interface ClientInfo {
+  ws: WebSocket;
+  type: 'frontend' | 'agent';
+  agentId?: string;
+}
+
 export class StatusSyncService {
   private wss: WebSocketServer;
   private clients: Set<WebSocket> = new Set();
+  private clientInfo: Map<WebSocket, ClientInfo> = new Map();
   private heartbeatInterval: NodeJS.Timeout | null = null;
 
   constructor(port: number = 3001) {
@@ -30,14 +37,36 @@ export class StatusSyncService {
         (ws as any).isAlive = true;
       });
 
+      ws.on('message', (data: Buffer) => {
+        try {
+          const message = JSON.parse(data.toString());
+          if (message.type === 'register') {
+            const clientType = message.clientType || 'frontend';
+            const agentId = message.agentId;
+            
+            this.clientInfo.set(ws, {
+              ws,
+              type: clientType,
+              agentId
+            });
+            
+            console.log(`[StatusSync] Client registered: ${clientType}${agentId ? ` (agent: ${agentId})` : ''}`);
+          }
+        } catch (e) {
+          console.warn('[StatusSync] Failed to parse client message:', e);
+        }
+      });
+
       ws.on('close', () => {
         this.clients.delete(ws);
+        this.clientInfo.delete(ws);
         console.log(`Client disconnected. Total clients: ${this.clients.size}`);
       });
 
       ws.on('error', (error) => {
         console.error('WebSocket error:', error);
         this.clients.delete(ws);
+        this.clientInfo.delete(ws);
       });
 
       this.sendWelcome(ws);
@@ -148,6 +177,36 @@ export class StatusSyncService {
       },
       timestamp: Date.now(),
       requestId: `stratix-req-${Date.now()}`
+    });
+  }
+
+  public notifyAgentsInChannel(channelId: string, subscriberIds: string[], message: ProjectChannelMessage): void {
+    console.log('[StatusSync] Notifying agents in channel:', {
+      channelId,
+      subscriberIds,
+      messageId: message.id,
+      sender: message.sender.name
+    });
+
+    const event: StratixStateSyncEvent = {
+      eventType: 'stratix:project_message_to_agent',
+      payload: {
+        channelId,
+        subscriberIds,
+        message
+      },
+      timestamp: Date.now(),
+      requestId: `stratix-req-${Date.now()}`
+    };
+
+    const messageStr = JSON.stringify(event);
+    
+    this.clientInfo.forEach((info, ws) => {
+      if (info.type === 'agent' && info.agentId && subscriberIds.includes(info.agentId)) {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(messageStr);
+        }
+      }
     });
   }
 

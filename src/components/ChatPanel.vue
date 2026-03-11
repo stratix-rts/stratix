@@ -517,8 +517,8 @@ defineExpose({
 
 .chat-sidebar {
   width: 240px;
-  background: #1a1a2e;
-  border-right: 1px solid #2a2a4e;
+  background: var(--ds-bg-secondary);
+  border-right: 1px solid var(--ds-border);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -526,12 +526,12 @@ defineExpose({
 
 .sidebar-section {
   padding: 16px;
-  border-bottom: 1px solid #2a2a4e;
+  border-bottom: 1px solid var(--ds-border);
 }
 
 .section-title {
   font-size: 11px;
-  color: #888;
+  color: var(--ds-text-muted);
   text-transform: uppercase;
   letter-spacing: 1px;
   margin-bottom: 12px;
@@ -554,7 +554,7 @@ defineExpose({
 }
 
 .agent-item:hover {
-  background: #2a2a4e;
+  background: var(--ds-bg-tertiary);
 }
 
 .agent-avatar {
@@ -573,8 +573,8 @@ defineExpose({
 .avatar-placeholder {
   width: 100%;
   height: 100%;
-  background: #00aaff;
-  color: #fff;
+  background: var(--ds-brand-primary);
+  color: var(--ds-text-inverse);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -589,7 +589,7 @@ defineExpose({
 
 .agent-name {
   font-size: 13px;
-  color: #fff;
+  color: var(--ds-text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -597,7 +597,7 @@ defineExpose({
 
 .agent-role {
   font-size: 11px;
-  color: #888;
+  color: var(--ds-text-muted);
 }
 
 .agent-status {
@@ -607,11 +607,11 @@ defineExpose({
 }
 
 .agent-status.online {
-  background: #00ff00;
+  background: var(--ds-status-success);
 }
 
 .agent-status.offline {
-  background: #888;
+  background: var(--ds-text-muted);
 }
 
 .agent-status.busy {
@@ -631,18 +631,18 @@ defineExpose({
   padding: 8px 12px;
   border-radius: 6px;
   cursor: pointer;
-  color: #888;
+  color: var(--ds-text-muted);
   transition: all 0.2s;
 }
 
 .channel-item:hover {
-  background: #2a2a4e;
-  color: #ccc;
+  background: var(--ds-bg-tertiary);
+  color: var(--ds-text-secondary);
 }
 
 .channel-item.active {
-  background: #00aaff22;
-  color: #00aaff;
+  background: var(--ds-bg-tertiary);
+  color: var(--ds-brand-primary);
 }
 
 .channel-icon {
@@ -662,8 +662,8 @@ defineExpose({
 
 .chat-header {
   padding: 16px 20px;
-  border-bottom: 1px solid #2a2a4e;
-  background: #1a1a2e;
+  border-bottom: 1px solid var(--ds-border);
+  background: var(--ds-bg-secondary);
 }
 
 .channel-info {
@@ -674,18 +674,18 @@ defineExpose({
 
 .channel-info .channel-icon {
   font-size: 18px;
-  color: #888;
+  color: var(--ds-text-muted);
 }
 
 .channel-info .channel-name {
   font-size: 16px;
   font-weight: bold;
-  color: #fff;
+  color: var(--ds-text-primary);
 }
 
 .channel-description {
   font-size: 12px;
-  color: #888;
+  color: var(--ds-text-muted);
   margin-top: 4px;
 }
 
@@ -702,14 +702,14 @@ defineExpose({
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #888;
+  color: var(--ds-text-muted);
 }
 
 .loading-spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid #2a2a4e;
-  border-top-color: #00aaff;
+  border: 3px solid var(--ds-border);
+  border-top-color: var(--ds-brand-primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   margin-bottom: 12px;
@@ -739,13 +739,13 @@ defineExpose({
 
 .message-item {
   padding: 12px;
-  background: #1a1a2e;
+  background: var(--ds-bg-secondary);
   border-radius: 8px;
 }
 
 .message-item.own-message {
-  background: #00aaff22;
-  border: 1px solid #00aaff44;
+  background: var(--ds-bg-tertiary);
+  border: 1px solid var(--ds-border);
 }
 
 .message-sender {
@@ -778,12 +778,12 @@ defineExpose({
 .sender-name {
   font-size: 13px;
   font-weight: bold;
-  color: #fff;
+  color: var(--ds-text-primary);
 }
 
 .sender-role {
   font-size: 11px;
-  color: #888;
+  color: var(--ds-text-muted);
 }
 
 .message-time {
@@ -793,19 +793,19 @@ defineExpose({
 
 .message-content {
   font-size: 14px;
-  color: #ccc;
+  color: var(--ds-text-secondary);
   line-height: 1.5;
 }
 
 .message-content .mention {
-  color: #00aaff;
+  color: var(--ds-brand-primary);
   font-weight: bold;
 }
 
 .message-input {
   padding: 16px;
-  border-top: 1px solid #2a2a4e;
-  background: #1a1a2e;
+  border-top: 1px solid var(--ds-border);
+  background: var(--ds-bg-secondary);
   display: flex;
   gap: 12px;
   align-items: flex-start;
@@ -817,17 +817,17 @@ defineExpose({
 }
 
 .message-input .stratix-textarea {
-  background: #0a0a12;
-  border-color: #2a2a4e;
-  color: #fff;
+  background: var(--ds-bg-primary);
+  border-color: var(--ds-border);
+  color: var(--ds-text-primary);
 }
 
 .message-input .stratix-textarea:focus {
-  border-color: #00aaff;
+  border-color: var(--ds-brand-primary);
 }
 
 .message-input .stratix-textarea::placeholder {
-  color: #666;
+  color: var(--ds-text-muted);
 }
 
 .input-wrapper {
@@ -840,13 +840,13 @@ defineExpose({
   bottom: 100%;
   left: 0;
   right: 0;
-  background: #1a1a2e;
-  border: 1px solid #2a2a4e;
+  background: var(--ds-bg-secondary);
+  border: 1px solid var(--ds-border);
   border-radius: 8px;
   max-height: 200px;
   overflow-y: auto;
   margin-bottom: 8px;
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--ds-shadow-md);
 }
 
 .popup-item {
@@ -868,17 +868,17 @@ defineExpose({
 
 .popup-item:hover,
 .popup-item.selected {
-  background: #00aaff22;
+  background: var(--ds-bg-tertiary);
 }
 
 .popup-item .item-label {
   font-weight: 500;
-  color: #fff;
+  color: var(--ds-text-primary);
   min-width: 80px;
 }
 
 .popup-item .item-desc {
-  color: #888;
+  color: var(--ds-text-muted);
   font-size: 12px;
 }
 
@@ -899,8 +899,8 @@ defineExpose({
 .avatar-placeholder-small {
   width: 100%;
   height: 100%;
-  background: #00aaff;
-  color: #fff;
+  background: var(--ds-brand-primary);
+  color: var(--ds-text-inverse);
   display: flex;
   align-items: center;
   justify-content: center;

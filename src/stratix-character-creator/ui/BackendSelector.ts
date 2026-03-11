@@ -16,15 +16,15 @@ import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClaw
 import { agentStore } from '@/stores/agentStore';
 
 const THEME = {
-  bg: getToken('colors.background.secondary'),
-  border: getToken('colors.border.default'),
-  accent: getToken('colors.primary'),
-  accentDim: getToken('colors.secondary'),
-  text: getToken('colors.text.primary'),
-  textMuted: getToken('colors.text.muted'),
-  inputBg: getToken('colors.background.tertiary'),
-  success: getToken('colors.semantic.success'),
-  error: getToken('colors.semantic.danger'),
+  bg: 'var(--ds-bg-secondary)',
+  border: 'var(--ds-border)',
+  accent: 'var(--ds-brand-primary)',
+  accentDim: 'var(--ds-brand-secondary)',
+  text: 'var(--ds-text-primary)',
+  textMuted: 'var(--ds-text-muted)',
+  inputBg: 'var(--ds-bg-tertiary)',
+  success: 'var(--ds-status-success)',
+  error: 'var(--ds-status-danger)',
 };
 
 export interface BackendSelectorConfig {

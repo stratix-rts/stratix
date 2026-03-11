@@ -274,7 +274,8 @@ export type StratixStateSyncEventType =
   | 'stratix:agent_create'
   | 'stratix:config_updated'
   | 'stratix:project_message_new'
-  | 'stratix:project_message_sync';
+  | 'stratix:project_message_sync'
+  | 'stratix:project_message_to_agent';
 
 /**
  * 前端操作事件（Stratix RTS / 指令面板 → 事件总线）
@@ -307,6 +308,7 @@ export interface StratixStateSyncEvent {
     channelId?: string;
     message?: any;
     messages?: any[];
+    subscriberIds?: string[];
   };
   timestamp: number;
   requestId: string;
