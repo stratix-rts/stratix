@@ -133,15 +133,15 @@ export async function startGatewayService(
     });
   });
   
-  // 初始化数据服务
-  console.log('Initializing data store...');
-  await dataStoreService.initialize(dataDir);
-  console.log('Data store initialized');
-  
   // 初始化SQLite数据库
   console.log('Initializing SQLite database...');
   const db = initializeDatabase({ dataDir });
   console.log('SQLite database initialized:', db.getPath());
+  
+  // 初始化数据服务
+  console.log('Initializing data store...');
+  await dataStoreService.initialize(dataDir);
+  console.log('Data store initialized');
   
   // 初始化 OpenClaw 连接配置存储
   const openClawConnectionStore = new OpenClawConnectionStore(dataDir);
