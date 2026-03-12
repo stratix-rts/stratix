@@ -148,6 +148,21 @@ export const Blue = {
   950: '#172554',
 } as const;
 
+/** 紫罗兰色系 */
+export const Violet = {
+  50: '#F5F3FF',
+  100: '#EDE9FE',
+  200: '#DDD6FE',
+  300: '#C4B5FD',
+  400: '#A78BFA',
+  500: '#8B5CF6',
+  600: '#7C3AED',
+  700: '#6D28D9',
+  800: '#5B21B6',
+  900: '#4C1D95',
+  950: '#2E1065',
+} as const;
+
 // ============ 主题色板 (Theme Primitives) ============
 
 /** 
@@ -212,28 +227,28 @@ export const MinimalPrimitives = {
   brand: {
     primary: Indigo[600],
     secondary: Indigo[400],
-    accent: Indigo[500],
+    accent: Violet[500],     // 使用紫色作为强调色，更活泼
   },
   
   background: {
-    base: '#ffffff',
-    elevated: '#f8fafc',
-    overlay: '#f1f5f9',
-    sunken: '#e2e8f0',
+    base: '#ffffff',         // 纯白背景
+    elevated: '#fafafa',     // 极浅的灰色
+    overlay: '#f5f5f5',      // 更中性的灰
+    sunken: '#eeeeee',       // 中性灰
   },
   
   border: {
-    subtle: '#f1f5f9',
-    default: '#e2e8f0',
-    strong: '#cbd5e1',
+    subtle: '#f0f0f0',       // 更中性的浅色边框
+    default: '#e0e0e0',
+    strong: '#bdbdbd',
     focus: Indigo[500],
   },
   
   text: {
-    primary: Slate[900],
-    secondary: Slate[600],
-    muted: Slate[400],
-    disabled: Slate[300],
+    primary: '#212121',      // 近黑色，更中性
+    secondary: '#616161',
+    muted: '#9e9e9e',
+    disabled: '#bdbdbd',
     inverse: '#ffffff',
   },
   
@@ -258,28 +273,28 @@ export const MinimalPrimitives = {
  */
 export const ProfessionalPrimitives = {
   brand: {
-    primary: Blue[800],
-    secondary: Slate[600],
-    accent: Blue[700],
+    primary: Blue[700],
+    secondary: Slate[500],
+    accent: Blue[600],
   },
   
   background: {
-    base: '#f8fafc',
-    elevated: '#ffffff',
-    overlay: '#f1f5f9',
-    sunken: '#e2e8f0',
+    base: '#f1f5f9',        // 比 Minimal 更深的灰蓝色背景
+    elevated: '#ffffff',     // 卡片纯白
+    overlay: '#e2e8f0',      // 悬浮层更深
+    sunken: '#cbd5e1',       // 凹陷区域
   },
   
   border: {
-    subtle: '#e2e8f0',
-    default: '#cbd5e1',
-    strong: '#94a3b8',
+    subtle: '#cbd5e1',       // 更明显的边框
+    default: '#94a3b8',
+    strong: '#64748b',
     focus: Blue[600],
   },
   
   text: {
-    primary: Slate[800],
-    secondary: Slate[600],
+    primary: Slate[900],     // 更深的文字颜色
+    secondary: Slate[700],
     muted: Slate[500],
     disabled: Slate[400],
     inverse: '#ffffff',

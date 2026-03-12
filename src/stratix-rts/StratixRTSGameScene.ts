@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { StratixAgentConfig } from '../stratix-core/stratix-protocol';
 import { MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, DEFAULT_ZOOM } from './constants';
+import { getToken } from '@/design-system/config';
 import { AgentSprite, AgentStatus, CommandStatus } from './sprites/AgentSprite';
 import { StratixRTSEventManager } from './StratixRTSEventManager';
 import { InputHandler, InputCallbacks, InputMode } from './utils/InputHandler';
@@ -55,27 +56,35 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   }
 
   private generatePlaceholderTextures(): void {
+    // 获取主题颜色并转换为 Phaser 数字格式
+    const hexToNumber = (hex: string) => parseInt(hex.replace('#', ''), 16);
+    const bgColor = hexToNumber(getToken('colors.background.base'));
+    const borderColor = hexToNumber(getToken('colors.border.default'));
+    const starColor = hexToNumber(getToken('colors.text.muted'));
+    
     const tileGraphics = this.make.graphics();
-    tileGraphics.fillStyle(0x1a1a2e, 1);
+    tileGraphics.fillStyle(bgColor, 1);
     tileGraphics.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
-    tileGraphics.lineStyle(1, 0x2a2a4e, 0.3);
+    tileGraphics.lineStyle(1, borderColor, 0.3);
     tileGraphics.strokeRect(0, 0, TILE_SIZE, TILE_SIZE);
     for (let i = 0; i < 3; i++) {
       const starX = Phaser.Math.Between(2, TILE_SIZE - 2);
       const starY = Phaser.Math.Between(2, TILE_SIZE - 2);
-      tileGraphics.fillStyle(0xffffff, Phaser.Math.FloatBetween(0.2, 0.5));
+      tileGraphics.fillStyle(starColor, Phaser.Math.FloatBetween(0.2, 0.5));
       tileGraphics.fillCircle(starX, starY, 1);
     }
     tileGraphics.generateTexture('stratix-tile', TILE_SIZE, TILE_SIZE);
     tileGraphics.destroy();
 
     const agentGraphics = this.make.graphics();
-    agentGraphics.fillStyle(0x00ff00, 1);
+    const successColor = hexToNumber(getToken('colors.status.success'));
+    const textColor = hexToNumber(getToken('colors.text.primary'));
+    agentGraphics.fillStyle(successColor, 1);
     agentGraphics.fillCircle(16, 16, 12);
-    agentGraphics.fillStyle(0xffffff, 1);
+    agentGraphics.fillStyle(textColor, 1);
     agentGraphics.fillCircle(12, 12, 3);
     agentGraphics.fillCircle(20, 12, 3);
-    agentGraphics.lineStyle(2, 0x00aa00, 1);
+    agentGraphics.lineStyle(2, successColor, 1);
     agentGraphics.beginPath();
     agentGraphics.arc(16, 18, 5, 0, Math.PI);
     agentGraphics.strokePath();

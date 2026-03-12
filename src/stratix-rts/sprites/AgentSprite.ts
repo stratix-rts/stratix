@@ -1,28 +1,40 @@
 import Phaser from 'phaser';
 import { StratixAgentConfig } from '../../stratix-core/stratix-protocol';
 import { LPC_DIRECTION_ROWS } from '@/stratix-character-creator/constants';
+import { getToken } from '@/design-system/config';
 
 export type AgentStatus = 'online' | 'offline' | 'busy' | 'error';
 export type CommandStatus = 'pending' | 'running' | 'success' | 'failed';
 export type AgentType = 'writer' | 'dev' | 'analyst' | string;
 
-export const COLORS = {
+// 辅助函数：将十六进制颜色字符串转换为 Phaser 数字格式
+const hexToNumber = (hex: string) => parseInt(hex.replace('#', ''), 16);
+
+// 动态获取主题颜色
+const getThemeColors = () => ({
   status: {
-    online: 0x00ff00,
-    offline: 0x888888,
-    busy: 0xffff00,
-    error: 0xff4444,
-    pending: 0x00ffff
+    online: hexToNumber(getToken('colors.status.success')),
+    offline: hexToNumber(getToken('colors.text.muted')),
+    busy: hexToNumber(getToken('colors.status.warning')),
+    error: hexToNumber(getToken('colors.status.danger')),
+    pending: hexToNumber(getToken('colors.status.info'))
   },
   type: {
-    writer: 0x4A90E2,
-    dev: 0x9B59B6,
-    analyst: 0xE67E22,
-    custom: 0x00ffff
+    writer: hexToNumber(getToken('colors.brand.secondary')),
+    dev: hexToNumber(getToken('colors.brand.primary')),
+    analyst: hexToNumber(getToken('colors.status.warning')),
+    custom: hexToNumber(getToken('colors.accent'))
   },
   ui: {
-    selection: 0x00ff00
+    selection: hexToNumber(getToken('colors.status.success'))
   }
+});
+
+// 向后兼容：保留 COLORS 对象，但使用 getter 动态获取
+export const COLORS = {
+  get status() { return getThemeColors().status; },
+  get type() { return getThemeColors().type; },
+  get ui() { return getThemeColors().ui; }
 };
 
 export class AgentSprite extends Phaser.GameObjects.Container {
@@ -218,7 +230,7 @@ export class AgentSprite extends Phaser.GameObjects.Container {
   }
 
   private drawTypeIcon(type: AgentType): void {
-    const color = COLORS.type[type as keyof typeof COLORS.type] || 0xffffff;
+    const color = COLORS.type[type as keyof typeof COLORS.type] || hexToNumber(getToken("colors.text.primary"));
     this.typeIcon.clear();
     this.typeIcon.fillStyle(color, 1);
     this.typeIcon.fillCircle(10, 10, 4);
@@ -233,7 +245,7 @@ export class AgentSprite extends Phaser.GameObjects.Container {
     this.stopBusyAnimation();
 
     if (status === 'offline') {
-      this.sprite.setTint(0x888888);
+      this.sprite.setTint(hexToNumber(getToken("colors.text.muted")));
       this.setAlpha(0.5);
     } else if (status === 'busy') {
       this.sprite.setTint(color);
@@ -356,11 +368,11 @@ export class AgentSprite extends Phaser.GameObjects.Container {
         lightBeam.clear();
         
         // 外层光柱（青色）
-        lightBeam.fillStyle(0x00ffff, beamData.alpha * 0.3);
+        lightBeam.fillStyle(hexToNumber(getToken("colors.brand.primary")), beamData.alpha * 0.3);
         lightBeam.fillRoundedRect(-30, -beamHeight / 2, 60, beamHeight, 10);
         
         // 内层光柱（白色）
-        lightBeam.fillStyle(0xffffff, beamData.alpha * 0.5);
+        lightBeam.fillStyle(hexToNumber(getToken("colors.text.primary")), beamData.alpha * 0.5);
         lightBeam.fillRoundedRect(-15, -beamHeight / 3, 30, beamHeight * 0.66, 5);
       },
       onComplete: () => {
@@ -393,9 +405,9 @@ export class AgentSprite extends Phaser.GameObjects.Container {
         this.updateDepth();
         
         // 角色显现时的闪光效果
-        this.sprite.setTint(0xffffff);
+        this.sprite.setTint(hexToNumber(getToken("colors.text.primary")));
         this.scene.time.delayedCall(100, () => {
-          this.sprite.setTint(0x00ffff);
+          this.sprite.setTint(hexToNumber(getToken("colors.brand.primary")));
           this.scene.time.delayedCall(100, () => {
             this.setAgentStatus(this.currentStatus);
           });
@@ -414,7 +426,7 @@ export class AgentSprite extends Phaser.GameObjects.Container {
       const startX = Math.cos(angle) * radius;
       const startY = 50;
 
-      particle.fillStyle(0x00ffff, 0.8);
+      particle.fillStyle(hexToNumber(getToken("colors.brand.primary")), 0.8);
       particle.fillCircle(0, 0, 3 + Math.random() * 3);
       particle.setPosition(startX, startY);
 
@@ -453,7 +465,7 @@ export class AgentSprite extends Phaser.GameObjects.Container {
       delay: 100,
       onUpdate: () => {
         groundRing.clear();
-        groundRing.lineStyle(3, 0x00ffff, ringData.alpha);
+        groundRing.lineStyle(3, hexToNumber(getToken("colors.brand.primary")), ringData.alpha);
         groundRing.strokeCircle(0, 0, ringData.radius);
       },
       onComplete: () => {

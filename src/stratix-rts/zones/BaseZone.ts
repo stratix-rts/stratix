@@ -1,4 +1,8 @@
 import Phaser from 'phaser';
+import { getToken } from '@/design-system/config';
+
+// 辅助函数：将十六进制颜色字符串转换为 Phaser 数字格式
+const hexToNumber = (hex: string) => parseInt(hex.replace('#', ''), 16);
 
 export type ZoneStatus = 'idle' | 'active' | 'busy' | 'error' | 'completed';
 
@@ -14,18 +18,18 @@ export interface BaseZoneConfig {
 export type CornerPosition = 'topLeft' | 'topRight' | 'bottomRight' | 'bottomLeft';
 
 const BASE_ZONE_COLORS = {
-  fence: 0x888888,
-  fill: 0x888888,
-  corner: 0xffaa00,
-  selected: 0x00ff00,
-  warning: 0xff0000,
-  handle: 0xffff00,
+  fence: hexToNumber(getToken("colors.text.muted")),
+  fill: hexToNumber(getToken("colors.text.muted")),
+  corner: hexToNumber(getToken("colors.status.warning")),
+  selected: hexToNumber(getToken("colors.status.success")),
+  warning: hexToNumber(getToken("colors.status.danger")),
+  handle: hexToNumber(getToken("colors.status.warning")),
   status: {
-    idle: 0x888888,
-    active: 0x00ff88,
-    busy: 0xffff00,
-    error: 0xff4444,
-    completed: 0x00ff00
+    idle: hexToNumber(getToken("colors.text.muted")),
+    active: hexToNumber(getToken("colors.status.success")),
+    busy: hexToNumber(getToken("colors.status.warning")),
+    error: hexToNumber(getToken("colors.status.danger")),
+    completed: hexToNumber(getToken("colors.status.success"))
   }
 };
 

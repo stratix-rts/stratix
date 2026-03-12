@@ -1,6 +1,10 @@
 import Phaser from 'phaser';
+import { getToken } from '@/design-system/config';
 import { BaseZone, BaseZoneConfig, ZoneStatus } from './BaseZone';
 import type { CornerPosition } from './BaseZone';
+
+// 辅助函数：将十六进制颜色字符串转换为 Phaser 数字格式
+const hexToNumber = (hex: string) => parseInt(hex.replace('#', ''), 16);
 
 export type TaskZoneStatus = 'idle' | 'active' | 'busy' | 'error';
 export type TaskZoneType = 'code' | 'analysis' | 'writing' | 'general';
@@ -11,23 +15,23 @@ export interface TaskZoneConfig extends BaseZoneConfig {
 }
 
 const TASK_ZONE_COLORS = {
-  fence: 0xff6600,
-  fill: 0xff6600,
-  corner: 0xffaa00,
-  selected: 0x00ff00,
-  warning: 0xff0000,
-  handle: 0xffff00,
+  fence: hexToNumber(getToken("colors.status.warning")),
+  fill: hexToNumber(getToken("colors.status.warning")),
+  corner: hexToNumber(getToken("colors.status.warning")),
+  selected: hexToNumber(getToken("colors.status.success")),
+  warning: hexToNumber(getToken("colors.status.danger")),
+  handle: hexToNumber(getToken("colors.status.warning")),
   status: {
-    idle: 0x888888,
-    active: 0x00ff88,
-    busy: 0xffff00,
-    error: 0xff4444
+    idle: hexToNumber(getToken("colors.text.muted")),
+    active: hexToNumber(getToken("colors.status.success")),
+    busy: hexToNumber(getToken("colors.status.warning")),
+    error: hexToNumber(getToken("colors.status.danger"))
   },
   type: {
-    code: 0x9B59B6,
-    analysis: 0xE67E22,
-    writing: 0x4A90E2,
-    general: 0x00ffff
+    code: hexToNumber(getToken("colors.brand.primary")),
+    analysis: hexToNumber(getToken("colors.status.warning")),
+    writing: hexToNumber(getToken("colors.brand.secondary")),
+    general: hexToNumber(getToken("colors.brand.primary"))
   }
 };
 

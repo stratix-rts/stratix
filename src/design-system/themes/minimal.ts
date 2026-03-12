@@ -32,14 +32,14 @@ const MinimalRadii = {
   full: '9999px',
 } as const;
 
-// 主题特定的阴影配置（更柔和）
+// 主题特定的阴影配置（极简、几乎不可见）
 const MinimalShadows = {
-  sm: '0 1px 2px rgba(15, 23, 42, 0.05)',
-  md: '0 4px 6px rgba(15, 23, 42, 0.07)',
-  lg: '0 10px 15px rgba(15, 23, 42, 0.1)',
-  xl: '0 20px 25px rgba(15, 23, 42, 0.12)',
-  '2xl': '0 25px 50px rgba(15, 23, 42, 0.15)',
-  inner: 'inset 0 2px 4px rgba(15, 23, 42, 0.06)',
+  sm: '0 1px 2px rgba(0, 0, 0, 0.04)',
+  md: '0 2px 4px rgba(0, 0, 0, 0.06)',
+  lg: '0 4px 8px rgba(0, 0, 0, 0.08)',
+  xl: '0 8px 16px rgba(0, 0, 0, 0.1)',
+  '2xl': '0 12px 24px rgba(0, 0, 0, 0.12)',
+  inner: 'inset 0 1px 2px rgba(0, 0, 0, 0.04)',
 } as const;
 
 // 主题特定的字体配置

@@ -1,10 +1,23 @@
 import Phaser from 'phaser';
+import { getToken } from '@/design-system/config';
 
+// 辅助函数：将十六进制颜色字符串转换为 Phaser 数字格式
+const hexToNumber = (hex: string) => parseInt(hex.replace('#', ''), 16);
+
+// 动态获取主题颜色
+const getTypeColors = () => ({
+  writer: hexToNumber(getToken("colors.brand.secondary")),
+  dev: hexToNumber(getToken("colors.brand.primary")),
+  analyst: hexToNumber(getToken("colors.status.warning")),
+  custom: hexToNumber(getToken("colors.accent"))
+});
+
+// 向后兼容：使用 getter 动态获取颜色
 const TYPE_COLORS: Record<string, number> = {
-  writer: 0x4A90E2,
-  dev: 0x9B59B6,
-  analyst: 0xE67E22,
-  custom: 0x00ffff
+  get writer() { return getTypeColors().writer; },
+  get dev() { return getTypeColors().dev; },
+  get analyst() { return getTypeColors().analyst; },
+  get custom() { return getTypeColors().custom; }
 };
 
 export class ThumbnailGenerator {
@@ -38,7 +51,7 @@ export class ThumbnailGenerator {
       const graphics = this.scene!.make.graphics();
       graphics.fillStyle(color, 1);
       graphics.fillCircle(16, 16, 14);
-      graphics.lineStyle(2, 0xffffff, 0.5);
+      graphics.lineStyle(2, hexToNumber(getToken("colors.text.primary")), 0.5);
       graphics.strokeCircle(16, 16, 14);
       graphics.generateTexture(textureKey, 32, 32);
       graphics.destroy();

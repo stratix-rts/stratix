@@ -22,24 +22,24 @@ import { Depth } from '../tokens/depth';
 import { IconSizes } from '../icons/registry';
 import { generateAllSemanticTokens } from '../semantic/_generator';
 
-// 主题特定的圆角配置（标准圆角）
+// 主题特定的圆角配置（标准圆角，比 Minimal 更小）
 const ProfessionalRadii = {
   none: '0',
   sm: '2px',
-  md: '6px',
-  lg: '10px',
-  xl: '16px',
+  md: '4px',
+  lg: '6px',
+  xl: '8px',
   full: '9999px',
 } as const;
 
-// 主题特定的阴影配置（保守稳重）
+// 主题特定的阴影配置（更明显的阴影）
 const ProfessionalShadows = {
-  sm: '0 1px 3px rgba(30, 41, 59, 0.08)',
-  md: '0 4px 6px rgba(30, 41, 59, 0.1)',
-  lg: '0 8px 12px rgba(30, 41, 59, 0.12)',
-  xl: '0 12px 24px rgba(30, 41, 59, 0.15)',
-  '2xl': '0 20px 40px rgba(30, 41, 59, 0.18)',
-  inner: 'inset 0 2px 4px rgba(30, 41, 59, 0.06)',
+  sm: '0 1px 2px rgba(15, 23, 42, 0.08)',
+  md: '0 2px 4px rgba(15, 23, 42, 0.12)',
+  lg: '0 4px 8px rgba(15, 23, 42, 0.15)',
+  xl: '0 8px 16px rgba(15, 23, 42, 0.18)',
+  '2xl': '0 12px 24px rgba(15, 23, 42, 0.2)',
+  inner: 'inset 0 2px 4px rgba(15, 23, 42, 0.06)',
 } as const;
 
 // 主题特定的字体配置（更注重可读性）
