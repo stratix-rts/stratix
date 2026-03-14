@@ -2,11 +2,13 @@
  * Stratix Gateway - 状态同步服务
  * 
  * 通过 WebSocket 实时推送 Agent 和指令状态到前端
+ * 监听 GatewayEventBus 将内部事件转发到 WebSocket
  */
 
 import { WebSocketServer, WebSocket } from 'ws';
 import { StratixStateSyncEvent, AgentStatusInfo } from '../../../stratix-core/stratix-protocol';
 import { ProjectChannelMessage } from '../../../stratix-project/types';
+import { gatewayEventBus, ChannelMessageEvent } from '../../GatewayEventBus';
 
 interface ClientInfo {
   ws: WebSocket;
@@ -19,17 +21,19 @@ export class StatusSyncService {
   private clients: Set<WebSocket> = new Set();
   private clientInfo: Map<WebSocket, ClientInfo> = new Map();
   private heartbeatInterval: NodeJS.Timeout | null = null;
+  private unsubscribeChannelMessage: (() => void) | null = null;
 
   constructor(port: number = 3001) {
     this.wss = new WebSocketServer({ port });
     this.setupServer();
     this.startHeartbeat();
+    this.setupEventBusListeners();
   }
 
   private setupServer(): void {
     this.wss.on('connection', (ws: WebSocket) => {
       this.clients.add(ws);
-      console.log(`Client connected. Total clients: ${this.clients.size}`);
+      console.log(`[StatusSync] Client connected. Total clients: ${this.clients.size}`);
 
       (ws as any).isAlive = true;
 
@@ -60,16 +64,42 @@ export class StatusSyncService {
       ws.on('close', () => {
         this.clients.delete(ws);
         this.clientInfo.delete(ws);
-        console.log(`Client disconnected. Total clients: ${this.clients.size}`);
+        console.log(`[StatusSync] Client disconnected. Total clients: ${this.clients.size}`);
       });
 
       ws.on('error', (error) => {
-        console.error('WebSocket error:', error);
+        console.error('[StatusSync] WebSocket error:', error);
         this.clients.delete(ws);
         this.clientInfo.delete(ws);
       });
 
       this.sendWelcome(ws);
+    });
+  }
+
+  private setupEventBusListeners(): void {
+    // 监听 channel 消息事件，转发到 WebSocket
+    this.unsubscribeChannelMessage = gatewayEventBus.onChannelMessage((event: ChannelMessageEvent) => {
+      // 广播新消息给所有前端客户端
+      this.broadcast({
+        eventType: 'stratix:project_message_new',
+        payload: {
+          projectId: event.projectId,
+          channelId: event.channelId,
+          message: event.message
+        },
+        timestamp: Date.now(),
+        requestId: `stratix-req-${Date.now()}`
+      });
+
+      // 单独通知被提及的 agent（通过 WebSocket）
+      if (event.message.mentions && event.message.mentions.length > 0) {
+        for (const agentId of event.message.mentions) {
+          if (event.subscriberIds.includes(agentId)) {
+            this.notifyAgentMention(agentId, event);
+          }
+        }
+      }
     });
   }
 
@@ -80,7 +110,9 @@ export class StatusSyncService {
       timestamp: Date.now(),
       requestId: `stratix-req-${Date.now()}`
     };
-    ws.send(JSON.stringify(welcomeMessage));
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(welcomeMessage));
+    }
   }
 
   private startHeartbeat(): void {
@@ -102,6 +134,28 @@ export class StatusSyncService {
     this.clients.forEach(client => {
       if (client.readyState === WebSocket.OPEN) {
         client.send(message);
+      }
+    });
+  }
+
+  private notifyAgentMention(agentId: string, event: ChannelMessageEvent): void {
+    const messageStr = JSON.stringify({
+      eventType: 'stratix:project_message_to_agent',
+      payload: {
+        channelId: event.channelId,
+        subscriberIds: event.subscriberIds,
+        message: event.message
+      },
+      timestamp: Date.now(),
+      requestId: `stratix-req-${Date.now()}`
+    });
+
+    // 发送给通过 WebSocket 连接的 agent
+    this.clientInfo.forEach((info, ws) => {
+      if (info.type === 'agent' && info.agentId === agentId) {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(messageStr);
+        }
       }
     });
   }
@@ -139,80 +193,12 @@ export class StatusSyncService {
     });
   }
 
-  public notifyNewMessage(message: ProjectChannelMessage): void {
-    console.log('[StatusSync] Broadcasting new message:', {
-      id: message.id,
-      projectId: message.projectId,
-      channelId: message.channelId,
-      sender: message.sender.name,
-      content: message.content.slice(0, 50),
-      mentions: message.mentions
-    });
-
-    this.broadcast({
-      eventType: 'stratix:project_message_new',
-      payload: {
-        projectId: message.projectId,
-        channelId: message.channelId,
-        message
-      },
-      timestamp: Date.now(),
-      requestId: `stratix-req-${Date.now()}`
-    });
-  }
-
-  public notifyMessageSync(projectId: string, channelId: string, messages: ProjectChannelMessage[]): void {
-    console.log('[StatusSync] Broadcasting message sync:', {
-      projectId,
-      channelId,
-      count: messages.length
-    });
-
-    this.broadcast({
-      eventType: 'stratix:project_message_sync',
-      payload: {
-        projectId,
-        channelId,
-        messages
-      },
-      timestamp: Date.now(),
-      requestId: `stratix-req-${Date.now()}`
-    });
-  }
-
-  public notifyAgentsInChannel(channelId: string, subscriberIds: string[], message: ProjectChannelMessage): void {
-    console.log('[StatusSync] Notifying agents in channel:', {
-      channelId,
-      subscriberIds,
-      messageId: message.id,
-      sender: message.sender.name
-    });
-
-    const event: StratixStateSyncEvent = {
-      eventType: 'stratix:project_message_to_agent',
-      payload: {
-        channelId,
-        subscriberIds,
-        message
-      },
-      timestamp: Date.now(),
-      requestId: `stratix-req-${Date.now()}`
-    };
-
-    const messageStr = JSON.stringify(event);
-    
-    this.clientInfo.forEach((info, ws) => {
-      if (info.type === 'agent' && info.agentId && subscriberIds.includes(info.agentId)) {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(messageStr);
-        }
-      }
-    });
-  }
-
   public close(): void {
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
+    }
+    if (this.unsubscribeChannelMessage) {
+      this.unsubscribeChannelMessage();
     }
     this.wss.close();
   }

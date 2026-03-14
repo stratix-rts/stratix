@@ -119,18 +119,20 @@ export class ProjectService {
       throw new Error(`Project not found: ${projectId}`);
     }
 
+    // 始终确保订阅 channel（即使 agent 已经在项目中）
+    await this.autoSubscribeChannels(projectId, agentId);
+
     if (!project.presentAgentIds.includes(agentId)) {
       project.presentAgentIds.push(agentId);
       const updated = await this.updateProject(projectId, {
         presentAgentIds: project.presentAgentIds
       });
       
-      await this.autoSubscribeChannels(projectId, agentId);
-      
       console.log(`[ProjectService] Agent ${agentId} entered project ${projectId}`);
       return updated;
     }
 
+    console.log(`[ProjectService] Agent ${agentId} already in project ${projectId}, re-subscribed to channels`);
     return project;
   }
 
@@ -284,6 +286,8 @@ export class ProjectService {
     await this.ensureInitialized();
 
     const mentions = options?.mentions || this.extractMentions(content);
+    console.log(`[ProjectService] sendMessage extracted mentions:`, mentions, `from content: "${content.slice(0, 50)}..."`);
+    
     const now = Date.now();
     const message: ProjectChannelMessage = {
       id: generateId('msg'),
@@ -326,7 +330,9 @@ export class ProjectService {
   }
 
   private extractMentions(content: string): string[] {
-    const mentionRegex = /@(\w+)/g;
+    // 匹配 @名字，支持中英文、数字、下划线、空格等常见字符
+    // @ 后面跟着非空格字符，直到遇到空格或字符串结束
+    const mentionRegex = /@([^\s@]+)/g;
     const mentions: string[] = [];
     let match;
     while ((match = mentionRegex.exec(content)) !== null) {

@@ -86,6 +86,13 @@ export default class StratixRTSUIScene extends Phaser.Scene {
       getSelectedZone: () => gameScene.getSelectedZone(),
       onSkillSelect: (skill: Skill) => this.handleSkillSelect(skill),
       onCommandExecute: (command: string) => this.handleCommandExecute(command),
+      onChatClick: (agentIds: string[]) => this.handleChatClick(agentIds),
+      onConfigClick: (agentId: string) => this.handleConfigClick(agentId),
+      onTaskClick: (agentIds: string[]) => this.handleTaskClick(agentIds),
+      onStopClick: (agentIds: string[]) => this.handleStopClick(agentIds),
+      onAgentDeselect: (agentId: string) => this.handleAgentDeselect(agentId),
+      onSelectAll: () => this.handleSelectAll(),
+      onDeselectAll: () => this.handleDeselectAll(),
       statsCollector: gameScene.getStatsCollector(),
     });
 
@@ -117,6 +124,28 @@ export default class StratixRTSUIScene extends Phaser.Scene {
       rtsEventBus.on('scene:ui:update_selection', (data) => {
         this.selectedAgentIds = data.selectedAgentIds;
         this.selectedZoneIds = data.selectedZoneIds;
+        
+        if (this.uiComponents?.commandPanel) {
+          if (this.selectedAgentIds.length > 1) {
+            const agentsInfo: any[] = [];
+            this.selectedAgentIds.forEach(agentId => {
+              const agent = this.getAgentInfoById(agentId);
+              if (agent) {
+                agentsInfo.push(agent);
+              }
+            });
+            if (agentsInfo.length > 0) {
+              this.uiComponents.commandPanel.updateSelectedAgents(agentsInfo);
+            }
+          } else if (this.selectedAgentIds.length === 1) {
+            const agent = this.getAgentInfoById(this.selectedAgentIds[0]);
+            if (agent) {
+              this.uiComponents.commandPanel.updateAgentInfo(agent);
+            }
+          } else {
+            this.uiComponents.commandPanel.updateAgentInfo(null);
+          }
+        }
       })
     );
 
@@ -173,6 +202,65 @@ export default class StratixRTSUIScene extends Phaser.Scene {
         agentIds: this.selectedAgentIds,
       });
     }
+  }
+
+  private handleChatClick(agentIds: string[]): void {
+    rtsEventBus.emit('vue:ui:chat_click' as any, { agentIds });
+    rtsEventBus.emit('game:ui:chat_click' as any, { agentIds });
+  }
+
+  private handleConfigClick(agentId: string): void {
+    rtsEventBus.emit('vue:ui:config_click' as any, { agentId });
+    rtsEventBus.emit('game:ui:config_click' as any, { agentId });
+  }
+
+  private handleTaskClick(agentIds: string[]): void {
+    rtsEventBus.emit('vue:ui:task_click' as any, { agentIds });
+    rtsEventBus.emit('game:ui:task_click' as any, { agentIds });
+  }
+
+  private handleStopClick(agentIds: string[]): void {
+    rtsEventBus.emit('vue:game:stop_agents' as any, { agentIds });
+    rtsEventBus.emit('game:vue:stop_agents' as any, { agentIds });
+  }
+
+  private handleAgentDeselect(agentId: string): void {
+    rtsEventBus.emit('vue:game:deselect_agent' as any, { agentId });
+    rtsEventBus.emit('game:vue:deselect_agent' as any, { agentId });
+  }
+
+  private handleSelectAll(): void {
+    const gameScene = rtsEventBus.getScene('game') as any;
+    if (gameScene) {
+      const agentSprites = gameScene.getAgentSprites();
+      const allAgentIds = Array.from(agentSprites.keys());
+      rtsEventBus.emit('vue:game:select_agents' as any, { agentIds: allAgentIds });
+    }
+  }
+
+  private handleDeselectAll(): void {
+    rtsEventBus.emit('vue:game:deselect_all' as any, {});
+    rtsEventBus.emit('game:vue:deselect_all' as any, {});
+  }
+
+  private getAgentInfoById(agentId: string): any {
+    const gameScene = rtsEventBus.getScene('game') as any;
+    if (!gameScene) return null;
+    
+    const agentSprites = gameScene.getAgentSprites();
+    const agentSprite = agentSprites.get(agentId);
+    
+    if (agentSprite) {
+      return {
+        agentId: agentId,
+        name: agentSprite.agentName || agentId,
+        type: agentSprite.agentType || 'Unknown',
+        status: agentSprite.agentStatus || 'offline',
+        position: { x: agentSprite.x || 0, y: agentSprite.y || 0 },
+      };
+    }
+    
+    return null;
   }
 
   resize(width: number, height: number): void {

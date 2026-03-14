@@ -10,7 +10,7 @@ app.use(ElementPlus);
 // 初始化 Design System（自动注入 CSS 变量）
 initDesignSystem();
 
-// 切换到专业主题
-setTheme('professional');
+// 切换到赛博朋克主题
+setTheme('cyberpunk');
 
 app.mount('#app');

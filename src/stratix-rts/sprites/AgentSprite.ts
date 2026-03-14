@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { StratixAgentConfig } from '../../stratix-core/stratix-protocol';
 import { LPC_DIRECTION_ROWS } from '@/stratix-character-creator/constants';
-import { getToken } from '@/design-system/config';
+import { getToken, getCurrentTheme } from '@/design-system/config';
 
 export type AgentStatus = 'online' | 'offline' | 'busy' | 'error';
 export type CommandStatus = 'pending' | 'running' | 'success' | 'failed';
@@ -49,6 +49,7 @@ export class AgentSprite extends Phaser.GameObjects.Container {
   private currentStatus: AgentStatus = 'online';
   private isSelected: boolean = false;
   private busyTween: Phaser.Tweens.Tween | null = null;
+  private breathingTween: Phaser.Tweens.Tween | null = null;
   private isDragging: boolean = false;
   private dragOffset: { x: number; y: number } = { x: 0, y: 0 };
   private customTextureKey: string | null = null;
@@ -99,7 +100,9 @@ export class AgentSprite extends Phaser.GameObjects.Container {
     console.log(`[AgentSprite] Sprite bounds:`, this.sprite.getBounds());
     console.log(`[AgentSprite] Sprite displayWidth: ${this.sprite.displayWidth}, displayHeight: ${this.sprite.displayHeight}`);
     
-    if (textureKey && config.profile) {
+    if (isPlaceholder) {
+      this.startBreathingAnimation();
+    } else if (textureKey && config.profile) {
       this.sprite.setScale(0.75);
       console.log(`[AgentSprite] Applied scale 0.75, new size: ${this.sprite.displayWidth}x${this.sprite.displayHeight}`);
       this.playAnimation('idle', LPC_DIRECTION_ROWS.RIGHT);
@@ -142,8 +145,31 @@ export class AgentSprite extends Phaser.GameObjects.Container {
     this.customTextureKey = newTextureKey;
     this.isUsingPlaceholder = false;
     
-    this.sprite.setTexture(newTextureKey);
+    this.stopBreathingAnimation();
     
+    this.scene.tweens.add({
+      targets: this,
+      scaleX: 0.5,
+      scaleY: 0.5,
+      duration: 150,
+      ease: 'Power2',
+      onComplete: () => {
+        this.sprite.setTexture(newTextureKey);
+        
+        if (newTextureKey !== 'stratix-agent' && this.characterId) {
+          this.sprite.setScale(0.75);
+        }
+        
+        this.scene.tweens.add({
+          targets: this,
+          scaleX: 1,
+          scaleY: 1,
+          duration: 300,
+          ease: 'Back.easeOut'
+        });
+      }
+    });
+
     if (currentAnim) {
       const animName = currentAnim.key.split('_').slice(1, 3).join('_');
       const direction = this.currentDirection;
@@ -152,14 +178,81 @@ export class AgentSprite extends Phaser.GameObjects.Container {
       this.playAnimation('idle', this.currentDirection);
     }
 
-    this.scene.tweens.add({
-      targets: this.sprite,
-      alpha: { from: 0.5, to: 1 },
-      duration: 300,
-      ease: 'Sine.easeOut'
-    });
-
     console.log(`[AgentSprite] Replaced texture for ${this.agentId} with ${newTextureKey}`);
+  }
+
+  private startBreathingAnimation(): void {
+    if (!this.scene || this.breathingTween) return;
+    
+    console.log(`[AgentSprite] Starting Siri-style breathing animation for ${this.agentId}`);
+    
+    const theme = getCurrentTheme();
+    const primaryColor = parseInt(theme.colors.brand.primary.replace('#', ''), 16);
+    const secondaryColor = parseInt(theme.colors.brand.secondary.replace('#', ''), 16);
+    
+    const glowOuter = this.scene.add.graphics();
+    const glowMiddle = this.scene.add.graphics();
+    const glowInner = this.scene.add.graphics();
+    
+    glowOuter.setDepth(-1);
+    glowMiddle.setDepth(-1);
+    glowInner.setDepth(-1);
+    
+    this.add(glowOuter);
+    this.add(glowMiddle);
+    this.add(glowInner);
+    
+    const drawGlows = (phase: number) => {
+      glowOuter.clear();
+      glowMiddle.clear();
+      glowInner.clear();
+      
+      const pulse1 = 0.5 + 0.5 * Math.sin(phase * 2);
+      const pulse2 = 0.5 + 0.5 * Math.sin(phase * 2.5 + 1);
+      const pulse3 = 0.5 + 0.5 * Math.sin(phase * 1.8 + 2);
+      
+      glowOuter.fillStyle(primaryColor, 0.08 + pulse1 * 0.12);
+      glowOuter.fillCircle(0, 0, 50 + pulse1 * 20);
+      
+      glowMiddle.fillStyle(secondaryColor, 0.15 + pulse2 * 0.2);
+      glowMiddle.fillCircle(0, 0, 35 + pulse2 * 12);
+      
+      glowInner.fillStyle(0xffffff, 0.4 + pulse3 * 0.3);
+      glowInner.fillCircle(0, 0, 20 + pulse3 * 8);
+    };
+    
+    drawGlows(0);
+    
+    this.breathingTween = this.scene.tweens.add({
+      targets: this.sprite,
+      scaleX: 1.15,
+      scaleY: 1.15,
+      alpha: 0.85,
+      duration: 1200,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+      onUpdate: (tween) => {
+        const progress = tween.progress * Math.PI * 2;
+        drawGlows(progress);
+      }
+    });
+    
+    this.setData('breathingGlows', [glowOuter, glowMiddle, glowInner]);
+  }
+
+  private stopBreathingAnimation(): void {
+    if (this.breathingTween) {
+      this.breathingTween.stop();
+      this.breathingTween = null;
+      this.sprite.setScale(1);
+      this.sprite.setAlpha(1);
+    }
+    
+    const glows = this.getData('breathingGlows') as Phaser.GameObjects.Graphics[];
+    if (glows) {
+      glows.forEach(g => g.destroy());
+    }
   }
 
   public getCharacterId(): string | null {

@@ -4,7 +4,7 @@
  */
 
 import Phaser from 'phaser';
-import { getCurrentTheme } from '@/design-system/config';
+import { getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
 
 export interface SelectBoxConfig {

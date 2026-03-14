@@ -40,6 +40,16 @@ export interface AgentInfo {
   skills?: Record<string, number>;
 }
 
+export interface CommandPanelCallbacks {
+  onChatClick: (agentIds: string[]) => void;
+  onConfigClick: (agentId: string) => void;
+  onTaskClick: (agentIds: string[]) => void;
+  onStopClick: (agentIds: string[]) => void;
+  onAgentDeselect?: (agentId: string) => void;
+  onSelectAll?: () => void;
+  onDeselectAll?: () => void;
+}
+
 export interface Skill {
   skillId: string;
   name: string;
@@ -54,13 +64,16 @@ type SelectionType = 'none' | 'agent' | 'zone';
 export class CommandPanelV2 extends EnhancedUIComponent {
   private tabContainer: Phaser.GameObjects.Container | null = null;
   private contentContainer: Phaser.GameObjects.Container | null = null;
+  private actionButtonContainer: Phaser.GameObjects.Container | null = null;
   private currentTab: TabType = 'detail';
   private currentSelectionType: SelectionType = 'none';
   private currentAgent: AgentInfo | null = null;
+  private currentAgents: AgentInfo[] = [];
   private currentZone: ZoneInfo | null = null;
   private currentSkills: Skill[] = [];
   private onSkillSelect: (skill: Skill) => void;
   private onCommandExecute: (command: string) => void;
+  private callbacks: CommandPanelCallbacks;
   
   private backgroundColor: ReactiveToken<string>;
   private backgroundSecondaryColor: ReactiveToken<string>;
@@ -82,7 +95,13 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     width: number,
     height: number,
     onSkillSelect: (skill: Skill) => void,
-    onCommandExecute: (command: string) => void
+    onCommandExecute: (command: string) => void,
+    callbacks: CommandPanelCallbacks = {
+      onChatClick: () => {},
+      onConfigClick: () => {},
+      onTaskClick: () => {},
+      onStopClick: () => {},
+    }
   ) {
     super(scene, {
       x,
@@ -94,6 +113,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     
     this.onSkillSelect = onSkillSelect;
     this.onCommandExecute = onCommandExecute;
+    this.callbacks = callbacks;
     
     this.backgroundColor = this.useToken('colors.background.primary');
     this.backgroundSecondaryColor = this.useToken('colors.background.secondary');
@@ -115,8 +135,8 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     this.container.setDepth(1000);
     
     this.createBackground();
-    this.createTabBar();
     this.createContentContainer();
+    this.createActionButtonContainer();
     this.showEmptyState();
     
     this.onCreate();
@@ -203,6 +223,124 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     (this.container as Phaser.GameObjects.Container).add(this.contentContainer);
   }
   
+  private createActionButtonContainer(): void {
+    this.actionButtonContainer = this.scene.add.container(12, (this.config.height || 180) - 40);
+    (this.container as Phaser.GameObjects.Container).add(this.actionButtonContainer);
+    this.renderActionButtons();
+  }
+  
+  private renderActionButtons(): void {
+    this.actionButtonContainer?.removeAll(true);
+    
+    const isMultiSelect = this.currentAgents.length > 1;
+    const buttonWidth = 70;
+    const buttonHeight = 28;
+    const buttonSpacing = 8;
+    
+    let buttons: { key: string; label: string; icon: string; enabled: boolean }[];
+    
+    if (isMultiSelect) {
+      buttons = [
+        { key: 'chat', label: '群聊', icon: '💬', enabled: true },
+        { key: 'task', label: '任务', icon: '📋', enabled: true },
+        { key: 'stop', label: '停止', icon: '⏹️', enabled: true },
+      ];
+    } else {
+      buttons = [
+        { key: 'chat', label: '聊天', icon: '💬', enabled: true },
+        { key: 'config', label: '配置', icon: '⚙️', enabled: true },
+        { key: 'task', label: '任务', icon: '📋', enabled: true },
+        { key: 'stop', label: '停止', icon: '⏹️', enabled: true },
+      ];
+    }
+    
+    const totalWidth = buttons.length * buttonWidth + (buttons.length - 1) * buttonSpacing;
+    const startX = ((this.config.width || 500) - 24 - totalWidth) / 2;
+    
+    buttons.forEach((btn, index) => {
+      const x = startX + index * (buttonWidth + buttonSpacing);
+      const button = this.createActionButton(x, 0, buttonWidth, buttonHeight, btn);
+      this.actionButtonContainer?.add(button);
+    });
+  }
+  
+  private createActionButton(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    btn: { key: string; label: string; icon: string; enabled: boolean }
+  ): Phaser.GameObjects.Container {
+    const container = this.scene.add.container(x, y);
+    
+    const bg = this.scene.add.graphics();
+    bg.fillStyle(this.hexToNumber(this.backgroundTertiaryColor.get()), 1);
+    bg.fillRoundedRect(0, 0, width, height, 4);
+    bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.3);
+    bg.strokeRoundedRect(0, 0, width, height, 4);
+    container.add(bg);
+    
+    const hitArea = this.scene.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0);
+    hitArea.setInteractive({ useHandCursor: true });
+    container.add(hitArea);
+    
+    const iconText = this.scene.add.text(8, height / 2, btn.icon, {
+      fontSize: '12px',
+    });
+    iconText.setOrigin(0, 0.5);
+    container.add(iconText);
+    
+    const labelText = this.createText(24, height / 2, btn.label, {
+      fontSize: '11px',
+      color: this.textPrimaryColor.get(),
+    });
+    labelText.setOrigin(0, 0.5);
+    container.add(labelText);
+    
+    hitArea.on('pointerdown', () => {
+      if (!btn.enabled) return;
+      
+      const agentIds = this.currentAgents.map(a => a.agentId);
+      const singleAgentId = this.currentAgent?.agentId;
+      
+      switch (btn.key) {
+        case 'chat':
+          this.callbacks.onChatClick(agentIds);
+          break;
+        case 'config':
+          if (singleAgentId) {
+            this.callbacks.onConfigClick(singleAgentId);
+          }
+          break;
+        case 'task':
+          this.callbacks.onTaskClick(agentIds);
+          break;
+        case 'stop':
+          this.callbacks.onStopClick(agentIds);
+          break;
+      }
+    });
+    
+    hitArea.on('pointerover', () => {
+      if (!btn.enabled) return;
+      bg.clear();
+      bg.fillStyle(this.hexToNumber(this.accentColor.get()), 0.3);
+      bg.fillRoundedRect(0, 0, width, height, 4);
+      bg.lineStyle(1, this.hexToNumber(this.accentColor.get()), 0.6);
+      bg.strokeRoundedRect(0, 0, width, height, 4);
+    });
+    
+    hitArea.on('pointerout', () => {
+      bg.clear();
+      bg.fillStyle(this.hexToNumber(this.backgroundTertiaryColor.get()), 1);
+      bg.fillRoundedRect(0, 0, width, height, 4);
+      bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.3);
+      bg.strokeRoundedRect(0, 0, width, height, 4);
+    });
+    
+    return container;
+  }
+  
   private switchTab(tab: TabType): void {
     if (this.currentTab === tab) return;
     
@@ -214,10 +352,19 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   private renderContent(): void {
     this.contentContainer?.removeAll(true);
     
-    if (this.currentTab === 'detail') {
-      this.renderDetailContent();
-    } else {
-      this.renderSkillsContent();
+    if (this.currentSelectionType === 'none') {
+      this.showEmptyState();
+      return;
+    }
+    
+    if (this.currentSelectionType === 'agent') {
+      if (this.currentAgents.length > 1) {
+        this.renderMultiAgentDetail();
+      } else if (this.currentAgent) {
+        this.renderAgentDetail(this.currentAgent);
+      }
+    } else if (this.currentSelectionType === 'zone' && this.currentZone) {
+      this.renderZoneDetail(this.currentZone);
     }
   }
   
@@ -227,11 +374,170 @@ export class CommandPanelV2 extends EnhancedUIComponent {
       return;
     }
     
-    if (this.currentSelectionType === 'agent' && this.currentAgent) {
-      this.renderAgentDetail(this.currentAgent);
+    if (this.currentSelectionType === 'agent') {
+      if (this.currentAgents.length > 1) {
+        this.renderMultiAgentDetail();
+      } else if (this.currentAgent) {
+        this.renderAgentDetail(this.currentAgent);
+      }
     } else if (this.currentSelectionType === 'zone' && this.currentZone) {
       this.renderZoneDetail(this.currentZone);
     }
+  }
+  
+  private renderMultiAgentDetail(): void {
+    const contentWidth = (this.config.width || 500) - 24;
+    let yOffset = 0;
+    
+    const headerText = this.createText(0, yOffset, '选中头像列表', {
+      fontSize: '12px',
+      fontStyle: 'bold',
+      color: this.textSecondaryColor.get(),
+    });
+    this.contentContainer?.add(headerText);
+    yOffset += 20;
+    
+    const avatarSize = 40;
+    const avatarSpacing = 8;
+    const avatarsPerRow = Math.floor((contentWidth + avatarSpacing) / (avatarSize + avatarSpacing));
+    const maxVisibleAvatars = avatarsPerRow * 2;
+    const displayAgents = this.currentAgents.slice(0, maxVisibleAvatars);
+    
+    displayAgents.forEach((agent, index) => {
+      const row = Math.floor(index / avatarsPerRow);
+      const col = index % avatarsPerRow;
+      const x = col * (avatarSize + avatarSpacing);
+      const y = yOffset + row * (avatarSize + avatarSpacing);
+      
+      const avatarContainer = this.createAvatarItem(x, y, avatarSize, agent);
+      this.contentContainer?.add(avatarContainer);
+    });
+    
+    yOffset += Math.ceil(displayAgents.length / avatarsPerRow) * (avatarSize + avatarSpacing);
+    
+    if (this.currentAgents.length > maxVisibleAvatars) {
+      const moreText = this.createText(0, yOffset, `+${this.currentAgents.length - maxVisibleAvatars} 个`, {
+        fontSize: '11px',
+        color: this.textMutedColor.get(),
+      });
+      this.contentContainer?.add(moreText);
+      yOffset += 20;
+    }
+    
+    yOffset += 8;
+    
+    const countText = this.createText(0, yOffset, `已选择 ${this.currentAgents.length} 个 Agent`, {
+      fontSize: '12px',
+      fontStyle: 'bold',
+      color: this.textPrimaryColor.get(),
+    });
+    this.contentContainer?.add(countText);
+    yOffset += 24;
+    
+    const buttonWidth = 60;
+    const buttonHeight = 24;
+    const buttonSpacing = 8;
+    
+    const selectAllBtn = this.createSmallButton(0, yOffset, buttonWidth, buttonHeight, '全选', () => {
+      this.callbacks.onSelectAll?.();
+    });
+    this.contentContainer?.add(selectAllBtn);
+    
+    const deselectAllBtn = this.createSmallButton(buttonWidth + buttonSpacing, yOffset, buttonWidth, buttonHeight, '取消', () => {
+      this.callbacks.onDeselectAll?.();
+    });
+    this.contentContainer?.add(deselectAllBtn);
+  }
+  
+  private createAvatarItem(x: number, y: number, size: number, agent: AgentInfo): Phaser.GameObjects.Container {
+    const container = this.scene.add.container(x, y);
+    
+    const bg = this.scene.add.graphics();
+    bg.fillStyle(this.hexToNumber(this.backgroundTertiaryColor.get()), 1);
+    bg.fillRoundedRect(0, 0, size, size, 6);
+    bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.3);
+    bg.strokeRoundedRect(0, 0, size, size, 6);
+    container.add(bg);
+    
+    const icon = this.scene.add.text(size / 2, size / 2, '👤', {
+      fontSize: `${size * 0.5}px`,
+    });
+    icon.setOrigin(0.5);
+    container.add(icon);
+    
+    const statusDot = this.scene.add.graphics();
+    const statusColor = this.getStatusColor(agent.status);
+    statusDot.fillStyle(this.hexToNumber(statusColor), 1);
+    statusDot.fillCircle(size - 6, size - 6, 5);
+    container.add(statusDot);
+    
+    const hitArea = this.scene.add.rectangle(size / 2, size / 2, size, size, 0x000000, 0);
+    hitArea.setInteractive({ useHandCursor: true });
+    container.add(hitArea);
+    
+    hitArea.on('pointerdown', () => {
+      this.callbacks.onAgentDeselect?.(agent.agentId);
+    });
+    
+    hitArea.on('pointerover', () => {
+      bg.clear();
+      bg.fillStyle(this.hexToNumber(this.dangerColor.get()), 0.3);
+      bg.fillRoundedRect(0, 0, size, size, 6);
+      bg.lineStyle(1, this.hexToNumber(this.dangerColor.get()), 0.6);
+      bg.strokeRoundedRect(0, 0, size, size, 6);
+    });
+    
+    hitArea.on('pointerout', () => {
+      bg.clear();
+      bg.fillStyle(this.hexToNumber(this.backgroundTertiaryColor.get()), 1);
+      bg.fillRoundedRect(0, 0, size, size, 6);
+      bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.3);
+      bg.strokeRoundedRect(0, 0, size, size, 6);
+    });
+    
+    return container;
+  }
+  
+  private createSmallButton(x: number, y: number, width: number, height: number, label: string, onClick: () => void): Phaser.GameObjects.Container {
+    const container = this.scene.add.container(x, y);
+    
+    const bg = this.scene.add.graphics();
+    bg.fillStyle(this.hexToNumber(this.backgroundSecondaryColor.get()), 1);
+    bg.fillRoundedRect(0, 0, width, height, 4);
+    bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.3);
+    bg.strokeRoundedRect(0, 0, width, height, 4);
+    container.add(bg);
+    
+    const hitArea = this.scene.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0);
+    hitArea.setInteractive({ useHandCursor: true });
+    container.add(hitArea);
+    
+    const labelText = this.createText(width / 2, height / 2, label, {
+      fontSize: '11px',
+      color: this.textPrimaryColor.get(),
+    });
+    labelText.setOrigin(0.5);
+    container.add(labelText);
+    
+    hitArea.on('pointerdown', onClick);
+    
+    hitArea.on('pointerover', () => {
+      bg.clear();
+      bg.fillStyle(this.hexToNumber(this.accentColor.get()), 0.3);
+      bg.fillRoundedRect(0, 0, width, height, 4);
+      bg.lineStyle(1, this.hexToNumber(this.accentColor.get()), 0.6);
+      bg.strokeRoundedRect(0, 0, width, height, 4);
+    });
+    
+    hitArea.on('pointerout', () => {
+      bg.clear();
+      bg.fillStyle(this.hexToNumber(this.backgroundSecondaryColor.get()), 1);
+      bg.fillRoundedRect(0, 0, width, height, 4);
+      bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.3);
+      bg.strokeRoundedRect(0, 0, width, height, 4);
+    });
+    
+    return container;
   }
   
   private renderAgentDetail(agent: AgentInfo): void {
@@ -518,12 +824,27 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     
     this.currentSelectionType = agent ? 'agent' : 'none';
     this.currentAgent = agent;
+    this.currentAgents = agent ? [agent] : [];
     
     if (this.currentTab !== 'detail') {
       this.currentTab = 'detail';
       this.renderTabs();
     }
     this.renderContent();
+    this.renderActionButtons();
+  }
+  
+  public updateSelectedAgents(agents: AgentInfo[]): void {
+    this.currentAgents = agents;
+    this.currentAgent = agents.length === 1 ? agents[0] : null;
+    this.currentSelectionType = agents.length > 0 ? 'agent' : 'none';
+    
+    if (this.currentTab !== 'detail') {
+      this.currentTab = 'detail';
+      this.renderTabs();
+    }
+    this.renderContent();
+    this.renderActionButtons();
   }
   
   public updateZoneInfo(zone: ZoneInfo | null): void {
@@ -534,12 +855,15 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     
     this.currentSelectionType = zone ? 'zone' : 'none';
     this.currentZone = zone;
+    this.currentAgents = [];
+    this.currentAgent = null;
     
     if (this.currentTab !== 'detail') {
       this.currentTab = 'detail';
       this.renderTabs();
     }
     this.renderContent();
+    this.renderActionButtons();
   }
   
   public setSkills(skills: Skill[]): void {
@@ -611,8 +935,8 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   protected updateThemeStyles(): void {
     (this.container as Phaser.GameObjects.Container)?.removeAll(true);
     this.createBackground();
-    this.createTabBar();
     this.createContentContainer();
+    this.createActionButtonContainer();
     this.renderContent();
   }
   
@@ -637,6 +961,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   destroy(): void {
     this.tabContainer?.destroy();
     this.contentContainer?.destroy();
+    this.actionButtonContainer?.destroy();
     super.destroy();
   }
 }

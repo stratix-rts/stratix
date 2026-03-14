@@ -4,6 +4,7 @@ import { createStratixRTS } from './stratix-rts';
 import { StratixEventBus, StratixAgentConfig, StratixFrontendOperationEvent } from './stratix-core';
 import MainLayout from './components/MainLayout.vue';
 import CharacterCreatorModal from './components/CharacterCreatorModal.vue';
+import AgentChatModal from './components/AgentChatModal.vue';
 import ProjectConfigPanel from './stratix-project/ui/ProjectConfigPanel.vue';
 import { agentStore } from './stores/agentStore';
 import type { SavedCharacter } from './stratix-character-creator/types';
@@ -17,6 +18,8 @@ const commandLogs = ref<any[]>([]);
 const showCharacterCreator = ref(false);
 const editCharacterId = ref<string | undefined>(undefined);
 const showTaskModal = ref(false);
+const showChatModal = ref(false);
+const chatAgentIds = ref<string[]>([]);
 const selectedProjectId = ref<string | null>(null);
 const selectedProjectPath = ref<string | null>(null);
 const showProjectConfig = ref(false);
@@ -271,7 +274,7 @@ onMounted(async () => {
     game.events.on('ready', () => {
       isGameReady.value = true;
       setTimeout(() => {
-        agents.value.forEach(config => addAgentToRTS(config));
+        Promise.all(agents.value.map(config => addAgentToRTS(config)));
       }, 100);
       
       const scene = game!.scene.getScene('StratixRTSGameScene') as any;
@@ -290,6 +293,33 @@ onMounted(async () => {
       }
       
       rtsEventBus.on('game:ui:project_created', handleProjectCreated);
+      rtsEventBus.on('game:ui:config_click', ({ agentId }: { agentId: string }) => {
+        openCharacterCreator(agentId.replace('custom-', ''));
+      });
+      rtsEventBus.on('game:ui:task_click', ({ agentIds }: { agentIds: string[] }) => {
+        if (agentIds.length > 0) {
+          const agentId = agentIds[0];
+          const agent = agents.value.find(a => a.agentId === agentId);
+          if (agent) {
+            handleOpenTaskModal(agentId, agent.config?.projectPath || '');
+          }
+        }
+      });
+      rtsEventBus.on('game:ui:stop_agents', async ({ agentIds }: { agentIds: string[] }) => {
+        try {
+          for (const agentId of agentIds) {
+            await fetch(`/api/agents/${agentId}/stop`, {
+              method: 'POST',
+            });
+          }
+        } catch (error) {
+          console.error('[App] Failed to stop agents:', error);
+        }
+      });
+      rtsEventBus.on('game:ui:chat_click', ({ agentIds }: { agentIds: string[] }) => {
+        chatAgentIds.value = agentIds;
+        showChatModal.value = true;
+      });
     });
   }
   
@@ -307,6 +337,21 @@ onUnmounted(() => {
   }
   
   rtsEventBus.off('game:ui:project_created', handleProjectCreated);
+  rtsEventBus.off('game:ui:config_click', (({ agentId }: { agentId: string }) => {
+    openCharacterCreator(agentId.replace('custom-', ''));
+  }) as any);
+  rtsEventBus.off('game:ui:task_click', (({ agentIds }: { agentIds: string[] }) => {
+    if (agentIds.length > 0) {
+      const agentId = agentIds[0];
+      const agent = agents.value.find(a => a.agentId === agentId);
+      if (agent) {
+        handleOpenTaskModal(agentId, agent.config?.projectPath || '');
+      }
+    }
+  }) as any);
+  rtsEventBus.off('game:ui:stop_agents', (({ agentIds }: { agentIds: string[] }) => {
+    console.log('Stop agents:', agentIds);
+  }) as any);
   
   if (game) {
     game.destroy(true);
@@ -344,6 +389,13 @@ onUnmounted(() => {
     @created="handleCharacterCreated"
     @updated="handleCharacterUpdated"
     @deleted="handleCharacterDeleted"
+  />
+  
+  <AgentChatModal
+    :visible="showChatModal"
+    :agent-ids="chatAgentIds"
+    :mode="chatAgentIds.length > 1 ? 'group' : 'single'"
+    @close="showChatModal = false"
   />
   
   <ProjectConfigPanel

@@ -2,9 +2,14 @@ import { Router, Request, Response } from 'express';
 import { ProjectService } from '../../project/ProjectService';
 import { ProjectConfig, ProjectZoneConfig, ProjectStatus, ProjectChannel, ProjectChannelMessage, MessageSender } from '../../../stratix-project/types';
 import { StatusSyncService } from '../websocket/StatusSync';
+import { AgentOrchestrationService } from '../../agent/AgentOrchestrationService';
+import { dataStoreService } from '../../dataStoreService';
+import { StratixAgentConfig } from '../../../stratix-core';
+import { gatewayEventBus } from '../../GatewayEventBus';
 
 const router = Router();
 const projectService = new ProjectService();
+const orchestrator = AgentOrchestrationService.getInstance();
 let statusSyncService: StatusSyncService | null = null;
 
 export function setStatusSyncService(service: StatusSyncService) {
@@ -292,7 +297,34 @@ router.post('/:id/agents/enter', async (req: Request, res: Response): Promise<vo
       return;
     }
     
+    // 1. Agent 进入项目并订阅 channel
     const project = await projectService.agentEnterProject(projectId, agentId);
+    
+    // 2. 获取 project 路径
+    const projectPath = project.projectPath || project.path;
+    if (!projectPath) {
+      console.warn(`[Project API] Project ${projectId} has no path, cannot start agent`);
+    } else {
+      // 3. 获取 Agent 配置并启动 Agent
+      try {
+        // 从 dataStore 获取 agent 配置
+        const agentConfig = await dataStoreService.getStore().getAgent(agentId) as StratixAgentConfig | null;
+        
+        if (agentConfig) {
+          // 注册 agent 配置
+          orchestrator.registerAgentConfig(agentId, agentConfig);
+          
+          // 启动 agent
+          await orchestrator.startAgent(agentId, projectPath, projectId);
+          console.log(`[Project API] Agent ${agentId} auto-started for project ${projectId}`);
+        } else {
+          console.warn(`[Project API] Agent ${agentId} config not found in dataStore, cannot auto-start`);
+        }
+      } catch (startError) {
+        console.error(`[Project API] Failed to auto-start agent ${agentId}:`, startError);
+        // 不阻止 agent 进入项目，只是记录错误
+      }
+    }
     
     res.json({
       success: true,
@@ -324,7 +356,17 @@ router.post('/:id/agents/leave', async (req: Request, res: Response): Promise<vo
       return;
     }
     
+    // 1. Agent 离开项目并取消订阅 channel
     const project = await projectService.agentLeaveProject(projectId, agentId);
+    
+    // 2. 停止 Agent
+    try {
+      await orchestrator.stopAgent(agentId);
+      console.log(`[Project API] Agent ${agentId} auto-stopped for project ${projectId}`);
+    } catch (stopError) {
+      console.error(`[Project API] Failed to auto-stop agent ${agentId}:`, stopError);
+      // 不阻止 agent 离开项目，只是记录错误
+    }
     
     res.json({
       success: true,
@@ -547,14 +589,16 @@ router.post('/:id/messages', async (req: Request, res: Response): Promise<void> 
       }
     );
 
-    if (statusSyncService) {
-      statusSyncService.notifyNewMessage(message);
-      
-      const channel = await projectService.getChannel(projectId, channelId as string);
-      if (channel && channel.subscriberIds.length > 0) {
-        statusSyncService.notifyAgentsInChannel(channelId as string, channel.subscriberIds, message);
-      }
-    }
+    // 通过事件总线发布消息，WebSocket 和内部 Agent 都会收到
+    const channel = await projectService.getChannel(projectId, channelId as string);
+    // 即使没有订阅者也要发布消息（至少前端需要通过 WebSocket 看到消息）
+    const subscriberIds = channel?.subscriberIds || [];
+    gatewayEventBus.publishChannelMessage(
+      projectId,
+      channelId as string,
+      message,
+      subscriberIds
+    );
     
     res.json({
       success: true,

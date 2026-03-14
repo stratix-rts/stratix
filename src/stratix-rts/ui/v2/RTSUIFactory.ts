@@ -8,7 +8,7 @@
 import Phaser from 'phaser';
 import { TopBarV2, TopBarStats } from './TopBarV2';
 import { MinimapV2 } from './MinimapV2';
-import { CommandPanelV2, UnitInfo, Skill, AgentInfo, ZoneInfo } from './CommandPanelV2';
+import { CommandPanelV2, UnitInfo, Skill, AgentInfo, ZoneInfo, CommandPanelCallbacks } from './CommandPanelV2';
 
 export interface RTSUIComponents {
   topBar: TopBarV2;
@@ -28,6 +28,13 @@ export interface RTSUIConfig {
   getSelectedZone: () => any | null;
   onSkillSelect: (skill: Skill) => void;
   onCommandExecute: (command: string) => void;
+  onChatClick?: (agentIds: string[]) => void;
+  onConfigClick?: (agentId: string) => void;
+  onTaskClick?: (agentIds: string[]) => void;
+  onStopClick?: (agentIds: string[]) => void;
+  onAgentDeselect?: (agentId: string) => void;
+  onSelectAll?: () => void;
+  onDeselectAll?: () => void;
   statsCollector?: any;
 }
 
@@ -85,6 +92,16 @@ export class RTSUIFactory {
   }
   
   private createCommandPanel(): CommandPanelV2 {
+    const callbacks: CommandPanelCallbacks = {
+      onChatClick: this.config.onChatClick || (() => {}),
+      onConfigClick: this.config.onConfigClick || (() => {}),
+      onTaskClick: this.config.onTaskClick || (() => {}),
+      onStopClick: this.config.onStopClick || (() => {}),
+      onAgentDeselect: (this.config as any).onAgentDeselect || (() => {}),
+      onSelectAll: (this.config as any).onSelectAll || (() => {}),
+      onDeselectAll: (this.config as any).onDeselectAll || (() => {}),
+    };
+    
     const commandPanel = new CommandPanelV2(
       this.scene,
       0,
@@ -92,7 +109,8 @@ export class RTSUIFactory {
       this.config.screenWidth - 220,
       180,
       this.config.onSkillSelect,
-      this.config.onCommandExecute
+      this.config.onCommandExecute,
+      callbacks
     );
     commandPanel.create();
     return commandPanel;

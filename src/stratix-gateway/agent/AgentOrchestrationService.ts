@@ -39,35 +39,37 @@ export class AgentOrchestrationService {
 
     const agentConfig = this.agentConfigs.get(agentId);
     if (!agentConfig) {
-      throw new Error(`Agent ${agentId} not found`);
+      console.warn(`[AgentOrchestrationService] Agent ${agentId} config not found, skipping start`);
+      return;
+    }
+
+    // 检查是否有有效的后端配置
+    const hasOpenClaw = agentConfig.openClawConfig && agentConfig.openClawConfig.endpoint;
+    const hasDirect = agentConfig.directConfig && (agentConfig.directConfig.apiKey || agentConfig.directConfig.baseURL);
+    
+    if (!hasOpenClaw && !hasDirect) {
+      console.warn(`[AgentOrchestrationService] Agent ${agentId} has no LLM/OpenClaw configuration, skipping start (agent will not respond to messages)`);
+      return;
     }
 
     console.log(`[AgentOrchestrationService] Starting agent ${agentId} for project ${projectId}`);
 
     let agent: AgentInterface;
 
-    if (agentConfig.backendType === 'openclaw' || agentConfig.openClawConfig) {
-      if (!agentConfig.openClawConfig) {
-        throw new Error(`Agent ${agentId} has no OpenClaw configuration`);
-      }
+    if (hasOpenClaw) {
       agent = new OpenClawAgent(
         agentConfig,
         projectPath,
         projectId,
         this.lraClient
       );
-    } else if (agentConfig.backendType === 'direct' || agentConfig.directConfig) {
-      if (!agentConfig.directConfig) {
-        throw new Error(`Agent ${agentId} has no LLM configuration`);
-      }
+    } else {
       agent = new LLMAgent(
         agentConfig,
         projectPath,
         projectId,
         this.lraClient
       );
-    } else {
-      throw new Error(`Unknown backend type for agent ${agentId}`);
     }
 
     this.agents.set(agentId, agent);
@@ -178,3 +180,5 @@ export class AgentOrchestrationService {
     await Promise.all(stopPromises);
   }
 }
+
+export default AgentOrchestrationService;

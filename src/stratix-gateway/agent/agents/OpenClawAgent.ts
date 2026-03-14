@@ -4,7 +4,8 @@ import { LRAClient } from '../../../stratix-lra-bridge/LRAClient';
 import type { LraTask } from '../../../stratix-lra-bridge/types';
 import { StratixAgentConfig } from '../../../stratix-core';
 import { createOpenClawAdapter, OpenClawAdapterInterface } from '../../../stratix-openclaw-adapter';
-import { AgentInterface, AgentState } from './types';
+import { AgentInterface, AgentState, ProjectChannelMessage } from './types';
+import { gatewayEventBus, AgentMentionEvent } from '../../GatewayEventBus';
 
 export class OpenClawAgent implements AgentInterface {
   private agentConfig: StratixAgentConfig;
@@ -18,6 +19,7 @@ export class OpenClawAgent implements AgentInterface {
   private currentTaskId: string | null = null;
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private startedAt?: Date;
+  private unsubscribeMention: (() => void) | null = null;
   
   constructor(
     agentConfig: StratixAgentConfig,
@@ -55,6 +57,9 @@ export class OpenClawAgent implements AgentInterface {
     console.log('[OpenClawAgent] Connected to OpenClaw');
     
     this.startedAt = new Date();
+    
+    // 订阅 channel 提及消息
+    this.subscribeToMentions();
     
     while (!this.shouldStop) {
       try {
@@ -103,6 +108,26 @@ export class OpenClawAgent implements AgentInterface {
     console.log(`[OpenClawAgent] ${this.agentConfig.name} stopped`);
   }
   
+  private subscribeToMentions(): void {
+    console.log(`[OpenClawAgent] ${this.agentConfig.name} (${this.agentConfig.agentId}) subscribing to mentions...`);
+    
+    // 监听针对当前 agent 的提及消息
+    this.unsubscribeMention = gatewayEventBus.onAgentMention(
+      this.agentConfig.agentId,
+      (event: AgentMentionEvent) => {
+        console.log(`[OpenClawAgent] ${this.agentConfig.name} received mention in channel ${event.channelId}`);
+        this.handleMessage(event.message).catch(err => {
+          console.error(`[OpenClawAgent] Failed to handle message:`, err);
+        });
+      }
+    );
+    
+    // 测试监听是否成功
+    const eventName = `agent_mention:${this.agentConfig.agentId}`;
+    const listenerCount = gatewayEventBus.listenerCount(eventName);
+    console.log(`[OpenClawAgent] ${this.agentConfig.name} subscribed to ${eventName}, total listeners: ${listenerCount}`);
+  }
+  
   private async processTask(task: LraTask): Promise<void> {
     const prompt = `You are working on task: ${task.description}\n\nProject context: ${this.projectPath}\n\nPlease complete this task and save any output files.`;
     
@@ -134,6 +159,12 @@ export class OpenClawAgent implements AgentInterface {
     this.shouldStop = true;
     this.stopHeartbeat();
     
+    // 取消订阅提及消息
+    if (this.unsubscribeMention) {
+      this.unsubscribeMention();
+      this.unsubscribeMention = null;
+    }
+    
     if (this.currentTaskId) {
       await this.lraClient.setTaskStatus(this.projectPath, this.currentTaskId, 'pending');
     }
@@ -150,8 +181,65 @@ export class OpenClawAgent implements AgentInterface {
     console.log(`[OpenClawAgent] ${this.agentConfig.name} resuming`);
     this.isPaused = false;
   }
+
+  /**
+   * 处理 channel 消息（当 agent 被@提及时调用）
+   */
+  async handleMessage(message: ProjectChannelMessage): Promise<void> {
+    console.log(`[OpenClawAgent] ${this.agentConfig.name} handling message:`, message.content.slice(0, 100));
+
+    // 构建 prompt
+    const prompt = `You are ${this.agentConfig.name}. A user mentioned you in a chat message.
+
+User message: ${message.content}
+
+Please respond to the user's message. Keep your response concise and helpful.`;
+
+    try {
+      const response = await this.adapter.sendMessage(prompt);
+      console.log(`[OpenClawAgent] ${this.agentConfig.name} responded:`, response?.content?.substring(0, 200));
+      
+      // 发送回复到 channel（通过 HTTP API）
+      await this.sendMessageToChannel(message.channelId, response?.content || 'I received your message.');
+    } catch (error) {
+      console.error(`[OpenClawAgent] ${this.agentConfig.name} failed to handle message:`, error);
+    }
+  }
+
+  /**
+   * 发送消息到 channel
+   */
+  private async sendMessageToChannel(channelId: string, content: string): Promise<void> {
+    try {
+      const response = await fetch(`http://127.0.0.1:7524/api/projects/${this.projectId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channelId,
+          sender: {
+            id: this.agentConfig.agentId,
+            type: 'agent' as const,
+            name: this.agentConfig.name,
+            role: this.agentConfig.soul?.identity || 'Agent'
+          },
+          content: content.trim(),
+          source: 'local'
+        })
+      });
+
+      if (!response.ok) {
+        console.error(`[OpenClawAgent] Failed to send message to channel: ${response.status}`);
+      } else {
+        console.log(`[OpenClawAgent] ${this.agentConfig.name} sent message to channel ${channelId}`);
+      }
+    } catch (error) {
+      console.error(`[OpenClawAgent] ${this.agentConfig.name} failed to send message:`, error);
+    }
+  }
   
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 }
+
+export default OpenClawAgent;

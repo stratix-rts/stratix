@@ -262,9 +262,11 @@ const sendMessage = async (content: string, sender: { id: string; type: 'agent' 
 
     const result = await response.json();
     
-    if (result.success) {
-      messages.value.push(result.message);
+    if (!result.success) {
+      console.error('[ChatPanel] Failed to send message:', result.error);
     }
+    // 不在这里添加消息到列表，等待 WebSocket 广播
+    // 这样可以确保所有客户端（包括发送者）通过同一渠道接收消息
   } catch (err) {
     console.error('[ChatPanel] Failed to send message:', err);
   }
@@ -291,7 +293,11 @@ const createDefaultChannel = async () => {
 };
 
 const connectWebSocket = () => {
-  ws.value = new WebSocket('ws://localhost:3001');
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsHost = window.location.host;
+  const wsUrl = `${wsProtocol}//${wsHost}/ws`;
+  console.log('[ChatPanel] Connecting to WebSocket:', wsUrl);
+  ws.value = new WebSocket(wsUrl);
 
   ws.value.onmessage = (event) => {
     try {
