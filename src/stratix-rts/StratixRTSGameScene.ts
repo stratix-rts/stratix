@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { StratixAgentConfig } from '../stratix-core/stratix-protocol';
 import { MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, DEFAULT_ZOOM } from './constants';
-import { getToken } from '@/design-system/config';
+import { getToken, getCurrentTheme } from '@/design-system/config';
 import { AgentSprite, AgentStatus, CommandStatus } from './sprites/AgentSprite';
 import { StratixRTSEventManager } from './StratixRTSEventManager';
 import { InputHandler, InputCallbacks, InputMode } from './utils/InputHandler';
@@ -76,20 +76,36 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     tileGraphics.generateTexture('stratix-tile', TILE_SIZE, TILE_SIZE);
     tileGraphics.destroy();
 
-    const agentGraphics = this.make.graphics();
-    const successColor = hexToNumber(getToken('colors.status.success'));
-    const textColor = hexToNumber(getToken('colors.text.primary'));
-    agentGraphics.fillStyle(successColor, 1);
-    agentGraphics.fillCircle(16, 16, 12);
-    agentGraphics.fillStyle(textColor, 1);
-    agentGraphics.fillCircle(12, 12, 3);
-    agentGraphics.fillCircle(20, 12, 3);
-    agentGraphics.lineStyle(2, successColor, 1);
-    agentGraphics.beginPath();
-    agentGraphics.arc(16, 18, 5, 0, Math.PI);
-    agentGraphics.strokePath();
-    agentGraphics.generateTexture('stratix-agent', 32, 32);
-    agentGraphics.destroy();
+    this.generateOrbTexture();
+  }
+
+  private generateOrbTexture(): void {
+    const theme = getCurrentTheme();
+    const primary = theme.colors.brand.primary;
+    const secondary = theme.colors.brand.secondary;
+    
+    const primaryColor = parseInt(primary.replace('#', ''), 16);
+    const secondaryColor = parseInt(secondary.replace('#', ''), 16);
+    
+    const graphics = this.make.graphics();
+    const size = 64;
+    const center = size / 2;
+    
+    for (let i = 5; i >= 0; i--) {
+      const alpha = 0.1 + (5 - i) * 0.05;
+      const radius = center - i * 4;
+      graphics.fillStyle(primaryColor, alpha);
+      graphics.fillCircle(center, center, radius);
+    }
+    
+    graphics.fillStyle(secondaryColor, 1);
+    graphics.fillCircle(center, center, 14);
+    
+    graphics.fillStyle(0xffffff, 0.7);
+    graphics.fillCircle(center - 5, center - 5, 5);
+    
+    graphics.generateTexture('stratix-agent', size, size);
+    graphics.destroy();
   }
 
   create(): void {
@@ -299,6 +315,21 @@ export default class StratixRTSGameScene extends Phaser.Scene {
         }
       })
     );
+
+    this.eventUnsubscribers.push(
+      rtsEventBus.on('vue:game:command' as any, (data: any) => {
+        console.log('[StratixRTS] Received command from UI:', data);
+        if (data.command && data.agentIds) {
+          this.handleCommandFromUI(data.command, data.agentIds);
+        }
+      })
+    );
+
+    this.eventUnsubscribers.push(
+      rtsEventBus.on('vue:game:skill_select' as any, (data: any) => {
+        console.log('[StratixRTS] Received skill select from UI:', data);
+      })
+    );
     
     rtsEventBus.respond('request:get_stats', () => this.getTopBarStats());
     rtsEventBus.respond('request:get_camera_state', () => this.getCameraState());
@@ -350,35 +381,45 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     const projectZones = this.projectManagerIntegration.getAllProjectZones();
     const projectClient = this.projectManagerIntegration.getProjectClient();
     
+    console.log(`[StratixRTS] Checking agents in zones: ${this.agentSprites.size} agents, ${projectZones.size} zones, tracking=${this.agentZoneTracking.size}`);
+    
     for (const [agentId, sprite] of this.agentSprites) {
       let currentProjectZoneId: string | null = null;
       
       for (const [zoneId, zone] of projectZones) {
         const bounds = zone.getBounds();
-        if (Phaser.Geom.Rectangle.Contains(bounds, sprite.x, sprite.y)) {
+        const contains = Phaser.Geom.Rectangle.Contains(bounds, sprite.x, sprite.y);
+        if (contains) {
           currentProjectZoneId = zoneId;
+          console.log(`[StratixRTS] Agent ${agentId} IN zone ${zoneId}: x=${sprite.x.toFixed(0)}, y=${sprite.y.toFixed(0)}`);
           break;
         }
       }
       
       const previousZoneId = this.agentZoneTracking.get(agentId);
       
+      console.log(`[StratixRTS] Agent ${agentId} status: current=${currentProjectZoneId}, previous=${previousZoneId}, shouldEnter=${currentProjectZoneId && currentProjectZoneId !== previousZoneId}`);
+      
       if (currentProjectZoneId && currentProjectZoneId !== previousZoneId) {
+        console.log(`[StratixRTS] >>> CALLING agentEnterProject for ${agentId} -> ${currentProjectZoneId}`);
         try {
-          await projectClient.agentEnterProject(currentProjectZoneId, agentId);
-          console.log(`[StratixRTS] Agent ${agentId} entered project zone ${currentProjectZoneId}`);
+          const result = await projectClient.agentEnterProject(currentProjectZoneId, agentId);
+          console.log(`[StratixRTS] <<< SUCCESS Agent ${agentId} entered zone ${currentProjectZoneId}`, result);
           this.agentZoneTracking.set(agentId, currentProjectZoneId);
         } catch (error) {
-          console.error(`[StratixRTS] Failed to register agent ${agentId} to project ${currentProjectZoneId}:`, error);
+          console.error(`[StratixRTS] <<< FAILED to register agent ${agentId}:`, error);
         }
       } else if (!currentProjectZoneId && previousZoneId) {
+        console.log(`[StratixRTS] >>> CALLING agentLeaveProject for ${agentId} -> ${previousZoneId}`);
         try {
           await projectClient.agentLeaveProject(previousZoneId, agentId);
-          console.log(`[StratixRTS] Agent ${agentId} left project zone ${previousZoneId}`);
+          console.log(`[StratixRTS] <<< SUCCESS Agent ${agentId} left zone ${previousZoneId}`);
           this.agentZoneTracking.delete(agentId);
         } catch (error) {
-          console.error(`[StratixRTS] Failed to unregister agent ${agentId} from project ${previousZoneId}:`, error);
+          console.error(`[StratixRTS] <<< FAILED to unregister agent ${agentId}:`, error);
         }
+      } else {
+        console.log(`[StratixRTS] No zone change for agent ${agentId}`);
       }
     }
   }
@@ -451,9 +492,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
         if (shiftKey && this.selectedAgentIds.has(id)) {
           this.deselectAgent(id);
         } else {
-          sprite.setHighlight(true);
-          sprite.setData('isSelected', true);
-          this.selectedAgentIds.add(id);
+          this.selectAgent(id);
         }
       }
     });
@@ -470,9 +509,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
         if (shiftKey && this.selectedAgentIds.has(agentId)) {
           this.deselectAgent(agentId);
         } else {
-          sprite.setHighlight(true);
-          sprite.setData('isSelected', true);
-          this.selectedAgentIds.add(agentId);
+          this.selectAgent(agentId);
         }
       }
     });
@@ -487,9 +524,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
 
     this.agentSprites.forEach((sprite, id) => {
       if (sprite.getAgentType() === agentType) {
-        sprite.setHighlight(true);
-        sprite.setData('isSelected', true);
-        this.selectedAgentIds.add(id);
+        this.selectAgent(id);
       }
     });
   }
@@ -506,12 +541,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
 
     this.clearSelection();
     agentIds.forEach(id => {
-      const sprite = this.agentSprites.get(id);
-      if (sprite) {
-        sprite.setHighlight(true);
-        sprite.setData('isSelected', true);
-        this.selectedAgentIds.add(id);
-      }
+      this.selectAgent(id);
     });
 
     if (centerCamera && agentIds.length > 0) {
@@ -1039,6 +1069,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     if (zone) {
       zone.setHighlight(true);
       this.selectedZoneIds.add(zoneId);
+      this.emitSelectionChanged();
     }
   }
 
@@ -1047,6 +1078,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     if (zone) {
       zone.setHighlight(false);
       this.selectedZoneIds.delete(zoneId);
+      this.emitSelectionChanged();
     }
   }
 
@@ -1058,6 +1090,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
       }
     });
     this.selectedZoneIds.clear();
+    this.emitSelectionChanged();
   }
 
   public deleteZone(zoneId: string): void {
@@ -1102,6 +1135,26 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     }
   }
 
+  private handleCommandFromUI(command: string, agentIds: string[]): void {
+    console.log('[StratixRTS] Handle command from UI:', command, 'agents:', agentIds);
+    
+    switch (command) {
+      case 'stop':
+        agentIds.forEach(agentId => {
+          this.movementSystem.stop(agentId);
+        });
+        break;
+      case 'hold':
+        console.log('[StratixRTS] Hold command not implemented yet');
+        break;
+      case 'return':
+        console.log('[StratixRTS] Return command not implemented yet');
+        break;
+      default:
+        console.log('[StratixRTS] Unknown command:', command);
+    }
+  }
+
   private onCreateAgent(config: StratixAgentConfig): void {
     this.addAgentSprite(config).catch(err => {
       console.error('[StratixRTS] Failed to create agent sprite:', err);
@@ -1131,28 +1184,21 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     
     let x = config.position?.x;
     let y = config.position?.y;
+    let needsSavePosition = false;
     
     if (x === undefined || y === undefined) {
       x = Phaser.Math.Between(100, MAP_WIDTH - 100);
       y = Phaser.Math.Between(100, MAP_HEIGHT - 100);
-      
-      try {
-        await fetch('/api/stratix/config/agent/update', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...config, position: { x, y } })
-        });
-        console.log(`[StratixRTS] Saved initial position for agent ${config.agentId}:`, { x, y });
-      } catch (e) {
-        console.warn(`[StratixRTS] Failed to save initial position for agent ${config.agentId}:`, e);
-      }
+      needsSavePosition = true;
     }
     
     let textureKey: string | undefined;
     let isPlaceholder = false;
     
-    if (config.type === 'custom' && config.profile) {
-      const result = await this.characterRenderer.loadCharacterTexture(
+    if (config.profile) {
+      isPlaceholder = true;
+      
+      this.characterRenderer.loadCharacterTexture(
         config,
         (characterId, newTextureKey) => {
           const sprite = this.agentSprites.get(config.agentId);
@@ -1160,24 +1206,42 @@ export default class StratixRTSGameScene extends Phaser.Scene {
             sprite.replaceTexture(newTextureKey);
           }
         }
-      );
+      ).then(result => {
+        if (result.type === 'ready' && result.textureKey !== 'stratix-agent') {
+          const sprite = this.agentSprites.get(config.agentId);
+          if (sprite) {
+            sprite.replaceTexture(result.textureKey);
+          }
+        }
+      });
       
-      if (result.type === 'ready') {
-        textureKey = result.textureKey;
-      } else if (result.type === 'placeholder') {
-        textureKey = result.textureKey;
-        isPlaceholder = true;
-      } else {
-        textureKey = result.textureKey;
-      }
+      textureKey = 'stratix-agent';
+    } else {
+      textureKey = 'stratix-agent';
     }
     
-    const agentSprite = new AgentSprite(this, x, y, config, textureKey, isPlaceholder);
-    this.add.existing(agentSprite);
+    const sprite = new AgentSprite(this, x!, y!, config, textureKey!, isPlaceholder);
+    this.add.existing(sprite);
+    this.agentSprites.set(config.agentId, sprite);
     
-    this.agentSprites.set(config.agentId, agentSprite);
+    if (needsSavePosition) {
+      this.saveAgentPositionAsync(config.agentId, config, { x: x!, y: y! });
+    }
     
-    return agentSprite;
+    return sprite;
+  }
+  
+  private async saveAgentPositionAsync(agentId: string, config: StratixAgentConfig, position: { x: number; y: number }): Promise<void> {
+    try {
+      await fetch('/api/stratix/config/agent/update', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...config, position })
+      });
+      console.log(`[StratixRTS] Saved initial position for agent ${agentId}:`, position);
+    } catch (e) {
+      console.warn(`[StratixRTS] Failed to save initial position for agent ${agentId}:`, e);
+    }
   }
 
   public removeAgent(agentId: string): void {
@@ -1186,11 +1250,20 @@ export default class StratixRTSGameScene extends Phaser.Scene {
       sprite.destroy();
       this.agentSprites.delete(agentId);
       this.selectedAgentIds.delete(agentId);
+      this.emitSelectionChanged();
     }
   }
 
   public getAgentSprites(): Map<string, AgentSprite> {
     return this.agentSprites;
+  }
+
+  public updateAgentPosition(agentId: string, position: { x: number; y: number }): void {
+    const sprite = this.agentSprites.get(agentId);
+    if (sprite) {
+      sprite.x = position.x;
+      sprite.y = position.y;
+    }
   }
 
   public getSelectedAgentIds(): Set<string> {
@@ -1222,6 +1295,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
       this.selectedAgentIds.add(agentId);
       sprite.setHighlight(true);
       sprite.setData('isSelected', true);
+      this.emitSelectionChanged();
     }
   }
 
@@ -1231,6 +1305,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
       this.selectedAgentIds.delete(agentId);
       sprite.setHighlight(false);
       sprite.setData('isSelected', false);
+      this.emitSelectionChanged();
     }
   }
 
@@ -1243,6 +1318,42 @@ export default class StratixRTSGameScene extends Phaser.Scene {
       }
     });
     this.selectedAgentIds.clear();
+    this.emitSelectionChanged();
+  }
+
+  private emitSelectionChanged(): void {
+    const selectedAgentIds = Array.from(this.selectedAgentIds);
+    const selectedZoneIds = Array.from(this.selectedZoneIds);
+
+    rtsEventBus.emit('scene:ui:update_selection' as any, {
+      selectedAgentIds,
+      selectedZoneIds,
+    });
+
+    if (selectedAgentIds.length > 0) {
+      const sprite = this.agentSprites.get(selectedAgentIds[0]);
+      if (sprite) {
+        rtsEventBus.emit('scene:ui:agent_info' as any, {
+          agentId: sprite.getAgentId(),
+          name: sprite.name || sprite.getAgentId(),
+          type: sprite.getAgentType(),
+          status: 'idle',
+          position: { x: sprite.x, y: sprite.y },
+        });
+      }
+    }
+
+    if (selectedZoneIds.length > 0) {
+      const zone = this.unifiedZoneManager.getZone(selectedZoneIds[0]);
+      if (zone) {
+        rtsEventBus.emit('scene:ui:zone_info' as any, {
+          zoneId: zone.getZoneId(),
+          name: (zone as any).zoneName || zone.getZoneId(),
+          status: 'idle',
+          agentCount: 0,
+        });
+      }
+    }
   }
 
   shutdown(): void {

@@ -511,21 +511,35 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   }
   
   public updateAgentInfo(agent: AgentInfo | null): void {
+    const isChanged = this.currentAgent?.agentId !== agent?.agentId;
+    if (!isChanged && this.currentSelectionType === (agent ? 'agent' : 'none')) {
+      return;
+    }
+    
     this.currentSelectionType = agent ? 'agent' : 'none';
     this.currentAgent = agent;
     
-    if (this.currentTab === 'detail') {
-      this.renderContent();
+    if (this.currentTab !== 'detail') {
+      this.currentTab = 'detail';
+      this.renderTabs();
     }
+    this.renderContent();
   }
   
   public updateZoneInfo(zone: ZoneInfo | null): void {
+    const isChanged = this.currentZone?.zoneId !== zone?.zoneId;
+    if (!isChanged && this.currentSelectionType === (zone ? 'zone' : 'none')) {
+      return;
+    }
+    
     this.currentSelectionType = zone ? 'zone' : 'none';
     this.currentZone = zone;
     
-    if (this.currentTab === 'detail') {
-      this.renderContent();
+    if (this.currentTab !== 'detail') {
+      this.currentTab = 'detail';
+      this.renderTabs();
     }
+    this.renderContent();
   }
   
   public setSkills(skills: Skill[]): void {

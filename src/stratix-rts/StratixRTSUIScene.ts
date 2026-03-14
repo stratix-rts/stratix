@@ -139,6 +139,15 @@ export default class StratixRTSUIScene extends Phaser.Scene {
     );
 
     this.eventUnsubscribers.push(
+      rtsEventBus.on('scene:ui:zone_info', (data) => {
+        this.selectedZoneInfo = data;
+        if (this.uiComponents?.commandPanel) {
+          this.uiComponents.commandPanel.updateZoneInfo(data);
+        }
+      })
+    );
+
+    this.eventUnsubscribers.push(
       rtsEventBus.on('scene:ui:viewport_change', (data) => {
         if (this.uiComponents?.minimap) {
           (this.uiComponents.minimap as any).updateViewport?.(data);
@@ -148,8 +157,8 @@ export default class StratixRTSUIScene extends Phaser.Scene {
   }
 
   private handleSkillSelect(skill: Skill): void {
-    rtsEventBus.emit('scene:game:skill_select', { skill } as UIToGameEvents['scene:game:skill_select']);
-    rtsEventBus.emit('game:vue:skill_selected', { skill } as GameToVueEvents['game:vue:skill_selected']);
+    rtsEventBus.emit('vue:game:skill_select' as any, { skill });
+    rtsEventBus.emit('game:vue:skill_selected' as any, { skill });
   }
 
   private handleCommandExecute(command: string): void {
@@ -159,10 +168,10 @@ export default class StratixRTSUIScene extends Phaser.Scene {
       ['move', 'patrol', 'stop', 'hold', 'return'];
     
     if (validCommands.includes(command as typeof validCommands[number])) {
-      rtsEventBus.emit('scene:game:command', {
+      rtsEventBus.emit('vue:game:command' as any, {
         command: command as typeof validCommands[number],
         agentIds: this.selectedAgentIds,
-      } as UIToGameEvents['scene:game:command']);
+      });
     }
   }
 
