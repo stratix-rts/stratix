@@ -10,8 +10,9 @@ import Phaser from 'phaser';
 import { getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
 import { ContainerComponentBase } from '@/stratix-core/ui/ContainerComponent.base';
-import type { AgentBackendType, OpenClawConfig, DirectLLMConfig, UnifiedOpenClawConfig } from '@/stratix-core/stratix-protocol';
+import type { AgentBackendType, OpenClawConfig, DirectLLMConfig, UnifiedOpenClawConfig, StratixDirectConfig } from '@/stratix-core/stratix-protocol';
 import { DirectLLMConfigPanel } from './DirectLLMConfigPanel';
+import { StratixAgentConfigPanel } from './StratixAgentConfigPanel';
 import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClawConnectionManager';
 import { agentStore } from '@/stores/agentStore';
 
@@ -35,7 +36,8 @@ export interface BackendSelectorConfig {
   initialBackendType?: AgentBackendType;
   initialOpenClawConfig?: OpenClawConfig;
   initialDirectConfig?: DirectLLMConfig;
-  onChange?: (backendType: AgentBackendType, config: OpenClawConfig | DirectLLMConfig) => void;
+  initialStratixConfig?: StratixDirectConfig;
+  onChange?: (backendType: AgentBackendType, config: OpenClawConfig | DirectLLMConfig | StratixDirectConfig) => void;
 }
 
 export class BackendSelector {
@@ -45,8 +47,10 @@ export class BackendSelector {
   private currentBackendType: AgentBackendType;
   private openClawConfig: OpenClawConfig;
   private directConfig: DirectLLMConfig;
+  private stratixConfig: StratixDirectConfig;
   private directPanel: DirectLLMConfigPanel | null = null;
-  private onChange?: (backendType: AgentBackendType, config: OpenClawConfig | DirectLLMConfig) => void;
+  private stratixPanel: StratixAgentConfigPanel | null = null;
+  private onChange?: (backendType: AgentBackendType, config: OpenClawConfig | DirectLLMConfig | StratixDirectConfig) => void;
   private isElectron: boolean = false;
 
   constructor(scene: Phaser.Scene, config: BackendSelectorConfig) {
@@ -62,6 +66,14 @@ export class BackendSelector {
       model: 'gpt-4',
       temperature: 0.7,
       maxTokens: 4096,
+    };
+    this.stratixConfig = config.initialStratixConfig || {
+      provider: 'openai',
+      model: 'gpt-4o',
+      temperature: 0.7,
+      maxTokens: 4096,
+      maxShortTerm: 20,
+      enableLongTerm: true,
     };
     this.onChange = config.onChange;
     this.detectEnvironment();
@@ -97,37 +109,54 @@ export class BackendSelector {
           <label style="display: block; font-size: 11px; color: ${THEME.textMuted}; margin-bottom: 10px;">
             后端类型 BACKEND TYPE
           </label>
-          <div style="display: flex; gap: 12px;">
+          <div style="display: flex; gap: 8px;">
             <button class="backend-btn" data-backend="openclaw" style="
               flex: 1;
-              padding: 14px 16px;
+              padding: 12px 8px;
               background: ${this.currentBackendType === 'openclaw' ? THEME.accent : 'transparent'};
               border: 1px solid ${this.currentBackendType === 'openclaw' ? THEME.accent : THEME.border};
               border-radius: 8px;
               color: ${this.currentBackendType === 'openclaw' ? THEME.bg : THEME.text};
-              font-size: 13px;
+              font-size: 11px;
               cursor: pointer;
               display: flex;
+              flex-direction: column;
               align-items: center;
-              justify-content: center;
-              gap: 8px;
+              gap: 4px;
             ">
               <span style="font-size: 18px;">⚡</span>
               <span>OpenClaw</span>
             </button>
+            <button class="backend-btn" data-backend="stratix" style="
+              flex: 1;
+              padding: 12px 8px;
+              background: ${this.currentBackendType === 'stratix' ? THEME.accent : 'transparent'};
+              border: 1px solid ${this.currentBackendType === 'stratix' ? THEME.accent : THEME.border};
+              border-radius: 8px;
+              color: ${this.currentBackendType === 'stratix' ? THEME.bg : THEME.text};
+              font-size: 11px;
+              cursor: pointer;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              gap: 4px;
+            ">
+              <span style="font-size: 18px;">🤖</span>
+              <span>StratixAgent</span>
+            </button>
             <button class="backend-btn" data-backend="direct" style="
               flex: 1;
-              padding: 14px 16px;
+              padding: 12px 8px;
               background: ${this.currentBackendType === 'direct' ? THEME.accent : 'transparent'};
               border: 1px solid ${this.currentBackendType === 'direct' ? THEME.accent : THEME.border};
               border-radius: 8px;
               color: ${this.currentBackendType === 'direct' ? THEME.bg : THEME.text};
-              font-size: 13px;
+              font-size: 11px;
               cursor: pointer;
               display: flex;
+              flex-direction: column;
               align-items: center;
-              justify-content: center;
-              gap: 8px;
+              gap: 4px;
             ">
               <span style="font-size: 18px;">🔗</span>
               <span>Direct LLM</span>
@@ -258,6 +287,17 @@ export class BackendSelector {
             overflow-y: auto;
             display: none;
           "></div>
+
+          <div id="stratix-config" class="config-panel" style="
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            padding: 16px;
+            overflow-y: auto;
+            display: none;
+          "></div>
         </div>
       </div>
     `;
@@ -310,12 +350,34 @@ export class BackendSelector {
     const node = this.container.node as HTMLElement;
     const openclawPanel = node.querySelector('#openclaw-config') as HTMLElement;
     const directPanel = node.querySelector('#direct-config') as HTMLElement;
+    const stratixPanel = node.querySelector('#stratix-config') as HTMLElement;
+
+    openclawPanel.style.display = 'none';
+    directPanel.style.display = 'none';
+    stratixPanel.style.display = 'none';
 
     if (backendType === 'openclaw') {
       openclawPanel.style.display = 'block';
-      directPanel.style.display = 'none';
+      this.onChange?.(backendType, this.openClawConfig);
+    } else if (backendType === 'stratix') {
+      stratixPanel.style.display = 'block';
+
+      if (!this.stratixPanel && stratixPanel) {
+        this.stratixPanel = new StratixAgentConfigPanel(this.scene, {
+          x: 0,
+          y: 0,
+          width: this.config.width - 32,
+          height: this.config.height - 100,
+          initialConfig: this.stratixConfig,
+          onChange: (config) => {
+            this.stratixConfig = config;
+            this.onChange?.('stratix', config);
+          },
+        });
+        stratixPanel.appendChild(this.stratixPanel.create().node as HTMLElement);
+      }
+      this.onChange?.(backendType, this.stratixConfig);
     } else {
-      openclawPanel.style.display = 'none';
       directPanel.style.display = 'block';
 
       if (!this.directPanel && directPanel) {
@@ -328,9 +390,8 @@ export class BackendSelector {
         });
         directPanel.appendChild(this.directPanel.create().node as HTMLElement);
       }
+      this.onChange?.(backendType, this.directConfig);
     }
-
-    this.onChange?.(backendType, backendType === 'openclaw' ? this.openClawConfig : this.directConfig);
   }
 
   private async testConnection(): Promise<void> {
@@ -379,12 +440,18 @@ export class BackendSelector {
     }
   }
 
-  getConfig(): OpenClawConfig | DirectLLMConfig {
-    return this.currentBackendType === 'openclaw' ? this.openClawConfig : this.directConfig;
+  getConfig(): OpenClawConfig | DirectLLMConfig | StratixDirectConfig {
+    if (this.currentBackendType === 'openclaw') return this.openClawConfig;
+    if (this.currentBackendType === 'stratix') return this.stratixConfig;
+    return this.directConfig;
   }
 
   getOpenClawConfig(): OpenClawConfig {
     return this.openClawConfig;
+  }
+
+  getStratixConfig(): StratixDirectConfig {
+    return this.stratixConfig;
   }
 
   validate(): { valid: boolean; errors: string[] } {
@@ -397,6 +464,10 @@ export class BackendSelector {
       if (!this.openClawConfig.accountId) {
         errors.push('OpenClaw Account ID 不能为空');
       }
+    } else if (this.currentBackendType === 'stratix') {
+      if (!this.stratixConfig.apiKey && this.stratixConfig.provider !== 'ollama') {
+        errors.push('StratixAgent API Key 不能为空');
+      }
     }
 
     return { valid: errors.length === 0, errors };
@@ -405,6 +476,7 @@ export class BackendSelector {
   destroy(): void {
     this.container?.destroy();
     this.directPanel = null;
+    this.stratixPanel = null;
   }
 }
 

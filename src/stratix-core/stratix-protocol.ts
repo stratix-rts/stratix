@@ -8,7 +8,7 @@
 /**
  * Agent 后端类型
  */
-export type AgentBackendType = 'openclaw' | 'direct';
+export type AgentBackendType = 'openclaw' | 'direct' | 'stratix';
 
 /**
  * LLM Provider 类型
@@ -160,6 +160,20 @@ export interface DirectLLMConfig {
 }
 
 /**
+ * StratixDirectConfig - StratixAgent 直连配置 (轻量级 Agent)
+ */
+export interface StratixDirectConfig {
+  provider: 'openai' | 'anthropic' | 'ollama' | 'deepseek' | 'qwen' | 'custom';
+  model: string;
+  apiKey?: string;
+  endpoint?: string;
+  temperature?: number;
+  maxTokens?: number;
+  maxShortTerm?: number;
+  enableLongTerm?: boolean;
+}
+
+/**
  * StratixSoulConfig - Soul 配置
  */
 export interface StratixSoulConfig {
@@ -228,6 +242,7 @@ export interface StratixAgentConfig {
   backendType: AgentBackendType;
   directConfig?: DirectLLMConfig;
   openClawConfig?: OpenClawConfig;
+  stratixConfig?: StratixDirectConfig;
   
   soul?: StratixSoulConfig;
   memory?: StratixMemoryConfig;
