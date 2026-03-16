@@ -291,6 +291,24 @@ export class BackendSelector {
             display: none;
           ">
             <div id="direct-panel-content"></div>
+            <button id="direct-test-btn-static" style="
+              width: 100%;
+              margin-top: 16px;
+              padding: 12px;
+              background: ${THEME.accentDim};
+              border: 1px solid ${THEME.accent};
+              border-radius: 6px;
+              color: ${THEME.accent};
+              font-size: 12px;
+              cursor: pointer;
+            ">测试连接 Test Connection</button>
+            <div id="direct-status-static" style="
+              margin-top: 12px;
+              padding: 10px;
+              border-radius: 6px;
+              font-size: 11px;
+              display: none;
+            "></div>
           </div>
 
           <div id="stratix-config" class="config-panel" style="
@@ -304,6 +322,24 @@ export class BackendSelector {
             display: none;
           ">
             <div id="stratix-panel-content"></div>
+            <button id="stratix-test-btn-static" style="
+              width: 100%;
+              margin-top: 16px;
+              padding: 12px;
+              background: ${THEME.accentDim};
+              border: 1px solid ${THEME.accent};
+              border-radius: 6px;
+              color: ${THEME.accent};
+              font-size: 12px;
+              cursor: pointer;
+            ">测试连接 Test Connection</button>
+            <div id="stratix-status-static" style="
+              margin-top: 12px;
+              padding: 10px;
+              border-radius: 6px;
+              font-size: 11px;
+              display: none;
+            "></div>
           </div>
           
           <div class="next-btn-container" style="
@@ -338,14 +374,21 @@ export class BackendSelector {
   }
 
   private setupEventListeners(): void {
-    if (!this.container) return;
+    if (!this.container) {
+      console.log('[BackendSelector] No container');
+      return;
+    }
 
     const node = this.container.node as HTMLElement;
+    console.log('[BackendSelector] Setting up event listeners, node:', node);
 
     const backendBtns = node.querySelectorAll('.backend-btn');
+    console.log('[BackendSelector] Found backend buttons:', backendBtns.length);
     backendBtns.forEach(btn => {
       btn.addEventListener('click', () => {
+        console.log('[BackendSelector] Backend button clicked');
         const backendType = (btn as HTMLElement).dataset.backend as AgentBackendType;
+        console.log('[BackendSelector] Selected backend type:', backendType);
         this.currentBackendType = backendType;
         this.showBackendConfig(backendType);
         this.updateBackendButtons(node);
@@ -364,6 +407,20 @@ export class BackendSelector {
     modeSelect?.addEventListener('change', () => {
       const mode = modeSelect.value;
       localStorage.setItem('stratix_openclaw_mode', mode);
+    });
+
+    // Direct 测试按钮
+    const directTestBtnStatic = node.querySelector('#direct-test-btn-static') as HTMLButtonElement;
+    directTestBtnStatic?.addEventListener('click', () => {
+      console.log('[BackendSelector] Direct test button clicked (static)');
+      this.testDirectConnectionFromPanelStatic(node);
+    });
+
+    // Stratix 测试按钮
+    const stratixTestBtnStatic = node.querySelector('#stratix-test-btn-static') as HTMLButtonElement;
+    stratixTestBtnStatic?.addEventListener('click', () => {
+      console.log('[BackendSelector] Stratix test button clicked (static)');
+      this.testStratixConnectionFromPanelStatic(node);
     });
   }
 
@@ -394,6 +451,7 @@ export class BackendSelector {
       openclawPanel.style.display = 'block';
       this.onChange?.(backendType, this.openClawConfig);
     } else if (backendType === 'stratix') {
+      console.log('[BackendSelector] Showing stratix config panel');
       stratixPanel.style.display = 'block';
 
       if (!this.stratixPanel && stratixPanel) {
@@ -410,37 +468,10 @@ export class BackendSelector {
           },
         });
         panelContent.appendChild(this.stratixPanel.create().node as HTMLElement);
-        
-        const testBtn = document.createElement('button');
-        testBtn.id = 'stratix-test-btn';
-        testBtn.textContent = '测试连接 Test Connection';
-        testBtn.style.cssText = `
-          width: 100%;
-          margin-top: 16px;
-          padding: 12px;
-          background: ${THEME.accentDim};
-          border: 1px solid ${THEME.accent};
-          border-radius: 6px;
-          color: ${THEME.accent};
-          font-size: 12px;
-          cursor: pointer;
-        `;
-        testBtn.addEventListener('click', () => this.testStratixConnectionFromPanel(node));
-        stratixPanel.appendChild(testBtn);
-
-        const statusDiv = document.createElement('div');
-        statusDiv.id = 'stratix-status';
-        statusDiv.style.cssText = `
-          margin-top: 12px;
-          padding: 10px;
-          border-radius: 6px;
-          font-size: 11px;
-          display: none;
-        `;
-        stratixPanel.appendChild(statusDiv);
       }
       this.onChange?.(backendType, this.stratixConfig);
     } else {
+      console.log('[BackendSelector] Showing direct config panel');
       directPanel.style.display = 'block';
 
       if (!this.directPanel && directPanel) {
@@ -453,34 +484,6 @@ export class BackendSelector {
           initialConfig: this.directConfig,
         });
         panelContent.appendChild(this.directPanel.create().node as HTMLElement);
-
-        const testBtn = document.createElement('button');
-        testBtn.id = 'direct-test-btn';
-        testBtn.textContent = '测试连接 Test Connection';
-        testBtn.style.cssText = `
-          width: 100%;
-          margin-top: 16px;
-          padding: 12px;
-          background: ${THEME.accentDim};
-          border: 1px solid ${THEME.accent};
-          border-radius: 6px;
-          color: ${THEME.accent};
-          font-size: 12px;
-          cursor: pointer;
-        `;
-        testBtn.addEventListener('click', () => this.testDirectConnectionFromPanel(node));
-        directPanel.appendChild(testBtn);
-
-        const statusDiv = document.createElement('div');
-        statusDiv.id = 'direct-status';
-        statusDiv.style.cssText = `
-          margin-top: 12px;
-          padding: 10px;
-          border-radius: 6px;
-          font-size: 11px;
-          display: none;
-        `;
-        directPanel.appendChild(statusDiv);
       }
       this.onChange?.(backendType, this.directConfig);
     }
@@ -641,7 +644,20 @@ export class BackendSelector {
   }
 
   private async testStratixConnectionFromPanel(node: HTMLElement): Promise<void> {
+    const stratixPanel = node.querySelector('#stratix-config') as HTMLElement;
     const statusDiv = node.querySelector('#stratix-status') as HTMLDivElement;
+    await this.testStratixConnection(node, statusDiv);
+  }
+
+  private async testDirectConnectionFromPanelStatic(node: HTMLElement): Promise<void> {
+    console.log('[BackendSelector] testDirectConnectionFromPanelStatic called');
+    const statusDiv = node.querySelector('#direct-status-static') as HTMLDivElement;
+    await this.testDirectConnection(node, statusDiv);
+  }
+
+  private async testStratixConnectionFromPanelStatic(node: HTMLElement): Promise<void> {
+    console.log('[BackendSelector] testStratixConnectionFromPanelStatic called');
+    const statusDiv = node.querySelector('#stratix-status-static') as HTMLDivElement;
     await this.testStratixConnection(node, statusDiv);
   }
 
