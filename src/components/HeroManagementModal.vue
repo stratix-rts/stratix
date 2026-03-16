@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { agentStore } from '../stores/agentStore';
-import { StratixModal, StratixButton, SvgIcon } from '@/components/ui';
+import { StratixModal, StratixButton, StratixDropdown, SvgIcon } from '@/components/ui';
+import type { DropdownOption } from '@/components/ui';
 import { getToken } from '@/design-system/config';
 
 const x = 'x';
@@ -36,6 +37,30 @@ const heroTypes = [
   { type: 'dev' as const, name: '开发英雄', color: 'var(--ds-status-info)' },
   { type: 'analyst' as const, name: '数据英雄', color: 'var(--ds-status-warning)' }
 ];
+
+// Dropdown 选项配置
+const dropdownOptions = computed<DropdownOption[]>(() => [
+  ...heroTypes.map(hero => ({
+    label: hero.name,
+    value: hero.type,
+    color: hero.color,
+  })),
+  {
+    label: '自定义角色',
+    value: 'custom',
+    color: getToken('colors.accent'),
+    divided: true,
+  },
+]);
+
+// 空状态下的选项（没有自定义角色）
+const emptyDropdownOptions = computed<DropdownOption[]>(() =>
+  heroTypes.map(hero => ({
+    label: hero.name,
+    value: hero.type,
+    color: hero.color,
+  }))
+);
 
 const isRefreshing = computed(() => props.isRefreshing || storeRefreshing.value);
 
@@ -86,6 +111,14 @@ const formatTime = (date: Date | null) => {
 const handleClose = () => {
   emit('update:visible', false);
 };
+
+const handleCreateSelect = (value: string | number) => {
+  if (value === 'custom') {
+    emit('open-character-creator');
+  } else {
+    emit('create', value as 'writer' | 'dev' | 'analyst');
+  }
+};
 </script>
 
 <template>
@@ -119,27 +152,15 @@ const handleClose = () => {
           自定义
         </StratixButton>
         
-        <el-dropdown @command="emit('create', $event)" trigger="click">
+        <StratixDropdown 
+          :options="dropdownOptions"
+          size="sm"
+          @select="handleCreateSelect"
+        >
           <StratixButton variant="primary" size="sm" :icon="plus">
             新建
           </StratixButton>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item 
-                v-for="hero in heroTypes" 
-                :key="hero.type"
-                :command="hero.type"
-              >
-                <span class="type-indicator" :style="{ background: hero.color }"></span>
-                {{ hero.name }}
-              </el-dropdown-item>
-              <el-dropdown-item divided @click="emit('open-character-creator')">
-                <span class="type-indicator" :style="{ background: getToken('colors.accent') }"></span>
-                自定义角色
-              </el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+        </StratixDropdown>
       </div>
     </div>
     
@@ -198,23 +219,15 @@ const handleClose = () => {
         <div class="empty-title">还没有英雄</div>
         <div class="empty-desc">点击上方按钮创建你的第一个英雄</div>
         <div class="empty-actions">
-          <el-dropdown @command="emit('create', $event)" trigger="click">
+          <StratixDropdown 
+            :options="emptyDropdownOptions"
+            size="sm"
+            @select="handleCreateSelect"
+          >
             <StratixButton variant="primary" size="sm" :icon="plus">
               创建英雄
             </StratixButton>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item 
-                  v-for="hero in heroTypes" 
-                  :key="hero.type"
-                  :command="hero.type"
-                >
-                  <span class="type-indicator" :style="{ background: hero.color }"></span>
-                  {{ hero.name }}
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+          </StratixDropdown>
           <StratixButton 
             variant="secondary" 
             size="sm"

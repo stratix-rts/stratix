@@ -43,7 +43,7 @@ export class CharacterPreview {
   private container: Phaser.GameObjects.Container;
   private sprite: Phaser.GameObjects.Sprite | null = null;
   private currentAnimation: AnimationName = 'idle';
-  private currentDirection: number = 0;
+  private currentDirection: number = 2;  // 默认朝下 (DOWN)
   private currentScale: number;
   private textureKey: string = '';
   private animationKey: string = '';

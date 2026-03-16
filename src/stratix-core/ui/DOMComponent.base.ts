@@ -3,15 +3,18 @@
  * 
  * For form elements, lists, complex layouts
  * Uses Phaser DOMElement for native HTML rendering
+ * 
+ * 自动集成点击穿透防护
  */
 
 import Phaser from 'phaser';
 import { UIComponentBase } from './UIComponent.base';
 import type { DOMComponentConfig } from './types';
 import { Depth } from '@/design-system/tokens/depth';
+import { DOMContainer } from './DOMContainer';
 
 export abstract class DOMComponentBase extends UIComponentBase {
-  protected container: Phaser.GameObjects.DOMElement;
+  protected domContainer: DOMContainer | null = null;
   protected config: DOMComponentConfig;
   
   constructor(scene: Phaser.Scene, config: DOMComponentConfig) {
@@ -24,16 +27,16 @@ export abstract class DOMComponentBase extends UIComponentBase {
     const html = this.generateHTML();
     const styles = this.generateStyles();
     
-    this.container = this.scene.add.dom(
-      this.config.x || 0,
-      this.config.y || 0
-    ).createFromHTML(html).setOrigin(0, 0);
+    this.domContainer = new DOMContainer(this.scene, {
+      x: this.config.x || 0,
+      y: this.config.y || 0,
+      width: this.config.width,
+      height: this.config.height,
+      html: html + (styles ? `<style>${styles}</style>` : ''),
+      depth: this.depthLayer
+    });
     
-    this.container.setDepth(this.depthLayer);
-    
-    if (styles) {
-      this.applyStyles(styles);
-    }
+    this.domContainer.open();
     
     this.setupEventListeners();
     this.onMounted();
@@ -44,14 +47,13 @@ export abstract class DOMComponentBase extends UIComponentBase {
   protected setupEventListeners(): void {}
   protected onMounted(): void {}
   
-  protected applyStyles(css: string): void {
-    const node = this.container.node as HTMLElement;
-    node.style.cssText += css;
+  protected getNode(): HTMLElement | null {
+    return this.domContainer?.getNode() || null;
   }
   
   protected getElement(selector: string): HTMLElement | null {
-    const node = this.container.node as HTMLElement;
-    return node.querySelector(selector);
+    const node = this.getNode();
+    return node?.querySelector(selector) || null;
   }
   
   protected addDelegateEvent(
@@ -59,7 +61,8 @@ export abstract class DOMComponentBase extends UIComponentBase {
     selector: string,
     handler: (event: Event, element: Element) => void
   ): void {
-    const node = this.container.node as HTMLElement;
+    const node = this.getNode();
+    if (!node) return;
     
     node.addEventListener(eventType, (event) => {
       const target = (event.target as Element).closest(selector);
@@ -67,5 +70,11 @@ export abstract class DOMComponentBase extends UIComponentBase {
         handler(event, target);
       }
     });
+  }
+  
+  destroy(): void {
+    this.domContainer?.destroy();
+    this.domContainer = null;
+    super.destroy();
   }
 }

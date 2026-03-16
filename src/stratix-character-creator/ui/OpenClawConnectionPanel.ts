@@ -9,6 +9,7 @@
 import Phaser from 'phaser';
 import { getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
+import { DOMContainer } from '@/stratix-core/ui/DOMContainer';
 import { unifiedOpenClawConnectionManager, type TailscaleNode, type ConnectionResult, type StoredConnection } from '@/stratix-core/UnifiedOpenClawConnectionManager';
 import type { OpenClawConnectionMethod } from '@/stratix-core/stratix-protocol';
 
@@ -38,7 +39,7 @@ export interface OpenClawConnectionPanelConfig {
 export class OpenClawConnectionPanel {
   private scene: Phaser.Scene;
   private config: OpenClawConnectionPanelConfig;
-  private container: Phaser.GameObjects.DOMElement | null = null;
+  private container: DOMContainer | null = null;
   private currentMode: PanelMode = 'pairing';
   private pairingState: PairingUIState = 'input';
   private tailscaleNodes: TailscaleNode[] = [];
@@ -68,14 +69,19 @@ export class OpenClawConnectionPanel {
   create(): Phaser.GameObjects.DOMElement {
     const html = this.generateHTML();
 
-    this.container = this.scene.add.dom(
-      this.config.x || 0,
-      this.config.y || 0
-    ).createFromHTML(html).setOrigin(0, 0).setDepth(Depth.UI_MODAL_CONTENT);
+    this.container = new DOMContainer(this.scene, {
+      x: this.config.x || 0,
+      y: this.config.y || 0,
+      width: this.config.width || 400,
+      height: this.config.height || 520,
+      html: html,
+      depth: Depth.UI_MODAL_CONTENT
+    });
 
+    const element = this.container.open();
     this.setupEventListeners();
 
-    return this.container;
+    return element;
   }
 
   private generateHTML(): string {
@@ -426,7 +432,7 @@ export class OpenClawConnectionPanel {
   private setupEventListeners(): void {
     if (!this.container) return;
 
-    const node = this.container.node as HTMLElement;
+    const node = this.container.getNode() as HTMLElement;
 
     node.querySelectorAll('.mode-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -474,7 +480,7 @@ export class OpenClawConnectionPanel {
     this.currentMode = mode;
     
     if (!this.container) return;
-    const node = this.container.node as HTMLElement;
+    const node = this.container.getNode() as HTMLElement;
 
     node.querySelectorAll('.mode-btn').forEach(btn => {
       const btnMode = (btn as HTMLElement).dataset.mode;
@@ -495,7 +501,7 @@ export class OpenClawConnectionPanel {
 
   private async scanTailscaleNodes(): Promise<void> {
     if (!this.container) return;
-    const node = this.container.node as HTMLElement;
+    const node = this.container.getNode() as HTMLElement;
     const listEl = node.querySelector('#tailscale-nodes-list') as HTMLElement;
 
     if (listEl) {
@@ -547,7 +553,7 @@ export class OpenClawConnectionPanel {
 
   private async handleConnect(): Promise<void> {
     if (!this.container) return;
-    const node = this.container.node as HTMLElement;
+    const node = this.container.getNode() as HTMLElement;
 
     if (this.currentMode === 'pairing') {
       await this.handlePairingConnect(node);
@@ -817,7 +823,7 @@ export class OpenClawConnectionPanel {
 
   private showPairingStatus(state: 'connecting' | 'waiting' | 'connected' | 'error', message: string, requestId?: string): void {
     if (!this.container) return;
-    const node = this.container.node as HTMLElement;
+    const node = this.container.getNode() as HTMLElement;
 
     const statusBox = node.querySelector('#pairing-status-box') as HTMLElement;
     const statusIcon = node.querySelector('#pairing-status-icon') as HTMLElement;
@@ -854,7 +860,7 @@ export class OpenClawConnectionPanel {
   private updateStatus(status: 'disconnected' | 'connecting' | 'connected' | 'error', message: string): void {
     if (!this.container) return;
 
-    const node = this.container.node as HTMLElement;
+    const node = this.container.getNode() as HTMLElement;
     const indicator = node.querySelector('#status-indicator') as HTMLElement;
     const text = node.querySelector('#status-text') as HTMLElement;
 
@@ -874,7 +880,7 @@ export class OpenClawConnectionPanel {
 
   private updateDeviceIdDisplay(): void {
     if (!this.container) return;
-    const node = this.container.node as HTMLElement;
+    const node = this.container.getNode() as HTMLElement;
     const deviceIdEl = node.querySelector('#device-id') as HTMLElement;
     if (deviceIdEl) {
       deviceIdEl.textContent = `设备ID: ${this.deviceId}`;

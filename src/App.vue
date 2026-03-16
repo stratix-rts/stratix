@@ -138,7 +138,12 @@ const handleCharacterCreated = async (character: SavedCharacter) => {
   }
   
   console.log('[App] 🔄 Starting async agent creation...');
-  agentStore.createCustomAgent(character)
+  agentStore.createCustomAgent(character, {
+    backendType: character.backendType,
+    directConfig: character.directConfig,
+    openClawConfig: character.openClawConfig,
+    stratixConfig: character.stratixConfig
+  })
     .then(config => {
       console.log('[App] ✅ Agent created successfully:', config);
       if (game) {

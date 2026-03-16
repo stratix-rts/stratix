@@ -211,7 +211,7 @@ export const LAYER_Z_POSITIONS: Record<string, number> = {
 
 export const DEFAULT_BODY_TYPE: BodyType = 'male';
 export const DEFAULT_ANIMATION = 'walk';
-export const DEFAULT_DIRECTION = 0;
+export const DEFAULT_DIRECTION = 2;  // 默认朝下 (DOWN)
 
 export const STORAGE_KEY = 'stratix_characters';
 export const DB_NAME = 'stratix_character_creator';

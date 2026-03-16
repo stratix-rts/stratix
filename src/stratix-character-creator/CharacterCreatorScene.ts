@@ -26,7 +26,7 @@ import { characterCreatorEvents } from './core/EventEmitter';
 import { SkillTree } from './core/SkillTree';
 import { EVENTS, DEFAULT_BODY_TYPE, FRAME_SIZE, SHEET_WIDTH, SHEET_HEIGHT, BODY_TYPES } from './constants';
 import { SKILL_TREE_CONFIG } from './config/skillTreeConfig';
-import { PartSelector, CharacterPreview, CharacterList, OpenClawConnectionPanel, AgentChatPanel } from './ui';
+import { PartSelector, CharacterPreview, CharacterList, OpenClawConnectionPanel, AgentChatPanel, BackendSelector } from './ui';
 import type { SavedCharacter, PartSelection, PartMetadata, BodyType, AnimationName, CreatorStep } from './types';
 import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClawConnectionManager';
 import { textureManager } from '@/stratix-core/services';
@@ -80,6 +80,9 @@ export class CharacterCreatorScene extends Phaser.Scene {
   private partSelector: PartSelector | null = null;
   private openClawConnectionPanel: OpenClawConnectionPanel | null = null;
   private agentChatPanel: AgentChatPanel | null = null;
+  private backendSelector: BackendSelector | null = null;
+  private selectedBackendType: 'openclaw' | 'direct' | 'stratix' = 'direct';
+  private selectedBackendConfig: any = null;
   private characterPreview: CharacterPreview | null = null;
   private characterList: CharacterList | null = null;
   private skillTree: SkillTree | null = null;
@@ -949,6 +952,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
     this.partSelector?.destroy?.();
     this.openClawConnectionPanel?.destroy?.();
     this.agentChatPanel?.destroy?.();
+    this.backendSelector?.destroy?.();
 
     const container = this.mainPanelContainer;
     const existingChildren = container.list.slice(1);
@@ -990,26 +994,49 @@ export class CharacterCreatorScene extends Phaser.Scene {
   }
 
   private buildOpenClawPanel(panelW: number, panelH: number): void {
-    if (!this.mainPanelContainer) return;
+    if (!this.mainPanelContainer || !this.currentCharacter) return;
 
-    this.openClawConnectionPanel = new OpenClawConnectionPanel(this, {
+    this.backendSelector = new BackendSelector(this, {
       x: 16,
       y: 16,
       width: panelW - 32,
       height: panelH - 32,
-      onConnected: (connectionId) => {
-        if (connectionId) {
-          this.isDirty = true;
+      initialBackendType: this.currentCharacter.backendType as any || 'direct',
+      initialDirectConfig: this.currentCharacter.directConfig as any,
+      initialOpenClawConfig: this.currentCharacter.openClawConfig as any,
+      initialStratixConfig: this.currentCharacter.stratixConfig as any,
+      onChange: (backendType, config) => {
+        this.selectedBackendType = backendType;
+        this.selectedBackendConfig = config;
+        if (this.currentCharacter) {
+          this.currentCharacter.backendType = backendType;
+          if (backendType === 'direct') {
+            this.currentCharacter.directConfig = config as any;
+            this.currentCharacter.openClawConfig = undefined;
+            this.currentCharacter.stratixConfig = undefined;
+          } else if (backendType === 'openclaw') {
+            this.currentCharacter.openClawConfig = config as any;
+            this.currentCharacter.directConfig = undefined;
+            this.currentCharacter.stratixConfig = undefined;
+          } else if (backendType === 'stratix') {
+            this.currentCharacter.stratixConfig = config as any;
+            this.currentCharacter.directConfig = undefined;
+            this.currentCharacter.openClawConfig = undefined;
+          }
         }
+      },
+      onNext: () => {
         this.setStep('agent');
       }
     });
-    const dom = this.openClawConnectionPanel.create();
+    const dom = this.backendSelector.create();
     this.mainPanelContainer.add(dom);
   }
 
   private buildAgentPanel(panelW: number, panelH: number): void {
     if (!this.mainPanelContainer || !this.currentCharacter) return;
+
+    const backendType = this.selectedBackendType || this.currentCharacter?.backendType || 'direct';
 
     this.agentChatPanel = new AgentChatPanel(this, {
       x: 16,
@@ -1017,6 +1044,9 @@ export class CharacterCreatorScene extends Phaser.Scene {
       width: panelW - 32,
       height: panelH - 32,
       character: this.currentCharacter,
+      backendType,
+      directConfig: this.currentCharacter?.directConfig,
+      stratixConfig: this.currentCharacter?.stratixConfig,
       onComplete: async () => {
         console.log('========================================');
         console.log('[CharacterCreatorScene] 🔵 onComplete callback triggered');
@@ -1028,6 +1058,11 @@ export class CharacterCreatorScene extends Phaser.Scene {
         });
         
         if (characterSnapshot && this.currentCharacter) {
+          characterSnapshot.backendType = this.selectedBackendType;
+          characterSnapshot.directConfig = this.selectedBackendType === 'direct' ? this.selectedBackendConfig : undefined;
+          characterSnapshot.openClawConfig = this.selectedBackendType === 'openclaw' ? this.selectedBackendConfig : undefined;
+          characterSnapshot.stratixConfig = this.selectedBackendType === 'stratix' ? this.selectedBackendConfig : undefined;
+          
           console.log('[CharacterCreatorScene] 🚀 Step 1: Emitting scene event');
           this.events.emit('character:created', characterSnapshot);
           console.log('[CharacterCreatorScene] ✅ Scene event emitted');
@@ -1458,6 +1493,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
     this.partSelector?.destroy?.();
     this.openClawConnectionPanel?.destroy?.();
     this.agentChatPanel?.destroy?.();
+    this.backendSelector?.destroy?.();
     this.characterPreview?.destroy();
     this.characterList?.destroy();
     this.uiElements.nameInput?.destroy();

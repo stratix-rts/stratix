@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
+import { DOMContainer } from '@/stratix-core/ui/DOMContainer';
 import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClawConnectionManager';
 import type { ChatMessage, SavedCharacter } from '../types';
 import { marked } from 'marked';
@@ -25,6 +26,9 @@ export interface AgentChatPanelConfig {
   width: number;
   height: number;
   character: SavedCharacter;
+  backendType?: 'openclaw' | 'direct' | 'stratix';
+  directConfig?: any;
+  stratixConfig?: any;
   onComplete: () => void;
   onBack: () => void;
 }
@@ -32,7 +36,7 @@ export interface AgentChatPanelConfig {
 export class AgentChatPanel {
   private scene: Phaser.Scene;
   private config: AgentChatPanelConfig;
-  private container: Phaser.GameObjects.DOMElement | null = null;
+  private container: DOMContainer | null = null;
   private messages: ChatMessage[] = [];
   private systemPrompt: string = '';
 
@@ -60,13 +64,20 @@ export class AgentChatPanel {
 
   create(): Phaser.GameObjects.DOMElement {
     const html = this.generateHTML();
-    this.container = this.scene.add.dom(
-      this.config.x,
-      this.config.y
-    ).createFromHTML(html).setOrigin(0, 0);
 
+    this.container = new DOMContainer(this.scene, {
+      x: this.config.x,
+      y: this.config.y,
+      width: this.config.width,
+      height: this.config.height,
+      html: html,
+      depth: Depth.UI_MODAL_CONTENT
+    });
+
+    const element = this.container.open();
     this.setupEventListeners();
-    return this.container;
+
+    return element;
   }
 
   private generateHTML(): string {
@@ -159,61 +170,60 @@ export class AgentChatPanel {
           </div>
         </div>
         
-        <div class="footer" style="
+        <div class="actions" style="
           padding: 12px 16px;
           border-top: 1px solid ${THEME.panelBorder};
           display: flex;
           justify-content: space-between;
           align-items: center;
         ">
-          <button id="reset-btn" style="
-            padding: 8px 16px;
-            background: transparent;
-            border: 1px solid ${THEME.panelBorder};
-            border-radius: 4px;
-            color: ${THEME.textMuted};
-            font-family: inherit;
-            font-size: 11px;
-            cursor: pointer;
-          ">重置对话</button>
           <div style="display: flex; gap: 8px;">
-            <button id="back-btn" style="
-              padding: 10px 20px;
+            <button id="reset-btn" style="
+              padding: 8px 12px;
               background: transparent;
               border: 1px solid ${THEME.panelBorder};
               border-radius: 4px;
               color: ${THEME.textMuted};
               font-family: inherit;
-              font-size: 12px;
+              font-size: 11px;
               cursor: pointer;
-            ">← 返回</button>
-            <button id="complete-btn" style="
-              padding: 10px 24px;
-              background: ${THEME.success};
-              border: none;
+            ">重置对话</button>
+            <button id="back-btn" style="
+              padding: 8px 12px;
+              background: transparent;
+              border: 1px solid ${THEME.panelBorder};
               border-radius: 4px;
-              color: ${THEME.bg};
+              color: ${THEME.textMuted};
               font-family: inherit;
-              font-size: 12px;
+              font-size: 11px;
               cursor: pointer;
-            ">完成创建 ✓</button>
+            ">返回</button>
           </div>
+          <button id="complete-btn" style="
+            padding: 8px 16px;
+            background: ${THEME.success};
+            border: none;
+            border-radius: 4px;
+            color: ${THEME.bg};
+            font-family: inherit;
+            font-size: 11px;
+            cursor: pointer;
+          ">完成创建</button>
         </div>
       </div>
     `;
   }
 
   private setupEventListeners(): void {
-    if (!this.container) return;
-
-    const node = this.container.node as HTMLElement;
+    const node = this.container?.getNode();
+    if (!node) return;
 
     const chatInput = node.querySelector('#chat-input') as HTMLTextAreaElement;
     const sendBtn = node.querySelector('#send-btn') as HTMLButtonElement;
+    const messagesContainer = node.querySelector('#chat-messages') as HTMLElement;
     const resetBtn = node.querySelector('#reset-btn') as HTMLButtonElement;
     const backBtn = node.querySelector('#back-btn') as HTMLButtonElement;
     const completeBtn = node.querySelector('#complete-btn') as HTMLButtonElement;
-    const messagesContainer = node.querySelector('#chat-messages') as HTMLElement;
 
     const sendMessage = async () => {
       const content = chatInput.value.trim();
@@ -225,77 +235,66 @@ export class AgentChatPanel {
         content,
         timestamp: Date.now()
       };
-
       this.messages.push(userMessage);
+
       this.renderMessage(messagesContainer, userMessage);
       chatInput.value = '';
-      this.resetTextareaHeight(chatInput);
+      this.adjustTextareaHeight(chatInput);
 
-      // 禁用输入
       sendBtn.disabled = true;
       chatInput.disabled = true;
       sendBtn.textContent = '...';
 
-      // 立即显示 AI 回复占位符（带动画）
-      const loadingId = `loading-${Date.now()}`;
-      this.renderLoadingMessage(messagesContainer, loadingId);
+      const loadingId = this.renderLoadingMessage(messagesContainer);
 
       try {
-        // 尝试使用流式 API
-        const conn = unifiedOpenClawConnectionManager.getConnection();
-        let accumulatedText = '';
-        
-        if (conn && typeof conn.sendMessage === 'function') {
-          // 流式发送
-          await conn.sendMessage(content, {
-            onDelta: (text: string) => {
-              accumulatedText = text;
-              this.updateLoadingMessage(loadingId, text);
-            },
-            onFinal: (msg: { content: string; role: string; timestamp: number }) => {
-              this.finalizeLoadingMessage(loadingId, msg.content);
-            },
-            onError: (err: string) => {
-              console.error('[AgentChat] Stream error:', err);
-            }
-          }, { sessionId: 'main' });
-          
-          // 如果有累积的文本，添加到消息列表
-          if (accumulatedText) {
-            const aiMessage: ChatMessage = {
-              id: (Date.now() + 1).toString(),
-              role: 'assistant',
-              content: accumulatedText,
-              timestamp: Date.now()
-            };
-            this.messages.push(aiMessage);
-          }
-        } else {
-          // 降级：使用非流式 API
-          const response = await unifiedOpenClawConnectionManager.sendMessage(content);
+        let responseContent = '';
 
-          if (response.content) {
-            this.updateLoadingMessage(loadingId, response.content);
-            this.finalizeLoadingMessage(loadingId, response.content);
-            
-            const aiMessage: ChatMessage = {
-              id: (Date.now() + 1).toString(),
-              role: 'assistant',
-              content: response.content,
-              timestamp: Date.now()
-            };
-            this.messages.push(aiMessage);
-          } else {
-            this.removeLoadingMessage(loadingId);
-            this.renderError(messagesContainer, 'Empty response');
+        const backendType = this.config.backendType || this.config.character?.backendType || 'direct';
+
+        if (backendType === 'openclaw') {
+          const connection = unifiedOpenClawConnectionManager.getConnection();
+          if (!connection) {
+            throw new Error('未连接到 OpenClaw');
           }
+          const response = await connection.sendMessage(content, this.systemPrompt);
+          responseContent = response?.content || '';
+        } else if (backendType === 'direct') {
+          const config = this.config.directConfig || this.config.character?.directConfig;
+          if (!config?.provider || !config?.model) {
+            throw new Error('请先配置 Direct LLM');
+          }
+          const response = await this.callDirectLLM(config, content);
+          responseContent = response;
+        } else if (backendType === 'stratix') {
+          const config = this.config.stratixConfig || this.config.character?.stratixConfig;
+          if (!config?.provider || !config?.model) {
+            throw new Error('请先配置 StratixAgent');
+          }
+          const response = await this.callStratixAgent(config, content);
+          responseContent = response;
+        }
+
+        this.removeLoadingMessage(loadingId);
+
+        if (responseContent) {
+          const aiMessage: ChatMessage = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            content: responseContent,
+            timestamp: Date.now()
+          };
+          this.messages.push(aiMessage);
+          this.renderMessage(messagesContainer, aiMessage);
+        } else {
+          this.removeLoadingMessage(loadingId);
+          this.renderError(messagesContainer, 'Empty response');
         }
       } catch (error: any) {
         this.removeLoadingMessage(loadingId);
         this.renderError(messagesContainer, error.message || 'Request failed');
       }
 
-      // 恢复输入
       sendBtn.disabled = false;
       chatInput.disabled = false;
       sendBtn.textContent = '发送';
@@ -341,13 +340,42 @@ export class AgentChatPanel {
     });
   }
 
-  /**
-   * 渲染加载中的消息（带动画）
-   */
-  private renderLoadingMessage(container: HTMLElement, id: string): void {
+  private renderMessage(container: HTMLElement, message: ChatMessage): void {
+    const isUser = message.role === 'user';
+    const msgDiv = document.createElement('div');
+    msgDiv.className = `message ${isUser ? 'user' : 'ai'}`;
+    msgDiv.style.cssText = `
+      padding: 10px 12px;
+      background: ${isUser ? THEME.userBg : THEME.aiBg};
+      border-radius: 4px;
+      max-width: 85%;
+      align-self: ${isUser ? 'flex-end' : 'flex-start'};
+      font-size: 12px;
+      line-height: 1.5;
+    `;
+
+    const contentDiv = document.createElement('div');
+    contentDiv.innerHTML = marked.parse(message.content, { async: false }) as string;
+    msgDiv.appendChild(contentDiv);
+
+    const timeDiv = document.createElement('div');
+    timeDiv.style.cssText = `
+      font-size: 10px;
+      color: ${THEME.textMuted};
+      margin-top: 4px;
+      text-align: right;
+    `;
+    timeDiv.textContent = new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    msgDiv.appendChild(timeDiv);
+
+    container.appendChild(msgDiv);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  private renderLoadingMessage(container: HTMLElement): string {
+    const id = `loading-${Date.now()}`;
     const msgDiv = document.createElement('div');
     msgDiv.id = id;
-    msgDiv.className = 'ai-message-loading';
     msgDiv.style.cssText = `
       padding: 10px 12px;
       background: ${THEME.aiBg};
@@ -358,245 +386,75 @@ export class AgentChatPanel {
       line-height: 1.5;
       margin-top: 8px;
     `;
-    msgDiv.innerHTML = `
-      <div style="font-size: 10px; color: ${THEME.textMuted}; margin-bottom: 4px;">
-        ${this.config.character.name}
-      </div>
-      <div class="loading-content" style="min-height: 20px; color: ${THEME.text};">
-        <span class="typing-indicator" style="display: inline-flex; gap: 4px;">
-          <span style="width: 6px; height: 6px; background: ${THEME.accent}; border-radius: 50%; animation: blink 1.4s infinite 0s; opacity: 0.3;"></span>
-          <span style="width: 6px; height: 6px; background: ${THEME.accent}; border-radius: 50%; animation: blink 1.4s infinite 0.2s; opacity: 0.3;"></span>
-          <span style="width: 6px; height: 6px; background: ${THEME.accent}; border-radius: 50%; animation: blink 1.4s infinite 0.4s; opacity: 0.3;"></span>
-        </span>
-      </div>
-    `;
-    
-    // 添加动画样式（只添加一次）
-    if (!document.getElementById('typing-animation-style')) {
-      const style = document.createElement('style');
-      style.id = 'typing-animation-style';
-      style.textContent = `
-        @keyframes blink {
-          0%, 60%, 100% { opacity: 0.3; }
-          30% { opacity: 1; }
-        }
-      `;
-      document.head.appendChild(style);
-    }
-    
+    msgDiv.innerHTML = '<span style="color: ' + THEME.textMuted + ';">思考中...</span>';
     container.appendChild(msgDiv);
     container.scrollTop = container.scrollHeight;
+    return id;
   }
 
-  /**
-   * 更新加载中的消息内容（流式更新）
-   */
-  private updateLoadingMessage(id: string, text: string): void {
-    const msgDiv = document.getElementById(id);
-    if (!msgDiv) return;
-
-    const contentDiv = msgDiv.querySelector('.loading-content') as HTMLElement;
-    if (contentDiv) {
-      // 流式更新时也渲染 Markdown
-      contentDiv.innerHTML = `<div class="markdown-content">${this.renderMarkdown(text)}</div>`;
-    }
-    
-    // 滚动到底部
-    const container = msgDiv.parentElement;
-    if (container) {
-      container.scrollTop = container.scrollHeight;
-    }
-  }
-
-  /**
-   * 完成加载中的消息
-   */
-  private finalizeLoadingMessage(id: string, text: string): void {
-    const msgDiv = document.getElementById(id);
-    if (!msgDiv) return;
-
-    msgDiv.classList.remove('ai-message-loading');
-    msgDiv.classList.add('ai-message');
-    
-    const contentDiv = msgDiv.querySelector('.loading-content') as HTMLElement;
-    if (contentDiv) {
-      contentDiv.innerHTML = `<div class="markdown-content">${this.renderMarkdown(text)}</div>`;
-    }
-  }
-
-  /**
-   * 移除加载中的消息
-   */
   private removeLoadingMessage(id: string): void {
-    const msgDiv = document.getElementById(id);
-    if (msgDiv) {
-      msgDiv.remove();
-    }
+    const el = document.getElementById(id);
+    if (el) el.remove();
   }
 
-  private renderMessage(container: HTMLElement, message: ChatMessage): void {
-    const isUser = message.role === 'user';
-    const msgDiv = document.createElement('div');
-    msgDiv.style.cssText = `
-      padding: 10px 12px;
-      background: ${isUser ? THEME.userBg : THEME.aiBg};
-      border-radius: 4px;
-      max-width: 85%;
-      align-self: ${isUser ? 'flex-end' : 'flex-start'};
-      font-size: 12px;
-      line-height: 1.5;
-    `;
-    
-    // 用户消息：纯文本（安全转义）
-    // AI 消息：Markdown 渲染
-    const content = isUser 
-      ? this.escapeHtml(message.content)
-      : `<div class="markdown-content">${this.renderMarkdown(message.content)}</div>`;
-    
-    msgDiv.innerHTML = `
-      <div style="font-size: 10px; color: ${THEME.textMuted}; margin-bottom: 4px;">
-        ${isUser ? '你' : this.config.character.name}
-      </div>
-      ${content}
-    `;
-    
-    // 添加 Markdown 样式（只添加一次）
-    if (!container.querySelector('.markdown-styles')) {
-      container.insertAdjacentHTML('beforeend', this.getMarkdownStyles());
-    }
-    
-    container.appendChild(msgDiv);
-    container.scrollTop = container.scrollHeight;
-  }
-
-  private renderError(container: HTMLElement, error: string): void {
+  private renderError(container: HTMLElement, message: string): void {
     const errorDiv = document.createElement('div');
     errorDiv.style.cssText = `
       padding: 10px 12px;
-      background: var(--ds-bg-secondary);
+      background: ${THEME.error};
       border-radius: 4px;
-      border-left: 3px solid ${THEME.error};
+      color: ${THEME.bg};
       font-size: 11px;
-      color: ${THEME.error};
+      margin-top: 8px;
     `;
-    errorDiv.textContent = `Error: ${error}`;
+    errorDiv.textContent = message;
     container.appendChild(errorDiv);
-  }
-
-  private escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
-
-  /**
-   * 渲染 Markdown 内容
-   */
-  private renderMarkdown(text: string): string {
-    if (!text) return '';
-    
-    try {
-      // 使用 marked 的同步解析
-      const html = marked.parse(text, { 
-        breaks: true,
-        gfm: true,
-        async: false
-      }) as string;
-      
-      console.log('[AgentChat] Markdown parsed:', { input: text.slice(0, 50), output: html?.slice(0, 100) });
-      
-      return html || this.escapeHtml(text);
-    } catch (error) {
-      console.error('[AgentChat] Markdown parse error:', error);
-      return this.escapeHtml(text);
-    }
-  }
-
-  /**
-   * 获取 Markdown 样式
-   */
-  private getMarkdownStyles(): string {
-    return `
-      <style class="markdown-styles">
-        .markdown-content { line-height: 1.6; }
-        .markdown-content p { margin: 0 0 8px 0; }
-        .markdown-content p:last-child { margin-bottom: 0; }
-        .markdown-content code {
-          background: rgba(255,255,255,0.1);
-          padding: 2px 6px;
-          border-radius: 3px;
-          font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
-          font-size: 11px;
-          color: ${THEME.accent};
-        }
-        .markdown-content pre {
-          background: var(--ds-bg-primary);
-          padding: 12px;
-          border-radius: 4px;
-          overflow-x: auto;
-          margin: 8px 0;
-          border: 1px solid ${THEME.panelBorder};
-        }
-        .markdown-content pre code {
-          background: none;
-          padding: 0;
-          color: ${THEME.text};
-        }
-        .markdown-content strong { color: ${THEME.accent}; }
-        .markdown-content em { color: ${THEME.textMuted}; }
-        .markdown-content a {
-          color: ${THEME.accent};
-          text-decoration: underline;
-        }
-        .markdown-content ul, .markdown-content ol {
-          margin: 8px 0;
-          padding-left: 20px;
-        }
-        .markdown-content li { margin: 4px 0; }
-        .markdown-content blockquote {
-          border-left: 3px solid ${THEME.accent};
-          padding-left: 12px;
-          margin: 8px 0;
-          color: ${THEME.textMuted};
-        }
-        .markdown-content h1, .markdown-content h2, .markdown-content h3 {
-          color: ${THEME.accent};
-          margin: 12px 0 8px 0;
-          font-weight: bold;
-        }
-        .markdown-content h1 { font-size: 16px; }
-        .markdown-content h2 { font-size: 14px; }
-        .markdown-content h3 { font-size: 12px; }
-        .markdown-content hr {
-          border: none;
-          border-top: 1px solid ${THEME.panelBorder};
-          margin: 12px 0;
-        }
-      </style>
-    `;
-  }
-
-  destroy(): void {
-    this.container?.destroy();
+    container.scrollTop = container.scrollHeight;
   }
 
   private adjustTextareaHeight(textarea: HTMLTextAreaElement): void {
     textarea.style.height = 'auto';
-    const newHeight = Math.min(textarea.scrollHeight, 120);
-    textarea.style.height = `${newHeight}px`;
-    
-    if (textarea.scrollHeight > 120) {
-      textarea.style.overflowY = 'auto';
-    } else {
-      textarea.style.overflowY = 'hidden';
-    }
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
   }
 
-  private resetTextareaHeight(textarea: HTMLTextAreaElement): void {
-    textarea.style.height = 'auto';
-    textarea.style.height = '40px';
-    textarea.style.overflowY = 'hidden';
+  private async callDirectLLM(config: any, userMessage: string): Promise<string> {
+    const response = await fetch('/api/stratix/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        backendType: 'direct',
+        config,
+        message: userMessage,
+        systemPrompt: this.systemPrompt
+      })
+    });
+    const result = await response.json();
+    if (result.success && result.data) {
+      return result.data;
+    }
+    throw new Error(result.message || 'LLM 请求失败');
+  }
+
+  private async callStratixAgent(config: any, userMessage: string): Promise<string> {
+    const response = await fetch('/api/stratix/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        backendType: 'stratix',
+        config,
+        message: userMessage,
+        systemPrompt: this.systemPrompt
+      })
+    });
+    const result = await response.json();
+    if (result.success && result.data) {
+      return result.data;
+    }
+    throw new Error(result.message || 'StratixAgent 请求失败');
+  }
+
+  destroy(): void {
+    this.container?.destroy();
+    this.container = null;
   }
 }
-
-export default AgentChatPanel;

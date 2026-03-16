@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { SvgIcon } from '@/components/ui';
+import { SvgIcon, StratixDropdown } from '@/components/ui';
+import type { DropdownOption } from '@/components/ui';
 import { computed } from 'vue';
 import { agentStore } from '../stores/agentStore';
 import { StratixPanel, StratixButton } from '@/components/ui';
@@ -9,6 +10,8 @@ import { getToken } from '@/design-system/config';
 const plus = 'plus';
 const refresh = 'refresh';
 const settings = 'settings';
+const user = 'user';
+
 const props = defineProps<{
   selectedIds?: string[];
   isRefreshing?: boolean;
@@ -34,6 +37,21 @@ const heroTypes = [
   { type: 'dev' as const, name: '开发英雄', color: getToken('colors.info') },
   { type: 'analyst' as const, name: '数据英雄', color: '#ff6b9d' }
 ];
+
+// Dropdown 选项配置
+const dropdownOptions = computed<DropdownOption[]>(() => [
+  ...heroTypes.map(hero => ({
+    label: hero.name,
+    value: hero.type,
+    color: hero.color,
+  })),
+  {
+    label: '自定义角色',
+    value: 'custom',
+    color: getToken('colors.accent'),
+    divided: true,
+  },
+]);
 
 const getHeroTypeColor = (type: string) => {
   if (type === 'custom') return getToken('colors.accent');
@@ -83,6 +101,14 @@ const formatTime = (date: Date | null) => {
   return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 };
 
+const handleCreateSelect = (value: string | number) => {
+  if (value === 'custom') {
+    emit('open-character-creator');
+  } else {
+    emit('create', value as 'writer' | 'dev' | 'analyst');
+  }
+};
+
 const panelStyle = computed(() => getToken('panel.default'));
 </script>
 
@@ -112,27 +138,15 @@ const panelStyle = computed(() => getToken('panel.default'));
           自定义
         </StratixButton>
         
-        <el-dropdown @command="emit('create', $event)" trigger="click">
+        <StratixDropdown 
+          :options="dropdownOptions"
+          size="sm"
+          @select="handleCreateSelect"
+        >
           <StratixButton variant="primary" size="sm" :icon="plus">
             新建
           </StratixButton>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item 
-                v-for="hero in heroTypes" 
-                :key="hero.type"
-                :command="hero.type"
-              >
-                <span class="type-indicator" :style="{ background: hero.color }"></span>
-                {{ hero.name }}
-              </el-dropdown-item>
-              <el-dropdown-item divided @click="emit('open-character-creator')">
-                <span class="type-indicator" :style="{ background: getToken('colors.accent') }"></span>
-                自定义角色
-              </el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+        </StratixDropdown>
       </div>
     </div>
     
@@ -161,7 +175,7 @@ const panelStyle = computed(() => getToken('panel.default'));
             :style="{ background: getHeroTypeColor(agent.type) + '20' }"
           >
             <svg viewBox="0 0 24 24" width="24" height="24" fill="none" :stroke="getHeroTypeColor(agent.type)" stroke-width="2">
-              <SvgIcon :name="user" size="16" />
+              <SvgIcon :name="user" :size="16" />
             </svg>
           </div>
         </div>

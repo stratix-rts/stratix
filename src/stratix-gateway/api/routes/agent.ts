@@ -3,7 +3,7 @@ import { dataStoreService } from '../../dataStoreService';
 import { StratixRequestHelper } from '../../../stratix-core/utils';
 import { StratixConfigValidator } from '../../../stratix-core/utils';
 import { ExecutorFactory } from '../../../stratix-core/executor';
-import type { AgentBackendType, OpenClawConfig, DirectLLMConfig } from '../../../stratix-core/stratix-protocol';
+import type { AgentBackendType, OpenClawConfig, DirectLLMConfig, StratixDirectConfig } from '../../../stratix-core/stratix-protocol';
 
 const router = Router();
 const requestHelper = StratixRequestHelper.getInstance();
@@ -133,7 +133,7 @@ router.post('/test-connection', async (req: Request, res: Response) => {
   try {
     const { backendType, config, agentId } = req.body;
     
-    let testConfig: { backendType: AgentBackendType; openClawConfig?: OpenClawConfig; directConfig?: DirectLLMConfig };
+    let testConfig: { backendType: AgentBackendType; openClawConfig?: OpenClawConfig; directConfig?: DirectLLMConfig; stratixConfig?: any };
     
     if (agentId) {
       const store = dataStoreService.getStore();
@@ -145,13 +145,15 @@ router.post('/test-connection', async (req: Request, res: Response) => {
       testConfig = {
         backendType: agent.backendType,
         openClawConfig: agent.openClawConfig,
-        directConfig: agent.directConfig
+        directConfig: agent.directConfig,
+        stratixConfig: (agent as any).stratixConfig
       };
     } else if (backendType && config) {
       testConfig = {
         backendType,
         openClawConfig: backendType === 'openclaw' ? config as OpenClawConfig : undefined,
-        directConfig: backendType === 'direct' ? config as DirectLLMConfig : undefined
+        directConfig: backendType === 'direct' ? config as DirectLLMConfig : undefined,
+        stratixConfig: backendType === 'stratix' ? config : undefined
       };
     } else {
       res.json(requestHelper.badRequest('Either agentId or (backendType and config) is required'));
@@ -167,13 +169,74 @@ router.post('/test-connection', async (req: Request, res: Response) => {
       type: 'custom',
       backendType: testConfig.backendType,
       openClawConfig: testConfig.openClawConfig,
-      directConfig: testConfig.directConfig
+      directConfig: testConfig.directConfig,
+      stratixConfig: testConfig.stratixConfig
     };
     
     const result = await executor.testConnection(mockAgentConfig as any);
     
     res.json(requestHelper.success(result, result.success ? 'Connection successful' : 'Connection failed'));
   } catch (error) {
+    res.status(500).json(requestHelper.serverError('Internal server error'));
+  }
+});
+
+router.post('/chat', async (req: Request, res: Response) => {
+  try {
+    const { backendType, config, message, systemPrompt } = req.body;
+    
+    if (!message) {
+      res.json(requestHelper.badRequest('Message is required'));
+      return;
+    }
+
+    let chatConfig: { backendType: AgentBackendType; directConfig?: DirectLLMConfig; stratixConfig?: any };
+    
+    if (backendType === 'direct') {
+      chatConfig = {
+        backendType: 'direct',
+        directConfig: config
+      };
+    } else if (backendType === 'stratix') {
+      chatConfig = {
+        backendType: 'stratix',
+        stratixConfig: config
+      };
+    } else {
+      res.json(requestHelper.badRequest('Unsupported backend type for chat'));
+      return;
+    }
+
+    const executorFactory = ExecutorFactory.getInstance();
+    const executor = executorFactory.getExecutorByType(chatConfig.backendType);
+
+    const mockAgentConfig = {
+      agentId: 'chat-agent',
+      name: 'Chat Agent',
+      type: 'custom',
+      backendType: chatConfig.backendType,
+      directConfig: chatConfig.directConfig,
+      stratixConfig: chatConfig.stratixConfig,
+      soul: { identity: systemPrompt || '', goals: [], personality: '' }
+    };
+
+    const command = {
+      commandId: `cmd-${Date.now()}`,
+      skillId: 'chat',
+      agentId: 'chat-agent',
+      params: { message },
+      executeAt: Date.now()
+    };
+
+    const result = await executor.execute(command, mockAgentConfig as any);
+    
+    if (result.success) {
+      res.json(requestHelper.success({ content: result.data }, 'Message sent'));
+    } else {
+      res.json(requestHelper.error(500, result.error || 'Chat failed'));
+    }
+  } catch (error) {
+    console.error('[Chat API] Error:', error);
     res.status(500).json(requestHelper.serverError('Internal server error'));
   }
 });

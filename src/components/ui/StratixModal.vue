@@ -188,6 +188,13 @@ const handleMaskClick = (e: MouseEvent) => {
   }
 };
 
+/**
+ * 阻止事件冒泡到 Phaser Canvas，防止点击穿透
+ */
+const stopPropagation = (e: Event) => {
+  e.stopPropagation();
+};
+
 const handleKeydown = (e: KeyboardEvent) => {
   if (props.keyboard && e.key === 'Escape') {
     handleClose();
@@ -272,7 +279,7 @@ onUnmounted(() => {
           :style="{ background: ModalBaseConfig.style.maskBackground, ...maskStyle }" 
         />
         
-        <div class="stratix-modal-wrapper">
+        <div class="stratix-modal-wrapper" @click.stop="stopPropagation">
           <div 
             ref="modalRef"
             class="stratix-modal"
@@ -286,8 +293,9 @@ onUnmounted(() => {
               }
             ]"
             :style="modalStyle"
+            @click.stop="stopPropagation"
           >
-            <header 
+          <header 
               v-if="title || $slots.header || closable"
               class="stratix-modal__header"
               :style="headerStyleResolved"

@@ -56,7 +56,8 @@ function determineConfigStatus(
   profile: CharacterProfile | undefined,
   backendType: AgentBackendType,
   directConfig?: DirectLLMConfig,
-  openClawConfig?: OpenClawConfig
+  openClawConfig?: OpenClawConfig,
+  stratixConfig?: { provider?: string; model?: string }
 ): AgentConfigStatus {
   if (!profile) return 'draft';
   
@@ -64,8 +65,12 @@ function determineConfigStatus(
     if (!directConfig?.provider || !directConfig?.model) {
       return 'draft';
     }
-  } else {
+  } else if (backendType === 'openclaw') {
     if (!openClawConfig?.endpoint || !openClawConfig?.accountId) {
+      return 'draft';
+    }
+  } else if (backendType === 'stratix') {
+    if (!stratixConfig?.provider || !stratixConfig?.model) {
       return 'draft';
     }
   }
@@ -243,6 +248,7 @@ export const agentStore = {
       backendType?: AgentBackendType;
       openClawConfig?: OpenClawConfig;
       directConfig?: DirectLLMConfig;
+      stratixConfig?: StratixAgentConfig['stratixConfig'];
       soul?: StratixAgentConfig['soul'];
       memory?: StratixAgentConfig['memory'];
       skills?: StratixAgentConfig['skills'];
@@ -256,7 +262,8 @@ export const agentStore = {
       profile,
       backendType,
       options?.directConfig,
-      options?.openClawConfig
+      options?.openClawConfig,
+      options?.stratixConfig
     );
     
     const config: StratixAgentConfig = {
@@ -267,6 +274,7 @@ export const agentStore = {
       backendType,
       directConfig: backendType === 'direct' ? options?.directConfig : undefined,
       openClawConfig: backendType === 'openclaw' ? options?.openClawConfig : undefined,
+      stratixConfig: backendType === 'stratix' ? options?.stratixConfig : undefined,
       soul: options?.soul,
       memory: options?.memory,
       skills: options?.skills,
@@ -301,6 +309,7 @@ export const agentStore = {
       backendType?: AgentBackendType;
       openClawConfig?: OpenClawConfig;
       directConfig?: DirectLLMConfig;
+      stratixConfig?: StratixAgentConfig['stratixConfig'];
       soul?: StratixAgentConfig['soul'];
       memory?: StratixAgentConfig['memory'];
       skills?: StratixAgentConfig['skills'];
@@ -447,7 +456,8 @@ export const agentStore = {
         profile,
         state.agents[index].backendType,
         state.agents[index].directConfig,
-        state.agents[index].openClawConfig
+        state.agents[index].openClawConfig,
+        state.agents[index].stratixConfig
       );
       
       state.agents[index].updatedAt = Date.now();
@@ -469,12 +479,13 @@ export const agentStore = {
         updatedAt: Date.now()
       };
       
-      if (updates.backendType || updates.directConfig || updates.openClawConfig || updates.profile) {
+      if (updates.backendType || updates.directConfig || updates.openClawConfig || updates.profile || updates.stratixConfig) {
         state.agents[index].configStatus = determineConfigStatus(
           state.agents[index].profile,
           state.agents[index].backendType,
           state.agents[index].directConfig,
-          state.agents[index].openClawConfig
+          state.agents[index].openClawConfig,
+          state.agents[index].stratixConfig
         );
       }
       

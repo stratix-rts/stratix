@@ -4,7 +4,7 @@
 
 import type { BodyType, PartCategory, AnimationName } from '../constants';
 export type { BodyType, PartCategory, AnimationName };
-import type { CharacterTexture } from '@/stratix-core/stratix-protocol';
+import type { CharacterTexture, StratixDirectConfig } from '@/stratix-core/stratix-protocol';
 
 export interface PartSelection {
   itemId: string;
@@ -87,9 +87,10 @@ export interface SavedCharacter {
     personality: string;
   };
   rules?: string[];
-  backendType?: 'openclaw' | 'direct';
+  backendType?: 'openclaw' | 'direct' | 'stratix';
   openClawConfig?: OpenClawConfigLocal;
   directConfig?: DirectLLMConfigLocal;
+  stratixConfig?: StratixDirectConfig;
   openClawConnectionId?: string;
 }
 

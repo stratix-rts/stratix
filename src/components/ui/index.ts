@@ -12,10 +12,21 @@ export { default as StratixSelect } from './StratixSelect.vue';
 export { default as StratixCheckbox } from './StratixCheckbox.vue';
 export { default as StratixRadio } from './StratixRadio.vue';
 export { default as StratixSwitch } from './StratixSwitch.vue';
+export { default as StratixDropdown } from './StratixDropdown.vue';
 export { default as SvgIcon } from './SvgIcon.vue';
 
 export { default as StratixModal } from './StratixModal.vue';
 export { default as StratixConfirmDialog } from './StratixConfirmDialog.vue';
+
+// Dropdown 类型定义
+export interface DropdownOption {
+  label: string;
+  value: string | number;
+  icon?: string;
+  color?: string;
+  disabled?: boolean;
+  divided?: boolean;
+}
 export { Modal, type ModalOptions, type ModalResult } from './modal-api';
 
 export { 

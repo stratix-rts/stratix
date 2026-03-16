@@ -38,6 +38,7 @@ export interface BackendSelectorConfig {
   initialDirectConfig?: DirectLLMConfig;
   initialStratixConfig?: StratixDirectConfig;
   onChange?: (backendType: AgentBackendType, config: OpenClawConfig | DirectLLMConfig | StratixDirectConfig) => void;
+  onNext?: () => void;
 }
 
 export class BackendSelector {
@@ -51,6 +52,7 @@ export class BackendSelector {
   private directPanel: DirectLLMConfigPanel | null = null;
   private stratixPanel: StratixAgentConfigPanel | null = null;
   private onChange?: (backendType: AgentBackendType, config: OpenClawConfig | DirectLLMConfig | StratixDirectConfig) => void;
+  private onNext?: () => void;
   private isElectron: boolean = false;
 
   constructor(scene: Phaser.Scene, config: BackendSelectorConfig) {
@@ -76,6 +78,7 @@ export class BackendSelector {
       enableLongTerm: true,
     };
     this.onChange = config.onChange;
+    this.onNext = config.onNext;
     this.detectEnvironment();
   }
 
@@ -282,22 +285,48 @@ export class BackendSelector {
             top: 0;
             left: 0;
             right: 0;
-            bottom: 0;
+            bottom: 60px;
             padding: 16px;
             overflow-y: auto;
             display: none;
-          "></div>
+          ">
+            <div id="direct-panel-content"></div>
+          </div>
 
           <div id="stratix-config" class="config-panel" style="
             position: absolute;
             top: 0;
             left: 0;
             right: 0;
-            bottom: 0;
+            bottom: 60px;
             padding: 16px;
             overflow-y: auto;
             display: none;
-          "></div>
+          ">
+            <div id="stratix-panel-content"></div>
+          </div>
+          
+          <div class="next-btn-container" style="
+            position: absolute;
+            bottom: 16px;
+            left: 16px;
+            right: 16px;
+            display: flex;
+            gap: 8px;
+          ">
+            <button id="backend-next-btn" style="
+              flex: 1;
+              padding: 14px 20px;
+              background: ${THEME.accent};
+              border: none;
+              border-radius: 8px;
+              color: white;
+              font-size: 14px;
+              font-weight: 600;
+              cursor: pointer;
+              transition: all 0.2s;
+            ">下一步 Next</button>
+          </div>
         </div>
       </div>
     `;
@@ -325,6 +354,11 @@ export class BackendSelector {
 
     const testBtn = node.querySelector('#oc-test-btn') as HTMLButtonElement;
     testBtn?.addEventListener('click', () => this.testConnection());
+
+    const nextBtn = node.querySelector('#backend-next-btn') as HTMLButtonElement;
+    nextBtn?.addEventListener('click', () => {
+      this.onNext?.();
+    });
 
     const modeSelect = node.querySelector('#oc-mode') as HTMLSelectElement;
     modeSelect?.addEventListener('change', () => {
@@ -363,32 +397,90 @@ export class BackendSelector {
       stratixPanel.style.display = 'block';
 
       if (!this.stratixPanel && stratixPanel) {
+        const panelContent = stratixPanel.querySelector('#stratix-panel-content') as HTMLElement;
         this.stratixPanel = new StratixAgentConfigPanel(this.scene, {
           x: 0,
           y: 0,
           width: this.config.width - 32,
-          height: this.config.height - 100,
+          height: this.config.height - 160,
           initialConfig: this.stratixConfig,
           onChange: (config) => {
             this.stratixConfig = config;
             this.onChange?.('stratix', config);
           },
         });
-        stratixPanel.appendChild(this.stratixPanel.create().node as HTMLElement);
+        panelContent.appendChild(this.stratixPanel.create().node as HTMLElement);
+        
+        const testBtn = document.createElement('button');
+        testBtn.id = 'stratix-test-btn';
+        testBtn.textContent = '测试连接 Test Connection';
+        testBtn.style.cssText = `
+          width: 100%;
+          margin-top: 16px;
+          padding: 12px;
+          background: ${THEME.accentDim};
+          border: 1px solid ${THEME.accent};
+          border-radius: 6px;
+          color: ${THEME.accent};
+          font-size: 12px;
+          cursor: pointer;
+        `;
+        testBtn.addEventListener('click', () => this.testStratixConnectionFromPanel(node));
+        stratixPanel.appendChild(testBtn);
+
+        const statusDiv = document.createElement('div');
+        statusDiv.id = 'stratix-status';
+        statusDiv.style.cssText = `
+          margin-top: 12px;
+          padding: 10px;
+          border-radius: 6px;
+          font-size: 11px;
+          display: none;
+        `;
+        stratixPanel.appendChild(statusDiv);
       }
       this.onChange?.(backendType, this.stratixConfig);
     } else {
       directPanel.style.display = 'block';
 
       if (!this.directPanel && directPanel) {
+        const panelContent = directPanel.querySelector('#direct-panel-content') as HTMLElement;
         this.directPanel = new DirectLLMConfigPanel(this.scene, {
           x: 0,
           y: 0,
           width: this.config.width - 32,
-          height: this.config.height - 100,
+          height: this.config.height - 160,
           initialConfig: this.directConfig,
         });
-        directPanel.appendChild(this.directPanel.create().node as HTMLElement);
+        panelContent.appendChild(this.directPanel.create().node as HTMLElement);
+
+        const testBtn = document.createElement('button');
+        testBtn.id = 'direct-test-btn';
+        testBtn.textContent = '测试连接 Test Connection';
+        testBtn.style.cssText = `
+          width: 100%;
+          margin-top: 16px;
+          padding: 12px;
+          background: ${THEME.accentDim};
+          border: 1px solid ${THEME.accent};
+          border-radius: 6px;
+          color: ${THEME.accent};
+          font-size: 12px;
+          cursor: pointer;
+        `;
+        testBtn.addEventListener('click', () => this.testDirectConnectionFromPanel(node));
+        directPanel.appendChild(testBtn);
+
+        const statusDiv = document.createElement('div');
+        statusDiv.id = 'direct-status';
+        statusDiv.style.cssText = `
+          margin-top: 12px;
+          padding: 10px;
+          border-radius: 6px;
+          font-size: 11px;
+          display: none;
+        `;
+        directPanel.appendChild(statusDiv);
       }
       this.onChange?.(backendType, this.directConfig);
     }
@@ -398,12 +490,6 @@ export class BackendSelector {
     if (!this.container) return;
 
     const node = this.container.node as HTMLElement;
-    const endpoint = (node.querySelector('#oc-endpoint') as HTMLInputElement).value;
-    const accountId = (node.querySelector('#oc-account-id') as HTMLInputElement).value;
-    const apiKey = (node.querySelector('#oc-api-key') as HTMLInputElement).value;
-    const mode = (node.querySelector('#oc-mode') as HTMLSelectElement).value as UnifiedOpenClawConfig['mode'];
-    const tailscaleEnabled = (node.querySelector('#oc-tailscale-enabled') as HTMLInputElement)?.checked;
-
     const statusDiv = node.querySelector('#oc-status') as HTMLDivElement;
 
     statusDiv.style.display = 'block';
@@ -411,27 +497,103 @@ export class BackendSelector {
     statusDiv.style.color = THEME.accent;
     statusDiv.textContent = '连接中 Connecting...';
 
+    if (this.currentBackendType === 'openclaw') {
+      await this.testOpenClawConnection(node, statusDiv);
+    } else if (this.currentBackendType === 'direct') {
+      await this.testDirectConnection(node, statusDiv);
+    } else if (this.currentBackendType === 'stratix') {
+      await this.testStratixConnection(node, statusDiv);
+    }
+  }
+
+  private async testOpenClawConnection(node: HTMLElement, statusDiv: HTMLDivElement): Promise<void> {
+    const endpoint = (node.querySelector('#oc-endpoint') as HTMLInputElement).value;
+    const accountId = (node.querySelector('#oc-account-id') as HTMLInputElement).value;
+    const apiKey = (node.querySelector('#oc-api-key') as HTMLInputElement).value;
+    const mode = (node.querySelector('#oc-mode') as HTMLSelectElement).value as UnifiedOpenClawConfig['mode'];
+
     const config: UnifiedOpenClawConfig = {
       mode,
       localEndpoint: endpoint,
-      credentials: {
-        accountId,
-        apiKey,
-      },
+      credentials: { accountId, apiKey },
     };
 
     try {
       const connected = await unifiedOpenClawConnectionManager.initialize(config);
-
       if (connected) {
         statusDiv.style.background = 'rgba(0, 255, 136, 0.1)';
         statusDiv.style.color = THEME.success;
         statusDiv.textContent = '✓ 连接成功 Connected';
-
         this.openClawConfig = { endpoint, accountId, apiKey };
         this.onChange?.('openclaw', this.openClawConfig);
       } else {
         throw new Error('Connection failed');
+      }
+    } catch (error: any) {
+      statusDiv.style.background = 'rgba(255, 102, 102, 0.1)';
+      statusDiv.style.color = THEME.error;
+      statusDiv.textContent = `✗ 连接失败：${error.message}`;
+    }
+  }
+
+  private async testDirectConnection(node: HTMLElement, statusDiv: HTMLDivElement): Promise<void> {
+    try {
+      const provider = ((node.querySelector('#direct-provider') as HTMLSelectElement)?.value || this.directConfig.provider) as DirectLLMConfig['provider'];
+      const model = (node.querySelector('#direct-model') as HTMLInputElement)?.value || this.directConfig.model;
+      const apiKey = (node.querySelector('#direct-api-key') as HTMLInputElement)?.value || this.directConfig.apiKey;
+      const endpoint = (node.querySelector('#direct-endpoint') as HTMLInputElement)?.value || this.directConfig.endpoint;
+
+      const config: DirectLLMConfig = { provider, model, apiKey, endpoint, temperature: 0.7, maxTokens: 4096 };
+
+      const response = await fetch('/api/stratix/config/agent/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ backendType: 'direct', config })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        statusDiv.style.background = 'rgba(0, 255, 136, 0.1)';
+        statusDiv.style.color = THEME.success;
+        statusDiv.textContent = '✓ 连接成功 Connected';
+        this.directConfig = { ...this.directConfig, ...config };
+        this.onChange?.('direct', this.directConfig);
+      } else {
+        throw new Error(result.message || 'Connection failed');
+      }
+    } catch (error: any) {
+      statusDiv.style.background = 'rgba(255, 102, 102, 0.1)';
+      statusDiv.style.color = THEME.error;
+      statusDiv.textContent = `✗ 连接失败：${error.message}`;
+    }
+  }
+
+  private async testStratixConnection(node: HTMLElement, statusDiv: HTMLDivElement): Promise<void> {
+    try {
+      const provider = ((node.querySelector('#stratix-provider') as HTMLSelectElement)?.value || this.stratixConfig.provider) as StratixDirectConfig['provider'];
+      const model = (node.querySelector('#stratix-model') as HTMLInputElement)?.value || this.stratixConfig.model;
+      const apiKey = (node.querySelector('#stratix-api-key') as HTMLInputElement)?.value || this.stratixConfig.apiKey;
+      const endpoint = (node.querySelector('#stratix-endpoint') as HTMLInputElement)?.value || this.stratixConfig.endpoint;
+
+      const config: StratixDirectConfig = { provider, model, apiKey, endpoint, temperature: 0.7, maxTokens: 4096, maxShortTerm: 20, enableLongTerm: true };
+
+      const response = await fetch('/api/stratix/config/agent/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ backendType: 'stratix', config })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        statusDiv.style.background = 'rgba(0, 255, 136, 0.1)';
+        statusDiv.style.color = THEME.success;
+        statusDiv.textContent = '✓ 连接成功 Connected';
+        this.stratixConfig = { ...this.stratixConfig, ...config };
+        this.onChange?.('stratix', this.stratixConfig);
+      } else {
+        throw new Error(result.message || 'Connection failed');
       }
     } catch (error: any) {
       statusDiv.style.background = 'rgba(255, 102, 102, 0.1)';
@@ -471,6 +633,16 @@ export class BackendSelector {
     }
 
     return { valid: errors.length === 0, errors };
+  }
+
+  private async testDirectConnectionFromPanel(node: HTMLElement): Promise<void> {
+    const statusDiv = node.querySelector('#direct-status') as HTMLDivElement;
+    await this.testDirectConnection(node, statusDiv);
+  }
+
+  private async testStratixConnectionFromPanel(node: HTMLElement): Promise<void> {
+    const statusDiv = node.querySelector('#stratix-status') as HTMLDivElement;
+    await this.testStratixConnection(node, statusDiv);
   }
 
   destroy(): void {

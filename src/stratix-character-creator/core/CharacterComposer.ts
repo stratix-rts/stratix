@@ -252,7 +252,7 @@ class CharacterComposer {
     if (!ctx) return '';
 
     const walkY = ANIMATION_OFFSETS.walk;
-    const direction = 0;
+    const direction = 2;  // 默认朝下 (DOWN)
     const frame = 0;
 
     const srcX = frame * FRAME_SIZE;

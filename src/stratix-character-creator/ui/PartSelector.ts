@@ -7,7 +7,7 @@
 import Phaser from 'phaser';
 import { getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
-import { ContainerComponentBase } from '@/stratix-core/ui/ContainerComponent.base';
+import { DOMContainer } from '@/stratix-core/ui/DOMContainer';
 import { partRegistry } from '../core/PartRegistry';
 import { PART_CATEGORY_CONFIGS } from '../config/partConfig';
 import type { PartMetadata, BodyType, PartCategory, PartSelection } from '../types';
@@ -49,7 +49,7 @@ export interface PartSelectorConfig {
 export class PartSelector {
   private scene: Phaser.Scene;
   private config: PartSelectorConfig;
-  private container: Phaser.GameObjects.DOMElement | null = null;
+  private container: DOMContainer | null = null;
   private currentSelections: Record<string, PartSelection> = {};
   private currentCategory: PartCategory | null = null;
 
@@ -61,22 +61,28 @@ export class PartSelector {
   create(): Phaser.GameObjects.DOMElement {
     const html = this.generateHTML();
 
-    this.container = this.scene.add.dom(
-      this.config.x,
-      this.config.y
-    ).createFromHTML(html).setOrigin(0, 0);
+    this.container = new DOMContainer(this.scene, {
+      x: this.config.x,
+      y: this.config.y,
+      width: this.config.width,
+      height: this.config.height,
+      html: html,
+      depth: Depth.UI_MODAL_CONTENT
+    });
 
+    const element = this.container.open();
     this.setupEventListeners();
 
-    return this.container;
+    return element;
   }
 
   private generateHTML(): string {
-    const categories = PART_CATEGORY_CONFIGS;
-
-    const categoryTabs = categories.map((cat, index) => {
-      const icon = CATEGORY_ICONS[cat.category] || '[?]';
-      return `<button class="cat-btn ${index === 0 ? 'active' : ''}" data-category="${cat.category}" title="${cat.nameEn}">${icon}</button>`;
+    const categories = Object.keys(PART_CATEGORY_CONFIGS) as PartCategory[];
+    
+    const categoryTabs = categories.map(cat => {
+      const icon = CATEGORY_ICONS[cat] || '[?]';
+      const label = PART_CATEGORY_CONFIGS[cat]?.label || cat;
+      return `<button class="cat-btn" data-category="${cat}" title="${label}">${icon}</button>`;
     }).join('');
 
     return `
@@ -85,18 +91,19 @@ export class PartSelector {
         height: ${this.config.height}px;
         background: ${THEME.panelBg};
         border: 1px solid ${THEME.panelBorder};
-        border-radius: 4px;
+        border-radius: 8px;
         overflow: hidden;
-        font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', monospace;
-        color: ${THEME.text};
         display: flex;
         flex-direction: column;
+        font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', monospace;
       ">
         <div class="header" style="
-          padding: 16px;
+          padding: 12px 16px;
           border-bottom: 1px solid ${THEME.panelBorder};
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
         ">
-          <div style="font-size: 11px; color: ${THEME.textMuted}; letter-spacing: 1px; margin-bottom: 4px;">第一步 STEP 1</div>
           <div style="font-size: 14px; color: ${THEME.accent};">外观配置 Appearance</div>
         </div>
         <div class="categories" style="
@@ -179,24 +186,22 @@ export class PartSelector {
         .part-item {
           display: flex;
           align-items: center;
+          justify-content: space-between;
           padding: 10px 12px;
-          margin-bottom: 4px;
+          margin-bottom: 6px;
           background: ${THEME.panelBg};
-          border: 1px solid transparent;
-          border-radius: 4px;
+          border: 1px solid ${THEME.panelBorder};
+          border-radius: 6px;
           cursor: pointer;
           transition: all 0.15s ease;
         }
         .part-item:hover {
+          border-color: ${THEME.accent};
           background: ${THEME.hoverBg};
-          border-color: ${THEME.panelBorder};
         }
         .part-item.selected {
-          background: ${THEME.accentDim};
+          background: ${THEME.selectedBg};
           border-color: ${THEME.accent};
-        }
-        .part-item.selected .part-name {
-          color: ${THEME.accent};
         }
         .part-name {
           flex: 1;
@@ -253,9 +258,8 @@ export class PartSelector {
   }
 
   private setupEventListeners(): void {
-    if (!this.container) return;
-
-    const node = this.container.node as HTMLElement;
+    const node = this.container?.getNode();
+    if (!node) return;
 
     node.querySelectorAll('.cat-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -279,14 +283,15 @@ export class PartSelector {
   }
 
   private showCategory(category: PartCategory): void {
-    if (!this.container || !this.container.node) return;
+    const node = this.container?.getNode();
+    if (!node) return;
 
     this.currentCategory = category;
 
     const parts = partRegistry.getPartsByCategory(category)
       .filter(p => p.required.includes(this.config.bodyType));
 
-    const listNode = this.container.node.querySelector('.parts-list');
+    const listNode = node.querySelector('.parts-list');
     if (!listNode) return;
 
     if (parts.length === 0) {
@@ -307,14 +312,17 @@ export class PartSelector {
       return `
         <div class="part-item ${isSelected ? 'selected' : ''}" data-item-id="${part.itemId}">
           <span class="part-name">${part.name}</span>
-          <span class="part-meta">${animCount} 动画</span>
-          <select class="variant-select" data-item-id="${part.itemId}">
-            ${variantOptions}
-          </select>
+          <span class="part-meta">${animCount} anim</span>
+          ${variants.length > 1 ? `
+            <select class="variant-select" data-item-id="${part.itemId}">
+              ${variantOptions}
+            </select>
+          ` : ''}
         </div>
       `;
     }).join('');
 
+    // 添加点击事件
     listNode.querySelectorAll('.part-item').forEach(item => {
       item.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
@@ -325,9 +333,13 @@ export class PartSelector {
         const variant = variantSelect?.value || 'default';
 
         this.selectPart(category, itemId, variant);
+
+        listNode.querySelectorAll('.part-item').forEach(i => i.classList.remove('selected'));
+        item.classList.add('selected');
       });
     });
 
+    // 变体选择事件
     listNode.querySelectorAll('.variant-select').forEach(select => {
       select.addEventListener('change', (e) => {
         const itemId = (e.target as HTMLElement).dataset.itemId!;
@@ -340,12 +352,13 @@ export class PartSelector {
   private selectPart(category: PartCategory, itemId: string, variant: string): void {
     this.currentSelections[category] = { itemId, variant };
     this.config.onPartSelected(category, itemId, variant);
+  }
 
-    if (this.container?.node && this.currentCategory === category) {
-      const listNode = this.container.node.querySelector('.parts-list');
-      listNode?.querySelectorAll('.part-item').forEach(item => {
-        item.classList.toggle('selected', (item as HTMLElement).dataset.itemId === itemId);
-      });
+  setCurrentSelections(selections: Record<string, PartSelection>): void {
+    this.currentSelections = { ...selections };
+    
+    if (this.currentCategory) {
+      this.showCategory(this.currentCategory);
     }
   }
 
@@ -356,17 +369,8 @@ export class PartSelector {
     }
   }
 
-  setCurrentSelections(selections: Record<string, PartSelection>): void {
-    this.currentSelections = { ...selections };
-  }
-
-  setVisible(visible: boolean): void {
-    if (this.container) {
-      this.container.setVisible(visible);
-    }
-  }
-
   destroy(): void {
     this.container?.destroy();
+    this.container = null;
   }
 }
