@@ -3,7 +3,15 @@ import { getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
 import { ContainerComponentBase } from '@/stratix-core/ui/ContainerComponent.base';
 import type { DirectLLMConfig, LLMProvider } from '@/stratix-core/stratix-protocol';
-import { PROVIDER_CONFIGS, PROVIDER_LIST, type ProviderConfig } from '../config/providerConfig';
+import { 
+  PROVIDER_CONFIGS, 
+  PROVIDER_LIST, 
+  type ProviderConfig,
+  saveApiKey,
+  loadApiKey,
+  listApiKeys,
+  addCustomProvider
+} from '../config/providerConfig';
 
 export interface DirectLLMConfigPanelConfig {
   x: number;
@@ -103,6 +111,23 @@ export class DirectLLMConfigPanel {
           </label>
           <div class="provider-buttons" style="display: flex; gap: 8px; flex-wrap: wrap;">
             ${providerButtons}
+            <button id="add-custom-provider" style="
+              padding: 10px 14px;
+              background: transparent;
+              border: 1px dashed ${THEME.border};
+              border-radius: 8px;
+              color: ${THEME.textMuted};
+              font-size: 12px;
+              cursor: pointer;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              gap: 4px;
+              min-width: 80px;
+            ">
+              <span style="font-size: 18px;">➕</span>
+              <span>Custom</span>
+            </button>
           </div>
         </div>
 
@@ -159,6 +184,21 @@ export class DirectLLMConfigPanel {
               cursor: pointer;
               font-size: 12px;
             ">👁</button>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: ${THEME.textMuted}; cursor: pointer;">
+              <input type="checkbox" id="save-api-key" style="cursor: pointer;" />
+              Save API Key (encrypted)
+            </label>
+            <button id="load-saved-key" style="
+              padding: 4px 8px;
+              background: transparent;
+              border: 1px solid ${THEME.border};
+              border-radius: 4px;
+              color: ${THEME.textMuted};
+              cursor: pointer;
+              font-size: 10px;
+            ">Load saved</button>
           </div>
         </div>
 
@@ -270,6 +310,22 @@ export class DirectLLMConfigPanel {
         apiKeyInput.type = apiKeyInput.type === 'password' ? 'text' : 'password';
       }
     });
+
+    const loadSavedKeyBtn = node.querySelector('#load-saved-key') as HTMLButtonElement;
+    loadSavedKeyBtn?.addEventListener('click', async () => {
+      const provider = this.currentConfig.provider;
+      const result = await loadApiKey(provider);
+      if (result.success && result.data) {
+        this.currentConfig.apiKey = result.data;
+        (apiKeyInput as HTMLInputElement).value = result.data;
+        this.notifyChange();
+      }
+    });
+
+    const addCustomProviderBtn = node.querySelector('#add-custom-provider') as HTMLButtonElement;
+    addCustomProviderBtn?.addEventListener('click', () => {
+      this.showAddCustomProviderDialog();
+    });
   }
 
   private setProvider(provider: LLMProvider): void {
@@ -344,6 +400,166 @@ export class DirectLLMConfigPanel {
       valid: errors.length === 0,
       errors,
     };
+  }
+
+  private async showAddCustomProviderDialog(): Promise<void> {
+    const dialogHtml = `
+      <div class="custom-provider-dialog" style="
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+      ">
+        <div style="
+          background: ${THEME.bg};
+          border: 1px solid ${THEME.border};
+          border-radius: 12px;
+          padding: 24px;
+          width: 400px;
+          max-width: 90vw;
+        ">
+          <h3 style="margin: 0 0 16px 0; color: ${THEME.text}; font-size: 16px;">Add Custom Provider</h3>
+          
+          <div style="margin-bottom: 12px;">
+            <label style="display: block; font-size: 11px; color: ${THEME.textMuted}; margin-bottom: 4px;">Provider ID (unique)</label>
+            <input type="text" id="custom-provider-id" placeholder="e.g., my-company" style="
+              width: 100%; padding: 8px 12px;
+              background: ${THEME.inputBg};
+              border: 1px solid ${THEME.border};
+              border-radius: 6px;
+              color: ${THEME.text};
+              font-size: 12px;
+              box-sizing: border-box;
+            " />
+          </div>
+          
+          <div style="margin-bottom: 12px;">
+            <label style="display: block; font-size: 11px; color: ${THEME.textMuted}; margin-bottom: 4px;">Display Name</label>
+            <input type="text" id="custom-provider-name" placeholder="e.g., My Company API" style="
+              width: 100%; padding: 8px 12px;
+              background: ${THEME.inputBg};
+              border: 1px solid ${THEME.border};
+              border-radius: 6px;
+              color: ${THEME.text};
+              font-size: 12px;
+              box-sizing: border-box;
+            " />
+          </div>
+          
+          <div style="margin-bottom: 12px;">
+            <label style="display: block; font-size: 11px; color: ${THEME.textMuted}; margin-bottom: 4px;">Endpoint URL</label>
+            <input type="text" id="custom-provider-endpoint" placeholder="https://api.example.com/v1" style="
+              width: 100%; padding: 8px 12px;
+              background: ${THEME.inputBg};
+              border: 1px solid ${THEME.border};
+              border-radius: 6px;
+              color: ${THEME.text};
+              font-size: 12px;
+              box-sizing: border-box;
+            " />
+          </div>
+          
+          <div style="margin-bottom: 12px;">
+            <label style="display: block; font-size: 11px; color: ${THEME.textMuted}; margin-bottom: 4px;">Models (comma separated)</label>
+            <input type="text" id="custom-provider-models" placeholder="gpt-4, gpt-3.5-turbo" style="
+              width: 100%; padding: 8px 12px;
+              background: ${THEME.inputBg};
+              border: 1px solid ${THEME.border};
+              border-radius: 6px;
+              color: ${THEME.text};
+              font-size: 12px;
+              box-sizing: border-box;
+            " />
+          </div>
+          
+          <div style="margin-bottom: 16px;">
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: ${THEME.textMuted};">
+              <input type="checkbox" id="custom-provider-requires-key" checked />
+              Requires API Key
+            </label>
+          </div>
+          
+          <div style="display: flex; gap: 8px; justify-content: flex-end;">
+            <button id="cancel-add-custom" style="
+              padding: 8px 16px;
+              background: transparent;
+              border: 1px solid ${THEME.border};
+              border-radius: 6px;
+              color: ${THEME.text};
+              cursor: pointer;
+              font-size: 12px;
+            ">Cancel</button>
+            <button id="confirm-add-custom" style="
+              padding: 8px 16px;
+              background: ${THEME.accent};
+              border: none;
+              border-radius: 6px;
+              color: ${THEME.bg};
+              cursor: pointer;
+              font-size: 12px;
+            ">Add Provider</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = dialogHtml;
+    document.body.appendChild(tempDiv);
+
+    const dialog = tempDiv.querySelector('.custom-provider-dialog') as HTMLElement;
+    const cancelBtn = dialog.querySelector('#cancel-add-custom') as HTMLButtonElement;
+    const confirmBtn = dialog.querySelector('#confirm-add-custom') as HTMLButtonElement;
+
+    cancelBtn.addEventListener('click', () => {
+      document.body.removeChild(dialog);
+    });
+
+    confirmBtn.addEventListener('click', async () => {
+      const providerId = (dialog.querySelector('#custom-provider-id') as HTMLInputElement).value.trim();
+      const providerName = (dialog.querySelector('#custom-provider-name') as HTMLInputElement).value.trim();
+      const endpoint = (dialog.querySelector('#custom-provider-endpoint') as HTMLInputElement).value.trim();
+      const modelsStr = (dialog.querySelector('#custom-provider-models') as HTMLInputElement).value.trim();
+      const requiresKey = (dialog.querySelector('#custom-provider-requires-key') as HTMLInputElement).checked;
+
+      if (!providerId || !providerName || !endpoint) {
+        alert('Please fill in all required fields');
+        return;
+      }
+
+      const models = modelsStr ? modelsStr.split(',').map(m => m.trim()).filter(m => m) : [];
+
+      const result = await addCustomProvider(providerId, {
+        name: providerName,
+        icon: '🏢',
+        requiresApiKey: requiresKey,
+        defaultEndpoint: endpoint,
+        models: models,
+        envKey: null,
+      });
+
+      if (result.success) {
+        document.body.removeChild(dialog);
+        this.refreshUI();
+      } else {
+        alert(result.message);
+      }
+    });
+  }
+
+  async saveApiKeyIfNeeded(): Promise<void> {
+    const node = this.container?.node as HTMLElement;
+    if (!node) return;
+
+    const saveCheckbox = node.querySelector('#save-api-key') as HTMLInputElement;
+    const apiKey = this.currentConfig.apiKey;
+
+    if (saveCheckbox?.checked && apiKey) {
+      await saveApiKey(this.currentConfig.provider, apiKey);
+    }
   }
 
   destroy(): void {

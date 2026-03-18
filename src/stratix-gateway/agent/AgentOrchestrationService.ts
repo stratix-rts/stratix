@@ -3,6 +3,7 @@ import { LLMAgent } from './agents/LLMAgent';
 import type { AgentInterface, AgentState } from './agents/types';
 import { LRAClient } from '../../stratix-lra-bridge/LRAClient';
 import { StratixAgentConfig } from '../../stratix-core';
+import { loadApiKey } from '../api/apiKeyStore';
 
 export type { AgentState };
 
@@ -43,9 +44,24 @@ export class AgentOrchestrationService {
       return;
     }
 
-    // 检查是否有有效的后端配置
-    const hasOpenClaw = agentConfig.openClawConfig && agentConfig.openClawConfig.endpoint;
-    const hasDirect = agentConfig.directConfig && (agentConfig.directConfig.apiKey || agentConfig.directConfig.baseURL);
+    const configWithApiKey = { ...agentConfig };
+
+    if (configWithApiKey.directConfig && !configWithApiKey.directConfig.apiKey) {
+      const apiKeyResult = await loadApiKey(configWithApiKey.directConfig.provider);
+      if (apiKeyResult.success && apiKeyResult.data) {
+        configWithApiKey.directConfig.apiKey = apiKeyResult.data;
+      }
+    }
+
+    if (configWithApiKey.stratixConfig && !configWithApiKey.stratixConfig.apiKey) {
+      const apiKeyResult = await loadApiKey(configWithApiKey.stratixConfig.provider);
+      if (apiKeyResult.success && apiKeyResult.data) {
+        configWithApiKey.stratixConfig.apiKey = apiKeyResult.data;
+      }
+    }
+
+    const hasOpenClaw = configWithApiKey.openClawConfig && configWithApiKey.openClawConfig.endpoint;
+    const hasDirect = configWithApiKey.directConfig && (configWithApiKey.directConfig.apiKey || configWithApiKey.directConfig.endpoint);
     
     if (!hasOpenClaw && !hasDirect) {
       console.warn(`[AgentOrchestrationService] Agent ${agentId} has no LLM/OpenClaw configuration, skipping start (agent will not respond to messages)`);
@@ -58,14 +74,14 @@ export class AgentOrchestrationService {
 
     if (hasOpenClaw) {
       agent = new OpenClawAgent(
-        agentConfig,
+        configWithApiKey,
         projectPath,
         projectId,
         this.lraClient
       );
     } else {
       agent = new LLMAgent(
-        agentConfig,
+        configWithApiKey,
         projectPath,
         projectId,
         this.lraClient

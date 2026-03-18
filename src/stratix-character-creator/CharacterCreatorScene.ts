@@ -1334,10 +1334,21 @@ export class CharacterCreatorScene extends Phaser.Scene {
 
       this.currentCharacter.updatedAt = Date.now();
 
+      const characterToSave = { ...this.currentCharacter };
+
+      if (characterToSave.directConfig) {
+        const { apiKey, ...directConfigWithoutKey } = characterToSave.directConfig as any;
+        characterToSave.directConfig = directConfigWithoutKey;
+      }
+      if (characterToSave.stratixConfig) {
+        const { apiKey, ...stratixConfigWithoutKey } = characterToSave.stratixConfig as any;
+        characterToSave.stratixConfig = stratixConfigWithoutKey;
+      }
+
       const existingChar = await characterStorage.load(this.currentCharacter.characterId);
       const isNew = !existingChar;
 
-      await characterStorage.save(this.currentCharacter);
+      await characterStorage.save(characterToSave);
       this.isDirty = false;
 
       if (this.characterList) {

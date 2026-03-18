@@ -65,8 +65,9 @@ Module._resolveFilename = function(request: string, parent: any, isMain: any, op
   return originalResolve.call(this, request, parent, isMain, options);
 };
 
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, safeStorage } from 'electron';
 import path from 'path';
+import fs from 'fs';
 
 import { startGatewayService } from '../stratix-gateway';
 import { dataStoreService } from '../stratix-gateway/dataStoreService';
@@ -77,13 +78,15 @@ let mainWindow: BrowserWindow | null = null;
 let gatewayService: any = null;
 let tailscale: EmbeddedTailscale | null = null;
 let activeOpenClawConnection: WebSocketOpenClawAdapter | null = null;
+let userDataPath: string = '';
 
 /**
  * 初始化所有服务
  */
 async function initializeServices() {
+  userDataPath = app.getPath('userData');
   // 1. 确定数据目录（Electron userData）
-  const dataDir = path.join(app.getPath('userData'), 'data');
+  const dataDir = path.join(userDataPath, 'data');
   console.log('[Electron] Data directory:', dataDir);
   
   // 2. 初始化数据服务
@@ -261,6 +264,117 @@ function setupIPC() {
       connected: status.connected,
       endpoint: status.connected ? 'local' : undefined,
     };
+  });
+  
+  // ==================== Custom Providers IPC ====================
+  ipcMain.handle('config:saveCustomProviders', async (_event, configJson: string) => {
+    try {
+      const configPath = path.join(userDataPath, 'custom-providers.config.json');
+      fs.writeFileSync(configPath, configJson, 'utf-8');
+      return { success: true };
+    } catch (error) {
+      console.error('[Electron] Failed to save custom providers:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to save' };
+    }
+  });
+  
+  ipcMain.handle('config:loadCustomProviders', async () => {
+    try {
+      const configPath = path.join(userDataPath, 'custom-providers.config.json');
+      if (fs.existsSync(configPath)) {
+        const content = fs.readFileSync(configPath, 'utf-8');
+        return { success: true, data: content };
+      }
+      return { success: true, data: null };
+    } catch (error) {
+      console.error('[Electron] Failed to load custom providers:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to load' };
+    }
+  });
+  
+  // ==================== API Key 加密存储 IPC ====================
+  ipcMain.handle('apikey:save', async (_event, providerId: string, apiKey: string) => {
+    try {
+      if (!safeStorage.isEncryptionAvailable()) {
+        return { success: false, error: 'Encryption not available' };
+      }
+      
+      const encrypted = safeStorage.encryptString(apiKey);
+      const keysPath = path.join(userDataPath, 'api-keys.encrypted');
+      
+      let keys: Record<string, string> = {};
+      if (fs.existsSync(keysPath)) {
+        const existing = fs.readFileSync(keysPath);
+        keys = JSON.parse(existing.toString('base64'));
+      }
+      
+      keys[providerId] = encrypted.toString('base64');
+      fs.writeFileSync(keysPath, Buffer.from(JSON.stringify(keys)));
+      
+      return { success: true };
+    } catch (error) {
+      console.error('[Electron] Failed to save API key:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to save' };
+    }
+  });
+  
+  ipcMain.handle('apikey:load', async (_event, providerId: string) => {
+    try {
+      if (!safeStorage.isEncryptionAvailable()) {
+        return { success: false, error: 'Encryption not available' };
+      }
+      
+      const keysPath = path.join(userDataPath, 'api-keys.encrypted');
+      if (!fs.existsSync(keysPath)) {
+        return { success: true, data: null };
+      }
+      
+      const keys = JSON.parse(fs.readFileSync(keysPath).toString('base64'));
+      const encrypted = keys[providerId];
+      
+      if (!encrypted) {
+        return { success: true, data: null };
+      }
+      
+      const decrypted = safeStorage.decryptString(Buffer.from(encrypted, 'base64'));
+      return { success: true, data: decrypted };
+    } catch (error) {
+      console.error('[Electron] Failed to load API key:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to load' };
+    }
+  });
+  
+  ipcMain.handle('apikey:delete', async (_event, providerId: string) => {
+    try {
+      const keysPath = path.join(userDataPath, 'api-keys.encrypted');
+      if (!fs.existsSync(keysPath)) {
+        return { success: true };
+      }
+      
+      const keys = JSON.parse(fs.readFileSync(keysPath).toString('base64'));
+      delete keys[providerId];
+      fs.writeFileSync(keysPath, Buffer.from(JSON.stringify(keys)));
+      
+      return { success: true };
+    } catch (error) {
+      console.error('[Electron] Failed to delete API key:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to delete' };
+    }
+  });
+  
+  ipcMain.handle('apikey:list', async () => {
+    try {
+      const keysPath = path.join(userDataPath, 'api-keys.encrypted');
+      if (!fs.existsSync(keysPath)) {
+        return { success: true, data: [] };
+      }
+      
+      const keys = JSON.parse(fs.readFileSync(keysPath).toString('base64'));
+      return { success: true, data: Object.keys(keys) };
+    } catch (error) {
+      console.error('[Electron] Failed to list API keys:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to list' };
+    }
   });
 }
 

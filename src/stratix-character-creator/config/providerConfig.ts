@@ -1,4 +1,6 @@
 import type { LLMProvider } from '@/stratix-core/stratix-protocol';
+import builtInProviders from '@/config/providers.config.json';
+import customProvidersDefault from '@/config/custom-providers.config.json';
 
 export interface ProviderConfig {
   name: string;
@@ -7,41 +9,196 @@ export interface ProviderConfig {
   defaultEndpoint: string;
   models: string[];
   envKey: string | null;
+  isCustom?: boolean;
 }
 
-export const PROVIDER_CONFIGS: Record<LLMProvider, ProviderConfig> = {
-  openai: {
-    name: 'OpenAI',
-    icon: '🤖',
-    requiresApiKey: true,
-    defaultEndpoint: 'https://api.openai.com/v1',
-    models: ['gpt-4', 'gpt-4-turbo', 'gpt-4o', 'gpt-3.5-turbo'],
-    envKey: 'OPENAI_API_KEY',
-  },
-  anthropic: {
-    name: 'Anthropic',
-    icon: '🧠',
-    requiresApiKey: true,
-    defaultEndpoint: 'https://api.anthropic.com',
-    models: ['claude-3-opus', 'claude-3-sonnet', 'claude-3-haiku', 'claude-3-5-sonnet'],
-    envKey: 'ANTHROPIC_API_KEY',
-  },
-  ollama: {
-    name: 'Ollama',
-    icon: '🐑',
-    requiresApiKey: false,
-    defaultEndpoint: 'http://localhost:11434',
-    models: ['llama3', 'llama3:70b', 'mistral', 'codellama', 'deepseek-coder'],
-    envKey: null,
-  },
-  custom: {
-    name: 'Custom',
-    icon: '⚙️',
-    requiresApiKey: false,
-    defaultEndpoint: '',
-    models: [],
-    envKey: null,
-  },
-};
+interface ProvidersConfigJson {
+  providers: Record<string, ProviderConfig>;
+  providerOrder: string[];
+}
 
-export const PROVIDER_LIST: LLMProvider[] = ['openai', 'anthropic', 'ollama', 'custom'];
+const builtInConfig = builtInProviders as ProvidersConfigJson;
+const defaultCustomConfig = customProvidersDefault as ProvidersConfigJson;
+
+let customConfig: ProvidersConfigJson = { ...defaultCustomConfig };
+let customConfigLoaded = false;
+
+async function loadCustomConfig(): Promise<void> {
+  if (customConfigLoaded) return;
+  
+  if (typeof window !== 'undefined' && (window as any).electronAPI?.config?.loadCustomProviders) {
+    try {
+      const result = await (window as any).electronAPI.config.loadCustomProviders();
+      if (result.success && result.data) {
+        customConfig = JSON.parse(result.data);
+      }
+    } catch (error) {
+      console.error('[ProviderConfig] Failed to load custom providers:', error);
+    }
+  }
+  customConfigLoaded = true;
+}
+
+export function getBuiltInProviderConfigs(): Record<string, ProviderConfig> {
+  return { ...builtInConfig.providers };
+}
+
+export function getBuiltInProviderList(): string[] {
+  return [...builtInConfig.providerOrder];
+}
+
+export function getCustomProviderConfigs(): Record<string, ProviderConfig> {
+  return { ...customConfig.providers };
+}
+
+export function getCustomProviderList(): string[] {
+  return [...customConfig.providerOrder];
+}
+
+export async function getAllProviderConfigs(): Promise<Record<string, ProviderConfig>> {
+  await loadCustomConfig();
+  
+  const builtIn = getBuiltInProviderConfigs();
+  const custom = getCustomProviderConfigs();
+  
+  const merged: Record<string, ProviderConfig> = { ...builtIn };
+  
+  for (const key of Object.keys(custom)) {
+    merged[key] = {
+      ...custom[key],
+      isCustom: true,
+    };
+  }
+  
+  return merged;
+}
+
+export async function getAllProviderList(): Promise<string[]> {
+  await loadCustomConfig();
+  return [...getBuiltInProviderList(), ...getCustomProviderList()];
+}
+
+export async function getProviderConfigs(): Promise<Record<string, ProviderConfig>> {
+  return await getAllProviderConfigs();
+}
+
+export async function getProviderList(): Promise<string[]> {
+  return await getAllProviderList();
+}
+
+export const BUILT_IN_PROVIDER_LIST: string[] = getBuiltInProviderList();
+
+export const PROVIDER_CONFIGS: Record<string, ProviderConfig> = getBuiltInProviderConfigs();
+
+export const PROVIDER_LIST: string[] = getBuiltInProviderList();
+
+export async function getCUSTOM_PROVIDER_LIST(): Promise<string[]> {
+  await loadCustomConfig();
+  return getCustomProviderList();
+}
+
+export async function addCustomProvider(
+  providerId: string,
+  config: Omit<ProviderConfig, 'isCustom'>
+): Promise<{ success: boolean; message: string }> {
+  await loadCustomConfig();
+  
+  if (builtInConfig.providers[providerId]) {
+    return { success: false, message: `Provider "${providerId}" already exists in built-in` };
+  }
+  
+  if (customConfig.providers[providerId]) {
+    return { success: false, message: `Provider "${providerId}" already exists` };
+  }
+
+  const newCustomProviders = {
+    ...customConfig.providers,
+    [providerId]: {
+      ...config,
+      isCustom: true,
+    },
+  };
+
+  const newCustomConfig: ProvidersConfigJson = {
+    providers: newCustomProviders,
+    providerOrder: [...customConfig.providerOrder, providerId],
+  };
+
+  customConfig = newCustomConfig;
+
+  if (typeof window !== 'undefined' && (window as any).electronAPI?.config?.saveCustomProviders) {
+    try {
+      await (window as any).electronAPI.config.saveCustomProviders(JSON.stringify(newCustomConfig, null, 2));
+    } catch (error) {
+      console.error('[ProviderConfig] Failed to save custom providers:', error);
+      return { success: false, message: 'Failed to save configuration' };
+    }
+  }
+
+  return { success: true, message: `Provider "${config.name}" added successfully` };
+}
+
+export async function removeCustomProvider(providerId: string): Promise<{ success: boolean; message: string }> {
+  await loadCustomConfig();
+  
+  if (!customConfig.providers[providerId]) {
+    return { success: false, message: `Custom provider "${providerId}" not found` };
+  }
+
+  const newCustomProviders = { ...customConfig.providers };
+  delete newCustomProviders[providerId];
+
+  const newCustomConfig: ProvidersConfigJson = {
+    providers: newCustomProviders,
+    providerOrder: customConfig.providerOrder.filter((p) => p !== providerId),
+  };
+
+  customConfig = newCustomConfig;
+
+  if (typeof window !== 'undefined' && (window as any).electronAPI?.config?.saveCustomProviders) {
+    try {
+      await (window as any).electronAPI.config.saveCustomProviders(JSON.stringify(newCustomConfig, null, 2));
+    } catch (error) {
+      return { success: false, message: 'Failed to save configuration' };
+    }
+  }
+
+  return { success: true, message: `Provider "${providerId}" removed` };
+}
+
+export function isBuiltInProvider(providerId: string): boolean {
+  return BUILT_IN_PROVIDER_LIST.includes(providerId);
+}
+
+export async function isCustomProvider(providerId: string): Promise<boolean> {
+  await loadCustomConfig();
+  return customConfig.providerOrder.includes(providerId);
+}
+
+export async function saveApiKey(providerId: string, apiKey: string): Promise<{ success: boolean; error?: string }> {
+  if (typeof window !== 'undefined' && (window as any).electronAPI?.apiKey?.save) {
+    return await (window as any).electronAPI.apiKey.save(providerId, apiKey);
+  }
+  return { success: false, error: 'API not available' };
+}
+
+export async function loadApiKey(providerId: string): Promise<{ success: boolean; data: string | null; error?: string }> {
+  if (typeof window !== 'undefined' && (window as any).electronAPI?.apiKey?.load) {
+    return await (window as any).electronAPI.apiKey.load(providerId);
+  }
+  return { success: false, data: null, error: 'API not available' };
+}
+
+export async function deleteApiKey(providerId: string): Promise<{ success: boolean; error?: string }> {
+  if (typeof window !== 'undefined' && (window as any).electronAPI?.apiKey?.delete) {
+    return await (window as any).electronAPI.apiKey.delete(providerId);
+  }
+  return { success: false, error: 'API not available' };
+}
+
+export async function listApiKeys(): Promise<{ success: boolean; data: string[]; error?: string }> {
+  if (typeof window !== 'undefined' && (window as any).electronAPI?.apiKey?.list) {
+    return await (window as any).electronAPI.apiKey.list();
+  }
+  return { success: false, data: [], error: 'API not available' };
+}

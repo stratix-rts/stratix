@@ -28,6 +28,20 @@ export interface ElectronAPI {
     connectDirect: (endpoint: string, config: any) => Promise<boolean>;
     disconnectDirect: () => Promise<void>;
   };
+  
+  // Custom Providers
+  config: {
+    saveCustomProviders: (configJson: string) => Promise<{ success: boolean; error?: string }>;
+    loadCustomProviders: () => Promise<{ success: boolean; data: string | null; error?: string }>;
+  };
+  
+  // API Keys (encrypted)
+  apiKey: {
+    save: (providerId: string, apiKey: string) => Promise<{ success: boolean; error?: string }>;
+    load: (providerId: string) => Promise<{ success: boolean; data: string | null; error?: string }>;
+    delete: (providerId: string) => Promise<{ success: boolean; error?: string }>;
+    list: () => Promise<{ success: boolean; data: string[]; error?: string }>;
+  };
 }
 
 const electronAPI: ElectronAPI = {
@@ -54,6 +68,20 @@ const electronAPI: ElectronAPI = {
   openclaw: {
     connectDirect: (endpoint, config) => ipcRenderer.invoke('openclaw:connect', endpoint, config),
     disconnectDirect: () => ipcRenderer.invoke('openclaw:disconnect'),
+  },
+  
+  // Custom Providers
+  config: {
+    saveCustomProviders: (configJson) => ipcRenderer.invoke('config:saveCustomProviders', configJson),
+    loadCustomProviders: () => ipcRenderer.invoke('config:loadCustomProviders'),
+  },
+  
+  // API Keys (encrypted)
+  apiKey: {
+    save: (providerId, apiKey) => ipcRenderer.invoke('apikey:save', providerId, apiKey),
+    load: (providerId) => ipcRenderer.invoke('apikey:load', providerId),
+    delete: (providerId) => ipcRenderer.invoke('apikey:delete', providerId),
+    list: () => ipcRenderer.invoke('apikey:list'),
   },
 };
 
