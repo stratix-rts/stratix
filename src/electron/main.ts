@@ -376,6 +376,31 @@ function setupIPC() {
       return { success: false, error: error instanceof Error ? error.message : 'Failed to list' };
     }
   });
+
+  // ==================== Agent Platform IPC ====================
+  const {
+    registerWorkflowHandlers,
+    registerProviderHandlers,
+    registerExecutionHandlers,
+  } = require('../agent-platform/ipc');
+
+  const workflowHandlers = registerWorkflowHandlers(userDataPath, fs, path);
+  const providerHandlers = registerProviderHandlers();
+  const executionHandlers = registerExecutionHandlers();
+
+  for (const [channel, handler] of Object.entries(workflowHandlers)) {
+    ipcMain.handle(channel, handler as (event: Electron.IpcMainInvokeEvent, ...args: any[]) => any);
+  }
+
+  for (const [channel, handler] of Object.entries(providerHandlers)) {
+    ipcMain.handle(channel, handler as (event: Electron.IpcMainInvokeEvent, ...args: any[]) => any);
+  }
+
+  for (const [channel, handler] of Object.entries(executionHandlers)) {
+    ipcMain.handle(channel, handler as (event: Electron.IpcMainInvokeEvent, ...args: any[]) => any);
+  }
+
+  console.log('[Electron] Agent Platform IPC handlers registered');
 }
 
 /**

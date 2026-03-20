@@ -5,12 +5,14 @@ import { ContainerComponentBase } from '@/stratix-core/ui/ContainerComponent.bas
 import type { DirectLLMConfig, LLMProvider } from '@/stratix-core/stratix-protocol';
 import { 
   PROVIDER_CONFIGS, 
-  PROVIDER_LIST, 
+  PROVIDER_LIST,
   type ProviderConfig,
+  getCachedProviderConfigs,
+  getCachedProviderList,
+  initProviderConfig,
   saveApiKey,
   loadApiKey,
-  listApiKeys,
-  addCustomProvider
+  addCustomProvider,
 } from '../config/providerConfig';
 
 export interface DirectLLMConfigPanelConfig {
@@ -52,7 +54,8 @@ export class DirectLLMConfigPanel {
     this.onChange = config.onChange;
   }
 
-  create(): Phaser.GameObjects.DOMElement {
+  async create(): Promise<Phaser.GameObjects.DOMElement> {
+    await initProviderConfig();
     const html = this.generateHTML();
     this.container = this.scene.add.dom(this.config.x, this.config.y).createFromHTML(html).setOrigin(0, 0).setDepth(Depth.UI_MODAL_CONTENT);
     this.setupEventListeners();
@@ -60,8 +63,12 @@ export class DirectLLMConfigPanel {
   }
 
   private generateHTML(): string {
-    const providerButtons = PROVIDER_LIST.map((p) => {
-      const cfg = PROVIDER_CONFIGS[p];
+    const configs = getCachedProviderConfigs();
+    const list = getCachedProviderList();
+    
+    const providerButtons = list.map((p) => {
+      const cfg = configs[p];
+      if (!cfg) return '';
       const isActive = p === this.currentConfig.provider;
       return `
         <button class="provider-btn" data-provider="${p}" style="
@@ -84,10 +91,10 @@ export class DirectLLMConfigPanel {
       `;
     }).join('');
 
-    const currentProvider = PROVIDER_CONFIGS[this.currentConfig.provider];
-    const modelOptions = currentProvider.models.map(
+    const currentProvider = configs[this.currentConfig.provider];
+    const modelOptions = currentProvider?.models?.map(
       (m) => `<option value="${m}" ${m === this.currentConfig.model ? 'selected' : ''}>${m}</option>`
-    ).join('');
+    ).join('') || '';
 
     const showApiKey = currentProvider.requiresApiKey;
     const showEndpoint = this.currentConfig.provider === 'ollama' || this.currentConfig.provider === 'custom';
@@ -331,13 +338,14 @@ export class DirectLLMConfigPanel {
   private setProvider(provider: LLMProvider): void {
     this.currentConfig.provider = provider;
 
-    const cfg = PROVIDER_CONFIGS[provider];
-    if (cfg.models.length > 0 && !cfg.models.includes(this.currentConfig.model)) {
+    const configs = getCachedProviderConfigs();
+    const cfg = configs[provider];
+    if (cfg?.models?.length > 0 && !cfg.models.includes(this.currentConfig.model)) {
       this.currentConfig.model = cfg.models[0];
     }
 
     if (provider !== 'custom') {
-      this.currentConfig.endpoint = cfg.defaultEndpoint || undefined;
+      this.currentConfig.endpoint = cfg?.defaultEndpoint || undefined;
     }
 
     this.refreshUI();
@@ -382,13 +390,14 @@ export class DirectLLMConfigPanel {
 
   validate(): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
-    const provider = PROVIDER_CONFIGS[this.currentConfig.provider];
+    const configs = getCachedProviderConfigs();
+    const provider = configs[this.currentConfig.provider];
 
     if (!this.currentConfig.model.trim()) {
       errors.push('请选择或输入模型名称');
     }
 
-    if (provider.requiresApiKey && !this.currentConfig.apiKey?.trim()) {
+    if (provider?.requiresApiKey && !this.currentConfig.apiKey?.trim()) {
       errors.push(`${provider.name} 需要 API Key`);
     }
 

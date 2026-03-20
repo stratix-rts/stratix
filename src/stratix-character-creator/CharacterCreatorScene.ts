@@ -1029,8 +1029,9 @@ export class CharacterCreatorScene extends Phaser.Scene {
         this.setStep('agent');
       }
     });
-    const dom = this.backendSelector.create();
-    this.mainPanelContainer.add(dom);
+    void this.backendSelector.create().then((dom) => {
+      this.mainPanelContainer?.add(dom);
+    });
   }
 
   private buildAgentPanel(panelW: number, panelH: number): void {

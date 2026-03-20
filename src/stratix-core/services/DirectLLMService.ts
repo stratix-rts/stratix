@@ -415,6 +415,230 @@ class CustomAdapter implements LLMProviderAdapter {
   }
 }
 
+class GoogleAdapter implements LLMProviderAdapter {
+  validateConfig(config: DirectLLMConfig): boolean {
+    return !!(config.model && (config.apiKey || process.env.GOOGLE_API_KEY));
+  }
+
+  async generate(
+    config: DirectLLMConfig,
+    messages: ChatMessage[],
+    options?: GenerateOptions
+  ): Promise<GenerateResult> {
+    const endpoint = config.endpoint || 'https://generativelanguage.googleapis.com';
+    const apiKey = config.apiKey || process.env.GOOGLE_API_KEY;
+
+    if (!apiKey) {
+      throw new Error('Google API key is required');
+    }
+
+    const systemMessage = messages.find(m => m.role === 'system');
+    const userMessages = messages.filter(m => m.role !== 'system');
+
+    const response = await fetch(`${endpoint}/v1beta/models/${config.model}:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: userMessages.map(m => ({ role: m.role, parts: [{ text: m.content }] })),
+        systemInstruction: systemMessage ? { role: 'system', parts: [{ text: systemMessage.content }] } : undefined,
+        generationConfig: {
+          temperature: options?.temperature ?? config.temperature ?? 0.7,
+          maxOutputTokens: options?.maxTokens ?? config.maxTokens ?? 4096,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Google API error: ${response.status} - ${error}`);
+    }
+
+    const data = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+    const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+    return { content, finishReason: 'stop' };
+  }
+}
+
+class DeepSeekAdapter implements LLMProviderAdapter {
+  validateConfig(config: DirectLLMConfig): boolean {
+    return !!(config.model && (config.apiKey || process.env.DEEPSEEK_API_KEY));
+  }
+
+  async generate(
+    config: DirectLLMConfig,
+    messages: ChatMessage[],
+    options?: GenerateOptions
+  ): Promise<GenerateResult> {
+    const endpoint = config.endpoint || 'https://api.deepseek.com';
+    const apiKey = config.apiKey || process.env.DEEPSEEK_API_KEY;
+
+    if (!apiKey) {
+      throw new Error('DeepSeek API key is required');
+    }
+
+    const response = await fetch(`${endpoint}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages,
+        max_tokens: options?.maxTokens || config.maxTokens || 4096,
+        temperature: options?.temperature ?? config.temperature ?? 0.7,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`DeepSeek API error: ${response.status} - ${error}`);
+    }
+
+    const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+    return {
+      content: data.choices?.[0]?.message?.content || '',
+      finishReason: 'stop',
+    };
+  }
+}
+
+class QwenAdapter implements LLMProviderAdapter {
+  validateConfig(config: DirectLLMConfig): boolean {
+    return !!(config.model && (config.apiKey || process.env.DASHSCOPE_API_KEY));
+  }
+
+  async generate(
+    config: DirectLLMConfig,
+    messages: ChatMessage[],
+    options?: GenerateOptions
+  ): Promise<GenerateResult> {
+    const endpoint = config.endpoint || 'https://dashscope.aliyuncs.com/api/v1';
+    const apiKey = config.apiKey || process.env.DASHSCOPE_API_KEY;
+
+    if (!apiKey) {
+      throw new Error('DashScope API key is required');
+    }
+
+    const response = await fetch(`${endpoint}/services/aigc/text-generation/generation`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'X-DashScope-Api-Version': '2024-01-01',
+      },
+      body: JSON.stringify({
+        model: config.model,
+        input: { messages },
+        parameters: {
+          max_tokens: options?.maxTokens ?? config.maxTokens ?? 4096,
+          temperature: options?.temperature ?? config.temperature ?? 0.7,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Qwen API error: ${response.status} - ${error}`);
+    }
+
+    const data = await response.json() as { output?: { text?: string } };
+    return {
+      content: data.output?.text || '',
+      finishReason: 'stop',
+    };
+  }
+}
+
+class MoonshotAdapter implements LLMProviderAdapter {
+  validateConfig(config: DirectLLMConfig): boolean {
+    return !!(config.model && (config.apiKey || process.env.MOONSHOT_API_KEY));
+  }
+
+  async generate(
+    config: DirectLLMConfig,
+    messages: ChatMessage[],
+    options?: GenerateOptions
+  ): Promise<GenerateResult> {
+    const endpoint = config.endpoint || 'https://api.moonshot.cn/v1';
+    const apiKey = config.apiKey || process.env.MOONSHOT_API_KEY;
+
+    if (!apiKey) {
+      throw new Error('Moonshot API key is required');
+    }
+
+    const response = await fetch(`${endpoint}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages,
+        max_tokens: options?.maxTokens || config.maxTokens || 4096,
+        temperature: options?.temperature ?? config.temperature ?? 0.7,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Moonshot API error: ${response.status} - ${error}`);
+    }
+
+    const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+    return {
+      content: data.choices?.[0]?.message?.content || '',
+      finishReason: 'stop',
+    };
+  }
+}
+
+class StepFunAdapter implements LLMProviderAdapter {
+  validateConfig(config: DirectLLMConfig): boolean {
+    return !!(config.model && (config.apiKey || process.env.STEPFUN_API_KEY));
+  }
+
+  async generate(
+    config: DirectLLMConfig,
+    messages: ChatMessage[],
+    options?: GenerateOptions
+  ): Promise<GenerateResult> {
+    const endpoint = config.endpoint || 'https://api.stepfun.com';
+    const apiKey = config.apiKey || process.env.STEPFUN_API_KEY;
+
+    if (!apiKey) {
+      throw new Error('StepFun API key is required');
+    }
+
+    const response = await fetch(`${endpoint}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages,
+        max_tokens: options?.maxTokens || config.maxTokens || 4096,
+        temperature: options?.temperature ?? config.temperature ?? 0.7,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`StepFun API error: ${response.status} - ${error}`);
+    }
+
+    const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+    return {
+      content: data.choices?.[0]?.message?.content || '',
+      finishReason: 'stop',
+    };
+  }
+}
+
 export class DirectLLMService {
   private adapters: Map<LLMProvider, LLMProviderAdapter>;
 
@@ -424,6 +648,11 @@ export class DirectLLMService {
       ['anthropic', new AnthropicAdapter()],
       ['ollama', new OllamaAdapter()],
       ['custom', new CustomAdapter()],
+      ['google', new GoogleAdapter()],
+      ['deepseek', new DeepSeekAdapter()],
+      ['qwen', new QwenAdapter()],
+      ['moonshot', new MoonshotAdapter()],
+      ['stepfun', new StepFunAdapter()],
     ]);
   }
 

@@ -13,7 +13,7 @@ export type AgentBackendType = 'openclaw' | 'direct' | 'stratix';
 /**
  * LLM Provider 类型
  */
-export type LLMProvider = 'openai' | 'anthropic' | 'ollama' | 'custom';
+export type LLMProvider = 'openai' | 'anthropic' | 'google' | 'deepseek' | 'qwen' | 'moonshot' | 'stepfun' | 'ollama' | 'custom';
 
 /**
  * BodyType - 角色体型类型

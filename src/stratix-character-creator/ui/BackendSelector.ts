@@ -86,11 +86,15 @@ export class BackendSelector {
     this.isElectron = !!(typeof window !== 'undefined' && (window as any).electronAPI);
   }
 
-  create(): Phaser.GameObjects.DOMElement {
+  async create(): Promise<Phaser.GameObjects.DOMElement> {
     const html = this.generateHTML();
+    console.log('[BackendSelector] Creating with HTML length:', html.length);
     this.container = this.scene.add.dom(this.config.x, this.config.y).createFromHTML(html).setOrigin(0, 0).setDepth(Depth.UI_MODAL_CONTENT);
+    console.log('[BackendSelector] Container created, node:', this.container?.node);
+    console.log('[BackendSelector] Container node children:', this.container?.node?.children?.length);
+    
     this.setupEventListeners();
-    this.showBackendConfig(this.currentBackendType);
+    await this.showBackendConfig(this.currentBackendType);
     return this.container;
   }
 
@@ -390,16 +394,30 @@ export class BackendSelector {
         const backendType = (btn as HTMLElement).dataset.backend as AgentBackendType;
         console.log('[BackendSelector] Selected backend type:', backendType);
         this.currentBackendType = backendType;
-        this.showBackendConfig(backendType);
+        void this.showBackendConfig(backendType);
         this.updateBackendButtons(node);
       });
     });
 
+    // OpenClaw 测试按钮
     const testBtn = node.querySelector('#oc-test-btn') as HTMLButtonElement;
-    testBtn?.addEventListener('click', () => this.testConnection());
+    console.log('[BackendSelector] OpenClaw test button:', testBtn);
+    testBtn?.addEventListener('click', (e) => {
+      console.log('[BackendSelector] OpenClaw test clicked');
+      e.stopPropagation();
+      this.testConnection();
+    });
 
+    // 下一步按钮
     const nextBtn = node.querySelector('#backend-next-btn') as HTMLButtonElement;
-    nextBtn?.addEventListener('click', () => {
+    console.log('[BackendSelector] Next button:', nextBtn);
+    nextBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const validation = this.validate();
+      if (!validation.valid) {
+        this.showValidationErrors(validation.errors);
+        return;
+      }
       this.onNext?.();
     });
 
@@ -411,17 +429,35 @@ export class BackendSelector {
 
     // Direct 测试按钮
     const directTestBtnStatic = node.querySelector('#direct-test-btn-static') as HTMLButtonElement;
-    directTestBtnStatic?.addEventListener('click', () => {
-      console.log('[BackendSelector] Direct test button clicked (static)');
-      this.testDirectConnectionFromPanelStatic(node);
-    });
+    console.log('[BackendSelector] Direct test button element:', directTestBtnStatic);
+    if (directTestBtnStatic) {
+      directTestBtnStatic.addEventListener('click', (e) => {
+        console.log('[BackendSelector] Direct test button clicked');
+        e.stopPropagation();
+        e.preventDefault();
+        this.testDirectConnectionFromPanelStatic(node);
+      });
+    }
 
     // Stratix 测试按钮
     const stratixTestBtnStatic = node.querySelector('#stratix-test-btn-static') as HTMLButtonElement;
-    stratixTestBtnStatic?.addEventListener('click', () => {
-      console.log('[BackendSelector] Stratix test button clicked (static)');
-      this.testStratixConnectionFromPanelStatic(node);
-    });
+    console.log('[BackendSelector] Stratix test button element:', stratixTestBtnStatic);
+    if (stratixTestBtnStatic) {
+      stratixTestBtnStatic.addEventListener('click', (e) => {
+        console.log('[BackendSelector] Stratix test button clicked');
+        e.stopPropagation();
+        e.preventDefault();
+        this.testStratixConnectionFromPanelStatic(node);
+      });
+    }
+
+    // 全局点击调试
+    document.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.id?.includes('test-btn') || target.id?.includes('test-connection')) {
+        console.log('[Global] Test button clicked:', target.id);
+      }
+    }, true);
   }
 
   private updateBackendButtons(node: HTMLElement): void {
@@ -435,7 +471,7 @@ export class BackendSelector {
     });
   }
 
-  private showBackendConfig(backendType: AgentBackendType): void {
+  private async showBackendConfig(backendType: AgentBackendType): Promise<void> {
     if (!this.container) return;
 
     const node = this.container.node as HTMLElement;
@@ -467,7 +503,7 @@ export class BackendSelector {
             this.onChange?.('stratix', config);
           },
         });
-        panelContent.appendChild(this.stratixPanel.create().node as HTMLElement);
+        panelContent.appendChild((await this.stratixPanel.create()).node as HTMLElement);
       }
       this.onChange?.(backendType, this.stratixConfig);
     } else {
@@ -483,7 +519,7 @@ export class BackendSelector {
           height: this.config.height - 160,
           initialConfig: this.directConfig,
         });
-        panelContent.appendChild(this.directPanel.create().node as HTMLElement);
+        panelContent.appendChild((await this.directPanel.create()).node as HTMLElement);
       }
       this.onChange?.(backendType, this.directConfig);
     }
@@ -521,6 +557,11 @@ export class BackendSelector {
       credentials: { accountId, apiKey },
     };
 
+    statusDiv.style.display = 'block';
+    statusDiv.style.background = 'rgba(255, 200, 0, 0.1)';
+    statusDiv.style.color = '#ffcc00';
+    statusDiv.textContent = '连接中 Connecting...';
+
     try {
       const connected = await unifiedOpenClawConnectionManager.initialize(config);
       if (connected) {
@@ -541,12 +582,23 @@ export class BackendSelector {
 
   private async testDirectConnection(node: HTMLElement, statusDiv: HTMLDivElement): Promise<void> {
     try {
-      const provider = ((node.querySelector('#direct-provider') as HTMLSelectElement)?.value || this.directConfig.provider) as DirectLLMConfig['provider'];
-      const model = (node.querySelector('#direct-model') as HTMLInputElement)?.value || this.directConfig.model;
-      const apiKey = (node.querySelector('#direct-api-key') as HTMLInputElement)?.value || this.directConfig.apiKey;
-      const endpoint = (node.querySelector('#direct-endpoint') as HTMLInputElement)?.value || this.directConfig.endpoint;
+      let config: DirectLLMConfig;
+      
+      if (this.directPanel) {
+        config = this.directPanel.getConfig();
+      } else {
+        const provider = ((node.querySelector('#direct-provider') as HTMLSelectElement)?.value || this.directConfig.provider) as DirectLLMConfig['provider'];
+        const model = (node.querySelector('#direct-model') as HTMLSelectElement)?.value || this.directConfig.model;
+        const apiKey = (node.querySelector('#direct-api-key') as HTMLInputElement)?.value || this.directConfig.apiKey;
+        const endpoint = (node.querySelector('#direct-endpoint') as HTMLInputElement)?.value || this.directConfig.endpoint;
+        
+        config = { provider, model, apiKey, endpoint, temperature: 0.7, maxTokens: 4096 };
+      }
 
-      const config: DirectLLMConfig = { provider, model, apiKey, endpoint, temperature: 0.7, maxTokens: 4096 };
+      statusDiv.style.display = 'block';
+      statusDiv.style.background = 'rgba(255, 200, 0, 0.1)';
+      statusDiv.style.color = '#ffcc00';
+      statusDiv.textContent = '连接中 Connecting...';
 
       const response = await fetch('/api/stratix/config/agent/test-connection', {
         method: 'POST',
@@ -574,12 +626,27 @@ export class BackendSelector {
 
   private async testStratixConnection(node: HTMLElement, statusDiv: HTMLDivElement): Promise<void> {
     try {
-      const provider = ((node.querySelector('#stratix-provider') as HTMLSelectElement)?.value || this.stratixConfig.provider) as StratixDirectConfig['provider'];
-      const model = (node.querySelector('#stratix-model') as HTMLInputElement)?.value || this.stratixConfig.model;
-      const apiKey = (node.querySelector('#stratix-api-key') as HTMLInputElement)?.value || this.stratixConfig.apiKey;
-      const endpoint = (node.querySelector('#stratix-endpoint') as HTMLInputElement)?.value || this.stratixConfig.endpoint;
+      let config: StratixDirectConfig;
+      
+      if (this.stratixPanel) {
+        config = this.stratixPanel.getConfig();
+      } else {
+        const provider = ((node.querySelector('#stratix-provider') as HTMLSelectElement)?.value || this.stratixConfig.provider) as StratixDirectConfig['provider'];
+        const model = (node.querySelector('#stratix-model') as HTMLSelectElement)?.value || this.stratixConfig.model;
+        const apiKey = (node.querySelector('#stratix-api-key') as HTMLInputElement)?.value || this.stratixConfig.apiKey;
+        const endpoint = (node.querySelector('#stratix-endpoint') as HTMLInputElement)?.value || this.stratixConfig.endpoint;
+        const temperature = parseFloat((node.querySelector('#stratix-temperature') as HTMLInputElement)?.value) || 0.7;
+        const maxTokens = parseInt((node.querySelector('#stratix-max-tokens') as HTMLInputElement)?.value) || 4096;
+        const maxShortTerm = parseInt((node.querySelector('#stratix-short-term') as HTMLInputElement)?.value) || 20;
+        const enableLongTerm = (node.querySelector('#stratix-long-term') as HTMLInputElement)?.checked ?? true;
+        
+        config = { provider, model, apiKey, endpoint, temperature, maxTokens, maxShortTerm, enableLongTerm };
+      }
 
-      const config: StratixDirectConfig = { provider, model, apiKey, endpoint, temperature: 0.7, maxTokens: 4096, maxShortTerm: 20, enableLongTerm: true };
+      statusDiv.style.display = 'block';
+      statusDiv.style.background = 'rgba(255, 200, 0, 0.1)';
+      statusDiv.style.color = '#ffcc00';
+      statusDiv.textContent = '连接中 Connecting...';
 
       const response = await fetch('/api/stratix/config/agent/test-connection', {
         method: 'POST',
@@ -633,9 +700,24 @@ export class BackendSelector {
       if (!this.stratixConfig.apiKey && this.stratixConfig.provider !== 'ollama') {
         errors.push('StratixAgent API Key 不能为空');
       }
+      if (!this.stratixConfig.model) {
+        errors.push('请选择模型');
+      }
+    } else if (this.currentBackendType === 'direct') {
+      if (!this.directConfig.apiKey && this.directConfig.provider !== 'ollama') {
+        errors.push('Direct LLM API Key 不能为空');
+      }
+      if (!this.directConfig.model) {
+        errors.push('请选择模型');
+      }
     }
 
     return { valid: errors.length === 0, errors };
+  }
+
+  isConfigured(): boolean {
+    const validation = this.validate();
+    return validation.valid;
   }
 
   private async testDirectConnectionFromPanel(node: HTMLElement): Promise<void> {
@@ -659,6 +741,27 @@ export class BackendSelector {
     console.log('[BackendSelector] testStratixConnectionFromPanelStatic called');
     const statusDiv = node.querySelector('#stratix-status-static') as HTMLDivElement;
     await this.testStratixConnection(node, statusDiv);
+  }
+
+  private showValidationErrors(errors: string[]): void {
+    if (!this.container) return;
+    const node = this.container.node as HTMLElement;
+    
+    let statusDiv: HTMLDivElement | null = null;
+    if (this.currentBackendType === 'openclaw') {
+      statusDiv = node.querySelector('#oc-status') as HTMLDivElement;
+    } else if (this.currentBackendType === 'direct') {
+      statusDiv = node.querySelector('#direct-status-static') as HTMLDivElement;
+    } else if (this.currentBackendType === 'stratix') {
+      statusDiv = node.querySelector('#stratix-status-static') as HTMLDivElement;
+    }
+    
+    if (statusDiv) {
+      statusDiv.style.display = 'block';
+      statusDiv.style.background = 'rgba(255, 102, 102, 0.1)';
+      statusDiv.style.color = THEME.error;
+      statusDiv.textContent = '✗ ' + errors.join('; ');
+    }
   }
 
   destroy(): void {

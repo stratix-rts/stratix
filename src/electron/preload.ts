@@ -10,7 +10,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 export interface ElectronAPI {
   // 通用服务调用
   invoke: (channel: string, ...args: any[]) => Promise<any>;
-  
+
   // Tailscale
   tailscale: {
     getStatus: () => Promise<any>;
@@ -22,25 +22,51 @@ export interface ElectronAPI {
     needsAuth: () => Promise<boolean>;
     onEvent: (callback: (event: any) => void) => () => void;
   };
-  
+
   // OpenClaw
   openclaw: {
     connectDirect: (endpoint: string, config: any) => Promise<boolean>;
     disconnectDirect: () => Promise<void>;
   };
-  
+
   // Custom Providers
   config: {
     saveCustomProviders: (configJson: string) => Promise<{ success: boolean; error?: string }>;
     loadCustomProviders: () => Promise<{ success: boolean; data: string | null; error?: string }>;
   };
-  
+
   // API Keys (encrypted)
   apiKey: {
     save: (providerId: string, apiKey: string) => Promise<{ success: boolean; error?: string }>;
     load: (providerId: string) => Promise<{ success: boolean; data: string | null; error?: string }>;
     delete: (providerId: string) => Promise<{ success: boolean; error?: string }>;
     list: () => Promise<{ success: boolean; data: string[]; error?: string }>;
+  };
+
+  // Agent Platform - Workflow
+  workflow: {
+    list: () => Promise<{ success: boolean; workflows?: Array<{ id: string; name: string; updatedAt: number }>; error?: string }>;
+    load: (id: string) => Promise<{ success: boolean; workflow?: any; error?: string }>;
+    save: (id: string, workflow: any) => Promise<{ success: boolean; error?: string }>;
+    delete: (id: string) => Promise<{ success: boolean; error?: string }>;
+    presets: () => Promise<{ success: boolean; presets?: any[]; error?: string }>;
+    presetLoad: (presetId: string) => Promise<{ success: boolean; workflow?: any; error?: string }>;
+  };
+
+  // Agent Platform - Providers
+  provider: {
+    list: () => Promise<{ success: boolean; providers?: any[]; error?: string }>;
+    models: (providerId: string) => Promise<{ success: boolean; models?: string[]; error?: string }>;
+    test: (providerId: string, model: string, apiKey?: string) => Promise<{ success: boolean; message: string; latency?: number }>;
+    create: (instanceId: string, providerId: string, model: string, apiKey?: string, options?: any) => Promise<{ success: boolean; error?: string }>;
+  };
+
+  // Agent Platform - Execution
+  execution: {
+    start: (workflowId: string, workflow: any, input: string) => Promise<{ success: boolean; executionId?: string; error?: string }>;
+    status: (executionId: string) => Promise<{ success: boolean; execution?: any; error?: string }>;
+    list: () => Promise<{ success: boolean; executions?: any[] }>;
+    clear: (executionId?: string) => Promise<{ success: boolean }>;
   };
 }
 
@@ -82,6 +108,33 @@ const electronAPI: ElectronAPI = {
     load: (providerId) => ipcRenderer.invoke('apikey:load', providerId),
     delete: (providerId) => ipcRenderer.invoke('apikey:delete', providerId),
     list: () => ipcRenderer.invoke('apikey:list'),
+  },
+
+  // Agent Platform - Workflow
+  workflow: {
+    list: () => ipcRenderer.invoke('workflow:list'),
+    load: (id) => ipcRenderer.invoke('workflow:load', id),
+    save: (id, workflow) => ipcRenderer.invoke('workflow:save', id, workflow),
+    delete: (id) => ipcRenderer.invoke('workflow:delete', id),
+    presets: () => ipcRenderer.invoke('workflow:presets'),
+    presetLoad: (presetId) => ipcRenderer.invoke('workflow:presetLoad', presetId),
+  },
+
+  // Agent Platform - Providers
+  provider: {
+    list: () => ipcRenderer.invoke('provider:list'),
+    models: (providerId) => ipcRenderer.invoke('provider:models', providerId),
+    test: (providerId, model, apiKey) => ipcRenderer.invoke('provider:test', providerId, model, apiKey),
+    create: (instanceId, providerId, model, apiKey, options) =>
+      ipcRenderer.invoke('provider:create', instanceId, providerId, model, apiKey, options),
+  },
+
+  // Agent Platform - Execution
+  execution: {
+    start: (workflowId, workflow, input) => ipcRenderer.invoke('execution:start', workflowId, workflow, input),
+    status: (executionId) => ipcRenderer.invoke('execution:status', executionId),
+    list: () => ipcRenderer.invoke('execution:list'),
+    clear: (executionId) => ipcRenderer.invoke('execution:clear', executionId),
   },
 };
 

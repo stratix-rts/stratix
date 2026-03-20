@@ -13,9 +13,12 @@ import {
   PROVIDER_CONFIGS, 
   PROVIDER_LIST, 
   type ProviderConfig,
+  getCachedProviderConfigs,
+  getCachedProviderList,
+  initProviderConfig,
   saveApiKey,
   loadApiKey,
-  addCustomProvider
+  addCustomProvider,
 } from '../config/providerConfig';
 
 const THEME = {
@@ -33,18 +36,18 @@ const THEME = {
 const ALL_PROVIDER_LIST = PROVIDER_LIST;
 
 function getModelsForProvider(provider: string): string[] {
-  const cfg = PROVIDER_CONFIGS[provider as keyof typeof PROVIDER_CONFIGS];
-  return cfg?.models || [];
+  const configs = getCachedProviderConfigs();
+  return configs[provider]?.models || [];
 }
 
 function getProviderLabel(provider: string): string {
-  const cfg = PROVIDER_CONFIGS[provider as keyof typeof PROVIDER_CONFIGS];
-  return cfg?.name || provider;
+  const configs = getCachedProviderConfigs();
+  return configs[provider]?.name || provider;
 }
 
 function getProviderIcon(provider: string): string {
-  const cfg = PROVIDER_CONFIGS[provider as keyof typeof PROVIDER_CONFIGS];
-  return cfg?.icon || '🤖';
+  const configs = getCachedProviderConfigs();
+  return configs[provider]?.icon || '🤖';
 }
 
 export interface StratixAgentConfigPanelConfig {
@@ -88,7 +91,8 @@ export class StratixAgentConfigPanel {
     };
   }
 
-  create(): Phaser.GameObjects.DOMElement {
+  async create(): Promise<Phaser.GameObjects.DOMElement> {
+    await initProviderConfig();
     const html = this.generateHTML();
     this.container = this.scene.add.dom(this.config.x, this.config.y).createFromHTML(html).setOrigin(0, 0).setDepth(Depth.UI_MODAL_CONTENT);
     this.setupEventListeners();
@@ -282,8 +286,11 @@ export class StratixAgentConfigPanel {
   }
 
   private generateProviderOptions(): string {
-    return ALL_PROVIDER_LIST.map(p => {
-      const cfg = PROVIDER_CONFIGS[p];
+    const list = getCachedProviderList();
+    const configs = getCachedProviderConfigs();
+    return list.map(p => {
+      const cfg = configs[p];
+      if (!cfg) return '';
       const isSelected = p === this.currentConfig.provider;
       return `<option value="${p}" ${isSelected ? 'selected' : ''}>${cfg.icon} ${cfg.name}</option>`;
     }).join('') + '<option value="__add_custom__">+ Add Custom Provider...</option>';
@@ -306,8 +313,8 @@ export class StratixAgentConfigPanel {
   }
 
   private getEndpointPlaceholder(): string {
-    const cfg = PROVIDER_CONFIGS[this.currentConfig.provider as keyof typeof PROVIDER_CONFIGS];
-    return cfg?.defaultEndpoint || '';
+    const configs = getCachedProviderConfigs();
+    return configs[this.currentConfig.provider]?.defaultEndpoint || '';
   }
 
   private showEndpointRow(): boolean {

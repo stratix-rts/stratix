@@ -21,10 +21,12 @@ const builtInConfig = builtInProviders as ProvidersConfigJson;
 const defaultCustomConfig = customProvidersDefault as ProvidersConfigJson;
 
 let customConfig: ProvidersConfigJson = { ...defaultCustomConfig };
-let customConfigLoaded = false;
+let configLoaded = false;
+let cachedProviderConfigs: Record<string, ProviderConfig> = { ...builtInConfig.providers };
+let cachedProviderList: string[] = [...builtInConfig.providerOrder];
 
 async function loadCustomConfig(): Promise<void> {
-  if (customConfigLoaded) return;
+  if (configLoaded) return;
   
   if (typeof window !== 'undefined' && (window as any).electronAPI?.config?.loadCustomProviders) {
     try {
@@ -36,7 +38,27 @@ async function loadCustomConfig(): Promise<void> {
       console.error('[ProviderConfig] Failed to load custom providers:', error);
     }
   }
-  customConfigLoaded = true;
+  configLoaded = true;
+}
+
+function rebuildCache(): void {
+  cachedProviderConfigs = { ...builtInConfig.providers };
+  cachedProviderList = [...builtInConfig.providerOrder];
+  
+  for (const key of Object.keys(customConfig.providers)) {
+    cachedProviderConfigs[key] = {
+      ...customConfig.providers[key],
+      isCustom: true,
+    };
+    if (!cachedProviderList.includes(key)) {
+      cachedProviderList.push(key);
+    }
+  }
+}
+
+export async function initProviderConfig(): Promise<void> {
+  await loadCustomConfig();
+  rebuildCache();
 }
 
 export function getBuiltInProviderConfigs(): Record<string, ProviderConfig> {
@@ -125,6 +147,7 @@ export async function addCustomProvider(
   };
 
   customConfig = newCustomConfig;
+  rebuildCache();
 
   if (typeof window !== 'undefined' && (window as any).electronAPI?.config?.saveCustomProviders) {
     try {
@@ -154,6 +177,7 @@ export async function removeCustomProvider(providerId: string): Promise<{ succes
   };
 
   customConfig = newCustomConfig;
+  rebuildCache();
 
   if (typeof window !== 'undefined' && (window as any).electronAPI?.config?.saveCustomProviders) {
     try {
@@ -167,12 +191,20 @@ export async function removeCustomProvider(providerId: string): Promise<{ succes
 }
 
 export function isBuiltInProvider(providerId: string): boolean {
-  return BUILT_IN_PROVIDER_LIST.includes(providerId);
+  return builtInConfig.providerOrder.includes(providerId);
 }
 
 export async function isCustomProvider(providerId: string): Promise<boolean> {
   await loadCustomConfig();
   return customConfig.providerOrder.includes(providerId);
+}
+
+export function getCachedProviderConfigs(): Record<string, ProviderConfig> {
+  return { ...cachedProviderConfigs };
+}
+
+export function getCachedProviderList(): string[] {
+  return [...cachedProviderList];
 }
 
 export async function saveApiKey(providerId: string, apiKey: string): Promise<{ success: boolean; error?: string }> {
