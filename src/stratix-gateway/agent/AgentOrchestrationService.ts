@@ -46,13 +46,6 @@ export class AgentOrchestrationService {
 
     const configWithApiKey = { ...agentConfig };
 
-    if (configWithApiKey.directConfig && !configWithApiKey.directConfig.apiKey) {
-      const apiKeyResult = await loadApiKey(configWithApiKey.directConfig.provider);
-      if (apiKeyResult.success && apiKeyResult.data) {
-        configWithApiKey.directConfig.apiKey = apiKeyResult.data;
-      }
-    }
-
     if (configWithApiKey.stratixConfig && !configWithApiKey.stratixConfig.apiKey) {
       const apiKeyResult = await loadApiKey(configWithApiKey.stratixConfig.provider);
       if (apiKeyResult.success && apiKeyResult.data) {
@@ -61,9 +54,9 @@ export class AgentOrchestrationService {
     }
 
     const hasOpenClaw = configWithApiKey.openClawConfig && configWithApiKey.openClawConfig.endpoint;
-    const hasDirect = configWithApiKey.directConfig && (configWithApiKey.directConfig.apiKey || configWithApiKey.directConfig.endpoint);
-    
-    if (!hasOpenClaw && !hasDirect) {
+    const hasStratix = configWithApiKey.stratixConfig && (configWithApiKey.stratixConfig.apiKey || configWithApiKey.stratixConfig.endpoint);
+
+    if (!hasOpenClaw && !hasStratix) {
       console.warn(`[AgentOrchestrationService] Agent ${agentId} has no LLM/OpenClaw configuration, skipping start (agent will not respond to messages)`);
       return;
     }

@@ -109,12 +109,14 @@ const copyToClipboard = () => {
     </div>
 
     <template #footer>
-      <StratixButton variant="secondary" size="sm" @click="copyToClipboard">
-        复制指令 ID
-      </StratixButton>
-      <StratixButton variant="primary" size="sm" @click="emit('close')">
-        关闭
-      </StratixButton>
+      <div class="button-group">
+        <StratixButton variant="secondary" size="sm" @click="copyToClipboard">
+          复制指令 ID
+        </StratixButton>
+        <StratixButton variant="primary" size="sm" @click="emit('close')">
+          关闭
+        </StratixButton>
+      </div>
     </template>
   </StratixModal>
 </template>
@@ -217,5 +219,11 @@ const copyToClipboard = () => {
   color: v-bind('getToken("colors.semantic.danger")');
   font-size: 13px;
   line-height: 1.6;
+}
+
+.button-group {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 </style>

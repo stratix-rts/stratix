@@ -3,7 +3,6 @@ import {
   StratixSoulConfig,
   StratixSkillConfig,
   OpenClawConfig,
-  DirectLLMConfig,
 } from '@/stratix-core/stratix-protocol';
 
 export interface ValidationError {
@@ -49,17 +48,17 @@ export class ConfigValidator {
           errors.push(...(openClawResult.errors || []));
         }
       }
-    } else if (config.backendType === 'direct') {
-      if (!config.directConfig) {
-        errors.push({ field: 'directConfig', message: 'Direct LLM 配置不能为空' });
+    } else if (config.backendType === 'stratix') {
+      if (!config.stratixConfig) {
+        errors.push({ field: 'stratixConfig', message: 'StratixAgent 配置不能为空' });
       } else {
-        const directResult = this.validateDirectConfig(config.directConfig);
-        if (!directResult.valid) {
-          errors.push(...(directResult.errors || []));
+        const stratixResult = this.validateStratixConfig(config.stratixConfig);
+        if (!stratixResult.valid) {
+          errors.push(...(stratixResult.errors || []));
         }
       }
 
-      // Direct mode needs soul and skills
+      // Stratix mode needs soul and skills
       if (config.soul) {
         const soulResult = this.validateSoul(config.soul);
         if (!soulResult.valid) {
@@ -175,37 +174,29 @@ export class ConfigValidator {
     return { valid: true, message: 'OpenClaw 配置校验通过' };
   }
 
-  static validateDirectConfig(config: DirectLLMConfig): ValidationResult {
+  static validateStratixConfig(config: any): ValidationResult {
     const errors: ValidationError[] = [];
 
     if (!config) {
       return {
         valid: false,
-        message: 'Direct LLM 配置不能为空',
-        errors: [{ field: 'directConfig', message: 'Direct LLM 配置不能为空' }],
+        message: 'StratixAgent 配置不能为空',
+        errors: [{ field: 'stratixConfig', message: 'StratixAgent 配置不能为空' }],
       };
     }
 
     if (!config.provider) {
-      errors.push({ field: 'directConfig.provider', message: 'LLM Provider 不能为空' });
+      errors.push({ field: 'stratixConfig.provider', message: 'Provider 不能为空' });
     }
 
     if (!config.model || config.model.trim() === '') {
-      errors.push({ field: 'directConfig.model', message: '模型名称不能为空' });
-    }
-
-    if (config.temperature !== undefined && (config.temperature < 0 || config.temperature > 2)) {
-      errors.push({ field: 'directConfig.temperature', message: 'temperature 应在 0-2 之间' });
-    }
-
-    if (config.maxTokens !== undefined && config.maxTokens < 1) {
-      errors.push({ field: 'directConfig.maxTokens', message: 'maxTokens 应大于 0' });
+      errors.push({ field: 'stratixConfig.model', message: '模型名称不能为空' });
     }
 
     if (errors.length > 0) {
       return { valid: false, message: errors[0].message, errors };
     }
 
-    return { valid: true, message: 'Direct LLM 配置校验通过' };
+    return { valid: true, message: 'StratixAgent 配置校验通过' };
   }
 }

@@ -9,7 +9,7 @@ import { getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
 import { DOMContainer } from '@/stratix-core/ui/DOMContainer';
 import { partRegistry } from '../core/PartRegistry';
-import { PART_CATEGORY_CONFIGS } from '../config/partConfig';
+import { PART_CATEGORY_CONFIGS, getCategoryConfig } from '../config/partConfig';
 import type { PartMetadata, BodyType, PartCategory, PartSelection } from '../types';
 
 // 使用 CSS 变量以支持主题动态切换
@@ -81,7 +81,7 @@ export class PartSelector {
     
     const categoryTabs = categories.map(cat => {
       const icon = CATEGORY_ICONS[cat] || '[?]';
-      const label = PART_CATEGORY_CONFIGS[cat]?.label || cat;
+      const label = getCategoryConfig(cat)?.name || cat;
       return `<button class="cat-btn" data-category="${cat}" title="${label}">${icon}</button>`;
     }).join('');
 

@@ -44,12 +44,14 @@
     </div>
 
     <template #footer>
-      <StratixButton variant="secondary" @click="$emit('cancel')">
-        返回
-      </StratixButton>
-      <StratixButton variant="danger" @click="$emit('confirm')">
-        确认取消
-      </StratixButton>
+      <div class="button-group">
+        <StratixButton variant="secondary" @click="$emit('cancel')">
+          返回
+        </StratixButton>
+        <StratixButton variant="danger" @click="$emit('confirm')">
+          确认取消
+        </StratixButton>
+      </div>
     </template>
   </StratixModal>
 </template>
@@ -187,5 +189,11 @@ const statusText = computed(() => {
 .warning-icon {
   flex-shrink: 0;
   margin-top: 1px;
+}
+
+.button-group {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 </style>

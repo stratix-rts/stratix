@@ -132,7 +132,7 @@ const removeItem = (type: 'shortTerm' | 'longTerm', index: number) => {
 .panel-count { font-size: 12px; color: v-bind('getToken("colors.text.muted")'); background: v-bind('getToken("colors.background.tertiary")'); padding: 2px 8px; border-radius: 12px; }
 .chevron { width: 16px; height: 16px; color: v-bind('getToken("colors.text.muted")'); transition: transform 0.2s; }
 .chevron.rotated { transform: rotate(180deg); }
-.panel-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.panel-body { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
 .tags-container { display: flex; flex-direction: column; gap: 8px; }
 .memory-tag { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: v-bind('getToken("colors.background.secondary")'); border-radius: 6px; }
 .tag-text { flex: 1; font-size: 13px; color: v-bind('getToken("colors.text.primary")'); }

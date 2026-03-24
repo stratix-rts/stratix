@@ -30,8 +30,8 @@ export class AnalystHeroTemplate implements HeroTemplateBase {
         bodyType: 'male',
         parts: {},
       },
-      backendType: 'direct',
-      directConfig: {
+      backendType: 'stratix',
+      stratixConfig: {
         provider: 'openai',
         model: 'gpt-4',
         temperature: 0.5,

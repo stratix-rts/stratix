@@ -499,12 +499,12 @@ onUnmounted(() => {
 /* Zoom animation (center) */
 .stratix-modal-zoom-enter-active,
 .stratix-modal-zoom-leave-active {
-  transition: opacity 0.2s ease;
+  transition: opacity 0.2s ease-in-out;
 }
 
 .stratix-modal-zoom-enter-active .stratix-modal,
 .stratix-modal-zoom-leave-active .stratix-modal {
-  transition: transform 0.2s ease, opacity 0.2s ease;
+  transition: transform 0.2s ease-in-out, opacity 0.2s ease-in-out;
 }
 
 .stratix-modal-zoom-enter-from,
@@ -521,12 +521,12 @@ onUnmounted(() => {
 /* Slide up animation (bottom) */
 .stratix-modal-slide-up-enter-active,
 .stratix-modal-slide-up-leave-active {
-  transition: opacity 0.2s ease;
+  transition: opacity 0.2s ease-in-out;
 }
 
 .stratix-modal-slide-up-enter-active .stratix-modal,
 .stratix-modal-slide-up-leave-active .stratix-modal {
-  transition: transform 0.2s ease;
+  transition: transform 0.2s ease-in-out;
 }
 
 .stratix-modal-slide-up-enter-from,
@@ -545,12 +545,12 @@ onUnmounted(() => {
 /* Slide down animation (top) */
 .stratix-modal-slide-down-enter-active,
 .stratix-modal-slide-down-leave-active {
-  transition: opacity 0.2s ease;
+  transition: opacity 0.2s ease-in-out;
 }
 
 .stratix-modal-slide-down-enter-active .stratix-modal,
 .stratix-modal-slide-down-leave-active .stratix-modal {
-  transition: transform 0.2s ease;
+  transition: transform 0.2s ease-in-out;
 }
 
 .stratix-modal-slide-down-enter-from,
@@ -569,12 +569,12 @@ onUnmounted(() => {
 /* Slide right animation (left drawer) */
 .stratix-modal-slide-right-enter-active,
 .stratix-modal-slide-right-leave-active {
-  transition: opacity 0.2s ease;
+  transition: opacity 0.2s ease-in-out;
 }
 
 .stratix-modal-slide-right-enter-active .stratix-modal,
 .stratix-modal-slide-right-leave-active .stratix-modal {
-  transition: transform 0.2s ease;
+  transition: transform 0.2s ease-in-out;
 }
 
 .stratix-modal-slide-right-enter-from,
@@ -590,12 +590,12 @@ onUnmounted(() => {
 /* Slide left animation (right drawer) */
 .stratix-modal-slide-left-enter-active,
 .stratix-modal-slide-left-leave-active {
-  transition: opacity 0.2s ease;
+  transition: opacity 0.2s ease-in-out;
 }
 
 .stratix-modal-slide-left-enter-active .stratix-modal,
 .stratix-modal-slide-left-leave-active .stratix-modal {
-  transition: transform 0.2s ease;
+  transition: transform 0.2s ease-in-out;
 }
 
 .stratix-modal-slide-left-enter-from,

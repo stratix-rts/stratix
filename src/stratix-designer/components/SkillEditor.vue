@@ -347,7 +347,7 @@ const typeOptions = [
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .flex-1 { flex: 1; }
@@ -373,7 +373,7 @@ const typeOptions = [
 
 .param-item {
   display: grid;
-  grid-template-columns: 80px 1fr 1fr 50px 1fr 40px;
+  grid-template-columns: 80px 1fr 1fr 50px 1fr auto;
   gap: 8px;
   align-items: center;
   padding: 8px;

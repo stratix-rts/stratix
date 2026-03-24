@@ -18,12 +18,13 @@ export class AgentRepository {
 
   saveAgent(agent: StratixAgentConfig): void {
     const existing = this.getAgent(agent.agentId);
-    
+
     if (existing) {
       const stmt = this.db.prepare(`
-        UPDATE agents SET 
-          name = ?, type = ?, profile = ?, soul = ?, rules = ?, 
-          backend_type = ?, config_status = ?, position = ?, memory = ?, updated_at = ?
+        UPDATE agents SET
+          name = ?, type = ?, profile = ?, soul = ?, rules = ?,
+          backend_type = ?, config_status = ?, position = ?, memory = ?,
+          openclaw_config = ?, stratix_config = ?, updated_at = ?
         WHERE agent_id = ?
       `);
       stmt.run(
@@ -36,13 +37,15 @@ export class AgentRepository {
         agent.configStatus,
         agent.position ? JSON.stringify(agent.position) : null,
         agent.memory ? JSON.stringify(agent.memory) : null,
+        agent.openClawConfig ? JSON.stringify(agent.openClawConfig) : null,
+        agent.stratixConfig ? JSON.stringify(agent.stratixConfig) : null,
         Date.now(),
         agent.agentId
       );
     } else {
       const stmt = this.db.prepare(`
-        INSERT INTO agents (agent_id, name, type, profile, soul, rules, backend_type, config_status, position, memory, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO agents (agent_id, name, type, profile, soul, rules, backend_type, config_status, position, memory, openclaw_config, stratix_config, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       stmt.run(
         agent.agentId,
@@ -55,6 +58,8 @@ export class AgentRepository {
         agent.configStatus || 'draft',
         agent.position ? JSON.stringify(agent.position) : null,
         agent.memory ? JSON.stringify(agent.memory) : null,
+        agent.openClawConfig ? JSON.stringify(agent.openClawConfig) : null,
+        agent.stratixConfig ? JSON.stringify(agent.stratixConfig) : null,
         agent.createdAt,
         agent.updatedAt
       );

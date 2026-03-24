@@ -8,7 +8,7 @@ interface Props {
   type?: 'text' | 'password' | 'email' | 'number';
   placeholder?: string;
   disabled?: boolean;
-  error?: boolean;
+  error?: string | boolean;
   size?: SizeVariant;
   variant?: InputVariant;
   icon?: string;
@@ -68,6 +68,9 @@ const handleBlur = () => {
       @blur="handleBlur"
     />
   </div>
+  <span v-if="typeof error === 'string'" class="stratix-input__error-message">
+    {{ error }}
+  </span>
 </template>
 
 <style scoped>
@@ -76,19 +79,24 @@ const handleBlur = () => {
   align-items: center;
   gap: 8px;
   padding: v-bind('sizeConfig.padding');
-  background: var(--ds-bg-secondary);
-  border: 1px solid var(--ds-border);
-  border-radius: 4px;
+  background: v-bind('getToken("colors.background.tertiary")');
+  border: 1px solid v-bind('getToken("colors.border.default")');
+  border-radius: v-bind('getToken("radii.md")');
   transition: all 0.15s ease;
 }
 
 .stratix-input-wrapper--focused {
-  border-color: var(--ds-brand-primary);
-  box-shadow: 0 0 0 2px var(--ds-shadow-sm);
+  border-color: v-bind('getToken("colors.info")');
+  box-shadow: 0 0 0 2px v-bind('getToken("colors.info") + "1A"');
 }
 
 .stratix-input-wrapper--error {
-  border-color: var(--ds-status-danger);
+  border-color: v-bind('getToken("colors.semantic.danger")');
+}
+
+.stratix-input-wrapper--error.stratix-input-wrapper--focused {
+  border-color: v-bind('getToken("colors.semantic.danger")');
+  box-shadow: 0 0 0 2px v-bind('getToken("colors.semantic.danger") + "1A"');
 }
 
 .stratix-input {
@@ -98,13 +106,13 @@ const handleBlur = () => {
   background: transparent;
   border: none;
   outline: none;
-  color: #ffffff;
+  color: v-bind('getToken("colors.text.primary")');
   font-size: v-bind('sizeConfig.fontSize');
-  font-family: 'SF Mono', 'Monaco', monospace;
+  font-family: v-bind('getToken("typography.fontFamily.sans")');
 }
 
 .stratix-input::placeholder {
-  color: #6a6a8a;
+  color: v-bind('getToken("colors.text.muted")');
 }
 
 .stratix-input:disabled {
@@ -114,6 +122,13 @@ const handleBlur = () => {
 
 .stratix-input__icon {
   flex-shrink: 0;
-  color: #6a6a8a;
+  color: v-bind('getToken("colors.text.muted")');
+}
+
+.stratix-input__error-message {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: v-bind('getToken("colors.semantic.danger")');
 }
 </style>

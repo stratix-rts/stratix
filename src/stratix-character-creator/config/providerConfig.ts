@@ -1,6 +1,7 @@
 import type { LLMProvider } from '@/stratix-core/stratix-protocol';
 import builtInProviders from '@/config/providers.config.json';
 import customProvidersDefault from '@/config/custom-providers.config.json';
+import { browserStorage } from '../core/BrowserStorage';
 
 export interface ProviderConfig {
   name: string;
@@ -208,17 +209,36 @@ export function getCachedProviderList(): string[] {
 }
 
 export async function saveApiKey(providerId: string, apiKey: string): Promise<{ success: boolean; error?: string }> {
+  // Electron environment
   if (typeof window !== 'undefined' && (window as any).electronAPI?.apiKey?.save) {
     return await (window as any).electronAPI.apiKey.save(providerId, apiKey);
   }
-  return { success: false, error: 'API not available' };
+  // Browser environment - use browserStorage
+  try {
+    await browserStorage.set(`apikey:${providerId}`, apiKey);
+    return { success: true };
+  } catch (error) {
+    console.error('[ProviderConfig] Failed to save API key to browser storage:', error);
+    return { success: false, error: 'Failed to save API key' };
+  }
 }
 
 export async function loadApiKey(providerId: string): Promise<{ success: boolean; data: string | null; error?: string }> {
+  // Electron environment
   if (typeof window !== 'undefined' && (window as any).electronAPI?.apiKey?.load) {
     return await (window as any).electronAPI.apiKey.load(providerId);
   }
-  return { success: false, data: null, error: 'API not available' };
+  // Browser environment - use browserStorage
+  try {
+    const apiKey = await browserStorage.get<string>(`apikey:${providerId}`);
+    if (apiKey) {
+      return { success: true, data: apiKey };
+    }
+    return { success: true, data: null };
+  } catch (error) {
+    console.error('[ProviderConfig] Failed to load API key from browser storage:', error);
+    return { success: false, data: null, error: 'Failed to load API key' };
+  }
 }
 
 export async function deleteApiKey(providerId: string): Promise<{ success: boolean; error?: string }> {

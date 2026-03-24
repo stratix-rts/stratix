@@ -22,17 +22,17 @@ export class StratixAgent {
   public skills: SkillRegistry;
   public sessions: SessionManager;
 
-  private llm: LLMConnector;
-  private promptBuilder: PromptBuilder;
-  private tokenManager: TokenManager;
-  private skillTrigger: SkillTrigger;
-  private healthChecker: HealthChecker;
-  private rateLimiter: RateLimiter;
-  private metricsCollector: MetricsCollector;
-  private storage: StorageManager;
-  private autoSaver: AutoSaver;
-  private backgroundTasks: NodeJS.Timeout[] = [];
-  private initialized: boolean = false;
+  protected llm: LLMConnector;
+  protected promptBuilder: PromptBuilder;
+  protected tokenManager: TokenManager;
+  protected skillTrigger: SkillTrigger;
+  protected healthChecker: HealthChecker;
+  protected rateLimiter: RateLimiter;
+  protected metricsCollector: MetricsCollector;
+  protected storage: StorageManager;
+  protected autoSaver: AutoSaver;
+  protected backgroundTasks: NodeJS.Timeout[] = [];
+  protected initialized: boolean = false;
 
   constructor(config: AgentConfig, soul: SoulConfig) {
     this.config = config;

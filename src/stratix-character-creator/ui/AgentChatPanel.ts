@@ -3,6 +3,7 @@ import { getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
 import { DOMContainer } from '@/stratix-core/ui/DOMContainer';
 import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClawConnectionManager';
+import { loadApiKey } from '../config/providerConfig';
 import type { ChatMessage, SavedCharacter } from '../types';
 import { marked } from 'marked';
 
@@ -26,8 +27,7 @@ export interface AgentChatPanelConfig {
   width: number;
   height: number;
   character: SavedCharacter;
-  backendType?: 'openclaw' | 'direct' | 'stratix';
-  directConfig?: any;
+  backendType?: 'openclaw' | 'stratix';
   stratixConfig?: any;
   onComplete: () => void;
   onBack: () => void;
@@ -48,18 +48,16 @@ export class AgentChatPanel {
 
   private buildSystemPrompt(): void {
     const char = this.config.character;
-    const parts = Object.entries(char.parts)
-      .map(([category, selection]) => `${category}: ${selection.itemId}`)
-      .join(', ');
-    
-    this.systemPrompt = `你是游戏中的一个角色，名叫"${char.name}"。
 
-角色信息：
-- 体型: ${char.bodyType}
-- 装备配置: ${parts}
+    this.systemPrompt = `你是 Stratix Agent（星策代理），一个智能助手，负责帮助用户完成各种任务。
 
-请以这个角色的身份与玩家对话。保持角色一致性，用符合角色身份的语气和方式回应。
-回答要简洁有性格，不要过度解释自己是AI。`;
+你的核心职责：
+- 理解用户需求，提供精准有效的帮助
+- 回答问题简洁专业，避免冗余
+- 主动思考，提供建设性的建议和方案
+- 遇到不确定的问题，诚实告知而非臆测
+
+请始终保持专业、友好、有帮助的态度。`;
   }
 
   create(): Phaser.GameObjects.DOMElement {
@@ -82,7 +80,7 @@ export class AgentChatPanel {
 
   private generateHTML(): string {
     const char = this.config.character;
-    
+
     return `
       <div class="agent-chat" style="
         width: ${this.config.width}px;
@@ -112,7 +110,7 @@ export class AgentChatPanel {
             <div style="font-size: 10px; color: ${THEME.textMuted};">${char.bodyType}</div>
           </div>
         </div>
-        
+
         <div id="chat-messages" style="
           flex: 1;
           padding: 16px;
@@ -132,7 +130,7 @@ export class AgentChatPanel {
             已连接到 ${char.name} 的 Agent，开始对话测试
           </div>
         </div>
-        
+
         <div class="input-area" style="
           padding: 16px;
           border-top: 1px solid ${THEME.panelBorder};
@@ -169,7 +167,7 @@ export class AgentChatPanel {
             ">发送</button>
           </div>
         </div>
-        
+
         <div class="actions" style="
           padding: 12px 16px;
           border-top: 1px solid ${THEME.panelBorder};
@@ -250,22 +248,14 @@ export class AgentChatPanel {
       try {
         let responseContent = '';
 
-        const backendType = this.config.backendType || this.config.character?.backendType || 'direct';
+        const backendType = this.config.backendType || this.config.character?.backendType || 'stratix';
 
         if (backendType === 'openclaw') {
-          const connection = unifiedOpenClawConnectionManager.getConnection();
-          if (!connection) {
+          if (!unifiedOpenClawConnectionManager.isConnected()) {
             throw new Error('未连接到 OpenClaw');
           }
-          const response = await connection.sendMessage(content, this.systemPrompt);
+          const response = await unifiedOpenClawConnectionManager.sendMessage(content);
           responseContent = response?.content || '';
-        } else if (backendType === 'direct') {
-          const config = this.config.directConfig || this.config.character?.directConfig;
-          if (!config?.provider || !config?.model) {
-            throw new Error('请先配置 Direct LLM');
-          }
-          const response = await this.callDirectLLM(config, content);
-          responseContent = response;
         } else if (backendType === 'stratix') {
           const config = this.config.stratixConfig || this.config.character?.stratixConfig;
           if (!config?.provider || !config?.model) {
@@ -303,7 +293,7 @@ export class AgentChatPanel {
     };
 
     sendBtn?.addEventListener('click', sendMessage);
-    
+
     chatInput?.addEventListener('input', () => {
       this.adjustTextareaHeight(chatInput);
     });
@@ -417,38 +407,29 @@ export class AgentChatPanel {
     textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
   }
 
-  private async callDirectLLM(config: any, userMessage: string): Promise<string> {
-    const response = await fetch('/api/stratix/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        backendType: 'direct',
-        config,
-        message: userMessage,
-        systemPrompt: this.systemPrompt
-      })
-    });
-    const result = await response.json();
-    if (result.success && result.data) {
-      return result.data;
-    }
-    throw new Error(result.message || 'LLM 请求失败');
-  }
-
   private async callStratixAgent(config: any, userMessage: string): Promise<string> {
-    const response = await fetch('/api/stratix/chat', {
+    // Load API key from secure storage if missing
+    let chatConfig = { ...config };
+    if (!chatConfig.apiKey && chatConfig.provider) {
+      const apiKeyResult = await loadApiKey(chatConfig.provider);
+      if (apiKeyResult.success && apiKeyResult.data) {
+        chatConfig.apiKey = apiKeyResult.data;
+      }
+    }
+
+    const response = await fetch('/api/stratix/agent/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         backendType: 'stratix',
-        config,
+        config: chatConfig,
         message: userMessage,
         systemPrompt: this.systemPrompt
       })
     });
     const result = await response.json();
-    if (result.success && result.data) {
-      return result.data;
+    if (result.code === 200 && result.data) {
+      return result.data.content;
     }
     throw new Error(result.message || 'StratixAgent 请求失败');
   }

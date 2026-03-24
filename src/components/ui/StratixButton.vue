@@ -90,7 +90,12 @@ const handleClick = (event: MouseEvent) => {
 }
 
 .stratix-btn:active:not(.stratix-btn--disabled) {
-  transform: translateY(0);
+  transform: translateY(0) scale(0.98);
+}
+
+.stratix-btn:focus-visible {
+  outline: 2px solid var(--ds-focus-ring, #3b82f6);
+  outline-offset: 2px;
 }
 
 .stratix-btn--disabled {
@@ -100,12 +105,13 @@ const handleClick = (event: MouseEvent) => {
 }
 
 .stratix-btn__loader {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   border: 2px solid currentColor;
   border-top-color: transparent;
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  animation: spin 0.6s linear infinite;
+  flex-shrink: 0;
 }
 
 .stratix-btn__icon {

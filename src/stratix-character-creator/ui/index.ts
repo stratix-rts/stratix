@@ -34,5 +34,3 @@ export type { AgentConfigPanelConfig, AgentFullConfig } from './AgentConfigPanel
 export { BackendSelector } from './BackendSelector';
 export type { BackendSelectorConfig } from './BackendSelector';
 
-export { DirectLLMConfigPanel } from './DirectLLMConfigPanel';
-export type { DirectLLMConfigPanelConfig } from './DirectLLMConfigPanel';

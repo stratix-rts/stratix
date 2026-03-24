@@ -154,3 +154,11 @@ export interface MetricsData {
   latency: number;
   tokenUsage: number;
 }
+
+export type SkillParams = Record<string, string | number | boolean | object | null | undefined>;
+
+export interface SkillExecutorResult {
+  success: boolean;
+  data?: unknown;
+  error?: string;
+}

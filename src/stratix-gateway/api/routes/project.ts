@@ -301,7 +301,7 @@ router.post('/:id/agents/enter', async (req: Request, res: Response): Promise<vo
     const project = await projectService.agentEnterProject(projectId, agentId);
     
     // 2. 获取 project 路径
-    const projectPath = project.projectPath || project.path;
+    const projectPath = project.path;
     if (!projectPath) {
       console.warn(`[Project API] Project ${projectId} has no path, cannot start agent`);
     } else {

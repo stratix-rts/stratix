@@ -48,14 +48,14 @@ export default defineConfig({
       output: {
         manualChunks: {
           'phaser': ['phaser'],
-          'vue-vendor': ['vue', 'element-plus'],
+          'vue-vendor': ['vue'],
         },
       },
     },
   },
 
   optimizeDeps: {
-    include: ['vue', 'axios', 'phaser', 'element-plus', 'mitt'],
+    include: ['vue', 'axios', 'phaser', 'mitt'],
     exclude: ['lowdb', 'fs-extra'],
   },
 

@@ -168,10 +168,10 @@ export class StratixAgentConfigPanel {
 
         <div id="stratix-api-key-row" style="padding: 16px; border-bottom: 1px solid ${THEME.border};">
           <label style="display: block; font-size: 11px; color: ${THEME.textMuted}; margin-bottom: 6px;">
-            API KEY ${!this.requiresApiKey() ? '(可选)' : ''}
+            API KEY <span id="api-key-required-indicator" style="color: ${THEME.error};">*</span>
           </label>
           <div style="display: flex; gap: 8px;">
-            <input type="password" id="stratix-api-key" value="${this.currentConfig.apiKey || ''}" placeholder="${!this.requiresApiKey() ? '可选' : '必填'}" style="
+            <input type="password" id="stratix-api-key" value="${this.currentConfig.apiKey || ''}" placeholder="输入 API Key" style="
               flex: 1;
               padding: 10px 12px;
               background: ${THEME.inputBg};
@@ -191,11 +191,10 @@ export class StratixAgentConfigPanel {
               font-size: 12px;
             ">👁</button>
           </div>
+          <div id="api-key-required-msg" style="display: block; font-size: 10px; color: ${THEME.textMuted}; margin-top: 4px;">
+            API Key 必填（Ollama 和 Custom provider 可留空）
+          </div>
           <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
-            <label style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: ${THEME.textMuted}; cursor: pointer;">
-              <input type="checkbox" id="stratix-save-api-key" style="cursor: pointer;" />
-              Save API Key (encrypted)
-            </label>
             <button id="stratix-load-saved-key" style="
               padding: 4px 8px;
               background: transparent;
@@ -339,6 +338,16 @@ export class StratixAgentConfigPanel {
     if (!this.container) return;
     const node = this.container.node as HTMLElement;
 
+    // Auto-load saved API key on init
+    (async () => {
+      const apiKeyInput = node.querySelector('#stratix-api-key') as HTMLInputElement;
+      const result = await loadApiKey(this.currentConfig.provider);
+      if (result.success && result.data && apiKeyInput) {
+        this.currentConfig.apiKey = result.data;
+        apiKeyInput.value = result.data;
+      }
+    })();
+
     const providerSelect = node.querySelector('#stratix-provider') as HTMLSelectElement;
     providerSelect?.addEventListener('change', () => {
       const newProvider = providerSelect.value;
@@ -379,27 +388,28 @@ export class StratixAgentConfigPanel {
       if (customModelRow) {
         customModelRow.style.display = this.showCustomModelInput() ? 'block' : 'none';
       }
-      
+
       const endpointRow = node.querySelector('#stratix-endpoint-row') as HTMLElement;
       if (endpointRow) {
         endpointRow.style.display = this.showEndpointRow() ? 'block' : 'none';
       }
-      
+
+      // API Key row is always visible now
       const apiKeyRow = node.querySelector('#stratix-api-key-row') as HTMLElement;
       if (apiKeyRow) {
-        apiKeyRow.style.display = this.requiresApiKey() ? 'block' : 'none';
+        apiKeyRow.style.display = 'block';
       }
-      
+
       const apiKeyInput = node.querySelector('#stratix-api-key') as HTMLInputElement;
       if (apiKeyInput) {
-        apiKeyInput.placeholder = this.requiresApiKey() ? '必填' : '可选';
+        apiKeyInput.placeholder = '输入 API Key';
       }
-      
+
       const endpointInput = node.querySelector('#stratix-endpoint') as HTMLInputElement;
       if (endpointInput) {
         endpointInput.placeholder = this.getEndpointPlaceholder();
       }
-      
+
       this.notifyChange();
     });
 
@@ -426,9 +436,10 @@ export class StratixAgentConfigPanel {
     });
 
     const apiKeyInput = node.querySelector('#stratix-api-key') as HTMLInputElement;
-    apiKeyInput?.addEventListener('change', () => {
+    apiKeyInput?.addEventListener('change', async () => {
       this.currentConfig.apiKey = apiKeyInput.value;
       this.notifyChange();
+      await this.saveApiKeyIfNeeded();
     });
 
     const endpointInput = node.querySelector('#stratix-endpoint') as HTMLInputElement;
@@ -469,6 +480,7 @@ export class StratixAgentConfigPanel {
     });
 
     const loadSavedKeyBtn = node.querySelector('#stratix-load-saved-key') as HTMLButtonElement;
+    const apiKeyMsg = node.querySelector('#api-key-required-msg') as HTMLElement;
     loadSavedKeyBtn?.addEventListener('click', async () => {
       const provider = this.currentConfig.provider;
       const result = await loadApiKey(provider);
@@ -476,6 +488,21 @@ export class StratixAgentConfigPanel {
         this.currentConfig.apiKey = result.data;
         (apiKeyInput as HTMLInputElement).value = result.data;
         this.notifyChange();
+        if (apiKeyMsg) {
+          apiKeyMsg.textContent = 'API Key loaded successfully';
+          apiKeyMsg.style.color = THEME.success;
+          setTimeout(() => {
+            apiKeyMsg.textContent = 'API Key 必填（Ollama 和 Custom provider 可留空）';
+            apiKeyMsg.style.color = THEME.textMuted;
+          }, 2000);
+        }
+      } else if (!result.success && apiKeyMsg) {
+        apiKeyMsg.textContent = result.error || 'Failed to load API key';
+        apiKeyMsg.style.color = THEME.error;
+        setTimeout(() => {
+          apiKeyMsg.textContent = 'API Key 必填（Ollama 和 Custom provider 可留空）';
+          apiKeyMsg.style.color = THEME.textMuted;
+        }, 3000);
       }
     });
   }
@@ -521,13 +548,8 @@ export class StratixAgentConfigPanel {
   }
 
   async saveApiKeyIfNeeded(): Promise<void> {
-    const node = this.container?.node as HTMLElement;
-    if (!node) return;
-
-    const saveCheckbox = node.querySelector('#stratix-save-api-key') as HTMLInputElement;
     const apiKey = this.currentConfig.apiKey;
-
-    if (saveCheckbox?.checked && apiKey) {
+    if (apiKey) {
       await saveApiKey(this.currentConfig.provider, apiKey);
     }
   }
@@ -685,6 +707,8 @@ export class StratixAgentConfigPanel {
   }
 
   destroy(): void {
+    // Save API key if checkbox is checked before destroying
+    this.saveApiKeyIfNeeded();
     this.container?.destroy();
   }
 }

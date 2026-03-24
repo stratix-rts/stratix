@@ -49,15 +49,16 @@ function THEME() {
   const colors = theme.colors;
   
   return {
-    // 数字格式（用于 Phaser）
     bg: hexToNumber(colors.background.base),
     panelBg: hexToNumber(colors.background.elevated),
     panelBorder: hexToNumber(colors.border.default),
-    panelBorderCss: colors.border.default,
     accent: hexToNumber(colors.brand.primary),
-    accentCss: colors.brand.primary,
     accentSecondary: hexToNumber(colors.brand.secondary),
     success: hexToNumber(colors.status.success),
+    panelBorderCss: colors.border.default,
+    accentCss: colors.brand.primary,
+    accentSecondaryCss: colors.brand.secondary,
+    successCss: colors.status.success,
     text: colors.text.primary,
     textMuted: colors.text.muted,
     textSecondary: colors.text.secondary,
@@ -81,7 +82,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
   private openClawConnectionPanel: OpenClawConnectionPanel | null = null;
   private agentChatPanel: AgentChatPanel | null = null;
   private backendSelector: BackendSelector | null = null;
-  private selectedBackendType: 'openclaw' | 'direct' | 'stratix' = 'direct';
+  private selectedBackendType: 'openclaw' | 'stratix' = 'stratix';
   private selectedBackendConfig: any = null;
   private characterPreview: CharacterPreview | null = null;
   private characterList: CharacterList | null = null;
@@ -175,7 +176,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
     const loadingText = this.add.text(width / 2, height / 2 - 30, 'INITIALIZING', {
       fontSize: '14px',
       fontFamily: 'monospace',
-      color: THEME().accent
+      color: toCssColor(THEME().accent)
     }).setOrigin(0.5);
 
     let progress = 0;
@@ -227,7 +228,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
     const title = this.add.text(24, THEME().headerHeight / 2, '角色创建器 CHARACTER CREATOR', {
       fontSize: '14px',
       fontFamily: 'monospace',
-      color: THEME().accent,
+      color: toCssColor(THEME().accent),
       fontStyle: 'bold'
     }).setOrigin(0, 0.5);
     header.add(title);
@@ -235,7 +236,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
     const glow = this.add.text(24, THEME().headerHeight / 2, '角色创建器 CHARACTER CREATOR', {
       fontSize: '14px',
       fontFamily: 'monospace',
-      color: THEME().accent,
+      color: toCssColor(THEME().accent),
       fontStyle: 'bold'
     }).setOrigin(0, 0.5).setAlpha(0.3);
     header.add(glow);
@@ -263,14 +264,14 @@ export class CharacterCreatorScene extends Phaser.Scene {
       const btn = this.add.text(btnX, y, `${index + 1}. ${step.labelCn}`, {
         fontSize: '11px',
         fontFamily: 'monospace',
-        color: isActive ? THEME().accent : THEME().textMuted,
+        color: isActive ? toCssColor(THEME().accent) : toCssColor(THEME().textMuted),
         backgroundColor: isActive ? 'rgba(0,0,0,0.1)' : 'transparent',
         padding: { x: 10, y: 5 }
       }).setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
 
       btn.on('pointerover', () => {
         if (this.currentStep !== step.key) {
-          btn.setColor(THEME().text);
+          btn.setColor(toCssColor(THEME().text));
         }
       });
 
@@ -315,7 +316,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
     const steps: CreatorStep[] = ['appearance', 'openclaw', 'agent'];
     this.stepIndicators.forEach((btn, index) => {
       const isActive = this.currentStep === steps[index];
-      btn.setColor(isActive ? THEME().accent : THEME().textMuted);
+      btn.setColor(isActive ? toCssColor(THEME().accent) : toCssColor(THEME().textMuted));
       btn.setBackgroundColor(isActive ? 'rgba(0,0,0,0.1)' : 'transparent');
     });
   }
@@ -333,12 +334,12 @@ export class CharacterCreatorScene extends Phaser.Scene {
       const btn = this.add.text(btnX, y, label, {
         fontSize: '12px',
         fontFamily: 'monospace',
-        color: THEME().textMuted,
+        color: toCssColor(THEME().textMuted),
         padding: { x: 12, y: 6 }
       }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true });
 
-      btn.on('pointerover', () => btn.setColor(color));
-      btn.on('pointerout', () => btn.setColor(THEME().textMuted));
+      btn.on('pointerover', () => btn.setColor(toCssColor(color)));
+      btn.on('pointerout', () => btn.setColor(toCssColor(THEME().textMuted)));
       btn.on('pointerdown', action);
 
       header.add(btn);
@@ -383,7 +384,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
     for (let y = 0; y < height; y += size) {
       for (let x = 0; x < width; x += size) {
         const isLight = ((x / size) + (y / size)) % 2 === 0;
-        ctx.fillStyle = isLight ? THEME().text : THEME().textSecondary;
+        ctx.fillStyle = isLight ? toCssColor(THEME().text) : toCssColor(THEME().textSecondary);
         ctx.fillRect(x, y, size, size);
       }
     }
@@ -466,7 +467,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
     const animLabel = this.add.text(24, y, '动画 ANIMATION', {
       fontSize: '10px',
       fontFamily: 'monospace',
-      color: THEME().textMuted
+      color: toCssColor(THEME().textMuted)
     });
     panel.add(animLabel);
 
@@ -478,7 +479,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
       const btn = this.add.text(24 + i * 58, y + 20, animLabels[anim], {
         fontSize: '11px',
         fontFamily: 'monospace',
-        color: isActive ? THEME().accent : THEME().textMuted,
+        color: isActive ? toCssColor(THEME().accent) : toCssColor(THEME().textMuted),
         backgroundColor: isActive ? 'rgba(0,0,0,0.1)' : 'transparent',
         padding: { x: 10, y: 5 }
       }).setOrigin(0, 0).setInteractive({ useHandCursor: true });
@@ -490,7 +491,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
             child.setBackgroundColor('transparent');
           }
         });
-        btn.setColor(THEME().accent);
+        btn.setColor(toCssColor(THEME().accent));
         btn.setBackgroundColor('rgba(0,0,0,0.1)');
         this.setAnimation(anim as AnimationName);
       });
@@ -501,7 +502,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
     const dirLabel = this.add.text(24, y + 55, '方向 DIRECTION', {
       fontSize: '10px',
       fontFamily: 'monospace',
-      color: THEME().textMuted
+      color: toCssColor(THEME().textMuted)
     });
     panel.add(dirLabel);
 
@@ -512,7 +513,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
       const btn = this.add.text(24 + i * 50, y + 75, dir, {
         fontSize: '14px',
         fontFamily: 'monospace',
-        color: isActive ? THEME().accent : THEME().textMuted,
+        color: isActive ? toCssColor(THEME().accent) : toCssColor(THEME().textMuted),
         backgroundColor: isActive ? 'rgba(0,0,0,0.1)' : 'transparent',
         padding: { x: 10, y: 5 }
       }).setOrigin(0, 0).setInteractive({ useHandCursor: true });
@@ -520,11 +521,11 @@ export class CharacterCreatorScene extends Phaser.Scene {
       btn.on('pointerdown', () => {
         panel.each((child: any) => {
           if (child.getData?.('dirBtn')) {
-            child.setColor(THEME().textMuted);
+            child.setColor(toCssColor(THEME().textMuted));
             child.setBackgroundColor('transparent');
           }
         });
-        btn.setColor(THEME().accent);
+        btn.setColor(toCssColor(THEME().accent));
         btn.setBackgroundColor('rgba(0,0,0,0.1)');
         this.setDirection(dirValues[i]);
       });
@@ -535,7 +536,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
     const scaleLabel = this.add.text(24, y + 110, '缩放 SCALE', {
       fontSize: '10px',
       fontFamily: 'monospace',
-      color: THEME().textMuted
+      color: toCssColor(THEME().textMuted)
     });
     panel.add(scaleLabel);
 
@@ -545,7 +546,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
       const btn = this.add.text(24 + i * 50, y + 130, scale, {
         fontSize: '11px',
         fontFamily: 'monospace',
-        color: isActive ? THEME().accent : THEME().textMuted,
+        color: isActive ? toCssColor(THEME().accent) : toCssColor(THEME().textMuted),
         backgroundColor: isActive ? 'rgba(0,0,0,0.1)' : 'transparent',
         padding: { x: 10, y: 5 }
       }).setOrigin(0, 0).setInteractive({ useHandCursor: true });
@@ -557,7 +558,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
             child.setBackgroundColor('transparent');
           }
         });
-        btn.setColor(THEME().accent);
+        btn.setColor(toCssColor(THEME().accent));
         btn.setBackgroundColor('rgba(0,0,0,0.1)');
         const scaleVal = parseFloat(scale);
         this.setScale(scaleVal);
@@ -585,7 +586,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
     const label = this.add.text(24, startY + 12, '致谢 CREDITS', {
       fontSize: '10px',
       fontFamily: 'monospace',
-      color: THEME().textMuted
+      color: toCssColor(THEME().textMuted)
     });
     panel.add(label);
 
@@ -653,7 +654,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
       const text = this.add.text(0, yOffset, line, {
         fontSize: '9px',
         fontFamily: 'monospace',
-        color: THEME().textMuted
+        color: toCssColor(THEME().textMuted)
       });
       container.add(text);
       yOffset += lineHeight;
@@ -661,7 +662,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
 
     const totalAuthors = authorsArray.length;
     const hasMore = totalAuthors > maxAuthors || lines.length > maxLines;
-    
+
     if (hasMore) {
       const remaining = totalAuthors > maxAuthors ? `+${totalAuthors - maxAuthors} more` : 'view all';
       const moreText = this.add.text(0, yOffset, remaining, {
@@ -669,7 +670,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
         fontFamily: 'monospace',
         color: THEME().accentCss
       }).setInteractive({ useHandCursor: true });
-      
+
       moreText.on('pointerover', () => moreText.setColor(THEME().accentCss));
       moreText.on('pointerout', () => moreText.setColor(THEME().accentCss));
       moreText.on('pointerdown', () => this.openCreditsModal(authorsArray, licensesArray));
@@ -682,7 +683,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
       const licenseText = this.add.text(0, licenseY, `License: ${licensesStr}`, {
         fontSize: '8px',
         fontFamily: 'monospace',
-        color: THEME().textMuted
+        color: toCssColor(THEME().textMuted)
       });
       container.add(licenseText);
     }
@@ -691,7 +692,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
       const noCredits = this.add.text(0, 0, 'No credits available', {
         fontSize: '9px',
         fontFamily: 'monospace',
-        color: THEME().textMuted
+        color: toCssColor(THEME().textMuted)
       });
       container.add(noCredits);
     }
@@ -796,20 +797,20 @@ export class CharacterCreatorScene extends Phaser.Scene {
     const label = this.add.text(24, y + 16, 'JSON 编辑器 JSON EDITOR', {
       fontSize: '10px',
       fontFamily: 'monospace',
-      color: THEME().textMuted
+      color: toCssColor(THEME().textMuted)
     });
     panel.add(label);
 
     const btn = this.add.text(24, y + 36, '打开 JSON 编辑 OPEN', {
       fontSize: '12px',
       fontFamily: 'monospace',
-      color: THEME().accentSecondary,
+      color: toCssColor(THEME().accentSecondary),
       backgroundColor: 'var(--ds-status-success-bg)',
       padding: { x: 12, y: 6 }
     }).setOrigin(0, 0).setInteractive({ useHandCursor: true });
 
-    btn.on('pointerover', () => btn.setColor(THEME().accentSecondary));
-    btn.on('pointerout', () => btn.setColor(THEME().accentSecondary));
+    btn.on('pointerover', () => btn.setColor(toCssColor(THEME().accentSecondary)));
+    btn.on('pointerout', () => btn.setColor(toCssColor(THEME().accentSecondary)));
     btn.on('pointerdown', () => this.openJsonEditor());
     panel.add(btn);
   }
@@ -1001,8 +1002,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
       y: 16,
       width: panelW - 32,
       height: panelH - 32,
-      initialBackendType: this.currentCharacter.backendType as any || 'direct',
-      initialDirectConfig: this.currentCharacter.directConfig as any,
+      initialBackendType: this.currentCharacter.backendType as any || 'stratix',
       initialOpenClawConfig: this.currentCharacter.openClawConfig as any,
       initialStratixConfig: this.currentCharacter.stratixConfig as any,
       onChange: (backendType, config) => {
@@ -1010,17 +1010,11 @@ export class CharacterCreatorScene extends Phaser.Scene {
         this.selectedBackendConfig = config;
         if (this.currentCharacter) {
           this.currentCharacter.backendType = backendType;
-          if (backendType === 'direct') {
-            this.currentCharacter.directConfig = config as any;
-            this.currentCharacter.openClawConfig = undefined;
-            this.currentCharacter.stratixConfig = undefined;
-          } else if (backendType === 'openclaw') {
+          if (backendType === 'openclaw') {
             this.currentCharacter.openClawConfig = config as any;
-            this.currentCharacter.directConfig = undefined;
             this.currentCharacter.stratixConfig = undefined;
           } else if (backendType === 'stratix') {
             this.currentCharacter.stratixConfig = config as any;
-            this.currentCharacter.directConfig = undefined;
             this.currentCharacter.openClawConfig = undefined;
           }
         }
@@ -1037,7 +1031,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
   private buildAgentPanel(panelW: number, panelH: number): void {
     if (!this.mainPanelContainer || !this.currentCharacter) return;
 
-    const backendType = this.selectedBackendType || this.currentCharacter?.backendType || 'direct';
+    const backendType = this.selectedBackendType || this.currentCharacter?.backendType || 'stratix';
 
     this.agentChatPanel = new AgentChatPanel(this, {
       x: 16,
@@ -1046,7 +1040,6 @@ export class CharacterCreatorScene extends Phaser.Scene {
       height: panelH - 32,
       character: this.currentCharacter,
       backendType,
-      directConfig: this.currentCharacter?.directConfig,
       stratixConfig: this.currentCharacter?.stratixConfig,
       onComplete: async () => {
         console.log('========================================');
@@ -1060,7 +1053,6 @@ export class CharacterCreatorScene extends Phaser.Scene {
         
         if (characterSnapshot && this.currentCharacter) {
           characterSnapshot.backendType = this.selectedBackendType;
-          characterSnapshot.directConfig = this.selectedBackendType === 'direct' ? this.selectedBackendConfig : undefined;
           characterSnapshot.openClawConfig = this.selectedBackendType === 'openclaw' ? this.selectedBackendConfig : undefined;
           characterSnapshot.stratixConfig = this.selectedBackendType === 'stratix' ? this.selectedBackendConfig : undefined;
           
@@ -1337,10 +1329,6 @@ export class CharacterCreatorScene extends Phaser.Scene {
 
       const characterToSave = { ...this.currentCharacter };
 
-      if (characterToSave.directConfig) {
-        const { apiKey, ...directConfigWithoutKey } = characterToSave.directConfig as any;
-        characterToSave.directConfig = directConfigWithoutKey;
-      }
       if (characterToSave.stratixConfig) {
         const { apiKey, ...stratixConfigWithoutKey } = characterToSave.stratixConfig as any;
         characterToSave.stratixConfig = stratixConfigWithoutKey;
@@ -1373,7 +1361,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
 
     this.uiElements.bodyTypeButtons?.forEach((btn, i) => {
       const isActive = BODY_TYPES[i] === bodyType;
-      btn.setColor(isActive ? THEME().accent : THEME().textMuted);
+      btn.setColor(isActive ? toCssColor(THEME().accent) : toCssColor(THEME().textMuted));
       btn.setBackgroundColor(isActive ? 'rgba(0,0,0,0.1)' : 'transparent');
     });
 
@@ -1465,9 +1453,9 @@ export class CharacterCreatorScene extends Phaser.Scene {
     const { width, height } = this.cameras.main;
 
     const colors: Record<string, string> = {
-      success: THEME().accentSecondary,
+      success: toCssColor(THEME().accentSecondary),
       error: 'var(--ds-status-danger)',
-      info: THEME().accent
+      info: toCssColor(THEME().accent)
     };
 
     const bg = this.add.rectangle(width / 2, height - 40, 200, 32, 0x000000, 0.8);

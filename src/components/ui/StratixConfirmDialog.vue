@@ -69,16 +69,16 @@ const handleCancel = () => {
     </div>
     
     <template #footer>
-      <StratixButton 
+      <StratixButton
         v-if="showCancel"
-        size="sm" 
+        size="sm"
         variant="secondary"
         @click="handleCancel"
       >
         {{ cancelText || '取消' }}
       </StratixButton>
-      <StratixButton 
-        size="sm" 
+      <StratixButton
+        size="sm"
         :variant="okDanger ? 'danger' : 'primary'"
         @click="handleOk"
       >
@@ -94,7 +94,7 @@ const handleCancel = () => {
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: 20px 0;
+  padding: 24px 16px;
 }
 
 .confirm-icon {

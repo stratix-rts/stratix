@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { StratixModal, StratixButton } from '@/components/ui';
 import { agentStore } from '@/stores/agentStore';
+import { loadApiKey } from '@/stratix-character-creator/config/providerConfig';
 
 interface AgentMessage {
   id: string;
@@ -44,7 +45,7 @@ const chatTitle = computed(() => {
 
 const sendMessage = async () => {
   if (!inputText.value.trim() || isLoading.value) return;
-  
+
   const userMessage: AgentMessage = {
     id: `user-${Date.now()}`,
     agentId: 'user',
@@ -53,39 +54,67 @@ const sendMessage = async () => {
     timestamp: new Date(),
     isUser: true,
   };
-  
+
   messages.value.push(userMessage);
-  
+
   const messageText = inputText.value.trim();
   inputText.value = '';
   isLoading.value = true;
-  
+
   try {
-    const response = await fetch('/api/chat/send', {
+    // Get agent config for the first agent (single chat)
+    const agent = selectedAgents.value[0];
+
+    if (!agent) {
+      throw new Error(`未找到 Agent，agentIds: ${JSON.stringify(props.agentIds)}`);
+    }
+
+    if (!agent.stratixConfig) {
+      throw new Error(`Agent "${agent.name}" 未配置 stratixConfig`);
+    }
+
+    // Load API key from secure storage if missing
+    let chatConfig = { ...agent.stratixConfig };
+    if (!chatConfig.apiKey && chatConfig.provider) {
+      const apiKeyResult = await loadApiKey(chatConfig.provider);
+      if (apiKeyResult.success && apiKeyResult.data) {
+        chatConfig.apiKey = apiKeyResult.data;
+      }
+    }
+
+    const response = await fetch('/api/stratix/agent/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        agentIds: props.agentIds,
+        backendType: 'stratix',
+        config: chatConfig,
         message: messageText,
-        mode: props.mode === 'group' ? 'group' : 'single',
+        systemPrompt: '你是 Stratix Agent（星策代理），一个智能助手，负责帮助用户完成各种任务。请简洁专业地回答问题。',
       }),
     });
-    
+
     const result = await response.json();
-    
-    if (result.messages && Array.isArray(result.messages)) {
-      result.messages.forEach((msg: any) => {
-        messages.value.push({
-          id: msg.id || `agent-${Date.now()}-${Math.random()}`,
-          agentId: msg.agentId,
-          agentName: msg.agentName || selectedAgents.value.find(a => a.agentId === msg.agentId)?.name || 'Agent',
-          content: msg.content,
-          timestamp: new Date(msg.timestamp || Date.now()),
-        });
+
+    if (result.code === 200 && result.data?.content) {
+      messages.value.push({
+        id: `agent-${Date.now()}`,
+        agentId: agent.agentId,
+        agentName: agent.name || 'Agent',
+        content: result.data.content,
+        timestamp: new Date(),
       });
+    } else {
+      throw new Error(result.message || 'Request failed');
     }
   } catch (error) {
     console.error('Failed to send message:', error);
+    messages.value.push({
+      id: `error-${Date.now()}`,
+      agentId: 'system',
+      agentName: '系统',
+      content: error instanceof Error ? error.message : '发送失败',
+      timestamp: new Date(),
+    });
   } finally {
     isLoading.value = false;
   }
@@ -113,8 +142,8 @@ watch(() => props.visible, (visible) => {
   <StratixModal
     :visible="visible"
     :title="chatTitle"
-    width="600"
-    height="500"
+    :width="600"
+    :height="500"
     position="center"
     @update:visible="$emit('close')"
   >

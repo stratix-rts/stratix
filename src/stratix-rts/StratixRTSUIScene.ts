@@ -168,15 +168,6 @@ export default class StratixRTSUIScene extends Phaser.Scene {
     );
 
     this.eventUnsubscribers.push(
-      rtsEventBus.on('scene:ui:zone_info', (data) => {
-        this.selectedZoneInfo = data;
-        if (this.uiComponents?.commandPanel) {
-          this.uiComponents.commandPanel.updateZoneInfo(data);
-        }
-      })
-    );
-
-    this.eventUnsubscribers.push(
       rtsEventBus.on('scene:ui:viewport_change', (data) => {
         if (this.uiComponents?.minimap) {
           (this.uiComponents.minimap as any).updateViewport?.(data);

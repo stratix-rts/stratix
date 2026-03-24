@@ -121,7 +121,9 @@ const updateGoal = (index: number, value: string) => {
 }
 
 .form-group {
-  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .label {
@@ -129,7 +131,6 @@ const updateGoal = (index: number, value: string) => {
   font-size: 13px;
   font-weight: 500;
   color: v-bind('getToken("colors.text.secondary")');
-  margin-bottom: 8px;
 }
 
 .label-required::after {
@@ -142,7 +143,6 @@ const updateGoal = (index: number, value: string) => {
   display: block;
   font-size: 12px;
   color: v-bind('getToken("colors.text.muted")');
-  margin-top: 6px;
 }
 
 .goals-list {

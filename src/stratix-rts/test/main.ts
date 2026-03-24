@@ -54,7 +54,6 @@ function createAgentConfig(type: string): StratixAgentConfig {
     soul: { identity: 'test', goals: [], personality: 'test' },
     memory: { shortTerm: [], longTerm: [], context: '' },
     skills: [],
-    directConfig: { provider: 'openai', model: 'test' },
     openClawConfig: { accountId: 'test', endpoint: 'test' }
   };
 }

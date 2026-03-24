@@ -4,7 +4,6 @@ import {
   StratixMemoryConfig,
   StratixSkillConfig,
   OpenClawConfig,
-  DirectLLMConfig,
   StratixSkillParameter,
   AgentBackendType,
 } from '@/stratix-core/stratix-protocol';
@@ -38,17 +37,12 @@ export class ConfigConverter {
       return null;
     }
 
-    const directConfig = config.directConfig;
-    
     return {
       account_id: config.openClawConfig.accountId,
       endpoint: config.openClawConfig.endpoint,
       api_key: config.openClawConfig.apiKey,
-      model: directConfig?.model || 'gpt-4',
-      model_params: {
-        temperature: directConfig?.temperature,
-        maxTokens: directConfig?.maxTokens,
-      },
+      model: 'gpt-4',
+      model_params: {},
       system_prompt: this.buildSystemPrompt(config.soul, config.memory, config.rules),
       tools: this.convertSkillsToTools(config.skills || []),
     };
@@ -56,7 +50,7 @@ export class ConfigConverter {
 
   static fromOpenClawFormat(openClawConfig: OpenClawAgentConfig, baseConfig: Partial<StratixAgentConfig> = {}): StratixAgentConfig {
     const name = baseConfig.name || '导入的英雄';
-    
+
     return {
       agentId: baseConfig.agentId || `stratix-${Date.now()}-imported`,
       name,
@@ -80,12 +74,6 @@ export class ConfigConverter {
         context: '',
       },
       skills: baseConfig.skills || [],
-      directConfig: {
-        provider: 'openai',
-        model: openClawConfig.model,
-        temperature: openClawConfig.model_params?.temperature,
-        maxTokens: openClawConfig.model_params?.maxTokens,
-      },
       openClawConfig: {
         accountId: openClawConfig.account_id,
         endpoint: openClawConfig.endpoint,
@@ -106,7 +94,7 @@ export class ConfigConverter {
   static mergeConfigs(base: StratixAgentConfig, override: Partial<StratixAgentConfig>): StratixAgentConfig {
     const backendType: AgentBackendType = override.backendType || base.backendType;
     const name = override.name || base.name;
-    
+
     const result: StratixAgentConfig = {
       agentId: override.agentId || base.agentId,
       name,
@@ -150,18 +138,9 @@ export class ConfigConverter {
       };
     }
 
-    // Merge directConfig
-    if (base.directConfig || override.directConfig) {
-      const bdc: DirectLLMConfig = base.directConfig || { provider: 'openai', model: '' };
-      const odc: Partial<DirectLLMConfig> = override.directConfig || {};
-      result.directConfig = {
-        provider: odc.provider !== undefined ? odc.provider : bdc.provider,
-        model: odc.model !== undefined ? odc.model : bdc.model,
-        endpoint: odc.endpoint !== undefined ? odc.endpoint : bdc.endpoint,
-        apiKey: odc.apiKey !== undefined ? odc.apiKey : bdc.apiKey,
-        temperature: odc.temperature !== undefined ? odc.temperature : bdc.temperature,
-        maxTokens: odc.maxTokens !== undefined ? odc.maxTokens : bdc.maxTokens,
-      };
+    // Merge stratixConfig
+    if (base.stratixConfig || override.stratixConfig) {
+      result.stratixConfig = override.stratixConfig || base.stratixConfig;
     }
 
     // Skills and rules
@@ -231,9 +210,9 @@ export class ConfigConverter {
   }
 
   private static applyDefaults(raw: any): StratixAgentConfig {
-    const backendType: AgentBackendType = raw.backendType || 'openclaw';
+    const backendType: AgentBackendType = raw.backendType || 'stratix';
     const name = raw.name || '导入的英雄';
-    
+
     return {
       agentId: raw.agentId || `stratix-${Date.now()}-imported`,
       name,
@@ -251,7 +230,7 @@ export class ConfigConverter {
       skills: raw.skills || [],
       rules: raw.rules || [],
       openClawConfig: raw.openClawConfig || { accountId: '', endpoint: '' },
-      directConfig: raw.directConfig,
+      stratixConfig: raw.stratixConfig,
     };
   }
 }

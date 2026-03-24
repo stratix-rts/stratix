@@ -1,0 +1,47 @@
+/** @type {import('jest').Config} */
+module.exports = {
+  testEnvironment: 'node',
+  roots: ['<rootDir>/tests', '<rootDir>/src'],
+  // Only run Jest unit tests (not Playwright tests)
+  testMatch: [
+    '**/*.test.ts'
+  ],
+  // Exclude Playwright test files and tests requiring browser/Phaser
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '/dist/',
+    '/tests/app\\.spec\\.ts',
+    '/tests/api\\.spec\\.ts',
+    '/tests/rts\\.spec\\.ts',
+    '/tests/test_',
+    '/tests/diagnose\\.spec\\.ts',
+    '/tests/design-system/',
+    '/tests/migration/',
+    '/tests/texture-management/',
+    // Exclude tests that require Phaser/browser globals
+    '/tests/stratix-rts/ui/ZoneUI\\.test\\.ts',
+    '/src/stratix-core/__tests__/UnifiedOpenClawConnectionManager\\.test\\.ts',
+    '/tests/project-management/unit/ProjectStore\\.test\\.ts'
+  ],
+  moduleFileExtensions: ['ts', 'js', 'json'],
+  collectCoverageFrom: [
+    'src/stratix-project/**/*.ts',
+    '!src/stratix-project/**/*.d.ts',
+    '!src/stratix-project/index.ts'
+  ],
+  coverageDirectory: 'coverage',
+  coverageReporters: ['text', 'lcov', 'html'],
+  verbose: true,
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1'
+  },
+  transformIgnorePatterns: [
+    'node_modules/(?!(lowdb)/)',
+  ],
+  transform: {
+    '^.+\\.ts$': ['ts-jest', {
+      tsconfig: 'tsconfig.test.json',
+      useESM: false
+    }]
+  }
+};

@@ -84,7 +84,7 @@ export const ModalBaseConfig: ModalToken = {
   style: {
     borderRadius: '12px',
     shadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
-    maskBackground: 'rgba(0, 0, 0, 0.85)',
+    maskBackground: 'rgba(0, 0, 0, 0.5)',
   },
   header: {
     gradient: {
@@ -98,7 +98,7 @@ export const ModalBaseConfig: ModalToken = {
   },
   animation: {
     duration: 200,
-    easing: 'ease-out',
+    easing: 'ease-in-out',
   },
 };
 

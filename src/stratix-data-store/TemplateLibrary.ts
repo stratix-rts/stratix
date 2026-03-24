@@ -43,7 +43,6 @@ const PRESET_TEMPLATES: StratixAgentConfig[] = [
         executeScript: '{"action":"optimize_content","params":{"content":"{{content}}","optimizeType":"{{optimizeType}}"}}'
       }
     ],
-    directConfig: { provider: 'openai', model: 'claude-3-sonnet', temperature: 0.7 },
     openClawConfig: { accountId: '', endpoint: 'http://localhost:8000' }
   },
   {
@@ -76,7 +75,6 @@ const PRESET_TEMPLATES: StratixAgentConfig[] = [
         executeScript: '{"action":"generate_code","params":{"demand":"{{demand}}","language":"{{language}}"}}'
       }
     ],
-    directConfig: { provider: 'openai', model: 'gpt-4o', temperature: 0.6 },
     openClawConfig: { accountId: '', endpoint: 'http://localhost:8000' }
   },
   {
@@ -109,7 +107,6 @@ const PRESET_TEMPLATES: StratixAgentConfig[] = [
         executeScript: '{"action":"analyze_data","params":{"data":"{{data}}","analysisType":"{{analysisType}}"}}'
       }
     ],
-    directConfig: { provider: 'openai', model: 'claude-3-opus', temperature: 0.5 },
     openClawConfig: { accountId: '', endpoint: 'http://localhost:8000' }
   }
 ];

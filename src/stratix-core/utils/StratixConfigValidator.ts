@@ -1,6 +1,6 @@
 /**
  * Stratix 配置校验器
- * 
+ *
  * 校验 Agent/Skill/Model 配置是否符合 Stratix 规范
  */
 
@@ -10,7 +10,6 @@ import {
   StratixSoulConfig,
   StratixMemoryConfig,
   OpenClawConfig,
-  DirectLLMConfig,
   StratixSkillParameter,
   CharacterProfile,
   AgentBackendType,
@@ -46,8 +45,7 @@ export class StratixConfigValidator {
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    const backendType = config.backendType || 'direct';
-    const isDirectMode = backendType === 'direct';
+    const backendType = config.backendType || 'stratix';
 
     if (!config.agentId) {
       errors.push('agentId 是必填字段');
@@ -63,8 +61,8 @@ export class StratixConfigValidator {
       errors.push('type 是必填字段');
     }
 
-    if (!['openclaw', 'direct'].includes(backendType)) {
-      errors.push('backendType 必须是 openclaw 或 direct');
+    if (!['openclaw', 'stratix'].includes(backendType)) {
+      errors.push('backendType 必须是 openclaw 或 stratix');
     }
 
     if (!config.configStatus) {
@@ -93,23 +91,23 @@ export class StratixConfigValidator {
       }
     }
 
-    if (isDirectMode) {
-      if (!config.directConfig) {
+    if (backendType === 'stratix') {
+      if (!config.stratixConfig) {
         if (config.configStatus === 'ready') {
-          errors.push('Direct ready 状态需要 directConfig');
+          errors.push('StratixAgent ready 状态需要 stratixConfig');
         }
       } else {
-        const directResult = this.validateDirectConfig(config.directConfig);
-        errors.push(...directResult.errors);
-        warnings.push(...directResult.warnings);
+        const stratixResult = this.validateStratixConfig(config.stratixConfig);
+        errors.push(...stratixResult.errors);
+        warnings.push(...stratixResult.warnings);
       }
 
       if (config.configStatus === 'ready') {
         if (!config.soul) {
-          warnings.push('Direct ready 状态建议配置 soul');
+          warnings.push('StratixAgent ready 状态建议配置 soul');
         }
         if (!config.skills || config.skills.length === 0) {
-          warnings.push('Direct ready 状态建议至少配置一个技能');
+          warnings.push('StratixAgent ready 状态建议至少配置一个技能');
         }
       }
 
@@ -314,13 +312,13 @@ export class StratixConfigValidator {
   }
 
   /**
-   * 校验 Direct LLM 配置
+   * 校验 StratixAgent 配置
    */
-  public validateDirectConfig(config: DirectLLMConfig): ValidationResult {
+  public validateStratixConfig(config: any): ValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    const validProviders = ['openai', 'anthropic', 'ollama', 'custom'];
+    const validProviders = ['openai', 'anthropic', 'ollama', 'deepseek', 'qwen', 'custom'];
     if (!config.provider || !validProviders.includes(config.provider)) {
       errors.push(`provider 必须是 ${validProviders.join(' | ')} 之一`);
     }
@@ -371,12 +369,13 @@ export class StratixConfigValidator {
    */
   public isReadyConfig(config: StratixAgentConfig): boolean {
     if (config.configStatus !== 'ready') return false;
-    
-    if (config.backendType === 'direct') {
-      return !!(config.directConfig?.provider && config.directConfig?.model);
-    } else {
+
+    if (config.backendType === 'openclaw') {
       return !!(config.openClawConfig?.endpoint && config.openClawConfig?.accountId);
+    } else if (config.backendType === 'stratix') {
+      return !!(config.stratixConfig?.provider && config.stratixConfig?.model);
     }
+    return false;
   }
 }
 

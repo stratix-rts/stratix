@@ -1,8 +1,7 @@
 /**
- * (Migrated)
- * BackendSelector - 后端选择器 (更新版)
- * 
- * 支持 OpenClaw 和 Direct LLM 两种后端
+ * BackendSelector - 后端选择器
+ *
+ * 支持 OpenClaw 和 StratixAgent 两种后端
  * OpenClaw 部分使用统一连接管理器
  */
 
@@ -10,8 +9,7 @@ import Phaser from 'phaser';
 import { getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
 import { ContainerComponentBase } from '@/stratix-core/ui/ContainerComponent.base';
-import type { AgentBackendType, OpenClawConfig, DirectLLMConfig, UnifiedOpenClawConfig, StratixDirectConfig } from '@/stratix-core/stratix-protocol';
-import { DirectLLMConfigPanel } from './DirectLLMConfigPanel';
+import type { AgentBackendType, OpenClawConfig, UnifiedOpenClawConfig, StratixDirectConfig } from '@/stratix-core/stratix-protocol';
 import { StratixAgentConfigPanel } from './StratixAgentConfigPanel';
 import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClawConnectionManager';
 import { agentStore } from '@/stores/agentStore';
@@ -35,9 +33,8 @@ export interface BackendSelectorConfig {
   height: number;
   initialBackendType?: AgentBackendType;
   initialOpenClawConfig?: OpenClawConfig;
-  initialDirectConfig?: DirectLLMConfig;
   initialStratixConfig?: StratixDirectConfig;
-  onChange?: (backendType: AgentBackendType, config: OpenClawConfig | DirectLLMConfig | StratixDirectConfig) => void;
+  onChange?: (backendType: AgentBackendType, config: OpenClawConfig | StratixDirectConfig) => void;
   onNext?: () => void;
 }
 
@@ -47,27 +44,19 @@ export class BackendSelector {
   private container: Phaser.GameObjects.DOMElement | null = null;
   private currentBackendType: AgentBackendType;
   private openClawConfig: OpenClawConfig;
-  private directConfig: DirectLLMConfig;
   private stratixConfig: StratixDirectConfig;
-  private directPanel: DirectLLMConfigPanel | null = null;
   private stratixPanel: StratixAgentConfigPanel | null = null;
-  private onChange?: (backendType: AgentBackendType, config: OpenClawConfig | DirectLLMConfig | StratixDirectConfig) => void;
+  private onChange?: (backendType: AgentBackendType, config: OpenClawConfig | StratixDirectConfig) => void;
   private onNext?: () => void;
   private isElectron: boolean = false;
 
   constructor(scene: Phaser.Scene, config: BackendSelectorConfig) {
     this.scene = scene;
     this.config = config;
-    this.currentBackendType = config.initialBackendType || 'openclaw';
+    this.currentBackendType = config.initialBackendType || 'stratix';
     this.openClawConfig = config.initialOpenClawConfig || {
       endpoint: '',
       accountId: '',
-    };
-    this.directConfig = config.initialDirectConfig || {
-      provider: 'openai',
-      model: 'gpt-4',
-      temperature: 0.7,
-      maxTokens: 4096,
     };
     this.stratixConfig = config.initialStratixConfig || {
       provider: 'openai',
@@ -150,23 +139,6 @@ export class BackendSelector {
             ">
               <span style="font-size: 18px;">🤖</span>
               <span>StratixAgent</span>
-            </button>
-            <button class="backend-btn" data-backend="direct" style="
-              flex: 1;
-              padding: 12px 8px;
-              background: ${this.currentBackendType === 'direct' ? THEME.accent : 'transparent'};
-              border: 1px solid ${this.currentBackendType === 'direct' ? THEME.accent : THEME.border};
-              border-radius: 8px;
-              color: ${this.currentBackendType === 'direct' ? THEME.bg : THEME.text};
-              font-size: 11px;
-              cursor: pointer;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              gap: 4px;
-            ">
-              <span style="font-size: 18px;">🔗</span>
-              <span>Direct LLM</span>
             </button>
           </div>
         </div>
@@ -284,37 +256,6 @@ export class BackendSelector {
             </div>
           </div>
 
-          <div id="direct-config" class="config-panel" style="
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 60px;
-            padding: 16px;
-            overflow-y: auto;
-            display: none;
-          ">
-            <div id="direct-panel-content"></div>
-            <button id="direct-test-btn-static" style="
-              width: 100%;
-              margin-top: 16px;
-              padding: 12px;
-              background: ${THEME.accentDim};
-              border: 1px solid ${THEME.accent};
-              border-radius: 6px;
-              color: ${THEME.accent};
-              font-size: 12px;
-              cursor: pointer;
-            ">测试连接 Test Connection</button>
-            <div id="direct-status-static" style="
-              margin-top: 12px;
-              padding: 10px;
-              border-radius: 6px;
-              font-size: 11px;
-              display: none;
-            "></div>
-          </div>
-
           <div id="stratix-config" class="config-panel" style="
             position: absolute;
             top: 0;
@@ -354,7 +295,7 @@ export class BackendSelector {
             display: flex;
             gap: 8px;
           ">
-            <button id="backend-next-btn" style="
+            <button id="backend-next-btn" class="backend-next-btn" style="
               flex: 1;
               padding: 14px 20px;
               background: ${THEME.accent};
@@ -366,6 +307,15 @@ export class BackendSelector {
               cursor: pointer;
               transition: all 0.2s;
             ">下一步 Next</button>
+            <style>
+              .backend-next-btn:hover {
+                filter: brightness(1.1);
+                transform: translateY(-1px);
+              }
+              .backend-next-btn:active {
+                transform: translateY(0) scale(0.98);
+              }
+            </style>
           </div>
         </div>
       </div>
@@ -427,18 +377,6 @@ export class BackendSelector {
       localStorage.setItem('stratix_openclaw_mode', mode);
     });
 
-    // Direct 测试按钮
-    const directTestBtnStatic = node.querySelector('#direct-test-btn-static') as HTMLButtonElement;
-    console.log('[BackendSelector] Direct test button element:', directTestBtnStatic);
-    if (directTestBtnStatic) {
-      directTestBtnStatic.addEventListener('click', (e) => {
-        console.log('[BackendSelector] Direct test button clicked');
-        e.stopPropagation();
-        e.preventDefault();
-        this.testDirectConnectionFromPanelStatic(node);
-      });
-    }
-
     // Stratix 测试按钮
     const stratixTestBtnStatic = node.querySelector('#stratix-test-btn-static') as HTMLButtonElement;
     console.log('[BackendSelector] Stratix test button element:', stratixTestBtnStatic);
@@ -476,11 +414,9 @@ export class BackendSelector {
 
     const node = this.container.node as HTMLElement;
     const openclawPanel = node.querySelector('#openclaw-config') as HTMLElement;
-    const directPanel = node.querySelector('#direct-config') as HTMLElement;
     const stratixPanel = node.querySelector('#stratix-config') as HTMLElement;
 
     openclawPanel.style.display = 'none';
-    directPanel.style.display = 'none';
     stratixPanel.style.display = 'none';
 
     if (backendType === 'openclaw') {
@@ -506,22 +442,6 @@ export class BackendSelector {
         panelContent.appendChild((await this.stratixPanel.create()).node as HTMLElement);
       }
       this.onChange?.(backendType, this.stratixConfig);
-    } else {
-      console.log('[BackendSelector] Showing direct config panel');
-      directPanel.style.display = 'block';
-
-      if (!this.directPanel && directPanel) {
-        const panelContent = directPanel.querySelector('#direct-panel-content') as HTMLElement;
-        this.directPanel = new DirectLLMConfigPanel(this.scene, {
-          x: 0,
-          y: 0,
-          width: this.config.width - 32,
-          height: this.config.height - 160,
-          initialConfig: this.directConfig,
-        });
-        panelContent.appendChild((await this.directPanel.create()).node as HTMLElement);
-      }
-      this.onChange?.(backendType, this.directConfig);
     }
   }
 
@@ -538,8 +458,6 @@ export class BackendSelector {
 
     if (this.currentBackendType === 'openclaw') {
       await this.testOpenClawConnection(node, statusDiv);
-    } else if (this.currentBackendType === 'direct') {
-      await this.testDirectConnection(node, statusDiv);
     } else if (this.currentBackendType === 'stratix') {
       await this.testStratixConnection(node, statusDiv);
     }
@@ -572,50 +490,6 @@ export class BackendSelector {
         this.onChange?.('openclaw', this.openClawConfig);
       } else {
         throw new Error('Connection failed');
-      }
-    } catch (error: any) {
-      statusDiv.style.background = 'rgba(255, 102, 102, 0.1)';
-      statusDiv.style.color = THEME.error;
-      statusDiv.textContent = `✗ 连接失败：${error.message}`;
-    }
-  }
-
-  private async testDirectConnection(node: HTMLElement, statusDiv: HTMLDivElement): Promise<void> {
-    try {
-      let config: DirectLLMConfig;
-      
-      if (this.directPanel) {
-        config = this.directPanel.getConfig();
-      } else {
-        const provider = ((node.querySelector('#direct-provider') as HTMLSelectElement)?.value || this.directConfig.provider) as DirectLLMConfig['provider'];
-        const model = (node.querySelector('#direct-model') as HTMLSelectElement)?.value || this.directConfig.model;
-        const apiKey = (node.querySelector('#direct-api-key') as HTMLInputElement)?.value || this.directConfig.apiKey;
-        const endpoint = (node.querySelector('#direct-endpoint') as HTMLInputElement)?.value || this.directConfig.endpoint;
-        
-        config = { provider, model, apiKey, endpoint, temperature: 0.7, maxTokens: 4096 };
-      }
-
-      statusDiv.style.display = 'block';
-      statusDiv.style.background = 'rgba(255, 200, 0, 0.1)';
-      statusDiv.style.color = '#ffcc00';
-      statusDiv.textContent = '连接中 Connecting...';
-
-      const response = await fetch('/api/stratix/config/agent/test-connection', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ backendType: 'direct', config })
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        statusDiv.style.background = 'rgba(0, 255, 136, 0.1)';
-        statusDiv.style.color = THEME.success;
-        statusDiv.textContent = '✓ 连接成功 Connected';
-        this.directConfig = { ...this.directConfig, ...config };
-        this.onChange?.('direct', this.directConfig);
-      } else {
-        throw new Error(result.message || 'Connection failed');
       }
     } catch (error: any) {
       statusDiv.style.background = 'rgba(255, 102, 102, 0.1)';
@@ -672,10 +546,9 @@ export class BackendSelector {
     }
   }
 
-  getConfig(): OpenClawConfig | DirectLLMConfig | StratixDirectConfig {
+  getConfig(): OpenClawConfig | StratixDirectConfig {
     if (this.currentBackendType === 'openclaw') return this.openClawConfig;
-    if (this.currentBackendType === 'stratix') return this.stratixConfig;
-    return this.directConfig;
+    return this.stratixConfig;
   }
 
   getOpenClawConfig(): OpenClawConfig {
@@ -703,13 +576,6 @@ export class BackendSelector {
       if (!this.stratixConfig.model) {
         errors.push('请选择模型');
       }
-    } else if (this.currentBackendType === 'direct') {
-      if (!this.directConfig.apiKey && this.directConfig.provider !== 'ollama') {
-        errors.push('Direct LLM API Key 不能为空');
-      }
-      if (!this.directConfig.model) {
-        errors.push('请选择模型');
-      }
     }
 
     return { valid: errors.length === 0, errors };
@@ -720,21 +586,10 @@ export class BackendSelector {
     return validation.valid;
   }
 
-  private async testDirectConnectionFromPanel(node: HTMLElement): Promise<void> {
-    const statusDiv = node.querySelector('#direct-status') as HTMLDivElement;
-    await this.testDirectConnection(node, statusDiv);
-  }
-
   private async testStratixConnectionFromPanel(node: HTMLElement): Promise<void> {
     const stratixPanel = node.querySelector('#stratix-config') as HTMLElement;
     const statusDiv = node.querySelector('#stratix-status') as HTMLDivElement;
     await this.testStratixConnection(node, statusDiv);
-  }
-
-  private async testDirectConnectionFromPanelStatic(node: HTMLElement): Promise<void> {
-    console.log('[BackendSelector] testDirectConnectionFromPanelStatic called');
-    const statusDiv = node.querySelector('#direct-status-static') as HTMLDivElement;
-    await this.testDirectConnection(node, statusDiv);
   }
 
   private async testStratixConnectionFromPanelStatic(node: HTMLElement): Promise<void> {
@@ -746,27 +601,49 @@ export class BackendSelector {
   private showValidationErrors(errors: string[]): void {
     if (!this.container) return;
     const node = this.container.node as HTMLElement;
-    
+
+    // 首先尝试显示在对应状态div
     let statusDiv: HTMLDivElement | null = null;
     if (this.currentBackendType === 'openclaw') {
       statusDiv = node.querySelector('#oc-status') as HTMLDivElement;
-    } else if (this.currentBackendType === 'direct') {
-      statusDiv = node.querySelector('#direct-status-static') as HTMLDivElement;
     } else if (this.currentBackendType === 'stratix') {
       statusDiv = node.querySelector('#stratix-status-static') as HTMLDivElement;
     }
-    
+
     if (statusDiv) {
       statusDiv.style.display = 'block';
-      statusDiv.style.background = 'rgba(255, 102, 102, 0.1)';
+      statusDiv.style.background = 'rgba(255, 102, 102, 0.15)';
       statusDiv.style.color = THEME.error;
+      statusDiv.style.padding = '12px';
+      statusDiv.style.borderRadius = '6px';
+      statusDiv.style.marginBottom = '12px';
       statusDiv.textContent = '✗ ' + errors.join('; ');
+    }
+
+    // 如果状态div不存在，在next按钮上方显示错误
+    const nextBtnContainer = node.querySelector('.next-btn-container');
+    if (nextBtnContainer) {
+      let errorDiv = node.querySelector('.validation-error-display') as HTMLElement;
+      if (!errorDiv) {
+        errorDiv = document.createElement('div');
+        errorDiv.className = 'validation-error-display';
+        errorDiv.style.cssText = `
+          background: rgba(255, 102, 102, 0.15);
+          color: ${THEME.error};
+          padding: 10px 12px;
+          border-radius: 6px;
+          font-size: 12px;
+          margin-bottom: 8px;
+          border: 1px solid rgba(255, 102, 102, 0.3);
+        `;
+        nextBtnContainer.parentNode?.insertBefore(errorDiv, nextBtnContainer);
+      }
+      errorDiv.textContent = '✗ ' + errors.join('; ');
     }
   }
 
   destroy(): void {
     this.container?.destroy();
-    this.directPanel = null;
     this.stratixPanel = null;
   }
 }

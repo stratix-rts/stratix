@@ -60,15 +60,6 @@ export interface OpenClawConfigLocal {
   agentId?: string;
 }
 
-export interface DirectLLMConfigLocal {
-  provider: 'openai' | 'anthropic' | 'ollama' | 'custom';
-  model: string;
-  endpoint?: string;
-  apiKey?: string;
-  temperature?: number;
-  maxTokens?: number;
-}
-
 export interface SavedCharacter {
   characterId: string;
   name: string;
@@ -87,9 +78,8 @@ export interface SavedCharacter {
     personality: string;
   };
   rules?: string[];
-  backendType?: 'openclaw' | 'direct' | 'stratix';
+  backendType?: 'openclaw' | 'stratix';
   openClawConfig?: OpenClawConfigLocal;
-  directConfig?: DirectLLMConfigLocal;
   stratixConfig?: StratixDirectConfig;
   openClawConnectionId?: string;
 }

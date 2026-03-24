@@ -1,5 +1,8 @@
 import type { StratixCommandData, StratixAgentConfig, StratixSkillConfig, StratixDirectConfig } from '../stratix-protocol';
 import type { AgentExecutor, ExecutorResult, ExecutorOptions } from './AgentExecutor';
+import { PROVIDER_CONFIGS } from '../config/provider-config';
+import { LLM_DEFAULTS } from '@/stratix-core/config/defaults';
+import { buildChatCompletionsURL } from '../utils/OpenAIEndpointBuilder';
 
 export class StratixAgentExecutor implements AgentExecutor {
   async execute(
@@ -67,7 +70,7 @@ export class StratixAgentExecutor implements AgentExecutor {
       const config = agentConfig.stratixConfig;
       const testMessage = 'Hello';
       
-      const timeoutMs = 10000;
+      const timeoutMs = LLM_DEFAULTS.TIMEOUT_MS;
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Connection timeout (10s)')), timeoutMs)
       );
@@ -134,71 +137,52 @@ export class StratixAgentExecutor implements AgentExecutor {
   ): Promise<string> {
     const { provider, model, apiKey, endpoint, temperature, maxTokens } = config;
 
-    let url = '';
-    let headers: Record<string, string> = {
+    const providerConfig = PROVIDER_CONFIGS[provider];
+    if (!providerConfig) {
+      throw new Error(`Unsupported provider: ${provider}`);
+    }
+
+    // Custom provider requires endpoint
+    if (provider === 'custom' && !endpoint) {
+      throw new Error('Custom provider requires an endpoint URL');
+    }
+
+    // Build chat completions URL using OpenAI-compatible endpoint builder
+    // This handles auto-append of /chat/completions and /v1 prefix for all providers
+    const baseUrl = endpoint || providerConfig.defaultEndpoint;
+    const url = buildChatCompletionsURL(baseUrl);
+
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json'
     };
-    let body: any = {};
 
-    if (provider === 'openai') {
-      url = endpoint || 'https://api.openai.com/v1/chat/completions';
-      headers['Authorization'] = `Bearer ${apiKey}`;
-      body = {
-        model,
-        messages: [
-          ...(soul?.identity ? [{ role: 'system', content: soul.identity }] : []),
-          { role: 'user', content: userMessage }
-        ],
-        temperature: temperature || 0.7,
-        max_tokens: maxTokens || 4096
-      };
-    } else if (provider === 'anthropic') {
-      url = endpoint || 'https://api.anthropic.com/v1/messages';
-      headers['x-api-key'] = apiKey || '';
-      headers['anthropic-version'] = '2023-06-01';
-      body = {
-        model,
-        messages: [{ role: 'user', content: userMessage }],
-        temperature: temperature || 0.7,
-        max_tokens: maxTokens || 4096
-      };
-    } else if (provider === 'ollama') {
-      url = (endpoint || 'http://localhost:11434') + '/api/chat';
-      body = {
-        model,
-        messages: [
-          ...(soul?.identity ? [{ role: 'system', content: soul.identity }] : []),
-          { role: 'user', content: userMessage }
-        ],
-        temperature: temperature || 0.7,
-        stream: false
-      };
-    } else if (provider === 'deepseek') {
-      url = endpoint || 'https://api.deepseek.com/v1/chat/completions';
-      headers['Authorization'] = `Bearer ${apiKey}`;
-      body = {
-        model,
-        messages: [
-          ...(soul?.identity ? [{ role: 'system', content: soul.identity }] : []),
-          { role: 'user', content: userMessage }
-        ],
-        temperature: temperature || 0.7,
-        max_tokens: maxTokens || 4096
-      };
-    } else if (provider === 'qwen') {
-      url = endpoint || 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
-      headers['Authorization'] = `Bearer ${apiKey}`;
-      body = {
-        model,
-        messages: [
-          ...(soul?.identity ? [{ role: 'system', content: soul.identity }] : []),
-          { role: 'user', content: userMessage }
-        ],
-        temperature: temperature || 0.7,
-        max_tokens: maxTokens || 4096
-      };
+    // Set auth header based on provider config
+    if (providerConfig.authHeader === 'Authorization' && apiKey) {
+      const scheme = providerConfig.authScheme || 'Bearer';
+      headers['Authorization'] = `${scheme} ${apiKey}`;
+    } else if (providerConfig.authHeader === 'x-api-key' && apiKey) {
+      headers['x-api-key'] = apiKey;
+    }
+
+    // Add extra headers (e.g., anthropic-version)
+    if (providerConfig.extraHeaders) {
+      Object.assign(headers, providerConfig.extraHeaders);
+    }
+
+    const body: Record<string, any> = {
+      model,
+      messages: [
+        ...(soul?.identity ? [{ role: 'system', content: soul.identity }] : []),
+        { role: 'user', content: userMessage }
+      ],
+      temperature: temperature || LLM_DEFAULTS.TEMPERATURE
+    };
+
+    // Add max_tokens for non-ollama providers
+    if (provider !== 'ollama') {
+      body.max_tokens = maxTokens || LLM_DEFAULTS.MAX_TOKENS;
     } else {
-      throw new Error(`Unsupported provider: ${provider}`);
+      body.stream = false;
     }
 
     const response = await fetch(url, {
@@ -213,16 +197,23 @@ export class StratixAgentExecutor implements AgentExecutor {
     }
 
     const data = await response.json();
+    return this.extractResponse(data, providerConfig.responsePath);
+  }
 
-    if (provider === 'openai' || provider === 'deepseek' || provider === 'qwen') {
-      return data.choices?.[0]?.message?.content || '';
-    } else if (provider === 'anthropic') {
-      return data.content?.[0]?.text || '';
-    } else if (provider === 'ollama') {
-      return data.message?.content || '';
+  private extractResponse(data: any, path: string): string {
+    const parts = path.split('.');
+    let result = data;
+    for (const part of parts) {
+      if (result == null) return '';
+      // Support array index notation like 'choices.0.message.content'
+      const match = part.match(/^(\w+)\[(\d+)\]$/);
+      if (match) {
+        result = result[match[1]]?.[parseInt(match[2])];
+      } else {
+        result = result[part];
+      }
     }
-
-    return '';
+    return result || '';
   }
 }
 

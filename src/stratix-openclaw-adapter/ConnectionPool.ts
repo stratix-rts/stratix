@@ -6,6 +6,7 @@
  */
 
 import { StratixOpenClawConfig } from '@/stratix-core/stratix-protocol';
+import { CONNECTION_POOL_DEFAULTS } from '@/stratix-core/config/defaults';
 import { OpenClawAdapterInterface } from './types';
 import { LocalOpenClawAdapter } from './LocalOpenClawAdapter';
 import { RemoteOpenClawAdapter } from './RemoteOpenClawAdapter';
@@ -51,11 +52,11 @@ interface InternalConnection {
 }
 
 const DEFAULT_OPTIONS: Required<ConnectionPoolOptions> = {
-  maxConnections: 100,
-  idleTimeout: 300000,
+  maxConnections: CONNECTION_POOL_DEFAULTS.MAX_CONNECTIONS,
+  idleTimeout: CONNECTION_POOL_DEFAULTS.IDLE_TIMEOUT_MS,
   reconnectAttempts: 3,
   reconnectDelay: 1000,
-  healthCheckInterval: 60000,
+  healthCheckInterval: CONNECTION_POOL_DEFAULTS.HEALTH_CHECK_INTERVAL_MS,
   connectionBatchDelay: 100,
 };
 
@@ -200,6 +201,10 @@ export class ConnectionPool {
       clearInterval(this.idleCheckTimer);
       this.idleCheckTimer = undefined;
     }
+  }
+
+  public dispose(): void {
+    this.stopHealthCheck();
   }
 
   public async attemptReconnect(key: string): Promise<boolean> {

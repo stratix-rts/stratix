@@ -62,7 +62,7 @@ const gapMap = {
 .stratix-form-field__help {
   font-size: 12px;
   color: v-bind('getToken("colors.text.muted")');
-  margin-top: -2px;
+  margin-top: 2px;
 }
 
 .stratix-form-field__error {
@@ -71,7 +71,7 @@ const gapMap = {
   gap: 6px;
   font-size: 12px;
   color: v-bind('getToken("colors.semantic.danger")');
-  margin-top: -2px;
+  margin-top: 2px;
   animation: error-fade-in 150ms ease;
 }
 

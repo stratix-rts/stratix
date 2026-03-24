@@ -102,6 +102,10 @@ const resizeMap = {
   box-shadow: 0 0 0 2px v-bind('getToken("colors.info") + "1A"');
 }
 
+.stratix-textarea--error {
+  border-color: v-bind('getToken("colors.semantic.danger")');
+}
+
 .stratix-textarea--error:focus {
   border-color: v-bind('getToken("colors.semantic.danger")');
   box-shadow: 0 0 0 2px v-bind('getToken("colors.semantic.danger") + "1A"');

@@ -32,6 +32,29 @@ export interface CheckEndpointResult {
 
 export { type StoredConnection, type ConnectionState, type ConnectionResult };
 
+/**
+ * WebSocket 消息状态枚举
+ */
+enum ProxyMessageState {
+  Idle = 'idle',
+  Connecting = 'connecting',
+  WaitingForResponse = 'waiting_for_response',
+  ReceivingDelta = 'receiving_delta',
+  Completed = 'completed',
+  Error = 'error',
+  Aborted = 'aborted',
+}
+
+interface ProxyMessageContext {
+  ws: WebSocket;
+  sessionId: string;
+  accumulatedText: string;
+  resolve: (value: ChatResponse) => void;
+  reject: (reason: Error) => void;
+  state: ProxyMessageState;
+  timeoutId: ReturnType<typeof setTimeout> | null;
+}
+
 class UnifiedOpenClawConnectionManager {
   private static instance: UnifiedOpenClawConnectionManager | null = null;
   private connection: OpenClawWebSocketConnection | null = null;
@@ -346,128 +369,246 @@ class UnifiedOpenClawConnectionManager {
     if (!this.connectionId) {
       throw new Error('未连接');
     }
-    
+
     const sessionId = options?.sessionId || 'main';
-    
+    const ws = new WebSocket(`/api/stratix/openclaw/ws-proxy/${this.connectionId}`);
+
+    const context: ProxyMessageContext = {
+      ws,
+      sessionId,
+      accumulatedText: '',
+      resolve: () => {},
+      reject: () => {},
+      state: ProxyMessageState.Idle,
+      timeoutId: null,
+    };
+
+    return new Promise((resolve, reject) => {
+      context.resolve = resolve;
+      context.reject = reject;
+
+      ws.onmessage = (event) => this.handleProxyMessage(event.data, context);
+      ws.onerror = () => this.handleProxyError(context);
+      ws.onopen = () => this.handleProxyOpen(message, sessionId, context);
+
+      context.timeoutId = setTimeout(
+        () => this.handleProxyTimeout(context),
+        120000
+      );
+    });
+  }
+
+  /**
+   * 处理 WebSocket 消息 - 状态机入口
+   */
+  private handleProxyMessage(rawData: string, ctx: ProxyMessageContext): void {
     try {
-      const ws = new WebSocket(`/api/stratix/openclaw/ws-proxy/${this.connectionId}`);
-      
-      return new Promise((resolve, reject) => {
-        let accumulatedText = '';
-        
-        ws.onmessage = (event) => {
-          try {
-            const msg = JSON.parse(event.data);
-            console.log('[UnifiedOpenClaw] Received message:', JSON.stringify(msg).slice(0, 300));
-            
-            // 处理 chat.send 请求的响应
-            if (msg.type === 'res' && msg.ok !== undefined) {
-              if (!msg.ok) {
-                ws.close();
-                reject(new Error(msg.error?.message || 'Request failed'));
-              }
-              return;
-            }
-            
-            // 处理 chat 事件 - OpenClaw 实际返回格式
-            // { type: 'event', event: 'chat', payload: { state: 'delta'|'final', message: {...} } }
-            if (msg.type === 'event' && msg.event === 'chat') {
-              const payload = msg.payload;
-              if (!payload) return;
-              
-              switch (payload.state) {
-                case 'delta':
-                  const text = this.extractTextContent(payload.message);
-                  if (text) {
-                    accumulatedText = text;
-                    console.log('[UnifiedOpenClaw] Delta text:', text.slice(-50));
-                  }
-                  break;
-                  
-                case 'final':
-                  const finalText = this.extractTextContent(payload.message) || accumulatedText;
-                  console.log('[UnifiedOpenClaw] Final text:', finalText?.slice(-100));
-                  ws.close();
-                  resolve({
-                    messageId: payload.runId || '',
-                    content: finalText,
-                    role: 'assistant',
-                    sessionId,
-                    done: true,
-                  });
-                  break;
-                  
-                case 'error':
-                  ws.close();
-                  reject(new Error(payload.errorMessage || 'Chat error'));
-                  break;
-                  
-                case 'aborted':
-                  ws.close();
-                  reject(new Error('Chat aborted'));
-                  break;
-              }
-              return;
-            }
-            
-            // 处理流式格式 - { stream: 'assistant', data: { text, delta }, runId }
-            if (msg.stream === 'assistant' && msg.data) {
-              const data = msg.data as { text?: string; delta?: string };
-              if (data.text) {
-                accumulatedText = data.text;
-              }
-              return;
-            }
-            
-            // 错误处理
-            if (msg.type === 'error') {
-              ws.close();
-              reject(new Error(msg.error?.message || 'Unknown error'));
-            }
-          } catch (e) {
-            console.error('[UnifiedOpenClaw] Failed to parse message:', e);
-          }
-        };
-        
-        ws.onerror = () => {
-          reject(new Error('WebSocket error'));
-        };
-        
-        ws.onopen = () => {
-          const idempotencyKey = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-          const payload = {
-            type: 'req',
-            id: `chat-${Date.now()}`,
-            method: 'chat.send',
-            params: { 
-              message, 
-              sessionKey: sessionId,
-              idempotencyKey,
-              deliver: false,
-            },
-          };
-          console.log('[UnifiedOpenClaw] sendMessageProxy sending:', JSON.stringify(payload, null, 2));
-          ws.send(JSON.stringify(payload));
-        };
-        
-        setTimeout(() => {
-          ws.close();
-          if (accumulatedText) {
-            resolve({
-              messageId: '',
-              content: accumulatedText,
-              role: 'assistant',
-              sessionId,
-              done: true,
-            });
-          } else {
-            reject(new Error('请求超时'));
-          }
-        }, 120000);
-      });
-    } catch (error) {
-      throw error;
+      const msg = JSON.parse(rawData);
+      console.log('[UnifiedOpenClaw] Received message:', JSON.stringify(msg).slice(0, 300));
+
+      // 处理 chat.send 请求的响应
+      if (this.isResponseMessage(msg)) {
+        this.handleResponseMessage(msg, ctx);
+        return;
+      }
+
+      // 处理 chat 事件 - OpenClaw 实际返回格式
+      if (this.isChatEventMessage(msg)) {
+        this.handleChatEventMessage(msg, ctx);
+        return;
+      }
+
+      // 处理流式格式 - { stream: 'assistant', data: { text, delta }, runId }
+      if (this.isStreamMessage(msg)) {
+        this.handleStreamMessage(msg, ctx);
+      }
+
+      // 错误处理
+      if (this.isErrorMessage(msg)) {
+        this.handleErrorMessage(msg, ctx);
+      }
+    } catch (e) {
+      console.error('[UnifiedOpenClaw] Failed to parse message:', e);
     }
+  }
+
+  /**
+   * 处理 chat.send 请求的响应
+   */
+  private handleResponseMessage(msg: any, ctx: ProxyMessageContext): void {
+    if (msg.ok === false) {
+      this.closeProxyConnection(ctx);
+      ctx.reject(new Error(msg.error?.message || 'Request failed'));
+    }
+  }
+
+  /**
+   * 处理 chat 事件消息 (delta/final/error/aborted)
+   */
+  private handleChatEventMessage(msg: any, ctx: ProxyMessageContext): void {
+    const payload = msg.payload;
+    if (!payload) return;
+
+    switch (payload.state) {
+      case 'delta':
+        this.handleDeltaState(payload, ctx);
+        break;
+      case 'final':
+        this.handleFinalState(payload, ctx);
+        break;
+      case 'error':
+        this.handleErrorState(payload, ctx);
+        break;
+      case 'aborted':
+        this.handleAbortedState(ctx);
+        break;
+    }
+  }
+
+  /**
+   * 处理 delta 状态
+   */
+  private handleDeltaState(payload: any, ctx: ProxyMessageContext): void {
+    const text = this.extractTextContent(payload.message);
+    if (text) {
+      ctx.accumulatedText = text;
+      console.log('[UnifiedOpenClaw] Delta text:', text.slice(-50));
+    }
+  }
+
+  /**
+   * 处理 final 状态
+   */
+  private handleFinalState(payload: any, ctx: ProxyMessageContext): void {
+    const finalText = this.extractTextContent(payload.message) || ctx.accumulatedText;
+    console.log('[UnifiedOpenClaw] Final text:', finalText?.slice(-100));
+
+    ctx.state = ProxyMessageState.Completed;
+    this.closeProxyConnection(ctx);
+    ctx.resolve({
+      messageId: payload.runId || '',
+      content: finalText,
+      role: 'assistant',
+      sessionId: ctx.sessionId,
+      done: true,
+    });
+  }
+
+  /**
+   * 处理 error 状态
+   */
+  private handleErrorState(payload: any, ctx: ProxyMessageContext): void {
+    ctx.state = ProxyMessageState.Error;
+    this.closeProxyConnection(ctx);
+    ctx.reject(new Error(payload.errorMessage || 'Chat error'));
+  }
+
+  /**
+   * 处理 aborted 状态
+   */
+  private handleAbortedState(ctx: ProxyMessageContext): void {
+    ctx.state = ProxyMessageState.Aborted;
+    this.closeProxyConnection(ctx);
+    ctx.reject(new Error('Chat aborted'));
+  }
+
+  /**
+   * 处理流式消息
+   */
+  private handleStreamMessage(msg: any, ctx: ProxyMessageContext): void {
+    const data = msg.data as { text?: string; delta?: string };
+    if (data.text) {
+      ctx.accumulatedText = data.text;
+    }
+  }
+
+  /**
+   * 处理通用错误消息
+   */
+  private handleErrorMessage(msg: any, ctx: ProxyMessageContext): void {
+    ctx.state = ProxyMessageState.Error;
+    this.closeProxyConnection(ctx);
+    ctx.reject(new Error(msg.error?.message || 'Unknown error'));
+  }
+
+  /**
+   * 处理 WebSocket 错误
+   */
+  private handleProxyError(ctx: ProxyMessageContext): void {
+    ctx.state = ProxyMessageState.Error;
+    ctx.reject(new Error('WebSocket error'));
+  }
+
+  /**
+   * 处理 WebSocket 连接打开 - 发送初始请求
+   */
+  private handleProxyOpen(message: string, sessionId: string, ctx: ProxyMessageContext): void {
+    ctx.state = ProxyMessageState.Connecting;
+    const idempotencyKey = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    const payload = {
+      type: 'req',
+      id: `chat-${Date.now()}`,
+      method: 'chat.send',
+      params: {
+        message,
+        sessionKey: sessionId,
+        idempotencyKey,
+        deliver: false,
+      },
+    };
+    console.log('[UnifiedOpenClaw] sendMessageProxy sending:', JSON.stringify(payload, null, 2));
+    ctx.ws.send(JSON.stringify(payload));
+    ctx.state = ProxyMessageState.WaitingForResponse;
+  }
+
+  /**
+   * 处理超时
+   */
+  private handleProxyTimeout(ctx: ProxyMessageContext): void {
+    this.closeProxyConnection(ctx);
+
+    if (ctx.accumulatedText) {
+      ctx.resolve({
+        messageId: '',
+        content: ctx.accumulatedText,
+        role: 'assistant',
+        sessionId: ctx.sessionId,
+        done: true,
+      });
+    } else {
+      ctx.reject(new Error('请求超时'));
+    }
+  }
+
+  /**
+   * 关闭代理连接并清理定时器
+   */
+  private closeProxyConnection(ctx: ProxyMessageContext): void {
+    if (ctx.timeoutId) {
+      clearTimeout(ctx.timeoutId);
+      ctx.timeoutId = null;
+    }
+    if (ctx.ws.readyState === WebSocket.OPEN || ctx.ws.readyState === WebSocket.CONNECTING) {
+      ctx.ws.close();
+    }
+  }
+
+  // 消息类型判断辅助方法
+
+  private isResponseMessage(msg: any): boolean {
+    return msg.type === 'res' && msg.ok !== undefined;
+  }
+
+  private isChatEventMessage(msg: any): boolean {
+    return msg.type === 'event' && msg.event === 'chat';
+  }
+
+  private isStreamMessage(msg: any): boolean {
+    return msg.stream === 'assistant' && msg.data;
+  }
+
+  private isErrorMessage(msg: any): boolean {
+    return msg.type === 'error';
   }
   
   /**

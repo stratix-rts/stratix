@@ -36,12 +36,14 @@
     </div>
 
     <template #footer>
-      <StratixButton variant="secondary" size="sm" @click="handleCancel">
-        取消
-      </StratixButton>
-      <StratixButton variant="primary" size="sm" @click="handleConfirm">
-        确认执行
-      </StratixButton>
+      <div class="button-group">
+        <StratixButton variant="secondary" size="sm" @click="handleCancel">
+          取消
+        </StratixButton>
+        <StratixButton variant="primary" size="sm" @click="handleConfirm">
+          确认执行
+        </StratixButton>
+      </div>
     </template>
   </StratixModal>
 </template>
@@ -178,5 +180,11 @@ const handleCancel = () => {
 .params-list::-webkit-scrollbar-thumb {
   background: v-bind('getToken("colors.border.default")');
   border-radius: 2px;
+}
+
+.button-group {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 </style>

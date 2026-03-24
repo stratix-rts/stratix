@@ -8,7 +8,7 @@
 /**
  * Agent 后端类型
  */
-export type AgentBackendType = 'openclaw' | 'direct' | 'stratix';
+export type AgentBackendType = 'openclaw' | 'stratix';
 
 /**
  * LLM Provider 类型
@@ -148,18 +148,6 @@ export interface UnifiedOpenClawConfig {
 }
 
 /**
- * DirectLLMConfig - 直连 LLM 配置
- */
-export interface DirectLLMConfig {
-  provider: LLMProvider;
-  model: string;
-  endpoint?: string;
-  apiKey?: string;
-  temperature?: number;
-  maxTokens?: number;
-}
-
-/**
  * StratixDirectConfig - StratixAgent 直连配置 (轻量级 Agent)
  */
 export interface StratixDirectConfig {
@@ -240,7 +228,6 @@ export interface StratixAgentConfig {
   profile: CharacterProfile;
   
   backendType: AgentBackendType;
-  directConfig?: DirectLLMConfig;
   openClawConfig?: OpenClawConfig;
   stratixConfig?: StratixDirectConfig;
   
