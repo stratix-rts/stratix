@@ -84,6 +84,8 @@ export class AgentRepository {
       configStatus: row.config_status,
       position: row.position ? JSON.parse(row.position) : undefined,
       memory: row.memory ? JSON.parse(row.memory) : undefined,
+      openClawConfig: row.openclaw_config ? JSON.parse(row.openclaw_config) : undefined,
+      stratixConfig: row.stratix_config ? JSON.parse(row.stratix_config) : undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };

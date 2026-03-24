@@ -29,7 +29,23 @@ export class StratixDatabase {
 
   public initialize(): void {
     this.createTables();
+    this.migrateMissingColumns();
     console.log(`[Database] Initialized at: ${this.dbPath}`);
+  }
+
+  private migrateMissingColumns(): void {
+    // 检测并添加 agents 表缺失的列
+    const columns = this.db.prepare('PRAGMA table_info(agents)').all() as any[];
+    const columnNames = new Set(columns.map((c: any) => c.name));
+
+    if (!columnNames.has('openclaw_config')) {
+      this.db.exec('ALTER TABLE agents ADD COLUMN openclaw_config TEXT');
+      console.log('[Database] Added openclaw_config column to agents table');
+    }
+    if (!columnNames.has('stratix_config')) {
+      this.db.exec('ALTER TABLE agents ADD COLUMN stratix_config TEXT');
+      console.log('[Database] Added stratix_config column to agents table');
+    }
   }
 
   private createTables(): void {
@@ -46,9 +62,15 @@ export class StratixDatabase {
         config_status TEXT DEFAULT 'draft',
         position TEXT,
         memory TEXT,
+        openclaw_config TEXT,
+        stratix_config TEXT,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       );
+
+      -- 添加新列（如果表中已存在则忽略）
+      -- ALTER TABLE agents ADD COLUMN openclaw_config TEXT;
+      -- ALTER TABLE agents ADD COLUMN stratix_config TEXT;
 
       -- Templates表
       CREATE TABLE IF NOT EXISTS templates (
