@@ -49,7 +49,7 @@ export class StratixDatabase {
   }
 
   private createTables(): void {
-    this.db.exec(`
+    const sql = `
       -- Agents表
       CREATE TABLE IF NOT EXISTS agents (
         agent_id TEXT PRIMARY KEY,
@@ -98,7 +98,7 @@ export class StratixDatabase {
         error TEXT,
         start_time INTEGER NOT NULL,
         end_time INTEGER,
-        created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+        created_at INTEGER NOT NULL DEFAULT 0
       );
 
       -- Projects表
@@ -147,7 +147,7 @@ export class StratixDatabase {
         run_id TEXT,
         metadata TEXT,
         timestamp INTEGER NOT NULL,
-        created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+        created_at INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE,
         FOREIGN KEY (channel_id) REFERENCES channels(channel_id) ON DELETE CASCADE
       );
@@ -258,7 +258,7 @@ export class StratixDatabase {
         sender_id TEXT NOT NULL,
         content TEXT NOT NULL,
         message_type TEXT NOT NULL CHECK (message_type IN ('direct', 'broadcast', 'mention', 'task_request', 'context_share')),
-        references TEXT DEFAULT '[]',
+        refs TEXT DEFAULT '[]',
         created_at INTEGER NOT NULL
       );
 
@@ -316,7 +316,14 @@ export class StratixDatabase {
       CREATE INDEX IF NOT EXISTS idx_agent_messages_sender ON agent_messages(sender_id);
       CREATE INDEX IF NOT EXISTS idx_context_archives_agent ON context_archives(agent_id);
       CREATE INDEX IF NOT EXISTS idx_context_archives_expires ON context_archives(agent_id, expires_at);
-    `);
+    `;
+    // Find the line with REFERENCES and log context
+    const refLine = sql.split('\n').findIndex(l => l.includes('REFERENCES'));
+    if (refLine >= 0) {
+      console.log('[DB] First REFERENCES at line', refLine);
+      console.log('[DB] Context:', sql.split('\n').slice(Math.max(0, refLine-2), refLine+3).join('\n'));
+    }
+    this.db.exec(sql);
   }
 
   public close(): void {

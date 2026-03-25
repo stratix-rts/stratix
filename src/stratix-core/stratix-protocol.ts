@@ -277,7 +277,13 @@ export type StratixStateSyncEventType =
   | 'stratix:config_updated'
   | 'stratix:project_message_new'
   | 'stratix:project_message_sync'
-  | 'stratix:project_message_to_agent';
+  | 'stratix:project_message_to_agent'
+  // Orchestration events
+  | 'orchestration:zone_updated'
+  | 'orchestration:task_assigned'
+  | 'orchestration:task_completed'
+  | 'orchestration:agent_status_changed'
+  | 'orchestration:message_sent';
 
 /**
  * 前端操作事件（Stratix RTS / 指令面板 → 事件总线）
@@ -311,6 +317,16 @@ export interface StratixStateSyncEvent {
     message?: any;
     messages?: any[];
     subscriberIds?: string[];
+    // Orchestration 相关
+    zoneId?: string;
+    taskId?: string;
+    zoneType?: string;
+    result?: any;
+    error?: string;
+    messageId?: string;
+    conversationId?: string;
+    messageType?: string;
+    senderId?: string;
   };
   timestamp: number;
   requestId: string;
