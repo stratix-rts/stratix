@@ -4,8 +4,8 @@ import { Depth } from '@/design-system/tokens/depth';
 import { DOMContainer } from '@/stratix-core/ui/DOMContainer';
 import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClawConnectionManager';
 import { loadApiKey } from '../config/providerConfig';
+import { renderMarkdown } from '@/stratix-core/utils/MarkdownRenderer';
 import type { ChatMessage, SavedCharacter } from '../types';
-import { marked } from 'marked';
 
 const THEME = {
   bg: 'var(--ds-bg-secondary)',
@@ -39,6 +39,7 @@ export class AgentChatPanel {
   private container: DOMContainer | null = null;
   private messages: ChatMessage[] = [];
   private systemPrompt: string = '';
+  private isComposing: boolean = false;
 
   constructor(scene: Phaser.Scene, config: AgentChatPanelConfig) {
     this.scene = scene;
@@ -299,10 +300,22 @@ export class AgentChatPanel {
     });
 
     chatInput?.addEventListener('keydown', (e) => {
+      // IME 组合期间不处理 Enter
+      if (this.isComposing) return;
       if (e.key === 'Enter' && !e.shiftKey && !sendBtn.disabled) {
         e.preventDefault();
         sendMessage();
       }
+    });
+
+    chatInput?.addEventListener('compositionstart', () => {
+      this.isComposing = true;
+    });
+
+    chatInput?.addEventListener('compositionend', (e) => {
+      this.isComposing = false;
+      // IME 确认后，同步更新值
+      chatInput.value = (e.target as HTMLTextAreaElement).value;
     });
 
     resetBtn?.addEventListener('click', () => {
@@ -345,7 +358,7 @@ export class AgentChatPanel {
     `;
 
     const contentDiv = document.createElement('div');
-    contentDiv.innerHTML = marked.parse(message.content, { async: false }) as string;
+    contentDiv.innerHTML = renderMarkdown(message.content);
     msgDiv.appendChild(contentDiv);
 
     const timeDiv = document.createElement('div');

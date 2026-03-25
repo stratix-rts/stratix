@@ -15,6 +15,7 @@ export interface ExecutorOptions {
   stream?: boolean;
   onChunk?: (chunk: string) => void;
   timeout?: number;
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>;
 }
 
 export interface AgentExecutor {

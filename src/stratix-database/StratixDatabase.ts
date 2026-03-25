@@ -178,6 +178,16 @@ export class StratixDatabase {
         updated_at INTEGER
       );
 
+      -- Agent Chat Messages表
+      CREATE TABLE IF NOT EXISTS agent_chat_messages (
+        message_id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+
       -- 索引
       CREATE INDEX IF NOT EXISTS idx_templates_type ON templates(type);
       CREATE INDEX IF NOT EXISTS idx_command_logs_agent_id ON command_logs(agent_id);
@@ -186,6 +196,126 @@ export class StratixDatabase {
       CREATE INDEX IF NOT EXISTS idx_messages_project_id ON messages(project_id);
       CREATE INDEX IF NOT EXISTS idx_messages_channel_id ON messages(channel_id);
       CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
+      CREATE INDEX IF NOT EXISTS idx_agent_chat_agent_id ON agent_chat_messages(agent_id);
+      CREATE INDEX IF NOT EXISTS idx_agent_chat_timestamp ON agent_chat_messages(agent_id, timestamp DESC);
+
+      -- ============================================
+      -- ORCHESTRATION TABLES (Multi-Agent System)
+      -- ============================================
+
+      -- Zones表: Backend zone state (mirrors Phaser zones)
+      CREATE TABLE IF NOT EXISTS zones (
+        zone_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL CHECK (type IN ('task', 'project', 'general')),
+        project_id TEXT,
+        position_x INTEGER NOT NULL,
+        position_y INTEGER NOT NULL,
+        width INTEGER NOT NULL,
+        height INTEGER NOT NULL,
+        status TEXT DEFAULT 'idle' CHECK (status IN ('idle', 'active', 'busy', 'completed', 'error')),
+        config TEXT DEFAULT '{}',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      -- Agent Zone Members表: Which agents are in which zones
+      CREATE TABLE IF NOT EXISTS agent_zone_members (
+        agent_id TEXT NOT NULL,
+        zone_id TEXT NOT NULL,
+        entered_at INTEGER NOT NULL,
+        role TEXT DEFAULT 'member' CHECK (role IN ('owner', 'member', 'observer')),
+        PRIMARY KEY (agent_id, zone_id),
+        FOREIGN KEY (zone_id) REFERENCES zones(zone_id) ON DELETE CASCADE
+      );
+
+      -- Tasks表: Unified task queue with priority
+      CREATE TABLE IF NOT EXISTS tasks (
+        task_id TEXT PRIMARY KEY,
+        zone_id TEXT NOT NULL,
+        project_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        type TEXT NOT NULL CHECK (type IN ('coding', 'writing', 'analysis', 'research', 'general')),
+        priority INTEGER DEFAULT 5 CHECK (priority BETWEEN 1 AND 10),
+        status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'assigned', 'in_progress', 'completed', 'failed', 'cancelled')),
+        assigned_agent_id TEXT,
+        dependencies TEXT DEFAULT '[]',
+        context TEXT,
+        result TEXT,
+        error TEXT,
+        created_at INTEGER NOT NULL,
+        assigned_at INTEGER,
+        started_at INTEGER,
+        completed_at INTEGER,
+        FOREIGN KEY (zone_id) REFERENCES zones(zone_id) ON DELETE CASCADE
+      );
+
+      -- Agent Messages表: Agent-to-Agent messages (separate from agent_chat_messages)
+      CREATE TABLE IF NOT EXISTS agent_messages (
+        message_id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        sender_id TEXT NOT NULL,
+        content TEXT NOT NULL,
+        message_type TEXT NOT NULL CHECK (message_type IN ('direct', 'broadcast', 'mention', 'task_request', 'context_share')),
+        references TEXT DEFAULT '[]',
+        created_at INTEGER NOT NULL
+      );
+
+      -- Conversation Policies表: Agent communication constraints
+      CREATE TABLE IF NOT EXISTS conversation_policies (
+        policy_id TEXT PRIMARY KEY,
+        scope TEXT NOT NULL CHECK (scope IN ('global', 'zone', 'agent')),
+        scope_id TEXT,
+        allow_dm INTEGER DEFAULT 1,
+        allow_broadcast INTEGER DEFAULT 1,
+        allowed_participants TEXT,
+        share_memory INTEGER DEFAULT 0,
+        share_context INTEGER DEFAULT 1,
+        share_files INTEGER DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      -- Context Archives表: Compressed past context for agents
+      CREATE TABLE IF NOT EXISTS context_archives (
+        archive_id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        zone_id TEXT,
+        archive_type TEXT NOT NULL CHECK (archive_type IN ('session_summary', 'compressed_messages', 'key_event')),
+        content TEXT NOT NULL,
+        key_decisions TEXT DEFAULT '[]',
+        outstanding_tasks TEXT DEFAULT '[]',
+        relevance_score REAL,
+        archived_at INTEGER NOT NULL,
+        expires_at INTEGER
+      );
+
+      -- Agent Backgrounds表: Persistent state for background agents
+      CREATE TABLE IF NOT EXISTS agent_backgrounds (
+        agent_id TEXT PRIMARY KEY,
+        status TEXT DEFAULT 'stopped' CHECK (status IN ('stopped', 'running', 'paused', 'error')),
+        current_zone_id TEXT,
+        current_task_id TEXT,
+        last_heartbeat_at INTEGER,
+        last_checkpoint_at INTEGER,
+        checkpoint_data TEXT,
+        error_log TEXT,
+        started_at INTEGER,
+        stopped_at INTEGER
+      );
+
+      -- 索引
+      CREATE INDEX IF NOT EXISTS idx_zones_project_id ON zones(project_id);
+      CREATE INDEX IF NOT EXISTS idx_zones_status ON zones(status);
+      CREATE INDEX IF NOT EXISTS idx_agent_zone_members_agent ON agent_zone_members(agent_id);
+      CREATE INDEX IF NOT EXISTS idx_tasks_zone_id ON tasks(zone_id);
+      CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+      CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority DESC);
+      CREATE INDEX IF NOT EXISTS idx_agent_messages_conversation ON agent_messages(conversation_id);
+      CREATE INDEX IF NOT EXISTS idx_agent_messages_sender ON agent_messages(sender_id);
+      CREATE INDEX IF NOT EXISTS idx_context_archives_agent ON context_archives(agent_id);
+      CREATE INDEX IF NOT EXISTS idx_context_archives_expires ON context_archives(agent_id, expires_at);
     `);
   }
 

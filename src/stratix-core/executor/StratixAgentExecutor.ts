@@ -22,7 +22,7 @@ export class StratixAgentExecutor implements AgentExecutor {
       const userMessage = this.buildUserMessage(skill, command.params);
 
       const config = agentConfig.stratixConfig;
-      const response = await this.callLLM(config, userMessage, agentConfig.soul);
+      const response = await this.callLLM(config, userMessage, agentConfig.soul, options?.history);
 
       return {
         success: true,
@@ -75,11 +75,11 @@ export class StratixAgentExecutor implements AgentExecutor {
         setTimeout(() => reject(new Error('Connection timeout (10s)')), timeoutMs)
       );
       
-      const connectionPromise = this.callLLM(config, testMessage, { 
-        identity: 'You are a test assistant.', 
-        goals: ['Respond to test queries'], 
-        personality: 'Helpful' 
-      });
+      const connectionPromise = this.callLLM(config, testMessage, {
+        identity: 'You are a test assistant.',
+        goals: ['Respond to test queries'],
+        personality: 'Helpful'
+      }, undefined);
       
       await Promise.race([connectionPromise, timeoutPromise]);
       
@@ -97,6 +97,28 @@ export class StratixAgentExecutor implements AgentExecutor {
     skillId: string
   ): StratixSkillConfig | null {
     return agentConfig.skills?.find(s => s.skillId === skillId) || null;
+  }
+
+  private buildMessagesWithHistory(
+    history: Array<{ role: 'user' | 'assistant'; content: string }>,
+    currentMessage: string,
+    systemPrompt?: string
+  ): Array<{ role: 'system' | 'user' | 'assistant'; content: string }> {
+    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
+
+    if (systemPrompt) {
+      messages.push({ role: 'system', content: systemPrompt });
+    }
+
+    // Add history messages
+    for (const h of history) {
+      messages.push({ role: h.role, content: h.content });
+    }
+
+    // Add current message
+    messages.push({ role: 'user', content: currentMessage });
+
+    return messages;
   }
 
   private buildUserMessage(skill: StratixSkillConfig | null, params: Record<string, any>): string {
@@ -133,7 +155,8 @@ export class StratixAgentExecutor implements AgentExecutor {
   private async callLLM(
     config: StratixDirectConfig,
     userMessage: string,
-    soul?: { identity: string; goals: string[]; personality: string }
+    soul?: { identity: string; goals: string[]; personality: string },
+    history?: Array<{ role: 'user' | 'assistant'; content: string }>
   ): Promise<string> {
     const { provider, model, apiKey, endpoint, temperature, maxTokens } = config;
 
@@ -169,12 +192,17 @@ export class StratixAgentExecutor implements AgentExecutor {
       Object.assign(headers, providerConfig.extraHeaders);
     }
 
+    // Build messages with or without history
+    const messages = history && history.length > 0
+      ? this.buildMessagesWithHistory(history, userMessage, soul?.identity)
+      : [
+          ...(soul?.identity ? [{ role: 'system', content: soul.identity }] : []),
+          { role: 'user', content: userMessage }
+        ];
+
     const body: Record<string, any> = {
       model,
-      messages: [
-        ...(soul?.identity ? [{ role: 'system', content: soul.identity }] : []),
-        { role: 'user', content: userMessage }
-      ],
+      messages,
       temperature: temperature || LLM_DEFAULTS.TEMPERATURE
     };
 

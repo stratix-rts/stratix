@@ -71,6 +71,40 @@ class DataStoreService {
   isInitialized(): boolean {
     return this.initialized;
   }
+
+  async saveChatMessage(msg: {
+    messageId: string;
+    agentId: string;
+    role: 'user' | 'assistant';
+    content: string;
+    timestamp: number;
+  }): Promise<void> {
+    this.ensureInitialized();
+    return this.dataStore!.saveChatMessage(msg);
+  }
+
+  async getChatMessages(
+    agentId: string,
+    limit = 20,
+    offset = 0
+  ) {
+    this.ensureInitialized();
+    return this.dataStore!.getChatMessages(agentId, limit, offset);
+  }
+
+  async searchChatMessages(
+    agentId: string,
+    keywords: string[],
+    limit = 10
+  ) {
+    this.ensureInitialized();
+    return this.dataStore!.searchChatMessages(agentId, keywords, limit);
+  }
+
+  async deleteChatMessages(agentId: string): Promise<void> {
+    this.ensureInitialized();
+    return this.dataStore!.deleteChatMessages(agentId);
+  }
 }
 
 export const dataStoreService = DataStoreService.getInstance();

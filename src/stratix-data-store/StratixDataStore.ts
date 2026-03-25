@@ -1,4 +1,5 @@
 import { agentRepository } from '../stratix-database/AgentRepository';
+import { agentChatMessageRepository, type ChatMessage } from '../stratix-database/AgentChatMessageRepository';
 import { getDatabase } from '../stratix-database';
 import type { StratixAgentConfig } from '../stratix-core/stratix-protocol';
 import type { StratixCommandLog, StratixTemplates, LogQueryOptions } from './types';
@@ -183,6 +184,40 @@ export class StratixDataStore {
     } else {
       db.prepare('DELETE FROM command_logs').run();
     }
+  }
+
+  public async saveChatMessage(msg: {
+    messageId: string;
+    agentId: string;
+    role: 'user' | 'assistant';
+    content: string;
+    timestamp: number;
+  }): Promise<void> {
+    await this.ensureInitialized();
+    agentChatMessageRepository.saveMessage(msg);
+  }
+
+  public async getChatMessages(
+    agentId: string,
+    limit = 20,
+    offset = 0
+  ): Promise<ChatMessage[]> {
+    await this.ensureInitialized();
+    return agentChatMessageRepository.getMessagesByAgentId(agentId, limit, offset);
+  }
+
+  public async searchChatMessages(
+    agentId: string,
+    keywords: string[],
+    limit = 10
+  ): Promise<ChatMessage[]> {
+    await this.ensureInitialized();
+    return agentChatMessageRepository.searchMessages(agentId, keywords, limit);
+  }
+
+  public async deleteChatMessages(agentId: string): Promise<void> {
+    await this.ensureInitialized();
+    agentChatMessageRepository.deleteMessagesByAgentId(agentId);
   }
 
   public async setPresetTemplates(templates: StratixAgentConfig[]): Promise<void> {

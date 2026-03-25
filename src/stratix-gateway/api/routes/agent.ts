@@ -180,7 +180,7 @@ router.post('/test-connection', async (req: Request, res: Response) => {
 
 router.post('/chat', async (req: Request, res: Response) => {
   try {
-    const { backendType, config, message, systemPrompt } = req.body;
+    const { backendType, config, message, systemPrompt, history } = req.body;
 
     if (!message) {
       res.json(requestHelper.badRequest('Message is required'));
@@ -227,7 +227,7 @@ router.post('/chat', async (req: Request, res: Response) => {
       executeAt: Date.now()
     };
 
-    const result = await executor.execute(command, mockAgentConfig as any);
+    const result = await executor.execute(command, mockAgentConfig as any, { history });
 
     if (result.success) {
       res.json(requestHelper.success({ content: result.data }, 'Message sent'));
@@ -237,6 +237,76 @@ router.post('/chat', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[Chat API] Error:', error);
     res.status(500).json(requestHelper.serverError('Internal server error'));
+  }
+});
+
+// 搜索消息 - 必须放在 /:agentId/messages 前面，否则会被错误匹配
+router.get('/:agentId/messages/search', async (req: Request, res: Response) => {
+  const { agentId } = req.params;
+  const query = req.query.q as string;
+
+  if (!query) {
+    res.json(requestHelper.badRequest('Query is required'));
+    return;
+  }
+
+  try {
+    const keywords = query.split(/[,，\s]+/).filter(k => k.length > 1);
+    const messages = await dataStoreService.searchChatMessages(agentId as string, keywords);
+    res.json(requestHelper.success({ messages, query, matchedKeywords: keywords }));
+  } catch (error) {
+    res.status(500).json(requestHelper.serverError('Failed to search messages'));
+  }
+});
+
+// 获取消息列表
+router.get('/:agentId/messages', async (req: Request, res: Response) => {
+  const { agentId } = req.params;
+  const limit = parseInt(req.query.limit as string) || 20;
+  const offset = parseInt(req.query.offset as string) || 0;
+
+  try {
+    const messages = await dataStoreService.getChatMessages(agentId as string, limit, offset);
+    res.json(requestHelper.success({ messages, total: messages.length, hasMore: messages.length === limit }));
+  } catch (error) {
+    res.status(500).json(requestHelper.serverError('Failed to get messages'));
+  }
+});
+
+// 保存消息
+router.post('/:agentId/messages', async (req: Request, res: Response) => {
+  const { agentId } = req.params;
+  const { role, content, timestamp } = req.body;
+
+  if (!role || !content) {
+    res.json(requestHelper.badRequest('role and content are required'));
+    return;
+  }
+
+  try {
+    const messageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    await dataStoreService.saveChatMessage({
+      messageId,
+      agentId: agentId as string,
+      role,
+      content,
+      timestamp: timestamp || Date.now()
+    });
+    res.json(requestHelper.success({ messageId }));
+  } catch (error) {
+    res.status(500).json(requestHelper.serverError('Failed to save message'));
+  }
+});
+
+// 删除消息
+router.delete('/:agentId/messages', async (req: Request, res: Response) => {
+  const { agentId } = req.params;
+
+  try {
+    await dataStoreService.deleteChatMessages(agentId as string);
+    res.json(requestHelper.success(null, 'Messages deleted'));
+  } catch (error) {
+    res.status(500).json(requestHelper.serverError('Failed to delete messages'));
   }
 });
 
