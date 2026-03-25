@@ -1,6 +1,6 @@
 /**
  * Stratix Gateway - 状态同步服务
- * 
+ *
  * 通过 WebSocket 实时推送 Agent 和指令状态到前端
  * 监听 GatewayEventBus 将内部事件转发到 WebSocket
  */
@@ -190,6 +190,81 @@ export class StatusSyncService {
       },
       timestamp: Date.now(),
       requestId: `stratix-req-${Date.now()}`
+    });
+  }
+
+  // ==================== Orchestration Events ====================
+
+  /**
+   * Notify zone state change
+   */
+  public notifyZoneUpdate(zoneId: string, zoneData: any): void {
+    this.broadcast({
+      eventType: 'orchestration:zone_updated',
+      payload: { zoneId, ...zoneData },
+      timestamp: Date.now(),
+      requestId: `orchestration-req-${Date.now()}`
+    });
+  }
+
+  /**
+   * Notify task assignment
+   */
+  public notifyTaskAssigned(taskId: string, agentId: string, zoneId: string): void {
+    this.broadcast({
+      eventType: 'orchestration:task_assigned',
+      payload: { taskId, agentId, zoneId },
+      timestamp: Date.now(),
+      requestId: `orchestration-req-${Date.now()}`
+    });
+  }
+
+  /**
+   * Notify task completion
+   */
+  public notifyTaskCompleted(taskId: string, agentId: string, result?: any): void {
+    this.broadcast({
+      eventType: 'orchestration:task_completed',
+      payload: { taskId, agentId, result },
+      timestamp: Date.now(),
+      requestId: `orchestration-req-${Date.now()}`
+    });
+  }
+
+  /**
+   * Notify background agent status change
+   */
+  public notifyBackgroundAgentStatus(
+    agentId: string,
+    status: 'starting' | 'running' | 'paused' | 'stopping' | 'stopped' | 'error',
+    zoneId?: string,
+    error?: string
+  ): void {
+    this.broadcast({
+      eventType: 'orchestration:agent_status_changed',
+      payload: {
+        agentId,
+        data: { status, zoneId, error }
+      },
+      timestamp: Date.now(),
+      requestId: `orchestration-req-${Date.now()}`
+    });
+  }
+
+  /**
+   * Notify agent-to-agent message sent
+   */
+  public notifyAgentMessageSent(
+    messageId: string,
+    conversationId: string,
+    senderId: string,
+    messageType: string
+  ): void {
+    this.broadcast({
+      eventType: 'orchestration:message_sent',
+      payload: { messageId, conversationId, senderId, messageType },
+      timestamp: Date.now(),
+      requestId: `orchestration-req-${Date.now()}`
     });
   }
 
