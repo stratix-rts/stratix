@@ -9,9 +9,9 @@ import { getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
 import { ContainerComponentBase } from '@/stratix-core/ui/ContainerComponent.base';
 import type { StratixDirectConfig } from '@/stratix-core/stratix-protocol';
-import { 
-  PROVIDER_CONFIGS, 
-  PROVIDER_LIST, 
+import {
+  PROVIDER_CONFIGS,
+  PROVIDER_LIST,
   type ProviderConfig,
   getCachedProviderConfigs,
   getCachedProviderList,
@@ -20,6 +20,7 @@ import {
   loadApiKey,
   addCustomProvider,
 } from '../config/providerConfig';
+import { ButtonSemantic } from '@/design-system/semantic/buttons';
 
 const THEME = {
   bg: 'var(--ds-bg-secondary)',
@@ -58,15 +59,6 @@ export interface StratixAgentConfigPanelConfig {
   initialConfig?: Partial<StratixDirectConfig>;
   onChange?: (config: StratixDirectConfig) => void;
 }
-
-const PROVIDER_MODELS: Record<string, string[]> = {
-  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
-  anthropic: ['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229', 'claude-3-sonnet-20240229', 'claude-3-haiku-20240307'],
-  deepseek: ['deepseek-chat', 'deepseek-coder'],
-  qwen: ['qwen-turbo', 'qwen-plus', 'qwen-max'],
-  ollama: ['llama2', 'mistral', 'codellama', 'phi'],
-  custom: ['custom'],
-};
 
 export class StratixAgentConfigPanel {
   private scene: Phaser.Scene;
@@ -349,7 +341,7 @@ export class StratixAgentConfigPanel {
     })();
 
     const providerSelect = node.querySelector('#stratix-provider') as HTMLSelectElement;
-    providerSelect?.addEventListener('change', () => {
+    providerSelect?.addEventListener('change', async () => {
       const newProvider = providerSelect.value;
       
       if (newProvider === '__add_custom__') {
@@ -374,16 +366,16 @@ export class StratixAgentConfigPanel {
       }
       
       this.currentConfig.provider = newProvider as any;
-      
+
       const models = getModelsForProvider(newProvider);
       this.currentConfig.model = models[0] || '';
-      
+
       const modelSelect = node.querySelector('#stratix-model') as HTMLSelectElement;
       if (modelSelect) {
         modelSelect.innerHTML = this.generateModelOptions();
         modelSelect.style.display = this.showCustomModelInput() ? 'none' : 'block';
       }
-      
+
       const customModelRow = node.querySelector('#stratix-custom-model-row') as HTMLElement;
       if (customModelRow) {
         customModelRow.style.display = this.showCustomModelInput() ? 'block' : 'none';
@@ -408,6 +400,20 @@ export class StratixAgentConfigPanel {
       const endpointInput = node.querySelector('#stratix-endpoint') as HTMLInputElement;
       if (endpointInput) {
         endpointInput.placeholder = this.getEndpointPlaceholder();
+      }
+
+      // Auto-load saved API key for new provider
+      const loadResult = await loadApiKey(newProvider);
+      if (loadResult.success && loadResult.data) {
+        this.currentConfig.apiKey = loadResult.data;
+        if (apiKeyInput) {
+          apiKeyInput.value = loadResult.data;
+        }
+      } else {
+        this.currentConfig.apiKey = '';
+        if (apiKeyInput) {
+          apiKeyInput.value = '';
+        }
       }
 
       this.notifyChange();
@@ -646,13 +652,15 @@ export class StratixAgentConfigPanel {
                 font-size: 12px;
               ">Cancel</button>
               <button id="confirm-add-custom" style="
-                padding: 8px 16px;
-                background: ${THEME.accent};
-                border: none;
-                border-radius: 6px;
-                color: ${THEME.bg};
+                padding: ${ButtonSemantic.primary.padding};
+                background: ${ButtonSemantic.primary.background};
+                border: ${ButtonSemantic.primary.border};
+                border-radius: ${ButtonSemantic.primary.borderRadius};
+                color: ${ButtonSemantic.primary.text};
                 cursor: pointer;
                 font-size: 12px;
+                font-weight: 600;
+                box-shadow: ${ButtonSemantic.primary.shadow};
               ">Add Provider</button>
             </div>
           </div>
@@ -668,7 +676,7 @@ export class StratixAgentConfigPanel {
       const confirmBtn = dialog.querySelector('#confirm-add-custom') as HTMLButtonElement;
 
       cancelBtn.addEventListener('click', () => {
-        document.body.removeChild(dialog);
+        tempDiv.remove();
         resolve(null);
       });
 
@@ -696,7 +704,7 @@ export class StratixAgentConfigPanel {
         });
 
         if (result.success) {
-          document.body.removeChild(dialog);
+          tempDiv.remove();
           this.refreshUI();
           resolve(providerId);
         } else {

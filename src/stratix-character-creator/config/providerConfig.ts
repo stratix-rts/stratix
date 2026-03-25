@@ -28,7 +28,7 @@ let cachedProviderList: string[] = [...builtInConfig.providerOrder];
 
 async function loadCustomConfig(): Promise<void> {
   if (configLoaded) return;
-  
+
   if (typeof window !== 'undefined' && (window as any).electronAPI?.config?.loadCustomProviders) {
     try {
       const result = await (window as any).electronAPI.config.loadCustomProviders();
@@ -37,6 +37,16 @@ async function loadCustomConfig(): Promise<void> {
       }
     } catch (error) {
       console.error('[ProviderConfig] Failed to load custom providers:', error);
+    }
+  } else {
+    // Browser environment: load from browserStorage
+    try {
+      const stored = await browserStorage.get<ProvidersConfigJson>('customProviders');
+      if (stored) {
+        customConfig = stored;
+      }
+    } catch (error) {
+      console.error('[ProviderConfig] Failed to load custom providers from browserStorage:', error);
     }
   }
   configLoaded = true;
@@ -150,11 +160,20 @@ export async function addCustomProvider(
   customConfig = newCustomConfig;
   rebuildCache();
 
+  // Electron environment: save to file
   if (typeof window !== 'undefined' && (window as any).electronAPI?.config?.saveCustomProviders) {
     try {
       await (window as any).electronAPI.config.saveCustomProviders(JSON.stringify(newCustomConfig, null, 2));
     } catch (error) {
       console.error('[ProviderConfig] Failed to save custom providers:', error);
+      return { success: false, message: 'Failed to save configuration' };
+    }
+  } else {
+    // Browser environment: save to browserStorage
+    try {
+      await browserStorage.set('customProviders', newCustomConfig);
+    } catch (error) {
+      console.error('[ProviderConfig] Failed to save custom providers to browserStorage:', error);
       return { success: false, message: 'Failed to save configuration' };
     }
   }
@@ -180,9 +199,17 @@ export async function removeCustomProvider(providerId: string): Promise<{ succes
   customConfig = newCustomConfig;
   rebuildCache();
 
+  // Electron environment: save to file
   if (typeof window !== 'undefined' && (window as any).electronAPI?.config?.saveCustomProviders) {
     try {
       await (window as any).electronAPI.config.saveCustomProviders(JSON.stringify(newCustomConfig, null, 2));
+    } catch (error) {
+      return { success: false, message: 'Failed to save configuration' };
+    }
+  } else {
+    // Browser environment: save to browserStorage
+    try {
+      await browserStorage.set('customProviders', newCustomConfig);
     } catch (error) {
       return { success: false, message: 'Failed to save configuration' };
     }

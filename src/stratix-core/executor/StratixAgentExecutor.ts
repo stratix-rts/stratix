@@ -161,34 +161,34 @@ export class StratixAgentExecutor implements AgentExecutor {
     const { provider, model, apiKey, endpoint, temperature, maxTokens } = config;
 
     const providerConfig = PROVIDER_CONFIGS[provider];
-    if (!providerConfig) {
-      throw new Error(`Unsupported provider: ${provider}`);
-    }
 
-    // Custom provider requires endpoint
-    if (provider === 'custom' && !endpoint) {
-      throw new Error('Custom provider requires an endpoint URL');
+    // Custom provider (including user-added providers) requires endpoint
+    if ((provider === 'custom' || !providerConfig) && !endpoint) {
+      throw new Error(`${provider} requires an endpoint URL`);
     }
 
     // Build chat completions URL using OpenAI-compatible endpoint builder
     // This handles auto-append of /chat/completions and /v1 prefix for all providers
-    const baseUrl = endpoint || providerConfig.defaultEndpoint;
+    const baseUrl = endpoint || providerConfig?.defaultEndpoint || '';
     const url = buildChatCompletionsURL(baseUrl);
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json'
     };
 
-    // Set auth header based on provider config
-    if (providerConfig.authHeader === 'Authorization' && apiKey) {
+    // Set auth header based on provider config (or use default Bearer scheme for custom)
+    if (providerConfig?.authHeader === 'Authorization' && apiKey) {
       const scheme = providerConfig.authScheme || 'Bearer';
       headers['Authorization'] = `${scheme} ${apiKey}`;
-    } else if (providerConfig.authHeader === 'x-api-key' && apiKey) {
+    } else if (providerConfig?.authHeader === 'x-api-key' && apiKey) {
       headers['x-api-key'] = apiKey;
+    } else if (apiKey) {
+      // Default: use Bearer token for unknown/custom providers
+      headers['Authorization'] = `Bearer ${apiKey}`;
     }
 
     // Add extra headers (e.g., anthropic-version)
-    if (providerConfig.extraHeaders) {
+    if (providerConfig?.extraHeaders) {
       Object.assign(headers, providerConfig.extraHeaders);
     }
 
@@ -225,7 +225,9 @@ export class StratixAgentExecutor implements AgentExecutor {
     }
 
     const data = await response.json();
-    return this.extractResponse(data, providerConfig.responsePath);
+    // Default to OpenAI-compatible response path for custom/unknown providers
+    const responsePath = providerConfig?.responsePath || 'choices.0.message.content';
+    return this.extractResponse(data, responsePath);
   }
 
   private extractResponse(data: any, path: string): string {
