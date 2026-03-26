@@ -181,6 +181,32 @@ router.get('/zones/:projectId/trash', async (req: Request, res: Response): Promi
 });
 
 /**
+ * DELETE /api/zones/:projectId/trash
+ * Empty trash - permanently delete all soft-deleted zones in a project
+ */
+router.delete('/:projectId/trash', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const projectId = req.params.projectId as string;
+
+    const result = await zoneService.emptyTrash(projectId);
+
+    res.json({
+      success: true,
+      deleted: result.deleted,
+      failed: result.failed
+    });
+  } catch (error) {
+    console.error('[Zone API] Empty trash failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to empty trash';
+    if (message.includes('not found')) {
+      res.status(404).json({ success: false, error: message });
+    } else {
+      res.status(500).json({ success: false, error: message });
+    }
+  }
+});
+
+/**
  * POST /api/zones/:zoneId/restore
  * Restore a soft-deleted zone
  */
