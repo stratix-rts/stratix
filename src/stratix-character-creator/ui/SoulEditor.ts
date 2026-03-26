@@ -709,6 +709,8 @@ export class SoulEditor {
         this.saveHistory();
         this.soul.goals.push(goal);
         newGoalInput.value = '';
+        // 隐藏建议列表
+        if (goalSuggestions) goalSuggestions.style.display = 'none';
         this.refreshGoalsList();
         this.updatePromptPreview();
         this.notifyChange();
