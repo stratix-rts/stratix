@@ -1,0 +1,800 @@
+<template>
+  <div class="zone-detail">
+    <div class="zone-detail__header">
+      <div class="zone-detail__title-row">
+        <input
+          v-if="isEditingTitle"
+          ref="titleInputRef"
+          v-model="editingTitle"
+          class="zone-detail__title-input"
+          @blur="saveTitle"
+          @keydown.enter="saveTitle"
+          @keydown.escape="cancelEditTitle"
+        />
+        <h3 v-else class="zone-detail__title" @click="startEditTitle">
+          {{ zone.title }}
+          <span class="zone-detail__edit-hint">click to edit</span>
+        </h3>
+      </div>
+      <StratixButton size="sm" variant="secondary" @click="handleEditZone">
+        Edit
+      </StratixButton>
+    </div>
+
+    <div class="zone-detail__section">
+      <div class="zone-detail__section-header">
+        <h4 class="zone-detail__section-title">Prompt (KR)</h4>
+      </div>
+      <textarea
+        v-model="editingPrompt"
+        class="zone-detail__prompt-textarea"
+        placeholder="Zone prompt / role definition..."
+        :rows="4"
+        @blur="savePrompt"
+      />
+    </div>
+
+    <!-- Tasks Section -->
+    <div class="zone-detail__section">
+      <div class="zone-detail__section-header">
+        <h4 class="zone-detail__section-title">Tasks</h4>
+        <StratixButton size="sm" variant="secondary" @click="showCreateTask = true">
+          + New Task
+        </StratixButton>
+      </div>
+
+      <!-- Create Task Form -->
+      <div v-if="showCreateTask" class="zone-detail__task-create">
+        <input
+          v-model="newTaskTitle"
+          class="zone-detail__task-input"
+          placeholder="Task title..."
+          @keydown.enter="handleCreateTask"
+          @keydown.escape="showCreateTask = false"
+        />
+        <div class="zone-detail__task-create-actions">
+          <StratixButton size="sm" variant="primary" @click="handleCreateTask" :disabled="!newTaskTitle.trim()">
+            Create
+          </StratixButton>
+          <StratixButton size="sm" variant="secondary" @click="showCreateTask = false; newTaskTitle = ''">
+            Cancel
+          </StratixButton>
+        </div>
+      </div>
+
+      <div v-if="tasks.length === 0 && !showCreateTask" class="zone-detail__empty-list">
+        No tasks yet. Create one to get started.
+      </div>
+      <div v-else class="zone-detail__task-list">
+        <div
+          v-for="task in tasks"
+          :key="task.id"
+          class="zone-detail__task-item"
+        >
+          <div class="zone-detail__task-info">
+            <select
+              class="zone-detail__task-status"
+              :class="`zone-detail__task-status--${task.status}`"
+              :value="task.status"
+              @change="handleTaskStatusChange(task, $event)"
+            >
+              <option value="pending">Pending</option>
+              <option value="in_progress">In Progress</option>
+              <option value="done">Done</option>
+            </select>
+            <span class="zone-detail__task-title" :class="{ 'zone-detail__task-title--done': task.status === 'done' }">
+              {{ task.title }}
+            </span>
+          </div>
+          <div class="zone-detail__task-meta">
+            <span v-if="task.assignee" class="zone-detail__task-assignee">
+              👤 {{ task.assignee.slice(0, 8) }}
+            </span>
+            <button
+              v-if="!task.assignee && task.status !== 'done'"
+              class="zone-detail__task-action"
+              title="Claim task"
+              @click="handleClaimTask(task.id)"
+            >
+              Claim
+            </button>
+            <button
+              class="zone-detail__task-action zone-detail__task-action--danger"
+              title="Delete"
+              @click="handleDeleteTask(task.id)"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="zone-detail__section">
+      <div class="zone-detail__section-header">
+        <h4 class="zone-detail__section-title">Files</h4>
+        <StratixButton size="sm" variant="secondary" @click="handleAddFile">
+          + Add File
+        </StratixButton>
+      </div>
+      <div v-if="zone.files?.length === 0" class="zone-detail__empty-list">
+        No files added yet
+      </div>
+      <div v-else class="zone-detail__file-list">
+        <div
+          v-for="file in zone.files"
+          :key="file.id"
+          class="zone-detail__file-item"
+        >
+          <div class="zone-detail__file-info">
+            <span class="zone-detail__file-icon">{{ getFileIcon(file.fileType) }}</span>
+            <span class="zone-detail__file-name">{{ file.name }}</span>
+            <span class="zone-detail__file-source">{{ file.sourceType === 'local' ? '📁' : '🔗' }}</span>
+          </div>
+          <div class="zone-detail__file-actions">
+            <button
+              class="zone-detail__file-action"
+              title="Refresh"
+              @click="handleRefreshFile(file)"
+            >
+              ↻
+            </button>
+            <button
+              class="zone-detail__file-action zone-detail__file-action--danger"
+              title="Remove"
+              @click="handleRemoveFile(file)"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="zone-detail__section">
+      <div class="zone-detail__section-header">
+        <h4 class="zone-detail__section-title">Members</h4>
+        <StratixButton size="sm" variant="secondary" @click="handleAddMember">
+          + Add Agent
+        </StratixButton>
+      </div>
+      <div v-if="zone.members?.length === 0" class="zone-detail__empty-list">
+        No agents in this zone
+      </div>
+      <div v-else class="zone-detail__member-list">
+        <div
+          v-for="memberId in zone.members"
+          :key="memberId"
+          class="zone-detail__member-item"
+        >
+          <span class="zone-detail__member-avatar">🤖</span>
+          <span class="zone-detail__member-name">{{ memberId }}</span>
+          <button
+            class="zone-detail__file-action zone-detail__file-action--danger"
+            title="Remove"
+            @click="handleRemoveMember(memberId)"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="zone-detail__footer">
+      <StratixButton variant="secondary" @click="handleOpenDataExplorer">
+        📊 打开数据浏览器
+      </StratixButton>
+      <StratixButton variant="secondary" @click="handleClose">
+        Close
+      </StratixButton>
+      <StratixButton variant="danger" @click="handleDeleteZone">
+        Delete Zone
+      </StratixButton>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, watch, nextTick, onMounted } from 'vue';
+import StratixButton from '@/components/ui/StratixButton.vue';
+import type { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskStatus } from '../types';
+
+interface Props {
+  zone: Zone;
+}
+
+const props = defineProps<Props>();
+
+const emit = defineEmits<{
+  'close': [];
+  'update-zone': [zone: Partial<Zone> & { id: string }];
+  'delete-zone': [zoneId: string];
+  'add-file': [zoneId: string];
+  'remove-file': [zoneId: string, fileId: string];
+  'refresh-file': [zoneId: string, fileId: string];
+  'add-member': [zoneId: string];
+  'remove-member': [zoneId: string, memberId: string];
+  'edit-zone': [zone: Zone];
+  'open-data-explorer': [zoneId: string];
+}>();
+
+const isEditingTitle = ref(false);
+const editingTitle = ref('');
+const editingPrompt = ref('');
+const titleInputRef = ref<HTMLInputElement | null>(null);
+
+// Task state
+const tasks = ref<ZoneTask[]>([]);
+const showCreateTask = ref(false);
+const newTaskTitle = ref('');
+const currentAgentId = ref('agent_default'); // TODO: Get from actual agent context
+
+watch(
+  () => props.zone,
+  (newZone) => {
+    editingTitle.value = newZone.title;
+    editingPrompt.value = newZone.prompt || '';
+    if (newZone.id) {
+      fetchTasks(newZone.id);
+    }
+  },
+  { immediate: true }
+);
+
+onMounted(() => {
+  if (props.zone.id) {
+    fetchTasks(props.zone.id);
+  }
+});
+
+const fetchTasks = async (zoneId: string) => {
+  try {
+    const response = await fetch(`/api/zones/${zoneId}/tasks`);
+    const result = await response.json();
+    if (result.success) {
+      tasks.value = result.tasks || [];
+    }
+  } catch (error) {
+    console.error('[ZoneDetail] Failed to fetch tasks:', error);
+  }
+};
+
+const handleCreateTask = async () => {
+  if (!newTaskTitle.value.trim() || !props.zone.id) return;
+
+  try {
+    const response = await fetch(`/api/zones/${props.zone.id}/tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agentId: currentAgentId.value,
+        title: newTaskTitle.value.trim()
+      })
+    });
+
+    const result = await response.json();
+    if (result.success && result.task) {
+      tasks.value = [result.task, ...tasks.value];
+      showCreateTask.value = false;
+      newTaskTitle.value = '';
+    } else if (result.error) {
+      alert(result.error);
+    }
+  } catch (error) {
+    console.error('[ZoneDetail] Failed to create task:', error);
+  }
+};
+
+const handleTaskStatusChange = async (task: ZoneTask, event: Event) => {
+  const select = event.target as HTMLSelectElement;
+  const newStatus = select.value as ZoneTaskStatus;
+
+  try {
+    const response = await fetch(`/api/zones/${props.zone.id}/tasks/${task.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agentId: task.assignee || currentAgentId.value,
+        status: newStatus
+      })
+    });
+
+    const result = await response.json();
+    if (result.success && result.task) {
+      const index = tasks.value.findIndex(t => t.id === task.id);
+      if (index !== -1) {
+        tasks.value[index] = result.task;
+      }
+    } else if (result.error) {
+      alert(result.error);
+      fetchTasks(props.zone.id); // Refresh to get actual state
+    }
+  } catch (error) {
+    console.error('[ZoneDetail] Failed to update task:', error);
+  }
+};
+
+const handleClaimTask = async (taskId: string) => {
+  if (!props.zone.id) return;
+
+  try {
+    const response = await fetch(`/api/zones/${props.zone.id}/tasks/${taskId}/claim`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agentId: currentAgentId.value
+      })
+    });
+
+    const result = await response.json();
+    if (result.success && result.task) {
+      const index = tasks.value.findIndex(t => t.id === taskId);
+      if (index !== -1) {
+        tasks.value[index] = result.task;
+      }
+    } else if (result.error) {
+      alert(result.error);
+    }
+  } catch (error) {
+    console.error('[ZoneDetail] Failed to claim task:', error);
+  }
+};
+
+const handleDeleteTask = async (taskId: string) => {
+  if (!props.zone.id) return;
+
+  try {
+    const response = await fetch(`/api/zones/${props.zone.id}/tasks/${taskId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agentId: currentAgentId.value
+      })
+    });
+
+    const result = await response.json();
+    if (result.success) {
+      tasks.value = tasks.value.filter(t => t.id !== taskId);
+    } else if (result.error) {
+      alert(result.error);
+    }
+  } catch (error) {
+    console.error('[ZoneDetail] Failed to delete task:', error);
+  }
+};
+
+const startEditTitle = () => {
+  isEditingTitle.value = true;
+  editingTitle.value = props.zone.title;
+  nextTick(() => {
+    titleInputRef.value?.focus();
+    titleInputRef.value?.select();
+  });
+};
+
+const saveTitle = () => {
+  if (editingTitle.value.trim() && editingTitle.value !== props.zone.title) {
+    emit('update-zone', { id: props.zone.id, title: editingTitle.value.trim() });
+  }
+  isEditingTitle.value = false;
+};
+
+const cancelEditTitle = () => {
+  editingTitle.value = props.zone.title;
+  isEditingTitle.value = false;
+};
+
+const savePrompt = () => {
+  if (editingPrompt.value !== props.zone.prompt) {
+    emit('update-zone', { id: props.zone.id, prompt: editingPrompt.value });
+  }
+};
+
+const handleClose = () => {
+  emit('close');
+};
+
+const handleEditZone = () => {
+  emit('edit-zone', props.zone);
+};
+
+const handleDeleteZone = () => {
+  emit('delete-zone', props.zone.id);
+};
+
+const handleAddFile = () => {
+  emit('add-file', props.zone.id);
+};
+
+const handleRemoveFile = (file: ZoneFile) => {
+  emit('remove-file', props.zone.id, file.id);
+};
+
+const handleRefreshFile = (file: ZoneFile) => {
+  emit('refresh-file', props.zone.id, file.id);
+};
+
+const handleAddMember = () => {
+  emit('add-member', props.zone.id);
+};
+
+const handleRemoveMember = (memberId: string) => {
+  emit('remove-member', props.zone.id, memberId);
+};
+
+const handleOpenDataExplorer = () => {
+  emit('open-data-explorer', props.zone.id);
+};
+
+const getFileIcon = (fileType?: FileType): string => {
+  const iconMap: Record<FileType, string> = {
+    md: '📝',
+    txt: '📄',
+    ts: '💻',
+    js: '💻',
+    fig: '🎨',
+    image: '🖼️',
+    link: '🔗',
+    folder: '📁',
+    other: '📎',
+  };
+  return iconMap[fileType || 'other'];
+};
+</script>
+
+<style scoped>
+.zone-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  height: 100%;
+}
+
+.zone-detail__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.zone-detail__title-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.zone-detail__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ds-text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.zone-detail__edit-hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ds-text-muted);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.zone-detail__title:hover .zone-detail__edit-hint {
+  opacity: 1;
+}
+
+.zone-detail__title-input {
+  width: 100%;
+  padding: 4px 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ds-text-primary);
+  background: var(--ds-bg-tertiary);
+  border: 1px solid var(--ds-info);
+  border-radius: 4px;
+  outline: none;
+}
+
+.zone-detail__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.zone-detail__section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.zone-detail__section-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ds-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.zone-detail__prompt-textarea {
+  width: 100%;
+  padding: 12px;
+  font-size: 13px;
+  color: var(--ds-text-primary);
+  background: var(--ds-bg-tertiary);
+  border: 1px solid var(--ds-border-default);
+  border-radius: 6px;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.5;
+  transition: border-color 0.15s ease;
+}
+
+.zone-detail__prompt-textarea:focus {
+  outline: none;
+  border-color: var(--ds-info);
+}
+
+.zone-detail__prompt-textarea::placeholder {
+  color: var(--ds-text-muted);
+}
+
+.zone-detail__empty-list {
+  padding: 20px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--ds-text-muted);
+  background: var(--ds-bg-tertiary);
+  border: 1px dashed var(--ds-border-default);
+  border-radius: 6px;
+}
+
+.zone-detail__file-list,
+.zone-detail__member-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.zone-detail__file-item,
+.zone-detail__member-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--ds-bg-tertiary);
+  border: 1px solid var(--ds-border-default);
+  border-radius: 6px;
+  transition: border-color 0.15s ease;
+}
+
+.zone-detail__file-item:hover,
+.zone-detail__member-item:hover {
+  border-color: var(--ds-border-strong);
+}
+
+.zone-detail__file-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.zone-detail__file-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.zone-detail__file-name {
+  font-size: 13px;
+  color: var(--ds-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zone-detail__file-source {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.zone-detail__file-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.zone-detail__file-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 16px;
+  color: var(--ds-text-muted);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.zone-detail__file-action:hover {
+  color: var(--ds-text-primary);
+  background: var(--ds-bg-secondary);
+}
+
+.zone-detail__file-action--danger:hover {
+  color: var(--ds-semantic-danger);
+  background: rgba(255, 68, 68, 0.1);
+}
+
+.zone-detail__member-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.zone-detail__member-avatar {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.zone-detail__member-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--ds-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zone-detail__footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid var(--ds-border-default);
+}
+
+/* Task styles */
+.zone-detail__task-create {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--ds-bg-tertiary);
+  border: 1px solid var(--ds-border-default);
+  border-radius: 6px;
+}
+
+.zone-detail__task-input {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--ds-text-primary);
+  background: var(--ds-bg-primary);
+  border: 1px solid var(--ds-border-default);
+  border-radius: 4px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.zone-detail__task-input:focus {
+  border-color: var(--ds-info);
+}
+
+.zone-detail__task-create-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.zone-detail__task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.zone-detail__task-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--ds-bg-tertiary);
+  border: 1px solid var(--ds-border-default);
+  border-radius: 6px;
+  transition: border-color 0.15s ease;
+}
+
+.zone-detail__task-item:hover {
+  border-color: var(--ds-border-strong);
+}
+
+.zone-detail__task-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.zone-detail__task-status {
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid var(--ds-border-default);
+  border-radius: 4px;
+  background: var(--ds-bg-primary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.zone-detail__task-status--pending {
+  color: var(--ds-text-muted);
+}
+
+.zone-detail__task-status--in_progress {
+  color: var(--ds-warning);
+  border-color: var(--ds-warning);
+}
+
+.zone-detail__task-status--done {
+  color: var(--ds-success);
+  border-color: var(--ds-success);
+}
+
+.zone-detail__task-title {
+  font-size: 13px;
+  color: var(--ds-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zone-detail__task-title--done {
+  text-decoration: line-through;
+  color: var(--ds-text-muted);
+}
+
+.zone-detail__task-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.zone-detail__task-assignee {
+  font-size: 11px;
+  color: var(--ds-text-muted);
+}
+
+.zone-detail__task-action {
+  padding: 2px 6px;
+  font-size: 11px;
+  color: var(--ds-text-muted);
+  background: transparent;
+  border: 1px solid var(--ds-border-default);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.zone-detail__task-action:hover {
+  color: var(--ds-text-primary);
+  border-color: var(--ds-border-strong);
+}
+
+.zone-detail__task-action--danger:hover {
+  color: var(--ds-semantic-danger);
+  border-color: var(--ds-semantic-danger);
+}
+</style>

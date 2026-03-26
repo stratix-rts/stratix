@@ -32,6 +32,7 @@ const emit = defineEmits<{
   (e: 'open-character-creator'): void;
   (e: 'refresh-agents'): void;
   (e: 'update:show-task-modal', value: boolean): void;
+  (e: 'open-data-explorer'): void;
 }>();
 
 const showHeroModal = ref(false);
@@ -154,6 +155,7 @@ const icons = {
   users: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75',
   'file-text': 'M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2Z M14 2v6h6',
   activity: 'M22 12h-4l-3 9L9 3l-3 9H2',
+  'database': 'M12 2C6.48 2 2 4.69 2 7v10c0 2.31 4.48 5 10 5s10-2.69 10-5V7c0-2.31-4.48-5-10-5zm0 18c-4.42 0-8-2.24-8-5s3.58-5 8-5 8 2.24 8 5-3.58 5-8 5z',
 } as const;
 </script>
 
@@ -191,7 +193,7 @@ const icons = {
           <span>日志</span>
         </StratixButton>
         
-        <StratixButton 
+        <StratixButton
           variant="secondary"
           @click="handleOpenStatusModal"
           title="状态"
@@ -200,6 +202,17 @@ const icons = {
             <path :d="icons.activity" />
           </svg>
           <span>状态</span>
+        </StratixButton>
+
+        <StratixButton
+          variant="secondary"
+          @click="emit('open-data-explorer')"
+          title="数据浏览器 (Ctrl+D)"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path :d="icons.database" />
+          </svg>
+          <span>数据</span>
         </StratixButton>
       </div>
       

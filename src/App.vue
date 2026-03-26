@@ -6,6 +6,9 @@ import MainLayout from './components/MainLayout.vue';
 import CharacterCreatorModal from './components/CharacterCreatorModal.vue';
 import AgentChatModal from './components/AgentChatModal.vue';
 import ProjectConfigPanel from './stratix-project/ui/ProjectConfigPanel.vue';
+import ZonePanel from './stratix-project/ui/ZonePanel.vue';
+import DataExplorer from './stratix-project/ui/DataExplorer.vue';
+import type { Zone } from './stratix-project/types';
 import { agentStore } from './stores/agentStore';
 import type { SavedCharacter } from './stratix-character-creator/types';
 import type { ProjectConfig, Project } from './stratix-project/types';
@@ -24,6 +27,10 @@ const selectedProjectId = ref<string | null>(null);
 const selectedProjectPath = ref<string | null>(null);
 const showProjectConfig = ref(false);
 const currentProject = ref<Project | null>(null);
+const showZonePanel = ref(false);
+const currentZone = ref<Zone | null>(null);
+const showDataExplorer = ref(false);
+const dataExplorerZoneId = ref<string | undefined>(undefined);
 
 let game: Phaser.Game | null = null;
 let eventBus: StratixEventBus;
@@ -189,7 +196,7 @@ const handleOpenTaskModal = (projectId: string, projectPath: string) => {
 };
 
 const handleProjectCreated = (data: { project: Project; needsConfig: boolean }) => {
-  console.log('[App] Project created:', data.project.id, 'needs config:', data.needsConfig);
+  console.log('[App] handleProjectCreated called:', data.project.id, 'needs config:', data.needsConfig);
   
   currentProject.value = data.project;
   
@@ -236,6 +243,17 @@ const handleProjectConfigSave = async (config: ProjectConfig) => {
 const handleProjectConfigClose = () => {
   showProjectConfig.value = false;
   currentProject.value = null;
+};
+
+const handleZonePanelClose = () => {
+  showZonePanel.value = false;
+  currentZone.value = null;
+};
+
+// 打开数据浏览器（可选指定 Zone ID）
+const openDataExplorer = (zoneId?: string) => {
+  dataExplorerZoneId.value = zoneId;
+  showDataExplorer.value = true;
 };
 
 onMounted(async () => {
@@ -285,13 +303,30 @@ onMounted(async () => {
       if (scene) {
         scene.events.on('zone:double-click', async (zoneId: string) => {
           console.log('[App] Zone double-clicked:', zoneId);
-          
-          const projectManagerIntegration = scene.projectManagerIntegration;
-          if (projectManagerIntegration) {
-            const project = await projectManagerIntegration.getProjectClient().getProject(zoneId);
-            if (project) {
-              handleOpenTaskModal(zoneId, project.path);
+
+          try {
+            // Fetch zone data - projectId in URL is ignored by backend (only zoneId is used)
+            const response = await fetch(`/api/zones/${zoneId}`);
+            const result = await response.json();
+
+            if (result.success && result.zone) {
+              currentZone.value = result.zone;
+              showZonePanel.value = true;
+            } else {
+              console.error('[App] Failed to fetch zone:', result.error);
             }
+          } catch (error) {
+            console.error('[App] Error fetching zone:', error);
+          }
+        });
+
+        // Handle zone deletion - close ZonePanel if this zone is shown
+        scene.events.on('stratix:zone-deleted', (data: { zoneId: string }) => {
+          console.log('[App] Zone deleted event:', data.zoneId);
+          if (currentZone.value && currentZone.value.id === data.zoneId) {
+            showZonePanel.value = false;
+            currentZone.value = null;
+            console.log('[App] ZonePanel closed (zone was deleted)');
           }
         });
       }
@@ -329,6 +364,14 @@ onMounted(async () => {
   
   // 启动自动刷新
   agentStore.startAutoRefresh(30000);
+
+  // 键盘快捷键：Ctrl+D 打开 Data Explorer
+  window.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key === 'd') {
+      e.preventDefault();
+      showDataExplorer.value = true;
+    }
+  });
 });
 
 onUnmounted(() => {
@@ -380,6 +423,7 @@ onUnmounted(() => {
     @open-character-creator="openCharacterCreator()"
     @refresh-agents="agentStore.refreshAgents()"
     @update:show-task-modal="showTaskModal = $event"
+    @open-data-explorer="showDataExplorer = true"
   >
     <template #game>
       <div ref="gameContainer" class="game-container"></div>
@@ -409,6 +453,19 @@ onUnmounted(() => {
     :project-status="currentProject?.status"
     @close="handleProjectConfigClose"
     @save="handleProjectConfigSave"
+  />
+
+  <ZonePanel
+    :visible="showZonePanel"
+    :zone="currentZone"
+    @close="handleZonePanelClose"
+    @update:visible="showZonePanel = $event"
+    @open-data-explorer="openDataExplorer"
+  />
+
+  <DataExplorer
+    v-model:visible="showDataExplorer"
+    :initial-zone-id="dataExplorerZoneId"
   />
 </template>
 
