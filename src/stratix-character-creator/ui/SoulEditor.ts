@@ -415,7 +415,14 @@ export class SoulEditor {
     const filterTemplates = (query: string) => {
       const q = query.toLowerCase().trim();
       const recent = this.getRecentTemplates();
+      const stats = this.getTemplateStats();
       templateSelect.innerHTML = '<option value="">-- 选择模板 --</option>';
+
+      // 获取使用次数显示
+      const getUsageText = (templateId: string): string => {
+        const count = stats[templateId];
+        return count ? ` (使用${count}次)` : '';
+      };
 
       // 如果没有搜索词，显示最近使用的模板
       if (!q && recent.length > 0 && currentDomain === 'all') {
@@ -426,7 +433,7 @@ export class SoulEditor {
           if (t) {
             const option = document.createElement('option');
             option.value = t.id;
-            option.textContent = t.name;
+            option.textContent = t.name + getUsageText(t.id);
             recentGroup.appendChild(option);
           }
         });
@@ -446,13 +453,13 @@ export class SoulEditor {
           if (matchesDomain && (t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q))) {
             const option = document.createElement('option');
             option.value = t.id;
-            option.textContent = `${t.name} - ${t.description}`;
+            option.textContent = `${t.name}${getUsageText(t.id)} - ${t.description}`;
             templateSelect.appendChild(option);
           }
         } else if (matchesDomain && !recent.includes(t.id)) {
           const option = document.createElement('option');
           option.value = t.id;
-          option.textContent = t.name;
+          option.textContent = t.name + getUsageText(t.id);
           templateSelect.appendChild(option);
         }
       });
