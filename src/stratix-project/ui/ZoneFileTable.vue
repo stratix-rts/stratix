@@ -135,15 +135,26 @@
       <template #sourceSlot="{ row }">
         <span
           class="file-source"
-          :title="row.source"
+          :class="{ 'is-url': row.sourceType === 'url' }"
+          :title="row.metadata?.title || row.source"
           @click="row.sourceType === 'url' && openUrl(row.source)"
         >
           <template v-if="row.sourceType === 'url'">
-            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+            <img
+              v-if="row.metadata?.favicon"
+              :src="row.metadata.favicon"
+              class="url-favicon"
+              @error="(e) => (e.target as HTMLImageElement).style.display = 'none'"
+            />
+            <svg v-else viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3" />
             </svg>
+            <span v-if="row.metadata?.title" class="url-title">{{ row.metadata.title }}</span>
+            <span v-else class="url-source">{{ row.source }}</span>
           </template>
-          {{ row.source }}
+          <template v-else>
+            {{ row.source }}
+          </template>
         </span>
       </template>
 
@@ -316,6 +327,7 @@ const emit = defineEmits<{
   'file-select': [file: ZoneFile];
   'file-delete': [file: ZoneFile];
   'file-refresh': [file: ZoneFile];
+  'file-update': [file: ZoneFile];
   'file-batch-delete': [files: ZoneFile[]];
 }>();
 
@@ -454,6 +466,25 @@ const handleOpenFile = (file: ZoneFile) => {
 // 删除文件
 const handleDelete = (file: ZoneFile) => {
   emit('file-delete', file);
+};
+
+// 获取 URL 文件元信息（title, favicon）
+const fetchUrlMeta = async (file: ZoneFile) => {
+  if (file.sourceType !== 'url' || !props.zoneId) return;
+
+  try {
+    const response = await fetch(`/api/zones/${props.zoneId}/files/${file.id}/metadata`);
+    const result = await response.json();
+
+    if (result.success && (result.title || result.favicon)) {
+      // 更新文件的 metadata
+      file.metadata = { ...file.metadata, ...result };
+      // 触发更新以刷新 UI
+      emit('file-update', file);
+    }
+  } catch (error) {
+    console.warn('[ZoneFileTable] Failed to fetch URL metadata:', error);
+  }
 };
 
 // Checkbox 变化处理
@@ -776,9 +807,32 @@ const uploadFile = async (file: File) => {
   cursor: default;
 }
 
-.file-source:hover {
-  color: var(--ds-primary, #3b82f6);
+.file-source.is-url {
   cursor: pointer;
+}
+
+.file-source.is-url:hover {
+  color: var(--ds-primary, #3b82f6);
+}
+
+.url-favicon {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.url-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.url-source {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.7;
 }
 
 .file-thumbnail {

@@ -191,6 +191,7 @@
               @file-select="handleFileSelect"
               @file-delete="handleFileDelete"
               @file-refresh="handleFileRefresh"
+              @file-update="handleFileUpdate"
               @file-batch-delete="handleFileBatchDelete"
               @refresh="loadZones"
             />
@@ -650,6 +651,37 @@ const loadAgents = async () => {
 const selectZone = (zone: Zone) => {
   selectedZone.value = zone;
   emit('zone-select', zone);
+
+  // 自动获取 URL 文件的元信息（title, favicon）
+  if (zone.files) {
+    zone.files.forEach((file) => {
+      if (file.sourceType === 'url' && !file.metadata?.title && !file.metadata?.favicon) {
+        fetchUrlFileMeta(file);
+      }
+    });
+  }
+};
+
+// 获取 URL 文件的元信息
+const fetchUrlFileMeta = async (file: ZoneFile) => {
+  if (file.sourceType !== 'url' || !selectedZone.value?.id) return;
+
+  try {
+    const response = await fetch(`/api/zones/${selectedZone.value.id}/files/${file.id}/metadata`);
+    const result = await response.json();
+
+    if (result.success && (result.title || result.favicon)) {
+      // 更新文件的 metadata
+      if (selectedZone.value.files) {
+        const targetFile = selectedZone.value.files.find((f) => f.id === file.id);
+        if (targetFile) {
+          targetFile.metadata = { ...targetFile.metadata, ...result };
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('[DataExplorer] Failed to fetch URL metadata:', error);
+  }
 };
 
 // Event Handlers
@@ -739,6 +771,17 @@ const handleFileDelete = async (file: ZoneFile) => {
     await loadZones();
   } catch (error) {
     console.error('[DataExplorer] Failed to delete file:', error);
+  }
+};
+
+// 更新文件 metadata（用于 URL 元信息更新）
+const handleFileUpdate = (file: ZoneFile) => {
+  // 直接更新本地状态，不请求 API
+  if (selectedZone.value && selectedZone.value.files) {
+    const index = selectedZone.value.files.findIndex((f) => f.id === file.id);
+    if (index !== -1) {
+      selectedZone.value.files[index] = file;
+    }
   }
 };
 

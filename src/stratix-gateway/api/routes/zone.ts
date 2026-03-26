@@ -339,6 +339,31 @@ router.post('/zones/:zoneId/files/:fileId/refresh', async (req: Request, res: Re
 });
 
 /**
+ * GET /api/zones/:zoneId/files/:fileId/metadata
+ * Fetch URL metadata (title, favicon) for URL type files
+ */
+router.get('/zones/:zoneId/files/:fileId/metadata', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const zoneId = req.params.zoneId as string;
+    const fileId = req.params.fileId as string;
+    const metadata = await zoneService.fetchUrlMetadata(zoneId, fileId);
+
+    res.json({
+      success: true,
+      ...metadata
+    });
+  } catch (error) {
+    console.error('[Zone API] Fetch URL metadata failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to fetch URL metadata';
+    if (message.includes('not found')) {
+      res.status(404).json({ success: false, error: message });
+    } else {
+      res.status(500).json({ success: false, error: message });
+    }
+  }
+});
+
+/**
  * GET /api/zones/:zoneId/files/:fileId/versions
  * Get file version history
  */

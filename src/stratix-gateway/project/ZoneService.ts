@@ -338,6 +338,57 @@ export class ZoneService {
     return updated;
   }
 
+  // Fetch URL metadata (title, favicon) for URL type files
+  public async fetchUrlMetadata(zoneId: string, fileId: string): Promise<{ title?: string; favicon?: string; description?: string }> {
+    await this.ensureInitialized();
+
+    const file = zoneRepository.getFile(fileId);
+    if (!file || file.zoneId !== zoneId) {
+      throw new Error(`File not found: ${fileId} in zone ${zoneId}`);
+    }
+
+    if (file.sourceType !== 'url') {
+      throw new Error('File is not a URL type');
+    }
+
+    try {
+      const html = await this.fetchUrl(file.source);
+
+      // Extract title
+      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+      const title = titleMatch ? titleMatch[1].trim() : undefined;
+
+      // Extract description
+      const descMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i);
+      const description = descMatch ? descMatch[1].trim() : undefined;
+
+      // Extract favicon
+      let favicon: string | undefined;
+      const faviconMatch = html.match(/<link[^>]*rel=["'](?:shortcut )?icon["'][^>]*href=["']([^"']+)["']/i);
+      if (faviconMatch) {
+        favicon = faviconMatch[1];
+        // Handle relative URLs
+        if (favicon && !favicon.startsWith('http')) {
+          const urlObj = new URL(file.source);
+          favicon = favicon.startsWith('/')
+            ? `${urlObj.protocol}//${urlObj.host}${favicon}`
+            : `${urlObj.protocol}//${urlObj.host}/${favicon}`;
+        }
+      }
+
+      // Update file metadata
+      if (title || description) {
+        const newMetadata = { ...file.metadata, title, description, favicon };
+        zoneRepository.updateFile(fileId, { metadata: newMetadata });
+      }
+
+      return { title, favicon, description };
+    } catch (error) {
+      console.warn(`[ZoneService] Failed to fetch URL metadata for ${file.source}:`, error);
+      return {};
+    }
+  }
+
   // ============================================
   // File Version History
   // ============================================
