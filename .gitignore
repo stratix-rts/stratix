@@ -41,8 +41,16 @@ coverage/
 # Test results
 test-results/
 playwright-report/
-tests/
-tests/
+
+# Test source files (negate to allow)
+!tests/**/*.test.ts
+!tests/**/*.spec.ts
+!tests/pages/
+!tests/utils/
+
+# Test artifacts (ignore after negating)
+tests/screenshots/
+tests/**/baseline/
 
 # Temporary files
 tmp/
