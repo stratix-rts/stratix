@@ -81,7 +81,13 @@ class StatusSyncWebSocketService {
           data.eventType === 'stratix:zone_file_removed' ||
           data.eventType === 'stratix:zone_member_joined' ||
           data.eventType === 'stratix:zone_member_left' ||
-          data.eventType === 'stratix:zone_deleted') {
+          data.eventType === 'stratix:zone_deleted' ||
+          data.eventType === 'stratix:zone_restored' ||
+          data.eventType === 'stratix:zone_task_created' ||
+          data.eventType === 'stratix:zone_task_updated' ||
+          data.eventType === 'stratix:zone_task_deleted' ||
+          data.eventType === 'stratix:zone_task_claimed' ||
+          data.eventType === 'stratix:zone_message_added') {
 
         console.log('[StatusSyncWS] Forwarding zone event to StratixEventBus:', data.eventType);
         StratixEventBus.getInstance().emit({
