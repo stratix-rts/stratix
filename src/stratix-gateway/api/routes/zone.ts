@@ -43,13 +43,22 @@ router.post('/zones', async (req: Request, res: Response): Promise<void> => {
 });
 
 /**
- * GET /api/zones
- * Get all Zones
+ * GET /api/zones?projectId=xxx
+ * Get all Zones filtered by projectId
  */
 router.get('/zones', async (req: Request, res: Response): Promise<void> => {
   try {
-    // For now, return all zones - could filter by projectId in query if needed
-    const zones = await zoneService.getZones('');
+    const projectId = (req.query.projectId as string) || '';
+
+    if (!projectId) {
+      res.status(400).json({
+        success: false,
+        error: 'Missing required query parameter: projectId'
+      });
+      return;
+    }
+
+    const zones = await zoneService.getZones(projectId);
 
     res.json({
       success: true,
