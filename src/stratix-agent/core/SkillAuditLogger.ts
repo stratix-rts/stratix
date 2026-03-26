@@ -36,6 +36,9 @@ export class SkillAuditLogger {
   private agentLogsIndex: Map<string, string[]>;  // agentId -> logIds
   private skillLogsIndex: Map<string, string[]>;  // skillId -> logIds
 
+  // 最大日志数量限制，防止内存溢出
+  private static readonly MAX_LOG_ENTRIES = 10000;
+
   constructor() {
     this.logs = new Map();
     this.agentLogsIndex = new Map();
@@ -76,6 +79,11 @@ export class SkillAuditLogger {
     const skillLogs = this.skillLogsIndex.get(params.skillId) || [];
     skillLogs.push(log.id);
     this.skillLogsIndex.set(params.skillId, skillLogs);
+
+    // 如果日志数量超过限制，删除最旧的日志
+    if (this.logs.size > SkillAuditLogger.MAX_LOG_ENTRIES) {
+      this.evictOldestLogs();
+    }
 
     return log;
   }
@@ -179,6 +187,36 @@ export class SkillAuditLogger {
     this.logs.clear();
     this.agentLogsIndex.clear();
     this.skillLogsIndex.clear();
+  }
+
+  /**
+   * 驱逐最旧的日志以保持在限制内
+   */
+  private evictOldestLogs(): void {
+    const toEvict = this.logs.size - SkillAuditLogger.MAX_LOG_ENTRIES + 100; // 驱逐到限制以下，留点余地
+
+    // 按时间排序（最旧的在前）
+    const sortedLogs = Array.from(this.logs.entries())
+      .sort((a, b) => a[1].timestamp - b[1].timestamp);
+
+    // 删除最旧的条目
+    for (let i = 0; i < toEvict && i < sortedLogs.length; i++) {
+      const [id, log] = sortedLogs[i];
+      this.logs.delete(id);
+
+      // 更新索引
+      const agentLogs = this.agentLogsIndex.get(log.agentId);
+      if (agentLogs) {
+        const idx = agentLogs.indexOf(id);
+        if (idx !== -1) agentLogs.splice(idx, 1);
+      }
+
+      const skillLogs = this.skillLogsIndex.get(log.skillId);
+      if (skillLogs) {
+        const idx = skillLogs.indexOf(id);
+        if (idx !== -1) skillLogs.splice(idx, 1);
+      }
+    }
   }
 
   /**
