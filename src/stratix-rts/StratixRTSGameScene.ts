@@ -1234,6 +1234,18 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     this.agentZoneTracking.set(agentId, zoneId);
     console.log(`[StratixRTS] Agent ${agentId} joined zone ${zoneId}`);
 
+    // Animate agent sprite moving to zone position
+    const sprite = this.agentSprites.get(agentId);
+    const zone = this.unifiedZoneManager.getZone(zoneId);
+    if (sprite && zone) {
+      const bounds = zone.getBounds();
+      const zoneX = bounds.x + bounds.width / 2;
+      const zoneY = bounds.y + bounds.height / 2;
+      // Use movement system for smooth animation
+      this.movementSystem.moveTo(agentId, zoneX, zoneY);
+      console.log(`[StratixRTS] Agent ${agentId} animating to zone ${zoneId} at (${zoneX}, ${zoneY})`);
+    }
+
     // Notify zone that member joined (for visual refresh if needed)
     rtsEventBus.emit('zone:member-joined' as any, { zoneId, agentId });
   }

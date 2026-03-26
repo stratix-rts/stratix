@@ -28,7 +28,7 @@ export interface AgentMentionEvent {
 
 // Zone Events
 export interface ZoneEvent {
-  type: 'zone:updated' | 'zone:file_added' | 'zone:file_removed' | 'zone:member_joined' | 'zone:member_left' | 'zone:deleted' | 'zone:restored' | 'zone:task_created' | 'zone:task_updated' | 'zone:task_deleted' | 'zone:task_claimed' | 'zone:message_added';
+  type: 'zone:updated' | 'zone:file_added' | 'zone:file_removed' | 'zone:file_updated' | 'zone:member_joined' | 'zone:member_left' | 'zone:deleted' | 'zone:restored' | 'zone:task_created' | 'zone:task_updated' | 'zone:task_deleted' | 'zone:task_claimed' | 'zone:message_added';
   zoneId: string;
   projectId: string;
   data?: any;

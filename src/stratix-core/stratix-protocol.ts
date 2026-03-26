@@ -312,6 +312,7 @@ export type StratixStateSyncEventType =
   | 'stratix:zone_updated'
   | 'stratix:zone_file_added'
   | 'stratix:zone_file_removed'
+  | 'stratix:zone_file_updated'
   | 'stratix:zone_member_joined'
   | 'stratix:zone_member_left'
   | 'stratix:zone_deleted'

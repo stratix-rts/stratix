@@ -11,7 +11,7 @@ export class SafetyValidator {
     { pattern: /^dd\s+/, reason: 'Direct disk operation (dd)' },
     { pattern: /\bmkfs\b/, reason: 'Filesystem creation (mkfs)' },
     { pattern: /\bfdisk\b/, reason: 'Disk partitioning (fdisk)' },
-    { pattern: /:\(\)\{.*:\|:&\};:/, reason: 'Fork bomb' },
+    { pattern: /:\(\)\{ *:\|:& *\};:/, reason: 'Fork bomb' },
     { pattern: /\bshutdown\b/, reason: 'System shutdown' },
     { pattern: /\breboot\b/, reason: 'System reboot' },
     { pattern: /\binit\s+0\b/, reason: 'System halt (init 0)' },

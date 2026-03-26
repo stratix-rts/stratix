@@ -339,6 +339,93 @@ router.post('/zones/:zoneId/files/:fileId/refresh', async (req: Request, res: Re
 });
 
 /**
+ * GET /api/zones/:zoneId/files/:fileId/versions
+ * Get file version history
+ */
+router.get('/zones/:zoneId/files/:fileId/versions', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const zoneId = req.params.zoneId as string;
+    const fileId = req.params.fileId as string;
+    const versions = await zoneService.getFileVersions(zoneId, fileId);
+
+    res.json({
+      success: true,
+      ...versions
+    });
+  } catch (error) {
+    console.error('[Zone API] Get file versions failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to get file versions';
+    if (message.includes('not found')) {
+      res.status(404).json({ success: false, error: message });
+    } else {
+      res.status(500).json({ success: false, error: message });
+    }
+  }
+});
+
+/**
+ * PUT /api/zones/:zoneId/files/:fileId
+ * Update file content (with version tracking for text files)
+ */
+router.put('/zones/:zoneId/files/:fileId', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const zoneId = req.params.zoneId as string;
+    const fileId = req.params.fileId as string;
+    const { content, description } = req.body as { content: string; description?: string };
+
+    if (content === undefined) {
+      res.status(400).json({
+        success: false,
+        error: 'Missing required field: content'
+      });
+      return;
+    }
+
+    const file = await zoneService.updateFileWithVersion(zoneId, fileId, content, description);
+
+    res.json({
+      success: true,
+      file
+    });
+  } catch (error) {
+    console.error('[Zone API] Update file failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to update file';
+    if (message.includes('not found')) {
+      res.status(404).json({ success: false, error: message });
+    } else {
+      res.status(500).json({ success: false, error: message });
+    }
+  }
+});
+
+/**
+ * POST /api/zones/:zoneId/files/:fileId/rollback/:versionId
+ * Rollback file to a specific version
+ */
+router.post('/zones/:zoneId/files/:fileId/rollback/:versionId', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const zoneId = req.params.zoneId as string;
+    const fileId = req.params.fileId as string;
+    const versionId = req.params.versionId as string;
+
+    const file = await zoneService.rollbackFileToVersion(zoneId, fileId, versionId);
+
+    res.json({
+      success: true,
+      file
+    });
+  } catch (error) {
+    console.error('[Zone API] Rollback file failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to rollback file';
+    if (message.includes('not found')) {
+      res.status(404).json({ success: false, error: message });
+    } else {
+      res.status(500).json({ success: false, error: message });
+    }
+  }
+});
+
+/**
  * POST /api/zones/:zoneId/files/scan-folder
  * Scan a local folder and add files to a Zone
  */

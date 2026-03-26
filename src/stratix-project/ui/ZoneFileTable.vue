@@ -177,6 +177,14 @@
             预览
           </StratixButton>
           <StratixButton
+            v-if="isTextFile(row.fileType)"
+            size="tiny"
+            variant="ghost"
+            @click="handleShowVersionHistory(row)"
+          >
+            历史
+          </StratixButton>
+          <StratixButton
             v-if="row.sourceType === 'url'"
             size="tiny"
             variant="ghost"
@@ -210,6 +218,67 @@
         <img v-if="previewFile" :src="previewFile.source" :alt="previewFile.name" class="preview-image" />
       </div>
     </StratixModal>
+
+    <!-- 版本历史弹窗 -->
+    <StratixModal
+      :visible="versionHistoryVisible"
+      title="版本历史"
+      width="70vw"
+      max-width="900px"
+      @update:visible="versionHistoryVisible = false"
+    >
+      <div class="version-history-container">
+        <div v-if="versionHistoryLoading" class="version-loading">
+          加载中...
+        </div>
+        <div v-else-if="versionHistory.length === 0" class="version-empty">
+          暂无版本记录
+        </div>
+        <div v-else class="version-list">
+          <div
+            v-for="(version, index) in versionHistory"
+            :key="version.id"
+            class="version-item"
+            :class="{ 'is-current': index === 0 }"
+          >
+            <div class="version-info">
+              <div class="version-header">
+                <span class="version-label">{{ index === 0 ? '当前版本' : `版本 ${versionHistory.length - index}` }}</span>
+                <span class="version-date">{{ formatDate(version.createdAt) }}</span>
+              </div>
+              <div v-if="version.description" class="version-desc">{{ version.description }}</div>
+              <div class="version-preview">{{ getVersionPreview(version.content) }}</div>
+            </div>
+            <div class="version-actions">
+              <StratixButton size="small" variant="ghost" @click="handlePreviewVersion(version)">
+                预览
+              </StratixButton>
+              <StratixButton
+                v-if="index !== 0"
+                size="small"
+                variant="ghost"
+                @click="handleRollbackToVersion(version)"
+              >
+                回滚
+              </StratixButton>
+            </div>
+          </div>
+        </div>
+      </div>
+    </StratixModal>
+
+    <!-- 版本内容预览弹窗 -->
+    <StratixModal
+      :visible="showVersionPreview"
+      :title="`版本预览 - ${previewVersion?.createdAt ? formatDate(previewVersion.createdAt) : ''}`"
+      width="80vw"
+      max-width="1000px"
+      @update:visible="showVersionPreview = false"
+    >
+      <div class="version-content-container">
+        <pre class="version-content">{{ previewVersion?.content || '' }}</pre>
+      </div>
+    </StratixModal>
   </div>
 </template>
 
@@ -220,7 +289,16 @@ import StratixInput from '@/components/ui/StratixInput.vue';
 import StratixSelect from '@/components/ui/StratixSelect.vue';
 import StratixButton from '@/components/ui/StratixButton.vue';
 import StratixModal from '@/components/ui/StratixModal.vue';
-import type { ZoneFile, FileType } from '../types';
+import type { ZoneFile, FileType, FileVersion } from '../types';
+
+// 支持版本历史的文件类型
+const TEXT_FILE_TYPES: FileType[] = ['md', 'txt', 'ts', 'js', 'fig', 'link'];
+
+// 判断是否为文本文件（支持版本历史）
+const isTextFile = (fileType?: FileType | string): boolean => {
+  if (!fileType) return false;
+  return TEXT_FILE_TYPES.includes(fileType as FileType);
+};
 
 interface Props {
   files: ZoneFile[];
@@ -248,6 +326,14 @@ const filterSource = ref('');
 const showPreview = ref(false);
 const previewFile = ref<ZoneFile | null>(null);
 const selectedFiles = ref<ZoneFile[]>([]);
+
+// 版本历史相关
+const versionHistoryVisible = ref(false);
+const versionHistoryLoading = ref(false);
+const selectedFileForHistory = ref<ZoneFile | null>(null);
+const versionHistory = ref<FileVersion[]>([]);
+const showVersionPreview = ref(false);
+const previewVersion = ref<FileVersion | null>(null);
 
 // 选中数量
 const selectCount = computed(() => selectedFiles.value.length);
@@ -477,6 +563,76 @@ const handleDrop = async (e: DragEvent) => {
   emit('refresh');
 };
 
+// ============================================
+// 版本历史相关方法
+// ============================================
+
+// 显示版本历史
+const handleShowVersionHistory = async (file: ZoneFile) => {
+  if (!props.zoneId) return;
+
+  selectedFileForHistory.value = file;
+  versionHistoryVisible.value = true;
+  versionHistoryLoading.value = true;
+  versionHistory.value = [];
+
+  try {
+    const response = await fetch(`/api/zones/${props.zoneId}/files/${file.id}/versions`);
+    const data = await response.json();
+
+    if (data.success) {
+      versionHistory.value = data.versions || [];
+    } else {
+      console.error('[ZoneFileTable] Failed to get versions:', data.error);
+    }
+  } catch (error) {
+    console.error('[ZoneFileTable] Failed to fetch versions:', error);
+  } finally {
+    versionHistoryLoading.value = false;
+  }
+};
+
+// 预览版本内容
+const handlePreviewVersion = (version: FileVersion) => {
+  previewVersion.value = version;
+  showVersionPreview.value = true;
+};
+
+// 回滚到指定版本
+const handleRollbackToVersion = async (version: FileVersion) => {
+  if (!props.zoneId || !selectedFileForHistory.value) return;
+
+  if (!confirm(`确定要回滚到 ${formatDate(version.createdAt)} 的版本吗？`)) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/zones/${props.zoneId}/files/${selectedFileForHistory.value.id}/rollback/${version.id}`, {
+      method: 'POST'
+    });
+    const data = await response.json();
+
+    if (data.success) {
+      // 刷新版本列表
+      await handleShowVersionHistory(selectedFileForHistory.value);
+      // 通知父组件刷新文件列表
+      emit('refresh');
+    } else {
+      alert(`回滚失败: ${data.error}`);
+    }
+  } catch (error) {
+    console.error('[ZoneFileTable] Failed to rollback:', error);
+    alert('回滚失败');
+  }
+};
+
+// 获取版本预览（前100字符）
+const getVersionPreview = (content: string): string => {
+  if (!content) return '-';
+  const preview = content.substring(0, 100);
+  return preview.length < content.length ? `${preview}...` : preview;
+};
+
 const uploadFile = async (file: File) => {
   const formData = new FormData();
   formData.append('file', file);
@@ -671,5 +827,107 @@ const uploadFile = async (file: File) => {
   max-width: 100%;
   max-height: 70vh;
   object-fit: contain;
+}
+
+/* 版本历史样式 */
+.version-history-container {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.version-loading,
+.version-empty {
+  text-align: center;
+  padding: 40px;
+  color: var(--ds-text-secondary, #6b7280);
+}
+
+.version-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.version-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 16px;
+  border: 1px solid var(--ds-border, #e5e7eb);
+  border-radius: 8px;
+  transition: all 0.15s ease;
+}
+
+.version-item:hover {
+  background-color: var(--ds-bg-hover, #f9fafb);
+}
+
+.version-item.is-current {
+  border-color: var(--ds-primary, #3b82f6);
+  background-color: rgba(59, 130, 246, 0.05);
+}
+
+.version-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.version-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.version-label {
+  font-weight: 500;
+  color: var(--ds-text-primary, #111827);
+}
+
+.version-date {
+  font-size: 13px;
+  color: var(--ds-text-secondary, #6b7280);
+}
+
+.version-desc {
+  font-size: 13px;
+  color: var(--ds-text-secondary, #6b7280);
+  margin-bottom: 8px;
+}
+
+.version-preview {
+  font-size: 13px;
+  color: var(--ds-text-tertiary, #9ca3af);
+  font-family: monospace;
+  background-color: var(--ds-bg-secondary, #f3f4f6);
+  padding: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.version-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-left: 16px;
+}
+
+.version-content-container {
+  max-height: 70vh;
+  overflow: auto;
+}
+
+.version-content {
+  font-family: monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background-color: var(--ds-bg-secondary, #f3f4f6);
+  padding: 16px;
+  border-radius: 8px;
+  margin: 0;
 }
 </style>

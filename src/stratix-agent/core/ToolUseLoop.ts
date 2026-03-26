@@ -156,6 +156,17 @@ export class ToolUseLoop {
 
       // 检查是否有 tool_calls
       if (!result.tool_calls || result.tool_calls.length === 0) {
+        // 检查中断信号（在 LLM 调用过程中可能已被设置）
+        if (this.abortController.signal.aborted) {
+          return {
+            finalContent: this.buildAbortMessage(iteration),
+            toolCalls,
+            totalIterations: iteration + 1,
+            totalExecutionTime: Date.now() - startTime,
+            success: false,
+            error: 'Execution aborted'
+          };
+        }
         // 没有工具调用，返回最终内容
         return {
           finalContent: result.content,

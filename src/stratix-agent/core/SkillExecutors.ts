@@ -578,8 +578,31 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
         const timeoutMs = (config?.maxCpuTime ?? 10) * 1000;
         let timeoutId: NodeJS.Timeout | null = null;
 
+        // Auto-wrap single-expression code with return
+        // Check if code is a simple expression (no semicolons at top level)
+        const isExpression = (c: string): boolean => {
+          let inString = false;
+          let stringChar = '';
+          for (let i = 0; i < c.length; i++) {
+            const ch = c[i];
+            if (!inString && (ch === '"' || ch === "'" || ch === '`')) {
+              inString = true;
+              stringChar = ch;
+            } else if (inString && ch === stringChar && c[i-1] !== '\\') {
+              inString = false;
+            } else if (!inString && ch === ';') {
+              return false;
+            }
+          }
+          return true;
+        };
+
+        const wrappedCode = isExpression(code.trim()) && !code.trim().startsWith('return ')
+          ? `return ${code}`
+          : code;
+
         // Execute in isolated context
-        const fn = new Function(...validKeys, code);
+        const fn = new Function(...validKeys, wrappedCode);
         const result = fn(...validValues);
 
         // Handle async results

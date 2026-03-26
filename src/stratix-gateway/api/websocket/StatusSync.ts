@@ -114,6 +114,7 @@ export class StatusSyncService {
       'zone:updated': 'stratix:zone_updated',
       'zone:file_added': 'stratix:zone_file_added',
       'zone:file_removed': 'stratix:zone_file_removed',
+      'zone:file_updated': 'stratix:zone_file_updated',
       'zone:member_joined': 'stratix:zone_member_joined',
       'zone:member_left': 'stratix:zone_member_left',
       'zone:deleted': 'stratix:zone_deleted',
