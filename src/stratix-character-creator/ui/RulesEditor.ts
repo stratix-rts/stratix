@@ -1,8 +1,5 @@
-import Phaser from 'phaser';
-import { getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
-import { ContainerComponentBase } from '@/stratix-core/ui/ContainerComponent.base';
-import { RULE_TEMPLATES, DEFAULT_RULES, type RuleTemplate } from '../config/ruleTemplates';
+import { RULE_TEMPLATES, DEFAULT_RULES } from '../config/ruleTemplates';
 import { getButtonInlineStyles } from './_buttonStyles';
 
 export interface RulesEditorConfig {
@@ -21,7 +18,6 @@ const THEME = {
   text: 'var(--ds-text-primary)',
   textMuted: 'var(--ds-text-muted)',
   inputBg: 'var(--ds-bg-tertiary)',
-  success: 'var(--ds-status-success)',
 };
 
 export class RulesEditor {
@@ -52,33 +48,7 @@ export class RulesEditor {
     `
     ).join('');
 
-    const rulesHtml = this.rules
-      .map(
-        (rule, i) => `
-        <div class="rule-item" data-index="${i}" style="
-          display: flex;
-          align-items: flex-start;
-          gap: 8px;
-          padding: 8px 12px;
-          background: ${THEME.inputBg};
-          border: 1px solid ${THEME.border};
-          border-radius: 6px;
-          margin-bottom: 8px;
-        ">
-          <span class="rule-number" style="
-            color: ${THEME.accent};
-            font-size: 11px;
-            min-width: 20px;
-          ">${i + 1}.</span>
-          <span class="rule-text" style="flex: 1; color: ${THEME.text}; font-size: 12px; line-height: 1.4;">
-            ${this.escapeHtml(rule)}
-          </span>
-          <button class="edit-rule-btn" data-index="${i}" style="${getButtonInlineStyles('ghost')}">编辑</button>
-          <button class="remove-rule-btn" data-index="${i}" style="${getButtonInlineStyles('danger')}">删除</button>
-        </div>
-      `
-      )
-      .join('');
+    const rulesHtml = this.rules.map((rule, i) => this.buildRuleItemHtml(rule, i)).join('');
 
     return `
       <div class="rules-editor" style="
@@ -235,6 +205,32 @@ export class RulesEditor {
     }
   }
 
+  private buildRuleItemHtml(rule: string, index: number): string {
+    return `
+      <div class="rule-item" data-index="${index}" style="
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 8px 12px;
+        background: ${THEME.inputBg};
+        border: 1px solid ${THEME.border};
+        border-radius: 6px;
+        margin-bottom: 8px;
+      ">
+        <span class="rule-number" style="
+          color: ${THEME.accent};
+          font-size: 11px;
+          min-width: 20px;
+        ">${index + 1}.</span>
+        <span class="rule-text" style="flex: 1; color: ${THEME.text}; font-size: 12px; line-height: 1.4;">
+          ${this.escapeHtml(rule)}
+        </span>
+        <button class="edit-rule-btn" data-index="${index}" style="${getButtonInlineStyles('ghost')}">编辑</button>
+        <button class="remove-rule-btn" data-index="${index}" style="${getButtonInlineStyles('danger')}">删除</button>
+      </div>
+    `;
+  }
+
   private refreshRulesList(): void {
     const node = this.container?.node as HTMLElement;
     const rulesList = node?.querySelector('#rules-list') as HTMLElement;
@@ -251,33 +247,7 @@ export class RulesEditor {
       return;
     }
 
-    rulesList.innerHTML = this.rules
-      .map(
-        (rule, i) => `
-        <div class="rule-item" data-index="${i}" style="
-          display: flex;
-          align-items: flex-start;
-          gap: 8px;
-          padding: 8px 12px;
-          background: ${THEME.inputBg};
-          border: 1px solid ${THEME.border};
-          border-radius: 6px;
-          margin-bottom: 8px;
-        ">
-          <span class="rule-number" style="
-            color: ${THEME.accent};
-            font-size: 11px;
-            min-width: 20px;
-          ">${i + 1}.</span>
-          <span class="rule-text" style="flex: 1; color: ${THEME.text}; font-size: 12px; line-height: 1.4;">
-            ${this.escapeHtml(rule)}
-          </span>
-          <button class="edit-rule-btn" data-index="${i}" style="${getButtonInlineStyles('ghost')}">编辑</button>
-          <button class="remove-rule-btn" data-index="${i}" style="${getButtonInlineStyles('danger')}">删除</button>
-        </div>
-      `
-      )
-      .join('');
+    rulesList.innerHTML = this.rules.map((rule, i) => this.buildRuleItemHtml(rule, i)).join('');
   }
 
   private escapeHtml(text: string): string {

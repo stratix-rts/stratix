@@ -1,21 +1,15 @@
 /**
- * (Migrated)
  * SkillTreeUI - 技能树 UI 组件
  * 基于 Phaser DOM 的技能树可视化
  */
 
-import Phaser from 'phaser';
-import { getToken } from '@/design-system/config';
-import { Depth } from '@/design-system/tokens/depth';
-import { ContainerComponentBase } from '@/stratix-core/ui/ContainerComponent.base';
 import { SkillTree } from '../core/SkillTree';
 import { SKILL_CATEGORIES, ATTRIBUTE_LABELS } from '../config/skillTreeConfig';
-import type { SkillNode, SkillTreeState } from '../types';
+import type { SkillNode } from '../types';
 
 const THEME = {
   text: 'var(--ds-text-primary)',
   textMuted: 'var(--ds-text-muted)',
-  textSecondary: 'var(--ds-text-secondary)',
 };
 
 export interface SkillTreeUIConfig {
@@ -39,7 +33,7 @@ export class SkillTreeUI {
     this.config = config;
     this.skillTree = config.skillTree;
 
-    this.skillTree.setOnStateChange((state, attributes) => {
+    this.skillTree.setOnStateChange((_state, attributes) => {
       this.currentAttributes = attributes;
       this.updateUI();
       if (this.config.onAttributesChange) {
@@ -237,7 +231,7 @@ export class SkillTreeUI {
 
   private generateAttributesHtml(): string {
     if (Object.keys(this.currentAttributes).length === 0) {
-      return '<span style="color: ${THEME.textMuted}; font-size: 12px;">选择技能节点以查看属性加成</span>';
+      return `<span style="color: ${THEME.textMuted}; font-size: 12px;">选择技能节点以查看属性加成</span>`;
     }
 
     return Object.entries(this.currentAttributes)
