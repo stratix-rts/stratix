@@ -79,6 +79,7 @@ class StatusSyncWebSocketService {
       if (data.eventType === 'stratix:zone_updated' ||
           data.eventType === 'stratix:zone_file_added' ||
           data.eventType === 'stratix:zone_file_removed' ||
+          data.eventType === 'stratix:zone_file_updated' ||
           data.eventType === 'stratix:zone_member_joined' ||
           data.eventType === 'stratix:zone_member_left' ||
           data.eventType === 'stratix:zone_deleted' ||
