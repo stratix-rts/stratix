@@ -1040,7 +1040,8 @@ export class CharacterCreatorScene extends Phaser.Scene {
         this.setStep('openclaw');
       }
     });
-    agentConfigPanel.create();
+    const dom = agentConfigPanel.create();
+    this.mainPanelContainer.add(dom);
   }
 
   private buildAgentChatPanel(panelW: number, panelH: number): void {
