@@ -155,6 +155,24 @@ export class SoulEditor {
     localStorage.setItem(SoulEditor.RECENT_TEMPLATES_KEY, JSON.stringify(recent));
   }
 
+  // 模板使用统计
+  private static readonly TEMPLATE_STATS_KEY = 'soul-editor-template-stats';
+
+  private getTemplateStats(): Record<string, number> {
+    try {
+      const stored = localStorage.getItem(SoulEditor.TEMPLATE_STATS_KEY);
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  private incrementTemplateStats(templateId: string): void {
+    const stats = this.getTemplateStats();
+    stats[templateId] = (stats[templateId] || 0) + 1;
+    localStorage.setItem(SoulEditor.TEMPLATE_STATS_KEY, JSON.stringify(stats));
+  }
+
   create(): Phaser.GameObjects.DOMElement {
     const html = this.generateHTML();
     this.container = this.scene.add.dom(this.config.x, this.config.y).createFromHTML(html).setOrigin(0, 0).setDepth(Depth.UI_MODAL_CONTENT);
@@ -783,6 +801,7 @@ export class SoulEditor {
     };
     this.rawContent = template.rawContent || '';
     this.addToRecentTemplates(template.id);
+    this.incrementTemplateStats(template.id);
 
     const node = this.container?.node as HTMLElement;
     if (!node) return;

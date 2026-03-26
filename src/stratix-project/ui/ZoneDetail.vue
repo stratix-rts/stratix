@@ -180,6 +180,55 @@
       </div>
     </div>
 
+    <!-- Messages Section -->
+    <div class="zone-detail__section">
+      <div class="zone-detail__section-header">
+        <h4 class="zone-detail__section-title">Messages</h4>
+        <span v-if="messages.length > 0" class="zone-detail__message-count">{{ messages.length }}</span>
+      </div>
+
+      <!-- Messages Timeline -->
+      <div class="zone-detail__messages">
+        <div v-if="messages.length === 0" class="zone-detail__empty-list">
+          No messages yet
+        </div>
+        <template v-else>
+          <div
+            v-for="(group, date) in groupedMessages"
+            :key="date"
+            class="zone-detail__message-group"
+          >
+            <div class="zone-detail__message-date">{{ formatDateHeader(date as string) }}</div>
+            <div
+              v-for="message in group"
+              :key="message.id"
+              class="zone-detail__message"
+              :class="`zone-detail__message--${message.senderType}`"
+            >
+              <div class="zone-detail__message-header">
+                <span class="zone-detail__message-sender">{{ message.senderType === 'agent' ? '🤖' : '👤' }} {{ message.senderId.slice(0, 8) }}</span>
+                <span class="zone-detail__message-time">{{ formatRelativeTime(message.createdAt) }}</span>
+              </div>
+              <div class="zone-detail__message-content">{{ message.content }}</div>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- Send Message Form -->
+      <div class="zone-detail__message-form">
+        <input
+          v-model="newMessage"
+          class="zone-detail__message-input"
+          placeholder="Type a message..."
+          @keydown.enter="handleSendMessage"
+        />
+        <StratixButton size="sm" variant="primary" @click="handleSendMessage" :disabled="!newMessage.trim()">
+          Send
+        </StratixButton>
+      </div>
+    </div>
+
     <div class="zone-detail__footer">
       <StratixButton variant="secondary" @click="handleOpenDataExplorer">
         📊 打开数据浏览器
@@ -195,9 +244,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted } from 'vue';
+import { ref, watch, nextTick, onMounted, computed } from 'vue';
 import StratixButton from '@/components/ui/StratixButton.vue';
-import type { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskStatus } from '../types';
+import type { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskStatus, ZoneMessage } from '../types';
 
 interface Props {
   zone: Zone;
@@ -229,6 +278,10 @@ const showCreateTask = ref(false);
 const newTaskTitle = ref('');
 const currentAgentId = ref('agent_default'); // TODO: Get from actual agent context
 
+// Messages state
+const messages = ref<ZoneMessage[]>([]);
+const newMessage = ref('');
+
 watch(
   () => props.zone,
   (newZone) => {
@@ -236,6 +289,7 @@ watch(
     editingPrompt.value = newZone.prompt || '';
     if (newZone.id) {
       fetchTasks(newZone.id);
+      fetchMessages(newZone.id);
     }
   },
   { immediate: true }
@@ -256,6 +310,44 @@ const fetchTasks = async (zoneId: string) => {
     }
   } catch (error) {
     console.error('[ZoneDetail] Failed to fetch tasks:', error);
+  }
+};
+
+const fetchMessages = async (zoneId: string) => {
+  try {
+    const response = await fetch(`/api/zones/${zoneId}/messages?limit=50`);
+    const result = await response.json();
+    if (result.success) {
+      messages.value = result.messages || [];
+    }
+  } catch (error) {
+    console.error('[ZoneDetail] Failed to fetch messages:', error);
+  }
+};
+
+const handleSendMessage = async () => {
+  if (!newMessage.value.trim() || !props.zone.id) return;
+
+  try {
+    const response = await fetch(`/api/zones/${props.zone.id}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        senderId: 'user_default', // TODO: Get from actual user context
+        senderType: 'user',
+        content: newMessage.value.trim()
+      })
+    });
+
+    const result = await response.json();
+    if (result.success && result.message) {
+      messages.value = [...messages.value, result.message];
+      newMessage.value = '';
+    } else if (result.error) {
+      alert(result.error);
+    }
+  } catch (error) {
+    console.error('[ZoneDetail] Failed to send message:', error);
   }
 };
 
@@ -439,6 +531,58 @@ const getFileIcon = (fileType?: FileType): string => {
     other: '📎',
   };
   return iconMap[fileType || 'other'];
+};
+
+// Group messages by date
+const groupedMessages = computed(() => {
+  const groups: Record<string, ZoneMessage[]> = {};
+  for (const msg of messages.value) {
+    const date = new Date(msg.createdAt).toDateString();
+    if (!groups[date]) {
+      groups[date] = [];
+    }
+    groups[date].push(msg);
+  }
+  return groups;
+});
+
+// Format date header
+const formatDateHeader = (dateStr: string): string => {
+  const date = new Date(dateStr);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  if (date.toDateString() === today.toDateString()) {
+    return 'Today';
+  } else if (date.toDateString() === yesterday.toDateString()) {
+    return 'Yesterday';
+  } else {
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined });
+  }
+};
+
+// Format relative time
+const formatRelativeTime = (timestamp: number): string => {
+  const now = Date.now();
+  const diff = now - timestamp;
+
+  const seconds = Math.floor(diff / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (seconds < 60) {
+    return 'just now';
+  } else if (minutes < 60) {
+    return `${minutes}m ago`;
+  } else if (hours < 24) {
+    return `${hours}h ago`;
+  } else if (days < 7) {
+    return `${days}d ago`;
+  } else {
+    return new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
 };
 </script>
 
@@ -796,5 +940,103 @@ const getFileIcon = (fileType?: FileType): string => {
 .zone-detail__task-action--danger:hover {
   color: var(--ds-semantic-danger);
   border-color: var(--ds-semantic-danger);
+}
+
+/* Messages Section */
+.zone-detail__message-count {
+  font-size: 11px;
+  color: var(--ds-text-muted);
+  background: var(--ds-bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 10px;
+}
+
+.zone-detail__messages {
+  max-height: 300px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.zone-detail__message-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.zone-detail__message-date {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ds-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--ds-border-default);
+  margin-bottom: 4px;
+}
+
+.zone-detail__message {
+  padding: 8px 12px;
+  background: var(--ds-bg-tertiary);
+  border-radius: 8px;
+  border: 1px solid var(--ds-border-default);
+}
+
+.zone-detail__message--agent {
+  background: var(--ds-bg-secondary);
+}
+
+.zone-detail__message-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.zone-detail__message-sender {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ds-text-secondary);
+}
+
+.zone-detail__message-time {
+  font-size: 10px;
+  color: var(--ds-text-muted);
+}
+
+.zone-detail__message-content {
+  font-size: 13px;
+  color: var(--ds-text-primary);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.zone-detail__message-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.zone-detail__message-input {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--ds-text-primary);
+  background: var(--ds-bg-tertiary);
+  border: 1px solid var(--ds-border-default);
+  border-radius: 6px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.zone-detail__message-input:focus {
+  border-color: var(--ds-info);
+}
+
+.zone-detail__message-input::placeholder {
+  color: var(--ds-text-muted);
 }
 </style>
