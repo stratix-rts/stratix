@@ -164,7 +164,9 @@ export class ProjectZone extends BaseZone {
   }
 
   private updateFromProject(): void {
-    this.setZoneName(this.project.name);
+    // Use zone_contexts.title if available (OKR data), otherwise fallback to project.name
+    const displayName = this.project.zoneContext?.title || this.project.name;
+    this.setZoneName(displayName);
     this.setZoneStatus(this.mapProjectStatus(this.project.status));
     this.redrawWithCustomColors();
   }
@@ -216,6 +218,17 @@ export class ProjectZone extends BaseZone {
   public updateProject(project: Project): void {
     this.project = project;
     this.updateFromProject();
+  }
+
+  public updateZoneTitle(title: string): void {
+    // Update the zoneContext title if it exists, otherwise create it
+    if (this.project.zoneContext) {
+      this.project.zoneContext.title = title;
+    } else {
+      this.project.zoneContext = { title, prompt: '', members: [] };
+    }
+    this.setZoneName(title);
+    this.redrawWithCustomColors();
   }
 
   public getProject(): Project {

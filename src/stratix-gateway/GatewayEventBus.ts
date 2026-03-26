@@ -26,7 +26,15 @@ export interface AgentMentionEvent {
   agentId: string;
 }
 
-export type GatewayEvent = ChannelMessageEvent | AgentMentionEvent;
+// Zone Events
+export interface ZoneEvent {
+  type: 'zone:updated' | 'zone:file_added' | 'zone:file_removed' | 'zone:member_joined' | 'zone:member_left' | 'zone:deleted' | 'zone:task_created' | 'zone:task_updated' | 'zone:task_deleted' | 'zone:task_claimed' | 'zone:message_added';
+  zoneId: string;
+  projectId: string;
+  data?: any;
+}
+
+export type GatewayEvent = ChannelMessageEvent | AgentMentionEvent | ZoneEvent;
 
 class GatewayEventBus extends EventEmitter {
   private static instance: GatewayEventBus;
@@ -103,6 +111,38 @@ class GatewayEventBus extends EventEmitter {
     const eventName = `agent_mention:${agentId}`;
     this.on(eventName, handler);
     return () => this.off(eventName, handler);
+  }
+
+  // ==================== Zone Events ====================
+
+  /**
+   * 发布 Zone 事件
+   */
+  publishZoneEvent(
+    type: ZoneEvent['type'],
+    zoneId: string,
+    projectId: string,
+    data?: any
+  ): void {
+    console.log(`[GatewayEventBus] Publishing zone event ${type} for zone ${zoneId}:`, data);
+
+    const event: ZoneEvent = {
+      type,
+      zoneId,
+      projectId,
+      data
+    };
+
+    this.emit('zone_event', event);
+    console.log(`[GatewayEventBus] Emitted zone_event:${type}`);
+  }
+
+  /**
+   * 订阅 Zone 事件
+   */
+  onZoneEvent(handler: (event: ZoneEvent) => void): () => void {
+    this.on('zone_event', handler);
+    return () => this.off('zone_event', handler);
   }
 }
 

@@ -6,9 +6,9 @@
  */
 
 import { WebSocketServer, WebSocket } from 'ws';
-import { StratixStateSyncEvent, AgentStatusInfo } from '../../../stratix-core/stratix-protocol';
+import { StratixStateSyncEvent, StratixStateSyncEventType, AgentStatusInfo } from '../../../stratix-core/stratix-protocol';
 import { ProjectChannelMessage } from '../../../stratix-project/types';
-import { gatewayEventBus, ChannelMessageEvent } from '../../GatewayEventBus';
+import { gatewayEventBus, ChannelMessageEvent, ZoneEvent } from '../../GatewayEventBus';
 
 interface ClientInfo {
   ws: WebSocket;
@@ -22,6 +22,7 @@ export class StatusSyncService {
   private clientInfo: Map<WebSocket, ClientInfo> = new Map();
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private unsubscribeChannelMessage: (() => void) | null = null;
+  private unsubscribeZoneEvent: (() => void) | null = null;
 
   constructor(port: number = 3001) {
     this.wss = new WebSocketServer({ port });
@@ -100,6 +101,38 @@ export class StatusSyncService {
           }
         }
       }
+    });
+
+    // 监听 Zone 事件，转发到 WebSocket
+    this.unsubscribeZoneEvent = gatewayEventBus.onZoneEvent((event: ZoneEvent) => {
+      this.broadcastZoneEvent(event);
+    });
+  }
+
+  private broadcastZoneEvent(event: ZoneEvent): void {
+    const eventTypeMap: Record<ZoneEvent['type'], StratixStateSyncEventType> = {
+      'zone:updated': 'stratix:zone_updated',
+      'zone:file_added': 'stratix:zone_file_added',
+      'zone:file_removed': 'stratix:zone_file_removed',
+      'zone:member_joined': 'stratix:zone_member_joined',
+      'zone:member_left': 'stratix:zone_member_left',
+      'zone:deleted': 'stratix:zone_deleted',
+      'zone:task_created': 'stratix:zone_task_created',
+      'zone:task_updated': 'stratix:zone_task_updated',
+      'zone:task_deleted': 'stratix:zone_task_deleted',
+      'zone:task_claimed': 'stratix:zone_task_claimed',
+      'zone:message_added': 'stratix:zone_message_added'
+    };
+
+    this.broadcast({
+      eventType: eventTypeMap[event.type],
+      payload: {
+        zoneId: event.zoneId,
+        projectId: event.projectId,
+        ...event.data
+      },
+      timestamp: Date.now(),
+      requestId: `stratix-req-${Date.now()}`
     });
   }
 
@@ -274,6 +307,9 @@ export class StatusSyncService {
     }
     if (this.unsubscribeChannelMessage) {
       this.unsubscribeChannelMessage();
+    }
+    if (this.unsubscribeZoneEvent) {
+      this.unsubscribeZoneEvent();
     }
     this.wss.close();
   }

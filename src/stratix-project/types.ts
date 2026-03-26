@@ -66,6 +66,12 @@ export interface Project {
   updatedAt: Date;
   startedAt?: Date;
   completedAt?: Date;
+  // Zone context (OKR data from zone_contexts table)
+  zoneContext?: {
+    title: string;
+    prompt: string;
+    members: string[];
+  };
 }
 
 export type TaskStatus = 'pending' | 'configured' | 'waiting' | 'running' | 'completed' | 'paused' | 'failed';
@@ -288,4 +294,107 @@ export interface AgentBadge {
     responsibilities?: string[];
     communicationStyle?: string;
   };
+}
+
+// ============================================
+// Zone 类型定义
+// ============================================
+
+export type FileType = 'md' | 'txt' | 'ts' | 'js' | 'fig' | 'image' | 'link' | 'folder' | 'other';
+
+export interface ZoneFile {
+  id: string;
+  zoneId: string;
+  name: string;
+  sourceType: 'local' | 'url';
+  source: string;
+  content?: string;
+  fileType?: FileType;
+  lastFetched?: number;
+  metadata?: {
+    size?: number;
+    mimeType?: string;
+    [key: string]: any;
+  };
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Zone {
+  id: string;
+  projectId: string;
+  title: string;
+  prompt: string;
+  files: ZoneFile[];
+  members: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ZoneCreateRequest {
+  title: string;
+  prompt?: string;
+}
+
+export interface ZoneUpdateRequest {
+  title?: string;
+  prompt?: string;
+}
+
+export interface ZoneFileAddRequest {
+  name: string;
+  sourceType: 'local' | 'url';
+  source: string;
+}
+
+export interface ZoneFolderScanRequest {
+  folderPath: string;
+  recursive?: boolean;
+  extensions?: string[];
+}
+
+// Zone Task
+export type ZoneTaskStatus = 'pending' | 'in_progress' | 'done';
+
+export interface ZoneTask {
+  id: string;
+  zoneId: string;
+  title: string;
+  status: ZoneTaskStatus;
+  assignee: string | null;
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ZoneTaskCreateRequest {
+  title: string;
+}
+
+export interface ZoneTaskUpdateRequest {
+  title?: string;
+  status?: ZoneTaskStatus;
+  assignee?: string | null;
+}
+
+export interface ZoneTaskClaimRequest {
+  agentId: string;
+}
+
+// Zone Message
+export type SenderType = 'user' | 'agent';
+
+export interface ZoneMessage {
+  id: string;
+  zoneId: string;
+  senderId: string;
+  senderType: SenderType;
+  content: string;
+  createdAt: number;
+}
+
+export interface ZoneMessageCreateRequest {
+  senderId: string;
+  senderType: SenderType;
+  content: string;
 }
