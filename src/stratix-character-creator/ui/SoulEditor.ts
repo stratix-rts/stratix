@@ -306,6 +306,7 @@ export class SoulEditor {
             <button class="domain-filter-btn" data-domain="design" style="padding: 4px 10px; font-size: 11px; border-radius: 12px; border: 1px solid ${THEME.border}; background: ${THEME.inputBg}; color: ${THEME.text}; cursor: pointer;">设计</button>
             <button class="domain-filter-btn" data-domain="marketing" style="padding: 4px 10px; font-size: 11px; border-radius: 12px; border: 1px solid ${THEME.border}; background: ${THEME.inputBg}; color: ${THEME.text}; cursor: pointer;">营销</button>
             <button class="domain-filter-btn" data-domain="product" style="padding: 4px 10px; font-size: 11px; border-radius: 12px; border: 1px solid ${THEME.border}; background: ${THEME.inputBg}; color: ${THEME.text}; cursor: pointer;">产品</button>
+            <button id="random-template-btn" style="padding: 4px 10px; font-size: 11px; border-radius: 12px; border: 1px solid ${THEME.border}; background: ${THEME.inputBg}; color: ${THEME.text}; cursor: pointer;">🎲 随机</button>
           </div>
           <select id="soul-template-select" style="
             width: 100%;
@@ -564,6 +565,25 @@ export class SoulEditor {
           this.applyTemplate(template);
         }
       }
+    });
+
+    // 随机模板按钮
+    const randomTemplateBtn = node.querySelector('#random-template-btn') as HTMLButtonElement;
+    randomTemplateBtn?.addEventListener('click', () => {
+      // 按当前领域筛选
+      const filtered = currentDomain === 'all'
+        ? SOUL_TEMPLATES
+        : SOUL_TEMPLATES.filter(t => t.domain === currentDomain);
+
+      if (filtered.length === 0) {
+        this.showToast('当前领域没有模板');
+        return;
+      }
+
+      const randomIndex = Math.floor(Math.random() * filtered.length);
+      const randomTemplate = filtered[randomIndex];
+      this.applyTemplate(randomTemplate);
+      this.showToast(`已应用: ${randomTemplate.name}`);
     });
 
     // 目标自动补全建议
