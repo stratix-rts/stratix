@@ -299,15 +299,15 @@ describe('ZoneRepository', () => {
         content: 'Current content',
         metadata: {
           versions: [
-            { id: 'v1', content: 'Version 1', createdAt: 1000 },
-            { id: 'v2', content: 'Version 2', createdAt: 2000 }
+            { id: 'v1', content: 'Version 1', createdAt: 1000, description: 'V1' },
+            { id: 'v2', content: 'Version 2', createdAt: 2000, description: 'V2' }
           ],
           currentVersionId: 'v2'
         }
       };
 
       // Save current as new version before rollback
-      const rollbackVersion = {
+      const rollbackVersion: any = {
         id: 'v3',
         content: file.content,
         createdAt: Date.now(),

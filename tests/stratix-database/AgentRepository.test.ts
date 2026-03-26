@@ -4,7 +4,7 @@
  * These tests verify the AgentRepository logic using mocked database responses.
  */
 
-import { StratixAgentConfig } from '../../src/stratix-core/stratix-protocol';
+// Use any for type-agnostic testing
 
 describe('AgentRepository', () => {
   // Mock database interface
@@ -21,7 +21,7 @@ describe('AgentRepository', () => {
     };
   });
 
-  const createTestAgent = (overrides: Partial<StratixAgentConfig> = {}): StratixAgentConfig => {
+  const createTestAgent = (overrides: any = {}): any => {
     const now = Date.now();
     return {
       agentId: 'agent-1',
@@ -42,7 +42,7 @@ describe('AgentRepository', () => {
   };
 
   describe('Agent data transformation', () => {
-    it('should transform database row to StratixAgentConfig', () => {
+    it('should transform database row to agent config', () => {
       const row = {
         agent_id: 'agent-1',
         name: 'Test Agent',
@@ -61,7 +61,7 @@ describe('AgentRepository', () => {
       };
 
       // Simulate mapRowToAgent
-      const agent: StratixAgentConfig = {
+      const agent: any = {
         agentId: row.agent_id,
         name: row.name,
         type: row.type,
@@ -105,7 +105,7 @@ describe('AgentRepository', () => {
         updated_at: 1234567890
       };
 
-      const agent: StratixAgentConfig = {
+      const agent: any = {
         agentId: row.agent_id,
         name: row.name,
         type: row.type,
@@ -149,7 +149,7 @@ describe('AgentRepository', () => {
         updated_at: 1234567890
       };
 
-      const agent: StratixAgentConfig = {
+      const agent: any = {
         agentId: row.agent_id,
         name: row.name,
         type: row.type,
