@@ -1,16 +1,82 @@
 import { Router, Request, Response } from 'express';
 import { dataStoreService } from '../../dataStoreService';
 import { StratixRequestHelper } from '../../../stratix-core/utils';
-import { StratixAgentConfig } from '../../../stratix-core/stratix-protocol';
+import {
+  StratixAgentConfig,
+  TemplateConsumptionResponse,
+  TemplateEditResponse
+} from '../../../stratix-core/stratix-protocol';
 
 const router = Router();
 const requestHelper = StratixRequestHelper.getInstance();
 
+/**
+ * 转换模板为消费态响应
+ * 只包含运行时需要的数据
+ */
+function toConsumptionResponse(template: StratixAgentConfig): TemplateConsumptionResponse {
+  return {
+    agentId: template.agentId,
+    name: template.name,
+    renderedPrompt: template.soul
+      ? buildRenderedPrompt(template.soul)
+      : '',
+    recommendedSkills: template.skills?.map(s => s.skillId) || [],
+  };
+}
+
+/**
+ * 转换模板为编辑态响应
+ * 包含所有可编辑字段
+ */
+function toEditResponse(template: StratixAgentConfig): TemplateEditResponse {
+  return {
+    ...template,
+    renderedPrompt: template.soul
+      ? buildRenderedPrompt(template.soul)
+      : undefined,
+  };
+}
+
+/**
+ * 构建渲染后的提示词
+ */
+function buildRenderedPrompt(soul: NonNullable<StratixAgentConfig['soul']>): string {
+  const parts: string[] = [];
+
+  if (soul.identity) {
+    parts.push(soul.identity);
+  }
+
+  if (soul.goals && soul.goals.length > 0) {
+    parts.push('## 目标');
+    parts.push(soul.goals.map(g => `- ${g}`).join('\n'));
+  }
+
+  if (soul.personality) {
+    parts.push(`## 性格特点\n${soul.personality}`);
+  }
+
+  return parts.join('\n\n');
+}
+
 router.get('/list', async (req: Request, res: Response) => {
   try {
+    const isEditMode = req.query.edit === 'true';
     const templateLibrary = dataStoreService.getTemplateLibrary();
     const templates = await templateLibrary.getAllTemplates();
-    res.json(requestHelper.success(templates, 'Templates fetched'));
+
+    if (isEditMode) {
+      res.json(requestHelper.success({
+        preset: templates.preset.map(toEditResponse),
+        custom: templates.custom.map(toEditResponse),
+      }, 'Templates fetched (edit mode)'));
+    } else {
+      res.json(requestHelper.success({
+        preset: templates.preset.map(toConsumptionResponse),
+        custom: templates.custom.map(toConsumptionResponse),
+      }, 'Templates fetched'));
+    }
   } catch (error) {
     res.status(500).json(requestHelper.serverError('Internal server error'));
   }
@@ -18,9 +84,15 @@ router.get('/list', async (req: Request, res: Response) => {
 
 router.get('/preset', async (req: Request, res: Response) => {
   try {
+    const isEditMode = req.query.edit === 'true';
     const templateLibrary = dataStoreService.getTemplateLibrary();
     const preset = templateLibrary.getPresetTemplates();
-    res.json(requestHelper.success(preset, 'Preset templates fetched'));
+
+    if (isEditMode) {
+      res.json(requestHelper.success(preset.map(toEditResponse), 'Preset templates fetched (edit mode)'));
+    } else {
+      res.json(requestHelper.success(preset.map(toConsumptionResponse), 'Preset templates fetched'));
+    }
   } catch (error) {
     res.status(500).json(requestHelper.serverError('Internal server error'));
   }
@@ -28,9 +100,15 @@ router.get('/preset', async (req: Request, res: Response) => {
 
 router.get('/custom', async (req: Request, res: Response) => {
   try {
+    const isEditMode = req.query.edit === 'true';
     const templateLibrary = dataStoreService.getTemplateLibrary();
     const custom = await templateLibrary.getCustomTemplates();
-    res.json(requestHelper.success(custom, 'Custom templates fetched'));
+
+    if (isEditMode) {
+      res.json(requestHelper.success(custom.map(toEditResponse), 'Custom templates fetched (edit mode)'));
+    } else {
+      res.json(requestHelper.success(custom.map(toConsumptionResponse), 'Custom templates fetched'));
+    }
   } catch (error) {
     res.status(500).json(requestHelper.serverError('Internal server error'));
   }
@@ -39,18 +117,27 @@ router.get('/custom', async (req: Request, res: Response) => {
 router.get('/:agentId', async (req: Request, res: Response): Promise<void> => {
   try {
     const agentId = String(req.params.agentId);
+    const isEditMode = req.query.edit === 'true';
     const templateLibrary = dataStoreService.getTemplateLibrary();
-    
+
     const preset = templateLibrary.getPresetTemplates().find(t => t.agentId === agentId);
     if (preset) {
-      res.json(requestHelper.success(preset, 'Template fetched'));
+      if (isEditMode) {
+        res.json(requestHelper.success(toEditResponse(preset), 'Template fetched (edit mode)'));
+      } else {
+        res.json(requestHelper.success(toConsumptionResponse(preset), 'Template fetched'));
+      }
       return;
     }
 
     const custom = await templateLibrary.getCustomTemplates();
     const customTemplate = custom.find(t => t.agentId === agentId);
     if (customTemplate) {
-      res.json(requestHelper.success(customTemplate, 'Template fetched'));
+      if (isEditMode) {
+        res.json(requestHelper.success(toEditResponse(customTemplate), 'Template fetched (edit mode)'));
+      } else {
+        res.json(requestHelper.success(toConsumptionResponse(customTemplate), 'Template fetched'));
+      }
       return;
     }
 

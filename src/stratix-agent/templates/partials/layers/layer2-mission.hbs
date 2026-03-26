@@ -1,0 +1,22 @@
+{{#> meta-header}}
+# 使命 MISSION
+{{/meta-header}}
+
+{{#if soul.mission}}
+{{soul.mission}}
+{{/if}}
+
+{{#if soul.goals}}
+## 目标 Goals
+{{#each soul.goals}}
+- {{this}}
+{{/each}}
+{{/if}}
+
+{{#if soul.workingMode}}
+## 工作模式 Working Mode
+{{soul.workingMode}}
+{{/if}}
+
+{{#> meta-footer}}
+{{/meta-footer}}

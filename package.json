@@ -30,7 +30,10 @@
     "electron:build": "npm run build && npm run build:electron && electron-builder --config electron.config.json",
     "build:electron": "tsc -p tsconfig.electron.json || true",
     "tailscale:test": "tsx src/stratix-tailscale/test-embedded.ts",
-    "tailscale:login": "tsx src/stratix-tailscale/interactive-login.ts"
+    "tailscale:login": "tsx src/stratix-tailscale/interactive-login.ts",
+    "nocodb:build": "cd vendor/nocodb && pnpm install && pnpm -r build --filter=nocodb",
+    "nocodb:start": "node vendor/nocodb/packages/nocodb/dist/bundle.js",
+    "nocodb:start:dev": "cd vendor/nocodb/packages/nocodb && pnpm start"
   },
   "keywords": [
     "stratix",
@@ -53,6 +56,7 @@
     "@langchain/ollama": "^1.2.6",
     "@langchain/openai": "^1.3.0",
     "@noble/ed25519": "^3.0.0",
+    "@types/handlebars": "^4.1.0",
     "@types/lodash-es": "^4.17.12",
     "axios": "^1.13.5",
     "better-sqlite3": "^12.8.0",
@@ -60,6 +64,7 @@
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
+    "handlebars": "^4.7.8",
     "http-proxy-middleware": "^3.0.5",
     "lodash-es": "^4.17.23",
     "lowdb": "^7.0.1",
@@ -69,7 +74,10 @@
     "phaser": "^3.90.0",
     "sequential-workflow-designer": "^0.37.1",
     "tsconfig-paths": "^4.2.0",
-    "vue": "^3.5.28"
+    "vue": "^3.5.28",
+    "vxe-pc-ui": "^4.13.16",
+    "vxe-table": "^4.18.9",
+    "xe-utils": "^4.0.4"
   },
   "devDependencies": {
     "@jest/globals": "^29.7.0",
@@ -80,6 +88,7 @@
     "@types/express": "^5.0.6",
     "@types/fs-extra": "^11.0.4",
     "@types/jest": "^30.0.0",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.19.33",
     "@types/pixelmatch": "^5.2.0",
     "@types/ws": "^8.18.1",

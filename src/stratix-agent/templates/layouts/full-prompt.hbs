@@ -1,0 +1,36 @@
+{{#> layers/layer1-role}}
+{{> layers/layer2-mission}}
+
+{{#if config.includeWorkflow}}
+{{> layers/layer3-workflow}}
+{{/if}}
+
+{{> layers/layer4-rules}}
+
+{{#if skills}}
+{{> layers/layer5-skills}}
+{{/if}}
+
+{{#if config.includeLearnedSkills}}
+{{> layers/layer5b-learned-skills}}
+{{/if}}
+
+{{#if memoryContext}}
+{{> layers/layer6-memory}}
+{{/if}}
+
+{{#if config.includeHistory}}
+{{> layers/layer7-history}}
+{{/if}}
+
+{{#if config.includeReflection}}
+{{> layers/layer8-reflection}}
+{{/if}}
+
+{{#if config.includeSuccessMetrics}}
+{{> layers/layer9-metrics}}
+{{/if}}
+
+{{#if config.includeZoneContext}}
+{{> layers/layer10-zone}}
+{{/if}}

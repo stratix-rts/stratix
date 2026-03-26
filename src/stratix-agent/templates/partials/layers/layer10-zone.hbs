@@ -1,0 +1,41 @@
+{{#> meta-header}}
+# Zone 上下文 ZONE CONTEXT
+{{/meta-header}}
+
+{{#if zone.inZone}}
+【当前 Zone: {{zone.currentZone.title}}】
+{{zone.currentZone.prompt}}
+
+{{#if zone.currentZone.files}}
+【上下文文件】
+{{#each zone.currentZone.files}}
+- {{this.name}}: {{truncate this.content 200}}
+{{/each}}
+{{/if}}
+
+{{#if zone.currentZone.members}}
+【协作成员】
+{{#each zone.currentZone.members}}
+- Agent {{this}}
+{{/each}}
+{{/if}}
+
+{{else}}
+【当前状态: 空闲】
+{{#if zone.availableZones}}
+【可进入的 Zone 列表】
+{{#each zone.availableZones}}
+- **{{coalesce this.title this.name}}** ({{this.name}})
+  - 描述: {{coalesce this.prompt '无'}}
+  - 当前人数: {{this.agentCount}}
+  - Zone ID: {{this.zoneId}}
+{{/each}}
+
+你可以使用 moveTo(zoneId) 命令进入指定的 Zone。
+{{else}}
+暂无可进入的 Zone，请等待任务分配。
+{{/if}}
+{{/if}}
+
+{{#> meta-footer}}
+{{/meta-footer}}

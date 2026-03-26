@@ -4,6 +4,7 @@ import { Depth } from '@/design-system/tokens/depth';
 import { ContainerComponentBase } from '@/stratix-core/ui/ContainerComponent.base';
 import type { StratixSoulConfig } from '@/stratix-core/stratix-protocol';
 import { SOUL_TEMPLATES, DEFAULT_SOUL, type SoulTemplate } from '../config/soulTemplates';
+import { getButtonInlineStyles } from './_buttonStyles';
 
 export interface SoulEditorConfig {
   x: number;
@@ -29,6 +30,7 @@ export class SoulEditor {
   private config: SoulEditorConfig;
   private container: Phaser.GameObjects.DOMElement | null = null;
   private soul: StratixSoulConfig;
+  private rawContent: string = '';
   private onChange?: (soul: StratixSoulConfig) => void;
 
   constructor(scene: Phaser.Scene, config: SoulEditorConfig) {
@@ -55,15 +57,7 @@ export class SoulEditor {
         (goal, i) => `
         <div class="goal-item" data-index="${i}" style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
           <span style="flex: 1; color: ${THEME.text}; font-size: 12px;">${this.escapeHtml(goal)}</span>
-          <button class="remove-goal-btn" data-index="${i}" style="
-            background: var(--ds-status-danger-bg, rgba(255,0,0,0.1));
-            border: none;
-            color: var(--ds-status-danger);
-            padding: 2px 8px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 11px;
-          ">删除</button>
+          <button class="remove-goal-btn" data-index="${i}" style="${getButtonInlineStyles('danger')}">删除</button>
         </div>
       `
       )
@@ -135,15 +129,7 @@ export class SoulEditor {
               color: ${THEME.text};
               font-size: 12px;
             " />
-            <button id="add-goal-btn" style="
-              padding: 8px 16px;
-              background: var(--ds-bg-tertiary);
-              border: 1px solid ${THEME.accent};
-              border-radius: 6px;
-              color: ${THEME.accent};
-              font-size: 12px;
-              cursor: pointer;
-            ">添加</button>
+            <button id="add-goal-btn" style="${getButtonInlineStyles('primary')}">添加</button>
           </div>
         </div>
 
@@ -226,11 +212,13 @@ export class SoulEditor {
   }
 
   private applyTemplate(template: SoulTemplate): void {
+    const soul = template.soul || { identity: '', goals: [], personality: '' };
     this.soul = {
-      identity: template.soul.identity,
-      goals: [...template.soul.goals],
-      personality: template.soul.personality,
+      identity: soul.identity || '',
+      goals: soul.goals ? [...soul.goals] : [],
+      personality: soul.personality || '',
     };
+    this.rawContent = template.rawContent || '';
 
     const node = this.container?.node as HTMLElement;
     if (!node) return;
@@ -260,15 +248,7 @@ export class SoulEditor {
         (goal, i) => `
         <div class="goal-item" data-index="${i}" style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
           <span style="flex: 1; color: ${THEME.text}; font-size: 12px;">${this.escapeHtml(goal)}</span>
-          <button class="remove-goal-btn" data-index="${i}" style="
-            background: var(--ds-status-danger-bg, rgba(255,0,0,0.1));
-            border: none;
-            color: var(--ds-status-danger);
-            padding: 2px 8px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 11px;
-          ">删除</button>
+          <button class="remove-goal-btn" data-index="${i}" style="${getButtonInlineStyles('danger')}">删除</button>
         </div>
       `
       )

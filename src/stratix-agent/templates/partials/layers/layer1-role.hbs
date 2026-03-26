@@ -1,0 +1,31 @@
+{{#> meta-header}}
+# 角色设定 ROLE DEFINITION
+{{/meta-header}}
+
+## {{agent.name}}
+
+{{#if agent.identity}}
+{{agent.identity}}
+{{else}}
+[请描述 Agent 的身份定位]
+{{/if}}
+
+{{#if agent.personality}}
+## 个性特征 Personality
+{{agent.personality}}
+{{/if}}
+
+{{#if agent.tone}}
+## 语气风格 Tone
+{{agent.tone}}
+{{/if}}
+
+{{#if agent.values}}
+## 价值观 Values
+{{#each agent.values}}
+{{increment @index}}. {{this}}
+{{/each}}
+{{/if}}
+
+{{#> meta-footer}}
+{{/meta-footer}}
