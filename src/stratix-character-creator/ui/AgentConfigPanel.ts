@@ -598,7 +598,20 @@ export class AgentConfigPanel {
       if (goal) {
         this.soul.goals.push(goal);
         newGoalInput.value = '';
-        this.renderSoulContent(panel);
+
+        // 直接在 DOM 中添加目标行，不重新渲染整个面板
+        const safeGoal = this.escapeHtml(goal);
+        const newGoalHtml = `
+          <div class="goal-item" data-index="${this.soul.goals.length - 1}" data-goal="${safeGoal}" style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+            <span style="display: block; flex: 1; color: var(--ds-text-primary); font-size: 12px; overflow: hidden; text-overflow: ellipsis;">${safeGoal}</span>
+            <button class="remove-goal-btn" data-index="${this.soul.goals.length - 1}" style="${getButtonInlineStyles('danger')}">删除</button>
+          </div>
+        `;
+        goalsList.insertAdjacentHTML('beforeend', newGoalHtml);
+
+        // 如果是第一个目标，移除"暂无目标"的提示
+        const emptyMsg = goalsList.querySelector('span[style*="暂无目标"]');
+        if (emptyMsg) emptyMsg.remove();
       }
     });
 
@@ -613,7 +626,24 @@ export class AgentConfigPanel {
       if (target.classList.contains('remove-goal-btn')) {
         const index = parseInt(target.dataset.index || '0', 10);
         this.soul.goals.splice(index, 1);
-        this.renderSoulContent(panel);
+
+        // 直接从 DOM 中移除目标行，不重新渲染整个面板
+        const goalItems = goalsList.querySelectorAll('.goal-item');
+        if (goalItems[index]) {
+          goalItems[index].remove();
+        }
+
+        // 重新索引剩余的目标项
+        goalsList.querySelectorAll('.goal-item').forEach((item, i) => {
+          item.setAttribute('data-index', String(i));
+          const removeBtn = item.querySelector('.remove-goal-btn');
+          if (removeBtn) removeBtn.setAttribute('data-index', String(i));
+        });
+
+        // 如果没有目标了，显示"暂无目标"
+        if (this.soul.goals.length === 0) {
+          goalsList.innerHTML = '<span style="color: var(--ds-text-muted); font-size: 12px;">暂无目标</span>';
+        }
       }
     });
 
