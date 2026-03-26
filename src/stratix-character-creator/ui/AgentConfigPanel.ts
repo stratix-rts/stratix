@@ -534,7 +534,30 @@ export class AgentConfigPanel {
         }
         if (template) {
           this.applySoulTemplate(template);
-          this.renderSoulContent(panel);
+          // 只更新 soul 相关字段，不重新渲染整个面板以保留事件监听器
+          const identityInput = panel.querySelector('#soul-identity') as HTMLTextAreaElement;
+          const personalityInput = panel.querySelector('#soul-personality') as HTMLTextAreaElement;
+          const goalsList = panel.querySelector('#goals-list') as HTMLElement;
+
+          if (identityInput) identityInput.value = this.soul.identity;
+          if (personalityInput) personalityInput.value = this.soul.personality;
+
+          // 更新目标列表
+          if (goalsList) {
+            if (this.soul.goals.length === 0) {
+              goalsList.innerHTML = '<span style="color: var(--ds-text-muted); font-size: 12px;">暂无目标</span>';
+            } else {
+              goalsList.innerHTML = this.soul.goals.map((goal, i) => {
+                const safeGoal = goal ? this.escapeHtml(goal) : '';
+                return `
+                  <div class="goal-item" data-index="${i}" data-goal="${safeGoal}" style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                    <span style="display: block; flex: 1; color: var(--ds-text-primary); font-size: 12px; overflow: hidden; text-overflow: ellipsis;">${safeGoal}</span>
+                    <button class="remove-goal-btn" data-index="${i}" style="${getButtonInlineStyles('danger')}">删除</button>
+                  </div>
+                `;
+              }).join('');
+            }
+          }
         }
       }
     });
