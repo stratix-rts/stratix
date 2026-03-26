@@ -602,21 +602,47 @@ export class SoulEditor {
       reader.onload = (event) => {
         try {
           const json = JSON.parse(event.target?.result as string);
-          if (json.identity !== undefined || json.goals !== undefined || json.personality !== undefined) {
-            this.saveHistory();
-            this.soul = {
-              identity: json.identity || '',
-              goals: Array.isArray(json.goals) ? json.goals : [],
-              personality: json.personality || '',
-            };
-            this.updateUI();
-            this.notifyChange();
-            this.showToast('导入成功');
-          } else {
-            this.showToast('无效的模板格式');
+
+          // 验证 Soul 配置格式
+          const errors: string[] = [];
+          if (json.identity !== undefined && typeof json.identity !== 'string') {
+            errors.push('identity 必须是字符串');
           }
+          if (json.goals !== undefined && !Array.isArray(json.goals)) {
+            errors.push('goals 必须是数组');
+          }
+          if (json.goals && Array.isArray(json.goals)) {
+            const nonStringGoals = json.goals.filter((g: unknown) => typeof g !== 'string');
+            if (nonStringGoals.length > 0) {
+              errors.push('goals 数组中的所有元素必须是字符串');
+            }
+          }
+          if (json.personality !== undefined && typeof json.personality !== 'string') {
+            errors.push('personality 必须是字符串');
+          }
+
+          // 检查是否包含 Soul 配置的必要字段
+          const hasSoulConfig = json.identity !== undefined || json.goals !== undefined || json.personality !== undefined;
+          if (!hasSoulConfig) {
+            errors.push('缺少 Soul 配置字段（identity, goals, personality）');
+          }
+
+          if (errors.length > 0) {
+            this.showToast('导入失败：' + errors[0]);
+            return;
+          }
+
+          this.saveHistory();
+          this.soul = {
+            identity: json.identity || '',
+            goals: Array.isArray(json.goals) ? json.goals : [],
+            personality: json.personality || '',
+          };
+          this.updateUI();
+          this.notifyChange();
+          this.showToast('导入成功');
         } catch {
-          this.showToast('导入失败：无效的 JSON');
+          this.showToast('导入失败：无效的 JSON 格式');
         }
         // 清空 input 以便重复选择同一文件
         (e.target as HTMLInputElement).value = '';
