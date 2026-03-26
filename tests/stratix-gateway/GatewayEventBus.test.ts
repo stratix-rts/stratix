@@ -352,6 +352,77 @@ describe('GatewayEventBus', () => {
 
         gatewayEventBus.off('zone_event', handler);
       });
+
+      it('should emit zone:file_removed event', () => {
+        const handler = jest.fn();
+        gatewayEventBus.on('zone_event', handler);
+
+        gatewayEventBus.publishZoneEvent('zone:file_removed', 'zone-1', 'proj-1', { fileId: 'file-1', fileName: 'doc.pdf' });
+
+        expect(handler).toHaveBeenCalledTimes(1);
+        const emittedEvent = handler.mock.calls[0][0];
+        expect(emittedEvent.type).toBe('zone:file_removed');
+        expect(emittedEvent.data.fileId).toBe('file-1');
+
+        gatewayEventBus.off('zone_event', handler);
+      });
+
+      it('should emit zone:file_updated event', () => {
+        const handler = jest.fn();
+        gatewayEventBus.on('zone_event', handler);
+
+        gatewayEventBus.publishZoneEvent('zone:file_updated', 'zone-1', 'proj-1', { file: { id: 'file-1', name: 'updated.pdf' } });
+
+        expect(handler).toHaveBeenCalledTimes(1);
+        const emittedEvent = handler.mock.calls[0][0];
+        expect(emittedEvent.type).toBe('zone:file_updated');
+        expect(emittedEvent.data.file.name).toBe('updated.pdf');
+
+        gatewayEventBus.off('zone_event', handler);
+      });
+
+      it('should emit zone:restored event', () => {
+        const handler = jest.fn();
+        gatewayEventBus.on('zone_event', handler);
+
+        gatewayEventBus.publishZoneEvent('zone:restored', 'zone-old', 'proj-1', { title: 'Restored Zone' });
+
+        expect(handler).toHaveBeenCalledTimes(1);
+        const emittedEvent = handler.mock.calls[0][0];
+        expect(emittedEvent.type).toBe('zone:restored');
+        expect(emittedEvent.zoneId).toBe('zone-old');
+
+        gatewayEventBus.off('zone_event', handler);
+      });
+
+      it('should emit zone:task_deleted event', () => {
+        const handler = jest.fn();
+        gatewayEventBus.on('zone_event', handler);
+
+        gatewayEventBus.publishZoneEvent('zone:task_deleted', 'zone-1', 'proj-1', { taskId: 'task-1' });
+
+        expect(handler).toHaveBeenCalledTimes(1);
+        const emittedEvent = handler.mock.calls[0][0];
+        expect(emittedEvent.type).toBe('zone:task_deleted');
+        expect(emittedEvent.data.taskId).toBe('task-1');
+
+        gatewayEventBus.off('zone_event', handler);
+      });
+
+      it('should emit zone:task_claimed event', () => {
+        const handler = jest.fn();
+        gatewayEventBus.on('zone_event', handler);
+
+        gatewayEventBus.publishZoneEvent('zone:task_claimed', 'zone-1', 'proj-1', { taskId: 'task-1', assignee: 'agent-x' });
+
+        expect(handler).toHaveBeenCalledTimes(1);
+        const emittedEvent = handler.mock.calls[0][0];
+        expect(emittedEvent.type).toBe('zone:task_claimed');
+        expect(emittedEvent.data.taskId).toBe('task-1');
+        expect(emittedEvent.data.assignee).toBe('agent-x');
+
+        gatewayEventBus.off('zone_event', handler);
+      });
     });
 
     describe('onZoneEvent', () => {
