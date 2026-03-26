@@ -1143,6 +1143,32 @@ router.get('/zones/:zoneId/export', async (req: Request, res: Response): Promise
 });
 
 /**
+ * POST /api/zones/:zoneId/clone
+ * Clone a Zone
+ */
+router.post('/zones/:zoneId/clone', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const zoneId = req.params.zoneId as string;
+    const { includeFiles, includeTasks } = req.body as { includeFiles?: boolean; includeTasks?: boolean };
+
+    const zone = await zoneService.cloneZone(zoneId, { includeFiles, includeTasks });
+
+    res.json({
+      success: true,
+      zone
+    });
+  } catch (error) {
+    console.error('[Zone API] Clone zone failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to clone zone';
+    if (message.includes('not found')) {
+      res.status(404).json({ success: false, error: message });
+    } else {
+      res.status(500).json({ success: false, error: message });
+    }
+  }
+});
+
+/**
  * POST /api/zones/import
  * Import Zone from template
  */

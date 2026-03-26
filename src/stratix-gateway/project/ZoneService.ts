@@ -941,6 +941,48 @@ export class ZoneService {
   }
 
   /**
+   * Clone a Zone (duplicate within same project)
+   */
+  public async cloneZone(zoneId: string, options?: { includeFiles?: boolean; includeTasks?: boolean }): Promise<Zone> {
+    await this.ensureInitialized();
+
+    const sourceZone = zoneRepository.getZone(zoneId);
+    if (!sourceZone) {
+      throw new Error(`Zone not found: ${zoneId}`);
+    }
+
+    // Create new zone with cloned title
+    const cloneTitle = `Clone of ${sourceZone.title}`;
+    const newZone = zoneRepository.createZone(sourceZone.projectId, cloneTitle, sourceZone.prompt || '');
+
+    // Clone files if requested
+    if (options?.includeFiles) {
+      const files = zoneRepository.getFilesByZone(zoneId);
+      for (const file of files) {
+        try {
+          await this.addFile(newZone.id, file.name, file.sourceType as 'local' | 'url', file.source || '');
+        } catch (error) {
+          console.warn(`[ZoneService] Failed to clone file ${file.name}:`, error);
+        }
+      }
+    }
+
+    // Clone tasks if requested
+    if (options?.includeTasks) {
+      const tasks = zoneRepository.getTasks(zoneId);
+      for (const task of tasks) {
+        try {
+          zoneRepository.createTask(newZone.id, task.title, task.createdBy);
+        } catch (error) {
+          console.warn(`[ZoneService] Failed to clone task "${task.title}":`, error);
+        }
+      }
+    }
+
+    return zoneRepository.getZone(newZone.id)!;
+  }
+
+  /**
    * Import Zone from template
    */
   public async importZone(projectId: string, template: { title: string; prompt: string; files?: Array<{ name: string; sourceType: 'local' | 'url'; source: string }>; tasks?: Array<{ title: string }> }, creatorAgentId?: string): Promise<Zone> {
