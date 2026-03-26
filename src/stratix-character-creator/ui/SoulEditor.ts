@@ -390,8 +390,8 @@ export class SoulEditor {
 
         <div class="section" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid ${THEME.border};">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <label style="font-size: 11px; color: ${THEME.textMuted};">
-              Prompt 实时预览
+            <label style="font-size: 11px; color: ${THEME.textMuted}; cursor: pointer;" id="prompt-preview-toggle">
+              ▼ Prompt 实时预览
             </label>
             <button id="copy-prompt-btn" style="${getButtonInlineStyles('ghost')}">复制</button>
           </div>
@@ -454,6 +454,21 @@ export class SoulEditor {
     const templateSearch = node.querySelector('#template-search') as HTMLInputElement;
     const domainFilters = node.querySelector('#domain-filters') as HTMLElement;
     let currentDomain = 'all';
+
+    // Prompt 预览折叠/展开
+    const promptPreviewToggle = node.querySelector('#prompt-preview-toggle') as HTMLElement;
+    const promptPreview = node.querySelector('#prompt-preview') as HTMLPreElement;
+    let isPreviewCollapsed = false;
+
+    promptPreviewToggle?.addEventListener('click', () => {
+      isPreviewCollapsed = !isPreviewCollapsed;
+      if (promptPreview) {
+        promptPreview.style.display = isPreviewCollapsed ? 'none' : 'block';
+      }
+      if (promptPreviewToggle) {
+        promptPreviewToggle.textContent = isPreviewCollapsed ? '▶ Prompt 实时预览' : '▼ Prompt 实时预览';
+      }
+    });
 
     // 领域筛选事件
     domainFilters?.addEventListener('click', (e) => {
