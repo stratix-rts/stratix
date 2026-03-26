@@ -16,6 +16,12 @@ export interface SoulEditorConfig {
   onChange?: (soul: StratixSoulConfig) => void;
 }
 
+// 目标项（含优先级）
+export interface GoalItem {
+  text: string;
+  priority?: 'high' | 'medium' | 'low';
+}
+
 const THEME = {
   bg: 'var(--ds-bg-secondary)',
   border: 'var(--ds-border)',
@@ -24,6 +30,9 @@ const THEME = {
   textMuted: 'var(--ds-text-muted)',
   inputBg: 'var(--ds-bg-tertiary)',
   success: 'var(--ds-status-success)',
+  priorityHigh: '#ef4444',
+  priorityMedium: '#f59e0b',
+  priorityLow: '#22c55e',
 };
 
 const MAX_HISTORY_SIZE = 50;
@@ -159,8 +168,14 @@ export class SoulEditor {
       .map(
         (goal, i) => `
         <div class="goal-item" data-index="${i}" draggable="true" style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; cursor: grab; padding: 4px; border-radius: 4px; transition: background 0.15s;">
+          <span class="priority-indicator" data-priority="medium" style="width: 4px; height: 16px; border-radius: 2px; background: ${THEME.priorityMedium}; flex-shrink: 0;"></span>
           <span class="drag-handle" style="color: ${THEME.textMuted}; cursor: grab; font-size: 14px; padding: 0 4px;">⋮⋮</span>
           <span style="flex: 1; color: ${THEME.text}; font-size: 12px;">${this.escapeHtml(goal)}</span>
+          <select class="priority-select" data-index="${i}" style="background: ${THEME.inputBg}; border: 1px solid ${THEME.border}; border-radius: 4px; color: ${THEME.text}; font-size: 10px; padding: 2px 4px; cursor: pointer;">
+            <option value="high" style="color: ${THEME.priorityHigh};">高</option>
+            <option value="medium" selected style="color: ${THEME.priorityMedium};">中</option>
+            <option value="low" style="color: ${THEME.priorityLow};">低</option>
+          </select>
           <button class="remove-goal-btn" data-index="${i}" style="${getButtonInlineStyles('danger')}">删除</button>
         </div>
       `
@@ -172,6 +187,7 @@ export class SoulEditor {
         .goal-item:hover { background: var(--ds-bg-tertiary); }
         .goal-item.drag-before { border-top: 2px solid var(--ds-brand-primary); }
         .goal-item.drag-after { border-bottom: 2px solid var(--ds-brand-primary); }
+        .priority-select:hover { border-color: var(--ds-brand-primary); }
       </style>
       <div class="soul-editor" style="
         width: ${this.config.width}px;
@@ -686,8 +702,14 @@ export class SoulEditor {
       .map(
         (goal, i) => `
         <div class="goal-item" data-index="${i}" draggable="true" style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; cursor: grab; padding: 4px; border-radius: 4px; transition: background 0.15s;">
+          <span class="priority-indicator" data-priority="medium" style="width: 4px; height: 16px; border-radius: 2px; background: ${THEME.priorityMedium}; flex-shrink: 0;"></span>
           <span class="drag-handle" style="color: ${THEME.textMuted}; cursor: grab; font-size: 14px; padding: 0 4px;">⋮⋮</span>
           <span style="flex: 1; color: ${THEME.text}; font-size: 12px;">${this.escapeHtml(goal)}</span>
+          <select class="priority-select" data-index="${i}" style="background: ${THEME.inputBg}; border: 1px solid ${THEME.border}; border-radius: 4px; color: ${THEME.text}; font-size: 10px; padding: 2px 4px; cursor: pointer;">
+            <option value="high" style="color: ${THEME.priorityHigh};">高</option>
+            <option value="medium" selected style="color: ${THEME.priorityMedium};">中</option>
+            <option value="low" style="color: ${THEME.priorityLow};">低</option>
+          </select>
           <button class="remove-goal-btn" data-index="${i}" style="${getButtonInlineStyles('danger')}">删除</button>
         </div>
       `

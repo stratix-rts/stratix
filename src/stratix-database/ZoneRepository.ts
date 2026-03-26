@@ -325,6 +325,31 @@ export class ZoneRepository {
   }
 
   // ============================================
+  // Zone Template Export/Import
+  // ============================================
+
+  exportZone(zoneId: string): { title: string; prompt: string; files: Array<{ name: string; sourceType: 'local' | 'url'; source: string }>; tasks: Array<{ title: string }> } | null {
+    const zone = this.getZone(zoneId);
+    if (!zone) return null;
+
+    const files = this.getFilesByZone(zoneId);
+    const tasks = this.getTasks(zoneId);
+
+    return {
+      title: zone.title,
+      prompt: zone.prompt,
+      files: files.map(f => ({
+        name: f.name,
+        sourceType: f.sourceType,
+        source: f.source
+      })),
+      tasks: tasks.map(t => ({
+        title: t.title
+      }))
+    };
+  }
+
+  // ============================================
   // Row Mappers
   // ============================================
 

@@ -557,16 +557,26 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
           false: false,
         };
 
-        const sandboxKeys = Object.keys(sandbox);
-        const sandboxValues = Object.values(sandbox);
+        // Filter out invalid identifier names (null, true, false, undefined, Infinity, NaN)
+        // These cannot be used as function parameter names but are either global or handled separately
+        const validKeys: string[] = [];
+        const validValues: any[] = [];
+        for (let i = 0; i < sandboxKeys.length; i++) {
+          const key = sandboxKeys[i];
+          // Skip invalid identifiers that can't be function parameter names
+          if (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key)) {
+            validKeys.push(key);
+            validValues.push(sandboxValues[i]);
+          }
+        }
 
         // Set up timeout for execution
         const timeoutMs = (config?.maxCpuTime ?? 10) * 1000;
         let timeoutId: NodeJS.Timeout | null = null;
 
         // Execute in isolated context
-        const fn = new Function(...sandboxKeys, code);
-        const result = fn(...sandboxValues);
+        const fn = new Function(...validKeys, code);
+        const result = fn(...validValues);
 
         // Handle async results
         const handleResult = (value: any) => {

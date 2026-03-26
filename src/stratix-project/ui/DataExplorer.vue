@@ -107,6 +107,59 @@
               <label>文件:</label>
               <span>{{ selectedZone.files?.length || 0 }} 个文件</span>
             </div>
+            <div class="detail-actions">
+              <button class="action-btn template-btn" @click="saveAsTemplate(selectedZone)" title="保存为模板">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                  <polyline points="17 21 17 13 7 13 7 21"/>
+                  <polyline points="7 3 7 8 15 8"/>
+                </svg>
+                保存为模板
+              </button>
+            </div>
+          </div>
+
+          <!-- 模板列表 -->
+          <div v-if="!sidebarCollapsed" class="template-section">
+            <div class="template-header" @click="showTemplateModal = !showTemplateModal">
+              <span class="sidebar-title">模板库 ({{ templates.length }})</span>
+              <svg
+                viewBox="0 0 24 24"
+                width="14"
+                height="14"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                :style="{ transform: showTemplateModal ? 'rotate(90deg)' : '' }"
+              >
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </div>
+            <div v-if="showTemplateModal" class="template-list">
+              <div v-if="templates.length === 0" class="template-empty">
+                暂无模板
+              </div>
+              <div v-for="tpl in templates" :key="tpl.id" class="template-item">
+                <div class="template-info" @click="createFromTemplate(tpl)" title="点击创建新 Zone">
+                  <span class="template-name">{{ tpl.name }}</span>
+                  <span class="template-preview">{{ tpl.title || '(无标题)' }}</span>
+                </div>
+                <div class="template-actions">
+                  <button class="icon-btn" @click.stop="startEditTemplateName(tpl)" title="编辑名称">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                  </button>
+                  <button class="icon-btn delete" @click.stop="deleteTemplate(tpl.id)" title="删除模板">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="3 6 5 6 21 6"/>
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </aside>
 
@@ -159,6 +212,53 @@
         </main>
       </div>
     </div>
+
+    <!-- 模板编辑弹窗 -->
+    <StratixModal
+      :visible="editingTemplate !== null"
+      :title="editingTemplate?.id ? '编辑模板名称' : '保存为模板'"
+      width="400px"
+      height="auto"
+      @update:visible="showTemplateModal = false; editingTemplate = null"
+    >
+      <div class="template-edit-modal">
+        <div class="form-group">
+          <label>模板名称</label>
+          <input
+            v-model="templateNameInput"
+            type="text"
+            class="form-input"
+            placeholder="请输入模板名称"
+            @keyup.enter="editingTemplate?.id ? confirmEditTemplateName() : confirmSaveTemplate()"
+          />
+        </div>
+        <div v-if="editingTemplate?.id" class="form-info">
+          <label>模板内容 (不可编辑):</label>
+          <div class="template-preview-box">
+            <div><strong>O:</strong> {{ editingTemplate.title || '-' }}</div>
+            <div><strong>KR:</strong> {{ editingTemplate.prompt || '-' }}</div>
+          </div>
+        </div>
+        <div v-else class="form-info">
+          <label>模板内容:</label>
+          <div class="template-preview-box">
+            <div><strong>O:</strong> {{ editingTemplate?.title || '-' }}</div>
+            <div><strong>KR:</strong> {{ editingTemplate?.prompt || '-' }}</div>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-secondary" @click="showTemplateModal = false; editingTemplate = null">
+            取消
+          </button>
+          <button
+            class="btn-primary"
+            @click="editingTemplate?.id ? confirmEditTemplateName() : confirmSaveTemplate()"
+          >
+            {{ editingTemplate?.id ? '保存' : '创建' }}
+          </button>
+        </div>
+      </div>
+    </StratixModal>
   </StratixModal>
 </template>
 
@@ -171,6 +271,19 @@ import AgentTable from './AgentTable.vue';
 import type { Zone, ZoneFile } from '../types';
 import StratixEventBus from '@stratix-core/StratixEventBus';
 import type { StratixStateSyncEvent } from '@stratix-core/stratix-protocol';
+
+// ============================================
+// Zone 模板类型定义
+// ============================================
+interface ZoneTemplate {
+  id: string;
+  name: string;
+  title: string;      // O (Objective)
+  prompt: string;     // KR (Key Results)
+  createdAt: number;
+}
+
+const TEMPLATES_KEY = 'stratix_zone_templates';
 
 interface Props {
   visible: boolean;
@@ -207,6 +320,155 @@ const tabs = [
 
 const activeTab = ref('zones');
 const sidebarCollapsed = ref(false);
+
+// ============================================
+// Zone 模板管理
+// ============================================
+const templates = ref<ZoneTemplate[]>([]);
+const showTemplateModal = ref(false);
+const editingTemplate = ref<ZoneTemplate | null>(null);
+const templateNameInput = ref('');
+
+// 加载模板从 localStorage
+const loadTemplates = () => {
+  try {
+    const stored = localStorage.getItem(TEMPLATES_KEY);
+    if (stored) {
+      templates.value = JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error('[DataExplorer] Failed to load templates:', error);
+    templates.value = [];
+  }
+};
+
+// 保存模板到 localStorage
+const saveTemplatesToStorage = () => {
+  try {
+    localStorage.setItem(TEMPLATES_KEY, JSON.stringify(templates.value));
+  } catch (error) {
+    console.error('[DataExplorer] Failed to save templates:', error);
+  }
+};
+
+// 生成模板 ID
+const generateTemplateId = () => `tpl_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+// 保存当前 Zone 为模板
+const saveAsTemplate = (zone: Zone) => {
+  templateNameInput.value = zone.title || '';
+  editingTemplate.value = {
+    id: '',
+    name: zone.title || '未命名模板',
+    title: zone.title,
+    prompt: zone.prompt,
+    createdAt: Date.now(),
+  };
+  showTemplateModal.value = true;
+};
+
+// 确认保存模板
+const confirmSaveTemplate = () => {
+  if (!editingTemplate.value) return;
+
+  const name = templateNameInput.value.trim();
+  if (!name) {
+    alert('请输入模板名称');
+    return;
+  }
+
+  // 检查名称是否重复
+  const exists = templates.value.some(t => t.name === name);
+  if (exists) {
+    alert('模板名称已存在，请使用其他名称');
+    return;
+  }
+
+  const newTemplate: ZoneTemplate = {
+    id: generateTemplateId(),
+    name,
+    title: editingTemplate.value.title,
+    prompt: editingTemplate.value.prompt,
+    createdAt: Date.now(),
+  };
+
+  templates.value.push(newTemplate);
+  saveTemplatesToStorage();
+  showTemplateModal.value = false;
+  editingTemplate.value = null;
+  templateNameInput.value = '';
+
+  console.log('[DataExplorer] Template saved:', newTemplate.name);
+};
+
+// 从模板创建 Zone
+const createFromTemplate = async (template: ZoneTemplate) => {
+  try {
+    const response = await fetch('/api/zones', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: template.title,
+        prompt: template.prompt,
+      }),
+    });
+
+    const result = await response.json();
+    if (result.success) {
+      await loadZones();
+      console.log('[DataExplorer] Zone created from template:', template.name);
+    } else {
+      console.error('[DataExplorer] Failed to create zone from template:', result.error);
+    }
+  } catch (error) {
+    console.error('[DataExplorer] Failed to create zone from template:', error);
+  }
+};
+
+// 删除模板
+const deleteTemplate = (templateId: string) => {
+  const template = templates.value.find(t => t.id === templateId);
+  if (!template) return;
+
+  if (confirm(`确定要删除模板 "${template.name}" 吗？`)) {
+    templates.value = templates.value.filter(t => t.id !== templateId);
+    saveTemplatesToStorage();
+    console.log('[DataExplorer] Template deleted:', template.name);
+  }
+};
+
+// 编辑模板名称
+const startEditTemplateName = (template: ZoneTemplate) => {
+  editingTemplate.value = { ...template };
+  templateNameInput.value = template.name;
+};
+
+const confirmEditTemplateName = () => {
+  if (!editingTemplate.value) return;
+
+  const newName = templateNameInput.value.trim();
+  if (!newName) {
+    alert('请输入模板名称');
+    return;
+  }
+
+  // 检查名称是否重复（排除自己）
+  const exists = templates.value.some(t => t.name === newName && t.id !== editingTemplate.value!.id);
+  if (exists) {
+    alert('模板名称已存在，请使用其他名称');
+    return;
+  }
+
+  const template = templates.value.find(t => t.id === editingTemplate.value!.id);
+  if (template) {
+    template.name = newName;
+    saveTemplatesToStorage();
+  }
+
+  showTemplateModal.value = false;
+  editingTemplate.value = null;
+  templateNameInput.value = '';
+};
 
 // ============================================
 // 撤销/重做历史管理
@@ -591,6 +853,7 @@ const handleZoneDeleted = (event: StratixStateSyncEvent) => {
 onMounted(() => {
   loadZones();
   loadAgents();
+  loadTemplates();
 
   // 订阅 Zone 相关 WebSocket 事件
   const eventBus = StratixEventBus.getInstance();
@@ -828,6 +1091,231 @@ onUnmounted(() => {
   overflow: hidden;
   font-size: 11px;
   color: var(--ds-text-secondary, #6b7280);
+}
+
+.detail-actions {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ds-border, #e5e7eb);
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background-color: var(--ds-bg-hover, #f3f4f6);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--ds-text-secondary, #6b7280);
+  transition: all 0.15s ease;
+}
+
+.action-btn:hover {
+  background-color: var(--ds-primary, #3b82f6);
+  color: white;
+}
+
+.template-section {
+  border-top: 1px solid var(--ds-border, #e5e7eb);
+  padding: 8px;
+}
+
+.template-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background-color 0.15s ease;
+}
+
+.template-header:hover {
+  background-color: var(--ds-bg-hover, #f3f4f6);
+}
+
+.template-list {
+  margin-top: 8px;
+}
+
+.template-empty {
+  padding: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--ds-text-tertiary, #9ca3af);
+}
+
+.template-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  border-radius: 6px;
+  transition: background-color 0.15s ease;
+}
+
+.template-item:hover {
+  background-color: var(--ds-bg-hover, #f3f4f6);
+}
+
+.template-info {
+  flex: 1;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.template-name {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ds-text-primary, #111827);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.template-preview {
+  display: block;
+  font-size: 10px;
+  color: var(--ds-text-tertiary, #9ca3af);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+.template-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: 8px;
+}
+
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--ds-text-tertiary, #9ca3af);
+  transition: all 0.15s ease;
+}
+
+.icon-btn:hover {
+  background-color: var(--ds-bg-hover, #f3f4f6);
+  color: var(--ds-text-primary, #111827);
+}
+
+.icon-btn.delete:hover {
+  background-color: #fee2e2;
+  color: #dc2626;
+}
+
+/* 模板编辑弹窗 */
+.template-edit-modal {
+  padding: 8px;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ds-text-secondary, #6b7280);
+  margin-bottom: 6px;
+}
+
+.form-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--ds-border, #e5e7eb);
+  border-radius: 6px;
+  font-size: 14px;
+  color: var(--ds-text-primary, #111827);
+  background-color: white;
+  box-sizing: border-box;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--ds-primary, #3b82f6);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.form-info {
+  margin-bottom: 16px;
+}
+
+.form-info label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ds-text-secondary, #6b7280);
+  margin-bottom: 6px;
+}
+
+.template-preview-box {
+  padding: 10px 12px;
+  background-color: var(--ds-bg-secondary, #f9fafb);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--ds-text-primary, #111827);
+}
+
+.template-preview-box div {
+  margin-bottom: 4px;
+}
+
+.template-preview-box div:last-child {
+  margin-bottom: 0;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.btn-primary {
+  padding: 8px 16px;
+  border: none;
+  background-color: var(--ds-primary, #3b82f6);
+  color: white;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.btn-primary:hover {
+  background-color: #2563eb;
+}
+
+.btn-secondary {
+  padding: 8px 16px;
+  border: 1px solid var(--ds-border, #e5e7eb);
+  background-color: white;
+  color: var(--ds-text-secondary, #6b7280);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-secondary:hover {
+  background-color: var(--ds-bg-hover, #f3f4f6);
 }
 
 .explorer-main {

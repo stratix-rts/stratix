@@ -398,3 +398,36 @@ export interface ZoneMessageCreateRequest {
   senderType: SenderType;
   content: string;
 }
+
+// Zone Template
+export interface ZoneTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  title: string;
+  prompt: string;
+  fileTemplates: Array<{
+    name: string;
+    sourceType: 'local' | 'url';
+    source: string;
+  }>;
+  tags: string[];
+  createdAt: number;
+}
+
+export interface ZoneExportData {
+  version: string;
+  exportedAt: number;
+  zone: {
+    title: string;
+    prompt: string;
+    files: Array<{
+      name: string;
+      sourceType: 'local' | 'url';
+      source: string;
+    }>;
+    tasks: Array<{
+      title: string;
+    }>;
+  };
+}

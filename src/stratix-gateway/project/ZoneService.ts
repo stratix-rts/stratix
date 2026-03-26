@@ -525,6 +525,73 @@ export class ZoneService {
     return message;
   }
 
+  // ============================================
+  // Zone Template Export/Import
+  // ============================================
+
+  /**
+   * Export Zone as template (JSON)
+   */
+  public async exportZone(zoneId: string): Promise<{ version: string; exportedAt: number; zone: { title: string; prompt: string; files: Array<{ name: string; sourceType: 'local' | 'url'; source: string }>; tasks: Array<{ title: string }> } }> {
+    await this.ensureInitialized();
+
+    const zone = zoneRepository.getZone(zoneId);
+    if (!zone) {
+      throw new Error(`Zone not found: ${zoneId}`);
+    }
+
+    const exportData = zoneRepository.exportZone(zoneId);
+    if (!exportData) {
+      throw new Error(`Failed to export zone: ${zoneId}`);
+    }
+
+    return {
+      version: '1.0',
+      exportedAt: Date.now(),
+      zone: exportData
+    };
+  }
+
+  /**
+   * Import Zone from template
+   */
+  public async importZone(projectId: string, template: { title: string; prompt: string; files?: Array<{ name: string; sourceType: 'local' | 'url'; source: string }>; tasks?: Array<{ title: string }> }, creatorAgentId?: string): Promise<Zone> {
+    await this.ensureInitialized();
+
+    // Verify project exists
+    const project = projectRepository.getProject(projectId);
+    if (!project) {
+      throw new Error(`Project not found: ${projectId}`);
+    }
+
+    // Create zone from template
+    const zone = zoneRepository.createZone(projectId, template.title, template.prompt);
+
+    // Add files if provided
+    if (template.files && template.files.length > 0) {
+      for (const file of template.files) {
+        try {
+          await this.addFile(zone.id, file.name, file.sourceType, file.source);
+        } catch (error) {
+          console.warn(`[ZoneService] Failed to add file ${file.name} during import:`, error);
+        }
+      }
+    }
+
+    // Create tasks if provided
+    if (template.tasks && template.tasks.length > 0 && creatorAgentId) {
+      for (const task of template.tasks) {
+        try {
+          zoneRepository.createTask(zone.id, task.title, creatorAgentId);
+        } catch (error) {
+          console.warn(`[ZoneService] Failed to create task "${task.title}" during import:`, error);
+        }
+      }
+    }
+
+    return zoneRepository.getZone(zone.id)!;
+  }
+
   // Helper: Read local file content
   private async readLocalFile(filePath: string): Promise<string> {
     return new Promise((resolve, reject) => {

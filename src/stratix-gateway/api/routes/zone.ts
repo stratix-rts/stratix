@@ -682,4 +682,69 @@ router.post('/zones/:zoneId/messages', async (req: Request, res: Response): Prom
   }
 });
 
+// ============================================
+// Zone Template Export/Import
+// ============================================
+
+/**
+ * GET /api/zones/:zoneId/export
+ * Export Zone as template (JSON)
+ */
+router.get('/zones/:zoneId/export', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const zoneId = req.params.zoneId as string;
+    const exportData = await zoneService.exportZone(zoneId);
+
+    res.json({
+      success: true,
+      ...exportData
+    });
+  } catch (error) {
+    console.error('[Zone API] Export zone failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to export zone';
+    if (message.includes('not found')) {
+      res.status(404).json({ success: false, error: message });
+    } else {
+      res.status(500).json({ success: false, error: message });
+    }
+  }
+});
+
+/**
+ * POST /api/zones/import
+ * Import Zone from template
+ */
+router.post('/zones/import', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { projectId, template, creatorAgentId } = req.body as {
+      projectId: string;
+      template: { title: string; prompt: string; files?: Array<{ name: string; sourceType: 'local' | 'url'; source: string }>; tasks?: Array<{ title: string }> };
+      creatorAgentId?: string;
+    };
+
+    if (!projectId || !template || !template.title) {
+      res.status(400).json({
+        success: false,
+        error: 'Missing required fields: projectId, template.title'
+      });
+      return;
+    }
+
+    const zone = await zoneService.importZone(projectId, template, creatorAgentId);
+
+    res.json({
+      success: true,
+      zone
+    });
+  } catch (error) {
+    console.error('[Zone API] Import zone failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to import zone';
+    if (message.includes('not found')) {
+      res.status(404).json({ success: false, error: message });
+    } else {
+      res.status(500).json({ success: false, error: message });
+    }
+  }
+});
+
 export default router;
