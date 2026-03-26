@@ -364,6 +364,41 @@ router.get('/zones/:zoneId/files/:fileId/metadata', async (req: Request, res: Re
 });
 
 /**
+ * GET /api/zones/:zoneId/files/search?keyword=xxx
+ * Search files by name or content within a zone
+ */
+router.get('/zones/:zoneId/files/search', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const zoneId = req.params.zoneId as string;
+    const keyword = req.query.keyword as string;
+
+    if (!keyword) {
+      res.status(400).json({
+        success: false,
+        error: 'Missing required query parameter: keyword'
+      });
+      return;
+    }
+
+    const files = await zoneService.searchFiles(zoneId, keyword);
+
+    res.json({
+      success: true,
+      files,
+      count: files.length
+    });
+  } catch (error) {
+    console.error('[Zone API] Search files failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to search files';
+    if (message.includes('not found')) {
+      res.status(404).json({ success: false, error: message });
+    } else {
+      res.status(500).json({ success: false, error: message });
+    }
+  }
+});
+
+/**
  * GET /api/zones/:zoneId/files/:fileId/versions
  * Get file version history
  */

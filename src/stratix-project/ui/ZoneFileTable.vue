@@ -322,6 +322,10 @@ const props = withDefaults(defineProps<Props>(), {
   zoneId: '',
 });
 
+// 搜索结果（用于存储 API 返回的搜索结果）
+const searchResults = ref<ZoneFile[] | null>(null);
+const isSearching = ref(false);
+
 const emit = defineEmits<{
   refresh: [];
   'file-select': [file: ZoneFile];
@@ -389,6 +393,20 @@ const getFileTypeIcon = (fileType?: FileType | string) => {
 
 // 过滤后的文件
 const filteredFiles = computed(() => {
+  // 如果有搜索结果（来自 API），直接使用
+  if (searchResults.value !== null) {
+    let result = searchResults.value;
+
+    // 搜索结果仍然应用类型和来源筛选
+    if (filterType.value) {
+      result = result.filter((file) => file.fileType === filterType.value);
+    }
+    if (filterSource.value) {
+      result = result.filter((file) => file.sourceType === filterSource.value);
+    }
+    return result;
+  }
+
   let result = props.files;
 
   // 按类型筛选
@@ -401,7 +419,7 @@ const filteredFiles = computed(() => {
     result = result.filter((file) => file.sourceType === filterSource.value);
   }
 
-  // 按关键词搜索
+  // 按关键词搜索（前端过滤，仅匹配名称和来源）
   if (searchKeyword.value) {
     const keyword = searchKeyword.value.toLowerCase();
     result = result.filter(
@@ -426,9 +444,29 @@ const formatDate = (timestamp: number | undefined) => {
   });
 };
 
-// 搜索
-const handleSearch = () => {
-  // 搜索通过 computed 属性自动处理
+// 搜索（支持全文搜索）
+const handleSearch = async () => {
+  if (!searchKeyword.value.trim()) {
+    // 空搜索词，显示所有文件
+    searchResults.value = null;
+    return;
+  }
+
+  // 如果有 zoneId，调用后端 API 进行全文搜索
+  if (props.zoneId) {
+    isSearching.value = true;
+    try {
+      const response = await fetch(`/api/zones/${props.zoneId}/files/search?keyword=${encodeURIComponent(searchKeyword.value)}`);
+      const result = await response.json();
+      if (result.success) {
+        searchResults.value = result.files;
+      }
+    } catch (error) {
+      console.error('[ZoneFileTable] Search failed:', error);
+    } finally {
+      isSearching.value = false;
+    }
+  }
 };
 
 // 筛选变化

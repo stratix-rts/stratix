@@ -128,6 +128,33 @@ export class ZoneRepository {
     return row ? this.mapRowToFile(row) : null;
   }
 
+  // Search files by name or content within a zone
+  searchFiles(zoneId: string, keyword: string): ZoneFile[] {
+    const files = this.getFilesByZone(zoneId);
+    const lowerKeyword = keyword.toLowerCase();
+
+    return files.filter((file) => {
+      // Match name
+      if (file.name?.toLowerCase().includes(lowerKeyword)) {
+        return true;
+      }
+      // Match content (only for text files with content)
+      if (file.content && this.isTextFile(file.fileType)) {
+        if (file.content.toLowerCase().includes(lowerKeyword)) {
+          return true;
+        }
+      }
+      return false;
+    });
+  }
+
+  // Helper: check if file type is text (has readable content)
+  private isTextFile(fileType?: FileType | string): boolean {
+    if (!fileType) return false;
+    const textTypes = ['md', 'txt', 'ts', 'js', 'fig', 'link', 'other'];
+    return textTypes.includes(fileType);
+  }
+
   addFile(zoneId: string, name: string, sourceType: 'local' | 'url', source: string, fileType?: FileType, metadata?: any): ZoneFile {
     const now = Date.now();
     const fileId = generateId('zf');

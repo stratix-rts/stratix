@@ -389,6 +389,22 @@ export class ZoneService {
     }
   }
 
+  // Search files by name or content within a zone
+  public async searchFiles(zoneId: string, keyword: string): Promise<ZoneFile[]> {
+    await this.ensureInitialized();
+
+    const file = zoneRepository.getFile(zoneId);
+    if (!file && zoneId) {
+      // Verify zone exists
+      const zone = zoneRepository.getZone(zoneId);
+      if (!zone) {
+        throw new Error(`Zone not found: ${zoneId}`);
+      }
+    }
+
+    return zoneRepository.searchFiles(zoneId, keyword);
+  }
+
   // ============================================
   // File Version History
   // ============================================
