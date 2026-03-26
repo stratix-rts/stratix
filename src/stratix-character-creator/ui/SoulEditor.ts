@@ -573,15 +573,23 @@ export class SoulEditor {
       filterTemplates((e.target as HTMLInputElement).value);
     });
 
-    templateSelect?.addEventListener('change', (e) => {
-      const templateId = (e.target as HTMLSelectElement).value;
-      if (templateId) {
-        const template = SOUL_TEMPLATES.find((t) => t.id === templateId);
-        if (template) {
-          this.applyTemplate(template);
+    if (templateSelect) {
+      templateSelect.addEventListener('change', (e) => {
+        const select = e.target as HTMLSelectElement;
+        const templateId = select.value;
+        if (templateId) {
+          const template = SOUL_TEMPLATES.find((t) => t.id === templateId);
+          if (template) {
+            this.applyTemplate(template);
+            this.showToast(`已应用: ${template.name}`);
+          } else {
+            this.showToast(`模板未找到: ${templateId}`);
+          }
         }
-      }
-    });
+      });
+    } else {
+      console.error('SoulEditor: templateSelect not found');
+    }
 
     // 随机模板按钮
     const randomTemplateBtn = node.querySelector('#random-template-btn') as HTMLButtonElement;
