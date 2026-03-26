@@ -219,6 +219,14 @@ export class SoulEditor {
             margin-bottom: 8px;
             box-sizing: border-box;
           " />
+          <div id="domain-filters" style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px;">
+            <button class="domain-filter-btn active" data-domain="all" style="padding: 4px 10px; font-size: 11px; border-radius: 12px; border: 1px solid ${THEME.border}; background: ${THEME.accent}; color: white; cursor: pointer;">全部</button>
+            <button class="domain-filter-btn" data-domain="general" style="padding: 4px 10px; font-size: 11px; border-radius: 12px; border: 1px solid ${THEME.border}; background: ${THEME.inputBg}; color: ${THEME.text}; cursor: pointer;">通用</button>
+            <button class="domain-filter-btn" data-domain="engineering" style="padding: 4px 10px; font-size: 11px; border-radius: 12px; border: 1px solid ${THEME.border}; background: ${THEME.inputBg}; color: ${THEME.text}; cursor: pointer;">开发</button>
+            <button class="domain-filter-btn" data-domain="design" style="padding: 4px 10px; font-size: 11px; border-radius: 12px; border: 1px solid ${THEME.border}; background: ${THEME.inputBg}; color: ${THEME.text}; cursor: pointer;">设计</button>
+            <button class="domain-filter-btn" data-domain="marketing" style="padding: 4px 10px; font-size: 11px; border-radius: 12px; border: 1px solid ${THEME.border}; background: ${THEME.inputBg}; color: ${THEME.text}; cursor: pointer;">营销</button>
+            <button class="domain-filter-btn" data-domain="product" style="padding: 4px 10px; font-size: 11px; border-radius: 12px; border: 1px solid ${THEME.border}; background: ${THEME.inputBg}; color: ${THEME.text}; cursor: pointer;">产品</button>
+          </div>
           <select id="soul-template-select" style="
             width: 100%;
             padding: 8px 12px;
@@ -364,6 +372,26 @@ export class SoulEditor {
     const copySoulBtn = node.querySelector('#copy-soul-btn') as HTMLButtonElement;
     const importFileInput = node.querySelector('#import-file-input') as HTMLInputElement;
     const templateSearch = node.querySelector('#template-search') as HTMLInputElement;
+    const domainFilters = node.querySelector('#domain-filters') as HTMLElement;
+    let currentDomain = 'all';
+
+    // 领域筛选事件
+    domainFilters?.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.classList.contains('domain-filter-btn')) {
+        // 更新选中状态
+        domainFilters.querySelectorAll('.domain-filter-btn').forEach(btn => {
+          (btn as HTMLElement).style.background = THEME.inputBg;
+          (btn as HTMLElement).style.color = THEME.text;
+        });
+        target.style.background = THEME.accent;
+        target.style.color = 'white';
+
+        currentDomain = target.dataset.domain || 'all';
+        templateSearch.value = '';
+        filterTemplates('');
+      }
+    });
 
     // 模板搜索过滤
     const filterTemplates = (query: string) => {
@@ -372,7 +400,7 @@ export class SoulEditor {
       templateSelect.innerHTML = '<option value="">-- 选择模板 --</option>';
 
       // 如果没有搜索词，显示最近使用的模板
-      if (!q && recent.length > 0) {
+      if (!q && recent.length > 0 && currentDomain === 'all') {
         const recentGroup = document.createElement('optgroup');
         recentGroup.label = '最近使用';
         recent.forEach(templateId => {
@@ -392,15 +420,18 @@ export class SoulEditor {
       }
 
       SOUL_TEMPLATES.forEach(t => {
+        // 检查领域筛选
+        const matchesDomain = currentDomain === 'all' || t.domain === currentDomain;
+
         // 搜索模式下显示所有匹配项，否则显示非最近的
         if (q) {
-          if (t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q)) {
+          if (matchesDomain && (t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q))) {
             const option = document.createElement('option');
             option.value = t.id;
             option.textContent = `${t.name} - ${t.description}`;
             templateSelect.appendChild(option);
           }
-        } else if (!recent.includes(t.id)) {
+        } else if (matchesDomain && !recent.includes(t.id)) {
           const option = document.createElement('option');
           option.value = t.id;
           option.textContent = t.name;
