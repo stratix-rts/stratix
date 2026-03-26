@@ -187,7 +187,7 @@
       <template #actionSlot="{ row }">
         <div class="action-cell">
           <StratixButton
-            v-if="row.fileType === 'image'"
+            v-if="canPreview(row)"
             size="tiny"
             variant="ghost"
             @click="handlePreview(row)"
@@ -585,6 +585,11 @@ const isImageFile = (file: ZoneFile): boolean => {
 const isTextFileType = (fileType?: string): boolean => {
   if (!fileType) return false;
   return ['md', 'txt', 'js', 'ts', 'jsx', 'tsx', 'css', 'html', 'json', 'yaml', 'yml', 'xml', 'py', 'rb', 'go', 'java', 'c', 'cpp', 'h', 'sh', 'bash', 'log'].includes(fileType.toLowerCase());
+};
+
+// 判断文件是否可以被预览
+const canPreview = (file: ZoneFile): boolean => {
+  return isImageFile(file) || isTextFileType(file.fileType) || file.sourceType === 'url';
 };
 
 // 预览文件
