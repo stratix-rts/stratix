@@ -571,6 +571,13 @@ export class SoulEditor {
         this.saveHistory();
         const index = parseInt(target.dataset.index || '0', 10);
         this.soul.goals.splice(index, 1);
+        // 重新构建 completedGoals 索引
+        const newCompleted = new Set<number>();
+        this.completedGoals.forEach(i => {
+          if (i < index) newCompleted.add(i);
+          else if (i > index) newCompleted.add(i - 1);
+        });
+        this.completedGoals = newCompleted;
         this.refreshGoalsList();
         this.updatePromptPreview();
         this.notifyChange();
@@ -596,8 +603,10 @@ export class SoulEditor {
       // 复选框完成状态
       if (target.classList.contains('goal-checkbox')) {
         const index = parseInt(target.dataset.index || '0', 10);
-        const isChecked = (target as HTMLInputElement).checked;
+        const checkbox = target as unknown as HTMLInputElement;
+        const isChecked = checkbox.checked;
         const goalItem = target.parentElement as HTMLElement;
+        if (!goalItem) return;
 
         if (isChecked) {
           this.completedGoals.add(index);
