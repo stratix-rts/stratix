@@ -558,6 +558,24 @@ export class ZoneService {
   }
 
   /**
+   * 获取单个 Task
+   */
+  public async getTask(zoneId: string, taskId: string): Promise<ZoneTask | null> {
+    await this.ensureInitialized();
+    const zone = zoneRepository.getZone(zoneId);
+    if (!zone) {
+      throw new Error(`Zone not found: ${zoneId}`);
+    }
+
+    const task = zoneRepository.getTask(taskId);
+    if (!task || task.zoneId !== zoneId) {
+      return null;
+    }
+
+    return task;
+  }
+
+  /**
    * 创建 Task（只有 taskCreatorId 的 agent 才能创建）
    * 如果没有 taskCreatorId，当前 agent 成为 creator
    */

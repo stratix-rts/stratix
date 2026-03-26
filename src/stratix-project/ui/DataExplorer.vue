@@ -35,6 +35,17 @@
             {{ historyIndex + 1 }}/{{ historyStack.length }}
           </span>
         </div>
+        <button
+          class="tab-button history-btn"
+          title="快捷键帮助 (F1)"
+          @click="showShortcutHelp = true"
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
+        </button>
         <div class="tab-divider"></div>
         <button
           v-for="tab in tabs"
@@ -260,6 +271,58 @@
         </div>
       </div>
     </StratixModal>
+
+    <!-- 快捷键帮助弹窗 -->
+    <StratixModal
+      :visible="showShortcutHelp"
+      title="快捷键帮助"
+      width="500px"
+      @update:visible="showShortcutHelp = false"
+    >
+      <div class="shortcut-help">
+        <div class="shortcut-section">
+          <h4>全局</h4>
+          <div class="shortcut-item">
+            <kbd>Ctrl</kbd> + <kbd>D</kbd>
+            <span>打开数据浏览器</span>
+          </div>
+        </div>
+        <div class="shortcut-section">
+          <h4>表格导航</h4>
+          <div class="shortcut-item">
+            <kbd>↑</kbd> <kbd>↓</kbd>
+            <span>行间移动</span>
+          </div>
+          <div class="shortcut-item">
+            <kbd>Tab</kbd>
+            <span>切换单元格</span>
+          </div>
+          <div class="shortcut-item">
+            <kbd>Enter</kbd>
+            <span>进入编辑 / 确认</span>
+          </div>
+          <div class="shortcut-item">
+            <kbd>Esc</kbd>
+            <span>取消编辑 / 关闭弹窗</span>
+          </div>
+          <div class="shortcut-item">
+            <kbd>F2</kbd>
+            <span>快速编辑</span>
+          </div>
+        </div>
+        <div class="shortcut-section">
+          <h4>撤销/重做</h4>
+          <div class="shortcut-item">
+            <kbd>Ctrl</kbd> + <kbd>Z</kbd>
+            <span>撤销</span>
+          </div>
+          <div class="shortcut-item">
+            <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd>
+            <span>重做</span>
+          </div>
+        </div>
+      </div>
+    </StratixModal>
   </StratixModal>
 </template>
 
@@ -327,6 +390,7 @@ const sidebarCollapsed = ref(false);
 // ============================================
 const templates = ref<ZoneTemplate[]>([]);
 const showTemplateModal = ref(false);
+const showShortcutHelp = ref(false);
 const editingTemplate = ref<ZoneTemplate | null>(null);
 const templateNameInput = ref('');
 
@@ -603,6 +667,12 @@ const redo = async () => {
 
 // 键盘事件处理
 const handleKeydown = (e: KeyboardEvent) => {
+  // F1 或 ?: 打开快捷键帮助
+  if (e.key === 'F1' || (e.key === '?' && !e.ctrlKey && !e.altKey)) {
+    e.preventDefault();
+    showShortcutHelp.value = true;
+    return;
+  }
   // Ctrl+Z: 撤销
   if (e.ctrlKey && !e.shiftKey && e.key === 'z') {
     e.preventDefault();
@@ -1384,5 +1454,57 @@ onUnmounted(() => {
   height: 200px;
   color: var(--ds-text-tertiary, #9ca3af);
   font-size: 14px;
+}
+
+/* 快捷键帮助样式 */
+.shortcut-help {
+  padding: 8px;
+}
+
+.shortcut-section {
+  margin-bottom: 20px;
+}
+
+.shortcut-section:last-child {
+  margin-bottom: 0;
+}
+
+.shortcut-section h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ds-text-primary, #1f2937);
+  margin: 0 0 12px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--ds-border, #e5e7eb);
+}
+
+.shortcut-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 13px;
+  color: var(--ds-text-secondary, #4b5563);
+}
+
+.shortcut-item kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 8px;
+  background: var(--ds-bg-secondary, #f3f4f6);
+  border: 1px solid var(--ds-border, #d1d5db);
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ds-text-primary, #1f2937);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.shortcut-item span {
+  margin-left: auto;
 }
 </style>
