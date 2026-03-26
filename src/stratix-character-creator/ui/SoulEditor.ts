@@ -325,6 +325,8 @@ export class SoulEditor {
           <button id="import-soul-btn" style="${getButtonInlineStyles('secondary')}">导入</button>
           <button id="export-soul-btn" style="${getButtonInlineStyles('secondary')}">导出</button>
           <button id="copy-soul-btn" style="${getButtonInlineStyles('ghost')}">复制配置</button>
+          <button id="undo-btn" disabled style="${getButtonInlineStyles('ghost')}">↩ 撤销</button>
+          <button id="redo-btn" disabled style="${getButtonInlineStyles('ghost')}">↪ 重做</button>
           <input type="file" id="import-file-input" accept=".json" style="display: none;" />
         </div>
 
@@ -450,6 +452,8 @@ export class SoulEditor {
     const importSoulBtn = node.querySelector('#import-soul-btn') as HTMLButtonElement;
     const exportSoulBtn = node.querySelector('#export-soul-btn') as HTMLButtonElement;
     const copySoulBtn = node.querySelector('#copy-soul-btn') as HTMLButtonElement;
+    const undoBtn = node.querySelector('#undo-btn') as HTMLButtonElement;
+    const redoBtn = node.querySelector('#redo-btn') as HTMLButtonElement;
     const importFileInput = node.querySelector('#import-file-input') as HTMLInputElement;
     const templateSearch = node.querySelector('#template-search') as HTMLInputElement;
     const domainFilters = node.querySelector('#domain-filters') as HTMLElement;
@@ -949,12 +953,37 @@ export class SoulEditor {
         if (e.key === 'z' && !e.shiftKey) {
           e.preventDefault();
           this.undo();
+          this.updateUndoRedoButtons();
         } else if ((e.key === 'z' && e.shiftKey) || e.key === 'y') {
           e.preventDefault();
           this.redo();
+          this.updateUndoRedoButtons();
         }
       }
     });
+
+    // Undo/Redo 按钮点击
+    undoBtn?.addEventListener('click', () => {
+      this.undo();
+      this.updateUndoRedoButtons();
+    });
+
+    redoBtn?.addEventListener('click', () => {
+      this.redo();
+      this.updateUndoRedoButtons();
+    });
+
+    // 初始化按钮状态
+    this.updateUndoRedoButtons();
+  }
+
+  private updateUndoRedoButtons(): void {
+    const node = this.container?.node as HTMLElement;
+    if (!node) return;
+    const undoBtn = node.querySelector('#undo-btn') as HTMLButtonElement;
+    const redoBtn = node.querySelector('#redo-btn') as HTMLButtonElement;
+    if (undoBtn) undoBtn.disabled = !this.canUndo();
+    if (redoBtn) redoBtn.disabled = !this.canRedo();
   }
 
   private applyTemplate(template: SoulTemplate): void {
