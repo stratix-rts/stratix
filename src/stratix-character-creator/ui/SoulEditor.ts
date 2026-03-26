@@ -326,6 +326,23 @@ export class SoulEditor {
             margin: 0;
           ">${this.escapeHtml(this.buildPromptPreview())}</pre>
         </div>
+
+        <div class="section" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid ${THEME.border};">
+          <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+            <span style="font-size: 10px; color: ${THEME.textMuted};">
+              <kbd style="background: ${THEME.inputBg}; padding: 2px 6px; border-radius: 3px; border: 1px solid ${THEME.border};">Ctrl+Z</kbd> 撤销
+            </span>
+            <span style="font-size: 10px; color: ${THEME.textMuted};">
+              <kbd style="background: ${THEME.inputBg}; padding: 2px 6px; border-radius: 3px; border: 1px solid ${THEME.border};">Ctrl+Shift+Z</kbd> 重做
+            </span>
+            <span style="font-size: 10px; color: ${THEME.textMuted};">
+              <kbd style="background: ${THEME.inputBg}; padding: 2px 6px; border-radius: 3px; border: 1px solid ${THEME.border};">Enter</kbd> 添加目标
+            </span>
+            <span style="font-size: 10px; color: ${THEME.textMuted};">
+              <kbd style="background: ${THEME.inputBg}; padding: 2px 6px; border-radius: 3px; border: 1px solid ${THEME.border};">⋮⋮</kbd> 拖拽排序
+            </span>
+          </div>
+        </div>
       </div>
     `;
   }
