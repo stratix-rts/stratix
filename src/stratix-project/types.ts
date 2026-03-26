@@ -302,6 +302,29 @@ export interface AgentBadge {
 
 export type FileType = 'md' | 'txt' | 'ts' | 'js' | 'fig' | 'image' | 'link' | 'folder' | 'other';
 
+// ============================================
+// File Version History Types
+// ============================================
+
+export interface FileVersion {
+  id: string;          // 版本 ID
+  content: string;     // 版本内容
+  createdAt: number;   // 创建时间
+  description?: string; // 版本描述
+}
+
+export interface FileMetadata {
+  versions?: FileVersion[];      // 版本列表
+  currentVersionId?: string;     // 当前版本 ID
+  size?: number;
+  mimeType?: string;
+  [key: string]: any;
+}
+
+// ============================================
+// Zone Types
+// ============================================
+
 export interface ZoneFile {
   id: string;
   zoneId: string;
@@ -311,11 +334,7 @@ export interface ZoneFile {
   content?: string;
   fileType?: FileType;
   lastFetched?: number;
-  metadata?: {
-    size?: number;
-    mimeType?: string;
-    [key: string]: any;
-  };
+  metadata?: FileMetadata;
   createdAt: number;
   updatedAt: number;
 }

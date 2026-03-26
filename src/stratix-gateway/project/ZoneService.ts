@@ -1,4 +1,4 @@
-import { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskCreateRequest, ZoneTaskUpdateRequest, ZoneMessage, ZoneMessageCreateRequest } from '../../stratix-project/types';
+import { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskCreateRequest, ZoneTaskUpdateRequest, ZoneMessage, ZoneMessageCreateRequest, FileVersion } from '../../stratix-project/types';
 
 export interface ZoneFileBatchRequest {
   files: Array<{
@@ -95,6 +95,63 @@ export class ZoneService {
     }
 
     return deleted;
+  }
+
+  // ============================================
+  // Zone Recycle Bin (Soft Delete Recovery)
+  // ============================================
+
+  /**
+   * Get all soft-deleted zones for a project (recycle bin)
+   */
+  public async getDeletedZones(projectId: string): Promise<Zone[]> {
+    await this.ensureInitialized();
+
+    // Verify project exists
+    const project = projectRepository.getProject(projectId);
+    if (!project) {
+      throw new Error(`Project not found: ${projectId}`);
+    }
+
+    return zoneRepository.getDeletedZones(projectId);
+  }
+
+  /**
+   * Restore a soft-deleted zone
+   */
+  public async restoreZone(zoneId: string): Promise<Zone> {
+    await this.ensureInitialized();
+
+    const zone = zoneRepository.getDeletedZone(zoneId);
+    if (!zone) {
+      throw new Error(`Deleted zone not found: ${zoneId}`);
+    }
+
+    const restored = zoneRepository.restoreZone(zoneId);
+    if (!restored) {
+      throw new Error(`Failed to restore zone: ${zoneId}`);
+    }
+
+    // Publish zone:restored event
+    gatewayEventBus.publishZoneEvent('zone:restored', zoneId, zone.projectId, {
+      title: restored.title
+    });
+
+    return restored;
+  }
+
+  /**
+   * Permanently delete a zone (cannot be recovered)
+   */
+  public async permanentlyDeleteZone(zoneId: string): Promise<boolean> {
+    await this.ensureInitialized();
+
+    const zone = zoneRepository.getDeletedZone(zoneId);
+    if (!zone) {
+      throw new Error(`Deleted zone not found: ${zoneId}`);
+    }
+
+    return zoneRepository.permanentlyDeleteZone(zoneId);
   }
 
   // Zone Members
@@ -266,12 +323,103 @@ export class ZoneService {
     }
 
     if (content !== undefined) {
+      // Save version history before updating (only for text files)
+      if (content && this.isTextFile(file.fileType)) {
+        zoneRepository.addFileVersion(fileId, content, 'Auto-saved on refresh');
+      }
       zoneRepository.updateFile(fileId, { content, lastFetched: Date.now() });
     }
 
     const updated = zoneRepository.getFile(fileId);
     if (!updated) {
       throw new Error(`File not found after update: ${fileId}`);
+    }
+
+    return updated;
+  }
+
+  // ============================================
+  // File Version History
+  // ============================================
+
+  /**
+   * Check if file type supports version history (text files only)
+   */
+  private isTextFile(fileType?: FileType): boolean {
+    if (!fileType) return false;
+    return ['md', 'txt', 'ts', 'js', 'fig', 'link'].includes(fileType);
+  }
+
+  /**
+   * Get file versions
+   */
+  public async getFileVersions(zoneId: string, fileId: string): Promise<{ versions: FileVersion[]; currentVersionId?: string }> {
+    await this.ensureInitialized();
+
+    const file = zoneRepository.getFile(fileId);
+    if (!file || file.zoneId !== zoneId) {
+      throw new Error(`File not found: ${fileId} in zone ${zoneId}`);
+    }
+
+    const result = zoneRepository.getFileVersions(fileId);
+    return result || { versions: [] };
+  }
+
+  /**
+   * Update file content with version tracking (saves old content as version)
+   */
+  public async updateFileWithVersion(zoneId: string, fileId: string, newContent: string, description?: string): Promise<ZoneFile> {
+    await this.ensureInitialized();
+
+    const file = zoneRepository.getFile(fileId);
+    if (!file || file.zoneId !== zoneId) {
+      throw new Error(`File not found: ${fileId} in zone ${zoneId}`);
+    }
+
+    // Only save version for text files that have content
+    if (this.isTextFile(file.fileType) && file.content) {
+      zoneRepository.addFileVersion(fileId, file.content, description);
+    }
+
+    // Update file with new content
+    const updated = zoneRepository.updateFile(fileId, { content: newContent, lastFetched: Date.now() });
+    if (!updated) {
+      throw new Error(`File not found after update: ${fileId}`);
+    }
+
+    // Publish file:updated event
+    const zone = zoneRepository.getZone(zoneId);
+    if (zone) {
+      gatewayEventBus.publishZoneEvent('zone:file_updated', zoneId, zone.projectId, {
+        file: updated
+      });
+    }
+
+    return updated;
+  }
+
+  /**
+   * Rollback file to a specific version
+   */
+  public async rollbackFileToVersion(zoneId: string, fileId: string, versionId: string): Promise<ZoneFile> {
+    await this.ensureInitialized();
+
+    const file = zoneRepository.getFile(fileId);
+    if (!file || file.zoneId !== zoneId) {
+      throw new Error(`File not found: ${fileId} in zone ${zoneId}`);
+    }
+
+    const updated = zoneRepository.rollbackFileToVersion(fileId, versionId);
+    if (!updated) {
+      throw new Error(`Failed to rollback to version: ${versionId}`);
+    }
+
+    // Publish file:updated event
+    const zone = zoneRepository.getZone(zoneId);
+    if (zone) {
+      gatewayEventBus.publishZoneEvent('zone:file_updated', zoneId, zone.projectId, {
+        file: updated
+      });
     }
 
     return updated;

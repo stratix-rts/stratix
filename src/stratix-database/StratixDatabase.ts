@@ -63,6 +63,7 @@ export class StratixDatabase {
     if (!zoneCtxColumnNames.has('deleted_at')) {
       this.db.exec('ALTER TABLE zone_contexts ADD COLUMN deleted_at INTEGER');
       this.db.exec('CREATE INDEX IF NOT EXISTS idx_zone_contexts_deleted_at ON zone_contexts(deleted_at)');
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_zone_contexts_project_deleted ON zone_contexts(project_id, deleted_at)');
       console.log('[Database] Added deleted_at column to zone_contexts table');
     }
 

@@ -1,5 +1,5 @@
 import { getDatabase } from './StratixDatabase';
-import { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskStatus, ZoneMessage, SenderType } from '../stratix-project/types';
+import { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskStatus, ZoneMessage, SenderType, FileVersion, FileMetadata } from '../stratix-project/types';
 import { generateId } from '../stratix-project/utils/helpers';
 
 export class ZoneRepository {
@@ -66,6 +66,34 @@ export class ZoneRepository {
     const stmt = this.db.prepare('UPDATE zone_contexts SET deleted_at = ? WHERE zone_id = ? AND deleted_at IS NULL');
     const result = stmt.run(now, zoneId);
     return result.changes > 0;
+  }
+
+  // ============================================
+  // Zone Soft Delete Recovery (Recycle Bin)
+  // ============================================
+
+  getDeletedZones(projectId: string): Zone[] {
+    const rows = this.db.prepare('SELECT * FROM zone_contexts WHERE project_id = ? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC').all(projectId) as any[];
+    return rows.map(row => this.mapRowToZone(row));
+  }
+
+  restoreZone(zoneId: string): Zone | null {
+    const stmt = this.db.prepare('UPDATE zone_contexts SET deleted_at = NULL WHERE zone_id = ? AND deleted_at IS NOT NULL');
+    const result = stmt.run(zoneId);
+    if (result.changes === 0) return null;
+    return this.getZone(zoneId);
+  }
+
+  permanentlyDeleteZone(zoneId: string): boolean {
+    // Physical delete - use with caution
+    const stmt = this.db.prepare('DELETE FROM zone_contexts WHERE zone_id = ?');
+    const result = stmt.run(zoneId);
+    return result.changes > 0;
+  }
+
+  getDeletedZone(zoneId: string): Zone | null {
+    const row = this.db.prepare('SELECT * FROM zone_contexts WHERE zone_id = ? AND deleted_at IS NOT NULL').get(zoneId) as any;
+    return row ? this.mapRowToZone(row) : null;
   }
 
   // Zone Members operations
@@ -141,6 +169,95 @@ export class ZoneRepository {
     stmt.run(content, lastFetched, JSON.stringify(metadata), now, fileId);
 
     return this.getFile(fileId);
+  }
+
+  // ============================================
+  // File Version History
+  // ============================================
+
+  /**
+   * Get file versions from metadata
+   */
+  getFileVersions(fileId: string): { versions: FileVersion[]; currentVersionId?: string } | null {
+    const file = this.getFile(fileId);
+    if (!file) return null;
+
+    return {
+      versions: file.metadata?.versions || [],
+      currentVersionId: file.metadata?.currentVersionId
+    };
+  }
+
+  /**
+   * Add a version to file metadata
+   */
+  addFileVersion(fileId: string, content: string, description?: string): ZoneFile | null {
+    const file = this.getFile(fileId);
+    if (!file) return null;
+
+    const metadata = file.metadata || {};
+    const versions: FileVersion[] = metadata.versions || [];
+
+    // Create new version
+    const newVersion: FileVersion = {
+      id: generateId('ver'),
+      content,
+      createdAt: Date.now(),
+      description
+    };
+
+    // Add to versions array (at the beginning, newest first)
+    versions.unshift(newVersion);
+
+    // Keep only last 10 versions
+    if (versions.length > 10) {
+      versions.pop();
+    }
+
+    // Update metadata
+    const updatedMetadata: FileMetadata = {
+      ...metadata,
+      versions,
+      currentVersionId: newVersion.id
+    };
+
+    return this.updateFile(fileId, { metadata: updatedMetadata });
+  }
+
+  /**
+   * Rollback file to a specific version
+   */
+  rollbackFileToVersion(fileId: string, versionId: string): ZoneFile | null {
+    const file = this.getFile(fileId);
+    if (!file) return null;
+
+    const versions: FileVersion[] = file.metadata?.versions || [];
+    const targetVersion = versions.find(v => v.id === versionId);
+    if (!targetVersion) return null;
+
+    // Save current content as a new version before rollback
+    if (file.content) {
+      const currentVersion: FileVersion = {
+        id: generateId('ver'),
+        content: file.content,
+        createdAt: Date.now(),
+        description: 'Auto-saved before rollback'
+      };
+      versions.unshift(currentVersion);
+      if (versions.length > 10) {
+        versions.pop();
+      }
+    }
+
+    // Update metadata with current version pointing to rollback target
+    const updatedMetadata: FileMetadata = {
+      ...file.metadata,
+      versions,
+      currentVersionId: versionId
+    };
+
+    // Update file content to the target version
+    return this.updateFile(fileId, { content: targetVersion.content, metadata: updatedMetadata });
   }
 
   deleteFile(fileId: string): boolean {

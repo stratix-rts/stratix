@@ -117,6 +117,7 @@ export class StatusSyncService {
       'zone:member_joined': 'stratix:zone_member_joined',
       'zone:member_left': 'stratix:zone_member_left',
       'zone:deleted': 'stratix:zone_deleted',
+      'zone:restored': 'stratix:zone_restored',
       'zone:task_created': 'stratix:zone_task_created',
       'zone:task_updated': 'stratix:zone_task_updated',
       'zone:task_deleted': 'stratix:zone_task_deleted',

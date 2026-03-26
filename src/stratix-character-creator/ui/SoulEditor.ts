@@ -71,6 +71,9 @@ export class SoulEditor {
   private rawContent: string = '';
   private onChange?: (soul: StratixSoulConfig) => void;
 
+  // 目标完成状态
+  private completedGoals = new Set<number>();
+
   // Undo/Redo history
   private undoStack: StratixSoulConfig[] = [];
   private redoStack: StratixSoulConfig[] = [];
@@ -256,9 +259,12 @@ export class SoulEditor {
         </div>
 
         <div class="section" style="margin-bottom: 16px;">
-          <label style="display: block; font-size: 11px; color: ${THEME.textMuted}; margin-bottom: 6px;">
-            目标 GOALS
-          </label>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <label style="display: block; font-size: 11px; color: ${THEME.textMuted};">
+              目标 GOALS
+            </label>
+            <span id="goals-progress" style="font-size: 10px; color: ${THEME.textMuted};">0/0 完成</span>
+          </div>
           <div id="goals-list" style="margin-bottom: 8px;">
             ${goalsHtml || '<span style="color: ' + THEME.textMuted + '; font-size: 12px;">暂无目标</span>'}
           </div>
@@ -586,6 +592,36 @@ export class SoulEditor {
           indicator.style.background = colors[priority] || THEME.priorityMedium;
         }
       }
+
+      // 复选框完成状态
+      if (target.classList.contains('goal-checkbox')) {
+        const index = parseInt(target.dataset.index || '0', 10);
+        const isChecked = (target as HTMLInputElement).checked;
+        const goalItem = target.parentElement as HTMLElement;
+
+        if (isChecked) {
+          this.completedGoals.add(index);
+          goalItem.classList.add('completed');
+          goalItem.style.opacity = '0.6';
+          const textEl = goalItem.querySelector('span:nth-child(4)') as HTMLElement;
+          if (textEl) textEl.style.textDecoration = 'line-through';
+        } else {
+          this.completedGoals.delete(index);
+          goalItem.classList.remove('completed');
+          goalItem.style.opacity = '1';
+          const textEl = goalItem.querySelector('span:nth-child(4)') as HTMLElement;
+          if (textEl) textEl.style.textDecoration = 'none';
+        }
+
+        // 更新进度显示
+        const progressEl = node.querySelector('#goals-progress') as HTMLElement;
+        if (progressEl) {
+          const completed = this.completedGoals.size;
+          const total = this.soul.goals.length;
+          progressEl.textContent = `${completed}/${total} 完成`;
+          progressEl.style.color = completed === total && total > 0 ? THEME.success : THEME.textMuted;
+        }
+      }
     });
 
     // 拖拽排序事件
@@ -708,20 +744,33 @@ export class SoulEditor {
   private refreshGoalsList(): void {
     const node = this.container?.node as HTMLElement;
     const goalsList = node?.querySelector('#goals-list') as HTMLElement;
+    const progressEl = node?.querySelector('#goals-progress') as HTMLElement;
     if (!goalsList) return;
 
     if (this.soul.goals.length === 0) {
       goalsList.innerHTML = `<span style="color: ${THEME.textMuted}; font-size: 12px;">暂无目标</span>`;
+      if (progressEl) progressEl.textContent = '0/0 完成';
       return;
+    }
+
+    // 更新进度
+    if (progressEl) {
+      const completed = this.completedGoals.size;
+      const total = this.soul.goals.length;
+      progressEl.textContent = `${completed}/${total} 完成`;
+      progressEl.style.color = completed === total && total > 0 ? THEME.success : THEME.textMuted;
     }
 
     goalsList.innerHTML = this.soul.goals
       .map(
-        (goal, i) => `
-        <div class="goal-item" data-index="${i}" draggable="true" style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; cursor: grab; padding: 4px; border-radius: 4px; transition: background 0.15s;">
+        (goal, i) => {
+          const isCompleted = this.completedGoals.has(i);
+          return `
+        <div class="goal-item ${isCompleted ? 'completed' : ''}" data-index="${i}" draggable="true" style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; cursor: grab; padding: 4px; border-radius: 4px; transition: background 0.15s; opacity: ${isCompleted ? 0.6 : 1};">
+          <input type="checkbox" class="goal-checkbox" data-index="${i}" ${isCompleted ? 'checked' : ''} style="width: 16px; height: 16px; cursor: pointer; accent-color: ${THEME.success};" />
           <span class="priority-indicator" data-priority="medium" style="width: 4px; height: 16px; border-radius: 2px; background: ${THEME.priorityMedium}; flex-shrink: 0;"></span>
           <span class="drag-handle" style="color: ${THEME.textMuted}; cursor: grab; font-size: 14px; padding: 0 4px;">⋮⋮</span>
-          <span style="flex: 1; color: ${THEME.text}; font-size: 12px;">${this.escapeHtml(goal)}</span>
+          <span style="flex: 1; color: ${THEME.text}; font-size: 12px; text-decoration: ${isCompleted ? 'line-through' : 'none'};">${this.escapeHtml(goal)}</span>
           <select class="priority-select" data-index="${i}" style="background: ${THEME.inputBg}; border: 1px solid ${THEME.border}; border-radius: 4px; color: ${THEME.text}; font-size: 10px; padding: 2px 4px; cursor: pointer;">
             <option value="high" style="color: ${THEME.priorityHigh};">高</option>
             <option value="medium" selected style="color: ${THEME.priorityMedium};">中</option>
@@ -729,7 +778,8 @@ export class SoulEditor {
           </select>
           <button class="remove-goal-btn" data-index="${i}" style="${getButtonInlineStyles('danger')}">删除</button>
         </div>
-      `
+      `;
+        }
       )
       .join('');
   }

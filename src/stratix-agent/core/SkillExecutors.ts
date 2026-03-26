@@ -557,14 +557,18 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
           false: false,
         };
 
+        const sandboxKeys = Object.keys(sandbox);
+        const sandboxValues = Object.values(sandbox);
+
         // Filter out invalid identifier names (null, true, false, undefined, Infinity, NaN)
         // These cannot be used as function parameter names but are either global or handled separately
+        const INVALID_IDENTIFIERS = new Set(['null', 'true', 'false', 'undefined', 'Infinity', 'NaN']);
         const validKeys: string[] = [];
         const validValues: any[] = [];
         for (let i = 0; i < sandboxKeys.length; i++) {
           const key = sandboxKeys[i];
           // Skip invalid identifiers that can't be function parameter names
-          if (/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key)) {
+          if (!INVALID_IDENTIFIERS.has(key) && /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key)) {
             validKeys.push(key);
             validValues.push(sandboxValues[i]);
           }

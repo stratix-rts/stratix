@@ -315,6 +315,7 @@ export type StratixStateSyncEventType =
   | 'stratix:zone_member_joined'
   | 'stratix:zone_member_left'
   | 'stratix:zone_deleted'
+  | 'stratix:zone_restored'
   | 'stratix:zone_task_created'
   | 'stratix:zone_task_updated'
   | 'stratix:zone_task_deleted'

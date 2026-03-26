@@ -153,6 +153,88 @@ router.delete('/zones/:zoneId', async (req: Request, res: Response): Promise<voi
 });
 
 // ============================================
+// Zone Recycle Bin
+// ============================================
+
+/**
+ * GET /api/zones/:projectId/trash
+ * Get all soft-deleted zones for a project (recycle bin)
+ */
+router.get('/zones/:projectId/trash', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const projectId = req.params.projectId as string;
+    const zones = await zoneService.getDeletedZones(projectId);
+
+    res.json({
+      success: true,
+      zones
+    });
+  } catch (error) {
+    console.error('[Zone API] Get deleted zones failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to get deleted zones';
+    if (message.includes('not found')) {
+      res.status(404).json({ success: false, error: message });
+    } else {
+      res.status(500).json({ success: false, error: message });
+    }
+  }
+});
+
+/**
+ * POST /api/zones/:zoneId/restore
+ * Restore a soft-deleted zone
+ */
+router.post('/zones/:zoneId/restore', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const zoneId = req.params.zoneId as string;
+    const zone = await zoneService.restoreZone(zoneId);
+
+    res.json({
+      success: true,
+      zone
+    });
+  } catch (error) {
+    console.error('[Zone API] Restore zone failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to restore zone';
+    if (message.includes('not found')) {
+      res.status(404).json({ success: false, error: message });
+    } else {
+      res.status(500).json({ success: false, error: message });
+    }
+  }
+});
+
+/**
+ * DELETE /api/zones/:zoneId/permanent
+ * Permanently delete a zone (cannot be recovered)
+ */
+router.delete('/zones/:zoneId/permanent', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const zoneId = req.params.zoneId as string;
+    const deleted = await zoneService.permanentlyDeleteZone(zoneId);
+
+    if (!deleted) {
+      res.status(404).json({
+        success: false,
+        error: 'Zone not found in trash'
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      message: 'Zone permanently deleted'
+    });
+  } catch (error) {
+    console.error('[Zone API] Permanent delete failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to permanently delete zone'
+    });
+  }
+});
+
+// ============================================
 // Zone Files
 // ============================================
 
