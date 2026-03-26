@@ -353,6 +353,82 @@ describe('ZoneSkillExecutor', () => {
     });
   });
 
+  describe('zone_search', () => {
+    it('should throw error when keyword is missing', async () => {
+      await expect(executor.execute(mockSkill('zone_search'), {}, context))
+        .rejects.toThrow('keyword is required for zone_search');
+    });
+
+    it('should throw error when keyword is too short', async () => {
+      await expect(executor.execute(mockSkill('zone_search'), { keyword: 'a' }, context))
+        .rejects.toThrow('minimum 2 characters');
+    });
+
+    it('should search zones with keyword', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          zones: [
+            { id: 'z1', title: 'Marketing Zone', prompt: 'Marketing tasks', members: ['a1'], projectId: 'p1' },
+            { id: 'z2', title: 'Sales Zone', prompt: 'Sales tasks', members: ['a2'], projectId: 'p2' }
+          ]
+        })
+      });
+
+      const result = await executor.execute(mockSkill('zone_search'), { keyword: 'market' }, context);
+
+      expect(result.success).toBe(true);
+      expect(result.zones).toHaveLength(2);
+      expect(result.keyword).toBe('market');
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://127.0.0.1:7524/api/zones/search?keyword=market&limit=20',
+        expect.objectContaining({ method: 'GET' })
+      );
+    });
+
+    it('should use custom limit when provided', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ zones: [] })
+      });
+
+      await executor.execute(mockSkill('zone_search'), { keyword: 'test', limit: 5 }, context);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://127.0.0.1:7524/api/zones/search?keyword=test&limit=5',
+        expect.objectContaining({ method: 'GET' })
+      );
+    });
+
+    it('should return empty results when no matches', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ zones: [] })
+      });
+
+      const result = await executor.execute(mockSkill('zone_search'), { keyword: 'nonexistent' }, context);
+
+      expect(result.success).toBe(true);
+      expect(result.zones).toEqual([]);
+      expect(result.total).toBe(0);
+    });
+
+    it('should include projectId in search results', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          zones: [
+            { id: 'z1', title: 'Test Zone', projectId: 'proj-123' }
+          ]
+        })
+      });
+
+      const result = await executor.execute(mockSkill('zone_search'), { keyword: 'test' }, context);
+
+      expect(result.zones[0].projectId).toBe('proj-123');
+    });
+  });
+
   describe('unknown skill', () => {
     it('should throw error for unknown zone skill', async () => {
       await expect(executor.execute(mockSkill('zone_unknown'), {}, context))
@@ -469,7 +545,7 @@ describe('Zone API Validation', () => {
 // Zone Skill Definition Tests
 // ============================================
 describe('Zone Skill Definitions', () => {
-  const zoneSkills = ['zone_move_to', 'zone_leave', 'zone_list', 'zone_info'];
+  const zoneSkills = ['zone_move_to', 'zone_leave', 'zone_list', 'zone_info', 'zone_search'];
 
   it('should have all required zone skills defined', () => {
     expect(zoneSkills).toContain('zone_move_to');
@@ -478,8 +554,8 @@ describe('Zone Skill Definitions', () => {
     expect(zoneSkills).toContain('zone_info');
   });
 
-  it('should have 4 zone skills total', () => {
-    expect(zoneSkills.length).toBe(4);
+  it('should have 5 zone skills total', () => {
+    expect(zoneSkills.length).toBe(5);
   });
 });
 

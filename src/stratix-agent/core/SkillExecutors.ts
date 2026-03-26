@@ -1042,6 +1042,44 @@ export class ZoneSkillExecutor implements SkillExecutor {
         };
       }
 
+      case 'zone_search': {
+        const { keyword, limit = 20 } = params;
+        if (!keyword || keyword.trim().length < 2) {
+          throw new Error('keyword is required for zone_search (minimum 2 characters)');
+        }
+
+        const response = await fetchWithRetry(
+          `${gatewayUrl}/api/zones/search?keyword=${encodeURIComponent(keyword)}&limit=${encodeURIComponent(String(limit))}`,
+          {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' },
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(`Failed to search zones: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const zones = (data.zones || []).map((zone: any) => ({
+          zoneId: zone.id || zone.zoneId,
+          name: zone.name || zone.title || 'Unnamed Zone',
+          title: zone.title || '',
+          prompt: zone.prompt || '',
+          agentCount: zone.members?.length || 0,
+          status: zone.status,
+          projectId: zone.projectId
+        }));
+
+        return {
+          success: true,
+          zones,
+          total: zones.length,
+          keyword,
+          searchedAt: Date.now()
+        };
+      }
+
       default:
         throw new Error(`Unknown zone skill: ${skill.skillId}`);
     }
