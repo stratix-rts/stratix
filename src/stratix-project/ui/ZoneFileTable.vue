@@ -224,16 +224,55 @@
       </template>
     </vxe-grid>
 
-    <!-- 图片预览弹窗 -->
+    <!-- 文件预览弹窗 -->
     <StratixModal
       :visible="showPreview"
-      title="图片预览"
+      :title="previewFile?.name || '文件预览'"
       width="80vw"
-      max-width="1200px"
+      max-width="1000px"
       @update:visible="showPreview = false"
     >
       <div class="preview-container">
-        <img v-if="previewFile" :src="previewFile.source" :alt="previewFile.name" class="preview-image" />
+        <!-- 图片预览 -->
+        <template v-if="previewType === 'image'">
+          <img :src="previewFile?.source" :alt="previewFile?.name" class="preview-image" />
+        </template>
+
+        <!-- Markdown / 文本预览 -->
+        <template v-else-if="previewType === 'text'">
+          <pre class="preview-text">{{ previewContent }}</pre>
+        </template>
+
+        <!-- URL 链接预览 -->
+        <template v-else-if="previewType === 'url'">
+          <div class="preview-url">
+            <div v-if="previewFile?.metadata?.favicon" class="url-preview-header">
+              <img :src="previewFile.metadata.favicon" class="url-preview-favicon" />
+              <a :href="previewFile?.source" target="_blank" class="url-preview-link">
+                {{ previewFile?.metadata?.title || previewFile?.source }}
+              </a>
+            </div>
+            <div v-else class="url-preview-title">{{ previewFile?.metadata?.title || previewFile?.source }}</div>
+            <div class="url-preview-actions">
+              <StratixButton @click="openUrl(previewFile?.source || '')">在浏览器中打开</StratixButton>
+            </div>
+          </div>
+        </template>
+
+        <!-- 不支持的预览类型 -->
+        <template v-else>
+          <div class="preview-unsupported">
+            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+              <line x1="16" y1="17" x2="8" y2="17" />
+              <polyline points="10 9 9 9 8 9" />
+            </svg>
+            <p>此文件类型暂不支持预览</p>
+            <p class="preview-unsupported-hint">{{ previewFile?.fileType || 'unknown' }} 文件</p>
+          </div>
+        </template>
       </div>
     </StratixModal>
 
@@ -348,6 +387,8 @@ const filterType = ref('');
 const filterSource = ref('');
 const showPreview = ref(false);
 const previewFile = ref<ZoneFile | null>(null);
+const previewType = ref<'image' | 'text' | 'url' | 'unsupported'>('image');
+const previewContent = ref('');
 const selectedFiles = ref<ZoneFile[]>([]);
 
 // 版本历史相关
@@ -530,9 +571,42 @@ const handleExportCSV = () => {
   URL.revokeObjectURL(url);
 };
 
+// 判断是否为图片类型
+const isImageFile = (file: ZoneFile): boolean => {
+  if (file.fileType === 'image') return true;
+  if (file.sourceType === 'url') {
+    const url = file.source.toLowerCase();
+    return /\.(jpg|jpeg|png|gif|webp|svg|bmp)$/.test(url);
+  }
+  return false;
+};
+
+// 判断是否为文本类型
+const isTextFileType = (fileType?: string): boolean => {
+  if (!fileType) return false;
+  return ['md', 'txt', 'js', 'ts', 'jsx', 'tsx', 'css', 'html', 'json', 'yaml', 'yml', 'xml', 'py', 'rb', 'go', 'java', 'c', 'cpp', 'h', 'sh', 'bash', 'log'].includes(fileType.toLowerCase());
+};
+
 // 预览文件
-const handlePreview = (file: ZoneFile) => {
+const handlePreview = async (file: ZoneFile) => {
   previewFile.value = file;
+
+  // 根据文件类型设置预览方式
+  if (isImageFile(file)) {
+    previewType.value = 'image';
+    previewContent.value = '';
+  } else if (isTextFileType(file.fileType)) {
+    previewType.value = 'text';
+    // 如果有内容直接使用，否则尝试获取内容
+    previewContent.value = file.content || '（文件内容未加载）';
+  } else if (file.sourceType === 'url') {
+    previewType.value = 'url';
+    previewContent.value = '';
+  } else {
+    previewType.value = 'unsupported';
+    previewContent.value = '';
+  }
+
   showPreview.value = true;
 };
 
@@ -970,6 +1044,86 @@ const uploadFile = async (file: File) => {
   max-width: 100%;
   max-height: 70vh;
   object-fit: contain;
+}
+
+.preview-text {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background-color: var(--ds-bg-secondary, #f3f4f6);
+  padding: 16px;
+  border-radius: 8px;
+  margin: 0;
+  width: 100%;
+  max-height: 65vh;
+  overflow: auto;
+}
+
+.preview-url {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+}
+
+.url-preview-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.url-preview-favicon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+.url-preview-link {
+  font-size: 16px;
+  color: var(--ds-primary, #3b82f6);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.url-preview-link:hover {
+  text-decoration: underline;
+}
+
+.url-preview-title {
+  font-size: 16px;
+  color: var(--ds-text-primary, #111827);
+}
+
+.url-preview-actions {
+  margin-top: 8px;
+}
+
+.preview-unsupported {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: var(--ds-text-secondary, #6b7280);
+  text-align: center;
+}
+
+.preview-unsupported svg {
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.preview-unsupported p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.preview-unsupported-hint {
+  margin-top: 8px !important;
+  font-size: 12px !important;
+  color: var(--ds-text-tertiary, #9ca3af);
 }
 
 /* 版本历史样式 */

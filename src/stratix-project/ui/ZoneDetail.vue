@@ -45,10 +45,21 @@
     <!-- Tasks Section -->
     <div class="zone-detail__section">
       <div class="zone-detail__section-header">
-        <h4 class="zone-detail__section-title">Tasks</h4>
-        <StratixButton size="sm" variant="secondary" @click="showCreateTask = true">
-          + New Task
-        </StratixButton>
+        <h4 class="zone-detail__section-title">Tasks ({{ tasks.length }})</h4>
+        <div class="zone-detail__task-header-actions">
+          <StratixButton size="sm" variant="secondary" @click="showCreateTask = !showCreateTask">
+            {{ showCreateTask ? '取消' : '+ New Task' }}
+          </StratixButton>
+          <StratixButton
+            v-if="selectedTasks.length > 0"
+            size="sm"
+            variant="ghost"
+            danger
+            @click="handleBatchDeleteTasks"
+          >
+            删除 ({{ selectedTasks.length }})
+          </StratixButton>
+        </div>
       </div>
 
       <!-- Create Task Form -->
@@ -70,51 +81,75 @@
         </div>
       </div>
 
-      <div v-if="tasks.length === 0 && !showCreateTask" class="zone-detail__empty-list">
-        No tasks yet. Create one to get started.
-      </div>
-      <div v-else class="zone-detail__task-list">
-        <div
-          v-for="task in tasks"
-          :key="task.id"
-          class="zone-detail__task-item"
-        >
-          <div class="zone-detail__task-info">
-            <select
-              class="zone-detail__task-status"
-              :class="`zone-detail__task-status--${task.status}`"
-              :value="task.status"
-              @change="handleTaskStatusChange(task, $event)"
-            >
-              <option value="pending">Pending</option>
-              <option value="in_progress">In Progress</option>
-              <option value="done">Done</option>
-            </select>
-            <span class="zone-detail__task-title" :class="{ 'zone-detail__task-title--done': task.status === 'done' }">
-              {{ task.title }}
-            </span>
-          </div>
-          <div class="zone-detail__task-meta">
-            <span v-if="task.assignee" class="zone-detail__task-assignee">
-              👤 {{ task.assignee.slice(0, 8) }}
-            </span>
-            <button
-              v-if="!task.assignee && task.status !== 'done'"
-              class="zone-detail__task-action"
-              title="Claim task"
-              @click="handleClaimTask(task.id)"
+      <!-- Tasks Table -->
+      <vxe-grid
+        v-if="tasks.length > 0"
+        ref="taskTableRef"
+        :data="tasks"
+        :columns="taskColumns"
+        stripe
+        border
+        show-overflow
+        height="300"
+        :sort-config="{ trigger: 'cell', remote: false, orders: ['asc', 'desc', 'null'] }"
+        :filter-config="{ remote: false }"
+        :checkbox-config="{ checkMethod: allowTaskCheckbox }"
+        @checkbox-change="handleTaskCheckboxChange"
+      >
+        <template #statusSlot="{ row }">
+          <select
+            class="zone-detail__task-status"
+            :class="`zone-detail__task-status--${row.status}`"
+            :value="row.status"
+            @change="handleTaskStatusChange(row, $event)"
+          >
+            <option value="pending">Pending</option>
+            <option value="in_progress">In Progress</option>
+            <option value="done">Done</option>
+          </select>
+        </template>
+
+        <template #titleSlot="{ row }">
+          <span class="zone-detail__task-title" :class="{ 'zone-detail__task-title--done': row.status === 'done' }">
+            {{ row.title }}
+          </span>
+        </template>
+
+        <template #assigneeSlot="{ row }">
+          <span v-if="row.assignee" class="zone-detail__task-assignee">
+            👤 {{ row.assignee.slice(0, 8) }}
+          </span>
+          <span v-else class="zone-detail__task-no-assignee">-</span>
+        </template>
+
+        <template #createdAtSlot="{ row }">
+          {{ formatTimestamp(row.createdAt) }}
+        </template>
+
+        <template #actionSlot="{ row }">
+          <div class="zone-detail__task-actions">
+            <StratixButton
+              v-if="!row.assignee && row.status !== 'done'"
+              size="tiny"
+              variant="ghost"
+              @click="handleClaimTask(row.id)"
             >
               Claim
-            </button>
-            <button
-              class="zone-detail__task-action zone-detail__task-action--danger"
-              title="Delete"
-              @click="handleDeleteTask(task.id)"
+            </StratixButton>
+            <StratixButton
+              size="tiny"
+              variant="ghost"
+              danger
+              @click="handleDeleteTask(row.id)"
             >
-              ×
-            </button>
+              删除
+            </StratixButton>
           </div>
-        </div>
+        </template>
+      </vxe-grid>
+
+      <div v-else-if="!showCreateTask" class="zone-detail__empty-list">
+        No tasks yet. Create one to get started.
       </div>
     </div>
 
@@ -254,6 +289,7 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted, computed } from 'vue';
 import StratixButton from '@/components/ui/StratixButton.vue';
+import type { VxeGridPropTypes } from 'vxe-table';
 import type { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskStatus, ZoneMessage } from '../types';
 
 interface Props {
@@ -286,6 +322,55 @@ const tasks = ref<ZoneTask[]>([]);
 const showCreateTask = ref(false);
 const newTaskTitle = ref('');
 const currentAgentId = ref('agent_default'); // TODO: Get from actual agent context
+const taskTableRef = ref<any>(null);
+const selectedTasks = ref<ZoneTask[]>([]);
+
+// Task table columns
+const taskColumns: VxeGridPropTypes.Columns = [
+  { type: 'checkbox', width: 50 },
+  { type: 'seq', width: 50, title: '#' },
+  { field: 'status', title: '状态', width: 120, slots: { default: 'statusSlot' }, sortable: true },
+  { field: 'title', title: '任务名称', minWidth: 200, slots: { default: 'titleSlot' }, sortable: true },
+  { field: 'assignee', title: '负责人', width: 120, slots: { default: 'assigneeSlot' } },
+  { field: 'createdAt', title: '创建时间', width: 150, slots: { default: 'createdAtSlot' }, sortable: true },
+  { field: 'action', title: '操作', width: 120, slots: { default: 'actionSlot' } },
+];
+
+// Allow checkbox for tasks
+const allowTaskCheckbox = ({ row }: { row: ZoneTask }) => {
+  return true;
+};
+
+// Handle task checkbox change
+const handleTaskCheckboxChange = ({ records }: { records: ZoneTask[] }) => {
+  selectedTasks.value = records;
+};
+
+// Batch delete tasks
+const handleBatchDeleteTasks = async () => {
+  if (selectedTasks.value.length === 0 || !props.zone.id) return;
+
+  if (!confirm(`确定要删除选中的 ${selectedTasks.value.length} 个任务吗？`)) {
+    return;
+  }
+
+  for (const task of selectedTasks.value) {
+    await handleDeleteTask(task.id);
+  }
+  selectedTasks.value = [];
+};
+
+// Format timestamp
+const formatTimestamp = (timestamp: number): string => {
+  if (!timestamp) return '-';
+  return new Date(timestamp).toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
 
 // Messages state
 const messages = ref<ZoneMessage[]>([]);
@@ -719,6 +804,16 @@ const formatRelativeTime = (timestamp: number): string => {
   gap: 8px;
 }
 
+.zone-detail__task-header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.zone-detail__task-actions {
+  display: flex;
+  gap: 4px;
+}
+
 .zone-detail__section-title {
   margin: 0;
   font-size: 13px;
@@ -984,6 +1079,11 @@ const formatRelativeTime = (timestamp: number): string => {
 .zone-detail__task-assignee {
   font-size: 11px;
   color: var(--ds-text-muted);
+}
+
+.zone-detail__task-no-assignee {
+  font-size: 11px;
+  color: var(--ds-text-tertiary, #9ca3af);
 }
 
 .zone-detail__task-action {
