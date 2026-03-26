@@ -7,8 +7,68 @@ import { Router, Request, Response } from 'express';
 import { skillRepository, type SharedSkill, type SharedSkillInstall, type AgentLearnedSkill } from '../../../stratix-database/SkillRepository';
 import type { SkillCategory, SkillProvider } from '../../../stratix-agent/types';
 import { skillAuditLogger, type AuditLogQuery } from '../../../stratix-agent/core/SkillAuditLogger';
+import { BUILTIN_SKILLS, SKILLS_BY_CATEGORY } from '../../../stratix-agent/core/BuiltinSkills';
 
 const router = Router();
+
+// ============================================
+// Builtin Skills API
+// ============================================
+
+/**
+ * GET /api/skills/builtin
+ * 获取所有内置技能
+ */
+router.get('/builtin', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { category } = req.query as { category?: string };
+
+    let skills = BUILTIN_SKILLS;
+    if (category && SKILLS_BY_CATEGORY[category as keyof typeof SKILLS_BY_CATEGORY]) {
+      const skillIds = SKILLS_BY_CATEGORY[category as keyof typeof SKILLS_BY_CATEGORY];
+      skills = BUILTIN_SKILLS.filter(s => skillIds.includes(s.skillId));
+    }
+
+    res.json({
+      success: true,
+      data: skills,
+      categories: SKILLS_BY_CATEGORY,
+      total: skills.length
+    });
+  } catch (error) {
+    console.error('[Skill API] Failed to get builtin skills:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get builtin skills'
+    });
+  }
+});
+
+/**
+ * GET /api/skills/builtin/categories
+ * 获取内置技能分类
+ */
+router.get('/builtin/categories', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const categoryList = Object.entries(SKILLS_BY_CATEGORY).map(([name, skillIds]) => ({
+      name,
+      skillIds,
+      count: skillIds.length
+    }));
+
+    res.json({
+      success: true,
+      data: categoryList,
+      total: categoryList.length
+    });
+  } catch (error) {
+    console.error('[Skill API] Failed to get builtin skill categories:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get builtin skill categories'
+    });
+  }
+});
 
 // ============================================
 // Shared Skills API

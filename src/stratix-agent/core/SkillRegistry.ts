@@ -5,6 +5,11 @@ interface CacheEntry {
   timestamp: number;
 }
 
+/**
+ * 技能执行进度回调（新版本）
+ */
+export type SkillExecutionCallback = (skillId: string, stage: 'started' | 'validating' | 'executing' | 'completed' | 'error', data?: any) => void;
+
 export class SkillRegistry {
   private availableSkills: Map<string, SkillDefinition> = new Map();
   private enabledSkills: Set<string> = new Set();
@@ -19,6 +24,29 @@ export class SkillRegistry {
   // 执行超时配置
   private defaultTimeout = 30000; // 默认 30 秒
   private maxTimeout = 120000; // 最大 120 秒
+
+  // 进度回调
+  private progressCallback: SkillExecutionCallback | null = null;
+
+  /**
+   * 注册进度回调
+   */
+  onProgress(callback: SkillExecutionCallback | null): void {
+    this.progressCallback = callback;
+  }
+
+  /**
+   * 触发进度回调
+   */
+  private notifyProgress(skillId: string, stage: 'started' | 'validating' | 'executing' | 'completed' | 'error', data?: any): void {
+    if (this.progressCallback) {
+      try {
+        this.progressCallback(skillId, stage, data);
+      } catch (error) {
+        console.error('[SkillRegistry] Progress callback error:', error);
+      }
+    }
+  }
 
   /**
    * 设置默认超时时间
@@ -197,7 +225,11 @@ export class SkillRegistry {
   ): Promise<SkillResult> {
     const startTime = Date.now();
 
+    // 触发开始回调
+    this.notifyProgress(skillId, 'started', { params, timestamp: startTime });
+
     if (!this.enabledSkills.has(skillId)) {
+      this.notifyProgress(skillId, 'error', { error: 'Skill not enabled' });
       return {
         success: false,
         skillId,
@@ -208,6 +240,7 @@ export class SkillRegistry {
 
     const skill = this.availableSkills.get(skillId);
     if (!skill) {
+      this.notifyProgress(skillId, 'error', { error: 'Skill not found' });
       return {
         success: false,
         skillId,
@@ -216,8 +249,12 @@ export class SkillRegistry {
       };
     }
 
+    // 触发验证阶段回调
+    this.notifyProgress(skillId, 'validating', { params });
+
     const validationError = this.validateParams(skill, params);
     if (validationError) {
+      this.notifyProgress(skillId, 'error', { error: validationError });
       return {
         success: false,
         skillId,
@@ -231,12 +268,16 @@ export class SkillRegistry {
     const cachedResult = this.getCachedResult(cacheKey);
     if (cachedResult) {
       // 返回缓存结果，但标记为缓存命中
+      this.notifyProgress(skillId, 'completed', { cached: true, result: cachedResult.result });
       return {
         ...cachedResult,
         cached: true,
         executionTime: Date.now() - startTime
       };
     }
+
+    // 触发执行阶段回调
+    this.notifyProgress(skillId, 'executing', { executor: skill.executor });
 
     try {
       const executor = this.executors.get(skill.executor);
@@ -272,11 +313,17 @@ export class SkillRegistry {
 
       this.setCacheResult(cacheKey, finalResult);
 
+      // 触发完成回调
+      this.notifyProgress(skillId, 'completed', { result, executionTime: finalResult.executionTime });
+
       return finalResult;
     } catch (error) {
       // 判断是否是超时错误
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       const isTimeout = errorMsg.includes('timed out');
+
+      // 触发错误回调
+      this.notifyProgress(skillId, 'error', { error: errorMsg, isTimeout });
 
       return {
         success: false,
