@@ -391,6 +391,9 @@ export class SoulEditor {
             font-size: 12px;
             box-sizing: border-box;
           " />
+          <div style="text-align: right; margin-top: 4px;">
+            <span id="personality-char-count" style="font-size: 10px; color: ${THEME.textMuted};">${this.soul.personality.length} 字符</span>
+          </div>
         </div>
 
         <div class="section" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid ${THEME.border};">
@@ -782,6 +785,11 @@ export class SoulEditor {
       this.soul.personality = (e.target as HTMLInputElement).value;
       this.updatePromptPreview();
       this.notifyChange();
+      // 更新字符计数
+      const charCountEl = node.querySelector('#personality-char-count') as HTMLElement;
+      if (charCountEl) {
+        charCountEl.textContent = `${this.soul.personality.length} 字符`;
+      }
     });
 
     addGoalBtn?.addEventListener('click', () => {
