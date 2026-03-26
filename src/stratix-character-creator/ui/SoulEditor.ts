@@ -571,6 +571,23 @@ export class SoulEditor {
       }
     });
 
+    // 优先级选择事件
+    goalsList?.addEventListener('change', (e) => {
+      const target = e.target as HTMLSelectElement;
+      if (target.classList.contains('priority-select')) {
+        const priority = target.value;
+        const indicator = target.previousElementSibling?.previousElementSibling as HTMLElement;
+        if (indicator?.classList.contains('priority-indicator')) {
+          const colors: Record<string, string> = {
+            high: THEME.priorityHigh,
+            medium: THEME.priorityMedium,
+            low: THEME.priorityLow,
+          };
+          indicator.style.background = colors[priority] || THEME.priorityMedium;
+        }
+      }
+    });
+
     // 拖拽排序事件
     let draggedIndex: number | null = null;
 
