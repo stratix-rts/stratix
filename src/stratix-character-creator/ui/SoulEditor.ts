@@ -246,9 +246,10 @@ export class SoulEditor {
           <div id="goals-list" style="margin-bottom: 8px;">
             ${goalsHtml || '<span style="color: ' + THEME.textMuted + '; font-size: 12px;">暂无目标</span>'}
           </div>
-          <div style="display: flex; gap: 8px;">
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
             <input type="text" id="new-goal-input" placeholder="输入新目标..." style="
               flex: 1;
+              min-width: 150px;
               padding: 8px 12px;
               background: ${THEME.inputBg};
               border: 1px solid ${THEME.border};
@@ -258,6 +259,7 @@ export class SoulEditor {
             " />
             <button id="add-goal-btn" style="${getButtonInlineStyles('primary')}">添加</button>
           </div>
+          <div id="goal-suggestions" style="display: none; margin-top: 8px; background: ${THEME.inputBg}; border: 1px solid ${THEME.border}; border-radius: 6px; max-height: 120px; overflow-y: auto;"></div>
         </div>
 
         <div class="section">
@@ -380,6 +382,58 @@ export class SoulEditor {
           this.applyTemplate(template);
         }
       }
+    });
+
+    // 目标自动补全建议
+    const goalSuggestions = node.querySelector('#goal-suggestions') as HTMLElement;
+
+    const showGoalSuggestions = (query: string) => {
+      if (!goalSuggestions) return;
+      const q = query.toLowerCase().trim();
+
+      if (!q) {
+        goalSuggestions.style.display = 'none';
+        return;
+      }
+
+      const matches = GOAL_SUGGESTIONS.filter(g =>
+        g.toLowerCase().includes(q) && !this.soul.goals.includes(g)
+      ).slice(0, 5);
+
+      if (matches.length === 0) {
+        goalSuggestions.style.display = 'none';
+        return;
+      }
+
+      goalSuggestions.innerHTML = matches.map(g =>
+        `<div class="goal-suggestion" data-goal="${this.escapeHtml(g)}" style="
+          padding: 8px 12px;
+          cursor: pointer;
+          font-size: 12px;
+          color: ${THEME.text};
+        ">${this.escapeHtml(g)}</div>`
+      ).join('');
+
+      goalSuggestions.style.display = 'block';
+
+      goalSuggestions.querySelectorAll('.goal-suggestion').forEach(el => {
+        el.addEventListener('click', () => {
+          const goal = (el as HTMLElement).dataset.goal!;
+          newGoalInput.value = goal;
+          goalSuggestions.style.display = 'none';
+        });
+      });
+    };
+
+    newGoalInput?.addEventListener('input', (e) => {
+      showGoalSuggestions((e.target as HTMLInputElement).value);
+    });
+
+    newGoalInput?.addEventListener('blur', () => {
+      // 延迟隐藏以便点击建议
+      setTimeout(() => {
+        goalSuggestions && (goalSuggestions.style.display = 'none');
+      }, 200);
     });
 
     // 导入按钮
