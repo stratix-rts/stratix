@@ -324,7 +324,7 @@ router.post('/:agentId/messages', async (req: Request, res: Response) => {
   const { role, content, timestamp } = req.body;
 
   if (!role || !content) {
-    res.json(requestHelper.badRequest('role and content are required'));
+    res.status(400).json(requestHelper.badRequest('role and content are required'));
     return;
   }
 
