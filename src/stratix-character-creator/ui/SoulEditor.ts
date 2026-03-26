@@ -346,6 +346,9 @@ export class SoulEditor {
             resize: vertical;
             box-sizing: border-box;
           ">${this.escapeHtml(this.soul.identity)}</textarea>
+          <div style="text-align: right; margin-top: 4px;">
+            <span id="identity-char-count" style="font-size: 10px; color: ${THEME.textMuted};">${this.soul.identity.length} 字符</span>
+          </div>
         </div>
 
         <div class="section" style="margin-bottom: 16px;">
@@ -767,6 +770,11 @@ export class SoulEditor {
       this.soul.identity = (e.target as HTMLTextAreaElement).value;
       this.updatePromptPreview();
       this.notifyChange();
+      // 更新字符计数
+      const charCountEl = node.querySelector('#identity-char-count') as HTMLElement;
+      if (charCountEl) {
+        charCountEl.textContent = `${this.soul.identity.length} 字符`;
+      }
     });
 
     personalityInput?.addEventListener('input', (e) => {
