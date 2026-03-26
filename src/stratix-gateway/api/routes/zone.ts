@@ -674,6 +674,40 @@ router.get('/zones/:zoneId/tasks', async (req: Request, res: Response): Promise<
 });
 
 /**
+ * GET /api/zones/:zoneId/tasks/:taskId
+ * Get a single task
+ */
+router.get('/zones/:zoneId/tasks/:taskId', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const zoneId = req.params.zoneId as string;
+    const taskId = req.params.taskId as string;
+
+    const task = await zoneService.getTask(zoneId, taskId);
+
+    if (!task) {
+      res.status(404).json({
+        success: false,
+        error: 'Task not found'
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      task
+    });
+  } catch (error) {
+    console.error('[Zone API] Get task failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to get task';
+    if (message.includes('not found')) {
+      res.status(404).json({ success: false, error: message });
+    } else {
+      res.status(500).json({ success: false, error: message });
+    }
+  }
+});
+
+/**
  * POST /api/zones/:zoneId/tasks
  * Create a task in a Zone (only taskCreatorId can create)
  */
