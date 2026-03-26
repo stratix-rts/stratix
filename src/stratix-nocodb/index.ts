@@ -19,5 +19,5 @@ export {
   type NocoDBServiceOptions,
 } from './NocoDBService';
 
-// Re-export Vue components
-export { default as NocoDBViewer } from './NocoDBViewer.vue';
+// Re-export Vue components - commented out because tsx can't handle .vue files
+// export { default as NocoDBViewer } from './NocoDBViewer.vue';
