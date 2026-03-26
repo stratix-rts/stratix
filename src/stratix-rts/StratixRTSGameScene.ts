@@ -1243,6 +1243,11 @@ export default class StratixRTSGameScene extends Phaser.Scene {
       const zoneY = bounds.y + bounds.height / 2;
       // Use movement system for smooth animation
       this.movementSystem.moveTo(agentId, zoneX, zoneY);
+
+      // Show zone badge on agent sprite
+      // Use zone ID as fallback - could be enhanced to get zone title from ProjectZone
+      sprite.setZoneBadge(zoneId, zoneId.substring(0, 8));
+
       console.log(`[StratixRTS] Agent ${agentId} animating to zone ${zoneId} at (${zoneX}, ${zoneY})`);
     }
 
@@ -1255,6 +1260,12 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     // Remove from tracking
     this.agentZoneTracking.delete(agentId);
     console.log(`[StratixRTS] Agent ${agentId} left zone ${zoneId}`);
+
+    // Clear zone badge from agent sprite
+    const sprite = this.agentSprites.get(agentId);
+    if (sprite) {
+      sprite.clearZoneBadge();
+    }
 
     // Notify zone that member left (for visual refresh if needed)
     rtsEventBus.emit('zone:member-left' as any, { zoneId, agentId });

@@ -62,6 +62,9 @@ export class AgentSprite extends Phaser.GameObjects.Container {
   private thumbnailSprite: Phaser.GameObjects.Image | null = null;
   private thumbnailKey: string | null = null;
   private characterThumbnail: string | null = null;
+  private zoneBadge: Phaser.GameObjects.Graphics | null = null;
+  private currentZoneId: string | null = null;
+  private currentZoneName: string | null = null;
 
   constructor(
     scene: Phaser.Scene, 
@@ -371,6 +374,90 @@ export class AgentSprite extends Phaser.GameObjects.Container {
         this.playErrorAnimation();
         break;
     }
+  }
+
+  /**
+   * Show a zone badge on the agent sprite indicating which zone it belongs to
+   * @param zoneId The ID of the zone
+   * @param zoneName The display name of the zone (optional, will be truncated)
+   */
+  public setZoneBadge(zoneId: string, zoneName?: string): void {
+    this.currentZoneId = zoneId;
+    this.currentZoneName = zoneName || null;
+
+    // Create zone badge if doesn't exist
+    if (!this.zoneBadge) {
+      this.zoneBadge = this.scene.add.graphics();
+      this.add(this.zoneBadge);
+      // Place badge below the name text
+      this.zoneBadge.setPosition(0, -48);
+    }
+
+    // Draw badge with zone color (using a gradient-like effect)
+    this.zoneBadge.clear();
+
+    // Badge background
+    const badgeWidth = zoneName ? Math.min(zoneName.length * 6 + 16, 80) : 40;
+    const badgeHeight = 14;
+
+    this.zoneBadge.fillStyle(0x4a9eff, 0.9); // Blue badge
+    this.zoneBadge.fillRoundedRect(-badgeWidth / 2, 0, badgeWidth, badgeHeight, 4);
+
+    // Badge border
+    this.zoneBadge.lineStyle(1, 0xffffff, 0.5);
+    this.zoneBadge.strokeRoundedRect(-badgeWidth / 2, 0, badgeWidth, badgeHeight, 4);
+
+    // Zone icon (small rectangle representing zone)
+    this.zoneBadge.fillStyle(0xffffff, 0.8);
+    this.zoneBadge.fillRect(-badgeWidth / 2 + 4, 4, 6, 6);
+
+    // Zone text
+    if (zoneName) {
+      const truncatedName = zoneName.length > 8 ? zoneName.substring(0, 8) + '...' : zoneName;
+      const zoneText = this.scene.add.text(0, 0, truncatedName, {
+        fontSize: '9px',
+        fontFamily: 'Arial, sans-serif',
+        color: '#ffffff'
+      });
+      zoneText.setOrigin(0.5);
+      zoneText.setPosition(4, badgeHeight / 2);
+
+      // Remove old text if exists
+      const existingText = this.zoneBadge.getData('zoneText');
+      if (existingText) {
+        existingText.destroy();
+      }
+      this.zoneBadge.setData('zoneText', zoneText);
+      this.add(zoneText);
+    }
+
+    this.zoneBadge.setVisible(true);
+    console.log(`[AgentSprite] Zone badge set for agent ${this.agentId}: ${zoneName || zoneId}`);
+  }
+
+  /**
+   * Remove the zone badge from the agent sprite
+   */
+  public clearZoneBadge(): void {
+    this.currentZoneId = null;
+    this.currentZoneName = null;
+
+    if (this.zoneBadge) {
+      // Destroy zone text if exists
+      const zoneText = this.zoneBadge.getData('zoneText');
+      if (zoneText) {
+        zoneText.destroy();
+      }
+      this.zoneBadge.setVisible(false);
+    }
+    console.log(`[AgentSprite] Zone badge cleared for agent ${this.agentId}`);
+  }
+
+  /**
+   * Get the current zone ID the agent is in
+   */
+  public getCurrentZone(): string | null {
+    return this.currentZoneId;
   }
 
   public setHighlight(selected: boolean): void {
