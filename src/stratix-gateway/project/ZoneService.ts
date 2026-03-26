@@ -695,6 +695,101 @@ export class ZoneService {
     return updated;
   }
 
+  /**
+   * 批量创建 Tasks
+   */
+  public async createTasksBatch(
+    zoneId: string,
+    agentId: string,
+    titles: string[]
+  ): Promise<{ success: ZoneTask[]; failed: Array<{ title: string; error: string }> }> {
+    await this.ensureInitialized();
+    const zone = zoneRepository.getZone(zoneId);
+    if (!zone) {
+      throw new Error(`Zone not found: ${zoneId}`);
+    }
+
+    const success: ZoneTask[] = [];
+    const failed: Array<{ title: string; error: string }> = [];
+
+    for (const title of titles) {
+      try {
+        const task = zoneRepository.createTask(zoneId, title, agentId);
+        success.push(task);
+
+        // Publish task:created event for each task
+        gatewayEventBus.publishZoneEvent('zone:task_created', zoneId, zone.projectId, {
+          task
+        });
+      } catch (error) {
+        failed.push({
+          title,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+
+    return { success, failed };
+  }
+
+  /**
+   * 批量更新 Tasks
+   */
+  public async updateTasksBatch(
+    zoneId: string,
+    agentId: string,
+    updates: Array<{ taskId: string; title?: string; status?: string; assignee?: string | null }>
+  ): Promise<{ success: ZoneTask[]; failed: Array<{ taskId: string; error: string }> }> {
+    await this.ensureInitialized();
+    const zone = zoneRepository.getZone(zoneId);
+    if (!zone) {
+      throw new Error(`Zone not found: ${zoneId}`);
+    }
+
+    const success: ZoneTask[] = [];
+    const failed: Array<{ taskId: string; error: string }> = [];
+
+    for (const update of updates) {
+      try {
+        const task = zoneRepository.getTask(update.taskId);
+        if (!task || task.zoneId !== zoneId) {
+          throw new Error(`Task not found: ${update.taskId}`);
+        }
+
+        // Check permissions
+        const ctx = zoneRepository.getZoneContext(zoneId);
+        const isCreator = ctx?.taskCreatorId === agentId;
+        const isAssignee = task.assignee === agentId;
+
+        if (!isCreator && !isAssignee) {
+          throw new Error('只有任务创建者或认领者可以更新任务');
+        }
+
+        const updated = zoneRepository.updateTask(update.taskId, {
+          title: update.title,
+          status: update.status as any,
+          assignee: update.assignee
+        });
+
+        if (updated) {
+          success.push(updated);
+
+          // Publish task:updated event
+          gatewayEventBus.publishZoneEvent('zone:task_updated', zoneId, zone.projectId, {
+            task: updated
+          });
+        }
+      } catch (error) {
+        failed.push({
+          taskId: update.taskId,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+
+    return { success, failed };
+  }
+
   // ============================================
   // Zone Messages (聊天)
   // ============================================

@@ -830,6 +830,115 @@ router.post('/zones/:zoneId/tasks/:taskId/claim', async (req: Request, res: Resp
   }
 });
 
+/**
+ * POST /api/zones/:zoneId/tasks/batch
+ * Batch create tasks
+ */
+router.post('/zones/:zoneId/tasks/batch', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const zoneId = req.params.zoneId as string;
+    const { agentId, titles } = req.body as { agentId: string; titles: string[] };
+
+    if (!agentId || !titles || !Array.isArray(titles)) {
+      res.status(400).json({
+        success: false,
+        error: 'Missing required fields: agentId, titles (array)'
+      });
+      return;
+    }
+
+    if (titles.length === 0) {
+      res.status(400).json({
+        success: false,
+        error: 'titles array cannot be empty'
+      });
+      return;
+    }
+
+    if (titles.length > 50) {
+      res.status(400).json({
+        success: false,
+        error: 'Maximum 50 tasks can be created at once'
+      });
+      return;
+    }
+
+    const result = await zoneService.createTasksBatch(zoneId, agentId, titles);
+
+    res.json({
+      success: true,
+      created: result.success.length,
+      failed: result.failed.length,
+      tasks: result.success,
+      errors: result.failed
+    });
+  } catch (error) {
+    console.error('[Zone API] Batch create tasks failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to create tasks';
+    if (message.includes('not found')) {
+      res.status(404).json({ success: false, error: message });
+    } else {
+      res.status(500).json({ success: false, error: message });
+    }
+  }
+});
+
+/**
+ * PUT /api/zones/:zoneId/tasks/batch
+ * Batch update tasks
+ */
+router.put('/zones/:zoneId/tasks/batch', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const zoneId = req.params.zoneId as string;
+    const { agentId, updates } = req.body as {
+      agentId: string;
+      updates: Array<{ taskId: string; title?: string; status?: string; assignee?: string | null }>;
+    };
+
+    if (!agentId || !updates || !Array.isArray(updates)) {
+      res.status(400).json({
+        success: false,
+        error: 'Missing required fields: agentId, updates (array)'
+      });
+      return;
+    }
+
+    if (updates.length === 0) {
+      res.status(400).json({
+        success: false,
+        error: 'updates array cannot be empty'
+      });
+      return;
+    }
+
+    if (updates.length > 50) {
+      res.status(400).json({
+        success: false,
+        error: 'Maximum 50 tasks can be updated at once'
+      });
+      return;
+    }
+
+    const result = await zoneService.updateTasksBatch(zoneId, agentId, updates);
+
+    res.json({
+      success: true,
+      updated: result.success.length,
+      failed: result.failed.length,
+      tasks: result.success,
+      errors: result.failed
+    });
+  } catch (error) {
+    console.error('[Zone API] Batch update tasks failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to update tasks';
+    if (message.includes('not found')) {
+      res.status(404).json({ success: false, error: message });
+    } else {
+      res.status(500).json({ success: false, error: message });
+    }
+  }
+});
+
 // ============================================
 // Zone Messages
 // ============================================
