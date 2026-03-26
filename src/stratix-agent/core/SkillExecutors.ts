@@ -12,6 +12,12 @@ export class HttpSkillExecutor implements SkillExecutor {
       const { query, num_results = 5 } = params;
       const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1`;
 
+      // Validate URL
+      const urlValidation = SafetyValidator.validateUrl(url, context);
+      if (!urlValidation.valid) {
+        throw new Error(`URL validation failed: ${urlValidation.reason}`);
+      }
+
       try {
         const response = await fetch(url, {
           method: 'GET',
@@ -59,6 +65,12 @@ export class HttpSkillExecutor implements SkillExecutor {
       const { url, path } = params;
       const { writeFile } = require('fs/promises');
 
+      // Validate URL
+      const urlValidation = SafetyValidator.validateUrl(url, context);
+      if (!urlValidation.valid) {
+        throw new Error(`URL validation failed: ${urlValidation.reason}`);
+      }
+
       try {
         const response = await fetch(url, { method: 'GET' });
         if (!response.ok) {
@@ -78,6 +90,12 @@ export class HttpSkillExecutor implements SkillExecutor {
     const url = params.url || params.endpoint;
     const method = params.method || 'GET';
     const headers = params.headers || {};
+
+    // Validate URL
+    const urlValidation = SafetyValidator.validateUrl(url, context);
+    if (!urlValidation.valid) {
+      throw new Error(`URL validation failed: ${urlValidation.reason}`);
+    }
 
     try {
       const response = await fetch(url, {
@@ -301,11 +319,20 @@ export class FileSystemSkillExecutor implements SkillExecutor {
       ? params.path
       : path.join(basePath, params.path);
 
+    // 验证文件路径安全性
+    const validation = SafetyValidator.validateFilePath(filePath, context);
+    if (!validation.valid) {
+      throw new Error(`File path validation failed: ${validation.reason}`);
+    }
+
     const progress = context.progressCallback;
 
     switch (skill.skillId) {
       case 'file_read': {
         progress?.({ skillId: skill.skillId, stage: 'processing', message: 'Reading file...' });
+        if (!existsSync(filePath)) {
+          throw new Error(`File not found: ${filePath}`);
+        }
         const content = await readFile(filePath, params.encoding || 'utf-8');
         const preview = content.length > 1000
           ? { type: 'text' as const, content: content.slice(0, 1000) + '...[truncated]' }
@@ -330,6 +357,9 @@ export class FileSystemSkillExecutor implements SkillExecutor {
 
       case 'file_list': {
         progress?.({ skillId: skill.skillId, stage: 'processing', message: 'Listing directory...' });
+        if (!existsSync(filePath)) {
+          throw new Error(`Directory not found: ${filePath}`);
+        }
         const files = await readdir(filePath);
         progress?.({ skillId: skill.skillId, stage: 'completed' });
         return { files, path: filePath, preview: { type: 'table', content: `${files.length} items` } };
@@ -343,6 +373,9 @@ export class FileSystemSkillExecutor implements SkillExecutor {
       }
 
       case 'file_info': {
+        if (!existsSync(filePath)) {
+          throw new Error(`File not found: ${filePath}`);
+        }
         const info = await stat(filePath);
         return {
           size: info.size,
