@@ -117,6 +117,14 @@ export class ZoneService {
   }
 
   /**
+   * Search zones across all projects (global search)
+   */
+  public async searchZones(keyword: string, limit: number = 20): Promise<Zone[]> {
+    await this.ensureInitialized();
+    return zoneRepository.searchZones(keyword, limit);
+  }
+
+  /**
    * Restore a soft-deleted zone
    */
   public async restoreZone(zoneId: string): Promise<Zone> {

@@ -96,6 +96,19 @@ export class ZoneRepository {
     return row ? this.mapRowToZone(row) : null;
   }
 
+  // Search zones across all projects (global search)
+  searchZones(keyword: string, limit: number = 20): Zone[] {
+    const pattern = `%${keyword}%`;
+    const rows = this.db.prepare(`
+      SELECT * FROM zone_contexts
+      WHERE deleted_at IS NULL
+        AND (title LIKE ? OR prompt LIKE ?)
+      ORDER BY updated_at DESC
+      LIMIT ?
+    `).all(pattern, pattern, limit) as any[];
+    return rows.map(row => this.mapRowToZone(row));
+  }
+
   // Zone Members operations
   addMember(zoneId: string, agentId: string): Zone | null {
     const zone = this.getZone(zoneId);

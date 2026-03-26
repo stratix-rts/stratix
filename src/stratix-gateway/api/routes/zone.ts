@@ -76,6 +76,39 @@ router.get('/zones', async (req: Request, res: Response): Promise<void> => {
 });
 
 /**
+ * GET /api/zones/search?keyword=xxx
+ * Search zones across all projects (global search)
+ */
+router.get('/zones/search', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const keyword = (req.query.keyword as string) || '';
+
+    if (!keyword || keyword.trim().length < 2) {
+      res.status(400).json({
+        success: false,
+        error: 'Keyword must be at least 2 characters'
+      });
+      return;
+    }
+
+    const limit = parseInt(req.query.limit as string) || 20;
+    const zones = await zoneService.searchZones(keyword.trim(), limit);
+
+    res.json({
+      success: true,
+      zones,
+      count: zones.length
+    });
+  } catch (error) {
+    console.error('[Zone API] Search zones failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to search zones'
+    });
+  }
+});
+
+/**
  * GET /api/zones/:zoneId
  * Get a single Zone
  */
