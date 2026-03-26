@@ -74,6 +74,26 @@ export class SoulEditor {
   // 目标完成状态
   private completedGoals = new Set<number>();
 
+  // 目标完成状态持久化
+  private static readonly COMPLETED_GOALS_KEY = 'soul-editor-completed-goals';
+
+  private loadCompletedGoals(): void {
+    try {
+      const stored = localStorage.getItem(SoulEditor.COMPLETED_GOALS_KEY);
+      if (stored) {
+        const indices = JSON.parse(stored) as number[];
+        this.completedGoals = new Set(indices);
+      }
+    } catch {
+      this.completedGoals = new Set();
+    }
+  }
+
+  private saveCompletedGoals(): void {
+    const indices = Array.from(this.completedGoals);
+    localStorage.setItem(SoulEditor.COMPLETED_GOALS_KEY, JSON.stringify(indices));
+  }
+
   // Undo/Redo history
   private undoStack: StratixSoulConfig[] = [];
   private redoStack: StratixSoulConfig[] = [];
@@ -83,6 +103,7 @@ export class SoulEditor {
     this.config = config;
     this.soul = config.initialSoul ? { ...config.initialSoul } : { ...DEFAULT_SOUL };
     this.onChange = config.onChange;
+    this.loadCompletedGoals();
     this.saveHistory();
   }
 
@@ -651,6 +672,7 @@ export class SoulEditor {
           else if (i > index) newCompleted.add(i - 1);
         });
         this.completedGoals = newCompleted;
+        this.saveCompletedGoals();
         this.refreshGoalsList();
         this.updatePromptPreview();
         this.notifyChange();
@@ -694,6 +716,9 @@ export class SoulEditor {
           const textEl = goalItem.querySelector('span:nth-child(4)') as HTMLElement;
           if (textEl) textEl.style.textDecoration = 'none';
         }
+
+        // 持久化完成状态
+        this.saveCompletedGoals();
 
         // 更新进度显示
         const progressEl = node.querySelector('#goals-progress') as HTMLElement;
