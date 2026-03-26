@@ -510,4 +510,7 @@ export interface ToolUseLoopConfig {
   maxIterations?: number;            // 最大循环次数（默认 10）
   maxTotalTime?: number;             // 最大总执行时间（ms，默认 120s）
   continueOnError?: boolean;          // 单个工具失败是否继续
+  maxTotalTokens?: number;           // 最大 token 预算（默认 unlimited）
+  maxToolTimeout?: number;           // 单个工具超时（ms，默认 30000）
+  maxConsecutiveErrors?: number;     // 断路器：连续错误次数阈值（默认 3）
 }
