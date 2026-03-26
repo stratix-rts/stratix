@@ -2,6 +2,19 @@ import { ProviderRegistry } from '@/agent-platform/providers/registry';
 import { CreateProviderOptions, ProviderConfig } from '@/agent-platform/providers/types';
 
 // Mock the adapters to avoid actual API calls
+// Helper to create validateOptions that properly validates
+const createMockValidateOptions = (requiresApiKey: boolean) => {
+  return jest.fn().mockImplementation((options: CreateProviderOptions) => {
+    if (requiresApiKey && !options.apiKey) {
+      return { valid: false, error: 'OpenAI requires an API key' };
+    }
+    if (!options.model) {
+      return { valid: false, error: 'Model is required' };
+    }
+    return { valid: true };
+  });
+};
+
 jest.mock('@/agent-platform/providers/adapters/openai', () => ({
   OpenAIAdapter: jest.fn().mockImplementation(() => ({
     createModel: jest.fn().mockReturnValue({}),
@@ -17,7 +30,7 @@ jest.mock('@/agent-platform/providers/adapters/openai', () => ({
       langchainModule: '@langchain/openai',
       envKey: 'OPENAI_API_KEY',
     }),
-    validateOptions: jest.fn().mockReturnValue({ valid: true }),
+    validateOptions: createMockValidateOptions(true),
   })),
 }));
 
@@ -36,7 +49,7 @@ jest.mock('@/agent-platform/providers/adapters/anthropic', () => ({
       langchainModule: '@langchain/anthropic',
       envKey: 'ANTHROPIC_API_KEY',
     }),
-    validateOptions: jest.fn().mockReturnValue({ valid: true }),
+    validateOptions: createMockValidateOptions(true),
   })),
 }));
 
