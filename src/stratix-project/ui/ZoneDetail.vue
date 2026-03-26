@@ -20,6 +20,9 @@
         <StratixButton size="sm" variant="secondary" @click="handleExportZone">
           Export
         </StratixButton>
+        <StratixButton size="sm" variant="secondary" @click="handleCloneZone">
+          Clone
+        </StratixButton>
         <StratixButton size="sm" variant="secondary" @click="handleEditZone">
           Edit
         </StratixButton>
@@ -263,6 +266,7 @@ const emit = defineEmits<{
   'close': [];
   'update-zone': [zone: Partial<Zone> & { id: string }];
   'delete-zone': [zoneId: string];
+  'clone-zone': [zone: Zone];
   'add-file': [zoneId: string];
   'remove-file': [zoneId: string, fileId: string];
   'refresh-file': [zoneId: string, fileId: string];
@@ -517,6 +521,31 @@ const handleExportZone = async () => {
     }
   } catch (error) {
     console.error('[ZoneDetail] Failed to export zone:', error);
+  }
+};
+
+const handleCloneZone = async () => {
+  if (!props.zone.id) return;
+
+  try {
+    const response = await fetch(`/api/zones/${props.zone.id}/clone`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        includeFiles: true,
+        includeTasks: true
+      })
+    });
+
+    const result = await response.json();
+    if (result.success && result.zone) {
+      console.log('[ZoneDetail] Zone cloned successfully:', result.zone.id);
+      emit('clone-zone', result.zone);
+    } else {
+      console.error('[ZoneDetail] Clone failed:', result.error);
+    }
+  } catch (error) {
+    console.error('[ZoneDetail] Failed to clone zone:', error);
   }
 };
 

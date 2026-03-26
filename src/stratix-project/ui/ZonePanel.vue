@@ -101,6 +101,10 @@ const handleDeleteZone = async (zoneId: string) => {
   }
 };
 
+const handleCloneZone = async (clonedZone: Zone) => {
+  showNotification('success', `Zone "${clonedZone.title}" 已克隆`);
+};
+
 const handleAddFile = async (zoneId: string) => {
   if (!currentZone.value) return;
   showFilePicker.value = true;
@@ -351,6 +355,7 @@ const handleRemoveMember = async (zoneId: string, memberId: string) => {
       @close="handleClose"
       @update-zone="handleUpdateZone"
       @delete-zone="handleDeleteZone"
+      @clone-zone="handleCloneZone"
       @add-file="handleAddFile"
       @remove-file="handleRemoveFile"
       @refresh-file="handleRefreshFile"
