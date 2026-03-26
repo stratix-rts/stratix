@@ -2,19 +2,6 @@ import { ProviderRegistry } from '@/agent-platform/providers/registry';
 import { CreateProviderOptions, ProviderConfig } from '@/agent-platform/providers/types';
 
 // Mock the adapters to avoid actual API calls
-// Helper to create validateOptions that properly validates
-const createMockValidateOptions = (requiresApiKey: boolean) => {
-  return jest.fn().mockImplementation((options: CreateProviderOptions) => {
-    if (requiresApiKey && !options.apiKey) {
-      return { valid: false, error: 'OpenAI requires an API key' };
-    }
-    if (!options.model) {
-      return { valid: false, error: 'Model is required' };
-    }
-    return { valid: true };
-  });
-};
-
 jest.mock('@/agent-platform/providers/adapters/openai', () => ({
   OpenAIAdapter: jest.fn().mockImplementation(() => ({
     createModel: jest.fn().mockReturnValue({}),
@@ -30,7 +17,15 @@ jest.mock('@/agent-platform/providers/adapters/openai', () => ({
       langchainModule: '@langchain/openai',
       envKey: 'OPENAI_API_KEY',
     }),
-    validateOptions: createMockValidateOptions(true),
+    validateOptions: jest.fn().mockImplementation((options: CreateProviderOptions) => {
+      if (!options.apiKey) {
+        return { valid: false, error: 'OpenAI requires an API key' };
+      }
+      if (!options.model) {
+        return { valid: false, error: 'Model is required' };
+      }
+      return { valid: true };
+    }),
   })),
 }));
 
@@ -49,7 +44,15 @@ jest.mock('@/agent-platform/providers/adapters/anthropic', () => ({
       langchainModule: '@langchain/anthropic',
       envKey: 'ANTHROPIC_API_KEY',
     }),
-    validateOptions: createMockValidateOptions(true),
+    validateOptions: jest.fn().mockImplementation((options: CreateProviderOptions) => {
+      if (!options.apiKey) {
+        return { valid: false, error: 'Anthropic requires an API key' };
+      }
+      if (!options.model) {
+        return { valid: false, error: 'Model is required' };
+      }
+      return { valid: true };
+    }),
   })),
 }));
 
@@ -183,8 +186,7 @@ describe('ProviderRegistry', () => {
         apiKey: 'test-key',
       };
 
-      // The mock adapter returns valid: true, but the real adapter validation
-      // would catch this. We test the validation directly on the adapter.
+      // The mock adapter now properly validates
       const adapter = registry.getAdapter('openai');
       const validation = adapter!.validateOptions(options);
       expect(validation.valid).toBe(false);
