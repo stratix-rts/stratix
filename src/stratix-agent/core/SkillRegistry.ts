@@ -35,6 +35,41 @@ export class SkillRegistry {
     this.executors.set(name, executor);
   }
 
+  getSkill(skillId: string): SkillDefinition | undefined {
+    return this.availableSkills.get(skillId);
+  }
+
+  hasSkill(skillId: string): boolean {
+    return this.availableSkills.has(skillId);
+  }
+
+  isEnabled(skillId: string): boolean {
+    return this.enabledSkills.has(skillId);
+  }
+
+  listAllSkills(): SkillDefinition[] {
+    return Array.from(this.availableSkills.values());
+  }
+
+  listSkillsByCategory(category: string): SkillDefinition[] {
+    return Array.from(this.availableSkills.values())
+      .filter(skill => skill.parameters.some(p => p.name === 'category' && p.default === category));
+  }
+
+  searchSkills(query: string): SkillDefinition[] {
+    const lowerQuery = query.toLowerCase();
+    return Array.from(this.availableSkills.values())
+      .filter(skill =>
+        skill.name.toLowerCase().includes(lowerQuery) ||
+        skill.description.toLowerCase().includes(lowerQuery)
+      );
+  }
+
+  removeSkill(skillId: string): boolean {
+    this.enabledSkills.delete(skillId);
+    return this.availableSkills.delete(skillId);
+  }
+
   async execute(
     skillId: string,
     params: Record<string, any>,

@@ -112,6 +112,7 @@ export class StratixAgent {
         if (existsSync(skillPath)) {
           const skillDef = JSON.parse(readFileSync(skillPath, 'utf-8'));
           this.skills.registerSkill(skillDef);
+          this.skills.enableSkill(skillDef.skillId);
         }
       }
     } catch (error) {
