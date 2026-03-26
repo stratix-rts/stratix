@@ -130,6 +130,24 @@ export class ZoneRepository {
     return this.updateZone(zoneId, { members: zone.members });
   }
 
+  // Bulk add members
+  addMembers(zoneId: string, agentIds: string[]): Zone | null {
+    const zone = this.getZone(zoneId);
+    if (!zone) return null;
+
+    const newMembers = [...new Set([...zone.members, ...agentIds])];
+    return this.updateZone(zoneId, { members: newMembers });
+  }
+
+  // Bulk remove members
+  removeMembers(zoneId: string, agentIds: string[]): Zone | null {
+    const zone = this.getZone(zoneId);
+    if (!zone) return null;
+
+    const newMembers = zone.members.filter(id => !agentIds.includes(id));
+    return this.updateZone(zoneId, { members: newMembers });
+  }
+
   // Zone Files operations
   getFilesByZone(zoneId: string): ZoneFile[] {
     const rows = this.db.prepare('SELECT * FROM zone_files WHERE zone_id = ? ORDER BY created_at DESC').all(zoneId) as any[];

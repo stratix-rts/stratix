@@ -727,6 +727,92 @@ router.delete('/zones/:zoneId/members/:agentId', async (req: Request, res: Respo
   }
 });
 
+/**
+ * POST /api/zones/:zoneId/members/batch
+ * Add multiple Agents to a Zone
+ */
+router.post('/zones/:zoneId/members/batch', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const zoneId = req.params.zoneId as string;
+    const { agentIds } = req.body as { agentIds: string[] };
+
+    if (!agentIds || !Array.isArray(agentIds) || agentIds.length === 0) {
+      res.status(400).json({
+        success: false,
+        error: 'Missing required field: agentIds (array)'
+      });
+      return;
+    }
+
+    if (agentIds.length > 20) {
+      res.status(400).json({
+        success: false,
+        error: 'Maximum 20 agents can be added at once'
+      });
+      return;
+    }
+
+    const zone = await zoneService.addMembers(zoneId, agentIds);
+
+    res.json({
+      success: true,
+      zone,
+      added: agentIds.length
+    });
+  } catch (error) {
+    console.error('[Zone API] Batch add members failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to add members';
+    if (message.includes('not found')) {
+      res.status(404).json({ success: false, error: message });
+    } else {
+      res.status(500).json({ success: false, error: message });
+    }
+  }
+});
+
+/**
+ * DELETE /api/zones/:zoneId/members/batch
+ * Remove multiple Agents from a Zone
+ */
+router.delete('/zones/:zoneId/members/batch', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const zoneId = req.params.zoneId as string;
+    const { agentIds } = req.body as { agentIds: string[] };
+
+    if (!agentIds || !Array.isArray(agentIds) || agentIds.length === 0) {
+      res.status(400).json({
+        success: false,
+        error: 'Missing required field: agentIds (array)'
+      });
+      return;
+    }
+
+    if (agentIds.length > 20) {
+      res.status(400).json({
+        success: false,
+        error: 'Maximum 20 agents can be removed at once'
+      });
+      return;
+    }
+
+    const zone = await zoneService.removeMembers(zoneId, agentIds);
+
+    res.json({
+      success: true,
+      zone,
+      removed: agentIds.length
+    });
+  } catch (error) {
+    console.error('[Zone API] Batch remove members failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to remove members';
+    if (message.includes('not found')) {
+      res.status(404).json({ success: false, error: message });
+    } else {
+      res.status(500).json({ success: false, error: message });
+    }
+  }
+});
+
 // ============================================
 // Zone Tasks
 // ============================================

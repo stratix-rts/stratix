@@ -218,6 +218,42 @@ export class ZoneService {
     return zone;
   }
 
+  public async addMembers(zoneId: string, agentIds: string[]): Promise<Zone> {
+    await this.ensureInitialized();
+
+    const zone = zoneRepository.addMembers(zoneId, agentIds);
+    if (!zone) {
+      throw new Error(`Zone not found: ${zoneId}`);
+    }
+
+    // Publish events for each member joined
+    for (const agentId of agentIds) {
+      gatewayEventBus.publishZoneEvent('zone:member_joined', zoneId, zone.projectId, {
+        agentId
+      });
+    }
+
+    return zone;
+  }
+
+  public async removeMembers(zoneId: string, agentIds: string[]): Promise<Zone> {
+    await this.ensureInitialized();
+
+    const zone = zoneRepository.removeMembers(zoneId, agentIds);
+    if (!zone) {
+      throw new Error(`Zone not found: ${zoneId}`);
+    }
+
+    // Publish events for each member left
+    for (const agentId of agentIds) {
+      gatewayEventBus.publishZoneEvent('zone:member_left', zoneId, zone.projectId, {
+        agentId
+      });
+    }
+
+    return zone;
+  }
+
   // Zone Files
   public async addFile(
     zoneId: string,
