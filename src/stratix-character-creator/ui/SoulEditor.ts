@@ -260,8 +260,16 @@ export class SoulEditor {
     return `
       <style>
         .goal-item:hover { background: var(--ds-bg-tertiary); }
-        .goal-item.drag-before { border-top: 2px solid var(--ds-brand-primary); }
-        .goal-item.drag-after { border-bottom: 2px solid var(--ds-brand-primary); }
+        .goal-item.drag-before {
+          border-top: 3px solid var(--ds-brand-primary);
+          margin-top: -1px;
+          padding-top: 3px;
+        }
+        .goal-item.drag-after {
+          border-bottom: 3px solid var(--ds-brand-primary);
+          margin-bottom: -1px;
+          padding-bottom: 3px;
+        }
         .priority-select:hover { border-color: var(--ds-brand-primary); }
       </style>
       <div class="soul-editor" style="
