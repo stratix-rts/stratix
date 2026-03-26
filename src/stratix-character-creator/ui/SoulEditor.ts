@@ -399,9 +399,12 @@ export class SoulEditor {
 
         <div class="section" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid ${THEME.border};">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <label style="font-size: 11px; color: ${THEME.textMuted}; cursor: pointer;" id="prompt-preview-toggle">
-              ▼ Prompt 实时预览
-            </label>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <label style="font-size: 11px; color: ${THEME.textMuted}; cursor: pointer;" id="prompt-preview-toggle">
+                ▼ Prompt 实时预览
+              </label>
+              <span id="soul-empty-warning" style="display: none; font-size: 10px; color: ${THEME.priorityMedium}; background: ${THEME.priorityMedium}22; padding: 2px 6px; border-radius: 4px;">⚠ 配置为空</span>
+            </div>
             <button id="copy-prompt-btn" style="${getButtonInlineStyles('ghost')}">复制</button>
           </div>
           <pre id="prompt-preview" style="
@@ -1118,6 +1121,12 @@ export class SoulEditor {
     const previewEl = node?.querySelector('#prompt-preview') as HTMLPreElement;
     if (previewEl) {
       previewEl.textContent = this.buildPromptPreview();
+    }
+    // 更新空配置警告
+    const warningEl = node?.querySelector('#soul-empty-warning') as HTMLElement;
+    if (warningEl) {
+      const isEmpty = !this.soul.identity && this.soul.goals.length === 0 && !this.soul.personality;
+      warningEl.style.display = isEmpty ? 'inline-block' : 'none';
     }
   }
 
