@@ -32,6 +32,13 @@
         </StratixButton>
       </div>
       <div class="toolbar-right">
+        <StratixButton size="small" variant="ghost" @click="handleSaveColumnConfig" title="保存当前列宽">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+            <polyline points="17 21 17 13 7 13 7 21" />
+            <polyline points="7 3 7 8 15 8" />
+          </svg>
+        </StratixButton>
         <StratixButton size="small" @click="handleRefresh">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M23 4v6h-6M1 20v-6h6" />
@@ -141,7 +148,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import type { VxeGridInstance, VxeGridPropTypes } from 'vxe-table';
 import StratixInput from '@/components/ui/StratixInput.vue';
 import StratixButton from '@/components/ui/StratixButton.vue';
@@ -172,6 +179,63 @@ const selectedZones = ref<Zone[]>([]);
 
 // 选中数量
 const selectCount = computed(() => selectedZones.value.length);
+
+// 列配置保存
+const COLUMN_CONFIG_KEY = 'stratix_zonetable_columns';
+
+// 保存列配置到 localStorage
+const handleSaveColumnConfig = () => {
+  if (!tableRef.value) return;
+
+  const fullColumns = tableRef.value.getColumns();
+  if (!fullColumns?.length) return;
+
+  const config: Record<string, { width?: number; visible?: boolean }> = {};
+  fullColumns.forEach((col: any) => {
+    if (col.field) {
+      config[col.field] = {
+        width: col.width,
+        visible: col.visible !== false,
+      };
+    }
+  });
+
+  localStorage.setItem(COLUMN_CONFIG_KEY, JSON.stringify(config));
+  console.log('[ZoneTable] Column config saved:', config);
+};
+
+// 加载列配置
+const loadColumnConfig = () => {
+  const saved = localStorage.getItem(COLUMN_CONFIG_KEY);
+  if (!saved) return;
+
+  try {
+    const config = JSON.parse(saved);
+    if (tableRef.value) {
+      const fullColumns = tableRef.value.getColumns();
+      fullColumns.forEach((col: any) => {
+        if (col.field && config[col.field]) {
+          if (config[col.field].width) {
+            col.width = config[col.field].width;
+          }
+          if (config[col.field].visible !== undefined) {
+            col.visible = config[col.field].visible;
+          }
+        }
+      });
+    }
+  } catch (e) {
+    console.warn('[ZoneTable] Failed to load column config:', e);
+  }
+};
+
+// 组件挂载时加载列配置
+onMounted(() => {
+  // 延迟加载以确保表格已渲染
+  setTimeout(() => {
+    loadColumnConfig();
+  }, 100);
+});
 
 // 列定义 - 使用 slots 属性指定插槽名称
 const columns: VxeGridPropTypes.Columns = [
