@@ -851,6 +851,45 @@ export class BashSkillExecutor implements SkillExecutor {
 }
 
 /**
+ * 带重试的 fetch 封装
+ */
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  maxRetries: number = 3,
+  baseDelayMs: number = 100
+): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+
+      // 5xx 错误或网络错误时重试
+      if (!response.ok && response.status >= 500 && attempt < maxRetries) {
+        lastError = new Error(`HTTP ${response.status}`);
+        const delay = baseDelayMs * Math.pow(2, attempt);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+
+      return response;
+    } catch (error) {
+      lastError = error as Error;
+
+      // 网络错误（超时、连接失败等）时重试
+      if (attempt < maxRetries) {
+        const delay = baseDelayMs * Math.pow(2, attempt);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+    }
+  }
+
+  throw lastError || new Error('Max retries exceeded');
+}
+
+/**
  * Zone 操作执行器
  * 支持 Agent 进入/离开 Zone，获取 Zone 列表和详情
  */
@@ -870,7 +909,7 @@ export class ZoneSkillExecutor implements SkillExecutor {
           throw new Error('zoneId is required for zone_move_to');
         }
 
-        const response = await fetch(`${gatewayUrl}/api/zones/${zoneId}/members/${agentId}`, {
+        const response = await fetchWithRetry(`${gatewayUrl}/api/zones/${zoneId}/members/${agentId}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ reason }),
@@ -892,22 +931,32 @@ export class ZoneSkillExecutor implements SkillExecutor {
       }
 
       case 'zone_leave': {
-        const { reason } = params;
+        const { reason, zoneId: directZoneId } = params;
+        // projectId can come from params or context.variables
+        const projectId = params.projectId || context.variables?.projectId;
 
-        // First get current zone membership
-        const listResponse = await fetch(`${gatewayUrl}/api/zones?agentId=${agentId}`, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-        });
+        let currentZoneId = directZoneId;
 
-        let currentZoneId = null;
-        if (listResponse.ok) {
-          const listData = await listResponse.json();
-          const zones = listData.zones || [];
-          for (const zone of zones) {
-            if (zone.members && zone.members.includes(agentId)) {
-              currentZoneId = zone.id || zone.zoneId;
-              break;
+        // If zoneId not provided directly, need projectId to find current zone
+        if (!currentZoneId) {
+          if (!projectId) {
+            throw new Error('projectId is required for zone_leave (pass zoneId directly or set context.variables.projectId)');
+          }
+
+          // First get current zone membership
+          const listResponse = await fetchWithRetry(`${gatewayUrl}/api/zones?projectId=${encodeURIComponent(projectId)}`, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' },
+          });
+
+          if (listResponse.ok) {
+            const listData = await listResponse.json();
+            const zones = listData.zones || [];
+            for (const zone of zones) {
+              if (zone.members && zone.members.includes(agentId)) {
+                currentZoneId = zone.id || zone.zoneId;
+                break;
+              }
             }
           }
         }
@@ -920,7 +969,7 @@ export class ZoneSkillExecutor implements SkillExecutor {
           };
         }
 
-        const response = await fetch(`${gatewayUrl}/api/zones/${currentZoneId}/members/${agentId}`, {
+        const response = await fetchWithRetry(`${gatewayUrl}/api/zones/${currentZoneId}/members/${agentId}`, {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ reason }),
@@ -939,7 +988,13 @@ export class ZoneSkillExecutor implements SkillExecutor {
       }
 
       case 'zone_list': {
-        const response = await fetch(`${gatewayUrl}/api/zones`, {
+        // projectId can come from params or context.variables
+        const projectId = params.projectId || context.variables?.projectId;
+        if (!projectId) {
+          throw new Error('projectId is required for zone_list (pass as param or set in context.variables.projectId)');
+        }
+
+        const response = await fetchWithRetry(`${gatewayUrl}/api/zones?projectId=${encodeURIComponent(projectId)}`, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' },
         });
@@ -971,7 +1026,7 @@ export class ZoneSkillExecutor implements SkillExecutor {
           throw new Error('zoneId is required for zone_info');
         }
 
-        const response = await fetch(`${gatewayUrl}/api/zones/${zoneId}`, {
+        const response = await fetchWithRetry(`${gatewayUrl}/api/zones/${zoneId}`, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' },
         });

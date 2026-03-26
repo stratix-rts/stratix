@@ -18,7 +18,7 @@ describe('ZoneSkillExecutor', () => {
 
   beforeEach(() => {
     executor = new ZoneSkillExecutor();
-    context = { agentId: 'test-agent-123' };
+    context = { agentId: 'test-agent-123', variables: { projectId: 'test-project-123' } };
     mockFetch.mockReset();
     // Set default gateway URL for tests
     process.env.GATEWAY_URL = 'http://127.0.0.1:7524';
@@ -103,6 +103,29 @@ describe('ZoneSkillExecutor', () => {
   });
 
   describe('zone_leave', () => {
+    it('should throw error when projectId and zoneId are both missing', async () => {
+      const contextWithoutProject = { agentId: 'test-agent-123' };
+      await expect(executor.execute(mockSkill('zone_leave'), {}, contextWithoutProject))
+        .rejects.toThrow('projectId is required for zone_leave');
+    });
+
+    it('should leave zone directly when zoneId is provided', async () => {
+      // Mock the leave zone response
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ success: true })
+      });
+
+      const result = await executor.execute(mockSkill('zone_leave'), { zoneId: 'zone-abc' }, context);
+
+      expect(result.success).toBe(true);
+      expect(result.message).toBe('Successfully left zone zone-abc');
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://127.0.0.1:7524/api/zones/zone-abc/members/test-agent-123',
+        expect.objectContaining({ method: 'DELETE' })
+      );
+    });
+
     it('should return alreadyLeft when not in any zone', async () => {
       // Mock the list zones response (first call)
       mockFetch.mockResolvedValueOnce({
@@ -154,8 +177,8 @@ describe('ZoneSkillExecutor', () => {
         })
       });
 
-      // Mock the leave zone response (fails)
-      mockFetch.mockResolvedValueOnce({
+      // Mock the leave zone response (fails with 500) - will be called 4 times (1 + 3 retries)
+      mockFetch.mockResolvedValue({
         ok: false,
         status: 500,
         text: () => Promise.resolve('Internal server error')
@@ -167,6 +190,42 @@ describe('ZoneSkillExecutor', () => {
   });
 
   describe('zone_list', () => {
+    it('should throw error when projectId is missing', async () => {
+      const contextWithoutProject = { agentId: 'test-agent-123' };
+      await expect(executor.execute(mockSkill('zone_list'), {}, contextWithoutProject))
+        .rejects.toThrow('projectId is required for zone_list');
+    });
+
+    it('should accept projectId from params', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ zones: [] })
+      });
+
+      const result = await executor.execute(mockSkill('zone_list'), { projectId: 'custom-project' }, context);
+
+      expect(result.success).toBe(true);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://127.0.0.1:7524/api/zones?projectId=custom-project',
+        expect.objectContaining({ method: 'GET' })
+      );
+    });
+
+    it('should use projectId from context.variables', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ zones: [] })
+      });
+
+      const result = await executor.execute(mockSkill('zone_list'), {}, context);
+
+      expect(result.success).toBe(true);
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://127.0.0.1:7524/api/zones?projectId=test-project-123',
+        expect.objectContaining({ method: 'GET' })
+      );
+    });
+
     it('should return empty zones array when no zones exist', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -226,9 +285,11 @@ describe('ZoneSkillExecutor', () => {
     });
 
     it('should throw error when API fails', async () => {
-      mockFetch.mockResolvedValueOnce({
+      // Mock returns 500 error for all retry attempts
+      mockFetch.mockResolvedValue({
         ok: false,
-        status: 500
+        status: 500,
+        text: () => Promise.resolve('Internal server error')
       });
 
       await expect(executor.execute(mockSkill('zone_list'), {}, context))
