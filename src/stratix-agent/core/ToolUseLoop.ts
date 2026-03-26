@@ -135,7 +135,19 @@ export class ToolUseLoop {
       }
 
       // 调用 LLM
-      const result = await this.llmConnector.generateWithTools(messages, tools);
+      let result;
+      try {
+        result = await this.llmConnector.generateWithTools(messages, tools);
+      } catch (error) {
+        return {
+          finalContent: this.buildErrorMessage(error instanceof Error ? error.message : 'Unknown error'),
+          toolCalls,
+          totalIterations: iteration + 1,
+          totalExecutionTime: Date.now() - startTime,
+          success: false,
+          error: `LLM call failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+        };
+      }
 
       // 累加 token 使用量
       if (result.usage) {
@@ -383,6 +395,10 @@ export class ToolUseLoop {
 
   private buildCircuitBreakerMessage(iteration: number): string {
     return `[Circuit breaker triggered after ${iteration} iterations. Too many consecutive errors. Please check tool configurations.]`;
+  }
+
+  private buildErrorMessage(error: string): string {
+    return `[LLM execution failed: ${error}. Please check your LLM configuration and API key.]`;
   }
 
   private buildMaxIterationsMessage(toolCalls: ToolCall[]): string {
