@@ -297,45 +297,61 @@ export class FileSystemSkillExecutor implements SkillExecutor {
     const path = require('path');
 
     const basePath = context.variables?.basePath || process.cwd();
-    const filePath = path.isAbsolute(params.path) 
-      ? params.path 
+    const filePath = path.isAbsolute(params.path)
+      ? params.path
       : path.join(basePath, params.path);
+
+    const progress = context.progressCallback;
 
     switch (skill.skillId) {
       case 'file_read': {
+        progress?.({ skillId: skill.skillId, stage: 'processing', message: 'Reading file...' });
         const content = await readFile(filePath, params.encoding || 'utf-8');
-        return { content, path: filePath };
+        const preview = content.length > 1000
+          ? { type: 'text' as const, content: content.slice(0, 1000) + '...[truncated]' }
+          : { type: 'text' as const, content };
+        progress?.({ skillId: skill.skillId, stage: 'completed' });
+        return { content, path: filePath, preview };
       }
 
       case 'file_write': {
+        progress?.({ skillId: skill.skillId, stage: 'processing', message: 'Writing file...' });
         await writeFile(filePath, params.content, params.encoding || 'utf-8');
+        progress?.({ skillId: skill.skillId, stage: 'completed' });
         return { success: true, path: filePath };
       }
 
       case 'file_append': {
+        progress?.({ skillId: skill.skillId, stage: 'processing', message: 'Appending to file...' });
         await appendFile(filePath, params.content, params.encoding || 'utf-8');
+        progress?.({ skillId: skill.skillId, stage: 'completed' });
         return { success: true, path: filePath };
       }
 
       case 'file_list': {
+        progress?.({ skillId: skill.skillId, stage: 'processing', message: 'Listing directory...' });
         const files = await readdir(filePath);
-        return { files, path: filePath };
+        progress?.({ skillId: skill.skillId, stage: 'completed' });
+        return { files, path: filePath, preview: { type: 'table', content: `${files.length} items` } };
       }
 
       case 'file_delete': {
+        progress?.({ skillId: skill.skillId, stage: 'processing', message: 'Deleting...' });
         await rm(filePath, { recursive: params.recursive || false });
+        progress?.({ skillId: skill.skillId, stage: 'completed' });
         return { success: true, path: filePath };
       }
 
       case 'file_info': {
         const info = await stat(filePath);
-        return { 
+        return {
           size: info.size,
           created: info.birthtime,
           modified: info.mtime,
           isDirectory: info.isDirectory(),
           isFile: info.isFile(),
-          path: filePath 
+          path: filePath,
+          preview: { type: 'json', content: JSON.stringify({ size: info.size, type: info.isDirectory() ? 'directory' : 'file' }) }
         };
       }
 
@@ -357,17 +373,20 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
     context: ExecutionContext
   ): Promise<any> {
     const { code, language } = params;
+    const progress = context.progressCallback;
+
+    progress?.({ skillId: skill.skillId, stage: 'started', message: `Executing ${language}...` });
 
     if (language === 'javascript') {
-      return this.executeJavaScript(code);
+      return this.executeJavaScript(code, progress);
     } else if (language === 'python') {
-      return this.executePython(code);
+      return this.executePython(code, progress);
     } else {
       throw new Error(`Unsupported language: ${language}. Supported: javascript, python`);
     }
   }
 
-  private executeJavaScript(code: string): Promise<any> {
+  private executeJavaScript(code: string, progress?: (p: any) => void): Promise<any> {
     return new Promise((resolve, reject) => {
       try {
         // Capture console.log output
@@ -414,29 +433,35 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
         if (result instanceof Promise) {
           result
             .then((asyncResult) => {
+              progress?.({ skillId: 'code_execute', stage: 'completed' });
               resolve({
                 result: asyncResult,
                 logs,
                 success: true,
+                preview: { type: 'code', content: logs.length > 0 ? logs.join('\n') : String(asyncResult).slice(0, 500) }
               });
             })
             .catch((err) => {
+              progress?.({ skillId: 'code_execute', stage: 'failed' });
               reject(new Error(`Execution error: ${err.message}`));
             });
         } else {
+          progress?.({ skillId: 'code_execute', stage: 'completed' });
           resolve({
             result,
             logs,
             success: true,
+            preview: { type: 'code', content: logs.length > 0 ? logs.join('\n') : String(result).slice(0, 500) }
           });
         }
       } catch (error) {
+        progress?.({ skillId: 'code_execute', stage: 'failed' });
         reject(new Error(`JavaScript execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`));
       }
     });
   }
 
-  private executePython(code: string): Promise<any> {
+  private executePython(code: string, progress?: (p: any) => void): Promise<any> {
     return new Promise((resolve, reject) => {
       const { spawn } = require('child_process');
       const { writeFile, unlink } = require('fs/promises');
@@ -449,6 +474,7 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
       (async () => {
         try {
           await writeFile(tempFile, code);
+          progress?.({ skillId: 'code_execute', stage: 'processing', message: 'Running Python...' });
 
           const proc = spawn('python3', [tempFile], {
             timeout: 10000, // 10 second timeout
@@ -473,12 +499,15 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
             } catch {}
 
             if (code === 0) {
+              progress?.({ skillId: 'code_execute', stage: 'completed' });
               resolve({
                 result: stdout.trim(),
                 logs: [],
                 success: true,
+                preview: { type: 'code', content: stdout.trim().slice(0, 500) }
               });
             } else {
+              progress?.({ skillId: 'code_execute', stage: 'failed' });
               reject(new Error(`Python execution failed (exit ${code}): ${stderr || stdout}`));
             }
           });
@@ -487,9 +516,11 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
             try {
               await unlink(tempFile);
             } catch {}
+            progress?.({ skillId: 'code_execute', stage: 'failed' });
             reject(new Error(`Python spawn error: ${err.message}`));
           });
         } catch (error) {
+          progress?.({ skillId: 'code_execute', stage: 'failed' });
           reject(new Error(`Failed to execute Python: ${error instanceof Error ? error.message : 'Unknown error'}`));
         }
       })();
@@ -522,12 +553,15 @@ export class BashSkillExecutor implements SkillExecutor {
     context: ExecutionContext
   ): Promise<any> {
     const { command, timeout = 30, cwd } = params;
+    const progress = context.progressCallback;
 
     // 验证命令安全性
     const validation = SafetyValidator.validateBashCommand(command, context);
     if (!validation.valid) {
       throw new Error(`Command blocked: ${validation.reason}`);
     }
+
+    progress?.({ skillId: skill.skillId, stage: 'processing', message: 'Executing command...' });
 
     // 执行命令
     return new Promise((resolve, reject) => {
@@ -540,13 +574,16 @@ export class BashSkillExecutor implements SkillExecutor {
 
       exec(command, options, (error: any, stdout: string, stderr: string) => {
         if (error) {
+          progress?.({ skillId: skill.skillId, stage: 'failed' });
           reject(new Error(`Command failed: ${error.message}\nStderr: ${stderr}`));
           return;
         }
+        progress?.({ skillId: skill.skillId, stage: 'completed' });
         resolve({
           stdout: stdout.trim(),
           stderr: stderr.trim(),
-          success: true
+          success: true,
+          preview: { type: 'text', content: stdout.trim().slice(0, 500) }
         });
       });
     });

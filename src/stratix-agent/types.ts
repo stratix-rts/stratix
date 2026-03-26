@@ -62,6 +62,32 @@ export interface SkillResult {
   result?: any;
   error?: string;
   executionTime: number;
+  preview?: SkillResultPreview;  // 中间结果预览
+}
+
+/**
+ * 技能执行结果预览（用于中间结果展示）
+ */
+export interface SkillResultPreview {
+  type: 'text' | 'json' | 'image' | 'table' | 'code';
+  content: string;
+  mimeType?: string;
+}
+
+/**
+ * 进度回调类型
+ */
+export type ProgressCallback = (progress: SkillProgress) => void;
+
+/**
+ * 技能执行进度
+ */
+export interface SkillProgress {
+  skillId: string;
+  stage: 'started' | 'processing' | 'completed' | 'failed';
+  message?: string;
+  percent?: number;        // 0-100
+  partialResult?: any;    // 部分结果（用于预览）
 }
 
 /**
@@ -475,6 +501,8 @@ export interface ExecutionContext {
   allowedDomains?: string[];         // 允许的网络请求域名
   blockedCommands?: string[];         // 禁止的 bash 命令
   maxToolCalls?: number;             // 最大工具调用次数（防止无限循环）
+  // 进度回调
+  progressCallback?: ProgressCallback;
 }
 
 /**
