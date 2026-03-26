@@ -555,6 +555,43 @@ export class ZoneService {
     return addedFiles;
   }
 
+  /**
+   * 获取 Zone 的统计信息
+   */
+  public async getZoneStatistics(zoneId: string): Promise<{
+    tasks: { total: number; pending: number; in_progress: number; done: number };
+    files: { total: number };
+    members: { total: number };
+  }> {
+    await this.ensureInitialized();
+    const zone = zoneRepository.getZone(zoneId);
+    if (!zone) {
+      throw new Error(`Zone not found: ${zoneId}`);
+    }
+
+    const tasks = zoneRepository.getTasks(zoneId);
+    const taskStats = {
+      total: tasks.length,
+      pending: tasks.filter(t => t.status === 'pending').length,
+      in_progress: tasks.filter(t => t.status === 'in_progress').length,
+      done: tasks.filter(t => t.status === 'done').length
+    };
+
+    const fileStats = {
+      total: zone.files?.length || 0
+    };
+
+    const memberStats = {
+      total: zone.members?.length || 0
+    };
+
+    return {
+      tasks: taskStats,
+      files: fileStats,
+      members: memberStats
+    };
+  }
+
   // ============================================
   // Zone Tasks (Task Creator 模式)
   // ============================================

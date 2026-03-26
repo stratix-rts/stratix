@@ -181,6 +181,31 @@ router.get('/zones/:projectId/trash', async (req: Request, res: Response): Promi
 });
 
 /**
+ * GET /api/zones/:zoneId/statistics
+ * Get zone statistics (tasks, files, members)
+ */
+router.get('/zones/:zoneId/statistics', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const zoneId = req.params.zoneId as string;
+
+    const stats = await zoneService.getZoneStatistics(zoneId);
+
+    res.json({
+      success: true,
+      ...stats
+    });
+  } catch (error) {
+    console.error('[Zone API] Get zone statistics failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to get zone statistics';
+    if (message.includes('not found')) {
+      res.status(404).json({ success: false, error: message });
+    } else {
+      res.status(500).json({ success: false, error: message });
+    }
+  }
+});
+
+/**
  * DELETE /api/zones/:projectId/trash
  * Empty trash - permanently delete all soft-deleted zones in a project
  */
