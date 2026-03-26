@@ -574,11 +574,14 @@ export class SoulEditor {
     });
 
     if (templateSelect) {
+      console.log('SoulEditor: templateSelect found, attaching change listener');
       templateSelect.addEventListener('change', (e) => {
         const select = e.target as HTMLSelectElement;
         const templateId = select.value;
+        console.log('SoulEditor: template selected:', templateId);
         if (templateId) {
           const template = SOUL_TEMPLATES.find((t) => t.id === templateId);
+          console.log('SoulEditor: template found:', template?.name);
           if (template) {
             this.applyTemplate(template);
             this.showToast(`已应用: ${template.name}`);
