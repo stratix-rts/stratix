@@ -286,6 +286,67 @@ export const CALCULATOR_SKILLS: SkillDefinition[] = [
 ];
 
 /**
+ * Zone 操作类技能
+ */
+export const ZONE_SKILLS: SkillDefinition[] = [
+  {
+    skillId: 'zone_move_to',
+    name: 'zone_move_to',
+    description: 'Move the agent into a specified Zone. Use this when you want to join a Zone to collaborate with other agents there or work on tasks related to that Zone\'s objectives. You should use this when the current task would be better accomplished in a different Zone.',
+    parameters: [
+      {
+        name: 'zoneId',
+        type: 'string',
+        required: true,
+        description: 'The ID of the Zone to move into'
+      },
+      {
+        name: 'reason',
+        type: 'string',
+        required: false,
+        description: 'Optional reason for moving to this Zone (for logging purposes)'
+      }
+    ],
+    executor: 'zone'
+  },
+  {
+    skillId: 'zone_leave',
+    name: 'zone_leave',
+    description: 'Leave the current Zone you are in. Use this when you want to exit the current Zone and become idle. Do this when you have completed your work in the Zone or need to move to a different one.',
+    parameters: [
+      {
+        name: 'reason',
+        type: 'string',
+        required: false,
+        description: 'Optional reason for leaving (for logging purposes)'
+      }
+    ],
+    executor: 'zone'
+  },
+  {
+    skillId: 'zone_list',
+    name: 'zone_list',
+    description: 'Get a list of all available Zones and their current status. Use this to find which Zone would be best for a given task, or to see what Zones are available for collaboration.',
+    parameters: [],
+    executor: 'zone'
+  },
+  {
+    skillId: 'zone_info',
+    name: 'zone_info',
+    description: 'Get detailed information about a specific Zone including its O/KR (Objective/Key Results), members, and available files.',
+    parameters: [
+      {
+        name: 'zoneId',
+        type: 'string',
+        required: true,
+        description: 'The ID of the Zone to get information about'
+      }
+    ],
+    executor: 'zone'
+  }
+];
+
+/**
  * 所有内置技能汇总
  */
 export const BUILTIN_SKILLS: SkillDefinition[] = [
@@ -295,7 +356,8 @@ export const BUILTIN_SKILLS: SkillDefinition[] = [
   ...CALCULATOR_SKILLS,
   ...SEARCH_SKILLS,
   ...CODE_SKILLS,
-  ...DOWNLOAD_SKILLS
+  ...DOWNLOAD_SKILLS,
+  ...ZONE_SKILLS
 ];
 
 /**
@@ -306,5 +368,6 @@ export const SKILLS_BY_CATEGORY = {
   command: ['bash'],
   api: ['api_call', 'web_search', 'file_download'],
   calculator: ['calculator'],
-  code: ['code_execute']
+  code: ['code_execute'],
+  zone: ['zone_move_to', 'zone_leave', 'zone_list', 'zone_info']
 };

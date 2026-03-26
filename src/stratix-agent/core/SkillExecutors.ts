@@ -817,6 +817,149 @@ export class BashSkillExecutor implements SkillExecutor {
   }
 }
 
+/**
+ * Zone 操作执行器
+ * 支持 Agent 进入/离开 Zone，获取 Zone 列表和详情
+ */
+export class ZoneSkillExecutor implements SkillExecutor {
+  async execute(
+    skill: SkillDefinition,
+    params: Record<string, any>,
+    context: ExecutionContext
+  ): Promise<any> {
+    const { agentId } = context;
+    const gatewayUrl = process.env.GATEWAY_URL || 'http://127.0.0.1:7524';
+
+    switch (skill.skillId) {
+      case 'zone_move_to': {
+        const { zoneId, reason } = params;
+        if (!zoneId) {
+          throw new Error('zoneId is required for zone_move_to');
+        }
+
+        const response = await fetch(`${gatewayUrl}/api/zones/${zoneId}/members/${agentId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason }),
+        });
+
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(`Failed to move to zone: ${response.status} ${error}`);
+        }
+
+        const data = await response.json();
+        return {
+          success: true,
+          message: `Successfully moved to zone ${zoneId}`,
+          zoneId,
+          zoneName: data.zone?.title || data.zone?.name,
+          memberCount: data.zone?.members?.length || 1
+        };
+      }
+
+      case 'zone_leave': {
+        const { reason } = params;
+
+        // First get current zone membership
+        const listResponse = await fetch(`${gatewayUrl}/api/zones?agentId=${agentId}`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        let currentZoneId = null;
+        if (listResponse.ok) {
+          const listData = await listResponse.json();
+          const zones = listData.zones || [];
+          for (const zone of zones) {
+            if (zone.members && zone.members.includes(agentId)) {
+              currentZoneId = zone.id || zone.zoneId;
+              break;
+            }
+          }
+        }
+
+        if (!currentZoneId) {
+          return {
+            success: true,
+            message: 'Not currently in any zone',
+            alreadyLeft: true
+          };
+        }
+
+        const response = await fetch(`${gatewayUrl}/api/zones/${currentZoneId}/members/${agentId}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason }),
+        });
+
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(`Failed to leave zone: ${response.status} ${error}`);
+        }
+
+        return {
+          success: true,
+          message: `Successfully left zone ${currentZoneId}`,
+          previousZoneId: currentZoneId
+        };
+      }
+
+      case 'zone_list': {
+        const response = await fetch(`${gatewayUrl}/api/zones`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to list zones: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const zones = (data.zones || []).map((zone: any) => ({
+          zoneId: zone.id || zone.zoneId,
+          name: zone.name || zone.title || 'Unnamed Zone',
+          title: zone.title || '',
+          prompt: zone.prompt || '',
+          agentCount: zone.members?.length || 0,
+          status: zone.status
+        }));
+
+        return {
+          success: true,
+          zones,
+          total: zones.length
+        };
+      }
+
+      case 'zone_info': {
+        const { zoneId } = params;
+        if (!zoneId) {
+          throw new Error('zoneId is required for zone_info');
+        }
+
+        const response = await fetch(`${gatewayUrl}/api/zones/${zoneId}`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to get zone info: ${response.status}`);
+        }
+
+        const data = await response.json();
+        return {
+          success: true,
+          zone: data.zone
+        };
+      }
+
+      default:
+        throw new Error(`Unknown zone skill: ${skill.skillId}`);
+    }
+  }
+}
+
 export function createExecutor(type: string): SkillExecutor {
   switch (type) {
     case 'http':
@@ -829,6 +972,8 @@ export function createExecutor(type: string): SkillExecutor {
       return new BashSkillExecutor();
     case 'code_sandbox':
       return new CodeSandboxSkillExecutor();
+    case 'zone':
+      return new ZoneSkillExecutor();
     default:
       return new DefaultSkillExecutor();
   }

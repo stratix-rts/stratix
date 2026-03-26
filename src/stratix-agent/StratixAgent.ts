@@ -61,6 +61,7 @@ export class StratixAgent {
     this.skills.registerExecutor('builtin', createExecutor('builtin'));
     this.skills.registerExecutor('fs', createExecutor('fs'));
     this.skills.registerExecutor('bash', createExecutor('bash'));
+    this.skills.registerExecutor('zone', createExecutor('zone'));
     this.sessions = new SessionManager({
       storagePath: pathJoin(process.cwd(), 'stratix-data', 'agents', config.agentId, 'sessions'),
     });
