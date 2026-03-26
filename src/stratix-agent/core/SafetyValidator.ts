@@ -28,8 +28,11 @@ export class SafetyValidator {
     { pattern: /\.\.\//, reason: 'Path traversal (../)' },
   ];
 
-  // 默认允许的协议
+  // 允许的协议（明确列出，防止协议隐藏攻击）
   private static ALLOWED_PROTOCOLS = ['http:', 'https:'];
+
+  // 阻止的协议（安全敏感协议）
+  private static BLOCKED_PROTOCOLS = ['file:', 'ftp:', 'data:', 'javascript:', 'mailto:', 'tel:'];
 
   /**
    * 验证 bash 命令
@@ -125,9 +128,25 @@ export class SafetyValidator {
     try {
       const parsed = new URL(url);
 
-      // 检查协议
+      // 检查协议（明确阻止危险协议）
+      if (SafetyValidator.BLOCKED_PROTOCOLS.includes(parsed.protocol)) {
+        return { valid: false, reason: `Protocol not allowed: ${parsed.protocol}` };
+      }
+
+      // 白名单检查
       if (!SafetyValidator.ALLOWED_PROTOCOLS.includes(parsed.protocol)) {
         return { valid: false, reason: `Protocol not allowed: ${parsed.protocol}` };
+      }
+
+      // 阻止 localhost/127.0.0.1 内部服务访问（除非明确允许）
+      const localhostPatterns = ['localhost', '127.0.0.1', '::1', '0.0.0.0'];
+      if (localhostPatterns.includes(parsed.hostname.toLowerCase())) {
+        // 除非 context 明确允许 localhost
+        if (!context?.allowedDomains?.some(d =>
+          localhostPatterns.includes(d.toLowerCase())
+        )) {
+          return { valid: false, reason: `Localhost access not allowed: ${parsed.hostname}` };
+        }
       }
 
       // 检查域名限制
