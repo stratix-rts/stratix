@@ -532,6 +532,8 @@ export class SoulEditor {
         templateSelect.appendChild(divider);
       }
 
+      let matchCount = 0;
+
       SOUL_TEMPLATES.forEach(t => {
         // 检查领域筛选
         const matchesDomain = currentDomain === 'all' || t.domain === currentDomain;
@@ -543,14 +545,25 @@ export class SoulEditor {
             option.value = t.id;
             option.textContent = `${t.name}${getUsageText(t.id)} - ${t.description}`;
             templateSelect.appendChild(option);
+            matchCount++;
           }
         } else if (matchesDomain && !recent.includes(t.id)) {
           const option = document.createElement('option');
           option.value = t.id;
           option.textContent = t.name + getUsageText(t.id);
           templateSelect.appendChild(option);
+          matchCount++;
         }
       });
+
+      // 搜索模式下无结果时显示提示
+      if (q && matchCount === 0) {
+        const noResultOption = document.createElement('option');
+        noResultOption.value = '';
+        noResultOption.textContent = '未找到匹配的模板';
+        noResultOption.disabled = true;
+        templateSelect.appendChild(noResultOption);
+      }
     };
 
     templateSearch?.addEventListener('input', (e) => {
