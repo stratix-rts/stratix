@@ -98,6 +98,19 @@ export class ProjectClient {
   async updateZoneConfig(id: string, zoneConfig: Partial<ProjectZoneConfig>): Promise<Project> {
     return this.updateProject(id, { zoneConfig } as Partial<Project>);
   }
+
+  async updateZoneContextId(zoneId: string, zoneContextId: string): Promise<void> {
+    try {
+      // Direct database update to set zone_context_id FK
+      await axios.patch(`${this.baseURL}/${zoneId}/zone-context-link`, {
+        zoneContextId
+      });
+      console.log(`[ProjectClient] Zone context FK updated: ${zoneId} -> ${zoneContextId}`);
+    } catch (error) {
+      console.error(`[ProjectClient] Failed to update zone context FK for ${zoneId}:`, error);
+      throw error;
+    }
+  }
   
   async deleteProject(id: string): Promise<boolean> {
     try {
@@ -186,6 +199,27 @@ export class ProjectClient {
       return data.metadata;
     } catch (error) {
       throw new Error(`Failed to get metadata: ${error}`);
+    }
+  }
+
+  // Zone member management
+  async addZoneMember(zoneId: string, agentId: string): Promise<void> {
+    try {
+      await axios.post(`/api/zones/${zoneId}/members/${agentId}`);
+      console.log(`[ProjectClient] Agent ${agentId} added to zone ${zoneId}`);
+    } catch (error) {
+      console.error(`[ProjectClient] Failed to add agent ${agentId} to zone ${zoneId}:`, error);
+      throw error;
+    }
+  }
+
+  async removeZoneMember(zoneId: string, agentId: string): Promise<void> {
+    try {
+      await axios.delete(`/api/zones/${zoneId}/members/${agentId}`);
+      console.log(`[ProjectClient] Agent ${agentId} removed from zone ${zoneId}`);
+    } catch (error) {
+      console.error(`[ProjectClient] Failed to remove agent ${agentId} from zone ${zoneId}:`, error);
+      throw error;
     }
   }
 }

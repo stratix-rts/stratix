@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import axios from 'axios';
 import { ProjectClient } from './ProjectClient';
 import { Project, ProjectConfig, ProjectZoneConfig } from './types';
 import { ProjectZone } from './core/ProjectZone';
@@ -126,54 +127,15 @@ export class ProjectManagerIntegration {
 
   public async loadExistingProjects(): Promise<void> {
     await this.initialize();
-    
+
     const projects = await this.projectClient.getAllProjects();
     console.log(`[ProjectManager] Loading ${projects.length} existing projects`);
 
-    projects.forEach(project => {
-      this.createProjectZone(project);
-    });
+    for (const project of projects) {
+      await this.createProjectZone(project);
+    }
 
     (this.eventBus as any).emit('projects:loaded');
-  }
-
-  private createProjectZone(project: Project): ProjectZone | null {
-    console.log(`[ProjectManager] Creating zone for project: ${project.id}`, project.zoneConfig);
-    
-    const existing = this.unifiedZoneManager.getZone(project.id);
-    if (existing) {
-      console.warn(`[ProjectManager] Project zone already exists: ${project.id}`);
-      return null;
-    }
-
-    try {
-      const projectZone = new ProjectZone(this.scene, project, project.zoneConfig);
-      console.log(`[ProjectManager] ProjectZone created successfully: ${project.id}`);
-      
-      this.scene.add.existing(projectZone);
-      console.log(`[ProjectManager] ProjectZone added to scene: ${project.id}`);
-      
-      this.unifiedZoneManager.register(projectZone);
-      console.log(`[ProjectManager] ProjectZone registered: ${project.id}`);
-
-      projectZone.setInteractive();
-      projectZone.on('pointerdown', () => {
-        if (!this.isDrawingProjectZone) {
-          this.selectProjectZone(project.id);
-        }
-      });
-
-      projectZone.on('zone-moved', (data: any) => {
-        console.log(`[ProjectManager] Zone moved: ${project.id}`, data);
-        this.eventBus.emit('project:zone-moved', { project, ...data });
-      });
-
-      console.log(`[ProjectManager] ✅ ProjectZone setup complete: ${project.id}`);
-      return projectZone;
-    } catch (error) {
-      console.error(`[ProjectManager] ❌ Failed to create zone for project ${project.id}:`, error);
-      return null;
-    }
   }
 
   private updateProjectZone(project: Project): void {
@@ -183,7 +145,7 @@ export class ProjectManagerIntegration {
     }
   }
 
-  private removeProjectZone(projectId: string): void {
+  public removeProjectZone(projectId: string): void {
     const projectZone = this.unifiedZoneManager.getZone(projectId) as ProjectZone | undefined;
     if (projectZone) {
       projectZone.destroy();
@@ -271,6 +233,25 @@ export class ProjectManagerIntegration {
         visible: true
       });
 
+      // Create Zone context for the project
+      try {
+        const response = await axios.post(`/api/zones`, {
+          projectId: project.id,
+          title: '新建区域',
+          prompt: ''
+        });
+        const createdZone = response.data.zone;
+        console.log('[ProjectManager] Zone context created for project:', project.id, createdZone.id);
+
+        // Link zones record with zone_contexts via zone_context_id FK
+        // Use the actual zone_context id returned from API
+        await this.projectClient.updateZoneContextId(project.id, createdZone.id);
+        console.log('[ProjectManager] Zone context FK linked:', project.id, '->', createdZone.id);
+      } catch (zoneError) {
+        console.error('[ProjectManager] Failed to create zone context:', zoneError);
+        // Don't fail the whole operation if zone creation fails
+      }
+
       this.eventBus.emit('project:created', { project });
       return project;
     } catch (error) {
@@ -331,5 +312,78 @@ export class ProjectManagerIntegration {
 
   public getVisibleZoneCount(): number {
     return this.visibleZones.size;
+  }
+
+  public updateProjectZoneTitle(projectId: string, title: string): void {
+    const projectZone = this.unifiedZoneManager.getZone(projectId) as ProjectZone | undefined;
+    if (projectZone) {
+      projectZone.updateZoneTitle(title);
+    }
+  }
+
+  /**
+   * Fetch zone context (title, prompt, members) from zone_contexts table
+   * Since project.id === zone.id, we use projectId to fetch zone data
+   */
+  private async fetchZoneContext(projectId: string): Promise<{ title: string; prompt: string; members: string[] } | null> {
+    try {
+      const response = await axios.get(`/api/zones/${projectId}`);
+      if (response.data.success && response.data.zone) {
+        return {
+          title: response.data.zone.title,
+          prompt: response.data.zone.prompt,
+          members: response.data.zone.members
+        };
+      }
+    } catch (error) {
+      console.warn(`[ProjectManager] Failed to fetch zone context for ${projectId}:`, error);
+    }
+    return null;
+  }
+
+  private async createProjectZone(project: Project): Promise<ProjectZone | null> {
+    console.log(`[ProjectManager] Creating zone for project: ${project.id}`, project.zoneConfig);
+
+    const existing = this.unifiedZoneManager.getZone(project.id);
+    if (existing) {
+      console.warn(`[ProjectManager] Project zone already exists: ${project.id}`);
+      return null;
+    }
+
+    try {
+      // Fetch zone context data (title, prompt, members) from zone_contexts table
+      const zoneContext = await this.fetchZoneContext(project.id);
+      if (zoneContext) {
+        project.zoneContext = zoneContext;
+        console.log(`[ProjectManager] Zone context loaded for ${project.id}:`, zoneContext.title);
+      }
+
+      const projectZone = new ProjectZone(this.scene, project, project.zoneConfig);
+      console.log(`[ProjectManager] ProjectZone created successfully: ${project.id}`);
+
+      this.scene.add.existing(projectZone);
+      console.log(`[ProjectManager] ProjectZone added to scene: ${project.id}`);
+
+      this.unifiedZoneManager.register(projectZone);
+      console.log(`[ProjectManager] ProjectZone registered: ${project.id}`);
+
+      projectZone.setInteractive();
+      projectZone.on('pointerdown', () => {
+        if (!this.isDrawingProjectZone) {
+          this.selectProjectZone(project.id);
+        }
+      });
+
+      projectZone.on('zone-moved', (data: any) => {
+        console.log(`[ProjectManager] Zone moved: ${project.id}`, data);
+        this.eventBus.emit('project:zone-moved', { project, ...data });
+      });
+
+      console.log(`[ProjectManager] ✅ ProjectZone setup complete: ${project.id}`);
+      return projectZone;
+    } catch (error) {
+      console.error(`[ProjectManager] ❌ Failed to create zone for project ${project.id}:`, error);
+      return null;
+    }
   }
 }

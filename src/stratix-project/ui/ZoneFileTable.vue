@@ -1,5 +1,20 @@
 <template>
-  <div class="zone-file-table">
+  <div
+    class="zone-file-table"
+    :class="{ 'is-dragging': isDragging }"
+    @dragover.prevent="handleDragOver"
+    @dragleave.prevent="handleDragLeave"
+    @drop.prevent="handleDrop"
+  >
+    <!-- 拖拽上传遮罩 -->
+    <div v-if="isDragging" class="drag-overlay">
+      <div class="drag-overlay-content">
+        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+        </svg>
+        <span>拖放图片到此处上传</span>
+      </div>
+    </div>
     <!-- 工具栏 -->
     <div class="file-table-toolbar">
       <div class="toolbar-left">
@@ -48,6 +63,20 @@
         </StratixInput>
       </div>
       <div class="toolbar-right">
+        <span v-if="selectCount > 0" class="select-count">已选择 {{ selectCount }} 项</span>
+        <StratixButton
+          v-if="selectCount > 0"
+          size="small"
+          variant="ghost"
+          danger
+          @click="handleBatchDelete"
+        >
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3,6 5,6 21,6" />
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+          </svg>
+          批量删除
+        </StratixButton>
         <StratixButton size="small" @click="handleRefresh">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M23 4v6h-6M1 20v-6h6" />
@@ -58,6 +87,15 @@
       </div>
     </div>
 
+    <!-- 上传错误提示 -->
+    <div v-if="uploadError" class="upload-error">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 8v4M12 16h.01" />
+      </svg>
+      {{ uploadError }}
+    </div>
+
     <!-- 表格 -->
     <vxe-grid
       ref="tableRef"
@@ -66,8 +104,14 @@
       stripe
       border
       show-overflow
-      :max-height="450"
+      height="450"
       :sort-config="{ trigger: 'cell', remote: false, orders: ['asc', 'desc', 'null'] }"
+      :scroll-y="{ enabled: true, gt: 20 }"
+      :edit-config="{ mode: 'cell', showIcon: false, keyboard: true }"
+      :checkbox-config="{ checkMethod: allowCheckbox }"
+      highlight-hover-row
+      @checkbox-change="handleCheckboxChange"
+      @keydown="handleGridKeydown"
     >
       <!-- 文件类型列 -->
       <template #fileTypeSlot="{ row }">
@@ -181,10 +225,12 @@ import type { ZoneFile, FileType } from '../types';
 interface Props {
   files: ZoneFile[];
   zoneName?: string;
+  zoneId?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   zoneName: '',
+  zoneId: '',
 });
 
 const emit = defineEmits<{
@@ -192,6 +238,7 @@ const emit = defineEmits<{
   'file-select': [file: ZoneFile];
   'file-delete': [file: ZoneFile];
   'file-refresh': [file: ZoneFile];
+  'file-batch-delete': [files: ZoneFile[]];
 }>();
 
 const tableRef = ref<VxeGridInstance | null>(null);
@@ -200,9 +247,20 @@ const filterType = ref('');
 const filterSource = ref('');
 const showPreview = ref(false);
 const previewFile = ref<ZoneFile | null>(null);
+const selectedFiles = ref<ZoneFile[]>([]);
+
+// 选中数量
+const selectCount = computed(() => selectedFiles.value.length);
+
+// 拖拽状态
+const isDragging = ref(false);
+const dragCounter = ref(0);
+const uploadProgress = ref<Map<string, number>>(new Map());
+const uploadError = ref<string | null>(null);
 
 // 列定义 - 使用 slots 属性指定插槽名称
 const columns: VxeGridPropTypes.Columns = [
+  { type: 'checkbox', width: 60 },
   { type: 'seq', width: 60, title: '#' },
   { field: 'name', title: '文件名', width: 200, sortable: true, slots: { default: 'nameSlot' } },
   { field: 'fileType', title: '类型', width: 80, slots: { default: 'fileTypeSlot' } },
@@ -312,9 +370,135 @@ const handleDelete = (file: ZoneFile) => {
   emit('file-delete', file);
 };
 
+// Checkbox 变化处理
+const handleCheckboxChange = ({ records }: { records: ZoneFile[] }) => {
+  selectedFiles.value = records;
+};
+
+// 允许 Checkbox（可根据条件禁用某些行）
+const allowCheckbox = ({ row }: { row: ZoneFile }) => {
+  return true;
+};
+
+// 批量删除
+const handleBatchDelete = () => {
+  if (selectedFiles.value.length === 0) return;
+  if (confirm(`确定要删除选中的 ${selectedFiles.value.length} 个文件吗？`)) {
+    emit('file-batch-delete', selectedFiles.value);
+    selectedFiles.value = [];
+  }
+};
+
+// 键盘导航处理
+const handleGridKeydown = (e: KeyboardEvent) => {
+  const table = tableRef.value;
+  if (!table) return;
+
+  const selectRow = table.getSelectedIndexRow();
+  const visibleData = table.getData();
+
+  if (e.key === 'ArrowDown' && visibleData.length > 0) {
+    e.preventDefault();
+    const nextIndex = selectRow ? visibleData.indexOf(selectRow) + 1 : 0;
+    if (nextIndex < visibleData.length) {
+      table.scrollToRow(visibleData[nextIndex]);
+      table.setCurrentRow(visibleData[nextIndex]);
+    }
+  } else if (e.key === 'ArrowUp' && visibleData.length > 0) {
+    e.preventDefault();
+    const currIndex = selectRow ? visibleData.indexOf(selectRow) : 0;
+    if (currIndex > 0) {
+      table.scrollToRow(visibleData[currIndex - 1]);
+      table.setCurrentRow(visibleData[currIndex - 1]);
+    }
+  } else if (e.key === 'Enter' || e.key === 'F2') {
+    e.preventDefault();
+    // Enter/F2 on a row could open the file or show preview
+    if (selectRow) {
+      handleOpenFile(selectRow);
+    }
+  }
+};
+
 // 打开 URL
 const openUrl = (url: string) => {
   window.open(url, '_blank', 'noopener,noreferrer');
+};
+
+// 拖拽处理
+const handleDragOver = (e: DragEvent) => {
+  e.preventDefault();
+  if (!isDragging.value) {
+    isDragging.value = true;
+  }
+  dragCounter.value++;
+};
+
+const handleDragLeave = (e: DragEvent) => {
+  e.preventDefault();
+  dragCounter.value--;
+  if (dragCounter.value === 0) {
+    isDragging.value = false;
+  }
+};
+
+const handleDrop = async (e: DragEvent) => {
+  e.preventDefault();
+  isDragging.value = false;
+  dragCounter.value = 0;
+  uploadError.value = null;
+
+  const files = e.dataTransfer?.files;
+  if (!files?.length) return;
+
+  // 只支持图片文件
+  const imageFiles = Array.from(files).filter((file) =>
+    file.type.startsWith('image/')
+  );
+
+  if (imageFiles.length === 0) {
+    uploadError.value = '只支持图片文件上传';
+    setTimeout(() => { uploadError.value = null; }, 3000);
+    return;
+  }
+
+  if (!props.zoneId) {
+    uploadError.value = '无法获取 Zone ID';
+    setTimeout(() => { uploadError.value = null; }, 3000);
+    return;
+  }
+
+  // 上传文件
+  for (const file of imageFiles) {
+    await uploadFile(file);
+  }
+
+  // 刷新列表
+  emit('refresh');
+};
+
+const uploadFile = async (file: File) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('name', file.name);
+  formData.append('sourceType', 'local');
+
+  try {
+    const response = await fetch(`/api/zones/${props.zoneId}/files`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `上传失败: ${response.status}`);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '上传失败';
+    uploadError.value = message;
+    console.error('[ZoneFileTable] Upload error:', error);
+    throw error;
+  }
 };
 </script>
 
@@ -323,6 +507,46 @@ const openUrl = (url: string) => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  position: relative;
+}
+
+.zone-file-table.is-dragging {
+  background-color: rgba(59, 130, 246, 0.05);
+  border-radius: 8px;
+}
+
+.drag-overlay {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(59, 130, 246, 0.1);
+  border: 2px dashed #3b82f6;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  backdrop-filter: blur(2px);
+}
+
+.drag-overlay-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: #3b82f6;
+  font-weight: 500;
+  font-size: 16px;
+}
+
+.upload-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background-color: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border-radius: 6px;
+  font-size: 14px;
 }
 
 .file-table-toolbar {
@@ -348,6 +572,13 @@ const openUrl = (url: string) => {
 .toolbar-right {
   display: flex;
   gap: 8px;
+  align-items: center;
+}
+
+.select-count {
+  font-size: 13px;
+  color: var(--ds-text-secondary, #6b7280);
+  white-space: nowrap;
 }
 
 .file-type-icon {

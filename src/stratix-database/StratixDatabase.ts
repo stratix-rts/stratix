@@ -35,16 +35,207 @@ export class StratixDatabase {
 
   private migrateMissingColumns(): void {
     // 检测并添加 agents 表缺失的列
-    const columns = this.db.prepare('PRAGMA table_info(agents)').all() as any[];
-    const columnNames = new Set(columns.map((c: any) => c.name));
+    const agentColumns = this.db.prepare('PRAGMA table_info(agents)').all() as any[];
+    const agentColumnNames = new Set(agentColumns.map((c: any) => c.name));
 
-    if (!columnNames.has('openclaw_config')) {
+    if (!agentColumnNames.has('openclaw_config')) {
       this.db.exec('ALTER TABLE agents ADD COLUMN openclaw_config TEXT');
       console.log('[Database] Added openclaw_config column to agents table');
     }
-    if (!columnNames.has('stratix_config')) {
+    if (!agentColumnNames.has('stratix_config')) {
       this.db.exec('ALTER TABLE agents ADD COLUMN stratix_config TEXT');
       console.log('[Database] Added stratix_config column to agents table');
+    }
+
+    // 检测并添加 zones 表缺失的 zone_context_id 列
+    const zoneColumns = this.db.prepare('PRAGMA table_info(zones)').all() as any[];
+    const zoneColumnNames = new Set(zoneColumns.map((c: any) => c.name));
+
+    if (!zoneColumnNames.has('zone_context_id')) {
+      this.db.exec('ALTER TABLE zones ADD COLUMN zone_context_id TEXT REFERENCES zone_contexts(zone_id)');
+      console.log('[Database] Added zone_context_id column to zones table');
+    }
+
+    // 检测并添加 zone_contexts 表缺失的 deleted_at 列（软删除）
+    const zoneCtxColumns = this.db.prepare('PRAGMA table_info(zone_contexts)').all() as any[];
+    const zoneCtxColumnNames = new Set(zoneCtxColumns.map((c: any) => c.name));
+
+    if (!zoneCtxColumnNames.has('deleted_at')) {
+      this.db.exec('ALTER TABLE zone_contexts ADD COLUMN deleted_at INTEGER');
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_zone_contexts_deleted_at ON zone_contexts(deleted_at)');
+      console.log('[Database] Added deleted_at column to zone_contexts table');
+    }
+
+    // 添加 task_policy 和 task_creator_id 列到 zone_contexts
+    if (!zoneCtxColumnNames.has('task_policy')) {
+      this.db.exec("ALTER TABLE zone_contexts ADD COLUMN task_policy TEXT DEFAULT 'creator'");
+      console.log('[Database] Added task_policy column to zone_contexts table');
+    }
+    if (!zoneCtxColumnNames.has('task_creator_id')) {
+      this.db.exec('ALTER TABLE zone_contexts ADD COLUMN task_creator_id TEXT');
+      console.log('[Database] Added task_creator_id column to zone_contexts table');
+    }
+
+    // 检测表是否存在
+    const tables = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as any[];
+    const tableNames = new Set(tables.map((t: any) => t.name));
+
+    // ============================================
+    // Zone Tasks 表迁移
+    // ============================================
+    if (!tableNames.has('zone_tasks')) {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS zone_tasks (
+          task_id TEXT PRIMARY KEY,
+          zone_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'in_progress', 'done')),
+          assignee TEXT,
+          created_by TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          FOREIGN KEY (zone_id) REFERENCES zone_contexts(zone_id) ON DELETE CASCADE
+        )
+      `);
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_zone_tasks_zone_id ON zone_tasks(zone_id)');
+      console.log('[Database] Created zone_tasks table');
+    }
+
+    // ============================================
+    // Zone Messages 表迁移
+    // ============================================
+    if (!tableNames.has('zone_messages')) {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS zone_messages (
+          message_id TEXT PRIMARY KEY,
+          zone_id TEXT NOT NULL,
+          sender_id TEXT NOT NULL,
+          sender_type TEXT NOT NULL CHECK (sender_type IN ('user', 'agent')),
+          content TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          FOREIGN KEY (zone_id) REFERENCES zone_contexts(zone_id) ON DELETE CASCADE
+        )
+      `);
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_zone_messages_zone_id ON zone_messages(zone_id)');
+      console.log('[Database] Created zone_messages table');
+    }
+
+    // ============================================
+    // Agent Career System 表迁移
+    // ============================================
+
+    // shared_skills 表迁移
+    if (!tableNames.has('shared_skills')) {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS shared_skills (
+          skill_id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT,
+          category TEXT,
+          icon TEXT,
+          mcp_tool TEXT,
+          endpoint TEXT,
+          provider TEXT DEFAULT 'builtin',
+          created_at INTEGER,
+          updated_at INTEGER
+        )
+      `);
+      console.log('[Database] Created shared_skills table');
+    }
+
+    // shared_skill_installs 表迁移
+    if (!tableNames.has('shared_skill_installs')) {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS shared_skill_installs (
+          skill_id TEXT NOT NULL,
+          agent_id TEXT NOT NULL,
+          installed_at INTEGER NOT NULL,
+          installed_by TEXT NOT NULL,
+          PRIMARY KEY (skill_id, agent_id),
+          FOREIGN KEY (skill_id) REFERENCES shared_skills(skill_id) ON DELETE CASCADE
+        )
+      `);
+      console.log('[Database] Created shared_skill_installs table');
+    }
+
+    // agent_learned_skills 表迁移
+    if (!tableNames.has('agent_learned_skills')) {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS agent_learned_skills (
+          skill_id TEXT NOT NULL,
+          agent_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT,
+          category TEXT,
+          level INTEGER DEFAULT 1,
+          experience_points INTEGER DEFAULT 0,
+          proficiency INTEGER DEFAULT 0,
+          certified INTEGER DEFAULT 0,
+          learned_from TEXT,
+          learned_at INTEGER NOT NULL,
+          last_practiced_at INTEGER,
+          PRIMARY KEY (skill_id, agent_id)
+        )
+      `);
+      console.log('[Database] Created agent_learned_skills table');
+    }
+
+    // zone_contexts_simple 表迁移
+    if (!tableNames.has('zone_contexts_simple')) {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS zone_contexts_simple (
+          zone_id TEXT PRIMARY KEY,
+          context_json TEXT,
+          updated_at INTEGER
+        )
+      `);
+      console.log('[Database] Created zone_contexts_simple table');
+    }
+
+    // agent_zone_bindings 表迁移
+    if (!tableNames.has('agent_zone_bindings')) {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS agent_zone_bindings (
+          agent_id TEXT NOT NULL,
+          zone_id TEXT NOT NULL,
+          joined_at INTEGER NOT NULL,
+          PRIMARY KEY (agent_id, zone_id)
+        )
+      `);
+      console.log('[Database] Created agent_zone_bindings table');
+    }
+
+    // 为 shared_skill_installs 添加索引（如果不存在）
+    try {
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_shared_skill_installs_agent ON shared_skill_installs(agent_id)');
+    } catch (e) {
+      // 索引可能已存在
+    }
+
+    // 为 agent_learned_skills 添加索引（如果不存在）
+    try {
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_agent_learned_skills_agent ON agent_learned_skills(agent_id)');
+    } catch (e) {
+      // 索引可能已存在
+    }
+
+    // 为 zone_contexts_simple 添加索引（如果不存在）
+    try {
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_zone_contexts_simple_zone_id ON zone_contexts_simple(zone_id)');
+    } catch (e) {
+      // 索引可能已存在
+    }
+
+    // 为 agent_zone_bindings 添加索引（如果不存在）
+    try {
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_agent_zone_bindings_agent ON agent_zone_bindings(agent_id)');
+    } catch (e) {
+      // 索引可能已存在
+    }
+    try {
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_agent_zone_bindings_zone ON agent_zone_bindings(zone_id)');
+    } catch (e) {
+      // 索引可能已存在
     }
   }
 
@@ -316,6 +507,116 @@ export class StratixDatabase {
       CREATE INDEX IF NOT EXISTS idx_agent_messages_sender ON agent_messages(sender_id);
       CREATE INDEX IF NOT EXISTS idx_context_archives_agent ON context_archives(agent_id);
       CREATE INDEX IF NOT EXISTS idx_context_archives_expires ON context_archives(agent_id, expires_at);
+
+      -- ============================================
+      -- ZONE CONTEXT TABLES (Zone as Dynamic Context Container)
+      -- ============================================
+
+      -- Zone Contexts表: Zone context container with title, prompt, and members
+      -- This stores the collaborative Zone concept (title + prompt + context files)
+      -- Separate from the ORCHESTRATION zones table which tracks Phaser zone positions
+      CREATE TABLE IF NOT EXISTS zone_contexts (
+        zone_id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        prompt TEXT,
+        members TEXT DEFAULT '[]',
+        task_policy TEXT DEFAULT 'creator',
+        task_creator_id TEXT,
+        deleted_at INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE
+      );
+
+      -- Zone Files表: Files associated with a Zone
+      CREATE TABLE IF NOT EXISTS zone_files (
+        file_id TEXT PRIMARY KEY,
+        zone_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        source_type TEXT NOT NULL CHECK (source_type IN ('local', 'url')),
+        source TEXT NOT NULL,
+        content TEXT,
+        file_type TEXT,
+        last_fetched INTEGER,
+        metadata TEXT DEFAULT '{}',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (zone_id) REFERENCES zone_contexts(zone_id) ON DELETE CASCADE
+      );
+
+      -- 索引
+      CREATE INDEX IF NOT EXISTS idx_zone_contexts_project_id ON zone_contexts(project_id);
+      CREATE INDEX IF NOT EXISTS idx_zone_files_zone_id ON zone_files(zone_id);
+
+      -- ============================================
+      -- AGENT CAREER SYSTEM TABLES (SkillHub + 技能养成)
+      -- ============================================
+
+      -- 共享技能库 (SkillHub)
+      CREATE TABLE IF NOT EXISTS shared_skills (
+        skill_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        category TEXT,
+        icon TEXT,
+        mcp_tool TEXT,
+        endpoint TEXT,
+        provider TEXT DEFAULT 'builtin',
+        created_at INTEGER,
+        updated_at INTEGER
+      );
+
+      -- 技能安装关联表（替代 installedAgents 数组）
+      -- 表示某个技能已被安装到某个 Agent
+      CREATE TABLE IF NOT EXISTS shared_skill_installs (
+        skill_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        installed_at INTEGER NOT NULL,
+        installed_by TEXT NOT NULL,
+        PRIMARY KEY (skill_id, agent_id),
+        FOREIGN KEY (skill_id) REFERENCES shared_skills(skill_id) ON DELETE CASCADE
+      );
+
+      -- Agent 学会的技能（含养成字段）
+      -- 与 shared_skill_installs 不同，learned_skill 表示 Agent 通过工作真正掌握的技能
+      CREATE TABLE IF NOT EXISTS agent_learned_skills (
+        skill_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        category TEXT,
+        level INTEGER DEFAULT 1,
+        experience_points INTEGER DEFAULT 0,
+        proficiency INTEGER DEFAULT 0,
+        certified INTEGER DEFAULT 0,
+        learned_from TEXT,
+        learned_at INTEGER NOT NULL,
+        last_practiced_at INTEGER,
+        PRIMARY KEY (skill_id, agent_id)
+      );
+
+      -- Zone 上下文（简化版，用于上下文注入）
+      CREATE TABLE IF NOT EXISTS zone_contexts_simple (
+        zone_id TEXT PRIMARY KEY,
+        context_json TEXT,
+        updated_at INTEGER
+      );
+
+      -- Agent-Zone 关联（简化版，用于上下文绑定）
+      CREATE TABLE IF NOT EXISTS agent_zone_bindings (
+        agent_id TEXT NOT NULL,
+        zone_id TEXT NOT NULL,
+        joined_at INTEGER NOT NULL,
+        PRIMARY KEY (agent_id, zone_id)
+      );
+
+      -- 索引
+      CREATE INDEX IF NOT EXISTS idx_shared_skill_installs_agent ON shared_skill_installs(agent_id);
+      CREATE INDEX IF NOT EXISTS idx_agent_learned_skills_agent ON agent_learned_skills(agent_id);
+      CREATE INDEX IF NOT EXISTS idx_zone_contexts_simple_zone_id ON zone_contexts_simple(zone_id);
+      CREATE INDEX IF NOT EXISTS idx_agent_zone_bindings_agent ON agent_zone_bindings(agent_id);
+      CREATE INDEX IF NOT EXISTS idx_agent_zone_bindings_zone ON agent_zone_bindings(zone_id);
     `;
     // Find the line with REFERENCES and log context
     const refLine = sql.split('\n').findIndex(l => l.includes('REFERENCES'));

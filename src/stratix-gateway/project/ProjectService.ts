@@ -1,5 +1,6 @@
 import { Project, ProjectConfig, ProjectStatus, ProjectChannel, ProjectChannelMessage, MessageSender } from '../../stratix-project/types';
 import { projectRepository } from '../../stratix-database/ProjectRepository';
+import { getDatabase } from '../../stratix-database/StratixDatabase';
 import { generateId } from '../../stratix-project/utils/helpers';
 
 export class ProjectService {
@@ -47,7 +48,7 @@ export class ProjectService {
 
   public async createProject(config: ProjectConfig, zoneConfig?: any): Promise<Project> {
     await this.ensureInitialized();
-    
+
     const now = new Date();
     const project: Project = {
       id: generateId('proj'),
@@ -63,7 +64,34 @@ export class ProjectService {
       updatedAt: now
     };
 
-    return projectRepository.createProject(project);
+    const created = projectRepository.createProject(project);
+
+    // Also create a zone record to mirror the project
+    const db = getDatabase().getDatabase();
+    const zoneConfigData = zoneConfig || { x: 0, y: 0, width: 400, height: 300, color: 15790320, opacity: 0.3, visible: true };
+    const nowMs = Date.now();
+
+    db.prepare(`
+      INSERT INTO zones (zone_id, name, type, project_id, position_x, position_y, width, height, status, config, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      created.id,
+      config.name,
+      'project',
+      created.id,
+      zoneConfigData.x || 0,
+      zoneConfigData.y || 0,
+      zoneConfigData.width || 400,
+      zoneConfigData.height || 300,
+      'idle',
+      JSON.stringify(zoneConfigData),
+      nowMs,
+      nowMs
+    );
+
+    console.log(`[ProjectService] Created zone record for project: ${created.id}`);
+
+    return created;
   }
 
   public async updateProject(id: string, updates: Partial<Project>): Promise<Project> {
@@ -110,6 +138,14 @@ export class ProjectService {
   public async failProject(id: string): Promise<Project> {
     await this.ensureInitialized();
     return this.updateProject(id, { status: 'failed' as ProjectStatus });
+  }
+
+  public async updateZoneContextId(zoneId: string, zoneContextId: string): Promise<void> {
+    await this.ensureInitialized();
+    const db = getDatabase().getDatabase();
+    const stmt = db.prepare('UPDATE zones SET zone_context_id = ? WHERE zone_id = ?');
+    stmt.run(zoneContextId, zoneId);
+    console.log(`[ProjectService] Updated zone_context_id for ${zoneId} to ${zoneContextId}`);
   }
 
   public async agentEnterProject(projectId: string, agentId: string): Promise<Project> {

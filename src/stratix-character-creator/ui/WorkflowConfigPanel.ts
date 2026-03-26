@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { Depth } from '@/design-system/tokens/depth';
 import type { WorkflowDefinition } from '@/agent-platform/workflow/types';
 import { WorkflowEditorPanel } from './workflow-editor/WorkflowEditorPanel';
+import { getButtonInlineStyles } from './_buttonStyles';
 
 export interface WorkflowConfigPanelConfig {
   x: number;
@@ -77,33 +78,9 @@ export class WorkflowConfigPanel {
         ">
           <span style="font-size: 14px; font-weight: 500;">工作流配置</span>
           <div style="flex: 1;"></div>
-          <button id="wf-save-btn" style="
-            padding: 6px 12px;
-            background: ${THEME.accent};
-            border: none;
-            border-radius: 4px;
-            color: white;
-            font-size: 12px;
-            cursor: pointer;
-          ">保存工作流</button>
-          <button id="wf-load-btn" style="
-            padding: 6px 12px;
-            background: transparent;
-            border: 1px solid ${THEME.border};
-            border-radius: 4px;
-            color: ${THEME.text};
-            font-size: 12px;
-            cursor: pointer;
-          ">加载工作流</button>
-          <button id="wf-run-btn" style="
-            padding: 6px 12px;
-            background: ${THEME.success};
-            border: none;
-            border-radius: 4px;
-            color: white;
-            font-size: 12px;
-            cursor: pointer;
-          ">运行</button>
+          <button id="wf-save-btn" style="${getButtonInlineStyles('primary')}">保存工作流</button>
+          <button id="wf-load-btn" style="${getButtonInlineStyles('secondary')}">加载工作流</button>
+          <button id="wf-run-btn" style="${getButtonInlineStyles('success')}">运行</button>
         </div>
         <div id="wf-editor-container" style="
           flex: 1;
@@ -256,14 +233,7 @@ export class WorkflowConfigPanel {
               .join('')}
           </div>
           <div style="display: flex; gap: 8px; justify-content: flex-end;">
-            <button class="cancel-btn" style="
-              padding: 8px 16px;
-              background: transparent;
-              border: 1px solid ${THEME.border};
-              border-radius: 6px;
-              color: ${THEME.text};
-              cursor: pointer;
-            ">取消</button>
+            <button class="cancel-btn" style="${getButtonInlineStyles('ghost')}">取消</button>
           </div>
         </div>
       </div>

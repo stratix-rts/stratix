@@ -10,6 +10,7 @@ import {
 } from '../types';
 import { SkillRegistry } from './SkillRegistry';
 import { LLMConnector } from './LLMConnector';
+import { skillAuditLogger } from './SkillAuditLogger';
 
 /**
  * ToolUseLoop - 处理 LLM → 工具执行 → LLM → ... 的完整循环
@@ -298,6 +299,17 @@ export class ToolUseLoop {
           if (count > 3) {
             console.warn(`[ToolUseLoop] Tool "${tc.name}" has been called ${count} times consecutively. Consider optimizing.`);
           }
+
+          // 审计日志记录
+          skillAuditLogger.log({
+            agentId: context.agentId,
+            skillId: tc.name,
+            params: tc.input,
+            result: skillResult.result,
+            error: skillResult.error,
+            executionTime: Date.now() - callStart,
+            sessionId: context.sessionId,
+          });
 
           return skillResult;
         })();

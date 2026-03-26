@@ -489,6 +489,17 @@ export interface ToolCall {
 }
 
 /**
+ * 沙箱资源限制配置
+ */
+export interface SandboxConfig {
+  maxMemory?: number;        // MB，默认 128
+  maxCpuTime?: number;       // seconds，默认 10
+  maxOutputSize?: number;    // bytes，默认 1MB
+  maxFileSize?: number;      // bytes，默认 10MB
+  maxTempFiles?: number;     // 最大临时文件数，默认 5
+}
+
+/**
  * 扩展 ExecutionContext 支持安全相关配置
  */
 export interface ExecutionContext {
@@ -501,6 +512,7 @@ export interface ExecutionContext {
   allowedDomains?: string[];         // 允许的网络请求域名
   blockedCommands?: string[];         // 禁止的 bash 命令
   maxToolCalls?: number;             // 最大工具调用次数（防止无限循环）
+  sandboxConfig?: SandboxConfig;     // 沙箱资源限制
   // 进度回调
   progressCallback?: ProgressCallback;
 }

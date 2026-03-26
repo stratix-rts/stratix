@@ -180,7 +180,7 @@ router.post('/test-connection', async (req: Request, res: Response) => {
 
 router.post('/chat', async (req: Request, res: Response) => {
   try {
-    const { backendType, config, message, systemPrompt, history } = req.body;
+    const { backendType, config, message, systemPrompt, history, soul, rules, skillTree } = req.body;
 
     if (!message) {
       res.json(requestHelper.badRequest('Message is required'));
@@ -209,6 +209,9 @@ router.post('/chat', async (req: Request, res: Response) => {
     const executorFactory = ExecutorFactory.getInstance();
     const executor = executorFactory.getExecutorByType(chatConfig.backendType);
 
+    // 构建 soul 对象：优先使用结构化的 soul 配置，否则回退到 systemPrompt
+    const agentSoul = soul || { identity: systemPrompt || '', goals: [], personality: '' };
+
     const mockAgentConfig = {
       agentId: 'chat-agent',
       name: 'Chat Agent',
@@ -216,7 +219,9 @@ router.post('/chat', async (req: Request, res: Response) => {
       backendType: chatConfig.backendType,
       stratixConfig: chatConfig.stratixConfig,
       openClawConfig: chatConfig.openClawConfig,
-      soul: { identity: systemPrompt || '', goals: [], personality: '' }
+      soul: agentSoul,
+      rules: rules || [],
+      skillTree: skillTree
     };
 
     const command = {

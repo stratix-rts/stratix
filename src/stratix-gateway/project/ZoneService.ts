@@ -1,4 +1,14 @@
 import { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskCreateRequest, ZoneTaskUpdateRequest, ZoneMessage, ZoneMessageCreateRequest } from '../../stratix-project/types';
+
+export interface ZoneFileBatchRequest {
+  files: Array<{
+    name: string;
+    sourceType: 'local' | 'url';
+    source: string;
+    fileType?: FileType;
+    metadata?: any;
+  }>;
+}
 import { zoneRepository } from '../../stratix-database/ZoneRepository';
 import { projectRepository } from '../../stratix-database/ProjectRepository';
 import { gatewayEventBus } from '../GatewayEventBus';
@@ -163,6 +173,45 @@ export class ZoneService {
     return finalFile;
   }
 
+  /**
+   * Batch add files to a Zone
+   */
+  public async addFiles(zoneId: string, files: Array<{ name: string; sourceType: 'local' | 'url'; source: string; fileType?: FileType; metadata?: any }>): Promise<ZoneFile[]> {
+    await this.ensureInitialized();
+
+    // Verify zone exists
+    const zone = zoneRepository.getZone(zoneId);
+    if (!zone) {
+      throw new Error(`Zone not found: ${zoneId}`);
+    }
+
+    // Add files in batch
+    const addedFiles = zoneRepository.addFiles(zoneId, files);
+
+    // Try to read content for local files and update
+    for (let i = 0; i < addedFiles.length; i++) {
+      const file = addedFiles[i];
+      if (file.sourceType === 'local') {
+        try {
+          const content = await this.readLocalFile(file.source);
+          zoneRepository.updateFile(file.id, { content, lastFetched: Date.now() });
+          addedFiles[i] = zoneRepository.getFile(file.id)!;
+        } catch (error) {
+          console.warn(`[ZoneService] Failed to read local file ${file.source}:`, error);
+        }
+      }
+    }
+
+    // Publish zone:file_added event for each file
+    for (const file of addedFiles) {
+      gatewayEventBus.publishZoneEvent('zone:file_added', zoneId, zone.projectId, {
+        file
+      });
+    }
+
+    return addedFiles;
+  }
+
   public async removeFile(zoneId: string, fileId: string): Promise<boolean> {
     await this.ensureInitialized();
 
@@ -275,13 +324,22 @@ export class ZoneService {
   /**
    * 获取 Zone 的所有 Tasks
    */
-  public async getTasks(zoneId: string): Promise<ZoneTask[]> {
+  public async getTasks(zoneId: string, limit?: number, offset?: number): Promise<ZoneTask[]> {
     await this.ensureInitialized();
     const zone = zoneRepository.getZone(zoneId);
     if (!zone) {
       throw new Error(`Zone not found: ${zoneId}`);
     }
-    return zoneRepository.getTasks(zoneId);
+    return zoneRepository.getTasks(zoneId, limit, offset);
+  }
+
+  public async getTasksCount(zoneId: string): Promise<number> {
+    await this.ensureInitialized();
+    const zone = zoneRepository.getZone(zoneId);
+    if (!zone) {
+      throw new Error(`Zone not found: ${zoneId}`);
+    }
+    return zoneRepository.getTasksCount(zoneId);
   }
 
   /**
@@ -429,13 +487,22 @@ export class ZoneService {
   /**
    * 获取 Zone 的消息历史
    */
-  public async getMessages(zoneId: string, limit: number = 100): Promise<ZoneMessage[]> {
+  public async getMessages(zoneId: string, limit: number = 100, offset: number = 0): Promise<ZoneMessage[]> {
     await this.ensureInitialized();
     const zone = zoneRepository.getZone(zoneId);
     if (!zone) {
       throw new Error(`Zone not found: ${zoneId}`);
     }
-    return zoneRepository.getMessages(zoneId, limit);
+    return zoneRepository.getMessages(zoneId, limit, offset);
+  }
+
+  public async getMessagesCount(zoneId: string): Promise<number> {
+    await this.ensureInitialized();
+    const zone = zoneRepository.getZone(zoneId);
+    if (!zone) {
+      throw new Error(`Zone not found: ${zoneId}`);
+    }
+    return zoneRepository.getMessagesCount(zoneId);
   }
 
   /**

@@ -20,13 +20,21 @@ import textureRoutes from './api/routes/texture';
 import openclawRoutes, { initWebSocketServer, initConnectionStore } from './api/routes/openclaw';
 import lraRoutes from './api/routes/lra';
 import projectRoutes from './api/routes/project';
+import zoneRoutes from './api/routes/zone';
+import zoneContextRoutes from './api/routes/zone-context';
 import agentOrchestrationRoutes from './api/routes/agentOrchestration';
+import skillRoutes from './api/routes/skill';
 import { openClawProxyManager } from './openclaw/OpenClawProxyManager';
 import { dataStoreService } from './dataStoreService';
 import { OpenClawConnectionStore } from '../stratix-data-store/OpenClawConnectionStore';
 import { initializeDatabase } from '../stratix-database';
 import { ensureDirSync } from 'fs-extra';
 import path from 'path';
+
+// NocoDB Service
+import { createNocoDBService, type NocoDBServiceOptions } from '../stratix-nocodb';
+
+let nocoDBServiceInstance: ReturnType<typeof createNocoDBService> | null = null;
 
 /**
  * Gateway 服务配置
@@ -105,7 +113,10 @@ export async function startGatewayService(
   app.use('/api/stratix/openclaw', openclawRoutes);
   app.use('/api/lra', lraRoutes);
   app.use('/api/projects', projectRoutes);
+  app.use('/api', zoneRoutes);
+  app.use('/api/zone-context', zoneContextRoutes);
   app.use('/api/agents/orchestration', agentOrchestrationRoutes);
+  app.use('/api/skills', skillRoutes);
   
   // 健康检查
   app.get('/health', (req, res) => {
@@ -137,7 +148,26 @@ export async function startGatewayService(
   console.log('Initializing SQLite database...');
   const db = initializeDatabase({ dataDir });
   console.log('SQLite database initialized:', db.getPath());
-  
+
+  // 初始化 NocoDB 服务 (可选)
+  const nocoEnabled = process.env.NOCO_ENABLED === 'true';
+  if (nocoEnabled) {
+    console.log('Initializing NocoDB service...');
+    const nocoOptions: NocoDBServiceOptions = {
+      port: parseInt(process.env.NOCO_PORT || '8080', 10),
+      jwtSecret: process.env.NOCO_JWT_SECRET || 'stratix-nocodb-secret-2026',
+      disableTelemetry: true,
+    };
+    nocoDBServiceInstance = createNocoDBService(nocoOptions);
+    try {
+      await nocoDBServiceInstance.start();
+      console.log(`NocoDB service started at ${nocoDBServiceInstance.getUrl()}`);
+    } catch (error) {
+      console.warn('[Gateway] NocoDB service failed to start:', error);
+      console.warn('[Gateway] Data Explorer will be unavailable');
+    }
+  }
+
   // 初始化数据服务
   console.log('Initializing data store...');
   await dataStoreService.initialize(dataDir);
@@ -180,17 +210,23 @@ export async function startGatewayService(
   // 优雅关闭处理
   const gracefulShutdown = async () => {
     console.log('Shutting down gracefully...');
-    
+
+    // 关闭 NocoDB 服务
+    if (nocoDBServiceInstance) {
+      await nocoDBServiceInstance.stop();
+      console.log('NocoDB service closed');
+    }
+
     await new Promise<void>((resolve) => {
       server.close(() => {
         console.log('HTTP server closed');
         resolve();
       });
     });
-    
+
     statusSyncService.close();
     console.log('WebSocket server closed');
-    
+
     process.exit(0);
   };
   

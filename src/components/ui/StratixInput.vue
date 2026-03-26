@@ -2,6 +2,7 @@
 import { computed, ref, toRef } from 'vue';
 import { InputBaseConfig, InputSizes, type InputVariant } from '@/design-system/components/shared/input';
 import { provideSizeContext } from '@/design-system/composables/useSizeContext';
+import { getToken } from '@/design-system';
 
 interface Props {
   modelValue?: string | number;

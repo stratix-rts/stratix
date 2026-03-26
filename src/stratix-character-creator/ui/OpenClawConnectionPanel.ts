@@ -12,6 +12,7 @@ import { Depth } from '@/design-system/tokens/depth';
 import { DOMContainer } from '@/stratix-core/ui/DOMContainer';
 import { unifiedOpenClawConnectionManager, type TailscaleNode, type ConnectionResult, type StoredConnection } from '@/stratix-core/UnifiedOpenClawConnectionManager';
 import type { OpenClawConnectionMethod } from '@/stratix-core/stratix-protocol';
+import { getButtonInlineStyles } from './_buttonStyles';
 
 const THEME = {
   bg: 'var(--ds-bg-secondary)',
@@ -190,27 +191,8 @@ export class OpenClawConnectionPanel {
           justify-content: flex-end;
           gap: 12px;
         ">
-          <button id="cancel-btn" style="
-            padding: 10px 20px;
-            background: transparent;
-            border: 1px solid ${THEME.border};
-            border-radius: 4px;
-            color: ${THEME.textMuted};
-            font-size: 12px;
-            font-family: inherit;
-            cursor: pointer;
-          ">取消</button>
-          <button id="connect-btn" style="
-            padding: 10px 24px;
-            background: ${THEME.success};
-            border: none;
-            border-radius: 4px;
-            color: var(--ds-bg-primary);
-            font-size: 12px;
-            font-family: inherit;
-            cursor: pointer;
-            font-weight: bold;
-          ">连接并继续 →</button>
+          <button id="cancel-btn" style="${getButtonInlineStyles('ghost')}">取消</button>
+          <button id="connect-btn" style="${getButtonInlineStyles('success')}">连接并继续 →</button>
         </div>
       </div>
       <style>
@@ -376,18 +358,7 @@ export class OpenClawConnectionPanel {
           margin: 16px 0;
         ">────────────── 或扫描节点 ──────────────</div>
 
-        <button id="scan-tailscale-btn" style="
-          width: 100%;
-          padding: 10px 16px;
-          background: ${THEME.accentDim};
-          border: 1px solid ${THEME.accent};
-          border-radius: 4px;
-          color: ${THEME.accent};
-          font-size: 12px;
-          font-family: inherit;
-          cursor: pointer;
-          margin-bottom: 12px;
-        ">扫描 Tailscale 节点</button>
+        <button id="scan-tailscale-btn" style="${getButtonInlineStyles('secondary')}">扫描 Tailscale 节点</button>
 
         <div id="tailscale-nodes-list" style="
           min-height: 60px;
@@ -619,26 +590,8 @@ export class OpenClawConnectionPanel {
         <strong>状态:</strong> ${existingConn.status || '未知'}
       </div>
       <div style="display: flex; gap: 8px; margin-top: 8px;">
-        <button id="use-existing-btn" style="
-          flex: 1;
-          padding: 8px 12px;
-          background: ${THEME.success};
-          border: none;
-          border-radius: 4px;
-          color: var(--ds-bg-primary);
-          font-size: 11px;
-          cursor: pointer;
-        ">使用已有配置</button>
-        <button id="update-existing-btn" style="
-          flex: 1;
-          padding: 8px 12px;
-          background: transparent;
-          border: 1px solid ${THEME.border};
-          border-radius: 4px;
-          color: ${THEME.textMuted};
-          font-size: 11px;
-          cursor: pointer;
-        ">更新现有配置</button>
+        <button id="use-existing-btn" style="${getButtonInlineStyles('success')}">使用已有配置</button>
+        <button id="update-existing-btn" style="${getButtonInlineStyles('ghost')}">更新现有配置</button>
       </div>
     `;
 

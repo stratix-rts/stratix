@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { zoneService } from '../../project/ZoneService';
+import { zoneService, ZoneFileBatchRequest } from '../../project/ZoneService';
 import { ZoneCreateRequest, ZoneUpdateRequest, ZoneFileAddRequest, ZoneFolderScanRequest, ZoneTaskStatus } from '../../../stratix-project/types';
 
 const router = Router();
@@ -290,6 +290,67 @@ router.post('/zones/:zoneId/files/scan-folder', async (req: Request, res: Respon
   }
 });
 
+/**
+ * POST /api/zones/:zoneId/files/batch
+ * Batch add files to a Zone
+ */
+router.post('/zones/:zoneId/files/batch', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const zoneId = req.params.zoneId as string;
+    const { files } = req.body as ZoneFileBatchRequest;
+
+    if (!files || !Array.isArray(files) || files.length === 0) {
+      res.status(400).json({
+        success: false,
+        error: 'Missing required field: files (array)'
+      });
+      return;
+    }
+
+    if (files.length > 50) {
+      res.status(400).json({
+        success: false,
+        error: 'Maximum 50 files per batch'
+      });
+      return;
+    }
+
+    // Validate each file
+    for (const file of files) {
+      if (!file.name || !file.sourceType || !file.source) {
+        res.status(400).json({
+          success: false,
+          error: 'Each file must have name, sourceType, and source'
+        });
+        return;
+      }
+      if (!['local', 'url'].includes(file.sourceType)) {
+        res.status(400).json({
+          success: false,
+          error: 'Invalid sourceType. Must be "local" or "url"'
+        });
+        return;
+      }
+    }
+
+    const addedFiles = await zoneService.addFiles(zoneId, files);
+
+    res.json({
+      success: true,
+      files: addedFiles,
+      count: addedFiles.length
+    });
+  } catch (error) {
+    console.error('[Zone API] Batch add files failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to batch add files';
+    if (message.includes('not found')) {
+      res.status(404).json({ success: false, error: message });
+    } else {
+      res.status(500).json({ success: false, error: message });
+    }
+  }
+});
+
 // ============================================
 // Zone Members
 // ============================================
@@ -350,16 +411,27 @@ router.delete('/zones/:zoneId/members/:agentId', async (req: Request, res: Respo
 
 /**
  * GET /api/zones/:zoneId/tasks
- * Get all tasks in a Zone
+ * Get tasks in a Zone (with pagination)
  */
 router.get('/zones/:zoneId/tasks', async (req: Request, res: Response): Promise<void> => {
   try {
     const zoneId = req.params.zoneId as string;
-    const tasks = await zoneService.getTasks(zoneId);
+    const limit = parseInt(req.query.limit as string) || undefined;
+    const offset = parseInt(req.query.offset as string) || undefined;
+
+    const [tasks, total] = await Promise.all([
+      zoneService.getTasks(zoneId, limit, offset),
+      zoneService.getTasksCount(zoneId)
+    ]);
 
     res.json({
       success: true,
-      tasks
+      tasks,
+      pagination: {
+        total,
+        limit: limit || total,
+        offset: offset || 0
+      }
     });
   } catch (error) {
     console.error('[Zone API] Get tasks failed:', error);
@@ -535,17 +607,27 @@ router.post('/zones/:zoneId/tasks/:taskId/claim', async (req: Request, res: Resp
 
 /**
  * GET /api/zones/:zoneId/messages
- * Get message history for a Zone
+ * Get message history for a Zone (with pagination)
  */
 router.get('/zones/:zoneId/messages', async (req: Request, res: Response): Promise<void> => {
   try {
     const zoneId = req.params.zoneId as string;
     const limit = parseInt(req.query.limit as string) || 100;
-    const messages = await zoneService.getMessages(zoneId, limit);
+    const offset = parseInt(req.query.offset as string) || 0;
+
+    const [messages, total] = await Promise.all([
+      zoneService.getMessages(zoneId, limit, offset),
+      zoneService.getMessagesCount(zoneId)
+    ]);
 
     res.json({
       success: true,
-      messages
+      messages,
+      pagination: {
+        total,
+        limit,
+        offset
+      }
     });
   } catch (error) {
     console.error('[Zone API] Get messages failed:', error);

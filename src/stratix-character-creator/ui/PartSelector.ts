@@ -11,6 +11,7 @@ import { DOMContainer } from '@/stratix-core/ui/DOMContainer';
 import { partRegistry } from '../core/PartRegistry';
 import { PART_CATEGORY_CONFIGS, getCategoryConfig } from '../config/partConfig';
 import type { PartMetadata, BodyType, PartCategory, PartSelection } from '../types';
+import { getButtonInlineStyles } from './_buttonStyles';
 
 // 使用 CSS 变量以支持主题动态切换
 const THEME = {
@@ -133,128 +134,15 @@ export class PartSelector {
           justify-content: space-between;
           gap: 12px;
         ">
-          <button id="random-btn" style="
-            padding: 10px 20px;
-            background: ${THEME.accentDim};
-            border: 1px solid ${THEME.success};
-            border-radius: 4px;
-            color: ${THEME.success};
-            font-family: inherit;
-            font-size: 12px;
-            cursor: pointer;
-            transition: all 0.2s;
-          ">随机 RANDOM</button>
-          <button id="next-btn" style="
-            padding: 10px 24px;
-            background: ${THEME.success};
-            border: none;
-            border-radius: 4px;
-            color: ${THEME.bg};
-            font-family: inherit;
-            font-size: 12px;
-            cursor: pointer;
-            transition: all 0.2s;
-          ">下一步 NEXT →</button>
+          <button id="random-btn" style="${getButtonInlineStyles('secondary')}">随机 RANDOM</button>
+          <button id="next-btn" style="${getButtonInlineStyles('success')}">下一步 NEXT</button>
         </div>
       </div>
-      <style>
-        .cat-btn {
-          width: 32px;
-          height: 32px;
-          background: transparent;
-          border: 1px solid ${THEME.panelBorder};
-          border-radius: 4px;
-          color: ${THEME.textMuted};
-          font-size: 10px;
-          font-family: monospace;
-          cursor: pointer;
-          transition: all 0.15s ease;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        .cat-btn:hover {
-          background: ${THEME.hoverBg};
-          border-color: ${THEME.accent};
-          color: ${THEME.text};
-        }
-        .cat-btn.active {
-          background: ${THEME.accentDim};
-          border-color: ${THEME.accent};
-          color: ${THEME.accent};
-        }
-        .part-item {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 10px 12px;
-          margin-bottom: 6px;
-          background: ${THEME.panelBg};
-          border: 1px solid ${THEME.panelBorder};
-          border-radius: 6px;
-          cursor: pointer;
-          transition: all 0.15s ease;
-        }
-        .part-item:hover {
-          border-color: ${THEME.accent};
-          background: ${THEME.hoverBg};
-        }
-        .part-item.selected {
-          background: ${THEME.selectedBg};
-          border-color: ${THEME.accent};
-        }
-        .part-name {
-          flex: 1;
-          font-size: 12px;
-          color: ${THEME.text};
-        }
-        .part-meta {
-          font-size: 10px;
-          color: ${THEME.textMuted};
-          margin-left: 8px;
-        }
-        .variant-select {
-          padding: 4px 8px;
-          background: ${THEME.bg};
-          border: 1px solid ${THEME.panelBorder};
-          border-radius: 4px;
-          color: ${THEME.text};
-          font-size: 10px;
-          font-family: monospace;
-          cursor: pointer;
-          min-width: 70px;
-        }
-        .variant-select:focus {
-          outline: none;
-          border-color: ${THEME.accent};
-        }
-        .parts-list::-webkit-scrollbar {
-          width: 6px;
-        }
-        .parts-list::-webkit-scrollbar-track {
-          background: ${THEME.bg};
-        }
-        .parts-list::-webkit-scrollbar-thumb {
-          background: ${THEME.panelBorder};
-          border-radius: 3px;
-        }
-        .parts-list::-webkit-scrollbar-thumb:hover {
-          background: ${THEME.accent};
-        }
-        .empty-state {
-          text-align: center;
-          padding: 40px 20px;
-          color: ${THEME.textMuted};
-          font-size: 12px;
-        }
-        #random-btn:hover {
-          opacity: 0.9;
-        }
-        #next-btn:hover {
-          opacity: 0.9;
-        }
-      </style>
     `;
+  }
+
+  private createCategoryTabs(): string {
+    return '';
   }
 
   private setupEventListeners(): void {

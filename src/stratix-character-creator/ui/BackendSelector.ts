@@ -13,6 +13,7 @@ import type { AgentBackendType, OpenClawConfig, UnifiedOpenClawConfig, StratixDi
 import { StratixAgentConfigPanel } from './StratixAgentConfigPanel';
 import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClawConnectionManager';
 import { agentStore } from '@/stores/agentStore';
+import { getButtonInlineStyles } from './_buttonStyles';
 
 const THEME = {
   bg: 'var(--ds-bg-secondary)',
@@ -235,17 +236,7 @@ export class BackendSelector {
               " />
             </div>
             <div class="section">
-              <button id="oc-test-btn" style="
-                width: 100%;
-                padding: 12px;
-                background: ${THEME.accentDim};
-                border: 1px solid ${THEME.accent};
-                border-radius: 6px;
-                color: ${THEME.accent};
-                font-size: 12px;
-                cursor: pointer;
-                transition: all 0.2s;
-              ">测试连接 Test Connection</button>
+              <button id="oc-test-btn" style="${getButtonInlineStyles('secondary')}">测试连接 Test Connection</button>
               <div id="oc-status" style="
                 margin-top: 12px;
                 padding: 10px;
@@ -267,17 +258,7 @@ export class BackendSelector {
             display: none;
           ">
             <div id="stratix-panel-content"></div>
-            <button id="stratix-test-btn-static" style="
-              width: 100%;
-              margin-top: 16px;
-              padding: 12px;
-              background: ${THEME.accentDim};
-              border: 1px solid ${THEME.accent};
-              border-radius: 6px;
-              color: ${THEME.accent};
-              font-size: 12px;
-              cursor: pointer;
-            ">测试连接 Test Connection</button>
+            <button id="stratix-test-btn-static" style="${getButtonInlineStyles('secondary')}">测试连接 Test Connection</button>
             <div id="stratix-status-static" style="
               margin-top: 12px;
               padding: 10px;
@@ -295,18 +276,7 @@ export class BackendSelector {
             display: flex;
             gap: 8px;
           ">
-            <button id="backend-next-btn" class="backend-next-btn" style="
-              flex: 1;
-              padding: 14px 20px;
-              background: ${THEME.accent};
-              border: none;
-              border-radius: 8px;
-              color: white;
-              font-size: 14px;
-              font-weight: 600;
-              cursor: pointer;
-              transition: all 0.2s;
-            ">下一步 Next</button>
+            <button id="backend-next-btn" class="backend-next-btn" style="${getButtonInlineStyles('primary')}">下一步 Next</button>
             <style>
               .backend-next-btn:hover {
                 filter: brightness(1.1);

@@ -26,7 +26,8 @@ import { characterCreatorEvents } from './core/EventEmitter';
 import { SkillTree } from './core/SkillTree';
 import { EVENTS, DEFAULT_BODY_TYPE, FRAME_SIZE, SHEET_WIDTH, SHEET_HEIGHT, BODY_TYPES } from './constants';
 import { SKILL_TREE_CONFIG } from './config/skillTreeConfig';
-import { PartSelector, CharacterPreview, CharacterList, OpenClawConnectionPanel, AgentChatPanel, BackendSelector } from './ui';
+import { PartSelector, CharacterPreview, CharacterList, OpenClawConnectionPanel, AgentChatPanel, AgentConfigPanel, BackendSelector } from './ui';
+import { getButtonInlineStyles } from './ui/_buttonStyles';
 import type { SavedCharacter, PartSelection, PartMetadata, BodyType, AnimationName, CreatorStep } from './types';
 import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClawConnectionManager';
 import { textureManager } from '@/stratix-core/services';
@@ -752,16 +753,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
             <div style="font-size: 9px; color: var(--ds-text-muted); margin-top: 4px;">${licensesList}</div>
           </div>
           <div style="padding: 12px; text-align: center; border-top: 1px solid var(--ds-border);">
-            <button id="credits-close-btn" style="
-              background: var(--ds-bg-tertiary);
-              border: none;
-              color: '${THEME().accentCss}';
-              padding: 8px 24px;
-              font-family: monospace;
-              font-size: 12px;
-              cursor: pointer;
-              border-radius: 4px;
-            ">关闭 CLOSE</button>
+            <button id="credits-close-btn" style="${getButtonInlineStyles('ghost')}">关闭 CLOSE</button>
           </div>
         </div>
       </div>
@@ -866,26 +858,8 @@ export class CharacterCreatorScene extends Phaser.Scene {
             ">${partsJson}</textarea>
           </div>
           <div style="padding: 12px 16px; display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--ds-border);">
-            <button id="json-cancel-btn" style="
-              background: var(--ds-bg-tertiary);
-              border: none;
-              color: var(--ds-text-muted);
-              padding: 8px 16px;
-              font-family: monospace;
-              font-size: 12px;
-              cursor: pointer;
-              border-radius: 4px;
-            ">取消 CANCEL</button>
-            <button id="json-save-btn" style="
-              background: var(--ds-status-success-bg, rgba(0,255,0,0.1));
-              border: none;
-              color: var(--ds-status-success);
-              padding: 8px 16px;
-              font-family: monospace;
-              font-size: 12px;
-              cursor: pointer;
-              border-radius: 4px;
-            ">保存 SAVE</button>
+            <button id="json-cancel-btn" style="${getButtonInlineStyles('ghost')}">取消 CANCEL</button>
+            <button id="json-save-btn" style="${getButtonInlineStyles('success')}">保存 SAVE</button>
           </div>
         </div>
       </div>
@@ -1029,6 +1003,47 @@ export class CharacterCreatorScene extends Phaser.Scene {
   }
 
   private buildAgentPanel(panelW: number, panelH: number): void {
+    if (!this.mainPanelContainer || !this.currentCharacter) return;
+
+    const backendType = this.selectedBackendType || this.currentCharacter?.backendType || 'stratix';
+
+    // For StratixAgent, show AgentConfigPanel (Soul/Rules/Skills) first
+    if (backendType === 'stratix') {
+      this.buildStratixAgentConfigPanel(panelW, panelH);
+      return;
+    }
+
+    // For OpenClaw, go directly to chat panel
+    this.buildAgentChatPanel(panelW, panelH);
+  }
+
+  private buildStratixAgentConfigPanel(panelW: number, panelH: number): void {
+    if (!this.mainPanelContainer || !this.currentCharacter) return;
+
+    const agentConfigPanel = new AgentConfigPanel(this, {
+      x: 16,
+      y: 16,
+      width: panelW - 32,
+      height: panelH - 32,
+      character: this.currentCharacter,
+      onComplete: (config: any) => {
+        // Save soul/rules/skills config to character
+        if (this.currentCharacter) {
+          this.currentCharacter.soul = config.soul;
+          this.currentCharacter.rules = config.rules;
+          this.currentCharacter.skillTree = config.skillTree;
+        }
+        // Proceed to chat panel
+        this.buildAgentChatPanel(panelW, panelH);
+      },
+      onBack: () => {
+        this.setStep('openclaw');
+      }
+    });
+    agentConfigPanel.create();
+  }
+
+  private buildAgentChatPanel(panelW: number, panelH: number): void {
     if (!this.mainPanelContainer || !this.currentCharacter) return;
 
     const backendType = this.selectedBackendType || this.currentCharacter?.backendType || 'stratix';

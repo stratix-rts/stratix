@@ -16,6 +16,20 @@
             </svg>
           </template>
         </StratixInput>
+        <span v-if="selectCount > 0" class="select-count">已选择 {{ selectCount }} 项</span>
+        <StratixButton
+          v-if="selectCount > 0"
+          size="small"
+          variant="ghost"
+          danger
+          @click="handleBatchDelete"
+        >
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3,6 5,6 21,6" />
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+          </svg>
+          批量删除
+        </StratixButton>
       </div>
       <div class="toolbar-right">
         <StratixButton size="small" @click="handleRefresh">
@@ -36,9 +50,13 @@
       stripe
       border
       show-overflow
-      :max-height="500"
+      height="500"
       :sort-config="{ trigger: 'cell', remote: false, orders: ['asc', 'desc', 'null'] }"
       :filter-config="{ remote: false }"
+      :scroll-y="{ enabled: true, gt: 20 }"
+      :edit-config="{ mode: 'cell', showIcon: true, keyboard: true }"
+      :checkbox-config="{ checkMethod: allowCheckbox }"
+      @checkbox-change="handleCheckboxChange"
       @cell-click="handleCellClick"
     >
       <!-- 自定义单元格插槽 -->
@@ -144,14 +162,20 @@ const emit = defineEmits<{
   'zone-edit': [zone: Zone];
   'zone-delete': [zone: Zone];
   'zone-update': [zone: Zone, updates: { title?: string; prompt?: string }];
+  'zone-batch-delete': [zones: Zone[]];
 }>();
 
 const tableRef = ref<VxeGridInstance | null>(null);
 const searchKeyword = ref('');
 const editingCell = ref<{ row: any; field: string; value: any } | null>(null);
+const selectedZones = ref<Zone[]>([]);
+
+// 选中数量
+const selectCount = computed(() => selectedZones.value.length);
 
 // 列定义 - 使用 slots 属性指定插槽名称
 const columns: VxeGridPropTypes.Columns = [
+  { type: 'checkbox', width: 60 },
   { type: 'seq', width: 60, title: '#' },
   { field: 'title', title: 'Zone (O)', width: 200, sortable: true, slots: { default: 'titleSlot', edit: 'titleEditSlot' } },
   { field: 'prompt', title: 'Prompt (KR)', minWidth: 300, sortable: true, showOverflow: true, slots: { default: 'promptSlot', edit: 'promptEditSlot' } },
@@ -242,6 +266,25 @@ const handleEdit = (zone: Zone) => {
 const handleDelete = (zone: Zone) => {
   emit('zone-delete', zone);
 };
+
+// Checkbox 变化处理
+const handleCheckboxChange = ({ records }: { records: Zone[] }) => {
+  selectedZones.value = records;
+};
+
+// 允许 Checkbox（可根据条件禁用某些行）
+const allowCheckbox = ({ row }: { row: Zone }) => {
+  return true;
+};
+
+// 批量删除
+const handleBatchDelete = () => {
+  if (selectedZones.value.length === 0) return;
+  if (confirm(`确定要删除选中的 ${selectedZones.value.length} 个 Zone 吗？`)) {
+    emit('zone-batch-delete', selectedZones.value);
+    selectedZones.value = [];
+  }
+};
 </script>
 
 <style scoped>
@@ -261,6 +304,9 @@ const handleDelete = (zone: Zone) => {
 .toolbar-left {
   flex: 1;
   max-width: 300px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .toolbar-right {
@@ -308,5 +354,11 @@ const handleDelete = (zone: Zone) => {
 
 .seq-cell {
   color: var(--ds-text-tertiary, #9ca3af);
+}
+
+.select-count {
+  font-size: 13px;
+  color: var(--ds-text-secondary, #6b7280);
+  white-space: nowrap;
 }
 </style>

@@ -23,6 +23,10 @@ export class StratixRTSEventManager {
     this.subscribe('stratix:agent_create', this.onAgentCreate.bind(this));
     this.subscribe('stratix:agent_status_update', this.onAgentStatusUpdate.bind(this));
     this.subscribe('stratix:command_status_update', this.onCommandStatusUpdate.bind(this));
+    this.subscribe('stratix:zone_updated', this.onZoneUpdated.bind(this));
+    this.subscribe('stratix:zone_deleted', this.onZoneDeleted.bind(this));
+    this.subscribe('stratix:zone_member_joined', this.onZoneMemberJoined.bind(this));
+    this.subscribe('stratix:zone_member_left', this.onZoneMemberLeft.bind(this));
   }
 
   public unsubscribeAll(): void {
@@ -99,6 +103,34 @@ export class StratixRTSEventManager {
     const { agentId, commandStatus } = payload;
     if (!agentId || !commandStatus) return;
     this.scene.events.emit('stratix:update-command-status', { agentId, commandStatus });
+  }
+
+  private onZoneUpdated(event: StratixEvent): void {
+    const payload = event.payload as { zoneId?: string; title?: string; prompt?: string };
+    const { zoneId, title, prompt } = payload;
+    if (!zoneId) return;
+    this.scene.events.emit('stratix:zone-updated', { zoneId, title, prompt });
+  }
+
+  private onZoneDeleted(event: StratixEvent): void {
+    const payload = event.payload as { zoneId?: string };
+    const { zoneId } = payload;
+    if (!zoneId) return;
+    this.scene.events.emit('stratix:zone-deleted', { zoneId });
+  }
+
+  private onZoneMemberJoined(event: StratixEvent): void {
+    const payload = event.payload as { zoneId?: string; agentId?: string };
+    const { zoneId, agentId } = payload;
+    if (!zoneId || !agentId) return;
+    this.scene.events.emit('stratix:zone-member-joined', { zoneId, agentId });
+  }
+
+  private onZoneMemberLeft(event: StratixEvent): void {
+    const payload = event.payload as { zoneId?: string; agentId?: string };
+    const { zoneId, agentId } = payload;
+    if (!zoneId || !agentId) return;
+    this.scene.events.emit('stratix:zone-member-left', { zoneId, agentId });
   }
 
   private generateRequestId(): string {

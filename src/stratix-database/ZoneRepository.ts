@@ -150,6 +150,39 @@ export class ZoneRepository {
   }
 
   // ============================================
+  // Batch File Operations
+  // ============================================
+
+  addFiles(zoneId: string, files: Array<{ name: string; sourceType: 'local' | 'url'; source: string; fileType?: FileType; metadata?: any }>): ZoneFile[] {
+    const now = Date.now();
+    const addedFiles: ZoneFile[] = [];
+
+    const stmt = this.db.prepare(`
+      INSERT INTO zone_files (file_id, zone_id, name, source_type, source, content, file_type, last_fetched, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    for (const file of files) {
+      const fileId = generateId('zf');
+      stmt.run(fileId, zoneId, file.name, file.sourceType, file.source, null, file.fileType || null, null, JSON.stringify(file.metadata || {}), now, now);
+
+      addedFiles.push({
+        id: fileId,
+        zoneId,
+        name: file.name,
+        sourceType: file.sourceType,
+        source: file.source,
+        fileType: file.fileType,
+        metadata: file.metadata,
+        createdAt: now,
+        updatedAt: now
+      });
+    }
+
+    return addedFiles;
+  }
+
+  // ============================================
   // Zone Context helpers (direct access to zone_contexts table)
   // ============================================
 
@@ -184,9 +217,26 @@ export class ZoneRepository {
   // Zone Tasks
   // ============================================
 
-  getTasks(zoneId: string): ZoneTask[] {
-    const rows = this.db.prepare('SELECT * FROM zone_tasks WHERE zone_id = ? ORDER BY created_at DESC').all(zoneId) as any[];
+  getTasks(zoneId: string, limit?: number, offset?: number): ZoneTask[] {
+    let query = 'SELECT * FROM zone_tasks WHERE zone_id = ? ORDER BY created_at DESC';
+    const params: any[] = [zoneId];
+
+    if (limit !== undefined) {
+      query += ' LIMIT ?';
+      params.push(limit);
+      if (offset !== undefined) {
+        query += ' OFFSET ?';
+        params.push(offset);
+      }
+    }
+
+    const rows = this.db.prepare(query).all(...params) as any[];
     return rows.map(row => this.mapRowToTask(row));
+  }
+
+  getTasksCount(zoneId: string): number {
+    const row = this.db.prepare('SELECT COUNT(*) as count FROM zone_tasks WHERE zone_id = ?').get(zoneId) as any;
+    return row?.count || 0;
   }
 
   getTask(taskId: string): ZoneTask | null {
@@ -241,12 +291,17 @@ export class ZoneRepository {
   }
 
   // ============================================
-  // Zone Messages
+  // Zone Messages (with pagination)
   // ============================================
 
-  getMessages(zoneId: string, limit: number = 100): ZoneMessage[] {
-    const rows = this.db.prepare('SELECT * FROM zone_messages WHERE zone_id = ? ORDER BY created_at DESC LIMIT ?').all(zoneId, limit) as any[];
+  getMessages(zoneId: string, limit: number = 100, offset: number = 0): ZoneMessage[] {
+    const rows = this.db.prepare('SELECT * FROM zone_messages WHERE zone_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?').all(zoneId, limit, offset) as any[];
     return rows.map(row => this.mapRowToMessage(row)).reverse(); // Oldest first for display
+  }
+
+  getMessagesCount(zoneId: string): number {
+    const row = this.db.prepare('SELECT COUNT(*) as count FROM zone_messages WHERE zone_id = ?').get(zoneId) as any;
+    return row?.count || 0;
   }
 
   addMessage(zoneId: string, senderId: string, senderType: SenderType, content: string): ZoneMessage {

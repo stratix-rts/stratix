@@ -6,6 +6,7 @@ import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClaw
 import { loadApiKey } from '../config/providerConfig';
 import { renderMarkdown } from '@/stratix-core/utils/MarkdownRenderer';
 import type { ChatMessage, SavedCharacter } from '../types';
+import { getButtonInlineStyles } from './_buttonStyles';
 
 const THEME = {
   bg: 'var(--ds-bg-secondary)',
@@ -155,17 +156,7 @@ export class AgentChatPanel {
               outline: none;
               transition: border-color 0.2s;
             "></textarea>
-            <button id="send-btn" style="
-              padding: 10px 16px;
-              background: ${THEME.accent};
-              border: none;
-              border-radius: 4px;
-              color: ${THEME.bg};
-              font-family: inherit;
-              font-size: 12px;
-              cursor: pointer;
-              flex-shrink: 0;
-            ">发送</button>
+            <button id="send-btn" style="${getButtonInlineStyles('primary')}">发送</button>
           </div>
         </div>
 
@@ -177,37 +168,10 @@ export class AgentChatPanel {
           align-items: center;
         ">
           <div style="display: flex; gap: 8px;">
-            <button id="reset-btn" style="
-              padding: 8px 12px;
-              background: transparent;
-              border: 1px solid ${THEME.panelBorder};
-              border-radius: 4px;
-              color: ${THEME.textMuted};
-              font-family: inherit;
-              font-size: 11px;
-              cursor: pointer;
-            ">重置对话</button>
-            <button id="back-btn" style="
-              padding: 8px 12px;
-              background: transparent;
-              border: 1px solid ${THEME.panelBorder};
-              border-radius: 4px;
-              color: ${THEME.textMuted};
-              font-family: inherit;
-              font-size: 11px;
-              cursor: pointer;
-            ">返回</button>
+            <button id="reset-btn" style="${getButtonInlineStyles('ghost')}">重置对话</button>
+            <button id="back-btn" style="${getButtonInlineStyles('ghost')}">返回</button>
           </div>
-          <button id="complete-btn" style="
-            padding: 8px 16px;
-            background: ${THEME.success};
-            border: none;
-            border-radius: 4px;
-            color: ${THEME.bg};
-            font-family: inherit;
-            font-size: 11px;
-            cursor: pointer;
-          ">完成创建</button>
+          <button id="complete-btn" style="${getButtonInlineStyles('success')}">完成创建</button>
         </div>
       </div>
     `;
@@ -430,6 +394,7 @@ export class AgentChatPanel {
       }
     }
 
+    const character = this.config.character;
     const response = await fetch('/api/stratix/agent/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -437,7 +402,10 @@ export class AgentChatPanel {
         backendType: 'stratix',
         config: chatConfig,
         message: userMessage,
-        systemPrompt: this.systemPrompt
+        systemPrompt: this.systemPrompt,
+        soul: character.soul,
+        rules: character.rules,
+        skillTree: character.skillTree
       })
     });
     const result = await response.json();

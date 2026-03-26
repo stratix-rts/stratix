@@ -3,6 +3,7 @@ import { getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
 import { ContainerComponentBase } from '@/stratix-core/ui/ContainerComponent.base';
 import { RULE_TEMPLATES, DEFAULT_RULES, type RuleTemplate } from '../config/ruleTemplates';
+import { getButtonInlineStyles } from './_buttonStyles';
 
 export interface RulesEditorConfig {
   x: number;
@@ -47,16 +48,7 @@ export class RulesEditor {
   private generateHTML(): string {
     const templateButtons = RULE_TEMPLATES.map(
       (t) => `
-      <button class="template-btn" data-template-id="${t.id}" title="${t.description}" style="
-        padding: 6px 12px;
-        background: var(--ds-bg-tertiary);
-        border: 1px solid ${THEME.border};
-        border-radius: 6px;
-        color: ${THEME.text};
-        font-size: 11px;
-        cursor: pointer;
-        transition: all 0.2s;
-      ">${t.name}</button>
+      <button class="template-btn" data-template-id="${t.id}" title="${t.description}" style="${getButtonInlineStyles('tertiary')}">${t.name}</button>
     `
     ).join('');
 
@@ -81,22 +73,8 @@ export class RulesEditor {
           <span class="rule-text" style="flex: 1; color: ${THEME.text}; font-size: 12px; line-height: 1.4;">
             ${this.escapeHtml(rule)}
           </span>
-          <button class="edit-rule-btn" data-index="${i}" style="
-            background: transparent;
-            border: none;
-            color: ${THEME.textMuted};
-            cursor: pointer;
-            font-size: 11px;
-            padding: 2px 6px;
-          ">编辑</button>
-          <button class="remove-rule-btn" data-index="${i}" style="
-            background: transparent;
-            border: none;
-            color: var(--ds-status-danger);
-            cursor: pointer;
-            font-size: 11px;
-            padding: 2px 6px;
-          ">删除</button>
+          <button class="edit-rule-btn" data-index="${i}" style="${getButtonInlineStyles('ghost')}">编辑</button>
+          <button class="remove-rule-btn" data-index="${i}" style="${getButtonInlineStyles('danger')}">删除</button>
         </div>
       `
       )
@@ -147,28 +125,12 @@ export class RulesEditor {
               color: ${THEME.text};
               font-size: 12px;
             " />
-            <button id="add-rule-btn" style="
-              padding: 8px 16px;
-              background: var(--ds-bg-tertiary);
-              border: 1px solid ${THEME.accent};
-              border-radius: 6px;
-              color: ${THEME.accent};
-              font-size: 12px;
-              cursor: pointer;
-            ">添加</button>
+            <button id="add-rule-btn" style="${getButtonInlineStyles('primary')}">添加</button>
           </div>
         </div>
 
         <div class="section" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid ${THEME.border};">
-          <button id="clear-all-btn" style="
-            padding: 6px 12px;
-            background: transparent;
-            border: 1px solid var(--ds-status-danger);
-            border-radius: 6px;
-            color: var(--ds-status-danger);
-            font-size: 11px;
-            cursor: pointer;
-          ">清空所有规则</button>
+          <button id="clear-all-btn" style="${getButtonInlineStyles('danger')}">清空所有规则</button>
         </div>
       </div>
     `;
@@ -303,22 +265,8 @@ export class RulesEditor {
           <span class="rule-text" style="flex: 1; color: ${THEME.text}; font-size: 12px; line-height: 1.4;">
             ${this.escapeHtml(rule)}
           </span>
-          <button class="edit-rule-btn" data-index="${i}" style="
-            background: transparent;
-            border: none;
-            color: ${THEME.textMuted};
-            cursor: pointer;
-            font-size: 11px;
-            padding: 2px 6px;
-          ">编辑</button>
-          <button class="remove-rule-btn" data-index="${i}" style="
-            background: transparent;
-            border: none;
-            color: var(--ds-status-danger);
-            cursor: pointer;
-            font-size: 11px;
-            padding: 2px 6px;
-          ">删除</button>
+          <button class="edit-rule-btn" data-index="${i}" style="${getButtonInlineStyles('ghost')}">编辑</button>
+          <button class="remove-rule-btn" data-index="${i}" style="${getButtonInlineStyles('danger')}">删除</button>
         </div>
       `
       )

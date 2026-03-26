@@ -138,7 +138,7 @@ router.put('/:id', async (req: Request, res: Response): Promise<void> => {
   try {
     const projectId = req.params.id as string;
     const updates = req.body.updates;
-    
+
     if (!updates) {
       res.status(400).json({
         success: false,
@@ -146,9 +146,9 @@ router.put('/:id', async (req: Request, res: Response): Promise<void> => {
       });
       return;
     }
-    
+
     const project = await projectService.updateProject(projectId, updates);
-    
+
     res.json({
       success: true,
       project
@@ -158,6 +158,38 @@ router.put('/:id', async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to update project'
+    });
+  }
+});
+
+/**
+ * PATCH /api/projects/:id/zone-context-link
+ * 更新项目的 zone_context_id FK
+ */
+router.patch('/:id/zone-context-link', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const zoneId = req.params.id as string;
+    const { zoneContextId } = req.body;
+
+    if (!zoneContextId) {
+      res.status(400).json({
+        success: false,
+        error: 'Missing required field: zoneContextId'
+      });
+      return;
+    }
+
+    await projectService.updateZoneContextId(zoneId, zoneContextId);
+
+    res.json({
+      success: true,
+      message: 'Zone context link updated'
+    });
+  } catch (error) {
+    console.error('[Project API] Update zone context link failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to update zone context link'
     });
   }
 });

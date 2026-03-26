@@ -1,6 +1,6 @@
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
-import { ChatMessage, MemoryEntry, MemoryLayers } from '../types';
+import { ChatMessage, MemoryEntry, MemoryLayers, SkillLearningRecord } from '../types';
 
 export class MemoryManager {
   private maxShortTerm: number;
@@ -83,10 +83,11 @@ export class MemoryManager {
     }
   }
 
-  searchLongTerm(query: string): MemoryEntry[] {
+  searchLongTerm(query: string, type?: MemoryEntry['type']): MemoryEntry[] {
     const keywords = query.toLowerCase().split(/\s+/);
     return this.longTerm.filter(entry => {
-      const text = `${entry.title} ${entry.content} ${entry.tags?.join(' ')}`.toLowerCase();
+      if (type && entry.type !== type) return false;
+      const text = `${entry.title} ${entry.content} ${(entry.tags || []).join(' ')}`.toLowerCase();
       return keywords.some(kw => text.includes(kw));
     });
   }
@@ -155,5 +156,30 @@ export class MemoryManager {
     }
 
     return parts.join('\n\n');
+  }
+
+  /**
+   * 构建技能上下文
+   * 用于 Agent 知道自己已学会哪些技能
+   */
+  buildSkillContext(): string {
+    const skillRecords = this.longTerm.filter(e => e.type === 'skill');
+    if (skillRecords.length === 0) return '';
+
+    const skills = skillRecords.map(s => {
+      const record = s as SkillLearningRecord;
+      return `- **${record.skillName}** (Lv.${record.level}): ${record.content.slice(0, 100)}`;
+    });
+
+    return `## Learned Skills\n${skills.join('\n')}`;
+  }
+
+  /**
+   * 获取技能学习记录
+   */
+  getSkillRecords(): SkillLearningRecord[] {
+    return this.longTerm
+      .filter(e => e.type === 'skill')
+      .map(e => e as SkillLearningRecord);
   }
 }

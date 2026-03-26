@@ -9,6 +9,7 @@ import { getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
 import { ContainerComponentBase } from '@/stratix-core/ui/ContainerComponent.base';
 import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClawConnectionManager';
+import { getButtonInlineStyles } from './_buttonStyles';
 
 const THEME = {
   bg: 'var(--ds-bg-secondary)',
@@ -112,28 +113,8 @@ export class AgentListPanel {
           justify-content: space-between;
           gap: 12px;
         ">
-          <button id="back-btn" style="
-            padding: 10px 20px;
-            background: ${THEME.accentDim};
-            border: 1px solid ${THEME.panelBorder};
-            border-radius: 4px;
-            color: ${THEME.textMuted};
-            font-family: inherit;
-            font-size: 12px;
-            cursor: pointer;
-            transition: all 0.2s;
-          ">← 上一步 BACK</button>
-          <button id="create-new-btn" style="
-            padding: 10px 24px;
-            background: ${THEME.success};
-            border: none;
-            border-radius: 4px;
-            color: ${THEME.bg};
-            font-family: inherit;
-            font-size: 12px;
-            cursor: pointer;
-            transition: all 0.2s;
-          ">+ 创建新角色 NEW</button>
+          <button id="back-btn" style="${getButtonInlineStyles('ghost')}">← 上一步 BACK</button>
+          <button id="create-new-btn" style="${getButtonInlineStyles('success')}">+ 创建新角色 NEW</button>
         </div>
       </div>
       <style>
@@ -243,16 +224,7 @@ export class AgentListPanel {
       errorState.style.display = 'flex';
       errorState.innerHTML = `
         <div style="margin-bottom: 12px;">加载失败：${error.message || 'Unknown error'}</div>
-        <button id="retry-btn" style="
-          padding: 8px 16px;
-          background: ${THEME.accentDim};
-          border: 1px solid ${THEME.accent};
-          border-radius: 4px;
-          color: ${THEME.accent};
-          font-family: inherit;
-          font-size: 11px;
-          cursor: pointer;
-        ">重试 RETRY</button>
+        <button id="retry-btn" style="${getButtonInlineStyles('secondary')}">重试 RETRY</button>
       `;
       
       const retryBtn = errorState.querySelector('#retry-btn');

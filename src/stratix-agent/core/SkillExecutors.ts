@@ -362,11 +362,86 @@ export class FileSystemSkillExecutor implements SkillExecutor {
 }
 
 /**
- * Code Sandbox Executor
- * Executes JavaScript using eval() in isolation
- * Executes Python using child_process with timeout
+ * Code Sandbox Executor - Enhanced Security Version
+ * Executes JavaScript using isolated Function() with restricted globals
+ * Executes Python using child_process with forbidden modules check
  */
 export class CodeSandboxSkillExecutor implements SkillExecutor {
+  // Forbidden JavaScript globals that could be used for attacks
+  private static readonly FORBIDDEN_JS_GLOBALS = [
+    'window', 'document', 'fetch', 'XMLHttpRequest', 'WebSocket',
+    'import', 'require', 'eval', 'Function', 'globalThis', 'global',
+    'process', 'Buffer', '__dirname', '__filename', 'module', 'exports',
+    'navigator', 'location', 'history', 'localStorage', 'sessionStorage',
+    'indexedDB', 'openDatabase', 'setImmediate', 'clearImmediate',
+    'postMessage', 'addEventListener', 'removeEventListener',
+    'MutationObserver', 'IntersectionObserver', 'requestIdleCallback',
+  ];
+
+  // Forbidden Python modules that could be used for attacks
+  private static readonly FORBIDDEN_PYTHON_MODULES = [
+    'os', 'subprocess', 'socket', 'requests', 'urllib', 'urllib2', 'urllib3',
+    'http', 'ftp', 'tempfile', 'shutil', 'pickle', 'marshal', 'eval',
+    'exec', 'code', 'compile', 'builtins', 'sys', 'importlib', 'pkgutil',
+    'pathlib', 'glob', 'fnmatch', 'tarfile', 'zipfile', 'gzip', 'bz2',
+    'lzma', 'zlib', 'crypt', 'cryptography', 'ssl', 'select',
+    'multiprocessing', 'concurrent', 'threading', 'asyncio', 'gevent',
+    'ctypes', 'cffi', 'resource', 'signal', 'pty', 'tty', 'termios',
+    'fcntl', 'grp', 'pwd', 'spwd', 'tty', 'fcntl', 'distutils', 'setuptools',
+  ];
+
+  // Dangerous JavaScript code patterns
+  private static readonly DANGEROUS_JS_PATTERNS = [
+    { pattern: /import\s*\(/, reason: 'Dynamic import()' },
+    { pattern: /require\s*\(/, reason: 'require()' },
+    { pattern: /eval\s*\(/, reason: 'eval()' },
+    { pattern: /new\s+Function\s*\(/, reason: 'new Function()' },
+    { pattern: /\bprocess\b/, reason: 'process object' },
+    { pattern: /\bglobal\[/, reason: 'global bracket access' },
+    { pattern: /\bglobalThis\b/, reason: 'globalThis' },
+    { pattern: /__dirname/, reason: '__dirname' },
+    { pattern: /__filename/, reason: '__filename' },
+    { pattern: /for\s*\(\s*\w+\s+in\s+/, reason: 'for...in loop (prototype pollution risk)' },
+    { pattern: /\bconstructor\b.*\bprototype\b/, reason: 'Prototype manipulation' },
+    { pattern: /\bObject\.defineProperty\b/, reason: 'Property definition' },
+    { pattern: /\bObject\.setPrototypeOf\b/, reason: 'Prototype chain modification' },
+    { pattern: /\b__proto__\b/, reason: '__proto__ access' },
+    { pattern: /\[Symbol\]\s*\(/, reason: 'Symbol injection' },
+    { pattern: /proxy|Proxy/, reason: 'Proxy object' },
+    { pattern: /Reflect\./, reason: 'Reflect API' },
+  ];
+
+  // Dangerous Python code patterns
+  private static readonly DANGEROUS_PYTHON_PATTERNS = [
+    { pattern: /import\s+(os|subprocess|socket|requests|urllib|http|ftp|tempfile|shutil)/, reason: 'Forbidden import' },
+    { pattern: /from\s+(os|subprocess|socket|requests|urllib|http|ftp|tempfile|shutil)\s+import/, reason: 'Forbidden from import' },
+    { pattern: /\bos\./, reason: 'os module access' },
+    { pattern: /\bsubprocess\./, reason: 'subprocess module access' },
+    { pattern: /\bsocket\./, reason: 'socket module access' },
+    { pattern: /\bopen\s*\(/, reason: 'file open()' },
+    { pattern: /\bexec\s*\(/, reason: 'exec()' },
+    { pattern: /\beval\s*\(/, reason: 'eval()' },
+    { pattern: /\bcompile\s*\(/, reason: 'compile()' },
+    { pattern: /\bgetattr\s*\(/, reason: 'getattr()' },
+    { pattern: /\bsetattr\s*\(/, reason: 'setattr()' },
+    { pattern: /\bdelattr\s*\(/, reason: 'delattr()' },
+    { pattern: /\b__import__\s*\(/, reason: '__import__()' },
+    { pattern: /\binput\s*\(/, reason: 'input() (DoS risk)' },
+    { pattern: /\bcompile\s*\(/, reason: 'compile()' },
+    { pattern: /\bmarshal\.loads\b/, reason: 'marshal loads' },
+    { pattern: /\bpickle\.loads\b/, reason: 'pickle loads' },
+  ];
+
+  private getSandboxConfig(context: ExecutionContext) {
+    return {
+      maxMemory: context.sandboxConfig?.maxMemory ?? 128,
+      maxCpuTime: context.sandboxConfig?.maxCpuTime ?? 10,
+      maxOutputSize: context.sandboxConfig?.maxOutputSize ?? 1024 * 1024,
+      maxFileSize: context.sandboxConfig?.maxFileSize ?? 10 * 1024 * 1024,
+      maxTempFiles: context.sandboxConfig?.maxTempFiles ?? 5,
+    };
+  }
+
   async execute(
     skill: SkillDefinition,
     params: Record<string, any>,
@@ -374,28 +449,72 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
   ): Promise<any> {
     const { code, language } = params;
     const progress = context.progressCallback;
+    const config = this.getSandboxConfig(context);
 
     progress?.({ skillId: skill.skillId, stage: 'started', message: `Executing ${language}...` });
 
     if (language === 'javascript') {
-      return this.executeJavaScript(code, progress);
+      return this.executeJavaScript(code, progress, config);
     } else if (language === 'python') {
-      return this.executePython(code, progress);
+      return this.executePython(code, progress, config);
     } else {
       throw new Error(`Unsupported language: ${language}. Supported: javascript, python`);
     }
   }
 
-  private executeJavaScript(code: string, progress?: (p: any) => void): Promise<any> {
+  private validateJavaScript(code: string): { valid: boolean; reason?: string } {
+    // Check for forbidden globals
+    for (const global of CodeSandboxSkillExecutor.FORBIDDEN_JS_GLOBALS) {
+      // Check both direct references and bracket notation
+      const directPattern = new RegExp(`\\b${global}\\b`);
+      const bracketPattern = new RegExp(`\\bglobal\\s*\\[\\s*['"']${global}['"']\\s*\\]`);
+
+      if (directPattern.test(code) || bracketPattern.test(code)) {
+        return { valid: false, reason: `Forbidden global: ${global}` };
+      }
+    }
+
+    // Check for dangerous patterns
+    for (const { pattern, reason } of CodeSandboxSkillExecutor.DANGEROUS_JS_PATTERNS) {
+      if (pattern.test(code)) {
+        return { valid: false, reason: `Dangerous pattern: ${reason}` };
+      }
+    }
+
+    // Check code length
+    if (code.length > 50000) {
+      return { valid: false, reason: 'Code too long (max 50KB)' };
+    }
+
+    return { valid: true };
+  }
+
+  private executeJavaScript(code: string, progress?: (p: any) => void, config?: ReturnType<typeof this.getSandboxConfig>): Promise<any> {
     return new Promise((resolve, reject) => {
       try {
+        // Validate code before execution
+        const validation = this.validateJavaScript(code);
+        if (!validation.valid) {
+          reject(new Error(`JavaScript validation failed: ${validation.reason}`));
+          return;
+        }
+
         // Capture console.log output
         const logs: string[] = [];
         const mockConsole = {
-          log: (...args: any[]) => logs.push(args.map(String).join(' ')),
+          log: (...args: any[]) => {
+            const msg = args.map(String).join(' ');
+            // Enforce output size limit
+            if (logs.join('\n').length + msg.length > (config?.maxOutputSize ?? 1024 * 1024)) {
+              logs.push('[output truncated]');
+              return;
+            }
+            logs.push(msg);
+          },
           error: (...args: any[]) => logs.push('[error] ' + args.map(String).join(' ')),
           warn: (...args: any[]) => logs.push('[warn] ' + args.map(String).join(' ')),
           info: (...args: any[]) => logs.push('[info] ' + args.map(String).join(' ')),
+          debug: (...args: any[]) => logs.push('[debug] ' + args.map(String).join(' ')),
         };
 
         // Create a sandboxed function with limited globals
@@ -411,8 +530,14 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
           Date,
           RegExp,
           Error,
+          TypeError,
+          RangeError,
+          SyntaxError,
+          ReferenceError,
           Map,
           Set,
+          WeakMap,
+          WeakSet,
           Promise,
           parseInt,
           parseFloat,
@@ -420,39 +545,59 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
           isFinite,
           encodeURIComponent,
           decodeURIComponent,
+          encodeURI,
+          decodeURI,
+          escape,
+          unescape,
+          Infinity,
+          NaN,
+          undefined,
+          null: null,
+          true: true,
+          false: false,
         };
 
         const sandboxKeys = Object.keys(sandbox);
         const sandboxValues = Object.values(sandbox);
+
+        // Set up timeout for execution
+        const timeoutMs = (config?.maxCpuTime ?? 10) * 1000;
+        let timeoutId: NodeJS.Timeout | null = null;
 
         // Execute in isolated context
         const fn = new Function(...sandboxKeys, code);
         const result = fn(...sandboxValues);
 
         // Handle async results
-        if (result instanceof Promise) {
-          result
-            .then((asyncResult) => {
-              progress?.({ skillId: 'code_execute', stage: 'completed' });
-              resolve({
-                result: asyncResult,
-                logs,
-                success: true,
-                preview: { type: 'code', content: logs.length > 0 ? logs.join('\n') : String(asyncResult).slice(0, 500) }
-              });
-            })
-            .catch((err) => {
-              progress?.({ skillId: 'code_execute', stage: 'failed' });
-              reject(new Error(`Execution error: ${err.message}`));
-            });
-        } else {
+        const handleResult = (value: any) => {
+          if (timeoutId) clearTimeout(timeoutId);
           progress?.({ skillId: 'code_execute', stage: 'completed' });
+          const output = logs.length > 0 ? logs.join('\n') : String(value);
           resolve({
-            result,
+            result: value,
             logs,
             success: true,
-            preview: { type: 'code', content: logs.length > 0 ? logs.join('\n') : String(result).slice(0, 500) }
+            preview: { type: 'code', content: output.slice(0, Math.min(output.length, config?.maxOutputSize ?? 1024 * 1024)) }
           });
+        };
+
+        const handleError = (err: Error) => {
+          if (timeoutId) clearTimeout(timeoutId);
+          progress?.({ skillId: 'code_execute', stage: 'failed' });
+          reject(new Error(`Execution error: ${err.message}`));
+        };
+
+        // Set up timeout
+        timeoutId = setTimeout(() => {
+          handleError(new Error(`Execution timeout (${timeoutMs / 1000}s exceeded)`));
+        }, timeoutMs);
+
+        if (result instanceof Promise) {
+          result
+            .then(handleResult)
+            .catch(handleError);
+        } else {
+          handleResult(result);
         }
       } catch (error) {
         progress?.({ skillId: 'code_execute', stage: 'failed' });
@@ -461,30 +606,74 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
     });
   }
 
-  private executePython(code: string, progress?: (p: any) => void): Promise<any> {
+  private validatePython(code: string): { valid: boolean; reason?: string } {
+    // Check for forbidden modules
+    for (const module of CodeSandboxSkillExecutor.FORBIDDEN_PYTHON_MODULES) {
+      // Check both import and from ... import patterns
+      const importPattern = new RegExp(`import\\s+${module}\\b`);
+      const fromImportPattern = new RegExp(`from\\s+${module}\\s+import`);
+      const dotAccessPattern = new RegExp(`\\b${module}\\.`);
+
+      if (importPattern.test(code) || fromImportPattern.test(code) || dotAccessPattern.test(code)) {
+        return { valid: false, reason: `Forbidden module: ${module}` };
+      }
+    }
+
+    // Check for dangerous patterns
+    for (const { pattern, reason } of CodeSandboxSkillExecutor.DANGEROUS_PYTHON_PATTERNS) {
+      if (pattern.test(code)) {
+        return { valid: false, reason: `Dangerous pattern: ${reason}` };
+      }
+    }
+
+    // Check code length
+    if (code.length > 50000) {
+      return { valid: false, reason: 'Code too long (max 50KB)' };
+    }
+
+    return { valid: true };
+  }
+
+  private executePython(code: string, progress?: (p: any) => void, config?: ReturnType<typeof this.getSandboxConfig>): Promise<any> {
     return new Promise((resolve, reject) => {
       const { spawn } = require('child_process');
       const { writeFile, unlink } = require('fs/promises');
       const { join } = require('path');
       const os = require('os');
 
+      // Validate code before execution
+      const validation = this.validatePython(code);
+      if (!validation.valid) {
+        reject(new Error(`Python validation failed: ${validation.reason}`));
+        return;
+      }
+
       // Write code to temp file
-      const tempFile = join(os.tmpdir(), `stratix_sandbox_${Date.now()}.py`);
+      const tempFile = join(os.tmpdir(), `stratix_sandbox_${Date.now()}_${Math.random().toString(36).slice(2)}.py`);
 
       (async () => {
         try {
           await writeFile(tempFile, code);
           progress?.({ skillId: 'code_execute', stage: 'processing', message: 'Running Python...' });
 
+          const cpuTime = config?.maxCpuTime ?? 10;
+          const maxOutput = config?.maxOutputSize ?? 1024 * 1024;
+
           const proc = spawn('python3', [tempFile], {
-            timeout: 10000, // 10 second timeout
-            maxBuffer: 1024 * 1024, // 1MB output
+            timeout: cpuTime * 1000,
+            maxBuffer: maxOutput,
           });
 
           let stdout = '';
           let stderr = '';
+          let outputTruncated = false;
 
           proc.stdout.on('data', (data: Buffer) => {
+            if (stdout.length + data.length > maxOutput) {
+              stdout += data.toString().slice(0, maxOutput - stdout.length);
+              outputTruncated = true;
+              return;
+            }
             stdout += data.toString();
           });
 
@@ -500,11 +689,12 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
 
             if (code === 0) {
               progress?.({ skillId: 'code_execute', stage: 'completed' });
+              const finalOutput = outputTruncated ? stdout.trim() + '\n[output truncated]' : stdout.trim();
               resolve({
                 result: stdout.trim(),
                 logs: [],
                 success: true,
-                preview: { type: 'code', content: stdout.trim().slice(0, 500) }
+                preview: { type: 'code', content: finalOutput.slice(0, Math.min(finalOutput.length, maxOutput)) }
               });
             } else {
               progress?.({ skillId: 'code_execute', stage: 'failed' });

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { StratixAgentConfig } from '../stratix-core/stratix-protocol';
+import { StratixAgentConfig, ZoneInfo } from '../stratix-core/stratix-protocol';
 import { MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, DEFAULT_ZOOM } from './constants';
 import { getToken, getCurrentTheme } from '@/design-system/config';
 import { AgentSprite, AgentStatus, CommandStatus } from './sprites/AgentSprite';
@@ -272,6 +272,10 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     this.events.on('stratix:create-agent', this.onCreateAgent, this);
     this.events.on('stratix:update-agent-status', this.onUpdateAgentStatus, this);
     this.events.on('stratix:update-command-status', this.onUpdateCommandStatus, this);
+    this.events.on('stratix:zone-updated', this.onZoneUpdated, this);
+    this.events.on('stratix:zone-deleted', this.onZoneDeleted, this);
+    this.events.on('stratix:zone-member-joined', this.onZoneMemberJoined, this);
+    this.events.on('stratix:zone-member-left', this.onZoneMemberLeft, this);
   }
 
   private initEventBusListeners(): void {
@@ -380,46 +384,36 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   private async checkAgentsInProjectZones(): Promise<void> {
     const projectZones = this.projectManagerIntegration.getAllProjectZones();
     const projectClient = this.projectManagerIntegration.getProjectClient();
-    
-    console.log(`[StratixRTS] Checking agents in zones: ${this.agentSprites.size} agents, ${projectZones.size} zones, tracking=${this.agentZoneTracking.size}`);
-    
+
     for (const [agentId, sprite] of this.agentSprites) {
       let currentProjectZoneId: string | null = null;
-      
+
       for (const [zoneId, zone] of projectZones) {
         const bounds = zone.getBounds();
         const contains = Phaser.Geom.Rectangle.Contains(bounds, sprite.x, sprite.y);
         if (contains) {
           currentProjectZoneId = zoneId;
-          console.log(`[StratixRTS] Agent ${agentId} IN zone ${zoneId}: x=${sprite.x.toFixed(0)}, y=${sprite.y.toFixed(0)}`);
           break;
         }
       }
-      
+
       const previousZoneId = this.agentZoneTracking.get(agentId);
-      
-      console.log(`[StratixRTS] Agent ${agentId} status: current=${currentProjectZoneId}, previous=${previousZoneId}, shouldEnter=${currentProjectZoneId && currentProjectZoneId !== previousZoneId}`);
-      
+
+      // Use same API as moveTo()/leaveCurrentZone() for consistency
       if (currentProjectZoneId && currentProjectZoneId !== previousZoneId) {
-        console.log(`[StratixRTS] >>> CALLING agentEnterProject for ${agentId} -> ${currentProjectZoneId}`);
         try {
-          const result = await projectClient.agentEnterProject(currentProjectZoneId, agentId);
-          console.log(`[StratixRTS] <<< SUCCESS Agent ${agentId} entered zone ${currentProjectZoneId}`, result);
+          await projectClient.addZoneMember(currentProjectZoneId, agentId);
           this.agentZoneTracking.set(agentId, currentProjectZoneId);
         } catch (error) {
-          console.error(`[StratixRTS] <<< FAILED to register agent ${agentId}:`, error);
+          console.error(`[StratixRTS] Failed to register agent ${agentId} in zone ${currentProjectZoneId}:`, error);
         }
       } else if (!currentProjectZoneId && previousZoneId) {
-        console.log(`[StratixRTS] >>> CALLING agentLeaveProject for ${agentId} -> ${previousZoneId}`);
         try {
-          await projectClient.agentLeaveProject(previousZoneId, agentId);
-          console.log(`[StratixRTS] <<< SUCCESS Agent ${agentId} left zone ${previousZoneId}`);
+          await projectClient.removeZoneMember(previousZoneId, agentId);
           this.agentZoneTracking.delete(agentId);
         } catch (error) {
-          console.error(`[StratixRTS] <<< FAILED to unregister agent ${agentId}:`, error);
+          console.error(`[StratixRTS] Failed to unregister agent ${agentId} from zone ${previousZoneId}:`, error);
         }
-      } else {
-        console.log(`[StratixRTS] No zone change for agent ${agentId}`);
       }
     }
   }
@@ -607,7 +601,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     this.taskZonePreview.update(x, y);
   }
 
-  private handleZoneDrawEnd(): Phaser.Geom.Rectangle | null {
+  private async handleZoneDrawEnd(): Promise<Phaser.Geom.Rectangle | null> {
     if (this.taskZonePreview.isOverlapping()) {
       this.taskZonePreview.cancel();
       console.log('[StratixRTS] Cannot create zone: overlaps existing zone');
@@ -615,8 +609,28 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     }
 
     const bounds = this.taskZonePreview.end();
+    console.log('[StratixRTS] handleZoneDrawEnd called, bounds:', bounds);
     if (bounds && bounds.width >= 20 && bounds.height >= 20) {
-      this.createTaskZone(bounds);
+      try {
+        console.log('[StratixRTS] Calling createProjectWithBounds...');
+        const project = await this.projectManagerIntegration.createProjectWithBounds(bounds);
+        console.log('[StratixRTS] createProjectWithBounds returned:', project);
+        if (project) {
+          console.log('[StratixRTS] Emitting game:ui:project_created event');
+          rtsEventBus.emit('game:ui:project_created' as any, {
+            project,
+            needsConfig: true
+          });
+          console.log('[StratixRTS] Event emitted');
+        } else {
+          console.log('[StratixRTS] createProjectWithBounds returned null, creating local TaskZone');
+          this.createTaskZone(bounds);
+        }
+      } catch (error) {
+        console.error('[StratixRTS] Failed to create project zone via API:', error);
+        // API 调用失败时，创建本地 TaskZone 作为降级
+        this.createTaskZone(bounds);
+      }
     }
     return bounds;
   }
@@ -1175,6 +1189,65 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     }
   }
 
+  private onZoneUpdated(data: { zoneId: string; title?: string; prompt?: string }): void {
+    if (data.title !== undefined) {
+      this.projectManagerIntegration.updateProjectZoneTitle(data.zoneId, data.title);
+      console.log(`[StratixRTS] Zone ${data.zoneId} title updated to: ${data.title}`);
+    }
+  }
+
+  private async onZoneDeleted(data: { zoneId: string }): Promise<void> {
+    // When a zone is soft-deleted, fully remove it from the RTS view
+    // Note: We use removeProjectZone which calls destroy() and unregister()
+    // This is the same as when a project is deleted via ProjectManagerIntegration
+    this.projectManagerIntegration.removeProjectZone(data.zoneId);
+    console.log(`[StratixRTS] Zone ${data.zoneId} removed (soft deleted)`);
+
+    // Clean up agentZoneTracking for agents that were in this zone
+    const agentsToRelease: string[] = [];
+    for (const [agentId, zoneId] of this.agentZoneTracking.entries()) {
+      if (zoneId === data.zoneId) {
+        agentsToRelease.push(agentId);
+        this.agentZoneTracking.delete(agentId);
+        console.log(`[StratixRTS] Agent ${agentId} tracking removed (zone ${data.zoneId} deleted)`);
+      }
+    }
+
+    // Notify backend that agents have left the deleted zone
+    if (agentsToRelease.length > 0) {
+      const projectClient = this.projectManagerIntegration.getProjectClient();
+      for (const agentId of agentsToRelease) {
+        try {
+          // Agent is now effectively in no zone - backend should mark them as idle
+          await projectClient.agentLeaveProject(data.zoneId, agentId);
+          console.log(`[StratixRTS] Backend notified: Agent ${agentId} left deleted zone ${data.zoneId}`);
+        } catch (error) {
+          console.error(`[StratixRTS] Failed to notify backend for agent ${agentId} leaving zone:`, error);
+        }
+      }
+    }
+  }
+
+  private onZoneMemberJoined(data: { zoneId: string; agentId: string }): void {
+    const { zoneId, agentId } = data;
+    // Update agent zone tracking
+    this.agentZoneTracking.set(agentId, zoneId);
+    console.log(`[StratixRTS] Agent ${agentId} joined zone ${zoneId}`);
+
+    // Notify zone that member joined (for visual refresh if needed)
+    rtsEventBus.emit('zone:member-joined' as any, { zoneId, agentId });
+  }
+
+  private onZoneMemberLeft(data: { zoneId: string; agentId: string }): void {
+    const { zoneId, agentId } = data;
+    // Remove from tracking
+    this.agentZoneTracking.delete(agentId);
+    console.log(`[StratixRTS] Agent ${agentId} left zone ${zoneId}`);
+
+    // Notify zone that member left (for visual refresh if needed)
+    rtsEventBus.emit('zone:member-left' as any, { zoneId, agentId });
+  }
+
   public async addAgentSprite(config: StratixAgentConfig): Promise<AgentSprite> {
     const existingSprite = this.agentSprites.get(config.agentId);
     if (existingSprite) {
@@ -1380,5 +1453,164 @@ export default class StratixRTSGameScene extends Phaser.Scene {
 
   public resize(width: number, height: number): void {
     this.cameras.main.setSize(width, height);
+  }
+
+  // ==================== RTS Move API ====================
+
+  /**
+   * 获取所有 Zone 列表
+   * @returns ZoneInfo 数组
+   */
+  public getZoneList(): ZoneInfo[] {
+    const zones: ZoneInfo[] = [];
+
+    // Get zones from unifiedZoneManager (includes TaskZones and ProjectZones)
+    for (const [zoneId, zone] of this.unifiedZoneManager.getAllZones()) {
+      const bounds = zone.getBounds();
+      const zoneName = (zone as any).zoneName || (zone as any).name || zoneId;
+
+      // Count agents in this zone
+      let agentCount = 0;
+      this.agentSprites.forEach((sprite) => {
+        if (Phaser.Geom.Rectangle.Contains(bounds, sprite.x, sprite.y)) {
+          agentCount++;
+        }
+      });
+
+      zones.push({
+        zoneId,
+        name: zoneName,
+        x: zone.x,
+        y: zone.y,
+        width: bounds.width,
+        height: bounds.height,
+        agentCount,
+        status: (zone as any).zoneStatus || 'idle'
+      });
+    }
+
+    return zones;
+  }
+
+  /**
+   * 将 Agent 移动到指定 Zone
+   * @param agentId Agent ID
+   * @param zoneId 目标 Zone ID
+   */
+  public async moveTo(agentId: string, zoneId: string): Promise<void> {
+    const sprite = this.agentSprites.get(agentId);
+    if (!sprite) {
+      console.warn(`[StratixRTS] Agent ${agentId} not found for moveTo`);
+      return;
+    }
+
+    const zone = this.unifiedZoneManager.getZone(zoneId);
+    if (!zone) {
+      console.warn(`[StratixRTS] Zone ${zoneId} not found for moveTo`);
+      return;
+    }
+
+    const bounds = zone.getBounds();
+    const targetX = bounds.x + bounds.width / 2;
+    const targetY = bounds.y + bounds.height / 2;
+
+    console.log(`[StratixRTS] Moving agent ${agentId} to zone ${zoneId} at (${targetX}, ${targetY})`);
+
+    // Use movement system to move the agent
+    this.movementSystem.moveTo(agentId, targetX, targetY);
+
+    // Update tracking
+    this.agentZoneTracking.set(agentId, zoneId);
+
+    // Notify backend about zone entry (uses zone-level API to trigger gatewayEventBus event)
+    try {
+      const projectClient = this.projectManagerIntegration.getProjectClient();
+      await projectClient.addZoneMember(zoneId, agentId);
+      console.log(`[StratixRTS] Agent ${agentId} entered zone ${zoneId} (backend notified)`);
+    } catch (error) {
+      console.error(`[StratixRTS] Failed to notify backend about zone entry:`, error);
+    }
+  }
+
+  /**
+   * 让 Agent 离开当前 Zone
+   * @param agentId Agent ID
+   */
+  public async leaveCurrentZone(agentId: string): Promise<void> {
+    const sprite = this.agentSprites.get(agentId);
+    if (!sprite) {
+      console.warn(`[StratixRTS] Agent ${agentId} not found for leaveCurrentZone`);
+      return;
+    }
+
+    const currentZoneId = this.agentZoneTracking.get(agentId);
+    if (!currentZoneId) {
+      console.log(`[StratixRTS] Agent ${agentId} is not in any zone`);
+      return;
+    }
+
+    console.log(`[StratixRTS] Agent ${agentId} leaving zone ${currentZoneId}`);
+
+    // Move agent to a random position outside any zone
+    const margin = 50;
+    let targetX: number, targetY: number;
+    let attempts = 0;
+    const maxAttempts = 20;
+
+    do {
+      targetX = Phaser.Math.Between(margin, MAP_WIDTH - margin);
+      targetY = Phaser.Math.Between(margin, MAP_HEIGHT - margin);
+      attempts++;
+    } while (this.isPositionInAnyZone(targetX, targetY) && attempts < maxAttempts);
+
+    // Fallback: use corner positions as safe spots (guaranteed outside zones if zones don't cover corners)
+    if (attempts >= maxAttempts) {
+      const safeSpots = [
+        { x: margin, y: margin },
+        { x: margin, y: MAP_HEIGHT - margin },
+        { x: MAP_WIDTH - margin, y: margin },
+        { x: MAP_WIDTH - margin, y: MAP_HEIGHT - margin },
+      ];
+      const safeSpot = Phaser.Utils.Array.GetRandom(safeSpots);
+      targetX = safeSpot.x;
+      targetY = safeSpot.y;
+    }
+
+    // Notify backend about zone leave BEFORE movement (to avoid race condition)
+    try {
+      const projectClient = this.projectManagerIntegration.getProjectClient();
+      await projectClient.removeZoneMember(currentZoneId, agentId);
+      console.log(`[StratixRTS] Agent ${agentId} left zone ${currentZoneId} (backend notified)`);
+    } catch (error) {
+      console.error(`[StratixRTS] Failed to notify backend about zone leave:`, error);
+    }
+
+    // Use movement system to move the agent
+    this.movementSystem.moveTo(agentId, targetX, targetY);
+
+    // Clear tracking AFTER notifying backend
+    this.agentZoneTracking.delete(agentId);
+  }
+
+  /**
+   * 获取 Agent 当前所在的 Zone
+   * @param agentId Agent ID
+   * @returns Zone ID 或 null（如果不在任何 Zone 中）
+   */
+  public getCurrentZone(agentId: string): string | null {
+    return this.agentZoneTracking.get(agentId) || null;
+  }
+
+  /**
+   * 检查指定位置是否在任何 Zone 内
+   */
+  private isPositionInAnyZone(x: number, y: number): boolean {
+    for (const [_zoneId, zone] of this.unifiedZoneManager.getAllZones()) {
+      const bounds = zone.getBounds();
+      if (Phaser.Geom.Rectangle.Contains(bounds, x, y)) {
+        return true;
+      }
+    }
+    return false;
   }
 }

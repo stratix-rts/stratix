@@ -1,18 +1,24 @@
 /**
  * 增强的分层提示词构建器
- * 支持 9 层结构，兼容 agency-agents 格式
+ * 支持 10 层结构，兼容 agency-agents 格式
+ *
+ * 可选使用 Handlebars 模板引擎渲染特定层
  */
 
-import { ChatMessage } from '../types';
+import { ChatMessage, ZonePromptContext } from '../types';
 import { AgentTemplate } from '../types/template';
 import { EnhancedSoulConfig, ReflectionEntry } from '../types/soul';
+import { getHandlebarsEngine, type PromptRenderContext } from './HandlebarsPromptEngine';
 
 interface PromptConfig {
   includeReflection?: boolean;
   includeWorkflow?: boolean;
   includeSuccessMetrics?: boolean;
   includeHistory?: boolean;
+  includeLearnedSkills?: boolean;  // 是否包含已学会技能
+  includeZoneContext?: boolean;     // 是否包含 Zone 上下文
   maxHistoryLength?: number;
+  zoneContext?: ZonePromptContext;   // Zone 上下文数据
 }
 
 interface LayerOptions {
@@ -45,7 +51,8 @@ export class EnhancedPromptBuilder {
     memoryContext: string,
     skills: Array<{ skillId: string; name: string; description: string; parameters?: unknown[] }>,
     recentHistory: ChatMessage[] = [],
-    config?: PromptConfig
+    config?: PromptConfig,
+    learnedSkillsContext?: string  // 新增：已学会技能上下文
   ): ChatMessage[] {
     const messages: ChatMessage[] = [];
     const options: LayerOptions = { showLayerHeaders: true };
@@ -74,6 +81,12 @@ export class EnhancedPromptBuilder {
       if (skillsLayer.content) messages.push(skillsLayer);
     }
 
+    // Layer 5.5: 已学会技能 (Learned Skills) - 可选，新增
+    if (config?.includeLearnedSkills && learnedSkillsContext) {
+      const learnedLayer = this.buildLearnedSkillsLayer(learnedSkillsContext, options);
+      if (learnedLayer.content) messages.push(learnedLayer);
+    }
+
     // Layer 6: 上下文与记忆 (Context & Memory)
     if (memoryContext) {
       const memoryLayer = this.buildMemoryLayer(memoryContext, options);
@@ -99,6 +112,12 @@ export class EnhancedPromptBuilder {
     if (config?.includeSuccessMetrics && template.successMetrics.length > 0) {
       const metricsLayer = this.buildSuccessMetricsLayer(template, options);
       if (metricsLayer.content) messages.push(metricsLayer);
+    }
+
+    // Layer 10: Zone 上下文 (Zone Context) - 可选
+    if (config?.includeZoneContext && config.zoneContext) {
+      const zoneLayer = this.buildZoneContextLayer(config.zoneContext, options);
+      if (zoneLayer.content) messages.push(zoneLayer);
     }
 
     return messages;
@@ -324,6 +343,27 @@ export class EnhancedPromptBuilder {
   }
 
   /**
+   * Layer 5.5: 已学会技能 (从记忆系统中学到的技能)
+   */
+  private buildLearnedSkillsLayer(learnedSkillsContext: string, options: LayerOptions): ChatMessage {
+    const parts: string[] = [];
+
+    if (options.showLayerHeaders) {
+      parts.push('\n# ═══════════════════════════════════════════');
+      parts.push('# 已学会技能 LEARNED SKILLS');
+      parts.push('# ═══════════════════════════════════════════\n');
+    }
+
+    parts.push('以下是你通过学习和经验积累掌握的技能:\n');
+    parts.push(learnedSkillsContext);
+
+    return {
+      role: 'system',
+      content: parts.join('\n'),
+    };
+  }
+
+  /**
    * Layer 6: 上下文与记忆
    */
   private buildMemoryLayer(memoryContext: string, options: LayerOptions): ChatMessage {
@@ -445,6 +485,103 @@ export class EnhancedPromptBuilder {
       role: 'system',
       content: parts.join('\n'),
     };
+  }
+
+  /**
+   * Layer 10: Zone 上下文
+   */
+  buildZoneContextLayer(zoneContext: ZonePromptContext, options: LayerOptions): ChatMessage {
+    const parts: string[] = [];
+
+    if (options.showLayerHeaders) {
+      parts.push('\n# ═══════════════════════════════════════════');
+      parts.push('# Zone 上下文 ZONE CONTEXT');
+      parts.push('# ═══════════════════════════════════════════\n');
+    }
+
+    if (zoneContext.inZone && zoneContext.currentZone) {
+      // 当前在 Zone 内
+      parts.push(`【当前 Zone: ${zoneContext.currentZone.title}】`);
+      parts.push(zoneContext.currentZone.prompt || '无特定提示词');
+
+      // 上下文文件
+      if (zoneContext.currentZone.files && zoneContext.currentZone.files.length > 0) {
+        parts.push('\n【上下文文件】');
+        for (const file of zoneContext.currentZone.files) {
+          parts.push(`- ${file.name}: ${file.content?.slice(0, 200) || '(无内容)'}...`);
+        }
+      }
+
+      // 协作成员
+      if (zoneContext.currentZone.members && zoneContext.currentZone.members.length > 0) {
+        parts.push('\n【协作成员】');
+        for (const member of zoneContext.currentZone.members) {
+          parts.push(`- Agent ${member}`);
+        }
+      }
+    } else {
+      // 空闲状态
+      parts.push('【当前状态: 空闲】');
+      if (zoneContext.idlePrompt) {
+        parts.push(zoneContext.idlePrompt);
+      }
+
+      // 显示可进入的 Zone 列表
+      if (zoneContext.availableZones && zoneContext.availableZones.length > 0) {
+        parts.push('\n【可进入的 Zone 列表】');
+        for (const zone of zoneContext.availableZones) {
+          parts.push(`- **${zone.title || zone.name}** (${zone.name})`);
+          if (zone.prompt) {
+            parts.push(`  - 描述: ${zone.prompt}`);
+          }
+          parts.push(`  - 当前人数: ${zone.agentCount}`);
+          parts.push(`  - Zone ID: ${zone.zoneId}`);
+        }
+        parts.push('\n你可以使用 moveTo(zoneId) 命令进入指定的 Zone。');
+      } else {
+        parts.push('\n暂无可进入的 Zone，请等待任务分配。');
+      }
+    }
+
+    return {
+      role: 'system',
+      content: parts.join('\n'),
+    };
+  }
+
+  /**
+   * Layer 10: Zone 上下文 (使用 Handlebars 模板)
+   * 这是一个使用 Handlebars 模板引擎的实验性实现
+   */
+  buildZoneContextLayerHandlebars(zoneContext: ZonePromptContext, options: LayerOptions = {}): ChatMessage | null {
+    try {
+      const engine = getHandlebarsEngine();
+      const context: PromptRenderContext = {
+        agent: { name: 'Agent' },
+        soul: {},
+        config: {
+          includeReflection: false,
+          includeWorkflow: false,
+          includeSuccessMetrics: false,
+          includeHistory: false,
+          includeLearnedSkills: false,
+          includeZoneContext: true,
+          maxHistoryLength: 10,
+          maxContextLength: 4000,
+        },
+        zone: zoneContext as PromptRenderContext['zone'],
+      };
+
+      const content = engine.render('layers/layer10-zone', context);
+
+      return {
+        role: 'system',
+        content,
+      };
+    } catch (error) {
+      console.warn('[EnhancedPromptBuilder] Handlebars Zone rendering failed, falling back to string building:', error);
+      return this.buildZoneContextLayer(zoneContext, options);
+    }
   }
 
   /**

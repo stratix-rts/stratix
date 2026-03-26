@@ -11,6 +11,12 @@ export interface ReflectionConfig {
   afterEachTask: boolean;
   onError: boolean;
   weeklyReview: boolean;
+  evolutionCheck?: {
+    enabled: boolean;
+    triggerThreshold: number;        // 积累 N 次反思后检查
+    cooldownHours: number;          // 进化冷却时间
+    maxEvolutionsPerDay: number;    // 每日最大进化次数
+  };
 }
 
 /**
