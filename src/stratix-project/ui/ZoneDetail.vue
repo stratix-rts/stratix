@@ -16,9 +16,14 @@
           <span class="zone-detail__edit-hint">click to edit</span>
         </h3>
       </div>
-      <StratixButton size="sm" variant="secondary" @click="handleEditZone">
-        Edit
-      </StratixButton>
+      <div class="zone-detail__header-actions">
+        <StratixButton size="sm" variant="secondary" @click="handleExportZone">
+          Export
+        </StratixButton>
+        <StratixButton size="sm" variant="secondary" @click="handleEditZone">
+          Edit
+        </StratixButton>
+      </div>
     </div>
 
     <div class="zone-detail__section">
@@ -490,6 +495,31 @@ const handleEditZone = () => {
   emit('edit-zone', props.zone);
 };
 
+const handleExportZone = async () => {
+  try {
+    const response = await fetch(`/api/zones/${props.zone.id}/export`);
+    if (!response.ok) {
+      throw new Error('Failed to export zone');
+    }
+    const data = await response.json();
+    if (data.success && data.template) {
+      // Download as JSON file
+      const blob = new Blob([JSON.stringify(data.template, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `zone-template-${props.zone.title || props.zone.id}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      console.log('[ZoneDetail] Zone exported successfully');
+    }
+  } catch (error) {
+    console.error('[ZoneDetail] Failed to export zone:', error);
+  }
+};
+
 const handleDeleteZone = () => {
   emit('delete-zone', props.zone.id);
 };
@@ -599,6 +629,12 @@ const formatRelativeTime = (timestamp: number): string => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.zone-detail__header-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .zone-detail__title-row {
