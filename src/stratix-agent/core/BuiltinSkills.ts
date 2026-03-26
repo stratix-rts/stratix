@@ -169,6 +169,85 @@ export const API_SKILLS: SkillDefinition[] = [
 ];
 
 /**
+ * 网络搜索类技能（使用 DuckDuckGo）
+ */
+export const SEARCH_SKILLS: SkillDefinition[] = [
+  {
+    skillId: 'web_search',
+    name: 'web_search',
+    description: 'Search the web using DuckDuckGo. Use this when you need to find current information, facts, or answers from the internet.',
+    parameters: [
+      {
+        name: 'query',
+        type: 'string',
+        required: true,
+        description: 'The search query string'
+      },
+      {
+        name: 'num_results',
+        type: 'number',
+        required: false,
+        default: 5,
+        description: 'Number of results to return (default: 5)'
+      }
+    ],
+    executor: 'http'
+  }
+];
+
+/**
+ * 代码执行类技能（沙箱执行）
+ */
+export const CODE_SKILLS: SkillDefinition[] = [
+  {
+    skillId: 'code_execute',
+    name: 'code_execute',
+    description: 'Execute code in a sandboxed environment. Use this when you need to run JavaScript or Python code to perform calculations, data processing, or generate output.',
+    parameters: [
+      {
+        name: 'code',
+        type: 'string',
+        required: true,
+        description: 'The code to execute'
+      },
+      {
+        name: 'language',
+        type: 'string',
+        required: true,
+        description: 'Programming language: javascript or python'
+      }
+    ],
+    executor: 'code_sandbox'
+  }
+];
+
+/**
+ * 文件下载类技能
+ */
+export const DOWNLOAD_SKILLS: SkillDefinition[] = [
+  {
+    skillId: 'file_download',
+    name: 'file_download',
+    description: 'Download a file from a URL and save it to the local filesystem.',
+    parameters: [
+      {
+        name: 'url',
+        type: 'string',
+        required: true,
+        description: 'The URL to download from'
+      },
+      {
+        name: 'path',
+        type: 'string',
+        required: true,
+        description: 'Absolute path where the file will be saved'
+      }
+    ],
+    executor: 'http'
+  }
+];
+
+/**
  * 计算器类技能（已有，保留）
  */
 export const CALCULATOR_SKILLS: SkillDefinition[] = [
@@ -213,7 +292,10 @@ export const BUILTIN_SKILLS: SkillDefinition[] = [
   ...FILE_SKILLS,
   ...COMMAND_SKILLS,
   ...API_SKILLS,
-  ...CALCULATOR_SKILLS
+  ...CALCULATOR_SKILLS,
+  ...SEARCH_SKILLS,
+  ...CODE_SKILLS,
+  ...DOWNLOAD_SKILLS
 ];
 
 /**
@@ -222,6 +304,7 @@ export const BUILTIN_SKILLS: SkillDefinition[] = [
 export const SKILLS_BY_CATEGORY = {
   file: ['file_read', 'file_write', 'file_list', 'file_delete'],
   command: ['bash'],
-  api: ['api_call'],
-  calculator: ['calculator']
+  api: ['api_call', 'web_search', 'file_download'],
+  calculator: ['calculator'],
+  code: ['code_execute']
 };

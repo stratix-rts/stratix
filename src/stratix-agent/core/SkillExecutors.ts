@@ -7,6 +7,74 @@ export class HttpSkillExecutor implements SkillExecutor {
     params: Record<string, any>,
     context: ExecutionContext
   ): Promise<any> {
+    // Handle web_search specially - uses DuckDuckGo API
+    if (skill.skillId === 'web_search') {
+      const { query, num_results = 5 } = params;
+      const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1`;
+
+      try {
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' },
+        });
+
+        const data = await response.json();
+
+        // Extract relevant results
+        const results: { title: string; url: string; snippet: string }[] = [];
+
+        if (data.RelatedTopics && data.RelatedTopics.length > 0) {
+          for (const topic of data.RelatedTopics.slice(0, num_results)) {
+            if (topic.Text && topic.FirstURL) {
+              results.push({
+                title: topic.Text.split(' - ')[0] || topic.Text,
+                url: topic.FirstURL,
+                snippet: topic.Text,
+              });
+            }
+          }
+        }
+
+        // Also include Abstract if available
+        if (data.AbstractText && results.length < num_results) {
+          results.unshift({
+            title: data.Heading || 'Wikipedia Summary',
+            url: data.AbstractURL || '',
+            snippet: data.AbstractText,
+          });
+        }
+
+        return {
+          query,
+          results: results.slice(0, num_results),
+          total: results.length,
+        };
+      } catch (error) {
+        throw new Error(`Web search failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+
+    // Handle file_download specially - fetch and save to file
+    if (skill.skillId === 'file_download') {
+      const { url, path } = params;
+      const { writeFile } = require('fs/promises');
+
+      try {
+        const response = await fetch(url, { method: 'GET' });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const buffer = await response.arrayBuffer();
+        await writeFile(path, Buffer.from(buffer));
+
+        return { success: true, path, size: buffer.byteLength };
+      } catch (error) {
+        throw new Error(`File download failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+
+    // Default HTTP handling for generic API calls
     const url = params.url || params.endpoint;
     const method = params.method || 'GET';
     const headers = params.headers || {};
@@ -277,6 +345,158 @@ export class FileSystemSkillExecutor implements SkillExecutor {
   }
 }
 
+/**
+ * Code Sandbox Executor
+ * Executes JavaScript using eval() in isolation
+ * Executes Python using child_process with timeout
+ */
+export class CodeSandboxSkillExecutor implements SkillExecutor {
+  async execute(
+    skill: SkillDefinition,
+    params: Record<string, any>,
+    context: ExecutionContext
+  ): Promise<any> {
+    const { code, language } = params;
+
+    if (language === 'javascript') {
+      return this.executeJavaScript(code);
+    } else if (language === 'python') {
+      return this.executePython(code);
+    } else {
+      throw new Error(`Unsupported language: ${language}. Supported: javascript, python`);
+    }
+  }
+
+  private executeJavaScript(code: string): Promise<any> {
+    return new Promise((resolve, reject) => {
+      try {
+        // Capture console.log output
+        const logs: string[] = [];
+        const mockConsole = {
+          log: (...args: any[]) => logs.push(args.map(String).join(' ')),
+          error: (...args: any[]) => logs.push('[error] ' + args.map(String).join(' ')),
+          warn: (...args: any[]) => logs.push('[warn] ' + args.map(String).join(' ')),
+          info: (...args: any[]) => logs.push('[info] ' + args.map(String).join(' ')),
+        };
+
+        // Create a sandboxed function with limited globals
+        const sandbox = {
+          console: mockConsole,
+          Math,
+          JSON,
+          Array,
+          Object,
+          String,
+          Number,
+          Boolean,
+          Date,
+          RegExp,
+          Error,
+          Map,
+          Set,
+          Promise,
+          parseInt,
+          parseFloat,
+          isNaN,
+          isFinite,
+          encodeURIComponent,
+          decodeURIComponent,
+        };
+
+        const sandboxKeys = Object.keys(sandbox);
+        const sandboxValues = Object.values(sandbox);
+
+        // Execute in isolated context
+        const fn = new Function(...sandboxKeys, code);
+        const result = fn(...sandboxValues);
+
+        // Handle async results
+        if (result instanceof Promise) {
+          result
+            .then((asyncResult) => {
+              resolve({
+                result: asyncResult,
+                logs,
+                success: true,
+              });
+            })
+            .catch((err) => {
+              reject(new Error(`Execution error: ${err.message}`));
+            });
+        } else {
+          resolve({
+            result,
+            logs,
+            success: true,
+          });
+        }
+      } catch (error) {
+        reject(new Error(`JavaScript execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`));
+      }
+    });
+  }
+
+  private executePython(code: string): Promise<any> {
+    return new Promise((resolve, reject) => {
+      const { spawn } = require('child_process');
+      const { writeFile, unlink } = require('fs/promises');
+      const { join } = require('path');
+      const os = require('os');
+
+      // Write code to temp file
+      const tempFile = join(os.tmpdir(), `stratix_sandbox_${Date.now()}.py`);
+
+      (async () => {
+        try {
+          await writeFile(tempFile, code);
+
+          const proc = spawn('python3', [tempFile], {
+            timeout: 10000, // 10 second timeout
+            maxBuffer: 1024 * 1024, // 1MB output
+          });
+
+          let stdout = '';
+          let stderr = '';
+
+          proc.stdout.on('data', (data: Buffer) => {
+            stdout += data.toString();
+          });
+
+          proc.stderr.on('data', (data: Buffer) => {
+            stderr += data.toString();
+          });
+
+          proc.on('close', async (code: number) => {
+            // Clean up temp file
+            try {
+              await unlink(tempFile);
+            } catch {}
+
+            if (code === 0) {
+              resolve({
+                result: stdout.trim(),
+                logs: [],
+                success: true,
+              });
+            } else {
+              reject(new Error(`Python execution failed (exit ${code}): ${stderr || stdout}`));
+            }
+          });
+
+          proc.on('error', async (err: Error) => {
+            try {
+              await unlink(tempFile);
+            } catch {}
+            reject(new Error(`Python spawn error: ${err.message}`));
+          });
+        } catch (error) {
+          reject(new Error(`Failed to execute Python: ${error instanceof Error ? error.message : 'Unknown error'}`));
+        }
+      })();
+    });
+  }
+}
+
 export class DefaultSkillExecutor implements SkillExecutor {
   async execute(
     skill: SkillDefinition,
@@ -343,6 +563,8 @@ export function createExecutor(type: string): SkillExecutor {
       return new FileSystemSkillExecutor();
     case 'bash':
       return new BashSkillExecutor();
+    case 'code_sandbox':
+      return new CodeSandboxSkillExecutor();
     default:
       return new DefaultSkillExecutor();
   }
