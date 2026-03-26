@@ -329,6 +329,41 @@ onMounted(async () => {
             console.log('[App] ZonePanel closed (zone was deleted)');
           }
         });
+
+        // Handle zone member changes - refresh current zone if it was updated
+        scene.events.on('stratix:zone-member-joined', async (data: { zoneId: string; agentId: string }) => {
+          console.log('[App] Zone member joined event:', data);
+          if (currentZone.value && currentZone.value.id === data.zoneId) {
+            // Refresh zone data to get updated members list
+            try {
+              const response = await fetch(`/api/zones/${data.zoneId}`);
+              const result = await response.json();
+              if (result.success && result.zone) {
+                currentZone.value = result.zone;
+                console.log('[App] Zone refreshed with new member:', data.agentId);
+              }
+            } catch (error) {
+              console.error('[App] Failed to refresh zone after member joined:', error);
+            }
+          }
+        });
+
+        scene.events.on('stratix:zone-member-left', async (data: { zoneId: string; agentId: string }) => {
+          console.log('[App] Zone member left event:', data);
+          if (currentZone.value && currentZone.value.id === data.zoneId) {
+            // Refresh zone data to get updated members list
+            try {
+              const response = await fetch(`/api/zones/${data.zoneId}`);
+              const result = await response.json();
+              if (result.success && result.zone) {
+                currentZone.value = result.zone;
+                console.log('[App] Zone refreshed after member left:', data.agentId);
+              }
+            } catch (error) {
+              console.error('[App] Failed to refresh zone after member left:', error);
+            }
+          }
+        });
       }
       
       rtsEventBus.on('game:ui:project_created', handleProjectCreated);
