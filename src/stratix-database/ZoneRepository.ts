@@ -470,8 +470,9 @@ export class ZoneRepository {
   // ============================================
 
   getMessages(zoneId: string, limit: number = 100, offset: number = 0): ZoneMessage[] {
-    const rows = this.db.prepare('SELECT * FROM zone_messages WHERE zone_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?').all(zoneId, limit, offset) as any[];
-    return rows.map(row => this.mapRowToMessage(row)).reverse(); // Oldest first for display
+    // Use ASC order directly for oldest-first display, no reversal needed
+    const rows = this.db.prepare('SELECT * FROM zone_messages WHERE zone_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?').all(zoneId, limit, offset) as any[];
+    return rows.map(row => this.mapRowToMessage(row));
   }
 
   getMessagesCount(zoneId: string): number {
