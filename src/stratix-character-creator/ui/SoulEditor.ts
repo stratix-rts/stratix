@@ -535,6 +535,8 @@ export class SoulEditor {
 
     // 目标自动补全建议
     const goalSuggestions = node.querySelector('#goal-suggestions') as HTMLElement;
+    let suggestionSelectedIndex = -1;
+    let currentMatches: GoalSuggestion[] = [];
 
     const showGoalSuggestions = (query: string) => {
       if (!goalSuggestions) return;
@@ -542,27 +544,30 @@ export class SoulEditor {
 
       if (!q) {
         goalSuggestions.style.display = 'none';
+        suggestionSelectedIndex = -1;
         return;
       }
 
       // 根据当前选择的领域过滤建议
-      const matches = GOAL_SUGGESTIONS.filter(g =>
+      currentMatches = GOAL_SUGGESTIONS.filter(g =>
         g.text.toLowerCase().includes(q) &&
         !this.soul.goals.includes(g.text) &&
         (currentDomain === 'all' || g.domains.includes(currentDomain))
       ).slice(0, 6);
 
-      if (matches.length === 0) {
+      if (currentMatches.length === 0) {
         goalSuggestions.style.display = 'none';
+        suggestionSelectedIndex = -1;
         return;
       }
 
-      goalSuggestions.innerHTML = matches.map(g =>
-        `<div class="goal-suggestion" data-goal="${this.escapeHtml(g.text)}" style="
+      goalSuggestions.innerHTML = currentMatches.map((g, i) =>
+        `<div class="goal-suggestion" data-index="${i}" data-goal="${this.escapeHtml(g.text)}" style="
           padding: 8px 12px;
           cursor: pointer;
           font-size: 12px;
           color: ${THEME.text};
+          background: ${i === suggestionSelectedIndex ? THEME.accent + '22' : 'transparent'};
         ">${this.escapeHtml(g.text)}</div>`
       ).join('');
 
@@ -573,12 +578,53 @@ export class SoulEditor {
           const goal = (el as HTMLElement).dataset.goal!;
           newGoalInput.value = goal;
           goalSuggestions.style.display = 'none';
+          suggestionSelectedIndex = -1;
+        });
+        el.addEventListener('mouseenter', () => {
+          suggestionSelectedIndex = parseInt((el as HTMLElement).dataset.index || '-1', 10);
+          updateSuggestionHighlight();
         });
       });
     };
 
+    const updateSuggestionHighlight = () => {
+      if (!goalSuggestions) return;
+      goalSuggestions.querySelectorAll('.goal-suggestion').forEach((el, i) => {
+        (el as HTMLElement).style.background = i === suggestionSelectedIndex ? THEME.accent + '22' : 'transparent';
+      });
+    };
+
+    const selectSuggestion = () => {
+      if (suggestionSelectedIndex >= 0 && suggestionSelectedIndex < currentMatches.length) {
+        newGoalInput.value = currentMatches[suggestionSelectedIndex].text;
+        goalSuggestions.style.display = 'none';
+        suggestionSelectedIndex = -1;
+      }
+    };
+
     newGoalInput?.addEventListener('input', (e) => {
+      suggestionSelectedIndex = -1;
       showGoalSuggestions((e.target as HTMLInputElement).value);
+    });
+
+    newGoalInput?.addEventListener('keydown', (e) => {
+      if (goalSuggestions.style.display !== 'block' || currentMatches.length === 0) return;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        suggestionSelectedIndex = (suggestionSelectedIndex + 1) % currentMatches.length;
+        updateSuggestionHighlight();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        suggestionSelectedIndex = suggestionSelectedIndex <= 0 ? currentMatches.length - 1 : suggestionSelectedIndex - 1;
+        updateSuggestionHighlight();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        selectSuggestion();
+      } else if (e.key === 'Escape') {
+        goalSuggestions.style.display = 'none';
+        suggestionSelectedIndex = -1;
+      }
     });
 
     newGoalInput?.addEventListener('blur', () => {
