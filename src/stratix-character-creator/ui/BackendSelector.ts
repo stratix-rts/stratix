@@ -101,6 +101,7 @@ export class BackendSelector {
         display: flex;
         flex-direction: column;
         overflow: hidden;
+        pointer-events: auto;
       ">
         <div class="section" style="padding: 16px; border-bottom: 1px solid ${THEME.border};">
           <label style="display: block; font-size: 11px; color: ${THEME.textMuted}; margin-bottom: 10px;">
@@ -305,6 +306,12 @@ export class BackendSelector {
 
     const node = this.container.node as HTMLElement;
     console.log('[BackendSelector] Setting up event listeners, node:', node);
+
+    // 阻止所有点击事件冒泡到 canvas
+    node.addEventListener('click', (e) => e.stopPropagation());
+    node.addEventListener('pointerdown', (e) => e.stopPropagation());
+    node.addEventListener('pointerup', (e) => e.stopPropagation());
+    node.addEventListener('pointermove', (e) => e.stopPropagation());
 
     const backendBtns = node.querySelectorAll('.backend-btn');
     console.log('[BackendSelector] Found backend buttons:', backendBtns.length);

@@ -67,6 +67,7 @@ export class WorkflowConfigPanel {
         overflow: hidden;
         display: flex;
         flex-direction: column;
+        pointer-events: auto;
       ">
         <div class="header" style="
           padding: 12px 16px;
@@ -101,6 +102,13 @@ export class WorkflowConfigPanel {
     if (!this.container) return;
 
     const node = this.container.node as HTMLElement;
+
+    // 阻止所有点击事件冒泡到 canvas
+    node.addEventListener('click', (e) => e.stopPropagation());
+    node.addEventListener('pointerdown', (e) => e.stopPropagation());
+    node.addEventListener('pointerup', (e) => e.stopPropagation());
+    node.addEventListener('pointermove', (e) => e.stopPropagation());
+
     const saveBtn = node.querySelector('#wf-save-btn') as HTMLButtonElement;
     const loadBtn = node.querySelector('#wf-load-btn') as HTMLButtonElement;
     const runBtn = node.querySelector('#wf-run-btn') as HTMLButtonElement;

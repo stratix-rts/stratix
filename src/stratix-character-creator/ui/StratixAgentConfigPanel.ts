@@ -104,6 +104,7 @@ export class StratixAgentConfigPanel {
         display: flex;
         flex-direction: column;
         overflow: hidden;
+        pointer-events: auto;
       ">
         <div style="padding: 16px; border-bottom: 1px solid ${THEME.border};">
           <label style="display: block; font-size: 11px; color: ${THEME.textMuted}; margin-bottom: 10px;">
@@ -329,6 +330,12 @@ export class StratixAgentConfigPanel {
   private setupEventListeners(): void {
     if (!this.container) return;
     const node = this.container.node as HTMLElement;
+
+    // 阻止所有点击事件冒泡到 canvas
+    node.addEventListener('click', (e) => e.stopPropagation());
+    node.addEventListener('pointerdown', (e) => e.stopPropagation());
+    node.addEventListener('pointerup', (e) => e.stopPropagation());
+    node.addEventListener('pointermove', (e) => e.stopPropagation());
 
     // Auto-load saved API key on init
     (async () => {

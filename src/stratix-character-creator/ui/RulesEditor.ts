@@ -92,6 +92,7 @@ export class RulesEditor {
         color: ${THEME.text};
         overflow-y: auto;
         box-sizing: border-box;
+        pointer-events: auto;
       ">
         <div class="section" style="margin-bottom: 16px;">
           <label style="display: block; font-size: 11px; color: ${THEME.textMuted}; margin-bottom: 8px;">
@@ -140,6 +141,12 @@ export class RulesEditor {
     if (!this.container) return;
 
     const node = this.container.node as HTMLElement;
+
+    // 阻止所有点击事件冒泡到 canvas
+    node.addEventListener('click', (e) => e.stopPropagation());
+    node.addEventListener('pointerdown', (e) => e.stopPropagation());
+    node.addEventListener('pointerup', (e) => e.stopPropagation());
+    node.addEventListener('pointermove', (e) => e.stopPropagation());
 
     node.querySelectorAll('.template-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {

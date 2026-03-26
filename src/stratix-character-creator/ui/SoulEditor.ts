@@ -283,6 +283,7 @@ export class SoulEditor {
         color: ${THEME.text};
         overflow-y: auto;
         box-sizing: border-box;
+        pointer-events: auto;
       ">
         <div class="section" style="margin-bottom: 16px;">
           <label style="display: block; font-size: 11px; color: ${THEME.textMuted}; margin-bottom: 8px;">
@@ -451,6 +452,12 @@ export class SoulEditor {
     if (!this.container) return;
 
     const node = this.container.node as HTMLElement;
+
+    // 阻止所有点击事件冒泡到 canvas
+    node.addEventListener('click', (e) => e.stopPropagation());
+    node.addEventListener('pointerdown', (e) => e.stopPropagation());
+    node.addEventListener('pointerup', (e) => e.stopPropagation());
+    node.addEventListener('pointermove', (e) => e.stopPropagation());
 
     const templateSelect = node.querySelector('#soul-template-select') as HTMLSelectElement;
     const identityInput = node.querySelector('#soul-identity') as HTMLTextAreaElement;

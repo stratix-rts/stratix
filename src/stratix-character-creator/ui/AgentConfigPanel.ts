@@ -130,6 +130,7 @@ export class AgentConfigPanel {
         display: flex;
         flex-direction: column;
         overflow: hidden;
+        pointer-events: auto;
       ">
         <div class="tabs" style="
           display: flex;
@@ -246,6 +247,12 @@ export class AgentConfigPanel {
   private setupEventListeners(): void {
     const node = this.container?.node as HTMLElement;
     if (!node) return;
+
+    // 阻止所有点击事件冒泡到 canvas
+    node.addEventListener('click', (e) => e.stopPropagation());
+    node.addEventListener('pointerdown', (e) => e.stopPropagation());
+    node.addEventListener('pointerup', (e) => e.stopPropagation());
+    node.addEventListener('pointermove', (e) => e.stopPropagation());
 
     node.querySelectorAll('.tab-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {

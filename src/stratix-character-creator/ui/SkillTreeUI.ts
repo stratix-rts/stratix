@@ -105,6 +105,7 @@ export class SkillTreeUI {
         color: var(--ds-text-primary);
         display: flex;
         flex-direction: column;
+        pointer-events: auto;
       ">
         <div class="header" style="
           padding: 10px;
@@ -258,6 +259,12 @@ export class SkillTreeUI {
     if (!this.container) return;
 
     const node = this.container.node as HTMLElement;
+
+    // 阻止所有点击事件冒泡到 canvas
+    node.addEventListener('click', (e) => e.stopPropagation());
+    node.addEventListener('pointerdown', (e) => e.stopPropagation());
+    node.addEventListener('pointerup', (e) => e.stopPropagation());
+    node.addEventListener('pointermove', (e) => e.stopPropagation());
 
     node.querySelectorAll('.skill-node').forEach(nodeEl => {
       nodeEl.addEventListener('click', (e) => {

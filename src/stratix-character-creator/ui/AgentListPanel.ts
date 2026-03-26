@@ -70,6 +70,7 @@ export class AgentListPanel {
         color: ${THEME.text};
         display: flex;
         flex-direction: column;
+        pointer-events: auto;
       ">
         <div class="header" style="
           padding: 16px;
@@ -182,6 +183,12 @@ export class AgentListPanel {
     if (!this.container) return;
 
     const node = this.container.node as HTMLElement;
+
+    // 阻止所有点击事件冒泡到 canvas
+    node.addEventListener('click', (e) => e.stopPropagation());
+    node.addEventListener('pointerdown', (e) => e.stopPropagation());
+    node.addEventListener('pointerup', (e) => e.stopPropagation());
+    node.addEventListener('pointermove', (e) => e.stopPropagation());
 
     const backBtn = node.querySelector('#back-btn');
     backBtn?.addEventListener('click', () => {

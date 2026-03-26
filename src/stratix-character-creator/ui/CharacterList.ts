@@ -52,6 +52,13 @@ export class CharacterList {
       this.config.y
     ).createFromHTML(html).setOrigin(0, 0);
 
+    // 阻止所有点击事件冒泡到 canvas
+    const node = this.container.node as HTMLElement;
+    node.addEventListener('click', (e) => e.stopPropagation());
+    node.addEventListener('pointerdown', (e) => e.stopPropagation());
+    node.addEventListener('pointerup', (e) => e.stopPropagation());
+    node.addEventListener('pointermove', (e) => e.stopPropagation());
+
     this.loadCharacters();
 
     return this.container;
@@ -70,6 +77,7 @@ export class CharacterList {
         color: ${THEME.text};
         display: flex;
         flex-direction: column;
+        pointer-events: auto;
       ">
         <div class="header" style="
           padding: 12px 16px;
