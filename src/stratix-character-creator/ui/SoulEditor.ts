@@ -5,6 +5,7 @@ import { ContainerComponentBase } from '@/stratix-core/ui/ContainerComponent.bas
 import type { StratixSoulConfig } from '@/stratix-core/stratix-protocol';
 import { SOUL_TEMPLATES, DEFAULT_SOUL, type SoulTemplate } from '../config/soulTemplates';
 import { getButtonInlineStyles } from './_buttonStyles';
+import { renderTemplatePrompt } from '../core/SoulTemplateRenderer';
 
 export interface SoulEditorConfig {
   x: number;
@@ -25,6 +26,8 @@ const THEME = {
   success: 'var(--ds-status-success)',
 };
 
+const MAX_HISTORY_SIZE = 50;
+
 export class SoulEditor {
   private scene: Phaser.Scene;
   private config: SoulEditorConfig;
@@ -33,11 +36,85 @@ export class SoulEditor {
   private rawContent: string = '';
   private onChange?: (soul: StratixSoulConfig) => void;
 
+  // Undo/Redo history
+  private undoStack: StratixSoulConfig[] = [];
+  private redoStack: StratixSoulConfig[] = [];
+
   constructor(scene: Phaser.Scene, config: SoulEditorConfig) {
     this.scene = scene;
     this.config = config;
     this.soul = config.initialSoul ? { ...config.initialSoul } : { ...DEFAULT_SOUL };
     this.onChange = config.onChange;
+    this.saveHistory();
+  }
+
+  private saveHistory(): void {
+    this.undoStack.push({
+      identity: this.soul.identity,
+      goals: [...this.soul.goals],
+      personality: this.soul.personality,
+    });
+    if (this.undoStack.length > MAX_HISTORY_SIZE) {
+      this.undoStack.shift();
+    }
+    this.redoStack = [];
+  }
+
+  canUndo(): boolean {
+    return this.undoStack.length > 1;
+  }
+
+  canRedo(): boolean {
+    return this.redoStack.length > 0;
+  }
+
+  undo(): void {
+    if (!this.canUndo()) return;
+    const current = this.undoStack.pop()!;
+    this.redoStack.push(current);
+    const previous = this.undoStack[this.undoStack.length - 1];
+    this.soul = {
+      identity: previous.identity,
+      goals: [...previous.goals],
+      personality: previous.personality,
+    };
+    this.updateUI();
+    this.notifyChange();
+  }
+
+  redo(): void {
+    if (!this.canRedo()) return;
+    const next = this.redoStack.pop()!;
+    this.undoStack.push(next);
+    this.soul = {
+      identity: next.identity,
+      goals: [...next.goals],
+      personality: next.personality,
+    };
+    this.updateUI();
+    this.notifyChange();
+  }
+
+  // 最近使用的模板
+  private static readonly RECENT_TEMPLATES_KEY = 'soul-editor-recent-templates';
+  private static readonly MAX_RECENT = 5;
+
+  private getRecentTemplates(): string[] {
+    try {
+      const stored = localStorage.getItem(SoulEditor.RECENT_TEMPLATES_KEY);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private addToRecentTemplates(templateId: string): void {
+    const recent = this.getRecentTemplates().filter(id => id !== templateId);
+    recent.unshift(templateId);
+    if (recent.length > SoulEditor.MAX_RECENT) {
+      recent.pop();
+    }
+    localStorage.setItem(SoulEditor.RECENT_TEMPLATES_KEY, JSON.stringify(recent));
   }
 
   create(): Phaser.GameObjects.DOMElement {
@@ -55,7 +132,8 @@ export class SoulEditor {
     const goalsHtml = this.soul.goals
       .map(
         (goal, i) => `
-        <div class="goal-item" data-index="${i}" style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+        <div class="goal-item" data-index="${i}" draggable="true" style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; cursor: grab; padding: 4px; border-radius: 4px; transition: background 0.15s;">
+          <span class="drag-handle" style="color: ${THEME.textMuted}; cursor: grab; font-size: 14px; padding: 0 4px;">⋮⋮</span>
           <span style="flex: 1; color: ${THEME.text}; font-size: 12px;">${this.escapeHtml(goal)}</span>
           <button class="remove-goal-btn" data-index="${i}" style="${getButtonInlineStyles('danger')}">删除</button>
         </div>
@@ -64,6 +142,11 @@ export class SoulEditor {
       .join('');
 
     return `
+      <style>
+        .goal-item:hover { background: var(--ds-bg-tertiary); }
+        .goal-item.drag-before { border-top: 2px solid var(--ds-brand-primary); }
+        .goal-item.drag-after { border-bottom: 2px solid var(--ds-brand-primary); }
+      </style>
       <div class="soul-editor" style="
         width: ${this.config.width}px;
         height: ${this.config.height}px;
@@ -80,6 +163,17 @@ export class SoulEditor {
           <label style="display: block; font-size: 11px; color: ${THEME.textMuted}; margin-bottom: 8px;">
             快速选择模板
           </label>
+          <input type="text" id="template-search" placeholder="搜索模板..." style="
+            width: 100%;
+            padding: 8px 12px;
+            background: ${THEME.inputBg};
+            border: 1px solid ${THEME.border};
+            border-radius: 6px;
+            color: ${THEME.text};
+            font-size: 12px;
+            margin-bottom: 8px;
+            box-sizing: border-box;
+          " />
           <select id="soul-template-select" style="
             width: 100%;
             padding: 8px 12px;
@@ -92,6 +186,13 @@ export class SoulEditor {
             <option value="">-- 选择模板 --</option>
             ${templateOptions}
           </select>
+        </div>
+
+        <div class="section" style="margin-bottom: 16px; display: flex; gap: 8px;">
+          <button id="import-soul-btn" style="${getButtonInlineStyles('secondary')}">导入</button>
+          <button id="export-soul-btn" style="${getButtonInlineStyles('secondary')}">导出</button>
+          <button id="copy-soul-btn" style="${getButtonInlineStyles('ghost')}">复制配置</button>
+          <input type="file" id="import-file-input" accept=".json" style="display: none;" />
         </div>
 
         <div class="section" style="margin-bottom: 16px;">
@@ -148,6 +249,33 @@ export class SoulEditor {
             box-sizing: border-box;
           " />
         </div>
+
+        <div class="section" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid ${THEME.border};">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <label style="font-size: 11px; color: ${THEME.textMuted};">
+              Prompt 实时预览
+            </label>
+            <button id="copy-prompt-btn" style="${getButtonInlineStyles('ghost')}">复制</button>
+          </div>
+          <pre id="prompt-preview" style="
+            background: ${THEME.inputBg};
+            border: 1px solid ${THEME.border};
+            border-radius: 6px;
+            padding: 12px;
+            font-size: 10px;
+            line-height: 1.6;
+            width: 100%;
+            min-height: 100px;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            color: ${THEME.text};
+            font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+            box-sizing: border-box;
+            margin: 0;
+          ">${this.escapeHtml(this.buildPromptPreview())}</pre>
+        </div>
       </div>
     `;
   }
@@ -163,6 +291,60 @@ export class SoulEditor {
     const goalsList = node.querySelector('#goals-list') as HTMLElement;
     const newGoalInput = node.querySelector('#new-goal-input') as HTMLInputElement;
     const addGoalBtn = node.querySelector('#add-goal-btn') as HTMLButtonElement;
+    const copyPromptBtn = node.querySelector('#copy-prompt-btn') as HTMLButtonElement;
+    const importSoulBtn = node.querySelector('#import-soul-btn') as HTMLButtonElement;
+    const exportSoulBtn = node.querySelector('#export-soul-btn') as HTMLButtonElement;
+    const copySoulBtn = node.querySelector('#copy-soul-btn') as HTMLButtonElement;
+    const importFileInput = node.querySelector('#import-file-input') as HTMLInputElement;
+    const templateSearch = node.querySelector('#template-search') as HTMLInputElement;
+
+    // 模板搜索过滤
+    const filterTemplates = (query: string) => {
+      const q = query.toLowerCase().trim();
+      const recent = this.getRecentTemplates();
+      templateSelect.innerHTML = '<option value="">-- 选择模板 --</option>';
+
+      // 如果没有搜索词，显示最近使用的模板
+      if (!q && recent.length > 0) {
+        const recentGroup = document.createElement('optgroup');
+        recentGroup.label = '最近使用';
+        recent.forEach(templateId => {
+          const t = SOUL_TEMPLATES.find(st => st.id === templateId);
+          if (t) {
+            const option = document.createElement('option');
+            option.value = t.id;
+            option.textContent = t.name;
+            recentGroup.appendChild(option);
+          }
+        });
+        templateSelect.appendChild(recentGroup);
+
+        const divider = document.createElement('optgroup');
+        divider.label = '──────────';
+        templateSelect.appendChild(divider);
+      }
+
+      SOUL_TEMPLATES.forEach(t => {
+        // 搜索模式下显示所有匹配项，否则显示非最近的
+        if (q) {
+          if (t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q)) {
+            const option = document.createElement('option');
+            option.value = t.id;
+            option.textContent = `${t.name} - ${t.description}`;
+            templateSelect.appendChild(option);
+          }
+        } else if (!recent.includes(t.id)) {
+          const option = document.createElement('option');
+          option.value = t.id;
+          option.textContent = t.name;
+          templateSelect.appendChild(option);
+        }
+      });
+    };
+
+    templateSearch?.addEventListener('input', (e) => {
+      filterTemplates((e.target as HTMLInputElement).value);
+    });
 
     templateSelect?.addEventListener('change', (e) => {
       const templateId = (e.target as HTMLSelectElement).value;
@@ -174,22 +356,103 @@ export class SoulEditor {
       }
     });
 
+    // 导入按钮
+    importSoulBtn?.addEventListener('click', () => {
+      importFileInput?.click();
+    });
+
+    // 导入文件选择
+    importFileInput?.addEventListener('change', (e: Event) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const json = JSON.parse(event.target?.result as string);
+          if (json.identity !== undefined || json.goals !== undefined || json.personality !== undefined) {
+            this.saveHistory();
+            this.soul = {
+              identity: json.identity || '',
+              goals: Array.isArray(json.goals) ? json.goals : [],
+              personality: json.personality || '',
+            };
+            this.updateUI();
+            this.notifyChange();
+            this.showToast('导入成功');
+          } else {
+            this.showToast('无效的模板格式');
+          }
+        } catch {
+          this.showToast('导入失败：无效的 JSON');
+        }
+        // 清空 input 以便重复选择同一文件
+        (e.target as HTMLInputElement).value = '';
+      };
+      reader.readAsText(file);
+    });
+
+    // 导出按钮
+    exportSoulBtn?.addEventListener('click', () => {
+      const exportData = {
+        version: '1.0',
+        exportedAt: Date.now(),
+        soul: {
+          identity: this.soul.identity,
+          goals: this.soul.goals,
+          personality: this.soul.personality,
+        },
+      };
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'soul-template.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // 复制配置按钮
+    copySoulBtn?.addEventListener('click', () => {
+      const exportData = {
+        version: '1.0',
+        exportedAt: Date.now(),
+        soul: {
+          identity: this.soul.identity,
+          goals: this.soul.goals,
+          personality: this.soul.personality,
+        },
+      };
+      navigator.clipboard.writeText(JSON.stringify(exportData, null, 2)).then(() => {
+        copySoulBtn.textContent = '已复制!';
+        setTimeout(() => {
+          if (copySoulBtn) copySoulBtn.textContent = '复制配置';
+        }, 1500);
+      });
+    });
+
     identityInput?.addEventListener('input', (e) => {
+      this.saveHistory();
       this.soul.identity = (e.target as HTMLTextAreaElement).value;
+      this.updatePromptPreview();
       this.notifyChange();
     });
 
     personalityInput?.addEventListener('input', (e) => {
+      this.saveHistory();
       this.soul.personality = (e.target as HTMLInputElement).value;
+      this.updatePromptPreview();
       this.notifyChange();
     });
 
     addGoalBtn?.addEventListener('click', () => {
       const goal = newGoalInput?.value.trim();
       if (goal) {
+        this.saveHistory();
         this.soul.goals.push(goal);
         newGoalInput.value = '';
         this.refreshGoalsList();
+        this.updatePromptPreview();
         this.notifyChange();
       }
     });
@@ -203,10 +466,104 @@ export class SoulEditor {
     goalsList?.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
       if (target.classList.contains('remove-goal-btn')) {
+        this.saveHistory();
         const index = parseInt(target.dataset.index || '0', 10);
         this.soul.goals.splice(index, 1);
         this.refreshGoalsList();
+        this.updatePromptPreview();
         this.notifyChange();
+      }
+    });
+
+    // 拖拽排序事件
+    let draggedIndex: number | null = null;
+
+    goalsList?.addEventListener('dragstart', (e: DragEvent) => {
+      const target = (e.target as HTMLElement).closest('.goal-item') as HTMLElement;
+      if (!target) return;
+      draggedIndex = parseInt(target.dataset.index || '0', 10);
+      target.style.opacity = '0.5';
+      e.dataTransfer!.effectAllowed = 'move';
+    });
+
+    goalsList?.addEventListener('dragend', (e: DragEvent) => {
+      const target = (e.target as HTMLElement).closest('.goal-item') as HTMLElement;
+      if (target) target.style.opacity = '1';
+      draggedIndex = null;
+      this.refreshGoalsList();
+    });
+
+    goalsList?.addEventListener('dragover', (e: DragEvent) => {
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = 'move';
+      const target = (e.target as HTMLElement).closest('.goal-item') as HTMLElement;
+      if (!target || draggedIndex === null) return;
+
+      const rect = target.getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      const isAfter = e.clientY > midY;
+
+      // 移除所有放置指示器
+      goalsList!.querySelectorAll('.goal-item').forEach(el => {
+        el.classList.remove('drag-after', 'drag-before');
+      });
+
+      // 添加放置指示器
+      if (isAfter) {
+        target.classList.add('drag-after');
+      } else {
+        target.classList.add('drag-before');
+      }
+    });
+
+    goalsList?.addEventListener('drop', (e: DragEvent) => {
+      e.preventDefault();
+      const target = (e.target as HTMLElement).closest('.goal-item') as HTMLElement;
+      if (!target || draggedIndex === null) return;
+
+      const rect = target.getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      const isAfter = e.clientY > midY;
+      let dropIndex = parseInt(target.dataset.index || '0', 10);
+
+      if (isAfter && draggedIndex < dropIndex) {
+        dropIndex--;
+      } else if (!isAfter && draggedIndex > dropIndex) {
+        dropIndex++;
+      }
+
+      if (draggedIndex !== dropIndex) {
+        this.saveHistory();
+        const [moved] = this.soul.goals.splice(draggedIndex, 1);
+        this.soul.goals.splice(dropIndex, 0, moved);
+        this.refreshGoalsList();
+        this.updatePromptPreview();
+        this.notifyChange();
+      }
+
+      draggedIndex = null;
+    });
+
+    copyPromptBtn?.addEventListener('click', () => {
+      const prompt = this.buildPromptPreview();
+      navigator.clipboard.writeText(prompt).then(() => {
+        copyPromptBtn.textContent = '已复制!';
+        setTimeout(() => {
+          if (copyPromptBtn) copyPromptBtn.textContent = '复制';
+        }, 1500);
+      });
+    });
+
+    // 键盘快捷键: Ctrl+Z 撤销, Ctrl+Shift+Z 重做
+    node.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === 'z' && !e.shiftKey) {
+          e.preventDefault();
+          this.undo();
+        } else if ((e.key === 'z' && e.shiftKey) || e.key === 'y') {
+          e.preventDefault();
+          this.redo();
+        }
       }
     });
   }
@@ -219,6 +576,7 @@ export class SoulEditor {
       personality: soul.personality || '',
     };
     this.rawContent = template.rawContent || '';
+    this.addToRecentTemplates(template.id);
 
     const node = this.container?.node as HTMLElement;
     if (!node) return;
@@ -230,6 +588,7 @@ export class SoulEditor {
     if (personalityInput) personalityInput.value = this.soul.personality;
 
     this.refreshGoalsList();
+    this.updatePromptPreview();
     this.notifyChange();
   }
 
@@ -246,7 +605,8 @@ export class SoulEditor {
     goalsList.innerHTML = this.soul.goals
       .map(
         (goal, i) => `
-        <div class="goal-item" data-index="${i}" style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+        <div class="goal-item" data-index="${i}" draggable="true" style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; cursor: grab; padding: 4px; border-radius: 4px; transition: background 0.15s;">
+          <span class="drag-handle" style="color: ${THEME.textMuted}; cursor: grab; font-size: 14px; padding: 0 4px;">⋮⋮</span>
           <span style="flex: 1; color: ${THEME.text}; font-size: 12px;">${this.escapeHtml(goal)}</span>
           <button class="remove-goal-btn" data-index="${i}" style="${getButtonInlineStyles('danger')}">删除</button>
         </div>
@@ -261,8 +621,73 @@ export class SoulEditor {
     return div.innerHTML;
   }
 
+  private buildPromptPreview(): string {
+    return renderTemplatePrompt(this.soul);
+  }
+
+  private updatePromptPreview(): void {
+    const node = this.container?.node as HTMLElement;
+    const previewEl = node?.querySelector('#prompt-preview') as HTMLPreElement;
+    if (previewEl) {
+      previewEl.textContent = this.buildPromptPreview();
+    }
+  }
+
   private notifyChange(): void {
     this.onChange?.(this.getSoul());
+  }
+
+  private updateUI(): void {
+    const node = this.container?.node as HTMLElement;
+    if (!node) return;
+
+    const identityInput = node.querySelector('#soul-identity') as HTMLTextAreaElement;
+    const personalityInput = node.querySelector('#soul-personality') as HTMLInputElement;
+
+    if (identityInput) identityInput.value = this.soul.identity;
+    if (personalityInput) personalityInput.value = this.soul.personality;
+    this.refreshGoalsList();
+    this.updatePromptPreview();
+  }
+
+  private showToast(message: string): void {
+    const node = this.container?.node as HTMLElement;
+    if (!node) return;
+
+    // 创建 toast 元素
+    const toast = document.createElement('div');
+    toast.textContent = message;
+    toast.style.cssText = `
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--ds-bg-tertiary, #333);
+      color: var(--ds-text-primary, #fff);
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-size: 12px;
+      z-index: 10000;
+      animation: fadeIn 0.2s ease;
+    `;
+
+    // 添加动画样式
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes fadeIn { from { opacity: 0; transform: translateX(-50%) translateY(-10px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+    `;
+    document.head.appendChild(style);
+    document.body.appendChild(toast);
+
+    // 2秒后移除
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transition = 'opacity 0.2s';
+      setTimeout(() => {
+        toast.remove();
+        style.remove();
+      }, 200);
+    }, 2000);
   }
 
   getSoul(): StratixSoulConfig {
@@ -290,6 +715,7 @@ export class SoulEditor {
     if (personalityInput) personalityInput.value = this.soul.personality;
 
     this.refreshGoalsList();
+    this.updatePromptPreview();
   }
 
   validate(): { valid: boolean; errors: string[] } {

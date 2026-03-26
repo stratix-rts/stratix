@@ -1,8 +1,10 @@
 /**
  * Agency Agents 模板配置
  *
- * 直接加载 JSON 中的 rawContent，不做解析提取
- * rawContent = soul sections + agents sections 的完整 markdown
+ * 懒加载实现：
+ * - 默认只导出元数据（无 rawContent）
+ * - 完整内容按需加载（用户点击时才加载）
+ * - 使用 Promise 缓存已加载的模板内容
  */
 
 import agencyAgentsData from '@/stratix-data/agency-agents.json';
@@ -49,49 +51,54 @@ interface AgencyAgentsData {
   agents: AgencyAgentJSON[];
 }
 
-/**
- * Convert agency agent JSON to SoulTemplate
- * 直接拼接 rawContent，不解析提取
- */
-function agencyToSoulTemplate(agent: AgencyAgentJSON): SoulTemplate {
-  // 直接拼接所有 sections 作为 rawContent
-  const allSections = [...agent.sections.soul, ...agent.sections.agents];
-  const rawContent = allSections.join('\n\n');
+// 懒加载：轻量级模板（不含 rawContent）
+interface LightweightSoulTemplate {
+  id: string;
+  name: string;
+  description: string;
+  domain: string;
+  source: 'agency';
+  emoji: string;
+  color: string;
+  vibe: string;
+  isLoaded: boolean;
+}
 
-  return {
+// 全量模板缓存（懒加载后填充）
+interface FullSoulTemplate extends SoulTemplate {
+  isLoaded: true;
+  emoji: string;
+  color: string;
+  vibe: string;
+}
+
+// 内容加载缓存
+const contentCache = new Map<string, Promise<FullSoulTemplate>>();
+
+/**
+ * 获取轻量级模板列表（不含 rawContent）
+ */
+export function getLightweightAgencyTemplates(): LightweightSoulTemplate[] {
+  const data = agencyAgentsData as AgencyAgentsData;
+  return data.agents.map(agent => ({
     id: `agency-${agent.id}`,
     name: `${agent.emoji} ${agent.name}`,
     description: agent.description,
     domain: agent.domain,
-    source: 'agency',
-    // rawContent 存储完整原文，用户可编辑
-    rawContent: rawContent,
-    // soul 字段保留但为空，用户可在编辑态填充
-    soul: {
-      identity: '',
-      goals: [],
-      personality: '',
-    },
-    // evolutionPrompt 使用默认
-    evolutionPrompt: undefined,
-    recommendedSkills: [],
-  };
+    source: 'agency' as const,
+    emoji: agent.emoji,
+    color: agent.color,
+    vibe: agent.vibe,
+    isLoaded: false,
+  }));
 }
 
 /**
- * Get all agency templates
+ * 按 domain 分组获取轻量级模板
  */
-export function getAgencySoulTemplates(): SoulTemplate[] {
-  const data = agencyAgentsData as AgencyAgentsData;
-  return data.agents.map(agencyToSoulTemplate);
-}
-
-/**
- * Get agency templates grouped by domain
- */
-export function getAgencyTemplatesByDomain(): Map<string, SoulTemplate[]> {
-  const templates = getAgencySoulTemplates();
-  const grouped = new Map<string, SoulTemplate[]>();
+export function getLightweightAgencyTemplatesByDomain(): Map<string, LightweightSoulTemplate[]> {
+  const templates = getLightweightAgencyTemplates();
+  const grouped = new Map<string, LightweightSoulTemplate[]>();
 
   for (const t of templates) {
     const domain = t.domain || 'general';
@@ -102,6 +109,65 @@ export function getAgencyTemplatesByDomain(): Map<string, SoulTemplate[]> {
   }
 
   return grouped;
+}
+
+/**
+ * 按需加载完整模板内容
+ */
+export function loadAgencyTemplate(id: string): Promise<FullSoulTemplate> {
+  // 检查缓存
+  if (contentCache.has(id)) {
+    return contentCache.get(id)!;
+  }
+
+  // 懒加载：查找模板并生成完整内容
+  const data = agencyAgentsData as AgencyAgentsData;
+  const agent = data.agents.find(a => `agency-${a.id}` === id);
+
+  if (!agent) {
+    return Promise.reject(new Error(`Template ${id} not found`));
+  }
+
+  const allSections = [...agent.sections.soul, ...agent.sections.agents];
+  const rawContent = allSections.join('\n\n');
+
+  const fullTemplate: FullSoulTemplate = {
+    id: `agency-${agent.id}`,
+    name: `${agent.emoji} ${agent.name}`,
+    description: agent.description,
+    domain: agent.domain,
+    source: 'agency',
+    emoji: agent.emoji,
+    color: agent.color,
+    vibe: agent.vibe,
+    rawContent: rawContent,
+    soul: {
+      identity: '',
+      goals: [],
+      personality: '',
+    },
+    evolutionPrompt: undefined,
+    recommendedSkills: [],
+    isLoaded: true,
+  };
+
+  const promise = Promise.resolve(fullTemplate);
+  contentCache.set(id, promise);
+  return promise;
+}
+
+/**
+ * 预加载多个模板（批量）
+ */
+export function preloadAgencyTemplates(ids: string[]): Promise<FullSoulTemplate[]> {
+  return Promise.all(ids.map(id => loadAgencyTemplate(id)));
+}
+
+/**
+ * 清除缓存
+ */
+export function clearAgencyTemplateCache(): void {
+  contentCache.clear();
 }
 
 /**
