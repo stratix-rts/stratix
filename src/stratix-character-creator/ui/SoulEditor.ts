@@ -37,30 +37,63 @@ const THEME = {
 
 const MAX_HISTORY_SIZE = 50;
 
-// 目标自动补全建议库
-const GOAL_SUGGESTIONS = [
+// 目标自动补全建议库（按领域分类）
+interface GoalSuggestion {
+  text: string;
+  domains: string[]; // 适用的领域
+}
+
+const GOAL_SUGGESTIONS: GoalSuggestion[] = [
   // 通用目标
-  '理解用户需求，提供精准服务',
-  '持续学习，提升专业知识储备',
-  '及时响应，保持高效沟通',
-  '主动思考，提出建设性建议',
-  '总结经验，优化工作流程',
+  { text: '理解用户需求，提供精准服务', domains: ['general', 'product', 'design'] },
+  { text: '持续学习，提升专业知识储备', domains: ['general', 'engineering', 'academic'] },
+  { text: '及时响应，保持高效沟通', domains: ['general', 'support', 'sales'] },
+  { text: '主动思考，提出建设性建议', domains: ['general', 'product', 'project-management'] },
+  { text: '总结经验，优化工作流程', domains: ['general', 'engineering', 'project-management'] },
   // 开发相关
-  '编写高质量、可维护的代码',
-  '进行代码审查，确保代码质量',
-  '优化性能，提升系统效率',
-  '编写技术文档，记录关键信息',
-  '调试并修复问题，确保功能稳定',
-  // 文案相关
-  '根据需求撰写吸引人的文案',
-  '优化文案结构，提升可读性',
-  '校对文字，确保准确无误',
-  '分析数据，生成有洞察的报告',
-  // 分析相关
-  '收集并整理相关数据',
-  '分析数据趋势，提取关键洞察',
-  '制作可视化图表，帮助理解',
-  '撰写分析报告，提出建议',
+  { text: '编写高质量、可维护的代码', domains: ['engineering', 'game-development', 'testing'] },
+  { text: '进行代码审查，确保代码质量', domains: ['engineering', 'testing'] },
+  { text: '优化性能，提升系统效率', domains: ['engineering', 'game-development'] },
+  { text: '编写技术文档，记录关键信息', domains: ['engineering', 'academic', 'technical-writing'] },
+  { text: '调试并修复问题，确保功能稳定', domains: ['engineering', 'testing', 'support'] },
+  { text: '遵循开发规范，保证代码一致性', domains: ['engineering', 'game-development'] },
+  { text: '重构遗留代码，提升可读性', domains: ['engineering'] },
+  // 设计相关
+  { text: '设计用户友好的界面和体验', domains: ['design', 'product'] },
+  { text: '保持设计一致性和品牌调性', domains: ['design', 'marketing'] },
+  { text: '进行用户测试，收集反馈迭代', domains: ['design', 'product', 'testing'] },
+  { text: '创建可复用的设计组件库', domains: ['design', 'engineering'] },
+  // 市场营销相关
+  { text: '分析市场趋势，制定营销策略', domains: ['marketing', 'product', 'sales'] },
+  { text: '创作吸引人的营销内容', domains: ['marketing', 'paid-media'] },
+  { text: '监测营销效果，优化投放', domains: ['marketing', 'paid-media'] },
+  { text: '建立品牌认知，提升影响力', domains: ['marketing', 'sales'] },
+  // 销售相关
+  { text: '理解客户需求，提供解决方案', domains: ['sales', 'support'] },
+  { text: '维护客户关系，提升满意度', domains: ['sales', 'support'] },
+  { text: '分析销售数据，挖掘增长机会', domains: ['sales', 'marketing'] },
+  // 产品相关
+  { text: '分析用户反馈，持续优化产品', domains: ['product', 'design', 'engineering'] },
+  { text: '制定产品路线图，规划迭代', domains: ['product', 'project-management'] },
+  { text: '进行竞品分析，保持竞争优势', domains: ['product', 'marketing'] },
+  { text: '定义产品需求，撰写 PRD', domains: ['product', 'design'] },
+  // 项目管理相关
+  { text: '制定项目计划，控制进度', domains: ['project-management'] },
+  { text: '协调资源，确保项目按时交付', domains: ['project-management'] },
+  { text: '识别项目风险，制定应对策略', domains: ['project-management'] },
+  // 数据分析相关
+  { text: '收集并整理相关数据', domains: ['analytics', 'marketing', 'product'] },
+  { text: '分析数据趋势，提取关键洞察', domains: ['analytics', 'product', 'marketing'] },
+  { text: '制作可视化图表，帮助理解', domains: ['analytics', 'product', 'marketing'] },
+  { text: '撰写分析报告，提出建议', domains: ['analytics', 'product', 'marketing'] },
+  // 测试相关
+  { text: '编写测试用例，覆盖关键场景', domains: ['testing', 'engineering'] },
+  { text: '执行测试，发现并报告问题', domains: ['testing', 'engineering'] },
+  { text: '验证修复，确保问题不再现', domains: ['testing', 'engineering'] },
+  // 客户支持相关
+  { text: '快速响应客户问题，解决疑虑', domains: ['support', 'sales'] },
+  { text: '记录问题反馈，推动产品改进', domains: ['support', 'product'] },
+  { text: '提供技术支持，提升用户体验', domains: ['support', 'engineering'] },
 ];
 
 export class SoulEditor {
@@ -512,9 +545,12 @@ export class SoulEditor {
         return;
       }
 
+      // 根据当前选择的领域过滤建议
       const matches = GOAL_SUGGESTIONS.filter(g =>
-        g.toLowerCase().includes(q) && !this.soul.goals.includes(g)
-      ).slice(0, 5);
+        g.text.toLowerCase().includes(q) &&
+        !this.soul.goals.includes(g.text) &&
+        (currentDomain === 'all' || g.domains.includes(currentDomain))
+      ).slice(0, 6);
 
       if (matches.length === 0) {
         goalSuggestions.style.display = 'none';
@@ -522,12 +558,12 @@ export class SoulEditor {
       }
 
       goalSuggestions.innerHTML = matches.map(g =>
-        `<div class="goal-suggestion" data-goal="${this.escapeHtml(g)}" style="
+        `<div class="goal-suggestion" data-goal="${this.escapeHtml(g.text)}" style="
           padding: 8px 12px;
           cursor: pointer;
           font-size: 12px;
           color: ${THEME.text};
-        ">${this.escapeHtml(g)}</div>`
+        ">${this.escapeHtml(g.text)}</div>`
       ).join('');
 
       goalSuggestions.style.display = 'block';
