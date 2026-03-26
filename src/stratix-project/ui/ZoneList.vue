@@ -8,7 +8,21 @@
       </StratixButton>
     </div>
 
-    <div v-if="zones.length === 0" class="zone-list__empty">
+    <div v-if="zones.length > 3" class="zone-list__search">
+      <input
+        v-model="searchQuery"
+        type="text"
+        class="zone-list__search-input"
+        placeholder="Search zones..."
+      />
+    </div>
+
+    <div v-if="filteredZones.length === 0 && searchQuery" class="zone-list__empty">
+      <div class="zone-list__empty-icon">🔍</div>
+      <p class="zone-list__empty-text">No zones match "{{ searchQuery }}"</p>
+    </div>
+
+    <div v-else-if="filteredZones.length === 0" class="zone-list__empty">
       <div class="zone-list__empty-icon">📁</div>
       <p class="zone-list__empty-text">No zones yet</p>
       <p class="zone-list__empty-hint">Create a zone to organize your project</p>
@@ -16,7 +30,7 @@
 
     <div v-else class="zone-list__grid">
       <div
-        v-for="zone in zones"
+        v-for="zone in filteredZones"
         :key="zone.id"
         class="zone-card"
         :class="{ 'zone-card--active': activeZoneId === zone.id }"
@@ -50,6 +64,7 @@
 </template>
 
 <script setup lang="ts">
+import { ref, computed } from 'vue';
 import StratixButton from '@/components/ui/StratixButton.vue';
 import type { Zone } from '../types';
 
@@ -58,12 +73,25 @@ interface Props {
   activeZoneId?: string;
 }
 
-defineProps<Props>();
+const props = defineProps<Props>();
 
 const emit = defineEmits<{
   'zone-click': [zone: Zone];
   'create-zone': [];
 }>();
+
+const searchQuery = ref('');
+
+const filteredZones = computed(() => {
+  if (!searchQuery.value.trim()) {
+    return props.zones;
+  }
+  const query = searchQuery.value.toLowerCase();
+  return props.zones.filter(zone =>
+    zone.title?.toLowerCase().includes(query) ||
+    zone.prompt?.toLowerCase().includes(query)
+  );
+});
 
 const handleZoneClick = (zone: Zone) => {
   emit('zone-click', zone);
@@ -108,6 +136,25 @@ const formatTime = (timestamp: number): string => {
   align-items: center;
   justify-content: space-between;
   padding: 0 4px;
+}
+
+.zone-list__search {
+  padding: 0 4px;
+}
+
+.zone-list__search-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
+  font-size: 14px;
+  background: var(--ds-bg-secondary);
+  color: var(--ds-text-primary);
+}
+
+.zone-list__search-input:focus {
+  outline: none;
+  border-color: var(--ds-border-focus);
 }
 
 .zone-list__title {
