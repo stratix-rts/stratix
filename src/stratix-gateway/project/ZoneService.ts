@@ -154,6 +154,29 @@ export class ZoneService {
     return zoneRepository.permanentlyDeleteZone(zoneId);
   }
 
+  /**
+   * 清空回收站（永久删除项目中所有软删除的 Zone）
+   */
+  public async emptyTrash(projectId: string): Promise<{ deleted: number; failed: number }> {
+    await this.ensureInitialized();
+
+    const deletedZones = zoneRepository.getDeletedZones(projectId);
+    let deleted = 0;
+    let failed = 0;
+
+    for (const zone of deletedZones) {
+      try {
+        zoneRepository.permanentlyDeleteZone(zone.id);
+        deleted++;
+      } catch (error) {
+        console.warn(`[ZoneService] Failed to permanently delete zone ${zone.id}:`, error);
+        failed++;
+      }
+    }
+
+    return { deleted, failed };
+  }
+
   // Zone Members
   public async addMember(zoneId: string, agentId: string): Promise<Zone> {
     await this.ensureInitialized();

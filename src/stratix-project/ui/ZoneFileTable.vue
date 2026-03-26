@@ -84,6 +84,13 @@
           </svg>
           刷新
         </StratixButton>
+        <StratixButton size="small" variant="ghost" @click="handleExportCSV" title="导出 CSV">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+        </StratixButton>
       </div>
     </div>
 
@@ -477,6 +484,50 @@ const handleFilterChange = () => {
 // 刷新
 const handleRefresh = () => {
   emit('refresh');
+};
+
+// 导出 CSV
+const handleExportCSV = () => {
+  const files = filteredFiles.value;
+  if (files.length === 0) {
+    alert('没有数据可导出');
+    return;
+  }
+
+  // CSV 表头
+  const headers = ['文件名', '类型', '来源', '路径/URL', '最后刷新'];
+
+  // CSV 数据行
+  const rows = files.map((file) => [
+    file.name || '',
+    file.fileType || '',
+    file.sourceType === 'local' ? '本地' : 'URL',
+    file.source || '',
+    file.lastFetched ? new Date(file.lastFetched).toLocaleString('zh-CN') : '从未',
+  ]);
+
+  // 转义 CSV 值
+  const escapeCSV = (val: string) => {
+    if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+      return `"${val.replace(/"/g, '""')}"`;
+    }
+    return val;
+  };
+
+  // 生成 CSV 内容
+  const csvContent = [
+    headers.map(escapeCSV).join(','),
+    ...rows.map((row) => row.map((cell) => escapeCSV(String(cell))).join(',')),
+  ].join('\n');
+
+  // 下载文件
+  const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `files_export_${Date.now()}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
 };
 
 // 预览文件
