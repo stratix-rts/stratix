@@ -187,6 +187,7 @@ export interface StratixSkillConfig {
   name: string;
   description: string;
   parameters: StratixSkillParameter[];
+  executor?: string;                    // 执行器类型: 'fs' | 'bash' | 'http' | 'builtin'（Agent运行时需要）
   executeScript?: string;
   prompt?: string;
 }
@@ -199,7 +200,9 @@ export interface StratixSkillParameter {
   name: string;
   type: 'string' | 'number' | 'boolean' | 'object';
   required: boolean;
-  defaultValue: any;
+  defaultValue?: any;                  // 原始字段（保留兼容性）
+  default?: any;                      // 标准字段名
+  description?: string;                // 参数描述
 }
 
 /**
@@ -247,6 +250,27 @@ export interface StratixAgentConfig {
 }
 
 /**
+ * 模板消费态响应 (轻量，只含 renderedPrompt)
+ * 用于 Agent 运行时消费，最小化数据传输
+ */
+export interface TemplateConsumptionResponse {
+  agentId: string;
+  name: string;
+  renderedPrompt: string;
+  recommendedSkills?: string[];
+}
+
+/**
+ * 模板编辑态响应 (完整数据)
+ * 用于 UI 编辑，包含所有可编辑字段
+ */
+export interface TemplateEditResponse extends StratixAgentConfig {
+  renderedPrompt?: string;  // 渲染后的最终提示词
+  rawContent?: string;       // Raw markdown (agency 模板)
+  source?: 'local' | 'agency';
+}
+
+/**
  * 指令数据
  */
 export interface StratixCommandData {
@@ -283,7 +307,19 @@ export type StratixStateSyncEventType =
   | 'orchestration:task_assigned'
   | 'orchestration:task_completed'
   | 'orchestration:agent_status_changed'
-  | 'orchestration:message_sent';
+  | 'orchestration:message_sent'
+  // Zone events
+  | 'stratix:zone_updated'
+  | 'stratix:zone_file_added'
+  | 'stratix:zone_file_removed'
+  | 'stratix:zone_member_joined'
+  | 'stratix:zone_member_left'
+  | 'stratix:zone_deleted'
+  | 'stratix:zone_task_created'
+  | 'stratix:zone_task_updated'
+  | 'stratix:zone_task_deleted'
+  | 'stratix:zone_task_claimed'
+  | 'stratix:zone_message_added';
 
 /**
  * 前端操作事件（Stratix RTS / 指令面板 → 事件总线）
@@ -337,4 +373,53 @@ export interface StratixStateSyncEvent {
  */
 export interface StratixCreateAgentRequest {
   config: StratixAgentConfig;
+}
+
+/**
+ * Zone 信息
+ */
+export interface ZoneInfo {
+  zoneId: string;
+  name: string;
+  title?: string;
+  prompt?: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  agentCount: number;
+  status?: string;
+}
+
+/**
+ * RTS 移动 API - Agent 自主移动接口
+ *
+ * Agent 可以调用此 API 在 RTS 场景中移动自己
+ * 移动命令通过 WebSocket 转发到前端 RTS 场景执行
+ */
+export interface RTSMoveAPI {
+  /**
+   * 将 Agent 移动到指定 Zone
+   * @param zoneId 目标 Zone ID
+   * @returns Promise<void>
+   */
+  moveTo(zoneId: string): Promise<void>;
+
+  /**
+   * 让 Agent 离开当前 Zone
+   * @returns Promise<void>
+   */
+  leaveCurrentZone(): Promise<void>;
+
+  /**
+   * 获取 Agent 当前所在的 Zone
+   * @returns Zone ID 或 null（如果不在任何 Zone 中）
+   */
+  getCurrentZone(): string | null;
+
+  /**
+   * 获取所有 Zone 列表
+   * @returns ZoneInfo 数组
+   */
+  getZoneList(): ZoneInfo[];
 }
