@@ -1,8 +1,20 @@
-import { ref, type Ref } from 'vue';
+import { ref, type Ref, isRef } from 'vue';
 import { loadApiKey } from '@/stratix-character-creator/config/providerConfig';
 import { renderMarkdown } from '@/stratix-core/utils/MarkdownRenderer';
 
 export type MessageStatus = 'pending' | 'confirmed' | 'failed';
+
+export interface SkillExecution {
+  id: string;
+  skillId: string;
+  skillName: string;
+  status: 'pending' | 'success' | 'error';
+  result?: any;
+  error?: string;
+  executionTime: number;
+  startedAt?: Date;
+  completedAt?: Date;
+}
 
 export interface ChatMessage {
   id: string;
@@ -14,6 +26,7 @@ export interface ChatMessage {
   status: MessageStatus;
   retryCount?: number;
   error?: string;
+  skillExecutions?: SkillExecution[];
 }
 
 export interface UseChatOptions {
@@ -24,7 +37,9 @@ export interface UseChatOptions {
   persistMessages?: boolean;
   maxHistory?: number;
   agentName?: string;
+  useToolUse?: Ref<boolean> | boolean;
   onMessageRender?: (msg: ChatMessage, isNew: boolean) => void;
+  onSkillExecuting?: (skillId: string, skillName: string) => void;
 }
 
 export interface UseChatReturn {
@@ -54,7 +69,9 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     persistMessages = true,
     maxHistory = 20,
     agentName = 'Agent',
-    onMessageRender
+    useToolUse = false,
+    onMessageRender,
+    onSkillExecuting
   } = options;
 
   const messages = ref<ChatMessage[]>([]);
@@ -202,6 +219,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
         }));
 
       // 3. 调用 chat API
+      // useToolUse 可以是 Ref 或 boolean，需要在调用时解析
+      const toolUseEnabled = isRef(useToolUse) ? useToolUse.value : useToolUse;
       const response = await fetch('/api/stratix/agent/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -210,13 +229,32 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           config: chatConfig,
           message: messageText,
           systemPrompt,
-          history
+          history,
+          useToolUse: toolUseEnabled
         }),
       });
 
       const result = await response.json();
 
       if (result.code === 200 && result.data?.content) {
+        // 处理技能执行状态
+        const skillExecutions: SkillExecution[] = [];
+        if (result.data.skillExecutions && result.data.skillExecutions.length > 0) {
+          for (const se of result.data.skillExecutions) {
+            const execution: SkillExecution = {
+              id: se.id || `skill-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              skillId: se.skillId,
+              skillName: se.skillId,
+              status: se.error ? 'error' : 'success',
+              result: se.result,
+              error: se.error,
+              executionTime: se.executionTime || 0,
+              completedAt: new Date()
+            };
+            skillExecutions.push(execution);
+          }
+        }
+
         // 保存 AI 回复到后端
         let aiMessageId = `agent-${Date.now()}`;
 
@@ -242,7 +280,8 @@ export function useChat(options: UseChatOptions): UseChatReturn {
           content: renderMarkdown(result.data.content),
           timestamp: new Date(),
           isUser: false,
-          status: 'confirmed'
+          status: 'confirmed',
+          skillExecutions: skillExecutions.length > 0 ? skillExecutions : undefined
         };
 
         messages.value.push(aiMessage);

@@ -17,6 +17,10 @@ const emit = defineEmits<{
 
 const chatMessagesRef = ref<HTMLElement | null>(null);
 const showProviderSettings = ref(false);
+const useToolUse = ref(false);
+const showSkillHistory = ref(false);
+const skillHistory = ref<any[]>([]);
+const loadingSkillHistory = ref(false);
 
 // Provider settings modal
 const showProviderSettingsRef = ref(false);
@@ -69,6 +73,7 @@ const {
   persistMessages: true,
   maxHistory: 20,
   agentName: computed(() => agent.value?.name || 'Agent').value,
+  useToolUse: useToolUse.value,
   onMessageRender: () => {
     scrollToBottom();
   }
@@ -100,6 +105,34 @@ const loadMoreHistory = () => {
     loadHistory(true);
   }
 };
+
+const loadSkillHistory = async () => {
+  if (!agent.value?.agentId) return;
+  loadingSkillHistory.value = true;
+  try {
+    const response = await fetch(`/api/skills/audit/${agent.value.agentId}?limit=20`);
+    const result = await response.json();
+    if (result.success) {
+      skillHistory.value = result.data || [];
+    }
+  } catch (error) {
+    console.error('Failed to load skill history:', error);
+  } finally {
+    loadingSkillHistory.value = false;
+  }
+};
+
+const toggleSkillHistory = () => {
+  showSkillHistory.value = !showSkillHistory.value;
+  if (showSkillHistory.value && skillHistory.value.length === 0) {
+    loadSkillHistory();
+  }
+};
+
+const formatTime = (ms: number) => {
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+};
 </script>
 
 <template>
@@ -114,6 +147,32 @@ const loadMoreHistory = () => {
     <template #header>
       <h3 class="stratix-modal__title">{{ chatTitle }}</h3>
       <div class="header-actions">
+        <label class="tool-use-toggle" title="启用工具调用 (Tool Use)">
+          <input type="checkbox" v-model="useToolUse" />
+          <span class="toggle-label">🔧</span>
+        </label>
+        <div class="skill-history-wrapper">
+          <button class="settings-btn" @click="toggleSkillHistory" title="技能历史">
+            📋
+          </button>
+          <div v-if="showSkillHistory" class="skill-history-dropdown">
+            <div class="skill-history-header">
+              <span>技能执行历史</span>
+              <button class="close-btn" @click="showSkillHistory = false">✕</button>
+            </div>
+            <div class="skill-history-content">
+              <div v-if="loadingSkillHistory" class="loading">加载中...</div>
+              <div v-else-if="skillHistory.length === 0" class="empty">暂无历史记录</div>
+              <div v-else class="skill-list">
+                <div v-for="log in skillHistory" :key="log.id" class="skill-history-item">
+                  <span class="skill-icon">{{ log.error ? '❌' : '✅' }}</span>
+                  <span class="skill-name">{{ log.skillId }}</span>
+                  <span class="skill-time">{{ formatTime(log.executionTime) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
         <button class="settings-btn" @click="showProviderSettings = true" title="Provider Settings">
           ⚙️
         </button>
@@ -165,6 +224,19 @@ const loadMoreHistory = () => {
             </div>
             <div v-if="msg.error" class="message-error">{{ msg.error }}</div>
             <div class="message-text" v-html="msg.content"></div>
+            <div v-if="msg.skillExecutions && msg.skillExecutions.length > 0" class="skill-executions">
+              <div class="skill-executions-title">🔧 使用的工具：</div>
+              <div
+                v-for="skill in msg.skillExecutions"
+                :key="skill.id"
+                class="skill-execution-item"
+                :class="`skill-${skill.status}`"
+              >
+                <span class="skill-icon">{{ skill.status === 'success' ? '✅' : skill.status === 'error' ? '❌' : '⏳' }}</span>
+                <span class="skill-name">{{ skill.skillName }}</span>
+                <span class="skill-time" v-if="skill.executionTime">({{ skill.executionTime }}ms)</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -230,6 +302,127 @@ const loadMoreHistory = () => {
 
 .settings-btn:hover {
   background: var(--ds-bg-tertiary);
+}
+
+.skill-history-wrapper {
+  position: relative;
+}
+
+.skill-history-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  width: 280px;
+  max-height: 400px;
+  background: var(--ds-bg-secondary);
+  border: 1px solid var(--ds-border-default);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+.skill-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  border-bottom: 1px solid var(--ds-border-default);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ds-text-primary);
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--ds-text-muted);
+  padding: 4px;
+}
+
+.close-btn:hover {
+  color: var(--ds-text-primary);
+}
+
+.skill-history-content {
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.loading, .empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--ds-text-muted);
+  font-size: 13px;
+}
+
+.skill-list {
+  padding: 8px;
+}
+
+.skill-history-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.skill-history-item:hover {
+  background: var(--ds-bg-tertiary);
+}
+
+.skill-history-item .skill-icon {
+  font-size: 12px;
+}
+
+.skill-history-item .skill-name {
+  flex: 1;
+  color: var(--ds-text-primary);
+}
+
+.skill-history-item .skill-time {
+  color: var(--ds-text-muted);
+  font-size: 11px;
+}
+
+.tool-use-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s ease;
+}
+
+.tool-use-toggle:hover {
+  background: var(--ds-bg-tertiary);
+}
+
+.tool-use-toggle input {
+  display: none;
+}
+
+.toggle-label {
+  font-size: 16px;
+  opacity: 0.5;
+  transition: all 0.15s ease;
+  filter: grayscale(100%);
+}
+
+.tool-use-toggle:has(input:checked) {
+  background: var(--ds-accent);
+}
+
+.tool-use-toggle:has(input:checked) .toggle-label {
+  opacity: 1;
+  filter: grayscale(0%);
 }
 
 .chat-messages {
@@ -357,6 +550,50 @@ const loadMoreHistory = () => {
 .message-user .message-text {
   background: var(--ds-accent);
   color: white;
+}
+
+.skill-executions {
+  margin-top: 8px;
+  padding: 8px;
+  background: var(--ds-bg-primary);
+  border-radius: 6px;
+  border: 1px solid var(--ds-border-default);
+}
+
+.skill-executions-title {
+  font-size: 11px;
+  color: var(--ds-text-muted);
+  margin-bottom: 6px;
+}
+
+.skill-execution-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  font-size: 12px;
+}
+
+.skill-icon {
+  font-size: 12px;
+}
+
+.skill-name {
+  color: var(--ds-text-primary);
+  font-weight: 500;
+}
+
+.skill-time {
+  color: var(--ds-text-muted);
+  font-size: 11px;
+}
+
+.skill-success {
+  color: var(--ds-success);
+}
+
+.skill-error {
+  color: #ff4d4f;
 }
 
 .chat-input {

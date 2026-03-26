@@ -39,6 +39,7 @@ export interface SkillDefinition {
   parameters: SkillParameter[];
   prompt?: string;
   executor: string;
+  timeout?: number;  // 超时时间（毫秒），默认使用全局配置
 }
 
 export interface SkillParameter {
@@ -63,6 +64,7 @@ export interface SkillResult {
   error?: string;
   executionTime: number;
   preview?: SkillResultPreview;  // 中间结果预览
+  cached?: boolean;  // 是否来自缓存
 }
 
 /**

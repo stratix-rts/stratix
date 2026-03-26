@@ -256,7 +256,7 @@ export class ToolUseLoop {
         tool_results: toolResults.map(tr => ({
           type: 'tool_result' as const,
           tool_use_id: tr.id,
-          content: tr.error || JSON.stringify(tr.result)
+          content: tr.error || (typeof tr.result === 'string' ? tr.result : JSON.stringify(tr.result, null, 2))
         }))
       };
       messages.push(toolResultMsg);
