@@ -329,7 +329,22 @@ const selectedTasks = ref<ZoneTask[]>([]);
 const taskColumns: VxeGridPropTypes.Columns = [
   { type: 'checkbox', width: 50 },
   { type: 'seq', width: 50, title: '#' },
-  { field: 'status', title: '状态', width: 120, slots: { default: 'statusSlot' }, sortable: true },
+  {
+    field: 'status',
+    title: '状态',
+    width: 120,
+    slots: { default: 'statusSlot' },
+    sortable: true,
+    filters: [
+      { label: '全部', value: '' },
+      { label: 'Pending', value: 'pending' },
+      { label: 'In Progress', value: 'in_progress' },
+      { label: 'Done', value: 'done' },
+    ],
+    filterMethod: ({ row, cellValue }) => {
+      return cellValue === '' || row.status === cellValue;
+    }
+  },
   { field: 'title', title: '任务名称', minWidth: 200, slots: { default: 'titleSlot' }, sortable: true },
   { field: 'assignee', title: '负责人', width: 120, slots: { default: 'assigneeSlot' } },
   { field: 'createdAt', title: '创建时间', width: 150, slots: { default: 'createdAtSlot' }, sortable: true },
