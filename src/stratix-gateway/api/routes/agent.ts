@@ -4,6 +4,7 @@ import { StratixRequestHelper } from '../../../stratix-core/utils';
 import { StratixConfigValidator } from '../../../stratix-core/utils';
 import { ExecutorFactory } from '../../../stratix-core/executor';
 import type { AgentBackendType, OpenClawConfig, StratixDirectConfig } from '../../../stratix-core/stratix-protocol';
+import { StratixAgent } from '../../../stratix-agent';
 
 const router = Router();
 const requestHelper = StratixRequestHelper.getInstance();
@@ -180,7 +181,7 @@ router.post('/test-connection', async (req: Request, res: Response) => {
 
 router.post('/chat', async (req: Request, res: Response) => {
   try {
-    const { backendType, config, message, systemPrompt, history, soul, rules, skillTree } = req.body;
+    const { backendType, config, message, systemPrompt, history, soul, rules, skillTree, useToolUse } = req.body;
 
     if (!message) {
       res.json(requestHelper.badRequest('Message is required'));
@@ -192,6 +193,48 @@ router.post('/chat', async (req: Request, res: Response) => {
       return;
     }
 
+    // 构建 soul 对象：优先使用结构化的 soul 配置，否则回退到 systemPrompt
+    const agentSoul = soul || { identity: systemPrompt || '', goals: [], personality: '' };
+
+    // 当 useToolUse 为 true 且 backendType 为 stratix 时，使用完整的 StratixAgent
+    if (useToolUse && backendType === 'stratix' && config) {
+      try {
+        const agentConfig = {
+          agentId: 'chat-agent-' + Date.now(),
+          name: 'Chat Agent',
+          type: 'custom' as const,
+          provider: config.provider,
+          model: config.model,
+          apiKey: config.apiKey,
+          endpoint: config.endpoint,
+          temperature: config.temperature ?? 0.7,
+          maxTokens: config.maxTokens ?? 4096,
+          maxShortTerm: config.maxShortTerm ?? 20,
+          enableLongTerm: config.enableLongTerm ?? false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        const agent = new StratixAgent(agentConfig, agentSoul);
+        agent.enableToolUse(true);
+
+        // sessionId 由 chat 方法内部处理
+        const result = await agent.chat(message, { useToolUse: true });
+
+        res.json(requestHelper.success({
+          content: result.response,
+          skillExecutions: result.skillExecutions,
+          usage: result.usage
+        }, 'Message sent'));
+
+        return;
+      } catch (error) {
+        console.error('[Chat API] StratixAgent error:', error);
+        // 失败时回退到原来的 executor
+      }
+    }
+
+    // 原来的逻辑：使用 executor
     let chatConfig: { backendType: AgentBackendType; stratixConfig?: StratixDirectConfig; openClawConfig?: OpenClawConfig };
 
     if (backendType === 'stratix') {
@@ -208,9 +251,6 @@ router.post('/chat', async (req: Request, res: Response) => {
 
     const executorFactory = ExecutorFactory.getInstance();
     const executor = executorFactory.getExecutorByType(chatConfig.backendType);
-
-    // 构建 soul 对象：优先使用结构化的 soul 配置，否则回退到 systemPrompt
-    const agentSoul = soul || { identity: systemPrompt || '', goals: [], personality: '' };
 
     const mockAgentConfig = {
       agentId: 'chat-agent',
