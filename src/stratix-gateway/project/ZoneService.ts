@@ -22,6 +22,16 @@ export class ZoneService {
   private cacheExpiry: number = 3600000; // 1小时
   private maxFileSize: number = 10 * 1024 * 1024; // 10MB
   private allowedBasePaths: string[] = [];
+  // URL 抓取安全配置
+  private allowedUrlPatterns: RegExp[] = []; // 允许的 URL 正则模式
+  private blockedIpRanges: string[] = [
+    '127.0.0.0/8',   // localhost
+    '10.0.0.0/8',    // private
+    '172.16.0.0/12', // private
+    '192.168.0.0/16', // private
+    '169.254.0.0/16', // link-local
+    '0.0.0.0/8'      // current network
+  ];
 
   public async initialize(): Promise<void> {
     if (this.initialized) return;
@@ -36,6 +46,8 @@ export class ZoneService {
     cacheExpiry?: number;
     maxFileSize?: number;
     allowedBasePaths?: string[];
+    allowedUrlPatterns?: string[];
+    blockedIpRanges?: string[];
   }): void {
     if (options.cacheExpiry !== undefined) {
       this.cacheExpiry = options.cacheExpiry;
@@ -46,10 +58,18 @@ export class ZoneService {
     if (options.allowedBasePaths !== undefined) {
       this.allowedBasePaths = options.allowedBasePaths;
     }
+    if (options.allowedUrlPatterns !== undefined) {
+      this.allowedUrlPatterns = options.allowedUrlPatterns.map(p => new RegExp(p));
+    }
+    if (options.blockedIpRanges !== undefined) {
+      this.blockedIpRanges = options.blockedIpRanges;
+    }
     console.log('[ZoneService] File cache configured:', {
       cacheExpiry: this.cacheExpiry,
       maxFileSize: this.maxFileSize,
-      allowedBasePaths: this.allowedBasePaths
+      allowedBasePaths: this.allowedBasePaths,
+      allowedUrlPatterns: this.allowedUrlPatterns.map(r => r.source),
+      blockedIpRanges: this.blockedIpRanges
     });
   }
 
@@ -441,12 +461,22 @@ export class ZoneService {
     return content ?? null;
   }
 
-  public async refreshFile(zoneId: string, fileId: string): Promise<ZoneFile> {
+  /**
+   * Refresh file content from source
+   * @param force If true, skip cache expiry check and always refresh
+   */
+  public async refreshFile(zoneId: string, fileId: string, force: boolean = false): Promise<ZoneFile> {
     await this.ensureInitialized();
 
     const file = zoneRepository.getFile(fileId);
     if (!file || file.zoneId !== zoneId) {
       throw new Error(`File not found: ${fileId} in zone ${zoneId}`);
+    }
+
+    // Check cache expiry unless force is true
+    if (!force && !this.shouldRefreshFile(file)) {
+      console.log(`[ZoneService] File ${fileId} cache still valid, skipping refresh`);
+      return file;
     }
 
     let content: string | undefined;
@@ -1223,13 +1253,67 @@ export class ZoneService {
     });
   }
 
-  // Helper: Fetch URL content
+  // Helper: Fetch URL content with SSRF protection
   private async fetchUrl(url: string): Promise<string> {
+    // Check for blocked protocols
+    const parsedUrl = new URL(url);
+    if (parsedUrl.protocol === 'file:') {
+      throw new Error('File protocol not allowed for URL fetch');
+    }
+
+    // If allowed patterns are configured, check against them
+    if (this.allowedUrlPatterns.length > 0) {
+      const isAllowed = this.allowedUrlPatterns.some(pattern => pattern.test(url));
+      if (!isAllowed) {
+        throw new Error(`URL not in allowed patterns: ${url}`);
+      }
+    }
+
+    // Check for private IP ranges (basic SSRF protection)
+    // Note: This is a simplified check. For production, use a proper IP library.
+    const hostname = parsedUrl.hostname;
+    if (this.isPrivateIp(hostname)) {
+      throw new Error(`Private IP not allowed: ${hostname}`);
+    }
+
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
     return response.text();
+  }
+
+  // Helper: Check if hostname is a private IP
+  private isPrivateIp(hostname: string): boolean {
+    // Check for IPv4
+    const ipv4Pattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+    if (ipv4Pattern.test(hostname)) {
+      const parts = hostname.split('.').map(Number);
+      const ip = parts[0] * 256 * 256 * 256 + parts[1] * 256 * 256 + parts[2] * 256 + parts[3];
+
+      for (const cidr of this.blockedIpRanges) {
+        if (this.ipInCidr(hostname, cidr)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // Helper: Check if IP is in CIDR range (simplified)
+  private ipInCidr(ip: string, cidr: string): boolean {
+    const [range, bitsStr] = cidr.split('/');
+    const bits = parseInt(bitsStr, 10);
+
+    const ipParts = ip.split('.').map(Number);
+    const rangeParts = range.split('.').map(Number);
+
+    const ipNum = (ipParts[0] << 24) | (ipParts[1] << 16) | (ipParts[2] << 8) | ipParts[3];
+    const rangeNum = (rangeParts[0] << 24) | (rangeParts[1] << 16) | (rangeParts[2] << 8) | rangeParts[3];
+
+    const mask = bits === 0 ? 0 : ~((1 << (32 - bits)) - 1);
+
+    return (ipNum & mask) === (rangeNum & mask);
   }
 
   // Helper: Scan local folder
