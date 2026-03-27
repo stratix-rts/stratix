@@ -3,7 +3,7 @@ import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { createStratixRTS } from './stratix-rts';
 import { StratixEventBus, StratixAgentConfig, StratixFrontendOperationEvent } from './stratix-core';
 import MainLayout from './components/MainLayout.vue';
-import CharacterCreatorModal from './components/CharacterCreatorModal.vue';
+import CharacterCreatorModal from './components/CharacterCreatorModalV2.vue';
 import AgentChatModal from './components/AgentChatModal.vue';
 import ProjectConfigPanel from './stratix-project/ui/ProjectConfigPanel.vue';
 import ZonePanel from './stratix-project/ui/ZonePanel.vue';
@@ -305,9 +305,22 @@ onMounted(async () => {
           console.log('[App] Zone double-clicked:', zoneId);
 
           try {
-            // Fetch zone data - projectId in URL is ignored by backend (only zoneId is used)
-            const response = await fetch(`/api/zones/${zoneId}`);
-            const result = await response.json();
+            // First try to fetch zone directly
+            let response = await fetch(`/api/zones/${zoneId}`);
+            let result = await response.json();
+
+            // If not found, it might be a projectId - try to get zone context via projectId
+            if (!result.success || !result.zone) {
+              console.log('[App] Zone not found directly, trying project lookup:', zoneId);
+              response = await fetch(`/api/zones?projectId=${zoneId}`);
+              result = await response.json();
+
+              if (result.success && result.zones && result.zones.length > 0) {
+                // Use the first zone context found
+                result.zone = result.zones[0];
+                console.log('[App] Found zone via project lookup:', result.zone.id);
+              }
+            }
 
             if (result.success && result.zone) {
               currentZone.value = result.zone;

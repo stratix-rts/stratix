@@ -6,10 +6,11 @@
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue';
 import { StratixModal, StratixButton } from '@/components/ui';
 import { StratixConfirmDialog } from '@/components/ui/StratixConfirmDialog';
-import type { SavedCharacter, CreatorStep, AnimationName } from '../stratix-character-creator/types';
+import type { SavedCharacter, CreatorStep, AnimationName, PartCategory, PartSelection } from '../stratix-character-creator/types';
 import { characterStorage, partRegistry, characterComposer } from '../stratix-character-creator';
 import { DEFAULT_BODY_TYPE } from '../stratix-character-creator/constants';
 import { CanvasPreviewScene } from './CanvasPreviewScene';
+import { PartSelectorV2 } from './PartSelectorV2';
 
 // ==================== Types ====================
 interface PreviewState {
@@ -307,6 +308,44 @@ onUnmounted(() => {
 const handleClose = () => {
   emit('close');
 };
+
+// ==================== PartSelectorV2 Event Handlers ====================
+const handlePartSelected = (category: PartCategory, itemId: string, variant: string) => {
+  if (!characterState.character) return;
+  characterState.character.parts = {
+    ...characterState.character.parts,
+    [category]: { itemId, variant }
+  };
+  characterState.isDirty = true;
+  updatePreviewTexture();
+};
+
+const handleRandomize = async () => {
+  if (!characterState.character) return;
+  try {
+    await partRegistry.loadMetadata();
+    const allParts = partRegistry.getAllParts();
+    const randomParts: Record<string, PartSelection> = {};
+
+    // Get unique categories from available parts
+    const categories = [...new Set(allParts.map(p => p.category))];
+
+    for (const cat of categories) {
+      const catParts = allParts.filter(p => p.category === cat && p.required.includes(selectedBodyType.value));
+      if (catParts.length > 0) {
+        const randomPart = catParts[Math.floor(Math.random() * catParts.length)];
+        const variant = randomPart.variants?.[0] || 'default';
+        randomParts[cat] = { itemId: randomPart.itemId, variant };
+      }
+    }
+
+    characterState.character.parts = randomParts;
+    characterState.isDirty = true;
+    updatePreviewTexture();
+  } catch (error) {
+    console.error('[V2] Failed to randomize:', error);
+  }
+};
 </script>
 
 <template>
@@ -395,11 +434,14 @@ const handleClose = () => {
         <div v-if="currentStep === 'appearance'" class="step-content">
           <h3 class="step-title">选择外观</h3>
           <p class="step-desc">选择角色的身体部件和外观</p>
-          <!-- PartSelector will go here -->
-          <div class="placeholder-content">
-            <StratixButton variant="primary" @click="goToNextStep">
-              下一步：选择服务
-            </StratixButton>
+          <div class="part-selector-wrapper">
+            <PartSelectorV2
+              :body-type="selectedBodyType"
+              :selections="characterState.character?.parts || {}"
+              @part-selected="handlePartSelected"
+              @randomize="handleRandomize"
+              @next="goToNextStep"
+            />
           </div>
         </div>
 
@@ -656,5 +698,12 @@ const handleClose = () => {
   border-radius: 8px;
   justify-content: center;
   align-items: center;
+}
+
+.part-selector-wrapper {
+  flex: 1;
+  min-height: 400px;
+  display: flex;
+  flex-direction: column;
 }
 </style>
