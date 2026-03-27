@@ -56,6 +56,32 @@ export class StratixDatabase {
       console.log('[Database] Added zone_context_id column to zones table');
     }
 
+    // 添加 projects 表字段到 zones 表（统一 Zone 和 Project）
+    if (!zoneColumnNames.has('description')) {
+      this.db.exec('ALTER TABLE zones ADD COLUMN description TEXT DEFAULT \'\'');
+      console.log('[Database] Added description column to zones table');
+    }
+    if (!zoneColumnNames.has('priority')) {
+      this.db.exec('ALTER TABLE zones ADD COLUMN priority INTEGER DEFAULT 3');
+      console.log('[Database] Added priority column to zones table');
+    }
+    if (!zoneColumnNames.has('path')) {
+      this.db.exec('ALTER TABLE zones ADD COLUMN path TEXT DEFAULT \'\'');
+      console.log('[Database] Added path column to zones table');
+    }
+    if (!zoneColumnNames.has('present_agent_ids')) {
+      this.db.exec('ALTER TABLE zones ADD COLUMN present_agent_ids TEXT DEFAULT \'[]\'');
+      console.log('[Database] Added present_agent_ids column to zones table');
+    }
+    if (!zoneColumnNames.has('started_at')) {
+      this.db.exec('ALTER TABLE zones ADD COLUMN started_at INTEGER');
+      console.log('[Database] Added started_at column to zones table');
+    }
+    if (!zoneColumnNames.has('completed_at')) {
+      this.db.exec('ALTER TABLE zones ADD COLUMN completed_at INTEGER');
+      console.log('[Database] Added completed_at column to zones table');
+    }
+
     // 检测并添加 zone_contexts 表缺失的 deleted_at 列（软删除）
     const zoneCtxColumns = this.db.prepare('PRAGMA table_info(zone_contexts)').all() as any[];
     const zoneCtxColumnNames = new Set(zoneCtxColumns.map((c: any) => c.name));

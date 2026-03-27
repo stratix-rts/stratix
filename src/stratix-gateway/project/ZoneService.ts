@@ -69,7 +69,7 @@ export class ZoneService {
     }
 
     // Publish zone:updated event
-    gatewayEventBus.publishZoneEvent('zone:updated', zoneId, updated.projectId, {
+    gatewayEventBus.publishZoneEvent('zone:updated', zoneId, updated.id, {
       title: updated.title,
       prompt: updated.prompt
     });
@@ -89,7 +89,7 @@ export class ZoneService {
     const deleted = zoneRepository.deleteZone(zoneId);
     if (deleted) {
       // Publish zone:deleted event
-      gatewayEventBus.publishZoneEvent('zone:deleted', zoneId, zone.projectId, {
+      gatewayEventBus.publishZoneEvent('zone:deleted', zoneId, zone.id, {
         title: zone.title
       });
     }
@@ -141,7 +141,7 @@ export class ZoneService {
     }
 
     // Publish zone:restored event
-    gatewayEventBus.publishZoneEvent('zone:restored', zoneId, zone.projectId, {
+    gatewayEventBus.publishZoneEvent('zone:restored', zoneId, zone.id, {
       title: restored.title
     });
 
@@ -195,7 +195,7 @@ export class ZoneService {
     }
 
     // Publish zone:member_joined event
-    gatewayEventBus.publishZoneEvent('zone:member_joined', zoneId, zone.projectId, {
+    gatewayEventBus.publishZoneEvent('zone:member_joined', zoneId, zone.id, {
       agentId
     });
 
@@ -211,7 +211,7 @@ export class ZoneService {
     }
 
     // Publish zone:member_left event
-    gatewayEventBus.publishZoneEvent('zone:member_left', zoneId, zone.projectId, {
+    gatewayEventBus.publishZoneEvent('zone:member_left', zoneId, zone.id, {
       agentId
     });
 
@@ -228,7 +228,7 @@ export class ZoneService {
 
     // Publish events for each member joined
     for (const agentId of agentIds) {
-      gatewayEventBus.publishZoneEvent('zone:member_joined', zoneId, zone.projectId, {
+      gatewayEventBus.publishZoneEvent('zone:member_joined', zoneId, zone.id, {
         agentId
       });
     }
@@ -246,7 +246,7 @@ export class ZoneService {
 
     // Publish events for each member left
     for (const agentId of agentIds) {
-      gatewayEventBus.publishZoneEvent('zone:member_left', zoneId, zone.projectId, {
+      gatewayEventBus.publishZoneEvent('zone:member_left', zoneId, zone.id, {
         agentId
       });
     }
@@ -290,7 +290,7 @@ export class ZoneService {
     const finalFile = zoneRepository.getFile(file.id)!;
 
     // Publish zone:file_added event
-    gatewayEventBus.publishZoneEvent('zone:file_added', zoneId, zone.projectId, {
+    gatewayEventBus.publishZoneEvent('zone:file_added', zoneId, zone.id, {
       file: finalFile
     });
 
@@ -328,7 +328,7 @@ export class ZoneService {
 
     // Publish zone:file_added event for each file
     for (const file of addedFiles) {
-      gatewayEventBus.publishZoneEvent('zone:file_added', zoneId, zone.projectId, {
+      gatewayEventBus.publishZoneEvent('zone:file_added', zoneId, zone.id, {
         file
       });
     }
@@ -355,7 +355,7 @@ export class ZoneService {
 
     if (deleted) {
       // Publish zone:file_removed event
-      gatewayEventBus.publishZoneEvent('zone:file_removed', zoneId, zone.projectId, {
+      gatewayEventBus.publishZoneEvent('zone:file_removed', zoneId, zone.id, {
         fileId,
         fileName: file?.name
       });
@@ -524,7 +524,7 @@ export class ZoneService {
     // Publish file:updated event
     const zone = zoneRepository.getZone(zoneId);
     if (zone) {
-      gatewayEventBus.publishZoneEvent('zone:file_updated', zoneId, zone.projectId, {
+      gatewayEventBus.publishZoneEvent('zone:file_updated', zoneId, zone.id, {
         file: updated
       });
     }
@@ -551,7 +551,7 @@ export class ZoneService {
     // Publish file:updated event
     const zone = zoneRepository.getZone(zoneId);
     if (zone) {
-      gatewayEventBus.publishZoneEvent('zone:file_updated', zoneId, zone.projectId, {
+      gatewayEventBus.publishZoneEvent('zone:file_updated', zoneId, zone.id, {
         file: updated
       });
     }
@@ -706,7 +706,7 @@ export class ZoneService {
     const task = zoneRepository.createTask(zoneId, title, agentId);
 
     // Publish task:created event
-    gatewayEventBus.publishZoneEvent('zone:task_created', zoneId, zone.projectId, {
+    gatewayEventBus.publishZoneEvent('zone:task_created', zoneId, zone.id, {
       task
     });
 
@@ -743,7 +743,7 @@ export class ZoneService {
     }
 
     // Publish task:updated event
-    gatewayEventBus.publishZoneEvent('zone:task_updated', zoneId, zone.projectId, {
+    gatewayEventBus.publishZoneEvent('zone:task_updated', zoneId, zone.id, {
       task: updated
     });
 
@@ -768,7 +768,7 @@ export class ZoneService {
     const deleted = zoneRepository.deleteTask(taskId);
 
     if (deleted) {
-      gatewayEventBus.publishZoneEvent('zone:task_deleted', zoneId, zone.projectId, {
+      gatewayEventBus.publishZoneEvent('zone:task_deleted', zoneId, zone.id, {
         taskId
       });
     }
@@ -809,7 +809,7 @@ export class ZoneService {
     }
 
     // Publish task:claimed event
-    gatewayEventBus.publishZoneEvent('zone:task_claimed', zoneId, zone.projectId, {
+    gatewayEventBus.publishZoneEvent('zone:task_claimed', zoneId, zone.id, {
       taskId,
       assignee: agentId
     });
@@ -840,7 +840,7 @@ export class ZoneService {
         success.push(task);
 
         // Publish task:created event for each task
-        gatewayEventBus.publishZoneEvent('zone:task_created', zoneId, zone.projectId, {
+        gatewayEventBus.publishZoneEvent('zone:task_created', zoneId, zone.id, {
           task
         });
       } catch (error) {
@@ -897,7 +897,7 @@ export class ZoneService {
           success.push(updated);
 
           // Publish task:updated event
-          gatewayEventBus.publishZoneEvent('zone:task_updated', zoneId, zone.projectId, {
+          gatewayEventBus.publishZoneEvent('zone:task_updated', zoneId, zone.id, {
             task: updated
           });
         }
@@ -950,7 +950,7 @@ export class ZoneService {
     const message = zoneRepository.addMessage(zoneId, senderId, senderType, content);
 
     // Publish message:added event
-    gatewayEventBus.publishZoneEvent('zone:message_added', zoneId, zone.projectId, {
+    gatewayEventBus.publishZoneEvent('zone:message_added', zoneId, zone.id, {
       message
     });
 
@@ -997,7 +997,7 @@ export class ZoneService {
 
     // Create new zone with cloned title
     const cloneTitle = `Clone of ${sourceZone.title}`;
-    const newZone = zoneRepository.createZone(sourceZone.projectId, cloneTitle, sourceZone.prompt || '');
+    const newZone = zoneRepository.createZone(sourceZone.id, cloneTitle, sourceZone.prompt || '');
 
     // Clone files if requested
     if (options?.includeFiles) {

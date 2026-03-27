@@ -127,6 +127,9 @@ export default class StratixRTSGameScene extends Phaser.Scene {
       width: this.cameras.main.width,
       height: this.cameras.main.height,
     } as any);
+
+    // 暴露到 window 用于 Playwright E2E 测试
+    (window as any).__rtsGameScene__ = this;
   }
 
   update(_time: number, _delta: number): void {
@@ -1084,6 +1087,8 @@ export default class StratixRTSGameScene extends Phaser.Scene {
       zone.setHighlight(true);
       this.selectedZoneIds.add(zoneId);
       this.emitSelectionChanged();
+      // 暴露选中状态用于 E2E 测试
+      (window as any).__SELECTED_ZONE_ID__ = zoneId;
     }
   }
 

@@ -139,6 +139,7 @@ import CancelConfirmDialog from './CancelConfirmDialog.vue';
 import StratixInput from '../../components/ui/StratixInput.vue';
 import StratixButton from '../../components/ui/StratixButton.vue';
 import { getToken } from '@/design-system/config';
+import { getIconViewBox } from '@/design-system/icons/registry';
 export interface CommandLogItem {
   commandId: string;
   agentId: string;

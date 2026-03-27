@@ -2,6 +2,7 @@
 module.exports = {
   testEnvironment: 'node',
   roots: ['<rootDir>/tests', '<rootDir>/src'],
+  setupFiles: ['<rootDir>/tests/jest.setup.ts'],
   // Only run Jest unit tests (not Playwright tests)
   testMatch: [
     '**/*.test.ts'

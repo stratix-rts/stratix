@@ -341,13 +341,23 @@ export interface ZoneFile {
 
 export interface Zone {
   id: string;
-  projectId: string;
-  title: string;
-  prompt: string;
+  projectId?: string;  // 兼容旧数据，新数据中 projectId 就是 id
+  title: string;  // 来自 projects.name 或 zone_contexts.title
+  prompt: string;  // 来自 zone_contexts.prompt
+  description?: string;  // 来自 projects.description
+  priority?: number;  // 来自 projects.priority
+  status?: 'idle' | 'active' | 'busy' | 'completed' | 'error';
+  config?: ProjectZoneConfig;  // 位置、大小等配置
+  path?: string;  // 来自 projects.path
+  presentAgentIds?: string[];  // 当前在区域内的 agent
+  members: string[];  // zone 成员（来自 zone_contexts）
   files: ZoneFile[];
-  members: string[];
+  tasks?: ZoneTask[];
+  messages?: ZoneMessage[];
   createdAt: number;
   updatedAt: number;
+  startedAt?: number;  // 开始时间
+  completedAt?: number;  // 完成时间
 }
 
 export interface ZoneCreateRequest {

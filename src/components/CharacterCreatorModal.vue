@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue';
-import { StratixModal, StratixButton, SvgIcon } from '@/components/ui';
-import { StratixConfirmDialog } from '@/components/ui/StratixConfirmDialog';
+import { StratixModal, StratixButton, StratixConfirmDialog } from '@/components/ui';
 import { getToken } from '@/design-system/config';
 import { createCharacterCreator } from '../stratix-character-creator';
 import type { SavedCharacter } from '../stratix-character-creator/types';

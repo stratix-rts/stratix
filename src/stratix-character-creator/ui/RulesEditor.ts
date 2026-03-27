@@ -78,7 +78,7 @@ export class RulesEditor {
             当前规则 (<span id="rules-count">${this.rules.length}</span>条)
           </label>
           <div id="rules-list">
-            ${rulesHtml || '<span style="color: ' + THEME.textMuted + '; font-size: 12px;">暂无规则</span>'}
+            ${rulesHtml || `<span style="color: ${THEME.textMuted}; font-size: 12px;">暂无规则</span>`}
           </div>
         </div>
 

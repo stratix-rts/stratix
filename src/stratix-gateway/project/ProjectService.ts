@@ -72,8 +72,8 @@ export class ProjectService {
     const nowMs = Date.now();
 
     db.prepare(`
-      INSERT INTO zones (zone_id, name, type, project_id, position_x, position_y, width, height, status, config, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO zones (zone_id, name, type, project_id, position_x, position_y, width, height, status, config, description, priority, path, present_agent_ids, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       created.id,
       config.name,
@@ -85,11 +85,31 @@ export class ProjectService {
       zoneConfigData.height || 300,
       'idle',
       JSON.stringify(zoneConfigData),
+      config.description || '',
+      config.priority || 3,
+      config.localFolderPath || '',
+      '[]',
       nowMs,
       nowMs
     );
 
-    console.log(`[ProjectService] Created zone record for project: ${created.id}`);
+    // Also create a zone_contexts record with the SAME id so zone_context_id FK is set
+    db.prepare(`
+      INSERT INTO zone_contexts (zone_id, project_id, title, prompt, members, created_at, updated_at)
+      VALUES (?, ?, ?, ?, '[]', ?, ?)
+    `).run(
+      created.id,  // zone_id = project.id (same ID, so FK works)
+      created.id,
+      config.name,  // title = project name
+      config.description || '',
+      nowMs,
+      nowMs
+    );
+
+    // Update zones table to set zone_context_id FK
+    db.prepare('UPDATE zones SET zone_context_id = ? WHERE zone_id = ?').run(created.id, created.id);
+
+    console.log(`[ProjectService] Created zone and zone_contexts records for project: ${created.id}`);
 
     return created;
   }

@@ -9,12 +9,25 @@ export class ZoneRepository {
 
   // Zone CRUD operations
   getZonesByProject(projectId: string): Zone[] {
-    const rows = this.db.prepare('SELECT * FROM zone_contexts WHERE project_id = ? AND deleted_at IS NULL ORDER BY created_at DESC').all(projectId) as any[];
+    // JOIN with zones table to get location/config fields
+    const rows = this.db.prepare(`
+      SELECT zc.*, z.description, z.priority, z.status, z.path, z.present_agent_ids, z.started_at, z.completed_at, z.config as zone_config
+      FROM zone_contexts zc
+      LEFT JOIN zones z ON z.zone_context_id = zc.zone_id
+      WHERE zc.project_id = ? AND zc.deleted_at IS NULL
+      ORDER BY zc.created_at DESC
+    `).all(projectId) as any[];
     return rows.map(row => this.mapRowToZone(row));
   }
 
   getZone(zoneId: string): Zone | null {
-    const row = this.db.prepare('SELECT * FROM zone_contexts WHERE zone_id = ? AND deleted_at IS NULL').get(zoneId) as any;
+    // JOIN with zones table to get location/config fields
+    const row = this.db.prepare(`
+      SELECT zc.*, z.description, z.priority, z.status, z.path, z.present_agent_ids, z.started_at, z.completed_at, z.config as zone_config
+      FROM zone_contexts zc
+      LEFT JOIN zones z ON z.zone_context_id = zc.zone_id
+      WHERE zc.zone_id = ? AND zc.deleted_at IS NULL
+    `).get(zoneId) as any;
     return row ? this.mapRowToZone(row) : null;
   }
 
@@ -73,7 +86,13 @@ export class ZoneRepository {
   // ============================================
 
   getDeletedZones(projectId: string): Zone[] {
-    const rows = this.db.prepare('SELECT * FROM zone_contexts WHERE project_id = ? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC').all(projectId) as any[];
+    const rows = this.db.prepare(`
+      SELECT zc.*, z.description, z.priority, z.status, z.path, z.present_agent_ids, z.started_at, z.completed_at, z.config as zone_config
+      FROM zone_contexts zc
+      LEFT JOIN zones z ON z.zone_context_id = zc.zone_id
+      WHERE zc.project_id = ? AND zc.deleted_at IS NOT NULL
+      ORDER BY zc.deleted_at DESC
+    `).all(projectId) as any[];
     return rows.map(row => this.mapRowToZone(row));
   }
 
@@ -92,7 +111,12 @@ export class ZoneRepository {
   }
 
   getDeletedZone(zoneId: string): Zone | null {
-    const row = this.db.prepare('SELECT * FROM zone_contexts WHERE zone_id = ? AND deleted_at IS NOT NULL').get(zoneId) as any;
+    const row = this.db.prepare(`
+      SELECT zc.*, z.description, z.priority, z.status, z.path, z.present_agent_ids, z.started_at, z.completed_at, z.config as zone_config
+      FROM zone_contexts zc
+      LEFT JOIN zones z ON z.zone_context_id = zc.zone_id
+      WHERE zc.zone_id = ? AND zc.deleted_at IS NOT NULL
+    `).get(zoneId) as any;
     return row ? this.mapRowToZone(row) : null;
   }
 
@@ -100,10 +124,12 @@ export class ZoneRepository {
   searchZones(keyword: string, limit: number = 20): Zone[] {
     const pattern = `%${keyword}%`;
     const rows = this.db.prepare(`
-      SELECT * FROM zone_contexts
-      WHERE deleted_at IS NULL
-        AND (title LIKE ? OR prompt LIKE ?)
-      ORDER BY updated_at DESC
+      SELECT zc.*, z.description, z.priority, z.status, z.path, z.present_agent_ids, z.started_at, z.completed_at, z.config as zone_config
+      FROM zone_contexts zc
+      LEFT JOIN zones z ON z.zone_context_id = zc.zone_id
+      WHERE zc.deleted_at IS NULL
+        AND (zc.title LIKE ? OR zc.prompt LIKE ?)
+      ORDER BY zc.updated_at DESC
       LIMIT ?
     `).all(pattern, pattern, limit) as any[];
     return rows.map(row => this.mapRowToZone(row));
@@ -535,12 +561,20 @@ export class ZoneRepository {
     return {
       id: row.zone_id,
       projectId: row.project_id,
-      title: row.title,
+      title: row.title || row.name || '',
       prompt: row.prompt || '',
+      description: row.description || '',
+      priority: row.priority || 3,
+      status: row.status || 'idle',
+      path: row.path || '',
+      presentAgentIds: JSON.parse(row.present_agent_ids || '[]'),
       members: JSON.parse(row.members || '[]'),
       files,
+      config: row.zone_config ? JSON.parse(row.zone_config) : undefined,
       createdAt: row.created_at,
-      updatedAt: row.updated_at
+      updatedAt: row.updated_at,
+      startedAt: row.started_at || undefined,
+      completedAt: row.completed_at || undefined
     };
   }
 
