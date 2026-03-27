@@ -433,32 +433,53 @@ export class ZoneService {
   }
 
   /**
-   * Get file content with cache check
-   * Returns null if cache is still valid
+   * Get file content with automatic cache refresh if stale
+   * Returns the file with updated content if refresh happened, or the original file if cache is valid
    */
-  public async getFileContentIfStale(file: ZoneFile): Promise<string | null> {
-    if (!this.shouldRefreshFile(file)) {
-      return null; // Cache is still valid
+  public async getFileWithContent(zoneId: string, fileId: string): Promise<{ file: ZoneFile | null; content: string | null; cacheHit: boolean }> {
+    const file = zoneRepository.getFile(fileId);
+    if (!file || file.zoneId !== zoneId) {
+      return { file: null, content: null, cacheHit: false };
     }
 
-    let content: string | undefined;
+    // If cache is still valid, return existing content
+    if (!this.shouldRefreshFile(file)) {
+      return { file, content: file.content ?? null, cacheHit: true };
+    }
+
+    // Cache is stale, fetch new content
+    let newContent: string | null = null;
     if (file.sourceType === 'local') {
       try {
-        content = await this.readLocalFile(file.source);
+        newContent = await this.readLocalFile(file.source);
       } catch (error) {
         console.warn(`[ZoneService] Failed to read local file ${file.source}:`, error);
-        return null;
+        // Return stale cache if refresh fails
+        return { file, content: file.content ?? null, cacheHit: false };
       }
     } else if (file.sourceType === 'url') {
       try {
-        content = await this.fetchUrl(file.source);
+        newContent = await this.fetchUrl(file.source);
       } catch (error) {
         console.warn(`[ZoneService] Failed to fetch URL ${file.source}:`, error);
-        return null;
+        // Return stale cache if refresh fails
+        return { file, content: file.content ?? null, cacheHit: false };
       }
     }
 
-    return content ?? null;
+    // Update database with new content
+    if (newContent !== null) {
+      const updated = zoneRepository.updateFile(fileId, {
+        content: newContent,
+        lastFetched: Date.now()
+      });
+      if (updated) {
+        return { file: updated, content: newContent, cacheHit: false };
+      }
+    }
+
+    // Fallback to stale cache
+    return { file, content: file.content ?? null, cacheHit: false };
   }
 
   /**

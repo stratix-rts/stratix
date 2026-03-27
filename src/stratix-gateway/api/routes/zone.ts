@@ -407,6 +407,41 @@ router.delete('/zones/:zoneId/files/:fileId', async (req: Request, res: Response
 });
 
 /**
+ * GET /api/zones/:zoneId/files/:fileId/content
+ * Get file content with automatic cache refresh
+ */
+router.get('/zones/:zoneId/files/:fileId/content', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const zoneId = req.params.zoneId as string;
+    const fileId = req.params.fileId as string;
+
+    const { file, content, cacheHit } = await zoneService.getFileWithContent(zoneId, fileId);
+
+    if (!file) {
+      res.status(404).json({
+        success: false,
+        error: 'File not found'
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      file,
+      content,
+      cacheHit,
+      lastFetched: file.lastFetched
+    });
+  } catch (error) {
+    console.error('[Zone API] Get file content failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get file content'
+    });
+  }
+});
+
+/**
  * POST /api/zones/:zoneId/files/:fileId/refresh
  * Refresh file content
  */
