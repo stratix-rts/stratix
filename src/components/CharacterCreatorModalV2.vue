@@ -413,6 +413,13 @@ const handlePartSelected = (category: PartCategory, itemId: string, variant: str
   updatePreviewTexture();
 };
 
+const handlePartsChange = (parts: Record<string, PartSelection>) => {
+  if (!characterState.character) return;
+  characterState.character.parts = parts;
+  characterState.isDirty = true;
+  updatePreviewTexture();
+};
+
 // ==================== 随机化（与旧版 CharacterCreatorScene 保持一致）====================
 type RandomizationMode = 'minimal' | 'normal' | 'full';
 
@@ -606,6 +613,7 @@ const handleRandomize = async () => {
               :body-type="selectedBodyType"
               :selections="characterState.character?.parts || {}"
               @part-selected="handlePartSelected"
+              @parts-change="handlePartsChange"
               @randomize="handleRandomize"
               @next="goToNextStep"
             />

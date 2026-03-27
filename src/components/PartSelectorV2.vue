@@ -28,6 +28,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'partSelected', category: PartCategory, itemId: string, variant: string): void;
+  (e: 'partsChange', parts: Record<string, PartSelection>): void;
   (e: 'randomize'): void;
   (e: 'next'): void;
 }>();
@@ -55,6 +56,9 @@ watch(() => props.bodyType, (newBodyType) => {
     }
   }
   selections.value = filteredSelections;
+
+  // Notify parent so preview updates
+  emit('partsChange', filteredSelections);
 
   // Reset current category if it has no valid parts for new bodyType
   if (currentCategory.value) {
@@ -194,31 +198,33 @@ const getSelectedVariant = (part: PartMetadata) => {
   flex-direction: column;
   height: 100%;
   background: var(--ds-bg-secondary);
-  border: 1px solid var(--ds-border);
-  border-radius: 8px;
   overflow: hidden;
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', monospace;
 }
 
 .header {
-  padding: 12px 16px;
+  padding: 14px 18px;
   border-bottom: 1px solid var(--ds-border);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  background: linear-gradient(180deg, var(--ds-bg-elevated) 0%, var(--ds-bg-secondary) 100%);
 }
 
 .header-title {
-  font-size: 14px;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--ds-brand-primary);
+  text-transform: uppercase;
+  letter-spacing: 2px;
 }
 
 .categories {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  padding: 12px 16px;
-  background: var(--ds-bg-secondary);
+  gap: 6px;
+  padding: 14px 18px;
+  background: var(--ds-bg-tertiary);
   border-bottom: 1px solid var(--ds-border);
 }
 
@@ -226,108 +232,119 @@ const getSelectedVariant = (part: PartMetadata) => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 36px;
+  min-width: 38px;
   height: 32px;
-  padding: 0 8px;
-  background: var(--ds-bg-tertiary);
+  padding: 0 10px;
+  background: var(--ds-bg-secondary);
   border: 1px solid var(--ds-border);
-  border-radius: 4px;
+  border-radius: 6px;
   color: var(--ds-text-secondary);
-  font-size: 11px;
+  font-size: 10px;
+  font-weight: 600;
   font-family: inherit;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .cat-btn:hover {
   background: var(--ds-bg-hover);
   border-color: var(--ds-brand-primary);
   color: var(--ds-brand-primary);
+  box-shadow: 0 0 12px rgba(0, 204, 204, 0.15);
 }
 
 .cat-btn.active {
-  background: var(--ds-brand-primary);
+  background: linear-gradient(135deg, var(--ds-brand-primary) 0%, var(--ds-brand-secondary) 100%);
   border-color: var(--ds-brand-primary);
   color: var(--ds-text-inverse);
+  box-shadow: 0 0 16px rgba(0, 204, 204, 0.3);
 }
 
 .parts-list {
   flex: 1;
-  padding: 8px;
+  padding: 12px;
   overflow-y: auto;
-  background: var(--ds-bg-secondary);
+  background: var(--ds-bg-primary);
 }
 
 .empty-state {
   color: var(--ds-text-muted);
   text-align: center;
-  padding: 40px 20px;
+  padding: 48px 20px;
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1.8;
 }
 
 .part-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  background: var(--ds-bg-tertiary);
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--ds-bg-elevated);
   border: 1px solid var(--ds-border);
-  border-radius: 6px;
-  margin-bottom: 6px;
+  border-radius: 8px;
+  margin-bottom: 8px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .part-item:hover {
   border-color: var(--ds-brand-primary);
   background: var(--ds-bg-hover);
+  box-shadow: 0 0 12px rgba(0, 204, 204, 0.1);
+  transform: translateX(2px);
 }
 
 .part-item.selected {
   border-color: var(--ds-brand-primary);
-  background: var(--ds-brand-secondary);
-  color: var(--ds-text-inverse);
+  background: linear-gradient(135deg, rgba(0, 204, 204, 0.15) 0%, rgba(230, 0, 230, 0.1) 100%);
+  box-shadow: 0 0 16px rgba(0, 204, 204, 0.2), inset 0 0 1px var(--ds-brand-primary);
 }
 
 .part-name {
   flex: 1;
   font-size: 12px;
-  color: inherit;
+  font-weight: 500;
+  color: var(--ds-text-primary);
 }
 
 .part-meta {
   font-size: 10px;
   color: var(--ds-text-muted);
+  font-family: 'SF Mono', monospace;
 }
 
 .part-item.selected .part-meta {
-  color: var(--ds-text-inverse);
-  opacity: 0.8;
+  color: var(--ds-brand-primary);
 }
 
 .variant-select {
   padding: 4px 8px;
-  background: var(--ds-bg-secondary);
+  background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
   border-radius: 4px;
   color: var(--ds-text-primary);
-  font-size: 11px;
+  font-size: 10px;
   font-family: inherit;
   cursor: pointer;
+  transition: border-color 0.2s;
 }
 
 .variant-select:focus {
   outline: none;
   border-color: var(--ds-brand-primary);
+  box-shadow: 0 0 8px rgba(0, 204, 204, 0.2);
 }
 
 .footer {
-  padding: 16px;
+  padding: 16px 18px;
   border-top: 1px solid var(--ds-border);
   display: flex;
   justify-content: space-between;
   gap: 12px;
+  background: linear-gradient(180deg, var(--ds-bg-secondary) 0%, var(--ds-bg-elevated) 100%);
 }
 
 /* Scrollbar styling */
@@ -345,6 +362,6 @@ const getSelectedVariant = (part: PartMetadata) => {
 }
 
 .parts-list::-webkit-scrollbar-thumb:hover {
-  background: var(--ds-text-muted);
+  background: var(--ds-brand-primary);
 }
 </style>
