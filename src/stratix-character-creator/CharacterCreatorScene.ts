@@ -1016,15 +1016,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
   private buildAgentPanel(panelW: number, panelH: number): void {
     if (!this.mainPanelContainer || !this.currentCharacter) return;
 
-    const backendType = this.selectedBackendType || this.currentCharacter?.backendType || 'stratix';
-
-    // For StratixAgent, show AgentConfigPanel (Soul/Rules/Skills) first
-    if (backendType === 'stratix') {
-      this.buildStratixAgentConfigPanel(panelW, panelH);
-      return;
-    }
-
-    // For OpenClaw, go directly to chat panel
+    // 跳过 AgentConfigPanel (Soul/Rules/Skills 三合一面板)，直接进入聊天/保存流程
     this.buildAgentChatPanel(panelW, panelH);
   }
 

@@ -318,9 +318,8 @@ export class StratixConfigValidator {
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    const validProviders = ['openai', 'anthropic', 'ollama', 'deepseek', 'qwen', 'custom'];
-    if (!config.provider || !validProviders.includes(config.provider)) {
-      errors.push(`provider 必须是 ${validProviders.join(' | ')} 之一`);
+    if (!config.provider) {
+      errors.push('provider 是必填字段');
     }
 
     if (!config.model || config.model.trim() === '') {
