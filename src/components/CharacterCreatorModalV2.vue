@@ -106,11 +106,18 @@ const promptDialogResolve = ref<((value: string | null) => void) | null>(null);
 const loadCharacter = async (characterId: string) => {
   try {
     await characterStorage.init();
+    await partRegistry.loadMetadata();
     const loaded = await characterStorage.load(characterId);
     if (loaded) {
       characterState.character = loaded;
       characterName.value = loaded.name;
       selectedBodyType.value = loaded.bodyType;
+      // Also load backend and agent configs if they exist
+      if (loaded.backendType) backendType.value = loaded.backendType;
+      if (loaded.openClawConfig) openClawConfig.value = loaded.openClawConfig;
+      if (loaded.stratixConfig) stratixConfig.value = loaded.stratixConfig;
+      if (loaded.soul) soul.value = loaded.soul;
+      if (loaded.rules) agentRules.value = loaded.rules;
     }
   } catch (error) {
     console.error('[V2] Failed to load character:', error);
