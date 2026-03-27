@@ -3,7 +3,7 @@ import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { createStratixRTS } from './stratix-rts';
 import { StratixEventBus, StratixAgentConfig, StratixFrontendOperationEvent } from './stratix-core';
 import MainLayout from './components/MainLayout.vue';
-import CharacterCreatorModal from './components/CharacterCreatorModalV2.vue';
+import CharacterCreatorModal from './components/CharacterCreatorModal.vue';
 import AgentChatModal from './components/AgentChatModal.vue';
 import ProjectConfigPanel from './stratix-project/ui/ProjectConfigPanel.vue';
 import ZonePanel from './stratix-project/ui/ZonePanel.vue';

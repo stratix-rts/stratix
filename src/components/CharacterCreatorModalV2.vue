@@ -14,6 +14,26 @@ import BackendSelectorV2 from './BackendSelectorV2.vue';
 import AgentConfigV2 from './AgentConfigV2.vue';
 import type { AgentBackendType } from '@/stratix-core/stratix-protocol';
 import type { OpenClawConfigLocal, StratixDirectConfig } from '../stratix-character-creator/types';
+import type { PartMetadata } from '../stratix-character-creator/types';
+
+// ==================== 常量：随机化配置 ====================
+// 与旧版 CharacterCreatorScene 保持一致
+const MINIMAL_SKIP_CATEGORIES = [
+  'wings', 'wings_dots', 'wings_edge', 'tail',
+  'weapon', 'weapon_magic_crystal', 'shield', 'shield_paint', 'shield_pattern', 'shield_trim',
+  'backpack', 'backpack_straps', 'cargo', 'cape', 'cape_trim', 'quiver',
+  'hat', 'hat_accessory', 'hat_buckle', 'hat_overlay', 'hat_trim',
+  'bandana', 'bandana_overlay', 'headcover', 'headcover_rune', 'visor',
+  'shoulders', 'neck', 'necklace', 'earrings', 'earring_left', 'earring_right',
+  'charm', 'ring', 'sash', 'sash_tie', 'belt', 'buckles',
+  'horns', 'fins', 'furry_ears', 'furry_ears_skin',
+];
+
+const OPTIONAL_CATEGORIES = ['quiver', 'shoulders', 'neck', 'backpack', 'cape', 'hat'];
+
+const ALLOWED_SHIELDS = ['shield_heater_revised_wood', 'shield_heater_wood'];
+
+const MINIMAL_HEAD_PREFIX = 'Human';
 
 // ==================== Types ====================
 interface PreviewState {
@@ -116,7 +136,7 @@ const loadCharacter = async (characterId: string) => {
       if (loaded.backendType) backendType.value = loaded.backendType;
       if (loaded.openClawConfig) openClawConfig.value = loaded.openClawConfig;
       if (loaded.stratixConfig) stratixConfig.value = loaded.stratixConfig;
-      if (loaded.soul) soul.value = loaded.soul;
+      if (loaded.soul) agentSoul.value = loaded.soul;
       if (loaded.rules) agentRules.value = loaded.rules;
     }
   } catch (error) {
@@ -131,6 +151,8 @@ const createNewCharacter = async () => {
     const newChar = characterStorage.createNew(DEFAULT_BODY_TYPE);
     characterState.character = newChar;
     characterName.value = newChar.name;
+    // 旧版会在创建时调用 randomizeCharacter('minimal')
+    await randomizeCharacter('minimal');
   } catch (error) {
     console.error('[V2] Failed to create character:', error);
   }
@@ -239,8 +261,8 @@ const handleComplete = async () => {
   characterState.character.backendType = backendType.value;
   characterState.character.openClawConfig = openClawConfig.value;
   characterState.character.stratixConfig = stratixConfig.value;
-  characterState.character.soul = soul.value;
-  characterState.character.rules = rules.value;
+  characterState.character.soul = agentSoul.value;
+  characterState.character.rules = agentRules.value;
   characterState.character.updatedAt = Date.now();
 
   try {
@@ -391,31 +413,105 @@ const handlePartSelected = (category: PartCategory, itemId: string, variant: str
   updatePreviewTexture();
 };
 
-const handleRandomize = async () => {
+// ==================== 随机化（与旧版 CharacterCreatorScene 保持一致）====================
+type RandomizationMode = 'minimal' | 'normal' | 'full';
+
+const randomizeCharacter = async (mode: RandomizationMode = 'normal') => {
   if (!characterState.character) return;
-  try {
-    await partRegistry.loadMetadata();
-    const allParts = partRegistry.getAllParts();
-    const randomParts: Record<string, PartSelection> = {};
 
-    // Get unique categories from available parts
-    const categories = [...new Set(allParts.map(p => p.category))];
+  const config = (() => {
+    switch (mode) {
+      case 'minimal':
+        return {
+          skipCategories: MINIMAL_SKIP_CATEGORIES,
+          shieldMode: 'empty' as const,
+          optionalEmptyChance: 1,
+        };
+      case 'normal':
+        return {
+          skipCategories: [] as string[],
+          shieldMode: 'limited' as const,
+          optionalEmptyChance: 0.5,
+        };
+      case 'full':
+        return {
+          skipCategories: [] as string[],
+          shieldMode: 'all' as const,
+          optionalEmptyChance: 0,
+        };
+    }
+  })();
 
-    for (const cat of categories) {
-      const catParts = allParts.filter(p => p.category === cat && p.required.includes(selectedBodyType.value));
-      if (catParts.length > 0) {
-        const randomPart = catParts[Math.floor(Math.random() * catParts.length)];
-        const variant = randomPart.variants?.[0] || 'default';
-        randomParts[cat] = { itemId: randomPart.itemId, variant };
+  const allParts = partRegistry.getAllParts();
+  const allCategories = partRegistry.getAllCategories();
+  const newParts: Record<string, PartSelection> = {};
+
+  for (const category of allCategories) {
+    // 跳过指定类别
+    if (config.skipCategories.includes(category)) {
+      continue;
+    }
+
+    // Shield 特殊处理
+    if (category === 'shield') {
+      if (config.shieldMode === 'empty') {
+        delete newParts[category];
+        continue;
+      }
+      if (config.shieldMode === 'limited') {
+        if (Math.random() < 0.3) {
+          delete newParts[category];
+          continue;
+        }
+        const shieldId = ALLOWED_SHIELDS[Math.floor(Math.random() * ALLOWED_SHIELDS.length)];
+        const shieldPart = allParts.find(p => p.itemId === shieldId);
+        if (shieldPart) {
+          const variant = shieldPart.variants?.[0] || 'default';
+          newParts[category] = { itemId: shieldId, variant };
+        }
+        continue;
+      }
+      // shieldMode === 'all' 时走下面通用逻辑
+    }
+
+    // 可选类别随机空
+    if (OPTIONAL_CATEGORIES.includes(category)) {
+      if (Math.random() < config.optionalEmptyChance) {
+        delete newParts[category];
+        continue;
       }
     }
 
-    characterState.character.parts = randomParts;
-    characterState.isDirty = true;
-    updatePreviewTexture();
-  } catch (error) {
-    console.error('[V2] Failed to randomize:', error);
+    // 获取当前体型可用的部件
+    const catParts = allParts.filter(
+      p => p.category === category && p.required.includes(selectedBodyType.value)
+    );
+
+    if (catParts.length === 0) continue;
+
+    // Minimal 模式：head 类别优先选 Human 前缀的
+    if (mode === 'minimal' && category === 'head') {
+      const humanHeads = catParts.filter(p => p.itemId.startsWith(MINIMAL_HEAD_PREFIX));
+      const sourceParts = humanHeads.length > 0 ? humanHeads : catParts;
+      const selected = sourceParts[Math.floor(Math.random() * sourceParts.length)];
+      const variant = selected.variants?.[0] || 'default';
+      newParts[category] = { itemId: selected.itemId, variant };
+      continue;
+    }
+
+    // 通用随机选择
+    const selected = catParts[Math.floor(Math.random() * catParts.length)];
+    const variant = selected.variants?.[0] || 'default';
+    newParts[category] = { itemId: selected.itemId, variant };
   }
+
+  characterState.character.parts = newParts;
+  characterState.isDirty = true;
+  await updatePreviewTexture();
+};
+
+const handleRandomize = async () => {
+  await randomizeCharacter('normal');
 };
 </script>
 
@@ -611,10 +707,11 @@ const handleRandomize = async () => {
 .loading-spinner {
   width: 32px;
   height: 32px;
-  border: 3px solid var(--ds-border);
+  border: 2px solid var(--ds-border);
   border-top-color: var(--ds-brand-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
+  box-shadow: 0 0 10px var(--ds-brand-primary);
 }
 
 @keyframes spin {
@@ -625,139 +722,202 @@ const handleRandomize = async () => {
   display: flex;
   width: 100%;
   height: calc(100vh - 48px);
-  background: var(--ds-bg-secondary);
+  background: linear-gradient(135deg, var(--ds-bg-primary) 0%, var(--ds-bg-secondary) 100%);
 }
 
 .left-panel {
-  width: 320px;
+  width: 340px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  padding: 16px;
-  gap: 12px;
+  padding: 20px;
+  gap: 16px;
   border-right: 1px solid var(--ds-border);
+  background: linear-gradient(180deg, var(--ds-bg-elevated) 0%, var(--ds-bg-primary) 100%);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.3);
 }
 
 .step-indicator {
   display: flex;
-  gap: 8px;
+  gap: 6px;
+  padding: 4px;
+  background: var(--ds-bg-tertiary);
+  border-radius: 8px;
+  border: 1px solid var(--ds-border);
 }
 
 .step-item {
   flex: 1;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  padding: 8px 12px;
-  background: var(--ds-bg-tertiary);
-  border: 1px solid var(--ds-border);
+  padding: 10px 8px;
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: 6px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ds-text-muted);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
 }
 
 .step-item:hover {
-  border-color: var(--ds-brand-primary);
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-secondary);
+  border-color: var(--ds-border);
 }
 
 .step-item.active {
-  background: var(--ds-brand-primary);
+  background: linear-gradient(135deg, var(--ds-brand-primary) 0%, var(--ds-brand-secondary) 100%);
   border-color: var(--ds-brand-primary);
   color: var(--ds-text-inverse);
+  box-shadow: 0 0 20px rgba(0, 204, 204, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 .step-item.completed {
-  background: var(--ds-status-success);
+  background: linear-gradient(135deg, var(--ds-status-success) 0%, #00cc6a 100%);
   border-color: var(--ds-status-success);
-  color: white;
+  color: var(--ds-text-inverse);
+  box-shadow: 0 0 15px rgba(0, 255, 136, 0.2);
 }
 
 .step-number {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 700;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 50%;
 }
 
 .step-label {
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .canvas-container {
   flex: 1;
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
-  min-height: 200px;
+  min-height: 240px;
+  position: relative;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3), 0 0 1px var(--ds-border);
+}
+
+.canvas-container::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(0, 204, 204, 0.03) 0%, transparent 50%);
+  pointer-events: none;
 }
 
 .preview-controls {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   justify-content: center;
+  padding: 8px 12px;
+  background: var(--ds-bg-tertiary);
+  border-radius: 8px;
+  border: 1px solid var(--ds-border);
 }
 
 .scale-label {
-  font-size: 12px;
-  color: var(--ds-text-muted);
-  min-width: 32px;
+  font-size: 11px;
+  color: var(--ds-brand-primary);
+  min-width: 36px;
   text-align: center;
+  font-weight: 600;
+  font-family: 'SF Mono', monospace;
 }
 
 .name-input-section,
 .body-type-section {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .input-label {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--ds-text-muted);
-  font-weight: 500;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .name-input {
   width: 100%;
-  padding: 8px 12px;
+  padding: 12px 14px;
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
-  border-radius: 6px;
+  border-radius: 8px;
   color: var(--ds-text-primary);
   font-size: 14px;
   outline: none;
+  transition: all 0.2s;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .name-input:focus {
   border-color: var(--ds-brand-primary);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2), 0 0 0 2px rgba(0, 204, 204, 0.15);
 }
 
 .body-type-buttons {
   display: flex;
-  gap: 4px;
+  gap: 8px;
 }
 
 .right-panel {
   flex: 1;
-  padding: 24px;
+  padding: 32px 40px;
   overflow-y: auto;
+  background: var(--ds-bg-primary);
 }
 
 .step-content {
-  max-width: 600px;
+  max-width: 640px;
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .step-title {
-  font-size: 20px;
-  font-weight: 600;
+  font-size: 24px;
+  font-weight: 700;
   color: var(--ds-text-primary);
   margin: 0 0 8px 0;
+  letter-spacing: -0.5px;
+  background: linear-gradient(135deg, var(--ds-text-primary) 0%, var(--ds-brand-primary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .step-desc {
   font-size: 14px;
   color: var(--ds-text-muted);
-  margin: 0 0 24px 0;
+  margin: 0 0 32px 0;
+  font-weight: 400;
 }
 
 .placeholder-content {
@@ -776,6 +936,10 @@ const handleRandomize = async () => {
   min-height: 400px;
   display: flex;
   flex-direction: column;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--ds-border);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
 }
 
 .backend-selector-wrapper {
@@ -783,6 +947,10 @@ const handleRandomize = async () => {
   min-height: 400px;
   display: flex;
   flex-direction: column;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--ds-border);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
 }
 
 .agent-config-wrapper {
@@ -790,5 +958,9 @@ const handleRandomize = async () => {
   min-height: 400px;
   display: flex;
   flex-direction: column;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--ds-border);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
 }
 </style>
