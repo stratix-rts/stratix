@@ -15,6 +15,10 @@ export interface CharacterCreatorConfig {
   onCharacterCreated?: (character: import('./types').SavedCharacter) => void;
   onCharacterUpdated?: (character: import('./types').SavedCharacter) => void;
   onCharacterDeleted?: (characterId: string) => void;
+  /** 显示确认对话框 */
+  onRequestConfirm?: (message: string) => Promise<boolean>;
+  /** 显示输入对话框 */
+  onRequestPrompt?: (message: string, defaultValue?: string) => Promise<string | null>;
 }
 
 export function createCharacterCreator(config: CharacterCreatorConfig): Phaser.Game {
@@ -43,20 +47,31 @@ export function createCharacterCreator(config: CharacterCreatorConfig): Phaser.G
 
   game.events.once('ready', () => {
     const scene = game.scene.getScene('CharacterCreatorScene') as CharacterCreatorScene;
-    if (scene && config.targetCharacterId) {
-      scene.loadCharacterById(config.targetCharacterId);
+    if (scene) {
+      if (config.targetCharacterId) {
+        scene.loadCharacterById(config.targetCharacterId);
+      }
+
+      // Pass character lifecycle callbacks
+      if (config.onCharacterCreated) {
+        scene.events.on('character:created', config.onCharacterCreated);
+      }
+      if (config.onCharacterUpdated) {
+        scene.events.on('character:updated', config.onCharacterUpdated);
+      }
+      if (config.onCharacterDeleted) {
+        scene.events.on('character:deleted', config.onCharacterDeleted);
+      }
+
+      // Pass dialog callbacks to scene
+      if (config.onRequestConfirm || config.onRequestPrompt) {
+        scene.setDialogCallbacks({
+          confirm: config.onRequestConfirm,
+          prompt: config.onRequestPrompt,
+        });
+      }
     }
-    
-    if (config.onCharacterCreated) {
-      scene?.events?.on('character:created', config.onCharacterCreated);
-    }
-    if (config.onCharacterUpdated) {
-      scene?.events?.on('character:updated', config.onCharacterUpdated);
-    }
-    if (config.onCharacterDeleted) {
-      scene?.events?.on('character:deleted', config.onCharacterDeleted);
-    }
-    
+
     game.events.emit('ready');
   });
 

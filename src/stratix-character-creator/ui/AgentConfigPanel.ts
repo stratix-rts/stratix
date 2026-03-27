@@ -20,6 +20,13 @@ export interface AgentConfigPanelConfig {
   character: SavedCharacter;
   onComplete?: (config: AgentFullConfig) => void;
   onBack?: () => void;
+  /** 对话框回调 - 用于替代原生 window.confirm/window.prompt */
+  dialog?: {
+    /** 显示确认对话框，返回用户选择 */
+    confirm?: (message: string) => Promise<boolean>;
+    /** 显示输入对话框，返回输入内容或 null（取消） */
+    prompt?: (message: string, defaultValue?: string) => Promise<string | null>;
+  };
 }
 
 export interface AgentFullConfig {
@@ -845,8 +852,11 @@ ${learnedList}`;
       }
     });
 
-    clearAllBtn?.addEventListener('click', () => {
-      if (confirm('确定要清空所有规则吗？')) {
+    clearAllBtn?.addEventListener('click', async () => {
+      const confirmed = this.config.dialog?.confirm
+        ? await this.config.dialog.confirm('确定要清空所有规则吗？')
+        : window.confirm('确定要清空所有规则吗？');
+      if (confirmed) {
         this.rules = [];
         this.renderRulesContent(panel);
       }
@@ -876,9 +886,11 @@ ${learnedList}`;
     }
   }
 
-  private editRule(index: number, panel: HTMLElement): void {
+  private async editRule(index: number, panel: HTMLElement): Promise<void> {
     const currentRule = this.rules[index];
-    const newRule = prompt('编辑规则:', currentRule);
+    const newRule = this.config.dialog?.prompt
+      ? await this.config.dialog.prompt('编辑规则:', currentRule)
+      : window.prompt('编辑规则:', currentRule);
 
     if (newRule !== null && newRule.trim()) {
       this.rules[index] = newRule.trim();
@@ -1033,9 +1045,13 @@ ${learnedList}`;
 
     // Setup uninstall listeners
     panel.querySelectorAll('.uninstall-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      btn.addEventListener('click', async (e) => {
         const skillId = (e.target as HTMLElement).dataset.skillId;
-        if (skillId && confirm('确定要卸载此技能吗？')) {
+        if (!skillId) return;
+        const confirmed = this.config.dialog?.confirm
+          ? await this.config.dialog.confirm('确定要卸载此技能吗？')
+          : window.confirm('确定要卸载此技能吗？');
+        if (confirmed) {
           sharedSkillStore.uninstallSkill(skillId);
           this.renderSkillsSubContent(panel);
           this.updateAttributesDisplay();

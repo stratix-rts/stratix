@@ -114,6 +114,12 @@ export class CharacterCreatorScene extends Phaser.Scene {
     onCharacterDeleted?: (characterId: string) => void;
   } = {};
 
+  /** Dialog callbacks for AgentConfigPanel */
+  private dialogCallbacks: {
+    confirm?: (message: string) => Promise<boolean>;
+    prompt?: (message: string, defaultValue?: string) => Promise<string | null>;
+  } = {};
+
   private eventUnsubscribers: Array<() => void> = [];
 
   constructor() {
@@ -128,6 +134,11 @@ export class CharacterCreatorScene extends Phaser.Scene {
     };
     this.previewTextureKey = `char_preview_${Date.now()}`;
     this.isDirty = false;
+  }
+
+  /** Set dialog callbacks for use by AgentConfigPanel */
+  public setDialogCallbacks(callbacks: { confirm?: (message: string) => Promise<boolean>; prompt?: (message: string, defaultValue?: string) => Promise<string | null> }): void {
+    this.dialogCallbacks = callbacks;
   }
 
   async preload(): Promise<void> {
@@ -1038,7 +1049,8 @@ export class CharacterCreatorScene extends Phaser.Scene {
       },
       onBack: () => {
         this.setStep('openclaw');
-      }
+      },
+      dialog: this.dialogCallbacks,
     });
     const dom = agentConfigPanel.create();
     this.mainPanelContainer.add(dom);
