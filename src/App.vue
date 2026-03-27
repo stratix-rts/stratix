@@ -115,67 +115,17 @@ const closeCharacterCreator = () => {
 };
 
 const handleCharacterCreated = async (character: SavedCharacter) => {
-  console.log('========================================');
-  console.log('[App] 🔵 handleCharacterCreated called');
-  console.log('[App] 📦 Character:', character);
-  console.log('[App] 🎮 Game instance exists:', !!game);
-  
-  // 🚨 立即关闭弹窗
+  console.log('[App] Character created:', character.name);
   closeCharacterCreator();
-  console.log('[App] ✅ Modal closed');
-  
-  if (game) {
-    const scene = game.scene.getScene('StratixRTSGameScene') as any;
-    console.log('[App] 🎬 Scene exists:', !!scene);
-    
-    if (scene) {
-      console.log('[App] 🚀 Emitting character:spawning event');
-      scene.events.emit('character:spawning', {
-        characterId: character.characterId,
-        name: character.name,
-        bodyType: character.bodyType,
-        parts: character.parts,
-        thumbnail: character.thumbnail
-      });
-    } else {
-      console.error('[App] ❌ Scene not found');
-    }
-  } else {
-    console.error('[App] ❌ Game instance not found');
-  }
-  
-  console.log('[App] 🔄 Starting async agent creation...');
+  // 旧版 Phaser 游戏会在内部处理所有步骤，完成后只发送 created 事件
+  // App.vue 只需要通知 agentStore 创建 Agent
   agentStore.createCustomAgent(character, {
     backendType: character.backendType,
     openClawConfig: character.openClawConfig,
     stratixConfig: character.stratixConfig
-  })
-    .then(config => {
-      console.log('[App] ✅ Agent created successfully:', config);
-      if (game) {
-        const scene = game.scene.getScene('StratixRTSGameScene') as any;
-        if (scene) {
-          console.log('[App] 🎉 Emitting character:spawn-complete event');
-          scene.events.emit('character:spawn-complete', config);
-        }
-      }
-    })
-    .catch(err => {
-      console.error('[App] ❌ Failed to create agent:', err);
-      if (game) {
-        const scene = game.scene.getScene('StratixRTSGameScene') as any;
-        if (scene) {
-          console.log('[App] 🔴 Emitting character:spawn-failed event');
-          scene.events.emit('character:spawn-failed', {
-            characterId: character.characterId,
-            error: err.message || 'Unknown error'
-          });
-        }
-      }
-    });
-  
-  console.log('[App] ✅ handleCharacterCreated completed (async operations running in background)');
-  console.log('========================================');
+  }).catch(err => {
+    console.error('[App] Failed to create agent:', err);
+  });
 };
 
 const handleCharacterUpdated = (character: SavedCharacter) => {
