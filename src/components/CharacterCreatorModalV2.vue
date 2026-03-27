@@ -226,8 +226,14 @@ const handleZoomOut = () => {
 const handleComplete = async () => {
   if (!characterState.character) return;
 
+  // Update all character fields before saving
   characterState.character.name = characterName.value;
   characterState.character.bodyType = selectedBodyType.value;
+  characterState.character.backendType = backendType.value;
+  characterState.character.openClawConfig = openClawConfig.value;
+  characterState.character.stratixConfig = stratixConfig.value;
+  characterState.character.soul = soul.value;
+  characterState.character.rules = rules.value;
   characterState.character.updatedAt = Date.now();
 
   try {
