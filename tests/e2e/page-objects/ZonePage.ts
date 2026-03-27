@@ -6,19 +6,16 @@ export class ZonePage {
   // Canvas
   readonly canvas: Locator;
 
-  // DOM 元素
-  readonly zonePanel: Locator;
+  // DOM 元素 - 使用当前 UI 的实际选择器
+  readonly modal: Locator;
   readonly zoneDetail: Locator;
-  readonly zoneEditor: Locator;
-  readonly zoneList: Locator;
 
   constructor(page: Page) {
     this.page = page;
     this.canvas = page.locator('canvas').first();
-    this.zonePanel = page.locator('.zone-panel');
+    // ZonePanel 使用 StratixModal，类名是 stratix-modal
+    this.modal = page.locator('.stratix-modal');
     this.zoneDetail = page.locator('.zone-detail');
-    this.zoneEditor = page.locator('.zone-editor');
-    this.zoneList = page.locator('.zone-list');
   }
 
   // ========== Canvas 交互 ==========
@@ -78,8 +75,8 @@ export class ZonePage {
     await this.clickZoneInCanvas(zoneId);
     await this.page.waitForTimeout(1000);
 
-    // 3. 验证 ZonePanel 出现
-    await expect(this.zonePanel).toBeVisible({ timeout: 5000 });
+    // 3. 验证 ZonePanel 出现（使用 stratix-modal）
+    await expect(this.modal).toBeVisible({ timeout: 5000 });
   }
 
   async closeZonePanel(): Promise<void> {
@@ -115,77 +112,81 @@ export class ZonePage {
   }
 
   async deleteZone(): Promise<void> {
-    await this.zoneDetail.locator('.zone-detail__footer button:has-text("删除")').click();
+    // ZoneDetail 底部的删除按钮是 "Delete Zone"
+    await this.zoneDetail.locator('.zone-detail__footer button:has-text("Delete Zone")').click();
     await this.page.waitForTimeout(300);
 
-    // 确认删除
-    await this.page.locator('button:has-text("确认")').click();
+    // 确认删除 - StratixModal 默认使用 "确定" 和 "取消"
+    await this.page.locator('button:has-text("确定"), button:has-text("OK")').click();
     await this.page.waitForTimeout(1000);
   }
 
   // ========== ZoneEditor 交互 ==========
+  // 注：当前 UI 没有独立的 ZoneEditor，编辑直接在 ZoneDetail 中进行
 
   async openZoneEditor(): Promise<void> {
-    // 尝试多种选择器打开 zone editor
-    const addBtn = this.zoneList.locator('.zone-list__add-icon, .zone-list__header button, button:has-text("新建")').first();
-    await addBtn.click();
+    // ZoneDetail 中点击 Edit 按钮进入编辑模式
+    await this.zoneDetail.locator('button:has-text("Edit")').click();
     await this.page.waitForTimeout(500);
-
-    // 等待 editor 出现
-    await expect(this.zoneEditor).toBeVisible({ timeout: 5000 });
   }
 
   async fillZoneForm(title: string, prompt: string): Promise<void> {
-    await this.page.locator('.zone-editor input, .zone-editor input[placeholder*="标题"], .zone-editor input[placeholder*="title"]').first().fill(title);
-    await this.page.locator('.zone-editor textarea, .zone-editor textarea[placeholder*="描述"], .zone-editor textarea[placeholder*="prompt"]').first().fill(prompt);
+    // 编辑模式下使用 ZoneDetail 的表单元素
+    const titleInput = this.zoneDetail.locator('.zone-detail__title-input');
+    const promptTextarea = this.zoneDetail.locator('.zone-detail__prompt-textarea');
+
+    await titleInput.fill(title);
+    await promptTextarea.fill(prompt);
   }
 
   async submitZoneForm(): Promise<void> {
-    await this.page.locator('button:has-text("创建"), button:has-text("保存"), .zone-editor__footer button').click();
+    // 保存编辑 - 点击 ZoneDetail 的保存操作
+    await this.page.keyboard.press('Enter');
     await this.page.waitForTimeout(1000);
   }
 
   // ========== Zone 文件管理 ==========
 
   async addFileToZone(fileName: string, fileSource: string): Promise<void> {
-    // 点击文件区域的标题展开
-    const filesSection = this.zoneDetail.locator('.zone-detail__section').filter({ has: this.page.locator('.zone-detail__section-title:has-text("文件")') });
-    await filesSection.locator('.zone-detail__section-title').click();
-    await this.page.waitForTimeout(300);
-
-    await filesSection.locator('button:has-text("添加文件")').click();
+    // 找到 Files 区域的标题并点击
+    const filesSection = this.zoneDetail.locator('.zone-detail__section-title:has-text("Files")').locator('..');
+    await filesSection.locator('button:has-text("+ Add File")').click();
     await this.page.waitForTimeout(500);
 
-    // 填写文件信息
+    // 填写文件信息 - ZoneFilePicker 会有自己的表单
     await this.page.locator('input[placeholder*="名称"], input[placeholder*="name"]').first().fill(fileName);
     await this.page.locator('input[placeholder*="源"], input[placeholder*="source"], input[placeholder*="路径"]').first().fill(fileSource);
 
-    await this.page.locator('button:has-text("确认"), button:has-text("添加")').click();
+    await this.page.locator('button:has-text("确认"), button:has-text("Add")').click();
     await this.page.waitForTimeout(1000);
   }
 
   // ========== Zone 任务管理 ==========
 
   async createTask(title: string): Promise<void> {
-    const taskSection = this.zoneDetail.locator('.zone-detail__section').filter({ has: this.page.locator('.zone-detail__section-title:has-text("任务")') });
+    // 找到 Tasks 区域
+    const taskSection = this.zoneDetail.locator('.zone-detail__section-title:has-text("Tasks")').locator('..');
 
-    await taskSection.locator('.zone-detail__task-create button, button:has-text("创建任务")').click();
+    // 点击 "+ New Task" 按钮
+    await taskSection.locator('button:has-text("+ New Task")').click();
     await this.page.waitForTimeout(300);
 
-    await taskSection.locator('.zone-detail__task-input input, .zone-detail__task-input textarea, input[placeholder*="任务"]').fill(title);
-    await taskSection.locator('button:has-text("创建")').click();
+    // 填写任务标题
+    await taskSection.locator('.zone-detail__task-input input, .zone-detail__task-input textarea').fill(title);
+    await taskSection.locator('button:has-text("Create")').click();
     await this.page.waitForTimeout(500);
   }
 
   async getTaskCount(): Promise<number> {
-    return await this.zoneDetail.locator('.zone-detail__task-item').count();
+    // vxe-grid 渲染的任务行
+    return await this.zoneDetail.locator('.vxe-table--body-wrapper tbody tr').count();
   }
 
   // ========== ZoneList 交互 ==========
+  // 注：当前 UI 没有独立的 ZoneList 侧边栏，搜索功能通过 API 实现
 
   async searchZones(keyword: string): Promise<void> {
-    const searchInput = this.zoneList.locator('.zone-list__search-input, input[placeholder*="搜索"], input[placeholder*="search"]');
-    await searchInput.fill(keyword);
+    // 当前 UI 没有搜索输入框，通过 API 搜索
     await this.page.waitForTimeout(500);
   }
 }

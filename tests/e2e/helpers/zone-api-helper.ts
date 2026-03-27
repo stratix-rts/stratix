@@ -45,15 +45,30 @@ export class ZoneApiHelper {
     const data = await response.json();
 
     if (data.projects && data.projects.length > 0) {
-      return data.projects[0].id; // API 返回 id 不是 projectId
+      return data.projects[0].id;
     }
 
-    // 创建新项目
+    // 创建新项目 - API 需要完整的 config 对象
     const createResponse = await this.request.post(`${this.baseUrl}/api/projects`, {
-      data: { name, path: `/tmp/${name}` }
+      data: {
+        config: {
+          name,
+          description: `测试项目 ${name}`,
+          priority: 1,
+          localFolderPath: `/tmp/${name}`,
+          agentMode: 'autonomous',
+          planningRule: { enabled: false },
+          executionPermission: { allow: [] },
+          requirement: { review: false },
+          progressRule: { tracking: false }
+        }
+      }
     });
     const createData = await createResponse.json();
-    return createData.project?.id;
+    if (!createData.success || !createData.project) {
+      throw new Error(`Failed to create project: ${JSON.stringify(createData)}`);
+    }
+    return createData.project.id;
   }
 
   // ========== Zone CRUD ==========

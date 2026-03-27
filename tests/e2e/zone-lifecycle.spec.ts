@@ -98,15 +98,10 @@ test.describe('Zone 生命周期测试', () => {
       expect(canvasCount).toBeGreaterThan(0);
     });
 
-    test('Zone List 应该可见', async ({ page }) => {
-      const zoneListVisible = await zonePage.zoneList.isVisible().catch(() => false);
-      console.log('Zone list visible:', zoneListVisible);
-
-      // 如果可见，打印其内容
-      if (zoneListVisible) {
-        const cards = await page.locator('.zone-card, .zone-list__card').count();
-        console.log('Zone cards:', cards);
-      }
+    test('Zone 详情面板结构检查', async ({ page }) => {
+      // 检查 StratixModal 结构
+      const modalExists = await page.locator('.stratix-modal').count();
+      console.log('StratixModal count:', modalExists);
     });
   });
 
@@ -170,10 +165,10 @@ test.describe('Zone 生命周期测试', () => {
         console.log('Zone panel opened:', opened);
 
         if (opened) {
-          // 验证面板内容
+          // 验证面板内容 - ZoneDetail 组件
           await page.waitForTimeout(500);
-          const title = await zonePage.getZoneTitle().catch(() => '');
-          console.log('Zone panel title:', title);
+          const zoneDetailVisible = await page.locator('.zone-detail').isVisible().catch(() => false);
+          console.log('Zone detail visible:', zoneDetailVisible);
         }
       } else {
         console.log('Cannot open panel: bounds or zoneContextId missing');
@@ -185,7 +180,10 @@ test.describe('Zone 生命周期测试', () => {
   test.describe('3. Zone CRUD 测试', () => {
 
     test('应该能通过 API 创建和删除 Zone', async ({ page }) => {
-      if (!projectId) return;
+      if (!projectId) {
+        console.log('No projectId, skipping test');
+        return;
+      }
 
       // 创建 Zone
       const zone = await zoneApi.createZone(
@@ -224,6 +222,7 @@ test.describe('Zone 生命周期测试', () => {
 
       // 永久删除
       await zoneApi.deleteZone(zone.id);
+      await page.waitForTimeout(300);
       await zoneApi.permanentDeleteZone(zone.id);
 
       // 验证永久删除

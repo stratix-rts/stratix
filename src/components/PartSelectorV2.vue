@@ -5,7 +5,7 @@
  */
 import { ref, computed, watch } from 'vue';
 import { StratixButton } from '@/components/ui';
-import type { PartCategory, PartSelection, PartMetadata } from '../stratix-character-creator/types';
+import type { BodyType, PartCategory, PartSelection, PartMetadata } from '../stratix-character-creator/types';
 import { partRegistry } from '../stratix-character-creator';
 import { PART_CATEGORY_CONFIGS, getCategoryConfig } from '../stratix-character-creator/config/partConfig';
 
@@ -22,7 +22,7 @@ const categories = Object.keys(PART_CATEGORY_CONFIGS) as PartCategory[];
 
 // ==================== Props & Emits ====================
 const props = defineProps<{
-  bodyType: PartCategory extends never ? string : PartCategory;
+  bodyType: BodyType;
   selections?: Record<string, PartSelection>;
 }>();
 
@@ -41,6 +41,30 @@ watch(() => props.selections, (newVal) => {
     selections.value = { ...newVal };
   }
 }, { immediate: true });
+
+// Watch bodyType changes - filter out invalid selections
+watch(() => props.bodyType, (newBodyType) => {
+  // Filter selections to only keep parts valid for the new bodyType
+  const filteredSelections: Record<string, PartSelection> = {};
+  for (const [category, selection] of Object.entries(selections.value)) {
+    const parts = partRegistry.getPartsByCategory(category as PartCategory)
+      .filter(p => p.required.includes(newBodyType));
+    const isValid = parts.some(p => p.itemId === selection.itemId);
+    if (isValid) {
+      filteredSelections[category] = selection;
+    }
+  }
+  selections.value = filteredSelections;
+
+  // Reset current category if it has no valid parts for new bodyType
+  if (currentCategory.value) {
+    const categoryParts = partRegistry.getPartsByCategory(currentCategory.value)
+      .filter(p => p.required.includes(newBodyType));
+    if (categoryParts.length === 0) {
+      currentCategory.value = null;
+    }
+  }
+});
 
 // ==================== Computed ====================
 const currentParts = computed(() => {

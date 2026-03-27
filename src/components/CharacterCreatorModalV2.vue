@@ -4,13 +4,12 @@
  * 纯Vue为主架构，局部使用Phaser Canvas渲染角色预览
  */
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue';
-import { StratixModal, StratixButton } from '@/components/ui';
-import { StratixConfirmDialog } from '@/components/ui/StratixConfirmDialog';
+import { StratixModal, StratixButton, StratixConfirmDialog } from '@/components/ui';
 import type { SavedCharacter, CreatorStep, AnimationName, PartCategory, PartSelection } from '../stratix-character-creator/types';
 import { characterStorage, partRegistry, characterComposer } from '../stratix-character-creator';
 import { DEFAULT_BODY_TYPE } from '../stratix-character-creator/constants';
 import { CanvasPreviewScene } from './CanvasPreviewScene';
-import { PartSelectorV2 } from './PartSelectorV2';
+import PartSelectorV2 from './PartSelectorV2.vue';
 
 // ==================== Types ====================
 interface PreviewState {
