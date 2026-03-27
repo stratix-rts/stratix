@@ -326,25 +326,29 @@ const handleNext = () => {
 .backend-selector {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
   height: 100%;
+  padding: 4px;
 }
 
 .section {
-  padding-bottom: 16px;
+  padding-bottom: 20px;
   border-bottom: 1px solid var(--ds-border);
 }
 
 .section-label {
   display: block;
-  font-size: 11px;
+  font-size: 10px;
+  font-weight: 600;
   color: var(--ds-text-muted);
-  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 12px;
 }
 
 .backend-buttons {
   display: flex;
-  gap: 8px;
+  gap: 10px;
 }
 
 .backend-btn {
@@ -352,52 +356,60 @@ const handleNext = () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 12px 8px;
-  background: transparent;
+  gap: 8px;
+  padding: 16px 12px;
+  background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
-  border-radius: 8px;
+  border-radius: 10px;
   color: var(--ds-text-secondary);
   font-size: 11px;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .backend-btn:hover {
   border-color: var(--ds-brand-primary);
   color: var(--ds-brand-primary);
+  background: var(--ds-bg-hover);
+  box-shadow: 0 0 16px rgba(0, 204, 204, 0.15);
+  transform: translateY(-2px);
 }
 
 .backend-btn.active {
-  background: var(--ds-brand-primary);
+  background: linear-gradient(135deg, var(--ds-brand-primary) 0%, var(--ds-brand-secondary) 100%);
   border-color: var(--ds-brand-primary);
   color: var(--ds-text-inverse);
+  box-shadow: 0 0 24px rgba(0, 204, 204, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.15);
 }
 
 .backend-icon {
-  font-size: 18px;
+  font-size: 24px;
 }
 
 .config-area {
   flex: 1;
   overflow-y: auto;
+  padding-right: 8px;
 }
 
 .config-panel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .form-row {
   display: flex;
-  gap: 12px;
+  gap: 14px;
 }
 
 .form-row .form-group {
@@ -405,39 +417,50 @@ const handleNext = () => {
 }
 
 .form-label {
-  font-size: 11px;
+  font-size: 10px;
+  font-weight: 600;
   color: var(--ds-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .form-input,
 .form-select {
   width: 100%;
-  padding: 8px 12px;
+  padding: 12px 14px;
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
-  border-radius: 6px;
+  border-radius: 8px;
   color: var(--ds-text-primary);
-  font-size: 12px;
+  font-size: 13px;
   outline: none;
   box-sizing: border-box;
+  transition: all 0.2s;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .form-input:focus,
 .form-select:focus {
   border-color: var(--ds-brand-primary);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2), 0 0 0 2px rgba(0, 204, 204, 0.15);
+}
+
+.form-input::placeholder {
+  color: var(--ds-text-disabled);
 }
 
 .validation-errors {
-  padding: 12px;
-  background: rgba(255, 102, 102, 0.1);
-  border: 1px solid rgba(255, 102, 102, 0.3);
-  border-radius: 6px;
+  padding: 14px;
+  background: rgba(255, 68, 68, 0.08);
+  border: 1px solid rgba(255, 68, 68, 0.25);
+  border-radius: 8px;
 }
 
 .error-item {
   font-size: 12px;
   color: var(--ds-status-danger);
   margin-bottom: 4px;
+  font-weight: 500;
 }
 
 .error-item:last-child {
@@ -445,30 +468,39 @@ const handleNext = () => {
 }
 
 .test-status {
-  padding: 10px 12px;
-  border-radius: 6px;
+  padding: 12px 14px;
+  border-radius: 8px;
   font-size: 12px;
+  font-weight: 500;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .test-status.success {
-  background: rgba(0, 255, 136, 0.1);
+  background: rgba(0, 255, 136, 0.08);
+  border: 1px solid rgba(0, 255, 136, 0.25);
   color: var(--ds-status-success);
 }
 
 .test-status.error {
-  background: rgba(255, 102, 102, 0.1);
+  background: rgba(255, 68, 68, 0.08);
+  border: 1px solid rgba(255, 68, 68, 0.25);
   color: var(--ds-status-danger);
 }
 
 .test-section {
-  margin-top: 12px;
+  margin-top: 8px;
 }
 
 .nav-buttons {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  padding-top: 16px;
+  padding-top: 20px;
   border-top: 1px solid var(--ds-border);
 }
 </style>

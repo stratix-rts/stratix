@@ -320,13 +320,18 @@ const onPersonalityChange = () => { emitChange(); };
 .agent-config {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
   height: 100%;
+  padding: 4px;
 }
 
 .tabs {
   display: flex;
-  border-bottom: 1px solid var(--ds-border);
+  gap: 4px;
+  padding: 4px;
+  background: var(--ds-bg-tertiary);
+  border-radius: 10px;
+  border: 1px solid var(--ds-border);
 }
 
 .tab-btn {
@@ -334,85 +339,116 @@ const onPersonalityChange = () => { emitChange(); };
   padding: 12px 16px;
   background: transparent;
   border: none;
-  border-bottom: 2px solid transparent;
+  border-radius: 8px;
   color: var(--ds-text-muted);
   font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .tab-btn:hover {
   color: var(--ds-text-primary);
+  background: var(--ds-bg-hover);
 }
 
 .tab-btn.active {
-  color: var(--ds-brand-primary);
-  border-bottom-color: var(--ds-brand-primary);
+  color: var(--ds-text-inverse);
+  background: linear-gradient(135deg, var(--ds-brand-primary) 0%, var(--ds-brand-secondary) 100%);
+  box-shadow: 0 0 20px rgba(0, 204, 204, 0.3);
 }
 
 .tab-content {
   flex: 1;
   overflow-y: auto;
+  padding-right: 8px;
 }
 
 .tab-panel {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
+  animation: fadeIn 0.25s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .form-label {
-  font-size: 11px;
+  font-size: 10px;
+  font-weight: 600;
   color: var(--ds-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
 }
 
 .form-input,
 .form-select,
 .form-textarea {
   width: 100%;
-  padding: 8px 12px;
+  padding: 12px 14px;
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
-  border-radius: 6px;
+  border-radius: 8px;
   color: var(--ds-text-primary);
-  font-size: 12px;
+  font-size: 13px;
   outline: none;
   box-sizing: border-box;
+  transition: all 0.2s;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .form-textarea {
-  min-height: 80px;
+  min-height: 100px;
   resize: vertical;
+  line-height: 1.5;
 }
 
 .form-input:focus,
 .form-select:focus,
 .form-textarea:focus {
   border-color: var(--ds-brand-primary);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2), 0 0 0 2px rgba(0, 204, 204, 0.15);
+}
+
+.form-input::placeholder,
+.form-textarea::placeholder {
+  color: var(--ds-text-disabled);
 }
 
 .goals-list,
 .rules-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .goal-item,
 .rule-item {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  padding: 8px 12px;
-  background: var(--ds-bg-tertiary);
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--ds-bg-elevated);
   border: 1px solid var(--ds-border);
-  border-radius: 6px;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.goal-item:hover,
+.rule-item:hover {
+  border-color: var(--ds-brand-primary);
+  box-shadow: 0 0 12px rgba(0, 204, 204, 0.1);
 }
 
 .goal-text,
@@ -420,41 +456,47 @@ const onPersonalityChange = () => { emitChange(); };
   flex: 1;
   font-size: 12px;
   color: var(--ds-text-primary);
-  line-height: 1.4;
+  line-height: 1.5;
 }
 
 .rule-number {
   color: var(--ds-brand-primary);
   font-size: 11px;
-  min-width: 20px;
+  font-weight: 700;
+  min-width: 24px;
+  font-family: 'SF Mono', monospace;
 }
 
 .remove-btn {
-  padding: 4px 8px;
+  padding: 4px 10px;
   background: transparent;
-  border: 1px solid var(--ds-status-danger);
-  border-radius: 4px;
+  border: 1px solid rgba(255, 68, 68, 0.4);
+  border-radius: 6px;
   color: var(--ds-status-danger);
   font-size: 10px;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.2s;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .remove-btn:hover {
   background: var(--ds-status-danger);
   color: white;
+  box-shadow: 0 0 12px rgba(255, 68, 68, 0.3);
 }
 
 .empty-message {
   color: var(--ds-text-muted);
   font-size: 12px;
   text-align: center;
-  padding: 20px;
+  padding: 28px;
 }
 
 .add-row {
   display: flex;
-  gap: 8px;
+  gap: 10px;
 }
 
 .add-row .form-input {
@@ -468,32 +510,37 @@ const onPersonalityChange = () => { emitChange(); };
 }
 
 .template-btn {
-  padding: 6px 12px;
+  padding: 8px 14px;
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
-  border-radius: 6px;
+  border-radius: 8px;
   color: var(--ds-text-secondary);
   font-size: 11px;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.2s;
 }
 
 .template-btn:hover {
   border-color: var(--ds-brand-primary);
   color: var(--ds-brand-primary);
+  background: var(--ds-bg-hover);
+  box-shadow: 0 0 12px rgba(0, 204, 204, 0.15);
+  transform: translateY(-1px);
 }
 
 .validation-errors {
-  padding: 12px;
-  background: rgba(255, 102, 102, 0.1);
-  border: 1px solid rgba(255, 102, 102, 0.3);
-  border-radius: 6px;
+  padding: 14px;
+  background: rgba(255, 68, 68, 0.08);
+  border: 1px solid rgba(255, 68, 68, 0.25);
+  border-radius: 8px;
 }
 
 .error-item {
   font-size: 12px;
   color: var(--ds-status-danger);
-  margin-bottom: 4px;
+  margin-bottom: 6px;
+  font-weight: 500;
 }
 
 .error-item:last-child {
@@ -504,7 +551,7 @@ const onPersonalityChange = () => { emitChange(); };
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  padding-top: 16px;
+  padding-top: 20px;
   border-top: 1px solid var(--ds-border);
 }
 </style>
