@@ -10,6 +10,10 @@ import { characterStorage, partRegistry, characterComposer } from '../stratix-ch
 import { DEFAULT_BODY_TYPE } from '../stratix-character-creator/constants';
 import { CanvasPreviewScene } from './CanvasPreviewScene';
 import PartSelectorV2 from './PartSelectorV2.vue';
+import BackendSelectorV2 from './BackendSelectorV2.vue';
+import AgentConfigV2 from './AgentConfigV2.vue';
+import type { AgentBackendType } from '@/stratix-core/stratix-protocol';
+import type { OpenClawConfigLocal, StratixDirectConfig } from '../stratix-character-creator/types';
 
 // ==================== Types ====================
 interface PreviewState {
@@ -58,6 +62,26 @@ const characterState = reactive<CharacterState>({
 
 const characterName = ref('');
 const selectedBodyType = ref<typeof DEFAULT_BODY_TYPE>(DEFAULT_BODY_TYPE);
+
+// Backend config state
+const backendType = ref<AgentBackendType>('stratix');
+const openClawConfig = ref<OpenClawConfigLocal>({ endpoint: '', accountId: '' });
+const stratixConfig = ref<StratixDirectConfig>({
+  provider: 'openai',
+  model: 'gpt-4o',
+  temperature: 0.7,
+  maxTokens: 4096,
+  maxShortTerm: 20,
+  enableLongTerm: true,
+});
+
+// Agent config state
+const agentSoul = ref({
+  identity: '',
+  goals: [] as string[],
+  personality: '',
+});
+const agentRules = ref<string[]>([]);
 
 // Steps
 const steps = [
@@ -143,6 +167,36 @@ const goToPrevStep = () => {
 
 const goToStep = (step: CreatorStep) => {
   currentStep.value = step;
+};
+
+// ==================== Backend Config Handlers ====================
+const handleBackendChange = (type: AgentBackendType, config: OpenClawConfigLocal | StratixDirectConfig) => {
+  backendType.value = type;
+  if (type === 'openclaw') {
+    openClawConfig.value = config as OpenClawConfigLocal;
+  } else {
+    stratixConfig.value = config as StratixDirectConfig;
+  }
+  if (characterState.character) {
+    characterState.character.backendType = type;
+    if (type === 'openclaw') {
+      characterState.character.openClawConfig = config as OpenClawConfigLocal;
+    } else {
+      characterState.character.stratixConfig = config as StratixDirectConfig;
+    }
+    characterState.isDirty = true;
+  }
+};
+
+// ==================== Agent Config Handlers ====================
+const handleAgentChange = (config: { soul: { identity: string; goals: string[]; personality: string }; rules: string[] }) => {
+  agentSoul.value = config.soul;
+  agentRules.value = config.rules;
+  if (characterState.character) {
+    characterState.character.soul = config.soul;
+    characterState.character.rules = config.rules;
+    characterState.isDirty = true;
+  }
 };
 
 // ==================== Preview Controls ====================
@@ -453,14 +507,15 @@ const handleRandomize = async () => {
         <div v-if="currentStep === 'openclaw'" class="step-content">
           <h3 class="step-title">选择服务</h3>
           <p class="step-desc">选择AI后端服务</p>
-          <!-- BackendSelector will go here -->
-          <div class="placeholder-content">
-            <StratixButton variant="secondary" @click="goToPrevStep">
-              上一步
-            </StratixButton>
-            <StratixButton variant="primary" @click="goToNextStep">
-              下一步：配置AI
-            </StratixButton>
+          <div class="backend-selector-wrapper">
+            <BackendSelectorV2
+              :initial-backend-type="characterState.character?.backendType || 'stratix'"
+              :initial-open-claw-config="characterState.character?.openClawConfig"
+              :initial-stratix-config="characterState.character?.stratixConfig"
+              @change="handleBackendChange"
+              @prev="goToPrevStep"
+              @next="goToNextStep"
+            />
           </div>
         </div>
 
@@ -468,14 +523,13 @@ const handleRandomize = async () => {
         <div v-if="currentStep === 'agent'" class="step-content">
           <h3 class="step-title">配置AI</h3>
           <p class="step-desc">配置角色的灵魂、规则和技能</p>
-          <!-- AgentConfigPanel will go here -->
-          <div class="placeholder-content">
-            <StratixButton variant="secondary" @click="goToPrevStep">
-              上一步
-            </StratixButton>
-            <StratixButton variant="primary" @click="handleComplete">
-              完成创建
-            </StratixButton>
+          <div class="agent-config-wrapper">
+            <AgentConfigV2
+              :character="characterState.character"
+              @change="handleAgentChange"
+              @prev="goToPrevStep"
+              @complete="handleComplete"
+            />
           </div>
         </div>
       </div>
@@ -705,6 +759,20 @@ const handleRandomize = async () => {
 }
 
 .part-selector-wrapper {
+  flex: 1;
+  min-height: 400px;
+  display: flex;
+  flex-direction: column;
+}
+
+.backend-selector-wrapper {
+  flex: 1;
+  min-height: 400px;
+  display: flex;
+  flex-direction: column;
+}
+
+.agent-config-wrapper {
   flex: 1;
   min-height: 400px;
   display: flex;
