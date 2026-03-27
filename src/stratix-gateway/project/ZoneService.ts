@@ -18,10 +18,39 @@ import path from 'path';
 export class ZoneService {
   private initialized: boolean = false;
 
+  // 文件缓存配置
+  private cacheExpiry: number = 3600000; // 1小时
+  private maxFileSize: number = 10 * 1024 * 1024; // 10MB
+  private allowedBasePaths: string[] = [];
+
   public async initialize(): Promise<void> {
     if (this.initialized) return;
     this.initialized = true;
     console.log('[ZoneService] Initialized');
+  }
+
+  /**
+   * 配置文件缓存策略
+   */
+  public configureFileCache(options: {
+    cacheExpiry?: number;
+    maxFileSize?: number;
+    allowedBasePaths?: string[];
+  }): void {
+    if (options.cacheExpiry !== undefined) {
+      this.cacheExpiry = options.cacheExpiry;
+    }
+    if (options.maxFileSize !== undefined) {
+      this.maxFileSize = options.maxFileSize;
+    }
+    if (options.allowedBasePaths !== undefined) {
+      this.allowedBasePaths = options.allowedBasePaths;
+    }
+    console.log('[ZoneService] File cache configured:', {
+      cacheExpiry: this.cacheExpiry,
+      maxFileSize: this.maxFileSize,
+      allowedBasePaths: this.allowedBasePaths
+    });
   }
 
   private async ensureInitialized(): Promise<void> {
@@ -362,6 +391,54 @@ export class ZoneService {
     }
 
     return deleted;
+  }
+
+  /**
+   * Check if file content should be refreshed based on cache expiry
+   */
+  public shouldRefreshFile(file: ZoneFile): boolean {
+    // Always refresh if no content cached
+    if (!file.content) {
+      return true;
+    }
+
+    // Check if cache has expired
+    if (file.lastFetched) {
+      const age = Date.now() - file.lastFetched;
+      return age > this.cacheExpiry;
+    }
+
+    // If no lastFetched timestamp but has content, still refresh to be safe
+    return true;
+  }
+
+  /**
+   * Get file content with cache check
+   * Returns null if cache is still valid
+   */
+  public async getFileContentIfStale(file: ZoneFile): Promise<string | null> {
+    if (!this.shouldRefreshFile(file)) {
+      return null; // Cache is still valid
+    }
+
+    let content: string | undefined;
+    if (file.sourceType === 'local') {
+      try {
+        content = await this.readLocalFile(file.source);
+      } catch (error) {
+        console.warn(`[ZoneService] Failed to read local file ${file.source}:`, error);
+        return null;
+      }
+    } else if (file.sourceType === 'url') {
+      try {
+        content = await this.fetchUrl(file.source);
+      } catch (error) {
+        console.warn(`[ZoneService] Failed to fetch URL ${file.source}:`, error);
+        return null;
+      }
+    }
+
+    return content ?? null;
   }
 
   public async refreshFile(zoneId: string, fileId: string): Promise<ZoneFile> {
@@ -1066,12 +1143,82 @@ export class ZoneService {
     return zoneRepository.getZone(zone.id)!;
   }
 
-  // Helper: Read local file content
+  // Helper: Validate file path security (prevent path traversal)
+  private validateFilePath(filePath: string): void {
+    // Check for path traversal attempts
+    const normalized = path.normalize(filePath);
+    if (normalized.includes('..')) {
+      throw new Error(`Path traversal not allowed: ${filePath}`);
+    }
+
+    // If allowedBasePaths is configured, verify file is within allowed paths
+    if (this.allowedBasePaths.length > 0) {
+      const isAllowed = this.allowedBasePaths.some(basePath => {
+        const normalizedBase = path.normalize(basePath);
+        return normalized.startsWith(normalizedBase);
+      });
+      if (!isAllowed) {
+        throw new Error(`File path not in allowed directories: ${filePath}`);
+      }
+    }
+  }
+
+  // Helper: Get file size
+  private async getFileSize(filePath: string): Promise<number> {
+    return new Promise((resolve, reject) => {
+      fs.stat(filePath, (err, stats) => {
+        if (err) reject(err);
+        else resolve(stats.size);
+      });
+    });
+  }
+
+  // Helper: Read local file content with size check and chunking for large files
   private async readLocalFile(filePath: string): Promise<string> {
+    // Validate path security
+    this.validateFilePath(filePath);
+
+    // Check file size
+    const size = await this.getFileSize(filePath);
+    if (size > this.maxFileSize) {
+      throw new Error(`File too large: ${size} bytes (max: ${this.maxFileSize} bytes)`);
+    }
+
+    // For large files (>1MB), read in chunks
+    if (size > 1024 * 1024) {
+      return this.readFileWithChunk(filePath);
+    }
+
+    // For normal files, read directly
     return new Promise((resolve, reject) => {
       fs.readFile(filePath, 'utf-8', (err, data) => {
         if (err) reject(err);
         else resolve(data);
+      });
+    });
+  }
+
+  // Helper: Read large file in chunks
+  private async readFileWithChunk(filePath: string): Promise<string> {
+    const chunkSize = 512 * 1024; // 512KB per chunk
+    const chunks: string[] = [];
+    let totalSize = 0;
+
+    return new Promise((resolve, reject) => {
+      const stream = fs.createReadStream(filePath, { encoding: 'utf-8', highWaterMark: chunkSize });
+
+      stream.on('data', (chunk: string | Buffer) => {
+        const chunkStr = typeof chunk === 'string' ? chunk : chunk.toString('utf-8');
+        chunks.push(chunkStr);
+        totalSize += chunkStr.length;
+      });
+
+      stream.on('end', () => {
+        resolve(chunks.join(''));
+      });
+
+      stream.on('error', (err) => {
+        reject(err);
       });
     });
   }
