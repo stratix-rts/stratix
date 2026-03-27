@@ -178,7 +178,12 @@ const handleComplete = async () => {
 
   try {
     await characterStorage.save(characterState.character);
-    emit('created', characterState.character);
+    // Emit appropriate event based on mode
+    if (props.editCharacterId) {
+      emit('updated', characterState.character);
+    } else {
+      emit('created', characterState.character);
+    }
     emit('close');
   } catch (error) {
     console.error('[V2] Failed to save character:', error);
