@@ -54,28 +54,43 @@ router.put('/save', async (req: Request, res: Response) => {
 
 router.put('/update', async (req: Request, res: Response) => {
   try {
-    const agentConfig = req.body;
+    const partialConfig = req.body;
 
-    if (!agentConfig.agentId) {
+    if (!partialConfig.agentId) {
       res.json(requestHelper.badRequest('agentId is required'));
       return;
     }
 
-    const validation = validator.validateAgentConfig(agentConfig);
-    if (!validation.valid) {
-      res.json(requestHelper.badRequest(`配置验证失败: ${validation.errors.join(', ')}`));
-      return;
-    }
-
     const store = dataStoreService.getStore();
-    const existing = await store.getAgent(agentConfig.agentId);
+    const existing = await store.getAgent(partialConfig.agentId);
     if (!existing) {
       res.json(requestHelper.notFound('Agent not found'));
       return;
     }
 
-    await store.saveAgent(agentConfig);
-    res.json(requestHelper.success(agentConfig, 'Agent updated'));
+    // 判断是否为部分更新（仅包含可合并的轻量字段）
+    const partialFields = ['position', 'zoneId', 'status', 'configStatus'];
+    const isPartialUpdate = Object.keys(partialConfig).every(
+      (key) => key === 'agentId' || partialFields.includes(key)
+    );
+
+    let finalConfig: any;
+
+    if (isPartialUpdate) {
+      // 部分更新：将新字段合并到现有配置中，跳过完整验证
+      finalConfig = { ...existing, ...partialConfig };
+    } else {
+      // 完整更新：进行完整验证
+      const validation = validator.validateAgentConfig(partialConfig);
+      if (!validation.valid) {
+        res.json(requestHelper.badRequest(`配置验证失败: ${validation.errors.join(', ')}`));
+        return;
+      }
+      finalConfig = partialConfig;
+    }
+
+    await store.saveAgent(finalConfig);
+    res.json(requestHelper.success(finalConfig, 'Agent updated'));
   } catch (error) {
     res.status(500).json(requestHelper.serverError('Internal server error'));
   }
