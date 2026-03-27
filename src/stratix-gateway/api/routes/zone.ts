@@ -24,8 +24,15 @@ router.post('/zones', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Use projectId from body or generate new one
-    const zone = await zoneService.createZone(projectId || '', title, prompt || '');
+    if (!projectId) {
+      res.status(400).json({
+        success: false,
+        error: 'Missing required field: projectId'
+      });
+      return;
+    }
+
+    const zone = await zoneService.createZone(projectId, title, prompt || '');
 
     res.json({
       success: true,
