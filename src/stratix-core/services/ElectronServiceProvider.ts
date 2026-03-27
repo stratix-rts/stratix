@@ -82,27 +82,29 @@ export class ElectronServiceProvider implements ServiceProvider {
     if (!this.electronAPI) {
       throw new Error('Electron API not available');
     }
-    
-    const result = await this.electronAPI.invoke('service:connectOpenClaw', config);
-    return result.success === true;
+
+    const endpoint = config.localEndpoint || config.remoteEndpoint;
+    if (!endpoint) {
+      throw new Error('No endpoint provided');
+    }
+
+    const result = await this.electronAPI.openclaw.connectDirect(endpoint, config);
+    return result === true;
   }
-  
+
   async sendOpenClawMessage(message: string, sessionId?: string): Promise<ChatResponse> {
     if (!this.electronAPI) {
       throw new Error('Electron API not available');
     }
-    
-    return await this.electronAPI.invoke('service:sendOpenClawMessage', {
-      message,
-      sessionId,
-    });
+
+    return await this.electronAPI.invoke('openclaw:sendMessage', { message, sessionId });
   }
-  
+
   async disconnectOpenClaw(): Promise<void> {
     if (!this.electronAPI) {
       throw new Error('Electron API not available');
     }
-    await this.electronAPI.invoke('service:disconnectOpenClaw');
+    await this.electronAPI.openclaw.disconnectDirect();
   }
   
   async getOpenClawStatus(): Promise<{ connected: boolean; endpoint?: string; error?: string }> {

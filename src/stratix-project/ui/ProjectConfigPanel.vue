@@ -239,7 +239,16 @@ const isValid = computed(() => {
 });
 
 const browseFolder = async () => {
-  console.log('Browse folder - to be implemented with Electron API');
+  const api = (window as any).electronAPI;
+  if (!api?.dialog) {
+    console.error('Electron dialog API not available');
+    return;
+  }
+  const result = await api.dialog.openDirectory();
+  if (result.success && result.path) {
+    config.localFolderPath = result.path;
+    validatePath();
+  }
 };
 
 const handleSave = async () => {

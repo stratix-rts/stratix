@@ -79,7 +79,7 @@ class GlobalProviderSettings {
       if (this.isElectron()) {
         // Electron: load config from file, API keys from secure storage
         const config = await this.loadElectronConfig();
-        if (config) {
+        if (Array.isArray(config)) {
           // Load API keys separately via secure API
           for (const entry of config) {
             const apiKeyResult = await (window as any).electronAPI.apiKey.load(entry.id);

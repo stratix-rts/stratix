@@ -694,7 +694,7 @@ const selectedZone = ref<Zone | null>(null);
 const loadZones = async () => {
   try {
     const projectId = props.projectId || 'default';
-    const response = await fetch(`/api/zones`);
+    const response = await fetch(`/api/zones?projectId=${encodeURIComponent(projectId)}`);
     const result = await response.json();
     if (result.success) {
       zones.value = result.zones || [];
@@ -707,9 +707,9 @@ const loadZones = async () => {
 // 加载 Agents
 const loadAgents = async () => {
   try {
-    const response = await fetch('/api/stratix/config/agent');
+    const response = await fetch('/api/stratix/config/agent/list');
     const result = await response.json();
-    if (result.success) {
+    if (result.code === 200) {
       agents.value = result.data || [];
     }
   } catch (error) {

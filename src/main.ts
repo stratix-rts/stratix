@@ -2,6 +2,7 @@ import { createApp } from 'vue';
 import App from './App.vue';
 import { initDesignSystem, setTheme } from './design-system/config';
 import { statusSyncWS } from './stratix-core/services/StatusSyncWebSocketService';
+import { partRegistry } from './stratix-character-creator/core/PartRegistry';
 
 // Vxe Table 全局初始化
 import VXETable from 'vxe-table';
@@ -20,5 +21,8 @@ setTheme('cyberpunk');
 
 // 连接 StatusSync WebSocket 服务，转发 zone 事件到 StratixEventBus
 statusSyncWS.connect();
+
+// 预加载角色部件元数据（确保 RTS 加载角色纹理时部件数据已就绪）
+partRegistry.loadMetadata();
 
 app.mount('#app');

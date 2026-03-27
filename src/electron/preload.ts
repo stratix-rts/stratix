@@ -11,6 +11,11 @@ export interface ElectronAPI {
   // 通用服务调用
   invoke: (channel: string, ...args: any[]) => Promise<any>;
 
+  // Dialog
+  dialog: {
+    openDirectory: () => Promise<{ success: boolean; canceled?: boolean; path?: string }>;
+  };
+
   // Tailscale
   tailscale: {
     getStatus: () => Promise<any>;
@@ -21,12 +26,14 @@ export interface ElectronAPI {
     isRunning: () => Promise<boolean>;
     needsAuth: () => Promise<boolean>;
     onEvent: (callback: (event: any) => void) => () => void;
+    connectNode: (nodeId: string) => Promise<boolean>;
   };
 
   // OpenClaw
   openclaw: {
     connectDirect: (endpoint: string, config: any) => Promise<boolean>;
     disconnectDirect: () => Promise<void>;
+    sendMessage: (message: string, sessionId?: string) => Promise<any>;
   };
 
   // Custom Providers
@@ -68,12 +75,24 @@ export interface ElectronAPI {
     list: () => Promise<{ success: boolean; executions?: any[] }>;
     clear: (executionId?: string) => Promise<{ success: boolean }>;
   };
+
+  // Texture
+  texture: {
+    upload: (characterId: string, imageData: string, filename?: string) => Promise<{ success: boolean; data?: any; error?: string }>;
+    check: (filePath: string) => Promise<{ exists: boolean; url?: string | null; size?: number; generatedAt?: number }>;
+    delete: (filePath: string) => Promise<{ success: boolean; error?: string }>;
+  };
 }
 
 const electronAPI: ElectronAPI = {
   // 通用服务调用
   invoke: ipcRenderer.invoke.bind(ipcRenderer),
-  
+
+  // Dialog
+  dialog: {
+    openDirectory: () => ipcRenderer.invoke('dialog:openDirectory'),
+  },
+
   // Tailscale
   tailscale: {
     getStatus: () => ipcRenderer.invoke('tailscale:status'),
@@ -83,6 +102,7 @@ const electronAPI: ElectronAPI = {
     login: (authKey) => ipcRenderer.invoke('tailscale:login', authKey),
     isRunning: () => ipcRenderer.invoke('tailscale:isRunning'),
     needsAuth: () => ipcRenderer.invoke('tailscale:needsAuth'),
+    connectNode: (nodeId) => ipcRenderer.invoke('tailscale:connectNode', nodeId),
     onEvent: (callback) => {
       const handler = (_event: any, data: any) => callback(data);
       ipcRenderer.on('tailscale:event', handler);
@@ -94,6 +114,7 @@ const electronAPI: ElectronAPI = {
   openclaw: {
     connectDirect: (endpoint, config) => ipcRenderer.invoke('openclaw:connect', endpoint, config),
     disconnectDirect: () => ipcRenderer.invoke('openclaw:disconnect'),
+    sendMessage: (message, sessionId) => ipcRenderer.invoke('openclaw:sendMessage', { message, sessionId }),
   },
   
   // Custom Providers
@@ -135,6 +156,14 @@ const electronAPI: ElectronAPI = {
     status: (executionId) => ipcRenderer.invoke('execution:status', executionId),
     list: () => ipcRenderer.invoke('execution:list'),
     clear: (executionId) => ipcRenderer.invoke('execution:clear', executionId),
+  },
+
+  // Texture
+  texture: {
+    upload: (characterId, imageData, filename) =>
+      ipcRenderer.invoke('texture:upload', { characterId, imageData, filename }),
+    check: (filePath) => ipcRenderer.invoke('texture:check', filePath),
+    delete: (filePath) => ipcRenderer.invoke('texture:delete', filePath),
   },
 };
 

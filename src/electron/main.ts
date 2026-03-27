@@ -65,9 +65,10 @@ Module._resolveFilename = function(request: string, parent: any, isMain: any, op
   return originalResolve.call(this, request, parent, isMain, options);
 };
 
-import { app, BrowserWindow, ipcMain, safeStorage } from 'electron';
+import { app, BrowserWindow, ipcMain, safeStorage, dialog } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import { ensureDirSync } from 'fs-extra';
 
 import { startGatewayService } from '../stratix-gateway';
 import { dataStoreService } from '../stratix-gateway/dataStoreService';
@@ -79,6 +80,7 @@ let gatewayService: any = null;
 let tailscale: EmbeddedTailscale | null = null;
 let activeOpenClawConnection: WebSocketOpenClawAdapter | null = null;
 let userDataPath: string = '';
+let texturesDir: string = '';
 
 /**
  * 初始化所有服务
@@ -88,7 +90,12 @@ async function initializeServices() {
   // 1. 确定数据目录（Electron userData）
   const dataDir = path.join(userDataPath, 'data');
   console.log('[Electron] Data directory:', dataDir);
-  
+
+  // 设置纹理存储目录
+  texturesDir = path.join(dataDir, 'textures');
+  ensureDirSync(texturesDir);
+  console.log('[Electron] Textures directory:', texturesDir);
+
   // 2. 初始化数据服务
   await dataStoreService.initialize(dataDir);
   console.log('[Electron] Data service initialized');
@@ -170,6 +177,89 @@ function createWindow() {
  * 设置 IPC 处理程序
  */
 function setupIPC() {
+  // ==================== Dialog IPC ====================
+  ipcMain.handle('dialog:openDirectory', async () => {
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      properties: ['openDirectory'],
+      title: '选择文件夹',
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, canceled: true };
+    }
+    return { success: true, path: result.filePaths[0] };
+  });
+
+  // ==================== Texture IPC ====================
+  ipcMain.handle('texture:upload', async (_event, { characterId, imageData, filename }) => {
+    try {
+      const matches = imageData.match(/^data:image\/(png|jpeg|webp);base64,(.+)$/);
+      if (!matches) {
+        return { success: false, error: 'Invalid image data format' };
+      }
+
+      const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+      const textureFilename = filename || `${characterId}.${ext}`;
+      const texturePath = path.join(texturesDir, textureFilename);
+
+      const buffer = Buffer.from(matches[2], 'base64');
+      fs.writeFileSync(texturePath, buffer);
+
+      const stats = fs.statSync(texturePath);
+      console.log(`[TextureService] Uploaded: ${textureFilename} (${stats.size} bytes)`);
+
+      return {
+        success: true,
+        data: {
+          filePath: textureFilename,
+          width: 832,
+          height: 3456,
+          animations: ['walk', 'idle', 'run'],
+          generatedAt: stats.mtimeMs
+        }
+      };
+    } catch (error: any) {
+      console.error('[TextureService] Upload failed:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('texture:check', async (_event, filePath: string) => {
+    try {
+      const texturePath = path.join(texturesDir, filePath);
+
+      if (fs.existsSync(texturePath)) {
+        const stats = fs.statSync(texturePath);
+        return {
+          exists: true,
+          url: `/textures/${filePath}`,
+          size: stats.size,
+          generatedAt: stats.mtimeMs
+        };
+      }
+
+      return { exists: false, url: null };
+    } catch (error) {
+      console.error('[TextureService] Check failed:', error);
+      return { exists: false, url: null };
+    }
+  });
+
+  ipcMain.handle('texture:delete', async (_event, filePath: string) => {
+    try {
+      const texturePath = path.join(texturesDir, filePath);
+
+      if (fs.existsSync(texturePath)) {
+        fs.unlinkSync(texturePath);
+        console.log(`[TextureService] Deleted: ${filePath}`);
+      }
+
+      return { success: true };
+    } catch (error: any) {
+      console.error('[TextureService] Delete failed:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   // ==================== Tailscale IPC ====================
   ipcMain.handle('tailscale:status', async () => {
     return tailscale?.getStatus() || null;
@@ -198,6 +288,33 @@ function setupIPC() {
   
   ipcMain.handle('tailscale:needsAuth', async () => {
     return tailscale?.needsAuthentication() || false;
+  });
+
+  ipcMain.handle('tailscale:connectNode', async (_event, nodeId: string) => {
+    if (!tailscale) return false;
+    try {
+      const nodes = await tailscale.discoverOpenClawNodes();
+      const node = nodes.find((n: any) => n.peer?.id === nodeId || n.peer?.id === `pn_${nodeId}`);
+      if (!node) {
+        console.error('[Electron] Tailscale node not found:', nodeId);
+        return false;
+      }
+      if (!node.healthy) {
+        console.error('[Electron] Tailscale node not healthy:', node.url);
+        return false;
+      }
+      // Configure the gateway's OpenClaw proxy with the node's endpoint
+      const response = await fetch('http://127.0.0.1:7524/api/stratix/openclaw/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint: node.url, apiKey: '' }),
+      });
+      const result = await response.json();
+      return result.success === true || result.connected === true;
+    } catch (error) {
+      console.error('[Electron] tailscale:connectNode failed:', error);
+      return false;
+    }
   });
   
   // ==================== OpenClaw IPC ====================
@@ -236,7 +353,21 @@ function setupIPC() {
     }
     return { success: true };
   });
-  
+
+  ipcMain.handle('openclaw:sendMessage', async (_event, { message, sessionId }) => {
+    try {
+      const response = await fetch('http://127.0.0.1:7524/api/stratix/agent/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, sessionId }),
+      });
+      return await response.json();
+    } catch (error: any) {
+      console.error('[Electron] openclaw:sendMessage failed:', error);
+      return { code: 500, message: error.message, data: null };
+    }
+  });
+
   // ==================== 数据服务 IPC ====================
   ipcMain.handle('service:saveAgent', async (_event, config) => {
     return await dataStoreService.getStore().saveAgent(config);
@@ -382,7 +513,7 @@ function setupIPC() {
     registerWorkflowHandlers,
     registerProviderHandlers,
     registerExecutionHandlers,
-  } = require('../agent-platform/ipc');
+  } = require('@/agent-platform/ipc');
 
   const workflowHandlers = registerWorkflowHandlers(userDataPath, fs, path);
   const providerHandlers = registerProviderHandlers();
