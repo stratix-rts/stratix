@@ -25,7 +25,7 @@ export class BackupManager {
     const backupPath = path.join(this.backupDir, `stratix-backup-${timestamp}.json`);
     
     const data = await this.dataStore.exportData();
-    await fs.writeFile(backupPath, data, 'utf-8');
+    await fs.writeFile(backupPath, JSON.stringify(data, null, 2), 'utf-8');
     
     return backupPath;
   }

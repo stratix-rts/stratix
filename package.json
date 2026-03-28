@@ -1,7 +1,7 @@
 {
   "name": "stratix",
   "version": "0.1.0",
-  "description": "Stratix 星策系统 - 基于 Phaser RTS 游戏化界面的多 Agent 可视化指挥平台",
+  "description": "Stratix \u661f\u7b56\u7cfb\u7edf - \u57fa\u4e8e Phaser RTS \u6e38\u620f\u5316\u754c\u9762\u7684\u591a Agent \u53ef\u89c6\u5316\u6307\u6325\u5e73\u53f0",
   "main": "dist/electron/electron/main.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -77,7 +77,8 @@
     "vue": "^3.5.28",
     "vxe-pc-ui": "^4.13.16",
     "vxe-table": "^4.18.9",
-    "xe-utils": "^4.0.4"
+    "xe-utils": "^4.0.4",
+    "fs-extra": "^11.3.4"
   },
   "devDependencies": {
     "@jest/globals": "^29.7.0",
@@ -100,7 +101,6 @@
     "electron": "^40.6.0",
     "electron-builder": "^26.8.1",
     "eslint": "^8.56.0",
-    "fs-extra": "^11.3.4",
     "jest": "^29.7.0",
     "marked": "^17.0.5",
     "nodemon": "^3.1.14",

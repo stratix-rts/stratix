@@ -1,15 +1,16 @@
 import { agentRepository } from '../stratix-database/AgentRepository';
 import { agentChatMessageRepository, type ChatMessage } from '../stratix-database/AgentChatMessageRepository';
-import { getDatabase } from '../stratix-database';
+import { getDatabase, initializeDatabase } from '../stratix-database';
 import type { StratixAgentConfig } from '../stratix-core/stratix-protocol';
 import type { StratixCommandLog, StratixTemplates, LogQueryOptions } from './types';
 
 export class StratixDataStore {
   private initialized: boolean = false;
 
-  public async initialize(): Promise<void> {
+  public async initialize(dataDir?: string): Promise<void> {
     if (this.initialized) return;
-    
+
+    initializeDatabase({ dataDir });
     getDatabase();
     this.initialized = true;
     console.log('[StratixDataStore] Initialized with SQLite');

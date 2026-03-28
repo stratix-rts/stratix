@@ -21,14 +21,14 @@ export function createDataStore(): {
   return { store, templates, logs, backup };
 }
 
-export async function initializeDataStore(): Promise<{
+export async function initializeDataStore(dataDir?: string): Promise<{
   store: StratixDataStore;
   templates: TemplateLibrary;
   logs: LogStore;
   backup: BackupManager;
 }> {
   const instance = createDataStore();
-  await instance.store.initialize();
+  await instance.store.initialize(dataDir);
   await instance.templates.initialize();
   return instance;
 }

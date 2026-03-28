@@ -189,17 +189,13 @@ export async function startGatewayService(
   // 初始化 WebSocket 服务器
   initWebSocketServer(server);
   
-  // 仅在独立模式下绑定端口
-  if (mode === 'standalone') {
-    await new Promise<void>((resolve) => {
-      server.listen(port, bindAddress, () => {
-        console.log(`Stratix Gateway running on ${bindAddress}:${port} (standalone mode)`);
-        resolve();
-      });
+  // 启动 HTTP 服务器
+  await new Promise<void>((resolve) => {
+    server.listen(port, bindAddress, () => {
+      console.log(`Stratix Gateway running on ${bindAddress}:${port} (${mode} mode)`);
+      resolve();
     });
-  } else {
-    console.log(`Stratix Gateway initialized in embedded mode (port: ${port}, bind: ${bindAddress})`);
-  }
+  });
   
   // 启动状态同步服务
   const statusSyncService = new StatusSyncService(WS_PORT);

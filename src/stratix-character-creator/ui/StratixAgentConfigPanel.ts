@@ -311,7 +311,12 @@ export class StratixAgentConfigPanel {
 
   private showEndpointRow(): boolean {
     const provider = this.currentConfig.provider;
-    return provider === 'ollama' || provider === 'custom';
+    // Show endpoint for ollama, custom, or any provider without a built-in default endpoint
+    if (provider === 'ollama' || provider === 'custom') return true;
+    const configs = getCachedProviderConfigs();
+    const providerConfig = configs[provider];
+    // Show if provider is unknown (custom) or has no default endpoint
+    return !providerConfig || !providerConfig.defaultEndpoint;
   }
 
   private requiresApiKey(): boolean {
@@ -357,14 +362,24 @@ export class StratixAgentConfigPanel {
             this.currentConfig.provider = customProviderId as any;
             providerSelect.innerHTML = this.generateProviderOptions();
             providerSelect.value = customProviderId;
-            
+
             const models = getModelsForProvider(customProviderId);
             this.currentConfig.model = models[0] || '';
-            
+
+            // Auto-populate endpoint from the newly added custom provider
+            const configs = getCachedProviderConfigs();
+            const providerConfig = configs[customProviderId];
+            if (providerConfig?.defaultEndpoint) {
+              this.currentConfig.endpoint = providerConfig.defaultEndpoint;
+            }
+
             const modelSelect = node.querySelector('#stratix-model') as HTMLSelectElement;
             if (modelSelect) {
               modelSelect.innerHTML = this.generateModelOptions();
             }
+
+            // Refresh UI to show endpoint row for custom provider
+            this.refreshUI();
           } else {
             providerSelect.value = this.currentConfig.provider;
           }
@@ -376,6 +391,13 @@ export class StratixAgentConfigPanel {
 
       const models = getModelsForProvider(newProvider);
       this.currentConfig.model = models[0] || '';
+
+      // Auto-populate endpoint from provider's defaultEndpoint for custom providers
+      const configs = getCachedProviderConfigs();
+      const providerConfig = configs[newProvider];
+      if (providerConfig?.defaultEndpoint) {
+        this.currentConfig.endpoint = providerConfig.defaultEndpoint;
+      }
 
       const modelSelect = node.querySelector('#stratix-model') as HTMLSelectElement;
       if (modelSelect) {

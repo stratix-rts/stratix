@@ -20,6 +20,6 @@
     },
     "noEmitOnError": false
   },
-  "include": ["src/electron/**/*"],
+  "include": ["src/electron/**/*", "src/agent-platform/**/*"],
   "exclude": ["node_modules", "dist"]
 }

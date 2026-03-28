@@ -34,7 +34,7 @@ export default defineConfig({
         changeOrigin: true,
       },
       '/ws': {
-        target: 'ws://127.0.0.1:7525',
+        target: 'ws://127.0.0.1:3011',
         changeOrigin: true,
         ws: true,
       },
