@@ -361,14 +361,30 @@ const initPhaserCanvas = () => {
         }
       }
     });
+
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
   });
 };
 
 const destroyPhaserCanvas = () => {
+  window.removeEventListener('resize', handleResize);
+  window.removeEventListener('orientationchange', handleResize);
   if (phaserGame.value) {
     phaserGame.value.destroy(true);
     phaserGame.value = null;
     previewScene.value = null;
+  }
+};
+
+const handleResize = () => {
+  if (!phaserGame.value || !canvasContainerRef.value) return;
+  const width = canvasContainerRef.value.clientWidth;
+  const height = canvasContainerRef.value.clientHeight;
+  phaserGame.value.scale.resize(width, height);
+  const scene = phaserGame.value.scene.getScene('CanvasPreviewScene') as any;
+  if (scene?.resize) {
+    scene.resize(width, height);
   }
 };
 
@@ -941,22 +957,18 @@ const handleRandomize = async () => {
 
 .part-selector-wrapper {
   flex: 1;
-  min-height: 0;
+  min-height: 400px;
   display: flex;
   flex-direction: column;
   border-radius: 12px;
   overflow: hidden;
   border: 1px solid var(--ds-border);
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
-}
-
-.part-selector-wrapper :deep(.part-selector) {
-  overflow-y: auto;
 }
 
 .backend-selector-wrapper {
   flex: 1;
-  min-height: 0;
+  min-height: 400px;
   display: flex;
   flex-direction: column;
   border-radius: 12px;
@@ -965,14 +977,9 @@ const handleRandomize = async () => {
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
 }
 
-.backend-selector-wrapper :deep(.backend-selector) {
-  overflow-y: auto;
-  padding: 16px;
-}
-
 .agent-config-wrapper {
   flex: 1;
-  min-height: 0;
+  min-height: 400px;
   display: flex;
   flex-direction: column;
   border-radius: 12px;

@@ -65,12 +65,28 @@ const initGame = () => {
       });
     },
   });
+
+  window.addEventListener('resize', handleResize);
+  window.addEventListener('orientationchange', handleResize);
 };
 
 const destroyGame = () => {
+  window.removeEventListener('resize', handleResize);
+  window.removeEventListener('orientationchange', handleResize);
   if (game.value) {
     game.value.destroy(true);
     game.value = null;
+  }
+};
+
+const handleResize = () => {
+  if (!game.value || !containerRef.value) return;
+  const width = containerRef.value.clientWidth;
+  const height = containerRef.value.clientHeight;
+  game.value.scale.resize(width, height);
+  const scene = game.value.scene.getScene('CharacterCreatorScene') as any;
+  if (scene?.resize) {
+    scene.resize(width, height);
   }
 };
 

@@ -1524,6 +1524,10 @@ export class CharacterCreatorScene extends Phaser.Scene {
 
     characterComposer.clearCache();
   }
+
+  resize(width: number, height: number): void {
+    this.cameras.main.setSize(width, height);
+  }
 }
 
 export default CharacterCreatorScene;

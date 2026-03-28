@@ -98,6 +98,8 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  window.removeEventListener('resize', handleResize);
+  window.removeEventListener('orientationchange', handleResize);
   if (game) {
     game.destroy(true);
   }
@@ -119,7 +121,7 @@ function initializeGame() {
 
   game.events.on('ready', () => {
     blueprintCanvas = game!.scene.getScene('BlueprintCanvas') as BlueprintCanvas;
-    
+
     if (blueprintCanvas) {
       blueprintCanvas.setOnNodeSelected((node) => {
         selectedNode.value = { ...node };
@@ -130,6 +132,7 @@ function initializeGame() {
   });
 
   window.addEventListener('resize', handleResize);
+  window.addEventListener('orientationchange', handleResize);
 }
 
 function loadBlueprint() {
@@ -181,10 +184,12 @@ function handleResetView() {
 
 function handleResize() {
   if (!game || !canvasContainer.value) return;
-  game.scale.resize(
-    canvasContainer.value.clientWidth,
-    canvasContainer.value.clientHeight
-  );
+  const width = canvasContainer.value.clientWidth;
+  const height = canvasContainer.value.clientHeight;
+  game.scale.resize(width, height);
+  if (blueprintCanvas) {
+    blueprintCanvas.resize(width, height);
+  }
 }
 
 function handleConfirm() {

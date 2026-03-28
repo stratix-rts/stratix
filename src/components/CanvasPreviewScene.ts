@@ -247,4 +247,8 @@ export class CanvasPreviewScene extends Phaser.Scene {
     this.textures.addCanvas(key, canvas);
     this.setTexture(key);
   }
+
+  resize(width: number, height: number): void {
+    this.cameras.main.setSize(width, height);
+  }
 }

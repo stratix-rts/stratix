@@ -201,4 +201,8 @@ export class BlueprintCanvas extends Phaser.Scene {
   setOnNodeSelected(callback: (node: BlueprintNode) => void): void {
     this.onNodeSelected = callback;
   }
+
+  resize(width: number, height: number): void {
+    this.cameras.main.setSize(width, height);
+  }
 }
