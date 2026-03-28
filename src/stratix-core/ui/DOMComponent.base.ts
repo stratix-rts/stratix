@@ -15,7 +15,7 @@ import { DOMContainer } from './DOMContainer';
 
 export abstract class DOMComponentBase extends UIComponentBase {
   protected domContainer: DOMContainer | null = null;
-  protected config: DOMComponentConfig;
+  protected config: DOMComponentConfig = undefined as any;
   
   constructor(scene: Phaser.Scene, config: DOMComponentConfig) {
     super(scene, config);

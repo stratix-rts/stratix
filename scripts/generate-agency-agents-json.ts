@@ -14,7 +14,8 @@ import * as path from 'path';
 import * as yaml from 'js-yaml';
 
 const VENDOR_DIR = path.resolve(__dirname, '../vendor/agency-agents');
-const OUTPUT_FILE = path.resolve(__dirname, '../src/stratix-data/agency-agents.json');
+const OUTPUT_DIR = path.resolve(__dirname, '../src/stratix-data');
+const OUTPUT_FILE = path.join(OUTPUT_DIR, 'agency-agents.json');
 
 interface AgencyAgent {
   id: string;
@@ -179,6 +180,12 @@ function processAgentFile(filePath: string, domain: string): AgencyAgent | null 
  * Main generator function
  */
 function main(): void {
+  // Ensure output directory exists
+  if (!fs.existsSync(OUTPUT_DIR)) {
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+    console.log('📁 Created directory:', OUTPUT_DIR);
+  }
+
   console.log('🔍 Scanning vendor/agency-agents directory...\n');
 
   const agents: AgencyAgent[] = [];

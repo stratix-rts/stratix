@@ -20,6 +20,6 @@
     },
     "noEmitOnError": false
   },
-  "include": ["src/electron/**/*", "src/agent-platform/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src/electron/**/*", "src/agent-platform/**/*", "src/stratix-core/**/*", "src/stratix-gateway/**/*", "src/stratix-data-store/**/*", "src/stratix-database/**/*", "src/stratix-openclaw-adapter/**/*", "src/stratix-tailscale/**/*", "src/stratix-agent/**/*", "src/stratix-project/**/*", "src/stratix-lra-bridge/**/*", "src/stratix-nocodb/**/*"],
+  "exclude": ["node_modules", "dist", "**/__tests__/**", "**/__mocks__/**"]
 }

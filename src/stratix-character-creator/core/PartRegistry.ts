@@ -7,9 +7,24 @@
 import { SPRITESHEET_BASE_PATH, BODY_TYPES } from '../constants';
 import type { PartMetadata, PartCategory, BodyType, PartSelection } from '../types';
 
+/**
+ * Category alias mapping - maps code category names to metadata typeName values
+ */
+const CATEGORY_ALIASES: Record<string, string[]> = {
+  torso: ['body', 'clothes', 'dress', 'armour', 'jacket', 'vest', 'chainmail', 'apron', 'overalls'],
+  hands: ['gloves'],
+  feet: ['shoes', 'socks'],
+  facial: ['beard', 'mustache', 'eyebrows'],
+  wrists: ['bracers', 'wrists'],
+  neck: ['neck', 'necklace'],
+  arms: ['arms', 'armour', 'sleeves'],
+  hat: ['hat', 'hat_accessory', 'headcover', 'bandana', 'visor'],
+  eyes: ['eyes', 'eye_color'],
+};
+
 class PartRegistry {
   private metadata: Map<string, PartMetadata> = new Map();
-  private byCategory: Map<PartCategory, PartMetadata[]> = new Map();
+  private byCategory: Map<string, PartMetadata[]> = new Map(); // Use string key for aliases
   private loaded = false;
 
   async loadMetadata(): Promise<void> {
@@ -40,11 +55,23 @@ class PartRegistry {
         meta.itemId = itemId;
         this.metadata.set(itemId, meta);
 
-        const typeName = meta.typeName as PartCategory;
+        const typeName = meta.typeName as string;
+
+        // Add to its own typeName category
         if (!this.byCategory.has(typeName)) {
           this.byCategory.set(typeName, []);
         }
         this.byCategory.get(typeName)!.push(meta);
+
+        // Also add to aliased categories
+        for (const [codeCategory, aliases] of Object.entries(CATEGORY_ALIASES)) {
+          if (aliases.includes(typeName)) {
+            if (!this.byCategory.has(codeCategory)) {
+              this.byCategory.set(codeCategory, []);
+            }
+            this.byCategory.get(codeCategory)!.push(meta);
+          }
+        }
       }
     }
   }
@@ -63,7 +90,7 @@ class PartRegistry {
     return this.byCategory.get(category) ?? [];
   }
 
-  getAllCategories(): PartCategory[] {
+  getAllCategories(): string[] {
     return Array.from(this.byCategory.keys());
   }
 

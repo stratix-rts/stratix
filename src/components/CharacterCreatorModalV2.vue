@@ -941,18 +941,22 @@ const handleRandomize = async () => {
 
 .part-selector-wrapper {
   flex: 1;
-  min-height: 400px;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   border-radius: 12px;
   overflow: hidden;
   border: 1px solid var(--ds-border);
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+}
+
+.part-selector-wrapper :deep(.part-selector) {
+  overflow-y: auto;
 }
 
 .backend-selector-wrapper {
   flex: 1;
-  min-height: 400px;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   border-radius: 12px;
@@ -961,9 +965,14 @@ const handleRandomize = async () => {
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
 }
 
+.backend-selector-wrapper :deep(.backend-selector) {
+  overflow-y: auto;
+  padding: 16px;
+}
+
 .agent-config-wrapper {
   flex: 1;
-  min-height: 400px;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   border-radius: 12px;

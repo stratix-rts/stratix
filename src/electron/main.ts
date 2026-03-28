@@ -1,69 +1,12 @@
 /**
  * Stratix Electron 主进程
- * 
+ *
  * 在 Electron 内部启动完整的 Gateway 服务，包括：
  * - Gateway HTTP 服务（仅本地访问）
  * - 数据存储服务（Electron userData 目录）
  * - Tailscale 集成
  * - OpenClaw 直连支持
  */
-
-// Path alias resolution - must be at the top before any imports
-const Module = require('module');
-const pathResolve = require('path');
-const fsResolve = require('fs');
-
-console.log('[Electron] Starting path resolution setup...');
-console.log('[Electron] baseDir:', pathResolve.join(__dirname, '..'));
-
-const originalResolve = Module._resolveFilename;
-const baseDir = pathResolve.join(__dirname, '..');
-
-Module._resolveFilename = function(request: string, parent: any, isMain: any, options: any) {
-  console.log('[Resolve]', request);
-  if (request.startsWith('@stratix-') || request.startsWith('@/')) {
-    let moduleName: string;
-    let modulePath: string;
-    
-    if (request.startsWith('@/')) {
-      moduleName = '@/';
-      modulePath = request.slice(2);
-    } else {
-      const parts = request.split('/');
-      moduleName = parts[0];
-      modulePath = parts.slice(1).join('/');
-    }
-    
-    const aliasMap: Record<string, string> = {
-      '@stratix-core': pathResolve.join(baseDir, 'stratix-core'),
-      '@stratix-openclaw-adapter': pathResolve.join(baseDir, 'stratix-openclaw-adapter'),
-      '@stratix-gateway': pathResolve.join(baseDir, 'stratix-gateway'),
-      '@stratix-tailscale': pathResolve.join(baseDir, 'stratix-tailscale'),
-      '@stratix-data-store': pathResolve.join(baseDir, 'stratix-data-store'),
-      '@/': baseDir,
-    };
-    
-    if (aliasMap[moduleName]) {
-      let newPath = modulePath 
-        ? pathResolve.join(aliasMap[moduleName], modulePath) 
-        : aliasMap[moduleName];
-      
-      // If the resolved path is a directory, add /index
-      if (fsResolve.existsSync(newPath) && fsResolve.statSync(newPath).isDirectory()) {
-        newPath = pathResolve.join(newPath, 'index.js');
-      } else if (!newPath.endsWith('.js')) {
-        // Add .js extension if not present
-        newPath = newPath + '.js';
-      }
-      
-      console.log('[Path Resolve]', request, '->', newPath);
-      return newPath;
-    } else {
-      console.log('[Path Resolve] No alias for:', moduleName);
-    }
-  }
-  return originalResolve.call(this, request, parent, isMain, options);
-};
 
 import { app, BrowserWindow, ipcMain, safeStorage, dialog } from 'electron';
 import path from 'path';
@@ -96,11 +39,7 @@ async function initializeServices() {
   ensureDirSync(texturesDir);
   console.log('[Electron] Textures directory:', texturesDir);
 
-  // 2. 初始化数据服务
-  await dataStoreService.initialize(dataDir);
-  console.log('[Electron] Data service initialized');
-  
-  // 3. 启动 Gateway 服务（嵌入式，仅本地访问）
+  // 2. 启动 Gateway 服务（嵌入式，仅本地访问）
   gatewayService = await startGatewayService({
     port: 7524,
     bindAddress: '127.0.0.1', // 仅本地，不暴露

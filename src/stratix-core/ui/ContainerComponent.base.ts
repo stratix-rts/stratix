@@ -12,9 +12,9 @@ import { Depth } from '@/design-system/tokens/depth';
 import { getToken } from '@/design-system/config';
 
 export abstract class ContainerComponentBase extends UIComponentBase {
-  protected container: Phaser.GameObjects.Container;
-  protected config: ContainerComponentConfig;
-  
+  protected container: Phaser.GameObjects.Container = undefined as any;
+  protected config: ContainerComponentConfig = undefined as any;
+
   constructor(scene: Phaser.Scene, config: ContainerComponentConfig) {
     super(scene, config);
     this.config = config;

@@ -111,6 +111,12 @@ export class EmbeddedTailscale {
       return true;
     }
 
+    // Check if binary exists (findBinary falls back to 'tailscaled' if not found)
+    if (this.binaryPath === 'tailscaled' && !fs.existsSync('/usr/bin/tailscaled') && !fs.existsSync('/opt/homebrew/bin/tailscaled')) {
+      console.log('[Tailscale] Binary not found, skipping start');
+      return false;
+    }
+
     await fs.promises.mkdir(this.config.stateDir, { recursive: true });
 
     const args = [

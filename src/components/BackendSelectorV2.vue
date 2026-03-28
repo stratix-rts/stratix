@@ -117,7 +117,7 @@ const handleTestConnection = async () => {
   try {
     if (backendType.value === 'openclaw') {
       // Test OpenClaw connection
-      const response = await fetch('/api/openclaw/test', {
+      const response = await fetch('/api/stratix/openclaw/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
