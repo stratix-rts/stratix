@@ -59,10 +59,10 @@ export function createStratixRTS(config: StratixRTSConfig): Phaser.Game {
   
   const handleResize = () => {
     if (!parentEl) return;
-    
-    const newWidth = config.width ?? parentEl.clientWidth;
-    const newHeight = config.height ?? parentEl.clientHeight;
-    
+
+    const newWidth = parentEl.clientWidth;
+    const newHeight = parentEl.clientHeight;
+
     game.scale.resize(newWidth, newHeight);
     
     for (const scenePlugin of game.scene.scenes) {
@@ -77,6 +77,7 @@ export function createStratixRTS(config: StratixRTSConfig): Phaser.Game {
   };
   
   window.addEventListener('resize', handleResize);
+  window.addEventListener('orientationchange', handleResize);
   
   const originalDestroy = game.destroy.bind(game);
   game.destroy = (removeCanvas: boolean = false, noReturn: boolean = false) => {
@@ -86,6 +87,7 @@ export function createStratixRTS(config: StratixRTSConfig): Phaser.Game {
     }
     
     window.removeEventListener('resize', handleResize);
+    window.removeEventListener('orientationchange', handleResize);
     rtsEventBus.unregisterScene('game');
     rtsEventBus.unregisterScene('ui');
     originalDestroy(removeCanvas, noReturn);
