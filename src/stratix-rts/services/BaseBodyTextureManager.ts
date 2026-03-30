@@ -137,7 +137,6 @@ class BaseBodyTextureManager {
     this.createAnimationsForTexture(textureKey);
     this.loadedTextures.set(bodyType, textureKey);
 
-    console.log(`[BaseBodyTextureManager] Generated procedurally: ${bodyType}`);
     return textureKey;
   }
 
@@ -187,7 +186,6 @@ class BaseBodyTextureManager {
             frameRate: frameRate,
             repeat: -1
           });
-          console.log(`[BaseBodyTextureManager] ✅ Created animation: ${animKeyName}, frames: ${frames.length}`);
         }
       }
     }

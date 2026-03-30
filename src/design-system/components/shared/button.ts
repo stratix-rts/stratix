@@ -60,6 +60,8 @@ export type ButtonVariant = 'primary' | 'secondary' | 'success' | 'danger' | 'wa
  * 使用 CSS 变量以支持主题切换
  */
 export function getButtonToken(variant: ButtonVariant) {
+  // 确保 variant 有默认值
+  const safeVariant = variant || 'primary';
   const variants = {
     primary: {
       background: 'var(--ds-btn-primary-bg)',
@@ -93,7 +95,7 @@ export function getButtonToken(variant: ButtonVariant) {
     },
   };
   
-  const variantConfig = variants[variant];
+  const variantConfig = variants[safeVariant] || variants.primary;
   
   return {
     ...ButtonBaseConfig,

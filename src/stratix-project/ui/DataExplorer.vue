@@ -693,7 +693,8 @@ const selectedZone = ref<Zone | null>(null);
 // 加载 Zones
 const loadZones = async () => {
   try {
-    const projectId = props.projectId || 'default';
+    // 优先使用 projectId，其次使用 initialZoneId（新数据中 projectId === id）
+    const projectId = props.projectId || props.initialZoneId || 'default';
     const response = await fetch(`/api/zones?projectId=${encodeURIComponent(projectId)}`);
     const result = await response.json();
     if (result.success) {

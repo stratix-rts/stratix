@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, toRef } from 'vue';
 import { getButtonToken, type ButtonVariant, ButtonSizes } from '@/design-system/components/shared/button';
-import { provideSizeContext } from '@/design-system/composables/useSizeContext';
+import { provideSizeContext, type SizeVariant } from '@/design-system/composables/useSizeContext';
 import SvgIcon from './SvgIcon.vue';
 
 interface Props {

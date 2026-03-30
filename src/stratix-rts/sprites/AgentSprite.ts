@@ -82,8 +82,6 @@ export class AgentSprite extends Phaser.GameObjects.Container {
     this.customTextureKey = textureKey || null;
     this.isUsingPlaceholder = isPlaceholder;
     
-    console.log(`[AgentSprite] 🎭 Creating agent ${config.agentId}, textureKey: ${textureKey}, isPlaceholder: ${isPlaceholder}`);
-    
     if (config.profile) {
       this.characterId = config.profile.characterId;
       if (config.profile.thumbnail) {
@@ -99,15 +97,11 @@ export class AgentSprite extends Phaser.GameObjects.Container {
     const texture = textureKey || 'stratix-agent';
     this.sprite = scene.add.sprite(0, 0, texture);
     
-    console.log(`[AgentSprite] Sprite created with texture: ${texture}`);
-    console.log(`[AgentSprite] Sprite bounds:`, this.sprite.getBounds());
-    console.log(`[AgentSprite] Sprite displayWidth: ${this.sprite.displayWidth}, displayHeight: ${this.sprite.displayHeight}`);
     
     if (isPlaceholder) {
       this.startBreathingAnimation();
     } else if (textureKey && config.profile) {
       this.sprite.setScale(0.75);
-      console.log(`[AgentSprite] Applied scale 0.75, new size: ${this.sprite.displayWidth}x${this.sprite.displayHeight}`);
       this.playAnimation('idle', LPC_DIRECTION_ROWS.RIGHT);
     }
     
@@ -181,13 +175,11 @@ export class AgentSprite extends Phaser.GameObjects.Container {
       this.playAnimation('idle', this.currentDirection);
     }
 
-    console.log(`[AgentSprite] Replaced texture for ${this.agentId} with ${newTextureKey}`);
   }
 
   private startBreathingAnimation(): void {
     if (!this.scene || this.breathingTween) return;
     
-    console.log(`[AgentSprite] Starting Siri-style breathing animation for ${this.agentId}`);
     
     const theme = getCurrentTheme();
     const primaryColor = parseInt(theme.colors.brand.primary.replace('#', ''), 16);
@@ -285,26 +277,22 @@ export class AgentSprite extends Phaser.GameObjects.Container {
     if (this.scene.anims.exists(animKey)) {
       const anim = this.scene.anims.get(animKey);
       if (!anim || !anim.frames || anim.frames.length === 0) {
-        console.warn(`[AgentSprite] Animation ${animKey} has no valid frames`);
         return;
       }
 
       const textureManager = this.scene.textures;
       if (!textureManager.exists(this.customTextureKey)) {
-        console.warn(`[AgentSprite] Texture ${this.customTextureKey} not loaded yet`);
         return;
       }
 
       const texture = textureManager.get(this.customTextureKey);
       if (!texture || !texture.source) {
-        console.warn(`[AgentSprite] Texture ${this.customTextureKey} source not ready`);
         return;
       }
 
       try {
         this.sprite.play(animKey);
       } catch (error) {
-        console.error(`[AgentSprite] ❌ Error playing ${animKey}:`, error);
       }
     }
   }
@@ -432,7 +420,6 @@ export class AgentSprite extends Phaser.GameObjects.Container {
     }
 
     this.zoneBadge.setVisible(true);
-    console.log(`[AgentSprite] Zone badge set for agent ${this.agentId}: ${zoneName || zoneId}`);
   }
 
   /**
@@ -450,7 +437,6 @@ export class AgentSprite extends Phaser.GameObjects.Container {
       }
       this.zoneBadge.setVisible(false);
     }
-    console.log(`[AgentSprite] Zone badge cleared for agent ${this.agentId}`);
   }
 
   /**
@@ -790,7 +776,6 @@ export class AgentSprite extends Phaser.GameObjects.Container {
         this.thumbnailSprite.setTexture(textureKey);
       }
     } catch (error) {
-      console.warn(`[AgentSprite] Failed to load thumbnail for ${this.agentId}:`, error);
     }
   }
 

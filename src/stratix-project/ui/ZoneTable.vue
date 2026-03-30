@@ -19,7 +19,7 @@
         <span v-if="selectCount > 0" class="select-count">已选择 {{ selectCount }} 项</span>
         <StratixButton
           v-if="selectCount > 0"
-          size="small"
+          size="sm"
           variant="ghost"
           danger
           @click="handleBatchDelete"
@@ -32,21 +32,21 @@
         </StratixButton>
       </div>
       <div class="toolbar-right">
-        <StratixButton size="small" variant="ghost" @click="handleSaveColumnConfig" title="保存当前列宽">
+        <StratixButton size="sm" variant="ghost" @click="handleSaveColumnConfig" title="保存当前列宽">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
             <polyline points="17 21 17 13 7 13 7 21" />
             <polyline points="7 3 7 8 15 8" />
           </svg>
         </StratixButton>
-        <StratixButton size="small" @click="handleRefresh">
+        <StratixButton size="sm" @click="handleRefresh">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M23 4v6h-6M1 20v-6h6" />
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
           </svg>
           刷新
         </StratixButton>
-        <StratixButton size="small" variant="ghost" @click="handleExportCSV" title="导出 CSV">
+        <StratixButton size="sm" variant="ghost" @click="handleExportCSV" title="导出 CSV">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
             <polyline points="7 10 12 15 17 10" />
@@ -133,7 +133,7 @@
       <template #titleEditSlot="{ row }">
         <StratixInput
           v-model="editingCell.value"
-          size="small"
+          size="sm"
           @blur="finishEdit(row, 'title')"
           @keydown.enter="finishEdit(row, 'title')"
           @keydown.esc="cancelEdit"
@@ -144,7 +144,7 @@
         <StratixInput
           v-model="editingCell.value"
           type="textarea"
-          size="small"
+          size="sm"
           @blur="finishEdit(row, 'prompt')"
           @keydown.enter.ctrl="finishEdit(row, 'prompt')"
           @keydown.esc="cancelEdit"
