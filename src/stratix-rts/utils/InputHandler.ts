@@ -403,14 +403,62 @@ export class InputHandler {
   }
 
   private getCornerHandleAtPointer(pointer: Phaser.Input.Pointer): Phaser.GameObjects.GameObject | null {
+    // First check standard hit test results
     const gameObjects = this.scene.input.hitTestPointer(pointer);
-    
+
     for (const obj of gameObjects) {
       if (obj.getData('isCornerHandle') === true) {
         return obj;
       }
     }
-    
+
+    // If not found in hit test, manually check scene children for corner handles.
+    // This is needed because when a Container (zone) is setInteractive, Phaser's
+    // hitTestPointer may return the Container instead of its interactive children
+    // (corner handles), even when the pointer is directly over a child.
+    return this.findCornerHandleInScene(pointer.worldX, pointer.worldY);
+  }
+
+  private findCornerHandleInScene(worldX: number, worldY: number): Phaser.GameObjects.GameObject | null {
+    const allObjects = this.scene.children.list;
+    for (const obj of allObjects) {
+      const handle = this.findCornerHandleInChildren(obj, worldX, worldY);
+      if (handle) {
+        return handle;
+      }
+    }
+    return null;
+  }
+
+  private findCornerHandleInChildren(
+    parent: Phaser.GameObjects.GameObject,
+    worldX: number,
+    worldY: number
+  ): Phaser.GameObjects.GameObject | null {
+    if (parent.getData('isCornerHandle') === true) {
+      // Check if pointer is within this handle's hit area using distance from center
+      const handleObj = parent as any;
+      const handleX = handleObj.x ?? 0;
+      const handleY = handleObj.y ?? 0;
+      const distance = Math.sqrt(
+        (worldX - handleX) ** 2 + (worldY - handleY) ** 2
+      );
+      const radius = handleObj.isArc?.() ? handleObj.radius : 8;
+      if (distance <= radius + 5) { // +5 for some tolerance
+        return parent;
+      }
+    }
+
+    // Check children of containers
+    if (parent instanceof Phaser.GameObjects.Container) {
+      for (const child of parent.list) {
+        const handle = this.findCornerHandleInChildren(child, worldX, worldY);
+        if (handle) {
+          return handle;
+        }
+      }
+    }
+
     return null;
   }
 

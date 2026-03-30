@@ -33,13 +33,9 @@ class CharacterComposer {
   ): Promise<ComposeResult> {
     const { bodyType, animations = Object.keys(ANIMATION_OFFSETS), targetCanvas } = options;
 
-    console.log(`[CharacterComposer] 🎨 Composing character with ${animations.length} animations:`, animations);
-
     const canvas = targetCanvas ?? document.createElement('canvas');
     canvas.width = SHEET_WIDTH;
     canvas.height = SHEET_HEIGHT;
-
-    console.log(`[CharacterComposer] Canvas size: ${canvas.width}x${canvas.height}`);
 
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) {
@@ -52,16 +48,11 @@ class CharacterComposer {
 
     itemsToDraw.sort((a, b) => a.zPos - b.zPos);
 
-    console.log(`[CharacterComposer] Drawing ${itemsToDraw.length} items`);
-
     await this.loadImages(itemsToDraw);
 
     for (const item of itemsToDraw) {
       if (item.img) {
         ctx.drawImage(item.img, 0, item.yPos);
-        console.log(`[CharacterComposer] Drew ${item.itemId} at y=${item.yPos}`);
-      } else {
-        console.warn(`[CharacterComposer] No image for ${item.spritePath}`);
       }
     }
 
@@ -76,8 +67,6 @@ class CharacterComposer {
     }));
 
     const credits = this.collectCredits(selections);
-
-    console.log(`[CharacterComposer] ✅ Character composition complete`);
 
     return { canvas, parts, credits };
   }
@@ -94,11 +83,9 @@ class CharacterComposer {
       const meta = partRegistry.getPart(itemId);
 
       if (!meta) {
-        console.warn(`[CharacterComposer] No metadata for ${itemId}`);
         continue;
       }
       if (!meta.required.includes(bodyType)) {
-        console.warn(`[CharacterComposer] ${itemId} doesn't support ${bodyType}`);
         continue;
       }
 
@@ -177,9 +164,8 @@ class CharacterComposer {
         const img = await this.loadImage(item.spritePath);
         item.img = img;
         this.imageCache.set(item.spritePath, img);
-        console.log(`[CharacterComposer] Loaded: ${item.spritePath}`);
       } catch (error) {
-        console.warn(`[CharacterComposer] Failed to load sprite: ${item.spritePath}`);
+        // sprite load failed, item.img remains undefined
       }
     });
 

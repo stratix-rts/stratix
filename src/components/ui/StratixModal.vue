@@ -95,6 +95,18 @@ const headerStyleResolved = computed(() => {
   };
 });
 
+const bodyStyleResolved = computed<CSSProperties>(() => {
+  // 上下保持原 padding，左右加大 50%
+  const basePadding = sizeConfig.value.padding;
+  const hPadding = `calc(${basePadding} * 1.5)`;
+  return {
+    paddingTop: basePadding,
+    paddingBottom: basePadding,
+    paddingLeft: hPadding,
+    paddingRight: hPadding,
+  };
+});
+
 const modalStyle = computed<CSSProperties>(() => {
   const style: CSSProperties = {};
   
@@ -315,7 +327,7 @@ onUnmounted(() => {
               </button>
             </header>
             
-            <div class="stratix-modal__body" :style="bodyStyle">
+            <div class="stratix-modal__body" :style="[bodyStyleResolved, bodyStyle]">
               <slot />
             </div>
             
@@ -432,6 +444,11 @@ onUnmounted(() => {
 .stratix-modal--fullscreen {
   border: none;
   border-radius: 0 !important;
+  max-height: 95vh;
+}
+
+.stratix-modal:not(.stratix-modal--fullscreen) {
+  max-height: 85vh;
 }
 
 .stratix-modal--drawer {
@@ -478,7 +495,6 @@ onUnmounted(() => {
 
 .stratix-modal__body {
   flex: 1;
-  padding: v-bind('sizeConfig.padding');
   overflow-y: auto;
   overflow-x: hidden;
   background: var(--ds-bg-secondary);

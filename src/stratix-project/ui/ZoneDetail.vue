@@ -391,25 +391,6 @@ const formatTimestamp = (timestamp: number): string => {
 const messages = ref<ZoneMessage[]>([]);
 const newMessage = ref('');
 
-watch(
-  () => props.zone,
-  (newZone) => {
-    editingTitle.value = newZone.title;
-    editingPrompt.value = newZone.prompt || '';
-    if (newZone.id) {
-      fetchTasks(newZone.id);
-      fetchMessages(newZone.id);
-    }
-  },
-  { immediate: true }
-);
-
-onMounted(() => {
-  if (props.zone.id) {
-    fetchTasks(props.zone.id);
-  }
-});
-
 const fetchTasks = async (zoneId: string) => {
   try {
     const response = await fetch(`/api/zones/${zoneId}/tasks`);
@@ -433,6 +414,25 @@ const fetchMessages = async (zoneId: string) => {
     console.error('[ZoneDetail] Failed to fetch messages:', error);
   }
 };
+
+watch(
+  () => props.zone,
+  (newZone) => {
+    editingTitle.value = newZone.title;
+    editingPrompt.value = newZone.prompt || '';
+    if (newZone.id) {
+      fetchTasks(newZone.id);
+      fetchMessages(newZone.id);
+    }
+  },
+  { immediate: true }
+);
+
+onMounted(() => {
+  if (props.zone.id) {
+    fetchTasks(props.zone.id);
+  }
+});
 
 const handleSendMessage = async () => {
   if (!newMessage.value.trim() || !props.zone.id) return;
