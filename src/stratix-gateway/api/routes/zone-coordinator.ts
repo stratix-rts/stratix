@@ -48,6 +48,14 @@ interface ReassignRequest {
   newAgentId: string;
 }
 
+interface ManualTaskRequest {
+  title: string;
+  description?: string;
+  type?: 'coding' | 'writing' | 'analysis' | 'research' | 'general';
+  priority?: 1 | 2 | 3 | 4 | 5;
+  assigneeId?: string;
+}
+
 interface UpdateConfigRequest {
   llmProvider?: string;
   model?: string | null;
@@ -195,6 +203,54 @@ router.post('/zones/:zoneId/tasks/:taskId/reject', async (req: Request, res: Res
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to reject task'
+    });
+  }
+});
+
+// ============================================
+// POST /api/zones/:zoneId/tasks/manual
+// Create a manual task
+// ============================================
+
+router.post('/zones/:zoneId/tasks/manual', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const zoneId = req.params.zoneId as string;
+    const { title, description, type, priority, assigneeId } = req.body as ManualTaskRequest;
+
+    if (!title) {
+      res.status(400).json({
+        success: false,
+        error: 'Missing required field: title'
+      });
+      return;
+    }
+
+    const coordinator = coordinatorService.getCoordinator(zoneId);
+    const task = coordinator.createManualTask({
+      title,
+      description,
+      type,
+      priority,
+      assigneeId
+    });
+
+    res.json({
+      success: true,
+      task: {
+        id: task.id,
+        title: task.title,
+        description: task.description,
+        type: task.type,
+        priority: task.priority,
+        status: task.status,
+        assigneeId: task.assigneeId
+      }
+    });
+  } catch (error) {
+    console.error('[ZoneCoordinator API] Create manual task failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to create manual task'
     });
   }
 });

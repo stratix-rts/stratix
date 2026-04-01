@@ -93,6 +93,18 @@ export interface TaskCompleteParams {
 }
 
 // ============================================
+// Manual Task Params
+// ============================================
+
+export interface CreateManualTaskParams {
+  title: string;
+  description?: string;
+  type?: TaskType;
+  priority?: TaskPriority;
+  assigneeId?: string;
+}
+
+// ============================================
 // ZoneCoordinator - Zone 的协调者大脑
 // ============================================
 
@@ -873,6 +885,63 @@ ${assignStrategyDescription}
       },
       timestamp: Date.now(),
     });
+  }
+
+  /**
+   * 手动创建任务
+   * a. 生成 TaskItem
+   * b. 记录 taskFlow (created) + auditLog (task_created)
+   * c. 如果有 assigneeId，调用 delegateTask
+   * d. 否则加入 pendingTasks
+   */
+  createManualTask(params: CreateManualTaskParams): TaskItem {
+    const task: TaskItem = {
+      id: this.generateId(),
+      title: params.title,
+      description: params.description || '',
+      type: params.type || 'general',
+      priority: params.priority || 3,
+      status: 'pending',
+      zoneId: this.zoneId,
+    };
+
+    // b. 记录 taskFlow (created) + auditLog (task_created)
+    taskFlowRepository.addFlow(
+      task.id,
+      this.zoneId,
+      null, // fromAgentId: null means Zone created
+      null, // toAgentId: null for manual creation
+      'created',
+      { title: task.title, type: task.type, priority: task.priority }
+    );
+
+    auditLogRepository.log(
+      this.zoneId,
+      'task_created',
+      undefined, // actor is Zone Coordinator
+      task.id,
+      { taskType: task.type, priority: task.priority, title: task.title, manual: true }
+    );
+
+    // Emit task_created event
+    ZoneCoordinatorEventEmitter.getInstance().emit({
+      type: 'task_created',
+      zoneId: this.zoneId,
+      taskId: task.id,
+      timestamp: Date.now(),
+    });
+
+    // c & d: 如果有 assigneeId，调用 delegateTask；否则加入 pendingTasks
+    if (params.assigneeId) {
+      // Synchronous delegation (fire and forget for manual creation)
+      this.delegateTask(task.id, params.assigneeId).catch(err => {
+        console.error(`[ZoneCoordinator] Manual task delegation failed: ${err}`);
+      });
+    } else {
+      this.pendingTasks.push(task);
+    }
+
+    return task;
   }
 
   /**
