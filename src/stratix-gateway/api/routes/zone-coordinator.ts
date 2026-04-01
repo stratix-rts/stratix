@@ -127,8 +127,7 @@ router.post('/zones/:zoneId/tasks/:taskId/confirm', async (req: Request, res: Re
 
     if (confirmed) {
       // Find the task and get the suggested assignee (or use provided assigneeId)
-      const status = coordinator.getStatusSummary();
-      const task = findTaskInStatus(status, taskId);
+      const task = coordinator.getTask(taskId);
 
       if (!task) {
         res.status(404).json({
@@ -362,15 +361,5 @@ router.put('/zones/:zoneId/coordinator/config', async (req: Request, res: Respon
     });
   }
 });
-
-// ============================================
-// Helper: Find task in status (placeholder - actual task storage is in coordinator)
-// ============================================
-
-function findTaskInStatus(status: ZoneStatusSummary, taskId: string): { assigneeId?: string } | null {
-  // In the actual implementation, tasks would be stored and retrieved
-  // For now, return null - the UI should pass the assigneeId explicitly
-  return null;
-}
 
 export default router;

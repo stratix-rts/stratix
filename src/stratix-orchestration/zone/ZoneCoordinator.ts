@@ -5,6 +5,7 @@ import {
   agentCapabilityRepository,
   taskFlowRepository,
   auditLogRepository,
+  getDatabase,
   type ZoneMember,
   type ZoneCoordinatorConfig,
   type AgentCapability,
@@ -105,11 +106,23 @@ export interface CreateManualTaskParams {
 }
 
 // ============================================
+// Task Update (for DB persistence)
+// ============================================
+
+interface TaskUpdate {
+  status?: TaskStatus;
+  assigneeId?: string | null;
+  result?: string;
+  error?: string;
+}
+
+// ============================================
 // ZoneCoordinator - Zone 的协调者大脑
 // ============================================
 
 export class ZoneCoordinator {
   readonly zoneId: string;
+  readonly projectId: string;
   readonly title: string;
   readonly prompt: string;
 
@@ -128,6 +141,10 @@ export class ZoneCoordinator {
     if (!zone) {
       throw new Error(`Zone ${zoneId} not found`);
     }
+    if (!zone.projectId) {
+      throw new Error(`Zone ${zoneId} has no projectId`);
+    }
+    this.projectId = zone.projectId;
     this.title = zone.title;
     this.prompt = zone.prompt;
 
@@ -164,6 +181,9 @@ export class ZoneCoordinator {
     // Load members and capabilities
     this.loadMembers();
     this.loadCapabilities();
+
+    // Load persisted tasks from database
+    this.loadTasksFromDB();
   }
 
   // ==================== 核心方法 ====================
@@ -206,8 +226,11 @@ export class ZoneCoordinator {
         };
       }
 
-      // Store pending tasks
-      this.pendingTasks.push(...tasks);
+      // Store pending tasks and persist to database
+      for (const task of tasks) {
+        this.saveTaskToDB(task);
+        this.pendingTasks.push(task);
+      }
 
       const delegated: string[] = [];
       const pending: string[] = [];
@@ -703,6 +726,9 @@ ${assignStrategyDescription}
       this.pendingTasks = this.pendingTasks.filter(t => t.id !== taskId);
       this.activeTasks.set(taskId, task);
 
+      // Persist to database
+      this.updateTaskInDB(taskId, { status: 'delegated', assigneeId: toAgentId });
+
       // Emit task_delegated event
       ZoneCoordinatorEventEmitter.getInstance().emit({
         type: 'task_delegated',
@@ -788,6 +814,9 @@ ${assignStrategyDescription}
       // e. 更新 task.assigneeId
       task.assigneeId = newAgentId;
 
+      // Persist to database
+      this.updateTaskInDB(taskId, { assigneeId: newAgentId });
+
       // Emit task_reassigned event
       ZoneCoordinatorEventEmitter.getInstance().emit({
         type: 'task_reassigned',
@@ -870,6 +899,9 @@ ${assignStrategyDescription}
     task.status = report.success ? 'completed' : 'failed';
     this.activeTasks.delete(report.taskId);
 
+    // Persist to database
+    this.updateTaskInDB(report.taskId, { status: task.status });
+
     // Emit task_completed or task_failed event
     ZoneCoordinatorEventEmitter.getInstance().emit({
       type: report.success ? 'task_completed' : 'task_failed',
@@ -923,6 +955,9 @@ ${assignStrategyDescription}
       { taskType: task.type, priority: task.priority, title: task.title, manual: true }
     );
 
+    // Persist to database
+    this.saveTaskToDB(task);
+
     // Emit task_created event
     ZoneCoordinatorEventEmitter.getInstance().emit({
       type: 'task_created',
@@ -942,6 +977,15 @@ ${assignStrategyDescription}
     }
 
     return task;
+  }
+
+  /**
+   * 根据 taskId 获取任务
+   */
+  getTask(taskId: string): TaskItem | null {
+    const pending = this.pendingTasks.find(t => t.id === taskId);
+    if (pending) return pending;
+    return this.activeTasks.get(taskId) || null;
   }
 
   /**
@@ -1055,6 +1099,99 @@ ${assignStrategyDescription}
       }
       this.agentCapabilities.set(agentId, capMap);
     }
+  }
+
+  // ==================== Task Persistence ====================
+
+  private get db() {
+    return getDatabase().getDatabase();
+  }
+
+  private loadTasksFromDB(): void {
+    const rows = this.db.prepare(`
+      SELECT * FROM tasks
+      WHERE zone_id = ? AND status IN ('pending', 'assigned', 'in_progress')
+    `).all(this.zoneId) as any[];
+
+    for (const row of rows) {
+      // Map DB status to ZoneCoordinator status: assigned -> delegated
+      const status: TaskStatus = row.status === 'assigned' ? 'delegated' : row.status as TaskStatus;
+      const task: TaskItem = {
+        id: row.task_id,
+        title: row.name,
+        description: row.description || '',
+        type: row.type as TaskType,
+        priority: row.priority as TaskPriority,
+        assigneeId: row.assigned_agent_id || undefined,
+        status,
+        zoneId: row.zone_id,
+      };
+
+      if (row.status === 'pending') {
+        this.pendingTasks.push(task);
+      } else {
+        this.activeTasks.set(task.id, task);
+      }
+    }
+  }
+
+  private saveTaskToDB(task: TaskItem): void {
+    const now = Date.now();
+    // Map ZoneCoordinator status to DB status: delegated -> assigned
+    const dbStatus = task.status === 'delegated' ? 'assigned' : task.status;
+    this.db.prepare(`
+      INSERT OR REPLACE INTO tasks (
+        task_id, zone_id, project_id, name, description, type, priority,
+        status, assigned_agent_id, created_at, assigned_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      task.id,
+      task.zoneId,
+      this.projectId,
+      task.title,
+      task.description,
+      task.type,
+      task.priority,
+      dbStatus,
+      task.assigneeId || null,
+      now,
+      task.assigneeId ? now : null
+    );
+  }
+
+  private updateTaskInDB(taskId: string, updates: TaskUpdate): void {
+    const setClauses: string[] = [];
+    const values: any[] = [];
+
+    if (updates.status !== undefined) {
+      // Map ZoneCoordinator status to DB status: delegated -> assigned
+      const dbStatus = updates.status === 'delegated' ? 'assigned' : updates.status;
+      setClauses.push('status = ?');
+      values.push(dbStatus);
+    }
+    if (updates.assigneeId !== undefined) {
+      setClauses.push('assigned_agent_id = ?');
+      values.push(updates.assigneeId || null);
+    }
+    if (updates.result !== undefined) {
+      setClauses.push('result = ?');
+      values.push(updates.result);
+    }
+    if (updates.error !== undefined) {
+      setClauses.push('error = ?');
+      values.push(updates.error);
+    }
+
+    if (setClauses.length === 0) return;
+
+    // Add completed_at for terminal states
+    if (updates.status === 'completed' || updates.status === 'failed') {
+      setClauses.push('completed_at = ?');
+      values.push(Date.now());
+    }
+
+    values.push(taskId);
+    this.db.prepare(`UPDATE tasks SET ${setClauses.join(', ')} WHERE task_id = ?`).run(...values);
   }
 }
 
