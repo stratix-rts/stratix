@@ -13,6 +13,7 @@ import {
   type TaskFlowAction,
   type AuditEventType,
 } from '../../stratix-database';
+import { ZoneCoordinatorEventEmitter } from './ZoneCoordinatorEvents';
 
 // ============================================
 // Task Types
@@ -160,9 +161,28 @@ export class ZoneCoordinator {
    * @param requirement 用户或上游 Zone 输入的需求描述
    */
   async processRequirement(requirement: string): Promise<ProcessResult> {
+    const emitter = ZoneCoordinatorEventEmitter.getInstance();
+
+    // Emit requirement_received
+    emitter.emit({
+      type: 'requirement_received',
+      zoneId: this.zoneId,
+      requirement,
+      timestamp: Date.now(),
+    });
+
     try {
       // 1. 调用 decomposeRequirement 获取任务列表（stub）
       const tasks = await this.decomposeRequirement(requirement);
+
+      // Emit requirement_decomposed
+      emitter.emit({
+        type: 'requirement_decomposed',
+        zoneId: this.zoneId,
+        requirement,
+        tasks: tasks.map(t => ({ id: t.id, title: t.title, type: t.type, priority: t.priority })),
+        timestamp: Date.now(),
+      });
 
       if (tasks.length === 0) {
         return {
@@ -189,6 +209,15 @@ export class ZoneCoordinator {
           pending.push(task.id);
           continue;
         }
+
+        // Emit task_claimed event
+        emitter.emit({
+          type: 'task_claimed',
+          zoneId: this.zoneId,
+          taskId: task.id,
+          agentId,
+          timestamp: Date.now(),
+        });
 
         // Check if user confirmation is required
         if (this.config.requireUserConfirm) {
@@ -662,6 +691,15 @@ ${assignStrategyDescription}
       this.pendingTasks = this.pendingTasks.filter(t => t.id !== taskId);
       this.activeTasks.set(taskId, task);
 
+      // Emit task_delegated event
+      ZoneCoordinatorEventEmitter.getInstance().emit({
+        type: 'task_delegated',
+        zoneId: this.zoneId,
+        taskId,
+        agentId: toAgentId,
+        timestamp: Date.now(),
+      });
+
       return {
         success: true,
         taskId,
@@ -733,6 +771,22 @@ ${assignStrategyDescription}
     // d. Update task status
     task.status = report.success ? 'completed' : 'failed';
     this.activeTasks.delete(report.taskId);
+
+    // Emit task_completed or task_failed event
+    ZoneCoordinatorEventEmitter.getInstance().emit({
+      type: report.success ? 'task_completed' : 'task_failed',
+      zoneId: this.zoneId,
+      taskId: report.taskId,
+      agentId: task.assigneeId,
+      report: {
+        success: report.success,
+        output: report.output,
+        files: report.files,
+        issues: report.issues,
+        duration: report.duration,
+      },
+      timestamp: Date.now(),
+    });
   }
 
   /**

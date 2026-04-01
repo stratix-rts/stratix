@@ -12,6 +12,7 @@ import { AgentMessageRouter } from './messaging/AgentMessageRouter';
 import { ZoneEvent } from './zone/ZoneState';
 import { TaskEvent } from './task-queue/TaskItem';
 import { MessageEvent } from './messaging/MessageTypes';
+import { ZoneCoordinatorEventEmitter, type ZoneCoordinatorEventPayload } from './zone/ZoneCoordinatorEvents';
 import path from 'path';
 
 // Type for StatusSync - avoid circular dependency at type level
@@ -79,6 +80,19 @@ export class OrchestrationSync {
     } catch (e) {
       console.warn('[OrchestrationSync] ZoneService not available:', e);
       return null;
+    }
+  }
+
+  /**
+   * Notify ZoneCoordinator event via WebSocket
+   */
+  private notifyZoneCoordinatorEvent(event: ZoneCoordinatorEventPayload): void {
+    const sync = this.getStatusSync();
+    if (sync) {
+      (sync as any).notify?.({
+        type: 'zone_coordinator_event',
+        payload: event,
+      });
     }
   }
 
@@ -185,6 +199,14 @@ export class OrchestrationSync {
     };
     this.messageRouter.on('sent', msgHandler);
     this.cleanupFns.push(() => this.messageRouter.off('sent', msgHandler));
+
+    // ZoneCoordinator events
+    const zoneCoordinatorEmitter = ZoneCoordinatorEventEmitter.getInstance();
+    const zoneCoordHandler = (payload: ZoneCoordinatorEventPayload) => {
+      this.notifyZoneCoordinatorEvent(payload);
+    };
+    zoneCoordinatorEmitter.onAny(zoneCoordHandler);
+    this.cleanupFns.push(() => zoneCoordinatorEmitter.offAny(zoneCoordHandler));
 
     this.isInitialized = true;
     console.log('[OrchestrationSync] Orchestration sync initialized');
