@@ -1,5 +1,6 @@
 import { SkillDefinition, SkillExecutor, ExecutionContext } from '../types';
 import { SafetyValidator } from './SafetyValidator';
+import { zoneContextManager } from '../../stratix-character-creator/core/ZoneContextManager';
 
 export class HttpSkillExecutor implements SkillExecutor {
   async execute(
@@ -921,6 +922,10 @@ export class ZoneSkillExecutor implements SkillExecutor {
         }
 
         const data = await response.json();
+
+        // Update ZoneContextManager to track agent's current zone
+        await zoneContextManager.inject(agentId, zoneId);
+
         return {
           success: true,
           message: `Successfully moved to zone ${zoneId}`,
@@ -979,6 +984,9 @@ export class ZoneSkillExecutor implements SkillExecutor {
           const error = await response.text();
           throw new Error(`Failed to leave zone: ${response.status} ${error}`);
         }
+
+        // Update ZoneContextManager to remove agent from zone
+        await zoneContextManager.detachFromZone(agentId, currentZoneId);
 
         return {
           success: true,

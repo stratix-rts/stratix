@@ -12,6 +12,7 @@ import { AgentMessageRouter } from './messaging/AgentMessageRouter';
 import { ZoneEvent } from './zone/ZoneState';
 import { TaskEvent } from './task-queue/TaskItem';
 import { MessageEvent } from './messaging/MessageTypes';
+import path from 'path';
 
 // Type for StatusSync - avoid circular dependency at type level
 interface StatusSyncInterface {
@@ -68,6 +69,46 @@ export class OrchestrationSync {
     }
   }
 
+  private getZoneService() {
+    try {
+      if (typeof require !== 'undefined') {
+        const module = require('../stratix-gateway/project/ZoneService');
+        return module.zoneService;
+      }
+      return null;
+    } catch (e) {
+      console.warn('[OrchestrationSync] ZoneService not available:', e);
+      return null;
+    }
+  }
+
+  /**
+   * Sync task output files to the associated zone
+   */
+  private async syncTaskFilesToZone(taskId: string): Promise<void> {
+    const task = await this.taskQueue.getTask(taskId);
+    if (!task) return;
+
+    // Skip if task has no zone or no output files
+    if (!task.zoneId || !task.result?.files?.length) return;
+
+    const zoneService = this.getZoneService();
+    if (!zoneService) return;
+
+    const files = task.result.files.map(filePath => ({
+      name: path.basename(filePath),
+      sourceType: 'local' as const,
+      source: filePath,
+    }));
+
+    try {
+      await zoneService.addFiles(task.zoneId, files);
+      console.log(`[OrchestrationSync] Synced ${files.length} output files to zone ${task.zoneId}`);
+    } catch (err) {
+      console.warn(`[OrchestrationSync] Failed to add files to zone ${task.zoneId}:`, err);
+    }
+  }
+
   /**
    * Initialize all event listeners
    */
@@ -98,6 +139,10 @@ export class OrchestrationSync {
           sync.notifyTaskAssigned(event.taskId, event.agentId || '', '');
         } else if (event.type === 'completed') {
           sync.notifyTaskCompleted(event.taskId, event.agentId || '');
+          // Sync task output files to zone
+          this.syncTaskFilesToZone(event.taskId).catch(err => {
+            console.error('[OrchestrationSync] Failed to sync task files to zone:', err);
+          });
         }
       }
     };

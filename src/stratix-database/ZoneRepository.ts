@@ -54,7 +54,7 @@ export class ZoneRepository {
     };
   }
 
-  updateZone(zoneId: string, updates: { title?: string; prompt?: string; members?: string[] }): Zone | null {
+  updateZone(zoneId: string, updates: { title?: string; prompt?: string; members?: string[]; presentAgentIds?: string[] }): Zone | null {
     const existing = this.getZone(zoneId);
     if (!existing) return null;
 
@@ -69,6 +69,15 @@ export class ZoneRepository {
     `);
 
     stmt.run(title, prompt, JSON.stringify(members), now, zoneId);
+
+    // Also update present_agent_ids in zones table if provided
+    if (updates.presentAgentIds !== undefined) {
+      const presentStmt = this.db.prepare(`
+        UPDATE zones SET present_agent_ids = ?, updated_at = ?
+        WHERE zone_context_id = ?
+      `);
+      presentStmt.run(JSON.stringify(updates.presentAgentIds), now, zoneId);
+    }
 
     return this.getZone(zoneId);
   }
@@ -140,20 +149,30 @@ export class ZoneRepository {
     const zone = this.getZone(zoneId);
     if (!zone) return null;
 
-    if (!zone.members.includes(agentId)) {
-      zone.members.push(agentId);
-      this.updateZone(zoneId, { members: zone.members });
-    }
+    const currentMembers = zone.members || [];
+    const currentPresentAgentIds = zone.presentAgentIds || [];
 
-    return this.getZone(zoneId);
+    // Only add to members if not already there
+    const newMembers = currentMembers.includes(agentId)
+      ? currentMembers
+      : [...currentMembers, agentId];
+
+    // Only add to presentAgentIds if not already there
+    const newPresentAgentIds = currentPresentAgentIds.includes(agentId)
+      ? currentPresentAgentIds
+      : [...currentPresentAgentIds, agentId];
+
+    return this.updateZone(zoneId, { members: newMembers, presentAgentIds: newPresentAgentIds });
   }
 
   removeMember(zoneId: string, agentId: string): Zone | null {
     const zone = this.getZone(zoneId);
     if (!zone) return null;
 
-    zone.members = zone.members.filter(id => id !== agentId);
-    return this.updateZone(zoneId, { members: zone.members });
+    const newMembers = (zone.members || []).filter(id => id !== agentId);
+    const newPresentAgentIds = (zone.presentAgentIds || []).filter(id => id !== agentId);
+
+    return this.updateZone(zoneId, { members: newMembers, presentAgentIds: newPresentAgentIds });
   }
 
   // Bulk add members
@@ -161,8 +180,13 @@ export class ZoneRepository {
     const zone = this.getZone(zoneId);
     if (!zone) return null;
 
-    const newMembers = [...new Set([...zone.members, ...agentIds])];
-    return this.updateZone(zoneId, { members: newMembers });
+    const currentMembers = zone.members || [];
+    const currentPresentAgentIds = zone.presentAgentIds || [];
+
+    const newMembers = [...new Set([...currentMembers, ...agentIds])];
+    const newPresentAgentIds = [...new Set([...currentPresentAgentIds, ...agentIds])];
+
+    return this.updateZone(zoneId, { members: newMembers, presentAgentIds: newPresentAgentIds });
   }
 
   // Bulk remove members
@@ -170,8 +194,10 @@ export class ZoneRepository {
     const zone = this.getZone(zoneId);
     if (!zone) return null;
 
-    const newMembers = zone.members.filter(id => !agentIds.includes(id));
-    return this.updateZone(zoneId, { members: newMembers });
+    const newMembers = (zone.members || []).filter(id => !agentIds.includes(id));
+    const newPresentAgentIds = (zone.presentAgentIds || []).filter(id => !agentIds.includes(id));
+
+    return this.updateZone(zoneId, { members: newMembers, presentAgentIds: newPresentAgentIds });
   }
 
   // Zone Files operations

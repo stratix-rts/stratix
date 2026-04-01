@@ -10,6 +10,7 @@ import { EnhancedSoulConfig, ReflectionEntry } from './types/soul';
 import { AgentTemplate, WorkflowDefinition, WorkflowStep } from './types/template';
 import { MixinComposer } from './mixins/MixinComposer';
 import { EVOLUTION_PROMPT } from '../stratix-character-creator/config/skillHubConfig';
+import { zoneContextManager } from '../stratix-character-creator/core/ZoneContextManager';
 
 export interface AgentCapabilities {
   workflowExecution: boolean;
@@ -161,18 +162,21 @@ export class EnhancedStratixAgent extends StratixAgent {
       }
     }
 
-    // 2. 构建增强提示词
+    // 2. 获取 Zone 上下文
+    const zoneContext = await zoneContextManager.getZonePromptContext(this.config.agentId);
+
+    // 3. 构建增强提示词
     const systemMessages = this.enhancedPromptBuilder.buildFullSystemPrompt(
       this.template,
       this.soul as EnhancedSoulConfig,
       this.memory.buildContext(),
       this.skills.getEnabledSkills(),
       this.sessions.getMessages(options?.sessionId || '', 10),
-      { includeReflection, includeWorkflow, includeLearnedSkills: true },
+      { includeReflection, includeWorkflow, includeLearnedSkills: true, includeZoneContext: true, zoneContext },
       this.memory.buildSkillContext()
     );
 
-    // 3. 执行聊天
+    // 4. 执行聊天
     const session = this.sessions.getOrCreateSession(this.config.agentId, options?.sessionId);
     this.sessions.addMessage(session.sessionId, { role: 'user', content: message });
     this.memory.addMessage('user', message);
@@ -195,7 +199,7 @@ export class EnhancedStratixAgent extends StratixAgent {
       reflectionUsed: false,
     };
 
-    // 4. 反思机制
+    // 5. 反思机制
     if (includeReflection && (this.soul as EnhancedSoulConfig).reflection?.afterEachTask) {
       await this.performReflection(message, result.content);
       response.reflectionUsed = true;
