@@ -1,8 +1,30 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { ZoneCoordinator, type TaskItem, type ProcessResult, type ZoneStatusSummary, type DelegateResult } from '../../../stratix-orchestration/zone/ZoneCoordinator';
 import { zoneCoordinatorConfigRepository, type ZoneCoordinatorConfig } from '../../../stratix-database/ZoneCoordinatorConfigRepository';
+import { zoneRepository } from '../../../stratix-database';
 
 const router = Router();
+
+// ============================================
+// Middleware: validate zoneId exists
+// ============================================
+
+async function validateZone(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const zoneId = req.params.zoneId as string;
+  if (!zoneId) {
+    res.status(400).json({ success: false, error: 'Missing zoneId parameter' });
+    return;
+  }
+  const zone = zoneRepository.getZone(zoneId);
+  if (!zone) {
+    res.status(404).json({ success: false, error: `Zone not found: ${zoneId}` });
+    return;
+  }
+  next();
+}
+
+// Apply validateZone middleware to all zone-scoped routes
+router.use('/zones/:zoneId', validateZone);
 
 // ============================================
 // ZoneCoordinator Service (in-memory instance management)
