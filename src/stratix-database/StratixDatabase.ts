@@ -696,6 +696,27 @@ export class StratixDatabase {
       CREATE INDEX IF NOT EXISTS idx_agent_capabilities_zone ON agent_capabilities(zone_id);
       CREATE INDEX IF NOT EXISTS idx_agent_capabilities_capability ON agent_capabilities(capability);
       CREATE INDEX IF NOT EXISTS idx_agent_capabilities_agent_zone ON agent_capabilities(agent_id, zone_id);
+
+      -- ============================================
+      -- TASK FLOW TABLES (Zone Agent Orchestration)
+      -- ============================================
+
+      -- Task Flow表: 任务在 Agent 间的流转记录
+      CREATE TABLE IF NOT EXISTS task_flow (
+        flow_id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        zone_id TEXT NOT NULL,
+        from_agent_id TEXT,
+        to_agent_id TEXT NOT NULL,
+        action TEXT NOT NULL CHECK (action IN ('created', 'delegated', 'claimed', 'started', 'completed', 'failed', 'cancelled')),
+        metadata TEXT,
+        created_at INTEGER NOT NULL
+      );
+
+      -- 索引
+      CREATE INDEX IF NOT EXISTS idx_flow_task ON task_flow(task_id);
+      CREATE INDEX IF NOT EXISTS idx_flow_zone ON task_flow(zone_id);
+      CREATE INDEX IF NOT EXISTS idx_flow_agent ON task_flow(to_agent_id);
     `;
     // Find the line with REFERENCES and log context
     const refLine = sql.split('\n').findIndex(l => l.includes('REFERENCES'));
