@@ -162,6 +162,8 @@ export class ZoneCoordinator {
         requireUserConfirm: config.requireUserConfirm ?? false,
         assignStrategy: config.assignStrategy ?? 'capability_match',
         entryCondition: config.entryCondition ?? null,
+        apiKey: config.apiKey,
+        baseUrl: config.baseUrl,
       };
       zoneCoordinatorConfigRepository.setConfig(zoneId, this.config);
     } else {
@@ -174,6 +176,8 @@ export class ZoneCoordinator {
         requireUserConfirm: false,
         assignStrategy: 'capability_match',
         entryCondition: null,
+        apiKey: undefined,
+        baseUrl: undefined,
       };
       zoneCoordinatorConfigRepository.setConfig(zoneId, this.config);
     }
@@ -396,6 +400,8 @@ export class ZoneCoordinator {
 
   /**
    * 获取 LLM 配置
+   * apiKey 优先从 config 读取，fallback 到环境变量
+   * baseUrl 优先从 config 读取，fallback 到默认值
    */
   private getLLMConfig(): { url: string; apiKey: string | null; model: string | null } {
     const provider = this.config.llmProvider || 'openai';
@@ -404,32 +410,32 @@ export class ZoneCoordinator {
     switch (provider) {
       case 'openai':
         return {
-          url: 'https://api.openai.com/v1/chat/completions',
-          apiKey: process.env.OPENAI_API_KEY || null,
+          url: this.config.baseUrl || 'https://api.openai.com/v1/chat/completions',
+          apiKey: this.config.apiKey || process.env.OPENAI_API_KEY || null,
           model,
         };
       case 'anthropic':
         return {
-          url: 'https://api.anthropic.com/v1/messages',
-          apiKey: process.env.ANTHROPIC_API_KEY || null,
+          url: this.config.baseUrl || 'https://api.anthropic.com/v1/messages',
+          apiKey: this.config.apiKey || process.env.ANTHROPIC_API_KEY || null,
           model: model || 'claude-sonnet-4-20250514',
         };
       case 'deepseek':
         return {
-          url: 'https://api.deepseek.com/v1/chat/completions',
-          apiKey: process.env.DEEPSEEK_API_KEY || null,
+          url: this.config.baseUrl || 'https://api.deepseek.com/v1/chat/completions',
+          apiKey: this.config.apiKey || process.env.DEEPSEEK_API_KEY || null,
           model: model || 'deepseek-chat',
         };
       case 'ollama':
         return {
-          url: 'http://localhost:11434/api/chat',
+          url: this.config.baseUrl || 'http://localhost:11434/api/chat',
           apiKey: null,
           model: model || 'llama3',
         };
       default:
         return {
-          url: 'https://api.openai.com/v1/chat/completions',
-          apiKey: process.env.OPENAI_API_KEY || null,
+          url: this.config.baseUrl || 'https://api.openai.com/v1/chat/completions',
+          apiKey: this.config.apiKey || process.env.OPENAI_API_KEY || null,
           model,
         };
     }

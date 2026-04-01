@@ -10,6 +10,8 @@ export interface ZoneCoordinatorConfig {
   requireUserConfirm: boolean;
   assignStrategy: AssignStrategy;
   entryCondition: string | null;
+  apiKey?: string;
+  baseUrl?: string;
 }
 
 export type ZoneCoordinatorConfigRecord = ZoneCoordinatorConfig & {
@@ -33,6 +35,8 @@ export class ZoneCoordinatorConfigRepository {
       requireUserConfirm: Boolean(row.require_user_confirm),
       assignStrategy: row.assign_strategy as AssignStrategy,
       entryCondition: row.entry_condition,
+      apiKey: row.api_key || undefined,
+      baseUrl: row.base_url || undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -49,6 +53,8 @@ export class ZoneCoordinatorConfigRepository {
       require_user_confirm: config.requireUserConfirm !== undefined ? (config.requireUserConfirm ? 1 : 0) : 0,
       assign_strategy: config.assignStrategy ?? 'capability_match',
       entry_condition: config.entryCondition ?? null,
+      api_key: config.apiKey ?? null,
+      base_url: config.baseUrl ?? null,
       created_at: now,
       updated_at: now
     };
@@ -81,6 +87,8 @@ export class ZoneCoordinatorConfigRepository {
           require_user_confirm = ?,
           assign_strategy = ?,
           entry_condition = ?,
+          api_key = ?,
+          base_url = ?,
           updated_at = ?
         WHERE zone_id = ?
       `);
@@ -92,6 +100,8 @@ export class ZoneCoordinatorConfigRepository {
         config.requireUserConfirm ? 1 : 0,
         config.assignStrategy,
         config.entryCondition ?? null,
+        config.apiKey ?? null,
+        config.baseUrl ?? null,
         now,
         zoneId
       );
@@ -99,8 +109,8 @@ export class ZoneCoordinatorConfigRepository {
       const stmt = this.db.prepare(`
         INSERT INTO zone_coordinators (
           zone_id, llm_provider, model, auto_decompose, auto_assign,
-          require_user_confirm, assign_strategy, entry_condition, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          require_user_confirm, assign_strategy, entry_condition, api_key, base_url, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       stmt.run(
         zoneId,
@@ -111,6 +121,8 @@ export class ZoneCoordinatorConfigRepository {
         config.requireUserConfirm ? 1 : 0,
         config.assignStrategy,
         config.entryCondition ?? null,
+        config.apiKey ?? null,
+        config.baseUrl ?? null,
         now,
         now
       );
@@ -133,7 +145,9 @@ export class ZoneCoordinatorConfigRepository {
       autoAssign: partial.autoAssign !== undefined ? partial.autoAssign : existing.autoAssign,
       requireUserConfirm: partial.requireUserConfirm !== undefined ? partial.requireUserConfirm : existing.requireUserConfirm,
       assignStrategy: partial.assignStrategy ?? existing.assignStrategy,
-      entryCondition: partial.entryCondition !== undefined ? partial.entryCondition : existing.entryCondition
+      entryCondition: partial.entryCondition !== undefined ? partial.entryCondition : existing.entryCondition,
+      apiKey: partial.apiKey !== undefined ? partial.apiKey : existing.apiKey,
+      baseUrl: partial.baseUrl !== undefined ? partial.baseUrl : existing.baseUrl
     };
 
     return this.setConfig(zoneId, updated);
