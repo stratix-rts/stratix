@@ -470,6 +470,20 @@ export class StratixDatabase {
         UNIQUE(zone_id, agent_id)
       );
 
+      -- Zone Coordinators表: Coordinator configuration per zone
+      CREATE TABLE IF NOT EXISTS zone_coordinators (
+        zone_id TEXT PRIMARY KEY REFERENCES zones(zone_id) ON DELETE CASCADE,
+        llm_provider TEXT DEFAULT 'openai',
+        model TEXT,
+        auto_decompose INTEGER DEFAULT 1,
+        auto_assign INTEGER DEFAULT 1,
+        require_user_confirm INTEGER DEFAULT 0,
+        assign_strategy TEXT DEFAULT 'capability_match' CHECK (assign_strategy IN ('random', 'capability_match', 'load_balance', 'priority')),
+        entry_condition TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
       -- Tasks表: Unified task queue with priority
       CREATE TABLE IF NOT EXISTS tasks (
         task_id TEXT PRIMARY KEY,
