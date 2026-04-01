@@ -44,6 +44,10 @@ interface RejectRequest {
   reason?: string;
 }
 
+interface ReassignRequest {
+  newAgentId: string;
+}
+
 interface UpdateConfigRequest {
   llmProvider?: string;
   model?: string | null;
@@ -191,6 +195,44 @@ router.post('/zones/:zoneId/tasks/:taskId/reject', async (req: Request, res: Res
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to reject task'
+    });
+  }
+});
+
+// ============================================
+// POST /api/zones/:zoneId/tasks/:taskId/reassign
+// Force reassign task to a different agent
+// ============================================
+
+router.post('/zones/:zoneId/tasks/:taskId/reassign', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const zoneId = req.params.zoneId as string;
+    const taskId = req.params.taskId as string;
+    const { newAgentId } = req.body as ReassignRequest;
+
+    if (!newAgentId) {
+      res.status(400).json({
+        success: false,
+        error: 'Missing required field: newAgentId'
+      });
+      return;
+    }
+
+    const coordinator = coordinatorService.getCoordinator(zoneId);
+    const result: DelegateResult = await coordinator.reassignTask(taskId, newAgentId);
+
+    res.json({
+      success: result.success,
+      taskId: result.taskId,
+      agentId: result.agentId,
+      flowId: result.flowId,
+      error: result.error
+    });
+  } catch (error) {
+    console.error('[ZoneCoordinator API] Reassign task failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to reassign task'
     });
   }
 });

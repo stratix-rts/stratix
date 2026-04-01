@@ -717,6 +717,92 @@ ${assignStrategyDescription}
   }
 
   /**
+   * 强制重新分派任务
+   * a. 从 activeTasks 获取任务
+   * b. 对旧 Agent: taskFlowRepository.addFlow (delegated, fromAgentId→null) + decrementLoad
+   * c. 对新 Agent: taskFlowRepository.addFlow (delegated, null→newAgentId) + incrementLoad
+   * d. auditLogRepository.log(task_assigned)
+   * e. 更新 task.assigneeId
+   */
+  async reassignTask(taskId: string, newAgentId: string): Promise<DelegateResult> {
+    try {
+      const task = this.activeTasks.get(taskId);
+
+      if (!task) {
+        return { success: false, taskId, agentId: newAgentId, error: 'Task not found in active tasks' };
+      }
+
+      const oldAgentId = task.assigneeId;
+
+      if (!oldAgentId) {
+        return { success: false, taskId, agentId: newAgentId, error: 'Task has no current assignee' };
+      }
+
+      if (oldAgentId === newAgentId) {
+        return { success: false, taskId, agentId: newAgentId, error: 'New agent is same as current agent' };
+      }
+
+      // b. 对旧 Agent: taskFlowRepository.addFlow (delegated, fromAgentId→null) + decrementLoad
+      taskFlowRepository.addFlow(
+        taskId,
+        this.zoneId,
+        oldAgentId,
+        null,
+        'delegated',
+        { reason: 'Reassigned to another agent', reassignedTo: newAgentId }
+      );
+      agentCapabilityRepository.decrementLoad(oldAgentId, this.zoneId);
+
+      // c. 对新 Agent: taskFlowRepository.addFlow (delegated, null→newAgentId) + incrementLoad
+      const flowRecord = taskFlowRepository.addFlow(
+        taskId,
+        this.zoneId,
+        null,
+        newAgentId,
+        'delegated',
+        { reason: 'Reassigned from another agent', reassignedFrom: oldAgentId }
+      );
+      agentCapabilityRepository.incrementLoad(newAgentId, this.zoneId);
+
+      // d. auditLogRepository.log(task_assigned)
+      auditLogRepository.log(
+        this.zoneId,
+        'task_assigned',
+        undefined,
+        newAgentId,
+        { taskId, taskTitle: task.title, previousAssignee: oldAgentId, reassigned: true }
+      );
+
+      // e. 更新 task.assigneeId
+      task.assigneeId = newAgentId;
+
+      // Emit task_reassigned event
+      ZoneCoordinatorEventEmitter.getInstance().emit({
+        type: 'task_reassigned',
+        zoneId: this.zoneId,
+        taskId,
+        agentId: newAgentId,
+        previousAgentId: oldAgentId,
+        timestamp: Date.now(),
+      });
+
+      return {
+        success: true,
+        taskId,
+        agentId: newAgentId,
+        flowId: flowRecord.flowId,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        taskId,
+        agentId: newAgentId,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
    * 接收任务完成报告
    * a. 记录 task_flow（completed/failed）
    * b. 记录 audit_log
