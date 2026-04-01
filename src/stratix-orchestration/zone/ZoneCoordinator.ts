@@ -324,6 +324,7 @@ export class ZoneCoordinator {
 
   /**
    * 调用 LLM（OpenAI-compatible API）
+   * 支持 30 秒超时和最多 2 次重试（仅对网络错误和 5xx 响应）
    */
   private async callLLM(systemPrompt: string, userMessage: string): Promise<string> {
     const { url, apiKey, model } = this.getLLMConfig();
@@ -337,27 +338,60 @@ export class ZoneCoordinator {
       temperature: 0.7,
     };
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}),
-      },
-      body: JSON.stringify(body),
-    });
+    const maxRetries = 2;
+    let lastError: Error | null = null;
 
-    if (!response.ok) {
-      throw new Error(`LLM API error: ${response.status} ${response.statusText}`);
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}),
+          },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(30000),
+        });
+
+        if (!response.ok) {
+          // Only retry on 5xx server errors, not 4xx client errors
+          if (response.status >= 500 && attempt < maxRetries) {
+            await this.delay(1000);
+            continue;
+          }
+          throw new Error(`LLM API error: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+        const content = data.choices?.[0]?.message?.content;
+
+        if (!content) {
+          throw new Error('LLM returned empty response');
+        }
+
+        return content;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+
+        // Retry on network errors or timeout
+        const isRetryable = lastError.name === 'AbortError' ||
+          lastError.message.includes('fetch') ||
+          lastError.message.includes('network');
+
+        if (isRetryable && attempt < maxRetries) {
+          await this.delay(1000);
+          continue;
+        }
+
+        throw lastError;
+      }
     }
 
-    const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
-    const content = data.choices?.[0]?.message?.content;
+    throw lastError || new Error('LLM call failed');
+  }
 
-    if (!content) {
-      throw new Error('LLM returned empty response');
-    }
-
-    return content;
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**
