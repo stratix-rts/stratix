@@ -133,7 +133,32 @@ export class ZoneCoordinator {
   private activeTasks: Map<string, TaskItem> = new Map();
   private lastAssignedIndex: number = -1;
 
-  constructor(zoneId: string, config?: Partial<ZoneCoordinatorConfig>) {
+  /**
+   * Static factory method to create a ZoneCoordinator.
+   * Prefer this over direct constructor invocation.
+   *
+   * @param zoneId - The zone ID to coordinate
+   * @param config - Optional configuration overrides
+   * @throws Error if zone does not exist in the repository
+   */
+  static async create(zoneId: string, config?: Partial<ZoneCoordinatorConfig>): Promise<ZoneCoordinator> {
+    // Check if zone exists
+    const zone = zoneRepository.getZone(zoneId);
+
+    if (!zone) {
+      throw new Error(`Zone '${zoneId}' not found. Create the zone first before initializing a ZoneCoordinator.`);
+    }
+
+    // Create coordinator instance using private constructor
+    const coordinator = new ZoneCoordinator(zoneId, config);
+    return coordinator;
+  }
+
+  /**
+   * @deprecated Use static factory method ZoneCoordinator.create() instead of direct constructor.
+   * Constructor throws if zone does not exist.
+   */
+  private constructor(zoneId: string, config?: Partial<ZoneCoordinatorConfig>) {
     this.zoneId = zoneId;
 
     // Load zone info from ZoneRepository

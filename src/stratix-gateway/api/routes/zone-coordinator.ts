@@ -11,10 +11,10 @@ const router = Router();
 class ZoneCoordinatorService {
   private coordinators: Map<string, ZoneCoordinator> = new Map();
 
-  getCoordinator(zoneId: string): ZoneCoordinator {
+  async getCoordinator(zoneId: string, config?: Partial<ZoneCoordinatorConfig>): Promise<ZoneCoordinator> {
     let coordinator = this.coordinators.get(zoneId);
     if (!coordinator) {
-      coordinator = new ZoneCoordinator(zoneId);
+      coordinator = await ZoneCoordinator.create(zoneId, config);
       this.coordinators.set(zoneId, coordinator);
     }
     return coordinator;
@@ -84,7 +84,7 @@ router.post('/zones/:zoneId/requirements', async (req: Request, res: Response): 
       return;
     }
 
-    const coordinator = coordinatorService.getCoordinator(zoneId);
+    const coordinator = await await coordinatorService.getCoordinator(zoneId);
     const result: ProcessResult = await coordinator.processRequirement(requirement);
 
     res.json({
@@ -123,7 +123,7 @@ router.post('/zones/:zoneId/tasks/:taskId/confirm', async (req: Request, res: Re
       return;
     }
 
-    const coordinator = coordinatorService.getCoordinator(zoneId);
+    const coordinator = await coordinatorService.getCoordinator(zoneId);
 
     if (confirmed) {
       // Find the task and get the suggested assignee (or use provided assigneeId)
@@ -185,7 +185,7 @@ router.post('/zones/:zoneId/tasks/:taskId/reject', async (req: Request, res: Res
     const { reason } = req.body as RejectRequest;
 
     // Get current status to verify task exists
-    const coordinator = coordinatorService.getCoordinator(zoneId);
+    const coordinator = await coordinatorService.getCoordinator(zoneId);
     const status = coordinator.getStatusSummary();
 
     // For now, rejection just returns success
@@ -224,7 +224,7 @@ router.post('/zones/:zoneId/tasks/manual', async (req: Request, res: Response): 
       return;
     }
 
-    const coordinator = coordinatorService.getCoordinator(zoneId);
+    const coordinator = await coordinatorService.getCoordinator(zoneId);
     const task = coordinator.createManualTask({
       title,
       description,
@@ -273,7 +273,7 @@ router.post('/zones/:zoneId/tasks/:taskId/reassign', async (req: Request, res: R
       return;
     }
 
-    const coordinator = coordinatorService.getCoordinator(zoneId);
+    const coordinator = await coordinatorService.getCoordinator(zoneId);
     const result: DelegateResult = await coordinator.reassignTask(taskId, newAgentId);
 
     res.json({
@@ -301,7 +301,7 @@ router.get('/zones/:zoneId/coordinator/status', async (req: Request, res: Respon
   try {
     const zoneId = req.params.zoneId as string;
 
-    const coordinator = coordinatorService.getCoordinator(zoneId);
+    const coordinator = await coordinatorService.getCoordinator(zoneId);
     const status: ZoneStatusSummary = coordinator.getStatusSummary();
 
     res.json({
