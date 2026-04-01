@@ -105,6 +105,7 @@ export class ZoneCoordinator {
   private agentCapabilities: Map<string, Map<string, AgentCapability>> = new Map();
   private pendingTasks: TaskItem[] = [];
   private activeTasks: Map<string, TaskItem> = new Map();
+  private lastAssignedIndex: number = -1;
 
   constructor(zoneId: string, config?: Partial<ZoneCoordinatorConfig>) {
     this.zoneId = zoneId;
@@ -507,7 +508,9 @@ ${assignStrategyDescription}
       case 'load_balance':
         return '优先选择当前负载最低的 Agent';
       case 'priority':
-        return '综合考虑能力等级和负载进行分配';
+        return '高优先级任务分配给能力最强的 Agent，低优先级任务分配给能力较弱但可用的 Agent';
+      case 'round_robin':
+        return '轮询分配任务给所有可用 Agent';
       default:
         return '默认能力匹配策略';
     }
@@ -522,7 +525,7 @@ ${assignStrategyDescription}
 
   /**
    * 匹配任务给 Agent
-   * 支持四种策略：random, capability_match, load_balance, priority
+   * 支持五种策略：random, capability_match, load_balance, priority, round_robin
    */
   private async matchTaskToAgent(task: TaskItem): Promise<string | null> {
     const availableAgents = this.getAvailableAgents(task.type);
@@ -545,6 +548,9 @@ ${assignStrategyDescription}
 
       case 'priority':
         return this.matchByPriority(availableAgents, task.type);
+
+      case 'round_robin':
+        return this.matchByRoundRobin(availableAgents);
 
       default:
         return this.matchByCapabilityMatch(availableAgents, task.type);
@@ -578,8 +584,28 @@ ${assignStrategyDescription}
   }
 
   private matchByPriority(availableAgents: string[], taskType: TaskType): string {
-    // Same as capability_match: sort by capability+level, then by load
-    return this.matchByCapabilityMatch(availableAgents, taskType);
+    // High priority (1) -> strongest agent; Low priority (5) -> weaker but available agent
+    // This preserves strong agents for high-priority tasks
+    const sorted = [...availableAgents].sort((a, b) => {
+      const capA = this.getAgentCapabilityLevel(a, taskType);
+      const capB = this.getAgentCapabilityLevel(b, taskType);
+      const loadA = this.getAgentLoad(a);
+      const loadB = this.getAgentLoad(b);
+
+      // For agents with same capability level, prefer lower load
+      if (capA === capB) {
+        return loadA - loadB;
+      }
+      // Capability difference outweighs load difference
+      return capB - capA;
+    });
+    return sorted[0];
+  }
+
+  private matchByRoundRobin(availableAgents: string[]): string {
+    if (availableAgents.length === 0) return '';
+    this.lastAssignedIndex = (this.lastAssignedIndex + 1) % availableAgents.length;
+    return availableAgents[this.lastAssignedIndex];
   }
 
   private getAgentLoad(agentId: string): number {
@@ -755,8 +781,10 @@ ${assignStrategyDescription}
 
   /**
    * 获取可用 Agent
+   * @param taskType 可选，按任务类型筛选有对应能力的 Agent
+   * @param maxLoad 最大负载阈值，默认 5
    */
-  getAvailableAgents(taskType?: TaskType): string[] {
+  getAvailableAgents(taskType?: TaskType, maxLoad: number = 5): string[] {
     const available: string[] = [];
 
     for (const [agentId, caps] of this.agentCapabilities.entries()) {
@@ -767,13 +795,13 @@ ${assignStrategyDescription}
       if (taskType) {
         const cap = caps.get(taskType);
         if (!cap) continue;
-        // Skip if load is too high (e.g., > 5)
-        if (cap.currentLoad >= 5) continue;
+        // Skip if load >= maxLoad
+        if (cap.currentLoad >= maxLoad) continue;
       } else {
         // No taskType specified: check if any capability has room for more work
         let hasCapacity = false;
         for (const c of caps.values()) {
-          if (c.currentLoad < 5) {
+          if (c.currentLoad < maxLoad) {
             hasCapacity = true;
             break;
           }

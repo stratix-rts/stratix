@@ -1,6 +1,6 @@
 import { getDatabase } from './StratixDatabase';
 
-export type AssignStrategy = 'random' | 'capability_match' | 'load_balance' | 'priority';
+export type AssignStrategy = 'random' | 'capability_match' | 'load_balance' | 'priority' | 'round_robin';
 
 export interface ZoneCoordinatorConfig {
   llmProvider: string;
