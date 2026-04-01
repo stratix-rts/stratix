@@ -235,13 +235,289 @@ export class ZoneCoordinator {
   }
 
   /**
-   * 分解需求为任务（暂用 stub，返回空数组）
-   * LLM 集成是下一个任务
+   * 分解需求为任务（使用 LLM）
    */
   private async decomposeRequirement(requirement: string): Promise<TaskItem[]> {
-    // TODO: Integrate with LLM for actual requirement decomposition
-    // For now, return empty array as per Phase 2 skeleton
-    return [];
+    try {
+      const systemPrompt = this.buildSystemPrompt();
+      const llmResponse = await this.callLLM(systemPrompt, requirement);
+      return this.parseTaskItems(llmResponse);
+    } catch (error) {
+      console.warn(`[ZoneCoordinator] LLM decomposition failed, using fallback: ${error}`);
+      // Fallback: return a single general task
+      return [{
+        id: this.generateId(),
+        title: requirement.slice(0, 100),
+        description: requirement,
+        type: 'general',
+        priority: 3,
+        status: 'pending',
+        zoneId: this.zoneId,
+      }];
+    }
+  }
+
+  /**
+   * 调用 LLM（OpenAI-compatible API）
+   */
+  private async callLLM(systemPrompt: string, userMessage: string): Promise<string> {
+    const { url, apiKey, model } = this.getLLMConfig();
+
+    const body: Record<string, unknown> = {
+      model: model || 'gpt-4o',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage },
+      ],
+      temperature: 0.7,
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      throw new Error(`LLM API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+    const content = data.choices?.[0]?.message?.content;
+
+    if (!content) {
+      throw new Error('LLM returned empty response');
+    }
+
+    return content;
+  }
+
+  /**
+   * 获取 LLM 配置
+   */
+  private getLLMConfig(): { url: string; apiKey: string | null; model: string | null } {
+    const provider = this.config.llmProvider || 'openai';
+    const model = this.config.model;
+
+    switch (provider) {
+      case 'openai':
+        return {
+          url: 'https://api.openai.com/v1/chat/completions',
+          apiKey: process.env.OPENAI_API_KEY || null,
+          model,
+        };
+      case 'anthropic':
+        return {
+          url: 'https://api.anthropic.com/v1/messages',
+          apiKey: process.env.ANTHROPIC_API_KEY || null,
+          model: model || 'claude-sonnet-4-20250514',
+        };
+      case 'deepseek':
+        return {
+          url: 'https://api.deepseek.com/v1/chat/completions',
+          apiKey: process.env.DEEPSEEK_API_KEY || null,
+          model: model || 'deepseek-chat',
+        };
+      case 'ollama':
+        return {
+          url: 'http://localhost:11434/api/chat',
+          apiKey: null,
+          model: model || 'llama3',
+        };
+      default:
+        return {
+          url: 'https://api.openai.com/v1/chat/completions',
+          apiKey: process.env.OPENAI_API_KEY || null,
+          model,
+        };
+    }
+  }
+
+  /**
+   * 解析 LLM 返回的 JSON 任务列表
+   */
+  private parseTaskItems(llmResponse: string): TaskItem[] {
+    // Try to extract JSON from markdown code block or raw JSON
+    let jsonStr = llmResponse.trim();
+
+    // Remove markdown code block wrapper
+    const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (jsonMatch) {
+      jsonStr = jsonMatch[1].trim();
+    }
+
+    // Try to find JSON array in the response
+    const arrayMatch = jsonStr.match(/\[\s*\{[\s\S]*\}\s*\]/);
+    if (arrayMatch) {
+      jsonStr = arrayMatch[0];
+    }
+
+    try {
+      const tasks = JSON.parse(jsonStr) as Array<{
+        title?: string;
+        name?: string;
+        description?: string;
+        desc?: string;
+        type?: string;
+        taskType?: string;
+        priority?: number;
+      }>;
+
+      if (!Array.isArray(tasks)) {
+        throw new Error('LLM response is not an array');
+      }
+
+      return tasks
+        .filter(t => t.title || t.name)
+        .map(t => ({
+          id: this.generateId(),
+          title: t.title || t.name || 'Untitled Task',
+          description: t.description || t.desc || '',
+          type: this.normalizeTaskType(t.type || t.taskType),
+          priority: this.normalizePriority(t.priority),
+          status: 'pending' as TaskStatus,
+          zoneId: this.zoneId,
+        }));
+    } catch (error) {
+      console.warn('[ZoneCoordinator] Failed to parse task items:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 标准化任务类型
+   */
+  private normalizeTaskType(type?: string): TaskType {
+    if (!type) return 'general';
+    const lower = type.toLowerCase();
+    if (lower.includes('code') || lower.includes('dev')) return 'coding';
+    if (lower.includes('write') || lower.includes('doc')) return 'writing';
+    if (lower.includes('analy')) return 'analysis';
+    if (lower.includes('research') || lower.includes('search')) return 'research';
+    return 'general';
+  }
+
+  /**
+   * 标准化优先级
+   */
+  private normalizePriority(priority?: number): TaskPriority {
+    if (!priority || priority < 1 || priority > 5) return 3;
+    return priority as TaskPriority;
+  }
+
+  /**
+   * 构建系统提示词
+   */
+  private buildSystemPrompt(): string {
+    const memberList = this.buildMemberList();
+    const capabilityList = this.buildCapabilityList();
+    const assignStrategyDescription = this.buildAssignStrategyDescription();
+
+    return `你是 ${this.title} 的协调者。
+
+## Zone 身份
+${this.title} 是一个${this.prompt || '协作空间'}。
+
+## Zone 目标 (Key Results)
+${this.prompt || '暂无明确目标'}
+
+## 当前成员
+${memberList}
+
+## 成员能力
+${capabilityList}
+
+## 你的职责
+1. 接收并理解需求
+2. 将需求分解为可执行的任务
+3. 根据成员能力分配任务
+4. 监控任务进度
+5. 汇总结果并反馈
+
+## 任务类型定义
+- coding: 代码编写、重构、调试
+- writing: 文案、文档、报告
+- analysis: 数据分析、需求分析
+- research: 信息检索、调研
+- general: 其他通用任务
+
+## 分派规则
+${assignStrategyDescription}
+
+## 输出格式要求
+你必须输出一 JSON 数组，每个元素包含：
+- title: 任务名称（必填）
+- description: 任务描述（选填）
+- type: 任务类型，可选值：coding, writing, analysis, research, general（选填，默认为 general）
+- priority: 优先级 1-5，1 最高，5 最低（选填，默认为 3）
+
+示例：
+[
+  {"title": "需求分析", "description": "分析用户需求并输出文档", "type": "analysis", "priority": 1},
+  {"title": "代码实现", "description": "实现核心功能模块", "type": "coding", "priority": 2}
+]`;
+  }
+
+  /**
+   * 构建成员列表字符串
+   */
+  private buildMemberList(): string {
+    if (this.members.size === 0) {
+      return '（暂无成员）';
+    }
+
+    const lines: string[] = [];
+    for (const [agentId, member] of this.members) {
+      lines.push(`- ${member.agentId} (角色: ${member.role})`);
+    }
+    return lines.join('\n');
+  }
+
+  /**
+   * 构建能力列表字符串
+   */
+  private buildCapabilityList(): string {
+    if (this.agentCapabilities.size === 0) {
+      return '（暂无能力数据）';
+    }
+
+    const lines: string[] = [];
+    for (const [agentId, caps] of this.agentCapabilities) {
+      const capList: string[] = [];
+      for (const [capName, cap] of caps) {
+        capList.push(`${capName}(等级: ${cap.level}, 当前负载: ${cap.currentLoad})`);
+      }
+      lines.push(`- ${agentId}: ${capList.join(', ') || '无能力数据'}`);
+    }
+    return lines.join('\n');
+  }
+
+  /**
+   * 构建分派策略描述
+   */
+  private buildAssignStrategyDescription(): string {
+    switch (this.config.assignStrategy) {
+      case 'random':
+        return '随机选择可用 Agent';
+      case 'capability_match':
+        return '优先选择该任务类型能力最强的 Agent，其次考虑当前负载';
+      case 'load_balance':
+        return '优先选择当前负载最低的 Agent';
+      case 'priority':
+        return '综合考虑能力等级和负载进行分配';
+      default:
+        return '默认能力匹配策略';
+    }
+  }
+
+  /**
+   * 生成唯一 ID
+   */
+  private generateId(): string {
+    return `task_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
   }
 
   /**
