@@ -717,6 +717,27 @@ export class StratixDatabase {
       CREATE INDEX IF NOT EXISTS idx_flow_task ON task_flow(task_id);
       CREATE INDEX IF NOT EXISTS idx_flow_zone ON task_flow(zone_id);
       CREATE INDEX IF NOT EXISTS idx_flow_agent ON task_flow(to_agent_id);
+
+      -- ============================================
+      -- ZONE AUDIT LOG TABLE (Zone Agent Orchestration)
+      -- ============================================
+
+      -- Zone Audit Log表: 审计日志，记录 Zone 内所有操作
+      CREATE TABLE IF NOT EXISTS zone_audit_log (
+        id TEXT PRIMARY KEY,
+        zone_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        actor_id TEXT,
+        target_id TEXT,
+        metadata TEXT,
+        created_at INTEGER NOT NULL
+      );
+
+      -- 索引
+      CREATE INDEX IF NOT EXISTS idx_audit_zone ON zone_audit_log(zone_id);
+      CREATE INDEX IF NOT EXISTS idx_audit_actor ON zone_audit_log(actor_id);
+      CREATE INDEX IF NOT EXISTS idx_audit_type ON zone_audit_log(event_type);
+      CREATE INDEX IF NOT EXISTS idx_audit_time ON zone_audit_log(created_at);
     `;
     // Find the line with REFERENCES and log context
     const refLine = sql.split('\n').findIndex(l => l.includes('REFERENCES'));

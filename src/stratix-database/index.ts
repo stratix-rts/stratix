@@ -12,3 +12,5 @@ export { agentCapabilityRepository, AgentCapabilityRepository } from './AgentCap
 export type { AgentCapability, Capability } from './AgentCapabilityRepository';
 export { taskFlowRepository, TaskFlowRepository } from './TaskFlowRepository';
 export type { TaskFlowRecord, TaskFlowAction } from './TaskFlowRepository';
+export { auditLogRepository, AuditLogRepository } from './AuditLogRepository';
+export type { AuditLogRecord, AuditEventType, AuditLogQueryOptions } from './AuditLogRepository';
