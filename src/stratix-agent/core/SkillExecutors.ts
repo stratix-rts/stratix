@@ -1,6 +1,7 @@
 import { SkillDefinition, SkillExecutor, ExecutionContext } from '../types';
 import { SafetyValidator } from './SafetyValidator';
 import { zoneContextManager } from '../../stratix-character-creator/core/ZoneContextManager';
+import { ZoneCoordinatorSkillExecutor } from './ZoneCoordinatorSkillExecutor';
 
 export class HttpSkillExecutor implements SkillExecutor {
   async execute(
@@ -1108,6 +1109,8 @@ export function createExecutor(type: string): SkillExecutor {
       return new CodeSandboxSkillExecutor();
     case 'zone':
       return new ZoneSkillExecutor();
+    case 'zone_coordinator':
+      return new ZoneCoordinatorSkillExecutor();
     default:
       return new DefaultSkillExecutor();
   }
