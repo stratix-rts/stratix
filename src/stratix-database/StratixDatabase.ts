@@ -264,6 +264,18 @@ export class StratixDatabase {
     } catch (e) {
       // 索引可能已存在
     }
+
+    // 为 zone_members 表添加索引（如果不存在）
+    try {
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_zone_members_zone_id ON zone_members(zone_id)');
+    } catch (e) {
+      // 索引可能已存在
+    }
+    try {
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_zone_members_agent ON zone_members(agent_id)');
+    } catch (e) {
+      // 索引可能已存在
+    }
   }
 
   private createTables(): void {
@@ -445,6 +457,17 @@ export class StratixDatabase {
         role TEXT DEFAULT 'member' CHECK (role IN ('owner', 'member', 'observer')),
         PRIMARY KEY (agent_id, zone_id),
         FOREIGN KEY (zone_id) REFERENCES zones(zone_id) ON DELETE CASCADE
+      );
+
+      -- Zone Members表: Enhanced zone membership with roles and timestamps
+      CREATE TABLE IF NOT EXISTS zone_members (
+        id TEXT PRIMARY KEY,
+        zone_id TEXT NOT NULL REFERENCES zones(zone_id) ON DELETE CASCADE,
+        agent_id TEXT NOT NULL,
+        role TEXT DEFAULT 'executor' CHECK (role IN ('coordinator', 'executor')),
+        entered_at INTEGER NOT NULL,
+        left_at INTEGER,
+        UNIQUE(zone_id, agent_id)
       );
 
       -- Tasks表: Unified task queue with priority
