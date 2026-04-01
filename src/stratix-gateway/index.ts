@@ -21,6 +21,7 @@ import openclawRoutes, { initWebSocketServer, initConnectionStore } from './api/
 import lraRoutes from './api/routes/lra';
 import projectRoutes from './api/routes/project';
 import zoneRoutes from './api/routes/zone';
+import zoneAuditRoutes from './api/routes/zone-audit';
 import zoneContextRoutes from './api/routes/zone-context';
 import agentOrchestrationRoutes from './api/routes/agentOrchestration';
 import skillRoutes from './api/routes/skill';
@@ -114,6 +115,7 @@ export async function startGatewayService(
   app.use('/api/lra', lraRoutes);
   app.use('/api/projects', projectRoutes);
   app.use('/api', zoneRoutes);
+  app.use('/api', zoneAuditRoutes);
   app.use('/api/zone-context', zoneContextRoutes);
   app.use('/api/agents/orchestration', agentOrchestrationRoutes);
   app.use('/api/skills', skillRoutes);
