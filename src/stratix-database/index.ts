@@ -8,3 +8,5 @@ export { zoneCoordinatorConfigRepository, ZoneCoordinatorConfigRepository } from
 export type { ZoneCoordinatorConfig, ZoneCoordinatorConfigRecord, AssignStrategy } from './ZoneCoordinatorConfigRepository';
 export { skillRepository, SkillRepository } from './SkillRepository';
 export type { SharedSkill, SharedSkillInstall, AgentLearnedSkill } from './SkillRepository';
+export { agentCapabilityRepository, AgentCapabilityRepository } from './AgentCapabilityRepository';
+export type { AgentCapability, Capability } from './AgentCapabilityRepository';

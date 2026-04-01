@@ -675,12 +675,27 @@ export class StratixDatabase {
         PRIMARY KEY (agent_id, zone_id)
       );
 
+      -- Agent Capabilities表: Agent能力等级和负载
+      CREATE TABLE IF NOT EXISTS agent_capabilities (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        zone_id TEXT NOT NULL REFERENCES zones(zone_id) ON DELETE CASCADE,
+        capability TEXT NOT NULL CHECK (capability IN ('coding', 'writing', 'analysis', 'research', 'general')),
+        level INTEGER DEFAULT 1 CHECK (level BETWEEN 1 AND 5),
+        current_load INTEGER DEFAULT 0,
+        updated_at INTEGER NOT NULL,
+        UNIQUE(agent_id, zone_id, capability)
+      );
+
       -- 索引
       CREATE INDEX IF NOT EXISTS idx_shared_skill_installs_agent ON shared_skill_installs(agent_id);
       CREATE INDEX IF NOT EXISTS idx_agent_learned_skills_agent ON agent_learned_skills(agent_id);
       CREATE INDEX IF NOT EXISTS idx_zone_contexts_simple_zone_id ON zone_contexts_simple(zone_id);
       CREATE INDEX IF NOT EXISTS idx_agent_zone_bindings_agent ON agent_zone_bindings(agent_id);
       CREATE INDEX IF NOT EXISTS idx_agent_zone_bindings_zone ON agent_zone_bindings(zone_id);
+      CREATE INDEX IF NOT EXISTS idx_agent_capabilities_zone ON agent_capabilities(zone_id);
+      CREATE INDEX IF NOT EXISTS idx_agent_capabilities_capability ON agent_capabilities(capability);
+      CREATE INDEX IF NOT EXISTS idx_agent_capabilities_agent_zone ON agent_capabilities(agent_id, zone_id);
     `;
     // Find the line with REFERENCES and log context
     const refLine = sql.split('\n').findIndex(l => l.includes('REFERENCES'));
