@@ -1,0 +1,278 @@
+import { Router, Request, Response } from 'express';
+import { ZoneCoordinator, type TaskItem, type ProcessResult, type ZoneStatusSummary, type DelegateResult } from '../../../stratix-orchestration/zone/ZoneCoordinator';
+import { zoneCoordinatorConfigRepository, type ZoneCoordinatorConfig } from '../../../stratix-database/ZoneCoordinatorConfigRepository';
+
+const router = Router();
+
+// ============================================
+// ZoneCoordinator Service (in-memory instance management)
+// ============================================
+
+class ZoneCoordinatorService {
+  private coordinators: Map<string, ZoneCoordinator> = new Map();
+
+  getCoordinator(zoneId: string): ZoneCoordinator {
+    let coordinator = this.coordinators.get(zoneId);
+    if (!coordinator) {
+      coordinator = new ZoneCoordinator(zoneId);
+      this.coordinators.set(zoneId, coordinator);
+    }
+    return coordinator;
+  }
+
+  clearCoordinator(zoneId: string): void {
+    this.coordinators.delete(zoneId);
+  }
+}
+
+const coordinatorService = new ZoneCoordinatorService();
+
+// ============================================
+// Types
+// ============================================
+
+interface RequirementRequest {
+  requirement: string;
+}
+
+interface ConfirmRequest {
+  confirmed: boolean;
+  assigneeId?: string;
+}
+
+interface RejectRequest {
+  reason?: string;
+}
+
+interface UpdateConfigRequest {
+  llmProvider?: string;
+  model?: string | null;
+  autoDecompose?: boolean;
+  autoAssign?: boolean;
+  requireUserConfirm?: boolean;
+  assignStrategy?: 'random' | 'capability_match' | 'load_balance' | 'priority' | 'round_robin';
+  entryCondition?: string | null;
+}
+
+// ============================================
+// POST /api/zones/:zoneId/requirements
+// Submit requirement - calls ZoneCoordinator.processRequirement
+// ============================================
+
+router.post('/zones/:zoneId/requirements', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const zoneId = req.params.zoneId as string;
+    const { requirement } = req.body as RequirementRequest;
+
+    if (!requirement) {
+      res.status(400).json({
+        success: false,
+        error: 'Missing required field: requirement'
+      });
+      return;
+    }
+
+    const coordinator = coordinatorService.getCoordinator(zoneId);
+    const result: ProcessResult = await coordinator.processRequirement(requirement);
+
+    res.json({
+      success: result.success,
+      tasks: result.tasks,
+      delegated: result.delegated,
+      pending: result.pending,
+      requiresUserConfirm: result.requiresUserConfirm,
+      error: result.error
+    });
+  } catch (error) {
+    console.error('[ZoneCoordinator API] Process requirement failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to process requirement'
+    });
+  }
+});
+
+// ============================================
+// POST /api/zones/:zoneId/tasks/:taskId/confirm
+// Confirm task assignment
+// ============================================
+
+router.post('/zones/:zoneId/tasks/:taskId/confirm', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const zoneId = req.params.zoneId as string;
+    const taskId = req.params.taskId as string;
+    const { confirmed, assigneeId } = req.body as ConfirmRequest;
+
+    if (confirmed === undefined) {
+      res.status(400).json({
+        success: false,
+        error: 'Missing required field: confirmed'
+      });
+      return;
+    }
+
+    const coordinator = coordinatorService.getCoordinator(zoneId);
+
+    if (confirmed) {
+      // Find the task and get the suggested assignee (or use provided assigneeId)
+      const status = coordinator.getStatusSummary();
+      const task = findTaskInStatus(status, taskId);
+
+      if (!task) {
+        res.status(404).json({
+          success: false,
+          error: 'Task not found'
+        });
+        return;
+      }
+
+      const targetAgentId = assigneeId || task.assigneeId;
+
+      if (!targetAgentId) {
+        res.status(400).json({
+          success: false,
+          error: 'No assignee specified'
+        });
+        return;
+      }
+
+      const result: DelegateResult = await coordinator.delegateTask(taskId, targetAgentId);
+
+      res.json({
+        success: result.success,
+        taskId: result.taskId,
+        agentId: result.agentId,
+        flowId: result.flowId,
+        error: result.error
+      });
+    } else {
+      // Rejection - just return success for now (task stays in pending)
+      res.json({
+        success: true,
+        taskId,
+        message: 'Task rejected - remains in pending queue'
+      });
+    }
+  } catch (error) {
+    console.error('[ZoneCoordinator API] Confirm task failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to confirm task'
+    });
+  }
+});
+
+// ============================================
+// POST /api/zones/:zoneId/tasks/:taskId/reject
+// Reject task assignment
+// ============================================
+
+router.post('/zones/:zoneId/tasks/:taskId/reject', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const zoneId = req.params.zoneId as string;
+    const taskId = req.params.taskId as string;
+    const { reason } = req.body as RejectRequest;
+
+    // Get current status to verify task exists
+    const coordinator = coordinatorService.getCoordinator(zoneId);
+    const status = coordinator.getStatusSummary();
+
+    // For now, rejection just returns success
+    // In a full implementation, this would record the rejection reason
+
+    res.json({
+      success: true,
+      taskId,
+      message: 'Task rejected',
+      reason: reason || null
+    });
+  } catch (error) {
+    console.error('[ZoneCoordinator API] Reject task failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to reject task'
+    });
+  }
+});
+
+// ============================================
+// GET /api/zones/:zoneId/coordinator/status
+// Get Coordinator status summary
+// ============================================
+
+router.get('/zones/:zoneId/coordinator/status', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const zoneId = req.params.zoneId as string;
+
+    const coordinator = coordinatorService.getCoordinator(zoneId);
+    const status: ZoneStatusSummary = coordinator.getStatusSummary();
+
+    res.json({
+      success: true,
+      ...status
+    });
+  } catch (error) {
+    console.error('[ZoneCoordinator API] Get status failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get coordinator status'
+    });
+  }
+});
+
+// ============================================
+// PUT /api/zones/:zoneId/coordinator/config
+// Update Coordinator configuration
+// ============================================
+
+router.put('/zones/:zoneId/coordinator/config', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const zoneId = req.params.zoneId as string;
+    const updates = req.body as UpdateConfigRequest;
+
+    if (!updates || Object.keys(updates).length === 0) {
+      res.status(400).json({
+        success: false,
+        error: 'No configuration updates provided'
+      });
+      return;
+    }
+
+    // Update in database
+    const updatedConfig = zoneCoordinatorConfigRepository.updateConfig(zoneId, updates);
+
+    if (!updatedConfig) {
+      res.status(404).json({
+        success: false,
+        error: 'Coordinator config not found'
+      });
+      return;
+    }
+
+    // Clear cached coordinator to force reload with new config
+    coordinatorService.clearCoordinator(zoneId);
+
+    res.json({
+      success: true,
+      config: updatedConfig
+    });
+  } catch (error) {
+    console.error('[ZoneCoordinator API] Update config failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to update coordinator config'
+    });
+  }
+});
+
+// ============================================
+// Helper: Find task in status (placeholder - actual task storage is in coordinator)
+// ============================================
+
+function findTaskInStatus(status: ZoneStatusSummary, taskId: string): { assigneeId?: string } | null {
+  // In the actual implementation, tasks would be stored and retrieved
+  // For now, return null - the UI should pass the assigneeId explicitly
+  return null;
+}
+
+export default router;

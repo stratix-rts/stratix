@@ -23,6 +23,7 @@ import projectRoutes from './api/routes/project';
 import zoneRoutes from './api/routes/zone';
 import zoneAuditRoutes from './api/routes/zone-audit';
 import zoneContextRoutes from './api/routes/zone-context';
+import zoneCoordinatorRoutes from './api/routes/zone-coordinator';
 import agentOrchestrationRoutes from './api/routes/agentOrchestration';
 import skillRoutes from './api/routes/skill';
 import { openClawProxyManager } from './openclaw/OpenClawProxyManager';
@@ -116,6 +117,7 @@ export async function startGatewayService(
   app.use('/api/projects', projectRoutes);
   app.use('/api', zoneRoutes);
   app.use('/api', zoneAuditRoutes);
+  app.use('/api', zoneCoordinatorRoutes);
   app.use('/api/zone-context', zoneContextRoutes);
   app.use('/api/agents/orchestration', agentOrchestrationRoutes);
   app.use('/api/skills', skillRoutes);
