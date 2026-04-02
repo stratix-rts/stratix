@@ -53,7 +53,7 @@ interface AgencyAgentsData {
 }
 
 // 懒加载：轻量级模板（不含 rawContent）
-interface LightweightSoulTemplate {
+export interface LightweightSoulTemplate {
   id: string;
   name: string;
   description: string;
