@@ -1,4 +1,5 @@
 import type { AgentSprite } from '../sprites/AgentSprite';
+
 import { SpatialHashGrid } from './SpatialHashGrid';
 
 export class CollisionSystem {

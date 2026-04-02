@@ -1,5 +1,6 @@
-import { readFile, writeFile, mkdir, readdir } from 'fs/promises';
 import { existsSync } from 'fs';
+import { readFile, writeFile, mkdir, readdir } from 'fs/promises';
+
 import { Session, ChatMessage } from '../types';
 
 export class SessionManager {

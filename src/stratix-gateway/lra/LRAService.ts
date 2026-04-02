@@ -1,8 +1,10 @@
 import { exec } from 'child_process';
-import { promisify } from 'util';
-import fs from 'fs-extra';
 import path from 'path';
+import { promisify } from 'util';
+
 import * as chokidar from 'chokidar';
+import fs from 'fs-extra';
+
 import { LraTask, LraTaskDetail } from '../../stratix-lra-bridge/types';
 
 const execAsync = promisify(exec);

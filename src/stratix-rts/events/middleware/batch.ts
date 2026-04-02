@@ -1,6 +1,7 @@
-import type { Middleware, MiddlewareContext } from './types';
 import type { RTSEventName } from '../types/RTSEventTypes';
 import { BatchConfig } from '../types/RTSEventTypes';
+
+import type { Middleware, MiddlewareContext } from './types';
 
 interface BatchState<T = unknown> {
   items: T[];

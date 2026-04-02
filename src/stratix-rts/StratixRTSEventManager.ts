@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+
 import StratixEventBus from '../stratix-core/StratixEventBus';
 import {
   StratixFrontendOperationEvent,

@@ -6,6 +6,7 @@
  */
 
 import type { ServiceProvider, TailscaleNode, AppConfiguration } from './ServiceProvider';
+
 import type { StratixAgentConfig, UnifiedOpenClawConfig } from '@/stratix-core/stratix-protocol';
 import type { ChatResponse } from '@/stratix-openclaw-adapter/types';
 

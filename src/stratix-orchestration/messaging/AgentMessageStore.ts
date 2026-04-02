@@ -1,4 +1,5 @@
 import { getDatabase } from '../../stratix-database/StratixDatabase';
+
 import { AgentMessage, Conversation, SendMessageOptions, MessageReference } from './MessageTypes';
 
 // Database row interfaces

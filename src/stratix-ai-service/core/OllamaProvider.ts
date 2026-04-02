@@ -1,5 +1,6 @@
-import { BaseAIProvider } from './AIServiceProvider';
 import { AIMessage, AIResponse, AIStreamCallback, AIProviderConfig } from '../types';
+
+import { BaseAIProvider } from './AIServiceProvider';
 
 export class OllamaProvider extends BaseAIProvider {
   readonly name = 'ollama';

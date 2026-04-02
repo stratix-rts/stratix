@@ -1,25 +1,28 @@
 import Phaser from 'phaser';
+
 import { StratixAgentConfig, ZoneInfo } from '../stratix-core/stratix-protocol';
-import { MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, DEFAULT_ZOOM } from './constants';
-import { getToken, getCurrentTheme } from '@/design-system/config';
-import { AgentSprite, AgentStatus, CommandStatus } from './sprites/AgentSprite';
+import { ProjectClient } from '../stratix-project/ProjectClient';
+import { ProjectManagerIntegration } from '../stratix-project/ProjectManagerIntegrationHTTP';
+
 import { StratixRTSEventManager } from './StratixRTSEventManager';
-import { InputHandler, InputCallbacks, InputMode } from './utils/InputHandler';
-import { SelectBox } from './ui/SelectBox';
-import { TaskZone, TaskZoneConfig } from './zones/TaskZone';
-import { TaskZonePreview } from './zones/TaskZonePreview';
-import { UnifiedZoneManager } from './zones/UnifiedZoneManager';
-import { BaseZone } from './zones/BaseZone';
+import { MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, DEFAULT_ZOOM } from './constants';
+import { StatsCollector } from './debug/StatsCollector';
+import { rtsEventBus } from './events/core/RTSEventBus';
+import type { TopBarStats, AgentInfo, ViewportState } from './events/types/RTSEventTypes';
+import RTSCharacterRenderer, { TextureLoadResult } from './services/RTSCharacterRenderer';
+import { AgentSprite, AgentStatus, CommandStatus } from './sprites/AgentSprite';
 import { CommandSystem, Command, CommandType } from './systems/CommandSystem';
 import { ControlGroupSystem } from './systems/ControlGroupSystem';
 import { MovementSystem } from './systems/MovementSystem';
-import { StatsCollector } from './debug/StatsCollector';
-import { ProjectManagerIntegration } from '../stratix-project/ProjectManagerIntegrationHTTP';
-import { ProjectClient } from '../stratix-project/ProjectClient';
-import RTSCharacterRenderer, { TextureLoadResult } from './services/RTSCharacterRenderer';
-import { rtsEventBus } from './events/core/RTSEventBus';
-import type { TopBarStats, AgentInfo, ViewportState } from './events/types/RTSEventTypes';
+import { SelectBox } from './ui/SelectBox';
 import type { Skill } from './ui/v2/CommandPanelV2';
+import { InputHandler, InputCallbacks, InputMode } from './utils/InputHandler';
+import { BaseZone } from './zones/BaseZone';
+import { TaskZone, TaskZoneConfig } from './zones/TaskZone';
+import { TaskZonePreview } from './zones/TaskZonePreview';
+import { UnifiedZoneManager } from './zones/UnifiedZoneManager';
+
+import { getToken, getCurrentTheme } from '@/design-system/config';
 
 export { MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, DEFAULT_ZOOM, MIN_ZOOM, MAX_ZOOM, BG_COLOR } from './constants';
 

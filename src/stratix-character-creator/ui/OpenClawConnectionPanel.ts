@@ -7,12 +7,14 @@
  */
 
 import Phaser from 'phaser';
+
+import { getButtonInlineStyles } from './_buttonStyles';
+
 import { getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
-import { DOMContainer } from '@/stratix-core/ui/DOMContainer';
 import { unifiedOpenClawConnectionManager, type TailscaleNode, type ConnectionResult, type StoredConnection } from '@/stratix-core/UnifiedOpenClawConnectionManager';
 import type { OpenClawConnectionMethod } from '@/stratix-core/stratix-protocol';
-import { getButtonInlineStyles } from './_buttonStyles';
+import { DOMContainer } from '@/stratix-core/ui/DOMContainer';
 
 const THEME = {
   bg: 'var(--ds-bg-secondary)',

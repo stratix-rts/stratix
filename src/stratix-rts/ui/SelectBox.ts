@@ -4,6 +4,7 @@
  */
 
 import Phaser from 'phaser';
+
 import { getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
 

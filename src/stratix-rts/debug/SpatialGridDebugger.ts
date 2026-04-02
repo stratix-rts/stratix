@@ -1,5 +1,6 @@
-import { DebugRenderer } from './DebugRenderer';
 import type { SpatialHashGrid } from '../systems/SpatialHashGrid';
+
+import { DebugRenderer } from './DebugRenderer';
 
 export class SpatialGridDebugger extends DebugRenderer {
   private spatialGrid: SpatialHashGrid;

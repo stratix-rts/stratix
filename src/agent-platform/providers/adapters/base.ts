@@ -1,4 +1,5 @@
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
+
 import type { CreateProviderOptions, ProviderConfig } from '../types';
 
 export abstract class LLMAdapter {

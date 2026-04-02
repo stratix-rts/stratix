@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
-import { AgentOrchestrationService, AgentState } from '../../agent/AgentOrchestrationService';
+
 import { StratixAgentConfig } from '../../../stratix-core';
+import { AgentOrchestrationService, AgentState } from '../../agent/AgentOrchestrationService';
 
 const router = Router();
 const orchestrator = AgentOrchestrationService.getInstance();

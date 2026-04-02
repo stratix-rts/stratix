@@ -7,9 +7,10 @@
  */
 
 import * as crypto from 'crypto';
-import * as fs from 'fs-extra';
 import * as path from 'path';
+
 import * as ed from '@noble/ed25519';
+import * as fs from 'fs-extra';
 
 interface StoredIdentity {
   deviceId: string;

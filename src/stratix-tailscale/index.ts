@@ -1,5 +1,5 @@
-import { TailscaleService } from './TailscaleService';
 import { EmbeddedTailscale } from './EmbeddedTailscale';
+import { TailscaleService } from './TailscaleService';
 import type { TailscaleConfig } from './types';
 
 export { TailscaleService } from './TailscaleService';

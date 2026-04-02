@@ -1,6 +1,6 @@
-import type { TaskZone } from '../zones/TaskZone';
-import { ZoneHistory, ZoneMoveAction } from '../history/ZoneHistory';
 import { rtsEventBus } from '../events/core/RTSEventBus';
+import { ZoneHistory, ZoneMoveAction } from '../history/ZoneHistory';
+import type { TaskZone } from '../zones/TaskZone';
 
 export class ZoneBatchOperations {
   static moveZones(
@@ -89,7 +89,7 @@ export class ZoneBatchOperations {
 
     zones.forEach(zone => {
       const oldPos = { x: zone.x, y: zone.y };
-      let newPos = { x: zone.x, y: zone.y };
+      const newPos = { x: zone.x, y: zone.y };
 
       const bounds = zone.getBounds();
       const positions = {

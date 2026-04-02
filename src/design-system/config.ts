@@ -4,12 +4,12 @@
  * 修改此处快速切换整体风格
  */
 
-import type { DesignSystemTokens, ColorPrimitives } from './types';
 import type { CompleteSemanticTokens } from './semantic/_generator';
 import { generateAllSemanticTokens } from './semantic/_generator';
 import { CyberpunkTheme } from './themes/cyberpunk';
 import { MinimalTheme } from './themes/minimal';
 import { ProfessionalTheme } from './themes/professional';
+import type { DesignSystemTokens, ColorPrimitives } from './types';
 
 export const DesignSystemConfig = {
   activeTheme: 'cyberpunk' as 'cyberpunk' | 'minimal' | 'professional',

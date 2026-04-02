@@ -6,10 +6,12 @@
  */
 
 import Phaser from 'phaser';
-import { UIEventBus } from '../event/UIEventBus';
-import { ThemeContext } from '../../foundation/theme/ThemeContext';
-import { UIEventType } from '../../core/types/event.types';
+
 import type { EnhancedUIComponent } from '../../components/base/EnhancedUIComponent';
+import { UIEventType } from '../../core/types/event.types';
+import { ThemeContext } from '../../foundation/theme/ThemeContext';
+import { UIEventBus } from '../event/UIEventBus';
+
 import { Depth } from '@/design-system/tokens/depth';
 
 /**

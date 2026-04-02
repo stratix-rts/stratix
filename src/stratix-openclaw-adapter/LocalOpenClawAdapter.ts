@@ -1,4 +1,5 @@
-import { StratixOpenClawConfig } from '@/stratix-core/stratix-protocol';
+import axios, { AxiosInstance } from 'axios';
+
 import type {
   OpenClawAdapterInterface,
   OpenClawAction,
@@ -10,7 +11,8 @@ import type {
   OpenAIChatCompletionRequest,
   OpenAIChatCompletionResponse,
 } from './types';
-import axios, { AxiosInstance } from 'axios';
+
+import { StratixOpenClawConfig } from '@/stratix-core/stratix-protocol';
 
 const isBrowser = typeof window !== 'undefined';
 const BrowserWebSocket = isBrowser ? window.WebSocket : null;

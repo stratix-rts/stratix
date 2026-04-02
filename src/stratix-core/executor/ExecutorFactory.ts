@@ -1,8 +1,9 @@
+import { ConnectionPool } from '../../stratix-openclaw-adapter';
 import type { StratixAgentConfig, AgentBackendType } from '../stratix-protocol';
+
 import type { AgentExecutor } from './AgentExecutor';
 import { OpenClawExecutor } from './OpenClawExecutor';
 import { StratixAgentExecutor } from './StratixAgentExecutor';
-import { ConnectionPool } from '../../stratix-openclaw-adapter';
 
 export class ExecutorFactory {
   private static instance: ExecutorFactory;

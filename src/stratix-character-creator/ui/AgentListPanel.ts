@@ -5,11 +5,13 @@
  */
 
 import Phaser from 'phaser';
+
+import { getButtonInlineStyles } from './_buttonStyles';
+
 import { getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
-import { ContainerComponentBase } from '@/stratix-core/ui/ContainerComponent.base';
 import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClawConnectionManager';
-import { getButtonInlineStyles } from './_buttonStyles';
+import { ContainerComponentBase } from '@/stratix-core/ui/ContainerComponent.base';
 
 const THEME = {
   bg: 'var(--ds-bg-secondary)',

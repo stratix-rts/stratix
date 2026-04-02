@@ -14,6 +14,7 @@ import {
   type TaskFlowAction,
   type AuditEventType,
 } from '../../stratix-database';
+
 import ZoneCoordinatorEventEmitter from './ZoneCoordinatorEvents';
 
 // ============================================
@@ -1060,7 +1061,7 @@ ${assignStrategyDescription}
 
     let completedCount = 0;
     let activeCount = 0;
-    let pendingCount = this.pendingTasks.length;
+    const pendingCount = this.pendingTasks.length;
 
     for (const task of this.activeTasks.values()) {
       if (task.status === 'completed') completedCount++;

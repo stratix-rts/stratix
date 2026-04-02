@@ -1,5 +1,5 @@
-import { Annotation } from '@langchain/langgraph';
 import type { BaseMessage } from '@langchain/core/messages';
+import { Annotation } from '@langchain/langgraph';
 
 export const AgentGraphState = Annotation.Root({
   messages: Annotation<BaseMessage[]>({

@@ -10,10 +10,11 @@
  */
 
 import { ref, computed, onMounted } from 'vue';
+
+import { ThemeRegistry } from '../themes';
 import { CyberpunkTheme } from '../themes/cyberpunk';
 import { MinimalTheme } from '../themes/minimal';
 import { ProfessionalTheme } from '../themes/professional';
-import { ThemeRegistry } from '../themes';
 import type { DesignSystemTokens, ThemeName } from '../types';
 
 const STORAGE_KEY = 'stratix-theme';

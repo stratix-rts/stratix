@@ -6,14 +6,17 @@
  */
 
 import Phaser from 'phaser';
+
+import { StratixAgentConfigPanel } from './StratixAgentConfigPanel';
+import { getButtonInlineStyles } from './_buttonStyles';
+
 import { getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
-import { ContainerComponentBase } from '@/stratix-core/ui/ContainerComponent.base';
-import type { AgentBackendType, OpenClawConfig, UnifiedOpenClawConfig, StratixDirectConfig } from '@/stratix-core/stratix-protocol';
-import { StratixAgentConfigPanel } from './StratixAgentConfigPanel';
-import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClawConnectionManager';
 import { agentStore } from '@/stores/agentStore';
-import { getButtonInlineStyles } from './_buttonStyles';
+import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClawConnectionManager';
+import type { AgentBackendType, OpenClawConfig, UnifiedOpenClawConfig, StratixDirectConfig } from '@/stratix-core/stratix-protocol';
+import { ContainerComponentBase } from '@/stratix-core/ui/ContainerComponent.base';
+
 
 const THEME = {
   bg: 'var(--ds-bg-secondary)',

@@ -4,8 +4,9 @@
  * 自动响应主题变化的Token包装器
  */
 
-import type { ThemeContext } from './ThemeContext';
 import type { TokenChangeHandler } from '../../core/types/theme.types';
+
+import type { ThemeContext } from './ThemeContext';
 
 export class ReactiveToken<T = any> {
   private context: ThemeContext;

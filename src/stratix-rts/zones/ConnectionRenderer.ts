@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+
 import { type ConnectionType, type ConnectionPoint } from './ZoneConnection';
 
 export interface ConnectionLineStyle {

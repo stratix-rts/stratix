@@ -7,19 +7,19 @@
  * - 背景：深空黑 #0d0d14
  */
 
-import type { DesignSystemTokens } from '../types';
+import { IconSizes } from '../icons/registry';
+import { generateAllSemanticTokens } from '../semantic/_generator';
+import { Animation } from '../tokens/animation';
 import { 
   CyberpunkPrimitives,
   Cyan, 
   Magenta,
   Gray 
 } from '../tokens/colors';
+import { Depth } from '../tokens/depth';
 import { Spacing } from '../tokens/spacing';
 import { Typography } from '../tokens/typography';
-import { Animation } from '../tokens/animation';
-import { Depth } from '../tokens/depth';
-import { IconSizes } from '../icons/registry';
-import { generateAllSemanticTokens } from '../semantic/_generator';
+import type { DesignSystemTokens } from '../types';
 
 // 主题特定的圆角配置
 const CyberpunkRadii = {

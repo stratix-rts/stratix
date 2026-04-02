@@ -1,5 +1,6 @@
-import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
+import { readFile, writeFile, mkdir } from 'fs/promises';
+
 import { ChatMessage, MemoryEntry, MemoryLayers, SkillLearningRecord } from '../types';
 
 export class MemoryManager {

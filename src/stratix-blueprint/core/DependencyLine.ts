@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+
 import { BlueprintEdge, BlueprintNode } from '../types';
 
 export class DependencyLine extends Phaser.GameObjects.Graphics {

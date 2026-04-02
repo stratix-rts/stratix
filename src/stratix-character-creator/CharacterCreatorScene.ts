@@ -19,19 +19,21 @@
  */
 
 import Phaser from 'phaser';
+
+import { SKILL_TREE_CONFIG } from './config/skillTreeConfig';
+import { EVENTS, DEFAULT_BODY_TYPE, FRAME_SIZE, SHEET_WIDTH, SHEET_HEIGHT, BODY_TYPES } from './constants';
 import { characterComposer } from './core/CharacterComposer';
 import { characterStorage } from './core/CharacterStorage';
-import { partRegistry } from './core/PartRegistry';
 import { characterCreatorEvents } from './core/EventEmitter';
+import { partRegistry } from './core/PartRegistry';
 import { SkillTree } from './core/SkillTree';
-import { EVENTS, DEFAULT_BODY_TYPE, FRAME_SIZE, SHEET_WIDTH, SHEET_HEIGHT, BODY_TYPES } from './constants';
-import { SKILL_TREE_CONFIG } from './config/skillTreeConfig';
+import type { SavedCharacter, PartSelection, PartMetadata, BodyType, AnimationName, CreatorStep, PartCategory } from './types';
 import { PartSelector, CharacterPreview, CharacterList, OpenClawConnectionPanel, AgentChatPanel, AgentConfigPanel, BackendSelector } from './ui';
 import { getButtonInlineStyles } from './ui/_buttonStyles';
-import type { SavedCharacter, PartSelection, PartMetadata, BodyType, AnimationName, CreatorStep, PartCategory } from './types';
+
+import { getToken, getCurrentTheme } from '@/design-system/config';
 import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClawConnectionManager';
 import { textureManager } from '@/stratix-core/services';
-import { getToken, getCurrentTheme } from '@/design-system/config';
 
 // 辅助函数：将十六进制颜色字符串转换为 Phaser 数字格式
 function hexToNumber(hex: string): number {

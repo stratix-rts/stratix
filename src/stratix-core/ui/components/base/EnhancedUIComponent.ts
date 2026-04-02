@@ -12,12 +12,15 @@
  */
 
 import Phaser from 'phaser';
-import { ThemeContext } from '../../foundation/theme/ThemeContext';
-import { ReactiveToken } from '../../foundation/theme/ReactiveToken';
-import { Depth } from '@/design-system/tokens/depth';
-import type { DesignSystemTokens } from '@/design-system/types';
+
 import { ComponentState } from '../../core/types/component.types';
 import type { UIComponentConfig, IThemeAware, IUIComponentLifecycle } from '../../core/types/component.types';
+import { ReactiveToken } from '../../foundation/theme/ReactiveToken';
+import { ThemeContext } from '../../foundation/theme/ThemeContext';
+
+import { Depth } from '@/design-system/tokens/depth';
+import type { DesignSystemTokens } from '@/design-system/types';
+
 
 export abstract class EnhancedUIComponent implements IThemeAware, IUIComponentLifecycle {
   protected scene: Phaser.Scene;

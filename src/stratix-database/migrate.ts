@@ -1,8 +1,10 @@
-import fs from 'fs-extra';
 import path from 'path';
-import { initializeDatabase } from './StratixDatabase';
-import { projectRepository } from './ProjectRepository';
+
+import fs from 'fs-extra';
+
 import { agentRepository } from './AgentRepository';
+import { projectRepository } from './ProjectRepository';
+import { initializeDatabase } from './StratixDatabase';
 
 async function migrate() {
   const dataDir = 'stratix-data';

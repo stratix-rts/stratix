@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+
 import { MIN_ZOOM, MAX_ZOOM } from '../constants';
 import { CommandType } from '../systems/CommandSystem';
 

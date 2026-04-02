@@ -1,9 +1,11 @@
-import { Project, ProjectConfig, ProjectStatus } from '../types';
-import { ProjectStore } from '../storage/ProjectStore';
-import { generateId } from '../utils/helpers';
+import mitt from 'mitt';
+
 import { ParsedTask } from '../../stratix-ai-service/types';
 import { LRAClient } from '../../stratix-lra-bridge';
-import mitt from 'mitt';
+import { ProjectStore } from '../storage/ProjectStore';
+import { Project, ProjectConfig, ProjectStatus } from '../types';
+import { generateId } from '../utils/helpers';
+
 
 type EventBus = ReturnType<typeof mitt>;
 

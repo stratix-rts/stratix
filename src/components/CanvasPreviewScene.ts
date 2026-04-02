@@ -4,6 +4,7 @@
  */
 
 import Phaser from 'phaser';
+
 import {
   FRAME_SIZE,
   FRAMES_PER_ROW,

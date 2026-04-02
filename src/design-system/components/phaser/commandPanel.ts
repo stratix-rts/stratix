@@ -2,8 +2,8 @@
  * CommandPanel Phaser 组件配置
  */
 
-import type { ComponentToken } from '../../types';
 import { Depth } from '../../tokens/depth';
+import type { ComponentToken } from '../../types';
 
 export const PhaserCommandPanelConfig: ComponentToken = {
   size: {

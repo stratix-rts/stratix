@@ -1,7 +1,9 @@
 import Phaser from 'phaser';
-import { getToken } from '@/design-system/config';
+
 import { BaseZone, BaseZoneConfig, ZoneStatus } from './BaseZone';
 import type { CornerPosition } from './BaseZone';
+
+import { getToken } from '@/design-system/config';
 
 // 辅助函数：将十六进制颜色字符串转换为 Phaser 数字格式
 const hexToNumber = (hex: string) => parseInt(hex.replace('#', ''), 16);

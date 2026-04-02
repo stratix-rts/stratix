@@ -1,6 +1,6 @@
-import type { StratixAgentConfig, CharacterProfile } from '@/stratix-core/stratix-protocol';
-import { characterComposer } from '@/stratix-character-creator/core/CharacterComposer';
 import { FRAME_SIZE, ANIMATION_OFFSETS, ALL_ANIMATIONS } from '@/stratix-character-creator/constants';
+import { characterComposer } from '@/stratix-character-creator/core/CharacterComposer';
+import type { StratixAgentConfig, CharacterProfile } from '@/stratix-core/stratix-protocol';
 
 export interface TextureLoadTask {
   id: string;

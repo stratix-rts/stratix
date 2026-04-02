@@ -5,13 +5,17 @@
  */
 
 import Phaser from 'phaser';
+
+import { PART_CATEGORY_CONFIGS, getCategoryConfig } from '../config/partConfig';
+import { partRegistry } from '../core/PartRegistry';
+import type { PartMetadata, BodyType, PartCategory, PartSelection } from '../types';
+
+import { getButtonInlineStyles } from './_buttonStyles';
+
 import { getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
 import { DOMContainer } from '@/stratix-core/ui/DOMContainer';
-import { partRegistry } from '../core/PartRegistry';
-import { PART_CATEGORY_CONFIGS, getCategoryConfig } from '../config/partConfig';
-import type { PartMetadata, BodyType, PartCategory, PartSelection } from '../types';
-import { getButtonInlineStyles } from './_buttonStyles';
+
 
 // 使用 CSS 变量以支持主题动态切换
 const THEME = {

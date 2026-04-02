@@ -4,7 +4,9 @@
  */
 
 import Phaser from 'phaser';
+
 import CharacterCreatorScene from './CharacterCreatorScene';
+
 import { getToken } from '@/design-system/config';
 
 export interface CharacterCreatorConfig {

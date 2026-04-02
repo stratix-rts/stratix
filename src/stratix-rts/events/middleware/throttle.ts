@@ -1,6 +1,7 @@
-import type { Middleware, MiddlewareContext } from './types';
 import type { RTSEventName } from '../types/RTSEventTypes';
 import { ThrottleConfig } from '../types/RTSEventTypes';
+
+import type { Middleware, MiddlewareContext } from './types';
 
 interface ThrottleState {
   lastEmit: number;

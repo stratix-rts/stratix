@@ -4,10 +4,11 @@
  */
 
 import { createReadStream, createWriteStream, existsSync, mkdirSync } from 'fs';
-import { pipeline } from 'stream/promises';
-import { Readable } from 'stream';
 import { appendFile, readFile, writeFile, readdir, stat } from 'fs/promises';
 import { join, dirname } from 'path';
+import { Readable } from 'stream';
+import { pipeline } from 'stream/promises';
+
 import type { TranscriptEntry, TranscriptQuery } from './types.js';
 
 export class TranscriptStore {

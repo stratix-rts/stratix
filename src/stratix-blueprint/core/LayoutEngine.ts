@@ -1,5 +1,5 @@
-import { BlueprintNode, BlueprintEdge, LayoutConfig, DEFAULT_LAYOUT_CONFIG } from '../types';
 import { ParsedTask } from '../../stratix-ai-service/types';
+import { BlueprintNode, BlueprintEdge, LayoutConfig, DEFAULT_LAYOUT_CONFIG } from '../types';
 
 export class LayoutEngine {
   private config: LayoutConfig;

@@ -1,6 +1,6 @@
-import { StratixCommandData, StratixAgentConfig } from '../../stratix-core/stratix-protocol';
 import { ExecutorFactory } from '../../stratix-core/executor';
 import type { ExecutorResult } from '../../stratix-core/executor';
+import { StratixCommandData, StratixAgentConfig } from '../../stratix-core/stratix-protocol';
 import { ConnectionPool } from '../../stratix-openclaw-adapter';
 
 export class CommandTransformer {

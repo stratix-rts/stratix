@@ -5,6 +5,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+
+import { AgencyAgentsParser } from '../stratix-agent/parsers/AgencyAgentsParser';
 import {
   AgentTemplate,
   AgentDomain,
@@ -12,7 +14,6 @@ import {
   DOMAIN_NAMES,
   DOMAIN_DESCRIPTIONS,
 } from '../stratix-agent/types/template';
-import { AgencyAgentsParser } from '../stratix-agent/parsers/AgencyAgentsParser';
 import { StratixAgentConfig, AgentBackendType } from '../stratix-core/stratix-protocol';
 
 export interface TemplateQuery {

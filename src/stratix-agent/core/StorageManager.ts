@@ -1,6 +1,7 @@
-import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
+import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join as pathJoin } from 'path';
+
 import { AgentConfig, SoulConfig } from '../types';
 
 export class StorageManager {

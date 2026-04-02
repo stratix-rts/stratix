@@ -15,6 +15,7 @@ import {
   AgentBackendType,
   AgentConfigStatus,
 } from '../stratix-protocol';
+
 import StratixIdGenerator from './StratixIdGenerator';
 
 export interface ValidationResult {

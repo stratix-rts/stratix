@@ -14,8 +14,9 @@
 
 import { deviceIdentityManager, type StoredConnection } from './openclaw/DeviceIdentityManager';
 import { OpenClawWebSocketConnection, type ConnectionState, type ConnectionResult } from './openclaw/OpenClawWebSocketConnection';
-import type { OpenClawStatus, ChatResponse, ChatOptions } from '@/stratix-openclaw-adapter/types';
+
 import type { OpenClawConnectionRecord, ConnectionPoolStatus } from '@/stratix-data-store/types';
+import type { OpenClawStatus, ChatResponse, ChatOptions } from '@/stratix-openclaw-adapter/types';
 
 export interface TailscaleNode {
   nodeId: string;

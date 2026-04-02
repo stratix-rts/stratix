@@ -1,6 +1,7 @@
 import type { AgentSprite } from '../sprites/AgentSprite';
-import { DebugRenderer } from './DebugRenderer';
 import type { CollisionSystem } from '../systems/CollisionSystem';
+
+import { DebugRenderer } from './DebugRenderer';
 
 export class CollisionDebugger extends DebugRenderer {
   private collisionSystem: CollisionSystem;

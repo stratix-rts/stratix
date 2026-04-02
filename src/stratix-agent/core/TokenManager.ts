@@ -1,4 +1,5 @@
 import { ChatMessage, TokenLimit } from '../types';
+
 import { MODEL_TOKEN_LIMITS } from '@/stratix-core/config/defaults';
 
 export class TokenManager {
@@ -41,7 +42,7 @@ export class TokenManager {
     }
 
     const systemMsg = messages.find(m => m.role === 'system');
-    let truncated: ChatMessage[] = systemMsg ? [systemMsg] : [];
+    const truncated: ChatMessage[] = systemMsg ? [systemMsg] : [];
     const nonSystem = messages.filter(m => m.role !== 'system');
 
     for (let i = nonSystem.length - 1; i >= 0; i--) {

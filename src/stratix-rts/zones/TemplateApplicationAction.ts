@@ -1,5 +1,6 @@
-import type { ZoneAction } from '../history/ZoneHistory';
 import { rtsEventBus } from '../events/core/RTSEventBus';
+import type { ZoneAction } from '../history/ZoneHistory';
+
 import type { ZoneTemplate, ZoneTemplatePosition } from './ZoneTemplateManager';
 
 export interface TemplateApplicationData {

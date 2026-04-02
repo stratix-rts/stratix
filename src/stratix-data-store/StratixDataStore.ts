@@ -1,7 +1,8 @@
-import { agentRepository } from '../stratix-database/AgentRepository';
-import { agentChatMessageRepository, type ChatMessage } from '../stratix-database/AgentChatMessageRepository';
-import { getDatabase, initializeDatabase } from '../stratix-database';
 import type { StratixAgentConfig } from '../stratix-core/stratix-protocol';
+import { getDatabase, initializeDatabase } from '../stratix-database';
+import { agentChatMessageRepository, type ChatMessage } from '../stratix-database/AgentChatMessageRepository';
+import { agentRepository } from '../stratix-database/AgentRepository';
+
 import type { StratixCommandLog, StratixTemplates, LogQueryOptions } from './types';
 
 export class StratixDataStore {

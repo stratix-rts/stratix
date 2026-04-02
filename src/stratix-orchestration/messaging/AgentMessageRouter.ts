@@ -1,7 +1,8 @@
+import { ZoneManager } from '../zone/ZoneManager';
+
 import { AgentMessageStore } from './AgentMessageStore';
 import { ConversationConstraints } from './ConversationConstraints';
 import { AgentMessage, MessageReference, MessageEventCallback } from './MessageTypes';
-import { ZoneManager } from '../zone/ZoneManager';
 
 export interface RouteResult {
   success: boolean;

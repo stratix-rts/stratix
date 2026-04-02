@@ -1,4 +1,5 @@
 import { rtsEventBus } from '../events/core/RTSEventBus';
+
 import { ErrorClassifier } from './ErrorClassifier';
 import type { ErrorContext, ClassifiedError } from './types';
 import { ErrorSeverity } from './types';

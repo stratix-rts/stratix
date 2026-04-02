@@ -6,6 +6,7 @@
  */
 
 import type { Scene } from 'phaser';
+
 import { EventType, type RecordedEvent, type UIRecording, type RecordingOptions, type RecordingMetadata } from '../../core/types/recording.types';
 
 export class UIRecorder {

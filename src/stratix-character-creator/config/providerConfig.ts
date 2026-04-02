@@ -1,7 +1,9 @@
-import type { LLMProvider } from '@/stratix-core/stratix-protocol';
-import builtInProviders from '@/config/providers.config.json';
-import customProvidersDefault from '@/config/custom-providers.config.json';
 import { browserStorage } from '../core/BrowserStorage';
+
+import customProvidersDefault from '@/config/custom-providers.config.json';
+import builtInProviders from '@/config/providers.config.json';
+import type { LLMProvider } from '@/stratix-core/stratix-protocol';
+
 
 export interface ProviderConfig {
   name: string;

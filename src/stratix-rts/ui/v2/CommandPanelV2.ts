@@ -9,6 +9,7 @@
  */
 
 import Phaser from 'phaser';
+
 import { EnhancedUIComponent } from '@/stratix-core/ui/components/base/EnhancedUIComponent';
 import type { UIComponentConfig } from '@/stratix-core/ui/core/types/component.types';
 import { ReactiveToken } from '@/stratix-core/ui/foundation/theme/ReactiveToken';
@@ -638,7 +639,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
 
   private renderZoneDetail(zone: ZoneInfo): void {
     const contentWidth = (this.config.width || 500) - 24;
-    let yOffset = 0;
+    const yOffset = 0;
 
     const zoneIconBg = this.scene.add.graphics();
     zoneIconBg.fillStyle(this.hexToNumber(this.accentColor.get()), 0.2);

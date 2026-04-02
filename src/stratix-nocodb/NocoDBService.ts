@@ -1,6 +1,8 @@
 import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
+
 import fs from 'fs-extra';
+
 import { getDatabase } from '../stratix-database';
 
 export interface NocoDBServiceOptions {

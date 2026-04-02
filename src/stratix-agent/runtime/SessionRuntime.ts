@@ -4,6 +4,8 @@
  */
 
 import { randomUUID } from 'crypto';
+
+import { TranscriptStore } from './TranscriptStore.js';
 import type {
   SessionContext,
   TurnOptions,
@@ -13,7 +15,6 @@ import type {
   TokenUsage,
   TranscriptEntry,
 } from './types.js';
-import { TranscriptStore } from './TranscriptStore.js';
 
 /**
  * Default token usage structure

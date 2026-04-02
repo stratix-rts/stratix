@@ -12,6 +12,7 @@ import {
   StratixStateSyncEventType,
   AgentStatusInfo,
 } from '../stratix-protocol';
+
 import StratixIdGenerator from './StratixIdGenerator';
 
 export class StratixEventBuilder {

@@ -6,35 +6,39 @@
  * - 嵌入式模式：在 Electron 内部运行，仅本地访问
  */
 
-import express from 'express';
+import http from 'http';
+import path from 'path';
+
 import cors from 'cors';
 import dotenv from 'dotenv';
-import http from 'http';
-import { StatusSyncService } from './api/websocket/StatusSync';
-import { setStatusSyncService as setCommandStatusSyncService } from './api/routes/command';
-import { setStatusSyncService as setProjectStatusSyncService } from './api/routes/project';
+import express from 'express';
+import { ensureDirSync } from 'fs-extra';
+
+import { OpenClawConnectionStore } from '../stratix-data-store/OpenClawConnectionStore';
+import { initializeDatabase } from '../stratix-database';
+import { createNocoDBService, type NocoDBServiceOptions } from '../stratix-nocodb';
+
 import agentRoutes from './api/routes/agent';
-import commandRoutes from './api/routes/command';
+import agentOrchestrationRoutes from './api/routes/agentOrchestration';
+import commandRoutes, { setStatusSyncService as setCommandStatusSyncService } from './api/routes/command';
+import lraRoutes from './api/routes/lra';
+import openclawRoutes, { initWebSocketServer, initConnectionStore } from './api/routes/openclaw';
+import projectRoutes, { setStatusSyncService as setProjectStatusSyncService } from './api/routes/project';
+import skillRoutes from './api/routes/skill';
 import templateRoutes from './api/routes/template';
 import textureRoutes from './api/routes/texture';
-import openclawRoutes, { initWebSocketServer, initConnectionStore } from './api/routes/openclaw';
-import lraRoutes from './api/routes/lra';
-import projectRoutes from './api/routes/project';
 import zoneRoutes from './api/routes/zone';
 import zoneAuditRoutes from './api/routes/zone-audit';
 import zoneContextRoutes from './api/routes/zone-context';
 import zoneCoordinatorRoutes from './api/routes/zone-coordinator';
-import agentOrchestrationRoutes from './api/routes/agentOrchestration';
-import skillRoutes from './api/routes/skill';
-import { openClawProxyManager } from './openclaw/OpenClawProxyManager';
+import { StatusSyncService } from './api/websocket/StatusSync';
 import { dataStoreService } from './dataStoreService';
-import { OpenClawConnectionStore } from '../stratix-data-store/OpenClawConnectionStore';
-import { initializeDatabase } from '../stratix-database';
-import { ensureDirSync } from 'fs-extra';
-import path from 'path';
+import { openClawProxyManager } from './openclaw/OpenClawProxyManager';
+
+
+
 
 // NocoDB Service
-import { createNocoDBService, type NocoDBServiceOptions } from '../stratix-nocodb';
 
 let nocoDBServiceInstance: ReturnType<typeof createNocoDBService> | null = null;
 

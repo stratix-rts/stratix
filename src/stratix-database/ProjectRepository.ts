@@ -1,6 +1,7 @@
-import { getDatabase } from './StratixDatabase';
 import { Project, ProjectChannel, ProjectChannelMessage, MessageSender, ProjectZoneConfig, ProjectConfig } from '../stratix-project/types';
 import { generateId } from '../stratix-project/utils/helpers';
+
+import { getDatabase } from './StratixDatabase';
 
 export class ProjectRepository {
   private get db() {

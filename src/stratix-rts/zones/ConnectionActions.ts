@@ -1,5 +1,6 @@
-import { ZoneAction } from '../history/ZoneHistory';
 import { rtsEventBus } from '../events/core/RTSEventBus';
+import { ZoneAction } from '../history/ZoneHistory';
+
 import { type ConnectionType, type ConnectionMetadata } from './ZoneConnection';
 import { ZoneConnectionManager } from './ZoneConnectionManager';
 

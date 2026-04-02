@@ -1,6 +1,7 @@
 import type { AgentSprite } from '../sprites/AgentSprite';
-import { DebugRenderer } from './DebugRenderer';
 import type { MovementSystem } from '../systems/MovementSystem';
+
+import { DebugRenderer } from './DebugRenderer';
 
 export class MovementDebugger extends DebugRenderer {
   private movementSystem: MovementSystem;

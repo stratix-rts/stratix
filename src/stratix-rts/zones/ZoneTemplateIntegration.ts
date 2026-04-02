@@ -1,10 +1,11 @@
-import { ZoneTemplateManager } from './ZoneTemplateManager';
-import { ZoneTemplates } from './ZoneTemplates';
-import { TemplateApplicationAction } from './TemplateApplicationAction';
-import { ZoneHistory } from '../history/ZoneHistory';
 import { rtsEventBus } from '../events/core/RTSEventBus';
+import { ZoneHistory } from '../history/ZoneHistory';
+
 import type { BaseZoneConfig } from './BaseZone';
+import { TemplateApplicationAction } from './TemplateApplicationAction';
+import { ZoneTemplateManager } from './ZoneTemplateManager';
 import type { TemplateApplicationOptions } from './ZoneTemplateManager';
+import { ZoneTemplates } from './ZoneTemplates';
 
 export class ZoneTemplateIntegration {
   private templateManager: ZoneTemplateManager;

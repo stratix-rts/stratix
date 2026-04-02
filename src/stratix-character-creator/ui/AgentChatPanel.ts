@@ -1,12 +1,17 @@
 import Phaser from 'phaser';
+
+import { loadApiKey } from '../config/providerConfig';
+import type { ChatMessage, SavedCharacter } from '../types';
+
+import { getButtonInlineStyles } from './_buttonStyles';
+
 import { getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
-import { DOMContainer } from '@/stratix-core/ui/DOMContainer';
 import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClawConnectionManager';
-import { loadApiKey } from '../config/providerConfig';
+import { DOMContainer } from '@/stratix-core/ui/DOMContainer';
 import { renderMarkdown } from '@/stratix-core/utils/MarkdownRenderer';
-import type { ChatMessage, SavedCharacter } from '../types';
-import { getButtonInlineStyles } from './_buttonStyles';
+
+
 
 const THEME = {
   bg: 'var(--ds-bg-secondary)',
@@ -386,7 +391,7 @@ export class AgentChatPanel {
 
   private async callStratixAgent(config: any, userMessage: string): Promise<string> {
     // Load API key from secure storage if missing
-    let chatConfig = { ...config };
+    const chatConfig = { ...config };
     if (!chatConfig.apiKey && chatConfig.provider) {
       const apiKeyResult = await loadApiKey(chatConfig.provider);
       if (apiKeyResult.success && apiKeyResult.data) {

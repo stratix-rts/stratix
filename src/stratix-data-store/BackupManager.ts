@@ -1,6 +1,8 @@
-import { StratixDataStore } from './StratixDataStore';
-import fs from 'fs-extra';
 import path from 'path';
+
+import fs from 'fs-extra';
+
+import { StratixDataStore } from './StratixDataStore';
 
 export interface BackupInfo {
   name: string;

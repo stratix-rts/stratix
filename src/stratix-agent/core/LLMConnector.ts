@@ -1,5 +1,6 @@
-import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
+
 import { LLMConfig, GenerateResult, ChatMessage, ToolDefinition, ToolUseRequest, SkillDefinition } from '../types';
 
 export class LLMConnector {

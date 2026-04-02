@@ -9,12 +9,13 @@
  * const panelStyle = getPanelSemantic(theme).elevated;
  */
 
+import type { DesignSystemTokens } from '../types';
+
 import type { 
   PanelSemanticSet, 
   PanelSemanticToken 
 } from './_generator';
 import { generatePanelSemantic } from './_generator';
-import type { DesignSystemTokens } from '../types';
 
 // 重新导出类型
 export type { PanelSemanticSet, PanelSemanticToken };

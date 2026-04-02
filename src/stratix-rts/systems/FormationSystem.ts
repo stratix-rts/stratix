@@ -1,4 +1,5 @@
 import type { AgentSprite } from '../sprites/AgentSprite';
+
 import type { MovementSystem } from './MovementSystem';
 
 export class FormationSystem {

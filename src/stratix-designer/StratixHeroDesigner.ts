@@ -1,11 +1,12 @@
+import { WriterHeroTemplate, DevHeroTemplate, AnalystHeroTemplate, HeroType } from './templates';
+import { ConfigValidator, ConfigConverter } from './utils';
+
+import StratixEventBus from '@/stratix-core/StratixEventBus';
 import {
   StratixAgentConfig,
   StratixApiResponse,
   StratixStateSyncEvent,
 } from '@/stratix-core/stratix-protocol';
-import StratixEventBus from '@/stratix-core/StratixEventBus';
-import { ConfigValidator, ConfigConverter } from './utils';
-import { WriterHeroTemplate, DevHeroTemplate, AnalystHeroTemplate, HeroType } from './templates';
 
 export interface HeroDesignerOptions {
   onSaveConfig?: (config: StratixAgentConfig) => Promise<StratixApiResponse>;

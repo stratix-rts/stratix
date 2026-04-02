@@ -10,8 +10,9 @@ import {
   ANIMATION_OFFSETS,
   LAYER_Z_POSITIONS
 } from '../constants';
-import { partRegistry } from './PartRegistry';
 import type { PartSelection, ComposeOptions, ComposeResult, PartInfo, BodyType, CreditInfo, PartMetadata } from '../types';
+
+import { partRegistry } from './PartRegistry';
 
 interface ItemToDraw {
   itemId: string;

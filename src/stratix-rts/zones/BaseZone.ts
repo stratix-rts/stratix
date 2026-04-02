@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+
 import { getToken } from '@/design-system/config';
 
 // 辅助函数：将十六进制颜色字符串转换为 Phaser 数字格式
@@ -389,8 +390,8 @@ export abstract class BaseZone extends Phaser.GameObjects.Container {
     const halfW = this.zoneWidth / 2;
     const halfH = this.zoneHeight / 2;
 
-    let indicatorColor = 0x00ff00;
-    let alpha = 0.5;
+    const indicatorColor = 0x00ff00;
+    const alpha = 0.5;
 
     if (this.boundaryEdge === 'left') {
       this.boundaryIndicatorGraphics.fillStyle(indicatorColor, alpha);

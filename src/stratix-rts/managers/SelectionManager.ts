@@ -1,5 +1,6 @@
-import { rtsEventBus } from '../events/core/RTSEventBus';
 import { Subject, Observable } from 'rxjs';
+
+import { rtsEventBus } from '../events/core/RTSEventBus';
 
 export enum SelectionMode {
   Replace = 'replace',

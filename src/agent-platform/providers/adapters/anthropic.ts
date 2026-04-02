@@ -1,6 +1,8 @@
 import { ChatAnthropic } from '@langchain/anthropic';
-import { LLMAdapter } from './base';
+
 import type { CreateProviderOptions, ProviderConfig } from '../types';
+
+import { LLMAdapter } from './base';
 
 const ANTHROPIC_CONFIG: ProviderConfig = {
   id: 'anthropic',

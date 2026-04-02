@@ -10,8 +10,9 @@
  * - Exponential backoff reconnect (max 5 retries)
  */
 
-import { stratixStateStore, MCPConnection } from '../state/StratixStateStore';
 import { retryPolicyEngine } from '../retry/RetryPolicyEngine';
+import { stratixStateStore, MCPConnection } from '../state/StratixStateStore';
+
 import {
   MCPServerRef,
   ConnectionHandle,

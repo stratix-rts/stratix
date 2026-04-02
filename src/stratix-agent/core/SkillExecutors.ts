@@ -1,6 +1,7 @@
-import { SkillDefinition, SkillExecutor, ExecutionContext } from '../types';
-import { SafetyValidator } from './SafetyValidator';
 import { zoneContextManager } from '../../stratix-character-creator/core/ZoneContextManager';
+import { SkillDefinition, SkillExecutor, ExecutionContext } from '../types';
+
+import { SafetyValidator } from './SafetyValidator';
 import { ZoneCoordinatorSkillExecutor } from './ZoneCoordinatorSkillExecutor';
 
 export class HttpSkillExecutor implements SkillExecutor {

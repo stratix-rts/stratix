@@ -23,9 +23,10 @@
  * helpText.style.fontSize = formStyles.helpText.fontSize;
  */
 
+import type { DesignSystemTokens } from '../types';
+
 import type { FormSemanticSet } from './_generator';
 import { generateFormSemantic } from './_generator';
-import type { DesignSystemTokens } from '../types';
 
 // 重新导出类型
 export type { FormSemanticSet };

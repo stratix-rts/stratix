@@ -1,5 +1,6 @@
-import { LLMConnector } from './LLMConnector';
 import { LLMConfig } from '../types';
+
+import { LLMConnector } from './LLMConnector';
 
 export class LLMConnectionPool {
   private pool: Map<string, LLMConnector[]> = new Map();

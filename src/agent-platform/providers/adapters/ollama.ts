@@ -1,6 +1,8 @@
 import { ChatOllama } from '@langchain/ollama';
-import { LLMAdapter } from './base';
+
 import type { CreateProviderOptions, ProviderConfig } from '../types';
+
+import { LLMAdapter } from './base';
 
 const OLLAMA_CONFIG: ProviderConfig = {
   id: 'ollama',

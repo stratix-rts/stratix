@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
+
 import type { AgentSprite } from '../sprites/AgentSprite';
+
 import { angleToLPCRow } from '@/stratix-character-creator/constants';
 
 interface MovementState {

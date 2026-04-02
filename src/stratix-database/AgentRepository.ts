@@ -1,5 +1,6 @@
-import { getDatabase } from './StratixDatabase';
 import { StratixAgentConfig } from '../stratix-core/stratix-protocol';
+
+import { getDatabase } from './StratixDatabase';
 
 export class AgentRepository {
   private get db() {

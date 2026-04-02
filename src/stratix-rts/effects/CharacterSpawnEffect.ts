@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+
 import { MagicCircle } from './MagicCircle';
 import { ParticleSystem } from './ParticleSystem';
 

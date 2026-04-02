@@ -1,5 +1,6 @@
-import { getDatabase } from './StratixDatabase';
 import { generateId } from '../stratix-project/utils/helpers';
+
+import { getDatabase } from './StratixDatabase';
 
 /**
  * 审计事件类型

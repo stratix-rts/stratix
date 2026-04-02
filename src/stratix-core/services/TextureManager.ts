@@ -10,8 +10,9 @@
  */
 
 import { services } from './ServiceLocator';
-import { characterComposer } from '@/stratix-character-creator/core/CharacterComposer';
+
 import { ALL_ANIMATIONS } from '@/stratix-character-creator/constants';
+import { characterComposer } from '@/stratix-character-creator/core/CharacterComposer';
 import type { CharacterData, CharacterTexture } from '@/stratix-core/stratix-protocol';
 
 interface CacheEntry {

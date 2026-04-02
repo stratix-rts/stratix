@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
+
 import { BlueprintNode } from '../types';
+
 import { TASK_TYPE_COLORS } from './colors';
 
 export class TaskNode extends Phaser.GameObjects.Container {

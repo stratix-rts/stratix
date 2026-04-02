@@ -1,5 +1,6 @@
-import type { Middleware, MiddlewareContext } from './types';
 import type { RTSEventName } from '../types/RTSEventTypes';
+
+import type { Middleware, MiddlewareContext } from './types';
 
 export interface PerformanceStats {
   totalEvents: number;

@@ -6,9 +6,11 @@
  */
 
 import Phaser from 'phaser';
-import { InteractionAdapter } from './InteractionAdapter';
+
 import { InteractionState } from '../../core/types/interaction.types';
 import type { ButtonInteractionConfig } from '../../core/types/interaction.types';
+
+import { InteractionAdapter } from './InteractionAdapter';
 
 export class ButtonInteraction extends InteractionAdapter {
   private rectangleTarget: Phaser.GameObjects.Rectangle;

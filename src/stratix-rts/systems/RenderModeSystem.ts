@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+
 import type { AgentSprite } from '../sprites/AgentSprite';
 
 export type RenderMode = 'full' | 'thumbnail' | 'auto';

@@ -1,11 +1,12 @@
 import { Router, Request, Response } from 'express';
-import { dataStoreService } from '../../dataStoreService';
-import { StratixRequestHelper } from '../../../stratix-core/utils';
+
 import {
   StratixAgentConfig,
   TemplateConsumptionResponse,
   TemplateEditResponse
 } from '../../../stratix-core/stratix-protocol';
+import { StratixRequestHelper } from '../../../stratix-core/utils';
+import { dataStoreService } from '../../dataStoreService';
 
 const router = Router();
 const requestHelper = StratixRequestHelper.getInstance();

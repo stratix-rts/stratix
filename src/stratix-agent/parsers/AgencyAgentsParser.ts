@@ -5,6 +5,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+
+import { EnhancedSoulConfig } from '../types/soul';
 import {
   AgentTemplate,
   AgentDomain,
@@ -17,7 +19,6 @@ import {
   RulePriority,
   DOMAIN_NAMES,
 } from '../types/template';
-import { EnhancedSoulConfig } from '../types/soul';
 
 interface ParsedSection {
   title: string;

@@ -1,21 +1,22 @@
 import { readFileSync, existsSync } from 'fs';
 import { join as pathJoin } from 'path';
-import { AgentConfig, SoulConfig, AgentResponse, ChatMessage, SkillResult } from './types';
+
+import { AutoSaver } from './core/AutoSaver';
+import { BUILTIN_SKILLS } from './core/BuiltinSkills';
+import { HealthChecker } from './core/HealthChecker';
 import { LLMConnector } from './core/LLMConnector';
-import { TokenManager } from './core/TokenManager';
 import { MemoryManager } from './core/MemoryManager';
+import { MetricsCollector } from './core/MetricsCollector';
+import { PromptBuilder } from './core/PromptBuilder';
+import { RateLimiter } from './core/RateLimiter';
+import { SessionManager } from './core/SessionManager';
+import { createExecutor } from './core/SkillExecutors';
 import { SkillRegistry } from './core/SkillRegistry';
 import { SkillTrigger } from './core/SkillTrigger';
-import { createExecutor } from './core/SkillExecutors';
-import { PromptBuilder } from './core/PromptBuilder';
-import { SessionManager } from './core/SessionManager';
-import { HealthChecker } from './core/HealthChecker';
-import { RateLimiter } from './core/RateLimiter';
-import { MetricsCollector } from './core/MetricsCollector';
 import { StorageManager } from './core/StorageManager';
-import { AutoSaver } from './core/AutoSaver';
+import { TokenManager } from './core/TokenManager';
 import { ToolUseLoop } from './core/ToolUseLoop';
-import { BUILTIN_SKILLS } from './core/BuiltinSkills';
+import { AgentConfig, SoulConfig, AgentResponse, ChatMessage, SkillResult } from './types';
 
 export class StratixAgent {
   public config: AgentConfig;

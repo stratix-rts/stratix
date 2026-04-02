@@ -1,9 +1,11 @@
 import Phaser from 'phaser';
-import type { StratixAgentConfig, BodyType } from '@/stratix-core/stratix-protocol';
-import { textureLoadQueue, TextureLoadTask } from './TextureLoadQueue';
+
 import { baseBodyTextureManager } from './BaseBodyTextureManager';
-import { textureManager } from '@/stratix-core/services';
+import { textureLoadQueue, TextureLoadTask } from './TextureLoadQueue';
+
 import { FRAME_SIZE, ANIMATION_OFFSETS, ANIMATION_CONFIGS, ANIMATION_FRAMERATES, CORE_RTS_ANIMATIONS } from '@/stratix-character-creator/constants';
+import { textureManager } from '@/stratix-core/services';
+import type { StratixAgentConfig, BodyType } from '@/stratix-core/stratix-protocol';
 
 const SCALE = 0.75;
 

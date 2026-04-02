@@ -1,8 +1,10 @@
 import Phaser from 'phaser';
-import { BaseZone } from './BaseZone';
-import { TaskZone } from './TaskZone';
+
 import { ProjectZone } from '../../stratix-project/core/ProjectZone';
 import { ZoneSpatialIndex, SpatialZone } from '../spatial/ZoneSpatialIndex';
+
+import { BaseZone } from './BaseZone';
+import { TaskZone } from './TaskZone';
 
 export type ZoneType = 'task' | 'project' | 'unknown';
 

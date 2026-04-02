@@ -5,8 +5,9 @@
  */
 
 import Phaser from 'phaser';
-import { EnhancedUIComponent } from '../base/EnhancedUIComponent';
+
 import type { UIComponentConfig } from '../../core/types/component.types';
+import { EnhancedUIComponent } from '../base/EnhancedUIComponent';
 
 export interface ThemeAwareButtonConfig extends UIComponentConfig {
   label: string;

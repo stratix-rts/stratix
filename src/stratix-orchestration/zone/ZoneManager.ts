@@ -1,4 +1,5 @@
 import { getDatabase } from '../../stratix-database/StratixDatabase';
+
 import { ZoneState, ZoneConfig, ZoneEvent, DEFAULT_ZONE_CONFIG } from './ZoneState';
 
 type ZoneEventCallback = (event: ZoneEvent) => void;

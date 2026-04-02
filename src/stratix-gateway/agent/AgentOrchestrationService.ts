@@ -1,9 +1,11 @@
-import { OpenClawAgent } from './agents/OpenClawAgent';
-import { LLMAgent } from './agents/LLMAgent';
-import type { AgentInterface, AgentState } from './agents/types';
-import { LRAClient } from '../../stratix-lra-bridge/LRAClient';
 import { StratixAgentConfig } from '../../stratix-core';
+import { LRAClient } from '../../stratix-lra-bridge/LRAClient';
 import { loadApiKey } from '../api/apiKeyStore';
+
+import { LLMAgent } from './agents/LLMAgent';
+import { OpenClawAgent } from './agents/OpenClawAgent';
+import type { AgentInterface, AgentState } from './agents/types';
+
 
 export type { AgentState };
 

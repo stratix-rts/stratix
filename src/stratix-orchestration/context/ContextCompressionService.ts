@@ -1,6 +1,6 @@
-import { getDatabase } from '../../stratix-database/StratixDatabase';
 import { LLMConnector } from '../../stratix-agent/core/LLMConnector';
 import type { LLMConfig, ChatMessage } from '../../stratix-agent/types';
+import { getDatabase } from '../../stratix-database/StratixDatabase';
 
 // Database row interface
 interface ArchiveRow {

@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
+
 import StratixRTSGameScene, { BG_COLOR } from './StratixRTSGameScene';
 import StratixRTSUIScene from './StratixRTSUIScene';
-import { rtsEventBus, RTSEventBus } from './events/core/RTSEventBus';
 import { rtsBridge } from './events/bridge/RTSBridge';
+import { rtsEventBus, RTSEventBus } from './events/core/RTSEventBus';
 
 export { rtsEventBus, RTSEventBus, rtsBridge };
 export * from './events/types/RTSEventTypes';

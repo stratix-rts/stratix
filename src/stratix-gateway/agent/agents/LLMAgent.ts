@@ -1,10 +1,14 @@
-import fs from 'fs-extra';
 import path from 'path';
-import { AgentInterface, AgentState } from './types';
+
+import fs from 'fs-extra';
+
+
+import { StratixAgentConfig } from '../../../stratix-core';
 import { LRAClient } from '../../../stratix-lra-bridge/LRAClient';
 import type { LraTask } from '../../../stratix-lra-bridge/types';
-import { StratixAgentConfig } from '../../../stratix-core';
 import { createOpenClawAdapter, OpenClawAdapterInterface } from '../../../stratix-openclaw-adapter';
+
+import { AgentInterface, AgentState } from './types';
 
 export class LLMAgent implements AgentInterface {
   private agentConfig: StratixAgentConfig;

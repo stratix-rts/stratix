@@ -1,8 +1,10 @@
-import { Router, Request, Response } from 'express';
-import { StratixRequestHelper } from '../../../stratix-core/utils';
 import fs from 'fs';
 import path from 'path';
+
+import { Router, Request, Response } from 'express';
 import { ensureDirSync } from 'fs-extra';
+
+import { StratixRequestHelper } from '../../../stratix-core/utils';
 
 const router = Router();
 const requestHelper = StratixRequestHelper.getInstance();

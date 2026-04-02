@@ -4,10 +4,11 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { skillRepository, type SharedSkill, type SharedSkillInstall, type AgentLearnedSkill } from '../../../stratix-database/SkillRepository';
-import type { SkillCategory, SkillProvider } from '../../../stratix-agent/types';
-import { skillAuditLogger, type AuditLogQuery } from '../../../stratix-agent/core/SkillAuditLogger';
+
 import { BUILTIN_SKILLS, SKILLS_BY_CATEGORY } from '../../../stratix-agent/core/BuiltinSkills';
+import { skillAuditLogger, type AuditLogQuery } from '../../../stratix-agent/core/SkillAuditLogger';
+import type { SkillCategory, SkillProvider } from '../../../stratix-agent/types';
+import { skillRepository, type SharedSkill, type SharedSkillInstall, type AgentLearnedSkill } from '../../../stratix-database/SkillRepository';
 
 const router = Router();
 

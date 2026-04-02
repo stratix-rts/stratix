@@ -1,10 +1,10 @@
 import { Router, Request, Response } from 'express';
-import { dataStoreService } from '../../dataStoreService';
-import { StratixRequestHelper } from '../../../stratix-core/utils';
-import { StratixConfigValidator } from '../../../stratix-core/utils';
+
+import { StratixAgent } from '../../../stratix-agent';
 import { ExecutorFactory } from '../../../stratix-core/executor';
 import type { AgentBackendType, OpenClawConfig, StratixDirectConfig } from '../../../stratix-core/stratix-protocol';
-import { StratixAgent } from '../../../stratix-agent';
+import { StratixRequestHelper , StratixConfigValidator } from '../../../stratix-core/utils';
+import { dataStoreService } from '../../dataStoreService';
 
 const router = Router();
 const requestHelper = StratixRequestHelper.getInstance();

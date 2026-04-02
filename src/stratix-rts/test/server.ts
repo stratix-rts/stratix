@@ -1,5 +1,5 @@
-import { createServer } from 'http';
 import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
+import { createServer } from 'http';
 import { resolve, extname, join, relative } from 'path';
 
 const PORT = 5175;

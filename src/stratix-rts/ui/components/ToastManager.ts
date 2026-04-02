@@ -1,6 +1,6 @@
-import { rtsEventBus } from '../../events/core/RTSEventBus';
 import type { ErrorSeverity } from '../../error/types';
 import { ErrorSeverity as ES } from '../../error/types';
+import { rtsEventBus } from '../../events/core/RTSEventBus';
 
 export interface ToastConfig {
   type: 'info' | 'success' | 'warning' | 'error';

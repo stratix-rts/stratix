@@ -1,11 +1,12 @@
 import { Router, Request, Response } from 'express';
-import { ProjectService } from '../../project/ProjectService';
+
+import { StratixAgentConfig } from '../../../stratix-core';
 import { ProjectConfig, ProjectZoneConfig, ProjectStatus, ProjectChannel, ProjectChannelMessage, MessageSender } from '../../../stratix-project/types';
-import { StatusSyncService } from '../websocket/StatusSync';
+import { gatewayEventBus } from '../../GatewayEventBus';
 import { AgentOrchestrationService } from '../../agent/AgentOrchestrationService';
 import { dataStoreService } from '../../dataStoreService';
-import { StratixAgentConfig } from '../../../stratix-core';
-import { gatewayEventBus } from '../../GatewayEventBus';
+import { ProjectService } from '../../project/ProjectService';
+import { StatusSyncService } from '../websocket/StatusSync';
 
 const router = Router();
 const projectService = new ProjectService();

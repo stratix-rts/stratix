@@ -1,4 +1,5 @@
-import { StratixOpenClawConfig } from '@/stratix-core/stratix-protocol';
+import axios, { AxiosInstance } from 'axios';
+
 import {
   OpenClawAdapterInterface,
   OpenClawAction,
@@ -10,7 +11,8 @@ import {
   OpenAIChatCompletionRequest,
   OpenAIChatCompletionResponse,
 } from './types';
-import axios, { AxiosInstance } from 'axios';
+
+import { StratixOpenClawConfig } from '@/stratix-core/stratix-protocol';
 
 export class RemoteOpenClawAdapter implements OpenClawAdapterInterface {
   private config: StratixOpenClawConfig;

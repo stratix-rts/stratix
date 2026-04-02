@@ -1,4 +1,5 @@
 import { rtsEventBus } from '../events/core/RTSEventBus';
+
 import { ZoneConnection, type ConnectionType, type ConnectionMetadata, type ConnectionPoint, type ConnectionValidationResult, type ConnectionGraph, type ZoneConnectionData } from './ZoneConnection';
 
 export interface ConnectionManagerOptions {

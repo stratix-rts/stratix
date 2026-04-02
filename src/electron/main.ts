@@ -8,15 +8,16 @@
  * - OpenClaw 直连支持
  */
 
-import { app, BrowserWindow, ipcMain, safeStorage, dialog } from 'electron';
-import path from 'path';
 import fs from 'fs';
+import path from 'path';
+
+import { app, BrowserWindow, ipcMain, safeStorage, dialog } from 'electron';
 import { ensureDirSync } from 'fs-extra';
 
 import { startGatewayService } from '../stratix-gateway';
 import { dataStoreService } from '../stratix-gateway/dataStoreService';
-import { EmbeddedTailscale } from '../stratix-tailscale/EmbeddedTailscale';
 import { WebSocketOpenClawAdapter } from '../stratix-openclaw-adapter/WebSocketOpenClawAdapter';
+import { EmbeddedTailscale } from '../stratix-tailscale/EmbeddedTailscale';
 
 let mainWindow: BrowserWindow | null = null;
 let gatewayService: any = null;

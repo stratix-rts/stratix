@@ -1,7 +1,9 @@
 import Phaser from 'phaser';
-import type { BodyType } from '@/stratix-core/stratix-protocol';
-import { FRAME_SIZE, ANIMATION_OFFSETS, ANIMATION_CONFIGS, ALL_ANIMATIONS, ANIMATION_FRAMERATES } from '@/stratix-character-creator/constants';
+
 import { generateBaseTextureInBrowser } from '../scripts/BaseTextureGenerator';
+
+import { FRAME_SIZE, ANIMATION_OFFSETS, ANIMATION_CONFIGS, ALL_ANIMATIONS, ANIMATION_FRAMERATES } from '@/stratix-character-creator/constants';
+import type { BodyType } from '@/stratix-core/stratix-protocol';
 
 const BODY_COLORS: Record<BodyType, { primary: string; secondary: string; outline: string }> = {
   male: { primary: '#4a7c7c', secondary: '#3d6666', outline: '#2d4f4f' },

@@ -1,9 +1,11 @@
 import Phaser from 'phaser';
+
+import { ParsedTask } from '../../stratix-ai-service/types';
 import { BlueprintNode, BlueprintEdge, Blueprint } from '../types';
-import { TaskNode } from './TaskNode';
+
 import { DependencyLine } from './DependencyLine';
 import { LayoutEngine } from './LayoutEngine';
-import { ParsedTask } from '../../stratix-ai-service/types';
+import { TaskNode } from './TaskNode';
 
 export class BlueprintCanvas extends Phaser.Scene {
   private nodes: Map<string, TaskNode> = new Map();

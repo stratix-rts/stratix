@@ -8,6 +8,7 @@
  */
 
 import { EventEmitter } from 'events';
+
 import { ProjectChannelMessage } from '../stratix-project/types';
 
 export interface ChannelMessageEvent {

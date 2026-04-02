@@ -1,6 +1,6 @@
-import { Project, ProjectConfig, ProjectStatus, ProjectChannel, ProjectChannelMessage, MessageSender } from '../../stratix-project/types';
 import { projectRepository } from '../../stratix-database/ProjectRepository';
 import { getDatabase } from '../../stratix-database/StratixDatabase';
+import { Project, ProjectConfig, ProjectStatus, ProjectChannel, ProjectChannelMessage, MessageSender } from '../../stratix-project/types';
 import { generateId } from '../../stratix-project/utils/helpers';
 
 export class ProjectService {

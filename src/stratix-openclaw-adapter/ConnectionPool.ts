@@ -5,11 +5,12 @@
  * 支持适配器缓存、复用、自动重连和健康检查
  */
 
-import { StratixOpenClawConfig } from '@/stratix-core/stratix-protocol';
-import { CONNECTION_POOL_DEFAULTS } from '@/stratix-core/config/defaults';
-import { OpenClawAdapterInterface } from './types';
 import { LocalOpenClawAdapter } from './LocalOpenClawAdapter';
 import { RemoteOpenClawAdapter } from './RemoteOpenClawAdapter';
+import { OpenClawAdapterInterface } from './types';
+
+import { CONNECTION_POOL_DEFAULTS } from '@/stratix-core/config/defaults';
+import { StratixOpenClawConfig } from '@/stratix-core/stratix-protocol';
 
 export interface ConnectionInfo {
   key: string;

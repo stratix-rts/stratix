@@ -1,5 +1,5 @@
-import type { AgentCheckpointData } from './AgentProcess';
 import AgentCheckpointManager from './AgentCheckpoint';
+import type { AgentCheckpointData } from './AgentProcess';
 
 export type AgentStatusCallback = (agentId: string, status: string, error?: string) => void;
 

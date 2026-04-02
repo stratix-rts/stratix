@@ -9,18 +9,18 @@
  * 设计理念：少即是多，留白，清晰的层次
  */
 
-import type { DesignSystemTokens } from '../types';
+import { IconSizes } from '../icons/registry';
+import { generateAllSemanticTokens } from '../semantic/_generator';
+import { Animation } from '../tokens/animation';
 import { 
   MinimalPrimitives,
   Indigo,
   Slate 
 } from '../tokens/colors';
+import { Depth } from '../tokens/depth';
 import { Spacing } from '../tokens/spacing';
 import { Typography } from '../tokens/typography';
-import { Animation } from '../tokens/animation';
-import { Depth } from '../tokens/depth';
-import { IconSizes } from '../icons/registry';
-import { generateAllSemanticTokens } from '../semantic/_generator';
+import type { DesignSystemTokens } from '../types';
 
 // 主题特定的圆角配置（更圆润）
 const MinimalRadii = {

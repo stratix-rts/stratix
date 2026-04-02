@@ -5,6 +5,7 @@
  */
 
 import Phaser from 'phaser';
+
 import { 
   ProjectManagerIntegration, 
   Project, 

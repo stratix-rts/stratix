@@ -9,6 +9,7 @@
  */
 
 import mitt, { Emitter } from 'mitt';
+
 import {
   StratixFrontendOperationEvent,
   StratixStateSyncEvent,

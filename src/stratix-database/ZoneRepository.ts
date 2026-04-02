@@ -1,6 +1,7 @@
-import { getDatabase } from './StratixDatabase';
 import { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskStatus, ZoneMessage, SenderType, FileVersion, FileMetadata } from '../stratix-project/types';
 import { generateId } from '../stratix-project/utils/helpers';
+
+import { getDatabase } from './StratixDatabase';
 
 export class ZoneRepository {
   private get db() {

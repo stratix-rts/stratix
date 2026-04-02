@@ -1,6 +1,9 @@
-import { WebSocket, RawData } from 'ws';
 import { EventEmitter } from 'events';
+
+import { WebSocket, RawData } from 'ws';
+
 import type { OpenClawConnectionRecord, ConnectionPoolStatus } from '../../stratix-data-store/types';
+
 import { serverDeviceIdentityManager } from './ServerDeviceIdentityManager';
 
 interface PoolEntry {

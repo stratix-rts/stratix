@@ -1,4 +1,5 @@
 import { createVNode, render, type VNode } from 'vue';
+
 import StratixConfirmDialog from './StratixConfirmDialog.vue';
 
 type ModalType = 'info' | 'success' | 'warning' | 'error' | 'confirm';

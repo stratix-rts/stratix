@@ -5,6 +5,7 @@
  */
 
 import type { SoulTemplate } from '../config/soulTemplates';
+
 import type { StratixSoulConfig } from '@/stratix-core/stratix-protocol';
 
 /**

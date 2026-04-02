@@ -1,6 +1,8 @@
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import { LLMAdapter } from './base';
+
 import type { CreateProviderOptions, ProviderConfig } from '../types';
+
+import { LLMAdapter } from './base';
 
 const GOOGLE_CONFIG: ProviderConfig = {
   id: 'google',

@@ -21,12 +21,13 @@
  * alert.style.color = statusStyles.success.text;
  */
 
+import type { DesignSystemTokens } from '../types';
+
 import type { 
   StatusSemanticSet, 
   StatusToken 
 } from './_generator';
 import { generateStatusSemantic } from './_generator';
-import type { DesignSystemTokens } from '../types';
 
 // 重新导出类型
 export type { StatusSemanticSet, StatusToken };

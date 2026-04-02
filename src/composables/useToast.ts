@@ -6,6 +6,7 @@
  */
 
 import { ref, readonly, onUnmounted } from 'vue';
+
 import { toastService, type ToastOptions } from '@/components/ui/ToastService';
 
 const toasts = ref<ReturnType<typeof toastService.getToasts>>(toastService.getToasts());

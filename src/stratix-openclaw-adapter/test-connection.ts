@@ -1,5 +1,6 @@
 import { LocalOpenClawAdapter } from './LocalOpenClawAdapter';
 import { RemoteOpenClawAdapter } from './RemoteOpenClawAdapter';
+
 import { StratixOpenClawConfig } from '@/stratix-core/stratix-protocol';
 
 const CONFIG_HELP = `

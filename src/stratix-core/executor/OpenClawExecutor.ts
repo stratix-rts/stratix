@@ -1,6 +1,7 @@
-import type { StratixCommandData, StratixAgentConfig, StratixSkillConfig } from '../stratix-protocol';
-import type { AgentExecutor, ExecutorResult, ExecutorOptions } from './AgentExecutor';
 import { ConnectionPool, OpenClawAction } from '../../stratix-openclaw-adapter';
+import type { StratixCommandData, StratixAgentConfig, StratixSkillConfig } from '../stratix-protocol';
+
+import type { AgentExecutor, ExecutorResult, ExecutorOptions } from './AgentExecutor';
 
 export class OpenClawExecutor implements AgentExecutor {
   private connectionPool: ConnectionPool;

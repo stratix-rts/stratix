@@ -1,5 +1,6 @@
-import type { StratixAgentConfig, StratixSkillConfig } from '@/stratix-core/stratix-protocol';
 import type { Skill } from '../../ui/v2/CommandPanelV2';
+
+import type { StratixAgentConfig, StratixSkillConfig } from '@/stratix-core/stratix-protocol';
 
 export interface TopBarStats {
   totalAgents: number;

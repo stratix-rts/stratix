@@ -1,11 +1,12 @@
 import { createApp } from 'vue';
+import VXETable from 'vxe-table';
+
 import App from './App.vue';
 import { initDesignSystem, setTheme } from './design-system/config';
-import { statusSyncWS } from './stratix-core/services/StatusSyncWebSocketService';
 import { partRegistry } from './stratix-character-creator/core/PartRegistry';
+import { statusSyncWS } from './stratix-core/services/StatusSyncWebSocketService';
 
 // Vxe Table 全局初始化
-import VXETable from 'vxe-table';
 import 'vxe-table/lib/style.css';
 
 // Highlight.js for syntax highlighting

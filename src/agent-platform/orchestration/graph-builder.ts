@@ -1,7 +1,9 @@
 import { StateGraph, END, START } from '@langchain/langgraph';
-import { AgentGraphState } from './state';
-import type { WorkflowDefinition, WorkflowStep } from '../workflow/types';
+
 import { providerRegistry } from '../providers/registry';
+import type { WorkflowDefinition, WorkflowStep } from '../workflow/types';
+
+import { AgentGraphState } from './state';
 
 export async function buildGraphFromWorkflow(definition: WorkflowDefinition) {
   const builder = new GraphBuilder();

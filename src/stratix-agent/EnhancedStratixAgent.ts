@@ -3,14 +3,16 @@
  * 支持工作流执行、反思机制、多步骤规划
  */
 
-import { AgentConfig, SoulConfig, ChatMessage, SkillDefinition, SkillResult, EvolutionResult, EvolutionProposal } from './types';
-import { StratixAgent } from './StratixAgent';
-import { EnhancedPromptBuilder } from './core/EnhancedPromptBuilder';
-import { EnhancedSoulConfig, ReflectionEntry } from './types/soul';
-import { AgentTemplate, WorkflowDefinition, WorkflowStep } from './types/template';
-import { MixinComposer } from './mixins/MixinComposer';
 import { EVOLUTION_PROMPT } from '../stratix-character-creator/config/skillHubConfig';
 import { zoneContextManager } from '../stratix-character-creator/core/ZoneContextManager';
+
+import { StratixAgent } from './StratixAgent';
+import { EnhancedPromptBuilder } from './core/EnhancedPromptBuilder';
+import { MixinComposer } from './mixins/MixinComposer';
+import { AgentConfig, SoulConfig, ChatMessage, SkillDefinition, SkillResult, EvolutionResult, EvolutionProposal } from './types';
+import { EnhancedSoulConfig, ReflectionEntry } from './types/soul';
+import { AgentTemplate, WorkflowDefinition, WorkflowStep } from './types/template';
+
 
 export interface AgentCapabilities {
   workflowExecution: boolean;

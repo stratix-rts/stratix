@@ -1,4 +1,5 @@
 import { getDatabase } from '../../stratix-database/StratixDatabase';
+
 import type { AgentCheckpointData } from './AgentProcess';
 
 // Database row interface

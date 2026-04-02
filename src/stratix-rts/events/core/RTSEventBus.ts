@@ -1,16 +1,18 @@
 import mitt from 'mitt';
 import type Phaser from 'phaser';
+
+import { createErrorMiddleware, createLoggerMiddleware } from '../middleware/logger';
+import { createThrottleMiddleware } from '../middleware/throttle';
+import type { Middleware, MiddlewareContext } from '../middleware/types';
+import { composeMiddleware } from '../middleware/types';
 import type {
   RTSEventName,
   RTSEventData,
   AllRTSEvents,
   RequestResponseMap,
 } from '../types/RTSEventTypes';
+
 import { EventQueue } from './EventQueue';
-import type { Middleware, MiddlewareContext } from '../middleware/types';
-import { composeMiddleware } from '../middleware/types';
-import { createErrorMiddleware, createLoggerMiddleware } from '../middleware/logger';
-import { createThrottleMiddleware } from '../middleware/throttle';
 
 type EventHandler<T = unknown> = (data: T) => void;
 type ResponseHandler<T = unknown, R = unknown> = (data: T) => R | Promise<R>;

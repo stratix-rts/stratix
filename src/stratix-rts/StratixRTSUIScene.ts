@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { RTSUIFactory, type RTSUIComponents, type TopBarStats } from './ui/v2';
+
 import { rtsEventBus } from './events/core/RTSEventBus';
 import type {
   SceneToUIEvents,
@@ -9,9 +9,10 @@ import type {
   AgentInfo,
   ZoneInfo,
 } from './events/types/RTSEventTypes';
-import type { Skill } from './ui/v2/CommandPanelV2';
 import { HelpPanel } from './ui/HelpPanel';
 import { ShortcutBar } from './ui/ShortcutBar';
+import { RTSUIFactory, type RTSUIComponents, type TopBarStats } from './ui/v2';
+import type { Skill } from './ui/v2/CommandPanelV2';
 
 export default class StratixRTSUIScene extends Phaser.Scene {
   private uiFactory: RTSUIFactory | null = null;

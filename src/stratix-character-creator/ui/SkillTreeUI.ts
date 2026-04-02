@@ -3,8 +3,8 @@
  * 基于 Phaser DOM 的技能树可视化
  */
 
-import { SkillTree } from '../core/SkillTree';
 import { SKILL_CATEGORIES, ATTRIBUTE_LABELS } from '../config/skillTreeConfig';
+import { SkillTree } from '../core/SkillTree';
 import type { SkillNode } from '../types';
 
 const THEME = {

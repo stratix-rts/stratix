@@ -1,11 +1,13 @@
+import Phaser from 'phaser';
+
 import type { AgentSprite } from '../sprites/AgentSprite';
 import type { CollisionSystem } from '../systems/CollisionSystem';
 import type { MovementSystem } from '../systems/MovementSystem';
 import type { SpatialHashGrid } from '../systems/SpatialHashGrid';
+
 import { CollisionDebugger } from './CollisionDebugger';
 import { MovementDebugger } from './MovementDebugger';
 import { SpatialGridDebugger } from './SpatialGridDebugger';
-import Phaser from 'phaser';
 
 export class DebugManager {
   private scene: Phaser.Scene;

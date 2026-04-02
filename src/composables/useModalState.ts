@@ -1,4 +1,5 @@
 import { ref, computed } from 'vue';
+
 import { rtsEventBus } from '@/stratix-rts/events/core/RTSEventBus';
 
 const openModalCount = ref(0);

@@ -1,6 +1,8 @@
 import { ChatOpenAI } from '@langchain/openai';
-import { LLMAdapter } from './base';
+
 import type { CreateProviderOptions, ProviderConfig } from '../types';
+
+import { LLMAdapter } from './base';
 
 const DEEPSEEK_CONFIG: ProviderConfig = {
   id: 'deepseek',

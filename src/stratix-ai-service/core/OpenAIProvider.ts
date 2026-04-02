@@ -1,6 +1,8 @@
 import OpenAI from 'openai';
-import { BaseAIProvider } from './AIServiceProvider';
+
 import { AIMessage, AIResponse, AIStreamCallback, AIProviderConfig } from '../types';
+
+import { BaseAIProvider } from './AIServiceProvider';
 
 export class OpenAIProvider extends BaseAIProvider {
   readonly name = 'openai';

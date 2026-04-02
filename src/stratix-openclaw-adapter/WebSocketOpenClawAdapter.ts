@@ -11,8 +11,9 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+
 import WebSocket from 'ws';
-import { StratixOpenClawConfig } from '@/stratix-core/stratix-protocol';
+
 import type {
   OpenClawAdapterInterface,
   OpenClawAction,
@@ -24,6 +25,8 @@ import type {
   OpenAIChatCompletionRequest,
   OpenAIChatCompletionResponse,
 } from './types';
+
+import { StratixOpenClawConfig } from '@/stratix-core/stratix-protocol';
 
 const CLIENT_VERSION = '1.0.0';
 const DEVICE_KEY_FILE = '.stratix/device_key.json';

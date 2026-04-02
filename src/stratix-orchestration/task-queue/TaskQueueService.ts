@@ -1,4 +1,5 @@
 import { getDatabase } from '../../stratix-database/StratixDatabase';
+
 import { TaskItem, TaskContext, TaskResult, TaskEvent, TaskEventCallback } from './TaskItem';
 
 // Database row interface

@@ -5,8 +5,8 @@
  * 支持单例模式、自动重连、状态同步
  */
 
-import { WebSocketOpenClawAdapter } from '@/stratix-openclaw-adapter';
 import type { StratixOpenClawConfig } from '@/stratix-core/stratix-protocol';
+import { WebSocketOpenClawAdapter } from '@/stratix-openclaw-adapter';
 import type { OpenClawStatus } from '@/stratix-openclaw-adapter/types';
 
 export interface ConnectionTestResult {

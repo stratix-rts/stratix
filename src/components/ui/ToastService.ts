@@ -12,8 +12,9 @@
  * Bridges Vue composables and RTS event bus.
  */
 
-import { rtsEventBus } from '@/stratix-rts/events/core/RTSEventBus';
 import type { ToastItem, ToastOptions } from './ToastItem';
+
+import { rtsEventBus } from '@/stratix-rts/events/core/RTSEventBus';
 
 export type { ToastOptions };
 

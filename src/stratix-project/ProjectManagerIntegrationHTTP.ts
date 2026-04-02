@@ -1,13 +1,17 @@
-import Phaser from 'phaser';
 import axios from 'axios';
+import mitt from 'mitt';
+import Phaser from 'phaser';
+
+import { rtsEventBus } from '../stratix-rts/events/core/RTSEventBus';
+import { UnifiedZoneManager } from '../stratix-rts/zones/UnifiedZoneManager';
+
 import { ProjectClient } from './ProjectClient';
-import { Project, ProjectConfig, ProjectZoneConfig } from './types';
 import { ProjectZone } from './core/ProjectZone';
 import { ProjectZonePreview } from './core/ProjectZonePreview';
+import { Project, ProjectConfig, ProjectZoneConfig } from './types';
 import { throttle } from './utils/helpers';
-import { UnifiedZoneManager } from '../stratix-rts/zones/UnifiedZoneManager';
-import { rtsEventBus } from '../stratix-rts/events/core/RTSEventBus';
-import mitt from 'mitt';
+
+
 
 export interface ProjectManagerIntegrationConfig {
   autoLoad?: boolean;

@@ -1,5 +1,6 @@
-import { StratixAgentConfig } from '@/stratix-core/stratix-protocol';
 import { HeroTemplateBase, HeroType, generateAgentId, generateSkillId } from './types';
+
+import { StratixAgentConfig } from '@/stratix-core/stratix-protocol';
 
 export class WriterHeroTemplate implements HeroTemplateBase {
   private static readonly TYPE: HeroType = 'writer';

@@ -1,6 +1,6 @@
-import type { ZoneTemplate } from './ZoneTemplateManager';
-import type { TaskZoneType } from './TaskZone';
 import type { ZoneStatus } from './BaseZone';
+import type { TaskZoneType } from './TaskZone';
+import type { ZoneTemplate } from './ZoneTemplateManager';
 
 export class ZoneTemplates {
   static readonly GRID_2X2: ZoneTemplate = {

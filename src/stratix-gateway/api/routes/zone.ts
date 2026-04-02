@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
-import { zoneService, ZoneFileBatchRequest } from '../../project/ZoneService';
+
 import { ZoneCreateRequest, ZoneUpdateRequest, ZoneFileAddRequest, ZoneFolderScanRequest, ZoneTaskStatus } from '../../../stratix-project/types';
+import { zoneService, ZoneFileBatchRequest } from '../../project/ZoneService';
 
 const router = Router();
 

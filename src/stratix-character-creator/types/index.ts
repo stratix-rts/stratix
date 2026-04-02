@@ -3,6 +3,7 @@
  */
 
 import type { BodyType, PartCategory, AnimationName } from '../constants';
+
 export type { BodyType, PartCategory, AnimationName };
 import type { CharacterTexture, StratixDirectConfig } from '@/stratix-core/stratix-protocol';
 

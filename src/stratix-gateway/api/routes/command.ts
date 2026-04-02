@@ -1,9 +1,10 @@
 import { Router, Request, Response } from 'express';
+
+import { StratixCommandData } from '../../../stratix-core/stratix-protocol';
+import { StratixRequestHelper } from '../../../stratix-core/utils';
 import { CommandTransformer } from '../../command-transformer/CommandTransformer';
 import { dataStoreService } from '../../dataStoreService';
 import { StatusSyncService } from '../websocket/StatusSync';
-import { StratixCommandData } from '../../../stratix-core/stratix-protocol';
-import { StratixRequestHelper } from '../../../stratix-core/utils';
 
 const router = Router();
 const commandTransformer = new CommandTransformer();

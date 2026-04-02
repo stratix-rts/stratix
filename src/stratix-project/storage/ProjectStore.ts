@@ -1,8 +1,10 @@
+import path from 'path';
+
+import fs from 'fs-extra';
 import { Low } from 'lowdb';
 import { JSONFile } from 'lowdb/node';
+
 import { Project, ProjectChannel, ProjectChannelMessage } from '../types';
-import fs from 'fs-extra';
-import path from 'path';
 
 export interface ProjectDatabase {
   projects: Project[];

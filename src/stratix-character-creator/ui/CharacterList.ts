@@ -5,11 +5,13 @@
  */
 
 import Phaser from 'phaser';
+
+import { characterStorage } from '../core/CharacterStorage';
+import type { SavedCharacter } from '../types';
+
 import { getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
 import { ContainerComponentBase } from '@/stratix-core/ui/ContainerComponent.base';
-import { characterStorage } from '../core/CharacterStorage';
-import type { SavedCharacter } from '../types';
 
 const THEME = {
   bg: 'var(--ds-bg-secondary)',

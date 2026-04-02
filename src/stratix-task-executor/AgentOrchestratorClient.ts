@@ -1,6 +1,7 @@
 import axios from 'axios';
-import type { AgentState } from '../stratix-gateway/agent/agents/types';
+
 import { StratixAgentConfig } from '../stratix-core';
+import type { AgentState } from '../stratix-gateway/agent/agents/types';
 
 export interface AgentOrchestratorClientConfig {
   baseURL?: string;

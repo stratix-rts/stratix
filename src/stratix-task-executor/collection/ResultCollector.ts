@@ -1,5 +1,7 @@
-import fs from 'fs-extra';
 import path from 'path';
+
+import fs from 'fs-extra';
+
 import { TaskResult, RESULT_FILE_NAME } from '../types';
 
 export class ResultCollector {

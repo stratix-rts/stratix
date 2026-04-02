@@ -5,6 +5,7 @@
  */
 
 import { StratixApiResponse } from '../stratix-protocol';
+
 import StratixIdGenerator from './StratixIdGenerator';
 
 export class StratixRequestHelper {

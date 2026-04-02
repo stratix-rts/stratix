@@ -1,4 +1,6 @@
 import { reactive, readonly, computed } from 'vue';
+
+import type { SavedCharacter } from '@/stratix-character-creator/types';
 import type {
   StratixAgentConfig,
   CharacterProfile,
@@ -6,9 +8,8 @@ import type {
   AgentConfigStatus,
   OpenClawConfig
 } from '@/stratix-core';
-import { WriterHeroTemplate, DevHeroTemplate, AnalystHeroTemplate, generateAgentId } from '@/stratix-designer';
-import type { SavedCharacter } from '@/stratix-character-creator/types';
 import { POSITION_SAVE_DELAY_MS } from '@/stratix-core/config/defaults';
+import { WriterHeroTemplate, DevHeroTemplate, AnalystHeroTemplate, generateAgentId } from '@/stratix-designer';
 
 interface AgentState {
   agents: StratixAgentConfig[];

@@ -5,9 +5,9 @@
  * 前端通过此单例访问服务，无需关心底层实现
  */
 
+import { ElectronServiceProvider } from './ElectronServiceProvider';
 import type { ServiceProvider } from './ServiceProvider';
 import { WebServiceProvider } from './WebServiceProvider';
-import { ElectronServiceProvider } from './ElectronServiceProvider';
 
 export class ServiceLocator {
   private static instance: ServiceLocator;

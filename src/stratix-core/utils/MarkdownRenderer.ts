@@ -1,6 +1,6 @@
+import hljs from 'highlight.js';
 import { marked, Renderer } from 'marked';
 import { markedHighlight } from 'marked-highlight';
-import hljs from 'highlight.js';
 
 // Configure marked with syntax highlighting
 marked.use(

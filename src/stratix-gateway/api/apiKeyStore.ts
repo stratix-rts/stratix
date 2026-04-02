@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { safeStorage } from 'electron';
-import { app } from 'electron';
+
+import { safeStorage , app } from 'electron';
 
 export interface ApiKeyStore {
   [providerId: string]: string;

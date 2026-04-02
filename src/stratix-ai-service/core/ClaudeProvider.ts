@@ -1,6 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { BaseAIProvider } from './AIServiceProvider';
+
 import { AIMessage, AIResponse, AIStreamCallback, AIProviderConfig } from '../types';
+
+import { BaseAIProvider } from './AIServiceProvider';
 
 export class ClaudeProvider extends BaseAIProvider {
   readonly name = 'claude';

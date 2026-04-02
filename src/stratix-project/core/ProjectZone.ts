@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+
 import { BaseZone, BaseZoneConfig, ZoneStatus } from '../../stratix-rts/zones/BaseZone';
 import { Project, ProjectStatus, ProjectZoneConfig } from '../types';
 

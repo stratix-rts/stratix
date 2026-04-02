@@ -6,11 +6,12 @@ import {
   DefinitionChangeType,
   BranchedStep,
 } from 'sequential-workflow-designer';
+
 import 'sequential-workflow-designer/css/designer.css';
 import 'sequential-workflow-designer/css/designer-dark.css';
-import type { WorkflowDefinition, WorkflowStep } from '@/agent-platform/workflow/types';
 import { providerRegistry } from '@/agent-platform/providers/registry';
 import { allPresets } from '@/agent-platform/workflow/presets';
+import type { WorkflowDefinition, WorkflowStep } from '@/agent-platform/workflow/types';
 
 const THEME = {
   bg: '#1a1a2e',

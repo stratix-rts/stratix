@@ -6,6 +6,7 @@
  */
 
 import { WebSocketServer, WebSocket } from 'ws';
+
 import { StratixStateSyncEvent, StratixStateSyncEventType, AgentStatusInfo } from '../../../stratix-core/stratix-protocol';
 import { ProjectChannelMessage } from '../../../stratix-project/types';
 import { gatewayEventBus, ChannelMessageEvent, ZoneEvent } from '../../GatewayEventBus';

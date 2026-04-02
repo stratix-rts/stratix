@@ -5,15 +5,17 @@
  * and AgentMessageRouter events to the WebSocket layer for frontend sync.
  */
 
-import { ZoneManager } from './zone/ZoneManager';
-import { TaskQueueService } from './task-queue/TaskQueueService';
+import path from 'path';
+
 import { BackgroundAgentService } from './background/BackgroundAgentService';
 import { AgentMessageRouter } from './messaging/AgentMessageRouter';
-import { ZoneEvent } from './zone/ZoneState';
-import { TaskEvent } from './task-queue/TaskItem';
 import { MessageEvent } from './messaging/MessageTypes';
+import { TaskEvent } from './task-queue/TaskItem';
+import { TaskQueueService } from './task-queue/TaskQueueService';
 import ZoneCoordinatorEventEmitter, { type ZoneCoordinatorEventPayload } from './zone/ZoneCoordinatorEvents';
-import path from 'path';
+import { ZoneManager } from './zone/ZoneManager';
+import { ZoneEvent } from './zone/ZoneState';
+
 
 // Type for StatusSync - avoid circular dependency at type level
 interface StatusSyncInterface {

@@ -1,10 +1,12 @@
-import { AIServiceProvider } from './AIServiceProvider';
-import { OpenAIProvider } from './OpenAIProvider';
-import { ClaudeProvider } from './ClaudeProvider';
-import { OllamaProvider } from './OllamaProvider';
-import { AIConfig, AIProviderConfig, AIProviderType } from '../types';
 import fs from 'fs';
 import path from 'path';
+
+import { AIConfig, AIProviderConfig, AIProviderType } from '../types';
+
+import { AIServiceProvider } from './AIServiceProvider';
+import { ClaudeProvider } from './ClaudeProvider';
+import { OllamaProvider } from './OllamaProvider';
+import { OpenAIProvider } from './OpenAIProvider';
 
 export class AIServiceFactory {
   private static instance: AIServiceFactory;

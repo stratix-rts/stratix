@@ -1,5 +1,6 @@
-import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
+import { writeFile, mkdir } from 'fs/promises';
+
 import { AgentConfig, SoulConfig, MemoryLayers, Session } from '../types';
 
 export interface ExportOptions {

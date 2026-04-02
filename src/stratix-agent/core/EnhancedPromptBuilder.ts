@@ -6,8 +6,9 @@
  */
 
 import { ChatMessage, ZonePromptContext } from '../types';
-import { AgentTemplate } from '../types/template';
 import { EnhancedSoulConfig, ReflectionEntry } from '../types/soul';
+import { AgentTemplate } from '../types/template';
+
 import { getHandlebarsEngine, type PromptRenderContext } from './HandlebarsPromptEngine';
 
 interface PromptConfig {

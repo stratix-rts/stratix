@@ -8,9 +8,10 @@ import {
   ToolUseLoopConfig,
   ToolUseRequest
 } from '../types';
-import { SkillRegistry } from './SkillRegistry';
+
 import { LLMConnector } from './LLMConnector';
 import { skillAuditLogger } from './SkillAuditLogger';
+import { SkillRegistry } from './SkillRegistry';
 
 /**
  * ToolUseLoop - 处理 LLM → 工具执行 → LLM → ... 的完整循环
@@ -80,7 +81,7 @@ export class ToolUseLoop {
   ): Promise<ToolUseLoopResult> {
     const startTime = Date.now();
     const toolCalls: ToolCall[] = [];
-    let messages = [...initialMessages];
+    const messages = [...initialMessages];
 
     // 重置状态
     this.abortController = new AbortController();

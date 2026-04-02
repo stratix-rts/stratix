@@ -5,8 +5,7 @@
  */
 
 import Phaser from 'phaser';
-import { getToken } from '@/design-system/config';
-import { Depth } from '@/design-system/tokens/depth';
+
 import { 
   FRAME_SIZE, 
   SHEET_WIDTH, 
@@ -17,6 +16,9 @@ import {
   LPC_DIRECTION_ROWS
 } from '../constants';
 import type { AnimationName } from '../types';
+
+import { getToken } from '@/design-system/config';
+import { Depth } from '@/design-system/tokens/depth';
 
 // Phaser 图形对象使用数字颜色（运行时获取）
 const getPhaserColor = (tokenPath: string) => parseInt(getToken(tokenPath).replace('#', '0x'));

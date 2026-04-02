@@ -9,18 +9,18 @@
  * 设计理念：专业、可信、保守、易读
  */
 
-import type { DesignSystemTokens } from '../types';
+import { IconSizes } from '../icons/registry';
+import { generateAllSemanticTokens } from '../semantic/_generator';
+import { Animation } from '../tokens/animation';
 import { 
   ProfessionalPrimitives,
   Blue,
   Slate 
 } from '../tokens/colors';
+import { Depth } from '../tokens/depth';
 import { Spacing } from '../tokens/spacing';
 import { Typography } from '../tokens/typography';
-import { Animation } from '../tokens/animation';
-import { Depth } from '../tokens/depth';
-import { IconSizes } from '../icons/registry';
-import { generateAllSemanticTokens } from '../semantic/_generator';
+import type { DesignSystemTokens } from '../types';
 
 // 主题特定的圆角配置（标准圆角，比 Minimal 更小）
 const ProfessionalRadii = {

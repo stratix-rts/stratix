@@ -19,7 +19,9 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+
 import * as Handlebars from 'handlebars';
+
 import { registerHelpers } from '../templates/helpers';
 
 export interface PromptRenderContext {

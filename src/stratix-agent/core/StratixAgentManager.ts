@@ -1,8 +1,9 @@
-import { AgentConfig, SoulConfig, AgentResponse } from '../types';
 import { StratixAgent } from '../StratixAgent';
-import { StorageManager } from './StorageManager';
-import { SharedMemoryCache } from './SharedMemoryCache';
+import { AgentConfig, SoulConfig, AgentResponse } from '../types';
+
 import { LLMConnectionPool } from './LLMConnectionPool';
+import { SharedMemoryCache } from './SharedMemoryCache';
+import { StorageManager } from './StorageManager';
 
 export interface ManagerOptions {
   maxAgents?: number;

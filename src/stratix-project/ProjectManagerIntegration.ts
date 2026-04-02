@@ -1,11 +1,12 @@
+import mitt from 'mitt';
 import Phaser from 'phaser';
+
 import { ProjectManager } from './core/ProjectManager';
-import { ProjectStore } from './storage/ProjectStore';
 import { ProjectZone } from './core/ProjectZone';
 import { ProjectZonePreview } from './core/ProjectZonePreview';
+import { ProjectStore } from './storage/ProjectStore';
 import { Project, ProjectConfig } from './types';
 import { throttle } from './utils/helpers';
-import mitt from 'mitt';
 
 export interface ProjectManagerIntegrationConfig {
   dataDir?: string;

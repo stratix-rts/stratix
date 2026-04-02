@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
+
+import { StratixAgentConfig } from '../../stratix-core/stratix-protocol';
 import StratixRTSGameScene from '../StratixRTSGameScene';
 import { AgentSprite, AgentStatus } from '../sprites/AgentSprite';
-import { StratixAgentConfig } from '../../stratix-core/stratix-protocol';
 
 const container = document.getElementById('stratix-rts-container')!;
 const logEl = document.getElementById('test-log')!;

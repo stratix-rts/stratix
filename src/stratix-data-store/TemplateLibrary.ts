@@ -1,4 +1,5 @@
 import { StratixAgentConfig } from '../stratix-core/stratix-protocol';
+
 import { StratixDataStore } from './StratixDataStore';
 
 const PRESET_TEMPLATES: StratixAgentConfig[] = [
