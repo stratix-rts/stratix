@@ -438,13 +438,116 @@ export class ConnectionRenderer {
     });
   }
 
-  private drawAnimatedStraightConnection(_connectionId: string, _data: any): void {
-    // Placeholder for animated straight connection
-    // Animation would involve drawing a moving dash along the line
+  private drawAnimatedStraightConnection(_connectionId: string, data: any): void {
+    const { source, target, style } = data.connection;
+    const dashArray = style.dashArray || [10, 5];
+    const dx = target.x - source.x;
+    const dy = target.y - source.y;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    if (length === 0) return;
+
+    const unitX = dx / length;
+    const unitY = dy / length;
+
+    // Use offset to create moving dash effect
+    const totalDashLength = dashArray.reduce((a: number, b: number) => a + b, 0);
+    const startOffset = (data.offset / 100) * totalDashLength;
+
+    let currentLength = -startOffset;
+    let isDash = true;
+    let dashIndex = 0;
+
+    this.graphics.lineStyle(style.lineWidth, style.color, style.alpha);
+
+    while (currentLength < length) {
+      const dashLength = dashArray[dashIndex % dashArray.length];
+      const startLength = Math.max(0, currentLength);
+      const endLength = Math.min(currentLength + dashLength, length);
+
+      if (isDash && endLength > startLength) {
+        const startX = source.x + unitX * startLength;
+        const startY = source.y + unitY * startLength;
+        const endX = source.x + unitX * endLength;
+        const endY = source.y + unitY * endLength;
+
+        this.graphics.beginPath();
+        this.graphics.moveTo(startX, startY);
+        this.graphics.lineTo(endX, endY);
+        this.graphics.strokePath();
+      }
+
+      currentLength += dashLength;
+      isDash = !isDash;
+      dashIndex++;
+    }
+
+    // Draw arrow at target (always visible, on top)
+    this.drawArrow(target, source, style.color, style.alpha);
   }
 
-  private drawAnimatedBezierConnection(_connectionId: string, _data: any): void {
-    // Placeholder for animated bezier connection
-    // Animation would involve drawing a moving dash along the curve
+  private drawAnimatedBezierConnection(_connectionId: string, data: any): void {
+    const { source, target, style, controlPoints } = data.connection;
+    if (!controlPoints) return;
+
+    const { cp1, cp2 } = controlPoints;
+    const dashArray = style.dashArray || [10, 5];
+    const samples = 100;
+    const totalDashLength = dashArray.reduce((a: number, b: number) => a + b, 0);
+    const startOffset = (data.offset / 100) * totalDashLength;
+
+    // Calculate total curve length
+    let curveLength = 0;
+    const points: { x: number; y: number }[] = [];
+    for (let i = 0; i <= samples; i++) {
+      const t = i / samples;
+      const point = this.getPointOnBezierCurve(source, cp1, cp2, target, t);
+      points.push(point);
+      if (i > 0) {
+        const prev = points[i - 1];
+        curveLength += Math.sqrt((point.x - prev.x) ** 2 + (point.y - prev.y) ** 2);
+      }
+    }
+
+    let currentLength = -startOffset;
+    let isDash = true;
+    let dashIndex = 0;
+
+    this.graphics.lineStyle(style.lineWidth, style.color, style.alpha);
+
+    for (let i = 0; i < samples; i++) {
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const segmentLength = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+
+      while (currentLength >= 0 && currentLength < segmentLength && !isDash) {
+        currentLength += dashArray[dashIndex % dashArray.length];
+        isDash = !isDash;
+        dashIndex++;
+      }
+
+      if (isDash) {
+        const remainingInDash = dashArray[(dashIndex - 1 + dashArray.length) % dashArray.length] - currentLength;
+        const t1 = currentLength / segmentLength;
+        const t2 = Math.min(1, t1 + remainingInDash / segmentLength);
+
+        const startT = i / samples + t1 * (1 / samples);
+        const endT = i / samples + t2 * (1 / samples);
+
+        const drawP1 = this.getPointOnBezierCurve(source, cp1, cp2, target, startT);
+        const drawP2 = this.getPointOnBezierCurve(source, cp1, cp2, target, endT);
+
+        this.graphics.beginPath();
+        this.graphics.moveTo(drawP1.x, drawP1.y);
+        this.graphics.lineTo(drawP2.x, drawP2.y);
+        this.graphics.strokePath();
+      }
+
+      currentLength -= segmentLength;
+    }
+
+    // Draw arrow at target (always visible, on top)
+    const arrowPos = this.getPointOnBezierCurve(source, cp1, cp2, target, 0.9);
+    const arrowAngle = this.getBezierCurveAngle(source, cp1, cp2, target, 0.9);
+    this.drawArrowAt(arrowPos, arrowAngle, style.color, style.alpha);
   }
 }
