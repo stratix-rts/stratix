@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import { StratixModal, StratixButton } from '@/components/ui';
+import { StratixModal, StratixButton, StratixLoading } from '@/components/ui';
 import type { LraTask } from '../stratix-lra-bridge/types';
 import { LRAClient } from '../stratix-lra-bridge/LRAClient';
 import { LRAWatcher } from '../stratix-lra-bridge/LRAWatcher';
@@ -238,10 +238,7 @@ onUnmounted(() => {
         </div>
 
         <div class="panel-body">
-          <div v-if="loading" class="loading">
-            <div class="loading-spinner"></div>
-            <span>加载任务中...</span>
-          </div>
+          <StratixLoading v-if="loading" mode="skeleton" :skeleton-lines="5" />
 
           <div v-else-if="error" class="error">
             <div class="error-icon">⚠️</div>

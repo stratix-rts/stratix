@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
-import { StratixButton, StratixTextarea } from '@/components/ui';
+import { StratixButton, StratixTextarea, StratixLoading } from '@/components/ui';
 import type { ProjectChannel, ProjectChannelMessage, AgentBadge, Project } from '../stratix-project/types';
 import { agentStore } from '@/stores/agentStore';
 import { CHAT_COMMANDS, filterCommands, type ChatCommand } from './chat-commands';
@@ -424,10 +424,7 @@ defineExpose({
       </div>
 
       <div class="message-list" v-if="selectedChannel">
-        <div v-if="loading" class="loading">
-          <div class="loading-spinner"></div>
-          <span>加载消息中...</span>
-        </div>
+        <StratixLoading v-if="loading" mode="skeleton" :skeleton-lines="4" />
 
         <div v-else-if="messages.length === 0" class="empty">
           <div class="empty-icon">💬</div>

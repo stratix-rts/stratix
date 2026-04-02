@@ -4,7 +4,7 @@
  * 纯Vue为主架构，局部使用Phaser Canvas渲染角色预览
  */
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue';
-import { StratixModal, StratixButton, StratixConfirmDialog } from '@/components/ui';
+import { StratixModal, StratixButton, StratixConfirmDialog, StratixLoading } from '@/components/ui';
 import type { SavedCharacter, CreatorStep, AnimationName, PartCategory, PartSelection } from '../stratix-character-creator/types';
 import { characterStorage, partRegistry, characterComposer } from '../stratix-character-creator';
 import { DEFAULT_BODY_TYPE } from '../stratix-character-creator/constants';
@@ -548,10 +548,7 @@ const handleRandomize = async () => {
     @close="handleClose"
   >
     <!-- Loading State -->
-    <div v-if="characterState.isLoading" class="loading-container">
-      <div class="loading-spinner"></div>
-      <span>加载中...</span>
-    </div>
+    <StratixLoading v-if="characterState.isLoading" mode="fullscreen" text="加载中..." />
 
     <!-- Main Content -->
     <div v-else class="creator-layout">
