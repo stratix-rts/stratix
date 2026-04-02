@@ -18,6 +18,7 @@ export { default as SvgIcon } from './SvgIcon.vue';
 export { default as StratixModal } from './StratixModal.vue';
 export { default as StratixConfirmDialog } from './StratixConfirmDialog.vue';
 export { default as StratixLoading } from './StratixLoading.vue';
+export { default as StratixEmpty } from './StratixEmpty.vue';
 
 // Dropdown 类型定义
 export interface DropdownOption {

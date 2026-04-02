@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import { StratixModal, StratixButton, StratixLoading } from '@/components/ui';
+import { StratixModal, StratixButton, StratixLoading, StratixEmpty } from '@/components/ui';
 import type { LraTask } from '../stratix-lra-bridge/types';
 import { LRAClient } from '../stratix-lra-bridge/LRAClient';
 import { LRAWatcher } from '../stratix-lra-bridge/LRAWatcher';
@@ -246,11 +246,12 @@ onUnmounted(() => {
             <StratixButton @click="loadTasks">重试</StratixButton>
           </div>
 
-          <div v-else-if="tasks.length === 0" class="empty">
-            <div class="empty-icon">📋</div>
-            <div>暂无任务</div>
-            <div class="empty-hint">使用 LRA 创建任务</div>
-          </div>
+          <StratixEmpty
+            v-else-if="tasks.length === 0"
+            scenario="no-tasks"
+            title="暂无任务"
+            description="使用 LRA 创建任务"
+          />
 
           <div v-else class="task-list">
             <div

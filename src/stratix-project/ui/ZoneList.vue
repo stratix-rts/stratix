@@ -23,9 +23,22 @@
     </div>
 
     <div v-else-if="filteredZones.length === 0" class="zone-list__empty">
-      <div class="zone-list__empty-icon">📁</div>
+      <svg class="zone-list__empty-illustration" viewBox="0 0 120 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Large center hexagon -->
+        <path d="M60 10 L95 30 L95 70 L60 90 L25 70 L25 30 Z" stroke="var(--ds-color-primary)" stroke-width="1.5" fill="none" opacity="0.3"/>
+        <!-- Medium hexagons -->
+        <path d="M30 20 L50 30 L50 50 L30 60 L10 50 L10 30 Z" stroke="var(--ds-color-primary)" stroke-width="1.2" fill="none" opacity="0.2"/>
+        <path d="M90 45 L110 55 L110 75 L90 85 L70 75 L70 55 Z" stroke="var(--ds-color-primary)" stroke-width="1.2" fill="none" opacity="0.2"/>
+        <!-- Small accent hexagons -->
+        <path d="M60 30 L75 40 L75 60 L60 70 L45 60 L45 40 Z" stroke="var(--ds-color-primary)" stroke-width="1.5" fill="none" opacity="0.5"/>
+        <circle cx="60" cy="50" r="8" stroke="var(--ds-color-primary)" stroke-width="1.5" fill="none" opacity="0.4"/>
+        <!-- Floating dots -->
+        <circle cx="20" cy="85" r="2" fill="var(--ds-color-primary)" opacity="0.3"/>
+        <circle cx="100" cy="25" r="2" fill="var(--ds-color-primary)" opacity="0.3"/>
+        <circle cx="105" cy="80" r="1.5" fill="var(--ds-color-primary)" opacity="0.2"/>
+      </svg>
       <p class="zone-list__empty-text">No zones yet</p>
-      <p class="zone-list__empty-hint">Create a zone to organize your project</p>
+      <p class="zone-list__empty-hint">Create your first zone to get started</p>
     </div>
 
     <div v-else class="zone-list__grid">
@@ -179,15 +192,29 @@ const formatTime = (timestamp: number): string => {
   text-align: center;
 }
 
-.zone-list__empty-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-  opacity: 0.5;
+.zone-list__empty-illustration {
+  width: 120px;
+  height: 100px;
+  margin-bottom: 20px;
+  opacity: 0;
+  animation: fadeIn 0.5s ease forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .zone-list__empty-text {
   margin: 0 0 8px;
   font-size: 14px;
+  font-weight: 500;
   color: var(--ds-text-secondary);
 }
 

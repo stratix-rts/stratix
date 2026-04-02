@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
-import { StratixButton, StratixTextarea, StratixLoading } from '@/components/ui';
+import { StratixButton, StratixTextarea, StratixLoading, StratixEmpty } from '@/components/ui';
 import type { ProjectChannel, ProjectChannelMessage, AgentBadge, Project } from '../stratix-project/types';
 import { agentStore } from '@/stores/agentStore';
 import { CHAT_COMMANDS, filterCommands, type ChatCommand } from './chat-commands';
@@ -426,11 +426,12 @@ defineExpose({
       <div class="message-list" v-if="selectedChannel">
         <StratixLoading v-if="loading" mode="skeleton" :skeleton-lines="4" />
 
-        <div v-else-if="messages.length === 0" class="empty">
-          <div class="empty-icon">💬</div>
-          <div>暂无消息</div>
-          <div class="empty-hint">发送消息开始对话</div>
-        </div>
+        <StratixEmpty
+          v-else-if="messages.length === 0"
+          scenario="no-messages"
+          title="暂无消息"
+          description="发送消息开始对话"
+        />
 
         <div v-else class="messages">
           <div

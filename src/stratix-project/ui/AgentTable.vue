@@ -43,7 +43,22 @@
     </div>
 
     <!-- 表格 -->
+    <StratixEmpty
+      v-if="filteredAgents.length === 0 && !searchKeyword && !filterStatus"
+      scenario="no-agents"
+      title="暂无 Agent"
+      description="创建你的第一个 Agent 来开始"
+    />
+
+    <StratixEmpty
+      v-else-if="filteredAgents.length === 0 && (searchKeyword || filterStatus)"
+      scenario="no-results"
+      title="无搜索结果"
+      description="尝试调整搜索条件或筛选器"
+    />
+
     <vxe-grid
+      v-else
       ref="tableRef"
       :data="filteredAgents"
       :columns="columns"
@@ -117,6 +132,7 @@ import type { VxeGridInstance, VxeGridPropTypes } from 'vxe-table';
 import StratixInput from '@/components/ui/StratixInput.vue';
 import StratixSelect from '@/components/ui/StratixSelect.vue';
 import StratixButton from '@/components/ui/StratixButton.vue';
+import { StratixEmpty } from '@/components/ui';
 
 interface Agent {
   agentId: string;

@@ -149,7 +149,19 @@
       </vxe-grid>
 
       <div v-else-if="!showCreateTask" class="zone-detail__empty-list">
-        No tasks yet. Create one to get started.
+        <svg class="zone-detail__empty-illustration" viewBox="0 0 80 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- Checklist box -->
+          <rect x="10" y="10" width="60" height="45" rx="4" stroke="var(--ds-color-primary)" stroke-width="1.2" fill="none" opacity="0.25"/>
+          <!-- Empty checkbox lines -->
+          <rect x="20" y="22" width="8" height="8" rx="1" stroke="var(--ds-color-primary)" stroke-width="1" fill="none" opacity="0.3"/>
+          <line x1="34" y1="26" x2="60" y2="26" stroke="var(--ds-color-primary)" stroke-width="1" opacity="0.2"/>
+          <rect x="20" y="36" width="8" height="8" rx="1" stroke="var(--ds-color-primary)" stroke-width="1" fill="none" opacity="0.3"/>
+          <line x1="34" y1="40" x2="55" y2="40" stroke="var(--ds-color-primary)" stroke-width="1" opacity="0.2"/>
+          <!-- Small accent -->
+          <circle cx="68" cy="12" r="2" fill="var(--ds-color-primary)" opacity="0.2"/>
+        </svg>
+        <p class="zone-detail__empty-text">No tasks yet</p>
+        <p class="zone-detail__empty-hint">Create a task to get started</p>
       </div>
     </div>
 
@@ -862,13 +874,46 @@ const formatRelativeTime = (timestamp: number): string => {
 }
 
 .zone-detail__empty-list {
-  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 20px;
   text-align: center;
-  font-size: 13px;
-  color: var(--ds-text-muted);
   background: var(--ds-bg-tertiary);
   border: 1px dashed var(--ds-border-default);
   border-radius: 6px;
+}
+
+.zone-detail__empty-illustration {
+  width: 80px;
+  height: 60px;
+  margin-bottom: 12px;
+  opacity: 0;
+  animation: zoneFadeIn 0.5s ease forwards;
+}
+
+@keyframes zoneFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.zone-detail__empty-text {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ds-text-secondary);
+}
+
+.zone-detail__empty-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ds-text-muted);
 }
 
 .zone-detail__file-list,
