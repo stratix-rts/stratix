@@ -17,11 +17,17 @@ describe('SkillRegistry', () => {
   });
 
   beforeEach(() => {
+    jest.useFakeTimers();
     registry = new SkillRegistry();
     mockExecutor = {
       execute: jest.fn(),
     };
     registry.registerExecutor('mock', mockExecutor);
+  });
+
+  afterEach(() => {
+    jest.runAllTimers();
+    jest.useRealTimers();
   });
 
   describe('registerSkill', () => {

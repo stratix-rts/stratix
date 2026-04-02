@@ -136,14 +136,17 @@ export class AgentSprite extends Phaser.GameObjects.Container {
   public replaceTexture(newTextureKey: string): void {
     if (!this.scene) return;
 
+    // Skip if already tweening (texture replace in progress)
+    if (this.scene.tweens.isTweening(this)) return;
+
     const wasPlaying = this.sprite.anims.isPlaying;
     const currentAnim = this.sprite.anims.currentAnim;
-    
+
     this.customTextureKey = newTextureKey;
     this.isUsingPlaceholder = false;
-    
+
     this.stopBreathingAnimation();
-    
+
     this.scene.tweens.add({
       targets: this,
       scaleX: 0.5,
@@ -152,11 +155,11 @@ export class AgentSprite extends Phaser.GameObjects.Container {
       ease: 'Power2',
       onComplete: () => {
         this.sprite.setTexture(newTextureKey);
-        
+
         if (newTextureKey !== 'stratix-agent' && this.characterId) {
           this.sprite.setScale(0.75);
         }
-        
+
         this.scene.tweens.add({
           targets: this,
           scaleX: 1,
@@ -179,61 +182,19 @@ export class AgentSprite extends Phaser.GameObjects.Container {
 
   private startBreathingAnimation(): void {
     if (!this.scene || this.breathingTween) return;
-    
-    
-    const theme = getCurrentTheme();
-    const primaryColor = parseInt(theme.colors.brand.primary.replace('#', ''), 16);
-    const secondaryColor = parseInt(theme.colors.brand.secondary.replace('#', ''), 16);
-    
-    const glowOuter = this.scene.add.graphics();
-    const glowMiddle = this.scene.add.graphics();
-    const glowInner = this.scene.add.graphics();
-    
-    glowOuter.setDepth(-1);
-    glowMiddle.setDepth(-1);
-    glowInner.setDepth(-1);
-    
-    this.add(glowOuter);
-    this.add(glowMiddle);
-    this.add(glowInner);
-    
-    const drawGlows = (phase: number) => {
-      glowOuter.clear();
-      glowMiddle.clear();
-      glowInner.clear();
-      
-      const pulse1 = 0.5 + 0.5 * Math.sin(phase * 2);
-      const pulse2 = 0.5 + 0.5 * Math.sin(phase * 2.5 + 1);
-      const pulse3 = 0.5 + 0.5 * Math.sin(phase * 1.8 + 2);
-      
-      glowOuter.fillStyle(primaryColor, 0.08 + pulse1 * 0.12);
-      glowOuter.fillCircle(0, 0, 50 + pulse1 * 20);
-      
-      glowMiddle.fillStyle(secondaryColor, 0.15 + pulse2 * 0.2);
-      glowMiddle.fillCircle(0, 0, 35 + pulse2 * 12);
-      
-      glowInner.fillStyle(0xffffff, 0.4 + pulse3 * 0.3);
-      glowInner.fillCircle(0, 0, 20 + pulse3 * 8);
-    };
-    
-    drawGlows(0);
-    
+
+    // Simplified breathing: use sprite scale/alpha tween without per-frame glow redraws
+    // This reduces GPU usage significantly while maintaining visual feedback
     this.breathingTween = this.scene.tweens.add({
       targets: this.sprite,
-      scaleX: 1.15,
-      scaleY: 1.15,
-      alpha: 0.85,
-      duration: 1200,
+      scaleX: 1.08,
+      scaleY: 1.08,
+      alpha: 0.9,
+      duration: 1500,
       yoyo: true,
       repeat: -1,
-      ease: 'Sine.easeInOut',
-      onUpdate: (tween) => {
-        const progress = tween.progress * Math.PI * 2;
-        drawGlows(progress);
-      }
+      ease: 'Sine.easeInOut'
     });
-    
-    this.setData('breathingGlows', [glowOuter, glowMiddle, glowInner]);
   }
 
   private stopBreathingAnimation(): void {
@@ -242,11 +203,6 @@ export class AgentSprite extends Phaser.GameObjects.Container {
       this.breathingTween = null;
       this.sprite.setScale(1);
       this.sprite.setAlpha(1);
-    }
-    
-    const glows = this.getData('breathingGlows') as Phaser.GameObjects.Graphics[];
-    if (glows) {
-      glows.forEach(g => g.destroy());
     }
   }
 
@@ -450,15 +406,18 @@ export class AgentSprite extends Phaser.GameObjects.Container {
     this.isSelected = selected;
     this.selectionRing.setVisible(selected);
     this.setData('isSelected', selected);
-    
+
     if (selected) {
       this.sprite.setTint(COLORS.ui.selection);
-      this.scene.tweens.add({
-        targets: this.sprite,
-        scale: { from: 1, to: 1.1 },
-        duration: 100,
-        yoyo: true
-      });
+      // Skip animation if already at target scale or tween running
+      if (this.sprite.scaleX < 1.05 && !this.scene.tweens.isTweening(this.sprite)) {
+        this.scene.tweens.add({
+          targets: this.sprite,
+          scale: { from: 1, to: 1.1 },
+          duration: 100,
+          yoyo: true
+        });
+      }
     } else {
       this.setAgentStatus(this.currentStatus);
     }
@@ -483,6 +442,9 @@ export class AgentSprite extends Phaser.GameObjects.Container {
   }
 
   private playSuccessAnimation(): void {
+    // Skip if already animating
+    if (this.scene.tweens.isTweening(this.sprite)) return;
+
     this.scene.tweens.add({
       targets: this.sprite,
       alpha: { from: 1, to: 0.3 },
@@ -496,6 +458,9 @@ export class AgentSprite extends Phaser.GameObjects.Container {
   }
 
   private playErrorAnimation(): void {
+    // Skip if already animating
+    if (this.scene.tweens.isTweening(this)) return;
+
     const originalX = this.x;
     this.scene.tweens.add({
       targets: this,
@@ -581,34 +546,32 @@ export class AgentSprite extends Phaser.GameObjects.Container {
       }
     });
 
-    // 生成上升粒子
-    for (let i = 0; i < 12; i++) {
+    // 生成上升粒子 - reduced from 12 to 6 for performance
+    const spawnParticleCount = 6;
+    for (let i = 0; i < spawnParticleCount; i++) {
       const particle = this.scene.add.graphics();
       particle.setDepth(9998);
       this.add(particle);
 
-      const angle = (i / 12) * Math.PI * 2;
+      const angle = (i / spawnParticleCount) * Math.PI * 2;
       const radius = 40 + Math.random() * 20;
       const startX = Math.cos(angle) * radius;
       const startY = 50;
+      const endY = startY - 80 - Math.random() * 40;
+      const particleSize = 3 + Math.random() * 3;
 
       particle.fillStyle(hexToNumber(getToken("colors.brand.primary")), 0.8);
-      particle.fillCircle(0, 0, 3 + Math.random() * 3);
+      particle.fillCircle(0, 0, particleSize);
       particle.setPosition(startX, startY);
 
-      // 粒子动画
-      const particleData = { y: startY, alpha: 0.8 };
+      // 粒子动画 - simplified without onUpdate position tracking
       this.scene.tweens.add({
-        targets: particleData,
-        y: startY - 80 - Math.random() * 40,
+        targets: particle,
+        y: endY,
         alpha: 0,
-        duration: 800 + Math.random() * 400,
-        delay: 100 + i * 50,
+        duration: 800,
+        delay: 100 + i * 80,
         ease: 'Cubic.easeOut',
-        onUpdate: () => {
-          particle.setPosition(startX, particleData.y);
-          particle.setAlpha(particleData.alpha);
-        },
         onComplete: () => {
           particle.destroy();
         }

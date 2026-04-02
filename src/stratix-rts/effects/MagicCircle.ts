@@ -26,6 +26,8 @@ export class MagicCircle {
   
   private outerRing: Phaser.GameObjects.Graphics;
   private innerRing: Phaser.GameObjects.Graphics;
+  private outerGlow: Phaser.GameObjects.Graphics;
+  private innerGlow: Phaser.GameObjects.Graphics;
   private runes: Phaser.GameObjects.Graphics;
   
   private rotationSpeed: number = 60;
@@ -49,9 +51,11 @@ export class MagicCircle {
     
     this.outerRing = scene.add.graphics();
     this.innerRing = scene.add.graphics();
+    this.outerGlow = scene.add.graphics();
+    this.innerGlow = scene.add.graphics();
     this.runes = scene.add.graphics();
-    
-    this.container.add([this.outerRing, this.innerRing, this.runes]);
+
+    this.container.add([this.outerGlow, this.innerGlow, this.outerRing, this.innerRing, this.runes]);
     
     this.draw();
   }
@@ -62,39 +66,35 @@ export class MagicCircle {
     const pulse = 1 + Math.sin(this.pulsePhase) * 0.1;
     const actualRadius = outerRadius * scale * pulse;
     const actualInnerRadius = innerRadius * scale * pulse;
-    
+
     this.outerRing.clear();
     this.innerRing.clear();
+    this.outerGlow.clear();
+    this.innerGlow.clear();
     this.runes.clear();
-    
+
     if (this.expandProgress === 0) return;
-    
+
+    // Outer glow (reuse existing graphics)
+    this.outerGlow.lineStyle(8, color1, 0.15);
+    this.outerGlow.strokeCircle(0, 0, actualRadius);
+
     this.outerRing.lineStyle(3, color1, 0.8);
     this.outerRing.strokeCircle(0, 0, actualRadius);
-    
+
     this.outerRing.lineStyle(1.5, color1, 0.4);
     this.outerRing.strokeCircle(0, 0, actualRadius * 0.9);
-    
-    const glowOuter = this.outerRing.scene.add.graphics();
-    glowOuter.lineStyle(8, color1, 0.15);
-    glowOuter.strokeCircle(0, 0, actualRadius);
-    this.outerRing.destroy();
-    this.outerRing = glowOuter;
-    this.container.addAt(this.outerRing, 0);
-    
+
+    // Inner glow (reuse existing graphics)
+    this.innerGlow.lineStyle(6, color2, 0.2);
+    this.innerGlow.strokeCircle(0, 0, actualInnerRadius);
+
     this.innerRing.lineStyle(3, color2, 0.8);
     this.innerRing.strokeCircle(0, 0, actualInnerRadius);
-    
+
     this.innerRing.lineStyle(1.5, color2, 0.4);
     this.innerRing.strokeCircle(0, 0, actualInnerRadius * 1.1);
-    
-    const glowInner = this.innerRing.scene.add.graphics();
-    glowInner.lineStyle(6, color2, 0.2);
-    glowInner.strokeCircle(0, 0, actualInnerRadius);
-    this.innerRing.destroy();
-    this.innerRing = glowInner;
-    this.container.addAt(this.innerRing, 1);
-    
+
     this.drawRunes(actualRadius * 0.7);
   }
   
@@ -167,6 +167,8 @@ export class MagicCircle {
     this.active = false;
     this.outerRing.destroy();
     this.innerRing.destroy();
+    this.outerGlow.destroy();
+    this.innerGlow.destroy();
     this.runes.destroy();
     this.container.destroy();
   }

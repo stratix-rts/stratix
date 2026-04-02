@@ -9,8 +9,14 @@ describe('StratixAgentExecutor', () => {
   let executor: StratixAgentExecutor;
 
   beforeEach(() => {
+    jest.useFakeTimers();
     jest.clearAllMocks();
     executor = new StratixAgentExecutor();
+  });
+
+  afterEach(() => {
+    jest.runAllTimers();
+    jest.useRealTimers();
   });
 
   const createMockAgentConfig = (overrides?: Partial<StratixAgentConfig>): StratixAgentConfig => ({

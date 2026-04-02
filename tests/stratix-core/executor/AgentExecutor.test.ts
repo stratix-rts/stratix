@@ -27,6 +27,10 @@ describe('AgentExecutor Interface', () => {
       executor = new OpenClawExecutor();
     });
 
+    afterEach(() => {
+      jest.clearAllTimers();
+    });
+
     test('has execute method', () => {
       expect(typeof executor.execute).toBe('function');
     });
@@ -125,7 +129,13 @@ describe('AgentExecutor Interface', () => {
     let executor: StratixAgentExecutor;
 
     beforeEach(() => {
+      jest.useFakeTimers();
       executor = new StratixAgentExecutor();
+    });
+
+    afterEach(() => {
+      jest.runAllTimers();
+      jest.useRealTimers();
     });
 
     test('has execute method', () => {

@@ -8,6 +8,7 @@ describe('ToolUseLoop', () => {
   let context: ExecutionContext;
 
   beforeEach(() => {
+    jest.useFakeTimers();
     mockSkillRegistry = {
       execute: jest.fn(),
     } as any;
@@ -17,6 +18,11 @@ describe('ToolUseLoop', () => {
     };
 
     context = { agentId: 'test-agent' };
+  });
+
+  afterEach(() => {
+    jest.runAllTimers();
+    jest.useRealTimers();
   });
 
   const createMockTool = (name: string): ToolDefinition => ({
@@ -191,7 +197,7 @@ describe('ToolUseLoop', () => {
 
     const executePromise = loop.execute(messages, tools, context);
 
-    await new Promise(r => setTimeout(r, 20));
+    await jest.advanceTimersByTimeAsync(20);
 
     loop.abort();
 
@@ -333,7 +339,9 @@ describe('ToolUseLoop', () => {
     });
 
     const loop = new ToolUseLoop(mockSkillRegistry, mockLLMConnector, { maxTotalTime: 30 });
-    const result = await loop.execute(messages, tools, context);
+    const executePromise = loop.execute(messages, tools, context);
+    jest.runAllTimers();
+    const result = await executePromise;
 
     expect(result.success).toBe(false);
     expect(result.error).toBe('Maximum execution time exceeded');

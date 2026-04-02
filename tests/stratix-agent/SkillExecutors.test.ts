@@ -721,6 +721,7 @@ describe('ToolUseLoop', () => {
   let context: ExecutionContext;
 
   beforeEach(() => {
+    jest.useFakeTimers();
     mockSkillRegistry = {
       execute: jest.fn(),
     } as any;
@@ -730,6 +731,11 @@ describe('ToolUseLoop', () => {
     };
 
     context = { agentId: 'test-agent' };
+  });
+
+  afterEach(() => {
+    jest.runAllTimers();
+    jest.useRealTimers();
   });
 
   const createMockSkill = (skillId: string): SkillDefinition => ({
@@ -921,7 +927,7 @@ describe('ToolUseLoop', () => {
     const executePromise = loop.execute(messages, tools, context);
 
     // Wait for the first LLM call to actually be made
-    await new Promise(r => setTimeout(r, 20));
+    jest.runAllTimers();
 
     // Now call abort - this should cause the loop to abort at the start of iteration 2
     loop.abort();

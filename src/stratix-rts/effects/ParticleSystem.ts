@@ -40,7 +40,7 @@ export class ParticleSystem {
     this.config = {
       x: config.x,
       y: config.y,
-      particleCount: config.particleCount ?? 40,
+      particleCount: config.particleCount ?? 20,
       color1: config.color1 ?? 0x00ffff,
       color2: config.color2 ?? 0xff00ff
     };

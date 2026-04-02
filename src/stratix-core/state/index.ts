@@ -1,1 +1,1 @@
-export { StratixStateStore, stratixStateStore } from './StratixStateStore';
+export { stratixStateStore, type StratixState } from './StratixStateStore';
