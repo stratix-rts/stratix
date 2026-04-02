@@ -61,3 +61,4 @@ temp/
 # Agent runtime backups
 .long-run-agent/backup/
 release/
+dev.log
