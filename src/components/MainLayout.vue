@@ -12,6 +12,7 @@ import { rtsBridge, rtsEventBus } from '../stratix-rts';
 import HeroManagementModal from './HeroManagementModal.vue';
 import LogPanelModal from './LogPanelModal.vue';
 import StatusPanelModal from './StatusPanelModal.vue';
+import AgentDashboard from './AgentDashboard.vue';
 import ParamFormModal from './ParamFormModal.vue';
 import TaskPanel from './TaskPanel.vue';
 
@@ -38,6 +39,7 @@ const emit = defineEmits<{
 const showHeroModal = ref(false);
 const showLogModal = ref(false);
 const showStatusModal = ref(false);
+const showAgentDashboard = ref(false);
 const showParamFormModal = ref(false);
 
 const selectedSkill = ref<StratixSkillConfig | null>(null);
@@ -60,6 +62,10 @@ const handleOpenLogModal = () => {
 
 const handleOpenStatusModal = () => {
   showStatusModal.value = true;
+};
+
+const handleOpenAgentDashboard = () => {
+  showAgentDashboard.value = true;
 };
 
 const handleOpenTaskModal = (projectId: string, projectPath: string) => {
@@ -206,6 +212,20 @@ const icons = {
 
         <StratixButton
           variant="secondary"
+          @click="handleOpenAgentDashboard"
+          title="Agent 监控"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7" rx="1" />
+            <rect x="14" y="3" width="7" height="7" rx="1" />
+            <rect x="3" y="14" width="7" height="7" rx="1" />
+            <rect x="14" y="14" width="7" height="7" rx="1" />
+          </svg>
+          <span>监控</span>
+        </StratixButton>
+
+        <StratixButton
+          variant="secondary"
           @click="emit('open-data-explorer')"
           title="数据浏览器 (Ctrl+D)"
         >
@@ -250,6 +270,10 @@ const icons = {
       :selected-agents="selectedAgents"
       :agent-count="agentCount"
       :is-game-ready="isGameReady"
+    />
+
+    <AgentDashboard
+      v-model:visible="showAgentDashboard"
     />
     
     <ParamFormModal
