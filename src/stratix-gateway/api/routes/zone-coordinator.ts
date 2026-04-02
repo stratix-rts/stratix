@@ -106,7 +106,7 @@ router.post('/zones/:zoneId/requirements', async (req: Request, res: Response): 
       return;
     }
 
-    const coordinator = await await coordinatorService.getCoordinator(zoneId);
+    const coordinator = await coordinatorService.getCoordinator(zoneId);
     const result: ProcessResult = await coordinator.processRequirement(requirement);
 
     res.json({

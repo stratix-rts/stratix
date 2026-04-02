@@ -14,7 +14,7 @@ import {
   type TaskFlowAction,
   type AuditEventType,
 } from '../../stratix-database';
-import { ZoneCoordinatorEventEmitter } from './ZoneCoordinatorEvents';
+import ZoneCoordinatorEventEmitter from './ZoneCoordinatorEvents';
 
 // ============================================
 // Task Types

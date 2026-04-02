@@ -12,7 +12,7 @@ import { AgentMessageRouter } from './messaging/AgentMessageRouter';
 import { ZoneEvent } from './zone/ZoneState';
 import { TaskEvent } from './task-queue/TaskItem';
 import { MessageEvent } from './messaging/MessageTypes';
-import { ZoneCoordinatorEventEmitter, type ZoneCoordinatorEventPayload } from './zone/ZoneCoordinatorEvents';
+import ZoneCoordinatorEventEmitter, { type ZoneCoordinatorEventPayload } from './zone/ZoneCoordinatorEvents';
 import path from 'path';
 
 // Type for StatusSync - avoid circular dependency at type level

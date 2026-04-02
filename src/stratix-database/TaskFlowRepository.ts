@@ -21,7 +21,7 @@ export interface TaskFlowRecord {
   taskId: string;
   zoneId: string;
   fromAgentId: string | null;  // null 表示 Zone 创建
-  toAgentId: string;
+  toAgentId: string | null;
   action: TaskFlowAction;
   metadata?: {
     reason?: string;
@@ -29,6 +29,8 @@ export interface TaskFlowRecord {
     files?: string[];
     issues?: string[];
     duration?: number;
+    reassignedFrom?: string;
+    reassignedTo?: string;
   };
   createdAt: number;
 }
@@ -54,7 +56,7 @@ export class TaskFlowRepository {
     taskId: string,
     zoneId: string,
     fromAgentId: string | null,
-    toAgentId: string,
+    toAgentId: string | null,
     action: TaskFlowAction,
     metadata?: TaskFlowRecord['metadata']
   ): TaskFlowRecord {

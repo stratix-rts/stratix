@@ -103,6 +103,19 @@ export class StratixDatabase {
       console.log('[Database] Added task_creator_id column to zone_contexts table');
     }
 
+    // 检测并添加 zone_coordinators 表缺失的列
+    const zcColumns = this.db.prepare('PRAGMA table_info(zone_coordinators)').all() as any[];
+    const zcColumnNames = new Set(zcColumns.map((c: any) => c.name));
+
+    if (!zcColumnNames.has('api_key')) {
+      this.db.exec('ALTER TABLE zone_coordinators ADD COLUMN api_key TEXT');
+      console.log('[Database] Added api_key column to zone_coordinators table');
+    }
+    if (!zcColumnNames.has('base_url')) {
+      this.db.exec('ALTER TABLE zone_coordinators ADD COLUMN base_url TEXT');
+      console.log('[Database] Added base_url column to zone_coordinators table');
+    }
+
     // 检测表是否存在
     const tables = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as any[];
     const tableNames = new Set(tables.map((t: any) => t.name));
@@ -480,6 +493,8 @@ export class StratixDatabase {
         require_user_confirm INTEGER DEFAULT 0,
         assign_strategy TEXT DEFAULT 'capability_match' CHECK (assign_strategy IN ('random', 'capability_match', 'load_balance', 'priority')),
         entry_condition TEXT,
+        api_key TEXT,
+        base_url TEXT,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       );
