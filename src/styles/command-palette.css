@@ -1,0 +1,210 @@
+/* Command Palette - Glassmorphism Styles */
+
+.command-palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 15vh;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+}
+
+.command-palette {
+  width: 100%;
+  max-width: 560px;
+  background: var(--ds-bg-secondary, #1a1d27);
+  border: 1px solid var(--ds-border, rgba(255, 255, 255, 0.08));
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset,
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    0 2px 8px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.command-palette__search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--ds-border, rgba(255, 255, 255, 0.06));
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.command-palette__search-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  color: var(--ds-text-muted, #8b8fa3);
+}
+
+.command-palette__input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 15px;
+  color: var(--ds-text-primary, #e4e4e7);
+  caret-color: var(--ds-primary, #6366f1);
+}
+
+.command-palette__input::placeholder {
+  color: var(--ds-text-muted, #8b8fa3);
+}
+
+.command-palette__esc-hint {
+  flex-shrink: 0;
+  padding: 3px 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: inherit;
+  color: var(--ds-text-muted, #8b8fa3);
+}
+
+.command-palette__body {
+  max-height: 340px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px;
+}
+
+.command-palette__body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.command-palette__body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.command-palette__body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.command-palette__group {
+  margin-bottom: 8px;
+}
+
+.command-palette__category {
+  padding: 6px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--ds-text-muted, #8b8fa3);
+}
+
+.command-palette__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.command-palette__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s ease;
+}
+
+.command-palette__item:hover,
+.command-palette__item--selected {
+  background: rgba(99, 102, 241, 0.15);
+}
+
+.command-palette__item--selected {
+  outline: 1px solid rgba(99, 102, 241, 0.3);
+}
+
+.command-palette__item-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--ds-text-secondary, #a1a1aa);
+}
+
+.command-palette__item--selected .command-palette__item-icon {
+  color: var(--ds-primary, #6366f1);
+}
+
+.command-palette__item-name {
+  flex: 1;
+  font-size: 14px;
+  color: var(--ds-text-primary, #e4e4e7);
+}
+
+.command-palette__item-shortcut {
+  flex-shrink: 0;
+  padding: 3px 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: inherit;
+  color: var(--ds-text-muted, #8b8fa3);
+}
+
+.command-palette__empty {
+  padding: 32px 16px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--ds-text-muted, #8b8fa3);
+}
+
+.command-palette__footer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--ds-border, rgba(255, 255, 255, 0.06));
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.command-palette__hint {
+  font-size: 12px;
+  color: var(--ds-text-muted, #8b8fa3);
+}
+
+.command-palette__hint kbd {
+  padding: 2px 5px;
+  margin-right: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+  font-family: inherit;
+}
+
+/* Transitions */
+.command-palette-enter-active,
+.command-palette-leave-active {
+  transition: opacity 0.15s ease;
+}
+
+.command-palette-enter-active .command-palette,
+.command-palette-leave-active .command-palette {
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.command-palette-enter-from,
+.command-palette-leave-to {
+  opacity: 0;
+}
+
+.command-palette-enter-from .command-palette,
+.command-palette-leave-to .command-palette {
+  transform: scale(0.96) translateY(-8px);
+  opacity: 0;
+}
