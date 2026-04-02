@@ -676,11 +676,14 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     this.unifiedZoneManager.getAllZones().forEach(zone => {
       if (zone.isZoneDragging()) {
         zone.updateDrag(worldX, worldY);
-        
+
         const bounds = zone.getBounds();
         const hasOverlap = this.checkZoneOverlap(bounds, zone.getZoneId());
         zone.setWarning(hasOverlap);
-        
+
+        const boundaryInfo = this.checkZoneNearBoundary(bounds);
+        zone.setBoundaryWarning(boundaryInfo.nearBoundary, boundaryInfo.edge);
+
         const offsets = this.zoneDragAgentOffsets.get(zone.getZoneId());
         if (offsets) {
           offsets.forEach((offset, agentId) => {
@@ -699,12 +702,12 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     this.unifiedZoneManager.getAllZones().forEach(zone => {
       if (zone.isZoneDragging()) {
         zone.endDrag();
-        
+
         const bounds = zone.getBounds();
         if (this.checkZoneOverlap(bounds, zone.getZoneId())) {
           this.findNonOverlappingPosition(zone);
         }
-        
+
         const offsets = this.zoneDragAgentOffsets.get(zone.getZoneId());
         if (offsets) {
           const finalBounds = zone.getBounds();
@@ -716,16 +719,18 @@ export default class StratixRTSGameScene extends Phaser.Scene {
             }
           });
         }
-        
+
         const finalBounds = zone.getBounds();
         rtsEventBus.emit('zone:moved' as any, {
           zoneId: zone.getZoneId(),
           position: { x: zone.x, y: zone.y },
           bounds: finalBounds,
         });
-        
+
         zone.setWarning(false);
-        
+        zone.setBoundaryWarning(false, null);
+        zone.animateDrop();
+
         this.zoneDragAgentOffsets.delete(zone.getZoneId());
       }
     });
@@ -751,6 +756,25 @@ export default class StratixRTSGameScene extends Phaser.Scene {
            x + halfWidth <= MAP_WIDTH &&
            y - halfHeight >= 0 &&
            y + halfHeight <= MAP_HEIGHT;
+  }
+
+  private checkZoneNearBoundary(bounds: Phaser.Geom.Rectangle): { nearBoundary: boolean; edge: 'left' | 'right' | 'top' | 'bottom' | null } {
+    const boundaryThreshold = 30;
+
+    if (bounds.x < boundaryThreshold) {
+      return { nearBoundary: true, edge: 'left' };
+    }
+    if (bounds.x + bounds.width > MAP_WIDTH - boundaryThreshold) {
+      return { nearBoundary: true, edge: 'right' };
+    }
+    if (bounds.y < boundaryThreshold) {
+      return { nearBoundary: true, edge: 'top' };
+    }
+    if (bounds.y + bounds.height > MAP_HEIGHT - boundaryThreshold) {
+      return { nearBoundary: true, edge: 'bottom' };
+    }
+
+    return { nearBoundary: false, edge: null };
   }
 
   private findNonOverlappingPosition(zone: BaseZone): void {

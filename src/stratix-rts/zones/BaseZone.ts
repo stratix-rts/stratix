@@ -42,6 +42,7 @@ export abstract class BaseZone extends Phaser.GameObjects.Container {
 
   protected graphics: Phaser.GameObjects.Graphics;
   protected fillGraphics: Phaser.GameObjects.Graphics;
+  protected shadowGraphics: Phaser.GameObjects.Graphics;
   protected cornerHandles: Map<CornerPosition, Phaser.GameObjects.Arc> = new Map();
   protected fencePosts: Phaser.GameObjects.Arc[] = [];
 
@@ -50,6 +51,8 @@ export abstract class BaseZone extends Phaser.GameObjects.Container {
   protected isSelected: boolean = false;
   protected isWarning: boolean = false;
   protected isDragEnabled: boolean = true;
+  protected isNearBoundary: boolean = false;
+  protected boundaryEdge: 'left' | 'right' | 'top' | 'bottom' | null = null;
 
   protected resizingCorner: CornerPosition | null = null;
   protected dragOffset: { x: number; y: number } = { x: 0, y: 0 };
@@ -62,6 +65,11 @@ export abstract class BaseZone extends Phaser.GameObjects.Container {
     pointerX: number;
     pointerY: number;
   } | null = null;
+
+  private dragShadow: Phaser.GameObjects.Graphics | null = null;
+  private originalX: number = 0;
+  private originalY: number = 0;
+  private dragTween: Phaser.Tweens.Tween | null = null;
 
   constructor(scene: Phaser.Scene, config: BaseZoneConfig) {
     super(scene, config.x, config.y);
@@ -76,6 +84,10 @@ export abstract class BaseZone extends Phaser.GameObjects.Container {
 
     this.graphics = scene.add.graphics();
     this.add(this.graphics);
+
+    this.shadowGraphics = scene.add.graphics();
+    this.shadowGraphics.setDepth(998);
+    this.add(this.shadowGraphics);
 
     this.createBaseVisuals();
 
@@ -298,16 +310,127 @@ export abstract class BaseZone extends Phaser.GameObjects.Container {
     this.isDragging = true;
     this.dragOffset.x = this.x - worldX;
     this.dragOffset.y = this.y - worldY;
+    this.originalX = this.x;
+    this.originalY = this.y;
+    this.applyDragVisual(true);
   }
 
   public updateDrag(worldX: number, worldY: number): void {
     if (!this.isDragging) return;
     this.x = worldX + this.dragOffset.x;
     this.y = worldY + this.dragOffset.y;
+    this.updateDragShadow();
   }
 
   public endDrag(): void {
     this.isDragging = false;
+    this.applyDragVisual(false);
+  }
+
+  private applyDragVisual(isDragging: boolean): void {
+    if (isDragging) {
+      this.setDepth(1500);
+      this.fillGraphics.setAlpha(0.85);
+      this.graphics.setAlpha(0.9);
+      this.drawDragShadow();
+      this.fencePosts.forEach(post => post.setAlpha(0.7));
+    } else {
+      this.setDepth(1000);
+      this.fillGraphics.setAlpha(1);
+      this.graphics.setAlpha(1);
+      this.clearDragShadow();
+      this.fencePosts.forEach(post => post.setAlpha(0.8));
+    }
+  }
+
+  private drawDragShadow(): void {
+    this.shadowGraphics.clear();
+    const halfW = this.zoneWidth / 2 + 8;
+    const halfH = this.zoneHeight / 2 + 8;
+    const offsetX = 6;
+    const offsetY = 6;
+
+    this.shadowGraphics.fillStyle(0x000000, 0.3);
+    this.shadowGraphics.fillRoundedRect(-halfW + offsetX, -halfH + offsetY, this.zoneWidth, this.zoneHeight, 8);
+
+    this.shadowGraphics.lineStyle(2, 0xffffff, 0.15);
+    this.shadowGraphics.strokeRoundedRect(-halfW + offsetX, -halfH + offsetY, this.zoneWidth, this.zoneHeight, 8);
+  }
+
+  private clearDragShadow(): void {
+    this.shadowGraphics.clear();
+  }
+
+  private updateDragShadow(): void {
+    if (!this.isDragging) return;
+    this.shadowGraphics.setPosition(this.x, this.y);
+  }
+
+  public setBoundaryWarning(nearBoundary: boolean, edge: 'left' | 'right' | 'top' | 'bottom' | null): void {
+    this.isNearBoundary = nearBoundary;
+    this.boundaryEdge = edge;
+    if (nearBoundary && this.isDragging) {
+      this.drawBoundaryIndicator();
+    } else {
+      this.clearBoundaryIndicator();
+    }
+  }
+
+  private boundaryIndicatorGraphics: Phaser.GameObjects.Graphics | null = null;
+
+  private drawBoundaryIndicator(): void {
+    if (!this.boundaryIndicatorGraphics) {
+      this.boundaryIndicatorGraphics = this.scene.add.graphics();
+      this.boundaryIndicatorGraphics.setDepth(999);
+      this.add(this.boundaryIndicatorGraphics);
+    }
+
+    this.boundaryIndicatorGraphics.clear();
+    const halfW = this.zoneWidth / 2;
+    const halfH = this.zoneHeight / 2;
+
+    let indicatorColor = 0x00ff00;
+    let alpha = 0.5;
+
+    if (this.boundaryEdge === 'left') {
+      this.boundaryIndicatorGraphics.fillStyle(indicatorColor, alpha);
+      this.boundaryIndicatorGraphics.fillRect(-halfW - 5, -halfH, 5, this.zoneHeight);
+    } else if (this.boundaryEdge === 'right') {
+      this.boundaryIndicatorGraphics.fillStyle(indicatorColor, alpha);
+      this.boundaryIndicatorGraphics.fillRect(halfW, -halfH, 5, this.zoneHeight);
+    } else if (this.boundaryEdge === 'top') {
+      this.boundaryIndicatorGraphics.fillStyle(indicatorColor, alpha);
+      this.boundaryIndicatorGraphics.fillRect(-halfW, -halfH - 5, this.zoneWidth, 5);
+    } else if (this.boundaryEdge === 'bottom') {
+      this.boundaryIndicatorGraphics.fillStyle(indicatorColor, alpha);
+      this.boundaryIndicatorGraphics.fillRect(-halfW, halfH, this.zoneWidth, 5);
+    }
+  }
+
+  private clearBoundaryIndicator(): void {
+    if (this.boundaryIndicatorGraphics) {
+      this.boundaryIndicatorGraphics.clear();
+    }
+  }
+
+  public animateDrop(onComplete?: () => void): void {
+    if (this.dragTween) {
+      this.dragTween.stop();
+    }
+
+    this.dragTween = this.scene.tweens.add({
+      targets: this,
+      scaleX: { from: 1.05, to: 1 },
+      scaleY: { from: 1.05, to: 1 },
+      alpha: { from: 0.8, to: 1 },
+      duration: 200,
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        this.setScale(1);
+        this.setAlpha(1);
+        if (onComplete) onComplete();
+      }
+    });
   }
 
   public isZoneDragging(): boolean {
@@ -458,6 +581,14 @@ export abstract class BaseZone extends Phaser.GameObjects.Container {
     this.fencePosts = [];
     this.cornerHandles.forEach(handle => handle.destroy());
     this.cornerHandles.clear();
+    if (this.boundaryIndicatorGraphics) {
+      this.boundaryIndicatorGraphics.destroy();
+      this.boundaryIndicatorGraphics = null;
+    }
+    if (this.dragTween) {
+      this.dragTween.stop();
+      this.dragTween = null;
+    }
     super.destroy();
   }
 }
