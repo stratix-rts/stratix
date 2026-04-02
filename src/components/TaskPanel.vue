@@ -5,6 +5,7 @@ import type { LraTask } from '../stratix-lra-bridge/types';
 import { LRAClient } from '../stratix-lra-bridge/LRAClient';
 import { LRAWatcher } from '../stratix-lra-bridge/LRAWatcher';
 import ChatPanel from './ChatPanel.vue';
+import TaskLogViewer from './TaskLogViewer.vue';
 
 const props = defineProps<{
   visible: boolean;
@@ -17,7 +18,7 @@ const emit = defineEmits<{
   (e: 'update:visible', value: boolean): void;
 }>();
 
-type TabType = 'tasks' | 'chat';
+type TabType = 'tasks' | 'chat' | 'logs';
 const activeTab = ref<TabType>('tasks');
 
 const lraClient = ref<LRAClient | null>(null);
@@ -208,6 +209,13 @@ onUnmounted(() => {
         >
           聊天
         </button>
+        <button
+          class="tab-button"
+          :class="{ active: activeTab === 'logs' }"
+          @click="activeTab = 'logs'"
+        >
+          日志
+        </button>
       </div>
 
       <div v-if="activeTab === 'tasks'" class="tab-content">
@@ -312,6 +320,10 @@ onUnmounted(() => {
           :project-path="projectPath"
         />
       </div>
+
+      <div v-if="activeTab === 'logs'" class="tab-content logs-tab">
+        <TaskLogViewer />
+      </div>
     </div>
   </StratixModal>
 </template>
@@ -386,8 +398,14 @@ onUnmounted(() => {
   flex-direction: column;
 }
 
-.chat-tab {
+.chat-tab,
+.logs-tab {
   padding: 0;
+}
+
+.logs-tab {
+  display: flex;
+  flex-direction: column;
 }
 
 .panel-header {
