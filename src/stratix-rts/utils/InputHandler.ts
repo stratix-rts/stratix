@@ -39,6 +39,9 @@ export interface InputCallbacks {
   onSelectAllSameType?: (agentId: string) => void;
   onCreateControlGroup?: (groupId: number) => void;
   onSelectControlGroup?: (groupId: number, centerCamera: boolean) => void;
+  onSelectAllAgents?: () => void;
+  onCenterView?: () => void;
+  onSaveState?: () => void;
   onStopCommand?: () => void;
   onPatrolCommand?: (x: number, y: number) => void;
   onZoneDragStart?: (zoneId: string, x: number, y: number) => void;
@@ -149,6 +152,8 @@ export class InputHandler {
     
     this.scene.input.keyboard.on('keydown-DELETE', () => this.handleDeleteKey());
     this.scene.input.keyboard.on('keydown-BACKSPACE', () => this.handleDeleteKey());
+
+    this.scene.input.keyboard.on('keydown-SPACE', () => this.handleCenterViewKey());
   }
 
   private handleDeleteKey(): void {
@@ -189,6 +194,10 @@ export class InputHandler {
 
   private handleAttackMoveKey(): void {
     if (!this.isEnabled) return;
+    if (this.ctrlKey.isDown || this.shiftKey.isDown) {
+      this.handleSelectAllKey();
+      return;
+    }
     this.commandType = 'attackMove';
     this.mode = 'command';
     if (this.callbacks.onCommandMode) {
@@ -198,8 +207,33 @@ export class InputHandler {
 
   private handleStopKey(): void {
     if (!this.isEnabled) return;
+    if (this.ctrlKey.isDown) {
+      this.handleSaveKey();
+      return;
+    }
     if (this.callbacks.onStopCommand) {
       this.callbacks.onStopCommand();
+    }
+  }
+
+  private handleSelectAllKey(): void {
+    if (!this.isEnabled) return;
+    if (this.callbacks.onSelectAllAgents) {
+      this.callbacks.onSelectAllAgents();
+    }
+  }
+
+  private handleCenterViewKey(): void {
+    if (!this.isEnabled) return;
+    if (this.callbacks.onCenterView) {
+      this.callbacks.onCenterView();
+    }
+  }
+
+  private handleSaveKey(): void {
+    if (!this.isEnabled) return;
+    if (this.callbacks.onSaveState) {
+      this.callbacks.onSaveState();
     }
   }
 

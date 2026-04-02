@@ -11,11 +11,13 @@ import type {
 } from './events/types/RTSEventTypes';
 import type { Skill } from './ui/v2/CommandPanelV2';
 import { HelpPanel } from './ui/HelpPanel';
+import { ShortcutBar } from './ui/ShortcutBar';
 
 export default class StratixRTSUIScene extends Phaser.Scene {
   private uiFactory: RTSUIFactory | null = null;
   private uiComponents: RTSUIComponents | null = null;
   private helpPanel: HelpPanel | null = null;
+  private shortcutBar: ShortcutBar | null = null;
   private currentStats: TopBarStats = {
     totalAgents: 0,
     onlineAgents: 0,
@@ -106,6 +108,16 @@ export default class StratixRTSUIScene extends Phaser.Scene {
       showCategories: true,
     });
     this.helpPanel.mount(document.body);
+
+    this.shortcutBar = new ShortcutBar({
+      position: 'bottom',
+      align: 'left',
+      maxShortcuts: 10,
+      autoHide: false,
+      hideDelay: 3000,
+      showOnContextChange: true,
+    });
+    this.shortcutBar.mount(document.body);
     
     this.isUIInitialized = true;
   }
@@ -280,6 +292,11 @@ export default class StratixRTSUIScene extends Phaser.Scene {
     if (this.helpPanel) {
       this.helpPanel.destroy();
       this.helpPanel = null;
+    }
+
+    if (this.shortcutBar) {
+      this.shortcutBar.destroy();
+      this.shortcutBar = null;
     }
 
     if (this.uiFactory) {

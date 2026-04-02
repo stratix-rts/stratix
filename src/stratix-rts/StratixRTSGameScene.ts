@@ -216,6 +216,9 @@ export default class StratixRTSGameScene extends Phaser.Scene {
       onSelectAllSameType: (agentId) => this.handleSelectAllSameType(agentId),
       onCreateControlGroup: (groupId) => this.handleCreateControlGroup(groupId),
       onSelectControlGroup: (groupId, centerCamera) => this.handleSelectControlGroup(groupId, centerCamera),
+      onSelectAllAgents: () => this.handleSelectAllAgents(),
+      onCenterView: () => this.handleCenterView(),
+      onSaveState: () => this.handleSaveState(),
       onStopCommand: () => this.handleStopCommand(),
       onPatrolCommand: (x, y) => this.handlePatrolCommand(x, y),
       onZoneDragStart: (zoneId, x, y) => this.handleZoneDragStart(zoneId, x, y),
@@ -562,6 +565,42 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   private handleStopCommand(): void {
     if (this.selectedAgentIds.size === 0) return;
     console.log('[StratixRTS] Stop command for', this.selectedAgentIds.size, 'units');
+  }
+
+  private handleSelectAllAgents(): void {
+    this.clearSelection();
+    this.agentSprites.forEach((sprite, agentId) => {
+      this.selectAgent(agentId);
+    });
+    console.log('[StratixRTS] Selected all agents:', this.agentSprites.size);
+  }
+
+  private handleCenterView(): void {
+    if (this.selectedAgentIds.size === 0) {
+      this.cameras.main.scrollX = 0;
+      this.cameras.main.scrollY = 0;
+      console.log('[StratixRTS] Centered on origin');
+      return;
+    }
+    let sumX = 0, sumY = 0, count = 0;
+    this.selectedAgentIds.forEach(id => {
+      const sprite = this.agentSprites.get(id);
+      if (sprite) {
+        sumX += sprite.x;
+        sumY += sprite.y;
+        count++;
+      }
+    });
+    if (count > 0) {
+      this.cameras.main.scrollX = sumX / count - this.cameras.main.width / 2;
+      this.cameras.main.scrollY = sumY / count - this.cameras.main.height / 2;
+      console.log('[StratixRTS] Centered on selection');
+    }
+  }
+
+  private handleSaveState(): void {
+    console.log('[StratixRTS] Saving state...');
+    rtsEventBus.emit('game:vue:save_state' as any, {});
   }
 
   private handlePatrolCommand(x: number, y: number): void {

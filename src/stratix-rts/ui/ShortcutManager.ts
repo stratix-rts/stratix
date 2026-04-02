@@ -151,6 +151,24 @@ export class ShortcutManager {
     });
 
     this.register({
+      id: 'center-view',
+      keys: ['Space'],
+      description: '居中视图',
+      category: 'camera',
+      context: 'global',
+      priority: 48,
+    });
+
+    this.register({
+      id: 'save-state',
+      keys: ['Ctrl+S'],
+      description: '保存状态',
+      category: 'general',
+      context: 'global',
+      priority: 95,
+    });
+
+    this.register({
       id: 'camera-up',
       keys: ['↑', 'W'],
       description: '镜头上移',
