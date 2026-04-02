@@ -528,6 +528,40 @@ defineExpose({
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  flex-shrink: 0;
+  transition: width 0.2s ease;
+}
+
+/* Responsive: narrow screens - collapse sidebar */
+@media (max-width: 1024px) {
+  .chat-panel {
+    flex-direction: column;
+  }
+
+  .chat-sidebar {
+    width: 100%;
+    max-height: 200px;
+    border-right: none;
+    border-bottom: 1px solid var(--ds-border);
+  }
+
+  .sidebar-section {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .agent-list,
+  .channel-list {
+    flex-direction: row;
+    overflow-x: auto;
+    gap: 8px;
+  }
+
+  .agent-item,
+  .channel-item {
+    flex-shrink: 0;
+    min-width: 100px;
+  }
 }
 
 .sidebar-section {

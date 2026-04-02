@@ -492,6 +492,29 @@ const formatTime = (ms: number) => {
   max-width: 70%;
 }
 
+/* Responsive: narrow screens */
+@media (max-width: 1024px) {
+  .message-content {
+    max-width: 85%;
+  }
+
+  .message-avatar {
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+  }
+
+  .message-text {
+    font-size: 13px;
+    padding: 6px 10px;
+  }
+
+  .skill-history-dropdown {
+    width: 240px;
+    right: -60px;
+  }
+}
+
 .message-user .message-content {
   text-align: right;
 }

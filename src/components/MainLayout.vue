@@ -301,6 +301,35 @@ const icons = {
   gap: 20px;
 }
 
+/* Responsive: narrow screens */
+@media (max-width: 1024px) {
+  .header {
+    padding: 0 12px;
+    gap: 12px;
+  }
+
+  .logo-text {
+    display: none;
+  }
+
+  .toolbar :deep(.stratix-button span:not(.btn-badge)) {
+    display: none;
+  }
+
+  .toolbar :deep(.stratix-button) {
+    padding: 8px;
+    min-width: auto;
+  }
+
+  .toolbar :deep(.stratix-button svg) {
+    margin: 0;
+  }
+
+  .status {
+    font-size: 12px;
+  }
+}
+
 .logo {
   display: flex;
   align-items: center;

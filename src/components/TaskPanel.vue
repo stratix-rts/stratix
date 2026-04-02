@@ -326,6 +326,32 @@ onUnmounted(() => {
   min-height: 500px;
 }
 
+/* Responsive: narrow screens */
+@media (max-width: 1024px) {
+  .task-panel {
+    height: 80vh;
+    min-height: 400px;
+  }
+
+  .task-stats {
+    flex-wrap: wrap;
+  }
+
+  .stat-item {
+    flex: 1;
+    min-width: 70px;
+    padding: 6px 10px;
+  }
+
+  .panel-header {
+    padding: 12px 16px;
+  }
+
+  .panel-body {
+    padding: 12px 16px;
+  }
+}
+
 .panel-tabs {
   display: flex;
   gap: 0;
