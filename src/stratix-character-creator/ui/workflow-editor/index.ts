@@ -1,1 +1,1 @@
-export { WorkflowEditorPanel, type WorkflowEditorConfig } from './WorkflowEditorPanel';
+export { WorkflowEditorPanel, type WorkflowEditorConfig, type WorkflowExecutionStatus } from './WorkflowEditorPanel';

@@ -15,6 +15,7 @@ import StatusPanelModal from './StatusPanelModal.vue';
 import AgentDashboard from './AgentDashboard.vue';
 import ParamFormModal from './ParamFormModal.vue';
 import TaskPanel from './TaskPanel.vue';
+import WorkflowEditorModal from './WorkflowEditorModal.vue';
 
 const props = defineProps<{
   gameContainer: HTMLElement | null;
@@ -41,6 +42,7 @@ const showLogModal = ref(false);
 const showStatusModal = ref(false);
 const showAgentDashboard = ref(false);
 const showParamFormModal = ref(false);
+const showWorkflowEditor = ref(false);
 
 const selectedSkill = ref<StratixSkillConfig | null>(null);
 const paramValues = ref<Record<string, any>>({});
@@ -66,6 +68,10 @@ const handleOpenStatusModal = () => {
 
 const handleOpenAgentDashboard = () => {
   showAgentDashboard.value = true;
+};
+
+const handleOpenWorkflowEditor = () => {
+  showWorkflowEditor.value = true;
 };
 
 const handleOpenTaskModal = (projectId: string, projectPath: string) => {
@@ -234,6 +240,17 @@ const icons = {
           </svg>
           <span>数据</span>
         </StratixButton>
+
+        <StratixButton
+          variant="secondary"
+          @click="handleOpenWorkflowEditor"
+          title="工作流编辑器"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18" />
+          </svg>
+          <span>工作流</span>
+        </StratixButton>
       </div>
       
       <div class="header-info">
@@ -301,6 +318,12 @@ const icons = {
       ok-danger
       @ok="handleConfirmDeleteZones"
       @cancel="handleCancelDeleteZones"
+    />
+
+    <WorkflowEditorModal
+      v-model:visible="showWorkflowEditor"
+      @workflowChange="(def) => console.log('Workflow changed:', def)"
+      @execute="(status, def) => console.log('Workflow execute:', status, def)"
     />
   </div>
 </template>
