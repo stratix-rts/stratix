@@ -444,23 +444,23 @@ const handleBatchDelete = () => {
 }
 
 .title-cell:hover {
-  color: var(--ds-primary, #3b82f6);
+  color: var(--ds-color-primary);
 }
 
 .prompt-cell {
-  color: var(--ds-text-secondary, #6b7280);
+  color: var(--ds-text-secondary);
   cursor: pointer;
 }
 
 .prompt-cell:hover {
-  color: var(--ds-primary, #3b82f6);
+  color: var(--ds-color-primary);
 }
 
 .count-cell {
   display: flex;
   align-items: center;
   gap: 4px;
-  color: var(--ds-text-secondary, #6b7280);
+  color: var(--ds-text-secondary);
 }
 
 .action-cell {
@@ -469,12 +469,12 @@ const handleBatchDelete = () => {
 }
 
 .seq-cell {
-  color: var(--ds-text-tertiary, #9ca3af);
+  color: var(--ds-text-muted);
 }
 
 .select-count {
   font-size: 13px;
-  color: var(--ds-text-secondary, #6b7280);
+  color: var(--ds-text-secondary);
   white-space: nowrap;
 }
 </style>

@@ -145,11 +145,11 @@ onUnmounted(() => {
 
 <style scoped>
 .rts-settings {
-  background: rgba(0, 0, 0, 0.8);
-  border: 1px solid #4a4a6a;
+  background: var(--ds-bg-elevated);
+  border: 1px solid var(--ds-border-default);
   border-radius: 8px;
   padding: 16px;
-  color: #ffffff;
+  color: var(--ds-text-primary);
   font-size: 14px;
   min-width: 300px;
 }
@@ -157,7 +157,7 @@ onUnmounted(() => {
 .rts-settings h3 {
   margin: 0 0 16px 0;
   padding-bottom: 8px;
-  border-bottom: 1px solid #4a4a6a;
+  border-bottom: 1px solid var(--ds-border-default);
   font-size: 16px;
 }
 
@@ -168,16 +168,16 @@ onUnmounted(() => {
 .setting-item label {
   display: block;
   margin-bottom: 4px;
-  color: #cccccc;
+  color: var(--ds-text-secondary);
 }
 
 .setting-item select {
   width: 100%;
   padding: 6px 8px;
-  background: #2a2a4a;
-  border: 1px solid #4a4a6a;
+  background: var(--ds-bg-overlay);
+  border: 1px solid var(--ds-border-default);
   border-radius: 4px;
-  color: #ffffff;
+  color: var(--ds-text-primary);
   font-size: 14px;
 }
 
@@ -193,14 +193,14 @@ onUnmounted(() => {
 .hint {
   display: block;
   font-size: 12px;
-  color: #888888;
+  color: var(--ds-text-muted);
   margin-top: 4px;
 }
 
 .stats {
   margin-top: 16px;
   padding-top: 12px;
-  border-top: 1px solid #4a4a6a;
+  border-top: 1px solid var(--ds-border-default);
 }
 
 .stats p {
@@ -217,6 +217,6 @@ onUnmounted(() => {
 .stats li {
   margin: 4px 0;
   font-size: 13px;
-  color: #aaaaaa;
+  color: var(--ds-text-muted);
 }
 </style>

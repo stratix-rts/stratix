@@ -335,7 +335,7 @@ onMounted(() => {
 }
 
 .zone-task-confirm-panel__stat--warning .zone-task-confirm-panel__stat-value {
-  color: var(--ds-semantic-warning, #eab308);
+  color: var(--ds-status-warning);
 }
 
 .zone-task-confirm-panel__stat--success .zone-task-confirm-panel__stat-value {
@@ -449,27 +449,27 @@ onMounted(() => {
 }
 
 .zone-task-confirm-panel__task-priority--1 {
-  background: rgba(239, 68, 68, 0.15);
-  color: var(--ds-semantic-danger);
+  background: color-mix(in srgb, var(--ds-status-danger) 15%, transparent);
+  color: var(--ds-status-danger);
 }
 
 .zone-task-confirm-panel__task-priority--2 {
-  background: rgba(249, 115, 22, 0.15);
-  color: #f97316;
+  background: color-mix(in srgb, var(--ds-status-warning) 15%, transparent);
+  color: var(--ds-status-warning);
 }
 
 .zone-task-confirm-panel__task-priority--3 {
-  background: rgba(234, 179, 8, 0.15);
+  background: color-mix(in srgb, #eab308 15%, transparent);
   color: #eab308;
 }
 
 .zone-task-confirm-panel__task-priority--4 {
-  background: rgba(34, 197, 94, 0.15);
-  color: #22c55e;
+  background: color-mix(in srgb, var(--ds-status-success) 15%, transparent);
+  color: var(--ds-status-success);
 }
 
 .zone-task-confirm-panel__task-priority--5 {
-  background: rgba(156, 163, 175, 0.15);
+  background: color-mix(in srgb, var(--ds-text-muted) 15%, transparent);
   color: var(--ds-text-muted);
 }
 

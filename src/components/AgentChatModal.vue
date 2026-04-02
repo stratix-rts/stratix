@@ -469,7 +469,7 @@ const formatTime = (ms: number) => {
 }
 
 .message-failed .message-text {
-  border: 1px solid #ff4d4f;
+  border: 1px solid var(--ds-status-danger);
 }
 
 .message-user {
@@ -524,13 +524,13 @@ const formatTime = (ms: number) => {
 }
 
 .message-status.failed {
-  color: #ff4d4f;
+  color: var(--ds-status-danger);
   cursor: pointer;
 }
 
 .message-error {
   font-size: 11px;
-  color: #ff4d4f;
+  color: var(--ds-status-danger);
   margin-top: 4px;
 }
 
@@ -593,7 +593,7 @@ const formatTime = (ms: number) => {
 }
 
 .skill-error {
-  color: #ff4d4f;
+  color: var(--ds-status-danger);
 }
 
 .chat-input {

@@ -526,7 +526,7 @@ onUnmounted(() => {
   border-radius: 4px;
   font-size: 10px;
   font-weight: bold;
-  color: #fff;
+  color: var(--ds-text-primary);
   text-transform: uppercase;
 }
 

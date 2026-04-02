@@ -208,7 +208,7 @@ watch(promptDialogVisible, (visible) => {
 .game-container {
   width: 100%;
   height: calc(100vh - 48px);
-  background: #0d0d14;
+  background: var(--ds-bg-base);
   position: relative;
 }
 </style>

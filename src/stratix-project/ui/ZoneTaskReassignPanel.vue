@@ -439,23 +439,23 @@ onMounted(() => {
 }
 
 .zone-task-reassign-panel__task-status--delegated {
-  background: rgba(59, 130, 246, 0.15);
-  color: #3b82f6;
+  background: color-mix(in srgb, var(--ds-color-primary) 15%, transparent);
+  color: var(--ds-color-primary);
 }
 
 .zone-task-reassign-panel__task-status--in_progress {
-  background: rgba(168, 85, 247, 0.15);
+  background: color-mix(in srgb, #a855f7 15%, transparent);
   color: #a855f7;
 }
 
 .zone-task-reassign-panel__task-status--completed {
-  background: rgba(34, 197, 94, 0.15);
-  color: #22c55e;
+  background: color-mix(in srgb, var(--ds-status-success) 15%, transparent);
+  color: var(--ds-status-success);
 }
 
 .zone-task-reassign-panel__task-status--failed {
-  background: rgba(239, 68, 68, 0.15);
-  color: var(--ds-semantic-danger);
+  background: color-mix(in srgb, var(--ds-status-danger) 15%, transparent);
+  color: var(--ds-status-danger);
 }
 
 .zone-task-reassign-panel__task-desc {

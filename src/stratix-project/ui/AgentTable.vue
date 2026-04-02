@@ -293,8 +293,8 @@ const handleDelete = (agent: Agent) => {
   justify-content: center;
   width: 32px;
   height: 32px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: linear-gradient(135deg, var(--ds-color-primary) 0%, var(--ds-color-secondary) 100%);
+  color: var(--ds-text-primary);
   border-radius: 8px;
   font-size: 12px;
   font-weight: 600;
@@ -312,7 +312,7 @@ const handleDelete = (agent: Agent) => {
 
 .agent-id {
   font-size: 11px;
-  color: var(--ds-text-tertiary, #9ca3af);
+  color: var(--ds-text-muted);
   font-family: monospace;
 }
 
@@ -322,38 +322,38 @@ const handleDelete = (agent: Agent) => {
   padding: 2px 8px;
   border-radius: 4px;
   font-size: 12px;
-  background-color: var(--ds-bg-secondary, #f3f4f6);
+  background-color: var(--ds-bg-elevated);
 }
 
 .agent-status.active {
-  background-color: rgba(16, 185, 129, 0.1);
-  color: #10b981;
+  background-color: color-mix(in srgb, var(--ds-status-success) 10%, transparent);
+  color: var(--ds-status-success);
 }
 
 .agent-status.idle {
-  background-color: rgba(245, 158, 11, 0.1);
-  color: #f59e0b;
+  background-color: color-mix(in srgb, var(--ds-status-warning) 10%, transparent);
+  color: var(--ds-status-warning);
 }
 
 .agent-status.busy {
-  background-color: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  background-color: color-mix(in srgb, var(--ds-status-danger) 10%, transparent);
+  color: var(--ds-status-danger);
 }
 
 .agent-status.offline {
-  background-color: var(--ds-bg-secondary, #f3f4f6);
-  color: #6b7280;
+  background-color: var(--ds-bg-elevated);
+  color: var(--ds-text-muted);
 }
 
 .agent-type {
-  color: var(--ds-text-secondary, #6b7280);
+  color: var(--ds-text-secondary);
 }
 
 .backend-badge {
   display: inline-block;
   padding: 2px 6px;
-  background-color: rgba(59, 130, 246, 0.1);
-  color: #3b82f6;
+  background-color: color-mix(in srgb, var(--ds-color-primary) 10%, transparent);
+  color: var(--ds-color-primary);
   border-radius: 4px;
   font-size: 11px;
   font-family: monospace;
@@ -363,7 +363,7 @@ const handleDelete = (agent: Agent) => {
   display: flex;
   align-items: center;
   gap: 4px;
-  color: var(--ds-text-secondary, #6b7280);
+  color: var(--ds-text-secondary);
 }
 
 .cell-text {

@@ -347,12 +347,12 @@ watch(
 .status-text {
   font-size: 14px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--ds-text-primary);
 }
 
 .status-hint {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
+  color: color-mix(in srgb, var(--ds-text-primary) 60%, transparent);
   margin-left: auto;
 }
 
@@ -366,12 +366,12 @@ watch(
 }
 
 .error-message {
-  color: #ff4444;
+  color: var(--ds-status-danger);
   font-size: 12px;
   margin-top: 4px;
   padding: 4px 8px;
-  background: rgba(255, 68, 68, 0.1);
-  border-left: 3px solid #ff4444;
+  background: color-mix(in srgb, var(--ds-status-danger) 10%, transparent);
+  border-left: 3px solid var(--ds-status-danger);
   border-radius: 3px;
   animation: shake 0.3s ease-in-out;
 }
@@ -392,10 +392,10 @@ watch(
 .save-error {
   margin-top: 12px;
   padding: 12px;
-  background: rgba(255, 68, 68, 0.15);
-  border: 1px solid #ff4444;
+  background: color-mix(in srgb, var(--ds-status-danger) 15%, transparent);
+  border: 1px solid var(--ds-status-danger);
   border-radius: 6px;
-  color: #ff4444;
+  color: var(--ds-status-danger);
   display: flex;
   align-items: center;
   gap: 8px;

@@ -513,15 +513,15 @@ function closeModal() {
 }
 
 .test-result--success {
-  background: rgba(34, 197, 94, 0.1);
-  color: #22c55e;
-  border: 1px solid rgba(34, 197, 94, 0.3);
+  background: color-mix(in srgb, var(--ds-status-success) 10%, transparent);
+  color: var(--ds-status-success);
+  border: 1px solid color-mix(in srgb, var(--ds-status-success) 30%, transparent);
 }
 
 .test-result--error {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: color-mix(in srgb, var(--ds-status-danger) 10%, transparent);
+  color: var(--ds-status-danger);
+  border: 1px solid color-mix(in srgb, var(--ds-status-danger) 30%, transparent);
 }
 
 .saved-providers {

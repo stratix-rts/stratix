@@ -621,7 +621,7 @@ defineExpose({
 }
 
 .agent-status.busy {
-  background: #ffaa00;
+  background: var(--ds-status-warning);
 }
 
 .channel-list {
@@ -794,7 +794,7 @@ defineExpose({
 
 .message-time {
   font-size: 11px;
-  color: #666;
+  color: var(--ds-text-muted);
 }
 
 .message-content {

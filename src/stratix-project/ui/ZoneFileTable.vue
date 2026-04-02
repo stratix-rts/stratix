@@ -873,8 +873,8 @@ const uploadFile = async (file: File) => {
 .drag-overlay {
   position: absolute;
   inset: 0;
-  background-color: rgba(59, 130, 246, 0.1);
-  border: 2px dashed #3b82f6;
+  background-color: color-mix(in srgb, var(--ds-color-primary) 10%, transparent);
+  border: 2px dashed var(--ds-color-primary);
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -888,7 +888,7 @@ const uploadFile = async (file: File) => {
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  color: #3b82f6;
+  color: var(--ds-color-primary);
   font-weight: 500;
   font-size: 16px;
 }
@@ -898,8 +898,8 @@ const uploadFile = async (file: File) => {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background-color: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  background-color: color-mix(in srgb, var(--ds-status-danger) 10%, transparent);
+  color: var(--ds-status-danger);
   border-radius: 6px;
   font-size: 14px;
 }
@@ -932,7 +932,7 @@ const uploadFile = async (file: File) => {
 
 .select-count {
   font-size: 13px;
-  color: var(--ds-text-secondary, #6b7280);
+  color: var(--ds-text-secondary);
   white-space: nowrap;
 }
 
@@ -950,13 +950,13 @@ const uploadFile = async (file: File) => {
 }
 
 .source-type.local {
-  background-color: rgba(16, 185, 129, 0.1);
-  color: #10b981;
+  background-color: color-mix(in srgb, var(--ds-status-success) 10%, transparent);
+  color: var(--ds-status-success);
 }
 
 .source-type.url {
-  background-color: rgba(59, 130, 246, 0.1);
-  color: #3b82f6;
+  background-color: color-mix(in srgb, var(--ds-color-primary) 10%, transparent);
+  color: var(--ds-color-primary);
 }
 
 .file-name {
@@ -971,7 +971,7 @@ const uploadFile = async (file: File) => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--ds-text-secondary, #6b7280);
+  color: var(--ds-text-secondary);
   cursor: default;
 }
 
@@ -980,7 +980,7 @@ const uploadFile = async (file: File) => {
 }
 
 .file-source.is-url:hover {
-  color: var(--ds-primary, #3b82f6);
+  color: var(--ds-color-primary);
 }
 
 .url-favicon {
@@ -1022,14 +1022,14 @@ const uploadFile = async (file: File) => {
   justify-content: center;
   width: 48px;
   height: 48px;
-  background-color: var(--ds-bg-secondary, #f3f4f6);
+  background-color: var(--ds-bg-elevated);
   border-radius: 4px;
   cursor: pointer;
   font-size: 20px;
 }
 
 .no-preview {
-  color: var(--ds-text-tertiary, #9ca3af);
+  color: var(--ds-text-muted);
 }
 
 .action-cell {
@@ -1057,7 +1057,7 @@ const uploadFile = async (file: File) => {
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
-  background-color: var(--ds-bg-secondary, #f3f4f6);
+  background-color: var(--ds-bg-elevated);
   padding: 16px;
   border-radius: 8px;
   margin: 0;
@@ -1087,7 +1087,7 @@ const uploadFile = async (file: File) => {
 
 .url-preview-link {
   font-size: 16px;
-  color: var(--ds-primary, #3b82f6);
+  color: var(--ds-color-primary);
   text-decoration: none;
   word-break: break-all;
 }
@@ -1098,7 +1098,7 @@ const uploadFile = async (file: File) => {
 
 .url-preview-title {
   font-size: 16px;
-  color: var(--ds-text-primary, #111827);
+  color: var(--ds-text-primary);
 }
 
 .url-preview-actions {
@@ -1128,7 +1128,7 @@ const uploadFile = async (file: File) => {
 .preview-unsupported-hint {
   margin-top: 8px !important;
   font-size: 12px !important;
-  color: var(--ds-text-tertiary, #9ca3af);
+  color: var(--ds-text-muted);
 }
 
 /* 版本历史样式 */
@@ -1141,7 +1141,7 @@ const uploadFile = async (file: File) => {
 .version-empty {
   text-align: center;
   padding: 40px;
-  color: var(--ds-text-secondary, #6b7280);
+  color: var(--ds-text-secondary);
 }
 
 .version-list {
@@ -1155,18 +1155,18 @@ const uploadFile = async (file: File) => {
   justify-content: space-between;
   align-items: flex-start;
   padding: 16px;
-  border: 1px solid var(--ds-border, #e5e7eb);
+  border: 1px solid var(--ds-border-default);
   border-radius: 8px;
   transition: all 0.15s ease;
 }
 
 .version-item:hover {
-  background-color: var(--ds-bg-hover, #f9fafb);
+  background-color: var(--ds-bg-overlay);
 }
 
 .version-item.is-current {
-  border-color: var(--ds-primary, #3b82f6);
-  background-color: rgba(59, 130, 246, 0.05);
+  border-color: var(--ds-color-primary);
+  background-color: color-mix(in srgb, var(--ds-color-primary) 5%, transparent);
 }
 
 .version-info {
@@ -1183,25 +1183,25 @@ const uploadFile = async (file: File) => {
 
 .version-label {
   font-weight: 500;
-  color: var(--ds-text-primary, #111827);
+  color: var(--ds-text-primary);
 }
 
 .version-date {
   font-size: 13px;
-  color: var(--ds-text-secondary, #6b7280);
+  color: var(--ds-text-secondary);
 }
 
 .version-desc {
   font-size: 13px;
-  color: var(--ds-text-secondary, #6b7280);
+  color: var(--ds-text-secondary);
   margin-bottom: 8px;
 }
 
 .version-preview {
   font-size: 13px;
-  color: var(--ds-text-tertiary, #9ca3af);
+  color: var(--ds-text-muted);
   font-family: monospace;
-  background-color: var(--ds-bg-secondary, #f3f4f6);
+  background-color: var(--ds-bg-elevated);
   padding: 8px;
   border-radius: 4px;
   overflow: hidden;
@@ -1227,7 +1227,7 @@ const uploadFile = async (file: File) => {
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
-  background-color: var(--ds-bg-secondary, #f3f4f6);
+  background-color: var(--ds-bg-elevated);
   padding: 16px;
   border-radius: 8px;
   margin: 0;

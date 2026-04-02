@@ -417,18 +417,18 @@ const handleRemoveMember = async (zoneId: string, memberId: string) => {
 }
 
 .zone-panel-notification--success {
-  background: #10b981;
-  color: white;
+  background: var(--ds-status-success);
+  color: var(--ds-text-primary);
 }
 
 .zone-panel-notification--error {
-  background: #ef4444;
-  color: white;
+  background: var(--ds-status-danger);
+  color: var(--ds-text-primary);
 }
 
 .zone-panel-notification--info {
-  background: #3b82f6;
-  color: white;
+  background: var(--ds-color-primary);
+  color: var(--ds-text-primary);
 }
 
 @keyframes slideDown {
@@ -448,7 +448,7 @@ const handleRemoveMember = async (zoneId: string, memberId: string) => {
 
 .agent-picker__desc {
   margin: 0 0 16px 0;
-  color: #6b7280;
+  color: var(--ds-text-muted);
   font-size: 14px;
 }
 
@@ -465,26 +465,26 @@ const handleRemoveMember = async (zoneId: string, memberId: string) => {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
+  background: var(--ds-bg-elevated);
+  border: 1px solid var(--ds-border-default);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .agent-picker__item:hover {
-  background: #f3f4f6;
-  border-color: #3b82f6;
+  background: var(--ds-bg-overlay);
+  border-color: var(--ds-color-primary);
 }
 
 .agent-picker__name {
   font-weight: 500;
-  color: #111827;
+  color: var(--ds-text-primary);
 }
 
 .agent-picker__id {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--ds-text-muted);
   font-family: monospace;
 }
 
@@ -493,15 +493,15 @@ const handleRemoveMember = async (zoneId: string, memberId: string) => {
   margin-top: 12px;
   padding: 10px;
   background: transparent;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--ds-border-strong);
   border-radius: 6px;
-  color: #6b7280;
+  color: var(--ds-text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .agent-picker__cancel:hover {
-  background: #f9fafb;
-  border-color: #9ca3af;
+  background: var(--ds-bg-elevated);
+  border-color: var(--ds-text-muted);
 }
 </style>
