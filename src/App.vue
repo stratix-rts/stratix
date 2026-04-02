@@ -8,6 +8,8 @@ import AgentChatModal from './components/AgentChatModal.vue';
 import ProjectConfigPanel from './stratix-project/ui/ProjectConfigPanel.vue';
 import ZonePanel from './stratix-project/ui/ZonePanel.vue';
 import DataExplorer from './stratix-project/ui/DataExplorer.vue';
+import { ToastContainer, toastService } from './components/ui';
+import type { ToastItem } from './components/ui';
 import type { Zone } from './stratix-project/types';
 import { agentStore } from './stores/agentStore';
 import type { SavedCharacter } from './stratix-character-creator/types';
@@ -31,9 +33,11 @@ const showZonePanel = ref(false);
 const currentZone = ref<Zone | null>(null);
 const showDataExplorer = ref(false);
 const dataExplorerZoneId = ref<string | undefined>(undefined);
+const toasts = ref<ToastItem[]>([]);
 
 let game: Phaser.Game | null = null;
 let eventBus: StratixEventBus;
+let unsubscribeToasts: (() => void) | null = null;
 
 // 从 store 获取状态
 const agents = computed(() => agentStore.agents.value);
@@ -208,6 +212,11 @@ const openDataExplorer = (zoneId?: string) => {
 
 onMounted(async () => {
   eventBus = StratixEventBus.getInstance();
+
+  // Subscribe to toast updates
+  unsubscribeToasts = toastService.subscribe((newToasts) => {
+    toasts.value = newToasts;
+  });
   
   eventBus.subscribe('stratix:agent_select', handleAgentSelect);
   eventBus.subscribe('stratix:command_execute', handleCommandExecute as any);
@@ -375,12 +384,18 @@ onMounted(async () => {
 onUnmounted(() => {
   agentStore.stopAutoRefresh();
   agentStore.clear();
-  
+
+  // Unsubscribe from toast updates
+  if (unsubscribeToasts) {
+    unsubscribeToasts();
+    unsubscribeToasts = null;
+  }
+
   if (eventBus) {
     eventBus.unsubscribe('stratix:agent_select', handleAgentSelect);
     eventBus.unsubscribe('stratix:command_execute', handleCommandExecute as any);
   }
-  
+
   rtsEventBus.off('game:ui:project_created', handleProjectCreated);
   rtsEventBus.off('game:ui:config_click', (({ agentId }: { agentId: string }) => {
     openCharacterCreator(agentId.replace('custom-', ''));
@@ -397,7 +412,7 @@ onUnmounted(() => {
   rtsEventBus.off('game:ui:stop_agents', (({ agentIds }: { agentIds: string[] }) => {
     console.log('Stop agents:', agentIds);
   }) as any);
-  
+
   if (game) {
     game.destroy(true);
   }
@@ -464,6 +479,12 @@ onUnmounted(() => {
   <DataExplorer
     v-model:visible="showDataExplorer"
     :initial-zone-id="dataExplorerZoneId"
+  />
+
+  <ToastContainer
+    :toasts="toasts"
+    position="top-right"
+    @dismiss="toastService.dismiss($event)"
   />
 </template>
 

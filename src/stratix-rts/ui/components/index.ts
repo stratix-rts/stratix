@@ -1,2 +1,2 @@
-export { ToastManager, toastManager } from './ToastManager';
-export type { ToastConfig, Toast } from './ToastManager';
+// ToastManager removed - use toastService from @/components/ui instead
+// It listens to scene:ui:notification events and manages toasts for the Vue layer

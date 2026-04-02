@@ -37,9 +37,15 @@ export {
   type SizeContext,
 } from '@/design-system/composables/useSizeContext';
 
-export { 
-  useZIndexManager, 
-  resetZIndexCounter, 
+export {
+  useZIndexManager,
+  resetZIndexCounter,
   getZIndexCounter,
   type ZIndexManager,
 } from '@/design-system/composables/useZIndexManager';
+
+// Toast system
+export { default as ToastContainer } from './ToastContainer.vue';
+export type { ToastItem, ToastOptions } from './ToastItem';
+export { toastService } from './ToastService';
+export { useToast } from '@/composables/useToast';
