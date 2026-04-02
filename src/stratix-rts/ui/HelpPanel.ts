@@ -63,24 +63,32 @@ export class HelpPanel {
         return;
       }
 
+      if (event.key === '/' && this.state.isVisible) {
+        event.preventDefault();
+        this.focusSearch();
+        return;
+      }
+
       switch (event.key) {
         case 'Escape':
           event.preventDefault();
           this.hide();
           break;
         case 'ArrowUp':
+          if (document.activeElement?.classList.contains('help-panel-search-input')) break;
           event.preventDefault();
           this.navigateUp();
           break;
         case 'ArrowDown':
+          if (document.activeElement?.classList.contains('help-panel-search-input')) break;
           event.preventDefault();
           this.navigateDown();
           break;
         case 'Enter':
+          if (document.activeElement?.classList.contains('help-panel-search-input')) break;
           event.preventDefault();
           this.executeSelected();
           break;
-        case '/':
         case 'f':
           if (event.ctrlKey || event.metaKey) {
             event.preventDefault();
@@ -169,10 +177,16 @@ export class HelpPanel {
   }
 
   private focusSearch(): void {
-    const searchInput = document.querySelector('.help-panel-search input') as HTMLInputElement;
+    const searchInput = document.querySelector('.help-panel-search-input') as HTMLInputElement;
     if (searchInput) {
       searchInput.focus();
     }
+  }
+
+  private highlightMatch(text: string, query: string): string {
+    if (!query) return text;
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return text.replace(new RegExp(`(${escaped})`, 'gi'), '<mark>$1</mark>');
   }
 
   isVisible(): boolean {
@@ -377,6 +391,14 @@ export class HelpPanel {
         font-size: 13px;
       }
 
+      .help-panel-shortcut-desc mark,
+      .help-panel-key mark {
+        background: rgba(255, 200, 0, 0.3);
+        color: #ffdd00;
+        border-radius: 2px;
+        padding: 0 2px;
+      }
+
       .help-panel-empty {
         text-align: center;
         padding: 40px 20px;
@@ -466,9 +488,10 @@ export class HelpPanel {
           
           ${this.config.showSearch ? `
             <div class="help-panel-search">
-              <input 
-                type="text" 
-                placeholder="搜索快捷键..." 
+              <input
+                type="text"
+                class="help-panel-search-input"
+                placeholder="搜索快捷键... (/)"
                 value="${searchQuery}"
                 oninput="window.helpPanel?.setSearchQuery(this.value)"
               />
@@ -504,14 +527,14 @@ export class HelpPanel {
                 <div class="help-panel-section">
                   <div class="help-panel-section-title">${category}</div>
                   ${shortcuts.map((s, i) => `
-                    <div 
+                    <div
                       class="help-panel-shortcut ${filteredShortcuts.indexOf(s) === selectedIndex ? 'selected' : ''}"
                       data-index="${filteredShortcuts.indexOf(s)}"
                     >
-                      <div class="help-panel-shortcut-desc">${s.description}</div>
+                      <div class="help-panel-shortcut-desc">${this.highlightMatch(s.description, searchQuery)}</div>
                       <div class="help-panel-shortcut-keys">
                         ${s.keys.map(key => `
-                          <span class="help-panel-key">${shortcutManager.formatKeyDisplay(key)}</span>
+                          <span class="help-panel-key">${this.highlightMatch(shortcutManager.formatKeyDisplay(key), searchQuery)}</span>
                         `).join('')}
                       </div>
                     </div>
