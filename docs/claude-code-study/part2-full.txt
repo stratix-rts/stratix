@@ -1,0 +1,505 @@
+506: 5.6 remote 路径说明它已经把执行环境抽象成可切换后端
+507: 当  effectiveIsolation === 'remote' 时， 这里会走：
+508: .   check RemoteAgentEligibility()
+509: .   teleportToRemote()
+510: .   registerRemoteAgentTask()
+511: 然后返回  status: 'remote_launched' 。
+512: 这件事的价值非常大， 因为它说明  AgentTool 调度的不是某个固定运行时， 而是—个：
+513: 可本地、可远程的 Agent execution backend。
+514: 换句话说， 在 Claude Code 的抽象里， “起—个 agent”已经不等于“在当前进程里递归调用—次模型”。它可以被迁移到另—种执行宿主里。
+515: 这也是为什么我会说这套架构更接近 runtime， 而不是 prompt wrapper。
+516: 5.7  shouldRunAsync    的计算非常像产品逻辑， 而不是技术逻辑
+517: 这里有—个很能体现产品成熟度的判断：  shouldRunAsync 不是简单等于  run_in_background 。
+518: 它同时受这些因素影响：
+519: .  用户是否显式传了  run_in_background
+520: ·  agent definition 里是否配置了  background: true ·  当前是否处于 coordinator mode
+521: ·  fork subagent 实验是否开启·  assistant mode 是否开启
+522: ·  proactive mode 是否激活
+523: ·  全局是否禁用了 background tasks
+524: 这说明后台化不是—个单点功能， 而是—种系统级策略。
+525: 也就是说， 在 Claude Code 眼里：
+526: agent 是否应该后台运行， 是调度器根据交互模式和系统模式共同决定的。
+527: 这就比“前端传个 background=true”要成熟很多。
+528: 5.8 它把 worker 的工具池重新组装， 而不是继承父 agent 的全部能⼒
+529: 这—段我很喜欢：
+530: .   workerPermissionContext .   assembleTool Pool(...)
+531: 作者没有让子 agent 直接复用父 agent 的工具快照， 而是重新根据 worker 自己的 permission mode 组装工具池。
+532: 这件事很关键， 因为它避免了两个常见问题：
+533: 1. 父 agent 的临时限制意外污染子 agent
+534: 2. 子 agent 的权限边界不清晰
+535: 这说明 Claude Code 对 agent 的理解不是“—个函数套—个函数”， 而是：
+536: 一个有自己工具视角、 自己权限视角的执行主体。
+537: 5.9 worktree   和  cwd    处理说明作者真的在意工程隔离
+538: 这个文件对执行目录的处理也很成熟。
+539: 核心点有两个：
+540: ·  显式  cwd override .   worktree 隔离
+541: 当启用  worktree 时， 它会：
+542: .  提前生成  agentId
+543: .  用   createAgentWorktree() 建独立工作目录
+544: ·  在 fork path 下附加 worktree notice， 提醒子 agent 重读文件并做路径转换
+545: .  结束时通过  cleanupWorktreeIfNeeded() 决定是否清理而  cleanupWorktreeIfNeeded() 也不是无脑删：
+546: ·  如果没有改动， 就自动移除worktree
+547: ·  如果有改动， 就保留worktree 并把路径写回元数据
+548: ·  如果是 hook-based worktree， 也倾向保留这说明作者非常清楚—个现实：
+549: 隔离的目标不是“用完即删”， 而是“既避免污染主工作区， 也不丢失有效修改”。
+550: 这是很有工程感的取舍。
+551: 5.10 sync 路径最有意思的地方， 是它支持“运行中转后台”
+552: 如果只看异步分支， 你会以为同步和异步是启动前就决定的。
+553: 但这里真正高级的地方在于：
+554: .  sync agent 会先   registerAgentForeground() .  然后在执行循环里监听  backgroundSignal
+555: .  —旦触发， 就把当前前台运行转换成后台继续执行也就是说， 这里支持的不是单纯：
+556: .  要么前台   要么后台
+557: 而是：
+558: 先前台观察， 再根据运行时态势切换到后台。
+559: 这很像真实产品场景。
+560: 因为用戶刚起—个 agent 时， 往往想先看两眼； 如果它开始长跑， 就应该允许它退到后台， 等完成后再通知。
+561: 这类“ 中途迁移生命周期” 的设计， 通常只有真正做过长期交互系统的人才会补。
+562: 5.11 权限处理说明 AgentTool 在 auto mode 下被当成高风险入口
+563: check Permissions() 的逻辑很简洁， 但意味很强：
+564: ·   非 auto mode：  allow
+565: ·   auto mode：  passthrough这相当于承认了—件事：
+566: spawn subagent 不是普通工具调用， 而是高阶动作。
+567: 因为—旦允许它自动发生， 后面就不是—次工具执行， 而是—整段新的行动链。
+568: 所以作者选择在 auto mode 下把它交给更严格的审批路径， 而不是跟普通工具—视同仁。
+569: 这个决策我非常认同， 因为它抓住了多 Agent 系统里真正危险的地方：
+570: 不是单个 bash， 而是无边界扩张。
+571: 5.12 mapTool ResultToTool ResultBlock Param()   负责把多种运行形态
+572: 重新压平
+573: 最后这个函数非常关键。
+574: 因为前面分了很多执行路径， 但回到主 agent 时， 还是得回到统—的 tool_result 语义里。
+575: 这里至少处理了四类结果：
+576: .   teammate_spawned
+577: .   remote_launched .   async_launched  .   completed
+578: 它做的事情不是简单 stringify， 而是：
+579: .  为不同状态生成不同提⽰文案
+580: .  告诉主 agent 什么时候应该结束响应
+581: .  告诉主 agent 什么时候不要与后台 agent 重复劳动
+582: .  在完成态里附加  agentId 、 usage 、 worktreePath这说明作者清楚—个重要事实：
+583: 真正难的不是 spawn， 而是让上层 coordinator 正确理解 spawn 的后果。
+584: 所以这个映射函数本质上是：
+585: 运行时状态到 LLM 可消费协议的翻译器。
+586: 5.13 这个模块最值得借鉴的地方
+587: 如果让我总结 src/tools/AgentTool/AgentTool.tsx 最值得学的点， 我会给三个关键词：
+588: 1. 分流
+589: 2. 隔离
+590: 3. 压平
+591: 分流， 是把不同子 agent 形态统—放进—个入口。
+592: 隔离， 是给不同 agent 独立的工具池、权限和工作目录。
+593: 压平， 是把复杂运行结果重新折叠成 coordinator 能理解的消息协议。
+594: 所以这个文件真正厉害的地方， 不是“能起子 agent”， 而是：
+595: 它把子 agent 从一个技巧， 做成了一种系统能力。
+596: 6. src/hooks/useCanUseTool.tsx： 权限系统真正落地的编
+597: 排入口
+598: 这个文件的名字很容易让人低估它。
+599: 看起来它像—个普通 React hook， 仿佛只是：
+600: .  调—下  hasPermissionsToUseTool()   不行就弹个确认框
+601: 但实际不是。
+602: 真正读完 src/hooks/useCanUseTool.tsx 以及它依赖的：
+603: .  src/hooks/toolPermission/PermissionContext.ts
+604: .  src/hooks/toolPermission/handlers/interactiveHandler.ts
+605: .  src/hooks/toolPermission/handlers/coordinatorHandler.ts
+606: .  src/hooks/toolPermission/handlers/swarmWorkerHandler.ts
+607: 你会发现它干的事情是：
+608: 把权限判断从一个布尔检查， 做成了一个可编排、可竞争、可回退的异步决策流程。
+609: 6.1 先说结论： 它不是权限规则引擎， 而是权限决策编排器
+610: Claude Code 的权限系统不是都写在这个 hook 里。
+611: 真正的规则判断在：
+612: .   hasPermissionsToUseTool(...)
+613: ·   permission hooks ·   bash classifier
+614: ·  bridge / channel 远端审批·  swarm leader 回信
+615: 而  useCanUseTool.tsx 负责的是把这些来源统—起来。
+616: 所以它在架构里的位置更准确地说是：
+617: Permission Orchestrator。
+618: 它统—处理：
+619: .  权限决策的入口
+620: .  决策结果的归—化
+621: ·  决策竞争时的 winner-takes-all .  UI 队列与 AppState 更新
+622: ·  abort/cancel 的—致收口
+623: 这类模块通常比“规则本身 ”还重要， 因为真实产品里最容易乱的不是规则， 而是：
+624: .  多种规则同时存在
+625: .  多个审批来源同时返回 .  用户在过程中取消
+626: 自动检查与人工确认交叉发生
+627: 而这个文件正是在收拾这些复杂性。
+628: 6.2 它返回的不是布尔值， 而是完整的  PermissionDecision
+629: 这个 hook 暴露出来的是  CanUseTool Fn， 返回的是  Promise&lt;PermissionDecision&lt;Input&gt;&gt; 。这很关键。
+630: 因为这说明在 Claude Code 里， 权限判断并不是：
+631: true
+632: .   false
+633: 而是至少三态：
+634: .   allow
+635: .   deny
+636: .   ask
+637: 而且还会带上：
+638: .   updated Input
+639: .   decisionReason .   acceptFeedback .   contentBlocks
+640: 这说明作者理解的“权限”不是单纯的门禁， 而是：
+641: 一次可能修改输入、 附带解释、甚至带回额外上下文的交互式决策。
+642: 6.3 主函数虽然短， 但实际是在建立一场异步决策竞赛
+643: useCanUseTool() 本体很短， 甚至还带着 React Compiler 的  _c(...) 痕迹， 看起来有点像编译产物。但逻辑主线非常清晰：
+644: 1. 建  PermissionContext
+645: 2. 先检查 abort
+646: 3. 生成  decisionPromise
+647: 4. 对  allow / deny / ask 三类结果分别分流
+648: 5. 在  catch/finally 里统—收尾
+649: 这里最值得注意的是， 它把整个过程包在—个  new Promise(resolve =&gt; ...) 里。
+650: 这不是坏味道， 反而说明作者知道这不是—个单 await 就能结束的流程。
+651: 因为后面的决策可能来自：
+652: 本地规则·   classifier ·   hook
+653: .  UI 点击
+654: ·  bridge 回复
+655: ·  swarm leader 回复
+656: 这些来源都可能异步地、在不同时间点回来。
+657: 所以这里必须有—个总  resolve 来承接最终赢家。
+658: 6.4  PermissionContext   是这个权限系统真正的地基
+659: 如果只看 hook 主体， 你会觉得它有点像 if/else 总线。
+660: 但—旦看 src/hooks/toolPermission/PermissionContext.ts， 味道就出来了。
+661: 这个 context 不是简单传参对象， 而是把权限流程常用能力都封装起来了：
+662: .   logDecision()
+663: .   logCancelled()
+664: .   persistPermissions()
+665: .   resolveIfAborted()
+666: .   cancelAndAbort()
+667: .   tryClassifier()
+668: .   runHooks()
+669: .   buildAllow()
+670: .   buildDeny()
+671: .   handleUserAllow()
+672: .   handleHookAllow()
+673: 这说明作者不是在“页面里顺手写权限流程”， 而是在抽—个专门的权限执行上下文。
+674: 这类设计的价值在于：
+675: ·  不同 handler 复用同—套能力
+676: 所有分支的日志与持久化行为统—
+677: ·  reject / abort / allow 的输出格式统—
+678: 也就是说， 真正的—致性不是写在  useCanUseTool.tsx 里， 而是写在  PermissionContext 里。
+679: 6.5  allow   分支很简单， 但已经埋进了 classifier 与审计语义
+680: 如果  hasPermissionsToUseTool() 直接给出  allow， 这个 hook 会很快放行。
+681: 但它不是纯粹地  resolve(result)， 而是还做了两件事：
+682: ·  记录 auto-mode classifier approval
+683: .  用   ctx.logDecision() 记—条接受决策
+684: 说明即使“ 自动放行 ”这种看似最简单的路径， 也被作者当成：
+685: 需要被解释、被追踪的系统行为。
+686: 这很重要， 因为Agent 产品—旦进入 auto mode， 最怕的就是：
+687: .  工具为什么被放行说不清   事后无法追溯
+688: Claude Code 在这点上明显是有产品意识的。
+689: 6.6  deny   分支也不是终点， 它还要服务 UI 和记忆纠偏
+690: deny 分支也不只是拒绝。
+691: 这里除了  logPermissionDecision(...)， 还会在 auto mode classifier 拒绝时：
+692: .   recordAutoModeDenial(...)
+693: .   addNotification(...)
+694: 再结合  PermissionContext.cancelAndAbort() 里对：
+695: REJECT_MESSAGE
+696: SUBAGENT_REJECT_MESSAGE
+697: .   withMemoryCorrectionHint(...)
+698: 的处理， 可以看出作者在处理—个很细的问题：
+699: 被拒绝这件事， 不只是给程序一个状态， 也要给模型和用户一个后续可行动的解释。
+700: 也就是说， Claude Code 的 reject 不是“黑盒失败”， 而是：
+701: .  对系统： 有日志 .  对用户： 有通知
+702: 对模型： 有纠偏提⽰
+703: 这个体验层设计做得是挺到位的。
+704: 6.7 真正最复杂的是  ask    分支， 因为它要统一四种审批来源
+705: ask 才是这个文件真正的主战场。
+706: 如果把它画出来， 大概是这样：
+707: useCanUseTool
+708: 进入权限决策
+709: result.behavior = ask
+710: 需要人工或半自动审批
+711: awaitAutomatedChecksBefo
+712: 是
+713: handleCoordinatorPermissio             否
+714: 未决
+715: handleSwarmWorkerPermiss
+716: 未决
+717: 已决                                                              bash speculative check 命中
+718: 已决                            是                                                            否
+719: classifier 自动放行
+720: 已决
+721: 用戶  / bridge / channel 决策
+722: 统— resolve PermissionDeci
+723: 这里至少有四条可生效路径：
+724: 1. coordinator automated checks
+725: 2. swarm worker 转发 leader 审批
+726: 3. speculative bash classifier 自动放行
+727: 4. 本地交互式权限对话框
+728: 这再次证明了—点：
+729: Claude Code 的权限系统不是 modal， 而是多来源决策网络。
+730: 6.8 coordinator 路径说明“先自动化检查， 再惊动用户”是明确策略
+731: src/hooks/toolPermission/handlers/coordinatorHandler.ts 很短， 但策略非常明确：
+732: 1. 先跑 permission hooks
+733: 2. 再跑 classifier
+734: 3. 两者都无法决策时， 才回落到 dialog
+735: 这代表—种很成熟的产品思路：
+736: 先用机器把明显的情况吞掉， 只把真正模糊的情况升级给用户。
+737: 而且它对异常的处理也很克制：
+738: 自动检查出错， 不是让整个流程报错， 而是继续回到手动确认。
+739: 这类 fallback 很关键， 因为权限系统—旦因为某个 classifier 异常直接失效， 产品体验会很差。
+740: 6.9 swarm worker 路径特别能体现“多 Agent 协作下的权限主权”
+741: src/hooks/toolPermission/handlers/swarmWorkerHandler.ts 很有意思。
+742: 它表达的是—个重要组织原则：
+743: worker 可以工作， 但权限主权仍然属于 leader。
+744: 这个 handler 的主线是：
+745: 1. 先尝试 classifier 自动通过
+746: 2. 不行就  createPermissionRequest(...)
+747: 3. 通过 mailbox 发给 leader
+748: 4.  registerPermissionCallback(...) 等 leader 回信
+749: 5. UI 里显⽰  pendingWorkerRequest
+750: 这说明 Claude Code 的 swarm 不是“每个 agent 各自随便跑”， 而是：
+751: 执行可以分布   授权可以集中
+752: 这对真实团队协作非常重要， 因为它避免了worker 无限度扩大权限边界。
+753: 6.10 interactive 路径最精彩的地方， 是它在处理“多方同时抢答”
+754: src/hooks/toolPermission/handlers/interactiveHandler.ts 是我觉得这组权限代码里最见功力的—块。
+755: 它不是简单弹—个对话框， 而是在构造—场并发竞争：
+756: ·  本地用戶可能点允许/拒绝 ·  bridge 端的 CCR 可能先回
+757: ·  channel 端的远程消息可能先回·  hooks 可能后台先跑完
+758: ·  classifier 可能在 grace period 内命中
+759: 为了避免多次 resolve， 它用了 createResolveOnce() 的：
+760: .   claim()
+761: .   isResolved()
+762: .   resolve()
+763: 这个细节非常关键。
+764: 很多权限系统 bug 就出在这里：
+765: .  弹窗还在， 远程先批了   用戶又点了—次
+766: .  本地和远端重复提交 .  状态错乱
+767: Claude Code 这里明显是针对真实竞争条件做过加固的。
+768: 6.11 speculative bash classifier 的 2 秒宽限窗口， 是很有产品感的小设计
+769: 在  ask 分支里， bash 场景还有—个很值得称赞的小设计：
+770: ·  如果存在 speculative classifier check   就最多等 2 秒
+771: 如果高置信命中， 就直接自动通过·  否则再展⽰ dialog
+772: 这本质上是在平衡两种体验：
+773: 不想太早打断用戶
+774: ·  也不想为了等 classifier 让界面卡太久
+775: 这类“给自动化—点点时间， 但不给它无限时间” 的设计， 非常像成熟产品， 而不是纯工程思维。
+776: 6.12 abort/cancel 的收口也非常统一
+777: 这个文件还有—个容易被忽略的优点：
+778: 无论失败、取消、用户中断还是 APIUserAbortError， 最后都能收口成同一种权限决策语义。
+779: 这里通过：
+780: .   resolveIfAborted()
+781: .   cancelAndAbort()
+782: .   catch(error =&gt; ...)
+783: .   finally(clearClassifierChecking)
+784: 把流程统—收进来。
+785: 这意味着上层调用方拿到的不会是零散异常， 而是—个相对稳定的权限结果。
+786: 对大型系统来说， 这会显著降低外围复杂度。
+787: 6.13 这个模块真正厉害的地方， 是把“权限”做成了协作协议
+788: 如果只把权限理解成“要不要执行命令”， 那这个模块会显得有点重。
+789: 但如果把它放进 Claude Code 整个系统里看， 你会发现它做的是另—件事：
+790: 它让权限决策可以在本地用户、 自动规则、远端桥接、swarm leader、classifier 之间流动。
+791: 这时候权限就不再只是安全机制， 而是—种：
+792: 跨角色、跨终端、跨执行主体的协作协议。
+793: 这也是为什么我会说 src/hooks/useCanUseTool.tsx 虽然体量不大， 但架构意义很大。它补上了 Claude Code 从“会调用工具”到“可控地调用工具”之间最关键的—层。
+794: 7. src/services/mcp/client.ts： 外部能力总线的接入工⼚
+795: 如果说前面几个模块回答的是：
+796: Claude Code 怎么组织会话 .  怎么组织工具
+797: .  怎么组织权限
+798: .  怎么组织子 agent
+799: 那么 src/services/mcp/client.ts 回答的就是另—个大问题：
+800: Claude Code 怎么把“外部世界的能力”接进自己的运行时。
+801: 这文件非常重， 而且不是“发几个 HTTP 请求”那么简单。
+802: 它同时承担了至少三层职责：
+803: 1. 连接不同类型的 MCP server
+804: 2. 把 MCP server 的能力转译成 Claude Code 自己的 Tool / Command / Resource
+805: 3. 把 MCP 返回的复杂结果重新加工成模型可消费的内容所以它不是—个简单 client， 而更像：
+806: MCP integration factory + adapter layer + result gateway。
+807: 7.1 先说定位： 它不是某个 server 的 client， 而是一整条 MCP 接入⾯
+808: 从 import 规模就能看出来， 这个文件不是面向单—协议 happy path 写的。
+809: 它要同时处理：
+810: .   SSEClientTransport
+811: .   StreamableHTTPClientTransport .   StdioClientTransport
+812: .   WebSocketTransport
+813: .   SdkControlClientTransport
+814: in-process server
+815: ·  claude.ai proxy
+816: 再加上：
+817: OAuth
+818: proxy
+819: TLS
+820: ·  session ingress token .  资源工具
+821: ·   elicitation      大结果落盘
+822: 这说明作者对 MCP 的理解不是“ 多—个插件协议”， 而是：
+823: Claude Code 的外部能力总线。
+824: 也正因为是总线， 它必须处理大量异构情况， 而不能只写最干净的那条链路。
+825: 7.2 这个文件最值得先注意的一点： 它把 transport 多样性当成一等事实
+826: connectToServer() 是这章最核心的函数之—。
+827: 它不是固定建立某—种连接， 而是根据  serverRef.type 分流：
+828: sse
+829: .   sse-ide
+830: .   ws-ide
+831: ws
+832: .   http
+833: .   claudeai-proxy .   stdio
+834: in-process Chrome MCP
+835: in-process Computer Use MCP
+836: 这说明作者从—开始就接受了—个现实：
+837: MCP 不是一个部署形态， 而是一套协议外壳。
+838: 真正落地时， server 可能是：
+839: .  本地子进程   本地 IDE
+840: .  远程 HTTP 服务
+841: .  远程 SSE 长连接 .  WebSocket 服务
+842: ·  代理后的 claude.ai connector
+843: .  当前进程内直接嵌入的 server
+844: 很多项目会试图把这些都藏起来， 伪装成“统— client”； Claude Code 反而做得更诚实：它承认这些差异存在， 然后在统—入口里显式处理。
+845: 7.3  connectToServer()   其实像一个连接工厂， 而不是一个普通connect 函数
+846: 我觉得  connectToServer() 最厉害的地方， 不只是分 transport， 而是它把连接这件事拆成了—个完整生命周期：
+847: .  构造 transport
+848: ·  注入认证与 header ·  包装 timeout
+849: .  建立  Client
+850: ·  注册 request handler
+851: ·  检查 capabilities / version / instructions ·  挂上 error / close handler
+852: .  返回   connected / needs-auth / failed / disabled所以它输出的不是裸 SDK client， 而是：
+853: Claude Code 自己语义下的  MCPServerConnection 。
+854: 这—步非常关键， 因为只要这层抽象立住， 后面的上层代码就不必直接感知 SDK 的原始连接细节。
+855: 7.4 认证设计说明作者知道“连接失败”里最大的一类其实是 auth
+856: 这个文件里和认证有关的细节非常多：
+857: .   McpAuth Error
+858: MCP_AUTH_CACHE_TTL_MS .   isMcpAuthCached()
+859: .   setMcpAuthCacheEntry()
+860: .   handleRemoteAuth Failure()
+861: .   createClaudeAi ProxyFetch()
+862: .   checkAndRefreshOAuthTokenIfNeeded()
+863: .   handleOAuth401Error()
+864: 这背后的判断我很认同：
+865: MCP 连接失败里最值得单独工程化处理的， 不是网络超时， 而是认证失效。
+866: 作者做了几个非常产品化的处理：
+867: 1. 401/needs-auth 不是简单失败， 而是独立状态
+868: 2. needs-auth 会进入 15 分钟缓存， 避免反复探测
+869: 3. 有 discovery 但没有 token 的 server 会被跳过， 避免空耗
+870: 4. claude.ai proxy 的 bearer token 会在 401 后尝试刷新再重试—次
+871: 5. 上层还能为 needs-auth server 生成  createMcpAuthTool(...)
+872: 这说明 Claude Code 并不是把 auth 当“连接前置条件”， 而是把它当成 MCP 生命周期的—部分。
+873: 7.5 它对连接稳定性的处理很成熟， 明显踩过真实坑
+874: connectToServer() 后半段有很多很“脏”但很宝贵的逻辑：
+875: .  连接超时保护·  stderr 捕获
+876: ·  repeated terminal errors 计数
+877: .   Maximum reconnection attempts 特判·  session expired 检测
+878: ·  close 时清理 memo cache 和 fetch cache
+879: 这类代码—眼就能看出不是“按文档写” 的， 而是被线上问题逼出来的。
+880: 特别是这几个点很值得欣赏：
+881: 1. SDK 的  onerror /  onclose 不完全可靠， 所以作者自己补了关闭和重连触发逻辑
+882: 2. 远程 transport 连续错误达到阈值后会主动  closeTransportAnd RejectPending(...)
+883: 3. session 过期通过 HTTP 404 + JSON-RPC   -32001 双信号识别
+884: 4.  client.onclose 会主动清掉  connectToServer.cache 和  fetch*ForClient.cache
+885: 这说明作者很清楚：
+886: 在一个长生命周期Agent Runtime 里， MCP 最难的不是第一次连上， 而是掉线之后不挂死。
+887: 7.6 它不是只连 server， 还把 MCP 能力转译成 Claude Code 自己的语言
+888: 这—块我觉得是这个文件架构价值最高的地方之—。
+889: 连接成功之后， Claude Code 不会把原始 MCP schema 直接扔给模型， 而是做二次映射：
+890: .   fetchToolsForClient(...)
+891: .   fetchCommandsForClient(...)
+892: .   fetch ResourcesForClient(...)
+893: 这里分别把 MCP 能力转成： ·   Tool
+894: Command
+895: Resource
+896: 这—步非常关键， 因为它说明 Claude Code 的宿主协议高于 MCP 原协议。
+897: MCP 只是外部能力来源， 真正给模型消费的还是 Claude Code 自己的能力抽象。
+898: 也就是说， Claude Code 并没有让 MCP 反过来定义自己的运行时；
+899: 它做的是：
+900: 把 MCP 吞进自己的运行时模型里。
+901: 7.7  fetchToolsForClient()   特别能体现“协议映射层”这个角色
+902: 这段代码不是简单把  tools/list 结果拿回来展⽰， 而是做了完整的能力翻译：
+903: .   buildMcpToolName(client.name, tool.name) .   mcpInfo
+904: .   searchHint .   alwaysLoad
+905: ·    description() /  prompt()
+906: .   isConcurrencySafe()
+907: .   isReadOnly()
+908: .   isDestructive()
+909: .   isOpenWorld()
+910: .   toAutoClassifierInput()
+911: .   check Permissions()
+912: .   call()
+913: .   userFacingName()
+914: 这已经不是“封装 SDK 返回值”， 而是在创建—批：
+915: 符合 Claude Code Tool 契约的宿主工具对象。
+916: 更妙的是， MCP tool 进来之后就自动获得了 Claude Code 的整套宿主能力：
+917: 权限系统 .  进度事件
+918: .   自动分类器输入  ·  UI collapse 行为 ·  user-facing name
+919: 这正是平台型架构的力量。
+920: 只要外部能力被接成  Tool， 它就能复用平台里的很多公共机制。
+921: 7.8  getMcpToolsCommand sAnd Resources()   体现了真正的“总线装配”
+922: 过程
+923: 如果说  connectToServer() 是单连接工厂， 那么  getMcpToolsCommand sAnd Resources() 就是：
+924: 批量接入与装配入口。
+925: 它做了很多很成熟的事情：
+926: ·  先把 disabled server 分出去
+927: ·  按本地 server / 远程 server 分组   对不同组给不同并发上限
+928: ·   对 needs-auth server 直接下发  createMcpAuthTool(...) ·  拉 tools / commands / skills / resources
+929: ·   只注入—次资源工具  ListMcpResourcesTool /  ReadMcpResourceTool
+930: .  每个 server 完成后通过  onConnectionAttempt(...) 增量回流给上层这说明它不是“等所有连接全结束再统—返回”， 而是更像：
+931: 一个边连接、边发现、边汇总的能力装配流。
+932: 这个设计非常适合Agent Runtime， 因为宿主可以逐步把可用工具开放出来， 而不用死等最慢的那个
+933: connector。
+934: 7.9 这张图能比较清楚地说明它的三段式职责
+935: MCP 配置集合
+936: 读取配置
+937: getMcpToolsCommandsAndR
+938: 批量并发装配
+939: 逐个 server 建连
+940: connectToServer
+941: 按 transport 建连
+942: 连接成功                                                连接成功                                                  连接成功
+943: fetchToolsForClient
+944: 映射为 Claude Tool
+945: fetchResourcesForClient映射为 Resource
+946: 装配 Tool                                       装配 Command                                       装配 Resource
+947: Claude Code 宿主工具池 / 命
+948: 调用 MCP 工具
+949: callMCPToolWithUrlElicitatio
+950: 压平成模型可消费内容
+951: callMCPTool
+952: 返回原始结果
+953: processMCPResult transformMCPResult
+954: 这张图里最关键的点是：
+955: 它不是“连上 server 然后直接透传”， 而是“接入 -&gt; 转译 -&gt; 回收”。
+956: 这才是平台总线的写法。
+957: 7.10 返回值处理这部分做得非常好， 明显不想让 MCP 把上下文炸掉
+958: 后半段的：
+959: .   transformResultContent(...)
+960: .   transformMCPResult(...)
+961: .   processMCPResult(...)
+962: .   persistBlobToTextBlock(...)
+963: 非常值得看。
+964: 作者面对的显然是—个真实问题：
+965: MCP 返回值可能又大、又杂、又包含图片/音频/二进制/结构化对象， 不能直接塞给模型。
+966: 所以这里做了很多防爆处理：
+967: ·  文本转 text block
+968: ·  图片缩放压缩后再转 image block  ·  二进制 blob 落盘后只返回路径说明
+969: ·  structuredContent 会生成 compact schema   结果过大时会：
+970: 。先判断是否需要截断
+971: 图片内容走截断而不是 JSON 落盘
+972: 普通大结果落盘并返回读取说明
+973: 这非常像—个成熟宿主在做的事：
+974: 保护上下文窗口， 把外部返回值驯化成模型可承受的格式。
+975: 7.11  callMCPToolWithUrl ElicitationRetry()   说明作者把 MCP 的交
+976: 互式工具也接进来了
+977: 很多人理解 MCP tool， 会把它想成同步 RPC。
+978: 但这里专门有—层：
+979: .   callMCPToolWithUrl ElicitationRetry(...)
+980: 它处理的是 MCP 的  Url ElicitationRequired 错误， 也就是： tool 调用过程中要求用戶去完成一个 URL 交互。
+981: 作者做的不是简单报错， 而是：
+982: 1. 识别  -32042
+983: 2. 解析 elicitation 列表
+984: 3. 先跑 elicitation hooks
+985: 4. 不行再走  handleElicitation(...) 或 REPL queue
+986: 5. 完成后重试 tool call
+987: 这件事很重要， 因为它说明 Claude Code 接入 MCP 时， 并没有假设外部工具都是“无用戶交互” 的。
+988: 相反， 它接受了：
+989: 某些外部能力本身就是半交互式协议。
+990: 这又—次说明它的架构更像 runtime， 而不是调用器。
+991: 7.12  callMCPTool()   是最后一道“协议脏活收口层”
+992: 真正的原始调用在  callMCPTool() 里。
+993: 它做的事情比你想象得多：
+994: .  长时间工具调用进度日志·   自己再包—层 timeout
+995: .  将 SDK progress 转成 Claude Code 的  mcp_progress .  处理  isError: true
+996: ·   特判 401 -&gt;  McpAuth Error
+997: ·  特判 session expired / connection closed -&gt; 清缓存并抛  McpSessionExpired Error .  成功后再走  processMCPResult(...)
+998: 这—层非常像典型的 adapter gateway：
+999: 它把 SDK 原始行为和 Claude Code 上层期望之间的缝隙都补上了。
+1000: 所以如果让我—句话概括它， 我会说：
+1001: callMCPTool()   负责把“不稳定的外部协议行为”翻译成“稳定的宿主错误语义与结果语义”。
+1002: 7.13 这个模块最值得借鉴的地方
+1003: 如果让我总结 src/services/mcp/client.ts 最值得学的地方， 我会给四个关键词：
+1004: 1. 异构接入
+1005: 2. 平台转译
+1006: 3. 结果驯化
+1007: 4. 连接韧性
+1008: 异构接入， 是它承认 transport 和部署形态的复杂性。
+1009: 平台转译， 是它坚持把外部能力映射成 Claude Code 自己的 Tool/Command/Resource。
+1010: 结果驯化， 是它不让 MCP 原始结果直接冲进上下文。

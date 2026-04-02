@@ -1008,8 +1008,7 @@ ${assignStrategyDescription}
       this.zoneId,
       null, // fromAgentId: null means Zone created
       null, // toAgentId: null for manual creation
-      'created',
-      { title: task.title, type: task.type, priority: task.priority }
+      'created'
     );
 
     auditLogRepository.log(

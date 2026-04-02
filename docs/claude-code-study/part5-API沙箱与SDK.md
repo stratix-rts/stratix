@@ -122,6 +122,80 @@ Stratix 的 ExecutorFactory（direct/openclaw/stratix）已经有了 provider �
 
 ---
 
+---
+
+## 23. remote/SessionsWebSocket.ts：Remote会话transport层
+
+### 关键设计点
+- **transport 层与 session 语义层分离**：SessionsWebSocket 负责建连接、认证、ping/pong、close code 处理、重连；RemoteSessionManager 负责解释控制消息、管理 pending permission requests
+- **close code 语义化处理**：不是一掉线就盲目重连，而是区分永久关闭码、4001 session not found 的短期重试、普通 transient close 的有限次重连
+- **长连接保活**：PING_INTERVAL_MS、startPingInterval()、stopPingInterval()，说明 remote 会话在 Claude Code 里不是一次性连接，而是长期订阅链路
+
+### 核心源码模式
+```typescript
+// close code 语义化
+permanent close codes      // 认命
+4001 session not found     // 短期重试
+transient close            // 有限次重连
+
+// transport 层保活
+PING_INTERVAL_MS + startPingInterval() / stopPingInterval()
+```
+
+### 对 Stratix 的启发
+Stratix 在实现 WebSocket 通信时（如 Zone 的实时同步），也应区分 close code 语义、重连预算和保活机制。transport 层的可靠性直接决定实时协作体验的上限。
+
+---
+
+## 24. query/tokenBudget.ts：Agentic Loop的预算控制阀
+
+### 关键设计点
+- **位置很准**：不是普通 token 统计，而是 continuation 策略——一轮 agentic loop 到底该在什么时候继续，什么时候停
+- **边际收益判断**：两个关键阈值 COMPLETION_THRESHOLD=0.9 和 DIMINISHING_THRESHOLD=500，判断不仅看"预算是否还够"，还看"最近增量 token 是不是已经很少"、"连续继续几轮后是不是已经进入 diminishing returns"
+- **策略决策对象而非布尔值**：TokenBudgetDecision 返回 action: 'continue'/'stop'，同时带 nudgeMessage、continuationCount、pct、turnTokens、budget、completionEvent，能直接被 runtime 和 telemetry 消费
+
+### 核心源码模式
+```typescript
+// 边际收益判断
+COMPLETION_THRESHOLD = 0.9
+DIMINISHING_THRESHOLD = 500
+
+// 策略决策输出
+TokenBudgetDecision {
+  action: 'continue' | 'stop'
+  nudgeMessage
+  continuationCount / pct
+  turnTokens / budget
+  completionEvent
+}
+```
+
+### 对 Stratix 的启发
+Stratix 的 agent 执行循环也面临"什么时候该停"的问题。可以参考这个模式，把"预算够不够"和"边际收益在不在"分开判断，输出结构化的策略决策，而非简单的布尔值。
+
+---
+
+## 25. entrypoints/sdk/coreSchemas.ts：SDK序列化世界的总Schema底板
+
+### 关键设计点
+- **数据宪法而非类型文件**：是 serializable SDK data types 的 Zod schema 集合，是 single source of truth，TypeScript types 从这里生成出去——真正的定义顺序是：先定义可执行的 schema，再从 schema 生成类型
+- **把序列化边界正式化**：定义哪些数据允许跨边界流动、应该长成什么样。"边界"至少包括：主线程与 SDK host、本地与 remote/bridge、query runtime 与 transcript、工具权限系统与 hook 系统、MCP 接入层与宿主呈现层
+- **lazySchema 和 placeholder 设计**：认真处理真实工程的 schema 演化问题
+
+### 核心源码模式
+```
+coreSchemas.ts ──(Zod schema)──> generate-sdk-types.ts ──> TypeScript types
+                         │
+controlSchemas.ts ──────┘
+         │
+         └──> 统一定义 control/permission/hook/MCP 协议面
+```
+
+### 对 Stratix 的启发
+Stratix 在设计跨模块数据交换时（如 Zone 的 OKR 数据、Agent 的执行上下文），也应该考虑用 Zod schema 作为数据定义的源头，而不是手写 TypeScript interface 再补 runtime 校验。这样能让跨边界数据可验证、可追溯。
+
+---
+
 ## 小结
 
 | 模块 | 核心价值 | 对 Stratix 的关键启发 |
@@ -131,3 +205,6 @@ Stratix 的 ExecutorFactory（direct/openclaw/stratix）已经有了 provider �
 | stopHooks.ts | turn 后处理编排器 + hook 消息化 | Zone 退出后处理链独立化 |
 | sandbox-adapter.ts | 权限语义翻译 + OS 级隔离 + 动态刷新 | OpenClaw 执行环境安全隔离 |
 | client.ts | 多 provider 统一适配 + 认证收口 | ExecutorFactory provider 差异全收口 |
+| SessionsWebSocket.ts | transport 分层 + close code 语义 + 长连接保活 | Zone WebSocket 通信可靠性 |
+| tokenBudget.ts | 预算策略 + 边际收益判断 + continuation 控制 | Agent 执行循环停机决策 |
+| coreSchemas.ts | Zod schema 单一真源 + 序列化边界正式化 | 跨模块数据可验证定义 |

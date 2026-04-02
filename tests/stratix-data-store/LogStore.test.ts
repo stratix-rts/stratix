@@ -24,14 +24,15 @@ describe('LogStore', () => {
       exec: jest.fn()
     };
 
-    jest.doMock('../../src/stratix-database', () => ({
+    jest.doMock('@/stratix-database', () => ({
+      initializeDatabase: jest.fn(),
       getDatabase: jest.fn().mockReturnValue({
         getDatabase: jest.fn().mockReturnValue(mockDb)
       })
     }));
 
     // Now require the store after mocking
-    const { StratixDataStore: StratixDataStoreMocked } = require('../../src/stratix-data-store/StratixDataStore');
+    const { StratixDataStore: StratixDataStoreMocked } = require('@/stratix-data-store/StratixDataStore');
     store = new StratixDataStoreMocked();
     logStore = new LogStore(store);
   });

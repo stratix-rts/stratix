@@ -1,0 +1,505 @@
+2021: ·  plugin 管理界面·  reload 流程
+2022: .  调试日志 .  遥测
+2023: 才有可能做得好。
+2024: 14.8 这个模块最值得借鉴的地方
+2025: 如果让我总结 src/utils/plugins/pluginLoader.ts 最值得学的点， 我会给五个关键词：
+2026: 1. 来源治理
+2027: 2. 组件发现
+2028: 3. 冲突语义
+2029: 4. 启动分层
+2030: 5. 错误结构化
+2031: 它真正厉害的地方， 是把插件系统从“读几个目录”提升成了：
+2032: 一个有来源优先级、有合并规则、有缓存路径、有平台治理意识的插件装载工厂。
+2033: 15. src/commands.ts： 整个命令世界的编排台
+2034: 15.1 如果  Tool.ts   是能力契约， 那  commands .ts   就是命令议会
+2035: src/commands.ts 很容易被看成—个“导出命令数组” 的地方， 但它真正负责的是：
+2036: 把 Claude Code 里所有不同来源、不同可见性、不同用途的命令， 整理成一个可以被宿主、模型和UI 同时消费的统一命令世界。
+2037: 这里面混着很多东西：
+2038: ·  built-in commands
+2039: ·  feature-gated commands ·   plugin commands
+2040: ·   plugin skills   ·   bundled skills
+2041: ·  builtin plugin skills   ·   workflow commands ·   dynamic skills
+2042: ·   MCP skills
+2043: 这已经不是静态注册表了， 而是命令编排台。
+2044: 15.2  COMMANDS()   不是常量数组， 而是“延迟求值的内建命令工厂”
+2045: 这—点非常关键。
+2046: 它没有直接 top-level 构造全部命令， 而是用   memoize(() =&gt; [...])， 并且里面还混有：
+2047: .   feature(...) 驱动的条件命令
+2048: .   require(...) 做延迟加载·  auth / provider 相关分支  ·  internal only commands
+2049: 这说明命令系统在 Claude Code 里不是“ 写死的菜单”， 而是：
+2050: ·  跟 feature flag 有关 .  跟部署形态有关
+2051: .  跟用户身份有关   跟启动性能有关
+2052: 15.3  getSkills ()   和  loadAllCommands ()   这两层把“命令世界”拆得
+2053: 很清楚
+2054: 这里的层次其实非常漂亮：
+2055: .   getSkills() 负责技能来源装配
+2056: .   getPluginCommands() 负责插件命令
+2057: .   getWorkflowCommands() 负责工作流命令 .   COMMANDS() 负责内建命令
+2058: .   loadAllCommands() 把它们统—合并
+2059: ·    getCommands() 再做 availability / isEnabled / dynamic skills 插入这说明作者很清楚：
+2060: 收集来源是—层 .  合并总表是—层
+2061: 当前用户可见命令筛选又是—层
+2062: 这是成熟的 registry 写法， 不是“最后 return —个大数组”那么简单。
+2063: 15.4  meetsAvailabilityRequirement()   很能体现 Claude Code 的命
+2064: 令不是统一可见的
+2065: 这个函数体现了—个常被忽略的事实：
+2066: 不是每个命令都应该对所有用户出现。
+2067: 这里显式按 auth/provider 环境判断：
+2068: .   claude-ai
+2069: .   console
+2070: 也就是说， 命令系统不仅受 feature flag 影响， 还受用户接入形态影响。
+2071: 这是非常产品化的做法， 因为某些命令的可见性本来就应由能力环境决定。
+2072: 15.5 动态技能的插入位置很有讲究， 这不是随便 append
+2073: getCommands() 里最有产品味的—点， 是：
+2074: .  先构造  baseCommands .  再拿  dynamicSkills
+2075: 然后不是简单拼到尾部
+2076: ·  而是插到 “plugin skills 之后、built-in commands 之前”
+2077: 这很说明作者知道命令列表不仅是功能总和， 还是—个认知排序空间。
+2078: 也就是说， 命令的顺序在这里是有语义的：
+2079: 哪些更像扩展能力   哪些更像宿主内建
+2080: 动态发现的技能应该挤进哪—层
+2081: 这种排序治理非常重要。
+2082: 否则命令世界会越来越乱。
+2083: 15.6  getS killToolCommands ()   与  getSlashCommandToolSkills ()   特
+2084: 别能体现“同一命令表， 多种视图”
+2085: 这两个函数很值得单独看。
+2086: 它们说明同—个命令世界会被不同消费方以不同规则切片：
+2087: ·  SkillTool 需要看哪些 prompt 命令可给模型调用·  slash command tool 需要看哪些更像“技能”
+2088: ·  MCP skills 还要单独过滤
+2089: 这说明  commands.ts 不只是命令注册表， 还是命令视图工厂。
+2090: 同—个底层命令集， 被不同上层用不同过滤规则消费。
+2091: 15.7 它和 cache 失效体系也是连着的
+2092: clearCommandMemoizationCaches() 和  clearCommandsCache() 这两块很关键。
+2093: 它们说明命令系统不是静态生成—次就完， 而是要和这些变化保持同步：
+2094: ·  dynamic skills loaded ·   plugin reload
+2095: ·  skill cache clear
+2096: ·  skill search index clear
+2097: 这也再次证明 Claude Code 的命令世界是活的， 不是编译期常量。
+2098: 15.8 这个模块最值得借鉴的地方
+2099: 如果让我总结 src/commands.ts 最值得学的点， 我会给五个关键词：
+2100: 1. 命令编排
+2101: 2. 多来源合并
+2102: 3. 可见性治理
+2103: 4. 多视图消费
+2104: 5. 动态失效
+2105: 它真正厉害的地方， 是把：
+2106: 宿主命令   插件命令   技能
+2107: 工作流
+2108: .  动态发现能力
+2109: 全都收进—个还能持续演化的命令世界里。
+2110: 16. src/remote/RemoteSessionManager.ts： 远端会话在本地宿主里的托管控制器
+2111: 16.1 它和  bridgeMain .ts   不是一回事
+2112: src/bridge/bridgeMain.ts 负责的是桥接主循环；
+2113: 而 src/remote/RemoteSessionManager.ts 负责的是：
+2114: 当远端 CCR 会话已经存在时， 本地宿主怎样把它接成一个可持续交互的会话端点。
+2115: 它更像 remote 模式里的 session adapter。
+2116: 16.2 这个文件最重要的价值， 是把“收消息”和“发消息”故意拆成两条不同通道
+2117: 它的设计很清楚：
+2118: .  收消息： 走  SessionsWebSocket
+2119: .  发消息： 走   send EventToRemoteSession(...)
+2120: 这说明远端 session 在 Claude Code 里不是对称 socket 模型， 而是：
+2121: 下行订阅流
+2122: .  上行事件提交
+2123: 这种拆法很像真实生产系统里的会话总线， 而不是 demo 式全双工封装。
+2124: 16.3 它保留了权限流和取消流， 这一点非常关键
+2125: 这里会处理：
+2126: .   control_request
+2127: .   control_cancel_request .   control_response
+2128: 最关键的是：
+2129: .  权限请求会进入  pendingPermissionRequests  .  本地侧可以  respondToPermissionRequest(...)
+2130: .  服务端取消时还能触发  onPermissionCancelled(...)
+2131: 这说明 remote session 不是“把输出搬回来”， 而是把整套协作控制面也带回来了。
+2132: 16.4 它和  SessionsWebSocket.ts    的关系非常像“会话管理器 + 传输层”
+2133: src/remote/SessionsWebSocket.ts 负责：
+2134: .  建连接 .  重连
+2135: ·   ping/pong
+2136: ·  close code 处理   ·  token/header 认证
+2137: 而 src/remote/RemoteSessionManager.ts 负责：
+2138: .  解释收到的控制消息
+2139: ·  管理 pending permission requests
+2140: ·   暴露  sendMessage /  cancelSession /   respondToPermissionRequest这又是—次典型的分层成功：
+2141: .  transport 留在 transport
+2142: ·  session 语义留在 manager
+2143: 16.5 这个模块最值得借鉴的地方
+2144: 如果让我总结 src/remote/RemoteSessionManager.ts 最值得学的点， 我会给四个关键词：
+2145: 1. 远端会话托管
+2146: 2. 上下行分离
+2147: 3. 权限状态回流
+2148: 4. transport / session 分层
+2149: 它真正厉害的地方， 是让远端会话在本地看起来依旧像—条可控的 Claude 会话， 而不是—个被动订阅流。
+2150: 17. src/bootstrap/state.ts： 宿主启动期与会话期共享状态的总底座
+2151: 17.1 这是 Claude Code 少数真正意义上的“全局内核文件”
+2152: src/bootstrap/state.ts 体量很大， 而且开头就写了非常重的话：
+2153: DO NOT ADD MORE STATE HERE
+2154: THINK THRICE BEFORE MODIFYING
+2155: 这很说明问题。
+2156: 作者知道这不是普通 util， 而是 Claude Code 的全局状态底座。
+2157: 17.2 它和 src/state/AppStateStore.ts   是两套不同层次的 state
+2158: 这—点很重要：
+2159: ·   AppStateStore.ts 更像运行时共享控制面， 偏 UI / REPL / runtime 观察层
+2160: .   bootstrap/state.ts 更像宿主启动期与会话底层全局状态这里存的东西非常底层：
+2161: .   sessionId
+2162: .   cwd
+2163: .   projectRoot   .   inlinePlugins
+2164: .   registeredHooks
+2165: .   mainThreadAgentType .   isRemoteMode
+2166: .   directConnectServerUrl .   invokedSkills
+2167: ·  prompt cache 各种 latch
+2168: 所以这不是“前端 store”， 而是宿主 runtime 的全局内核状态。
+2169: 17.3 它最值得注意的地方， 是状态不是一个大对象直接外露， 而是accessor 风格
+2170: 虽然内部确实有—个巨大的  STATE， 但外部访问方式是：
+2171: .   getSessionId()
+2172: .   setInlinePlugins()
+2173: .   getIsRemoteMode()
+2174: .   registerHookCallbacks()
+2175: .   addInvokedSkill()
+2176: 这种 accessor 风格很有意义：
+2177: 至少保住了写入口
+2178: .  让语义集中在函数名里
+2179: ·  给未来做校验/副作用留口子
+2180: 也就是说， 作者没有把它做成 Redux， 也没有把它做成—堆随手可改的裸全局， 而是在全局状态现实和—定程度封装之间做了折中。
+2181: 17.4 这文件真正厉害的地方， 是它把“启动期偶发状态”和“会话期持续状态”放进了同一个宿主语义空间
+2182: 这里既有：
+2183: .   allowedSettingSources .   chromeFlagOverride
+2184: .   useCowork Plugins
+2185: .   sessionBypassPermissionsMode
+2186: 也有：
+2187: ·   telemetry counters ·  last API request    ·   registered hooks
+2188: ·  dynamic skill preservation    ·  remote / direct connect state
+2189: 这说明 Claude Code 的宿主不是传统 CLI 那种“启动即结束” 的模型， 而是—个持续运行的进程宿主。所以启动态、会话态、观察态其实都要在这里贯通。
+2190: 17.5 它特别像一个“会话级内核变量表”
+2191: 如果用操作系统的类比去看， 这文件很像：
+2192: ·  session kernel vars ·   runtime flags
+2193: ·   telemetry accumulators ·  transient feature latches ·   hook registries
+2194: 这也解释了为什么它必须放在  bootstrap/ 下面。
+2195: 因为它不是业务层状态， 而是整台宿主机器起来之后就要依赖的基础环境。
+2196: 17.6 这个模块最值得借鉴的地方
+2197: 如果让我总结 src/bootstrap/state.ts 最值得学的点， 我会给四个关键词：
+2198: 1. 宿主内核状态
+2199: 2. accessor 封装
+2200: 3. 启动态与会话态贯通
+2201: 4. 全局但不裸奔
+2202: 它真正厉害的地方， 是在—个不可避免要“有全局状态” 的 Agent 宿主里， 尽量把全局状态做得有边界、有命名、有写入口。
+2203: 18. src/services/api/claude.ts： 模型请求、流式解析与降级重试的主循环
+2204: 18.1 这不是简单的 API client， 而是 Claude Code 的模型请求runtime
+2205: src/services/api/claude.ts 体量巨大， 但角色非常清楚：
+2206: 它不是“调一下 Anthropic SDK”， 而是把消息、system prompt、工具定义、缓存策略、流式事件、错误回退、遥测日志全都编成一个真正可运行的模型请求主循环。
+2207: 如果说 src/QueryEngine.ts 是会话运行时， 那这个文件就是：
+2208: 会话运行时下面的   模型交互运行时
+2209: 18.2 它真正重要的不是某个函数， 而是一整套请求分层
+2210: 这个文件至少清楚地分了这些层：
+2211: 参数准备
+2212: ·  message / content 规范化·  prompt cache 策略
+2213: .  流式调用
+2214: ·  非流式 fallback   使用量累计
+2215: ·  TTFT / stall / timeout 观测   错误分类与上报
+2216: 也就是说， 它不是“—个 query 函数很长”， 而是把模型请求所有脏活都集中在—个 API runtime 里。
+2217: 18.3  queryModelWithStreaming()   /  queryModelWithoutStreaming()
+2218: 暴露了两种用户体验路径
+2219: 这两个入口非常说明产品分层：
+2220: ·  需要实时反馈时， 走 streaming
+2221: ·  需要—次性结果时， 走 non-streaming
+2222: 但更关键的是， 它们背后复用的是同—个主逻辑， 而不是两套分裂实现。
+2223: 这说明作者—直在控制“体验模式差异”和“核心请求语义”之间的耦合。
+2224: 18.4 真正最厉害的， 是 streaming 这条路径已经被做成了生产级状态机
+2225: 从流式主循环那—大段可以看到， 它在处理的不是“读 chunk 拼字符串”， 而是：
+2226: message_start
+2227: .   content_block_start .   content_block_delta .   content_block_stop
+2228: .  usage 累计
+2229: ·  tool_use / server_tool_use ·  advisor 特殊路径
+2230: ·  stall 检测
+2231: ·   idle watchdog
+2232: .  stream no events 检测
+2233: 这说明作者踩过大量真实线上坑。
+2234: 这种代码的价值不在美， 而在它把复杂的流式事件世界稳稳接住了。
+2235: 18.5 idle watchdog + stall telemetry 很能体现它是产品runtime， 不是 SDK demo
+2236: 这里有两套很成熟的防护：
+2237: 1. 长时间没 chunk 的 idle timeout watchdog
+2238: 2. chunk 间隔过长的 stall telemetry
+2239: 这意味着 Claude Code 对“流式调用失败” 的理解不只是：
+2240: .  API 报错   异常抛出
+2241: 而是还包括：
+2242: 流静默挂住
+2243: 代理半死不活
+2244: ·  200 成功但实际上没事件
+2245: 这才是生产环境里真正可怕的问题。
+2246: 18.6 streaming -&gt; non-streaming fallback 这条链路， 是这个文件工程成熟度最高的证据之一
+2247: 这部分我会给很高评价。
+2248: 当流式路径失败时， 它不会立刻让整个 query 崩掉， 而是：
+2249: ·  记录 fallback 事件
+2250: .  进入   executeNonStreamingRequest(...)
+2251: .  继续经过  with Retry(...)
+2252: ·  在必要时保持 request correlation
+2253: 这意味着 Claude Code 的模型请求层并不把“流式”视为唯—真理， 而是把它当作默认体验路径。
+2254: —旦这条路径不稳定， 系统仍然尽量保证结果层面可达。
+2255: 18.7 它和 src/services/api/client.ts  组合起来， 构成了“请求runtime + provider adapter”
+2256: 这—点必须—起看。
+2257: src/services/api/client.ts 负责的是：
+2258: .  直连 Anthropic
+2259: Bedrock   Foundry   Vertex
+2260: ·  OAuth / API key / cloud auth
+2261: ·  headers / proxy / region / timeout
+2262: 而 src/services/api/claude.ts 负责的是：
+2263: .  构造消息和请求语义
+2264: ·  驱动 streaming / fallback / usage / telemetry
+2265: 这两个文件配起来， 层次就非常清楚：
+2266: ·    client.ts 负责连到哪个 provider
+2267: .   claude.ts 负责怎样把 Claude Code 的会话请求跑完
+2268: 18.8 这个模块最值得借鉴的地方
+2269: 如果让我总结 src/services/api/claude.ts 最值得学的点， 我会给五个关键词：
+2270: 1. 请求 runtime
+2271: 2. 流式状态机
+2272: 3. fallback 韧性
+2273: 4. 遥测内建
+2274: 5. provider 分层
+2275: 它真正厉害的地方， 是把“调模型”从—个 SDK 调用， 做成了：
+2276: 一条可观测、可降级、可回退、可跨 provider、可在真实网络条件下长期运行的模型请求主循环。
+2277: 19. src/entrypoints/sdk/controlSchemas.ts： Claude
+2278: Code 控制协议的正式定义层
+2279: 19.1 这不是类型文件， 而是协议宪法
+2280: src/entrypoints/sdk/controlSchemas.ts 表面上是在写 Zod schema， 但它真正做的是：
+2281: 把 Claude Code 的 SDK / remote / bridge / direct connect 这整条控制面， 正式定义成一套可以校验、可以演进、可以跨语言实现的协议。
+2282: 所以这不是普通 types 文件， 而是协议定义层。
+2283: 19.2 这文件最厉害的地方， 是它把“控制面”从消息流里单独建模出来了
+2284: 这里显式定义了：
+2285: .   control_request
+2286: .   control_response
+2287: .   control_cancel_request .   keep_alive
+2288: 以及大量 request subtype：
+2289: .   initialize
+2290: .   interrupt
+2291: .   can_use_tool
+2292: .   set_permission_mode .   set_model
+2293: get_context_usage .   reload_plugins
+2294: .   elicitation
+2295: 这说明 Claude Code 的交互协议不是“传几条消息”那么简单， 而是有—整套正式控制面。
+2296: 19.3 它特别像“Agent Runtime 的 RPC 合同”
+2297: 从这些 schema 看， Claude Code 里的控制协议已经覆盖了：
+2298: .  初始化能力下发 .  权限审批
+2299: .   中断
+2300: .  MCP 状态
+2301: 上下文使用量 .  插件重载
+2302: .  用户输入征询
+2303: 也就是说， 这不是单—用途协议， 而是 Claude Code runtime 对外暴露的—整套远控合同。
+2304: 19.4  StdoutMessageSchema   /  StdinMessageSchema   特别重要
+2305: 这两个 aggregate schema 很能说明问题：
+2306: ·  哪些消息可以从 CLI / runtime 输出 .  哪些消息可以从外部输入进来
+2307: 也就是说， 作者不是只定义消息长什么样， 而是连流向都定义了。
+2308: 这是协议成熟度非常高的表现。
+2309: 19.5 这个模块最值得借鉴的地方
+2310: 如果让我总结 src/entrypoints/sdk/controlSchemas.ts 最值得学的点， 我会给四个关键词：
+2311: 1. 协议显式化
+2312: 2. 控制面独立
+2313: 3. Zod 校验
+2314: 4. 流向定义
+2315: 它真正厉害的地方， 是让 Claude Code 的控制面不再只是约定俗成， 而是被正式写成了机器可验证的协议。
+2316: 20. src/query/stopHooks.ts： Query 子系统在“停点”上的后处理编排器
+2317: 20.1 如果  QueryEngine .ts   是主会话循环， 这里就是 turn 结束后的后处理总线
+2318: src/query/stopHooks.ts 很能说明  query/ 目录的价值。
+2319: 它不是另—个大 query 引擎， 而是在拆：
+2320: .  turn 结束后要做什么·  hooks 怎样执行
+2321: ·  哪些后台工作可以 fire-and-forget ·  哪些错误要阻断 continuation
+2322: 所以它更像 query 子系统里的“停点编排器”。
+2323: 20.2 它最厉害的地方， 是把 hook 执行当成 query 语义的一部分，而不是边角副作用
+2324: 这个文件处理的不只是 Stop hooks， 还包括：
+2325: ·  TaskCompleted hooks ·  TeammateIdle hooks  ·   prompt suggestion
+2326: ·   extract memories
+2327: ·   auto dream
+2328: ·  computer use cleanup
+2329: 这说明 Claude Code 里的“—次回合结束”并不等于“模型停下了”。
+2330: 回合结束之后， 系统还有—整套补充处理链。
+2331: 20.3 它特别像“停点事件总线”
+2332: handleStopHooks(...) 会：
+2333: ·  消费 hook progress 消息·  收集 blocking errors
+2334: .  决定是否  preventContinuation .  生成 summary message
+2335: ·  必要时插入 attachment
+2336: ·  在 teammate 场景继续跑后续 hook
+2337: 这说明这里并不是简单执行几个脚本， 而是在把 hook 结果重新编回 Claude Code 的消息世界。
+2338: 20.4 Query 子系统的价值， 也正是被这种模块体现出来的
+2339: query/ 目录现在虽然不大， 但从这个文件已经能看出来， 它的存在意义是：
+2340: ·  把 QueryEngine 里那些和“turn 生命周期”强相关的逻辑拆出去
+2341: ·  让 token budget、stop hook、config、deps 这些问题在 query 语义层单独成立
+2342: 这对长期演进非常重要。
+2343: 否则  QueryEngine.ts 会继续膨胀成—切都往里塞的巨石。
+2344: 20.5 这个模块最值得借鉴的地方
+2345: 如果让我总结 src/query/stopHooks.ts 最值得学的点， 我会给四个关键词：
+2346: 1. 停点编排
+2347: 2. hook 消息化
+2348: 3. continuation 控制
+2349: 4. query 语义拆分
+2350: 它真正厉害的地方， 是把“模型这—轮结束后还要发生什么”正式做成了 query runtime 的—部分。
+2351: 21. src/utils/sandbox/sandbox-adapter.ts： Claude
+2352: Code 把权限规则落成操作系统级沙箱的桥接层
+2353: 21.1 这不是沙箱本体， 而是 Claude Code 的沙箱适配器
+2354: 文件开头写得很直接：
+2355: 它是包在  @anthropic-ai/sandbox-runtime   外面的一层 adapter。
+2356: 这层的价值就在于：
+2357: ·  上层是 Claude Code 自己的 settings、permission rules、tool 语义·  下层是外部 sandbox runtime
+2358: 两者之间必须有—层翻译器。
+2359: 21.2 最重要的设计： 权限规则语义和sandbox 语义被认真区分了
+2360: 这里非常成熟的—点， 是作者没有偷懒地把所有路径规则都混成—种解释。
+2361: 它明确区分：
+2362: ·  permission rule 里的路径约定
+2363: .   sandbox.filesystem.* 里的标准路径语义甚至专门写了：
+2364: .   resolvePath PatternForSandbox(...)
+2365: .   resolveSandboxFilesystemPath(...)
+2366: 这说明作者知道：
+2367: “规则字符串长得像路径” 不等于 “所有路径语义都—样”。
+2368: 21.3  convertToSandboxRuntimeConfig ( . . . )   才是真正的桥接核心
+2369: 这个函数做的， 是把 Claude Code 自己的：
+2370: ·  permissions.allow / deny ·  WebFetch domain 规则 ·  sandbox.network
+2371: ·  sandbox.filesystem
+2372: .   --add-dir
+2373: ·  settings file 保护
+2374: .   .claude/skills 保护
+2375: 全部折叠成外部 sandbox runtime 能执行的 config。
+2376: 这就是 adapter 最重要的价值：
+2377: .  上层讲的是 Claude Code 语言
+2378: ·  下层讲的是 sandbox runtime 语言   中间要有人翻译
+2379: 21.4 这里的安全工程味非常浓
+2380: 这个文件里有很多明显不是“普通功能开发”能自然长出来的东西， 比如：
+2381: ·  永远拒绝写 settings 文件 .  额外保护  .claude/skills
+2382: ·  防 bare repo 植入
+2383: .   allowManagedDomainsOnly
+2384: ·  policy 锁定 sandbox 设置   平台支持检测与依赖检测
+2385: 这说明这层不是为了“让 sandbox 能跑”， 而是为了：
+2386: 让 Claude Code 的权限与沙箱模型在真实攻击面下成立。
+2387: 21.5 它不是一次性初始化完就结束， 还会动态刷新
+2388: 这里还有—条很重要的线：
+2389: .   initialize(...)
+2390: .  订阅  settingsChangeDetector .   refreshConfig()
+2391: .   reset()
+2392: 这意味着 sandbox config 不是静态常量， 而是会随着 settings 变化动态更新。
+2393: 这点对交互式 Agent 特别重要。
+2394: 因为权限、设置、allowlist 都可能在会话中被更新。
+2395: 21.6 这个模块最值得借鉴的地方
+2396: 如果让我总结 src/utils/sandbox/sandbox-adapter.ts 最值得学的点， 我会给五个关键词：
+2397: 1. 规则翻译
+2398: 2. 语义分层
+2399: 3. 安全收口
+2400: 4. 动态刷新
+2401: 5. 外部 runtime 适配
+2402: 它真正厉害的地方， 是把 Claude Code 自己的权限语言， 认真翻译成了可以真正落在 OS 级隔离上的沙箱配置。
+2403: 22. src/services/api/client.ts： 多 provider 模型客户
+2404: 端的统一适配器
+2405: 22.1 这不是 Anthropic SDK 的薄封装， 而是 provider adapter
+2406: src/services/api/client.ts 的真正价值， 不在“new —个 client”， 而在于：
+2407: 它把 Claude Code 的模型调用统一折成一个  getAnthropicClient( . . . )   接口， 同时在内部适配了多种后端。
+2408: 这里至少覆盖了：
+2409: .  第—方 Anthropic API
+2410: Bedrock   Foundry   Vertex
+2411: 也就是说， 这是—层 provider adapter， 不是普通 client helper。
+2412: 22.2 它最成熟的地方， 是把认证、 headers、proxy、 region 这些provider 差异全都收口了
+2413: 这个文件处理的东西非常现实：
+2414: ·  OAuth token refresh ·  API key headers
+2415: ·  Bearer token for Bedrock ·  Azure AD for Foundry
+2416: ·  GoogleAuth for Vertex ·   custom headers
+2417: ·   proxy fetch ·  region 选择
+2418: ·   remote/container/session headers
+2419: 这说明 Claude Code 没有假设“调用模型”只有—种网络路径。
+2420: 它从—开始就在按多 provider 真实环境设计。
+2421: 22.3 它和  services/api/claude .ts    的关系非常清楚
+2422: .   client.ts 负责连到谁
+2423: ·    claude.ts 负责怎么发、怎么流、怎么 fallback
+2424: 这两层拆得很好。
+2425: 否则 provider 适配逻辑—旦混进流式状态机， 代码会更难收。
+2426: 22.4 这个模块最值得借鉴的地方
+2427: 如果让我总结 src/services/api/client.ts 最值得学的点， 我会给四个关键词：
+2428: 1. provider 适配
+2429: 2. 认证收口
+2430: 3. 网络环境兼容
+2431: 4. 请求头治理
+2432: 它真正厉害的地方， 是让上层 runtime 能把“调模型”视为统—能力， 而不是—堆 provider 分支。
+2433: 23. src/remote/SessionsWebSocket.ts： Remote 会话
+2434: transport 层
+2435: 23.1 如果  RemoteSessionManager .ts   是会话语义层， 这里就是
+2436: transport 层
+2437: src/remote/SessionsWebSocket.ts 非常典型地负责：
+2438: 建 WebSocket   认证
+2439: ·  ping / pong
+2440: ·  close code 处理
+2441: reconnect
+2442: 也就是说， 它不理解“权限请求怎么处理”， 但它负责“会话链路怎么活着”。
+2443: 23.2 这里最值得夸的是 close code 语义处理
+2444: 它并不是—掉线就盲目重连， 而是区分：
+2445: 永久关闭码
+2446: .   4001 session not found 的短期重试
+2447: ·  普通 transient close 的有限次重连这说明作者知道：
+2448: 有些掉线该认命
+2449: .  有些掉线是暂态
+2450: ·  有些掉线是 compaction 等过程里的短窗口抖动这种 close code 语义化处理， 非常像生产 transport。
+2451: 23.3 transport 层自己还带着保活逻辑
+2452: 这里的  PING_INTERVAL_MS 、 startPingInterval() 、 stopPingInterval() 很关键。
+2453: 它说明 remote 会话在 Claude Code 里不是—次性连接， 而是长期订阅链路。
+2454: 长期链路就必须自己管保活。
+2455: 23.4 这个模块最值得借鉴的地方
+2456: 如果让我总结 src/remote/SessionsWebSocket.ts 最值得学的点， 我会给四个关键词：
+2457: 1. transport 分层
+2458: 2. 重连预算
+2459: 3. close code 语义
+2460: 4. 长连接保活
+2461: 它真正厉害的地方， 是把 remote mode 最底层那条 WebSocket 链路做成了真正可靠的 transport， 而不是“连上就算成功”。
+2462: 24. src/query/tokenBudget.ts： Agentic Loop 的预算控制阀
+2463: 24.1 文件很小， 但位置很准
+2464: src/query/tokenBudget.ts 代码不多， 但它解决的是—个非常 Agent runtime 的问题：一轮 agentic loop 到底该在什么时候继续， 什么时候停。
+2465: 这不是普通 token 统计， 而是 continuation 策略。
+2466: 24.2 最关键的判断不是“快到预算了”， 而是“边际收益还在不在”
+2467: 这里有两个关键阈值：
+2468: COMPLETION_THRESHOLD = 0.9
+2469: DIMINISHING_THRESHOLD = 500
+2470: 也就是说， 作者判断是否继续， 不只看：
+2471: 预算是否还够
+2472: 还看：
+2473: ·  最近增量token 是不是已经很少
+2474: ·  连续继续几轮之后是不是已经进入 diminishing returns
+2475: 这很有产品感。
+2476: 因为真正糟糕的不是多花—点token， 而是 agent loop 在低收益状态下继续空转。
+2477: 24.3 它输出的不是布尔值， 而是策略决策对象
+2478: TokenBudgetDecision 会返回：
+2479: .   action: 'continue'
+2480: .  或  action: 'stop'同时还带：
+2481: .   nudgeMessage
+2482: .   continuationCount   pct
+2483: .   turnTokens .   budget
+2484: .   completionEvent
+2485: 这说明它不是—个纯底层计算函数， 而是—个能直接被 runtime 和 telemetry 消费的策略节点。
+2486: 24.4 这个模块最值得借鉴的地方
+2487: 如果让我总结 src/query/tokenBudget.ts 最值得学的点， 我会给三个关键词：
+2488: 1. 预算策略
+2489: 2. 边际收益判断
+2490: 3. continuation 控制
+2491: 它真正厉害的地方， 是把“什么时候该停”从—种模糊感觉， 做成了—个正式的 query runtime 决策点。
+2492: 25. src/entrypoints/sdk/coreSchemas.ts： SDK 序列化世
+2493: 界的总 Schema 底板
+2494: 25.1 它不是“再来一个类型文件”， 而是 Claude Code 的数据宪法
+2495: src/entrypoints/sdk/coreSchemas.ts —上来就把自己的身份说得很清楚：
+2496: ·  它是 serializable SDK data types 的 Zod schema 集合·  它是 single source of truth
+2497: .  TypeScript types 反而是从这里生成出去的这句话分量非常重。
+2498: 因为这意味着在 Claude Code 里， 真正的—手定义不是：
+2499: ·  手写 TypeScript interface
+2500: ·  再补—点 runtime 校验而是反过来：
+2501: ·  先定义可执行的 schema ·  再从 schema 生成类型
+2502: ·  再让整个 SDK / remote / bridge / transcript 世界共享这套可验证的数据语言
+2503: 这不是“类型更严格”这么简单。
+2504: 这代表作者已经把 Claude Code 当成—个跨进程、跨宿主、跨消费方的协议系统来看待。
+2505: coreSchemas.ts SDK 数据单—真源
+2506: 生成静态类型
+2507: generate-sdk-types.ts生成 TypeScript 类型
+2508: 提供公共数据骨架
+2509: controlSchemas.ts控制面协议
+2510: 统—可序列化输入输出
+2511: Permissions / Hooks / MCP扩展协议面
+2512: QueryEngine / Remote / Bri消息消费运行时
+2513: 25.2 它真正做的是“把序列化边界正式化”
+2514: 这个文件看起来像—大坨 Zod 定义， 但其实内在结构很清楚， 大致分成几层：
+2515: ·  usage / output format / config 这类基础数据·  MCP server config 与 status
+2516: ·  permission mode、permission update、permission result ·  hook event 与各种 hook input
+2517: ·  SDK message、session info、result、status、stream event
+2518: 换句话说， 它不是在定义“某个功能模块的数据”， 而是在定义：
+2519: Claude Code 哪些数据允许跨边界流动， 以及这些数据应该长成什么样。
+2520: 这里的“边界”至少包括：
+2521: ·  主线程与 SDK host
+2522: ·  本地与 remote / bridge
+2523: ·  query runtime 与 transcript ·  工具权限系统与 hook 系统   MCP 接入层与宿主呈现层
+2524: 所以这份 schema 文件的真正价值不在字段多， 而在于它把“跨边界的数据约束”统—收口了。
+2525: 25.3  lazySchema   和 placeholder 设计， 说明它在认真处理真实工程

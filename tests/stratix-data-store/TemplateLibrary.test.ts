@@ -12,14 +12,15 @@ const mockDb = {
 };
 
 // Mock database module
-jest.mock('../../src/stratix-database', () => ({
+jest.mock('@/stratix-database', () => ({
+  initializeDatabase: jest.fn(),
   getDatabase: jest.fn().mockReturnValue({
     getDatabase: jest.fn().mockReturnValue(mockDb)
   })
 }));
 
 // Mock AgentRepository
-jest.mock('../../src/stratix-database/AgentRepository', () => ({
+jest.mock('@/stratix-database/AgentRepository', () => ({
   agentRepository: {
     saveAgent: jest.fn(),
     getAgent: jest.fn().mockReturnValue(null),
@@ -29,7 +30,7 @@ jest.mock('../../src/stratix-database/AgentRepository', () => ({
 }));
 
 // Mock AgentChatMessageRepository
-jest.mock('../../src/stratix-database/AgentChatMessageRepository', () => ({
+jest.mock('@/stratix-database/AgentChatMessageRepository', () => ({
   agentChatMessageRepository: {
     saveMessage: jest.fn(),
     getMessagesByAgentId: jest.fn().mockReturnValue([]),

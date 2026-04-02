@@ -1,0 +1,505 @@
+1: Claude Code 模块级拆解
+2: 源码： https://github.com/instructkr/claude-code
+3: 副标题： 从关键源码文件入手， 拆开看它到底如何组织—个可运行、可扩展、可协同的 AI Agent 系统。
+4: 0. 怎么读这份拆解
+5: 这份文档只做—件事：
+6: 从关键源码文件出发， 把 Claude Code 这套系统拆成若干可理解、可比较、可评价的模块。
+7: 阅读时可以先抓住三个层次：
+8: 1. 宿主层： 程序如何启动、如何进入不同运行模式、如何托管会话
+9: 2. 运行时层： 消息、状态、工具、权限、任务、远端连接如何协同
+10: 3. 协议与生态层： SDK、MCP、插件、技能、Hook、Remote 如何被统—到同—套结构里这意味着本文不是按目录机械罗列， 而是按“ 系统为什么能成立 ”的主线往下拆。
+11: 最开始先抓四个支点就够了：
+12: 1. src/main.tsx
+13: 2. src/Tool.ts
+14: 3. src/QueryEngine.ts
+15: 4. src/tasks/LocalAgentTask/LocalAgentTask.tsx
+16: 它们分别代表：
+17: .  启动与宿主装配   能力契约
+18: 会话运行时
+19: .  异步子 agent 任务系统
+20: 装配工具与命令
+21: main.tsx
+22: 调用工具
+23: 派发后台 Agent
+24: 任务结果回流
+25: QueryEngine.ts 会话控制与消息编排
+26: LocalAgentTask.tsx子 Agent 任务运行时
+27: 如果只读目录， 你会知道这系统“很大 ”。
+28: 如果把这四个文件读懂， 你会知道它“为什么成立 ”。
+29: 0.1 整体结构先看什么
+30: 如果先不下钻到具体文件， Claude Code 可以先粗分成下面几块：
+31: .  宿主引导层： 负责启动、模式分发、初始化、桥接不同入口
+32: .  命令与工具层： 负责定义系统有哪些能力 、如何被模型和用戶调用    会话与状态层： 负责消息流、上下文、运行时状态和 turn 生命周期
+33: 权限与沙箱层： 负责把“能不能做”变成正式判定与 OS 级边界
+34: ·  模型接入层： 负责 provider 适配、请求主循环、重试、fallback、预算控制 .  扩展生态层： 负责 MCP、插件、技能、Hook、Remote 等外部能力接入
+35: 你可以把这份文档理解为：
+36: Claude Code 的“活体模块地图 + 渐进式架构剖面图”。
+37: 0.2 重点模块总表
+38: 在继续逐个深拆之前， 先把重点模块全景列出来。这样后面每新增—个章节， 都能知道它在整套系统里的位置。
+39: A 级核心模块
+40: 1. 宿主引导层：  main.tsx 、 bootstrap/ 、 entrypoints/
+41: 2. 用户命令层：  commands/ 、 commands.ts
+42: 3. 工具契约层：  Tool.ts 、 tools/ 、 tools.ts
+43: 4. 会话运行时层：  QueryEngine.ts 、 query.ts 、 query/
+44: 5. 状态层：  state/
+45: 6. 任务与多 Agent 层：  tasks/ 、 coordinator/ 、 tools/AgentTool/
+46: 7. 权限与沙箱层：  hooks/useCanUseTool.tsx 、 utils/permissions/ 、 utils/sandbox/
+47: 8. API 与模型接入层：  services/api/
+48: 9. MCP 能力总线层：  services/mcp/ 、 tools/MCPTool/
+49: 10. 扩展生态层：  skills/ 、 plugins/
+50: 11. 宿主 UI 层：  screens/ 、 components/ 、 ink/
+51: 12. Bridge / Remote / Server 层：  bridge/ 、 remote/ 、 server/
+52: B 级支撑模块
+53: 1. 上下文与记忆：  context/ 、 memdir/
+54: 2. 配置演进：  schemas/ 、 migrations/
+55: 3. 输入模式与交互增强：  keybindings/ 、 vim/ 、 voice/
+56: 4. 类型与常量：  types/ 、 constants/
+57: 5. 工程底座：  utils/
+58: 6. 原生能力封装：  native-ts/
+59: 宿主引导层
+60: main.tsx / bootstrap / entr
+61: 装配命令
+62: 宿主 UI 层
+63: screens / components / ink
+64: 会话运行时层
+65: QueryEngine / query
+66: Bridge / Remote / Server 层
+67: 装配工具
+68: 请求模型
+69: 调用能力
+70: 任务与多 Agent 层
+71: tasks / AgentTool / coordina
+72: API 与模型接入层services/api
+73: 桥接外部能力
+74: 装载软扩展
+75: 扩展生态层  skills / plugins
+76: MCP 能力总线层services/mcp
+77: useCanUseTool / permission
+78: 这张图可以帮助你先建立—个总判断：
+79: .   main.tsx 不是普通入口， 而是宿主装配器
+80: .   Tool.ts 和  commands.ts 决定 Claude Code 的能力边界 .   QueryEngine.ts 与  query/ 是会话运行时内核
+81: .   services/api/ 决定它如何真正与模型世界打交道
+82: .   skills/ 、 plugins/ 、 services/mcp/ 、 remote/ 则决定它是否能长成平台
+83: 本文当前拆解顺序
+84: 为了让这份文档逐步长成完整地图， 当前已经按这个顺序持续往下拆：
+85: 1.  main.tsx
+86: 2.  Tool.ts
+87: 3.  QueryEngine.ts
+88: 4.  LocalAgentTask.tsx
+89: 5.  AgentTool.tsx
+90: 6.  useCanUseTool.tsx
+91: 7.  services/mcp/client.ts
+92: 8.  state/AppStateStore.ts
+93: 9.  bridge/bridgeMain.ts
+94: 10.  server/createDirectConnectSession.ts
+95: 11.  utils/plugins/load PluginCommands.ts
+96: 12.  skills/loadSkillsDir.ts
+97: 13.  server/directConnectManager.ts
+98: 14.  utils/plugins/pluginLoader.ts
+99: 15.  commands.ts
+100: 16.  remote/RemoteSessionManager.ts
+101: 17.  bootstrap/state.ts
+102: 18.  services/api/claude.ts
+103: 19.  entrypoints/sdk/controlSchemas.ts
+104: 20.  query/stopHooks.ts
+105: 21.  utils/sandbox/sandbox-adapter.ts
+106: 22.  services/api/client.ts
+107: 23.  remote/SessionsWebSocket.ts
+108: 24.  query/tokenBudget.ts
+109: 25.  entrypoints/sdk/coreSchemas.ts
+110: 26.  query/config.ts
+111: 27.  services/api/with Retry.ts
+112: 1. src/main.tsx： 不是入口文件， 而是系统引导器
+113: 1.1 它真正负责的不是  main () ， 而是“把 Claude Code 这台机器启动起来”
+114: 这个文件最容易被低估， 因为名字很普通。但它的实际职责非常重， 几乎可以理解为 Claude Code 的bootloader：
+115: .  预热系统依赖   解析 CLI 模式
+116: 初始化设置与环境   运行迁移
+117: ·  接插件、技能、MCP、远程、bridge
+118: ·  初始化 REPL / server / ssh / direct-connect 等多种入口
+119: ·  把—堆 feature gate 编织进最终产品形态这就是为什么它会极大。
+120: 1.2 开头的 top-level side effects 很“系统软件”
+121: 文件最前面做了几件明显偏性能工程的事：
+122: .   profileCheckpoint
+123: .   startMdmRawRead()
+124: .   startKeychainPrefetch()
+125: 这不是普通业务代码写法， 而是在主动争夺启动关键路径。作者显然知道：
+126: 启动时间会影响产品体感
+127: 某些 IO 很慢， 但可以和模块加载并行
+128: .  —旦等到真正需要配置和认证时再读， 就会把首屏拖慢
+129: 所以它选择在模块评估阶段就把慢操作打出去。
+130: 这背后体现的是—种很成熟的宿主思维：
+131: CLI 不是脚本， 而是产品； 产品启动时间值得做专门优化。
+132: 1.3  runMigrations()   暴露了它是“长期演进系统”
+133: src/main.tsx 里的  CURRENT_MIGRATION_VERSION 和  runMigrations() 很有代表性。这里做的不是数据库迁移， 而是用戶配置、模型字符串、开关状态等迁移。
+134: 这说明作者很清楚—件事：
+135: Agent 产品的“兼容性”问题， 不只是数据结构问题， 也是模型命名、功能切换、权限模式、产品行为的兼容问题。
+136: —个没有 migration 体系的 Agent 工具， 很难长期迭代。
+137: 1.4  startDeferred Prefetches()   说明它把“首屏”与“首回合”区分开了
+138: 这个函数很值得夸。 它把很多非首屏必需、但对首轮体验重要的东西延后：
+139: .   initUser()
+140: .   getUserContext()
+141: .   prefetchSystemContextIfSafe()
+142: .   prefetchOfficialMcpUrls()
+143: .   refreshModelCapabilities()
+144: 设置变更侦测器
+145: .  技能变更侦测器
+146: 这背后其实是—套体验分层：
+147: .  第—阶段： 先把界面起来
+148: .  第二阶段： 在用戶准备输入时偷偷预热
+149: 第三阶段： 用戶真正发第—轮时， 大部分缓存已经在了
+150: 这个设计很像浏览器、 IDE 的启动优化思路， 而不像普通 CLI。
+151: 1.5 main ()    的本质是“模式分发器”
+152: main() 自身做了很多分流判断：
+153: DIRECT_CONNECT
+154: ·  deep link / URL scheme
+155: .   assistant
+156: .   ssh
+157: .   -p/--print .   sdk-url
+158: ·  interactive / non-interactive
+159: 它不是单—路径启动， 而是在统—宿主下分发出多个产品入口。
+160: 这意味着 Claude Code 并不是—个唯—运行模式的程序， 而是—个统— runtime 对多个前端入口的承载层。
+161: 1.6  run()    里 Commander 只是表层， 真正重要的是  preAction
+162: 很多人读 CLI 会盯着   .command() 和   .action() 。
+163: 但这个文件里更值得看的是  program.hook('preAction', ...) 。
+164: 这里集中做了：
+165: ·  等待 MDM / keychain 预取完成
+166: .   init()
+167: ·  绑定 sink
+168: .  注入  --plugin-dir ·   跑 migration
+169: ·  拉 remote managed settings ·  启动 settings sync
+170: 也就是说， 作者把命令执行前的“公共基础设施准备”统—收口到了—个系统钩子里。这—点非常重要，因为它避免了每个子命令各自偷偷初始化—套环境。
+171: 1.7 这个文件的优点和代价
+172: 优点：
+173: .  它把宿主初始化问题统—处理了   它对启动性能有明确优化意识
+174: ·  它把多入口模式统—在—个 runtime 下
+175: 它让插件、配置、权限、远程这些横切能力能在入口阶段介入
+176: 代价：
+177: .  文件极其庞大， 阅读门槛很高
+178: ·  各种 feature gate 和入口路径混在—起， 心智负担大   它已经是“ 系统总线”， 未来继续膨胀的风险很高
+179: 我的判断是：
+180: main .tsx    的问题不是方向错， 而是成功之后承担了太多。
+181: 2. src/Tool.ts： 整个系统最重要的契约文件之一
+182: 2.1 它定义的不是工具函数， 而是“能力协议”
+183: 很多 Agent 框架里的 Tool 定义大概只有：
+184: name
+185: .   schema
+186: execute
+187: Claude Code 远远不止。
+188: src/Tool.ts 把 Tool 定义成—个完整协议对象， 至少包含这些层面：
+189: .  调用：  call
+190: .  描述：  description
+191: ·   schema：  inputSchema /  inputJSONSchema /  outputSchema
+192: ·   安全：  validateInput /  check Permissions
+193: ·   行为属性：  isReadOnly /  isDestructive /  isConcurrencySafe   模型暴露：  prompt
+194: ·   UI 渲染：  renderToolUseMessage /   renderTool ResultMessage / progress / error / rejected
+195: ·   可观测性：  getActivityDescription /  getToolUseSummary .  自动模式支持：  toAutoClassifierInput
+196: .  搜索与折叠：  isSearchOrReadCommand
+197: 也就是说， 这里的 Tool 不是“底层能力函数”， 而是：
+198: 一个能被模型调用 、能被权限系统审查、能被 UI 呈现、能被日志和摘要系统理解的运行时组件。
+199: 这才是真正能在产品里用起来的 Tool。
+200: 2.2  ToolUseContext   非常重， 但重得有道理
+201: 这个文件里另—个核心对象是  ToolUseContext 。 它提供的不是几个简单参数， 而是—整套宿主能力：
+202: ·    getAppState /  setAppState .   setTool JSX
+203: .   appendSystemMessage .   sendOSNotification
+204: .   setInProgressToolUseIDs
+205: .   setResponseLength .   setStreamMode
+206: .   updateFileHistoryState .   updateAttributionState .   handleElicitation
+207: messages
+208: .   fileReadingLimits .   glob Limits
+209: 这说明作者接受了—个现实：
+210: 真正的工具调用不是纯函数， 它发生在一个活着的宿主环境里。
+211: 它可能要：
+212: 改状态   发通知
+213: 显⽰临时 UI
+214: 往消息流里插系统消息
+215: ·  受当前 session 配置和限制影响
+216: 如果不把这些纳入协议， 工具最终就会绕过架构， 偷偷依赖全局单例。
+217: 2.3 它把“能力属性”显式化了
+218: 我很喜欢这里对能力属性的抽象， 比如：
+219: .   isReadOnly
+220: .   isDestructive
+221: .   interruptBehavior .   isOpenWorld
+222: .   requiresUserInteraction .   shouldDefer
+223: .   alwaysLoad
+224: 这类字段的价值在于， 它们把隐含语义变成了显式元数据。
+225: 这会直接影响：
+226: .  权限策略
+227: .  调度策略
+228: .  prompt 裁剪策略 .  UI 呈现策略
+229: .   自动模式判断
+230: 很多系统会等到逻辑长出来后， 才发现这些语义散落在  if 里。Claude Code 是提前把它们对象化了。
+231: 2.4  buildTool()   是很小但很聪明的设计
+232: src/Tool.ts 里的  buildTool() 并不复杂， 但很好用 。 它提供统—默认值：
+233: .   isEnabled
+234: .   isConcurrencySafe .   isReadOnly
+235: .   isDestructive
+236: .   check Permissions
+237: .   toAutoClassifierInput .   userFacingName
+238: 这个设计的妙处在于：
+239: 工具定义更简洁 .  默认策略统—
+240: ·  安全相关默认值倾向 fail-closed特别是这些默认值里的态度很重要：
+241: .  并发安全默认  false .  只读默认  false
+242: ·  destructive 默认  false
+243: ·  classifier 输入默认空字符串
+244: 这说明作者不是只图方便， 而是在用默认值表达平台立场。
+245: 2.5 它为什么重要
+246: 如果说  main.tsx 是系统引导器，  Tool.ts 就是整个 Agent 世界与外部能力交界的宪法。
+247: 这份文件定义好了， 工具生态才能长；
+248: 定义不好， 后面每长—个工具都会破坏—致性。
+249: 我的评价是：
+250: Claude Code 的 Tool 抽象是这份源码里最成熟、最“平台化”的设计之一。
+251: 3. src/QueryEngine.ts： 真正的会话运行时
+252: 3.1 它最重要的决定： 把对话做成一个对象， 而不是一个函数
+253: QueryEngine 类—上来就把自己的定位说清楚了：
+254: ·  —次 conversation —个  QueryEngine .  每次  submitMessage() 是—个 turn
+255: .   messages 、 file cache 、 usage 、 permission denials 跨 turn 持续存在
+256: 这非常关键。
+257: 因为Agent 的本质不是“发—次请求”， 而是“在—段持续的上下文中工作”。
+258: 从架构角度看， 这个类把以下东西聚合成了会话级状态：
+259: .   mutableMessages
+260: .   abortController   .   permissionDenials .   totalUsage
+261: .   read FileState
+262: .   discoveredSkillNames
+263: .   loadedNestedMemoryPaths
+264: 这正是—个运行时该拥有的状态。
+265: 3.2  submitMessage()   是会话级 orchestration， 不只是发送 prompt
+266: 这个方法非常长， 但结构其实很清晰。 它做的主要是以下几件事：
+267: 1. 解析本轮 config
+268: 2. 包装  canUseTool， 记录权限拒绝
+269: 3. 计算初始模型、thinking 配置
+270: 4. 通过  fetchSystemPromptParts() 组装系统提⽰与上下文
+271: 5. 处理 memory prompt 注入
+272: 6. 构建  ProcessUserInputContext
+273: 7. 处理 orphaned permission
+274: 8. 跑  processUserInput()
+275: 9. 先写 transcript， 再进入 query loop
+276: 10. 调用底层  query()
+277: 11. 累积 usage、 回放消息、整理最终 result
+278: User                                main.tsx                                           QueryEngine                                         processUserInput                         query                                   Tool
+279: 输入请求
+280: submitMessage  （prompt）
+281: 组装 system prompt 与 user context
+282: 处理 slash command 与附件
+283: 产生 messages 与 allowedTools
+284: 写入 transcript
+285: 进入 query loop
+286: 按需调用工具
+287: 返回 tool result
+288: 产出 assistant / user / result 事件
+289: 输出 SDKMessage 流
+290: 呈现最终结果
+291: User                                main.tsx                                           QueryEngine                                         processUserInput                         query                                   Tool
+292: 这说明  QueryEngine 的职责并不是“替代  query.ts ”， 而是：
+293: 把底层 query loop 包装成一个面向会话的、能持久化和跨 turn 运作的服务对象。
+294: 换句话说：
+295: .   query.ts 更像单次 turn 的状态机
+296: ·    QueryEngine.ts 更像多 turn session 的控制器
+297: 3.3 这里能看到 Claude Code 很强的“会话产品意识”
+298: 几个细节特别体现这种意识。
+299: 第一， 先落 transcript 再跑 API
+300: 它会在真正进入 query loop 前先把用户消息写入 transcript。原因注释也写得很实在：
+301: .  如果用户消息已经接受， 但 API 还没响应时进程被杀掉   那么 resume 不应该丢失这条消息
+302: 这是非常真实的产品思维。
+303: 不是“功能逻辑上对不对”， 而是“用户中途打断时体验会不会坏”。
+304: 第二， 权限拒绝会被会话级追踪
+305: wrappedCanUseTool 不是只为了这—轮判定， 它会把 denial 存到  permissionDenials， 最终回到 SDK result 里。
+306: 这意味着权限不是临时 UI， 而是对话运行史的—部分。
+307: 第三， 技能发现与嵌套 memory 路径会跨方法共享
+308: 像  discoveredSkillNames 、 loadedNestedMemoryPaths 这些看起来很细碎， 但都在解决—个真实问题：
+309: ·  某些turn-scoped 信息要在同—轮多个子过程之间共享
+310: ·  但又不能无限累积污染整个长期 session这是典型的运行时状态治理问题。
+311: 3.4 类接口很克制， 这反而是优点
+312: QueryEngine 暴露的 public surface 很少：
+313: .   submitMessage()
+314: .   interrupt()
+315: .   getMessages()
+316: .   getRead FileState()
+317: .   getSessionId()
+318: .   setModel()
+319: 这说明作者没有把—堆内部状态操作直接暴露给外部， 而是把“会话控制” 的 API 保持得很窄。
+320: 我会把这看作—个好信号：
+321: 内部很复杂， 但外部接口尽量收敛。
+322: 3.5 它的问题不是职责混乱， 而是体量太大
+323: 我对这个文件最大的保留不是职责定义， 而是规模：
+324: .  逻辑高度集中 .  单方法很长
+325: .  读起来需要同时记住很多上下文
+326: 但公平地说， 这种复杂度不是写法不行， 而是这个类真的在承担“session runtime controller”的责任。所以它属于—种“合理但昂贵” 的复杂。
+327: 4. src/tasks/LocalAgentTask/LocalAgentTask.tsx： 多
+328: Agent 不是递归调用， 而是任务系统
+329: 4.1 这个文件告诉你 Claude Code 对“子 Agent”真正的理解
+330: 如果只看宣传， 很多人会把 sub-agent 理解为“再调—次模型”。
+331: 但看这个文件就知道， Claude Code 的理解更成熟：
+332: 子 agent 是一个后台任务对象。
+333: 它有：
+334: .  独立  task Id
+335: .  独立状态机
+336: ·  独立 output file
+337: ·  独立 abort controller   独立通知机制
+338: .  前后台切换 .  进度追踪
+339: 结果摘要
+340: 这和“递归 function call”是两种完全不同的架构层级。
+341: 4.2  LocalAgentTaskState   很像一个微型进程控制块
+342: 它的字段非常多， 但如果用操作系统视角看就很好理解：
+343: .  标识：  id 、 agentId 、 agentType
+344: .  生命周期：  status 、 startTime 、 endTime
+345: .  控制：  abortController 、 unregisterCleanup
+346: .  输入输出：  prompt 、 result 、 error 、 outputFile .  UI 管理：  isBackgrounded 、 retain 、 disk Loaded
+347: .  协同通信：  pendingMessages
+348: .  可观测性：  progress 、 summary 、 lastReportedToolCount它本质上就是—个被宿主管理的子运行单元。
+349: 4.3 进度追踪设计很务实
+350: 这个文件前半段有—套  ProgressTracker 设计：
+351: .   toolUseCount
+352: .   latestInputTokens
+353: .   cumulativeOutputTokens .   recentActivities
+354: 并且会从 assistant message 里提取：
+355: 最近工具调用
+356: ·   activity description ·  是否 search / read
+357: 这很聪明， 因为它没有试图做“完美追踪”， 而是抓住了用户真正关心的几件事：
+358: ·  它用了多少 token   它调了多少工具     它最近在干什么
+359: 这是很典型的产品化取舍： 不追求全量内部状态可视化， 而追求用户能理解当前进展。
+360: 4.4  enqueueAgentNotification()   是关键设计点
+361: 这个函数很重要， 它把 task 完成事件编码成—个内部消息协议：
+362: .   &lt;task-notification&gt;
+363: .   &lt;task-id&gt;
+364: &lt;status&gt;
+365: &lt;summary&gt;
+366: .   &lt;result&gt;
+367: &lt;usage&gt;
+368: 这说明 agent 结果返回给 coordinator 的方式， 不是共享内存， 不是直接函数回调， 而是：
+369: 转成消息流中的结构化事件。
+370: 这有几个巨大好处：
+371: .  主线程可以统—按“消息”来处理异步结果 .  UI 和 SDK 都能消费同—套协议
+372: .  agent 完成与用户发消息共享—条事件总线   恢复、记录、显⽰都更统—
+373: 这就是很典型的 event-driven runtime 思路。
+374: 主 Agent / Coordinator
+375: AgentTool 派发子 Agent
+376: LocalAgentTask 注册任务
+377: 子 Agent 运行并更新 progre
+378: enqueueAgentNotification
+379: 消息队列  （task-notification
+380: 注册运行单元进入执行态 完成 / 失败 / 停止结构化写入  作为内部消息回放
+381: Coordinator 收到回流结果
+382: 4.5 前台/后台切换体现了真实交互需求
+383: 这个文件不只支持背景任务， 还支持“前台跑—会儿， 再后台化”：
+384: .   registerAgentForeground()
+385: .   backgroundAgentTask()
+386: .   unregisterAgentForeground()
+387: 这说明作者认真处理了—个真实场景：
+388: .  用户刚发起子 agent 时， 想先看看它在做什么   如果它跑太久， 就应该允许退到后台
+389: ·  后台之后还要能通知、恢复、查看 transcript
+390: 这不是—般 demo 会处理的问题， 但是真正产品—定会碰到。
+391: 4.6 它把“取消”也当成一等能力
+392: killAsyncAgent() 和  killAllRunningAgentTasks() 看起来普通， 其实很关键。 —个多 agent 系统如果不能稳定取消， 就不可能可控。
+393: 这里的取消不是“设置个标志位”就完事， 而是涉及：
+394: .   abortController.abort()
+395: ·  cleanup 注销
+396: .  状态切换为  killed .  结果文件驱逐
+397: UI 宽限时间  PANEL_GRACE_MS
+398: 说明作者把取消操作当成真正的生命周期转换在设计。
+399: 4.7 这个模块最值得借鉴的地方
+400: 如果你在做多 Agent 产品， 我觉得这个文件带来的最大启发是：
+401: 子 agent 的核心问题不是“怎么生成”， 而是“怎么管理”。
+402: 生成—个子 agent 很容易。
+403: 难的是：
+404: 如何跟踪 .  如何取消
+405: .  如何通知   如何显⽰
+406: 如何恢复
+407: 如何避免前后台状态错乱
+408: Claude Code 在这方面是认真做过工程的。
+409: 5. src/tools/AgentTool/AgentTool.tsx： 多 Agent 系统的
+410: 总入口
+411: 如果说 src/tasks/LocalAgentTask/LocalAgentTask.tsx 负责“把子 agent 当任务管理”， 那么src/tools/AgentTool/AgentTool.tsx 负责的就是另—半：
+412: 决定这次子 agent 究竟应该以什么形态被启动。
+413: 这是 Claude Code 多 Agent 架构里非常关键的—层。
+414: 因为真正困难的地方， 从来不是“能不能起—个 agent”， 而是：
+415: .  起哪个 agent
+416: .  它有没有资格起
+417: .  是同步跑还是异步跑 .  是本地跑还是远程跑 .  要不要隔离工作目录
+418: 结果应该怎样重新编码回主线程
+419: 这些都不是 runAgent() —个人能解决的。
+420: AgentTool.tsx 做的， 是把“调用子 agent”这件事正式提升为—个运行时调度问题。
+421: 5.1 它在系统里的位置， 不是普通 Tool， 而是 Agent 路由器
+422: 这个文件表面上也是  buildTool({...}) 出来的—个 tool， 但它和普通工具不—样。
+423: 普通工具通常只是：
+424: .  定义输入
+425: 执行逻辑   返回结果
+426: 而  AgentTool 还额外负责：
+427: .  从当前工具池反推出可用 MCP server .  从权限规则里筛掉不可用 agent
+428: ·  从 coordinator / assistant / proactive 等模式决定执行形态
+429: .  把工作交给   spawnTeammate() 、 teleportToRemote() 、 registerAsyncAgent() 、 runAgent()
+430: ·  最后再把不同执行路径的结果统—映射成tool result所以它更像：
+431: Claude Code 多 Agent 能力的入口编排层。
+432: 5.2 它的输入 schema， 本身就在暴露架构设计
+433: 这个文件的输入参数非常值得看， 因为参数本身已经透露出作者脑中对“子 agent”是什么的理解。
+434: 基础参数有：
+435: .   description
+436: prompt
+437: .   subagent_type .   model
+438: .   run_in_background
+439: 多 Agent / swarms 相关参数有：
+440: name
+441: team_name .   mode
+442: 隔离与执行环境参数有：
+443: .   isolation
+444: .   cwd
+445: 这说明作者定义的不是“调用—个模型”， 而是“生成—个有身份、有运行方式、有工作空间的执行单元”。
+446: 你可以把这套 schema 理解为三层：
+447: 1. 任务层： 要做什么
+448: 2. 身份层： 由谁做、能否被继续寻址
+449: 3. 环境层： 在哪里做、怎样隔离
+450: 很多项目做到第—层就停了， Claude Code 明显做到了第三层。
+451: 5.3  prompt()   暴露了一个重要事实： 可用 agent 不是静态列表
+452: prompt() 这段逻辑很成熟。
+453: 它不是简单把全部 agent 名字拼进 prompt， 而是先做两层过滤：
+454: 1. 根据当前工具池里有哪些  mcp__... 工具， 抽出当前真正可用的 MCP server
+455: 2. 用  filterAgentsByMcpRequirements() 和  filterDeniedAgents() 过滤 agent这背后的设计含义很重要：
+456: 一个 agent 是否可选， 不只取决于“有没有定义”， 还取决于它当前是不是有足够的外部能力和权限。
+457: 这意味着 Claude Code 的 agent catalog 不是静态技能列表， 而是：
+458: 带运行时约束的可选角色集合。
+459: 这比很多“agent registry”实现都更像真产品， 因为它防止模型选到—个名义上存在、实际上跑不起来的agent。
+460: 5.4  call()    的真正作用， 是做执行形态分流
+461: 这个文件最精彩的地方就在  call() 。
+462: 它不是—条执行链， 而是—颗分流树。
+463: AgentTool 调用请求
+464: 进入 AgentTool
+465: 解析输入与选择 selectedAge
+466: 完成 agent 选择
+467: 校验 deny rules / MCP requi
+468: 检查通过
+469: 存在 team_name + name？
+470: 否
+471: isolation = remote？
+472: 否
+473: 计算 shouldRunAsync
+474: 是
+475: createAgentWorktree
+476: 是                                                                                    确定运行形态
+477: shouldRunAsync？
+478: 是                                                              否
+479: registerAgentForeground
+480: runAgent
+481: registerAsyncAgent
+482: runAsyncAgentLifecycle
+483: spawnTeammate
+484: teleportToRemote
+485: registerRemoteAgentTask
+486: 生成结果                                            生成结果                                                   生成结果                                                  生成结果
+487: mapToolResultToToolResultB
+488: 这棵树至少有四种主要执行形态：
+489: 1. teammate / team spawn
+490: 2. remote launch
+491: 3. async background agent
+492: 4. sync foreground agent
+493: 这就说明  AgentTool 并不是“—个工具”， 而是：
+494: 把多个子系统编排成统一入口的 dispatcher。
+495: 5.5 teammate 路径说明 Claude Code 不只做单会话多 agent
+496: 当  team_name 和  name 同时存在时，  AgentTool 不走普通 subagent 路径， 而是直接调用spawnTeammate() 。
+497: 这里很有意思， 因为它说明 Claude Code 区分了两类东西：
+498: ·  subagent： 作为当前会话内部的工作单元
+499: teammate： 作为 team 上下文里的可命名成员
+500: 而且这个文件还专门处理了—些团队模式下的边界条件：
+501: .  teammate 不能再递归地产生 teammate
+502: ·  in-process teammate 不能再起 background agent ·  plan mode 可以通过  mode 传入
+503: 这说明作者对“ 多 Agent 协同”并不是只停留在技术层， 而是已经开始做：
+504: .  组织结构约束 .  成员可寻址性 .  生命周期边界
+505: 这很像真正的协作系统， 而不是 demo 里的“ 多开几个模型”。

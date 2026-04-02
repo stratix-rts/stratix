@@ -28,7 +28,7 @@ import { EVENTS, DEFAULT_BODY_TYPE, FRAME_SIZE, SHEET_WIDTH, SHEET_HEIGHT, BODY_
 import { SKILL_TREE_CONFIG } from './config/skillTreeConfig';
 import { PartSelector, CharacterPreview, CharacterList, OpenClawConnectionPanel, AgentChatPanel, AgentConfigPanel, BackendSelector } from './ui';
 import { getButtonInlineStyles } from './ui/_buttonStyles';
-import type { SavedCharacter, PartSelection, PartMetadata, BodyType, AnimationName, CreatorStep } from './types';
+import type { SavedCharacter, PartSelection, PartMetadata, BodyType, AnimationName, CreatorStep, PartCategory } from './types';
 import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClawConnectionManager';
 import { textureManager } from '@/stratix-core/services';
 import { getToken, getCurrentTheme } from '@/design-system/config';
@@ -1280,7 +1280,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
       if (mode === 'minimal' && category === 'head') {
         part = this.getHumanHeadPart();
       } else {
-        part = partRegistry.getRandomPart(category, this.currentCharacter.bodyType);
+        part = partRegistry.getRandomPart(category as PartCategory, this.currentCharacter.bodyType);
       }
       
       if (part) {

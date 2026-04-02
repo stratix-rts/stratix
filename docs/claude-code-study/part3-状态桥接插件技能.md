@@ -2,6 +2,38 @@
 
 ---
 
+## 7. MCP 连接韧性：从外部协议到内生能力总线
+
+### 关键设计点
+
+- **连接韧性是核心能力**：认真处理超时、掉线、401、session 失效和重连
+- **不只是接入，而是内生能力化**：把 MCP 从一个外部协议，接成了 Claude Code 自己的内生能力总线
+- **协议映射的双向性**：外部 MCP 协议被折叠成内部可执行命令，同时内部状态也能反向同步到 MCP 工具面
+- **连接状态可观测**：MCP 客户端状态、工具列表、命令资源都能在 AppStateStore 中追踪
+
+### 核心源码模式
+
+```typescript
+// MCP 协议边界折叠
+// 外部协议世界：session_id、ws_url、tool definitions
+// 内部 runtime 世界：mcp.clients、mcp.tools、mcp.commands、mcp.resources
+
+// 连接韧性处理
+// 超时 → 重连机制
+// 401/403 → token refresh 或 reconnectSession
+// session 失效 → resume 或重新建联
+// 掉线 → 自动检测 + backoff 重试
+```
+
+### 对 Stratix 的启发
+
+- **MCP 是连接外部能力的桥梁，但不是终点**：MCP 工具最终需要被纳入统一的命令协议体系
+- **连接状态需要统一管理**：MCP 客户端状态应该和 Zone 系统、Agent 状态一起收敛到 AppStateStore
+- **协议边界需要 anti-corruption layer**：外部 MCP 协议不应直接渗透到内部逻辑，需要折叠成内部结构
+- **韧性设计是远端协作的基础**：不管是 MCP 远端工具还是 bridge 远端会话，超时/失效/重连处理都是必须的
+
+---
+
 ## 8. state/AppStateStore.ts：运行时状态内核的总台账
 
 ### 关键设计点

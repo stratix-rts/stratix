@@ -449,7 +449,6 @@ export class BackendSelector {
     const config: UnifiedOpenClawConfig = {
       mode,
       localEndpoint: endpoint,
-      sharedToken: apiKey,  // API Key input is actually Shared Token for pairing
       credentials: { accountId, apiKey, token: apiKey },
     };
 

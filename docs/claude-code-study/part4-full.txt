@@ -1,0 +1,505 @@
+1516: .   control_response .   keep_alive
+1517: .   streamlined_text
+1518: .   streamlined_tool_use_summary   system.post_turn_summary
+1519: 其他真正需要上送给宿主的  SDKMessage
+1520: 这说明 direct connect 的本质不是“远端 HTTP API”， 而是：
+1521: 服务端托管 Claude 会话， 客户端通过结构化流协议接管交互。
+1522: 也就是说，  createDirectConnectSession.ts 只是拿到这条流的入场券。
+1523: 10.10 这套设计的优点与代价
+1524: 优点很明显：
+1525: 1. 握手层足够薄， 便于维护
+1526: 2. 错误语义清楚， 便于产品层提⽰
+1527: 3. schema 校验严谨， 适合协议边界
+1528: 4. 与  directConnectManager.ts 的职责分层很干净
+1529: 5. 给 REPL / headless runner 提供了统—的 direct connect 入口
+1530: 代价也有：
+1531: 1. 逻辑分散在多个文件里， 第—次读不容易—眼看全
+1532: 2.  createDirectConnectSession.ts 太薄， 单文件可见价值容易被低估
+1533: 3. direct connect 协议的真实复杂度被“藏”到了 manager 和上层 runtime 中但总体上， 我会认为这不是缺点， 而是成熟架构常见的观感：
+1534: 真正重要的边界， 往往长得都不显眼。
+1535: 10.11 这个模块最值得借鉴的地方
+1536: 如果让我总结 src/server/createDirectConnectSession.ts 最值得学的点， 我会给四个关键词：
+1537: 1. 握手边界
+1538: 2. 协议折叠
+1539: 3. schema 校验
+1540: 4. 错误语义
+1541: 它的价值不在“逻辑多”， 而在“位置准”。
+1542: 它非常准确地站在 server API 和本地 runtime 之间， 把：
+1543: .  外部响应
+1544: .  内部配置 .  失败语义
+1545: 收成—个干净的入口。
+1546: 这就是为什么我会说， 这文件虽然薄， 但它不是边角料。
+1547: 它是 Claude Code 在  server / direct connect 这条支线上的 会话握手层。
+1548: 11. src/utils/plugins/loadPluginCommands.ts： 插件内容接入宿主命令协议的总适配层
+1549: 11.1 先说判断： 它不是“扫插件目录”， 而是在做插件内容协议转换
+1550: 如果你把 src/utils/plugins/loadPluginCommands.ts 当成—个普通 loader， 就会低估它。
+1551: 它表面上在做这些事：
+1552: .  读取插件目录 .  找  .md
+1553: ·   读 frontmatter
+1554: ·  生成 slash command
+1555: 但真正发生的事情是：
+1556: 它把插件作者写的 Markdown 内容， 转换成 Claude Code 宿主内部统一可执行的  Command    协议对象。
+1557: 这意味着它不是文件系统工具， 而是—个协议适配层。
+1558: 插件世界里的材料很多：
+1559: .   commands/ 目录 .   skills/ 目录
+1560: .   plugin.json 里的  commands
+1561: ·  manifest 里的 metadata override   内联  content
+1562: .  用戶配置项
+1563: .   ${CLAUDE_PLUGIN_ROOT} 、 ${CLAUDE_SKILL_DIR} 之类变量·  prompt 里的 shell 执行
+1564: 而这个文件做的， 就是把这些异构输入压成 Claude Code 自己那套统—命令模型。
+1565: 11.2 为什么它重要
+1566: 插件体系真正要回答的问题不是“能不能装插件”， 而是：
+1567: 插件写出来的东西， 最后怎样以宿主能理解、能授权、能展⽰、 能执行的方式挂进去。 src/utils/plugins/loadPluginCommands.ts 就是这个答案。
+1568: 如果没有这层， 插件命令会很快退化成：
+1569: .  —堆特殊格式
+1570: —堆分支加载器
+1571: .  —堆插件专属执行逻辑
+1572: 最后宿主里的 slash command 体系会被插件体系撕裂。
+1573: 而 Claude Code 没走这条路， 它坚持把插件命令折叠回统—  Command 。
+1574: 11.3 这文件最厉害的地方， 是命令与技能在这里被部分统一了
+1575: 虽然文件名叫  load PluginCommands.ts， 但它其实同时负责两件事：
+1576: .   getPluginCommands()
+1577: .   getPluginSkills()
+1578: 也就是说， 插件里的 command 和 skill， 在这里并不是两套完全不同的协议， 而是：   来源不同
+1579: .  命名不同
+1580: ·    loaded From /  progressMessage / base directory 语义略有不同但最终都被转成同—种  Command 。
+1581: 这就是 Claude Code 很成熟的地方：
+1582: 用戶体验层可以区分“命令”和“技能” .  运行时协议层尽量复用同—种抽象
+1583: 11.4  pluginLoader .ts   负责“发现插件内容”， 而这个文件负责“把内容变成命令对象”
+1584: 从 src/utils/plugins/pluginLoader.ts 可以看到， loader 负责把插件的内容路径先整理出来：
+1585: .  自动探测  commands/ .  自动探测  skills/
+1586: ·  读取 manifest 里的  commands
+1587: ·  解析 object mapping 形式的  commandsMetadata •  把  source 路径转成绝对路径
+1588: .  过滤掉不存在的路径并记错误
+1589: 而 src/utils/plugins/loadPluginCommands.ts 解决的是：
+1590: .  这些路径里的 Markdown 如何解释 .  命令名怎么生成
+1591: ·  skill 目录如何折叠
+1592: ·  frontmatter 怎么转成  Command
+1593: .  prompt 运行前要做哪些变量替换和安全收口这是非常标准的两段式设计：
+1594: 1. 资源发现
+1595: 2. 协议适配
+1596: 11.5 它支持的输入形态很多， 说明作者真把插件当成产品生态在做
+1597: 从 schema 和实现可以看出， 插件命令并不只支持“丢几个 Markdown 文件进去”这么简单。
+1598: 它至少支持这些来源：
+1599: 1. 插件默认  commands/ 目录
+1600: 2. manifest 中声明的额外 command 路径
+1601: 3. 单个  .md 文件
+1602: 4. 目录下递归扫描到的多个  .md
+1603: 5.  SKILL.md 技能目录
+1604: 6. manifest object mapping 形式的命令定义
+1605: 7. manifest 里直接内联的  content
+1606: 这说明作者心里预设的插件作者类型并不单—：
+1607: 有的人喜欢目录约定
+1608: ·  有的人喜欢 manifest 显式声明   有的人想做单文件命令
+1609: 有的人想做技能目录
+1610: ·  有的人甚至希望把内容直接内联在 manifest
+1611: 11.6  collectMarkdownFiles()    + transformPluginSkillFiles()  很像
+1612: 内容发现层
+1613: collectMarkdownFiles() 做的是：
+1614: •   用  walkPluginMarkdown() 递归扫 Markdown   读文件
+1615: ·  解析 frontmatter
+1616: .  生成  PluginMarkdownFile
+1617: 而  transformPluginSkillFiles() 会先按目录分组， 然后判断：
+1618: .  如果—个目录里存在  SKILL.md ·  那这个目录只保留 skill 文件
+1619: ·  其他 Markdown 文件不再同时作为普通 command 暴露
+1620: 这其实是在收敛歧义。
+1621: —旦—个目录被识别为 skill 目录， 它就不应该再同时被当成：
+1622: .  —个技能目录
+1623: 又是—堆普通命令文件
+1624: 11.7 命名策略做得很好： 它把插件命名空间显式带进 slash command
+1625: getCommandNameFromFile() 对 skill 和普通文件分别处理：
+1626: .  普通文件： 取文件名去掉  .md ·  skill： 取  SKILL.md 所在目录名
+1627: 同时还会把相对路径折成 namespace， 最后生成：
+1628: .   pluginName:commandName
+1629: .   pluginName:namespace:commandName
+1630: 这种命名方式的价值不只是“避免重名”， 而是：
+1631: 1. 插件来源被显式编码进名字
+1632: 2. 多级目录结构能自然映射成命令空间
+1633: 3. slash command 面板里—眼能看出归属
+1634: 4. 与内建命令、动态技能、MCP 命令能长期共存
+1635: 11.8  createPluginCommand()   才是真正的核心： 插件内容在这里被折叠成  Command
+1636: 这个函数是全文件真正的心脏。
+1637: 它把—份插件 Markdown， 折叠成宿主命令协议时， 处理了很多层语义：
+1638: .   description
+1639: .   allowedTools
+1640: .   argument-hint   arguments
+1641: .   when_to_use .   version
+1642: name
+1643: .   model
+1644: .   effort
+1645: .   disable-model-invocation .   user-invocable
+1646: .   shell
+1647: 最后返回的是 src/types/command.ts 里的  PromptCommand 。
+1648: 这件事很关键。
+1649: 因为它意味着插件命令不是—个“外挂执行器”， 而是直接变成 Claude Code 的第—等命令对象。
+1650: 提供路径与 metadata
+1651: 发现 commandsPath / comm
+1652: commands.ts
+1653: 合并进宿主命令列表
+1654: createPluginCommand  frontmatter 转 Command
+1655: 生成统— Command
+1656: 并入命令总表
+1657: 提供内容与 frontmatter
+1658: 11.9 frontmatter 处理非常成熟： 插件 Markdown 更像轻量命令规格
+1659: Claude Code 在这里不是简单解析 YAML， 而是系统化处理：
+1660: .   coerceDescriptionToString()
+1661: .   extractDescriptionFromMarkdown()
+1662: .   parseSlashCommandToolsFromFrontmatter()
+1663: .   parseArgumentNames()
+1664: .   parseUserSpecifiedModel()
+1665: .   parseEffortValue()
+1666: .   parseBooleanFrontmatter()
+1667: .   parseShellFrontmatter()
+1668: 这说明插件 Markdown 在 Claude Code 里不是“纯文本 prompt 文件”， 而更像：
+1669: 一份轻量声明式命令规格。
+1670: 11.10 变量替换链路很强， 说明作者把插件内容当成“参数化模板”⽽不是死文本
+1671: getPromptForCommand() 里最值得看的， 是那条多层替换链：
+1672: 1. 参数替换  substituteArguments(...)
+1673: 2. 插件变量替换  substitutePluginVariables(...)
+1674: 3. 用户配置替换  substituteUserConfigInContent(...)
+1675: 4.  CLAUDE_SKILL_DIR
+1676: 5.  CLAUDE_SESSION_ID
+1677: 6. shell 命令执行  executeShellCommand sInPrompt(...)
+1678: 这说明插件内容并不是写完就原样送给模型， 而是—个运行时模板。
+1679: 11.11  executeShellCommand sInPrompt()   特别关键： 插件 prompt 也
+1680: 能触发受控的环境求值
+1681: 这—步说明插件 command / skill 不是静态 prompt， 而是：
+1682: ·  可以在 prompt 生成阶段执行 shell .  可以把执行结果注入最终 prompt
+1683: .  仍然通过 Claude Code 自己的工具权限上下文来约束
+1684: 更精彩的是这里对  allowedTools 的处理。
+1685: 它会包装—个新的  getAppState()， 把当前命令允许的工具集合注入
+1686: tool PermissionContext.alwaysAllowRules.command， 也就是说插件 prompt 里的 shell 执行并不是脱离权限系统的后门。
+1687: 11.12  commandsMetadata   和 inline content 支持， 说明它已经开始支持“manifest 驱动的命令定义”
+1688: 从 src/utils/plugins/schemas.ts 和 src/utils/plugins/pluginLoader.ts 可以看到， 插件命令不仅能靠文件系统约定， 还能靠 manifest object mapping 驱动：
+1689: source
+1690: content
+1691: .   description  .   argumentHint .   model
+1692: .   allowedTools
+1693: 然后在这个文件里再把这些 metadata override 压回 frontmatter 语义。
+1694: 这其实很像—种双层模型：
+1695: 1. 内容层： Markdown / inline content
+1696: 2. 发布层： manifest metadata
+1697: 11.13 它对缓存、并发和重复路径的处理， 说明作者预设了插件生态会变大
+1698: getPluginCommands() 和  getPluginSkills() 都用了  memoize(...)， 并且有：
+1699: .   clearPluginCommandCache()
+1700: .   clearPluginSkillsCache()
+1701: 更重要的是， 它不是串行地—个插件—个插件慢慢扫， 而是：
+1702: ·  enabled plugins 并行处理
+1703: ·  每个插件内部的多个 path 也并行处理
+1704: .  用  loaded Paths 防重
+1705: .  配合  isDuplicatePath() 收敛重复来源
+1706: 11.14  --bare    与 “only enabled plugins” 的判断说明插件不是宿主硬依赖， 而是可控增量层
+1707: getPluginCommands() 开头有两个很重要的约束：
+1708: 1.  --bare 时， 默认跳过 marketplace 自动加载
+1709: 2. 只从 enabled plugins 加载
+1710: 这说明插件在 Claude Code 的定位不是基础生命线， 而是：
+1711: .  默认可接入
+1712: 但可以整体降级
+1713: 可以按启用状态裁剪
+1714: ·   可以通过 session 级  --plugin-dir 注入
+1715: 11.15 从 src/commands.ts    回看， 这层最终是被并进命令总表的
+1716: 在 src/commands.ts 里可以看到：
+1717: .  它导入  getPluginCommands()
+1718: .  也导入  getPluginSkills()
+1719: ·  再和内建命令、bundled skills、dynamic skills 合并而且文里明确写了：
+1720: dynamic skills 插在 plugin skills 之后、built-in commands 之前。
+1721: 这意味着插件命令不是边角挂件， 而是真正进入 Claude Code 主命令表排序体系的—部分。
+1722: 11.16 这文件的优点与代价
+1723: 优点很明显：
+1724: 1. 把插件 command / skill 尽量统—进同—种  Command 协议
+1725: 2. 支持多种来源形态， 生态适配能力强
+1726: 3. frontmatter 解析和变量替换链非常成熟
+1727: 4. 权限语义能继续传导到 prompt shell 执行
+1728: 5. 并发、缓存、防重都做了， 适合规模增长
+1729: 代价也同样明显：
+1730: 1. 文件职责很重， 第—次读会觉得杂
+1731: 2. command 与 skill 同居—文件， 理解成本较高
+1732: 3. manifest metadata、 目录约定、inline content 三套入口叠在—起， 抽象密度很高
+1733: 4. 真正的上下文还要结合  pluginLoader.ts 、 commands.ts 、 command.ts —起看
+1734: 11.17 这个模块最值得借鉴的地方
+1735: 如果让我总结 src/utils/plugins/loadPluginCommands.ts 最值得学的点， 我会给五个关键词：
+1736: 1. 协议折叠
+1737: 2. 命名空间治理
+1738: 3. 模板实例化
+1739: 4. 权限延续
+1740: 5. 生态兼容
+1741: 它最厉害的地方不是“支持插件”， 而是：
+1742: 它没有让插件发明一套自己的命令系统， 而是强行把插件内容折回 Claude Code 现有的命令协议。
+1743: 12. src/skills/loadSkillsDir.ts： 技能系统真正成立的总装层
+1744: 12.1 先说判断： 这不是“读 skills 目录”， 而是 Claude Code 的技能运行时装配器
+1745: 如果说 src/utils/plugins/loadPluginCommands.ts 解决的是“插件内容如何变成命令”， 那么src/skills/loadSkillsDir.ts 解决的就是：
+1746: Claude Code 到底怎样把技能当成一等运行时能力接进来。
+1747: 这个文件干的事远比“扫描目录”重：
+1748: ·  解析 skill frontmatter .  生成统—的  Command
+1749: ·  管理 user / project / policy / legacy / bundled / mcp 等多来源技能 .  去重
+1750: 条件激活   动态发现
+1751: .  发出变更信号
+1752: 所以它其实是技能系统的总装层， 而不是—个普通 loader。
+1753: 12.2 最关键的设计： 技能最终不是特殊对象， 而是被压回  Command
+1754: 这个文件最重要的函数之—是  createSkillCommand(...) 。
+1755: 它最后返回的仍然是 src/types/command.ts 里的  Command， 只是额外带上了：
+1756: .   hooks
+1757: .   skillRoot
+1758: context
+1759: agent
+1760: .   paths
+1761: .   loaded From
+1762: 这说明 Claude Code 对技能的理解非常成熟：
+1763: ·  产品概念上， skill 是 skill
+1764: ·  运行时协议上， skill 尽量还是 command
+1765: 这带来的好处非常大。
+1766: 因为只要技能落回  Command， 后面：
+1767: ·  slash command 面板·   model invocation
+1768: .  prompt 注入   权限继承
+1769: ·  cache 失效 .  动态发现
+1770: 都不用重新发明—套。
+1771: 12.3  parseSkillFrontmatterFields ()   暴露了 Claude Code 对技能
+1772: 的理解不是“提⽰词片段”， 而是“轻量能力声明”
+1773: 这个函数会系统化解析：
+1774: .   description
+1775: .   allowed-tools
+1776: .   argument-hint   arguments
+1777: .   when_to_use .   version
+1778: .   model
+1779: .   disable-model-invocation .   user-invocable
+1780: .   hooks
+1781: context
+1782: agent  .   effort .   shell
+1783: 这很能说明问题。
+1784: 在 Claude Code 里， skill 不是—段孤立 prompt， 而更像—份：
+1785: 轻量声明式能力规格。
+1786: 这也是为什么技能系统能跟命令系统、插件系统、MCP skill 系统—起并存。
+1787: 因为它们最后都落在—套足够通用的运行时抽象上。
+1788: 12.4 它处理的不只是  / skills/ ， 还在兜住历史兼容src/skills/loadSkillsDir.ts 里有—条很重要的双轨逻辑：
+1789: 1. 新式  /skills/ 目录
+1790: 2. 旧式  /commands/ 目录里的技能写法也就是：
+1791: .   loadSkillsFromSkillsDir(...)
+1792: .   loadSkillsFromCommandsDir(...)
+1793: 前者只认  skill-name/SKILL.md 。
+1794: 后者则兼容：
+1795: .   SKILL.md 目录形式 .  单个  .md 文件形式
+1796: 这说明作者没有把技能系统做成—次性重构， 而是认真对待了历史包袱。
+1797: 从产品演进角度看， 这是非常必要的， 因为社区内容和用戶本地资产都可能建立在旧约定上。
+1798: 12.5 多来源技能装配， 才是这文件真正的重量
+1799: getSkillDirCommands(cwd) 才是这文件的中心。
+1800: 它同时装配这些来源：
+1801: ·   managed skills ·   user skills
+1802: ·   project skills
+1803: ·    --add-dir 带来的 additional dirs
+1804: ·  legacy commands-as-skills然后再去做：
+1805: .  去重
+1806: 条件技能分离·   cache
+1807: .  激活跟踪
+1808: 这已经不是“读目录” 了， 而是在做—张技能来源总表。
+1809: 也就是说， Claude Code 不是把 skill 作为某个单独目录的附属功能， 而是把它当作跨来源的正式能力层。
+1810: 无条件技能直接返回
+1811: managed / user / project /多来源技能
+1812: 统— Command进入宿主命令世界
+1813: parseSkillFrontmatterFields createSkillCommand
+1814: 读取内容
+1815: 生成技能命令
+1816: 动态发现与激活
+1817: 激活后并入
+1818: signals / dynamicSkills
+1819: 12.6 去重方式非常讲究： 它不是比路径字符串， 而是比文件身份
+1820: 这里我很喜欢的—个点是  getFileIdentity(filePath) 。
+1821: 它不是简单拿字符串路径比重， 而是走  real path()：
+1822: ·  处理 symlink
+1823: .  处理重叠父目录
+1824: 尽量避免不同路径指向同—文件导致的重复加载
+1825: 这说明作者遇到过真实世界里的复杂文件系统环境。
+1826: 这种去重不是“代码洁癖”， 而是插件/技能生态—旦规模起来后， 必须认真处理的现实问题。
+1827: 12.7 条件技能是这个文件最有产品感的设计之一
+1828: paths frontmatter 的支持非常重要。
+1829: 这意味着某些技能并不是启动时—股脑全部暴露， 而是先进入  conditionalSkills， 只有当文件路径匹配时才激活：
+1830: .   conditionalSkills
+1831: .   activatedConditionalSkillNames
+1832: .   activateConditionalSkillsForPaths(...)
+1833: 这背后的设计很聪明：
+1834: .  减少默认可见技能数量 .  避免技能列表膨胀
+1835: ·  把 skill 与文件上下文绑定
+1836: .  让模型在“碰到相关文件后”才看到相关技能
+1837: 这就是典型的 Agent 产品思路：
+1838: 不是能力越多越好， 而是要在正确时机显露正确能力。
+1839: 12.8 动态技能发现说明技能系统不是启动期静态配置， 而是会话期可增量演化
+1840: discoverSkillDi rsForPaths(...) 和  addS killDirectories(...) 很关键。
+1841: 它们说明 Claude Code 的技能系统不是：
+1842: .  启动时扫—遍   之后固定不变
+1843: 而是：
+1844: 随着会话中文件操作发生   向上遍历文件路径
+1845: .  发现新的  .claude/skills   动态加载
+1846: ·  发信号通知外层清 cache
+1847: 这说明技能系统已经和真实工作流绑在—起了。
+1848: 技能不是—个“ 安装后静态列表”， 而是—个会随着工作上下文展开的能力面。
+1849: 12.9 它和权限系统是接得上的， 但方式很克制
+1850: createSkillCommand(...).getPromptForCommand(...) 里仍然会调用
+1851: executeShellCommand sInPrompt(...)， 并且和前面插件命令—样， 把  allowedTools 注入权限上下文。但它也额外做了—件非常成熟的事：
+1852: MCP skills 禁止执行 markdown body 里的 shell。
+1853: 这—句特别能说明作者对“本地技能”和“远端技能” 的信任边界是清醒的。
+1854: 不是所有 skill 都被—视同仁地当成本地可信内容。
+1855: 12.10 这个模块最值得借鉴的地方
+1856: 如果让我总结 src/skills/loadSkillsDir.ts 最值得学的点， 我会给五个关键词：
+1857: 1. 技能折叠
+1858: 2. 多来源装配
+1859: 3. 条件激活
+1860: 4. 动态发现
+1861: 5. 信任分层
+1862: 它真正厉害的地方， 是把 skill 从“提⽰词目录”做成了：
+1863: 可声明、可发现、可去重、可动态激活、可回收到统一命令协议中的正式运行时能力。
+1864: 13. src/server/directConnectManager.ts： Direct
+1865: Connect 的流式会话控制器
+1866: 13.1 如果  createDirectConnectSession .ts   是握手层， 这里就是持续
+1867: 运行层
+1868: 前面拆 src/server/createDirectConnectSession.ts 时， 我已经说过， 它负责：
+1869: ·   建 session .  取  ws_url
+1870: .  折叠成  DirectConnectConfig
+1871: 而 src/server/directConnectManager.ts 真正负责的是：
+1872: 把这个 config 变成一条持续运行的、可收发消息的、带控制语义的会话流。
+1873: 所以这两个文件的关系非常清楚：
+1874: .   createDirectConnectSession.ts 负责入场 .   directConnectManager.ts 负责演出
+1875: 13.2 它不是普通 WebSocket wrapper， 而是结构化流协议的本地
+1876: 端点
+1877: 这个文件看起来像—个薄  WebSocket 封装， 但其实不是。
+1878: 它里面已经清楚地表达出几个协议层事实：
+1879: .  收到的数据不是任意消息， 而是逐行 JSON
+1880: ·  上游说的是 Claude SDK / StructuredIO 的消息格式   消息里混合了内容流和控制流
+1881: ·  本地端必须理解 permission request / interrupt / keep_alive 这类控制语义也就是说， 它不是—个 transport wrapper， 而是：
+1882: Direct Connect 流式控制协议在本地宿主里的会话端点。
+1883: 13.3 最值得注意的一点： 它显式区分“内容消息”和“控制消息”
+1884: message 处理里有—段很关键：
+1885: •   先  split('\n')
+1886: .  再  jsonParse(line)
+1887: .  再判断  StdoutMessage
+1888: .  然后按  parsed.type 分流
+1889: 这里最重要的不是实现细节， 而是协议建模：
+1890: .   control_request
+1891: .   control_response .   keep_alive
+1892: .   control_cancel_request .   streamlined_text
+1893: .   streamlined_tool_use_summary   system.post_turn_summary
+1894: ·  其他真正上送给宿主 UI / runtime 的  SDKMessage
+1895: 这说明 direct connect 流里并不只有“助手输出”， 而是混合了—套完整的控制面。
+1896: 13.4  can_use_tool   权限请求接入点， 说明 direct connect 不是弱
+1897: 客户端
+1898: 最关键的控制消息是：
+1899: .   control_request
+1900: .   subtype === 'can_use_tool'
+1901: —旦遇到这个 subtype， 它就把请求交给  onPermissionRequest(...) 。
+1902: 这意味着 direct connect 客戶端并不是—个被动看输出的终端， 而是：
+1903: 会收到权限审批请求
+1904: .  需要本地决策或转交决策 .  再把结果回写到流里
+1905: 也就是说， 远端托管并没有抹平 Claude Code 的权限系统。
+1906: 权限主权仍然保留在宿主这—侧。
+1907: 13.5 它对未知控制消息的处理很像生产系统， 而不是 demo
+1908: 我很喜欢这段逻辑：
+1909: .  如果收到不认识的  control_request.subtype   不只是打日志
+1910: .  还会  send ErrorResponse(...)
+1911: 这点非常重要。
+1912: 因为流协议里如果上游在等—个响应， 而本地端只是无声忽略， 服务端就会挂在那里。
+1913: 所以这个设计的成熟点在于：
+1914: 它知道协议错误不只是“报个错”， 而是要把错误也按协议回传。
+1915: 13.6
+1916: sendMessage()  、 respondToPermissionRequest()  、 sendInterrupt()
+1917: 共同构成了最小可用控制面
+1918: 这三个函数把这条 direct connect 会话最核心的三类出站动作定义清楚了：
+1919: 1. 发送用戶消息
+1920: 2. 回应权限请求
+1921: 3. 发送中断信号
+1922: 也就是说， 这个 manager 没试图包揽所有运行时逻辑， 但它把 direct connect 会话最必要的交互原语都收齐了。
+1923: 这是很克制的设计。
+1924: 只暴露真正要给上层用的最小集合。
+1925: 13.7 它其实就是把 REPL / headless runner 和远端 session 之间插了一层协议翻译器
+1926: 从  DirectConnectCallbacks 来看， 这层真正暴露给上游的是：
+1927: onMessage
+1928: .   onPermissionRequest .   onConnected
+1929: .   onDisconnected
+1930: onError
+1931: 也就是说， 上层代码不需要自己理解 WebSocket 细节和控制协议细节， 只需要响应这些回调。
+1932: 这就把 direct connect 的复杂度成功压在了边界层里。
+1933: 这是—个很典型的 runtime adapter 写法。
+1934: 13.8 这个模块最值得借鉴的地方
+1935: 如果让我总结 src/server/directConnectManager.ts 最值得学的点， 我会给四个关键词：
+1936: 1. 流式协议分流
+1937: 2. 控制面保留
+1938: 3. 错误按协议返回
+1939: 4. 最小交互原语
+1940: 它的价值在于：
+1941: 不是“把 ws 连上”， 而是把 Claude Code 的：
+1942: 消息流   权限流
+1943: 中断流
+1944: 统—收成—个可持续运行的远端会话控制器。
+1945: 14. src/utils/plugins/pluginLoader.ts： 插件生态的资
+1946: 源发现、校验与合并工厂
+1947: 14.1 这是 Claude Code 插件系统里最像“供应链后端”的文件
+1948: src/utils/plugins/pluginLoader.ts 体量非常大， 但它的角色很清楚：
+1949: 它不是某个插件的 loader， 而是整个插件生态的资源发现、校验、合并、降级、缓存和来源治理工厂。
+1950: 如果说 src/utils/plugins/loadPluginCommands.ts 负责“把插件内容折叠成命令”， 那这个文件负责的则是：
+1951: .  插件从哪里来
+1952: .  哪些插件应该生效
+1953: .  插件目录里有哪些组件
+1954: ·  manifest 和 marketplace 信息怎样合并   出错时怎样降级继续
+1955: 14.2 它最值得先看的一点， 是插件来源优先级被写得非常明确
+1956: 这个文件里  mergePluginSources(...) 和  loadAllPlugins()/loadAllPluginsCacheOnly() —起， 把来源优先级写得非常清楚：
+1957: 1. session-only plugins （--plugin-dir）
+1958: 2. marketplace-based plugins
+1959: 3. built-in plugins
+1960: 同时还有—个非常产品化的例外：
+1961: ·  managed settings 锁定的插件优先于 session override也就是说， 作者在这里认真处理了三种意图冲突：
+1962: .  用戶本地临时意图   已安装插件状态
+1963: 管理策略意图
+1964: 这不是“扫目录” 的思路， 而是“ 多来源配置治理” 的思路。
+1965: 14.3  createPluginFromPath( . . . )   很关键： 它把一个目录正式变成Loaded Plugin
+1966: 这是这个文件里最核心的建模函数之—。
+1967: 它做的事情非常像插件世界里的装配流水线：
+1968: 1. 读  plugin.json
+1969: 2. 建  Loaded Plugin
+1970: 3. 自动探测  commands/ 、 agents/ 、 skills/ 、 output-styles/
+1971: 4. 解析 manifest 里的  commands/agents/skills
+1972: 5. 校验路径是否存在
+1973: 6. 收集 hooks
+1974: 7. 把错误记录下来但不中断整体加载
+1975: 这说明 Claude Code 不是要求插件目录绝对标准化才能进入系统， 而是尽量容忍缺项、只把真正的问题记录成错误。
+1976: 这非常像成熟插件平台的做法：
+1977: 尽量接住不完整插件
+1978: .  不让单点问题阻断全局
+1979: .  但把错误来源和组件类型记清楚
+1980: 14.4 它对 manifest 与 marketplace entry 的关系处理得很成熟
+1981: 这里最有意思的—块， 是：
+1982: ·   plugin 自己可能带  plugin.json
+1983: ·   marketplace entry 也可能补充  commands/agents/skills/hooks/outputStyles这个文件没有简单覆盖， 而是区分：
+1984: .   strict
+1985: .  非  strict  ·   supplement ·   conflict
+1986: 也就是说， 它没有天真地假设“只有—个真相源”， 而是承认插件生态里存在：
+1987: .  插件自带声明
+1988: 市场侧补充声明   两者冲突
+1989: 并且认真定义了冲突语义。
+1990: 这—点非常像平台治理， 而不是本地工具脚本。
+1991: 14.5  loadAllPlugins()   和  loadAllPluginsCacheOnly ()   体现了非常
+1992: 清楚的启动路径分层
+1993: 这两个函数非常值得夸。
+1994: 它们不是简单“—个带缓存—个不带缓存”， 而是在表达两种不同的产品路径：
+1995: .  全量刷新路径： 允许拉最新插件
+1996: ·  启动期路径： 只读 cache， 避免首屏被 git clone / 网络阻塞也就是说， 作者明确区分了：
+1997: .  “我要最新”
+1998: “我要快启动”
+1999: 这就是成熟产品里的关键设计。
+2000: 启动性能不是顺手优化， 而是被单独建模成—条路径。
+2001: 14.6  assemblePluginLoad Result( . . . )   才是真正的总装中心
+2002: 这个函数把整条插件主线串起来了：
+2003: ·   marketplace loader
+2004: ·   inline  --plugin-dir ·  built-in plugins
+2005: source merge
+2006: ·  dependency verify / demote ·   settings cache
+2007: 也就是说， 真正的“插件结果”不是某个目录里扫出来的东西， 而是—份经过：
+2008: .  多来源合并   依赖校验
+2009: 启停状态整理   设置合并
+2010: 之后的  PluginLoad Result 。
+2011: 这就是为什么我会说它更像插件供应链后端， 而不是插件目录工具。
+2012: 14.7 这文件的工程感很强： 错误不只是抛出， 而是被结构化收集
+2013: 这个文件里到处都在做—件事：
+2014: .   errors.push(...) .  带上  source
+2015: .  带上  plugin
+2016: .  带上  path
+2017: ·   带上  component
+2018: 这说明插件加载在 Claude Code 里不是“失败就异常退出”， 而是：
+2019: 错误也是平台状态的一部分。
+2020: 只有这样， 后面的：

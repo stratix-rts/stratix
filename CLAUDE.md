@@ -1,184 +1,25 @@
-# CLAUDE.md
+# CLAUDE.md - 编码 Agent 工作纪律
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## 核心原则
 
-## Project Overview
+1. **不准放弃** — 遇到错误必须换方法尝试，禁止重复同一操作超过 2 次
+2. **不准甩锅** — 不说"建议手动处理"、"请自行排查"。你是编码 agent，自己解决
+3. **完成必须验证** — 改完代码后必须运行测试/lint/实际功能检查，不允许未验证就报告完成
+4. **卡住先自救** — 读代码上下文、查日志、搜索方案、读相关文件，而不是说"无法完成"
+5. **最小变更** — 每次只改必要的部分，不重构无关代码
 
-Stratix (星策) is a multi-agent visual command platform with a Phaser 3 RTS game-like interface for managing AI agents. It connects to OpenClaw instances and supports multiple backends (direct LLM, OpenClaw, Stratix).
+## 工作流程
 
-## Development Commands
+1. 先理解代码结构和上下文（读相关文件）
+2. 制定方案，确认改动范围最小
+3. 实施
+4. 验证（运行测试/启动服务检查/代码审查）
+5. 确认通过后报告完成
 
-```bash
-# Development (runs both backend and frontend concurrently)
-npm run dev
+## 禁止行为
 
-# Backend only (gateway API server)
-npm run dev:backend
-
-# Frontend only (Vite dev server on port 7523)
-npm run dev:frontend
-
-# Build
-npm run build              # Full build (backend + frontend)
-npm run build:backend      # TypeScript compilation + tsc-alias
-npm run build:frontend     # Vite production build
-
-# Type checking
-npm run typecheck          # Root tsconfig check
-npm run typecheck:app      # App-specific tsconfig check
-
-# Linting
-npm run lint              # ESLint on src/**/*.ts
-
-# Testing
-npm run test              # Jest tests
-npm run test:watch        # Jest watch mode
-npm run test:coverage     # Jest with coverage
-npm run test:e2e          # Playwright e2e tests
-npm run test:e2e:ui       # Playwright with UI
-npm run test:e2e:headed   # Playwright headed mode
-
-# Electron
-npm run electron:dev       # Dev mode with electron
-npm run electron:build     # Production build
-
-# Single test file (Jest)
-npx jest src/path/to/test.spec.ts
-
-# Single test file (Playwright)
-npx playwright test e2e/path/to.spec.ts
-```
-
-## Architecture
-
-### Module Structure
-
-```
-src/
-├── stratix-core/           # Protocol definitions, event bus, shared types
-├── stratix-gateway/        # Backend API server (Express + WebSocket)
-├── stratix-rts/            # Phaser 3 RTS game interface
-├── stratix-character-creator/  # Character creation scene (Vue + Phaser)
-├── stratix-designer/       # Agent/Hero visual designer
-├── stratix-command-panel/   # Command panel UI
-├── stratix-agent/          # Enhanced StratixAgent (LangChain + LangGraph)
-├── stratix-data-store/     # Data persistence layer
-├── stratix-openclaw-adapter/ # OpenClaw protocol adapter
-├── design-system/          # Vue UI component library
-├── agent-platform/         # Agent platform (providers, workflow, orchestration)
-└── components/             # Shared Vue components
-```
-
-### Key Architectural Patterns
-
-**1. Backend API Flow**
-Frontend (Vue/Phaser) → Gateway (Express) → OpenClaw Connector / Executor Factory → LLM Providers
-
-The gateway (`stratix-gateway/index.ts`) handles:
-- Agent configuration CRUD via `/api/stratix/config/agent/*`
-- Command execution via `/api/stratix/command/*`
-- WebSocket state sync for real-time updates
-
-**2. Executor Pattern (stratix-core/executor/)**
-ExecutorFactory creates executor instances based on backend type:
-- `direct` - Direct LLM calls (via LangChain)
-- `openclaw` - OpenClaw protocol
-- `stratix` - Stratix backend
-
-**3. Event Bus (stratix-core/)**
-Uses `mitt` for module communication. All events prefixed with `stratix:`.
-
-**4. Design System (design-system/)**
-Tokens at `design-system/tokens/index.ts` define CSS variables. Vue components use unified patterns with consistent spacing, typography, and colors.
-
-**5. Character Creator Scene (stratix-character-creator/)**
-Uses `characterComposer` for character assembly, `partRegistry` for part management, `textureManager` for texture generation, and connects via `unifiedOpenClawConnectionManager`.
-
-### Frontend-Backend Communication
-
-- Vite dev server: `http://127.0.0.1:7523`
-- Gateway API: `http://127.0.0.1:7524` (proxied via Vite `/api`)
-- WebSocket: `ws://127.0.0.1:7525` (proxied via Vite `/ws`)
-
-### Path Aliases
-
-- `@/*` → `src/*`
-- `@stratix-core/*` → `src/stratix-core/*`
-- `@stratix-gateway/*` → `src/stratix-gateway/*`
-- etc.
-
-## Testing
-
-### Test Infrastructure
-
-**Jest** (unit tests, pure TypeScript logic):
-- 233+ passing tests
-- Located in `tests/**/*.test.ts` and `src/**/__tests__/*.test.ts`
-- Configuration: `jest.config.js`
-- Uses Jest 29 for Node 16 compatibility
-
-**Playwright** (E2E tests, browser-based):
-- Located in `tests/**/*.spec.ts`
-- Configuration: `playwright.config.ts`
-- Requires Node.js 18+ (uses Node 20 via `/opt/homebrew/opt/node@20/bin`)
-
-### Running Tests
-
-```bash
-# Jest unit tests (pure TypeScript logic)
-npm test                    # Run all Jest tests
-npm run test:watch         # Watch mode
-npm run test:coverage      # With coverage report
-
-# Playwright E2E tests (auto-uses Node 20)
-npm run test:e2e           # Run all E2E tests
-npm run test:e2e:ui        # Interactive UI mode
-npm run test:e2e:headed    # Headed mode (see browser)
-
-# Single test
-npx jest tests/stratix-rts/managers/ZoneSyncManager.test.ts
-npm run test:e2e -- tests/app.spec.ts
-```
-
-### Test Utilities
-
-**Location**: `tests/utils/`
-
-- `canvas-screenshot.ts` - Capture Phaser canvas screenshots
-- `visual-diff.ts` - Pixel-level visual comparison for canvas content
-- `pages/` - Page Object models for common workflows
-
-**Page Objects** (`tests/pages/`):
-- `AgentDesignerPage` - Agent/Hero designer workflows
-- `CharacterCreatorPage` - Character creator (Phaser scene)
-- `AppPage` - Main app shell navigation
-
-### Visual Regression Testing
-
-Phaser canvas content can be tested with pixel-level comparison:
-
-```typescript
-import { expectCanvasMatch } from './utils/visual-diff';
-
-test('canvas matches baseline', async ({ page }) => {
-  await page.goto('/character-creator');
-  await expectCanvasMatch(page, 'character-creator-default');
-});
-```
-
-Baseline screenshots stored in: `tests/screenshots/baseline/`
-
-### Known Limitations
-
-- **Phaser/Jest incompatibility**: Tests requiring Phaser globals (e.g., `ZoneUI.test.ts`) cannot run in Jest's node environment. Use Playwright for Phaser-related tests.
-- **Mixed test frameworks**: Playwright only runs `*.spec.ts` files; Jest only runs `*.test.ts` files.
-- **Some E2E tests may fail**: UI has changed since tests were written. Update selectors to match current UI.
-
-## Important Notes
-
-- Element Plus was removed from dependencies (not used); do not re-add
-- Backend uses TypeScript with `tsx` for direct execution
-- All UI components follow the design-system token conventions
-- Agent configurations follow `StratixAgentConfig` interface in `stratix-core`
-- Recent refactor unified OpenClaw connection management via `UnifiedOpenClawConnectionManager`
-- **Node version**: Jest uses Node 16 (Jest 29); Playwright uses Node 20 (via `/opt/homebrew/opt/node@20/bin`)
+- ❌ 返回 mock 数据代替真实实现
+- ❌ 一次塞多个不相关的问题一起改
+- ❌ 不验证就说"已完成"
+- ❌ 重复失败后不换思路
+- ❌ 改动与任务无关的代码

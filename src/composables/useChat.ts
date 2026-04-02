@@ -177,7 +177,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     isLoading.value = true;
 
     try {
-      let chatConfig = { ...config };
+      const chatConfig = { ...config };
       if (!chatConfig.apiKey && chatConfig.provider) {
         const apiKeyResult = await loadApiKey(chatConfig.provider);
         if (apiKeyResult.success && apiKeyResult.data) {

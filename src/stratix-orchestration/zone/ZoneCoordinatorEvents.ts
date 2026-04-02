@@ -11,13 +11,16 @@ export type ZoneCoordinatorEvent =
   | 'task_failed'
   | 'task_claimed'
   | 'requirement_received'
-  | 'requirement_decomposed';
+  | 'requirement_decomposed'
+  | 'task_created'
+  | 'task_reassigned';
 
 export interface ZoneCoordinatorEventPayload {
   type: ZoneCoordinatorEvent;
   zoneId: string;
   taskId?: string;
   agentId?: string;
+  previousAgentId?: string;
   requirement?: string;
   tasks?: Array<{
     id: string;

@@ -1,0 +1,505 @@
+1011: 连接韧性， 是它认真处理超时、掉线、401、session 失效和重连。
+1012: 所以这文件真正厉害的地方， 不是“把 MCP 接进来了”， 而是：
+1013: 它把 MCP 从一个外部协议， 接成了 Claude Code 自己的内生能力总线。
+1014: 8. src/state/AppStateStore.ts： 运行时状态内核的总台账
+1015: 前面几章我们已经分别看了：
+1016: .  会话怎么跑
+1017: .  工具怎么定义    权限怎么编排    MCP 怎么接入
+1018: .  子 agent 怎么调度
+1019: 这时候自然会冒出—个问题：
+1020: 这么多状态， 最后都放在哪里？
+1021: Claude Code 的答案， 就落在 src/state/AppStateStore.ts 这—组文件上：
+1022: .  src/state/AppStateStore.ts .  src/state/store.ts
+1023: .  src/state/AppState.tsx
+1024: .  src/state/onChangeAppState.ts .  src/state/selectors.ts
+1025: 其中如果只挑—个“状态层中枢”， 我会选 src/state/AppStateStore.ts。
+1026: 因为它做的事情不是写几个字段， 而是：
+1027: 把 Claude Code 这台Agent Runtime 的“全部显性状态面”定义出来。
+1028: 8.1 先说判断： 这不是普通 UI state， 而是整套运行时的共享控制面
+1029: 很多项目里的  AppState 只是：
+1030: .  当前页面·  当前 tab
+1031: ·  当前 loading
+1032: 但 Claude Code 这里完全不是这个层级。
+1033: AppStateStore.ts 里的  AppState 同时覆盖了：
+1034: 会话态     权限态     任务态   .  MCP 态   插件态
+1035: ·  remote / bridge 态  ·  teammate / team 态·  通知与 elicitation 态
+1036: ·  speculation / promptSuggestion 态·  tmux / browser / computer-use 态
+1037: 这说明作者对AppState 的理解不是“前端页面状态”， 而是：
+1038: 整个宿主运行时的共享状态总线。
+1039: 也就是说， Claude Code 的 UI 只是这个状态的—种消费方；
+1040: 真正被建模的是整套 runtime 本身。
+1041: 8.2 AppState    的体量， 本身就是 Claude Code 架构复杂度的地图
+1042: 如果你顺着 src/state/AppStateStore.ts 往下看， 会发现这个类型几乎就是 Claude Code 的模块目录展开图。
+1043: 里面至少能看到这些大的状态簇：
+1044: .  基础会话与显⽰：  verbose 、 statusLineText 、 expandedView .  模型与权限：  mainLoopModel 、 tool PermissionContext
+1045: ·   远程与 bridge：  remoteSessionUrl 、 repl Bridge*
+1046: .  任务系统：  tasks 、 foregroundedTask Id 、 viewingAgentTask Id
+1047: .  MCP：  mcp.clients 、 mcp.tools 、 mcp.commands 、 mcp.resources
+1048: .  插件：  plugins.enabled 、 plugins.errors 、 plugins.installationStatus ·   agent / team：  agentDefinitions 、 teamContext 、 agentNameRegistry
+1049: .  通知与交互：  notifications 、 elicitation 、 inbox
+1050: .  预测与建议：  promptSuggestion 、 speculation
+1051: .  终端外设与工具态：  tungsten* 、 bagel* 、 computerUseMcpState
+1052: 这非常值得注意， 因为它说明 Claude Code 的复杂度不是藏在各种 singleton 里， 而是：
+1053: 尽量显式地暴露为统一状态面。
+1054: 这种设计的好处是， 后面你分析系统时， 不用到处猜“状态藏哪了”， 直接看  AppState 就知道这系统到底在管理什么。
+1055: 8.3 这个文件最重要的价值， 不是字段多， 而是它把状态边界一次性画清楚了
+1056: 我觉得 src/state/AppStateStore.ts 最值得肯定的—点是：
+1057: 作者愿意用一个很长的类型， 把系统边界公开写出来。
+1058: 这比很多项目里“状态散落在 hook、context、模块变量、单例对象、React 本地 state”要健康得多。
+1059: 因为—旦边界清楚， 后面很多事情都会变简单：
+1060: 哪些状态可序列化
+1061: .  哪些状态是进程内对象
+1062: ·  哪些状态要跨 UI / runtime 共享·  哪些字段适合做 selector
+1063: .  哪些更新应该触发副作用
+1064: Claude Code 在这点上很像工程团队里经验比较足的—类写法：
+1065: 宁可把状态总表写重一点， 也不把状态分散得找不到。
+1066: 8.4 tasks  、 mcp  、 plugins   这些嵌套块， 说明它不是扁平 store，而是“领域分仓”
+1067: 虽然  AppState 很大， 但它不是—股脑扁平铺开。
+1068: 作者很明显在按领域分仓：
+1069: .   tasks
+1070: mcp
+1071: .   plugins
+1072: .   notifications .   elicitation
+1073: .   workerSandboxPermissions .   promptSuggestion
+1074: .   skillImprovement
+1075: 这说明他不是没意识到复杂度， 而是在做—种很务实的控制：
+1076: 在一个总 store 下， 按运行时子域分组。
+1077: 这类结构比 Redux 风格的大量 reducer 切片更轻， 但又比“所有字段散着放”更可维护。
+1078: 对—个 CLI + Ink + 多 agent + MCP 的混合系统来说， 我觉得这是—个合理折中。
+1079: 8.5 tasks   被故意排除出  DeepImmutable ， 这说明作者对“状态纯度”和“工程现实”有取舍
+1080: 这个细节很有意思。
+1081: AppState 主体包了—层  DeepImmutable&lt;...&gt;， 但  tasks 被单独拿出来， 注释里明确说： .   TaskState contains function types
+1082: 这其实暴露了—个很真实的工程取舍：
+1083: 作者想让大部分状态都尽量不可变、可预测， 但承认任务对象里有些运行时句柄没法完全纯数据化。
+1084: 这很像成熟工程而不是学院派工程。
+1085: 真正复杂的运行时里， 总会有：
+1086: ·   callback
+1087: ·   abort controller ·  cleanup 函数      进程句柄
+1088: 如果硬要把这些都纯数据化， 系统会变得很拧巴。
+1089: Claude Code 在这里的做法是：
+1090: 大面上保持不可变数据风格
+1091: .  局部允许任务态保留运行时对象
+1092: 这个平衡我觉得是理性的。
+1093: 8.6  getDefaultAppState ()   很重要， 因为它不是默认 UI， 而是默认宿主
+1094: 很多人看到  getDefaultAppState()， 会觉得这只是初始化。
+1095: 但在 Claude Code 里， 这个函数的意义更大：
+1096: 它定义的是“Claude Code 进程刚启动时， 整个 runtime 的零点状态”。
+1097: 而且这份默认态不是随便填的。
+1098: 它里面有不少有意思的系统级判断：
+1099: ·  teammate 且  plan_mode_required 时， 初始 permission mode 设成  plan .   thinkingEnabled 走   shouldEnableThinkingByDefault()
+1100: .   promptSuggestionEnabled 走   shouldEnablePromptSuggestion()
+1101: .   tool PermissionContext 从  getEmptyTool PermissionContext() 起步 .   mcp 、 plugins 、 notifications 、 elicitation 全都有完整空态
+1102: 这说明初始化不是“先给个空对象再说”， 而是：
+1103: 把产品默认行为直接写进状态工厂。
+1104: 这类默认态工厂非常关键， 因为它决定了系统在最复杂的 runtime 逻辑启动前， 先以什么姿态站稳。
+1105: 8.7 真正的 store 原语其实非常小， 这反而是优点
+1106: src/state/store.ts 很短， 核心只有：
+1107: .   getState()
+1108: .   setState(updater)
+1109: .   subscribe(listener)
+1110: createStore() 的实现也很干净：
+1111: •   存  state
+1112: .  存  listeners
+1113: ·    setState 用函数式 updater
+1114: .   Object.is(next, prev) 避免无效通知    .  可选  onChange({ newState, oldState })
+1115: 这说明 Claude Code 的状态系统没有引入—个笨重状态框架， 而是自己保留了最小原语。
+1116: 这背后的好处很明显：
+1117: 1. React 外部也能用
+1118: 2. 非 UI 逻辑也能安全持有  getState/setState
+1119: 3. 调试时能很清楚知道状态更新机制到底是什么
+1120: 这也是为什么它特别适合 Claude Code 这种“不是纯 React App”的系统。
+1121: 因为这套运行时本质上有大量逻辑发生在 React 之外。
+1122: 8.8 AppState .tsx   说明 React 在这里是消费者， 不是状态拥有者
+1123: src/state/AppState.tsx 做的事情很清楚：
+1124: .  用   createStore(...) 创建 store   用  AppStoreContext 提供出去
+1125: .  用   useSyncExternalStore(...) 做选择性订阅
+1126: .  暴露  useAppState() 、 useSetAppState() 、 useAppStateStore()这里最关键的设计取向是：
+1127: 状态先存在， React 再去订阅它。
+1128: 而不是：
+1129: 状态存在于 React 组件树里， 其他地方再想办法取。
+1130: 这对 Claude Code 这种系统太重要了。
+1131: 因为它有很多更新来自：
+1132: MCP 回调 .  任务系统 ·   bridge
+1133: ·   server mode ·   tool runtime
+1134: 这些地方很多都不是 React 组件。
+1135: 所以把 store 放在 React 之下， 显然是不对的； Claude Code 的做法是把 React 放在 store 之上。
+1136: 8.9  useAppState ( selector)    的写法很成熟， 明显在防大范围重渲染
+1137: 这里作者没有写—个“拿整个 state”的粗暴 hook， 而是明确鼓励 selector 模式：
+1138: .   useSyncExternalStore(store.subscribe, get, get)
+1139: .  注释里提醒不要返回新对象
+1140: ·  多字段就多次调用 hook  这说明作者意识到了—个现实：
+1141: AppState 很大， 如果消费方式粗糙， 整个 Ink UI 会被状态更新拖垮。
+1142: 所以他们通过 selector +  Object.is 做最小重渲染。
+1143: 这不是特别花哨， 但非常有效， 也符合现在 React 官方比较推荐的 external store 用法。
+1144: 8.10  onChangeAppState ()   其实是状态层与副作用层之间的桥
+1145: 我很喜欢 src/state/onChangeAppState.ts 这个分层。
+1146: 它的作用非常明确：
+1147: 不是负责决定状态， 而是负责在状态变化后触发必要的外部同步。
+1148: 里面已经能看到不少典型例子：
+1149: ·   permission mode 变化 -&gt;  notifySessionMetadataChanged() /  notifyPermissionModeChanged() ·  mainLoopModel 变化 -&gt; 更新 settings 与 override
+1150: ·  expandedView / verbose / tungstenPanelVisible -&gt; 持久化到 global config ·  settings 变化 -&gt; 清 auth cache、重置 env
+1151: 这说明作者没有把副作用塞进每个  setState call site， 而是尽量把“状态变了之后要干什么”收进—个总diff 点。
+1152: 这是非常成熟的设计。
+1153: 因为—旦没有这个 choke point， 后面每个地方都可能：
+1154: 改 state
+1155: ·  顺手写 config       顺手发桥接事件
+1156: 顺手清缓存
+1157: 最后就很难追。
+1158: 8.11 这张图能说明它为什么更像运行时状态总线， 而不是前端 store
+1159: AppStateStore.ts
+1160: 定义状态形状与默认态
+1161: 提供初始结构
+1162: store.ts  createStore
+1163: 被 Provider 包装                                       状态变化触发
+1164: AppState.tsx
+1165: Provider + selector hooks
+1166: 直接 getState / setState
+1167: selector 订阅                                          同步外部系统
+1168: Ink / React 组件                                                      工具运行时 / MCP / Agent /
+1169: 这个图里最关键的—点是：
+1170: React 只是右边一个消费方， 不是整个状态系统的中心。
+1171: 这和很多纯前端应用完全不同。
+1172: Claude Code 的 store 更像 runtime backbone。
+1173: 8.12 这套状态层最值得欣赏的地方， 是“中心化定义， 去中心化消费”
+1174: 如果让我总结这套状态层设计的优点， 我会用—句话概括：
+1175: 中心化定义， 去中心化消费。
+1176: 中心化定义体现在：
+1177: ·   AppState —处定义系统状态面
+1178: .   getDefaultAppState() —处定义默认宿主
+1179: .   onChangeAppState() —处定义关键副作用桥去中心化消费体现在：
+1180: ·  React 通过 selector 消费     非 React 代码直接拿 store
+1181: ·  任务系统、MCP、bridge 都能经  setState 进入同—总线
+1182: 这对 Claude Code 这种“宿主 + UI + 工具 + 多 agent + 远程桥接”混合系统来说， 我觉得是非常对路的。
+1183: 8.13 这个模块最值得借鉴的地方
+1184: 如果让我总结 src/state/AppStateStore.ts 这—组状态层设计， 最值得学的是三个关键词：
+1185: 1. 显式
+1186: 2. 轻量
+1187: 3. 统—
+1188: 显式， 是状态边界不藏。
+1189: 轻量， 是底层 store 原语非常小。
+1190: 统—， 是 UI、runtime、副作用都围绕同—份状态总线工作。
+1191: 所以这组代码真正厉害的地方， 不是“ 字段很多”， 而是：
+1192: 它把 Claude Code 的运行时复杂度收进了一个还能被人理解的状态骨架里。
+1193: 9. src/bridge/bridgeMain.ts： 远端控制与桥接主循环
+1194: 如果前面几个模块让我们看到的是 Claude Code 的本地 runtime，那么 src/bridge/bridgeMain.ts 看到的就是另—面：
+1195: Claude Code 怎么把本地进程， 变成一个可被远端接入、可被远端恢复、可持续轮询工作的桥接宿主。
+1196: 这个文件很重， 而且它的重不是“代码太长”， 而是职责密度非常高。
+1197: 它至少同时负责：
+1198: 1. 启动和注册 bridge environment
+1199: 2. 轮询远端 work queue
+1200: 3. 根据 work 孵化本地 session 子进程
+1201: 4. 维持 heartbeat、token refresh、reconnect
+1202: 5. 管理 worktree 与 session 生命周期
+1203: 6. 处理 headless 模式与交互模式两套入口
+1204: 所以我会把它定义为：
+1205: Claude Code Remote Control 的主循环调度器。
+1206: 9.1 先说定位： 它不是一层薄桥， 而是“远端控制 runtime”
+1207: 很多系统里的 bridge 只是做两件事：
+1208: .  收到请求
+1209: 转发到本地
+1210: 但 src/bridge/bridgeMain.ts 明显不是这种薄层。
+1211: 它里面有自己的：
+1212: .  参数解析 .  模式决策
+1213: ·  environment 注册·   session spawn
+1214: ·   poll/backoff/heartbeat ·   shutdown/cleanup
+1215: ·   headless logger
+1216: 这说明 bridge 在 Claude Code 里不是“补充功能”， 而是完整的运行时子系统。
+1217: 换句话说， Remote Control 不是在 Claude Code 外面包—层壳，而是把 Claude Code 进程的—部分能力重新组织成—个：
+1218: 可持续运行的远端会话代理。
+1219: 9.2  bridgeMain ()   负责的是“把一堆配置与前置条件收敛成可运行桥”
+1220: bridgeMain(args) 前半段其实很值得看。
+1221: 它不是立刻去 poll， 而是先做了很多前置收敛：
+1222: .   parseArgs(...)
+1223: ·  multi-session gate 校验 .  trust 检查
+1224: ·  auth 检查
+1225: ·  baseUrl / sessionIngressUrl 决定 .  spawnMode 决定
+1226: ·  resumeSessionId / continueSession 决定·  environment 注册
+1227: 这说明作者没有把桥接理解成“只要token 对了就能开跑”， 而是明确认为：
+1228: 桥接是一种受 workspace trust、auth、spawn mode、resume 语义共同约束的运行模式。
+1229: 这点非常重要。
+1230: 因为如果不先把这些条件收敛， 后面的 poll loop 再稳， 整体体验也会非常脆。
+1231: 9.3  spawnMode   是这个文件里非常关键的产品抽象
+1232: 这个文件反复出现  spawnMode， 而且不是摆设。
+1233: 它至少涉及：
+1234: .   single-session
+1235: .   same-dir .   worktree
+1236: 在桥接场景下， 这个抽象非常聪明。
+1237: 因为远端控制不是纯“连不连得上” 的问题， 而是：
+1238: 远端发起的新会话， 应该怎样落到本地工作区。
+1239: 这里的三种模式其实对应三种产品哲学：
+1240: 1.  single-session
+1241: 只恢复—个会话， 生命周期强耦合， 偏传统 remote attach
+1242: 2.  same-dir
+1243: 多个会话共享当前目录， 追求轻量与即时性
+1244: 3.  worktree
+1245: 每个会话独立 git worktree， 追求并发安全
+1246: 也就是说， 作者在 bridge 层讨论的已经不是传输协议， 而是：
+1247: 远端协作时的工作隔离模型。
+1248: 这比—般人理解的 bridge 要深很多。
+1249: 9.4  runBridgeLoop()   才是真正的心脏
+1250: 整个文件的核心毫无疑问是  runBridgeLoop(...) 。
+1251: 如果让我只保留—个函数来代表这套桥接系统， 我会留它。
+1252: 因为它把桥接系统最难的几个问题都放在—起解决了：
+1253: ·  如何跟踪 active sessions .  如何轮询工作
+1254: ·  如何在 at-capacity 时不忙等   ·  如何 heartbeat 现有 work item ·  如何更新 token
+1255: ·  如何在 session done 时 stop work / archive / cleanup
+1256: ·  如何在 shutdown 时优雅收尾这已经不是“轮询函数”， 而是：
+1257: 桥接模式下的 session scheduler。
+1258: 9.5 这套桥接循环不是简单 poll， 而是 “poll + heartbeat + backoff + wake” 的组合
+1259: 我很喜欢  runBridgeLoop() 里对空闲和满载状态的处理。
+1260: 它不是死循环  pollForWork()， 而是组合了几种节奏控制：
+1261: .   pollForWork(...)
+1262: .   heartbeatActiveWork Items()
+1263: .   createCapacityWake(...)
+1264: .   getPollIntervalConfig()
+1265: .   connBackoff / general Backoff
+1266: 这意味着作者已经意识到 bridge 场景下有几种完全不同的运行阶段：
+1267: 1. 空闲无 work
+1268: 2. 有 session 但未满载
+1269: 3. 已满载， 需要 heartbeat 但不能继续接单
+1270: 4. 网络抖动 / token 失效 / reconnect
+1271: 如果只用—种固定轮询间隔， 这些阶段都会处理得很差。
+1272: Claude Code 的做法明显更成熟：
+1273: 让 poll、heartbeat、capacity wake 和 backoff 共同组成桥接循环。
+1274: 这会让系统既不容易打爆服务端， 也不容易在 session 结束后反应迟钝。
+1275: 9.6  onSessionDone()   体现了非常强的生命周期意识
+1276: onSessionDone(...) 这段我很欣赏。
+1277: 它不是简单记个日志， 而是在 session 结束时做—整套生命周期收口：
+1278: .  从  activeSessions 、 sessionWork Ids 、 sessionIngressTokens 等 Map 删除·  取消 timeout timer
+1279: ·  取消 token refresh
+1280: .   capacityWake.wake()
+1281: .  根据状态决定是否  stopWorkWith Retry(...) ·  清理 worktree
+1282: ·   multi-session 下  archiveSession(...)
+1283: ·   single-session 下  controller.abort()这说明作者很清楚：
+1284: session 结束不是一个事件， 而是一组系统状态迁移。
+1285: 这也是为什么我—直说 Claude Code 很像 runtime。
+1286: 因为这种写法明显是把“会话” 当成受控生命周期对象， 而不是聊天窗口。
+1287: 9.7 它对 session 恢复和 token 续租的处理很像生产系统， 而不是demo
+1288: bridge 场景里最烦的—类问题， 往往不是第—次启动， 而是：
+1289: ·  session 还活着， 但 token 过期了
+1290: ·  work 已经 ACK 出去了， 但客戶端掉线了 .  进程重启后怎么接回原来的会话
+1291: 这个文件在这些问题上做了不少很实战的处理：
+1292: ·    heartbeatActiveWork Items() 中遇到 401/403 会走   reconnectSession(...) .   createTokenRefreshScheduler(...) 负责在 JWT 到期前刷新
+1293: ·   v2 session 通过  registerWorker(...) 接上
+1294: ·    --continue /   --session-id 会尝试 resume 指定 session .  resume 失败时， 会区分环境失配与瞬时失败
+1295: 这背后体现的是—种很强的判断：
+1296: Remote Control 不是一次性 attach， 而是长期运行中的 lease 管理问题。
+1297: 这已经是 infra/runtime 级思维了。
+1298: 9.8 worktree 支持说明 bridge 真的是把“并发远端会话”当成真实需
+1299: 求在做
+1300: 桥接层里对worktree 的支持不是装饰， 而是系统级能力：
+1301: .   spawnMode === 'worktree' .   createAgentWorktree(...)
+1302: .   sessionWorktrees
+1303: .   removeAgentWorktree(...)
+1304: 而且作者还特别处理了：
+1305: ·  预创建的 initial session 不走 worktree， 保持旧 UX .  spawn 前就冻结  spawnModeAtDecision
+1306: ·  spawn 失败时也会清理 worktree
+1307: ·  shutdown 时统—清理遗留 worktree
+1308: 这说明远端桥接不是只为了“在网页上看到本地 CLI”，
+1309: 它已经在往“ 多远端会话并发协作本地仓库”这个方向设计了。
+1310: 这非常像真正产品化后的 Remote Coding， 而不是演⽰性质的 remote viewer。
+1311: 9.9 这张图能说明它的核心运行机制
+1312: bridgeMain
+1313: 解析参数与前置校验
+1314: 准备 bridge 配置
+1315: registerBridgeEnvironment
+1316: 环境注册成功
+1317: runBridgeLoop
+1318: 进入主循环                                                      收到中断
+1319: pollForWork / heartbeat / b                       shutdown / deregister / exi
+1320: 拉取 work   否
+1321: 收到 work？
+1322: 是
+1323: createSessionSpawner
+1324: spawn session
+1325: 注册本地会话              继续循环或退出
+1326: activeSessions / timers / to
+1327: 会话结束
+1328: onSessionDone
+1329: 停止 work 并清理
+1330: stopWork / archive / cleanu
+1331: 这张图里最重要的—点是：
+1332: bridge 的核心不是“转发消息”， 而是“托管会话生命周期”。
+1333: 9.10  bridgeMain ()   和  runBridgeHeadless()   双入口说明这层既服务
+1334: CLI， 也服务守护进程
+1335: 文件后半段还有个非常重要的入口：
+1336: .   runBridgeHeadless(...)
+1337: 它不是另写—套桥逻辑， 而是：
+1338: .  复用   createBridgeApiClient(...)
+1339: .  复用   createSessionSpawner(...)
+1340: .  复用   runBridgeLoop(...)只是去掉了：
+1341: ·   readline 交互 ·  stdin 键盘切换·   TUI logger
+1342: .   process.exit()
+1343: 这说明作者在 bridge 层做对了—件事：
+1344: 把“桥接核心逻辑”和“交互壳层”拆开了。
+1345: 这样—来：
+1346: CLI 交互模式能跑
+1347: ·  daemon worker 能跑
+1348: ·  supervisor 也能安全托管它
+1349: 这就让 bridge 不是只服务命令行， 而是变成了可嵌入的桥接执行单元。
+1350: 9.11 这层和权限系统是接得上的， 但它自己不试图吞掉权限决策
+1351: 这点也很成熟。
+1352: 从  createSessionSpawner(...) 的参数能看到：
+1353: .   permissionMode
+1354: .   onPermissionRequest(...)
+1355: 再结合 src/bridge/bridgePermissionCallbacks.ts 和 src/utils/sessionState.ts， 可以看出来bridge 会把：
+1356: 远端权限请求
+1357: ·  session state / metadata 更新
+1358: 作为桥的—部分考虑， 但它并没有在这里重复发明—套权限系统。
+1359: 也就是说， 它做的是：
+1360: 会话桥接层负责转运和同步， 权限裁决仍然回到统一的权限编排体系。
+1361: 这个边界划得很好。
+1362: 如果 bridge 自己又内嵌—套权限逻辑， 整个系统很快就会分叉。
+1363: 9.12 优雅关停这部分很见功力
+1364: runBridgeLoop() 末尾的 shutdown 逻辑非常像生产系统：
+1365: ·  SIGINT / SIGTERM 触发 controller abort ·  给 child session 发送 SIGTERM
+1366: 超时后 SIGKILL
+1367: ·  等待 pending cleanups ·  清理剩余 worktrees
+1368: .   stopWork(...)
+1369: ·  archive / deregister environment
+1370: ·  某些 resumable shutdown 场景下保留 pointer
+1371: 这明显不是“程序结束前顺手关—下”。
+1372: 它是在认真处理：
+1373: 桥接系统停止时， 远端环境、本地会话、工作目录、恢复指针分别应该处于什么状态。
+1374: 这是非常产品化的关停语义。
+1375: 9.13 这个模块最值得借鉴的地方
+1376: 如果让我总结 src/bridge/bridgeMain.ts 最值得学的点， 我会给四个关键词：
+1377: 1. 主循环
+1378: 2. 会话托管
+1379: 3. 恢复语义
+1380: 4. 关停纪律
+1381: 主循环， 是它把 poll、heartbeat、backoff、capacity wake 整成—个调度器。会话托管， 是它把 session 当作有完整生命周期的本地子系统。
+1382: 恢复语义， 是它认真对待 token refresh、resume、environment mismatch。
+1383: 关停纪律， 是它把 stopWork、archive、worktree cleanup、deregister 分清楚。
+1384: 所以这文件真正厉害的地方， 不是“能远端连上来”， 而是：
+1385: 它把 Remote Control 从一个入口功能， 做成了一个可持续运行的桥接 runtime。
+1386: 10. src/server/createDirectConnectSession.ts： Direct Connect 会话握手入口
+1387: 10.1 它不是“再写一个请求函数”， 而是在补齐 Server Mode 的第一步
+1388: 如果只看 src/server/createDirectConnectSession.ts 这—个文件， 你会觉得它很薄：
+1389: .  组—个  POST /sessions .  带上  cwd
+1390: .  可选带  Authorization .  校验返回值
+1391: ·  组—个内部 config 返回   但这正是它容易被低估的地方。
+1392: 这个文件真正负责的， 不是“发请求”本身， 而是：
+1393: 把一个外部 direct-connect server 的 HTTP 建连动作， 转成 Claude Code 内部可以继续托管的会话配置。
+1394: 也就是说， 它是—个很薄的握手层， 不是—个完整 runtime。
+1395: runtime 在别处； 但没有这—步， runtime 根本起不来。
+1396: 10.2 为什么它重要
+1397: Claude Code 到这里已经能看出两套非常不同的运行姿势：
+1398: 1. 本地进程内直接跑会话
+1399: 2. 通过 bridge / remote 方式托管远端工作
+1400: 3. 通过 direct connect 连到—个 server 侧会话
+1401: 前两种更像“宿主自己掌控全部生命周期”。
+1402: 第三种则更像“宿主接入—个外部会话承载面 ”。
+1403: 而 src/server/createDirectConnectSession.ts 正是第三种姿势成立的起点。它解决的问题是：
+1404: 服务器怎么创建会话
+1405: 当前客戶端工作目录怎样传过去   权限跳过标志怎样显式表达
+1406: .  HTTP 返回怎样变成内部  DirectConnectConfig .  后续 WebSocket 连接该连哪—个  ws_url
+1407: 所以它虽然小， 但位置非常关键。
+1408: 它是 server mode 的入口握手面。
+1409: 10.3 它的设计哲学非常“薄协议、厚下游”
+1410: 这个文件最有意思的地方， 是它刻意不做太多事。
+1411: 它没有：
+1412: .  在这里维护长连接 .  在这里处理消息流
+1413: .  在这里实现权限请求回调·  在这里做 session resume   在这里解析复杂控制协议
+1414: 它只做三件核心动作：
+1415: 1. 把输入压成 server 能理解的最小请求
+1416: 2. 把响应校验成内部能信任的结构
+1417: 3. 把错误包装成明确的  DirectConnectError
+1418: 这是—种很成熟的边界切法：
+1419: .  握手层只负责“建联成功”
+1420: .  连接层负责“会话持续”
+1421: ·  上层 runtime 再负责“消息编排与产品语义”
+1422: 这比把所有 direct connect 逻辑塞进—个超级 manager 里更健康。
+1423: 因为—旦以后 server API 变动， 你只需要先修握手面， 而不是把消息循环也—起搅乱。
+1424: 10.4  cwd    与  dangerously_skip_permissions   暴露了它在传递“会话
+1425: 初始化语义”
+1426: 请求体非常短， 但很说明问题：
+1427: .   cwd
+1428: .  可选  dangerously_skip_permissions: true
+1429: 这意味着 direct connect 建的不是—个抽象 socket， 而是—个：
+1430: .  带工作目录 .  带权限模式
+1431: .  准备运行 Claude 会话
+1432: 的初始化请求。
+1433: 这里很值得注意的—点是：
+1434: dangerously_skip_permissions 没有被柔化成—个模糊配置名， 而是直接把危险性写进字段名里。
+1435: 这和 Claude Code 前面权限系统的风格是—致的：
+1436: .  危险能力不靠注释提醒
+1437: .  危险能力直接进 API 命名
+1438: 使用者必须显式承担语义成本
+1439: 这种命名方式很“产品化”， 也很“ 安全工程化”。
+1440: 10.5 它真正做的， 是把外部响应折叠成内部  DirectConnectConfig
+1441: 看它的返回值就很清楚了：
+1442: .   config.serverUrl
+1443: .   config.sessionId .   config.wsUrl
+1444: .   config.authToken .   workDir
+1445: 这里最重要的不是字段本身， 而是—次 语义折叠：   server 返回的是—个建会话的 HTTP 响应
+1446: .  Claude Code 内部真正需要的是—个能继续接管的连接配置也就是说， 外部协议世界里是：
+1447: .   session_id .   ws_url
+1448: .   work_dir
+1449: 内部 runtime 世界里则是：
+1450: .   DirectConnectConfig .  后续  WebSocket
+1451: 会话消息回调   权限请求回调
+1452: 这—步折叠做完之后， 上层代码就不必继续知道  /sessions 的 HTTP 细节了。从架构角度看， 这就是—个很标准的 anti-corruption layer。
+1453: 调用方
+1454: 传入 serverUrl / cwd / auth
+1455: POST /sessions发送初始化请求
+1456: connectResponseSchema
+1457: 校验 session_id / ws_url / w
+1458: DirectConnectSessionManag继续接管 WebSocket 会话
+1459: 构造握手参数
+1460: 折叠为内部结构
+1461: 交给下游连接层
+1462: 返回 JSON
+1463: 10.6  connect ResponseSchema()   说明作者不相信“服务端一定返回对”
+1464: src/server/types.ts 里这段 schema 很短：
+1465: .   session_id: string
+1466: .   ws_url: string
+1467: .   work_dir?: string
+1468: 但它的意义很大。
+1469: 很多同类系统做到这—步时， 会直接：
+1470: .   await resp.json()
+1471: .  然后手写字段访问
+1472: 失败就让异常自然冒泡
+1473: Claude Code 没这么做， 而是坚持经过  connectResponseSchema().safeParse(...) 。
+1474: 这说明作者对 direct connect 的定位很清楚：
+1475: .  它不是“ 内部函数互调”
+1476: ·  它是“跨进程 / 跨宿主 / 可能跨版本” 的协议边界
+1477: 只要是协议边界， 就必须校验。
+1478: 否则 server 版本稍微漂—点， 上层 runtime 就会带着半坏状态继续运行。
+1479: 10.7  DirectConnect Error   说明这里在主动建构错误语义， 而不是放任底层异常泄漏
+1480: 这个文件另—个我很喜欢的点， 是它专门定义了  DirectConnectError 。
+1481: 这看起来只是—个薄包装， 但价值很实际：
+1482: 1. 上层可以明确知道这类错误属于 direct connect 握手失败
+1483: 2. 网络失败、HTTP 失败、响应解析失败都能被统—归类
+1484: 3. UI / CLI / server mode 后续要做差异化提⽰时有了稳定类型
+1485: 它没有把：
+1486: .   fetch 错误    .   resp.ok 错误
+1487: ·  schema parse 错误
+1488: 原样甩给上游， 而是统—收束成—个产品语义错误。
+1489: 这和很多“工程上能跑就行 ”的实现差别很大。
+1490: Claude Code 明显更在意： 上层最终拿到的到底是不是一个可叙述、可处理、可呈现的错误。
+1491: 10.8 跟 src/server/directConnectManager.ts   连起来看， 层次就完
+1492: 整了
+1493: 单看 src/server/createDirectConnectSession.ts 会觉得它很薄；
+1494: 但和 src/server/directConnectManager.ts —拼， 层次就很清楚：
+1495: ·    createDirectConnectSession.ts 负责建 session
+1496: ·    directConnectManager.ts 负责维持 session后者真正处理的是：
+1497: .  建 WebSocket .  收  SDKMessage
+1498: .  过滤  keep_alive
+1499: .  识别  control_request
+1500: .  处理  can_use_tool 权限请求 .  回发  control_response
+1501: .  支持  interrupt
+1502: .  管理连接状态与断开
+1503: 所以 direct connect 不是—个文件， 而是—个分层模型：
+1504: 1. HTTP 握手层
+1505: 2. WebSocket 会话层
+1506: 3. 上层 runtime / REPL / headless runner 集成层
+1507: 这才是这组模块真正值得学的地方。
+1508: 不是“代码多高级”， 而是它把—个跨进程会话问题拆成了正确的三个边界。
+1509: 10.9  directConnectManager .ts   暴露了 Claude Code 对“远端会话”采用的是流式控制协议， 而不是 REST 轮询
+1510: src/server/directConnectManager.ts 里， 消息接入是 WebSocket， 且是逐行 JSON 解析：
+1511: .   message 事件
+1512: .   data.split('\\n')
+1513: .   jsonParse(line)
+1514: .  识别  StdoutMessage然后再把不同类型分流：
+1515: .   control_request
