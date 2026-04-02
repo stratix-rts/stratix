@@ -946,4 +946,78 @@ defineExpose({
   font-weight: bold;
   border-radius: 50%;
 }
+
+/* Code block styling for message content */
+:deep(.code-block-wrapper) {
+  position: relative;
+  margin: 8px 0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--ds-bg-primary);
+  border: 1px solid var(--ds-border-default);
+}
+
+:deep(.code-block-wrapper) .code-lang {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  font-size: 11px;
+  color: var(--ds-text-muted);
+  background: var(--ds-bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  z-index: 1;
+}
+
+:deep(.code-block-wrapper) .copy-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: var(--ds-bg-tertiary);
+  border: 1px solid var(--ds-border-default);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 1;
+}
+
+:deep(.code-block-wrapper):hover .copy-button {
+  opacity: 1;
+}
+
+:deep(.code-block-wrapper) .copy-button:hover {
+  background: var(--ds-bg-secondary);
+}
+
+:deep(.code-block-wrapper) pre {
+  margin: 0;
+  padding: 12px;
+  padding-top: 36px;
+  overflow-x: auto;
+  background: transparent;
+}
+
+:deep(.code-block-wrapper) code {
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  background: transparent;
+}
+
+/* Inline code styling */
+:deep(.message-text code:not(.hljs)) {
+  background: var(--ds-bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+  font-size: 0.9em;
+}
+
+.message-agent :deep(pre),
+.message-agent :deep(.code-block-wrapper pre) {
+  background: rgba(0, 0, 0, 0.2);
+}
 </style>

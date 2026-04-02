@@ -8,6 +8,9 @@ import { partRegistry } from './stratix-character-creator/core/PartRegistry';
 import VXETable from 'vxe-table';
 import 'vxe-table/lib/style.css';
 
+// Highlight.js for syntax highlighting
+import 'highlight.js/styles/github-dark.css';
+
 const app = createApp(App);
 
 // 使用 Vxe Table 插件
