@@ -21,6 +21,7 @@ import { BaseZone } from './zones/BaseZone';
 import { TaskZone, TaskZoneConfig } from './zones/TaskZone';
 import { TaskZonePreview } from './zones/TaskZonePreview';
 import { UnifiedZoneManager } from './zones/UnifiedZoneManager';
+import { DataFlowAnimation } from './effects/DataFlowAnimation';
 
 import { getToken, getCurrentTheme } from '@/design-system/config';
 
@@ -49,6 +50,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   private zoneResizeAgentPositions: Map<string, Map<string, { ratioX: number; ratioY: number }>> = new Map();
   private agentZoneTracking: Map<string, string> = new Map();
   private projectZoneCheckTimer: NodeJS.Timeout | null = null;
+  private dataFlowAnimation: DataFlowAnimation;
 
   constructor() {
     super({ key: 'StratixRTSGameScene' });
@@ -119,6 +121,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     this.initCamera();
     this.initSystems();
     this.unifiedZoneManager = new UnifiedZoneManager(this);
+    this.dataFlowAnimation = new DataFlowAnimation(this);
     this.initProjectManager();
     this.initSelectBox();
     this.initTaskZonePreview();
@@ -138,6 +141,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   update(_time: number, _delta: number): void {
     this.inputHandler?.update();
     this.movementSystem?.update(_delta, this.agentSprites);
+    this.dataFlowAnimation?.update(_delta);
   }
 
   private initStratixMap(): void {
@@ -374,6 +378,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     this.projectManagerIntegration.onLoaded(() => {
       console.log('[StratixRTS] Projects loaded, checking zone bounds...');
       this.clampAllZonesToBounds();
+      this.syncZonePositionsToDataFlow();
       this.startProjectZoneAgentTracking();
     });
   }
@@ -436,6 +441,14 @@ export default class StratixRTSGameScene extends Phaser.Scene {
         zone.y = clamped.y;
         console.log(`[StratixRTS] Zone ${id} clamped to bounds: (${clamped.x}, ${clamped.y})`);
       }
+    }
+  }
+
+  private syncZonePositionsToDataFlow(): void {
+    if (!this.dataFlowAnimation) return;
+    for (const [zoneId, zone] of this.unifiedZoneManager.getAllZones()) {
+      const bounds = zone.getBounds();
+      this.dataFlowAnimation.setZonePosition(zoneId, bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
     }
   }
 
@@ -776,6 +789,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
         this.zoneDragAgentOffsets.delete(zone.getZoneId());
       }
     });
+    this.syncZonePositionsToDataFlow();
   }
 
   private getAgentsInZone(zone: BaseZone): Map<string, AgentSprite> {
@@ -1301,6 +1315,13 @@ export default class StratixRTSGameScene extends Phaser.Scene {
 
   private onZoneMemberJoined(data: { zoneId: string; agentId: string }): void {
     const { zoneId, agentId } = data;
+    const previousZoneId = this.agentZoneTracking.get(agentId);
+
+    // Start data flow animation if agent is moving between zones
+    if (previousZoneId && previousZoneId !== zoneId && this.dataFlowAnimation) {
+      this.dataFlowAnimation.startFlow(previousZoneId, zoneId);
+    }
+
     // Update agent zone tracking
     this.agentZoneTracking.set(agentId, zoneId);
     console.log(`[StratixRTS] Agent ${agentId} joined zone ${zoneId}`);
@@ -1528,7 +1549,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
       clearInterval(this.projectZoneCheckTimer);
       this.projectZoneCheckTimer = null;
     }
-    
+
     this.inputHandler?.destroy();
     this.selectBox?.destroy();
     this.taskZonePreview?.destroy();
@@ -1536,11 +1557,12 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     this.events.off('stratix:create-agent');
     this.events.off('stratix:update-agent-status');
     this.events.off('stratix:update-command-status');
-    
+
     this.eventUnsubscribers.forEach(unsub => unsub());
     this.eventUnsubscribers = [];
     rtsEventBus.unregisterScene('game');
-    
+
+    this.dataFlowAnimation?.destroy();
     this.unifiedZoneManager.getAllZones().forEach(zone => zone.destroy());
     this.unifiedZoneManager.destroy();
   }

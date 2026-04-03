@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 
 import { StratixAgentConfig } from '../../stratix-core/stratix-protocol';
+import { ParticleEffects } from '../effects/ParticleEffects';
 
 import { getToken, getCurrentTheme } from '@/design-system/config';
 import { LPC_DIRECTION_ROWS } from '@/stratix-character-creator/constants';
@@ -52,6 +53,7 @@ export class AgentSprite extends Phaser.GameObjects.Container {
   private isSelected: boolean = false;
   private busyTween: Phaser.Tweens.Tween | null = null;
   private breathingTween: Phaser.Tweens.Tween | null = null;
+  private taskExecutionTweens: Phaser.Tweens.Tween[] | null = null;
   private isDragging: boolean = false;
   private dragOffset: { x: number; y: number } = { x: 0, y: 0 };
   private customTextureKey: string | null = null;
@@ -279,12 +281,14 @@ export class AgentSprite extends Phaser.GameObjects.Container {
   }
 
   public setAgentStatus(status: AgentStatus): void {
+    const previousStatus = this.currentStatus;
     this.currentStatus = status;
     const color = COLORS.status[status];
-    
+
     this.drawStatusIndicator(color);
-    
+
     this.stopBusyAnimation();
+    this.stopTaskExecutionEffect();
 
     if (status === 'offline') {
       this.sprite.setTint(hexToNumber(getToken("colors.text.muted")));
@@ -292,6 +296,7 @@ export class AgentSprite extends Phaser.GameObjects.Container {
     } else if (status === 'busy') {
       this.sprite.setTint(color);
       this.startBusyAnimation();
+      this.startTaskExecutionEffect();
     } else {
       this.sprite.setTint(color);
       this.setAlpha(1);
@@ -299,6 +304,23 @@ export class AgentSprite extends Phaser.GameObjects.Container {
 
     if (this.isSelected) {
       this.sprite.setTint(COLORS.ui.selection);
+    }
+
+    // Trigger status change particles if status actually changed
+    if (previousStatus !== status && this.scene) {
+      ParticleEffects.getInstance().statusChange(this.scene, this.x, this.y, status);
+    }
+  }
+
+  private startTaskExecutionEffect(): void {
+    if (!this.scene || this.taskExecutionTweens) return;
+    this.taskExecutionTweens = ParticleEffects.getInstance().taskExecution(this.scene, this.x, this.y);
+  }
+
+  private stopTaskExecutionEffect(): void {
+    if (this.taskExecutionTweens) {
+      ParticleEffects.getInstance().stopEmitters(this.taskExecutionTweens);
+      this.taskExecutionTweens = null;
     }
   }
 
@@ -634,6 +656,7 @@ export class AgentSprite extends Phaser.GameObjects.Container {
     this.dragOffset.x = this.x - worldX;
     this.dragOffset.y = this.y - worldY;
     this.setDepth(10000);
+    this.stopTaskExecutionEffect();
   }
 
   public updateDrag(worldX: number, worldY: number): void {
@@ -645,6 +668,9 @@ export class AgentSprite extends Phaser.GameObjects.Container {
   public endDrag(): void {
     this.isDragging = false;
     this.updateDepth();
+    if (this.currentStatus === 'busy') {
+      this.startTaskExecutionEffect();
+    }
   }
 
   public isSpriteDragging(): boolean {
@@ -750,12 +776,13 @@ export class AgentSprite extends Phaser.GameObjects.Container {
 
   public destroy(): void {
     this.stopBusyAnimation();
-    
+    this.stopTaskExecutionEffect();
+
     if (this.thumbnailSprite) {
       this.thumbnailSprite.destroy();
       this.thumbnailSprite = null;
     }
-    
+
     super.destroy();
   }
 }

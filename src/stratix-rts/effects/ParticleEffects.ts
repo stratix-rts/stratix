@@ -28,6 +28,8 @@ const DEFAULT_PARTICLE_COLORS = {
   levelUp: 0xffd700,
   error: 0xff3333,
   idle: 0x88aaff,
+  taskExecution: 0x00ff88,
+  statusChange: 0xffffff,
 };
 
 export class ParticleEffects {
@@ -259,5 +261,102 @@ export class ParticleEffects {
     emitters.forEach(tween => {
       tween.stop();
     });
+  }
+
+  /**
+   * taskExecution - energy particles that continuously emit while an agent is working on a task.
+   * Returns tweens that self-restart until stopped via stopEmitters().
+   */
+  taskExecution(scene: Phaser.Scene, x: number, y: number, color?: string): ParticleEmitter {
+    this.ensureScene(scene);
+    const c = color ? tintToNumber(color) : DEFAULT_PARTICLE_COLORS.taskExecution;
+    const tweens: Phaser.Tweens.Tween[] = [];
+    const circles: Phaser.GameObjects.Graphics[] = [];
+    const count = 8;
+
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2;
+      const radius = 30 + Math.random() * 20;
+      const offsetX = Math.cos(angle) * radius;
+      const offsetY = Math.sin(angle) * radius;
+      const size = 3 + Math.random() * 3;
+      const delay = i * 150;
+      const duration = 600 + Math.random() * 400;
+
+      const circle = this.scene!.add.graphics();
+      circle.fillStyle(c, 0.8);
+      circle.fillCircle(0, 0, size);
+      circle.setPosition(x + offsetX, y + offsetY);
+      circle.setDepth(901);
+      circles.push(circle);
+
+      const createPulse = (): void => {
+        circle.setPosition(x + offsetX, y + offsetY);
+        circle.setAlpha(0.8);
+        const t = this.scene!.tweens.add({
+          targets: circle,
+          y: circle.y - 20 - Math.random() * 20,
+          x: circle.x + (Math.random() - 0.5) * 10,
+          alpha: 0,
+          duration,
+          ease: 'Power2.easeOut',
+          onComplete: () => createPulse(),
+        });
+        tweens.push(t);
+      };
+
+      this.scene!.time.delayedCall(delay, createPulse);
+    }
+
+    (tweens as any).__circles = circles;
+    return tweens;
+  }
+
+  /**
+   * statusChange - particles burst when agent status changes (e.g., online->busy, busy->online).
+   * Color indicates the new status.
+   */
+  statusChange(scene: Phaser.Scene, x: number, y: number, status: 'online' | 'busy' | 'offline' | 'error'): ParticleEmitter {
+    this.ensureScene(scene);
+    const statusColorMap: Record<string, number> = {
+      online: DEFAULT_PARTICLE_COLORS.spawn,
+      busy: DEFAULT_PARTICLE_COLORS.taskExecution,
+      offline: DEFAULT_PARTICLE_COLORS.idle,
+      error: DEFAULT_PARTICLE_COLORS.error,
+    };
+    const c = statusColorMap[status] ?? DEFAULT_PARTICLE_COLORS.statusChange;
+    const tweens: Phaser.Tweens.Tween[] = [];
+    const count = 12;
+
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2;
+      const distance = 40 + Math.random() * 30;
+      const targetX = x + Math.cos(angle) * distance;
+      const targetY = y + Math.sin(angle) * distance;
+      const size = 2 + Math.random() * 3;
+
+      const circle = this.scene!.add.graphics();
+      circle.fillStyle(c, 1);
+      circle.fillCircle(0, 0, size);
+      circle.setPosition(x, y);
+      circle.setDepth(901);
+
+      const tween = this.scene!.tweens.add({
+        targets: circle,
+        x: targetX,
+        y: targetY,
+        alpha: 0,
+        scaleX: 0.2,
+        scaleY: 0.2,
+        duration: 400 + Math.random() * 200,
+        ease: 'Power2.easeOut',
+        onComplete: () => {
+          circle.destroy();
+        },
+      });
+      tweens.push(tween);
+    }
+
+    return tweens;
   }
 }
