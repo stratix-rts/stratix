@@ -51,6 +51,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   private agentZoneTracking: Map<string, string> = new Map();
   private projectZoneCheckTimer: NodeJS.Timeout | null = null;
   private dataFlowAnimation: DataFlowAnimation;
+  private zonePulseGraphics: Phaser.GameObjects.Graphics;
 
   constructor() {
     super({ key: 'StratixRTSGameScene' });
@@ -122,6 +123,8 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     this.initSystems();
     this.unifiedZoneManager = new UnifiedZoneManager(this);
     this.dataFlowAnimation = new DataFlowAnimation(this);
+    this.zonePulseGraphics = this.add.graphics();
+    this.zonePulseGraphics.setDepth(54);
     this.initProjectManager();
     this.initSelectBox();
     this.initTaskZonePreview();
@@ -142,6 +145,11 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     this.inputHandler?.update();
     this.movementSystem?.update(_delta, this.agentSprites);
     this.dataFlowAnimation?.update(_delta);
+    this.dataFlowAnimation?.drawZonePulses(this.zonePulseGraphics);
+    // Update agent positions for beam effects
+    this.agentSprites.forEach((sprite, agentId) => {
+      this.dataFlowAnimation?.setAgentPosition(agentId, sprite.x, sprite.y);
+    });
   }
 
   private initStratixMap(): void {
