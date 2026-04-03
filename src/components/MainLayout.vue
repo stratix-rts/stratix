@@ -7,8 +7,13 @@ import { getToken } from '@/design-system/config';
 import CommandLog from '../stratix-command-panel/components/CommandLog.vue';
 import { StratixEventBus, StratixFrontendOperationEvent } from '../stratix-core';
 import { StratixRequestHelper } from '../stratix-core/utils';
-import { agentStore } from '../stores/agentStore';
+import { useAgentStore } from '../stores/agent';
 import { rtsBridge, rtsEventBus } from '../stratix-rts';
+import { usePerformanceMonitor } from '@/composables/usePerformanceMonitor';
+
+const agentStore = useAgentStore();
+const { trackEvent, getReport } = usePerformanceMonitor({ threshold: 16 });
+
 import HeroManagementModal from './HeroManagementModal.vue';
 import LogPanelModal from './LogPanelModal.vue';
 import StatusPanelModal from './StatusPanelModal.vue';
@@ -49,10 +54,10 @@ const paramValues = ref<Record<string, any>>({});
 const eventBus = StratixEventBus.getInstance();
 const requestHelper = StratixRequestHelper.getInstance();
 
-const agents = computed(() => agentStore.agents.value);
-const selectedAgentIds = computed(() => agentStore.selectedIds.value);
-const selectedAgents = computed(() => agentStore.selectedAgents.value);
-const agentCount = computed(() => agentStore.agentCount.value);
+const agents = computed(() => agentStore.agents);
+const selectedAgentIds = computed(() => agentStore.selectedIds);
+const selectedAgents = computed(() => agentStore.selectedAgents);
+const agentCount = computed(() => agentStore.agentCount);
 
 const handleOpenHeroModal = () => {
   showHeroModal.value = true;
@@ -81,44 +86,48 @@ const handleOpenTaskModal = (projectId: string, projectPath: string) => {
 };
 
 const handleExecuteSkill = (skill: StratixSkillConfig | Skill) => {
-  if (selectedAgentIds.value.length === 0) return;
+  return trackEvent('handleExecuteSkill', () => {
+    if (selectedAgentIds.value.length === 0) return;
 
-  const parameters = 'parameters' in skill ? skill.parameters : undefined;
-  const needsParams = parameters && parameters.length > 0;
-  
-  if (!needsParams) {
-    executeCommand(skill as StratixSkillConfig, {});
-  } else {
-    selectedSkill.value = skill as StratixSkillConfig;
-    paramValues.value = {};
-    parameters.forEach(p => {
-      paramValues.value[p.paramId] = p.defaultValue;
-    });
-    showParamFormModal.value = true;
-  }
+    const parameters = 'parameters' in skill ? skill.parameters : undefined;
+    const needsParams = parameters && parameters.length > 0;
+
+    if (!needsParams) {
+      executeCommand(skill as StratixSkillConfig, {});
+    } else {
+      selectedSkill.value = skill as StratixSkillConfig;
+      paramValues.value = {};
+      parameters.forEach(p => {
+        paramValues.value[p.paramId] = p.defaultValue;
+      });
+      showParamFormModal.value = true;
+    }
+  });
 };
 
 const executeCommand = (skill: StratixSkillConfig, params: Record<string, any>) => {
-  const event: StratixFrontendOperationEvent = {
-    eventType: 'stratix:command_execute',
-    payload: {
-      agentIds: selectedAgentIds.value,
-      skill: skill,
-      command: {
-        commandId: requestHelper.generateRequestId().replace('req', 'cmd'),
-        skillId: skill.skillId,
-        agentId: selectedAgentIds.value[0],
-        params: { ...params },
-        executeAt: Date.now()
-      }
-    },
-    timestamp: Date.now(),
-    requestId: requestHelper.generateRequestId()
-  };
-  
-  eventBus.emit(event);
-  showParamFormModal.value = false;
-  selectedSkill.value = null;
+  return trackEvent('executeCommand', () => {
+    const event: StratixFrontendOperationEvent = {
+      eventType: 'stratix:command_execute',
+      payload: {
+        agentIds: selectedAgentIds.value,
+        skill: skill,
+        command: {
+          commandId: requestHelper.generateRequestId().replace('req', 'cmd'),
+          skillId: skill.skillId,
+          agentId: selectedAgentIds.value[0],
+          params: { ...params },
+          executeAt: Date.now()
+        }
+      },
+      timestamp: Date.now(),
+      requestId: requestHelper.generateRequestId()
+    };
+
+    eventBus.emit(event);
+    showParamFormModal.value = false;
+    selectedSkill.value = null;
+  });
 };
 
 const handleExecuteCommand = () => {
