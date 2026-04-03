@@ -9,6 +9,7 @@ import ProjectConfigPanel from './stratix-project/ui/ProjectConfigPanel.vue';
 import ZonePanel from './stratix-project/ui/ZonePanel.vue';
 import DataExplorer from './stratix-project/ui/DataExplorer.vue';
 import { ToastContainer, toastService } from './components/ui';
+import Map3DView from './components/Map3DView.vue';
 import type { ToastItem } from './components/ui';
 import type { Zone } from './stratix-project/types';
 import { useAgentStore } from './stores/agent';
@@ -31,6 +32,8 @@ const selectedProjectPath = ref<string | null>(null);
 const currentProject = ref<Project | null>(null);
 const currentZone = ref<Zone | null>(null);
 const dataExplorerZoneId = ref<string | undefined>(undefined);
+const show3DView = ref(false);
+const gameSceneRef = ref<any>(null);
 
 let game: Phaser.Game | null = null;
 let eventBus: StratixEventBus;
@@ -206,6 +209,11 @@ const openDataExplorer = (zoneId?: string) => {
   uiStore.openDataExplorer();
 };
 
+// Toggle 3D map view
+const toggle3DView = () => {
+  show3DView.value = !show3DView.value;
+};
+
 onMounted(async () => {
   eventBus = StratixEventBus.getInstance();
 
@@ -267,6 +275,7 @@ onMounted(async () => {
 
       const scene = game!.scene.getScene('StratixRTSGameScene') as any;
       if (scene) {
+        gameSceneRef.value = scene;
         scene.events.on('zone:double-click', async (zoneId: string) => {
           console.log('[App] Zone double-clicked:', zoneId);
 
@@ -449,7 +458,29 @@ onUnmounted(() => {
     @open-data-explorer="uiStore.openDataExplorer()"
   >
     <template #game>
-      <div ref="gameContainer" class="game-container"></div>
+      <div ref="gameContainer" class="game-container">
+        <Map3DView
+          :visible="show3DView"
+          :game-scene="gameSceneRef"
+          @zone-click="(zoneId) => { console.log('Zone clicked:', zoneId); }"
+          @zone-double-click="(zoneId) => { console.log('Zone double-clicked:', zoneId); }"
+          @agent-click="(agentId) => { console.log('Agent clicked:', agentId); }"
+        />
+        <!-- 3D View Toggle Button -->
+        <button
+          class="map3d-toggle"
+          :class="{ active: show3DView }"
+          @click="toggle3DView"
+          title="Toggle 3D View"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5z" />
+            <path d="M2 17l10 5 10-5" />
+            <path d="M2 12l10 5 10-5" />
+          </svg>
+          <span>{{ show3DView ? '2D' : '3D' }}</span>
+        </button>
+      </div>
     </template>
   </MainLayout>
 
@@ -503,5 +534,47 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   background: var(--ds-bg-primary);
+  position: relative;
+}
+
+.map3d-toggle {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: rgba(30, 30, 50, 0.9);
+  border: 1px solid rgba(100, 100, 200, 0.3);
+  border-radius: 20px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
+}
+
+.map3d-toggle:hover {
+  background: rgba(50, 50, 80, 0.95);
+  border-color: rgba(100, 100, 200, 0.5);
+  color: white;
+}
+
+.map3d-toggle.active {
+  background: rgba(74, 158, 255, 0.3);
+  border-color: rgba(74, 158, 255, 0.6);
+  color: white;
+}
+
+.map3d-toggle svg {
+  opacity: 0.8;
+}
+
+.map3d-toggle:hover svg,
+.map3d-toggle.active svg {
+  opacity: 1;
 }
 </style>
