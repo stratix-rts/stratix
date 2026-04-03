@@ -48,6 +48,10 @@ export const useUIStore = defineStore('ui', () => {
   // Game state
   const isGameReady = ref(false);
 
+  // Sound settings
+  const soundEnabled = ref(true);
+  const soundVolume = ref(0.5);
+
   // Computed
   const isDarkMode = computed(() => {
     if (theme.value === 'auto') {
@@ -195,6 +199,15 @@ export const useUIStore = defineStore('ui', () => {
     isGameReady.value = ready;
   }
 
+  // Sound settings
+  function setSoundEnabled(enabled: boolean): void {
+    soundEnabled.value = enabled;
+  }
+
+  function setSoundVolume(volume: number): void {
+    soundVolume.value = Math.max(0, Math.min(1, volume));
+  }
+
   return {
     // State
     sidebarOpen,
@@ -211,6 +224,8 @@ export const useUIStore = defineStore('ui', () => {
     toasts,
     commandLogs,
     isGameReady,
+    soundEnabled,
+    soundVolume,
 
     // Computed
     isDarkMode,
@@ -255,6 +270,10 @@ export const useUIStore = defineStore('ui', () => {
     clearCommandLogs,
 
     // Game state
-    setGameReady
+    setGameReady,
+
+    // Sound settings
+    setSoundEnabled,
+    setSoundVolume,
   };
 });

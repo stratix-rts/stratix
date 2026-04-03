@@ -11,38 +11,35 @@ import DataExplorer from './stratix-project/ui/DataExplorer.vue';
 import { ToastContainer, toastService } from './components/ui';
 import type { ToastItem } from './components/ui';
 import type { Zone } from './stratix-project/types';
-import { agentStore } from './stores/agentStore';
+import { useAgentStore } from './stores/agent';
+import { useUIStore } from './stores/ui';
 import type { SavedCharacter } from './stratix-character-creator/types';
 import type { ProjectConfig, Project } from './stratix-project/types';
 import { rtsEventBus } from './stratix-rts/events/core/RTSEventBus';
+import { soundService } from './services/SoundService';
+
+// Pinia stores
+const agentStore = useAgentStore();
+const uiStore = useUIStore();
 
 const gameContainer = ref<HTMLElement | null>(null);
-const isGameReady = ref(false);
 const currentSkill = ref<any>(null);
-const commandLogs = ref<any[]>([]);
-const showCharacterCreator = ref(false);
 const editCharacterId = ref<string | undefined>(undefined);
-const showTaskModal = ref(false);
-const showChatModal = ref(false);
 const chatAgentIds = ref<string[]>([]);
 const selectedProjectId = ref<string | null>(null);
 const selectedProjectPath = ref<string | null>(null);
-const showProjectConfig = ref(false);
 const currentProject = ref<Project | null>(null);
-const showZonePanel = ref(false);
 const currentZone = ref<Zone | null>(null);
-const showDataExplorer = ref(false);
 const dataExplorerZoneId = ref<string | undefined>(undefined);
-const toasts = ref<ToastItem[]>([]);
 
 let game: Phaser.Game | null = null;
 let eventBus: StratixEventBus;
 let unsubscribeToasts: (() => void) | null = null;
 
-// 从 store 获取状态
-const agents = computed(() => agentStore.agents.value);
-const selectedAgentIds = computed(() => agentStore.selectedIds.value);
-const isRefreshing = computed(() => agentStore.isRefreshing.value);
+// 从 store 获取状态 (Pinia refs are auto-unwrapped)
+const agents = computed(() => agentStore.agents);
+const selectedAgentIds = computed(() => agentStore.selectedIds);
+const isRefreshing = computed(() => agentStore.isRefreshing);
 
 const handleAgentSelect = (event: StratixFrontendOperationEvent) => {
   agentStore.setSelectedIds(event.payload.agentIds || []);
@@ -50,7 +47,7 @@ const handleAgentSelect = (event: StratixFrontendOperationEvent) => {
 
 const handleCommandExecute = async (event: StratixFrontendOperationEvent) => {
   if (!event.payload.command) return;
-  
+
   const log = {
     commandId: event.payload.command.commandId,
     agentId: event.payload.command.agentId,
@@ -59,9 +56,8 @@ const handleCommandExecute = async (event: StratixFrontendOperationEvent) => {
     time: new Date().toLocaleTimeString(),
     params: event.payload.command.params
   };
-  
-  commandLogs.value.unshift(log);
-  if (commandLogs.value.length > 20) commandLogs.value.pop();
+
+  uiStore.addCommandLog(log);
 
   try {
     const response = await fetch('/api/stratix/command/execute', {
@@ -70,10 +66,10 @@ const handleCommandExecute = async (event: StratixFrontendOperationEvent) => {
       body: JSON.stringify(event.payload.command)
     });
     const result = await response.json();
-    
-    log.status = result.code === 200 ? 'success' : 'failed';
+
+    uiStore.updateCommandLogStatus(log.commandId, result.code === 200 ? 'success' : 'failed');
   } catch (error) {
-    log.status = 'failed';
+    uiStore.updateCommandLogStatus(log.commandId, 'failed');
   }
 };
 
@@ -110,11 +106,11 @@ const deleteAgent = async (agentId: string) => {
 
 const openCharacterCreator = (characterId?: string) => {
   editCharacterId.value = characterId;
-  showCharacterCreator.value = true;
+  uiStore.openCharacterCreator();
 };
 
 const closeCharacterCreator = () => {
-  showCharacterCreator.value = false;
+  uiStore.closeCharacterCreator();
   editCharacterId.value = undefined;
 };
 
@@ -146,24 +142,24 @@ const handleCharacterDeleted = (characterId: string) => {
 const handleOpenTaskModal = (projectId: string, projectPath: string) => {
   selectedProjectId.value = projectId;
   selectedProjectPath.value = projectPath;
-  showTaskModal.value = true;
+  uiStore.openTaskModal();
 };
 
 const handleProjectCreated = (data: { project: Project; needsConfig: boolean }) => {
   console.log('[App] handleProjectCreated called:', data.project.id, 'needs config:', data.needsConfig);
-  
+
   currentProject.value = data.project;
-  
+
   if (data.needsConfig) {
-    showProjectConfig.value = true;
+    uiStore.openProjectConfig();
   }
 };
 
 const handleProjectConfigSave = async (config: ProjectConfig) => {
   if (!currentProject.value) return;
-  
+
   console.log('[App] Saving project config:', currentProject.value.id, config);
-  
+
   try {
     const response = await fetch(`/api/projects/${currentProject.value.id}`, {
       method: 'PUT',
@@ -178,12 +174,12 @@ const handleProjectConfigSave = async (config: ProjectConfig) => {
         }
       })
     });
-    
+
     const result = await response.json();
-    
+
     if (result.success) {
       console.log('[App] Project config saved successfully');
-      showProjectConfig.value = false;
+      uiStore.closeProjectConfig();
       currentProject.value = null;
     } else {
       throw new Error(result.error || 'Failed to save project config');
@@ -195,19 +191,19 @@ const handleProjectConfigSave = async (config: ProjectConfig) => {
 };
 
 const handleProjectConfigClose = () => {
-  showProjectConfig.value = false;
+  uiStore.closeProjectConfig();
   currentProject.value = null;
 };
 
 const handleZonePanelClose = () => {
-  showZonePanel.value = false;
+  uiStore.closeZonePanel();
   currentZone.value = null;
 };
 
 // 打开数据浏览器（可选指定 Zone ID）
 const openDataExplorer = (zoneId?: string) => {
   dataExplorerZoneId.value = zoneId;
-  showDataExplorer.value = true;
+  uiStore.openDataExplorer();
 };
 
 onMounted(async () => {
@@ -215,17 +211,28 @@ onMounted(async () => {
 
   // Subscribe to toast updates
   unsubscribeToasts = toastService.subscribe((newToasts) => {
-    toasts.value = newToasts;
+    // Sync with uiStore toasts - but we use uiStore.toasts directly
   });
-  
+
   eventBus.subscribe('stratix:agent_select', handleAgentSelect);
   eventBus.subscribe('stratix:command_execute', handleCommandExecute as any);
-  
+
+  // Zone event sound feedback
+  eventBus.subscribe('stratix:zone_task_claimed', () => {
+    soundService.playTaskComplete();
+  });
+  eventBus.subscribe('stratix:zone_member_joined', () => {
+    soundService.playAgentStatusChange();
+  });
+  eventBus.subscribe('stratix:zone_member_left', () => {
+    soundService.playAgentStatusChange();
+  });
+
   // 设置 agent 创建/删除回调
   agentStore.setOnAgentCreated((config, centerOnScreen) => {
     addAgentToRTS(config, centerOnScreen);
   });
-  
+
   agentStore.setOnAgentDeleted((agentId) => {
     if (!game) return;
     const scene = game.scene.getScene('StratixRTSGameScene') as any;
@@ -233,7 +240,7 @@ onMounted(async () => {
       scene.removeAgent(agentId);
     }
   });
-  
+
   agentStore.setOnAgentUpdated((config) => {
     if (!game) return;
     const scene = game.scene.getScene('StratixRTSGameScene') as any;
@@ -241,23 +248,23 @@ onMounted(async () => {
       scene.updateAgentPosition(config.agentId, config.position);
     }
   });
-  
+
   // 加载 agents
   await agentStore.loadAgents();
-  
+
   if (gameContainer.value) {
     game = createStratixRTS({
       parent: gameContainer.value,
       width: gameContainer.value.clientWidth || 800,
       height: gameContainer.value.clientHeight || 600
     });
-    
+
     game.events.on('ready', () => {
-      isGameReady.value = true;
+      uiStore.setGameReady(true);
       setTimeout(() => {
         Promise.all(agents.value.map(config => addAgentToRTS(config)));
       }, 100);
-      
+
       const scene = game!.scene.getScene('StratixRTSGameScene') as any;
       if (scene) {
         scene.events.on('zone:double-click', async (zoneId: string) => {
@@ -283,7 +290,7 @@ onMounted(async () => {
 
             if (result.success && result.zone) {
               currentZone.value = result.zone;
-              showZonePanel.value = true;
+              uiStore.openZonePanel();
             } else {
               console.error('[App] Failed to fetch zone:', result.error);
             }
@@ -296,7 +303,7 @@ onMounted(async () => {
         scene.events.on('stratix:zone-deleted', (data: { zoneId: string }) => {
           console.log('[App] Zone deleted event:', data.zoneId);
           if (currentZone.value && currentZone.value.id === data.zoneId) {
-            showZonePanel.value = false;
+            uiStore.closeZonePanel();
             currentZone.value = null;
             console.log('[App] ZonePanel closed (zone was deleted)');
           }
@@ -364,11 +371,11 @@ onMounted(async () => {
       });
       rtsEventBus.on('game:ui:chat_click', ({ agentIds }: { agentIds: string[] }) => {
         chatAgentIds.value = agentIds;
-        showChatModal.value = true;
+        uiStore.openChatModal();
       });
     });
   }
-  
+
   // 启动自动刷新
   agentStore.startAutoRefresh(30000);
 
@@ -376,7 +383,7 @@ onMounted(async () => {
   window.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.key === 'd') {
       e.preventDefault();
-      showDataExplorer.value = true;
+      uiStore.openDataExplorer();
     }
   });
 });
@@ -394,6 +401,9 @@ onUnmounted(() => {
   if (eventBus) {
     eventBus.unsubscribe('stratix:agent_select', handleAgentSelect);
     eventBus.unsubscribe('stratix:command_execute', handleCommandExecute as any);
+    eventBus.unsubscribe('stratix:zone_task_claimed', () => {});
+    eventBus.unsubscribe('stratix:zone_member_joined', () => {});
+    eventBus.unsubscribe('stratix:zone_member_left', () => {});
   }
 
   rtsEventBus.off('game:ui:project_created', handleProjectCreated);
@@ -422,12 +432,12 @@ onUnmounted(() => {
 <template>
   <MainLayout
     :game-container="gameContainer"
-    :is-game-ready="isGameReady"
+    :is-game-ready="uiStore.isGameReady"
     :agents="agents"
     :selected-agent-ids="selectedAgentIds"
-    :command-logs="commandLogs"
+    :command-logs="uiStore.commandLogs"
     :is-refreshing="isRefreshing"
-    :show-task-modal="showTaskModal"
+    :show-task-modal="uiStore.showTaskModal"
     :selected-project-id="selectedProjectId"
     :selected-project-path="selectedProjectPath"
     @create-agent="createAgent"
@@ -435,32 +445,32 @@ onUnmounted(() => {
     @select-agent="selectAgentInRTS"
     @open-character-creator="openCharacterCreator()"
     @refresh-agents="agentStore.refreshAgents()"
-    @update:show-task-modal="showTaskModal = $event"
-    @open-data-explorer="showDataExplorer = true"
+    @update:show-task-modal="uiStore.showTaskModal = $event"
+    @open-data-explorer="uiStore.openDataExplorer()"
   >
     <template #game>
       <div ref="gameContainer" class="game-container"></div>
     </template>
   </MainLayout>
-  
+
   <CharacterCreatorModal
-    :visible="showCharacterCreator"
+    :visible="uiStore.showCharacterCreator"
     :edit-character-id="editCharacterId"
     @close="closeCharacterCreator"
     @created="handleCharacterCreated"
     @updated="handleCharacterUpdated"
     @deleted="handleCharacterDeleted"
   />
-  
+
   <AgentChatModal
-    :visible="showChatModal"
+    :visible="uiStore.showChatModal"
     :agent-ids="chatAgentIds"
     :mode="chatAgentIds.length > 1 ? 'group' : 'single'"
-    @close="showChatModal = false"
+    @close="uiStore.closeChatModal()"
   />
-  
+
   <ProjectConfigPanel
-    :visible="showProjectConfig"
+    :visible="uiStore.showProjectConfig"
     :project-id="currentProject?.id"
     :initial-config="currentProject?.config"
     :project-status="currentProject?.status"
@@ -469,20 +479,20 @@ onUnmounted(() => {
   />
 
   <ZonePanel
-    :visible="showZonePanel"
+    :visible="uiStore.showZonePanel"
     :zone="currentZone"
     @close="handleZonePanelClose"
-    @update:visible="showZonePanel = $event"
+    @update:visible="uiStore.showZonePanel = $event"
     @open-data-explorer="openDataExplorer"
   />
 
   <DataExplorer
-    v-model:visible="showDataExplorer"
+    v-model:visible="uiStore.showDataExplorer"
     :initial-zone-id="dataExplorerZoneId"
   />
 
   <ToastContainer
-    :toasts="toasts"
+    :toasts="uiStore.toasts"
     position="top-right"
     @dismiss="toastService.dismiss($event)"
   />

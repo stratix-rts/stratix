@@ -10,9 +10,11 @@ import { StratixRequestHelper } from '../stratix-core/utils';
 import { useAgentStore } from '../stores/agent';
 import { rtsBridge, rtsEventBus } from '../stratix-rts';
 import { usePerformanceMonitor } from '@/composables/usePerformanceMonitor';
+import { useSound } from '@/composables/useSound';
 
 const agentStore = useAgentStore();
 const { trackEvent, getReport } = usePerformanceMonitor({ threshold: 16 });
+const { enabled: soundEnabled, volume: soundVolume, setEnabled: setSoundEnabled, setVolume: setSoundVolume } = useSound();
 
 import HeroManagementModal from './HeroManagementModal.vue';
 import LogPanelModal from './LogPanelModal.vue';
@@ -266,6 +268,36 @@ const icons = {
         <span class="status" :class="{ ready: isGameReady }">
           {{ isGameReady ? '● 系统就绪' : '○ 加载中...' }}
         </span>
+        <div class="sound-controls">
+          <button
+            class="sound-toggle"
+            :class="{ active: soundEnabled }"
+            @click="setSoundEnabled(!soundEnabled)"
+            :title="soundEnabled ? '音效已开启' : '音效已关闭'"
+          >
+            <svg v-if="soundEnabled" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+            </svg>
+            <svg v-else viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+              <line x1="23" y1="9" x2="17" y2="15" />
+              <line x1="17" y1="9" x2="23" y2="15" />
+            </svg>
+          </button>
+          <input
+            v-if="soundEnabled"
+            type="range"
+            class="sound-volume"
+            min="0"
+            max="1"
+            step="0.05"
+            :value="soundVolume"
+            @input="setVolume(($event.target as HTMLInputElement).valueAsNumber)"
+            title="音量"
+          />
+        </div>
       </div>
     </header>
     
@@ -434,6 +466,56 @@ const icons = {
   align-items: center;
   gap: 20px;
   flex-shrink: 0;
+}
+
+.sound-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sound-toggle {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--ds-border);
+  border-radius: 6px;
+  color: var(--ds-text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.sound-toggle:hover {
+  background: var(--ds-bg-tertiary);
+  color: var(--ds-text-primary);
+}
+
+.sound-toggle.active {
+  color: var(--ds-brand-primary);
+  border-color: var(--ds-brand-primary);
+}
+
+.sound-volume {
+  width: 64px;
+  height: 4px;
+  appearance: none;
+  background: var(--ds-border);
+  border-radius: 2px;
+  cursor: pointer;
+  outline: none;
+}
+
+.sound-volume::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  background: var(--ds-brand-primary);
+  border-radius: 50%;
+  cursor: pointer;
 }
 
 .status {
