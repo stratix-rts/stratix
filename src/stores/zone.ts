@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import type { Zone, ZoneCreateRequest, ZoneUpdateRequest, ZoneFile, ZoneTask, ZoneMessage } from '@/stratix-project/types';
+import { ApiClient } from '@/stratix-gateway/api/client';
+import { API_PATHS, isApiError } from '@/stratix-gateway/api/types/api';
 
 interface ZoneState {
   zones: Zone[];
@@ -9,12 +11,22 @@ interface ZoneState {
   error: string | null;
 }
 
+// Create zone store API client with frontend base URL
+const createZoneApiClient = () => new ApiClient({
+  baseURL: typeof window !== 'undefined' && (window as unknown as { GATEWAY_URL?: string }).GATEWAY_URL
+    ? (window as unknown as { GATEWAY_URL: string }).GATEWAY_URL
+    : 'http://127.0.0.1:7524'
+});
+
 export const useZoneStore = defineStore('zone', () => {
   // State
   const zones = ref<Zone[]>([]);
   const selectedZoneId = ref<string | null>(null);
   const isLoading = ref(false);
   const error = ref<string | null>(null);
+
+  // API client for zone operations
+  const client = createZoneApiClient();
 
   // Computed
   const selectedZone = computed(() =>
@@ -27,35 +39,23 @@ export const useZoneStore = defineStore('zone', () => {
 
   const zoneCount = computed(() => zones.value.length);
 
-  // API Base URL
-  const getApiBase = () => process.env.GATEWAY_URL || 'http://127.0.0.1:7524';
-
   // Load all zones
   async function loadZones(projectId?: string): Promise<void> {
     isLoading.value = true;
     error.value = null;
 
     try {
-      const url = projectId
-        ? `${getApiBase()}/api/zones?projectId=${projectId}`
-        : `${getApiBase()}/api/zones`;
+      const path = projectId
+        ? `${API_PATHS.ZONES}?projectId=${projectId}`
+        : API_PATHS.ZONES;
 
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(10000),
-      });
+      const result = await client.get<{ zones: Zone[] }>(path, { timeout: 10000 });
 
-      if (!response.ok) {
-        throw new Error(`Failed to load zones: ${response.status}`);
-      }
-
-      const data = await response.json();
-      if (data.success && Array.isArray(data.zones)) {
-        zones.value = data.zones;
-      } else if (Array.isArray(data)) {
-        // Some APIs return array directly
-        zones.value = data;
+      if (result.success) {
+        zones.value = result.data.zones || [];
+      } else {
+        error.value = result.error;
+        console.warn('[ZoneStore] Failed to load zones:', result.error);
       }
     } catch (e) {
       error.value = e instanceof Error ? e.message : '加载 Zone 失败';
@@ -67,91 +67,61 @@ export const useZoneStore = defineStore('zone', () => {
 
   // Get zone by ID
   async function fetchZone(zoneId: string): Promise<Zone | null> {
-    try {
-      const response = await fetch(`${getApiBase()}/api/zones/${zoneId}`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(5000),
-      });
+    const result = await client.get<{ zone: Zone }>(API_PATHS.ZONE_BY_ID(zoneId), { timeout: 5000 });
 
-      if (!response.ok) {
-        return null;
-      }
-
-      const data = await response.json();
-      return data.success && data.zone ? data.zone : null;
-    } catch (e) {
-      console.warn(`[ZoneStore] Failed to fetch zone ${zoneId}:`, e);
+    if (!result.success) {
+      console.warn(`[ZoneStore] Failed to fetch zone ${zoneId}:`, result.error);
       return null;
     }
+    return result.data.zone || null;
   }
 
   // Create zone
   async function createZone(request: ZoneCreateRequest): Promise<Zone | null> {
-    try {
-      const response = await fetch(`${getApiBase()}/api/zones`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(request),
-      });
+    const result = await client.post<{ zone: Zone }>(API_PATHS.ZONES, request);
 
-      const data = await response.json();
-      if (data.success && data.zone) {
-        zones.value.push(data.zone);
-        return data.zone;
-      }
-      return null;
-    } catch (e) {
-      console.warn('[ZoneStore] Failed to create zone:', e);
+    if (isApiError(result)) {
+      console.warn('[ZoneStore] Failed to create zone:', result.error);
       return null;
     }
+    if (result.data.zone) {
+      zones.value.push(result.data.zone);
+      return result.data.zone;
+    }
+    return null;
   }
 
   // Update zone
   async function updateZone(zoneId: string, request: ZoneUpdateRequest): Promise<boolean> {
-    try {
-      const response = await fetch(`${getApiBase()}/api/zones/${zoneId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(request),
-      });
+    const result = await client.put<{ zone: Zone }>(API_PATHS.ZONE_BY_ID(zoneId), request);
 
-      const data = await response.json();
-      if (data.success && data.zone) {
-        const index = zones.value.findIndex(z => z.id === zoneId);
-        if (index >= 0) {
-          zones.value[index] = data.zone;
-        }
-        return true;
-      }
-      return false;
-    } catch (e) {
-      console.warn('[ZoneStore] Failed to update zone:', e);
+    if (isApiError(result)) {
+      console.warn('[ZoneStore] Failed to update zone:', result.error);
       return false;
     }
+    if (result.data.zone) {
+      const index = zones.value.findIndex(z => z.id === zoneId);
+      if (index >= 0) {
+        zones.value[index] = result.data.zone;
+      }
+      return true;
+    }
+    return false;
   }
 
   // Delete zone
   async function deleteZone(zoneId: string): Promise<boolean> {
-    try {
-      const response = await fetch(`${getApiBase()}/api/zones/${zoneId}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-      });
+    const result = await client.delete<{ message: string }>(API_PATHS.ZONE_BY_ID(zoneId));
 
-      const data = await response.json();
-      if (data.success) {
-        zones.value = zones.value.filter(z => z.id !== zoneId);
-        if (selectedZoneId.value === zoneId) {
-          selectedZoneId.value = null;
-        }
-        return true;
-      }
-      return false;
-    } catch (e) {
-      console.warn('[ZoneStore] Failed to delete zone:', e);
+    if (isApiError(result)) {
+      console.warn('[ZoneStore] Failed to delete zone:', result.error);
       return false;
     }
+    zones.value = zones.value.filter(z => z.id !== zoneId);
+    if (selectedZoneId.value === zoneId) {
+      selectedZoneId.value = null;
+    }
+    return true;
   }
 
   // Select zone
@@ -161,124 +131,96 @@ export const useZoneStore = defineStore('zone', () => {
 
   // Add file to zone
   async function addFile(zoneId: string, file: Omit<ZoneFile, 'id' | 'zoneId' | 'createdAt' | 'updatedAt'>): Promise<ZoneFile | null> {
-    try {
-      const response = await fetch(`${getApiBase()}/api/zones/${zoneId}/files`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(file),
-      });
+    const result = await client.post<{ file: ZoneFile }>(API_PATHS.ZONE_FILES(zoneId), file);
 
-      const data = await response.json();
-      if (data.success && data.file) {
-        const zone = zones.value.find(z => z.id === zoneId);
-        if (zone) {
-          zone.files.push(data.file);
-        }
-        return data.file;
-      }
-      return null;
-    } catch (e) {
-      console.warn('[ZoneStore] Failed to add file:', e);
+    if (isApiError(result)) {
+      console.warn('[ZoneStore] Failed to add file:', result.error);
       return null;
     }
+    if (result.data.file) {
+      const zone = zones.value.find(z => z.id === zoneId);
+      if (zone) {
+        zone.files.push(result.data.file);
+      }
+      return result.data.file;
+    }
+    return null;
   }
 
   // Remove file from zone
   async function removeFile(zoneId: string, fileId: string): Promise<boolean> {
-    try {
-      const response = await fetch(`${getApiBase()}/api/zones/${zoneId}/files/${fileId}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-      });
+    const result = await client.delete<{ message: string }>(API_PATHS.ZONE_FILE_BY_ID(zoneId, fileId));
 
-      const data = await response.json();
-      if (data.success) {
-        const zone = zones.value.find(z => z.id === zoneId);
-        if (zone) {
-          zone.files = zone.files.filter(f => f.id !== fileId);
-        }
-        return true;
-      }
-      return false;
-    } catch (e) {
-      console.warn('[ZoneStore] Failed to remove file:', e);
+    if (isApiError(result)) {
+      console.warn('[ZoneStore] Failed to remove file:', result.error);
       return false;
     }
+    const zone = zones.value.find(z => z.id === zoneId);
+    if (zone) {
+      zone.files = zone.files.filter(f => f.id !== fileId);
+    }
+    return true;
   }
 
   // Add task to zone
   async function addTask(zoneId: string, title: string): Promise<ZoneTask | null> {
-    try {
-      const response = await fetch(`${getApiBase()}/api/zones/${zoneId}/tasks`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title }),
-      });
+    const result = await client.post<{ task: ZoneTask }>(API_PATHS.ZONE_TASKS(zoneId), { title });
 
-      const data = await response.json();
-      if (data.success && data.task) {
-        const zone = zones.value.find(z => z.id === zoneId);
-        if (zone && zone.tasks) {
-          zone.tasks.push(data.task);
-        }
-        return data.task;
-      }
-      return null;
-    } catch (e) {
-      console.warn('[ZoneStore] Failed to add task:', e);
+    if (isApiError(result)) {
+      console.warn('[ZoneStore] Failed to add task:', result.error);
       return null;
     }
+    if (result.data.task) {
+      const zone = zones.value.find(z => z.id === zoneId);
+      if (zone && zone.tasks) {
+        zone.tasks.push(result.data.task);
+      }
+      return result.data.task;
+    }
+    return null;
   }
 
   // Update task
   async function updateTask(zoneId: string, taskId: string, updates: Partial<ZoneTask>): Promise<boolean> {
-    try {
-      const response = await fetch(`${getApiBase()}/api/zones/${zoneId}/tasks/${taskId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      });
+    const result = await client.put<{ task: ZoneTask }>(API_PATHS.ZONE_TASK(zoneId, taskId), updates);
 
-      const data = await response.json();
-      if (data.success && data.task) {
-        const zone = zones.value.find(z => z.id === zoneId);
-        if (zone && zone.tasks) {
-          const taskIndex = zone.tasks.findIndex(t => t.id === taskId);
-          if (taskIndex >= 0) {
-            zone.tasks[taskIndex] = data.task;
-          }
-        }
-        return true;
-      }
-      return false;
-    } catch (e) {
-      console.warn('[ZoneStore] Failed to update task:', e);
+    if (isApiError(result)) {
+      console.warn('[ZoneStore] Failed to update task:', result.error);
       return false;
     }
+    if (result.data.task) {
+      const zone = zones.value.find(z => z.id === zoneId);
+      if (zone && zone.tasks) {
+        const taskIndex = zone.tasks.findIndex(t => t.id === taskId);
+        if (taskIndex >= 0) {
+          zone.tasks[taskIndex] = result.data.task;
+        }
+      }
+      return true;
+    }
+    return false;
   }
 
   // Add message to zone
   async function addMessage(zoneId: string, content: string, senderId: string, senderType: 'user' | 'agent'): Promise<ZoneMessage | null> {
-    try {
-      const response = await fetch(`${getApiBase()}/api/zones/${zoneId}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content, senderId, senderType }),
-      });
+    const result = await client.post<{ message: ZoneMessage }>(API_PATHS.ZONE_MESSAGES(zoneId), {
+      content,
+      senderId,
+      senderType
+    });
 
-      const data = await response.json();
-      if (data.success && data.message) {
-        const zone = zones.value.find(z => z.id === zoneId);
-        if (zone && zone.messages) {
-          zone.messages.push(data.message);
-        }
-        return data.message;
-      }
-      return null;
-    } catch (e) {
-      console.warn('[ZoneStore] Failed to add message:', e);
+    if (isApiError(result)) {
+      console.warn('[ZoneStore] Failed to add message:', result.error);
       return null;
     }
+    if (result.data.message) {
+      const zone = zones.value.find(z => z.id === zoneId);
+      if (zone && zone.messages) {
+        zone.messages.push(result.data.message);
+      }
+      return result.data.message;
+    }
+    return null;
   }
 
   // Get zone by ID (local)
