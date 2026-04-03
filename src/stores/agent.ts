@@ -1,11 +1,10 @@
-import { reactive, readonly, computed } from 'vue';
-
+import { defineStore } from 'pinia';
+import { ref, computed, readonly } from 'vue';
 import type { SavedCharacter } from '@/stratix-character-creator/types';
 import type {
   StratixAgentConfig,
   CharacterProfile,
   AgentBackendType,
-  AgentConfigStatus,
   OpenClawConfig
 } from '@/stratix-core';
 import { POSITION_SAVE_DELAY_MS } from '@/stratix-core/config/defaults';
@@ -19,25 +18,6 @@ interface AgentState {
   lastRefreshTime: Date | null;
   error: string | null;
 }
-
-const state = reactive<AgentState>({
-  agents: [],
-  selectedIds: [],
-  isLoading: false,
-  isRefreshing: false,
-  lastRefreshTime: null,
-  error: null
-});
-
-let autoRefreshTimer: ReturnType<typeof setInterval> | null = null;
-let onAgentCreatedCallback: ((config: StratixAgentConfig, centerOnScreen: boolean) => void) | null = null;
-let onAgentDeletedCallback: ((agentId: string) => void) | null = null;
-let onAgentUpdatedCallback: ((config: StratixAgentConfig) => void) | null = null;
-
-const pendingPositionUpdates: Map<string, { x: number; y: number }> = new Map();
-let positionSaveTimer: ReturnType<typeof setTimeout> | null = null;
-let stopPositionSaveTimer: (() => void) | null = null;
-const POSITION_SAVE_DELAY = POSITION_SAVE_DELAY_MS;
 
 function savedCharacterToProfile(character: SavedCharacter): CharacterProfile {
   return {
@@ -59,7 +39,7 @@ function determineConfigStatus(
   backendType: AgentBackendType,
   openClawConfig?: OpenClawConfig,
   stratixConfig?: { provider?: string; model?: string }
-): AgentConfigStatus {
+): 'draft' | 'ready' {
   if (!profile) return 'draft';
 
   if (backendType === 'openclaw') {
@@ -75,40 +55,60 @@ function determineConfigStatus(
   return 'ready';
 }
 
-export const agentStore = {
-  state: readonly(state),
+export const useAgentStore = defineStore('agent', () => {
+  // State
+  const agents = ref<StratixAgentConfig[]>([]);
+  const selectedIds = ref<string[]>([]);
+  const isLoading = ref(false);
+  const isRefreshing = ref(false);
+  const lastRefreshTime = ref<Date | null>(null);
+  const error = ref<string | null>(null);
 
-  agents: computed(() => state.agents),
-  selectedIds: computed(() => state.selectedIds),
-  selectedAgents: computed(() =>
-    state.agents.filter(a => state.selectedIds.includes(a.agentId))
-  ),
-  readyAgents: computed(() =>
-    state.agents.filter(a => a.configStatus === 'ready')
-  ),
-  draftAgents: computed(() =>
-    state.agents.filter(a => a.configStatus === 'draft')
-  ),
-  isLoading: computed(() => state.isLoading),
-  isRefreshing: computed(() => state.isRefreshing),
-  lastRefreshTime: computed(() => state.lastRefreshTime),
-  error: computed(() => state.error),
-  agentCount: computed(() => state.agents.length),
+  // Callbacks
+  let onAgentCreatedCallback: ((config: StratixAgentConfig, centerOnScreen: boolean) => void) | null = null;
+  let onAgentDeletedCallback: ((agentId: string) => void) | null = null;
+  let onAgentUpdatedCallback: ((config: StratixAgentConfig) => void) | null = null;
 
-  setOnAgentCreated(callback: (config: StratixAgentConfig, centerOnScreen: boolean) => void) {
+  // Position saving
+  const pendingPositionUpdates = new Map<string, { x: number; y: number }>();
+  let positionSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  let stopPositionSaveTimer: (() => void) | null = null;
+  const POSITION_SAVE_DELAY = POSITION_SAVE_DELAY_MS;
+
+  // Auto refresh
+  let autoRefreshTimer: ReturnType<typeof setInterval> | null = null;
+
+  // Computed
+  const selectedAgents = computed(() =>
+    agents.value.filter(a => selectedIds.value.includes(a.agentId))
+  );
+
+  const readyAgents = computed(() =>
+    agents.value.filter(a => a.configStatus === 'ready')
+  );
+
+  const draftAgents = computed(() =>
+    agents.value.filter(a => a.configStatus === 'draft')
+  );
+
+  const agentCount = computed(() => agents.value.length);
+
+  // Callbacks setters
+  function setOnAgentCreated(callback: (config: StratixAgentConfig, centerOnScreen: boolean) => void) {
     onAgentCreatedCallback = callback;
-  },
+  }
 
-  setOnAgentDeleted(callback: (agentId: string) => void) {
+  function setOnAgentDeleted(callback: (agentId: string) => void) {
     onAgentDeletedCallback = callback;
-  },
+  }
 
-  setOnAgentUpdated(callback: (config: StratixAgentConfig) => void) {
+  function setOnAgentUpdated(callback: (config: StratixAgentConfig) => void) {
     onAgentUpdatedCallback = callback;
-  },
+  }
 
-  updateAgentPosition(agentId: string, position: { x: number; y: number }): void {
-    const agent = state.agents.find(a => a.agentId === agentId);
+  // Position updates
+  function updateAgentPosition(agentId: string, position: { x: number; y: number }): void {
+    const agent = agents.value.find(a => a.agentId === agentId);
     if (!agent) return;
 
     agent.position = position;
@@ -116,7 +116,7 @@ export const agentStore = {
 
     if (!positionSaveTimer) {
       positionSaveTimer = setTimeout(() => {
-        this.flushPositionUpdates();
+        flushPositionUpdates();
         positionSaveTimer = null;
         stopPositionSaveTimer = null;
       }, POSITION_SAVE_DELAY);
@@ -128,9 +128,9 @@ export const agentStore = {
         }
       };
     }
-  },
+  }
 
-  async flushPositionUpdates(): Promise<void> {
+  async function flushPositionUpdates(): Promise<void> {
     positionSaveTimer = null;
 
     if (pendingPositionUpdates.size === 0) return;
@@ -139,7 +139,7 @@ export const agentStore = {
     pendingPositionUpdates.clear();
 
     for (const [agentId, position] of updates) {
-      const agent = state.agents.find(a => a.agentId === agentId);
+      const agent = agents.value.find(a => a.agentId === agentId);
       if (!agent) continue;
 
       try {
@@ -152,40 +152,42 @@ export const agentStore = {
         console.warn(`[AgentStore] Failed to save position for ${agentId}:`, e);
       }
     }
-  },
+  }
 
-  async loadAgents(): Promise<void> {
-    state.isLoading = true;
-    state.error = null;
+  // Load agents
+  async function loadAgents(): Promise<void> {
+    isLoading.value = true;
+    error.value = null;
 
     try {
       const response = await fetch('/api/stratix/config/agent/list');
       const result = await response.json();
 
       if (result.code === 200 && result.data) {
-        state.agents = result.data;
-        state.lastRefreshTime = new Date();
+        agents.value = result.data;
+        lastRefreshTime.value = new Date();
       }
     } catch (e) {
-      state.error = '加载失败';
+      error.value = '加载失败';
       console.warn('[AgentStore] Failed to load agents:', e);
     } finally {
-      state.isLoading = false;
+      isLoading.value = false;
     }
-  },
+  }
 
-  async refreshAgents(): Promise<void> {
-    if (state.isRefreshing) return;
+  // Refresh agents
+  async function refreshAgents(): Promise<void> {
+    if (isRefreshing.value) return;
 
-    state.isRefreshing = true;
-    state.error = null;
+    isRefreshing.value = true;
+    error.value = null;
 
     try {
       const response = await fetch('/api/stratix/config/agent/list');
       const result = await response.json();
 
       if (result.code === 200 && result.data) {
-        const oldAgents = state.agents;
+        const oldAgents = agents.value;
         const newAgents: StratixAgentConfig[] = result.data;
 
         const oldIds = new Set(oldAgents.map(a => a.agentId));
@@ -208,20 +210,21 @@ export const agentStore = {
           }
         }
 
-        state.agents = newAgents;
-        state.lastRefreshTime = new Date();
+        agents.value = newAgents;
+        lastRefreshTime.value = new Date();
       }
     } catch (e) {
-      state.error = '刷新失败';
+      error.value = '刷新失败';
       console.warn('[AgentStore] Failed to refresh agents:', e);
     } finally {
       setTimeout(() => {
-        state.isRefreshing = false;
+        isRefreshing.value = false;
       }, 500);
     }
-  },
+  }
 
-  async createAgent(type: 'writer' | 'dev' | 'analyst'): Promise<StratixAgentConfig | null> {
+  // Create agent
+  async function createAgent(type: 'writer' | 'dev' | 'analyst'): Promise<StratixAgentConfig | null> {
     const TemplateClass = type === 'writer' ? WriterHeroTemplate
       : type === 'dev' ? DevHeroTemplate
       : AnalystHeroTemplate;
@@ -239,16 +242,15 @@ export const agentStore = {
       console.warn('[AgentStore] Failed to save agent:', e);
     }
 
-    state.agents.push(config);
-
+    agents.value.push(config);
     onAgentCreatedCallback?.(config, false);
 
-    await this.refreshAgents();
-
+    await refreshAgents();
     return config;
-  },
+  }
 
-  async createAgentFromCharacter(
+  // Create agent from character
+  async function createAgentFromCharacter(
     character: SavedCharacter,
     options?: {
       backendType?: AgentBackendType;
@@ -297,16 +299,14 @@ export const agentStore = {
       console.warn('[AgentStore] Failed to save agent from character:', e);
     }
 
-    state.agents.push(config);
-
+    agents.value.push(config);
     onAgentCreatedCallback?.(config, true);
 
-    await this.refreshAgents();
-
+    await refreshAgents();
     return config;
-  },
+  }
 
-  async createCustomAgent(
+  async function createCustomAgent(
     character: SavedCharacter,
     options?: {
       backendType?: AgentBackendType;
@@ -318,12 +318,13 @@ export const agentStore = {
       rules?: string[];
     }
   ): Promise<StratixAgentConfig | null> {
-    return this.createAgentFromCharacter(character, options);
-  },
+    return createAgentFromCharacter(character, options);
+  }
 
-  async testBackendConnection(
+  // Test backend connection
+  async function testBackendConnection(
     backendType: AgentBackendType,
-    config: OpenClawConfig | any
+    config: OpenClawConfig | unknown
   ): Promise<{ success: boolean; message: string }> {
     try {
       const response = await fetch('/api/stratix/agent/test-connection', {
@@ -345,9 +346,10 @@ export const agentStore = {
         message: `Connection test failed: ${e instanceof Error ? e.message : 'Unknown error'}`
       };
     }
-  },
+  }
 
-  async updateAgentProfile(
+  // Update agent profile
+  async function updateAgentProfile(
     agentId: string,
     character: SavedCharacter,
     options?: {
@@ -360,71 +362,72 @@ export const agentStore = {
       rules?: string[];
     }
   ): Promise<void> {
-    const index = state.agents.findIndex(a => a.agentId === agentId);
+    const index = agents.value.findIndex(a => a.agentId === agentId);
 
     if (index >= 0) {
       const profile = savedCharacterToProfile(character);
-      const backendType = options?.backendType || state.agents[index].backendType;
+      const backendType = options?.backendType || agents.value[index].backendType;
 
-      state.agents[index].profile = profile;
-      state.agents[index].name = character.name;
+      agents.value[index].profile = profile;
+      agents.value[index].name = character.name;
 
       if (options) {
         if (options.backendType) {
-          state.agents[index].backendType = options.backendType;
+          agents.value[index].backendType = options.backendType;
         }
         if (options.openClawConfig !== undefined) {
-          state.agents[index].openClawConfig = options.openClawConfig;
+          agents.value[index].openClawConfig = options.openClawConfig;
         }
         if (options.stratixConfig !== undefined) {
-          state.agents[index].stratixConfig = options.stratixConfig;
+          agents.value[index].stratixConfig = options.stratixConfig;
         }
         if (options.soul !== undefined) {
-          state.agents[index].soul = options.soul;
+          agents.value[index].soul = options.soul;
         }
         if (options.memory !== undefined) {
-          state.agents[index].memory = options.memory;
+          agents.value[index].memory = options.memory;
         }
         if (options.skills !== undefined) {
-          state.agents[index].skills = options.skills;
+          agents.value[index].skills = options.skills;
         }
         if (options.rules !== undefined) {
-          state.agents[index].rules = options.rules;
+          agents.value[index].rules = options.rules;
         }
       }
 
-      state.agents[index].configStatus = determineConfigStatus(
+      agents.value[index].configStatus = determineConfigStatus(
         profile,
-        state.agents[index].backendType,
-        state.agents[index].openClawConfig,
-        state.agents[index].stratixConfig
+        agents.value[index].backendType,
+        agents.value[index].openClawConfig,
+        agents.value[index].stratixConfig
       );
 
-      state.agents[index].updatedAt = Date.now();
+      agents.value[index].updatedAt = Date.now();
     }
 
-    await this.refreshAgents();
-  },
+    await refreshAgents();
+  }
 
-  async updateAgentConfig(
+  // Update agent config
+  async function updateAgentConfig(
     agentId: string,
     updates: Partial<StratixAgentConfig>
   ): Promise<void> {
-    const index = state.agents.findIndex(a => a.agentId === agentId);
+    const index = agents.value.findIndex(a => a.agentId === agentId);
 
     if (index >= 0) {
-      state.agents[index] = {
-        ...state.agents[index],
+      agents.value[index] = {
+        ...agents.value[index],
         ...updates,
         updatedAt: Date.now()
       };
 
       if (updates.backendType || updates.openClawConfig || updates.profile || updates.stratixConfig) {
-        state.agents[index].configStatus = determineConfigStatus(
-          state.agents[index].profile,
-          state.agents[index].backendType,
-          state.agents[index].openClawConfig,
-          state.agents[index].stratixConfig
+        agents.value[index].configStatus = determineConfigStatus(
+          agents.value[index].profile,
+          agents.value[index].backendType,
+          agents.value[index].openClawConfig,
+          agents.value[index].stratixConfig
         );
       }
 
@@ -432,25 +435,26 @@ export const agentStore = {
         await fetch('/api/stratix/config/agent/update', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(state.agents[index])
+          body: JSON.stringify(agents.value[index])
         });
       } catch (e) {
         console.warn('[AgentStore] Failed to update agent:', e);
       }
     }
 
-    await this.refreshAgents();
-  },
+    await refreshAgents();
+  }
 
-  async markAgentReady(agentId: string): Promise<void> {
-    await this.updateAgentConfig(agentId, { configStatus: 'ready' });
-  },
+  async function markAgentReady(agentId: string): Promise<void> {
+    await updateAgentConfig(agentId, { configStatus: 'ready' });
+  }
 
-  async markAgentDraft(agentId: string): Promise<void> {
-    await this.updateAgentConfig(agentId, { configStatus: 'draft' });
-  },
+  async function markAgentDraft(agentId: string): Promise<void> {
+    await updateAgentConfig(agentId, { configStatus: 'draft' });
+  }
 
-  async deleteAgent(agentId: string): Promise<void> {
+  // Delete agent
+  async function deleteAgent(agentId: string): Promise<void> {
     try {
       await fetch(`/api/stratix/config/agent/delete?agentId=${agentId}`, {
         method: 'DELETE'
@@ -459,66 +463,124 @@ export const agentStore = {
       console.warn('[AgentStore] Failed to delete agent:', e);
     }
 
-    state.agents = state.agents.filter(a => a.agentId !== agentId);
-    state.selectedIds = state.selectedIds.filter(id => id !== agentId);
+    agents.value = agents.value.filter(a => a.agentId !== agentId);
+    selectedIds.value = selectedIds.value.filter(id => id !== agentId);
 
     onAgentDeletedCallback?.(agentId);
-  },
+  }
 
-  selectAgent(agentId: string): void {
-    if (!state.selectedIds.includes(agentId)) {
-      state.selectedIds.push(agentId);
+  // Selection
+  function selectAgent(agentId: string): void {
+    if (!selectedIds.value.includes(agentId)) {
+      selectedIds.value.push(agentId);
     }
-  },
+  }
 
-  deselectAgent(agentId: string): void {
-    state.selectedIds = state.selectedIds.filter(id => id !== agentId);
-  },
+  function deselectAgent(agentId: string): void {
+    selectedIds.value = selectedIds.value.filter(id => id !== agentId);
+  }
 
-  setSelectedIds(ids: string[]): void {
-    state.selectedIds = ids;
-  },
+  function setSelectedIds(ids: string[]): void {
+    selectedIds.value = ids;
+  }
 
-  clearSelection(): void {
-    state.selectedIds = [];
-  },
+  function clearSelection(): void {
+    selectedIds.value = [];
+  }
 
-  getAgentById(agentId: string): StratixAgentConfig | undefined {
-    return state.agents.find(a => a.agentId === agentId);
-  },
+  // Getters
+  function getAgentById(agentId: string): StratixAgentConfig | undefined {
+    return agents.value.find(a => a.agentId === agentId);
+  }
 
-  getAgentByCharacterId(characterId: string): StratixAgentConfig | undefined {
-    return state.agents.find(a => a.profile?.characterId === characterId);
-  },
+  function getAgentByCharacterId(characterId: string): StratixAgentConfig | undefined {
+    return agents.value.find(a => a.profile?.characterId === characterId);
+  }
 
-  startAutoRefresh(intervalMs: number = 30000): void {
+  // Auto refresh
+  function startAutoRefresh(intervalMs: number = 30000): void {
     if (autoRefreshTimer) return;
 
     autoRefreshTimer = setInterval(() => {
-      this.refreshAgents();
+      refreshAgents();
     }, intervalMs);
 
     console.log(`[AgentStore] Auto refresh started (${intervalMs}ms interval)`);
-  },
+  }
 
-  stopAutoRefresh(): void {
+  function stopAutoRefresh(): void {
     if (autoRefreshTimer) {
       clearInterval(autoRefreshTimer);
       autoRefreshTimer = null;
       console.log('[AgentStore] Auto refresh stopped');
     }
-  },
+  }
 
-  clear(): void {
-    this.stopAutoRefresh();
+  // Clear
+  function clear(): void {
+    stopAutoRefresh();
     if (stopPositionSaveTimer) {
       stopPositionSaveTimer();
     }
-    state.agents = [];
-    state.selectedIds = [];
-    state.error = null;
-    state.lastRefreshTime = null;
+    agents.value = [];
+    selectedIds.value = [];
+    error.value = null;
+    lastRefreshTime.value = null;
   }
-};
 
-export default agentStore;
+  // Legacy API support (read-only state object for backward compatibility)
+  const state = computed(() => ({
+    agents: readonly(agents),
+    selectedIds: readonly(selectedIds),
+    isLoading: readonly(isLoading),
+    isRefreshing: readonly(isRefreshing),
+    lastRefreshTime: readonly(lastRefreshTime),
+    error: readonly(error)
+  }));
+
+  return {
+    // State (reactive refs)
+    agents,
+    selectedIds,
+    isLoading,
+    isRefreshing,
+    lastRefreshTime,
+    error,
+
+    // Computed
+    selectedAgents,
+    readyAgents,
+    draftAgents,
+    agentCount,
+
+    // Legacy state object for backward compatibility
+    state,
+
+    // Methods
+    setOnAgentCreated,
+    setOnAgentDeleted,
+    setOnAgentUpdated,
+    updateAgentPosition,
+    flushPositionUpdates,
+    loadAgents,
+    refreshAgents,
+    createAgent,
+    createAgentFromCharacter,
+    createCustomAgent,
+    testBackendConnection,
+    updateAgentProfile,
+    updateAgentConfig,
+    markAgentReady,
+    markAgentDraft,
+    deleteAgent,
+    selectAgent,
+    deselectAgent,
+    setSelectedIds,
+    clearSelection,
+    getAgentById,
+    getAgentByCharacterId,
+    startAutoRefresh,
+    stopAutoRefresh,
+    clear
+  };
+});
