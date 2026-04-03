@@ -3,7 +3,11 @@
  *
  * Provides a singleton event emitter for ZoneCoordinator lifecycle events
  * so other modules (like OrchestrationSync) can subscribe to them.
+ *
+ * Uses mitt for typed event handling with wildcard listener support.
  */
+
+import mitt, { Emitter } from 'mitt';
 
 export type ZoneCoordinatorEvent =
   | 'task_delegated'
@@ -40,16 +44,14 @@ export interface ZoneCoordinatorEventPayload {
 
 export type ZoneCoordinatorEventCallback = (payload: ZoneCoordinatorEventPayload) => void;
 
-type ListenerMap = Map<ZoneCoordinatorEvent, Set<ZoneCoordinatorEventCallback>>;
-type WildcardListeners = Set<ZoneCoordinatorEventCallback>;
-
 class ZoneCoordinatorEventEmitter {
   private static instance: ZoneCoordinatorEventEmitter;
+  private emitter: Emitter<Record<string, ZoneCoordinatorEventPayload>>;
+  private wildcardListeners: Set<ZoneCoordinatorEventCallback> = new Set();
 
-  private listeners: ListenerMap = new Map();
-  private wildcardListeners: WildcardListeners = new Set();
-
-  private constructor() {}
+  private constructor() {
+    this.emitter = mitt<Record<string, ZoneCoordinatorEventPayload>>();
+  }
 
   static getInstance(): ZoneCoordinatorEventEmitter {
     if (!ZoneCoordinatorEventEmitter.instance) {
@@ -61,31 +63,24 @@ class ZoneCoordinatorEventEmitter {
   /**
    * Subscribe to a specific event
    */
-  on(event: ZoneCoordinatorEvent, callback: ZoneCoordinatorEventCallback): void {
-    if (!this.listeners.has(event)) {
-      this.listeners.set(event, new Set());
-    }
-    this.listeners.get(event)!.add(callback);
+  on(event: ZoneCoordinatorEvent, callback: ZoneCoordinatorEventCallback): () => void {
+    this.emitter.on(event, callback);
+    return () => this.off(event, callback);
   }
 
   /**
    * Unsubscribe from a specific event
    */
   off(event: ZoneCoordinatorEvent, callback: ZoneCoordinatorEventCallback): void {
-    const callbacks = this.listeners.get(event);
-    if (callbacks) {
-      callbacks.delete(callback);
-      if (callbacks.size === 0) {
-        this.listeners.delete(event);
-      }
-    }
+    this.emitter.off(event, callback);
   }
 
   /**
    * Subscribe to all events (wildcard)
    */
-  onAny(callback: ZoneCoordinatorEventCallback): void {
+  onAny(callback: ZoneCoordinatorEventCallback): () => void {
     this.wildcardListeners.add(callback);
+    return () => this.offAny(callback);
   }
 
   /**
@@ -100,16 +95,7 @@ class ZoneCoordinatorEventEmitter {
    */
   emit(payload: ZoneCoordinatorEventPayload): void {
     // Notify specific event listeners
-    const callbacks = this.listeners.get(payload.type);
-    if (callbacks) {
-      for (const callback of callbacks) {
-        try {
-          callback(payload);
-        } catch (error) {
-          console.error(`[ZoneCoordinatorEventEmitter] Error in callback for ${payload.type}:`, error);
-        }
-      }
-    }
+    this.emitter.emit(payload.type, payload);
 
     // Notify wildcard listeners
     for (const callback of this.wildcardListeners) {
@@ -119,6 +105,14 @@ class ZoneCoordinatorEventEmitter {
         console.error('[ZoneCoordinatorEventEmitter] Error in wildcard callback:', error);
       }
     }
+  }
+
+  /**
+   * Clear all listeners (for testing)
+   */
+  clearAll(): void {
+    this.emitter.all.clear();
+    this.wildcardListeners.clear();
   }
 }
 
