@@ -8,3 +8,4 @@ export * from './middleware/throttle';
 export * from './middleware/batch';
 export * from './middleware/performance';
 export * from './bridge';
+export * from './replay';

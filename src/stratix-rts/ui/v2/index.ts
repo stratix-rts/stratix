@@ -8,3 +8,5 @@ export type { UnitInfo, Skill, AgentInfo, ZoneInfo } from './CommandPanelV2';
 
 export { RTSUIFactory } from './RTSUIFactory';
 export type { RTSUIComponents, RTSUIConfig } from './RTSUIFactory';
+
+export { ReplayControls } from './ReplayControls';

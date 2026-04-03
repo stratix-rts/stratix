@@ -7,6 +7,7 @@ import { rtsEventBus, RTSEventBus } from './events/core/RTSEventBus';
 
 export { rtsEventBus, RTSEventBus, rtsBridge };
 export * from './events/types/RTSEventTypes';
+export * from './events/replay';
 
 export interface StratixRTSConfig {
   parent: string | HTMLElement;

@@ -91,6 +91,15 @@ export class RTSEventBus {
     }
   }
 
+  onAny(handler: (event: string, data: unknown) => void): () => void {
+    this.emitter.on('*', handler as EventHandler);
+    return () => this.offAny(handler);
+  }
+
+  offAny(handler: (event: string, data: unknown) => void): void {
+    this.emitter.off('*', handler as EventHandler);
+  }
+
   emit<K extends RTSEventName>(event: K, data: RTSEventData<K>): void {
     if (!this.enabled) return;
 

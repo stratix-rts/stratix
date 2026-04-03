@@ -235,7 +235,55 @@ export interface RequestResponseMap {
   };
 }
 
-export type AllRTSEvents = SceneToUIEvents & UIToGameEvents & VueToGameEvents & GameToVueEvents & ZoneSyncEvents & ErrorEvents;
+export interface ReplayEvents {
+  'replay:state_changed': {
+    state: 'idle' | 'playing' | 'paused' | 'ended';
+  };
+  'replay:progress': {
+    state: 'idle' | 'playing' | 'paused' | 'ended';
+    currentTime: number;
+    duration: number;
+    percentage: number;
+    eventIndex: number;
+    totalEvents: number;
+  };
+  'replay:recording_started': {
+    sessionId: string;
+  };
+  'replay:recording_stopped': {
+    session: {
+      id: string;
+      name: string;
+      startTime: number;
+      endTime: number;
+      events: Array<{
+        event: string;
+        data: unknown;
+        timestamp: number;
+      }>;
+      duration: number;
+    };
+  };
+  'replay:session_loaded': {
+    session: {
+      id: string;
+      name: string;
+      startTime: number;
+      endTime: number;
+      events: Array<{
+        event: string;
+        data: unknown;
+        timestamp: number;
+      }>;
+      duration: number;
+    };
+  };
+  'replay:error': {
+    error: string;
+  };
+}
+
+export type AllRTSEvents = SceneToUIEvents & UIToGameEvents & VueToGameEvents & GameToVueEvents & ZoneSyncEvents & ErrorEvents & ReplayEvents;
 
 export type RTSEventName = keyof AllRTSEvents;
 
