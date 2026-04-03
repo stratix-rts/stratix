@@ -20,6 +20,11 @@ export { default as StratixConfirmDialog } from './StratixConfirmDialog.vue';
 export { default as StratixLoading } from './StratixLoading.vue';
 export { default as StratixEmpty } from './StratixEmpty.vue';
 
+// Shared UI components for duplication abstraction
+export { default as ButtonGroup } from './ButtonGroup.vue';
+export { default as InfoItem } from './InfoItem.vue';
+export { default as WarningBox } from './WarningBox.vue';
+
 // Dropdown 类型定义
 export interface DropdownOption {
   label: string;

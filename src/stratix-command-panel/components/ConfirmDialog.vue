@@ -10,48 +10,45 @@
     @cancel="handleCancel"
   >
     <div class="confirm-info">
-      <div class="info-item">
-        <span class="info-label">技能名称</span>
-        <span class="info-value">{{ skillName }}</span>
-      </div>
-      <div class="info-item">
-        <span class="info-label">目标 Agent</span>
-        <span class="info-value highlight">{{ agentCount }} 个 Agent</span>
-      </div>
-      <div v-if="hasParams" class="info-item params-preview">
-        <span class="info-label">参数预览</span>
-        <div class="params-list">
-          <div v-for="(value, key) in params" :key="key" class="param-row">
-            <span class="param-key">{{ key }}</span>
-            <span class="param-value">{{ formatValue(value) }}</span>
+      <InfoItem label="技能名称" plain>
+        {{ skillName }}
+      </InfoItem>
+      <InfoItem label="目标 Agent" plain value-color="var(--ds-semantic-success)">
+        {{ agentCount }} 个 Agent
+      </InfoItem>
+      <div v-if="hasParams" class="params-preview">
+        <InfoItem label="参数预览" plain>
+          <div class="params-list">
+            <div v-for="(value, key) in params" :key="key" class="param-row">
+              <span class="param-key">{{ key }}</span>
+              <span class="param-value">{{ formatValue(value) }}</span>
+            </div>
           </div>
-        </div>
+        </InfoItem>
       </div>
     </div>
 
-    <div class="warning-text">
-      <SvgIcon name="alert-circle" :size="18" />
-      <span v-if="agentCount > 1">将同时向 {{ agentCount }} 个 Agent 发送执行指令</span>
-      <span v-else>即将向 Agent 发送执行指令</span>
-    </div>
+    <WarningBox type="warning">
+      <template v-if="agentCount > 1">将同时向 {{ agentCount }} 个 Agent 发送执行指令</template>
+      <template v-else>即将向 Agent 发送执行指令</template>
+    </WarningBox>
 
     <template #footer>
-      <div class="button-group">
+      <ButtonGroup>
         <StratixButton variant="secondary" size="sm" @click="handleCancel">
           取消
         </StratixButton>
         <StratixButton variant="primary" size="sm" @click="handleConfirm">
           确认执行
         </StratixButton>
-      </div>
+      </ButtonGroup>
     </template>
   </StratixModal>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { StratixModal, StratixButton, SvgIcon } from '@/components/ui';
-import { getToken } from '@/design-system/config';
+import { StratixModal, StratixButton, ButtonGroup, InfoItem, WarningBox } from '@/components/ui';
 
 interface Props {
   visible: boolean;
@@ -94,35 +91,13 @@ const handleCancel = () => {
   gap: 12px;
 }
 
-.info-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.info-label {
-  font-size: 12px;
-  color: v-bind('getToken("colors.text.muted")');
-  font-weight: 500;
-}
-
-.info-value {
-  font-size: 14px;
-  color: v-bind('getToken("colors.text.primary")');
-  font-weight: 500;
-}
-
-.info-value.highlight {
-  color: v-bind('getToken("colors.semantic.success")');
-}
-
 .params-preview {
   margin-top: 8px;
 }
 
 .params-list {
-  background: v-bind('getToken("colors.background.secondary")');
-  border: 1px solid v-bind('getToken("colors.border.default")');
+  background: var(--ds-bg-secondary);
+  border: 1px solid var(--ds-border-default);
   border-radius: 6px;
   padding: 12px;
   max-height: 120px;
@@ -134,7 +109,7 @@ const handleCancel = () => {
   justify-content: space-between;
   align-items: center;
   padding: 6px 0;
-  border-bottom: 1px solid v-bind('getToken("colors.border.default")');
+  border-bottom: 1px solid var(--ds-border-default);
 }
 
 .param-row:last-child {
@@ -142,31 +117,18 @@ const handleCancel = () => {
 }
 
 .param-key {
-  font-family: v-bind('getToken("typography.fontFamily.mono")');
+  font-family: var(--ds-fontFamily-mono);
   font-size: 12px;
-  color: v-bind('getToken("colors.text.secondary")');
+  color: var(--ds-text-secondary);
 }
 
 .param-value {
   font-size: 12px;
-  color: v-bind('getToken("colors.semantic.success")');
+  color: var(--ds-semantic-success);
   max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.warning-text {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 16px;
-  padding: 12px;
-  background: v-bind('getToken("colors.warning") + "1A"');
-  border: 1px solid v-bind('getToken("colors.warning") + "33"');
-  border-radius: 6px;
-  color: v-bind('getToken("colors.warning")');
-  font-size: 13px;
 }
 
 .params-list::-webkit-scrollbar {
@@ -174,17 +136,11 @@ const handleCancel = () => {
 }
 
 .params-list::-webkit-scrollbar-track {
-  background: v-bind('getToken("colors.background.primary")');
+  background: var(--ds-bg-primary);
 }
 
 .params-list::-webkit-scrollbar-thumb {
-  background: v-bind('getToken("colors.border.default")');
+  background: var(--ds-border-default);
   border-radius: 2px;
-}
-
-.button-group {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
 }
 </style>

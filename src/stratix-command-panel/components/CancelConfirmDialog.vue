@@ -13,53 +13,45 @@
 
     <div class="dialog-body">
       <p class="dialog-desc">确定要取消此指令吗？此操作不可撤销。</p>
-      
+
       <div v-if="log" class="command-info">
-        <div class="info-row">
-          <span class="info-label">指令 ID</span>
-          <span class="info-value mono">{{ log.commandId.slice(0, 20) }}...</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">技能名称</span>
-          <span class="info-value">{{ log.skillName }}</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">Agent</span>
-          <span class="info-value">{{ log.agentName }}</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">当前状态</span>
-          <span class="info-value">
-            <span :class="['status-badge', `status-${log.status}`]">
-              {{ statusText }}
-            </span>
+        <InfoItem label="指令 ID" direction="horizontal" plain mono>
+          {{ log.commandId.slice(0, 20) }}...
+        </InfoItem>
+        <InfoItem label="技能名称" direction="horizontal" plain>
+          {{ log.skillName }}
+        </InfoItem>
+        <InfoItem label="Agent" direction="horizontal" plain>
+          {{ log.agentName }}
+        </InfoItem>
+        <InfoItem label="当前状态" direction="horizontal" plain>
+          <span :class="['status-badge', `status-${log.status}`]">
+            {{ statusText }}
           </span>
-        </div>
+        </InfoItem>
       </div>
 
-      <div class="warning-box">
-        <SvgIcon name="alert-triangle" class="warning-icon" />
-        <span>取消后指令将终止执行，Agent 状态将恢复</span>
-      </div>
+      <WarningBox type="warning">
+        取消后指令将终止执行，Agent 状态将恢复
+      </WarningBox>
     </div>
 
     <template #footer>
-      <div class="button-group">
+      <ButtonGroup>
         <StratixButton variant="secondary" @click="$emit('cancel')">
           返回
         </StratixButton>
         <StratixButton variant="danger" @click="$emit('confirm')">
           确认取消
         </StratixButton>
-      </div>
+      </ButtonGroup>
     </template>
   </StratixModal>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { StratixModal, StratixButton, SvgIcon } from '@/components/ui';
-import { getToken } from '@/design-system/config';
+import { StratixModal, StratixButton, SvgIcon, ButtonGroup, InfoItem, WarningBox } from '@/components/ui';
 import type { CommandLogItem } from './CommandLog.vue';
 
 interface Props {
@@ -94,7 +86,7 @@ const statusText = computed(() => {
 }
 
 .header-icon {
-  color: v-bind('getToken("colors.semantic.danger")');
+  color: var(--ds-semantic-danger);
 }
 
 .dialog-body {
@@ -106,43 +98,17 @@ const statusText = computed(() => {
 .dialog-desc {
   margin: 0;
   font-size: 14px;
-  color: v-bind('getToken("colors.text.secondary")');
+  color: var(--ds-text-secondary);
 }
 
 .command-info {
-  background: v-bind('getToken("colors.background.secondary")');
-  border: 1px solid v-bind('getToken("colors.border.default")');
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--ds-bg-secondary);
+  border: 1px solid var(--ds-border-default);
   border-radius: 6px;
   padding: 12px;
-}
-
-.info-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid v-bind('getToken("colors.border.default")');
-}
-
-.info-row:last-child {
-  border-bottom: none;
-}
-
-.info-label {
-  font-size: 12px;
-  color: v-bind('getToken("colors.text.muted")');
-  font-weight: 500;
-}
-
-.info-value {
-  font-size: 13px;
-  color: v-bind('getToken("colors.text.primary")');
-}
-
-.info-value.mono {
-  font-family: v-bind('getToken("typography.fontFamily.mono")');
-  font-size: 11px;
-  color: v-bind('getToken("colors.text.secondary")');
 }
 
 .status-badge {
@@ -155,45 +121,22 @@ const statusText = computed(() => {
 }
 
 .status-badge.status-pending {
-  background: v-bind('getToken("colors.info") + "26"');
-  color: v-bind('getToken("colors.info")');
+  background: var(--ds-info) + "26";
+  color: var(--ds-info);
 }
 
 .status-badge.status-running {
-  background: v-bind('getToken("colors.warning") + "26"');
-  color: v-bind('getToken("colors.warning")');
+  background: var(--ds-warning) + "26";
+  color: var(--ds-warning);
 }
 
 .status-badge.status-success {
-  background: v-bind('getToken("colors.semantic.success") + "26"');
-  color: v-bind('getToken("colors.semantic.success")');
+  background: var(--ds-semantic-success) + "26";
+  color: var(--ds-semantic-success);
 }
 
 .status-badge.status-failed {
-  background: v-bind('getToken("colors.semantic.danger") + "26"');
-  color: v-bind('getToken("colors.semantic.danger")');
-}
-
-.warning-box {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px;
-  background: v-bind('getToken("colors.warning") + "1A"');
-  border: 1px solid v-bind('getToken("colors.warning") + "33"');
-  border-radius: 6px;
-  color: v-bind('getToken("colors.warning")');
-  font-size: 13px;
-}
-
-.warning-icon {
-  flex-shrink: 0;
-  margin-top: 1px;
-}
-
-.button-group {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
+  background: var(--ds-semantic-danger) + "26";
+  color: var(--ds-semantic-danger);
 }
 </style>
