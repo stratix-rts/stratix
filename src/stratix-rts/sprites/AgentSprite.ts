@@ -253,6 +253,7 @@ export class AgentSprite extends Phaser.GameObjects.Container {
       try {
         this.sprite.play(animKey);
       } catch (error) {
+        console.warn(`[AgentSprite] Failed to play animation ${animKey}:`, error);
       }
     }
   }
@@ -762,11 +763,12 @@ export class AgentSprite extends Phaser.GameObjects.Container {
       );
       
       this.thumbnailKey = textureKey;
-      
+
       if (this.renderMode === 'thumbnail' && this.thumbnailSprite) {
         this.thumbnailSprite.setTexture(textureKey);
       }
     } catch (error) {
+      console.warn(`[AgentSprite] Failed to load thumbnail:`, error);
     }
   }
 
