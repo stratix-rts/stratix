@@ -104,7 +104,13 @@ export const useZoneStore = defineStore('zone', () => {
 
   // Delete zone
   async function deleteZone(zoneId: string): Promise<boolean> {
-    const result = await client.delete<{ message: string }>(API_PATHS.ZONE_BY_ID(zoneId));
+    let result;
+    try {
+      result = await client.delete<{ message: string }>(API_PATHS.ZONE_BY_ID(zoneId));
+    } catch (e) {
+      console.warn('[ZoneStore] Failed to delete zone:', e);
+      return false;
+    }
 
     if (isApiError(result)) {
       console.warn('[ZoneStore] Failed to delete zone:', result.error);
