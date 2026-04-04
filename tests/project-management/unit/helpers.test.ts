@@ -2,6 +2,7 @@ import {
   generateId,
   formatDate,
   parseDate,
+  now,
   deepClone,
   validatePriority,
   validateProgress,
@@ -10,7 +11,9 @@ import {
   validateRequired,
   validatePath,
   clamp,
-  formatDuration
+  formatDuration,
+  debounce,
+  throttle,
 } from '../../../src/stratix-project/utils/helpers';
 
 describe('Helpers', () => {
@@ -161,6 +164,124 @@ describe('Helpers', () => {
     it('should format hours, minutes and seconds', () => {
       expect(formatDuration(3661000)).toBe('1h 1m');
       expect(formatDuration(7325000)).toBe('2h 2m');
+    });
+  });
+
+  describe('now', () => {
+    it('should return ISO string', () => {
+      const result = now();
+      expect(typeof result).toBe('string');
+      expect(new Date(result).toISOString()).toBe(result);
+    });
+  });
+
+  describe('debounce', () => {
+    it('should debounce function calls', async () => {
+      jest.useFakeTimers();
+      const func = jest.fn();
+      const debouncedFn = debounce(func, 100);
+
+      debouncedFn();
+      debouncedFn();
+      debouncedFn();
+
+      expect(func).not.toHaveBeenCalled();
+
+      jest.advanceTimersByTime(100);
+
+      expect(func).toHaveBeenCalledTimes(1);
+
+      jest.useRealTimers();
+    });
+
+    it('should pass arguments to debounced function', () => {
+      jest.useFakeTimers();
+      const func = jest.fn();
+      const debouncedFn = debounce(func, 100);
+
+      debouncedFn('arg1', 'arg2');
+
+      jest.advanceTimersByTime(100);
+
+      expect(func).toHaveBeenCalledWith('arg1', 'arg2');
+
+      jest.useRealTimers();
+    });
+
+    it('should reset timer on subsequent calls', () => {
+      jest.useFakeTimers();
+      const func = jest.fn();
+      const debouncedFn = debounce(func, 100);
+
+      debouncedFn();
+      jest.advanceTimersByTime(50);
+      debouncedFn();
+      jest.advanceTimersByTime(50);
+      debouncedFn();
+
+      jest.advanceTimersByTime(100);
+
+      expect(func).toHaveBeenCalledTimes(1);
+
+      jest.useRealTimers();
+    });
+  });
+
+  describe('throttle', () => {
+    it('should throttle function calls', () => {
+      jest.useFakeTimers();
+      const func = jest.fn();
+      const throttledFn = throttle(func, 100);
+
+      throttledFn();
+      throttledFn();
+      throttledFn();
+
+      expect(func).toHaveBeenCalledTimes(1);
+
+      jest.advanceTimersByTime(100);
+
+      throttledFn();
+
+      expect(func).toHaveBeenCalledTimes(2);
+
+      jest.useRealTimers();
+    });
+
+    it('should pass arguments to throttled function', () => {
+      jest.useFakeTimers();
+      const func = jest.fn();
+      const throttledFn = throttle(func, 100);
+
+      throttledFn('arg1', 'arg2');
+
+      expect(func).toHaveBeenCalledWith('arg1', 'arg2');
+
+      jest.useRealTimers();
+    });
+
+    it('should allow immediate call on first invocation', () => {
+      jest.useFakeTimers();
+      const func = jest.fn();
+      const throttledFn = throttle(func, 100);
+
+      throttledFn();
+
+      expect(func).toHaveBeenCalledTimes(1);
+
+      jest.advanceTimersByTime(50);
+
+      throttledFn();
+
+      expect(func).toHaveBeenCalledTimes(1);
+
+      jest.advanceTimersByTime(100);
+
+      throttledFn();
+
+      expect(func).toHaveBeenCalledTimes(2);
+
+      jest.useRealTimers();
     });
   });
 });
