@@ -30,21 +30,12 @@ export class CharacterSpawnEffect {
     characterId: string,
     characterName: string
   ) {
-    console.log('[CharacterSpawnEffect] 🔵 Constructor called');
-    console.log('[CharacterSpawnEffect] 📍 Position:', { x, y });
-    console.log('[CharacterSpawnEffect] 🆔 Character ID:', characterId);
-    console.log('[CharacterSpawnEffect] 📛 Character Name:', characterName);
-    
     this.scene = scene;
     this.config = { x, y, characterId, characterName };
-    
-    console.log('[CharacterSpawnEffect] 🎨 Creating magic circle...');
+
     this.magicCircle = new MagicCircle(scene, { x, y });
-    
-    console.log('[CharacterSpawnEffect] ✨ Creating particle system...');
     this.particles = new ParticleSystem(scene, { x, y });
-    
-    console.log('[CharacterSpawnEffect] 📝 Creating status text...');
+
     this.text = scene.add.text(x, y - 120, '⚡ 召唤中...', {
       fontSize: '16px',
       color: '#00ffff',
@@ -60,45 +51,31 @@ export class CharacterSpawnEffect {
       alpha: 1,
       duration: 300
     });
-    
-    console.log('[CharacterSpawnEffect] ✅ Constructor completed');
   }
   
   start(): void {
-    console.log('[CharacterSpawnEffect] 🚀 start() called');
-    console.log('[CharacterSpawnEffect] 📊 Current phase:', this.phase);
-    
     this.phase = 'expanding';
     this.startTime = Date.now();
-    console.log('[CharacterSpawnEffect] ⏱️ Start time:', this.startTime);
-    
-    console.log('[CharacterSpawnEffect] 🎬 Starting magic circle animation');
+
     this.magicCircle.start();
-    
-    console.log('[CharacterSpawnEffect] ⏰ Scheduling phase transition (500ms)');
+
     this.scene.time.delayedCall(500, () => {
       if (this.phase === 'expanding') {
-        console.log('[CharacterSpawnEffect] 🔄 Phase transition: expanding → gathering');
         this.phase = 'gathering';
         this.particles.startGathering();
       }
     });
-    
-    console.log('[CharacterSpawnEffect] 🔄 Starting update loop');
+
     this.updateEvent = this.scene.time.addEvent({
       delay: 16,
-      callback: this.update,
+      callback: () => this.update(16),
       callbackScope: this,
       loop: true
     });
-    
-    console.log('[CharacterSpawnEffect] ✅ start() completed');
   }
   
-  private update(): void {
+  private update(delta: number): void {
     if (this.phase === 'idle' || this.phase === 'done') return;
-    
-    const delta = 16;
     
     this.magicCircle.update(delta);
     this.particles.update(delta);
