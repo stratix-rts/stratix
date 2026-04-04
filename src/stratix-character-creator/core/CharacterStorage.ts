@@ -124,7 +124,12 @@ class CharacterStorage {
   }
 
   async import(jsonData: string): Promise<SavedCharacter> {
-    const character = JSON.parse(jsonData) as SavedCharacter;
+    let character: SavedCharacter;
+    try {
+      character = JSON.parse(jsonData) as SavedCharacter;
+    } catch {
+      throw new Error('Invalid JSON format');
+    }
 
     if (!character.characterId || !character.name || !character.bodyType) {
       throw new Error('Invalid character data');
