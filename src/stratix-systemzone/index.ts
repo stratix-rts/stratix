@@ -5,3 +5,7 @@
 
 // 导出所有类型
 export * from './types';
+
+// 导出 Guardian 模块（显式导出避免命名冲突）
+export { Guardian, PathProtection, CircuitBreaker, PermissionMatrix } from './guardian';
+export type { ValidationResult, GuardianValidationResult, PermissionCheckResult } from './guardian';
