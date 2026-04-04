@@ -188,8 +188,8 @@ export class ConfigConverter {
         description: skill.description,
         parameters: {
           type: 'object',
-          properties: this.convertParametersToProperties(skill.parameters),
-          required: skill.parameters.filter((p) => p.required).map((p) => p.paramId),
+          properties: this.convertParametersToProperties(skill.parameters || []),
+          required: (skill.parameters || []).filter((p) => p.required).map((p) => p.paramId),
         },
       },
     }));
