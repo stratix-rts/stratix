@@ -320,17 +320,13 @@ router.get('/transcript', async (req: Request, res: Response) => {
   }
 
   try {
-    // Check if agent is managed by AgentOrchestrationService
+    const transcriptLimit = Number(limit) || 50;
+    // Prefer SessionRuntime transcript from EnhancedStratixAgent via AgentOrchestrationService
     const orchestrator = AgentOrchestrationService.getInstance();
-    if (orchestrator.isAgentWorking(agentId as string)) {
-      // Agent is active - try to get transcript from orchestration
-      const agentState = orchestrator.getAgentState(agentId as string);
-      if (agentState && (agentState as any).transcript) {
-        const transcriptLimit = Number(limit) || 50;
-        const transcript = (agentState as any).transcript.slice(-transcriptLimit);
-        res.json(requestHelper.success(transcript));
-        return;
-      }
+    const sessionRuntimeTranscript = orchestrator.getAgentTranscript(agentId as string, transcriptLimit);
+    if (sessionRuntimeTranscript) {
+      res.json(requestHelper.success(sessionRuntimeTranscript));
+      return;
     }
     // Agent not active or no transcript available
     res.json(requestHelper.success([], 'Agent session not found or inactive'));
@@ -349,16 +345,16 @@ router.get('/usage', async (req: Request, res: Response) => {
   }
 
   try {
-    // Check AgentOrchestrationService for usage stats
+    // Prefer SessionRuntime data from EnhancedStratixAgent via AgentOrchestrationService
     const orchestrator = AgentOrchestrationService.getInstance();
-    if (orchestrator.isAgentWorking(agentId as string)) {
-      const agentState = orchestrator.getAgentState(agentId as string);
-      if (agentState && (agentState as any).usage) {
-        res.json(requestHelper.success((agentState as any).usage));
-        return;
-      }
+    const sessionRuntimeUsage = orchestrator.getAgentUsage(agentId as string);
+    if (sessionRuntimeUsage) {
+      res.json(requestHelper.success(sessionRuntimeUsage));
+      return;
     }
-    res.json(requestHelper.success({ promptTokens: 0, completionTokens: 0, totalTokens: 0, turnCount: 0 }));
+    // Fall back to AgentOrchestrationService's own stats (for LLMAgent/OpenClawAgent)
+    const usage = orchestrator.getUsage(agentId as string);
+    res.json(requestHelper.success(usage));
   } catch (error) {
     res.status(500).json(requestHelper.serverError('Failed to get usage'));
   }

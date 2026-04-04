@@ -36,4 +36,12 @@ export interface AgentInterface {
    * @param message 消息内容
    */
   handleMessage?(message: ProjectChannelMessage): Promise<void>;
+  /**
+   * 获取 SessionRuntime 的 token usage（仅 EnhancedStratixAgent 实现）
+   */
+  getUsage?(): { promptTokens: number; completionTokens: number; totalTokens: number; turnCount: number };
+  /**
+   * 获取 SessionRuntime 的 transcript（仅 EnhancedStratixAgent 实现）
+   */
+  getTranscript?(limit?: number): Array<{ id: string; role: string; content: string; timestamp: number }>;
 }

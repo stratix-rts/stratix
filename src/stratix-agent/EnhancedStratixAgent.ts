@@ -622,6 +622,38 @@ export class EnhancedStratixAgent extends StratixAgent {
     this.memoryEntries = [];
   }
 
+  /**
+   * 停止 agent 并清理资源（包括 SessionRuntime）
+   * 调用此方法确保 session 被销毁，防止内存泄漏
+   */
+  async stop(): Promise<void> {
+    if (this.currentSessionId) {
+      try {
+        await this.runtime.destroy(this.currentSessionId);
+      } catch {
+        // Session 可能已经不存在，忽略错误
+      }
+      this.currentSessionId = null;
+    }
+    this.shouldStop = true;
+  }
+
+  /**
+   * 清理资源（stop 的同步版本）
+   */
+  cleanup(): void {
+    if (this.currentSessionId) {
+      try {
+        this.runtime.destroy(this.currentSessionId);
+      } catch {
+        // Session 可能已经不存在，忽略错误
+      }
+      this.currentSessionId = null;
+    }
+  }
+
+  private shouldStop = false;
+
   // ============================================
   // SessionRuntime Getters
   // ============================================

@@ -234,6 +234,30 @@ export class AgentOrchestrationService {
     };
   }
 
+  /**
+   * Get usage from SessionRuntime (EnhancedStratixAgent).
+   * Returns undefined if the agent is not an EnhancedStratixAgent or has no active session.
+   */
+  getAgentUsage(agentId: string): { promptTokens: number; completionTokens: number; totalTokens: number; turnCount: number } | null {
+    const agent = this.agents.get(agentId);
+    if (agent && agent.getUsage) {
+      return agent.getUsage() ?? null;
+    }
+    return null;
+  }
+
+  /**
+   * Get transcript from SessionRuntime (EnhancedStratixAgent).
+   * Returns undefined if the agent is not an EnhancedStratixAgent or has no active session.
+   */
+  getAgentTranscript(agentId: string, limit: number = 50): Array<{ id: string; role: string; content: string; timestamp: number }> | null {
+    const agent = this.agents.get(agentId);
+    if (agent && agent.getTranscript) {
+      return agent.getTranscript(limit) ?? null;
+    }
+    return null;
+  }
+
   async stopAll(): Promise<void> {
     console.log('[AgentOrchestrationService] Stopping all agents');
     
