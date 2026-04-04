@@ -7,9 +7,10 @@
  * - 使用 Promise 缓存已加载的模板内容
  */
 
+import agencyAgentsData from '@/stratix-data/agency-agents.json';
+
 import type { SoulTemplate } from './soulTemplates';
 
-import agencyAgentsData from '@/stratix-data/agency-agents.json';
 
 // Domain mapping from agency-agents to our domain names
 const DOMAIN_NAMES: Record<string, string> = {

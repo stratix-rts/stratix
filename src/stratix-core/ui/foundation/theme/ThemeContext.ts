@@ -5,12 +5,13 @@
  * 与Design System深度集成
  */
 
+import { DesignSystemConfig, getCurrentTheme } from '@/design-system/config';
+import type { DesignSystemTokens, ThemeName } from '@/design-system/types';
+
 import type { ThemeChangeHandler, TokenChangeHandler, ThemeContextState } from '../../core/types/theme.types';
 
 import { ReactiveToken } from './ReactiveToken';
 
-import { DesignSystemConfig, getCurrentTheme } from '@/design-system/config';
-import type { DesignSystemTokens, ThemeName } from '@/design-system/types';
 
 export class ThemeContext {
   private static instance: ThemeContext;

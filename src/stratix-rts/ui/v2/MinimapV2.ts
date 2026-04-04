@@ -7,11 +7,12 @@
 
 import Phaser from 'phaser';
 
-import { MAP_WIDTH, MAP_HEIGHT } from '../../constants';
 
 import { EnhancedUIComponent } from '@/stratix-core/ui/components/base/EnhancedUIComponent';
 import type { UIComponentConfig } from '@/stratix-core/ui/core/types/component.types';
 import { ReactiveToken } from '@/stratix-core/ui/foundation/theme/ReactiveToken';
+
+import { MAP_WIDTH, MAP_HEIGHT } from '../../constants';
 
 interface MinimapConfig {
   width: number;

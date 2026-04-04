@@ -6,7 +6,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { EnhancedSoulConfig } from '../types/soul';
 import {
   AgentTemplate,
   AgentDomain,
@@ -17,7 +16,6 @@ import {
   TemplateSkill,
   SuccessMetric,
   RulePriority,
-  DOMAIN_NAMES,
 } from '../types/template';
 
 interface ParsedSection {
@@ -225,7 +223,7 @@ export class AgencyAgentsParser {
   /**
    * 提取 ID
    */
-  private extractId(filePath: string, parsed: ParseResult): string {
+  private extractId(filePath: string, _parsed: ParseResult): string {
     const domain = this.extractDomain(filePath);
     const filename = path.basename(filePath, path.extname(filePath));
     return `${domain}/${filename.toLowerCase().replace(/\s+/g, '-')}`;

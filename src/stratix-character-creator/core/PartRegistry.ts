@@ -4,8 +4,9 @@
  * 参考 LPC Universal-LPC-Spritesheet-Character-Generator 实现
  */
 
-import { SPRITESHEET_BASE_PATH, BODY_TYPES } from '../constants';
-import type { PartMetadata, PartCategory, BodyType, PartSelection } from '../types';
+import type { PartCategory, BodyType } from '../constants';
+import { SPRITESHEET_BASE_PATH } from '../constants';
+import type { PartMetadata, PartSelection } from '../types';
 
 /**
  * Category alias mapping - maps code category names to metadata typeName values

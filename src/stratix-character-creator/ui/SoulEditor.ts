@@ -1,14 +1,16 @@
 import Phaser from 'phaser';
 
-import { SOUL_TEMPLATES, DEFAULT_SOUL, type SoulTemplate } from '../config/soulTemplates';
-import { renderTemplatePrompt } from '../core/SoulTemplateRenderer';
 
-import { getButtonInlineStyles } from './_buttonStyles';
 
 import { getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
 import type { StratixSoulConfig } from '@/stratix-core/stratix-protocol';
 import { ContainerComponentBase } from '@/stratix-core/ui/ContainerComponent.base';
+
+import { SOUL_TEMPLATES, DEFAULT_SOUL, type SoulTemplate } from '../config/soulTemplates';
+import { renderTemplatePrompt } from '../core/SoulTemplateRenderer';
+
+import { getButtonInlineStyles } from './_buttonStyles';
 
 
 export interface SoulEditorConfig {

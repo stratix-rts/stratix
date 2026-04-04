@@ -7,10 +7,11 @@
 
 import Phaser from 'phaser';
 
-import type { UIComponentConfig } from './types';
 
 import { DesignSystemConfig, getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
+
+import type { UIComponentConfig } from './types';
 
 export abstract class UIComponentBase {
   protected scene: Phaser.Scene;

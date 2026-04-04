@@ -117,7 +117,7 @@ export { ControlGroupSystem } from './systems/ControlGroupSystem';
 export type { ControlGroup } from './systems/ControlGroupSystem';
 
 export { TopBarV2 as TopBar, MinimapV2 as Minimap, CommandPanelV2 as CommandPanel, RTSUIFactory } from './ui/v2';
-export type { TopBarStats, UnitInfo, Skill, AgentInfo, ZoneInfo, RTSUIComponents, RTSUIConfig } from './ui/v2';
+export type { UnitInfo, Skill, RTSUIComponents, RTSUIConfig } from './ui/v2';
 
 export { ShortcutManager, shortcutManager, HelpPanel, ShortcutBar } from './ui';
 export type { 

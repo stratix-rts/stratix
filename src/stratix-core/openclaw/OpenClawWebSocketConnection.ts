@@ -371,10 +371,11 @@ export class OpenClawWebSocketConnection {
             if (payload?.runId && payload.runId !== runId) return;
             
             switch (payload?.state) {
-              case 'delta':
+              case 'delta': {
                 const text = this.extractTextContent(payload.message);
                 if (text) accumulatedText = text;
                 break;
+              }
                 
               case 'final':
                 cleanup();
@@ -762,7 +763,7 @@ export class OpenClawWebSocketConnection {
     console.log('[OpenClawWS] Received chat event:', payload.state, 'message:', JSON.stringify(payload.message).slice(0, 500));
 
     switch (payload.state) {
-      case 'delta':
+      case 'delta': {
         const text = this.extractTextContent(payload.message);
         console.log('[OpenClawWS] delta text:', text?.slice(-100), 'raw message type:', typeof payload.message);
         if (text) {
@@ -770,8 +771,9 @@ export class OpenClawWebSocketConnection {
           this.currentChatCallbacks.onDelta?.(text);
         }
         break;
+      }
 
-      case 'final':
+      case 'final': {
         const finalText = this.extractTextContent(payload.message) || this.currentChatText;
         console.log('[OpenClawWS] final text:', finalText?.slice(-100), 'raw message type:', typeof payload.message);
         this.currentChatCallbacks.onFinal?.({
@@ -781,6 +783,7 @@ export class OpenClawWebSocketConnection {
         });
         this.cleanupChat();
         break;
+      }
 
       case 'error':
         this.currentChatCallbacks.onError?.(payload.errorMessage || '聊天出错');
@@ -816,7 +819,7 @@ export class OpenClawWebSocketConnection {
 
   private setState(state: ConnectionState): void {
     this.state = state;
-    this.stateListeners.forEach((l) => { try { l(state); } catch {} });
+    this.stateListeners.forEach((l) => { try { l(state); } catch { /* ignore */ } });
   }
 
   private normalizeEndpoint(endpoint: string): string {

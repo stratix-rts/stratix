@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 
+import { getToken, getCurrentTheme } from '@/design-system/config';
+
 import { StratixAgentConfig, ZoneInfo } from '../stratix-core/stratix-protocol';
 import { ProjectClient } from '../stratix-project/ProjectClient';
 import { ProjectManagerIntegration } from '../stratix-project/ProjectManagerIntegrationHTTP';
@@ -23,7 +25,6 @@ import { TaskZone, TaskZoneConfig } from './zones/TaskZone';
 import { TaskZonePreview } from './zones/TaskZonePreview';
 import { UnifiedZoneManager } from './zones/UnifiedZoneManager';
 
-import { getToken, getCurrentTheme } from '@/design-system/config';
 
 export { MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, DEFAULT_ZOOM, MIN_ZOOM, MAX_ZOOM, BG_COLOR } from './constants';
 

@@ -28,7 +28,7 @@ class TextureLoadQueue {
   private completed: Map<string, HTMLCanvasElement> = new Map();
   private maxConcurrency: number;
   private retryAttempts: number;
-  private eventListeners: Map<TextureLoadEvent, Set<Function>> = new Map();
+  private eventListeners: Map<TextureLoadEvent, Set<(data?: any) => void>> = new Map();
 
   constructor(options: TextureLoadQueueOptions = {}) {
     this.maxConcurrency = options.maxConcurrency ?? 2;
@@ -150,7 +150,7 @@ class TextureLoadQueue {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  on(event: TextureLoadEvent, callback: Function): () => void {
+  on(event: TextureLoadEvent, callback: (data?: any) => void): () => void {
     if (!this.eventListeners.has(event)) {
       this.eventListeners.set(event, new Set());
     }

@@ -59,7 +59,7 @@ export class SkillTrigger {
     return params;
   }
 
-  private extractParamsFromText(text: string, _skillId: string): Record<string, any> {
+  private extractParamsFromText(_text: string, _skillId: string): Record<string, any> {
     return {};
   }
 }

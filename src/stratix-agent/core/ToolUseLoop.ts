@@ -2,7 +2,6 @@ import {
   ChatMessage,
   ToolDefinition,
   ToolCall,
-  ToolUseResult,
   ExecutionContext,
   ToolUseLoopResult,
   ToolUseLoopConfig,

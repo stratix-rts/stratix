@@ -20,20 +20,22 @@
 
 import Phaser from 'phaser';
 
+import { getCurrentTheme } from '@/design-system/config';
+import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClawConnectionManager';
+import { textureManager } from '@/stratix-core/services';
+
 import { SKILL_TREE_CONFIG } from './config/skillTreeConfig';
-import { EVENTS, DEFAULT_BODY_TYPE, FRAME_SIZE, SHEET_WIDTH, SHEET_HEIGHT, BODY_TYPES } from './constants';
+import type { BodyType, AnimationName, PartCategory } from './constants';
+import { DEFAULT_BODY_TYPE, SHEET_WIDTH, SHEET_HEIGHT, BODY_TYPES } from './constants';
 import { characterComposer } from './core/CharacterComposer';
 import { characterStorage } from './core/CharacterStorage';
 import { characterCreatorEvents } from './core/EventEmitter';
 import { partRegistry } from './core/PartRegistry';
 import { SkillTree } from './core/SkillTree';
-import type { SavedCharacter, PartSelection, PartMetadata, BodyType, AnimationName, CreatorStep, PartCategory } from './types';
+import type { SavedCharacter, PartMetadata, CreatorStep } from './types';
 import { PartSelector, CharacterPreview, CharacterList, OpenClawConnectionPanel, AgentChatPanel, AgentConfigPanel, BackendSelector } from './ui';
 import { getButtonInlineStyles } from './ui/_buttonStyles';
 
-import { getToken, getCurrentTheme } from '@/design-system/config';
-import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClawConnectionManager';
-import { textureManager } from '@/stratix-core/services';
 
 // 辅助函数：将十六进制颜色字符串转换为 Phaser 数字格式
 function hexToNumber(hex: string): number {
@@ -475,7 +477,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
     });
   }
 
-  private createControlsSection(panel: Phaser.GameObjects.Container, panelW: number, panelH: number): void {
+  private createControlsSection(panel: Phaser.GameObjects.Container, panelW: number, _panelH: number): void {
     const y = 20 + (panelW - 40) + 70;
 
     const animLabel = this.add.text(24, y, '动画 ANIMATION', {
@@ -719,6 +721,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
     const modalH = 450;
     const modalX = (width - modalW) / 2;
     const modalY = (height - modalH) / 2;
+    void modalX; void modalY;
 
     const authorsList = authors.join('<br>');
     const licensesList = licenses.join(', ');
@@ -824,7 +827,8 @@ export class CharacterCreatorScene extends Phaser.Scene {
     if (!this.currentCharacter) return;
 
     const partsJson = JSON.stringify(this.currentCharacter.parts, null, 2);
-    const { width, height } = this.cameras.main;
+    const { width: _width, height: _height } = this.cameras.main;
+    void partsJson;
 
     const modalW = 500;
     const modalH = 400;
@@ -1352,12 +1356,12 @@ export class CharacterCreatorScene extends Phaser.Scene {
       const characterToSave = { ...this.currentCharacter };
 
       if (characterToSave.stratixConfig) {
-        const { apiKey, ...stratixConfigWithoutKey } = characterToSave.stratixConfig as any;
+        const { apiKey: _apiKey, ...stratixConfigWithoutKey } = characterToSave.stratixConfig as any;
         characterToSave.stratixConfig = stratixConfigWithoutKey;
       }
 
       const existingChar = await characterStorage.load(this.currentCharacter.characterId);
-      const isNew = !existingChar;
+      const _isNew = !existingChar;
 
       await characterStorage.save(characterToSave);
       this.isDirty = false;

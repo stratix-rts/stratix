@@ -9,7 +9,7 @@ import { zoneContextManager } from '../stratix-character-creator/core/ZoneContex
 import { StratixAgent } from './StratixAgent';
 import { EnhancedPromptBuilder } from './core/EnhancedPromptBuilder';
 import { MixinComposer } from './mixins/MixinComposer';
-import { AgentConfig, SoulConfig, ChatMessage, SkillDefinition, SkillResult, EvolutionResult, EvolutionProposal } from './types';
+import { AgentConfig, SoulConfig, SkillResult, EvolutionResult, EvolutionProposal } from './types';
 import { EnhancedSoulConfig, ReflectionEntry } from './types/soul';
 import { AgentTemplate, WorkflowDefinition, WorkflowStep } from './types/template';
 

@@ -209,13 +209,6 @@ export function useCelebration() {
     particles = []
   }
 
-  function getCanvasDimensions(): { width: number; height: number } {
-    return {
-      width: window.innerWidth,
-      height: window.innerHeight,
-    }
-  }
-
   function resizeCanvas(canvas: HTMLCanvasElement): void {
     canvas.width = window.innerWidth
     canvas.height = window.innerHeight

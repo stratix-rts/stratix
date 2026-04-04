@@ -13,6 +13,14 @@ module.exports = {
     'plugin:import/recommended',
     'plugin:import/typescript',
   ],
+  settings: {
+    'import/resolver': {
+      typescript: {
+        alwaysTryTypes: true,
+        project: './tsconfig.json',
+      },
+    },
+  },
   env: {
     node: true,
     es2020: true,
@@ -21,9 +29,21 @@ module.exports = {
     'node_modules',
     'dist',
     'vendor',
+    'electron-main',
+    'scripts',
+    'examples',
+    'features',
+    'pythagora-core',
+    'stratix-backups',
+    'release',
+    'tests',
+    'jest.config.js',
+    'test-lra-integration.ts',
     '*.config.ts',
     '*.spec.ts',
     '**/*.spec.ts',
+    '**/*.test.ts',
+    '**/__tests__/**',
   ],
   rules: {
     '@typescript-eslint/no-explicit-any': 'off',

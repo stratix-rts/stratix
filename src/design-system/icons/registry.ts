@@ -203,6 +203,6 @@ export function drawIcon(
 /**
  * 获取图标的 viewBox 属性
  */
-export function getIconViewBox(name: string): string {
+export function getIconViewBox(_name: string): string {
   return '0 0 24 24';
 }

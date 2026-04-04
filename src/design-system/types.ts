@@ -444,13 +444,13 @@ export type TokenPath =
   | string; // 兜底类型
 
 /** Token 值类型 */
-export type TokenValue<T extends string> = 
+export type TokenValue<T extends string> =
   T extends 'colors.brand.primary' ? string :
   T extends 'colors.background.base' ? string :
   T extends 'spacing.md' ? number :
   T extends 'animation.duration.fast' ? number :
-  T extends `semantic.button.${infer V}.background` ? string :
-  T extends `semantic.panel.${infer V}.shadow` ? string :
+  T extends `semantic.button.${string}.background` ? string :
+  T extends `semantic.panel.${string}.shadow` ? string :
   any; // 兜底类型
 
 // ============ Icons ============

@@ -1,4 +1,4 @@
-import { inject, provide, type InjectionKey, type Ref, ref, computed, readonly, unref, toRef } from 'vue';
+import { inject, provide, type InjectionKey, type Ref, ref, computed, readonly, unref } from 'vue';
 
 export type SizeVariant = 'sm' | 'md' | 'lg' | 'xl' | 'fullscreen';
 

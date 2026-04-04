@@ -1,5 +1,5 @@
 import { StratixAgent } from '../StratixAgent';
-import { AgentConfig, SoulConfig, AgentResponse } from '../types';
+import { AgentConfig, SoulConfig } from '../types';
 
 import { LLMConnectionPool } from './LLMConnectionPool';
 import { SharedMemoryCache } from './SharedMemoryCache';

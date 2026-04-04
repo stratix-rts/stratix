@@ -3,7 +3,7 @@
  * 使用 IndexedDB 存储角色配置
  */
 
-import { DB_NAME, DB_VERSION, STORE_NAME, STORAGE_KEY } from '../constants';
+import { DB_NAME, DB_VERSION, STORE_NAME } from '../constants';
 import type { SavedCharacter } from '../types';
 
 class CharacterStorage {

@@ -32,7 +32,7 @@ class BrowserStorage {
   }
 
   private openDatabase(): Promise<void> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve, _reject) => {
       const request = indexedDB.open(this.dbName, 1);
 
       request.onerror = () => {

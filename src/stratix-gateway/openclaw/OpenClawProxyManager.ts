@@ -133,7 +133,7 @@ class OpenClawProxyManager extends EventEmitter {
     entry: PoolEntry,
     resolve: (result: { success: boolean; error?: string }) => void
   ): void {
-    let authHandler: (data: RawData) => void;
+    const authHandler: (data: RawData) => void;
 
     authHandler = async (data: RawData) => {
       try {

@@ -1,5 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 
+import type { StratixOpenClawConfig } from '@/stratix-core/stratix-protocol';
+
 import type {
   OpenClawAdapterInterface,
   OpenClawAction,
@@ -12,7 +14,6 @@ import type {
   OpenAIChatCompletionResponse,
 } from './types';
 
-import type { StratixOpenClawConfig } from '@/stratix-core/stratix-protocol';
 
 interface WSMessage {
   type: string;

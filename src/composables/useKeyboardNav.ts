@@ -1,4 +1,4 @@
-import { ref, computed, onMounted, onUnmounted, type Ref } from 'vue'
+import { ref, onMounted, onUnmounted, type Ref } from 'vue'
 
 // =============================================================================
 // Types
@@ -106,7 +106,7 @@ export function matchesShortcut(
 /**
  * Normalize key representation for cross-platform compatibility
  */
-function normalizeKey(key: string, code: string): string {
+function normalizeKey(key: string, _code: string): string {
   // Special key mappings
   const keyMap: Record<string, string> = {
     ' ': 'space',
@@ -135,7 +135,7 @@ export function getNextIndex(
   currentIndex: number,
   listLength: number,
   direction: 'up' | 'down' | 'left' | 'right',
-  spatialLayout?: { columns: number }
+  _spatialLayout?: { columns: number }
 ): number {
   if (listLength <= 0) return 0
 

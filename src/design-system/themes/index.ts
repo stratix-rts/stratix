@@ -7,7 +7,6 @@
  * - Professional: 商务风格
  */
 
-import type { DesignSystemTokens } from '../types';
 
 // 主题配置
 export { CyberpunkTheme, CyberpunkRadii, CyberpunkShadows, CyberpunkTypography } from './cyberpunk';

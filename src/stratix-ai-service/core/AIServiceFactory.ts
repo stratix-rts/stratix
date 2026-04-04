@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { AIConfig, AIProviderConfig, AIProviderType } from '../types';
+import { AIConfig, AIProviderType } from '../types';
 
 import { AIServiceProvider } from './AIServiceProvider';
 import { ClaudeProvider } from './ClaudeProvider';

@@ -255,6 +255,7 @@ export class StratixConfigValidator {
       try {
         JSON.parse(config.executeScript);
       } catch {
+        // ignore parse errors in config
       }
     }
 

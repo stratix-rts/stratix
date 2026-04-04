@@ -1,3 +1,4 @@
+import { watch } from 'fs';
 import * as path from 'path';
 
 import * as fs from 'fs-extra';
@@ -171,7 +172,7 @@ export class OpenClawConnectionStore {
     if (this.watcher) return;
 
     try {
-      this.watcher = fs.watch(this.configPath, (eventType) => {
+      this.watcher = watch(this.configPath, (eventType) => {
         if (eventType === 'change') {
           this.reload();
         }

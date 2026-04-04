@@ -26,10 +26,6 @@ export type {
   CommandStatus,
   AgentType,
   SkillParameterType,
-  AgentConfigStatus,
-  AgentConnectionStatus,
-  AgentActivityStatus,
-  AgentStatusInfo
 } from './types/stratix-types';
 
 // 导出工具类

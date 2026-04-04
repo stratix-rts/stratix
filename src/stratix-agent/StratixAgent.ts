@@ -16,7 +16,7 @@ import { SkillTrigger } from './core/SkillTrigger';
 import { StorageManager } from './core/StorageManager';
 import { TokenManager } from './core/TokenManager';
 import { ToolUseLoop } from './core/ToolUseLoop';
-import { AgentConfig, SoulConfig, AgentResponse, ChatMessage, SkillResult } from './types';
+import { AgentConfig, SoulConfig, AgentResponse, SkillResult } from './types';
 
 export class StratixAgent {
   public config: AgentConfig;

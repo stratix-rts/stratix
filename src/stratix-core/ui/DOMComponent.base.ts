@@ -9,11 +9,12 @@
 
 import Phaser from 'phaser';
 
+import { Depth } from '@/design-system/tokens/depth';
+
 import { DOMContainer } from './DOMContainer';
 import { UIComponentBase } from './UIComponent.base';
 import type { DOMComponentConfig } from './types';
 
-import { Depth } from '@/design-system/tokens/depth';
 
 export abstract class DOMComponentBase extends UIComponentBase {
   protected domContainer: DOMContainer | null = null;

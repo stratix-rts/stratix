@@ -2,9 +2,6 @@
  * CharacterCreator 类型定义
  */
 
-import type { BodyType, PartCategory, AnimationName } from '../constants';
-
-export type { BodyType, PartCategory, AnimationName };
 import type { CharacterTexture, StratixDirectConfig } from '@/stratix-core/stratix-protocol';
 
 export interface PartSelection {

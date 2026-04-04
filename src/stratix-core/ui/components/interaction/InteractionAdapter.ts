@@ -7,11 +7,12 @@
 
 import Phaser from 'phaser';
 
+import type { DesignSystemTokens } from '@/design-system/types';
+
 import { InteractionState } from '../../core/types/interaction.types';
 import type { InteractionAdapterConfig } from '../../core/types/interaction.types';
 import { ThemeContext } from '../../foundation/theme/ThemeContext';
 
-import type { DesignSystemTokens } from '@/design-system/types';
 
 export abstract class InteractionAdapter {
   protected target: Phaser.GameObjects.GameObject;

@@ -109,7 +109,7 @@ export class FormationSystem {
     const positions: Array<{ x: number; y: number }> = [];
 
     switch (formation) {
-      case 'line':
+      case 'line': {
         const startX = targetX - ((count - 1) * spacing) / 2;
         for (let i = 0; i < count; i++) {
           positions.push({
@@ -118,8 +118,9 @@ export class FormationSystem {
           });
         }
         break;
+      }
 
-      case 'circle':
+      case 'circle': {
         const radius = spacing * Math.sqrt(count / Math.PI);
         for (let i = 0; i < count; i++) {
           const angle = (i / count) * Math.PI * 2;
@@ -129,14 +130,15 @@ export class FormationSystem {
           });
         }
         break;
+      }
 
       case 'box':
-      default:
+      default: {
         const cols = Math.ceil(Math.sqrt(count));
         const rows = Math.ceil(count / cols);
         const startX2 = targetX - ((cols - 1) * spacing) / 2;
         const startY2 = targetY - ((rows - 1) * spacing) / 2;
-        
+
         for (let i = 0; i < count; i++) {
           const col = i % cols;
           const row = Math.floor(i / cols);
@@ -146,6 +148,7 @@ export class FormationSystem {
           });
         }
         break;
+      }
     }
 
     return positions;

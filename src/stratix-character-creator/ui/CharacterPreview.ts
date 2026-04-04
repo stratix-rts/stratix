@@ -6,31 +6,21 @@
 
 import Phaser from 'phaser';
 
-import { 
-  FRAME_SIZE, 
-  SHEET_WIDTH, 
-  SHEET_HEIGHT, 
-  FRAMES_PER_ROW, 
+import { getToken } from '@/design-system/config';
+import { Depth } from '@/design-system/tokens/depth';
+
+import {
+  FRAME_SIZE,
+  FRAMES_PER_ROW,
   ANIMATION_CONFIGS,
   LOGICAL_TO_LPC,
   LPC_DIRECTION_ROWS
 } from '../constants';
-import type { AnimationName } from '../types';
+import type { AnimationName } from '../constants';
 
-import { getToken } from '@/design-system/config';
-import { Depth } from '@/design-system/tokens/depth';
 
 // Phaser 图形对象使用数字颜色（运行时获取）
 const getPhaserColor = (tokenPath: string) => parseInt(getToken(tokenPath).replace('#', '0x'));
-
-// DOM 样式使用 CSS 变量
-const THEME = {
-  bg: () => getPhaserColor('colors.background.tertiary'),
-  border: () => getPhaserColor('colors.border.default'),
-  accent: () => getPhaserColor('colors.primary'),
-  text: 'var(--ds-text-primary)',
-  textMuted: 'var(--ds-text-muted)'
-};
 
 export interface CharacterPreviewConfig {
   x: number;
@@ -111,11 +101,11 @@ export class CharacterPreview {
 
     this.animationKey = `anim_${this.textureKey}_${this.currentAnimation}_${this.currentDirection}_${Date.now()}`;
 
-    const frames: Phaser.Types.Animations.AnimationFrame[] = frameIndexes.map((frameIndex, i) => {
+    const frames: Phaser.Types.Animations.AnimationFrame[] = frameIndexes.map((frameIndex) => {
       const frameName = `${this.textureKey}_${frameIndex}_${Date.now()}`;
-      
-      const srcX = (frameIndex % FRAMES_PER_ROW) * FRAME_SIZE;
-      const srcY = Math.floor(frameIndex / FRAMES_PER_ROW) * FRAME_SIZE;
+
+      const _srcX = (frameIndex % FRAMES_PER_ROW) * FRAME_SIZE;
+      const _srcY = Math.floor(frameIndex / FRAMES_PER_ROW) * FRAME_SIZE;
       
       const frameCanvas = document.createElement('canvas');
       frameCanvas.width = FRAME_SIZE;

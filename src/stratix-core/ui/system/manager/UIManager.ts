@@ -7,12 +7,13 @@
 
 import Phaser from 'phaser';
 
+import { Depth } from '@/design-system/tokens/depth';
+
 import type { EnhancedUIComponent } from '../../components/base/EnhancedUIComponent';
 import { UIEventType } from '../../core/types/event.types';
 import { ThemeContext } from '../../foundation/theme/ThemeContext';
 import { UIEventBus } from '../event/UIEventBus';
 
-import { Depth } from '@/design-system/tokens/depth';
 
 /**
  * UI层级容器

@@ -234,7 +234,7 @@ export class ZoneContextManager {
   /**
    * 获取所有可进入的 Zone 列表
    */
-  async getAvailableZones(projectId: string = '-'): Promise<ZoneInfo[]> {
+  async getAvailableZones(_projectId: string = '-'): Promise<ZoneInfo[]> {
     try {
       const baseUrl = process.env.GATEWAY_URL || 'http://127.0.0.1:7524';
       const response = await fetch(`${baseUrl}/api/zones`, {

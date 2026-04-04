@@ -6,6 +6,13 @@
 
 import Phaser from 'phaser';
 
+
+import { getToken } from '@/design-system/config';
+import { ButtonSemantic } from '@/design-system/semantic/buttons';
+import { Depth } from '@/design-system/tokens/depth';
+import type { StratixDirectConfig } from '@/stratix-core/stratix-protocol';
+import { ContainerComponentBase } from '@/stratix-core/ui/ContainerComponent.base';
+
 import {
   PROVIDER_CONFIGS,
   PROVIDER_LIST,
@@ -17,12 +24,6 @@ import {
   loadApiKey,
   addCustomProvider,
 } from '../config/providerConfig';
-
-import { getToken } from '@/design-system/config';
-import { ButtonSemantic } from '@/design-system/semantic/buttons';
-import { Depth } from '@/design-system/tokens/depth';
-import type { StratixDirectConfig } from '@/stratix-core/stratix-protocol';
-import { ContainerComponentBase } from '@/stratix-core/ui/ContainerComponent.base';
 
 const THEME = {
   bg: 'var(--ds-bg-secondary)',

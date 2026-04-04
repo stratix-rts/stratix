@@ -1,6 +1,9 @@
 import Phaser from 'phaser';
 
-import { getLightweightAgencyTemplatesByDomain, getDomainDisplayName, AGENCY_DOMAIN_NAMES } from '../config/agencyAgents';
+import { Depth } from '@/design-system/tokens/depth';
+import type { StratixSoulConfig, SkillTreeState } from '@/stratix-core/stratix-protocol';
+
+import { getLightweightAgencyTemplatesByDomain, getDomainDisplayName } from '../config/agencyAgents';
 import { RULE_TEMPLATES, DEFAULT_RULES } from '../config/ruleTemplates';
 import { SKILLHUB_SKILLS, SKILL_CATEGORY_CONFIG, EVOLUTION_PROMPT, type SkillCategory, type SkillHubSkill } from '../config/skillHubConfig';
 import { SKILL_TREE_CONFIG, SKILL_CATEGORIES, ATTRIBUTE_LABELS } from '../config/skillTreeConfig';
@@ -12,8 +15,6 @@ import type { SavedCharacter } from '../types';
 
 import { getButtonInlineStyles } from './_buttonStyles';
 
-import { Depth } from '@/design-system/tokens/depth';
-import type { StratixSoulConfig, SkillTreeState } from '@/stratix-core/stratix-protocol';
 
 export interface AgentConfigPanelConfig {
   x: number;

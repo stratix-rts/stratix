@@ -3,6 +3,7 @@
  * 核心精灵拼接逻辑，参考 LPC 实现
  */
 
+import type { BodyType } from '../constants';
 import {
   FRAME_SIZE,
   SHEET_WIDTH,
@@ -10,7 +11,7 @@ import {
   ANIMATION_OFFSETS,
   LAYER_Z_POSITIONS
 } from '../constants';
-import type { PartSelection, ComposeOptions, ComposeResult, PartInfo, BodyType, CreditInfo, PartMetadata } from '../types';
+import type { PartSelection, ComposeOptions, ComposeResult, PartInfo, CreditInfo, PartMetadata } from '../types';
 
 import { partRegistry } from './PartRegistry';
 

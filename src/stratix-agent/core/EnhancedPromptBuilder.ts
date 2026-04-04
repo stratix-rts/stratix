@@ -6,7 +6,7 @@
  */
 
 import { ChatMessage, ZonePromptContext } from '../types';
-import { EnhancedSoulConfig, ReflectionEntry } from '../types/soul';
+import { EnhancedSoulConfig } from '../types/soul';
 import { AgentTemplate } from '../types/template';
 
 import { getHandlebarsEngine, type PromptRenderContext } from './HandlebarsPromptEngine';
@@ -694,7 +694,6 @@ export class EnhancedPromptBuilder {
    */
   collapseToSingleMessage(messages: ChatMessage[]): ChatMessage {
     const systemMessages = messages.filter(m => m.role === 'system');
-    const otherMessages = messages.filter(m => m.role !== 'system');
 
     const combinedContent = systemMessages.map(m => m.content).join('\n\n---\n\n');
 

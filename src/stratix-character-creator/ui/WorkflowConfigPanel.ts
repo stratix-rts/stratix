@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
 
+import type { WorkflowDefinition } from '@/agent-platform/workflow/types';
+import { Depth } from '@/design-system/tokens/depth';
+
 import { getButtonInlineStyles } from './_buttonStyles';
 import { WorkflowEditorPanel } from './workflow-editor/WorkflowEditorPanel';
 
-import type { WorkflowDefinition } from '@/agent-platform/workflow/types';
-import { Depth } from '@/design-system/tokens/depth';
 
 export interface WorkflowConfigPanelConfig {
   x: number;

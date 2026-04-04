@@ -1,5 +1,3 @@
-import { BlueprintIntegration } from './BlueprintIntegration';
-
 export { BlueprintIntegration } from './BlueprintIntegration';
 export { BlueprintCanvas } from './core/BlueprintCanvas';
 export { TaskNode } from './core/TaskNode';

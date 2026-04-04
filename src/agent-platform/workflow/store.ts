@@ -1,7 +1,5 @@
 import { allPresets, getPresetById } from './presets';
-import type { WorkflowDefinition, WorkflowPreset } from './types';
-
-const WORKFLOW_STORAGE_KEY = 'stratix_workflows';
+import type { WorkflowDefinition } from './types';
 
 export interface StoredWorkflow {
   id: string;

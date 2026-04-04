@@ -5,10 +5,11 @@
  * 适用于 Electron 桌面应用环境
  */
 
-import type { ServiceProvider, TailscaleNode, AppConfiguration } from './ServiceProvider';
 
 import type { StratixAgentConfig, UnifiedOpenClawConfig } from '@/stratix-core/stratix-protocol';
 import type { ChatResponse } from '@/stratix-openclaw-adapter/types';
+
+import type { ServiceProvider, TailscaleNode, AppConfiguration } from './ServiceProvider';
 
 export class ElectronServiceProvider implements ServiceProvider {
   private electronAPI: any;

@@ -1,8 +1,9 @@
+import { Depth } from '@/design-system/tokens/depth';
+
 import { RULE_TEMPLATES, DEFAULT_RULES } from '../config/ruleTemplates';
 
 import { getButtonInlineStyles } from './_buttonStyles';
 
-import { Depth } from '@/design-system/tokens/depth';
 
 export interface RulesEditorConfig {
   x: number;

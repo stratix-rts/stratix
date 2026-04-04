@@ -81,7 +81,7 @@ export class OllamaProvider extends BaseAIProvider {
       const decoder = new TextDecoder();
       let fullContent = '';
       
-      while (true) {
+      for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
         

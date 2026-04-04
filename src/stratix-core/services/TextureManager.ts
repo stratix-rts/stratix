@@ -9,11 +9,12 @@
  * 5. 防止并发重复上传
  */
 
-import { services } from './ServiceLocator';
 
 import { ALL_ANIMATIONS } from '@/stratix-character-creator/constants';
 import { characterComposer } from '@/stratix-character-creator/core/CharacterComposer';
 import type { CharacterData, CharacterTexture } from '@/stratix-core/stratix-protocol';
+
+import { services } from './ServiceLocator';
 
 interface CacheEntry {
   canvas: HTMLCanvasElement;

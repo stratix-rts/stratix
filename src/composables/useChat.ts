@@ -72,7 +72,6 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     agentName = 'Agent',
     useToolUse = false,
     onMessageRender,
-    onSkillExecuting
   } = options;
 
   const messages = ref<ChatMessage[]>([]);

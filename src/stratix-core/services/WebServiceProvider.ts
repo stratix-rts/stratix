@@ -5,10 +5,11 @@
  * 适用于浏览器环境和 Vite 开发服务器
  */
 
-import type { ServiceProvider, TailscaleNode, AppConfiguration } from './ServiceProvider';
 
 import type { StratixAgentConfig, UnifiedOpenClawConfig } from '@/stratix-core/stratix-protocol';
 import type { ChatResponse } from '@/stratix-openclaw-adapter/types';
+
+import type { ServiceProvider, TailscaleNode, AppConfiguration } from './ServiceProvider';
 
 export class WebServiceProvider implements ServiceProvider {
   private apiBase: string;

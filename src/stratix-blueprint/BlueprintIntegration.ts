@@ -95,7 +95,7 @@ export class BlueprintIntegration {
     };
   }
   
-  private createManualTasks(requirement: string): ParsedTask[] {
+  private createManualTasks(_requirement: string): ParsedTask[] {
     return [
       {
         id: 'task_1',

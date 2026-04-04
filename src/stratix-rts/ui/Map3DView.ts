@@ -1,6 +1,7 @@
+import { getToken } from '@/design-system/config';
+
 import { MAP_WIDTH, MAP_HEIGHT } from '../constants';
 
-import { getToken } from '@/design-system/config';
 
 export interface Map3DZone {
   id: string;

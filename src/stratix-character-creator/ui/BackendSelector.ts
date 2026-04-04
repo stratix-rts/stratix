@@ -7,14 +7,12 @@
 
 import Phaser from 'phaser';
 
-import { StratixAgentConfigPanel } from './StratixAgentConfigPanel';
-import { getButtonInlineStyles } from './_buttonStyles';
 
-import { getToken } from '@/design-system/config';
-import { Depth } from '@/design-system/tokens/depth';
 import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClawConnectionManager';
 import type { AgentBackendType, OpenClawConfig, UnifiedOpenClawConfig, StratixDirectConfig } from '@/stratix-core/stratix-protocol';
-import { ContainerComponentBase } from '@/stratix-core/ui/ContainerComponent.base';
+
+import { StratixAgentConfigPanel } from './StratixAgentConfigPanel';
+import { getButtonInlineStyles } from './_buttonStyles';
 
 
 const THEME = {
@@ -566,7 +564,6 @@ export class BackendSelector {
   }
 
   private async testStratixConnectionFromPanel(node: HTMLElement): Promise<void> {
-    const stratixPanel = node.querySelector('#stratix-config') as HTMLElement;
     const statusDiv = node.querySelector('#stratix-status') as HTMLDivElement;
     await this.testStratixConnection(node, statusDiv);
   }

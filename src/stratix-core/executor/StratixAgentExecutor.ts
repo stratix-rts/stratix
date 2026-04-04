@@ -1,10 +1,11 @@
+import { LLM_DEFAULTS } from '@/stratix-core/config/defaults';
+
 import { PROVIDER_CONFIGS } from '../config/provider-config';
 import type { StratixCommandData, StratixAgentConfig, StratixSkillConfig, StratixDirectConfig } from '../stratix-protocol';
 import { buildChatCompletionsURL } from '../utils/OpenAIEndpointBuilder';
 
 import type { AgentExecutor, ExecutorResult, ExecutorOptions } from './AgentExecutor';
 
-import { LLM_DEFAULTS } from '@/stratix-core/config/defaults';
 
 
 export class StratixAgentExecutor implements AgentExecutor {

@@ -1,5 +1,4 @@
 import { allPresets } from '../workflow/presets';
-import { workflowStore } from '../workflow/store';
 import type { WorkflowDefinition } from '../workflow/types';
 
 export function registerWorkflowHandlers(userDataPath: string, fs: any, path: any) {
@@ -13,7 +12,7 @@ export function registerWorkflowHandlers(userDataPath: string, fs: any, path: an
 
   const getWorkflowPath = (id: string) => {
     // Prevent directory traversal attacks
-    if (!id || /[\/\\]|\.\./.test(id)) {
+    if (!id || /[/\\]|\.\./.test(id)) {
       throw new Error('Invalid workflow ID');
     }
     return path.join(workflowDir, `${id}.json`);

@@ -10,15 +10,12 @@
 import { IconSizes } from '../icons/registry';
 import { generateAllSemanticTokens } from '../semantic/_generator';
 import { Animation } from '../tokens/animation';
-import { 
+import {
   CyberpunkPrimitives,
-  Cyan, 
-  Magenta,
-  Gray 
+  Cyan,
 } from '../tokens/colors';
 import { Depth } from '../tokens/depth';
 import { Spacing } from '../tokens/spacing';
-import { Typography } from '../tokens/typography';
 import type { DesignSystemTokens } from '../types';
 
 // 主题特定的圆角配置

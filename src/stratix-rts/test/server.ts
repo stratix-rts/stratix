@@ -30,7 +30,7 @@ function findFile(name: string, dir: string): string | null {
         return fullPath;
       }
     }
-  } catch {}
+  } catch { /* ignore */ }
   return null;
 }
 

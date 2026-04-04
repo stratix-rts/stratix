@@ -18,9 +18,10 @@
 
 import Phaser from 'phaser';
 
+import { Depth } from '@/design-system/tokens/depth';
+
 import { domOverlayManager } from './DOMOverlayManager';
 
-import { Depth } from '@/design-system/tokens/depth';
 
 export interface DOMContainerConfig {
   x: number;

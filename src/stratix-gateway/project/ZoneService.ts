@@ -1,4 +1,10 @@
+import fs from 'fs';
+import path from 'path';
+
+import { projectRepository } from '../../stratix-database/ProjectRepository';
+import { zoneRepository } from '../../stratix-database/ZoneRepository';
 import { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskCreateRequest, ZoneTaskUpdateRequest, ZoneMessage, ZoneMessageCreateRequest, FileVersion } from '../../stratix-project/types';
+import { gatewayEventBus } from '../GatewayEventBus';
 
 export interface ZoneFileBatchRequest {
   files: Array<{
@@ -9,12 +15,6 @@ export interface ZoneFileBatchRequest {
     metadata?: any;
   }>;
 }
-import { zoneRepository } from '../../stratix-database/ZoneRepository';
-import { projectRepository } from '../../stratix-database/ProjectRepository';
-import { gatewayEventBus } from '../GatewayEventBus';
-
-import fs from 'fs';
-import path from 'path';
 
 export class ZoneService {
   private initialized: boolean = false;

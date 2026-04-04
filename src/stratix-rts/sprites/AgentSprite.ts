@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
 
+import { getToken, getCurrentTheme } from '@/design-system/config';
+import { LPC_DIRECTION_ROWS } from '@/stratix-character-creator/constants';
+
 import { StratixAgentConfig } from '../../stratix-core/stratix-protocol';
 import { ParticleEffects } from '../effects/ParticleEffects';
 
-import { getToken, getCurrentTheme } from '@/design-system/config';
-import { LPC_DIRECTION_ROWS } from '@/stratix-character-creator/constants';
 
 export type AgentStatus = 'online' | 'offline' | 'busy' | 'error';
 export type CommandStatus = 'pending' | 'running' | 'success' | 'failed';

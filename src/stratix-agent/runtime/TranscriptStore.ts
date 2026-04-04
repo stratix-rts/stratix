@@ -3,11 +3,9 @@
  * Append-only JSONL storage for session transcripts
  */
 
-import { createReadStream, createWriteStream, existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync } from 'fs';
 import { appendFile, readFile, writeFile, readdir, stat } from 'fs/promises';
-import { join, dirname } from 'path';
-import { Readable } from 'stream';
-import { pipeline } from 'stream/promises';
+import { join } from 'path';
 
 import type { TranscriptEntry, TranscriptQuery } from './types.js';
 

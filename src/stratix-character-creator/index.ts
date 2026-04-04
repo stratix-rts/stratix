@@ -5,9 +5,10 @@
 
 import Phaser from 'phaser';
 
+import { getToken } from '@/design-system/config';
+
 import CharacterCreatorScene from './CharacterCreatorScene';
 
-import { getToken } from '@/design-system/config';
 
 export interface CharacterCreatorConfig {
   parent: string | HTMLElement;

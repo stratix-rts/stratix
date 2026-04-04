@@ -7,12 +7,13 @@
 
 import Phaser from 'phaser';
 
-import type { StatsCollector } from '../../debug/StatsCollector';
-import { PerformanceWidget } from '../debug/PerformanceWidget';
 
 import { EnhancedUIComponent } from '@/stratix-core/ui/components/base/EnhancedUIComponent';
 import type { UIComponentConfig } from '@/stratix-core/ui/core/types/component.types';
 import { ReactiveToken } from '@/stratix-core/ui/foundation/theme/ReactiveToken';
+
+import type { StatsCollector } from '../../debug/StatsCollector';
+import { PerformanceWidget } from '../debug/PerformanceWidget';
 
 export interface TopBarStats {
   totalAgents: number;

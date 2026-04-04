@@ -1,6 +1,7 @@
+import { MODEL_TOKEN_LIMITS } from '@/stratix-core/config/defaults';
+
 import { ChatMessage, TokenLimit } from '../types';
 
-import { MODEL_TOKEN_LIMITS } from '@/stratix-core/config/defaults';
 
 export class TokenManager {
   private modelLimits: Map<string, TokenLimit> = new Map([

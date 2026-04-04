@@ -1,15 +1,16 @@
 import Phaser from 'phaser';
 
-import { loadApiKey } from '../config/providerConfig';
-import type { ChatMessage, SavedCharacter } from '../types';
 
-import { getButtonInlineStyles } from './_buttonStyles';
 
-import { getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
 import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClawConnectionManager';
 import { DOMContainer } from '@/stratix-core/ui/DOMContainer';
 import { renderMarkdown } from '@/stratix-core/utils/MarkdownRenderer';
+
+import { loadApiKey } from '../config/providerConfig';
+import type { ChatMessage, SavedCharacter } from '../types';
+
+import { getButtonInlineStyles } from './_buttonStyles';
 
 
 
@@ -54,8 +55,6 @@ export class AgentChatPanel {
   }
 
   private buildSystemPrompt(): void {
-    const char = this.config.character;
-
     this.systemPrompt = `你是 Stratix Agent（星策代理），一个智能助手，负责帮助用户完成各种任务。
 
 你的核心职责：

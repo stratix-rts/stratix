@@ -668,7 +668,7 @@ export function initWebSocketServer(server: http.Server) {
   server.on('upgrade', (req: http.IncomingMessage, socket: any, head: Buffer) => {
     const url = req.url || '';
     
-    const connectionMatch = url.match(/\/api\/stratix\/openclaw\/ws-proxy\/([^\/]+)$/);
+    const connectionMatch = url.match(/\/api\/stratix\/openclaw\/ws-proxy\/([^/]+)$/);
     if (connectionMatch && connectionStoreWss) {
       const connectionId = connectionMatch[1];
       console.log('[WS Proxy] Upgrade request for connection:', connectionId);
@@ -679,7 +679,7 @@ export function initWebSocketServer(server: http.Server) {
       return;
     }
     
-    const proxyMatch = url.match(/\/api\/stratix\/openclaw\/proxy\/([^\/]+)(\/.*)?$/);
+    const proxyMatch = url.match(/\/api\/stratix\/openclaw\/proxy\/([^/]+)(\/.*)?$/);
     if (proxyMatch && wss) {
       const proxyKey = proxyMatch[1];
       const targetPath = proxyMatch[2] || '/';

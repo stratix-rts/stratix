@@ -7,11 +7,12 @@
 
 import Phaser from 'phaser';
 
+import { getToken } from '@/design-system/config';
+import { Depth } from '@/design-system/tokens/depth';
+
 import { UIComponentBase } from './UIComponent.base';
 import type { ContainerComponentConfig } from './types';
 
-import { getToken } from '@/design-system/config';
-import { Depth } from '@/design-system/tokens/depth';
 
 export abstract class ContainerComponentBase extends UIComponentBase {
   protected container: Phaser.GameObjects.Container = undefined as any;

@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
 
+import { EnhancedUIComponent } from '@/stratix-core/ui/components/base/EnhancedUIComponent';
+
 import type { StatsCollector } from '../../debug/StatsCollector';
 
 import { PerformancePanel } from './PerformancePanel';
 
-import { EnhancedUIComponent } from '@/stratix-core/ui/components/base/EnhancedUIComponent';
 
 export class PerformanceWidget extends EnhancedUIComponent {
   private statsCollector: StatsCollector;

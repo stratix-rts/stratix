@@ -2,7 +2,7 @@
  * 部位配置
  */
 
-import { PART_CATEGORIES, LAYER_Z_POSITIONS } from '../constants';
+import { LAYER_Z_POSITIONS } from '../constants';
 import type { PartCategory } from '../constants';
 
 export interface PartCategoryConfig {

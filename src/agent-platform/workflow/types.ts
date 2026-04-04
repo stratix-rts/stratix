@@ -1,4 +1,3 @@
-import type { ProviderConfig } from '../providers/types';
 
 export type WorkflowStepType = 'agent' | 'llm' | 'tool' | 'condition' | 'router' | 'human' | 'parallel' | 'delay' | 'loop';
 export type WorkflowStatus = 'idle' | 'running' | 'paused' | 'completed' | 'error' | 'stopped';

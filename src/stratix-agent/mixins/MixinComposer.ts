@@ -4,6 +4,11 @@
  */
 
 import {
+  LLM_DEFAULTS,
+  MEMORY_DEFAULTS,
+} from '@/stratix-core/config/defaults';
+
+import {
   AgentTemplate,
   MixinType,
   AgentRule,
@@ -11,10 +16,6 @@ import {
   ComplianceConfig,
 } from '../types/template';
 
-import {
-  LLM_DEFAULTS,
-  MEMORY_DEFAULTS,
-} from '@/stratix-core/config/defaults';
 
 /**
  * Base Mixin: 安全/协议/审计规则

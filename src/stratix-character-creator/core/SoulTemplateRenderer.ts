@@ -4,9 +4,10 @@
  * 负责将 rawContent + soul 配置渲染为最终的 renderedPrompt
  */
 
+import type { StratixSoulConfig } from '@/stratix-core/stratix-protocol';
+
 import type { SoulTemplate } from '../config/soulTemplates';
 
-import type { StratixSoulConfig } from '@/stratix-core/stratix-protocol';
 
 /**
  * 渲染配置
