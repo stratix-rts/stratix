@@ -299,7 +299,9 @@ ${messageText}
     const stopWords = new Set(['the', 'a', 'an', 'is', 'are', 'was', 'were', 'to', 'of', 'in', 'for', 'and', 'or']);
 
     return words
-      .filter(w => w.length > 3 && !stopWords.has(w))
+      .filter(w => w.length > 2 && !stopWords.has(w))
+      .map(w => w.replace(/[^a-z0-9\u4e00-\u9fff]/g, '')) // Keep alphanumeric and CJK
+      .filter(w => w.length > 0)
       .slice(0, 10);
   }
 
