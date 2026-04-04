@@ -67,21 +67,40 @@ export class ZoneService {
     this.permissionOrchestrator = orchestrator;
   }
 
-  private checkPermission(action: string, zoneId: string, agentId: string): void {
+  /**
+   * Check permission for an action on a resource.
+   * @param action - Permission action (e.g., 'create', 'update', 'delete')
+   * @param resource - Full resource identifier: 'zone:${zoneId}' or 'project:${projectId}'
+   * @param agentId - Agent requesting the action
+   */
+  private checkPermission(action: string, resource: string, agentId: string): void {
     if (!this.permissionOrchestrator) return;
+
+    // Parse resource to extract zoneId/projectId for params
+    const params: { zoneId?: string; projectId?: string } = {};
+    if (resource.startsWith('zone:')) {
+      params.zoneId = resource.slice(5);
+    } else if (resource.startsWith('project:')) {
+      params.projectId = resource.slice(8);
+    }
+
     const context: PermissionContext = {
       action,
-      resource: `zone:${zoneId}`,
+      resource,
       agentId,
-      params: { zoneId },
+      params,
     };
     const result = this.permissionOrchestrator.decide(context);
     if (result.decision === 'deny') {
-      throw new Error(`Permission denied: ${action} on zone ${zoneId} by agent ${agentId}`);
+      const err = new Error(`Permission denied: ${action} on ${resource} by ${agentId}`) as Error & { code?: string };
+      err.code = 'ZONE_PERMISSION_DENIED';
+      throw err;
     }
-    // 'ask' also throws — caller must handle user confirmation separately
+    // 'ask' means user confirmation required — return 403 until UI confirmation flow is implemented
     if (result.decision === 'ask') {
-      throw new Error(`Permission requires confirmation: ${action} on zone ${zoneId}`);
+      const err = new Error(`Permission requires confirmation: ${action} on ${resource}`) as Error & { code?: string };
+      err.code = 'ZONE_PERMISSION_REQUIRED';
+      throw err;
     }
   }
 
