@@ -1,4 +1,4 @@
-import type { WorkflowDefinition, WorkflowExecutionContext, WorkflowExecutionResult } from '../workflow/types';
+import type { WorkflowDefinition, WorkflowExecutionResult } from '../workflow/types';
 
 interface ActiveExecution {
   id: string;
@@ -20,22 +20,34 @@ export function registerExecutionHandlers() {
     ): Promise<{ success: boolean; executionId?: string; error?: string }> => {
       try {
         const executionId = `${workflowId}-${Date.now()}`;
-        
+
         const execution: ActiveExecution = {
           id: executionId,
           workflowId,
           status: 'running',
           startTime: Date.now(),
         };
-        
+
         activeExecutions.set(executionId, execution);
 
         import('../orchestration/graph-builder')
           .then(async ({ buildGraphFromWorkflow }) => {
-            const graph = await buildGraphFromWorkflow(workflow);
-            await graph.invoke({ input, results: {}, messages: [] });
-            execution.status = 'completed';
-            execution.result = { success: true, output: 'Completed' };
+            try {
+              const graph = await buildGraphFromWorkflow(workflow);
+              await graph.invoke({ input, results: {}, messages: [] });
+              execution.status = 'completed';
+              execution.result = {
+                success: true,
+                output: 'Completed',
+                duration: Date.now() - execution.startTime,
+              };
+            } catch (error) {
+              execution.status = 'error';
+              execution.result = {
+                success: false,
+                error: (error as Error).message,
+              };
+            }
           })
           .catch((error: Error) => {
             execution.status = 'error';
