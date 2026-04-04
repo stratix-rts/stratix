@@ -155,10 +155,15 @@ export class ResultCollector {
   async writeTaskResult(taskId: string, result: TaskResult): Promise<void> {
     const taskDir = path.join(this.projectPath, `task-${taskId}`);
     const resultFile = path.join(taskDir, RESULT_FILE_NAME);
-    
-    await fs.ensureDir(taskDir);
-    await fs.writeFile(resultFile, JSON.stringify(result, null, 2));
-    
-    console.log('[ResultCollector] Wrote result for task:', taskId);
+
+    try {
+      await fs.ensureDir(taskDir);
+      await fs.writeFile(resultFile, JSON.stringify(result, null, 2));
+      console.log('[ResultCollector] Wrote result for task:', taskId);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error('[ResultCollector] Failed to write result for task:', taskId, msg);
+      throw new Error(`Failed to write task result: ${msg}`);
+    }
   }
 }
