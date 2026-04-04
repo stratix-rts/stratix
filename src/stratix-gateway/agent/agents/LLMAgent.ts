@@ -19,6 +19,7 @@ export class LLMAgent implements AgentInterface {
   private lraClient: LRAClient;
   private adapter: OpenClawAdapterInterface;
   private _workDirOverride: string | undefined;
+  private _effectiveProjectPath: string;
 
   private shouldStop = false;
   private isPaused = false;
@@ -54,7 +55,11 @@ export class LLMAgent implements AgentInterface {
   }
 
   private get effectiveProjectPath(): string {
-    return this._workDirOverride ?? this.effectiveProjectPath;
+    return this._workDirOverride ?? this._effectiveProjectPath;
+  }
+
+  private set effectiveProjectPath(value: string) {
+    this._effectiveProjectPath = value;
   }
 
   getState(): AgentState {
