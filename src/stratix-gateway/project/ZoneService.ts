@@ -5,6 +5,7 @@ import { projectRepository } from '../../stratix-database/ProjectRepository';
 import { zoneRepository } from '../../stratix-database/ZoneRepository';
 import { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskCreateRequest, ZoneTaskUpdateRequest, ZoneMessage, ZoneMessageCreateRequest, FileVersion } from '../../stratix-project/types';
 import { gatewayEventBus } from '../GatewayEventBus';
+import { stratixStateStore, ZoneState } from '../../stratix-core/state';
 
 export interface ZoneFileBatchRequest {
   files: Array<{
@@ -18,6 +19,23 @@ export interface ZoneFileBatchRequest {
 
 export class ZoneService {
   private initialized: boolean = false;
+
+  // Zone State 同步到 StratixStateStore
+  private syncZoneToStore(zone: Zone): void {
+    const zoneState: ZoneState = {
+      id: zone.id,
+      title: zone.title,
+      status: zone.status ?? 'idle',
+      members: zone.members ?? [],
+      tasks: zone.tasks?.map(t => t.id) ?? [],
+      createdAt: zone.createdAt,
+    };
+    stratixStateStore.setZone(zone.id, zoneState);
+  }
+
+  private removeZoneFromStore(zoneId: string): void {
+    stratixStateStore.removeZone(zoneId);
+  }
 
   // 文件缓存配置
   private cacheExpiry: number = 3600000; // 1小时
@@ -107,7 +125,9 @@ export class ZoneService {
       throw new Error(`Project not found: ${projectId}`);
     }
 
-    return zoneRepository.createZone(projectId, title, prompt);
+    const created = zoneRepository.createZone(projectId, title, prompt);
+    this.syncZoneToStore(created);
+    return created;
   }
 
   public async updateZone(zoneId: string, updates: { title?: string; prompt?: string }): Promise<Zone> {
@@ -117,6 +137,9 @@ export class ZoneService {
     if (!updated) {
       throw new Error(`Zone not found: ${zoneId}`);
     }
+
+    // Sync to StratixStateStore
+    this.syncZoneToStore(updated);
 
     // Publish zone:updated event
     gatewayEventBus.publishZoneEvent('zone:updated', zoneId, updated.projectId || zoneId, {
@@ -138,6 +161,8 @@ export class ZoneService {
 
     const deleted = zoneRepository.deleteZone(zoneId);
     if (deleted) {
+      // Remove from StratixStateStore
+      this.removeZoneFromStore(zoneId);
       // Publish zone:deleted event
       gatewayEventBus.publishZoneEvent('zone:deleted', zoneId, zone.projectId || zoneId, {
         title: zone.title
@@ -190,6 +215,9 @@ export class ZoneService {
       throw new Error(`Failed to restore zone: ${zoneId}`);
     }
 
+    // Sync to StratixStateStore
+    this.syncZoneToStore(restored);
+
     // Publish zone:restored event
     gatewayEventBus.publishZoneEvent('zone:restored', zoneId, zone.id, {
       title: restored.title
@@ -209,7 +237,11 @@ export class ZoneService {
       throw new Error(`Deleted zone not found: ${zoneId}`);
     }
 
-    return zoneRepository.permanentlyDeleteZone(zoneId);
+    const deleted = zoneRepository.permanentlyDeleteZone(zoneId);
+    if (deleted) {
+      this.removeZoneFromStore(zoneId);
+    }
+    return deleted;
   }
 
   /**
@@ -244,6 +276,9 @@ export class ZoneService {
       throw new Error(`Zone not found: ${zoneId}`);
     }
 
+    // Sync to StratixStateStore
+    this.syncZoneToStore(zone);
+
     // Publish zone:member_joined event
     gatewayEventBus.publishZoneEvent('zone:member_joined', zoneId, zone.id, {
       agentId
@@ -260,6 +295,9 @@ export class ZoneService {
       throw new Error(`Zone not found: ${zoneId}`);
     }
 
+    // Sync to StratixStateStore
+    this.syncZoneToStore(zone);
+
     // Publish zone:member_left event
     gatewayEventBus.publishZoneEvent('zone:member_left', zoneId, zone.id, {
       agentId
@@ -275,6 +313,9 @@ export class ZoneService {
     if (!zone) {
       throw new Error(`Zone not found: ${zoneId}`);
     }
+
+    // Sync to StratixStateStore
+    this.syncZoneToStore(zone);
 
     // Publish events for each member joined
     for (const agentId of agentIds) {
@@ -293,6 +334,9 @@ export class ZoneService {
     if (!zone) {
       throw new Error(`Zone not found: ${zoneId}`);
     }
+
+    // Sync to StratixStateStore
+    this.syncZoneToStore(zone);
 
     // Publish events for each member left
     for (const agentId of agentIds) {
