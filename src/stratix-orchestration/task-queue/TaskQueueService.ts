@@ -230,6 +230,7 @@ export class TaskQueueService {
     }
 
     this.addToZonePool(task.zoneId, taskId);
+    this.emitEvent({ type: 'requeued', taskId, timestamp: Date.now() });
     return true;
   }
 
