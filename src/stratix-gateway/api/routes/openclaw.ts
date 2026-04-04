@@ -275,8 +275,12 @@ export function initConnectionStore(store: OpenClawConnectionStore): void {
   connectionStore.startWatching();
   
   openClawProxyManager.onDeviceToken(async (connectionId, deviceToken) => {
-    if (connectionStore) {
-      await connectionStore.updateDeviceToken(connectionId, deviceToken);
+    try {
+      if (connectionStore) {
+        await connectionStore.updateDeviceToken(connectionId, deviceToken);
+      }
+    } catch (error) {
+      console.error('[OpenClaw] Failed to update device token:', error);
     }
   });
 }

@@ -90,8 +90,12 @@ class GatewayEventBus extends EventEmitter {
             message,
             agentId
           };
-          this.emit(eventName, mentionEvent);
-          console.log(`[GatewayEventBus] Emitted ${eventName} event`);
+          try {
+            this.emit(eventName, mentionEvent);
+            console.log(`[GatewayEventBus] Emitted ${eventName} event`);
+          } catch (error) {
+            console.error(`[GatewayEventBus] Error emitting ${eventName}:`, error);
+          }
         }
       }
     }
@@ -134,8 +138,12 @@ class GatewayEventBus extends EventEmitter {
       data
     };
 
-    this.emit('zone_event', event);
-    console.log(`[GatewayEventBus] Emitted zone_event:${type}`);
+    try {
+      this.emit('zone_event', event);
+      console.log(`[GatewayEventBus] Emitted zone_event:${type}`);
+    } catch (error) {
+      console.error(`[GatewayEventBus] Error emitting zone_event:${type}:`, error);
+    }
   }
 
   /**

@@ -33,26 +33,25 @@ router.post('/execute', async (req: Request, res: Response): Promise<void> => {
       'pending'
     );
 
-    commandTransformer.transformAndExecute(command, agentConfig)
-      .then(result => {
-        statusSyncService?.notifyCommandStatus(
-          command.commandId,
-          agentId,
-          'success',
-          100,
-          result
-        );
-      })
-      .catch(error => {
-        statusSyncService?.notifyCommandStatus(
-          command.commandId,
-          agentId,
-          'failed',
-          undefined,
-          undefined,
-          error.message
-        );
-      });
+    try {
+      const result = await commandTransformer.transformAndExecute(command, agentConfig);
+      statusSyncService?.notifyCommandStatus(
+        command.commandId,
+        agentId,
+        'success',
+        100,
+        result
+      );
+    } catch (error) {
+      statusSyncService?.notifyCommandStatus(
+        command.commandId,
+        agentId,
+        'failed',
+        undefined,
+        undefined,
+        error instanceof Error ? error.message : 'Unknown error'
+      );
+    }
 
     res.json(requestHelper.success(
       { commandId: command.commandId, status: 'pending' },
