@@ -6,6 +6,7 @@ import { zoneRepository } from '../../stratix-database/ZoneRepository';
 import { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskCreateRequest, ZoneTaskUpdateRequest, ZoneMessage, ZoneMessageCreateRequest, FileVersion } from '../../stratix-project/types';
 import { gatewayEventBus } from '../GatewayEventBus';
 import { stratixStateStore, ZoneState } from '../../stratix-core/state';
+import { PermissionOrchestrator, PermissionContext } from '../../stratix-core/permission';
 
 export interface ZoneFileBatchRequest {
   files: Array<{
@@ -19,6 +20,7 @@ export interface ZoneFileBatchRequest {
 
 export class ZoneService {
   private initialized: boolean = false;
+  private permissionOrchestrator: PermissionOrchestrator | null = null;
 
   // Zone State 同步到 StratixStateStore
   private syncZoneToStore(zone: Zone): void {
@@ -56,6 +58,31 @@ export class ZoneService {
     if (this.initialized) return;
     this.initialized = true;
     console.log('[ZoneService] Initialized');
+  }
+
+  /**
+   * 设置权限检查器
+   */
+  public setPermissionOrchestrator(orchestrator: PermissionOrchestrator): void {
+    this.permissionOrchestrator = orchestrator;
+  }
+
+  private checkPermission(action: string, zoneId: string, agentId: string): void {
+    if (!this.permissionOrchestrator) return;
+    const context: PermissionContext = {
+      action,
+      resource: `zone:${zoneId}`,
+      agentId,
+      params: { zoneId },
+    };
+    const result = this.permissionOrchestrator.decide(context);
+    if (result.decision === 'deny') {
+      throw new Error(`Permission denied: ${action} on zone ${zoneId} by agent ${agentId}`);
+    }
+    // 'ask' also throws — caller must handle user confirmation separately
+    if (result.decision === 'ask') {
+      throw new Error(`Permission requires confirmation: ${action} on zone ${zoneId}`);
+    }
   }
 
   /**
@@ -116,8 +143,10 @@ export class ZoneService {
     return zoneRepository.getZone(zoneId);
   }
 
-  public async createZone(projectId: string, title: string, prompt: string = ''): Promise<Zone> {
+  public async createZone(projectId: string, title: string, prompt: string = '', agentId: string = 'system'): Promise<Zone> {
     await this.ensureInitialized();
+
+    this.checkPermission('create', `project:${projectId}`, agentId);
 
     // Verify project exists
     const project = projectRepository.getProject(projectId);
@@ -130,8 +159,10 @@ export class ZoneService {
     return created;
   }
 
-  public async updateZone(zoneId: string, updates: { title?: string; prompt?: string }): Promise<Zone> {
+  public async updateZone(zoneId: string, updates: { title?: string; prompt?: string }, agentId: string = 'system'): Promise<Zone> {
     await this.ensureInitialized();
+
+    this.checkPermission('update', `zone:${zoneId}`, agentId);
 
     const updated = zoneRepository.updateZone(zoneId, updates);
     if (!updated) {
@@ -150,8 +181,10 @@ export class ZoneService {
     return updated;
   }
 
-  public async deleteZone(zoneId: string): Promise<boolean> {
+  public async deleteZone(zoneId: string, agentId: string = 'system'): Promise<boolean> {
     await this.ensureInitialized();
+
+    this.checkPermission('delete', `zone:${zoneId}`, agentId);
 
     // Get zone info before soft delete for event publishing
     const zone = zoneRepository.getZone(zoneId);
@@ -202,8 +235,10 @@ export class ZoneService {
   /**
    * Restore a soft-deleted zone
    */
-  public async restoreZone(zoneId: string): Promise<Zone> {
+  public async restoreZone(zoneId: string, agentId: string = 'system'): Promise<Zone> {
     await this.ensureInitialized();
+
+    this.checkPermission('restore', `zone:${zoneId}`, agentId);
 
     const zone = zoneRepository.getDeletedZone(zoneId);
     if (!zone) {
@@ -229,8 +264,10 @@ export class ZoneService {
   /**
    * Permanently delete a zone (cannot be recovered)
    */
-  public async permanentlyDeleteZone(zoneId: string): Promise<boolean> {
+  public async permanentlyDeleteZone(zoneId: string, agentId: string = 'system'): Promise<boolean> {
     await this.ensureInitialized();
+
+    this.checkPermission('permanent_delete', `zone:${zoneId}`, agentId);
 
     const zone = zoneRepository.getDeletedZone(zoneId);
     if (!zone) {
@@ -247,8 +284,10 @@ export class ZoneService {
   /**
    * 清空回收站（永久删除项目中所有软删除的 Zone）
    */
-  public async emptyTrash(projectId: string): Promise<{ deleted: number; failed: number }> {
+  public async emptyTrash(projectId: string, agentId: string = 'system'): Promise<{ deleted: number; failed: number }> {
     await this.ensureInitialized();
+
+    this.checkPermission('empty_trash', `project:${projectId}`, agentId);
 
     const deletedZones = zoneRepository.getDeletedZones(projectId);
     let deleted = 0;
@@ -269,8 +308,10 @@ export class ZoneService {
   }
 
   // Zone Members
-  public async addMember(zoneId: string, agentId: string): Promise<Zone> {
+  public async addMember(zoneId: string, agentId: string, requesterId: string = 'system'): Promise<Zone> {
     await this.ensureInitialized();
+
+    this.checkPermission('add_member', `zone:${zoneId}`, requesterId);
 
     const zone = zoneRepository.addMember(zoneId, agentId);
     if (!zone) {
@@ -288,8 +329,10 @@ export class ZoneService {
     return zone;
   }
 
-  public async removeMember(zoneId: string, agentId: string): Promise<Zone> {
+  public async removeMember(zoneId: string, agentId: string, requesterId: string = 'system'): Promise<Zone> {
     await this.ensureInitialized();
+
+    this.checkPermission('remove_member', `zone:${zoneId}`, requesterId);
 
     const zone = zoneRepository.removeMember(zoneId, agentId);
     if (!zone) {
@@ -307,8 +350,10 @@ export class ZoneService {
     return zone;
   }
 
-  public async addMembers(zoneId: string, agentIds: string[]): Promise<Zone> {
+  public async addMembers(zoneId: string, agentIds: string[], requesterId: string = 'system'): Promise<Zone> {
     await this.ensureInitialized();
+
+    this.checkPermission('add_members', `zone:${zoneId}`, requesterId);
 
     const zone = zoneRepository.addMembers(zoneId, agentIds);
     if (!zone) {
@@ -328,8 +373,10 @@ export class ZoneService {
     return zone;
   }
 
-  public async removeMembers(zoneId: string, agentIds: string[]): Promise<Zone> {
+  public async removeMembers(zoneId: string, agentIds: string[], requesterId: string = 'system'): Promise<Zone> {
     await this.ensureInitialized();
+
+    this.checkPermission('remove_members', `zone:${zoneId}`, requesterId);
 
     const zone = zoneRepository.removeMembers(zoneId, agentIds);
     if (!zone) {
@@ -355,9 +402,12 @@ export class ZoneService {
     name: string,
     sourceType: 'local' | 'url',
     source: string,
-    fileType?: FileType
+    fileType?: FileType,
+    agentId: string = 'system'
   ): Promise<ZoneFile> {
     await this.ensureInitialized();
+
+    this.checkPermission('add_file', `zone:${zoneId}`, agentId);
 
     // Verify zone exists
     const zone = zoneRepository.getZone(zoneId);
@@ -395,8 +445,10 @@ export class ZoneService {
   /**
    * Batch add files to a Zone
    */
-  public async addFiles(zoneId: string, files: Array<{ name: string; sourceType: 'local' | 'url'; source: string; fileType?: FileType; metadata?: any }>): Promise<ZoneFile[]> {
+  public async addFiles(zoneId: string, files: Array<{ name: string; sourceType: 'local' | 'url'; source: string; fileType?: FileType; metadata?: any }>, agentId: string = 'system'): Promise<ZoneFile[]> {
     await this.ensureInitialized();
+
+    this.checkPermission('add_files', `zone:${zoneId}`, agentId);
 
     // Verify zone exists
     const zone = zoneRepository.getZone(zoneId);
@@ -431,8 +483,10 @@ export class ZoneService {
     return addedFiles;
   }
 
-  public async removeFile(zoneId: string, fileId: string): Promise<boolean> {
+  public async removeFile(zoneId: string, fileId: string, agentId: string = 'system'): Promise<boolean> {
     await this.ensureInitialized();
+
+    this.checkPermission('remove_file', `zone:${zoneId}`, agentId);
 
     // Verify zone exists
     const zone = zoneRepository.getZone(zoneId);
@@ -532,8 +586,10 @@ export class ZoneService {
    * Refresh file content from source
    * @param force If true, skip cache expiry check and always refresh
    */
-  public async refreshFile(zoneId: string, fileId: string, force: boolean = false): Promise<ZoneFile> {
+  public async refreshFile(zoneId: string, fileId: string, force: boolean = false, agentId: string = 'system'): Promise<ZoneFile> {
     await this.ensureInitialized();
+
+    this.checkPermission('update_file', `zone:${zoneId}`, agentId);
 
     const file = zoneRepository.getFile(fileId);
     if (!file || file.zoneId !== zoneId) {
@@ -673,8 +729,10 @@ export class ZoneService {
   /**
    * Update file content with version tracking (saves old content as version)
    */
-  public async updateFileWithVersion(zoneId: string, fileId: string, newContent: string, description?: string): Promise<ZoneFile> {
+  public async updateFileWithVersion(zoneId: string, fileId: string, newContent: string, description?: string, agentId: string = 'system'): Promise<ZoneFile> {
     await this.ensureInitialized();
+
+    this.checkPermission('update_file', `zone:${zoneId}`, agentId);
 
     const file = zoneRepository.getFile(fileId);
     if (!file || file.zoneId !== zoneId) {
@@ -706,8 +764,10 @@ export class ZoneService {
   /**
    * Rollback file to a specific version
    */
-  public async rollbackFileToVersion(zoneId: string, fileId: string, versionId: string): Promise<ZoneFile> {
+  public async rollbackFileToVersion(zoneId: string, fileId: string, versionId: string, agentId: string = 'system'): Promise<ZoneFile> {
     await this.ensureInitialized();
+
+    this.checkPermission('rollback_file', `zone:${zoneId}`, agentId);
 
     const file = zoneRepository.getFile(fileId);
     if (!file || file.zoneId !== zoneId) {
@@ -734,9 +794,12 @@ export class ZoneService {
     zoneId: string,
     folderPath: string,
     recursive: boolean = false,
-    extensions?: string[]
+    extensions?: string[],
+    agentId: string = 'system'
   ): Promise<ZoneFile[]> {
     await this.ensureInitialized();
+
+    this.checkPermission('scan_folder', `zone:${zoneId}`, agentId);
 
     // Verify zone exists
     const zone = zoneRepository.getZone(zoneId);
@@ -856,6 +919,9 @@ export class ZoneService {
    */
   public async createTask(zoneId: string, agentId: string, title: string): Promise<ZoneTask> {
     await this.ensureInitialized();
+
+    this.checkPermission('create_task', `zone:${zoneId}`, agentId);
+
     const zone = zoneRepository.getZone(zoneId);
     if (!zone) {
       throw new Error(`Zone not found: ${zoneId}`);
@@ -889,6 +955,9 @@ export class ZoneService {
    */
   public async updateTask(zoneId: string, taskId: string, agentId: string, updates: ZoneTaskUpdateRequest): Promise<ZoneTask> {
     await this.ensureInitialized();
+
+    this.checkPermission('update_task', `zone:${zoneId}`, agentId);
+
     const zone = zoneRepository.getZone(zoneId);
     if (!zone) {
       throw new Error(`Zone not found: ${zoneId}`);
@@ -926,6 +995,9 @@ export class ZoneService {
    */
   public async deleteTask(zoneId: string, taskId: string, agentId: string): Promise<boolean> {
     await this.ensureInitialized();
+
+    this.checkPermission('delete_task', `zone:${zoneId}`, agentId);
+
     const zone = zoneRepository.getZone(zoneId);
     if (!zone) {
       throw new Error(`Zone not found: ${zoneId}`);
@@ -952,6 +1024,9 @@ export class ZoneService {
    */
   public async claimTask(zoneId: string, taskId: string, agentId: string): Promise<ZoneTask> {
     await this.ensureInitialized();
+
+    this.checkPermission('claim_task', `zone:${zoneId}`, agentId);
+
     const zone = zoneRepository.getZone(zoneId);
     if (!zone) {
       throw new Error(`Zone not found: ${zoneId}`);
@@ -997,6 +1072,9 @@ export class ZoneService {
     titles: string[]
   ): Promise<{ success: ZoneTask[]; failed: Array<{ title: string; error: string }> }> {
     await this.ensureInitialized();
+
+    this.checkPermission('create_tasks_batch', `zone:${zoneId}`, agentId);
+
     const zone = zoneRepository.getZone(zoneId);
     if (!zone) {
       throw new Error(`Zone not found: ${zoneId}`);
@@ -1034,6 +1112,9 @@ export class ZoneService {
     updates: Array<{ taskId: string; title?: string; status?: string; assignee?: string | null }>
   ): Promise<{ success: ZoneTask[]; failed: Array<{ taskId: string; error: string }> }> {
     await this.ensureInitialized();
+
+    this.checkPermission('update_tasks_batch', `zone:${zoneId}`, agentId);
+
     const zone = zoneRepository.getZone(zoneId);
     if (!zone) {
       throw new Error(`Zone not found: ${zoneId}`);
@@ -1113,6 +1194,9 @@ export class ZoneService {
    */
   public async addMessage(zoneId: string, senderId: string, senderType: 'user' | 'agent', content: string): Promise<ZoneMessage> {
     await this.ensureInitialized();
+
+    this.checkPermission('add_message', `zone:${zoneId}`, senderId);
+
     const zone = zoneRepository.getZone(zoneId);
     if (!zone) {
       throw new Error(`Zone not found: ${zoneId}`);
@@ -1158,8 +1242,10 @@ export class ZoneService {
   /**
    * Clone a Zone (duplicate within same project)
    */
-  public async cloneZone(zoneId: string, options?: { includeFiles?: boolean; includeTasks?: boolean }): Promise<Zone> {
+  public async cloneZone(zoneId: string, options?: { includeFiles?: boolean; includeTasks?: boolean }, agentId: string = 'system'): Promise<Zone> {
     await this.ensureInitialized();
+
+    this.checkPermission('clone', `zone:${zoneId}`, agentId);
 
     const sourceZone = zoneRepository.getZone(zoneId);
     if (!sourceZone) {
@@ -1179,7 +1265,7 @@ export class ZoneService {
       const files = zoneRepository.getFilesByZone(zoneId);
       for (const file of files) {
         try {
-          await this.addFile(newZone.id, file.name, file.sourceType as 'local' | 'url', file.source || '');
+          await this.addFile(newZone.id, file.name, file.sourceType as 'local' | 'url', file.source || '', undefined, agentId);
         } catch (error) {
           console.warn(`[ZoneService] Failed to clone file ${file.name}:`, error);
         }
@@ -1204,8 +1290,10 @@ export class ZoneService {
   /**
    * Import Zone from template
    */
-  public async importZone(projectId: string, template: { title: string; prompt: string; files?: Array<{ name: string; sourceType: 'local' | 'url'; source: string }>; tasks?: Array<{ title: string }> }, creatorAgentId?: string): Promise<Zone> {
+  public async importZone(projectId: string, template: { title: string; prompt: string; files?: Array<{ name: string; sourceType: 'local' | 'url'; source: string }>; tasks?: Array<{ title: string }> }, creatorAgentId?: string, agentId: string = 'system'): Promise<Zone> {
     await this.ensureInitialized();
+
+    this.checkPermission('import', `project:${projectId}`, agentId);
 
     // Verify project exists
     const project = projectRepository.getProject(projectId);
@@ -1221,7 +1309,7 @@ export class ZoneService {
     if (template.files && template.files.length > 0) {
       for (const file of template.files) {
         try {
-          await this.addFile(zone.id, file.name, file.sourceType, file.source);
+          await this.addFile(zone.id, file.name, file.sourceType, file.source, undefined, agentId);
         } catch (error) {
           console.warn(`[ZoneService] Failed to add file ${file.name} during import:`, error);
         }

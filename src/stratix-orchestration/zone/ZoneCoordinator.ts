@@ -16,6 +16,7 @@ import {
 } from '../../stratix-database';
 
 import ZoneCoordinatorEventEmitter from './ZoneCoordinatorEvents';
+import { PermissionOrchestrator, PermissionContext } from '../../stratix-core/permission';
 
 // ============================================
 // Task Types
@@ -133,6 +134,7 @@ export class ZoneCoordinator {
   private pendingTasks: TaskItem[] = [];
   private activeTasks: Map<string, TaskItem> = new Map();
   private lastAssignedIndex: number = -1;
+  private permissionOrchestrator: PermissionOrchestrator | null = null;
 
   /**
    * Static factory method to create a ZoneCoordinator.
@@ -758,6 +760,8 @@ ${assignStrategyDescription}
    */
   async delegateTask(taskId: string, toAgentId: string): Promise<DelegateResult> {
     try {
+      this.checkPermission('delegate_task', `zone_coordinator:${this.zoneId}`);
+
       const task = this.pendingTasks.find(t => t.id === taskId) ||
         this.activeTasks.get(taskId);
 
@@ -831,6 +835,8 @@ ${assignStrategyDescription}
    */
   async reassignTask(taskId: string, newAgentId: string): Promise<DelegateResult> {
     try {
+      this.checkPermission('reassign_task', `zone_coordinator:${this.zoneId}`);
+
       const task = this.activeTasks.get(taskId);
 
       if (!task) {
@@ -994,6 +1000,8 @@ ${assignStrategyDescription}
    * d. 否则加入 pendingTasks
    */
   createManualTask(params: CreateManualTaskParams): TaskItem {
+    this.checkPermission('create_manual_task', `zone_coordinator:${this.zoneId}`);
+
     const task: TaskItem = {
       id: this.generateId(),
       title: params.title,
@@ -1142,6 +1150,30 @@ ${assignStrategyDescription}
     if (!caps) return 0;
     const cap = caps.get(taskType);
     return cap?.level ?? 0;
+  }
+
+  /**
+   * 设置权限检查器
+   */
+  setPermissionOrchestrator(orchestrator: PermissionOrchestrator): void {
+    this.permissionOrchestrator = orchestrator;
+  }
+
+  private checkPermission(action: string, agentId: string): void {
+    if (!this.permissionOrchestrator) return;
+    const context: PermissionContext = {
+      action,
+      resource: `zone:${this.zoneId}`,
+      agentId,
+      params: { zoneId: this.zoneId },
+    };
+    const result = this.permissionOrchestrator.decide(context);
+    if (result.decision === 'deny') {
+      throw new Error(`Permission denied: ${action} on zone ${this.zoneId} by agent ${agentId}`);
+    }
+    if (result.decision === 'ask') {
+      throw new Error(`Permission requires confirmation: ${action} on zone ${this.zoneId}`);
+    }
   }
 
   // ==================== Private Helpers ====================
