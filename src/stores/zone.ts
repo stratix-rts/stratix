@@ -4,13 +4,6 @@ import type { Zone, ZoneCreateRequest, ZoneUpdateRequest, ZoneFile, ZoneTask, Zo
 import { ApiClient } from '@/stratix-gateway/api/client';
 import { API_PATHS, isApiError } from '@/stratix-gateway/api/types/api';
 
-interface ZoneState {
-  zones: Zone[];
-  selectedZoneId: string | null;
-  isLoading: boolean;
-  error: string | null;
-}
-
 // Create zone store API client with frontend base URL
 const createZoneApiClient = () => new ApiClient({
   baseURL: typeof window !== 'undefined' && (window as unknown as { GATEWAY_URL?: string }).GATEWAY_URL
