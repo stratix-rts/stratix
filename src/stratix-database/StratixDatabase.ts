@@ -755,12 +755,6 @@ export class StratixDatabase {
       CREATE INDEX IF NOT EXISTS idx_audit_type ON zone_audit_log(event_type);
       CREATE INDEX IF NOT EXISTS idx_audit_time ON zone_audit_log(created_at);
     `;
-    // Find the line with REFERENCES and log context
-    const refLine = sql.split('\n').findIndex(l => l.includes('REFERENCES'));
-    if (refLine >= 0) {
-      console.log('[DB] First REFERENCES at line', refLine);
-      console.log('[DB] Context:', sql.split('\n').slice(Math.max(0, refLine-2), refLine+3).join('\n'));
-    }
     this.db.exec(sql);
   }
 

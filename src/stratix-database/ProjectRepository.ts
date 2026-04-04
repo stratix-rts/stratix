@@ -209,20 +209,41 @@ export class ProjectRepository {
   }
 
   private mapRowToMessage(row: any): ProjectChannelMessage {
+    let sender: MessageSender;
+    try {
+      sender = row.sender ? JSON.parse(row.sender) : { id: '', type: 'user' as const, name: '' };
+    } catch {
+      sender = { id: '', type: 'user' as const, name: '' };
+    }
+
+    let mentions: string[] = [];
+    try {
+      mentions = JSON.parse(row.mentions || '[]');
+    } catch {
+      mentions = [];
+    }
+
+    let metadata: Record<string, any> = {};
+    try {
+      metadata = JSON.parse(row.metadata || '{}');
+    } catch {
+      metadata = {};
+    }
+
     return {
       id: row.message_id,
       projectId: row.project_id,
       channelId: row.channel_id,
       role: row.role,
       content: row.content,
-      sender: JSON.parse(row.sender),
-      mentions: JSON.parse(row.mentions || '[]'),
+      sender,
+      mentions,
       rawContent: row.raw_content,
       messageType: row.message_type,
       taskId: row.task_id || undefined,
       sessionKey: row.session_key || undefined,
       runId: row.run_id || undefined,
-      metadata: JSON.parse(row.metadata || '{}'),
+      metadata: metadata as { source: 'openclaw' | 'local' | 'user'; createdAt: string },
       timestamp: row.timestamp
     };
   }
