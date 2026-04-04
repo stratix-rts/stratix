@@ -173,7 +173,7 @@ export function restoreThemeFromStorage(): void {
   if (typeof localStorage === 'undefined') return;
   const saved = localStorage.getItem('stratix-theme');
   if (saved && saved in DesignSystemConfig.themes) {
-    setTheme(saved as any, { persist: false });
+    setTheme(saved as keyof typeof DesignSystemConfig.themes, { persist: false });
   }
 }
 
