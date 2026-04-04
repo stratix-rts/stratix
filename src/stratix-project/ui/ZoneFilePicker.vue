@@ -365,13 +365,16 @@ const handleScanFolder = async () => {
     .map((e) => e.trim())
     .filter((e) => e.startsWith('.') || e === '');
 
-  emit('scan-folder', {
-    folderPath: folderScan.path.trim(),
-    recursive: folderScan.recursive,
-    extensions: extensions.length > 0 ? extensions : undefined,
-  });
-
-  scanning.value = false;
+  // Properly await the async scan operation before resetting loading state
+  try {
+    await Promise.resolve(emit('scan-folder', {
+      folderPath: folderScan.path.trim(),
+      recursive: folderScan.recursive,
+      extensions: extensions.length > 0 ? extensions : undefined,
+    }));
+  } finally {
+    scanning.value = false;
+  }
 };
 
 const addScannedFiles = (files: Array<{ name: string; source: string }>) => {

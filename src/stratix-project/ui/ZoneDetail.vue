@@ -333,7 +333,8 @@ const titleInputRef = ref<HTMLInputElement | null>(null);
 const tasks = ref<ZoneTask[]>([]);
 const showCreateTask = ref(false);
 const newTaskTitle = ref('');
-const currentAgentId = ref('agent_default'); // TODO: Get from actual agent context
+// Get current agent ID from session storage or use a default
+const currentAgentId = ref(sessionStorage.getItem('agent_id') || 'agent_default');
 const taskTableRef = ref<any>(null);
 const selectedTasks = ref<ZoneTask[]>([]);
 
@@ -449,12 +450,15 @@ onMounted(() => {
 const handleSendMessage = async () => {
   if (!newMessage.value.trim() || !props.zone.id) return;
 
+  // Get current user ID from session storage or use default
+  const userId = sessionStorage.getItem('user_id') || 'user_default';
+
   try {
     const response = await fetch(`/api/zones/${props.zone.id}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        senderId: 'user_default', // TODO: Get from actual user context
+        senderId: userId,
         senderType: 'user',
         content: newMessage.value.trim()
       })

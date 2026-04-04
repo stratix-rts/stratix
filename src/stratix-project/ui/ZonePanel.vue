@@ -279,6 +279,7 @@ const fetchAvailableAgents = async () => {
     return result.agents || [];
   } catch (error) {
     console.error('[ZonePanel] Failed to fetch agents:', error);
+    showNotification('error', '获取 Agent 列表失败');
     return [];
   }
 };
