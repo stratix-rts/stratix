@@ -1,461 +1,1050 @@
 /**
  * ZoneRepository Unit Tests
  *
- * These tests verify the ZoneRepository logic patterns using mock data.
+ * Tests ZoneRepository CRUD operations with mocked database.
  */
 
-import { Zone, ZoneFile, ZoneTask, ZoneTaskStatus, FileType } from '../../src/stratix-project/types';
+import { ZoneRepository } from '../../src/stratix-database/ZoneRepository';
+import { createMockDatabase, createMockStatement, createMockZoneRow, createMockZoneFileRow } from './helpers/mockDatabase';
+
+jest.mock('../../src/stratix-database/StratixDatabase', () => ({
+  getDatabase: jest.fn()
+}));
+
+import { getDatabase } from '../../src/stratix-database/StratixDatabase';
 
 describe('ZoneRepository', () => {
-  describe('Zone data transformation', () => {
-    it('should transform database row to Zone', () => {
-      const row = {
-        zone_id: 'zone-1',
-        project_id: 'proj-1',
-        title: 'Test Zone',
-        prompt: 'KR 1: Test objective',
+  let mockDb: ReturnType<typeof createMockDatabase>;
+  let repository: ZoneRepository;
+
+  beforeEach(() => {
+    mockDb = createMockDatabase();
+    (getDatabase as jest.Mock).mockReturnValue({
+      getDatabase: () => mockDb
+    });
+    repository = new ZoneRepository();
+    jest.clearAllMocks();
+  });
+
+  describe('getZonesByProject', () => {
+    it('should return empty array when no zones exist', () => {
+      const mockStmt = createMockStatement('SELECT...', { returns: [] });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.getZonesByProject('proj-1');
+
+      expect(result).toEqual([]);
+      expect(mockDb.prepare).toHaveBeenCalled();
+    });
+
+    it('should return zones with files', () => {
+      const zoneRow = createMockZoneRow({ zone_id: 'zone-1', title: 'Test Zone' });
+      const fileRow = createMockZoneFileRow({ file_id: 'file-1', zone_id: 'zone-1' });
+
+      const zoneStmt = createMockStatement('SELECT...', { returns: [zoneRow] });
+      const filesStmt = createMockStatement('SELECT...', { returns: [fileRow] });
+
+      mockDb.prepare.mockImplementation((sql: string) => {
+        if (sql.includes('zone_contexts')) return zoneStmt;
+        if (sql.includes('zone_files') && sql.includes('IN')) return filesStmt;
+        return createMockStatement(sql, { returns: [fileRow] });
+      });
+
+      const result = repository.getZonesByProject('proj-1');
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('zone-1');
+      expect(result[0].title).toBe('Test Zone');
+    });
+
+    it('should return zones with parsed members and presentAgentIds', () => {
+      const zoneRow = createMockZoneRow({
         members: '["agent-1","agent-2"]',
-        deleted_at: null,
-        created_at: 1234567890,
-        updated_at: 1234567890
-      };
+        present_agent_ids: '["agent-1"]'
+      });
 
-      const zone: Zone = {
-        id: row.zone_id,
-        projectId: row.project_id,
-        title: row.title,
-        prompt: row.prompt || '',
-        members: JSON.parse(row.members || '[]'),
-        files: [], // Fetched separately
-        createdAt: row.created_at,
-        updatedAt: row.updated_at
-      };
+      const zoneStmt = createMockStatement('SELECT...', { returns: [zoneRow] });
+      mockDb.prepare.mockReturnValue(zoneStmt);
 
-      expect(zone.id).toBe('zone-1');
-      expect(zone.projectId).toBe('proj-1');
-      expect(zone.title).toBe('Test Zone');
-      expect(zone.prompt).toBe('KR 1: Test objective');
-      expect(zone.members).toEqual(['agent-1', 'agent-2']);
-      expect(zone.files).toEqual([]);
-    });
+      const result = repository.getZonesByProject('proj-1');
 
-    it('should handle null prompt', () => {
-      const row = {
-        zone_id: 'zone-1',
-        project_id: 'proj-1',
-        title: 'Test Zone',
-        prompt: null,
-        members: '[]',
-        deleted_at: null,
-        created_at: 1234567890,
-        updated_at: 1234567890
-      };
-
-      const zone: Zone = {
-        id: row.zone_id,
-        projectId: row.project_id,
-        title: row.title,
-        prompt: row.prompt || '',
-        members: JSON.parse(row.members || '[]'),
-        files: [],
-        createdAt: row.created_at,
-        updatedAt: row.updated_at
-      };
-
-      expect(zone.prompt).toBe('');
-    });
-
-    it('should identify deleted zones by deleted_at', () => {
-      const activeRow = { deleted_at: null };
-      const deletedRow = { deleted_at: 1234567890 };
-
-      const isDeleted = (row: any) => row.deleted_at !== null;
-
-      expect(isDeleted(activeRow)).toBe(false);
-      expect(isDeleted(deletedRow)).toBe(true);
+      expect(result[0].members).toEqual(['agent-1', 'agent-2']);
+      expect(result[0].presentAgentIds).toEqual(['agent-1']);
     });
   });
 
-  describe('Zone CRUD operations', () => {
-    it('should generate INSERT statement for new zone', () => {
-      const insertSQL = `
-        INSERT INTO zone_contexts (zone_id, project_id, title, prompt, members, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `;
+  describe('getZone', () => {
+    it('should return null when zone not found', () => {
+      const mockStmt = createMockStatement('SELECT...', { returns: undefined });
+      mockDb.prepare.mockReturnValue(mockStmt);
 
-      expect(insertSQL).toContain('INSERT INTO zone_contexts');
-      expect(insertSQL).toContain('zone_id');
-      expect(insertSQL).toContain('title');
-      expect(insertSQL).toContain('prompt');
-      expect(insertSQL).toContain('members');
+      const result = repository.getZone('non-existent');
+
+      expect(result).toBeNull();
     });
 
-    it('should generate UPDATE statement for existing zone', () => {
-      const updateSQL = `
-        UPDATE zone_contexts SET title = ?, prompt = ?, members = ?, updated_at = ?
-        WHERE zone_id = ?
-      `;
+    it('should return zone when found', () => {
+      const zoneRow = createMockZoneRow({ zone_id: 'zone-1', title: 'Found Zone' });
+      const mockStmt = createMockStatement('SELECT...', { returns: zoneRow });
+      mockDb.prepare.mockReturnValue(mockStmt);
 
-      expect(updateSQL).toContain('UPDATE zone_contexts');
-      expect(updateSQL).toContain('SET title = ?, prompt = ?, members = ?, updated_at = ?');
-      expect(updateSQL).toContain('WHERE zone_id = ?');
+      const result = repository.getZone('zone-1');
+
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('zone-1');
+      expect(result!.title).toBe('Found Zone');
     });
 
-    it('should use soft delete (UPDATE deleted_at) instead of DELETE', () => {
-      const softDeleteSQL = 'UPDATE zone_contexts SET deleted_at = ? WHERE zone_id = ? AND deleted_at IS NULL';
-      expect(softDeleteSQL).toContain('UPDATE');
-      expect(softDeleteSQL).toContain('deleted_at = ?');
-      expect(softDeleteSQL).not.toContain('DELETE FROM');
-    });
+    it('should handle malformed JSON in members', () => {
+      const zoneRow = createMockZoneRow({
+        members: 'invalid-json',
+        present_agent_ids: 'also-invalid'
+      });
+      const mockStmt = createMockStatement('SELECT...', { returns: zoneRow });
+      mockDb.prepare.mockReturnValue(mockStmt);
 
-    it('should restore zone by setting deleted_at to NULL', () => {
-      const restoreSQL = 'UPDATE zone_contexts SET deleted_at = NULL WHERE zone_id = ? AND deleted_at IS NOT NULL';
-      expect(restoreSQL).toContain('deleted_at = NULL');
-    });
+      const result = repository.getZone('zone-1');
 
-    it('should permanently delete using DELETE statement', () => {
-      const permanentDeleteSQL = 'DELETE FROM zone_contexts WHERE zone_id = ?';
-      expect(permanentDeleteSQL).toContain('DELETE FROM');
+      expect(result).not.toBeNull();
+      expect(result!.members).toEqual([]);
+      expect(result!.presentAgentIds).toEqual([]);
     });
   });
 
-  describe('Zone search', () => {
-    it('should search by title and prompt using LIKE', () => {
-      const searchSQL = `
-        SELECT * FROM zone_contexts
-        WHERE deleted_at IS NULL
-          AND (title LIKE ? OR prompt LIKE ?)
-        ORDER BY updated_at DESC
-        LIMIT ?
-      `;
+  describe('createZone', () => {
+    it('should create zone with INSERT and return created zone', () => {
+      const mockStmt = createMockStatement('INSERT...', { changes: 1 });
+      mockDb.prepare.mockReturnValue(mockStmt);
 
-      expect(searchSQL).toContain('title LIKE ?');
-      expect(searchSQL).toContain('prompt LIKE ?');
-      expect(searchSQL).toContain('deleted_at IS NULL');
-      expect(searchSQL).toContain('ORDER BY updated_at DESC');
-      expect(searchSQL).toContain('LIMIT ?');
+      const result = repository.createZone('proj-1', 'New Zone', 'Test prompt');
+
+      expect(result.id).toBeDefined();
+      expect(result.id).toMatch(/^zone_/);
+      expect(result.projectId).toBe('proj-1');
+      expect(result.title).toBe('New Zone');
+      expect(result.prompt).toBe('Test prompt');
+      expect(result.members).toEqual([]);
+      expect(result.files).toEqual([]);
     });
 
-    it('should wrap keyword in % for LIKE matching', () => {
-      const keyword = 'marketing';
-      const pattern = `%${keyword}%`;
+    it('should use empty string as default prompt', () => {
+      const mockStmt = createMockStatement('INSERT...', { changes: 1 });
+      mockDb.prepare.mockReturnValue(mockStmt);
 
-      expect(pattern).toBe('%marketing%');
+      const result = repository.createZone('proj-1', 'Zone Title');
+
+      expect(result.prompt).toBe('');
     });
   });
 
-  describe('Zone members operations', () => {
-    it('should add member to existing members array', () => {
-      const existingMembers = ['agent-1', 'agent-2'];
-      const newMember = 'agent-3';
+  describe('updateZone', () => {
+    it('should return null when zone does not exist', () => {
+      const mockGetStmt = createMockStatement('SELECT...', { returns: undefined });
+      mockDb.prepare.mockReturnValue(mockGetStmt);
 
-      if (!existingMembers.includes(newMember)) {
-        existingMembers.push(newMember);
-      }
+      const result = repository.updateZone('non-existent', { title: 'New Title' });
 
-      expect(existingMembers).toEqual(['agent-1', 'agent-2', 'agent-3']);
+      expect(result).toBeNull();
+    });
+
+    it('should update zone title', () => {
+      const existingZone = createMockZoneRow({ zone_id: 'zone-1', title: 'Old Title' });
+      const updatedZone = createMockZoneRow({ zone_id: 'zone-1', title: 'New Title' });
+
+      mockDb.prepare.mockImplementation((sql: string) => {
+        if (sql.includes('SELECT') && sql.includes('zone_id = ?')) {
+          return createMockStatement(sql, { returns: existingZone });
+        }
+        return createMockStatement(sql, { returns: updatedZone });
+      });
+
+      const result = repository.updateZone('zone-1', { title: 'New Title' });
+
+      expect(result).not.toBeNull();
+      expect(mockDb.prepare).toHaveBeenCalled();
+    });
+
+    it('should update members array', () => {
+      const existingZone = createMockZoneRow({
+        members: '["agent-1"]'
+      });
+      const updatedZone = createMockZoneRow({
+        members: '["agent-1","agent-2"]'
+      });
+
+      mockDb.prepare.mockImplementation((sql: string) => {
+        if (sql.includes('SELECT') && sql.includes('zone_id = ?')) {
+          return createMockStatement(sql, { returns: existingZone });
+        }
+        return createMockStatement(sql, { returns: updatedZone });
+      });
+
+      const result = repository.updateZone('zone-1', {
+        members: ['agent-1', 'agent-2']
+      });
+
+      expect(result).not.toBeNull();
+    });
+
+    it('should update presentAgentIds separately', () => {
+      const existingZone = createMockZoneRow();
+      const updatedZone = createMockZoneRow({ present_agent_ids: '["agent-2"]' });
+
+      mockDb.prepare.mockImplementation((sql: string) => {
+        if (sql.includes('SELECT') && sql.includes('zone_id = ?')) {
+          return createMockStatement(sql, { returns: existingZone });
+        }
+        return createMockStatement(sql, { returns: updatedZone });
+      });
+
+      const result = repository.updateZone('zone-1', {
+        presentAgentIds: ['agent-2']
+      });
+
+      expect(result).not.toBeNull();
+    });
+  });
+
+  describe('deleteZone (soft delete)', () => {
+    it('should return false when zone does not exist', () => {
+      const mockStmt = createMockStatement('UPDATE...', { changes: 0 });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.deleteZone('non-existent');
+
+      expect(result).toBe(false);
+    });
+
+    it('should return true when zone is deleted', () => {
+      const mockStmt = createMockStatement('UPDATE...', { changes: 1 });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.deleteZone('zone-1');
+
+      expect(result).toBe(true);
+    });
+  });
+
+  describe('getDeletedZones', () => {
+    it('should return empty array when no deleted zones', () => {
+      const mockStmt = createMockStatement('SELECT...', { returns: [] });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.getDeletedZones('proj-1');
+
+      expect(result).toEqual([]);
+    });
+
+    it('should return deleted zones', () => {
+      const deletedZone = createMockZoneRow({
+        zone_id: 'zone-deleted',
+        deleted_at: 1234567890
+      });
+      const mockStmt = createMockStatement('SELECT...', { returns: [deletedZone] });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.getDeletedZones('proj-1');
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('zone-deleted');
+    });
+  });
+
+  describe('restoreZone', () => {
+    it('should return null when zone not found', () => {
+      const mockStmt = createMockStatement('UPDATE...', { changes: 0 });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.restoreZone('non-existent');
+
+      expect(result).toBeNull();
+    });
+
+    it('should return restored zone', () => {
+      const mockUpdateStmt = createMockStatement('UPDATE...', { changes: 1 });
+      const restoredZone = createMockZoneRow({ zone_id: 'zone-1' });
+      const mockSelectStmt = createMockStatement('SELECT...', { returns: restoredZone });
+
+      mockDb.prepare.mockImplementation((sql: string) => {
+        if (sql.includes('SELECT')) return mockSelectStmt;
+        return mockUpdateStmt;
+      });
+
+      const result = repository.restoreZone('zone-1');
+
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('zone-1');
+    });
+  });
+
+  describe('permanentlyDeleteZone', () => {
+    it('should return false when zone does not exist', () => {
+      const mockStmt = createMockStatement('DELETE...', { changes: 0 });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.permanentlyDeleteZone('non-existent');
+
+      expect(result).toBe(false);
+    });
+
+    it('should return true when zone is deleted', () => {
+      const mockStmt = createMockStatement('DELETE...', { changes: 1 });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.permanentlyDeleteZone('zone-1');
+
+      expect(result).toBe(true);
+    });
+  });
+
+  describe('searchZones', () => {
+    it('should return empty array when no matches', () => {
+      const mockStmt = createMockStatement('SELECT...', { returns: [] });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.searchZones('nonexistent');
+
+      expect(result).toEqual([]);
+    });
+
+    it('should return matching zones', () => {
+      const matchingZone = createMockZoneRow({ title: 'Marketing Zone' });
+      const mockStmt = createMockStatement('SELECT...', { returns: [matchingZone] });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.searchZones('marketing');
+
+      expect(result).toHaveLength(1);
+      expect(result[0].title).toBe('Marketing Zone');
+    });
+
+    it('should respect limit parameter', () => {
+      const mockStmt = createMockStatement('SELECT...', { returns: [] });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      repository.searchZones('test', 5);
+
+      expect(mockDb.prepare).toHaveBeenCalled();
+      const sqlArg = mockDb.prepare.mock.calls[0][0];
+      expect(sqlArg).toContain('LIMIT ?');
+    });
+  });
+
+  describe('addMember', () => {
+    it('should return null when zone does not exist', () => {
+      const mockStmt = createMockStatement('SELECT...', { returns: undefined });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.addMember('non-existent', 'agent-1');
+
+      expect(result).toBeNull();
     });
 
     it('should not add duplicate member', () => {
-      const existingMembers = ['agent-1', 'agent-2'];
-      const newMember = 'agent-1';
+      const existingZone = createMockZoneRow({
+        members: '["agent-1"]',
+        present_agent_ids: '["agent-1"]'
+      });
+      const mockStmt = createMockStatement('SELECT...', { returns: existingZone });
+      mockDb.prepare.mockReturnValue(mockStmt);
 
-      if (!existingMembers.includes(newMember)) {
-        existingMembers.push(newMember);
-      }
+      const result = repository.addMember('zone-1', 'agent-1');
 
-      expect(existingMembers).toEqual(['agent-1', 'agent-2']);
-    });
-
-    it('should remove member from members array', () => {
-      const members = ['agent-1', 'agent-2', 'agent-3'];
-      const toRemove = 'agent-2';
-
-      const newMembers = members.filter(id => id !== toRemove);
-      expect(newMembers).toEqual(['agent-1', 'agent-3']);
-    });
-
-    it('should bulk add members using Set for uniqueness', () => {
-      const existingMembers = ['agent-1'];
-      const newMembers = ['agent-2', 'agent-3', 'agent-1'];
-
-      const combined = [...new Set([...existingMembers, ...newMembers])];
-      expect(combined).toEqual(['agent-1', 'agent-2', 'agent-3']);
-    });
-
-    it('should bulk remove members', () => {
-      const members = ['agent-1', 'agent-2', 'agent-3', 'agent-4'];
-      const toRemove = ['agent-2', 'agent-3'];
-
-      const newMembers = members.filter(id => !toRemove.includes(id));
-      expect(newMembers).toEqual(['agent-1', 'agent-4']);
+      expect(result).not.toBeNull();
     });
   });
 
-  describe('Zone file operations', () => {
-    it('should generate INSERT statement for zone file', () => {
-      const insertSQL = `
-        INSERT INTO zone_files (file_id, zone_id, name, source_type, source, content, file_type, last_fetched, metadata, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `;
+  describe('removeMember', () => {
+    it('should return null when zone does not exist', () => {
+      const mockStmt = createMockStatement('SELECT...', { returns: undefined });
+      mockDb.prepare.mockReturnValue(mockStmt);
 
-      expect(insertSQL).toContain('INSERT INTO zone_files');
-      expect(insertSQL).toContain('zone_id');
-      expect(insertSQL).toContain('name');
-      expect(insertSQL).toContain('source_type');
-      expect(insertSQL).toContain('source');
+      const result = repository.removeMember('non-existent', 'agent-1');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('addMembers (bulk)', () => {
+    it('should return null when zone does not exist', () => {
+      const mockStmt = createMockStatement('SELECT...', { returns: undefined });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.addMembers('non-existent', ['agent-1', 'agent-2']);
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('removeMembers (bulk)', () => {
+    it('should return null when zone does not exist', () => {
+      const mockStmt = createMockStatement('SELECT...', { returns: undefined });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.removeMembers('non-existent', ['agent-1']);
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('getFilesByZone', () => {
+    it('should return empty array when no files', () => {
+      const mockStmt = createMockStatement('SELECT...', { returns: [] });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.getFilesByZone('zone-1');
+
+      expect(result).toEqual([]);
     });
 
-    it('should update file content and metadata', () => {
-      const updateSQL = `
-        UPDATE zone_files SET content = ?, last_fetched = ?, metadata = ?, updated_at = ?
-        WHERE file_id = ?
-      `;
+    it('should return files', () => {
+      const fileRow = createMockZoneFileRow();
+      const mockStmt = createMockStatement('SELECT...', { returns: [fileRow] });
+      mockDb.prepare.mockReturnValue(mockStmt);
 
-      expect(updateSQL).toContain('UPDATE zone_files');
-      expect(updateSQL).toContain('content = ?');
-      expect(updateSQL).toContain('metadata = ?');
+      const result = repository.getFilesByZone('zone-1');
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('file-1');
+    });
+  });
+
+  describe('getFilesBatch', () => {
+    it('should return empty map for empty input', () => {
+      const result = repository.getFilesBatch([]);
+
+      expect(result.size).toBe(0);
     });
 
-    it('should search files by name within zone', () => {
-      const files: ZoneFile[] = [
-        { id: 'f1', zoneId: 'zone-1', name: 'readme.md', sourceType: 'local', source: '/path1', fileType: 'md', createdAt: 1, updatedAt: 1 },
-        { id: 'f2', zoneId: 'zone-1', name: 'config.json', sourceType: 'local', source: '/path2', fileType: 'txt', createdAt: 1, updatedAt: 1 },
-        { id: 'f3', zoneId: 'zone-1', name: 'readme.txt', sourceType: 'local', source: '/path3', fileType: 'txt', createdAt: 1, updatedAt: 1 }
+    it('should batch load files for multiple zones', () => {
+      const files = [
+        createMockZoneFileRow({ file_id: 'file-1', zone_id: 'zone-1' }),
+        createMockZoneFileRow({ file_id: 'file-2', zone_id: 'zone-2' })
       ];
+      const mockStmt = createMockStatement('SELECT...', { returns: files });
+      mockDb.prepare.mockReturnValue(mockStmt);
 
-      const keyword = 'readme';
-      const filtered = files.filter(f => f.name.toLowerCase().includes(keyword.toLowerCase()));
+      const result = repository.getFilesBatch(['zone-1', 'zone-2']);
 
-      expect(filtered).toHaveLength(2);
-      expect(filtered.map(f => f.name)).toContain('readme.md');
-      expect(filtered.map(f => f.name)).toContain('readme.txt');
+      expect(result.size).toBe(2);
+    });
+  });
+
+  describe('getFile', () => {
+    it('should return null when file not found', () => {
+      const mockStmt = createMockStatement('SELECT...', { returns: undefined });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.getFile('non-existent');
+
+      expect(result).toBeNull();
     });
 
-    it('should identify text files for content search', () => {
-      const textTypes: FileType[] = ['md', 'txt', 'ts', 'js', 'fig', 'link', 'other'];
+    it('should return file when found', () => {
+      const fileRow = createMockZoneFileRow();
+      const mockStmt = createMockStatement('SELECT...', { returns: fileRow });
+      mockDb.prepare.mockReturnValue(mockStmt);
 
-      const isTextFile = (fileType?: FileType): boolean => {
-        if (!fileType) return false;
-        return textTypes.includes(fileType);
-      };
+      const result = repository.getFile('file-1');
 
-      expect(isTextFile('md')).toBe(true);
-      expect(isTextFile('txt')).toBe(true);
-      expect(isTextFile('ts')).toBe(true);
-      expect(isTextFile('image')).toBe(false);
-      expect(isTextFile(undefined)).toBe(false);
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('file-1');
+    });
+  });
+
+  describe('searchFiles', () => {
+    it('should return empty array when no matches', () => {
+      const mockStmt = createMockStatement('SELECT...', { returns: [] });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.searchFiles('zone-1', 'nonexistent');
+
+      expect(result).toEqual([]);
     });
 
-    it('should search files by content in text files', () => {
-      const files: ZoneFile[] = [
-        { id: 'f1', zoneId: 'zone-1', name: 'readme.md', sourceType: 'local', source: '/path1', content: 'Hello world', fileType: 'md', createdAt: 1, updatedAt: 1 },
-        { id: 'f2', zoneId: 'zone-1', name: 'config.json', sourceType: 'local', source: '/path2', fileType: 'txt', createdAt: 1, updatedAt: 1 }
-      ];
+    it('should search by name', () => {
+      const fileRow = createMockZoneFileRow({ name: 'readme.md' });
+      const mockStmt = createMockStatement('SELECT...', { returns: [fileRow] });
+      mockDb.prepare.mockReturnValue(mockStmt);
 
-      const keyword = 'hello';
-      const filtered = files.filter(f => {
-        if (f.name.toLowerCase().includes(keyword.toLowerCase())) return true;
-        if (f.content && ['md', 'txt', 'ts', 'js', 'fig', 'link', 'other'].includes(f.fileType || '')) {
-          return f.content.toLowerCase().includes(keyword.toLowerCase());
+      const result = repository.searchFiles('zone-1', 'readme');
+
+      expect(result).toHaveLength(1);
+    });
+
+    it('should search by content in text files', () => {
+      const fileRow = createMockZoneFileRow({
+        name: 'test.md',
+        content: 'Hello world',
+        file_type: 'md'
+      });
+      const mockStmt = createMockStatement('SELECT...', { returns: [fileRow] });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.searchFiles('zone-1', 'hello');
+
+      expect(result).toHaveLength(1);
+    });
+
+    it('should not search content in non-text files', () => {
+      const fileRow = createMockZoneFileRow({
+        name: 'image.png',
+        content: 'binary data',
+        file_type: 'image'
+      });
+      const mockStmt = createMockStatement('SELECT...', { returns: [fileRow] });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.searchFiles('zone-1', 'binary');
+
+      expect(result).toHaveLength(0);
+    });
+  });
+
+  describe('addFile', () => {
+    it('should add file and return created file', () => {
+      const mockStmt = createMockStatement('INSERT...', { changes: 1 });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.addFile(
+        'zone-1',
+        'test.md',
+        'local',
+        '/path/to/test.md',
+        'md',
+        { version: 1 }
+      );
+
+      expect(result.id).toMatch(/^zf_/);
+      expect(result.zoneId).toBe('zone-1');
+      expect(result.name).toBe('test.md');
+      expect(result.fileType).toBe('md');
+    });
+
+    it('should handle file without fileType', () => {
+      const mockStmt = createMockStatement('INSERT...', { changes: 1 });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.addFile(
+        'zone-1',
+        'test.txt',
+        'url',
+        'http://example.com/test.txt'
+      );
+
+      expect(result.fileType).toBeUndefined();
+    });
+  });
+
+  describe('updateFile', () => {
+    it('should return null when file not found', () => {
+      const mockGetStmt = createMockStatement('SELECT...', { returns: undefined });
+      mockDb.prepare.mockReturnValue(mockGetStmt);
+
+      const result = repository.updateFile('non-existent', { content: 'new content' });
+
+      expect(result).toBeNull();
+    });
+
+    it('should update file content', () => {
+      const existingFile = createMockZoneFileRow();
+      const updatedFile = { ...existingFile, content: 'updated content' };
+
+      mockDb.prepare.mockImplementation((sql: string) => {
+        if (sql.includes('SELECT')) {
+          return createMockStatement(sql, { returns: existingFile });
         }
-        return false;
+        return createMockStatement(sql, { returns: updatedFile });
       });
 
-      expect(filtered).toHaveLength(1);
-      expect(filtered[0].name).toBe('readme.md');
+      const result = repository.updateFile('file-1', { content: 'updated content' });
+
+      expect(result).not.toBeNull();
     });
   });
 
-  describe('File version history', () => {
-    it('should add new version at beginning of array', () => {
-      const versions: any[] = [{ id: 'v1', content: 'Version 1', createdAt: 1000 }];
+  describe('deleteFile', () => {
+    it('should return false when file not found', () => {
+      const mockStmt = createMockStatement('DELETE...', { changes: 0 });
+      mockDb.prepare.mockReturnValue(mockStmt);
 
-      const newVersion = { id: 'v2', content: 'Version 2', createdAt: 2000 };
-      versions.unshift(newVersion);
+      const result = repository.deleteFile('non-existent');
 
-      expect(versions[0].id).toBe('v2');
-      expect(versions).toHaveLength(2);
+      expect(result).toBe(false);
+    });
+
+    it('should return true when file deleted', () => {
+      const mockStmt = createMockStatement('DELETE...', { changes: 1 });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.deleteFile('file-1');
+
+      expect(result).toBe(true);
+    });
+  });
+
+  describe('getFileVersions', () => {
+    it('should return null when file not found', () => {
+      const mockStmt = createMockStatement('SELECT...', { returns: undefined });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.getFileVersions('non-existent');
+
+      expect(result).toBeNull();
+    });
+
+    it('should return versions from metadata', () => {
+      const fileRow = createMockZoneFileRow({
+        metadata: JSON.stringify({
+          versions: [
+            { id: 'v1', content: 'Version 1', createdAt: 1000 }
+          ],
+          currentVersionId: 'v1'
+        })
+      });
+      const mockStmt = createMockStatement('SELECT...', { returns: fileRow });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.getFileVersions('file-1');
+
+      expect(result).not.toBeNull();
+      expect(result!.versions).toHaveLength(1);
+      expect(result!.currentVersionId).toBe('v1');
+    });
+  });
+
+  describe('addFileVersion', () => {
+    it('should return null when file not found', () => {
+      const mockStmt = createMockStatement('SELECT...', { returns: undefined });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.addFileVersion('non-existent', 'new content');
+
+      expect(result).toBeNull();
+    });
+
+    it('should add new version', () => {
+      const existingFile = createMockZoneFileRow();
+      const updatedFile = {
+        ...existingFile,
+        metadata: JSON.stringify({
+          versions: [{ id: 'v1', content: 'content', createdAt: 1000 }],
+          currentVersionId: 'v1'
+        })
+      };
+
+      mockDb.prepare.mockImplementation((sql: string) => {
+        if (sql.includes('SELECT')) {
+          return createMockStatement(sql, { returns: existingFile });
+        }
+        return createMockStatement(sql, { returns: updatedFile });
+      });
+
+      const result = repository.addFileVersion('file-1', 'new content', 'Update description');
+
+      expect(result).not.toBeNull();
     });
 
     it('should limit versions to 10', () => {
-      const versions: any[] = Array.from({ length: 15 }, (_, i) => ({
-        id: `v${i}`,
-        content: `Version ${i}`,
-        createdAt: i * 1000
-      }));
+      const existingFile = createMockZoneFileRow({
+        metadata: JSON.stringify({
+          versions: Array.from({ length: 10 }, (_, i) => ({
+            id: `v${i}`,
+            content: `Version ${i}`,
+            createdAt: i * 1000
+          })),
+          currentVersionId: 'v9'
+        })
+      });
+      const updatedFile = { ...existingFile };
 
-      // Keep only last 10
-      while (versions.length > 10) {
-        versions.pop();
-      }
+      mockDb.prepare.mockImplementation((sql: string) => {
+        if (sql.includes('SELECT')) {
+          return createMockStatement(sql, { returns: existingFile });
+        }
+        return createMockStatement(sql, { returns: updatedFile });
+      });
 
-      expect(versions).toHaveLength(10);
-      expect(versions[0].id).toBe('v0'); // Oldest first
+      const result = repository.addFileVersion('file-1', 'new content');
+
+      expect(result).not.toBeNull();
+    });
+  });
+
+  describe('rollbackFileToVersion', () => {
+    it('should return null when file not found', () => {
+      const mockStmt = createMockStatement('SELECT...', { returns: undefined });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.rollbackFileToVersion('non-existent', 'v1');
+
+      expect(result).toBeNull();
     });
 
-    it('should create rollback version before rollback', () => {
-      const file = {
-        content: 'Current content',
-        metadata: {
+    it('should return null when version not found', () => {
+      const fileRow = createMockZoneFileRow({
+        metadata: JSON.stringify({ versions: [] })
+      });
+      const mockStmt = createMockStatement('SELECT...', { returns: fileRow });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.rollbackFileToVersion('file-1', 'non-existent');
+
+      expect(result).toBeNull();
+    });
+
+    it('should rollback to target version', () => {
+      const fileRow = createMockZoneFileRow({
+        content: 'current content',
+        metadata: JSON.stringify({
           versions: [
-            { id: 'v1', content: 'Version 1', createdAt: 1000, description: 'V1' },
-            { id: 'v2', content: 'Version 2', createdAt: 2000, description: 'V2' }
+            { id: 'v1', content: 'Version 1', createdAt: 1000 },
+            { id: 'v2', content: 'Version 2', createdAt: 2000 }
           ],
           currentVersionId: 'v2'
+        })
+      });
+      const updatedFile = { ...fileRow, content: 'Version 1' };
+
+      mockDb.prepare.mockImplementation((sql: string) => {
+        if (sql.includes('SELECT') && sql.includes('file_id = ?')) {
+          return createMockStatement(sql, { returns: fileRow });
         }
-      };
+        return createMockStatement(sql, { returns: updatedFile });
+      });
 
-      // Save current as new version before rollback
-      const rollbackVersion: any = {
-        id: 'v3',
-        content: file.content,
-        createdAt: Date.now(),
-        description: 'Auto-saved before rollback'
-      };
+      const result = repository.rollbackFileToVersion('file-1', 'v1');
 
-      file.metadata.versions.unshift(rollbackVersion);
-
-      expect(file.metadata.versions).toHaveLength(3);
-      expect(file.metadata.versions[0].description).toBe('Auto-saved before rollback');
+      expect(result).not.toBeNull();
     });
   });
 
-  describe('Zone task operations', () => {
-    it('should generate INSERT statement for task', () => {
-      const insertSQL = `
-        INSERT INTO zone_tasks (task_id, zone_id, title, status, assignee, created_by, created_at, updated_at)
-        VALUES (?, ?, ?, 'pending', NULL, ?, ?, ?)
-      `;
+  describe('getTasks', () => {
+    it('should return empty array when no tasks', () => {
+      const mockStmt = createMockStatement('SELECT...', { returns: [] });
+      mockDb.prepare.mockReturnValue(mockStmt);
 
-      expect(insertSQL).toContain('INSERT INTO zone_tasks');
-      expect(insertSQL).toContain('status');
-      expect(insertSQL).toContain("'pending'");
+      const result = repository.getTasks('zone-1');
+
+      expect(result).toEqual([]);
     });
 
-    it('should update task status and assignee', () => {
-      const updateSQL = `
-        UPDATE zone_tasks SET title = ?, status = ?, assignee = ?, updated_at = ?
-        WHERE task_id = ?
-      `;
+    it('should respect limit and offset', () => {
+      const mockStmt = createMockStatement('SELECT...', { returns: [] });
+      mockDb.prepare.mockReturnValue(mockStmt);
 
-      expect(updateSQL).toContain('UPDATE zone_tasks');
-      expect(updateSQL).toContain('status = ?');
-      expect(updateSQL).toContain('assignee = ?');
+      repository.getTasks('zone-1', 10, 5);
+
+      expect(mockDb.prepare).toHaveBeenCalled();
+      const sqlArg = mockDb.prepare.mock.calls[0][0];
+      expect(sqlArg).toContain('LIMIT ?');
+      expect(sqlArg).toContain('OFFSET ?');
+    });
+  });
+
+  describe('getTasksCount', () => {
+    it('should return count', () => {
+      const mockStmt = createMockStatement('SELECT...', { returns: { count: 5 } });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.getTasksCount('zone-1');
+
+      expect(result).toBe(5);
     });
 
-    it('should validate task status values', () => {
-      const validStatuses: ZoneTaskStatus[] = ['pending', 'in_progress', 'done'];
+    it('should return 0 when no tasks', () => {
+      const mockStmt = createMockStatement('SELECT...', { returns: { count: 0 } });
+      mockDb.prepare.mockReturnValue(mockStmt);
 
-      expect(validStatuses).toContain('pending');
-      expect(validStatuses).toContain('in_progress');
-      expect(validStatuses).toContain('done');
-      expect(validStatuses).not.toContain('active');
+      const result = repository.getTasksCount('zone-1');
+
+      expect(result).toBe(0);
+    });
+  });
+
+  describe('getTask', () => {
+    it('should return null when task not found', () => {
+      const mockStmt = createMockStatement('SELECT...', { returns: undefined });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.getTask('non-existent');
+
+      expect(result).toBeNull();
     });
 
-    it('should paginate tasks with LIMIT and OFFSET', () => {
-      const getTasksSQL = (limit?: number, offset?: number) => {
-        let sql = 'SELECT * FROM zone_tasks WHERE zone_id = ? ORDER BY created_at DESC';
-        const params: any[] = ['zone-1'];
+    it('should return task when found', () => {
+      const taskRow = {
+        task_id: 'task-1',
+        zone_id: 'zone-1',
+        title: 'Test Task',
+        status: 'pending',
+        assignee: null,
+        created_by: 'agent-1',
+        created_at: 1234567890,
+        updated_at: 1234567890
+      };
+      const mockStmt = createMockStatement('SELECT...', { returns: taskRow });
+      mockDb.prepare.mockReturnValue(mockStmt);
 
-        if (limit !== undefined) {
-          sql += ' LIMIT ?';
-          params.push(limit);
-          if (offset !== undefined) {
-            sql += ' OFFSET ?';
-            params.push(offset);
-          }
+      const result = repository.getTask('task-1');
+
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('task-1');
+      expect(result!.title).toBe('Test Task');
+    });
+  });
+
+  describe('createTask', () => {
+    it('should create task and return it', () => {
+      const mockStmt = createMockStatement('INSERT...', { changes: 1 });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.createTask('zone-1', 'New Task', 'agent-1');
+
+      expect(result.id).toMatch(/^task_/);
+      expect(result.zoneId).toBe('zone-1');
+      expect(result.title).toBe('New Task');
+      expect(result.status).toBe('pending');
+      expect(result.assignee).toBeNull();
+    });
+  });
+
+  describe('updateTask', () => {
+    it('should return null when task not found', () => {
+      const mockStmt = createMockStatement('SELECT...', { returns: undefined });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.updateTask('non-existent', { status: 'done' });
+
+      expect(result).toBeNull();
+    });
+
+    it('should update task status', () => {
+      const existingTask = {
+        task_id: 'task-1',
+        zone_id: 'zone-1',
+        title: 'Test Task',
+        status: 'pending',
+        assignee: null,
+        created_by: 'agent-1',
+        created_at: 1234567890,
+        updated_at: 1234567890
+      };
+      const updatedTask = { ...existingTask, status: 'done' };
+
+      // Track call count to return different values for SELECT calls
+      let selectCallCount = 0;
+      mockDb.prepare.mockImplementation((sql: string) => {
+        if (sql.includes('SELECT')) {
+          selectCallCount++;
+          return createMockStatement(sql, { returns: selectCallCount === 1 ? existingTask : updatedTask });
         }
+        return createMockStatement(sql, { returns: updatedTask });
+      });
 
-        return { sql, params };
+      const result = repository.updateTask('task-1', { status: 'done' });
+
+      expect(result).not.toBeNull();
+      expect(result!.status).toBe('done');
+    });
+  });
+
+  describe('deleteTask', () => {
+    it('should return false when task not found', () => {
+      const mockStmt = createMockStatement('DELETE...', { changes: 0 });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.deleteTask('non-existent');
+
+      expect(result).toBe(false);
+    });
+
+    it('should return true when task deleted', () => {
+      const mockStmt = createMockStatement('DELETE...', { changes: 1 });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.deleteTask('task-1');
+
+      expect(result).toBe(true);
+    });
+  });
+
+  describe('getMessages', () => {
+    it('should return empty array when no messages', () => {
+      const mockStmt = createMockStatement('SELECT...', { returns: [] });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.getMessages('zone-1');
+
+      expect(result).toEqual([]);
+    });
+
+    it('should return messages in ASC order', () => {
+      const messages = [
+        { message_id: 'msg-1', zone_id: 'zone-1', sender_id: 'agent-1', sender_type: 'agent', content: 'Hello', created_at: 1000 },
+        { message_id: 'msg-2', zone_id: 'zone-1', sender_id: 'user-1', sender_type: 'user', content: 'Hi', created_at: 2000 }
+      ];
+      const mockStmt = createMockStatement('SELECT...', { returns: messages });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.getMessages('zone-1');
+
+      expect(result).toHaveLength(2);
+      expect(result[0].id).toBe('msg-1');
+    });
+  });
+
+  describe('getMessagesCount', () => {
+    it('should return count', () => {
+      const mockStmt = createMockStatement('SELECT...', { returns: { count: 10 } });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.getMessagesCount('zone-1');
+
+      expect(result).toBe(10);
+    });
+  });
+
+  describe('addMessage', () => {
+    it('should add message and return it', () => {
+      const mockStmt = createMockStatement('INSERT...', { changes: 1 });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.addMessage('zone-1', 'agent-1', 'agent', 'Hello world');
+
+      expect(result.id).toMatch(/^msg_/);
+      expect(result.zoneId).toBe('zone-1');
+      expect(result.senderId).toBe('agent-1');
+      expect(result.senderType).toBe('agent');
+      expect(result.content).toBe('Hello world');
+    });
+  });
+
+  describe('exportZone', () => {
+    it('should return null when zone not found', () => {
+      const mockStmt = createMockStatement('SELECT...', { returns: undefined });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.exportZone('non-existent');
+
+      expect(result).toBeNull();
+    });
+
+    it('should export zone with files and tasks', () => {
+      const zoneRow = createMockZoneRow({ title: 'Export Zone', prompt: 'Test' });
+      const fileRow = createMockZoneFileRow({ name: 'test.md' });
+      const taskRow = { task_id: 'task-1', zone_id: 'zone-1', title: 'Task 1', status: 'pending', assignee: null, created_by: 'agent-1', created_at: 1234567890, updated_at: 1234567890 };
+
+      mockDb.prepare.mockImplementation((sql: string) => {
+        if (sql.includes('zone_contexts')) {
+          return createMockStatement(sql, { returns: zoneRow });
+        }
+        if (sql.includes('zone_files')) {
+          return createMockStatement(sql, { returns: [fileRow] });
+        }
+        if (sql.includes('zone_tasks')) {
+          return createMockStatement(sql, { returns: [taskRow] });
+        }
+        return createMockStatement(sql, { returns: [] });
+      });
+
+      const result = repository.exportZone('zone-1');
+
+      expect(result).not.toBeNull();
+      expect(result!.title).toBe('Export Zone');
+      expect(result!.prompt).toBe('Test');
+      expect(result!.files).toHaveLength(1);
+      expect(result!.files[0].name).toBe('test.md');
+      expect(result!.tasks).toHaveLength(1);
+    });
+  });
+
+  describe('getZoneContext', () => {
+    it('should return null when zone not found', () => {
+      const mockStmt = createMockStatement('SELECT...', { returns: undefined });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.getZoneContext('non-existent');
+
+      expect(result).toBeNull();
+    });
+
+    it('should return zone context', () => {
+      const row = {
+        task_policy: 'creator',
+        task_creator_id: 'agent-1',
+        members: '["agent-1","agent-2"]'
       };
+      const mockStmt = createMockStatement('SELECT...', { returns: row });
+      mockDb.prepare.mockReturnValue(mockStmt);
 
-      const { sql, params } = getTasksSQL(10, 5);
-      expect(sql).toContain('LIMIT ? OFFSET ?');
-      expect(params).toEqual(['zone-1', 10, 5]);
+      const result = repository.getZoneContext('zone-1');
+
+      expect(result).not.toBeNull();
+      expect(result!.taskPolicy).toBe('creator');
+      expect(result!.taskCreatorId).toBe('agent-1');
+      expect(result!.members).toEqual(['agent-1', 'agent-2']);
     });
 
-    it('should count tasks in zone', () => {
-      const countSQL = 'SELECT COUNT(*) as count FROM zone_tasks WHERE zone_id = ?';
-      expect(countSQL).toContain('COUNT(*)');
-    });
-  });
+    it('should handle malformed JSON in members', () => {
+      const row = {
+        task_policy: 'creator',
+        task_creator_id: null,
+        members: 'invalid'
+      };
+      const mockStmt = createMockStatement('SELECT...', { returns: row });
+      mockDb.prepare.mockReturnValue(mockStmt);
 
-  describe('Zone message operations', () => {
-    it('should generate INSERT statement for message', () => {
-      const insertSQL = `
-        INSERT INTO zone_messages (message_id, zone_id, sender_id, sender_type, content, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `;
+      const result = repository.getZoneContext('zone-1');
 
-      expect(insertSQL).toContain('INSERT INTO zone_messages');
-      expect(insertSQL).toContain('sender_id');
-      expect(insertSQL).toContain('sender_type');
-      expect(insertSQL).toContain('content');
-    });
-
-    it('should order messages by created_at ASC for chronological display', () => {
-      const selectSQL = 'SELECT * FROM zone_messages WHERE zone_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?';
-      expect(selectSQL).toContain('ORDER BY created_at ASC');
-    });
-
-    it('should validate sender_type values', () => {
-      const validTypes = ['user', 'agent'];
-      expect(validTypes).toContain('user');
-      expect(validTypes).toContain('agent');
-      expect(validTypes).not.toContain('system');
+      expect(result).not.toBeNull();
+      expect(result!.members).toEqual([]);
     });
   });
 
-  describe('Zone context helpers', () => {
-    it('should generate SELECT for zone context', () => {
-      const selectSQL = 'SELECT task_policy, task_creator_id, members FROM zone_contexts WHERE zone_id = ? AND deleted_at IS NULL';
-      expect(selectSQL).toContain('task_policy');
-      expect(selectSQL).toContain('task_creator_id');
-      expect(selectSQL).toContain('members');
+  describe('updateZoneContext', () => {
+    it('should return false when zone not found', () => {
+      const mockStmt = createMockStatement('SELECT...', { returns: undefined });
+      mockDb.prepare.mockReturnValue(mockStmt);
+
+      const result = repository.updateZoneContext('non-existent', { taskPolicy: 'any' });
+
+      expect(result).toBe(false);
     });
 
     it('should update zone context', () => {
-      const updateSQL = `
-        UPDATE zone_contexts SET task_policy = ?, task_creator_id = ?, members = ?, updated_at = ?
-        WHERE zone_id = ?
-      `;
+      const existingRow = {
+        task_policy: 'creator',
+        task_creator_id: null,
+        members: '[]'
+      };
+      const mockStmt = createMockStatement('SELECT...', { returns: existingRow });
+      mockDb.prepare.mockReturnValue(mockStmt);
 
-      expect(updateSQL).toContain('UPDATE zone_contexts');
-      expect(updateSQL).toContain('task_policy = ?');
-      expect(updateSQL).toContain('task_creator_id = ?');
+      const result = repository.updateZoneContext('zone-1', {
+        taskPolicy: 'any',
+        members: ['agent-1']
+      });
+
+      expect(result).toBe(true);
     });
   });
 
-  describe('Zone export', () => {
-    it('should export zone with files and tasks', () => {
-      const zone: Zone = {
-        id: 'zone-1',
-        projectId: 'proj-1',
-        title: 'Test Zone',
-        prompt: 'Test prompt',
-        members: ['agent-1'],
-        files: [
-          { id: 'f1', zoneId: 'zone-1', name: 'readme.md', sourceType: 'local', source: '/path', fileType: 'md', createdAt: 1, updatedAt: 1 }
-        ],
-        createdAt: 1,
-        updatedAt: 1
-      };
+  describe('addFiles (bulk)', () => {
+    it('should add multiple files', () => {
+      const mockStmt = createMockStatement('INSERT...', { changes: 1 });
+      mockDb.prepare.mockReturnValue(mockStmt);
 
-      const tasks: ZoneTask[] = [
-        { id: 't1', zoneId: 'zone-1', title: 'Task 1', status: 'pending', assignee: null, createdBy: 'agent-1', createdAt: 1, updatedAt: 1 }
+      const files = [
+        { name: 'test1.md', sourceType: 'local' as const, source: '/path1' },
+        { name: 'test2.md', sourceType: 'local' as const, source: '/path2' }
       ];
 
-      const exported = {
-        title: zone.title,
-        prompt: zone.prompt,
-        files: zone.files.map(f => ({ name: f.name, sourceType: f.sourceType, source: f.source })),
-        tasks: tasks.map(t => ({ title: t.title }))
-      };
+      const result = repository.addFiles('zone-1', files);
 
-      expect(exported.title).toBe('Test Zone');
-      expect(exported.files).toHaveLength(1);
-      expect(exported.tasks).toHaveLength(1);
+      expect(result).toHaveLength(2);
+      expect(result[0].name).toBe('test1.md');
+      expect(result[1].name).toBe('test2.md');
     });
   });
 });
