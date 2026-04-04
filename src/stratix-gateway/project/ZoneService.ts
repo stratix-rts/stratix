@@ -257,6 +257,7 @@ export class ZoneService {
     for (const zone of deletedZones) {
       try {
         zoneRepository.permanentlyDeleteZone(zone.id);
+        this.removeZoneFromStore(zone.id);
         deleted++;
       } catch (error) {
         console.warn(`[ZoneService] Failed to permanently delete zone ${zone.id}:`, error);
@@ -1171,6 +1172,7 @@ export class ZoneService {
       throw new Error(`Cannot clone zone ${zoneId}: missing projectId`);
     }
     const newZone = zoneRepository.createZone(sourceZone.projectId, cloneTitle, sourceZone.prompt || '');
+    this.syncZoneToStore(newZone);
 
     // Clone files if requested
     if (options?.includeFiles) {
@@ -1213,6 +1215,7 @@ export class ZoneService {
 
     // Create zone from template
     const zone = zoneRepository.createZone(projectId, template.title, template.prompt);
+    this.syncZoneToStore(zone);
 
     // Add files if provided
     if (template.files && template.files.length > 0) {
