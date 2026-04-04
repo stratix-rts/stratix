@@ -230,6 +230,9 @@ export class DataFlowAnimation {
     if (flow) {
       flow.graphics.destroy();
       flow.beamGraphics.destroy();
+      // Clear particle arrays to release memory
+      flow.particles.forEach(p => { p.trail.length = 0; });
+      flow.dataPackets.forEach(p => { p.trail.length = 0; });
       this.flows.delete(key);
     }
   }
@@ -540,6 +543,11 @@ export class DataFlowAnimation {
     }
   }
 
+  stopAgentBeam(fromAgentId: string, toAgentId: string): void {
+    const key = `${fromAgentId}->${toAgentId}`;
+    this.agentPulses.delete(key);
+  }
+
   destroy(): void {
     for (const flow of this.flows.values()) {
       flow.graphics.destroy();
@@ -551,6 +559,7 @@ export class DataFlowAnimation {
     this.agentPositions.clear();
     this.agentBeamGraphics.destroy();
     this.agentPulses.clear();
+    this.agentBeamGraphics = null as any;
   }
 
   private getStatusFromVolume(volume: number): DataFlowStatus {
