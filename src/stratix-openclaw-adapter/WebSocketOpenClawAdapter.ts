@@ -471,6 +471,18 @@ export class WebSocketOpenClawAdapter implements OpenClawAdapterInterface {
     return this.invokeTool<unknown[]>('sessions_list');
   }
 
+  async listModels(): Promise<unknown[]> {
+    return this.invokeTool<unknown[]>('models_list');
+  }
+
+  async streamChatCompletion(
+    _request: OpenAIChatCompletionRequest,
+    _onChunk: (chunk: string) => void,
+    _options?: { agentId?: string }
+  ): Promise<void> {
+    throw new Error('WebSocket adapter does not support streaming');
+  }
+
   isConnected(): boolean {
     return this.wsHandshaked && this.ws?.readyState === WebSocket.OPEN;
   }

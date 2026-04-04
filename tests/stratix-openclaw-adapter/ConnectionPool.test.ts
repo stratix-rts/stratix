@@ -48,6 +48,7 @@ describe('ConnectionPool', () => {
       listSessions: jest.fn().mockResolvedValue([]),
       listAgents: jest.fn().mockResolvedValue([]),
       listModels: jest.fn().mockResolvedValue([]),
+      isConnected: jest.fn().mockReturnValue(true),
     };
     return adapter;
   };
