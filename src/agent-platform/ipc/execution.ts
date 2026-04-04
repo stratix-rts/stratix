@@ -30,32 +30,33 @@ export function registerExecutionHandlers() {
 
         activeExecutions.set(executionId, execution);
 
-        import('../orchestration/graph-builder')
-          .then(async ({ buildGraphFromWorkflow }) => {
-            try {
-              const graph = await buildGraphFromWorkflow(workflow);
-              await graph.invoke({ input, results: {}, messages: [] });
+        try {
+          const { buildGraphFromWorkflow } = await import('../orchestration/graph-builder');
+          const graph = await buildGraphFromWorkflow(workflow);
+          // Run execution in background - caller can poll status
+          graph.invoke({ input, results: {}, messages: [] })
+            .then(() => {
               execution.status = 'completed';
               execution.result = {
                 success: true,
                 output: 'Completed',
                 duration: Date.now() - execution.startTime,
               };
-            } catch (error) {
+            })
+            .catch((error: Error) => {
               execution.status = 'error';
               execution.result = {
                 success: false,
-                error: (error as Error).message,
+                error: error.message,
               };
-            }
-          })
-          .catch((error: Error) => {
-            execution.status = 'error';
-            execution.result = {
-              success: false,
-              error: error.message,
-            };
-          });
+            });
+        } catch (error) {
+          execution.status = 'error';
+          execution.result = {
+            success: false,
+            error: (error as Error).message,
+          };
+        }
 
         return { success: true, executionId };
       } catch (error) {
