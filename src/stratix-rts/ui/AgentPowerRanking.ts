@@ -202,7 +202,7 @@ export class AgentPowerRanking {
 
     // 截断过长的名称
     if (nameText.width > nameWidth - this.PADDING) {
-      nameText.setText(Phaser.Utils.String.Substring(agent.name, 0, 10) + '...');
+      nameText.setText(agent.name.substring(0, 10) + '...');
     }
 
     // 战斗力分数
@@ -224,7 +224,7 @@ export class AgentPowerRanking {
     this.scoreTexts.push(scoreText);
 
     // 添加点击区域
-    this.addClickZone(agent.agentId, itemY, itemHeight);
+    this.addClickZone(agent.agentId, itemY, this.itemHeight);
   }
 
   /**

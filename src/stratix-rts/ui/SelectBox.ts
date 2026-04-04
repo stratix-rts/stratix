@@ -46,6 +46,9 @@ export class SelectBox {
 
     const rect = this.getRectangle(x, y);
     const successColor = getToken('colors.status.success') || '#00ff88';
+    if (!successColor || typeof successColor !== 'string') {
+      return;
+    }
     const lineColor = parseInt(successColor.slice(1), 16);
     const fillColor = parseInt(successColor.slice(1), 16);
 
