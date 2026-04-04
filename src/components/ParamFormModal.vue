@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { StratixModal, StratixButton, StratixInput } from '@/components/ui';
+import { StratixModal, StratixButton, StratixInput, SvgIcon } from '@/components/ui';
 import { StratixSkillConfig } from '../stratix-core';
 import { getToken } from '@/design-system/config';
 

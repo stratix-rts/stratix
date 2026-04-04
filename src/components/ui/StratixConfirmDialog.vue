@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import StratixModal from './StratixModal.vue';
+import StratixButton from './StratixButton.vue';
 import SvgIcon from './SvgIcon.vue';
 
 type ConfirmType = 'info' | 'success' | 'warning' | 'error' | 'confirm';
