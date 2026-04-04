@@ -5,21 +5,19 @@
  * 解决硬编码问题，实现主题切换时语义 Token 自动更新
  */
 
-import type { 
-  CyberpunkPrimitives, 
-  MinimalPrimitives, 
-  ProfessionalPrimitives 
+import type {
+  CyberpunkPrimitives,
+  MinimalPrimitives,
+  ProfessionalPrimitives
 } from '../tokens/colors';
+import type { ColorPrimitives } from '../types';
 
 // 定义主题原语类型 - 兼容 colors.ts 中导出的所有主题原语
-export type ThemePrimitives = 
-  | typeof CyberpunkPrimitives 
-  | typeof MinimalPrimitives 
+export type ThemePrimitives =
+  | typeof CyberpunkPrimitives
+  | typeof MinimalPrimitives
   | typeof ProfessionalPrimitives
   | ColorPrimitives;
-
-// 导入 ColorPrimitives 类型用于联合
-import type { ColorPrimitives } from '../types';
 
 // ============ 按钮语义 Token ============
 
@@ -310,8 +308,12 @@ export function generateStatusSemantic(
   
   // 辅助函数：添加透明度
   const alpha = (color: string, opacity: number) => {
-    // 假设颜色是 hex 格式
+    // 确保颜色是有效的 hex 格式
     const hex = color.replace('#', '');
+    if (hex.length < 6 || !/^[0-9A-Fa-f]{6}$/.test(hex)) {
+      // 如果不是有效的 hex 颜色，返回带透明度的灰色
+      return `rgba(128, 128, 128, ${opacity})`;
+    }
     const r = parseInt(hex.slice(0, 2), 16);
     const g = parseInt(hex.slice(2, 4), 16);
     const b = parseInt(hex.slice(4, 6), 16);

@@ -23,6 +23,8 @@
  */
 
 // ============ 核心配置 ============
+import { getSemanticTokens } from './config';
+
 export {
   // 主题管理
   DesignSystemConfig,
@@ -291,7 +293,6 @@ export type {
  * // { backgroundColor: '#00ffff', color: '#0d0d14', ... }
  */
 export function createButtonStyle(variant: 'primary' | 'secondary' | 'ghost' | 'danger' = 'primary') {
-  const { getSemanticTokens } = require('./config');
   const semantic = getSemanticTokens();
   const btn = semantic.button[variant];
   
@@ -318,7 +319,6 @@ export function createButtonStyle(variant: 'primary' | 'secondary' | 'ghost' | '
  * @returns CSS 样式对象
  */
 export function createPanelStyle(variant: 'default' | 'elevated' | 'outlined' | 'ghost' = 'default') {
-  const { getSemanticTokens } = require('./config');
   const semantic = getSemanticTokens();
   const panel = semantic.panel[variant];
   
