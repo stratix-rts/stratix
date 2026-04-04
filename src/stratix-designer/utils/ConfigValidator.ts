@@ -3,6 +3,7 @@ import {
   StratixSoulConfig,
   StratixSkillConfig,
   OpenClawConfig,
+  StratixDirectConfig,
 } from '@/stratix-core/stratix-protocol';
 
 export interface ValidationError {
@@ -174,7 +175,7 @@ export class ConfigValidator {
     return { valid: true, message: 'OpenClaw 配置校验通过' };
   }
 
-  static validateStratixConfig(config: any): ValidationResult {
+  static validateStratixConfig(config: StratixDirectConfig): ValidationResult {
     const errors: ValidationError[] = [];
 
     if (!config) {
