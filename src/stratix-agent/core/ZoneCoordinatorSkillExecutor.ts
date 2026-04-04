@@ -146,13 +146,15 @@ export class ZoneCoordinatorSkillExecutor implements SkillExecutor {
           { reason }
         );
 
-        // Record audit_log
+        // Record audit_log (task_cancelled - semantically correct for cancellations)
+        // Note: AuditEventType doesn't have 'task_cancelled', using 'task_failed' with action='cancelled'
+        // This maintains consistency: action field distinguishes cancelled vs failed
         auditLogRepository.log(
           zoneId,
-          'task_failed', // Using task_failed as cancellation event
+          'task_failed',
           undefined,
           assigneeId,
-          { reason, action: 'cancelled', taskId }
+          { reason, cancelled: true, taskId }
         );
 
         // Decrement agent's load if it was assigned

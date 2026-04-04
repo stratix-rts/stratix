@@ -247,8 +247,13 @@ export async function taskComplete(
       { success, output, files, summary, issues, duration }
     );
 
-    // Decrement agent's load
-    agentCapabilityRepository.decrementLoad(agentId, zoneId);
+    // Decrement agent's load only if task was delegated
+    // If task was only claimed (via taskClaim), no incrementLoad was called, so don't decrement
+    const wasDelegated = taskFlowRepository.getTaskFlowHistory(taskId)
+      .some(flow => flow.action === 'delegated');
+    if (wasDelegated) {
+      agentCapabilityRepository.decrementLoad(agentId, zoneId);
+    }
 
     // Notify Zone Coordinator via API if available
     try {
@@ -326,8 +331,13 @@ export async function taskIssue(
       { issues: [issue] }
     );
 
-    // Decrement agent's load
-    agentCapabilityRepository.decrementLoad(agentId, zoneId);
+    // Decrement agent's load only if task was delegated
+    // If task was only claimed (via taskClaim), no incrementLoad was called, so don't decrement
+    const wasDelegated = taskFlowRepository.getTaskFlowHistory(taskId)
+      .some(flow => flow.action === 'delegated');
+    if (wasDelegated) {
+      agentCapabilityRepository.decrementLoad(agentId, zoneId);
+    }
 
     return {
       success: true,
@@ -386,7 +396,7 @@ export async function capabilityUpdate(
       zoneId,
       'skill_executed',
       agentId,
-      undefined,
+      agentId, // target is self (capability update affects own capabilities)
       { skillId: 'capability_update', capabilities: updatedCapabilities }
     );
 
