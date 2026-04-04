@@ -329,6 +329,10 @@ describe('atomic session operations', () => {
     expect(stratixStateStore.getSession('s1')?.agentId).toBe('a1');
   });
 
+  it('getSession returns undefined for unknown id', () => {
+    expect(stratixStateStore.getSession('unknown')).toBeUndefined();
+  });
+
   it('updateSession merges partial into existing session', () => {
     stratixStateStore.setSession('s1', makeSession({ id: 's1', agentId: 'a1' }));
     stratixStateStore.updateSession('s1', { usage: { tokens: 100 } });
@@ -336,10 +340,24 @@ describe('atomic session operations', () => {
     expect(stratixStateStore.getSession('s1')?.agentId).toBe('a1'); // preserved
   });
 
+  it('updateSession does nothing for unknown id', () => {
+    const fn = jest.fn();
+    stratixStateStore.subscribe(fn);
+    stratixStateStore.updateSession('unknown', { usage: { tokens: 1 } });
+    expect(fn).not.toHaveBeenCalled();
+  });
+
   it('removeSession deletes the session', () => {
     stratixStateStore.setSession('s1', makeSession({ id: 's1' }));
     stratixStateStore.removeSession('s1');
     expect(stratixStateStore.getSession('s1')).toBeUndefined();
+  });
+
+  it('removeSession does nothing for unknown id', () => {
+    const fn = jest.fn();
+    stratixStateStore.subscribe(fn);
+    stratixStateStore.removeSession('unknown');
+    expect(fn).not.toHaveBeenCalled();
   });
 });
 

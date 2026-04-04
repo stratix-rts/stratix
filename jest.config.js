@@ -28,7 +28,9 @@ module.exports = {
   collectCoverageFrom: [
     'src/stratix-project/**/*.ts',
     '!src/stratix-project/**/*.d.ts',
-    '!src/stratix-project/index.ts'
+    '!src/stratix-project/index.ts',
+    'src/stratix-core/state/StratixStateStore.ts',
+    'src/stratix-core/retry/RetryPolicyEngine.ts',
   ],
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'html'],
