@@ -17,7 +17,7 @@ const emit = defineEmits<{
 
 const panelStyle = computed(() => getToken('panel.default'));
 const selectedCount = computed(() => props.selectedAgents.length);
-
+const settingsIcon = 'settings';
 </script>
 
 <template>
@@ -27,7 +27,7 @@ const selectedCount = computed(() => props.selectedAgents.length);
       <div class="actions">
         <button class="action-btn" title="设置">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-            <SvgIcon :name="settings" size="16" />
+            <SvgIcon :name="settingsIcon" size="16" />
           </svg>
         </button>
       </div>

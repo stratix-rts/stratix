@@ -17,8 +17,13 @@ export interface ParamValidateRule {
   customValidator?: (value: any) => ValidationResult;
 }
 
+/** Extended parameter type with validation properties */
+type ValidatedParam = StratixSkillParameter & Partial<Pick<ParamValidateRule, 'min' | 'max' | 'minLength' | 'maxLength' | 'pattern'>>;
+
 export class ParamValidator {
   static validate(param: StratixSkillParameter, value: any): ValidationResult {
+    const validatedParam = param as ValidatedParam;
+
     if (param.required && ParamValidator.isEmpty(value)) {
       return {
         isValid: false,
@@ -32,9 +37,9 @@ export class ParamValidator {
 
     switch (param.type) {
       case 'string':
-        return ParamValidator.validateString(param, value);
+        return ParamValidator.validateString(validatedParam, value);
       case 'number':
-        return ParamValidator.validateNumber(param, value);
+        return ParamValidator.validateNumber(validatedParam, value);
       case 'boolean':
         return ParamValidator.validateBoolean(value);
       case 'object':
@@ -50,7 +55,7 @@ export class ParamValidator {
     return false;
   }
 
-  private static validateString(param: StratixSkillParameter, value: any): ValidationResult {
+  private static validateString(param: ValidatedParam, value: any): ValidationResult {
     if (typeof value !== 'string') {
       return {
         isValid: false,
@@ -82,7 +87,7 @@ export class ParamValidator {
     return { isValid: true, errorMessage: '' };
   }
 
-  private static validateNumber(param: StratixSkillParameter, value: any): ValidationResult {
+  private static validateNumber(param: ValidatedParam, value: any): ValidationResult {
     const numValue = typeof value === 'string' ? parseFloat(value) : value;
 
     if (isNaN(numValue)) {
