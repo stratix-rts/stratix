@@ -2,6 +2,7 @@ import { StratixAgentConfig } from '../../stratix-core';
 import { LRAClient } from '../../stratix-lra-bridge/LRAClient';
 import { loadApiKey } from '../api/apiKeyStore';
 import { AgentRouter, agentRouter } from '../../stratix-core/agent/AgentRouter';
+import type { AgentTask } from '../../stratix-core/agent/types';
 
 import { LLMAgent } from './agents/LLMAgent';
 import { OpenClawAgent } from './agents/OpenClawAgent';
@@ -21,6 +22,22 @@ export class AgentOrchestrationService {
   private constructor() {
     this.lraClient = new LRAClient();
     this.router = agentRouter;
+
+    // Wire router executor to this service's agent start logic
+    this.router.initializeWithOrchestration(
+      (task: AgentTask, _agentId: string | undefined, _signal: AbortSignal) => {
+        const actualAgentId = task.agentId ?? task.taskId;
+        const agent = this.agents.get(actualAgentId);
+        if (!agent) {
+          return Promise.reject(new Error(`Agent ${actualAgentId} not found`));
+        }
+        return agent.start().catch((error: any) => {
+          this.agents.delete(actualAgentId);
+          this.agentStates.delete(actualAgentId);
+          throw error;
+        });
+      }
+    );
   }
 
   static getInstance(): AgentOrchestrationService {
@@ -89,11 +106,16 @@ export class AgentOrchestrationService {
     this.agents.set(agentId, agent);
     this.agentStates.set(agentId, agent.getState());
 
-    agent.start().catch((error: any) => {
-      console.error(`[AgentOrchestrationService] Agent ${agentId} error:`, error);
-      this.agents.delete(agentId);
-      this.agentStates.delete(agentId);
-    });
+    const task: AgentTask = {
+      taskId: agentId,
+      type: "teammate",
+      agentId,
+      isolation: "worktree",
+      runInBackground: true,
+      prompt: `session-start:${agentId}`,
+    };
+
+    this.router.dispatch(task);
   }
 
   async stopAgent(agentId: string): Promise<void> {
