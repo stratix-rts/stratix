@@ -121,22 +121,22 @@ const statusText = computed(() => {
 }
 
 .status-badge.status-pending {
-  background: var(--ds-info) + "26";
+  background: color-mix(in srgb, var(--ds-info) 15%, transparent);
   color: var(--ds-info);
 }
 
 .status-badge.status-running {
-  background: var(--ds-warning) + "26";
+  background: color-mix(in srgb, var(--ds-warning) 15%, transparent);
   color: var(--ds-warning);
 }
 
 .status-badge.status-success {
-  background: var(--ds-semantic-success) + "26";
+  background: color-mix(in srgb, var(--ds-semantic-success) 15%, transparent);
   color: var(--ds-semantic-success);
 }
 
 .status-badge.status-failed {
-  background: var(--ds-semantic-danger) + "26";
+  background: color-mix(in srgb, var(--ds-semantic-danger) 15%, transparent);
   color: var(--ds-semantic-danger);
 }
 </style>

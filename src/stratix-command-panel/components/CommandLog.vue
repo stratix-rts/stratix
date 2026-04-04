@@ -136,8 +136,8 @@ import type { StratixStateSyncEvent, StratixFrontendOperationEvent } from '@/str
 import StratixEventBus from '../../stratix-core/StratixEventBus';
 import LogDetailModal from './LogDetailModal.vue';
 import CancelConfirmDialog from './CancelConfirmDialog.vue';
-import StratixInput from '../../components/ui/StratixInput.vue';
-import StratixButton from '../../components/ui/StratixButton.vue';
+import StratixInput from '@/components/ui/StratixInput.vue';
+import StratixButton from '@/components/ui/StratixButton.vue';
 import { getToken } from '@/design-system/config';
 import { getIconViewBox } from '@/design-system/icons/registry';
 export interface CommandLogItem {
