@@ -10,6 +10,13 @@ export interface RouteResult {
   error?: string;
 }
 
+export interface RouteOptions {
+  recipientId?: string;
+  zoneId?: string;
+  references?: MessageReference[];
+  conversationId?: string;
+}
+
 export class AgentMessageRouter {
   private static instance: AgentMessageRouter;
 
@@ -38,12 +45,7 @@ export class AgentMessageRouter {
     senderId: string,
     content: string,
     messageType: 'direct' | 'broadcast' | 'mention' | 'task_request' | 'context_share',
-    options: {
-      recipientId?: string;
-      zoneId?: string;
-      references?: MessageReference[];
-      conversationId?: string;
-    } = {}
+    options: RouteOptions = {}
   ): Promise<RouteResult> {
     try {
       // Validate based on message type
@@ -128,8 +130,8 @@ export class AgentMessageRouter {
     content: string,
     options: any
   ): Promise<RouteResult> {
-    // Check policy
-    const check = await this.constraints.canSend(senderId, senderId, 'broadcast', { zoneId });
+    // Check policy - for broadcast, the sender broadcasts to the zone (recipientId is not applicable for zone-wide)
+    const check = await this.constraints.canSend(senderId, '*', 'broadcast', { zoneId });
     if (!check.allowed) {
       return { success: false, error: check.reason };
     }

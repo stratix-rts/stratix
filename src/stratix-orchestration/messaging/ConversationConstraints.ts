@@ -55,6 +55,9 @@ export class ConversationConstraints {
     messageType: 'direct' | 'broadcast' | 'mention',
     options: { zoneId?: string } = {}
   ): Promise<PolicyCheckResult> {
+    // For broadcasts, recipientId is '*' (zone-wide), so skip allowedParticipants check
+    const isBroadcast = messageType === 'broadcast';
+
     // Check agent-specific policy first
     const agentPolicy = await this.getAgentPolicy(senderId);
     if (agentPolicy) {
@@ -64,7 +67,7 @@ export class ConversationConstraints {
       if (messageType === 'broadcast' && !agentPolicy.allowBroadcast) {
         return { allowed: false, reason: 'Agent has disabled broadcasts' };
       }
-      if (agentPolicy.allowedParticipants && !agentPolicy.allowedParticipants.includes(recipientId)) {
+      if (!isBroadcast && agentPolicy.allowedParticipants && !agentPolicy.allowedParticipants.includes(recipientId)) {
         return { allowed: false, reason: 'Recipient not in allowed participants list' };
       }
     }
@@ -79,7 +82,7 @@ export class ConversationConstraints {
         if (messageType === 'broadcast' && !zonePolicy.allowBroadcast) {
           return { allowed: false, reason: 'Zone has disabled broadcasts' };
         }
-        if (zonePolicy.allowedParticipants && !zonePolicy.allowedParticipants.includes(recipientId)) {
+        if (!isBroadcast && zonePolicy.allowedParticipants && !zonePolicy.allowedParticipants.includes(recipientId)) {
           return { allowed: false, reason: 'Recipient not in zone allowed participants' };
         }
       }
