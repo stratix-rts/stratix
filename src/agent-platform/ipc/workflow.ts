@@ -39,7 +39,7 @@ export function registerWorkflowHandlers(userDataPath: string, fs: any, path: an
             }
             workflows.push({
               id: file.replace('.json', ''),
-              name: def.properties.name,
+              name: def.properties.name || 'Unnamed Workflow',
               updatedAt: def.properties.updatedAt || 0,
             });
           }
