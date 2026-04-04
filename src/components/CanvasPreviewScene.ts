@@ -12,7 +12,7 @@ import {
   LOGICAL_TO_LPC,
   LPC_DIRECTION_ROWS,
 } from '../stratix-character-creator/constants';
-import type { AnimationName } from '../stratix-character-creator/types';
+import type { AnimationName } from '../stratix-character-creator/constants';
 
 const getPhaserColor = (tokenPath: string) => {
   const value = getComputedStyle(document.documentElement).getPropertyValue(tokenPath).trim();

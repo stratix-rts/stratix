@@ -104,8 +104,8 @@ export class CharacterPreview {
     const frames: Phaser.Types.Animations.AnimationFrame[] = frameIndexes.map((frameIndex) => {
       const frameName = `${this.textureKey}_${frameIndex}_${Date.now()}`;
 
-      const _srcX = (frameIndex % FRAMES_PER_ROW) * FRAME_SIZE;
-      const _srcY = Math.floor(frameIndex / FRAMES_PER_ROW) * FRAME_SIZE;
+      const srcX = (frameIndex % FRAMES_PER_ROW) * FRAME_SIZE;
+      const srcY = Math.floor(frameIndex / FRAMES_PER_ROW) * FRAME_SIZE;
       
       const frameCanvas = document.createElement('canvas');
       frameCanvas.width = FRAME_SIZE;

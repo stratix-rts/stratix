@@ -49,25 +49,25 @@ export class AgencyAgentsParser {
       id,
       name: this.extractName(parsed, filePath),
       version: '1.0.0',
-      description: this.extractDescription(/* parsed */_parsed),
+      description: this.extractDescription(parsed),
       domain,
       tags: this.extractTags(parsed, filePath),
-      mixins: this.extractMixins(/* parsed */_parsed),
+      mixins: this.extractMixins(parsed),
 
-      identity: this.extractIdentity(/* parsed */_parsed),
-      personality: this.extractPersonality(/* parsed */_parsed),
-      tone: this.extractTone(/* parsed */_parsed),
+      identity: this.extractIdentity(parsed),
+      personality: this.extractPersonality(parsed),
+      tone: this.extractTone(parsed),
 
-      mission: this.extractMission(/* parsed */_parsed),
-      workflows: this.extractWorkflows(/* parsed */_parsed),
+      mission: this.extractMission(parsed),
+      workflows: this.extractWorkflows(parsed),
 
-      rules: this.extractRules(/* parsed */_parsed),
-      constraints: this.extractConstraints(/* parsed */_parsed),
-      forbiddenActions: this.extractForbiddenActions(/* parsed */_parsed),
+      rules: this.extractRules(parsed),
+      constraints: this.extractConstraints(parsed),
+      forbiddenActions: this.extractForbiddenActions(parsed),
 
-      skills: this.extractSkills(/* parsed */_parsed),
-      workflowSteps: this.extractWorkflowSteps(/* parsed */_parsed),
-      successMetrics: this.extractSuccessMetrics(/* parsed */_parsed),
+      skills: this.extractSkills(parsed),
+      workflowSteps: this.extractWorkflowSteps(parsed),
+      successMetrics: this.extractSuccessMetrics(parsed),
 
       resourceLimits: undefined,
       compliance: undefined,
@@ -75,7 +75,7 @@ export class AgencyAgentsParser {
       metadata: {
         source: 'agency-agents',
         createdAt: new Date().toISOString(),
-        language: this.detectLanguage(/* parsed */_parsed),
+        language: this.detectLanguage(parsed),
       },
     };
   }

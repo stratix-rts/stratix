@@ -157,21 +157,21 @@ export const IconSizes = {
  * 获取 SVG 图标路径
  */
 export function getIconPath(_name: string): string | null {
-  return SVGIconRegistry[name] || null;
+  return SVGIconRegistry[_name] || null;
 }
 
 /**
  * 获取自定义图标绘制函数
  */
 export function getCustomIcon(_name: string): GraphicsIconRenderer | null {
-  return CustomIconRegistry[name] || null;
+  return CustomIconRegistry[_name] || null;
 }
 
 /**
  * 图标工具：生成 SVG HTML
  */
 export function createSVGIcon(_name: string, size: number = 24, color: string = 'currentColor'): string {
-  const path = getIconPath(name);
+  const path = getIconPath(_name);
   if (!path) return '';
   
   return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
@@ -188,7 +188,7 @@ export function drawIcon(
   size: number,
   color: string
 ): void {
-  const icon = getCustomIcon(name);
+  const icon = getCustomIcon(_name);
   if (icon) {
     const originalX = graphics.x;
     const originalY = graphics.y;

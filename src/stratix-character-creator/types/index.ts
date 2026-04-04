@@ -3,6 +3,7 @@
  */
 
 import type { CharacterTexture, StratixDirectConfig } from '@/stratix-core/stratix-protocol';
+import type { BodyType, PartCategory, AnimationName } from '../constants';
 
 export interface PartSelection {
   itemId: string;

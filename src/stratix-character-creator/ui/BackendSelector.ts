@@ -7,6 +7,7 @@
 
 import Phaser from 'phaser';
 
+import { Depth } from '@/design-system/tokens/depth';
 
 import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClawConnectionManager';
 import type { AgentBackendType, OpenClawConfig, UnifiedOpenClawConfig, StratixDirectConfig } from '@/stratix-core/stratix-protocol';

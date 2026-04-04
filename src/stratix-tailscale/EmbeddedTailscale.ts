@@ -214,8 +214,8 @@ export class EmbeddedTailscale {
 
       const proc = spawn(tailscaleBin, fullArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
 
-      proc.stdout?.on('data', (/* data */_data) => { stdout += data; });
-      proc.stderr?.on('data', (/* data */_data) => { stderr += data; });
+      proc.stdout?.on('data', (data) => { stdout += data; });
+      proc.stderr?.on('data', (data) => { stderr += data; });
 
       proc.on('close', (code) => {
         if (code === 0) {

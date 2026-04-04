@@ -1,4 +1,5 @@
 import type { WorkflowDefinition } from '../workflow/types';
+import { allPresets } from '../workflow/presets';
 
 export function registerWorkflowHandlers(userDataPath: string, fs: any, path: any) {
   const workflowDir = path.join(userDataPath, 'workflows');
