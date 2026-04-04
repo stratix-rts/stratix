@@ -24,16 +24,18 @@ export function createBatchMiddleware(
   const flush = <K extends RTSEventName>(event: K, ctx: MiddlewareContext<K>): void => {
     const state = getState(event);
     const handler = batchHandlers.get(event);
-    
+
     if (state.items.length > 0 && handler) {
       handler(state.items);
       state.items = [];
     }
-    
+
     if (state.timeoutId) {
       clearTimeout(state.timeoutId);
       state.timeoutId = null;
     }
+
+    batchHandlers.delete(event);
   };
 
   return <K extends RTSEventName>(ctx: MiddlewareContext<K>) => {
