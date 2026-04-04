@@ -22,6 +22,13 @@ const emit = defineEmits<{
   (e: 'cancel'): void;
 }>();
 
+// Icons
+const trash = 'trash';
+const plus = 'plus';
+const arrowLeft = 'arrow-left';
+const download = 'download';
+const save = 'save';
+
 const designer = props.designer || new StratixHeroDesigner();
 const activeTab = ref<'soul' | 'skills' | 'memory' | 'model'>('soul');
 const saving = ref(false);
