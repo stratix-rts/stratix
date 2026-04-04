@@ -57,16 +57,52 @@ export class ParamValidator {
         errorMessage: `${param.name} 必须为文本类型`
       };
     }
+
+    if (param.minLength !== undefined && value.length < param.minLength) {
+      return {
+        isValid: false,
+        errorMessage: `${param.name} 不能少于 ${param.minLength} 个字符`
+      };
+    }
+
+    if (param.maxLength !== undefined && value.length > param.maxLength) {
+      return {
+        isValid: false,
+        errorMessage: `${param.name} 不能超过 ${param.maxLength} 个字符`
+      };
+    }
+
+    if (param.pattern !== undefined && !param.pattern.test(value)) {
+      return {
+        isValid: false,
+        errorMessage: `${param.name} 格式不正确`
+      };
+    }
+
     return { isValid: true, errorMessage: '' };
   }
 
   private static validateNumber(param: StratixSkillParameter, value: any): ValidationResult {
     const numValue = typeof value === 'string' ? parseFloat(value) : value;
-    
+
     if (isNaN(numValue)) {
       return {
         isValid: false,
         errorMessage: `${param.name} 必须为有效数字`
+      };
+    }
+
+    if (param.min !== undefined && numValue < param.min) {
+      return {
+        isValid: false,
+        errorMessage: `${param.name} 不能小于 ${param.min}`
+      };
+    }
+
+    if (param.max !== undefined && numValue > param.max) {
+      return {
+        isValid: false,
+        errorMessage: `${param.name} 不能大于 ${param.max}`
       };
     }
 
