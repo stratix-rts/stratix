@@ -326,6 +326,15 @@ export class SessionRuntime {
   }
 
   /**
+   * Get recent messages from a session (synchronous, in-memory only)
+   */
+  getRecentMessages(sessionId: string, limit: number = 50): ChatMessage[] {
+    const session = this.sessions.get(sessionId);
+    if (!session) return [];
+    return session.messages.slice(-limit);
+  }
+
+  /**
    * Add a permission denial to the session
    */
   async recordPermissionDenial(

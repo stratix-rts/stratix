@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 
 import { StratixAgentConfig } from '../../../stratix-core';
-import { AgentOrchestrationService, AgentState } from '../../agent/AgentOrchestrationService';
+import { AgentOrchestrationService, AgentState, UsageStats } from '../../agent/AgentOrchestrationService';
 
 const router = Router();
 const orchestrator = AgentOrchestrationService.getInstance();
@@ -121,7 +121,7 @@ router.get('/state/:agentId', async (req: Request, res: Response): Promise<void>
   try {
     const agentId = req.params.agentId as string;
     const state = orchestrator.getAgentState(agentId);
-    
+
     if (!state) {
       res.status(404).json({
         success: false,
@@ -129,7 +129,7 @@ router.get('/state/:agentId', async (req: Request, res: Response): Promise<void>
       });
       return;
     }
-    
+
     res.json({
       success: true,
       state
@@ -139,6 +139,33 @@ router.get('/state/:agentId', async (req: Request, res: Response): Promise<void>
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to get agent state'
+    });
+  }
+});
+
+router.get('/usage/:agentId', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const agentId = req.params.agentId as string;
+
+    if (!orchestrator.isAgentWorking(agentId)) {
+      res.status(404).json({
+        success: false,
+        error: 'Agent not found or not active'
+      });
+      return;
+    }
+
+    const usage: UsageStats = orchestrator.getUsage(agentId);
+
+    res.json({
+      success: true,
+      usage
+    });
+  } catch (error) {
+    console.error('[Agent API] Get usage failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get usage'
     });
   }
 });

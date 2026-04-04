@@ -11,10 +11,18 @@ import type { AgentInterface, AgentState } from './agents/types';
 
 export type { AgentState };
 
+export interface UsageStats {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  turnCount: number;
+}
+
 export class AgentOrchestrationService {
   private static instance: AgentOrchestrationService;
   private agents: Map<string, AgentInterface> = new Map();
   private agentStates: Map<string, AgentState> = new Map();
+  private usageStats: Map<string, UsageStats> = new Map();
   private lraClient: LRAClient;
   private agentConfigs: Map<string, StratixAgentConfig> = new Map();
   private router: AgentRouter;
@@ -139,6 +147,7 @@ export class AgentOrchestrationService {
 
     this.agents.delete(agentId);
     this.agentStates.delete(agentId);
+    this.usageStats.delete(agentId);
 
     console.log(`[AgentOrchestrationService] Agent ${agentId} stopped`);
   }
@@ -193,6 +202,36 @@ export class AgentOrchestrationService {
 
   isAgentWorking(agentId: string): boolean {
     return this.agents.has(agentId);
+  }
+
+  /**
+   * Update usage statistics for an agent
+   */
+  updateUsage(agentId: string, usage: Partial<UsageStats>): void {
+    const current = this.usageStats.get(agentId) || {
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      turnCount: 0,
+    };
+    this.usageStats.set(agentId, {
+      promptTokens: current.promptTokens + (usage.promptTokens ?? 0),
+      completionTokens: current.completionTokens + (usage.completionTokens ?? 0),
+      totalTokens: current.totalTokens + (usage.totalTokens ?? 0),
+      turnCount: current.turnCount + (usage.turnCount ?? 0),
+    });
+  }
+
+  /**
+   * Get usage statistics for an agent
+   */
+  getUsage(agentId: string): UsageStats {
+    return this.usageStats.get(agentId) || {
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      turnCount: 0,
+    };
   }
 
   async stopAll(): Promise<void> {

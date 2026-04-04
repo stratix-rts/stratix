@@ -10,7 +10,7 @@ import { StratixAgent } from './StratixAgent';
 import { EnhancedPromptBuilder } from './core/EnhancedPromptBuilder';
 import { MixinComposer } from './mixins/MixinComposer';
 import { SessionRuntime } from './runtime/SessionRuntime';
-import type { SessionContext, TokenUsage } from './runtime/types';
+import type { SessionContext, TokenUsage, ChatMessage as RuntimeChatMessage } from './runtime/types';
 import { AgentConfig, SoulConfig, SkillResult, EvolutionResult, EvolutionProposal, ChatMessage as AgentChatMessage } from './types';
 import { EnhancedSoulConfig, ReflectionEntry } from './types/soul';
 import { AgentTemplate, WorkflowDefinition, WorkflowStep } from './types/template';
@@ -58,6 +58,7 @@ export class EnhancedStratixAgent extends StratixAgent {
   private reflectionHistory: ReflectionEntry[] = [];
   private memoryEntries: MemoryEntry[] = [];
   private runtime: SessionRuntime;
+  private currentSessionId: string | null = null;
 
   // Evolution state
   private evolutionCount: number = 0;
@@ -209,6 +210,7 @@ export class EnhancedStratixAgent extends StratixAgent {
     if (!session) {
       session = await this.runtime.createSession(this.config.agentId);
     }
+    this.currentSessionId = session.sessionId;
 
     // 6. 存储增强上下文到 session.memory（供 executeAgentTurn 使用）
     session.memory.set('enhancedPrompt', systemMessages);
@@ -342,6 +344,7 @@ export class EnhancedStratixAgent extends StratixAgent {
     if (!session) {
       session = await this.runtime.createSession(this.config.agentId);
     }
+    this.currentSessionId = session.sessionId;
 
     results.push(`[开始执行工作流: ${workflow.name}]\n`);
 
@@ -617,6 +620,35 @@ export class EnhancedStratixAgent extends StratixAgent {
    */
   clearMemory(): void {
     this.memoryEntries = [];
+  }
+
+  // ============================================
+  // SessionRuntime Getters
+  // ============================================
+
+  /**
+   * 获取当前 session ID
+   */
+  getSessionId(): string | null {
+    return this.currentSessionId;
+  }
+
+  /**
+   * 获取当前 session 的 transcript（最近 N 条）
+   */
+  getTranscript(limit: number = 50): RuntimeChatMessage[] {
+    if (!this.currentSessionId) return [];
+    return this.runtime.getRecentMessages(this.currentSessionId, limit) as RuntimeChatMessage[];
+  }
+
+  /**
+   * 获取当前 session 的 token usage
+   */
+  getUsage(): TokenUsage {
+    if (!this.currentSessionId) {
+      return { promptTokens: 0, completionTokens: 0, totalTokens: 0, turnCount: 0 };
+    }
+    return this.runtime.getUsage(this.currentSessionId);
   }
 
   // ============================================
