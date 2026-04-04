@@ -7,6 +7,7 @@ import { StratixRequestHelper , StratixConfigValidator } from '../../../stratix-
 import { dataStoreService } from '../../dataStoreService';
 import { retryPolicyEngine, RetryPolicyEngine } from '@/stratix-core/retry';
 import { AgentOrchestrationService } from '../../agent/AgentOrchestrationService';
+import { AgentConfigSchema, validateOrThrow, ZodError } from '../../../stratix-core/schemas';
 
 const router = Router();
 const requestHelper = StratixRequestHelper.getInstance();
@@ -14,7 +15,14 @@ const validator = StratixConfigValidator.getInstance();
 
 router.post('/create', async (req: Request, res: Response) => {
   try {
-    const agentConfig = req.body;
+    let agentConfig: any;
+    try {
+      agentConfig = validateOrThrow(AgentConfigSchema, req.body);
+    } catch (err) {
+      const zErr = err as ZodError;
+      res.status(400).json(requestHelper.badRequest(`Schema validation failed: ${zErr.issues.map((e: any) => e.message).join('; ')}`));
+      return;
+    }
 
     const validation = validator.validateAgentConfig(agentConfig);
     if (!validation.valid) {
@@ -38,7 +46,14 @@ router.post('/create', async (req: Request, res: Response) => {
 
 router.put('/save', async (req: Request, res: Response) => {
   try {
-    const agentConfig = req.body;
+    let agentConfig: any;
+    try {
+      agentConfig = validateOrThrow(AgentConfigSchema, req.body);
+    } catch (err) {
+      const zErr = err as ZodError;
+      res.status(400).json(requestHelper.badRequest(`Schema validation failed: ${zErr.issues.map((e: any) => e.message).join('; ')}`));
+      return;
+    }
 
     const validation = validator.validateAgentConfig(agentConfig);
     if (!validation.valid) {

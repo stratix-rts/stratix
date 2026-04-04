@@ -227,4 +227,5 @@ export function validateSafe<T>(schema: ZodSchema<T>, data: unknown): T | null {
 // Re-export commonly used types for convenience
 // ============================================================================
 
-export type { ZodSchema, ZodError };
+export { ZodError } from 'zod';
+export type { ZodSchema } from 'zod';

@@ -6,6 +6,7 @@ import { CommandTransformer } from '../../command-transformer/CommandTransformer
 import { CommandSourceAdapter } from '../../../stratix-core/command';
 import { dataStoreService } from '../../dataStoreService';
 import { StatusSyncService } from '../websocket/StatusSync';
+import { CommandLogSchema, validateOrThrow, ZodError } from '../../../stratix-core/schemas';
 
 const router = Router();
 const commandTransformer = new CommandTransformer();
@@ -22,7 +23,14 @@ const registeredAgents = new Set<string>();
 
 router.post('/execute', async (req: Request, res: Response): Promise<void> => {
   try {
-    const command: StratixCommandData = req.body;
+    let command: StratixCommandData;
+    try {
+      command = validateOrThrow(CommandLogSchema, req.body);
+    } catch (err) {
+      const zErr = err as ZodError;
+      res.status(400).json(requestHelper.badRequest(`Schema validation failed: ${zErr.issues.map((e: any) => e.message).join('; ')}`));
+      return;
+    }
     const { agentId } = command;
 
     const store = dataStoreService.getStore();
