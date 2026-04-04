@@ -161,7 +161,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     this.accentColor = this.useToken('colors.accent');
     this.infoColor = this.useToken('colors.semantic.info');
     this.successColor = this.useToken('colors.semantic.success');
-    this.warningColor = this.useToken('colors.warning');
+    this.warningColor = this.useToken('colors.semantic.warning');
     this.dangerColor = this.useToken('colors.semantic.danger');
   }
 
