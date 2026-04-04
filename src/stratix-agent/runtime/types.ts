@@ -57,6 +57,8 @@ export interface TurnOptions {
   timeout?: number;
   /** Abort signal for cancellation */
   signal?: AbortSignal;
+  /** System messages (pre-built prompt context) to prepend for this turn */
+  systemMessages?: ChatMessage[];
 }
 
 /**

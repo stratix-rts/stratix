@@ -54,14 +54,29 @@ function generateTurnId(): string {
 }
 
 /**
+ * Agent delegate interface for turn execution.
+ * Allows external agents (e.g., EnhancedStratixAgent) to provide LLM execution logic.
+ */
+export interface AgentTurnDelegate {
+  executeAgentTurn(
+    session: SessionContext,
+    message: string,
+    timeout: number,
+    signal?: AbortSignal
+  ): Promise<{ response: string; usage: TokenUsage }>;
+}
+
+/**
  * SessionRuntime manages agent sessions with transcript persistence
  */
 export class SessionRuntime {
   private sessions: Map<string, SessionContext> = new Map();
   private transcriptStore: TranscriptStore;
+  private agentDelegate: AgentTurnDelegate | null;
 
-  constructor(transcriptDir: string = '.transcripts') {
+  constructor(transcriptDir: string = '.transcripts', agentDelegate: AgentTurnDelegate | null = null) {
     this.transcriptStore = new TranscriptStore(transcriptDir);
+    this.agentDelegate = agentDelegate;
   }
 
   /**
@@ -250,16 +265,19 @@ export class SessionRuntime {
   }
 
   /**
-   * Internal agent turn execution - override in subclass or inject
+   * Internal agent turn execution - delegates to agentDelegate if provided,
+   * otherwise falls back to a placeholder response.
    */
   protected async executeAgentTurn(
     session: SessionContext,
-    _message: string,
-    _timeout: number,
-    _signal?: AbortSignal
+    message: string,
+    timeout: number,
+    signal?: AbortSignal
   ): Promise<{ response: string; usage: TokenUsage }> {
-    // Placeholder: In production, this would invoke the actual agent runtime
-    // Return mock response for testing
+    if (this.agentDelegate) {
+      return this.agentDelegate.executeAgentTurn(session, message, timeout, signal);
+    }
+    // Placeholder: Return mock response for testing
     return {
       response: `[Session ${session.sessionId}] Turn executed`,
       usage: {

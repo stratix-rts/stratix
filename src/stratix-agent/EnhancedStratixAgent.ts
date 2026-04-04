@@ -9,7 +9,9 @@ import { zoneContextManager } from '../stratix-character-creator/core/ZoneContex
 import { StratixAgent } from './StratixAgent';
 import { EnhancedPromptBuilder } from './core/EnhancedPromptBuilder';
 import { MixinComposer } from './mixins/MixinComposer';
-import { AgentConfig, SoulConfig, SkillResult, EvolutionResult, EvolutionProposal } from './types';
+import { SessionRuntime } from './runtime/SessionRuntime';
+import type { SessionContext, TokenUsage } from './runtime/types';
+import { AgentConfig, SoulConfig, SkillResult, EvolutionResult, EvolutionProposal, ChatMessage as AgentChatMessage } from './types';
 import { EnhancedSoulConfig, ReflectionEntry } from './types/soul';
 import { AgentTemplate, WorkflowDefinition, WorkflowStep } from './types/template';
 
@@ -55,6 +57,7 @@ export class EnhancedStratixAgent extends StratixAgent {
   private currentWorkflow: WorkflowStep[] = [];
   private reflectionHistory: ReflectionEntry[] = [];
   private memoryEntries: MemoryEntry[] = [];
+  private runtime: SessionRuntime;
 
   // Evolution state
   private evolutionCount: number = 0;
@@ -76,6 +79,7 @@ export class EnhancedStratixAgent extends StratixAgent {
     this.enhancedPromptBuilder = new EnhancedPromptBuilder();
     this.mixinComposer = new MixinComposer();
     this.capabilities = this.detectCapabilities();
+    this.runtime = new SessionRuntime('.transcripts', this);
   }
 
   /**
@@ -167,47 +171,113 @@ export class EnhancedStratixAgent extends StratixAgent {
     // 2. 获取 Zone 上下文
     const zoneContext = await zoneContextManager.getZonePromptContext(this.config.agentId);
 
-    // 3. 构建增强提示词
+    // 3. 获取历史消息（用于构建增强提示词）
+    const recentMessages: AgentChatMessage[] = [];
+    if (options?.sessionId) {
+      const sess = await this.runtime.getSession(options.sessionId);
+      if (sess) {
+        // Convert from SessionRuntime ChatMessage to AgentChatMessage
+        for (const m of sess.messages.slice(-10)) {
+          recentMessages.push({
+            role: m.role as 'user' | 'assistant' | 'system',
+            content: m.content,
+            timestamp: m.timestamp ? new Date(m.timestamp).toISOString() : undefined,
+          });
+        }
+      }
+    }
+
+    // 4. 构建增强提示词
     const systemMessages = this.enhancedPromptBuilder.buildFullSystemPrompt(
       this.template,
       this.soul as EnhancedSoulConfig,
       this.memory.buildContext(),
       this.skills.getEnabledSkills(),
-      this.sessions.getMessages(options?.sessionId || '', 10),
+      recentMessages,
       { includeReflection, includeWorkflow, includeLearnedSkills: true, includeZoneContext: true, zoneContext },
       this.memory.buildSkillContext()
     );
 
-    // 4. 执行聊天
-    const session = this.sessions.getOrCreateSession(this.config.agentId, options?.sessionId);
-    this.sessions.addMessage(session.sessionId, { role: 'user', content: message });
-    this.memory.addMessage('user', message);
-
-    // 调用 LLM
-    let result;
-    if (options?.stream && options?.onChunk) {
-      result = await this.llm.generateStream(systemMessages, options.onChunk);
-    } else {
-      result = await this.llm.generate(systemMessages);
+    // 5. 使用 SessionRuntime 管理会话
+    let session;
+    if (options?.sessionId) {
+      const existingSession = await this.runtime.getSession(options.sessionId);
+      if (existingSession) {
+        session = existingSession;
+      }
+    }
+    if (!session) {
+      session = await this.runtime.createSession(this.config.agentId);
     }
 
-    this.sessions.addMessage(session.sessionId, { role: 'assistant', content: result.content });
-    this.memory.addMessage('assistant', result.content);
+    // 6. 存储增强上下文到 session.memory（供 executeAgentTurn 使用）
+    session.memory.set('enhancedPrompt', systemMessages);
+    session.memory.set('includeWorkflow', includeWorkflow);
+    session.memory.set('includeReflection', includeReflection);
+    session.memory.set('recentMessages', recentMessages);
+    session.memory.set('zoneContext', zoneContext);
+
+    // 7. 执行聊天（通过 SessionRuntime.executeTurn 调用 executeAgentTurn）
+    this.memory.addMessage('user', message);
+    const turnResult = await this.runtime.executeTurn(session.sessionId, message);
+    this.memory.addMessage('assistant', turnResult.response);
 
     const response: EnhancedAgentResponse = {
       sessionId: session.sessionId,
-      response: result.content,
-      usage: result.usage,
+      response: turnResult.response,
+      usage: turnResult.usage,
       reflectionUsed: false,
     };
 
-    // 5. 反思机制
+    // 8. 反思机制
     if (includeReflection && (this.soul as EnhancedSoulConfig).reflection?.afterEachTask) {
-      await this.performReflection(message, result.content);
-      response.reflectionUsed = true;
+      try {
+        await this.performReflection(message, turnResult.response);
+        response.reflectionUsed = true;
+      } catch {
+        // 反思失败静默处理
+      }
     }
 
     return response;
+  }
+
+  /**
+   * Execute agent turn using enhanced prompt from session memory.
+   * SessionRuntime calls this method to execute each turn.
+   */
+  protected async executeAgentTurn(
+    session: SessionContext,
+    message: string,
+    _timeout: number,
+    _signal?: AbortSignal
+  ): Promise<{ response: string; usage: TokenUsage }> {
+    // Retrieve enhanced context stored by chat()
+    // enhancedPrompt is AgentChatMessage[] (from ./types)
+    const enhancedPrompt = session.memory.get('enhancedPrompt') as AgentChatMessage[] | undefined;
+    // recentMessages from session.memory was stored as AgentChatMessage[]
+    const recentMessages = session.memory.get('recentMessages') as AgentChatMessage[] | undefined;
+
+    if (!enhancedPrompt) {
+      // Fallback: simple response without enhanced prompt
+      const result = await this.llm.generate([{ role: 'user', content: message }]);
+      return { response: result.content, usage: { ...result.usage!, turnCount: 1 } };
+    }
+
+    // Build messages array with system prompt + recent history + current message
+    const messages: AgentChatMessage[] = [
+      ...enhancedPrompt,
+      ...(recentMessages || []),
+      { role: 'user', content: message },
+    ];
+
+    // Call LLM
+    const result = await this.llm.generate(messages);
+
+    return {
+      response: result.content,
+      usage: { ...result.usage!, turnCount: 1 },
+    };
   }
 
   /**
@@ -260,7 +330,18 @@ export class EnhancedStratixAgent extends StratixAgent {
   ): Promise<EnhancedAgentResponse> {
     const results: string[] = [];
     let context = initialMessage;
-    const session = this.sessions.getOrCreateSession(this.config.agentId, options?.sessionId);
+
+    // 使用 SessionRuntime 管理会话
+    let session;
+    if (options?.sessionId) {
+      const existingSession = await this.runtime.getSession(options.sessionId);
+      if (existingSession) {
+        session = existingSession;
+      }
+    }
+    if (!session) {
+      session = await this.runtime.createSession(this.config.agentId);
+    }
 
     results.push(`[开始执行工作流: ${workflow.name}]\n`);
 
@@ -301,9 +382,25 @@ export class EnhancedStratixAgent extends StratixAgent {
 
     const finalResponse = results.join('\n');
 
-    // 保存到会话
-    this.sessions.addMessage(session.sessionId, { role: 'user', content: initialMessage });
-    this.sessions.addMessage(session.sessionId, { role: 'assistant', content: finalResponse });
+    // 保存到会话（通过 SessionRuntime）
+    session.messages.push({ id: `user_${Date.now()}`, role: 'user', content: initialMessage, timestamp: Date.now() });
+    session.messages.push({ id: `asst_${Date.now()}`, role: 'assistant', content: finalResponse, timestamp: Date.now() });
+
+    // 记录到 transcript
+    await this.runtime.getTranscriptStore().append({
+      sessionId: session.sessionId,
+      turnId: `user_${Date.now()}`,
+      role: 'user',
+      content: initialMessage,
+      timestamp: Date.now(),
+    });
+    await this.runtime.getTranscriptStore().append({
+      sessionId: session.sessionId,
+      turnId: `asst_${Date.now()}`,
+      role: 'assistant',
+      content: finalResponse,
+      timestamp: Date.now(),
+    });
 
     return {
       sessionId: session.sessionId,
@@ -345,7 +442,7 @@ export class EnhancedStratixAgent extends StratixAgent {
     prompt += `\n请执行这个步骤并给出结果。`;
 
     // 调用 LLM
-    const messages: ChatMessage[] = [{ role: 'user', content: prompt }];
+    const messages: AgentChatMessage[] = [{ role: 'user', content: prompt }];
 
     let result;
     if (options?.stream && options?.onChunk) {
