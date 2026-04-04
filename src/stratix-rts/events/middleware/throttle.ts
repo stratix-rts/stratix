@@ -61,5 +61,8 @@ export function createThrottleMiddleware(
   };
 }
 
-export function clearThrottleState(event?: RTSEventName): void {
+export function clearThrottleState(_event?: RTSEventName): void {
+  // Throttle state is managed internally by the middleware instance.
+  // This function is a placeholder for future state management needs.
+  console.debug('[ThrottleMiddleware] clearThrottleState called (no-op)');
 }
