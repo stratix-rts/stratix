@@ -20,7 +20,11 @@ interface ParticleOptions {
 }
 
 function tintToNumber(color: string): number {
-  return parseInt(color.replace('#', ''), 16);
+  const hex = color.replace('#', '');
+  if (!/^[0-9A-Fa-f]{6}$/.test(hex)) {
+    return 0x00ffff; // fallback
+  }
+  return parseInt(hex, 16);
 }
 
 const DEFAULT_PARTICLE_COLORS = {
@@ -210,6 +214,7 @@ export class ParticleEffects {
     const c = color ? tintToNumber(color) : DEFAULT_PARTICLE_COLORS.idle;
     const tweens: Phaser.Tweens.Tween[] = [];
     const circles: Phaser.GameObjects.Graphics[] = [];
+    const delayedCalls: Phaser.Time.TimerEvent[] = [];
     const count = 5;
 
     for (let i = 0; i < count; i++) {
@@ -241,11 +246,12 @@ export class ParticleEffects {
         tweens.push(t);
       };
 
-      this.scene!.time.delayedCall(delay, createPulse);
+      delayedCalls.push(this.scene!.time.delayedCall(delay, createPulse));
     }
 
     // Augment tweens with circles so stopEmitters can clean them up
     (tweens as any).__circles = circles;
+    (tweens as any).__delayedCalls = delayedCalls;
     return tweens;
   }
 
@@ -253,10 +259,15 @@ export class ParticleEffects {
    * Stop all active tweens from a previous call.
    */
   stopEmitters(emitters: ParticleEmitter): void {
-    // For idlePulse, also destroy the circles
+    // For idlePulse/taskExecution, also destroy the circles
     const circles = (emitters as any).__circles as Phaser.GameObjects.Graphics[] | undefined;
     if (circles) {
       circles.forEach(c => c.destroy());
+    }
+    // Cancel pending delayedCalls to prevent createPulse from firing after circles destroyed
+    const delayedCalls = (emitters as any).__delayedCalls as Phaser.Time.TimerEvent[] | undefined;
+    if (delayedCalls) {
+      delayedCalls.forEach(dc => dc.remove());
     }
     emitters.forEach(tween => {
       tween.stop();
@@ -272,6 +283,7 @@ export class ParticleEffects {
     const c = color ? tintToNumber(color) : DEFAULT_PARTICLE_COLORS.taskExecution;
     const tweens: Phaser.Tweens.Tween[] = [];
     const circles: Phaser.GameObjects.Graphics[] = [];
+    const delayedCalls: Phaser.Time.TimerEvent[] = [];
     const count = 8;
 
     for (let i = 0; i < count; i++) {
@@ -305,10 +317,11 @@ export class ParticleEffects {
         tweens.push(t);
       };
 
-      this.scene!.time.delayedCall(delay, createPulse);
+      delayedCalls.push(this.scene!.time.delayedCall(delay, createPulse));
     }
 
     (tweens as any).__circles = circles;
+    (tweens as any).__delayedCalls = delayedCalls;
     return tweens;
   }
 
