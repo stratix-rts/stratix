@@ -19,6 +19,9 @@ import {
 import type { AnimationName } from '../constants';
 
 
+// Phaser 图形对象使用数字颜色（运行时获取）
+const getPhaserColor = (tokenPath: string) => parseInt(getToken(tokenPath).replace('#', '0x'));
+
 export interface CharacterPreviewConfig {
   x: number;
   y: number;
@@ -111,7 +114,7 @@ export class CharacterPreview {
       if (ctx && texture.canvas) {
         ctx.drawImage(
           texture.canvas,
-          _srcX, _srcY, FRAME_SIZE, FRAME_SIZE,
+          srcX, srcY, FRAME_SIZE, FRAME_SIZE,
           0, 0, FRAME_SIZE, FRAME_SIZE
         );
         this.scene.textures.addCanvas(frameName, frameCanvas);
@@ -144,8 +147,8 @@ export class CharacterPreview {
     if (frameIndexes.length === 0) return;
     
     const firstFrame = frameIndexes[0];
-    const _srcX = (firstFrame % FRAMES_PER_ROW) * FRAME_SIZE;
-    const _srcY = Math.floor(firstFrame / FRAMES_PER_ROW) * FRAME_SIZE;
+    const srcX = (firstFrame % FRAMES_PER_ROW) * FRAME_SIZE;
+    const srcY = Math.floor(firstFrame / FRAMES_PER_ROW) * FRAME_SIZE;
     
     const frameKey = `${this.textureKey}_frame_${firstFrame}`;
     

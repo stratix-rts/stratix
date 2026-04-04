@@ -152,6 +152,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
   }
 
   async create(data?: CharacterCreatorSceneData): Promise<void> {
+    const { width, height } = this.cameras.main;
 
     this.createBackground(width, height);
 
@@ -714,9 +715,12 @@ export class CharacterCreatorScene extends Phaser.Scene {
   }
 
   private openCreditsModal(authors: string[], licenses: string[]): void {
+    const { width, height } = this.cameras.main;
 
     const modalW = 400;
     const modalH = 450;
+    const modalX = (width - modalW) / 2;
+    const modalY = (height - modalH) / 2;
     void modalX; void modalY;
 
     const authorsList = authors.join('<br>');
@@ -1103,6 +1107,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
   }
 
   private rebuildMainPanel(): void {
+    const { width, height } = this.cameras.main;
     const panelW = width - THEME().leftPanelWidth - THEME().rightPanelWidth;
     const panelH = height - THEME().headerHeight;
     this.buildStepPanel(panelW, panelH);
@@ -1471,6 +1476,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
   }
 
   private showMessage(text: string, type: 'success' | 'error' | 'info' = 'info'): void {
+    const { width, height } = this.cameras.main;
 
     const colors: Record<string, string> = {
       success: toCssColor(THEME().accentSecondary),
