@@ -1,6 +1,7 @@
 import { StratixAgentConfig } from '../../stratix-core';
 import { LRAClient } from '../../stratix-lra-bridge/LRAClient';
 import { loadApiKey } from '../api/apiKeyStore';
+import { AgentRouter, agentRouter } from '../../stratix-core/agent/AgentRouter';
 
 import { LLMAgent } from './agents/LLMAgent';
 import { OpenClawAgent } from './agents/OpenClawAgent';
@@ -15,9 +16,11 @@ export class AgentOrchestrationService {
   private agentStates: Map<string, AgentState> = new Map();
   private lraClient: LRAClient;
   private agentConfigs: Map<string, StratixAgentConfig> = new Map();
+  private router: AgentRouter;
 
   private constructor() {
     this.lraClient = new LRAClient();
+    this.router = agentRouter;
   }
 
   static getInstance(): AgentOrchestrationService {
