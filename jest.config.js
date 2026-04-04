@@ -35,7 +35,8 @@ module.exports = {
   verbose: true,
   testTimeout: 15000,
   moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/src/$1'
+    '^@/(.*)$': '<rootDir>/src/$1',
+    '^@stratix-core/(.*)$': '<rootDir>/src/stratix-core/$1'
   },
   transformIgnorePatterns: [
     'node_modules/(?!(lowdb)/)',

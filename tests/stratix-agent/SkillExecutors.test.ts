@@ -774,13 +774,13 @@ describe('ToolUseLoop', () => {
             name: 'calculator',
             input: { operation: 'add', a: 2, b: 3 }
           }],
-          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+          usage: { promptTokens: 100, completionTokens: 500, totalTokens: 150 },
         };
       }
       return {
         content: 'The result is 5',
         tool_calls: [],
-        usage: { promptTokens: 200, completionTokens: 30, totalTokens: 230 },
+        usage: { promptTokens: 200, completionTokens: 500, totalTokens: 230 },
       };
     });
 
@@ -810,7 +810,7 @@ describe('ToolUseLoop', () => {
     mockLLMConnector.generateWithTools.mockResolvedValue({
       content: 'Hello! How can I help you?',
       tool_calls: [],
-      usage: { promptTokens: 100, completionTokens: 20, totalTokens: 120 },
+      usage: { promptTokens: 100, completionTokens: 500, totalTokens: 120 },
     });
 
     const loop = new ToolUseLoop(mockSkillRegistry, mockLLMConnector);
@@ -839,13 +839,13 @@ describe('ToolUseLoop', () => {
             name: 'calculator',
             input: { operation: 'divide', a: 1, b: 0 }
           }],
-          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+          usage: { promptTokens: 100, completionTokens: 500, totalTokens: 150 },
         };
       }
       return {
         content: 'Got an error but continuing',
         tool_calls: [],
-        usage: { promptTokens: 200, completionTokens: 30, totalTokens: 230 },
+        usage: { promptTokens: 200, completionTokens: 500, totalTokens: 230 },
       };
     });
 
@@ -872,7 +872,7 @@ describe('ToolUseLoop', () => {
         name: 'tool1',
         input: {}
       }],
-      usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+      usage: { promptTokens: 100, completionTokens: 500, totalTokens: 150 },
     });
 
     mockSkillRegistry.execute.mockResolvedValue({
@@ -942,7 +942,7 @@ describe('ToolUseLoop', () => {
         name: 'tool1',
         input: {}
       }],
-      usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+      usage: { promptTokens: 100, completionTokens: 500, totalTokens: 150 },
     });
 
     const result = await executePromise;
@@ -974,7 +974,7 @@ describe('ToolUseLoop', () => {
           name: `flaky_tool_${toolIndex + 1}`,
           input: {}
         }],
-        usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        usage: { promptTokens: 100, completionTokens: 500, totalTokens: 150 },
       };
     });
 
@@ -1008,13 +1008,13 @@ describe('ToolUseLoop', () => {
             { type: 'tool_use' as const, id: 'call_1', name: 'calculator', input: { op: 'add', a: 1, b: 2 } },
             { type: 'tool_use' as const, id: 'call_2', name: 'calculator', input: { op: 'add', a: 3, b: 4 } },
           ],
-          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+          usage: { promptTokens: 100, completionTokens: 500, totalTokens: 150 },
         };
       }
       return {
         content: 'Done calculating',
         tool_calls: [],
-        usage: { promptTokens: 200, completionTokens: 30, totalTokens: 230 },
+        usage: { promptTokens: 200, completionTokens: 500, totalTokens: 230 },
       };
     });
 
