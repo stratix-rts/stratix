@@ -139,7 +139,7 @@ export class ZoneService {
     const deleted = zoneRepository.deleteZone(zoneId);
     if (deleted) {
       // Publish zone:deleted event
-      gatewayEventBus.publishZoneEvent('zone:deleted', zoneId, zone.id, {
+      gatewayEventBus.publishZoneEvent('zone:deleted', zoneId, zone.projectId || zoneId, {
         title: zone.title
       });
     }
@@ -1123,8 +1123,10 @@ export class ZoneService {
 
     // Create new zone with cloned title
     const cloneTitle = `Clone of ${sourceZone.title}`;
-    const projectId = sourceZone.projectId || sourceZone.id;
-    const newZone = zoneRepository.createZone(projectId, cloneTitle, sourceZone.prompt || '');
+    if (!sourceZone.projectId) {
+      throw new Error(`Cannot clone zone ${zoneId}: missing projectId`);
+    }
+    const newZone = zoneRepository.createZone(sourceZone.projectId, cloneTitle, sourceZone.prompt || '');
 
     // Clone files if requested
     if (options?.includeFiles) {
