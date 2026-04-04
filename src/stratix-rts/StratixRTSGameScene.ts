@@ -7,6 +7,7 @@ import { ProjectManagerIntegration } from '../stratix-project/ProjectManagerInte
 import { StratixRTSEventManager } from './StratixRTSEventManager';
 import { MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, DEFAULT_ZOOM } from './constants';
 import { StatsCollector } from './debug/StatsCollector';
+import { DataFlowAnimation } from './effects/DataFlowAnimation';
 import { rtsEventBus } from './events/core/RTSEventBus';
 import type { TopBarStats, AgentInfo, ViewportState } from './events/types/RTSEventTypes';
 import RTSCharacterRenderer, { TextureLoadResult } from './services/RTSCharacterRenderer';
@@ -21,7 +22,6 @@ import { BaseZone } from './zones/BaseZone';
 import { TaskZone, TaskZoneConfig } from './zones/TaskZone';
 import { TaskZonePreview } from './zones/TaskZonePreview';
 import { UnifiedZoneManager } from './zones/UnifiedZoneManager';
-import { DataFlowAnimation } from './effects/DataFlowAnimation';
 
 import { getToken, getCurrentTheme } from '@/design-system/config';
 

@@ -6,6 +6,7 @@
  */
 
 import { computed } from 'vue';
+
 import { soundService } from '@/services/SoundService';
 import { useUIStore } from '@/stores/ui';
 

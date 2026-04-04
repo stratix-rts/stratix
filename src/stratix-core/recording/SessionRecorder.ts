@@ -5,6 +5,7 @@
  */
 
 import { stratixStateStore } from '../state/StratixStateStore';
+
 import type { Recording, RecordedAction, StateSnapshot, RecordingMetadata } from './types';
 
 /**

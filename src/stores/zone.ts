@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import type { Zone, ZoneCreateRequest, ZoneUpdateRequest, ZoneFile, ZoneTask, ZoneMessage } from '@/stratix-project/types';
+
 import { ApiClient } from '@/stratix-gateway/api/client';
 import { API_PATHS, isApiError } from '@/stratix-gateway/api/types/api';
+import type { Zone, ZoneCreateRequest, ZoneUpdateRequest, ZoneFile, ZoneTask, ZoneMessage } from '@/stratix-project/types';
 
 // Create zone store API client with frontend base URL
 const createZoneApiClient = () => new ApiClient({

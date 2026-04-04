@@ -4,8 +4,9 @@
  */
 
 import { rtsEventBus } from '../core/RTSEventBus';
-import { eventRecorder, EventRecorder } from './EventRecorder';
+
 import { eventPlayback, EventPlayback } from './EventPlayback';
+import { eventRecorder, EventRecorder } from './EventRecorder';
 import type {
   RecordingSession,
   PlaybackState,

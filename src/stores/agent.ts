@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed, readonly } from 'vue';
+
 import type { SavedCharacter } from '@/stratix-character-creator/types';
 import type {
   StratixAgentConfig,

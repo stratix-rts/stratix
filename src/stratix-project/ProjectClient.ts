@@ -1,6 +1,6 @@
 import { ApiClient } from '../stratix-gateway/api/client';
-import { API_PATHS } from '../stratix-gateway/api/types/api';
-import { isApiSuccess } from '../stratix-gateway/api/types/api';
+import { API_PATHS , isApiSuccess } from '../stratix-gateway/api/types/api';
+
 import { Project, ProjectConfig, ProjectZoneConfig, ProjectStatus } from './types';
 
 export interface ProjectClientConfig {

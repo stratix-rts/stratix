@@ -10,8 +10,8 @@
  */
 
 import { providerRegistry } from '@/agent-platform/providers/registry';
-import { getLightweightAgencyTemplates, getDomainDisplayName } from '@/stratix-character-creator/config/agencyAgents';
 import type { WorkflowStep, WorkflowDefinition } from '@/agent-platform/workflow/types';
+import { getLightweightAgencyTemplates, getDomainDisplayName } from '@/stratix-character-creator/config/agencyAgents';
 import type { LightweightSoulTemplate } from '@/stratix-character-creator/config/agencyAgents';
 
 const THEME = {

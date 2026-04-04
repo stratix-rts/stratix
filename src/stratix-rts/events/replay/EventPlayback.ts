@@ -5,6 +5,7 @@
 
 import { rtsEventBus } from '../core/RTSEventBus';
 import type { RTSEventName, RTSEventData } from '../types/RTSEventTypes';
+
 import type {
   RecordingSession,
   RecordedEvent,

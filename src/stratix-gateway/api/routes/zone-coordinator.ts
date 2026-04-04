@@ -40,7 +40,7 @@ class ZoneCoordinatorService {
   async getCoordinator(zoneId: string, config?: Partial<ZoneCoordinatorConfig>): Promise<ZoneCoordinator> {
     this.maybeCleanup();
 
-    let entry = this.coordinators.get(zoneId);
+    const entry = this.coordinators.get(zoneId);
     if (entry) {
       entry.lastAccess = Date.now();
       return entry.coordinator;

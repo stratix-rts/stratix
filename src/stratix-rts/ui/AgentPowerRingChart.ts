@@ -6,6 +6,7 @@
  */
 
 import Phaser from 'phaser';
+
 import { COMBAT_DIMENSIONS, CombatDimension } from './CombatPowerCalculator';
 
 export interface RingSegment {

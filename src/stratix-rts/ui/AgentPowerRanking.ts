@@ -10,6 +10,7 @@
  */
 
 import Phaser from 'phaser';
+
 import { CombatPowerCalculator, CombatPowerScore, COMBAT_DIMENSIONS, CombatDimension } from './CombatPowerCalculator';
 
 export interface RankedAgent {

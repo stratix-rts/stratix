@@ -4,8 +4,8 @@
 
 import Phaser from 'phaser';
 
-import { replayManager, PlaybackState, PlaybackSpeed, RecordingSession } from '../../events/replay';
 import { rtsEventBus } from '../../events/core/RTSEventBus';
+import { replayManager, PlaybackState, PlaybackSpeed, RecordingSession } from '../../events/replay';
 
 interface ReplayControlsConfig {
   x: number;
