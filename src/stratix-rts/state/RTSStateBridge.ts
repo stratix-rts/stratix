@@ -42,8 +42,8 @@ export class RTSStateBridge {
     if (current?.status.activity === activity) return; // deduplicate
     stratixStateStore.updateAgent(agentId, {
       status: {
-        config: current!.status.config,
-        connection: current!.status.connection,
+        config: current?.status.config ?? 'draft',
+        connection: current?.status.connection ?? 'disconnected',
         activity,
       },
       lastActiveAt: Date.now(),
