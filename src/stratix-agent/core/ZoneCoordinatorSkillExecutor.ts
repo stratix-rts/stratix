@@ -56,7 +56,6 @@ export class ZoneCoordinatorSkillExecutor implements SkillExecutor {
     context: ExecutionContext
   ): Promise<any> {
     const { agentId } = context;
-    const gatewayUrl = process.env.GATEWAY_URL || 'http://127.0.0.1:7524';
 
     switch (skill.skillId) {
       case 'task_delegate': {

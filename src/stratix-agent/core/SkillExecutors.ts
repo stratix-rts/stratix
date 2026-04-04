@@ -282,7 +282,7 @@ export class BuiltinSkillExecutor implements SkillExecutor {
   async execute(
     skill: SkillDefinition,
     params: Record<string, any>,
-    context: ExecutionContext
+    _context: ExecutionContext
   ): Promise<any> {
     const { operation, expression } = params;
 
@@ -313,7 +313,7 @@ export class FileSystemSkillExecutor implements SkillExecutor {
     params: Record<string, any>,
     context: ExecutionContext
   ): Promise<any> {
-    const { readFile, writeFile, appendFile, mkdir, readdir, rm, stat } = require('fs/promises');
+    const { readFile, writeFile, appendFile, readdir, rm, stat } = require('fs/promises');
     const { existsSync } = require('fs');
     const path = require('path');
 
@@ -758,7 +758,9 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
             // Clean up temp file
             try {
               await unlink(tempFile);
-            } catch {}
+            } catch (err) {
+              console.warn('[CodeSandbox] Temp file cleanup failed:', err);
+            }
 
             if (code === 0) {
               progress?.({ skillId: 'code_execute', stage: 'completed' });
@@ -778,7 +780,9 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
           proc.on('error', async (err: Error) => {
             try {
               await unlink(tempFile);
-            } catch {}
+            } catch (cleanupErr) {
+              console.warn('[CodeSandbox] Temp file cleanup failed:', cleanupErr);
+            }
             progress?.({ skillId: 'code_execute', stage: 'failed' });
             reject(new Error(`Python spawn error: ${err.message}`));
           });
@@ -795,7 +799,7 @@ export class DefaultSkillExecutor implements SkillExecutor {
   async execute(
     skill: SkillDefinition,
     params: Record<string, any>,
-    context: ExecutionContext
+    _context: ExecutionContext
   ): Promise<any> {
     return {
       skillId: skill.skillId,
