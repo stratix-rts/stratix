@@ -17,3 +17,17 @@ export type * from './strategist/types';
 // 导出 Observer 模块
 export { Observer, InputPreprocessor, InsightExtractor } from './observer';
 export type * from './observer/types';
+
+// 导出 SystemZone 主类及相关类型
+export {
+  SystemZone,
+  getDefaultSystemZone,
+  resetDefaultSystemZone,
+} from './SystemZone';
+export type {
+  SystemZoneEventType,
+  SystemZoneEvent,
+  SystemZoneDependencies,
+  SystemZoneInitConfig,
+  SystemZoneState,
+} from './SystemZone';
