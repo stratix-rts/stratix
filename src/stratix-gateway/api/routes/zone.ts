@@ -210,7 +210,7 @@ router.delete('/zones/:zoneId', async (req: Request, res: Response): Promise<voi
  * GET /api/zones/:projectId/trash
  * Get all soft-deleted zones for a project (recycle bin)
  */
-router.get('/zones/:projectId/trash', async (req: Request, res: Response): Promise<void> => {
+router.get('/:projectId/trash', async (req: Request, res: Response): Promise<void> => {
   try {
     const projectId = req.params.projectId as string;
     const zones = await zoneService.getDeletedZones(projectId);
