@@ -2,7 +2,9 @@
 import { SvgIcon, StratixDropdown } from '@/components/ui';
 import type { DropdownOption } from '@/components/ui';
 import { computed } from 'vue';
-import { agentStore } from '../stores/agentStore';
+import { useAgentStore } from '../stores/agent';
+
+const agentStore = useAgentStore();
 import { StratixPanel, StratixButton } from '@/components/ui';
 import { getToken } from '@/design-system/config';
 

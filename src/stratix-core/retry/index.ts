@@ -7,11 +7,14 @@ export {
   retryPolicyEngine,
 } from './RetryPolicyEngine';
 
-export {
+export type {
   RetryConfig,
   RetryContext,
   RetryAttempt,
   RetryResult,
+} from './types';
+
+export {
   CannotRetryError,
   DEFAULT_RETRY_CONFIG,
 } from './types';

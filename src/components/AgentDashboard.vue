@@ -2,7 +2,9 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { StratixModal, StratixButton, SvgIcon } from '@/components/ui';
 import { getToken } from '@/design-system/config';
-import { agentStore } from '@/stores/agentStore';
+import { useAgentStore } from '@/stores/agent';
+
+const agentStore = useAgentStore();
 import { rtsBridge } from '@/stratix-rts';
 
 interface AgentDashboardItem {

@@ -3,10 +3,12 @@
  * Handles retry logic with exponential backoff, jitter, and source-aware behavior
  */
 
-import {
+import type {
   RetryConfig,
   RetryContext,
   RetryAttempt,
+} from './types';
+import {
   CannotRetryError,
   DEFAULT_RETRY_CONFIG,
 } from './types';

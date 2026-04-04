@@ -2,7 +2,9 @@
 import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import { StratixModal, StratixButton } from '@/components/ui';
 import ProviderSettingsModal from '@/components/ProviderSettingsModal.vue';
-import { agentStore } from '@/stores/agentStore';
+import { useAgentStore } from '@/stores/agent';
+
+const agentStore = useAgentStore();
 import { useChat } from '@/composables/useChat';
 
 const props = defineProps<{

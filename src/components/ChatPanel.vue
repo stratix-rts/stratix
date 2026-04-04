@@ -2,7 +2,9 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { StratixButton, StratixTextarea, StratixLoading, StratixEmpty } from '@/components/ui';
 import type { ProjectChannel, ProjectChannelMessage, AgentBadge, Project } from '../stratix-project/types';
-import { agentStore } from '@/stores/agentStore';
+import { useAgentStore } from '@/stores/agent';
+
+const agentStore = useAgentStore();
 import { CHAT_COMMANDS, filterCommands, type ChatCommand } from './chat-commands';
 
 const props = defineProps<{

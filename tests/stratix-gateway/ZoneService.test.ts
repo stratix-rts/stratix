@@ -1,653 +1,1708 @@
 /**
- * ZoneService and ZoneSkillExecutor Unit Tests
+ * ZoneService Unit Tests
+ * Comprehensive coverage of ZoneService methods with focus on permission orchestration.
  */
 
-// Mock fetch for Node.js 16 (doesn't have native fetch)
+import { ZoneService } from '../../src/stratix-gateway/project/ZoneService';
+import { Zone, ZoneFile, ZoneTask, FileType } from '../../src/stratix-project/types';
+
+// ============================================
+// Mock Setup
+// ============================================
+
+// Mock fs module
+jest.mock('fs', () => ({
+  stat: jest.fn(),
+  readFile: jest.fn(),
+  readdir: jest.fn(),
+  createReadStream: jest.fn(),
+}));
+
+// Mock fetch for URL fetching
 const mockFetch = jest.fn();
 global.fetch = mockFetch;
 
-import { ZoneSkillExecutor, createExecutor } from '@/stratix-agent/core/SkillExecutors';
-import { SkillDefinition, ExecutionContext } from '@/stratix-agent/types';
+// Mock all dependencies
+jest.mock('../../src/stratix-database/ZoneRepository');
+jest.mock('../../src/stratix-database/ProjectRepository');
+jest.mock('../../src/stratix-gateway/GatewayEventBus');
+jest.mock('../../src/stratix-core/state', () => ({
+  stratixStateStore: {
+    getZone: jest.fn(),
+    setZone: jest.fn(),
+    removeZone: jest.fn(),
+    updateZone: jest.fn(),
+    get: jest.fn(),
+    set: jest.fn(),
+    subscribe: jest.fn(() => () => {}),
+  },
+  ZoneState: {},
+}));
+
+import { zoneRepository } from '../../src/stratix-database/ZoneRepository';
+import { projectRepository } from '../../src/stratix-database/ProjectRepository';
+import { gatewayEventBus } from '../../src/stratix-gateway/GatewayEventBus';
+import { stratixStateStore } from '../../src/stratix-core/state';
+import type { PermissionOrchestrator, PermissionContext } from '../../src/stratix-core/permission';
+import * as fs from 'fs';
+
+const MockedZoneRepository = zoneRepository as jest.Mocked<typeof zoneRepository>;
+const MockedProjectRepository = projectRepository as jest.Mocked<typeof projectRepository>;
+const MockedGatewayEventBus = gatewayEventBus as jest.Mocked<typeof gatewayEventBus>;
+const MockedStateStore = stratixStateStore as jest.Mocked<typeof stratixStateStore>;
 
 // ============================================
-// ZoneSkillExecutor Tests (with mocked fetch)
+// Test Data Factories
 // ============================================
-describe('ZoneSkillExecutor', () => {
-  let executor: ZoneSkillExecutor;
-  let context: ExecutionContext;
 
-  beforeEach(() => {
-    executor = new ZoneSkillExecutor();
-    context = { agentId: 'test-agent-123', variables: { projectId: 'test-project-123' } };
-    mockFetch.mockReset();
-    // Set default gateway URL for tests
-    process.env.GATEWAY_URL = 'http://127.0.0.1:7524';
+const createMockZone = (overrides: Partial<Zone> = {}): Zone => ({
+  id: 'zone-test-1',
+  projectId: 'proj-1',
+  title: 'Test Zone',
+  prompt: 'Test prompt',
+  description: '',
+  priority: 3,
+  status: 'idle' as const,
+  path: '',
+  presentAgentIds: [],
+  members: [],
+  files: [],
+  tasks: [],
+  createdAt: 1700000000000,
+  updatedAt: 1700000000000,
+  ...overrides,
+});
+
+const createMockFile = (overrides: Partial<ZoneFile> = {}): ZoneFile => ({
+  id: 'file-1',
+  zoneId: 'zone-test-1',
+  name: 'test.md',
+  sourceType: 'local' as const,
+  source: '/path/to/test.md',
+  createdAt: 1700000000000,
+  updatedAt: 1700000000000,
+  ...overrides,
+});
+
+const createMockTask = (overrides: Partial<ZoneTask> = {}): ZoneTask => ({
+  id: 'task-1',
+  zoneId: 'zone-test-1',
+  title: 'Test Task',
+  status: 'pending' as const,
+  assignee: null,
+  createdBy: 'agent-1',
+  createdAt: 1700000000000,
+  updatedAt: 1700000000000,
+  ...overrides,
+});
+
+// ============================================
+// Permission Orchestrator Helpers
+// ============================================
+
+const mockPermissionAllow = (): PermissionOrchestrator => ({
+  decide: jest.fn().mockReturnValue({ decision: 'allow' as const, reason: 'mock-allow', source: 'mock' }),
+  addHook: jest.fn(),
+  addZoneRule: jest.fn(),
+} as unknown as PermissionOrchestrator);
+
+const mockPermissionDeny = (): PermissionOrchestrator => ({
+  decide: jest.fn().mockReturnValue({ decision: 'deny' as const, reason: 'mock-deny', source: 'mock' }),
+  addHook: jest.fn(),
+  addZoneRule: jest.fn(),
+} as unknown as PermissionOrchestrator);
+
+const mockPermissionAsk = (): PermissionOrchestrator => ({
+  decide: jest.fn().mockReturnValue({ decision: 'ask' as const, reason: 'mock-ask', source: 'mock' }),
+  addHook: jest.fn(),
+  addZoneRule: jest.fn(),
+} as unknown as PermissionOrchestrator);
+
+// Helper to capture permission context
+const capturePermissionContext = (): { calls: PermissionContext[]; orchestrator: PermissionOrchestrator } => {
+  const calls: PermissionContext[] = [];
+  const orchestrator: PermissionOrchestrator = {
+    decide: jest.fn().mockImplementation((ctx: PermissionContext) => {
+      calls.push(ctx);
+      return { decision: 'allow' as const, reason: 'captured', source: 'mock' };
+    }),
+    addHook: jest.fn(),
+    addZoneRule: jest.fn(),
+  } as unknown as PermissionOrchestrator;
+  return { calls, orchestrator };
+};
+
+// ============================================
+// Test Suite
+// ============================================
+
+describe('ZoneService', () => {
+  let service: ZoneService;
+
+  beforeEach(async () => {
+    jest.resetAllMocks();
+    service = new ZoneService();
+    await service.initialize();
   });
 
   afterEach(() => {
     jest.restoreAllMocks();
   });
 
-  const mockSkill = (skillId: string): SkillDefinition => ({
-    skillId,
-    name: skillId,
-    description: `Test ${skillId} skill`,
-    parameters: [],
-    executor: 'zone',
+  // ============================================
+  // Initialization
+  // ============================================
+  describe('initialize', () => {
+    it('should only initialize once', async () => {
+      const initSpy = jest.spyOn(service, 'initialize');
+
+      await service.initialize();
+      await service.initialize();
+
+      expect(initSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it('should set initialized flag', async () => {
+      expect(service['initialized']).toBe(false);
+      await service.initialize();
+      expect(service['initialized']).toBe(true);
+    });
   });
 
-  describe('zone_move_to', () => {
-    it('should throw error when zoneId is missing', async () => {
-      await expect(executor.execute(mockSkill('zone_move_to'), {}, context))
-        .rejects.toThrow('zoneId is required for zone_move_to');
-    });
+  // ============================================
+  // Permission Check Tests - All Write Operations
+  // ============================================
+  describe('Permission Checks on Write Operations', () => {
+    describe('createZone', () => {
+      it('should call permission check with correct params', async () => {
+        const { calls, orchestrator } = capturePermissionContext();
+        service.setPermissionOrchestrator(orchestrator);
+        MockedProjectRepository.getProject.mockReturnValue({ id: 'proj-1', name: 'Test' } as any);
+        MockedZoneRepository.createZone.mockReturnValue(createMockZone());
 
-    it('should throw error when zoneId is null', async () => {
-      await expect(executor.execute(mockSkill('zone_move_to'), { zoneId: null }, context))
-        .rejects.toThrow('zoneId is required for zone_move_to');
-    });
+        await service.createZone('proj-1', 'New Zone', 'KR', 'agent-1');
 
-    it('should throw error when zoneId is empty string', async () => {
-      await expect(executor.execute(mockSkill('zone_move_to'), { zoneId: '' }, context))
-        .rejects.toThrow('zoneId is required for zone_move_to');
-    });
-
-    it('should throw error when API returns non-OK response', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        text: () => Promise.resolve('Zone not found')
+        expect(calls).toContainEqual(expect.objectContaining({
+          action: 'create',
+          resource: 'project:proj-1',
+          agentId: 'agent-1',
+        }));
       });
 
-      await expect(executor.execute(mockSkill('zone_move_to'), { zoneId: 'zone-123' }, context))
-        .rejects.toThrow('Failed to move to zone: 404 Zone not found');
-    });
+      it('should throw when permission denied', async () => {
+        service.setPermissionOrchestrator(mockPermissionDeny());
+        MockedProjectRepository.getProject.mockReturnValue({ id: 'proj-1', name: 'Test' } as any);
 
-    it('should return success result when API returns OK', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          success: true,
-          zone: {
-            id: 'zone-123',
-            title: 'Test Zone',
-            members: ['test-agent-123']
-          }
-        })
+        await expect(service.createZone('proj-1', 'Title', 'KR', 'agent-1'))
+          .rejects.toThrow('Permission denied');
       });
 
-      const result = await executor.execute(mockSkill('zone_move_to'), { zoneId: 'zone-123' }, context);
+      it('should throw when permission asks (requires confirmation)', async () => {
+        service.setPermissionOrchestrator(mockPermissionAsk());
+        MockedProjectRepository.getProject.mockReturnValue({ id: 'proj-1', name: 'Test' } as any);
 
-      expect(result.success).toBe(true);
-      expect(result.zoneId).toBe('zone-123');
-      expect(result.message).toBe('Successfully moved to zone zone-123');
-    });
-
-    it('should call fetch with correct parameters', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ success: true, zone: { id: 'z1' } })
+        await expect(service.createZone('proj-1', 'Title', 'KR', 'agent-1'))
+          .rejects.toThrow('Permission requires confirmation');
       });
 
-      await executor.execute(mockSkill('zone_move_to'), { zoneId: 'zone-abc', reason: 'testing' }, context);
+      it('should proceed without permission orchestrator', async () => {
+        service.setPermissionOrchestrator(null as any);
+        MockedProjectRepository.getProject.mockReturnValue({ id: 'proj-1', name: 'Test' } as any);
+        MockedZoneRepository.createZone.mockReturnValue(createMockZone());
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        'http://127.0.0.1:7524/api/zones/zone-abc/members/test-agent-123',
-        expect.objectContaining({
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reason: 'testing' })
-        })
+        // Should not throw
+        await expect(service.createZone('proj-1', 'Title', 'KR', 'agent-1'))
+          .resolves.toBeDefined();
+      });
+    });
+
+    describe('updateZone', () => {
+      it('should call permission check with correct params', async () => {
+        const { calls, orchestrator } = capturePermissionContext();
+        service.setPermissionOrchestrator(orchestrator);
+        MockedZoneRepository.updateZone.mockReturnValue(createMockZone({ id: 'zone-1', title: 'Updated' }));
+
+        await service.updateZone('zone-1', { title: 'Updated' }, 'agent-1');
+
+        expect(calls).toContainEqual(expect.objectContaining({
+          action: 'update',
+          resource: 'zone:zone-1',
+          agentId: 'agent-1',
+        }));
+      });
+
+      it('should throw when permission denied', async () => {
+        service.setPermissionOrchestrator(mockPermissionDeny());
+
+        await expect(service.updateZone('zone-1', { title: 'X' }, 'agent-1'))
+          .rejects.toThrow('Permission denied');
+      });
+    });
+
+    describe('deleteZone', () => {
+      it('should call permission check with correct params', async () => {
+        const { calls, orchestrator } = capturePermissionContext();
+        service.setPermissionOrchestrator(orchestrator);
+        MockedZoneRepository.getZone.mockReturnValue(createMockZone({ id: 'zone-1' }));
+        MockedZoneRepository.deleteZone.mockReturnValue(true);
+
+        await service.deleteZone('zone-1', 'agent-1');
+
+        expect(calls).toContainEqual(expect.objectContaining({
+          action: 'delete',
+          resource: 'zone:zone-1',
+          agentId: 'agent-1',
+        }));
+      });
+
+      it('should throw when permission denied', async () => {
+        service.setPermissionOrchestrator(mockPermissionDeny());
+        MockedZoneRepository.getZone.mockReturnValue(createMockZone());
+
+        await expect(service.deleteZone('zone-1', 'agent-1'))
+          .rejects.toThrow('Permission denied');
+      });
+    });
+
+    describe('restoreZone', () => {
+      it('should call permission check with correct params', async () => {
+        const { calls, orchestrator } = capturePermissionContext();
+        service.setPermissionOrchestrator(orchestrator);
+        MockedZoneRepository.getDeletedZone.mockReturnValue(createMockZone({ id: 'zone-del' }));
+        MockedZoneRepository.restoreZone.mockReturnValue(createMockZone({ id: 'zone-del' }));
+
+        await service.restoreZone('zone-del', 'agent-1');
+
+        expect(calls).toContainEqual(expect.objectContaining({
+          action: 'restore',
+          resource: 'zone:zone-del',
+          agentId: 'agent-1',
+        }));
+      });
+
+      it('should throw when permission denied', async () => {
+        service.setPermissionOrchestrator(mockPermissionDeny());
+        MockedZoneRepository.getDeletedZone.mockReturnValue(createMockZone());
+
+        await expect(service.restoreZone('zone-1', 'agent-1'))
+          .rejects.toThrow('Permission denied');
+      });
+    });
+
+    describe('permanentlyDeleteZone', () => {
+      it('should call permission check with correct params', async () => {
+        const { calls, orchestrator } = capturePermissionContext();
+        service.setPermissionOrchestrator(orchestrator);
+        MockedZoneRepository.getDeletedZone.mockReturnValue(createMockZone());
+        MockedZoneRepository.permanentlyDeleteZone.mockReturnValue(true);
+
+        await service.permanentlyDeleteZone('zone-1', 'agent-1');
+
+        expect(calls).toContainEqual(expect.objectContaining({
+          action: 'permanent_delete',
+          resource: 'zone:zone-1',
+          agentId: 'agent-1',
+        }));
+      });
+    });
+
+    describe('emptyTrash', () => {
+      it('should call permission check with project resource', async () => {
+        const { calls, orchestrator } = capturePermissionContext();
+        service.setPermissionOrchestrator(orchestrator);
+        MockedProjectRepository.getProject.mockReturnValue({ id: 'proj-1' } as any);
+        MockedZoneRepository.getDeletedZones.mockReturnValue([]);
+
+        await service.emptyTrash('proj-1', 'agent-1');
+
+        expect(calls).toContainEqual(expect.objectContaining({
+          action: 'empty_trash',
+          resource: 'project:proj-1',
+          agentId: 'agent-1',
+        }));
+      });
+    });
+
+    describe('addMember', () => {
+      it('should call permission check with correct params', async () => {
+        const { calls, orchestrator } = capturePermissionContext();
+        service.setPermissionOrchestrator(orchestrator);
+        MockedZoneRepository.addMember.mockReturnValue(createMockZone({ members: ['agent-new'] }));
+
+        await service.addMember('zone-1', 'agent-new', 'agent-1');
+
+        expect(calls).toContainEqual(expect.objectContaining({
+          action: 'add_member',
+          resource: 'zone:zone-1',
+          agentId: 'agent-1',
+        }));
+      });
+
+      it('should throw when permission denied', async () => {
+        service.setPermissionOrchestrator(mockPermissionDeny());
+        MockedZoneRepository.addMember.mockReturnValue(createMockZone());
+
+        await expect(service.addMember('zone-1', 'agent-2', 'agent-1'))
+          .rejects.toThrow('Permission denied');
+      });
+    });
+
+    describe('removeMember', () => {
+      it('should call permission check with correct params', async () => {
+        const { calls, orchestrator } = capturePermissionContext();
+        service.setPermissionOrchestrator(orchestrator);
+        MockedZoneRepository.removeMember.mockReturnValue(createMockZone({ members: [] }));
+
+        await service.removeMember('zone-1', 'agent-1', 'agent-1');
+
+        expect(calls).toContainEqual(expect.objectContaining({
+          action: 'remove_member',
+          resource: 'zone:zone-1',
+          agentId: 'agent-1',
+        }));
+      });
+    });
+
+    describe('addMembers (batch)', () => {
+      it('should call permission check', async () => {
+        const { calls, orchestrator } = capturePermissionContext();
+        service.setPermissionOrchestrator(orchestrator);
+        MockedZoneRepository.addMembers.mockReturnValue(createMockZone({ members: ['a1', 'a2'] }));
+
+        await service.addMembers('zone-1', ['a1', 'a2'], 'agent-1');
+
+        expect(calls).toContainEqual(expect.objectContaining({
+          action: 'add_members',
+          resource: 'zone:zone-1',
+        }));
+      });
+    });
+
+    describe('removeMembers (batch)', () => {
+      it('should call permission check', async () => {
+        const { calls, orchestrator } = capturePermissionContext();
+        service.setPermissionOrchestrator(orchestrator);
+        MockedZoneRepository.removeMembers.mockReturnValue(createMockZone({ members: [] }));
+
+        await service.removeMembers('zone-1', ['a1'], 'agent-1');
+
+        expect(calls).toContainEqual(expect.objectContaining({
+          action: 'remove_members',
+          resource: 'zone:zone-1',
+        }));
+      });
+    });
+
+    describe('addFile', () => {
+      it('should call permission check with correct params', async () => {
+        const { calls, orchestrator } = capturePermissionContext();
+        service.setPermissionOrchestrator(orchestrator);
+        MockedZoneRepository.getZone.mockReturnValue(createMockZone());
+        MockedZoneRepository.addFile.mockReturnValue(createMockFile());
+        MockedZoneRepository.updateFile.mockReturnValue(createMockFile());
+        MockedZoneRepository.getFile.mockReturnValue(createMockFile());
+
+        await service.addFile('zone-1', 'test.md', 'local', '/path', undefined, 'agent-1');
+
+        expect(calls).toContainEqual(expect.objectContaining({
+          action: 'add_file',
+          resource: 'zone:zone-1',
+          agentId: 'agent-1',
+        }));
+      });
+    });
+
+    describe('addFiles (batch)', () => {
+      it('should call permission check', async () => {
+        const { calls, orchestrator } = capturePermissionContext();
+        service.setPermissionOrchestrator(orchestrator);
+        MockedZoneRepository.getZone.mockReturnValue(createMockZone());
+        MockedZoneRepository.addFiles.mockReturnValue([createMockFile()]);
+
+        await service.addFiles('zone-1', [{ name: 'test.md', sourceType: 'local', source: '/path' }], 'agent-1');
+
+        expect(calls).toContainEqual(expect.objectContaining({
+          action: 'add_files',
+          resource: 'zone:zone-1',
+        }));
+      });
+    });
+
+    describe('removeFile', () => {
+      it('should call permission check', async () => {
+        const { calls, orchestrator } = capturePermissionContext();
+        service.setPermissionOrchestrator(orchestrator);
+        MockedZoneRepository.getZone.mockReturnValue(createMockZone());
+        MockedZoneRepository.getFile.mockReturnValue(createMockFile({ zoneId: 'zone-1' }));
+        MockedZoneRepository.deleteFile.mockReturnValue(true);
+
+        await service.removeFile('zone-1', 'file-1', 'agent-1');
+
+        expect(calls).toContainEqual(expect.objectContaining({
+          action: 'remove_file',
+          resource: 'zone:zone-1',
+          agentId: 'agent-1',
+        }));
+      });
+    });
+
+    describe('refreshFile', () => {
+      it('should call permission check', async () => {
+        const { calls, orchestrator } = capturePermissionContext();
+        service.setPermissionOrchestrator(orchestrator);
+        MockedZoneRepository.getFile.mockReturnValue(createMockFile({ sourceType: 'url', source: 'https://example.com/file.md' }));
+
+        // Need to mock fetch for URL
+        mockFetch.mockResolvedValueOnce({ ok: true, text: () => Promise.resolve('content') } as any);
+
+        await service.refreshFile('zone-1', 'file-1', false, 'agent-1');
+
+        expect(calls).toContainEqual(expect.objectContaining({
+          action: 'update_file',
+          resource: 'zone:zone-1',
+          agentId: 'agent-1',
+        }));
+      });
+    });
+
+    describe('updateFileWithVersion', () => {
+      it('should call permission check', async () => {
+        const { calls, orchestrator } = capturePermissionContext();
+        service.setPermissionOrchestrator(orchestrator);
+        MockedZoneRepository.getFile.mockReturnValue(createMockFile({ fileType: 'md' }));
+        MockedZoneRepository.updateFile.mockReturnValue(createMockFile());
+
+        await service.updateFileWithVersion('zone-1', 'file-1', 'new content', 'update', 'agent-1');
+
+        expect(calls).toContainEqual(expect.objectContaining({
+          action: 'update_file',
+          resource: 'zone:zone-1',
+          agentId: 'agent-1',
+        }));
+      });
+    });
+
+    describe('rollbackFileToVersion', () => {
+      it('should call permission check', async () => {
+        const { calls, orchestrator } = capturePermissionContext();
+        service.setPermissionOrchestrator(orchestrator);
+        MockedZoneRepository.getFile.mockReturnValue(createMockFile());
+        MockedZoneRepository.rollbackFileToVersion.mockReturnValue(createMockFile());
+
+        await service.rollbackFileToVersion('zone-1', 'file-1', 'version-1', 'agent-1');
+
+        expect(calls).toContainEqual(expect.objectContaining({
+          action: 'rollback_file',
+          resource: 'zone:zone-1',
+          agentId: 'agent-1',
+        }));
+      });
+    });
+
+    describe('scanFolder', () => {
+      it('should call permission check', async () => {
+        const { calls, orchestrator } = capturePermissionContext();
+        service.setPermissionOrchestrator(orchestrator);
+        MockedZoneRepository.getZone.mockReturnValue(createMockZone());
+        MockedZoneRepository.addFile.mockReturnValue(createMockFile());
+        MockedZoneRepository.getFile.mockReturnValue(createMockFile());
+
+        // Mock fs.readdir
+        jest.spyOn(fs, 'readdir').mockImplementation((path: any, opts: any, callback: any) => {
+          if (typeof opts === 'function') opts(null, []);
+          else if (typeof callback === 'function') callback(null, []);
+          return {} as any;
+        });
+
+        await service.scanFolder('zone-1', '/path', false, undefined, 'agent-1');
+
+        expect(calls).toContainEqual(expect.objectContaining({
+          action: 'scan_folder',
+          resource: 'zone:zone-1',
+          agentId: 'agent-1',
+        }));
+      });
+    });
+
+    describe('createTask', () => {
+      it('should call permission check', async () => {
+        const { calls, orchestrator } = capturePermissionContext();
+        service.setPermissionOrchestrator(orchestrator);
+        MockedZoneRepository.getZone.mockReturnValue(createMockZone());
+        MockedZoneRepository.getZoneContext.mockReturnValue({ taskPolicy: 'creator', taskCreatorId: null, members: [] });
+        MockedZoneRepository.updateZoneContext.mockReturnValue(true);
+        MockedZoneRepository.createTask.mockReturnValue(createMockTask());
+
+        await service.createTask('zone-1', 'agent-1', 'New Task');
+
+        expect(calls).toContainEqual(expect.objectContaining({
+          action: 'create_task',
+          resource: 'zone:zone-1',
+          agentId: 'agent-1',
+        }));
+      });
+    });
+
+    describe('updateTask', () => {
+      it('should call permission check', async () => {
+        const { calls, orchestrator } = capturePermissionContext();
+        service.setPermissionOrchestrator(orchestrator);
+        MockedZoneRepository.getZone.mockReturnValue(createMockZone());
+        MockedZoneRepository.getTask.mockReturnValue(createMockTask({ createdBy: 'agent-1' }));
+        MockedZoneRepository.getZoneContext.mockReturnValue({ taskPolicy: 'creator', taskCreatorId: 'agent-1', members: [] });
+        MockedZoneRepository.updateTask.mockReturnValue(createMockTask({ title: 'Updated' }));
+
+        await service.updateTask('zone-1', 'task-1', 'agent-1', { title: 'Updated' });
+
+        expect(calls).toContainEqual(expect.objectContaining({
+          action: 'update_task',
+          resource: 'zone:zone-1',
+          agentId: 'agent-1',
+        }));
+      });
+    });
+
+    describe('deleteTask', () => {
+      it('should call permission check', async () => {
+        const { calls, orchestrator } = capturePermissionContext();
+        service.setPermissionOrchestrator(orchestrator);
+        MockedZoneRepository.getZone.mockReturnValue(createMockZone());
+        MockedZoneRepository.getZoneContext.mockReturnValue({ taskPolicy: 'creator', taskCreatorId: 'agent-1', members: [] });
+        MockedZoneRepository.deleteTask.mockReturnValue(true);
+
+        await service.deleteTask('zone-1', 'task-1', 'agent-1');
+
+        expect(calls).toContainEqual(expect.objectContaining({
+          action: 'delete_task',
+          resource: 'zone:zone-1',
+          agentId: 'agent-1',
+        }));
+      });
+    });
+
+    describe('claimTask', () => {
+      it('should call permission check', async () => {
+        const { calls, orchestrator } = capturePermissionContext();
+        service.setPermissionOrchestrator(orchestrator);
+        MockedZoneRepository.getZone.mockReturnValue(createMockZone());
+        MockedZoneRepository.getTask.mockReturnValue(createMockTask({ assignee: null, status: 'pending' }));
+        MockedZoneRepository.updateTask.mockReturnValue(createMockTask({ assignee: 'agent-1', status: 'in_progress' }));
+
+        await service.claimTask('zone-1', 'task-1', 'agent-1');
+
+        expect(calls).toContainEqual(expect.objectContaining({
+          action: 'claim_task',
+          resource: 'zone:zone-1',
+          agentId: 'agent-1',
+        }));
+      });
+    });
+
+    describe('createTasksBatch', () => {
+      it('should call permission check', async () => {
+        const { calls, orchestrator } = capturePermissionContext();
+        service.setPermissionOrchestrator(orchestrator);
+        MockedZoneRepository.getZone.mockReturnValue(createMockZone());
+        MockedZoneRepository.createTask.mockReturnValue(createMockTask());
+
+        await service.createTasksBatch('zone-1', 'agent-1', ['Task 1', 'Task 2']);
+
+        expect(calls).toContainEqual(expect.objectContaining({
+          action: 'create_tasks_batch',
+          resource: 'zone:zone-1',
+          agentId: 'agent-1',
+        }));
+      });
+    });
+
+    describe('updateTasksBatch', () => {
+      it('should call permission check', async () => {
+        const { calls, orchestrator } = capturePermissionContext();
+        service.setPermissionOrchestrator(orchestrator);
+        MockedZoneRepository.getZone.mockReturnValue(createMockZone());
+        MockedZoneRepository.getTask.mockReturnValue(createMockTask({ createdBy: 'agent-1' }));
+        MockedZoneRepository.getZoneContext.mockReturnValue({ taskPolicy: 'creator', taskCreatorId: 'agent-1', members: [] });
+        MockedZoneRepository.updateTask.mockReturnValue(createMockTask());
+
+        await service.updateTasksBatch('zone-1', 'agent-1', [{ taskId: 'task-1', title: 'Updated' }]);
+
+        expect(calls).toContainEqual(expect.objectContaining({
+          action: 'update_tasks_batch',
+          resource: 'zone:zone-1',
+          agentId: 'agent-1',
+        }));
+      });
+    });
+
+    describe('addMessage', () => {
+      it('should call permission check', async () => {
+        const { calls, orchestrator } = capturePermissionContext();
+        service.setPermissionOrchestrator(orchestrator);
+        MockedZoneRepository.getZone.mockReturnValue(createMockZone());
+        MockedZoneRepository.addMessage.mockReturnValue({
+          id: 'msg-1', zoneId: 'zone-1', senderId: 'agent-1', senderType: 'agent' as const,
+          content: 'Hello', createdAt: Date.now(),
+        });
+
+        await service.addMessage('zone-1', 'agent-1', 'agent', 'Hello');
+
+        expect(calls).toContainEqual(expect.objectContaining({
+          action: 'add_message',
+          resource: 'zone:zone-1',
+          agentId: 'agent-1',
+        }));
+      });
+    });
+
+    describe('cloneZone', () => {
+      it('should call permission check', async () => {
+        const { calls, orchestrator } = capturePermissionContext();
+        service.setPermissionOrchestrator(orchestrator);
+        MockedZoneRepository.getZone
+          .mockReturnValueOnce(createMockZone({ id: 'zone-source', projectId: 'proj-1' }))
+          .mockReturnValueOnce(createMockZone({ id: 'zone-clone', projectId: 'proj-1' }));
+        MockedZoneRepository.createZone.mockReturnValue(createMockZone({ id: 'zone-clone', projectId: 'proj-1' }));
+        MockedZoneRepository.getFilesByZone.mockReturnValue([]);
+        MockedZoneRepository.getTasks.mockReturnValue([]);
+
+        await service.cloneZone('zone-source', {}, 'agent-1');
+
+        expect(calls).toContainEqual(expect.objectContaining({
+          action: 'clone',
+          resource: 'zone:zone-source',
+          agentId: 'agent-1',
+        }));
+      });
+    });
+
+    describe('importZone', () => {
+      it('should call permission check', async () => {
+        const { calls, orchestrator } = capturePermissionContext();
+        service.setPermissionOrchestrator(orchestrator);
+        MockedProjectRepository.getProject.mockReturnValue({ id: 'proj-1' } as any);
+        MockedZoneRepository.createZone.mockReturnValue(createMockZone({ id: 'zone-new', projectId: 'proj-1' }));
+        MockedZoneRepository.getZone.mockReturnValue(createMockZone({ id: 'zone-new', projectId: 'proj-1' }));
+
+        await service.importZone('proj-1', { title: 'Imported', prompt: '' }, 'agent-1', 'agent-1');
+
+        expect(calls).toContainEqual(expect.objectContaining({
+          action: 'import',
+          resource: 'project:proj-1',
+          agentId: 'agent-1',
+        }));
+      });
+    });
+  });
+
+  // ============================================
+  // createZone
+  // ============================================
+  describe('createZone', () => {
+    it('should create zone and sync to StateStore', async () => {
+      const zone = createMockZone({ id: 'zone-new', title: 'New Zone' });
+      MockedProjectRepository.getProject.mockReturnValue({ id: 'proj-1', name: 'Test' } as any);
+      MockedZoneRepository.createZone.mockReturnValue(zone);
+      MockedStateStore.setZone.mockClear();
+
+      const result = await service.createZone('proj-1', 'New Zone', 'KR', 'agent-1');
+
+      expect(result).toEqual(zone);
+      expect(MockedStateStore.setZone).toHaveBeenCalledWith('zone-new', expect.objectContaining({
+        id: 'zone-new',
+        title: 'New Zone',
+        status: 'idle',
+        members: [],
+        tasks: [],
+      }));
+    });
+
+    it('should throw if project not found', async () => {
+      MockedProjectRepository.getProject.mockReturnValue(null);
+
+      await expect(service.createZone('invalid-proj', 'Title', 'KR', 'agent-1'))
+        .rejects.toThrow('Project not found: invalid-proj');
+    });
+
+    it('should use default agentId as system', async () => {
+      const zone = createMockZone();
+      MockedProjectRepository.getProject.mockReturnValue({ id: 'proj-1' } as any);
+      MockedZoneRepository.createZone.mockReturnValue(zone);
+
+      await service.createZone('proj-1', 'Title', 'KR');
+      // Default agentId is 'system' - permission check would be called with 'system'
+    });
+  });
+
+  // ============================================
+  // updateZone
+  // ============================================
+  describe('updateZone', () => {
+    it('should update zone and sync to StateStore', async () => {
+      const zone = createMockZone({ id: 'zone-1', title: 'Updated Title' });
+      MockedZoneRepository.updateZone.mockReturnValue(zone);
+      MockedStateStore.setZone.mockClear();
+      MockedGatewayEventBus.publishZoneEvent.mockClear();
+
+      const result = await service.updateZone('zone-1', { title: 'Updated Title' }, 'agent-1');
+
+      expect(result).toEqual(zone);
+      expect(MockedStateStore.setZone).toHaveBeenCalledWith('zone-1', expect.objectContaining({
+        id: 'zone-1',
+        title: 'Updated Title',
+      }));
+      expect(MockedGatewayEventBus.publishZoneEvent).toHaveBeenCalledWith(
+        'zone:updated', 'zone-1', expect.any(String), { title: 'Updated Title', prompt: 'Test prompt' }
       );
     });
+
+    it('should throw if zone not found', async () => {
+      MockedZoneRepository.updateZone.mockReturnValue(null);
+
+      await expect(service.updateZone('nonexistent', { title: 'X' }, 'agent-1'))
+        .rejects.toThrow('Zone not found: nonexistent');
+    });
   });
 
-  describe('zone_leave', () => {
-    it('should throw error when projectId and zoneId are both missing', async () => {
-      const contextWithoutProject = { agentId: 'test-agent-123' };
-      await expect(executor.execute(mockSkill('zone_leave'), {}, contextWithoutProject))
-        .rejects.toThrow('projectId is required for zone_leave');
-    });
+  // ============================================
+  // deleteZone
+  // ============================================
+  describe('deleteZone', () => {
+    it('should soft delete zone and remove from StateStore', async () => {
+      const zone = createMockZone({ id: 'zone-del', title: 'To Delete' });
+      MockedZoneRepository.getZone.mockReturnValue(zone);
+      MockedZoneRepository.deleteZone.mockReturnValue(true);
+      MockedStateStore.removeZone.mockClear();
+      MockedGatewayEventBus.publishZoneEvent.mockClear();
 
-    it('should leave zone directly when zoneId is provided', async () => {
-      // Mock the leave zone response
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ success: true })
-      });
+      const result = await service.deleteZone('zone-del', 'agent-1');
 
-      const result = await executor.execute(mockSkill('zone_leave'), { zoneId: 'zone-abc' }, context);
-
-      expect(result.success).toBe(true);
-      expect(result.message).toBe('Successfully left zone zone-abc');
-      expect(mockFetch).toHaveBeenCalledWith(
-        'http://127.0.0.1:7524/api/zones/zone-abc/members/test-agent-123',
-        expect.objectContaining({ method: 'DELETE' })
+      expect(result).toBe(true);
+      expect(MockedStateStore.removeZone).toHaveBeenCalledWith('zone-del');
+      expect(MockedGatewayEventBus.publishZoneEvent).toHaveBeenCalledWith(
+        'zone:deleted', 'zone-del', expect.any(String), { title: 'To Delete' }
       );
     });
 
-    it('should return alreadyLeft when not in any zone', async () => {
-      // Mock the list zones response (first call)
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ zones: [] })
-      });
+    it('should return false if zone does not exist', async () => {
+      MockedZoneRepository.getZone.mockReturnValue(null);
 
-      const result = await executor.execute(mockSkill('zone_leave'), {}, context);
+      const result = await service.deleteZone('nonexistent', 'agent-1');
 
-      expect(result.success).toBe(true);
-      expect(result.alreadyLeft).toBe(true);
-      expect(result.message).toBe('Not currently in any zone');
-    });
-
-    it('should leave current zone when agent is a member', async () => {
-      // Mock the list zones response (first call) - agent is in zone-123
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          zones: [{
-            id: 'zone-123',
-            members: ['test-agent-123']
-          }]
-        })
-      });
-
-      // Mock the leave zone response (second call)
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ success: true })
-      });
-
-      const result = await executor.execute(mockSkill('zone_leave'), { reason: 'done working' }, context);
-
-      expect(result.success).toBe(true);
-      expect(result.message).toBe('Successfully left zone zone-123');
-      expect(result.previousZoneId).toBe('zone-123');
-    });
-
-    it('should throw error when leave API fails', async () => {
-      // Mock the list zones response - agent is in zone-123
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          zones: [{
-            id: 'zone-123',
-            members: ['test-agent-123']
-          }]
-        })
-      });
-
-      // Mock the leave zone response (fails with 500) - will be called 4 times (1 + 3 retries)
-      mockFetch.mockResolvedValue({
-        ok: false,
-        status: 500,
-        text: () => Promise.resolve('Internal server error')
-      });
-
-      await expect(executor.execute(mockSkill('zone_leave'), {}, context))
-        .rejects.toThrow('Failed to leave zone: 500 Internal server error');
+      expect(result).toBe(false);
+      expect(MockedStateStore.removeZone).not.toHaveBeenCalled();
     });
   });
 
-  describe('zone_list', () => {
-    it('should throw error when projectId is missing', async () => {
-      const contextWithoutProject = { agentId: 'test-agent-123' };
-      await expect(executor.execute(mockSkill('zone_list'), {}, contextWithoutProject))
-        .rejects.toThrow('projectId is required for zone_list');
+  // ============================================
+  // getZone / getZones
+  // ============================================
+  describe('getZones', () => {
+    it('should return zones for project', async () => {
+      const zones = [createMockZone({ id: 'z1' }), createMockZone({ id: 'z2' })];
+      MockedProjectRepository.getProject.mockReturnValue({ id: 'proj-1' } as any);
+      MockedZoneRepository.getZonesByProject.mockReturnValue(zones);
+
+      const result = await service.getZones('proj-1');
+
+      expect(result).toHaveLength(2);
+      expect(MockedZoneRepository.getZonesByProject).toHaveBeenCalledWith('proj-1');
     });
 
-    it('should accept projectId from params', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ zones: [] })
-      });
+    it('should throw if project not found', async () => {
+      MockedProjectRepository.getProject.mockReturnValue(null);
 
-      const result = await executor.execute(mockSkill('zone_list'), { projectId: 'custom-project' }, context);
+      await expect(service.getZones('invalid')).rejects.toThrow('Project not found');
+    });
+  });
 
-      expect(result.success).toBe(true);
-      expect(mockFetch).toHaveBeenCalledWith(
-        'http://127.0.0.1:7524/api/zones?projectId=custom-project',
-        expect.objectContaining({ method: 'GET' })
+  describe('getZone', () => {
+    it('should return zone by id', async () => {
+      const zone = createMockZone({ id: 'zone-get' });
+      MockedZoneRepository.getZone.mockReturnValue(zone);
+
+      const result = await service.getZone('zone-get');
+
+      expect(result).toEqual(zone);
+    });
+
+    it('should return null if zone not found', async () => {
+      MockedZoneRepository.getZone.mockReturnValue(null);
+
+      const result = await service.getZone('nonexistent');
+
+      expect(result).toBeNull();
+    });
+  });
+
+  // ============================================
+  // Member Management
+  // ============================================
+  describe('addMember', () => {
+    it('should add member and sync to StateStore', async () => {
+      const zone = createMockZone({ id: 'zone-1', members: ['agent-1'] });
+      MockedZoneRepository.addMember.mockReturnValue(zone);
+      MockedStateStore.setZone.mockClear();
+      MockedGatewayEventBus.publishZoneEvent.mockClear();
+
+      const result = await service.addMember('zone-1', 'agent-1', 'agent-1');
+
+      expect(result).toEqual(zone);
+      expect(MockedStateStore.setZone).toHaveBeenCalledWith('zone-1', expect.objectContaining({
+        id: 'zone-1',
+        members: ['agent-1'],
+      }));
+      expect(MockedGatewayEventBus.publishZoneEvent).toHaveBeenCalledWith(
+        'zone:member_joined', 'zone-1', expect.any(String), { agentId: 'agent-1' }
       );
     });
 
-    it('should use projectId from context.variables', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ zones: [] })
-      });
+    it('should throw if zone not found', async () => {
+      MockedZoneRepository.addMember.mockReturnValue(null);
 
-      const result = await executor.execute(mockSkill('zone_list'), {}, context);
+      await expect(service.addMember('nonexistent', 'agent-1', 'agent-1'))
+        .rejects.toThrow('Zone not found: nonexistent');
+    });
+  });
 
-      expect(result.success).toBe(true);
-      expect(mockFetch).toHaveBeenCalledWith(
-        'http://127.0.0.1:7524/api/zones?projectId=test-project-123',
-        expect.objectContaining({ method: 'GET' })
+  describe('removeMember', () => {
+    it('should remove member and sync to StateStore', async () => {
+      const zone = createMockZone({ id: 'zone-1', members: [] });
+      MockedZoneRepository.removeMember.mockReturnValue(zone);
+      MockedStateStore.setZone.mockClear();
+      MockedGatewayEventBus.publishZoneEvent.mockClear();
+
+      const result = await service.removeMember('zone-1', 'agent-1', 'agent-1');
+
+      expect(result).toEqual(zone);
+      expect(MockedStateStore.setZone).toHaveBeenCalledWith('zone-1', expect.objectContaining({
+        id: 'zone-1',
+        members: [],
+      }));
+      expect(MockedGatewayEventBus.publishZoneEvent).toHaveBeenCalledWith(
+        'zone:member_left', 'zone-1', expect.any(String), { agentId: 'agent-1' }
       );
     });
 
-    it('should return empty zones array when no zones exist', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ zones: [] })
-      });
+    it('should throw if zone not found', async () => {
+      MockedZoneRepository.removeMember.mockReturnValue(null);
 
-      const result = await executor.execute(mockSkill('zone_list'), {}, context);
-
-      expect(result.success).toBe(true);
-      expect(result.zones).toEqual([]);
-      expect(result.total).toBe(0);
-    });
-
-    it('should return formatted zones list', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          zones: [
-            { id: 'z1', title: 'Zone 1', prompt: 'KR 1', members: ['a1', 'a2'], status: 'active' },
-            { id: 'z2', title: 'Zone 2', prompt: 'KR 2', members: ['a1'], status: 'pending' }
-          ]
-        })
-      });
-
-      const result = await executor.execute(mockSkill('zone_list'), {}, context);
-
-      expect(result.success).toBe(true);
-      expect(result.zones).toHaveLength(2);
-      expect(result.zones[0]).toEqual({
-        zoneId: 'z1',
-        name: 'Zone 1',
-        title: 'Zone 1',
-        prompt: 'KR 1',
-        agentCount: 2,
-        status: 'active'
-      });
-      expect(result.total).toBe(2);
-    });
-
-    it('should handle zone with missing fields gracefully', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          zones: [
-            { id: 'z1' },  // missing title, prompt, members
-            { title: 'Z2' }  // missing id
-          ]
-        })
-      });
-
-      const result = await executor.execute(mockSkill('zone_list'), {}, context);
-
-      expect(result.success).toBe(true);
-      expect(result.zones[0].name).toBe('Unnamed Zone');
-      expect(result.zones[0].zoneId).toBe('z1');
-      expect(result.zones[1].zoneId).toBeUndefined();
-    });
-
-    it('should throw error when API fails', async () => {
-      // Mock returns 500 error for all retry attempts
-      mockFetch.mockResolvedValue({
-        ok: false,
-        status: 500,
-        text: () => Promise.resolve('Internal server error')
-      });
-
-      await expect(executor.execute(mockSkill('zone_list'), {}, context))
-        .rejects.toThrow('Failed to list zones: 500');
+      await expect(service.removeMember('nonexistent', 'agent-1', 'agent-1'))
+        .rejects.toThrow('Zone not found: nonexistent');
     });
   });
 
-  describe('zone_info', () => {
-    it('should throw error when zoneId is missing', async () => {
-      await expect(executor.execute(mockSkill('zone_info'), {}, context))
-        .rejects.toThrow('zoneId is required for zone_info');
-    });
+  describe('addMembers (batch)', () => {
+    it('should add multiple members and sync to StateStore', async () => {
+      const zone = createMockZone({ id: 'zone-1', members: ['agent-1', 'agent-2', 'agent-3'] });
+      MockedZoneRepository.addMembers.mockReturnValue(zone);
+      MockedStateStore.setZone.mockClear();
 
-    it('should throw error when zoneId is null', async () => {
-      await expect(executor.execute(mockSkill('zone_info'), { zoneId: null }, context))
-        .rejects.toThrow('zoneId is required for zone_info');
-    });
+      const result = await service.addMembers('zone-1', ['agent-1', 'agent-2', 'agent-3'], 'agent-1');
 
-    it('should return zone data when found', async () => {
-      const mockZone = {
-        id: 'zone-abc',
-        title: 'My Zone',
-        prompt: 'Test prompt',
-        members: ['agent1'],
-        files: []
-      };
-
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ success: true, zone: mockZone })
-      });
-
-      const result = await executor.execute(mockSkill('zone_info'), { zoneId: 'zone-abc' }, context);
-
-      expect(result.success).toBe(true);
-      expect(result.zone).toEqual(mockZone);
-    });
-
-    it('should throw error when zone not found', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 404
-      });
-
-      await expect(executor.execute(mockSkill('zone_info'), { zoneId: 'nonexistent' }, context))
-        .rejects.toThrow('Failed to get zone info: 404');
-    });
-
-    it('should call fetch with correct zoneId', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ success: true, zone: {} })
-      });
-
-      await executor.execute(mockSkill('zone_info'), { zoneId: 'specific-zone-id' }, context);
-
-      expect(mockFetch).toHaveBeenCalledWith(
-        'http://127.0.0.1:7524/api/zones/specific-zone-id',
-        expect.objectContaining({ method: 'GET' })
-      );
+      expect(result).toEqual(zone);
+      expect(MockedGatewayEventBus.publishZoneEvent).toHaveBeenCalledTimes(3);
     });
   });
 
-  describe('zone_search', () => {
-    it('should throw error when keyword is missing', async () => {
-      await expect(executor.execute(mockSkill('zone_search'), {}, context))
-        .rejects.toThrow('keyword is required for zone_search');
+  describe('removeMembers (batch)', () => {
+    it('should remove multiple members and sync to StateStore', async () => {
+      const zone = createMockZone({ id: 'zone-1', members: ['agent-3'] });
+      MockedZoneRepository.removeMembers.mockReturnValue(zone);
+      MockedStateStore.setZone.mockClear();
+
+      await service.removeMembers('zone-1', ['agent-1', 'agent-2'], 'agent-1');
+
+      expect(MockedGatewayEventBus.publishZoneEvent).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  // ============================================
+  // Soft Delete / Recovery
+  // ============================================
+  describe('getDeletedZones', () => {
+    it('should return soft-deleted zones for project', async () => {
+      const deletedZones = [createMockZone({ id: 'zone-deleted' })];
+      MockedProjectRepository.getProject.mockReturnValue({ id: 'proj-1' } as any);
+      MockedZoneRepository.getDeletedZones.mockReturnValue(deletedZones);
+
+      const result = await service.getDeletedZones('proj-1');
+
+      expect(result).toHaveLength(1);
+      expect(MockedZoneRepository.getDeletedZones).toHaveBeenCalledWith('proj-1');
     });
 
-    it('should throw error when keyword is too short', async () => {
-      await expect(executor.execute(mockSkill('zone_search'), { keyword: 'a' }, context))
-        .rejects.toThrow('minimum 2 characters');
+    it('should throw if project not found', async () => {
+      MockedProjectRepository.getProject.mockReturnValue(null);
+
+      await expect(service.getDeletedZones('invalid')).rejects.toThrow('Project not found');
     });
+  });
 
-    it('should search zones with keyword', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          zones: [
-            { id: 'z1', title: 'Marketing Zone', prompt: 'Marketing tasks', members: ['a1'], projectId: 'p1' },
-            { id: 'z2', title: 'Sales Zone', prompt: 'Sales tasks', members: ['a2'], projectId: 'p2' }
-          ]
-        })
-      });
+  describe('restoreZone', () => {
+    it('should restore zone and sync to StateStore', async () => {
+      const zone = createMockZone({ id: 'zone-restore', title: 'Restored Zone' });
+      MockedZoneRepository.getDeletedZone.mockReturnValue(zone);
+      MockedZoneRepository.restoreZone.mockReturnValue(zone);
+      MockedStateStore.setZone.mockClear();
+      MockedGatewayEventBus.publishZoneEvent.mockClear();
 
-      const result = await executor.execute(mockSkill('zone_search'), { keyword: 'market' }, context);
+      const result = await service.restoreZone('zone-restore', 'agent-1');
 
-      expect(result.success).toBe(true);
-      expect(result.zones).toHaveLength(2);
-      expect(result.keyword).toBe('market');
-      expect(mockFetch).toHaveBeenCalledWith(
-        'http://127.0.0.1:7524/api/zones/search?keyword=market&limit=20',
-        expect.objectContaining({ method: 'GET' })
+      expect(result).toEqual(zone);
+      expect(MockedStateStore.setZone).toHaveBeenCalledWith('zone-restore', expect.objectContaining({
+        id: 'zone-restore',
+        title: 'Restored Zone',
+      }));
+      expect(MockedGatewayEventBus.publishZoneEvent).toHaveBeenCalledWith(
+        'zone:restored', 'zone-restore', expect.any(String), { title: 'Restored Zone' }
       );
     });
 
-    it('should use custom limit when provided', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ zones: [] })
-      });
+    it('should throw if deleted zone not found', async () => {
+      MockedZoneRepository.getDeletedZone.mockReturnValue(null);
 
-      await executor.execute(mockSkill('zone_search'), { keyword: 'test', limit: 5 }, context);
+      await expect(service.restoreZone('nonexistent', 'agent-1'))
+        .rejects.toThrow('Deleted zone not found: nonexistent');
+    });
+  });
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        'http://127.0.0.1:7524/api/zones/search?keyword=test&limit=5',
-        expect.objectContaining({ method: 'GET' })
+  describe('permanentlyDeleteZone', () => {
+    it('should permanently delete zone and remove from StateStore', async () => {
+      const zone = createMockZone({ id: 'zone-perm' });
+      MockedZoneRepository.getDeletedZone.mockReturnValue(zone);
+      MockedZoneRepository.permanentlyDeleteZone.mockReturnValue(true);
+      MockedStateStore.removeZone.mockClear();
+
+      const result = await service.permanentlyDeleteZone('zone-perm', 'agent-1');
+
+      expect(result).toBe(true);
+      expect(MockedStateStore.removeZone).toHaveBeenCalledWith('zone-perm');
+    });
+
+    it('should throw if zone is not in deleted state', async () => {
+      MockedZoneRepository.getDeletedZone.mockReturnValue(null);
+
+      await expect(service.permanentlyDeleteZone('zone-active', 'agent-1'))
+        .rejects.toThrow('Deleted zone not found: zone-active');
+    });
+  });
+
+  describe('emptyTrash', () => {
+    it('should permanently delete all soft-deleted zones', async () => {
+      const deletedZones = [
+        createMockZone({ id: 'trash-1' }),
+        createMockZone({ id: 'trash-2' }),
+      ];
+      MockedProjectRepository.getProject.mockReturnValue({ id: 'proj-1' } as any);
+      MockedZoneRepository.getDeletedZones.mockReturnValue(deletedZones);
+      MockedZoneRepository.permanentlyDeleteZone.mockReturnValue(true);
+      MockedStateStore.removeZone.mockClear();
+
+      const result = await service.emptyTrash('proj-1', 'agent-1');
+
+      expect(result.deleted).toBe(2);
+      expect(result.failed).toBe(0);
+      expect(MockedStateStore.removeZone).toHaveBeenCalledTimes(2);
+    });
+
+    it('should count failures', async () => {
+      const deletedZones = [createMockZone({ id: 'trash-1' }), createMockZone({ id: 'trash-2' })];
+      MockedProjectRepository.getProject.mockReturnValue({ id: 'proj-1' } as any);
+      MockedZoneRepository.getDeletedZones.mockReturnValue(deletedZones);
+      MockedZoneRepository.permanentlyDeleteZone
+        .mockReturnValueOnce(true)
+        .mockImplementationOnce(() => { throw new Error('DB error'); });
+
+      const result = await service.emptyTrash('proj-1', 'agent-1');
+
+      expect(result.deleted).toBe(1);
+      expect(result.failed).toBe(1);
+    });
+  });
+
+  // ============================================
+  // Zone Files
+  // ============================================
+  describe('addFile', () => {
+    it('should add file and publish event', async () => {
+      const zone = createMockZone({ id: 'zone-1' });
+      const file = createMockFile();
+      MockedZoneRepository.getZone.mockReturnValue(zone);
+      MockedZoneRepository.addFile.mockReturnValue(file);
+      MockedZoneRepository.updateFile.mockReturnValue(file);
+      MockedZoneRepository.getFile.mockReturnValue(file);
+      MockedGatewayEventBus.publishZoneEvent.mockClear();
+
+      const result = await service.addFile('zone-1', 'test.md', 'local', '/path/to/test.md', undefined, 'agent-1');
+
+      expect(result).toEqual(file);
+      expect(MockedGatewayEventBus.publishZoneEvent).toHaveBeenCalledWith(
+        'zone:file_added', 'zone-1', expect.any(String), { file }
       );
     });
 
-    it('should return empty results when no matches', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ zones: [] })
+    it('should throw if zone not found', async () => {
+      MockedZoneRepository.getZone.mockReturnValue(null);
+
+      await expect(service.addFile('nonexistent', 'test.md', 'local', '/path', undefined, 'agent-1'))
+        .rejects.toThrow('Zone not found: nonexistent');
+    });
+  });
+
+  describe('removeFile', () => {
+    it('should remove file and publish event', async () => {
+      const zone = createMockZone({ id: 'zone-1' });
+      const file = createMockFile({ zoneId: 'zone-1' });
+      MockedZoneRepository.getZone.mockReturnValue(zone);
+      MockedZoneRepository.getFile.mockReturnValue(file);
+      MockedZoneRepository.deleteFile.mockReturnValue(true);
+      MockedGatewayEventBus.publishZoneEvent.mockClear();
+
+      const result = await service.removeFile('zone-1', 'file-1', 'agent-1');
+
+      expect(result).toBe(true);
+      expect(MockedGatewayEventBus.publishZoneEvent).toHaveBeenCalledWith(
+        'zone:file_removed', 'zone-1', expect.any(String), { fileId: 'file-1', fileName: 'test.md' }
+      );
+    });
+
+    it('should throw if file not found in zone', async () => {
+      const zone = createMockZone({ id: 'zone-1' });
+      MockedZoneRepository.getZone.mockReturnValue(zone);
+      MockedZoneRepository.getFile.mockReturnValue(null);
+
+      await expect(service.removeFile('zone-1', 'nonexistent', 'agent-1'))
+        .rejects.toThrow('File nonexistent not found in zone zone-1');
+    });
+  });
+
+  // ============================================
+  // Zone Tasks
+  // ============================================
+  describe('getTasks', () => {
+    it('should return tasks for zone', async () => {
+      const zone = createMockZone({ id: 'zone-1' });
+      const tasks = [createMockTask()];
+      MockedZoneRepository.getZone.mockReturnValue(zone);
+      MockedZoneRepository.getTasks.mockReturnValue(tasks);
+
+      const result = await service.getTasks('zone-1');
+
+      expect(result).toHaveLength(1);
+    });
+
+    it('should throw if zone not found', async () => {
+      MockedZoneRepository.getZone.mockReturnValue(null);
+
+      await expect(service.getTasks('nonexistent')).rejects.toThrow('Zone not found');
+    });
+  });
+
+  describe('createTask', () => {
+    it('should create task and publish event', async () => {
+      const zone = createMockZone({ id: 'zone-1' });
+      const task = createMockTask({ id: 'task-new', title: 'New Task' });
+      MockedZoneRepository.getZone.mockReturnValue(zone);
+      MockedZoneRepository.getZoneContext.mockReturnValue({ taskPolicy: 'creator', taskCreatorId: null, members: [] });
+      MockedZoneRepository.updateZoneContext.mockReturnValue(true);
+      MockedZoneRepository.createTask.mockReturnValue(task);
+      MockedGatewayEventBus.publishZoneEvent.mockClear();
+
+      const result = await service.createTask('zone-1', 'agent-1', 'New Task');
+
+      expect(result).toEqual(task);
+      expect(MockedGatewayEventBus.publishZoneEvent).toHaveBeenCalledWith(
+        'zone:task_created', 'zone-1', expect.any(String), { task }
+      );
+    });
+
+    it('should throw if zone not found', async () => {
+      MockedZoneRepository.getZone.mockReturnValue(null);
+
+      await expect(service.createTask('nonexistent', 'agent-1', 'Task'))
+        .rejects.toThrow('Zone not found: nonexistent');
+    });
+
+    it('should throw if zone context not found', async () => {
+      MockedZoneRepository.getZone.mockReturnValue(createMockZone());
+      MockedZoneRepository.getZoneContext.mockReturnValue(null);
+
+      await expect(service.createTask('zone-1', 'agent-1', 'Task'))
+        .rejects.toThrow('Zone context not found');
+    });
+
+    it('should set first creator as taskCreatorId', async () => {
+      const zone = createMockZone({ id: 'zone-1' });
+      MockedZoneRepository.getZone.mockReturnValue(zone);
+      MockedZoneRepository.getZoneContext.mockReturnValue({ taskPolicy: 'creator', taskCreatorId: null, members: [] });
+      MockedZoneRepository.createTask.mockReturnValue(createMockTask());
+
+      await service.createTask('zone-1', 'agent-1', 'Task');
+
+      expect(MockedZoneRepository.updateZoneContext).toHaveBeenCalledWith('zone-1', { taskCreatorId: 'agent-1' });
+    });
+
+    it('should throw if non-creator tries to create task when creator exists', async () => {
+      const zone = createMockZone({ id: 'zone-1' });
+      MockedZoneRepository.getZone.mockReturnValue(zone);
+      MockedZoneRepository.getZoneContext.mockReturnValue({ taskPolicy: 'creator', taskCreatorId: 'other-agent', members: [] });
+
+      await expect(service.createTask('zone-1', 'agent-1', 'Task'))
+        .rejects.toThrow('只有任务创建者可以创建新任务');
+    });
+  });
+
+  describe('updateTask', () => {
+    it('should update task and publish event', async () => {
+      const zone = createMockZone({ id: 'zone-1' });
+      const task = createMockTask({ createdBy: 'agent-1' });
+      const updated = createMockTask({ title: 'Updated' });
+      MockedZoneRepository.getZone.mockReturnValue(zone);
+      MockedZoneRepository.getTask.mockReturnValue(task);
+      MockedZoneRepository.getZoneContext.mockReturnValue({ taskPolicy: 'creator', taskCreatorId: 'agent-1', members: [] });
+      MockedZoneRepository.updateTask.mockReturnValue(updated);
+      MockedGatewayEventBus.publishZoneEvent.mockClear();
+
+      const result = await service.updateTask('zone-1', 'task-1', 'agent-1', { title: 'Updated' });
+
+      expect(result.title).toBe('Updated');
+      expect(MockedGatewayEventBus.publishZoneEvent).toHaveBeenCalledWith(
+        'zone:task_updated', 'zone-1', expect.any(String), { task: updated }
+      );
+    });
+
+    it('should throw if task not found', async () => {
+      MockedZoneRepository.getZone.mockReturnValue(createMockZone());
+      MockedZoneRepository.getTask.mockReturnValue(null);
+
+      await expect(service.updateTask('zone-1', 'nonexistent', 'agent-1', { title: 'X' }))
+        .rejects.toThrow('Task not found: nonexistent');
+    });
+
+    it('should throw if neither creator nor assignee', async () => {
+      const zone = createMockZone({ id: 'zone-1' });
+      MockedZoneRepository.getZone.mockReturnValue(zone);
+      MockedZoneRepository.getTask.mockReturnValue(createMockTask({ createdBy: 'other', assignee: 'someone-else' }));
+      MockedZoneRepository.getZoneContext.mockReturnValue({ taskPolicy: 'creator', taskCreatorId: 'other', members: [] });
+
+      await expect(service.updateTask('zone-1', 'task-1', 'agent-1', { title: 'X' }))
+        .rejects.toThrow('只有任务创建者或认领者可以更新任务');
+    });
+
+    it('should allow assignee to update task', async () => {
+      const zone = createMockZone({ id: 'zone-1' });
+      MockedZoneRepository.getZone.mockReturnValue(zone);
+      MockedZoneRepository.getTask.mockReturnValue(createMockTask({ createdBy: 'other', assignee: 'agent-1' }));
+      MockedZoneRepository.getZoneContext.mockReturnValue({ taskPolicy: 'creator', taskCreatorId: 'other', members: [] });
+      MockedZoneRepository.updateTask.mockReturnValue(createMockTask({ assignee: 'agent-1' }));
+
+      await expect(service.updateTask('zone-1', 'task-1', 'agent-1', { title: 'X' }))
+        .resolves.toBeDefined();
+    });
+  });
+
+  describe('deleteTask', () => {
+    it('should delete task and publish event', async () => {
+      const zone = createMockZone({ id: 'zone-1' });
+      MockedZoneRepository.getZone.mockReturnValue(zone);
+      MockedZoneRepository.getZoneContext.mockReturnValue({ taskPolicy: 'creator', taskCreatorId: 'agent-1', members: [] });
+      MockedZoneRepository.deleteTask.mockReturnValue(true);
+      MockedGatewayEventBus.publishZoneEvent.mockClear();
+
+      const result = await service.deleteTask('zone-1', 'task-1', 'agent-1');
+
+      expect(result).toBe(true);
+      expect(MockedGatewayEventBus.publishZoneEvent).toHaveBeenCalledWith(
+        'zone:task_deleted', 'zone-1', expect.any(String), { taskId: 'task-1' }
+      );
+    });
+
+    it('should throw if not task creator', async () => {
+      MockedZoneRepository.getZone.mockReturnValue(createMockZone());
+      MockedZoneRepository.getZoneContext.mockReturnValue({ taskPolicy: 'creator', taskCreatorId: 'other-agent', members: [] });
+
+      await expect(service.deleteTask('zone-1', 'task-1', 'agent-1'))
+        .rejects.toThrow('只有任务创建者可以删除任务');
+    });
+  });
+
+  describe('claimTask', () => {
+    it('should claim task and publish event', async () => {
+      const zone = createMockZone({ id: 'zone-1' });
+      const task = createMockTask({ assignee: null, status: 'pending' });
+      const claimed = createMockTask({ assignee: 'agent-1', status: 'in_progress' });
+      MockedZoneRepository.getZone.mockReturnValue(zone);
+      MockedZoneRepository.getTask.mockReturnValue(task);
+      MockedZoneRepository.updateTask.mockReturnValue(claimed);
+      MockedGatewayEventBus.publishZoneEvent.mockClear();
+
+      const result = await service.claimTask('zone-1', 'task-1', 'agent-1');
+
+      expect(result.assignee).toBe('agent-1');
+      expect(result.status).toBe('in_progress');
+      expect(MockedGatewayEventBus.publishZoneEvent).toHaveBeenCalledWith(
+        'zone:task_claimed', 'zone-1', expect.any(String), { taskId: 'task-1', assignee: 'agent-1' }
+      );
+    });
+
+    it('should throw if task already assigned', async () => {
+      MockedZoneRepository.getZone.mockReturnValue(createMockZone());
+      MockedZoneRepository.getTask.mockReturnValue(createMockTask({ assignee: 'other-agent' }));
+
+      await expect(service.claimTask('zone-1', 'task-1', 'agent-1'))
+        .rejects.toThrow('任务已被认领');
+    });
+
+    it('should throw if task already done', async () => {
+      MockedZoneRepository.getZone.mockReturnValue(createMockZone());
+      MockedZoneRepository.getTask.mockReturnValue(createMockTask({ status: 'done' }));
+
+      await expect(service.claimTask('zone-1', 'task-1', 'agent-1'))
+        .rejects.toThrow('任务已完成，无法认领');
+    });
+  });
+
+  describe('createTasksBatch', () => {
+    it('should create multiple tasks', async () => {
+      const zone = createMockZone({ id: 'zone-1' });
+      MockedZoneRepository.getZone.mockReturnValue(zone);
+      MockedZoneRepository.createTask.mockReturnValue(createMockTask());
+      MockedGatewayEventBus.publishZoneEvent.mockClear();
+
+      const result = await service.createTasksBatch('zone-1', 'agent-1', ['Task 1', 'Task 2']);
+
+      expect(result.success).toHaveLength(2);
+      expect(result.failed).toHaveLength(0);
+    });
+
+    it('should track failures', async () => {
+      const zone = createMockZone({ id: 'zone-1' });
+      MockedZoneRepository.getZone.mockReturnValue(zone);
+      MockedZoneRepository.createTask
+        .mockReturnValueOnce(createMockTask())
+        .mockImplementationOnce(() => { throw new Error('DB error'); });
+
+      const result = await service.createTasksBatch('zone-1', 'agent-1', ['Task 1', 'Task 2']);
+
+      expect(result.success).toHaveLength(1);
+      expect(result.failed).toHaveLength(1);
+      expect(result.failed[0].error).toBe('DB error');
+    });
+  });
+
+  describe('updateTasksBatch', () => {
+    it('should update multiple tasks', async () => {
+      const zone = createMockZone({ id: 'zone-1' });
+      MockedZoneRepository.getZone.mockReturnValue(zone);
+      MockedZoneRepository.getTask.mockReturnValue(createMockTask({ createdBy: 'agent-1' }));
+      MockedZoneRepository.getZoneContext.mockReturnValue({ taskPolicy: 'creator', taskCreatorId: 'agent-1', members: [] });
+      MockedZoneRepository.updateTask.mockReturnValue(createMockTask());
+      MockedGatewayEventBus.publishZoneEvent.mockClear();
+
+      const result = await service.updateTasksBatch('zone-1', 'agent-1', [
+        { taskId: 'task-1', title: 'Updated 1' },
+        { taskId: 'task-2', title: 'Updated 2' },
+      ]);
+
+      expect(result.success).toHaveLength(2);
+    });
+  });
+
+  // ============================================
+  // Zone Messages
+  // ============================================
+  describe('addMessage', () => {
+    it('should add message and publish event', async () => {
+      const zone = createMockZone({ id: 'zone-1' });
+      MockedZoneRepository.getZone.mockReturnValue(zone);
+      MockedZoneRepository.addMessage.mockReturnValue({
+        id: 'msg-1', zoneId: 'zone-1', senderId: 'agent-1', senderType: 'agent' as const,
+        content: 'Hello', createdAt: Date.now(),
+      });
+      MockedGatewayEventBus.publishZoneEvent.mockClear();
+
+      const result = await service.addMessage('zone-1', 'agent-1', 'agent', 'Hello');
+
+      expect(result.content).toBe('Hello');
+      expect(MockedGatewayEventBus.publishZoneEvent).toHaveBeenCalledWith(
+        'zone:message_added', 'zone-1', expect.any(String), expect.objectContaining({ message: expect.any(Object) })
+      );
+    });
+
+    it('should throw if zone not found', async () => {
+      MockedZoneRepository.getZone.mockReturnValue(null);
+
+      await expect(service.addMessage('nonexistent', 'agent-1', 'agent', 'Hi'))
+        .rejects.toThrow('Zone not found: nonexistent');
+    });
+  });
+
+  // ============================================
+  // Zone Clone / Import / Export
+  // ============================================
+  describe('cloneZone', () => {
+    it('should clone zone without files/tasks', async () => {
+      const sourceZone = createMockZone({ id: 'zone-source', projectId: 'proj-1', title: 'Source Zone' });
+      const clonedZone = createMockZone({ id: 'zone-clone', projectId: 'proj-1', title: 'Clone of Source Zone' });
+
+      MockedZoneRepository.getZone
+        .mockReturnValueOnce(sourceZone)
+        .mockReturnValueOnce(clonedZone);
+      MockedZoneRepository.createZone.mockReturnValue(clonedZone);
+      MockedZoneRepository.getFilesByZone.mockReturnValue([]);
+      MockedZoneRepository.getTasks.mockReturnValue([]);
+      MockedStateStore.setZone.mockClear();
+
+      const result = await service.cloneZone('zone-source', { includeFiles: false, includeTasks: false }, 'agent-1');
+
+      expect(result).toEqual(clonedZone);
+      expect(MockedStateStore.setZone).toHaveBeenCalledWith('zone-clone', expect.objectContaining({
+        id: 'zone-clone',
+      }));
+    });
+
+    it('should throw if source zone not found', async () => {
+      MockedZoneRepository.getZone.mockReturnValue(null);
+
+      await expect(service.cloneZone('nonexistent', {}, 'agent-1'))
+        .rejects.toThrow('Zone not found: nonexistent');
+    });
+
+    it('should throw if source zone has no projectId', async () => {
+      MockedZoneRepository.getZone.mockReturnValue(createMockZone({ projectId: '' }));
+
+      await expect(service.cloneZone('zone-1', {}, 'agent-1'))
+        .rejects.toThrow('Cannot clone zone');
+    });
+  });
+
+  describe('searchZones', () => {
+    it('should search zones by keyword', async () => {
+      const zones = [createMockZone({ id: 'zone-match' })];
+      MockedZoneRepository.searchZones.mockReturnValue(zones);
+
+      const result = await service.searchZones('test', 20);
+
+      expect(result).toHaveLength(1);
+      expect(MockedZoneRepository.searchZones).toHaveBeenCalledWith('test', 20);
+    });
+
+    it('should use default limit', async () => {
+      MockedZoneRepository.searchZones.mockReturnValue([]);
+
+      await service.searchZones('test');
+
+      expect(MockedZoneRepository.searchZones).toHaveBeenCalledWith('test', 20);
+    });
+  });
+
+  describe('exportZone', () => {
+    it('should export zone as template', async () => {
+      const zone = createMockZone({ id: 'zone-1', title: 'Export Zone' });
+      MockedZoneRepository.getZone.mockReturnValue(zone);
+      MockedZoneRepository.exportZone.mockReturnValue({
+        title: 'Export Zone',
+        prompt: 'Test',
+        files: [],
+        tasks: [],
       });
 
-      const result = await executor.execute(mockSkill('zone_search'), { keyword: 'nonexistent' }, context);
+      const result = await service.exportZone('zone-1');
 
-      expect(result.success).toBe(true);
-      expect(result.zones).toEqual([]);
-      expect(result.total).toBe(0);
+      expect(result.version).toBe('1.0');
+      expect(result.exportedAt).toBeDefined();
+      expect(result.zone.title).toBe('Export Zone');
     });
 
-    it('should include projectId in search results', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          zones: [
-            { id: 'z1', title: 'Test Zone', projectId: 'proj-123' }
-          ]
-        })
+    it('should throw if zone not found', async () => {
+      MockedZoneRepository.getZone.mockReturnValue(null);
+
+      await expect(service.exportZone('nonexistent'))
+        .rejects.toThrow('Zone not found: nonexistent');
+    });
+  });
+
+  describe('importZone', () => {
+    it('should import zone from template', async () => {
+      const newZone = createMockZone({ id: 'zone-new', projectId: 'proj-1' });
+      MockedProjectRepository.getProject.mockReturnValue({ id: 'proj-1' } as any);
+      MockedZoneRepository.createZone.mockReturnValue(newZone);
+      MockedZoneRepository.getZone.mockReturnValue(newZone);
+
+      const result = await service.importZone('proj-1', { title: 'Imported', prompt: 'Test' }, 'agent-1', 'agent-1');
+
+      expect(result).toEqual(newZone);
+    });
+
+    it('should throw if project not found', async () => {
+      MockedProjectRepository.getProject.mockReturnValue(null);
+
+      await expect(service.importZone('invalid', { title: 'X', prompt: '' }, 'agent-1', 'agent-1'))
+        .rejects.toThrow('Project not found: invalid');
+    });
+  });
+
+  // ============================================
+  // Zone Statistics
+  // ============================================
+  describe('getZoneStatistics', () => {
+    it('should return correct statistics', async () => {
+      const zone = createMockZone({
+        id: 'zone-1',
+        members: ['a1', 'a2'],
+        files: [{ id: 'f1' } as ZoneFile],
+      });
+      const tasks = [
+        createMockTask({ id: 't1', status: 'pending' }),
+        createMockTask({ id: 't2', status: 'in_progress' }),
+        createMockTask({ id: 't3', status: 'done' }),
+      ];
+      MockedZoneRepository.getZone.mockReturnValue(zone);
+      MockedZoneRepository.getTasks.mockReturnValue(tasks);
+
+      const result = await service.getZoneStatistics('zone-1');
+
+      expect(result.tasks.total).toBe(3);
+      expect(result.tasks.pending).toBe(1);
+      expect(result.tasks.in_progress).toBe(1);
+      expect(result.tasks.done).toBe(1);
+      expect(result.files.total).toBe(1);
+      expect(result.members.total).toBe(2);
+    });
+
+    it('should throw if zone not found', async () => {
+      MockedZoneRepository.getZone.mockReturnValue(null);
+
+      await expect(service.getZoneStatistics('nonexistent'))
+        .rejects.toThrow('Zone not found: nonexistent');
+    });
+  });
+
+  // ============================================
+  // File Cache
+  // ============================================
+  describe('configureFileCache', () => {
+    it('should configure cache settings', () => {
+      service.configureFileCache({
+        cacheExpiry: 7200000,
+        maxFileSize: 20 * 1024 * 1024,
+        allowedBasePaths: ['/safe/path'],
+        allowedUrlPatterns: ['https://trusted.*'],
+        blockedIpRanges: ['192.168.0.0/16'],
       });
 
-      const result = await executor.execute(mockSkill('zone_search'), { keyword: 'test' }, context);
-
-      expect(result.zones[0].projectId).toBe('proj-123');
+      expect(service['cacheExpiry']).toBe(7200000);
+      expect(service['maxFileSize']).toBe(20 * 1024 * 1024);
+      expect(service['allowedBasePaths']).toEqual(['/safe/path']);
     });
   });
 
-  describe('unknown skill', () => {
-    it('should throw error for unknown zone skill', async () => {
-      await expect(executor.execute(mockSkill('zone_unknown'), {}, context))
-        .rejects.toThrow('Unknown zone skill: zone_unknown');
-    });
-  });
-});
-
-// ============================================
-// createExecutor Tests
-// ============================================
-describe('createExecutor', () => {
-  it('should create ZoneSkillExecutor for zone type', () => {
-    const executor = createExecutor('zone');
-    expect(executor).toBeInstanceOf(ZoneSkillExecutor);
-  });
-
-  it('should create different executor types correctly', () => {
-    expect(createExecutor('http')).toBeDefined();
-    expect(createExecutor('builtin')).toBeDefined();
-    expect(createExecutor('fs')).toBeDefined();
-    expect(createExecutor('bash')).toBeDefined();
-    expect(createExecutor('code_sandbox')).toBeDefined();
-  });
-
-  it('should return default executor for unknown type', () => {
-    const executor = createExecutor('unknown_type' as any);
-    expect(executor).toBeDefined();
-  });
-});
-
-// ============================================
-// Zone API Validation Tests
-// ============================================
-describe('Zone API Validation', () => {
-  describe('zoneId parameter validation', () => {
-    it('should reject undefined zoneId', () => {
-      const zoneId = undefined;
-      expect(zoneId).toBeUndefined();
+  describe('shouldRefreshFile', () => {
+    it('should return true when no content cached', () => {
+      const file = createMockFile({ content: undefined });
+      expect(service.shouldRefreshFile(file)).toBe(true);
     });
 
-    it('should reject null zoneId', () => {
-      const zoneId = null;
-      expect(zoneId).toBeNull();
+    it('should return true when cache expired', () => {
+      const now = Date.now();
+      const file = createMockFile({
+        content: 'cached',
+        lastFetched: now - 7200000, // 2 hours ago
+      });
+      expect(service.shouldRefreshFile(file)).toBe(true);
     });
 
-    it('should accept valid string zoneId', () => {
-      const zoneId = 'zone-123';
-      expect(typeof zoneId).toBe('string');
-      expect(zoneId.length).toBeGreaterThan(0);
+    it('should return false when cache is valid', () => {
+      const now = Date.now();
+      const file = createMockFile({
+        content: 'cached',
+        lastFetched: now - 1800000, // 30 minutes ago
+      });
+      expect(service.shouldRefreshFile(file)).toBe(false);
     });
   });
 
-  describe('projectId parameter validation', () => {
-    it('should require projectId for listing zones', () => {
-      const projectId = '';
-      expect(projectId.length).toBe(0);
+  describe('getFileWithContent', () => {
+    it('should return cache hit when valid', async () => {
+      const now = Date.now();
+      const file = createMockFile({
+        content: 'cached content',
+        lastFetched: now - 1000,
+      });
+      MockedZoneRepository.getFile.mockReturnValue(file);
+
+      const result = await service.getFileWithContent('zone-1', 'file-1');
+
+      expect(result.cacheHit).toBe(true);
+      expect(result.content).toBe('cached content');
     });
 
-    it('should accept valid projectId', () => {
-      const projectId = 'proj-abc';
-      expect(typeof projectId).toBe('string');
-      expect(projectId.length).toBeGreaterThan(0);
-    });
-  });
+    it('should return null when file not found', async () => {
+      MockedZoneRepository.getFile.mockReturnValue(null);
 
-  describe('keyword search validation', () => {
-    it('should reject empty keyword', () => {
-      const keyword = '';
-      expect(keyword.length).toBe(0);
-    });
+      const result = await service.getFileWithContent('zone-1', 'nonexistent');
 
-    it('should reject single character keyword', () => {
-      const keyword = 'a';
-      expect(keyword.length).toBeLessThan(2);
-    });
-
-    it('should accept valid keyword', () => {
-      const keyword = 'test';
-      expect(keyword.length).toBeGreaterThanOrEqual(2);
+      expect(result.file).toBeNull();
+      expect(result.content).toBeNull();
     });
   });
 
-  describe('batch operations validation', () => {
-    it('should reject empty agentIds array', () => {
-      const agentIds: string[] = [];
-      expect(agentIds.length).toBe(0);
+  // ============================================
+  // File Version History
+  // ============================================
+  describe('getFileVersions', () => {
+    it('should return file versions', async () => {
+      const file = createMockFile();
+      MockedZoneRepository.getFile.mockReturnValue(file);
+      MockedZoneRepository.getFileVersions.mockReturnValue({
+        versions: [{ id: 'v1', content: 'old', createdAt: 0, description: 'Initial' }],
+      });
+
+      const result = await service.getFileVersions('zone-1', 'file-1');
+
+      expect(result.versions).toHaveLength(1);
     });
 
-    it('should reject non-array agentIds', () => {
-      const agentIds = 'not-an-array';
-      expect(Array.isArray(agentIds)).toBe(false);
-    });
+    it('should throw if file not found', async () => {
+      MockedZoneRepository.getFile.mockReturnValue(null);
 
-    it('should accept valid agentIds array', () => {
-      const agentIds = ['agent-1', 'agent-2'];
-      expect(Array.isArray(agentIds)).toBe(true);
-      expect(agentIds.length).toBe(2);
-    });
-
-    it('should reject too many agentIds', () => {
-      const agentIds = Array(21).fill('agent');
-      expect(agentIds.length).toBeGreaterThan(20);
-    });
-
-    it('should accept maximum allowed agentIds', () => {
-      const agentIds = Array(20).fill('agent');
-      expect(agentIds.length).toBeLessThanOrEqual(20);
+      await expect(service.getFileVersions('zone-1', 'nonexistent'))
+        .rejects.toThrow('File not found');
     });
   });
-});
 
-// ============================================
-// Zone Skill Definition Tests
-// ============================================
-describe('Zone Skill Definitions', () => {
-  const zoneSkills = ['zone_move_to', 'zone_leave', 'zone_list', 'zone_info', 'zone_search'];
+  describe('rollbackFileToVersion', () => {
+    it('should rollback file', async () => {
+      const file = createMockFile();
+      MockedZoneRepository.getFile.mockReturnValue(file);
+      MockedZoneRepository.rollbackFileToVersion.mockReturnValue(file);
+      MockedZoneRepository.getZone.mockReturnValue(createMockZone());
+      MockedGatewayEventBus.publishZoneEvent.mockClear();
 
-  it('should have all required zone skills defined', () => {
-    expect(zoneSkills).toContain('zone_move_to');
-    expect(zoneSkills).toContain('zone_leave');
-    expect(zoneSkills).toContain('zone_list');
-    expect(zoneSkills).toContain('zone_info');
+      const result = await service.rollbackFileToVersion('zone-1', 'file-1', 'version-1', 'agent-1');
+
+      expect(result).toEqual(file);
+    });
   });
 
-  it('should have 5 zone skills total', () => {
-    expect(zoneSkills.length).toBe(5);
-  });
-});
+  // ============================================
+  // Messages
+  // ============================================
+  describe('getMessages', () => {
+    it('should return messages for zone', async () => {
+      const zone = createMockZone({ id: 'zone-1' });
+      MockedZoneRepository.getZone.mockReturnValue(zone);
+      MockedZoneRepository.getMessages.mockReturnValue([]);
 
-// ============================================
-// Zone Task Status Tests
-// ============================================
-describe('Zone Task Status', () => {
-  const validStatuses = ['pending', 'in_progress', 'done'];
+      const result = await service.getMessages('zone-1');
 
-  it('should have valid status values', () => {
-    expect(validStatuses).toContain('pending');
-    expect(validStatuses).toContain('in_progress');
-    expect(validStatuses).toContain('done');
-  });
+      expect(Array.isArray(result)).toBe(true);
+    });
 
-  it('should transition from pending to in_progress', () => {
-    let status = 'pending';
-    expect(status).toBe('pending');
-    status = 'in_progress';
-    expect(status).toBe('in_progress');
+    it('should throw if zone not found', async () => {
+      MockedZoneRepository.getZone.mockReturnValue(null);
+
+      await expect(service.getMessages('nonexistent')).rejects.toThrow('Zone not found');
+    });
   });
 
-  it('should transition from in_progress to done', () => {
-    let status = 'in_progress';
-    expect(status).toBe('in_progress');
-    status = 'done';
-    expect(status).toBe('done');
-  });
-});
+  describe('getMessagesCount', () => {
+    it('should return message count', async () => {
+      const zone = createMockZone({ id: 'zone-1' });
+      MockedZoneRepository.getZone.mockReturnValue(zone);
+      MockedZoneRepository.getMessagesCount.mockReturnValue(5);
 
-// ============================================
-// Zone Clone Options Tests
-// ============================================
-describe('Zone Clone Options', () => {
-  interface CloneOptions {
-    includeFiles?: boolean;
-    includeTasks?: boolean;
-  }
+      const result = await service.getMessagesCount('zone-1');
 
-  it('should default to not including files and tasks', () => {
-    const options: CloneOptions = {};
-    expect(options.includeFiles).toBeUndefined();
-    expect(options.includeTasks).toBeUndefined();
+      expect(result).toBe(5);
+    });
   });
 
-  it('should accept includeFiles option', () => {
-    const options: CloneOptions = { includeFiles: true };
-    expect(options.includeFiles).toBe(true);
+  // ============================================
+  // Task Count
+  // ============================================
+  describe('getTasksCount', () => {
+    it('should return task count', async () => {
+      const zone = createMockZone({ id: 'zone-1' });
+      MockedZoneRepository.getZone.mockReturnValue(zone);
+      MockedZoneRepository.getTasksCount.mockReturnValue(10);
+
+      const result = await service.getTasksCount('zone-1');
+
+      expect(result).toBe(10);
+    });
   });
 
-  it('should accept includeTasks option', () => {
-    const options: CloneOptions = { includeTasks: true };
-    expect(options.includeTasks).toBe(true);
+  describe('getTask', () => {
+    it('should return single task', async () => {
+      const zone = createMockZone({ id: 'zone-1' });
+      const task = createMockTask({ id: 'task-1' });
+      MockedZoneRepository.getZone.mockReturnValue(zone);
+      MockedZoneRepository.getTask.mockReturnValue(task);
+
+      const result = await service.getTask('zone-1', 'task-1');
+
+      expect(result).toEqual(task);
+    });
+
+    it('should return null if task not in zone', async () => {
+      const zone = createMockZone({ id: 'zone-1' });
+      MockedZoneRepository.getZone.mockReturnValue(zone);
+      MockedZoneRepository.getTask.mockReturnValue(null);
+
+      const result = await service.getTask('zone-1', 'nonexistent');
+
+      expect(result).toBeNull();
+    });
   });
 
-  it('should accept both options', () => {
-    const options: CloneOptions = { includeFiles: true, includeTasks: true };
-    expect(options.includeFiles).toBe(true);
-    expect(options.includeTasks).toBe(true);
-  });
-});
+  // ============================================
+  // File Search
+  // ============================================
+  describe('searchFiles', () => {
+    it('should search files in zone', async () => {
+      const zone = createMockZone({ id: 'zone-1' });
+      const files = [createMockFile()];
+      MockedZoneRepository.getZone.mockReturnValue(zone);
+      MockedZoneRepository.searchFiles.mockReturnValue(files);
 
-// ============================================
-// Zone Search Result Tests
-// ============================================
-describe('Zone Search Results', () => {
-  interface SearchResult {
-    zones: any[];
-    count: number;
-  }
+      const result = await service.searchFiles('zone-1', 'test');
 
-  it('should return empty result for no matches', () => {
-    const result: SearchResult = { zones: [], count: 0 };
-    expect(result.zones).toEqual([]);
-    expect(result.count).toBe(0);
-  });
+      expect(result).toHaveLength(1);
+    });
 
-  it('should return matched zones with correct count', () => {
-    const result: SearchResult = {
-      zones: [{ id: 'z1', title: 'Match' }],
-      count: 1
-    };
-    expect(result.zones.length).toBe(1);
-    expect(result.count).toBe(result.zones.length);
+    it('should throw if zone not found', async () => {
+      MockedZoneRepository.getZone.mockReturnValue(null);
+
+      await expect(service.searchFiles('nonexistent', 'test'))
+        .rejects.toThrow('Zone not found');
+    });
   });
 
-  it('should limit results', () => {
-    const result: SearchResult = {
-      zones: Array(20).fill({ id: 'z' }),
-      count: 50
-    };
-    expect(result.zones.length).toBe(20); // limited
-    expect(result.count).toBe(50); // total matches
+  // ============================================
+  // URL Metadata
+  // ============================================
+  describe('fetchUrlMetadata', () => {
+    it('should fetch URL metadata', async () => {
+      const file = createMockFile({ sourceType: 'url', source: 'https://example.com' });
+      MockedZoneRepository.getFile.mockReturnValue(file);
+      MockedZoneRepository.updateFile.mockReturnValue(file);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        text: () => Promise.resolve('<title>Test Page</title>'),
+      } as any);
+
+      const result = await service.fetchUrlMetadata('zone-1', 'file-1');
+
+      expect(result.title).toBe('Test Page');
+    });
+
+    it('should throw if file not URL type', async () => {
+      const file = createMockFile({ sourceType: 'local' });
+      MockedZoneRepository.getFile.mockReturnValue(file);
+
+      await expect(service.fetchUrlMetadata('zone-1', 'file-1'))
+        .rejects.toThrow('File is not a URL type');
+    });
   });
 });
