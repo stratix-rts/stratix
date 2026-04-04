@@ -463,10 +463,16 @@ export class ZoneRepository {
   getZoneContext(zoneId: string): { taskPolicy: string; taskCreatorId: string | null; members: string[] } | null {
     const row = this.db.prepare('SELECT task_policy, task_creator_id, members FROM zone_contexts WHERE zone_id = ? AND deleted_at IS NULL').get(zoneId) as any;
     if (!row) return null;
+
+    let members: string[] = [];
+    try {
+      members = JSON.parse(row.members || '[]');
+    } catch { /* ignore malformed JSON */ }
+
     return {
       taskPolicy: row.task_policy || 'creator',
       taskCreatorId: row.task_creator_id || null,
-      members: JSON.parse(row.members || '[]')
+      members
     };
   }
 
@@ -631,6 +637,24 @@ export class ZoneRepository {
   // Map row to Zone (with files)
   private mapRowToZone(row: any, filesByZone?: Map<string, ZoneFile[]>): Zone {
     const files = filesByZone?.get(row.zone_id) ?? this.getFilesByZone(row.zone_id);
+    let presentAgentIds: string[] = [];
+    let members: string[] = [];
+    let config: any;
+
+    try {
+      presentAgentIds = JSON.parse(row.present_agent_ids || '[]');
+    } catch { /* ignore malformed JSON */ }
+
+    try {
+      members = JSON.parse(row.members || '[]');
+    } catch { /* ignore malformed JSON */ }
+
+    if (row.zone_config) {
+      try {
+        config = JSON.parse(row.zone_config);
+      } catch { /* ignore malformed JSON */ }
+    }
+
     return {
       id: row.zone_id,
       projectId: row.project_id,
@@ -640,10 +664,10 @@ export class ZoneRepository {
       priority: row.priority || 3,
       status: row.status || 'idle',
       path: row.path || '',
-      presentAgentIds: JSON.parse(row.present_agent_ids || '[]'),
-      members: JSON.parse(row.members || '[]'),
+      presentAgentIds,
+      members,
       files,
-      config: row.zone_config ? JSON.parse(row.zone_config) : undefined,
+      config,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       startedAt: row.started_at || undefined,
@@ -653,6 +677,11 @@ export class ZoneRepository {
 
   // Map row to ZoneFile
   private mapRowToFile(row: any): ZoneFile {
+    let metadata: FileMetadata = {};
+    try {
+      metadata = JSON.parse(row.metadata || '{}');
+    } catch { /* ignore malformed JSON */ }
+
     return {
       id: row.file_id,
       zoneId: row.zone_id,
@@ -662,7 +691,7 @@ export class ZoneRepository {
       content: row.content || undefined,
       fileType: row.file_type as FileType || undefined,
       lastFetched: row.last_fetched || undefined,
-      metadata: JSON.parse(row.metadata || '{}'),
+      metadata,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
