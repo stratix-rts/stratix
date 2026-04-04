@@ -417,6 +417,7 @@ export class ZoneCoordinator {
       }
     }
 
+    // Should not reach here: loop always throws or returns. Kept for safety.
     throw lastError || new Error('LLM call failed');
   }
 
@@ -732,8 +733,8 @@ ${assignStrategyDescription}
     return sorted[0];
   }
 
-  private matchByRoundRobin(availableAgents: string[]): string {
-    if (availableAgents.length === 0) return '';
+  private matchByRoundRobin(availableAgents: string[]): string | null {
+    if (availableAgents.length === 0) return null;
     this.lastAssignedIndex = (this.lastAssignedIndex + 1) % availableAgents.length;
     return availableAgents[this.lastAssignedIndex];
   }
