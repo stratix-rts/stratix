@@ -318,7 +318,7 @@ export class ProjectStore {
       projectId: message.projectId,
       channelId: message.channelId,
       sender: message.sender.name,
-      content: message.content.slice(0, 50),
+      contentLength: message.content.length,
       mentions: message.mentions,
       timestamp: message.timestamp
     }));
