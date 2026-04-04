@@ -45,14 +45,27 @@ router.post('/execute', async (req: Request, res: Response): Promise<void> => {
     );
 
     try {
-      const result = await commandTransformer.transformAndExecute(command, agentConfig);
-      statusSyncService?.notifyCommandStatus(
-        command.commandId,
-        agentId,
-        'success',
-        100,
-        result
-      );
+      const ctx = { agentId, sessionId: '', args: command.params || {} };
+      const result = await commandSourceAdapter.executeCommand(command.skillId, ctx, command.commandId);
+      if (result.success) {
+        const output = result.output ? JSON.parse(result.output) : undefined;
+        statusSyncService?.notifyCommandStatus(
+          command.commandId,
+          agentId,
+          'success',
+          100,
+          output
+        );
+      } else {
+        statusSyncService?.notifyCommandStatus(
+          command.commandId,
+          agentId,
+          'failed',
+          undefined,
+          undefined,
+          result.error
+        );
+      }
     } catch (error) {
       statusSyncService?.notifyCommandStatus(
         command.commandId,

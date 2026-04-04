@@ -4,6 +4,7 @@ export interface CommandContext {
   agentId: string;
   sessionId: string;
   args: Record<string, unknown>;
+  commandId?: string;
 }
 
 export interface CommandResult {

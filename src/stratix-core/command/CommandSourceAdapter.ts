@@ -38,7 +38,7 @@ export class CommandSourceAdapter {
           try {
             const result = await this.transformer.transformAndExecute(
               {
-                commandId: `cmd-${Date.now()}`,
+                commandId: ctx.commandId || `cmd-${Date.now()}`,
                 skillId: skill.skillId,
                 agentId: ctx.agentId,
                 params: ctx.args,
@@ -85,8 +85,12 @@ export class CommandSourceAdapter {
   /**
    * Execute a command by name.
    */
-  async executeCommand(name: string, ctx: CommandContext): Promise<CommandResult> {
-    return this.orchestrator.execute(name, ctx);
+  async executeCommand(name: string, ctx: CommandContext, commandId?: string): Promise<CommandResult> {
+    const ctxWithCommandId: CommandContext = {
+      ...ctx,
+      commandId: commandId || ctx.commandId,
+    };
+    return this.orchestrator.execute(name, ctxWithCommandId);
   }
 
   /**

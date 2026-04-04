@@ -38,9 +38,8 @@ describe('ProjectStore', () => {
         requirement: { type: 'text', content: 'Test requirement' },
         progressRule: 'average'
       },
-      progress: 0,
-      taskCount: 0,
-      completedTaskCount: 0,
+      path: '/test/path',
+      presentAgentIds: [],
       zoneConfig: {
         x: 100,
         y: 100,
