@@ -59,6 +59,21 @@ const projectAgents = computed((): AgentBadge[] => {
 
 const messageInput = ref<any>(null);
 
+// XSS protection: escape HTML special characters
+const escapeHtml = (str: string): string => {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+};
+
+// Render message content with mention highlighting (safely)
+const renderMessageContent = (content: string): string => {
+  const escaped = escapeHtml(content);
+  return escaped.split(/(@\w+)/g).map(part =>
+    part.startsWith('@') ? `<span class="mention">${part}</span>` : part
+  ).join('');
+};
+
 const hideAllLists = () => {
   showCommandList.value = false;
   showMentionList.value = false;
@@ -453,11 +468,7 @@ defineExpose({
                 {{ new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) }}
               </div>
             </div>
-            <div class="message-content">
-              <span v-for="(part, idx) in message.content.split(/(@\w+)/g)" :key="idx" :class="{ mention: part.startsWith('@') }">
-                {{ part }}
-              </span>
-            </div>
+            <div class="message-content" v-html="renderMessageContent(message.content)"></div>
           </div>
         </div>
       </div>

@@ -3,7 +3,6 @@ import { StratixModal, StratixButton, StratixInput, SvgIcon } from '@/components
 import { StratixSkillConfig } from '../stratix-core';
 import { getToken } from '@/design-system/config';
 
-const x = 'x';
 const zap = 'zap';
 
 const props = defineProps<{
@@ -37,6 +36,14 @@ const updateParamValue = (paramId: string, value: any) => {
     ...props.paramValues,
     [paramId]: value
   });
+};
+
+const handleObjectParamInput = (paramId: string, value: string) => {
+  try {
+    updateParamValue(paramId, JSON.parse(value));
+  } catch {
+    // Invalid JSON - don't update
+  }
 };
 </script>
 
@@ -104,7 +111,7 @@ const updateParamValue = (paramId: string, value: any) => {
               v-else-if="param.type === 'object'"
               class="param-textarea"
               :value="JSON.stringify(paramValues[param.paramId], null, 2)"
-              @input="updateParamValue(param.paramId, JSON.parse(($event.target as HTMLTextAreaElement).value))"
+              @input="handleObjectParamInput(param.paramId, ($event.target as HTMLTextAreaElement).value)"
               rows="4"
             ></textarea>
           </div>

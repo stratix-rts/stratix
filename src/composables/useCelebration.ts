@@ -82,6 +82,7 @@ export function useCelebration() {
   let isAnimating = false
   let canvasWidth = 0
   let canvasHeight = 0
+  let burstTimer: ReturnType<typeof setInterval> | null = null
 
   function randomRange(min: number, max: number): number {
     return Math.random() * (max - min) + min

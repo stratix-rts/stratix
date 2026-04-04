@@ -12,7 +12,8 @@ const isOpen = ref(false)
 const query = ref('')
 const selectedIndex = ref(0)
 
-const commands: Command[] = [
+// Readonly commands registry - prevent mutation at module level
+const COMMANDS_REGISTRY: ReadonlyArray<Command> = [
   { id: 'nav-zones', name: 'Navigate to Zones', category: 'navigation', shortcut: 'G Z', action: () => {} },
   { id: 'nav-agents', name: 'Navigate to Agents', category: 'navigation', shortcut: 'G A', action: () => {} },
   { id: 'nav-tasks', name: 'Navigate to Tasks', category: 'navigation', shortcut: 'G T', action: () => {} },
@@ -36,11 +37,6 @@ function fuzzyMatch(text: string, pattern: string): boolean {
   }
   return pi === lowerPattern.length
 }
-
-const filteredCommands = computed(() => {
-  if (!query.value) return commands
-  return commands.filter(cmd => fuzzyMatch(cmd.name, query.value))
-})
 
 function selectCommand() {
   const cmd = filteredCommands.value[selectedIndex.value]
@@ -108,6 +104,11 @@ onMounted(() => window.addEventListener('keydown', handleKeydown))
 onUnmounted(() => window.removeEventListener('keydown', handleKeydown))
 
 export function useCommandPalette() {
+  const filteredCommands = computed(() => {
+    if (!query.value) return COMMANDS_REGISTRY
+    return COMMANDS_REGISTRY.filter(cmd => fuzzyMatch(cmd.name, query.value))
+  })
+
   return {
     isOpen,
     query,

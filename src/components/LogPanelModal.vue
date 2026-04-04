@@ -2,8 +2,6 @@
 import { StratixModal } from '@/components/ui';
 import CommandLog from '../stratix-command-panel/components/CommandLog.vue';
 
-const x = 'x';
-
 const props = defineProps<{
   visible: boolean;
   logs: any[];

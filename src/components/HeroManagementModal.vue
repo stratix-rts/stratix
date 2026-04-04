@@ -5,7 +5,6 @@ import { StratixModal, StratixButton, StratixDropdown, SvgIcon } from '@/compone
 import type { DropdownOption } from '@/components/ui';
 import { getToken } from '@/design-system/config';
 
-const x = 'x';
 const plus = 'plus';
 const refresh = 'refresh';
 const settings = 'settings';

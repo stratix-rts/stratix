@@ -294,7 +294,7 @@ const icons = {
             max="1"
             step="0.05"
             :value="soundVolume"
-            @input="setVolume(($event.target as HTMLInputElement).valueAsNumber)"
+            @input="setSoundVolume(($event.target as HTMLInputElement).valueAsNumber)"
             title="音量"
           />
         </div>
