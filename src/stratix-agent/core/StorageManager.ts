@@ -75,9 +75,14 @@ export class StorageManager {
     if (!existsSync(rulesPath)) {
       return [];
     }
-    const content = await readFile(rulesPath, 'utf-8');
-    const data = JSON.parse(content);
-    return data.rules || [];
+    try {
+      const content = await readFile(rulesPath, 'utf-8');
+      const data = JSON.parse(content);
+      return data.rules || [];
+    } catch (e) {
+      console.error(`[StorageManager] Failed to load rules for ${agentId}:`, e);
+      return [];
+    }
   }
 
   async deleteAgent(agentId: string): Promise<void> {

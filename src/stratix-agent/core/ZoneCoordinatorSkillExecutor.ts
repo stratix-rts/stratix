@@ -3,7 +3,6 @@ import {
   auditLogRepository,
   agentCapabilityRepository,
 } from '../../stratix-database';
-import type { TaskFlowAction } from '../../stratix-database';
 import { SkillExecutor, SkillDefinition, ExecutionContext } from '../types';
 
 /**
