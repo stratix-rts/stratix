@@ -502,7 +502,13 @@ export class EnhancedTemplateLibrary {
    */
   async loadFromFile(filePath: string): Promise<number> {
     const content = await fs.promises.readFile(filePath, 'utf-8');
-    const data = JSON.parse(content);
+    let data: { templates?: AgentTemplate[] };
+    try {
+      data = JSON.parse(content);
+    } catch {
+      console.error(`[EnhancedTemplateLibrary] Failed to parse JSON from ${filePath}`);
+      return 0;
+    }
 
     if (data.templates && Array.isArray(data.templates)) {
       for (const template of data.templates) {
