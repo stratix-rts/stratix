@@ -4,19 +4,16 @@ export class SpatialHashGrid {
   private cellSize: number;
   private cells: Map<string, Set<AgentSprite>>;
   private agentToCell: Map<string, string>;
-  private agentToKey: Map<string, (agent: AgentSprite) => string>;
 
   constructor(cellSize: number = 64) {
     this.cellSize = cellSize;
     this.cells = new Map();
     this.agentToCell = new Map();
-    this.agentToKey = new Map();
   }
 
   clear(): void {
     this.cells.clear();
     this.agentToCell.clear();
-    this.agentToKey.clear();
   }
 
   insert(agent: AgentSprite): void {
@@ -31,8 +28,6 @@ export class SpatialHashGrid {
     
     this.cells.get(cellKey)!.add(agent);
     this.agentToCell.set(key, cellKey);
-    
-    this.agentToKey.set(key, () => key);
   }
 
   update(agent: AgentSprite): void {
@@ -69,7 +64,6 @@ export class SpatialHashGrid {
       }
     }
     this.agentToCell.delete(agentId);
-    this.agentToKey.delete(agentId);
   }
 
   queryNearby(x: number, y: number, radius: number): AgentSprite[] {
