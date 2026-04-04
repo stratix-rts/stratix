@@ -169,7 +169,7 @@ export class StratixDataStore {
     
     if (fields.length > 0) {
       values.push(logId);
-      db.prepare(`UPDATE command_logs SET ${fields.join(', ')} WHERE log_id = ?`).run(...values);
+      await db.prepare(`UPDATE command_logs SET ${fields.join(', ')} WHERE log_id = ?`).run(...values);
     }
   }
 
@@ -182,9 +182,9 @@ export class StratixDataStore {
     await this.ensureInitialized();
     const db = getDatabase().getDatabase();
     if (agentId) {
-      db.prepare('DELETE FROM command_logs WHERE agent_id = ?').run(agentId);
+      await db.prepare('DELETE FROM command_logs WHERE agent_id = ?').run(agentId);
     } else {
-      db.prepare('DELETE FROM command_logs').run();
+      await db.prepare('DELETE FROM command_logs').run();
     }
   }
 
