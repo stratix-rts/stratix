@@ -79,12 +79,12 @@ export class ZoneMemberRepository {
   }
 
   /**
-   * Get a specific member record
+   * Get a specific member record (only active members)
    */
   getMember(zoneId: string, agentId: string): ZoneMember | null {
     const row = this.db.prepare(`
       SELECT * FROM zone_members
-      WHERE zone_id = ? AND agent_id = ?
+      WHERE zone_id = ? AND agent_id = ? AND left_at IS NULL
     `).get(zoneId, agentId) as any;
     return row ? this.mapRowToMember(row) : null;
   }
