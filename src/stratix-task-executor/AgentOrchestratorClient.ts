@@ -42,10 +42,11 @@ export class AgentOrchestratorClient {
       });
       console.log(`[AgentOrchestratorClient] Agent ${agentId} started for project ${projectId}`);
     } catch (error) {
-      throw new Error(`Failed to start agent ${agentId}: ${error instanceof Error ? error.message : String(error)}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to start agent ${agentId}: ${msg}`);
     }
   }
-  
+
   async stopAgent(agentId: string): Promise<void> {
     try {
       await axios.post(`${this.baseURL}/stop/${agentId}`);
@@ -62,16 +63,18 @@ export class AgentOrchestratorClient {
       await axios.post(`${this.baseURL}/pause/${agentId}`);
       console.log(`[AgentOrchestratorClient] Agent ${agentId} paused`);
     } catch (error) {
-      throw new Error(`Failed to pause agent ${agentId}: ${error instanceof Error ? error.message : String(error)}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to pause agent ${agentId}: ${msg}`);
     }
   }
-  
+
   async resumeAgent(agentId: string): Promise<void> {
     try {
       await axios.post(`${this.baseURL}/resume/${agentId}`);
       console.log(`[AgentOrchestratorClient] Agent ${agentId} resumed`);
     } catch (error) {
-      throw new Error(`Failed to resume agent ${agentId}: ${error instanceof Error ? error.message : String(error)}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to resume agent ${agentId}: ${msg}`);
     }
   }
   
