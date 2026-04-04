@@ -2,12 +2,12 @@ import { Router, Request, Response } from 'express';
 
 import { StratixCommandData } from '../../../stratix-core/stratix-protocol';
 import { StratixRequestHelper } from '../../../stratix-core/utils';
-import { CommandTransformer } from '../../command-transformer/CommandTransformer';
+import { CommandOrchestrator } from '../../../stratix-core/command/CommandOrchestrator';
 import { dataStoreService } from '../../dataStoreService';
 import { StatusSyncService } from '../websocket/StatusSync';
 
 const router = Router();
-const commandTransformer = new CommandTransformer();
+const commandOrchestrator = new CommandOrchestrator();
 const requestHelper = StratixRequestHelper.getInstance();
 let statusSyncService: StatusSyncService | null = null;
 
@@ -34,7 +34,7 @@ router.post('/execute', async (req: Request, res: Response): Promise<void> => {
     );
 
     try {
-      const result = await commandTransformer.transformAndExecute(command, agentConfig);
+      const result = await commandOrchestrator.transformAndExecute(command, agentConfig);
       statusSyncService?.notifyCommandStatus(
         command.commandId,
         agentId,

@@ -1,4 +1,8 @@
 import type { Command, CommandContext, CommandResult, CommandSource } from './types';
+import type { StratixCommandData, StratixAgentConfig } from '../stratix-protocol';
+import type { ExecutorResult } from '../executor/AgentExecutor';
+import { ExecutorFactory } from '../executor/ExecutorFactory';
+import { ConnectionPool } from '../../stratix-openclaw-adapter';
 
 const SOURCE_PRIORITY: Record<CommandSource, number> = {
   builtin: 0,
@@ -10,6 +14,13 @@ const SOURCE_PRIORITY: Record<CommandSource, number> = {
 
 export class CommandOrchestrator {
   private commands = new Map<string, Command>();
+  private connectionPool: ConnectionPool;
+  private executorFactory: ExecutorFactory;
+
+  constructor(connectionPool?: ConnectionPool) {
+    this.connectionPool = connectionPool || new ConnectionPool();
+    this.executorFactory = ExecutorFactory.getInstance(this.connectionPool);
+  }
 
   register(command: Command): void {
     this.commands.set(command.name, command);
@@ -37,6 +48,49 @@ export class CommandOrchestrator {
     return this.getCommands(ctx)
       .sort((a, b) => SOURCE_PRIORITY[a.source] - SOURCE_PRIORITY[b.source])
       .map((cmd) => cmd.name);
+  }
+
+  async transformAndExecute(
+    command: StratixCommandData,
+    agentConfig: StratixAgentConfig
+  ): Promise<any> {
+    const executor = this.executorFactory.getExecutor(agentConfig);
+    const result: ExecutorResult = await executor.execute(command, agentConfig);
+    if (!result.success) {
+      throw new Error(result.error || 'Execution failed');
+    }
+    return result.data;
+  }
+
+  async executeWithResult(
+    command: StratixCommandData,
+    agentConfig: StratixAgentConfig
+  ): Promise<ExecutorResult> {
+    const executor = this.executorFactory.getExecutor(agentConfig);
+    return executor.execute(command, agentConfig);
+  }
+
+  validateCommand(
+    command: StratixCommandData,
+    agentConfig: StratixAgentConfig
+  ): { valid: boolean; errors: string[] } {
+    const executor = this.executorFactory.getExecutor(agentConfig);
+    return executor.validate(command, agentConfig);
+  }
+
+  async testConnection(
+    agentConfig: StratixAgentConfig
+  ): Promise<{ success: boolean; message: string }> {
+    const executor = this.executorFactory.getExecutor(agentConfig);
+    return executor.testConnection(agentConfig);
+  }
+
+  getConnectionPool(): ConnectionPool {
+    return this.connectionPool;
+  }
+
+  getExecutorFactory(): ExecutorFactory {
+    return this.executorFactory;
   }
 }
 
