@@ -242,14 +242,16 @@ export class CharacterList {
     contentNode.innerHTML = this.characters.map(char => {
       const date = new Date(char.updatedAt).toLocaleDateString();
       const bodyLabel = bodyLabels[char.bodyType] || char.bodyType[0].toUpperCase();
+      const escapedName = this.escapeHtml(char.name);
+      const escapedThumbnail = char.thumbnail ? this.escapeHtml(char.thumbnail) : '';
 
       return `
-          <div class="char-item" data-id="${char.characterId}"">
+          <div class="char-item" data-id="${char.characterId}">
             <div class="char-thumb">
-              ${char.thumbnail ? `<img src="${char.thumbnail}">` : bodyLabel}
+              ${char.thumbnail ? `<img src="${escapedThumbnail}">` : bodyLabel}
             </div>
             <div class="char-info">
-              <div class="char-name">${char.name}</div>
+              <div class="char-name">${escapedName}</div>
               <div class="char-meta">${bodyLabel} | ${date}</div>
             </div>
             <div class="char-actions">
@@ -314,6 +316,12 @@ export class CharacterList {
     if (this.container) {
       this.container.setVisible(visible);
     }
+  }
+
+  private escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
   }
 
   destroy(): void {
