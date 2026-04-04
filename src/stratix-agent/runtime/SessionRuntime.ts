@@ -6,6 +6,7 @@
 import { randomUUID } from 'crypto';
 
 import { TranscriptStore } from './TranscriptStore';
+import { stratixStateStore, type SessionState } from '../../stratix-core/state/StratixStateStore';
 import type {
   SessionContext,
   TurnOptions,
@@ -245,6 +246,27 @@ export class SessionRuntime {
     session.usage.totalTokens += usage.totalTokens;
     session.usage.turnCount += 1;
     session.updatedAt = endTime;
+
+    // Sync to StateStore
+    const sessionState: SessionState = {
+      id: session.sessionId,
+      agentId: session.agentId,
+      messages: session.messages
+        .filter(m => m.role === 'user' || m.role === 'assistant')
+        .map(m => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+          timestamp: m.timestamp,
+        })),
+      usage: {
+        promptTokens: session.usage.promptTokens,
+        completionTokens: session.usage.completionTokens,
+        totalTokens: session.usage.totalTokens,
+        turnCount: session.usage.turnCount,
+      },
+      startedAt: session.createdAt,
+    };
+    stratixStateStore.setSession(sessionId, sessionState);
 
     const metadata: TurnMetadata = {
       turnId,
