@@ -41,7 +41,11 @@ export class RTSStateBridge {
     const activity = activityMap[status];
     if (current?.status.activity === activity) return; // deduplicate
     stratixStateStore.updateAgent(agentId, {
-      status: { activity } as any,
+      status: {
+        config: current!.status.config,
+        connection: current!.status.connection,
+        activity,
+      },
       lastActiveAt: Date.now(),
     });
   }

@@ -1169,10 +1169,14 @@ ${assignStrategyDescription}
     };
     const result = this.permissionOrchestrator.decide(context);
     if (result.decision === 'deny') {
-      throw new Error(`Permission denied: ${action} on zone ${this.zoneId} by agent ${agentId}`);
+      const err = new Error(`Permission denied: ${action} on zone ${this.zoneId} by agent ${agentId}`) as Error & { code?: string };
+      err.code = 'ZONE_PERMISSION_DENIED';
+      throw err;
     }
     if (result.decision === 'ask') {
-      throw new Error(`Permission requires confirmation: ${action} on zone ${this.zoneId}`);
+      const err = new Error(`Permission requires confirmation: ${action} on zone ${this.zoneId}`) as Error & { code?: string };
+      err.code = 'ZONE_PERMISSION_REQUIRED';
+      throw err;
     }
   }
 
