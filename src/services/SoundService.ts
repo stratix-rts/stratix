@@ -126,7 +126,7 @@ class SoundService {
     osc.detune.value = detune;
 
     const { attack, decay, sustain, release } = envelope;
-    const peakVolume = volume * this._volume * this._enabled ? 1 : 0;
+    const peakVolume = volume * this._volume * (this._enabled ? 1 : 0);
 
     // ADSR envelope
     gainNode.gain.setValueAtTime(0, now);
