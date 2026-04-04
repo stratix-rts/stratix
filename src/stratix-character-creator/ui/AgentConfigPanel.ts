@@ -3,7 +3,7 @@ import Phaser from 'phaser';
 import { getLightweightAgencyTemplatesByDomain, getDomainDisplayName, AGENCY_DOMAIN_NAMES } from '../config/agencyAgents';
 import { RULE_TEMPLATES, DEFAULT_RULES } from '../config/ruleTemplates';
 import { SKILLHUB_SKILLS, SKILL_CATEGORY_CONFIG, EVOLUTION_PROMPT, type SkillCategory, type SkillHubSkill } from '../config/skillHubConfig';
-import { SKILL_TREE_CONFIG, SKILL_CATEGORIES } from '../config/skillTreeConfig';
+import { SKILL_TREE_CONFIG, SKILL_CATEGORIES, ATTRIBUTE_LABELS } from '../config/skillTreeConfig';
 import { SOUL_TEMPLATES, DEFAULT_SOUL, type SoulTemplate } from '../config/soulTemplates';
 import { sharedSkillStore } from '../core/SharedSkillStore';
 import { SkillTree } from '../core/SkillTree';
@@ -56,22 +56,6 @@ const THEME = {
 
 type TabKey = 'soul' | 'rules' | 'skills';
 type SkillsSubTab = 'installed' | 'learned' | 'browse' | 'talent';
-
-const ATTRIBUTE_LABELS_MAP: Record<string, string> = {
-  health: '生命',
-  attack: '攻击',
-  defense: '防御',
-  speed: '速度',
-  mana: '魔法',
-  critChance: '暴击率',
-  critDamage: '暴击伤害',
-  blockChance: '格挡',
-  dodgeChance: '闪避',
-  armor: '护甲',
-  regen: '回复',
-  manaRegen: '魔回复',
-  magicDamage: '魔伤',
-};
 
 export class AgentConfigPanel {
   private scene: Phaser.Scene;
@@ -1482,14 +1466,14 @@ ${learnedList}`;
 
     display.innerHTML = Object.entries(this.attributes)
       .map(([key, value]) => {
-        const label = ATTRIBUTE_LABELS_MAP[key] || key;
+        const label = ATTRIBUTE_LABELS[key] || key;
         return `<span style="color: ${THEME.accent};">${label}: +${value}</span>`;
       })
       .join('');
   }
 
   private escapeHtml(text: string): string {
-    const div = { innerHTML: '' } as HTMLElement;
+    const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
   }
