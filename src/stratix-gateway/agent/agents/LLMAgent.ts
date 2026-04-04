@@ -18,7 +18,8 @@ export class LLMAgent implements AgentInterface {
   private projectId: string;
   private lraClient: LRAClient;
   private adapter: OpenClawAdapterInterface;
-  
+  private _workDirOverride: string | undefined;
+
   private shouldStop = false;
   private isPaused = false;
   private currentTaskId: string | null = null;
@@ -33,7 +34,7 @@ export class LLMAgent implements AgentInterface {
     lraClient: LRAClient
   ) {
     this.agentConfig = agentConfig;
-    this.projectPath = projectPath;
+    this.effectiveProjectPath = projectPath;
     this.projectId = projectId;
     this.lraClient = lraClient;
     
@@ -43,7 +44,19 @@ export class LLMAgent implements AgentInterface {
     
     this.adapter = createOpenClawAdapter(agentConfig.openClawConfig);
   }
-  
+
+  /**
+   * Override the project path for worktree isolation.
+   * Must be called before start().
+   */
+  setWorkingDirectory(dir: string): void {
+    this._workDirOverride = dir;
+  }
+
+  private get effectiveProjectPath(): string {
+    return this._workDirOverride ?? this.effectiveProjectPath;
+  }
+
   getState(): AgentState {
     return {
       agentId: this.agentConfig.agentId,
@@ -69,7 +82,7 @@ export class LLMAgent implements AgentInterface {
         
         if (this.shouldStop) break;
         
-        const tasks = await this.lraClient.listTasks(this.projectPath);
+        const tasks = await this.lraClient.listTasks(this.effectiveProjectPath);
         const pendingTask = tasks.find(t => t.status === 'pending');
         
         if (!pendingTask) {
@@ -80,17 +93,17 @@ export class LLMAgent implements AgentInterface {
         this.currentTaskId = pendingTask.id;
         console.log(`[LLMAgent] Processing task ${pendingTask.id}`);
         
-        await this.lraClient.claimTask(this.projectPath, pendingTask.id);
-        await this.lraClient.setTaskStatus(this.projectPath, pendingTask.id, 'in_progress');
+        await this.lraClient.claimTask(this.effectiveProjectPath, pendingTask.id);
+        await this.lraClient.setTaskStatus(this.effectiveProjectPath, pendingTask.id, 'in_progress');
         
         this.startHeartbeat(pendingTask.id);
         
         try {
           await this.processTask(pendingTask);
-          await this.lraClient.setTaskStatus(this.projectPath, pendingTask.id, 'completed');
+          await this.lraClient.setTaskStatus(this.effectiveProjectPath, pendingTask.id, 'completed');
         } catch (taskError) {
           console.error(`[LLMAgent] Task failed:`, taskError);
-          await this.lraClient.setTaskStatus(this.projectPath, pendingTask.id, 'failed');
+          await this.lraClient.setTaskStatus(this.effectiveProjectPath, pendingTask.id, 'failed');
         } finally {
           this.stopHeartbeat();
           this.currentTaskId = null;
@@ -107,7 +120,7 @@ export class LLMAgent implements AgentInterface {
   
   private async processTask(task: LraTask): Promise<void> {
     const soul = (this.agentConfig.soul as any)?.prompt || 'You are a helpful assistant.';
-    const prompt = `${soul}\n\nTask: ${task.description}\n\nProject: ${this.projectPath}`;
+    const prompt = `${soul}\n\nTask: ${task.description}\n\nProject: ${this.effectiveProjectPath}`;
 
     // Check budget before executing
     const preCheck = budgetController.evaluate(this.totalTokenUsage, 0);
@@ -140,13 +153,13 @@ export class LLMAgent implements AgentInterface {
       throw new Error(`Budget exhausted: ${postCheck.reason}. ${postCheck.nudgeMessage || ''}`);
     }
 
-    await this.lraClient.publish(this.projectPath, task.id);
+    await this.lraClient.publish(this.effectiveProjectPath, task.id);
   }
   
   private startHeartbeat(taskId: string): void {
     this.heartbeatInterval = setInterval(async () => {
       try {
-        await this.lraClient.heartbeat(this.projectPath, taskId);
+        await this.lraClient.heartbeat(this.effectiveProjectPath, taskId);
       } catch (error) {
         console.error('[LLMAgent] Heartbeat failed:', error);
       }
@@ -165,7 +178,7 @@ export class LLMAgent implements AgentInterface {
     this.stopHeartbeat();
     
     if (this.currentTaskId) {
-      await this.lraClient.setTaskStatus(this.projectPath, this.currentTaskId, 'pending');
+      await this.lraClient.setTaskStatus(this.effectiveProjectPath, this.currentTaskId, 'pending');
     }
     
     await this.adapter.disconnect();

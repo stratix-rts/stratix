@@ -10,6 +10,9 @@ import type {
   TaskStatus,
   IsolationStrategy,
 } from "./types";
+import * as fs from "fs-extra";
+import * as path from "path";
+import * as os from "os";
 
 /**
  * Execution context for a dispatched task
@@ -119,6 +122,7 @@ export class AgentRouter {
 
   /**
    * Execute the task via the injected orchestration executor.
+   * Applies isolation strategy: "none" runs directly, "worktree" creates a temp directory.
    */
   private async executeTask(
     task: AgentTask,
@@ -127,7 +131,43 @@ export class AgentRouter {
     const isolation = task.isolation ?? (task.type === "teammate" ? "worktree" : "none");
     const agentId = task.agentId ?? (task.type === "teammate" ? "default-teammate" : undefined);
 
-    return this.executor(task, agentId, abortController.signal);
+    // TODO(isolation): "remote" isolation strategy is not yet implemented.
+    // It should spawn a separate process for true process-level isolation.
+    if (isolation === "remote") {
+      console.warn(`[AgentRouter] isolation="remote" is not implemented for task ${task.taskId}. Falling back to direct execution.`);
+    }
+
+    let worktreePath: string | undefined;
+
+    if (isolation === "worktree") {
+      worktreePath = path.join(os.tmpdir(), `agent-worktree-${task.taskId}-${Date.now()}`);
+      await fs.ensureDir(worktreePath);
+      // Copy project files into worktree if projectPath is provided
+      if (task.workingDirectory) {
+        try {
+          await fs.copy(task.workingDirectory, worktreePath, { dereference: true });
+          console.log(`[AgentRouter] Copied project files to worktree: ${worktreePath}`);
+        } catch (copyErr) {
+          console.warn(`[AgentRouter] Failed to copy project files to worktree: ${copyErr}`);
+        }
+      }
+      task.workingDirectory = worktreePath;
+      console.log(`[AgentRouter] Worktree isolation active for task ${task.taskId}: ${worktreePath}`);
+    }
+
+    try {
+      return await this.executor(task, agentId, abortController.signal);
+    } finally {
+      // Cleanup worktree after execution
+      if (worktreePath) {
+        try {
+          await fs.remove(worktreePath);
+          console.log(`[AgentRouter] Cleaned up worktree: ${worktreePath}`);
+        } catch (cleanupErr) {
+          console.error(`[AgentRouter] Failed to cleanup worktree ${worktreePath}: ${cleanupErr}`);
+        }
+      }
+    }
   }
 
   /**

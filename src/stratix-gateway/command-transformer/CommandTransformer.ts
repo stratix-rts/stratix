@@ -26,36 +26,6 @@ export class CommandTransformer {
     return result.data;
   }
 
-  public async executeWithResult(
-    command: StratixCommandData,
-    agentConfig: StratixAgentConfig
-  ): Promise<ExecutorResult> {
-    const executor = this.executorFactory.getExecutor(agentConfig);
-    return executor.execute(command, agentConfig);
-  }
-
-  public validateCommand(
-    command: StratixCommandData,
-    agentConfig: StratixAgentConfig
-  ): { valid: boolean; errors: string[] } {
-    const executor = this.executorFactory.getExecutor(agentConfig);
-    return executor.validate(command, agentConfig);
-  }
-
-  public async testConnection(
-    agentConfig: StratixAgentConfig
-  ): Promise<{ success: boolean; message: string }> {
-    const executor = this.executorFactory.getExecutor(agentConfig);
-    return executor.testConnection(agentConfig);
-  }
-
-  public getConnectionPool(): ConnectionPool {
-    return this.connectionPool;
-  }
-
-  public getExecutorFactory(): ExecutorFactory {
-    return this.executorFactory;
-  }
 }
 
 export default CommandTransformer;
