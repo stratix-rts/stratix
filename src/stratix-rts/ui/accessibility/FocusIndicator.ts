@@ -112,6 +112,7 @@ export class FocusIndicator {
   }
 
   destroy(): void {
+    this.removeAnimation();
     this.hide();
     this.graphics.destroy();
   }
@@ -178,6 +179,10 @@ export class FocusIndicator {
 
   private setupAnimation(): void {
     this.scene.events.on('update', this.onUpdate, this);
+  }
+
+  private removeAnimation(): void {
+    this.scene.events.off('update', this.onUpdate, this);
   }
 
   private onUpdate(): void {
