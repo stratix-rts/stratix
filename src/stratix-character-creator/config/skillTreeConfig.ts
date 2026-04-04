@@ -96,7 +96,7 @@ export const SKILL_NODES: SkillNode[] = [
   },
   {
     nodeId: 'skill_evasion',
-    name: ' evasion',
+    name: 'Evasion',
     description: '大幅提升闪避率',
     prerequisites: ['skill_dodge'],
     attributes: { dodgeChance: 10, speed: 1 },
