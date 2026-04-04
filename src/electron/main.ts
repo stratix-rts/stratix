@@ -151,10 +151,8 @@ function setupIPC() {
         success: true,
         data: {
           filePath: textureFilename,
-          width: 832,
-          height: 3456,
-          animations: ['walk', 'idle', 'run'],
-          generatedAt: stats.mtimeMs
+          size: stats.size,
+          generatedAt: stats.mtimeMs,
         }
       };
     } catch (error: any) {
