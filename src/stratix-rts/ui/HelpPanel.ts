@@ -23,7 +23,7 @@ export class HelpPanel {
   private config: Required<HelpPanelConfig>;
   private state: HelpPanelState;
   private listeners: Set<HelpPanelListener> = new Set();
-  private unsubscribeShortcut: (() => void) | null = null;
+  private boundKeyHandler: ((event: KeyboardEvent) => void) | null = null;
   private unsubscribeContext: (() => void) | null = null;
 
   constructor(config?: HelpPanelConfig) {
@@ -54,7 +54,7 @@ export class HelpPanel {
   }
 
   private setupKeyboardListeners(): void {
-    const handleKeyDown = (event: KeyboardEvent) => {
+    this.boundKeyHandler = (event: KeyboardEvent) => {
       if (!this.state.isVisible) {
         if (event.key === '?' || event.key === 'F1') {
           event.preventDefault();
@@ -98,11 +98,7 @@ export class HelpPanel {
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-
-    this.unsubscribeShortcut = () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
+    window.addEventListener('keydown', this.boundKeyHandler);
   }
 
   show(): void {
@@ -593,8 +589,9 @@ export class HelpPanel {
   }
 
   destroy(): void {
-    if (this.unsubscribeShortcut) {
-      this.unsubscribeShortcut();
+    if (this.boundKeyHandler) {
+      window.removeEventListener('keydown', this.boundKeyHandler);
+      this.boundKeyHandler = null;
     }
     if (this.unsubscribeContext) {
       this.unsubscribeContext();
