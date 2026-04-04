@@ -3,6 +3,8 @@
  */
 
 import { CommandOrchestrator } from '@/stratix-core/command/CommandOrchestrator';
+import { ExecutorFactory } from '@/stratix-core/executor/ExecutorFactory';
+import type { AgentExecutor, ExecutorResult } from '@/stratix-core/executor/AgentExecutor';
 import type { Command, CommandContext } from '@/stratix-core/command/types';
 import type { StratixAgentConfig, StratixCommandData } from '@/stratix-core/stratix-protocol';
 
@@ -27,6 +29,76 @@ function makeCommand(overrides: Partial<Command> = {}): Command {
     execute: jest.fn().mockResolvedValue({ success: true, output: 'ok' }),
     ...overrides,
   };
+}
+
+function makeAgentConfig(overrides: Partial<StratixAgentConfig> = {}): StratixAgentConfig {
+  return {
+    agentId: 'agent-1',
+    name: 'Test Agent',
+    type: 'dev',
+    profile: {} as any,
+    backendType: 'stratix',
+    stratixConfig: {
+      provider: 'openai',
+      model: 'gpt-4',
+      apiKey: 'test-key',
+    },
+    configStatus: 'ready',
+    ...overrides,
+  };
+}
+
+function makeCommandData(overrides: Partial<StratixCommandData> = {}): StratixCommandData {
+  return {
+    commandId: 'cmd-1',
+    skillId: 'skill-1',
+    agentId: 'agent-1',
+    params: {},
+    executeAt: Date.now(),
+    ...overrides,
+  };
+}
+
+// --------------------------------------------------------------------------
+// Mock executor
+// --------------------------------------------------------------------------
+
+function makeMockExecutor(overrides: Partial<{
+  executeResult: ExecutorResult;
+  validateResult: { valid: boolean; errors: string[] };
+  testConnectionResult: { success: boolean; message: string };
+  executeThrows: boolean;
+  validateThrows: boolean;
+  testConnectionThrows: boolean;
+}> = {}): jest.Mocked<AgentExecutor> {
+  return {
+    execute: overrides.executeThrows
+      ? jest.fn().mockRejectedValue(new Error('execute error'))
+      : jest.fn().mockResolvedValue(overrides.executeResult ?? { success: true, data: 'ok' }),
+    validate: overrides.validateThrows
+      ? jest.fn().mockRejectedValue(new Error('validate error'))
+      : jest.fn().mockReturnValue(overrides.validateResult ?? { valid: true, errors: [] }),
+    testConnection: overrides.testConnectionThrows
+      ? jest.fn().mockRejectedValue(new Error('testConnection error'))
+      : jest.fn().mockResolvedValue(overrides.testConnectionResult ?? { success: true, message: 'ok' }),
+  } as jest.Mocked<AgentExecutor>;
+}
+
+// --------------------------------------------------------------------------
+// Mock factory helper
+// --------------------------------------------------------------------------
+
+function withMockFactory(mockExecutor: jest.Mocked<AgentExecutor>) {
+  const mockFactory = {
+    getExecutor: jest.fn().mockReturnValue(mockExecutor),
+    getExecutorByType: jest.fn().mockReturnValue(mockExecutor),
+    getOpenClawExecutor: jest.fn().mockReturnValue(mockExecutor),
+    getStratixAgentExecutor: jest.fn().mockReturnValue(mockExecutor),
+  } as unknown as jest.Mocked<ExecutorFactory>;
+
+  const spy = jest.spyOn(ExecutorFactory, 'getInstance').mockReturnValue(mockFactory as any);
+
+  return { mockFactory, spy };
 }
 
 // --------------------------------------------------------------------------
@@ -216,6 +288,274 @@ describe('CommandOrchestrator', () => {
     it('returns the executor factory', () => {
       const orch = new CommandOrchestrator();
       expect(orch.getExecutorFactory()).toBeDefined();
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Tests: executeWithResult
+  // --------------------------------------------------------------------------
+
+  describe('executeWithResult', () => {
+    beforeEach(() => {
+      // Reset singleton before each test to avoid state pollution
+      // @ts-expect-error - accessing private static instance for testing
+      ExecutorFactory.instance = undefined;
+    });
+
+    afterEach(() => {
+      // @ts-expect-error - accessing private static instance for testing
+      ExecutorFactory.instance = undefined;
+    });
+
+    it('returns ExecutorResult on success', async () => {
+      const { mockFactory, spy } = withMockFactory(
+        makeMockExecutor({ executeResult: { success: true, data: { result: 42 } } })
+      );
+
+      const orch = new CommandOrchestrator();
+      const cmd = makeCommandData();
+      const config = makeAgentConfig();
+
+      const result = await orch.executeWithResult(cmd, config);
+
+      expect(mockFactory.getExecutor).toHaveBeenCalledWith(config);
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual({ result: 42 });
+      spy.mockRestore();
+    });
+
+    it('returns ExecutorResult with error on executor failure', async () => {
+      const { mockFactory, spy } = withMockFactory(
+        makeMockExecutor({ executeResult: { success: false, error: 'skill not found' } })
+      );
+
+      const orch = new CommandOrchestrator();
+      const result = await orch.executeWithResult(makeCommandData(), makeAgentConfig());
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('skill not found');
+      spy.mockRestore();
+    });
+
+    it('propagates errors thrown by executor', async () => {
+      const { spy } = withMockFactory(
+        makeMockExecutor({ executeThrows: true })
+      );
+
+      const orch = new CommandOrchestrator();
+      await expect(orch.executeWithResult(makeCommandData(), makeAgentConfig())).rejects.toThrow('execute error');
+      spy.mockRestore();
+    });
+
+    it('passes correct command and config to executor', async () => {
+      const mockExec = makeMockExecutor({ executeResult: { success: true, data: 'data' } });
+      const { mockFactory, spy } = withMockFactory(mockExec);
+
+      const orch = new CommandOrchestrator();
+      const cmd = makeCommandData({ commandId: 'my-cmd', skillId: 'my-skill' });
+      const config = makeAgentConfig({ agentId: 'my-agent' });
+
+      await orch.executeWithResult(cmd, config);
+
+      expect(mockFactory.getExecutor).toHaveBeenCalledWith(config);
+      expect(mockExec.execute).toHaveBeenCalledWith(cmd, config, undefined);
+      spy.mockRestore();
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Tests: validateCommand
+  // --------------------------------------------------------------------------
+
+  describe('validateCommand', () => {
+    beforeEach(() => {
+      // @ts-expect-error - accessing private static instance for testing
+      ExecutorFactory.instance = undefined;
+    });
+
+    afterEach(() => {
+      // @ts-expect-error - accessing private static instance for testing
+      ExecutorFactory.instance = undefined;
+    });
+
+    it('returns valid: true when validation passes', () => {
+      const { spy } = withMockFactory(
+        makeMockExecutor({ validateResult: { valid: true, errors: [] } })
+      );
+
+      const orch = new CommandOrchestrator();
+      const result = orch.validateCommand(makeCommandData(), makeAgentConfig());
+
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+      spy.mockRestore();
+    });
+
+    it('returns valid: false with errors when validation fails', () => {
+      const { spy } = withMockFactory(
+        makeMockExecutor({ validateResult: { valid: false, errors: ['Provider is required', 'Model is required'] } })
+      );
+
+      const orch = new CommandOrchestrator();
+      const result = orch.validateCommand(makeCommandData(), makeAgentConfig());
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toEqual(['Provider is required', 'Model is required']);
+      spy.mockRestore();
+    });
+
+    it('passes command and config to executor validate', () => {
+      const mockExec = makeMockExecutor({ validateResult: { valid: true, errors: [] } });
+      const { mockFactory, spy } = withMockFactory(mockExec);
+
+      const orch = new CommandOrchestrator();
+      const cmd = makeCommandData({ commandId: 'validate-cmd' });
+      const config = makeAgentConfig({ agentId: 'validate-agent' });
+
+      orch.validateCommand(cmd, config);
+
+      expect(mockFactory.getExecutor).toHaveBeenCalledWith(config);
+      expect(mockExec.validate).toHaveBeenCalledWith(cmd, config);
+      spy.mockRestore();
+    });
+
+    it('rethrows when executor validate throws', () => {
+      const { spy } = withMockFactory(
+        makeMockExecutor({ validateThrows: true })
+      );
+
+      const orch = new CommandOrchestrator();
+      expect(() => orch.validateCommand(makeCommandData(), makeAgentConfig())).toThrow('validate error');
+      spy.mockRestore();
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Tests: testConnection
+  // --------------------------------------------------------------------------
+
+  describe('testConnection', () => {
+    beforeEach(() => {
+      // @ts-expect-error - accessing private static instance for testing
+      ExecutorFactory.instance = undefined;
+    });
+
+    afterEach(() => {
+      // @ts-expect-error - accessing private static instance for testing
+      ExecutorFactory.instance = undefined;
+    });
+
+    it('returns success result when connection succeeds', async () => {
+      const { spy } = withMockFactory(
+        makeMockExecutor({ testConnectionResult: { success: true, message: 'Connected' } })
+      );
+
+      const orch = new CommandOrchestrator();
+      const result = await orch.testConnection(makeAgentConfig());
+
+      expect(result.success).toBe(true);
+      expect(result.message).toBe('Connected');
+      spy.mockRestore();
+    });
+
+    it('returns failure result when connection fails', async () => {
+      const { spy } = withMockFactory(
+        makeMockExecutor({ testConnectionResult: { success: false, message: 'Connection refused' } })
+      );
+
+      const orch = new CommandOrchestrator();
+      const result = await orch.testConnection(makeAgentConfig());
+
+      expect(result.success).toBe(false);
+      expect(result.message).toBe('Connection refused');
+      spy.mockRestore();
+    });
+
+    it('passes agent config to executor testConnection', async () => {
+      const mockExec = makeMockExecutor({ testConnectionResult: { success: true, message: 'ok' } });
+      const { mockFactory, spy } = withMockFactory(mockExec);
+
+      const orch = new CommandOrchestrator();
+      const config = makeAgentConfig({ agentId: 'test-agent' });
+
+      await orch.testConnection(config);
+
+      expect(mockFactory.getExecutor).toHaveBeenCalledWith(config);
+      expect(mockExec.testConnection).toHaveBeenCalledWith(config);
+      spy.mockRestore();
+    });
+
+    it('rethrows when executor testConnection throws', async () => {
+      const { spy } = withMockFactory(
+        makeMockExecutor({ testConnectionThrows: true })
+      );
+
+      const orch = new CommandOrchestrator();
+      await expect(orch.testConnection(makeAgentConfig())).rejects.toThrow('testConnection error');
+      spy.mockRestore();
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Tests: transformAndExecute
+  // --------------------------------------------------------------------------
+
+  describe('transformAndExecute', () => {
+    beforeEach(() => {
+      // @ts-expect-error - accessing private static instance for testing
+      ExecutorFactory.instance = undefined;
+    });
+
+    afterEach(() => {
+      // @ts-expect-error - accessing private static instance for testing
+      ExecutorFactory.instance = undefined;
+    });
+
+    it('returns data when executor returns success', async () => {
+      const { spy } = withMockFactory(
+        makeMockExecutor({ executeResult: { success: true, data: { answer: 42 } } })
+      );
+
+      const orch = new CommandOrchestrator();
+      const result = await orch.transformAndExecute(makeCommandData(), makeAgentConfig());
+
+      expect(result).toEqual({ answer: 42 });
+      spy.mockRestore();
+    });
+
+    it('throws Error when executor returns success: false', async () => {
+      const { spy } = withMockFactory(
+        makeMockExecutor({ executeResult: { success: false, error: 'execution failed' } })
+      );
+
+      const orch = new CommandOrchestrator();
+      await expect(orch.transformAndExecute(makeCommandData(), makeAgentConfig())).rejects.toThrow('execution failed');
+      spy.mockRestore();
+    });
+
+    it('throws Error with default message when executor returns no error field', async () => {
+      const { spy } = withMockFactory(
+        makeMockExecutor({ executeResult: { success: false } as ExecutorResult })
+      );
+
+      const orch = new CommandOrchestrator();
+      await expect(orch.transformAndExecute(makeCommandData(), makeAgentConfig())).rejects.toThrow('Execution failed');
+      spy.mockRestore();
+    });
+
+    it('passes correct arguments to executor', async () => {
+      const mockExec = makeMockExecutor({ executeResult: { success: true, data: 'data' } });
+      const { mockFactory, spy } = withMockFactory(mockExec);
+
+      const orch = new CommandOrchestrator();
+      const cmd = makeCommandData({ commandId: 'transform-cmd' });
+      const config = makeAgentConfig({ agentId: 'transform-agent' });
+
+      await orch.transformAndExecute(cmd, config);
+
+      expect(mockFactory.getExecutor).toHaveBeenCalledWith(config);
+      expect(mockExec.execute).toHaveBeenCalledWith(cmd, config, undefined);
+      spy.mockRestore();
     });
   });
 });

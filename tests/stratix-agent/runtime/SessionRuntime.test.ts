@@ -224,6 +224,67 @@ describe('SessionRuntime', () => {
       expect(entries.length).toBeGreaterThanOrEqual(2); // user + assistant
       expect(entries.some(e => e.role === 'user' && e.content === 'Hello')).toBe(true);
     });
+
+    test('persists transcript entry with correct structure', async () => {
+      const session = await runtime.createSession('agent-1');
+      await runtime.executeTurn(session.sessionId, 'Hello');
+
+      const transcriptStore = runtime.getTranscriptStore();
+      const entries = await transcriptStore.getBySession(session.sessionId);
+
+      const userEntry = entries.find(e => e.role === 'user');
+      expect(userEntry).toBeDefined();
+      expect(userEntry!.sessionId).toBe(session.sessionId);
+      expect(userEntry!.content).toBe('Hello');
+      expect(userEntry!.turnId).toMatch(/^turn_/);
+      expect(userEntry!.timestamp).toBeGreaterThan(0);
+
+      const assistantEntry = entries.find(e => e.role === 'assistant');
+      expect(assistantEntry).toBeDefined();
+      expect(assistantEntry!.sessionId).toBe(session.sessionId);
+      expect(assistantEntry!.turnId).toMatch(/^asst_/);
+      expect(assistantEntry!.usage).toBeDefined();
+      expect(assistantEntry!.metadata).toBeDefined();
+      expect(assistantEntry!.metadata!.originalTurnId).toBe(userEntry!.turnId);
+    });
+
+    test('accumulates usage across multiple turns', async () => {
+      const delegate: AgentTurnDelegate = {
+        executeAgentTurn: jest.fn().mockResolvedValue({
+          response: 'Response',
+          usage: { promptTokens: 10, completionTokens: 20, totalTokens: 30, turnCount: 1 },
+        }),
+      };
+      const runtimeWithDelegate = new SessionRuntime(tempDir, delegate);
+      const session = await runtimeWithDelegate.createSession('agent-1');
+
+      await runtimeWithDelegate.executeTurn(session.sessionId, 'Turn 1');
+      await runtimeWithDelegate.executeTurn(session.sessionId, 'Turn 2');
+      await runtimeWithDelegate.executeTurn(session.sessionId, 'Turn 3');
+
+      const usage = runtimeWithDelegate.getUsage(session.sessionId);
+      expect(usage.promptTokens).toBe(30);    // 10 * 3
+      expect(usage.completionTokens).toBe(60); // 20 * 3
+      expect(usage.totalTokens).toBe(90);     // 30 * 3
+      expect(usage.turnCount).toBe(3);
+    });
+
+    test('returns correct message IDs after multiple turns', async () => {
+      const session = await runtime.createSession('agent-1');
+      await runtime.executeTurn(session.sessionId, 'First');
+      await runtime.executeTurn(session.sessionId, 'Second');
+
+      const messages = runtime.getRecentMessages(session.sessionId, 10);
+      expect(messages.length).toBe(4); // 2 user + 2 assistant
+
+      const userMsgs = messages.filter(m => m.role === 'user');
+      const asstMsgs = messages.filter(m => m.role === 'assistant');
+
+      expect(userMsgs[0].content).toBe('First');
+      expect(userMsgs[1].content).toBe('Second');
+      expect(asstMsgs[0].content).toContain('Turn executed');
+      expect(asstMsgs[1].content).toContain('Turn executed');
+    });
   });
 
   describe('pause', () => {
