@@ -167,11 +167,4 @@ export class CollisionSystem {
     return this.lastTime;
   }
   
-  getPerformanceImprovement(): string {
-    const bruteForce = this.checkCount * 2;
-    if (bruteForce === 0) return 'N/A';
-    
-    const improvement = ((bruteForce - this.checkCount) / bruteForce * 100).toFixed(1);
-    return `${improvement}% faster than brute force`;
-  }
 }
