@@ -1,5 +1,7 @@
 import { ConnectionPool, OpenClawAction } from '../../stratix-openclaw-adapter';
 import type { StratixCommandData, StratixAgentConfig, StratixSkillConfig } from '../stratix-protocol';
+import { retryPolicyEngine } from '../retry/RetryPolicyEngine';
+import type { RetryConfig } from '../retry/types';
 
 import type { AgentExecutor, ExecutorResult, ExecutorOptions } from './AgentExecutor';
 
@@ -8,6 +10,19 @@ export class OpenClawExecutor implements AgentExecutor {
 
   constructor(connectionPool?: ConnectionPool) {
     this.connectionPool = connectionPool || new ConnectionPool();
+  }
+
+  /**
+   * Retry config tuned for OpenClaw network/connection errors
+   */
+  private getRetryConfig(): Partial<RetryConfig> {
+    return {
+      maxRetries: 3,
+      initialDelayMs: 1000,
+      maxDelayMs: 10000,
+      backoffMultiplier: 2,
+      retryableStatuses: [429, 500, 502, 503, 504, 529],
+    };
   }
 
   async execute(
@@ -46,7 +61,11 @@ export class OpenClawExecutor implements AgentExecutor {
 
       const action = this.parseExecuteScript(processedScript);
       const adapter = await this.connectionPool.getAdapter(agentConfig.openClawConfig);
-      const response = await adapter.execute(action as OpenClawAction);
+      const response = await retryPolicyEngine.executeWithRetry(
+        () => adapter.execute(action as OpenClawAction),
+        this.getRetryConfig(),
+        { source: 'background', provider: 'openclaw' }
+      );
 
       if (!response.success) {
         return {
@@ -109,8 +128,12 @@ export class OpenClawExecutor implements AgentExecutor {
 
     try {
       const adapter = await this.connectionPool.getAdapter(agentConfig.openClawConfig);
-      const status = await adapter.getStatus();
-      
+      const status = await retryPolicyEngine.executeWithRetry(
+        () => adapter.getStatus(),
+        this.getRetryConfig(),
+        { source: 'foreground', provider: 'openclaw' }
+      );
+
       if (status.connected) {
         return { success: true, message: `Connected to OpenClaw at ${agentConfig.openClawConfig.endpoint}` };
       }
