@@ -51,14 +51,19 @@ export class SelectionManagerImpl implements SelectionManager {
 
   selectAgent(agentId: string, mode: SelectionMode = SelectionMode.Replace): void {
     const previousAgents = new Set(this.agents);
+    let wasAdded = false;
 
     switch (mode) {
       case SelectionMode.Replace:
         this.agents.clear();
         this.agents.add(agentId);
+        wasAdded = true;
         break;
       case SelectionMode.Add:
-        this.agents.add(agentId);
+        if (!this.agents.has(agentId)) {
+          this.agents.add(agentId);
+          wasAdded = true;
+        }
         break;
       case SelectionMode.Remove:
         this.agents.delete(agentId);
@@ -68,6 +73,7 @@ export class SelectionManagerImpl implements SelectionManager {
           this.agents.delete(agentId);
         } else {
           this.agents.add(agentId);
+          wasAdded = true;
         }
         break;
     }
@@ -76,7 +82,7 @@ export class SelectionManagerImpl implements SelectionManager {
       type: 'agent',
       previous: previousAgents,
       current: new Set(this.agents),
-      added: [agentId],
+      added: wasAdded ? [agentId] : [],
     });
   }
 
@@ -109,14 +115,19 @@ export class SelectionManagerImpl implements SelectionManager {
 
   selectZone(zoneId: string, mode: SelectionMode = SelectionMode.Replace): void {
     const previousZones = new Set(this.zones);
+    let wasAdded = false;
 
     switch (mode) {
       case SelectionMode.Replace:
         this.zones.clear();
         this.zones.add(zoneId);
+        wasAdded = true;
         break;
       case SelectionMode.Add:
-        this.zones.add(zoneId);
+        if (!this.zones.has(zoneId)) {
+          this.zones.add(zoneId);
+          wasAdded = true;
+        }
         break;
       case SelectionMode.Remove:
         this.zones.delete(zoneId);
@@ -126,6 +137,7 @@ export class SelectionManagerImpl implements SelectionManager {
           this.zones.delete(zoneId);
         } else {
           this.zones.add(zoneId);
+          wasAdded = true;
         }
         break;
     }
@@ -134,7 +146,7 @@ export class SelectionManagerImpl implements SelectionManager {
       type: 'zone',
       previous: previousZones,
       current: new Set(this.zones),
-      added: [zoneId],
+      added: wasAdded ? [zoneId] : [],
     });
   }
 
