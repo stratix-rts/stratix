@@ -195,6 +195,14 @@ export class TaskFlowRepository {
   }
 
   private mapRowToRecord(row: any): TaskFlowRecord {
+    let metadata: TaskFlowRecord['metadata'];
+    if (row.metadata) {
+      try {
+        metadata = JSON.parse(row.metadata);
+      } catch {
+        metadata = undefined;
+      }
+    }
     return {
       flowId: row.flow_id,
       taskId: row.task_id,
@@ -202,7 +210,7 @@ export class TaskFlowRepository {
       fromAgentId: row.from_agent_id,
       toAgentId: row.to_agent_id,
       action: row.action as TaskFlowAction,
-      metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+      metadata,
       createdAt: row.created_at
     };
   }

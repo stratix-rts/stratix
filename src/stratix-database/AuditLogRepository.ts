@@ -267,13 +267,21 @@ export class AuditLogRepository {
   }
 
   private mapRowToRecord(row: any): AuditLogRecord {
+    let metadata: AuditLogRecord['metadata'];
+    if (row.metadata) {
+      try {
+        metadata = JSON.parse(row.metadata);
+      } catch {
+        metadata = undefined;
+      }
+    }
     return {
       id: row.id,
       zoneId: row.zone_id,
       eventType: row.event_type as AuditEventType,
       actorId: row.actor_id,
       targetId: row.target_id,
-      metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+      metadata,
       createdAt: row.created_at
     };
   }

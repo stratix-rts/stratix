@@ -18,7 +18,14 @@ export class ZoneRepository {
       WHERE zc.project_id = ? AND zc.deleted_at IS NULL
       ORDER BY zc.created_at DESC
     `).all(projectId) as any[];
-    return rows.map(row => this.mapRowToZone(row));
+
+    if (rows.length === 0) return [];
+
+    // Batch load files for all zones to avoid N+1 queries
+    const zoneIds = rows.map(r => r.zone_id);
+    const filesByZone = this.getFilesBatch(zoneIds);
+
+    return rows.map(row => this.mapRowToZone(row, filesByZone));
   }
 
   getZone(zoneId: string): Zone | null {
@@ -103,7 +110,12 @@ export class ZoneRepository {
       WHERE zc.project_id = ? AND zc.deleted_at IS NOT NULL
       ORDER BY zc.deleted_at DESC
     `).all(projectId) as any[];
-    return rows.map(row => this.mapRowToZone(row));
+
+    if (rows.length === 0) return [];
+
+    const zoneIds = rows.map(r => r.zone_id);
+    const filesByZone = this.getFilesBatch(zoneIds);
+    return rows.map(row => this.mapRowToZone(row, filesByZone));
   }
 
   restoreZone(zoneId: string): Zone | null {
@@ -142,7 +154,12 @@ export class ZoneRepository {
       ORDER BY zc.updated_at DESC
       LIMIT ?
     `).all(pattern, pattern, limit) as any[];
-    return rows.map(row => this.mapRowToZone(row));
+
+    if (rows.length === 0) return [];
+
+    const zoneIds = rows.map(r => r.zone_id);
+    const filesByZone = this.getFilesBatch(zoneIds);
+    return rows.map(row => this.mapRowToZone(row, filesByZone));
   }
 
   // Zone Members operations
@@ -207,6 +224,28 @@ export class ZoneRepository {
     return rows.map(row => this.mapRowToFile(row));
   }
 
+  // Batch load files for multiple zones to avoid N+1 queries
+  getFilesBatch(zoneIds: string[]): Map<string, ZoneFile[]> {
+    if (zoneIds.length === 0) return new Map();
+
+    const placeholders = zoneIds.map(() => '?').join(', ');
+    const rows = this.db.prepare(
+      `SELECT * FROM zone_files WHERE zone_id IN (${placeholders}) ORDER BY zone_id, created_at DESC`
+    ).all(...zoneIds) as any[];
+
+    const filesByZone = new Map<string, ZoneFile[]>();
+    for (const zoneId of zoneIds) {
+      filesByZone.set(zoneId, []);
+    }
+    for (const row of rows) {
+      const zoneId = row.zone_id;
+      if (filesByZone.has(zoneId)) {
+        filesByZone.get(zoneId)!.push(this.mapRowToFile(row));
+      }
+    }
+    return filesByZone;
+  }
+
   getFile(fileId: string): ZoneFile | null {
     const row = this.db.prepare('SELECT * FROM zone_files WHERE file_id = ?').get(fileId) as any;
     return row ? this.mapRowToFile(row) : null;
@@ -214,22 +253,29 @@ export class ZoneRepository {
 
   // Search files by name or content within a zone
   searchFiles(zoneId: string, keyword: string): ZoneFile[] {
-    const files = this.getFilesByZone(zoneId);
-    const lowerKeyword = keyword.toLowerCase();
+    const pattern = `%${keyword}%`;
+    const rows = this.db.prepare(`
+      SELECT * FROM zone_files
+      WHERE zone_id = ? AND (name LIKE ? OR (content IS NOT NULL AND file_type IN ('md', 'txt', 'ts', 'js', 'fig', 'link', 'other')))
+      ORDER BY created_at DESC
+    `).all(zoneId, pattern) as any[];
 
-    return files.filter((file) => {
-      // Match name
-      if (file.name?.toLowerCase().includes(lowerKeyword)) {
-        return true;
-      }
-      // Match content (only for text files with content)
-      if (file.content && this.isTextFile(file.fileType)) {
-        if (file.content.toLowerCase().includes(lowerKeyword)) {
+    const lowerKeyword = keyword.toLowerCase();
+    return rows
+      .map(row => this.mapRowToFile(row))
+      .filter((file) => {
+        // Match name (already filtered in SQL, but double-check for case sensitivity)
+        if (file.name?.toLowerCase().includes(lowerKeyword)) {
           return true;
         }
-      }
-      return false;
-    });
+        // Match content (only for text files with content)
+        if (file.content && this.isTextFile(file.fileType)) {
+          if (file.content.toLowerCase().includes(lowerKeyword)) {
+            return true;
+          }
+        }
+        return false;
+      });
   }
 
   // Helper: check if file type is text (has readable content)
@@ -583,8 +629,8 @@ export class ZoneRepository {
   // ============================================
 
   // Map row to Zone (with files)
-  private mapRowToZone(row: any): Zone {
-    const files = this.getFilesByZone(row.zone_id);
+  private mapRowToZone(row: any, filesByZone?: Map<string, ZoneFile[]>): Zone {
+    const files = filesByZone?.get(row.zone_id) ?? this.getFilesByZone(row.zone_id);
     return {
       id: row.zone_id,
       projectId: row.project_id,
