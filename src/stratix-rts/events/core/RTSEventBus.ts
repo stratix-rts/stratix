@@ -17,6 +17,8 @@ import { EventQueue } from './EventQueue';
 type EventHandler<T = unknown> = (data: T) => void;
 type ResponseHandler<T = unknown, R = unknown> = (data: T) => R | Promise<R>;
 
+const DEFAULT_REQUEST_TIMEOUT_MS = 5000;
+
 interface SceneRegistry {
   game: Phaser.Scene | null;
   ui: Phaser.Scene | null;
@@ -143,7 +145,8 @@ export class RTSEventBus {
 
   async request<K extends keyof RequestResponseMap>(
     event: K,
-    data: RequestResponseMap[K]['request']
+    data: RequestResponseMap[K]['request'],
+    timeoutMs: number = DEFAULT_REQUEST_TIMEOUT_MS
   ): Promise<RequestResponseMap[K]['response']> {
     const handlers = this.responseHandlers.get(event);
     if (!handlers || handlers.length === 0) {
@@ -151,12 +154,26 @@ export class RTSEventBus {
       return null as RequestResponseMap[K]['response'];
     }
 
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const timeoutPromise = new Promise<null>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error(`[RTSEventBus] Request timeout for ${event} after ${timeoutMs}ms`));
+      }, timeoutMs);
+    });
+
     try {
-      const result = await handlers[0](data);
-      return result as RequestResponseMap[K]['response'];
+      const result = await Promise.race([
+        handlers[0](data),
+        timeoutPromise,
+      ]) as RequestResponseMap[K]['response'];
+      return result;
     } catch (error) {
-        console.error(`[RTSEventBus] Request error for ${event}:`, error);
-        return null as RequestResponseMap[K]['response'];
+      console.error(`[RTSEventBus] Request error for ${event}:`, error);
+      return null as RequestResponseMap[K]['response'];
+    } finally {
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
     }
   }
 
@@ -213,6 +230,7 @@ export class RTSEventBus {
   }
 
   destroy(): void {
+    this.isProcessing = false;
     this.emitter.all.clear();
     this.queue.clear();
     this.responseHandlers.clear();
