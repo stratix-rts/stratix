@@ -558,7 +558,9 @@ export class DataFlowAnimation {
     this.zonePositions.clear();
     this.zonePulses.clear();
     this.agentPositions.clear();
-    this.agentBeamGraphics.destroy();
+    if (this.agentBeamGraphics) {
+      this.agentBeamGraphics.destroy();
+    }
     this.agentPulses.clear();
     this.agentBeamGraphics = null as any;
   }
