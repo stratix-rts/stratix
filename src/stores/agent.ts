@@ -10,15 +10,6 @@ import type {
 import { POSITION_SAVE_DELAY_MS } from '@/stratix-core/config/defaults';
 import { WriterHeroTemplate, DevHeroTemplate, AnalystHeroTemplate, generateAgentId } from '@/stratix-designer';
 
-interface AgentState {
-  agents: StratixAgentConfig[];
-  selectedIds: string[];
-  isLoading: boolean;
-  isRefreshing: boolean;
-  lastRefreshTime: Date | null;
-  error: string | null;
-}
-
 function savedCharacterToProfile(character: SavedCharacter): CharacterProfile {
   return {
     characterId: character.characterId,
