@@ -7,7 +7,6 @@ import {
   RetryConfig,
   RetryContext,
   RetryAttempt,
-  RetryResult,
   CannotRetryError,
   DEFAULT_RETRY_CONFIG,
 } from './types';
@@ -27,14 +26,12 @@ export class RetryPolicyEngine {
     const source = context?.source ?? 'foreground';
 
     this.attempts = [];
-    let totalDelayMs = 0;
     let lastError: Error | undefined;
 
     for (let attemptNumber = 1; attemptNumber <= fullConfig.maxRetries + 1; attemptNumber++) {
       const delayMs = this.calculateDelay(attemptNumber, fullConfig, context);
 
       if (delayMs > 0 && attemptNumber > 1) {
-        totalDelayMs += delayMs;
         await this.sleep(delayMs);
       }
 

@@ -12,8 +12,6 @@ import {
   OpenClawConfig,
   StratixSkillParameter,
   CharacterProfile,
-  AgentBackendType,
-  AgentConfigStatus,
 } from '../stratix-protocol';
 
 import StratixIdGenerator from './StratixIdGenerator';

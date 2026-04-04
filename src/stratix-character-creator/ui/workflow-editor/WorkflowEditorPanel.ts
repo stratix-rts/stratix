@@ -11,7 +11,7 @@ import 'sequential-workflow-designer/css/designer.css';
 import 'sequential-workflow-designer/css/designer-dark.css';
 import { providerRegistry } from '@/agent-platform/providers/registry';
 import { allPresets } from '@/agent-platform/workflow/presets';
-import type { WorkflowDefinition, WorkflowStep, WorkflowStatus } from '@/agent-platform/workflow/types';
+import type { WorkflowDefinition, WorkflowStep } from '@/agent-platform/workflow/types';
 
 export type WorkflowExecutionStatus = 'idle' | 'running' | 'paused' | 'completed' | 'error' | 'stopped';
 

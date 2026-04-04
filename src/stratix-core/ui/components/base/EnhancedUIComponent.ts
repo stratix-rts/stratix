@@ -241,7 +241,7 @@ export abstract class EnhancedUIComponent implements IThemeAware, IUIComponentLi
   /**
    * 生命周期：组件更新时
    */
-  onUpdate(delta: number): void {}
+  onUpdate(_delta: number): void {}
   
   /**
    * 生命周期：组件销毁时

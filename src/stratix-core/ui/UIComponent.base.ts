@@ -8,7 +8,6 @@
 import Phaser from 'phaser';
 
 
-import { DesignSystemConfig, getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
 
 import type { UIComponentConfig } from './types';

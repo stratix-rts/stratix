@@ -433,8 +433,8 @@ export class AgencyAgentsParser {
   /**
    * 提取工作流步骤
    */
-  private extractWorkflowSteps(parsed: ParseResult): WorkflowStep[] {
-    const workflows = this.extractWorkflows(/* parsed */_parsed);
+  private extractWorkflowSteps(_parsed: ParseResult): WorkflowStep[] {
+    const workflows = this.extractWorkflows(_parsed);
     const steps: WorkflowStep[] = [];
 
     for (const workflow of workflows) {

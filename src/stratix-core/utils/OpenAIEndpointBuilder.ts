@@ -40,17 +40,6 @@ function getBaseUrl(url: string): string {
 }
 
 /**
- * Determine API version prefix from URL patterns
- */
-function getVersionPrefix(url: string): string {
-  // Already has /v1 or /v2
-  if (url.match(/\/v\d+$/) || url.match(/\/v\d+\//)) {
-    return '';
-  }
-  return '/v1';
-}
-
-/**
  * Build an OpenAI-compatible API URL
  *
  * @param baseUrl - The base URL (e.g., https://api.minimaxi.com/v1)

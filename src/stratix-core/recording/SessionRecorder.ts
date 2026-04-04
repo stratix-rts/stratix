@@ -221,7 +221,7 @@ export class SessionRecorder {
     return Date.now() - this.startTime;
   }
 
-  private createMetadata(endTime: number): RecordingMetadata {
+  private createMetadata(_endTime: number): RecordingMetadata {
     return {
       version: '1.0.0',
       name: this.name,

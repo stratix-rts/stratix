@@ -46,6 +46,7 @@ export class BackendSelector {
   private currentBackendType: AgentBackendType;
   private openClawConfig: OpenClawConfig;
   private stratixConfig: StratixDirectConfig;
+  private stratixPanel: StratixAgentConfigPanel | null = null;
   private onChange?: (backendType: AgentBackendType, config: OpenClawConfig | StratixDirectConfig) => void;
   private onNext?: () => void;
   private isElectron: boolean = false;
@@ -390,15 +391,21 @@ export class BackendSelector {
 
     const node = this.container.node as HTMLElement;
     const openclawPanel = node.querySelector('#openclaw-config') as HTMLElement;
+    const stratixPanel = node.querySelector('#stratix-config') as HTMLElement;
 
     openclawPanel.style.display = 'none';
+    stratixPanel.style.display = 'none';
 
     if (backendType === 'openclaw') {
       openclawPanel.style.display = 'block';
       this.onChange?.(backendType, this.openClawConfig);
     } else if (backendType === 'stratix') {
       console.log('[BackendSelector] Showing stratix config panel');
+      stratixPanel.style.display = 'block';
 
+      if (!this.stratixPanel && stratixPanel) {
+        const panelContent = stratixPanel.querySelector('#stratix-panel-content') as HTMLElement;
+        this.stratixPanel = new StratixAgentConfigPanel(this.scene, {
           x: 0,
           y: 0,
           width: this.config.width - 32,
@@ -409,6 +416,7 @@ export class BackendSelector {
             this.onChange?.('stratix', config);
           },
         });
+        panelContent.appendChild((await this.stratixPanel.create()).node as HTMLElement);
       }
       this.onChange?.(backendType, this.stratixConfig);
     }
@@ -471,6 +479,8 @@ export class BackendSelector {
     try {
       let config: StratixDirectConfig;
       
+      if (this.stratixPanel) {
+        config = this.stratixPanel.getConfig();
       } else {
         const provider = ((node.querySelector('#stratix-provider') as HTMLSelectElement)?.value || this.stratixConfig.provider) as StratixDirectConfig['provider'];
         const model = (node.querySelector('#stratix-model') as HTMLSelectElement)?.value || this.stratixConfig.model;
@@ -610,6 +620,7 @@ export class BackendSelector {
 
   destroy(): void {
     this.container?.destroy();
+    this.stratixPanel = null;
   }
 }
 

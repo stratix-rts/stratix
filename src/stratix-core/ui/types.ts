@@ -2,8 +2,6 @@
  * UI Component Types
  */
 
-import type { DesignSystemTokens } from '@/design-system/types';
-
 /**
  * UI Component Config
  */

@@ -10,13 +10,11 @@
  * - Exponential backoff reconnect (max 5 retries)
  */
 
-import { retryPolicyEngine } from '../retry/RetryPolicyEngine';
 import { stratixStateStore, MCPConnection } from '../state/StratixStateStore';
 
 import {
   MCPServerRef,
   ConnectionHandle,
-  ConnectionStatus,
   ConnectionMetrics,
   HealthStatus,
   HealthLevel,
@@ -24,8 +22,6 @@ import {
   ReconnectConfig,
   DEFAULT_RECONNECT_CONFIG,
 } from './types';
-
-const INTERNAL_STATE_KEY = '__mcp_connections' as const;
 
 interface InternalConnection {
   handle: ConnectionHandle;

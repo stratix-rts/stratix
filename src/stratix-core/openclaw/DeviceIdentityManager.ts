@@ -82,21 +82,6 @@ function uint8ArrayToBase64Url(bytes: Uint8Array): string {
 }
 
 /**
- * Base64 URL-safe 转 Uint8Array
- */
-function base64UrlToUint8Array(base64: string): Uint8Array {
-  const standardBase64 = base64
-    .replace(/-/g, '+')
-    .replace(/_/g, '/');
-  const binary = atob(standardBase64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
-/**
  * Uint8Array 转 Hex
  */
 function uint8ArrayToHex(bytes: Uint8Array): string {
