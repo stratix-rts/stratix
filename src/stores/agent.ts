@@ -306,21 +306,6 @@ export const useAgentStore = defineStore('agent', () => {
     return config;
   }
 
-  async function createCustomAgent(
-    character: SavedCharacter,
-    options?: {
-      backendType?: AgentBackendType;
-      openClawConfig?: OpenClawConfig;
-      stratixConfig?: StratixAgentConfig['stratixConfig'];
-      soul?: StratixAgentConfig['soul'];
-      memory?: StratixAgentConfig['memory'];
-      skills?: StratixAgentConfig['skills'];
-      rules?: string[];
-    }
-  ): Promise<StratixAgentConfig | null> {
-    return createAgentFromCharacter(character, options);
-  }
-
   // Test backend connection
   async function testBackendConnection(
     backendType: AgentBackendType,
@@ -566,7 +551,6 @@ export const useAgentStore = defineStore('agent', () => {
     refreshAgents,
     createAgent,
     createAgentFromCharacter,
-    createCustomAgent,
     testBackendConnection,
     updateAgentProfile,
     updateAgentConfig,
