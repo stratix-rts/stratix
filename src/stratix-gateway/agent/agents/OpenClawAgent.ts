@@ -7,6 +7,8 @@ import { LRAClient } from '../../../stratix-lra-bridge/LRAClient';
 import type { LraTask } from '../../../stratix-lra-bridge/types';
 import { createOpenClawAdapter, OpenClawAdapterInterface } from '../../../stratix-openclaw-adapter';
 import { gatewayEventBus, AgentMentionEvent } from '../../GatewayEventBus';
+import { budgetController } from '@stratix-core/budget/BudgetController';
+import type { TokenUsage } from '@stratix-core/budget/types';
 
 import { AgentInterface, AgentState, ProjectChannelMessage } from './types';
 
@@ -23,6 +25,7 @@ export class OpenClawAgent implements AgentInterface {
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private startedAt?: Date;
   private unsubscribeMention: (() => void) | null = null;
+  private totalTokenUsage: TokenUsage = { totalTokens: 0, promptTokens: 0, completionTokens: 0 };
   
   constructor(
     agentConfig: StratixAgentConfig,
@@ -133,10 +136,38 @@ export class OpenClawAgent implements AgentInterface {
   
   private async processTask(task: LraTask): Promise<void> {
     const prompt = `You are working on task: ${task.description}\n\nProject context: ${this.projectPath}\n\nPlease complete this task and save any output files.`;
-    
-    const response = await this.adapter.sendMessage(prompt);
-    console.log(`[OpenClawAgent] Task response:`, response?.content?.substring(0, 200));
-    
+
+    // Check budget before executing
+    const preCheck = budgetController.evaluate(this.totalTokenUsage, 0);
+    if (preCheck.action === 'stop') {
+      console.warn(`[OpenClawAgent] Budget exceeded before task ${task.id}: ${preCheck.nudgeMessage}`);
+      throw new Error(`Budget exceeded: ${preCheck.reason}. ${preCheck.nudgeMessage || ''}`);
+    }
+
+    const response = await this.adapter.openaiChatCompletion({
+      model: 'openclaw',
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const usage = response.usage;
+    if (usage) {
+      this.totalTokenUsage = {
+        totalTokens: this.totalTokenUsage.totalTokens + usage.total_tokens,
+        promptTokens: this.totalTokenUsage.promptTokens + usage.prompt_tokens,
+        completionTokens: this.totalTokenUsage.completionTokens + usage.completion_tokens,
+      };
+    }
+
+    const content = response.choices[0]?.message?.content || '';
+    console.log(`[OpenClawAgent] Task response:`, content.substring(0, 200));
+
+    // Check budget after execution
+    const postCheck = budgetController.evaluate(this.totalTokenUsage, 0);
+    if (postCheck.action === 'stop') {
+      console.warn(`[OpenClawAgent] Budget exhausted after task ${task.id}: ${postCheck.nudgeMessage}`);
+      throw new Error(`Budget exhausted: ${postCheck.reason}. ${postCheck.nudgeMessage || ''}`);
+    }
+
     await this.lraClient.publish(this.projectPath, task.id);
   }
   
@@ -199,11 +230,33 @@ User message: ${message.content}
 Please respond to the user's message. Keep your response concise and helpful.`;
 
     try {
-      const response = await this.adapter.sendMessage(prompt);
-      console.log(`[OpenClawAgent] ${this.agentConfig.name} responded:`, response?.content?.substring(0, 200));
-      
+      // Check budget before responding
+      const preCheck = budgetController.evaluate(this.totalTokenUsage, 0);
+      if (preCheck.action === 'stop') {
+        console.warn(`[OpenClawAgent] Budget exceeded, skipping message handling: ${preCheck.nudgeMessage}`);
+        await this.sendMessageToChannel(message.channelId, 'I apologize, but I have reached my operational budget limit for this session.');
+        return;
+      }
+
+      const response = await this.adapter.openaiChatCompletion({
+        model: 'openclaw',
+        messages: [{ role: 'user', content: prompt }],
+      });
+
+      const usage = response.usage;
+      if (usage) {
+        this.totalTokenUsage = {
+          totalTokens: this.totalTokenUsage.totalTokens + usage.total_tokens,
+          promptTokens: this.totalTokenUsage.promptTokens + usage.prompt_tokens,
+          completionTokens: this.totalTokenUsage.completionTokens + usage.completion_tokens,
+        };
+      }
+
+      const content = response.choices[0]?.message?.content || '';
+      console.log(`[OpenClawAgent] ${this.agentConfig.name} responded:`, content.substring(0, 200));
+
       // 发送回复到 channel（通过 HTTP API）
-      await this.sendMessageToChannel(message.channelId, response?.content || 'I received your message.');
+      await this.sendMessageToChannel(message.channelId, content || 'I received your message.');
     } catch (error) {
       console.error(`[OpenClawAgent] ${this.agentConfig.name} failed to handle message:`, error);
     }
