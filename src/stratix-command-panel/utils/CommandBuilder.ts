@@ -87,18 +87,27 @@ export class CommandBuilder {
     const events: StratixFrontendOperationEvent[] = [];
 
     for (const command of commands) {
-      events.push(this.buildCommandEvent(agentIds, skill, command));
+      events.push(this.buildCommandEvent([command.agentId], skill, command));
     }
 
     return events;
   }
 
   static formatCommandPreview(command: StratixCommandData, skillName: string): string {
+    const escapeHtml = (str: string): string => {
+      return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    };
+
     const paramsPreview = Object.entries(command.params)
       .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
+      .slice(0, 5) // Limit to 5 params to prevent DoS
       .join(', ');
-    
-    return `执行技能 "${skillName}" | 参数: ${paramsPreview || '无'}`;
+
+    return `执行技能 "${escapeHtml(skillName)}" | 参数: ${paramsPreview || '无'}`;
   }
 
   static validateCommandParams(
