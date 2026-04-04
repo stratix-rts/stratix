@@ -126,6 +126,7 @@ import StratixEventBus from '../../stratix-core/StratixEventBus';
 import { ParamValidator } from '../utils/ParamValidator';
 import { CommandBuilder } from '../utils/CommandBuilder';
 import ConfirmDialog from './ConfirmDialog.vue';
+import { getToken } from '@/design-system/config';
 
 const selectedSkill = ref<StratixSkillConfig | null>(null);
 const selectedAgentIds = ref<string[]>([]);
@@ -138,7 +139,15 @@ const parameters = computed<StratixSkillParameter[]>(() => {
 });
 
 const isFormValid = computed(() => {
-  return Object.keys(errors.value).length === 0;
+  if (Object.keys(errors.value).length > 0) return false;
+  if (!selectedSkill.value) return false;
+  for (const param of selectedSkill.value.parameters) {
+    if (param.required) {
+      const value = formValues.value[param.paramId];
+      if (value === undefined || value === null || value === '') return false;
+    }
+  }
+  return true;
 });
 
 const validateField = (param: StratixSkillParameter) => {
@@ -377,7 +386,3 @@ onUnmounted(() => {
   border-radius: 3px;
 }
 </style>
-
-<script setup lang="ts">
-import { getToken } from '@/design-system/config';
-</script>
