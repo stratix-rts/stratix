@@ -2,13 +2,14 @@
 import { computed } from 'vue';
 import { StratixModal, StratixButton, SvgIcon, ButtonGroup, InfoItem } from '@/components/ui';
 import { getToken } from '@/design-system/config';
+import type { CommandLogItem } from './CommandLog.vue';
 
 const copy = 'copy';
 const check = 'check';
 
 const props = defineProps<{
   visible: boolean;
-  log: any;
+  log: CommandLogItem | null;
 }>();
 
 const emit = defineEmits<{
