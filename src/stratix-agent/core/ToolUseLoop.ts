@@ -1,3 +1,5 @@
+import { BudgetController, budgetController } from '@stratix-core/budget/BudgetController';
+
 import {
   ChatMessage,
   ToolDefinition,
@@ -36,6 +38,7 @@ export class ToolUseLoop {
   private consecutiveErrors: number;
   private toolCallCount: Map<string, number>;
   private totalTokensUsed: number;
+  private budgetCtrl: BudgetController;
 
   constructor(
     skillRegistry: SkillRegistry,
@@ -56,6 +59,7 @@ export class ToolUseLoop {
     this.consecutiveErrors = 0;
     this.toolCallCount = new Map();
     this.totalTokensUsed = 0;
+    this.budgetCtrl = budgetController;
   }
 
   /**
@@ -87,6 +91,7 @@ export class ToolUseLoop {
     this.consecutiveErrors = 0;
     this.toolCallCount.clear();
     this.totalTokensUsed = 0;
+    this.budgetCtrl = budgetController;
 
     // 工具名称到 skillId 的映射（统一命名）
     const toolToSkill = new Map<string, string>();
@@ -152,6 +157,26 @@ export class ToolUseLoop {
       // 累加 token 使用量
       if (result.usage) {
         this.totalTokensUsed += result.usage.totalTokens;
+      }
+
+      // BudgetController 评估：使用更丰富的策略（diminishing returns / completion threshold / max continuations）
+      if (result.usage) {
+        const decision = this.budgetCtrl.evaluate({
+          totalTokens: this.totalTokensUsed,
+          promptTokens: result.usage.promptTokens,
+          completionTokens: result.usage.completionTokens,
+        }, iteration);
+
+        if (decision.action === 'stop') {
+          return {
+            finalContent: decision.nudgeMessage || this.buildTokenBudgetMessage(iteration + 1),
+            toolCalls,
+            totalIterations: iteration + 1,
+            totalExecutionTime: Date.now() - startTime,
+            success: false,
+            error: `Budget stopped: ${decision.reason}`
+          };
+        }
       }
 
       // 再次检查 Token 预算（LLM 返回后）
