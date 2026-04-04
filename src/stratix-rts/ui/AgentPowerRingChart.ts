@@ -255,4 +255,4 @@ export class AgentPowerRingChart {
   }
 }
 
-export { COMBAT_DIMENSIONS, CombatDimension, DIMENSION_COLORS } from './CombatPowerCalculator';
+export { COMBAT_DIMENSIONS, CombatDimension } from './CombatPowerCalculator';

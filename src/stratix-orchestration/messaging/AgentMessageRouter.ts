@@ -261,7 +261,7 @@ export class AgentMessageRouter {
       return { success: true, messageId: message.messageId };
     } else {
       // Share with all agents in zone
-      const agentsInZone = await this.zoneManager.getAgentsInZone(options.zoneId);
+      const agentsInZone = await this.zoneManager.getAgentsInZone(options.zoneId!);
       const sentMessages: string[] = [];
 
       for (const rid of agentsInZone) {

@@ -12,7 +12,6 @@ import { getButtonInlineStyles } from './_buttonStyles';
 
 import { getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
-import { agentStore } from '@/stores/agentStore';
 import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClawConnectionManager';
 import type { AgentBackendType, OpenClawConfig, UnifiedOpenClawConfig, StratixDirectConfig } from '@/stratix-core/stratix-protocol';
 import { ContainerComponentBase } from '@/stratix-core/ui/ContainerComponent.base';
