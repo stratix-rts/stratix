@@ -85,6 +85,7 @@ export function useTheme() {
   function setTheme(name: ThemeName): void {
     if (name === currentThemeName.value) return;
     if (isTransitioning.value) return;
+    if (typeof document === 'undefined') return;
 
     // Start transition overlay
     isTransitioning.value = true;
