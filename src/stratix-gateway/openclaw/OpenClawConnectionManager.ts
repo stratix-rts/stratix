@@ -8,6 +8,8 @@
 import type { StratixOpenClawConfig } from '@/stratix-core/stratix-protocol';
 import { WebSocketOpenClawAdapter } from '@/stratix-openclaw-adapter';
 import type { OpenClawStatus } from '@/stratix-openclaw-adapter/types';
+import { retryPolicyEngine, RetryPolicyEngine } from '@/stratix-core/retry';
+import type { RetryContext } from '@/stratix-core/retry/types';
 
 export interface ConnectionTestResult {
   success: boolean;
@@ -100,6 +102,36 @@ class OpenClawConnectionManager {
         error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
+  }
+
+  /**
+   * 测试连接（带重试）
+   */
+  async testConnectionWithRetry(
+    config: StratixOpenClawConfig,
+    source: RetryContext['source'] = 'unattended'
+  ): Promise<ConnectionTestResult> {
+    const retryConfig = RetryPolicyEngine.createDefaultConfig(source);
+    return retryPolicyEngine.executeWithRetry(
+      () => this.testConnection(config),
+      retryConfig,
+      { source, provider: 'openclaw' }
+    );
+  }
+
+  /**
+   * 连接（带重试）
+   */
+  async connectWithRetry(
+    config: StratixOpenClawConfig,
+    source: RetryContext['source'] = 'unattended'
+  ): Promise<ConnectionTestResult> {
+    const retryConfig = RetryPolicyEngine.createDefaultConfig(source);
+    return retryPolicyEngine.executeWithRetry(
+      () => this.connect(config),
+      retryConfig,
+      { source, provider: 'openclaw' }
+    );
   }
 
   async disconnect(): Promise<void> {

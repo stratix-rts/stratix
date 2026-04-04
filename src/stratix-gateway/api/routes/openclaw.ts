@@ -9,6 +9,8 @@ import { OpenClawConnectionStore } from '../../../stratix-data-store/OpenClawCon
 import type { OpenClawConnectionRecord, ConnectionPoolStatus } from '../../../stratix-data-store/types';
 import { openClawConnectionManager } from '../../openclaw/OpenClawConnectionManager';
 import { openClawProxyManager } from '../../openclaw/OpenClawProxyManager';
+import { retryPolicyEngine, RetryPolicyEngine } from '@/stratix-core/retry';
+import { ApiClient } from '../client';
 
 
 const router = Router();
@@ -52,17 +54,17 @@ router.post('/connect', async (req: Request, res: Response) => {
 router.post('/ws-connect', async (req: Request, res: Response) => {
   try {
     const { endpoint, accountId, apiKey } = req.body;
-    
+
     if (!endpoint) {
       res.status(400).json(requestHelper.badRequest('endpoint is required'));
       return;
     }
 
-    const result = await openClawConnectionManager.testConnection({
+    const result = await openClawConnectionManager.testConnectionWithRetry({
       endpoint,
       accountId: accountId || 'stratix',
       apiKey,
-    });
+    }, 'foreground');
 
     if (result.success) {
       res.json(requestHelper.success({
@@ -83,7 +85,7 @@ router.get('/test', async (req: Request, res: Response) => {
   try {
     const endpoint = req.query.endpoint as string;
     const apiKey = req.query.apiKey as string | undefined;
-    
+
     if (!endpoint) {
       res.status(400).json(requestHelper.badRequest('endpoint is required'));
       return;
@@ -94,30 +96,21 @@ router.get('/test', async (req: Request, res: Response) => {
       headers['Authorization'] = `Bearer ${apiKey}`;
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    // Use ApiClient with automatic retry
+    const client = new ApiClient({ baseURL: '' });
+    const result = await client.get<{ status: number }>(endpoint, {
+      headers,
+      timeout: 5000,
+    });
 
-    try {
-      const response = await fetch(endpoint, {
-        method: 'GET',
-        headers,
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        res.json(requestHelper.success({ 
-          endpoint, 
-          connected: true,
-          status: response.status 
-        }, 'OpenClaw connection successful'));
-      } else {
-        res.json(requestHelper.error(response.status, `OpenClaw returned status ${response.status}`));
-      }
-    } catch (fetchError) {
-      clearTimeout(timeoutId);
-      throw fetchError;
+    if (result.success) {
+      res.json(requestHelper.success({
+        endpoint,
+        connected: true,
+        status: result.data?.status ?? 200
+      }, 'OpenClaw connection successful'));
+    } else {
+      res.json(requestHelper.error(502, `Connection failed: ${result.error}`));
     }
   } catch (error) {
     const err = error as Error;
@@ -231,20 +224,31 @@ router.get('/connections', async (_req: Request, res: Response) => {
 
 router.get('/tailscale/nodes', async (_req: Request, res: Response) => {
   try {
-    const response = await fetch('http://127.0.0.1:4243/localapi/v0/machines', {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json'
-      },
-      signal: AbortSignal.timeout(5000)
-    });
+    const result = await retryPolicyEngine.executeWithRetry(
+      async () => {
+        const response = await fetch('http://127.0.0.1:4243/localapi/v0/machines', {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json'
+          },
+          signal: AbortSignal.timeout(5000)
+        });
 
-    if (!response.ok) {
+        if (!response.ok) {
+          return { ok: false, data: [] as any[] };
+        }
+        return { ok: true, data: await response.json() as any[] };
+      },
+      { maxRetries: 2, initialDelayMs: 500, maxDelayMs: 5000, backoffMultiplier: 2, retryableStatuses: [500, 502, 503] },
+      { source: 'background', provider: 'tailscale' }
+    );
+
+    if (!result.ok) {
       res.json(requestHelper.success([], 'Tailscale not available or not running'));
       return;
     }
 
-    const data = await response.json() as Array<{
+    const data = result.data as Array<{
       ID?: string;
       NodeId?: string;
       Name?: string;
@@ -254,7 +258,7 @@ router.get('/tailscale/nodes', async (_req: Request, res: Response) => {
       Online?: boolean;
       Latency?: unknown;
     }>;
-    
+
     const nodes = data.map((machine) => ({
       nodeId: machine.ID || machine.NodeId,
       name: machine.Name || machine.HostName,
@@ -476,18 +480,22 @@ router.post('/connections/:id/connect', async (req: Request, res: Response) => {
       res.status(503).json(requestHelper.error(503, 'Connection store not initialized'));
       return;
     }
-    
+
     const { id } = req.params;
     const connectionId = Array.isArray(id) ? id[0] : id;
     const connection = await connectionStore.get(connectionId);
-    
+
     if (!connection) {
       res.json(requestHelper.notFound('Connection not found'));
       return;
     }
-    
-    const result = await openClawProxyManager.connect(connection);
-    
+
+    const result = await retryPolicyEngine.executeWithRetry(
+      () => openClawProxyManager.connect(connection),
+      RetryPolicyEngine.createDefaultConfig('unattended'),
+      { source: 'unattended', provider: 'openclaw' }
+    );
+
     if (result.success) {
       res.json(requestHelper.success({
         connectionId,

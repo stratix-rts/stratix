@@ -11,6 +11,8 @@
  */
 
 import { deviceIdentityManager } from './DeviceIdentityManager';
+import { retryPolicyEngine, RetryPolicyEngine } from '@/stratix-core/retry';
+import type { RetryContext } from '@/stratix-core/retry/types';
 
 // ============ 类型定义 ============
 
@@ -212,7 +214,7 @@ export class OpenClawWebSocketConnection {
    */
   async disconnect(): Promise<void> {
     this.stopPairingPolling();
-    
+
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -220,6 +222,78 @@ export class OpenClawWebSocketConnection {
     this.setState('disconnected');
     this.currentChatCallbacks = null;
     this.currentRunId = null;
+  }
+
+  // ============ 公共方法：带重试的连接 ============
+
+  /**
+   * 连接（带重试）- 使用预共享 Token
+   */
+  async connectWithPairingWithRetry(
+    endpoint: string,
+    sharedToken: string,
+    source: RetryContext['source'] = 'unattended'
+  ): Promise<ConnectionResult> {
+    const config = RetryPolicyEngine.createDefaultConfig(source);
+    return retryPolicyEngine.executeWithRetry(
+      () => this.connectWithPairing(endpoint, sharedToken),
+      config,
+      { source, provider: 'openclaw' }
+    );
+  }
+
+  /**
+   * 连接（带重试）- 使用 Tailscale 身份
+   */
+  async connectWithTailscaleWithRetry(
+    endpoint: string,
+    source: RetryContext['source'] = 'unattended'
+  ): Promise<ConnectionResult> {
+    const config = RetryPolicyEngine.createDefaultConfig(source);
+    return retryPolicyEngine.executeWithRetry(
+      () => this.connectWithTailscale(endpoint),
+      config,
+      { source, provider: 'openclaw' }
+    );
+  }
+
+  /**
+   * 发送消息（带重试）- 流式响应
+   */
+  async sendMessageWithRetry(
+    message: string,
+    callbacks?: ChatCallbacks,
+    options?: SendMessageOptions,
+    source: RetryContext['source'] = 'foreground'
+  ): Promise<string> {
+    const config = {
+      ...RetryPolicyEngine.createDefaultConfig(source),
+      maxRetries: 2, // 消息发送次数不宜过多
+    };
+    return retryPolicyEngine.executeWithRetry(
+      () => this.sendMessage(message, callbacks, options),
+      config,
+      { source, provider: 'openclaw' }
+    );
+  }
+
+  /**
+   * 发送同步消息（带重试）
+   */
+  async sendMessageSyncWithRetry(
+    message: string,
+    options?: SendMessageOptions,
+    source: RetryContext['source'] = 'foreground'
+  ): Promise<ChatMessage> {
+    const config = {
+      ...RetryPolicyEngine.createDefaultConfig(source),
+      maxRetries: 2,
+    };
+    return retryPolicyEngine.executeWithRetry(
+      () => this.sendMessageSync(message, options),
+      config,
+      { source, provider: 'openclaw' }
+    );
   }
 
   // ============ 公共方法：聊天（流式为主） ============

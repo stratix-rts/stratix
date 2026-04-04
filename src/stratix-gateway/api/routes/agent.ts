@@ -5,6 +5,8 @@ import { ExecutorFactory } from '../../../stratix-core/executor';
 import type { AgentBackendType, OpenClawConfig, StratixDirectConfig } from '../../../stratix-core/stratix-protocol';
 import { StratixRequestHelper , StratixConfigValidator } from '../../../stratix-core/utils';
 import { dataStoreService } from '../../dataStoreService';
+import { retryPolicyEngine, RetryPolicyEngine } from '@/stratix-core/retry';
+import { AgentOrchestrationService } from '../../agent/AgentOrchestrationService';
 
 const router = Router();
 const requestHelper = StratixRequestHelper.getInstance();
@@ -186,7 +188,11 @@ router.post('/test-connection', async (req: Request, res: Response) => {
       stratixConfig: testConfig.stratixConfig
     };
 
-    const result = await executor.testConnection(mockAgentConfig as any);
+    const result = await retryPolicyEngine.executeWithRetry(
+      () => executor.testConnection(mockAgentConfig as any),
+      RetryPolicyEngine.createDefaultConfig('foreground'),
+      { source: 'foreground', provider: testConfig.backendType }
+    );
 
     res.json(requestHelper.success(result, result.success ? 'Connection successful' : 'Connection failed'));
   } catch (error) {
@@ -287,7 +293,11 @@ router.post('/chat', async (req: Request, res: Response) => {
       executeAt: Date.now()
     };
 
-    const result = await executor.execute(command, mockAgentConfig as any, { history });
+    const result = await retryPolicyEngine.executeWithRetry(
+      () => executor.execute(command, mockAgentConfig as any, { history }),
+      RetryPolicyEngine.createDefaultConfig('background'),
+      { source: 'background', provider: chatConfig.backendType }
+    );
 
     if (result.success) {
       res.json(requestHelper.success({ content: result.data }, 'Message sent'));
@@ -297,6 +307,60 @@ router.post('/chat', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[Chat API] Error:', error);
     res.status(500).json(requestHelper.serverError('Internal server error'));
+  }
+});
+
+// GET /api/stratix/agent/transcript?agentId=xxx&limit=50
+// Returns session transcript for an active agent session
+router.get('/transcript', async (req: Request, res: Response) => {
+  const { agentId, limit } = req.query;
+  if (!agentId) {
+    res.json(requestHelper.badRequest('agentId is required'));
+    return;
+  }
+
+  try {
+    // Check if agent is managed by AgentOrchestrationService
+    const orchestrator = AgentOrchestrationService.getInstance();
+    if (orchestrator.isAgentWorking(agentId as string)) {
+      // Agent is active - try to get transcript from orchestration
+      const agentState = orchestrator.getAgentState(agentId as string);
+      if (agentState && (agentState as any).transcript) {
+        const transcriptLimit = Number(limit) || 50;
+        const transcript = (agentState as any).transcript.slice(-transcriptLimit);
+        res.json(requestHelper.success(transcript));
+        return;
+      }
+    }
+    // Agent not active or no transcript available
+    res.json(requestHelper.success([], 'Agent session not found or inactive'));
+  } catch (error) {
+    res.status(500).json(requestHelper.serverError('Failed to get transcript'));
+  }
+});
+
+// GET /api/stratix/agent/usage?agentId=xxx
+// Returns token usage for an active agent session
+router.get('/usage', async (req: Request, res: Response) => {
+  const { agentId } = req.query;
+  if (!agentId) {
+    res.json(requestHelper.badRequest('agentId is required'));
+    return;
+  }
+
+  try {
+    // Check AgentOrchestrationService for usage stats
+    const orchestrator = AgentOrchestrationService.getInstance();
+    if (orchestrator.isAgentWorking(agentId as string)) {
+      const agentState = orchestrator.getAgentState(agentId as string);
+      if (agentState && (agentState as any).usage) {
+        res.json(requestHelper.success((agentState as any).usage));
+        return;
+      }
+    }
+    res.json(requestHelper.success({ promptTokens: 0, completionTokens: 0, totalTokens: 0, turnCount: 0 }));
+  } catch (error) {
+    res.status(500).json(requestHelper.serverError('Failed to get usage'));
   }
 });
 
