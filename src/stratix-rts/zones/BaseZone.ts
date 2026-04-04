@@ -67,9 +67,6 @@ export abstract class BaseZone extends Phaser.GameObjects.Container {
     pointerY: number;
   } | null = null;
 
-  private dragShadow: Phaser.GameObjects.Graphics | null = null;
-  private originalX: number = 0;
-  private originalY: number = 0;
   private dragTween: Phaser.Tweens.Tween | null = null;
 
   constructor(scene: Phaser.Scene, config: BaseZoneConfig) {
@@ -311,8 +308,6 @@ export abstract class BaseZone extends Phaser.GameObjects.Container {
     this.isDragging = true;
     this.dragOffset.x = this.x - worldX;
     this.dragOffset.y = this.y - worldY;
-    this.originalX = this.x;
-    this.originalY = this.y;
     this.applyDragVisual(true);
   }
 
