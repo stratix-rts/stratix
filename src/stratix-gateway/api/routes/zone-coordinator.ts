@@ -32,20 +32,52 @@ router.use('/zones/:zoneId', validateZone);
 // ============================================
 
 class ZoneCoordinatorService {
-  private coordinators: Map<string, ZoneCoordinator> = new Map();
+  private coordinators: Map<string, CoordinatorEntry> = new Map();
+  private lastCleanup: number = 0;
+  private readonly cleanupInterval: number = 60000; // 1 minute
+  private readonly maxAge: number = 3600000; // 1 hour TTL
 
   async getCoordinator(zoneId: string, config?: Partial<ZoneCoordinatorConfig>): Promise<ZoneCoordinator> {
-    let coordinator = this.coordinators.get(zoneId);
-    if (!coordinator) {
-      coordinator = await ZoneCoordinator.create(zoneId, config);
-      this.coordinators.set(zoneId, coordinator);
+    this.maybeCleanup();
+
+    let entry = this.coordinators.get(zoneId);
+    if (entry) {
+      entry.lastAccess = Date.now();
+      return entry.coordinator;
     }
+
+    const coordinator = await ZoneCoordinator.create(zoneId, config);
+    this.coordinators.set(zoneId, {
+      coordinator,
+      createdAt: Date.now(),
+      lastAccess: Date.now()
+    });
     return coordinator;
   }
 
   clearCoordinator(zoneId: string): void {
     this.coordinators.delete(zoneId);
   }
+
+  private maybeCleanup(): void {
+    const now = Date.now();
+    if (now - this.lastCleanup < this.cleanupInterval) return;
+
+    this.lastCleanup = now;
+    const expiry = now - this.maxAge;
+
+    for (const [zoneId, entry] of this.coordinators.entries()) {
+      if (entry.lastAccess < expiry) {
+        this.coordinators.delete(zoneId);
+      }
+    }
+  }
+}
+
+interface CoordinatorEntry {
+  coordinator: ZoneCoordinator;
+  createdAt: number;
+  lastAccess: number;
 }
 
 const coordinatorService = new ZoneCoordinatorService();
