@@ -94,8 +94,12 @@ class ZoneCoordinatorEventEmitter {
    * Emit an event to all subscribers
    */
   emit(payload: ZoneCoordinatorEventPayload): void {
-    // Notify specific event listeners
-    this.emitter.emit(payload.type, payload);
+    // Notify specific event listeners with error isolation
+    try {
+      this.emitter.emit(payload.type, payload);
+    } catch (error) {
+      console.error('[ZoneCoordinatorEventEmitter] Error in specific listener:', error);
+    }
 
     // Notify wildcard listeners
     for (const callback of this.wildcardListeners) {
