@@ -102,23 +102,23 @@ export class ParticleSystem {
     } else if (this.phase === 'bursting') {
       this.updateBursting(deltaSeconds);
     }
-    
+
     this.drawParticles();
   }
   
-  private updateGathering(delta: number): void {
+  private updateGathering(deltaSeconds: number): void {
     const center = { x: this.config.x, y: this.config.y };
-    
+
     this.particles.forEach(particle => {
       const dx = center.x - particle.x;
       const dy = center.y - particle.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
-      
+
       if (distance > 5) {
         const speed = 100 + Math.random() * 50;
-        particle.vx = (dx / distance) * speed * delta;
-        particle.vy = (dy / distance) * speed * delta;
-        
+        particle.vx = (dx / distance) * speed * deltaSeconds;
+        particle.vy = (dy / distance) * speed * deltaSeconds;
+
         particle.x += particle.vx;
         particle.y += particle.vy;
         
@@ -135,12 +135,12 @@ export class ParticleSystem {
     });
   }
   
-  private updateBursting(delta: number): void {
+  private updateBursting(deltaSeconds: number): void {
     let allDone = true;
-    
+
     this.particles.forEach(particle => {
-      particle.x += particle.vx * delta;
-      particle.y += particle.vy * delta;
+      particle.x += particle.vx * deltaSeconds;
+      particle.y += particle.vy * deltaSeconds;
       
       particle.vx *= 0.98;
       particle.vy *= 0.98;
