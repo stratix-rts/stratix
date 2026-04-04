@@ -106,7 +106,7 @@ const electronAPI: ElectronAPI = {
     onEvent: (callback) => {
       const handler = (_event: any, data: any) => callback(data);
       ipcRenderer.on('tailscale:event', handler);
-      return () => ipcRenderer.removeListener('tailscale:event', handler);
+      return () => ipcRenderer.off('tailscale:event', handler);
     },
   },
   
