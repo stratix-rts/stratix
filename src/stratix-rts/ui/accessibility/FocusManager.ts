@@ -38,6 +38,7 @@ export class FocusManager {
   private config: FocusManagerConfig;
   private rootElements = new Set<string>();
   private modalStack: string[] = [];
+  private boundKeyHandler: (event: KeyboardEvent) => void;
 
   private constructor(config: FocusManagerConfig = {}) {
     this.config = {
@@ -48,6 +49,7 @@ export class FocusManager {
       ...config,
     };
 
+    this.boundKeyHandler = this.handleKeyDown.bind(this);
     this.setupKeyboardListeners();
   }
 
@@ -275,7 +277,7 @@ export class FocusManager {
   }
 
   private setupKeyboardListeners(): void {
-    document.addEventListener('keydown', this.handleKeyDown.bind(this));
+    document.addEventListener('keydown', this.boundKeyHandler);
   }
 
   private handleKeyDown(event: KeyboardEvent): void {
@@ -441,7 +443,7 @@ export class FocusManager {
   }
 
   destroy(): void {
-    document.removeEventListener('keydown', this.handleKeyDown.bind(this));
+    document.removeEventListener('keydown', this.boundKeyHandler);
     this.components.clear();
     this.focusOrder = [];
     this.listeners.clear();
