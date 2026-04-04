@@ -25,7 +25,7 @@ export class SessionPlayer {
   private playbackElapsed: number = 0; // accumulated playback time in ms
   private lastTickTime: number = 0; // last real time when tick was called
   private events: SessionPlayerEvents = {};
-  private animationFrameId: number | null = null;
+  private animationFrameId: ReturnType<typeof setInterval> | null = null;
 
   constructor(events?: SessionPlayerEvents) {
     if (events) {
@@ -228,7 +228,7 @@ export class SessionPlayer {
         return;
       }
       this.tick();
-    }, 16) as unknown as number;
+    }, 16);
   }
 
   private stopPlaybackLoop(): void {

@@ -109,7 +109,6 @@ class StratixEventBus {
       this.eventBuffer.set(event.eventType, []);
     }
     this.eventBuffer.get(event.eventType)!.push(event);
-    console.log(`[StratixEventBus] Buffered event: ${event.eventType} (buffer size: ${this.eventBuffer.get(event.eventType)!.length})`);
   }
 
   /**
@@ -118,7 +117,6 @@ class StratixEventBus {
   private replayBufferedEvents(eventType: string, handler: (event: StratixEvent) => void): void {
     const buffered = this.eventBuffer.get(eventType);
     if (buffered && buffered.length > 0) {
-      console.log(`[StratixEventBus] Replaying ${buffered.length} buffered events for: ${eventType}`);
       for (const event of buffered) {
         handler(event);
       }

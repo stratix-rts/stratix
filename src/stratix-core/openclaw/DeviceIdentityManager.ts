@@ -267,28 +267,27 @@ class DeviceIdentityManager {
     return identity.deviceId;
   }
 
-  saveDeviceToken(endpoint: string, token: string): void {
+  async saveDeviceToken(endpoint: string, token: string): Promise<void> {
     const connections = this.getConnections();
     const existing = connections.find(c => c.endpoint === endpoint);
-    
+
     if (existing) {
       existing.deviceToken = token;
       existing.lastConnected = Date.now();
       this.saveConnections(connections);
     } else {
-      this.getDeviceId().then(deviceId => {
-        const conns = this.getConnections();
-        conns.push({
-          id: this.generateId(),
-          name: this.extractNameFromEndpoint(endpoint),
-          endpoint,
-          method: 'pairing',
-          deviceToken: token,
-          deviceId,
-          lastConnected: Date.now(),
-        });
-        this.saveConnections(conns);
+      const deviceId = await this.getDeviceId();
+      const conns = this.getConnections();
+      conns.push({
+        id: this.generateId(),
+        name: this.extractNameFromEndpoint(endpoint),
+        endpoint,
+        method: 'pairing',
+        deviceToken: token,
+        deviceId,
+        lastConnected: Date.now(),
       });
+      this.saveConnections(conns);
     }
   }
 

@@ -147,13 +147,13 @@ export class OpenClawWebSocketConnection {
           const retryResult = await this.performConnect(sharedToken, false);
           retryResult.latency = Date.now() - startTime;
           if (retryResult.success && retryResult.deviceToken) {
-            deviceIdentityManager.saveDeviceToken(this.endpoint, retryResult.deviceToken);
+            await deviceIdentityManager.saveDeviceToken(this.endpoint, retryResult.deviceToken);
           }
           return retryResult;
         }
 
         if (result.success && result.deviceToken) {
-          deviceIdentityManager.saveDeviceToken(this.endpoint, result.deviceToken);
+          await deviceIdentityManager.saveDeviceToken(this.endpoint, result.deviceToken);
         }
         return result;
       }
@@ -165,7 +165,7 @@ export class OpenClawWebSocketConnection {
 
       if (result.success && result.deviceToken) {
         console.log('[OpenClawWS] Device token upgraded and saved');
-        deviceIdentityManager.saveDeviceToken(this.endpoint, result.deviceToken);
+        await deviceIdentityManager.saveDeviceToken(this.endpoint, result.deviceToken);
       }
 
       return result;
@@ -521,7 +521,7 @@ export class OpenClawWebSocketConnection {
             this.setState('connected');
             const deviceToken = msg.payload?.auth?.deviceToken || msg.result?.auth?.deviceToken;
             if (deviceToken) {
-              deviceIdentityManager.saveDeviceToken(this.endpoint, deviceToken);
+              deviceIdentityManager.saveDeviceToken(this.endpoint, deviceToken).catch(console.error);
             }
             resolve({ success: true, state: 'connected', message: '配对成功', deviceToken });
           }

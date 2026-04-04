@@ -72,25 +72,25 @@ export class StratixAgentExecutor implements AgentExecutor {
     try {
       const config = agentConfig.stratixConfig;
       const testMessage = 'Hello';
-      
+
       const timeoutMs = LLM_DEFAULTS.TIMEOUT_MS;
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Connection timeout (10s)')), timeoutMs)
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`Connection timeout (${timeoutMs / 1000}s)`)), timeoutMs)
       );
-      
+
       const connectionPromise = this.callLLM(config, testMessage, {
         identity: 'You are a test assistant.',
         goals: ['Respond to test queries'],
         personality: 'Helpful'
       }, undefined);
-      
+
       await Promise.race([connectionPromise, timeoutPromise]);
-      
+
       return { success: true, message: 'Connection successful' };
     } catch (error) {
-      return { 
-        success: false, 
-        message: error instanceof Error ? error.message : 'Unknown error' 
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error'
       };
     }
   }
