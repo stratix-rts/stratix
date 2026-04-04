@@ -126,8 +126,9 @@ export class MemoryManager {
       this.shortTerm = data.shortTerm || [];
       this.midTerm = data.midTerm || [];
       this.longTerm = data.longTerm || [];
-    } catch {
-      // 文件不存在，使用空内存
+    } catch (e) {
+      // 文件不存在或损坏，使用空内存
+      console.warn('[MemoryManager] Failed to load memory:', e);
     }
   }
 

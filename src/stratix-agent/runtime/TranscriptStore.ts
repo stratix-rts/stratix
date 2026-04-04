@@ -130,7 +130,8 @@ export class TranscriptStore {
       const content = await readFile(filePath, 'utf-8');
       const lines = content.split('\n').filter((line) => line.trim() !== '');
       return lines.map((line) => JSON.parse(line) as TranscriptEntry);
-    } catch {
+    } catch (e) {
+      console.warn(`[TranscriptStore] Failed to read entries from ${filePath}:`, e);
       return [];
     }
   }

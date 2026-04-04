@@ -290,6 +290,27 @@ export const CALCULATOR_SKILLS: SkillDefinition[] = [
  */
 export const ZONE_SKILLS: SkillDefinition[] = [
   {
+    skillId: 'zone_search',
+    name: 'zone_search',
+    description: 'Search for zones by keyword. Use this to find zones matching certain topics or keywords.',
+    parameters: [
+      {
+        name: 'keyword',
+        type: 'string',
+        required: true,
+        description: 'Keyword to search for in zone titles and prompts'
+      },
+      {
+        name: 'limit',
+        type: 'number',
+        required: false,
+        default: 20,
+        description: 'Maximum number of results to return'
+      }
+    ],
+    executor: 'zone'
+  },
+  {
     skillId: 'zone_move_to',
     name: 'zone_move_to',
     description: 'Move the agent into a specified Zone. Use this when you want to join a Zone to collaborate with other agents there or work on tasks related to that Zone\'s objectives. You should use this when the current task would be better accomplished in a different Zone.',

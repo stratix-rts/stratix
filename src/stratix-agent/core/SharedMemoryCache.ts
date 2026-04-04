@@ -40,6 +40,11 @@ export class SharedMemoryCache {
 
   shareMemory(agentId: string, memoryKey: string): void {
     const key = `shared:${memoryKey}`;
+    const value = this.cache.get(memoryKey);
+    if (value) {
+      this.agentAccessCount.set(agentId, this.agentAccessCount.get(agentId) || new Map());
+      this.agentAccessCount.get(agentId)!.set(memoryKey, 0);
+    }
   }
 
   private trackAccess(agentId: string, key: string): void {

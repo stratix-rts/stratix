@@ -9,7 +9,9 @@ export class SkillTrigger {
       try {
         const parsed = JSON.parse(jsonMatch[1]);
         return parsed.filter((p: any) => this.isValidSkillCall(p, availableSkills));
-      } catch {}
+      } catch (e) {
+        console.warn('[SkillTrigger] Failed to parse JSON skill calls:', e);
+      }
     }
 
     const xmlMatches = Array.from(llmResponse.matchAll(/<skill_call\s+skillId="([^"]+)"[^>]*>([\s\S]*?)<\/skill_call>/g));

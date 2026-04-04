@@ -92,9 +92,13 @@ export class SessionManager {
           if (session.agentId === agentId) {
             this.sessions.set(session.sessionId, session);
           }
-        } catch {}
+        } catch (e) {
+          console.warn(`[SessionManager] Failed to load session file ${file}:`, e);
+        }
       }
-    } catch {}
+    } catch (e) {
+      console.warn('[SessionManager] Failed to load sessions:', e);
+    }
   }
 
   async saveSessions(agentId: string): Promise<void> {

@@ -33,8 +33,13 @@ export class StorageManager {
     if (!existsSync(configPath)) {
       return null;
     }
-    const content = await readFile(configPath, 'utf-8');
-    return JSON.parse(content);
+    try {
+      const content = await readFile(configPath, 'utf-8');
+      return JSON.parse(content);
+    } catch (e) {
+      console.error(`[StorageManager] Failed to load config for ${agentId}:`, e);
+      return null;
+    }
   }
 
   async saveSoul(agentId: string, soul: SoulConfig): Promise<void> {
@@ -49,8 +54,13 @@ export class StorageManager {
     if (!existsSync(soulPath)) {
       return null;
     }
-    const content = await readFile(soulPath, 'utf-8');
-    return JSON.parse(content);
+    try {
+      const content = await readFile(soulPath, 'utf-8');
+      return JSON.parse(content);
+    } catch (e) {
+      console.error(`[StorageManager] Failed to load soul for ${agentId}:`, e);
+      return null;
+    }
   }
 
   async saveRules(agentId: string, rules: string[]): Promise<void> {

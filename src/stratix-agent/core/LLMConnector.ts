@@ -33,7 +33,7 @@ export class LLMConnector {
     if (!this.anthropicClient) {
       this.anthropicClient = new Anthropic({
         apiKey: this.config.apiKey,
-        baseURL: this.config.baseUrl,
+        baseURL: this.config.baseUrl || this.getDefaultBaseUrl(),
       });
     }
     return this.anthropicClient;
@@ -280,10 +280,17 @@ export class LLMConnector {
     if (message?.tool_calls) {
       for (const tc of message.tool_calls) {
         if (tc.type === 'function') {
+          let input;
+          try {
+            input = JSON.parse(tc.function.arguments);
+          } catch (e) {
+            console.warn('[LLMConnector] Failed to parse tool arguments:', e);
+            input = {};
+          }
           tool_calls.push({
             type: 'tool_use',
             name: tc.function.name,
-            input: JSON.parse(tc.function.arguments),
+            input,
             id: tc.id
           });
         }

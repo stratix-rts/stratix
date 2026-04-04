@@ -50,13 +50,6 @@ export interface SkillParameter {
   description?: string;
 }
 
-export interface ExecutionContext {
-  agentId: string;
-  sessionId?: string;
-  userId?: string;
-  variables?: Record<string, any>;
-}
-
 export interface SkillResult {
   success: boolean;
   skillId: string;

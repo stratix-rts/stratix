@@ -89,7 +89,12 @@ export class AgentExporter {
     try {
       const { readFile } = await import('fs/promises');
       const content = await readFile(filePath, 'utf-8');
-      const data = JSON.parse(content);
+      let data;
+      try {
+        data = JSON.parse(content);
+      } catch (e) {
+        return { success: false, error: 'Invalid JSON in import file' };
+      }
 
       return {
         success: true,
