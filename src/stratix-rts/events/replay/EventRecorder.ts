@@ -28,6 +28,7 @@ const MAX_RECORDING_EVENTS = 10000;
 export class EventRecorder {
   private isRecording = false;
   private recordingId: string | null = null;
+  private recordingName: string | null = null;
   private startTime: number = 0;
   private events: RecordedEvent[] = [];
   private unsubscribe: (() => void) | null = null;
@@ -42,6 +43,7 @@ export class EventRecorder {
     }
 
     this.recordingId = generateSessionId();
+    this.recordingName = name ?? null;
     this.startTime = performance.now();
     this.events = [];
     this.isRecording = true;
@@ -94,7 +96,7 @@ export class EventRecorder {
     const endTime = performance.now();
     const session: RecordingSession = {
       id: this.recordingId!,
-      name: `Recording ${new Date().toLocaleTimeString()}`,
+      name: this.recordingName ?? `Recording ${new Date().toLocaleTimeString()}`,
       startTime: this.startTime,
       endTime,
       events: [...this.events],
@@ -110,6 +112,7 @@ export class EventRecorder {
 
     this.isRecording = false;
     this.recordingId = null;
+    this.recordingName = null;
 
     console.log(`[EventRecorder] Recording stopped: ${session.id}, ${session.events.length} events, ${session.duration.toFixed(0)}ms`);
 
@@ -158,6 +161,7 @@ export class EventRecorder {
 
     this.isRecording = false;
     this.recordingId = null;
+    this.recordingName = null;
     this.events = [];
 
     console.log('[EventRecorder] Recording cancelled');
