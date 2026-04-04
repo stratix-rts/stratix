@@ -141,7 +141,7 @@ export class ResultCollector {
         if (entry.isFile() && !entry.name.startsWith('.stratix-')) {
           files.push(entry.name);
         } else if (entry.isDirectory()) {
-          const subFiles = await this.getTaskFiles(filePath);
+          const subFiles = await this.getTaskFiles(entry.name);
           files.push(...subFiles.map(f => path.join(entry.name, f)));
         }
       }
