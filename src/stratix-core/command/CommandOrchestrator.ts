@@ -4,6 +4,18 @@ import type { ExecutorResult } from '../executor/AgentExecutor';
 import { ExecutorFactory } from '../executor/ExecutorFactory';
 import { ConnectionPool } from '../../stratix-openclaw-adapter';
 
+/**
+ * Command Orchestrator — 命令发现与注册中心。
+ *
+ * 职责：
+ * - 管理命令注册（register/unregister）
+ * - 命令发现与上下文过滤（getCommands/getCommandNames）
+ * - 命令执行调度（execute — 委托给 ExecutorFactory）
+ *
+ * 不负责：
+ * - 命令的实际执行逻辑（由 CommandSourceAdapter 的 execute 回调处理）
+ * - 命令的协议转换（由 CommandTransformer 处理）
+ */
 const SOURCE_PRIORITY: Record<CommandSource, number> = {
   builtin: 0,
   plugin: 1,
