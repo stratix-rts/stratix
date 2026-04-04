@@ -2,7 +2,6 @@
  * Button 组件 Token (Vue 和 Phaser 共享)
  */
 
-import { getToken } from '../../config';
 import type { ComponentToken } from '../../types';
 
 /**
