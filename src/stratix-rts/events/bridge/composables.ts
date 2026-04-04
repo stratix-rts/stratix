@@ -141,15 +141,20 @@ export function useRTSConnectionState() {
   const isConnected = ref(false);
   const gameReady = ref(false);
 
+  let unsub1: (() => void) | null = null;
+
   onMounted(() => {
-    const unsub1 = rtsEventBus.on('game:vue:game_ready', () => {
+    unsub1 = rtsEventBus.on('game:vue:game_ready', () => {
       gameReady.value = true;
       isConnected.value = true;
     });
+  });
 
-    onUnmounted(() => {
-        unsub1();
-    });
+  onUnmounted(() => {
+    if (unsub1) {
+      unsub1();
+      unsub1 = null;
+    }
   });
 
   return {

@@ -5,7 +5,7 @@ import type { Middleware, MiddlewareContext } from './types';
 
 interface ThrottleState {
   lastEmit: number;
-  pendingData: unknown;
+  pendingData: unknown[];
   timeoutId: ReturnType<typeof setTimeout> | null;
 }
 
@@ -19,7 +19,7 @@ export function createThrottleMiddleware(
     if (!states.has(event)) {
       states.set(event, {
         lastEmit: 0,
-        pendingData: null,
+        pendingData: [],
         timeoutId: null,
       });
     }
@@ -28,7 +28,7 @@ export function createThrottleMiddleware(
 
   return <K extends RTSEventName>(ctx: MiddlewareContext<K>) => {
     const throttleMs = config[ctx.event] ?? ThrottleConfig[ctx.event];
-    
+
     if (!throttleMs) {
       ctx.next();
       return;
@@ -42,20 +42,22 @@ export function createThrottleMiddleware(
       state.lastEmit = now;
       ctx.next();
     } else {
-      state.pendingData = ctx.data;
-      
+      state.pendingData.push(ctx.data);
+
       if (!state.timeoutId) {
+        const remainingMs = throttleMs - elapsed;
         state.timeoutId = setTimeout(() => {
           state.timeoutId = null;
           state.lastEmit = performance.now();
-          if (state.pendingData !== null) {
-            ctx.data = state.pendingData;
+          const pending = state.pendingData;
+          state.pendingData = [];
+          for (const data of pending) {
+            ctx.data = data;
             ctx.next();
-            state.pendingData = null;
           }
-        }, throttleMs - elapsed);
+        }, remainingMs);
       }
-      
+
       ctx.abort = true;
     }
   };

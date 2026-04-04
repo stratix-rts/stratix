@@ -71,5 +71,6 @@ export function registerBatchHandler<K extends RTSEventName>(
 ): void {
   // Batch handlers are registered via the createBatchMiddleware config.
   // This function is a placeholder for future dynamic handler registration.
+  // TODO: Implement dynamic batch handler registration when needed.
   console.debug('[BatchMiddleware] registerBatchHandler called (no-op)');
 }
