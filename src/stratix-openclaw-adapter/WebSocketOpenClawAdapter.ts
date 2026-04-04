@@ -232,7 +232,7 @@ export class WebSocketOpenClawAdapter implements OpenClawAdapterInterface {
       console.log('[WebSocketAdapter] Received:', msg.type, msg.event || msg.method || '');
 
       if (msg.type === 'event' && msg.event === 'connect.challenge') {
-        this.handleChallenge(handshakeTimeout, handshakeResolve);
+        this.handleChallenge(msg, handshakeTimeout, handshakeResolve);
       } else if (msg.type === 'res' && this.isHandshakeResponse(msg)) {
         this.handleHandshakeResponse(msg, handshakeTimeout, handshakeResolve);
       } else {
@@ -249,6 +249,7 @@ export class WebSocketOpenClawAdapter implements OpenClawAdapterInterface {
   }
 
   private handleChallenge(
+    msg: WSMessage,
     timeout: ReturnType<typeof setTimeout>,
     resolve: (value: boolean) => void
   ): void {
@@ -257,10 +258,7 @@ export class WebSocketOpenClawAdapter implements OpenClawAdapterInterface {
       return;
     }
 
-    const challengePayload = this.messageQueue.length > 0 
-      ? (this.messageQueue[0].params as { nonce?: string }) 
-      : null;
-    const nonce = challengePayload?.nonce || '';
+    const nonce = (msg.params as { nonce?: string })?.nonce || '';
 
     const signature = this.signChallenge(nonce);
 

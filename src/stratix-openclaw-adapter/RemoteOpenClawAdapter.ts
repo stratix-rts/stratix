@@ -99,13 +99,33 @@ export class RemoteOpenClawAdapter implements OpenClawAdapterInterface {
     }
   }
 
-  public async listModels(): Promise<string[]> {
+  public async listModels(): Promise<unknown[]> {
     try {
       const response = await this.axiosInstance.get<{ data: Array<{ id: string }> }>('/v1/models');
       return response.data.data.map((m) => m.id);
     } catch {
       return [];
     }
+  }
+
+  public async listSessions(): Promise<unknown[]> {
+    return this.invokeTool<unknown[]>('sessions_list');
+  }
+
+  public async listAgents(): Promise<unknown[]> {
+    return this.invokeTool<unknown[]>('agents_list');
+  }
+
+  public async streamChatCompletion(
+    _request: OpenAIChatCompletionRequest,
+    _onChunk: (chunk: string) => void,
+    _options?: { agentId?: string }
+  ): Promise<void> {
+    throw new Error('Remote adapter does not support streaming');
+  }
+
+  public isConnected(): boolean {
+    return false;
   }
 
   public async invokeTool<T = unknown>(

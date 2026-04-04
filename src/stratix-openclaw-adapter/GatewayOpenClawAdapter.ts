@@ -42,6 +42,7 @@ export class GatewayOpenClawAdapter implements OpenClawAdapterInterface {
   private connectPromise: Promise<void> | null = null;
   private lastConnectFail = 0;
   private readonly COOLDOWN = 3000;
+  private readonly MAX_RETRY = 2;
   private requestId = 0;
   private pendingRequests = new Map<string, PendingRequest>();
 
@@ -168,7 +169,14 @@ export class GatewayOpenClawAdapter implements OpenClawAdapterInterface {
         timeout: timeoutId,
       });
 
-      this.ws!.send(JSON.stringify(message));
+      const ws = this.ws;
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        clearTimeout(timeoutId);
+        this.pendingRequests.delete(requestId);
+        reject(new Error('WebSocket not connected'));
+        return;
+      }
+      ws.send(JSON.stringify(message));
     });
   }
 
@@ -224,15 +232,20 @@ export class GatewayOpenClawAdapter implements OpenClawAdapterInterface {
   }
 
   private async withRetry<T>(fn: () => Promise<T>): Promise<T> {
-    try {
-      return await fn();
-    } catch (error) {
-      if (this.isProxyNotFound(error)) {
-        await this.reconnect();
-        return fn();
+    let lastError: Error | undefined;
+    for (let attempt = 0; attempt <= this.MAX_RETRY; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        lastError = error as Error;
+        if (attempt < this.MAX_RETRY && this.isProxyNotFound(error)) {
+          await this.reconnect();
+        } else {
+          throw error;
+        }
       }
-      throw error;
     }
+    throw lastError;
   }
 
   public async connect(): Promise<void> {

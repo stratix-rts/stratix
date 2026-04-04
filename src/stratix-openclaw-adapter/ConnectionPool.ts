@@ -169,7 +169,7 @@ export class ConnectionPool {
   public getPoolStats(): PoolStats {
     const connections = Array.from(this.connections.values());
     const now = Date.now();
-    const idleThreshold = now - 60000;
+    const idleThreshold = now - this.options.idleTimeout;
 
     return {
       totalConnections: connections.length,
@@ -309,23 +309,22 @@ export class ConnectionPool {
     args?: Record<string, unknown>,
     options?: { sessionKey?: string; action?: string }
   ): Promise<InvokeAllResult<T>[]> {
-    const results: InvokeAllResult<T>[] = [];
     const connectedAdapters = Array.from(this.connections.entries()).filter(
       ([_, conn]) => conn.info.status === 'connected'
     );
 
-    await Promise.all(
-      connectedAdapters.map(async ([key, conn]) => {
+    const results = await Promise.all(
+      connectedAdapters.map(async ([key, conn]): Promise<InvokeAllResult<T>> => {
         try {
           const result = await conn.adapter.invokeTool<T>(tool, args, options);
-          results.push({ key, success: true, result });
+          return { key, success: true, result };
         } catch (error) {
-          results.push({ key, success: false, error: (error as Error).message });
+          return { key, success: false, error: (error as Error).message };
         }
       })
     );
 
-    return results;
+    return Array.from(results);
   }
 
   public async invokeFirst<T = unknown>(

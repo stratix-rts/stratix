@@ -12,6 +12,16 @@ export interface OpenClawAdapterInterface {
     args?: Record<string, unknown>,
     options?: { sessionKey?: string; action?: string }
   ): Promise<T>;
+  openaiChatCompletion(request: OpenAIChatCompletionRequest): Promise<OpenAIChatCompletionResponse>;
+  streamChatCompletion(
+    request: OpenAIChatCompletionRequest,
+    onChunk: (chunk: string) => void,
+    options?: { agentId?: string }
+  ): Promise<void>;
+  listSessions(): Promise<unknown[]>;
+  listAgents(): Promise<unknown[]>;
+  listModels(): Promise<unknown[]>;
+  isConnected(): boolean;
 }
 
 export interface OpenClawAction {

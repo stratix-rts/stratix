@@ -36,9 +36,8 @@ export { WebSocketOpenClawAdapter } from './WebSocketOpenClawAdapter';
 export { ConnectionPool } from './ConnectionPool';
 export type { ConnectionInfo, ConnectionPoolOptions, PoolStats, InvokeAllResult } from './ConnectionPool';
 
-const isBrowser = typeof window !== 'undefined';
-
 export function createOpenClawAdapter(config: StratixOpenClawConfig): OpenClawAdapterInterface {
+  const isBrowser = typeof window !== 'undefined';
   if (isBrowser) {
     return new GatewayOpenClawAdapter(config);
   }

@@ -63,7 +63,7 @@ export class LocalOpenClawAdapter implements OpenClawAdapterInterface {
     string,
     { resolve: (value: unknown) => void; reject: (error: Error) => void }
   > = new Map();
-  private isConnected = false;
+  private isConnectedFlag = false;
 
   constructor(config: StratixOpenClawConfig) {
     this.config = config;
@@ -89,7 +89,7 @@ export class LocalOpenClawAdapter implements OpenClawAdapterInterface {
       this.ws.close();
       this.ws = null;
     }
-    this.isConnected = false;
+    this.isConnectedFlag = false;
     this.pendingRequests.clear();
   }
 
@@ -265,5 +265,9 @@ export class LocalOpenClawAdapter implements OpenClawAdapterInterface {
       return error.message;
     }
     return (error as Error).message;
+  }
+
+  public isConnected(): boolean {
+    return this.isConnectedFlag;
   }
 }
