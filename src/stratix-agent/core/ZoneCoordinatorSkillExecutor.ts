@@ -151,8 +151,8 @@ export class ZoneCoordinatorSkillExecutor implements SkillExecutor {
           zoneId,
           'task_failed', // Using task_failed as cancellation event
           undefined,
-          taskId,
-          { reason, action: 'cancelled' }
+          assigneeId,
+          { reason, action: 'cancelled', taskId }
         );
 
         // Decrement agent's load if it was assigned
