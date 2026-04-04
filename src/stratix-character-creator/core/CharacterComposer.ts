@@ -166,7 +166,7 @@ class CharacterComposer {
         item.img = img;
         this.imageCache.set(item.spritePath, img);
       } catch (error) {
-        // sprite load failed, item.img remains undefined
+        console.warn(`[CharacterComposer] Failed to load image: ${item.spritePath}`, error);
       }
     });
 
