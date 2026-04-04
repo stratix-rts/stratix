@@ -13,3 +13,7 @@ export type { ValidationResult, GuardianValidationResult, PermissionCheckResult 
 // 导出 Strategist 模块
 export { ProjectScanner, ProposalMapper } from './strategist';
 export type * from './strategist/types';
+
+// 导出 Observer 模块
+export { Observer, InputPreprocessor, InsightExtractor } from './observer';
+export type * from './observer/types';
