@@ -136,7 +136,6 @@ export class ResultCollector {
       const entries = await fs.readdir(taskDir, { withFileTypes: true });
       
       for (const entry of entries) {
-        const filePath = path.join(taskDir, entry.name);
         
         if (entry.isFile() && !entry.name.startsWith('.stratix-')) {
           files.push(entry.name);

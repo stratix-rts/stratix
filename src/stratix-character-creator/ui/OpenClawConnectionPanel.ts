@@ -9,10 +9,8 @@
 import Phaser from 'phaser';
 
 
-import { getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
-import { unifiedOpenClawConnectionManager, type TailscaleNode, type ConnectionResult, type StoredConnection } from '@/stratix-core/UnifiedOpenClawConnectionManager';
-import type { OpenClawConnectionMethod } from '@/stratix-core/stratix-protocol';
+import { unifiedOpenClawConnectionManager, type TailscaleNode, type StoredConnection } from '@/stratix-core/UnifiedOpenClawConnectionManager';
 import { DOMContainer } from '@/stratix-core/ui/DOMContainer';
 
 import { getButtonInlineStyles } from './_buttonStyles';

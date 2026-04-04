@@ -6,14 +6,13 @@
 
 import Phaser from 'phaser';
 
-import { getToken } from '@/design-system/config';
 import { Depth } from '@/design-system/tokens/depth';
 import { DOMContainer } from '@/stratix-core/ui/DOMContainer';
 
 import { PART_CATEGORY_CONFIGS, getCategoryConfig } from '../config/partConfig';
 import type { BodyType, PartCategory } from '../constants';
 import { partRegistry } from '../core/PartRegistry';
-import type { PartMetadata, PartSelection } from '../types';
+import type { PartSelection } from '../types';
 
 
 import { getButtonInlineStyles } from './_buttonStyles';

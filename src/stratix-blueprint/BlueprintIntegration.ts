@@ -84,7 +84,7 @@ export class BlueprintIntegration {
     
     // Fallback 2: Manual mode - create simple task list
     console.log('[BlueprintIntegration] Using manual mode');
-    const manualTasks = this.createManualTasks(requirement);
+    const manualTasks = this.createManualTasks(/* requirement */_requirement);
     const { nodes, edges } = this.layoutEngine.layout(manualTasks);
     
     return {

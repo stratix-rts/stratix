@@ -1,12 +1,10 @@
-import { spawn, ChildProcess, exec } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { promisify } from 'util';
 
 import axios from 'axios';
 
-const execAsync = promisify(exec);
 
 export interface TailscalePeer {
   id: string;
@@ -141,11 +139,11 @@ export class EmbeddedTailscale {
           reject(err);
         });
 
-        this.tailscaled.stdout?.on('data', (data) => {
+        this.tailscaled.stdout?.on('data', (_data) => {
           // Log for debugging
         });
 
-        this.tailscaled.stderr?.on('data', (data) => {
+        this.tailscaled.stderr?.on('data', (_data) => {
           // Log for debugging
         });
 
@@ -216,8 +214,8 @@ export class EmbeddedTailscale {
 
       const proc = spawn(tailscaleBin, fullArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
 
-      proc.stdout?.on('data', (data) => { stdout += data; });
-      proc.stderr?.on('data', (data) => { stderr += data; });
+      proc.stdout?.on('data', (/* data */_data) => { stdout += data; });
+      proc.stderr?.on('data', (/* data */_data) => { stderr += data; });
 
       proc.on('close', (code) => {
         if (code === 0) {

@@ -63,7 +63,6 @@ export interface WorkflowCanvasConfig {
 const NODE_WIDTH = 200;
 const NODE_HEADER_HEIGHT = 36;
 const PORT_SIZE = 12;
-const PORT_RADIUS = 6;
 
 export class WorkflowCanvas {
   private container: HTMLDivElement | null = null;
@@ -495,7 +494,7 @@ export class WorkflowCanvas {
       }
     });
 
-    canvas.addEventListener('mouseup', (e) => {
+    canvas.addEventListener('mouseup', () => {
       if (this.isPanning) {
         this.isPanning = false;
         canvas.style.cursor = this.spacePressed ? 'grab' : 'default';

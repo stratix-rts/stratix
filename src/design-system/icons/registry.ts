@@ -156,21 +156,21 @@ export const IconSizes = {
 /**
  * 获取 SVG 图标路径
  */
-export function getIconPath(name: string): string | null {
+export function getIconPath(_name: string): string | null {
   return SVGIconRegistry[name] || null;
 }
 
 /**
  * 获取自定义图标绘制函数
  */
-export function getCustomIcon(name: string): GraphicsIconRenderer | null {
+export function getCustomIcon(_name: string): GraphicsIconRenderer | null {
   return CustomIconRegistry[name] || null;
 }
 
 /**
  * 图标工具：生成 SVG HTML
  */
-export function createSVGIcon(name: string, size: number = 24, color: string = 'currentColor'): string {
+export function createSVGIcon(_name: string, size: number = 24, color: string = 'currentColor'): string {
   const path = getIconPath(name);
   if (!path) return '';
   
@@ -182,7 +182,7 @@ export function createSVGIcon(name: string, size: number = 24, color: string = '
  */
 export function drawIcon(
   graphics: any,
-  name: string,
+  _name: string,
   x: number,
   y: number,
   size: number,
@@ -203,6 +203,6 @@ export function drawIcon(
 /**
  * 获取图标的 viewBox 属性
  */
-export function getIconViewBox(_name: string): string {
+export function getIconViewBox(__name: string): string {
   return '0 0 24 24';
 }

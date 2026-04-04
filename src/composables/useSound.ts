@@ -8,10 +8,8 @@
 import { computed } from 'vue';
 
 import { soundService } from '@/services/SoundService';
-import { useUIStore } from '@/stores/ui';
 
 export function useSound() {
-  useUIStore();
 
   // Load persisted settings on first use
   soundService.loadSettings();

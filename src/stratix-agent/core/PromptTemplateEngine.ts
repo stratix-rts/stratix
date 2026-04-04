@@ -24,8 +24,7 @@ export class PromptTemplateEngine {
    */
   private registerBuiltinFunctions(): void {
     // date 函数 - 格式化日期
-    this.registerFunction('date', (...args: unknown[]) => {
-      const _format = (args[0] as string) || 'YYYY-MM-DD';
+    this.registerFunction('date', (..._args: unknown[]) => {
       const now = new Date();
       return now.toISOString().split('T')[0];
     });

@@ -40,7 +40,6 @@ export interface UseChatOptions {
   agentName?: string;
   useToolUse?: Ref<boolean> | boolean;
   onMessageRender?: (msg: ChatMessage, isNew: boolean) => void;
-  onSkillExecuting?: (skillId: string, skillName: string) => void;
 }
 
 export interface UseChatReturn {
@@ -71,7 +70,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
     maxHistory = 20,
     agentName = 'Agent',
     useToolUse = false,
-    onMessageRender,
+    onMessageRender
   } = options;
 
   const messages = ref<ChatMessage[]>([]);

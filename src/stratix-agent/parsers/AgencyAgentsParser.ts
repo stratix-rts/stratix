@@ -49,25 +49,25 @@ export class AgencyAgentsParser {
       id,
       name: this.extractName(parsed, filePath),
       version: '1.0.0',
-      description: this.extractDescription(parsed),
+      description: this.extractDescription(/* parsed */_parsed),
       domain,
       tags: this.extractTags(parsed, filePath),
-      mixins: this.extractMixins(parsed),
+      mixins: this.extractMixins(/* parsed */_parsed),
 
-      identity: this.extractIdentity(parsed),
-      personality: this.extractPersonality(parsed),
-      tone: this.extractTone(parsed),
+      identity: this.extractIdentity(/* parsed */_parsed),
+      personality: this.extractPersonality(/* parsed */_parsed),
+      tone: this.extractTone(/* parsed */_parsed),
 
-      mission: this.extractMission(parsed),
-      workflows: this.extractWorkflows(parsed),
+      mission: this.extractMission(/* parsed */_parsed),
+      workflows: this.extractWorkflows(/* parsed */_parsed),
 
-      rules: this.extractRules(parsed),
-      constraints: this.extractConstraints(parsed),
-      forbiddenActions: this.extractForbiddenActions(parsed),
+      rules: this.extractRules(/* parsed */_parsed),
+      constraints: this.extractConstraints(/* parsed */_parsed),
+      forbiddenActions: this.extractForbiddenActions(/* parsed */_parsed),
 
-      skills: this.extractSkills(parsed),
-      workflowSteps: this.extractWorkflowSteps(parsed),
-      successMetrics: this.extractSuccessMetrics(parsed),
+      skills: this.extractSkills(/* parsed */_parsed),
+      workflowSteps: this.extractWorkflowSteps(/* parsed */_parsed),
+      successMetrics: this.extractSuccessMetrics(/* parsed */_parsed),
 
       resourceLimits: undefined,
       compliance: undefined,
@@ -75,7 +75,7 @@ export class AgencyAgentsParser {
       metadata: {
         source: 'agency-agents',
         createdAt: new Date().toISOString(),
-        language: this.detectLanguage(parsed),
+        language: this.detectLanguage(/* parsed */_parsed),
       },
     };
   }
@@ -434,7 +434,7 @@ export class AgencyAgentsParser {
    * 提取工作流步骤
    */
   private extractWorkflowSteps(parsed: ParseResult): WorkflowStep[] {
-    const workflows = this.extractWorkflows(parsed);
+    const workflows = this.extractWorkflows(/* parsed */_parsed);
     const steps: WorkflowStep[] = [];
 
     for (const workflow of workflows) {

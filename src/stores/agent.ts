@@ -28,17 +28,14 @@ function savedCharacterToProfile(character: SavedCharacter): CharacterProfile {
 
 function determineConfigStatus(
   profile: CharacterProfile | undefined,
-  backendType: AgentBackendType,
   openClawConfig?: OpenClawConfig,
   stratixConfig?: { provider?: string; model?: string }
 ): 'draft' | 'ready' {
   if (!profile) return 'draft';
 
-  if (backendType === 'openclaw') {
     if (!openClawConfig?.endpoint || !openClawConfig?.accountId) {
       return 'draft';
     }
-  } else if (backendType === 'stratix') {
     if (!stratixConfig?.provider || !stratixConfig?.model) {
       return 'draft';
     }
@@ -245,7 +242,6 @@ export const useAgentStore = defineStore('agent', () => {
   async function createAgentFromCharacter(
     character: SavedCharacter,
     options?: {
-      backendType?: AgentBackendType;
       openClawConfig?: OpenClawConfig;
       stratixConfig?: StratixAgentConfig['stratixConfig'];
       soul?: StratixAgentConfig['soul'];
@@ -254,12 +250,10 @@ export const useAgentStore = defineStore('agent', () => {
       rules?: string[];
     }
   ): Promise<StratixAgentConfig | null> {
-    const backendType = options?.backendType || 'stratix';
     const profile = savedCharacterToProfile(character);
 
     const configStatus = determineConfigStatus(
       profile,
-      backendType,
       options?.openClawConfig,
       options?.stratixConfig
     );
@@ -269,9 +263,6 @@ export const useAgentStore = defineStore('agent', () => {
       name: character.name || 'Hero',
       type: 'custom',
       profile,
-      backendType,
-      openClawConfig: backendType === 'openclaw' ? options?.openClawConfig : undefined,
-      stratixConfig: backendType === 'stratix' ? options?.stratixConfig : undefined,
       soul: options?.soul,
       memory: options?.memory,
       skills: options?.skills,
@@ -300,14 +291,12 @@ export const useAgentStore = defineStore('agent', () => {
 
   // Test backend connection
   async function testBackendConnection(
-    backendType: AgentBackendType,
     config: OpenClawConfig | unknown
   ): Promise<{ success: boolean; message: string }> {
     try {
       const response = await fetch('/api/stratix/agent/test-connection', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ backendType, config })
       });
 
       const result = await response.json();
@@ -330,7 +319,6 @@ export const useAgentStore = defineStore('agent', () => {
     agentId: string,
     character: SavedCharacter,
     options?: {
-      backendType?: AgentBackendType;
       openClawConfig?: OpenClawConfig;
       stratixConfig?: StratixAgentConfig['stratixConfig'];
       soul?: StratixAgentConfig['soul'];
@@ -343,14 +331,11 @@ export const useAgentStore = defineStore('agent', () => {
 
     if (index >= 0) {
       const profile = savedCharacterToProfile(character);
-      const backendType = options?.backendType || agents.value[index].backendType;
 
       agents.value[index].profile = profile;
       agents.value[index].name = character.name;
 
       if (options) {
-        if (options.backendType) {
-          agents.value[index].backendType = options.backendType;
         }
         if (options.openClawConfig !== undefined) {
           agents.value[index].openClawConfig = options.openClawConfig;
@@ -374,7 +359,6 @@ export const useAgentStore = defineStore('agent', () => {
 
       agents.value[index].configStatus = determineConfigStatus(
         profile,
-        agents.value[index].backendType,
         agents.value[index].openClawConfig,
         agents.value[index].stratixConfig
       );
@@ -399,10 +383,8 @@ export const useAgentStore = defineStore('agent', () => {
         updatedAt: Date.now()
       };
 
-      if (updates.backendType || updates.openClawConfig || updates.profile || updates.stratixConfig) {
         agents.value[index].configStatus = determineConfigStatus(
           agents.value[index].profile,
-          agents.value[index].backendType,
           agents.value[index].openClawConfig,
           agents.value[index].stratixConfig
         );

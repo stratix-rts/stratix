@@ -122,7 +122,7 @@ export class AgentOrchestratorClient {
     }
   }
   
-  isAgentWorking(agentId: string): boolean {
+  isAgentWorking(_agentId: string): boolean {
     return false;
   }
 }

@@ -85,7 +85,6 @@ export class AgentChatPanel {
   }
 
   private generateHTML(): string {
-    const char = this.config.character;
 
     return `
       <div class="agent-chat" style="
