@@ -94,7 +94,7 @@ export class AgentMessageRouter {
     senderId: string,
     recipientId: string,
     content: string,
-    options: any
+    options: RouteOptions
   ): Promise<RouteResult> {
     // Check policy
     const check = await this.constraints.canSend(senderId, recipientId, 'direct', { zoneId: options.zoneId });
@@ -128,7 +128,7 @@ export class AgentMessageRouter {
     senderId: string,
     zoneId: string,
     content: string,
-    options: any
+    options: RouteOptions
   ): Promise<RouteResult> {
     // Check policy - for broadcast, the sender broadcasts to the zone (recipientId is not applicable for zone-wide)
     const check = await this.constraints.canSend(senderId, '*', 'broadcast', { zoneId });
@@ -166,7 +166,7 @@ export class AgentMessageRouter {
     senderId: string,
     recipientId: string,
     content: string,
-    options: any
+    options: RouteOptions
   ): Promise<RouteResult> {
     // Mentions are like DMs but with @mention reference
     const references: MessageReference[] = [
@@ -197,7 +197,7 @@ export class AgentMessageRouter {
     senderId: string,
     recipientId: string,
     content: string,
-    options: any
+    options: RouteOptions
   ): Promise<RouteResult> {
     // Check policy
     const check = await this.constraints.canSend(senderId, recipientId, 'direct', { zoneId: options.zoneId });
@@ -232,7 +232,7 @@ export class AgentMessageRouter {
   private async handleContextShare(
     senderId: string,
     content: string,
-    options: any
+    options: RouteOptions
   ): Promise<RouteResult> {
     // For context share, we need to check share policy
     const recipientId = options.recipientId;
