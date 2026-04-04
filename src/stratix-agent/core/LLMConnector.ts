@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 
 import { LLMConfig, GenerateResult, ChatMessage, ToolDefinition, ToolUseRequest, SkillDefinition } from '../types';
+import { retryPolicyEngine } from '../../stratix-core/retry';
 
 export class LLMConnector {
   private config: LLMConfig;
@@ -143,7 +144,7 @@ export class LLMConnector {
     const systemMessage = messages.find(m => m.role === 'system');
     const conversationMessages = messages.filter(m => m.role !== 'system');
 
-    const response = await client.messages.create({
+    const request = async () => client.messages.create({
       model: this.config.model,
       max_tokens: this.config.maxTokens ?? 4096,
       temperature: this.config.temperature ?? 0.7,
@@ -151,8 +152,14 @@ export class LLMConnector {
       messages: this.convertToAnthropicFormat(conversationMessages),
     });
 
-    const content = response.content[0]?.type === 'text' 
-      ? response.content[0].text 
+    const response = await retryPolicyEngine.executeWithRetry(request, undefined, {
+      source: 'background',
+      provider: this.config.provider,
+      model: this.config.model,
+    });
+
+    const content = response.content[0]?.type === 'text'
+      ? response.content[0].text
       : '';
 
     return {
@@ -169,11 +176,17 @@ export class LLMConnector {
   private async generateOpenAICompatible(messages: ChatMessage[]): Promise<GenerateResult> {
     const client = this.getOpenAIClient();
 
-    const response = await client.chat.completions.create({
+    const request = async () => client.chat.completions.create({
       model: this.config.model,
       messages: messages as any,
       temperature: this.config.temperature ?? 0.7,
       max_tokens: this.config.maxTokens ?? 4096,
+    });
+
+    const response = await retryPolicyEngine.executeWithRetry(request, undefined, {
+      source: 'background',
+      provider: this.config.provider,
+      model: this.config.model,
     });
 
     return {
@@ -205,13 +218,19 @@ export class LLMConnector {
     const systemMessage = messages.find(m => m.role === 'system');
     const conversationMessages = messages.filter(m => m.role !== 'system');
 
-    const response = await client.messages.create({
+    const request = async () => client.messages.create({
       model: this.config.model,
       max_tokens: this.config.maxTokens ?? 4096,
       temperature: this.config.temperature ?? 0.7,
       system: systemMessage?.content,
       messages: this.convertToAnthropicFormat(conversationMessages),
       tools: anthropicTools,
+    });
+
+    const response = await retryPolicyEngine.executeWithRetry(request, undefined, {
+      source: 'background',
+      provider: this.config.provider,
+      model: this.config.model,
     });
 
     // 解析响应中的 tool_use
@@ -264,12 +283,18 @@ export class LLMConnector {
       }
     }));
 
-    const response = await client.chat.completions.create({
+    const request = async () => client.chat.completions.create({
       model: this.config.model,
       messages: messages as any,
       temperature: this.config.temperature ?? 0.7,
       max_tokens: this.config.maxTokens ?? 4096,
       tools: openaiTools,
+    });
+
+    const response = await retryPolicyEngine.executeWithRetry(request, undefined, {
+      source: 'background',
+      provider: this.config.provider,
+      model: this.config.model,
     });
 
     const choice = response.choices[0];
