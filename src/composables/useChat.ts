@@ -245,7 +245,7 @@ export function useChat(options: UseChatOptions): UseChatReturn {
             const execution: SkillExecution = {
               id: se.id || `skill-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
               skillId: se.skillId,
-              skillName: se.skillId,
+              skillName: se.skillName,
               status: se.error ? 'error' : 'success',
               result: se.result,
               error: se.error,

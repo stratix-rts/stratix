@@ -38,6 +38,12 @@ function fuzzyMatch(text: string, pattern: string): boolean {
   return pi === lowerPattern.length
 }
 
+// Filtered commands derived from module-level query state
+const filteredCommands = computed(() => {
+  if (!query.value) return COMMANDS_REGISTRY
+  return COMMANDS_REGISTRY.filter(cmd => fuzzyMatch(cmd.name, query.value))
+})
+
 function selectCommand() {
   const cmd = filteredCommands.value[selectedIndex.value]
   if (cmd) {
@@ -104,11 +110,6 @@ onMounted(() => window.addEventListener('keydown', handleKeydown))
 onUnmounted(() => window.removeEventListener('keydown', handleKeydown))
 
 export function useCommandPalette() {
-  const filteredCommands = computed(() => {
-    if (!query.value) return COMMANDS_REGISTRY
-    return COMMANDS_REGISTRY.filter(cmd => fuzzyMatch(cmd.name, query.value))
-  })
-
   return {
     isOpen,
     query,

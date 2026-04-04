@@ -83,6 +83,7 @@ export function useCelebration() {
   let canvasWidth = 0
   let canvasHeight = 0
   let burstTimer: ReturnType<typeof setInterval> | null = null
+  let currentBurstTimer: ReturnType<typeof setInterval> | null = null
 
   function randomRange(min: number, max: number): number {
     return Math.random() * (max - min) + min
@@ -187,6 +188,14 @@ export function useCelebration() {
       cancelAnimationFrame(animationFrameId)
       animationFrameId = null
     }
+    if (burstTimer !== null) {
+      clearInterval(burstTimer)
+      burstTimer = null
+    }
+    if (currentBurstTimer !== null) {
+      clearInterval(currentBurstTimer)
+      currentBurstTimer = null
+    }
     isAnimating = false
 
     // Clear canvas
@@ -237,12 +246,13 @@ export function useCelebration() {
     // Add secondary bursts over time for sustained celebration
     const burstInterval = duration / 4
     let burstCount = 0
-    const burstTimer = setInterval(() => {
+    currentBurstTimer = setInterval(() => {
       if (burstCount < 3 && isAnimating) {
-        particles.push(...generateParticles(originX, originY, PARTICLE_COUNT / 2))
+        particles.push(...generateParticles(originX, originY, Math.floor(PARTICLE_COUNT / 2)))
         burstCount++
-      } else {
-        clearInterval(burstTimer)
+      } else if (currentBurstTimer) {
+        clearInterval(currentBurstTimer)
+        currentBurstTimer = null
       }
     }, burstInterval)
 
@@ -252,7 +262,6 @@ export function useCelebration() {
     // Auto-cleanup after duration
     setTimeout(() => {
       stopAnimation()
-      clearInterval(burstTimer)
     }, duration)
   }
 

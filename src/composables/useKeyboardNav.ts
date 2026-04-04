@@ -284,6 +284,9 @@ export function useKeyboardNav(options: KeyboardNavOptions = {}): KeyboardNavSta
   // Track the last focused element for focus ring management
   let lastFocusedElement: HTMLElement | null = null
 
+  // Track shortcuts registered by this instance for cleanup
+  const registeredShortcuts = new Set<string>()
+
   function setListLength(length: number) {
     listLengthRef.value = length
   }
@@ -294,19 +297,6 @@ export function useKeyboardNav(options: KeyboardNavOptions = {}): KeyboardNavSta
 
     isNavigating.value = true
     focusedIndex.value = getNextIndex(focusedIndex.value, length, direction)
-  }
-
-  function spatialNavigate(direction: 'up' | 'down' | 'left' | 'right', columns: number = 1) {
-    const length = listLengthRef.value
-    if (length <= 0) return
-
-    isNavigating.value = true
-
-    if (columns <= 1) {
-      focusedIndex.value = getNextIndex(focusedIndex.value, length, direction)
-    } else {
-      focusedIndex.value = getSpatialNextIndex(focusedIndex.value, direction, columns, length)
-    }
   }
 
   function handleGlobalKeydown(event: KeyboardEvent) {
@@ -384,6 +374,7 @@ export function useKeyboardNav(options: KeyboardNavOptions = {}): KeyboardNavSta
   ) {
     const normalizedShortcut = shortcut.toLowerCase()
     globalShortcuts.set(normalizedShortcut, { key: shortcut, handler, description })
+    registeredShortcuts.add(normalizedShortcut)
   }
 
   function unregisterShortcut(shortcut: string) {
@@ -433,6 +424,12 @@ export function useKeyboardNav(options: KeyboardNavOptions = {}): KeyboardNavSta
     if (lastFocusedElement) {
       lastFocusedElement.classList.remove('keyboard-focus-ring')
     }
+
+    // Unregister shortcuts registered by this instance
+    for (const shortcut of registeredShortcuts) {
+      globalShortcuts.delete(shortcut)
+    }
+    registeredShortcuts.clear()
   })
 
   return {
