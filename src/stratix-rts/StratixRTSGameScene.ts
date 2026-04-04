@@ -12,6 +12,7 @@ import { StatsCollector } from './debug/StatsCollector';
 import { DataFlowAnimation } from './effects/DataFlowAnimation';
 import { rtsEventBus } from './events/core/RTSEventBus';
 import type { TopBarStats, AgentInfo, ViewportState } from './events/types/RTSEventTypes';
+import { RTSStateBridge } from './state/RTSStateBridge';
 import RTSCharacterRenderer, { TextureLoadResult } from './services/RTSCharacterRenderer';
 import { AgentSprite, AgentStatus, CommandStatus } from './sprites/AgentSprite';
 import { CommandSystem, Command, CommandType } from './systems/CommandSystem';
@@ -53,6 +54,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   private projectZoneCheckTimer: NodeJS.Timeout | null = null;
   private dataFlowAnimation: DataFlowAnimation;
   private zonePulseGraphics: Phaser.GameObjects.Graphics;
+  private stateBridge: RTSStateBridge;
 
   constructor() {
     super({ key: 'StratixRTSGameScene' });
@@ -132,6 +134,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     this.initInputHandler();
     this.initEventManager();
     this.initEventBusListeners();
+    this.stateBridge = new RTSStateBridge();
     
     rtsEventBus.emit('scene:ui:game_ready', {
       width: this.cameras.main.width,
@@ -1273,6 +1276,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     const sprite = this.agentSprites.get(data.agentId);
     if (sprite) {
       sprite.setAgentStatus(data.status);
+      this.stateBridge.updateAgentStatus(data.agentId, data.status);
     }
   }
 
@@ -1333,6 +1337,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
 
     // Update agent zone tracking
     this.agentZoneTracking.set(agentId, zoneId);
+    this.stateBridge.agentEnterZone(agentId, zoneId);
     console.log(`[StratixRTS] Agent ${agentId} joined zone ${zoneId}`);
 
     // Animate agent sprite moving to zone position
@@ -1360,6 +1365,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     const { zoneId, agentId } = data;
     // Remove from tracking
     this.agentZoneTracking.delete(agentId);
+    this.stateBridge.agentLeaveZone(agentId);
     console.log(`[StratixRTS] Agent ${agentId} left zone ${zoneId}`);
 
     // Clear zone badge from agent sprite
@@ -1420,7 +1426,8 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     const sprite = new AgentSprite(this, x!, y!, config, textureKey!, isPlaceholder);
     this.add.existing(sprite);
     this.agentSprites.set(config.agentId, sprite);
-    
+    this.stateBridge.registerAgent(config.agentId, config.name, {});
+
     if (needsSavePosition) {
       this.saveAgentPositionAsync(config.agentId, config, { x: x!, y: y! });
     }
@@ -1444,6 +1451,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   public removeAgent(agentId: string): void {
     const sprite = this.agentSprites.get(agentId);
     if (sprite) {
+      this.stateBridge.unregisterAgent(agentId);
       sprite.destroy();
       this.agentSprites.delete(agentId);
       this.selectedAgentIds.delete(agentId);
@@ -1521,6 +1529,11 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   private emitSelectionChanged(): void {
     const selectedAgentIds = Array.from(this.selectedAgentIds);
     const selectedZoneIds = Array.from(this.selectedZoneIds);
+
+    this.stateBridge.syncSelection(
+      selectedAgentIds,
+      selectedZoneIds[0] ?? null
+    );
 
     rtsEventBus.emit('scene:ui:update_selection' as any, {
       selectedAgentIds,
