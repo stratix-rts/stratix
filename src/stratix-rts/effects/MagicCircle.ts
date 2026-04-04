@@ -119,13 +119,6 @@ export class MagicCircle {
   }
   
   start(): void {
-    console.log('[MagicCircle] 🚀 start() called');
-    console.log('[MagicCircle] 📊 Initial state:', {
-      active: this.active,
-      expandProgress: this.expandProgress,
-      position: { x: this.config.x, y: this.config.y }
-    });
-    
     this.active = true;
     this.expandProgress = 0;
     this.pulsePhase = 0;
