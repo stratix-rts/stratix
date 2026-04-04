@@ -246,7 +246,7 @@ export class EnhancedStratixAgent extends StratixAgent {
    * Execute agent turn using enhanced prompt from session memory.
    * SessionRuntime calls this method to execute each turn.
    */
-  protected async executeAgentTurn(
+  public async executeAgentTurn(
     session: SessionContext,
     message: string,
     _timeout: number,
