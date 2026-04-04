@@ -190,9 +190,13 @@ export function drawIcon(
 ): void {
   const icon = getCustomIcon(name);
   if (icon) {
+    const originalX = graphics.x;
+    const originalY = graphics.y;
     graphics.x = x;
     graphics.y = y;
     icon(graphics, size, color);
+    graphics.x = originalX;
+    graphics.y = originalY;
   }
 }
 
