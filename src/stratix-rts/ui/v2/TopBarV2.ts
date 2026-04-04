@@ -322,7 +322,8 @@ export class TopBarV2 extends EnhancedUIComponent {
       this.updateTimer.remove();
       this.updateTimer = null;
     }
-    
+
+    this.performanceWidget?.destroy();
     this.background?.destroy();
     this.agentIcon?.destroy();
     this.busyIcon?.destroy();
@@ -331,7 +332,7 @@ export class TopBarV2 extends EnhancedUIComponent {
     this.busyText?.destroy();
     this.zoneText?.destroy();
     this.helpButton?.destroy();
-    
+
     super.destroy();
   }
 }
