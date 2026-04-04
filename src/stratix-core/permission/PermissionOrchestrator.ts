@@ -114,8 +114,10 @@ export class PermissionOrchestrator {
     // Step 1: Check zone rules
     const zoneDecision = this.checkZoneRules(context);
     if (zoneDecision !== null) {
+      // Run hooks on zone-rule decision
+      const hookDecision = this.runPermissionHooks(context, zoneDecision);
       return {
-        decision: zoneDecision,
+        decision: hookDecision,
         reason: `Zone rule matched for zone ${context.params?.zoneId}`,
         source: 'zone_rule',
       };
@@ -133,9 +135,10 @@ export class PermissionOrchestrator {
       };
     }
 
-    // Step 4: Fallback to ask (user dialog)
+    // Step 4: Fallback to ask (user dialog) - run hooks on ask decision
+    const fallbackDecision = this.runPermissionHooks(context, 'ask');
     return {
-      decision: 'ask',
+      decision: fallbackDecision,
       reason: 'Ambiguous action, user confirmation required',
       source: 'user_dialog',
     };
