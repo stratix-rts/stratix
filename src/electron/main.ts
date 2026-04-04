@@ -374,11 +374,11 @@ function setupIPC() {
       let keys: Record<string, string> = {};
       if (fs.existsSync(keysPath)) {
         const existing = fs.readFileSync(keysPath);
-        keys = JSON.parse(Buffer.from(existing, 'base64').toString('utf-8'));
+        keys = JSON.parse(Buffer.from(existing.toString('base64'), 'base64').toString('utf-8'));
       }
 
       keys[providerId] = encrypted.toString('base64');
-      fs.writeFileSync(keysPath, Buffer.from(JSON.stringify(keys), 'utf-8'));
+      fs.writeFileSync(keysPath, Buffer.from(JSON.stringify(keys), 'utf-8').toString('base64'));
       
       return { success: true };
     } catch (error) {
@@ -398,7 +398,7 @@ function setupIPC() {
         return { success: true, data: null };
       }
       
-      const keys = JSON.parse(Buffer.from(fs.readFileSync(keysPath), 'base64').toString('utf-8'));
+      const keys = JSON.parse(Buffer.from(fs.readFileSync(keysPath, 'utf-8'), 'base64').toString('utf-8'));
       const encrypted = keys[providerId];
       
       if (!encrypted) {
@@ -420,9 +420,9 @@ function setupIPC() {
         return { success: true };
       }
       
-      const keys = JSON.parse(Buffer.from(fs.readFileSync(keysPath), 'base64').toString('utf-8'));
+      const keys = JSON.parse(Buffer.from(fs.readFileSync(keysPath, 'utf-8'), 'base64').toString('utf-8'));
       delete keys[providerId];
-      fs.writeFileSync(keysPath, Buffer.from(JSON.stringify(keys), 'utf-8'));
+      fs.writeFileSync(keysPath, Buffer.from(JSON.stringify(keys), 'utf-8').toString('base64'));
       
       return { success: true };
     } catch (error) {
@@ -438,7 +438,7 @@ function setupIPC() {
         return { success: true, data: [] };
       }
       
-      const keys = JSON.parse(Buffer.from(fs.readFileSync(keysPath), 'base64').toString('utf-8'));
+      const keys = JSON.parse(Buffer.from(fs.readFileSync(keysPath, 'utf-8'), 'base64').toString('utf-8'));
       return { success: true, data: Object.keys(keys) };
     } catch (error) {
       console.error('[Electron] Failed to list API keys:', error);
