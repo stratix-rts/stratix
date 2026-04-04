@@ -78,6 +78,13 @@ export class RTSErrorBoundary implements ErrorHandler {
   async recoverFromError(error: ClassifiedError): Promise<void> {
     if (error.actions && error.actions.length > 0) {
       console.log('[RTSErrorBoundary] Recovery actions available:', error.actions.map(a => a.label));
+      for (const action of error.actions) {
+        try {
+          action.action();
+        } catch (e) {
+          console.error('[RTSErrorBoundary] Recovery action failed:', e);
+        }
+      }
     } else {
       console.log('[RTSErrorBoundary] No recovery actions available for this error');
     }
