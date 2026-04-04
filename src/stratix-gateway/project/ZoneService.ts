@@ -119,7 +119,7 @@ export class ZoneService {
     }
 
     // Publish zone:updated event
-    gatewayEventBus.publishZoneEvent('zone:updated', zoneId, updated.id, {
+    gatewayEventBus.publishZoneEvent('zone:updated', zoneId, updated.projectId || zoneId, {
       title: updated.title,
       prompt: updated.prompt
     });
@@ -589,13 +589,10 @@ export class ZoneService {
   public async searchFiles(zoneId: string, keyword: string): Promise<ZoneFile[]> {
     await this.ensureInitialized();
 
-    const file = zoneRepository.getFile(zoneId);
-    if (!file && zoneId) {
-      // Verify zone exists
-      const zone = zoneRepository.getZone(zoneId);
-      if (!zone) {
-        throw new Error(`Zone not found: ${zoneId}`);
-      }
+    // Verify zone exists
+    const zone = zoneRepository.getZone(zoneId);
+    if (!zone) {
+      throw new Error(`Zone not found: ${zoneId}`);
     }
 
     return zoneRepository.searchFiles(zoneId, keyword);
@@ -1126,7 +1123,8 @@ export class ZoneService {
 
     // Create new zone with cloned title
     const cloneTitle = `Clone of ${sourceZone.title}`;
-    const newZone = zoneRepository.createZone(sourceZone.id, cloneTitle, sourceZone.prompt || '');
+    const projectId = sourceZone.projectId || sourceZone.id;
+    const newZone = zoneRepository.createZone(projectId, cloneTitle, sourceZone.prompt || '');
 
     // Clone files if requested
     if (options?.includeFiles) {
