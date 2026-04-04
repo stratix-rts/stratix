@@ -21,7 +21,6 @@ export * from './core/CredentialManager';
 export * from './core/SharedMemoryCache';
 export * from './core/StorageManager';
 export * from './core/StratixAgentManager';
-export * from './core/RetryStrategy';
 export * from './core/AutoSaver';
 export { AgencyAgentsParser } from './parsers/AgencyAgentsParser';
 export { MixinComposer } from './mixins/MixinComposer';
