@@ -7,14 +7,8 @@
 
 import { ToolUseLoop } from '@/stratix-agent/core/ToolUseLoop';
 import { SkillRegistry } from '@/stratix-agent/core/SkillRegistry';
+import { BudgetController } from '@stratix-core/budget/BudgetController';
 import { ChatMessage, ToolDefinition, ExecutionContext } from '@/stratix-agent/types';
-
-// Mock budget controller
-jest.mock('@stratix-core/budget/BudgetController', () => ({
-  budgetController: {
-    evaluate: jest.fn().mockReturnValue({ action: 'continue' }),
-  },
-}));
 
 // Mock skill audit logger
 jest.mock('@/stratix-agent/core/SkillAuditLogger', () => ({
@@ -273,11 +267,267 @@ describe('ToolUseLoop - Extended Coverage', () => {
   });
 
   describe('execute with BudgetController integration', () => {
-    test('stops when budget controller returns stop action', async () => {
-      // This test is skipped because BudgetController is a singleton
-      // and mocking it requires complex module re-initialization
-      // The existing tests already cover budget-related scenarios via maxTotalTokens
-      expect(true).toBe(true);
+    test('stops when budget controller returns stop action (threshold_reached)', async () => {
+      const messages: ChatMessage[] = [
+        { role: 'user', content: 'Use tool' }
+      ];
+      const tools = [createMockTool('tool1')];
+
+      let callCount = 0;
+      mockLLMConnector.generateWithTools.mockImplementation(async () => {
+        callCount++;
+        return {
+          content: 'Using tool',
+          tool_calls: [{
+            type: 'tool_use' as const,
+            id: `call_${callCount}`,
+            name: 'tool1',
+            input: {}
+          }],
+          usage: { promptTokens: 100, completionTokens: 500, totalTokens: 95000 },
+        };
+      });
+
+      mockSkillRegistry.execute.mockResolvedValue({
+        success: true,
+        skillId: 'tool1',
+        result: { result: 'ok' },
+        executionTime: 10,
+      });
+
+      // Create custom BudgetController that stops at 90% threshold
+      const customBudgetCtrl = new BudgetController({
+        maxTokens: 100000,
+        completionThreshold: 0.9,
+        diminishingThreshold: 500,
+        maxContinuations: 10,
+      });
+
+      const loop = new ToolUseLoop(mockSkillRegistry, mockLLMConnector, {}, customBudgetCtrl);
+      const result = await loop.execute(messages, tools, context);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Budget stopped');
+      expect(result.error).toContain('threshold_reached');
+      expect(result.finalContent).toContain('95%');
+    });
+
+    test('stops when budget controller returns stop action (diminishing_returns)', async () => {
+      const messages: ChatMessage[] = [
+        { role: 'user', content: 'Use tool' }
+      ];
+      const tools = [createMockTool('tool1')];
+
+      mockLLMConnector.generateWithTools.mockResolvedValue({
+        content: 'Using tool',
+        tool_calls: [{
+          type: 'tool_use' as const,
+          id: 'call_1',
+          name: 'tool1',
+          input: {}
+        }],
+        usage: { promptTokens: 28000, completionTokens: 300, totalTokens: 28300 },
+      });
+
+      mockSkillRegistry.execute.mockResolvedValue({
+        success: true,
+        skillId: 'tool1',
+        result: { result: 'ok' },
+        executionTime: 10,
+      });
+
+      // Create custom BudgetController with diminishing returns detection
+      const customBudgetCtrl = new BudgetController({
+        maxTokens: 100000,
+        completionThreshold: 0.9,
+        diminishingThreshold: 500,
+        maxContinuations: 10,
+      });
+
+      const loop = new ToolUseLoop(mockSkillRegistry, mockLLMConnector, {}, customBudgetCtrl);
+      const result = await loop.execute(messages, tools, context);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Budget stopped');
+      expect(result.error).toContain('diminishing_returns');
+      expect(result.finalContent).toContain('Diminishing returns');
+    });
+
+    test('stops when budget controller returns stop action (max_continuations)', async () => {
+      const messages: ChatMessage[] = [
+        { role: 'user', content: 'Use tool' }
+      ];
+      const tools = [createMockTool('tool1')];
+
+      let callCount = 0;
+      mockLLMConnector.generateWithTools.mockImplementation(async () => {
+        callCount++;
+        return {
+          content: 'Using tool',
+          tool_calls: [{
+            type: 'tool_use' as const,
+            id: `call_${callCount}`,
+            name: 'tool1',
+            input: {}
+          }],
+          usage: { promptTokens: 100, completionTokens: 500, totalTokens: 10000 },
+        };
+      });
+
+      mockSkillRegistry.execute.mockResolvedValue({
+        success: true,
+        skillId: 'tool1',
+        result: { result: 'ok' },
+        executionTime: 10,
+      });
+
+      // Create custom BudgetController that stops at max 3 continuations
+      const customBudgetCtrl = new BudgetController({
+        maxTokens: 100000,
+        completionThreshold: 0.9,
+        diminishingThreshold: 500,
+        maxContinuations: 3,
+      });
+
+      const loop = new ToolUseLoop(mockSkillRegistry, mockLLMConnector, { maxIterations: 10 }, customBudgetCtrl);
+      const result = await loop.execute(messages, tools, context);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Budget stopped');
+      expect(result.error).toContain('max_continuations');
+      expect(result.finalContent).toContain('Maximum continuations');
+    });
+
+    test('stops when budget controller returns stop action (budget_exhausted)', async () => {
+      const messages: ChatMessage[] = [
+        { role: 'user', content: 'Use tool' }
+      ];
+      const tools = [createMockTool('tool1')];
+
+      mockLLMConnector.generateWithTools.mockResolvedValue({
+        content: 'Using tool',
+        tool_calls: [{
+          type: 'tool_use' as const,
+          id: 'call_1',
+          name: 'tool1',
+          input: {}
+        }],
+        usage: { promptTokens: 40000, completionTokens: 60000, totalTokens: 100000 },
+      });
+
+      mockSkillRegistry.execute.mockResolvedValue({
+        success: true,
+        skillId: 'tool1',
+        result: { result: 'ok' },
+        executionTime: 10,
+      });
+
+      // Create custom BudgetController with exhausted budget
+      const customBudgetCtrl = new BudgetController({
+        maxTokens: 100000,
+        completionThreshold: 0.9,
+        diminishingThreshold: 500,
+        maxContinuations: 10,
+      });
+
+      const loop = new ToolUseLoop(mockSkillRegistry, mockLLMConnector, {}, customBudgetCtrl);
+      const result = await loop.execute(messages, tools, context);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Budget stopped');
+      expect(result.error).toContain('budget_exhausted');
+      expect(result.finalContent).toContain('Budget exhausted');
+      expect(result.finalContent).toContain('100%');
+    });
+
+    test('continues when budget controller returns continue action', async () => {
+      const messages: ChatMessage[] = [
+        { role: 'user', content: 'Use tool' }
+      ];
+      const tools = [createMockTool('tool1')];
+
+      let callCount = 0;
+      mockLLMConnector.generateWithTools.mockImplementation(async () => {
+        callCount++;
+        if (callCount === 1) {
+          return {
+            content: 'Using tool',
+            tool_calls: [{
+              type: 'tool_use' as const,
+              id: 'call_1',
+              name: 'tool1',
+              input: {}
+            }],
+            usage: { promptTokens: 100, completionTokens: 500, totalTokens: 5000 },
+          };
+        }
+        return {
+          content: 'Done',
+          tool_calls: [],
+          usage: { promptTokens: 200, completionTokens: 500, totalTokens: 6000 },
+        };
+      });
+
+      mockSkillRegistry.execute.mockResolvedValue({
+        success: true,
+        skillId: 'tool1',
+        result: { result: 'ok' },
+        executionTime: 10,
+      });
+
+      // Create custom BudgetController with generous budget
+      const customBudgetCtrl = new BudgetController({
+        maxTokens: 100000,
+        completionThreshold: 0.9,
+        diminishingThreshold: 500,
+        maxContinuations: 10,
+      });
+
+      const loop = new ToolUseLoop(mockSkillRegistry, mockLLMConnector, {}, customBudgetCtrl);
+      const result = await loop.execute(messages, tools, context);
+
+      expect(result.success).toBe(true);
+      expect(result.finalContent).toBe('Done');
+    });
+
+    test('uses injected budget controller over singleton', async () => {
+      const messages: ChatMessage[] = [
+        { role: 'user', content: 'Use tool' }
+      ];
+      const tools = [createMockTool('tool1')];
+
+      mockLLMConnector.generateWithTools.mockResolvedValue({
+        content: 'Using tool',
+        tool_calls: [{
+          type: 'tool_use' as const,
+          id: 'call_1',
+          name: 'tool1',
+          input: {}
+        }],
+        usage: { promptTokens: 40000, completionTokens: 60000, totalTokens: 100000 },
+      });
+
+      mockSkillRegistry.execute.mockResolvedValue({
+        success: true,
+        skillId: 'tool1',
+        result: { result: 'ok' },
+        executionTime: 10,
+      });
+
+      // Custom budget controller with very low max tokens to force stop
+      const customBudgetCtrl = new BudgetController({
+        maxTokens: 1000,
+        completionThreshold: 0.9,
+        diminishingThreshold: 500,
+        maxContinuations: 10,
+      });
+
+      const loop = new ToolUseLoop(mockSkillRegistry, mockLLMConnector, {}, customBudgetCtrl);
+      const result = await loop.execute(messages, tools, context);
+
+      // Should stop due to custom budget controller (exhausted at 100%)
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Budget stopped');
     });
   });
 

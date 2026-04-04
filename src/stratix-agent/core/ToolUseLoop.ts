@@ -43,7 +43,8 @@ export class ToolUseLoop {
   constructor(
     skillRegistry: SkillRegistry,
     llmConnector: LLMConnector,
-    config: ToolUseLoopConfig = {}
+    config: ToolUseLoopConfig = {},
+    budgetCtrl?: BudgetController
   ) {
     this.skillRegistry = skillRegistry;
     this.llmConnector = llmConnector;
@@ -59,7 +60,7 @@ export class ToolUseLoop {
     this.consecutiveErrors = 0;
     this.toolCallCount = new Map();
     this.totalTokensUsed = 0;
-    this.budgetCtrl = budgetController;
+    this.budgetCtrl = budgetCtrl ?? budgetController;
   }
 
   /**
@@ -91,7 +92,6 @@ export class ToolUseLoop {
     this.consecutiveErrors = 0;
     this.toolCallCount.clear();
     this.totalTokensUsed = 0;
-    this.budgetCtrl = budgetController;
 
     // 工具名称到 skillId 的映射（统一命名）
     const toolToSkill = new Map<string, string>();
