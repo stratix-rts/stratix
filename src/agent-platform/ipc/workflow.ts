@@ -11,7 +11,13 @@ export function registerWorkflowHandlers(userDataPath: string, fs: any, path: an
     }
   };
 
-  const getWorkflowPath = (id: string) => path.join(workflowDir, `${id}.json`);
+  const getWorkflowPath = (id: string) => {
+    // Prevent directory traversal attacks
+    if (!id || /[\/\\]|\.\./.test(id)) {
+      throw new Error('Invalid workflow ID');
+    }
+    return path.join(workflowDir, `${id}.json`);
+  };
 
   return {
     'workflow:list': async () => {
@@ -19,11 +25,18 @@ export function registerWorkflowHandlers(userDataPath: string, fs: any, path: an
         ensureDir();
         const files = fs.readdirSync(workflowDir);
         const workflows: Array<{ id: string; name: string; updatedAt: number }> = [];
-        
+
         for (const file of files) {
           if (file.endsWith('.json')) {
-            const content = fs.readFileSync(path.join(workflowDir, file), 'utf-8');
-            const def = JSON.parse(content) as WorkflowDefinition;
+            const filePath = path.join(workflowDir, file);
+            const content = fs.readFileSync(filePath, 'utf-8');
+            let def: WorkflowDefinition;
+            try {
+              def = JSON.parse(content) as WorkflowDefinition;
+            } catch {
+              // Skip corrupted files
+              continue;
+            }
             workflows.push({
               id: file.replace('.json', ''),
               name: def.properties.name,
@@ -31,7 +44,7 @@ export function registerWorkflowHandlers(userDataPath: string, fs: any, path: an
             });
           }
         }
-        
+
         return { success: true, workflows };
       } catch (error) {
         return { success: false, error: error instanceof Error ? error.message : 'Failed to list' };
@@ -46,8 +59,17 @@ export function registerWorkflowHandlers(userDataPath: string, fs: any, path: an
           return { success: false, error: 'Workflow not found' };
         }
         const content = fs.readFileSync(filePath, 'utf-8');
-        return { success: true, workflow: JSON.parse(content) };
+        let workflow: WorkflowDefinition;
+        try {
+          workflow = JSON.parse(content);
+        } catch {
+          return { success: false, error: 'Corrupted workflow file' };
+        }
+        return { success: true, workflow };
       } catch (error) {
+        if (error instanceof Error && error.message === 'Invalid workflow ID') {
+          return { success: false, error: error.message };
+        }
         return { success: false, error: error instanceof Error ? error.message : 'Failed to load' };
       }
     },
@@ -55,6 +77,8 @@ export function registerWorkflowHandlers(userDataPath: string, fs: any, path: an
     'workflow:save': async (_event: any, id: string, workflow: WorkflowDefinition) => {
       try {
         ensureDir();
+        // Validate id before using it
+        getWorkflowPath(id); // Will throw if invalid
         workflow.properties.updatedAt = Date.now();
         if (!workflow.properties.createdAt) {
           workflow.properties.createdAt = workflow.properties.updatedAt;
@@ -62,6 +86,9 @@ export function registerWorkflowHandlers(userDataPath: string, fs: any, path: an
         fs.writeFileSync(getWorkflowPath(id), JSON.stringify(workflow, null, 2), 'utf-8');
         return { success: true };
       } catch (error) {
+        if (error instanceof Error && error.message === 'Invalid workflow ID') {
+          return { success: false, error: error.message };
+        }
         return { success: false, error: error instanceof Error ? error.message : 'Failed to save' };
       }
     },
@@ -74,6 +101,9 @@ export function registerWorkflowHandlers(userDataPath: string, fs: any, path: an
         }
         return { success: true };
       } catch (error) {
+        if (error instanceof Error && error.message === 'Invalid workflow ID') {
+          return { success: false, error: error.message };
+        }
         return { success: false, error: error instanceof Error ? error.message : 'Failed to delete' };
       }
     },
