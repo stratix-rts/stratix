@@ -147,9 +147,17 @@ export const useUIStore = defineStore('ui', () => {
   }
 
   // Toast actions
+  const MAX_TOASTS = 10;
+
   function addToast(toast: Omit<ToastItem, 'id'>): string {
     const id = `toast_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const newToast: ToastItem = { ...toast, id };
+
+    // Trim oldest toasts if at limit
+    if (toasts.value.length >= MAX_TOASTS) {
+      toasts.value = toasts.value.slice(-MAX_TOASTS + 1);
+    }
+
     toasts.value.push(newToast);
 
     // Auto-remove after duration
