@@ -55,6 +55,7 @@ export const useUIStore = defineStore('ui', () => {
   // Computed
   const isDarkMode = computed(() => {
     if (theme.value === 'auto') {
+      if (typeof window === 'undefined') return false;
       return window.matchMedia('(prefers-color-scheme: dark)').matches;
     }
     return theme.value === 'dark';
