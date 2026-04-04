@@ -58,12 +58,24 @@ export class ParticleEffects {
       this.particleGraphics.setDepth(900);
       this.generateParticleTexture(scene);
     } else if (this.scene !== scene) {
-      this.scene = scene;
-      if (!this.particleGraphics || !this.particleGraphics.active) {
-        this.particleGraphics = scene.add.graphics();
-        this.particleGraphics.setDepth(900);
+      // Destroy old graphics when scene changes to prevent memory leak
+      if (this.particleGraphics && this.particleGraphics.active) {
+        this.particleGraphics.destroy();
       }
+      this.scene = scene;
+      this.particleGraphics = scene.add.graphics();
+      this.particleGraphics.setDepth(900);
     }
+  }
+
+  destroy(): void {
+    if (this.particleGraphics && this.particleGraphics.active) {
+      this.particleGraphics.destroy();
+    }
+    this.scene = null;
+    this.particleGraphics = null;
+    this.particleTextureGenerated = false;
+    ParticleEffects.instance = null;
   }
 
   private generateParticleTexture(scene: Phaser.Scene): void {

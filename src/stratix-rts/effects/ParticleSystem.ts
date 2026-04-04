@@ -28,6 +28,8 @@ export interface ParticleSystemConfig {
   color2?: number;
 }
 
+const TRAIL_LENGTH = 10;
+
 export class ParticleSystem {
   private scene: Phaser.Scene;
   private config: Required<ParticleSystemConfig>;
@@ -123,7 +125,7 @@ export class ParticleSystem {
         particle.y += particle.vy;
         
         particle.trailPositions.unshift({ x: particle.x, y: particle.y });
-        if (particle.trailPositions.length > 10) {
+        if (particle.trailPositions.length > TRAIL_LENGTH) {
           particle.trailPositions.pop();
         }
       } else {
@@ -131,6 +133,7 @@ export class ParticleSystem {
         const orbitRadius = 20 + Math.random() * 30;
         particle.x = center.x + Math.cos(angle) * orbitRadius;
         particle.y = center.y + Math.sin(angle) * orbitRadius;
+        particle.trailPositions.length = 0;
       }
     });
   }
@@ -152,7 +155,7 @@ export class ParticleSystem {
       }
       
       particle.trailPositions.unshift({ x: particle.x, y: particle.y });
-      if (particle.trailPositions.length > 8) {
+      if (particle.trailPositions.length > TRAIL_LENGTH) {
         particle.trailPositions.pop();
       }
     });
