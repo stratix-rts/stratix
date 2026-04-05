@@ -132,13 +132,19 @@ export class ProjectScanner {
    * 每部分独立，一个失败不影响其他
    */
   async scan(): Promise<ParallelScanResult> {
-    const [tscErrors, eslintIssues, largeFiles] = await Promise.all([
-      this.runTscScan().catch(() => []),
-      this.runEslintScan().catch(() => []),
-      this.runFileSizeScan().catch(() => []),
+    const results = await Promise.allSettled([
+      this.runTscScan(),
+      this.runEslintScan(),
+      this.runFileSizeScan(),
     ]);
 
-    return { tscErrors, eslintIssues, largeFiles };
+    const [tscResult, eslintResult, fileSizeResult] = results;
+
+    return {
+      tscErrors: tscResult?.status === 'fulfilled' ? tscResult.value : [],
+      eslintIssues: eslintResult?.status === 'fulfilled' ? eslintResult.value : [],
+      largeFiles: fileSizeResult?.status === 'fulfilled' ? fileSizeResult.value : [],
+    };
   }
 
   /**
@@ -148,7 +154,7 @@ export class ProjectScanner {
    */
   async runEslintScan(): Promise<Array<{ file: string; ruleId: string | null; severity: 1 | 2; message: string; line: number }>> {
     return new Promise((resolve) => {
-      const proc = spawn('npx', ['eslint', 'src', '--format', 'json', '--no-error-on-unmatched-pattern'], {
+      const proc = spawn('npx eslint "src/**/*.{ts,vue}" --format json --no-error-on-unmatched-pattern 2>&1', {
         cwd: this.config.cwd,
         shell: true,
       });
