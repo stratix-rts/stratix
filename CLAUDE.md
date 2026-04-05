@@ -48,3 +48,13 @@
 - 禁止全量 lint 整个项目（用 `--cache`，只 lint 改动文件）
 - 跑测试前先估算：`maxWorkers=1`，确认不会吃满 CPU 再考虑加
 - 如果发现 CPU > 80%，停止当前操作，先检查资源
+
+## Subagent 资源纪律
+
+**CPU 密集型操作（jest/tsc/eslint）同一时间只能有一个 agent 在跑。**
+
+- 测试、类型检查、lint 属于 CPU 密集型，同时跑只会互相拖慢、吃满资源
+- 其他 agent 做轻量工作：文件编辑、代码审查、写文档、改样式
+- 如果需要跑测试，先确认没有其他 agent 在跑 jest/tsc/eslint
+- agent 退出时必须清理所有子进程：`kill -TERM -- -$$PGID` 或杀掉所有 spawn 的子进程
+- 子进程失控 = 身体发烧，不可接受
