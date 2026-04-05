@@ -1,14 +1,18 @@
 <template>
   <div class="status-header">
     <div class="status-item" v-if="store.status">
-      <span class="status-dot" :class="dotClass(store.status.observer.status)"></span>
-      <span class="status-name">Observer</span>
+      <span class="status-dot" :class="observerDotClass(store.status.observer.status)"></span>
+      <span class="status-name">Observer:</span>
+      <span class="status-value" :class="observerTextClass(store.status.observer.status)">{{ observerStatusLabel(store.status.observer.status) }}</span>
+      <span class="status-sep">·</span>
       <span class="status-detail">{{ store.status.observer.totalInputsReceived }} 输入 / {{ store.status.observer.totalInsightsGenerated }} 洞察</span>
     </div>
     <div class="status-item" v-if="store.status">
-      <span class="status-dot" :class="dotClass(store.status.strategist.status)"></span>
-      <span class="status-name">Strategist</span>
-      <span class="status-detail">{{ store.status.strategist.proposalCount }} 提案</span>
+      <span class="status-dot" :class="strategistDotClass(store.status.strategist.status)"></span>
+      <span class="status-name">Strategist:</span>
+      <span class="status-value" :class="strategistTextClass(store.status.strategist.status)">{{ strategistStatusLabel(store.status.strategist) }}</span>
+      <span class="status-sep">·</span>
+      <span class="status-detail">{{ strategistLastOp(store.status.strategist) }}</span>
     </div>
     <div class="status-item" v-if="store.status">
       <span class="status-dot" :class="dotClass(String(store.status.guardian))"></span>
@@ -49,6 +53,46 @@ function dotClass(status: string): string {
     default: return 'dot-idle';
   }
 }
+
+function observerDotClass(status: string): string {
+  return dotClass(status);
+}
+function observerTextClass(status: string): string {
+  switch (status) {
+    case 'running': return 'text-info';
+    case 'error': return 'text-danger';
+    case 'idle': return 'text-muted';
+    default: return 'text-muted';
+  }
+}
+function observerStatusLabel(status: string): string {
+  switch (status) {
+    case 'running': return 'processing';
+    case 'idle': return 'idle';
+    case 'error': return 'error';
+    default: return status;
+  }
+}
+
+function strategistDotClass(status: string): string {
+  return dotClass(status);
+}
+function strategistTextClass(status: string): string {
+  return observerTextClass(status);
+}
+function strategistStatusLabel(s: { status: string; hasScanResult?: boolean }): string {
+  if (s.status === 'running') return s.hasScanResult ? 'analyzing' : 'scanning';
+  return s.status === 'idle' ? 'idle' : s.status;
+}
+function strategistLastOp(s: { lastScan: string | null; lastAnalysis: string | null }): string {
+  const last = s.lastAnalysis || s.lastScan;
+  if (!last) return '无操作记录';
+  const d = new Date(last);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `${hh}:${mm}:${ss}`;
+}
 </script>
 
 <style scoped>
@@ -80,6 +124,11 @@ function dotClass(status: string): string {
 .dot-idle { background: var(--ds-text-muted, #6a6a8a); }
 .status-name { color: var(--ds-text-primary, #ffffff); font-weight: var(--ds-typography-fontWeight-medium, 500); opacity: 0.8; }
 .status-detail { color: var(--ds-text-muted, #6a6a8a); font-size: 11px; }
+.status-value { font-size: 11px; font-weight: 500; }
+.status-sep { color: var(--ds-text-muted, #6a6a8a); font-size: 11px; }
+.text-info { color: var(--ds-status-info, #00d4ff); }
+.text-danger { color: var(--ds-status-danger, #ff4444); }
+.text-muted { color: var(--ds-text-muted, #6a6a8a); }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }
