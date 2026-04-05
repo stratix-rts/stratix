@@ -9,7 +9,7 @@ import { DiscoveryEngine } from '../bootstrap/DiscoveryEngine';
 import { DecisionEngine } from '../bootstrap/DecisionEngine';
 import { ImpactEvaluator } from '../bootstrap/ImpactEvaluator';
 import { RegressionGuard } from '../bootstrap/RegressionGuard';
-import { ExperimentZoneManager, InMemoryExperimentStore } from '../bootstrap/ExperimentZone';
+import { ExperimentZoneManager, InMemoryExperimentStore, type IWorktreeManager } from '../bootstrap/ExperimentZone';
 
 import type {
   BootstrapState,
@@ -867,8 +867,15 @@ describe('Bootstrap E2E - Phase 4 Integration Tests', () => {
   // ========================================================================
   describe('11. ExperimentZone - Create/Start/Complete', () => {
     let experimentManager: ExperimentZoneManager;
+    let mockWorktreeManager: IWorktreeManager;
 
     beforeEach(() => {
+      mockWorktreeManager = {
+        create: jest.fn().mockResolvedValue(undefined),
+        remove: jest.fn().mockResolvedValue(undefined),
+        exists: jest.fn().mockReturnValue(true),
+        list: jest.fn().mockReturnValue([]),
+      };
       experimentManager = new ExperimentZoneManager('system-zone-id', {
         config: {
           worktreeBasePath: '.test-worktrees',
@@ -876,6 +883,7 @@ describe('Bootstrap E2E - Phase 4 Integration Tests', () => {
           maxConcurrentExperiments: 3,
           defaultMaxAgeMs: 86400000,
         },
+        worktreeManager: mockWorktreeManager,
         store: new InMemoryExperimentStore(),
       });
     });
@@ -964,8 +972,15 @@ describe('Bootstrap E2E - Phase 4 Integration Tests', () => {
   // ========================================================================
   describe('12. ExperimentZone - Cancel and Cleanup', () => {
     let experimentManager: ExperimentZoneManager;
+    let mockWorktreeManager: IWorktreeManager;
 
     beforeEach(() => {
+      mockWorktreeManager = {
+        create: jest.fn().mockResolvedValue(undefined),
+        remove: jest.fn().mockResolvedValue(undefined),
+        exists: jest.fn().mockReturnValue(true),
+        list: jest.fn().mockReturnValue([]),
+      };
       experimentManager = new ExperimentZoneManager('system-zone-id', {
         config: {
           worktreeBasePath: '.test-worktrees',
@@ -973,6 +988,7 @@ describe('Bootstrap E2E - Phase 4 Integration Tests', () => {
           maxConcurrentExperiments: 3,
           defaultMaxAgeMs: 86400000,
         },
+        worktreeManager: mockWorktreeManager,
         store: new InMemoryExperimentStore(),
       });
     });
