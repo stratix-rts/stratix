@@ -57,7 +57,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { useSystemZoneStore } from '@/stores/systemzone';
+import { useSystemZoneStore } from '../../stores/systemzone';
+import { szLog } from './logger';
 import StatusHeader from './StatusHeader.vue';
 import InsightsPanel from './InsightsPanel.vue';
 import ProposalsPanel from './ProposalsPanel.vue';
@@ -79,6 +80,7 @@ const tabs = computed(() => [
 ]);
 
 async function refreshAll() {
+  szLog.info('ui', '手动刷新');
   await store.initialize();
 }
 

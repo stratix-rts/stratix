@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
+import { szLog, withLog, autoHeal } from '../stratix-systemzone/ui/logger';
 
 // ============================================
 // System Zone Pinia Store
@@ -11,6 +12,8 @@ const BASE_URL = typeof window !== 'undefined' && (window as any).GATEWAY_URL
   : 'http://127.0.0.1:7524';
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<{ success: boolean; data: T; error?: string }> {
+  const method = options?.method || 'GET';
+  szLog.debug('api', `${method} ${path}`);
   const url = `${BASE_URL}${path}`;
   try {
     const response = await fetch(url, {
@@ -18,8 +21,14 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<{ succe
       ...options,
     });
     const result = await response.json();
+    if (!result.success) {
+      szLog.warn('api', `${method} ${path} 返回错误`, { error: result.error, status: response.status });
+    } else {
+      szLog.debug('api', `${method} ${path} 成功`);
+    }
     return result;
   } catch (e) {
+    szLog.error('api', `${method} ${path} 网络错误`, e, { path });
     return { success: false, data: null as T, error: e instanceof Error ? e.message : 'Network error' };
   }
 }
@@ -415,23 +424,47 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
   }
 
   // ---------------------------------------------------------------
-  // Init
+  // Init（日志 + 自动修复）
   // ---------------------------------------------------------------
 
   async function initialize(): Promise<void> {
     loading.value = true;
-    await Promise.all([
-      fetchStatus(),
-      fetchInsights(),
-      fetchProposals(),
-      fetchExecutions(),
-    ]);
-    loading.value = false;
-    startAutoRefresh();
+    szLog.info('store', 'System Zone 控制台初始化');
+
+    try {
+      await Promise.all([
+        fetchStatus(),
+        fetchInsights(),
+        fetchProposals(),
+      ]);
+
+      // 注册自动修复动作
+      autoHeal.registerHealAction('reconnect', async () => {
+        try {
+          await fetchStatus();
+          return connected.value;
+        } catch {
+          return false;
+        }
+      });
+
+      // 启动心跳巡检（60秒一次）
+      autoHeal.start(60_000);
+
+      startAutoRefresh();
+      szLog.info('store', '初始化完成');
+    } catch (error) {
+      szLog.error('store', '初始化失败', error);
+    } finally {
+      loading.value = false;
+    }
   }
 
   function cleanup(): void {
     stopAutoRefresh();
+    autoHeal.stop();
+    szLog.info('store', 'System Zone 控制台关闭');
+    szLog.flush();
   }
 
   return {
