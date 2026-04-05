@@ -82,6 +82,11 @@ export interface ElectronAPI {
     check: (filePath: string) => Promise<{ exists: boolean; url?: string | null; size?: number; generatedAt?: number }>;
     delete: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   };
+
+  // System Zone
+  systemZone: {
+    open: () => void;
+  };
 }
 
 const electronAPI: ElectronAPI = {
