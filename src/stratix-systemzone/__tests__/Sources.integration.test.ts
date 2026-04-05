@@ -431,12 +431,8 @@ describe('Sources Integration Tests', () => {
   // ============================================
   describe('3. API Polling Source → Poll → Parse Response', () => {
     test('polls API and returns RawInput array', async () => {
-      // Create mock responses
+      // Create mock responses (will be populated after source is added)
       const apiResponses = new Map<string, RawInput[]>();
-      apiResponses.set('api-source-1', [
-        createRawInput({ sourceId: 'api-source-1', title: 'API News Item 1', sourceType: 'api_poll' }),
-        createRawInput({ sourceId: 'api-source-1', title: 'API News Item 2', sourceType: 'api_poll' }),
-      ]);
 
       const customAPIAdapter = createMockAPIAdapter(apiResponses);
       const customManager = new SourceManager(defaultConfig, {
@@ -458,6 +454,12 @@ describe('Sources Integration Tests', () => {
         },
       });
 
+      // Populate responses AFTER source.id is known with unique hashes
+      apiResponses.set(source.id, [
+        createRawInput({ sourceId: source.id, title: 'API News Item Alpha', content: 'Content for alpha', sourceType: 'api_poll', hash: 'hash-alpha-001' }),
+        createRawInput({ sourceId: source.id, title: 'API News Item Beta', content: 'Content for beta', sourceType: 'api_poll', hash: 'hash-beta-002' }),
+      ]);
+
       const results = await customManager.fetchSource(source.id);
 
       expect(results).toBeDefined();
@@ -474,10 +476,6 @@ describe('Sources Integration Tests', () => {
 
     test('handles API polling with custom response', async () => {
       const apiResponses = new Map<string, RawInput[]>();
-      apiResponses.set('api-source-2', [
-        createRawInput({ sourceId: 'api-source-2', title: 'Custom Item 1', sourceType: 'api_poll' }),
-        createRawInput({ sourceId: 'api-source-2', title: 'Custom Item 2', sourceType: 'api_poll' }),
-      ]);
 
       const customAPIAdapter = createMockAPIAdapter(apiResponses);
       const customManager = new SourceManager(defaultConfig, {
@@ -498,12 +496,18 @@ describe('Sources Integration Tests', () => {
         },
       });
 
+      // Populate responses AFTER source.id is known with unique hashes
+      apiResponses.set(source.id, [
+        createRawInput({ sourceId: source.id, title: 'Custom Item Gamma', content: 'Gamma content', sourceType: 'api_poll', hash: 'hash-gamma-003' }),
+        createRawInput({ sourceId: source.id, title: 'Custom Item Delta', content: 'Delta content', sourceType: 'api_poll', hash: 'hash-delta-004' }),
+      ]);
+
       const results = await customManager.fetchSource(source.id);
 
       expect(results).toBeDefined();
       expect(results.length).toBe(2);
-      expect(results[0].title).toBe('Custom Item 1');
-      expect(results[1].title).toBe('Custom Item 2');
+      expect(results[0].title).toBe('Custom Item Gamma');
+      expect(results[1].title).toBe('Custom Item Delta');
     });
   });
 
