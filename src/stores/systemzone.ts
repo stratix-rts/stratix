@@ -525,7 +525,13 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
       body: JSON.stringify(config),
     });
     if (result.success) {
-      await fetchLLMConfig();
+      // 乐观更新：直接用传入的 config 更新本地状态，不再重新请求服务端
+      llmConfig.value = {
+        provider: config.provider,
+        model: config.model,
+        apiKey: config.apiKey || '',
+        baseUrl: config.baseUrl || '',
+      };
       return true;
     }
     return false;
