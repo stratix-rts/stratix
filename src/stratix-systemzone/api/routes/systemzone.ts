@@ -452,6 +452,10 @@ router.post('/analyze', async (req: Request, res: Response): Promise<void> => {
         target: p.target,
         selection: p.selection,
         status: p.status,
+        codeSuggestion: p.codeSuggestion,
+        riskLevelStr: p.riskLevelStr,
+        effortEstimate: p.effortEstimate,
+        reasoning: p.reasoning,
       })),
     });
   } catch (error) {
@@ -497,6 +501,10 @@ router.get('/proposals', async (req: Request, res: Response): Promise<void> => {
         status: p.status,
         approvedBy: p.approvedBy,
         executedAt: p.executedAt,
+        codeSuggestion: p.codeSuggestion,
+        riskLevelStr: p.riskLevelStr,
+        effortEstimate: p.effortEstimate,
+        reasoning: p.reasoning,
       })),
     });
   } catch (error) {
