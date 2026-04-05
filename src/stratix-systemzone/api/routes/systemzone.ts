@@ -10,8 +10,8 @@ import { Strategist } from '../../strategist/Strategist';
 import { Guardian } from '../../guardian/Guardian';
 import { Executor } from '../../executor/Executor';
 import { FitnessEvaluator } from '../../fitness/FitnessEvaluator';
-import { SourceManager } from '../../sources/SourceManager';
-import type { ExternalSource, RawInput, SourceType, SourceConfig, SourceStatus, SourceInput } from '../../sources/types';
+import { SourceManager, SourceInput } from '../../sources/SourceManager';
+import type { ExternalSource, RawInput, SourceType, SourceConfig, SourceStatus } from '../../sources/types';
 
 import type { UserInput, Insight, Proposal, ProposalStatus, UserInputType } from '../../types';
 import type { ObserverPipelineConfig } from '../../observer/types';
@@ -887,6 +887,13 @@ router.post('/inputs/batch', async (req: Request, res: Response): Promise<void> 
 // External Sources Routes
 // ------------------------------------------------
 
+/**
+ * Extract route param as string (handles Express 5 string[] type)
+ */
+function getRouteParam(param: string | string[]): string {
+  return Array.isArray(param) ? param[0] : param;
+}
+
 interface AddSourceRequest {
   name: string;
   type: SourceType;
@@ -1053,7 +1060,7 @@ router.get('/sources', async (req: Request, res: Response): Promise<void> => {
 router.get('/sources/:id', async (req: Request, res: Response): Promise<void> => {
   try {
     const ownerId = getDefaultOwnerId(req);
-    const { id } = req.params;
+    const id = getRouteParam(req.params.id);
 
     const sourceManager = getSourceManager(ownerId);
     const source = sourceManager.getSource(id);
@@ -1108,7 +1115,7 @@ router.get('/sources/:id', async (req: Request, res: Response): Promise<void> =>
 router.patch('/sources/:id', async (req: Request, res: Response): Promise<void> => {
   try {
     const ownerId = getDefaultOwnerId(req);
-    const { id } = req.params;
+    const id = getRouteParam(req.params.id);
     const { name, url, config, status } = req.body as UpdateSourceRequest;
 
     const sourceManager = getSourceManager(ownerId);
@@ -1186,7 +1193,7 @@ router.patch('/sources/:id', async (req: Request, res: Response): Promise<void> 
 router.delete('/sources/:id', async (req: Request, res: Response): Promise<void> => {
   try {
     const ownerId = getDefaultOwnerId(req);
-    const { id } = req.params;
+    const id = getRouteParam(req.params.id);
 
     const sourceManager = getSourceManager(ownerId);
     const existingSource = sourceManager.getSource(id);
@@ -1230,7 +1237,7 @@ router.delete('/sources/:id', async (req: Request, res: Response): Promise<void>
 router.post('/sources/:id/fetch', async (req: Request, res: Response): Promise<void> => {
   try {
     const ownerId = getDefaultOwnerId(req);
-    const { id } = req.params;
+    const id = getRouteParam(req.params.id);
 
     const sourceManager = getSourceManager(ownerId);
     const source = sourceManager.getSource(id);
@@ -1307,9 +1314,11 @@ router.post('/sources/:id/webhook', async (req: Request, res: Response): Promise
     // In production, you'd look up by owner from the source ID prefix or lookup table
     let foundSource: ExternalSource | null = null;
     let foundOwnerId: string | null = null;
+    const idStr = Array.isArray(id) ? id[0] : id;
 
-    for (const [ownerId, manager] of sourceManagerInstances) {
-      const source = manager.getSource(id);
+    const entries = Array.from(sourceManagerInstances.entries());
+    for (const [ownerId, manager] of entries) {
+      const source = manager.getSource(idStr);
       if (source) {
         foundSource = source;
         foundOwnerId = ownerId;
@@ -1320,7 +1329,7 @@ router.post('/sources/:id/webhook', async (req: Request, res: Response): Promise
     if (!foundSource || !foundOwnerId) {
       res.status(404).json({
         success: false,
-        error: `Source not found: ${id}`,
+        error: `Source not found: ${idStr}`,
       });
       return;
     }
@@ -1328,7 +1337,7 @@ router.post('/sources/:id/webhook', async (req: Request, res: Response): Promise
     if (foundSource.type !== 'webhook') {
       res.status(400).json({
         success: false,
-        error: `Source is not a webhook source: ${id}`,
+        error: `Source is not a webhook source: ${idStr}`,
       });
       return;
     }
@@ -1338,7 +1347,7 @@ router.post('/sources/:id/webhook', async (req: Request, res: Response): Promise
 
     const sourceManager = sourceManagerInstances.get(foundOwnerId)!;
     const rawInputs = await sourceManager.processWebhook(
-      id,
+      idStr,
       payload,
       signatureHeader,
       req.headers as Record<string, string>
@@ -1346,12 +1355,12 @@ router.post('/sources/:id/webhook', async (req: Request, res: Response): Promise
 
     // Store the raw inputs
     if (rawInputs.length > 0) {
-      saveRawInputs(foundOwnerId, id, rawInputs);
+      saveRawInputs(foundOwnerId, idStr, rawInputs);
     }
 
     res.json({
       success: true,
-      sourceId: id,
+      sourceId: idStr,
       processed: rawInputs.length,
       inputs: rawInputs.map(input => ({
         id: input.id,
@@ -1388,7 +1397,7 @@ router.post('/sources/:id/webhook', async (req: Request, res: Response): Promise
 router.get('/sources/:id/inputs', async (req: Request, res: Response): Promise<void> => {
   try {
     const ownerId = getDefaultOwnerId(req);
-    const { id } = req.params;
+    const id = getRouteParam(req.params.id);
     const { limit } = req.query as GetInputsQuery;
 
     const sourceManager = getSourceManager(ownerId);
