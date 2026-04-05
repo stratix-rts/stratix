@@ -342,17 +342,36 @@ Return JSON now:`;
       const jsonStr = this.extractJson(content);
       const parsed = JSON.parse(jsonStr);
 
-      // Validate and normalize
+      // Validate and normalize entities
       const entities = Array.isArray(parsed.entities)
         ? parsed.entities.filter((e: unknown) => typeof e === 'string')
         : [];
 
+      // Validate and normalize keywords
       const keywords = Array.isArray(parsed.keywords)
         ? parsed.keywords.filter((k: unknown) => typeof k === 'string').slice(0, 10)
         : [];
 
+      // Validate type
       const type = this.normalizeInsightType(parsed.type);
+
+      // Validate category (only accept valid values, default to "quality")
+      const category = this.normalizeCategory(parsed.category);
+
+      // Validate severity (only accept valid values, default to "info")
+      const severity = this.normalizeSeverity(parsed.severity);
+
+      // Basic fields
       const summary = typeof parsed.summary === 'string' ? parsed.summary : '';
+      const details = typeof parsed.details === 'string' ? parsed.details : undefined;
+      const suggestion = typeof parsed.suggestion === 'string' ? parsed.suggestion : undefined;
+
+      // Validate affectedFiles
+      const affectedFiles = Array.isArray(parsed.affectedFiles)
+        ? parsed.affectedFiles.filter((f: unknown) => typeof f === 'string')
+        : [];
+
+      // Validate confidence
       const confidence = typeof parsed.confidence === 'number'
         ? Math.max(0, Math.min(1, parsed.confidence))
         : 0.5;
@@ -363,11 +382,42 @@ Return JSON now:`;
         type,
         summary,
         confidence,
+        category,
+        severity,
+        details,
+        suggestion,
+        affectedFiles,
       };
     } catch {
       // Try to salvage something from the content
       return this.fallbackParse(content);
     }
+  }
+
+  /**
+   * 标准化 category
+   */
+  private normalizeCategory(category: unknown): 'architecture' | 'security' | 'performance' | 'quality' | 'dependency' | undefined {
+    if (typeof category === 'string') {
+      const normalized = category.toLowerCase().trim();
+      if (['architecture', 'security', 'performance', 'quality', 'dependency'].includes(normalized)) {
+        return normalized as 'architecture' | 'security' | 'performance' | 'quality' | 'dependency';
+      }
+    }
+    return 'quality';
+  }
+
+  /**
+   * 标准化 severity
+   */
+  private normalizeSeverity(severity: unknown): 'critical' | 'warning' | 'info' | undefined {
+    if (typeof severity === 'string') {
+      const normalized = severity.toLowerCase().trim();
+      if (['critical', 'warning', 'info'].includes(normalized)) {
+        return normalized as 'critical' | 'warning' | 'info';
+      }
+    }
+    return 'info';
   }
 
   /**
@@ -465,6 +515,10 @@ Return JSON now:`;
       type,
       summary,
       confidence: 0.3, // Low confidence since we had to fallback
+      // Default values for new fields (not available in fallback)
+      category: 'quality',
+      severity: 'info',
+      affectedFiles: [],
     };
   }
 

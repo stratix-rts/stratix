@@ -113,6 +113,16 @@ export interface InsightExtractionResult {
   type: InsightType;
   summary: string;
   confidence: number;
+  /** 分析类别 */
+  category?: 'architecture' | 'security' | 'performance' | 'quality' | 'dependency';
+  /** 严重程度 */
+  severity?: 'critical' | 'warning' | 'info';
+  /** 详细分析 */
+  details?: string;
+  /** 改进建议 */
+  suggestion?: string;
+  /** 受影响的文件路径 */
+  affectedFiles?: string[];
 }
 
 // ------------------------------------------------
