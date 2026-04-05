@@ -60,9 +60,12 @@
         :key="insight.id"
         class="insight-card"
       >
-        <div class="insight-main">
+        <div class="insight-main" :class="`severity-${insight.severity || 'none'}`">
           <div class="insight-header">
             <span class="insight-type">{{ insight.type }}</span>
+            <span v-if="insight.severity" class="severity-badge" :class="`badge-${insight.severity}`">
+              {{ insight.severity }}
+            </span>
             <span class="insight-time">{{ formatTime(insight.createdAt) }}</span>
           </div>
           <p class="insight-content">{{ insight.content }}</p>
@@ -278,6 +281,42 @@ function formatTime(iso: string): string {
   border: 1px solid var(--ds-border-subtle, rgba(255, 255, 255, 0.06));
   border-radius: var(--ds-radius-md, 8px);
   padding: 14px 16px;
+}
+
+.insight-main {
+  border-left: 3px solid #64748b;
+  padding-left: 12px;
+  border-radius: 4px;
+}
+.insight-main.severity-critical {
+  border-left-color: #ef4444;
+}
+.insight-main.severity-warning {
+  border-left-color: #f59e0b;
+}
+.insight-main.severity-info {
+  border-left-color: #3b82f6;
+}
+
+.severity-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.badge-critical {
+  background: color-mix(in srgb, #ef4444 15%, transparent);
+  color: #ef4444;
+}
+.badge-warning {
+  background: color-mix(in srgb, #f59e0b 15%, transparent);
+  color: #f59e0b;
+}
+.badge-info {
+  background: color-mix(in srgb, #3b82f6 15%, transparent);
+  color: #3b82f6;
 }
 
 .insight-header {
