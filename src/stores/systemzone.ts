@@ -11,7 +11,7 @@ const BASE_URL = typeof window !== 'undefined' && (window as any).GATEWAY_URL
   ? (window as any).GATEWAY_URL
   : 'http://127.0.0.1:7524';
 
-async function apiFetch<T>(path: string, options?: RequestInit): Promise<{ success: boolean; data: T; error?: string }> {
+async function apiFetch<T = any>(path: string, options?: RequestInit): Promise<T & { success: boolean; error?: string }> {
   const method = options?.method || 'GET';
   szLog.debug('api', `${method} ${path}`);
   const url = `${BASE_URL}${path}`;
@@ -29,7 +29,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<{ succe
     return result;
   } catch (e) {
     szLog.error('api', `${method} ${path} 网络错误`, e, { path });
-    return { success: false, data: null as T, error: e instanceof Error ? e.message : 'Network error' };
+    return { success: false, error: e instanceof Error ? e.message : 'Network error' } as T & { success: boolean; error?: string };
   }
 }
 
@@ -248,12 +248,12 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
   async function fetchStatus(): Promise<void> {
     setPanelLoading('status', true);
     setPanelError('status', null);
-    const result = await apiFetch<{ observer: ObserverSummary; strategist: StrategistSummary; guardian: GuardianState }>(
+    const result = await apiFetch<{ status: { observer: ObserverSummary; strategist: StrategistSummary; guardian: GuardianState } }>(
       '/api/systemzone/status'
     );
     setPanelLoading('status', false);
     if (result.success) {
-      status.value = (result as any).status;
+      status.value = result.status;
       connected.value = true;
       globalError.value = null;
     } else {
@@ -270,7 +270,7 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
     const result = await apiFetch<{ insights: Insight[] }>('/api/systemzone/insights');
     setPanelLoading('insights', false);
     if (result.success) {
-      insights.value = (result as any).insights || [];
+      insights.value = result.insights || [];
     } else {
       setPanelError('insights', result.error ?? '无法获取洞察数据');
     }
@@ -340,7 +340,7 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
     const result = await apiFetch<{ proposals: Proposal[] }>(`/api/systemzone/proposals${query}`);
     setPanelLoading('proposals', false);
     if (result.success) {
-      proposals.value = (result as any).proposals || [];
+      proposals.value = result.proposals || [];
     } else {
       setPanelError('proposals', result.error ?? '无法获取提案数据');
     }
@@ -387,7 +387,7 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
     const result = await apiFetch<{ executions: ExecutionResult[] }>('/api/systemzone/executions');
     setPanelLoading('executions', false);
     if (result.success) {
-      executions.value = (result as any).executions || [];
+      executions.value = result.executions || [];
     } else {
       setPanelError('executions', result.error ?? '无法获取执行记录');
     }
@@ -399,7 +399,7 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
     const result = await apiFetch<{ sources: ExternalSource[] }>('/api/systemzone/sources');
     setPanelLoading('sources', false);
     if (result.success) {
-      sources.value = (result as any).sources || [];
+      sources.value = result.sources || [];
     } else {
       setPanelError('sources', result.error ?? '无法获取外部源数据');
     }
@@ -435,10 +435,10 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
   async function fetchBootstrapStatus(): Promise<void> {
     setPanelLoading('bootstrap', true);
     setPanelError('bootstrap', null);
-    const result = await apiFetch<BootstrapStatus>('/api/systemzone/bootstrap/status');
+    const result = await apiFetch<{ status: BootstrapStatus }>('/api/systemzone/bootstrap/status');
     setPanelLoading('bootstrap', false);
     if (result.success) {
-      bootstrapStatus.value = (result as any).status;
+      bootstrapStatus.value = result.status;
     } else {
       setPanelError('bootstrap', result.error ?? '无法获取自举引擎状态');
     }
@@ -500,10 +500,10 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
   async function fetchFitness(): Promise<void> {
     setPanelLoading('fitness', true);
     setPanelError('fitness', null);
-    const result = await apiFetch<FitnessReport>('/api/systemzone/fitness');
+    const result = await apiFetch<{ report: FitnessReport }>('/api/systemzone/fitness');
     setPanelLoading('fitness', false);
     if (result.success) {
-      fitnessReport.value = (result as any).report;
+      fitnessReport.value = result.report;
     } else {
       setPanelError('fitness', result.error ?? '无法获取健康报告');
     }
