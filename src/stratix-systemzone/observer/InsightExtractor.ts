@@ -136,6 +136,11 @@ export class InsightExtractor {
         entities: extractionResult.entities,
         confidence: extractionResult.confidence,
         archived: false,
+        severity: extractionResult.severity,
+        category: extractionResult.category,
+        details: extractionResult.details,
+        suggestion: extractionResult.suggestion,
+        affectedFiles: extractionResult.affectedFiles,
       };
 
       return {
@@ -166,6 +171,9 @@ export class InsightExtractor {
             type: 'pattern',
             summary: 'No LLM provider configured',
             confidence: 0,
+            category: 'quality',
+            severity: 'info',
+            affectedFiles: [],
           };
         }
 
@@ -189,6 +197,9 @@ export class InsightExtractor {
           type: 'pattern',
           summary: result.error ?? 'Extraction failed',
           confidence: 0,
+          category: 'quality',
+          severity: 'info',
+          affectedFiles: [],
         };
       }
 
@@ -200,6 +211,9 @@ export class InsightExtractor {
           type: 'pattern',
           summary: 'Failed to parse response',
           confidence: 0,
+          category: 'quality',
+          severity: 'info',
+          affectedFiles: [],
         };
       }
 
@@ -211,6 +225,9 @@ export class InsightExtractor {
         type: 'pattern',
         summary: 'Extraction failed',
         confidence: 0,
+        category: 'quality',
+        severity: 'info',
+        affectedFiles: [],
       };
     }
   }

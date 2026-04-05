@@ -1,6 +1,6 @@
 # Sprint 状态
 
-## 当前 Task: 1.3
+## 当前 Task: 1.4
 ## 状态: in_progress
 ## Claude Code Session: 
 ## 开始时间: 
@@ -15,7 +15,7 @@
 |------|------|------|--------|---------|
 | 1.1 | Observer Prompt 设计 | ✅ done | a9e1859 | 00:10 |
 | 1.2 | Observer 响应解析 | ✅ done | 686c190 | 00:15 |
-| 1.3 | Insight 类型扩展 | pending | - | - |
+| 1.3 | Insight 类型扩展 | ✅ done | a4e03dc | 00:18 |
 | 1.4 | Observer 流程串联 | pending | - | - |
 | 1.5 | Observer.ts 类型传递 | pending | - | - |
 | 1.6 | Strategist Enrich Prompt | pending | - | - |
