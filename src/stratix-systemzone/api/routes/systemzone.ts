@@ -879,23 +879,74 @@ router.post('/executions/:id/cancel', async (req: Request, res: Response): Promi
 
 /**
  * GET /api/systemzone/fitness
- * Get fitness report
+ * Get fitness report calculated from strategist scan results
  */
 router.get('/fitness', async (req: Request, res: Response): Promise<void> => {
   try {
     const ownerId = getDefaultOwnerId(req);
-    const fitnessEvaluator = getFitnessEvaluator(ownerId);
+    const strategist = getStrategist(ownerId);
 
-    const report = await fitnessEvaluator.evaluate();
+    let scanResult = strategist.getState().scanResult;
+
+    // If no scan results, trigger a quick scan first
+    if (!scanResult) {
+      scanResult = await strategist.scan();
+    }
+
+    if (!scanResult) {
+      // Default scores if still no data
+      res.json({
+        success: true,
+        report: {
+          timestamp: new Date().toISOString(),
+          typeSafety: 70,
+          lint: 70,
+          codeSize: 70,
+          overall: 70,
+        },
+      });
+      return;
+    }
+
+    const totalFiles = scanResult.sizes.files.length;
+
+    if (totalFiles === 0) {
+      res.json({
+        success: true,
+        report: {
+          timestamp: scanResult.timestamp,
+          typeSafety: 70,
+          lint: 70,
+          codeSize: 70,
+          overall: 70,
+        },
+      });
+      return;
+    }
+
+    // Files with TypeScript errors (unique)
+    const filesWithTscErrors = new Set(scanResult.types.errors.map(e => e.file));
+    const typeSafety = ((totalFiles - filesWithTscErrors.size) / totalFiles) * 100;
+
+    // Files with ESLint errors (unique)
+    const filesWithLintErrors = new Set(scanResult.lint.errors.map(e => e.file));
+    const lint = ((totalFiles - filesWithLintErrors.size) / totalFiles) * 100;
+
+    // Oversized files
+    const oversizedFiles = scanResult.sizes.files.filter(f => f.isLarge).length;
+    const codeSize = (1 - oversizedFiles / totalFiles) * 100;
+
+    // Weighted overall
+    const overall = typeSafety * 0.35 + lint * 0.35 + codeSize * 0.30;
 
     res.json({
       success: true,
       report: {
-        timestamp: report.timestamp,
-        metrics: report.metrics,
-        scores: report.scores,
-        passed: report.passed,
-        violations: report.violations,
+        timestamp: scanResult.timestamp,
+        typeSafety: Math.round(typeSafety * 100) / 100,
+        lint: Math.round(lint * 100) / 100,
+        codeSize: Math.round(codeSize * 100) / 100,
+        overall: Math.round(overall * 100) / 100,
       },
     });
   } catch (error) {
