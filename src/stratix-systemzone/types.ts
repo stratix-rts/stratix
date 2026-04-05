@@ -254,6 +254,14 @@ export interface Proposal {
   status: ProposalStatus;
   approvedBy?: string;
   executedAt?: Date;
+  /** 代码修改建议 */
+  codeSuggestion?: string;
+  /** 字符串版风险等级，与 selection.risk 不冲突 */
+  riskLevelStr?: 'high' | 'medium' | 'low';
+  /** 工作量估算 */
+  effortEstimate?: 'small' | 'medium' | 'large';
+  /** 为什么建议这样改 */
+  reasoning?: string;
 }
 
 // ------------------------------------------------
