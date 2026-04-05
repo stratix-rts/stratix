@@ -280,7 +280,18 @@ export class StrategistLLMEnhancer {
       // GlobalProviderSettings not available, continue
     }
 
-    // Fallback: check environment variables
+    // Fallback 1: System Zone LLM config (set via UI panel)
+    const szApiKey = process.env.LLM_API_KEY;
+    if (szApiKey) {
+      return {
+        provider: (process.env.LLM_PROVIDER as 'openai' | 'anthropic') ?? 'openai',
+        model: process.env.LLM_MODEL ?? 'gpt-4o',
+        apiKey: szApiKey,
+        baseUrl: process.env.LLM_BASE_URL,
+      };
+    }
+
+    // Fallback 2: legacy env variables
     const apiKey = process.env.ANTHROPIC_API_KEY ?? process.env.OPENAI_API_KEY;
     if (apiKey) {
       return {

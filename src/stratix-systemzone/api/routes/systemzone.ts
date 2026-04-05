@@ -2114,6 +2114,11 @@ router.put('/llm-config', async (req: Request, res: Response): Promise<void> => 
 
     fs.writeFileSync(ENV_FILE_PATH, envContent, 'utf-8');
 
+    // Hot-update process.env so Observer/Strategist pick up changes immediately
+    for (const { key, value } of updates) {
+      process.env[key] = value;
+    }
+
     res.json({
       success: true,
       message: 'LLM config saved to .env',
@@ -2125,6 +2130,30 @@ router.put('/llm-config', async (req: Request, res: Response): Promise<void> => 
       success: false,
       error: error instanceof Error ? error.message : 'Failed to save LLM config',
     });
+  }
+});
+
+// ============================================
+// Logs — receive log entries from frontend logger
+// ============================================
+router.post('/logs', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { entries } = req.body as { entries: Array<{ level: string; message: string; timestamp?: string; context?: string }> };
+    if (Array.isArray(entries)) {
+      for (const entry of entries) {
+        const ts = entry.timestamp ?? new Date().toISOString();
+        const ctx = entry.context ? `[${entry.context}] ` : '';
+        // Use console to mirror frontend logs on the backend
+        switch (entry.level) {
+          case 'error': console.error(`[SZ:ui ${ts}] ${ctx}${entry.message}`); break;
+          case 'warn':  console.warn(`[SZ:ui ${ts}] ${ctx}${entry.message}`); break;
+          default:      console.log(`[SZ:ui ${ts}] ${ctx}${entry.message}`); break;
+        }
+      }
+    }
+    res.json({ success: true, received: Array.isArray(entries) ? entries.length : 0 });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Failed to receive logs' });
   }
 });
 
