@@ -348,10 +348,8 @@ export class AutoHealEngine {
       checks: report.checks.filter(c => c.status !== 'ok'),
     });
 
-    // 自动修复
-    if (report.status !== 'healthy') {
-      await this.autoHeal(report);
-    }
+    // 自动修复（走到这里说明 status 非 healthy）
+    await this.autoHeal(report);
 
     return report;
   }

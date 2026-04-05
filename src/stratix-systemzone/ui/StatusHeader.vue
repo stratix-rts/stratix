@@ -15,6 +15,11 @@
       <span class="status-name">Guardian</span>
       <span class="status-detail">{{ store.status.guardian.circuitBreakerOpen ? '熔断中' : '正常' }}</span>
     </div>
+    <div class="status-item" v-if="store.status">
+      <span class="status-dot" :class="store.status.guardian.circuitBreakerOpen ? 'dot-error' : 'dot-ok'"></span>
+      <span class="status-name">Fitness</span>
+      <span class="status-detail">{{ store.fitnessReport ? store.fitnessReport.overallScore + '分' : '--' }}</span>
+    </div>
     <div class="status-item" v-if="!store.status">
       <span class="status-dot dot-idle"></span>
       <span class="status-name">未连接</span>
@@ -40,32 +45,44 @@ function dotClass(status: string): string {
 <style scoped>
 .status-header {
   display: flex;
-  gap: 24px;
-  padding: 10px 20px;
-  background: rgba(148, 163, 184, 0.05);
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  gap: var(--ds-spacing-lg, 24px);
+  padding: 10px var(--ds-spacing-md, 16px);
+  background: rgba(148, 163, 184, 0.03);
+  border-bottom: 1px solid var(--ds-border-subtle, #1e1e2e);
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 .status-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
+  gap: var(--ds-spacing-xs, 4px);
+  font-size: var(--ds-typography-fontSize-sm, 12px);
 }
 .status-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
+  flex-shrink: 0;
 }
-.dot-ok { background: #22c55e; }
-.dot-running { background: #3b82f6; animation: pulse 1.5s infinite; }
-.dot-error { background: #ef4444; }
-.dot-idle { background: #94a3b8; }
-.status-name { color: rgba(226, 232, 240, 0.8); font-weight: 500; }
-.status-detail { color: rgba(148, 163, 184, 0.6); font-size: 12px; }
+.dot-ok { background: var(--ds-status-success, #00ff88); }
+.dot-running { background: var(--ds-status-info, #00d4ff); animation: pulse 1.5s infinite; }
+.dot-error { background: var(--ds-status-danger, #ff4444); }
+.dot-idle { background: var(--ds-text-muted, #6a6a8a); }
+.status-name { color: var(--ds-text-primary, #ffffff); font-weight: var(--ds-typography-fontWeight-medium, 500); opacity: 0.8; }
+.status-detail { color: var(--ds-text-muted, #6a6a8a); font-size: 11px; }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
+}
+
+@media (max-width: 640px) {
+  .status-header {
+    gap: var(--ds-spacing-md, 16px);
+    padding: 8px 12px;
+  }
+  .status-item {
+    font-size: 11px;
+  }
 }
 </style>

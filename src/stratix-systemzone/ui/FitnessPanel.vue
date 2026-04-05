@@ -2,20 +2,28 @@
   <div class="fitness-panel">
     <div class="panel-header">
       <h3 class="panel-title">健康评估</h3>
-      <button class="btn-refresh" @click="store.fetchFitness()" :disabled="store.loading">
+      <button class="btn-refresh" @click="handleRefresh" :disabled="isLoading">
         ↻ 刷新
       </button>
     </div>
 
     <!-- Loading -->
-    <div v-if="store.loading && !store.fitnessReport" class="loading-state">
-      <span class="loading-text">加载中...</span>
+    <div v-if="isLoading && !store.fitnessReport" class="panel-state">
+      <span class="spinner"></span>
+      <span class="state-text">加载中...</span>
+    </div>
+
+    <!-- Error -->
+    <div v-else-if="panelError" class="panel-state state-error">
+      <span class="state-icon">⚠️</span>
+      <span class="state-text">{{ panelError }}</span>
+      <button class="btn-retry" @click="handleRefresh">重试</button>
     </div>
 
     <!-- Empty / No Report -->
-    <div v-else-if="!store.fitnessReport" class="empty-state">
-      <span class="empty-icon">◎</span>
-      <span class="empty-text">暂无健康报告</span>
+    <div v-else-if="!store.fitnessReport" class="panel-state">
+      <span class="state-icon">◎</span>
+      <span class="state-text">暂无健康报告</span>
     </div>
 
     <!-- Report Content -->
@@ -82,10 +90,20 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { computed } from 'vue';
 import { useSystemZoneStore } from '../../stores/systemzone';
+import { useAutoRefresh } from './composables/useAutoRefresh';
+import { usePanelState } from './composables/usePanelState';
 
 const store = useSystemZoneStore();
+const fitnessDataRef = computed(() => store.fitnessReport ? [store.fitnessReport] : null);
+const { isLoading, panelError, retry } = usePanelState('fitness', fitnessDataRef);
+
+const { refresh } = useAutoRefresh(() => store.fetchFitness(), { immediate: false });
+
+async function handleRefresh() {
+  await retry();
+}
 
 function severityLabel(severity: string): string {
   switch (severity) {
@@ -107,17 +125,13 @@ function formatTime(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
-
-onMounted(() => {
-  store.fetchFitness();
-});
 </script>
 
 <style scoped>
 .fitness-panel {
-  background: #0f1117;
-  border-radius: 8px;
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  background: var(--ds-bg-elevated, #12121a);
+  border-radius: var(--ds-radius-lg, 8px);
+  border: 1px solid var(--ds-border-subtle, #1e1e2e);
   overflow: hidden;
 }
 
@@ -125,51 +139,76 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  padding: 12px var(--ds-spacing-md, 16px);
+  border-bottom: 1px solid var(--ds-border-subtle, #1e1e2e);
 }
 
 .panel-title {
   margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #e2e8f0;
+  font-size: var(--ds-typography-fontSize-md, 14px);
+  font-weight: var(--ds-typography-fontWeight-semibold, 600);
+  color: var(--ds-text-primary, #ffffff);
 }
 
 .btn-refresh {
   background: transparent;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  color: #94a3b8;
+  border: 1px solid var(--ds-border-default, #2a2a3e);
+  color: var(--ds-text-secondary, #a0a0b0);
   padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 12px;
+  border-radius: var(--ds-radius-sm, 2px);
+  font-size: 11px;
   cursor: pointer;
   transition: border-color 0.2s, color 0.2s;
 }
-.btn-refresh:hover:not(:disabled) { border-color: #3b82f6; color: #3b82f6; }
+.btn-refresh:hover:not(:disabled) { border-color: var(--ds-color-primary, #00cccc); color: var(--ds-color-primary, #00cccc); }
 .btn-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* States */
-.loading-state,
-.empty-state {
+/* Panel states */
+.panel-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 40px;
-  gap: 8px;
+  gap: var(--ds-spacing-sm, 8px);
 }
-.loading-text { color: #94a3b8; font-size: 13px; }
-.empty-icon { font-size: 32px; color: #94a3b8; }
-.empty-text { color: #94a3b8; font-size: 13px; }
+.state-text { color: var(--ds-text-secondary, #a0a0b0); font-size: var(--ds-typography-fontSize-sm, 12px); }
+.state-icon { font-size: 32px; color: var(--ds-text-muted, #6a6a8a); }
+
+.state-error .state-icon { color: var(--ds-status-danger, #ff4444); }
+.btn-retry {
+  margin-top: var(--ds-spacing-xs, 4px);
+  padding: 4px 12px;
+  background: transparent;
+  border: 1px solid var(--ds-border-default, #2a2a3e);
+  border-radius: var(--ds-radius-sm, 2px);
+  color: var(--ds-text-secondary, #a0a0b0);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-retry:hover { border-color: var(--ds-color-primary, #00cccc); color: var(--ds-color-primary, #00cccc); }
+
+/* Spinner */
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--ds-border-subtle, #1e1e2e);
+  border-top-color: var(--ds-color-primary, #00cccc);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
 
 /* Score Section */
 .score-section {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 24px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  padding: var(--ds-spacing-lg, 24px);
+  border-bottom: 1px solid var(--ds-border-subtle, #1e1e2e);
 }
 
 .score-circle {
@@ -180,46 +219,44 @@ onMounted(() => {
 
 .score-value {
   font-size: 48px;
-  font-weight: 700;
-  color: #e2e8f0;
+  font-weight: var(--ds-typography-fontWeight-bold, 700);
+  color: var(--ds-text-primary, #ffffff);
   line-height: 1;
 }
 
 .score-max {
   font-size: 18px;
-  color: #64748b;
+  color: var(--ds-text-muted, #6a6a8a);
 }
 
 .score-label {
   margin-top: 6px;
-  font-size: 12px;
-  color: #64748b;
+  font-size: 11px;
+  color: var(--ds-text-muted, #6a6a8a);
 }
 
 /* Dimensions */
 .dimensions-section {
-  padding: 16px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  padding: var(--ds-spacing-md, 16px);
+  border-bottom: 1px solid var(--ds-border-subtle, #1e1e2e);
 }
 
 .section-title {
   margin: 0 0 12px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #e2e8f0;
+  font-size: var(--ds-typography-fontSize-sm, 12px);
+  font-weight: var(--ds-typography-fontWeight-semibold, 600);
+  color: var(--ds-text-primary, #ffffff);
 }
 
 .dimensions-list { display: flex; flex-direction: column; gap: 10px; }
-
-.dimension-item {}
 
 .dim-header {
   display: flex;
   justify-content: space-between;
   margin-bottom: 4px;
 }
-.dim-name { font-size: 12px; color: #e2e8f0; }
-.dim-score { font-size: 12px; color: #94a3b8; }
+.dim-name { font-size: 12px; color: var(--ds-text-primary, #ffffff); }
+.dim-score { font-size: 12px; color: var(--ds-text-secondary, #a0a0b0); }
 
 .progress-bar {
   height: 6px;
@@ -232,21 +269,21 @@ onMounted(() => {
   border-radius: 3px;
   transition: width 0.3s ease;
 }
-.fill-good { background: #22c55e; }
-.fill-warn { background: #eab308; }
-.fill-bad { background: #ef4444; }
+.fill-good { background: var(--ds-status-success, #00ff88); }
+.fill-warn { background: var(--ds-status-warning, #fbbf24); }
+.fill-bad { background: var(--ds-status-danger, #ff4444); }
 
 /* Violations */
-.violations-section { padding: 16px; }
+.violations-section { padding: var(--ds-spacing-md, 16px); }
 
 .empty-violations {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm, 8px);
   justify-content: center;
   padding: 20px;
-  color: #22c55e;
-  font-size: 13px;
+  color: var(--ds-status-success, #00ff88);
+  font-size: var(--ds-typography-fontSize-sm, 12px);
 }
 .ok-icon { font-size: 16px; }
 
@@ -254,50 +291,55 @@ onMounted(() => {
 
 .violation-item {
   background: rgba(148, 163, 184, 0.03);
-  border: 1px solid rgba(148, 163, 184, 0.08);
-  border-radius: 6px;
+  border: 1px solid var(--ds-border-subtle, #1e1e2e);
+  border-radius: var(--ds-radius-md, 4px);
   padding: 10px 12px;
 }
 
 .violation-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm, 8px);
   margin-bottom: 6px;
 }
 
 .severity-tag {
   font-size: 10px;
   padding: 1px 6px;
-  border-radius: 3px;
-  font-weight: 500;
-  text-transform: uppercase;
+  border-radius: var(--ds-radius-sm, 2px);
+  font-weight: var(--ds-typography-fontWeight-medium, 500);
 }
-.severity-info { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
-.severity-warning { background: rgba(234, 179, 8, 0.15); color: #eab308; }
-.severity-error { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+.severity-info { background: rgba(0, 212, 255, 0.15); color: var(--ds-status-info, #00d4ff); }
+.severity-warning { background: rgba(251, 191, 36, 0.15); color: var(--ds-status-warning, #fbbf24); }
+.severity-error { background: rgba(255, 68, 68, 0.15); color: var(--ds-status-danger, #ff4444); }
 
-.violation-rule { font-size: 12px; font-weight: 500; color: #e2e8f0; }
+.violation-rule { font-size: 12px; font-weight: var(--ds-typography-fontWeight-medium, 500); color: var(--ds-text-primary, #ffffff); }
 
 .violation-message {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--ds-text-secondary, #a0a0b0);
   margin: 0 0 4px;
   line-height: 1.4;
 }
 
 .violation-file {
   font-size: 11px;
-  color: #64748b;
-  font-family: monospace;
+  color: var(--ds-text-muted, #6a6a8a);
+  font-family: var(--ds-typography-fontFamily-mono, monospace);
 }
 
 /* Footer */
 .checked-at {
-  padding: 10px 16px;
+  padding: 10px var(--ds-spacing-md, 16px);
   font-size: 11px;
-  color: #64748b;
-  border-top: 1px solid rgba(148, 163, 184, 0.1);
+  color: var(--ds-text-muted, #6a6a8a);
+  border-top: 1px solid var(--ds-border-subtle, #1e1e2e);
   text-align: right;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .score-value { font-size: 36px; }
+  .dimensions-section, .violations-section { padding: 12px; }
 }
 </style>

@@ -25,7 +25,9 @@
 
     <!-- Error Banner -->
     <div v-if="store.error" class="error-banner">
-      ⚠️ {{ store.error }}
+      <span class="error-icon">⚠️</span>
+      <span class="error-msg">{{ store.error }}</span>
+      <button class="error-retry" @click="refreshAll">重试</button>
     </div>
 
     <!-- Tabs -->
@@ -98,9 +100,9 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: var(--ds-bg-primary, #0f1117);
-  color: var(--ds-text-primary, #e2e8f0);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--ds-bg-base, #0d0d14);
+  color: var(--ds-text-primary, #ffffff);
+  font-family: var(--ds-typography-fontFamily-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
   overflow: hidden;
 }
 
@@ -109,60 +111,78 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 20px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+  padding: var(--ds-spacing-xs, 4px) * 3 var(--ds-spacing-md, 16px);
+  border-bottom: 1px solid var(--ds-border-default, #2a2a3e);
   flex-shrink: 0;
 }
 .header-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--ds-spacing-sm, 8px);
 }
 .header-left h1 {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: var(--ds-typography-fontSize-lg, 16px);
+  font-weight: var(--ds-typography-fontWeight-semibold, 600);
   margin: 0;
 }
 .header-right {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-spacing-sm, 8px);
 }
 .btn-refresh {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
+  padding: 6px var(--ds-spacing-sm, 8px);
   background: rgba(148, 163, 184, 0.1);
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 6px;
+  border: 1px solid var(--ds-border-subtle, #1e1e2e);
+  border-radius: var(--ds-radius-sm, 2px);
   color: inherit;
-  font-size: 13px;
+  font-size: var(--ds-typography-fontSize-sm, 12px);
   cursor: pointer;
   transition: all 0.2s;
 }
 .btn-refresh:hover:not(:disabled) {
   background: rgba(148, 163, 184, 0.2);
+  border-color: var(--ds-border-default, #2a2a3e);
 }
 .btn-refresh:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-/* Error */
+/* Error Banner */
 .error-banner {
-  padding: 8px 20px;
-  background: rgba(239, 68, 68, 0.1);
-  border-bottom: 1px solid rgba(239, 68, 68, 0.3);
-  color: #ef4444;
-  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: var(--ds-spacing-sm, 8px);
+  padding: 8px var(--ds-spacing-md, 16px);
+  background: rgba(255, 68, 68, 0.1);
+  border-bottom: 1px solid rgba(255, 68, 68, 0.3);
+  color: var(--ds-status-danger, #ff4444);
+  font-size: var(--ds-typography-fontSize-sm, 12px);
 }
+.error-icon { flex-shrink: 0; }
+.error-msg { flex: 1; }
+.error-retry {
+  padding: 2px 10px;
+  background: transparent;
+  border: 1px solid rgba(255, 68, 68, 0.3);
+  border-radius: var(--ds-radius-sm, 2px);
+  color: var(--ds-status-danger, #ff4444);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+.error-retry:hover { background: rgba(255, 68, 68, 0.15); }
 
 /* Tabs */
 .sz-tabs {
   display: flex;
   gap: 2px;
-  padding: 0 16px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+  padding: 0 var(--ds-spacing-md, 16px);
+  border-bottom: 1px solid var(--ds-border-subtle, #1e1e2e);
   flex-shrink: 0;
   overflow-x: auto;
 }
@@ -170,34 +190,34 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 16px;
+  padding: 10px var(--ds-spacing-md, 16px);
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
-  color: rgba(148, 163, 184, 0.7);
-  font-size: 13px;
+  color: var(--ds-text-secondary, #a0a0b0);
+  font-size: var(--ds-typography-fontSize-sm, 12px);
   cursor: pointer;
   transition: all 0.2s;
   white-space: nowrap;
 }
 .tab-btn:hover {
-  color: rgba(226, 232, 240, 0.9);
+  color: var(--ds-text-primary, #ffffff);
   background: rgba(148, 163, 184, 0.05);
 }
 .tab-btn.active {
-  color: #e2e8f0;
-  border-bottom-color: #3b82f6;
+  color: var(--ds-text-primary, #ffffff);
+  border-bottom-color: var(--ds-color-primary, #00cccc);
 }
 .tab-icon {
   font-size: 14px;
 }
 .tab-badge {
   padding: 1px 6px;
-  background: #3b82f6;
+  background: var(--ds-color-primary, #00cccc);
   border-radius: 8px;
   font-size: 11px;
-  font-weight: 600;
-  color: white;
+  font-weight: var(--ds-typography-fontWeight-semibold, 600);
+  color: var(--ds-bg-base, #0d0d14);
   min-width: 18px;
   text-align: center;
 }
@@ -206,6 +226,29 @@ onUnmounted(() => {
 .sz-content {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 20px;
+  padding: var(--ds-spacing-md, 16px);
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .sz-header {
+    padding: 8px 12px;
+  }
+  .header-left h1 {
+    font-size: 14px;
+  }
+  .sz-tabs {
+    padding: 0 8px;
+  }
+  .tab-btn {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  .tab-label {
+    display: none;
+  }
+  .sz-content {
+    padding: 12px 8px;
+  }
 }
 </style>
