@@ -2133,6 +2133,89 @@ router.put('/llm-config', async (req: Request, res: Response): Promise<void> => 
   }
 });
 
+/**
+ * POST /api/systemzone/llm-config/test-chat
+ * Test chat with the current LLM configuration
+ */
+router.post('/llm-config/test-chat', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { message } = req.body as { message?: string };
+
+    if (!message || typeof message !== 'string') {
+      res.status(400).json({
+        success: false,
+        error: 'Missing required field: message (must be a string)',
+      });
+      return;
+    }
+
+    const apiKey = process.env.LLM_API_KEY;
+    const provider = process.env.LLM_PROVIDER || 'openai';
+    const model = process.env.LLM_MODEL;
+    const baseUrl = process.env.LLM_BASE_URL;
+
+    if (!apiKey) {
+      res.status(400).json({
+        success: false,
+        error: 'LLM not configured: missing API key',
+      });
+      return;
+    }
+
+    if (!model) {
+      res.status(400).json({
+        success: false,
+        error: 'LLM not configured: missing model',
+      });
+      return;
+    }
+
+    const SYSTEM_PROMPT = 'You are a test assistant. Respond briefly.';
+
+    if (provider === 'anthropic') {
+      const Anthropic = (await import('@anthropic-ai/sdk')).default;
+      const client = new Anthropic({
+        apiKey,
+        baseURL: baseUrl || undefined,
+      });
+
+      const response = await client.messages.create({
+        model,
+        max_tokens: 1024,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: message }],
+      });
+
+      const text = response.content[0]?.type === 'text' ? response.content[0].text : '';
+      res.json({ success: true, response: text });
+    } else {
+      // Default to OpenAI-compatible
+      const OpenAI = (await import('openai')).default;
+      const client = new OpenAI({
+        apiKey,
+        baseURL: baseUrl || undefined,
+      });
+
+      const response = await client.chat.completions.create({
+        model,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: message },
+        ],
+      });
+
+      const text = response.choices[0]?.message?.content || '';
+      res.json({ success: true, response: text });
+    }
+  } catch (error) {
+    console.error('[SystemZone API] Test chat failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Test chat failed',
+    });
+  }
+});
+
 // ============================================
 // Logs — receive log entries from frontend logger
 // ============================================

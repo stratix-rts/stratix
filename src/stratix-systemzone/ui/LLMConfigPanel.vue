@@ -85,13 +85,67 @@
       <div v-if="saveSuccess" class="save-success">
         ✓ 配置已保存，将在下次 LLM 调用时生效
       </div>
+
+      <!-- Test Chat Area -->
+      <div v-if="hasConfig" class="test-chat-area">
+        <div class="test-chat-header">
+          <span class="test-chat-title">测试对话</span>
+        </div>
+
+        <div class="test-chat-messages" ref="chatMessagesRef">
+          <div
+            v-for="msg in chatMessages"
+            :key="msg.id"
+            class="test-message"
+            :class="msg.role === 'user' ? 'test-message-user' : 'test-message-assistant'"
+          >
+            <span class="test-message-avatar">{{ msg.role === 'user' ? '👤' : '🤖' }}</span>
+            <div class="test-message-content">{{ msg.content }}</div>
+          </div>
+          <div v-if="isChatLoading" class="test-message test-message-assistant">
+            <span class="test-message-avatar">🤖</span>
+            <div class="test-message-content test-message-loading">
+              <span class="spinner-sm"></span>
+              thinking...
+            </div>
+          </div>
+        </div>
+
+        <div class="test-chat-input-area">
+          <textarea
+            v-model="chatInput"
+            class="test-chat-input"
+            placeholder="输入测试消息... (Enter 发送，Shift+Enter 换行)"
+            rows="2"
+            :disabled="isChatLoading || !hasConfig"
+            @keydown="handleChatKeyDown"
+          ></textarea>
+          <button
+            class="test-chat-send"
+            :disabled="!chatInput.trim() || isChatLoading"
+            @click="sendTestMessage"
+          >
+            发送
+          </button>
+        </div>
+
+        <div v-if="!hasConfig" class="test-chat-disabled">
+          请先保存 LLM 配置
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted, nextTick } from 'vue';
 import { useSystemZoneStore } from '../../stores/systemzone';
+
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+}
 
 const store = useSystemZoneStore();
 const isLoading = ref(false);
@@ -106,6 +160,12 @@ const form = reactive({
   apiKey: '',
   baseUrl: '',
 });
+
+// Chat state
+const chatMessages = ref<ChatMessage[]>([]);
+const chatInput = ref('');
+const isChatLoading = ref(false);
+const chatMessagesRef = ref<HTMLElement | null>(null);
 
 const hasConfig = computed(() => {
   return store.llmConfig && store.llmConfig.provider;
@@ -150,6 +210,68 @@ async function handleSave() {
     saveError.value = e instanceof Error ? e.message : '保存失败';
   } finally {
     isSaving.value = false;
+  }
+}
+
+function scrollChatToBottom() {
+  nextTick(() => {
+    if (chatMessagesRef.value) {
+      chatMessagesRef.value.scrollTop = chatMessagesRef.value.scrollHeight;
+    }
+  });
+}
+
+function handleChatKeyDown(e: KeyboardEvent) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendTestMessage();
+  }
+}
+
+async function sendTestMessage() {
+  const text = chatInput.value.trim();
+  if (!text || isChatLoading.value || !hasConfig.value) return;
+
+  // Add user message
+  chatMessages.value.push({
+    id: Date.now().toString(),
+    role: 'user',
+    content: text,
+  });
+  chatInput.value = '';
+  scrollChatToBottom();
+
+  // Send to backend
+  isChatLoading.value = true;
+  try {
+    const res = await fetch('/api/systemzone/llm-config/test-chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      chatMessages.value.push({
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: data.response || '(无响应)',
+      });
+    } else {
+      chatMessages.value.push({
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: `错误: ${data.error || '未知错误'}`,
+      });
+    }
+  } catch (err) {
+    chatMessages.value.push({
+      id: (Date.now() + 1).toString(),
+      role: 'assistant',
+      content: `错误: ${err instanceof Error ? err.message : '网络错误'}`,
+    });
+  } finally {
+    isChatLoading.value = false;
+    scrollChatToBottom();
   }
 }
 
@@ -337,5 +459,150 @@ onMounted(() => {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* Test Chat Area */
+.test-chat-area {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--ds-border-subtle, #1e1e2e);
+}
+
+.test-chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.test-chat-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ds-text-secondary, #aaa);
+}
+
+.test-chat-messages {
+  max-height: 200px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  background: var(--ds-background-tertiary, #111);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.test-message {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.test-message-user {
+  flex-direction: row-reverse;
+}
+
+.test-message-avatar {
+  font-size: 14px;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.test-message-content {
+  max-width: 80%;
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.test-message-user .test-message-content {
+  background: var(--ds-status-info, #00d4ff);
+  color: #000;
+  border-bottom-right-radius: 2px;
+}
+
+.test-message-assistant .test-message-content {
+  background: var(--ds-background-secondary, #1a1a2e);
+  color: var(--ds-text-primary, #fff);
+  border-bottom-left-radius: 2px;
+}
+
+.test-message-loading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ds-text-muted, #666);
+}
+
+.spinner-sm {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--ds-border-default, #333);
+  border-top-color: var(--ds-status-info, #00d4ff);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.test-chat-input-area {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.test-chat-input {
+  flex: 1;
+  padding: 8px 12px;
+  background: var(--ds-background-tertiary, #111);
+  border: 1px solid var(--ds-border-default, #333);
+  border-radius: 6px;
+  color: var(--ds-text-primary, #fff);
+  font-size: 13px;
+  font-family: var(--ds-typography-fontFamily-sans, system-ui, sans-serif);
+  resize: none;
+  outline: none;
+}
+
+.test-chat-input:focus {
+  border-color: var(--ds-border-strong, #555);
+}
+
+.test-chat-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.test-chat-send {
+  padding: 8px 16px;
+  background: var(--ds-status-info, #00d4ff);
+  color: #000;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.test-chat-send:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.test-chat-send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.test-chat-disabled {
+  text-align: center;
+  padding: 16px;
+  color: var(--ds-text-muted, #666);
+  font-size: 13px;
 }
 </style>
