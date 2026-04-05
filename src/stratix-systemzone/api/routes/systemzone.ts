@@ -2087,6 +2087,37 @@ router.get('/llm-config', async (_req: Request, res: Response): Promise<void> =>
 });
 
 /**
+ * GET /api/systemzone/llm-config/status
+ * Check if LLM is configured (has API key)
+ */
+router.get('/llm-config/status', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const apiKey = process.env.LLM_API_KEY;
+
+    if (!apiKey) {
+      res.json({
+        success: true,
+        configured: false,
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      configured: true,
+      provider: process.env.LLM_PROVIDER,
+      model: process.env.LLM_MODEL,
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Get llm-config/status failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get LLM config status',
+    });
+  }
+});
+
+/**
  * PUT /api/systemzone/llm-config
  * Save LLM configuration to .env file in project root
  */
