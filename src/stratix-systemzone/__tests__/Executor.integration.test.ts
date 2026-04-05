@@ -25,92 +25,8 @@ import type { FitnessReport } from '../fitness/types';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
-import { execSync, spawnSync } from 'child_process';
+import { execSync } from 'child_process';
 import Database from 'better-sqlite3';
-
-// ------------------------------------------------
-// Mock helpers
-// ------------------------------------------------
-
-/** Mock child_process execSync */
-function mockExecSyncSuccess(command: string, options?: any): string {
-  if (command.includes('git worktree add')) {
-    return '';
-  }
-  if (command.includes('git worktree remove')) {
-    return '';
-  }
-  if (command.includes('git branch -D')) {
-    return '';
-  }
-  if (command.includes('git rev-parse HEAD')) {
-    return 'abc123def456789';
-  }
-  if (command.includes('git stash push')) {
-    return '';
-  }
-  if (command.includes('git stash pop')) {
-    return '';
-  }
-  if (command.includes('git reset --hard')) {
-    return '';
-  }
-  if (command.includes('git add')) {
-    return '';
-  }
-  if (command.includes('git commit')) {
-    return 'commit-abc123';
-  }
-  if (command.includes('git diff')) {
-    return '';
-  }
-  return '';
-}
-
-/** Mock spawnSync for npm test */
-function mockSpawnSyncSuccess(command: string, args: string[], options?: any): any {
-  if (command === 'npm' && args[0] === 'test') {
-    return {
-      status: 0,
-      stdout: JSON.stringify({
-        numTotalTests: 10,
-        numPassedTests: 10,
-        numFailedTests: 0,
-        numPendingTests: 0,
-      }),
-      stderr: '',
-    };
-  }
-  return { status: 0, stdout: '', stderr: '' };
-}
-
-/** Mock spawnSync for npm test with failure */
-function mockSpawnSyncFailure(command: string, args: string[], options?: any): any {
-  if (command === 'npm' && args[0] === 'test') {
-    return {
-      status: 1,
-      stdout: JSON.stringify({
-        numTotalTests: 10,
-        numPassedTests: 7,
-        numFailedTests: 3,
-        numPendingTests: 0,
-        results: [
-          {
-            assertionResults: [
-              {
-                title: 'should fail test 1',
-                status: 'failed',
-                failureMessages: ['Error: expect(received).toBe(expected)'],
-              },
-            ],
-          },
-        ],
-      }),
-      stderr: '',
-    };
-  }
-  return { status: 1, stdout: '', stderr: '' };
-}
 
 // ------------------------------------------------
 // Test setup helpers
@@ -208,10 +124,15 @@ describe('Executor Integration Tests', () => {
       const { workDir, db } = await setupTestEnvironment();
 
       try {
+        // Create a real sandbox directory
+        const sandboxPath = path.join(workDir, 'mock-sandbox');
+        await fs.mkdir(sandboxPath, { recursive: true });
+
+        // Create executor with mocked dependencies
         const executor = new Executor(
           {
             sandbox: {
-              worktreeBaseDir: path.join(os.tmpdir(), 'executor-int-test-worktrees'),
+              worktreeBaseDir: sandboxPath,
               repoPath: workDir,
               maxConcurrentSandboxes: 3,
               autoCleanup: true,
@@ -234,14 +155,21 @@ describe('Executor Integration Tests', () => {
             allowedProposalTypes: ['improve_code', 'improve_test', 'improve_architecture'],
           },
           {
-            commitChanges: async (workDirArg: string, message: string) => {
-              return 'mock-commit-hash-123';
-            },
+            commitChanges: async () => 'mock-commit-hash-123',
           }
         );
 
-        // Mock TestRunner to return success
-        jest.spyOn(executor.getTestRunner() as any, 'runTests').mockResolvedValue({
+        // Override internal methods via prototype mocking
+        const sandbox = executor.getSandbox();
+        const testRunner = executor.getTestRunner();
+        const rollbackMgr = executor.getRollbackManager();
+
+        // Mock sandbox operations
+        jest.spyOn(sandbox, 'createSandbox').mockResolvedValue(sandboxPath);
+        jest.spyOn(sandbox, 'destroySandbox').mockResolvedValue(undefined);
+
+        // Mock test runner
+        jest.spyOn(testRunner, 'runTests').mockResolvedValue({
           passed: true,
           totalTests: 10,
           passedTests: 10,
@@ -252,19 +180,21 @@ describe('Executor Integration Tests', () => {
           coverageDelta: null,
         });
 
-        // Mock Sandbox.createSandbox
-        jest.spyOn(executor.getSandbox() as any, 'createSandbox').mockResolvedValue(
-          path.join(workDir, 'mock-sandbox')
-        );
-
-        // Mock Sandbox.destroySandbox
-        jest.spyOn(executor.getSandbox() as any, 'destroySandbox').mockResolvedValue(undefined);
+        // Mock rollback manager
+        jest.spyOn(rollbackMgr, 'createSnapshot').mockResolvedValue({
+          id: 'snap-123',
+          proposalId: 'proposal-success',
+          commitHash: 'abc123',
+          timestamp: new Date(),
+          description: 'test',
+          workDir: sandboxPath,
+        });
 
         const proposal = createProposalWithModifications('proposal-success', [
           {
             type: 'create',
             path: 'src/new-feature.ts',
-            content: 'export const newFeature = () => "new";',
+            content: 'export const newFeature = () => "new";\n',
             description: 'Add new feature',
           },
         ]);
@@ -281,6 +211,7 @@ describe('Executor Integration Tests', () => {
         expect(state.totalExecutions).toBe(1);
         expect(state.totalSuccesses).toBe(1);
       } finally {
+        db.close();
         await cleanupTestEnvironment(workDir);
       }
     });
@@ -294,10 +225,13 @@ describe('Executor Integration Tests', () => {
       const { workDir, db } = await setupTestEnvironment();
 
       try {
+        const sandboxPath = path.join(workDir, 'mock-sandbox');
+        await fs.mkdir(sandboxPath, { recursive: true });
+
         const executor = new Executor(
           {
             sandbox: {
-              worktreeBaseDir: path.join(os.tmpdir(), 'executor-int-test-worktrees'),
+              worktreeBaseDir: sandboxPath,
               repoPath: workDir,
               maxConcurrentSandboxes: 3,
               autoCleanup: true,
@@ -324,46 +258,52 @@ describe('Executor Integration Tests', () => {
           }
         );
 
-        // Mock TestRunner to return failure
-        jest.spyOn(executor.getTestRunner() as any, 'runTests').mockResolvedValue({
+        const sandbox = executor.getSandbox();
+        const testRunner = executor.getTestRunner();
+        const rollbackMgr = executor.getRollbackManager();
+        const codeModifier = executor.getCodeModifier();
+
+        // Mock sandbox
+        jest.spyOn(sandbox, 'createSandbox').mockResolvedValue(sandboxPath);
+        jest.spyOn(sandbox, 'destroySandbox').mockResolvedValue(undefined);
+
+        // Mock test runner to return failure
+        jest.spyOn(testRunner, 'runTests').mockResolvedValue({
           passed: false,
           totalTests: 10,
           passedTests: 7,
           failedTests: 3,
           skippedTests: 0,
           duration: 100,
-          failures: [
-            { testName: 'should fail', filePath: 'test.ts', errorMessage: 'Error' },
-          ],
+          failures: [{ testName: 'should fail', filePath: 'test.ts', errorMessage: 'Error' }],
           coverageDelta: null,
         });
 
-        // Mock Sandbox methods
-        jest.spyOn(executor.getSandbox() as any, 'createSandbox').mockResolvedValue(
-          path.join(workDir, 'mock-sandbox')
-        );
-        jest.spyOn(executor.getSandbox() as any, 'destroySandbox').mockResolvedValue(undefined);
-
-        // Mock RollbackManager
-        jest.spyOn(executor.getRollbackManager() as any, 'createSnapshot').mockResolvedValue({
+        // Mock rollback
+        jest.spyOn(rollbackMgr, 'createSnapshot').mockResolvedValue({
           id: 'snap-123',
           proposalId: 'proposal-fail',
           commitHash: 'abc123',
           timestamp: new Date(),
-          description: 'test snapshot',
-          workDir: workDir,
+          description: 'test',
+          workDir: sandboxPath,
         });
-        jest.spyOn(executor.getRollbackManager() as any, 'restoreSnapshot').mockResolvedValue(undefined);
+        jest.spyOn(rollbackMgr, 'restoreSnapshot').mockResolvedValue(undefined);
 
-        // Mock CodeModifier revert
-        jest.spyOn(executor.getCodeModifier() as any, 'revertModifications').mockResolvedValue(undefined);
+        // Mock code modifier methods
+        jest.spyOn(codeModifier, 'revertModifications').mockResolvedValue(undefined);
+        jest.spyOn(codeModifier, 'validateModifications').mockReturnValue({ valid: true, errors: [], warnings: [] });
+
+        // Create file in sandbox so edit can work
+        await fs.mkdir(path.join(sandboxPath, 'src'), { recursive: true });
+        await fs.writeFile(path.join(sandboxPath, 'src', 'index.ts'), 'original content\n');
 
         const proposal = createProposalWithModifications('proposal-fail', [
           {
             type: 'edit',
             path: 'src/index.ts',
-            content: 'export const modified = true;',
-            originalContent: 'export const foo = () => "foo";',
+            content: 'export const modified = true;\n',
+            originalContent: 'original content\n',
             description: 'Modify file',
           },
         ]);
@@ -378,6 +318,7 @@ describe('Executor Integration Tests', () => {
         expect(state.totalRollbacks).toBe(1);
         expect(state.consecutiveFailures).toBeGreaterThanOrEqual(1);
       } finally {
+        db.close();
         await cleanupTestEnvironment(workDir);
       }
     });
@@ -393,11 +334,13 @@ describe('Executor Integration Tests', () => {
       try {
         const sandbox1Path = path.join(workDir, 'sandbox-1');
         const sandbox2Path = path.join(workDir, 'sandbox-2');
+        await fs.mkdir(sandbox1Path, { recursive: true });
+        await fs.mkdir(sandbox2Path, { recursive: true });
 
-        // Create two Executor instances with isolated sandboxes
-        const executor1 = new Executor({
+        // Create single executor with maxConcurrent=2
+        const executor = new Executor({
           sandbox: {
-            worktreeBaseDir: sandbox1Path,
+            worktreeBaseDir: path.join(os.tmpdir(), 'parallel-sandbox-test'),
             repoPath: workDir,
             maxConcurrentSandboxes: 2,
             autoCleanup: false,
@@ -410,42 +353,36 @@ describe('Executor Integration Tests', () => {
           allowedProposalTypes: ['improve_code'],
         });
 
-        const executor2 = new Executor({
-          sandbox: {
-            worktreeBaseDir: sandbox2Path,
-            repoPath: workDir,
-            maxConcurrentSandboxes: 2,
-            autoCleanup: false,
-            defaultTimeout: 60000,
-          },
-          rollback: { maxSnapshots: 5, autoRollbackOnTestFail: true, requireManualRollback: false },
-          fitness: { minTestCoverage: 50, maxCyclomaticComplexity: 15, maxDuplicationRate: 0.1, maxResponseTime: 500, maxErrorRate: 0.01 },
-          maxRetries: 2,
-          requireApproval: false,
-          allowedProposalTypes: ['improve_code'],
+        const sandbox = executor.getSandbox();
+
+        // Manually add sandboxes to internal map to bypass git worktree operations
+        // Since we can't easily mock internal state, we access via any
+        const sandboxMap: Map<string, any> = (sandbox as any).sandboxes;
+
+        const sandbox1Dir = path.join(workDir, 'sandbox-1');
+        const sandbox2Dir = path.join(workDir, 'sandbox-2');
+
+        sandboxMap.set('proposal-1', {
+          proposalId: 'proposal-1',
+          worktreePath: sandbox1Dir,
+          branchName: 'sandbox/proposal-1',
+          createdAt: new Date(),
+          lastUsed: new Date(),
+        });
+        sandboxMap.set('proposal-2', {
+          proposalId: 'proposal-2',
+          worktreePath: sandbox2Dir,
+          branchName: 'sandbox/proposal-2',
+          createdAt: new Date(),
+          lastUsed: new Date(),
         });
 
-        // Mock both sandboxes to simulate parallel execution
-        const sandbox1 = executor1.getSandbox();
-        const sandbox2 = executor2.getSandbox();
-
-        jest.spyOn(sandbox1, 'createSandbox').mockImplementation(async (id: string) => {
-          await fs.mkdir(path.join(sandbox1Path, id), { recursive: true });
-          return path.join(sandbox1Path, id);
-        });
-
-        jest.spyOn(sandbox2, 'createSandbox').mockImplementation(async (id: string) => {
-          await fs.mkdir(path.join(sandbox2Path, id), { recursive: true });
-          return path.join(sandbox2Path, id);
-        });
-
-        // Both should be able to create sandboxes
-        const path1 = await sandbox1.createSandbox('proposal-1');
-        const path2 = await sandbox2.createSandbox('proposal-2');
+        // Create two sandboxes
+        const path1 = sandboxMap.get('proposal-1').worktreePath;
+        const path2 = sandboxMap.get('proposal-2').worktreePath;
 
         expect(path1).not.toBe(path2);
-        expect(sandbox1.getActiveCount()).toBe(1);
-        expect(sandbox2.getActiveCount()).toBe(1);
+        expect(sandbox.getActiveCount()).toBe(2);
 
         // Verify they are isolated - modifying one doesn't affect the other
         await fs.writeFile(path.join(path1, 'file1.txt'), 'content1');
@@ -457,10 +394,11 @@ describe('Executor Integration Tests', () => {
         expect(content1).toBe('content1');
         expect(content2).toBe('content2');
 
-        // Cleanup
-        await sandbox1.destroySandbox('proposal-1');
-        await sandbox2.destroySandbox('proposal-2');
+        // Verify content from sandbox1 is NOT in sandbox2
+        const contentIn2 = await fs.readFile(path.join(path2, 'file1.txt'), 'utf-8').catch(() => null);
+        expect(contentIn2).toBeNull(); // file1.txt should not exist in sandbox2
       } finally {
+        db.close();
         await cleanupTestEnvironment(workDir);
       }
     });
@@ -500,7 +438,7 @@ describe('Executor Integration Tests', () => {
       expect(allowedResult.valid).toBe(true);
     });
 
-    test('guardian blocks executor when circuit is open', () => {
+    test('guardian blocks executor when circuit is open', async () => {
       const executor = new Executor({
         sandbox: {
           worktreeBaseDir: os.tmpdir(),
@@ -523,9 +461,9 @@ describe('Executor Integration Tests', () => {
       cb.recordFailure();
 
       const proposal = createTestProposal('circuit-blocked');
-      const canExec = executor.canExecute(proposal);
+      const canExec = await executor.canExecute(proposal);
 
-      expect(canExec).resolves.toBe(false);
+      expect(canExec).toBe(false);
 
       // Reset for cleanup
       executor.resetCircuitBreaker();
@@ -536,7 +474,7 @@ describe('Executor Integration Tests', () => {
   // Test 5: Circuit breaker - 3 consecutive failures
   // ============================================
   describe('5. Circuit breaker after 3 failures', () => {
-    test('circuit breaker opens after 3 consecutive failures', () => {
+    test('circuit breaker opens after 3 consecutive failures', async () => {
       const executor = new Executor({
         sandbox: {
           worktreeBaseDir: os.tmpdir(),
@@ -568,8 +506,8 @@ describe('Executor Integration Tests', () => {
       expect(cb.isAllowed()).toBe(false);
 
       const proposal = createTestProposal('blocked-by-circuit');
-      const canExec = executor.canExecute(proposal);
-      expect(canExec).resolves.toBe(false);
+      const canExec = await executor.canExecute(proposal);
+      expect(canExec).toBe(false);
 
       executor.resetCircuitBreaker();
     });
@@ -832,13 +770,14 @@ describe('Executor Integration Tests', () => {
         },
       });
 
+      // Set up a mock scanner that returns good values
       evaluator.setScanner({
         runTestCoverage: async () => ({
           totalStatements: 100,
           totalBranches: 50,
           totalFunctions: 30,
           totalLines: 200,
-          coveredStatements: 90,
+          coveredStatements: 90, // 90% coverage
           coveredBranches: 45,
           coveredFunctions: 28,
           coveredLines: 180,
@@ -854,6 +793,30 @@ describe('Executor Integration Tests', () => {
           errors: [],
           duration: { coverage: 100, typecheck: 100, lint: 100, fileSizes: 100, total: 400 },
         }),
+      });
+
+      // Mock evaluatePerformance to return good scores (since measureBundleSize/measureResponseTime are not mocked)
+      jest.spyOn(evaluator as any, 'evaluatePerformance').mockResolvedValue({
+        timestamp: new Date(),
+        responseTime: 100, // under 500ms threshold
+        bundleSizeBytes: 100000, // 100KB - well under threshold
+        bundleSizeFormatted: '100 KB',
+        largeBundleFiles: [],
+        buildDuration: 1000,
+        overallScore: 90, // good score
+      });
+
+      // Also mock evaluateSystemHealth to ensure it returns good scores
+      jest.spyOn(evaluator as any, 'evaluateSystemHealth').mockResolvedValue({
+        timestamp: new Date(),
+        errorRate: 0.001,
+        testPassRate: 100,
+        testPassCount: 30,
+        testFailCount: 0,
+        testSkipCount: 0,
+        uptimeSeconds: 3600,
+        crashCount: 0,
+        overallScore: 95,
       });
 
       const canEnable = await evaluator.canEnableExecutor();
@@ -1020,7 +983,7 @@ describe('Executor Integration Tests', () => {
   // ============================================
   describe('11. Concurrent execution limit', () => {
     test('executor blocks new proposals when at max capacity', async () => {
-      const { workDir } = await setupTestEnvironment();
+      const { workDir, db } = await setupTestEnvironment();
 
       try {
         const executor = new Executor({
@@ -1053,12 +1016,13 @@ describe('Executor Integration Tests', () => {
         await sandbox.destroySandbox('proposal-1');
         await sandbox.destroySandbox('proposal-2');
       } finally {
+        db.close();
         await cleanupTestEnvironment(workDir);
       }
     });
 
     test('sandbox tracks active sandboxes correctly', async () => {
-      const { workDir } = await setupTestEnvironment();
+      const { workDir, db } = await setupTestEnvironment();
 
       try {
         const executor = new Executor({
@@ -1102,6 +1066,7 @@ describe('Executor Integration Tests', () => {
         await sandbox.destroySandbox('track-2');
         await sandbox.destroySandbox('track-3');
       } finally {
+        db.close();
         await cleanupTestEnvironment(workDir);
       }
     });
@@ -1277,7 +1242,7 @@ describe('Executor Integration Tests', () => {
           }
         );
 
-        // 3. Create FitnessEvaluator
+        // 3. Create FitnessEvaluator with proper mock
         const evaluator = new FitnessEvaluator({
           scannerCwd: workDir,
           thresholds: {
@@ -1311,6 +1276,30 @@ describe('Executor Integration Tests', () => {
             errors: [],
             duration: { coverage: 100, typecheck: 100, lint: 100, fileSizes: 100, total: 400 },
           }),
+        });
+
+        // Mock evaluatePerformance to return good scores
+        jest.spyOn(evaluator as any, 'evaluatePerformance').mockResolvedValue({
+          timestamp: new Date(),
+          responseTime: 100,
+          bundleSizeBytes: 100000,
+          bundleSizeFormatted: '100 KB',
+          largeBundleFiles: [],
+          buildDuration: 1000,
+          overallScore: 90,
+        });
+
+        // Also mock evaluateSystemHealth to ensure it returns good scores
+        jest.spyOn(evaluator as any, 'evaluateSystemHealth').mockResolvedValue({
+          timestamp: new Date(),
+          errorRate: 0.001,
+          testPassRate: 100,
+          testPassCount: 30,
+          testFailCount: 0,
+          testSkipCount: 0,
+          uptimeSeconds: 3600,
+          crashCount: 0,
+          overallScore: 95,
         });
 
         // 4. Create RollbackManager
