@@ -155,15 +155,17 @@ describe('StrategistLLMEnhancer', () => {
 
   describe('enrichProposal()', () => {
     it('should return proposal unchanged when no target file', async () => {
+      const enhancer2 = new StrategistLLMEnhancer({ cwd: '/project' });
       const proposal = createProposal({ target: {} });
-      const result = await enhancer.enrichProposal(proposal);
+      const result = await enhancer2.enrichProposal(proposal);
       expect(result).toEqual(proposal);
     });
 
     it('should return proposal unchanged when source file read fails', async () => {
       mockFs.promises.readFile = jest.fn().mockRejectedValue(new Error('File not found'));
+      const enhancer2 = new StrategistLLMEnhancer({ cwd: '/project' });
       const proposal = createProposal({ target: { file: 'nonexistent.ts' } });
-      const result = await enhancer.enrichProposal(proposal);
+      const result = await enhancer2.enrichProposal(proposal);
       expect(result).toEqual(proposal);
     });
 
@@ -476,14 +478,12 @@ describe('StrategistLLMEnhancer', () => {
 
   describe('LLM provider fallback', () => {
     it('should fallback to environment variables when GlobalProviderSettings not available', async () => {
-      jest.resetModules();
-
-      // Mock GlobalProviderSettings to throw
-      jest.doMock('../../../stratix-core/config/GlobalProviderSettings', () => {
+      // Override the GlobalProviderSettings mock to throw (simulating unavailability)
+      const SettingsModule = require('../../../stratix-core/config/GlobalProviderSettings');
+      SettingsModule.default.getInstance.mockImplementation(() => {
         throw new Error('Module not available');
       });
 
-      // Mock LLMConnector for the re-imported module
       const mockGenerate = jest.fn().mockResolvedValue({
         content: JSON.stringify({
           suggestions: [],
@@ -492,26 +492,15 @@ describe('StrategistLLMEnhancer', () => {
           estimatedBenefit: 8,
         }),
       });
-      jest.doMock('../../../stratix-agent/core/LLMConnector', () => ({
-        LLMConnector: jest.fn().mockImplementation(() => ({
-          generate: mockGenerate,
-        })),
-      }));
+      LLMConnector.mockImplementation(() => ({ generate: mockGenerate }));
 
-      jest.doMock('fs', () => ({
-        promises: {
-          readFile: jest.fn().mockResolvedValue('const x = 1;'),
-        },
-      }));
+      mockFs.promises.readFile = jest.fn().mockResolvedValue('const x = 1;');
 
-      // Set env before re-import
       const originalAnthropicKey = process.env.ANTHROPIC_API_KEY;
       process.env.ANTHROPIC_API_KEY = 'sk-ant-test-key';
 
       try {
-        // Re-import to pick up the new mocks
-        const { StrategistLLMEnhancer: EnhancedEnhancer } = require('../StrategistLLMEnhancer');
-        const enhancer2 = new EnhancedEnhancer({ cwd: '/project' });
+        const enhancer2 = new StrategistLLMEnhancer({ cwd: '/project' });
         const proposal = createProposal();
         const result = await enhancer2.enrichProposal(proposal);
 
