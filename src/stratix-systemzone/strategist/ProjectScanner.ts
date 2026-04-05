@@ -18,7 +18,7 @@ import type {
   LintIssue,
 } from '../types';
 
-import type { ScannerConfig, ScannerResult, ScannerError } from './types';
+import type { ScannerConfig, ScannerResult, ScannerError, TscScanItem, EslintScanItem, FileSizeScanItem, ParallelScanResult } from './types';
 
 const DEFAULT_TIMEOUT_MS = 60000; // 60 seconds
 const DEFAULT_CWD = path.resolve(__dirname, '../../../../'); // Project root
@@ -125,6 +125,127 @@ export class ProjectScanner {
         total: totalDuration,
       },
     };
+  }
+
+  /**
+   * 并行执行三部分扫描：tsc + eslint + fileSize
+   * 每部分独立，一个失败不影响其他
+   */
+  async scan(): Promise<ParallelScanResult> {
+    const [tscErrors, eslintIssues, largeFiles] = await Promise.all([
+      this.runTscScan().catch(() => []),
+      this.runEslintScan().catch(() => []),
+      this.runFileSizeScan().catch(() => []),
+    ]);
+
+    return { tscErrors, eslintIssues, largeFiles };
+  }
+
+  /**
+   * Task 2.2: ESLint 扫描（直接扫描 src/ 目录）
+   * 执行: npx eslint src --format json --no-error-on-unmatched-pattern
+   * eslint 不可用时返回空数组
+   */
+  async runEslintScan(): Promise<Array<{ file: string; ruleId: string | null; severity: 1 | 2; message: string; line: number }>> {
+    return new Promise((resolve) => {
+      const proc = spawn('npx', ['eslint', 'src', '--format', 'json', '--no-error-on-unmatched-pattern'], {
+        cwd: this.config.cwd,
+        shell: true,
+      });
+
+      let stdout = '';
+
+      proc.stdout?.on('data', (data) => {
+        stdout += data.toString();
+      });
+
+      proc.on('close', () => {
+        try {
+          const results = JSON.parse(stdout);
+          const items: EslintScanItem[] = [];
+
+          for (const fileResult of Array.isArray(results) ? results : [results]) {
+            if (!fileResult.messages) continue;
+            for (const msg of fileResult.messages) {
+              items.push({
+                file: fileResult.filePath ?? 'unknown',
+                ruleId: msg.ruleId ?? null,
+                severity: msg.severity === 2 ? 2 as const : 1 as const,
+                message: msg.message ?? '',
+                line: msg.line ?? 0,
+              });
+            }
+          }
+
+          resolve(items);
+        } catch {
+          // eslint 不可用或解析失败，返回空数组
+          resolve([]);
+        }
+      });
+
+      proc.on('error', () => {
+        resolve([]);
+      });
+    });
+  }
+
+  /**
+   * Task 2.3: 文件大小扫描（支持 .ts 和 .vue）
+   * 递归遍历 src/ 目录统计每个 .ts/.vue 文件行数
+   * 超过 500 行的标记为 needs-refactor
+   * 排除 node_modules、dist、__tests__
+   */
+  async runFileSizeScan(): Promise<FileSizeScanItem[]> {
+    const threshold = this.config.fileSizeThreshold;
+    const items: FileSizeScanItem[] = [];
+    const srcDir = path.join(this.config.cwd, 'src');
+
+    await this.scanDirectoryForSize(srcDir, items, threshold);
+
+    return items;
+  }
+
+  /**
+   * 递归扫描目录（用于文件大小扫描，支持 .ts 和 .vue）
+   */
+  private async scanDirectoryForSize(dir: string, items: FileSizeScanItem[], threshold: number): Promise<void> {
+    let entries;
+    try {
+      entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    } catch {
+      return; // 目录不可访问时跳过
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+
+      if (entry.isDirectory()) {
+        if (
+          entry.name === 'node_modules' ||
+          entry.name === 'dist' ||
+          entry.name === '.git' ||
+          entry.name === '__tests__' ||
+          entry.name === 'vendor'
+        ) {
+          continue;
+        }
+        await this.scanDirectoryForSize(fullPath, items, threshold);
+      } else if (entry.isFile() && (entry.name.endsWith('.ts') || entry.name.endsWith('.vue'))) {
+        try {
+          const content = await fs.promises.readFile(fullPath, 'utf-8');
+          const lines = content.split('\n').length;
+
+          items.push({
+            file: fullPath,
+            lines,
+            needsRefactor: lines > threshold,
+          });
+        } catch {
+          // 跳过无法读取的文件
+        }
+      }
+    }
   }
 
   /**

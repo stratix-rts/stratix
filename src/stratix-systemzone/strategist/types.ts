@@ -102,6 +102,41 @@ export interface EslintMessage {
 }
 
 // ------------------------------------------------
+// Parallel Scan Types (Task 2.4)
+// ------------------------------------------------
+
+/** TSC 扫描结果项 */
+export interface TscScanItem {
+  file: string;
+  line: number;
+  message: string;
+  code: string;
+}
+
+/** ESLint 扫描结果项 */
+export interface EslintScanItem {
+  file: string;
+  ruleId: string | null;
+  severity: 1 | 2; // 1=warn, 2=error
+  message: string;
+  line: number;
+}
+
+/** 文件大小扫描结果项 */
+export interface FileSizeScanItem {
+  file: string;
+  lines: number;
+  needsRefactor: boolean;
+}
+
+/** 并行三扫结果 */
+export interface ParallelScanResult {
+  tscErrors: TscScanItem[];
+  eslintIssues: EslintScanItem[];
+  largeFiles: FileSizeScanItem[];
+}
+
+// ------------------------------------------------
 // ProposalMapper Types
 // ------------------------------------------------
 
