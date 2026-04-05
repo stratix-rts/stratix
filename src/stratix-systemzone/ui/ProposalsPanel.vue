@@ -40,7 +40,7 @@
         v-for="proposal in filteredProposals"
         :key="proposal.id"
         class="proposal-card"
-        :class="{ expanded: expandedId === proposal.id }"
+        :class="{ expanded: expandedId === proposal.id, flash: flashId === proposal.id }"
       >
         <div class="card-main" @click="toggleExpand(proposal.id)">
           <div class="card-header">
@@ -48,6 +48,17 @@
             <div class="card-tags">
               <StatusTag :status="proposal.status" />
               <span class="type-tag">{{ proposal.type }}</span>
+              <span
+                class="risk-badge"
+                :class="'risk-' + (proposal.riskLevelStr || 'none')"
+              >{{ proposal.riskLevelStr || 'unknown' }}</span>
+              <span class="effort-dots" :title="'effort: ' + (proposal.effortEstimate || 'small')">
+                <span
+                  v-for="n in getEffortDots(proposal.effortEstimate)"
+                  :key="n"
+                  class="dot"
+                ></span>
+              </span>
             </div>
           </div>
           <p class="card-desc">{{ truncate(proposal.description, 120) }}</p>
@@ -78,10 +89,18 @@
           </div>
         </div>
 
-        <div v-if="expandedId === proposal.id" class="card-detail">
+        <div class="card-detail" :class="{ 'is-open': expandedId === proposal.id }">
           <div class="detail-section">
             <h4>完整描述</h4>
             <p>{{ proposal.description }}</p>
+          </div>
+          <div v-if="proposal.codeSuggestion" class="detail-section">
+            <h4>代码建议</h4>
+            <pre><code>{{ proposal.codeSuggestion }}</code></pre>
+          </div>
+          <div v-if="proposal.reasoning" class="detail-section">
+            <h4>推理过程</h4>
+            <p>{{ proposal.reasoning }}</p>
           </div>
           <div class="detail-section">
             <h4>目标</h4>
@@ -115,6 +134,7 @@ import StatusTag from './components/StatusTag.vue';
 const store = useSystemZoneStore();
 const activeTab = ref('all');
 const expandedId = ref<string | null>(null);
+const flashId = ref<string | null>(null);
 
 const tabs = [
   { label: '全部', value: 'all' },
@@ -150,11 +170,17 @@ function toggleExpand(id: string) {
 }
 
 async function handleApprove(id: string) {
+  if (!confirm('确定要批准这个提案吗？')) return;
   await store.approveProposal(id, 'approve');
+  flashId.value = id;
+  setTimeout(() => { flashId.value = null; }, 1500);
 }
 
 async function handleReject(id: string) {
+  if (!confirm('确定要拒绝这个提案吗？')) return;
   await store.approveProposal(id, 'reject');
+  flashId.value = id;
+  setTimeout(() => { flashId.value = null; }, 1500);
 }
 
 async function handleExecute(id: string) {
@@ -164,6 +190,15 @@ async function handleExecute(id: string) {
 function truncate(text: string, len: number): string {
   if (!text || text.length <= len) return text;
   return text.slice(0, len) + '...';
+}
+
+function getEffortDots(estimate?: string): number {
+  switch (estimate) {
+    case 'large': return 3;
+    case 'medium': return 2;
+    case 'small':
+    default: return 1;
+  }
 }
 
 function formatTime(ts: string | Date): string {
@@ -306,6 +341,11 @@ function formatTime(ts: string | Date): string {
 .proposal-card.expanded {
   border-color: color-mix(in srgb, var(--ds-status-info, #3b82f6) 30%, transparent);
 }
+@keyframes flash-border {
+  0%, 100% { border-color: var(--ds-border-subtle, rgba(255, 255, 255, 0.06)); }
+  50% { border-color: var(--ds-status-success, #22c55e); box-shadow: 0 0 12px rgba(34, 197, 94, 0.3); }
+}
+.proposal-card.flash { animation: flash-border 0.5s ease 2; }
 
 .card-main { padding: 14px 16px; cursor: pointer; }
 
@@ -335,6 +375,25 @@ function formatTime(ts: string | Date): string {
   border-radius: var(--ds-radius-sm, 4px);
 }
 
+.risk-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--ds-radius-sm, 4px);
+  font-weight: 500;
+}
+.risk-high { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+.risk-medium { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+.risk-low { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+.risk-none { background: rgba(100, 116, 139, 0.15); color: #64748b; }
+
+.effort-dots { display: flex; gap: 3px; align-items: center; }
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ds-text-muted, #64748b);
+}
+
 .card-desc {
   color: var(--ds-text-secondary, #94a3b8);
   font-size: 13px;
@@ -355,9 +414,31 @@ function formatTime(ts: string | Date): string {
 .card-actions { display: flex; gap: 8px; }
 
 .card-detail {
-  border-top: 1px solid var(--ds-border-subtle, rgba(255, 255, 255, 0.06));
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+  border-top: 1px solid transparent;
+}
+.card-detail.is-open {
+  max-height: 800px;
+  overflow: hidden;
+  border-top-color: var(--ds-border-subtle, rgba(255, 255, 255, 0.06));
   padding: 16px;
   background: var(--ds-bg-sunken, rgba(0, 0, 0, 0.2));
+}
+
+.card-detail pre {
+  margin: 0;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: var(--ds-radius-sm, 4px);
+  overflow-x: auto;
+}
+.card-detail code {
+  font-family: var(--ds-typography-fontFamily-mono, 'SF Mono', Consolas, monospace);
+  font-size: 12px;
+  color: var(--ds-text-primary, #e2e8f0);
+  white-space: pre;
 }
 
 .detail-section { margin-bottom: 16px; }
