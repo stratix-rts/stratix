@@ -59,40 +59,51 @@ Return ONLY a JSON object with this exact structure:
 Only output JSON, nothing else.`;
 
 // Architecture analysis prompt
-const ARCHITECTURE_ANALYSIS_PROMPT = `You are a software architecture expert. Analyze the following project scan results and provide architecture-level improvement proposals.
+const ARCHITECTURE_ANALYSIS_PROMPT = `You are a senior software architect with expertise in module design, coupling analysis, and architectural patterns. Your task is to analyze the provided project scan results and identify architecture-level issues.
 
-Scan Results Summary:
+## Scan Results Summary
 - Total statements: {totalStatements}, Covered: {coveredStatements} ({coveragePercent}%)
 - Type errors: {typeErrorCount}
 - Lint errors: {lintErrorCount}, Warnings: {lintWarningCount}
 - Large files (>500 lines): {largeFileCount}
 
-Files with issues:
+## Files with Issues
 {issueFiles}
 
-Your task:
-1. Identify architectural patterns and problems from the scan results
-2. Provide high-level improvement proposals (not line-by-line fixes)
-3. Focus on:
-   - Module organization and coupling
-   - Code complexity management
-   - Testing strategy gaps
-   - Technical debt prioritization
-4. Return your response as JSON with this exact format:
+## Analysis Framework
+Analyze the scan results from a software architecture perspective. For each issue, consider:
+
+1. **Module Coupling**: Are modules too tightly coupled? Is there inappropriate dependency direction?
+2. **Single Responsibility**: Does each module have a clear, focused purpose?
+3. **Cohesion**: Are related concerns grouped appropriately?
+4. **Complexity**: Is the complexity manageable or is it growing uncontrollably?
+5. **Technical Debt**: What architectural shortcuts were taken that now impede progress?
+
+## Output Requirements
+Return ONLY a JSON object with this exact structure:
 {
-  "proposals": [
+  "issues": [
     {
-      "type": "improve_architecture|improve_test|improve_code",
-      "title": "Short descriptive title",
-      "description": "Detailed description of the architectural improvement needed",
-      "target": { "file": "optional-file-path", "component": "optional-component" },
-      "confidence": 0.0-1.0,
-      "cost": 1-10,
-      "benefit": 1-10,
-      "risk": "low|medium|high"
+      "title": "问题标题（简洁，描述核心架构问题）",
+      "severity": "critical|warning|info",
+      "description": "问题描述：说明问题是什么，为什么是架构问题",
+      "suggestion": "改进建议：具体的架构层面的改进方向",
+      "affectedModules": ["相关模块路径或名称"]
     }
-  ]
+  ],
+  "overallAssessment": "整体架构评估：对项目当前架构状态的总体判断，包括主要优点和关键风险"
 }
+
+## Severity Guidelines
+- **critical**: 架构级问题，导致系统难以维护、扩展或存在系统性风险
+- **warning**: 中等问题，影响代码质量或模块协作
+- **info**: 观察项，锦上添花的改进建议
+
+## Important
+- Focus on architectural patterns, not line-by-line code issues
+- Identify issues that affect multiple modules or the overall system structure
+- Be specific about which modules are affected and why
+- Do not propose solutions that require framework-specific knowledge
 
 Only output JSON, nothing else.`;
 
@@ -489,34 +500,84 @@ export class StrategistLLMEnhancer {
       const jsonStr = this.extractJson(content);
       const parsed = JSON.parse(jsonStr);
 
-      const proposals: Proposal[] = (parsed.proposals ?? []).map(
-        (p: {
-          type: string;
+      const issues = parsed.issues ?? [];
+
+      // Map severity to risk level
+      const severityToRisk = (severity: string): 'low' | 'medium' | 'high' => {
+        const map: Record<string, 'low' | 'medium' | 'high'> = {
+          critical: 'high',
+          warning: 'medium',
+          info: 'low',
+        };
+        return map[severity.toLowerCase()] ?? 'medium';
+      };
+
+      // Map severity to confidence (inverse of risk)
+      const severityToConfidence = (severity: string): number => {
+        const map: Record<string, number> = {
+          critical: 0.9,
+          warning: 0.7,
+          info: 0.5,
+        };
+        return map[severity.toLowerCase()] ?? 0.6;
+      };
+
+      // Map severity to cost/benefit (critical = high cost, low immediate benefit)
+      const severityToCost = (severity: string): number => {
+        const map: Record<string, number> = {
+          critical: 8,
+          warning: 5,
+          info: 3,
+        };
+        return map[severity.toLowerCase()] ?? 5;
+      };
+
+      const severityToBenefit = (severity: string): number => {
+        const map: Record<string, number> = {
+          critical: 9,
+          warning: 6,
+          info: 3,
+        };
+        return map[severity.toLowerCase()] ?? 5;
+      };
+
+      const proposals: Proposal[] = issues.map(
+        (issue: {
           title: string;
+          severity: string;
           description: string;
-          target?: { file?: string; component?: string };
-          confidence: number;
-          cost: number;
-          benefit: number;
-          risk: string;
-        }) => ({
-          id: `arch_proposal_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-          timestamp: new Date(),
-          type: this.normalizeProposalType(p.type),
-          title: p.title ?? 'Architecture improvement',
-          description: p.description ?? '',
-          target: {
-            file: p.target?.file,
-            component: p.target?.component,
-          },
-          selection: {
-            confidence: typeof p.confidence === 'number' ? Math.max(0, Math.min(1, p.confidence)) : 0.5,
-            cost: typeof p.cost === 'number' ? Math.max(1, Math.min(10, p.cost)) : 5,
-            benefit: typeof p.benefit === 'number' ? Math.max(1, Math.min(10, p.benefit)) : 5,
-            risk: this.normalizeRisk(p.risk),
-          },
-          status: 'pending' as const,
-        })
+          suggestion: string;
+          affectedModules?: string[];
+        }) => {
+          // Combine description and suggestion for the proposal description
+          const fullDescription = issue.suggestion
+            ? `${issue.description}\n\n改进建议：${issue.suggestion}`
+            : issue.description;
+
+          // Extract first affected module as file, rest as component hint
+          const modules = issue.affectedModules ?? [];
+          const primaryModule = modules[0] ?? '';
+          const secondaryModule = modules[1];
+
+          return {
+            id: `arch_proposal_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+            timestamp: new Date(),
+            type: 'improve_architecture' as ProposalType,
+            title: issue.title ?? 'Architecture issue',
+            description: fullDescription,
+            target: {
+              file: primaryModule,
+              component: secondaryModule,
+            },
+            selection: {
+              confidence: severityToConfidence(issue.severity),
+              cost: severityToCost(issue.severity),
+              benefit: severityToBenefit(issue.severity),
+              risk: severityToRisk(issue.severity),
+            },
+            status: 'pending' as const,
+          };
+        }
       );
 
       return { success: true, proposals };
