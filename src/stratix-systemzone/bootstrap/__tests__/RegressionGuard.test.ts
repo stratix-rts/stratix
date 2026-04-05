@@ -300,7 +300,7 @@ describe('RegressionGuard', () => {
     it('should detect minor regression for small coverage drop', () => {
       const before = createSnapshot();
       const after = createSnapshot({
-        testCoverage: 79, // dropped from 80 to 79, threshold is 2
+        testCoverage: 77, // dropped from 80 to 77, delta = -3 > threshold of 2
       });
 
       const result = guard.check('proposal-1', before, after);

@@ -480,9 +480,15 @@ describe('DecisionEngine', () => {
 
     it('handles very high estimated risk', async () => {
       const proposal = createProposal({
+        target: 'src/stratix-gateway/core.ts',
         estimatedRisk: 100,
         estimatedImpact: 80,
-        data: { coverage: 90, successRate: 0.9 },
+        estimatedEffort: 'high',
+        data: {
+          coverage: 20,
+          successRate: 0.2,
+          affectedFiles: ['a.ts', 'b.ts', 'c.ts', 'd.ts'],
+        },
       });
 
       const decision = await engine.decide(proposal);
