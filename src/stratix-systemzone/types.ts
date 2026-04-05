@@ -316,6 +316,11 @@ export interface Insight {
   entities: string[];
   confidence: number;
   archived: boolean;
+  severity?: "critical" | "warning" | "info";
+  category?: "architecture" | "security" | "performance" | "quality" | "dependency";
+  details?: string;
+  suggestion?: string;
+  affectedFiles?: string[];
 }
 
 // ------------------------------------------------
