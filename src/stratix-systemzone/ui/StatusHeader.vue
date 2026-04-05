@@ -20,6 +20,14 @@
       <span class="status-name">Fitness</span>
       <span class="status-detail">{{ store.fitnessReport ? store.fitnessReport.scores.overall + '分' : '--' }}</span>
     </div>
+    <div class="status-item" v-if="store.llmStatus">
+      <span
+        class="status-dot"
+        :class="store.llmStatus.configured ? 'dot-ok' : 'dot-warning'"
+        :title="store.llmStatus.configured ? `${store.llmStatus.provider} / ${store.llmStatus.model}` : 'LLM 未配置'"
+      ></span>
+      <span class="status-name">LLM</span>
+    </div>
     <div class="status-item" v-if="!store.status">
       <span class="status-dot dot-idle"></span>
       <span class="status-name">未连接</span>
@@ -68,6 +76,7 @@ function dotClass(status: string): string {
 .dot-ok { background: var(--ds-status-success, #00ff88); }
 .dot-running { background: var(--ds-status-info, #00d4ff); animation: pulse 1.5s infinite; }
 .dot-error { background: var(--ds-status-danger, #ff4444); }
+.dot-warning { background: #ffaa00; }
 .dot-idle { background: var(--ds-text-muted, #6a6a8a); }
 .status-name { color: var(--ds-text-primary, #ffffff); font-weight: var(--ds-typography-fontWeight-medium, 500); opacity: 0.8; }
 .status-detail { color: var(--ds-text-muted, #6a6a8a); font-size: 11px; }

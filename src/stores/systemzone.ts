@@ -217,6 +217,9 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
   // LLM Config
   const llmConfig = ref<{ provider: string; model: string; apiKey: string; baseUrl: string } | null>(null);
 
+  // LLM Status
+  const llmStatus = ref<{ configured: boolean; provider?: string; model?: string } | null>(null);
+
   // Auto refresh
   let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -519,6 +522,13 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
     }
   }
 
+  async function fetchLLMStatus(): Promise<void> {
+    const result = await apiFetch<{ configured: boolean; provider?: string; model?: string }>('/llm-config/status');
+    if (result.success) {
+      llmStatus.value = result;
+    }
+  }
+
   async function updateLLMConfig(config: { provider: string; model: string; apiKey?: string; baseUrl?: string }): Promise<boolean> {
     const result = await apiFetch<{ config: any }>('/api/systemzone/llm-config', {
       method: 'PUT',
@@ -592,6 +602,7 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
         fetchInsights(),
         fetchProposals(),
         fetchLLMConfig(),
+        fetchLLMStatus(),
       ]);
       const failures = results.filter(r => r.status === 'rejected');
       if (failures.length > 0) {
@@ -646,6 +657,7 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
     bootstrapHistory,
     fitnessReport,
     llmConfig,
+    llmStatus,
 
     // Computed
     pendingProposals,
@@ -674,6 +686,7 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
     setBootstrapMode,
     fetchFitness,
     fetchLLMConfig,
+    fetchLLMStatus,
     updateLLMConfig,
     retryPanel,
 
