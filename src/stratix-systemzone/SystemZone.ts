@@ -328,9 +328,7 @@ export class SystemZone {
 
     // 初始化 Executor（如果启用）
     if (this.autoCycleConfig.enabled && this.autoCycleConfig.autoExecuteLowRisk) {
-      this.executor = new Executor(config.executor, {
-        guardian: this.guardian,
-      });
+      this.executor = new Executor(config.executor);
     }
 
     // 订阅子模块事件
@@ -690,7 +688,7 @@ export class SystemZone {
     // 简化实现：使用时间戳作为哈希
     // 实际应该检查文件变更
     const strategistState = this.strategist.getState();
-    return strategistState.lastScan?.timestamp.toISOString() ?? 'initial';
+    return strategistState.scanResult?.timestamp.toISOString() ?? 'initial';
   }
 
   /**
