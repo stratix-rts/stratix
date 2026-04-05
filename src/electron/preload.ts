@@ -165,6 +165,11 @@ const electronAPI: ElectronAPI = {
     check: (filePath) => ipcRenderer.invoke('texture:check', filePath),
     delete: (filePath) => ipcRenderer.invoke('texture:delete', filePath),
   },
+
+  // System Zone
+  systemZone: {
+    open: () => ipcRenderer.send('open-system-zone'),
+  },
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

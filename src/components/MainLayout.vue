@@ -51,6 +51,18 @@ const showAgentDashboard = ref(false);
 const showParamFormModal = ref(false);
 const showWorkflowEditor = ref(false);
 
+// System Zone
+function openSystemZone(): void {
+  if (typeof window !== 'undefined' && (window as any).electronAPI?.systemZone?.open) {
+    (window as any).electronAPI.systemZone.open();
+  } else {
+    // Fallback: open in new browser tab
+    const url = new URL(window.location.href);
+    url.searchParams.set('view', 'systemzone');
+    window.open(url.toString(), '_blank', 'width=1000,height=700');
+  }
+}
+
 const selectedSkill = ref<StratixSkillConfig | null>(null);
 const paramValues = ref<Record<string, any>>({});
 const eventBus = StratixEventBus.getInstance();
@@ -186,6 +198,13 @@ const icons = {
   <div class="main-layout">
     <header class="header">
       <div class="logo">
+        <button class="system-zone-btn" @click="openSystemZone" title="System Zone 控制台">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 6v2M12 16v2M6 12h2M16 12h2" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        </button>
         <svg class="logo-icon" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2">
           <path :d="icons.star" />
         </svg>
@@ -433,6 +452,27 @@ const icons = {
   font-size: 18px;
   font-weight: 600;
   color: var(--ds-text-primary);
+}
+
+.system-zone-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 8px;
+  color: rgba(59, 130, 246, 0.8);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0;
+}
+.system-zone-btn:hover {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.5);
+  color: #3b82f6;
+  transform: scale(1.05);
 }
 
 .toolbar {

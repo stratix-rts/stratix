@@ -205,6 +205,50 @@ function setupIPC() {
     }
   });
 
+  // ==================== System Zone Window IPC ====================
+  let systemZoneWindow: BrowserWindow | null = null;
+
+  ipcMain.on('open-system-zone', () => {
+    if (systemZoneWindow && !systemZoneWindow.isDestroyed()) {
+      systemZoneWindow.focus();
+      return;
+    }
+
+    systemZoneWindow = new BrowserWindow({
+      width: 1000,
+      height: 700,
+      parent: mainWindow || undefined,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        preload: path.join(__dirname, 'preload.js'),
+      },
+      title: 'System Zone 控制台',
+      backgroundColor: '#0f1117',
+    });
+
+    // Load the system zone page via query param
+    const loadUrl = async () => {
+      const ports = [7523, 7524, 7525, 7526, 7527, 7528, 7529, 7530];
+      for (const port of ports) {
+        try {
+          const url = `http://127.0.0.1:${port}?view=systemzone`;
+          const response = await fetch(url, { method: 'HEAD' });
+          if (response.ok) {
+            await systemZoneWindow!.loadURL(url);
+            return;
+          }
+        } catch { /* next port */ }
+      }
+    };
+
+    loadUrl().catch(console.error);
+
+    systemZoneWindow.on('closed', () => {
+      systemZoneWindow = null;
+    });
+  });
+
   // ==================== Tailscale IPC ====================
   ipcMain.handle('tailscale:status', async () => {
     return tailscale?.getStatus() || null;

@@ -8,6 +8,7 @@ import AgentChatModal from './components/AgentChatModal.vue';
 import ProjectConfigPanel from './stratix-project/ui/ProjectConfigPanel.vue';
 import ZonePanel from './stratix-project/ui/ZonePanel.vue';
 import DataExplorer from './stratix-project/ui/DataExplorer.vue';
+import SystemZoneConsole from './stratix-systemzone/ui/SystemZoneConsole.vue';
 import { ToastContainer, toastService } from './components/ui';
 import Map3DView from './components/Map3DView.vue';
 import type { ToastItem } from './components/ui';
@@ -22,6 +23,12 @@ import { soundService } from './services/SoundService';
 // Pinia stores
 const agentStore = useAgentStore();
 const uiStore = useUIStore();
+
+// Check if this is a System Zone window (via ?view=systemzone)
+const isSystemZoneView = computed(() => {
+  if (typeof window === 'undefined') return false;
+  return new URLSearchParams(window.location.search).get('view') === 'systemzone';
+});
 
 const gameContainer = ref<HTMLElement | null>(null);
 const currentSkill = ref<any>(null);
@@ -439,6 +446,8 @@ onUnmounted(() => {
 </script>
 
 <template>
+  <SystemZoneConsole v-if="isSystemZoneView" />
+  <template v-else>
   <MainLayout
     :game-container="gameContainer"
     :is-game-ready="uiStore.isGameReady"
@@ -527,6 +536,7 @@ onUnmounted(() => {
     position="top-right"
     @dismiss="toastService.dismiss($event)"
   />
+  </template>
 </template>
 
 <style>
