@@ -270,11 +270,10 @@ describe('APIPollingAdapter', () => {
     };
 
     test('returns RawInput array from successful response', async () => {
-      const mockResponse = {
-        data: {
-          items: [{ title: 'Item 1', body: 'Content 1' }],
-        },
-      };
+      const mockResponse = [
+        { title: 'Item 1', body: 'Content 1' },
+        { title: 'Item 2', body: 'Content 2' },
+      ];
 
       global.fetch = jest.fn().mockResolvedValue({
         ok: true,
@@ -283,7 +282,7 @@ describe('APIPollingAdapter', () => {
 
       const result = await adapter.poll(mockConfig, 'source-1', 'article');
 
-      expect(result).toHaveLength(1);
+      expect(result).toHaveLength(2);
       expect(result[0].title).toBe('Item 1');
       expect(result[0].content).toBe('Content 1');
     });

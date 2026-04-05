@@ -120,6 +120,16 @@ export const DEFAULT_SOURCE_MANAGER_CONFIG: SourceManagerConfig = {
 };
 
 // ------------------------------------------------
+// Deduplicator 配置
+// ------------------------------------------------
+
+export interface DeduplicatorConfig {
+  deduplicationWindow?: number;   // 时间窗口 ms (default: 24 hours)
+  similarityThreshold?: number;   // 相似度阈值 0-1 (default: 0.85)
+  hashAlgorithm?: string;         // 哈希算法 (default: sha256)
+}
+
+// ------------------------------------------------
 // 数据库表类型
 // ------------------------------------------------
 

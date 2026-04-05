@@ -189,7 +189,7 @@ export class RSSAdapter {
    */
   private getCategories(itemEl: Element): string[] {
     const cats: string[] = [];
-    for (const cat of itemEl.querySelectorAll('category')) {
+    for (const cat of Array.from(itemEl.querySelectorAll('category'))) {
       const text = cat.textContent?.trim();
       if (text) cats.push(text);
     }
@@ -201,7 +201,7 @@ export class RSSAdapter {
    */
   private getAtomCategories(entry: Element): string[] {
     const cats: string[] = [];
-    for (const cat of entry.querySelectorAll('category')) {
+    for (const cat of Array.from(entry.querySelectorAll('category'))) {
       const term = cat.getAttribute('term');
       if (term) cats.push(term);
     }
