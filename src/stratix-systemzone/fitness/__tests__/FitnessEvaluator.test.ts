@@ -346,6 +346,7 @@ describe('FitnessEvaluator', () => {
   describe('canEnableExecutor', () => {
     it('returns true when all metrics pass thresholds', async () => {
       // High coverage, low complexity, low error rate
+      // All functions covered to keep error rate low
       const scanner = createMockScanner({
         coverage: {
           totalStatements: 1000,
@@ -353,8 +354,8 @@ describe('FitnessEvaluator', () => {
           totalFunctions: 100,
           totalLines: 500,
           coveredStatements: 950, // 95% coverage
-          coveredBranches: 90,
-          coveredFunctions: 95,
+          coveredBranches: 95,
+          coveredFunctions: 100, // All functions covered = 0 failed tests
           coveredLines: 450,
           uncoveredFiles: [],
           threshold: 80,

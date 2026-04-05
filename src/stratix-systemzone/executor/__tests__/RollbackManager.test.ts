@@ -44,23 +44,19 @@ describe('RollbackManager', () => {
 
   beforeEach(() => {
     // 清理并创建新数据库
-    try {
-      db = new Database(TEST_DB_PATH);
-      db.exec('DROP TABLE IF EXISTS rollback_snapshots');
-      db.exec(`
-        CREATE TABLE IF NOT EXISTS rollback_snapshots (
-          id TEXT PRIMARY KEY,
-          proposal_id TEXT NOT NULL,
-          commit_hash TEXT NOT NULL,
-          timestamp INTEGER NOT NULL,
-          description TEXT,
-          work_dir TEXT NOT NULL
-        )
-      `);
-      db.exec('DELETE FROM rollback_snapshots');
-    } catch {
-      // ignore
-    }
+    db = new Database(TEST_DB_PATH);
+    db.exec('DROP TABLE IF EXISTS rollback_snapshots');
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS rollback_snapshots (
+        id TEXT PRIMARY KEY,
+        proposal_id TEXT NOT NULL,
+        commit_hash TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        description TEXT,
+        work_dir TEXT NOT NULL
+      )
+    `);
+    db.exec('DELETE FROM rollback_snapshots');
 
     // 创建新的 RollbackManager 实例，传入数据库
     manager = new RollbackManager(
@@ -69,7 +65,7 @@ describe('RollbackManager', () => {
         autoRollbackOnTestFail: true,
         requireManualRollback: false,
       },
-      db!
+      db
     );
   });
 

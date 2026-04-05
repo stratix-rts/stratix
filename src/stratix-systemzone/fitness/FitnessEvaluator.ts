@@ -84,6 +84,9 @@ export class FitnessEvaluator {
     // Check threshold violations
     const violations = this.checkViolations(codeQuality, performance, systemHealth);
 
+    // FitnessReport.violations is string[], so convert ThresholdViolation to message strings
+    const violationMessages = violations.map(v => v.message);
+
     const report: FitnessReport = {
       timestamp: new Date(),
       metrics: {
@@ -100,7 +103,7 @@ export class FitnessEvaluator {
         overall,
       },
       passed: violations.length === 0,
-      violations,
+      violations: violationMessages,
     };
 
     return report;
@@ -347,16 +350,30 @@ export class FitnessEvaluator {
    * 检查是否满足 Executor 启用条件
    */
   async canEnableExecutor(): Promise<boolean> {
-    const report = await this.evaluate();
+    const [codeQuality, performance, systemHealth] = await Promise.all([
+      this.evaluateCodeQuality(),
+      this.evaluatePerformance(),
+      this.evaluateSystemHealth(),
+    ]);
+
+    // Get full violations list to check severity
+    const violations = this.checkViolations(codeQuality, performance, systemHealth);
 
     // All threshold violations must be warnings, not critical
-    const criticalViolations = report.violations.filter(v => v.severity === 'critical');
+    const criticalViolations = violations.filter(v => v.severity === 'critical');
+
+    // Calculate overall score
+    const overall = Math.round(
+      codeQuality.overallScore * 0.4 +
+      performance.overallScore * 0.3 +
+      systemHealth.overallScore * 0.3
+    );
 
     // Overall score must be at least 60
-    const hasAcceptableScore = report.scores.overall >= 60;
+    const hasAcceptableScore = overall >= 60;
 
     // Must have passed flag OR only warning violations
-    const hasPassed = report.passed || criticalViolations.length === 0;
+    const hasPassed = violations.length === 0 || criticalViolations.length === 0;
 
     return hasAcceptableScore && hasPassed;
   }
@@ -524,7 +541,18 @@ export class FitnessEvaluator {
   /**
    * Empty coverage report
    */
-  private emptyCoverageReport() {
+  private emptyCoverageReport(): {
+    totalStatements: number;
+    totalBranches: number;
+    totalFunctions: number;
+    totalLines: number;
+    coveredStatements: number;
+    coveredBranches: number;
+    coveredFunctions: number;
+    coveredLines: number;
+    uncoveredFiles: string[];
+    threshold: number;
+  } {
     return {
       totalStatements: 0,
       totalBranches: 0,
@@ -534,7 +562,7 @@ export class FitnessEvaluator {
       coveredBranches: 0,
       coveredFunctions: 0,
       coveredLines: 0,
-      uncoveredFiles: [],
+      uncoveredFiles: [] as string[],
       threshold: 80,
     };
   }
@@ -542,10 +570,15 @@ export class FitnessEvaluator {
   /**
    * Empty lint result
    */
-  private emptyLintResult() {
+  private emptyLintResult(): {
+    errors: Array<{ file: string; line: number; column: number; message: string; rule: string; severity: 'error' | 'warning' }>;
+    warnings: Array<{ file: string; line: number; column: number; message: string; rule: string; severity: 'error' | 'warning' }>;
+    success: boolean;
+    fatalErrorCount: number;
+  } {
     return {
-      errors: [],
-      warnings: [],
+      errors: [] as Array<{ file: string; line: number; column: number; message: string; rule: string; severity: 'error' | 'warning' }>,
+      warnings: [] as Array<{ file: string; line: number; column: number; message: string; rule: string; severity: 'error' | 'warning' }>,
       success: true,
       fatalErrorCount: 0,
     };
@@ -554,10 +587,14 @@ export class FitnessEvaluator {
   /**
    * Empty type result
    */
-  private emptyTypeResult() {
+  private emptyTypeResult(): {
+    errors: Array<{ file: string; line: number; column: number; message: string; code: number }>;
+    warnings: Array<{ file: string; line: number; column: number; message: string; code: number }>;
+    success: boolean;
+  } {
     return {
-      errors: [],
-      warnings: [],
+      errors: [] as Array<{ file: string; line: number; column: number; message: string; code: number }>,
+      warnings: [] as Array<{ file: string; line: number; column: number; message: string; code: number }>,
       success: true,
     };
   }
