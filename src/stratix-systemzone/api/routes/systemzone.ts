@@ -10,6 +10,8 @@ import { Strategist } from '../../strategist/Strategist';
 import { Guardian } from '../../guardian/Guardian';
 import { Executor } from '../../executor/Executor';
 import { FitnessEvaluator } from '../../fitness/FitnessEvaluator';
+import { SourceManager } from '../../sources/SourceManager';
+import type { ExternalSource, RawInput, SourceType, SourceConfig, SourceStatus, SourceInput } from '../../sources/types';
 
 import type { UserInput, Insight, Proposal, ProposalStatus, UserInputType } from '../../types';
 import type { ObserverPipelineConfig } from '../../observer/types';
@@ -48,6 +50,11 @@ const insightsStore = new Map<string, Insight[]>();
 const inputsStore = new Map<string, UserInput[]>();
 // Stored proposals per owner
 const proposalsStore = new Map<string, Proposal[]>();
+
+// SourceManager instances per owner
+const sourceManagerInstances = new Map<string, SourceManager>();
+// Raw inputs per owner (keyed by sourceId)
+const rawInputsStore = new Map<string, Map<string, RawInput[]>>();
 
 // ------------------------------------------------
 // Helper functions
@@ -178,6 +185,34 @@ function getFitnessEvaluator(ownerId: string): FitnessEvaluator {
     fitnessEvaluatorInstances.set(ownerId, evaluator);
   }
   return fitnessEvaluatorInstances.get(ownerId)!;
+}
+
+function getSourceManager(ownerId: string): SourceManager {
+  if (!sourceManagerInstances.has(ownerId)) {
+    const manager = new SourceManager({
+      maxSources: 50,
+      defaultRefreshInterval: 3_600_000,
+      maxConcurrentFetches: 5,
+      deduplicationWindow: 86_400_000,
+      maxItemsPerSource: 100,
+      enableAutoClassify: true,
+    });
+    sourceManagerInstances.set(ownerId, manager);
+  }
+  return sourceManagerInstances.get(ownerId)!;
+}
+
+function getRawInputsForOwner(ownerId: string): Map<string, RawInput[]> {
+  if (!rawInputsStore.has(ownerId)) {
+    rawInputsStore.set(ownerId, new Map());
+  }
+  return rawInputsStore.get(ownerId)!;
+}
+
+function saveRawInputs(ownerId: string, sourceId: string, inputs: RawInput[]): void {
+  const ownerInputs = getRawInputsForOwner(ownerId);
+  const existing = ownerInputs.get(sourceId) || [];
+  ownerInputs.set(sourceId, [...existing, ...inputs]);
 }
 
 // ------------------------------------------------
@@ -844,6 +879,568 @@ router.post('/inputs/batch', async (req: Request, res: Response): Promise<void> 
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to add inputs',
+    });
+  }
+});
+
+// ------------------------------------------------
+// External Sources Routes
+// ------------------------------------------------
+
+interface AddSourceRequest {
+  name: string;
+  type: SourceType;
+  url: string;
+  config: SourceConfig;
+  status?: SourceStatus;
+}
+
+interface UpdateSourceRequest {
+  name?: string;
+  url?: string;
+  config?: SourceConfig;
+  status?: SourceStatus;
+}
+
+interface WebhookRequest {
+  payload: string;
+  signature?: string;
+}
+
+interface GetSourcesQuery {
+  status?: SourceStatus;
+  type?: SourceType;
+}
+
+interface GetInputsQuery {
+  limit?: string;
+}
+
+/**
+ * POST /api/systemzone/sources
+ * Add a new external source
+ */
+router.post('/sources', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ownerId = getDefaultOwnerId(req);
+    const { name, type, url, config, status } = req.body as AddSourceRequest;
+
+    if (!name || typeof name !== 'string') {
+      res.status(400).json({
+        success: false,
+        error: 'Missing required field: name (must be a string)',
+      });
+      return;
+    }
+
+    if (!type || !['rss', 'webhook', 'api_poll', 'file_watcher'].includes(type)) {
+      res.status(400).json({
+        success: false,
+        error: 'Missing or invalid required field: type (must be rss, webhook, api_poll, or file_watcher)',
+      });
+      return;
+    }
+
+    if (!url || typeof url !== 'string') {
+      res.status(400).json({
+        success: false,
+        error: 'Missing required field: url (must be a string)',
+      });
+      return;
+    }
+
+    if (!config || typeof config !== 'object') {
+      res.status(400).json({
+        success: false,
+        error: 'Missing required field: config (must be an object)',
+      });
+      return;
+    }
+
+    const sourceManager = getSourceManager(ownerId);
+    const input: SourceInput = {
+      name,
+      type,
+      url,
+      config,
+      status: status || 'active',
+      ownerId,
+      lastFetchedAt: null,
+      lastError: null,
+    };
+    const source = await sourceManager.addSource(input);
+
+    res.status(201).json({
+      success: true,
+      source: {
+        id: source.id,
+        name: source.name,
+        type: source.type,
+        status: source.status,
+        url: source.url,
+        config: source.config,
+        ownerId: source.ownerId,
+        createdAt: source.createdAt,
+        lastFetchedAt: source.lastFetchedAt,
+        fetchCount: source.fetchCount,
+        errorCount: source.errorCount,
+      },
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Add source failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to add source',
+    });
+  }
+});
+
+/**
+ * GET /api/systemzone/sources
+ * Get all sources for the owner
+ */
+router.get('/sources', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ownerId = getDefaultOwnerId(req);
+    const { status, type } = req.query as GetSourcesQuery;
+
+    const sourceManager = getSourceManager(ownerId);
+    let sources = sourceManager.getSources();
+
+    // Filter by owner
+    sources = sources.filter(s => s.ownerId === ownerId);
+
+    // Filter by status if provided
+    if (status) {
+      sources = sources.filter(s => s.status === status);
+    }
+
+    // Filter by type if provided
+    if (type) {
+      sources = sources.filter(s => s.type === type);
+    }
+
+    res.json({
+      success: true,
+      count: sources.length,
+      sources: sources.map(s => ({
+        id: s.id,
+        name: s.name,
+        type: s.type,
+        status: s.status,
+        url: s.url,
+        ownerId: s.ownerId,
+        createdAt: s.createdAt,
+        lastFetchedAt: s.lastFetchedAt,
+        lastError: s.lastError,
+        fetchCount: s.fetchCount,
+        errorCount: s.errorCount,
+      })),
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Get sources failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get sources',
+    });
+  }
+});
+
+/**
+ * GET /api/systemzone/sources/:id
+ * Get a single source by ID
+ */
+router.get('/sources/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ownerId = getDefaultOwnerId(req);
+    const { id } = req.params;
+
+    const sourceManager = getSourceManager(ownerId);
+    const source = sourceManager.getSource(id);
+
+    if (!source) {
+      res.status(404).json({
+        success: false,
+        error: `Source not found: ${id}`,
+      });
+      return;
+    }
+
+    // Check ownership
+    if (source.ownerId !== ownerId) {
+      res.status(403).json({
+        success: false,
+        error: 'Forbidden: you do not have access to this source',
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      source: {
+        id: source.id,
+        name: source.name,
+        type: source.type,
+        status: source.status,
+        url: source.url,
+        config: source.config,
+        ownerId: source.ownerId,
+        createdAt: source.createdAt,
+        lastFetchedAt: source.lastFetchedAt,
+        lastError: source.lastError,
+        fetchCount: source.fetchCount,
+        errorCount: source.errorCount,
+      },
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Get source failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get source',
+    });
+  }
+});
+
+/**
+ * PATCH /api/systemzone/sources/:id
+ * Update source configuration
+ */
+router.patch('/sources/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ownerId = getDefaultOwnerId(req);
+    const { id } = req.params;
+    const { name, url, config, status } = req.body as UpdateSourceRequest;
+
+    const sourceManager = getSourceManager(ownerId);
+    const existingSource = sourceManager.getSource(id);
+
+    if (!existingSource) {
+      res.status(404).json({
+        success: false,
+        error: `Source not found: ${id}`,
+      });
+      return;
+    }
+
+    // Check ownership
+    if (existingSource.ownerId !== ownerId) {
+      res.status(403).json({
+        success: false,
+        error: 'Forbidden: you do not have access to this source',
+      });
+      return;
+    }
+
+    // Validate status if provided
+    if (status && !['active', 'paused', 'error', 'disabled'].includes(status)) {
+      res.status(400).json({
+        success: false,
+        error: 'Invalid status (must be active, paused, error, or disabled)',
+      });
+      return;
+    }
+
+    // Note: SourceManager doesn't have an updateSource method, so we directly modify
+    // In a real implementation, this would go through the manager
+    const updatedSource: ExternalSource = {
+      ...existingSource,
+      name: name ?? existingSource.name,
+      url: url ?? existingSource.url,
+      config: config ?? existingSource.config,
+      status: status ?? existingSource.status,
+    };
+
+    // Update in the internal map (would ideally go through SourceManager)
+    (sourceManager as unknown as { sources: Map<string, ExternalSource> }).sources.set(id, updatedSource);
+
+    res.json({
+      success: true,
+      source: {
+        id: updatedSource.id,
+        name: updatedSource.name,
+        type: updatedSource.type,
+        status: updatedSource.status,
+        url: updatedSource.url,
+        config: updatedSource.config,
+        ownerId: updatedSource.ownerId,
+        createdAt: updatedSource.createdAt,
+        lastFetchedAt: updatedSource.lastFetchedAt,
+        lastError: updatedSource.lastError,
+        fetchCount: updatedSource.fetchCount,
+        errorCount: updatedSource.errorCount,
+      },
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Update source failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to update source',
+    });
+  }
+});
+
+/**
+ * DELETE /api/systemzone/sources/:id
+ * Delete a source
+ */
+router.delete('/sources/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ownerId = getDefaultOwnerId(req);
+    const { id } = req.params;
+
+    const sourceManager = getSourceManager(ownerId);
+    const existingSource = sourceManager.getSource(id);
+
+    if (!existingSource) {
+      res.status(404).json({
+        success: false,
+        error: `Source not found: ${id}`,
+      });
+      return;
+    }
+
+    // Check ownership
+    if (existingSource.ownerId !== ownerId) {
+      res.status(403).json({
+        success: false,
+        error: 'Forbidden: you do not have access to this source',
+      });
+      return;
+    }
+
+    await sourceManager.removeSource(id);
+
+    res.json({
+      success: true,
+      message: `Source ${id} deleted`,
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Delete source failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to delete source',
+    });
+  }
+});
+
+/**
+ * POST /api/systemzone/sources/:id/fetch
+ * Manually trigger a fetch for a source
+ */
+router.post('/sources/:id/fetch', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ownerId = getDefaultOwnerId(req);
+    const { id } = req.params;
+
+    const sourceManager = getSourceManager(ownerId);
+    const source = sourceManager.getSource(id);
+
+    if (!source) {
+      res.status(404).json({
+        success: false,
+        error: `Source not found: ${id}`,
+      });
+      return;
+    }
+
+    // Check ownership
+    if (source.ownerId !== ownerId) {
+      res.status(403).json({
+        success: false,
+        error: 'Forbidden: you do not have access to this source',
+      });
+      return;
+    }
+
+    const rawInputs = await sourceManager.fetchSource(id);
+
+    // Store the raw inputs
+    if (rawInputs.length > 0) {
+      saveRawInputs(ownerId, id, rawInputs);
+    }
+
+    res.json({
+      success: true,
+      sourceId: id,
+      fetched: rawInputs.length,
+      inputs: rawInputs.map(input => ({
+        id: input.id,
+        title: input.title,
+        url: input.url,
+        author: input.author,
+        publishedAt: input.publishedAt,
+        fetchedAt: input.fetchedAt,
+        contentType: input.contentType,
+        hash: input.hash,
+      })),
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Fetch source failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fetch source',
+    });
+  }
+});
+
+/**
+ * POST /api/systemzone/sources/:id/webhook
+ * Receive a webhook callback
+ */
+router.post('/sources/:id/webhook', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { payload, signature } = req.body as WebhookRequest;
+
+    // Note: Webhook route does not use ZoneAuthGuard as it's called externally
+    // The signature verification is done inside processWebhook
+
+    if (!payload || typeof payload !== 'string') {
+      res.status(400).json({
+        success: false,
+        error: 'Missing required field: payload (must be a string)',
+      });
+      return;
+    }
+
+    // Get all source managers and find the one with this source
+    // In production, you'd look up by owner from the source ID prefix or lookup table
+    let foundSource: ExternalSource | null = null;
+    let foundOwnerId: string | null = null;
+
+    for (const [ownerId, manager] of sourceManagerInstances) {
+      const source = manager.getSource(id);
+      if (source) {
+        foundSource = source;
+        foundOwnerId = ownerId;
+        break;
+      }
+    }
+
+    if (!foundSource || !foundOwnerId) {
+      res.status(404).json({
+        success: false,
+        error: `Source not found: ${id}`,
+      });
+      return;
+    }
+
+    if (foundSource.type !== 'webhook') {
+      res.status(400).json({
+        success: false,
+        error: `Source is not a webhook source: ${id}`,
+      });
+      return;
+    }
+
+    // Extract signature header
+    const signatureHeader = signature || req.headers['x-hub-signature-256'] as string || '';
+
+    const sourceManager = sourceManagerInstances.get(foundOwnerId)!;
+    const rawInputs = await sourceManager.processWebhook(
+      id,
+      payload,
+      signatureHeader,
+      req.headers as Record<string, string>
+    );
+
+    // Store the raw inputs
+    if (rawInputs.length > 0) {
+      saveRawInputs(foundOwnerId, id, rawInputs);
+    }
+
+    res.json({
+      success: true,
+      sourceId: id,
+      processed: rawInputs.length,
+      inputs: rawInputs.map(input => ({
+        id: input.id,
+        title: input.title,
+        url: input.url,
+        author: input.author,
+        publishedAt: input.publishedAt,
+        fetchedAt: input.fetchedAt,
+        contentType: input.contentType,
+        hash: input.hash,
+      })),
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Webhook processing failed:', error);
+    const message = error instanceof Error ? error.message : 'Failed to process webhook';
+    if (message.includes('Invalid webhook signature')) {
+      res.status(401).json({
+        success: false,
+        error: message,
+      });
+      return;
+    }
+    res.status(500).json({
+      success: false,
+      error: message,
+    });
+  }
+});
+
+/**
+ * GET /api/systemzone/sources/:id/inputs
+ * Get raw inputs for a specific source
+ */
+router.get('/sources/:id/inputs', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ownerId = getDefaultOwnerId(req);
+    const { id } = req.params;
+    const { limit } = req.query as GetInputsQuery;
+
+    const sourceManager = getSourceManager(ownerId);
+    const source = sourceManager.getSource(id);
+
+    if (!source) {
+      res.status(404).json({
+        success: false,
+        error: `Source not found: ${id}`,
+      });
+      return;
+    }
+
+    // Check ownership
+    if (source.ownerId !== ownerId) {
+      res.status(403).json({
+        success: false,
+        error: 'Forbidden: you do not have access to this source',
+      });
+      return;
+    }
+
+    const ownerInputs = getRawInputsForOwner(ownerId);
+    let inputs = ownerInputs.get(id) || [];
+
+    // Apply limit
+    const limitNum = limit ? parseInt(limit, 10) : 50;
+    inputs = inputs.slice(-limitNum);
+
+    res.json({
+      success: true,
+      count: inputs.length,
+      inputs: inputs.map(input => ({
+        id: input.id,
+        sourceId: input.sourceId,
+        sourceType: input.sourceType,
+        title: input.title,
+        content: input.content,
+        url: input.url,
+        author: input.author,
+        publishedAt: input.publishedAt,
+        fetchedAt: input.fetchedAt,
+        contentType: input.contentType,
+        metadata: input.metadata,
+        hash: input.hash,
+      })),
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Get source inputs failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get source inputs',
     });
   }
 });
