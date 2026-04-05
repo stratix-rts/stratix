@@ -400,12 +400,4 @@ export class Deduplicator {
   }
 }
 
-// -------------------------------------------------------------------------
-// Type Extensions
-// -------------------------------------------------------------------------
 
-export interface DeduplicatorConfig {
-  deduplicationWindow?: number;   // Time window in ms (default: 24 hours)
-  similarityThreshold?: number;    // Similarity threshold 0-1 (default: 0.85)
-  hashAlgorithm?: string;          // Hash algorithm (default: sha256)
-}

@@ -9,12 +9,13 @@ import type {
   SourceType,
   SourceConfig,
   SourceManagerConfig,
-  DEFAULT_SOURCE_MANAGER_CONFIG,
 } from './types';
 import { Deduplicator } from './Deduplicator';
-import type { RSSAdapter, RSSConfig } from './adapters/RSSAdapter';
-import type { APIPollingAdapter, APIPollConfig } from './adapters/APIPollingAdapter';
-import type { WebhookAdapter } from './adapters/WebhookAdapter';
+import { RSSAdapter } from './adapters/RSSAdapter';
+import type { RSSConfig } from './adapters/RSSAdapter';
+import { APIPollingAdapter } from './adapters/APIPollingAdapter';
+import type { APIPollConfig } from './adapters/APIPollingAdapter';
+import { WebhookAdapter } from './adapters/WebhookAdapter';
 
 // ------------------------------------------------
 // Adapter Interfaces
