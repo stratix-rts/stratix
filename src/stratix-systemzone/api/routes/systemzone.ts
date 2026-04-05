@@ -4,6 +4,8 @@
 // ============================================
 
 import { Router, Request, Response } from 'express';
+import fs from 'fs';
+import path from 'path';
 
 import { Observer } from '../../observer/Observer';
 import { Strategist } from '../../strategist/Strategist';
@@ -2026,6 +2028,102 @@ router.get('/sources/:id/inputs', async (req: Request, res: Response): Promise<v
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to get source inputs',
+    });
+  }
+});
+
+// ------------------------------------------------
+// LLM Config Routes
+// ------------------------------------------------
+
+interface LLMConfig {
+  provider?: string;
+  model?: string;
+  apiKey?: string;
+  baseUrl?: string;
+}
+
+const LLM_ENV_KEYS = ['LLM_PROVIDER', 'LLM_MODEL', 'LLM_API_KEY', 'LLM_BASE_URL'] as const;
+
+const ENV_FILE_PATH = path.resolve(process.cwd(), '.env');
+
+/**
+ * GET /api/systemzone/llm-config
+ * Get current LLM configuration from process.env
+ */
+router.get('/llm-config', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const config: LLMConfig = {};
+    for (const key of LLM_ENV_KEYS) {
+      const value = process.env[key];
+      if (value !== undefined) {
+        config[key === 'LLM_API_KEY' ? 'apiKey' : key === 'LLM_PROVIDER' ? 'provider' : key === 'LLM_BASE_URL' ? 'baseUrl' : 'model'] = value;
+      }
+    }
+
+    res.json({
+      success: true,
+      config,
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Get llm-config failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get LLM config',
+    });
+  }
+});
+
+/**
+ * PUT /api/systemzone/llm-config
+ * Save LLM configuration to .env file in project root
+ */
+router.put('/llm-config', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { provider, model, apiKey, baseUrl } = req.body as LLMConfig;
+
+    if (!provider && !model && !apiKey && !baseUrl) {
+      res.status(400).json({
+        success: false,
+        error: 'At least one field is required: provider, model, apiKey, baseUrl',
+      });
+      return;
+    }
+
+    // Read existing .env if present
+    let envContent = '';
+    if (fs.existsSync(ENV_FILE_PATH)) {
+      envContent = fs.readFileSync(ENV_FILE_PATH, 'utf-8');
+    }
+
+    const updates: Array<{ key: string; value: string }> = [];
+    if (provider !== undefined) updates.push({ key: 'LLM_PROVIDER', value: provider });
+    if (model !== undefined) updates.push({ key: 'LLM_MODEL', value: model });
+    if (apiKey !== undefined) updates.push({ key: 'LLM_API_KEY', value: apiKey });
+    if (baseUrl !== undefined) updates.push({ key: 'LLM_BASE_URL', value: baseUrl });
+
+    // Update or append each key
+    for (const { key, value } of updates) {
+      const regex = new RegExp(`^${key}=.*`, 'm');
+      if (regex.test(envContent)) {
+        envContent = envContent.replace(regex, `${key}=${value}`);
+      } else {
+        envContent += envContent.endsWith('\n') ? `${key}=${value}\n` : `\n${key}=${value}\n`;
+      }
+    }
+
+    fs.writeFileSync(ENV_FILE_PATH, envContent, 'utf-8');
+
+    res.json({
+      success: true,
+      message: 'LLM config saved to .env',
+      config: { provider, model, apiKey, baseUrl },
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Put llm-config failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to save LLM config',
     });
   }
 });
