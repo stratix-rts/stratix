@@ -243,3 +243,20 @@ export const DEFAULT_BOOTSTRAP_ENGINE_CONFIG: BootstrapEngineConfig = {
   maxCyclesPerDay: 24,
   requireHumanApprovalForMode: ['full_auto'],
 };
+
+// ------------------------------------------------
+// Bootstrap Cycle Result
+// ------------------------------------------------
+
+export interface BootstrapCycleResult {
+  cycleId: string;
+  timestamp: Date;
+  discovered: number;
+  approved: number;
+  executed: number;
+  succeeded: number;
+  failed: number;
+  rolledBack: number;
+  impactScore: number;
+  state: BootstrapState;
+}

@@ -19,6 +19,15 @@ import type { ScannerConfig, ProposalMapperConfig } from '../../strategist/types
 import type { StrategistLLMEnhancerConfig } from '../../strategist/StrategistLLMEnhancer';
 import type { ExecutionResult } from '../../executor/types';
 
+import type {
+  BootstrapState,
+  BootstrapMode,
+  BootstrapPhase,
+  ExperimentZone,
+  ExperimentStatus,
+  DiscoveredProposal,
+} from '../../bootstrap/types';
+
 import { ZoneAuthGuard } from '../auth/ZoneAuthGuard';
 
 const router = Router();
@@ -57,11 +66,87 @@ const sourceManagerInstances = new Map<string, SourceManager>();
 const rawInputsStore = new Map<string, Map<string, RawInput[]>>();
 
 // ------------------------------------------------
+// Bootstrap Engine stores (per owner)
+// ------------------------------------------------
+
+interface BootstrapStore {
+  state: BootstrapState;
+  config: {
+    requireHumanApprovalForMode: BootstrapMode[];
+  };
+  engineRunning: boolean;
+  cycleInterval: ReturnType<typeof setInterval> | null;
+  history: Array<{
+    timestamp: Date;
+    action: string;
+    cycleCount: number;
+    proposalsGenerated: number;
+    proposalsExecuted: number;
+    improvementScore: number;
+  }>;
+}
+
+function createDefaultBootstrapState(): BootstrapState {
+  return {
+    phase: 'idle',
+    mode: 'manual',
+    cycleCount: 0,
+    successCount: 0,
+    failureCount: 0,
+    lastCycleAt: null,
+    lastDiscoveryAt: null,
+    activeExperiments: [],
+    consecutiveFailures: 0,
+    totalProposalsGenerated: 0,
+    totalProposalsExecuted: 0,
+    totalProposalsRolledBack: 0,
+    improvementScore: 50,
+  };
+}
+
+const bootstrapStores = new Map<string, BootstrapStore>();
+
+function getBootstrapStore(ownerId: string): BootstrapStore {
+  if (!bootstrapStores.has(ownerId)) {
+    bootstrapStores.set(ownerId, {
+      state: createDefaultBootstrapState(),
+      config: {
+        requireHumanApprovalForMode: ['full_auto'],
+      },
+      engineRunning: false,
+      cycleInterval: null,
+      history: [],
+    });
+  }
+  return bootstrapStores.get(ownerId)!;
+}
+
+// ------------------------------------------------
+// Experiment stores (per owner)
+// ------------------------------------------------
+
+const experimentStores = new Map<string, ExperimentZone[]>();
+
+function getExperimentsForOwner(ownerId: string): ExperimentZone[] {
+  if (!experimentStores.has(ownerId)) {
+    experimentStores.set(ownerId, []);
+  }
+  return experimentStores.get(ownerId)!;
+}
+
+// ------------------------------------------------
 // Helper functions
 // ------------------------------------------------
 
 function getDefaultOwnerId(req: Request): string {
   return req.ownerId || 'default-user';
+}
+
+/**
+ * Extract route param as string (handles Express 5 string[] type)
+ */
+function getRouteParam(param: string | string[]): string {
+  return Array.isArray(param) ? param[0] : param;
 }
 
 function getObserver(ownerId: string): Observer {
@@ -884,7 +969,328 @@ router.post('/inputs/batch', async (req: Request, res: Response): Promise<void> 
 });
 
 // ------------------------------------------------
-// External Sources Routes
+// Bootstrap Routes
+// ------------------------------------------------
+
+interface SetModeRequest {
+  mode: BootstrapMode;
+  confirmed?: boolean;
+}
+
+interface TriggerCycleRequest {
+  force?: boolean;
+}
+
+interface GetHistoryQuery {
+  limit?: string;
+}
+
+interface GetExperimentsQuery {
+  status?: ExperimentStatus;
+  limit?: string;
+}
+
+function startBootstrapEngine(ownerId: string): void {
+  const store = getBootstrapStore(ownerId);
+  if (store.engineRunning) return;
+
+  store.engineRunning = true;
+  store.state.phase = 'discovering';
+
+  // Auto-cycle every hour
+  store.cycleInterval = setInterval(() => {
+    const s = getBootstrapStore(ownerId);
+    if (s.engineRunning && s.state.mode !== 'manual') {
+      runBootstrapCycle(ownerId).catch(console.error);
+    }
+  }, 3_600_000);
+}
+
+function stopBootstrapEngine(ownerId: string): void {
+  const store = getBootstrapStore(ownerId);
+  store.engineRunning = false;
+  if (store.cycleInterval) {
+    clearInterval(store.cycleInterval);
+    store.cycleInterval = null;
+  }
+  store.state.phase = 'idle';
+}
+
+async function runBootstrapCycle(ownerId: string): Promise<void> {
+  const store = getBootstrapStore(ownerId);
+
+  store.state.phase = 'discovering';
+  store.state.lastDiscoveryAt = new Date();
+  store.state.cycleCount++;
+
+  // Discovery: generate proposals
+  store.state.phase = 'deciding';
+
+  // Decision: approve/reject
+  store.state.phase = 'executing';
+
+  // Execute approved proposals
+  store.state.phase = 'evaluating';
+
+  // Evaluate impact
+  store.state.phase = 'idle';
+  store.state.lastCycleAt = new Date();
+
+  // Record history
+  store.history.push({
+    timestamp: new Date(),
+    action: 'cycle',
+    cycleCount: store.state.cycleCount,
+    proposalsGenerated: store.state.totalProposalsGenerated,
+    proposalsExecuted: store.state.totalProposalsExecuted,
+    improvementScore: store.state.improvementScore,
+  });
+
+  // Keep only last 100 entries
+  if (store.history.length > 100) {
+    store.history = store.history.slice(-100);
+  }
+}
+
+/**
+ * POST /api/systemzone/bootstrap/start
+ * Start the bootstrap engine
+ */
+router.post('/bootstrap/start', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ownerId = getDefaultOwnerId(req);
+    const store = getBootstrapStore(ownerId);
+
+    if (store.engineRunning) {
+      res.status(409).json({
+        success: false,
+        error: 'Bootstrap engine already running',
+      });
+      return;
+    }
+
+    startBootstrapEngine(ownerId);
+
+    res.json({
+      success: true,
+      message: 'Bootstrap engine started',
+      status: {
+        phase: store.state.phase,
+        mode: store.state.mode,
+        cycleCount: store.state.cycleCount,
+      },
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Bootstrap start failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to start bootstrap engine',
+    });
+  }
+});
+
+/**
+ * POST /api/systemzone/bootstrap/stop
+ * Stop the bootstrap engine
+ */
+router.post('/bootstrap/stop', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ownerId = getDefaultOwnerId(req);
+    const store = getBootstrapStore(ownerId);
+
+    if (!store.engineRunning) {
+      res.status(409).json({
+        success: false,
+        error: 'Bootstrap engine not running',
+      });
+      return;
+    }
+
+    stopBootstrapEngine(ownerId);
+
+    res.json({
+      success: true,
+      message: 'Bootstrap engine stopped',
+      status: {
+        phase: store.state.phase,
+        mode: store.state.mode,
+        cycleCount: store.state.cycleCount,
+      },
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Bootstrap stop failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to stop bootstrap engine',
+    });
+  }
+});
+
+/**
+ * GET /api/systemzone/bootstrap/status
+ * Get bootstrap status
+ */
+router.get('/bootstrap/status', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ownerId = getDefaultOwnerId(req);
+    const store = getBootstrapStore(ownerId);
+
+    res.json({
+      success: true,
+      status: {
+        engineRunning: store.engineRunning,
+        phase: store.state.phase,
+        mode: store.state.mode,
+        cycleCount: store.state.cycleCount,
+        successCount: store.state.successCount,
+        failureCount: store.state.failureCount,
+        lastCycleAt: store.state.lastCycleAt,
+        lastDiscoveryAt: store.state.lastDiscoveryAt,
+        activeExperiments: store.state.activeExperiments,
+        consecutiveFailures: store.state.consecutiveFailures,
+        totalProposalsGenerated: store.state.totalProposalsGenerated,
+        totalProposalsExecuted: store.state.totalProposalsExecuted,
+        totalProposalsRolledBack: store.state.totalProposalsRolledBack,
+        improvementScore: store.state.improvementScore,
+      },
+      config: {
+        requireHumanApprovalForMode: store.config.requireHumanApprovalForMode,
+      },
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Bootstrap status failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get bootstrap status',
+    });
+  }
+});
+
+/**
+ * PUT /api/systemzone/bootstrap/mode
+ * Switch bootstrap mode
+ */
+router.put('/bootstrap/mode', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ownerId = getDefaultOwnerId(req);
+    const { mode, confirmed } = req.body as SetModeRequest;
+
+    if (!mode || !['manual', 'semi_auto', 'full_auto'].includes(mode)) {
+      res.status(400).json({
+        success: false,
+        error: 'Missing or invalid required field: mode (must be manual, semi_auto, or full_auto)',
+      });
+      return;
+    }
+
+    const store = getBootstrapStore(ownerId);
+
+    // Check if mode requires human approval
+    if (store.config.requireHumanApprovalForMode.includes(mode) && !confirmed) {
+      res.status(403).json({
+        success: false,
+        error: `Switching to ${mode} requires human approval. Please confirm.`,
+        requiresConfirmation: true,
+        mode,
+      });
+      return;
+    }
+
+    const previousMode = store.state.mode;
+    store.state.mode = mode;
+
+    res.json({
+      success: true,
+      message: `Mode switched from ${previousMode} to ${mode}`,
+      previousMode,
+      currentMode: mode,
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Bootstrap mode switch failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to switch bootstrap mode',
+    });
+  }
+});
+
+/**
+ * POST /api/systemzone/bootstrap/cycle
+ * Manually trigger one bootstrap cycle
+ */
+router.post('/bootstrap/cycle', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ownerId = getDefaultOwnerId(req);
+    const store = getBootstrapStore(ownerId);
+
+    if (store.state.phase !== 'idle' && store.state.phase !== 'paused') {
+      res.status(409).json({
+        success: false,
+        error: `Cannot trigger cycle while in phase: ${store.state.phase}`,
+        currentPhase: store.state.phase,
+      });
+      return;
+    }
+
+    await runBootstrapCycle(ownerId);
+
+    res.json({
+      success: true,
+      message: 'Bootstrap cycle completed',
+      status: {
+        phase: store.state.phase,
+        mode: store.state.mode,
+        cycleCount: store.state.cycleCount,
+        lastCycleAt: store.state.lastCycleAt,
+      },
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Bootstrap cycle failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to run bootstrap cycle',
+    });
+  }
+});
+
+/**
+ * GET /api/systemzone/bootstrap/history
+ * Get bootstrap history
+ */
+router.get('/bootstrap/history', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ownerId = getDefaultOwnerId(req);
+    const { limit } = req.query as GetHistoryQuery;
+
+    const store = getBootstrapStore(ownerId);
+    let history = [...store.history];
+
+    const limitNum = limit ? parseInt(limit, 10) : 50;
+    history = history.slice(-limitNum);
+
+    res.json({
+      success: true,
+      count: history.length,
+      history: history.map(h => ({
+        timestamp: h.timestamp,
+        action: h.action,
+        cycleCount: h.cycleCount,
+        proposalsGenerated: h.proposalsGenerated,
+        proposalsExecuted: h.proposalsExecuted,
+        improvementScore: h.improvementScore,
+      })),
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Bootstrap history failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get bootstrap history',
+    });
+  }
+});
+
+// ------------------------------------------------
+// Experiment Routes
 // ------------------------------------------------
 
 /**
@@ -893,6 +1299,181 @@ router.post('/inputs/batch', async (req: Request, res: Response): Promise<void> 
 function getRouteParam(param: string | string[]): string {
   return Array.isArray(param) ? param[0] : param;
 }
+
+/**
+ * GET /api/systemzone/experiments
+ * Get experiments list
+ */
+router.get('/experiments', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ownerId = getDefaultOwnerId(req);
+    const { status, limit } = req.query as GetExperimentsQuery;
+
+    let experiments = getExperimentsForOwner(ownerId);
+
+    if (status) {
+      experiments = experiments.filter(e => e.status === status);
+    }
+
+    const limitNum = limit ? parseInt(limit, 10) : 50;
+    experiments = experiments.slice(-limitNum);
+
+    res.json({
+      success: true,
+      count: experiments.length,
+      experiments: experiments.map(e => ({
+        id: e.id,
+        name: e.name,
+        description: e.description,
+        status: e.status,
+        proposalId: e.proposalId,
+        branchName: e.branchName,
+        worktreePath: e.worktreePath,
+        createdAt: e.createdAt,
+        startedAt: e.startedAt,
+        completedAt: e.completedAt,
+        parentZoneId: e.parentZoneId,
+      })),
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Get experiments failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get experiments',
+    });
+  }
+});
+
+/**
+ * GET /api/systemzone/experiments/:id
+ * Get experiment detail
+ */
+router.get('/experiments/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ownerId = getDefaultOwnerId(req);
+    const id = getRouteParam(req.params.id);
+
+    const experiments = getExperimentsForOwner(ownerId);
+    const experiment = experiments.find(e => e.id === id);
+
+    if (!experiment) {
+      res.status(404).json({
+        success: false,
+        error: `Experiment not found: ${id}`,
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      experiment: {
+        id: experiment.id,
+        name: experiment.name,
+        description: experiment.description,
+        status: experiment.status,
+        proposalId: experiment.proposalId,
+        branchName: experiment.branchName,
+        worktreePath: experiment.worktreePath,
+        createdAt: experiment.createdAt,
+        startedAt: experiment.startedAt,
+        completedAt: experiment.completedAt,
+        result: experiment.result,
+        parentZoneId: experiment.parentZoneId,
+      },
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Get experiment failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get experiment',
+    });
+  }
+});
+
+/**
+ * POST /api/systemzone/experiments/:id/cancel
+ * Cancel an experiment
+ */
+router.post('/experiments/:id/cancel', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ownerId = getDefaultOwnerId(req);
+    const id = getRouteParam(req.params.id);
+
+    const experiments = getExperimentsForOwner(ownerId);
+    const experiment = experiments.find(e => e.id === id);
+
+    if (!experiment) {
+      res.status(404).json({
+        success: false,
+        error: `Experiment not found: ${id}`,
+      });
+      return;
+    }
+
+    if (experiment.status !== 'running' && experiment.status !== 'proposed') {
+      res.status(409).json({
+        success: false,
+        error: `Cannot cancel experiment in status: ${experiment.status}`,
+        currentStatus: experiment.status,
+      });
+      return;
+    }
+
+    experiment.status = 'cancelled';
+    experiment.completedAt = new Date();
+
+    res.json({
+      success: true,
+      message: `Experiment ${id} cancelled`,
+      experiment: {
+        id: experiment.id,
+        status: experiment.status,
+        completedAt: experiment.completedAt,
+      },
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Cancel experiment failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to cancel experiment',
+    });
+  }
+});
+
+/**
+ * DELETE /api/systemzone/experiments/:id
+ * Clean up an experiment
+ */
+router.delete('/experiments/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ownerId = getDefaultOwnerId(req);
+    const id = getRouteParam(req.params.id);
+
+    const experiments = getExperimentsForOwner(ownerId);
+    const index = experiments.findIndex(e => e.id === id);
+
+    if (index === -1) {
+      res.status(404).json({
+        success: false,
+        error: `Experiment not found: ${id}`,
+      });
+      return;
+    }
+
+    experiments.splice(index, 1);
+
+    res.json({
+      success: true,
+      message: `Experiment ${id} deleted`,
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Delete experiment failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to delete experiment',
+    });
+  }
+});
 
 interface AddSourceRequest {
   name: string;
