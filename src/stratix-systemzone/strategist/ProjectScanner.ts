@@ -287,6 +287,48 @@ export class ProjectScanner {
   }
 
   /**
+   * 执行 tsc 类型扫描（直接调用 tsc --noEmit --pretty false）
+   * 返回结构化错误列表: { file: string, line: number, message: string, code: string }[]
+   * tsc 不可用或执行失败时返回空数组（不报错）
+   */
+  async runTscScan(): Promise<Array<{ file: string; line: number; message: string; code: string }>> {
+    return new Promise((resolve) => {
+      const proc = spawn('npx', ['tsc', '--noEmit', '--pretty', 'false'], {
+        cwd: this.config.cwd,
+        shell: true,
+      });
+
+      let stdout = '';
+
+      proc.stdout?.on('data', (data) => {
+        stdout += data.toString();
+      });
+
+      proc.on('close', () => {
+        try {
+          const parsed = JSON.parse(stdout);
+          const diagnostics = Array.isArray(parsed) ? parsed : [];
+          const errors = diagnostics.map((d: { file?: string; start?: { line?: number; character?: number }; messageText?: string | { message?: string }; code?: number }) => ({
+            file: d.file ?? 'unknown',
+            line: d.start?.line ?? 0,
+            message: typeof d.messageText === 'string' ? d.messageText : (d.messageText?.message ?? ''),
+            code: String(d.code ?? ''),
+          }));
+          resolve(errors);
+        } catch {
+          // JSON parse failed or tsc not available — return empty array
+          resolve([]);
+        }
+      });
+
+      proc.on('error', () => {
+        // tsc not available — return empty array, no error
+        resolve([]);
+      });
+    });
+  }
+
+  /**
    * 执行类型检查
    * 运行: npm run typecheck (tsc --noEmit)
    */
