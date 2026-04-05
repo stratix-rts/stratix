@@ -177,8 +177,8 @@ function formatTime(iso: string): string {
 }
 .tab:hover { color: var(--ds-text-primary, #ffffff); }
 .tab.active {
-  color: var(--ds-color-primary, #00cccc);
-  background: rgba(0, 204, 204, 0.1);
+  color: var(--ds-status-info, #00cccc);
+  background: color-mix(in srgb, var(--ds-status-info, #00cccc) 10%, transparent);
 }
 .count {
   font-size: 11px;
@@ -212,14 +212,14 @@ function formatTime(iso: string): string {
   cursor: pointer;
   transition: all 0.2s;
 }
-.btn-retry:hover { border-color: var(--ds-color-primary, #00cccc); color: var(--ds-color-primary, #00cccc); }
+.btn-retry:hover { border-color: var(--ds-status-info, #00cccc); color: var(--ds-status-info, #00cccc); }
 
 /* Spinner */
 .spinner {
   width: 18px;
   height: 18px;
   border: 2px solid var(--ds-border-subtle, #1e1e2e);
-  border-top-color: var(--ds-color-primary, #00cccc);
+  border-top-color: var(--ds-status-info, #00cccc);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -314,14 +314,14 @@ function formatTime(iso: string): string {
   font-family: var(--ds-typography-fontFamily-mono, monospace);
 }
 .hash.rollback {
-  background: rgba(168, 85, 247, 0.1);
-  color: #a855f7;
+  background: color-mix(in srgb, var(--ds-color-accent, #a855f7) 10%, transparent);
+  color: var(--ds-color-accent, #a855f7);
 }
 
 .exec-error {
   margin-top: 10px;
   padding: 10px 12px;
-  background: rgba(255, 68, 68, 0.1);
+  background: color-mix(in srgb, var(--ds-status-danger, #ff4444) 10%, transparent);
   border-radius: var(--ds-radius-md, 4px);
   color: var(--ds-status-danger, #ff4444);
   font-size: var(--ds-typography-fontSize-sm, 12px);
