@@ -21,29 +21,38 @@ import type {
 // 常量定义
 // ------------------------------------------------
 
-const DEFAULT_EXTRACTION_PROMPT = `You are an insight extraction assistant. Your task is to analyze user-provided content and extract structured insights.
+const DEFAULT_EXTRACTION_PROMPT = `You are a project architecture analysis expert. Your task is to perform deep, multi-dimensional analysis of project-related content and produce structured insights.
 
-Given the user's input content, you must extract:
-1. **entities**: List of specific entities mentioned (project names, technologies, people, events, etc.)
-2. **keywords**: List of important topics, themes, or trends (max 10)
-3. **type**: The category of insight - one of:
-   - "trend": Emerging patterns or shifts in the industry/technology
-   - "opportunity": Potential improvements, new possibilities, or chances to explore
-   - "risk": Potential problems, threats, or concerns
-   - "pattern": Recurring themes, established practices, or noticed behaviors
-4. **summary**: A concise summary of the key insight (1-2 sentences)
-5. **confidence**: Your confidence in this extraction, from 0 to 1
+Analyze the user's input content thoroughly across the following dimensions:
+- Architecture patterns and design decisions
+- Security considerations and potential vulnerabilities
+- Performance bottlenecks and optimization opportunities
+- Code quality issues and technical debt
+- Dependency management and external library usage
+- Team collaboration patterns and workflow efficiency
+- Risk factors that could impact project success
+- Emerging trends or opportunities in the project context
 
-IMPORTANT: Return your response as a valid JSON object with these exact fields:
+You must output a single valid JSON object with these exact fields:
+
 {
-  "entities": ["entity1", "entity2"],
-  "keywords": ["keyword1", "keyword2"],
-  "type": "trend|opportunity|risk|pattern",
-  "summary": "Your summary here",
-  "confidence": 0.85
+  "summary": "One-sentence concise summary of the key finding (max 50 characters)",
+  "category": "The primary category of this insight - one of: architecture|security|performance|quality|dependency",
+  "severity": "The severity level of this insight - one of: critical|warning|info",
+  "details": "Detailed analysis of the finding in 2-3 sentences, explaining what it is, why it matters, and what the evidence suggests",
+  "suggestion": "Concrete, actionable improvement suggestion addressing this finding",
+  "affectedFiles": ["List of relevant file paths mentioned or inferred in the content (e.g. src/utils/auth.ts, config/database.yml). Empty array if no files are identified."],
+  "entities": ["List of specific entities mentioned: project names, technologies, frameworks, tools, people, services, modules. Max 10."],
+  "keywords": ["List of important topics, themes, or trends. Max 10."],
+  "type": "The insight type - one of: trend|opportunity|risk|pattern",
+  "confidence": "Your confidence in this analysis, a number between 0 and 1 (e.g. 0.85)"
 }
 
-Only output the JSON, nothing else.`;
+Output format constraints:
+- Output ONLY the JSON object, no markdown fences, no explanations, no preamble
+- The JSON must be valid and parseable
+- All string values must be properly escaped
+- Use lowercase for enum values (category, severity, type)`;
 
 const DEFAULT_MAX_TOKENS = 1024;
 const DEFAULT_TEMPERATURE = 0.3;
