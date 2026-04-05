@@ -484,7 +484,17 @@ describe('DiscoveryEngine', () => {
   describe('filterByCategory()', () => {
     it('filters proposals by single category', () => {
       const engine = new DiscoveryEngine(defaultConfig, mockScanner);
-      const proposals = [
+      const proposals: Array<{
+        id: string;
+        category: string;
+        target: string;
+        description: string;
+        estimatedImpact: number;
+        estimatedRisk: number;
+        estimatedEffort: 'low' | 'medium' | 'high';
+        source: 'scanner';
+        data: Record<string, unknown>;
+      }> = [
         {
           id: '1',
           category: 'test',
@@ -493,7 +503,7 @@ describe('DiscoveryEngine', () => {
           estimatedImpact: 50,
           estimatedRisk: 10,
           estimatedEffort: 'low',
-          source: 'scanner' as const,
+          source: 'scanner',
           data: {},
         },
         {
@@ -504,7 +514,7 @@ describe('DiscoveryEngine', () => {
           estimatedImpact: 50,
           estimatedRisk: 10,
           estimatedEffort: 'low',
-          source: 'scanner' as const,
+          source: 'scanner',
           data: {},
         },
         {
@@ -515,7 +525,7 @@ describe('DiscoveryEngine', () => {
           estimatedImpact: 50,
           estimatedRisk: 10,
           estimatedEffort: 'low',
-          source: 'scanner' as const,
+          source: 'scanner',
           data: {},
         },
       ];
@@ -527,11 +537,21 @@ describe('DiscoveryEngine', () => {
 
     it('filters proposals by multiple categories', () => {
       const engine = new DiscoveryEngine(defaultConfig, mockScanner);
-      const proposals = [
-        { id: '1', category: 'test', target: 'a', description: 'Test', estimatedImpact: 50, estimatedRisk: 10, estimatedEffort: 'low', source: 'scanner' as const, data: {} },
-        { id: '2', category: 'code', target: 'b', description: 'Code', estimatedImpact: 50, estimatedRisk: 10, estimatedEffort: 'low', source: 'scanner' as const, data: {} },
-        { id: '3', category: 'architecture', target: 'c', description: 'Arch', estimatedImpact: 50, estimatedRisk: 10, estimatedEffort: 'low', source: 'scanner' as const, data: {} },
-        { id: '4', category: 'performance', target: 'd', description: 'Perf', estimatedImpact: 50, estimatedRisk: 10, estimatedEffort: 'low', source: 'scanner' as const, data: {} },
+      const proposals: Array<{
+        id: string;
+        category: string;
+        target: string;
+        description: string;
+        estimatedImpact: number;
+        estimatedRisk: number;
+        estimatedEffort: 'low' | 'medium' | 'high';
+        source: 'scanner';
+        data: Record<string, unknown>;
+      }> = [
+        { id: '1', category: 'test', target: 'a', description: 'Test', estimatedImpact: 50, estimatedRisk: 10, estimatedEffort: 'low', source: 'scanner', data: {} },
+        { id: '2', category: 'code', target: 'b', description: 'Code', estimatedImpact: 50, estimatedRisk: 10, estimatedEffort: 'low', source: 'scanner', data: {} },
+        { id: '3', category: 'architecture', target: 'c', description: 'Arch', estimatedImpact: 50, estimatedRisk: 10, estimatedEffort: 'low', source: 'scanner', data: {} },
+        { id: '4', category: 'performance', target: 'd', description: 'Perf', estimatedImpact: 50, estimatedRisk: 10, estimatedEffort: 'low', source: 'scanner', data: {} },
       ];
 
       const filtered = engine.filterByCategory(proposals, ['test', 'code']);
@@ -541,9 +561,19 @@ describe('DiscoveryEngine', () => {
 
     it('returns all proposals when categories is empty', () => {
       const engine = new DiscoveryEngine(defaultConfig, mockScanner);
-      const proposals = [
-        { id: '1', category: 'test', target: 'a', description: 'Test', estimatedImpact: 50, estimatedRisk: 10, estimatedEffort: 'low', source: 'scanner' as const, data: {} },
-        { id: '2', category: 'code', target: 'b', description: 'Code', estimatedImpact: 50, estimatedRisk: 10, estimatedEffort: 'low', source: 'scanner' as const, data: {} },
+      const proposals: Array<{
+        id: string;
+        category: string;
+        target: string;
+        description: string;
+        estimatedImpact: number;
+        estimatedRisk: number;
+        estimatedEffort: 'low' | 'medium' | 'high';
+        source: 'scanner';
+        data: Record<string, unknown>;
+      }> = [
+        { id: '1', category: 'test', target: 'a', description: 'Test', estimatedImpact: 50, estimatedRisk: 10, estimatedEffort: 'low', source: 'scanner', data: {} },
+        { id: '2', category: 'code', target: 'b', description: 'Code', estimatedImpact: 50, estimatedRisk: 10, estimatedEffort: 'low', source: 'scanner', data: {} },
       ];
 
       const filtered = engine.filterByCategory(proposals, []);
@@ -552,8 +582,18 @@ describe('DiscoveryEngine', () => {
 
     it('returns empty array when no matches', () => {
       const engine = new DiscoveryEngine(defaultConfig, mockScanner);
-      const proposals = [
-        { id: '1', category: 'test', target: 'a', description: 'Test', estimatedImpact: 50, estimatedRisk: 10, estimatedEffort: 'low', source: 'scanner' as const, data: {} },
+      const proposals: Array<{
+        id: string;
+        category: string;
+        target: string;
+        description: string;
+        estimatedImpact: number;
+        estimatedRisk: number;
+        estimatedEffort: 'low' | 'medium' | 'high';
+        source: 'scanner';
+        data: Record<string, unknown>;
+      }> = [
+        { id: '1', category: 'test', target: 'a', description: 'Test', estimatedImpact: 50, estimatedRisk: 10, estimatedEffort: 'low', source: 'scanner', data: {} },
       ];
 
       const filtered = engine.filterByCategory(proposals, ['nonexistent']);

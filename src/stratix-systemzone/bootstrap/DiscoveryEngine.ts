@@ -14,7 +14,7 @@ import type {
 
 import type { ProjectScanner } from '../strategist/ProjectScanner';
 import type { ScannerResult } from '../strategist/types';
-import type { FitnessReport } from '../fitness/FitnessEvaluator';
+import type { FitnessReport } from '../fitness/types';
 
 export interface LessonEntry {
   lessonId: string;

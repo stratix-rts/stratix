@@ -107,8 +107,8 @@ describe('RegressionGuard', () => {
 
     it('should handle zero before value gracefully', () => {
       const result = guard.checkPercentage('bundleSize', 0, 1000, 5);
-      expect(result.isRegression).toBe(true); // 0 -> 1000 is considered 100% increase
-      expect(result.percentChange).toBe(100);
+      expect(result.isRegression).toBe(true); // 0 -> 1000 is considered regression
+      expect(result.delta).toBe(1000);
     });
   });
 

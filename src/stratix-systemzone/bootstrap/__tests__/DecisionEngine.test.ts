@@ -92,10 +92,17 @@ describe('DecisionEngine', () => {
     });
 
     it('escalates high-risk proposals', async () => {
+      // High risk requires: low coverage, poor history, core module, high effort, many files
       const proposal = createProposal({
+        target: 'src/stratix-gateway/core.ts',
         estimatedRisk: 80,
         estimatedImpact: 50,
-        data: { coverage: 90, successRate: 0.9, affectedFiles: ['src/utils.ts'] },
+        estimatedEffort: 'high',
+        data: {
+          coverage: 20,
+          successRate: 0.2,
+          affectedFiles: ['a.ts', 'b.ts', 'c.ts', 'd.ts', 'e.ts'],
+        },
       });
 
       const decision = await engine.decide(proposal);
@@ -367,8 +374,10 @@ describe('DecisionEngine', () => {
       expect(stats.isInCooldown).toBe(true);
     });
 
-    it('emits execution_success event', () => {
+    it('emits execution_success event', async () => {
       const proposal = createProposal({ estimatedRisk: 20, estimatedImpact: 50 });
+      await engine.decide(proposal);
+
       const handler = jest.fn();
       engine.on('execution_success', handler);
 
@@ -379,8 +388,10 @@ describe('DecisionEngine', () => {
       }));
     });
 
-    it('emits execution_failure event', () => {
+    it('emits execution_failure event', async () => {
       const proposal = createProposal({ estimatedRisk: 20, estimatedImpact: 50 });
+      await engine.decide(proposal);
+
       const handler = jest.fn();
       engine.on('execution_failure', handler);
 
