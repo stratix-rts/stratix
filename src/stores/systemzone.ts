@@ -558,11 +558,16 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
     szLog.info('store', 'System Zone 控制台初始化');
 
     try {
-      await Promise.all([
+      // allSettled: 一个失败不影响其他请求的数据
+      const results = await Promise.allSettled([
         fetchStatus(),
         fetchInsights(),
         fetchProposals(),
       ]);
+      const failures = results.filter(r => r.status === 'rejected');
+      if (failures.length > 0) {
+        szLog.warn('store', `初始化部分失败: ${failures.length}/${results.length}`);
+      }
 
       // 注册自动修复动作
       autoHeal.registerHealAction('reconnect', async () => {
