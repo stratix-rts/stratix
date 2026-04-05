@@ -4,8 +4,8 @@
  * 提供统一的 loading / error / empty / retry 逻辑
  */
 import { computed, type Ref } from 'vue';
-import type { PanelKey } from '../../../../stores/systemzone';
-import { useSystemZoneStore } from '../../../../stores/systemzone';
+import type { PanelKey } from '../../../stores/systemzone';
+import { useSystemZoneStore } from '../../../stores/systemzone';
 
 export function usePanelState(panelKey: PanelKey, dataRef: Ref<any[] | null | undefined>) {
   const store = useSystemZoneStore();
