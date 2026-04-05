@@ -1,0 +1,22 @@
+{
+  "eslint.validate": ["typescript"],
+  "eslint.run": "onSave",
+  "eslint.workingDirectories": ["."],
+  "eslint.options": {
+    "max-old-space-size": 4096,
+    "concurrency": 2,
+    "cache": true
+  },
+  "eslint.lintTask.enable": false,
+  "eslint.probe": ["typescript"],
+
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+
+  "jest.autoRun": "off",
+  "jest.outputConfig": "off",
+
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  }
+}

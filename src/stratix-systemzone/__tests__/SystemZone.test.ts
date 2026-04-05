@@ -51,6 +51,10 @@ const mockProc = new MockChildProcess();
 
 jest.mock('child_process', () => ({
   spawn: jest.fn(() => mockProc),
+  exec: jest.fn((cmd, opts, cb) => {
+    if (typeof opts === 'function') { cb = opts; }
+    if (cb) cb(null, { stdout: '', stderr: '' });
+  }),
 }));
 
 // -------------------------------------------------------------------------

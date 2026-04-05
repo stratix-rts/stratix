@@ -35,6 +35,8 @@ module.exports = {
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'html'],
   verbose: true,
+  // Limit workers: avoid eating all CPU cores (CI=50%, local=2)
+  maxWorkers: process.env.CI ? '50%' : 2,
   testTimeout: 15000,
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',

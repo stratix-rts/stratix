@@ -29,6 +29,9 @@ export interface GuardianValidationResult {
   reasons: string[];
   alerts: Alert[];
   circuitTripped?: boolean;
+  pathValidation?: {
+    pathType: 'forbidden' | 'readonly' | 'allowed';
+  };
 }
 
 /**
@@ -119,6 +122,7 @@ export class Guardian {
         valid: false,
         reasons,
         alerts,
+        pathValidation: { pathType: pathResult.pathType ?? 'forbidden' },
       };
     }
 
@@ -133,6 +137,7 @@ export class Guardian {
       valid: true,
       reasons,
       alerts,
+      pathValidation: { pathType: pathResult.pathType ?? 'allowed' },
     };
   }
 

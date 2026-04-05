@@ -3,14 +3,14 @@
 // Phase 2: Git Worktree 隔离执行
 // ============================================
 
-import { exec } from 'child_process';
+import { exec as execCallback } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { SandboxConfig, DEFAULT_SANDBOX_CONFIG } from './types';
 
-const execAsync = promisify(exec);
+const execAsync = promisify(execCallback);
 
 export interface SandboxInfo {
   proposalId: string;
@@ -121,34 +121,54 @@ export class Sandbox {
       this.activeOperations.delete(proposalId);
     }
 
+    let lastError: Error | undefined;
+    let worktreeRemoved = false;
+
+    // First try to remove the worktree
     try {
-      // 移除 worktree
       await execAsync(`git worktree remove "${sandbox.worktreePath}" --force`, {
         cwd: this.config.repoPath,
       });
-
-      // 删除分支（忽略错误，分支可能已合并）
-      try {
-        await execAsync(`git branch -D "${sandbox.branchName}"`, {
-          cwd: this.config.repoPath,
-        });
-      } catch {
-        // Branch may already be deleted or merged
-      }
-
-      // 清理本地目录
-      try {
-        await fs.rm(sandbox.worktreePath, { recursive: true, force: true });
-      } catch {
-        // Directory may already be removed
-      }
+      worktreeRemoved = true;
     } catch (err) {
-      const error = new Error(`Failed to destroy worktree: ${(err as Error).message}`) as SandboxError;
+      lastError = err as Error;
+      // Worktree removal failed, will try to prune later
+    }
+
+    // Always try to delete the branch - even if worktree removal failed,
+    // the branch might still exist and need deletion
+    try {
+      await execAsync(`git branch -D "${sandbox.branchName}"`, {
+        cwd: this.config.repoPath,
+      });
+    } catch {
+      // Branch may already be deleted or merged - ignore
+    }
+
+    // If worktree removal failed, try git worktree prune as fallback
+    if (!worktreeRemoved) {
+      try {
+        await execAsync('git worktree prune', { cwd: this.config.repoPath });
+      } catch {
+        // ignore prune errors
+      }
+    }
+
+    // Clean up local directory
+    try {
+      await fs.rm(sandbox.worktreePath, { recursive: true, force: true });
+    } catch {
+      // Directory may already be removed - ignore
+    }
+
+    // If worktree removal failed and we had an error, throw it
+    if (!worktreeRemoved && lastError) {
+      const error = new Error(`Failed to destroy worktree: ${lastError.message}`) as SandboxError;
       error.code = 'WORKTREE_CLEANUP_FAILED';
       throw error;
-    } finally {
-      this.sandboxes.delete(proposalId);
     }
+
+    this.sandboxes.delete(proposalId);
   }
 
   /**

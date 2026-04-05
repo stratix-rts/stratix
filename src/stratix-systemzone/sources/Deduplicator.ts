@@ -60,7 +60,7 @@ const CATEGORY_DEFINITIONS: CategoryDefinition[] = [
     name: 'feature',
     keywords: [
       'feature', 'new', 'add', 'introduce', 'implement', 'support', 'enhance',
-      'improve', 'upgrade', 'update', 'introduce', 'launch', 'release',
+      'improve', 'upgrade', 'launch', 'release',
       'announce', 'debut', 'expand', 'extend', 'integrate', 'onboarding',
       'user experience', 'ux', 'ui', 'design', 'widget', 'component',
     ],
@@ -329,7 +329,7 @@ export class Deduplicator {
     // Split on non-alphanumeric characters and filter empty strings
     return text
       .split(/[^a-zA-Z0-9]+/)
-      .filter(token => token.length > 1);
+      .filter(token => token.length >= 1);
   }
 
   /**
@@ -346,10 +346,15 @@ export class Deduplicator {
     for (const category of CATEGORY_DEFINITIONS) {
       if (category.name === 'other') continue;
 
-      const score = this.calculateCategoryScore(combinedText, category);
+      const { score, matchCount } = this.calculateCategoryScore(combinedText, category);
 
-      if (score > bestScore) {
-        bestScore = score;
+      // Boost score if category name appears in the title
+      const titleLower = input.title.toLowerCase();
+      const categoryBoost = titleLower.includes(category.name) ? 0.1 : 0;
+      const finalScore = score + categoryBoost;
+
+      if (finalScore > bestScore) {
+        bestScore = finalScore;
         bestCategory = category.name;
       }
     }
@@ -370,26 +375,38 @@ export class Deduplicator {
   /**
    * Calculate category match score based on keyword frequency
    */
-  private calculateCategoryScore(text: string, category: CategoryDefinition): number {
-    if (category.keywords.length === 0) return 0;
+  private calculateCategoryScore(text: string, category: CategoryDefinition): { score: number; matchCount: number } {
+    if (category.keywords.length === 0) return { score: 0, matchCount: 0 };
 
-    let matchCount = 0;
-    let totalWeight = 0;
+    const lowerText = text.toLowerCase();
+    let matchedKeywords = 0;
 
     for (const keyword of category.keywords) {
-      totalWeight += category.weight;
+      const lowerKeyword = keyword.toLowerCase().trim();
+      if (!lowerKeyword) continue;
 
-      // Case-insensitive keyword search
-      const regex = new RegExp(`\\b${this.escapeRegex(keyword.toLowerCase())}\\b`, 'gi');
-      const matches = text.match(regex);
+      // Multi-word keywords use includes, single-word use word boundary
+      let found = false;
+      if (lowerKeyword.includes(' ')) {
+        found = lowerText.includes(lowerKeyword);
+      } else {
+        const regex = new RegExp(`\\b${this.escapeRegex(lowerKeyword)}\\b`, 'i');
+        found = regex.test(lowerText);
+      }
 
-      if (matches) {
-        matchCount += matches.length * category.weight;
+      if (found) {
+        matchedKeywords++;
       }
     }
 
-    // Normalize score to 0-1 range
-    return totalWeight > 0 ? Math.min(1, matchCount / totalWeight) : 0;
+    if (matchedKeywords === 0) return { score: 0, matchCount: 0 };
+
+    // Score is based on absolute number of matched keywords
+    // 1 match = 0.3, 2 = 0.5, 3 = 0.7, 4+ = 0.9
+    // This avoids bias from category keyword list length
+    const score = Math.min(0.95, 0.1 + matchedKeywords * 0.2);
+
+    return { score, matchCount: matchedKeywords };
   }
 
   /**

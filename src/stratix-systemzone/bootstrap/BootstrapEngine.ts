@@ -194,7 +194,8 @@ export class BootstrapEngine extends EventEmitter {
       if (approvedProposals.length > 0) {
         this.setPhase('executing');
         const executionResults = await this.runExecution(approvedProposals);
-        result.executed = executionResults.filter(r => r.success).length;
+        result.executed = executionResults.length;
+        result.succeeded = executionResults.filter(r => r.success).length;
         result.failed = executionResults.filter(r => !r.success).length;
 
         // Phase 4: Evaluation
@@ -213,10 +214,12 @@ export class BootstrapEngine extends EventEmitter {
       await this.runLearning();
 
       // Update success/failure counts
-      if (result.succeeded > result.failed) {
+      // Only count as success if there were executions and more succeeded than failed
+      // No executions means neutral (not failure)
+      if (result.executed > 0 && result.succeeded >= result.executed) {
         this.state.successCount++;
         this.state.consecutiveFailures = 0;
-      } else {
+      } else if (result.executed > 0 && result.succeeded < result.executed) {
         this.state.failureCount++;
         this.state.consecutiveFailures++;
       }
@@ -431,9 +434,9 @@ export class BootstrapEngine extends EventEmitter {
 
         if (executionResult.success) {
           results.push({ proposalId: proposal.id, success: true, impact: null });
+          this.decisionEngine.recordExecutionResult(proposal.id, true);
         } else {
           results.push({ proposalId: proposal.id, success: false, impact: null });
-          // Record failure for circuit breaker
           this.decisionEngine.recordExecutionResult(proposal.id, false);
         }
       } catch (error) {

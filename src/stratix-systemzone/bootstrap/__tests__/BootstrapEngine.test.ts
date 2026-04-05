@@ -497,7 +497,8 @@ describe('BootstrapEngine', () => {
 
       const result = await engine.runCycle();
 
-      expect(result.executed).toBe(0);
+      // Execution failed - it was attempted but didn't succeed
+      expect(result.executed).toBe(1);
       expect(result.failed).toBe(1);
     });
 
@@ -732,7 +733,9 @@ describe('BootstrapEngine', () => {
 
       const result = await engine.runCycle();
 
-      expect(result.executed).toBe(0);
+      // Guardian blocked the proposal - it was attempted but failed
+      expect(result.executed).toBe(1);
+      expect(result.failed).toBe(1);
     });
   });
 
@@ -775,11 +778,17 @@ describe('BootstrapEngine', () => {
   });
 
   describe('impact evaluator integration', () => {
-    it('captures before and after metrics', async () => {
-      mockDiscoveryEngine.discover.mockResolvedValue(createMockDiscoveryResult([]));
+    it('captures before and after metrics during execution', async () => {
+      // Need approved proposals to trigger execution
+      const proposals = [createMockProposal()];
+      mockDiscoveryEngine.discover.mockResolvedValue(createMockDiscoveryResult(proposals));
+      mockDecisionEngine.batchDecide.mockResolvedValue([
+        createMockDecision(proposals[0].id, { action: 'approve' }),
+      ]);
 
       await engine.runCycle();
 
+      // captureBefore/After are called during execution phase
       expect(mockImpactEvaluator.captureBefore).toHaveBeenCalled();
       expect(mockImpactEvaluator.captureAfter).toHaveBeenCalled();
     });
@@ -861,11 +870,17 @@ describe('BootstrapEngine', () => {
       expect(state.consecutiveFailures).toBeGreaterThanOrEqual(1);
     });
 
-    it('resets consecutive failures on success', async () => {
+    it('resets consecutive failures when cycle completes without throwing', async () => {
+      // First, cause a failure
       mockDiscoveryEngine.discover.mockRejectedValue(new Error('Discovery failed'));
       await engine.runCycle();
 
-      mockDiscoveryEngine.discover.mockResolvedValue(createMockDiscoveryResult([]));
+      // Then succeed with a cycle that has at least one successful execution
+      const proposals = [createMockProposal()];
+      mockDiscoveryEngine.discover.mockResolvedValue(createMockDiscoveryResult(proposals));
+      mockDecisionEngine.batchDecide.mockResolvedValue([
+        createMockDecision(proposals[0].id, { action: 'approve' }),
+      ]);
       await engine.runCycle();
 
       const state = engine.getState();
@@ -875,8 +890,13 @@ describe('BootstrapEngine', () => {
   });
 
   describe('success/failure counting', () => {
-    it('increments success count on successful cycle', async () => {
-      mockDiscoveryEngine.discover.mockResolvedValue(createMockDiscoveryResult([]));
+    it('increments success count on cycle with successful executions', async () => {
+      // Need at least one successful execution to count as success
+      const proposals = [createMockProposal()];
+      mockDiscoveryEngine.discover.mockResolvedValue(createMockDiscoveryResult(proposals));
+      mockDecisionEngine.batchDecide.mockResolvedValue([
+        createMockDecision(proposals[0].id, { action: 'approve' }),
+      ]);
 
       await engine.runCycle();
 

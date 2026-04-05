@@ -12,6 +12,72 @@ import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
+/**
+ * Clean up any leftover git worktrees and branches for sandbox tests
+ */
+async function cleanupSandboxTestArtifacts(repoPath: string, worktreeBaseDir: string): Promise<void> {
+  // Prune stale worktree entries (where directory no longer exists)
+  try {
+    await execAsync('git worktree prune', { cwd: repoPath });
+  } catch {
+    // ignore
+  }
+
+  // Find and remove any worktrees under the test base dir
+  try {
+    const { stdout } = await execAsync('git worktree list --porcelain', { cwd: repoPath });
+    const lines = stdout.split('\n');
+    let currentPath = '';
+    for (const line of lines) {
+      if (line.startsWith('worktree ')) {
+        currentPath = line.slice(9).trim();
+      } else if (line.startsWith('branch ') && currentPath.startsWith(worktreeBaseDir)) {
+        const branchName = line.slice(7).trim();
+        // Remove the worktree first
+        try {
+          await execAsync(`git worktree remove "${currentPath}" --force`, { cwd: repoPath });
+        } catch {
+          // worktree remove may fail, try pruning
+          try {
+            await execAsync('git worktree prune', { cwd: repoPath });
+          } catch {
+            // ignore
+          }
+        }
+        // Delete the branch
+        try {
+          await execAsync(`git branch -D "${branchName}"`, { cwd: repoPath });
+        } catch {
+          // ignore
+        }
+        currentPath = '';
+      } else if (line.trim() === '') {
+        currentPath = '';
+      }
+    }
+  } catch {
+    // git worktree list may fail if no worktrees
+  }
+
+  // Also clean up by branch pattern (fallback) - match ALL sandbox/* branches
+  const sandboxBranchTest = /^sandbox\//;
+  try {
+    const { stdout: branchList } = await execAsync('git branch --list', { cwd: repoPath });
+    const branches = branchList.split('\n').map(b => b.trim()).filter(Boolean);
+    for (const branch of branches) {
+      if (sandboxBranchTest.test(branch)) {
+        try {
+          await execAsync(`git branch -D "${branch}"`, { cwd: repoPath });
+        } catch {
+          // ignore
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+
 describe('Sandbox', () => {
   const testWorktreeDir = '/tmp/stratix-sandbox-test';
   const stratixRepoPath = '/Users/kingj/code/Stratix';
@@ -27,7 +93,9 @@ describe('Sandbox', () => {
 
   beforeEach(async () => {
     sandbox = new Sandbox(testConfig);
-    // Clean up test directory before each test
+    // Clean up any leftover worktrees/branches from previous tests BEFORE each test
+    await cleanupSandboxTestArtifacts(stratixRepoPath, testWorktreeDir);
+    // Also clean up test directory
     try {
       await fs.rm(testWorktreeDir, { recursive: true, force: true });
     } catch {
@@ -37,8 +105,10 @@ describe('Sandbox', () => {
   });
 
   afterEach(async () => {
-    // Clean up all sandboxes
+    // Clean up all sandboxes tracked by the instance
     await sandbox.destroyAllSandboxes();
+    // Force cleanup any remaining git artifacts (in case destroySandbox had issues)
+    await cleanupSandboxTestArtifacts(stratixRepoPath, testWorktreeDir);
     // Clean up test directory
     try {
       await fs.rm(testWorktreeDir, { recursive: true, force: true });
