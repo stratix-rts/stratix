@@ -23,40 +23,38 @@ const DEFAULT_TEMPERATURE = 0.3;
 const DEFAULT_TIMEOUT_MS = 30000;
 
 // Enrich prompt for single proposal enhancement
-const ENRICH_PROPOSAL_PROMPT = `You are a code improvement expert. Given a proposal to improve code quality, and the relevant source code, provide SPECIFIC and ACTIONABLE improvement suggestions.
+const ENRICH_PROPOSAL_PROMPT = `You are a code review expert with deep knowledge of software engineering best practices, design patterns, and TypeScript/Node.js idioms.
 
-Proposal:
-- Type: {proposalType}
-- Title: {title}
-- Description: {description}
-- Target file: {targetFile}
+## Proposal to Improve
+- **Type**: {proposalType}
+- **Title**: {title}
+- **Description**: {description}
+- **Target file**: {targetFile}
 
-Source code to analyze:
+## Source Code Context
 \`\`\`{language}
 {sourceCode}
 \`\`\`
 
-Your task:
-1. Analyze the source code in context of the proposal
-2. Provide 2-4 SPECIFIC improvement suggestions (not generic advice)
-3. For each suggestion, include:
-   - What exactly should be changed
-   - Why this change improves the code
-   - Estimated risk level (low/medium/high)
-4. Return your response as JSON with this exact format:
+## Your Task
+Analyze the source code in the context of the proposal above and generate a concrete improvement plan.
+
+## Output Requirements
+Return ONLY a JSON object with this exact structure:
 {
-  "suggestions": [
-    {
-      "action": "Specific action to take",
-      "reason": "Why this improves the code",
-      "risk": "low|medium|high",
-      "confidence": 0.0-1.0
-    }
-  ],
-  "enhancedDescription": "A more specific description that includes what exactly should be done",
-  "estimatedCost": 1-10,
-  "estimatedBenefit": 1-10
+  "title": "改进标题（简洁，描述核心改动）",
+  "description": "详细描述，包括改了什么、为什么改、预期效果",
+  "codeSuggestion": "具体的代码修改建议，包含实际代码片段（可用 ... 表示省略）",
+  "riskLevel": "high|medium|low",
+  "effortEstimate": "small|medium|large",
+  "reasoning": "深入分析：为什么建议这样改，权衡利弊，当前实现的问题根源"
 }
+
+## Guidelines
+- **Be specific**: 避免泛泛而谈，必须基于源码上下文给出可操作的建议
+- **Code suggestion**: 给出具体代码片段或修改方向，不要只说"应该重构"
+- **Risk assessment**: high=可能破坏功能，medium=有风险但可控，low=安全改动
+- **Effort**: small=1-2处修改，medium=涉及多个文件或较复杂，large=需要大量重写
 
 Only output JSON, nothing else.`;
 
@@ -434,12 +432,45 @@ export class StrategistLLMEnhancer {
       const jsonStr = this.extractJson(content);
       const parsed = JSON.parse(jsonStr);
 
+      // Map new format to EnrichResult fields
+      const title = parsed.title ?? '';
+      const description = parsed.description ?? '';
+      const codeSuggestion = parsed.codeSuggestion ?? '';
+      const reasoning = parsed.reasoning ?? '';
+
+      // Build enhancedDescription combining title, description and code suggestion
+      let enhancedDescription = title ? `## ${title}\n\n${description}` : description;
+      if (codeSuggestion) {
+        enhancedDescription += `\n\n\`\`\`\n${codeSuggestion}\n\`\`\``;
+      }
+      if (reasoning) {
+        enhancedDescription += `\n\n**Reasoning**: ${reasoning}`;
+      }
+
+      // Map effortEstimate to cost (1-10 scale)
+      const effortMap: Record<string, number> = { small: 2, medium: 5, large: 8 };
+      const estimatedCost = parsed.effortEstimate
+        ? effortMap[parsed.effortEstimate.toLowerCase()] ?? 5
+        : parsed.estimatedCost;
+
+      // Map riskLevel to benefit inversely (high risk = lower benefit)
+      const riskMap: Record<string, number> = { low: 8, medium: 5, high: 3 };
+      const estimatedBenefit = parsed.riskLevel
+        ? riskMap[parsed.riskLevel.toLowerCase()] ?? 5
+        : parsed.estimatedBenefit;
+
+      // Convert riskLevel to confidence
+      const confidenceMap: Record<string, number> = { low: 0.9, medium: 0.7, high: 0.5 };
+      const confidence = parsed.riskLevel
+        ? confidenceMap[parsed.riskLevel.toLowerCase()] ?? 0.7
+        : 0.7;
+
       return {
         success: true,
-        suggestions: parsed.suggestions ?? [],
-        enhancedDescription: parsed.enhancedDescription,
-        estimatedCost: parsed.estimatedCost,
-        estimatedBenefit: parsed.estimatedBenefit,
+        suggestions: [{ action: codeSuggestion || title, reason: reasoning, risk: (parsed.riskLevel ?? 'medium') as 'low' | 'medium' | 'high', confidence }],
+        enhancedDescription,
+        estimatedCost,
+        estimatedBenefit,
       };
     } catch {
       return { success: false, error: 'Failed to parse LLM response' };
