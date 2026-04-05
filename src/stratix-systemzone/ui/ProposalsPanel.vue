@@ -15,16 +15,26 @@
       </div>
     </div>
 
-    <div v-if="store.loading" class="loading">
+    <!-- Loading -->
+    <div v-if="isLoading" class="panel-state loading">
       <span class="spinner"></span>
-      加载中...
+      <span>加载中...</span>
     </div>
 
-    <div v-else-if="filteredProposals.length === 0" class="empty-state">
+    <!-- Error -->
+    <div v-else-if="panelError" class="panel-state error">
+      <span class="error-icon">⚠️</span>
+      <span class="error-msg">{{ panelError }}</span>
+      <button class="btn btn-retry" @click="retry">重试</button>
+    </div>
+
+    <!-- Empty -->
+    <div v-else-if="isEmpty" class="panel-state empty">
       <span class="empty-icon">📋</span>
       <p>暂无提案</p>
     </div>
 
+    <!-- Content -->
     <div v-else class="proposals-list">
       <div
         v-for="proposal in filteredProposals"
@@ -103,8 +113,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, type Ref } from 'vue';
 import { useSystemZoneStore } from '../../stores/systemzone';
+import { usePanelState } from './composables/usePanelState';
+import { useAutoRefresh } from './composables/useAutoRefresh';
 import RiskTag from './components/RiskTag.vue';
 
 const store = useSystemZoneStore();
@@ -123,6 +135,10 @@ const filteredProposals = computed(() => {
   if (activeTab.value === 'all') return store.proposals;
   return store.proposals.filter(p => p.status === activeTab.value);
 });
+const proposalsRef = computed(() => store.proposals) as Ref<any[]>;
+
+const { isLoading, panelError, isEmpty, retry } = usePanelState('proposals', proposalsRef);
+useAutoRefresh(() => store.fetchProposals(), { interval: 60000 });
 
 function getTabCount(status: string): number {
   if (status === 'all') return store.proposals.length;
@@ -166,7 +182,7 @@ function formatTime(iso: string): string {
 }
 
 .panel-header {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--ds-border-subtle, rgba(255, 255, 255, 0.1));
   padding-bottom: 8px;
 }
 
@@ -182,63 +198,95 @@ function formatTime(iso: string): string {
   padding: 6px 14px;
   background: transparent;
   border: none;
-  border-radius: 4px 4px 0 0;
-  color: #94a3b8;
+  border-radius: var(--ds-radius-sm, 4px) var(--ds-radius-sm, 4px) 0 0;
+  color: var(--ds-text-secondary, #94a3b8);
   font-size: 13px;
   cursor: pointer;
   transition: all 0.2s;
 }
 .tab:hover {
-  color: #e2e8f0;
+  color: var(--ds-text-primary, #e2e8f0);
 }
 .tab.active {
-  color: #3b82f6;
-  background: rgba(59, 130, 246, 0.1);
+  color: var(--ds-status-info, #3b82f6);
+  background: color-mix(in srgb, var(--ds-status-info, #3b82f6) 10%, transparent);
 }
 .count {
   font-size: 11px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--ds-bg-overlay, rgba(255, 255, 255, 0.1));
   padding: 1px 6px;
   border-radius: 10px;
 }
 
-.loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 40px;
-  color: #94a3b8;
-}
-
-.spinner {
-  width: 18px;
-  height: 18px;
-  border: 2px solid rgba(255, 255, 255, 0.1);
-  border-top-color: #3b82f6;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-.spinner.small {
-  width: 14px;
-  height: 14px;
-}
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.empty-state {
+/* Shared panel states */
+.panel-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 60px 20px;
-  color: #64748b;
   text-align: center;
+  color: var(--ds-text-muted, #64748b);
+  gap: 10px;
 }
-.empty-icon {
-  font-size: 40px;
-  margin-bottom: 12px;
+.panel-state.loading {
+  flex-direction: row;
+  padding: 40px;
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--ds-border-subtle, rgba(255, 255, 255, 0.1));
+  border-top-color: var(--ds-status-info, #3b82f6);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.spinner.small { width: 14px; height: 14px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.error-icon { font-size: 28px; }
+.error-msg { color: var(--ds-status-danger, #ef4444); font-size: 13px; }
+.empty-icon { font-size: 40px; margin-bottom: 4px; }
+
+.btn {
+  padding: 6px 14px;
+  border-radius: var(--ds-radius-sm, 5px);
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-retry {
+  background: var(--ds-bg-overlay, rgba(255, 255, 255, 0.08));
+  color: var(--ds-text-secondary, #94a3b8);
+  padding: 4px 12px;
+  font-size: 12px;
+}
+.btn-approve {
+  background: color-mix(in srgb, var(--ds-status-success, #22c55e) 15%, transparent);
+  color: var(--ds-status-success, #22c55e);
+}
+.btn-approve:hover:not(:disabled) { opacity: 0.85; }
+.btn-reject {
+  background: color-mix(in srgb, var(--ds-status-danger, #ef4444) 15%, transparent);
+  color: var(--ds-status-danger, #ef4444);
+}
+.btn-reject:hover:not(:disabled) { opacity: 0.85; }
+.btn-execute {
+  background: var(--ds-status-info, #3b82f6);
+  color: var(--ds-bg-base, #fff);
+}
+.btn-execute:hover:not(:disabled) { opacity: 0.9; }
+
+.executing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ds-status-info, #3b82f6);
+  font-size: 13px;
 }
 
 .proposals-list {
@@ -249,20 +297,17 @@ function formatTime(iso: string): string {
 }
 
 .proposal-card {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
+  background: var(--ds-bg-sunken, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--ds-border-subtle, rgba(255, 255, 255, 0.06));
+  border-radius: var(--ds-radius-md, 8px);
   overflow: hidden;
   transition: border-color 0.2s;
 }
 .proposal-card.expanded {
-  border-color: rgba(59, 130, 246, 0.3);
+  border-color: color-mix(in srgb, var(--ds-status-info, #3b82f6) 30%, transparent);
 }
 
-.card-main {
-  padding: 14px 16px;
-  cursor: pointer;
-}
+.card-main { padding: 14px 16px; cursor: pointer; }
 
 .card-header {
   display: flex;
@@ -276,26 +321,22 @@ function formatTime(iso: string): string {
   margin: 0;
   font-size: 15px;
   font-weight: 600;
-  color: #e2e8f0;
+  color: var(--ds-text-primary, #e2e8f0);
   flex: 1;
 }
 
-.card-tags {
-  display: flex;
-  gap: 6px;
-  flex-shrink: 0;
-}
+.card-tags { display: flex; gap: 6px; flex-shrink: 0; }
 
 .type-tag {
   font-size: 11px;
-  color: #94a3b8;
-  background: rgba(255, 255, 255, 0.06);
+  color: var(--ds-text-secondary, #94a3b8);
+  background: var(--ds-bg-overlay, rgba(255, 255, 255, 0.06));
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm, 4px);
 }
 
 .card-desc {
-  color: #94a3b8;
+  color: var(--ds-text-secondary, #94a3b8);
   font-size: 13px;
   line-height: 1.5;
   margin: 0 0 10px;
@@ -305,83 +346,33 @@ function formatTime(iso: string): string {
   display: flex;
   justify-content: space-between;
   font-size: 12px;
-  color: #64748b;
+  color: var(--ds-text-muted, #64748b);
   margin-bottom: 10px;
 }
 
-.card-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.btn {
-  padding: 6px 14px;
-  border-radius: 5px;
-  font-size: 13px;
-  font-weight: 500;
-  border: none;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.btn-approve {
-  background: rgba(34, 197, 94, 0.15);
-  color: #22c55e;
-}
-.btn-approve:hover:not(:disabled) {
-  background: rgba(34, 197, 94, 0.25);
-}
-.btn-reject {
-  background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
-}
-.btn-reject:hover:not(:disabled) {
-  background: rgba(239, 68, 68, 0.25);
-}
-.btn-execute {
-  background: #3b82f6;
-  color: #fff;
-}
-.btn-execute:hover:not(:disabled) {
-  background: #2563eb;
-}
-
-.executing-indicator {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #3b82f6;
-  font-size: 13px;
-}
+.card-actions { display: flex; gap: 8px; }
 
 .card-detail {
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid var(--ds-border-subtle, rgba(255, 255, 255, 0.06));
   padding: 16px;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--ds-bg-sunken, rgba(0, 0, 0, 0.2));
 }
 
-.detail-section {
-  margin-bottom: 16px;
-}
-.detail-section:last-child {
-  margin-bottom: 0;
-}
+.detail-section { margin-bottom: 16px; }
+.detail-section:last-child { margin-bottom: 0; }
 
 .detail-section h4 {
   margin: 0 0 8px;
   font-size: 12px;
   font-weight: 600;
-  color: #94a3b8;
+  color: var(--ds-text-secondary, #94a3b8);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .detail-section p {
   margin: 0;
-  color: #e2e8f0;
+  color: var(--ds-text-primary, #e2e8f0);
   font-size: 13px;
   line-height: 1.6;
 }
@@ -389,34 +380,25 @@ function formatTime(iso: string): string {
 .file-list {
   margin: 0;
   padding-left: 20px;
-  color: #e2e8f0;
+  color: var(--ds-text-primary, #e2e8f0);
   font-size: 13px;
 }
 
 .guardian-result {
   padding: 10px 12px;
-  border-radius: 6px;
+  border-radius: var(--ds-radius-sm, 6px);
   font-size: 13px;
 }
 .guardian-result.valid {
-  background: rgba(34, 197, 94, 0.1);
-  color: #22c55e;
+  background: color-mix(in srgb, var(--ds-status-success, #22c55e) 10%, transparent);
+  color: var(--ds-status-success, #22c55e);
 }
 .guardian-result.invalid {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  background: color-mix(in srgb, var(--ds-status-danger, #ef4444) 10%, transparent);
+  color: var(--ds-status-danger, #ef4444);
 }
-.guardian-status {
-  font-weight: 600;
-  display: block;
-  margin-bottom: 4px;
-}
-.guardian-result ul {
-  margin: 4px 0 0;
-  padding-left: 16px;
-}
+.guardian-status { font-weight: 600; display: block; margin-bottom: 4px; }
+.guardian-result ul { margin: 4px 0 0; padding-left: 16px; }
 
-.error-text {
-  color: #ef4444 !important;
-}
+.error-text { color: var(--ds-status-danger, #ef4444) !important; }
 </style>

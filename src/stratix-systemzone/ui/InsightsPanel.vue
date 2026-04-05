@@ -34,16 +34,26 @@
       </div>
     </div>
 
-    <div v-if="store.loading" class="loading">
+    <!-- Loading -->
+    <div v-if="isLoading" class="panel-state loading">
       <span class="spinner"></span>
-      加载中...
+      <span>加载中...</span>
     </div>
 
-    <div v-else-if="filteredInsights.length === 0" class="empty-state">
+    <!-- Error -->
+    <div v-else-if="panelError" class="panel-state error">
+      <span class="error-icon">⚠️</span>
+      <span class="error-msg">{{ panelError }}</span>
+      <button class="btn btn-retry" @click="retry">重试</button>
+    </div>
+
+    <!-- Empty -->
+    <div v-else-if="isEmpty" class="panel-state empty">
       <span class="empty-icon">📭</span>
       <p>暂无洞察数据</p>
     </div>
 
+    <!-- Content -->
     <div v-else class="insights-list">
       <div
         v-for="insight in filteredInsights"
@@ -72,8 +82,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, type Ref } from 'vue';
 import { useSystemZoneStore } from '../../stores/systemzone';
+import { usePanelState } from './composables/usePanelState';
+import { useAutoRefresh } from './composables/useAutoRefresh';
 import ConfidenceBar from './components/ConfidenceBar.vue';
 
 const store = useSystemZoneStore();
@@ -83,6 +95,10 @@ const filter = ref<'archived' | 'unarchived'>('unarchived');
 const filteredInsights = computed(() => {
   return store.insights.filter(i => filter.value === 'archived' ? i.archived : !i.archived);
 });
+const insightsRef = computed(() => store.insights) as Ref<any[]>;
+
+const { isLoading, panelError, isEmpty, retry } = usePanelState('insights', insightsRef);
+useAutoRefresh(() => store.fetchInsights(), { interval: 60000 });
 
 const unarchivedCount = computed(() => store.insights.filter(i => !i.archived).length);
 const archivedCount = computed(() => store.insights.filter(i => i.archived).length);
@@ -134,24 +150,24 @@ function formatTime(iso: string): string {
 
 .input {
   flex: 1;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
+  background: var(--ds-bg-sunken, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--ds-border-subtle, rgba(255, 255, 255, 0.1));
+  border-radius: var(--ds-radius-sm, 6px);
   padding: 8px 12px;
-  color: #e2e8f0;
+  color: var(--ds-text-primary, #e2e8f0);
   font-size: 14px;
 }
 .input:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--ds-status-info, #3b82f6);
 }
 .input::placeholder {
-  color: #64748b;
+  color: var(--ds-text-muted, #64748b);
 }
 
 .btn {
   padding: 8px 16px;
-  border-radius: 6px;
+  border-radius: var(--ds-radius-sm, 6px);
   font-size: 14px;
   font-weight: 500;
   border: none;
@@ -163,24 +179,33 @@ function formatTime(iso: string): string {
   cursor: not-allowed;
 }
 .btn-primary {
-  background: #3b82f6;
-  color: #fff;
+  background: var(--ds-status-info, #3b82f6);
+  color: var(--ds-bg-base, #fff);
 }
 .btn-primary:hover:not(:disabled) {
-  background: #2563eb;
+  opacity: 0.9;
 }
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.08);
-  color: #e2e8f0;
+  background: var(--ds-bg-overlay, rgba(255, 255, 255, 0.08));
+  color: var(--ds-text-primary, #e2e8f0);
 }
 .btn-secondary:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.12);
+  opacity: 0.9;
+}
+.btn-retry {
+  background: var(--ds-bg-overlay, rgba(255, 255, 255, 0.08));
+  color: var(--ds-text-secondary, #94a3b8);
+  padding: 4px 12px;
+  font-size: 12px;
+}
+.btn-retry:hover {
+  color: var(--ds-text-primary, #e2e8f0);
 }
 
 .tabs {
   display: flex;
   gap: 4px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--ds-border-subtle, rgba(255, 255, 255, 0.1));
   padding-bottom: 8px;
 }
 
@@ -188,34 +213,41 @@ function formatTime(iso: string): string {
   padding: 6px 14px;
   background: transparent;
   border: none;
-  border-radius: 4px 4px 0 0;
-  color: #94a3b8;
+  border-radius: var(--ds-radius-sm, 4px) var(--ds-radius-sm, 4px) 0 0;
+  color: var(--ds-text-secondary, #94a3b8);
   font-size: 13px;
   cursor: pointer;
   transition: all 0.2s;
 }
 .tab:hover {
-  color: #e2e8f0;
+  color: var(--ds-text-primary, #e2e8f0);
 }
 .tab.active {
-  color: #3b82f6;
-  background: rgba(59, 130, 246, 0.1);
+  color: var(--ds-status-info, #3b82f6);
+  background: color-mix(in srgb, var(--ds-status-info, #3b82f6) 10%, transparent);
 }
 
-.loading {
+/* Shared panel states */
+.panel-state {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--ds-text-muted, #64748b);
   gap: 10px;
+}
+.panel-state.loading {
+  flex-direction: row;
   padding: 40px;
-  color: #94a3b8;
 }
 
 .spinner {
   width: 18px;
   height: 18px;
-  border: 2px solid rgba(255, 255, 255, 0.1);
-  border-top-color: #3b82f6;
+  border: 2px solid var(--ds-border-subtle, rgba(255, 255, 255, 0.1));
+  border-top-color: var(--ds-status-info, #3b82f6);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -223,18 +255,15 @@ function formatTime(iso: string): string {
   to { transform: rotate(360deg); }
 }
 
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 60px 20px;
-  color: #64748b;
-  text-align: center;
+.error-icon { font-size: 28px; }
+.error-msg {
+  color: var(--ds-status-danger, #ef4444);
+  font-size: 13px;
 }
+
 .empty-icon {
   font-size: 40px;
-  margin-bottom: 12px;
+  margin-bottom: 4px;
 }
 
 .insights-list {
@@ -245,9 +274,9 @@ function formatTime(iso: string): string {
 }
 
 .insight-card {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
+  background: var(--ds-bg-sunken, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--ds-border-subtle, rgba(255, 255, 255, 0.06));
+  border-radius: var(--ds-radius-md, 8px);
   padding: 14px 16px;
 }
 
@@ -261,20 +290,20 @@ function formatTime(iso: string): string {
 .insight-type {
   font-size: 11px;
   font-weight: 600;
-  color: #3b82f6;
-  background: rgba(59, 130, 246, 0.1);
+  color: var(--ds-status-info, #3b82f6);
+  background: color-mix(in srgb, var(--ds-status-info, #3b82f6) 10%, transparent);
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm, 4px);
   text-transform: uppercase;
 }
 
 .insight-time {
   font-size: 12px;
-  color: #64748b;
+  color: var(--ds-text-muted, #64748b);
 }
 
 .insight-content {
-  color: #e2e8f0;
+  color: var(--ds-text-primary, #e2e8f0);
   font-size: 14px;
   line-height: 1.5;
   margin: 0 0 10px;
@@ -289,14 +318,14 @@ function formatTime(iso: string): string {
 .btn-link {
   background: none;
   border: none;
-  color: #94a3b8;
+  color: var(--ds-text-secondary, #94a3b8);
   font-size: 12px;
   cursor: pointer;
   padding: 4px 8px;
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm, 4px);
 }
 .btn-link:hover {
-  color: #e2e8f0;
-  background: rgba(255, 255, 255, 0.05);
+  color: var(--ds-text-primary, #e2e8f0);
+  background: var(--ds-bg-overlay, rgba(255, 255, 255, 0.05));
 }
 </style>

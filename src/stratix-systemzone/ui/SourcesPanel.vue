@@ -36,12 +36,20 @@
     </div>
 
     <!-- Loading -->
-    <div v-if="store.loading && store.sources.length === 0" class="loading-state">
-      <span class="loading-text">加载中...</span>
+    <div v-if="isLoading && store.sources.length === 0" class="panel-state loading">
+      <span class="spinner"></span>
+      <span>加载中...</span>
+    </div>
+
+    <!-- Error -->
+    <div v-else-if="panelError" class="panel-state error">
+      <span class="error-icon">⚠️</span>
+      <span class="error-msg">{{ panelError }}</span>
+      <button class="btn-retry" @click="retry">重试</button>
     </div>
 
     <!-- Empty State -->
-    <div v-else-if="store.sources.length === 0" class="empty-state">
+    <div v-else-if="isEmpty" class="panel-state empty">
       <span class="empty-icon">◎</span>
       <span class="empty-text">暂无外部源</span>
     </div>
@@ -74,8 +82,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, computed, type Ref, onMounted } from 'vue';
 import { useSystemZoneStore } from '../../stores/systemzone';
+import { usePanelState } from './composables/usePanelState';
+import { useAutoRefresh } from './composables/useAutoRefresh';
 
 const store = useSystemZoneStore();
 
@@ -86,6 +96,10 @@ const form = reactive({
   url: '',
   configJson: '{}',
 });
+
+const sourcesRef = computed(() => store.sources) as Ref<any[]>;
+const { isLoading, panelError, isEmpty, retry } = usePanelState('sources', sourcesRef);
+useAutoRefresh(() => store.fetchSources(), { interval: 60000 });
 
 function statusClass(status: string): string {
   switch (status) {
@@ -124,7 +138,6 @@ async function handleAdd() {
 }
 
 async function toggleSource(source: any) {
-  // Optimistic toggle would need API support; for now just refresh
   await store.fetchSources();
 }
 
@@ -139,9 +152,9 @@ onMounted(() => {
 
 <style scoped>
 .sources-panel {
-  background: #0f1117;
-  border-radius: 8px;
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  background: var(--ds-bg-sunken, #0f1117);
+  border-radius: var(--ds-radius-md, 8px);
+  border: 1px solid var(--ds-border-subtle, rgba(148, 163, 184, 0.1));
   overflow: hidden;
 }
 
@@ -150,42 +163,42 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  border-bottom: 1px solid var(--ds-border-subtle, rgba(148, 163, 184, 0.1));
 }
 
 .panel-title {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
-  color: #e2e8f0;
+  color: var(--ds-text-primary, #e2e8f0);
 }
 
 .btn-add {
-  background: rgba(59, 130, 246, 0.15);
-  border: 1px solid rgba(59, 130, 246, 0.3);
-  color: #3b82f6;
+  background: color-mix(in srgb, var(--ds-status-info, #3b82f6) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ds-status-info, #3b82f6) 30%, transparent);
+  color: var(--ds-status-info, #3b82f6);
   padding: 4px 12px;
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm, 4px);
   font-size: 12px;
   cursor: pointer;
   transition: background 0.2s;
 }
-.btn-add:hover { background: rgba(59, 130, 246, 0.25); }
+.btn-add:hover {
+  background: color-mix(in srgb, var(--ds-status-info, #3b82f6) 25%, transparent);
+}
 
 /* Form */
 .add-form {
   padding: 16px;
-  background: rgba(148, 163, 184, 0.03);
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  background: var(--ds-bg-overlay, rgba(148, 163, 184, 0.03));
+  border-bottom: 1px solid var(--ds-border-subtle, rgba(148, 163, 184, 0.1));
 }
 
-.form-row {
-  margin-bottom: 12px;
-}
+.form-row { margin-bottom: 12px; }
 .form-row label {
   display: block;
   font-size: 12px;
-  color: rgba(148, 163, 184, 0.8);
+  color: var(--ds-text-secondary, rgba(148, 163, 184, 0.8));
   margin-bottom: 4px;
 }
 .form-row input,
@@ -193,11 +206,11 @@ onMounted(() => {
 .form-row textarea {
   width: 100%;
   box-sizing: border-box;
-  background: #0f1117;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 4px;
+  background: var(--ds-bg-sunken, #0f1117);
+  border: 1px solid var(--ds-border-default, rgba(148, 163, 184, 0.2));
+  border-radius: var(--ds-radius-sm, 4px);
   padding: 6px 10px;
-  color: #e2e8f0;
+  color: var(--ds-text-primary, #e2e8f0);
   font-size: 13px;
   font-family: inherit;
 }
@@ -206,21 +219,17 @@ onMounted(() => {
 .form-row select:focus,
 .form-row textarea:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--ds-status-info, #3b82f6);
 }
 
-.form-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-}
+.form-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
 .btn-submit {
-  background: #3b82f6;
+  background: var(--ds-status-info, #3b82f6);
   border: none;
-  color: #fff;
+  color: var(--ds-bg-base, #fff);
   padding: 6px 16px;
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm, 4px);
   font-size: 12px;
   cursor: pointer;
 }
@@ -228,17 +237,27 @@ onMounted(() => {
 
 .btn-cancel {
   background: transparent;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  color: #94a3b8;
+  border: 1px solid var(--ds-border-default, rgba(148, 163, 184, 0.2));
+  color: var(--ds-text-secondary, #94a3b8);
   padding: 6px 16px;
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm, 4px);
   font-size: 12px;
   cursor: pointer;
 }
 
-/* States */
-.loading-state,
-.empty-state {
+.btn-retry {
+  background: var(--ds-bg-overlay, rgba(255, 255, 255, 0.08));
+  color: var(--ds-text-secondary, #94a3b8);
+  padding: 4px 12px;
+  border-radius: var(--ds-radius-sm, 4px);
+  font-size: 12px;
+  border: none;
+  cursor: pointer;
+}
+.btn-retry:hover { color: var(--ds-text-primary, #e2e8f0); }
+
+/* Shared panel states */
+.panel-state {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -246,9 +265,22 @@ onMounted(() => {
   padding: 40px;
   gap: 8px;
 }
-.loading-text { color: #94a3b8; font-size: 13px; }
-.empty-icon { font-size: 32px; color: #94a3b8; }
-.empty-text { color: #94a3b8; font-size: 13px; }
+.panel-state.loading { flex-direction: row; }
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--ds-border-subtle, rgba(255, 255, 255, 0.1));
+  border-top-color: var(--ds-status-info, #3b82f6);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.error-icon { font-size: 28px; }
+.error-msg { color: var(--ds-status-danger, #ef4444); font-size: 13px; }
+.empty-icon { font-size: 32px; color: var(--ds-text-muted, #94a3b8); }
+.empty-text { color: var(--ds-text-muted, #94a3b8); font-size: 13px; }
 
 /* List */
 .sources-list { padding: 8px; }
@@ -258,10 +290,12 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 12px;
-  border-radius: 6px;
+  border-radius: var(--ds-radius-sm, 6px);
   transition: background 0.15s;
 }
-.source-item:hover { background: rgba(148, 163, 184, 0.05); }
+.source-item:hover {
+  background: var(--ds-bg-overlay, rgba(148, 163, 184, 0.05));
+}
 
 .source-header {
   display: flex;
@@ -269,27 +303,27 @@ onMounted(() => {
   gap: 8px;
   margin-bottom: 4px;
 }
-.source-name { font-size: 13px; font-weight: 500; color: #e2e8f0; }
+.source-name { font-size: 13px; font-weight: 500; color: var(--ds-text-primary, #e2e8f0); }
 .source-type {
   font-size: 11px;
   padding: 1px 6px;
-  border-radius: 3px;
-  background: rgba(148, 163, 184, 0.1);
-  color: #94a3b8;
+  border-radius: var(--ds-radius-sm, 3px);
+  background: var(--ds-bg-overlay, rgba(148, 163, 184, 0.1));
+  color: var(--ds-text-secondary, #94a3b8);
 }
 .status-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
 }
-.dot-active { background: #22c55e; }
-.dot-error { background: #ef4444; }
-.dot-disabled { background: #94a3b8; }
-.dot-idle { background: #64748b; }
+.dot-active { background: var(--ds-status-success, #22c55e); }
+.dot-error { background: var(--ds-status-danger, #ef4444); }
+.dot-disabled { background: var(--ds-text-muted, #94a3b8); }
+.dot-idle { background: var(--ds-text-muted, #64748b); }
 
 .source-url {
   font-size: 12px;
-  color: #64748b;
+  color: var(--ds-text-muted, #64748b);
   word-break: break-all;
   margin-bottom: 4px;
 }
@@ -297,14 +331,10 @@ onMounted(() => {
   display: flex;
   gap: 12px;
   font-size: 11px;
-  color: #64748b;
+  color: var(--ds-text-muted, #64748b);
 }
 
-.source-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
+.source-actions { display: flex; align-items: center; gap: 12px; }
 
 /* Toggle */
 .toggle {
@@ -318,7 +348,7 @@ onMounted(() => {
 .toggle-slider {
   position: absolute;
   inset: 0;
-  background: #334155;
+  background: var(--ds-border-strong, #334155);
   border-radius: 20px;
   transition: background 0.2s;
 }
@@ -329,23 +359,25 @@ onMounted(() => {
   height: 14px;
   left: 3px;
   top: 3px;
-  background: #94a3b8;
+  background: var(--ds-text-muted, #94a3b8);
   border-radius: 50%;
   transition: transform 0.2s, background 0.2s;
 }
-.toggle input:checked + .toggle-slider { background: rgba(34, 197, 94, 0.3); }
+.toggle input:checked + .toggle-slider {
+  background: color-mix(in srgb, var(--ds-status-success, #22c55e) 30%, transparent);
+}
 .toggle input:checked + .toggle-slider::before {
   transform: translateX(16px);
-  background: #22c55e;
+  background: var(--ds-status-success, #22c55e);
 }
 
 .btn-delete {
   background: transparent;
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #ef4444;
+  border: 1px solid color-mix(in srgb, var(--ds-status-danger, #ef4444) 30%, transparent);
+  color: var(--ds-status-danger, #ef4444);
   width: 24px;
   height: 24px;
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm, 4px);
   cursor: pointer;
   font-size: 11px;
   display: flex;
@@ -353,5 +385,7 @@ onMounted(() => {
   justify-content: center;
   transition: background 0.2s;
 }
-.btn-delete:hover { background: rgba(239, 68, 68, 0.1); }
+.btn-delete:hover {
+  background: color-mix(in srgb, var(--ds-status-danger, #ef4444) 10%, transparent);
+}
 </style>
