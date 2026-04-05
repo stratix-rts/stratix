@@ -16,6 +16,17 @@
           触发观察
         </button>
       </div>
+      <div class="category-filters">
+        <button
+          v-for="cat in categories"
+          :key="cat"
+          class="category-btn"
+          :class="{ active: filteredCategory === cat }"
+          @click="filteredCategory = cat"
+        >
+          {{ cat }}
+        </button>
+      </div>
       <div class="tabs">
         <button
           class="tab"
@@ -60,23 +71,46 @@
         :key="insight.id"
         class="insight-card"
       >
-        <div class="insight-main" :class="`severity-${insight.severity || 'none'}`">
+        <div class="insight-main" :class="`severity-${insight.severity || 'none'}`" @click="toggleExpand(insight.id)">
           <div class="insight-header">
-            <span class="insight-type">{{ insight.type }}</span>
-            <span v-if="insight.severity" class="severity-badge" :class="`badge-${insight.severity}`">
-              {{ insight.severity }}
-            </span>
-            <span class="insight-time">{{ formatTime(insight.createdAt) }}</span>
+            <div class="insight-header-left">
+              <span class="expand-icon" :class="{ rotated: expandedIds.has(insight.id) }">▶</span>
+              <span class="insight-type">{{ insight.type }}</span>
+              <span v-if="insight.severity" class="severity-badge" :class="`badge-${insight.severity}`">
+                {{ insight.severity }}
+              </span>
+            </div>
+            <div class="insight-header-right">
+              <span class="insight-time">{{ formatTime(insight.createdAt) }}</span>
+            </div>
           </div>
           <p class="insight-content">{{ insight.content }}</p>
           <div class="insight-footer">
             <ConfidenceBar :confidence="insight.confidence" />
             <button
               class="btn-link"
-              @click="toggleArchive(insight)"
+              @click.stop="toggleArchive(insight)"
             >
               {{ insight.archived ? '取消归档' : '归档' }}
             </button>
+          </div>
+        </div>
+        <div class="insight-details" :class="{ expanded: expandedIds.has(insight.id) }">
+          <div class="details-inner">
+            <div v-if="insight.details" class="detail-section">
+              <h4 class="detail-title">详细分析</h4>
+              <p class="detail-text">{{ insight.details }}</p>
+            </div>
+            <div v-if="insight.suggestion" class="detail-section">
+              <h4 class="detail-title">建议</h4>
+              <p class="detail-text">{{ insight.suggestion }}</p>
+            </div>
+            <div v-if="insight.affectedFiles && insight.affectedFiles.length" class="detail-section">
+              <h4 class="detail-title">受影响文件</h4>
+              <ul class="affected-files">
+                <li v-for="file in insight.affectedFiles" :key="file" class="affected-file">{{ file }}</li>
+              </ul>
+            </div>
           </div>
         </div>
       </div>
@@ -94,9 +128,17 @@ import ConfidenceBar from './components/ConfidenceBar.vue';
 const store = useSystemZoneStore();
 const inputText = ref('');
 const filter = ref<'archived' | 'unarchived'>('unarchived');
+const filteredCategory = ref('All');
+const expandedIds = ref(new Set<string>());
+
+const categories = ['All', 'Architecture', 'Security', 'Performance', 'Quality', 'Dependency'] as const;
 
 const filteredInsights = computed(() => {
-  return store.insights.filter(i => filter.value === 'archived' ? i.archived : !i.archived);
+  return store.insights.filter(i => {
+    const archiveMatch = filter.value === 'archived' ? i.archived : !i.archived;
+    const catMatch = filteredCategory.value === 'All' || i.type === filteredCategory.value;
+    return archiveMatch && catMatch;
+  });
 });
 const insightsRef = computed(() => store.insights) as Ref<any[]>;
 
@@ -123,6 +165,14 @@ async function handleTrigger() {
 async function toggleArchive(insight: any) {
   insight.archived = !insight.archived;
   // TODO: call archive API when available
+}
+
+function toggleExpand(id: string) {
+  if (expandedIds.value.has(id)) {
+    expandedIds.value.delete(id);
+  } else {
+    expandedIds.value.add(id);
+  }
 }
 
 function formatTime(iso: string): string {
@@ -230,6 +280,32 @@ function formatTime(iso: string): string {
   background: color-mix(in srgb, var(--ds-status-info, #3b82f6) 10%, transparent);
 }
 
+.category-filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.category-btn {
+  padding: 5px 12px;
+  background: transparent;
+  border: 1px solid var(--ds-border-subtle, rgba(255, 255, 255, 0.1));
+  border-radius: var(--ds-radius-sm, 4px);
+  color: var(--ds-text-secondary, #94a3b8);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.category-btn:hover {
+  color: var(--ds-text-primary, #e2e8f0);
+  border-color: var(--ds-border-default, rgba(255, 255, 255, 0.15));
+}
+.category-btn.active {
+  color: var(--ds-status-info, #3b82f6);
+  border-color: var(--ds-status-info, #3b82f6);
+  background: color-mix(in srgb, var(--ds-status-info, #3b82f6) 10%, transparent);
+}
+
 /* Shared panel states */
 .panel-state {
   display: flex;
@@ -287,6 +363,7 @@ function formatTime(iso: string): string {
   border-left: 3px solid #64748b;
   padding-left: 12px;
   border-radius: 4px;
+  cursor: pointer;
 }
 .insight-main.severity-critical {
   border-left-color: #ef4444;
@@ -324,6 +401,28 @@ function formatTime(iso: string): string {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 8px;
+}
+
+.insight-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.insight-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.expand-icon {
+  font-size: 10px;
+  color: var(--ds-text-muted, #64748b);
+  transition: transform 0.25s ease;
+  display: inline-block;
+}
+.expand-icon.rotated {
+  transform: rotate(90deg);
 }
 
 .insight-type {
@@ -366,5 +465,61 @@ function formatTime(iso: string): string {
 .btn-link:hover {
   color: var(--ds-text-primary, #e2e8f0);
   background: var(--ds-bg-overlay, rgba(255, 255, 255, 0.05));
+}
+
+.insight-details {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+.insight-details.expanded {
+  max-height: 500px;
+}
+
+.details-inner {
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid var(--ds-border-subtle, rgba(255, 255, 255, 0.06));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.detail-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ds-text-secondary, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0;
+}
+
+.detail-text {
+  font-size: 13px;
+  color: var(--ds-text-primary, #e2e8f0);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.affected-files {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.affected-file {
+  font-size: 12px;
+  color: var(--ds-text-secondary, #94a3b8);
+  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+  padding: 2px 0;
 }
 </style>
