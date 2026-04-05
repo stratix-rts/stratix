@@ -6,6 +6,8 @@
 import { Observer } from './observer/Observer';
 import { Strategist } from './strategist/Strategist';
 import { Guardian } from './guardian/Guardian';
+import { FitnessEvaluator } from './fitness/FitnessEvaluator';
+import { Executor } from './executor/Executor';
 
 import type {
   SystemZoneStatus,
@@ -16,6 +18,7 @@ import type {
   InsightType,
   Proposal,
   ProposalStatus,
+  RiskLevel,
 } from './types';
 
 import type { ObserverPipelineConfig } from './observer/types';
@@ -23,6 +26,8 @@ import type { ScannerConfig, ProposalMapperConfig } from './strategist/types';
 import type { StrategistLLMEnhancerConfig } from './strategist/StrategistLLMEnhancer';
 import type { GuardianConfig } from './guardian/Guardian';
 import type { GuardianValidationResult } from './guardian/Guardian';
+import type { FitnessEvaluatorConfig } from './fitness/types';
+import type { ExecutorConfig } from './executor/types';
 
 // ------------------------------------------------
 // 常量定义
@@ -99,8 +104,28 @@ export interface SystemZoneInitConfig {
   enhancer?: StrategistLLMEnhancerConfig;
   /** Guardian 配置 */
   guardian?: GuardianConfig;
+  /** FitnessEvaluator 配置 */
+  fitness?: FitnessEvaluatorConfig;
+  /** Executor 配置 */
+  executor?: ExecutorConfig;
+  /** 自动触发循环配置 */
+  autoCycle?: AutoCycleConfig;
   /** 依赖注入 */
   dependencies?: SystemZoneDependencies;
+}
+
+/**
+ * 自动触发循环配置
+ */
+export interface AutoCycleConfig {
+  /** 是否启用自动触发循环 */
+  enabled: boolean;
+  /** 观察间隔时间（毫秒），默认 30 分钟 */
+  observeInterval: number;
+  /** 代码变更后是否自动分析 */
+  analyzeAfterChange: boolean;
+  /** 是否自动执行低风险提案 */
+  autoExecuteLowRisk: boolean;
 }
 
 // ------------------------------------------------
@@ -167,6 +192,19 @@ export class SystemZone {
 
   // 事件监听器
   private eventListeners: Map<SystemZoneEventType, Array<(event: SystemZoneEvent) => void>> = new Map();
+
+  // 自动触发循环状态
+  private autoCycleConfig: Required<AutoCycleConfig>;
+  private fitnessEvaluator: FitnessEvaluator;
+  private executor: Executor | null = null;
+  private autoCycleTimer: ReturnType<typeof setInterval> | null = null;
+  private lastObserveTime: number = 0;
+  private lastAnalyzeTime: number = 0;
+  private observeDeduplicationWindow: number = 5 * 60 * 1000; // 5 分钟内不重复观察
+  private isAutoCycleRunning: boolean = false;
+
+  // 代码变更追踪（用于 analyzeAfterChange）
+  private lastCodeChangeHash: string = '';
 
   // Guardian validation wrapper
   private guardianValidate = (proposal: Proposal): { valid: boolean; reason?: string } => {
@@ -277,6 +315,24 @@ export class SystemZone {
       this.emit('circuit_tripped', { failureCount });
     });
 
+    // 初始化自动触发循环配置
+    this.autoCycleConfig = {
+      enabled: config.autoCycle?.enabled ?? false,
+      observeInterval: config.autoCycle?.observeInterval ?? 30 * 60 * 1000,
+      analyzeAfterChange: config.autoCycle?.analyzeAfterChange ?? true,
+      autoExecuteLowRisk: config.autoCycle?.autoExecuteLowRisk ?? false,
+    };
+
+    // 初始化 FitnessEvaluator
+    this.fitnessEvaluator = new FitnessEvaluator(config.fitness);
+
+    // 初始化 Executor（如果启用）
+    if (this.autoCycleConfig.enabled && this.autoCycleConfig.autoExecuteLowRisk) {
+      this.executor = new Executor(config.executor, {
+        guardian: this.guardian,
+      });
+    }
+
     // 订阅子模块事件
     this.setupEventForwarding();
   }
@@ -343,7 +399,7 @@ export class SystemZone {
    * @param userInputContent 可选的初始用户输入（会在观察前添加）
    * @returns 包含洞察和提案的结果
    */
-  async runCycle(userInputContent?: string): Promise<{
+  async runManualCycle(userInputContent?: string): Promise<{
     insights: Insight[];
     proposals: Proposal[];
     errors: string[];
@@ -390,6 +446,274 @@ export class SystemZone {
     }
 
     return { insights, proposals, errors };
+  }
+
+  // ------------------------------------------------
+  // 自动触发循环方法
+  // ------------------------------------------------
+
+  /**
+   * 启动自动触发循环
+   * 根据配置启动定时观察循环
+   */
+  startAutoCycle(): void {
+    if (this.autoCycleTimer) {
+      console.log('[SystemZone] Auto cycle already running');
+      return;
+    }
+
+    if (!this.autoCycleConfig.enabled) {
+      console.log('[SystemZone] Auto cycle is disabled');
+      return;
+    }
+
+    console.log(`[SystemZone] Starting auto cycle with interval ${this.autoCycleConfig.observeInterval}ms`);
+
+    // 立即执行一次
+    this.runAutoCycle().catch((err) => {
+      console.error('[SystemZone] Auto cycle error:', err);
+    });
+
+    // 设置定时器
+    this.autoCycleTimer = setInterval(() => {
+      this.runAutoCycle().catch((err) => {
+        console.error('[SystemZone] Auto cycle error:', err);
+      });
+    }, this.autoCycleConfig.observeInterval);
+  }
+
+  /**
+   * 停止自动触发循环
+   */
+  stopAutoCycle(): void {
+    if (this.autoCycleTimer) {
+      clearInterval(this.autoCycleTimer);
+      this.autoCycleTimer = null;
+      console.log('[SystemZone] Auto cycle stopped');
+    }
+  }
+
+  /**
+   * 运行自动触发循环
+   * 串联: autoObserve → autoAnalyze → autoExecute
+   */
+  async runAutoCycle(): Promise<{
+    observed: boolean;
+    analyzed: boolean;
+    executed: boolean;
+    insights: Insight[];
+    proposals: Proposal[];
+    errors: string[];
+  }> {
+    if (this.isAutoCycleRunning) {
+      console.log('[SystemZone] Auto cycle already running, skipping');
+      return { observed: false, analyzed: false, executed: false, insights: [], proposals: [], errors: ['Auto cycle already running'] };
+    }
+
+    this.isAutoCycleRunning = true;
+    const errors: string[] = [];
+    let observed = false;
+    let analyzed = false;
+    let executed = false;
+    let insights: Insight[] = [];
+    let proposals: Proposal[] = [];
+
+    try {
+      console.log('[SystemZone] Running auto cycle...');
+
+      // Step 1: autoObserve
+      observed = await this.autoObserve();
+      if (observed) {
+        console.log('[SystemZone] Auto observe completed');
+      }
+
+      // Step 2: autoAnalyze
+      analyzed = await this.autoAnalyze();
+      if (analyzed) {
+        console.log('[SystemZone] Auto analyze completed');
+      }
+
+      // Step 3: autoExecute
+      if (analyzed && this.autoCycleConfig.autoExecuteLowRisk) {
+        const execResult = await this.autoExecute();
+        executed = execResult.executed;
+        proposals = execResult.proposals;
+        errors.push(...execResult.errors);
+        if (executed) {
+          console.log('[SystemZone] Auto execute completed');
+        }
+      }
+    } catch (error) {
+      errors.push(`Auto cycle error: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      this.isAutoCycleRunning = false;
+    }
+
+    return { observed, analyzed, executed, insights, proposals, errors };
+  }
+
+  /**
+   * 自动观察
+   * 条件触发: 当有新的外部信息输入时自动触发 Observer
+   * 去重: 避免短时间内重复扫描
+   */
+  async autoObserve(): Promise<boolean> {
+    const now = Date.now();
+
+    // 检查去重窗口
+    if (now - this.lastObserveTime < this.observeDeduplicationWindow) {
+      console.log(`[SystemZone] Skipping observe - within deduplication window (${this.observeDeduplicationWindow}ms)`);
+      return false;
+    }
+
+    // 检查是否有待处理的输入
+    const observerState = this.observer.getState();
+    if (observerState.pendingInputs.length === 0) {
+      console.log('[SystemZone] Skipping observe - no pending inputs');
+      return false;
+    }
+
+    try {
+      this.lastObserveTime = now;
+      await this.observe();
+      return true;
+    } catch (error) {
+      console.error('[SystemZone] Auto observe error:', error);
+      return false;
+    }
+  }
+
+  /**
+   * 自动分析
+   * 条件触发: 代码变更后自动触发 Strategist 扫描
+   * 缓存: 30 分钟内不重复扫描（复用 Strategist 内部缓存）
+   */
+  async autoAnalyze(): Promise<boolean> {
+    const strategistState = this.strategist.getState();
+    const cacheTtl = 30 * 60 * 1000; // 30 分钟
+
+    // 检查 Strategist 内部缓存（基于 lastAnalysis）
+    if (strategistState.lastAnalysis) {
+      const timeSinceLastAnalysis = Date.now() - strategistState.lastAnalysis.getTime();
+      if (timeSinceLastAnalysis < cacheTtl) {
+        console.log(`[SystemZone] Skipping analyze - within cache TTL (${cacheTtl}ms, elapsed: ${timeSinceLastAnalysis}ms)`);
+        return false;
+      }
+    }
+
+    // 如果配置了 analyzeAfterChange，检查代码变更
+    if (this.autoCycleConfig.analyzeAfterChange) {
+      // 获取当前代码状态（通过 Scanner 简单检查）
+      const currentHash = await this.getCodeStateHash();
+      if (currentHash === this.lastCodeChangeHash && strategistState.lastAnalysis) {
+        // 代码没有变更且刚分析过，跳过
+        return false;
+      }
+      this.lastCodeChangeHash = currentHash;
+    }
+
+    try {
+      this.lastAnalyzeTime = Date.now();
+      await this.analyze();
+      return true;
+    } catch (error) {
+      console.error('[SystemZone] Auto analyze error:', error);
+      return false;
+    }
+  }
+
+  /**
+   * 自动执行
+   * 条件触发: 低风险提案自动审批执行
+   * 安全: 高风险提案仍需人工审批
+   * 前提: FitnessEvaluator.canEnableExecutor() === true
+   */
+  async autoExecute(): Promise<{
+    executed: boolean;
+    proposals: Proposal[];
+    errors: string[];
+  }> {
+    const errors: string[] = [];
+    const executedProposals: Proposal[] = [];
+
+    // 检查 FitnessEvaluator 是否允许执行
+    try {
+      const canExecute = await this.fitnessEvaluator.canEnableExecutor();
+      if (!canExecute) {
+        console.log('[SystemZone] Skipping auto execute - FitnessEvaluator returned false');
+        return { executed: false, proposals: [], errors: ['FitnessEvaluator.canEnableExecutor() returned false'] };
+      }
+    } catch (error) {
+      errors.push(`FitnessEvaluator error: ${error instanceof Error ? error.message : String(error)}`);
+      return { executed: false, proposals: [], errors };
+    }
+
+    // 获取低风险待审批提案
+    const pendingProposals = await this.getProposals({ status: 'pending' });
+    const lowRiskProposals = pendingProposals.filter(
+      (p) => p.selection.risk === 'low'
+    );
+
+    if (lowRiskProposals.length === 0) {
+      console.log('[SystemZone] No low-risk proposals to auto-execute');
+      return { executed: false, proposals: [], errors: [] };
+    }
+
+    console.log(`[SystemZone] Found ${lowRiskProposals.length} low-risk proposals to auto-execute`);
+
+    // 执行每个低风险提案
+    for (const proposal of lowRiskProposals) {
+      try {
+        const result = await this.approveProposal(proposal.id, 'approve', 'Auto-approved low-risk proposal');
+        if (result.success) {
+          executedProposals.push(result.proposal!);
+        } else {
+          errors.push(`Failed to approve proposal ${proposal.id}: ${result.error}`);
+        }
+      } catch (error) {
+        errors.push(`Execute proposal error: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
+    return {
+      executed: executedProposals.length > 0,
+      proposals: executedProposals,
+      errors,
+    };
+  }
+
+  /**
+   * 获取当前代码状态哈希（简化版）
+   * 实际实现可以通过 Scanner 检查文件 mtime 等
+   */
+  private async getCodeStateHash(): Promise<string> {
+    // 简化实现：使用时间戳作为哈希
+    // 实际应该检查文件变更
+    const strategistState = this.strategist.getState();
+    return strategistState.lastScan?.timestamp.toISOString() ?? 'initial';
+  }
+
+  /**
+   * 获取自动循环配置
+   */
+  getAutoCycleConfig(): Required<AutoCycleConfig> {
+    return { ...this.autoCycleConfig };
+  }
+
+  /**
+   * 更新自动循环配置
+   */
+  updateAutoCycleConfig(config: Partial<AutoCycleConfig>): void {
+    this.autoCycleConfig = { ...this.autoCycleConfig, ...config };
+
+    // 如果启用状态改变，重启定时器
+    if (config.enabled !== undefined) {
+      if (config.enabled) {
+        this.startAutoCycle();
+      } else {
+        this.stopAutoCycle();
+      }
+    }
   }
 
   /**
@@ -972,6 +1296,18 @@ export class SystemZone {
         }
       }
     }
+  }
+
+  /**
+   * 运行手动触发循环（向后兼容别名）
+   * @deprecated 使用 runManualCycle 代替
+   */
+  async runCycle(userInputContent?: string): Promise<{
+    insights: Insight[];
+    proposals: Proposal[];
+    errors: string[];
+  }> {
+    return this.runManualCycle(userInputContent);
   }
 }
 

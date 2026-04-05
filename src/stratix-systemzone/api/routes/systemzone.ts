@@ -8,11 +8,14 @@ import { Router, Request, Response } from 'express';
 import { Observer } from '../../observer/Observer';
 import { Strategist } from '../../strategist/Strategist';
 import { Guardian } from '../../guardian/Guardian';
+import { Executor } from '../../executor/Executor';
+import { FitnessEvaluator } from '../../fitness/FitnessEvaluator';
 
 import type { UserInput, Insight, Proposal, ProposalStatus, UserInputType } from '../../types';
 import type { ObserverPipelineConfig } from '../../observer/types';
 import type { ScannerConfig, ProposalMapperConfig } from '../../strategist/types';
 import type { StrategistLLMEnhancerConfig } from '../../strategist/StrategistLLMEnhancer';
+import type { ExecutionResult } from '../../executor/types';
 
 import { ZoneAuthGuard } from '../auth/ZoneAuthGuard';
 
@@ -31,6 +34,13 @@ const observerInstances = new Map<string, Observer>();
 const strategistInstances = new Map<string, Strategist>();
 // Guardian instances per owner
 const guardianInstances = new Map<string, Guardian>();
+// Executor instances per owner
+const executorInstances = new Map<string, Executor>();
+// FitnessEvaluator instances per owner
+const fitnessEvaluatorInstances = new Map<string, FitnessEvaluator>();
+
+// Execution history per owner
+const executionsStore = new Map<string, ExecutionResult[]>();
 
 // Stored insights per owner
 const insightsStore = new Map<string, Insight[]>();
@@ -139,6 +149,35 @@ function getGuardian(ownerId: string): Guardian {
     guardianInstances.set(ownerId, guardian);
   }
   return guardianInstances.get(ownerId)!;
+}
+
+function getExecutor(ownerId: string): Executor {
+  if (!executorInstances.has(ownerId)) {
+    const guardian = getGuardian(ownerId);
+    const executor = new Executor(
+      {
+        requireApproval: false,
+        maxRetries: 2,
+      },
+      {
+        saveExecutionResult: async (result: ExecutionResult) => {
+          const executions = executionsStore.get(ownerId) || [];
+          executions.push(result);
+          executionsStore.set(ownerId, executions);
+        },
+      }
+    );
+    executorInstances.set(ownerId, executor);
+  }
+  return executorInstances.get(ownerId)!;
+}
+
+function getFitnessEvaluator(ownerId: string): FitnessEvaluator {
+  if (!fitnessEvaluatorInstances.has(ownerId)) {
+    const evaluator = new FitnessEvaluator({});
+    fitnessEvaluatorInstances.set(ownerId, evaluator);
+  }
+  return fitnessEvaluatorInstances.get(ownerId)!;
 }
 
 // ------------------------------------------------
@@ -490,6 +529,260 @@ router.get('/status', async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to get status',
+    });
+  }
+});
+
+// ------------------------------------------------
+// Executor Routes
+// ------------------------------------------------
+
+/**
+ * POST /api/systemzone/proposals/:id/execute
+ * Execute an approved proposal
+ */
+router.post('/proposals/:id/execute', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ownerId = getDefaultOwnerId(req);
+    const { id } = req.params;
+
+    const proposals = proposalsStore.get(ownerId) || [];
+    const proposal = proposals.find((p) => p.id === id);
+
+    if (!proposal) {
+      res.status(404).json({
+        success: false,
+        error: `Proposal not found: ${id}`,
+      });
+      return;
+    }
+
+    if (proposal.status !== 'approved') {
+      res.status(409).json({
+        success: false,
+        error: `Proposal is not approved (current status: ${proposal.status})`,
+      });
+      return;
+    }
+
+    // Check fitness before executing
+    const fitnessEvaluator = getFitnessEvaluator(ownerId);
+    const canExecute = await fitnessEvaluator.canEnableExecutor();
+
+    if (!canExecute) {
+      res.status(409).json({
+        success: false,
+        error: 'Fitness check failed: executor preconditions not met',
+        canEnableExecutor: false,
+      });
+      return;
+    }
+
+    const executor = getExecutor(ownerId);
+
+    // Check if proposal type is allowed
+    const state = executor.getState();
+    const canExec = await executor.canExecute(proposal);
+
+    if (!canExec) {
+      res.status(409).json({
+        success: false,
+        error: 'Proposal cannot be executed (circuit breaker active or executor busy)',
+        executorState: {
+          phase: state.phase,
+          consecutiveFailures: state.consecutiveFailures,
+        },
+      });
+      return;
+    }
+
+    const result = await executor.executeProposal(proposal);
+
+    res.json({
+      success: result.success,
+      execution: {
+        proposalId: result.proposalId,
+        success: result.success,
+        phase: result.phase,
+        duration: result.duration,
+        error: result.error,
+        commitHash: result.commitHash,
+      },
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Execute proposal failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to execute proposal',
+    });
+  }
+});
+
+/**
+ * GET /api/systemzone/executions
+ * Get execution history list
+ */
+router.get('/executions', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ownerId = getDefaultOwnerId(req);
+    const { limit } = req.query as { limit?: string };
+
+    let executions = executionsStore.get(ownerId) || [];
+
+    const limitNum = limit ? parseInt(limit, 10) : 50;
+    executions = executions.slice(-limitNum);
+
+    res.json({
+      success: true,
+      count: executions.length,
+      executions: executions.map((e) => ({
+        proposalId: e.proposalId,
+        success: e.success,
+        phase: e.phase,
+        duration: e.duration,
+        error: e.error,
+        commitHash: e.commitHash,
+        rollbackHash: e.rollbackHash,
+      })),
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Get executions failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get executions',
+    });
+  }
+});
+
+/**
+ * GET /api/systemzone/executions/:id
+ * Get single execution detail
+ */
+router.get('/executions/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ownerId = getDefaultOwnerId(req);
+    const { id } = req.params;
+
+    const executions = executionsStore.get(ownerId) || [];
+    const execution = executions.find((e) => e.proposalId === id);
+
+    if (!execution) {
+      res.status(404).json({
+        success: false,
+        error: `Execution not found: ${id}`,
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      execution: {
+        proposalId: execution.proposalId,
+        success: execution.success,
+        phase: execution.phase,
+        modifications: execution.modifications,
+        testResult: execution.testResult,
+        duration: execution.duration,
+        error: execution.error,
+        commitHash: execution.commitHash,
+        rollbackHash: execution.rollbackHash,
+      },
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Get execution failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get execution',
+    });
+  }
+});
+
+/**
+ * POST /api/systemzone/executions/:id/cancel
+ * Cancel an executing task
+ */
+router.post('/executions/:id/cancel', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ownerId = getDefaultOwnerId(req);
+    const { id } = req.params;
+
+    const executor = getExecutor(ownerId);
+    const state = executor.getState();
+
+    if (state.currentProposalId !== id) {
+      res.status(409).json({
+        success: false,
+        error: 'Proposal is not currently executing',
+        currentProposalId: state.currentProposalId,
+      });
+      return;
+    }
+
+    await executor.cancelExecution(id);
+
+    res.json({
+      success: true,
+      message: `Execution of proposal ${id} requested to cancel`,
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Cancel execution failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to cancel execution',
+    });
+  }
+});
+
+/**
+ * GET /api/systemzone/fitness
+ * Get fitness report
+ */
+router.get('/fitness', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ownerId = getDefaultOwnerId(req);
+    const fitnessEvaluator = getFitnessEvaluator(ownerId);
+
+    const report = await fitnessEvaluator.evaluate();
+
+    res.json({
+      success: true,
+      report: {
+        timestamp: report.timestamp,
+        metrics: report.metrics,
+        scores: report.scores,
+        passed: report.passed,
+        violations: report.violations,
+      },
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Get fitness failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to get fitness report',
+    });
+  }
+});
+
+/**
+ * GET /api/systemzone/fitness/can-execute
+ * Check if executor can be enabled
+ */
+router.get('/fitness/can-execute', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const ownerId = getDefaultOwnerId(req);
+    const fitnessEvaluator = getFitnessEvaluator(ownerId);
+
+    const canExecute = await fitnessEvaluator.canEnableExecutor();
+
+    res.json({
+      success: true,
+      canEnableExecutor: canExecute,
+    });
+  } catch (error) {
+    console.error('[SystemZone API] Check fitness can-execute failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to check fitness',
     });
   }
 });
