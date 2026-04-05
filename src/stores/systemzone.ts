@@ -585,6 +585,7 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
         fetchStatus(),
         fetchInsights(),
         fetchProposals(),
+        fetchLLMConfig(),
       ]);
       const failures = results.filter(r => r.status === 'rejected');
       if (failures.length > 0) {

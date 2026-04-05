@@ -507,7 +507,8 @@ onMounted(() => {
 
 /* Test Chat Area (horizontal layout — no top border) */
 .test-chat-messages {
-  max-height: 320px;
+  min-height: 400px;
+  max-height: 400px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
