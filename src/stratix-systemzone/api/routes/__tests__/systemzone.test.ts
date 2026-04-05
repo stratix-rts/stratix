@@ -71,7 +71,28 @@ const mockObserverInstance = {
   }),
 };
 
+// Set after instance creation
 mockObserverInstances.set(mockOwnerId, mockObserverInstance);
+
+// Clear instance Maps between tests to avoid state leakage
+beforeEach(() => {
+  // Reset module cache so systemzone module is re-imported with fresh internal Maps
+  jest.resetModules();
+  // Clear test file's instance Maps
+  mockObserverInstances.delete(mockOwnerId);
+  mockStrategistInstances.delete(mockOwnerId);
+  mockGuardianInstances.delete(mockOwnerId);
+  mockExecutorInstances.delete(mockOwnerId);
+  mockFitnessEvaluatorInstances.delete(mockOwnerId);
+  mockSourceManagerInstances.delete(mockOwnerId);
+  // Re-set the mock instances so they are available
+  mockObserverInstances.set(mockOwnerId, mockObserverInstance);
+  mockStrategistInstances.set(mockOwnerId, mockStrategistInstance);
+  mockGuardianInstances.set(mockOwnerId, mockGuardianInstance);
+  mockExecutorInstances.set(mockOwnerId, mockExecutorInstance);
+  mockFitnessEvaluatorInstances.set(mockOwnerId, mockFitnessEvaluatorInstance);
+  mockSourceManagerInstances.set(mockOwnerId, mockSourceManagerInstance);
+});
 
 // ------------------------------------------------
 // Mock Strategist instance

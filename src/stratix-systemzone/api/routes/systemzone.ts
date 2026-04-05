@@ -608,6 +608,8 @@ router.get('/insights', async (req: Request, res: Response): Promise<void> => {
       insights: insights.map((i) => ({
         id: i.id,
         timestamp: i.timestamp,
+        createdAt: i.timestamp ? new Date(i.timestamp).toISOString() : null,
+        sourceId: i.sourceInputId || '',
         type: i.type,
         content: i.content,
         entities: i.entities,

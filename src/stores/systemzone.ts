@@ -123,11 +123,16 @@ export interface ExternalSource {
 }
 
 export interface BootstrapStatus {
-  running: boolean;
+  engineRunning: boolean;
   mode: 'manual' | 'semi_auto' | 'full_auto';
-  cyclesCompleted: number;
+  cycleCount: number;
   lastCycleAt: string | null;
-  currentPhase?: string;
+  phase?: string;
+  successCount?: number;
+  failureCount?: number;
+  totalProposalsGenerated?: number;
+  totalProposalsExecuted?: number;
+  improvementScore?: number;
 }
 
 export interface BootstrapHistoryEntry {
@@ -251,7 +256,7 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
     );
     setPanelLoading('status', false);
     if (result.success) {
-      status.value = result.data;
+      status.value = (result as any).status;
       connected.value = true;
       globalError.value = null;
     } else {
@@ -268,7 +273,7 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
     const result = await apiFetch<{ insights: Insight[] }>('/api/systemzone/insights');
     setPanelLoading('insights', false);
     if (result.success) {
-      insights.value = result.data.insights || [];
+      insights.value = (result as any).insights || [];
     } else {
       setPanelError('insights', result.error ?? '无法获取洞察数据');
     }
@@ -338,7 +343,7 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
     const result = await apiFetch<{ proposals: Proposal[] }>(`/api/systemzone/proposals${query}`);
     setPanelLoading('proposals', false);
     if (result.success) {
-      proposals.value = result.data.proposals || [];
+      proposals.value = (result as any).proposals || [];
     } else {
       setPanelError('proposals', result.error ?? '无法获取提案数据');
     }
@@ -385,7 +390,7 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
     const result = await apiFetch<{ executions: ExecutionResult[] }>('/api/systemzone/executions');
     setPanelLoading('executions', false);
     if (result.success) {
-      executions.value = result.data.executions || [];
+      executions.value = (result as any).executions || [];
     } else {
       setPanelError('executions', result.error ?? '无法获取执行记录');
     }
@@ -397,7 +402,7 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
     const result = await apiFetch<{ sources: ExternalSource[] }>('/api/systemzone/sources');
     setPanelLoading('sources', false);
     if (result.success) {
-      sources.value = result.data.sources || [];
+      sources.value = (result as any).sources || [];
     } else {
       setPanelError('sources', result.error ?? '无法获取外部源数据');
     }
@@ -436,7 +441,7 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
     const result = await apiFetch<BootstrapStatus>('/api/systemzone/bootstrap/status');
     setPanelLoading('bootstrap', false);
     if (result.success) {
-      bootstrapStatus.value = result.data;
+      bootstrapStatus.value = (result as any).status;
     } else {
       setPanelError('bootstrap', result.error ?? '无法获取自举引擎状态');
     }
@@ -501,7 +506,7 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
     const result = await apiFetch<FitnessReport>('/api/systemzone/fitness');
     setPanelLoading('fitness', false);
     if (result.success) {
-      fitnessReport.value = result.data;
+      fitnessReport.value = (result as any).report;
     } else {
       setPanelError('fitness', result.error ?? '无法获取健康报告');
     }
