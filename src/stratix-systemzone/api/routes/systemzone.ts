@@ -408,7 +408,14 @@ router.post('/observe', async (req: Request, res: Response): Promise<void> => {
         timestamp: i.timestamp,
         type: i.type,
         content: i.content,
+        entities: i.entities,
         confidence: i.confidence,
+        archived: i.archived,
+        severity: i.severity,
+        category: i.category,
+        details: i.details,
+        suggestion: i.suggestion,
+        affectedFiles: i.affectedFiles,
       })),
     });
   } catch (error) {
@@ -617,6 +624,11 @@ router.get('/insights', async (req: Request, res: Response): Promise<void> => {
         entities: i.entities,
         confidence: i.confidence,
         archived: i.archived,
+        severity: i.severity,
+        category: i.category,
+        details: i.details,
+        suggestion: i.suggestion,
+        affectedFiles: i.affectedFiles,
       })),
     });
   } catch (error) {
