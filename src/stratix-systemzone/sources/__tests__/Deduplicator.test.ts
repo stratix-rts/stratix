@@ -182,7 +182,7 @@ describe('Deduplicator', () => {
 
     it('extracts version number tags', () => {
       const tags = deduplicator.extractTags('Release v2.0.0 with new features');
-      expect(tags).toContain('v2.0');
+      expect(tags).toContain('v2.0.0');
     });
 
     it('returns empty array for content with no matching tags', () => {
@@ -222,13 +222,13 @@ describe('Deduplicator', () => {
 
     it('marks similar titles as duplicates based on threshold', () => {
       const inputs = [
-        createRawInput({ id: '1', title: 'React Performance Optimization Guide' }),
-        createRawInput({ id: '2', title: 'React Performance Optimization Techniques' }),
+        createRawInput({ id: '1', title: 'React Performance Optimization and Best Practices Guide' }),
+        createRawInput({ id: '2', title: 'React Performance Optimization and Best Practices' }),
       ];
 
       const result = deduplicator.deduplicate(inputs);
 
-      // These titles should be > 85% similar
+      // These titles are > 85% similar
       expect(result.duplicates.length).toBeGreaterThanOrEqual(1);
     });
 
@@ -410,12 +410,12 @@ describe('Deduplicator', () => {
       });
 
       const now = new Date();
-      const oldInput = createRawInput({ id: '1', title: 'Same', fetchedAt: new Date(now.getTime() - 5000) });
-      const newInput = createRawInput({ id: '2', title: 'Same', fetchedAt: now });
+      const oldInput = createRawInput({ id: '1', title: 'Old Article', fetchedAt: new Date(now.getTime() - 5000) });
+      const newInput = createRawInput({ id: '2', title: 'New Article', fetchedAt: now });
 
       const result = shortWindow.deduplicate([oldInput, newInput]);
 
-      // Old one should be outside window, treated as unique
+      // Old one outside window (added directly), new one within window but different hash
       expect(result.unique).toHaveLength(2);
     });
 

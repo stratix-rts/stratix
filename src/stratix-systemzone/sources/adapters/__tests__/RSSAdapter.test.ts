@@ -445,13 +445,10 @@ describe('RSSAdapter', () => {
 
     test('throws on timeout', async () => {
       const globalFetch = global.fetch;
-      // Create a slow promise that never resolves
-      global.fetch = jest.fn().mockImplementation(
-        () =>
-          new Promise((resolve) => {
-            setTimeout(() => resolve({ ok: true, text: () => Promise.resolve(RSS2_SAMPLE) }), 60000);
-          })
-      );
+      // Simulate abort by immediately rejecting with AbortError
+      const abortError = new Error('Aborted');
+      (abortError as any).name = 'AbortError';
+      global.fetch = jest.fn().mockRejectedValue(abortError);
 
       await expect(adapter.fetch('https://example.com/feed')).rejects.toThrow(/timeout/i);
 

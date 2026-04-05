@@ -28,7 +28,6 @@ export { default } from './SourceManager';
 
 // Deduplicator
 export { Deduplicator } from './Deduplicator';
-export type { IDeduplicator } from './Deduplicator';
 
 // Adapters
 export { RSSAdapter } from './adapters/RSSAdapter';
