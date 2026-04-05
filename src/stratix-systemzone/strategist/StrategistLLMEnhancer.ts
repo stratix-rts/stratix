@@ -143,6 +143,7 @@ export interface EnrichResult {
 export interface ArchitectureAnalysisResult {
   success: boolean;
   proposals?: Proposal[];
+  overallAssessment?: string;
   error?: string;
 }
 
@@ -580,7 +581,7 @@ export class StrategistLLMEnhancer {
         }
       );
 
-      return { success: true, proposals };
+      return { success: true, proposals, overallAssessment: parsed.overallAssessment };
     } catch {
       return { success: false, error: 'Failed to parse architecture analysis response' };
     }
