@@ -420,7 +420,7 @@ describe('FitnessEvaluator', () => {
       const violations = evaluator.checkThresholds(report);
 
       const coverageViolation = violations.find(v => v.metric === 'testCoverage');
-      expect(coverageViolation?.severity).toBe('warning'); // 60 is above 70 critical line
+      expect(coverageViolation?.severity).toBe('critical'); // 60 < 80-10=70, so critical
     });
 
     it('detects cyclomatic complexity violation', () => {
