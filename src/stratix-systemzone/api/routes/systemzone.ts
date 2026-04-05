@@ -1294,13 +1294,6 @@ router.get('/bootstrap/history', async (req: Request, res: Response): Promise<vo
 // ------------------------------------------------
 
 /**
- * Extract route param as string (handles Express 5 string[] type)
- */
-function getRouteParam(param: string | string[]): string {
-  return Array.isArray(param) ? param[0] : param;
-}
-
-/**
  * GET /api/systemzone/experiments
  * Get experiments list
  */
