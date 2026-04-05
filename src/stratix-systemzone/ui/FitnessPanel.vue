@@ -31,35 +31,79 @@
       <!-- Overall Score -->
       <div class="score-section">
         <div class="score-circle">
-          <span class="score-value">{{ store.fitnessReport.overallScore }}</span>
+          <span class="score-value">{{ store.fitnessReport.scores.overall }}</span>
           <span class="score-max">/ 100</span>
         </div>
         <span class="score-label">健康总分</span>
+        <span class="passed-tag" :class="store.fitnessReport.passed ? 'passed' : 'failed'">
+          {{ store.fitnessReport.passed ? '✓ 通过' : '✗ 未通过' }}
+        </span>
       </div>
 
-      <!-- Dimensions -->
-      <div class="dimensions-section">
+      <!-- Scores -->
+      <div class="scores-section">
         <h4 class="section-title">维度评分</h4>
-        <div class="dimensions-list">
-          <div v-for="dim in store.fitnessReport.dimensions" :key="dim.name" class="dimension-item">
-            <div class="dim-header">
-              <span class="dim-name">{{ dim.name }}</span>
-              <span class="dim-score">{{ dim.score }}/{{ dim.maxScore }}</span>
+        <div class="scores-list">
+          <div class="score-item">
+            <div class="score-header">
+              <span class="score-name">代码质量</span>
+              <span class="score-val">{{ store.fitnessReport.scores.codeQuality }}/100</span>
             </div>
             <div class="progress-bar">
-              <div
-                class="progress-fill"
-                :style="{ width: `${(dim.score / dim.maxScore) * 100}%` }"
-                :class="scoreClass(dim.score, dim.maxScore)"
-              ></div>
+              <div class="progress-fill" :style="{ width: store.fitnessReport.scores.codeQuality + '%' }" :class="scoreClass(store.fitnessReport.scores.codeQuality)"></div>
             </div>
+          </div>
+          <div class="score-item">
+            <div class="score-header">
+              <span class="score-name">性能</span>
+              <span class="score-val">{{ store.fitnessReport.scores.performance }}/100</span>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill" :style="{ width: store.fitnessReport.scores.performance + '%' }" :class="scoreClass(store.fitnessReport.scores.performance)"></div>
+            </div>
+          </div>
+          <div class="score-item">
+            <div class="score-header">
+              <span class="score-name">系统健康</span>
+              <span class="score-val">{{ store.fitnessReport.scores.systemHealth }}/100</span>
+            </div>
+            <div class="progress-bar">
+              <div class="progress-fill" :style="{ width: store.fitnessReport.scores.systemHealth + '%' }" :class="scoreClass(store.fitnessReport.scores.systemHealth)"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Metrics -->
+      <div class="metrics-section">
+        <h4 class="section-title">关键指标</h4>
+        <div class="metrics-grid">
+          <div class="metric-item">
+            <span class="metric-label">测试覆盖率</span>
+            <span class="metric-value">{{ (store.fitnessReport.metrics.testCoverage * 100).toFixed(1) }}%</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">圈复杂度</span>
+            <span class="metric-value">{{ store.fitnessReport.metrics.cyclomaticComplexity }}</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">重复率</span>
+            <span class="metric-value">{{ (store.fitnessReport.metrics.duplicationRate * 100).toFixed(1) }}%</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">响应时间</span>
+            <span class="metric-value">{{ store.fitnessReport.metrics.responseTime }}ms</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-label">错误率</span>
+            <span class="metric-value">{{ (store.fitnessReport.metrics.errorRate * 100).toFixed(1) }}%</span>
           </div>
         </div>
       </div>
 
       <!-- Violations -->
       <div class="violations-section">
-        <h4 class="section-title">违规项</h4>
+        <h4 class="section-title">违规项 ({{ store.fitnessReport.violations.length }})</h4>
         <div v-if="store.fitnessReport.violations.length === 0" class="empty-violations">
           <span class="ok-icon">✓</span>
           <span>无违规项</span>
@@ -70,20 +114,13 @@
             :key="idx"
             class="violation-item"
           >
-            <div class="violation-header">
-              <span class="severity-tag" :class="`severity-${violation.severity}`">
-                {{ severityLabel(violation.severity) }}
-              </span>
-              <span class="violation-rule">{{ violation.rule }}</span>
-            </div>
-            <p class="violation-message">{{ violation.message }}</p>
-            <span v-if="violation.file" class="violation-file">{{ violation.file }}</span>
+            <p class="violation-message">{{ violation }}</p>
           </div>
         </div>
       </div>
 
       <div class="checked-at">
-        检查时间: {{ formatTime(store.fitnessReport.checkedAt) }}
+        检查时间: {{ formatTime(store.fitnessReport.timestamp) }}
       </div>
     </template>
   </div>
@@ -105,24 +142,14 @@ async function handleRefresh() {
   await retry();
 }
 
-function severityLabel(severity: string): string {
-  switch (severity) {
-    case 'info': return '提示';
-    case 'warning': return '警告';
-    case 'error': return '错误';
-    default: return severity;
-  }
-}
-
-function scoreClass(score: number, max: number): string {
-  const ratio = score / max;
-  if (ratio >= 0.8) return 'fill-good';
-  if (ratio >= 0.5) return 'fill-warn';
+function scoreClass(score: number): string {
+  if (score >= 80) return 'fill-good';
+  if (score >= 50) return 'fill-warn';
   return 'fill-bad';
 }
 
-function formatTime(iso: string): string {
-  const d = new Date(iso);
+function formatTime(ts: string | Date): string {
+  const d = new Date(ts);
   return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 </script>
@@ -235,8 +262,24 @@ function formatTime(iso: string): string {
   color: var(--ds-text-muted, #6a6a8a);
 }
 
-/* Dimensions */
-.dimensions-section {
+.passed-tag {
+  margin-top: 8px;
+  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+.passed-tag.passed {
+  background: color-mix(in srgb, var(--ds-status-success, #00ff88) 15%, transparent);
+  color: var(--ds-status-success, #00ff88);
+}
+.passed-tag.failed {
+  background: color-mix(in srgb, var(--ds-status-danger, #ff4444) 15%, transparent);
+  color: var(--ds-status-danger, #ff4444);
+}
+
+/* Scores */
+.scores-section {
   padding: var(--ds-spacing-md, 16px);
   border-bottom: 1px solid var(--ds-border-subtle, #1e1e2e);
 }
@@ -248,15 +291,16 @@ function formatTime(iso: string): string {
   color: var(--ds-text-primary, #ffffff);
 }
 
-.dimensions-list { display: flex; flex-direction: column; gap: 10px; }
+.scores-list { display: flex; flex-direction: column; gap: 10px; }
 
-.dim-header {
+.score-item { }
+.score-header {
   display: flex;
   justify-content: space-between;
   margin-bottom: 4px;
 }
-.dim-name { font-size: 12px; color: var(--ds-text-primary, #ffffff); }
-.dim-score { font-size: 12px; color: var(--ds-text-secondary, #a0a0b0); }
+.score-name { font-size: 12px; color: var(--ds-text-primary, #ffffff); }
+.score-val { font-size: 12px; color: var(--ds-text-secondary, #a0a0b0); }
 
 .progress-bar {
   height: 6px;
@@ -273,6 +317,26 @@ function formatTime(iso: string): string {
 .fill-warn { background: var(--ds-status-warning, #fbbf24); }
 .fill-bad { background: var(--ds-status-danger, #ff4444); }
 
+/* Metrics */
+.metrics-section {
+  padding: var(--ds-spacing-md, 16px);
+  border-bottom: 1px solid var(--ds-border-subtle, #1e1e2e);
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.metric-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.metric-label { font-size: 11px; color: var(--ds-text-muted, #6a6a8a); }
+.metric-value { font-size: 14px; font-weight: 600; color: var(--ds-text-primary, #ffffff); }
+
 /* Violations */
 .violations-section { padding: var(--ds-spacing-md, 16px); }
 
@@ -287,45 +351,20 @@ function formatTime(iso: string): string {
 }
 .ok-icon { font-size: 16px; }
 
-.violations-list { display: flex; flex-direction: column; gap: 10px; }
+.violations-list { display: flex; flex-direction: column; gap: 8px; }
 
 .violation-item {
   background: var(--ds-bg-sunken, rgba(148, 163, 184, 0.03));
   border: 1px solid var(--ds-border-subtle, #1e1e2e);
   border-radius: var(--ds-radius-md, 4px);
-  padding: 10px 12px;
+  padding: 8px 12px;
 }
-
-.violation-header {
-  display: flex;
-  align-items: center;
-  gap: var(--ds-spacing-sm, 8px);
-  margin-bottom: 6px;
-}
-
-.severity-tag {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: var(--ds-radius-sm, 2px);
-  font-weight: var(--ds-typography-fontWeight-medium, 500);
-}
-.severity-info { background: color-mix(in srgb, var(--ds-status-info, #00d4ff) 15%, transparent); color: var(--ds-status-info, #00d4ff); }
-.severity-warning { background: color-mix(in srgb, var(--ds-status-warning, #fbbf24) 15%, transparent); color: var(--ds-status-warning, #fbbf24); }
-.severity-error { background: color-mix(in srgb, var(--ds-status-danger, #ff4444) 15%, transparent); color: var(--ds-status-danger, #ff4444); }
-
-.violation-rule { font-size: 12px; font-weight: var(--ds-typography-fontWeight-medium, 500); color: var(--ds-text-primary, #ffffff); }
 
 .violation-message {
   font-size: 12px;
   color: var(--ds-text-secondary, #a0a0b0);
-  margin: 0 0 4px;
+  margin: 0;
   line-height: 1.4;
-}
-
-.violation-file {
-  font-size: 11px;
-  color: var(--ds-text-muted, #6a6a8a);
-  font-family: var(--ds-typography-fontFamily-mono, monospace);
 }
 
 /* Footer */
@@ -340,6 +379,6 @@ function formatTime(iso: string): string {
 /* Responsive */
 @media (max-width: 640px) {
   .score-value { font-size: 36px; }
-  .dimensions-section, .violations-section { padding: 12px; }
+  .scores-section, .violations-section { padding: 12px; }
 }
 </style>

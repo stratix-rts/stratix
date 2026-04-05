@@ -57,39 +57,31 @@ global.fetch = mockFetch;
 // Helpers
 // ---------------------------------------------------------------------------
 
-const mockSuccess = <T>(data: T) => ({
-  success: true,
-  data,
-});
+// Mocks that return flat JSON (matching actual API behavior)
+const mockSuccess = <T>(data: T) => ({ ...data, success: true });
 
 const mockFailure = (error: string) => ({
-  success: false,
+  success: false as const,
   data: null,
   error,
 });
 
 const createMockStatus = () => ({
   observer: {
-    totalInputs: 10,
-    processedInputs: 7,
-    pendingInputs: 3,
-    lastRunAt: '2026-04-05T10:00:00Z',
     status: 'idle' as const,
+    pendingCount: 3,
+    processedCount: 7,
+    totalInputsReceived: 10,
+    totalInsightsGenerated: 5,
   },
   strategist: {
-    totalProposals: 5,
-    pendingProposals: 2,
-    approvedProposals: 2,
-    executedProposals: 1,
-    lastRunAt: '2026-04-05T10:00:00Z',
     status: 'idle' as const,
+    lastScan: '2026-04-05T10:00:00Z',
+    lastAnalysis: '2026-04-05T10:00:00Z',
+    proposalCount: 5,
+    hasScanResult: true,
   },
-  guardian: {
-    circuitBreakerOpen: false,
-    totalValidations: 20,
-    blockedCount: 1,
-    lastValidationAt: '2026-04-05T09:55:00Z',
-  },
+  guardian: 'guarding',
 });
 
 const createMockInsight = (overrides?: Partial<import('../systemzone').Insight>): import('../systemzone').Insight => ({
@@ -110,11 +102,9 @@ const createMockProposal = (overrides?: Partial<import('../systemzone').Proposal
   description: 'Improves code quality',
   type: 'improve_code',
   status: 'pending',
-  riskLevel: 'low',
-  targetFiles: ['src/a.ts'],
-  estimatedImpact: 'medium',
-  createdAt: '2026-04-05T10:00:00Z',
-  updatedAt: '2026-04-05T10:00:00Z',
+  timestamp: '2026-04-05T10:00:00Z',
+  target: { path: 'src/a.ts' },
+  selection: { strategy: 'auto' },
   ...overrides,
 });
 
@@ -123,42 +113,51 @@ const createMockSource = (overrides?: Partial<import('../systemzone').ExternalSo
   name: 'Test RSS Feed',
   type: 'rss',
   url: 'https://example.com/feed.xml',
-  config: {},
-  enabled: true,
-  lastFetchAt: '2026-04-05T10:00:00Z',
   status: 'active',
-  itemCount: 42,
+  ownerId: 'owner-1',
+  createdAt: '2026-04-05T10:00:00Z',
+  lastFetchedAt: '2026-04-05T10:00:00Z',
+  lastError: null,
+  fetchCount: 42,
+  errorCount: 0,
   ...overrides,
 });
 
 const createMockBootstrapStatus = (): import('../systemzone').BootstrapStatus => ({
-  running: false,
+  engineRunning: false,
   mode: 'manual',
-  cyclesCompleted: 5,
+  cycleCount: 5,
   lastCycleAt: '2026-04-05T09:00:00Z',
-  currentPhase: 'idle',
+  phase: 'idle',
 });
 
 const createMockFitnessReport = (): import('../systemzone').FitnessReport => ({
-  overallScore: 82,
-  dimensions: [
-    { name: 'correctness', score: 90, maxScore: 100, details: 'All checks passed' },
-    { name: 'performance', score: 75, maxScore: 100 },
-  ],
-  violations: [
-    { rule: 'no-any', severity: 'warning' as const, message: 'Avoid using any type', file: 'src/a.ts' },
-  ],
-  checkedAt: '2026-04-05T10:00:00Z',
+  timestamp: '2026-04-05T10:00:00Z',
+  metrics: {
+    testCoverage: 0.82,
+    cyclomaticComplexity: 5,
+    duplicationRate: 0.03,
+    responseTime: 150,
+    errorRate: 0.01,
+  },
+  scores: {
+    codeQuality: 85,
+    performance: 75,
+    systemHealth: 90,
+    overall: 82,
+  },
+  passed: true,
+  violations: ['Test coverage below threshold'],
 });
 
 const createMockExecutionResult = (): import('../systemzone').ExecutionResult => ({
   proposalId: 'proposal-1',
-  status: 'completed',
-  commitHash: 'abc123',
-  changes: ['src/a.ts: modified'],
-  testResults: { passed: 10, failed: 0, total: 10 },
-  startedAt: '2026-04-05T10:00:00Z',
-  completedAt: '2026-04-05T10:01:00Z',
+  success: true,
+  phase: 'completed',
+  duration: 60000,
+  commitHash: 'abc123def456',
+  rollbackHash: null,
+  error: null,
 });
 
 // ---------------------------------------------------------------------------
@@ -241,7 +240,7 @@ describe('useSystemZoneStore', () => {
         ok: true,
         json: () => Promise.resolve(mockSuccess({ executions: [
           createMockExecutionResult(),
-          { ...createMockExecutionResult(), proposalId: 'p2', status: 'running' },
+          { ...createMockExecutionResult(), proposalId: 'p2', success: false, phase: 'executing' },
         ]})),
       });
       await store.fetchExecutions();
@@ -281,15 +280,15 @@ describe('useSystemZoneStore', () => {
 
   describe('fetchStatus', () => {
     it('sets status on success', async () => {
-      const mockStatus = createMockStatus();
+      const mockStatusData = createMockStatus();
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve(mockSuccess(mockStatus)),
+        json: () => Promise.resolve({ success: true, status: mockStatusData }),
       });
 
       await store.fetchStatus();
 
-      expect(store.status).toEqual(mockStatus);
+      expect(store.status).toEqual(mockStatusData);
       expect(store.connected).toBe(true);
       expect(store.globalError).toBe(null);
       expect(store.panelError.status).toBe(null);
@@ -315,7 +314,7 @@ describe('useSystemZoneStore', () => {
 
       const p = store.fetchStatus();
       expect(store.panelLoading.status).toBe(true);
-      resolve!({ ok: true, json: () => Promise.resolve(mockSuccess(createMockStatus())) });
+      resolve!({ ok: true, json: () => Promise.resolve({ success: true, status: createMockStatus() }) });
       await p;
       expect(store.panelLoading.status).toBe(false);
     });
@@ -323,7 +322,7 @@ describe('useSystemZoneStore', () => {
     it('returns void', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve(mockSuccess(createMockStatus())),
+        json: () => Promise.resolve({ success: true, status: createMockStatus() }),
       });
       const result = await store.fetchStatus();
       expect(result).toBeUndefined();
@@ -481,7 +480,7 @@ describe('useSystemZoneStore', () => {
       const bootstrapStatus = createMockBootstrapStatus();
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve(mockSuccess(bootstrapStatus)),
+        json: () => Promise.resolve({ success: true, status: bootstrapStatus }),
       });
 
       await store.fetchBootstrapStatus();
@@ -511,7 +510,7 @@ describe('useSystemZoneStore', () => {
       const report = createMockFitnessReport();
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve(mockSuccess(report)),
+        json: () => Promise.resolve({ success: true, report }),
       });
 
       await store.fetchFitness();
@@ -541,7 +540,7 @@ describe('useSystemZoneStore', () => {
       const mockStatus = createMockStatus();
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve(mockSuccess(mockStatus)),
+        json: () => Promise.resolve({ success: true, status: mockStatus }),
       });
 
       await store.retryPanel('status');
@@ -596,7 +595,7 @@ describe('useSystemZoneStore', () => {
     it('retries bootstrap panel', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve(mockSuccess(createMockBootstrapStatus())),
+        json: () => Promise.resolve({ success: true, status: createMockBootstrapStatus() }),
       });
 
       await store.retryPanel('bootstrap');
@@ -607,7 +606,7 @@ describe('useSystemZoneStore', () => {
     it('retries fitness panel', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: () => Promise.resolve(mockSuccess(createMockFitnessReport())),
+        json: () => Promise.resolve({ success: true, report: createMockFitnessReport() }),
       });
 
       await store.retryPanel('fitness');
@@ -683,7 +682,7 @@ describe('useSystemZoneStore', () => {
       mockFetch
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess({})) })
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess(insightsResult)) })
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess(statusResult)) });
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true, status: statusResult }) });
 
       const result = await store.triggerObserve();
       expect(result).toBe(true);
@@ -709,7 +708,7 @@ describe('useSystemZoneStore', () => {
       mockFetch
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess({})) })
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess(proposalsResult)) })
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess(statusResult)) });
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true, status: statusResult }) });
 
       const result = await store.triggerAnalyze();
       expect(result).toBe(true);
@@ -736,7 +735,7 @@ describe('useSystemZoneStore', () => {
       mockFetch
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess({})) })
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess(proposalsResult)) })
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess(statusResult)) })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true, status: statusResult }) })
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess(executionsResult)) });
 
       const result = await store.approveProposal('p1', 'approve');
@@ -764,7 +763,7 @@ describe('useSystemZoneStore', () => {
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess({ execution: executionsResult.executions[0] })) })
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess(proposalsResult)) })
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess(executionsResult)) })
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess(statusResult)) });
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true, status: statusResult }) });
 
       const result = await store.executeProposal('p1');
       expect(result).toBe(true);
@@ -814,7 +813,7 @@ describe('useSystemZoneStore', () => {
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess({ source: sourcesResult.sources[0] })) })
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess(sourcesResult)) });
 
-      const result = await store.addSource({ name: 'New Source', type: 'rss', url: 'https://x.com', config: {}, enabled: true });
+      const result = await store.addSource({ name: 'New Source', type: 'rss', url: 'https://x.com', config: {} });
       expect(result).toBe(true);
     });
 
@@ -824,7 +823,7 @@ describe('useSystemZoneStore', () => {
         json: () => Promise.resolve(mockFailure('Add source error')),
       });
 
-      const result = await store.addSource({ name: 'Bad', type: 'rss', url: 'https://x.com', config: {}, enabled: true });
+      const result = await store.addSource({ name: 'Bad', type: 'rss', url: 'https://x.com', config: {} });
       expect(result).toBe(false);
     });
   });
@@ -834,7 +833,7 @@ describe('useSystemZoneStore', () => {
       const bootstrapResult = createMockBootstrapStatus();
       mockFetch
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess({})) })
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess(bootstrapResult)) });
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true, status: bootstrapResult }) });
 
       const result = await store.startBootstrap();
       expect(result).toBe(true);
@@ -854,10 +853,10 @@ describe('useSystemZoneStore', () => {
 
   describe('stopBootstrap', () => {
     it('calls fetchBootstrapStatus on success', async () => {
-      const bootstrapResult = { ...createMockBootstrapStatus(), running: false };
+      const bootstrapResult = { ...createMockBootstrapStatus(), engineRunning: false };
       mockFetch
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess({})) })
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess(bootstrapResult)) });
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true, status: bootstrapResult }) });
 
       const result = await store.stopBootstrap();
       expect(result).toBe(true);
@@ -882,7 +881,7 @@ describe('useSystemZoneStore', () => {
 
       mockFetch
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess({})) })
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess(bootstrapResult)) })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true, status: bootstrapResult }) })
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess(proposalsResult)) })
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess(executionsResult)) });
 
@@ -906,7 +905,7 @@ describe('useSystemZoneStore', () => {
       const bootstrapResult = { ...createMockBootstrapStatus(), mode: 'full_auto' as const };
       mockFetch
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess({})) })
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess(bootstrapResult)) });
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true, status: bootstrapResult }) });
 
       const result = await store.setBootstrapMode('full_auto');
       expect(result).toBe(true);
@@ -934,7 +933,7 @@ describe('useSystemZoneStore', () => {
       const proposalsResult = { proposals: [createMockProposal({ id: 'p1' })] };
 
       mockFetch
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess(statusResult)) })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ success: true, status: statusResult }) })
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess(insightsResult)) })
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockSuccess(proposalsResult)) });
 

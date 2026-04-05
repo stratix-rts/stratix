@@ -3,22 +3,22 @@
     <div class="status-item" v-if="store.status">
       <span class="status-dot" :class="dotClass(store.status.observer.status)"></span>
       <span class="status-name">Observer</span>
-      <span class="status-detail">{{ store.status.observer.totalInputs }} 输入</span>
+      <span class="status-detail">{{ store.status.observer.totalInputsReceived }} 输入 / {{ store.status.observer.totalInsightsGenerated }} 洞察</span>
     </div>
     <div class="status-item" v-if="store.status">
       <span class="status-dot" :class="dotClass(store.status.strategist.status)"></span>
       <span class="status-name">Strategist</span>
-      <span class="status-detail">{{ store.status.strategist.pendingProposals }} 待审</span>
+      <span class="status-detail">{{ store.status.strategist.proposalCount }} 提案</span>
     </div>
     <div class="status-item" v-if="store.status">
-      <span class="status-dot" :class="store.status.guardian.circuitBreakerOpen ? 'dot-error' : 'dot-ok'"></span>
+      <span class="status-dot" :class="dotClass(String(store.status.guardian))"></span>
       <span class="status-name">Guardian</span>
-      <span class="status-detail">{{ store.status.guardian.circuitBreakerOpen ? '熔断中' : '正常' }}</span>
+      <span class="status-detail">{{ store.status.guardian }}</span>
     </div>
     <div class="status-item" v-if="store.status">
-      <span class="status-dot" :class="store.status.guardian.circuitBreakerOpen ? 'dot-error' : 'dot-ok'"></span>
+      <span class="status-dot" :class="store.fitnessReport?.passed ? 'dot-ok' : 'dot-error'"></span>
       <span class="status-name">Fitness</span>
-      <span class="status-detail">{{ store.fitnessReport ? store.fitnessReport.overallScore + '分' : '--' }}</span>
+      <span class="status-detail">{{ store.fitnessReport ? store.fitnessReport.scores.overall + '分' : '--' }}</span>
     </div>
     <div class="status-item" v-if="!store.status">
       <span class="status-dot dot-idle"></span>
@@ -37,6 +37,7 @@ function dotClass(status: string): string {
     case 'running': return 'dot-running';
     case 'error': return 'dot-error';
     case 'idle': return 'dot-ok';
+    case 'active': return 'dot-ok';
     default: return 'dot-idle';
   }
 }

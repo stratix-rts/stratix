@@ -38,28 +38,23 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<{ succe
 // -------------------------------------------------------------------------
 
 export interface ObserverSummary {
-  totalInputs: number;
-  processedInputs: number;
-  pendingInputs: number;
-  lastRunAt: string | null;
   status: 'idle' | 'running' | 'error';
+  pendingCount: number;
+  processedCount: number;
+  totalInputsReceived: number;
+  totalInsightsGenerated: number;
 }
 
 export interface StrategistSummary {
-  totalProposals: number;
-  pendingProposals: number;
-  approvedProposals: number;
-  executedProposals: number;
-  lastRunAt: string | null;
   status: 'idle' | 'running' | 'error';
+  lastScan: string | null;
+  lastAnalysis: string | null;
+  proposalCount: number;
+  hasScanResult: boolean;
 }
 
-export interface GuardianState {
-  circuitBreakerOpen: boolean;
-  totalValidations: number;
-  blockedCount: number;
-  lastValidationAt: string | null;
-}
+// 后端 guardian 返回的是 guardian.getState().status，即 GuardianStatus 字符串
+export type GuardianState = string;
 
 export interface Insight {
   id: string;
@@ -73,53 +68,53 @@ export interface Insight {
   metadata?: Record<string, any>;
 }
 
+export interface ProposalTarget {
+  path?: string;
+  files?: string[];
+  description?: string;
+}
+
+export interface ProposalSelection {
+  strategy?: string;
+  criteria?: string[];
+  scope?: string;
+}
+
 export interface Proposal {
   id: string;
+  timestamp: string;
+  type: string;
   title: string;
   description: string;
-  type: string;
+  target: ProposalTarget;
+  selection: ProposalSelection;
   status: 'pending' | 'approved' | 'rejected' | 'executing' | 'completed' | 'failed' | 'rolled_back';
-  riskLevel: 'low' | 'medium' | 'high' | 'critical';
-  targetFiles: string[];
-  estimatedImpact: string;
-  guardianValidation?: {
-    valid: boolean;
-    reasons: string[];
-    alerts: any[];
-  };
-  createdAt: string;
-  updatedAt: string;
-  approvedAt?: string;
+  approvedBy?: string;
   executedAt?: string;
-  executionResult?: ExecutionResult;
 }
 
 export interface ExecutionResult {
   proposalId: string;
-  status: 'running' | 'completed' | 'failed' | 'rolled_back';
-  commitHash?: string;
-  rollbackHash?: string;
-  changes: string[];
-  testResults?: {
-    passed: number;
-    failed: number;
-    total: number;
-  };
-  startedAt: string;
-  completedAt?: string;
-  error?: string;
+  success: boolean;
+  phase: string;
+  duration: number;
+  error: string | null;
+  commitHash: string | null;
+  rollbackHash: string | null;
 }
 
 export interface ExternalSource {
   id: string;
   name: string;
-  type: 'rss' | 'webhook' | 'api_polling';
+  type: string;
+  status: string;
   url: string;
-  config: Record<string, any>;
-  enabled: boolean;
-  lastFetchAt: string | null;
-  status: 'active' | 'error' | 'disabled';
-  itemCount?: number;
+  ownerId: string;
+  createdAt: string;
+  lastFetchedAt: string | null;
+  lastError: string | null;
+  fetchCount: number;
+  errorCount: number;
 }
 
 export interface BootstrapStatus {
@@ -146,20 +141,22 @@ export interface BootstrapHistoryEntry {
 }
 
 export interface FitnessReport {
-  overallScore: number;
-  dimensions: {
-    name: string;
-    score: number;
-    maxScore: number;
-    details?: string;
-  }[];
-  violations: {
-    rule: string;
-    severity: 'info' | 'warning' | 'error';
-    message: string;
-    file?: string;
-  }[];
-  checkedAt: string;
+  timestamp: string;
+  metrics: {
+    testCoverage: number;
+    cyclomaticComplexity: number;
+    duplicationRate: number;
+    responseTime: number;
+    errorRate: number;
+  };
+  scores: {
+    codeQuality: number;
+    performance: number;
+    systemHealth: number;
+    overall: number;
+  };
+  passed: boolean;
+  violations: string[];
 }
 
 // -------------------------------------------------------------------------
@@ -226,7 +223,7 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
   );
 
   const activeExecutions = computed(() =>
-    executions.value.filter(e => e.status === 'running')
+    executions.value.filter(e => !e.success && e.phase === 'executing')
   );
 
   const insightsCount = computed(() => insights.value.length);
@@ -408,7 +405,7 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
     }
   }
 
-  async function addSource(source: Omit<ExternalSource, 'id' | 'lastFetchAt' | 'status' | 'itemCount'>): Promise<boolean> {
+  async function addSource(source: { name: string; type: string; url: string; config: Record<string, any> }): Promise<boolean> {
     globalLoading.value = true;
     const result = await apiFetch<{ source: ExternalSource }>('/api/systemzone/sources', {
       method: 'POST',

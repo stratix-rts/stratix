@@ -65,15 +65,12 @@
           </div>
           <div class="source-url">{{ source.url }}</div>
           <div class="source-meta">
-            <span v-if="source.lastFetchAt">最后抓取: {{ formatTime(source.lastFetchAt) }}</span>
-            <span v-if="source.itemCount !== undefined">条目数: {{ source.itemCount }}</span>
+            <span v-if="source.lastFetchedAt">最后抓取: {{ formatTime(source.lastFetchedAt) }}</span>
+            <span v-if="source.fetchCount">抓取次数: {{ source.fetchCount }}</span>
+            <span v-if="source.errorCount">错误: {{ source.errorCount }}</span>
           </div>
         </div>
         <div class="source-actions">
-          <label class="toggle">
-            <input type="checkbox" :checked="source.enabled" @change="toggleSource(source)" />
-            <span class="toggle-slider"></span>
-          </label>
           <button class="btn-delete" @click="deleteSource(source.id)" title="删除">✕</button>
         </div>
       </div>
@@ -127,7 +124,6 @@ async function handleAdd() {
     name: form.name,
     type: form.type,
     url: form.url,
-    enabled: true,
     config,
   });
   form.name = '';
@@ -135,10 +131,6 @@ async function handleAdd() {
   form.url = '';
   form.configJson = '{}';
   showForm.value = false;
-}
-
-async function toggleSource(source: any) {
-  await store.fetchSources();
 }
 
 async function deleteSource(id: string) {

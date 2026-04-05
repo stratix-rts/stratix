@@ -24,20 +24,20 @@
     <div v-else-if="store.bootstrapStatus" class="engine-card">
       <div class="engine-status-row">
         <div class="status-indicator">
-          <span class="big-dot" :class="store.bootstrapStatus.running ? 'dot-running' : 'dot-stopped'"></span>
-          <span class="status-label">{{ store.bootstrapStatus.running ? '运行中' : '已停止' }}</span>
+          <span class="big-dot" :class="store.bootstrapStatus.engineRunning ? 'dot-running' : 'dot-stopped'"></span>
+          <span class="status-label">{{ store.bootstrapStatus.engineRunning ? '运行中' : '已停止' }}</span>
         </div>
         <div class="engine-stats">
           <div class="stat-item">
-            <span class="stat-value">{{ store.bootstrapStatus.cyclesCompleted }}</span>
+            <span class="stat-value">{{ store.bootstrapStatus.cycleCount }}</span>
             <span class="stat-label">完成循环</span>
           </div>
           <div class="stat-item">
             <span class="stat-value">{{ store.bootstrapStatus.lastCycleAt ? formatTime(store.bootstrapStatus.lastCycleAt) : '-' }}</span>
             <span class="stat-label">最后循环</span>
           </div>
-          <div v-if="store.bootstrapStatus.currentPhase" class="stat-item">
-            <span class="stat-value phase">{{ store.bootstrapStatus.currentPhase }}</span>
+          <div v-if="store.bootstrapStatus.phase" class="stat-item">
+            <span class="stat-value phase">{{ store.bootstrapStatus.phase }}</span>
             <span class="stat-label">当前阶段</span>
           </div>
         </div>
@@ -47,11 +47,11 @@
       <div class="controls">
         <button
           class="btn-primary"
-          :class="store.bootstrapStatus.running ? 'btn-stop' : 'btn-start'"
+          :class="store.bootstrapStatus.engineRunning ? 'btn-stop' : 'btn-start'"
           @click="toggleEngine"
           :disabled="store.loading"
         >
-          {{ store.bootstrapStatus.running ? '停止' : '启动' }}
+          {{ store.bootstrapStatus.engineRunning ? '停止' : '启动' }}
         </button>
 
         <div class="mode-select">
@@ -66,7 +66,7 @@
         <button
           class="btn-cycle"
           @click="triggerCycle"
-          :disabled="store.loading || store.bootstrapStatus.running"
+          :disabled="store.loading || store.bootstrapStatus.engineRunning"
         >
           触发一次循环
         </button>
@@ -156,7 +156,7 @@ function formatTime(iso: string): string {
 }
 
 async function toggleEngine() {
-  if (store.bootstrapStatus?.running) {
+  if (store.bootstrapStatus?.engineRunning) {
     await store.stopBootstrap();
   } else {
     await store.startBootstrap();

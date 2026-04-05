@@ -46,14 +46,14 @@
           <div class="card-header">
             <h3 class="card-title">{{ proposal.title }}</h3>
             <div class="card-tags">
-              <RiskTag :level="proposal.riskLevel" />
+              <StatusTag :status="proposal.status" />
               <span class="type-tag">{{ proposal.type }}</span>
             </div>
           </div>
           <p class="card-desc">{{ truncate(proposal.description, 120) }}</p>
           <div class="card-footer">
-            <span class="file-count">{{ proposal.targetFiles.length }} 个目标文件</span>
-            <span class="card-time">{{ formatTime(proposal.createdAt) }}</span>
+            <span class="target-info">{{ targetLabel(proposal.target) }}</span>
+            <span class="card-time">{{ formatTime(proposal.timestamp) }}</span>
           </div>
           <div class="card-actions" @click.stop>
             <template v-if="proposal.status === 'pending'">
@@ -84,27 +84,20 @@
             <p>{{ proposal.description }}</p>
           </div>
           <div class="detail-section">
-            <h4>目标文件</h4>
-            <ul class="file-list">
-              <li v-for="f in proposal.targetFiles" :key="f">{{ f }}</li>
-            </ul>
+            <h4>目标</h4>
+            <p>{{ JSON.stringify(proposal.target, null, 2) }}</p>
           </div>
-          <div v-if="proposal.guardianValidation" class="detail-section">
-            <h4>Guardian 验证</h4>
-            <div class="guardian-result" :class="proposal.guardianValidation.valid ? 'valid' : 'invalid'">
-              <span class="guardian-status">
-                {{ proposal.guardianValidation.valid ? '通过' : '拒绝' }}
-              </span>
-              <ul v-if="proposal.guardianValidation.reasons.length">
-                <li v-for="r in proposal.guardianValidation.reasons" :key="r">{{ r }}</li>
-              </ul>
-            </div>
+          <div class="detail-section">
+            <h4>选择策略</h4>
+            <p>{{ JSON.stringify(proposal.selection, null, 2) }}</p>
           </div>
-          <div v-if="proposal.executionResult" class="detail-section">
-            <h4>执行结果</h4>
-            <p>状态: {{ proposal.executionResult.status }}</p>
-            <p v-if="proposal.executionResult.commitHash">Commit: {{ proposal.executionResult.commitHash }}</p>
-            <p v-if="proposal.executionResult.error" class="error-text">{{ proposal.executionResult.error }}</p>
+          <div v-if="proposal.approvedBy" class="detail-section">
+            <h4>审批人</h4>
+            <p>{{ proposal.approvedBy }}</p>
+          </div>
+          <div v-if="proposal.executedAt" class="detail-section">
+            <h4>执行时间</h4>
+            <p>{{ formatTime(proposal.executedAt) }}</p>
           </div>
         </div>
       </div>
@@ -117,7 +110,7 @@ import { ref, computed, type Ref } from 'vue';
 import { useSystemZoneStore } from '../../stores/systemzone';
 import { usePanelState } from './composables/usePanelState';
 import { useAutoRefresh } from './composables/useAutoRefresh';
-import RiskTag from './components/RiskTag.vue';
+import StatusTag from './components/StatusTag.vue';
 
 const store = useSystemZoneStore();
 const activeTab = ref('all');
@@ -145,6 +138,13 @@ function getTabCount(status: string): number {
   return store.proposals.filter(p => p.status === status).length;
 }
 
+function targetLabel(target: any): string {
+  if (!target) return '无目标';
+  if (target.path) return target.path;
+  if (target.files && Array.isArray(target.files)) return `${target.files.length} 个文件`;
+  return '自定义目标';
+}
+
 function toggleExpand(id: string) {
   expandedId.value = expandedId.value === id ? null : id;
 }
@@ -166,9 +166,9 @@ function truncate(text: string, len: number): string {
   return text.slice(0, len) + '...';
 }
 
-function formatTime(iso: string): string {
-  if (!iso) return '';
-  const d = new Date(iso);
+function formatTime(ts: string | Date): string {
+  if (!ts) return '';
+  const d = new Date(ts);
   return d.toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 </script>
@@ -325,7 +325,7 @@ function formatTime(iso: string): string {
   flex: 1;
 }
 
-.card-tags { display: flex; gap: 6px; flex-shrink: 0; }
+.card-tags { display: flex; gap: 6px; flex-shrink: 0; align-items: center; }
 
 .type-tag {
   font-size: 11px;
@@ -349,6 +349,8 @@ function formatTime(iso: string): string {
   color: var(--ds-text-muted, #64748b);
   margin-bottom: 10px;
 }
+
+.target-info { font-family: var(--ds-typography-fontFamily-mono, monospace); }
 
 .card-actions { display: flex; gap: 8px; }
 
@@ -375,30 +377,6 @@ function formatTime(iso: string): string {
   color: var(--ds-text-primary, #e2e8f0);
   font-size: 13px;
   line-height: 1.6;
+  white-space: pre-wrap;
 }
-
-.file-list {
-  margin: 0;
-  padding-left: 20px;
-  color: var(--ds-text-primary, #e2e8f0);
-  font-size: 13px;
-}
-
-.guardian-result {
-  padding: 10px 12px;
-  border-radius: var(--ds-radius-sm, 6px);
-  font-size: 13px;
-}
-.guardian-result.valid {
-  background: color-mix(in srgb, var(--ds-status-success, #22c55e) 10%, transparent);
-  color: var(--ds-status-success, #22c55e);
-}
-.guardian-result.invalid {
-  background: color-mix(in srgb, var(--ds-status-danger, #ef4444) 10%, transparent);
-  color: var(--ds-status-danger, #ef4444);
-}
-.guardian-status { font-weight: 600; display: block; margin-bottom: 4px; }
-.guardian-result ul { margin: 4px 0 0; padding-left: 16px; }
-
-.error-text { color: var(--ds-status-danger, #ef4444) !important; }
 </style>
