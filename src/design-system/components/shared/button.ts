@@ -34,7 +34,7 @@ export const ButtonBaseConfig: ComponentToken = {
 /**
  * Button 尺寸配置
  */
-export const ButtonSizes = {
+export const ButtonSizes: Record<string, { padding: string; fontSize: string }> = {
   sm: {
     padding: '4px 8px',
     fontSize: '12px',
@@ -47,7 +47,15 @@ export const ButtonSizes = {
     padding: '12px 24px',
     fontSize: '16px',
   },
-} as const;
+  xl: {
+    padding: '16px 32px',
+    fontSize: '18px',
+  },
+  fullscreen: {
+    padding: '20px 40px',
+    fontSize: '20px',
+  },
+};
 
 /**
  * Button 变体类型

@@ -1,5 +1,5 @@
 import { ApiClient } from '../stratix-gateway/api/client';
-import { API_PATHS , isApiSuccess } from '../stratix-gateway/api/types/api';
+import { API_PATHS, isApiSuccess, isApiError } from '../stratix-gateway/api/types/api';
 
 import { Project, ProjectConfig, ProjectZoneConfig, ProjectStatus } from './types';
 
@@ -36,7 +36,7 @@ export class ProjectClient {
 
   async initialize(): Promise<void> {
     const result = await this.client.post<InitializeResponse>(API_PATHS.PROJECTS + '/initialize');
-    if (!result.success) {
+    if (isApiError(result)) {
       throw new Error(`Failed to initialize project service: ${result.error}`);
     }
     console.log('[ProjectClient] Project service initialized');
@@ -44,7 +44,7 @@ export class ProjectClient {
 
   async getAllProjects(): Promise<Project[]> {
     const result = await this.client.get<ProjectsResponse>(API_PATHS.PROJECTS);
-    if (!result.success) {
+    if (isApiError(result)) {
       console.error('[ProjectClient] Failed to get projects:', result.error);
       return [];
     }
@@ -55,7 +55,7 @@ export class ProjectClient {
     const result = await this.client.get<ProjectsResponse>(API_PATHS.PROJECTS, {
       headers: { params: JSON.stringify({ status }) }
     });
-    if (!result.success) {
+    if (isApiError(result)) {
       console.error('[ProjectClient] Failed to get projects by status:', result.error);
       return [];
     }
@@ -66,7 +66,7 @@ export class ProjectClient {
     const result = await this.client.get<ProjectsResponse>(API_PATHS.PROJECTS, {
       headers: { params: JSON.stringify({ priority }) }
     });
-    if (!result.success) {
+    if (isApiError(result)) {
       console.error('[ProjectClient] Failed to get projects by priority:', result.error);
       return [];
     }
@@ -82,7 +82,7 @@ export class ProjectClient {
       zoneConfig
     });
 
-    if (!result.success) {
+    if (isApiError(result)) {
       throw new Error(`Failed to create project: ${result.error}`);
     }
 
@@ -92,7 +92,7 @@ export class ProjectClient {
 
   async getProject(id: string): Promise<Project | null> {
     const result = await this.client.get<ProjectResponse>(API_PATHS.PROJECT_BY_ID(id));
-    if (!result.success) {
+    if (isApiError(result)) {
       console.error(`[ProjectClient] Failed to get project ${id}:`, result.error);
       return null;
     }
@@ -105,7 +105,7 @@ export class ProjectClient {
       { updates }
     );
 
-    if (!result.success) {
+    if (isApiError(result)) {
       throw new Error(`Failed to update project ${id}: ${result.error}`);
     }
 
@@ -123,7 +123,7 @@ export class ProjectClient {
       { zoneContextId }
     );
 
-    if (!result.success) {
+    if (isApiError(result)) {
       console.error(`[ProjectClient] Failed to update zone context FK for ${zoneId}:`, result.error);
       throw new Error(`Failed to update zone context FK: ${result.error}`);
     }
@@ -132,7 +132,7 @@ export class ProjectClient {
 
   async deleteProject(id: string): Promise<boolean> {
     const result = await this.client.delete<{ message: string }>(API_PATHS.PROJECT_BY_ID(id));
-    if (!result.success) {
+    if (isApiError(result)) {
       console.error(`[ProjectClient] Failed to delete project ${id}:`, result.error);
       return false;
     }
@@ -142,7 +142,7 @@ export class ProjectClient {
 
   async startProject(id: string): Promise<Project> {
     const result = await this.client.post<ProjectResponse>(API_PATHS.PROJECT_START(id));
-    if (!result.success) {
+    if (isApiError(result)) {
       throw new Error(`Failed to start project ${id}: ${result.error}`);
     }
     console.log(`[ProjectClient] Project started: ${id}`);
@@ -151,7 +151,7 @@ export class ProjectClient {
 
   async pauseProject(id: string): Promise<Project> {
     const result = await this.client.post<ProjectResponse>(API_PATHS.PROJECT_PAUSE(id));
-    if (!result.success) {
+    if (isApiError(result)) {
       throw new Error(`Failed to pause project ${id}: ${result.error}`);
     }
     console.log(`[ProjectClient] Project paused: ${id}`);
@@ -160,7 +160,7 @@ export class ProjectClient {
 
   async completeProject(id: string): Promise<Project> {
     const result = await this.client.post<ProjectResponse>(API_PATHS.PROJECT_COMPLETE(id));
-    if (!result.success) {
+    if (isApiError(result)) {
       throw new Error(`Failed to complete project ${id}: ${result.error}`);
     }
     console.log(`[ProjectClient] Project completed: ${id}`);
@@ -169,7 +169,7 @@ export class ProjectClient {
 
   async failProject(id: string): Promise<Project> {
     const result = await this.client.post<ProjectResponse>(API_PATHS.PROJECT_FAIL(id));
-    if (!result.success) {
+    if (isApiError(result)) {
       throw new Error(`Failed to mark project ${id} as failed: ${result.error}`);
     }
     console.log(`[ProjectClient] Project marked as failed: ${id}`);
@@ -182,7 +182,7 @@ export class ProjectClient {
       { agentId }
     );
 
-    if (!result.success) {
+    if (isApiError(result)) {
       throw new Error(`Failed to add agent to project ${projectId}: ${result.error}`);
     }
 
@@ -196,7 +196,7 @@ export class ProjectClient {
       { agentId }
     );
 
-    if (!result.success) {
+    if (isApiError(result)) {
       throw new Error(`Failed to remove agent from project ${projectId}: ${result.error}`);
     }
 
@@ -206,7 +206,7 @@ export class ProjectClient {
 
   async getMetadata(): Promise<MetadataResponse> {
     const result = await this.client.get<MetadataResponse>(API_PATHS.PROJECT_METADATA);
-    if (!result.success) {
+    if (isApiError(result)) {
       throw new Error(`Failed to get metadata: ${result.error}`);
     }
     return result.data;
@@ -218,7 +218,7 @@ export class ProjectClient {
       API_PATHS.ZONE_MEMBER(zoneId, agentId)
     );
 
-    if (!result.success) {
+    if (isApiError(result)) {
       console.error(`[ProjectClient] Failed to add agent ${agentId} to zone ${zoneId}:`, result.error);
       throw new Error(`Failed to add agent to zone: ${result.error}`);
     }
@@ -230,7 +230,7 @@ export class ProjectClient {
       API_PATHS.ZONE_MEMBER(zoneId, agentId)
     );
 
-    if (!result.success) {
+    if (isApiError(result)) {
       console.error(`[ProjectClient] Failed to remove agent ${agentId} from zone ${zoneId}:`, result.error);
       throw new Error(`Failed to remove agent from zone: ${result.error}`);
     }

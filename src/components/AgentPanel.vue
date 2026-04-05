@@ -27,10 +27,10 @@ const emit = defineEmits<{
   (e: 'refresh'): void;
 }>();
 
-const agents = computed(() => agentStore.agents.value);
-const storeRefreshing = computed(() => agentStore.isRefreshing.value);
-const lastRefreshTime = computed(() => agentStore.lastRefreshTime.value);
-const isRefreshing = computed(() => props.isRefreshing || storeRefreshing.value);
+const agents = computed(() => agentStore.agents);
+const storeRefreshing = computed(() => agentStore.isRefreshing);
+const lastRefreshTime = computed(() => agentStore.lastRefreshTime);
+const isRefreshing = computed(() => props.isRefreshing || storeRefreshing);
 
 // 使用 SVG 图标替代 Emoji
 // Agent 类型配置（使用 SVG 图标）

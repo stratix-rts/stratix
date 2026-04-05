@@ -29,9 +29,9 @@ const emit = defineEmits<{
   (e: 'refresh'): void;
 }>();
 
-const agents = computed(() => agentStore.agents.value);
-const storeRefreshing = computed(() => agentStore.isRefreshing.value);
-const lastRefreshTime = computed(() => agentStore.lastRefreshTime.value);
+const agents = computed(() => agentStore.agents);
+const storeRefreshing = computed(() => agentStore.isRefreshing);
+const lastRefreshTime = computed(() => agentStore.lastRefreshTime);
 
 const heroTypes = [
   { type: 'writer' as const, name: '文案英雄', color: 'var(--ds-status-success)' },
@@ -215,7 +215,7 @@ const handleCreateSelect = (value: string | number) => {
         />
       </div>
       
-      <div v-if="agents.length === 0" class="empty-state">
+      <div v-if="agents?.length === 0" class="empty-state">
         <SvgIcon :name="user" :color="getToken('colors.accent')" :size="48" :stroke-width="1.5" />
         <div class="empty-title">还没有英雄</div>
         <div class="empty-desc">点击上方按钮创建你的第一个英雄</div>

@@ -11,6 +11,7 @@ import { openClawConnectionManager } from '../../openclaw/OpenClawConnectionMana
 import { openClawProxyManager } from '../../openclaw/OpenClawProxyManager';
 import { retryPolicyEngine, RetryPolicyEngine } from '@/stratix-core/retry';
 import { ApiClient } from '../client';
+import { isApiError } from '../types/api';
 
 
 const router = Router();
@@ -103,14 +104,14 @@ router.get('/test', async (req: Request, res: Response) => {
       timeout: 5000,
     });
 
-    if (result.success) {
+    if (isApiError(result)) {
+      res.json(requestHelper.error(502, `Connection failed: ${result.error}`));
+    } else {
       res.json(requestHelper.success({
         endpoint,
         connected: true,
         status: result.data?.status ?? 200
       }, 'OpenClaw connection successful'));
-    } else {
-      res.json(requestHelper.error(502, `Connection failed: ${result.error}`));
     }
   } catch (error) {
     const err = error as Error;

@@ -26,7 +26,7 @@ const emit = defineEmits<{
 provideSizeContext(toRef(props, 'size'));
 
 const token = computed(() => getButtonToken(props.variant));
-const sizeConfig = computed(() => ButtonSizes[props.size]);
+const sizeConfig = computed(() => ButtonSizes[props.size] || ButtonSizes.md);
 
 // 按钮样式计算属性（处理默认值）
 const buttonStyle = computed(() => ({

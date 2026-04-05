@@ -2,7 +2,6 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { StratixEmpty, StratixButton, StratixLoading } from '@/components/ui';
 import type { StratixCommandLog } from '@/stratix-data-store/types';
-import { dataStoreService } from '@/stratix-gateway/dataStoreService';
 
 interface FilterOptions {
   agentId?: string;
@@ -54,8 +53,9 @@ const uniqueAgentIds = computed(() => {
 const fetchLogs = async () => {
   loading.value = true;
   try {
-    const logStore = dataStoreService.getLogStore();
-    logs.value = await logStore.getLogs({ limit: 200 });
+    const res = await fetch('/api/commands');
+    const data = await res.json();
+    logs.value = data.data?.commands || [];
   } catch (err) {
     console.error('[TaskLogViewer] Failed to fetch logs:', err);
   } finally {

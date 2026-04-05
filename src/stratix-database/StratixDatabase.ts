@@ -1,7 +1,7 @@
 import path from 'path';
 
 import Database from 'better-sqlite3';
-import fs from 'fs-extra';
+import * as fs from 'fs-extra';
 
 export interface DatabaseConfig {
   dataDir?: string;

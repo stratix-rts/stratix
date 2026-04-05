@@ -1,52 +1,27 @@
 # System Zone 自举设计文档
 
-> **版本**: 2.0
+> **版本**: 3.0
 >
-> **转折点日期**: 2026-04-04
->
-> **核心理念**: 让 Stratix 成为真正活着的系统 —— 持续观察世界、感知自身、主动进化
+> **更新日期**: 2026-04-05
 
 ---
 
-## 1. 愿景
+## 1. 定位
 
-### 1.1 从工具到生命体
+**目标**：System Zone 让 Stratix 具备自我观察、自我分析、自我改进的能力。
 
-```
-传统软件：人操作工具，工具被动响应
-Stratix 当前：人指挥 Agent，Agent 执行任务
-Stratix 未来：System Zone 观察世界 → 分析趋势 → 主动进化
-```
+**当前状态**：阶段 1（人指挥 Agent 执行）→ 目标：阶段 4（AI 自主发现、决定、创造）
 
-**终极愿景**：
-- Stratix 不再只是人用的工具
-- 它是一个「数字生命体」，有感知、有思考、有行动
-- 人是它的「造物主」和「教练」，不是它的操作员
-- 它会自我迭代，从代码到架构到功能，不断进化
-
-### 1.2 类比：物种进化
-
-| 阶段 | 描述 | 类比 |
-|------|------|------|
-| **阶段 1** | 人告诉 AI 要做什么 | 原始人使用工具 |
-| **阶段 2** | AI 观察世界，自己发现该做什么 | 动物学会使用工具 |
-| **阶段 3** | AI 自己决定，自己做，人只监督 | 人类进化出智慧 |
-| **阶段 4** | AI 能创造全新功能，不是人教的 | 人类文明爆发 |
-| **阶段 5** | AI 系统自我迭代，形成文明 | 生命体自我进化 |
-
-Stratix 现在处于 **阶段 1 末期**，目标是 **阶段 4**。
-
-### 1.3 Phase 1 定位（v2.0 调整）
-
-Phase 1 是**最小可行骨架**，不是完整系统：
+### Phase 1 范围
 
 ```
-Phase 1 范围（v2.0）：
+Phase 1（最小可行骨架）：
 ✅ System Zone 类型定义 + 数据库 schema
-✅ Observer 骨架：用户输入 → 信息提取
-✅ Strategist 骨架：分析 → 生成提案
+✅ Observer：规则预处理 + LLM 语义提取（复用 SessionRuntime）
+✅ Strategist：确定性扫描 + LLM 辅助分析（复用 SessionRuntime）
+✅ Guardian：路径保护 + 熔断器
 ✅ 手动触发循环：用户点按钮跑一圈
-✅ 复用手边基础设施
+✅ 复用现有基础设施（无预算限制）
 
 Phase 1 不做（推迟到 Phase 2/3）：
 ❌ Executor（代码修改能力）
@@ -60,7 +35,7 @@ Phase 1 不做（推迟到 Phase 2/3）：
 
 ### 2.1 核心原则
 
-**System Zone 必须建立在已有基础设施上，不是全新模块。**
+**System Zone 必须建立在已有基础设施上，不是全新模块。所有 LLM 能力通过 Stratix Agent 机制接入，无预算限制。**
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -72,13 +47,12 @@ Phase 1 不做（推迟到 Phase 2/3）：
 │   StratixStateStore              →     System Zone 的状态管理             │
 │   PermissionOrchestrator         →     Executor 的权限检查               │
 │   AgentRouter                    →     System Zone 的 Agent 调度         │
+│   SessionRuntime                 →     Observer/Strategist LLM 会话      │
 │   RetryPolicyEngine              →     外部调用重试                      │
-│   BudgetController               →     System Zone 自身的预算控制         │
-│   SessionRuntime                 →     Observer/Strategist 会话管理       │
 │   CommandOrchestrator            →     System Zone 的命令注册             │
 │                                                                          │
-│   skills/memory-manager          →     记忆系统复用（分类归档）           │
-│   .learnings/                    →     ERRORS.md + LEARNINGS.md          │
+│   stratix-data-store             →     持久化层（替代外部 .learnings/）    │
+│   stratix-database               →     数据库存储                        │
 │                                                                          │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -93,21 +67,34 @@ System Zone (用户私有)
 │   │   ├── 用户粘贴：新闻、趋势分析、想法、代码片段
 │   │   └── 格式：文本、JSON、结构化数据
 │   │
-│   └── 信息处理：结构化提取 + 存储
+│   ├── 规则预处理（本地，零成本）
+│   │   ├── 格式检测：代码 / URL / 纯文本 / JSON
+│   │   ├── 语言检测：中 / 英 / 混合
+│   │   └── 基础清洗：去空白、去重复
+│   │
+│   └── LLM 语义提取（复用 SessionRuntime）
 │       ├── 实体识别：项目名、技术栈、人物、事件
 │       ├── 关键词提取：主题、领域、趋势
-│       └── 分类归档：复用 memory-manager 机制
+│       ├── 洞察分类：trend / opportunity / risk / pattern
+│       └── 结构化输出：JSON schema 约束
 │
 ├── 🧠 Strategist (战略家)
-│   ├── 自我分析：针对 Stratix 项目本身
-│   │   ├── 代码问题发现：死代码、坏味道、性能瓶颈
-│   │   ├── 测试缺口识别：未覆盖的路径
-│   │   └── 架构改进点：耦合、职责不清
+│   ├── 确定性扫描（本地命令，不依赖 LLM）
+│   │   ├── jest --coverage --json → 覆盖率缺口
+│   │   ├── tsc --noEmit → 类型错误
+│   │   ├── eslint --format json → lint 问题
+│   │   └── 文件行数统计 → 过大文件（>500行）
+│   │
+│   ├── LLM 辅助分析（复用 SessionRuntime）
+│   │   ├── 代码质量评估：结合源码 + 扫描结果
+│   │   ├── 具体改进建议：针对性、可执行
+│   │   └── 风险评估：基于变更影响范围
 │   │
 │   └── 提案生成
-│       ├── 改进提案：具体改动建议
-│       ├── 优先级：基于影响度和成本
-│       └── 风险评估：低/中/高
+│       ├── 从扫描结果确定性映射：覆盖率低 → test 提案
+│       ├── LLM 增强：补充具体改进建议
+│       ├── 优先级排序：risk × benefit 矩阵
+│       └── 输出结构化 Proposal[]
 │
 └── 🛡️ Guardian (守护者)
     ├── 安全边界
@@ -130,26 +117,44 @@ System Zone (用户私有)
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                           Observer                                      │
+│                     Observer Pipeline                                    │
 │  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  用户输入 ──▶ 清洗 ──▶ 结构化 ──▶ 归档到 memory-manager          │   │
+│  │  Step 1: 规则预处理（本地）                                       │   │
+│  │   格式检测 → 语言检测 → 清洗 → 基础分类                          │   │
 │  └─────────────────────────────────────────────────────────────────┘   │
 │                                      │                                 │
 │                                      ▼                                 │
 │  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │                       信息库（复用 .learnings/）                  │   │
+│  │  Step 2: LLM 语义提取（SessionRuntime → AgentRouter → LLM）      │   │
+│  │   实体识别 → 关键词提取 → 洞察分类 → 结构化输出                    │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                      │                                 │
+│                                      ▼                                 │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │              知识库（stratix-database 持久化）                     │   │
 │  │   insights[]  trends[]  observations[]  project_metrics{}       │   │
 │  └─────────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                           Strategist                                     │
+│                     Strategist Pipeline                                  │
 │  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  分析引擎（Self-Iteration 优先）                                  │   │
-│  │   ├── 项目自检：代码质量、测试覆盖、性能                           │   │
-│  │   ├── 问题识别：坏味道、风险点、改进点                            │   │
-│  │   └── 提案生成：具体、可执行、有优先级                            │   │
+│  │  Step 1: 确定性扫描（本地命令）                                    │   │
+│  │   jest --coverage → tsc --noEmit → eslint → 文件行数统计         │   │
+│  │   结果缓存到 StratixStateStore                                   │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                      │                                 │
+│                                      ▼                                 │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │  Step 2: 确定性映射                                               │   │
+│  │   覆盖率低 → test 提案 | 类型错误 → code 提案 | 大文件 → arch 提案│   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                      │                                 │
+│                                      ▼                                 │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │  Step 3: LLM 增强（SessionRuntime → AgentRouter → LLM）          │   │
+│  │   提案 + 源码 → 具体改进建议 + 风险评估                           │   │
 │  └─────────────────────────────────────────────────────────────────┘   │
 │                                      │                                 │
 │                                      ▼                                 │
@@ -164,17 +169,13 @@ System Zone (用户私有)
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                           Guardian                                      │
+│                     Guardian                                             │
 │  ┌─────────────────────────────────────────────────────────────────┐   │
 │  │  审批 + 保护                                                       │   │
-│  │   ├── 用户审批：高风险提案需人工确认                               │   │
-│  │   ├── 权限检查：PermissionOrchestrator 校验                       │   │
-│  │   └── 路径保护：禁止修改路径拦截                                  │   │
+│  │   ├── 路径保护：禁止修改 payment/permission/.env 等               │   │
+│  │   ├── 用户审批：所有提案需人工确认                                │   │
+│  │   └── 熔断器：连续失败 3 次暂停                                   │   │
 │  └─────────────────────────────────────────────────────────────────┘   │
-│                                      │                                 │
-│                              Phase 2: Executor（未实现）                │
-│                                      │                                 │
-│                              Phase 3: 外部信息源（未实现）              │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -203,14 +204,15 @@ interface SystemZone {
     loopIntervalMs: number;        // 观察循环间隔，Phase 1 为手动
     autoExecuteThreshold: 'none';  // Phase 1: 所有提案需审批
     notifyOnChange: boolean;
+    llmBudget: 'unlimited';       // 无预算限制，复用 Agent 机制
   };
 
-  // 知识库（复用 .learnings/）
+  // 知识库（持久化到 stratix-database）
   knowledge: {
     insights: Insight[];           // 从用户输入提取的洞察
     proposals: Proposal[];         // 待审批提案
     history: ChangeHistory[];       // 变更历史（Phase 2）
-    lessonsLearned: Lesson[];       // 学到的教训（复用 ERRORS.md）
+    lessonsLearned: Lesson[];       // 学到的教训
   };
 }
 
@@ -224,6 +226,33 @@ interface ObserverState {
     inputsReceived: number;
     insightsGenerated: number;
   };
+}
+
+// Observer 实现策略
+interface ObserverPipeline {
+  // 第一步：规则预处理（本地）
+  preprocessor: {
+    detectFormat(content: string): 'code' | 'url' | 'text' | 'json';
+    detectLanguage(content: string): 'zh' | 'en' | 'mixed';
+    clean(content: string): string;        // 去空白、去重复
+    classifyInput(content: string, format: string): UserInput['type'];
+  };
+
+  // 第二步：LLM 语义提取（通过 SessionRuntime）
+  extractor: {
+    model: string;                         // 通过 AgentRouter 选择模型
+    prompt: string;                        // 预设提取 prompt
+    outputSchema: InsightExtractionResult; // JSON schema 约束
+  };
+}
+
+// LLM 提取结果
+interface InsightExtractionResult {
+  entities: string[];
+  keywords: string[];
+  type: 'trend' | 'opportunity' | 'risk' | 'pattern';
+  summary: string;
+  confidence: number;
 }
 
 // User Input（用户作为信息提供者）
@@ -241,14 +270,47 @@ interface UserInput {
 
 // Strategist
 interface StrategistState {
-  status: 'idle' | 'analyzing' | 'proposing';
+  status: 'idle' | 'scanning' | 'analyzing' | 'proposing';
+  lastScan: Date | null;
   lastAnalysis: Date | null;
   currentProposals: Proposal[];    // 当前提案队列
-  analysisContext: {
-    target: 'stratix_project' | 'external';  // Phase 1 只分析 Stratix 自身
-    findings: string[];
-    confidence: number;
-  } | null;
+  scanResult: ScanResult | null;   // 最新扫描结果
+}
+
+// Strategist 实现策略：两层架构
+
+// 第一层：确定性扫描（本地命令）
+interface ProjectScanner {
+  // 可用命令（package.json 已配置）
+  runTestCoverage(): Promise<CoverageReport>;    // npm test -- --coverage --json
+  runTypeCheck(): Promise<TypeCheckResult>;      // npm run typecheck
+  runLint(): Promise<LintResult>;               // npm run lint -- --format json
+  scanFileSizes(): Promise<FileSizeReport>;      // 本地文件扫描，>500行标记
+}
+
+interface ScanResult {
+  timestamp: Date;
+  coverage: CoverageReport;
+  types: TypeCheckResult;
+  lint: LintResult;
+  sizes: FileSizeReport;
+  // 缓存到 StratixStateStore，避免重复扫描
+}
+
+// 确定性映射：扫描结果 → 提案
+interface ProposalMapper {
+  fromCoverage(report: CoverageReport): Proposal[];  // 覆盖率 < 阈值 → test 提案
+  fromTypeErrors(errors: TypeCheckResult): Proposal[]; // 类型错误 → code 提案
+  fromLintIssues(issues: LintResult): Proposal[];    // lint 问题 → code 提案
+  fromLargeFiles(files: FileSizeReport): Proposal[];  // >500行 → architecture 提案
+}
+
+// 第二层：LLM 辅助分析（通过 SessionRuntime）
+interface StrategistLLMEnhancer {
+  // 输入：提案 + 目标源码 → 输出：增强后的提案（含具体建议）
+  enrichProposal(proposal: Proposal, sourceCode: string): Promise<Proposal>;
+  // 输入：扫描结果全貌 → 输出：架构级改进建议
+  analyzeArchitecture(scanResult: ScanResult): Promise<Proposal[]>;
 }
 
 // Proposal
@@ -386,7 +448,7 @@ CREATE TABLE system_zone_proposals (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- system_zone_lessons 表（复用 .learnings/ 机制）
+-- system_zone_lessons 表（存储在 stratix-database）
 CREATE TABLE system_zone_lessons (
   lesson_id TEXT PRIMARY KEY,
   zone_id TEXT REFERENCES system_zones(zone_id),
@@ -398,6 +460,13 @@ CREATE TABLE system_zone_lessons (
   reuse_count INTEGER DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 索引策略
+CREATE INDEX idx_sz_inputs_zone_processed ON system_zone_inputs(zone_id, processed);
+CREATE INDEX idx_sz_insights_zone_type ON system_zone_insights(zone_id, type);
+CREATE INDEX idx_sz_proposals_zone_status ON system_zone_proposals(zone_id, status);
+CREATE INDEX idx_sz_proposals_status ON system_zone_proposals(status);
+CREATE INDEX idx_sz_lessons_category ON system_zone_lessons(zone_id, category);
 ```
 
 ---
@@ -499,33 +568,27 @@ CREATE TABLE system_zone_lessons (
 
 ### 5.1 自我分析范围
 
-Phase 1 优先分析 Stratix 项目本身，发现：
+Phase 1 通过确定性扫描 + LLM 增强分析 Stratix 项目本身：
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                       自我分析范围                                   │
+│                    Phase 1 自我分析范围                               │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                      │
-│  代码质量                                                            │
-│  ├── 死代码检测：未使用的函数/变量/import                            │
-│  ├── 坏味道识别：过长函数、嵌套过深、重复代码                         │
-│  ├── 类型安全：any 滥用、类型守卫缺失                                │
-│  └── 错误处理：未捕获异常、裸 catch                                 │
+│  确定性扫描（本地命令，不依赖 LLM）                                   │
+│  ├── 测试覆盖：jest --coverage --json                               │
+│  │   └── 覆盖率低于阈值的文件 → improve_test 提案                    │
+│  ├── 类型检查：tsc --noEmit                                         │
+│  │   └── 类型错误列表 → improve_code 提案                           │
+│  ├── 代码规范：eslint --format json                                 │
+│  │   └── lint 问题列表 → improve_code 提案                          │
+│  └── 文件体积：本地扫描                                              │
+│      └── >500行的文件 → improve_architecture 提案                   │
 │                                                                      │
-│  测试覆盖                                                            │
-│  ├── 未覆盖路径：条件分支、异常分支                                  │
-│  ├── 覆盖率统计：行覆盖、分支覆盖                                    │
-│  └── 测试质量：断言不足、测试孤立性差                                │
-│                                                                      │
-│  性能                                                                │
-│  ├── 依赖分析：重复依赖、过时依赖                                     │
-│  ├── 包体积：大文件、未懒加载                                        │
-│  └── 响应时间：慢 API、阻塞调用                                      │
-│                                                                      │
-│  架构                                                                │
-│  ├── 模块耦合：循环依赖、过度耦合                                     │
-│  ├── 职责不清：过大组件、模糊边界                                    │
-│  └── 扩展性：硬编码、未来变化支持差                                  │
+│  LLM 辅助分析（SessionRuntime → AgentRouter）                        │
+│  ├── 具体改进建议：针对扫描发现的文件，结合源码分析                    │
+│  ├── 架构评估：识别模块耦合、职责不清等问题                           │
+│  └── 风险评估：基于变更影响范围判断                                   │
 │                                                                      │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -559,37 +622,31 @@ interface FitnessMetrics {
 
 ---
 
-## 6. 记忆系统复用
+## 6. 记忆系统
 
-### 6.1 复用机制
+### 6.1 持久化方案
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                       记忆系统复用                                   │
+│                       记忆持久化（stratix-database）                  │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                      │
-│  skills/memory-manager                                               │
-│  └── 复用分类归档机制                                                │
-│      ├── category: 'error' | 'learning' | 'success'                │
-│      ├── tags: ['performance', 'testing', 'architecture']          │
-│      └── search: 按分类和标签检索                                   │
+│  system_zone_insights 表                                            │
+│  └── 结构化洞察存储，按 zone_id + type 检索                         │
 │                                                                      │
-│  .learnings/ 目录                                                   │
-│  ├── ERRORS.md          ← 失败教训（追加）                          │
-│  └── LEARNINGS.md       ← 成功经验（追加）                          │
+│  system_zone_lessons 表                                              │
+│  └── 错误/学习/成功记录，按 category 分类                           │
+│      ├── category: performance, testing, architecture, security     │
+│      └── avoidance_rule: 规避规则（error 类型专用）                  │
 │                                                                      │
-│  System Zone 写入格式：                                              │
-│  ```markdown                                                       │
-│  ## [ERROR] {timestamp}                                            │
-│  ### Category: {category}                                           │
-│  ### Context: {发生场景}                                            │
-│  ### What Went Wrong: {错误描述}                                    │
-│  ### Avoidance: {规避规则}                                         │
-│                                                                      │
-│  ## [LEARNING] {timestamp}                                         │
-│  ### What Worked: {成功描述}                                         │
-│  ### Pattern: {提取的模式}                                           │
-│  ```                                                                │
+│  Lesson 写入格式（数据库记录）：                                      │
+│  {                                                                   │
+│    type: 'error',                                                    │
+│    category: 'testing',                                              │
+│    content: '覆盖率扫描超时',                                         │
+│    context: 'ProjectScanner.runTestCoverage()',                     │
+│    avoidance_rule: '设置 60s 超时上限'                               │
+│  }                                                                   │
 │                                                                      │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -606,9 +663,6 @@ interface Lesson {
   context: string;                // 发生场景
   avoidanceRule?: string;           // 规避规则（仅 error 类型）
   reuseCount: number;              // 复用次数
-
-  // 归档目标
-  archiveTo: '.learnings/ERRORS.md' | '.learnings/LEARNINGS.md';
 }
 ```
 
@@ -677,15 +731,16 @@ src/
 │   │
 │   ├── observer/
 │   │   ├── Observer.ts                    # 观察者
-│   │   ├── InputReceiver.ts               # 用户输入接收
-│   │   ├── InsightExtractor.ts            # 洞察提取
+│   │   ├── InputPreprocessor.ts           # 规则预处理（本地）
+│   │   ├── InsightExtractor.ts            # LLM 语义提取（SessionRuntime）
 │   │   └── types.ts                       # 类型定义
 │   │
 │   ├── strategist/
 │   │   ├── Strategist.ts                  # 战略家
-│   │   ├── SelfAnalyzer.ts                # 自我分析（Phase 1 重点）
-│   │   ├── ProjectScanner.ts              # 项目扫描
-│   │   └── ProposalGenerator.ts           # 提案生成
+│   │   ├── ProjectScanner.ts              # 确定性扫描（jest/tsc/eslint）
+│   │   ├── ProposalMapper.ts              # 扫描结果 → 提案映射
+│   │   ├── StrategistLLMEnhancer.ts       # LLM 辅助分析（SessionRuntime）
+│   │   └── types.ts                       # 类型定义
 │   │
 │   ├── guardian/
 │   │   ├── Guardian.ts                    # 守护者
@@ -693,29 +748,35 @@ src/
 │   │   └── PathProtection.ts              # 路径保护
 │   │
 │   ├── memory/
-│   │   ├── MemoryArchiver.ts              # 归档到 .learnings/
-│   │   └── LessonManager.ts               # Lesson 管理
+│   │   ├── LessonManager.ts               # Lesson 管理（stratix-database）
+│   │   └── types.ts
 │   │
 │   └── api/
-│       └── routes/
-│           └── systemzone.ts              # API 路由
+│       ├── routes/
+│       │   └── systemzone.ts              # API 路由
+│       └── auth/
+│           └── ZoneAuthGuard.ts           # Zone owner 认证（复用 Gateway auth）
 
 复用现有模块：
-├── stratix-state/                         # 状态管理
-│   └── StratixStateStore → SystemZone 状态
-├── stratix-permissions/                    # 权限系统
-│   └── PermissionOrchestrator → Executor 检查
-├── stratix-router/                         # 路由
-│   └── AgentRouter → Agent 调度
-├── stratix-retry/                         # 重试
-│   └── RetryPolicyEngine → 外部调用
-├── stratix-budget/                        # 预算
-│   └── BudgetController → Zone 预算
-└── stratix-session/                        # 会话
-    └── SessionRuntime → Observer 会话
+├── stratix-core/                         # 核心能力
+│   ├── state/StratixStateStore → SystemZone 状态 + 扫描结果缓存
+│   ├── permission/PermissionOrchestrator → Guardian 权限检查
+│   ├── command/CommandOrchestrator → System Zone 命令注册
+│   ├── retry/RetryPolicyEngine → 扫描命令重试
+│   └── budget/ → 保留接口，Phase 1 不设预算上限
+├── stratix-agent/                        # Agent 能力
+│   └── runtime/SessionRuntime → Observer/Strategist LLM 会话
+├── stratix-gateway/                      # 网关
+│   └── agent/AgentOrchestrationService → Agent 调度
+├── stratix-data-store/                   # 持久化
+│   └── 数据访问层 → System Zone 数据读写
+└── stratix-database/                     # 数据库
+    └── System Zone 表结构
 ```
 
 ### 8.2 API 路由
+
+**认证**：所有 `/api/systemzone/*` 路由复用 Gateway 现有认证中间件，校验 `owner_id` 与当前用户匹配。
 
 ```typescript
 // POST /api/systemzone/inputs
@@ -823,6 +884,7 @@ interface CircuitBreaker {
 | 2026-04-04 | 1.0 | 初始版本，记录 System Zone 自举设计 |
 | 2026-04-04 | 1.1 | 补充进化机制：选择机制、Fitness 函数、记忆系统、进化方向引导、退化保护 |
 | 2026-04-04 | 2.0 | 大幅缩小 Phase 1 范围；明确复用现有模块；用户作为信息提供者；专注自我迭代；明确 Executor 前提条件 |
+| 2026-04-05 | 3.0 | 实现 strategy 明确：Observer 规则预处理+LLM语义提取；Strategist 确定性扫描+LLM辅助分析；LLM 通过 SessionRuntime/AgentRouter 接入无预算限制；持久化改用 stratix-database；补充数据库索引；补充 API 认证；删除愿景叙事；新增 auth 模块 |
 
 ---
 
@@ -850,8 +912,157 @@ interface CircuitBreaker {
 
 ---
 
-> **最后更新**: 2026-04-04
+## 12. 开发计划
+
+### 12.1 开发顺序与依赖
+
+```
+Step 1: 类型定义 + 数据库 schema
+  └── 无依赖，其他所有模块的基础
+
+Step 2: Guardian 路径保护 + 熔断器
+  └── 依赖 Step 1，安全层先于业务逻辑就位
+
+Step 3: ProjectScanner 确定性扫描
+  └── 依赖 Step 1，不依赖 LLM，可独立验证
+
+Step 4: Observer（规则预处理 + LLM 语义提取）
+  └── 依赖 Step 1，验证 LLM 通过 SessionRuntime 可调通
+
+Step 5: Strategist（扫描映射 + LLM 增强）
+  └── 依赖 Step 3 + Step 4 的 LLM 通道
+
+Step 6: API 路由 + 认证
+  └── 依赖 Step 1-5，暴露 HTTP 接口
+
+Step 7: 手动触发循环（端到端集成）
+  └── 依赖全部，跑通完整流程
+```
+
+### 12.2 每个 Step 的交付物与验收标准
+
+#### Step 1: 类型定义 + 数据库 schema
+
+**交付物：**
+- `src/stratix-systemzone/types.ts` — 所有接口定义（SystemZone, ObserverState, StrategistState, Proposal, Insight, Lesson, ScanResult 等）
+- 数据库 migration 文件 — 5 张表 + 5 个索引
+
+**验收标准：**
+- [ ] TypeScript 编译通过（`npm run typecheck` 无新增错误）
+- [ ] migration 文件可直接执行，表和索引创建成功
+- [ ] 所有文档中的接口在 types.ts 中有对应定义，无遗漏
+
+#### Step 2: Guardian 路径保护 + 熔断器
+
+**交付物：**
+- `src/stratix-systemzone/guardian/Guardian.ts`
+- `src/stratix-systemzone/guardian/PathProtection.ts`
+- `src/stratix-systemzone/guardian/PermissionMatrix.ts`
+
+**验收标准：**
+- [ ] `validateProposal()` 对 `**/payment/**` 等保护路径返回 invalid
+- [ ] 对普通路径返回 valid
+- [ ] CircuitBreaker 连续失败 3 次后状态变为 open，1 分钟后变为 half-open
+- [ ] 单元测试覆盖以上场景
+
+#### Step 3: ProjectScanner 确定性扫描
+
+**交付物：**
+- `src/stratix-systemzone/strategist/ProjectScanner.ts`
+- `src/stratix-systemzone/strategist/ProposalMapper.ts`
+- `src/stratix-systemzone/strategist/types.ts`
+
+**验收标准：**
+- [ ] `runTestCoverage()` 执行 `npm test -- --coverage --json` 并解析为 CoverageReport
+- [ ] `runTypeCheck()` 执行 `npm run typecheck` 并解析为 TypeCheckResult
+- [ ] `runLint()` 执行 `npm run lint -- --format json` 并解析为 LintResult
+- [ ] `scanFileSizes()` 标记 >500 行的文件
+- [ ] 每个命令有 60s 超时保护，超时返回部分结果
+- [ ] `ProposalMapper` 将扫描结果正确映射为 Proposal[]
+- [ ] 扫描结果缓存到 StratixStateStore，30 分钟内不重复扫描
+
+#### Step 4: Observer（规则预处理 + LLM 语义提取）
+
+**交付物：**
+- `src/stratix-systemzone/observer/Observer.ts`
+- `src/stratix-systemzone/observer/InputPreprocessor.ts`
+- `src/stratix-systemzone/observer/InsightExtractor.ts`
+- `src/stratix-systemzone/observer/types.ts`
+
+**验收标准：**
+- [ ] `InputPreprocessor` 正确检测格式（code/url/text/json）和语言（zh/en/mixed）
+- [ ] `InsightExtractor` 通过 SessionRuntime → AgentRouter 调用 LLM 成功
+- [ ] LLM 返回符合 InsightExtractionResult schema 的 JSON
+- [ ] 输入一段测试文本，输出包含 entities、keywords、type、summary 的结构化结果
+- [ ] 预处理结果写入 stratix-database 的 system_zone_insights 表
+
+#### Step 5: Strategist（扫描映射 + LLM 增强）
+
+**交付物：**
+- `src/stratix-systemzone/strategist/Strategist.ts`
+- `src/stratix-systemzone/strategist/StrategistLLMEnhancer.ts`
+
+**验收标准：**
+- [ ] Strategist 组合 ProjectScanner + ProposalMapper + StrategistLLMEnhancer 完成完整流程
+- [ ] 对 Stratix 项目执行一次完整扫描，产出 Proposal[]
+- [ ] LLM 增强后的提案包含具体改进建议（不是泛泛而谈）
+- [ ] 提案写入 stratix-database 的 system_zone_proposals 表
+- [ ] Guardian 对每条提案执行路径保护检查
+
+#### Step 6: API 路由 + 认证
+
+**交付物：**
+- `src/stratix-systemzone/api/routes/systemzone.ts`
+- `src/stratix-systemzone/api/auth/ZoneAuthGuard.ts`
+
+**验收标准：**
+- [ ] `POST /api/systemzone/inputs` 接收用户输入，触发 Observer
+- [ ] `POST /api/systemzone/observe` 触发完整观察循环
+- [ ] `GET /api/systemzone/proposals` 返回提案列表（支持 status 过滤）
+- [ ] `POST /api/systemzone/proposals/:id/approve` 审批提案
+- [ ] `GET /api/systemzone/insights` 返回洞察列表
+- [ ] 所有路由校验 owner_id，非 owner 返回 403
+- [ ] 路由注册到 Gateway 现有 Express/Fastify 实例
+
+#### Step 7: 手动触发循环（端到端集成）
+
+**交付物：**
+- `src/stratix-systemzone/SystemZone.ts`（主类，串联所有模块）
+- 集成测试
+
+**验收标准：**
+- [ ] 用户输入一段文本 → Observer 提取洞察 → 写入数据库
+- [ ] 用户触发"分析项目" → Scanner 扫描 → Strategist 生成提案 → 写入数据库
+- [ ] 提案列表可在 API 查询到
+- [ ] 审批流程正常：approve/reject 状态变更
+- [ ] Guardian 拦截对保护路径的提案
+- [ ] 熔断器在连续失败后正确触发
+- [ ] 完整流程无报错，日志可追踪
+
+### 12.3 预估工作量
+
+| Step | 新文件数 | 依赖外部 | 预估 |
+|------|---------|---------|------|
+| Step 1 | 2 | 无 | 小 |
+| Step 2 | 3 | 无 | 小 |
+| Step 3 | 3 | npm test/typecheck/lint | 中 |
+| Step 4 | 4 | SessionRuntime + LLM | 中 |
+| Step 5 | 2 | Step 3 + 4 | 中 |
+| Step 6 | 2 | Gateway auth | 小 |
+| Step 7 | 1 + 测试 | 全部 | 中 |
+
+### 12.4 风险点
+
+| 风险 | 影响 | 应对 |
+|------|------|------|
+| jest/tsc/eslint 命令输出格式解析失败 | Step 3 阻塞 | 先手动跑命令记录输出格式，写 fixture 测试 |
+| SessionRuntime LLM 调用链路不通 | Step 4-5 阻塞 | Step 4 优先验证最小 LLM 调用，不通则降级为纯确定性模式 |
+| 数据库 migration 与现有 schema 冲突 | Step 1 阻塞 | 新表独立命名（system_zone_ 前缀），不修改现有表 |
+
+---
+
+> **最后更新**: 2026-04-05
 >
-> **状态**: v2.0 - Phase 1 骨架设计
+> **状态**: v3.0 - Phase 1 可投入开发
 >
-> **下一步**: Phase 1 实现（类型定义 + Observer 骨架 + Strategist 骨架 + 手动循环）
+> **下一步**: Step 1（类型定义 + 数据库 schema）

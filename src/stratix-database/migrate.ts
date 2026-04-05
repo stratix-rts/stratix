@@ -1,6 +1,6 @@
 import path from 'path';
 
-import fs from 'fs-extra';
+import * as fs from 'fs-extra';
 
 import { agentRepository } from './AgentRepository';
 import { projectRepository } from './ProjectRepository';

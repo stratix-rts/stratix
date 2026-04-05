@@ -75,7 +75,15 @@ export default defineConfig(async () => {
 
     optimizeDeps: {
       include: ['vue', 'axios', 'phaser', 'mitt'],
-      exclude: ['lowdb', 'fs-extra'],
+      exclude: ['lowdb', 'fs-extra', 'graceful-fs'],
+    },
+
+    build: {
+      outDir: 'dist/frontend',
+      sourcemap: true,
+      rollupOptions: {
+        external: ['fs-extra', 'graceful-fs'],
+      },
     },
 
     define: {

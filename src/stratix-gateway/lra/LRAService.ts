@@ -3,7 +3,7 @@ import path from 'path';
 import { promisify } from 'util';
 
 import * as chokidar from 'chokidar';
-import fs from 'fs-extra';
+import * as fs from 'fs-extra';
 
 import { LraTask, LraTaskDetail } from '../../stratix-lra-bridge/types';
 

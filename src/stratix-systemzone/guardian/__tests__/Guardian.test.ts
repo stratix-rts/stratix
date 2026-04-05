@@ -107,25 +107,25 @@ describe('Guardian', () => {
       expect(result.valid).toBe(true);
     });
 
-    test('allows proposal targeting node_modules (readonly warning)', () => {
+    test('allows proposal targeting node_modules (readonly path)', () => {
       const guardian = createGuardian();
       const proposal = createMockProposal({ target: { file: 'node_modules/lodash/index.js' } });
 
       const result = guardian.validateProposal(proposal);
 
-      // readonly paths are allowed but generate alerts
+      // readonly paths are allowed
       expect(result.valid).toBe(true);
-      expect(result.alerts.length).toBeGreaterThan(0);
+      expect(result.pathValidation?.pathType).toBe('readonly');
     });
 
-    test('allows proposal targeting dist/** (readonly warning)', () => {
+    test('allows proposal targeting dist/** (readonly path)', () => {
       const guardian = createGuardian();
       const proposal = createMockProposal({ target: { file: 'dist/bundle.js' } });
 
       const result = guardian.validateProposal(proposal);
 
       expect(result.valid).toBe(true);
-      expect(result.alerts.length).toBeGreaterThan(0);
+      expect(result.pathValidation?.pathType).toBe('readonly');
     });
   });
 
@@ -161,20 +161,20 @@ describe('Guardian', () => {
   describe('circuit breaker state transitions', () => {
     test('starts in closed state', () => {
       const guardian = createGuardian();
-      expect(guardian.getCircuitBreakerState()).toBe('closed');
+      expect(guardian.getCircuitBreaker().getState()).toBe('closed');
     });
 
     test('transitions to open after max consecutive failures', () => {
       const guardian = createGuardian({ maxConsecutiveFailures: 3 });
 
       guardian.recordFailure();
-      expect(guardian.getCircuitBreakerState()).toBe('closed');
+      expect(guardian.getCircuitBreaker().getState()).toBe('closed');
 
       guardian.recordFailure();
-      expect(guardian.getCircuitBreakerState()).toBe('closed');
+      expect(guardian.getCircuitBreaker().getState()).toBe('closed');
 
       guardian.recordFailure();
-      expect(guardian.getCircuitBreakerState()).toBe('open');
+      expect(guardian.getCircuitBreaker().getState()).toBe('open');
     });
 
     test('resets failure count on success', () => {
@@ -182,14 +182,14 @@ describe('Guardian', () => {
 
       guardian.recordFailure();
       guardian.recordFailure();
-      expect(guardian.getCircuitBreakerState()).toBe('closed');
+      expect(guardian.getCircuitBreaker().getState()).toBe('closed');
 
       guardian.recordSuccess();
 
       // After success, failure count should be reset
       guardian.recordFailure();
       guardian.recordFailure();
-      expect(guardian.getCircuitBreakerState()).toBe('closed');
+      expect(guardian.getCircuitBreaker().getState()).toBe('closed');
     });
 
     test('transitions to closed after reset', () => {
@@ -199,10 +199,10 @@ describe('Guardian', () => {
       guardian.recordFailure();
       guardian.recordFailure();
       guardian.recordFailure();
-      expect(guardian.getCircuitBreakerState()).toBe('open');
+      expect(guardian.getCircuitBreaker().getState()).toBe('open');
 
       guardian.resetCircuitBreaker();
-      expect(guardian.getCircuitBreakerState()).toBe('closed');
+      expect(guardian.getCircuitBreaker().getState()).toBe('closed');
     });
   });
 
@@ -363,27 +363,51 @@ describe('CircuitBreaker (via Guardian)', () => {
       circuitBreakerEnabled: true,
     };
 
-    test('closed -> open -> half-open (via timer simulation)', () => {
+    test('starts in closed state', () => {
+      const guardian = new Guardian({
+        protection: defaultProtection,
+        circuitBreakerConfig: { maxConsecutiveFailures: 3, resetAfterMs: 1000 },
+      });
+
+      expect(guardian.getCircuitBreaker().getState()).toBe('closed');
+    });
+
+    test('transitions to open after 3 failures', () => {
+      const guardian = new Guardian({
+        protection: defaultProtection,
+        circuitBreakerConfig: { maxConsecutiveFailures: 3, resetAfterMs: 1000 },
+      });
+
+      expect(guardian.getCircuitBreaker().getState()).toBe('closed');
+
+      guardian.recordFailure();
+      expect(guardian.getCircuitBreaker().getState()).toBe('closed');
+
+      guardian.recordFailure();
+      expect(guardian.getCircuitBreaker().getState()).toBe('closed');
+
+      guardian.recordFailure();
+      expect(guardian.getCircuitBreaker().getState()).toBe('open');
+    });
+
+    test('half-open after reset timeout', () => {
       jest.useFakeTimers();
       const guardian = new Guardian({
         protection: defaultProtection,
         circuitBreakerConfig: { maxConsecutiveFailures: 3, resetAfterMs: 1000 },
       });
 
-      expect(guardian.getCircuitBreakerState()).toBe('closed');
-
-      // Trip the circuit breaker via failures
+      // Trip the circuit breaker
       guardian.recordFailure();
       guardian.recordFailure();
       guardian.recordFailure();
-
-      expect(guardian.getCircuitBreakerState()).toBe('open');
+      expect(guardian.getCircuitBreaker().getState()).toBe('open');
 
       // Advance time past resetAfterMs
       jest.advanceTimersByTime(1000);
 
       // After timeout, should be half-open
-      expect(guardian.getCircuitBreakerState()).toBe('half-open');
+      expect(guardian.getCircuitBreaker().getState()).toBe('half-open');
 
       jest.useRealTimers();
     });
@@ -399,15 +423,15 @@ describe('CircuitBreaker (via Guardian)', () => {
       guardian.recordFailure();
       guardian.recordFailure();
       guardian.recordFailure();
-      expect(guardian.getCircuitBreakerState()).toBe('open');
+      expect(guardian.getCircuitBreaker().getState()).toBe('open');
 
       // Advance time past resetAfterMs
       jest.advanceTimersByTime(1000);
-      expect(guardian.getCircuitBreakerState()).toBe('half-open');
+      expect(guardian.getCircuitBreaker().getState()).toBe('half-open');
 
       // Record success in half-open state
       guardian.recordSuccess();
-      expect(guardian.getCircuitBreakerState()).toBe('closed');
+      expect(guardian.getCircuitBreaker().getState()).toBe('closed');
 
       jest.useRealTimers();
     });
@@ -423,15 +447,15 @@ describe('CircuitBreaker (via Guardian)', () => {
       guardian.recordFailure();
       guardian.recordFailure();
       guardian.recordFailure();
-      expect(guardian.getCircuitBreakerState()).toBe('open');
+      expect(guardian.getCircuitBreaker().getState()).toBe('open');
 
       // Advance time past resetAfterMs
       jest.advanceTimersByTime(1000);
-      expect(guardian.getCircuitBreakerState()).toBe('half-open');
+      expect(guardian.getCircuitBreaker().getState()).toBe('half-open');
 
       // Record failure in half-open state
       guardian.recordFailure();
-      expect(guardian.getCircuitBreakerState()).toBe('open');
+      expect(guardian.getCircuitBreaker().getState()).toBe('open');
 
       jest.useRealTimers();
     });

@@ -1,6 +1,6 @@
 import path from 'path';
 
-import fs from 'fs-extra';
+import * as fs from 'fs-extra';
 import { Low } from 'lowdb';
 import { JSONFile } from 'lowdb/node';
 

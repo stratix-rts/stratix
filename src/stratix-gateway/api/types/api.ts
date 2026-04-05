@@ -30,7 +30,7 @@ export function isApiError<T>(result: ApiResult<T>): result is ApiErrorResponse 
 
 /** Extract data from a result, throwing if error */
 export function unwrapApiResult<T>(result: ApiResult<T>): T {
-  if (!result.success) {
+  if (isApiError(result)) {
     throw new Error(result.error);
   }
   return result.data;

@@ -53,7 +53,7 @@ const mapAgentStatus = (agent: any): AgentDashboardItem['status'] => {
 
 // Convert agents from store to dashboard items
 const dashboardAgents = computed<AgentDashboardItem[]>(() => {
-  return agentStore.agents.value.map(agent => {
+  return (agentStore.agents ?? [])?.map(agent => {
     const runtimeData = agentRuntimeData.value.get(agent.agentId);
     const runtime = runtimeData
       ? Math.floor((Date.now() - runtimeData.startedAt) / 1000)
@@ -67,7 +67,7 @@ const dashboardAgents = computed<AgentDashboardItem[]>(() => {
       runtime,
       zoneName: agent.currentZoneName,
     };
-  });
+  }) ?? [];
 });
 
 // Stats

@@ -79,7 +79,14 @@ function createWindow() {
     },
     title: 'Stratix',
   });
-  
+
+  // 捕获渲染进程 console 日志到主进程 (只打印 error 级别)
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    if (level >= 3) { // 0=verbose, 1=info, 2=warn, 3=error
+      console.log(`[Renderer error]: ${message}`);
+    }
+  });
+
   // 尝试从 Vite 开发服务器加载（端口 7523-7530）
   const loadDevUrl = async () => {
     const ports = [7523, 7524, 7525, 7526, 7527, 7528, 7529, 7530];
