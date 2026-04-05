@@ -214,6 +214,9 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
   const bootstrapHistory = ref<BootstrapHistoryEntry[]>([]);
   const fitnessReport = ref<FitnessReport | null>(null);
 
+  // LLM Config
+  const llmConfig = ref<{ provider: string; model: string; apiKey: string; baseUrl: string } | null>(null);
+
   // Auto refresh
   let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -509,6 +512,25 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
     }
   }
 
+  async function fetchLLMConfig(): Promise<void> {
+    const result = await apiFetch<{ config: { provider: string; model: string; apiKey: string; baseUrl: string } }>('/api/systemzone/llm-config');
+    if (result.success) {
+      llmConfig.value = result.config;
+    }
+  }
+
+  async function updateLLMConfig(config: { provider: string; model: string; apiKey?: string; baseUrl?: string }): Promise<boolean> {
+    const result = await apiFetch<{ config: any }>('/api/systemzone/llm-config', {
+      method: 'PUT',
+      body: JSON.stringify(config),
+    });
+    if (result.success) {
+      await fetchLLMConfig();
+      return true;
+    }
+    return false;
+  }
+
   // ---------------------------------------------------------------
   // Per-panel retry helpers
   // ---------------------------------------------------------------
@@ -616,6 +638,7 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
     bootstrapStatus,
     bootstrapHistory,
     fitnessReport,
+    llmConfig,
 
     // Computed
     pendingProposals,
@@ -643,6 +666,8 @@ export const useSystemZoneStore = defineStore('systemzone', () => {
     triggerBootstrapCycle,
     setBootstrapMode,
     fetchFitness,
+    fetchLLMConfig,
+    updateLLMConfig,
     retryPanel,
 
     // Lifecycle

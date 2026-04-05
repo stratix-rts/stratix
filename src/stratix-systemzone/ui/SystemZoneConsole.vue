@@ -53,6 +53,7 @@
       <SourcesPanel v-if="activeTab === 'sources'" />
       <BootstrapPanel v-if="activeTab === 'bootstrap'" />
       <FitnessPanel v-if="activeTab === 'fitness'" />
+      <LLMConfigPanel v-if="activeTab === 'llm'" />
     </main>
   </div>
 </template>
@@ -68,6 +69,7 @@ import ExecutionsPanel from './ExecutionsPanel.vue';
 import SourcesPanel from './SourcesPanel.vue';
 import BootstrapPanel from './BootstrapPanel.vue';
 import FitnessPanel from './FitnessPanel.vue';
+import LLMConfigPanel from './LLMConfigPanel.vue';
 
 const store = useSystemZoneStore();
 const activeTab = ref('insights');
@@ -79,6 +81,7 @@ const tabs = computed(() => [
   { key: 'sources', icon: '📡', label: '外部源' },
   { key: 'bootstrap', icon: '🔄', label: '自举引擎' },
   { key: 'fitness', icon: '📊', label: '健康' },
+  { key: 'llm', icon: '🤖', label: 'LLM 配置' },
 ]);
 
 async function refreshAll() {
