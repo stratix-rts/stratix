@@ -19,119 +19,127 @@
       <span class="state-text">{{ saveError }}</span>
     </div>
 
-    <!-- Form -->
-    <div v-else class="config-form">
-      <div class="form-group">
-        <label class="form-label">Provider</label>
-        <select v-model="form.provider" class="form-select">
-          <option value="anthropic">Anthropic (Claude)</option>
-          <option value="openai">OpenAI (GPT)</option>
-          <option value="deepseek">DeepSeek</option>
-          <option value="qwen">通义千问 (Qwen)</option>
-          <option value="ollama">Ollama (本地)</option>
-          <option value="custom">自定义</option>
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">Model</label>
-        <input
-          v-model="form.model"
-          type="text"
-          class="form-input"
-          placeholder="e.g. claude-sonnet-4-20250514"
-        />
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">API Key</label>
-        <input
-          v-model="form.apiKey"
-          :type="showApiKey ? 'text' : 'password'"
-          class="form-input"
-          placeholder="sk-..."
-        />
-        <button class="btn-toggle-visibility" @click="showApiKey = !showApiKey">
-          {{ showApiKey ? '🙈 隐藏' : '👁 显示' }}
-        </button>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">Base URL <span class="optional">(可选)</span></label>
-        <input
-          v-model="form.baseUrl"
-          type="text"
-          class="form-input"
-          placeholder="https://api.anthropic.com"
-        />
-      </div>
-
-      <!-- Status Indicator -->
-      <div v-if="store.llmConfig" class="config-status">
-        <span class="status-dot" :class="hasConfig ? 'dot-ok' : 'dot-error'"></span>
-        <span class="status-text">
-          {{ hasConfig ? `已配置: ${store.llmConfig.provider} / ${store.llmConfig.model}` : '未配置 LLM' }}
-        </span>
-      </div>
-
-      <button
-        class="btn btn-primary"
-        @click="handleSave"
-        :disabled="isSaving"
-      >
-        {{ isSaving ? '保存中...' : '💾 保存配置' }}
-      </button>
-
-      <div v-if="saveSuccess" class="save-success">
-        ✓ 配置已保存，将在下次 LLM 调用时生效
-      </div>
-
-      <!-- Test Chat Area -->
-      <div v-if="hasConfig" class="test-chat-area">
-        <div class="test-chat-header">
-          <span class="test-chat-title">测试对话</span>
+    <!-- Main: left (config) + right (chat) -->
+    <div v-else class="panel-body">
+      <!-- Left: Config Form -->
+      <div class="config-form">
+        <div class="form-group">
+          <label class="form-label">Provider</label>
+          <select v-model="form.provider" class="form-select">
+            <option value="anthropic">Anthropic (Claude)</option>
+            <option value="openai">OpenAI (GPT)</option>
+            <option value="deepseek">DeepSeek</option>
+            <option value="qwen">通义千问 (Qwen)</option>
+            <option value="ollama">Ollama (本地)</option>
+            <option value="custom">自定义</option>
+          </select>
         </div>
 
-        <div class="test-chat-messages" ref="chatMessagesRef">
-          <div
-            v-for="msg in chatMessages"
-            :key="msg.id"
-            class="test-message"
-            :class="msg.role === 'user' ? 'test-message-user' : 'test-message-assistant'"
-          >
-            <span class="test-message-avatar">{{ msg.role === 'user' ? '👤' : '🤖' }}</span>
-            <div class="test-message-content">{{ msg.content }}</div>
-          </div>
-          <div v-if="isChatLoading" class="test-message test-message-assistant">
-            <span class="test-message-avatar">🤖</span>
-            <div class="test-message-content test-message-loading">
-              <span class="spinner-sm"></span>
-              thinking...
-            </div>
-          </div>
+        <div class="form-group">
+          <label class="form-label">Model</label>
+          <input
+            v-model="form.model"
+            type="text"
+            class="form-input"
+            placeholder="e.g. claude-sonnet-4-20250514"
+          />
         </div>
 
-        <div class="test-chat-input-area">
-          <textarea
-            v-model="chatInput"
-            class="test-chat-input"
-            placeholder="输入测试消息... (Enter 发送，Shift+Enter 换行)"
-            rows="2"
-            :disabled="isChatLoading || !hasConfig"
-            @keydown="handleChatKeyDown"
-          ></textarea>
-          <button
-            class="test-chat-send"
-            :disabled="!chatInput.trim() || isChatLoading"
-            @click="sendTestMessage"
-          >
-            发送
+        <div class="form-group">
+          <label class="form-label">API Key</label>
+          <input
+            v-model="form.apiKey"
+            :type="showApiKey ? 'text' : 'password'"
+            class="form-input"
+            placeholder="sk-..."
+          />
+          <button class="btn-toggle-visibility" @click="showApiKey = !showApiKey">
+            {{ showApiKey ? '🙈 隐藏' : '👁 显示' }}
           </button>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Base URL <span class="optional">(可选)</span></label>
+          <input
+            v-model="form.baseUrl"
+            type="text"
+            class="form-input"
+            placeholder="https://api.anthropic.com"
+          />
+        </div>
+
+        <!-- Status Indicator -->
+        <div v-if="store.llmConfig" class="config-status">
+          <span class="status-dot" :class="hasConfig ? 'dot-ok' : 'dot-error'"></span>
+          <span class="status-text">
+            {{ hasConfig ? `已配置: ${store.llmConfig.provider} / ${store.llmConfig.model}` : '未配置 LLM' }}
+          </span>
+        </div>
+
+        <button
+          class="btn btn-primary"
+          @click="handleSave"
+          :disabled="isSaving"
+        >
+          {{ isSaving ? '保存中...' : '💾 保存配置' }}
+        </button>
+
+        <div v-if="saveSuccess" class="save-success">
+          ✓ 配置已保存，将在下次 LLM 调用时生效
+        </div>
+      </div>
+
+      <!-- Divider -->
+      <div class="panel-divider"></div>
+
+      <!-- Right: Test Chat -->
+      <div class="test-chat-area">
+        <div class="test-chat-area-header">
+          <span class="test-chat-area-title">测试对话</span>
         </div>
 
         <div v-if="!hasConfig" class="test-chat-disabled">
           请先保存 LLM 配置
         </div>
+
+        <template v-else>
+          <div class="test-chat-messages" ref="chatMessagesRef">
+            <div
+              v-for="msg in chatMessages"
+              :key="msg.id"
+              class="test-message"
+              :class="msg.role === 'user' ? 'test-message-user' : 'test-message-assistant'"
+            >
+              <span class="test-message-avatar">{{ msg.role === 'user' ? '👤' : '🤖' }}</span>
+              <div class="test-message-content">{{ msg.content }}</div>
+            </div>
+            <div v-if="isChatLoading" class="test-message test-message-assistant">
+              <span class="test-message-avatar">🤖</span>
+              <div class="test-message-content test-message-loading">
+                <span class="spinner-sm"></span>
+                thinking...
+              </div>
+            </div>
+          </div>
+
+          <div class="test-chat-input-area">
+            <textarea
+              v-model="chatInput"
+              class="test-chat-input"
+              placeholder="输入测试消息... (Enter 发送，Shift+Enter 换行)"
+              rows="2"
+              :disabled="isChatLoading"
+              @keydown="handleChatKeyDown"
+            ></textarea>
+            <button
+              class="test-chat-send"
+              :disabled="!chatInput.trim() || isChatLoading"
+              @click="sendTestMessage"
+            >
+              发送
+            </button>
+          </div>
+        </template>
       </div>
     </div>
   </div>
@@ -322,11 +330,47 @@ onMounted(() => {
   cursor: not-allowed;
 }
 
+/* Panel body: left-right layout */
+.panel-body {
+  display: flex;
+  gap: 0;
+  align-items: flex-start;
+}
+
 .config-form {
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-width: 480px;
+  min-width: 0;
+}
+
+.panel-divider {
+  width: 1px;
+  background: var(--ds-border-subtle, #1e1e2e);
+  align-self: stretch;
+  min-height: 200px;
+  margin: 0 16px;
+  flex-shrink: 0;
+}
+
+/* Right: Test Chat Area */
+.test-chat-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.test-chat-area-header {
+  padding-bottom: 8px;
+}
+
+.test-chat-area-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ds-text-muted, #666);
 }
 
 .form-group {
@@ -461,28 +505,9 @@ onMounted(() => {
   to { transform: rotate(360deg); }
 }
 
-/* Test Chat Area */
-.test-chat-area {
-  margin-top: 24px;
-  padding-top: 16px;
-  border-top: 1px solid var(--ds-border-subtle, #1e1e2e);
-}
-
-.test-chat-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.test-chat-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ds-text-secondary, #aaa);
-}
-
+/* Test Chat Area (horizontal layout — no top border) */
 .test-chat-messages {
-  max-height: 200px;
+  max-height: 320px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -604,5 +629,23 @@ onMounted(() => {
   padding: 16px;
   color: var(--ds-text-muted, #666);
   font-size: 13px;
+}
+
+/* Responsive: stack vertically below 768px */
+@media (max-width: 767px) {
+  .panel-body {
+    flex-direction: column;
+  }
+
+  .panel-divider {
+    width: 100%;
+    height: 1px;
+    min-height: unset;
+    margin: 16px 0;
+  }
+
+  .test-chat-messages {
+    max-height: 200px;
+  }
 }
 </style>
