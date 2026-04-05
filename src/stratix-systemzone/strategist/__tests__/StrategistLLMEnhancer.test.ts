@@ -27,19 +27,11 @@ jest.mock('../../../stratix-core/config/GlobalProviderSettings', () => ({
   __esModule: true,
   default: {
     getInstance: jest.fn().mockReturnValue({
-      getDefaultProvider: jest.fn().mockReturnValue({
-        provider: 'anthropic',
-        model: 'claude-sonnet-4-20250514',
-        apiKey: 'test-key',
-      }),
-      getFirstAvailableProvider: jest.fn().mockReturnValue({
-        provider: 'anthropic',
-        model: 'claude-sonnet-4-20250514',
-        apiKey: 'test-key',
-      }),
+      getDefaultProvider: jest.fn().mockReturnValue(undefined),
+      getFirstAvailableProvider: jest.fn().mockReturnValue(undefined),
     }),
   },
-}));;
+}));
 
 // -----------------------------------------------
 // Helpers
@@ -107,17 +99,15 @@ describe('StrategistLLMEnhancer', () => {
     jest.clearAllMocks();
     // Re-apply mock implementations after clearAllMocks
     const SettingsModule = require('../../../stratix-core/config/GlobalProviderSettings');
+    const mockProviderConfig = {
+      provider: 'openai',
+      model: 'gpt-4',
+      apiKey: 'test-key',
+      baseUrl: 'https://api.openai.com/v1',
+    };
     SettingsModule.default.getInstance.mockReturnValue({
-      getDefaultProvider: jest.fn().mockReturnValue({
-        provider: 'anthropic',
-        model: 'claude-sonnet-4-20250514',
-        apiKey: 'test-key',
-      }),
-      getFirstAvailableProvider: jest.fn().mockReturnValue({
-        provider: 'anthropic',
-        model: 'claude-sonnet-4-20250514',
-        apiKey: 'test-key',
-      }),
+      getDefaultProvider: jest.fn().mockReturnValue(mockProviderConfig),
+      getFirstAvailableProvider: jest.fn().mockReturnValue(mockProviderConfig),
     });
 
     enhancer = new StrategistLLMEnhancer({ cwd: '/project' });
