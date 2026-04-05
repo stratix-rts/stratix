@@ -137,6 +137,14 @@ export interface EnrichResult {
   enhancedDescription?: string;
   estimatedCost?: number;
   estimatedBenefit?: number;
+  /** 代码修改建议 */
+  codeSuggestion?: string;
+  /** 风险等级 */
+  riskLevel?: 'high' | 'medium' | 'low';
+  /** 工作量估算 */
+  effortEstimate?: 'small' | 'medium' | 'large';
+  /** 分析推理 */
+  reasoning?: string;
   error?: string;
 }
 
@@ -197,6 +205,10 @@ export class StrategistLLMEnhancer {
           benefit: result.estimatedBenefit ?? proposal.selection.benefit,
           confidence: result.suggestions?.[0]?.confidence ?? proposal.selection.confidence,
         },
+        codeSuggestion: result.codeSuggestion ?? proposal.codeSuggestion,
+        riskLevelStr: result.riskLevel ?? proposal.riskLevelStr,
+        effortEstimate: result.effortEstimate ?? proposal.effortEstimate,
+        reasoning: result.reasoning ?? proposal.reasoning,
       };
     }
 
@@ -483,6 +495,10 @@ export class StrategistLLMEnhancer {
         enhancedDescription,
         estimatedCost,
         estimatedBenefit,
+        codeSuggestion,
+        riskLevel: parsed.riskLevel as 'high' | 'medium' | 'low' | undefined,
+        effortEstimate: parsed.effortEstimate as 'small' | 'medium' | 'large' | undefined,
+        reasoning,
       };
     } catch {
       return { success: false, error: 'Failed to parse LLM response' };
