@@ -28,8 +28,8 @@
 |---|------|------|---------|-----------|
 | R1 | 代码质量 scan — unused imports/dead code/type safety | ✅ done | c0fb2ff | 16处 console.log + UI 组件清理 |
 | R2 | 错误处理 review — unhandled promises/missing try-catch | ✅ done | fa6b71d | 1处修复: BootstrapEngine 静默 catch |
-| R3 | API 层 review — 输入校验/状态码/错误消息 | in_progress | - | - |
-| R4 | 后端逻辑 review — observer/strategist LLM 降级路径 | pending | - | - |
+| R3 | API 层 review — 输入校验/状态码/错误消息 | ✅ done | 0ea5ec0 | 37处 sanitize 错误消息 |
+| R4 | 后端逻辑 review — observer/strategist LLM 降级路径 | in_progress | - | - |
 | R5 | UI 组件 review — 响应式/空状态/loading 一致性 | pending | - | - |
 | R6 | 测试运行 — 全量测试通过率检查 | pending | - | - |
 | R7 | 最终编译验证 + commit | pending | - | - |
