@@ -4,7 +4,12 @@ import {
   MODIFICATIONS_SYSTEM_PROMPT,
   MODIFICATIONS_USER_TEMPLATE,
 } from "../../stratix-systemzone/agents/strategist";
-import type { SystemZoneFileModification } from "../../stratix-systemzone/types";
+import {
+  GUARDIAN_REVIEW_SYSTEM_PROMPT,
+  GUARDIAN_REVIEW_USER_TEMPLATE,
+} from "../../stratix-systemzone/agents/guardian";
+import { PathProtection } from "../../stratix-systemzone/guardian/PathProtection";
+import type { SystemZoneFileModification, SafetyAssessment } from "../../stratix-systemzone/types";
 
 // ------------------------------------------------
 // ModificationPlan 类型（本地定义，LLM 输出结构）
@@ -39,6 +44,7 @@ export class SystemZoneSkillExecutor implements SkillExecutor {
     sandbox?: any;
     rollbackManager?: any;
     codeModifier?: any;
+    pathProtection?: PathProtection;
   } = {};
 
   /** 延迟注入模块实例（SystemZoneManager.initialize() 中调用） */
@@ -449,7 +455,140 @@ export class SystemZoneSkillExecutor implements SkillExecutor {
     return this.modules.rollbackManager.rollback(params.snapshotId, params.workDir);
   }
 
-  private async reviewModifications(params: any) {
-    throw new Error("review_modifications: not yet implemented (Phase B3)");
+  private async reviewModifications(params: any): Promise<SafetyAssessment> {
+    // Step 1: Extract modifications
+    const modifications = params.modifications;
+    if (!modifications || !Array.isArray(modifications)) {
+      return {
+        decision: "rejected",
+        riskLevel: "high",
+        concerns: ["review_modifications: modifications 参数缺失或格式错误"],
+        suggestions: ["提供有效的 SystemZoneFileModification[] 数组"],
+        confidence: 1.0,
+      };
+    }
+
+    // Step 2: Path protection check
+    if (this.modules.pathProtection) {
+      const forbiddenViolations: string[] = [];
+      for (const mod of modifications) {
+        const path = mod.path;
+        // Use PathProtection's internal pattern matching
+        const patterns = this.modules.pathProtection.getForbiddenPaths();
+        for (const pattern of patterns) {
+          if (this.modules.pathProtection.validateProposal({
+            target: { file: path },
+          } as any).pathType === 'forbidden') {
+            forbiddenViolations.push(`路径 "${path}" 匹配禁止模式 "${pattern}"`);
+          }
+        }
+      }
+      if (forbiddenViolations.length > 0) {
+        return {
+          decision: "rejected",
+          riskLevel: "high",
+          concerns: forbiddenViolations,
+          suggestions: ["移除对禁止路径的修改操作"],
+          confidence: 1.0,
+        };
+      }
+    }
+
+    // Step 3: Build modifications summary for prompt
+    const modificationsText = modifications.map((m) => {
+      const lines = m.diff ? m.diff.split("\n").length : (m.content ? m.content.split("\n").length : 0);
+      return `- [${m.type}] ${m.path}${m.description ? `: ${m.description}` : ""} (~${lines} 行)`;
+    }).join("\n");
+
+    const userMessage = GUARDIAN_REVIEW_USER_TEMPLATE.replace("{modifications}", modificationsText);
+
+    // Step 4: Call LLM
+    const llm = await this.getLLMConnector();
+    if (!llm) {
+      return {
+        decision: "rejected",
+        riskLevel: "high",
+        concerns: ["review_modifications: No LLM provider configured"],
+        suggestions: ["配置 LLM provider 后重试"],
+        confidence: 1.0,
+      };
+    }
+
+    const messages = [
+      { role: "system" as const, content: GUARDIAN_REVIEW_SYSTEM_PROMPT.replace("{modifications}", modificationsText) },
+      { role: "user" as const, content: userMessage },
+    ];
+
+    let result: { content?: string } | null = null;
+    try {
+      result = await llm.generate(messages);
+    } catch (error) {
+      return {
+        decision: "rejected",
+        riskLevel: "high",
+        concerns: [`review_modifications: LLM call failed: ${error instanceof Error ? error.message : String(error)}`],
+        suggestions: ["检查 LLM 配置和网络连接"],
+        confidence: 1.0,
+      };
+    }
+
+    if (!result?.content) {
+      return {
+        decision: "rejected",
+        riskLevel: "high",
+        concerns: ["review_modifications: LLM returned empty response"],
+        suggestions: ["重试或检查 LLM 配置"],
+        confidence: 1.0,
+      };
+    }
+
+    // Step 5: Parse LLM response
+    const assessment = this.parseSafetyAssessment(result.content);
+
+    // Step 6: High-risk fast-path — rejected / high always returns immediately
+    if (assessment.decision === "rejected" || assessment.riskLevel === "high") {
+      return assessment;
+    }
+
+    // Step 7: Low confidence guard
+    if (assessment.confidence < 0.5) {
+      return { ...assessment, decision: "rejected" };
+    }
+
+    return assessment;
+  }
+
+  private parseSafetyAssessment(content: string): SafetyAssessment {
+    const jsonStr = this.extractJson(content);
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      // Fallback: return high-risk rejection on parse failure
+      return {
+        decision: "rejected",
+        riskLevel: "high",
+        concerns: ["review_modifications: LLM response is not valid JSON"],
+        suggestions: ["重试或检查 LLM 输出格式"],
+        confidence: 1.0,
+      };
+    }
+
+    const decision = this.normalizeDecision(parsed.decision);
+    const riskLevel = this.normalizeRiskLevel(parsed.riskLevel);
+    const concerns = Array.isArray(parsed.concerns) ? parsed.concerns.filter((c) => typeof c === "string") : [];
+    const suggestions = Array.isArray(parsed.suggestions) ? parsed.suggestions.filter((s) => typeof s === "string") : [];
+    const confidence = typeof parsed.confidence === "number" ? Math.max(0, Math.min(1, parsed.confidence)) : 0.5;
+
+    return { decision, riskLevel, concerns, suggestions, confidence };
+  }
+
+  private normalizeDecision(value: unknown): "approved" | "rejected" | "conditional" {
+    const normalized = typeof value === "string" ? value.toLowerCase() : "";
+    if (normalized === "approved" || normalized === "rejected" || normalized === "conditional") {
+      return normalized;
+    }
+    return "conditional";
   }
 }
