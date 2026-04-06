@@ -28,6 +28,7 @@ import BodyTypeSelector from './components/BodyTypeSelector.vue';
 import AnimationControls from './components/AnimationControls.vue';
 import StepNavigator from './components/StepNavigator.vue';
 import AgentConfigStep from './components/AgentConfigStep.vue';
+import AgentChatPanel from './components/AgentChatPanel.vue';
 import CreditsPanel from './components/CreditsPanel.vue';
 import JsonEditor from './components/JsonEditor.vue';
 
@@ -610,6 +611,17 @@ watch(selectedParts, (parts) => {
                 v-model="agentConfig"
                 @change="handleAgentConfigChange"
               />
+              <!-- Step 3: AgentChatPanel -->
+              <div v-if="currentStep === 'agent' && currentCharacter" class="agent-chat-wrapper">
+                <AgentChatPanel
+                  :character="currentCharacter"
+                  :backend-type="agentConfig.backendType"
+                  :stratix-config="agentConfig.stratixConfig"
+                  :open-claw-config="agentConfig.openClawConfig"
+                  @complete="handleSave"
+                  @back="() => handleStepNavigate('openclaw')"
+                />
+              </div>
             </div>
           </div>
 
@@ -883,10 +895,19 @@ watch(selectedParts, (parts) => {
 .step-panel {
   height: 100%;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .step-panel > * {
   height: 100%;
+}
+
+/* AgentChatPanel wrapper - takes remaining space after AgentConfigStep */
+.agent-chat-wrapper {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .step-actions {

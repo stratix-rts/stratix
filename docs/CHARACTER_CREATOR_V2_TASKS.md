@@ -207,16 +207,16 @@ if (characterToSave.stratixConfig) {
 
 | # | Task | 状态 | Commit |
 |---|------|------|--------|
-| T01 | 随机化三档 | 🔄 进行中 | |
+| T01 | 随机化三档 | ✅ 完成 | 20d6ce7 |
 | T02 | 缩略图/纹理 save 流程 | ✅ 完成 | 5d74660 |
-| T03 | Credits 致谢展示 | ⬜ 待开始 | |
-| T04 | JSON 编辑器 | ⬜ 待开始 | |
-| T05 | 属性展示 | ⬜ 待开始 | |
+| T03 | Credits 致谢展示 | ✅ 完成 | 762f620 |
+| T04 | JSON 编辑器 | ✅ 完成 | 7d4b127 |
+| T05 | 属性展示 | ✅ 完成 | 78d8369 |
 | T06 | 棋盘格预览背景 | ✅ 完成 | 46c7387 |
-| T07 | AgentChatPanel 测试聊天 | ⬜ 待开始 | |
+| T07 | AgentChatPanel 测试聊天 | 🔄 进行中 | |
 | T08 | OpenClaw 连接守卫 | ⬜ 待开始 | |
 | T09 | EventBus 集成 | ⬜ 待开始 | |
-| T10 | Loading + Toast | ⬜ 待开始 | |
+| T10 | Loading + Toast | ✅ 完成 | cbe7e03 |
 
 ---
 
