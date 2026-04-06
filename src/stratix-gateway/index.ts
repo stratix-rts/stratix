@@ -33,6 +33,7 @@ import zoneContextRoutes from './api/routes/zone-context';
 import zoneCoordinatorRoutes from './api/routes/zone-coordinator';
 import { StatusSyncService } from './api/websocket/StatusSync';
 import systemzoneRoutes from '../stratix-systemzone/api/routes/systemzone';
+import systemZoneCycleRoutes from './api/routes/systemZoneCycle';
 import { dataStoreService } from './dataStoreService';
 import { openClawProxyManager } from './openclaw/OpenClawProxyManager';
 
@@ -127,6 +128,7 @@ export async function startGatewayService(
   app.use('/api/agents/orchestration', agentOrchestrationRoutes);
   app.use('/api/skills', skillRoutes);
   app.use('/api/systemzone', systemzoneRoutes);
+  app.use('/api/system-zone', systemZoneCycleRoutes);
 
   // 健康检查
   app.get('/health', (req, res) => {

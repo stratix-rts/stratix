@@ -38,7 +38,8 @@
 
 | Task | 标题 | 状态 | 开始时间 | 完成时间 |
 |------|------|------|---------|---------|
-| D1 | System Zone 面板对接 Agent | in_progress | 17:25 | - |
+| D1 | System Zone 面板对接 Agent | done | 17:25 | 17:35 |
+| D2 | 手动触发 + 自动循环 | in_progress | 17:35 | - |
 | D2 | 手动触发 + 自动循环 | pending | - | - |
 
 ## 当前活跃 Task
