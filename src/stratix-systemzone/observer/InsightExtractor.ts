@@ -553,6 +553,9 @@ Return JSON now:`;
     });
 
     try {
+      // Suppress unhandled rejection if timeout fires and promise later rejects
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
+      promise.catch(() => {});
       const result = await Promise.race([promise, timeoutPromise]);
       clearTimeout(timeoutId!);
       return result;

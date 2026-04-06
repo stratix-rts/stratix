@@ -473,11 +473,13 @@ export class Observer {
 
     const listeners = this.eventListeners.get(eventType);
     if (listeners) {
-      for (const listener of listeners) {
+      for (let i = listeners.length - 1; i >= 0; i--) {
+        const listener = listeners[i];
         try {
           listener(event);
         } catch (error) {
-          console.error('[Observer] Event listener error:', error);
+          console.error('[Observer] Event listener error, removing:', error);
+          listeners.splice(i, 1);
         }
       }
     }
