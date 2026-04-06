@@ -31,8 +31,8 @@
 | R3 | API 层 review — 输入校验/状态码/错误消息 | ✅ done | 0ea5ec0 | 37处 sanitize 错误消息 |
 | R4 | 后端逻辑 review — observer/strategist LLM 降级路径 | ✅ done | ab5123e | 无需修复，降级路径安全 |
 | R5 | UI 组件 review — 响应式/空状态/loading 一致性 | ✅ done | bfe7204 | SourcesPanel 删除确认弹窗 |
-| R6 | 测试运行 — 全量测试通过率检查 | in_progress | - | - |
-| R7 | 最终编译验证 + commit | pending | - | - |
+| R6 | 测试运行 — 全量测试通过率检查 | ✅ done | 8656e32 | ProjectScanner 29/29 + LLMEnhancer 22/22 通过 |
+| R7 | 最终编译验证 + commit | ✅ done | 8656e32 | tsc --noEmit 通过 |
 
 ---
 

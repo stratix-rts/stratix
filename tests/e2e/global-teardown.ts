@@ -1,19 +1,17 @@
 import { execSync } from 'child_process';
 import { existsSync, unlinkSync, writeFileSync } from 'fs';
-import { cleanTestData } from './scripts/clean-test-data';
 
 /**
- * 全局初始化：确保每次只运行一组 Playwright 测试
+ * 全局清理（所有测试跑完后执行）
  *
  * 职责：
- * 1. kill 残留的 Playwright 测试进程及其进程组
- * 2. kill 标记了 STRATIX_TEST_GROUP 的所有 dev server 进程组
- * 3. kill 占用测试端口的进程
+ * 1. 清理测试进程和 dev server（与 globalSetup 相同）
+ * 2. 清理锁文件
  */
 export default async () => {
   const pidFile = '/tmp/playwright-test-lock.pid';
 
-  // 1. 检查并清理残留锁文件记录的 Playwright 测试进程
+  // 1. kill 锁文件记录的测试进程
   if (existsSync(pidFile)) {
     const oldPid = parseInt(readFile(pidFile), 10);
     if (oldPid && !isNaN(oldPid)) {
@@ -22,13 +20,12 @@ export default async () => {
     unlinkSync(pidFile);
   }
 
-  // 2. pkill 所有 playwright test 进程（兜底）
+  // 2. pkill playwright test
   try {
     execSync('pkill -f "playwright test" 2>/dev/null || true', { stdio: 'ignore' });
   } catch {}
 
-  // 3. 用环境变量 STRATIX_TEST_GROUP 找到并 kill 整个进程组
-  //    start-backend.sh / start-frontend.sh 会设置这个变量并创建进程组
+  // 3. kill 标记的进程组
   for (const groupName of ['stratix-gateway-test-group', 'stratix-frontend-test-group']) {
     try {
       const output = execSync(
@@ -39,7 +36,6 @@ export default async () => {
         for (const pid of output.split('\n').filter(Boolean)) {
           const num = parseInt(pid);
           if (num && num !== process.pid) {
-            // 按进程组 kill，连带所有子进程一起清
             killProcess(-num, `进程组 ${groupName} PID ${num}`);
           }
         }
@@ -47,7 +43,7 @@ export default async () => {
     } catch {}
   }
 
-  // 4. 最后用端口扫一遍，确保没有漏网之鱼
+  // 4. 端口扫尾
   for (const port of [7523, 7524]) {
     try {
       const output = execSync(`lsof -ti :${port} 2>/dev/null`, { stdio: 'pipe' }).toString().trim();
@@ -62,40 +58,27 @@ export default async () => {
     } catch {}
   }
 
-  // 5. 清理上次测试留下的数据（projects/zones 含"测试"前缀的）
-  cleanTestData();
-
-  // 6. 写入当前进程 PID
-  writeFileSync(pidFile, String(process.pid));
-  console.log(`[global-setup] 测试进程 PID: ${process.pid}，锁文件已创建`);
+  console.log('[global-teardown] 清理完成');
 };
 
-/**
- * 优雅关闭进程：先 SIGTERM 等待 5 秒，再 SIGKILL 强制终止
- */
 function killProcess(pid: number, label: string): void {
   try {
-    // 阶段 1：SIGTERM 优雅终止
     execSync(`kill -TERM ${pid} 2>/dev/null || true`, { stdio: 'ignore' });
-    console.log(`[global-setup] SIGTERM 已发送 ${label}`);
+    console.log(`[global-teardown] SIGTERM 已发送 ${label}`);
 
-    // 等待最多 5 秒让进程自然退出
     const start = Date.now();
     while (Date.now() - start < 5000) {
       try {
         execSync(`kill -0 ${pid} 2>/dev/null`, { stdio: 'ignore' });
-        // 进程还在，sleep 后再检查
         execSync('sleep 0.5', { stdio: 'ignore' });
       } catch {
-        // 进程已退出
-        console.log(`[global-setup] 进程已优雅退出 ${label}`);
+        console.log(`[global-teardown] 进程已优雅退出 ${label}`);
         return;
       }
     }
 
-    // 阶段 2：5 秒后还没退出，SIGKILL 强制杀死
     execSync(`kill -9 ${pid} 2>/dev/null || true`, { stdio: 'ignore' });
-    console.log(`[global-setup] SIGKILL 强制终止 ${label}`);
+    console.log(`[global-teardown] SIGKILL 强制终止 ${label}`);
   } catch {}
 }
 

@@ -1,0 +1,71 @@
+import Database from 'better-sqlite3';
+import path from 'path';
+
+/**
+ * 清理测试数据
+ *
+ * 清理对象：
+ * - projects 表：name LIKE '%测试%'
+ * - zones 表：project_id 关联到上述测试 project
+ * - zone_contexts 表：title LIKE '搜索测试%' OR title LIKE 'API 创建测试 Zone%'
+ * - zone_tasks / zone_messages / zone_files 等关联表（CASCADE 自动清理）
+ *
+ * 使用 CASCADE FK，删除 zone_contexts 会自动清理子表。
+ * 删除 projects 会通过 FK 触发 zones 清理。
+ */
+export function cleanTestData(dbPath?: string): number {
+  const resolvedPath = dbPath || path.resolve(__dirname, '../../../stratix-data/stratix.db.sqlite');
+
+  let db: Database.Database;
+  try {
+    db = new Database(resolvedPath, { readonly: false });
+  } catch {
+    console.log('[clean-test-data] 数据库不存在，跳过清理');
+    return 0;
+  }
+
+  let totalDeleted = 0;
+
+  try {
+    // 开启事务
+    const deleteProject = db.transaction((projectId: string) => {
+      // zone_contexts 通过 CASCADE 清理
+      const ctx = db.prepare('DELETE FROM zone_contexts WHERE project_id = ?').run(projectId);
+      const zone = db.prepare('DELETE FROM zones WHERE project_id = ?').run(projectId);
+      const proj = db.prepare('DELETE FROM projects WHERE project_id = ?').run(projectId);
+      return (ctx.changes + zone.changes + proj.changes);
+    });
+
+    // 查找并删除所有含"测试"的 projects
+    const testProjects = db.prepare(
+      "SELECT project_id FROM projects WHERE name LIKE '%测试%'"
+    ).all() as { project_id: string }[];
+
+    for (const { project_id } of testProjects) {
+      const deleted = deleteProject(project_id);
+      totalDeleted += deleted;
+      console.log(`[clean-test-data] 已删除测试项目 ${project_id}，影响 ${deleted} 行`);
+    }
+
+    // 直接清理 zone_contexts 中剩余的孤立测试数据
+    // （title 带特定前缀的 zone_contexts，没有关联 project 的）
+    const testZoneCtx = db.prepare(
+      "DELETE FROM zone_contexts WHERE title LIKE '搜索测试%' OR title LIKE 'API 创建测试 Zone%'"
+    ).run();
+    if (testZoneCtx.changes > 0) {
+      console.log(`[clean-test-data] 已删除 ${testZoneCtx.changes} 条孤立测试 zone_contexts`);
+      totalDeleted += testZoneCtx.changes;
+    }
+
+    console.log(`[clean-test-data] 共清理 ${totalDeleted} 行测试数据`);
+  } finally {
+    db.close();
+  }
+
+  return totalDeleted;
+}
+
+// 支持直接运行：npx ts-node tests/e2e/scripts/clean-test-data.ts
+if (require.main === module) {
+  cleanTestData();
+}
