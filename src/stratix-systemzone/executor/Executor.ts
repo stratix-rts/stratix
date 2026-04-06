@@ -193,8 +193,31 @@ export class Executor {
         throw new Error(`Modification blocked by Guardian: ${validation.errors.join(', ')}`);
       }
 
-      // 应用修改
-      modifications = await this.codeModifier.applyModifications(sandboxPath, modificationPlan);
+      // 应用修改（按 modification 路由：diff → DiffApplier，否则 → CodeModifier）
+      const planModifications = modificationPlan.modifications;
+
+      // 确保 diffApplier 可用
+      if (!this.diffApplier) {
+        this.diffApplier = new DiffApplier();
+      }
+
+      for (const mod of planModifications) {
+        if (mod.diff) {
+          // 有 diff 字符串，走 DiffApplier
+          const result = await this.diffApplier.applyDiff(sandboxPath, mod.diff);
+          if (!result.success) {
+            throw new Error(`DiffApplier failed: ${result.errors.join(', ')}`);
+          }
+          modifications.push({ ...mod });
+        } else {
+          // 无 diff，走 CodeModifier 原逻辑
+          const result = await this.codeModifier.applyModifications(sandboxPath, {
+            ...modificationPlan,
+            modifications: [mod],
+          });
+          modifications.push(...result);
+        }
+      }
     } catch (error) {
       // 回滚并清理沙箱
       await this.cleanupAfterFailure(proposal.id, sandboxPath);
@@ -461,6 +484,7 @@ export class Executor {
       content: m.content,
       description: m.description,
       ...(m.newPath ? { newPath: m.newPath } : {}),
+      ...(m.diff ? { diff: m.diff } : {}),
     }));
 
     return {

@@ -19,8 +19,8 @@
 
 | Task | 标题 | 状态 | 开始时间 | 完成时间 |
 |------|------|------|---------|---------|
-| B1 | Strategist modifications prompt | pending | - | - |
-| B2 | Executor DiffApplier 集成 | pending | - | - |
+| B1 | Strategist modifications prompt | done | 16:34 | 16:40 |
+| B2 | Executor DiffApplier 集成 | in_progress | 16:40 | - |
 | B3 | Guardian 安全审查 | pending | - | - |
 | B4 | Modification 映射函数 | pending | - | - |
 | B5 | DiffApplier 测试 | pending | - | - |
@@ -42,4 +42,4 @@
 | D2 | 手动触发 + 自动循环 | pending | - | - |
 
 ## 当前活跃 Task
-**无** — Phase A 完成，等待用户确认后开始 Phase B
+**B2** — Executor DiffApplier 集成

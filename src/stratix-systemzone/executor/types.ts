@@ -67,6 +67,7 @@ export interface FileModification {
   originalContent?: string;        // edit 时的原始内容（用于回滚）
   newPath?: string;                // rename 时的新路径
   description: string;             // 修改描述
+  diff?: string;                   // unified diff 字符串（有则走 DiffApplier）
 }
 
 export interface ModificationPlan {
