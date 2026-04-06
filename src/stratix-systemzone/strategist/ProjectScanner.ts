@@ -513,12 +513,48 @@ export class ProjectScanner {
     const warnings: TypeError[] = [];
     const combined = stdout + '\n' + stderr;
 
-    // TypeScript error format: file.ts(line,col): error TS1234: message
-    // or: error TS1234: message at file.ts(line,col)
-    const tsErrorRegex = /(?:error|warning)\s+TS(\d+):\s*(.+?)(?:\s+at\s+|\s+on\s+|\s+in\s+|\s*$)([^\n:]+)?(?:\((\d+),(\d+)\)|\[line:\s*(\d+),\s*col:\s*(\d+)\])?/gi;
-
+    // Standard TypeScript error format: path/to/file.ts(123,45): error TS1234: message
+    // Parse this first (more specific) to ensure file paths are captured correctly
+    const altRegex = /([^\n(]+)\((\d+),(\d+)\):\s+(error|warning)\s+TS(\d+):\s*(.+)/gi;
+    const matchedPositions = new Set<number>(); // Track matched positions to avoid duplicates
     let match;
+    while ((match = altRegex.exec(combined)) !== null) {
+      const [, file, lineStr, colStr, severity, codeStr, message] = match;
+      const line = parseInt(lineStr, 10);
+      const column = parseInt(colStr, 10);
+      const code = parseInt(codeStr, 10);
+
+      const error: TypeError = {
+        file: file.trim(),
+        line,
+        column,
+        message: message.trim(),
+        code,
+      };
+
+      // Mark this region as matched
+      for (let i = match.index; i < match.index + match[0].length; i++) {
+        matchedPositions.add(i);
+      }
+
+      if (severity === 'error') {
+        errors.push(error);
+      } else {
+        warnings.push(error);
+      }
+    }
+
+    // Fallback format: error TS1234: message at file.ts(line,col)
+    // Only match lines not already captured by altRegex
+    const tsErrorRegex = /(?:error|warning)\s+TS(\d+):\s*(.+?)(?:\s+at\s+|\s+on\s+|\s+in\s+)([^\n:]+?)(?:\((\d+),(\d+)\)|\[line:\s*(\d+),\s*col:\s*(\d+)\])?/gi;
     while ((match = tsErrorRegex.exec(combined)) !== null) {
+      // Skip if this position was already matched by altRegex
+      let alreadyMatched = false;
+      for (let i = match.index; i < match.index + match[0].length; i++) {
+        if (matchedPositions.has(i)) { alreadyMatched = true; break; }
+      }
+      if (alreadyMatched) continue;
+
       const [, codeStr, message, file, lineStr, colStr] = match;
       const code = parseInt(codeStr, 10);
       const line = parseInt(lineStr || '0', 10);
@@ -535,29 +571,6 @@ export class ProjectScanner {
 
       // TS2598 (unused variable) and similar warnings vs actual errors
       if (code >= 2000 && code < 6000) {
-        errors.push(error);
-      } else {
-        warnings.push(error);
-      }
-    }
-
-    // Alternative format: path/to/file.ts(123,45): error TS1234: message
-    const altRegex = /([^\n(]+)\((\d+),(\d+)\):\s+(error|warning)\s+TS(\d+):\s*(.+)/gi;
-    while ((match = altRegex.exec(combined)) !== null) {
-      const [, file, lineStr, colStr, severity, codeStr, message] = match;
-      const line = parseInt(lineStr, 10);
-      const column = parseInt(colStr, 10);
-      const code = parseInt(codeStr, 10);
-
-      const error: TypeError = {
-        file: file.trim(),
-        line,
-        column,
-        message: message.trim(),
-        code,
-      };
-
-      if (severity === 'error') {
         errors.push(error);
       } else {
         warnings.push(error);

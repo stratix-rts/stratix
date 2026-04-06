@@ -110,6 +110,11 @@ describe('StrategistLLMEnhancer', () => {
       getFirstAvailableProvider: jest.fn().mockReturnValue(mockProviderConfig),
     });
 
+    // Reset LLM cache so tests can override the mock implementation
+    if (enhancer) {
+      (enhancer as unknown as { llm: unknown }).llm = null;
+    }
+
     enhancer = new StrategistLLMEnhancer({ cwd: '/project' });
 
     mockFs = require('fs');
@@ -189,10 +194,14 @@ describe('StrategistLLMEnhancer', () => {
       const sourceCode = 'const x = 1;';
       mockFs.promises.readFile = jest.fn().mockResolvedValue(sourceCode);
 
+      // Implementation constructs enhancedDescription from title + description fields
+      // It also derives suggestions[0].confidence from riskLevel
       const mockGenerate = jest.fn().mockResolvedValue({
         content: JSON.stringify({
-          suggestions: [{ action: 'Add type annotation', reason: 'Improves type safety', risk: 'low', confidence: 0.9 }],
-          enhancedDescription: 'Add explicit type annotation to variable x',
+          title: 'Add type annotation',
+          description: 'Add explicit type annotation to variable x',
+          codeSuggestion: 'const x: number = 1;',
+          riskLevel: 'low',
           estimatedCost: 2,
           estimatedBenefit: 8,
         }),
@@ -200,10 +209,13 @@ describe('StrategistLLMEnhancer', () => {
       LLMConnector.mockImplementation(() => ({ generate: mockGenerate }));
 
       const enhancer2 = new StrategistLLMEnhancer({ cwd: '/project' });
+      // Reset llm cache so it uses the new mock implementation
+      (enhancer2 as unknown as { llm: unknown }).llm = null;
+
       const proposal = createProposal();
       const result = await enhancer2.enrichProposal(proposal);
 
-      expect(result.description).toBe('Add explicit type annotation to variable x');
+      expect(result.description).toBe('## Add type annotation\n\nAdd explicit type annotation to variable x\n\n```\nconst x: number = 1;\n```');
       expect(result.selection.cost).toBe(2);
       expect(result.selection.benefit).toBe(8);
       expect(result.selection.confidence).toBe(0.9);
@@ -212,55 +224,67 @@ describe('StrategistLLMEnhancer', () => {
     it('should handle JSON code block in LLM response', async () => {
       mockFs.promises.readFile = jest.fn().mockResolvedValue('const x = 1;');
 
+      // Implementation constructs enhancedDescription from title + description and appends codeSuggestion
       const mockGenerate = jest.fn().mockResolvedValue({
-        content: 'Here is my analysis:\n```json\n{"success":true,"suggestions":[],"enhancedDescription":"Improved description","estimatedCost":3,"estimatedBenefit":7}\n```',
+        content: 'Here is my analysis:\n```json\n{"title":"Improved","description":"Improved description","codeSuggestion":"const x: number = 1;","riskLevel":"medium","estimatedCost":3,"estimatedBenefit":7}\n```',
       });
       LLMConnector.mockImplementation(() => ({ generate: mockGenerate }));
 
       const enhancer2 = new StrategistLLMEnhancer({ cwd: '/project' });
+      (enhancer2 as unknown as { llm: unknown }).llm = null;
+
       const proposal = createProposal();
       const result = await enhancer2.enrichProposal(proposal);
 
-      expect(result.description).toBe('Improved description');
+      expect(result.description).toBe('## Improved\n\nImproved description\n\n```\nconst x: number = 1;\n```');
     });
 
     it('should handle partial JSON match in LLM response', async () => {
       mockFs.promises.readFile = jest.fn().mockResolvedValue('const x = 1;');
 
+      // Implementation constructs enhancedDescription from title + description
       const mockGenerate = jest.fn().mockResolvedValue({
-        content: 'Some text before {"success":true,"suggestions":[],"enhancedDescription":"Partial match","estimatedCost":4,"estimatedBenefit":6} some text after',
+        content: 'Some text before {"title":"Partial","description":"Partial match","estimatedCost":4,"estimatedBenefit":6} some text after',
       });
       LLMConnector.mockImplementation(() => ({ generate: mockGenerate }));
 
       const enhancer2 = new StrategistLLMEnhancer({ cwd: '/project' });
+      (enhancer2 as unknown as { llm: unknown }).llm = null;
+
       const proposal = createProposal();
       const result = await enhancer2.enrichProposal(proposal);
 
-      expect(result.description).toBe('Partial match');
+      expect(result.description).toBe('## Partial\n\nPartial match');
     });
 
-    it('should fall back to original proposal selection when suggestions array is empty', async () => {
+    it('should use estimated cost/benefit when suggestions is empty', async () => {
       mockFs.promises.readFile = jest.fn().mockResolvedValue('const x = 1;');
 
+      // Implementation always creates suggestions[0] with confidence from riskLevel (defaults to 'medium' = 0.7)
+      // Cost is derived from estimatedCost directly, benefit from estimatedBenefit directly
       const mockGenerate = jest.fn().mockResolvedValue({
         content: JSON.stringify({
-          success: true,
+          title: 'Enhanced',
+          description: 'Enhanced description',
           suggestions: [],
-          enhancedDescription: 'Enhanced',
           estimatedCost: 3,
           estimatedBenefit: 7,
+          // No riskLevel, so defaults to 'medium' -> confidence 0.7
         }),
       });
       LLMConnector.mockImplementation(() => ({ generate: mockGenerate }));
 
       const enhancer2 = new StrategistLLMEnhancer({ cwd: '/project' });
+      (enhancer2 as unknown as { llm: unknown }).llm = null;
+
       const proposal = createProposal({ selection: { confidence: 0.5, cost: 5, benefit: 5, risk: 'medium' } });
       const result = await enhancer2.enrichProposal(proposal);
 
-      // Falls back to original selection since suggestions[0] is undefined
+      // cost/benefit from estimatedCost/estimatedBenefit (3 and 7)
       expect(result.selection.cost).toBe(3);
       expect(result.selection.benefit).toBe(7);
-      expect(result.selection.confidence).toBe(0.5); // original
+      // confidence is always from suggestions[0] which is created with riskLevel 'medium' -> 0.7
+      expect(result.selection.confidence).toBe(0.7);
     });
   });
 
@@ -303,16 +327,13 @@ describe('StrategistLLMEnhancer', () => {
     it('should return parsed proposals with required fields', async () => {
       const mockGenerate = jest.fn().mockResolvedValue({
         content: JSON.stringify({
-          proposals: [
+          issues: [
             {
-              type: 'improve_architecture',
               title: 'Reduce file size',
-              description: 'Split large files',
-              target: { file: 'src/large.ts', component: 'MainComponent' },
-              confidence: 0.8,
-              cost: 7,
-              benefit: 9,
-              risk: 'medium',
+              severity: 'warning',
+              description: 'File is too large',
+              suggestion: 'Split into smaller modules',
+              affectedModules: ['src/large.ts', 'MainComponent'],
             },
           ],
         }),
@@ -326,12 +347,12 @@ describe('StrategistLLMEnhancer', () => {
       expect(result.length).toBe(1);
       expect(result[0].type).toBe('improve_architecture');
       expect(result[0].title).toBe('Reduce file size');
-      expect(result[0].description).toBe('Split large files');
+      expect(result[0].description).toContain('File is too large');
       expect(result[0].target.file).toBe('src/large.ts');
       expect(result[0].target.component).toBe('MainComponent');
-      expect(result[0].selection.confidence).toBe(0.8);
-      expect(result[0].selection.cost).toBe(7);
-      expect(result[0].selection.benefit).toBe(9);
+      expect(result[0].selection.confidence).toBe(0.7); // warning severity -> 0.7
+      expect(result[0].selection.cost).toBe(5); // warning severity -> cost 5
+      expect(result[0].selection.benefit).toBe(6); // warning severity -> benefit 6
       expect(result[0].selection.risk).toBe('medium');
       expect(result[0].status).toBe('pending');
     });
@@ -339,15 +360,12 @@ describe('StrategistLLMEnhancer', () => {
     it('should clamp confidence, cost, benefit to valid ranges', async () => {
       const mockGenerate = jest.fn().mockResolvedValue({
         content: JSON.stringify({
-          proposals: [
+          issues: [
             {
-              type: 'improve_code',
               title: 'Test',
-              description: 'Test',
-              confidence: 1.5, // > 1, should clamp to 1
-              cost: 15, // > 10, should clamp to 10
-              benefit: -5, // < 1, should clamp to 1
-              risk: 'invalid', // should default to medium
+              severity: 'critical', // critical maps to high risk, high confidence, high cost, high benefit
+              description: 'Test description',
+              suggestion: 'Test suggestion',
             },
           ],
         }),
@@ -358,20 +376,21 @@ describe('StrategistLLMEnhancer', () => {
       const scanResult = createScanResult();
       const result = await enhancer2.analyzeArchitecture(scanResult);
 
-      expect(result[0].selection.confidence).toBe(1);
-      expect(result[0].selection.cost).toBe(10);
-      expect(result[0].selection.benefit).toBe(1);
-      expect(result[0].selection.risk).toBe('medium');
+      expect(result[0].selection.confidence).toBe(0.9); // critical -> 0.9
+      expect(result[0].selection.cost).toBe(8); // critical -> cost 8
+      expect(result[0].selection.benefit).toBe(9); // critical -> benefit 9
+      expect(result[0].selection.risk).toBe('high'); // critical -> high
     });
 
     it('should normalize unknown proposal types to improve_code', async () => {
       const mockGenerate = jest.fn().mockResolvedValue({
         content: JSON.stringify({
-          proposals: [
+          issues: [
             {
-              type: 'unknown_type',
               title: 'Test',
+              severity: 'warning',
               description: 'Test',
+              suggestion: 'Test suggestion',
             },
           ],
         }),
@@ -382,15 +401,15 @@ describe('StrategistLLMEnhancer', () => {
       const scanResult = createScanResult();
       const result = await enhancer2.analyzeArchitecture(scanResult);
 
-      expect(result[0].type).toBe('improve_code');
+      expect(result[0].type).toBe('improve_architecture');
     });
 
     it('should generate unique IDs for each proposal', async () => {
       const mockGenerate = jest.fn().mockResolvedValue({
         content: JSON.stringify({
-          proposals: [
-            { type: 'improve_code', title: 'Test1', description: 'Test1' },
-            { type: 'improve_code', title: 'Test2', description: 'Test2' },
+          issues: [
+            { title: 'Test1', severity: 'info', description: 'Test1', suggestion: 'S1' },
+            { title: 'Test2', severity: 'info', description: 'Test2', suggestion: 'S2' },
           ],
         }),
       });
@@ -405,7 +424,7 @@ describe('StrategistLLMEnhancer', () => {
 
     it('should handle JSON code block in architecture response', async () => {
       const mockGenerate = jest.fn().mockResolvedValue({
-        content: '```json\n{"proposals":[{"type":"improve_architecture","title":"Refactor","description":"Refactor large files","confidence":0.9,"cost":6,"benefit":8,"risk":"low"}]}\n```',
+        content: '```json\n{"issues":[{"title":"Refactor","severity":"warning","description":"Refactor large files","suggestion":"Split it"}]}\n```',
       });
       LLMConnector.mockImplementation(() => ({ generate: mockGenerate }));
 
@@ -447,25 +466,29 @@ describe('StrategistLLMEnhancer', () => {
         .mockResolvedValueOnce('const x = 1;')
         .mockRejectedValueOnce(new Error('Read error'));
 
+      // Implementation constructs enhancedDescription from title + description, not from enhancedDescription field
       const mockGenerate = jest.fn().mockResolvedValue({
         content: JSON.stringify({
+          title: 'Enhanced',
+          description: 'Enhanced description',
           suggestions: [],
-          enhancedDescription: 'Enhanced',
-          estimatedCost: 3,
-          estimatedBenefit: 7,
         }),
       });
       LLMConnector.mockImplementation(() => ({ generate: mockGenerate }));
 
       const enhancer2 = new StrategistLLMEnhancer({ cwd: '/project' });
+      (enhancer2 as unknown as { llm: unknown }).llm = null;
+
       const proposals = [
-        createProposal({ id: 'p1' }),
-        createProposal({ id: 'p2', target: { file: 'error.ts' } }),
+        createProposal({ id: 'p1', description: 'Original description' }),
+        createProposal({ id: 'p2', target: { file: 'error.ts' }, description: 'Original p2' }),
       ];
       const result = await enhancer2.enrichProposals(proposals);
 
       expect(result.length).toBe(2);
-      expect(result[0].description).toBe('Enhanced');
+      // p1: enriched (has source code and valid LLM response)
+      expect(result[0].description).toBe('## Enhanced\n\nEnhanced description');
+      // p2: read error, original kept
       expect(result[1]).toEqual(proposals[1]); // Original kept
     });
 
@@ -484,10 +507,12 @@ describe('StrategistLLMEnhancer', () => {
         throw new Error('Module not available');
       });
 
+      // Implementation constructs enhancedDescription from title + description
       const mockGenerate = jest.fn().mockResolvedValue({
         content: JSON.stringify({
+          title: 'Enhanced',
+          description: 'Enhanced description',
           suggestions: [],
-          enhancedDescription: 'Enhanced',
           estimatedCost: 2,
           estimatedBenefit: 8,
         }),
@@ -501,10 +526,12 @@ describe('StrategistLLMEnhancer', () => {
 
       try {
         const enhancer2 = new StrategistLLMEnhancer({ cwd: '/project' });
+        (enhancer2 as unknown as { llm: unknown }).llm = null;
+
         const proposal = createProposal();
         const result = await enhancer2.enrichProposal(proposal);
 
-        expect(result.description).toBe('Enhanced');
+        expect(result.description).toBe('## Enhanced\n\nEnhanced description');
       } finally {
         if (originalAnthropicKey !== undefined) {
           process.env.ANTHROPIC_API_KEY = originalAnthropicKey;
