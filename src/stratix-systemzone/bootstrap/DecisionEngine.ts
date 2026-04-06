@@ -10,7 +10,6 @@ import type {
   DiscoveredProposal,
   RiskAssessment,
   RiskFactor,
-  DEFAULT_DECISION_CONFIG,
 } from './types';
 
 // -------------------------------------------------------------------------

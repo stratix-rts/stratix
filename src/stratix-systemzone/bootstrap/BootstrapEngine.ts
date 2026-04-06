@@ -193,14 +193,14 @@ export class BootstrapEngine extends EventEmitter {
 
       if (approvedProposals.length > 0) {
         this.setPhase('executing');
-        const executionResults = await this.runExecution(approvedProposals);
+        const { results: executionResults, beforeMetrics } = await this.runExecution(approvedProposals);
         result.executed = executionResults.length;
         result.succeeded = executionResults.filter(r => r.success).length;
         result.failed = executionResults.filter(r => !r.success).length;
 
         // Phase 4: Evaluation
         this.setPhase('evaluating');
-        const evaluation = await this.runEvaluation(executionResults);
+        const evaluation = await this.runEvaluation(executionResults, beforeMetrics);
         result.impactScore = evaluation.overallImpact;
         result.rolledBack = evaluation.rolledBack;
 
@@ -405,11 +405,10 @@ export class BootstrapEngine extends EventEmitter {
   /**
    * 运行执行阶段
    */
-  private async runExecution(proposals: DiscoveredProposal[]): Promise<Array<{
-    proposalId: string;
-    success: boolean;
-    impact: ImpactEvaluation | null;
-  }>> {
+  private async runExecution(proposals: DiscoveredProposal[]): Promise<{
+    results: Array<{ proposalId: string; success: boolean; impact: ImpactEvaluation | null }>;
+    beforeMetrics: MetricSnapshot;
+  }> {
     const results: Array<{ proposalId: string; success: boolean; impact: ImpactEvaluation | null }> = [];
 
     // Capture before metrics
@@ -445,17 +444,20 @@ export class BootstrapEngine extends EventEmitter {
       }
     }
 
-    return results;
+    return { results, beforeMetrics };
   }
 
   /**
    * 运行评估阶段
    */
-  private async runEvaluation(executionResults: Array<{
-    proposalId: string;
-    success: boolean;
-    impact: ImpactEvaluation | null;
-  }>): Promise<{
+  private async runEvaluation(
+    executionResults: Array<{
+      proposalId: string;
+      success: boolean;
+      impact: ImpactEvaluation | null;
+    }>,
+    beforeMetrics: MetricSnapshot
+  ): Promise<{
     overallImpact: number;
     rolledBack: number;
   }> {
@@ -473,7 +475,7 @@ export class BootstrapEngine extends EventEmitter {
 
       // Run impact evaluation
       const evaluation = this.impactEvaluator.evaluate(
-        afterMetrics, // Simplified - would need before metrics per proposal
+        beforeMetrics,
         afterMetrics,
         result.proposalId
       );
@@ -481,7 +483,7 @@ export class BootstrapEngine extends EventEmitter {
       // Run regression check
       const regressionCheck = this.regressionGuard.check(
         result.proposalId,
-        afterMetrics,
+        beforeMetrics,
         afterMetrics
       );
 
