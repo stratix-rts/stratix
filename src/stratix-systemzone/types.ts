@@ -243,6 +243,46 @@ export interface ProposalSelection {
   risk: RiskLevel;
 }
 
+// ------------------------------------------------
+// Diff & Modification 类型（Agent 化重设计新增）
+// ------------------------------------------------
+
+/** diff 行 */
+export interface DiffLine {
+  type: "context" | "add" | "remove";
+  content: string;
+}
+
+/** 单个文件的 unified diff hunk */
+export interface DiffHunk {
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  header?: string;
+  lines: DiffLine[];
+}
+
+/** 文件修改操作（unified diff 格式） */
+export interface SystemZoneFileModification {
+  type: "create" | "edit" | "delete" | "rename";
+  path: string;
+  diff?: string;
+  hunks?: DiffHunk[];
+  content?: string;
+  newPath?: string;
+  description: string;
+}
+
+/** 安全评估结果（Guardian Agent 输出） */
+export interface SafetyAssessment {
+  decision: "approved" | "rejected" | "conditional";
+  riskLevel: "low" | "medium" | "high";
+  concerns: string[];
+  suggestions: string[];
+  confidence: number;
+}
+
 export interface Proposal {
   id: string;
   timestamp: Date;
@@ -262,6 +302,10 @@ export interface Proposal {
   effortEstimate?: 'small' | 'medium' | 'large';
   /** 为什么建议这样改 */
   reasoning?: string;
+  /** Strategist Agent 生成的结构化修改（unified diff） */
+  modifications?: SystemZoneFileModification[];
+  /** Guardian Agent 的安全审查结果 */
+  safetyAssessment?: SafetyAssessment;
 }
 
 // ------------------------------------------------

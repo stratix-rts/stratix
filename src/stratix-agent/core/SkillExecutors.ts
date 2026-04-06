@@ -3,6 +3,7 @@ import { SkillDefinition, SkillExecutor, ExecutionContext } from '../types';
 
 import { SafetyValidator } from './SafetyValidator';
 import { ZoneCoordinatorSkillExecutor } from './ZoneCoordinatorSkillExecutor';
+import { SystemZoneSkillExecutor } from './SystemZoneSkillExecutor';
 
 export class HttpSkillExecutor implements SkillExecutor {
   async execute(
@@ -1116,6 +1117,8 @@ export function createExecutor(type: string): SkillExecutor {
       return new ZoneSkillExecutor();
     case 'zone_coordinator':
       return new ZoneCoordinatorSkillExecutor();
+    case 'systemzone':
+      return new SystemZoneSkillExecutor();
     default:
       return new DefaultSkillExecutor();
   }

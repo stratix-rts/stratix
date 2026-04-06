@@ -213,9 +213,9 @@ if (characterToSave.stratixConfig) {
 | T04 | JSON 编辑器 | ✅ 完成 | 7d4b127 |
 | T05 | 属性展示 | ✅ 完成 | 78d8369 |
 | T06 | 棋盘格预览背景 | ✅ 完成 | 46c7387 |
-| T07 | AgentChatPanel 测试聊天 | 🔄 进行中 | |
-| T08 | OpenClaw 连接守卫 | ⬜ 待开始 | |
-| T09 | EventBus 集成 | ⬜ 待开始 | |
+| T07 | AgentChatPanel 测试聊天 | ✅ 完成 | cfb1400 |
+| T08 | OpenClaw 连接守卫 | ✅ 完成 | f6c22e9 |
+| T09 | EventBus 集成 | ✅ 完成 | f820e50 |
 | T10 | Loading + Toast | ✅ 完成 | cbe7e03 |
 
 ---
