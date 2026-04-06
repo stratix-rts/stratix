@@ -298,14 +298,17 @@ function formatTime(ts: string | Date): string {
   flex-direction: column;
   gap: 10px;
   overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .proposal-card {
   background: var(--ds-bg-sunken);
   border: 1px solid var(--ds-border-subtle);
   border-radius: var(--ds-radius-md, 8px);
-  overflow: hidden;
+  overflow: visible;
   transition: border-color 0.2s;
+  flex-shrink: 0;
 }
 .proposal-card.expanded {
   border-color: color-mix(in srgb, var(--ds-status-info) 30%, transparent);

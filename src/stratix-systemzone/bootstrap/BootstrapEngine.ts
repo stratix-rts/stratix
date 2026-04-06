@@ -518,8 +518,9 @@ export class BootstrapEngine extends EventEmitter {
     try {
       const fitnessReport = await this.fitnessEvaluator.evaluate();
       this.state.improvementScore = fitnessReport.scores.overall;
-    } catch {
+    } catch (error) {
       // Fitness evaluation failed, keep current score
+      console.error('[BootstrapEngine] Learning phase failed:', error instanceof Error ? error.message : String(error));
     }
   }
 

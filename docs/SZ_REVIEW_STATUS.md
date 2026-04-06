@@ -26,8 +26,8 @@
 
 | # | Task | 状态 | 发现问题 | 修复Commit |
 |---|------|------|---------|-----------|
-| R1 | 代码质量 scan — unused imports/dead code/type safety | in_progress | - | - |
-| R2 | 错误处理 review — unhandled promises/missing try-catch | pending | - | - |
+| R1 | 代码质量 scan — unused imports/dead code/type safety | ✅ done | c0fb2ff | 16处 console.log + UI 组件清理 |
+| R2 | 错误处理 review — unhandled promises/missing try-catch | in_progress | - | - |
 | R3 | API 层 review — 输入校验/状态码/错误消息 | pending | - | - |
 | R4 | 后端逻辑 review — observer/strategist LLM 降级路径 | pending | - | - |
 | R5 | UI 组件 review — 响应式/空状态/loading 一致性 | pending | - | - |
