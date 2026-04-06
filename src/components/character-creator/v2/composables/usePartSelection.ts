@@ -14,12 +14,60 @@ import {
 } from '@/stratix-character-creator/constants';
 import type { PartSelection, PartMetadata, PartCategoryInfo } from '@/stratix-character-creator/types';
 
+// ============================================================================
+// 三档随机化常量 (from V1 CharacterCreatorScene.ts)
+// ============================================================================
+
+/** 概率性跳过的分类 (optional empty) */
+const OPTIONAL_CATEGORIES = ['quiver', 'shoulders', 'neck', 'backpack', 'cape', 'hat'];
+
+/** normal 模式限制的盾牌 */
+const ALLOWED_SHIELDS = ['shield_heater_revised_wood', 'shield_heater_wood'];
+
+/** minimal 模式跳过的分类 */
+const RANDOMIZATION_SKIP_CATEGORIES = [
+  'wings', 'wings_dots', 'wings_edge', 'tail',
+  'weapon', 'weapon_magic_crystal', 'shield', 'shield_paint', 'shield_pattern', 'shield_trim',
+  'backpack', 'backpack_straps', 'cargo', 'cape', 'cape_trim', 'quiver',
+  'hat', 'hat_accessory', 'hat_buckle', 'hat_overlay', 'hat_trim',
+  'bandana', 'bandana_overlay', 'headcover', 'headcover_rune', 'visor',
+  'shoulders', 'neck', 'necklace', 'earrings', 'earring_left', 'earring_right',
+  'charm', 'ring', 'sash', 'sash_tie', 'belt', 'buckles',
+  'horns', 'fins', 'furry_ears', 'furry_ears_skin',
+  'beard', 'mustache', 'sideburn',
+  'expression', 'expression_crying', 'facial_left', 'facial_left_trim',
+  'facial_mask', 'facial_right', 'facial_right_trim', 'facial_eyes',
+  'wound_arm', 'wound_brain', 'wound_eye_left', 'wound_eye_right', 'wound_mouth', 'wound_ribs',
+  'wheelchair', 'prosthesis_hand', 'prosthesis_leg', 'bandages', 'wrinkes',
+  'hairextl', 'hairextr', 'hairtie', 'hairtie_rune', 'updo', 'ponytail',
+  'jacket', 'jacket_collar', 'jacket_pockets', 'jacket_trim',
+  'vest', 'apron', 'overalls',
+  'armour', 'chainmail', 'bracers', 'bauldron',
+  'gloves', 'sleeves', 'socks', 'dress', 'dress_sleeves', 'dress_trim', 'dress_sleeves_trim',
+  'accessory', 'ammo', 'facial', 'eyebrows',
+];
+
+/** minimal 模式头部前缀 (只用 Human 开头的头) */
+const MINIMAL_HEAD_PREFIX = 'Human';
+
+/** 随机化配置类型 */
+type RandomizationMode = 'minimal' | 'normal' | 'full';
+
+interface RandomizationConfig {
+  skipCategories: string[];
+  shieldMode: 'empty' | 'limited' | 'all';
+  optionalEmptyChance: number;
+}
+
 export interface UsePartSelectionOptions {
   bodyType?: BodyType;
 }
 
 export function usePartSelection(options: UsePartSelectionOptions = {}) {
   const bodyType = ref<BodyType>(options.bodyType ?? DEFAULT_BODY_TYPE);
+
+  // 当前随机化模式
+  const randomizeMode = ref<RandomizationMode>('normal');
 
   // 部件元数据缓存
   const partsMetadata = ref<Map<string, PartMetadata>>(new Map());
@@ -106,21 +154,69 @@ export function usePartSelection(options: UsePartSelectionOptions = {}) {
     selectedParts.value = {};
   }
 
-  // 随机选择所有部件
-  function randomize(): void {
+  // ============================================================================
+  // 三档随机化逻辑
+  // ============================================================================
+
+  function getRandomizationConfig(mode: RandomizationMode): RandomizationConfig {
+    switch (mode) {
+      case 'minimal':
+        return {
+          skipCategories: RANDOMIZATION_SKIP_CATEGORIES,
+          shieldMode: 'empty',
+          optionalEmptyChance: 1
+        };
+      case 'normal':
+        return {
+          skipCategories: [],
+          shieldMode: 'limited',
+          optionalEmptyChance: 0.5
+        };
+      case 'full':
+        return {
+          skipCategories: [],
+          shieldMode: 'all',
+          optionalEmptyChance: 0
+        };
+    }
+  }
+
+  // 获取人类头部 (minimal 模式专用)
+  function getHumanHeadPart(): PartMetadata | null {
+    const heads = availableParts.value.get('head');
+    if (!heads) return null;
+
+    const humanHeads = heads.filter(p => p.itemId.startsWith(MINIMAL_HEAD_PREFIX));
+    const source = humanHeads.length > 0 ? humanHeads : heads;
+    return source[Math.floor(Math.random() * source.length)] ?? null;
+  }
+
+  // 精简随机 (minimal)
+  function randomizeMinimal(): void {
+    const config = getRandomizationConfig('minimal');
     const newSelections: Record<string, PartSelection> = {};
 
     for (const category of PART_CATEGORIES) {
+      // 跳过配置的分类
+      if (config.skipCategories.includes(category)) {
+        continue;
+      }
+
       const parts = availableParts.value.get(category);
       if (!parts || parts.length === 0) continue;
 
-      // 随机选择一个部件
-      const randomPart = parts[Math.floor(Math.random() * parts.length)];
+      let randomPart: PartMetadata | null = null;
+
+      // minimal 模式：head 只选 Human 开头的
+      if (category === 'head') {
+        randomPart = getHumanHeadPart();
+      } else {
+        randomPart = parts[Math.floor(Math.random() * parts.length)];
+      }
+
       if (randomPart) {
-        // 随机选择变体
         const variants = randomPart.variants ?? ['default'];
         const randomVariant = variants[Math.floor(Math.random() * variants.length)];
-
         newSelections[category] = {
           itemId: randomPart.itemId,
           variant: randomVariant,
@@ -129,6 +225,106 @@ export function usePartSelection(options: UsePartSelectionOptions = {}) {
     }
 
     selectedParts.value = newSelections;
+  }
+
+  // 普通随机 (normal)
+  function randomizeNormal(): void {
+    const config = getRandomizationConfig('normal');
+    const newSelections: Record<string, PartSelection> = {};
+
+    for (const category of PART_CATEGORIES) {
+      const parts = availableParts.value.get(category);
+      if (!parts || parts.length === 0) continue;
+
+      // 盾牌特殊处理
+      if (category === 'shield') {
+        if (config.shieldMode === 'empty') {
+          continue;
+        }
+        if (config.shieldMode === 'limited') {
+          // 30% 概率为空
+          if (Math.random() < 0.3) {
+            continue;
+          }
+          // 从允许列表随机
+          const allowedParts = parts.filter(p => ALLOWED_SHIELDS.includes(p.itemId));
+          const source = allowedParts.length > 0 ? allowedParts : parts;
+          const randomPart = source[Math.floor(Math.random() * source.length)];
+          if (randomPart) {
+            const variants = randomPart.variants ?? ['default'];
+            const randomVariant = variants[Math.floor(Math.random() * variants.length)];
+            newSelections[category] = {
+              itemId: randomPart.itemId,
+              variant: randomVariant,
+            };
+          }
+          continue;
+        }
+      }
+
+      // optional 分类概率跳过
+      if (OPTIONAL_CATEGORIES.includes(category)) {
+        if (Math.random() < config.optionalEmptyChance) {
+          continue;
+        }
+      }
+
+      const randomPart = parts[Math.floor(Math.random() * parts.length)];
+      if (randomPart) {
+        const variants = randomPart.variants ?? ['default'];
+        const randomVariant = variants[Math.floor(Math.random() * variants.length)];
+        newSelections[category] = {
+          itemId: randomPart.itemId,
+          variant: randomVariant,
+        };
+      }
+    }
+
+    selectedParts.value = newSelections;
+  }
+
+  // 完全随机 (full)
+  function randomizeFull(): void {
+    const config = getRandomizationConfig('full');
+    const newSelections: Record<string, PartSelection> = {};
+
+    for (const category of PART_CATEGORIES) {
+      const parts = availableParts.value.get(category);
+      if (!parts || parts.length === 0) continue;
+
+      // 盾牌特殊处理
+      if (category === 'shield') {
+        if (config.shieldMode === 'all') {
+          const randomPart = parts[Math.floor(Math.random() * parts.length)];
+          if (randomPart) {
+            const variants = randomPart.variants ?? ['default'];
+            const randomVariant = variants[Math.floor(Math.random() * variants.length)];
+            newSelections[category] = {
+              itemId: randomPart.itemId,
+              variant: randomVariant,
+            };
+          }
+        }
+        continue;
+      }
+
+      const randomPart = parts[Math.floor(Math.random() * parts.length)];
+      if (randomPart) {
+        const variants = randomPart.variants ?? ['default'];
+        const randomVariant = variants[Math.floor(Math.random() * variants.length)];
+        newSelections[category] = {
+          itemId: randomPart.itemId,
+          variant: randomVariant,
+        };
+      }
+    }
+
+    selectedParts.value = newSelections;
+  }
+
+  // 随机选择所有部件 (默认调用 normal)
+  function randomize(): void {
+    randomizeNormal();
   }
 
   // 设置当前体型（会刷新可用部件）
@@ -172,6 +368,7 @@ export function usePartSelection(options: UsePartSelectionOptions = {}) {
   return {
     // State
     bodyType,
+    randomizeMode,
     availableParts,
     selectedParts,
     isLoaded,
@@ -186,6 +383,9 @@ export function usePartSelection(options: UsePartSelectionOptions = {}) {
     deselectPart,
     clearAllSelections,
     randomize,
+    randomizeMinimal,
+    randomizeNormal,
+    randomizeFull,
     setBodyType,
     loadFromCharacter,
     getVariantsForPart,

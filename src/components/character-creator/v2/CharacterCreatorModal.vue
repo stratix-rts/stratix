@@ -67,10 +67,14 @@ const {
 
 const {
   bodyType,
+  randomizeMode,
   selectedParts,
   selectPart,
   deselectPart,
   randomize,
+  randomizeMinimal,
+  randomizeNormal,
+  randomizeFull,
   setBodyType,
   loadFromCharacter,
 } = usePartSelection({ bodyType: 'male' });
@@ -278,11 +282,28 @@ function handlePartDeselect(category: PartCategory): void {
 }
 
 function handleRandomize(): void {
-  randomize();
+  switch (randomizeMode.value) {
+    case 'minimal':
+      randomizeMinimal();
+      break;
+    case 'normal':
+      randomizeNormal();
+      break;
+    case 'full':
+      randomizeFull();
+      break;
+  }
   // 同步回 currentCharacter
   if (currentCharacter.value) {
     currentCharacter.value.parts = { ...selectedParts.value };
   }
+}
+
+function cycleRandomMode(): void {
+  const modes: Array<'minimal' | 'normal' | 'full'> = ['minimal', 'normal', 'full'];
+  const currentIndex = modes.indexOf(randomizeMode.value);
+  randomizeMode.value = modes[(currentIndex + 1) % modes.length];
+  handleRandomize();
 }
 
 // ============================================================================
@@ -419,8 +440,8 @@ watch(selectedParts, (parts) => {
         </div>
 
         <div class="header-right">
-          <StratixButton size="sm" variant="secondary" @click="handleRandomize">
-            随机
+          <StratixButton size="sm" variant="secondary" @click="cycleRandomMode" :title="`当前: ${randomizeMode}`">
+            🎲 {{ randomizeMode === 'minimal' ? '精简' : randomizeMode === 'normal' ? '普通' : '完全' }}
           </StratixButton>
           <StratixButton
             size="sm"
