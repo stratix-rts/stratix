@@ -70,6 +70,31 @@
         >
           触发一次循环
         </button>
+
+        <button
+          class="btn-run-cycle"
+          @click="runCycle"
+          :disabled="cyclePhase !== 'idle' || store.loading || store.bootstrapStatus.engineRunning"
+        >
+          {{ cyclePhase === 'idle' ? '运行完整周期' : cyclePhaseLabels[cyclePhase] }}
+        </button>
+      </div>
+
+      <!-- Cycle Phase Indicator -->
+      <div v-if="cyclePhase !== 'idle'" class="cycle-indicator">
+        <div class="phase-track">
+          <span class="phase-dot" :class="{ active: cyclePhase === 'observing' || cyclePhase === 'analyzing' || cyclePhase === 'done' }">观察</span>
+          <span class="phase-line" :class="{ filled: cyclePhase === 'analyzing' || cyclePhase === 'done' }"></span>
+          <span class="phase-dot" :class="{ active: cyclePhase === 'analyzing' || cyclePhase === 'done' }">分析</span>
+          <span class="phase-line" :class="{ filled: cyclePhase === 'done' }"></span>
+          <span class="phase-dot" :class="{ active: cyclePhase === 'done' }">完成</span>
+        </div>
+        <div v-if="cyclePhase === 'done'" class="cycle-timings">
+          <span class="timing-total">总耗时: {{ totalCycleTime.toFixed(1) }}s</span>
+          <span class="timing-detail">
+            观察 {{ observeTime.toFixed(1) }}s · 分析 {{ analyzeTime.toFixed(1) }}s
+          </span>
+        </div>
       </div>
     </div>
 
@@ -129,6 +154,18 @@ const store = useSystemZoneStore();
 const showConfirm = ref(false);
 const pendingMode = ref<string | null>(null);
 
+type CyclePhase = 'idle' | 'observing' | 'analyzing' | 'done';
+const cyclePhase = ref<CyclePhase>('idle');
+const cyclePhaseLabels: Record<CyclePhase, string> = {
+  idle: '运行完整周期',
+  observing: '观察中...',
+  analyzing: '分析中...',
+  done: '完成',
+};
+const observeTime = ref(0);
+const analyzeTime = ref(0);
+const totalCycleTime = ref(0);
+
 const bootstrapRef = computed(() => store.bootstrapHistory) as Ref<any[]>;
 const { isLoading, panelError, retry } = usePanelState('bootstrap', bootstrapRef);
 
@@ -183,6 +220,30 @@ async function confirmModeChange() {
 
 async function triggerCycle() {
   await store.triggerBootstrapCycle();
+}
+
+async function runCycle() {
+  const start = Date.now();
+  cyclePhase.value = 'observing';
+
+  const observeStart = Date.now();
+  await store.triggerObserve();
+  observeTime.value = (Date.now() - observeStart) / 1000;
+
+  cyclePhase.value = 'analyzing';
+  const analyzeStart = Date.now();
+  await store.triggerAnalyze();
+  analyzeTime.value = (Date.now() - analyzeStart) / 1000;
+
+  totalCycleTime.value = (Date.now() - start) / 1000;
+  cyclePhase.value = 'done';
+
+  // Auto-refresh store data after cycle completes
+  await Promise.all([
+    store.fetchInsights(),
+    store.fetchProposals(),
+    store.fetchStatus(),
+  ]);
 }
 
 onMounted(() => {
@@ -388,6 +449,79 @@ onMounted(() => {
   background: color-mix(in srgb, var(--ds-status-info, #3b82f6) 25%, transparent);
 }
 .btn-cycle:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-run-cycle {
+  background: color-mix(in srgb, var(--ds-status-success, #22c55e) 20%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ds-status-success, #22c55e) 40%, transparent);
+  color: var(--ds-status-success, #22c55e);
+  padding: 6px 14px;
+  border-radius: var(--ds-radius-sm, 4px);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, opacity 0.2s;
+}
+.btn-run-cycle:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ds-status-success, #22c55e) 30%, transparent);
+}
+.btn-run-cycle:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Cycle Phase Indicator */
+.cycle-indicator {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: var(--ds-bg-elevated, #1e293b);
+  border-radius: var(--ds-radius-sm, 4px);
+  border: 1px solid var(--ds-border-subtle, rgba(148, 163, 184, 0.1));
+}
+
+.phase-track {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.phase-dot {
+  font-size: 11px;
+  color: var(--ds-text-muted, #64748b);
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ds-text-muted, #64748b) 10%, transparent);
+  transition: all 0.3s;
+}
+.phase-dot.active {
+  background: color-mix(in srgb, var(--ds-status-success, #22c55e) 20%, transparent);
+  color: var(--ds-status-success, #22c55e);
+}
+
+.phase-line {
+  flex: 1;
+  height: 2px;
+  background: var(--ds-border-subtle, rgba(148, 163, 184, 0.1));
+  transition: background 0.3s;
+}
+.phase-line.filled {
+  background: var(--ds-status-success, #22c55e);
+}
+
+.cycle-timings {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.timing-total {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ds-text-primary, #e2e8f0);
+}
+
+.timing-detail {
+  font-size: 11px;
+  color: var(--ds-text-muted, #64748b);
+}
 
 /* Modal */
 .modal-overlay {
