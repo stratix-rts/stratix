@@ -9,6 +9,7 @@ import { TestRunner } from './TestRunner';
 import { RollbackManager } from './RollbackManager';
 import { Guardian } from '../guardian/Guardian';
 import { DiffApplier } from './DiffApplier';
+import { mapModifications } from './modificationMapper';
 
 import type { Proposal } from '../types';
 
@@ -477,15 +478,7 @@ export class Executor {
    * 构建修改计划
    */
   private buildModificationPlan(proposal: Proposal): ModificationPlan {
-    // 从 Proposal.modifications（A1 新增的 SystemZoneFileModification[]）映射到 executor 的 FileModification
-    const modifications: FileModification[] = (proposal.modifications ?? []).map(m => ({
-      type: m.type,
-      path: m.path,
-      content: m.content,
-      description: m.description,
-      ...(m.newPath ? { newPath: m.newPath } : {}),
-      ...(m.diff ? { diff: m.diff } : {}),
-    }));
+    const modifications = mapModifications(proposal.modifications ?? []);
 
     return {
       proposalId: proposal.id,
