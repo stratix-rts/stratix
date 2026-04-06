@@ -33,6 +33,7 @@ import CreditsPanel from './components/CreditsPanel.vue';
 import JsonEditor from './components/JsonEditor.vue';
 
 import type { CreatorStep } from './components/StepNavigator.vue';
+import { unifiedOpenClawConnectionManager } from '@/stratix-core/UnifiedOpenClawConnectionManager';
 
 // ============================================================================
 // Props & Emits (V1 兼容接口)
@@ -154,6 +155,18 @@ function showToast(text: string, type: 'success' | 'error' | 'info' = 'info'): v
   setTimeout(() => {
     toasts.value = toasts.value.filter((t) => t.id !== id);
   }, 3000);
+}
+
+function canNavigateToStep(step: CreatorStep): boolean {
+  if (step === 'openclaw' || step === 'agent') {
+    if (agentConfig.value.backendType === 'openclaw') {
+      if (!unifiedOpenClawConnectionManager.isConnected()) {
+        showToast('请先连接 OpenClaw', 'error');
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 // ============================================================================
@@ -311,6 +324,7 @@ async function handleSetDefault(characterId: string): Promise<void> {
 // ============================================================================
 
 function handleStepNavigate(step: CreatorStep): void {
+  if (!canNavigateToStep(step)) return;
   // 标记当前步骤为完成
   if (!completedSteps.value.includes(currentStep.value)) {
     completedSteps.value.push(currentStep.value);
@@ -322,11 +336,13 @@ function goToNextStep(): void {
   const stepOrder: CreatorStep[] = ['appearance', 'openclaw', 'agent'];
   const currentIndex = stepOrder.indexOf(currentStep.value);
   if (currentIndex < stepOrder.length - 1) {
+    const nextStep = stepOrder[currentIndex + 1];
+    if (!canNavigateToStep(nextStep)) return;
     // 标记当前步骤为完成
     if (!completedSteps.value.includes(currentStep.value)) {
       completedSteps.value.push(currentStep.value);
     }
-    currentStep.value = stepOrder[currentIndex + 1];
+    currentStep.value = nextStep;
   }
 }
 
