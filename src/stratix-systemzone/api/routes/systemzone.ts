@@ -140,6 +140,23 @@ function getExperimentsForOwner(ownerId: string): ExperimentZone[] {
 // Helper functions
 // ------------------------------------------------
 
+/**
+ * Sanitize error message for client-facing responses.
+ * Removes file paths, line numbers, and stack trace fragments.
+ */
+function sanitizeErrorMessage(error: unknown): string {
+  if (!(error instanceof Error)) return 'Internal server error';
+  let msg = error.message;
+  // Remove file paths (e.g., /Users/.../file.ts:123:45 or /absolute/path/file.ts)
+  msg = msg.replace(/(\/?[\w\-.\\/]+)+[\w\-.\\/]+\.\w+:\d+:\d+/g, '<file>');
+  msg = msg.replace(/at\s+(\/?[\w\-.\\/]+)+[\w\-.\\/]+\.\w+:\d+/g, 'at <file>');
+  // Remove isolated absolute paths
+  msg = msg.replace(/\/[\w\-.\\/]+\/[\w\-.\\/]+\.\w+/g, '<file>');
+  // Collapse repeated <file> placeholders
+  msg = msg.replace(/(<file>\s*)+/g, '<file>');
+  return msg.length > 200 ? msg.substring(0, 200) + '...' : msg;
+}
+
 function getDefaultOwnerId(req: Request): string {
   return req.ownerId || 'default-user';
 }
@@ -373,7 +390,7 @@ router.post('/inputs', async (req: Request, res: Response): Promise<void> => {
     console.error('[SystemZone API] Add input failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to add input',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -422,7 +439,7 @@ router.post('/observe', async (req: Request, res: Response): Promise<void> => {
     console.error('[SystemZone API] Observe failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to run observation',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -462,7 +479,7 @@ router.post('/analyze', async (req: Request, res: Response): Promise<void> => {
     console.error('[SystemZone API] Analyze failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to run analysis',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -511,7 +528,7 @@ router.get('/proposals', async (req: Request, res: Response): Promise<void> => {
     console.error('[SystemZone API] Get proposals failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to get proposals',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -593,7 +610,7 @@ router.post('/proposals/:id/approve', async (req: Request, res: Response): Promi
     console.error('[SystemZone API] Approve proposal failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to approve/reject proposal',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -643,7 +660,7 @@ router.get('/insights', async (req: Request, res: Response): Promise<void> => {
     console.error('[SystemZone API] Get insights failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to get insights',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -672,7 +689,7 @@ router.get('/status', async (req: Request, res: Response): Promise<void> => {
     console.error('[SystemZone API] Get status failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to get status',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -757,7 +774,7 @@ router.post('/proposals/:id/execute', async (req: Request, res: Response): Promi
     console.error('[SystemZone API] Execute proposal failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to execute proposal',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -793,7 +810,7 @@ router.get('/executions', async (req: Request, res: Response): Promise<void> => 
     console.error('[SystemZone API] Get executions failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to get executions',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -836,7 +853,7 @@ router.get('/executions/:id', async (req: Request, res: Response): Promise<void>
     console.error('[SystemZone API] Get execution failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to get execution',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -872,7 +889,7 @@ router.post('/executions/:id/cancel', async (req: Request, res: Response): Promi
     console.error('[SystemZone API] Cancel execution failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to cancel execution',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -953,7 +970,7 @@ router.get('/fitness', async (req: Request, res: Response): Promise<void> => {
     console.error('[SystemZone API] Get fitness failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to get fitness report',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -977,7 +994,7 @@ router.get('/fitness/can-execute', async (req: Request, res: Response): Promise<
     console.error('[SystemZone API] Check fitness can-execute failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to check fitness',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -1038,7 +1055,7 @@ router.post('/inputs/batch', async (req: Request, res: Response): Promise<void> 
     console.error('[SystemZone API] Batch add inputs failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to add inputs',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -1159,7 +1176,7 @@ router.post('/bootstrap/start', async (req: Request, res: Response): Promise<voi
     console.error('[SystemZone API] Bootstrap start failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to start bootstrap engine',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -1196,7 +1213,7 @@ router.post('/bootstrap/stop', async (req: Request, res: Response): Promise<void
     console.error('[SystemZone API] Bootstrap stop failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to stop bootstrap engine',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -1236,7 +1253,7 @@ router.get('/bootstrap/status', async (req: Request, res: Response): Promise<voi
     console.error('[SystemZone API] Bootstrap status failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to get bootstrap status',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -1284,7 +1301,7 @@ router.put('/bootstrap/mode', async (req: Request, res: Response): Promise<void>
     console.error('[SystemZone API] Bootstrap mode switch failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to switch bootstrap mode',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -1323,7 +1340,7 @@ router.post('/bootstrap/cycle', async (req: Request, res: Response): Promise<voi
     console.error('[SystemZone API] Bootstrap cycle failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to run bootstrap cycle',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -1359,7 +1376,7 @@ router.get('/bootstrap/history', async (req: Request, res: Response): Promise<vo
     console.error('[SystemZone API] Bootstrap history failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to get bootstrap history',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -1407,7 +1424,7 @@ router.get('/experiments', async (req: Request, res: Response): Promise<void> =>
     console.error('[SystemZone API] Get experiments failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to get experiments',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -1453,7 +1470,7 @@ router.get('/experiments/:id', async (req: Request, res: Response): Promise<void
     console.error('[SystemZone API] Get experiment failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to get experiment',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -1503,7 +1520,7 @@ router.post('/experiments/:id/cancel', async (req: Request, res: Response): Prom
     console.error('[SystemZone API] Cancel experiment failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to cancel experiment',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -1538,7 +1555,7 @@ router.delete('/experiments/:id', async (req: Request, res: Response): Promise<v
     console.error('[SystemZone API] Delete experiment failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to delete experiment',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -1646,7 +1663,7 @@ router.post('/sources', async (req: Request, res: Response): Promise<void> => {
     console.error('[SystemZone API] Add source failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to add source',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -1697,7 +1714,7 @@ router.get('/sources', async (req: Request, res: Response): Promise<void> => {
     console.error('[SystemZone API] Get sources failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to get sources',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -1752,7 +1769,7 @@ router.get('/sources/:id', async (req: Request, res: Response): Promise<void> =>
     console.error('[SystemZone API] Get source failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to get source',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -1830,7 +1847,7 @@ router.patch('/sources/:id', async (req: Request, res: Response): Promise<void> 
     console.error('[SystemZone API] Update source failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to update source',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -1874,7 +1891,7 @@ router.delete('/sources/:id', async (req: Request, res: Response): Promise<void>
     console.error('[SystemZone API] Delete source failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to delete source',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -1934,7 +1951,7 @@ router.post('/sources/:id/fetch', async (req: Request, res: Response): Promise<v
     console.error('[SystemZone API] Fetch source failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to fetch source',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -2024,7 +2041,7 @@ router.post('/sources/:id/webhook', async (req: Request, res: Response): Promise
     });
   } catch (error) {
     console.error('[SystemZone API] Webhook processing failed:', error);
-    const message = error instanceof Error ? error.message : 'Failed to process webhook';
+    const message = sanitizeErrorMessage(error);
     if (message.includes('Invalid webhook signature')) {
       res.status(401).json({
         success: false,
@@ -2098,7 +2115,7 @@ router.get('/sources/:id/inputs', async (req: Request, res: Response): Promise<v
     console.error('[SystemZone API] Get source inputs failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to get source inputs',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -2140,7 +2157,7 @@ router.get('/llm-config', async (_req: Request, res: Response): Promise<void> =>
     console.error('[SystemZone API] Get llm-config failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to get LLM config',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -2171,7 +2188,7 @@ router.get('/llm-config/status', async (_req: Request, res: Response): Promise<v
     console.error('[SystemZone API] Get llm-config/status failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to get LLM config status',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -2230,7 +2247,7 @@ router.put('/llm-config', async (req: Request, res: Response): Promise<void> => 
     console.error('[SystemZone API] Put llm-config failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to save LLM config',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -2313,7 +2330,7 @@ router.post('/llm-config/test-chat', async (req: Request, res: Response): Promis
     console.error('[SystemZone API] Test chat failed:', error);
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Test chat failed',
+      error: sanitizeErrorMessage(error),
     });
   }
 });
@@ -2338,7 +2355,7 @@ router.post('/logs', async (req: Request, res: Response): Promise<void> => {
     }
     res.json({ success: true, received: Array.isArray(entries) ? entries.length : 0 });
   } catch (error) {
-    res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Failed to receive logs' });
+    res.status(500).json({ success: false, error: sanitizeErrorMessage(error) });
   }
 });
 
