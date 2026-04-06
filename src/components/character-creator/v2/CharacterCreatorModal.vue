@@ -18,6 +18,8 @@ import type { StratixSoulConfig } from '@/stratix-core/stratix-protocol';
 import { useCharacterState } from './composables/useCharacterState';
 import { usePartSelection } from './composables/usePartSelection';
 import { usePreviewControl } from './composables/usePreviewControl';
+import { SkillTree } from '@/stratix-character-creator/core/SkillTree';
+import { SKILL_TREE_CONFIG } from '@/stratix-character-creator/config/skillTreeConfig';
 
 import CanvasPreview from './components/CanvasPreview.vue';
 import PartSelector from './components/PartSelector.vue';
@@ -94,6 +96,16 @@ const {
   zoomIn,
   zoomOut,
 } = usePreviewControl();
+
+// ============================================================================
+// SkillTree 实例
+// ============================================================================
+
+const skillTree = new SkillTree(SKILL_TREE_CONFIG);
+
+const attributes = computed(() => {
+  return skillTree.calculateAttributes();
+});
 
 // ============================================================================
 // 步骤状态
@@ -204,6 +216,10 @@ async function handleLoadCharacter(characterId: string): Promise<void> {
     loadFromCharacter(character.parts);
     // 同步体型
     setBodyType(character.bodyType);
+    // 同步 skillTree state
+    if (character.skillTree) {
+      skillTree.setState(character.skillTree);
+    }
     // 同步 agent config
     if (character.backendType) {
       agentConfig.value.backendType = character.backendType;
@@ -240,6 +256,10 @@ async function handleSave(): Promise<void> {
   // 同步部件数据
   currentCharacter.value.parts = { ...selectedParts.value };
   currentCharacter.value.bodyType = bodyType.value;
+
+  // 同步 skillTree state 和 attributes
+  currentCharacter.value.skillTree = skillTree.getState();
+  currentCharacter.value.attributes = skillTree.calculateAttributes();
 
   // 同步 agent config
   currentCharacter.value.backendType = agentConfig.value.backendType;
@@ -533,6 +553,22 @@ watch(selectedParts, (parts) => {
               @zoom-out="handleZoomOut"
             />
           </div>
+
+          <!-- 属性加成 -->
+          <div v-if="Object.keys(attributes).length > 0" class="attributes-display">
+            <span class="attr-label">ATTR</span>
+            <span
+              v-for="(value, key) in attributes"
+              :key="key"
+              class="attr-item"
+            >
+              {{ key.toUpperCase() }}+{{ value }}
+            </span>
+          </div>
+          <div v-else class="attributes-display">
+            <span class="attr-label">No bonuses</span>
+          </div>
+
           <CreditsPanel :parts="selectedParts" />
 
           <!-- JSON 编辑器入口 -->
@@ -773,6 +809,29 @@ watch(selectedParts, (parts) => {
 /* JSON 编辑器入口 */
 .json-editor-entry {
   flex-shrink: 0;
+}
+
+/* 属性加成展示 */
+.attributes-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--ds-bg-tertiary);
+  border-radius: 6px;
+  font-family: 'SF Mono', 'Monaco', monospace;
+  font-size: 11px;
+  flex-wrap: wrap;
+}
+
+.attr-label {
+  color: var(--ds-text-muted);
+  font-weight: 500;
+  letter-spacing: 0.05em;
+}
+
+.attr-item {
+  color: var(--ds-accent, var(--ds-color-primary));
 }
 
 .json-divider {
