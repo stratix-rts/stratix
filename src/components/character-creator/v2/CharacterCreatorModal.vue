@@ -27,6 +27,7 @@ import AnimationControls from './components/AnimationControls.vue';
 import StepNavigator from './components/StepNavigator.vue';
 import AgentConfigStep from './components/AgentConfigStep.vue';
 import CreditsPanel from './components/CreditsPanel.vue';
+import JsonEditor from './components/JsonEditor.vue';
 
 import type { CreatorStep } from './components/StepNavigator.vue';
 
@@ -177,6 +178,20 @@ function cancelEditName(): void {
 
 const showDeleteConfirm = ref(false);
 const pendingDeleteId = ref<string | null>(null);
+
+// ============================================================================
+// JSON 编辑器
+// ============================================================================
+
+const showJsonEditor = ref(false);
+
+function handleJsonSave(newParts: Record<string, PartSelection>): void {
+  if (currentCharacter.value) {
+    currentCharacter.value.parts = newParts;
+    loadFromCharacter(newParts);
+    showToast('JSON 已更新', 'success');
+  }
+}
 
 // ============================================================================
 // 角色操作
@@ -519,6 +534,14 @@ watch(selectedParts, (parts) => {
             />
           </div>
           <CreditsPanel :parts="selectedParts" />
+
+          <!-- JSON 编辑器入口 -->
+          <div class="json-editor-entry">
+            <div class="json-divider"></div>
+            <button class="json-editor-btn" @click="showJsonEditor = true">
+              打开 JSON 编辑器
+            </button>
+          </div>
         </aside>
 
         <!-- 中间工作区 -->
@@ -619,6 +642,14 @@ watch(selectedParts, (parts) => {
     @update:visible="showDeleteConfirm = $event"
     @ok="confirmDelete"
     @cancel="showDeleteConfirm = false"
+  />
+
+  <!-- JSON 编辑器弹窗 -->
+  <JsonEditor
+    :visible="showJsonEditor"
+    :parts="selectedParts"
+    @close="showJsonEditor = false"
+    @save="handleJsonSave"
   />
 </template>
 
@@ -737,6 +768,37 @@ watch(selectedParts, (parts) => {
 
 .controls-area {
   flex-shrink: 0;
+}
+
+/* JSON 编辑器入口 */
+.json-editor-entry {
+  flex-shrink: 0;
+}
+
+.json-divider {
+  height: 1px;
+  background: var(--ds-border);
+  opacity: 0.5;
+  margin-bottom: 8px;
+}
+
+.json-editor-btn {
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px solid var(--ds-border);
+  border-radius: 6px;
+  color: var(--ds-text-secondary);
+  font-family: 'SF Mono', 'Monaco', monospace;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.json-editor-btn:hover {
+  border-color: var(--ds-color-primary);
+  color: var(--ds-color-primary);
 }
 
 /* 中间工作区 */
