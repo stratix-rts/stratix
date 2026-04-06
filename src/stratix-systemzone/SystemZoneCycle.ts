@@ -7,6 +7,7 @@
 import { SystemZoneManager } from './SystemZoneManager';
 import { ZoneCoordinator } from '../stratix-orchestration/zone/ZoneCoordinator';
 import { FitnessEvaluator } from './fitness/FitnessEvaluator';
+import { DiffApplier } from './executor/DiffApplier';
 import type { SafetyAssessment, Insight, Proposal } from './types';
 import type { FitnessReport } from './executor/types';
 
@@ -38,6 +39,7 @@ export interface CycleState {
   assessment?: SafetyAssessment;
   executionResult?: any;
   fitnessReport?: FitnessReport;
+  baselineReport?: FitnessReport;
 }
 
 // ------------------------------------------------
@@ -86,13 +88,17 @@ export class SystemZoneCycle {
   private manager: SystemZoneManager;
   private coordinator: ZoneCoordinator | null = null;
   private fitnessEvaluator: FitnessEvaluator;
+  private diffApplier: DiffApplier;
+  private workDir: string;
 
   private state: CycleState;
   private eventListeners: Map<CycleEventType, Set<CycleEventCallback>> = new Map();
 
-  constructor(manager: SystemZoneManager) {
+  constructor(manager: SystemZoneManager, workDir?: string) {
     this.manager = manager;
     this.fitnessEvaluator = new FitnessEvaluator();
+    this.diffApplier = new DiffApplier();
+    this.workDir = workDir ?? process.cwd();
     this.state = this.createInitialState();
   }
 
@@ -109,6 +115,9 @@ export class SystemZoneCycle {
     this.state.startedAt = new Date();
 
     try {
+      // Capture baseline before any changes
+      this.state.baselineReport = await this.captureBaseline();
+
       // Phase 1: Observe
       await this.phaseObserve(input);
 
@@ -420,15 +429,61 @@ export class SystemZoneCycle {
   }
 
   /**
-   * Phase 5: Evaluate - 调用 FitnessEvaluator
+   * Phase 5: Evaluate - 调用 FitnessEvaluator，对比 baseline 决定是否回滚
    */
   private async phaseEvaluate(): Promise<void> {
     this.transition('evaluating');
 
-    const report = await this.fitnessEvaluator.evaluate();
-    this.state.fitnessReport = report;
+    const afterReport = await this.fitnessEvaluator.evaluate();
+    this.state.fitnessReport = afterReport;
 
-    this.emit('evaluation_completed', { report });
+    this.emit('evaluation_completed', { report: afterReport });
+
+    // Check if rollback is needed
+    if (this.state.baselineReport && this.shouldRollback(this.state.baselineReport, afterReport)) {
+      await this.rollback();
+      this.state.lastError = `Fitness regression: overall score dropped from ${this.state.baselineReport.scores.overall} to ${afterReport.scores.overall}`;
+    }
+  }
+
+  /**
+   * 捕获 baseline 健康度快照
+   */
+  private async captureBaseline(): Promise<FitnessReport> {
+    return this.fitnessEvaluator.evaluate();
+  }
+
+  /**
+   * 判断是否应该回滚：after score 低于 baseline 则回滚
+   */
+  private shouldRollback(baseline: FitnessReport, after: FitnessReport): boolean {
+    return after.scores.overall < baseline.scores.overall;
+  }
+
+  /**
+   * 执行回滚：将 proposal 的所有 diff 逆向应用
+   */
+  private async rollback(): Promise<void> {
+    const modifications = this.state.proposal?.modifications ?? [];
+    const diffs = modifications
+      .map((m: any) => m.diff)
+      .filter((d: string | undefined): d is string => !!d);
+
+    if (diffs.length === 0) {
+      console.log(`[SystemZoneCycle] Rollback: no diffs to revert for cycle ${this.state.cycleId}`);
+      return;
+    }
+
+    console.log(`[SystemZoneCycle] Rollback: reverting ${diffs.length} diff(s) for cycle ${this.state.cycleId}`);
+    for (const diff of diffs) {
+      try {
+        await this.diffApplier.rollbackDiff(this.workDir, diff);
+        console.log(`[SystemZoneCycle] Rollback: reverted one diff`);
+      } catch (err) {
+        console.error(`[SystemZoneCycle] Rollback: failed to revert diff: ${err}`);
+      }
+    }
+    console.log(`[SystemZoneCycle] Rollback: completed for cycle ${this.state.cycleId}`);
   }
 
   /**
