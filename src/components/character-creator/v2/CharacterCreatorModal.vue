@@ -26,6 +26,7 @@ import BodyTypeSelector from './components/BodyTypeSelector.vue';
 import AnimationControls from './components/AnimationControls.vue';
 import StepNavigator from './components/StepNavigator.vue';
 import AgentConfigStep from './components/AgentConfigStep.vue';
+import CreditsPanel from './components/CreditsPanel.vue';
 
 import type { CreatorStep } from './components/StepNavigator.vue';
 
@@ -517,6 +518,7 @@ watch(selectedParts, (parts) => {
               @zoom-out="handleZoomOut"
             />
           </div>
+          <CreditsPanel :parts="selectedParts" />
         </aside>
 
         <!-- 中间工作区 -->
