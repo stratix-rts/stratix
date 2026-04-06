@@ -185,9 +185,9 @@ const ScoreRow = defineComponent({
   line-height: 1;
 }
 
-.score-green { color: #22c55e; }
-.score-yellow { color: #f59e0b; }
-.score-red { color: #ef4444; }
+.score-green { color: var(--ds-status-success); }
+.score-yellow { color: var(--ds-status-warning); }
+.score-red { color: var(--ds-status-danger); }
 
 .overall-label {
   margin-top: 6px;

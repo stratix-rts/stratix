@@ -25,7 +25,7 @@
     <div v-else-if="panelError" class="panel-state error">
       <span class="error-icon">⚠️</span>
       <span class="error-msg">{{ panelError }}</span>
-      <button class="btn btn-retry" @click="retry">重试</button>
+      <StratixButton variant="secondary" size="sm" @click="retry">重试</StratixButton>
     </div>
 
     <!-- Empty -->
@@ -68,17 +68,17 @@
           </div>
           <div class="card-actions" @click.stop>
             <template v-if="proposal.status === 'pending'">
-              <button class="btn btn-approve" @click="handleApprove(proposal.id)" :disabled="store.loading">
+              <StratixButton variant="success" size="sm" @click="handleApprove(proposal.id)" :disabled="store.loading">
                 批准
-              </button>
-              <button class="btn btn-reject" @click="handleReject(proposal.id)" :disabled="store.loading">
+              </StratixButton>
+              <StratixButton variant="danger" size="sm" @click="handleReject(proposal.id)" :disabled="store.loading">
                 拒绝
-              </button>
+              </StratixButton>
             </template>
             <template v-else-if="proposal.status === 'approved'">
-              <button class="btn btn-execute" @click="handleExecute(proposal.id)" :disabled="store.loading">
+              <StratixButton variant="primary" size="sm" @click="handleExecute(proposal.id)" :disabled="store.loading">
                 执行
-              </button>
+              </StratixButton>
             </template>
             <template v-else-if="proposal.status === 'executing'">
               <span class="executing-indicator">
@@ -126,6 +126,7 @@
 
 <script setup lang="ts">
 import { ref, computed, type Ref } from 'vue';
+import StratixButton from '@/components/ui/StratixButton.vue';
 import { useSystemZoneStore } from '../../stores/systemzone';
 import { usePanelState } from './composables/usePanelState';
 import { useAutoRefresh } from './composables/useAutoRefresh';
@@ -217,7 +218,7 @@ function formatTime(ts: string | Date): string {
 }
 
 .panel-header {
-  border-bottom: 1px solid var(--ds-border-subtle, rgba(255, 255, 255, 0.1));
+  border-bottom: 1px solid var(--ds-border-subtle);
   padding-bottom: 8px;
 }
 
@@ -234,21 +235,21 @@ function formatTime(ts: string | Date): string {
   background: transparent;
   border: none;
   border-radius: var(--ds-radius-sm, 4px) var(--ds-radius-sm, 4px) 0 0;
-  color: var(--ds-text-secondary, #94a3b8);
+  color: var(--ds-text-secondary);
   font-size: 13px;
   cursor: pointer;
   transition: all 0.2s;
 }
 .tab:hover {
-  color: var(--ds-text-primary, #e2e8f0);
+  color: var(--ds-text-primary);
 }
 .tab.active {
-  color: var(--ds-status-info, #3b82f6);
-  background: color-mix(in srgb, var(--ds-status-info, #3b82f6) 10%, transparent);
+  color: var(--ds-status-info);
+  background: color-mix(in srgb, var(--ds-status-info) 10%, transparent);
 }
 .count {
   font-size: 11px;
-  background: var(--ds-bg-overlay, rgba(255, 255, 255, 0.1));
+  background: color-mix(in srgb, var(--ds-text-secondary) 10%, transparent);
   padding: 1px 6px;
   border-radius: 10px;
 }
@@ -261,7 +262,7 @@ function formatTime(ts: string | Date): string {
   justify-content: center;
   padding: 60px 20px;
   text-align: center;
-  color: var(--ds-text-muted, #64748b);
+  color: var(--ds-text-muted);
   gap: 10px;
 }
 .panel-state.loading {
@@ -272,8 +273,8 @@ function formatTime(ts: string | Date): string {
 .spinner {
   width: 18px;
   height: 18px;
-  border: 2px solid var(--ds-border-subtle, rgba(255, 255, 255, 0.1));
-  border-top-color: var(--ds-status-info, #3b82f6);
+  border: 2px solid var(--ds-border-subtle);
+  border-top-color: var(--ds-status-info);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -281,46 +282,14 @@ function formatTime(ts: string | Date): string {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .error-icon { font-size: 28px; }
-.error-msg { color: var(--ds-status-danger, #ef4444); font-size: 13px; }
+.error-msg { color: var(--ds-status-danger); font-size: 13px; }
 .empty-icon { font-size: 40px; margin-bottom: 4px; }
-
-.btn {
-  padding: 6px 14px;
-  border-radius: var(--ds-radius-sm, 5px);
-  font-size: 13px;
-  font-weight: 500;
-  border: none;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-retry {
-  background: var(--ds-bg-overlay, rgba(255, 255, 255, 0.08));
-  color: var(--ds-text-secondary, #94a3b8);
-  padding: 4px 12px;
-  font-size: 12px;
-}
-.btn-approve {
-  background: color-mix(in srgb, var(--ds-status-success, #22c55e) 15%, transparent);
-  color: var(--ds-status-success, #22c55e);
-}
-.btn-approve:hover:not(:disabled) { opacity: 0.85; }
-.btn-reject {
-  background: color-mix(in srgb, var(--ds-status-danger, #ef4444) 15%, transparent);
-  color: var(--ds-status-danger, #ef4444);
-}
-.btn-reject:hover:not(:disabled) { opacity: 0.85; }
-.btn-execute {
-  background: var(--ds-status-info, #3b82f6);
-  color: var(--ds-bg-base, #fff);
-}
-.btn-execute:hover:not(:disabled) { opacity: 0.9; }
 
 .executing-indicator {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--ds-status-info, #3b82f6);
+  color: var(--ds-status-info);
   font-size: 13px;
 }
 
@@ -332,18 +301,18 @@ function formatTime(ts: string | Date): string {
 }
 
 .proposal-card {
-  background: var(--ds-bg-sunken, rgba(255, 255, 255, 0.03));
-  border: 1px solid var(--ds-border-subtle, rgba(255, 255, 255, 0.06));
+  background: var(--ds-bg-sunken);
+  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--ds-radius-md, 8px);
   overflow: hidden;
   transition: border-color 0.2s;
 }
 .proposal-card.expanded {
-  border-color: color-mix(in srgb, var(--ds-status-info, #3b82f6) 30%, transparent);
+  border-color: color-mix(in srgb, var(--ds-status-info) 30%, transparent);
 }
 @keyframes flash-border {
-  0%, 100% { border-color: var(--ds-border-subtle, rgba(255, 255, 255, 0.06)); }
-  50% { border-color: var(--ds-status-success, #22c55e); box-shadow: 0 0 12px rgba(34, 197, 94, 0.3); }
+  0%, 100% { border-color: var(--ds-border-subtle); }
+  50% { border-color: var(--ds-status-success); box-shadow: 0 0 12px color-mix(in srgb, var(--ds-status-success) 30%, transparent); }
 }
 .proposal-card.flash { animation: flash-border 0.5s ease 2; }
 
@@ -361,7 +330,7 @@ function formatTime(ts: string | Date): string {
   margin: 0;
   font-size: 15px;
   font-weight: 600;
-  color: var(--ds-text-primary, #e2e8f0);
+  color: var(--ds-text-primary);
   flex: 1;
 }
 
@@ -369,8 +338,8 @@ function formatTime(ts: string | Date): string {
 
 .type-tag {
   font-size: 11px;
-  color: var(--ds-text-secondary, #94a3b8);
-  background: var(--ds-bg-overlay, rgba(255, 255, 255, 0.06));
+  color: var(--ds-text-secondary);
+  background: color-mix(in srgb, var(--ds-text-secondary) 6%, transparent);
   padding: 2px 8px;
   border-radius: var(--ds-radius-sm, 4px);
 }
@@ -381,21 +350,21 @@ function formatTime(ts: string | Date): string {
   border-radius: var(--ds-radius-sm, 4px);
   font-weight: 500;
 }
-.risk-high { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
-.risk-medium { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
-.risk-low { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
-.risk-none { background: rgba(100, 116, 139, 0.15); color: #64748b; }
+.risk-high { background: color-mix(in srgb, var(--ds-status-danger) 15%, transparent); color: var(--ds-status-danger); }
+.risk-medium { background: color-mix(in srgb, var(--ds-status-warning) 15%, transparent); color: var(--ds-status-warning); }
+.risk-low { background: color-mix(in srgb, var(--ds-status-success) 15%, transparent); color: var(--ds-status-success); }
+.risk-none { background: color-mix(in srgb, var(--ds-text-muted) 15%, transparent); color: var(--ds-text-muted); }
 
 .effort-dots { display: flex; gap: 3px; align-items: center; }
 .dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--ds-text-muted, #64748b);
+  background: var(--ds-text-muted);
 }
 
 .card-desc {
-  color: var(--ds-text-secondary, #94a3b8);
+  color: var(--ds-text-secondary);
   font-size: 13px;
   line-height: 1.5;
   margin: 0 0 10px;
@@ -405,7 +374,7 @@ function formatTime(ts: string | Date): string {
   display: flex;
   justify-content: space-between;
   font-size: 12px;
-  color: var(--ds-text-muted, #64748b);
+  color: var(--ds-text-muted);
   margin-bottom: 10px;
 }
 
@@ -422,22 +391,22 @@ function formatTime(ts: string | Date): string {
 .card-detail.is-open {
   max-height: 800px;
   overflow: hidden;
-  border-top-color: var(--ds-border-subtle, rgba(255, 255, 255, 0.06));
+  border-top-color: var(--ds-border-subtle);
   padding: 16px;
-  background: var(--ds-bg-sunken, rgba(0, 0, 0, 0.2));
+  background: color-mix(in srgb, var(--ds-bg-base) 20%, transparent);
 }
 
 .card-detail pre {
   margin: 0;
   padding: 12px;
-  background: rgba(0, 0, 0, 0.3);
+  background: color-mix(in srgb, var(--ds-bg-base) 30%, transparent);
   border-radius: var(--ds-radius-sm, 4px);
   overflow-x: auto;
 }
 .card-detail code {
   font-family: var(--ds-typography-fontFamily-mono, 'SF Mono', Consolas, monospace);
   font-size: 12px;
-  color: var(--ds-text-primary, #e2e8f0);
+  color: var(--ds-text-primary);
   white-space: pre;
 }
 
@@ -448,14 +417,14 @@ function formatTime(ts: string | Date): string {
   margin: 0 0 8px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--ds-text-secondary, #94a3b8);
+  color: var(--ds-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .detail-section p {
   margin: 0;
-  color: var(--ds-text-primary, #e2e8f0);
+  color: var(--ds-text-primary);
   font-size: 13px;
   line-height: 1.6;
   white-space: pre-wrap;

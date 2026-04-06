@@ -455,7 +455,7 @@ onMounted(() => {
 .btn-primary {
   padding: 10px 20px;
   background: var(--ds-status-info, #00d4ff);
-  color: #000;
+  color: var(--ds-text-on-accent);
   border: none;
   border-radius: 6px;
   cursor: pointer;
@@ -550,7 +550,7 @@ onMounted(() => {
 
 .test-message-user .test-message-content {
   background: var(--ds-status-info, #00d4ff);
-  color: #000;
+  color: var(--ds-text-on-accent);
   border-bottom-right-radius: 2px;
 }
 
@@ -607,7 +607,7 @@ onMounted(() => {
 .test-chat-send {
   padding: 8px 16px;
   background: var(--ds-status-info, #00d4ff);
-  color: #000;
+  color: var(--ds-text-on-accent);
   border: none;
   border-radius: 6px;
   cursor: pointer;

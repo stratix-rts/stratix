@@ -146,6 +146,8 @@
 
 <script setup lang="ts">
 import { ref, computed, type Ref, onMounted } from 'vue';
+import StratixButton from '@/components/ui/StratixButton.vue';
+import StratixPanel from '@/components/ui/StratixPanel.vue';
 import { useSystemZoneStore } from '../../stores/systemzone';
 import { usePanelState } from './composables/usePanelState';
 

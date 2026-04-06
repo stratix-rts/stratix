@@ -9,12 +9,12 @@
           placeholder="输入洞察内容..."
           @keyup.enter="handleAdd"
         />
-        <button class="btn btn-primary" @click="handleAdd" :disabled="store.loading">
+        <StratixButton variant="primary" size="sm" @click="handleAdd" :disabled="store.loading">
           添加
-        </button>
-        <button class="btn btn-secondary" @click="handleTrigger" :disabled="store.loading">
+        </StratixButton>
+        <StratixButton variant="secondary" size="sm" @click="handleTrigger" :disabled="store.loading">
           触发观察
-        </button>
+        </StratixButton>
       </div>
       <div class="category-filters">
         <button
@@ -55,7 +55,7 @@
     <div v-else-if="panelError" class="panel-state error">
       <span class="error-icon">⚠️</span>
       <span class="error-msg">{{ panelError }}</span>
-      <button class="btn btn-retry" @click="retry">重试</button>
+      <StratixButton variant="secondary" size="sm" @click="retry">重试</StratixButton>
     </div>
 
     <!-- Empty -->
@@ -120,6 +120,7 @@
 
 <script setup lang="ts">
 import { ref, computed, type Ref } from 'vue';
+import StratixButton from '@/components/ui/StratixButton.vue';
 import { useSystemZoneStore } from '../../stores/systemzone';
 import { usePanelState } from './composables/usePanelState';
 import { useAutoRefresh } from './composables/useAutoRefresh';
@@ -203,62 +204,25 @@ function formatTime(iso: string): string {
 
 .input {
   flex: 1;
-  background: var(--ds-bg-sunken, rgba(255, 255, 255, 0.05));
-  border: 1px solid var(--ds-border-subtle, rgba(255, 255, 255, 0.1));
+  background: var(--ds-bg-sunken);
+  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--ds-radius-sm, 6px);
   padding: 8px 12px;
-  color: var(--ds-text-primary, #e2e8f0);
+  color: var(--ds-text-primary);
   font-size: 14px;
 }
 .input:focus {
   outline: none;
-  border-color: var(--ds-status-info, #3b82f6);
+  border-color: var(--ds-status-info);
 }
 .input::placeholder {
-  color: var(--ds-text-muted, #64748b);
-}
-
-.btn {
-  padding: 8px 16px;
-  border-radius: var(--ds-radius-sm, 6px);
-  font-size: 14px;
-  font-weight: 500;
-  border: none;
-  cursor: pointer;
-  transition: opacity 0.2s;
-}
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.btn-primary {
-  background: var(--ds-status-info, #3b82f6);
-  color: var(--ds-bg-base, #fff);
-}
-.btn-primary:hover:not(:disabled) {
-  opacity: 0.9;
-}
-.btn-secondary {
-  background: var(--ds-bg-overlay, rgba(255, 255, 255, 0.08));
-  color: var(--ds-text-primary, #e2e8f0);
-}
-.btn-secondary:hover:not(:disabled) {
-  opacity: 0.9;
-}
-.btn-retry {
-  background: var(--ds-bg-overlay, rgba(255, 255, 255, 0.08));
-  color: var(--ds-text-secondary, #94a3b8);
-  padding: 4px 12px;
-  font-size: 12px;
-}
-.btn-retry:hover {
-  color: var(--ds-text-primary, #e2e8f0);
+  color: var(--ds-text-muted);
 }
 
 .tabs {
   display: flex;
   gap: 4px;
-  border-bottom: 1px solid var(--ds-border-subtle, rgba(255, 255, 255, 0.1));
+  border-bottom: 1px solid var(--ds-border-subtle);
   padding-bottom: 8px;
 }
 
@@ -267,17 +231,17 @@ function formatTime(iso: string): string {
   background: transparent;
   border: none;
   border-radius: var(--ds-radius-sm, 4px) var(--ds-radius-sm, 4px) 0 0;
-  color: var(--ds-text-secondary, #94a3b8);
+  color: var(--ds-text-secondary);
   font-size: 13px;
   cursor: pointer;
   transition: all 0.2s;
 }
 .tab:hover {
-  color: var(--ds-text-primary, #e2e8f0);
+  color: var(--ds-text-primary);
 }
 .tab.active {
-  color: var(--ds-status-info, #3b82f6);
-  background: color-mix(in srgb, var(--ds-status-info, #3b82f6) 10%, transparent);
+  color: var(--ds-status-info);
+  background: color-mix(in srgb, var(--ds-status-info) 10%, transparent);
 }
 
 .category-filters {
@@ -289,21 +253,21 @@ function formatTime(iso: string): string {
 .category-btn {
   padding: 5px 12px;
   background: transparent;
-  border: 1px solid var(--ds-border-subtle, rgba(255, 255, 255, 0.1));
+  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--ds-radius-sm, 4px);
-  color: var(--ds-text-secondary, #94a3b8);
+  color: var(--ds-text-secondary);
   font-size: 12px;
   cursor: pointer;
   transition: all 0.2s;
 }
 .category-btn:hover {
-  color: var(--ds-text-primary, #e2e8f0);
-  border-color: var(--ds-border-default, rgba(255, 255, 255, 0.15));
+  color: var(--ds-text-primary);
+  border-color: var(--ds-border-default);
 }
 .category-btn.active {
-  color: var(--ds-status-info, #3b82f6);
-  border-color: var(--ds-status-info, #3b82f6);
-  background: color-mix(in srgb, var(--ds-status-info, #3b82f6) 10%, transparent);
+  color: var(--ds-status-info);
+  border-color: var(--ds-status-info);
+  background: color-mix(in srgb, var(--ds-status-info) 10%, transparent);
 }
 
 /* Shared panel states */
@@ -314,7 +278,7 @@ function formatTime(iso: string): string {
   justify-content: center;
   padding: 60px 20px;
   text-align: center;
-  color: var(--ds-text-muted, #64748b);
+  color: var(--ds-text-muted);
   gap: 10px;
 }
 .panel-state.loading {
@@ -325,8 +289,8 @@ function formatTime(iso: string): string {
 .spinner {
   width: 18px;
   height: 18px;
-  border: 2px solid var(--ds-border-subtle, rgba(255, 255, 255, 0.1));
-  border-top-color: var(--ds-status-info, #3b82f6);
+  border: 2px solid var(--ds-border-subtle);
+  border-top-color: var(--ds-status-info);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -336,7 +300,7 @@ function formatTime(iso: string): string {
 
 .error-icon { font-size: 28px; }
 .error-msg {
-  color: var(--ds-status-danger, #ef4444);
+  color: var(--ds-status-danger);
   font-size: 13px;
 }
 
@@ -353,26 +317,26 @@ function formatTime(iso: string): string {
 }
 
 .insight-card {
-  background: var(--ds-bg-sunken, rgba(255, 255, 255, 0.03));
-  border: 1px solid var(--ds-border-subtle, rgba(255, 255, 255, 0.06));
+  background: var(--ds-bg-sunken);
+  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--ds-radius-md, 8px);
   padding: 14px 16px;
 }
 
 .insight-main {
-  border-left: 3px solid #64748b;
+  border-left: 3px solid var(--ds-text-muted);
   padding-left: 12px;
   border-radius: 4px;
   cursor: pointer;
 }
 .insight-main.severity-critical {
-  border-left-color: #ef4444;
+  border-left-color: var(--ds-status-danger);
 }
 .insight-main.severity-warning {
-  border-left-color: #f59e0b;
+  border-left-color: var(--ds-status-warning);
 }
 .insight-main.severity-info {
-  border-left-color: #3b82f6;
+  border-left-color: var(--ds-status-info);
 }
 
 .severity-badge {
@@ -384,16 +348,16 @@ function formatTime(iso: string): string {
   letter-spacing: 0.5px;
 }
 .badge-critical {
-  background: color-mix(in srgb, #ef4444 15%, transparent);
-  color: #ef4444;
+  background: color-mix(in srgb, var(--ds-status-danger) 15%, transparent);
+  color: var(--ds-status-danger);
 }
 .badge-warning {
-  background: color-mix(in srgb, #f59e0b 15%, transparent);
-  color: #f59e0b;
+  background: color-mix(in srgb, var(--ds-status-warning) 15%, transparent);
+  color: var(--ds-status-warning);
 }
 .badge-info {
-  background: color-mix(in srgb, #3b82f6 15%, transparent);
-  color: #3b82f6;
+  background: color-mix(in srgb, var(--ds-status-info) 15%, transparent);
+  color: var(--ds-status-info);
 }
 
 .insight-header {
@@ -417,7 +381,7 @@ function formatTime(iso: string): string {
 
 .expand-icon {
   font-size: 10px;
-  color: var(--ds-text-muted, #64748b);
+  color: var(--ds-text-muted);
   transition: transform 0.25s ease;
   display: inline-block;
 }
@@ -428,8 +392,8 @@ function formatTime(iso: string): string {
 .insight-type {
   font-size: 11px;
   font-weight: 600;
-  color: var(--ds-status-info, #3b82f6);
-  background: color-mix(in srgb, var(--ds-status-info, #3b82f6) 10%, transparent);
+  color: var(--ds-status-info);
+  background: color-mix(in srgb, var(--ds-status-info) 10%, transparent);
   padding: 2px 8px;
   border-radius: var(--ds-radius-sm, 4px);
   text-transform: uppercase;
@@ -437,11 +401,11 @@ function formatTime(iso: string): string {
 
 .insight-time {
   font-size: 12px;
-  color: var(--ds-text-muted, #64748b);
+  color: var(--ds-text-muted);
 }
 
 .insight-content {
-  color: var(--ds-text-primary, #e2e8f0);
+  color: var(--ds-text-primary);
   font-size: 14px;
   line-height: 1.5;
   margin: 0 0 10px;
@@ -456,15 +420,15 @@ function formatTime(iso: string): string {
 .btn-link {
   background: none;
   border: none;
-  color: var(--ds-text-secondary, #94a3b8);
+  color: var(--ds-text-secondary);
   font-size: 12px;
   cursor: pointer;
   padding: 4px 8px;
   border-radius: var(--ds-radius-sm, 4px);
 }
 .btn-link:hover {
-  color: var(--ds-text-primary, #e2e8f0);
-  background: var(--ds-bg-overlay, rgba(255, 255, 255, 0.05));
+  color: var(--ds-text-primary);
+  background: color-mix(in srgb, var(--ds-text-secondary) 5%, transparent);
 }
 
 .insight-details {
@@ -479,7 +443,7 @@ function formatTime(iso: string): string {
 .details-inner {
   padding-top: 12px;
   margin-top: 12px;
-  border-top: 1px solid var(--ds-border-subtle, rgba(255, 255, 255, 0.06));
+  border-top: 1px solid var(--ds-border-subtle);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -494,7 +458,7 @@ function formatTime(iso: string): string {
 .detail-title {
   font-size: 11px;
   font-weight: 600;
-  color: var(--ds-text-secondary, #94a3b8);
+  color: var(--ds-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin: 0;
@@ -502,7 +466,7 @@ function formatTime(iso: string): string {
 
 .detail-text {
   font-size: 13px;
-  color: var(--ds-text-primary, #e2e8f0);
+  color: var(--ds-text-primary);
   line-height: 1.5;
   margin: 0;
 }
@@ -518,8 +482,8 @@ function formatTime(iso: string): string {
 
 .affected-file {
   font-size: 12px;
-  color: var(--ds-text-secondary, #94a3b8);
-  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+  color: var(--ds-text-secondary);
+  font-family: var(--ds-typography-fontFamily-mono, 'SF Mono', Monaco, 'Courier New', monospace);
   padding: 2px 0;
 }
 </style>

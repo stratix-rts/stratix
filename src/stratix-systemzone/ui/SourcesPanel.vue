@@ -1,10 +1,10 @@
 <template>
-  <div class="sources-panel">
+  <StratixPanel>
     <div class="panel-header">
       <h3 class="panel-title">外部源</h3>
-      <button class="btn-add" @click="showForm = !showForm">
+      <StratixButton variant="secondary" size="sm" @click="showForm = !showForm">
         {{ showForm ? '收起' : '添加源' }}
-      </button>
+      </StratixButton>
     </div>
 
     <!-- Add Source Form -->
@@ -30,8 +30,8 @@
         <textarea v-model="form.configJson" placeholder='{"key": "value"}' rows="3"></textarea>
       </div>
       <div class="form-actions">
-        <button class="btn-submit" @click="handleAdd" :disabled="store.loading">添加</button>
-        <button class="btn-cancel" @click="showForm = false">取消</button>
+        <StratixButton variant="primary" size="sm" @click="handleAdd" :disabled="store.loading">添加</StratixButton>
+        <StratixButton variant="secondary" size="sm" @click="showForm = false">取消</StratixButton>
       </div>
     </div>
 
@@ -45,7 +45,7 @@
     <div v-else-if="panelError" class="panel-state error">
       <span class="error-icon">⚠️</span>
       <span class="error-msg">{{ panelError }}</span>
-      <button class="btn-retry" @click="retry">重试</button>
+      <StratixButton variant="secondary" size="sm" @click="retry">重试</StratixButton>
     </div>
 
     <!-- Empty State -->
@@ -71,15 +71,17 @@
           </div>
         </div>
         <div class="source-actions">
-          <button class="btn-delete" @click="deleteSource(source.id)" title="删除">✕</button>
+          <StratixButton variant="danger" size="sm" @click="deleteSource(source.id)" title="删除">✕</StratixButton>
         </div>
       </div>
     </div>
-  </div>
+  </StratixPanel>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, type Ref, onMounted } from 'vue';
+import StratixButton from '@/components/ui/StratixButton.vue';
+import StratixPanel from '@/components/ui/StratixPanel.vue';
 import { useSystemZoneStore } from '../../stores/systemzone';
 import { usePanelState } from './composables/usePanelState';
 import { useAutoRefresh } from './composables/useAutoRefresh';
@@ -143,54 +145,33 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.sources-panel {
-  background: var(--ds-bg-sunken, #0f1117);
-  border-radius: var(--ds-radius-md, 8px);
-  border: 1px solid var(--ds-border-subtle, rgba(148, 163, 184, 0.1));
-  overflow: hidden;
-}
-
 .panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--ds-border-subtle, rgba(148, 163, 184, 0.1));
+  border-bottom: 1px solid var(--ds-border-subtle);
 }
 
 .panel-title {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
-  color: var(--ds-text-primary, #e2e8f0);
-}
-
-.btn-add {
-  background: color-mix(in srgb, var(--ds-status-info, #3b82f6) 15%, transparent);
-  border: 1px solid color-mix(in srgb, var(--ds-status-info, #3b82f6) 30%, transparent);
-  color: var(--ds-status-info, #3b82f6);
-  padding: 4px 12px;
-  border-radius: var(--ds-radius-sm, 4px);
-  font-size: 12px;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-.btn-add:hover {
-  background: color-mix(in srgb, var(--ds-status-info, #3b82f6) 25%, transparent);
+  color: var(--ds-text-primary);
 }
 
 /* Form */
 .add-form {
   padding: 16px;
-  background: var(--ds-bg-overlay, rgba(148, 163, 184, 0.03));
-  border-bottom: 1px solid var(--ds-border-subtle, rgba(148, 163, 184, 0.1));
+  background: color-mix(in srgb, var(--ds-text-secondary) 3%, transparent);
+  border-bottom: 1px solid var(--ds-border-subtle);
 }
 
 .form-row { margin-bottom: 12px; }
 .form-row label {
   display: block;
   font-size: 12px;
-  color: var(--ds-text-secondary, rgba(148, 163, 184, 0.8));
+  color: var(--ds-text-secondary);
   margin-bottom: 4px;
 }
 .form-row input,
@@ -198,11 +179,11 @@ onMounted(() => {
 .form-row textarea {
   width: 100%;
   box-sizing: border-box;
-  background: var(--ds-bg-sunken, #0f1117);
-  border: 1px solid var(--ds-border-default, rgba(148, 163, 184, 0.2));
+  background: var(--ds-bg-sunken);
+  border: 1px solid var(--ds-border-default);
   border-radius: var(--ds-radius-sm, 4px);
   padding: 6px 10px;
-  color: var(--ds-text-primary, #e2e8f0);
+  color: var(--ds-text-primary);
   font-size: 13px;
   font-family: inherit;
 }
@@ -211,42 +192,10 @@ onMounted(() => {
 .form-row select:focus,
 .form-row textarea:focus {
   outline: none;
-  border-color: var(--ds-status-info, #3b82f6);
+  border-color: var(--ds-status-info);
 }
 
 .form-actions { display: flex; gap: 8px; justify-content: flex-end; }
-
-.btn-submit {
-  background: var(--ds-status-info, #3b82f6);
-  border: none;
-  color: var(--ds-bg-base, #fff);
-  padding: 6px 16px;
-  border-radius: var(--ds-radius-sm, 4px);
-  font-size: 12px;
-  cursor: pointer;
-}
-.btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.btn-cancel {
-  background: transparent;
-  border: 1px solid var(--ds-border-default, rgba(148, 163, 184, 0.2));
-  color: var(--ds-text-secondary, #94a3b8);
-  padding: 6px 16px;
-  border-radius: var(--ds-radius-sm, 4px);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.btn-retry {
-  background: var(--ds-bg-overlay, rgba(255, 255, 255, 0.08));
-  color: var(--ds-text-secondary, #94a3b8);
-  padding: 4px 12px;
-  border-radius: var(--ds-radius-sm, 4px);
-  font-size: 12px;
-  border: none;
-  cursor: pointer;
-}
-.btn-retry:hover { color: var(--ds-text-primary, #e2e8f0); }
 
 /* Shared panel states */
 .panel-state {
@@ -262,17 +211,17 @@ onMounted(() => {
 .spinner {
   width: 18px;
   height: 18px;
-  border: 2px solid var(--ds-border-subtle, rgba(255, 255, 255, 0.1));
-  border-top-color: var(--ds-status-info, #3b82f6);
+  border: 2px solid var(--ds-border-subtle);
+  border-top-color: var(--ds-status-info);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .error-icon { font-size: 28px; }
-.error-msg { color: var(--ds-status-danger, #ef4444); font-size: 13px; }
-.empty-icon { font-size: 32px; color: var(--ds-text-muted, #94a3b8); }
-.empty-text { color: var(--ds-text-muted, #94a3b8); font-size: 13px; }
+.error-msg { color: var(--ds-status-danger); font-size: 13px; }
+.empty-icon { font-size: 32px; color: var(--ds-text-muted); }
+.empty-text { color: var(--ds-text-muted); font-size: 13px; }
 
 /* List */
 .sources-list { padding: 8px; }
@@ -286,7 +235,7 @@ onMounted(() => {
   transition: background 0.15s;
 }
 .source-item:hover {
-  background: var(--ds-bg-overlay, rgba(148, 163, 184, 0.05));
+  background: color-mix(in srgb, var(--ds-text-secondary) 5%, transparent);
 }
 
 .source-header {
@@ -295,27 +244,27 @@ onMounted(() => {
   gap: 8px;
   margin-bottom: 4px;
 }
-.source-name { font-size: 13px; font-weight: 500; color: var(--ds-text-primary, #e2e8f0); }
+.source-name { font-size: 13px; font-weight: 500; color: var(--ds-text-primary); }
 .source-type {
   font-size: 11px;
   padding: 1px 6px;
   border-radius: var(--ds-radius-sm, 3px);
-  background: var(--ds-bg-overlay, rgba(148, 163, 184, 0.1));
-  color: var(--ds-text-secondary, #94a3b8);
+  background: color-mix(in srgb, var(--ds-text-secondary) 10%, transparent);
+  color: var(--ds-text-secondary);
 }
 .status-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
 }
-.dot-active { background: var(--ds-status-success, #22c55e); }
-.dot-error { background: var(--ds-status-danger, #ef4444); }
-.dot-disabled { background: var(--ds-text-muted, #94a3b8); }
-.dot-idle { background: var(--ds-text-muted, #64748b); }
+.dot-active { background: var(--ds-status-success); }
+.dot-error { background: var(--ds-status-danger); }
+.dot-disabled { background: var(--ds-text-muted); }
+.dot-idle { background: var(--ds-text-muted); }
 
 .source-url {
   font-size: 12px;
-  color: var(--ds-text-muted, #64748b);
+  color: var(--ds-text-muted);
   word-break: break-all;
   margin-bottom: 4px;
 }
@@ -323,7 +272,7 @@ onMounted(() => {
   display: flex;
   gap: 12px;
   font-size: 11px;
-  color: var(--ds-text-muted, #64748b);
+  color: var(--ds-text-muted);
 }
 
 .source-actions { display: flex; align-items: center; gap: 12px; }
@@ -340,7 +289,7 @@ onMounted(() => {
 .toggle-slider {
   position: absolute;
   inset: 0;
-  background: var(--ds-border-strong, #334155);
+  background: var(--ds-border-strong);
   border-radius: 20px;
   transition: background 0.2s;
 }
@@ -351,33 +300,15 @@ onMounted(() => {
   height: 14px;
   left: 3px;
   top: 3px;
-  background: var(--ds-text-muted, #94a3b8);
+  background: var(--ds-text-muted);
   border-radius: 50%;
   transition: transform 0.2s, background 0.2s;
 }
 .toggle input:checked + .toggle-slider {
-  background: color-mix(in srgb, var(--ds-status-success, #22c55e) 30%, transparent);
+  background: color-mix(in srgb, var(--ds-status-success) 30%, transparent);
 }
 .toggle input:checked + .toggle-slider::before {
   transform: translateX(16px);
-  background: var(--ds-status-success, #22c55e);
-}
-
-.btn-delete {
-  background: transparent;
-  border: 1px solid color-mix(in srgb, var(--ds-status-danger, #ef4444) 30%, transparent);
-  color: var(--ds-status-danger, #ef4444);
-  width: 24px;
-  height: 24px;
-  border-radius: var(--ds-radius-sm, 4px);
-  cursor: pointer;
-  font-size: 11px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.2s;
-}
-.btn-delete:hover {
-  background: color-mix(in srgb, var(--ds-status-danger, #ef4444) 10%, transparent);
+  background: var(--ds-status-success);
 }
 </style>

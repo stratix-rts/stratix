@@ -25,7 +25,7 @@
     <div v-else-if="panelError && store.executions.length === 0" class="panel-state state-error">
       <span class="state-icon">⚠️</span>
       <span class="state-text">{{ panelError }}</span>
-      <button class="btn-retry" @click="retry">重试</button>
+      <StratixButton variant="secondary" size="sm" @click="retry">重试</StratixButton>
     </div>
 
     <!-- Empty -->
@@ -87,6 +87,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
+import StratixButton from '@/components/ui/StratixButton.vue';
 import { useSystemZoneStore } from '../../stores/systemzone';
 import StatusBadge from './components/StatusBadge.vue';
 import { useAutoRefresh } from './composables/useAutoRefresh';
@@ -135,7 +136,7 @@ function formatDuration(ms: number): string {
 }
 
 .panel-header {
-  border-bottom: 1px solid var(--ds-border-subtle, #1e1e2e);
+  border-bottom: 1px solid var(--ds-border-subtle);
   padding-bottom: 8px;
 }
 
@@ -153,20 +154,20 @@ function formatDuration(ms: number): string {
   background: transparent;
   border: none;
   border-radius: var(--ds-radius-sm, 2px) var(--ds-radius-sm, 2px) 0 0;
-  color: var(--ds-text-secondary, #a0a0b0);
+  color: var(--ds-text-secondary);
   font-size: var(--ds-typography-fontSize-sm, 12px);
   cursor: pointer;
   transition: all 0.2s;
   white-space: nowrap;
 }
-.tab:hover { color: var(--ds-text-primary, #ffffff); }
+.tab:hover { color: var(--ds-text-primary); }
 .tab.active {
-  color: var(--ds-status-info, #00cccc);
-  background: color-mix(in srgb, var(--ds-status-info, #00cccc) 10%, transparent);
+  color: var(--ds-color-primary);
+  background: color-mix(in srgb, var(--ds-color-primary) 10%, transparent);
 }
 .count {
   font-size: 11px;
-  background: rgba(148, 163, 184, 0.1);
+  background: color-mix(in srgb, var(--ds-text-secondary) 10%, transparent);
   padding: 1px 6px;
   border-radius: 10px;
 }
@@ -179,31 +180,20 @@ function formatDuration(ms: number): string {
   justify-content: center;
   gap: 10px;
   padding: 60px 20px;
-  color: var(--ds-text-muted, #6a6a8a);
+  color: var(--ds-text-muted);
   text-align: center;
 }
-.state-text { font-size: var(--ds-typography-fontSize-sm, 12px); color: var(--ds-text-secondary, #a0a0b0); }
+.state-text { font-size: var(--ds-typography-fontSize-sm, 12px); color: var(--ds-text-secondary); }
 .state-icon { font-size: 40px; }
 
-.state-error .state-icon { color: var(--ds-status-danger, #ff4444); }
-.btn-retry {
-  padding: 4px 12px;
-  background: transparent;
-  border: 1px solid var(--ds-border-default, #2a2a3e);
-  border-radius: var(--ds-radius-sm, 2px);
-  color: var(--ds-text-secondary, #a0a0b0);
-  font-size: 11px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.btn-retry:hover { border-color: var(--ds-status-info, #00cccc); color: var(--ds-status-info, #00cccc); }
+.state-error .state-icon { color: var(--ds-status-danger); }
 
 /* Spinner */
 .spinner {
   width: 18px;
   height: 18px;
-  border: 2px solid var(--ds-border-subtle, #1e1e2e);
-  border-top-color: var(--ds-status-info, #00cccc);
+  border: 2px solid var(--ds-border-subtle);
+  border-top-color: var(--ds-color-primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -217,8 +207,8 @@ function formatDuration(ms: number): string {
 }
 
 .execution-card {
-  background: var(--ds-bg-elevated, #12121a);
-  border: 1px solid var(--ds-border-subtle, #1e1e2e);
+  background: var(--ds-bg-elevated);
+  border: 1px solid var(--ds-border-subtle);
   border-radius: var(--ds-radius-lg, 8px);
   padding: 14px var(--ds-spacing-md, 16px);
 }
@@ -237,13 +227,13 @@ function formatDuration(ms: number): string {
 }
 .exec-id .label {
   font-size: 11px;
-  color: var(--ds-text-muted, #6a6a8a);
+  color: var(--ds-text-muted);
   text-transform: uppercase;
 }
 .exec-id code {
   font-size: var(--ds-typography-fontSize-sm, 12px);
-  color: var(--ds-text-primary, #ffffff);
-  background: rgba(148, 163, 184, 0.06);
+  color: var(--ds-text-primary);
+  background: color-mix(in srgb, var(--ds-text-secondary) 6%, transparent);
   padding: 2px 8px;
   border-radius: var(--ds-radius-sm, 2px);
   font-family: var(--ds-typography-fontFamily-mono, monospace);
@@ -263,13 +253,13 @@ function formatDuration(ms: number): string {
 .stat-value {
   font-size: 18px;
   font-weight: var(--ds-typography-fontWeight-semibold, 600);
-  color: var(--ds-text-primary, #ffffff);
+  color: var(--ds-text-primary);
 }
-.stat-value.pass { color: var(--ds-status-success, #00ff88); }
-.stat-value.fail { color: var(--ds-status-danger, #ff4444); }
+.stat-value.pass { color: var(--ds-status-success); }
+.stat-value.fail { color: var(--ds-status-danger); }
 .stat-label {
   font-size: 11px;
-  color: var(--ds-text-muted, #6a6a8a);
+  color: var(--ds-text-muted);
 }
 
 .exec-footer {
@@ -288,21 +278,21 @@ function formatDuration(ms: number): string {
   font-size: 11px;
   padding: 2px 6px;
   border-radius: var(--ds-radius-sm, 2px);
-  background: rgba(148, 163, 184, 0.06);
-  color: var(--ds-text-secondary, #a0a0b0);
+  background: color-mix(in srgb, var(--ds-text-secondary) 6%, transparent);
+  color: var(--ds-text-secondary);
   font-family: var(--ds-typography-fontFamily-mono, monospace);
 }
 .hash.rollback {
-  background: color-mix(in srgb, var(--ds-color-accent, #a855f7) 10%, transparent);
-  color: var(--ds-color-accent, #a855f7);
+  background: color-mix(in srgb, var(--ds-color-accent) 10%, transparent);
+  color: var(--ds-color-accent);
 }
 
 .exec-error {
   margin-top: 10px;
   padding: 10px 12px;
-  background: color-mix(in srgb, var(--ds-status-danger, #ff4444) 10%, transparent);
+  background: color-mix(in srgb, var(--ds-status-danger) 10%, transparent);
   border-radius: var(--ds-radius-md, 4px);
-  color: var(--ds-status-danger, #ff4444);
+  color: var(--ds-status-danger);
   font-size: var(--ds-typography-fontSize-sm, 12px);
 }
 

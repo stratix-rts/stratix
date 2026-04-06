@@ -100,8 +100,8 @@ function strategistLastOp(s: { lastScan: string | null; lastAnalysis: string | n
   display: flex;
   gap: var(--ds-spacing-lg, 24px);
   padding: 10px var(--ds-spacing-md, 16px);
-  background: rgba(148, 163, 184, 0.03);
-  border-bottom: 1px solid var(--ds-border-subtle, #1e1e2e);
+  background: color-mix(in srgb, var(--ds-text-secondary) 3%, transparent);
+  border-bottom: 1px solid var(--ds-border-subtle);
   flex-shrink: 0;
   flex-wrap: wrap;
 }
@@ -117,18 +117,18 @@ function strategistLastOp(s: { lastScan: string | null; lastAnalysis: string | n
   border-radius: 50%;
   flex-shrink: 0;
 }
-.dot-ok { background: var(--ds-status-success, #00ff88); }
-.dot-running { background: var(--ds-status-info, #00d4ff); animation: pulse 1.5s infinite; }
-.dot-error { background: var(--ds-status-danger, #ff4444); }
-.dot-warning { background: #ffaa00; }
-.dot-idle { background: var(--ds-text-muted, #6a6a8a); }
-.status-name { color: var(--ds-text-primary, #ffffff); font-weight: var(--ds-typography-fontWeight-medium, 500); opacity: 0.8; }
-.status-detail { color: var(--ds-text-muted, #6a6a8a); font-size: 11px; }
+.dot-ok { background: var(--ds-status-success); }
+.dot-running { background: var(--ds-status-info); animation: pulse 1.5s infinite; }
+.dot-error { background: var(--ds-status-danger); }
+.dot-warning { background: var(--ds-status-warning); }
+.dot-idle { background: var(--ds-text-muted); }
+.status-name { color: var(--ds-text-primary); font-weight: var(--ds-typography-fontWeight-medium, 500); opacity: 0.8; }
+.status-detail { color: var(--ds-text-muted); font-size: 11px; }
 .status-value { font-size: 11px; font-weight: 500; }
-.status-sep { color: var(--ds-text-muted, #6a6a8a); font-size: 11px; }
-.text-info { color: var(--ds-status-info, #00d4ff); }
-.text-danger { color: var(--ds-status-danger, #ff4444); }
-.text-muted { color: var(--ds-text-muted, #6a6a8a); }
+.status-sep { color: var(--ds-text-muted); font-size: 11px; }
+.text-info { color: var(--ds-status-info); }
+.text-danger { color: var(--ds-status-danger); }
+.text-muted { color: var(--ds-text-muted); }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }

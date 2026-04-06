@@ -11,12 +11,9 @@
         <h1>System Zone 控制台</h1>
       </div>
       <div class="header-right">
-        <button class="btn-refresh" @click="refreshAll" :disabled="store.loading">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 2v6h-6M3 12a9 9 0 0115.36-6.36L21 8M3 22v-6h6M21 12a9 9 0 01-15.36 6.36L3 16" />
-          </svg>
+        <StratixButton variant="secondary" size="sm" :disabled="store.loading" icon="refresh" @click="refreshAll">
           刷新
-        </button>
+        </StratixButton>
       </div>
     </header>
 
@@ -62,6 +59,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useSystemZoneStore } from '../../stores/systemzone';
 import { szLog } from './logger';
+import StratixButton from '@/components/ui/StratixButton.vue';
 import StatusHeader from './StatusHeader.vue';
 import InsightsPanel from './InsightsPanel.vue';
 import ProposalsPanel from './ProposalsPanel.vue';
@@ -103,8 +101,8 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: var(--ds-bg-base, #0d0d14);
-  color: var(--ds-text-primary, #ffffff);
+  background: var(--ds-bg-base);
+  color: var(--ds-text-primary);
   font-family: var(--ds-typography-fontFamily-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
   overflow: hidden;
 }
@@ -115,7 +113,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: var(--ds-spacing-xs, 4px) * 3 var(--ds-spacing-md, 16px);
-  border-bottom: 1px solid var(--ds-border-default, #2a2a3e);
+  border-bottom: 1px solid var(--ds-border-default);
   flex-shrink: 0;
 }
 .header-left {
@@ -132,27 +130,6 @@ onUnmounted(() => {
   display: flex;
   gap: var(--ds-spacing-sm, 8px);
 }
-.btn-refresh {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px var(--ds-spacing-sm, 8px);
-  background: rgba(148, 163, 184, 0.1);
-  border: 1px solid var(--ds-border-subtle, #1e1e2e);
-  border-radius: var(--ds-radius-sm, 2px);
-  color: inherit;
-  font-size: var(--ds-typography-fontSize-sm, 12px);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.btn-refresh:hover:not(:disabled) {
-  background: rgba(148, 163, 184, 0.2);
-  border-color: var(--ds-border-default, #2a2a3e);
-}
-.btn-refresh:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
 
 /* Error Banner */
 .error-banner {
@@ -160,9 +137,9 @@ onUnmounted(() => {
   align-items: center;
   gap: var(--ds-spacing-sm, 8px);
   padding: 8px var(--ds-spacing-md, 16px);
-  background: rgba(255, 68, 68, 0.1);
-  border-bottom: 1px solid rgba(255, 68, 68, 0.3);
-  color: var(--ds-status-danger, #ff4444);
+  background: color-mix(in srgb, var(--ds-status-danger) 10%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ds-status-danger) 30%, transparent);
+  color: var(--ds-status-danger);
   font-size: var(--ds-typography-fontSize-sm, 12px);
 }
 .error-icon { flex-shrink: 0; }
@@ -170,22 +147,22 @@ onUnmounted(() => {
 .error-retry {
   padding: 2px 10px;
   background: transparent;
-  border: 1px solid rgba(255, 68, 68, 0.3);
+  border: 1px solid color-mix(in srgb, var(--ds-status-danger) 30%, transparent);
   border-radius: var(--ds-radius-sm, 2px);
-  color: var(--ds-status-danger, #ff4444);
+  color: var(--ds-status-danger);
   font-size: 11px;
   cursor: pointer;
   transition: background 0.2s;
   white-space: nowrap;
 }
-.error-retry:hover { background: rgba(255, 68, 68, 0.15); }
+.error-retry:hover { background: color-mix(in srgb, var(--ds-status-danger) 15%, transparent); }
 
 /* Tabs */
 .sz-tabs {
   display: flex;
   gap: 2px;
   padding: 0 var(--ds-spacing-md, 16px);
-  border-bottom: 1px solid var(--ds-border-subtle, #1e1e2e);
+  border-bottom: 1px solid var(--ds-border-subtle);
   flex-shrink: 0;
   overflow-x: auto;
 }
@@ -197,30 +174,30 @@ onUnmounted(() => {
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
-  color: var(--ds-text-secondary, #a0a0b0);
+  color: var(--ds-text-secondary);
   font-size: var(--ds-typography-fontSize-sm, 12px);
   cursor: pointer;
   transition: all 0.2s;
   white-space: nowrap;
 }
 .tab-btn:hover {
-  color: var(--ds-text-primary, #ffffff);
-  background: rgba(148, 163, 184, 0.05);
+  color: var(--ds-text-primary);
+  background: color-mix(in srgb, var(--ds-text-secondary) 5%, transparent);
 }
 .tab-btn.active {
-  color: var(--ds-text-primary, #ffffff);
-  border-bottom-color: var(--ds-color-primary, #00cccc);
+  color: var(--ds-text-primary);
+  border-bottom-color: var(--ds-color-primary);
 }
 .tab-icon {
   font-size: 14px;
 }
 .tab-badge {
   padding: 1px 6px;
-  background: var(--ds-color-primary, #00cccc);
+  background: var(--ds-color-primary);
   border-radius: 8px;
   font-size: 11px;
   font-weight: var(--ds-typography-fontWeight-semibold, 600);
-  color: var(--ds-bg-base, #0d0d14);
+  color: var(--ds-bg-base);
   min-width: 18px;
   text-align: center;
 }
