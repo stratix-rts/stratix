@@ -2328,11 +2328,11 @@ router.post('/logs', async (req: Request, res: Response): Promise<void> => {
       for (const entry of entries) {
         const ts = entry.timestamp ?? new Date().toISOString();
         const ctx = entry.context ? `[${entry.context}] ` : '';
-        // Use console to mirror frontend logs on the backend
+        // Mirror frontend logs at appropriate console level
         switch (entry.level) {
           case 'error': console.error(`[SZ:ui ${ts}] ${ctx}${entry.message}`); break;
           case 'warn':  console.warn(`[SZ:ui ${ts}] ${ctx}${entry.message}`); break;
-          default:      console.log(`[SZ:ui ${ts}] ${ctx}${entry.message}`); break;
+          // info and debug levels are intentionally not mirrored to avoid console spam
         }
       }
     }

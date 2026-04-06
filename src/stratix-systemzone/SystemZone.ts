@@ -456,16 +456,12 @@ export class SystemZone {
    */
   startAutoCycle(): void {
     if (this.autoCycleTimer) {
-      console.log('[SystemZone] Auto cycle already running');
       return;
     }
 
     if (!this.autoCycleConfig.enabled) {
-      console.log('[SystemZone] Auto cycle is disabled');
       return;
     }
-
-    console.log(`[SystemZone] Starting auto cycle with interval ${this.autoCycleConfig.observeInterval}ms`);
 
     // 立即执行一次
     this.runAutoCycle().catch((err) => {
@@ -487,7 +483,6 @@ export class SystemZone {
     if (this.autoCycleTimer) {
       clearInterval(this.autoCycleTimer);
       this.autoCycleTimer = null;
-      console.log('[SystemZone] Auto cycle stopped');
     }
   }
 
@@ -504,7 +499,6 @@ export class SystemZone {
     errors: string[];
   }> {
     if (this.isAutoCycleRunning) {
-      console.log('[SystemZone] Auto cycle already running, skipping');
       return { observed: false, analyzed: false, executed: false, insights: [], proposals: [], errors: ['Auto cycle already running'] };
     }
 
@@ -517,19 +511,11 @@ export class SystemZone {
     let proposals: Proposal[] = [];
 
     try {
-      console.log('[SystemZone] Running auto cycle...');
-
       // Step 1: autoObserve
       observed = await this.autoObserve();
-      if (observed) {
-        console.log('[SystemZone] Auto observe completed');
-      }
 
       // Step 2: autoAnalyze
       analyzed = await this.autoAnalyze();
-      if (analyzed) {
-        console.log('[SystemZone] Auto analyze completed');
-      }
 
       // Step 3: autoExecute
       if (analyzed && this.autoCycleConfig.autoExecuteLowRisk) {
@@ -537,9 +523,6 @@ export class SystemZone {
         executed = execResult.executed;
         proposals = execResult.proposals;
         errors.push(...execResult.errors);
-        if (executed) {
-          console.log('[SystemZone] Auto execute completed');
-        }
       }
     } catch (error) {
       errors.push(`Auto cycle error: ${error instanceof Error ? error.message : String(error)}`);
@@ -560,14 +543,12 @@ export class SystemZone {
 
     // 检查去重窗口
     if (now - this.lastObserveTime < this.observeDeduplicationWindow) {
-      console.log(`[SystemZone] Skipping observe - within deduplication window (${this.observeDeduplicationWindow}ms)`);
       return false;
     }
 
     // 检查是否有待处理的输入
     const observerState = this.observer.getState();
     if (observerState.pendingInputs.length === 0) {
-      console.log('[SystemZone] Skipping observe - no pending inputs');
       return false;
     }
 
@@ -594,7 +575,6 @@ export class SystemZone {
     if (strategistState.lastAnalysis) {
       const timeSinceLastAnalysis = Date.now() - strategistState.lastAnalysis.getTime();
       if (timeSinceLastAnalysis < cacheTtl) {
-        console.log(`[SystemZone] Skipping analyze - within cache TTL (${cacheTtl}ms, elapsed: ${timeSinceLastAnalysis}ms)`);
         return false;
       }
     }
@@ -638,7 +618,6 @@ export class SystemZone {
     try {
       const canExecute = await this.fitnessEvaluator.canEnableExecutor();
       if (!canExecute) {
-        console.log('[SystemZone] Skipping auto execute - FitnessEvaluator returned false');
         return { executed: false, proposals: [], errors: ['FitnessEvaluator.canEnableExecutor() returned false'] };
       }
     } catch (error) {
@@ -653,11 +632,8 @@ export class SystemZone {
     );
 
     if (lowRiskProposals.length === 0) {
-      console.log('[SystemZone] No low-risk proposals to auto-execute');
       return { executed: false, proposals: [], errors: [] };
     }
-
-    console.log(`[SystemZone] Found ${lowRiskProposals.length} low-risk proposals to auto-execute`);
 
     // 执行每个低风险提案
     for (const proposal of lowRiskProposals) {
@@ -995,7 +971,6 @@ export class SystemZone {
           this.proposals.push(proposal);
           this.emit('proposal_generated', { proposal });
         } else {
-          console.log(`[SystemZone] Proposal blocked by Guardian: ${guardianResult.reasons.join(', ')}`);
           // 创建告警记录
           for (const alert of guardianResult.alerts) {
             this.guardian.createLesson(

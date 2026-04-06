@@ -21,9 +21,9 @@ const props = defineProps<{
 }>();
 
 const barColor = computed(() => {
-  if (props.confidence >= 0.8) return 'var(--ds-status-success, #22c55e)';
-  if (props.confidence >= 0.5) return 'var(--ds-status-warning, #eab308)';
-  return 'var(--ds-status-danger, #ef4444)';
+  if (props.confidence >= 0.8) return 'var(--ds-status-success)';
+  if (props.confidence >= 0.5) return 'var(--ds-status-warning)';
+  return 'var(--ds-status-danger)';
 });
 </script>
 
@@ -36,7 +36,7 @@ const barColor = computed(() => {
 .bar-track {
   flex: 1;
   height: 4px;
-  background: color-mix(in srgb, var(--ds-text-muted, #94a3b8) 20%, transparent);
+  background: color-mix(in srgb, var(--ds-text-muted) 20%, transparent);
   border-radius: var(--ds-radius-sm, 2px);
   overflow: hidden;
 }
@@ -47,7 +47,7 @@ const barColor = computed(() => {
 }
 .value {
   font-size: 12px;
-  color: var(--ds-text-secondary, #94a3b8);
+  color: var(--ds-text-secondary);
   min-width: 36px;
   text-align: right;
 }

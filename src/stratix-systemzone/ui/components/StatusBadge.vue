@@ -59,47 +59,47 @@ const label = computed(() => STATUS_LABELS[props.status] || props.status);
 
 /* Status colors — design system semantic tokens */
 .status-pending {
-  background: color-mix(in srgb, var(--ds-status-warning, #eab308) 15%, transparent);
-  color: var(--ds-status-warning, #eab308);
+  background: color-mix(in srgb, var(--ds-status-warning) 15%, transparent);
+  color: var(--ds-status-warning);
 }
-.status-pending .dot { background: var(--ds-status-warning, #eab308); }
+.status-pending .dot { background: var(--ds-status-warning); }
 
 .status-approved, .status-completed, .status-success, .status-active {
-  background: color-mix(in srgb, var(--ds-status-success, #22c55e) 15%, transparent);
-  color: var(--ds-status-success, #22c55e);
+  background: color-mix(in srgb, var(--ds-status-success) 15%, transparent);
+  color: var(--ds-status-success);
 }
 .status-approved .dot, .status-completed .dot, .status-success .dot, .status-active .dot {
-  background: var(--ds-status-success, #22c55e);
+  background: var(--ds-status-success);
 }
 
 .status-rejected, .status-failed, .status-error {
-  background: color-mix(in srgb, var(--ds-status-danger, #ef4444) 15%, transparent);
-  color: var(--ds-status-danger, #ef4444);
+  background: color-mix(in srgb, var(--ds-status-danger) 15%, transparent);
+  color: var(--ds-status-danger);
 }
 .status-rejected .dot, .status-failed .dot, .status-error .dot {
-  background: var(--ds-status-danger, #ef4444);
+  background: var(--ds-status-danger);
 }
 
 .status-executing, .status-running {
-  background: color-mix(in srgb, var(--ds-status-info, #3b82f6) 15%, transparent);
-  color: var(--ds-status-info, #3b82f6);
+  background: color-mix(in srgb, var(--ds-status-info) 15%, transparent);
+  color: var(--ds-status-info);
 }
 .status-executing .dot, .status-running .dot {
-  background: var(--ds-status-info, #3b82f6);
+  background: var(--ds-status-info);
   animation: pulse 1.5s infinite;
 }
 
 .status-rolled_back {
-  background: color-mix(in srgb, var(--ds-color-accent, #a855f7) 15%, transparent);
-  color: var(--ds-color-accent, #a855f7);
+  background: color-mix(in srgb, var(--ds-color-accent) 15%, transparent);
+  color: var(--ds-color-accent);
 }
-.status-rolled_back .dot { background: var(--ds-color-accent, #a855f7); }
+.status-rolled_back .dot { background: var(--ds-color-accent); }
 
 .status-idle, .status-disabled {
-  background: color-mix(in srgb, var(--ds-text-muted, #94a3b8) 15%, transparent);
-  color: var(--ds-text-muted, #94a3b8);
+  background: color-mix(in srgb, var(--ds-text-muted) 15%, transparent);
+  color: var(--ds-text-muted);
 }
-.status-idle .dot, .status-disabled .dot { background: var(--ds-text-muted, #94a3b8); }
+.status-idle .dot, .status-disabled .dot { background: var(--ds-text-muted); }
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }

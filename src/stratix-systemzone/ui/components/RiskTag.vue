@@ -31,19 +31,19 @@ const label = computed(() => LABELS[props.level] || props.level);
   letter-spacing: 0.5px;
 }
 .risk-low {
-  background: color-mix(in srgb, var(--ds-status-success, #22c55e) 15%, transparent);
-  color: var(--ds-status-success, #22c55e);
+  background: color-mix(in srgb, var(--ds-status-success) 15%, transparent);
+  color: var(--ds-status-success);
 }
 .risk-medium {
-  background: color-mix(in srgb, var(--ds-status-warning, #eab308) 15%, transparent);
-  color: var(--ds-status-warning, #eab308);
+  background: color-mix(in srgb, var(--ds-status-warning) 15%, transparent);
+  color: var(--ds-status-warning);
 }
 .risk-high {
-  background: color-mix(in srgb, var(--ds-status-danger, #f97316) 60%, transparent);
-  color: var(--ds-status-danger, #f97316);
+  background: color-mix(in srgb, var(--ds-status-danger) 60%, transparent);
+  color: var(--ds-status-danger);
 }
 .risk-critical {
-  background: color-mix(in srgb, var(--ds-status-danger, #ef4444) 15%, transparent);
-  color: var(--ds-status-danger, #ef4444);
+  background: color-mix(in srgb, var(--ds-status-danger) 15%, transparent);
+  color: var(--ds-status-danger);
 }
 </style>

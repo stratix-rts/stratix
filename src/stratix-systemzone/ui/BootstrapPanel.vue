@@ -1,5 +1,5 @@
 <template>
-  <div class="bootstrap-panel">
+  <StratixPanel>
     <div class="panel-header">
       <h3 class="panel-title">自举引擎</h3>
       <span class="mode-badge" :class="`mode-${store.bootstrapStatus?.mode}`">
@@ -17,7 +17,7 @@
     <div v-else-if="panelError" class="panel-state error">
       <span class="error-icon">⚠️</span>
       <span class="error-msg">{{ panelError }}</span>
-      <button class="btn-retry" @click="retry">重试</button>
+      <StratixButton variant="secondary" size="sm" @click="retry">重试</StratixButton>
     </div>
 
     <!-- Engine Status Card -->
@@ -45,14 +45,14 @@
 
       <!-- Controls -->
       <div class="controls">
-        <button
-          class="btn-primary"
-          :class="store.bootstrapStatus.engineRunning ? 'btn-stop' : 'btn-start'"
+        <StratixButton
+          :variant="store.bootstrapStatus.engineRunning ? 'danger' : 'success'"
+          size="sm"
           @click="toggleEngine"
           :disabled="store.loading"
         >
           {{ store.bootstrapStatus.engineRunning ? '停止' : '启动' }}
-        </button>
+        </StratixButton>
 
         <div class="mode-select">
           <label>模式</label>
@@ -63,21 +63,23 @@
           </select>
         </div>
 
-        <button
-          class="btn-cycle"
+        <StratixButton
+          variant="secondary"
+          size="sm"
           @click="triggerCycle"
           :disabled="store.loading || store.bootstrapStatus.engineRunning"
         >
           触发一次循环
-        </button>
+        </StratixButton>
 
-        <button
-          class="btn-run-cycle"
+        <StratixButton
+          variant="secondary"
+          size="sm"
           @click="runCycle"
           :disabled="cyclePhase !== 'idle' || store.loading || store.bootstrapStatus.engineRunning"
         >
           {{ cyclePhase === 'idle' ? '运行完整周期' : cyclePhaseLabels[cyclePhase] }}
-        </button>
+        </StratixButton>
       </div>
 
       <!-- Cycle Phase Indicator -->
@@ -104,8 +106,8 @@
         <p class="modal-text">切换到全自动模式后，系统将自主决策并执行优化提案。</p>
         <p class="modal-text">确定要继续吗？</p>
         <div class="modal-actions">
-          <button class="btn-confirm" @click="confirmModeChange">确认</button>
-          <button class="btn-cancel" @click="showConfirm = false">取消</button>
+          <StratixButton variant="success" size="sm" @click="confirmModeChange">确认</StratixButton>
+          <StratixButton variant="secondary" size="sm" @click="showConfirm = false">取消</StratixButton>
         </div>
       </div>
     </div>
@@ -141,7 +143,7 @@
         </tbody>
       </table>
     </div>
-  </div>
+  </StratixPanel>
 </template>
 
 <script setup lang="ts">
@@ -254,26 +256,19 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.bootstrap-panel {
-  background: var(--ds-bg-sunken, #0f1117);
-  border-radius: var(--ds-radius-md, 8px);
-  border: 1px solid var(--ds-border-subtle, rgba(148, 163, 184, 0.1));
-  overflow: hidden;
-}
-
 .panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--ds-border-subtle, rgba(148, 163, 184, 0.1));
+  border-bottom: 1px solid var(--ds-border-subtle);
 }
 
 .panel-title {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
-  color: var(--ds-text-primary, #e2e8f0);
+  color: var(--ds-text-primary);
 }
 
 .mode-badge {
@@ -283,16 +278,16 @@ onMounted(() => {
   font-weight: 500;
 }
 .mode-manual {
-  background: color-mix(in srgb, var(--ds-text-muted, #94a3b8) 15%, transparent);
-  color: var(--ds-text-muted, #94a3b8);
+  background: color-mix(in srgb, var(--ds-text-muted) 15%, transparent);
+  color: var(--ds-text-muted);
 }
 .mode-semi_auto {
-  background: color-mix(in srgb, var(--ds-status-warning, #eab308) 15%, transparent);
-  color: var(--ds-status-warning, #eab308);
+  background: color-mix(in srgb, var(--ds-status-warning) 15%, transparent);
+  color: var(--ds-status-warning);
 }
 .mode-full_auto {
-  background: color-mix(in srgb, var(--ds-status-success, #22c55e) 15%, transparent);
-  color: var(--ds-status-success, #22c55e);
+  background: color-mix(in srgb, var(--ds-status-success) 15%, transparent);
+  color: var(--ds-status-success);
 }
 
 /* Panel states */
@@ -309,30 +304,20 @@ onMounted(() => {
 .spinner {
   width: 18px;
   height: 18px;
-  border: 2px solid var(--ds-border-subtle, rgba(255, 255, 255, 0.1));
-  border-top-color: var(--ds-status-info, #3b82f6);
+  border: 2px solid var(--ds-border-subtle);
+  border-top-color: var(--ds-status-info);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .error-icon { font-size: 28px; }
-.error-msg { color: var(--ds-status-danger, #ef4444); font-size: 13px; }
-.btn-retry {
-  background: var(--ds-bg-overlay, rgba(255, 255, 255, 0.08));
-  color: var(--ds-text-secondary, #94a3b8);
-  padding: 4px 12px;
-  border-radius: var(--ds-radius-sm, 4px);
-  font-size: 12px;
-  border: none;
-  cursor: pointer;
-}
-.btn-retry:hover { color: var(--ds-text-primary, #e2e8f0); }
+.error-msg { color: var(--ds-status-danger); font-size: 13px; }
 
 /* Engine Card */
 .engine-card {
   padding: 16px;
-  border-bottom: 1px solid var(--ds-border-subtle, rgba(148, 163, 184, 0.1));
+  border-bottom: 1px solid var(--ds-border-subtle);
 }
 
 .engine-status-row {
@@ -354,14 +339,14 @@ onMounted(() => {
   border-radius: 50%;
 }
 .dot-running {
-  background: var(--ds-status-success, #22c55e);
+  background: var(--ds-status-success);
   animation: pulse 1.5s infinite;
 }
-.dot-stopped { background: var(--ds-text-muted, #64748b); }
+.dot-stopped { background: var(--ds-text-muted); }
 
 .status-label {
   font-size: 14px;
-  color: var(--ds-text-primary, #e2e8f0);
+  color: var(--ds-text-primary);
   font-weight: 500;
 }
 
@@ -374,19 +359,19 @@ onMounted(() => {
 }
 .stat-value {
   font-size: 14px;
-  color: var(--ds-text-primary, #e2e8f0);
+  color: var(--ds-text-primary);
   font-weight: 500;
 }
 .stat-value.phase {
   font-size: 11px;
   padding: 1px 6px;
-  background: color-mix(in srgb, var(--ds-status-info, #3b82f6) 15%, transparent);
-  color: var(--ds-status-info, #3b82f6);
+  background: color-mix(in srgb, var(--ds-status-info) 15%, transparent);
+  color: var(--ds-status-info);
   border-radius: 3px;
 }
 .stat-label {
   font-size: 11px;
-  color: var(--ds-text-muted, #64748b);
+  color: var(--ds-text-muted);
   margin-top: 2px;
 }
 
@@ -397,84 +382,33 @@ onMounted(() => {
   gap: 12px;
 }
 
-.btn-primary {
-  padding: 6px 20px;
-  border-radius: var(--ds-radius-sm, 4px);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  border: none;
-  transition: opacity 0.2s;
-}
-.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-start {
-  background: var(--ds-status-success, #22c55e);
-  color: var(--ds-bg-base, #fff);
-}
-.btn-stop {
-  background: var(--ds-status-danger, #ef4444);
-  color: var(--ds-bg-base, #fff);
-}
-
 .mode-select {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.mode-select label { font-size: 12px; color: var(--ds-text-secondary, #94a3b8); }
+.mode-select label { font-size: 12px; color: var(--ds-text-secondary); }
 .mode-select select {
-  background: var(--ds-bg-elevated, #1e293b);
-  border: 1px solid var(--ds-border-default, rgba(148, 163, 184, 0.2));
+  background: var(--ds-bg-elevated);
+  border: 1px solid var(--ds-border-default);
   border-radius: var(--ds-radius-sm, 4px);
   padding: 4px 8px;
-  color: var(--ds-text-primary, #e2e8f0);
+  color: var(--ds-text-primary);
   font-size: 12px;
   cursor: pointer;
 }
 .mode-select select:focus {
   outline: none;
-  border-color: var(--ds-status-info, #3b82f6);
+  border-color: var(--ds-status-info);
 }
-
-.btn-cycle {
-  background: color-mix(in srgb, var(--ds-status-info, #3b82f6) 15%, transparent);
-  border: 1px solid color-mix(in srgb, var(--ds-status-info, #3b82f6) 30%, transparent);
-  color: var(--ds-status-info, #3b82f6);
-  padding: 6px 14px;
-  border-radius: var(--ds-radius-sm, 4px);
-  font-size: 12px;
-  cursor: pointer;
-  margin-left: auto;
-  transition: background 0.2s;
-}
-.btn-cycle:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ds-status-info, #3b82f6) 25%, transparent);
-}
-.btn-cycle:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.btn-run-cycle {
-  background: color-mix(in srgb, var(--ds-status-success, #22c55e) 20%, transparent);
-  border: 1px solid color-mix(in srgb, var(--ds-status-success, #22c55e) 40%, transparent);
-  color: var(--ds-status-success, #22c55e);
-  padding: 6px 14px;
-  border-radius: var(--ds-radius-sm, 4px);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s, opacity 0.2s;
-}
-.btn-run-cycle:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ds-status-success, #22c55e) 30%, transparent);
-}
-.btn-run-cycle:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Cycle Phase Indicator */
 .cycle-indicator {
   margin-top: 12px;
   padding: 10px 14px;
-  background: var(--ds-bg-elevated, #1e293b);
+  background: var(--ds-bg-elevated);
   border-radius: var(--ds-radius-sm, 4px);
-  border: 1px solid var(--ds-border-subtle, rgba(148, 163, 184, 0.1));
+  border: 1px solid var(--ds-border-subtle);
 }
 
 .phase-track {
@@ -486,25 +420,25 @@ onMounted(() => {
 
 .phase-dot {
   font-size: 11px;
-  color: var(--ds-text-muted, #64748b);
+  color: var(--ds-text-muted);
   padding: 2px 8px;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--ds-text-muted, #64748b) 10%, transparent);
+  background: color-mix(in srgb, var(--ds-text-muted) 10%, transparent);
   transition: all 0.3s;
 }
 .phase-dot.active {
-  background: color-mix(in srgb, var(--ds-status-success, #22c55e) 20%, transparent);
-  color: var(--ds-status-success, #22c55e);
+  background: color-mix(in srgb, var(--ds-status-success) 20%, transparent);
+  color: var(--ds-status-success);
 }
 
 .phase-line {
   flex: 1;
   height: 2px;
-  background: var(--ds-border-subtle, rgba(148, 163, 184, 0.1));
+  background: var(--ds-border-subtle);
   transition: background 0.3s;
 }
 .phase-line.filled {
-  background: var(--ds-status-success, #22c55e);
+  background: var(--ds-status-success);
 }
 
 .cycle-timings {
@@ -517,55 +451,37 @@ onMounted(() => {
 .timing-total {
   font-size: 12px;
   font-weight: 600;
-  color: var(--ds-text-primary, #e2e8f0);
+  color: var(--ds-text-primary);
 }
 
 .timing-detail {
   font-size: 11px;
-  color: var(--ds-text-muted, #64748b);
+  color: var(--ds-text-muted);
 }
 
 /* Modal */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: color-mix(in srgb, var(--ds-bg-base, #000) 60%, transparent);
+  background: color-mix(in srgb, var(--ds-bg-base) 60%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
 }
 .modal {
-  background: var(--ds-bg-elevated, #1e293b);
-  border: 1px solid var(--ds-border-default, rgba(148, 163, 184, 0.2));
+  background: var(--ds-bg-elevated);
+  border: 1px solid var(--ds-border-default);
   border-radius: var(--ds-radius-md, 8px);
   padding: 24px;
   max-width: 360px;
 }
 .modal-text {
-  color: var(--ds-text-primary, #e2e8f0);
+  color: var(--ds-text-primary);
   font-size: 14px;
   margin: 0 0 8px;
 }
 .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
-.btn-confirm {
-  background: var(--ds-status-success, #22c55e);
-  border: none;
-  color: var(--ds-bg-base, #fff);
-  padding: 6px 16px;
-  border-radius: var(--ds-radius-sm, 4px);
-  font-size: 13px;
-  cursor: pointer;
-}
-.btn-cancel {
-  background: transparent;
-  border: 1px solid var(--ds-border-default, rgba(148, 163, 184, 0.2));
-  color: var(--ds-text-secondary, #94a3b8);
-  padding: 6px 16px;
-  border-radius: var(--ds-radius-sm, 4px);
-  font-size: 13px;
-  cursor: pointer;
-}
 
 /* History */
 .history-section { padding: 16px; }
@@ -574,12 +490,12 @@ onMounted(() => {
   margin: 0 0 12px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--ds-text-primary, #e2e8f0);
+  color: var(--ds-text-primary);
 }
 
 .empty-history {
   text-align: center;
-  color: var(--ds-text-muted, #64748b);
+  color: var(--ds-text-muted);
   font-size: 13px;
   padding: 20px;
 }
@@ -592,14 +508,14 @@ onMounted(() => {
 .history-table th {
   text-align: left;
   padding: 8px 12px;
-  color: var(--ds-text-muted, #64748b);
+  color: var(--ds-text-muted);
   font-weight: 500;
-  border-bottom: 1px solid var(--ds-border-subtle, rgba(148, 163, 184, 0.1));
+  border-bottom: 1px solid var(--ds-border-subtle);
 }
 .history-table td {
   padding: 8px 12px;
-  color: var(--ds-text-primary, #e2e8f0);
-  border-bottom: 1px solid var(--ds-border-subtle, rgba(148, 163, 184, 0.05));
+  color: var(--ds-text-primary);
+  border-bottom: 1px solid color-mix(in srgb, var(--ds-border-subtle) 50%, transparent);
 }
 .history-table tr:last-child td { border-bottom: none; }
 
@@ -609,16 +525,16 @@ onMounted(() => {
   font-size: 11px;
 }
 .status-success {
-  background: color-mix(in srgb, var(--ds-status-success, #22c55e) 15%, transparent);
-  color: var(--ds-status-success, #22c55e);
+  background: color-mix(in srgb, var(--ds-status-success) 15%, transparent);
+  color: var(--ds-status-success);
 }
 .status-partial {
-  background: color-mix(in srgb, var(--ds-status-warning, #eab308) 15%, transparent);
-  color: var(--ds-status-warning, #eab308);
+  background: color-mix(in srgb, var(--ds-status-warning) 15%, transparent);
+  color: var(--ds-status-warning);
 }
 .status-failed {
-  background: color-mix(in srgb, var(--ds-status-danger, #ef4444) 15%, transparent);
-  color: var(--ds-status-danger, #ef4444);
+  background: color-mix(in srgb, var(--ds-status-danger) 15%, transparent);
+  color: var(--ds-status-danger);
 }
 
 @keyframes pulse {

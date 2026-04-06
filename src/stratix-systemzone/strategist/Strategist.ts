@@ -470,8 +470,6 @@ export class Strategist {
 
       if (result.valid) {
         validated.push(proposal);
-      } else {
-        console.log(`[Strategist] Proposal blocked by Guardian: ${result.reason}`);
       }
     }
 

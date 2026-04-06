@@ -1,10 +1,10 @@
 <template>
-  <div class="fitness-panel">
+  <StratixPanel>
     <div class="panel-header">
       <h3 class="panel-title">健康评估</h3>
-      <button class="btn-refresh" @click="handleRefresh" :disabled="isLoading">
+      <StratixButton variant="secondary" size="sm" @click="handleRefresh" :disabled="isLoading">
         ↻ 刷新
-      </button>
+      </StratixButton>
     </div>
 
     <!-- Loading -->
@@ -17,7 +17,7 @@
     <div v-else-if="panelError" class="panel-state state-error">
       <span class="state-icon">⚠️</span>
       <span class="state-text">{{ panelError }}</span>
-      <button class="btn-retry" @click="handleRefresh">重试</button>
+      <StratixButton variant="secondary" size="sm" @click="handleRefresh">重试</StratixButton>
     </div>
 
     <!-- Empty / No Data -->
@@ -43,11 +43,13 @@
         <ScoreRow label="代码体积" :score="store.fitness.codeSize" :color-class="overallScoreClass" />
       </div>
     </template>
-  </div>
+  </StratixPanel>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import StratixButton from '@/components/ui/StratixButton.vue';
+import StratixPanel from '@/components/ui/StratixPanel.vue';
 import { useSystemZoneStore } from '../../stores/systemzone';
 import { useAutoRefresh } from './composables/useAutoRefresh';
 import { usePanelState } from './composables/usePanelState';
@@ -96,40 +98,20 @@ const ScoreRow = defineComponent({
 </script>
 
 <style scoped>
-.fitness-panel {
-  background: var(--ds-bg-elevated, #12121a);
-  border-radius: var(--ds-radius-lg, 8px);
-  border: 1px solid var(--ds-border-subtle, #1e1e2e);
-  overflow: hidden;
-}
-
 .panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 12px var(--ds-spacing-md, 16px);
-  border-bottom: 1px solid var(--ds-border-subtle, #1e1e2e);
+  border-bottom: 1px solid var(--ds-border-subtle);
 }
 
 .panel-title {
   margin: 0;
   font-size: var(--ds-typography-fontSize-md, 14px);
   font-weight: var(--ds-typography-fontWeight-semibold, 600);
-  color: var(--ds-text-primary, #ffffff);
+  color: var(--ds-text-primary);
 }
-
-.btn-refresh {
-  background: transparent;
-  border: 1px solid var(--ds-border-default, #2a2a3e);
-  color: var(--ds-text-secondary, #a0a0b0);
-  padding: 4px 10px;
-  border-radius: var(--ds-radius-sm, 2px);
-  font-size: 11px;
-  cursor: pointer;
-  transition: border-color 0.2s, color 0.2s;
-}
-.btn-refresh:hover:not(:disabled) { border-color: var(--ds-status-info, #00cccc); color: var(--ds-status-info, #00cccc); }
-.btn-refresh:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Panel states */
 .panel-state {
@@ -140,29 +122,17 @@ const ScoreRow = defineComponent({
   padding: 40px;
   gap: var(--ds-spacing-sm, 8px);
 }
-.state-text { color: var(--ds-text-secondary, #a0a0b0); font-size: var(--ds-typography-fontSize-sm, 12px); }
-.state-icon { font-size: 32px; color: var(--ds-text-muted, #6a6a8a); }
+.state-text { color: var(--ds-text-secondary); font-size: var(--ds-typography-fontSize-sm, 12px); }
+.state-icon { font-size: 32px; color: var(--ds-text-muted); }
 
-.state-error .state-icon { color: var(--ds-status-danger, #ff4444); }
-.btn-retry {
-  margin-top: var(--ds-spacing-xs, 4px);
-  padding: 4px 12px;
-  background: transparent;
-  border: 1px solid var(--ds-border-default, #2a2a3e);
-  border-radius: var(--ds-radius-sm, 2px);
-  color: var(--ds-text-secondary, #a0a0b0);
-  font-size: 11px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.btn-retry:hover { border-color: var(--ds-status-info, #00cccc); color: var(--ds-status-info, #00cccc); }
+.state-error .state-icon { color: var(--ds-status-danger); }
 
 /* Spinner */
 .spinner {
   width: 18px;
   height: 18px;
-  border: 2px solid var(--ds-border-subtle, #1e1e2e);
-  border-top-color: var(--ds-status-info, #00cccc);
+  border: 2px solid var(--ds-border-subtle);
+  border-top-color: var(--ds-color-primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -176,7 +146,7 @@ const ScoreRow = defineComponent({
   flex-direction: column;
   align-items: center;
   padding: var(--ds-spacing-lg, 24px);
-  border-bottom: 1px solid var(--ds-border-subtle, #1e1e2e);
+  border-bottom: 1px solid var(--ds-border-subtle);
 }
 
 .overall-score {
@@ -192,7 +162,7 @@ const ScoreRow = defineComponent({
 .overall-label {
   margin-top: 6px;
   font-size: 11px;
-  color: var(--ds-text-muted, #6a6a8a);
+  color: var(--ds-text-muted);
 }
 
 /* Three rows */
@@ -211,7 +181,7 @@ const ScoreRow = defineComponent({
 
 .row-label {
   font-size: 12px;
-  color: var(--ds-text-primary, #ffffff);
+  color: var(--ds-text-primary);
   width: 72px;
   flex-shrink: 0;
 }
@@ -219,7 +189,7 @@ const ScoreRow = defineComponent({
 .row-bar {
   flex: 1;
   height: 8px;
-  background: color-mix(in srgb, var(--ds-text-muted, #94a3b8) 10%, transparent);
+  background: color-mix(in srgb, var(--ds-text-muted) 10%, transparent);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -232,7 +202,7 @@ const ScoreRow = defineComponent({
 
 .row-val {
   font-size: 12px;
-  color: var(--ds-text-secondary, #a0a0b0);
+  color: var(--ds-text-secondary);
   width: 28px;
   text-align: right;
   flex-shrink: 0;

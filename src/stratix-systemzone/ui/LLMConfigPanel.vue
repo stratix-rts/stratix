@@ -2,9 +2,9 @@
   <div class="llm-config-panel">
     <div class="panel-header">
       <h3 class="panel-title">LLM 配置</h3>
-      <button class="btn-refresh" @click="handleRefresh" :disabled="isLoading">
+      <StratixButton variant="secondary" size="sm" @click="handleRefresh" :disabled="isLoading">
         ↻ 刷新
-      </button>
+      </StratixButton>
     </div>
 
     <!-- Loading -->
@@ -76,13 +76,13 @@
           </span>
         </div>
 
-        <button
-          class="btn btn-primary"
+        <StratixButton
+          variant="primary"
           @click="handleSave"
           :disabled="isSaving"
         >
           {{ isSaving ? '保存中...' : '💾 保存配置' }}
-        </button>
+        </StratixButton>
 
         <div v-if="saveSuccess" class="save-success">
           ✓ 配置已保存，将在下次 LLM 调用时生效
@@ -131,13 +131,14 @@
               :disabled="isChatLoading"
               @keydown="handleChatKeyDown"
             ></textarea>
-            <button
-              class="test-chat-send"
+            <StratixButton
+              variant="primary"
+              size="sm"
               :disabled="!chatInput.trim() || isChatLoading"
               @click="sendTestMessage"
             >
               发送
-            </button>
+            </StratixButton>
           </div>
         </template>
       </div>
@@ -147,6 +148,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, nextTick } from 'vue';
+import StratixButton from '@/components/ui/StratixButton.vue';
 import { useSystemZoneStore } from '../../stores/systemzone';
 
 interface ChatMessage {
@@ -292,7 +294,7 @@ onMounted(() => {
 .llm-config-panel {
   padding: 16px;
   font-family: var(--ds-typography-fontFamily-sans, system-ui, sans-serif);
-  color: var(--ds-text-primary, #ffffff);
+  color: var(--ds-text-primary);
 }
 
 .panel-header {
@@ -301,33 +303,14 @@ onMounted(() => {
   align-items: center;
   margin-bottom: 16px;
   padding-bottom: 12px;
-  border-bottom: 1px solid var(--ds-border-subtle, #1e1e2e);
+  border-bottom: 1px solid var(--ds-border-subtle);
 }
 
 .panel-title {
   font-size: 14px;
   font-weight: 600;
   margin: 0;
-  color: var(--ds-text-primary, #ffffff);
-}
-
-.btn-refresh {
-  background: none;
-  border: 1px solid var(--ds-border-default, #333);
-  color: var(--ds-text-secondary, #aaa);
-  padding: 4px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 12px;
-}
-
-.btn-refresh:hover {
-  background: var(--ds-background-tertiary, #1a1a2e);
-}
-
-.btn-refresh:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  color: var(--ds-text-primary);
 }
 
 /* Panel body: left-right layout */
@@ -347,7 +330,7 @@ onMounted(() => {
 
 .panel-divider {
   width: 1px;
-  background: var(--ds-border-subtle, #1e1e2e);
+  background: var(--ds-border-subtle);
   align-self: stretch;
   min-height: 200px;
   margin: 0 16px;
@@ -370,7 +353,7 @@ onMounted(() => {
 .test-chat-area-title {
   font-size: 12px;
   font-weight: 500;
-  color: var(--ds-text-muted, #666);
+  color: var(--ds-text-muted);
 }
 
 .form-group {
@@ -383,21 +366,21 @@ onMounted(() => {
 .form-label {
   font-size: 12px;
   font-weight: 500;
-  color: var(--ds-text-secondary, #aaa);
+  color: var(--ds-text-secondary);
 }
 
 .optional {
-  color: var(--ds-text-muted, #666);
+  color: var(--ds-text-muted);
   font-weight: 400;
 }
 
 .form-input,
 .form-select {
   padding: 8px 12px;
-  background: var(--ds-background-tertiary, #111);
-  border: 1px solid var(--ds-border-default, #333);
+  background: var(--ds-bg-sunken);
+  border: 1px solid var(--ds-border-default);
   border-radius: 6px;
-  color: var(--ds-text-primary, #fff);
+  color: var(--ds-text-primary);
   font-size: 13px;
   font-family: var(--ds-typography-fontFamily-mono, monospace);
   outline: none;
@@ -405,7 +388,7 @@ onMounted(() => {
 
 .form-input:focus,
 .form-select:focus {
-  border-color: var(--ds-border-strong, #555);
+  border-color: var(--ds-border-strong);
 }
 
 .form-select {
@@ -418,14 +401,14 @@ onMounted(() => {
   top: 28px;
   background: none;
   border: none;
-  color: var(--ds-text-muted, #666);
+  color: var(--ds-text-muted);
   cursor: pointer;
   font-size: 11px;
   padding: 2px 4px;
 }
 
 .btn-toggle-visibility:hover {
-  color: var(--ds-text-secondary, #aaa);
+  color: var(--ds-text-secondary);
 }
 
 .config-status {
@@ -433,7 +416,7 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: var(--ds-background-tertiary, #111);
+  background: var(--ds-bg-sunken);
   border-radius: 6px;
   font-size: 12px;
 }
@@ -445,36 +428,16 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
-.dot-ok { background: var(--ds-status-success, #00ff88); }
-.dot-error { background: var(--ds-status-danger, #ff4444); }
+.dot-ok { background: var(--ds-status-success); }
+.dot-error { background: var(--ds-status-danger); }
 
 .status-text {
-  color: var(--ds-text-secondary, #aaa);
-}
-
-.btn-primary {
-  padding: 10px 20px;
-  background: var(--ds-status-info, #00d4ff);
-  color: var(--ds-text-on-accent);
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.btn-primary:hover {
-  opacity: 0.9;
-}
-
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  color: var(--ds-text-secondary);
 }
 
 .save-success {
   font-size: 12px;
-  color: var(--ds-status-success, #00ff88);
+  color: var(--ds-status-success);
   text-align: center;
 }
 
@@ -484,19 +447,19 @@ onMounted(() => {
   justify-content: center;
   gap: 8px;
   padding: 32px;
-  color: var(--ds-text-muted, #666);
+  color: var(--ds-text-muted);
   font-size: 13px;
 }
 
 .state-error {
-  color: var(--ds-status-danger, #ff4444);
+  color: var(--ds-status-danger);
 }
 
 .spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid var(--ds-border-default, #333);
-  border-top-color: var(--ds-status-info, #00d4ff);
+  border: 2px solid var(--ds-border-default);
+  border-top-color: var(--ds-color-primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -514,7 +477,7 @@ onMounted(() => {
   flex-direction: column;
   gap: 8px;
   padding: 8px;
-  background: var(--ds-background-tertiary, #111);
+  background: var(--ds-bg-sunken);
   border-radius: 8px;
   margin-bottom: 8px;
 }
@@ -549,14 +512,14 @@ onMounted(() => {
 }
 
 .test-message-user .test-message-content {
-  background: var(--ds-status-info, #00d4ff);
+  background: var(--ds-color-primary);
   color: var(--ds-text-on-accent);
   border-bottom-right-radius: 2px;
 }
 
 .test-message-assistant .test-message-content {
-  background: var(--ds-background-secondary, #1a1a2e);
-  color: var(--ds-text-primary, #fff);
+  background: var(--ds-bg-elevated);
+  color: var(--ds-text-primary);
   border-bottom-left-radius: 2px;
 }
 
@@ -564,14 +527,14 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--ds-text-muted, #666);
+  color: var(--ds-text-muted);
 }
 
 .spinner-sm {
   width: 12px;
   height: 12px;
-  border: 2px solid var(--ds-border-default, #333);
-  border-top-color: var(--ds-status-info, #00d4ff);
+  border: 2px solid var(--ds-border-default);
+  border-top-color: var(--ds-color-primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -585,10 +548,10 @@ onMounted(() => {
 .test-chat-input {
   flex: 1;
   padding: 8px 12px;
-  background: var(--ds-background-tertiary, #111);
-  border: 1px solid var(--ds-border-default, #333);
+  background: var(--ds-bg-sunken);
+  border: 1px solid var(--ds-border-default);
   border-radius: 6px;
-  color: var(--ds-text-primary, #fff);
+  color: var(--ds-text-primary);
   font-size: 13px;
   font-family: var(--ds-typography-fontFamily-sans, system-ui, sans-serif);
   resize: none;
@@ -596,7 +559,7 @@ onMounted(() => {
 }
 
 .test-chat-input:focus {
-  border-color: var(--ds-border-strong, #555);
+  border-color: var(--ds-border-strong);
 }
 
 .test-chat-input:disabled {
@@ -604,31 +567,10 @@ onMounted(() => {
   cursor: not-allowed;
 }
 
-.test-chat-send {
-  padding: 8px 16px;
-  background: var(--ds-status-info, #00d4ff);
-  color: var(--ds-text-on-accent);
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-
-.test-chat-send:hover:not(:disabled) {
-  opacity: 0.9;
-}
-
-.test-chat-send:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .test-chat-disabled {
   text-align: center;
   padding: 16px;
-  color: var(--ds-text-muted, #666);
+  color: var(--ds-text-muted);
   font-size: 13px;
 }
 
