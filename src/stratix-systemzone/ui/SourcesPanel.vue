@@ -7,6 +7,18 @@
       </StratixButton>
     </div>
 
+    <!-- Delete Confirmation Dialog -->
+    <StratixConfirmDialog
+      v-model:visible="confirmDeleteVisible"
+      type="warning"
+      title="删除外部源"
+      :content="`确定要删除「${pendingDeleteName}」吗？`"
+      ok-text="删除"
+      cancel-text="取消"
+      ok-danger
+      @ok="confirmDelete"
+    />
+
     <!-- Add Source Form -->
     <div v-if="showForm" class="add-form">
       <div class="form-row">
@@ -82,6 +94,7 @@
 import { ref, reactive, computed, type Ref, onMounted } from 'vue';
 import StratixButton from '@/components/ui/StratixButton.vue';
 import StratixPanel from '@/components/ui/StratixPanel.vue';
+import StratixConfirmDialog from '@/components/ui/StratixConfirmDialog.vue';
 import { useSystemZoneStore } from '../../stores/systemzone';
 import { usePanelState } from './composables/usePanelState';
 import { useAutoRefresh } from './composables/useAutoRefresh';
@@ -89,6 +102,9 @@ import { useAutoRefresh } from './composables/useAutoRefresh';
 const store = useSystemZoneStore();
 
 const showForm = ref(false);
+const confirmDeleteVisible = ref(false);
+const pendingDeleteId = ref<string | null>(null);
+const pendingDeleteName = ref('');
 const form = reactive({
   name: '',
   type: 'rss' as 'rss' | 'webhook' | 'api_polling',
@@ -136,7 +152,18 @@ async function handleAdd() {
 }
 
 async function deleteSource(id: string) {
-  await store.removeSource(id);
+  const source = store.sources.find(s => s.id === id);
+  pendingDeleteId.value = id;
+  pendingDeleteName.value = source?.name || id;
+  confirmDeleteVisible.value = true;
+}
+
+async function confirmDelete() {
+  if (pendingDeleteId.value) {
+    await store.removeSource(pendingDeleteId.value);
+  }
+  pendingDeleteId.value = null;
+  pendingDeleteName.value = '';
 }
 
 onMounted(() => {
