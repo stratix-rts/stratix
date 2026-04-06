@@ -10,7 +10,10 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : Math.max(Math.ceil(os.cpus().length / 4), 2),
-  reporter: 'html',
+  reporter: [
+    ["html"],
+    ["json", { outputFile: "test-results/results.json" }],
+  ],
   timeout: 60000,
   use: {
     baseURL: 'http://localhost:7523',
