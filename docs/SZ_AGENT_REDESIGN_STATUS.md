@@ -20,16 +20,16 @@
 | Task | 标题 | 状态 | 开始时间 | 完成时间 |
 |------|------|------|---------|---------|
 | B1 | Strategist modifications prompt | done | 16:34 | 16:40 |
-| B2 | Executor DiffApplier 集成 | in_progress | 16:40 | - |
-| B3 | Guardian 安全审查 | pending | - | - |
-| B4 | Modification 映射函数 | pending | - | - |
-| B5 | DiffApplier 测试 | pending | - | - |
+| B2 | Executor DiffApplier 集成 | done | 16:40 | 16:45 |
+| B3 | Guardian 安全审查 | done | 16:45 | 16:52 |
+| B4 | Modification 映射函数 | done | 16:52 | 16:55 |
+| B5 | DiffApplier 测试 | done | 16:55 | 17:05 |
 
 ## Phase C：协作流程
 
 | Task | 标题 | 状态 | 开始时间 | 完成时间 |
 |------|------|------|---------|---------|
-| C1 | SystemZoneCycle 状态机 | pending | - | - |
+| C1 | SystemZoneCycle 状态机 | in_progress | 16:55 | - |
 | C2 | Agent 间上下文传递 | pending | - | - |
 | C3 | FitnessEvaluator 反馈循环 | pending | - | - |
 | C4 | SystemZoneCycle 测试 | pending | - | - |
@@ -42,4 +42,4 @@
 | D2 | 手动触发 + 自动循环 | pending | - | - |
 
 ## 当前活跃 Task
-**B2** — Executor DiffApplier 集成
+**C1: SystemZoneCycle 状态机** — in_progress，Claude Code 执行中
