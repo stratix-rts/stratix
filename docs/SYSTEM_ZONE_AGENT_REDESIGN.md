@@ -346,6 +346,7 @@ class DiffApplier {
 
 ```typescript
 // 在项目启动时，创建 System Zone 的 Zone 实例
+const SYSTEM_ZONE_ID = 'system-zone';
 const SYSTEM_ZONE_TITLE = 'Stratix 项目自优化';
 
 // 1. 确保 Zone 存在
@@ -418,7 +419,7 @@ observerAgent.skills.registerSkill({
     { name: 'content', type: 'string', required: true, description: '输入内容' },
     { name: 'source', type: 'string', required: false, description: '来源' },
   ],
-  executor: 'builtin',
+  executor: 'systemzone',  // 自定义 executor，直接调用 TS 模块
 });
 
 // Strategist Agent skills:
@@ -427,21 +428,59 @@ strategistAgent.skills.registerSkill({
   name: '扫描项目',
   description: '运行覆盖率、类型检查、lint、文件大小扫描',
   parameters: [],
-  executor: 'builtin',
+  executor: 'systemzone',
 });
 
 strategistAgent.skills.registerSkill({
   skillId: 'generate_modifications',
   name: '生成修改方案',
-  description: '基于洞察和扫描结果，生成结构化代码修改 JSON',
+  description: '基于洞察和扫描结果，生成结构化代码修改 JSON（unified diff）',
   parameters: [
     { name: 'insights', type: 'array', required: true, description: 'Observer 的洞察列表' },
     { name: 'targetFile', type: 'string', required: false, description: '目标文件路径' },
   ],
-  executor: 'builtin',
+  executor: 'systemzone',
 });
 
-// ... etc
+// Guardian Agent skills:
+guardianAgent.skills.registerSkill({
+  skillId: 'review_modifications',
+  name: '审查修改方案',
+  description: '审查 unified diff 的安全性',
+  parameters: [
+    { name: 'modifications', type: 'array', required: true, description: 'FileModification[]' },
+  ],
+  executor: 'systemzone',
+});
+
+// Executor Agent skills:
+executorAgent.skills.registerSkill({
+  skillId: 'apply_diff',
+  name: '应用修改',
+  description: '在沙箱中应用 unified diff',
+  parameters: [
+    { name: 'diff', type: 'string', required: true, description: 'unified diff 内容' },
+  ],
+  executor: 'systemzone',
+});
+
+executorAgent.skills.registerSkill({
+  skillId: 'run_tests',
+  name: '运行测试',
+  description: '在沙箱中运行测试',
+  parameters: [],
+  executor: 'systemzone',
+});
+
+executorAgent.skills.registerSkill({
+  skillId: 'commit_changes',
+  name: '提交修改',
+  description: '提交沙箱中的修改到工作树',
+  parameters: [
+    { name: 'message', type: 'string', required: true, description: 'commit message' },
+  ],
+  executor: 'systemzone',
+});
 ```
 
 ---
@@ -450,19 +489,33 @@ strategistAgent.skills.registerSkill({
 
 ### Phase A：基础设施（让 Agent 能在 Zone 里跑起来）
 
-**A1. System Zone Zone 实例创建**
+**A1. 注册 `systemzone` SkillExecutor**
+- 文件: `src/stratix-agent/core/SkillExecutors.ts`
+- 任务: 新增 `SystemZoneSkillExecutor` 类，支持调用 System Zone 内部 TS 模块
+  - `observe_input` → 调用 Observer.processInput()
+  - `scan_project` → 调用 ProjectScanner.scanAll()
+  - `generate_modifications` → 调用 StrategistLLMEnhancer.enrichProposal()
+  - `validate_diff` → 调用 DiffApplier.validateDiff()
+  - `apply_diff` → 调用 DiffApplier.applyDiff()
+  - `run_tests` → 调用 TestRunner.runTests()
+  - `create_sandbox` / `destroy_sandbox` → 调用 Sandbox
+  - `rollback` → 调用 RollbackManager
+- 在 `createExecutor()` 中注册 `'systemzone'` 类型
+- 验收: `agent.skills.execute('scan_project', {})` 能返回扫描结果
+
+**A2. System Zone Zone 实例创建**
 - 文件: `src/stratix-systemzone/SystemZoneManager.ts`（新建）
 - 任务: 创建 Zone 实例 + ZoneCoordinator + 4 个 Agent + 注册成员和能力
 - 验收: ZoneCoordinator 能列出 4 个成员，能查到能力
 
-**A2. Agent Skill 注册**
-- 文件: 每个角色的 skill 定义文件
-- 任务: 把现有模块的功能封装成 Skill（Observer → observe_input skill, Scanner → scan_project skill, etc.）
+**A3. Agent Skill 注册**
+- 文件: `src/stratix-systemzone/skills/`（新建目录）
+- 任务: 为每个 Agent 定义 SkillDefinition，executor 类型用 `'systemzone'`
 - 验收: 每个 Agent 的 skill 列表正确，能通过 `agent.skills.execute()` 调用
 
-**A3. Proposal 类型扩展**
+**A4. Proposal 类型扩展**
 - 文件: `src/stratix-systemzone/types.ts`
-- 任务: 增加 `modifications: FileModification[]` 和 `safetyAssessment: SafetyAssessment`
+- 任务: 增加 `modifications?: FileModification[]`（可选，向后兼容）和 `safetyAssessment?: SafetyAssessment`
 - 验收: TypeScript 编译通过，不破坏现有代码
 
 ### Phase B：核心链路（修好断裂的执行管道）
@@ -476,9 +529,21 @@ strategistAgent.skills.registerSkill({
 - 任务: 改造 `CodeModifier.ts` 支持 unified diff 应用
   - `validateDiff()` — 用 `git apply --check` 验证 diff 是否可以应用
   - `applyDiff()` — 用 `git apply` 应用 diff 到沙箱目录
-  - `applyDiffFallback()` — 如果 `git apply` 失败，尝试逐 hunk 精确匹配应用
+  - `applyDiffFallback()` — `git apply` 失败时的逐 hunk 回退策略（见下方规则）
 - 同时: 修改 `Executor.buildModificationPlan()` 从 `proposal.modifications` 取值
 - 验收: 给定有效的 unified diff，能正确修改文件并通过测试
+
+**DiffApplier fallback 规则**：
+1. 首选 `git apply`（精确、可靠）
+2. `git apply` 失败时，逐 hunk 尝试应用：
+   - 用 hunk 的 oldStart 行号定位文件位置
+   - 验证上下文行（context lines）是否匹配
+   - 匹配则应用该 hunk 的增删改
+   - 不匹配则跳过该 hunk，记录到错误列表
+3. 如果 fallback 后有任何 hunk 失败：
+   - 回滚所有已应用的 hunk
+   - 返回错误信息（含失败的 hunk 详情）
+   - **不**自动重试 LLM——由 ZoneCoordinator 决策是否重新生成
 
 **B3. Guardian Agent 的安全审查 + 高风险暂停**
 - 任务: Guardian Agent 审查 modifications 的安全性
@@ -494,8 +559,10 @@ strategistAgent.skills.registerSkill({
 
 ### Phase C：协作流程（ZoneCoordinator 驱动完整 cycle）
 
-**C1. System Zone 专属的 Coordinator 编排逻辑**
-- 任务: ZoneCoordinator.processRequirement() 的自定义版本
+**C1. System Zone Coordinator 编排逻辑**
+- 任务: 在 `SystemZoneManager.ts` 中实现固定编排流程（不依赖 ZoneCoordinator 的 LLM 分解）
+- 方式: **方案 A — 固定流程**。System Zone 的 cycle 是确定性的：观察 → 策略 → 审查 → 执行 → 评估，不需要 LLM 分解
+- 实现: `SystemZoneCoordinator` 类，内部调用 `ZoneCoordinator.delegateTask()` + `receiveTaskReport()` 驱动 Agent 协作
 - 流程: 观察 → 策略 → 审查 → 执行 → 评估
 - 验收: 完整 cycle 能跑通
 
@@ -527,17 +594,20 @@ strategistAgent.skills.registerSkill({
 |------|------|------|
 | System Zone 是不是 Zone 实例 | **是** | 复用 Zone 的所有基础设施（成员、能力、任务流转、审计） |
 | Agent 框架选择 | **StratixAgent** | 项目已有的框架，有完整的 Skill/Memory/Session 支持 |
+| Skill 执行器 | **`systemzone` 自定义 executor** | 现有 builtin 只支持计算器，需要新 executor 调用 TS 模块 |
 | LLM 输出格式 | **JSON modifications** | 必须可直接执行，不能是描述性文本 |
 | 代码修改粒度 | **Unified diff** | 可被 `git apply` 直接应用，有标准工具链支持，比 search/replace 更精确可靠 |
 | Guardian 的定位 | **独立审查 Agent** | 不是 Executor 的前置校验，是有独立判断能力的 LLM Agent |
 | BootstrapEngine 去留 | **被 ZoneCoordinator 替代** | 编排逻辑天然属于 Coordinator 职责 |
 | 已有模块去留 | **保留为 Skill/Tool** | 不废弃，作为 Agent 可调用的能力 |
+| Coordinator 编排方式 | **固定流程（方案 A）** | System Zone 的 cycle 是确定性的，不依赖 LLM 分解 |
+| Proposal.modifications | **可选字段** | 向后兼容，现有代码不受影响 |
 
 ---
 
 ## 6. 风险和约束
 
-1. **LLM 生成 diff 的准确性** — 行号和上下文可能不精确。缓解：Executor 在 apply 前先用 `git apply --check` 验证，失败则回退到让 LLM 重新生成
+1. **LLM 生成 diff 的准确性** — 行号和上下文可能不精确。缓解：`git apply --check` 验证 + 逐 hunk 回退策略，全部失败则回滚不重试，由 Coordinator 决策下一步
 2. **Agent 间 LLM 调用成本** — 每个 Agent 各调一次 LLM，一次 cycle 至少 4 次调用。缓解：低风险任务可跳过 Guardian
 3. **现有测试兼容性** — 现有测试是针对独立模块的，需要适配为 Agent skill 测试
 4. **UI 改动范围** — Zone 通用 UI 已完整（成员、任务、审计），System Zone 需要增加 Agent 状态 Tab

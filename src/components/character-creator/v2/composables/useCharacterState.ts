@@ -6,6 +6,8 @@
 
 import { ref, computed, watch } from 'vue';
 import { characterStorage } from '@/stratix-character-creator/core/CharacterStorage';
+import { characterComposer } from '@/stratix-character-creator';
+import { textureManager } from '@/stratix-core/services';
 import { DEFAULT_BODY_TYPE } from '@/stratix-character-creator/constants';
 import type { SavedCharacter } from '@/stratix-character-creator/types';
 import type { BodyType } from '@/stratix-character-creator/constants';
@@ -74,8 +76,38 @@ export function useCharacterState(options: UseCharacterStateOptions = {}) {
     if (!currentCharacter.value) return false;
 
     try {
+      // 1. 合成角色获取 canvas，生成缩略图
+      const result = await characterComposer.composeCharacter(currentCharacter.value.parts, {
+        bodyType: currentCharacter.value.bodyType,
+      });
+      currentCharacter.value.thumbnail = textureManager.generateThumbnail(result.canvas, 128);
+
+      // 2. 生成纹理并上传
+      const texture = await textureManager.generateAndUploadTexture({
+        characterId: currentCharacter.value.characterId,
+        name: currentCharacter.value.name,
+        bodyType: currentCharacter.value.bodyType,
+        parts: currentCharacter.value.parts,
+        thumbnail: currentCharacter.value.thumbnail,
+        createdAt: currentCharacter.value.createdAt,
+        updatedAt: currentCharacter.value.updatedAt,
+      });
+      if (texture) {
+        currentCharacter.value.texture = texture;
+      }
+
+      // 3. 更新时间戳
       currentCharacter.value.updatedAt = Date.now();
-      await characterStorage.save(currentCharacter.value);
+
+      // 4. 清理 stratixConfig 中的 apiKey（安全）
+      const characterToSave = { ...currentCharacter.value };
+      if (characterToSave.stratixConfig) {
+        const { apiKey: _apiKey, ...rest } = characterToSave.stratixConfig as any;
+        characterToSave.stratixConfig = rest;
+      }
+
+      // 5. 保存到 storage
+      await characterStorage.save(characterToSave);
       isDirty.value = false;
       await loadSavedCharacters(); // 刷新列表
       return true;
