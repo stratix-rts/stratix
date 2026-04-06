@@ -121,6 +121,27 @@ const agentConfig = ref<AgentConfigData>({
 });
 
 // ============================================================================
+// Toast 消息系统
+// ============================================================================
+
+interface ToastMessage {
+  id: number;
+  text: string;
+  type: 'success' | 'error' | 'info';
+}
+
+const toasts = ref<ToastMessage[]>([]);
+let toastId = 0;
+
+function showToast(text: string, type: 'success' | 'error' | 'info' = 'info'): void {
+  const id = ++toastId;
+  toasts.value.push({ id, text, type });
+  setTimeout(() => {
+    toasts.value = toasts.value.filter((t) => t.id !== id);
+  }, 3000);
+}
+
+// ============================================================================
 // 角色名称编辑
 // ============================================================================
 
@@ -186,6 +207,7 @@ async function handleLoadCharacter(characterId: string): Promise<void> {
     // 重置步骤
     currentStep.value = 'appearance';
     completedSteps.value = [];
+    showToast(`已加载: ${character.name}`, 'info');
   }
 }
 
@@ -214,12 +236,15 @@ async function handleSave(): Promise<void> {
   const success = await saveCharacter();
 
   if (success) {
+    showToast('角色已保存', 'success');
     const saved = currentCharacter.value;
     if (isNew) {
       emit('created', saved);
     } else {
       emit('updated', saved);
     }
+  } else {
+    showToast('保存失败', 'error');
   }
 }
 
@@ -232,6 +257,7 @@ async function confirmDelete(): Promise<void> {
   if (pendingDeleteId.value) {
     const success = await deleteCharacter(pendingDeleteId.value);
     if (success) {
+      showToast('角色已删除', 'success');
       emit('deleted', pendingDeleteId.value);
     }
   }
@@ -282,6 +308,7 @@ function handlePartDeselect(category: PartCategory): void {
 }
 
 function handleRandomize(): void {
+  const modeNames = { minimal: '精简', normal: '普通', full: '完全' };
   switch (randomizeMode.value) {
     case 'minimal':
       randomizeMinimal();
@@ -297,6 +324,7 @@ function handleRandomize(): void {
   if (currentCharacter.value) {
     currentCharacter.value.parts = { ...selectedParts.value };
   }
+  showToast(`角色已随机 (${modeNames[randomizeMode.value]}模式)`, 'success');
 }
 
 function cycleRandomMode(): void {
@@ -561,6 +589,19 @@ watch(selectedParts, (parts) => {
           />
         </aside>
       </div>
+
+      <!-- Toast 消息 -->
+      <div class="toast-container">
+        <TransitionGroup name="toast">
+          <div
+            v-for="toast in toasts"
+            :key="toast.id"
+            :class="['toast', `toast-${toast.type}`]"
+          >
+            {{ toast.text }}
+          </div>
+        </TransitionGroup>
+      </div>
     </div>
   </StratixModal>
 
@@ -767,5 +808,75 @@ watch(selectedParts, (parts) => {
 .right-panel::-webkit-scrollbar-thumb:hover,
 .step-content::-webkit-scrollbar-thumb:hover {
   background: var(--ds-color-primary);
+}
+
+/* Toast 消息系统 */
+.toast-container {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+.toast {
+  padding: 10px 20px;
+  background: rgba(0, 0, 0, 0.85);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: 'SF Mono', 'Monaco', monospace;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.toast-success {
+  color: var(--ds-status-success, #34c759);
+}
+
+.toast-error {
+  color: var(--ds-status-danger, #ff3b30);
+}
+
+.toast-info {
+  color: var(--ds-color-primary, #007aff);
+}
+
+/* Toast 动画 */
+.toast-enter-active {
+  animation: toast-in 0.3s ease-out;
+}
+
+.toast-leave-active {
+  animation: toast-out 0.3s ease-in;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
 }
 </style>
