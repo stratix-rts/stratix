@@ -52,6 +52,31 @@ function hexToNumber(hex: string): number {
   return parseInt(hex.replace('#', ''), 16);
 }
 
+function createCheckerboardTexture(scene: Phaser.Scene, width: number, height: number): string {
+  const key = `checkerboard_bg_${width}_${height}`;
+  if (scene.textures.exists(key)) return key;
+
+  const size = 8;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d')!;
+
+  const color1 = getThemeColor('colors.text.primary');
+  const color2 = getThemeColor('colors.text.secondary');
+
+  for (let y = 0; y < height; y += size) {
+    for (let x = 0; x < width; x += size) {
+      const isLight = ((x / size) + (y / size)) % 2 === 0;
+      ctx.fillStyle = isLight ? color1 : color2;
+      ctx.fillRect(x, y, size, size);
+    }
+  }
+
+  scene.textures.addCanvas(key, canvas);
+  return key;
+}
+
 function getBackgroundColor(): number {
   return hexToNumber(getThemeColor('colors.background.base'));
 }
@@ -141,6 +166,11 @@ function displayFrame(textureKey: string, frameIndexes: number[], frameIdx: numb
   const camera = scene.cameras.main;
   const centerX = camera.width / 2;
   const centerY = camera.height / 2;
+
+  // Add checkerboard background first (behind sprite)
+  const checkerboardKey = createCheckerboardTexture(scene, camera.width, camera.height);
+  const checkerboardImg = scene.add.image(0, 0, checkerboardKey);
+  checkerboardImg.setOrigin(0, 0);
 
   const sprite = scene.add.sprite(centerX, centerY, frameTextureKey);
   sprite.setScale(currentScale.value);
