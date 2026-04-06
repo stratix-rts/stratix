@@ -473,20 +473,22 @@ export class StrategistLLMEnhancer {
 
       // Map effortEstimate to cost (1-10 scale)
       const effortMap: Record<string, number> = { small: 2, medium: 5, large: 8 };
-      const estimatedCost = parsed.effortEstimate
-        ? effortMap[parsed.effortEstimate.toLowerCase()] ?? 5
+      const effortStr = typeof parsed.effortEstimate === 'string' ? parsed.effortEstimate : '';
+      const estimatedCost = effortStr
+        ? effortMap[effortStr.toLowerCase()] ?? 5
         : parsed.estimatedCost;
 
       // Map riskLevel to benefit inversely (high risk = lower benefit)
       const riskMap: Record<string, number> = { low: 8, medium: 5, high: 3 };
-      const estimatedBenefit = parsed.riskLevel
-        ? riskMap[parsed.riskLevel.toLowerCase()] ?? 5
+      const riskStr = typeof parsed.riskLevel === 'string' ? parsed.riskLevel : '';
+      const estimatedBenefit = riskStr
+        ? riskMap[riskStr.toLowerCase()] ?? 5
         : parsed.estimatedBenefit;
 
       // Convert riskLevel to confidence
       const confidenceMap: Record<string, number> = { low: 0.9, medium: 0.7, high: 0.5 };
-      const confidence = parsed.riskLevel
-        ? confidenceMap[parsed.riskLevel.toLowerCase()] ?? 0.7
+      const confidence = riskStr
+        ? confidenceMap[riskStr.toLowerCase()] ?? 0.7
         : 0.7;
 
       return {
@@ -711,7 +713,7 @@ export class StrategistLLMEnhancer {
     promise: Promise<T>,
     timeoutMs: number
   ): Promise<T | null> {
-    let timeoutId: NodeJS.Timeout;
+    let timeoutId: NodeJS.Timeout | undefined;
 
     const timeoutPromise = new Promise<null>((resolve) => {
       timeoutId = setTimeout(() => resolve(null), timeoutMs);
@@ -719,10 +721,10 @@ export class StrategistLLMEnhancer {
 
     try {
       const result = await Promise.race([promise, timeoutPromise]);
-      clearTimeout(timeoutId!);
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
       return result;
     } catch {
-      clearTimeout(timeoutId!);
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
       return null;
     }
   }

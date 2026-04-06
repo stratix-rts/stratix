@@ -154,18 +154,30 @@ export class ProjectScanner {
    */
   async runEslintScan(): Promise<Array<{ file: string; ruleId: string | null; severity: 1 | 2; message: string; line: number }>> {
     return new Promise((resolve) => {
-      const proc = spawn('npx eslint "src/**/*.{ts,vue}" --format json --no-error-on-unmatched-pattern 2>&1', {
+      const proc = spawn('npx', ['eslint', 'src/**/*.{ts,vue}', '--format', 'json', '--no-error-on-unmatched-pattern'], {
         cwd: this.config.cwd,
         shell: true,
       });
 
       let stdout = '';
+      let stderr = '';
 
       proc.stdout?.on('data', (data) => {
         stdout += data.toString();
       });
 
+      proc.stderr?.on('data', (data) => {
+        stderr += data.toString();
+      });
+
+      const timer = setTimeout(() => {
+        proc.kill('SIGTERM');
+        // Resolve with empty on timeout (eslint unavailable or hung)
+        resolve([]);
+      }, this.config.timeoutMs);
+
       proc.on('close', () => {
+        clearTimeout(timer);
         try {
           const results = JSON.parse(stdout);
           const items: EslintScanItem[] = [];
@@ -191,6 +203,7 @@ export class ProjectScanner {
       });
 
       proc.on('error', () => {
+        clearTimeout(timer);
         resolve([]);
       });
     });
@@ -419,19 +432,31 @@ export class ProjectScanner {
    * tsc 不可用或执行失败时返回空数组（不报错）
    */
   async runTscScan(): Promise<Array<{ file: string; line: number; message: string; code: string }>> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const proc = spawn('npx', ['tsc', '--noEmit', '--pretty', 'false'], {
         cwd: this.config.cwd,
         shell: true,
       });
 
       let stdout = '';
+      let stderr = '';
 
       proc.stdout?.on('data', (data) => {
         stdout += data.toString();
       });
 
+      proc.stderr?.on('data', (data) => {
+        stderr += data.toString();
+      });
+
+      const timer = setTimeout(() => {
+        proc.kill('SIGTERM');
+        // Resolve with empty array on timeout (tsc unavailable or hung)
+        resolve([]);
+      }, this.config.timeoutMs);
+
       proc.on('close', () => {
+        clearTimeout(timer);
         try {
           const parsed = JSON.parse(stdout);
           const diagnostics = Array.isArray(parsed) ? parsed : [];
@@ -448,7 +473,8 @@ export class ProjectScanner {
         }
       });
 
-      proc.on('error', () => {
+      proc.on('error', (err) => {
+        clearTimeout(timer);
         // tsc not available — return empty array, no error
         resolve([]);
       });
