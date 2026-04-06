@@ -25,7 +25,7 @@ export class ProcessManager {
   /**
    * 优雅关闭进程：先 SIGTERM 等待超时，再 SIGKILL 强制终止
    */
-  async gracefulKill(pid: number, timeout = 5000): Promise<void> {
+  async gracefulKill(pid: number, timeoutMs = 5000): Promise<void> {
     return new Promise((resolve) => {
       try {
         process.kill(pid, 'SIGTERM');
@@ -35,30 +35,31 @@ export class ProcessManager {
         return;
       }
 
-      const interval = setInterval(() => {
+      let settled = false;
+      const settle = () => {
+        if (settled) return;
+        settled = true;
+        clearInterval(pollTimer);
+        clearTimeout(killTimer);
+        resolve();
+      };
+
+      const pollTimer = setInterval(() => {
         try {
           process.kill(pid, 0);
-          // 进程还在
+          // 进程还在，继续等
         } catch {
           // 进程已退出
-          clearInterval(interval);
-          resolve();
+          settle();
         }
       }, 200);
 
-      setTimeout(() => {
-        clearInterval(interval);
+      const killTimer = setTimeout(() => {
         try {
           process.kill(pid, 'SIGKILL');
         } catch {}
-        resolve();
-      }, timeout);
-
-      // cleanup when resolved
-      const cleanup = () => {
-        clearInterval(interval);
-        clearTimeout(timeout);
-      };
+        settle();
+      }, timeoutMs);
     });
   }
 

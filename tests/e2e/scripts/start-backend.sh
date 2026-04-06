@@ -21,3 +21,6 @@ npm run dev:backend > "$LOG_FILE" 2>&1 &
 BACKEND_PID=$!
 echo $BACKEND_PID > "$PID_FILE"
 echo "[start-backend] PID=$BACKEND_PID started, log=$LOG_FILE"
+
+# 保持前台阻塞，Playwright webServer 需要命令不退出
+wait $BACKEND_PID

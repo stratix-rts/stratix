@@ -21,3 +21,6 @@ npm run dev:frontend > "$LOG_FILE" 2>&1 &
 FRONTEND_PID=$!
 echo $FRONTEND_PID > "$PID_FILE"
 echo "[start-frontend] PID=$FRONTEND_PID started, log=$LOG_FILE"
+
+# 保持前台阻塞，Playwright webServer 需要命令不退出
+wait $FRONTEND_PID
