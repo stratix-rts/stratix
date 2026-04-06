@@ -8,6 +8,7 @@ import { CodeModifier } from './CodeModifier';
 import { TestRunner } from './TestRunner';
 import { RollbackManager } from './RollbackManager';
 import { Guardian } from '../guardian/Guardian';
+import { DiffApplier } from './DiffApplier';
 
 import type { Proposal } from '../types';
 
@@ -86,6 +87,7 @@ export class Executor {
   private testRunner: TestRunner;
   private rollbackManager: RollbackManager;
   private guardian: Guardian;
+  private diffApplier: DiffApplier | null = null;
 
   // Dependencies
   private deps: ExecutorDependencies;
@@ -377,6 +379,13 @@ export class Executor {
   }
 
   /**
+   * 设置 DiffApplier
+   */
+  setDiffApplier(applier: DiffApplier): void {
+    this.diffApplier = applier;
+  }
+
+  /**
    * 重置熔断器
    */
   resetCircuitBreaker(): void {
@@ -445,14 +454,14 @@ export class Executor {
    * 构建修改计划
    */
   private buildModificationPlan(proposal: Proposal): ModificationPlan {
-    // 从提案中提取修改计划
-    // 实际实现中，Proposal 应该包含 modifications 字段
-    // 这里做类型适配
-    const modifications: FileModification[] = [];
-
-    if ('modifications' in proposal && Array.isArray((proposal as any).modifications)) {
-      modifications.push(...(proposal as any).modifications);
-    }
+    // 从 Proposal.modifications（A1 新增的 SystemZoneFileModification[]）映射到 executor 的 FileModification
+    const modifications: FileModification[] = (proposal.modifications ?? []).map(m => ({
+      type: m.type,
+      path: m.path,
+      content: m.content,
+      description: m.description,
+      ...(m.newPath ? { newPath: m.newPath } : {}),
+    }));
 
     return {
       proposalId: proposal.id,

@@ -31,3 +31,6 @@ export type {
   SystemZoneInitConfig,
   SystemZoneState,
 } from './SystemZone';
+
+// 导出 SystemZoneManager
+export { SystemZoneManager } from './SystemZoneManager';
