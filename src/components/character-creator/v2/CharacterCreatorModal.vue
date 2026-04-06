@@ -6,7 +6,7 @@
  * 保持与 V1 完全相同的 props/emits 接口
  */
 
-import { ref, watch, computed, onMounted } from 'vue';
+import { ref, watch, computed, onMounted, onBeforeUnmount } from 'vue';
 import { StratixModal, StratixButton, StratixConfirmDialog } from '@/components/ui';
 import type { SavedCharacter } from '@/stratix-character-creator/types';
 import type { BodyType } from '@/stratix-character-creator/constants';
@@ -20,6 +20,7 @@ import { usePartSelection } from './composables/usePartSelection';
 import { usePreviewControl } from './composables/usePreviewControl';
 import { SkillTree } from '@/stratix-character-creator/core/SkillTree';
 import { SKILL_TREE_CONFIG } from '@/stratix-character-creator/config/skillTreeConfig';
+import { characterCreatorEvents } from '@/stratix-character-creator/core/EventEmitter';
 
 import CanvasPreview from './components/CanvasPreview.vue';
 import PartSelector from './components/PartSelector.vue';
@@ -309,6 +310,7 @@ async function confirmDelete(): Promise<void> {
     if (success) {
       showToast('角色已删除', 'success');
       emit('deleted', pendingDeleteId.value);
+      characterCreatorEvents.emitCharacterDeleted(pendingDeleteId.value);
     }
   }
   showDeleteConfirm.value = false;
@@ -477,6 +479,23 @@ watch(selectedParts, (parts) => {
     currentCharacter.value.parts = { ...parts };
   }
 }, { deep: true });
+
+// ============================================================================
+// EventBus 监听 (外部打开角色创建器)
+// ============================================================================
+
+onMounted(() => {
+  const unsubOpen = characterCreatorEvents.onOpenCreator((data) => {
+    if (data.targetCharacterId && props.visible) {
+      handleLoadCharacter(data.targetCharacterId);
+    }
+  });
+
+  // 组件卸载时清理
+  onBeforeUnmount(() => {
+    unsubOpen();
+  });
+});
 </script>
 
 <template>
