@@ -97,7 +97,6 @@ export class TestRunner {
       const proc = spawn('npm', args, {
         cwd: workDir,
         shell: true,
-        timeout: this.timeoutMs,
       });
 
       let stdout = '';
@@ -162,7 +161,6 @@ export class TestRunner {
       const proc = spawn('npm', args, {
         cwd: workDir,
         shell: true,
-        timeout: this.timeoutMs,
       });
 
       let stdout = '';

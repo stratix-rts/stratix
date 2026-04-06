@@ -150,7 +150,7 @@ export class FitnessEvaluator {
 
     // Calculate duplication rate (simplified - based on uncovered files ratio)
     const duplicationRate = coverage.totalStatements > 0
-      ? coverage.uncoveredFiles.length / Math.max(1, Object.keys(coverage).length)
+      ? (coverage.uncoveredFiles?.length ?? 0) / Math.max(1, Object.keys(coverage).length)
       : 0;
 
     // Count lint issues
