@@ -800,12 +800,19 @@ ${assignStrategyDescription}
       // Persist to database
       this.updateTaskInDB(taskId, { status: 'delegated', assigneeId: toAgentId });
 
-      // Emit task_delegated event
+      // Emit task_delegated event with full task info for agent notification
       ZoneCoordinatorEventEmitter.getInstance().emit({
         type: 'task_delegated',
         zoneId: this.zoneId,
         taskId,
         agentId: toAgentId,
+        task: {
+          id: task.id,
+          title: task.title,
+          description: task.description,
+          type: task.type,
+          priority: task.priority,
+        },
         timestamp: Date.now(),
       });
 

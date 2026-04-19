@@ -256,6 +256,36 @@ export class StatusSyncService {
   }
 
   /**
+   * Push task directly to a specific Agent via WebSocket
+   * Used for real-time task delivery when task is assigned
+   */
+  public notifyAgentTaskAssigned(agentId: string, task: {
+    taskId: string;
+    zoneId: string;
+    name: string;
+    description?: string;
+    type: string;
+    priority: number;
+  }): void {
+    const message = JSON.stringify({
+      eventType: 'agent:task_assigned',
+      payload: { task },
+      timestamp: Date.now(),
+      requestId: `agent-task-${Date.now()}`
+    });
+
+    // Find the specific agent's WebSocket connection and send directly
+    this.clientInfo.forEach((info, ws) => {
+      if (info.type === 'agent' && info.agentId === agentId) {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(message);
+          console.log(`[StatusSync] Sent task ${task.taskId} to agent ${agentId}`);
+        }
+      }
+    });
+  }
+
+  /**
    * Notify task completion
    */
   public notifyTaskCompleted(taskId: string, agentId: string, result?: any): void {

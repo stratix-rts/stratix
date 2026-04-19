@@ -345,7 +345,33 @@ export class ZoneService {
       agentId
     });
 
+    // Auto-assign pending tasks to the new member
+    this.autoAssignTaskToMember(zoneId, agentId);
+
     return zone;
+  }
+
+  /**
+   * Auto-assign a pending task to a newly joined member
+   */
+  private autoAssignTaskToMember(zoneId: string, agentId: string): void {
+    try {
+      // Dynamic require to avoid circular dependency between gateway and orchestration layers
+      const TaskQueueService = require('../../stratix-orchestration/task-queue/TaskQueueService').TaskQueueService;
+      const taskQueue = TaskQueueService.getInstance();
+
+      // Try to claim a pending task for this agent in this zone
+      taskQueue.dequeueTask(agentId, zoneId).then((task: any) => {
+        if (task) {
+          console.log(`[ZoneService] Auto-claimed task ${task.taskId} for agent ${agentId} in zone ${zoneId}`);
+        }
+      }).catch((err: any) => {
+        console.warn(`[ZoneService] Failed to auto-assign task to ${agentId}:`, err);
+      });
+    } catch (err) {
+      // TaskQueueService may not be available in all contexts
+      console.debug('[ZoneService] TaskQueueService not available for auto-assign:', err);
+    }
   }
 
   public async removeMember(zoneId: string, agentId: string, requesterId: string = 'system'): Promise<Zone> {

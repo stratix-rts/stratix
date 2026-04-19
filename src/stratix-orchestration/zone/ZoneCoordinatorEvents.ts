@@ -32,6 +32,13 @@ export interface ZoneCoordinatorEventPayload {
     type: string;
     priority: number;
   }>;
+  task?: {
+    id: string;
+    title: string;
+    description: string;
+    type: string;
+    priority: number;
+  };
   report?: {
     success: boolean;
     output?: string;

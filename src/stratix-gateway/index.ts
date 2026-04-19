@@ -20,6 +20,7 @@ import { createNocoDBService, type NocoDBServiceOptions } from '../stratix-nocod
 
 import agentRoutes from './api/routes/agent';
 import agentOrchestrationRoutes from './api/routes/agentOrchestration';
+import agentTaskRoutes from './api/routes/agentTask';
 import commandRoutes, { setStatusSyncService as setCommandStatusSyncService } from './api/routes/command';
 import lraRoutes from './api/routes/lra';
 import openclawRoutes, { initWebSocketServer, initConnectionStore } from './api/routes/openclaw';
@@ -115,6 +116,7 @@ export async function startGatewayService(
   // 注册路由
   app.use('/api/stratix/config/agent', agentRoutes);
   app.use('/api/stratix/agent', agentRoutes);
+  app.use('/api/agent', agentTaskRoutes);
   app.use('/api/stratix/command', commandRoutes);
   app.use('/api/stratix/config/template', templateRoutes);
   app.use('/api/stratix/texture', textureRoutes);

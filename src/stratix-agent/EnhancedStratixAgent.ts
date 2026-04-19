@@ -627,6 +627,9 @@ export class EnhancedStratixAgent extends StratixAgent {
    * 调用此方法确保 session 被销毁，防止内存泄漏
    */
   async stop(): Promise<void> {
+    // Stop task polling first
+    this.stopTaskPolling();
+
     if (this.currentSessionId) {
       try {
         await this.runtime.destroy(this.currentSessionId);
@@ -653,6 +656,132 @@ export class EnhancedStratixAgent extends StratixAgent {
   }
 
   private shouldStop = false;
+
+  // ============================================
+  // Task Polling (Agent Task Management)
+  // ============================================
+
+  private taskPollInterval: NodeJS.Timeout | null = null;
+  private pendingTasks: Array<{
+    taskId: string;
+    zoneId: string;
+    name: string;
+    description?: string;
+    type: string;
+    priority: number;
+  }> = [];
+
+  /**
+   * Start polling for tasks assigned to this agent
+   * Uses TaskQueueService via REST API to fetch pending tasks
+   */
+  async startTaskPolling(intervalMs: number = 5000): Promise<void> {
+    if (this.taskPollInterval) {
+      console.warn(`[Agent ${this.config.agentId}] Task polling already running`);
+      return;
+    }
+
+    console.log(`[Agent ${this.config.agentId}] Starting task polling every ${intervalMs}ms`);
+
+    // Initial fetch
+    await this.pollTasksInternal();
+
+    // Set up interval
+    this.taskPollInterval = setInterval(async () => {
+      await this.pollTasksInternal();
+    }, intervalMs);
+  }
+
+  /**
+   * Stop polling for tasks
+   */
+  stopTaskPolling(): void {
+    if (this.taskPollInterval) {
+      clearInterval(this.taskPollInterval);
+      this.taskPollInterval = null;
+      console.log(`[Agent ${this.config.agentId}] Task polling stopped`);
+    }
+  }
+
+  /**
+   * Internal method to poll tasks from TaskQueueService
+   */
+  private async pollTasksInternal(): Promise<void> {
+    if (this.shouldStop) return;
+
+    try {
+      // Dynamic require to avoid circular dependency
+      const TaskQueueService = require('../stratix-orchestration/task-queue/TaskQueueService').TaskQueueService;
+      const taskQueue = TaskQueueService.getInstance();
+
+      const tasks: any[] = await taskQueue.getTasksByAgent(this.config.agentId);
+
+      if (tasks.length > 0) {
+        this.pendingTasks = tasks.map((t: any) => ({
+          taskId: t.taskId,
+          zoneId: t.zoneId,
+          name: t.name,
+          description: t.description,
+          type: t.type,
+          priority: t.priority,
+        }));
+
+        console.log(`[Agent ${this.config.agentId}] Polled ${tasks.length} pending tasks`);
+
+        // Emit event for external listeners
+        this.emitTaskReceived(this.pendingTasks);
+      }
+    } catch (error) {
+      console.error(`[Agent ${this.config.agentId}] Task polling error:`, error);
+    }
+  }
+
+  /**
+   * Get current pending tasks
+   */
+  getPendingTasks(): Array<{
+    taskId: string;
+    zoneId: string;
+    name: string;
+    description?: string;
+    type: string;
+    priority: number;
+  }> {
+    return this.pendingTasks;
+  }
+
+  /**
+   * Mark a task as complete
+   */
+  async completeTask(taskId: string, result?: Record<string, unknown>): Promise<boolean> {
+    try {
+      const TaskQueueService = require('../stratix-orchestration/task-queue/TaskQueueService').TaskQueueService;
+      const taskQueue = TaskQueueService.getInstance();
+
+      const task = await taskQueue.updateTask(taskId, {
+        status: 'completed',
+        result,
+      });
+
+      if (task) {
+        // Remove from pending tasks
+        this.pendingTasks = this.pendingTasks.filter(t => t.taskId !== taskId);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error(`[Agent ${this.config.agentId}] Failed to complete task ${taskId}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Emit task received event (for external listeners like WebSocket)
+   */
+  private emitTaskReceived(tasks: typeof this.pendingTasks): void {
+    // This can be connected to the event system if needed
+    // For now, tasks are stored in pendingTasks for retrieval via getPendingTasks()
+  }
 
   // ============================================
   // SessionRuntime Getters

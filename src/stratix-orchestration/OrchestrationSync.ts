@@ -24,6 +24,14 @@ interface StatusSyncInterface {
   notifyTaskCompleted(taskId: string, agentId: string, result?: unknown): void;
   notifyBackgroundAgentStatus(agentId: string, status: string, zoneId?: string, error?: string): void;
   notifyAgentMessageSent(messageId: string, conversationId: string, senderId: string, messageType: string): void;
+  notifyAgentTaskAssigned(agentId: string, task: {
+    taskId: string;
+    zoneId: string;
+    name: string;
+    description?: string;
+    type: string;
+    priority: number;
+  }): void;
 }
 
 export class OrchestrationSync {
@@ -205,6 +213,20 @@ export class OrchestrationSync {
     // ZoneCoordinator events
     const zoneCoordinatorEmitter = ZoneCoordinatorEventEmitter.getInstance();
     const zoneCoordHandler = (payload: ZoneCoordinatorEventPayload) => {
+      const sync = this.getStatusSync();
+      if (sync) {
+        // Handle task_delegated - push task directly to specific agent
+        if (payload.type === 'task_delegated' && payload.agentId && payload.task) {
+          sync.notifyAgentTaskAssigned(payload.agentId, {
+            taskId: payload.task.id,
+            zoneId: payload.zoneId,
+            name: payload.task.title,
+            description: payload.task.description,
+            type: payload.task.type,
+            priority: payload.task.priority,
+          });
+        }
+      }
       this.notifyZoneCoordinatorEvent(payload);
     };
     zoneCoordinatorEmitter.onAny(zoneCoordHandler);
