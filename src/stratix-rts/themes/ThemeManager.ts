@@ -27,7 +27,7 @@ export interface ThemeConfig {
 }
 
 // 纹理路径配置
-const TEXTURE_BASE_PATH = 'textures';
+const TEXTURE_BASE_PATH = 'rts-textures';
 
 function getTexturePaths(theme: ThemeName): ThemeTextureSet {
   const base = `${TEXTURE_BASE_PATH}/${theme}`;

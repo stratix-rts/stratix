@@ -34,6 +34,9 @@ npm-debug.log*
 stratix-data/
 stratix-backups/
 *.db.json
+
+# Theme textures (in public so they get packaged)
+!public/rts-textures/
 assets/
 
 # Coverage

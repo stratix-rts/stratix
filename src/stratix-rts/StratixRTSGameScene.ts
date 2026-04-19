@@ -79,7 +79,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
    * 预加载主题纹理
    */
   private preloadThemeTextures(theme: ThemeName): void {
-    const basePath = `textures/${theme}`;
+    const basePath = `rts-textures/${theme}`;
     const textures = [
       'ground_base', 'ground_dark', 'ground_light',
       'grass_tuft', 'rock_small', 'rock_large',
