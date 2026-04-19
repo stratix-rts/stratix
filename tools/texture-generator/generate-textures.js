@@ -700,7 +700,9 @@ function generateTexture(theme, type, seed) {
   const filename = `${type}.png`;
   const filepath = path.join(themeDir, filename);
 
-  png.pack().pipe(fs.createWriteStream(filepath));
+  // Write synchronously to ensure file is complete before deploy reads it
+  const buffer = PNG.sync.write(png);
+  fs.writeFileSync(filepath, buffer);
   console.log(`Generated: ${theme}/${filename}`);
 
   return filepath;
@@ -723,6 +725,15 @@ function generateTheme(theme) {
 function generateAll() {
   console.log('=== Generating all 4 themes (40 textures) ===\n');
 
+  // 清理输出目录
+  for (const theme of Object.keys(PALETTES)) {
+    const themeDir = path.join(OUTPUT_DIR, theme);
+    if (fs.existsSync(themeDir)) {
+      fs.rmSync(themeDir, { recursive: true });
+    }
+    fs.mkdirSync(themeDir, { recursive: true });
+  }
+
   for (const theme of Object.keys(PALETTES)) {
     generateTheme(theme);
   }
@@ -731,17 +742,58 @@ function generateAll() {
   console.log(`Output directory: ${OUTPUT_DIR}`);
 }
 
+/**
+ * 复制输出到 public/rts-textures/
+ */
+function deployToPublic() {
+  const srcDir = path.join(__dirname, 'output');
+  const destDir = path.join(__dirname, '..', '..', 'public', 'rts-textures');
+
+  console.log('\n=== Deploying to public/rts-textures/ ===');
+
+  // 使用同步复制确保完成
+  for (const theme of ['fantasy', 'cartoon', 'cyberpunk', 'nature']) {
+    const srcThemeDir = path.join(srcDir, theme);
+    const destThemeDir = path.join(destDir, theme);
+
+    // 清理并重建目标目录
+    if (fs.existsSync(destThemeDir)) {
+      fs.rmSync(destThemeDir, { recursive: true });
+    }
+    fs.mkdirSync(destThemeDir, { recursive: true });
+
+    // 复制所有 PNG 文件
+    const files = fs.readdirSync(srcThemeDir).filter(f => f.endsWith('.png'));
+    for (const file of files) {
+      const srcFile = path.join(srcThemeDir, file);
+      const destFile = path.join(destThemeDir, file);
+      fs.copyFileSync(srcFile, destFile);
+    }
+    console.log(`${theme}: copied ${files.length} files`);
+  }
+
+  console.log('=== Deployed to public/rts-textures/ ===');
+}
+
 // CLI
 const args = process.argv.slice(2);
-if (args.length === 0) {
+const deploy = args.includes('--deploy') || args.includes('-d');
+
+if (args.length === 0 || (args.length === 1 && deploy)) {
   generateAll();
-} else if (args.length === 1) {
+} else if (args.length === 1 && !deploy) {
   generateTheme(args[0]);
-} else if (args.length === 2) {
+} else if (args.length === 2 && !deploy) {
   generateTexture(args[0], args[1], Math.floor(Math.random() * 100000));
 } else {
-  console.log('Usage: node generate-textures.js [theme] [type]');
-  console.log('  node generate-textures.js        # Generate all');
-  console.log('  node generate-textures.js fantasy # Generate fantasy only');
+  console.log('Usage: node generate-textures.js [options] [theme] [type]');
+  console.log('  node generate-textures.js                    # Generate all to output/');
+  console.log('  node generate-textures.js --deploy           # Generate all + copy to public/rts-textures/');
+  console.log('  node generate-textures.js fantasy           # Generate fantasy only');
   console.log('  node generate-textures.js fantasy ground_base # Single texture');
+  process.exit(1);
+}
+
+if (deploy) {
+  deployToPublic();
 }
