@@ -1,9 +1,0 @@
-{
-  "project_name": "Stratix Gateway",
-  "spec": "Stratix Gateway 星策网关 - 中间件服务层，负责指令转换、配置管理、OpenClaw连接和状态同步",
-  "created_at": "2026-02-22T15:00:00.000000",
-  "version": "2.0.0",
-  "schema_version": "2026-02-21",
-  "upgraded_at": "2026-02-22T15:00:00.000000",
-  "upgrade_history": []
-}
