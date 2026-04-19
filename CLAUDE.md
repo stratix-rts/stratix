@@ -25,6 +25,13 @@
 - ❌ 重复失败后不换思路
 - ❌ 改动与任务无关的代码
 - ❌ 忽略性能问题（详见 `docs/PERFORMANCE_GUIDELINES.md`）
+- ❌ 修改 `docs/rubric/SOLO_OBE_*.md` 或 `docs/rubric/eval_*.md`（这些是人类专用的评价文件）
+
+## 评价体系
+
+**你的产出会按 `docs/rubric/SOLO_OBE_RUBRIC.md` 的量表打分。**
+
+工作前先读该文件，理解评分维度和 SOLO 层级标准。你可以在 `docs/rubric/` 下创建 `agent_*.md` 文件来记录你的工作文档。
 
 ## 性能硬约束
 
@@ -58,3 +65,41 @@
 - 如果需要跑测试，先确认没有其他 agent 在跑 jest/tsc/eslint
 - agent 退出时必须清理所有子进程：`kill -TERM -- -$$PGID` 或杀掉所有 spawn 的子进程
 - 子进程失控 = 身体发烧，不可接受
+
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+**Project**: {project_name}
+**Description**: {project_description}
+
+## Architecture
+
+{project_architecture}
+
+## Task Management
+
+This project uses **LRA** for task tracking.
+See [lra.md](lra.md) for command reference.
+
+## Quick Start
+
+```bash
+lra ready              # Find available work
+lra show <id>          # View task details
+```
+
+<!-- BEGIN LRA CLAUDE SECTION -->
+
+## LRA Task Management
+
+This project uses **LRA** profile: **{profile}**
+
+- Detailed guide: [lra.md](lra.md)
+- Use `lra` for all task management
+- Run `lra ready` before starting work
+- ❌ Do not use markdown TODO lists
+
+<!-- END LRA CLAUDE SECTION -->
