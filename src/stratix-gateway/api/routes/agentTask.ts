@@ -14,6 +14,16 @@ const router = Router();
 const requestHelper = StratixRequestHelper.getInstance();
 
 /**
+ * Verify task belongs to the agent
+ */
+function verifyTaskOwnership(
+  task: { assignedAgentId?: string } | null,
+  agentId: string
+): boolean {
+  return task?.assignedAgentId === agentId;
+}
+
+/**
  * GET /api/agent/:agentId/tasks
  * Poll pending tasks assigned to an agent
  */
@@ -99,19 +109,26 @@ router.post('/:agentId/tasks/claim', async (req: Request, res: Response) => {
  */
 router.post('/:agentId/tasks/:taskId/start', async (req: Request, res: Response) => {
   try {
+    const agentId = req.params.agentId as string;
     const taskId = req.params.taskId as string;
     const taskQueue = TaskQueueService.getInstance();
+
+    // Verify task belongs to this agent before starting
+    const existingTask = await taskQueue.getTask(taskId);
+    if (!existingTask) {
+      res.status(404).json(requestHelper.notFound('Task not found'));
+      return;
+    }
+    if (!verifyTaskOwnership(existingTask, agentId)) {
+      res.status(403).json({ success: false, error: 'Task not assigned to this agent' });
+      return;
+    }
 
     const task = await taskQueue.updateTask(taskId, {
       status: 'in_progress',
     });
 
-    if (!task) {
-      res.status(404).json(requestHelper.notFound('Task not found'));
-      return;
-    }
-
-    res.json(requestHelper.success({ taskId: task.taskId, status: task.status }));
+    res.json(requestHelper.success({ taskId: task?.taskId, status: task?.status }));
   } catch (error) {
     console.error('[AgentTask API] Failed to start task:', error);
     res.status(500).json(requestHelper.serverError('Failed to start task'));
@@ -124,28 +141,34 @@ router.post('/:agentId/tasks/:taskId/start', async (req: Request, res: Response)
  */
 router.post('/:agentId/tasks/:taskId/complete', async (req: Request, res: Response) => {
   try {
+    const agentId = req.params.agentId as string;
     const taskId = req.params.taskId as string;
     const { result } = req.body;
-
     const taskQueue = TaskQueueService.getInstance();
+
+    // Verify task belongs to this agent before completing
+    const existingTask = await taskQueue.getTask(taskId);
+    if (!existingTask) {
+      res.status(404).json(requestHelper.notFound('Task not found'));
+      return;
+    }
+    if (!verifyTaskOwnership(existingTask, agentId)) {
+      res.status(403).json({ success: false, error: 'Task not assigned to this agent' });
+      return;
+    }
 
     const task = await taskQueue.updateTask(taskId, {
       status: 'completed',
       result,
     });
 
-    if (!task) {
-      res.status(404).json(requestHelper.notFound('Task not found'));
-      return;
-    }
-
     // Publish task completed event
-    gatewayEventBus.publishZoneEvent('zone:task_updated', task.zoneId, task.zoneId, {
-      taskId: task.taskId,
+    gatewayEventBus.publishZoneEvent('zone:task_updated', task?.zoneId || '', task?.zoneId || '', {
+      taskId: task?.taskId,
       status: 'completed',
     });
 
-    res.json(requestHelper.success({ taskId: task.taskId, status: task.status }));
+    res.json(requestHelper.success({ taskId: task?.taskId, status: task?.status }));
   } catch (error) {
     console.error('[AgentTask API] Failed to complete task:', error);
     res.status(500).json(requestHelper.serverError('Failed to complete task'));
@@ -158,22 +181,28 @@ router.post('/:agentId/tasks/:taskId/complete', async (req: Request, res: Respon
  */
 router.post('/:agentId/tasks/:taskId/fail', async (req: Request, res: Response) => {
   try {
+    const agentId = req.params.agentId as string;
     const taskId = req.params.taskId as string;
     const { error } = req.body;
-
     const taskQueue = TaskQueueService.getInstance();
+
+    // Verify task belongs to this agent before marking failed
+    const existingTask = await taskQueue.getTask(taskId);
+    if (!existingTask) {
+      res.status(404).json(requestHelper.notFound('Task not found'));
+      return;
+    }
+    if (!verifyTaskOwnership(existingTask, agentId)) {
+      res.status(403).json({ success: false, error: 'Task not assigned to this agent' });
+      return;
+    }
 
     const task = await taskQueue.updateTask(taskId, {
       status: 'failed',
       error,
     });
 
-    if (!task) {
-      res.status(404).json(requestHelper.notFound('Task not found'));
-      return;
-    }
-
-    res.json(requestHelper.success({ taskId: task.taskId, status: task.status }));
+    res.json(requestHelper.success({ taskId: task?.taskId, status: task?.status }));
   } catch (error) {
     console.error('[AgentTask API] Failed to fail task:', error);
     res.status(500).json(requestHelper.serverError('Failed to fail task'));

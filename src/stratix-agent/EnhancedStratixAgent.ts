@@ -671,6 +671,17 @@ export class EnhancedStratixAgent extends StratixAgent {
     priority: number;
   }> = [];
 
+  // Cache TaskQueueService to avoid repeated dynamic requires
+  private taskQueueService: any = null;
+
+  private getTaskQueueService(): any {
+    if (!this.taskQueueService) {
+      const TaskQueueService = require('../stratix-orchestration/task-queue/TaskQueueService').TaskQueueService;
+      this.taskQueueService = TaskQueueService.getInstance();
+    }
+    return this.taskQueueService;
+  }
+
   /**
    * Start polling for tasks assigned to this agent
    * Uses TaskQueueService via REST API to fetch pending tasks
@@ -710,10 +721,7 @@ export class EnhancedStratixAgent extends StratixAgent {
     if (this.shouldStop) return;
 
     try {
-      // Dynamic require to avoid circular dependency
-      const TaskQueueService = require('../stratix-orchestration/task-queue/TaskQueueService').TaskQueueService;
-      const taskQueue = TaskQueueService.getInstance();
-
+      const taskQueue = this.getTaskQueueService();
       const tasks: any[] = await taskQueue.getTasksByAgent(this.config.agentId);
 
       if (tasks.length > 0) {
@@ -727,9 +735,6 @@ export class EnhancedStratixAgent extends StratixAgent {
         }));
 
         console.log(`[Agent ${this.config.agentId}] Polled ${tasks.length} pending tasks`);
-
-        // Emit event for external listeners
-        this.emitTaskReceived(this.pendingTasks);
       }
     } catch (error) {
       console.error(`[Agent ${this.config.agentId}] Task polling error:`, error);
@@ -755,8 +760,7 @@ export class EnhancedStratixAgent extends StratixAgent {
    */
   async completeTask(taskId: string, result?: Record<string, unknown>): Promise<boolean> {
     try {
-      const TaskQueueService = require('../stratix-orchestration/task-queue/TaskQueueService').TaskQueueService;
-      const taskQueue = TaskQueueService.getInstance();
+      const taskQueue = this.getTaskQueueService();
 
       const task = await taskQueue.updateTask(taskId, {
         status: 'completed',
@@ -773,14 +777,6 @@ export class EnhancedStratixAgent extends StratixAgent {
       console.error(`[Agent ${this.config.agentId}] Failed to complete task ${taskId}:`, error);
       return false;
     }
-  }
-
-  /**
-   * Emit task received event (for external listeners like WebSocket)
-   */
-  private emitTaskReceived(tasks: typeof this.pendingTasks): void {
-    // This can be connected to the event system if needed
-    // For now, tasks are stored in pendingTasks for retrieval via getPendingTasks()
   }
 
   // ============================================
