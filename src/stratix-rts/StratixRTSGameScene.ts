@@ -25,6 +25,9 @@ import { BaseZone } from './zones/BaseZone';
 import { TaskZone, TaskZoneConfig } from './zones/TaskZone';
 import { TaskZonePreview } from './zones/TaskZonePreview';
 import { UnifiedZoneManager } from './zones/UnifiedZoneManager';
+import { ThemeManager, ThemeName } from './themes/ThemeManager';
+import { GroundDecorationSystem } from './ground/GroundDecorationSystem';
+import { ThemeSelectorUI } from './ui/ThemeSelectorUI';
 
 
 export { MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, DEFAULT_ZOOM, MIN_ZOOM, MAX_ZOOM, BG_COLOR } from './constants';
@@ -55,13 +58,41 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   private dataFlowAnimation: DataFlowAnimation;
   private zonePulseGraphics: Phaser.GameObjects.Graphics;
   private stateBridge: RTSStateBridge;
+  private themeManager: ThemeManager;
+  private groundDecorationSystem: GroundDecorationSystem;
+  private themeSelectorUI: ThemeSelectorUI;
 
   constructor() {
     super({ key: 'StratixRTSGameScene' });
   }
 
   preload(): void {
+    console.log('[StratixRTS] preload() called');
+    // 生成占位符纹理
     this.generatePlaceholderTextures();
+
+    // 预加载默认主题（fantasy）的装饰纹理
+    this.preloadThemeTextures('fantasy');
+  }
+
+  /**
+   * 预加载主题纹理
+   */
+  private preloadThemeTextures(theme: ThemeName): void {
+    const basePath = `textures/${theme}`;
+    const textures = [
+      'ground_base', 'ground_dark', 'ground_light',
+      'grass_tuft', 'rock_small', 'rock_large',
+      'flower', 'tree', 'water', 'cloud'
+    ];
+
+    console.log('[StratixRTS] Loading theme textures:', theme);
+    for (const tex of textures) {
+      const key = `${theme}_${tex}`;
+      const path = `${basePath}/${tex}.png`;
+      console.log('[StratixRTS] Loading:', key, 'from', path);
+      this.load.image(key, path);
+    }
   }
 
   private generatePlaceholderTextures(): void {
@@ -135,7 +166,31 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     this.initEventManager();
     this.initEventBusListeners();
     this.stateBridge = new RTSStateBridge();
-    
+
+    // 初始化主题和地面装饰系统
+    this.themeManager = new ThemeManager(this);
+    this.groundDecorationSystem = new GroundDecorationSystem(this, this.themeManager, {
+      density: 0.06,
+      randomDecorations: true,
+    });
+    this.groundDecorationSystem.initialize().catch(err => {
+      console.warn('[StratixRTS] Ground decoration system init failed:', err);
+    });
+
+    // 创建主题选择器 UI
+    console.log('[StratixRTS] Creating ThemeSelectorUI at (10, 50)');
+    this.themeSelectorUI = new ThemeSelectorUI(
+      this,
+      10,
+      50,
+      {
+        onThemeSelect: async (theme) => {
+          console.log(`[StratixRTS] Theme selected: ${theme}`);
+          await this.setTheme(theme);
+        },
+      }
+    );
+
     rtsEventBus.emit('scene:ui:game_ready', {
       width: this.cameras.main.width,
       height: this.cameras.main.height,
@@ -1750,5 +1805,39 @@ export default class StratixRTSGameScene extends Phaser.Scene {
       }
     }
     return false;
+  }
+
+  // ==================== Theme API ====================
+
+  /**
+   * 获取主题管理器
+   */
+  public getThemeManager(): ThemeManager {
+    return this.themeManager;
+  }
+
+  /**
+   * 获取地面装饰系统
+   */
+  public getGroundDecorationSystem(): GroundDecorationSystem {
+    return this.groundDecorationSystem;
+  }
+
+  /**
+   * 切换主题皮肤
+   * @param theme 主题名称 ('fantasy' | 'cartoon' | 'cyberpunk' | 'nature')
+   */
+  public async setTheme(theme: ThemeName): Promise<void> {
+    console.log(`[StratixRTS] Switching theme to: ${theme}`);
+    await this.themeManager.setTheme(theme);
+    this.themeSelectorUI?.setTheme(theme);
+    rtsEventBus.emit('game:theme:changed' as any, { theme });
+  }
+
+  /**
+   * 获取当前主题
+   */
+  public getCurrentTheme(): ThemeName {
+    return this.themeManager.getCurrentTheme();
   }
 }

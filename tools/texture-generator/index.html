@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stratix Texture Generator</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+    h1 { margin-bottom: 10px; font-size: 1.5rem; }
+    .theme-selector {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .theme-btn {
+      padding: 10px 20px;
+      border: 2px solid transparent;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.2s;
+      opacity: 0.6;
+    }
+    .theme-btn:hover { opacity: 0.8; transform: translateY(-2px); }
+    .theme-btn.active { opacity: 1; border-color: #fff; transform: translateY(-2px); }
+    .btn-fantasy { background: linear-gradient(135deg, #2d5a27, #8b5a2b); }
+    .btn-cartoon { background: linear-gradient(135deg, #4a90d9, #7cb342); }
+    .btn-cyberpunk { background: linear-gradient(135deg, #9c27b0, #00bcd4); }
+    .btn-nature { background: linear-gradient(135deg, #6d4c41, #558b2f); }
+    .divider { width: 100%; height: 1px; background: #333; margin: 10px 0; }
+    .controls {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    button {
+      padding: 6px 12px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: opacity 0.2s;
+    }
+    button:hover { opacity: 0.8; }
+    .btn-type { background: #333; color: #fff; }
+    .btn-type.active { background: #555; box-shadow: 0 0 0 2px #fff; }
+    .btn-save { background: #e07b39; color: #fff; }
+    .btn-batch { background: #4a7c59; color: #fff; }
+    .btn-all { background: #8a4a8a; color: #fff; }
+    #canvas-container {
+      border: 2px solid #333;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+    canvas { display: block; }
+    .info {
+      font-size: 12px;
+      color: #888;
+      text-align: center;
+      max-width: 600px;
+    }
+    .info kbd {
+      background: #333;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .batch-progress {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #aaa;
+    }
+  </style>
+</head>
+<body>
+  <h1>Stratix Texture Generator</h1>
+
+  <div class="theme-selector">
+    <button class="theme-btn btn-fantasy active" data-theme="fantasy">Fantasy</button>
+    <button class="theme-btn btn-cartoon" data-theme="cartoon">Cartoon</button>
+    <button class="theme-btn btn-cyberpunk" data-theme="cyberpunk">Cyberpunk</button>
+    <button class="theme-btn btn-nature" data-theme="nature">Nature</button>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="controls">
+    <button class="btn-type active" data-type="ground_base">Base Ground</button>
+    <button class="btn-type" data-type="ground_dark">Dark Ground</button>
+    <button class="btn-type" data-type="ground_light">Light Ground</button>
+    <button class="btn-type" data-type="grass_tuft">Grass</button>
+    <button class="btn-type" data-type="rock_small">Small Rock</button>
+    <button class="btn-type" data-type="rock_large">Large Rock</button>
+    <button class="btn-type" data-type="flower">Flower</button>
+    <button class="btn-type" data-type="tree">Tree</button>
+    <button class="btn-type" data-type="water">Water</button>
+    <button class="btn-type" data-type="cloud">Cloud</button>
+  </div>
+
+  <div class="controls">
+    <button class="btn-save" onclick="saveTexture()">Save PNG</button>
+    <button class="btn-batch" onclick="generateTheme()">Generate Theme (12)</button>
+    <button class="btn-all" onclick="generateAllThemes()">Generate All 4 Themes (48)</button>
+  </div>
+
+  <div id="canvas-container"></div>
+
+  <div class="info">
+    <p>Select theme → choose texture type → generate → save</p>
+    <p>Press <kbd>S</kbd> to save current texture. <kbd>R</kbd> to regenerate.</p>
+  </div>
+
+  <div class="batch-progress" id="progress"></div>
+
+  <script src="generators/noise.js"></script>
+  <script src="generators/themes/shared/colors.js"></script>
+  <script src="generators/themes/shared/grass.js"></script>
+  <script src="generators/themes/shared/rocks.js"></script>
+  <script src="generators/themes/shared/flowers.js"></script>
+  <script src="generators/themes/shared/water.js"></script>
+  <script src="generators/themes/shared/clouds.js"></script>
+  <script src="generators/themes/fantasy.js"></script>
+  <script src="generators/themes/cartoon.js"></script>
+  <script src="generators/themes/cyberpunk.js"></script>
+  <script src="generators/themes/nature.js"></script>
+  <script>
+    const SIZE = 64;
+    const SEED_RANGE = 100000;
+    let currentSeed = Math.floor(Math.random() * SEED_RANGE);
+    let currentTheme = 'fantasy';
+    let currentType = 'ground_base';
+    let currentP5;
+
+    const themeGenerators = {
+      fantasy: drawFantasy,
+      cartoon: drawCartoon,
+      cyberpunk: drawCyberpunk,
+      nature: drawNature
+    };
+
+    const textureTypes = [
+      'ground_base', 'ground_dark', 'ground_light',
+      'grass_tuft', 'rock_small', 'rock_large',
+      'flower', 'tree', 'water', 'cloud'
+    ];
+
+    // Theme selector
+    document.querySelectorAll('.theme-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentTheme = btn.dataset.theme;
+        generate();
+      });
+    });
+
+    // Type selector
+    document.querySelectorAll('.btn-type').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.btn-type').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentType = btn.dataset.type;
+        generate();
+      });
+    });
+
+    function generate() {
+      currentSeed = Math.floor(Math.random() * SEED_RANGE);
+
+      if (currentP5) {
+        currentP5.remove();
+      }
+
+      currentP5 = new p5(function(p) {
+        p.setup = function() {
+          let canvas = p.createCanvas(SIZE, SIZE);
+          canvas.parent('canvas-container');
+          p.noLoop();
+        };
+
+        p.draw = function() {
+          p.randomSeed(currentSeed);
+          themeGenerators[currentTheme](p, currentType);
+        };
+      }, 'canvas-container');
+    }
+
+    function saveTexture() {
+      if (currentP5) {
+        const filename = `${currentTheme}_${currentType}_${currentSeed}`;
+        currentP5.saveCanvas(filename, 'png');
+      }
+    }
+
+    function generateTheme() {
+      const progress = document.getElementById('progress');
+      let index = 0;
+
+      function nextTexture() {
+        if (index < textureTypes.length) {
+          const type = textureTypes[index];
+          currentType = type;
+          currentSeed = Math.floor(Math.random() * SEED_RANGE);
+
+          if (currentP5) currentP5.remove();
+
+          currentP5 = new p5(function(p) {
+            p.setup = function() {
+              let canvas = p.createCanvas(SIZE, SIZE);
+              canvas.parent('canvas-container');
+              p.noLoop();
+            };
+            p.draw = function() {
+              p.randomSeed(currentSeed);
+              themeGenerators[currentTheme](p, type);
+              setTimeout(() => {
+                p.saveCanvas(`${currentTheme}_${type}_${currentSeed}`, 'png');
+                index++;
+                progress.textContent = `Generating ${currentTheme}/${type}... (${index}/${textureTypes.length})`;
+                nextTexture();
+              }, 100);
+            };
+          }, 'canvas-container');
+        } else {
+          progress.textContent = `✓ ${currentTheme} theme complete (${textureTypes.length} textures)`;
+        }
+      }
+
+      nextTexture();
+    }
+
+    function generateAllThemes() {
+      const themes = ['fantasy', 'cartoon', 'cyberpunk', 'nature'];
+      let themeIndex = 0;
+
+      function nextTheme() {
+        if (themeIndex < themes.length) {
+          currentTheme = themes[themeIndex];
+          document.querySelectorAll('.theme-btn').forEach(b => {
+            b.classList.toggle('active', b.dataset.theme === currentTheme);
+          });
+          generateTheme();
+          // Wait for theme to finish, then next
+          const checkDone = setInterval(() => {
+            const prog = document.getElementById('progress').textContent;
+            if (prog.includes('complete')) {
+              clearInterval(checkDone);
+              themeIndex++;
+              setTimeout(nextTheme, 500);
+            }
+          }, 200);
+        } else {
+          document.getElementById('progress').textContent = '✓ All 4 themes complete! (48 textures)';
+        }
+      }
+
+      nextTheme();
+    }
+
+    function keyPressed() {
+      if (key === 's' || key === 'S') {
+        saveTexture();
+      } else if (key === 'r' || key === 'R') {
+        generate();
+      }
+    }
+
+    // Initial generate
+    generate();
+  </script>
+</body>
+</html>

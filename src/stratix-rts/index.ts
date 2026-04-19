@@ -120,11 +120,17 @@ export { TopBarV2 as TopBar, MinimapV2 as Minimap, CommandPanelV2 as CommandPane
 export type { UnitInfo, Skill, RTSUIComponents, RTSUIConfig } from './ui/v2';
 
 export { ShortcutManager, shortcutManager, HelpPanel, ShortcutBar } from './ui';
-export type { 
-  ShortcutDefinition, 
-  ShortcutCategory, 
-  ActiveShortcut, 
+export type {
+  ShortcutDefinition,
+  ShortcutCategory,
+  ActiveShortcut,
   ShortcutContext,
   HelpPanelConfig,
   ShortcutBarConfig
 } from './ui';
+
+// Theme System
+export { ThemeManager, THEMES } from './themes/ThemeManager';
+export type { ThemeName, ThemeConfig, ThemeTextureSet } from './themes/ThemeManager';
+export { GroundDecorationSystem } from './ground/GroundDecorationSystem';
+export type { DecorationConfig, GroundDecorationSystemConfig } from './ground/GroundDecorationSystem';
