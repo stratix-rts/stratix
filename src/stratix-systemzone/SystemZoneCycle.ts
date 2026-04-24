@@ -1,18 +1,16 @@
 // ============================================
-// SystemZoneCycle.ts - 状态机 + 编排逻辑
-// Phase 1: C1 - 固定编排流程状态机
-// Phase 2: C2 - Agent 间上下文传递
+// SystemZoneCycle.ts — System Zone 编排状态机
+// observe → strategize → review → execute → evaluate
 // ============================================
 
-import { SystemZoneManager } from './SystemZoneManager';
-import { ZoneCoordinator } from '../stratix-orchestration/zone/ZoneCoordinator';
-import { FitnessEvaluator } from './fitness/FitnessEvaluator';
-import { DiffApplier } from './executor/DiffApplier';
-import type { SafetyAssessment, Insight, Proposal } from './types';
-import type { FitnessReport } from './executor/types';
+import { generateId } from '../stratix-project/utils/helpers';
+import type { SystemZoneManager } from './SystemZoneManager';
+import type { SafetyAssessment, SystemZoneFileModification } from './types';
+import type { ModificationPlan } from '../stratix-agent/core/SystemZoneSkillExecutor';
+import type { FitnessReport } from './fitness/types';
 
 // ------------------------------------------------
-// Type Definitions
+// Types
 // ------------------------------------------------
 
 export type CyclePhase =
@@ -24,568 +22,46 @@ export type CyclePhase =
   | 'evaluating'
   | 'completed'
   | 'failed'
-  | 'blocked'
-  | 'rejected';
+  | 'blocked';
 
 export interface CycleState {
   phase: CyclePhase;
   cycleId: string;
-  startedAt: Date | null;
-  completedAt: Date | null;
+  startedAt: number | null;
+  completedAt: number | null;
   currentTaskId: string | null;
   lastError: string | null;
   insights?: any[];
-  proposal?: any;
+  proposal?: ModificationPlan;
   assessment?: SafetyAssessment;
   executionResult?: any;
   fitnessReport?: FitnessReport;
-  baselineReport?: FitnessReport;
+  baselineFitness?: FitnessReport;
 }
-
-// ------------------------------------------------
-// Agent IDs
-// ------------------------------------------------
-
-const AGENT_IDS = {
-  OBSERVER: 'sz-observer',
-  STRATEGIST: 'sz-strategist',
-  GUARDIAN: 'sz-guardian',
-  EXECUTOR: 'sz-executor',
-} as const;
-
-// ------------------------------------------------
-// Cycle Events
-// ------------------------------------------------
-
-export type CycleEventType =
-  | 'phase_changed'
-  | 'task_delegated'
-  | 'assessment_received'
-  | 'execution_completed'
-  | 'evaluation_completed'
-  | 'blocked'
-  | 'rejected'
-  | 'failed'
-  | 'completed'
-  | 'cancelled';
 
 export interface CycleEvent {
-  type: CycleEventType;
+  type: string;
   cycleId: string;
-  phase: CyclePhase;
   data?: any;
-  error?: string;
-  timestamp: Date;
+  timestamp: number;
 }
 
-type CycleEventCallback = (event: CycleEvent) => void;
+type CycleEventListener = (event: CycleEvent) => void;
 
 // ------------------------------------------------
-// SystemZoneCycle - 固定编排流程状态机
+// SystemZoneCycle
 // ------------------------------------------------
 
 export class SystemZoneCycle {
-  private manager: SystemZoneManager;
-  private coordinator: ZoneCoordinator | null = null;
-  private fitnessEvaluator: FitnessEvaluator;
-  private diffApplier: DiffApplier;
-  private workDir: string;
-
   private state: CycleState;
-  private eventListeners: Map<CycleEventType, Set<CycleEventCallback>> = new Map();
+  private manager: SystemZoneManager;
+  private listeners: Map<string, CycleEventListener[]> = new Map();
 
-  constructor(manager: SystemZoneManager, workDir?: string) {
+  constructor(manager: SystemZoneManager) {
     this.manager = manager;
-    this.fitnessEvaluator = new FitnessEvaluator();
-    this.diffApplier = new DiffApplier();
-    this.workDir = workDir ?? process.cwd();
     this.state = this.createInitialState();
   }
 
-  // ==================== Public API ====================
-
-  /**
-   * 执行完整 cycle
-   * 流程: observe → strategize → review → execute → evaluate
-   */
-  async run(input?: any): Promise<CycleState> {
-    const cycleId = this.generateId();
-    this.state = this.createInitialState();
-    this.state.cycleId = cycleId;
-    this.state.startedAt = new Date();
-
-    try {
-      // Capture baseline before any changes
-      this.state.baselineReport = await this.captureBaseline();
-
-      // Phase 1: Observe
-      await this.phaseObserve(input);
-
-      // Phase 2: Strategize
-      await this.phaseStrategize();
-
-      // Phase 3: Review (Guardian)
-      const assessment = await this.phaseReview();
-
-      // Check Guardian decision
-      if (assessment.decision === 'rejected') {
-        this.transition('rejected');
-        this.state.lastError = `Guardian rejected: ${assessment.concerns.join(', ')}`;
-        this.emit('rejected', { assessment });
-        return this.state;
-      }
-
-      // Check risk level for blocking
-      if (assessment.riskLevel === 'high') {
-        this.transition('blocked');
-        this.state.assessment = assessment;
-        this.emit('blocked', { assessment });
-        return this.state;
-      }
-
-      // Phase 4: Execute
-      await this.phaseExecute();
-
-      // Phase 5: Evaluate
-      await this.phaseEvaluate();
-
-      // Success
-      this.transition('completed');
-      this.state.completedAt = new Date();
-      this.emit('completed', {});
-
-      return this.state;
-    } catch (error) {
-      this.transition('failed');
-      this.state.lastError = error instanceof Error ? error.message : String(error);
-      this.emit('failed', { error: this.state.lastError });
-      return this.state;
-    }
-  }
-
-  /**
-   * 从 blocked 状态恢复执行
-   * 需要外部确认后调用
-   */
-  async confirmAndContinue(): Promise<CycleState> {
-    if (this.state.phase !== 'blocked') {
-      throw new Error(`Cannot confirmAndContinue from phase: ${this.state.phase}`);
-    }
-
-    try {
-      // Resume from execute phase
-      await this.phaseExecute();
-
-      // Continue to evaluate
-      await this.phaseEvaluate();
-
-      // Success
-      this.transition('completed');
-      this.state.completedAt = new Date();
-      this.emit('completed', {});
-
-      return this.state;
-    } catch (error) {
-      this.transition('failed');
-      this.state.lastError = error instanceof Error ? error.message : String(error);
-      this.emit('failed', { error: this.state.lastError });
-      return this.state;
-    }
-  }
-
-  /**
-   * 取消 blocked 状态
-   */
-  cancel(): CycleState {
-    if (this.state.phase !== 'blocked') {
-      throw new Error(`Cannot cancel from phase: ${this.state.phase}`);
-    }
-
-    this.transition('failed');
-    this.state.lastError = 'Cycle cancelled by user';
-    this.state.completedAt = new Date();
-    this.emit('cancelled', {});
-
-    return this.state;
-  }
-
-  /**
-   * 获取当前状态
-   */
-  getState(): CycleState {
-    return { ...this.state };
-  }
-
-  /**
-   * 注册事件监听
-   */
-  on(event: CycleEventType, callback: CycleEventCallback): void {
-    if (!this.eventListeners.has(event)) {
-      this.eventListeners.set(event, new Set());
-    }
-    this.eventListeners.get(event)!.add(callback);
-  }
-
-  /**
-   * 移除事件监听
-   */
-  off(event: CycleEventType, callback: CycleEventCallback): void {
-    this.eventListeners.get(event)?.delete(callback);
-  }
-
-  // ==================== Private Methods ====================
-
-  private ensureCoordinator(): ZoneCoordinator {
-    if (!this.coordinator) {
-      const coord = this.manager.getCoordinator();
-      if (!coord) {
-        throw new Error('ZoneCoordinator not available');
-      }
-      this.coordinator = coord;
-    }
-    return this.coordinator;
-  }
-
-  /**
-   * Phase 1: Observe - 分派给 Observer Agent
-   * 通过 processRequirement 创建任务并传递 input 作为 context
-   */
-  private async phaseObserve(input?: any): Promise<void> {
-    this.transition('observing');
-    this.state.currentTaskId = this.generateId();
-
-    const coordinator = this.ensureCoordinator();
-
-    // 序列化 input 为 requirement 描述
-    const requirement = this.serializeContext('observe', { input });
-
-    try {
-      const result = await coordinator.processRequirement(requirement);
-
-      if (!result.success) {
-        throw new Error(`Observer processRequirement failed: ${result.error}`);
-      }
-
-      // 等待 Observer task 完成并收集 insights
-      const insights = await this.waitForTaskResult<Insight[]>(result.delegated[0]);
-
-      this.state.insights = insights ?? [];
-      this.emit('task_delegated', { agentId: AGENT_IDS.OBSERVER, taskId: this.state.currentTaskId });
-    } catch (error) {
-      // Fallback: 保留 input 中的 insights
-      this.state.insights = input?.insights ?? [];
-      this.emit('task_delegated', { agentId: AGENT_IDS.OBSERVER, taskId: this.state.currentTaskId });
-    }
-  }
-
-  /**
-   * Phase 2: Strategize - 分派给 Strategist Agent
-   * 将 insights 序列化为 context，传递给 Strategist
-   */
-  private async phaseStrategize(): Promise<void> {
-    this.transition('strategizing');
-    this.state.currentTaskId = this.generateId();
-
-    const coordinator = this.ensureCoordinator();
-
-    // 序列化 insights 为 context
-    const requirement = this.serializeContext('strategize', {
-      insights: this.state.insights,
-    });
-
-    try {
-      const result = await coordinator.processRequirement(requirement);
-
-      if (!result.success) {
-        throw new Error(`Strategist processRequirement failed: ${result.error}`);
-      }
-
-      // 等待 Strategist task 完成并收集 proposal
-      const proposal = await this.waitForTaskResult<Proposal>(result.delegated[0]);
-
-      this.state.proposal = proposal ?? {
-        id: this.generateId(),
-        modifications: [],
-        type: 'improve_code',
-        title: 'Generated Proposal',
-        description: 'Strategist proposal from cycle',
-        target: {},
-        selection: { confidence: 0.5, cost: 0, benefit: 0, risk: 'low' },
-        status: 'pending',
-      };
-      this.emit('task_delegated', { agentId: AGENT_IDS.STRATEGIST, taskId: this.state.currentTaskId });
-    } catch (error) {
-      // Fallback: 创建空 proposal
-      this.state.proposal = {
-        id: this.generateId(),
-        modifications: [],
-        type: 'improve_code',
-        title: 'Generated Proposal',
-        description: 'Strategist proposal from cycle (fallback)',
-        target: {},
-        selection: { confidence: 0.5, cost: 0, benefit: 0, risk: 'low' },
-        status: 'pending',
-      };
-      this.emit('task_delegated', { agentId: AGENT_IDS.STRATEGIST, taskId: this.state.currentTaskId });
-    }
-  }
-
-  /**
-   * Phase 3: Review - 分派给 Guardian Agent
-   * 将 proposal (含 modifications) 序列化为 context
-   */
-  private async phaseReview(): Promise<SafetyAssessment> {
-    this.transition('reviewing');
-    this.state.currentTaskId = this.generateId();
-
-    const coordinator = this.ensureCoordinator();
-
-    // 序列化 proposal (含 modifications) 为 context
-    const requirement = this.serializeContext('review', {
-      proposal: this.state.proposal,
-    });
-
-    try {
-      const result = await coordinator.processRequirement(requirement);
-
-      if (!result.success) {
-        throw new Error(`Guardian processRequirement failed: ${result.error}`);
-      }
-
-      // 等待 Guardian task 完成并收集 assessment
-      const assessment = await this.waitForTaskResult<SafetyAssessment>(result.delegated[0]);
-
-      this.state.assessment = assessment ?? {
-        decision: 'approved',
-        riskLevel: 'low',
-        concerns: [],
-        suggestions: [],
-        confidence: 1.0,
-      };
-      this.emit('task_delegated', { agentId: AGENT_IDS.GUARDIAN, taskId: this.state.currentTaskId });
-      this.emit('assessment_received', { assessment: this.state.assessment });
-
-      return this.state.assessment;
-    } catch (error) {
-      // Fallback: safe default - approved with low risk
-      this.state.assessment = {
-        decision: 'approved',
-        riskLevel: 'low',
-        concerns: [],
-        suggestions: [],
-        confidence: 1.0,
-      };
-      this.emit('task_delegated', { agentId: AGENT_IDS.GUARDIAN, taskId: this.state.currentTaskId });
-      this.emit('assessment_received', { assessment: this.state.assessment });
-
-      return this.state.assessment;
-    }
-  }
-
-  /**
-   * Phase 4: Execute - 分派给 Executor Agent
-   * 将 assessment + modifications 作为 context
-   */
-  private async phaseExecute(): Promise<void> {
-    this.transition('executing');
-    this.state.currentTaskId = this.generateId();
-
-    const coordinator = this.ensureCoordinator();
-
-    // 序列化 assessment + modifications 为 context
-    const requirement = this.serializeContext('execute', {
-      assessment: this.state.assessment,
-      modifications: this.state.proposal?.modifications ?? [],
-    });
-
-    try {
-      const result = await coordinator.processRequirement(requirement);
-
-      if (!result.success) {
-        throw new Error(`Executor processRequirement failed: ${result.error}`);
-      }
-
-      // 等待 Executor task 完成并收集 execution result
-      const executionResult = await this.waitForTaskResult<any>(result.delegated[0]);
-
-      this.state.executionResult = executionResult ?? {
-        success: true,
-        proposalId: this.state.proposal?.id,
-        modifications: this.state.proposal?.modifications ?? [],
-      };
-      this.emit('task_delegated', { agentId: AGENT_IDS.EXECUTOR, taskId: this.state.currentTaskId });
-      this.emit('execution_completed', { result: this.state.executionResult });
-    } catch (error) {
-      // Fallback: 执行失败记录
-      this.state.executionResult = {
-        success: false,
-        proposalId: this.state.proposal?.id,
-        modifications: this.state.proposal?.modifications ?? [],
-        error: error instanceof Error ? error.message : String(error),
-      };
-      this.emit('task_delegated', { agentId: AGENT_IDS.EXECUTOR, taskId: this.state.currentTaskId });
-      this.emit('execution_completed', { result: this.state.executionResult });
-    }
-  }
-
-  /**
-   * Phase 5: Evaluate - 调用 FitnessEvaluator，对比 baseline 决定是否回滚
-   */
-  private async phaseEvaluate(): Promise<void> {
-    this.transition('evaluating');
-
-    const afterReport = await this.fitnessEvaluator.evaluate();
-    this.state.fitnessReport = afterReport;
-
-    this.emit('evaluation_completed', { report: afterReport });
-
-    // Check if rollback is needed
-    if (this.state.baselineReport && this.shouldRollback(this.state.baselineReport, afterReport)) {
-      await this.rollback();
-      this.state.lastError = `Fitness regression: overall score dropped from ${this.state.baselineReport.scores.overall} to ${afterReport.scores.overall}`;
-    }
-  }
-
-  /**
-   * 捕获 baseline 健康度快照
-   */
-  private async captureBaseline(): Promise<FitnessReport> {
-    return this.fitnessEvaluator.evaluate();
-  }
-
-  /**
-   * 判断是否应该回滚：after score 低于 baseline 则回滚
-   */
-  private shouldRollback(baseline: FitnessReport, after: FitnessReport): boolean {
-    return after.scores.overall < baseline.scores.overall;
-  }
-
-  /**
-   * 执行回滚：将 proposal 的所有 diff 逆向应用
-   */
-  private async rollback(): Promise<void> {
-    const modifications = this.state.proposal?.modifications ?? [];
-    const diffs = modifications
-      .map((m: any) => m.diff)
-      .filter((d: string | undefined): d is string => !!d);
-
-    if (diffs.length === 0) {
-      console.log(`[SystemZoneCycle] Rollback: no diffs to revert for cycle ${this.state.cycleId}`);
-      return;
-    }
-
-    console.log(`[SystemZoneCycle] Rollback: reverting ${diffs.length} diff(s) for cycle ${this.state.cycleId}`);
-    for (const diff of diffs) {
-      try {
-        await this.diffApplier.rollbackDiff(this.workDir, diff);
-        console.log(`[SystemZoneCycle] Rollback: reverted one diff`);
-      } catch (err) {
-        console.error(`[SystemZoneCycle] Rollback: failed to revert diff: ${err}`);
-      }
-    }
-    console.log(`[SystemZoneCycle] Rollback: completed for cycle ${this.state.cycleId}`);
-  }
-
-  /**
-   * 状态转换
-   */
-  private transition(phase: CyclePhase): void {
-    const previousPhase = this.state.phase;
-    this.state.phase = phase;
-    this.emit('phase_changed', { previousPhase, currentPhase: phase });
-  }
-
-  /**
-   * 触发事件
-   */
-  private emit(type: CycleEventType, data?: any): void {
-    const event: CycleEvent = {
-      type,
-      cycleId: this.state.cycleId,
-      phase: this.state.phase,
-      data,
-      timestamp: new Date(),
-    };
-
-    // Notify all listeners for this event type
-    const listeners = this.eventListeners.get(type);
-    if (listeners) {
-      for (const callback of listeners) {
-        try {
-          callback(event);
-        } catch (err) {
-          console.error(`[SystemZoneCycle] Event listener error for ${type}:`, err);
-        }
-      }
-    }
-  }
-
-  /**
-   * 序列化上下文为 requirement 字符串
-   * 用于通过 processRequirement 传递 context 给 agent
-   */
-  private serializeContext(phase: string, data: Record<string, any>): string {
-    const context = {
-      phase,
-      cycleId: this.state.cycleId,
-      timestamp: new Date().toISOString(),
-      ...data,
-    };
-    return `[SystemZoneCycle Context]\n${JSON.stringify(context, null, 2)}`;
-  }
-
-  /**
-   * 等待任务完成并获取结果
-   * 轮询 task 状态，最长等待 60 秒
-   */
-  private async waitForTaskResult<T>(taskId: string | undefined, timeoutMs: number = 60000): Promise<T | null> {
-    if (!taskId) return null;
-
-    const coordinator = this.ensureCoordinator();
-    const startTime = Date.now();
-    const pollInterval = 1000; // 1s
-
-    while (Date.now() - startTime < timeoutMs) {
-      const task = coordinator.getTask(taskId);
-      if (task?.status === 'completed') {
-        // 尝试从 task description 解析结果
-        try {
-          const parsed = JSON.parse(task.description);
-          if (parsed.result !== undefined) {
-            return parsed.result as T;
-          }
-        } catch {
-          // description 不是 JSON，返回整个 description 作为结果
-          return task.description as unknown as T;
-        }
-        return null;
-      }
-      if (task?.status === 'failed') {
-        return null;
-      }
-      // 等待后继续轮询
-      await this.delay(pollInterval);
-    }
-
-    // 超时
-    console.warn(`[SystemZoneCycle] Task ${taskId} wait timeout after ${timeoutMs}ms`);
-    return null;
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
-  /**
-   * 生成唯一 ID
-   */
-  private generateId(): string {
-    return `cycle_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-  }
-
-  /**
-   * 创建初始状态
-   */
   private createInitialState(): CycleState {
     return {
       phase: 'idle',
@@ -596,6 +72,314 @@ export class SystemZoneCycle {
       lastError: null,
     };
   }
-}
 
-export default SystemZoneCycle;
+  /**
+   * 执行完整 cycle
+   * 固定流程：observe → strategize → review → execute → evaluate
+   */
+  async run(input?: { content: string; type?: string; source?: string }): Promise<CycleState> {
+    this.state = {
+      ...this.createInitialState(),
+      cycleId: generateId('cycle'),
+      startedAt: Date.now(),
+    };
+
+    try {
+      // 0. 获取 baseline fitness
+      this.state.baselineFitness = await this.captureBaseline();
+
+      // 1. Observing
+      this.transition('observing');
+      this.state.insights = await this.observe(input);
+
+      // 2. Strategizing
+      this.transition('strategizing');
+      this.state.proposal = await this.strategize(this.state.insights);
+
+      // 3. Reviewing
+      this.transition('reviewing');
+      this.state.assessment = await this.review(this.state.proposal.modifications);
+
+      // 3b. 检查审查结果
+      if (this.state.assessment.decision === 'rejected') {
+        this.state.lastError = `Guardian rejected: ${this.state.assessment.concerns.join(', ')}`;
+        this.transition('failed');
+        return this.state;
+      }
+
+      if (this.state.assessment.riskLevel === 'high') {
+        this.transition('blocked');
+        this.emit('blocked', {
+          proposal: this.state.proposal,
+          assessment: this.state.assessment,
+        });
+        return this.state;
+      }
+
+      // 4. Executing
+      this.transition('executing');
+      this.state.executionResult = await this.execute(this.state.proposal.modifications);
+
+      // 5. Evaluating
+      this.transition('evaluating');
+      this.state.fitnessReport = await this.evaluate();
+
+      this.state.completedAt = Date.now();
+      this.transition('completed');
+    } catch (err: any) {
+      this.state.lastError = err.message ?? String(err);
+      this.transition('failed');
+      this.emit('error', { error: this.state.lastError });
+    }
+
+    return this.state;
+  }
+
+  /**
+   * 用户确认后继续（从 blocked 恢复）
+   */
+  async confirmAndContinue(): Promise<CycleState> {
+    if (this.state.phase !== 'blocked') {
+      throw new Error('Not in blocked state');
+    }
+
+    try {
+      this.transition('executing');
+      this.state.executionResult = await this.execute(this.state.proposal!.modifications);
+
+      this.transition('evaluating');
+      this.state.fitnessReport = await this.evaluate();
+
+      this.state.completedAt = Date.now();
+      this.transition('completed');
+    } catch (err: any) {
+      this.state.lastError = err.message ?? String(err);
+      this.transition('failed');
+    }
+
+    return this.state;
+  }
+
+  /**
+   * 用户拒绝后取消
+   */
+  cancel(): void {
+    if (this.state.phase !== 'blocked') {
+      throw new Error('Not in blocked state');
+    }
+    this.state.lastError = 'Cancelled by user';
+    this.transition('failed');
+    this.emit('cancelled', {});
+  }
+
+  getState(): CycleState {
+    return { ...this.state };
+  }
+
+  isRunning(): boolean {
+    return !['idle', 'completed', 'failed', 'blocked'].includes(this.state.phase);
+  }
+
+  // ---- Event Emitter ----
+
+  on(event: string, listener: CycleEventListener): void {
+    if (!this.listeners.has(event)) {
+      this.listeners.set(event, []);
+    }
+    this.listeners.get(event)!.push(listener);
+  }
+
+  off(event: string, listener: CycleEventListener): void {
+    const list = this.listeners.get(event);
+    if (list) {
+      this.listeners.set(event, list.filter(l => l !== listener));
+    }
+  }
+
+  // ---- Private: Phase Implementations ----
+
+  private async observe(input?: { content: string; type?: string; source?: string }): Promise<any[]> {
+    const agents = this.manager.getAgents();
+    const insights: any[] = [];
+
+    // 如果有外部输入，先让 Observer 处理
+    if (input?.content) {
+      const result = await agents.observer!.executeSkill('observe_input', {
+        content: input.content,
+        source: input.source ?? 'user',
+        type: input.type ?? 'text',
+      });
+      if (result.success && result.result) {
+        insights.push(...(Array.isArray(result.result) ? result.result : [result.result]));
+      }
+    }
+
+    // 扫描项目获取结构化数据
+    const scanResult = await agents.observer!.executeSkill('scan_project', {});
+    if (scanResult.success && scanResult.result) {
+      insights.push({
+        type: 'scan_result',
+        content: 'Project scan completed',
+        scanResult: scanResult.result,
+      });
+    }
+
+    return insights;
+  }
+
+  private async strategize(insights: any[]): Promise<ModificationPlan> {
+    const agents = this.manager.getAgents();
+
+    // 提取 scanResult（如果有）
+    const scanInsight = insights.find(i => i.type === 'scan_result');
+    const otherInsights = insights.filter(i => i.type !== 'scan_result');
+
+    const result = await agents.strategist!.executeSkill('generate_modifications', {
+      insights: otherInsights,
+      scanResult: scanInsight?.scanResult,
+    });
+
+    if (!result.success) {
+      throw new Error(`Strategist failed: ${result.error ?? 'unknown error'}`);
+    }
+
+    return result.result as ModificationPlan;
+  }
+
+  private async review(modifications: SystemZoneFileModification[]): Promise<SafetyAssessment> {
+    const agents = this.manager.getAgents();
+
+    const result = await agents.guardian!.executeSkill('review_modifications', {
+      modifications,
+    });
+
+    if (!result.success) {
+      throw new Error(`Guardian failed: ${result.error ?? 'unknown error'}`);
+    }
+
+    return result.result as SafetyAssessment;
+  }
+
+  private async execute(modifications: SystemZoneFileModification[]): Promise<any> {
+    const agents = this.manager.getAgents();
+    const projectPath = process.cwd();
+    const results: any[] = [];
+
+    for (const mod of modifications) {
+      if (mod.type === 'edit' && mod.diff) {
+        // 验证 diff
+        const validateResult = await agents.executor!.executeSkill('validate_diff', {
+          workDir: projectPath,
+          diff: mod.diff,
+        });
+        if (!validateResult.success || !validateResult.result?.valid) {
+          throw new Error(
+            `Diff validation failed for ${mod.path}: ${validateResult.result?.errors?.join(', ')}`
+          );
+        }
+
+        // 应用 diff
+        const applyResult = await agents.executor!.executeSkill('apply_diff', {
+          workDir: projectPath,
+          diff: mod.diff,
+        });
+        if (!applyResult.success || !applyResult.result?.success) {
+          throw new Error(
+            `Diff apply failed for ${mod.path}: ${applyResult.result?.errors?.join(', ')}`
+          );
+        }
+
+        results.push({ path: mod.path, applied: true });
+      }
+      // create / delete / rename 可以在后续 task 扩展
+    }
+
+    return { modifications: results };
+  }
+
+  private async evaluate(): Promise<FitnessReport | undefined> {
+    // C3: 评估执行后的 fitness，与 baseline 对比
+    try {
+      const { FitnessEvaluator } = await import('./fitness/FitnessEvaluator');
+      const evaluator = new FitnessEvaluator();
+      const report = await evaluator.evaluate();
+
+      // 对比 baseline：如果 overall score 下降，触发回滚
+      if (this.state.baselineFitness) {
+        const baselineScore = this.state.baselineFitness.scores.overall;
+        const currentScore = report.scores.overall;
+
+        if (currentScore < baselineScore) {
+          // 变差了，自动回滚
+          await this.rollbackModifications();
+          this.state.lastError = `Fitness degraded: ${baselineScore} → ${currentScore}. Rolled back.`;
+        }
+      }
+
+      return report;
+    } catch {
+      // FitnessEvaluator 不可用时静默跳过
+      return undefined;
+    }
+  }
+
+  private async captureBaseline(): Promise<FitnessReport | undefined> {
+    // C3: 在 cycle 开始前捕获 baseline
+    try {
+      const { FitnessEvaluator } = await import('./fitness/FitnessEvaluator');
+      const evaluator = new FitnessEvaluator();
+      return await evaluator.evaluate();
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * 回滚当前 cycle 的所有 modifications
+   */
+  private async rollbackModifications(): Promise<void> {
+    const modifications = this.state.proposal?.modifications;
+    if (!modifications) return;
+
+    const agents = this.manager.getAgents();
+    const projectPath = process.cwd();
+
+    for (const mod of modifications) {
+      if (mod.diff) {
+        try {
+          await agents.executor!.executeSkill('rollback', {
+            workDir: projectPath,
+            diff: mod.diff,
+          });
+        } catch {
+          // Best effort: continue rolling back other modifications
+        }
+      }
+    }
+  }
+
+  // ---- Private: State Machine ----
+
+  private transition(phase: CyclePhase): void {
+    const from = this.state.phase;
+    this.state.phase = phase;
+    this.emit('phase_changed', { from, to: phase });
+  }
+
+  private emit(type: string, data?: any): void {
+    const event: CycleEvent = {
+      type,
+      cycleId: this.state.cycleId,
+      data,
+      timestamp: Date.now(),
+    };
+    const list = this.listeners.get(type) ?? [];
+    for (const listener of list) {
+      try {
+        listener(event);
+      } catch {
+        // Listener errors should not break cycle
+      }
+    }
+  }
+}

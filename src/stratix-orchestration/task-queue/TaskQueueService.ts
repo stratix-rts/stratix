@@ -113,9 +113,19 @@ export class TaskQueueService {
     const db = getDatabase().getDatabase();
     const rows = db.prepare('SELECT * FROM tasks WHERE zone_id = ? ORDER BY priority DESC, created_at ASC').all(zoneId) as TaskRow[];
 
+    // Also ensure zone pool is initialized for dequeueTask
+    if (!this.zoneTaskPools.has(zoneId)) {
+      this.zoneTaskPools.set(zoneId, []);
+    }
+    const pool = this.zoneTaskPools.get(zoneId)!;
+
     return rows.map(row => {
       const task = this.rowToTask(row);
       this.tasks.set(task.taskId, task);
+      // Sync pending tasks to zone pool for dequeueTask
+      if (task.status === 'pending' && !pool.includes(task.taskId)) {
+        pool.push(task.taskId);
+      }
       return task;
     });
   }

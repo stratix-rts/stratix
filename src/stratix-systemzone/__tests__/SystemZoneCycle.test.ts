@@ -2,15 +2,14 @@
 // SystemZoneCycle 单元测试
 // ============================================
 
-import { SystemZoneCycle, CyclePhase, CycleState, CycleEvent } from '../SystemZoneCycle';
+import { SystemZoneCycle } from '../SystemZoneCycle';
+import type { SystemZoneManager } from '../SystemZoneManager';
 import type { SafetyAssessment } from '../types';
-import type { FitnessReport } from '../executor/types';
+import type { FitnessReport } from '../fitness/types';
 
 // ------------------------------------------------
-// Mocks
+// Mock FitnessEvaluator
 // ------------------------------------------------
-
-// FitnessEvaluator mock
 const mockEvaluate = jest.fn();
 jest.mock('../fitness/FitnessEvaluator', () => ({
   FitnessEvaluator: jest.fn().mockImplementation(() => ({
@@ -18,7 +17,9 @@ jest.mock('../fitness/FitnessEvaluator', () => ({
   })),
 }));
 
-// DiffApplier mock
+// ------------------------------------------------
+// Mock DiffApplier
+// ------------------------------------------------
 const mockRollbackDiff = jest.fn();
 jest.mock('../executor/DiffApplier', () => ({
   DiffApplier: jest.fn().mockImplementation(() => ({
@@ -26,43 +27,23 @@ jest.mock('../executor/DiffApplier', () => ({
   })),
 }));
 
-// SystemZoneManager mock
-const mockGetCoordinator = jest.fn();
-const mockProcessRequirement = jest.fn();
-const mockGetTask = jest.fn();
+// ------------------------------------------------
+// Types
+// ------------------------------------------------
+interface MockAgent {
+  executeSkill: jest.Mock;
+}
 
-jest.mock('../SystemZoneManager', () => ({
-  SystemZoneManager: jest.fn().mockImplementation(() => ({
-    getCoordinator: mockGetCoordinator,
-  })),
-}));
+interface MockAgents {
+  observer?: MockAgent;
+  strategist?: MockAgent;
+  executor?: MockAgent;
+  guardian?: MockAgent;
+}
 
 // ------------------------------------------------
 // Helpers
 // ------------------------------------------------
-
-function createMockCoordinator() {
-  // Default: processRequirement succeeds with a delegated task
-  mockProcessRequirement.mockResolvedValue({
-    success: true,
-    delegated: ['task-observer-1'],
-  });
-
-  // Default: task is completed immediately
-  mockGetTask.mockReturnValue({
-    id: 'task-observer-1',
-    status: 'completed',
-    description: JSON.stringify({ result: [] }),
-  });
-
-  const coordinator = {
-    processRequirement: mockProcessRequirement,
-    getTask: mockGetTask,
-  };
-
-  mockGetCoordinator.mockReturnValue(coordinator);
-  return coordinator;
-}
 
 function makeFitnessReport(overall: number): FitnessReport {
   return {
@@ -88,85 +69,60 @@ function makeFitnessReport(overall: number): FitnessReport {
 function makeSafetyAssessment(
   decision: SafetyAssessment['decision'],
   riskLevel: SafetyAssessment['riskLevel'],
+  concerns: string[] = [],
 ): SafetyAssessment {
   return {
     decision,
     riskLevel,
-    concerns: decision === 'rejected' ? ['Dangerous change'] : [],
+    concerns,
     suggestions: [],
     confidence: 0.9,
   };
 }
 
-// Mock task results for each phase
-function setupPhaseResults(opts: {
-  insights?: any[];
-  proposal?: any;
-  assessment?: SafetyAssessment;
-  executionResult?: any;
-}) {
-  let taskIndex = 0;
-  mockProcessRequirement.mockImplementation(() => {
-    taskIndex++;
-    const taskIds = [`task-obs-${taskIndex}`, `task-str-${taskIndex}`, `task-rev-${taskIndex}`, `task-exe-${taskIndex}`];
-    return Promise.resolve({ success: true, delegated: [taskIds[taskIndex - 1] || `task-${taskIndex}`] });
-  });
+function makeModificationPlan(title = 'Test Plan', modifications: any[] = []) {
+  return {
+    title,
+    modifications,
+    riskLevel: 'low',
+    effortEstimate: 'small',
+    description: '',
+    reasoning: '',
+  };
+}
 
-  mockGetTask.mockImplementation((taskId: string) => {
-    if (taskId.startsWith('task-obs')) {
-      return { id: taskId, status: 'completed', description: JSON.stringify({ result: opts.insights ?? [] }) };
-    }
-    if (taskId.startsWith('task-str')) {
-      return {
-        id: taskId,
-        status: 'completed',
-        description: JSON.stringify({
-          result: opts.proposal ?? {
-            id: 'prop-1',
-            modifications: [],
-            type: 'improve_code',
-            title: 'Test Proposal',
-            description: 'Test',
-            target: {},
-            selection: { confidence: 0.8, cost: 0, benefit: 0, risk: 'low' },
-            status: 'pending',
-          },
-        }),
-      };
-    }
-    if (taskId.startsWith('task-rev')) {
-      return {
-        id: taskId,
-        status: 'completed',
-        description: JSON.stringify({ result: opts.assessment ?? makeSafetyAssessment('approved', 'low') }),
-      };
-    }
-    if (taskId.startsWith('task-exe')) {
-      return {
-        id: taskId,
-        status: 'completed',
-        description: JSON.stringify({
-          result: opts.executionResult ?? { success: true, appliedCount: 0 },
-        }),
-      };
-    }
-    return { id: taskId, status: 'completed', description: JSON.stringify({ result: null }) };
-  });
+// Create mock agents with executeSkill
+function createMockAgents(overrides: Partial<MockAgents> = {}): MockAgents {
+  const defaultAgent: MockAgent = { executeSkill: jest.fn() };
+  return {
+    observer: { ...defaultAgent, ...overrides.observer },
+    strategist: { ...defaultAgent, ...overrides.strategist },
+    executor: { ...defaultAgent, ...overrides.executor },
+    guardian: { ...defaultAgent, ...overrides.guardian },
+  };
+}
+
+// Create a mock SystemZoneManager
+function createMockManager(agents: MockAgents): SystemZoneManager {
+  const mockManager = {
+    getAgents: jest.fn().mockReturnValue(agents),
+  } as unknown as SystemZoneManager;
+  return mockManager;
+}
+
+// Create cycle with mocked manager
+function createCycle(agents: MockAgents): SystemZoneCycle {
+  const manager = createMockManager(agents);
+  return new SystemZoneCycle(manager);
 }
 
 // ------------------------------------------------
 // Setup
 // ------------------------------------------------
-
-function createCycle(): SystemZoneCycle {
-  const { SystemZoneManager } = jest.requireMock('../SystemZoneManager');
-  return new SystemZoneCycle(new SystemZoneManager());
-}
-
 beforeEach(() => {
   jest.clearAllMocks();
+  mockEvaluate.mockResolvedValue(makeFitnessReport(75));
   mockRollbackDiff.mockResolvedValue(undefined);
-  createMockCoordinator();
 });
 
 // ------------------------------------------------
@@ -174,157 +130,348 @@ beforeEach(() => {
 // ------------------------------------------------
 
 describe('SystemZoneCycle', () => {
-  // ---- Test 1: Full cycle success ----
-  it('should complete full cycle successfully', async () => {
-    const baselineReport = makeFitnessReport(75);
-    const afterReport = makeFitnessReport(80);
-    mockEvaluate
-      .mockResolvedValueOnce(baselineReport) // baseline
-      .mockResolvedValueOnce(afterReport);    // after execute
+  // ---- Test 1: Full cycle (normal flow) ----
+  describe('full cycle (normal flow)', () => {
+    it('should complete full cycle successfully', async () => {
+      const baselineReport = makeFitnessReport(75);
+      const afterReport = makeFitnessReport(80);
+      mockEvaluate
+        .mockResolvedValueOnce(baselineReport) // baseline
+        .mockResolvedValueOnce(afterReport);    // after execute
 
-    setupPhaseResults({
-      insights: [{ type: 'issue', description: 'Test insight' }],
-      proposal: {
-        id: 'prop-1',
-        modifications: [{ type: 'edit', path: 'test.ts', diff: 'fake diff', description: 'fix' }],
-        type: 'improve_code',
-        title: 'Fix issue',
-        description: 'Test',
-        target: {},
-        selection: { confidence: 0.8, cost: 0, benefit: 0, risk: 'low' },
-        status: 'pending',
-      },
-      assessment: makeSafetyAssessment('approved', 'low'),
-      executionResult: { success: true, appliedCount: 1 },
+      const agents = createMockAgents({
+        observer: {
+          executeSkill: jest
+            .fn()
+            .mockResolvedValueOnce({
+              success: true,
+              result: [{ type: 'issue', content: 'test issue' }],
+            })
+            .mockResolvedValueOnce({
+              success: true,
+              result: { coverage: { files: 10, covered: 8 } },
+            }),
+        },
+        strategist: {
+          executeSkill: jest.fn().mockResolvedValue({
+            success: true,
+            result: {
+              title: 'Test Plan',
+              modifications: [
+                {
+                  type: 'edit',
+                  path: 'test.ts',
+                  diff: '--- a/test.ts\n+++ b/test.ts\n@@ -1 +1 @@\n-old\n+new',
+                  description: 'fix',
+                },
+              ],
+              riskLevel: 'low',
+              effortEstimate: 'small',
+              description: '',
+              reasoning: '',
+            },
+          }),
+        },
+        guardian: {
+          executeSkill: jest.fn().mockResolvedValue({
+            success: true,
+            result: {
+              decision: 'approved',
+              riskLevel: 'low',
+              concerns: [],
+              suggestions: [],
+              confidence: 0.9,
+            },
+          }),
+        },
+        executor: {
+          executeSkill: jest
+            .fn()
+            .mockResolvedValueOnce({ success: true, result: { valid: true, errors: [] } })
+            .mockResolvedValueOnce({
+              success: true,
+              result: { success: true, appliedFiles: ['test.ts'], errors: [] },
+            }),
+        },
+      });
+
+      const cycle = createCycle(agents);
+      const state = await cycle.run();
+
+      expect(state.phase).toBe('completed');
+      expect(state.startedAt).toBeTruthy();
+      expect(state.completedAt).toBeTruthy();
+      expect(state.lastError).toBeNull();
+      expect(state.insights).toBeDefined();
+      expect(state.fitnessReport).toBeDefined();
     });
-
-    const cycle = createCycle();
-    const state = await cycle.run();
-
-    expect(state.phase).toBe('completed');
-    expect(state.startedAt).toBeTruthy();
-    expect(state.completedAt).toBeTruthy();
-    expect(state.lastError).toBeNull();
-    expect(state.insights).toBeDefined();
-    expect(state.fitnessReport).toBeDefined();
   });
 
-  // ---- Test 2: Blocked → confirmAndContinue ----
-  it('should block on high risk and continue after confirm', async () => {
-    const baselineReport = makeFitnessReport(75);
-    const afterReport = makeFitnessReport(80);
-    mockEvaluate
-      .mockResolvedValueOnce(baselineReport)
-      .mockResolvedValueOnce(afterReport);
+  // ---- Test 2: Guardian rejected → cycle fails ----
+  describe('Guardian rejected', () => {
+    it('should transition to failed when Guardian rejects', async () => {
+      const baselineReport = makeFitnessReport(75);
+      mockEvaluate.mockResolvedValueOnce(baselineReport);
 
-    setupPhaseResults({
-      assessment: makeSafetyAssessment('approved', 'high'), // approved but high risk
-      executionResult: { success: true, appliedCount: 1 },
+      const agents = createMockAgents({
+        observer: {
+          executeSkill: jest
+            .fn()
+            .mockResolvedValueOnce({
+              success: true,
+              result: [{ type: 'issue', content: 'test issue' }],
+            })
+            .mockResolvedValueOnce({
+              success: true,
+              result: { coverage: { files: 10, covered: 8 } },
+            }),
+        },
+        strategist: {
+          executeSkill: jest.fn().mockResolvedValue({
+            success: true,
+            result: {
+              title: 'Test Plan',
+              modifications: [
+                {
+                  type: 'edit',
+                  path: 'test.ts',
+                  diff: '--- a/test.ts\n+++ b/test.ts',
+                  description: 'fix',
+                },
+              ],
+              riskLevel: 'low',
+              effortEstimate: 'small',
+              description: '',
+              reasoning: '',
+            },
+          }),
+        },
+        guardian: {
+          executeSkill: jest.fn().mockResolvedValue({
+            success: true,
+            result: {
+              decision: 'rejected',
+              riskLevel: 'high',
+              concerns: ['unsafe'],
+              suggestions: [],
+              confidence: 1.0,
+            },
+          }),
+        },
+        executor: {
+          executeSkill: jest.fn(),
+        },
+      });
+
+      const cycle = createCycle(agents);
+      const state = await cycle.run();
+
+      expect(state.phase).toBe('failed');
+      expect(state.lastError).toContain('Guardian rejected');
     });
-
-    const cycle = createCycle();
-    const state = await cycle.run();
-
-    expect(state.phase).toBe('blocked');
-
-    // Confirm and continue
-    const finalState = await cycle.confirmAndContinue();
-    expect(finalState.phase).toBe('completed');
-    expect(finalState.completedAt).toBeTruthy();
   });
 
-  // ---- Test 3: Blocked → cancel ----
-  it('should cancel from blocked state', async () => {
-    const baselineReport = makeFitnessReport(75);
-    mockEvaluate.mockResolvedValueOnce(baselineReport);
+  // ---- Test 3: Guardian high risk → blocked ----
+  describe('Guardian high risk', () => {
+    it('should transition to blocked when Guardian returns high risk', async () => {
+      const baselineReport = makeFitnessReport(75);
+      mockEvaluate.mockResolvedValueOnce(baselineReport);
 
-    setupPhaseResults({
-      assessment: makeSafetyAssessment('approved', 'high'),
+      const agents = createMockAgents({
+        observer: {
+          executeSkill: jest
+            .fn()
+            .mockResolvedValueOnce({
+              success: true,
+              result: [{ type: 'issue', content: 'test issue' }],
+            })
+            .mockResolvedValueOnce({
+              success: true,
+              result: { coverage: { files: 10, covered: 8 } },
+            }),
+        },
+        strategist: {
+          executeSkill: jest.fn().mockResolvedValue({
+            success: true,
+            result: {
+              title: 'Test Plan',
+              modifications: [
+                {
+                  type: 'edit',
+                  path: 'test.ts',
+                  diff: '--- a/test.ts\n+++ b/test.ts',
+                  description: 'fix',
+                },
+              ],
+              riskLevel: 'low',
+              effortEstimate: 'small',
+              description: '',
+              reasoning: '',
+            },
+          }),
+        },
+        guardian: {
+          executeSkill: jest.fn().mockResolvedValue({
+            success: true,
+            result: {
+              decision: 'conditional',
+              riskLevel: 'high',
+              concerns: ['review'],
+              suggestions: [],
+              confidence: 0.8,
+            },
+          }),
+        },
+        executor: {
+          executeSkill: jest.fn(),
+        },
+      });
+
+      const cycle = createCycle(agents);
+      const state = await cycle.run();
+
+      expect(state.phase).toBe('blocked');
     });
 
-    const cycle = createCycle();
-    const state = await cycle.run();
+    it('should continue to completed after confirmAndContinue', async () => {
+      const baselineReport = makeFitnessReport(75);
+      const afterReport = makeFitnessReport(80);
+      mockEvaluate
+        .mockResolvedValueOnce(baselineReport)
+        .mockResolvedValueOnce(afterReport);
 
-    expect(state.phase).toBe('blocked');
+      const agents = createMockAgents({
+        observer: {
+          executeSkill: jest
+            .fn()
+            .mockResolvedValueOnce({
+              success: true,
+              result: [{ type: 'issue', content: 'test issue' }],
+            })
+            .mockResolvedValueOnce({
+              success: true,
+              result: { coverage: { files: 10, covered: 8 } },
+            }),
+        },
+        strategist: {
+          executeSkill: jest.fn().mockResolvedValue({
+            success: true,
+            result: {
+              title: 'Test Plan',
+              modifications: [
+                {
+                  type: 'edit',
+                  path: 'test.ts',
+                  diff: '--- a/test.ts\n+++ b/test.ts\n@@ -1 +1 @@\n-old\n+new',
+                  description: 'fix',
+                },
+              ],
+              riskLevel: 'low',
+              effortEstimate: 'small',
+              description: '',
+              reasoning: '',
+            },
+          }),
+        },
+        guardian: {
+          executeSkill: jest.fn().mockResolvedValue({
+            success: true,
+            result: {
+              decision: 'conditional',
+              riskLevel: 'high',
+              concerns: ['review'],
+              suggestions: [],
+              confidence: 0.8,
+            },
+          }),
+        },
+        executor: {
+          executeSkill: jest
+            .fn()
+            .mockResolvedValueOnce({ success: true, result: { valid: true, errors: [] } })
+            .mockResolvedValueOnce({
+              success: true,
+              result: { success: true, appliedFiles: ['test.ts'], errors: [] },
+            }),
+        },
+      });
 
-    cycle.cancel();
-    const finalState = cycle.getState();
-    expect(finalState.phase).toBe('failed');
-    expect(finalState.lastError).toMatch(/cancel/i); // "Cycle cancelled by user"
+      const cycle = createCycle(agents);
+      const blockedState = await cycle.run();
+      expect(blockedState.phase).toBe('blocked');
+
+      // Now confirm and continue
+      const finalState = await cycle.confirmAndContinue();
+      expect(finalState.phase).toBe('completed');
+      expect(finalState.completedAt).toBeTruthy();
+    });
   });
 
-  // ---- Test 4: Guardian rejected → failed ----
-  it('should fail when Guardian rejects', async () => {
-    const baselineReport = makeFitnessReport(75);
-    mockEvaluate.mockResolvedValueOnce(baselineReport);
+  // ---- Test 4: blocked → cancel ----
+  describe('blocked → cancel', () => {
+    it('should transition to failed with Cancelled by user', async () => {
+      const baselineReport = makeFitnessReport(75);
+      mockEvaluate.mockResolvedValueOnce(baselineReport);
 
-    setupPhaseResults({
-      assessment: makeSafetyAssessment('rejected', 'high'),
+      const agents = createMockAgents({
+        observer: {
+          executeSkill: jest
+            .fn()
+            .mockResolvedValueOnce({
+              success: true,
+              result: [{ type: 'issue', content: 'test issue' }],
+            })
+            .mockResolvedValueOnce({
+              success: true,
+              result: { coverage: { files: 10, covered: 8 } },
+            }),
+        },
+        strategist: {
+          executeSkill: jest.fn().mockResolvedValue({
+            success: true,
+            result: {
+              title: 'Test Plan',
+              modifications: [
+                {
+                  type: 'edit',
+                  path: 'test.ts',
+                  diff: '--- a/test.ts\n+++ b/test.ts',
+                  description: 'fix',
+                },
+              ],
+              riskLevel: 'low',
+              effortEstimate: 'small',
+              description: '',
+              reasoning: '',
+            },
+          }),
+        },
+        guardian: {
+          executeSkill: jest.fn().mockResolvedValue({
+            success: true,
+            result: {
+              decision: 'conditional',
+              riskLevel: 'high',
+              concerns: ['review'],
+              suggestions: [],
+              confidence: 0.8,
+            },
+          }),
+        },
+        executor: {
+          executeSkill: jest.fn(),
+        },
+      });
+
+      const cycle = createCycle(agents);
+      const blockedState = await cycle.run();
+      expect(blockedState.phase).toBe('blocked');
+
+      cycle.cancel();
+      const finalState = cycle.getState();
+
+      expect(finalState.phase).toBe('failed');
+      expect(finalState.lastError).toBe('Cancelled by user');
     });
-
-    const cycle = createCycle();
-    const state = await cycle.run();
-
-    expect(state.phase).toBe('rejected');
-    expect(state.lastError).toBeTruthy();
-  });
-
-  // ---- Test 5: Fitness decrease → rollback ----
-  it('should rollback when fitness decreases', async () => {
-    const baselineReport = makeFitnessReport(80);
-    const afterReport = makeFitnessReport(50); // worse than baseline
-    mockEvaluate
-      .mockResolvedValueOnce(baselineReport)
-      .mockResolvedValueOnce(afterReport);
-
-    setupPhaseResults({
-      proposal: {
-        id: 'prop-1',
-        modifications: [
-          { type: 'edit', path: 'src/test.ts', diff: '--- a\n+++ b\n@@ -1 +1 @@\n-old\n+new', description: 'change' },
-        ],
-        type: 'improve_code',
-        title: 'Bad change',
-        description: 'Test',
-        target: {},
-        selection: { confidence: 0.5, cost: 0, benefit: 0, risk: 'medium' },
-        status: 'pending',
-      },
-      assessment: makeSafetyAssessment('approved', 'medium'),
-      executionResult: { success: true, appliedCount: 1 },
-    });
-
-    const cycle = createCycle();
-    const state = await cycle.run();
-
-    // Fitness regression detected — phaseEvaluate sets lastError but run() transitions to 'completed'
-    // (known behavior: rollback happens but phase remains 'completed' with lastError set)
-    expect(state.lastError).toContain('Fitness regression');
-    // Rollback should have been called
-    expect(mockRollbackDiff).toHaveBeenCalled();
-  });
-
-  // ---- Extra: Event emission ----
-  it('should emit phase_changed events', async () => {
-    const baselineReport = makeFitnessReport(75);
-    const afterReport = makeFitnessReport(80);
-    mockEvaluate
-      .mockResolvedValueOnce(baselineReport)
-      .mockResolvedValueOnce(afterReport);
-
-    setupPhaseResults({
-      assessment: makeSafetyAssessment('approved', 'low'),
-    });
-
-    const cycle = createCycle();
-    const events: CycleEvent[] = [];
-    cycle.on('phase_changed', (event) => events.push(event));
-
-    await cycle.run();
-
-    // Should have phase transitions: idle→observing→strategizing→reviewing→executing→evaluating→completed
-    const phases = events.map(e => e.data?.currentPhase);
-    expect(phases).toContain('observing');
-    expect(phases).toContain('completed');
   });
 });

@@ -87,9 +87,21 @@ See [lra.md](lra.md) for command reference.
 ## Quick Start
 
 ```bash
-lra ready              # Find available work
-lra show <id>          # View task details
+# Node.js 版本：必须使用 nvm 安装 Node 23（Electron 40 内置 Node 23）
+# Node 22 与 Electron 不兼容，会导致 better-sqlite3 报错 ERR_DLOPEN_FAILED
+source ~/.nvm/nvm.sh
+nvm use 23             # 切换到 Node 23
+npm run electron:dev   # 启动 Electron + backend + frontend（三合一）
 ```
+
+## 启动命令
+
+| 命令 | 说明 |
+|------|------|
+| `npm run dev` | 仅启动 backend + frontend |
+| `npm run electron:dev` | **推荐**：Electron + backend + frontend（三合一） |
+
+> ⚠️ **重要**：Electron 40 使用 Node 23 (MODULE_VERSION 143)，系统 Node 22 不兼容。
 
 <!-- BEGIN LRA CLAUDE SECTION -->
 

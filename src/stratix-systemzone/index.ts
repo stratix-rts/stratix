@@ -34,3 +34,7 @@ export type {
 
 // 导出 SystemZoneManager
 export { SystemZoneManager } from './SystemZoneManager';
+
+// 导出 SystemZoneCycle
+export { SystemZoneCycle } from './SystemZoneCycle';
+export type { CyclePhase, CycleState, CycleEvent } from './SystemZoneCycle';

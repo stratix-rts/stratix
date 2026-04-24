@@ -220,10 +220,31 @@ export async function startGatewayService(
   setCommandStatusSyncService(statusSyncService);
   setProjectStatusSyncService(statusSyncService);
   console.log(`WebSocket status sync running on port ${WS_PORT}`);
-  
+
+  // 启动遗弃任务定时复活（每5分钟检查一次）
+  const abandonedTaskInterval = setInterval(async () => {
+    try {
+      const TaskQueueService = require('../stratix-orchestration/task-queue/TaskQueueService').TaskQueueService;
+      const taskQueue = TaskQueueService.getInstance();
+      const requeued = await taskQueue.requeueAbandonedTasks();
+      if (requeued.length > 0) {
+        console.log(`[Gateway] Requeued ${requeued.length} abandoned tasks: ${requeued.join(', ')}`);
+      }
+    } catch (err) {
+      console.error('[Gateway] Failed to requeue abandoned tasks:', err);
+    }
+  }, 5 * 60 * 1000);
+  console.log('[Gateway] Abandoned task requeuer started (every 5 min)');
+
   // 优雅关闭处理
   const gracefulShutdown = async () => {
     console.log('Shutting down gracefully...');
+
+    // 停止遗弃任务定时复活
+    if (abandonedTaskInterval) {
+      clearInterval(abandonedTaskInterval);
+      console.log('Abandoned task requeuer stopped');
+    }
 
     // 关闭 NocoDB 服务
     if (nocoDBServiceInstance) {

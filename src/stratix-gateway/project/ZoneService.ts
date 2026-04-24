@@ -345,32 +345,42 @@ export class ZoneService {
       agentId
     });
 
-    // Auto-assign pending tasks to the new member
-    this.autoAssignTaskToMember(zoneId, agentId);
+    // Auto-assign pending tasks to the new member (fire-and-forget, don't block member join)
+    this.autoAssignTaskToMember(zoneId, agentId).catch(err => {
+      console.error(`[ZoneService] Unhandled error in autoAssignTaskToMember:`, err);
+    });
 
     return zone;
   }
 
   /**
    * Auto-assign a pending task to a newly joined member
+   * Does NOT retry on failure - retry is handled by:
+   * 1. New Agent joining the zone
+   * 2. Dependency completing
+   * 3. requeueAbandonedTasks periodic cleanup
    */
-  private autoAssignTaskToMember(zoneId: string, agentId: string): void {
+  private async autoAssignTaskToMember(zoneId: string, agentId: string): Promise<void> {
     try {
       // Dynamic require to avoid circular dependency between gateway and orchestration layers
       const TaskQueueService = require('../../stratix-orchestration/task-queue/TaskQueueService').TaskQueueService;
       const taskQueue = TaskQueueService.getInstance();
 
-      // Try to claim a pending task for this agent in this zone
-      taskQueue.dequeueTask(agentId, zoneId).then((task: any) => {
-        if (task) {
-          console.log(`[ZoneService] Auto-claimed task ${task.taskId} for agent ${agentId} in zone ${zoneId}`);
-        }
-      }).catch((err: any) => {
-        console.warn(`[ZoneService] Failed to auto-assign task to ${agentId}:`, err);
-      });
+      // Ensure zone's task pool is initialized before dequeuing
+      // This populates zoneTaskPools map so dequeueTask can find tasks
+      await taskQueue.getTasksByZone(zoneId);
+
+      const task = await taskQueue.dequeueTask(agentId, zoneId);
+
+      if (task) {
+        console.log(`[ZoneService] Auto-claimed task ${task.taskId} for agent ${agentId} in zone ${zoneId}`);
+      } else {
+        // No pending tasks is normal - not an error
+        console.debug(`[ZoneService] No pending tasks to assign to agent ${agentId} in zone ${zoneId}`);
+      }
     } catch (err) {
-      // TaskQueueService may not be available in all contexts
-      console.debug('[ZoneService] TaskQueueService not available for auto-assign:', err);
+      // Log error but don't retry - retry is handled externally
+      console.error(`[ZoneService] Failed to auto-assign task to agent ${agentId} in zone ${zoneId}:`, err);
     }
   }
 

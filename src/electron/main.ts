@@ -41,13 +41,15 @@ async function initializeServices() {
   console.log('[Electron] Textures directory:', texturesDir);
 
   // 2. 启动 Gateway 服务（嵌入式，仅本地访问）
-  gatewayService = await startGatewayService({
-    port: 7524,
-    bindAddress: '127.0.0.1', // 仅本地，不暴露
-    dataDir,
-    mode: 'embedded',
-  });
-  console.log('[Electron] Gateway service started (internal)');
+  // [FIXME] 暂时禁用 — @noble/ed25519@3 ESM-only，与 CJS 构建不兼容
+  // electron:dev 已启动 standalone backend (7524)，IPC 已配置连接 7524
+  // gatewayService = await startGatewayService({
+  //   port: 7526,
+  //   bindAddress: '127.0.0.1', // 仅本地，不暴露
+  //   dataDir,
+  //   mode: 'embedded',
+  // });
+  // console.log('[Electron] Gateway service started (internal)');
   
   // 4. 启动 Tailscale
   tailscale = new EmbeddedTailscale({
