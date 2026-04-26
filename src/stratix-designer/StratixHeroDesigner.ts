@@ -18,17 +18,18 @@ export interface HeroDesignerOptions {
 export class StratixHeroDesigner {
   private eventBus: StratixEventBus;
   private currentConfig: StratixAgentConfig | null = null;
-  private presetTemplates: StratixAgentConfig[];
   private options: HeroDesignerOptions;
+
+  // Cached preset templates - created once and reused
+  private static readonly PRESET_TEMPLATES: StratixAgentConfig[] = [
+    new WriterHeroTemplate().getTemplate(),
+    new DevHeroTemplate().getTemplate(),
+    new AnalystHeroTemplate().getTemplate(),
+  ];
 
   constructor(options: HeroDesignerOptions = {}) {
     this.eventBus = StratixEventBus.getInstance();
     this.options = options;
-    this.presetTemplates = [
-      new WriterHeroTemplate().getTemplate(),
-      new DevHeroTemplate().getTemplate(),
-      new AnalystHeroTemplate().getTemplate(),
-    ];
   }
 
   createNewHero(heroType: HeroType): StratixAgentConfig {
@@ -92,7 +93,7 @@ export class StratixHeroDesigner {
       return config;
     }
 
-    const template = this.presetTemplates.find((t) => t.agentId === agentId);
+    const template = StratixHeroDesigner.PRESET_TEMPLATES.find((t) => t.agentId === agentId);
     if (template) {
       this.currentConfig = template;
       return template;
@@ -151,7 +152,7 @@ export class StratixHeroDesigner {
       if (this.currentConfig?.agentId === agentId) {
         exportConfig = this.currentConfig;
       } else {
-        exportConfig = this.presetTemplates.find((t) => t.agentId === agentId);
+        exportConfig = StratixHeroDesigner.PRESET_TEMPLATES.find((t) => t.agentId === agentId);
       }
     } else {
       exportConfig = this.currentConfig || undefined;
@@ -176,7 +177,7 @@ export class StratixHeroDesigner {
     if (agentId) {
       config = this.currentConfig?.agentId === agentId
         ? this.currentConfig
-        : this.presetTemplates.find((t) => t.agentId === agentId)!;
+        : StratixHeroDesigner.PRESET_TEMPLATES.find((t) => t.agentId === agentId)!;
     } else {
       config = this.currentConfig!;
     }
@@ -193,7 +194,7 @@ export class StratixHeroDesigner {
   }
 
   getPresetTemplates(): StratixAgentConfig[] {
-    return [...this.presetTemplates];
+    return [...StratixHeroDesigner.PRESET_TEMPLATES];
   }
 
   getCurrentConfig(): StratixAgentConfig | null {
@@ -223,7 +224,7 @@ export class StratixHeroDesigner {
 
   private emitConfigDeleted(agentId: string): void {
     const event: StratixStateSyncEvent = {
-      eventType: 'stratix:config_updated',
+      eventType: 'stratix:config_deleted',
       payload: {
         agentId,
         data: { deleted: true },

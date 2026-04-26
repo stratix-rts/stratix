@@ -10,7 +10,10 @@ export interface HeroTemplateBase {
 }
 
 export function generateAgentId(type: HeroType): string {
-  return `stratix-${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${type}`;
+  const id = typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return `stratix-${id}-${type}`;
 }
 
 export function generateSkillId(action: string): string {

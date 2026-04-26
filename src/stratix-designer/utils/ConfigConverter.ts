@@ -87,8 +87,12 @@ export class ConfigConverter {
   }
 
   static fromJson(json: string): StratixAgentConfig {
-    const parsed = JSON.parse(json);
-    return this.applyDefaults(parsed);
+    try {
+      const parsed = JSON.parse(json);
+      return this.applyDefaults(parsed);
+    } catch (error) {
+      throw new Error(`配置解析失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    }
   }
 
   static mergeConfigs(base: StratixAgentConfig, override: Partial<StratixAgentConfig>): StratixAgentConfig {
