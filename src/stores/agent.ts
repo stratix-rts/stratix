@@ -72,18 +72,18 @@ export const useAgentStore = defineStore('agent', () => {
 
   // Computed
   const selectedAgents = computed(() =>
-    agents.value?.filter(a => selectedIds.value.includes(a.agentId)) ?? []
+    agents.value.filter(a => selectedIds.value.includes(a.agentId))
   );
 
   const readyAgents = computed(() =>
-    agents.value?.filter(a => a.configStatus === 'ready') ?? []
+    agents.value.filter(a => a.configStatus === 'ready')
   );
 
   const draftAgents = computed(() =>
-    agents.value?.filter(a => a.configStatus === 'draft') ?? []
+    agents.value.filter(a => a.configStatus === 'draft')
   );
 
-  const agentCount = computed(() => agents.value?.length ?? 0);
+  const agentCount = computed(() => agents.value.length);
 
   // Callbacks setters
   function setOnAgentCreated(callback: (config: StratixAgentConfig, centerOnScreen: boolean) => void) {
@@ -433,7 +433,7 @@ export const useAgentStore = defineStore('agent', () => {
   // Delete agent
   async function deleteAgent(agentId: string): Promise<void> {
     try {
-      await fetch(`/api/stratix/config/agent/delete?agentId=${agentId}`, {
+      await fetch(`/api/stratix/config/agent/delete?agentId=${encodeURIComponent(agentId)}`, {
         method: 'DELETE'
       });
     } catch (e) {

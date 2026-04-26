@@ -140,6 +140,7 @@ export const useZoneStore = defineStore('zone', () => {
     if (result.data.file) {
       const zone = zones.value.find(z => z.id === zoneId);
       if (zone) {
+        zone.files = zone.files || [];
         zone.files.push(result.data.file);
       }
       return result.data.file;
@@ -157,7 +158,7 @@ export const useZoneStore = defineStore('zone', () => {
     }
     const zone = zones.value.find(z => z.id === zoneId);
     if (zone) {
-      zone.files = zone.files.filter(f => f.id !== fileId);
+      zone.files = (zone.files || []).filter(f => f.id !== fileId);
     }
     return true;
   }
