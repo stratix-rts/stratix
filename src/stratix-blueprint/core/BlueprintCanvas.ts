@@ -48,24 +48,35 @@ export class BlueprintCanvas extends Phaser.Scene {
   
   private setupCameraControls(): void {
     const camera = this.cameras.main;
-    
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       if (!pointer.isDown) return;
-      
+
       if (pointer.rightButtonDown()) {
-        (camera as any).startDrag(pointer);
+        isDragging = true;
+        dragStartX = pointer.x;
+        dragStartY = pointer.y;
       }
     });
-    
+
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-      if (pointer.rightButtonDown()) {
+      if (isDragging && pointer.rightButtonDown()) {
         camera.setScroll(
-          camera.scrollX - (pointer.x - pointer.prevPosition.x) / camera.zoom,
-          camera.scrollY - (pointer.y - pointer.prevPosition.y) / camera.zoom
+          camera.scrollX - (pointer.x - dragStartX) / camera.zoom,
+          camera.scrollY - (pointer.y - dragStartY) / camera.zoom
         );
+        dragStartX = pointer.x;
+        dragStartY = pointer.y;
       }
     });
-    
+
+    this.input.on('pointerup', () => {
+      isDragging = false;
+    });
+
     this.input.on('wheel', (pointer: Phaser.Input.Pointer, gameObjects: any, deltaX: number, deltaY: number) => {
       const zoomChange = deltaY > 0 ? -0.1 : 0.1;
       const newZoom = Phaser.Math.Clamp(camera.zoom + zoomChange, 0.5, 2);

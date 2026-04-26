@@ -25,29 +25,38 @@ export class LayoutEngine {
     const layers = new Map<number, string[]>();
     const taskMap = new Map(tasks.map(t => [t.id, t]));
     const layerCache = new Map<string, number>();
-    
+    // Track tasks currently being processed to detect circular dependencies
+    const visiting = new Set<string>();
+
     const getLayer = (taskId: string): number => {
+      if (visiting.has(taskId)) {
+        // Circular dependency detected - break the cycle by returning current layer
+        return layerCache.get(taskId) ?? 0;
+      }
+
       if (layerCache.has(taskId)) {
         return layerCache.get(taskId)!;
       }
-      
+
       const task = taskMap.get(taskId);
       if (!task) return 0;
-      
+
       if (task.dependencies.length === 0) {
         layerCache.set(taskId, 0);
         return 0;
       }
-      
+
+      visiting.add(taskId);
       const maxDepLayer = Math.max(
         ...task.dependencies.map(dep => getLayer(dep))
       );
-      
+      visiting.delete(taskId);
+
       const layer = maxDepLayer + 1;
       layerCache.set(taskId, layer);
       return layer;
     };
-    
+
     for (const task of tasks) {
       const layer = getLayer(task.id);
       if (!layers.has(layer)) {
@@ -55,7 +64,7 @@ export class LayoutEngine {
       }
       layers.get(layer)!.push(task.id);
     }
-    
+
     return layers;
   }
   
