@@ -16,7 +16,7 @@ export interface NocoDBServiceOptions {
 
 const DEFAULT_OPTIONS: Required<NocoDBServiceOptions> = {
   port: 8080,
-  jwtSecret: 'stratix-nocodb-secret-2026',
+  jwtSecret: process.env.NC_AUTH_JWT_SECRET || '',
   disableTelemetry: true,
 };
 
@@ -35,19 +35,30 @@ export class NocoDBService {
     this.jwtSecret = opts.jwtSecret;
     this.disableTelemetry = opts.disableTelemetry;
 
-    // 获取 Stratix 数据库路径
-    const db = getDatabase();
-    this.dbPath = db.getPath();
+    // Refuse to start if jwtSecret is not set
+    if (!this.jwtSecret) {
+      throw new Error('[NocoDBService] NC_AUTH_JWT_SECRET environment variable is required');
+    }
 
-    // NocoDB 路径
+    // 获取 Stratix 数据库路径 (deferred to avoid I/O in constructor)
+    this.dbPath = '';
     this.nocoDBPackagePath = path.join(
       process.cwd(),
       'vendor/nocodb/packages/nocodb'
     );
     this.distPath = path.join(this.nocoDBPackagePath, 'dist');
+  }
 
-    console.log(`[NocoDBService] Database path: ${this.dbPath}`);
-    console.log(`[NocoDBService] NocoDB package path: ${this.nocoDBPackagePath}`);
+  /**
+   * Initialize database path (called before use to avoid I/O in constructor)
+   */
+  private ensureDbPath(): void {
+    if (!this.dbPath) {
+      const db = getDatabase();
+      this.dbPath = db.getPath();
+      console.log(`[NocoDBService] Database path: ${this.dbPath}`);
+      console.log(`[NocoDBService] NocoDB package path: ${this.nocoDBPackagePath}`);
+    }
   }
 
   /**
@@ -56,7 +67,7 @@ export class NocoDBService {
   public isBuilt(): boolean {
     // 检查 dist 目录和 bundle.js
     const bundlePath = path.join(this.distPath, 'bundle.js');
-    return fs.existsSync(bundlePath);
+    return fs.pathExistsSync(bundlePath);
   }
 
   /**
@@ -70,6 +81,8 @@ export class NocoDBService {
    * 构建 NocoDB（如果未构建）
    */
   public async build(): Promise<void> {
+    this.ensureDbPath();
+
     if (this.isBuilt()) {
       console.log('[NocoDBService] NocoDB already built, skipping build');
       return;
@@ -80,10 +93,11 @@ export class NocoDBService {
 
     return new Promise((resolve, reject) => {
       // 使用 pnpm 构建 NocoDB
-      const buildProcess = spawn('pnpm', ['install', '&&', 'build'], {
+      const buildProcess = spawn('sh', ['-c', 'pnpm install && pnpm build'], {
         cwd: this.nocoDBPackagePath,
-        shell: true,
-        stdio: 'pipe',
+        shell: false,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        maxBuffer: 100 * 1024 * 1024, // 100MB buffer
       });
 
       buildProcess.stdout?.on('data', (data) => {
@@ -118,6 +132,8 @@ export class NocoDBService {
    * 启动 NocoDB 服务
    */
   public async start(): Promise<void> {
+    this.ensureDbPath();
+
     // 确保已构建
     if (!this.isBuilt()) {
       console.log('[NocoDBService] NocoDB not built, attempting to build...');
@@ -212,24 +228,41 @@ export class NocoDBService {
       const proc = this.process;
       this.process = null;
 
-      // 尝试优雅关闭
-      proc.kill('SIGTERM');
-
-      // 等待进程退出
       return new Promise((resolve) => {
-        const timeout = setTimeout(() => {
-          // 强制杀死
-          if (proc) {
-            console.log('[NocoDBService] Force killing process...');
-            proc.kill('SIGKILL');
+        // 标记是否已解决，避免多次调用 resolve
+        let resolved = false;
+        const doResolve = () => {
+          if (!resolved) {
+            resolved = true;
+            resolve();
           }
-          resolve();
+        };
+
+        // 设置超时强制杀死
+        const timeout = setTimeout(() => {
+          console.log('[NocoDBService] Force killing process...');
+          try {
+            proc.kill('SIGKILL');
+          } catch {
+            // 进程可能已经退出
+          }
+          doResolve();
         }, 5000);
 
+        // 监听 exit 事件
         proc.on('exit', () => {
           clearTimeout(timeout);
-          resolve();
+          doResolve();
         });
+
+        // 尝试优雅关闭
+        try {
+          proc.kill('SIGTERM');
+        } catch {
+          // 进程可能已经退出
+          clearTimeout(timeout);
+          doResolve();
+        }
       });
     }
   }

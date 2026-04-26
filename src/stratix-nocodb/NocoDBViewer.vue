@@ -39,6 +39,7 @@
           ref="iframeRef"
           :src="nocoDBUrl"
           class="nocodb-iframe"
+          sandbox="allow-same-origin allow-scripts"
           @load="handleIframeLoad"
         />
         <div v-else class="nocodb-loading">
@@ -51,7 +52,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import StratixModal from '@/components/ui/StratixModal.vue';
 import StratixButton from '@/components/ui/StratixButton.vue';
 import { getNocoDBService } from './NocoDBService';
@@ -137,6 +138,13 @@ watch(
     }
   }
 );
+
+// Cleanup iframe on unmount
+onUnmounted(() => {
+  if (iframeRef.value) {
+    iframeRef.value.src = 'about:blank';
+  }
+});
 </script>
 
 <style scoped>
