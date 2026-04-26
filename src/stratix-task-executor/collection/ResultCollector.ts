@@ -39,23 +39,22 @@ export class ResultCollector {
   }
   
   async collectProjectResults(): Promise<TaskResult[]> {
-    const results: TaskResult[] = [];
-    
     try {
       const taskDirs = await this.getTaskDirectories();
-      
-      for (const taskDir of taskDirs) {
-        const taskId = this.extractTaskId(taskDir);
-        if (taskId) {
-          const result = await this.collectTaskResult(taskId, taskDir);
-          results.push(result);
-        }
-      }
+
+      const results = await Promise.all(
+        taskDirs.map(async (taskDir) => {
+          const taskId = this.extractTaskId(taskDir);
+          if (!taskId) return null;
+          return this.collectTaskResult(taskId, taskDir);
+        })
+      );
+
+      return results.filter((r): r is TaskResult => r !== null);
     } catch (error) {
       console.error('[ResultCollector] Error collecting project results:', error);
+      return [];
     }
-    
-    return results;
   }
   
   async generateResultManifest(): Promise<string> {
@@ -131,23 +130,24 @@ export class ResultCollector {
   
   private async getTaskFiles(taskDir: string): Promise<string[]> {
     const files: string[] = [];
-    
+
     try {
       const entries = await fs.readdir(taskDir, { withFileTypes: true });
-      
+
       for (const entry of entries) {
-        
+
         if (entry.isFile() && !entry.name.startsWith('.stratix-')) {
           files.push(entry.name);
         } else if (entry.isDirectory()) {
-          const subFiles = await this.getTaskFiles(entry.name);
+          const subDir = path.join(taskDir, entry.name);
+          const subFiles = await this.getTaskFiles(subDir);
           files.push(...subFiles.map(f => path.join(entry.name, f)));
         }
       }
     } catch (error) {
       console.error('[ResultCollector] Error getting task files:', error);
     }
-    
+
     return files;
   }
   

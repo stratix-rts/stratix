@@ -123,6 +123,6 @@ export class AgentOrchestratorClient {
   }
   
   isAgentWorking(_agentId: string): boolean {
-    return false;
+    throw new Error('Not implemented: isAgentWorking requires HTTP API endpoint for agent status');
   }
 }
