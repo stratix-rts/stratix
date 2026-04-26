@@ -23,16 +23,16 @@ export class LRAClient {
       await axios.post(`${this.baseURL}/init`, { projectPath, name });
       console.log(`[LRAClient] LRA initialized: ${projectPath}`);
     } catch (error) {
-      throw new Error(`Failed to initialize LRA: ${error}`);
+      throw new Error(`Failed to initialize LRA: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
-  
+
   /**
    * 创建任务
    */
   async createTask(
-    projectPath: string, 
-    description: string, 
+    projectPath: string,
+    description: string,
     template?: string
   ): Promise<string> {
     try {
@@ -41,15 +41,15 @@ export class LRAClient {
         description,
         template
       });
-      
+
       const taskId = data.taskId;
       console.log(`[LRAClient] Task created: ${taskId}`);
       return taskId;
     } catch (error) {
-      throw new Error(`Failed to create task: ${error}`);
+      throw new Error(`Failed to create task: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
-  
+
   /**
    * 列出所有任务
    */
@@ -58,15 +58,16 @@ export class LRAClient {
       const { data } = await axios.get(`${this.baseURL}/tasks`, {
         params: { projectPath }
       });
-      
+
       const tasks = data.tasks || [];
       return tasks;
     } catch (error) {
-      console.error('[LRAClient] Failed to list tasks:', error);
-      return [];
+      console.error('[LRAClient] Failed to list tasks:', error instanceof Error ? error.message : String(error));
+      // 抛出错误而不是返回空数组，让调用方区分"无任务"和"查询失败"
+      throw new Error(`Failed to list tasks: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
-  
+
   /**
    * 认领任务（带锁）
    */
@@ -76,12 +77,12 @@ export class LRAClient {
         `${this.baseURL}/tasks/${taskId}/claim`,
         { projectPath }
       );
-      
+
       const sessionId = data.sessionId;
       console.log(`[LRAClient] Task claimed: ${taskId} (session: ${sessionId})`);
       return sessionId;
     } catch (error) {
-      throw new Error(`Failed to claim task ${taskId}: ${error}`);
+      throw new Error(`Failed to claim task ${taskId}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
   
@@ -138,10 +139,10 @@ export class LRAClient {
       );
       console.log(`[LRAClient] Task status updated: ${taskId} → ${status}`);
     } catch (error) {
-      throw new Error(`Failed to set task status: ${error}`);
+      throw new Error(`Failed to set task status: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
-  
+
   /**
    * 查看任务详情
    */
@@ -150,10 +151,10 @@ export class LRAClient {
       const { data } = await axios.get(`${this.baseURL}/tasks/${taskId}`, {
         params: { projectPath }
       });
-      
+
       return data.task;
     } catch (error) {
-      throw new Error(`Failed to show task ${taskId}: ${error}`);
+      throw new Error(`Failed to show task ${taskId}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 }
