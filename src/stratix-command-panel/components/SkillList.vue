@@ -93,14 +93,23 @@ const selectSkill = (skill: StratixSkillConfig) => {
 };
 
 const getSkillColor = (skill: StratixSkillConfig): string => {
-  const skillType = skill.skillId.split('-')[2];
+  // Use category field if available, otherwise fall back to name-based matching
+  const skillType = (skill as any).category || skill.name.toLowerCase();
   const colors: Record<string, string> = {
     writer: getToken('colors.info'),
     dev: '#9B59B6',
     analyst: '#E67E22',
+    developer: '#9B59B6',
+    design: '#E67E22',
     default: getToken('colors.text.muted')
   };
-  return colors[skillType] || colors.default;
+  // Check if skillType contains any known type
+  for (const [type, color] of Object.entries(colors)) {
+    if (skillType.includes(type)) {
+      return color;
+    }
+  }
+  return colors.default;
 };
 
 const loadAgentSkills = async (agentIds: string[]) => {

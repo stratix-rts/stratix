@@ -154,6 +154,14 @@ export interface CommandLogItem {
   duration?: number;
 }
 
+interface Props {
+  maxLogs?: number;
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  maxLogs: 10
+});
+
 const logs = ref<CommandLogItem[]>([]);
 const searchQuery = ref<string>('');
 const statusFilter = ref<string>('all');
@@ -162,8 +170,6 @@ const showDetailModal = ref<boolean>(false);
 const selectedLog = ref<CommandLogItem | null>(null);
 const showCancelDialog = ref<boolean>(false);
 const logToCancel = ref<CommandLogItem | null>(null);
-
-const MAX_LOGS = 10;
 
 const filteredLogs = computed(() => {
   let result = logs.value;
@@ -202,7 +208,7 @@ const formatTime = (timestamp: number): string => {
 
 const addLog = (log: CommandLogItem) => {
   logs.value.unshift(log);
-  if (logs.value.length > MAX_LOGS) {
+  if (logs.value.length > props.maxLogs) {
     logs.value.pop();
   }
 };

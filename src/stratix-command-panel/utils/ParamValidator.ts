@@ -88,6 +88,16 @@ export class ParamValidator {
   }
 
   private static validateNumber(param: ValidatedParam, value: any): ValidationResult {
+    // Strict string validation - must be a valid number format
+    if (typeof value === 'string') {
+      if (!/^-?\d+(\.\d+)?$/.test(value.trim())) {
+        return {
+          isValid: false,
+          errorMessage: `${param.name} 必须为有效数字`
+        };
+      }
+    }
+
     const numValue = typeof value === 'string' ? parseFloat(value) : value;
 
     if (isNaN(numValue)) {

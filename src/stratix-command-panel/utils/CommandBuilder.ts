@@ -103,8 +103,12 @@ export class CommandBuilder {
     };
 
     const paramsPreview = Object.entries(command.params)
-      .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
       .slice(0, 5) // Limit to 5 params to prevent DoS
+      .map(([key, value]) => {
+        const valueStr = JSON.stringify(value);
+        const truncatedValue = valueStr.length > 200 ? valueStr.slice(0, 200) + '...' : valueStr;
+        return `${key}: ${truncatedValue}`;
+      })
       .join(', ');
 
     return `执行技能 "${escapeHtml(skillName)}" | 参数: ${paramsPreview || '无'}`;
