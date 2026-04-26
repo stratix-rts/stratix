@@ -156,22 +156,22 @@ const handleAddFiles = async (files: Array<{ name: string; sourceType: 'local' |
 
   loading.value = true;
   try {
-    const newFiles: ZoneFile[] = [];
-    for (const file of files) {
-      const response = await fetch(
-        `/api/zones/${currentZone.value.id}/files`,
-        {
+    // Parallelize file uploads for better performance
+    const results = await Promise.all(
+      files.map(file =>
+        fetch(`/api/zones/${currentZone.value.id}/files`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(file)
-        }
-      );
+        }).then(response => response.json())
+      )
+    );
 
-      const result = await response.json();
-      if (result.success && result.file) {
-        newFiles.push(result.file);
-      }
-    }
+    const newFiles: ZoneFile[] = results
+      .filter((result): result is { success: boolean; file: ZoneFile } =>
+        result.success && result.file
+      )
+      .map(result => result.file);
 
     if (newFiles.length > 0 && currentZone.value) {
       currentZone.value.files = [...currentZone.value.files, ...newFiles];

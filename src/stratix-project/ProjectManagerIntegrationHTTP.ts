@@ -135,9 +135,8 @@ export class ProjectManagerIntegration {
     const projects = await this.projectClient.getAllProjects();
     console.log(`[ProjectManager] Loading ${projects.length} existing projects`);
 
-    for (const project of projects) {
-      await this.createProjectZone(project);
-    }
+    // Parallelize project zone creation for better performance
+    await Promise.all(projects.map(project => this.createProjectZone(project)));
 
     (this.eventBus as any).emit('projects:loaded');
   }

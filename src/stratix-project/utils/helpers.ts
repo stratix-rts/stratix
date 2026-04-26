@@ -17,7 +17,14 @@ export function now(): string {
 }
 
 export function deepClone<T>(obj: T): T {
-  return JSON.parse(JSON.stringify(obj));
+  // Use structuredClone for proper Date/object cloning
+  // Note: structuredClone doesn't support functions, symbols, or error objects
+  try {
+    return structuredClone(obj);
+  } catch {
+    // Fallback for environments where structuredClone isn't available
+    return JSON.parse(JSON.stringify(obj));
+  }
 }
 
 export function validatePriority(priority: number): boolean {
