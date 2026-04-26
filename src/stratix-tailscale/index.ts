@@ -11,7 +11,7 @@ export type {
   OpenClawNode,
   TailscaleEvent,
 } from './types';
-export type { TailscaleStatus as EmbeddedTailscaleStatus, OpenClawNode as EmbeddedOpenClawNode, TailscaleEvent as EmbeddedTailscaleEvent } from './EmbeddedTailscale';
+export type { EmbeddedTailscaleStatus, OpenClawNode as EmbeddedOpenClawNode, TailscaleEvent as EmbeddedTailscaleEvent } from './EmbeddedTailscale';
 
 export function createTailscaleService(config?: TailscaleConfig): TailscaleService {
   return new TailscaleService(config);

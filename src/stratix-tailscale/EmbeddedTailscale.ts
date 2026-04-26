@@ -6,6 +6,7 @@ import * as path from 'path';
 import axios from 'axios';
 
 import { TailscalePeer, OpenClawNode } from './types';
+export { OpenClawNode };
 
 // EmbeddedTailscale-specific TailscaleStatus (differs from types.ts version)
 export interface EmbeddedTailscaleStatus {
@@ -235,6 +236,7 @@ export class EmbeddedTailscale {
           tailscaleIps: peer.TailscaleIPs || [],
           online: peer.Online || false,
           lastSeen: peer.LastSeen ? new Date(peer.LastSeen).getTime() : undefined,
+          created: peer.Created ? new Date(peer.Created).getTime() : 0,
         })
       );
 

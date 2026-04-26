@@ -72,23 +72,24 @@ export class TailscaleService {
     try {
       const { stdout } = await execAsync('tailscale status --json');
       const output = stdout.trim();
-      let raw: Record<string, unknown>;
+      let raw: unknown;
       try {
         raw = JSON.parse(output);
       } catch (parseError) {
         throw new Error(`Failed to parse Tailscale status output: ${parseError}`);
       }
 
+      const rawAny = raw as any;
       const self = {
-        id: raw.Self?.ID || '',
-        publicKey: raw.Self?.PublicKey || '',
-        hostName: raw.Self?.HostName || '',
-        dnsName: raw.Self?.DNSName || '',
-        tailscaleIps: raw.Self?.TailscaleIPs || [],
-        os: raw.Self?.OS || '',
+        id: rawAny.Self?.ID || '',
+        publicKey: rawAny.Self?.PublicKey || '',
+        hostName: rawAny.Self?.HostName || '',
+        dnsName: rawAny.Self?.DNSName || '',
+        tailscaleIps: rawAny.Self?.TailscaleIPs || [],
+        os: rawAny.Self?.OS || '',
       };
 
-      const peers: TailscalePeer[] = Object.entries(raw.Peer || {}).map(
+      const peers: TailscalePeer[] = Object.entries(rawAny.Peer || {}).map(
         ([id, peer]: [string, any]) => ({
           id,
           publicKey: peer.PublicKey || '',
@@ -102,7 +103,7 @@ export class TailscaleService {
         })
       );
 
-      const healthArray = raw.Health || [];
+      const healthArray = rawAny.Health || [];
       const health = healthArray.some((h: string) => h.includes('error'))
         ? 'error'
         : healthArray.some((h: string) => h.includes('warning'))
@@ -113,10 +114,10 @@ export class TailscaleService {
         self,
         peers,
         health,
-        backendState: raw.BackendState || 'NoState',
-        magicDnsSuffix: raw.MagicDNSSuffix || '',
+        backendState: rawAny.BackendState || 'NoState',
+        magicDnsSuffix: rawAny.MagicDNSSuffix || '',
         currentTailnet: {
-          name: raw.CurrentTailnet?.Name || '',
+          name: rawAny.CurrentTailnet?.Name || '',
         },
       };
     } catch (error) {
