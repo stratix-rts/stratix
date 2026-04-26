@@ -84,7 +84,11 @@ class SoundService {
     if (typeof window === 'undefined') return;
 
     try {
-      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) {
+        throw new Error('Web Audio API not supported');
+      }
+      this.audioContext = new AudioContextClass();
       this.masterGain = this.audioContext.createGain();
       this.masterGain.connect(this.audioContext.destination);
       this.masterGain.gain.value = this._volume;
@@ -256,8 +260,8 @@ class SoundService {
           this.masterGain.gain.value = this._volume;
         }
       }
-    } catch {
-      // ignore
+    } catch (e) {
+      console.warn('[SoundService] Failed to parse saved settings:', e);
     }
   }
 

@@ -70,20 +70,13 @@ export default defineConfig(async () => {
             }
           },
         },
+        external: ['fs-extra', 'graceful-fs'],
       },
     },
 
     optimizeDeps: {
       include: ['vue', 'axios', 'phaser', 'mitt'],
       exclude: ['lowdb', 'fs-extra', 'graceful-fs'],
-    },
-
-    build: {
-      outDir: 'dist/frontend',
-      sourcemap: true,
-      rollupOptions: {
-        external: ['fs-extra', 'graceful-fs'],
-      },
     },
 
     define: {
