@@ -42,9 +42,9 @@ export class ProjectStore {
   /**
    * Serialize database writes to prevent concurrent write conflicts
    */
-  private async enqueueWrite<T>(operation: () => Promise<T>): Promise<T> {
+  private async enqueueWrite<T>(operation: () => Promise<T>): Promise<void> {
     this.writeQueue = this.writeQueue.then(async () => {
-      return operation();
+      await operation();
     });
     return this.writeQueue;
   }
