@@ -578,12 +578,6 @@ app.on('before-quit', async () => {
     console.log('[Electron] OpenClaw connection closed');
   }
   
-  // 关闭 Gateway 服务
-  if (gatewayService?.close) {
-    await gatewayService.close();
-    console.log('[Electron] Gateway service stopped');
-  }
-  
   // 创建数据备份
   try {
     await dataStoreService.getBackupManager()?.createBackup();

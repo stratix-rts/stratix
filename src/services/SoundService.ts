@@ -84,7 +84,7 @@ class SoundService {
     if (typeof window === 'undefined') return;
 
     try {
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioContextClass) {
         throw new Error('Web Audio API not supported');
       }
