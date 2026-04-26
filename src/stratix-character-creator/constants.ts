@@ -155,6 +155,24 @@ export const ANIMATION_FRAMERATES: Record<AnimationName, number> = {
   [ANIMATION_NAMES.HALFSLASH]: 8
 };
 
+/**
+ * Animation alias mapping - maps code animation names to LPC animation names
+ * Shared between PartRegistry and CharacterComposer
+ */
+export const ANIM_ALIASES: Record<string, string[]> = {
+  combat_idle: ['combat', 'idle'],
+  backslash: ['1h_slash', '1h_backslash', 'slash', 'slash_oversize', 'slash_reverse_oversize'],
+  halfslash: ['1h_halfslash', 'slash', 'slash_oversize'],
+  slash: ['slash', 'slash_oversize', 'slash_reverse_oversize', '1h_slash'],
+  thrust: ['thrust', 'thrust_oversize'],
+  shoot: ['shoot', 'bow'],
+  spellcast: ['spellcast', 'magic'],
+  walk: ['walk'],
+  run: ['run', 'walk'],
+  idle: ['idle'],
+  hurt: ['hurt']
+};
+
 export const PART_CATEGORIES = [
   'shadow',
   'body',

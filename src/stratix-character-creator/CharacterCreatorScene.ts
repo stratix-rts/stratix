@@ -1026,6 +1026,10 @@ export class CharacterCreatorScene extends Phaser.Scene {
     this.buildAgentChatPanel(panelW, panelH);
   }
 
+  /**
+   * @deprecated This method is never called - AgentConfigPanel (Soul/Rules/Skills) is skipped
+   * in favor of direct chat/save flow. Kept for potential future use.
+   */
   private buildStratixAgentConfigPanel(panelW: number, panelH: number): void {
     if (!this.mainPanelContainer || !this.currentCharacter) return;
 

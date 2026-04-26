@@ -9,7 +9,8 @@ import {
   SHEET_WIDTH,
   SHEET_HEIGHT,
   ANIMATION_OFFSETS,
-  LAYER_Z_POSITIONS
+  LAYER_Z_POSITIONS,
+  ANIM_ALIASES
 } from '../constants';
 import type { PartSelection, ComposeOptions, ComposeResult, PartInfo, CreditInfo, PartMetadata } from '../types';
 
@@ -28,6 +29,26 @@ interface ItemToDraw {
 
 class CharacterComposer {
   private imageCache: Map<string, HTMLImageElement> = new Map();
+  private cacheOrder: string[] = [];
+  private readonly MAX_CACHE_SIZE = 100;
+
+  private setImageCache(key: string, img: HTMLImageElement): void {
+    if (this.imageCache.has(key)) {
+      // Move to end (most recently used)
+      this.cacheOrder = this.cacheOrder.filter(k => k !== key);
+      this.cacheOrder.push(key);
+    } else {
+      if (this.imageCache.size >= this.MAX_CACHE_SIZE) {
+        // Evict least recently used (first item)
+        const lruKey = this.cacheOrder.shift();
+        if (lruKey) {
+          this.imageCache.delete(lruKey);
+        }
+      }
+      this.imageCache.set(key, img);
+      this.cacheOrder.push(key);
+    }
+  }
 
   async composeCharacter(
     selections: Record<string, PartSelection>,
@@ -131,21 +152,7 @@ class CharacterComposer {
   private supportsAnimation(meta: PartMetadata, animName: string): boolean {
     if (!meta.animations || meta.animations.length === 0) return true;
 
-    const animAliases: Record<string, string[]> = {
-      combat_idle: ['combat', 'idle'],
-      backslash: ['1h_slash', '1h_backslash', 'slash', 'slash_oversize', 'slash_reverse_oversize'],
-      halfslash: ['1h_halfslash', 'slash', 'slash_oversize'],
-      slash: ['slash', 'slash_oversize', 'slash_reverse_oversize', '1h_slash'],
-      thrust: ['thrust', 'thrust_oversize'],
-      shoot: ['shoot', 'bow'],
-      spellcast: ['spellcast', 'magic'],
-      walk: ['walk'],
-      run: ['run', 'walk'],
-      idle: ['idle'],
-      hurt: ['hurt']
-    };
-
-    const aliases = animAliases[animName];
+    const aliases = ANIM_ALIASES[animName];
     if (aliases) {
       return aliases.some(alias => meta.animations!.includes(alias));
     }
@@ -165,7 +172,7 @@ class CharacterComposer {
       try {
         const img = await this.loadImage(item.spritePath);
         item.img = img;
-        this.imageCache.set(item.spritePath, img);
+        this.setImageCache(item.spritePath, img);
       } catch (error) {
         console.warn(`[CharacterComposer] Failed to load image: ${item.spritePath}`, error);
       }
@@ -263,6 +270,7 @@ class CharacterComposer {
 
   clearCache(): void {
     this.imageCache.clear();
+    this.cacheOrder = [];
   }
 
   getCacheSize(): number {

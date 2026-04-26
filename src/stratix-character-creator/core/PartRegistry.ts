@@ -5,7 +5,7 @@
  */
 
 import type { PartCategory, BodyType } from '../constants';
-import { SPRITESHEET_BASE_PATH } from '../constants';
+import { SPRITESHEET_BASE_PATH, ANIM_ALIASES } from '../constants';
 import type { PartMetadata, PartSelection } from '../types';
 
 /**
@@ -143,21 +143,7 @@ class PartRegistry {
   private supportsAnimation(meta: PartMetadata, animName: string): boolean {
     if (!meta.animations || meta.animations.length === 0) return true;
 
-    const animAliases: Record<string, string[]> = {
-      combat_idle: ['combat', 'idle'],
-      backslash: ['1h_slash', '1h_backslash', 'slash', 'slash_oversize', 'slash_reverse_oversize'],
-      halfslash: ['1h_halfslash', 'slash', 'slash_oversize'],
-      slash: ['slash', 'slash_oversize', 'slash_reverse_oversize', '1h_slash'],
-      thrust: ['thrust', 'thrust_oversize'],
-      shoot: ['shoot', 'bow'],
-      spellcast: ['spellcast', 'magic'],
-      walk: ['walk'],
-      run: ['run', 'walk'],
-      idle: ['idle'],
-      hurt: ['hurt']
-    };
-
-    const aliases = animAliases[animName];
+    const aliases = ANIM_ALIASES[animName];
     if (aliases) {
       return aliases.some(alias => meta.animations!.includes(alias));
     }
