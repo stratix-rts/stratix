@@ -1,4 +1,4 @@
-import type { StratixAgentConfig } from '../stratix-core/stratix-protocol';
+import type { StratixAgentConfig, AgentBackendType, AgentConfigStatus } from '../stratix-core/stratix-protocol';
 import { getDatabase, initializeDatabase } from '../stratix-database';
 import { agentChatMessageRepository, type ChatMessage } from '../stratix-database/AgentChatMessageRepository';
 import { agentRepository } from '../stratix-database/AgentRepository';
@@ -96,8 +96,8 @@ export class StratixDataStore {
       profile: row.profile ? JSON.parse(row.profile) : undefined,
       soul: row.soul ? JSON.parse(row.soul) : undefined,
       rules: row.rules ? JSON.parse(row.rules) : undefined,
-      backendType: row.backend_type,
-      configStatus: 'preset',
+      backendType: row.backend_type as AgentBackendType,
+      configStatus: 'preset' as AgentConfigStatus,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -167,11 +167,11 @@ export class StratixDataStore {
           return {};
         }
       })(),
-      status: row.status,
-      result: row.result,
-      error: row.error,
+      status: row.status as StratixCommandLog['status'],
+      result: row.result ?? undefined,
+      error: row.error ?? undefined,
       startTime: row.start_time,
-      endTime: row.end_time
+      endTime: row.end_time ?? undefined
     }));
   }
 
@@ -245,11 +245,11 @@ export class StratixDataStore {
           return {};
         }
       })(),
-      status: row.status,
-      result: row.result,
-      error: row.error,
+      status: row.status as StratixCommandLog['status'],
+      result: row.result ?? undefined,
+      error: row.error ?? undefined,
       startTime: row.start_time,
-      endTime: row.end_time
+      endTime: row.end_time ?? undefined
     };
   }
 
