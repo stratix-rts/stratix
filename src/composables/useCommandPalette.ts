@@ -8,11 +8,7 @@ export interface Command {
   action: () => void
 }
 
-const isOpen = ref(false)
-const query = ref('')
-const selectedIndex = ref(0)
-
-// Readonly commands registry - prevent mutation at module level
+// Commands registry - shared across all instances
 const COMMANDS_REGISTRY: ReadonlyArray<Command> = [
   { id: 'nav-zones', name: 'Navigate to Zones', category: 'navigation', shortcut: 'G Z', action: () => {} },
   { id: 'nav-agents', name: 'Navigate to Agents', category: 'navigation', shortcut: 'G A', action: () => {} },
@@ -38,78 +34,82 @@ function fuzzyMatch(text: string, pattern: string): boolean {
   return pi === lowerPattern.length
 }
 
-// Filtered commands derived from module-level query state
-const filteredCommands = computed(() => {
-  if (!query.value) return COMMANDS_REGISTRY
-  return COMMANDS_REGISTRY.filter(cmd => fuzzyMatch(cmd.name, query.value))
-})
-
-function selectCommand() {
-  const cmd = filteredCommands.value[selectedIndex.value]
-  if (cmd) {
-    cmd.action()
-    close()
-  }
-}
-
-function open() {
-  isOpen.value = true
-  query.value = ''
-  selectedIndex.value = 0
-}
-
-function close() {
-  isOpen.value = false
-}
-
-function toggle() {
-  isOpen.value ? close() : open()
-}
-
-function navigateUp() {
-  if (selectedIndex.value > 0) selectedIndex.value--
-}
-
-function navigateDown() {
-  if (selectedIndex.value < filteredCommands.value.length - 1) selectedIndex.value++
-}
-
-function handleKeydown(e: KeyboardEvent) {
-  const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
-  const modKey = isMac ? e.metaKey : e.ctrlKey
-
-  if (modKey && e.key === 'k') {
-    e.preventDefault()
-    toggle()
-    return
-  }
-
-  if (!isOpen.value) return
-
-  switch (e.key) {
-    case 'ArrowUp':
-      e.preventDefault()
-      navigateUp()
-      break
-    case 'ArrowDown':
-      e.preventDefault()
-      navigateDown()
-      break
-    case 'Enter':
-      e.preventDefault()
-      selectCommand()
-      break
-    case 'Escape':
-      e.preventDefault()
-      close()
-      break
-  }
-}
-
-onMounted(() => window.addEventListener('keydown', handleKeydown))
-onUnmounted(() => window.removeEventListener('keydown', handleKeydown))
-
 export function useCommandPalette() {
+  const isOpen = ref(false)
+  const query = ref('')
+  const selectedIndex = ref(0)
+
+  // Filtered commands derived from instance-level query state
+  const filteredCommands = computed(() => {
+    if (!query.value) return COMMANDS_REGISTRY
+    return COMMANDS_REGISTRY.filter(cmd => fuzzyMatch(cmd.name, query.value))
+  })
+
+  function selectCommand() {
+    const cmd = filteredCommands.value[selectedIndex.value]
+    if (cmd) {
+      cmd.action()
+      close()
+    }
+  }
+
+  function open() {
+    isOpen.value = true
+    query.value = ''
+    selectedIndex.value = 0
+  }
+
+  function close() {
+    isOpen.value = false
+  }
+
+  function toggle() {
+    isOpen.value ? close() : open()
+  }
+
+  function navigateUp() {
+    if (selectedIndex.value > 0) selectedIndex.value--
+  }
+
+  function navigateDown() {
+    if (selectedIndex.value < filteredCommands.value.length - 1) selectedIndex.value++
+  }
+
+  function handleKeydown(e: KeyboardEvent) {
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
+    const modKey = isMac ? e.metaKey : e.ctrlKey
+
+    if (modKey && e.key === 'k') {
+      e.preventDefault()
+      toggle()
+      return
+    }
+
+    if (!isOpen.value) return
+
+    switch (e.key) {
+      case 'ArrowUp':
+        e.preventDefault()
+        navigateUp()
+        break
+      case 'ArrowDown':
+        e.preventDefault()
+        navigateDown()
+        break
+      case 'Enter':
+        e.preventDefault()
+        selectCommand()
+        break
+      case 'Escape':
+        e.preventDefault()
+        close()
+        break
+    }
+  }
+
+  onMounted(() => window.addEventListener('keydown', handleKeydown))
+  onUnmounted(() => window.removeEventListener('keydown', handleKeydown))
+
   return {
     isOpen,
     query,

@@ -179,7 +179,10 @@ export function useChat(options: UseChatOptions): UseChatReturn {
       const chatConfig = { ...config };
       if (!chatConfig.apiKey && chatConfig.provider) {
         const apiKeyResult = await loadApiKey(chatConfig.provider);
-        if (apiKeyResult.success && apiKeyResult.data) {
+        if (!apiKeyResult.success) {
+          throw new Error(`Failed to load API key for provider: ${chatConfig.provider}`);
+        }
+        if (apiKeyResult.data) {
           chatConfig.apiKey = apiKeyResult.data;
         }
       }

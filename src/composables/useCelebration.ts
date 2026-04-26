@@ -1,4 +1,4 @@
-import { ref, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 
 // Particle shape types
 type ParticleShape = 'circle' | 'rectangle' | 'triangle'
@@ -261,6 +261,19 @@ export function useCelebration() {
   // Cleanup on unmount
   onUnmounted(() => {
     stopAnimation()
+    window.removeEventListener('resize', handleResize)
+  })
+
+  // Listen for window resize to update canvas dimensions
+  function handleResize(): void {
+    const canvas = celebrationCanvas.value
+    if (canvas) {
+      resizeCanvas(canvas)
+    }
+  }
+
+  onMounted(() => {
+    window.addEventListener('resize', handleResize)
   })
 
   return {
