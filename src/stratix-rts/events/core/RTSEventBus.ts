@@ -147,15 +147,15 @@ export class RTSEventBus {
     event: K,
     data: RequestResponseMap[K]['request'],
     timeoutMs: number = DEFAULT_REQUEST_TIMEOUT_MS
-  ): Promise<RequestResponseMap[K]['response']> {
+  ): Promise<RequestResponseMap[K]['response'] | undefined> {
     const handlers = this.responseHandlers.get(event);
     if (!handlers || handlers.length === 0) {
       console.warn(`[RTSEventBus] No response handler for ${event}`);
-      return null as RequestResponseMap[K]['response'];
+      return undefined;
     }
 
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    const timeoutPromise = new Promise<null>((_, reject) => {
+    const timeoutPromise = new Promise<undefined>((_, reject) => {
       timeoutId = setTimeout(() => {
         reject(new Error(`[RTSEventBus] Request timeout for ${event} after ${timeoutMs}ms`));
       }, timeoutMs);
@@ -169,7 +169,7 @@ export class RTSEventBus {
       return result;
     } catch (error) {
       console.error(`[RTSEventBus] Request error for ${event}:`, error);
-      return null as RequestResponseMap[K]['response'];
+      return undefined;
     } finally {
       if (timeoutId !== null) {
         clearTimeout(timeoutId);

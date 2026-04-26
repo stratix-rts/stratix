@@ -5,10 +5,21 @@ import {
   StratixFrontendOperationEvent,
   StratixStateSyncEvent,
   StratixAgentConfig,
-  StratixCommandData
+  StratixCommandData,
 } from '../stratix-core/stratix-protocol';
 
 type StratixEvent = StratixFrontendOperationEvent | StratixStateSyncEvent;
+
+// Type-safe event constants aligned with StratixStateSyncEventType
+const STRATIX_STATE_SYNC_EVENTS = {
+  AGENT_CREATE: 'stratix:agent_create' as const,
+  AGENT_STATUS_UPDATE: 'stratix:agent_status_update' as const,
+  COMMAND_STATUS_UPDATE: 'stratix:command_status_update' as const,
+  ZONE_UPDATED: 'stratix:zone_updated' as const,
+  ZONE_DELETED: 'stratix:zone_deleted' as const,
+  ZONE_MEMBER_JOINED: 'stratix:zone_member_joined' as const,
+  ZONE_MEMBER_LEFT: 'stratix:zone_member_left' as const,
+};
 
 export class StratixRTSEventManager {
   private eventBus: StratixEventBus;
@@ -21,13 +32,13 @@ export class StratixRTSEventManager {
   }
 
   public subscribeAll(): void {
-    this.subscribe('stratix:agent_create', this.onAgentCreate.bind(this));
-    this.subscribe('stratix:agent_status_update', this.onAgentStatusUpdate.bind(this));
-    this.subscribe('stratix:command_status_update', this.onCommandStatusUpdate.bind(this));
-    this.subscribe('stratix:zone_updated', this.onZoneUpdated.bind(this));
-    this.subscribe('stratix:zone_deleted', this.onZoneDeleted.bind(this));
-    this.subscribe('stratix:zone_member_joined', this.onZoneMemberJoined.bind(this));
-    this.subscribe('stratix:zone_member_left', this.onZoneMemberLeft.bind(this));
+    this.subscribe(STRATIX_STATE_SYNC_EVENTS.AGENT_CREATE, this.onAgentCreate.bind(this));
+    this.subscribe(STRATIX_STATE_SYNC_EVENTS.AGENT_STATUS_UPDATE, this.onAgentStatusUpdate.bind(this));
+    this.subscribe(STRATIX_STATE_SYNC_EVENTS.COMMAND_STATUS_UPDATE, this.onCommandStatusUpdate.bind(this));
+    this.subscribe(STRATIX_STATE_SYNC_EVENTS.ZONE_UPDATED, this.onZoneUpdated.bind(this));
+    this.subscribe(STRATIX_STATE_SYNC_EVENTS.ZONE_DELETED, this.onZoneDeleted.bind(this));
+    this.subscribe(STRATIX_STATE_SYNC_EVENTS.ZONE_MEMBER_JOINED, this.onZoneMemberJoined.bind(this));
+    this.subscribe(STRATIX_STATE_SYNC_EVENTS.ZONE_MEMBER_LEFT, this.onZoneMemberLeft.bind(this));
   }
 
   public unsubscribeAll(): void {
