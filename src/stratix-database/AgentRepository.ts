@@ -1,4 +1,4 @@
-import { StratixAgentConfig } from '../stratix-core/stratix-protocol';
+import { StratixAgentConfig, AgentBackendType, AgentConfigStatus } from '../stratix-core/stratix-protocol';
 
 import { getDatabase } from './StratixDatabase';
 
@@ -105,11 +105,16 @@ export class AgentRepository {
       agentId: row.agent_id,
       name: row.name,
       type: row.type,
-      profile: parseJsonSafe(row.profile, undefined),
+      profile: parseJsonSafe(row.profile, undefined) ?? {
+        characterId: row.agent_id,
+        name: row.name,
+        bodyType: 'male',
+        parts: {}
+      },
       soul: parseJsonSafe(row.soul, undefined),
       rules: parseJsonSafe(row.rules, undefined),
-      backendType: row.backend_type,
-      configStatus: row.config_status,
+      backendType: row.backend_type as AgentBackendType,
+      configStatus: row.config_status as AgentConfigStatus,
       position: parseJsonSafe(row.position, undefined),
       memory: parseJsonSafe(row.memory, undefined),
       openClawConfig: parseJsonSafe(row.openclaw_config, undefined),

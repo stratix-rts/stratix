@@ -1,4 +1,5 @@
 import { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskStatus, ZoneMessage, SenderType, FileVersion, FileMetadata } from '../stratix-project/types';
+import { ZoneStatus } from '../stratix-rts/zones/BaseZone';
 import { generateId } from '../stratix-project/utils/helpers';
 
 import { getDatabase } from './StratixDatabase';
@@ -724,11 +725,11 @@ export class ZoneRepository {
     return {
       id: row.zone_id,
       projectId: row.project_id,
-      title: row.title || row.name || '',
+      title: row.title || '',
       prompt: row.prompt || '',
       description: row.description || '',
       priority: row.priority || 3,
-      status: row.status || 'idle',
+      status: (row.status || 'idle') as ZoneStatus,
       path: row.path || '',
       presentAgentIds,
       members,
@@ -752,7 +753,7 @@ export class ZoneRepository {
       id: row.file_id,
       zoneId: row.zone_id,
       name: row.name,
-      sourceType: row.source_type,
+      sourceType: row.source_type as 'local' | 'url',
       source: row.source,
       content: row.content || undefined,
       fileType: row.file_type as FileType || undefined,
