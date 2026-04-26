@@ -31,6 +31,15 @@ const DEV_PORTS = [7523, 7524, 7525, 7526, 7527, 7528, 7529, 7530] as const;
 // Backend server port (standalone backend started by electron:dev)
 const BACKEND_PORT = 7524;
 
+// Helper function for safe JSON parsing
+function safeParseJson<T>(data: string, fallback: T): T {
+  try {
+    return JSON.parse(data) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 /**
  * 初始化所有服务
  */
@@ -425,7 +434,7 @@ function setupIPC() {
       let keys: Record<string, string> = {};
       if (fs.existsSync(keysPath)) {
         const existing = fs.readFileSync(keysPath);
-        keys = JSON.parse(Buffer.from(existing.toString('base64'), 'base64').toString('utf-8'));
+        keys = safeParseJson(Buffer.from(existing.toString('base64'), 'base64').toString('utf-8'), {});
       }
 
       keys[providerId] = encrypted.toString('base64');
@@ -449,7 +458,7 @@ function setupIPC() {
         return { success: true, data: null };
       }
       
-      const keys = JSON.parse(Buffer.from(fs.readFileSync(keysPath, 'utf-8'), 'base64').toString('utf-8'));
+      const keys = safeParseJson<Record<string, string>>(Buffer.from(fs.readFileSync(keysPath, 'utf-8'), 'base64').toString('utf-8'), {});
       const encrypted = keys[providerId];
       
       if (!encrypted) {
@@ -471,7 +480,7 @@ function setupIPC() {
         return { success: true };
       }
       
-      const keys = JSON.parse(Buffer.from(fs.readFileSync(keysPath, 'utf-8'), 'base64').toString('utf-8'));
+      const keys = safeParseJson<Record<string, string>>(Buffer.from(fs.readFileSync(keysPath, 'utf-8'), 'base64').toString('utf-8'), {});
       delete keys[providerId];
       fs.writeFileSync(keysPath, Buffer.from(JSON.stringify(keys), 'utf-8').toString('base64'));
       
@@ -489,7 +498,7 @@ function setupIPC() {
         return { success: true, data: [] };
       }
       
-      const keys = JSON.parse(Buffer.from(fs.readFileSync(keysPath, 'utf-8'), 'base64').toString('utf-8'));
+      const keys = safeParseJson<Record<string, string>>(Buffer.from(fs.readFileSync(keysPath, 'utf-8'), 'base64').toString('utf-8'), {});
       return { success: true, data: Object.keys(keys) };
     } catch (error) {
       console.error('[Electron] Failed to list API keys:', error);
