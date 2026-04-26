@@ -74,8 +74,19 @@ export class ServiceLocator {
   }
 }
 
-// 全局访问点
-const services = ServiceLocator.getInstance().getProvider();
+// 全局访问点 - 惰性获取避免模块级初始化阻塞
+export const getServices = (): ServiceProvider => {
+  return ServiceLocator.getInstance().getProvider();
+};
 
-export { services };
+// 保留向后兼容的导出（惰性）
+let _services: ServiceProvider | null = null;
+export const services: ServiceProvider = new Proxy({} as ServiceProvider, {
+  get(_target, prop) {
+    if (!_services) {
+      _services = ServiceLocator.getInstance().getProvider();
+    }
+    return (_services as any)[prop as string];
+  }
+});
 export default ServiceLocator;

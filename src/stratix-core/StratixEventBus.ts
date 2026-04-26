@@ -32,6 +32,8 @@ class StratixEventBus {
   private eventBuffer: Map<string, StratixEvent[]> = new Map();
   // 已订阅的事件类型（用于判断是否需要缓冲）
   private subscribedEvents: Set<string> = new Set();
+  // 缓冲上限，防止内存无限增长
+  private static readonly MAX_BUFFER_SIZE = 100;
 
   private constructor() {
     this.emitter = mitt<Record<string, StratixEvent>>();
@@ -108,7 +110,12 @@ class StratixEventBus {
     if (!this.eventBuffer.has(event.eventType)) {
       this.eventBuffer.set(event.eventType, []);
     }
-    this.eventBuffer.get(event.eventType)!.push(event);
+    const buffer = this.eventBuffer.get(event.eventType)!;
+    // 超过缓冲上限时，移除最旧的事件
+    if (buffer.length >= StratixEventBus.MAX_BUFFER_SIZE) {
+      buffer.shift();
+    }
+    buffer.push(event);
   }
 
   /**

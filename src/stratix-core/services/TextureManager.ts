@@ -25,8 +25,8 @@ interface CacheEntry {
 class TextureManager {
   private canvasCache: Map<string, CacheEntry> = new Map();
   private uploadPromises: Map<string, Promise<CharacterTexture | null>> = new Map();
-  
-  private readonly MAX_CACHE_SIZE = 20;
+  // 增加缓存上限以支持多角色切换场景
+  private readonly MAX_CACHE_SIZE = 50;
 
   /**
    * 生成并上传纹理（自动防重复）

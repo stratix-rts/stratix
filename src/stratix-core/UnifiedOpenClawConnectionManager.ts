@@ -226,20 +226,20 @@ class UnifiedOpenClawConnectionManager {
 
   private async pairConnectProxy(endpoint: string, sharedToken: string): Promise<ConnectionResult> {
     const checkResult = await this.checkEndpointExists(endpoint);
-    
+
     if (checkResult.exists && checkResult.connection) {
-      const useExisting = confirm(
-        `此 endpoint 已存在配置：\n名称: ${checkResult.connection.name}\n状态: ${checkResult.connection.status || '未知'}\n\n是否使用已有配置？\n点击"取消"将创建新配置。`
+      // Use existing connection by default to avoid blocking dialog
+      // This is safer for automated environments and avoids UI freeze in Electron
+      console.warn(
+        `[UnifiedOpenClawConnectionManager] Endpoint ${endpoint} already exists ` +
+        `(name: ${checkResult.connection.name}). Using existing connection.`
       );
-      
-      if (useExisting) {
-        this.connectionId = checkResult.connection.id;
-        return {
-          success: true,
-          state: 'connected',
-          message: 'Using existing connection',
-        };
-      }
+      this.connectionId = checkResult.connection.id;
+      return {
+        success: true,
+        state: 'connected',
+        message: 'Using existing connection',
+      };
     }
     
     const createResult = await this.createConnection({

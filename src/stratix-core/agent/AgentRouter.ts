@@ -33,6 +33,8 @@ export class AgentRouter {
   private executor: (task: AgentTask, agentId: string | undefined, signal: AbortSignal) => Promise<unknown> = async () => {
     throw new Error("AgentRouter executor not initialized. Call initializeWithOrchestration() first.");
   };
+  // 防止任务注册表无限增长
+  private static readonly MAX_CONCURRENT_TASKS = 100;
 
   /**
    * Initialize the router with an orchestration service executor.
@@ -54,6 +56,14 @@ export class AgentRouter {
    * - background flag → tracks task separately
    */
   async dispatch(task: AgentTask): Promise<TaskHandle> {
+    // 检查任务数量上限，防止注册表无限增长
+    if (this.taskRegistry.size >= AgentRouter.MAX_CONCURRENT_TASKS) {
+      throw new Error(
+        `Too many concurrent tasks: ${this.taskRegistry.size} >= ${AgentRouter.MAX_CONCURRENT_TASKS}. ` +
+        `Please wait for some tasks to complete before dispatching new ones.`
+      );
+    }
+
     const abortController = new AbortController();
 
     const context: TaskContext = {
@@ -76,6 +86,9 @@ export class AgentRouter {
         context.result = result;
         context.status = "completed";
         context.completedAt = new Date();
+        // 任务完成后从注册表清理，防止内存泄漏
+        this.taskRegistry.delete(task.taskId);
+        this.backgroundTasks.delete(task.taskId);
       })
       .catch((error: unknown) => {
         if (error instanceof Error && error.name === "AbortError") {
@@ -85,6 +98,9 @@ export class AgentRouter {
           context.result = error;
         }
         context.completedAt = new Date();
+        // 任务失败后也要清理
+        this.taskRegistry.delete(task.taskId);
+        this.backgroundTasks.delete(task.taskId);
       });
 
     context.status = "running";
