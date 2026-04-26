@@ -619,4 +619,12 @@ export class Executor {
     this.state.sandboxBranch = null;
     this.state.completedAt = new Date();
   }
+
+  /**
+   * 销毁执行器，清理所有事件监听器防止内存泄漏
+   */
+  destroy(): void {
+    this.eventListeners.clear();
+    this.canceledProposals.clear();
+  }
 }
