@@ -212,7 +212,6 @@ const loadProjectInfo = async () => {
     
     if (result.success) {
       projectInfo.value = result.project;
-      console.log('[ChatPanel] Loaded project info, present agents:', result.project.presentAgentIds);
     }
   } catch (err) {
     console.error('[ChatPanel] Failed to load project info:', err);
@@ -313,7 +312,6 @@ const connectWebSocket = () => {
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsHost = window.location.host;
   const wsUrl = `${wsProtocol}//${wsHost}/ws`;
-  console.log('[ChatPanel] Connecting to WebSocket:', wsUrl);
   ws.value = new WebSocket(wsUrl);
 
   ws.value.onmessage = (event) => {
