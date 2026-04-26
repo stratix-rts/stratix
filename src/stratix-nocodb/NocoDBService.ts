@@ -25,7 +25,7 @@ export class NocoDBService {
   private readonly port: number;
   private readonly jwtSecret: string;
   private readonly disableTelemetry: boolean;
-  private readonly dbPath: string;
+  private dbPath: string;
   private readonly nocoDBPackagePath: string;
   private readonly distPath: string;
 
@@ -96,8 +96,7 @@ export class NocoDBService {
       const buildProcess = spawn('sh', ['-c', 'pnpm install && pnpm build'], {
         cwd: this.nocoDBPackagePath,
         shell: false,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        maxBuffer: 100 * 1024 * 1024, // 100MB buffer
+        stdio: ['pipe', 'pipe', 'pipe'] as const,
       });
 
       buildProcess.stdout?.on('data', (data) => {
