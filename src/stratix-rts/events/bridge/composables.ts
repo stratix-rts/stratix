@@ -116,11 +116,11 @@ export function useRTSRequest<K extends keyof RequestResponseMap>(
   const execute = async () => {
     isLoading.value = true;
     error.value = null;
-    
+
     try {
       const result = await rtsEventBus.request(event, requestData);
-      data.value = result;
-      return result;
+      data.value = result ?? null;
+      return result ?? null;
     } catch (e) {
       error.value = e as Error;
       return null;

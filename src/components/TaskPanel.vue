@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import { StratixModal, StratixButton, StratixLoading, StratixEmpty } from '@/components/ui';
+import { StratixModal, StratixButton, StratixLoading, StratixEmpty, SvgIcon } from '@/components/ui';
 import type { LraTask } from '../stratix-lra-bridge/types';
 import { LRAClient } from '../stratix-lra-bridge/LRAClient';
 import { LRAWatcher } from '../stratix-lra-bridge/LRAWatcher';
@@ -124,13 +124,13 @@ const getStatusColor = (status: string) => {
 
 const getStatusIcon = (status: string) => {
   const icons: Record<string, string> = {
-    pending: '⏳',
-    in_progress: '▶️',
-    completed: '✅',
-    failed: '❌',
-    paused: '⏸️'
+    pending: 'clock',
+    in_progress: 'zap',
+    completed: 'check',
+    failed: 'error',
+    paused: 'stop'
   };
-  return icons[status] || '❓';
+  return icons[status] || 'info';
 };
 
 const getPriorityColor = (priority: string) => {
@@ -270,7 +270,7 @@ onUnmounted(() => {
               @click="selectedTaskId = task.id"
             >
               <div class="task-header">
-                <span class="status-icon">{{ getStatusIcon(task.status) }}</span>
+                <SvgIcon :name="getStatusIcon(task.status)" class="status-icon" />
                 <span class="task-id">{{ task.id }}</span>
                 <span
                   class="priority-badge"
@@ -554,7 +554,9 @@ onUnmounted(() => {
 }
 
 .status-icon {
-  font-size: 18px;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
 }
 
 .task-id {

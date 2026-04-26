@@ -128,10 +128,6 @@ const handleClick = (event: MouseEvent) => {
   align-items: center;
 }
 
-.stratix-btn__text {
-  line-height: 1;
-}
-
 @keyframes spin {
   to {
     transform: rotate(360deg);

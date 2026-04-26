@@ -116,7 +116,7 @@ class RTSBridge {
   async request<T extends keyof import('../types/RTSEventTypes').RequestResponseMap>(
     event: T,
     data: import('../types/RTSEventTypes').RequestResponseMap[T]['request']
-  ): Promise<import('../types/RTSEventTypes').RequestResponseMap[T]['response']> {
+  ): Promise<import('../types/RTSEventTypes').RequestResponseMap[T]['response'] | undefined> {
     return this.eventBus.request(event, data);
   }
 }

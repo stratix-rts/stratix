@@ -382,8 +382,6 @@ const icons = {
 
     <WorkflowEditorModal
       v-model:visible="showWorkflowEditor"
-      @workflowChange="(def) => console.log('Workflow changed:', def)"
-      @execute="(status, def) => console.log('Workflow execute:', status, def)"
     />
   </div>
 </template>
