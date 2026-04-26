@@ -58,7 +58,6 @@ export class LocalOpenClawAdapter implements OpenClawAdapterInterface {
   private config: StratixOpenClawConfig;
   private subscribers: ((event: OpenClawEvent) => void)[] = [];
   private http: AxiosInstance;
-  private ws: WebSocket | null = null;
   private requestId = 0;
   private pendingRequests: Map<
     string,
@@ -83,13 +82,10 @@ export class LocalOpenClawAdapter implements OpenClawAdapterInterface {
     if (!status.connected) {
       throw new Error(`Failed to connect: ${status.error || 'Gateway not responding'}`);
     }
+    this.isConnectedFlag = true;
   }
 
   public async disconnect(): Promise<void> {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
     this.isConnectedFlag = false;
     this.pendingRequests.clear();
   }
