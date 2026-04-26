@@ -1,3 +1,4 @@
+import { PermissionOrchestrator, PermissionContext } from '../../stratix-core/permission';
 import {
   zoneRepository,
   zoneMemberRepository,
@@ -10,14 +11,12 @@ import {
   type ZoneCoordinatorConfig,
   type AgentCapability,
   type Capability,
-  type AssignStrategy,
   type TaskFlowAction,
   type AuditEventType,
   type CycleConfig,
 } from '../../stratix-database';
 
 import ZoneCoordinatorEventEmitter from './ZoneCoordinatorEvents';
-import { PermissionOrchestrator, PermissionContext } from '../../stratix-core/permission';
 
 // ============================================
 // Task Types
@@ -372,6 +371,9 @@ export class ZoneCoordinator {
    * @param requirement 用户或上游 Zone 输入的需求描述
    */
   async processRequirement(requirement: string): Promise<ProcessResult> {
+    // Check permission before processing requirement
+    this.checkPermission('process_requirement', `zone_coordinator:${this.zoneId}`);
+
     const emitter = ZoneCoordinatorEventEmitter.getInstance();
 
     // Emit requirement_received
@@ -507,15 +509,39 @@ export class ZoneCoordinator {
    */
   private async callLLM(systemPrompt: string, userMessage: string): Promise<string> {
     const { url, apiKey, model } = this.getLLMConfig();
+    const provider = this.config.llmProvider || 'openai';
 
-    const body: Record<string, unknown> = {
-      model: model || 'gpt-4o',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userMessage },
-      ],
-      temperature: 0.7,
+    let body: Record<string, unknown>;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
     };
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+
+    // Anthropic uses a different API format
+    if (provider === 'anthropic') {
+      body = {
+        model: model || 'claude-sonnet-4-20250514',
+        messages: [
+          { role: 'user', content: userMessage },
+        ],
+        system: systemPrompt,
+        max_tokens: 1024,
+      };
+      // Anthropic API uses anthropic-version header
+      headers['anthropic-version'] = '2023-06-01';
+    } else {
+      // OpenAI, DeepSeek, Ollama use the same messages format
+      body = {
+        model: model || 'gpt-4o',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userMessage },
+        ],
+        temperature: 0.7,
+      };
+    }
 
     const maxRetries = 2;
     let lastError: Error | null = null;
@@ -524,10 +550,7 @@ export class ZoneCoordinator {
       try {
         const response = await fetch(url, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {}),
-          },
+          headers,
           body: JSON.stringify(body),
           signal: AbortSignal.timeout(30000),
         });
@@ -541,8 +564,17 @@ export class ZoneCoordinator {
           throw new Error(`LLM API error: ${response.status} ${response.statusText}`);
         }
 
-        const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
-        const content = data.choices?.[0]?.message?.content;
+        const data = await response.json();
+
+        // Parse response based on provider
+        let content: string | undefined;
+        if (provider === 'anthropic') {
+          // Anthropic response: { content: [{ type: 'text', text: '...' }] }
+          content = (data as { content?: Array<{ type?: string; text?: string }> }).content?.[0]?.text;
+        } else {
+          // OpenAI-compatible response: { choices: [{ message: { content: '...' } }] }
+          content = (data as { choices?: Array<{ message?: { content?: string } }> }).choices?.[0]?.message?.content;
+        }
 
         if (!content) {
           throw new Error('LLM returned empty response');
@@ -579,7 +611,7 @@ export class ZoneCoordinator {
    * apiKey 优先从 config 读取，fallback 到环境变量
    * baseUrl 优先从 config 读取，fallback 到默认值
    */
-  private getLLMConfig(): { url: string; apiKey: string | null; model: string | null } {
+  private getLLMConfig(): { url: string; apiKey: string | null; model: string | null; provider: string } {
     const provider = this.config.llmProvider || 'openai';
     const model = this.config.model;
 
@@ -589,30 +621,35 @@ export class ZoneCoordinator {
           url: this.config.baseUrl || 'https://api.openai.com/v1/chat/completions',
           apiKey: this.config.apiKey || process.env.OPENAI_API_KEY || null,
           model,
+          provider,
         };
       case 'anthropic':
         return {
           url: this.config.baseUrl || 'https://api.anthropic.com/v1/messages',
           apiKey: this.config.apiKey || process.env.ANTHROPIC_API_KEY || null,
           model: model || 'claude-sonnet-4-20250514',
+          provider,
         };
       case 'deepseek':
         return {
           url: this.config.baseUrl || 'https://api.deepseek.com/v1/chat/completions',
           apiKey: this.config.apiKey || process.env.DEEPSEEK_API_KEY || null,
           model: model || 'deepseek-chat',
+          provider,
         };
       case 'ollama':
         return {
           url: this.config.baseUrl || 'http://localhost:11434/api/chat',
           apiKey: null,
           model: model || 'llama3',
+          provider,
         };
       default:
         return {
           url: this.config.baseUrl || 'https://api.openai.com/v1/chat/completions',
           apiKey: this.config.apiKey || process.env.OPENAI_API_KEY || null,
           model,
+          provider,
         };
     }
   }
@@ -1223,6 +1260,8 @@ ${assignStrategyDescription}
    * 获取 Zone 状态摘要
    */
   getStatusSummary(): ZoneStatusSummary {
+    this.checkPermission('get_status_summary', `zone_coordinator:${this.zoneId}`);
+
     const recentActivity = auditLogRepository.getRecentEvents(this.zoneId, 10);
 
     let completedCount = 0;
