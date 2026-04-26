@@ -1,4 +1,4 @@
-import { getDatabase } from '../../stratix-database/StratixDatabase';
+import { getDatabase } from '../../stratix-database';
 
 import { TaskItem, TaskContext, TaskResult, TaskEvent, TaskEventCallback } from './TaskItem';
 
@@ -132,11 +132,45 @@ export class TaskQueueService {
 
   async getTasksByAgent(agentId: string): Promise<TaskItem[]> {
     const db = getDatabase().getDatabase();
+
+    // Query 1: Tasks assigned to this agent in the tasks table
     const rows = db.prepare(
       "SELECT * FROM tasks WHERE assigned_agent_id = ? AND status IN ('assigned', 'in_progress') ORDER BY priority DESC"
     ).all(agentId) as TaskRow[];
 
-    return rows.map(row => this.rowToTask(row));
+    // Query 2: Delegated tasks from task_flow (ZoneCoordinator writes here when delegating)
+    // This catches cases where tasks might not be properly synced to the tasks table
+    const delegatedFlows = db.prepare(
+      "SELECT task_id, to_agent_id, created_at FROM task_flow WHERE to_agent_id = ? AND action = 'delegated' ORDER BY created_at DESC"
+    ).all(agentId) as { task_id: string; to_agent_id: string; created_at: number }[];
+
+    // Use a Map to deduplicate by taskId (tasks table takes precedence)
+    const taskMap = new Map<string, TaskItem>();
+
+    // Add tasks from the tasks table first
+    for (const row of rows) {
+      const task = this.rowToTask(row);
+      taskMap.set(task.taskId, task);
+    }
+
+    // Add/merge delegated tasks from task_flow (if not already present)
+    for (const flow of delegatedFlows) {
+      if (taskMap.has(flow.task_id)) continue; // Already have this task
+
+      // Query the tasks table for this task
+      const taskRow = db.prepare('SELECT * FROM tasks WHERE task_id = ?').get(flow.task_id) as TaskRow | undefined;
+      if (taskRow) {
+        const task = this.rowToTask(taskRow);
+        taskMap.set(task.taskId, task);
+      }
+      // If task doesn't exist in tasks table, skip it (can't return partial data)
+    }
+
+    // Sort by priority descending
+    const result = Array.from(taskMap.values());
+    result.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+
+    return result;
   }
 
   async updateTask(taskId: string, updates: Partial<TaskItem>): Promise<TaskItem | null> {

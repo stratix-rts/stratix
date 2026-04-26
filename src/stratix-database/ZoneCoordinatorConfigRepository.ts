@@ -2,6 +2,18 @@ import { getDatabase } from './StratixDatabase';
 
 export type AssignStrategy = 'random' | 'capability_match' | 'load_balance' | 'priority' | 'round_robin';
 
+/**
+ * Cycle configuration for Zone task loop execution
+ */
+export interface CycleConfig {
+  enabled: boolean;
+  intervalMs: number;
+  lastRun: number | null;
+  count: number;
+  maxCycles: number | null;  // null = infinite
+  requirement: string | null; // the requirement to re-execute
+}
+
 export interface ZoneCoordinatorConfig {
   llmProvider: string;
   model: string | null;
@@ -12,6 +24,7 @@ export interface ZoneCoordinatorConfig {
   entryCondition: string | null;
   apiKey?: string;
   baseUrl?: string;
+  cycleConfig?: CycleConfig;
 }
 
 export type ZoneCoordinatorConfigRecord = ZoneCoordinatorConfig & {
@@ -26,6 +39,14 @@ export class ZoneCoordinatorConfigRepository {
   }
 
   private mapRowToConfig(row: any): ZoneCoordinatorConfigRecord {
+    let cycleConfig: CycleConfig | undefined;
+    if (row.cycle_config) {
+      try {
+        cycleConfig = JSON.parse(row.cycle_config) as CycleConfig;
+      } catch {
+        // Ignore parse errors
+      }
+    }
     return {
       zoneId: row.zone_id,
       llmProvider: row.llm_provider,
@@ -37,6 +58,7 @@ export class ZoneCoordinatorConfigRepository {
       entryCondition: row.entry_condition,
       apiKey: row.api_key || undefined,
       baseUrl: row.base_url || undefined,
+      cycleConfig,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -89,6 +111,7 @@ export class ZoneCoordinatorConfigRepository {
           entry_condition = ?,
           api_key = ?,
           base_url = ?,
+          cycle_config = ?,
           updated_at = ?
         WHERE zone_id = ?
       `);
@@ -102,6 +125,7 @@ export class ZoneCoordinatorConfigRepository {
         config.entryCondition ?? null,
         config.apiKey ?? null,
         config.baseUrl ?? null,
+        config.cycleConfig ? JSON.stringify(config.cycleConfig) : null,
         now,
         zoneId
       );
@@ -109,8 +133,8 @@ export class ZoneCoordinatorConfigRepository {
       const stmt = this.db.prepare(`
         INSERT INTO zone_coordinators (
           zone_id, llm_provider, model, auto_decompose, auto_assign,
-          require_user_confirm, assign_strategy, entry_condition, api_key, base_url, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          require_user_confirm, assign_strategy, entry_condition, api_key, base_url, cycle_config, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       stmt.run(
         zoneId,
@@ -123,6 +147,7 @@ export class ZoneCoordinatorConfigRepository {
         config.entryCondition ?? null,
         config.apiKey ?? null,
         config.baseUrl ?? null,
+        config.cycleConfig ? JSON.stringify(config.cycleConfig) : null,
         now,
         now
       );
@@ -147,7 +172,8 @@ export class ZoneCoordinatorConfigRepository {
       assignStrategy: partial.assignStrategy ?? existing.assignStrategy,
       entryCondition: partial.entryCondition !== undefined ? partial.entryCondition : existing.entryCondition,
       apiKey: partial.apiKey !== undefined ? partial.apiKey : existing.apiKey,
-      baseUrl: partial.baseUrl !== undefined ? partial.baseUrl : existing.baseUrl
+      baseUrl: partial.baseUrl !== undefined ? partial.baseUrl : existing.baseUrl,
+      cycleConfig: partial.cycleConfig !== undefined ? partial.cycleConfig : existing.cycleConfig
     };
 
     return this.setConfig(zoneId, updated);

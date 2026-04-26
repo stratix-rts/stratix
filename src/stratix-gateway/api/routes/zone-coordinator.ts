@@ -121,6 +121,14 @@ interface UpdateConfigRequest {
   entryCondition?: string | null;
 }
 
+interface CycleRequest {
+  action: 'start' | 'stop' | 'status';
+  enabled?: boolean;
+  intervalMs?: number;
+  maxCycles?: number | null;
+  requirement?: string;
+}
+
 // ============================================
 // POST /api/zones/:zoneId/requirements
 // Submit requirement - calls ZoneCoordinator.processRequirement
@@ -413,6 +421,89 @@ router.put('/zones/:zoneId/coordinator/config', async (req: Request, res: Respon
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Failed to update coordinator config'
+    });
+  }
+});
+
+// ============================================
+// POST /api/zones/:zoneId/cycle
+// Start, stop, or get cycle status
+// ============================================
+
+router.post('/zones/:zoneId/cycle', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const zoneId = req.params.zoneId as string;
+    const { action, enabled, intervalMs, maxCycles, requirement } = req.body as CycleRequest;
+
+    if (!action) {
+      res.status(400).json({
+        success: false,
+        error: 'Missing required field: action'
+      });
+      return;
+    }
+
+    const coordinator = await coordinatorService.getCoordinator(zoneId);
+
+    if (action === 'status') {
+      const status = coordinator.getCycleStatus();
+      res.json({
+        success: true,
+        cycle: status
+      });
+      return;
+    }
+
+    if (action === 'stop') {
+      coordinator.stopCycle();
+      res.json({
+        success: true,
+        message: 'Cycle stopped'
+      });
+      return;
+    }
+
+    if (action === 'start') {
+      if (!requirement) {
+        res.status(400).json({
+          success: false,
+          error: 'Missing required field: requirement for start action'
+        });
+        return;
+      }
+
+      if (intervalMs === undefined || intervalMs < 1000) {
+        res.status(400).json({
+          success: false,
+          error: 'intervalMs must be at least 1000ms'
+        });
+        return;
+      }
+
+      await coordinator.startCycle({
+        enabled: true,
+        intervalMs,
+        maxCycles: maxCycles ?? null,
+        requirement,
+      }, requirement);
+
+      res.json({
+        success: true,
+        message: 'Cycle started',
+        cycle: coordinator.getCycleStatus()
+      });
+      return;
+    }
+
+    res.status(400).json({
+      success: false,
+      error: 'Invalid action. Use: start, stop, or status'
+    });
+  } catch (error) {
+    console.error('[ZoneCoordinator API] Cycle operation failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to perform cycle operation'
     });
   }
 });

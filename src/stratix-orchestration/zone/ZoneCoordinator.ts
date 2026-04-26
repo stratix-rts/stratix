@@ -13,6 +13,7 @@ import {
   type AssignStrategy,
   type TaskFlowAction,
   type AuditEventType,
+  type CycleConfig,
 } from '../../stratix-database';
 
 import ZoneCoordinatorEventEmitter from './ZoneCoordinatorEvents';
@@ -136,6 +137,11 @@ export class ZoneCoordinator {
   private lastAssignedIndex: number = -1;
   private permissionOrchestrator: PermissionOrchestrator | null = null;
 
+  // Cycle execution state
+  private cycleTimer: NodeJS.Timeout | null = null;
+  private cycleConfig: CycleConfig | null = null;
+  private cycleCount: number = 0;
+
   /**
    * Static factory method to create a ZoneCoordinator.
    * Prefer this over direct constructor invocation.
@@ -180,6 +186,7 @@ export class ZoneCoordinator {
     const existingConfig = zoneCoordinatorConfigRepository.getConfig(zoneId);
     if (existingConfig) {
       this.config = existingConfig;
+      this.cycleConfig = existingConfig.cycleConfig || null;
     } else if (config) {
       // Create default config with provided overrides
       this.config = {
@@ -192,7 +199,9 @@ export class ZoneCoordinator {
         entryCondition: config.entryCondition ?? null,
         apiKey: config.apiKey,
         baseUrl: config.baseUrl,
+        cycleConfig: config.cycleConfig,
       };
+      this.cycleConfig = config.cycleConfig || null;
       zoneCoordinatorConfigRepository.setConfig(zoneId, this.config);
     } else {
       // Create default config
@@ -216,6 +225,144 @@ export class ZoneCoordinator {
 
     // Load persisted tasks from database
     this.loadTasksFromDB();
+
+    // Resume cycle if enabled
+    if (this.cycleConfig?.enabled) {
+      this.cycleCount = this.cycleConfig.count || 0;
+    }
+  }
+
+  // ==================== Cycle Management ====================
+
+  /**
+   * Start or update cycle configuration
+   * @param config Cycle configuration
+   * @param requirement The requirement to execute on each cycle
+   */
+  async startCycle(config: Omit<CycleConfig, 'lastRun' | 'count'>, requirement: string): Promise<void> {
+    // Stop any existing cycle
+    this.stopCycle();
+
+    // Initialize cycle config
+    this.cycleConfig = {
+      ...config,
+      lastRun: null,
+      count: 0,
+      requirement,
+    };
+
+    // Persist to database
+    await this.persistCycleConfig();
+
+    // Execute first cycle immediately
+    await this.executeCycle();
+  }
+
+  /**
+   * Stop the running cycle
+   */
+  stopCycle(): void {
+    if (this.cycleTimer) {
+      clearTimeout(this.cycleTimer);
+      this.cycleTimer = null;
+    }
+
+    if (this.cycleConfig) {
+      this.cycleConfig.enabled = false;
+      this.persistCycleConfig().catch(err => {
+        console.error(`[ZoneCoordinator] Failed to persist cycle config on stop: ${err}`);
+      });
+    }
+  }
+
+  /**
+   * Get current cycle status
+   */
+  getCycleStatus(): { enabled: boolean; intervalMs: number; count: number; maxCycles: number | null; lastRun: number | null } | null {
+    if (!this.cycleConfig) return null;
+    return {
+      enabled: this.cycleConfig.enabled,
+      intervalMs: this.cycleConfig.intervalMs,
+      count: this.cycleCount,
+      maxCycles: this.cycleConfig.maxCycles,
+      lastRun: this.cycleConfig.lastRun,
+    };
+  }
+
+  /**
+   * Execute a single cycle
+   */
+  private async executeCycle(): Promise<void> {
+    if (!this.cycleConfig || !this.cycleConfig.enabled) return;
+
+    // Check max cycles limit
+    if (this.cycleConfig.maxCycles !== null && this.cycleCount >= this.cycleConfig.maxCycles) {
+      console.log(`[ZoneCoordinator] Cycle ${this.zoneId} reached max cycles (${this.cycleConfig.maxCycles}), stopping`);
+      this.stopCycle();
+      return;
+    }
+
+    const requirement = this.cycleConfig.requirement;
+    if (!requirement) {
+      console.warn(`[ZoneCoordinator] Cycle ${this.zoneId} has no requirement to execute`);
+      return;
+    }
+
+    console.log(`[ZoneCoordinator] Starting cycle ${this.cycleCount + 1} for zone ${this.zoneId}`);
+
+    // Update lastRun and count
+    this.cycleConfig.lastRun = Date.now();
+    this.cycleCount++;
+
+    // Persist updated cycle config
+    await this.persistCycleConfig();
+
+    // Execute the requirement
+    try {
+      await this.processRequirement(requirement);
+    } catch (error) {
+      console.error(`[ZoneCoordinator] Cycle ${this.zoneId} failed: ${error}`);
+    }
+
+    // Schedule next cycle if still enabled
+    if (this.cycleConfig.enabled) {
+      this.cycleTimer = setTimeout(() => {
+        this.executeCycle().catch(err => {
+          console.error(`[ZoneCoordinator] Scheduled cycle ${this.zoneId} failed: ${err}`);
+        });
+      }, this.cycleConfig.intervalMs);
+    }
+  }
+
+  /**
+   * Persist cycle config to database
+   */
+  private async persistCycleConfig(): Promise<void> {
+    if (!this.cycleConfig) return;
+
+    const updatedConfig: Partial<ZoneCoordinatorConfig> = {
+      cycleConfig: {
+        ...this.cycleConfig,
+        count: this.cycleCount,
+      },
+    };
+
+    zoneCoordinatorConfigRepository.updateConfig(this.zoneId, updatedConfig);
+  }
+
+  /**
+   * Check if all tasks are complete and trigger cycle if enabled
+   */
+  private checkAndTriggerCycle(): void {
+    // Check if there are any pending or active tasks
+    if (this.pendingTasks.length > 0) return;
+    if (this.activeTasks.size > 0) return;
+
+    // All tasks are done, trigger cycle if enabled
+    if (this.cycleConfig?.enabled && this.cycleConfig.requirement) {
+      console.log(`[ZoneCoordinator] All tasks complete for zone ${this.zoneId}, triggering cycle ${this.cycleCount + 1}`);
+      this.executeCycle();
+    }
   }
 
   // ==================== 核心方法 ====================
@@ -997,6 +1144,9 @@ ${assignStrategyDescription}
       },
       timestamp: Date.now(),
     });
+
+    // Check if all tasks are complete and trigger cycle if enabled
+    this.checkAndTriggerCycle();
   }
 
   /**

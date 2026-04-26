@@ -10,6 +10,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { StratixStateSyncEvent, StratixStateSyncEventType, AgentStatusInfo } from '../../../stratix-core/stratix-protocol';
 import { ProjectChannelMessage } from '../../../stratix-project/types';
 import { gatewayEventBus, ChannelMessageEvent, ZoneEvent } from '../../GatewayEventBus';
+import ZoneCoordinatorEventEmitter, { type ZoneCoordinatorEventPayload } from '../../../stratix-orchestration/zone/ZoneCoordinatorEvents';
 
 interface ClientInfo {
   ws: WebSocket;
@@ -24,12 +25,14 @@ export class StatusSyncService {
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private unsubscribeChannelMessage: (() => void) | null = null;
   private unsubscribeZoneEvent: (() => void) | null = null;
+  private unsubscribeZoneCoordinatorEvent: (() => void) | null = null;
 
   constructor(port: number = 3001) {
     this.wss = new WebSocketServer({ port });
     this.setupServer();
     this.startHeartbeat();
     this.setupEventBusListeners();
+    this.setupZoneCoordinatorListeners();
   }
 
   private setupServer(): void {
@@ -107,6 +110,24 @@ export class StatusSyncService {
     // 监听 Zone 事件，转发到 WebSocket
     this.unsubscribeZoneEvent = gatewayEventBus.onZoneEvent((event: ZoneEvent) => {
       this.broadcastZoneEvent(event);
+    });
+  }
+
+  private setupZoneCoordinatorListeners(): void {
+    const eventEmitter = ZoneCoordinatorEventEmitter.getInstance();
+
+    // Listen for task_delegated events and push to agent WebSocket
+    this.unsubscribeZoneCoordinatorEvent = eventEmitter.on('task_delegated', (payload: ZoneCoordinatorEventPayload) => {
+      if (payload.agentId && payload.task) {
+        this.notifyAgentTaskAssigned(payload.agentId, {
+          taskId: payload.task.id,
+          zoneId: payload.zoneId,
+          name: payload.task.title,
+          description: payload.task.description,
+          type: payload.task.type,
+          priority: payload.task.priority
+        });
+      }
     });
   }
 
@@ -343,6 +364,9 @@ export class StatusSyncService {
     }
     if (this.unsubscribeZoneEvent) {
       this.unsubscribeZoneEvent();
+    }
+    if (this.unsubscribeZoneCoordinatorEvent) {
+      this.unsubscribeZoneCoordinatorEvent();
     }
     this.wss.close();
   }

@@ -5,7 +5,7 @@ export { zoneRepository, ZoneRepository } from './ZoneRepository';
 export { zoneMemberRepository, ZoneMemberRepository } from './ZoneMemberRepository';
 export type { ZoneMember, ZoneMemberRole } from './ZoneMemberRepository';
 export { zoneCoordinatorConfigRepository, ZoneCoordinatorConfigRepository } from './ZoneCoordinatorConfigRepository';
-export type { ZoneCoordinatorConfig, ZoneCoordinatorConfigRecord, AssignStrategy } from './ZoneCoordinatorConfigRepository';
+export type { ZoneCoordinatorConfig, ZoneCoordinatorConfigRecord, AssignStrategy, CycleConfig } from './ZoneCoordinatorConfigRepository';
 export { skillRepository, SkillRepository } from './SkillRepository';
 export type { SharedSkill, SharedSkillInstall, AgentLearnedSkill } from './SkillRepository';
 export { agentCapabilityRepository, AgentCapabilityRepository } from './AgentCapabilityRepository';

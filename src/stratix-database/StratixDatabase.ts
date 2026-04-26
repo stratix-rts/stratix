@@ -116,6 +116,10 @@ export class StratixDatabase {
       this.db.exec('ALTER TABLE zone_coordinators ADD COLUMN base_url TEXT');
       console.log('[Database] Added base_url column to zone_coordinators table');
     }
+    if (!zcColumnNames.has('cycle_config')) {
+      this.db.exec('ALTER TABLE zone_coordinators ADD COLUMN cycle_config TEXT');
+      console.log('[Database] Added cycle_config column to zone_coordinators table');
+    }
 
     // 检测表是否存在
     const tables = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as any[];

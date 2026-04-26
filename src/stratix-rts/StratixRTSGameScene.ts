@@ -462,6 +462,17 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     console.log('[StratixRTS] Project zone agent tracking started');
   }
 
+  private getZoneIdAtPosition(x: number, y: number): string | null {
+    const projectZones = this.projectManagerIntegration.getAllProjectZones();
+    for (const [zoneId, zone] of projectZones) {
+      const bounds = zone.getBounds();
+      if (Phaser.Geom.Rectangle.Contains(bounds, x, y)) {
+        return zoneId;
+      }
+    }
+    return null;
+  }
+
   private async checkAgentsInProjectZones(): Promise<void> {
     const projectZones = this.projectManagerIntegration.getAllProjectZones();
     const projectClient = this.projectManagerIntegration.getProjectClient();
@@ -709,13 +720,38 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     });
   }
 
-  private handleSpriteDragEnd(): void {
-    this.selectedAgentIds.forEach(id => {
+  private async handleSpriteDragEnd(): Promise<void> {
+    const projectClient = this.projectManagerIntegration.getProjectClient();
+
+    for (const id of this.selectedAgentIds) {
       const sprite = this.agentSprites.get(id);
-      if (sprite) {
-        sprite.endDrag();
+      if (!sprite) continue;
+
+      sprite.endDrag();
+
+      // Immediately check if agent was dropped over a zone
+      const zoneId = this.getZoneIdAtPosition(sprite.x, sprite.y);
+      const previousZoneId = this.agentZoneTracking.get(id);
+
+      if (zoneId && zoneId !== previousZoneId) {
+        try {
+          await projectClient.addZoneMember(zoneId, id);
+          this.agentZoneTracking.set(id, zoneId);
+          console.log(`[StratixRTS] Agent ${id} immediately registered in zone ${zoneId} on drag end`);
+        } catch (error) {
+          console.error(`[StratixRTS] Failed to register agent ${id} in zone ${zoneId}:`, error);
+        }
+      } else if (!zoneId && previousZoneId) {
+        // Agent was dragged out of a zone
+        try {
+          await projectClient.removeZoneMember(previousZoneId, id);
+          this.agentZoneTracking.delete(id);
+          console.log(`[StratixRTS] Agent ${id} removed from zone ${previousZoneId} on drag end`);
+        } catch (error) {
+          console.error(`[StratixRTS] Failed to remove agent ${id} from zone ${previousZoneId}:`, error);
+        }
       }
-    });
+    }
   }
 
   private handleZoneDrawStart(x: number, y: number): void {
