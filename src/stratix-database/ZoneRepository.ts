@@ -3,6 +3,72 @@ import { generateId } from '../stratix-project/utils/helpers';
 
 import { getDatabase } from './StratixDatabase';
 
+// Database row types
+interface ZoneContextRow {
+  zone_id: string;
+  project_id: string;
+  title: string;
+  prompt: string | null;
+  members: string | null;
+  task_policy: string | null;
+  task_creator_id: string | null;
+  deleted_at: number | null;
+  created_at: number;
+  updated_at: number;
+  description: string | null;
+  priority: number | null;
+  status: string | null;
+  path: string | null;
+  present_agent_ids: string | null;
+  started_at: number | null;
+  completed_at: number | null;
+  zone_config: string | null;
+}
+
+interface ZoneFileRow {
+  file_id: string;
+  zone_id: string;
+  name: string;
+  source_type: string;
+  source: string;
+  content: string | null;
+  file_type: string | null;
+  last_fetched: number | null;
+  metadata: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+interface ZoneTaskRow {
+  task_id: string;
+  zone_id: string;
+  title: string;
+  status: string;
+  assignee: string | null;
+  created_by: string;
+  created_at: number;
+  updated_at: number;
+}
+
+interface ZoneMessageRow {
+  message_id: string;
+  zone_id: string;
+  sender_id: string;
+  sender_type: string;
+  content: string;
+  created_at: number;
+}
+
+interface ZoneContextSimpleRow {
+  task_policy: string | null;
+  task_creator_id: string | null;
+  members: string | null;
+}
+
+interface CountRow {
+  count: number;
+}
+
 export class ZoneRepository {
   private get db() {
     return getDatabase().getDatabase();
@@ -17,7 +83,7 @@ export class ZoneRepository {
       LEFT JOIN zones z ON z.zone_context_id = zc.zone_id
       WHERE zc.project_id = ? AND zc.deleted_at IS NULL
       ORDER BY zc.created_at DESC
-    `).all(projectId) as any[];
+    `).all(projectId) as ZoneContextRow[];
 
     if (rows.length === 0) return [];
 
@@ -35,7 +101,7 @@ export class ZoneRepository {
       FROM zone_contexts zc
       LEFT JOIN zones z ON z.zone_context_id = zc.zone_id
       WHERE zc.zone_id = ? AND zc.deleted_at IS NULL
-    `).get(zoneId) as any;
+    `).get(zoneId) as ZoneContextRow | undefined;
     return row ? this.mapRowToZone(row) : null;
   }
 
@@ -109,7 +175,7 @@ export class ZoneRepository {
       LEFT JOIN zones z ON z.zone_context_id = zc.zone_id
       WHERE zc.project_id = ? AND zc.deleted_at IS NOT NULL
       ORDER BY zc.deleted_at DESC
-    `).all(projectId) as any[];
+    `).all(projectId) as ZoneContextRow[];
 
     if (rows.length === 0) return [];
 
@@ -138,7 +204,7 @@ export class ZoneRepository {
       FROM zone_contexts zc
       LEFT JOIN zones z ON z.zone_context_id = zc.zone_id
       WHERE zc.zone_id = ? AND zc.deleted_at IS NOT NULL
-    `).get(zoneId) as any;
+    `).get(zoneId) as ZoneContextRow | undefined;
     return row ? this.mapRowToZone(row) : null;
   }
 
@@ -153,7 +219,7 @@ export class ZoneRepository {
         AND (zc.title LIKE ? OR zc.prompt LIKE ?)
       ORDER BY zc.updated_at DESC
       LIMIT ?
-    `).all(pattern, pattern, limit) as any[];
+    `).all(pattern, pattern, limit) as ZoneContextRow[];
 
     if (rows.length === 0) return [];
 
@@ -220,7 +286,7 @@ export class ZoneRepository {
 
   // Zone Files operations
   getFilesByZone(zoneId: string): ZoneFile[] {
-    const rows = this.db.prepare('SELECT * FROM zone_files WHERE zone_id = ? ORDER BY created_at DESC').all(zoneId) as any[];
+    const rows = this.db.prepare('SELECT * FROM zone_files WHERE zone_id = ? ORDER BY created_at DESC').all(zoneId) as ZoneFileRow[];
     return rows.map(row => this.mapRowToFile(row));
   }
 
@@ -231,7 +297,7 @@ export class ZoneRepository {
     const placeholders = zoneIds.map(() => '?').join(', ');
     const rows = this.db.prepare(
       `SELECT * FROM zone_files WHERE zone_id IN (${placeholders}) ORDER BY zone_id, created_at DESC`
-    ).all(...zoneIds) as any[];
+    ).all(...zoneIds) as ZoneFileRow[];
 
     const filesByZone = new Map<string, ZoneFile[]>();
     for (const zoneId of zoneIds) {
@@ -247,7 +313,7 @@ export class ZoneRepository {
   }
 
   getFile(fileId: string): ZoneFile | null {
-    const row = this.db.prepare('SELECT * FROM zone_files WHERE file_id = ?').get(fileId) as any;
+    const row = this.db.prepare('SELECT * FROM zone_files WHERE file_id = ?').get(fileId) as ZoneFileRow | undefined;
     return row ? this.mapRowToFile(row) : null;
   }
 
@@ -258,7 +324,7 @@ export class ZoneRepository {
       SELECT * FROM zone_files
       WHERE zone_id = ? AND (name LIKE ? OR (content IS NOT NULL AND file_type IN ('md', 'txt', 'ts', 'js', 'fig', 'link', 'other')))
       ORDER BY created_at DESC
-    `).all(zoneId, pattern) as any[];
+    `).all(zoneId, pattern) as ZoneFileRow[];
 
     const lowerKeyword = keyword.toLowerCase();
     return rows
@@ -461,7 +527,7 @@ export class ZoneRepository {
   // ============================================
 
   getZoneContext(zoneId: string): { taskPolicy: string; taskCreatorId: string | null; members: string[] } | null {
-    const row = this.db.prepare('SELECT task_policy, task_creator_id, members FROM zone_contexts WHERE zone_id = ? AND deleted_at IS NULL').get(zoneId) as any;
+    const row = this.db.prepare('SELECT task_policy, task_creator_id, members FROM zone_contexts WHERE zone_id = ? AND deleted_at IS NULL').get(zoneId) as ZoneContextSimpleRow | undefined;
     if (!row) return null;
 
     let members: string[] = [];
@@ -499,7 +565,7 @@ export class ZoneRepository {
 
   getTasks(zoneId: string, limit?: number, offset?: number): ZoneTask[] {
     let query = 'SELECT * FROM zone_tasks WHERE zone_id = ? ORDER BY created_at DESC';
-    const params: any[] = [zoneId];
+    const params: (string | number)[] = [zoneId];
 
     if (limit !== undefined) {
       query += ' LIMIT ?';
@@ -510,17 +576,17 @@ export class ZoneRepository {
       }
     }
 
-    const rows = this.db.prepare(query).all(...params) as any[];
+    const rows = this.db.prepare(query).all(...params) as ZoneTaskRow[];
     return rows.map(row => this.mapRowToTask(row));
   }
 
   getTasksCount(zoneId: string): number {
-    const row = this.db.prepare('SELECT COUNT(*) as count FROM zone_tasks WHERE zone_id = ?').get(zoneId) as any;
+    const row = this.db.prepare('SELECT COUNT(*) as count FROM zone_tasks WHERE zone_id = ?').get(zoneId) as CountRow | undefined;
     return row?.count || 0;
   }
 
   getTask(taskId: string): ZoneTask | null {
-    const row = this.db.prepare('SELECT * FROM zone_tasks WHERE task_id = ?').get(taskId) as any;
+    const row = this.db.prepare('SELECT * FROM zone_tasks WHERE task_id = ?').get(taskId) as ZoneTaskRow | undefined;
     return row ? this.mapRowToTask(row) : null;
   }
 
@@ -576,12 +642,12 @@ export class ZoneRepository {
 
   getMessages(zoneId: string, limit: number = 100, offset: number = 0): ZoneMessage[] {
     // Use ASC order directly for oldest-first display, no reversal needed
-    const rows = this.db.prepare('SELECT * FROM zone_messages WHERE zone_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?').all(zoneId, limit, offset) as any[];
+    const rows = this.db.prepare('SELECT * FROM zone_messages WHERE zone_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?').all(zoneId, limit, offset) as ZoneMessageRow[];
     return rows.map(row => this.mapRowToMessage(row));
   }
 
   getMessagesCount(zoneId: string): number {
-    const row = this.db.prepare('SELECT COUNT(*) as count FROM zone_messages WHERE zone_id = ?').get(zoneId) as any;
+    const row = this.db.prepare('SELECT COUNT(*) as count FROM zone_messages WHERE zone_id = ?').get(zoneId) as CountRow | undefined;
     return row?.count || 0;
   }
 
@@ -635,7 +701,7 @@ export class ZoneRepository {
   // ============================================
 
   // Map row to Zone (with files)
-  private mapRowToZone(row: any, filesByZone?: Map<string, ZoneFile[]>): Zone {
+  private mapRowToZone(row: ZoneContextRow, filesByZone?: Map<string, ZoneFile[]>): Zone {
     const files = filesByZone?.get(row.zone_id) ?? this.getFilesByZone(row.zone_id);
     let presentAgentIds: string[] = [];
     let members: string[] = [];
@@ -676,7 +742,7 @@ export class ZoneRepository {
   }
 
   // Map row to ZoneFile
-  private mapRowToFile(row: any): ZoneFile {
+  private mapRowToFile(row: ZoneFileRow): ZoneFile {
     let metadata: FileMetadata = {};
     try {
       metadata = JSON.parse(row.metadata || '{}');
@@ -698,7 +764,7 @@ export class ZoneRepository {
   }
 
   // Map row to ZoneTask
-  private mapRowToTask(row: any): ZoneTask {
+  private mapRowToTask(row: ZoneTaskRow): ZoneTask {
     return {
       id: row.task_id,
       zoneId: row.zone_id,
@@ -712,7 +778,7 @@ export class ZoneRepository {
   }
 
   // Map row to ZoneMessage
-  private mapRowToMessage(row: any): ZoneMessage {
+  private mapRowToMessage(row: ZoneMessageRow): ZoneMessage {
     return {
       id: row.message_id,
       zoneId: row.zone_id,

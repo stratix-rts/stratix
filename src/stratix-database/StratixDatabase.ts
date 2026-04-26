@@ -30,8 +30,48 @@ export class StratixDatabase {
 
   public initialize(): void {
     this.createTables();
-    this.migrateMissingColumns();
+    this.migrateIfNeeded();
     console.log(`[Database] Initialized at: ${this.dbPath}`);
+  }
+
+  private migrateIfNeeded(): void {
+    // Ensure schema_version table exists first
+    this.ensureSchemaVersionTable();
+
+    // Get current schema version
+    const currentVersion = this.getSchemaVersion();
+    const targetVersion = 1; // Increment when migrations are added
+
+    if (currentVersion < targetVersion) {
+      console.log(`[Database] Running migrations from version ${currentVersion} to ${targetVersion}`);
+      this.migrateMissingColumns();
+      this.setSchemaVersion(targetVersion);
+      console.log(`[Database] Migration complete. Now at version ${targetVersion}`);
+    }
+  }
+
+  private ensureSchemaVersionTable(): void {
+    const tables = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'").all();
+    if (tables.length === 0) {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS schema_version (
+          version INTEGER PRIMARY KEY,
+          applied_at INTEGER NOT NULL
+        )
+      `);
+      // Insert version 0 as baseline
+      this.db.prepare('INSERT INTO schema_version (version, applied_at) VALUES (0, ?)').run(Date.now());
+      console.log('[Database] Created schema_version table');
+    }
+  }
+
+  private getSchemaVersion(): number {
+    const row = this.db.prepare('SELECT MAX(version) as version FROM schema_version').get() as { version: number } | undefined;
+    return row?.version ?? 0;
+  }
+
+  private setSchemaVersion(version: number): void {
+    this.db.prepare('INSERT INTO schema_version (version, applied_at) VALUES (?, ?)').run(version, Date.now());
   }
 
   private migrateMissingColumns(): void {

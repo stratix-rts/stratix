@@ -2,18 +2,45 @@ import { StratixAgentConfig } from '../stratix-core/stratix-protocol';
 
 import { getDatabase } from './StratixDatabase';
 
+// Database row type for agents table
+interface AgentRow {
+  agent_id: string;
+  name: string;
+  type: string;
+  profile: string | null;
+  soul: string | null;
+  rules: string | null;
+  backend_type: string;
+  config_status: string;
+  position: string | null;
+  memory: string | null;
+  openclaw_config: string | null;
+  stratix_config: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+function parseJsonSafe<T>(value: string | null | undefined, fallback: T): T {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 export class AgentRepository {
   private get db() {
     return getDatabase().getDatabase();
   }
 
   getAllAgents(): StratixAgentConfig[] {
-    const rows = this.db.prepare('SELECT * FROM agents ORDER BY created_at DESC').all() as any[];
+    const rows = this.db.prepare('SELECT * FROM agents ORDER BY created_at DESC').all() as AgentRow[];
     return rows.map(this.mapRowToAgent);
   }
 
   getAgent(agentId: string): StratixAgentConfig | null {
-    const row = this.db.prepare('SELECT * FROM agents WHERE agent_id = ?').get(agentId) as any;
+    const row = this.db.prepare('SELECT * FROM agents WHERE agent_id = ?').get(agentId) as AgentRow | undefined;
     return row ? this.mapRowToAgent(row) : null;
   }
 
@@ -73,20 +100,20 @@ export class AgentRepository {
     return result.changes > 0;
   }
 
-  private mapRowToAgent(row: any): StratixAgentConfig {
+  private mapRowToAgent(row: AgentRow): StratixAgentConfig {
     return {
       agentId: row.agent_id,
       name: row.name,
       type: row.type,
-      profile: row.profile ? JSON.parse(row.profile) : undefined,
-      soul: row.soul ? JSON.parse(row.soul) : undefined,
-      rules: row.rules ? JSON.parse(row.rules) : undefined,
+      profile: parseJsonSafe(row.profile, undefined),
+      soul: parseJsonSafe(row.soul, undefined),
+      rules: parseJsonSafe(row.rules, undefined),
       backendType: row.backend_type,
       configStatus: row.config_status,
-      position: row.position ? JSON.parse(row.position) : undefined,
-      memory: row.memory ? JSON.parse(row.memory) : undefined,
-      openClawConfig: row.openclaw_config ? JSON.parse(row.openclaw_config) : undefined,
-      stratixConfig: row.stratix_config ? JSON.parse(row.stratix_config) : undefined,
+      position: parseJsonSafe(row.position, undefined),
+      memory: parseJsonSafe(row.memory, undefined),
+      openClawConfig: parseJsonSafe(row.openclaw_config, undefined),
+      stratixConfig: parseJsonSafe(row.stratix_config, undefined),
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
