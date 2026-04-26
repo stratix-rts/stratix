@@ -40,7 +40,7 @@ export class ConfigConverter {
     return {
       account_id: config.openClawConfig.accountId,
       endpoint: config.openClawConfig.endpoint,
-      api_key: config.openClawConfig.apiKey,
+      api_key: config.openClawConfig.apiKey ? '***REDACTED***' : undefined,
       model: 'gpt-4',
       model_params: {},
       system_prompt: this.buildSystemPrompt(config.soul, config.memory, config.rules),
