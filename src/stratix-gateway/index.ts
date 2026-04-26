@@ -102,7 +102,7 @@ export async function startGatewayService(
   
   // 配置中间件
   app.use(cors());
-  app.use(express.json({ limit: '50mb' }));
+  app.use(express.json({ limit: '5mb' }));
   
   // 日志中间件
   app.use((req, res, next) => {
@@ -237,6 +237,11 @@ export async function startGatewayService(
   console.log('[Gateway] Abandoned task requeuer started (every 5 min)');
 
   // 优雅关闭处理
+  let shutdownComplete = false;
+  const onShutdownComplete = (): void => {
+    shutdownComplete = true;
+  };
+
   const gracefulShutdown = async () => {
     console.log('Shutting down gracefully...');
 
@@ -262,12 +267,23 @@ export async function startGatewayService(
     statusSyncService.close();
     console.log('WebSocket server closed');
 
+    onShutdownComplete();
+  };
+
+  const finalCleanup = (): void => {
+    if (!shutdownComplete) {
+      console.log('Final cleanup...');
+    }
     process.exit(0);
   };
-  
+
   if (mode === 'standalone') {
-    process.on('SIGTERM', gracefulShutdown);
-    process.on('SIGINT', gracefulShutdown);
+    process.on('SIGTERM', () => {
+      gracefulShutdown().finally(finalCleanup);
+    });
+    process.on('SIGINT', () => {
+      gracefulShutdown().finally(finalCleanup);
+    });
     
     process.on('uncaughtException', (error) => {
       console.error('Uncaught Exception:', error);

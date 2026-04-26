@@ -43,8 +43,8 @@ export class ZoneService {
   private cacheExpiry: number = 3600000; // 1小时
   private maxFileSize: number = 10 * 1024 * 1024; // 10MB
   private allowedBasePaths: string[] = [];
-  // URL 抓取安全配置
-  private allowedUrlPatterns: RegExp[] = []; // 允许的 URL 正则模式
+  // URL 抓取安全配置 - 默认阻止所有 URL（需要显式配置允许）
+  private allowedUrlPatterns: RegExp[] = [/^https?:\/\/[^/]+\.(github\.io|gitlab\.io|bitbucket\.org|jsdelivr\.net|cdn\.jsdelivr\.net|unpkg\.com|skypack\.dev)\//i]; // 默认允许公共 CDN
   private blockedIpRanges: string[] = [
     '127.0.0.0/8',   // localhost
     '10.0.0.0/8',    // private

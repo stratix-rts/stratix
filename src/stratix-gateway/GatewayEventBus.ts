@@ -32,7 +32,7 @@ export interface ZoneEvent {
   type: 'zone:updated' | 'zone:file_added' | 'zone:file_removed' | 'zone:file_updated' | 'zone:member_joined' | 'zone:member_left' | 'zone:deleted' | 'zone:restored' | 'zone:task_created' | 'zone:task_updated' | 'zone:task_deleted' | 'zone:task_claimed' | 'zone:message_added';
   zoneId: string;
   projectId: string;
-  data?: any;
+  data?: Record<string, unknown>;
 }
 
 export type GatewayEvent = ChannelMessageEvent | AgentMentionEvent | ZoneEvent;
@@ -127,7 +127,7 @@ class GatewayEventBus extends EventEmitter {
     type: ZoneEvent['type'],
     zoneId: string,
     projectId: string,
-    data?: any
+    data?: Record<string, unknown>
   ): void {
     console.log(`[GatewayEventBus] Publishing zone event ${type} for zone ${zoneId}:`, data);
 
