@@ -151,7 +151,7 @@ export const useUIStore = defineStore('ui', () => {
   const MAX_TOASTS = 10;
 
   function addToast(toast: Omit<ToastItem, 'id'>): string {
-    const id = `toast_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const id = `toast_${crypto.randomUUID()}`;
     const newToast: ToastItem = { ...toast, id };
 
     // Trim oldest toasts if at limit

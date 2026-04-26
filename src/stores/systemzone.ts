@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
+
 import { szLog, withLog, autoHeal } from '../stratix-systemzone/ui/logger';
 
 // ============================================
@@ -7,11 +8,15 @@ import { szLog, withLog, autoHeal } from '../stratix-systemzone/ui/logger';
 // 对接 /api/systemzone/* 后端路由
 // ============================================
 
-const BASE_URL = typeof window !== 'undefined' && (window as any).GATEWAY_URL
-  ? (window as any).GATEWAY_URL
+interface WindowWithGateway extends Window {
+  GATEWAY_URL?: string;
+}
+
+const BASE_URL = typeof window !== 'undefined' && (window as WindowWithGateway).GATEWAY_URL
+  ? (window as WindowWithGateway).GATEWAY_URL
   : 'http://127.0.0.1:7524';
 
-async function apiFetch<T = any>(path: string, options?: RequestInit): Promise<T & { success: boolean; error?: string }> {
+async function apiFetch<T = unknown>(path: string, options?: RequestInit): Promise<T & { success: boolean; error?: string }> {
   const method = options?.method || 'GET';
   szLog.debug('api', `${method} ${path}`);
   const url = `${BASE_URL}${path}`;
