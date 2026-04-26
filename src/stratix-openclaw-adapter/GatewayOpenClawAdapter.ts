@@ -312,6 +312,13 @@ export class GatewayOpenClawAdapter implements OpenClawAdapterInterface {
     this.subscribers.push(callback);
   }
 
+  public unsubscribe(callback: (event: OpenClawEvent) => void): void {
+    const index = this.subscribers.indexOf(callback);
+    if (index !== -1) {
+      this.subscribers.splice(index, 1);
+    }
+  }
+
   private notifySubscribers(event: OpenClawEvent): void {
     this.subscribers.forEach(cb => {
       try {

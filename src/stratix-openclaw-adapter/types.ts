@@ -6,6 +6,7 @@ export interface OpenClawAdapterInterface {
   execute(action: OpenClawAction): Promise<OpenClawResponse>;
   getStatus(): Promise<OpenClawStatus>;
   subscribe(callback: (event: OpenClawEvent) => void): void;
+  unsubscribe(callback: (event: OpenClawEvent) => void): void;
   sendMessage(message: string, options?: ChatOptions): Promise<ChatResponse>;
   invokeTool<T = unknown>(
     tool: string,
