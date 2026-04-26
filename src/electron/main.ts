@@ -20,11 +20,16 @@ import { WebSocketOpenClawAdapter } from '../stratix-openclaw-adapter/WebSocketO
 import { EmbeddedTailscale } from '../stratix-tailscale/EmbeddedTailscale';
 
 let mainWindow: BrowserWindow | null = null;
-let gatewayService: any = null;
 let tailscale: EmbeddedTailscale | null = null;
 let activeOpenClawConnection: WebSocketOpenClawAdapter | null = null;
 let userDataPath: string = '';
 let texturesDir: string = '';
+
+// Development server ports to try when connecting to Vite dev server
+const DEV_PORTS = [7523, 7524, 7525, 7526, 7527, 7528, 7529, 7530] as const;
+
+// Backend server port (standalone backend started by electron:dev)
+const BACKEND_PORT = 7524;
 
 /**
  * 初始化所有服务
@@ -41,16 +46,9 @@ async function initializeServices() {
   console.log('[Electron] Textures directory:', texturesDir);
 
   // 2. 启动 Gateway 服务（嵌入式，仅本地访问）
-  // [FIXME] 暂时禁用 — @noble/ed25519@3 ESM-only，与 CJS 构建不兼容
-  // electron:dev 已启动 standalone backend (7524)，IPC 已配置连接 7524
-  // gatewayService = await startGatewayService({
-  //   port: 7526,
-  //   bindAddress: '127.0.0.1', // 仅本地，不暴露
-  //   dataDir,
-  //   mode: 'embedded',
-  // });
-  // console.log('[Electron] Gateway service started (internal)');
-  
+  // Note: Gateway 服务已在 electron:dev 时通过 standalone backend 启动
+  // 端口 7524 用于 OpenClaw 连接
+
   // 4. 启动 Tailscale
   tailscale = new EmbeddedTailscale({
     openClawPort: 18789,
@@ -63,8 +61,10 @@ async function initializeServices() {
   const tailscaleStarted = await tailscale.start();
   if (tailscaleStarted) {
     tailscale.startHealthCheck();
+    console.log('[Electron] Tailscale started');
+  } else {
+    console.error('[Electron] Tailscale failed to start - Tailscale features will be unavailable');
   }
-  console.log('[Electron] Tailscale started');
 }
 
 /**
@@ -91,8 +91,7 @@ function createWindow() {
 
   // 尝试从 Vite 开发服务器加载（端口 7523-7530）
   const loadDevUrl = async () => {
-    const ports = [7523, 7524, 7525, 7526, 7527, 7528, 7529, 7530];
-    for (const port of ports) {
+    for (const port of DEV_PORTS) {
       try {
         const url = `http://127.0.0.1:${port}`;
         const response = await fetch(url, { method: 'HEAD' });
@@ -231,8 +230,7 @@ function setupIPC() {
 
     // Load the system zone page via query param
     const loadUrl = async () => {
-      const ports = [7523, 7524, 7525, 7526, 7527, 7528, 7529, 7530];
-      for (const port of ports) {
+      for (const port of DEV_PORTS) {
         try {
           const url = `http://127.0.0.1:${port}?view=systemzone`;
           const response = await fetch(url, { method: 'HEAD' });
@@ -295,7 +293,7 @@ function setupIPC() {
         return false;
       }
       // Configure the gateway's OpenClaw proxy with the node's endpoint
-      const response = await fetch('http://127.0.0.1:7524/api/stratix/openclaw/connect', {
+      const response = await fetch(`http://127.0.0.1:${BACKEND_PORT}/api/stratix/openclaw/connect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ endpoint: node.url, apiKey: '' }),
