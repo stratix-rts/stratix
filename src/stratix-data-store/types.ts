@@ -44,7 +44,7 @@ export interface StratixCommandLog {
   agentId: string;
   skillId: string;
   skillName: string;
-  params: Record<string, any>;
+  params: Record<string, unknown>;
   status: 'pending' | 'running' | 'success' | 'failed';
   result?: string;
   error?: string;

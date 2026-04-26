@@ -175,7 +175,7 @@ export class StratixDataStore {
     }));
   }
 
-  public async exportData(): Promise<any> {
+  public async exportData(): Promise<{ agents: StratixAgentConfig[]; templates: StratixTemplates; logs: StratixCommandLog[]; exportedAt: number }> {
     await this.ensureInitialized();
     const agents = await this.listAgents();
     const templates = await this.listTemplates();
