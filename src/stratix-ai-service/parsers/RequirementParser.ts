@@ -62,10 +62,10 @@ export class RequirementParser {
       prov = result.provider;
     }
 
-    return this.parseResponse(response, model, prov);
+    return this.parseResponse(response, model, prov, requirement);
   }
 
-  private parseResponse(response: string, model: string, provider: string): ParsedRequirement {
+  private parseResponse(response: string, model: string, provider: string, requirement?: string): ParsedRequirement {
     try {
       // Try to extract JSON from response
       const jsonMatch = response.match(/\{[\s\S]*\}/);
@@ -90,7 +90,7 @@ export class RequirementParser {
         summary: parsed.summary || '需求解析结果',
         tasks,
         metadata: {
-          originalRequirement: '',
+          originalRequirement: requirement,
           parseTime: new Date(),
           model: model || '',
           provider: provider || '',
