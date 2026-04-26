@@ -9,6 +9,7 @@ import type { LraTask } from '../../../stratix-lra-bridge/types';
 import { createOpenClawAdapter, OpenClawAdapterInterface } from '../../../stratix-openclaw-adapter';
 import { budgetController } from '@stratix-core/budget/BudgetController';
 import type { TokenUsage } from '@stratix-core/budget/types';
+import { TaskQueueService } from '../../../stratix-orchestration/task-queue/TaskQueueService';
 
 import { AgentInterface, AgentState } from './types';
 
@@ -75,34 +76,67 @@ export class LLMAgent implements AgentInterface {
   
   async start(): Promise<void> {
     console.log(`[LLMAgent] ${this.agentConfig.name} starting`);
-    
+
     await this.adapter.connect();
     this.startedAt = new Date();
-    
+
+    // Initialize TaskQueueService for Zone task polling
+    const taskQueue = TaskQueueService.getInstance();
+
     while (!this.shouldStop) {
       try {
         while (this.isPaused && !this.shouldStop) {
           await this.sleep(1000);
         }
-        
+
         if (this.shouldStop) break;
-        
+
+        // Priority 1: Check Zone tasks from TaskQueueService (ZoneCoordinator delegated tasks)
+        try {
+          const zoneTasks = await taskQueue.getTasksByAgent(this.agentConfig.agentId);
+          const pendingZoneTask = zoneTasks.find(t => t.status === 'assigned' || t.status === 'pending');
+
+          if (pendingZoneTask) {
+            this.currentTaskId = pendingZoneTask.taskId;
+            console.log(`[LLMAgent] Processing Zone task ${pendingZoneTask.taskId}: ${pendingZoneTask.name}`);
+
+            this.startHeartbeat(pendingZoneTask.taskId);
+
+            try {
+              await this.processZoneTask(pendingZoneTask);
+              await taskQueue.updateTask(pendingZoneTask.taskId, { status: 'completed' });
+            } catch (taskError) {
+              console.error(`[LLMAgent] Zone task failed:`, taskError);
+              await taskQueue.updateTask(pendingZoneTask.taskId, { status: 'failed', error: String(taskError) });
+            } finally {
+              this.stopHeartbeat();
+              this.currentTaskId = null;
+            }
+
+            continue; // Process one task at a time
+          }
+        } catch (zoneError) {
+          console.warn(`[LLMAgent] Zone task polling error:`, zoneError);
+          // Fall through to LRA polling
+        }
+
+        // Priority 2: Check LRA tasks (original behavior)
         const tasks = await this.lraClient.listTasks(this.effectiveProjectPath);
         const pendingTask = tasks.find(t => t.status === 'pending');
-        
+
         if (!pendingTask) {
           await this.sleep(5000);
           continue;
         }
-        
+
         this.currentTaskId = pendingTask.id;
-        console.log(`[LLMAgent] Processing task ${pendingTask.id}`);
-        
+        console.log(`[LLMAgent] Processing LRA task ${pendingTask.id}`);
+
         await this.lraClient.claimTask(this.effectiveProjectPath, pendingTask.id);
         await this.lraClient.setTaskStatus(this.effectiveProjectPath, pendingTask.id, 'in_progress');
-        
+
         this.startHeartbeat(pendingTask.id);
-        
+
         try {
           await this.processTask(pendingTask);
           await this.lraClient.setTaskStatus(this.effectiveProjectPath, pendingTask.id, 'completed');
@@ -113,13 +147,13 @@ export class LLMAgent implements AgentInterface {
           this.stopHeartbeat();
           this.currentTaskId = null;
         }
-        
+
       } catch (error) {
         console.error('[LLMAgent] Error:', error);
         await this.sleep(5000);
       }
     }
-    
+
     console.log(`[LLMAgent] ${this.agentConfig.name} stopped`);
   }
   
@@ -160,7 +194,57 @@ export class LLMAgent implements AgentInterface {
 
     await this.lraClient.publish(this.effectiveProjectPath, task.id);
   }
-  
+
+  /**
+   * Process a task delegated via ZoneCoordinator / TaskQueueService
+   */
+  private async processZoneTask(task: { taskId: string; zoneId: string; name: string; description?: string; type?: string }): Promise<void> {
+    const soul = (this.agentConfig.soul as any)?.prompt || 'You are a helpful assistant.';
+    const taskDescription = task.description || task.name;
+    const prompt = `${soul}\n\nZone Task: ${task.name}\n\nDescription: ${taskDescription}\n\nZone: ${task.zoneId}\nProject: ${this.effectiveProjectPath}\n\nPlease complete this task and report the results.`;
+
+    // Check budget before executing
+    const preCheck = budgetController.evaluate(this.totalTokenUsage, 0);
+    if (preCheck.action === 'stop') {
+      console.warn(`[LLMAgent] Budget exceeded before Zone task ${task.taskId}: ${preCheck.nudgeMessage}`);
+      throw new Error(`Budget exceeded: ${preCheck.reason}. ${preCheck.nudgeMessage || ''}`);
+    }
+
+    const response = await this.adapter.openaiChatCompletion({
+      model: 'openclaw',
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const usage = response.usage;
+    if (usage) {
+      this.totalTokenUsage = {
+        totalTokens: this.totalTokenUsage.totalTokens + usage.total_tokens,
+        promptTokens: this.totalTokenUsage.promptTokens + usage.prompt_tokens,
+        completionTokens: this.totalTokenUsage.completionTokens + usage.completion_tokens,
+      };
+    }
+
+    const content = response.choices[0]?.message?.content || '';
+    console.log(`[LLMAgent] Zone task response:`, content.substring(0, 200));
+
+    // Check budget after execution
+    const postCheck = budgetController.evaluate(this.totalTokenUsage, 0);
+    if (postCheck.action === 'stop') {
+      console.warn(`[LLMAgent] Budget exhausted after Zone task ${task.taskId}: ${postCheck.nudgeMessage}`);
+      throw new Error(`Budget exhausted: ${postCheck.reason}. ${postCheck.nudgeMessage || ''}`);
+    }
+
+    // Notify ZoneCoordinator via the agentTask API
+    try {
+      const axios = (await import('axios')).default;
+      await axios.post(`/api/agent/${this.agentConfig.agentId}/tasks/${task.taskId}/complete`, {
+        result: { output: content }
+      });
+    } catch (notifyError) {
+      console.warn(`[LLMAgent] Failed to notify task completion:`, notifyError);
+    }
+  }
+
   private startHeartbeat(taskId: string): void {
     this.heartbeatInterval = setInterval(async () => {
       try {
