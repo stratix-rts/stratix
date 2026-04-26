@@ -1,8 +1,12 @@
 import { SkillDefinition, SkillExecutor, SkillResult, ExecutionContext } from '../types';
 
-interface CacheEntry {
+/**
+ * LRU Cache entry with insertion order tracking for reliable eviction
+ */
+interface LRUCacheEntry {
   result: SkillResult;
   timestamp: number;
+  insertedAt: number; // Track insertion order for reliable LRU eviction
 }
 
 /**
@@ -14,7 +18,8 @@ export class SkillRegistry {
   private availableSkills: Map<string, SkillDefinition> = new Map();
   private enabledSkills: Set<string> = new Set();
   private executors: Map<string, SkillExecutor> = new Map();
-  private cache: Map<string, CacheEntry> = new Map();
+  private cache: Map<string, LRUCacheEntry> = new Map();
+  private cacheInsertionCounter = 0; // Monotonic counter for reliable insertion order
 
   // 缓存配置
   private cacheEnabled = true;
@@ -158,9 +163,18 @@ export class SkillRegistry {
   private setCacheResult(cacheKey: string, result: SkillResult): void {
     if (!this.cacheEnabled) return;
 
-    // 如果缓存已满，删除最旧的条目
+    // 如果缓存已满，删除最旧的条目（使用 insertion order 追踪）
     if (this.cache.size >= this.cacheMaxEntries) {
-      const oldestKey = this.cache.keys().next().value;
+      let oldestKey: string | null = null;
+      let oldestInsertedAt = Infinity;
+
+      for (const [key, entry] of this.cache.entries()) {
+        if (entry.insertedAt < oldestInsertedAt) {
+          oldestInsertedAt = entry.insertedAt;
+          oldestKey = key;
+        }
+      }
+
       if (oldestKey) {
         this.cache.delete(oldestKey);
       }
@@ -168,7 +182,8 @@ export class SkillRegistry {
 
     this.cache.set(cacheKey, {
       result,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      insertedAt: ++this.cacheInsertionCounter
     });
   }
 

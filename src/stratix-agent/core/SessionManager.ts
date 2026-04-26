@@ -52,7 +52,9 @@ export class SessionManager {
     session.updatedAt = Date.now();
 
     if (session.messages.length > this.maxMessagesPerSession) {
+      const trimmedCount = session.messages.length - this.maxMessagesPerSession;
       session.messages = session.messages.slice(-this.maxMessagesPerSession);
+      console.warn(`[SessionManager] Session ${sessionId} trimmed ${trimmedCount} messages (max: ${this.maxMessagesPerSession})`);
     }
   }
 

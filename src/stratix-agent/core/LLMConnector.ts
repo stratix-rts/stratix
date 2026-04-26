@@ -340,6 +340,9 @@ export class LLMConnector {
     onChunk: (chunk: string) => void
   ): Promise<GenerateResult> {
     if (this.isAnthropic()) {
+      // Note: Anthropic API does not support true streaming via chat completions.
+      // This simulates streaming by yielding each character with a delay.
+      // For production, use Anthropic's dedicated streaming endpoint.
       const result = await this.generate(messages);
       for (const char of result.content) {
         onChunk(char);
