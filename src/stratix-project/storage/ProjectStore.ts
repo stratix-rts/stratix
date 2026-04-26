@@ -32,10 +32,21 @@ export class ProjectStore {
   private db: Low<ProjectDatabase>;
   private dbPath: string;
   private initialized: boolean = false;
+  private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(dataDir: string = 'stratix-data') {
     this.dbPath = path.join(dataDir, 'projects.json');
     this.db = new Low<ProjectDatabase>(new JSONFile(this.dbPath), DEFAULT_DB);
+  }
+
+  /**
+   * Serialize database writes to prevent concurrent write conflicts
+   */
+  private async enqueueWrite<T>(operation: () => Promise<T>): Promise<T> {
+    this.writeQueue = this.writeQueue.then(async () => {
+      return operation();
+    });
+    return this.writeQueue;
   }
 
   public async initialize(): Promise<void> {
@@ -70,8 +81,10 @@ export class ProjectStore {
   }
 
   private async persist(): Promise<void> {
-    this.db.data.metadata.updatedAt = Date.now();
-    await this.db.write();
+    return this.enqueueWrite(async () => {
+      this.db.data.metadata.updatedAt = Date.now();
+      await this.db.write();
+    });
   }
 
   public async addProject(project: Project): Promise<void> {

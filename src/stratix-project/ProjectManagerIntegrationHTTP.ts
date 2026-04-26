@@ -236,23 +236,39 @@ export class ProjectManagerIntegration {
         visible: true
       });
 
-      // Create Zone context for the project
-      try {
-        const response = await axios.post(`/api/zones`, {
-          projectId: project.id,
-          title: '新建区域',
-          prompt: ''
-        });
-        const createdZone = response.data.zone;
-        console.log('[ProjectManager] Zone context created for project:', project.id, createdZone.id);
+      // Create Zone context for the project with retry
+      let createdZone: any = null;
+      const maxRetries = 3;
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          const response = await axios.post(`/api/zones`, {
+            projectId: project.id,
+            title: '新建区域',
+            prompt: ''
+          });
+          createdZone = response.data.zone;
+          console.log('[ProjectManager] Zone context created for project:', project.id, createdZone.id);
+          break; // Success, exit retry loop
+        } catch (zoneError) {
+          console.error(`[ProjectManager] Zone context creation attempt ${attempt}/${maxRetries} failed:`, zoneError);
+          if (attempt === maxRetries) {
+            // After final attempt, log error but don't fail the whole operation
+            console.error('[ProjectManager] Failed to create zone context after all retries:', zoneError);
+          } else {
+            // Wait before retry with exponential backoff
+            await new Promise(resolve => setTimeout(resolve, 100 * Math.pow(2, attempt - 1)));
+          }
+        }
+      }
 
-        // Link zones record with zone_contexts via zone_context_id FK
-        // Use the actual zone_context id returned from API
-        await this.projectClient.updateZoneContextId(project.id, createdZone.id);
-        console.log('[ProjectManager] Zone context FK linked:', project.id, '->', createdZone.id);
-      } catch (zoneError) {
-        console.error('[ProjectManager] Failed to create zone context:', zoneError);
-        // Don't fail the whole operation if zone creation fails
+      // Link zones record with zone_contexts via zone_context_id FK
+      if (createdZone) {
+        try {
+          await this.projectClient.updateZoneContextId(project.id, createdZone.id);
+          console.log('[ProjectManager] Zone context FK linked:', project.id, '->', createdZone.id);
+        } catch (linkError) {
+          console.error('[ProjectManager] Failed to link zone context FK:', linkError);
+        }
       }
 
       this.eventBus.emit('project:created', { project });
