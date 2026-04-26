@@ -71,7 +71,13 @@ export class TailscaleService {
   private async fetchStatus(): Promise<TailscaleStatus> {
     try {
       const { stdout } = await execAsync('tailscale status --json');
-      const raw = JSON.parse(stdout);
+      const output = stdout.trim();
+      let raw: Record<string, unknown>;
+      try {
+        raw = JSON.parse(output);
+      } catch (parseError) {
+        throw new Error(`Failed to parse Tailscale status output: ${parseError}`);
+      }
 
       const self = {
         id: raw.Self?.ID || '',

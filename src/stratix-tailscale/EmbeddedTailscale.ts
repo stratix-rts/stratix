@@ -5,19 +5,10 @@ import * as path from 'path';
 
 import axios from 'axios';
 
+import { TailscalePeer, OpenClawNode } from './types';
 
-export interface TailscalePeer {
-  id: string;
-  publicKey: string;
-  hostName: string;
-  dnsName: string;
-  os: string;
-  tailscaleIps: string[];
-  online: boolean;
-  lastSeen?: number;
-}
-
-export interface TailscaleStatus {
+// EmbeddedTailscale-specific TailscaleStatus (differs from types.ts version)
+export interface EmbeddedTailscaleStatus {
   self: {
     id: string;
     hostName: string;
@@ -29,14 +20,6 @@ export interface TailscaleStatus {
   backendState: 'Running' | 'Stopped' | 'NeedsLogin' | 'NoState' | 'Starting';
   magicDnsSuffix: string;
   currentTailnet?: { name: string };
-}
-
-export interface OpenClawNode {
-  peer: TailscalePeer;
-  url: string;
-  port: number;
-  healthy: boolean;
-  lastChecked: number;
 }
 
 export interface TailscaleConfig {
@@ -55,7 +38,7 @@ export interface TailscaleEvent {
 export class EmbeddedTailscale {
   private config: Required<Omit<TailscaleConfig, 'authKey'>> & { authKey?: string };
   private tailscaled: ChildProcess | null = null;
-  private status: TailscaleStatus | null = null;
+  private status: EmbeddedTailscaleStatus | null = null;
   private openClawNodes: Map<string, OpenClawNode> = new Map();
   private subscribers: ((event: TailscaleEvent) => void)[] = [];
   private healthTimer?: ReturnType<typeof setInterval>;
@@ -229,7 +212,7 @@ export class EmbeddedTailscale {
     });
   }
 
-  public async getStatus(): Promise<TailscaleStatus | null> {
+  public async getStatus(): Promise<EmbeddedTailscaleStatus | null> {
     try {
       const { stdout } = await this.runTailscale(['status', '--json']);
       const raw = JSON.parse(stdout);
