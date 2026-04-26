@@ -208,87 +208,10 @@ export class StratixDatabase {
     // ============================================
     // Agent Career System 表迁移
     // ============================================
-
-    // shared_skills 表迁移
-    if (!tableNames.has('shared_skills')) {
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS shared_skills (
-          skill_id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          description TEXT,
-          category TEXT,
-          icon TEXT,
-          mcp_tool TEXT,
-          endpoint TEXT,
-          provider TEXT DEFAULT 'builtin',
-          created_at INTEGER,
-          updated_at INTEGER
-        )
-      `);
-      console.log('[Database] Created shared_skills table');
-    }
-
-    // shared_skill_installs 表迁移
-    if (!tableNames.has('shared_skill_installs')) {
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS shared_skill_installs (
-          skill_id TEXT NOT NULL,
-          agent_id TEXT NOT NULL,
-          installed_at INTEGER NOT NULL,
-          installed_by TEXT NOT NULL,
-          PRIMARY KEY (skill_id, agent_id),
-          FOREIGN KEY (skill_id) REFERENCES shared_skills(skill_id) ON DELETE CASCADE
-        )
-      `);
-      console.log('[Database] Created shared_skill_installs table');
-    }
-
-    // agent_learned_skills 表迁移
-    if (!tableNames.has('agent_learned_skills')) {
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS agent_learned_skills (
-          skill_id TEXT NOT NULL,
-          agent_id TEXT NOT NULL,
-          name TEXT NOT NULL,
-          description TEXT,
-          category TEXT,
-          level INTEGER DEFAULT 1,
-          experience_points INTEGER DEFAULT 0,
-          proficiency INTEGER DEFAULT 0,
-          certified INTEGER DEFAULT 0,
-          learned_from TEXT,
-          learned_at INTEGER NOT NULL,
-          last_practiced_at INTEGER,
-          PRIMARY KEY (skill_id, agent_id)
-        )
-      `);
-      console.log('[Database] Created agent_learned_skills table');
-    }
-
-    // zone_contexts_simple 表迁移
-    if (!tableNames.has('zone_contexts_simple')) {
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS zone_contexts_simple (
-          zone_id TEXT PRIMARY KEY,
-          context_json TEXT,
-          updated_at INTEGER
-        )
-      `);
-      console.log('[Database] Created zone_contexts_simple table');
-    }
-
-    // agent_zone_bindings 表迁移
-    if (!tableNames.has('agent_zone_bindings')) {
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS agent_zone_bindings (
-          agent_id TEXT NOT NULL,
-          zone_id TEXT NOT NULL,
-          joined_at INTEGER NOT NULL,
-          PRIMARY KEY (agent_id, zone_id)
-        )
-      `);
-      console.log('[Database] Created agent_zone_bindings table');
-    }
+    // Note: shared_skills, shared_skill_installs, agent_learned_skills,
+    // zone_contexts_simple, agent_zone_bindings tables and their indexes
+    // are already created in createTables(). The following index creation
+    // is kept for safety in case indexes weren't in the original createTables().
 
     // 为 shared_skill_installs 添加索引（如果不存在）
     try {
