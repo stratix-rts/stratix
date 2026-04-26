@@ -18,6 +18,7 @@ type EventHandler<T = unknown> = (data: T) => void;
 type ResponseHandler<T = unknown, R = unknown> = (data: T) => R | Promise<R>;
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 5000;
+const DEFAULT_MAX_EVENTS_PER_BATCH = 100;
 
 interface SceneRegistry {
   game: Phaser.Scene | null;
@@ -129,7 +130,7 @@ export class RTSEventBus {
     this.queue.enqueue(event, data);
   }
 
-  processQueue(maxEvents: number = 100): void {
+  processQueue(maxEvents: number = DEFAULT_MAX_EVENTS_PER_BATCH): void {
     if (this.isProcessing) return;
     this.isProcessing = true;
 
