@@ -117,7 +117,8 @@ function cloneRepo(targetDir: string): void {
 
   try {
     execSync(`git clone ${AGENCY_AGENTS_REPO} ${targetDir}`, {
-      stdio: 'inherit',
+      stdio: 'pipe',
+      timeout: 60000, // 60 second timeout
     });
     console.log('克隆完成!');
   } catch (error) {

@@ -8,6 +8,10 @@ const path = require('path');
 
 const distElectron = path.join(__dirname, '..', 'dist', 'electron');
 
+/**
+ * Recursively walk a directory and process .js files
+ * @param {string} dir - Directory path to walk
+ */
 function walk(dir) {
   if (!fs.existsSync(dir)) return;
 
@@ -22,6 +26,10 @@ function walk(dir) {
   }
 }
 
+/**
+ * Fix incorrect electron require statements in a file
+ * @param {string} filePath - Path to the .js file to fix
+ */
 function fixFile(filePath) {
   let content = fs.readFileSync(filePath, 'utf-8');
   // Fix require('../electron'), require('../../electron'), etc. -> require('electron')
