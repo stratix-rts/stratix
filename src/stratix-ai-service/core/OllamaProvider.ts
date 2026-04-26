@@ -13,6 +13,9 @@ export class OllamaProvider extends BaseAIProvider {
   
   async chat(messages: AIMessage[]): Promise<AIResponse> {
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
+
       const response = await fetch(`${this.baseUrl}/api/chat`, {
         method: 'POST',
         headers: {
@@ -30,7 +33,10 @@ export class OllamaProvider extends BaseAIProvider {
             num_predict: this.config.maxTokens,
           },
         }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeout);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -50,6 +56,9 @@ export class OllamaProvider extends BaseAIProvider {
   
   async chatStream(messages: AIMessage[], callback: AIStreamCallback): Promise<void> {
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
+
       const response = await fetch(`${this.baseUrl}/api/chat`, {
         method: 'POST',
         headers: {
@@ -67,7 +76,10 @@ export class OllamaProvider extends BaseAIProvider {
             num_predict: this.config.maxTokens,
           },
         }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeout);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -117,7 +129,14 @@ export class OllamaProvider extends BaseAIProvider {
   
   async healthCheck(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/tags`);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+
+      const response = await fetch(`${this.baseUrl}/api/tags`, {
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
       return response.ok;
     } catch {
       return false;

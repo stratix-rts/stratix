@@ -4,23 +4,25 @@ import { ParsedRequirement, ParsedTask, AIStreamCallback } from '../types';
 
 export class RequirementParser {
   private aiFactory: AIServiceFactory;
-  
+
   constructor() {
     this.aiFactory = AIServiceFactory.getInstance();
   }
-  
+
   async parse(
     requirement: string,
     streamCallback?: AIStreamCallback
   ): Promise<ParsedRequirement> {
     const provider = this.aiFactory.getDefaultProvider();
     const prompt = getRequirementParsingPrompt(requirement);
-    
+
     let response: string;
-    
+    let model = '';
+    let prov = '';
+
     if (streamCallback && this.aiFactory.getConfig().streaming) {
       let fullContent = '';
-      
+
       await provider.chatStream(
         [
           {
@@ -35,6 +37,8 @@ export class RequirementParser {
             streamCallback.onToken(token);
           },
           onComplete: (result) => {
+            model = result.model;
+            prov = result.provider;
             streamCallback.onComplete(result);
           },
           onError: (error) => {
@@ -42,7 +46,7 @@ export class RequirementParser {
           },
         }
       );
-      
+
       response = fullContent;
     } else {
       const result = await provider.chat([
@@ -52,23 +56,25 @@ export class RequirementParser {
         },
         { role: 'user', content: prompt },
       ]);
-      
+
       response = result.content;
+      model = result.model;
+      prov = result.provider;
     }
-    
-    return this.parseResponse(response);
+
+    return this.parseResponse(response, model, prov);
   }
-  
-  private parseResponse(response: string): ParsedRequirement {
+
+  private parseResponse(response: string, model: string, provider: string): ParsedRequirement {
     try {
       // Try to extract JSON from response
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
         throw new Error('No JSON found in response');
       }
-      
+
       const parsed = JSON.parse(jsonMatch[0]);
-      
+
       // Validate and transform
       const tasks: ParsedTask[] = (parsed.tasks || []).map((task: any) => ({
         id: task.id || `task_${Date.now()}`,
@@ -79,15 +85,15 @@ export class RequirementParser {
         dependencies: task.dependencies || [],
         priority: task.priority || 3,
       }));
-      
+
       return {
         summary: parsed.summary || '需求解析结果',
         tasks,
         metadata: {
           originalRequirement: '',
           parseTime: new Date(),
-          model: '',
-          provider: '',
+          model: model || '',
+          provider: provider || '',
           ...parsed.metadata,
         },
       };
