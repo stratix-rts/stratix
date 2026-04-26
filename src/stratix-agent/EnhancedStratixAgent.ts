@@ -5,6 +5,7 @@
 
 import { EVOLUTION_PROMPT } from '../stratix-character-creator/config/skillHubConfig';
 import { zoneContextManager } from '../stratix-character-creator/core/ZoneContextManager';
+import { TaskQueueService } from '../stratix-orchestration/task-queue/TaskQueueService';
 
 import { StratixAgent } from './StratixAgent';
 import { EnhancedPromptBuilder } from './core/EnhancedPromptBuilder';
@@ -671,15 +672,8 @@ export class EnhancedStratixAgent extends StratixAgent {
     priority: number;
   }> = [];
 
-  // Cache TaskQueueService to avoid repeated dynamic requires
-  private taskQueueService: any = null;
-
-  private getTaskQueueService(): any {
-    if (!this.taskQueueService) {
-      const TaskQueueService = require('../stratix-orchestration/task-queue/TaskQueueService').TaskQueueService;
-      this.taskQueueService = TaskQueueService.getInstance();
-    }
-    return this.taskQueueService;
+  private getTaskQueueService(): TaskQueueService {
+    return TaskQueueService.getInstance();
   }
 
   /**
