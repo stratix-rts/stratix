@@ -299,6 +299,7 @@ export type StratixStateSyncEventType =
   | 'stratix:command_status_update'
   | 'stratix:agent_create'
   | 'stratix:config_updated'
+  | 'stratix:config_deleted'
   | 'stratix:project_message_new'
   | 'stratix:project_message_sync'
   | 'stratix:project_message_to_agent'
