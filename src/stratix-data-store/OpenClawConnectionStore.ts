@@ -172,11 +172,12 @@ export class OpenClawConnectionStore {
     if (this.watcher) return;
 
     try {
-      this.watcher = watch(this.configPath, (eventType) => {
+      const watcher = watch(this.configPath, (eventType) => {
         if (eventType === 'change') {
           this.reload();
         }
       });
+      this.watcher = watcher;
       console.log('[OpenClawConnectionStore] Started watching config file');
     } catch (error) {
       console.warn('[OpenClawConnectionStore] Failed to start watcher:', error);

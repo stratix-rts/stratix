@@ -73,13 +73,18 @@ export class BackupManager {
 
   public async deleteBackup(backupName: string): Promise<boolean> {
     const backupPath = path.join(this.backupDir, backupName);
-    
+
     if (!await fs.pathExists(backupPath)) {
       return false;
     }
-    
-    await fs.remove(backupPath);
-    return true;
+
+    try {
+      await fs.remove(backupPath);
+      return true;
+    } catch (error) {
+      console.error('[BackupManager] Failed to delete backup:', error);
+      return false;
+    }
   }
 
   public async cleanOldBackups(keepCount: number = 10): Promise<number> {

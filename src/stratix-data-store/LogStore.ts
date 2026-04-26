@@ -41,21 +41,26 @@ export class LogStore {
     error?: string
   ): Promise<boolean> {
     const updates: Partial<StratixCommandLog> = { status };
-    
+
     if (result !== undefined) {
       updates.result = result;
     }
-    
+
     if (error !== undefined) {
       updates.error = error;
     }
-    
+
     if (status === 'success' || status === 'failed') {
       updates.endTime = Date.now();
     }
-    
-    await this.dataStore.updateLog(logId, updates);
-    return true;
+
+    try {
+      await this.dataStore.updateLog(logId, updates);
+      return true;
+    } catch (error) {
+      console.error('[LogStore] Failed to update log status:', error);
+      return false;
+    }
   }
 
   public async markRunning(logId: string): Promise<boolean> {
