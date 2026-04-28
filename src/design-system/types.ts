@@ -55,7 +55,7 @@ export interface InteractiveToken {
   disabled: string;
 }
 
-/** 
+/**
  * 颜色 Token - 新结构（基于 Primitives）
  */
 export interface ColorPrimitives {
@@ -371,6 +371,121 @@ export interface NavigationSemanticSet {
   divider: string;
 }
 
+/** Tooltip / Popover 语义 Token */
+export interface TooltipSemanticToken {
+  background: string;
+  text: string;
+  border: string;
+  shadow: string;
+  borderRadius: string;
+  padding: string;
+  arrowColor: string;
+}
+
+/** Tooltip 语义集合 */
+export interface TooltipSemanticSet {
+  default: TooltipSemanticToken;
+  dark: TooltipSemanticToken;
+  light: TooltipSemanticToken;
+}
+
+/** Table / DataGrid 语义 Token */
+export interface TableSemanticToken {
+  headerBackground: string;
+  headerText: string;
+  rowBackground: string;
+  rowBackgroundAlt: string;
+  rowHover: string;
+  border: string;
+  text: string;
+  selectedBackground: string;
+}
+
+/** Card 语义 Token（与 Panel 区分） */
+export interface CardSemanticToken {
+  background: string;
+  border: string;
+  borderRadius: string;
+  shadow: string;
+  padding: string;
+  headerBackground: string;
+  footerBackground: string;
+}
+
+/** Card 语义集合 */
+export interface CardSemanticSet {
+  default: CardSemanticToken;
+  elevated: CardSemanticToken;
+  outlined: CardSemanticToken;
+  compact: CardSemanticToken;
+}
+
+/** Divider / Separator 语义 Token */
+export interface DividerSemanticToken {
+  color: string;
+  width: string;
+  style: 'solid' | 'dashed' | 'dotted';
+  margin: string;
+}
+
+/** Scrollbar 语义 Token */
+export interface ScrollbarSemanticToken {
+  track: string;
+  thumb: string;
+  thumbHover: string;
+  width: string;
+  borderRadius: string;
+}
+
+/** Badge / Tag 语义 Token */
+export interface BadgeSemanticToken {
+  background: string;
+  text: string;
+  border: string;
+  borderRadius: string;
+  padding: string;
+}
+
+/** Badge 语义集合 */
+export interface BadgeSemanticSet {
+  success: BadgeSemanticToken;
+  warning: BadgeSemanticToken;
+  danger: BadgeSemanticToken;
+  info: BadgeSemanticToken;
+  neutral: BadgeSemanticToken;
+  primary: BadgeSemanticToken;
+}
+
+/** Avatar 语义 Token */
+export interface AvatarSemanticToken {
+  background: string;
+  text: string;
+  border: string;
+  borderRadius: string;
+  placeholderBackground: string;
+  placeholderText: string;
+}
+
+/** Progress / Loading 语义 Token */
+export interface ProgressSemanticToken {
+  track: string;
+  fill: string;
+  fillSuccess: string;
+  fillWarning: string;
+  fillDanger: string;
+  text: string;
+  height: string;
+  borderRadius: string;
+}
+
+/** Skeleton 语义 Token */
+export interface SkeletonSemanticToken {
+  base: string;
+  highlight: string;
+  borderRadius: string;
+  shimmerDuration: number;
+}
+
 /** 完整语义 Token 集合 */
 export interface CompleteSemanticTokens {
   button: ButtonSemanticSet;
@@ -379,6 +494,15 @@ export interface CompleteSemanticTokens {
   status: StatusSemanticSet;
   form: FormSemanticSet;
   navigation: NavigationSemanticSet;
+  tooltip: TooltipSemanticSet;
+  table: TableSemanticToken;
+  card: CardSemanticSet;
+  divider: DividerSemanticToken;
+  scrollbar: ScrollbarSemanticToken;
+  badge: BadgeSemanticSet;
+  avatar: AvatarSemanticToken;
+  progress: ProgressSemanticToken;
+  skeleton: SkeletonSemanticToken;
 }
 
 // ============ Design System ============
@@ -430,27 +554,115 @@ export interface ThemeConfig {
 
 // ============ Token Path ============
 
+/**
+ * 语义 Token 分类联合类型
+ * 用于约束 TokenPath 的合法语义前缀
+ */
+export type SemanticCategory =
+  | 'button'
+  | 'panel'
+  | 'input'
+  | 'status'
+  | 'form'
+  | 'navigation'
+  | 'tooltip'
+  | 'table'
+  | 'card'
+  | 'divider'
+  | 'scrollbar'
+  | 'badge'
+  | 'avatar'
+  | 'progress'
+  | 'skeleton';
+
 /** Token 路径类型 (用于智能提示) */
-export type TokenPath = 
+export type TokenPath =
   | 'colors.brand.primary'
+  | 'colors.brand.secondary'
+  | 'colors.brand.accent'
   | 'colors.background.base'
+  | 'colors.background.elevated'
+  | 'colors.background.overlay'
+  | 'colors.background.sunken'
+  | 'colors.border.subtle'
+  | 'colors.border.default'
+  | 'colors.border.strong'
+  | 'colors.border.focus'
   | 'colors.text.primary'
+  | 'colors.text.secondary'
+  | 'colors.text.muted'
+  | 'colors.text.disabled'
+  | 'colors.text.inverse'
   | 'colors.status.success'
+  | 'colors.status.warning'
+  | 'colors.status.danger'
+  | 'colors.status.info'
+  | 'colors.interactive.default'
+  | 'colors.interactive.hover'
+  | 'colors.interactive.active'
+  | 'colors.interactive.disabled'
+  | 'spacing.xs'
+  | 'spacing.sm'
   | 'spacing.md'
+  | 'spacing.lg'
+  | 'spacing.xl'
+  | 'spacing.2xl'
+  | 'spacing.3xl'
+  | 'radii.none'
+  | 'radii.sm'
   | 'radii.md'
+  | 'radii.lg'
+  | 'radii.xl'
+  | 'radii.full'
   | 'animation.duration.fast'
-  | 'semantic.button.primary.background'
-  | 'semantic.panel.elevated.shadow'
-  | string; // 兜底类型
+  | 'animation.duration.normal'
+  | 'animation.duration.slow'
+  | 'animation.duration.instant'
+  | 'animation.duration.deliberate'
+  | 'animation.easing.linear'
+  | 'animation.easing.ease'
+  | 'animation.easing.easeIn'
+  | 'animation.easing.easeOut'
+  | 'animation.easing.easeInOut'
+  | 'animation.easing.spring'
+  | 'depth.base'
+  | 'depth.overlay'
+  | 'depth.modal'
+  | 'depth.popup'
+  | 'depth.notification'
+  | `semantic.button.${string}.background`
+  | `semantic.button.${string}.backgroundHover`
+  | `semantic.button.${string}.text`
+  | `semantic.panel.${string}.background`
+  | `semantic.panel.${string}.shadow`
+  | `semantic.input.${string}.border`
+  | `semantic.status.${string}.text`
+  | `semantic.form.${string}.color`
+  | `semantic.navigation.${string}.background`
+  | `semantic.tooltip.${string}.background`
+  | `semantic.table.${string}.background`
+  | `semantic.card.${string}.background`
+  | `semantic.divider.${string}.color`
+  | `semantic.scrollbar.${string}.track`
+  | `semantic.badge.${string}.background`
+  | `semantic.avatar.${string}.background`
+  | `semantic.progress.${string}.track`
+  | `semantic.skeleton.${string}.base`
+  | string; // 兜底类型，允许运行时扩展
 
 /** Token 值类型 */
 export type TokenValue<T extends string> =
-  T extends 'colors.brand.primary' ? string :
-  T extends 'colors.background.base' ? string :
-  T extends 'spacing.md' ? number :
-  T extends 'animation.duration.fast' ? number :
-  T extends `semantic.button.${string}.background` ? string :
-  T extends `semantic.panel.${string}.shadow` ? string :
+  T extends `colors.${string}` ? string :
+  T extends `spacing.${string}` ? number :
+  T extends `radii.${string}` ? string :
+  T extends `animation.duration.${string}` ? number :
+  T extends `animation.easing.${string}` ? string :
+  T extends `depth.${string}` ? number :
+  T extends `semantic.${string}.background` ? string :
+  T extends `semantic.${string}.text` ? string :
+  T extends `semantic.${string}.border` ? string :
+  T extends `semantic.${string}.color` ? string :
+  T extends `semantic.${string}.shadow` ? string :
   any; // 兜底类型
 
 // ============ Icons ============

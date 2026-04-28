@@ -84,7 +84,20 @@ export type {
   StatusToken,
   FormSemanticSet,
   NavigationSemanticSet,
-  
+  TooltipSemanticSet,
+  TooltipSemanticToken,
+  TableSemanticToken,
+  CardSemanticSet,
+  CardSemanticToken,
+  DividerSemanticToken,
+  ScrollbarSemanticToken,
+  BadgeSemanticSet,
+  BadgeSemanticToken,
+  AvatarSemanticToken,
+  ProgressSemanticToken,
+  SkeletonSemanticToken,
+  SemanticCategory,
+
   // 组件类型
   ComponentToken,
   SpacingValue,

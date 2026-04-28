@@ -19,6 +19,18 @@ export type ThemePrimitives =
   | typeof ProfessionalPrimitives
   | ColorPrimitives;
 
+// 辅助函数：为 hex 颜色添加透明度（返回 rgba）
+function alpha(color: string, opacity: number): string {
+  const hex = color.replace('#', '');
+  if (hex.length < 6 || !/^[0-9A-Fa-f]{6}$/.test(hex)) {
+    return `rgba(128, 128, 128, ${opacity})`;
+  }
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+}
+
 // ============ 按钮语义 Token ============
 
 export interface ButtonSemanticToken {
@@ -305,21 +317,7 @@ export function generateStatusSemantic(
   colors: ThemePrimitives
 ): StatusSemanticSet {
   const { text, status } = colors;
-  
-  // 辅助函数：添加透明度
-  const alpha = (color: string, opacity: number) => {
-    // 确保颜色是有效的 hex 格式
-    const hex = color.replace('#', '');
-    if (hex.length < 6 || !/^[0-9A-Fa-f]{6}$/.test(hex)) {
-      // 如果不是有效的 hex 颜色，返回带透明度的灰色
-      return `rgba(128, 128, 128, ${opacity})`;
-    }
-    const r = parseInt(hex.slice(0, 2), 16);
-    const g = parseInt(hex.slice(2, 4), 16);
-    const b = parseInt(hex.slice(4, 6), 16);
-    return `rgba(${r}, ${g}, ${b}, ${opacity})`;
-  };
-  
+
   return {
     success: {
       background: alpha(status.success, 0.15),
@@ -463,6 +461,352 @@ export function generateNavigationSemantic(
   };
 }
 
+// ============ Tooltip 语义 Token ============
+
+export interface TooltipSemanticToken {
+  background: string;
+  text: string;
+  border: string;
+  shadow: string;
+  borderRadius: string;
+  padding: string;
+  arrowColor: string;
+}
+
+export interface TooltipSemanticSet {
+  default: TooltipSemanticToken;
+  dark: TooltipSemanticToken;
+  light: TooltipSemanticToken;
+}
+
+export function generateTooltipSemantic(
+  colors: ThemePrimitives,
+  radii: { sm: string; md: string },
+  shadows: { sm: string; md: string }
+): TooltipSemanticSet {
+  const { background, text, border, brand } = colors;
+
+  return {
+    default: {
+      background: background.elevated,
+      text: text.primary,
+      border: `1px solid ${border.default}`,
+      shadow: shadows.md,
+      borderRadius: radii.md,
+      padding: '8px 12px',
+      arrowColor: background.elevated,
+    },
+    dark: {
+      background: background.base,
+      text: text.primary,
+      border: `1px solid ${border.subtle}`,
+      shadow: shadows.md,
+      borderRadius: radii.md,
+      padding: '8px 12px',
+      arrowColor: background.base,
+    },
+    light: {
+      background: background.overlay,
+      text: text.primary,
+      border: `1px solid ${border.default}`,
+      shadow: shadows.sm,
+      borderRadius: radii.sm,
+      padding: '6px 10px',
+      arrowColor: background.overlay,
+    },
+  };
+}
+
+// ============ Table / DataGrid 语义 Token ============
+
+export interface TableSemanticToken {
+  headerBackground: string;
+  headerText: string;
+  rowBackground: string;
+  rowBackgroundAlt: string;
+  rowHover: string;
+  border: string;
+  text: string;
+  selectedBackground: string;
+}
+
+export function generateTableSemantic(
+  colors: ThemePrimitives
+): TableSemanticToken {
+  const { background, text, border, interactive } = colors;
+
+  return {
+    headerBackground: background.elevated,
+    headerText: text.primary,
+    rowBackground: background.base,
+    rowBackgroundAlt: background.elevated,
+    rowHover: alpha(interactive.default, 0.06),
+    border: border.subtle,
+    text: text.primary,
+    selectedBackground: alpha(interactive.default, 0.1),
+  };
+}
+
+// ============ Card 语义 Token ============
+
+export interface CardSemanticToken {
+  background: string;
+  border: string;
+  borderRadius: string;
+  shadow: string;
+  padding: string;
+  headerBackground: string;
+  footerBackground: string;
+}
+
+export interface CardSemanticSet {
+  default: CardSemanticToken;
+  elevated: CardSemanticToken;
+  outlined: CardSemanticToken;
+  compact: CardSemanticToken;
+}
+
+export function generateCardSemantic(
+  colors: ThemePrimitives,
+  radii: { md: string; lg: string },
+  shadows: { sm: string; md: string }
+): CardSemanticSet {
+  const { background, border } = colors;
+
+  return {
+    default: {
+      background: background.elevated,
+      border: `1px solid ${border.default}`,
+      borderRadius: radii.md,
+      shadow: shadows.sm,
+      padding: '16px',
+      headerBackground: background.elevated,
+      footerBackground: background.elevated,
+    },
+    elevated: {
+      background: background.elevated,
+      border: `1px solid ${border.subtle}`,
+      borderRadius: radii.lg,
+      shadow: shadows.md,
+      padding: '20px',
+      headerBackground: background.elevated,
+      footerBackground: background.elevated,
+    },
+    outlined: {
+      background: 'transparent',
+      border: `1px solid ${border.default}`,
+      borderRadius: radii.md,
+      shadow: 'none',
+      padding: '16px',
+      headerBackground: 'transparent',
+      footerBackground: 'transparent',
+    },
+    compact: {
+      background: background.elevated,
+      border: `1px solid ${border.subtle}`,
+      borderRadius: radii.md,
+      shadow: 'none',
+      padding: '12px',
+      headerBackground: background.elevated,
+      footerBackground: background.elevated,
+    },
+  };
+}
+
+// ============ Divider 语义 Token ============
+
+export interface DividerSemanticToken {
+  color: string;
+  width: string;
+  style: 'solid' | 'dashed' | 'dotted';
+  margin: string;
+}
+
+export function generateDividerSemantic(
+  colors: ThemePrimitives
+): DividerSemanticToken {
+  const { border, text } = colors;
+
+  return {
+    color: border.subtle,
+    width: '1px',
+    style: 'solid',
+    margin: '16px 0',
+  };
+}
+
+// ============ Scrollbar 语义 Token ============
+
+export interface ScrollbarSemanticToken {
+  track: string;
+  thumb: string;
+  thumbHover: string;
+  width: string;
+  borderRadius: string;
+}
+
+export function generateScrollbarSemantic(
+  colors: ThemePrimitives
+): ScrollbarSemanticToken {
+  const { background, border, interactive } = colors;
+
+  return {
+    track: background.sunken,
+    thumb: border.strong,
+    thumbHover: interactive.hover,
+    width: '8px',
+    borderRadius: '4px',
+  };
+}
+
+// ============ Badge / Tag 语义 Token ============
+
+export interface BadgeSemanticToken {
+  background: string;
+  text: string;
+  border: string;
+  borderRadius: string;
+  padding: string;
+}
+
+export interface BadgeSemanticSet {
+  success: BadgeSemanticToken;
+  warning: BadgeSemanticToken;
+  danger: BadgeSemanticToken;
+  info: BadgeSemanticToken;
+  neutral: BadgeSemanticToken;
+  primary: BadgeSemanticToken;
+}
+
+export function generateBadgeSemantic(
+  colors: ThemePrimitives
+): BadgeSemanticSet {
+  const { text, status, brand, background } = colors;
+
+  return {
+    success: {
+      background: alpha(status.success, 0.15),
+      text: status.success,
+      border: `1px solid ${alpha(status.success, 0.3)}`,
+      borderRadius: '9999px',
+      padding: '2px 10px',
+    },
+    warning: {
+      background: alpha(status.warning, 0.15),
+      text: status.warning,
+      border: `1px solid ${alpha(status.warning, 0.3)}`,
+      borderRadius: '9999px',
+      padding: '2px 10px',
+    },
+    danger: {
+      background: alpha(status.danger, 0.15),
+      text: status.danger,
+      border: `1px solid ${alpha(status.danger, 0.3)}`,
+      borderRadius: '9999px',
+      padding: '2px 10px',
+    },
+    info: {
+      background: alpha(status.info, 0.15),
+      text: status.info,
+      border: `1px solid ${alpha(status.info, 0.3)}`,
+      borderRadius: '9999px',
+      padding: '2px 10px',
+    },
+    neutral: {
+      background: alpha(text.secondary, 0.1),
+      text: text.secondary,
+      border: `1px solid ${alpha(text.secondary, 0.2)}`,
+      borderRadius: '9999px',
+      padding: '2px 10px',
+    },
+    primary: {
+      background: alpha(brand.primary, 0.15),
+      text: brand.primary,
+      border: `1px solid ${alpha(brand.primary, 0.3)}`,
+      borderRadius: '9999px',
+      padding: '2px 10px',
+    },
+  };
+}
+
+// ============ Avatar 语义 Token ============
+
+export interface AvatarSemanticToken {
+  background: string;
+  text: string;
+  border: string;
+  borderRadius: string;
+  placeholderBackground: string;
+  placeholderText: string;
+}
+
+export function generateAvatarSemantic(
+  colors: ThemePrimitives
+): AvatarSemanticToken {
+  const { background, text, border, brand } = colors;
+
+  return {
+    background: alpha(brand.primary, 0.15),
+    text: brand.primary,
+    border: `2px solid ${border.subtle}`,
+    borderRadius: '9999px',
+    placeholderBackground: background.sunken,
+    placeholderText: text.muted,
+  };
+}
+
+// ============ Progress / Loading 语义 Token ============
+
+export interface ProgressSemanticToken {
+  track: string;
+  fill: string;
+  fillSuccess: string;
+  fillWarning: string;
+  fillDanger: string;
+  text: string;
+  height: string;
+  borderRadius: string;
+}
+
+export function generateProgressSemantic(
+  colors: ThemePrimitives
+): ProgressSemanticToken {
+  const { background, text, status, brand, border } = colors;
+
+  return {
+    track: background.sunken,
+    fill: brand.primary,
+    fillSuccess: status.success,
+    fillWarning: status.warning,
+    fillDanger: status.danger,
+    text: text.secondary,
+    height: '8px',
+    borderRadius: '4px',
+  };
+}
+
+// ============ Skeleton 语义 Token ============
+
+export interface SkeletonSemanticToken {
+  base: string;
+  highlight: string;
+  borderRadius: string;
+  shimmerDuration: number;
+}
+
+export function generateSkeletonSemantic(
+  colors: ThemePrimitives
+): SkeletonSemanticToken {
+  const { background, border } = colors;
+
+  return {
+    base: background.elevated,
+    highlight: border.subtle,
+    borderRadius: '4px',
+    shimmerDuration: 1500,
+  };
+}
+
 // ============ 完整语义 Token 集合 ============
 
 export interface CompleteSemanticTokens {
@@ -472,6 +816,15 @@ export interface CompleteSemanticTokens {
   status: StatusSemanticSet;
   form: FormSemanticSet;
   navigation: NavigationSemanticSet;
+  tooltip: TooltipSemanticSet;
+  table: TableSemanticToken;
+  card: CardSemanticSet;
+  divider: DividerSemanticToken;
+  scrollbar: ScrollbarSemanticToken;
+  badge: BadgeSemanticSet;
+  avatar: AvatarSemanticToken;
+  progress: ProgressSemanticToken;
+  skeleton: SkeletonSemanticToken;
 }
 
 export function generateAllSemanticTokens(
@@ -486,5 +839,14 @@ export function generateAllSemanticTokens(
     status: generateStatusSemantic(colors),
     form: generateFormSemantic(colors),
     navigation: generateNavigationSemantic(colors),
+    tooltip: generateTooltipSemantic(colors, radii, shadows),
+    table: generateTableSemantic(colors),
+    card: generateCardSemantic(colors, radii, shadows),
+    divider: generateDividerSemantic(colors),
+    scrollbar: generateScrollbarSemantic(colors),
+    badge: generateBadgeSemantic(colors),
+    avatar: generateAvatarSemantic(colors),
+    progress: generateProgressSemantic(colors),
+    skeleton: generateSkeletonSemantic(colors),
   };
 }
