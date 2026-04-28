@@ -1,13 +1,14 @@
-import fs from 'fs';
-import path from 'path';
-
 import { projectRepository } from '../../stratix-database/ProjectRepository';
 import { zoneRepository } from '../../stratix-database/ZoneRepository';
-import { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskCreateRequest, ZoneTaskUpdateRequest, ZoneMessage, ZoneMessageCreateRequest, FileVersion } from '../../stratix-project/types';
+import { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskUpdateRequest, ZoneMessage, FileVersion } from '../../stratix-project/types';
 import { gatewayEventBus } from '../GatewayEventBus';
 import { stratixStateStore, ZoneState } from '../../stratix-core/state';
 import { PermissionOrchestrator, PermissionContext } from '../../stratix-core/permission';
 import { ZoneAgent } from '../../stratix-agent/core/ZoneAgent';
+import { ZoneMemberService } from './ZoneMemberService';
+import { ZoneFileService } from './ZoneFileService';
+import { ZoneTaskService } from './ZoneTaskService';
+import { ZoneMessageService } from './ZoneMessageService';
 
 export interface ZoneFileBatchRequest {
   files: Array<{
@@ -22,6 +23,30 @@ export interface ZoneFileBatchRequest {
 export class ZoneService {
   private initialized: boolean = false;
   private permissionOrchestrator: PermissionOrchestrator | null = null;
+  private memberService: ZoneMemberService;
+  private fileService: ZoneFileService;
+  private taskService: ZoneTaskService;
+  private messageService: ZoneMessageService;
+
+  constructor() {
+    this.memberService = new ZoneMemberService(
+      this.checkPermission.bind(this),
+      this.syncZoneToStore.bind(this),
+      this.ensureInitialized.bind(this)
+    );
+    this.fileService = new ZoneFileService(
+      this.checkPermission.bind(this),
+      this.ensureInitialized.bind(this)
+    );
+    this.taskService = new ZoneTaskService(
+      this.checkPermission.bind(this),
+      this.ensureInitialized.bind(this)
+    );
+    this.messageService = new ZoneMessageService(
+      this.checkPermission.bind(this),
+      this.ensureInitialized.bind(this)
+    );
+  }
 
   // Zone State 同步到 StratixStateStore
   private syncZoneToStore(zone: Zone): void {
@@ -39,21 +64,6 @@ export class ZoneService {
   private removeZoneFromStore(zoneId: string): void {
     stratixStateStore.removeZone(zoneId);
   }
-
-  // 文件缓存配置
-  private cacheExpiry: number = 3600000; // 1小时
-  private maxFileSize: number = 10 * 1024 * 1024; // 10MB
-  private allowedBasePaths: string[] = [];
-  // URL 抓取安全配置 - 默认阻止所有 URL（需要显式配置允许）
-  private allowedUrlPatterns: RegExp[] = [/^https?:\/\/[^/]+\.(github\.io|gitlab\.io|bitbucket\.org|jsdelivr\.net|cdn\.jsdelivr\.net|unpkg\.com|skypack\.dev)\//i]; // 默认允许公共 CDN
-  private blockedIpRanges: string[] = [
-    '127.0.0.0/8',   // localhost
-    '10.0.0.0/8',    // private
-    '172.16.0.0/12', // private
-    '192.168.0.0/16', // private
-    '169.254.0.0/16', // link-local
-    '0.0.0.0/8'      // current network
-  ];
 
   public async initialize(): Promise<void> {
     if (this.initialized) return;
@@ -115,28 +125,8 @@ export class ZoneService {
     allowedUrlPatterns?: string[];
     blockedIpRanges?: string[];
   }): void {
-    if (options.cacheExpiry !== undefined) {
-      this.cacheExpiry = options.cacheExpiry;
-    }
-    if (options.maxFileSize !== undefined) {
-      this.maxFileSize = options.maxFileSize;
-    }
-    if (options.allowedBasePaths !== undefined) {
-      this.allowedBasePaths = options.allowedBasePaths;
-    }
-    if (options.allowedUrlPatterns !== undefined) {
-      this.allowedUrlPatterns = options.allowedUrlPatterns.map(p => new RegExp(p));
-    }
-    if (options.blockedIpRanges !== undefined) {
-      this.blockedIpRanges = options.blockedIpRanges;
-    }
-    console.log('[ZoneService] File cache configured:', {
-      cacheExpiry: this.cacheExpiry,
-      maxFileSize: this.maxFileSize,
-      allowedBasePaths: this.allowedBasePaths,
-      allowedUrlPatterns: this.allowedUrlPatterns.map(r => r.source),
-      blockedIpRanges: this.blockedIpRanges
-    });
+    this.fileService.configureFileCache(options);
+    console.log('[ZoneService] File cache configured via ZoneFileService');
   }
 
   private async ensureInitialized(): Promise<void> {
@@ -364,132 +354,28 @@ export class ZoneService {
     return { deleted, failed };
   }
 
-  // Zone Members
+  // ============================================
+  // Zone Members (delegated to ZoneMemberService)
+  // ============================================
   public async addMember(zoneId: string, agentId: string, requesterId: string = 'system'): Promise<Zone> {
-    await this.ensureInitialized();
-
-    this.checkPermission('add_member', `zone:${zoneId}`, requesterId);
-
-    const zone = zoneRepository.addMember(zoneId, agentId);
-    if (!zone) {
-      throw new Error(`Zone not found: ${zoneId}`);
-    }
-
-    // Sync to StratixStateStore
-    this.syncZoneToStore(zone);
-
-    // Publish zone:member_joined event
-    gatewayEventBus.publishZoneEvent('zone:member_joined', zoneId, zone.projectId!, {
-      agentId
-    });
-
-    // Auto-assign pending tasks to the new member (fire-and-forget, don't block member join)
-    this.autoAssignTaskToMember(zoneId, agentId).catch(err => {
-      console.error(`[ZoneService] Unhandled error in autoAssignTaskToMember:`, err);
-    });
-
-    return zone;
-  }
-
-  /**
-   * Auto-assign a pending task to a newly joined member
-   * Does NOT retry on failure - retry is handled by:
-   * 1. New Agent joining the zone
-   * 2. Dependency completing
-   * 3. requeueAbandonedTasks periodic cleanup
-   */
-  private async autoAssignTaskToMember(zoneId: string, agentId: string): Promise<void> {
-    try {
-      // Dynamic require to avoid circular dependency between gateway and orchestration layers
-      const TaskQueueService = require('../../stratix-orchestration/task-queue/TaskQueueService').TaskQueueService;
-      const taskQueue = TaskQueueService.getInstance();
-
-      // Ensure zone's task pool is initialized before dequeuing
-      // This populates zoneTaskPools map so dequeueTask can find tasks
-      await taskQueue.getTasksByZone(zoneId);
-
-      const task = await taskQueue.dequeueTask(agentId, zoneId);
-
-      if (task) {
-        console.log(`[ZoneService] Auto-claimed task ${task.taskId} for agent ${agentId} in zone ${zoneId}`);
-      } else {
-        // No pending tasks is normal - not an error
-        console.debug(`[ZoneService] No pending tasks to assign to agent ${agentId} in zone ${zoneId}`);
-      }
-    } catch (err) {
-      // Log error but don't retry - retry is handled externally
-      console.error(`[ZoneService] Failed to auto-assign task to agent ${agentId} in zone ${zoneId}:`, err);
-    }
+    return this.memberService.addMember(zoneId, agentId, requesterId);
   }
 
   public async removeMember(zoneId: string, agentId: string, requesterId: string = 'system'): Promise<Zone> {
-    await this.ensureInitialized();
-
-    this.checkPermission('remove_member', `zone:${zoneId}`, requesterId);
-
-    const zone = zoneRepository.removeMember(zoneId, agentId);
-    if (!zone) {
-      throw new Error(`Zone not found: ${zoneId}`);
-    }
-
-    // Sync to StratixStateStore
-    this.syncZoneToStore(zone);
-
-    // Publish zone:member_left event
-    gatewayEventBus.publishZoneEvent('zone:member_left', zoneId, zone.projectId!, {
-      agentId
-    });
-
-    return zone;
+    return this.memberService.removeMember(zoneId, agentId, requesterId);
   }
 
   public async addMembers(zoneId: string, agentIds: string[], requesterId: string = 'system'): Promise<Zone> {
-    await this.ensureInitialized();
-
-    this.checkPermission('add_members', `zone:${zoneId}`, requesterId);
-
-    const zone = zoneRepository.addMembers(zoneId, agentIds);
-    if (!zone) {
-      throw new Error(`Zone not found: ${zoneId}`);
-    }
-
-    // Sync to StratixStateStore
-    this.syncZoneToStore(zone);
-
-    // Publish events for each member joined
-    for (const agentId of agentIds) {
-      gatewayEventBus.publishZoneEvent('zone:member_joined', zoneId, zone.projectId!, {
-        agentId
-      });
-    }
-
-    return zone;
+    return this.memberService.addMembers(zoneId, agentIds, requesterId);
   }
 
   public async removeMembers(zoneId: string, agentIds: string[], requesterId: string = 'system'): Promise<Zone> {
-    await this.ensureInitialized();
-
-    this.checkPermission('remove_members', `zone:${zoneId}`, requesterId);
-
-    const zone = zoneRepository.removeMembers(zoneId, agentIds);
-    if (!zone) {
-      throw new Error(`Zone not found: ${zoneId}`);
-    }
-
-    // Sync to StratixStateStore
-    this.syncZoneToStore(zone);
-
-    // Publish events for each member left
-    for (const agentId of agentIds) {
-      gatewayEventBus.publishZoneEvent('zone:member_left', zoneId, zone.projectId!, {
-        agentId
-      });
-    }
-
-    return zone;
+    return this.memberService.removeMembers(zoneId, agentIds, requesterId);
   }
 
-  // Zone Files
+  // ============================================
+  // Zone Files (delegated to ZoneFileService)
+  // ============================================
   public async addFile(
     zoneId: string,
     name: string,
@@ -498,389 +384,47 @@ export class ZoneService {
     fileType?: FileType,
     agentId: string = 'system'
   ): Promise<ZoneFile> {
-    await this.ensureInitialized();
-
-    this.checkPermission('add_file', `zone:${zoneId}`, agentId);
-
-    // Verify zone exists
-    const zone = zoneRepository.getZone(zoneId);
-    if (!zone) {
-      throw new Error(`Zone not found: ${zoneId}`);
-    }
-
-    // For local files, try to read content
-    let content: string | undefined;
-    if (sourceType === 'local') {
-      try {
-        content = await this.readLocalFile(source);
-      } catch (error) {
-        console.warn(`[ZoneService] Failed to read local file ${source}:`, error);
-      }
-    }
-
-    const file = zoneRepository.addFile(zoneId, name, sourceType, source, fileType);
-
-    // If content was read, update the file
-    if (content) {
-      zoneRepository.updateFile(file.id, { content, lastFetched: Date.now() });
-    }
-
-    const finalFile = zoneRepository.getFile(file.id)!;
-
-    // Publish zone:file_added event
-    gatewayEventBus.publishZoneEvent('zone:file_added', zoneId, zone.id, {
-      file: finalFile
-    });
-
-    return finalFile;
+    return this.fileService.addFile(zoneId, name, sourceType, source, fileType, agentId);
   }
 
-  /**
-   * Batch add files to a Zone
-   */
   public async addFiles(zoneId: string, files: Array<{ name: string; sourceType: 'local' | 'url'; source: string; fileType?: FileType; metadata?: any }>, agentId: string = 'system'): Promise<ZoneFile[]> {
-    await this.ensureInitialized();
-
-    this.checkPermission('add_files', `zone:${zoneId}`, agentId);
-
-    // Verify zone exists
-    const zone = zoneRepository.getZone(zoneId);
-    if (!zone) {
-      throw new Error(`Zone not found: ${zoneId}`);
-    }
-
-    // Add files in batch
-    const addedFiles = zoneRepository.addFiles(zoneId, files);
-
-    // Try to read content for local files and update
-    for (let i = 0; i < addedFiles.length; i++) {
-      const file = addedFiles[i];
-      if (file.sourceType === 'local') {
-        try {
-          const content = await this.readLocalFile(file.source);
-          zoneRepository.updateFile(file.id, { content, lastFetched: Date.now() });
-          addedFiles[i] = zoneRepository.getFile(file.id)!;
-        } catch (error) {
-          console.warn(`[ZoneService] Failed to read local file ${file.source}:`, error);
-        }
-      }
-    }
-
-    // Publish zone:file_added event for each file
-    for (const file of addedFiles) {
-      gatewayEventBus.publishZoneEvent('zone:file_added', zoneId, zone.id, {
-        file
-      });
-    }
-
-    return addedFiles;
+    return this.fileService.addFiles(zoneId, files, agentId);
   }
 
   public async removeFile(zoneId: string, fileId: string, agentId: string = 'system'): Promise<boolean> {
-    await this.ensureInitialized();
-
-    this.checkPermission('remove_file', `zone:${zoneId}`, agentId);
-
-    // Verify zone exists
-    const zone = zoneRepository.getZone(zoneId);
-    if (!zone) {
-      throw new Error(`Zone not found: ${zoneId}`);
-    }
-
-    // Get file info and verify it belongs to this zone
-    const file = zoneRepository.getFile(fileId);
-    if (!file || file.zoneId !== zoneId) {
-      throw new Error(`File ${fileId} not found in zone ${zoneId}`);
-    }
-
-    const deleted = zoneRepository.deleteFile(fileId);
-
-    if (deleted) {
-      // Publish zone:file_removed event
-      gatewayEventBus.publishZoneEvent('zone:file_removed', zoneId, zone.id, {
-        fileId,
-        fileName: file?.name
-      });
-    }
-
-    return deleted;
+    return this.fileService.removeFile(zoneId, fileId, agentId);
   }
 
-  /**
-   * Check if file content should be refreshed based on cache expiry
-   */
   public shouldRefreshFile(file: ZoneFile): boolean {
-    // Always refresh if no content cached
-    if (!file.content) {
-      return true;
-    }
-
-    // Check if cache has expired
-    if (file.lastFetched) {
-      const age = Date.now() - file.lastFetched;
-      return age > this.cacheExpiry;
-    }
-
-    // If no lastFetched timestamp but has content, still refresh to be safe
-    return true;
+    return this.fileService.shouldRefreshFile(file);
   }
 
-  /**
-   * Get file content with automatic cache refresh if stale
-   * Returns the file with updated content if refresh happened, or the original file if cache is valid
-   */
   public async getFileWithContent(zoneId: string, fileId: string): Promise<{ file: ZoneFile | null; content: string | null; cacheHit: boolean }> {
-    const file = zoneRepository.getFile(fileId);
-    if (!file || file.zoneId !== zoneId) {
-      return { file: null, content: null, cacheHit: false };
-    }
-
-    // If cache is still valid, return existing content
-    if (!this.shouldRefreshFile(file)) {
-      return { file, content: file.content ?? null, cacheHit: true };
-    }
-
-    // Cache is stale, fetch new content
-    let newContent: string | null = null;
-    if (file.sourceType === 'local') {
-      try {
-        newContent = await this.readLocalFile(file.source);
-      } catch (error) {
-        console.warn(`[ZoneService] Failed to read local file ${file.source}:`, error);
-        // Return stale cache if refresh fails
-        return { file, content: file.content ?? null, cacheHit: false };
-      }
-    } else if (file.sourceType === 'url') {
-      try {
-        newContent = await this.fetchUrl(file.source);
-      } catch (error) {
-        console.warn(`[ZoneService] Failed to fetch URL ${file.source}:`, error);
-        // Return stale cache if refresh fails
-        return { file, content: file.content ?? null, cacheHit: false };
-      }
-    }
-
-    // Update database with new content
-    if (newContent !== null) {
-      const updated = zoneRepository.updateFile(fileId, {
-        content: newContent,
-        lastFetched: Date.now()
-      });
-      if (updated) {
-        return { file: updated, content: newContent, cacheHit: false };
-      }
-    }
-
-    // Fallback to stale cache
-    return { file, content: file.content ?? null, cacheHit: false };
+    return this.fileService.getFileWithContent(zoneId, fileId);
   }
 
-  /**
-   * Refresh file content from source
-   * @param force If true, skip cache expiry check and always refresh
-   */
   public async refreshFile(zoneId: string, fileId: string, force: boolean = false, agentId: string = 'system'): Promise<ZoneFile> {
-    await this.ensureInitialized();
-
-    this.checkPermission('update_file', `zone:${zoneId}`, agentId);
-
-    const file = zoneRepository.getFile(fileId);
-    if (!file || file.zoneId !== zoneId) {
-      throw new Error(`File not found: ${fileId} in zone ${zoneId}`);
-    }
-
-    // Check cache expiry unless force is true
-    if (!force && !this.shouldRefreshFile(file)) {
-      console.log(`[ZoneService] File ${fileId} cache still valid, skipping refresh`);
-      return file;
-    }
-
-    let content: string | undefined;
-    if (file.sourceType === 'local') {
-      try {
-        content = await this.readLocalFile(file.source);
-      } catch (error) {
-        console.warn(`[ZoneService] Failed to refresh local file ${file.source}:`, error);
-        throw new Error(`Failed to read local file: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      }
-    } else if (file.sourceType === 'url') {
-      try {
-        content = await this.fetchUrl(file.source);
-      } catch (error) {
-        console.warn(`[ZoneService] Failed to refresh URL ${file.source}:`, error);
-        throw new Error(`Failed to fetch URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      }
-    }
-
-    if (content !== undefined) {
-      // Save version history before updating (only for text files)
-      if (content && this.isTextFile(file.fileType)) {
-        zoneRepository.addFileVersion(fileId, content, 'Auto-saved on refresh');
-      }
-      zoneRepository.updateFile(fileId, { content, lastFetched: Date.now() });
-    }
-
-    const updated = zoneRepository.getFile(fileId);
-    if (!updated) {
-      throw new Error(`File not found after update: ${fileId}`);
-    }
-
-    return updated;
+    return this.fileService.refreshFile(zoneId, fileId, force, agentId);
   }
 
-  // Fetch URL metadata (title, favicon) for URL type files
   public async fetchUrlMetadata(zoneId: string, fileId: string): Promise<{ title?: string; favicon?: string; description?: string }> {
-    await this.ensureInitialized();
-
-    const file = zoneRepository.getFile(fileId);
-    if (!file || file.zoneId !== zoneId) {
-      throw new Error(`File not found: ${fileId} in zone ${zoneId}`);
-    }
-
-    if (file.sourceType !== 'url') {
-      throw new Error('File is not a URL type');
-    }
-
-    try {
-      const html = await this.fetchUrl(file.source);
-
-      // Extract title
-      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-      const title = titleMatch ? titleMatch[1].trim() : undefined;
-
-      // Extract description
-      const descMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i);
-      const description = descMatch ? descMatch[1].trim() : undefined;
-
-      // Extract favicon
-      let favicon: string | undefined;
-      const faviconMatch = html.match(/<link[^>]*rel=["'](?:shortcut )?icon["'][^>]*href=["']([^"']+)["']/i);
-      if (faviconMatch) {
-        favicon = faviconMatch[1];
-        // Handle relative URLs
-        if (favicon && !favicon.startsWith('http')) {
-          const urlObj = new URL(file.source);
-          favicon = favicon.startsWith('/')
-            ? `${urlObj.protocol}//${urlObj.host}${favicon}`
-            : `${urlObj.protocol}//${urlObj.host}/${favicon}`;
-        }
-      }
-
-      // Update file metadata
-      if (title || description) {
-        const newMetadata = { ...file.metadata, title, description, favicon };
-        zoneRepository.updateFile(fileId, { metadata: newMetadata });
-      }
-
-      return { title, favicon, description };
-    } catch (error) {
-      console.warn(`[ZoneService] Failed to fetch URL metadata for ${file.source}:`, error);
-      return {};
-    }
+    return this.fileService.fetchUrlMetadata(zoneId, fileId);
   }
 
-  // Search files by name or content within a zone
   public async searchFiles(zoneId: string, keyword: string): Promise<ZoneFile[]> {
-    await this.ensureInitialized();
-
-    // Verify zone exists
-    const zone = zoneRepository.getZone(zoneId);
-    if (!zone) {
-      throw new Error(`Zone not found: ${zoneId}`);
-    }
-
-    return zoneRepository.searchFiles(zoneId, keyword);
+    return this.fileService.searchFiles(zoneId, keyword);
   }
 
-  // ============================================
-  // File Version History
-  // ============================================
-
-  /**
-   * Check if file type supports version history (text files only)
-   */
-  private isTextFile(fileType?: FileType): boolean {
-    if (!fileType) return false;
-    return ['md', 'txt', 'ts', 'js', 'fig', 'link'].includes(fileType);
-  }
-
-  /**
-   * Get file versions
-   */
   public async getFileVersions(zoneId: string, fileId: string): Promise<{ versions: FileVersion[]; currentVersionId?: string }> {
-    await this.ensureInitialized();
-
-    const file = zoneRepository.getFile(fileId);
-    if (!file || file.zoneId !== zoneId) {
-      throw new Error(`File not found: ${fileId} in zone ${zoneId}`);
-    }
-
-    const result = zoneRepository.getFileVersions(fileId);
-    return result || { versions: [] };
+    return this.fileService.getFileVersions(zoneId, fileId);
   }
 
-  /**
-   * Update file content with version tracking (saves old content as version)
-   */
   public async updateFileWithVersion(zoneId: string, fileId: string, newContent: string, description?: string, agentId: string = 'system'): Promise<ZoneFile> {
-    await this.ensureInitialized();
-
-    this.checkPermission('update_file', `zone:${zoneId}`, agentId);
-
-    const file = zoneRepository.getFile(fileId);
-    if (!file || file.zoneId !== zoneId) {
-      throw new Error(`File not found: ${fileId} in zone ${zoneId}`);
-    }
-
-    // Only save version for text files that have content
-    if (this.isTextFile(file.fileType) && file.content) {
-      zoneRepository.addFileVersion(fileId, file.content, description);
-    }
-
-    // Update file with new content
-    const updated = zoneRepository.updateFile(fileId, { content: newContent, lastFetched: Date.now() });
-    if (!updated) {
-      throw new Error(`File not found after update: ${fileId}`);
-    }
-
-    // Publish file:updated event
-    const zone = zoneRepository.getZone(zoneId);
-    if (zone) {
-      gatewayEventBus.publishZoneEvent('zone:file_updated', zoneId, zone.id, {
-        file: updated
-      });
-    }
-
-    return updated;
+    return this.fileService.updateFileWithVersion(zoneId, fileId, newContent, description, agentId);
   }
 
-  /**
-   * Rollback file to a specific version
-   */
   public async rollbackFileToVersion(zoneId: string, fileId: string, versionId: string, agentId: string = 'system'): Promise<ZoneFile> {
-    await this.ensureInitialized();
-
-    this.checkPermission('rollback_file', `zone:${zoneId}`, agentId);
-
-    const file = zoneRepository.getFile(fileId);
-    if (!file || file.zoneId !== zoneId) {
-      throw new Error(`File not found: ${fileId} in zone ${zoneId}`);
-    }
-
-    const updated = zoneRepository.rollbackFileToVersion(fileId, versionId);
-    if (!updated) {
-      throw new Error(`Failed to rollback to version: ${versionId}`);
-    }
-
-    // Publish file:updated event
-    const zone = zoneRepository.getZone(zoneId);
-    if (zone) {
-      gatewayEventBus.publishZoneEvent('zone:file_updated', zoneId, zone.id, {
-        file: updated
-      });
-    }
-
-    return updated;
+    return this.fileService.rollbackFileToVersion(zoneId, fileId, versionId, agentId);
   }
 
   public async scanFolder(
@@ -890,45 +434,12 @@ export class ZoneService {
     extensions?: string[],
     agentId: string = 'system'
   ): Promise<ZoneFile[]> {
-    await this.ensureInitialized();
-
-    this.checkPermission('scan_folder', `zone:${zoneId}`, agentId);
-
-    // Verify zone exists
-    const zone = zoneRepository.getZone(zoneId);
-    if (!zone) {
-      throw new Error(`Zone not found: ${zoneId}`);
-    }
-
-    const scannedFiles = await this.scanLocalFolder(folderPath, recursive, extensions);
-    const addedFiles: ZoneFile[] = [];
-
-    for (const scanned of scannedFiles) {
-      const file = zoneRepository.addFile(
-        zoneId,
-        scanned.name,
-        'local',
-        scanned.source,
-        scanned.fileType
-      );
-
-      // Try to read content
-      try {
-        const content = await this.readLocalFile(scanned.source);
-        zoneRepository.updateFile(file.id, { content, lastFetched: Date.now() });
-      } catch (error) {
-        console.warn(`[ZoneService] Failed to read scanned file ${scanned.source}:`, error);
-      }
-
-      addedFiles.push(zoneRepository.getFile(file.id)!);
-    }
-
-    return addedFiles;
+    return this.fileService.scanFolder(zoneId, folderPath, recursive, extensions, agentId);
   }
 
-  /**
-   * 获取 Zone 的统计信息
-   */
+  // ============================================
+  // Zone Statistics
+  // ============================================
   public async getZoneStatistics(zoneId: string): Promise<{
     tasks: { total: number; pending: number; in_progress: number; done: number };
     files: { total: number };
@@ -964,345 +475,65 @@ export class ZoneService {
   }
 
   // ============================================
-  // Zone Tasks (Task Creator 模式)
+  // Zone Tasks (delegated to ZoneTaskService)
   // ============================================
-
-  /**
-   * 获取 Zone 的所有 Tasks
-   */
   public async getTasks(zoneId: string, limit?: number, offset?: number): Promise<ZoneTask[]> {
-    await this.ensureInitialized();
-    const zone = zoneRepository.getZone(zoneId);
-    if (!zone) {
-      throw new Error(`Zone not found: ${zoneId}`);
-    }
-    return zoneRepository.getTasks(zoneId, limit, offset);
+    return this.taskService.getTasks(zoneId, limit, offset);
   }
 
   public async getTasksCount(zoneId: string): Promise<number> {
-    await this.ensureInitialized();
-    const zone = zoneRepository.getZone(zoneId);
-    if (!zone) {
-      throw new Error(`Zone not found: ${zoneId}`);
-    }
-    return zoneRepository.getTasksCount(zoneId);
+    return this.taskService.getTasksCount(zoneId);
   }
 
-  /**
-   * 获取单个 Task
-   */
   public async getTask(zoneId: string, taskId: string): Promise<ZoneTask | null> {
-    await this.ensureInitialized();
-    const zone = zoneRepository.getZone(zoneId);
-    if (!zone) {
-      throw new Error(`Zone not found: ${zoneId}`);
-    }
-
-    const task = zoneRepository.getTask(taskId);
-    if (!task || task.zoneId !== zoneId) {
-      return null;
-    }
-
-    return task;
+    return this.taskService.getTask(zoneId, taskId);
   }
 
-  /**
-   * 创建 Task（只有 taskCreatorId 的 agent 才能创建）
-   * 如果没有 taskCreatorId，当前 agent 成为 creator
-   */
   public async createTask(zoneId: string, agentId: string, title: string): Promise<ZoneTask> {
-    await this.ensureInitialized();
-
-    this.checkPermission('create_task', `zone:${zoneId}`, agentId);
-
-    const zone = zoneRepository.getZone(zoneId);
-    if (!zone) {
-      throw new Error(`Zone not found: ${zoneId}`);
-    }
-
-    // 获取 zone context
-    const ctx = zoneRepository.getZoneContext(zoneId);
-    if (!ctx) {
-      throw new Error(`Zone context not found: ${zoneId}`);
-    }
-
-    // 如果没有 creator，当前 agent 成为 creator
-    if (!ctx.taskCreatorId) {
-      zoneRepository.updateZoneContext(zoneId, { taskCreatorId: agentId });
-    } else if (ctx.taskCreatorId !== agentId) {
-      throw new Error('只有任务创建者可以创建新任务');
-    }
-
-    const task = zoneRepository.createTask(zoneId, title, agentId);
-
-    // Publish task:created event
-    gatewayEventBus.publishZoneEvent('zone:task_created', zoneId, zone.id, {
-      task
-    });
-
-    return task;
+    return this.taskService.createTask(zoneId, agentId, title);
   }
 
-  /**
-   * 更新 Task（只有 creator 或 assignee 可以更新）
-   */
   public async updateTask(zoneId: string, taskId: string, agentId: string, updates: ZoneTaskUpdateRequest): Promise<ZoneTask> {
-    await this.ensureInitialized();
-
-    this.checkPermission('update_task', `zone:${zoneId}`, agentId);
-
-    const zone = zoneRepository.getZone(zoneId);
-    if (!zone) {
-      throw new Error(`Zone not found: ${zoneId}`);
-    }
-
-    const task = zoneRepository.getTask(taskId);
-    if (!task || task.zoneId !== zoneId) {
-      throw new Error(`Task not found: ${taskId}`);
-    }
-
-    // 检查权限：creator 或 assignee 可以更新
-    const ctx = zoneRepository.getZoneContext(zoneId);
-    const isCreator = ctx?.taskCreatorId === agentId;
-    const isAssignee = task.assignee === agentId;
-
-    if (!isCreator && !isAssignee) {
-      throw new Error('只有任务创建者或认领者可以更新任务');
-    }
-
-    const updated = zoneRepository.updateTask(taskId, updates);
-    if (!updated) {
-      throw new Error(`Task not found: ${taskId}`);
-    }
-
-    // Publish task:updated event
-    gatewayEventBus.publishZoneEvent('zone:task_updated', zoneId, zone.id, {
-      task: updated
-    });
-
-    return updated;
+    return this.taskService.updateTask(zoneId, taskId, agentId, updates);
   }
 
-  /**
-   * 删除 Task（只有 creator 可以删除）
-   */
   public async deleteTask(zoneId: string, taskId: string, agentId: string): Promise<boolean> {
-    await this.ensureInitialized();
-
-    this.checkPermission('delete_task', `zone:${zoneId}`, agentId);
-
-    const zone = zoneRepository.getZone(zoneId);
-    if (!zone) {
-      throw new Error(`Zone not found: ${zoneId}`);
-    }
-
-    const ctx = zoneRepository.getZoneContext(zoneId);
-    if (ctx?.taskCreatorId !== agentId) {
-      throw new Error('只有任务创建者可以删除任务');
-    }
-
-    const deleted = zoneRepository.deleteTask(taskId);
-
-    if (deleted) {
-      gatewayEventBus.publishZoneEvent('zone:task_deleted', zoneId, zone.id, {
-        taskId
-      });
-    }
-
-    return deleted;
+    return this.taskService.deleteTask(zoneId, taskId, agentId);
   }
 
-  /**
-   * 认领 Task（设置 assignee + status = in_progress）
-   */
   public async claimTask(zoneId: string, taskId: string, agentId: string): Promise<ZoneTask> {
-    await this.ensureInitialized();
-
-    this.checkPermission('claim_task', `zone:${zoneId}`, agentId);
-
-    const zone = zoneRepository.getZone(zoneId);
-    if (!zone) {
-      throw new Error(`Zone not found: ${zoneId}`);
-    }
-
-    const task = zoneRepository.getTask(taskId);
-    if (!task || task.zoneId !== zoneId) {
-      throw new Error(`Task not found: ${taskId}`);
-    }
-
-    if (task.assignee) {
-      throw new Error('任务已被认领');
-    }
-
-    if (task.status === 'done') {
-      throw new Error('任务已完成，无法认领');
-    }
-
-    const updated = zoneRepository.updateTask(taskId, {
-      assignee: agentId,
-      status: 'in_progress'
-    });
-
-    if (!updated) {
-      throw new Error(`Task not found: ${taskId}`);
-    }
-
-    // Publish task:claimed event
-    gatewayEventBus.publishZoneEvent('zone:task_claimed', zoneId, zone.id, {
-      taskId,
-      assignee: agentId
-    });
-
-    return updated;
+    return this.taskService.claimTask(zoneId, taskId, agentId);
   }
 
-  /**
-   * 批量创建 Tasks
-   */
   public async createTasksBatch(
     zoneId: string,
     agentId: string,
     titles: string[]
   ): Promise<{ success: ZoneTask[]; failed: Array<{ title: string; error: string }> }> {
-    await this.ensureInitialized();
-
-    this.checkPermission('create_tasks_batch', `zone:${zoneId}`, agentId);
-
-    const zone = zoneRepository.getZone(zoneId);
-    if (!zone) {
-      throw new Error(`Zone not found: ${zoneId}`);
-    }
-
-    const success: ZoneTask[] = [];
-    const failed: Array<{ title: string; error: string }> = [];
-
-    for (const title of titles) {
-      try {
-        const task = zoneRepository.createTask(zoneId, title, agentId);
-        success.push(task);
-
-        // Publish task:created event for each task
-        gatewayEventBus.publishZoneEvent('zone:task_created', zoneId, zone.id, {
-          task
-        });
-      } catch (error) {
-        failed.push({
-          title,
-          error: error instanceof Error ? error.message : 'Unknown error'
-        });
-      }
-    }
-
-    return { success, failed };
+    return this.taskService.createTasksBatch(zoneId, agentId, titles);
   }
 
-  /**
-   * 批量更新 Tasks
-   */
   public async updateTasksBatch(
     zoneId: string,
     agentId: string,
     updates: Array<{ taskId: string; title?: string; status?: string; assignee?: string | null }>
   ): Promise<{ success: ZoneTask[]; failed: Array<{ taskId: string; error: string }> }> {
-    await this.ensureInitialized();
-
-    this.checkPermission('update_tasks_batch', `zone:${zoneId}`, agentId);
-
-    const zone = zoneRepository.getZone(zoneId);
-    if (!zone) {
-      throw new Error(`Zone not found: ${zoneId}`);
-    }
-
-    const success: ZoneTask[] = [];
-    const failed: Array<{ taskId: string; error: string }> = [];
-
-    for (const update of updates) {
-      try {
-        const task = zoneRepository.getTask(update.taskId);
-        if (!task || task.zoneId !== zoneId) {
-          throw new Error(`Task not found: ${update.taskId}`);
-        }
-
-        // Check permissions
-        const ctx = zoneRepository.getZoneContext(zoneId);
-        const isCreator = ctx?.taskCreatorId === agentId;
-        const isAssignee = task.assignee === agentId;
-
-        if (!isCreator && !isAssignee) {
-          throw new Error('只有任务创建者或认领者可以更新任务');
-        }
-
-        const updated = zoneRepository.updateTask(update.taskId, {
-          title: update.title,
-          status: update.status as any,
-          assignee: update.assignee
-        });
-
-        if (updated) {
-          success.push(updated);
-
-          // Publish task:updated event
-          gatewayEventBus.publishZoneEvent('zone:task_updated', zoneId, zone.id, {
-            task: updated
-          });
-        }
-      } catch (error) {
-        failed.push({
-          taskId: update.taskId,
-          error: error instanceof Error ? error.message : 'Unknown error'
-        });
-      }
-    }
-
-    return { success, failed };
+    return this.taskService.updateTasksBatch(zoneId, agentId, updates);
   }
 
   // ============================================
-  // Zone Messages (聊天)
+  // Zone Messages (delegated to ZoneMessageService)
   // ============================================
-
-  /**
-   * 获取 Zone 的消息历史
-   */
   public async getMessages(zoneId: string, limit: number = 100, offset: number = 0): Promise<ZoneMessage[]> {
-    await this.ensureInitialized();
-    const zone = zoneRepository.getZone(zoneId);
-    if (!zone) {
-      throw new Error(`Zone not found: ${zoneId}`);
-    }
-    return zoneRepository.getMessages(zoneId, limit, offset);
+    return this.messageService.getMessages(zoneId, limit, offset);
   }
 
   public async getMessagesCount(zoneId: string): Promise<number> {
-    await this.ensureInitialized();
-    const zone = zoneRepository.getZone(zoneId);
-    if (!zone) {
-      throw new Error(`Zone not found: ${zoneId}`);
-    }
-    return zoneRepository.getMessagesCount(zoneId);
+    return this.messageService.getMessagesCount(zoneId);
   }
 
-  /**
-   * 发送消息
-   */
   public async addMessage(zoneId: string, senderId: string, senderType: 'user' | 'agent', content: string): Promise<ZoneMessage> {
-    await this.ensureInitialized();
-
-    this.checkPermission('add_message', `zone:${zoneId}`, senderId);
-
-    const zone = zoneRepository.getZone(zoneId);
-    if (!zone) {
-      throw new Error(`Zone not found: ${zoneId}`);
-    }
-
-    const message = zoneRepository.addMessage(zoneId, senderId, senderType, content);
-
-    // Publish message:added event
-    gatewayEventBus.publishZoneEvent('zone:message_added', zoneId, zone.id, {
-      message
-    });
-
-    return message;
+    return this.messageService.addMessage(zoneId, senderId, senderType, content);
   }
 
   // ============================================
@@ -1421,220 +652,6 @@ export class ZoneService {
     }
 
     return zoneRepository.getZone(zone.id)!;
-  }
-
-  // Helper: Validate file path security (prevent path traversal)
-  private validateFilePath(filePath: string): void {
-    // Check for path traversal attempts
-    const normalized = path.normalize(filePath);
-    if (normalized.includes('..')) {
-      throw new Error(`Path traversal not allowed: ${filePath}`);
-    }
-
-    // If allowedBasePaths is configured, verify file is within allowed paths
-    if (this.allowedBasePaths.length > 0) {
-      const isAllowed = this.allowedBasePaths.some(basePath => {
-        const normalizedBase = path.normalize(basePath);
-        return normalized.startsWith(normalizedBase);
-      });
-      if (!isAllowed) {
-        throw new Error(`File path not in allowed directories: ${filePath}`);
-      }
-    }
-  }
-
-  // Helper: Get file size
-  private async getFileSize(filePath: string): Promise<number> {
-    return new Promise((resolve, reject) => {
-      fs.stat(filePath, (err, stats) => {
-        if (err) reject(err);
-        else resolve(stats.size);
-      });
-    });
-  }
-
-  // Helper: Read local file content with size check and chunking for large files
-  private async readLocalFile(filePath: string): Promise<string> {
-    // Validate path security
-    this.validateFilePath(filePath);
-
-    // Check file size
-    const size = await this.getFileSize(filePath);
-    if (size > this.maxFileSize) {
-      throw new Error(`File too large: ${size} bytes (max: ${this.maxFileSize} bytes)`);
-    }
-
-    // For large files (>1MB), read in chunks
-    if (size > 1024 * 1024) {
-      return this.readFileWithChunk(filePath);
-    }
-
-    // For normal files, read directly
-    return new Promise((resolve, reject) => {
-      fs.readFile(filePath, 'utf-8', (err, data) => {
-        if (err) reject(err);
-        else resolve(data);
-      });
-    });
-  }
-
-  // Helper: Read large file in chunks
-  private async readFileWithChunk(filePath: string): Promise<string> {
-    const chunkSize = 512 * 1024; // 512KB per chunk
-    const chunks: string[] = [];
-    let totalSize = 0;
-
-    return new Promise((resolve, reject) => {
-      const stream = fs.createReadStream(filePath, { encoding: 'utf-8', highWaterMark: chunkSize });
-
-      stream.on('data', (chunk: string | Buffer) => {
-        const chunkStr = typeof chunk === 'string' ? chunk : chunk.toString('utf-8');
-        chunks.push(chunkStr);
-        totalSize += chunkStr.length;
-      });
-
-      stream.on('end', () => {
-        resolve(chunks.join(''));
-      });
-
-      stream.on('error', (err) => {
-        reject(err);
-      });
-    });
-  }
-
-  // Helper: Fetch URL content with SSRF protection
-  private async fetchUrl(url: string): Promise<string> {
-    // Check for blocked protocols
-    const parsedUrl = new URL(url);
-    if (parsedUrl.protocol === 'file:') {
-      throw new Error('File protocol not allowed for URL fetch');
-    }
-
-    // If allowed patterns are configured, check against them
-    if (this.allowedUrlPatterns.length > 0) {
-      const isAllowed = this.allowedUrlPatterns.some(pattern => pattern.test(url));
-      if (!isAllowed) {
-        throw new Error(`URL not in allowed patterns: ${url}`);
-      }
-    }
-
-    // Check for private IP ranges (basic SSRF protection)
-    // Note: This is a simplified check. For production, use a proper IP library.
-    const hostname = parsedUrl.hostname;
-    if (this.isPrivateIp(hostname)) {
-      throw new Error(`Private IP not allowed: ${hostname}`);
-    }
-
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-    return response.text();
-  }
-
-  // Helper: Check if hostname is a private IP
-  private isPrivateIp(hostname: string): boolean {
-    // Check for IPv4
-    const ipv4Pattern = /^(\d{1,3}\.){3}\d{1,3}$/;
-    if (ipv4Pattern.test(hostname)) {
-      const parts = hostname.split('.').map(Number);
-      const ip = parts[0] * 256 * 256 * 256 + parts[1] * 256 * 256 + parts[2] * 256 + parts[3];
-
-      for (const cidr of this.blockedIpRanges) {
-        if (this.ipInCidr(hostname, cidr)) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  // Helper: Check if IP is in CIDR range (simplified)
-  private ipInCidr(ip: string, cidr: string): boolean {
-    const [range, bitsStr] = cidr.split('/');
-    const bits = parseInt(bitsStr, 10);
-
-    const ipParts = ip.split('.').map(Number);
-    const rangeParts = range.split('.').map(Number);
-
-    const ipNum = (ipParts[0] << 24) | (ipParts[1] << 16) | (ipParts[2] << 8) | ipParts[3];
-    const rangeNum = (rangeParts[0] << 24) | (rangeParts[1] << 16) | (rangeParts[2] << 8) | rangeParts[3];
-
-    const mask = bits === 0 ? 0 : ~((1 << (32 - bits)) - 1);
-
-    return (ipNum & mask) === (rangeNum & mask);
-  }
-
-  // Helper: Scan local folder
-  private async scanLocalFolder(
-    folderPath: string,
-    recursive: boolean,
-    extensions?: string[]
-  ): Promise<{ name: string; source: string; fileType: FileType }[]> {
-    return new Promise((resolve, reject) => {
-      fs.readdir(folderPath, { withFileTypes: true }, async (err, entries) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-
-        const results: { name: string; source: string; fileType: FileType }[] = [];
-
-        for (const entry of entries) {
-          const fullPath = path.join(folderPath, entry.name);
-
-          if (entry.isFile()) {
-            const ext = path.extname(entry.name).toLowerCase();
-
-            // Filter by extensions if provided
-            if (extensions && extensions.length > 0) {
-              if (!extensions.some(e => e.toLowerCase() === ext)) {
-                continue;
-              }
-            }
-
-            const fileType = this.getFileType(ext);
-            results.push({
-              name: entry.name,
-              source: fullPath,
-              fileType
-            });
-          } else if (entry.isDirectory() && recursive) {
-            try {
-              const subFiles = await this.scanLocalFolder(fullPath, recursive, extensions);
-              results.push(...subFiles);
-            } catch (error) {
-              console.warn(`[ZoneService] Failed to scan subfolder ${fullPath}:`, error);
-            }
-          }
-        }
-
-        resolve(results);
-      });
-    });
-  }
-
-  // Helper: Get file type from extension
-  private getFileType(ext: string): FileType {
-    const typeMap: Record<string, FileType> = {
-      '.md': 'md',
-      '.txt': 'txt',
-      '.ts': 'ts',
-      '.tsx': 'ts',
-      '.js': 'js',
-      '.jsx': 'js',
-      '.fig': 'fig',
-      '.png': 'image',
-      '.jpg': 'image',
-      '.jpeg': 'image',
-      '.gif': 'image',
-      '.svg': 'image',
-      '.link': 'link',
-      '.folder': 'folder'
-    };
-
-    return typeMap[ext] || 'other';
   }
 }
 
