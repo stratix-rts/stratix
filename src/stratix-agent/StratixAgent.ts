@@ -10,7 +10,7 @@ import { MetricsCollector } from './core/MetricsCollector';
 import { PromptBuilder } from './core/PromptBuilder';
 import { RateLimiter } from './core/RateLimiter';
 import { SessionManager } from './core/SessionManager';
-import { createExecutor } from './core/SkillExecutors';
+import { createExecutor } from './core/executors';
 import { SkillRegistry } from './core/SkillRegistry';
 import { SkillTrigger } from './core/SkillTrigger';
 import { StorageManager } from './core/StorageManager';

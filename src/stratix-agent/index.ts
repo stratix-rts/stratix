@@ -9,7 +9,7 @@ export * from './core/TokenManager';
 export * from './core/MemoryManager';
 export * from './core/SkillRegistry';
 export * from './core/SkillTrigger';
-export * from './core/SkillExecutors';
+export * from './core/executors';
 export * from './core/PromptBuilder';
 export * from './core/EnhancedPromptBuilder';
 export * from './core/SessionManager';
