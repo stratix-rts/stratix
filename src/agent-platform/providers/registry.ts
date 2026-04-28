@@ -16,6 +16,7 @@ import type { ProviderConfig, CreateProviderOptions, ProviderInstance } from './
 class ProviderRegistry {
   private adapters: Map<string, LLMAdapter> = new Map();
   private instances: Map<string, ProviderInstance> = new Map();
+  private readonly MAX_INSTANCES = 20;
 
   constructor() {
     this.register('openai', new OpenAIAdapter());
@@ -26,6 +27,19 @@ class ProviderRegistry {
     this.register('moonshot', new MoonshotAdapter());
     this.register('stepfun', new StepFunAdapter());
     this.register('ollama', new OllamaAdapter());
+  }
+
+  private getCacheKey(options: CreateProviderOptions): string {
+    return `${options.providerId}:${options.model}:${options.apiKey ?? ''}:${options.temperature ?? ''}:${options.maxTokens ?? ''}`;
+  }
+
+  private evictOldestIfNeeded(): void {
+    if (this.instances.size < this.MAX_INSTANCES) return;
+    // Simple FIFO eviction: delete the first inserted entry
+    const firstKey = this.instances.keys().next().value;
+    if (firstKey) {
+      this.instances.delete(firstKey);
+    }
   }
 
   register(providerId: string, adapter: LLMAdapter): void {
@@ -51,6 +65,12 @@ class ProviderRegistry {
   }
 
   createModel(options: CreateProviderOptions): BaseChatModel {
+    const cacheKey = this.getCacheKey(options);
+    const cached = this.instances.get(cacheKey);
+    if (cached) {
+      return cached.llm;
+    }
+
     const adapter = this.adapters.get(options.providerId);
     if (!adapter) {
       throw new Error(`Unknown provider: ${options.providerId}`);
@@ -73,10 +93,19 @@ class ProviderRegistry {
       throw new Error(`Unknown provider: ${options.providerId}`);
     }
 
+    const cacheKey = this.getCacheKey(options);
+    const cached = this.instances.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    this.evictOldestIfNeeded();
+
     const llm = this.createModel(options);
     const instance: ProviderInstance = { config, llm };
 
     this.instances.set(instanceId, instance);
+    this.instances.set(cacheKey, instance);
     return instance;
   }
 
@@ -90,11 +119,18 @@ class ProviderRegistry {
 
   async testConnection(options: CreateProviderOptions): Promise<{ success: boolean; latency?: number; error?: string }> {
     try {
-      const llm = this.createModel(options);
+      const cacheKey = this.getCacheKey(options);
+      let llm = this.instances.get(cacheKey)?.llm;
+
+      if (!llm) {
+        this.evictOldestIfNeeded();
+        llm = this.createModel(options);
+        const config = this.getConfig(options.providerId)!;
+        this.instances.set(cacheKey, { config, llm });
+      }
+
       const start = Date.now();
-      
       await llm.invoke([{ role: 'user', content: 'Hello' }]);
-      
       const latency = Date.now() - start;
       return { success: true, latency };
     } catch (error) {

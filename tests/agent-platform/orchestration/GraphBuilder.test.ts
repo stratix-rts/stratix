@@ -313,4 +313,195 @@ describe('GraphBuilder', () => {
       expect(graph).toBeDefined();
     });
   });
+
+  describe('node behavior', () => {
+    const createBaseState = (input: string = 'test input') => ({
+      messages: [],
+      input,
+      currentStep: null,
+      results: {},
+      nextStep: null,
+      error: null,
+      status: 'pending' as const,
+    });
+
+    test('createRouterNode returns trueBranch when expression matches', async () => {
+      const step: WorkflowStep = {
+        id: 'router-1',
+        componentType: 'decision',
+        type: 'router',
+        name: 'Router',
+        properties: {
+          expression: 'keyword',
+          trueBranch: 'true-path',
+          falseBranch: 'false-path',
+        },
+      };
+
+      const node = (builder as any).createRouterNode(step);
+      const result = await node(createBaseState('This contains KEYWORD here'));
+
+      expect(result.results['router-1']).toBe('true-path');
+      expect(result.currentStep).toBe('router-1');
+    });
+
+    test('createRouterNode returns falseBranch when expression does not match', async () => {
+      const step: WorkflowStep = {
+        id: 'router-1',
+        componentType: 'decision',
+        type: 'router',
+        name: 'Router',
+        properties: {
+          expression: 'keyword',
+          trueBranch: 'true-path',
+          falseBranch: 'false-path',
+        },
+      };
+
+      const node = (builder as any).createRouterNode(step);
+      const result = await node(createBaseState('This does not match'));
+
+      expect(result.results['router-1']).toBe('false-path');
+    });
+
+    test('createRouterNode uses default branches when not specified', async () => {
+      const step: WorkflowStep = {
+        id: 'router-1',
+        componentType: 'decision',
+        type: 'router',
+        name: 'Router',
+        properties: {
+          expression: 'keyword',
+        },
+      };
+
+      const node = (builder as any).createRouterNode(step);
+      const result = await node(createBaseState('no match'));
+
+      expect(result.results['router-1']).toBe('false');
+    });
+
+    test('createRouterNode handles missing expression gracefully', async () => {
+      const step: WorkflowStep = {
+        id: 'router-1',
+        componentType: 'decision',
+        type: 'router',
+        name: 'Router',
+        properties: {},
+      };
+
+      const node = (builder as any).createRouterNode(step);
+      const result = await node(createBaseState('any input'));
+
+      expect(result.results['router-1']).toBe('false');
+    });
+
+    test('createHumanNode returns input as human response', async () => {
+      const step: WorkflowStep = {
+        id: 'human-1',
+        componentType: 'human',
+        type: 'human',
+        name: 'Human',
+        properties: {},
+      };
+
+      const node = (builder as any).createHumanNode(step);
+      const result = await node(createBaseState('user input'));
+
+      expect(result.results['human-1']).toBe('user input');
+      expect(result.currentStep).toBe('human-1');
+    });
+
+    test('createParallelNode executes branches concurrently', async () => {
+      const step: WorkflowStep = {
+        id: 'parallel-1',
+        componentType: 'parallel',
+        type: 'parallel',
+        name: 'Parallel',
+        properties: {},
+        sequences: [
+          [
+            {
+              id: 'branch1-step',
+              componentType: 'task',
+              type: 'llm',
+              name: 'B1',
+              properties: { providerId: 'openai', model: 'gpt-4o' },
+            },
+          ],
+          [
+            {
+              id: 'branch2-step',
+              componentType: 'task',
+              type: 'llm',
+              name: 'B2',
+              properties: { providerId: 'openai', model: 'gpt-4o' },
+            },
+          ],
+        ],
+      };
+
+      const node = (builder as any).createParallelNode(step);
+      const result = await node(createBaseState());
+
+      expect(result.results['parallel-1']).toBeDefined();
+      expect(result.results['parallel-1']['parallel-1_branch_0']).toBeDefined();
+      expect(result.results['parallel-1']['parallel-1_branch_1']).toBeDefined();
+      expect(result.currentStep).toBe('parallel-1');
+    });
+
+    test('createLLMNode returns error when providerId is missing', async () => {
+      const step: WorkflowStep = {
+        id: 'llm-1',
+        componentType: 'task',
+        type: 'llm',
+        name: 'LLM',
+        properties: {
+          model: 'gpt-4o',
+        },
+      };
+
+      const node = (builder as any).createLLMNode(step);
+      const result = await node(createBaseState());
+
+      expect(result.error).toBe('Missing provider or model for step LLM');
+      expect(result.status).toBe('error');
+    });
+
+    test('createLLMNode returns error when model is missing', async () => {
+      const step: WorkflowStep = {
+        id: 'llm-1',
+        componentType: 'task',
+        type: 'llm',
+        name: 'LLM',
+        properties: {
+          providerId: 'openai',
+        },
+      };
+
+      const node = (builder as any).createLLMNode(step);
+      const result = await node(createBaseState());
+
+      expect(result.error).toBe('Missing provider or model for step LLM');
+      expect(result.status).toBe('error');
+    });
+
+    test('createPassThroughNode passes state through', async () => {
+      const step: WorkflowStep = {
+        id: 'pass-1',
+        componentType: 'task',
+        type: 'unknown' as any,
+        name: 'Pass',
+        properties: {},
+      };
+
+      const node = (builder as any).createPassThroughNode(step);
+      const state = createBaseState('test value');
+      const result = await node(state);
+
+      expect(result.input).toBe('test value');
+      expect(result.currentStep).toBe('pass-1');
+      expect(result.error).toBeNull();
+    });
+  });
 });

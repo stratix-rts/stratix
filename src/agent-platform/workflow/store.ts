@@ -14,10 +14,21 @@ export interface StoredWorkflow {
 class WorkflowStore {
   private workflows: Map<string, StoredWorkflow> = new Map();
   private loaded: boolean = false;
+  private loadingPromise: Promise<void> | null = null;
 
   async load(): Promise<void> {
     if (this.loaded) return;
+    if (this.loadingPromise) return this.loadingPromise;
 
+    this.loadingPromise = this.doLoad();
+    try {
+      await this.loadingPromise;
+    } finally {
+      this.loadingPromise = null;
+    }
+  }
+
+  private async doLoad(): Promise<void> {
     if (typeof window !== 'undefined' && (window as any).electronAPI?.workflow?.list) {
       try {
         const result = await (window as any).electronAPI.workflow.list();
@@ -110,13 +121,25 @@ class WorkflowStore {
     return { success: true };
   }
 
+  private generateSecureId(): string {
+    if (typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID) {
+      return globalThis.crypto.randomUUID();
+    }
+    // Fallback for environments without crypto.randomUUID
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+
   createFromPreset(presetId: string, newName?: string): StoredWorkflow {
     const preset = getPresetById(presetId);
     if (!preset) {
       throw new Error(`Preset not found: ${presetId}`);
     }
 
-    const id = `workflow_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const id = `workflow_${Date.now()}_${this.generateSecureId().slice(0, 9)}`;
     const workflow: StoredWorkflow = {
       id,
       name: newName ?? `${preset.name} (副本)`,

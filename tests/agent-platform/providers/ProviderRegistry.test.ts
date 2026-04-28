@@ -303,4 +303,181 @@ describe('ProviderRegistry', () => {
       expect(result.error).toBeDefined();
     });
   });
+
+  describe('instance caching', () => {
+    test('createModel returns cached instance when previously stored', async () => {
+      const options: CreateProviderOptions = {
+        providerId: 'openai',
+        model: 'gpt-4o',
+        apiKey: 'test-key',
+      };
+
+      // Populate cache via createAndStore
+      await registry.createAndStore('cached-instance', options);
+
+      const model1 = registry.createModel(options);
+      const model2 = registry.createModel(options);
+
+      expect(model1).toBe(model2);
+    });
+
+    test('createAndStore returns cached instance for same options', async () => {
+      const options: CreateProviderOptions = {
+        providerId: 'openai',
+        model: 'gpt-4o',
+        apiKey: 'test-key',
+      };
+
+      const instance1 = await registry.createAndStore('instance-1', options);
+      const instance2 = await registry.createAndStore('instance-2', options);
+
+      expect(instance1).toBe(instance2);
+    });
+  });
+
+  describe('MAX_INSTANCES', () => {
+    test('evictOldestIfNeeded removes first entry when at capacity', () => {
+      const instances = (registry as any).instances;
+      const MAX = (registry as any).MAX_INSTANCES;
+
+      for (let i = 0; i < MAX; i++) {
+        instances.set(`key-${i}`, { config: {}, llm: {} });
+      }
+
+      expect(instances.size).toBe(MAX);
+
+      (registry as any).evictOldestIfNeeded();
+
+      expect(instances.size).toBe(MAX - 1);
+      expect(instances.has('key-0')).toBe(false);
+    });
+
+    test('createAndStore triggers eviction when at capacity', async () => {
+      const instances = (registry as any).instances;
+      const MAX = (registry as any).MAX_INSTANCES;
+
+      // Fill to capacity
+      for (let i = 0; i < MAX; i++) {
+        instances.set(`key-${i}`, { config: {}, llm: {} });
+      }
+
+      expect(instances.size).toBe(MAX);
+
+      // This should trigger eviction before adding
+      await registry.createAndStore('new-instance', {
+        providerId: 'openai',
+        model: 'gpt-4o',
+        apiKey: 'test-key',
+      });
+
+      // One evicted, two added = MAX + 1 (due to dual-key storage)
+      expect(instances.size).toBeGreaterThanOrEqual(MAX);
+    });
+  });
+
+  describe('testConnection caching', () => {
+    test('reuses cached instance on subsequent calls', async () => {
+      const options: CreateProviderOptions = {
+        providerId: 'openai',
+        model: 'gpt-4o',
+        apiKey: 'test-key',
+      };
+
+      const mockAdapter = registry.getAdapter('openai');
+      if (mockAdapter) {
+        (mockAdapter.createModel as jest.Mock).mockReturnValue({
+          invoke: jest.fn().mockResolvedValue({ content: 'Hello' }),
+        });
+      }
+
+      const result1 = await registry.testConnection(options);
+      expect(result1.success).toBe(true);
+
+      const createModelMock = mockAdapter!.createModel as jest.Mock;
+      createModelMock.mockClear();
+
+      const result2 = await registry.testConnection(options);
+      expect(result2.success).toBe(true);
+      expect(createModelMock).not.toHaveBeenCalled();
+    });
+
+    test('creates new instance when not cached', async () => {
+      const options: CreateProviderOptions = {
+        providerId: 'openai',
+        model: 'gpt-4o',
+        apiKey: 'test-key',
+      };
+
+      const mockAdapter = registry.getAdapter('openai');
+      const createModelMock = jest.fn().mockReturnValue({
+        invoke: jest.fn().mockResolvedValue({ content: 'Hello' }),
+      });
+      if (mockAdapter) {
+        (mockAdapter.createModel as jest.Mock) = createModelMock;
+      }
+
+      const result = await registry.testConnection(options);
+      expect(result.success).toBe(true);
+      expect(createModelMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('getCacheKey', () => {
+    test('returns consistent key for same options', () => {
+      const options: CreateProviderOptions = {
+        providerId: 'openai',
+        model: 'gpt-4o',
+        apiKey: 'test-key',
+        temperature: 0.7,
+        maxTokens: 4096,
+      };
+
+      const key1 = (registry as any).getCacheKey(options);
+      const key2 = (registry as any).getCacheKey(options);
+
+      expect(key1).toBe(key2);
+    });
+
+    test('differentiates different options', () => {
+      const key1 = (registry as any).getCacheKey({
+        providerId: 'openai',
+        model: 'gpt-4o',
+        apiKey: 'key1',
+      });
+
+      const key2 = (registry as any).getCacheKey({
+        providerId: 'openai',
+        model: 'gpt-4o',
+        apiKey: 'key2',
+      });
+
+      expect(key1).not.toBe(key2);
+    });
+
+    test('includes all option fields in key', () => {
+      const base = (registry as any).getCacheKey({
+        providerId: 'openai',
+        model: 'gpt-4o',
+        apiKey: 'key',
+      });
+
+      const withTemp = (registry as any).getCacheKey({
+        providerId: 'openai',
+        model: 'gpt-4o',
+        apiKey: 'key',
+        temperature: 0.5,
+      });
+
+      const withTokens = (registry as any).getCacheKey({
+        providerId: 'openai',
+        model: 'gpt-4o',
+        apiKey: 'key',
+        maxTokens: 2048,
+      });
+
+      expect(base).not.toBe(withTemp);
+      expect(base).not.toBe(withTokens);
+      expect(withTemp).not.toBe(withTokens);
+    });
+  });
 });

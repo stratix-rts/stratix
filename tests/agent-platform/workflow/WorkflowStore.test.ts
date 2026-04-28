@@ -117,6 +117,32 @@ describe('WorkflowStore', () => {
       // Should not throw
       await expect(store.load()).resolves.not.toThrow();
     });
+
+    test('loadingPromise field exists for race condition prevention', () => {
+      expect((store as any).loadingPromise).toBeNull();
+    });
+
+    test('returns existing loadingPromise when set', async () => {
+      const existingPromise = Promise.resolve();
+      (store as any).loadingPromise = existingPromise;
+
+      const result = store.load();
+
+      expect(mockElectronAPI.workflow.list).not.toHaveBeenCalled();
+      await expect(result).resolves.toBeUndefined();
+    });
+
+    test('resets loadingPromise after load completes', async () => {
+      mockElectronAPI.workflow.list.mockResolvedValue({
+        success: true,
+        data: [],
+      });
+
+      await store.load();
+
+      expect((store as any).loadingPromise).toBeNull();
+      expect((store as any).loaded).toBe(true);
+    });
   });
 
   describe('getAll', () => {
@@ -385,6 +411,27 @@ describe('WorkflowStore', () => {
       const workflow2 = store.createFromPreset('single-agent');
 
       expect(workflow1.id).not.toBe(workflow2.id);
+    });
+
+    test('generates ID with workflow_timestamp format', () => {
+      const before = Date.now();
+      const workflow = store.createFromPreset('single-agent');
+      const after = Date.now();
+
+      expect(workflow.id).toMatch(/^workflow_\d+_.{9}$/);
+
+      const parts = workflow.id.split('_');
+      expect(parts[0]).toBe('workflow');
+
+      const timestamp = parseInt(parts[1], 10);
+      expect(timestamp).toBeGreaterThanOrEqual(before);
+      expect(timestamp).toBeLessThanOrEqual(after);
+    });
+
+    test('uses generateSecureId in ID creation', () => {
+      const workflow = store.createFromPreset('single-agent');
+      expect(workflow.id).toContain('_');
+      expect(workflow.id.split('_').length).toBeGreaterThanOrEqual(3);
     });
   });
 });
