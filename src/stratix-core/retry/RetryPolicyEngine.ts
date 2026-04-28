@@ -14,7 +14,18 @@ import {
 } from './types';
 
 export class RetryPolicyEngine {
+  private static instance: RetryPolicyEngine | null = null;
   private attempts: RetryAttempt[] = [];
+
+  /**
+   * 获取 RetryPolicyEngine 单例实例（向后兼容）
+   */
+  static getInstance(): RetryPolicyEngine {
+    if (!RetryPolicyEngine.instance) {
+      RetryPolicyEngine.instance = new RetryPolicyEngine();
+    }
+    return RetryPolicyEngine.instance;
+  }
 
   /**
    * Execute a request with retry logic
@@ -259,5 +270,6 @@ export class RetryPolicyEngine {
   }
 }
 
-// Singleton instance
-export const retryPolicyEngine = new RetryPolicyEngine();
+// Singleton instance（向后兼容）
+export const retryPolicyEngine = RetryPolicyEngine.getInstance();
+export const defaultRetryPolicyEngine = RetryPolicyEngine.getInstance();

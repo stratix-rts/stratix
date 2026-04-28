@@ -23,10 +23,21 @@ interface CacheEntry {
 }
 
 class TextureManager {
+  private static instance: TextureManager | null = null;
   private canvasCache: Map<string, CacheEntry> = new Map();
   private uploadPromises: Map<string, Promise<CharacterTexture | null>> = new Map();
   // 增加缓存上限以支持多角色切换场景
   private readonly MAX_CACHE_SIZE = 50;
+
+  /**
+   * 获取 TextureManager 单例实例（向后兼容）
+   */
+  static getInstance(): TextureManager {
+    if (!TextureManager.instance) {
+      TextureManager.instance = new TextureManager();
+    }
+    return TextureManager.instance;
+  }
 
   /**
    * 生成并上传纹理（自动防重复）
@@ -198,15 +209,20 @@ class TextureManager {
 
   /**
    * LRU 淘汰策略
+   * 使用独立比较避免 accessCount * 1000 溢出风险
    */
   private evictLRU(): void {
     let lruKey: string | null = null;
-    let lruScore = Infinity;
+    let minAccessCount = Infinity;
+    let minLastAccess = Infinity;
 
     for (const [key, value] of this.canvasCache.entries()) {
-      const score = value.accessCount * 1000 + (Date.now() - value.lastAccess);
-      if (score < lruScore) {
-        lruScore = score;
+      if (
+        value.accessCount < minAccessCount ||
+        (value.accessCount === minAccessCount && value.lastAccess < minLastAccess)
+      ) {
+        minAccessCount = value.accessCount;
+        minLastAccess = value.lastAccess;
         lruKey = key;
       }
     }
@@ -233,5 +249,6 @@ class TextureManager {
   }
 }
 
-export const textureManager = new TextureManager();
+export const textureManager = TextureManager.getInstance();
+export const defaultTextureManager = TextureManager.getInstance();
 export default TextureManager;

@@ -28,6 +28,7 @@ interface TaskContext {
 }
 
 export class AgentRouter {
+  private static instance: AgentRouter | null = null;
   private taskRegistry: Map<string, TaskContext> = new Map();
   private backgroundTasks: Set<string> = new Set();
   private executor: (task: AgentTask, agentId: string | undefined, signal: AbortSignal) => Promise<unknown> = async () => {
@@ -35,6 +36,16 @@ export class AgentRouter {
   };
   // 防止任务注册表无限增长
   private static readonly MAX_CONCURRENT_TASKS = 100;
+
+  /**
+   * 获取 AgentRouter 单例实例（向后兼容）
+   */
+  static getInstance(): AgentRouter {
+    if (!AgentRouter.instance) {
+      AgentRouter.instance = new AgentRouter();
+    }
+    return AgentRouter.instance;
+  }
 
   /**
    * Initialize the router with an orchestration service executor.
@@ -147,10 +158,12 @@ export class AgentRouter {
     const isolation = task.isolation ?? (task.type === "teammate" ? "worktree" : "none");
     const agentId = task.agentId ?? (task.type === "teammate" ? "default-teammate" : undefined);
 
-    // TODO(isolation): "remote" isolation strategy is not yet implemented.
-    // It should spawn a separate process for true process-level isolation.
+    // "remote" isolation strategy is not yet implemented.
     if (isolation === "remote") {
-      console.warn(`[AgentRouter] isolation="remote" is not implemented for task ${task.taskId}. Falling back to direct execution.`);
+      throw new Error(
+        `[AgentRouter] isolation="remote" is not implemented for task ${task.taskId}. ` +
+        `Please use "none" or "worktree" isolation instead.`
+      );
     }
 
     let worktreePath: string | undefined;
@@ -203,5 +216,6 @@ export class AgentRouter {
   }
 }
 
-// Singleton instance for module-level usage
-export const agentRouter = new AgentRouter();
+// Singleton instance for module-level usage（向后兼容）
+export const agentRouter = AgentRouter.getInstance();
+export const defaultAgentRouter = AgentRouter.getInstance();

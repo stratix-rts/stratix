@@ -75,6 +75,8 @@ export class ServiceLocator {
 }
 
 // 全局访问点 - 惰性获取避免模块级初始化阻塞
+export const defaultServiceLocator = ServiceLocator.getInstance();
+
 export const getServices = (): ServiceProvider => {
   return ServiceLocator.getInstance().getProvider();
 };

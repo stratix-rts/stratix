@@ -35,7 +35,7 @@ class StratixEventBus {
   // 缓冲上限，防止内存无限增长
   private static readonly MAX_BUFFER_SIZE = 100;
 
-  private constructor() {
+  public constructor() {
     this.emitter = mitt<Record<string, StratixEvent>>();
   }
 

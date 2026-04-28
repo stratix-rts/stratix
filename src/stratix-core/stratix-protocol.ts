@@ -310,6 +310,7 @@ export type StratixStateSyncEventType =
   | 'orchestration:agent_status_changed'
   | 'orchestration:message_sent'
   // Zone events
+  | 'stratix:zone_created'
   | 'stratix:zone_updated'
   | 'stratix:zone_file_added'
   | 'stratix:zone_file_removed'

@@ -34,6 +34,68 @@ export interface CheckEndpointResult {
 
 export { type StoredConnection, type ConnectionState, type ConnectionResult };
 
+interface ElectronAPI {
+  tailscale?: {
+    getNodes(): Promise<Array<{
+      id?: string;
+      nodeId?: string;
+      name: string;
+      ipAddress?: string;
+      ip?: string;
+      online?: boolean;
+      latency?: number;
+    }>>;
+  };
+}
+
+interface ProxyResponseMessage {
+  type: 'res';
+  ok: boolean;
+  error?: { message?: string };
+}
+
+interface ProxyChatEventMessage {
+  type: 'event';
+  event: 'chat';
+  payload?: {
+    state: 'delta' | 'final' | 'error' | 'aborted';
+    message?: unknown;
+    errorMessage?: string;
+    runId?: string;
+  };
+}
+
+interface ProxyStreamMessage {
+  stream: 'assistant';
+  data: { text?: string; delta?: string };
+}
+
+interface ProxyErrorMessage {
+  type: 'error';
+  error?: { message?: string };
+}
+
+interface TailscaleNodeRaw {
+  id?: string;
+  nodeId?: string;
+  name: string;
+  ipAddress?: string;
+  ip?: string;
+  online?: boolean;
+  latency?: number;
+}
+
+export interface ConnectionConfig {
+  id?: string;
+  method?: 'tailscale' | 'pairing';
+  mode?: string;
+  endpoint?: string;
+  remoteEndpoint?: string;
+  localEndpoint?: string;
+  sharedToken?: string;
+  credentials?: { token?: string };
+}
+
 /**
  * WebSocket 消息状态枚举
  */
@@ -61,12 +123,12 @@ class UnifiedOpenClawConnectionManager {
   private static instance: UnifiedOpenClawConnectionManager | null = null;
   private connection: OpenClawWebSocketConnection | null = null;
   private statusListeners: Set<(status: OpenClawStatus) => void> = new Set();
-  private electronAPI: any = null;
+  private electronAPI: ElectronAPI | null = null;
   private tailscaleNodes: TailscaleNode[] = [];
   private connectionId: string | null = null;
   private useProxy: boolean = true;
 
-  private constructor() {
+  public constructor() {
     this.detectEnvironment();
   }
 
@@ -437,7 +499,7 @@ class UnifiedOpenClawConnectionManager {
   /**
    * 处理 chat.send 请求的响应
    */
-  private handleResponseMessage(msg: any, ctx: ProxyMessageContext): void {
+  private handleResponseMessage(msg: ProxyResponseMessage, ctx: ProxyMessageContext): void {
     if (msg.ok === false) {
       this.closeProxyConnection(ctx);
       ctx.reject(new Error(msg.error?.message || 'Request failed'));
@@ -447,7 +509,7 @@ class UnifiedOpenClawConnectionManager {
   /**
    * 处理 chat 事件消息 (delta/final/error/aborted)
    */
-  private handleChatEventMessage(msg: any, ctx: ProxyMessageContext): void {
+  private handleChatEventMessage(msg: ProxyChatEventMessage, ctx: ProxyMessageContext): void {
     const payload = msg.payload;
     if (!payload) return;
 
@@ -470,7 +532,7 @@ class UnifiedOpenClawConnectionManager {
   /**
    * 处理 delta 状态
    */
-  private handleDeltaState(payload: any, ctx: ProxyMessageContext): void {
+  private handleDeltaState(payload: NonNullable<ProxyChatEventMessage['payload']>, ctx: ProxyMessageContext): void {
     const text = this.extractTextContent(payload.message);
     if (text) {
       ctx.accumulatedText = text;
@@ -481,7 +543,7 @@ class UnifiedOpenClawConnectionManager {
   /**
    * 处理 final 状态
    */
-  private handleFinalState(payload: any, ctx: ProxyMessageContext): void {
+  private handleFinalState(payload: NonNullable<ProxyChatEventMessage['payload']>, ctx: ProxyMessageContext): void {
     const finalText = this.extractTextContent(payload.message) || ctx.accumulatedText;
     console.log('[UnifiedOpenClaw] Final text:', finalText?.slice(-100));
 
@@ -499,7 +561,7 @@ class UnifiedOpenClawConnectionManager {
   /**
    * 处理 error 状态
    */
-  private handleErrorState(payload: any, ctx: ProxyMessageContext): void {
+  private handleErrorState(payload: NonNullable<ProxyChatEventMessage['payload']>, ctx: ProxyMessageContext): void {
     ctx.state = ProxyMessageState.Error;
     this.closeProxyConnection(ctx);
     ctx.reject(new Error(payload.errorMessage || 'Chat error'));
@@ -517,7 +579,7 @@ class UnifiedOpenClawConnectionManager {
   /**
    * 处理流式消息
    */
-  private handleStreamMessage(msg: any, ctx: ProxyMessageContext): void {
+  private handleStreamMessage(msg: ProxyStreamMessage, ctx: ProxyMessageContext): void {
     const data = msg.data as { text?: string; delta?: string };
     if (data.text) {
       ctx.accumulatedText = data.text;
@@ -527,7 +589,7 @@ class UnifiedOpenClawConnectionManager {
   /**
    * 处理通用错误消息
    */
-  private handleErrorMessage(msg: any, ctx: ProxyMessageContext): void {
+  private handleErrorMessage(msg: ProxyErrorMessage, ctx: ProxyMessageContext): void {
     ctx.state = ProxyMessageState.Error;
     this.closeProxyConnection(ctx);
     ctx.reject(new Error(msg.error?.message || 'Unknown error'));
@@ -597,26 +659,30 @@ class UnifiedOpenClawConnectionManager {
 
   // 消息类型判断辅助方法
 
-  private isResponseMessage(msg: any): boolean {
-    return msg.type === 'res' && msg.ok !== undefined;
+  private isResponseMessage(msg: unknown): msg is ProxyResponseMessage {
+    const m = msg as Record<string, unknown>;
+    return m.type === 'res' && m.ok !== undefined;
   }
 
-  private isChatEventMessage(msg: any): boolean {
-    return msg.type === 'event' && msg.event === 'chat';
+  private isChatEventMessage(msg: unknown): msg is ProxyChatEventMessage {
+    const m = msg as Record<string, unknown>;
+    return m.type === 'event' && m.event === 'chat';
   }
 
-  private isStreamMessage(msg: any): boolean {
-    return msg.stream === 'assistant' && msg.data;
+  private isStreamMessage(msg: unknown): msg is ProxyStreamMessage {
+    const m = msg as Record<string, unknown>;
+    return m.stream === 'assistant' && m.data !== undefined;
   }
 
-  private isErrorMessage(msg: any): boolean {
-    return msg.type === 'error';
+  private isErrorMessage(msg: unknown): msg is ProxyErrorMessage {
+    const m = msg as Record<string, unknown>;
+    return m.type === 'error';
   }
   
   /**
    * 从 OpenClaw 消息中提取文本内容
    */
-  private extractTextContent(content: any): string {
+  private extractTextContent(content: unknown): string {
     if (!content) return '';
     
     // 字符串
@@ -631,19 +697,20 @@ class UnifiedOpenClawConnectionManager {
     }
     
     // 对象
-    if (typeof content === 'object') {
+    if (typeof content === 'object' && content !== null) {
+      const obj = content as Record<string, unknown>;
       // 格式：{ role: 'assistant', content: [{type: 'text', text: '...'}], timestamp: ... }
-      if (content.content) {
-        return this.extractTextContent(content.content);
+      if (obj.content) {
+        return this.extractTextContent(obj.content);
       }
       
       // 其他可能的字段
-      if (typeof content.text === 'string') return content.text;
-      if (typeof content.delta === 'string') return content.delta;
+      if (typeof obj.text === 'string') return obj.text;
+      if (typeof obj.delta === 'string') return obj.delta;
       
       // 递归检查
-      if (content.message) return this.extractTextContent(content.message);
-      if (content.data) return this.extractTextContent(content.data);
+      if (obj.message) return this.extractTextContent(obj.message);
+      if (obj.data) return this.extractTextContent(obj.data);
     }
     
     return '';
@@ -769,7 +836,7 @@ class UnifiedOpenClawConnectionManager {
     return this.connection;
   }
 
-  async initialize(config: any): Promise<boolean> {
+  async initialize(config: ConnectionConfig): Promise<boolean> {
     if (config.id) {
       this.connectionId = config.id;
       const result = await this.connectViaProxy(config.id);
@@ -777,7 +844,7 @@ class UnifiedOpenClawConnectionManager {
     }
     
     if (config.method === 'tailscale' || config.mode === 'tailscale') {
-      const result = await this.tailscaleConnect(config.endpoint || config.remoteEndpoint);
+      const result = await this.tailscaleConnect(config.endpoint || config.remoteEndpoint || '');
       return result.success;
     } else {
       const result = await this.pairConnect(
@@ -835,12 +902,12 @@ class UnifiedOpenClawConnectionManager {
 
   private async discoverTailscaleNodesElectron(): Promise<TailscaleNode[]> {
     try {
-      const nodes = await this.electronAPI.tailscale.getNodes();
-      this.tailscaleNodes = nodes.map((node: any) => ({
-        nodeId: node.id || node.nodeId,
+      const nodes = await this.electronAPI!.tailscale!.getNodes();
+      this.tailscaleNodes = nodes.map((node: TailscaleNodeRaw) => ({
+        nodeId: node.id || node.nodeId || '',
         name: node.name,
-        ipAddress: node.ipAddress || node.ip,
-        online: node.online,
+        ipAddress: node.ipAddress || node.ip || '',
+        online: node.online ?? false,
         latency: node.latency,
       }));
       return this.tailscaleNodes;
@@ -859,7 +926,7 @@ class UnifiedOpenClawConnectionManager {
       const result = await response.json();
       
       if (result.code === 200 && Array.isArray(result.data)) {
-        this.tailscaleNodes = result.data.map((node: any) => ({
+        this.tailscaleNodes = result.data.map((node: TailscaleNodeRaw) => ({
           nodeId: node.id || node.nodeId,
           name: node.name,
           ipAddress: node.ipAddress || node.ip,
@@ -903,4 +970,5 @@ class UnifiedOpenClawConnectionManager {
 }
 
 export const unifiedOpenClawConnectionManager = UnifiedOpenClawConnectionManager.getInstance();
+export const defaultUnifiedOpenClawConnectionManager = UnifiedOpenClawConnectionManager.getInstance();
 export default UnifiedOpenClawConnectionManager;

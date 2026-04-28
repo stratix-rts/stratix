@@ -11,8 +11,10 @@ class StatusSyncWebSocketService {
   private ws: WebSocket | null = null;
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private reconnectDelay: number = 3000;
-  private maxReconnectDelay: number = 30000;
+  private maxReconnectDelay: number = 300000; // 5 minutes cap
   private isConnecting: boolean = false;
+  private reconnectAttempts: number = 0;
+  private maxReconnectAttempts: number = 10;
 
   private static instance: StatusSyncWebSocketService;
 
@@ -25,6 +27,12 @@ class StatusSyncWebSocketService {
 
   public connect(): void {
     if (this.ws || this.isConnecting) {
+      return;
+    }
+
+    // SSR safety: do not access window in non-browser environments
+    if (typeof window === 'undefined') {
+      console.warn('[StatusSyncWS] Cannot connect: window is not available');
       return;
     }
 
@@ -42,6 +50,7 @@ class StatusSyncWebSocketService {
         console.log('[StatusSyncWS] Connected');
         this.isConnecting = false;
         this.reconnectDelay = 3000;
+        this.reconnectAttempts = 0;
 
         // Register as frontend client
         this.ws?.send(JSON.stringify({
@@ -108,8 +117,15 @@ class StatusSyncWebSocketService {
       clearTimeout(this.reconnectTimeout);
     }
 
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.error('[StatusSyncWS] Max reconnect attempts reached. Giving up.');
+      return;
+    }
+
+    this.reconnectAttempts++;
+
     this.reconnectTimeout = setTimeout(() => {
-      console.log('[StatusSyncWS] Attempting to reconnect...');
+      console.log(`[StatusSyncWS] Attempting to reconnect... (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
       this.connect();
     }, this.reconnectDelay);
 
@@ -130,6 +146,9 @@ class StatusSyncWebSocketService {
       this.ws.close();
       this.ws = null;
     }
+
+    this.reconnectAttempts = 0;
+    this.reconnectDelay = 3000;
   }
 
   public isConnected(): boolean {
@@ -137,5 +156,6 @@ class StatusSyncWebSocketService {
   }
 }
 
+export const defaultStatusSyncWS = StatusSyncWebSocketService.getInstance();
 export const statusSyncWS = StatusSyncWebSocketService.getInstance();
 export default StatusSyncWebSocketService;
