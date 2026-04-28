@@ -1,0 +1,88 @@
+{
+  "task_id": "task_012",
+  "template": "code-module",
+  "score": 39,
+  "max_score": 100,
+  "checks": [
+    {
+      "type": "test",
+      "required": true,
+      "weight": 0.4,
+      "passed": false,
+      "score": 0,
+      "issues": [
+        {
+          "type": "test_not_found",
+          "severity": "high",
+          "message": "未找到测试文件或测试配置错误"
+        }
+      ],
+      "suggestions": [
+        "建议添加测试文件到 tests/ 目录"
+      ],
+      "details": {}
+    },
+    {
+      "type": "lint",
+      "required": false,
+      "weight": 0.2,
+      "passed": false,
+      "score": 5,
+      "issues": [
+        {
+          "type": "lint_issues",
+          "severity": "medium",
+          "message": "发现 19 个 lint 问题"
+        }
+      ],
+      "suggestions": [
+        "建议运行 'ruff check --fix' 自动修复"
+      ],
+      "details": {}
+    },
+    {
+      "type": "acceptance",
+      "required": true,
+      "weight": 0.3,
+      "passed": true,
+      "score": 60,
+      "issues": [],
+      "suggestions": [],
+      "details": {
+        "criteria_matched": 3
+      }
+    },
+    {
+      "type": "performance",
+      "required": false,
+      "weight": 0.1,
+      "passed": true,
+      "score": 100,
+      "issues": [],
+      "suggestions": [],
+      "details": {
+        "note": "性能检查需要具体实现"
+      }
+    }
+  ],
+  "failed_required": [
+    "test"
+  ],
+  "issues": [
+    {
+      "type": "test_not_found",
+      "severity": "high",
+      "message": "未找到测试文件或测试配置错误"
+    },
+    {
+      "type": "lint_issues",
+      "severity": "medium",
+      "message": "发现 19 个 lint 问题"
+    }
+  ],
+  "suggestions": [
+    "建议添加测试文件到 tests/ 目录",
+    "建议运行 'ruff check --fix' 自动修复"
+  ],
+  "timestamp": "2026-04-28T21:33:46.033493"
+}

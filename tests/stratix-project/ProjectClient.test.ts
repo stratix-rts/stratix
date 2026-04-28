@@ -33,6 +33,7 @@ jest.mock('@/stratix-gateway/api/types/api', () => ({
     ZONE_MEMBER: (zoneId: string, agentId: string) => `/api/zones/${zoneId}/members/${agentId}`,
   },
   isApiSuccess: (result: any) => result.success,
+  isApiError: (result: any) => !result.success,
 }));
 
 describe('ProjectClient', () => {

@@ -1,0 +1,62 @@
+{
+  "name": "stratix-nocodb",
+  "path": "/Users/kingj/code/Stratix/src/stratix-nocodb",
+  "file_count": 2,
+  "line_count": 329,
+  "main_classes": [
+    "NocoDBService"
+  ],
+  "main_functions": [
+    "getNocoDBService",
+    "createNocoDBService",
+    "doResolve"
+  ],
+  "dependencies": [
+    "child_process",
+    "fs-extra",
+    "../stratix-database",
+    "path",
+    "./stratix-nocodb"
+  ],
+  "doc_file": "/Users/kingj/code/Stratix/docs/modules/stratix-nocodb.md",
+  "doc_coverage": 0.5,
+  "classes": [
+    {
+      "name": "NocoDBService",
+      "file": "/Users/kingj/code/Stratix/src/stratix-nocodb/NocoDBService.ts",
+      "line": 23,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "getNocoDBService",
+      "file": "/Users/kingj/code/Stratix/src/stratix-nocodb/NocoDBService.ts",
+      "line": 294,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "createNocoDBService",
+      "file": "/Users/kingj/code/Stratix/src/stratix-nocodb/NocoDBService.ts",
+      "line": 301,
+      "docstring": null,
+      "parameters": [
+        "options?: NocoDBServiceOptions"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "doResolve",
+      "file": "/Users/kingj/code/Stratix/src/stratix-nocodb/NocoDBService.ts",
+      "line": 233,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    }
+  ],
+  "docstring": null
+}

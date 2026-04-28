@@ -1,0 +1,425 @@
+{
+  "name": "stratix-core",
+  "path": "/Users/kingj/code/Stratix/src/stratix-core",
+  "file_count": 88,
+  "line_count": 14003,
+  "main_classes": [
+    "AgentError",
+    "DataStoreError",
+    "UnifiedOpenClawConnectionManager",
+    "StratixEventBus",
+    "DOMOverlayManager",
+    "ContainerComponentBase",
+    "UIComponentBase",
+    "DOMComponentBase",
+    "DOMContainer",
+    "ThemeContext"
+  ],
+  "main_functions": [
+    "cleanup",
+    "stopPropagation",
+    "createDOMContainer",
+    "buildSignPayload",
+    "uint8ArrayToBase64Url",
+    "uint8ArrayToHex",
+    "hexToUint8Array",
+    "tempHandler",
+    "cleanup",
+    "handler"
+  ],
+  "dependencies": [
+    "./AgentExecutor",
+    "fs-extra",
+    "../stratix-protocol",
+    "./ThemeContext",
+    "./types",
+    "../retry/types",
+    "./StratixIdGenerator",
+    "@/stratix-core/retry",
+    "./ElectronServiceProvider",
+    "phaser",
+    "./openclaw/OpenClawWebSocketConnection",
+    "./ServiceProvider",
+    "../../core/types/event.types",
+    "./openclaw/DeviceIdentityManager",
+    "../../core/types/interaction.types",
+    "../../stratix-openclaw-adapter",
+    "./StratixAgentExecutor",
+    "@/stratix-core/permission/PermissionOrchestrator",
+    "./OpenClawExecutor",
+    "./DOMContainer"
+  ],
+  "doc_file": "/Users/kingj/code/Stratix/docs/modules/stratix-core.md",
+  "doc_coverage": 0.74,
+  "classes": [
+    {
+      "name": "AgentError",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/errors.ts",
+      "line": 5,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "StratixError"
+      ]
+    },
+    {
+      "name": "DataStoreError",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/errors.ts",
+      "line": 12,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "StratixError"
+      ]
+    },
+    {
+      "name": "UnifiedOpenClawConnectionManager",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/UnifiedOpenClawConnectionManager.ts",
+      "line": 60,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "StratixEventBus",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/StratixEventBus.ts",
+      "line": 28,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "DOMOverlayManager",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/ui/DOMOverlayManager.ts",
+      "line": 14,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ContainerComponentBase",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/ui/ContainerComponent.base.ts",
+      "line": 17,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "UIComponentBase"
+      ]
+    },
+    {
+      "name": "UIComponentBase",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/ui/UIComponent.base.ts",
+      "line": 15,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "DOMComponentBase",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/ui/DOMComponent.base.ts",
+      "line": 19,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "UIComponentBase"
+      ]
+    },
+    {
+      "name": "DOMContainer",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/ui/DOMContainer.ts",
+      "line": 39,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ThemeContext",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/ui/foundation/theme/ThemeContext.ts",
+      "line": 16,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ReactiveToken",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/ui/foundation/theme/ReactiveToken.ts",
+      "line": 11,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "UIRecorder",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/ui/system/recording/UIRecorder.ts",
+      "line": 12,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "UIManager",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/ui/system/manager/UIManager.ts",
+      "line": 37,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "UIEventBus",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/ui/system/event/UIEventBus.ts",
+      "line": 18,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ThemeAwareButton",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/ui/components/primitives/ThemeAwareButton.ts",
+      "line": 18,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "EnhancedUIComponent"
+      ]
+    },
+    {
+      "name": "InteractionAdapter",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/ui/components/interaction/InteractionAdapter.ts",
+      "line": 17,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ButtonInteraction",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/ui/components/interaction/ButtonInteraction.ts",
+      "line": 15,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "InteractionAdapter"
+      ]
+    },
+    {
+      "name": "EnhancedUIComponent",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/ui/components/base/EnhancedUIComponent.ts",
+      "line": 26,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "StratixError",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/types/result.ts",
+      "line": 1,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "Error"
+      ]
+    },
+    {
+      "name": "RetryPolicyEngine",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/retry/RetryPolicyEngine.ts",
+      "line": 16,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "cleanup",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/UnifiedOpenClawConnectionManager.ts",
+      "line": 669,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "stopPropagation",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/ui/DOMOverlayManager.ts",
+      "line": 27,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "createDOMContainer",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/ui/DOMContainer.ts",
+      "line": 140,
+      "docstring": null,
+      "parameters": [
+        "scene: Phaser.Scene",
+        "config: DOMContainerConfig"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "buildSignPayload",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/openclaw/DeviceIdentityManager.ts",
+      "line": 45,
+      "docstring": null,
+      "parameters": [
+        "params: {\n  deviceId: string;\n  clientId: string;\n  clientMode: string;\n  role: string;\n  scopes: string[];\n  signedAtMs: number;\n  token: string | null;\n  nonce: string;\n}"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "uint8ArrayToBase64Url",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/openclaw/DeviceIdentityManager.ts",
+      "line": 73,
+      "docstring": null,
+      "parameters": [
+        "bytes: Uint8Array"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "uint8ArrayToHex",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/openclaw/DeviceIdentityManager.ts",
+      "line": 87,
+      "docstring": null,
+      "parameters": [
+        "bytes: Uint8Array"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "hexToUint8Array",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/openclaw/DeviceIdentityManager.ts",
+      "line": 96,
+      "docstring": null,
+      "parameters": [
+        "hex: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "tempHandler",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/openclaw/OpenClawWebSocketConnection.ts",
+      "line": 340,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "cleanup",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/openclaw/OpenClawWebSocketConnection.ts",
+      "line": 410,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "handler",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/openclaw/OpenClawWebSocketConnection.ts",
+      "line": 415,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "generateId",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/recording/SessionRecorder.ts",
+      "line": 14,
+      "docstring": null,
+      "parameters": [
+        "prefix: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "hasAPIPath",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/utils/OpenAIEndpointBuilder.ts",
+      "line": 30,
+      "docstring": null,
+      "parameters": [
+        "url: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "getBaseUrl",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/utils/OpenAIEndpointBuilder.ts",
+      "line": 38,
+      "docstring": null,
+      "parameters": [
+        "url: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "buildOpenAIURL",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/utils/OpenAIEndpointBuilder.ts",
+      "line": 61,
+      "docstring": null,
+      "parameters": [
+        "baseUrl: string",
+        "path: OpenAIPath"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "buildChatCompletionsURL",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/utils/OpenAIEndpointBuilder.ts",
+      "line": 84,
+      "docstring": null,
+      "parameters": [
+        "baseUrl: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "buildModelsURL",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/utils/OpenAIEndpointBuilder.ts",
+      "line": 91,
+      "docstring": null,
+      "parameters": [
+        "baseUrl: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "buildEmbeddingsURL",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/utils/OpenAIEndpointBuilder.ts",
+      "line": 98,
+      "docstring": null,
+      "parameters": [
+        "baseUrl: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "buildImagesGenerationsURL",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/utils/OpenAIEndpointBuilder.ts",
+      "line": 105,
+      "docstring": null,
+      "parameters": [
+        "baseUrl: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "buildAudioTranscriptionsURL",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/utils/OpenAIEndpointBuilder.ts",
+      "line": 112,
+      "docstring": null,
+      "parameters": [
+        "baseUrl: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "copyCode",
+      "file": "/Users/kingj/code/Stratix/src/stratix-core/utils/MarkdownRenderer.ts",
+      "line": 53,
+      "docstring": null,
+      "parameters": [
+        "button"
+      ],
+      "return_type": null
+    }
+  ],
+  "docstring": null
+}

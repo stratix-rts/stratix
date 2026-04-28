@@ -1,0 +1,247 @@
+{
+  "name": "design-system",
+  "path": "/Users/kingj/code/Stratix/src/design-system",
+  "file_count": 51,
+  "line_count": 6833,
+  "main_classes": [
+    "DepthManager"
+  ],
+  "main_functions": [
+    "isColorPrimitives",
+    "createButtonStyle",
+    "createPanelStyle",
+    "getCurrentTheme",
+    "getSemanticTokens",
+    "invalidateSemanticTokenCache",
+    "setTheme",
+    "flattenSemanticTokens",
+    "injectThemeCSSVariables",
+    "restoreThemeFromStorage"
+  ],
+  "dependencies": [
+    "@/design-system/semantic/tooltip",
+    "../themes/professional",
+    "@/design-system/semantic/forms",
+    "../themes/cyberpunk",
+    "../../types",
+    "./types",
+    "../tokens/depth",
+    "../types",
+    "./semantic/_generator",
+    "@/design-system/semantic/panels",
+    "../../tokens/depth",
+    "@/design-system/semantic/buttons",
+    "../tokens/spacing",
+    "@/design-system/semantic/inputs",
+    "./themes/professional",
+    "@/design-system/semantic",
+    "@/design-system",
+    "../semantic/_generator",
+    "./themes/cyberpunk",
+    "@/design-system/semantic/status"
+  ],
+  "doc_file": "/Users/kingj/code/Stratix/docs/modules/design-system.md",
+  "doc_coverage": 0.94,
+  "classes": [
+    {
+      "name": "DepthManager",
+      "file": "/Users/kingj/code/Stratix/src/design-system/tokens/depth.ts",
+      "line": 52,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "isColorPrimitives",
+      "file": "/Users/kingj/code/Stratix/src/design-system/types.ts",
+      "line": 737,
+      "docstring": null,
+      "parameters": [
+        "colors: Colors"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "createButtonStyle",
+      "file": "/Users/kingj/code/Stratix/src/design-system/index.ts",
+      "line": 390,
+      "docstring": null,
+      "parameters": [
+        "variant: 'primary' | 'secondary' | 'ghost' | 'danger' = 'primary'"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "createPanelStyle",
+      "file": "/Users/kingj/code/Stratix/src/design-system/index.ts",
+      "line": 416,
+      "docstring": null,
+      "parameters": [
+        "variant: 'default' | 'elevated' | 'outlined' | 'ghost' = 'default'"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "getCurrentTheme",
+      "file": "/Users/kingj/code/Stratix/src/design-system/config.ts",
+      "line": 47,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "getSemanticTokens",
+      "file": "/Users/kingj/code/Stratix/src/design-system/config.ts",
+      "line": 55,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "invalidateSemanticTokenCache",
+      "file": "/Users/kingj/code/Stratix/src/design-system/config.ts",
+      "line": 79,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "setTheme",
+      "file": "/Users/kingj/code/Stratix/src/design-system/config.ts",
+      "line": 83,
+      "docstring": null,
+      "parameters": [
+        "themeName: keyof typeof DesignSystemConfig.themes",
+        "options?: { injectCSS?: boolean; persist?: boolean }"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "flattenSemanticTokens",
+      "file": "/Users/kingj/code/Stratix/src/design-system/config.ts",
+      "line": 118,
+      "docstring": null,
+      "parameters": [
+        "semantic: CompleteSemanticTokens",
+        "prefix: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "injectThemeCSSVariables",
+      "file": "/Users/kingj/code/Stratix/src/design-system/config.ts",
+      "line": 292,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "restoreThemeFromStorage",
+      "file": "/Users/kingj/code/Stratix/src/design-system/config.ts",
+      "line": 422,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "onThemeChange",
+      "file": "/Users/kingj/code/Stratix/src/design-system/config.ts",
+      "line": 430,
+      "docstring": null,
+      "parameters": [
+        "callback: (event: { theme: string; tokens: DesignSystemTokens; semantic: CompleteSemanticTokens }"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "initDesignSystem",
+      "file": "/Users/kingj/code/Stratix/src/design-system/config.ts",
+      "line": 446,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "isThemeAvailable",
+      "file": "/Users/kingj/code/Stratix/src/design-system/config.ts",
+      "line": 451,
+      "docstring": null,
+      "parameters": [
+        "name: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "getAvailableThemes",
+      "file": "/Users/kingj/code/Stratix/src/design-system/config.ts",
+      "line": 455,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "mapTokenPath",
+      "file": "/Users/kingj/code/Stratix/src/design-system/config.ts",
+      "line": 487,
+      "docstring": null,
+      "parameters": [
+        "path: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "getToken",
+      "file": "/Users/kingj/code/Stratix/src/design-system/config.ts",
+      "line": 491,
+      "docstring": null,
+      "parameters": [
+        "path: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "getTokens",
+      "file": "/Users/kingj/code/Stratix/src/design-system/config.ts",
+      "line": 518,
+      "docstring": null,
+      "parameters": [
+        "paths: string[]"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "handler",
+      "file": "/Users/kingj/code/Stratix/src/design-system/config.ts",
+      "line": 433,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "flattenToCssVars",
+      "file": "/Users/kingj/code/Stratix/src/design-system/composables/useTheme.ts",
+      "line": 36,
+      "docstring": null,
+      "parameters": [
+        "obj: any",
+        "prefix = '--stratix'",
+        "result: Record<string",
+        "string> = {}"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "applyTokensToRoot",
+      "file": "/Users/kingj/code/Stratix/src/design-system/composables/useTheme.ts",
+      "line": 54,
+      "docstring": null,
+      "parameters": [
+        "tokens: DesignSystemTokens"
+      ],
+      "return_type": null
+    }
+  ],
+  "docstring": null
+}

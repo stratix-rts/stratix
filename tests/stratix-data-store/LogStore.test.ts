@@ -19,7 +19,8 @@ describe('LogStore', () => {
     mockDb = {
       prepare: jest.fn().mockReturnValue({
         run: jest.fn(),
-        all: jest.fn().mockReturnValue([])
+        all: jest.fn().mockReturnValue([]),
+        get: jest.fn().mockReturnValue(undefined)
       }),
       exec: jest.fn()
     };
@@ -167,6 +168,9 @@ describe('LogStore', () => {
   describe('getLog', () => {
     it('should return null for non-existent log', async () => {
       await store.initialize();
+      mockDb.prepare.mockReturnValue({
+        get: jest.fn().mockReturnValue(undefined)
+      });
       const log = await logStore.getLog('non-existent');
       expect(log).toBeNull();
     });
@@ -255,7 +259,7 @@ describe('LogStore', () => {
     it('should return null for non-existent log', async () => {
       await store.initialize();
       mockDb.prepare.mockReturnValue({
-        all: jest.fn().mockReturnValue([])
+        get: jest.fn().mockReturnValue(undefined)
       });
 
       const duration = await logStore.getDuration('non-existent');
@@ -265,18 +269,16 @@ describe('LogStore', () => {
     it('should return null when log has no endTime', async () => {
       await store.initialize();
       mockDb.prepare.mockReturnValue({
-        all: jest.fn().mockReturnValue([
-          {
-            log_id: 'log-1',
-            command_id: 'cmd-1',
-            agent_id: 'agent-1',
-            skill_id: 'skill-1',
-            skill_name: 'Test',
-            params: '{}',
-            status: 'running',
-            start_time: Date.now()
-          }
-        ])
+        get: jest.fn().mockReturnValue({
+          log_id: 'log-1',
+          command_id: 'cmd-1',
+          agent_id: 'agent-1',
+          skill_id: 'skill-1',
+          skill_name: 'Test',
+          params: '{}',
+          status: 'running',
+          start_time: Date.now()
+        })
       });
 
       const duration = await logStore.getDuration('log-1');
@@ -289,19 +291,17 @@ describe('LogStore', () => {
       const endTime = Date.now();
 
       mockDb.prepare.mockReturnValue({
-        all: jest.fn().mockReturnValue([
-          {
-            log_id: 'log-1',
-            command_id: 'cmd-1',
-            agent_id: 'agent-1',
-            skill_id: 'skill-1',
-            skill_name: 'Test',
-            params: '{}',
-            status: 'success',
-            start_time: startTime,
-            end_time: endTime
-          }
-        ])
+        get: jest.fn().mockReturnValue({
+          log_id: 'log-1',
+          command_id: 'cmd-1',
+          agent_id: 'agent-1',
+          skill_id: 'skill-1',
+          skill_name: 'Test',
+          params: '{}',
+          status: 'success',
+          start_time: startTime,
+          end_time: endTime
+        })
       });
 
       const duration = await logStore.getDuration('log-1');

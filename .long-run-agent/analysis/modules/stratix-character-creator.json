@@ -1,0 +1,402 @@
+{
+  "name": "stratix-character-creator",
+  "path": "/Users/kingj/code/Stratix/src/stratix-character-creator",
+  "file_count": 40,
+  "line_count": 15489,
+  "main_classes": [
+    "CharacterCreatorScene",
+    "AgentListPanel",
+    "AgentConfigPanel",
+    "StratixAgentConfigPanel",
+    "SoulEditor",
+    "AgentChatPanel",
+    "WorkflowConfigPanel",
+    "SkillTreeUI",
+    "OpenClawConnectionPanel",
+    "CharacterPreview"
+  ],
+  "main_functions": [
+    "angleToLPCRow",
+    "hexToNumber",
+    "toCssColor",
+    "THEME",
+    "closeModal",
+    "closeModal",
+    "createCharacterCreator",
+    "getModelsForProvider",
+    "filterTemplates",
+    "showGoalSuggestions"
+  ],
+  "dependencies": [
+    "@/stratix-data/agency-agents.json",
+    "./ui/_buttonStyles",
+    "../constants",
+    "@/agent-platform/workflow/presets",
+    "../core/SoulTemplateRenderer",
+    "./types",
+    "./CharacterCreatorScene",
+    "../config/soulTemplates",
+    "@/stratix-core/utils/MarkdownRenderer",
+    "@/agent-platform/workflow/types",
+    "phaser",
+    "../types",
+    "../core/PartRegistry",
+    "@/config/custom-providers.config.json",
+    "./StratixAgentConfigPanel",
+    "./constants",
+    "@/agent-platform/providers/registry",
+    "@/design-system/semantic/buttons",
+    "@/stratix-core/stratix-protocol",
+    "../core/CharacterStorage"
+  ],
+  "doc_file": "/Users/kingj/code/Stratix/docs/modules/stratix-character-creator.md",
+  "doc_coverage": 0.72,
+  "classes": [
+    {
+      "name": "CharacterCreatorScene",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/CharacterCreatorScene.ts",
+      "line": 83,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "Phaser"
+      ]
+    },
+    {
+      "name": "AgentListPanel",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/AgentListPanel.ts",
+      "line": 36,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "AgentConfigPanel",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/AgentConfigPanel.ts",
+      "line": 61,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "StratixAgentConfigPanel",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/StratixAgentConfigPanel.ts",
+      "line": 49,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "SoulEditor",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/SoulEditor.ts",
+      "line": 103,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "AgentChatPanel",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/AgentChatPanel.ts",
+      "line": 43,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "WorkflowConfigPanel",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/WorkflowConfigPanel.ts",
+      "line": 31,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "SkillTreeUI",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/SkillTreeUI.ts",
+      "line": 24,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "OpenClawConnectionPanel",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/OpenClawConnectionPanel.ts",
+      "line": 41,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "CharacterPreview",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/CharacterPreview.ts",
+      "line": 32,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "StyledButton",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/ButtonGroup.ts",
+      "line": 28,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ButtonGroup",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/ButtonGroup.ts",
+      "line": 95,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "BackendSelector",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/BackendSelector.ts",
+      "line": 43,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "PartSelector",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/PartSelector.ts",
+      "line": 56,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "CharacterList",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/CharacterList.ts",
+      "line": 35,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "RulesEditor",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/RulesEditor.ts",
+      "line": 26,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "WorkflowCanvas",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/workflow-editor/WorkflowCanvas.ts",
+      "line": 67,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "WorkflowEditorPanel",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/workflow-editor/WorkflowEditorPanel.ts",
+      "line": 45,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "CharacterComposer",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/core/CharacterComposer.ts",
+      "line": 30,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "CharacterStorage",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/core/CharacterStorage.ts",
+      "line": 9,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "angleToLPCRow",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/constants.ts",
+      "line": 30,
+      "docstring": null,
+      "parameters": [
+        "normalizedDegrees: number"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "hexToNumber",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/CharacterCreatorScene.ts",
+      "line": 41,
+      "docstring": null,
+      "parameters": [
+        "hex: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "toCssColor",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/CharacterCreatorScene.ts",
+      "line": 46,
+      "docstring": null,
+      "parameters": [
+        "color: string | number"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "THEME",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/CharacterCreatorScene.ts",
+      "line": 52,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "closeModal",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/CharacterCreatorScene.ts",
+      "line": 787,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "closeModal",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/CharacterCreatorScene.ts",
+      "line": 896,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "createCharacterCreator",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/index.ts",
+      "line": 27,
+      "docstring": null,
+      "parameters": [
+        "config: CharacterCreatorConfig"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "getModelsForProvider",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/StratixAgentConfigPanel.ts",
+      "line": 35,
+      "docstring": null,
+      "parameters": [
+        "provider: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "filterTemplates",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/SoulEditor.ts",
+      "line": 517,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "showGoalSuggestions",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/SoulEditor.ts",
+      "line": 632,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "updateSuggestionHighlight",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/SoulEditor.ts",
+      "line": 681,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "selectSuggestion",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/SoulEditor.ts",
+      "line": 688,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "sendMessage",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/AgentChatPanel.ts",
+      "line": 195,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "getPhaserColor",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/CharacterPreview.ts",
+      "line": 23,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "getButtonStyles",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/_buttonStyles.ts",
+      "line": 27,
+      "docstring": null,
+      "parameters": [
+        "variant: ButtonVariant"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "getButtonInlineStyles",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/_buttonStyles.ts",
+      "line": 34,
+      "docstring": null,
+      "parameters": [
+        "variant: ButtonVariant"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "getButtonHoverStyles",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/_buttonStyles.ts",
+      "line": 54,
+      "docstring": null,
+      "parameters": [
+        "variant: ButtonVariant"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "getButtonActiveStyles",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/_buttonStyles.ts",
+      "line": 70,
+      "docstring": null,
+      "parameters": [
+        "variant: ButtonVariant"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "attachButtonStyles",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/ui/_buttonStyles.ts",
+      "line": 78,
+      "docstring": null,
+      "parameters": [
+        "button: HTMLButtonElement | null",
+        "variant: ButtonVariant"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "handler",
+      "file": "/Users/kingj/code/Stratix/src/stratix-character-creator/core/EventEmitter.ts",
+      "line": 70,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    }
+  ],
+  "docstring": null
+}

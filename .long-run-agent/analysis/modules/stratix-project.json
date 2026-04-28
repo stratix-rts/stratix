@@ -1,0 +1,262 @@
+{
+  "name": "stratix-project",
+  "path": "/Users/kingj/code/Stratix/src/stratix-project",
+  "file_count": 13,
+  "line_count": 2883,
+  "main_classes": [
+    "ProjectClient",
+    "ProjectManagerIntegration",
+    "ProjectManagerIntegration",
+    "ProjectZonePreview",
+    "ProjectManager",
+    "ProjectZone",
+    "ProjectStore",
+    "ProjectManagementExampleScene"
+  ],
+  "main_functions": [
+    "usePanelTransition",
+    "useListAnimation",
+    "generateId",
+    "formatDate",
+    "parseDate",
+    "now",
+    "validatePriority",
+    "validateProgress",
+    "validateProjectStatus",
+    "validateTaskStatus"
+  ],
+  "dependencies": [
+    "./core/ProjectZonePreview",
+    "../../stratix-rts/zones/BaseZone",
+    "fs-extra",
+    "./types",
+    "phaser",
+    "../types",
+    "./core/ProjectZone",
+    "../stratix-gateway/api/types/api",
+    "../stratix-gateway/api/client",
+    "./storage/ProjectStore",
+    "../utils/helpers",
+    "./core/ProjectManager",
+    "./utils/helpers",
+    "../stratix-rts/events/core/RTSEventBus",
+    "../storage/ProjectStore",
+    "../stratix-rts/zones/UnifiedZoneManager",
+    "../../stratix-ai-service/types",
+    "lowdb",
+    "../../stratix-rts/constants",
+    "mitt"
+  ],
+  "doc_file": "/Users/kingj/code/Stratix/docs/modules/stratix-project.md",
+  "doc_coverage": 0.08,
+  "classes": [
+    {
+      "name": "ProjectClient",
+      "file": "/Users/kingj/code/Stratix/src/stratix-project/ProjectClient.ts",
+      "line": 28,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ProjectManagerIntegration",
+      "file": "/Users/kingj/code/Stratix/src/stratix-project/ProjectManagerIntegration.ts",
+      "line": 16,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ProjectManagerIntegration",
+      "file": "/Users/kingj/code/Stratix/src/stratix-project/ProjectManagerIntegrationHTTP.ts",
+      "line": 20,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ProjectZonePreview",
+      "file": "/Users/kingj/code/Stratix/src/stratix-project/core/ProjectZonePreview.ts",
+      "line": 25,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ProjectManager",
+      "file": "/Users/kingj/code/Stratix/src/stratix-project/core/ProjectManager.ts",
+      "line": 12,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ProjectZone",
+      "file": "/Users/kingj/code/Stratix/src/stratix-project/core/ProjectZone.ts",
+      "line": 31,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "BaseZone"
+      ]
+    },
+    {
+      "name": "ProjectStore",
+      "file": "/Users/kingj/code/Stratix/src/stratix-project/storage/ProjectStore.ts",
+      "line": 31,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ProjectManagementExampleScene",
+      "file": "/Users/kingj/code/Stratix/src/stratix-project/examples/ProjectManagementExampleScene.ts",
+      "line": 16,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "Phaser"
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "name": "usePanelTransition",
+      "file": "/Users/kingj/code/Stratix/src/stratix-project/ui/composables/usePanelTransition.ts",
+      "line": 16,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "useListAnimation",
+      "file": "/Users/kingj/code/Stratix/src/stratix-project/ui/composables/useListAnimation.ts",
+      "line": 10,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "generateId",
+      "file": "/Users/kingj/code/Stratix/src/stratix-project/utils/helpers.ts",
+      "line": 1,
+      "docstring": null,
+      "parameters": [
+        "prefix: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "formatDate",
+      "file": "/Users/kingj/code/Stratix/src/stratix-project/utils/helpers.ts",
+      "line": 7,
+      "docstring": null,
+      "parameters": [
+        "date: Date"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "parseDate",
+      "file": "/Users/kingj/code/Stratix/src/stratix-project/utils/helpers.ts",
+      "line": 11,
+      "docstring": null,
+      "parameters": [
+        "dateString: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "now",
+      "file": "/Users/kingj/code/Stratix/src/stratix-project/utils/helpers.ts",
+      "line": 15,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "validatePriority",
+      "file": "/Users/kingj/code/Stratix/src/stratix-project/utils/helpers.ts",
+      "line": 30,
+      "docstring": null,
+      "parameters": [
+        "priority: number"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "validateProgress",
+      "file": "/Users/kingj/code/Stratix/src/stratix-project/utils/helpers.ts",
+      "line": 34,
+      "docstring": null,
+      "parameters": [
+        "progress: number"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "validateProjectStatus",
+      "file": "/Users/kingj/code/Stratix/src/stratix-project/utils/helpers.ts",
+      "line": 40,
+      "docstring": null,
+      "parameters": [
+        "status: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "validateTaskStatus",
+      "file": "/Users/kingj/code/Stratix/src/stratix-project/utils/helpers.ts",
+      "line": 46,
+      "docstring": null,
+      "parameters": [
+        "status: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "validateRequired",
+      "file": "/Users/kingj/code/Stratix/src/stratix-project/utils/helpers.ts",
+      "line": 50,
+      "docstring": null,
+      "parameters": [
+        "value: any",
+        "fieldName: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "validatePath",
+      "file": "/Users/kingj/code/Stratix/src/stratix-project/utils/helpers.ts",
+      "line": 56,
+      "docstring": null,
+      "parameters": [
+        "path: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "clamp",
+      "file": "/Users/kingj/code/Stratix/src/stratix-project/utils/helpers.ts",
+      "line": 64,
+      "docstring": null,
+      "parameters": [
+        "value: number",
+        "min: number",
+        "max: number"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "formatDuration",
+      "file": "/Users/kingj/code/Stratix/src/stratix-project/utils/helpers.ts",
+      "line": 68,
+      "docstring": null,
+      "parameters": [
+        "ms: number"
+      ],
+      "return_type": null
+    }
+  ],
+  "docstring": null
+}

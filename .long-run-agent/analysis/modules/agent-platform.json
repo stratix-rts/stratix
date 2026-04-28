@@ -1,0 +1,243 @@
+{
+  "name": "agent-platform",
+  "path": "/Users/kingj/code/Stratix/src/agent-platform",
+  "file_count": 28,
+  "line_count": 1449,
+  "main_classes": [
+    "ProviderRegistry",
+    "LLMAdapter",
+    "OllamaAdapter",
+    "StepFunAdapter",
+    "AnthropicAdapter",
+    "QwenAdapter",
+    "DeepSeekAdapter",
+    "OpenAIAdapter",
+    "GoogleAdapter",
+    "MoonshotAdapter"
+  ],
+  "main_functions": [
+    "getPresetById",
+    "getPresetsByCategory",
+    "buildGraphFromWorkflow",
+    "registerWorkflowHandlers",
+    "ensureDir",
+    "getWorkflowPath",
+    "registerProviderHandlers",
+    "registerExecutionHandlers"
+  ],
+  "dependencies": [
+    "@langchain/anthropic",
+    "../workflow/types",
+    "./types",
+    "@langchain/ollama",
+    "./state",
+    "../types",
+    "./base",
+    "@langchain/langgraph",
+    "./single-agent",
+    "../providers/registry",
+    "@langchain/core/language_models/chat_models",
+    "../providers/types",
+    "./code-review",
+    "./adapters/base",
+    "@langchain/openai",
+    "./multi-agent-chat",
+    "@langchain/core/messages",
+    "./presets",
+    "../workflow/presets",
+    "@langchain/google-genai"
+  ],
+  "doc_file": "/Users/kingj/code/Stratix/docs/modules/agent-platform.md",
+  "doc_coverage": 0.0,
+  "classes": [
+    {
+      "name": "ProviderRegistry",
+      "file": "/Users/kingj/code/Stratix/src/agent-platform/providers/registry.ts",
+      "line": 16,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "LLMAdapter",
+      "file": "/Users/kingj/code/Stratix/src/agent-platform/providers/adapters/base.ts",
+      "line": 5,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "OllamaAdapter",
+      "file": "/Users/kingj/code/Stratix/src/agent-platform/providers/adapters/ollama.ts",
+      "line": 31,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "LLMAdapter"
+      ]
+    },
+    {
+      "name": "StepFunAdapter",
+      "file": "/Users/kingj/code/Stratix/src/agent-platform/providers/adapters/stepfun.ts",
+      "line": 19,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "LLMAdapter"
+      ]
+    },
+    {
+      "name": "AnthropicAdapter",
+      "file": "/Users/kingj/code/Stratix/src/agent-platform/providers/adapters/anthropic.ts",
+      "line": 26,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "LLMAdapter"
+      ]
+    },
+    {
+      "name": "QwenAdapter",
+      "file": "/Users/kingj/code/Stratix/src/agent-platform/providers/adapters/qwen.ts",
+      "line": 19,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "LLMAdapter"
+      ]
+    },
+    {
+      "name": "DeepSeekAdapter",
+      "file": "/Users/kingj/code/Stratix/src/agent-platform/providers/adapters/deepseek.ts",
+      "line": 19,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "LLMAdapter"
+      ]
+    },
+    {
+      "name": "OpenAIAdapter",
+      "file": "/Users/kingj/code/Stratix/src/agent-platform/providers/adapters/openai.ts",
+      "line": 27,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "LLMAdapter"
+      ]
+    },
+    {
+      "name": "GoogleAdapter",
+      "file": "/Users/kingj/code/Stratix/src/agent-platform/providers/adapters/google.ts",
+      "line": 25,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "LLMAdapter"
+      ]
+    },
+    {
+      "name": "MoonshotAdapter",
+      "file": "/Users/kingj/code/Stratix/src/agent-platform/providers/adapters/moonshot.ts",
+      "line": 19,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "LLMAdapter"
+      ]
+    },
+    {
+      "name": "WorkflowStore",
+      "file": "/Users/kingj/code/Stratix/src/agent-platform/workflow/store.ts",
+      "line": 14,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "GraphBuilder",
+      "file": "/Users/kingj/code/Stratix/src/agent-platform/orchestration/graph-builder.ts",
+      "line": 14,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "getPresetById",
+      "file": "/Users/kingj/code/Stratix/src/agent-platform/workflow/presets/index.ts",
+      "line": 17,
+      "docstring": null,
+      "parameters": [
+        "id: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "getPresetsByCategory",
+      "file": "/Users/kingj/code/Stratix/src/agent-platform/workflow/presets/index.ts",
+      "line": 21,
+      "docstring": null,
+      "parameters": [
+        "category: WorkflowPreset['category']"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "buildGraphFromWorkflow",
+      "file": "/Users/kingj/code/Stratix/src/agent-platform/orchestration/graph-builder.ts",
+      "line": 8,
+      "docstring": null,
+      "parameters": [
+        "definition: WorkflowDefinition"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "registerWorkflowHandlers",
+      "file": "/Users/kingj/code/Stratix/src/agent-platform/ipc/workflow.ts",
+      "line": 4,
+      "docstring": null,
+      "parameters": [
+        "userDataPath: string",
+        "fs: any",
+        "path: any"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "ensureDir",
+      "file": "/Users/kingj/code/Stratix/src/agent-platform/ipc/workflow.ts",
+      "line": 7,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "getWorkflowPath",
+      "file": "/Users/kingj/code/Stratix/src/agent-platform/ipc/workflow.ts",
+      "line": 13,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "registerProviderHandlers",
+      "file": "/Users/kingj/code/Stratix/src/agent-platform/ipc/providers.ts",
+      "line": 4,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "registerExecutionHandlers",
+      "file": "/Users/kingj/code/Stratix/src/agent-platform/ipc/execution.ts",
+      "line": 13,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    }
+  ],
+  "docstring": null
+}

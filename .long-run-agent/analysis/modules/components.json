@@ -1,0 +1,243 @@
+{
+  "name": "components",
+  "path": "/Users/kingj/code/Stratix/src/components",
+  "file_count": 17,
+  "line_count": 2601,
+  "main_classes": [
+    "ToastService"
+  ],
+  "main_functions": [
+    "filterCommands",
+    "createModal",
+    "destroy",
+    "update",
+    "useCharacterState",
+    "loadSavedCharacters",
+    "createNew",
+    "loadCharacter",
+    "saveCharacter",
+    "deleteCharacter"
+  ],
+  "dependencies": [
+    "./StratixConfirmDialog.vue",
+    "@/stratix-character-creator/core/CharacterStorage",
+    "@/stratix-character-creator",
+    "@/stratix-rts/events/core/RTSEventBus",
+    "vue",
+    "@/stratix-character-creator/core/PartRegistry",
+    "@/stratix-character-creator/types",
+    "@/stratix-character-creator/core/CharacterComposer",
+    "./ToastItem",
+    "@/stratix-core/services",
+    "@/stratix-character-creator/constants"
+  ],
+  "doc_file": "/Users/kingj/code/Stratix/docs/modules/components.md",
+  "doc_coverage": 0.71,
+  "classes": [
+    {
+      "name": "ToastService",
+      "file": "/Users/kingj/code/Stratix/src/components/ui/ToastService.ts",
+      "line": 24,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "filterCommands",
+      "file": "/Users/kingj/code/Stratix/src/components/chat-commands.ts",
+      "line": 42,
+      "docstring": null,
+      "parameters": [
+        "query: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "createModal",
+      "file": "/Users/kingj/code/Stratix/src/components/ui/modal-api.ts",
+      "line": 36,
+      "docstring": null,
+      "parameters": [
+        "type: ModalType",
+        "options: ModalOptions"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "destroy",
+      "file": "/Users/kingj/code/Stratix/src/components/ui/modal-api.ts",
+      "line": 76,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "update",
+      "file": "/Users/kingj/code/Stratix/src/components/ui/modal-api.ts",
+      "line": 93,
+      "docstring": null,
+      "parameters": [
+        "newOptions: Partial<ModalOptions>"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "useCharacterState",
+      "file": "/Users/kingj/code/Stratix/src/components/character-creator/v2/composables/useCharacterState.ts",
+      "line": 20,
+      "docstring": null,
+      "parameters": [
+        "options: UseCharacterStateOptions = {}"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "loadSavedCharacters",
+      "file": "/Users/kingj/code/Stratix/src/components/character-creator/v2/composables/useCharacterState.ts",
+      "line": 37,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "createNew",
+      "file": "/Users/kingj/code/Stratix/src/components/character-creator/v2/composables/useCharacterState.ts",
+      "line": 49,
+      "docstring": null,
+      "parameters": [
+        "bodyType: BodyType = DEFAULT_BODY_TYPE"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "loadCharacter",
+      "file": "/Users/kingj/code/Stratix/src/components/character-creator/v2/composables/useCharacterState.ts",
+      "line": 57,
+      "docstring": null,
+      "parameters": [
+        "characterId: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "saveCharacter",
+      "file": "/Users/kingj/code/Stratix/src/components/character-creator/v2/composables/useCharacterState.ts",
+      "line": 75,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "deleteCharacter",
+      "file": "/Users/kingj/code/Stratix/src/components/character-creator/v2/composables/useCharacterState.ts",
+      "line": 121,
+      "docstring": null,
+      "parameters": [
+        "characterId: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "setDefaultCharacter",
+      "file": "/Users/kingj/code/Stratix/src/components/character-creator/v2/composables/useCharacterState.ts",
+      "line": 140,
+      "docstring": null,
+      "parameters": [
+        "characterId: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "updateName",
+      "file": "/Users/kingj/code/Stratix/src/components/character-creator/v2/composables/useCharacterState.ts",
+      "line": 166,
+      "docstring": null,
+      "parameters": [
+        "name: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "updateBodyType",
+      "file": "/Users/kingj/code/Stratix/src/components/character-creator/v2/composables/useCharacterState.ts",
+      "line": 174,
+      "docstring": null,
+      "parameters": [
+        "bodyType: BodyType"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "updatePart",
+      "file": "/Users/kingj/code/Stratix/src/components/character-creator/v2/composables/useCharacterState.ts",
+      "line": 182,
+      "docstring": null,
+      "parameters": [
+        "category: string",
+        "selection: PartSelection | null"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "updateThumbnail",
+      "file": "/Users/kingj/code/Stratix/src/components/character-creator/v2/composables/useCharacterState.ts",
+      "line": 195,
+      "docstring": null,
+      "parameters": [
+        "thumbnail: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "resetCharacter",
+      "file": "/Users/kingj/code/Stratix/src/components/character-creator/v2/composables/useCharacterState.ts",
+      "line": 203,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "usePreviewControl",
+      "file": "/Users/kingj/code/Stratix/src/components/character-creator/v2/composables/usePreviewControl.ts",
+      "line": 16,
+      "docstring": null,
+      "parameters": [
+        "options: UsePreviewControlOptions = {}"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "setAnimation",
+      "file": "/Users/kingj/code/Stratix/src/components/character-creator/v2/composables/usePreviewControl.ts",
+      "line": 22,
+      "docstring": null,
+      "parameters": [
+        "anim: AnimationName"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "setDirection",
+      "file": "/Users/kingj/code/Stratix/src/components/character-creator/v2/composables/usePreviewControl.ts",
+      "line": 26,
+      "docstring": null,
+      "parameters": [
+        "dir: number"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "setScale",
+      "file": "/Users/kingj/code/Stratix/src/components/character-creator/v2/composables/usePreviewControl.ts",
+      "line": 30,
+      "docstring": null,
+      "parameters": [
+        "s: number"
+      ],
+      "return_type": null
+    }
+  ],
+  "docstring": null
+}

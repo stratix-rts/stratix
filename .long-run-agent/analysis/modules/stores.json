@@ -1,0 +1,239 @@
+{
+  "name": "stores",
+  "path": "/Users/kingj/code/Stratix/src/stores",
+  "file_count": 4,
+  "line_count": 1126,
+  "main_classes": [],
+  "main_functions": [
+    "savedCharacterToProfile",
+    "determineConfigStatus",
+    "setOnAgentCreated",
+    "setOnAgentDeleted",
+    "setOnAgentUpdated",
+    "updateAgentPosition",
+    "flushPositionUpdates",
+    "loadAgents",
+    "refreshAgents",
+    "createAgent"
+  ],
+  "dependencies": [
+    "@/stratix-designer",
+    "@/stratix-core/config/defaults",
+    "@/stratix-gateway/api/types/api",
+    "@/stratix-project/types",
+    "@/stratix-gateway/api/client",
+    "vue",
+    "pinia",
+    "@/stratix-character-creator/types"
+  ],
+  "doc_file": "/Users/kingj/code/Stratix/docs/modules/stores.md",
+  "doc_coverage": 0.0,
+  "classes": [],
+  "functions": [
+    {
+      "name": "savedCharacterToProfile",
+      "file": "/Users/kingj/code/Stratix/src/stores/agent.ts",
+      "line": 14,
+      "docstring": null,
+      "parameters": [
+        "character: SavedCharacter"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "determineConfigStatus",
+      "file": "/Users/kingj/code/Stratix/src/stores/agent.ts",
+      "line": 29,
+      "docstring": null,
+      "parameters": [
+        "profile: CharacterProfile | undefined",
+        "backendType: AgentBackendType",
+        "openClawConfig?: OpenClawConfig",
+        "stratixConfig?: { provider?: string; model?: string }"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "setOnAgentCreated",
+      "file": "/Users/kingj/code/Stratix/src/stores/agent.ts",
+      "line": 89,
+      "docstring": null,
+      "parameters": [
+        "callback: (config: StratixAgentConfig",
+        "centerOnScreen: boolean"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "setOnAgentDeleted",
+      "file": "/Users/kingj/code/Stratix/src/stores/agent.ts",
+      "line": 93,
+      "docstring": null,
+      "parameters": [
+        "callback: (agentId: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "setOnAgentUpdated",
+      "file": "/Users/kingj/code/Stratix/src/stores/agent.ts",
+      "line": 97,
+      "docstring": null,
+      "parameters": [
+        "callback: (config: StratixAgentConfig"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "updateAgentPosition",
+      "file": "/Users/kingj/code/Stratix/src/stores/agent.ts",
+      "line": 102,
+      "docstring": null,
+      "parameters": [
+        "agentId: string",
+        "position: { x: number; y: number }"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "flushPositionUpdates",
+      "file": "/Users/kingj/code/Stratix/src/stores/agent.ts",
+      "line": 125,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "loadAgents",
+      "file": "/Users/kingj/code/Stratix/src/stores/agent.ts",
+      "line": 150,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "refreshAgents",
+      "file": "/Users/kingj/code/Stratix/src/stores/agent.ts",
+      "line": 171,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "createAgent",
+      "file": "/Users/kingj/code/Stratix/src/stores/agent.ts",
+      "line": 219,
+      "docstring": null,
+      "parameters": [
+        "type: 'writer' | 'dev' | 'analyst'"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "createAgentFromCharacter",
+      "file": "/Users/kingj/code/Stratix/src/stores/agent.ts",
+      "line": 245,
+      "docstring": null,
+      "parameters": [
+        "character: SavedCharacter",
+        "options?: {\n      backendType?: AgentBackendType;\n      openClawConfig?: OpenClawConfig;\n      stratixConfig?: StratixAgentConfig['stratixConfig'];\n      soul?: StratixAgentConfig['soul'];\n      memory?: StratixAgentConfig['memory'];\n      skills?: StratixAgentConfig['skills'];\n      rules?: string[];\n    }"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "testBackendConnection",
+      "file": "/Users/kingj/code/Stratix/src/stores/agent.ts",
+      "line": 302,
+      "docstring": null,
+      "parameters": [
+        "backendType: AgentBackendType",
+        "config: OpenClawConfig | unknown"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "updateAgentProfile",
+      "file": "/Users/kingj/code/Stratix/src/stores/agent.ts",
+      "line": 329,
+      "docstring": null,
+      "parameters": [
+        "agentId: string",
+        "character: SavedCharacter",
+        "options?: {\n      backendType?: AgentBackendType;\n      openClawConfig?: OpenClawConfig;\n      stratixConfig?: StratixAgentConfig['stratixConfig'];\n      soul?: StratixAgentConfig['soul'];\n      memory?: StratixAgentConfig['memory'];\n      skills?: StratixAgentConfig['skills'];\n      rules?: string[];\n    }"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "updateAgentConfig",
+      "file": "/Users/kingj/code/Stratix/src/stores/agent.ts",
+      "line": 389,
+      "docstring": null,
+      "parameters": [
+        "agentId: string",
+        "updates: Partial<StratixAgentConfig>"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "markAgentReady",
+      "file": "/Users/kingj/code/Stratix/src/stores/agent.ts",
+      "line": 425,
+      "docstring": null,
+      "parameters": [
+        "agentId: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "markAgentDraft",
+      "file": "/Users/kingj/code/Stratix/src/stores/agent.ts",
+      "line": 429,
+      "docstring": null,
+      "parameters": [
+        "agentId: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "deleteAgent",
+      "file": "/Users/kingj/code/Stratix/src/stores/agent.ts",
+      "line": 434,
+      "docstring": null,
+      "parameters": [
+        "agentId: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "selectAgent",
+      "file": "/Users/kingj/code/Stratix/src/stores/agent.ts",
+      "line": 450,
+      "docstring": null,
+      "parameters": [
+        "agentId: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "deselectAgent",
+      "file": "/Users/kingj/code/Stratix/src/stores/agent.ts",
+      "line": 456,
+      "docstring": null,
+      "parameters": [
+        "agentId: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "setSelectedIds",
+      "file": "/Users/kingj/code/Stratix/src/stores/agent.ts",
+      "line": 460,
+      "docstring": null,
+      "parameters": [
+        "ids: string[]"
+      ],
+      "return_type": null
+    }
+  ],
+  "docstring": null
+}

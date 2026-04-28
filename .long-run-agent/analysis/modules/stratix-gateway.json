@@ -1,0 +1,395 @@
+{
+  "name": "stratix-gateway",
+  "path": "/Users/kingj/code/Stratix/src/stratix-gateway",
+  "file_count": 39,
+  "line_count": 11866,
+  "main_classes": [
+    "GatewayEventBus",
+    "DataStoreService",
+    "CommandTransformer",
+    "SkillExecutor",
+    "LRAService",
+    "OpenClawProxyManager",
+    "ServerDeviceIdentityManager",
+    "OpenClawConnectionManager",
+    "AgentOrchestrationService",
+    "LLMAgent"
+  ],
+  "main_functions": [
+    "startGatewayService",
+    "gracefulShutdown",
+    "buildSignPayload",
+    "uint8ArrayToBase64Url",
+    "uint8ArrayToHex",
+    "hexToUint8Array",
+    "getApiKeysFilePath",
+    "saveApiKey",
+    "loadApiKey",
+    "deleteApiKey"
+  ],
+  "dependencies": [
+    "child_process",
+    "../../dataStoreService",
+    "../../stratix-database/ProjectRepository",
+    "../../command-transformer/CommandTransformer",
+    "../../../stratix-agent/types",
+    "../api/apiKeyStore",
+    "./types",
+    "./types/api",
+    "./api/routes/command",
+    "./api/routes/zone-coordinator",
+    "../stratix-project/types",
+    "../../../stratix-agent/core/BuiltinSkills",
+    "../../../stratix-project/types",
+    "./agents/LLMAgent",
+    "../../../stratix-database/TaskFlowRepository",
+    "@/stratix-core/stratix-protocol",
+    "./api/routes/project",
+    "../../stratix-core/state",
+    "../../../stratix-agent/core/SkillAuditLogger",
+    "../stratix-nocodb"
+  ],
+  "doc_file": "/Users/kingj/code/Stratix/docs/modules/stratix-gateway.md",
+  "doc_coverage": 0.33,
+  "classes": [
+    {
+      "name": "GatewayEventBus",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/GatewayEventBus.ts",
+      "line": 40,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "EventEmitter"
+      ]
+    },
+    {
+      "name": "DataStoreService",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/dataStoreService.ts",
+      "line": 9,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "CommandTransformer",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/command-transformer/CommandTransformer.ts",
+      "line": 6,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "SkillExecutor",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/command-transformer/SkillExecutor.ts",
+      "line": 39,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "LRAService",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/lra/LRAService.ts",
+      "line": 20,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "OpenClawProxyManager",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/openclaw/OpenClawProxyManager.ts",
+      "line": 30,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "EventEmitter"
+      ]
+    },
+    {
+      "name": "ServerDeviceIdentityManager",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/openclaw/ServerDeviceIdentityManager.ts",
+      "line": 64,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "OpenClawConnectionManager",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/openclaw/OpenClawConnectionManager.ts",
+      "line": 21,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "AgentOrchestrationService",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/agent/AgentOrchestrationService.ts",
+      "line": 21,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "LLMAgent",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/agent/agents/LLMAgent.ts",
+      "line": 16,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "OpenClawAgent",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/agent/agents/OpenClawAgent.ts",
+      "line": 15,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ZoneService",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/project/ZoneService.ts",
+      "line": 21,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ProjectService",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/project/ProjectService.ts",
+      "line": 6,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ApiClient",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/api/client.ts",
+      "line": 40,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "StatusSyncService",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/api/websocket/StatusSync.ts",
+      "line": 21,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "GatewayRetryAdapter",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/api/retry/GatewayRetryAdapter.ts",
+      "line": 9,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ZoneCoordinatorService",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/api/routes/zone-coordinator.ts",
+      "line": 34,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "startGatewayService",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/index.ts",
+      "line": 80,
+      "docstring": null,
+      "parameters": [
+        "options: GatewayServiceOptions = {}"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "gracefulShutdown",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/index.ts",
+      "line": 240,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "buildSignPayload",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/openclaw/ServerDeviceIdentityManager.ts",
+      "line": 22,
+      "docstring": null,
+      "parameters": [
+        "params: {\n  deviceId: string;\n  clientId: string;\n  clientMode: string;\n  role: string;\n  scopes: string[];\n  signedAtMs: number;\n  token: string | null;\n  nonce: string;\n}"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "uint8ArrayToBase64Url",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/openclaw/ServerDeviceIdentityManager.ts",
+      "line": 46,
+      "docstring": null,
+      "parameters": [
+        "bytes: Uint8Array"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "uint8ArrayToHex",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/openclaw/ServerDeviceIdentityManager.ts",
+      "line": 54,
+      "docstring": null,
+      "parameters": [
+        "bytes: Uint8Array"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "hexToUint8Array",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/openclaw/ServerDeviceIdentityManager.ts",
+      "line": 58,
+      "docstring": null,
+      "parameters": [
+        "hex: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "getApiKeysFilePath",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/api/apiKeyStore.ts",
+      "line": 10,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "saveApiKey",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/api/apiKeyStore.ts",
+      "line": 15,
+      "docstring": null,
+      "parameters": [
+        "providerId: string",
+        "apiKey: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "loadApiKey",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/api/apiKeyStore.ts",
+      "line": 40,
+      "docstring": null,
+      "parameters": [
+        "providerId: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "deleteApiKey",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/api/apiKeyStore.ts",
+      "line": 66,
+      "docstring": null,
+      "parameters": [
+        "providerId: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "listApiKeys",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/api/apiKeyStore.ts",
+      "line": 84,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "setStatusSyncService",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/api/routes/project.ts",
+      "line": 16,
+      "docstring": null,
+      "parameters": [
+        "service: StatusSyncService"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "getProxyKey",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/api/routes/openclaw.ts",
+      "line": 29,
+      "docstring": null,
+      "parameters": [
+        "endpoint: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "initConnectionStore",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/api/routes/openclaw.ts",
+      "line": 278,
+      "docstring": null,
+      "parameters": [
+        "store: OpenClawConnectionStore"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "extractNameFromEndpoint",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/api/routes/openclaw.ts",
+      "line": 559,
+      "docstring": null,
+      "parameters": [
+        "endpoint: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "initWebSocketServer",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/api/routes/openclaw.ts",
+      "line": 576,
+      "docstring": null,
+      "parameters": [
+        "server: http.Server"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "verifyTaskOwnership",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/api/routes/agentTask.ts",
+      "line": 19,
+      "docstring": null,
+      "parameters": [
+        "task: { assignedAgentId?: string } | null",
+        "agentId: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "toConsumptionResponse",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/api/routes/template.ts",
+      "line": 18,
+      "docstring": null,
+      "parameters": [
+        "template: StratixAgentConfig"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "toEditResponse",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/api/routes/template.ts",
+      "line": 33,
+      "docstring": null,
+      "parameters": [
+        "template: StratixAgentConfig"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "buildRenderedPrompt",
+      "file": "/Users/kingj/code/Stratix/src/stratix-gateway/api/routes/template.ts",
+      "line": 45,
+      "docstring": null,
+      "parameters": [
+        "soul: NonNullable<StratixAgentConfig['soul']>"
+      ],
+      "return_type": null
+    }
+  ],
+  "docstring": null
+}

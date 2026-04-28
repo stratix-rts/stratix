@@ -6,7 +6,8 @@
 const mockDb = {
   prepare: jest.fn().mockReturnValue({
     run: jest.fn(),
-    all: jest.fn().mockReturnValue([])
+    all: jest.fn().mockReturnValue([]),
+    get: jest.fn().mockReturnValue(undefined)
   }),
   exec: jest.fn()
 };

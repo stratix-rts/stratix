@@ -6,7 +6,8 @@
 const mockDb = {
   prepare: jest.fn().mockReturnValue({
     run: jest.fn(),
-    all: jest.fn().mockReturnValue([])
+    all: jest.fn().mockReturnValue([]),
+    get: jest.fn().mockReturnValue(undefined)
   }),
   exec: jest.fn()
 };
@@ -275,7 +276,8 @@ describe('StratixDataStore', () => {
       // Reset mock to include all()
       mockDb.prepare.mockReturnValue({
         run: jest.fn(),
-        all: jest.fn().mockReturnValue([])
+        all: jest.fn().mockReturnValue([]),
+        get: jest.fn().mockReturnValue(undefined)
       });
       const log = await store.getLog('non-existent');
       expect(log).toBeNull();
@@ -397,7 +399,7 @@ describe('StratixDataStore', () => {
       const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
       await store.setPresetTemplates([]);
       expect(consoleSpy).toHaveBeenCalledWith(
-        '[StratixDataStore] setPresetTemplates not implemented in SQLite'
+        '[StratixDataStore] Saved 0 preset templates to database'
       );
     });
   });

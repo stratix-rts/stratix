@@ -1,0 +1,124 @@
+{
+  "name": "stratix-ai-service",
+  "path": "/Users/kingj/code/Stratix/src/stratix-ai-service",
+  "file_count": 11,
+  "line_count": 1069,
+  "main_classes": [
+    "RequirementParser",
+    "TaskSplitter",
+    "BaseAIProvider",
+    "OpenAIProvider",
+    "AIServiceFactory",
+    "ClaudeProvider",
+    "OllamaProvider"
+  ],
+  "main_functions": [
+    "getRequirementParsingPrompt",
+    "getTaskSplittingPrompt"
+  ],
+  "dependencies": [
+    "openai",
+    "@anthropic-ai/sdk",
+    "./OpenAIProvider",
+    "../prompts/task-splitting",
+    "../prompts/requirement-parsing",
+    "fs",
+    "../core/AIServiceFactory",
+    "path",
+    "./OllamaProvider",
+    "./AIServiceProvider",
+    "./ClaudeProvider",
+    "../types"
+  ],
+  "doc_file": "/Users/kingj/code/Stratix/docs/modules/stratix-ai-service.md",
+  "doc_coverage": 0.0,
+  "classes": [
+    {
+      "name": "RequirementParser",
+      "file": "/Users/kingj/code/Stratix/src/stratix-ai-service/parsers/RequirementParser.ts",
+      "line": 5,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "TaskSplitter",
+      "file": "/Users/kingj/code/Stratix/src/stratix-ai-service/parsers/TaskSplitter.ts",
+      "line": 5,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "BaseAIProvider",
+      "file": "/Users/kingj/code/Stratix/src/stratix-ai-service/core/AIServiceProvider.ts",
+      "line": 15,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "OpenAIProvider",
+      "file": "/Users/kingj/code/Stratix/src/stratix-ai-service/core/OpenAIProvider.ts",
+      "line": 7,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "BaseAIProvider"
+      ]
+    },
+    {
+      "name": "AIServiceFactory",
+      "file": "/Users/kingj/code/Stratix/src/stratix-ai-service/core/AIServiceFactory.ts",
+      "line": 11,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ClaudeProvider",
+      "file": "/Users/kingj/code/Stratix/src/stratix-ai-service/core/ClaudeProvider.ts",
+      "line": 7,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "BaseAIProvider"
+      ]
+    },
+    {
+      "name": "OllamaProvider",
+      "file": "/Users/kingj/code/Stratix/src/stratix-ai-service/core/OllamaProvider.ts",
+      "line": 5,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "BaseAIProvider"
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "name": "getRequirementParsingPrompt",
+      "file": "/Users/kingj/code/Stratix/src/stratix-ai-service/prompts/requirement-parsing.ts",
+      "line": 39,
+      "docstring": null,
+      "parameters": [
+        "requirement: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "getTaskSplittingPrompt",
+      "file": "/Users/kingj/code/Stratix/src/stratix-ai-service/prompts/task-splitting.ts",
+      "line": 83,
+      "docstring": null,
+      "parameters": [
+        "strategy: SplitStrategy",
+        "summary: string",
+        "tasks: string"
+      ],
+      "return_type": null
+    }
+  ],
+  "docstring": null
+}

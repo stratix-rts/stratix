@@ -1,0 +1,41 @@
+{
+  "name": "stratix-task-executor",
+  "path": "/Users/kingj/code/Stratix/src/stratix-task-executor",
+  "file_count": 4,
+  "line_count": 369,
+  "main_classes": [
+    "AgentOrchestratorClient",
+    "ResultCollector"
+  ],
+  "main_functions": [],
+  "dependencies": [
+    "../stratix-core",
+    "../stratix-gateway/agent/agents/types",
+    "fs-extra",
+    "../types",
+    "path",
+    "axios"
+  ],
+  "doc_file": "/Users/kingj/code/Stratix/docs/modules/stratix-task-executor.md",
+  "doc_coverage": 0.0,
+  "classes": [
+    {
+      "name": "AgentOrchestratorClient",
+      "file": "/Users/kingj/code/Stratix/src/stratix-task-executor/AgentOrchestratorClient.ts",
+      "line": 10,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ResultCollector",
+      "file": "/Users/kingj/code/Stratix/src/stratix-task-executor/collection/ResultCollector.ts",
+      "line": 7,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    }
+  ],
+  "functions": [],
+  "docstring": null
+}

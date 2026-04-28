@@ -1,0 +1,419 @@
+{
+  "name": "stratix-agent",
+  "path": "/Users/kingj/code/Stratix/src/stratix-agent",
+  "file_count": 51,
+  "line_count": 11068,
+  "main_classes": [
+    "StratixAgent",
+    "EnhancedStratixAgent",
+    "AgencyAgentsParser",
+    "RateLimiter",
+    "LLMConnectionPool",
+    "PromptTemplateEngine",
+    "EnhancedPromptBuilder",
+    "AutoSaver",
+    "ToolUseLoop",
+    "StratixAgentManager"
+  ],
+  "main_functions": [
+    "executePromise",
+    "request",
+    "request",
+    "request",
+    "request",
+    "getHandlebarsEngine",
+    "taskClaim",
+    "taskProgress",
+    "taskComplete",
+    "taskIssue"
+  ],
+  "dependencies": [
+    "./mixins/MixinComposer",
+    "child_process",
+    "./SharedMemoryCache",
+    "fs/promises",
+    "../runtime/SessionRuntime",
+    "./BashSkillExecutor",
+    "./core/SessionManager",
+    "./LLMConnector",
+    "../../types",
+    "./types",
+    "./core/StorageManager",
+    "../stratix-core/stratix-protocol",
+    "../types",
+    "./core/ReflectionManager",
+    "./ZoneSkillExecutor",
+    "./core/TokenManager",
+    "../../stratix-core/state/StratixStateStore",
+    "./core/LLMConnector",
+    "./LLMConnectionPool",
+    "./core/PromptBuilder"
+  ],
+  "doc_file": "/Users/kingj/code/Stratix/docs/modules/stratix-agent.md",
+  "doc_coverage": 0.37,
+  "classes": [
+    {
+      "name": "StratixAgent",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/StratixAgent.ts",
+      "line": 21,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "EnhancedStratixAgent",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/EnhancedStratixAgent.ts",
+      "line": 55,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "StratixAgent"
+      ]
+    },
+    {
+      "name": "AgencyAgentsParser",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/parsers/AgencyAgentsParser.ts",
+      "line": 35,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "RateLimiter",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/RateLimiter.ts",
+      "line": 3,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "LLMConnectionPool",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/LLMConnectionPool.ts",
+      "line": 5,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "PromptTemplateEngine",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/PromptTemplateEngine.ts",
+      "line": 14,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "EnhancedPromptBuilder",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/EnhancedPromptBuilder.ts",
+      "line": 42,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "AutoSaver",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/AutoSaver.ts",
+      "line": 1,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ToolUseLoop",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/ToolUseLoop.ts",
+      "line": 33,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "StratixAgentManager",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/StratixAgentManager.ts",
+      "line": 13,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ZoneCoordinatorSkillExecutor",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/ZoneCoordinatorSkillExecutor.ts",
+      "line": 52,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "LLMConnector",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/LLMConnector.ts",
+      "line": 7,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "WorkflowExecutor",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/WorkflowExecutor.ts",
+      "line": 32,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "MetricsCollector",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/MetricsCollector.ts",
+      "line": 3,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "SharedMemoryCache",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/SharedMemoryCache.ts",
+      "line": 7,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "StorageManager",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/StorageManager.ts",
+      "line": 7,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ReflectionManager",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/ReflectionManager.ts",
+      "line": 25,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "TokenManager",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/TokenManager.ts",
+      "line": 6,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "SkillTrigger",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/SkillTrigger.ts",
+      "line": 3,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "HandlebarsPromptEngine",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/HandlebarsPromptEngine.ts",
+      "line": 110,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "executePromise",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/ToolUseLoop.ts",
+      "line": 335,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "request",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/LLMConnector.ts",
+      "line": 153,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "request",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/LLMConnector.ts",
+      "line": 185,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "request",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/LLMConnector.ts",
+      "line": 227,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "request",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/LLMConnector.ts",
+      "line": 292,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "getHandlebarsEngine",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/HandlebarsPromptEngine.ts",
+      "line": 253,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "taskClaim",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/ZoneAgentSkills.ts",
+      "line": 81,
+      "docstring": null,
+      "parameters": [
+        "agentId: string",
+        "zoneId: string",
+        "taskId: string",
+        "capability: Capability"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "taskProgress",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/ZoneAgentSkills.ts",
+      "line": 135,
+      "docstring": null,
+      "parameters": [
+        "agentId: string",
+        "zoneId: string",
+        "taskId: string",
+        "progress: number",
+        "status: 'in_progress' | 'blocked' | 'waiting'",
+        "message?: string",
+        "currentStep?: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "taskComplete",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/ZoneAgentSkills.ts",
+      "line": 216,
+      "docstring": null,
+      "parameters": [
+        "agentId: string",
+        "zoneId: string",
+        "report: TaskCompleteParams"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "taskIssue",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/ZoneAgentSkills.ts",
+      "line": 301,
+      "docstring": null,
+      "parameters": [
+        "agentId: string",
+        "zoneId: string",
+        "taskId: string",
+        "issue: string",
+        "severity: 'low' | 'medium' | 'high' | 'critical'",
+        "suggestedFix?: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "capabilityUpdate",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/ZoneAgentSkills.ts",
+      "line": 368,
+      "docstring": null,
+      "parameters": [
+        "agentId: string",
+        "zoneId: string",
+        "capabilities: Array<{ capability: Capability; level: 1 | 2 | 3 | 4 | 5 }>"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "handleResult",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/executors/CodeSandboxSkillExecutor.ts",
+      "line": 253,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "handleError",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/executors/CodeSandboxSkillExecutor.ts",
+      "line": 265,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "fetchWithRetry",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/executors/ZoneSkillExecutor.ts",
+      "line": 6,
+      "docstring": null,
+      "parameters": [
+        "url: string",
+        "options: RequestInit",
+        "maxRetries: number = 3",
+        "baseDelayMs: number = 100"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "createExecutor",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/executors/index.ts",
+      "line": 24,
+      "docstring": null,
+      "parameters": [
+        "type: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "peek",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/executors/BuiltinSkillExecutor.ts",
+      "line": 58,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "consume",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/core/executors/BuiltinSkillExecutor.ts",
+      "line": 59,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "createEmptyUsage",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/runtime/SessionRuntime.ts",
+      "line": 23,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "createEmptyContext",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/runtime/SessionRuntime.ts",
+      "line": 35,
+      "docstring": null,
+      "parameters": [
+        "sessionId: string",
+        "agentId: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "generateTurnId",
+      "file": "/Users/kingj/code/Stratix/src/stratix-agent/runtime/SessionRuntime.ts",
+      "line": 53,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    }
+  ],
+  "docstring": null
+}

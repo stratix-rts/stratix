@@ -1,0 +1,107 @@
+{
+  "name": "stratix-data-store",
+  "path": "/Users/kingj/code/Stratix/src/stratix-data-store",
+  "file_count": 8,
+  "line_count": 1702,
+  "main_classes": [
+    "LogStore",
+    "BackupManager",
+    "OpenClawConnectionStore",
+    "EnhancedTemplateLibrary",
+    "StratixDataStore",
+    "TemplateLibrary"
+  ],
+  "main_functions": [
+    "createDataStore",
+    "initializeDataStore"
+  ],
+  "dependencies": [
+    "../stratix-database/AgentRepository",
+    "./OpenClawConnectionStore",
+    "fs",
+    "./TemplateLibrary",
+    "./StratixDataStore",
+    "../stratix-agent/parsers/AgencyAgentsParser",
+    "fs-extra",
+    "../stratix-database",
+    "path",
+    "./LogStore",
+    "./types",
+    "./BackupManager",
+    "../stratix-core/stratix-protocol",
+    "../stratix-database/AgentChatMessageRepository"
+  ],
+  "doc_file": "/Users/kingj/code/Stratix/docs/modules/stratix-data-store.md",
+  "doc_coverage": 0.12,
+  "classes": [
+    {
+      "name": "LogStore",
+      "file": "/Users/kingj/code/Stratix/src/stratix-data-store/LogStore.ts",
+      "line": 4,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "BackupManager",
+      "file": "/Users/kingj/code/Stratix/src/stratix-data-store/BackupManager.ts",
+      "line": 14,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "OpenClawConnectionStore",
+      "file": "/Users/kingj/code/Stratix/src/stratix-data-store/OpenClawConnectionStore.ts",
+      "line": 17,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "EnhancedTemplateLibrary",
+      "file": "/Users/kingj/code/Stratix/src/stratix-data-store/EnhancedTemplateLibrary.ts",
+      "line": 52,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "StratixDataStore",
+      "file": "/Users/kingj/code/Stratix/src/stratix-data-store/StratixDataStore.ts",
+      "line": 34,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "TemplateLibrary",
+      "file": "/Users/kingj/code/Stratix/src/stratix-data-store/TemplateLibrary.ts",
+      "line": 115,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "createDataStore",
+      "file": "/Users/kingj/code/Stratix/src/stratix-data-store/index.ts",
+      "line": 10,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "initializeDataStore",
+      "file": "/Users/kingj/code/Stratix/src/stratix-data-store/index.ts",
+      "line": 24,
+      "docstring": null,
+      "parameters": [
+        "dataDir?: string"
+      ],
+      "return_type": null
+    }
+  ],
+  "docstring": null
+}

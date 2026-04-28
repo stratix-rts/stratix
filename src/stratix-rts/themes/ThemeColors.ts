@@ -6,7 +6,7 @@
  * Also supports reduced motion preferences.
  */
 
-import Phaser from 'phaser';
+import type { GameObjects } from 'phaser';
 
 let _reducedMotion: boolean | null = null;
 let _reducedMotionListeners: Array<(reduced: boolean) => void> = [];
@@ -42,7 +42,9 @@ export function getDSColor(varName: string): number {
   if (!color) {
     return 0xffffff;
   }
-  return Phaser.Display.Color.HexStringToColor(color).color;
+  // Convert #RRGGBB to numeric color
+  const hex = color.replace('#', '');
+  return parseInt(hex, 16);
 }
 
 /** Check if reduced motion is preferred */
@@ -86,7 +88,7 @@ export function getStatusColor(status: 'success' | 'warning' | 'danger' | 'info'
 
 /** Apply glow effect to a graphics object (single frame) */
 export function drawGlowRing(
-  graphics: Phaser.GameObjects.Graphics,
+  graphics: GameObjects.Graphics,
   x: number,
   y: number,
   radius: number,

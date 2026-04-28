@@ -52,12 +52,14 @@ describe('StratixButton', () => {
       expect(ButtonSizes.lg.fontSize).toBe('16px');
     });
 
-    it('should have all three sizes', () => {
+    it('should have all sizes', () => {
       const sizeKeys = Object.keys(ButtonSizes);
-      expect(sizeKeys).toHaveLength(3);
+      expect(sizeKeys).toHaveLength(5);
       expect(sizeKeys).toContain('sm');
       expect(sizeKeys).toContain('md');
       expect(sizeKeys).toContain('lg');
+      expect(sizeKeys).toContain('xl');
+      expect(sizeKeys).toContain('fullscreen');
     });
   });
 

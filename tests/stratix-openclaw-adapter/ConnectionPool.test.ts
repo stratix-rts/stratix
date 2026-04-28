@@ -36,6 +36,7 @@ describe('ConnectionPool', () => {
       execute: jest.fn().mockResolvedValue({ success: true, data: 'result' }),
       getStatus: jest.fn().mockResolvedValue(mockStatus),
       subscribe: jest.fn(),
+      unsubscribe: jest.fn(),
       sendMessage: jest.fn().mockResolvedValue({
         messageId: 'msg-1',
         content: 'hello',

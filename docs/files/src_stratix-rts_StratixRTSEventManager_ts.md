@@ -1,0 +1,18 @@
+# src/stratix-rts/StratixRTSEventManager.ts
+
+> 语言：typescript | 代码行数：154
+
+## 概述
+
+（待补充）
+
+## 类
+
+| 类名 | 方法数 | 说明 |
+|------|--------|------|
+| `StratixRTSEventManager` | 0 | - |
+
+## 依赖
+
+- phaser
+- ../stratix-core/StratixEventBus

@@ -1,0 +1,25 @@
+{
+  "name": "services",
+  "path": "/Users/kingj/code/Stratix/src/services",
+  "file_count": 1,
+  "line_count": 277,
+  "main_classes": [
+    "SoundService"
+  ],
+  "main_functions": [],
+  "dependencies": [],
+  "doc_file": "/Users/kingj/code/Stratix/docs/modules/services.md",
+  "doc_coverage": 1.0,
+  "classes": [
+    {
+      "name": "SoundService",
+      "file": "/Users/kingj/code/Stratix/src/services/SoundService.ts",
+      "line": 32,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    }
+  ],
+  "functions": [],
+  "docstring": null
+}

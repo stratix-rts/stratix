@@ -1,0 +1,19 @@
+# src/stratix-agent/core/SessionManager.ts
+
+> 语言：typescript | 代码行数：186
+
+## 概述
+
+（待补充）
+
+## 类
+
+| 类名 | 方法数 | 说明 |
+|------|--------|------|
+| `SessionManager` | 0 | - |
+
+## 依赖
+
+- fs
+- fs/promises
+- ../types

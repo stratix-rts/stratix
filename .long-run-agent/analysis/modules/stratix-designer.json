@@ -1,0 +1,112 @@
+{
+  "name": "stratix-designer",
+  "path": "/Users/kingj/code/Stratix/src/stratix-designer",
+  "file_count": 13,
+  "line_count": 1280,
+  "main_classes": [
+    "StratixHeroDesigner",
+    "ConfigConverter",
+    "ConfigValidator",
+    "DevHeroTemplate",
+    "WriterHeroTemplate",
+    "AnalystHeroTemplate"
+  ],
+  "main_functions": [
+    "generateAgentId",
+    "generateSkillId",
+    "getHeroColor"
+  ],
+  "dependencies": [
+    "./utils",
+    "./templates",
+    "vue",
+    "./types",
+    "@/stratix-core/stratix-protocol",
+    "@/stratix-core/StratixEventBus"
+  ],
+  "doc_file": "/Users/kingj/code/Stratix/docs/modules/stratix-designer.md",
+  "doc_coverage": 0.0,
+  "classes": [
+    {
+      "name": "StratixHeroDesigner",
+      "file": "/Users/kingj/code/Stratix/src/stratix-designer/StratixHeroDesigner.ts",
+      "line": 18,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ConfigConverter",
+      "file": "/Users/kingj/code/Stratix/src/stratix-designer/utils/ConfigConverter.ts",
+      "line": 34,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ConfigValidator",
+      "file": "/Users/kingj/code/Stratix/src/stratix-designer/utils/ConfigValidator.ts",
+      "line": 20,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "DevHeroTemplate",
+      "file": "/Users/kingj/code/Stratix/src/stratix-designer/templates/DevHeroTemplate.ts",
+      "line": 6,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "WriterHeroTemplate",
+      "file": "/Users/kingj/code/Stratix/src/stratix-designer/templates/WriterHeroTemplate.ts",
+      "line": 6,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "AnalystHeroTemplate",
+      "file": "/Users/kingj/code/Stratix/src/stratix-designer/templates/AnalystHeroTemplate.ts",
+      "line": 6,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "generateAgentId",
+      "file": "/Users/kingj/code/Stratix/src/stratix-designer/templates/types.ts",
+      "line": 12,
+      "docstring": null,
+      "parameters": [
+        "type: HeroType"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "generateSkillId",
+      "file": "/Users/kingj/code/Stratix/src/stratix-designer/templates/types.ts",
+      "line": 19,
+      "docstring": null,
+      "parameters": [
+        "action: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "getHeroColor",
+      "file": "/Users/kingj/code/Stratix/src/stratix-designer/templates/types.ts",
+      "line": 23,
+      "docstring": null,
+      "parameters": [
+        "type: HeroType | string"
+      ],
+      "return_type": null
+    }
+  ],
+  "docstring": null
+}

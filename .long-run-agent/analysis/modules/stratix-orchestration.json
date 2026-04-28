@@ -1,0 +1,190 @@
+{
+  "name": "stratix-orchestration",
+  "path": "/Users/kingj/code/Stratix/src/stratix-orchestration",
+  "file_count": 18,
+  "line_count": 4877,
+  "main_classes": [
+    "OrchestrationSync",
+    "AgentCheckpointManager",
+    "BackgroundAgentService",
+    "RelevanceScorer",
+    "ContextCompressionService",
+    "TaskQueueService",
+    "ZoneCoordinator",
+    "ZoneCoordinatorEventEmitter",
+    "ZoneManager",
+    "AgentMessageRouter"
+  ],
+  "main_functions": [
+    "zoneHandler",
+    "taskHandler",
+    "bgHandler",
+    "msgHandler",
+    "zoneCoordHandler"
+  ],
+  "dependencies": [
+    "./ConversationConstraints",
+    "./AgentCheckpoint",
+    "./zone/ZoneState",
+    "./ZoneState",
+    "../../stratix-core/permission",
+    "../../stratix-database",
+    "../zone/ZoneManager",
+    "../../stratix-agent/core/LLMConnector",
+    "../../stratix-database/StratixDatabase",
+    "./task-queue/TaskItem",
+    "./ZoneCoordinatorEvents",
+    "./TaskItem",
+    "./task-queue/TaskQueueService",
+    "./MessageTypes",
+    "./background/BackgroundAgentService",
+    "mitt",
+    "./AgentProcess",
+    "./ContextManager",
+    "./zone/ZoneManager",
+    "./messaging/MessageTypes"
+  ],
+  "doc_file": "/Users/kingj/code/Stratix/docs/modules/stratix-orchestration.md",
+  "doc_coverage": 0.11,
+  "classes": [
+    {
+      "name": "OrchestrationSync",
+      "file": "/Users/kingj/code/Stratix/src/stratix-orchestration/OrchestrationSync.ts",
+      "line": 37,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "AgentCheckpointManager",
+      "file": "/Users/kingj/code/Stratix/src/stratix-orchestration/background/AgentCheckpoint.ts",
+      "line": 19,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "BackgroundAgentService",
+      "file": "/Users/kingj/code/Stratix/src/stratix-orchestration/background/BackgroundAgentService.ts",
+      "line": 6,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "RelevanceScorer",
+      "file": "/Users/kingj/code/Stratix/src/stratix-orchestration/context/RelevanceScorer.ts",
+      "line": 9,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ContextCompressionService",
+      "file": "/Users/kingj/code/Stratix/src/stratix-orchestration/context/ContextCompressionService.ts",
+      "line": 32,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "TaskQueueService",
+      "file": "/Users/kingj/code/Stratix/src/stratix-orchestration/task-queue/TaskQueueService.ts",
+      "line": 26,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ZoneCoordinator",
+      "file": "/Users/kingj/code/Stratix/src/stratix-orchestration/zone/ZoneCoordinator.ts",
+      "line": 125,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ZoneCoordinatorEventEmitter",
+      "file": "/Users/kingj/code/Stratix/src/stratix-orchestration/zone/ZoneCoordinatorEvents.ts",
+      "line": 54,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ZoneManager",
+      "file": "/Users/kingj/code/Stratix/src/stratix-orchestration/zone/ZoneManager.ts",
+      "line": 31,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "AgentMessageRouter",
+      "file": "/Users/kingj/code/Stratix/src/stratix-orchestration/messaging/AgentMessageRouter.ts",
+      "line": 20,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ConversationConstraints",
+      "file": "/Users/kingj/code/Stratix/src/stratix-orchestration/messaging/ConversationConstraints.ts",
+      "line": 37,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "AgentMessageStore",
+      "file": "/Users/kingj/code/Stratix/src/stratix-orchestration/messaging/AgentMessageStore.ts",
+      "line": 30,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "zoneHandler",
+      "file": "/Users/kingj/code/Stratix/src/stratix-orchestration/OrchestrationSync.ts",
+      "line": 145,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "taskHandler",
+      "file": "/Users/kingj/code/Stratix/src/stratix-orchestration/OrchestrationSync.ts",
+      "line": 159,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "bgHandler",
+      "file": "/Users/kingj/code/Stratix/src/stratix-orchestration/OrchestrationSync.ts",
+      "line": 177,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "msgHandler",
+      "file": "/Users/kingj/code/Stratix/src/stratix-orchestration/OrchestrationSync.ts",
+      "line": 199,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "zoneCoordHandler",
+      "file": "/Users/kingj/code/Stratix/src/stratix-orchestration/OrchestrationSync.ts",
+      "line": 215,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    }
+  ],
+  "docstring": null
+}

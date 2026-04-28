@@ -1,0 +1,147 @@
+{
+  "name": "stratix-openclaw-adapter",
+  "path": "/Users/kingj/code/Stratix/src/stratix-openclaw-adapter",
+  "file_count": 9,
+  "line_count": 2274,
+  "main_classes": [
+    "ConnectionPool",
+    "GatewayOpenClawAdapter",
+    "WebSocketOpenClawAdapter",
+    "RemoteOpenClawAdapter",
+    "LocalOpenClawAdapter"
+  ],
+  "main_functions": [
+    "demoOneToMany",
+    "testLocalConnection",
+    "testRemoteConnection",
+    "main",
+    "createOpenClawAdapter",
+    "createWebSocketAdapter",
+    "createConnectionPool"
+  ],
+  "dependencies": [
+    "@/stratix-core/config/defaults",
+    "fs",
+    "./ConnectionPool",
+    "ws",
+    "./LocalOpenClawAdapter",
+    "./RemoteOpenClawAdapter",
+    "path",
+    "./types",
+    "./GatewayOpenClawAdapter",
+    "./WebSocketOpenClawAdapter",
+    "@/stratix-core/stratix-protocol",
+    "./index",
+    "axios",
+    "crypto"
+  ],
+  "doc_file": "/Users/kingj/code/Stratix/docs/modules/stratix-openclaw-adapter.md",
+  "doc_coverage": 0.33,
+  "classes": [
+    {
+      "name": "ConnectionPool",
+      "file": "/Users/kingj/code/Stratix/src/stratix-openclaw-adapter/ConnectionPool.ts",
+      "line": 65,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "GatewayOpenClawAdapter",
+      "file": "/Users/kingj/code/Stratix/src/stratix-openclaw-adapter/GatewayOpenClawAdapter.ts",
+      "line": 34,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "WebSocketOpenClawAdapter",
+      "file": "/Users/kingj/code/Stratix/src/stratix-openclaw-adapter/WebSocketOpenClawAdapter.ts",
+      "line": 58,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "RemoteOpenClawAdapter",
+      "file": "/Users/kingj/code/Stratix/src/stratix-openclaw-adapter/RemoteOpenClawAdapter.ts",
+      "line": 18,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "LocalOpenClawAdapter",
+      "file": "/Users/kingj/code/Stratix/src/stratix-openclaw-adapter/LocalOpenClawAdapter.ts",
+      "line": 57,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "demoOneToMany",
+      "file": "/Users/kingj/code/Stratix/src/stratix-openclaw-adapter/demo-one-to-many.ts",
+      "line": 6,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "testLocalConnection",
+      "file": "/Users/kingj/code/Stratix/src/stratix-openclaw-adapter/test-connection.ts",
+      "line": 34,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "testRemoteConnection",
+      "file": "/Users/kingj/code/Stratix/src/stratix-openclaw-adapter/test-connection.ts",
+      "line": 105,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "main",
+      "file": "/Users/kingj/code/Stratix/src/stratix-openclaw-adapter/test-connection.ts",
+      "line": 148,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "createOpenClawAdapter",
+      "file": "/Users/kingj/code/Stratix/src/stratix-openclaw-adapter/index.ts",
+      "line": 40,
+      "docstring": null,
+      "parameters": [
+        "config: StratixOpenClawConfig"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "createWebSocketAdapter",
+      "file": "/Users/kingj/code/Stratix/src/stratix-openclaw-adapter/index.ts",
+      "line": 53,
+      "docstring": null,
+      "parameters": [
+        "config: StratixOpenClawConfig"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "createConnectionPool",
+      "file": "/Users/kingj/code/Stratix/src/stratix-openclaw-adapter/index.ts",
+      "line": 57,
+      "docstring": null,
+      "parameters": [
+        "options?: import('./ConnectionPool'"
+      ],
+      "return_type": null
+    }
+  ],
+  "docstring": null
+}

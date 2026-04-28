@@ -1,0 +1,157 @@
+{
+  "name": "stratix-database",
+  "path": "/Users/kingj/code/Stratix/src/stratix-database",
+  "file_count": 13,
+  "line_count": 3566,
+  "main_classes": [
+    "SkillRepository",
+    "AgentCapabilityRepository",
+    "TaskFlowRepository",
+    "StratixDatabase",
+    "ZoneMemberRepository",
+    "ZoneCoordinatorConfigRepository",
+    "AgentChatMessageRepository",
+    "ProjectRepository",
+    "AgentRepository",
+    "ZoneRepository"
+  ],
+  "main_functions": [
+    "migrate",
+    "initializeDatabase",
+    "getDatabase"
+  ],
+  "dependencies": [
+    "../stratix-agent/types",
+    "./ProjectRepository",
+    "fs-extra",
+    "./AgentRepository",
+    "path",
+    "../stratix-project/utils/helpers",
+    "../stratix-rts/zones/BaseZone",
+    "../stratix-core/stratix-protocol",
+    "../stratix-project/types",
+    "./StratixDatabase",
+    "better-sqlite3"
+  ],
+  "doc_file": "/Users/kingj/code/Stratix/docs/modules/stratix-database.md",
+  "doc_coverage": 0.08,
+  "classes": [
+    {
+      "name": "SkillRepository",
+      "file": "/Users/kingj/code/Stratix/src/stratix-database/SkillRepository.ts",
+      "line": 45,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "AgentCapabilityRepository",
+      "file": "/Users/kingj/code/Stratix/src/stratix-database/AgentCapabilityRepository.ts",
+      "line": 17,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "TaskFlowRepository",
+      "file": "/Users/kingj/code/Stratix/src/stratix-database/TaskFlowRepository.ts",
+      "line": 48,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "StratixDatabase",
+      "file": "/Users/kingj/code/Stratix/src/stratix-database/StratixDatabase.ts",
+      "line": 11,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ZoneMemberRepository",
+      "file": "/Users/kingj/code/Stratix/src/stratix-database/ZoneMemberRepository.ts",
+      "line": 16,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ZoneCoordinatorConfigRepository",
+      "file": "/Users/kingj/code/Stratix/src/stratix-database/ZoneCoordinatorConfigRepository.ts",
+      "line": 36,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "AgentChatMessageRepository",
+      "file": "/Users/kingj/code/Stratix/src/stratix-database/AgentChatMessageRepository.ts",
+      "line": 12,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ProjectRepository",
+      "file": "/Users/kingj/code/Stratix/src/stratix-database/ProjectRepository.ts",
+      "line": 6,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "AgentRepository",
+      "file": "/Users/kingj/code/Stratix/src/stratix-database/AgentRepository.ts",
+      "line": 32,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ZoneRepository",
+      "file": "/Users/kingj/code/Stratix/src/stratix-database/ZoneRepository.ts",
+      "line": 73,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "AuditLogRepository",
+      "file": "/Users/kingj/code/Stratix/src/stratix-database/AuditLogRepository.ts",
+      "line": 50,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "migrate",
+      "file": "/Users/kingj/code/Stratix/src/stratix-database/migrate.ts",
+      "line": 9,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "initializeDatabase",
+      "file": "/Users/kingj/code/Stratix/src/stratix-database/StratixDatabase.ts",
+      "line": 739,
+      "docstring": null,
+      "parameters": [
+        "config?: DatabaseConfig"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "getDatabase",
+      "file": "/Users/kingj/code/Stratix/src/stratix-database/StratixDatabase.ts",
+      "line": 747,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    }
+  ],
+  "docstring": null
+}

@@ -1,0 +1,96 @@
+{
+  "name": "stratix-tailscale",
+  "path": "/Users/kingj/code/Stratix/src/stratix-tailscale",
+  "file_count": 7,
+  "line_count": 920,
+  "main_classes": [
+    "TailscaleService",
+    "EmbeddedTailscale"
+  ],
+  "main_functions": [
+    "testTailscale",
+    "interactiveLogin",
+    "testEmbeddedTailscale",
+    "createTailscaleService",
+    "createEmbeddedTailscale"
+  ],
+  "dependencies": [
+    "util",
+    "child_process",
+    "./TailscaleService",
+    "fs",
+    "os",
+    "path",
+    "./types",
+    "./EmbeddedTailscale",
+    "readline",
+    "axios"
+  ],
+  "doc_file": "/Users/kingj/code/Stratix/docs/modules/stratix-tailscale.md",
+  "doc_coverage": 0.0,
+  "classes": [
+    {
+      "name": "TailscaleService",
+      "file": "/Users/kingj/code/Stratix/src/stratix-tailscale/TailscaleService.ts",
+      "line": 22,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "EmbeddedTailscale",
+      "file": "/Users/kingj/code/Stratix/src/stratix-tailscale/EmbeddedTailscale.ts",
+      "line": 39,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "testTailscale",
+      "file": "/Users/kingj/code/Stratix/src/stratix-tailscale/test-tailscale.ts",
+      "line": 3,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "interactiveLogin",
+      "file": "/Users/kingj/code/Stratix/src/stratix-tailscale/interactive-login.ts",
+      "line": 5,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "testEmbeddedTailscale",
+      "file": "/Users/kingj/code/Stratix/src/stratix-tailscale/test-embedded.ts",
+      "line": 3,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "createTailscaleService",
+      "file": "/Users/kingj/code/Stratix/src/stratix-tailscale/index.ts",
+      "line": 16,
+      "docstring": null,
+      "parameters": [
+        "config?: TailscaleConfig"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "createEmbeddedTailscale",
+      "file": "/Users/kingj/code/Stratix/src/stratix-tailscale/index.ts",
+      "line": 20,
+      "docstring": null,
+      "parameters": [
+        "config?: import('./EmbeddedTailscale'"
+      ],
+      "return_type": null
+    }
+  ],
+  "docstring": null
+}

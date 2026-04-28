@@ -1,0 +1,70 @@
+{
+  "name": "electron",
+  "path": "/Users/kingj/code/Stratix/src/electron",
+  "file_count": 2,
+  "line_count": 719,
+  "main_classes": [],
+  "main_functions": [
+    "initializeServices",
+    "createWindow",
+    "setupIPC",
+    "loadDevUrl",
+    "handler"
+  ],
+  "dependencies": [
+    "fs",
+    "../stratix-tailscale/EmbeddedTailscale",
+    "fs-extra",
+    "../stratix-gateway",
+    "../stratix-openclaw-adapter/WebSocketOpenClawAdapter",
+    "path",
+    "electron",
+    "../stratix-gateway/dataStoreService"
+  ],
+  "doc_file": "/Users/kingj/code/Stratix/docs/modules/electron.md",
+  "doc_coverage": 1.0,
+  "classes": [],
+  "functions": [
+    {
+      "name": "initializeServices",
+      "file": "/Users/kingj/code/Stratix/src/electron/main.ts",
+      "line": 46,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "createWindow",
+      "file": "/Users/kingj/code/Stratix/src/electron/main.ts",
+      "line": 82,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "setupIPC",
+      "file": "/Users/kingj/code/Stratix/src/electron/main.ts",
+      "line": 136,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "loadDevUrl",
+      "file": "/Users/kingj/code/Stratix/src/electron/main.ts",
+      "line": 102,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "handler",
+      "file": "/Users/kingj/code/Stratix/src/electron/preload.ts",
+      "line": 108,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    }
+  ],
+  "docstring": null
+}

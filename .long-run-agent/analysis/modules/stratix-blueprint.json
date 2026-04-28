@@ -1,0 +1,79 @@
+{
+  "name": "stratix-blueprint",
+  "path": "/Users/kingj/code/Stratix/src/stratix-blueprint",
+  "file_count": 8,
+  "line_count": 848,
+  "main_classes": [
+    "BlueprintIntegration",
+    "DependencyLine",
+    "LayoutEngine",
+    "TaskNode",
+    "BlueprintCanvas"
+  ],
+  "main_functions": [],
+  "dependencies": [
+    "../stratix-blueprint/core/LayoutEngine",
+    "../stratix-ai-service/parsers/RequirementParser",
+    "./colors",
+    "./TaskNode",
+    "../../stratix-ai-service/types",
+    "../stratix-ai-service/parsers/TaskSplitter",
+    "./DependencyLine",
+    "./LayoutEngine",
+    "../stratix-ai-service/types",
+    "phaser",
+    "../types"
+  ],
+  "doc_file": "/Users/kingj/code/Stratix/docs/modules/stratix-blueprint.md",
+  "doc_coverage": 0.0,
+  "classes": [
+    {
+      "name": "BlueprintIntegration",
+      "file": "/Users/kingj/code/Stratix/src/stratix-blueprint/BlueprintIntegration.ts",
+      "line": 14,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "DependencyLine",
+      "file": "/Users/kingj/code/Stratix/src/stratix-blueprint/core/DependencyLine.ts",
+      "line": 5,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "Phaser"
+      ]
+    },
+    {
+      "name": "LayoutEngine",
+      "file": "/Users/kingj/code/Stratix/src/stratix-blueprint/core/LayoutEngine.ts",
+      "line": 4,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "TaskNode",
+      "file": "/Users/kingj/code/Stratix/src/stratix-blueprint/core/TaskNode.ts",
+      "line": 7,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "Phaser"
+      ]
+    },
+    {
+      "name": "BlueprintCanvas",
+      "file": "/Users/kingj/code/Stratix/src/stratix-blueprint/core/BlueprintCanvas.ts",
+      "line": 10,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "Phaser"
+      ]
+    }
+  ],
+  "functions": [],
+  "docstring": null
+}

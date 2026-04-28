@@ -1,0 +1,38 @@
+{
+  "name": "stratix-lra-bridge",
+  "path": "/Users/kingj/code/Stratix/src/stratix-lra-bridge",
+  "file_count": 4,
+  "line_count": 367,
+  "main_classes": [
+    "LRAWatcher",
+    "LRAClient"
+  ],
+  "main_functions": [],
+  "dependencies": [
+    "axios",
+    "./types",
+    "./LRAClient"
+  ],
+  "doc_file": "/Users/kingj/code/Stratix/docs/modules/stratix-lra-bridge.md",
+  "doc_coverage": 0.0,
+  "classes": [
+    {
+      "name": "LRAWatcher",
+      "file": "/Users/kingj/code/Stratix/src/stratix-lra-bridge/LRAWatcher.ts",
+      "line": 20,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "LRAClient",
+      "file": "/Users/kingj/code/Stratix/src/stratix-lra-bridge/LRAClient.ts",
+      "line": 11,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    }
+  ],
+  "functions": [],
+  "docstring": null
+}

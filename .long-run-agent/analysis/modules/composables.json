@@ -1,0 +1,223 @@
+{
+  "name": "composables",
+  "path": "/Users/kingj/code/Stratix/src/composables",
+  "file_count": 12,
+  "line_count": 2459,
+  "main_classes": [],
+  "main_functions": [
+    "useToast",
+    "show",
+    "success",
+    "error",
+    "warning",
+    "info",
+    "dismiss",
+    "dismissAll",
+    "useChat",
+    "updateMessageStatus"
+  ],
+  "dependencies": [
+    "../useCelebration",
+    "../usePerformanceMonitor",
+    "vue",
+    "@/services/SoundService",
+    "@/stratix-rts/events/core/RTSEventBus",
+    "@/components/ui/ToastService",
+    "@/stratix-core/utils/MarkdownRenderer",
+    "@jest/globals",
+    "@/stratix-character-creator/config/providerConfig"
+  ],
+  "doc_file": "/Users/kingj/code/Stratix/docs/modules/composables.md",
+  "doc_coverage": 0.25,
+  "classes": [],
+  "functions": [
+    {
+      "name": "useToast",
+      "file": "/Users/kingj/code/Stratix/src/composables/useToast.ts",
+      "line": 12,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "show",
+      "file": "/Users/kingj/code/Stratix/src/composables/useToast.ts",
+      "line": 27,
+      "docstring": null,
+      "parameters": [
+        "options: ToastOptions"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "success",
+      "file": "/Users/kingj/code/Stratix/src/composables/useToast.ts",
+      "line": 34,
+      "docstring": null,
+      "parameters": [
+        "title: string",
+        "message?: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "error",
+      "file": "/Users/kingj/code/Stratix/src/composables/useToast.ts",
+      "line": 41,
+      "docstring": null,
+      "parameters": [
+        "title: string",
+        "message?: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "warning",
+      "file": "/Users/kingj/code/Stratix/src/composables/useToast.ts",
+      "line": 48,
+      "docstring": null,
+      "parameters": [
+        "title: string",
+        "message?: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "info",
+      "file": "/Users/kingj/code/Stratix/src/composables/useToast.ts",
+      "line": 55,
+      "docstring": null,
+      "parameters": [
+        "title: string",
+        "message?: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "dismiss",
+      "file": "/Users/kingj/code/Stratix/src/composables/useToast.ts",
+      "line": 62,
+      "docstring": null,
+      "parameters": [
+        "id: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "dismissAll",
+      "file": "/Users/kingj/code/Stratix/src/composables/useToast.ts",
+      "line": 69,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "useChat",
+      "file": "/Users/kingj/code/Stratix/src/composables/useChat.ts",
+      "line": 63,
+      "docstring": null,
+      "parameters": [
+        "options: UseChatOptions"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "updateMessageStatus",
+      "file": "/Users/kingj/code/Stratix/src/composables/useChat.ts",
+      "line": 85,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "loadHistory",
+      "file": "/Users/kingj/code/Stratix/src/composables/useChat.ts",
+      "line": 97,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "sendMessage",
+      "file": "/Users/kingj/code/Stratix/src/composables/useChat.ts",
+      "line": 146,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "retryMessage",
+      "file": "/Users/kingj/code/Stratix/src/composables/useChat.ts",
+      "line": 306,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "clearHistory",
+      "file": "/Users/kingj/code/Stratix/src/composables/useChat.ts",
+      "line": 313,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "handleKeyDown",
+      "file": "/Users/kingj/code/Stratix/src/composables/useChat.ts",
+      "line": 320,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "handleCompositionStart",
+      "file": "/Users/kingj/code/Stratix/src/composables/useChat.ts",
+      "line": 329,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "handleCompositionEnd",
+      "file": "/Users/kingj/code/Stratix/src/composables/useChat.ts",
+      "line": 333,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "parseShortcut",
+      "file": "/Users/kingj/code/Stratix/src/composables/useKeyboardNav.ts",
+      "line": 48,
+      "docstring": null,
+      "parameters": [
+        "shortcut: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "matchesShortcut",
+      "file": "/Users/kingj/code/Stratix/src/composables/useKeyboardNav.ts",
+      "line": 61,
+      "docstring": null,
+      "parameters": [
+        "event: KeyboardEvent",
+        "shortcut: string",
+        "platform: string = navigator.platform"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "normalizeKey",
+      "file": "/Users/kingj/code/Stratix/src/composables/useKeyboardNav.ts",
+      "line": 109,
+      "docstring": null,
+      "parameters": [
+        "key: string",
+        "_code: string"
+      ],
+      "return_type": null
+    }
+  ],
+  "docstring": null
+}

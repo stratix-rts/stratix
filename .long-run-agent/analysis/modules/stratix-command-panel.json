@@ -1,0 +1,36 @@
+{
+  "name": "stratix-command-panel",
+  "path": "/Users/kingj/code/Stratix/src/stratix-command-panel",
+  "file_count": 3,
+  "line_count": 356,
+  "main_classes": [
+    "ParamValidator",
+    "CommandBuilder"
+  ],
+  "main_functions": [],
+  "dependencies": [
+    "@/stratix-core/stratix-protocol"
+  ],
+  "doc_file": "/Users/kingj/code/Stratix/docs/modules/stratix-command-panel.md",
+  "doc_coverage": 0.33,
+  "classes": [
+    {
+      "name": "ParamValidator",
+      "file": "/Users/kingj/code/Stratix/src/stratix-command-panel/utils/ParamValidator.ts",
+      "line": 23,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "CommandBuilder",
+      "file": "/Users/kingj/code/Stratix/src/stratix-command-panel/utils/CommandBuilder.ts",
+      "line": 15,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    }
+  ],
+  "functions": [],
+  "docstring": null
+}

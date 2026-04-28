@@ -1,0 +1,425 @@
+{
+  "name": "stratix-rts",
+  "path": "/Users/kingj/code/Stratix/src/stratix-rts",
+  "file_count": 119,
+  "line_count": 25817,
+  "main_classes": [
+    "StratixRTSUIScene",
+    "StratixRTSEventManager",
+    "StratixRTSGameScene",
+    "SelectBox",
+    "ZoneDrawingUI",
+    "HelpPanel",
+    "ShortcutManager",
+    "ThemeSelectorUI",
+    "ShortcutBar",
+    "Map3DView"
+  ],
+  "main_functions": [
+    "hexToNumber",
+    "BG_COLOR",
+    "hexToNumber",
+    "createStratixRTS",
+    "handleContextMenu",
+    "handleResize",
+    "normalizeAttribute",
+    "calculateDimensionRawScore",
+    "calculateDimensionScore",
+    "hexToNumber"
+  ],
+  "dependencies": [
+    "../../events/core/RTSEventBus",
+    "./SpatialHashGrid",
+    "../constants",
+    "../stratix-project/ProjectManagerIntegrationHTTP",
+    "./ground/GroundDecorationSystem",
+    "./types",
+    "../stratix-core/StratixEventBus",
+    "./ZoneConnection",
+    "./SpatialGridDebugger",
+    "@/stratix-core/stratix-protocol",
+    "../../constants",
+    "../history/ZoneHistory",
+    "./systems/CommandSystem",
+    "./effects/DataFlowAnimation",
+    "@/stratix-character-creator/core/CharacterComposer",
+    "../../events/replay",
+    "./ZoneTemplateManager",
+    "../types/RTSEventTypes",
+    "./utils/InputHandler",
+    "./StratixRTSEventManager"
+  ],
+  "doc_file": "/Users/kingj/code/Stratix/docs/modules/stratix-rts.md",
+  "doc_coverage": 0.21,
+  "classes": [
+    {
+      "name": "StratixRTSUIScene",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/StratixRTSUIScene.ts",
+      "line": 17,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "Phaser"
+      ]
+    },
+    {
+      "name": "StratixRTSEventManager",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/StratixRTSEventManager.ts",
+      "line": 24,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "StratixRTSGameScene",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/StratixRTSGameScene.ts",
+      "line": 35,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "Phaser"
+      ]
+    },
+    {
+      "name": "SelectBox",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/ui/SelectBox.ts",
+      "line": 21,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ZoneDrawingUI",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/ui/ZoneDrawingUI.ts",
+      "line": 5,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "HelpPanel",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/ui/HelpPanel.ts",
+      "line": 22,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ShortcutManager",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/ui/ShortcutManager.ts",
+      "line": 32,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ThemeSelectorUI",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/ui/ThemeSelectorUI.ts",
+      "line": 15,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ShortcutBar",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/ui/ShortcutBar.ts",
+      "line": 20,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "Map3DView",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/ui/Map3DView.ts",
+      "line": 37,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "AgentPowerRingChart",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/ui/AgentPowerRingChart.ts",
+      "line": 31,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ZoneBatchOperations",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/ui/ZoneBatchOperations.ts",
+      "line": 5,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "VersionBadge",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/ui/VersionBadge.ts",
+      "line": 10,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "CombatPowerCalculator",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/ui/CombatPowerCalculator.ts",
+      "line": 120,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "AgentPowerRanking",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/ui/AgentPowerRanking.ts",
+      "line": 44,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "AgentRadarChart",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/ui/AgentRadarChart.ts",
+      "line": 30,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "CommandPanelV2",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/ui/v2/CommandPanelV2.ts",
+      "line": 86,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "EnhancedUIComponent"
+      ]
+    },
+    {
+      "name": "MinimapV2",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/ui/v2/MinimapV2.ts",
+      "line": 29,
+      "docstring": null,
+      "methods": [],
+      "bases": [
+        "EnhancedUIComponent"
+      ]
+    },
+    {
+      "name": "RTSUIFactory",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/ui/v2/RTSUIFactory.ts",
+      "line": 42,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    },
+    {
+      "name": "ReplayControls",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/ui/v2/ReplayControls.ts",
+      "line": 38,
+      "docstring": null,
+      "methods": [],
+      "bases": []
+    }
+  ],
+  "functions": [
+    {
+      "name": "hexToNumber",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/constants.ts",
+      "line": 11,
+      "docstring": null,
+      "parameters": [
+        "hex: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "BG_COLOR",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/constants.ts",
+      "line": 15,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "hexToNumber",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/StratixRTSGameScene.ts",
+      "line": 100,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "createStratixRTS",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/index.ts",
+      "line": 18,
+      "docstring": null,
+      "parameters": [
+        "config: StratixRTSConfig"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "handleContextMenu",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/index.ts",
+      "line": 44,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "handleResize",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/index.ts",
+      "line": 62,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "normalizeAttribute",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/ui/CombatPowerCalculator.ts",
+      "line": 81,
+      "docstring": null,
+      "parameters": [
+        "value: number",
+        "maxValue: number"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "calculateDimensionRawScore",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/ui/CombatPowerCalculator.ts",
+      "line": 88,
+      "docstring": null,
+      "parameters": [
+        "dimension: CombatDimension",
+        "attributes: Record<string",
+        "number>"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "calculateDimensionScore",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/ui/CombatPowerCalculator.ts",
+      "line": 109,
+      "docstring": null,
+      "parameters": [
+        "dimension: CombatDimension",
+        "attributes: Record<string",
+        "number>"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "hexToNumber",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/zones/BaseZone.ts",
+      "line": 6,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "hexToNumber",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/zones/TaskZone.ts",
+      "line": 10,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "log",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/test/main.ts",
+      "line": 10,
+      "docstring": null,
+      "parameters": [
+        "message: string",
+        "type: string = 'info'"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "createAgentConfig",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/test/main.ts",
+      "line": 42,
+      "docstring": null,
+      "parameters": [
+        "type: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "findFile",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/test/server.ts",
+      "line": 20,
+      "docstring": null,
+      "parameters": [
+        "name: string",
+        "dir: string"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "serveFile",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/test/server.ts",
+      "line": 63,
+      "docstring": null,
+      "parameters": [
+        "filePath: string",
+        "res: any"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "makeAgentZoneSelector",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/state/RTSStateSelectors.ts",
+      "line": 7,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "makeOnlineAgentsSelector",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/state/RTSStateSelectors.ts",
+      "line": 15,
+      "docstring": null,
+      "parameters": [],
+      "return_type": null
+    },
+    {
+      "name": "drawBaseBodyFrame",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/scripts/BaseTextureGenerator.ts",
+      "line": 13,
+      "docstring": null,
+      "parameters": [
+        "ctx: CanvasRenderingContext2D",
+        "x: number",
+        "y: number",
+        "colors: { primary: string; secondary: string; outline: string }",
+        "animation: string",
+        "frame: number",
+        "direction: number"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "generateBaseBodyTexture",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/scripts/BaseTextureGenerator.ts",
+      "line": 114,
+      "docstring": null,
+      "parameters": [
+        "bodyType: BodyType"
+      ],
+      "return_type": null
+    },
+    {
+      "name": "generateBaseTextureInBrowser",
+      "file": "/Users/kingj/code/Stratix/src/stratix-rts/scripts/BaseTextureGenerator.ts",
+      "line": 144,
+      "docstring": null,
+      "parameters": [
+        "bodyType: BodyType"
+      ],
+      "return_type": null
+    }
+  ],
+  "docstring": null
+}
