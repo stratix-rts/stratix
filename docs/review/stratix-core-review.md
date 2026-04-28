@@ -21,6 +21,204 @@
 
 ---
 
+## 模块职责
+
+stratix-core 是整个项目的基础设施层，被所有其他模块依赖：
+
+### 通信层
+
+| 组件 | 职责 |
+|------|------|
+| `StratixEventBus` | 基于 mitt 的全局事件发布/订阅，支持事件缓冲重放 |
+| `StatusSyncWebSocketService` | WebSocket 客户端，Zone 事件转发到游戏/RTS |
+
+### 服务层
+
+| 组件 | 职责 |
+|------|------|
+| `ServiceLocator` | 环境检测（Electron/Web）和服务提供者路由 |
+| `ServiceProvider` | 服务提供者基类 |
+| `ElectronServiceProvider` | Electron 环境下的服务实现 |
+| `WebServiceProvider` | 浏览器环境下的服务实现 |
+
+### Agent 层
+
+| 组件 | 职责 |
+|------|------|
+| `AgentRouter` | Agent 任务分发，支持 direct/remote 隔离策略 |
+| `AgentExecutor` | Agent 执行器 |
+| `StratixAgentExecutor` | Stratix Agent 专用执行器 |
+
+### 资源层
+
+| 组件 | 职责 |
+|------|------|
+| `TextureManager` | Canvas 纹理生成、上传、LRU 缓存（MAX_CACHE_SIZE=20） |
+| `OpenClawConnectionManager` | OpenClaw 连接管理 |
+| `DeviceIdentityManager` | 设备身份管理 |
+
+### 重试和弹性
+
+| 组件 | 职责 |
+|------|------|
+| `RetryPolicyEngine` | 指数退避重试，支持 jitter、source-aware |
+| `OpenClawConnectionResilience` | OpenClaw 连接弹性（重连、心跳） |
+
+### 权限和状态
+
+| 组件 | 职责 |
+|------|------|
+| `PermissionOrchestrator` | 权限决策（allow/deny/ask） |
+| `StratixStateStore` | 前端状态存储（Zone 状态同步） |
+
+### 工具和类型
+
+| 组件 | 职责 |
+|------|------|
+| `errors.ts` | 错误类层次 |
+| `stratix-protocol.ts` | 数据协议定义 |
+| `StratixIdGenerator` | ID 生成器 |
+| `StratixConfigValidator` | 配置验证 |
+
+---
+
+## 核心接口
+
+```typescript
+// 入口导出 (index.ts)
+export * from './stratix-protocol';
+export { default as StratixEventBus } from './StratixEventBus';
+export * from './utils/index';
+
+// StratixEventBus (单例)
+class StratixEventBus {
+  static getInstance(): StratixEventBus
+  on(event: string, handler: Function): void
+  off(event: string, handler: Function): void
+  emit(event: string, data?: any): void
+  bufferEvent(event: string, data: StratixEvent): void  // 缓冲未订阅事件
+  getBufferedEvents(event: string): StratixEvent[]     // 获取缓冲事件
+}
+
+// ServiceLocator (单例)
+class ServiceLocator {
+  static getInstance(): ServiceLocator
+  getProvider(): ServiceProvider
+  getService(name: string): any
+}
+
+// AgentRouter (模块级单例)
+const agentRouter: AgentRouter
+class AgentRouter {
+  dispatch(task: AgentTask, agentId?: string, signal?: AbortSignal): Promise<unknown>
+  getRunningTasks(): TaskContext[]
+  abort(taskId: string): void
+}
+
+// RetryPolicyEngine (模块级单例)
+const retryPolicyEngine: RetryPolicyEngine
+class RetryPolicyEngine {
+  execute<T>(operation: () => Promise<T>, options: RetryOptions): Promise<T>
+  shouldRetry(error: Error, attempt: number, options: RetryOptions): boolean
+  calculateDelay(attempt: number, options: RetryOptions): number
+}
+
+// TextureManager (模块级单例)
+const textureManager: TextureManager
+class TextureManager {
+  getTexture(textureId: string): Promise<HTMLCanvasElement | ImageBitmap>
+  uploadTexture(textureId: string, data: ImageData): Promise<string>
+  clearCache(): void
+}
+
+// PermissionOrchestrator
+class PermissionOrchestrator {
+  decide(context: PermissionContext): PermissionDecision
+  addPolicy(policy: Policy): void
+  removePolicy(policyId: string): void
+}
+```
+
+---
+
+## 依赖关系
+
+```
+stratix-core (被所有模块依赖，是基础层)
+├── mitt (事件总线)
+├── stratix-protocol (数据协议)
+└── 无其他业务模块依赖
+```
+
+### 被依赖
+
+- **所有模块** - `stratix-event-bus` 是全局通信基础设施
+- `stratix-gateway` - StatusSyncWebSocketService, PermissionOrchestrator
+- `stratix-agent` - RetryPolicyEngine
+- `stratix-project` - StatusSyncWebSocketService
+- `stratix-rts` - TextureManager, StratixEventBus
+- `electron` - ServiceLocator (ElectronServiceProvider)
+
+---
+
+## 数据流
+
+### 事件发布/订阅流
+
+```
+模块A emit('zone:updated', data)
+  → StratixEventBus.emitter.emit()
+  → 已订阅的模块B/C/D 的 handler(data)
+  → 若无订阅者：bufferEvent() 缓冲（MAX_BUFFER_SIZE=100）
+  → 后续订阅时：getBufferedEvents() 重放
+```
+
+### 服务定位流
+
+```
+ServiceLocator.getInstance()
+  → getProvider()
+    → 检测 window.electronAPI 存在？
+      → Yes: ElectronServiceProvider
+      → No: WebServiceProvider
+    → 返回对应 Provider 实例
+```
+
+### Agent 路由流
+
+```
+AgentRouter.dispatch(task, agentId)
+  → 检查 isolation 策略
+    → "direct": 直接执行
+    → "remote": 未实现（warning + fallback to direct）
+  → executor.execute(task, agentId, signal)
+  → 返回 Promise<TaskResult>
+```
+
+### 重试流
+
+```
+RetryPolicyEngine.execute(operation, options)
+  → try operation()
+    → success: return result
+    → failure: shouldRetry()?
+      → yes: calculateDelay() → sleep → retry
+      → no: throw error
+```
+
+### OpenClaw 连接流
+
+```
+UnifiedOpenClawConnectionManager.connect(deviceId)
+  → pairConnectProxy() (配对代理)
+    → fetch('/api/openclaw/proxy/...')
+  → WebSocket 连接
+  → 心跳保持
+  → 断线重连 (指数退避)
+```
+
+---
+
 ## 代码质量
 
 ### 单例滥用严重

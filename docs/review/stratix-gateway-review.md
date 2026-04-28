@@ -17,6 +17,168 @@
 
 ---
 
+## 模块职责
+
+Stratix Gateway 是后端核心服务，采用 Express.js 实现，提供以下能力：
+
+1. **HTTP REST API** - 14+ 路由域（agent, command, lra, openclaw, project, skill, template, texture, zone, zone-context, zone-coordinator, zone-audit, agentOrchestration, agentTask）
+2. **WebSocket 状态同步** - `StatusSyncService` 维护 WebSocket 连接，实时推送 Zone/Agent 状态
+3. **Zone 生命周期管理** - `ZoneService` 封装 Zone CRUD、文件管理、任务管理、消息系统、软删除回收站
+4. **Agent 编排** - `AgentOrchestrationService` 管理多 Agent 协作
+5. **OpenClaw 代理** - `OpenClawProxyManager` / `OpenClawConnectionManager` 管理 OpenClaw 设备连接
+6. **NocoDB 集成** - 可选的 NocoDB 服务集成
+7. **优雅关闭** - SIGTERM/SIGINT 处理，清理定时任务和连接
+
+### ZoneService 职责明细
+
+ZoneService 是最核心的业务服务（约 1640 行），包含：
+
+| 功能域 | 方法数 | 说明 |
+|--------|--------|------|
+| Zone CRUD | 8 | create, get, update, delete, restore, permanentlyDelete, emptyTrash, search |
+| Zone Members | 4 | addMember, removeMember, addMembers, removeMembers |
+| Zone Files | 10+ | addFile, addFiles, removeFile, getFileWithContent, refreshFile, scanFolder, searchFiles, getFileVersions, updateFileWithVersion, rollbackFileToVersion |
+| Zone Tasks | 8 | getTasks, getTask, createTask, updateTask, deleteTask, claimTask, batchCreate, batchUpdate |
+| Zone Messages | 3 | getMessages, getMessagesCount, addMessage |
+| Import/Export | 2 | exportZone, cloneZone, importZone |
+| 统计 | 1 | getZoneStatistics |
+
+---
+
+## 核心接口
+
+### 导出
+
+```typescript
+// 服务入口
+export async function startGatewayService(options?: GatewayServiceOptions): Promise<GatewayServiceInstance>
+
+// 内部事件总线（单例）
+export const gatewayEventBus: GatewayEventBus
+
+// Zone 服务（单例）
+export const zoneService: ZoneService
+```
+
+### GatewayEventBus 接口
+
+```typescript
+class GatewayEventBus extends EventEmitter {
+  static getInstance(): GatewayEventBus
+
+  // Channel 消息
+  publishChannelMessage(projectId, channelId, message, subscriberIds): void
+  onChannelMessage(handler): () => void
+  onAgentMention(agentId, handler): () => void
+
+  // Zone 事件
+  publishZoneEvent(type, zoneId, projectId, data?): void
+  onZoneEvent(handler): () => void
+}
+```
+
+### ZoneService 接口
+
+```typescript
+class ZoneService {
+  initialize(): Promise<void>
+  setPermissionOrchestrator(orchestrator: PermissionOrchestrator): void
+
+  // Zone CRUD
+  getZones(projectId): Promise<Zone[]>
+  getZone(zoneId): Promise<Zone | null>
+  createZone(projectId, title, prompt, agentId): Promise<Zone>
+  updateZone(zoneId, updates, agentId): Promise<Zone>
+  deleteZone(zoneId, agentId): Promise<boolean>
+
+  // Members
+  addMember(zoneId, agentId, requesterId): Promise<Zone>
+  removeMember(zoneId, agentId, requesterId): Promise<Zone>
+
+  // Files
+  addFile(zoneId, name, sourceType, source, fileType?, agentId?): Promise<ZoneFile>
+  getFileWithContent(zoneId, fileId): Promise<{ file, content, cacheHit }>
+  refreshFile(zoneId, fileId, force?, agentId?): Promise<ZoneFile>
+
+  // Tasks
+  createTask(zoneId, agentId, title): Promise<ZoneTask>
+  claimTask(zoneId, taskId, agentId): Promise<ZoneTask>
+
+  // Import/Export
+  exportZone(zoneId): Promise<{ version, exportedAt, zone }>
+  importZone(projectId, template, creatorAgentId?, agentId?): Promise<Zone>
+  cloneZone(zoneId, options?, agentId?): Promise<Zone>
+}
+```
+
+---
+
+## 依赖关系
+
+```
+stratix-gateway
+├── stratix-database (SQLite 初始化, Repository)
+├── stratix-nocodb (可选 NocoDB 服务)
+├── stratix-data-store (OpenClawConnectionStore)
+├── stratix-core (PermissionOrchestrator, StratixStateStore)
+├── stratix-project (types, ProjectChannelMessage)
+├── stratix-orchestration (TaskQueueService - 动态 require)
+├── stratix-systemzone (systemzone routes)
+├── express, cors, dotenv, fs-extra (基础设施)
+└── axios (HTTP 客户端)
+```
+
+### 被依赖
+
+- `electron` - 作为主服务入口
+- `stratix-core` - 通过 WebSocket StatusSync
+- `stratix-project` - 使用 ZoneService 做 Zone CRUD
+- 浏览器前端 - 通过 HTTP API 和 WebSocket
+
+---
+
+## 数据流
+
+### HTTP 请求处理流
+
+```
+Client Request
+  → Express Middleware (cors, json, logging)
+  → Route Handler (e.g., zoneRoutes)
+  → ZoneService (业务逻辑)
+  → ZoneRepository (数据访问)
+  → SQLite Database
+  → GatewayEventBus.publishZoneEvent() (事件发布)
+  → StatusSyncService (WebSocket 推送)
+  → Connected Clients
+```
+
+### Zone 创建流
+
+```
+POST /api/zones
+  → zoneRoutes.createZone()
+  → ZoneService.createZone()
+    → PermissionOrchestrator.checkPermission()
+    → ZoneRepository.createZone()
+    → ZoneService.syncZoneToStore() (StratixStateStore)
+    → ZoneService.startZoneAgent() (OKR → TaskQueue)
+    → GatewayEventBus.publishZoneEvent('zone:created')
+    → StatusSyncService 广播
+  → Response
+```
+
+### OpenClaw 连接流
+
+```
+OpenClaw Device → WebSocket → OpenClawConnectionManager
+  → OpenClawProxyManager (代理转发)
+  → gatewayEventBus (状态通知)
+  → StatusSyncService (状态推送)
+```
+
+---
+
 ## 代码质量
 
 ### 优点

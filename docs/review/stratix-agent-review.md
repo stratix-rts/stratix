@@ -22,6 +22,160 @@
 
 ---
 
+## 模块职责
+
+stratix-agent 是 AI Agent 的运行时引擎，包含以下核心能力：
+
+### EnhancedStratixAgent (协调层)
+
+作为入口类，协调多个子管理器完成复杂任务：
+- `WorkflowExecutor` - 工作流执行（序列、并行、条件分支）
+- `ReflectionManager` - 反思机制（任务失败时自校正）
+- `EvolutionManager` - Agent 进化（根据反馈迭代 prompt/soul）
+
+### LLM 层
+
+| 组件 | 职责 |
+|------|------|
+| `LLMConnector` | 多提供商连接（OpenAI, Anthropic, Ollama, DeepSeek, Qwen），流式/非流式生成 |
+| `LLMConnectionPool` | 多模型连接池，负载均衡 |
+| `TokenManager` | Token 计数和预算控制 |
+
+### 技能层
+
+| 组件 | 职责 |
+|------|------|
+| `SkillRegistry` | 技能注册表，支持 TTL + LRU 缓存淘汰 |
+| `SkillTrigger` | 技能触发条件管理 |
+| `SkillExecutors/*` | 技能执行器（HTTP, Builtin, FileSystem, Bash, CodeSandbox, Zone） |
+
+### 运行时层
+
+| 组件 | 职责 |
+|------|------|
+| `SessionManager` | 会话管理，消息历史 trim |
+| `SessionRuntime` | 会话运行时状态 |
+| `TranscriptStore` | 完整对话记录持久化 |
+
+### 工具和支持
+
+| 组件 | 职责 |
+|------|------|
+| `MemoryManager` | Agent 记忆管理 |
+| `RateLimiter` | 请求速率限制 |
+| `MetricsCollector` | 指标收集 |
+| `HealthChecker` | 健康检查 |
+| `AutoSaver` | 自动保存 |
+| `MixinComposer` | Mixin 组合（Base/Resource/Compliance） |
+| `AgencyAgentsParser` | agency-agents 模板 Markdown 解析 |
+
+---
+
+## 核心接口
+
+```typescript
+// 入口导出 (index.ts)
+export * from './types';
+export * from './EnhancedStratixAgent';
+export * from './core/LLMConnector';
+export * from './core/LLMConnectionPool';
+export * from './core/SkillRegistry';
+export * from './core/SessionManager';
+export * from './core/executors';
+export { MixinComposer } from './mixins/MixinComposer';
+export { AgencyAgentsParser } from './parsers/AgencyAgentsParser';
+
+// EnhancedStratixAgent
+class EnhancedStratixAgent extends StratixAgent {
+  executeTask(task: AgentTask): Promise<AgentResponse>
+  loadTemplate(template: AgentTemplate): Promise<void>
+  executeWorkflow(workflow: WorkflowDefinition): Promise<EnhancedAgentResponse>
+}
+
+// LLMConnector
+class LLMConnector {
+  generate(messages: ChatMessage[]): Promise<LLMResponse>
+  generateStream(messages: ChatMessage[], onChunk: (chunk: string) => void): Promise<void>
+}
+
+// SkillRegistry
+class SkillRegistry {
+  register(skill: Skill): Promise<void>
+  execute(skillId: string, params: Record<string, any>): Promise<SkillResult>
+  getCacheKey(skillId: string, params: Record<string, any>): string
+}
+
+// SessionManager
+class SessionManager {
+  createSession(context: SessionContext): Promise<Session>
+  getSession(sessionId: string): Promise<Session | null>
+  addMessage(sessionId: string, message: ChatMessage): Promise<void>
+}
+```
+
+---
+
+## 依赖关系
+
+```
+stratix-agent
+├── stratix-core (RetryPolicyEngine, 协议类型)
+├── stratix-character-creator (ZoneContextManager, SoulTemplates, EVOLUTION_PROMPT)
+├── stratix-orchestration (TaskQueueService - 动态 require)
+├── stratix-openclaw-adapter (通过 LLMConnector)
+├── @anthropic-ai/sdk
+├── openai
+└── Handlebars (模板引擎)
+```
+
+### 被依赖
+
+- `stratix-openclaw-adapter` - 通过 LLMConnector
+- `stratix-character-creator` - 使用 Agent 做后端
+- `stratix-gateway` - Agent 相关 HTTP routes
+
+---
+
+## 数据流
+
+### Agent 任务执行流
+
+```
+AgentTask
+  → EnhancedStratixAgent.executeTask()
+    → EnhancedPromptBuilder.build() (构建 prompt)
+    → MixinComposer.compose() (注入 mixin)
+    → LLMConnector.generate() / generateStream()
+    → WorkflowExecutor.execute() (如有 workflow)
+    → ReflectionManager.reflect() (如有失败)
+    → EvolutionManager.evolve() (定期进化)
+    → SessionManager.saveTranscript()
+  → AgentResponse
+```
+
+### 技能执行流
+
+```
+SkillRegistry.execute(skillId, params)
+  → SkillTrigger.shouldTrigger() (检查触发条件)
+  → SkillExecutors.getExecutor(skillType) (获取执行器)
+  → Executor.execute() (HTTP/Builtin/FileSystem/Bash/Zone)
+  → SkillResult
+```
+
+### 模板加载流
+
+```
+AgencyAgentsParser.parse(markdown)
+  → AgentTemplate[]
+  → EnhancedStratixAgent.loadTemplate(template)
+    → EnhancedPromptBuilder.setTemplate()
+    → MixinComposer.compose()
+  → ready for task execution
+```
+
+---
+
 ## 代码质量
 
 ### 优点

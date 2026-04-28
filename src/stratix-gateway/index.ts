@@ -102,9 +102,28 @@ export async function startGatewayService(
   app.use(cors());
   app.use(express.json({ limit: '5mb' }));
   
-  // 日志中间件
+  // 敏感 query 参数列表（日志脱敏）
+  const SENSITIVE_PARAMS = ['apiKey', 'token', 'password', 'secret', 'auth'];
+
+  // 日志中间件（自动脱敏敏感参数）
   app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    let url = req.url;
+    try {
+      const urlObj = new URL(url, `http://localhost`);
+      let hasSensitive = false;
+      for (const param of SENSITIVE_PARAMS) {
+        if (urlObj.searchParams.has(param)) {
+          urlObj.searchParams.set(param, '***');
+          hasSensitive = true;
+        }
+      }
+      if (hasSensitive) {
+        url = urlObj.pathname + urlObj.search;
+      }
+    } catch {
+      // URL 解析失败时保持原样
+    }
+    console.log(`[${new Date().toISOString()}] ${req.method} ${url}`);
     next();
   });
   
@@ -237,32 +256,44 @@ export async function startGatewayService(
     shutdownComplete = true;
   };
 
+  const SHUTDOWN_TIMEOUT_MS = 10000; // 10 秒强制退出
+
   const gracefulShutdown = async () => {
     console.log('Shutting down gracefully...');
 
-    // 停止遗弃任务定时复活
-    if (abandonedTaskInterval) {
-      clearInterval(abandonedTaskInterval);
-      console.log('Abandoned task requeuer stopped');
-    }
+    // 启动强制退出定时器
+    const forceExitTimer = setTimeout(() => {
+      console.error(`[Gateway] Shutdown timed out after ${SHUTDOWN_TIMEOUT_MS}ms, forcing exit`);
+      process.exit(1);
+    }, SHUTDOWN_TIMEOUT_MS);
 
-    // 关闭 NocoDB 服务
-    if (nocoDBServiceInstance) {
-      await nocoDBServiceInstance.stop();
-      console.log('NocoDB service closed');
-    }
+    try {
+      // 停止遗弃任务定时复活
+      if (abandonedTaskInterval) {
+        clearInterval(abandonedTaskInterval);
+        console.log('Abandoned task requeuer stopped');
+      }
 
-    await new Promise<void>((resolve) => {
-      server.close(() => {
-        console.log('HTTP server closed');
-        resolve();
+      // 关闭 NocoDB 服务
+      if (nocoDBServiceInstance) {
+        await nocoDBServiceInstance.stop();
+        console.log('NocoDB service closed');
+      }
+
+      await new Promise<void>((resolve) => {
+        server.close(() => {
+          console.log('HTTP server closed');
+          resolve();
+        });
       });
-    });
 
-    statusSyncService.close();
-    console.log('WebSocket server closed');
+      statusSyncService.close();
+      console.log('WebSocket server closed');
 
-    onShutdownComplete();
+      onShutdownComplete();
+    } finally {
+      clearTimeout(forceExitTimer);
+    }
   };
 
   const finalCleanup = (): void => {

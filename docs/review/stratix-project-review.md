@@ -20,6 +20,161 @@
 
 ---
 
+## 模块职责
+
+stratix-project 模块负责 Stratix 的项目管理与 Zone 可视化：
+
+### 业务层 (core/)
+
+| 组件 | 职责 |
+|------|------|
+| `ProjectManager` | 项目生命周期管理，事件发布（mitt），LRA 初始化 |
+| `ProjectZone` | Phaser 游戏中的 Zone 可视化物（继承 BaseZone），显示标题/优先级/Agent 数量 |
+| `ProjectZonePreview` | Zone 创建预览（拖拽绘制边框） |
+
+### 持久化层 (storage/)
+
+| 组件 | 职责 |
+|------|------|
+| `ProjectStore` | LowDB JSON 文件存储（projects.json），CRUD 操作 |
+
+### 集成层
+
+| 组件 | 职责 |
+|------|------|
+| `ProjectManagerIntegration` | Phaser 场景与后端的桥接，处理视口内 Zone 可见性 |
+| `ProjectManagerIntegrationHTTP` | HTTP 版本集成，直接使用 axios 而非 ApiClient |
+
+### Vue UI (ui/)
+
+| 组件 | 职责 |
+|------|------|
+| `ZonePanel` | Zone 列表/详情面板 |
+| `ZoneDetail` | Zone 详细信息视图 |
+| `ZoneEditor` | Zone 编辑器（标题、提示词） |
+| `ZoneFilePicker` | 文件选择器 |
+
+---
+
+## 核心接口
+
+```typescript
+// 入口导出 (index.ts)
+export * from './types';
+export * from './utils/helpers';
+export * from './storage/ProjectStore';
+export * from './core/ProjectManager';
+export * from './core/ProjectZone';
+export * from './core/ProjectZonePreview';
+export * from './ProjectManagerIntegration';
+
+// ProjectManager
+class ProjectManager extends mitt {
+  createProject(config: ProjectConfig): Promise<Project>
+  getProject(projectId: string): Project | null
+  getAllProjects(): Project[]
+  deleteProject(projectId: string): boolean
+  initializeLRA(): Promise<void>  // 初始化 LRA 集成
+}
+
+// ProjectZone (Phaser 游戏对象)
+class ProjectZone extends BaseZone {
+  updateZoneTitle(title: string): void
+  updateZonePrompt(prompt: string): void
+  updateStatus(status: string): void
+  updatePriority(priority: number): void
+  updateAgentCount(count: number): void
+}
+
+// ProjectStore
+class ProjectStore {
+  initialize(): Promise<void>
+  getProject(id: string): Project | null
+  getAllProjects(): Project[]
+  saveProject(project: Project): Promise<void>
+  deleteProject(id: string): Promise<void>
+}
+
+// ProjectClient
+class ProjectClient {
+  getProjects(): Promise<Project[]>
+  getProject(id: string): Promise<Project>
+  createProject(data: CreateProjectRequest): Promise<Project>
+  updateProject(id: string, data: UpdateProjectRequest): Promise<Project>
+  deleteProject(id: string): Promise<void>
+}
+
+// ProjectManagerIntegration
+class ProjectManagerIntegration {
+  loadExistingProjects(): Promise<void>
+  createProjectZone(project: Project): Promise<ProjectZone>
+  removeProjectZone(projectId: string): void
+  updateVisibleZones(camera: Phaser.Camera): void  // 视口内可见性
+}
+```
+
+---
+
+## 依赖关系
+
+```
+stratix-project
+├── stratix-gateway (ApiClient)
+├── stratix-rts (BaseZone, UnifiedZoneManager, RTSEventBus)
+├── stratix-lra-bridge (LRAClient)
+├── stratix-database (ZoneRepository)
+├── LowDB (JSON 文件存储)
+├── Phaser 3 (游戏引擎)
+└── axios (HTTP 客户端 - ProjectManagerIntegrationHTTP)
+```
+
+### 被依赖
+
+- `stratix-rts` - ProjectZone 作为 RTS 中的可视化物
+- `stratix-gateway` - Zone CRUD API
+- Vue 前端 - ZonePanel 等 UI 组件
+
+---
+
+## 数据流
+
+### 项目加载流
+
+```
+Phaser Scene 启动
+  → ProjectManagerIntegration.constructor()
+    → ProjectClient.getProjects()
+      → GET /api/projects
+        → stratix-gateway → SQLite
+    → for each project: createProjectZone()
+      → new ProjectZone(scene, project)
+      → unifiedZoneManager.addZone()
+  → Scene 就绪
+```
+
+### Zone 可视化更新流
+
+```
+后端 Zone 变更 (WebSocket)
+  → StatusSyncService.onZoneUpdated()
+    → ProjectManagerIntegration.onZoneUpdated()
+      → ProjectZone.updateXXX() (标题/状态/优先级/Agent数)
+      → 重新渲染 Phaser 游戏对象
+```
+
+### 项目创建流
+
+```
+ProjectManagerIntegrationHTTP.createProjectWithBounds()
+  → ProjectClient.createProject() → POST /api/projects
+  → zoneRepository.createZone() → Zone FK 关联
+  → new ProjectZone(scene, project)
+  → unifiedZoneManager.addZone()
+  → rtsEventBus.emit('zone:created')
+```
+
+---
+
 ## 代码质量
 
 ### `helpers.ts` — debounce 内存泄漏
