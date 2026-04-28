@@ -5,6 +5,7 @@ import { LPC_DIRECTION_ROWS } from '@/stratix-character-creator/constants';
 
 import { StratixAgentConfig } from '../../stratix-core/stratix-protocol';
 import { ParticleEffects } from '../effects/ParticleEffects';
+import { getDSColor, isReducedMotion, drawGlowRing } from '../themes/ThemeColors';
 
 
 export type AgentStatus = 'online' | 'offline' | 'busy' | 'error';
@@ -46,6 +47,7 @@ export class AgentSprite extends Phaser.GameObjects.Container {
   private nameText: Phaser.GameObjects.Text;
   private statusIndicator: Phaser.GameObjects.Graphics;
   private selectionRing: Phaser.GameObjects.Graphics;
+  private selectionGlowTween: Phaser.Tweens.Tween | null = null;
   private typeIcon: Phaser.GameObjects.Graphics;
   private agentId: string;
   private agentName: string;
@@ -70,6 +72,14 @@ export class AgentSprite extends Phaser.GameObjects.Container {
   private zoneBadge: Phaser.GameObjects.Graphics | null = null;
   private currentZoneId: string | null = null;
   private currentZoneName: string | null = null;
+
+  // V2 visual enhancements
+  private glowGraphics: Phaser.GameObjects.Graphics;
+  private dragShadows: Phaser.GameObjects.Graphics[] = [];
+  private tooltipText: Phaser.GameObjects.Text | null = null;
+  private tooltipBg: Phaser.GameObjects.Graphics | null = null;
+  private isHovered: boolean = false;
+  private hoverTween: Phaser.Tweens.Tween | null = null;
 
   constructor(
     scene: Phaser.Scene, 
@@ -98,6 +108,11 @@ export class AgentSprite extends Phaser.GameObjects.Container {
     this.drawSelectionRing();
     this.selectionRing.setVisible(false);
     this.add(this.selectionRing);
+
+    // Glow graphics behind sprite for breathing + selection glow
+    this.glowGraphics = scene.add.graphics();
+    this.glowGraphics.setDepth(-1);
+    this.add(this.glowGraphics);
 
     const texture = textureKey || 'stratix-agent';
     this.sprite = scene.add.sprite(0, 0, texture);
@@ -135,6 +150,10 @@ export class AgentSprite extends Phaser.GameObjects.Container {
     this.setData('agentType', config.type);
     this.setData('isCustom', !!textureKey);
     
+    // Hover interactions
+    this.sprite.on('pointerover', () => this.onPointerOver());
+    this.sprite.on('pointerout', () => this.onPointerOut());
+
     this.setDepth(y);
   }
 
@@ -165,7 +184,7 @@ export class AgentSprite extends Phaser.GameObjects.Container {
           this.sprite.setScale(0.75);
         }
 
-        this.scene.tweens.add({
+        this.scene!.tweens.add({
           targets: this,
           scaleX: 1,
           scaleY: 1,
@@ -187,27 +206,136 @@ export class AgentSprite extends Phaser.GameObjects.Container {
 
   private startBreathingAnimation(): void {
     if (!this.scene || this.breathingTween) return;
+    if (isReducedMotion()) return;
 
-    // Simplified breathing: use sprite scale/alpha tween without per-frame glow redraws
-    // This reduces GPU usage significantly while maintaining visual feedback
+    // Combined breathing: scale + alpha + subtle glow
+    const breatheData = { scale: 1, alpha: 1, glow: 0 };
     this.breathingTween = this.scene.tweens.add({
-      targets: this.sprite,
-      scaleX: 1.08,
-      scaleY: 1.08,
-      alpha: 0.9,
+      targets: breatheData,
+      scale: 1.08,
+      alpha: 0.85,
+      glow: 0.3,
       duration: 1500,
       yoyo: true,
       repeat: -1,
-      ease: 'Sine.easeInOut'
+      ease: 'Sine.easeInOut',
+      onUpdate: () => {
+        this.sprite.setScale(breatheData.scale);
+        this.sprite.setAlpha(breatheData.alpha);
+        this.updateBreathingGlow(breatheData.glow);
+      }
     });
+  }
+
+  private updateBreathingGlow(intensity: number): void {
+    if (!this.glowGraphics) return;
+    this.glowGraphics.clear();
+    if (intensity <= 0.01) return;
+    const color = getDSColor('color-primary');
+    drawGlowRing(this.glowGraphics, 0, 0, 20, color, intensity * 0.4, 2);
   }
 
   private stopBreathingAnimation(): void {
     if (this.breathingTween) {
       this.breathingTween.stop();
       this.breathingTween = null;
-      this.sprite.setScale(1);
+      this.sprite.setScale(this.customTextureKey && this.characterId ? 0.75 : 1);
       this.sprite.setAlpha(1);
+      this.glowGraphics.clear();
+    }
+  }
+
+  private onPointerOver(): void {
+    if (this.isDragging) return;
+    this.isHovered = true;
+
+    // Micro scale up + glow
+    if (!isReducedMotion() && this.scene) {
+      this.hoverTween = this.scene.tweens.add({
+        targets: this.sprite,
+        scaleX: (this.sprite.scaleX || 1) * 1.08,
+        scaleY: (this.sprite.scaleY || 1) * 1.08,
+        duration: 150,
+        ease: 'Sine.easeOut'
+      });
+    }
+
+    // Show tooltip
+    this.showTooltip(this.agentName, this.currentStatus);
+
+    // Hover glow ring
+    this.glowGraphics.clear();
+    const color = getDSColor('color-primary');
+    drawGlowRing(this.glowGraphics, 0, 0, 22, color, 0.35, 3);
+  }
+
+  private onPointerOut(): void {
+    this.isHovered = false;
+
+    if (this.hoverTween) {
+      this.hoverTween.stop();
+      this.hoverTween = null;
+    }
+
+    // Restore scale
+    const baseScale = this.customTextureKey && this.characterId ? 0.75 : 1;
+    this.sprite.setScale(baseScale);
+
+    // Hide tooltip
+    this.hideTooltip();
+
+    // Clear hover glow unless selected or breathing
+    if (!this.isSelected && !this.breathingTween) {
+      this.glowGraphics.clear();
+    }
+  }
+
+  private showTooltip(title: string, status: AgentStatus): void {
+    if (!this.scene) return;
+    this.hideTooltip();
+
+    const statusText: Record<AgentStatus, string> = {
+      online: '在线',
+      offline: '离线',
+      busy: '忙碌',
+      error: '错误'
+    };
+
+    const text = `${title} · ${statusText[status] || status}`;
+    const tooltipY = -56;
+
+    this.tooltipText = this.scene.add.text(0, tooltipY, text, {
+      fontSize: '11px',
+      fontFamily: 'Arial, sans-serif',
+      color: '#ffffff',
+      backgroundColor: '#00000088',
+      padding: { x: 8, y: 4 }
+    });
+    this.tooltipText.setOrigin(0.5);
+    this.tooltipText.setDepth(10001);
+
+    this.tooltipBg = this.scene.add.graphics();
+    this.tooltipBg.setDepth(10000);
+    const bounds = this.tooltipText.getBounds();
+    const pad = 4;
+    this.tooltipBg.fillStyle(0x000000, 0.75);
+    this.tooltipBg.fillRoundedRect(
+      bounds.x - pad, bounds.y - pad,
+      bounds.width + pad * 2, bounds.height + pad * 2, 4
+    );
+
+    this.add(this.tooltipBg);
+    this.add(this.tooltipText);
+  }
+
+  private hideTooltip(): void {
+    if (this.tooltipText) {
+      this.tooltipText.destroy();
+      this.tooltipText = null;
+    }
+    if (this.tooltipBg) {
+      this.tooltipBg.destroy();
+      this.tooltipBg = null;
     }
   }
 
@@ -271,7 +399,11 @@ export class AgentSprite extends Phaser.GameObjects.Container {
 
   private drawStatusIndicator(color: number): void {
     this.statusIndicator.clear();
-    this.statusIndicator.fillStyle(color, 1);
+    // Glow ring status indicator
+    const outerColor = Phaser.Display.Color.IntegerToColor(color);
+    const innerColor = outerColor.clone().brighten(40);
+    drawGlowRing(this.statusIndicator, 0, -16, 4, color, 0.6, 2);
+    this.statusIndicator.fillStyle(innerColor.color, 1);
     this.statusIndicator.fillCircle(0, -16, 3);
   }
 
@@ -311,6 +443,11 @@ export class AgentSprite extends Phaser.GameObjects.Container {
     // Trigger status change particles if status actually changed
     if (previousStatus !== status && this.scene) {
       ParticleEffects.getInstance().statusChange(this.scene, this.x, this.y, status);
+    }
+
+    // Update tooltip if visible
+    if (this.tooltipText) {
+      this.showTooltip(this.agentName, status);
     }
   }
 
@@ -435,6 +572,8 @@ export class AgentSprite extends Phaser.GameObjects.Container {
 
     if (selected) {
       this.sprite.setTint(COLORS.ui.selection);
+      // Theme-colored pulsing selection glow
+      this.startSelectionGlow();
       // Skip animation if already at target scale or tween running
       if (this.sprite.scaleX < 1.05 && !this.scene.tweens.isTweening(this.sprite)) {
         this.scene.tweens.add({
@@ -445,7 +584,45 @@ export class AgentSprite extends Phaser.GameObjects.Container {
         });
       }
     } else {
+      this.stopSelectionGlow();
       this.setAgentStatus(this.currentStatus);
+    }
+  }
+
+  private startSelectionGlow(): void {
+    if (!this.scene || this.selectionGlowTween) return;
+    if (isReducedMotion()) {
+      // Static glow
+      this.glowGraphics.clear();
+      const color = getDSColor('color-primary');
+      drawGlowRing(this.glowGraphics, 0, 0, 24, color, 0.4, 3);
+      return;
+    }
+
+    const glowData = { radius: 24, alpha: 0.3 };
+    const color = getDSColor('color-primary');
+    this.selectionGlowTween = this.scene.tweens.add({
+      targets: glowData,
+      radius: 28,
+      alpha: 0.55,
+      duration: 900,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+      onUpdate: () => {
+        this.glowGraphics.clear();
+        drawGlowRing(this.glowGraphics, 0, 0, glowData.radius, color, glowData.alpha, 3);
+      }
+    });
+  }
+
+  private stopSelectionGlow(): void {
+    if (this.selectionGlowTween) {
+      this.selectionGlowTween.stop();
+      this.selectionGlowTween = null;
+    }
+    if (!this.isHovered && !this.breathingTween) {
+      this.glowGraphics.clear();
     }
   }
 
@@ -524,8 +701,9 @@ export class AgentSprite extends Phaser.GameObjects.Container {
       onUpdate: () => {
         lightBeam.clear();
         
-        // 外层光柱（青色）
-        lightBeam.fillStyle(hexToNumber(getToken("colors.brand.primary")), beamData.alpha * 0.3);
+        // 外层光柱（主题色）
+        const primary = getDSColor('color-primary');
+        lightBeam.fillStyle(primary, beamData.alpha * 0.3);
         lightBeam.fillRoundedRect(-30, -beamHeight / 2, 60, beamHeight, 10);
         
         // 内层光柱（白色）
@@ -574,6 +752,7 @@ export class AgentSprite extends Phaser.GameObjects.Container {
 
     // 生成上升粒子 - reduced from 12 to 6 for performance
     const spawnParticleCount = 6;
+    const primaryColor = getDSColor('color-primary');
     for (let i = 0; i < spawnParticleCount; i++) {
       const particle = this.scene.add.graphics();
       particle.setDepth(9998);
@@ -586,7 +765,7 @@ export class AgentSprite extends Phaser.GameObjects.Container {
       const endY = startY - 80 - Math.random() * 40;
       const particleSize = 3 + Math.random() * 3;
 
-      particle.fillStyle(hexToNumber(getToken("colors.brand.primary")), 0.8);
+      particle.fillStyle(primaryColor, 0.8);
       particle.fillCircle(0, 0, particleSize);
       particle.setPosition(startX, startY);
 
@@ -620,7 +799,7 @@ export class AgentSprite extends Phaser.GameObjects.Container {
       delay: 100,
       onUpdate: () => {
         groundRing.clear();
-        groundRing.lineStyle(3, hexToNumber(getToken("colors.brand.primary")), ringData.alpha);
+        groundRing.lineStyle(3, primaryColor, ringData.alpha);
         groundRing.strokeCircle(0, 0, ringData.radius);
       },
       onComplete: () => {
@@ -659,6 +838,38 @@ export class AgentSprite extends Phaser.GameObjects.Container {
     this.dragOffset.y = this.y - worldY;
     this.setDepth(10000);
     this.stopTaskExecutionEffect();
+    this.hideTooltip();
+
+    // Drag shadow / afterimage
+    if (!isReducedMotion()) {
+      this.spawnDragShadow();
+    }
+  }
+
+  private spawnDragShadow(): void {
+    if (!this.scene) return;
+    const shadow = this.scene.add.graphics();
+    shadow.setDepth(9990);
+    const color = getDSColor('color-primary');
+    drawGlowRing(shadow, this.x, this.y, 18, color, 0.25, 2);
+    this.dragShadows.push(shadow);
+
+    this.scene.tweens.add({
+      targets: shadow,
+      alpha: 0,
+      duration: 400,
+      ease: 'Power2',
+      onComplete: () => {
+        shadow.destroy();
+        const idx = this.dragShadows.indexOf(shadow);
+        if (idx >= 0) this.dragShadows.splice(idx, 1);
+      }
+    });
+
+    // Spawn another shadow after a short delay for trail effect
+    this.scene.time.delayedCall(80, () => {
+      if (this.isDragging) this.spawnDragShadow();
+    });
   }
 
   public updateDrag(worldX: number, worldY: number): void {
@@ -673,6 +884,9 @@ export class AgentSprite extends Phaser.GameObjects.Container {
     if (this.currentStatus === 'busy') {
       this.startTaskExecutionEffect();
     }
+    // Clean remaining shadows
+    this.dragShadows.forEach(s => s.destroy());
+    this.dragShadows = [];
   }
 
   public isSpriteDragging(): boolean {
@@ -780,6 +994,16 @@ export class AgentSprite extends Phaser.GameObjects.Container {
   public destroy(): void {
     this.stopBusyAnimation();
     this.stopTaskExecutionEffect();
+    this.stopBreathingAnimation();
+    this.stopSelectionGlow();
+    this.hideTooltip();
+
+    this.dragShadows.forEach(s => s.destroy());
+    this.dragShadows = [];
+
+    if (this.glowGraphics) {
+      this.glowGraphics.destroy();
+    }
 
     if (this.thumbnailSprite) {
       this.thumbnailSprite.destroy();

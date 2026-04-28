@@ -27,6 +27,8 @@ const tasks = ref<LraTask[]>([]);
 const loading = ref(false);
 const error = ref<string | null>(null);
 const selectedTaskId = ref<string | null>(null);
+const previousCompletedCount = ref(0);
+const completedPulse = ref(false);
 
 const projectName = computed(() => {
   if (!tasks.value || tasks.value.length === 0) return '';
@@ -48,6 +50,14 @@ const taskStats = computed(() => {
   });
 
   return stats;
+});
+
+// Watch for completion to trigger pulse
+watch(() => taskStats.value.completed, (newVal, oldVal) => {
+  if (newVal > oldVal) {
+    completedPulse.value = true;
+    setTimeout(() => { completedPulse.value = false; }, 2000);
+  }
 });
 
 const sortedTasks = computed(() => {
@@ -79,6 +89,7 @@ const loadTasks = async () => {
 
     const taskList = await lraClient.value.listTasks();
     tasks.value = taskList?.tasks || [];
+    previousCompletedCount.value = taskStats.value.completed;
   } catch (err: any) {
     console.error('[TaskPanel] Failed to load tasks:', err);
     error.value = err.message || 'Failed to load tasks';
@@ -195,6 +206,7 @@ onUnmounted(() => {
   >
     <div class="task-panel">
       <div class="panel-tabs">
+        <div class="tab-indicator" :style="{ left: activeTab === 'tasks' ? '0%' : activeTab === 'chat' ? '33.33%' : '66.66%' }"></div>
         <button
           class="tab-button"
           :class="{ active: activeTab === 'tasks' }"
@@ -233,15 +245,15 @@ onUnmounted(() => {
             <div class="stat-item">
               <span class="stat-label">进行中</span>
               <span class="stat-value in-progress">{{ taskStats.in_progress }}</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">已完成</span>
-            <span class="stat-value completed">{{ taskStats.completed }}</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">失败</span>
-            <span class="stat-value failed">{{ taskStats.failed }}</span>
-          </div>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">已完成</span>
+              <span class="stat-value completed" :class="{ pulse: completedPulse }">{{ taskStats.completed }}</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">失败</span>
+              <span class="stat-value failed">{{ taskStats.failed }}</span>
+            </div>
           </div>
         </div>
 
@@ -259,9 +271,15 @@ onUnmounted(() => {
             scenario="no-tasks"
             title="暂无任务"
             description="使用 LRA 创建任务"
-          />
+          >
+            <template #action>
+              <StratixButton variant="primary" @click="loadTasks">
+                刷新
+              </StratixButton>
+            </template>
+          </StratixEmpty>
 
-          <div v-else class="task-list">
+          <TransitionGroup v-else name="task-list" tag="div" class="task-list">
             <div
               v-for="task in sortedTasks"
               :key="task.id"
@@ -310,7 +328,7 @@ onUnmounted(() => {
                 ></div>
               </div>
             </div>
-          </div>
+          </TransitionGroup>
         </div>
       </div>
 
@@ -368,27 +386,38 @@ onUnmounted(() => {
   border-bottom: 1px solid var(--ds-border);
   background: var(--ds-bg-secondary);
   padding: 0 20px;
+  position: relative;
 }
 
 .tab-button {
+  flex: 1;
   padding: 14px 24px;
   background: transparent;
   border: none;
-  border-bottom: 2px solid transparent;
   color: var(--ds-text-muted);
   font-size: var(--ds-font-size-md);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: color 0.2s;
+  position: relative;
+  z-index: 1;
 }
 
 .tab-button:hover {
   color: var(--ds-text-secondary);
-  background: var(--ds-bg-hover);
 }
 
 .tab-button.active {
   color: var(--ds-brand-primary);
-  border-bottom-color: var(--ds-brand-primary);
+}
+
+.tab-indicator {
+  position: absolute;
+  bottom: 0;
+  width: 33.33%;
+  height: 2px;
+  background: var(--ds-brand-primary);
+  transition: left 0.3s var(--ds-animation-easing-ease-out);
+  box-shadow: 0 -2px 8px var(--ds-brand-primary);
 }
 
 .tab-content {
@@ -442,6 +471,12 @@ onUnmounted(() => {
   padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   background: var(--ds-bg-tertiary);
   border-radius: var(--ds-radius-md);
+  transition: all 0.3s ease;
+}
+
+.stat-item:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--ds-shadow-sm);
 }
 
 .stat-label {
@@ -454,6 +489,7 @@ onUnmounted(() => {
   font-size: var(--ds-font-size-xl);
   font-weight: bold;
   color: var(--ds-text-primary);
+  transition: all 0.3s ease;
 }
 
 .stat-value.in-progress {
@@ -462,6 +498,16 @@ onUnmounted(() => {
 
 .stat-value.completed {
   color: var(--ds-status-success);
+}
+
+.stat-value.completed.pulse {
+  animation: completed-glow 2s ease;
+}
+
+@keyframes completed-glow {
+  0% { text-shadow: 0 0 0 transparent; }
+  30% { text-shadow: 0 0 20px var(--ds-status-success), 0 0 40px var(--ds-status-success); }
+  100% { text-shadow: 0 0 0 transparent; }
 }
 
 .stat-value.failed {
@@ -521,10 +567,34 @@ onUnmounted(() => {
   margin-top: 8px;
 }
 
+.empty-float {
+  animation: empty-float 3s ease-in-out infinite;
+}
+
+@keyframes empty-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
 .task-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.task-list-move {
+  transition: transform 0.4s ease;
+}
+
+.task-list-enter-active,
+.task-list-leave-active {
+  transition: all 0.3s ease;
+}
+
+.task-list-enter-from,
+.task-list-leave-to {
+  opacity: 0;
+  transform: translateY(20px);
 }
 
 .task-item {
@@ -533,17 +603,22 @@ onUnmounted(() => {
   border: 1px solid var(--ds-border);
   border-radius: var(--ds-radius-md);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s var(--ds-animation-easing-ease-out);
+  transform-style: preserve-3d;
+  perspective: 1000px;
 }
 
 .task-item:hover {
   background: var(--ds-bg-tertiary);
   border-color: var(--ds-brand-primary);
+  transform: perspective(1000px) rotateX(2deg) rotateY(-2deg) translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .task-item.selected {
   background: var(--ds-bg-tertiary);
   border-color: var(--ds-status-success);
+  box-shadow: 0 0 0 1px var(--ds-status-success), 0 4px 12px rgba(0, 255, 136, 0.1);
 }
 
 .task-header {
@@ -557,6 +632,11 @@ onUnmounted(() => {
   width: 18px;
   height: 18px;
   flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.task-item:hover .status-icon {
+  transform: scale(1.2);
 }
 
 .task-id {
@@ -572,6 +652,11 @@ onUnmounted(() => {
   font-weight: bold;
   color: var(--ds-text-primary);
   text-transform: uppercase;
+  transition: box-shadow 0.3s ease;
+}
+
+.task-item:hover .priority-badge {
+  box-shadow: 0 0 8px currentColor;
 }
 
 .task-description {
@@ -609,6 +694,32 @@ onUnmounted(() => {
 
 .task-progress-fill {
   height: 100%;
-  transition: width 0.3s ease;
+  transition: width 0.6s var(--ds-animation-easing-ease-out);
+  position: relative;
+}
+
+.task-progress-fill::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 20px;
+  background: linear-gradient(90deg, transparent, currentColor);
+  opacity: 0.3;
+  filter: blur(4px);
+}
+
+/* Prefers reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .task-item,
+  .stat-item,
+  .stat-value,
+  .task-progress-fill,
+  .tab-indicator {
+    transition: none !important;
+    animation: none !important;
+    transform: none !important;
+  }
 }
 </style>

@@ -8,7 +8,7 @@ interface Props {
   size?: number;
   color?: string;
   strokeWidth?: number;
-  animated?: 'spin' | 'pulse' | 'bounce' | null;
+  animated?: 'spin' | 'pulse' | 'bounce' | 'rotate-on-hover' | 'bounce-on-click' | null;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -48,6 +48,7 @@ const animationClass = computed(() => {
   vertical-align: middle;
   flex-shrink: 0;
   overflow: visible;
+  transition: transform var(--ds-animation-duration-fast) ease;
 }
 
 .svg-icon--spin {
@@ -60,5 +61,50 @@ const animationClass = computed(() => {
 
 .svg-icon--bounce {
   animation: ds-icon-bounce var(--ds-animation-duration-fast, 150ms) ease infinite;
+}
+
+.svg-icon--rotate-on-hover:hover {
+  animation: ds-icon-rotate var(--ds-animation-duration-normal, 250ms) ease;
+}
+
+.svg-icon--bounce-on-click:active {
+  animation: ds-icon-bounce-click 200ms ease;
+}
+
+@keyframes ds-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes ds-icon-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+@keyframes ds-icon-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes ds-icon-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(180deg); }
+}
+
+@keyframes ds-icon-bounce-click {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.85); }
+  100% { transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .svg-icon,
+  .svg-icon--spin,
+  .svg-icon--pulse,
+  .svg-icon--bounce,
+  .svg-icon--rotate-on-hover:hover,
+  .svg-icon--bounce-on-click:active {
+    animation: none;
+    transition: none;
+  }
 }
 </style>

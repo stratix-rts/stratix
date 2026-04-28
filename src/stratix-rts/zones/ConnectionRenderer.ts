@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 
+import { getDSColor, isReducedMotion, drawGlowRing } from '../themes/ThemeColors';
+
 import { type ConnectionType, type ConnectionPoint } from './ZoneConnection';
 
 export interface ConnectionLineStyle {
@@ -18,24 +20,31 @@ export interface ConnectionRenderOptions {
   selectedWidth?: number;
 }
 
-const CONNECTION_STYLES: Record<ConnectionType, ConnectionLineStyle> = {
-  sequential: { color: 0x4a90e2, alpha: 0.8, lineWidth: 2 },
-  parallel: { color: 0x50c878, alpha: 0.8, lineWidth: 2, dashArray: [10, 5] },
-  conditional: { color: 0xf5a623, alpha: 0.8, lineWidth: 2, dashArray: [5, 5] },
-  loop: { color: 0x9b59b6, alpha: 0.8, lineWidth: 2, dashArray: [15, 5, 5, 5] },
-  branch: { color: 0xe74c3c, alpha: 0.8, lineWidth: 2, dashArray: [8, 3] },
-};
+/** Get theme-aware connection colors */
+function getConnectionColors(): Record<ConnectionType, ConnectionLineStyle> {
+  return {
+    sequential: { color: getDSColor('color-primary'), alpha: 0.85, lineWidth: 2 },
+    parallel: { color: getDSColor('status-success'), alpha: 0.85, lineWidth: 2, dashArray: [10, 5] },
+    conditional: { color: getDSColor('status-warning'), alpha: 0.85, lineWidth: 2, dashArray: [5, 5] },
+    loop: { color: getDSColor('accent'), alpha: 0.85, lineWidth: 2, dashArray: [15, 5, 5, 5] },
+    branch: { color: getDSColor('status-danger'), alpha: 0.85, lineWidth: 2, dashArray: [8, 3] },
+  };
+}
 
 export class ConnectionRenderer {
   private scene: Phaser.Scene;
   private graphics: Phaser.GameObjects.Graphics;
-  private animatedConnections: Map<string, { offset: number; connection: any; controlPoints?: { cp1: ConnectionPoint; cp2: ConnectionPoint } }> = new Map();
+  private particleGraphics: Phaser.GameObjects.Graphics;
+  private animatedConnections: Map<string, { offset: number; connection: any; controlPoints?: { cp1: ConnectionPoint; cp2: ConnectionPoint }; particles: Array<{ t: number; speed: number }> }> = new Map();
   private animationActive: boolean = false;
+  private hoveredConnectionId: string | null = null;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
     this.graphics = scene.add.graphics();
     this.graphics.setDepth(50);
+    this.particleGraphics = scene.add.graphics();
+    this.particleGraphics.setDepth(51);
   }
 
   renderConnection(
@@ -45,7 +54,8 @@ export class ConnectionRenderer {
     type: ConnectionType,
     options: ConnectionRenderOptions = {}
   ): void {
-    const style = { ...CONNECTION_STYLES[type], ...options.lineStyle };
+    const styles = getConnectionColors();
+    const style = { ...styles[type], ...options.lineStyle };
 
     this.graphics.save();
 
@@ -74,7 +84,8 @@ export class ConnectionRenderer {
     controlPoints?: { cp1?: ConnectionPoint; cp2?: ConnectionPoint },
     options: ConnectionRenderOptions = {}
   ): void {
-    const style = { ...CONNECTION_STYLES[type], ...options.lineStyle };
+    const styles = getConnectionColors();
+    const style = { ...styles[type], ...options.lineStyle };
 
     const cp1 = controlPoints?.cp1 || this.calculateControlPoint(sourcePos, targetPos, 'source');
     const cp2 = controlPoints?.cp2 || this.calculateControlPoint(sourcePos, targetPos, 'target');
@@ -106,11 +117,13 @@ export class ConnectionRenderer {
 
   clear(): void {
     this.graphics.clear();
+    this.particleGraphics.clear();
     this.animatedConnections.clear();
   }
 
   destroy(): void {
     this.graphics.destroy();
+    this.particleGraphics.destroy();
     this.animatedConnections.clear();
     this.animationActive = false;
   }
@@ -119,15 +132,21 @@ export class ConnectionRenderer {
     if (this.animatedConnections.size === 0) return;
 
     this.graphics.clear();
+    this.particleGraphics.clear();
 
     for (const [connectionId, data] of this.animatedConnections) {
-      data.offset += delta * 0.001;
+      data.offset += delta * 0.002; // Faster flow
       if (data.offset > 100) data.offset = 0;
 
       if (data.controlPoints) {
         this.drawAnimatedBezierConnection(connectionId, data);
       } else {
         this.drawAnimatedStraightConnection(connectionId, data);
+      }
+
+      // Draw glow particles along path
+      if (!isReducedMotion()) {
+        this.drawPathParticles(connectionId, data);
       }
     }
   }
@@ -143,10 +162,16 @@ export class ConnectionRenderer {
 
   setDepth(depth: number): void {
     this.graphics.setDepth(depth);
+    this.particleGraphics.setDepth(depth + 1);
   }
 
   getDepth(): number {
     return this.graphics.depth;
+  }
+
+  /** Highlight a connection on hover */
+  setHoveredConnection(connectionId: string | null): void {
+    this.hoveredConnectionId = connectionId;
   }
 
   hitTest(
@@ -343,6 +368,12 @@ export class ConnectionRenderer {
     this.graphics.lineTo(p2.x, p2.y);
     this.graphics.closePath();
     this.graphics.fillPath();
+
+    // Arrow glow
+    if (!isReducedMotion()) {
+      this.graphics.fillStyle(color, alpha * 0.2);
+      this.graphics.fillCircle(pos.x, pos.y, 6);
+    }
   }
 
   private calculateControlPoint(
@@ -427,6 +458,13 @@ export class ConnectionRenderer {
     type: ConnectionType,
     controlPoints?: { cp1: ConnectionPoint; cp2: ConnectionPoint }
   ): void {
+    // Initialize particles for this connection
+    const particles: Array<{ t: number; speed: number }> = [];
+    const particleCount = type === 'sequential' ? 3 : type === 'parallel' ? 4 : 2;
+    for (let i = 0; i < particleCount; i++) {
+      particles.push({ t: i / particleCount, speed: 0.3 + Math.random() * 0.4 });
+    }
+
     this.animatedConnections.set(connectionId, {
       offset: 0,
       connection: {
@@ -436,6 +474,7 @@ export class ConnectionRenderer {
         type,
         controlPoints,
       },
+      particles,
     });
   }
 
@@ -458,7 +497,11 @@ export class ConnectionRenderer {
     let isDash = true;
     let dashIndex = 0;
 
-    this.graphics.lineStyle(style.lineWidth, style.color, style.alpha);
+    const isHovered = this.hoveredConnectionId === _connectionId;
+    const lineWidth = isHovered ? style.lineWidth + 2 : style.lineWidth;
+    const alpha = isHovered ? Math.min(1, style.alpha + 0.2) : style.alpha;
+
+    this.graphics.lineStyle(lineWidth, style.color, alpha);
 
     while (currentLength < length) {
       const dashLength = dashArray[dashIndex % dashArray.length];
@@ -483,7 +526,12 @@ export class ConnectionRenderer {
     }
 
     // Draw arrow at target (always visible, on top)
-    this.drawArrow(target, source, style.color, style.alpha);
+    this.drawArrow(target, source, style.color, alpha);
+
+    // Hover highlight glow
+    if (isHovered) {
+      drawGlowRing(this.graphics, source.x + dx * 0.5, source.y + dy * 0.5, length * 0.3, style.color, 0.2, 2);
+    }
   }
 
   private drawAnimatedBezierConnection(_connectionId: string, data: any): void {
@@ -513,7 +561,11 @@ export class ConnectionRenderer {
     let isDash = true;
     let dashIndex = 0;
 
-    this.graphics.lineStyle(style.lineWidth, style.color, style.alpha);
+    const isHovered = this.hoveredConnectionId === _connectionId;
+    const lineWidth = isHovered ? style.lineWidth + 2 : style.lineWidth;
+    const alpha = isHovered ? Math.min(1, style.alpha + 0.2) : style.alpha;
+
+    this.graphics.lineStyle(lineWidth, style.color, alpha);
 
     for (let i = 0; i < samples; i++) {
       const p1 = points[i];
@@ -549,6 +601,42 @@ export class ConnectionRenderer {
     // Draw arrow at target (always visible, on top)
     const arrowPos = this.getPointOnBezierCurve(source, cp1, cp2, target, 0.9);
     const arrowAngle = this.getBezierCurveAngle(source, cp1, cp2, target, 0.9);
-    this.drawArrowAt(arrowPos, arrowAngle, style.color, style.alpha);
+    this.drawArrowAt(arrowPos, arrowAngle, style.color, alpha);
+
+    // Hover highlight
+    if (isHovered) {
+      const midPoint = this.getPointOnBezierCurve(source, cp1, cp2, target, 0.5);
+      drawGlowRing(this.graphics, midPoint.x, midPoint.y, curveLength * 0.15, style.color, 0.2, 2);
+    }
+  }
+
+  private drawPathParticles(connectionId: string, data: any): void {
+    const { source, target, style, controlPoints } = data.connection;
+    const isHovered = this.hoveredConnectionId === connectionId;
+    const alphaBase = isHovered ? 0.8 : 0.5;
+
+    for (const particle of data.particles) {
+      particle.t += particle.speed * 0.016;
+      if (particle.t > 1) particle.t = 0;
+
+      let pos: { x: number; y: number };
+      if (controlPoints) {
+        pos = this.getPointOnBezierCurve(source, controlPoints.cp1, controlPoints.cp2, target, particle.t);
+      } else {
+        const dx = target.x - source.x;
+        const dy = target.y - source.y;
+        pos = { x: source.x + dx * particle.t, y: source.y + dy * particle.t };
+      }
+
+      const pulse = Math.sin(this.scene.time.now * 0.005 + particle.t * Math.PI * 2) * 0.5 + 0.5;
+      const size = 2 + pulse * 2;
+
+      // Glow
+      this.particleGraphics.fillStyle(style.color, alphaBase * 0.25);
+      this.particleGraphics.fillCircle(pos.x, pos.y, size * 2);
+      // Core
+      this.particleGraphics.fillStyle(0xffffff, alphaBase * 0.9);
+      this.particleGraphics.fillCircle(pos.x, pos.y, size * 0.6);
+    }
   }
 }

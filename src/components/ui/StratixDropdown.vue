@@ -10,6 +10,8 @@ export interface DropdownOption {
   color?: string;
   disabled?: boolean;
   divided?: boolean;
+  shortcut?: string;
+  group?: string;
 }
 
 interface Props {
@@ -35,7 +37,6 @@ const visible = ref(false);
 const triggerRef = ref<HTMLElement | null>(null);
 const dropdownRef = ref<HTMLElement | null>(null);
 
-// 使用设计系统的 popup 层级 (4000)
 const zIndex = Depth.popup;
 
 const dropdownStyle = computed(() => {
@@ -70,6 +71,20 @@ const dropdownStyle = computed(() => {
 
 const sizeClass = computed(() => `stratix-dropdown--${props.size}`);
 
+const groupedOptions = computed(() => {
+  const groups: Record<string, DropdownOption[]> = {};
+  const ungrouped: DropdownOption[] = [];
+  props.options.forEach(opt => {
+    if (opt.group) {
+      groups[opt.group] = groups[opt.group] || [];
+      groups[opt.group].push(opt);
+    } else {
+      ungrouped.push(opt);
+    }
+  });
+  return { groups, ungrouped };
+});
+
 const handleToggle = () => {
   if (props.disabled) return;
   visible.value = !visible.value;
@@ -98,9 +113,6 @@ const handleKeydown = (event: KeyboardEvent) => {
   }
 };
 
-/**
- * 阻止事件冒泡到 Phaser Canvas，防止点击穿透
- */
 const stopPropagation = (e: Event) => {
   e.stopPropagation();
 };
@@ -137,7 +149,8 @@ onUnmounted(() => {
         @click.stop="stopPropagation"
       >
         <div class="stratix-dropdown__menu">
-          <template v-for="(option, index) in options" :key="option.value">
+          <!-- Ungrouped items -->
+          <template v-for="(option, index) in groupedOptions.ungrouped" :key="option.value">
             <div 
               v-if="option.divided && index > 0" 
               class="stratix-dropdown__divider"
@@ -161,7 +174,36 @@ onUnmounted(() => {
                 class="stratix-dropdown__icon"
               />
               <span class="stratix-dropdown__label">{{ option.label }}</span>
+              <span v-if="option.shortcut" class="stratix-dropdown__shortcut">{{ option.shortcut }}</span>
             </div>
+          </template>
+
+          <!-- Grouped items -->
+          <template v-for="(items, groupName) in groupedOptions.groups" :key="groupName">
+            <div class="stratix-dropdown__group-header">{{ groupName }}</div>
+            <template v-for="option in items" :key="option.value">
+              <div
+                class="stratix-dropdown__item"
+                :class="{ 
+                  'stratix-dropdown__item--disabled': option.disabled 
+                }"
+                @click="handleSelect(option)"
+              >
+                <span 
+                  v-if="option.color" 
+                  class="stratix-dropdown__indicator"
+                  :style="{ background: option.color }"
+                />
+                <SvgIcon 
+                  v-else-if="option.icon" 
+                  :name="option.icon" 
+                  :size="14"
+                  class="stratix-dropdown__icon"
+                />
+                <span class="stratix-dropdown__label">{{ option.label }}</span>
+                <span v-if="option.shortcut" class="stratix-dropdown__shortcut">{{ option.shortcut }}</span>
+              </div>
+            </template>
           </template>
         </div>
       </div>
@@ -194,6 +236,22 @@ onUnmounted(() => {
 
 .stratix-dropdown__menu {
   padding: var(--ds-spacing-xs);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.stratix-dropdown__group-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: var(--ds-spacing-xs) var(--ds-spacing-md);
+  font-size: var(--ds-font-size-xs);
+  font-weight: 600;
+  color: var(--ds-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: var(--ds-glass-bg, var(--ds-bg-secondary));
+  backdrop-filter: blur(4px);
 }
 
 .stratix-dropdown__item {
@@ -212,6 +270,10 @@ onUnmounted(() => {
   background: var(--ds-bg-tertiary);
 }
 
+.stratix-dropdown__item:hover:not(.stratix-dropdown__item--disabled) .stratix-dropdown__icon {
+  transform: translateX(2px);
+}
+
 .stratix-dropdown__item--disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -227,11 +289,22 @@ onUnmounted(() => {
 .stratix-dropdown__icon {
   flex-shrink: 0;
   color: var(--ds-text-muted);
+  transition: transform var(--ds-animation-duration-fast) ease;
 }
 
 .stratix-dropdown__label {
   flex: 1;
   white-space: nowrap;
+}
+
+.stratix-dropdown__shortcut {
+  flex-shrink: 0;
+  font-size: var(--ds-font-size-xs);
+  color: var(--ds-text-muted);
+  background: var(--ds-bg-tertiary);
+  padding: 2px 6px;
+  border-radius: var(--ds-radius-xs);
+  margin-left: var(--ds-spacing-md);
 }
 
 .stratix-dropdown__divider {
@@ -254,5 +327,15 @@ onUnmounted(() => {
 
 .stratix-dropdown-enter-active .stratix-dropdown__menu {
   animation: ds-slide-down var(--ds-animation-duration-normal) var(--ds-animation-easing-ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stratix-dropdown-enter-active,
+  .stratix-dropdown-leave-active,
+  .stratix-dropdown__item,
+  .stratix-dropdown__icon {
+    transition: none;
+    animation: none;
+  }
 }
 </style>

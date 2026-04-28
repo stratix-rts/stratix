@@ -33,7 +33,7 @@ const styles = computed(() => ({
     justifyContent: props.direction === 'horizontal' ? 'space-between' : 'flex-start',
     alignItems: props.direction === 'horizontal' ? 'center' : 'flex-start',
     padding: props.plain ? '0' : '10px 12px',
-    background: props.plain ? 'transparent' : getToken('colors.background.tertiary'),
+    background: props.plain ? 'transparent' : getToken('colors.background.overlay'),
     borderRadius: props.plain ? '0' : '6px',
     borderBottom: props.direction === 'horizontal' && props.bordered
       ? `1px solid ${getToken('colors.border.default')}`

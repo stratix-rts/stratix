@@ -34,7 +34,6 @@ const handleExecute = (status: WorkflowExecutionStatus, definition?: WorkflowDef
 
 watch(() => props.visible, (newVal) => {
   if (newVal && editorContainer.value && !editorPanel) {
-    // Initialize editor when modal becomes visible
     setTimeout(() => {
       initEditor();
     }, 100);
@@ -97,5 +96,33 @@ function initEditor() {
   background: var(--ds-bg-overlay);
   border-radius: var(--ds-radius-sm);
   overflow: hidden;
+  position: relative;
+  transition: box-shadow 0.3s ease;
+}
+
+.workflow-editor-container::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  z-index: 1;
+}
+
+.workflow-editor-container:hover {
+  box-shadow: 0 0 30px rgba(59, 130, 246, 0.1);
+}
+
+/* Node selection glow simulation for canvas overlay */
+.workflow-editor-container :deep(canvas) {
+  transition: filter 0.3s ease;
+}
+
+/* Prefers reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .workflow-editor-container {
+    transition: none !important;
+  }
 }
 </style>

@@ -28,6 +28,12 @@ const mentionList = ref<AgentBadge[]>([]);
 const selectedListIndex = ref(0);
 const inputQuery = ref('');
 
+// New refs for enhanced UX
+const showScrollToBottom = ref(false);
+const isDraggingFile = ref(false);
+const unreadCounts = ref<Record<string, number>>({});
+const messageListRef = ref<HTMLElement | null>(null);
+
 const selectedChannel = computed(() => {
   return channels.value.find(c => c.id === selectedChannelId.value);
 });
@@ -281,8 +287,6 @@ const sendMessage = async (content: string, sender: { id: string; type: 'agent' 
     if (!result.success) {
       console.error('[ChatPanel] Failed to send message:', result.error);
     }
-    // 不在这里添加消息到列表，等待 WebSocket 广播
-    // 这样可以确保所有客户端（包括发送者）通过同一渠道接收消息
   } catch (err) {
     console.error('[ChatPanel] Failed to send message:', err);
   }
@@ -325,7 +329,12 @@ const connectWebSocket = () => {
           const exists = messages.value.some(m => m.id === msg.id);
           if (!exists) {
             messages.value.push(msg);
+            showScrollToBottom.value = true;
+            setTimeout(() => { showScrollToBottom.value = false; }, 3000);
           }
+        } else if (msg.projectId === props.projectId) {
+          // Increment unread for other channels
+          unreadCounts.value[msg.channelId] = (unreadCounts.value[msg.channelId] || 0) + 1;
         }
       }
     } catch (err) {
@@ -336,6 +345,83 @@ const connectWebSocket = () => {
   ws.value.onerror = (err) => {
     console.error('[ChatPanel] WebSocket error:', err);
   };
+};
+
+const handleScroll = () => {
+  if (!messageListRef.value) return;
+  const { scrollTop, scrollHeight, clientHeight } = messageListRef.value;
+  showScrollToBottom.value = scrollHeight - scrollTop - clientHeight > 100;
+};
+
+const scrollToBottom = () => {
+  if (messageListRef.value) {
+    messageListRef.value.scrollTop = messageListRef.value.scrollHeight;
+    showScrollToBottom.value = false;
+  }
+};
+
+const getChannelCategory = (channel: ProjectChannel): string => {
+  const type = channel.type || 'general';
+  if (type === 'agent_dm') return 'Agent';
+  if (type === 'tasks') return 'System';
+  return 'Group';
+};
+
+const groupedChannels = computed(() => {
+  const groups: Record<string, ProjectChannel[]> = { Agent: [], Group: [], System: [] };
+  channels.value.forEach(ch => {
+    const cat = getChannelCategory(ch);
+    if (!groups[cat]) groups[cat] = [];
+    groups[cat].push(ch);
+  });
+  return groups;
+});
+
+// Date grouping for messages
+const groupedMessages = computed(() => {
+  const groups: { date: string; messages: ProjectChannelMessage[] }[] = [];
+  let currentGroup: { date: string; messages: ProjectChannelMessage[] } | null = null;
+  
+  messages.value.forEach(msg => {
+    const msgDate = new Date(msg.timestamp).toLocaleDateString('zh-CN');
+    if (!currentGroup || currentGroup.date !== msgDate) {
+      currentGroup = { date: msgDate, messages: [] };
+      groups.push(currentGroup);
+    }
+    currentGroup.messages.push(msg);
+  });
+  
+  return groups;
+});
+
+// File drag handlers
+const handleDragOver = (e: DragEvent) => {
+  e.preventDefault();
+  isDraggingFile.value = true;
+};
+
+const handleDragLeave = (e: DragEvent) => {
+  e.preventDefault();
+  isDraggingFile.value = false;
+};
+
+const handleDrop = (e: DragEvent) => {
+  e.preventDefault();
+  isDraggingFile.value = false;
+  const files = e.dataTransfer?.files;
+  if (files && files.length > 0) {
+    console.log('[ChatPanel] Dropped files:', files);
+    // TODO: implement file upload
+  }
+};
+
+const selectChannel = (channelId: string) => {
+  selectedChannelId.value = channelId;
+  unreadCounts.value[channelId] = 0;
+};
+
+const copyToClipboard = (text: string) => {
+  window.navigator.clipboard?.writeText(text);
 };
 
 watch(() => props.projectId, async (newId) => {
@@ -412,16 +498,25 @@ defineExpose({
 
       <div class="sidebar-section">
         <div class="section-title">Channel</div>
-        <div class="channel-list">
-          <div
-            v-for="channel in channels"
-            :key="channel.id"
-            class="channel-item"
-            :class="{ active: selectedChannelId === channel.id }"
-            @click="selectedChannelId = channel.id"
-          >
-            <span class="channel-icon">#</span>
-            <span class="channel-name">{{ channel.name }}</span>
+        <div class="channel-categories">
+          <div v-for="(groupChannels, category) in groupedChannels" :key="category" class="channel-category">
+            <div v-if="groupChannels.length > 0" class="category-label">{{ category }}</div>
+            <div class="channel-list">
+              <div
+                v-for="channel in groupChannels"
+                :key="channel.id"
+                class="channel-item"
+                :class="{ active: selectedChannelId === channel.id }"
+                @click="selectChannel(channel.id)"
+              >
+                <div class="channel-glow-bar" v-if="selectedChannelId === channel.id"></div>
+                <span class="channel-icon">#</span>
+                <span class="channel-name">{{ channel.name }}</span>
+                <span v-if="unreadCounts[channel.id]" class="unread-badge">
+                  {{ unreadCounts[channel.id] }}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -438,7 +533,7 @@ defineExpose({
         </div>
       </div>
 
-      <div class="message-list" v-if="selectedChannel">
+      <div class="message-list" ref="messageListRef" v-if="selectedChannel" @scroll="handleScroll">
         <StratixLoading v-if="loading" mode="skeleton" :skeleton-lines="4" />
 
         <StratixEmpty
@@ -449,31 +544,90 @@ defineExpose({
         />
 
         <div v-else class="messages">
-          <div
-            v-for="message in messages"
-            :key="message.id"
-            class="message-item"
-            :class="{ 'own-message': message.sender.type === 'user' }"
-          >
-            <div class="message-sender">
-              <div class="sender-avatar">
-                <img v-if="message.sender.avatar" :src="message.sender.avatar" :alt="message.sender.name" />
-                <div v-else class="avatar-placeholder">{{ message.sender.name.charAt(0) }}</div>
+          <div v-for="group in groupedMessages" :key="group.date" class="message-group">
+            <div class="date-divider">
+              <span>{{ group.date }}</span>
+            </div>
+            <div
+              v-for="message in group.messages"
+              :key="message.id"
+              class="message-item"
+              :class="{ 'own-message': message.sender.type === 'user' }"
+            >
+              <div class="message-sender">
+                <div class="sender-avatar">
+                  <img v-if="message.sender.avatar" :src="message.sender.avatar" :alt="message.sender.name" />
+                  <div v-else class="avatar-placeholder">{{ message.sender.name.charAt(0) }}</div>
+                </div>
+                <div class="sender-info">
+                  <span class="sender-name">{{ message.sender.name }}</span>
+                  <span class="sender-role" v-if="message.sender.role">{{ message.sender.role }}</span>
+                </div>
+                <div class="message-time">
+                  {{ new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) }}
+                </div>
               </div>
-              <div class="sender-info">
-                <span class="sender-name">{{ message.sender.name }}</span>
-                <span class="sender-role" v-if="message.sender.role">{{ message.sender.role }}</span>
-              </div>
-              <div class="message-time">
-                {{ new Date(message.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }) }}
+              <div class="message-content" v-html="renderMessageContent(message.content)"></div>
+              
+              <!-- Message actions -->
+              <div class="message-actions">
+                <button class="action-btn" title="复制" @click="copyToClipboard(message.content)">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+                </button>
+                <button class="action-btn" title="回复">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="9 17 4 12 9 7"/>
+                    <path d="M20 18v-2a4 4 0 0 0-4-4H4"/>
+                  </svg>
+                </button>
+                <button class="action-btn reaction-btn" title="反应">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+                    <line x1="9" y1="9" x2="9.01" y2="9"/>
+                    <line x1="15" y1="9" x2="15.01" y2="9"/>
+                  </svg>
+                </button>
               </div>
             </div>
-            <div class="message-content" v-html="renderMessageContent(message.content)"></div>
           </div>
         </div>
+        
+        <!-- Scroll to bottom button -->
+        <Transition name="scroll-btn">
+          <button
+            v-if="showScrollToBottom"
+            class="scroll-to-bottom"
+            @click="scrollToBottom"
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            <span class="scroll-pulse"></span>
+          </button>
+        </Transition>
       </div>
 
-      <div class="message-input" v-if="selectedChannel">
+      <div
+        class="message-input"
+        v-if="selectedChannel"
+        :class="{ 'drag-over': isDraggingFile }"
+        @dragover="handleDragOver"
+        @dragleave="handleDragLeave"
+        @drop="handleDrop"
+      >
+        <div class="drag-overlay" v-if="isDraggingFile">
+          <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <span>释放以上传文件</span>
+        </div>
+        
         <div class="input-wrapper">
           <StratixTextarea
             ref="messageInput"
@@ -486,6 +640,7 @@ defineExpose({
           />
           
           <div v-if="showCommandList" class="popup-list command-list">
+            <div class="popup-header">命令</div>
             <div 
               v-for="(cmd, idx) in commandList" 
               :key="cmd.id"
@@ -493,12 +648,14 @@ defineExpose({
               :class="{ selected: idx === selectedListIndex }"
               @click="selectCommand(cmd)"
             >
+              <span class="item-icon">⌨️</span>
               <span class="item-label">/{{ cmd.label }}</span>
               <span class="item-desc">{{ cmd.description }}</span>
             </div>
           </div>
           
           <div v-if="showMentionList" class="popup-list mention-list">
+            <div class="popup-header">提及 Agent</div>
             <div 
               v-for="(agent, idx) in mentionList" 
               :key="agent.agentId"
@@ -657,6 +814,7 @@ defineExpose({
 
 .agent-status.online {
   background: var(--ds-status-success);
+  box-shadow: 0 0 4px var(--ds-status-success);
 }
 
 .agent-status.offline {
@@ -665,6 +823,26 @@ defineExpose({
 
 .agent-status.busy {
   background: var(--ds-status-warning);
+}
+
+.channel-categories {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-spacing-sm);
+}
+
+.channel-category {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-spacing-xs);
+}
+
+.category-label {
+  font-size: var(--ds-font-size-xs);
+  color: var(--ds-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding-left: var(--ds-spacing-sm);
 }
 
 .channel-list {
@@ -681,17 +859,31 @@ defineExpose({
   border-radius: var(--ds-radius-md);
   cursor: pointer;
   color: var(--ds-text-muted);
-  transition: all 0.2s;
+  transition: all 0.2s var(--ds-animation-easing-ease-out);
+  position: relative;
+  overflow: hidden;
 }
 
 .channel-item:hover {
   background: var(--ds-bg-tertiary);
   color: var(--ds-text-secondary);
+  transform: translateX(2px) scale(1.01);
 }
 
 .channel-item.active {
   background: var(--ds-bg-tertiary);
   color: var(--ds-brand-primary);
+}
+
+.channel-glow-bar {
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  background: var(--ds-brand-primary);
+  border-radius: 0 2px 2px 0;
+  box-shadow: 0 0 8px var(--ds-brand-primary);
 }
 
 .channel-icon {
@@ -700,6 +892,30 @@ defineExpose({
 
 .channel-name {
   font-size: var(--ds-font-size-sm);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.unread-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  background: var(--ds-status-danger);
+  color: white;
+  border-radius: var(--ds-radius-full);
+  font-size: var(--ds-font-size-xs);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: badge-pulse 2s infinite;
+}
+
+@keyframes badge-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0); }
 }
 
 .chat-main {
@@ -742,6 +958,7 @@ defineExpose({
   flex: 1;
   overflow-y: auto;
   padding: var(--ds-spacing-md);
+  position: relative;
 }
 
 .loading,
@@ -786,10 +1003,48 @@ defineExpose({
   gap: var(--ds-spacing-md);
 }
 
+.message-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-spacing-sm);
+}
+
+.date-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: var(--ds-spacing-md) 0;
+}
+
+.date-divider::before,
+.date-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--ds-border);
+}
+
+.date-divider span {
+  padding: 0 var(--ds-spacing-md);
+  font-size: var(--ds-font-size-xs);
+  color: var(--ds-text-muted);
+  background: var(--ds-bg-secondary);
+}
+
 .message-item {
   padding: 12px;
   background: var(--ds-bg-secondary);
   border-radius: var(--ds-radius-md);
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.message-item:hover {
+  background: var(--ds-bg-tertiary);
+}
+
+.message-item:hover .message-actions {
+  opacity: 1;
 }
 
 .message-item.own-message {
@@ -849,6 +1104,87 @@ defineExpose({
 .message-content .mention {
   color: var(--ds-brand-primary);
   font-weight: bold;
+  background: rgba(59, 130, 246, 0.1);
+  padding: 0 4px;
+  border-radius: var(--ds-radius-sm);
+}
+
+.message-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: var(--ds-bg-primary);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-sm);
+  color: var(--ds-text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.action-btn:hover {
+  background: var(--ds-brand-primary);
+  color: white;
+  border-color: var(--ds-brand-primary);
+}
+
+.scroll-to-bottom {
+  position: absolute;
+  bottom: 16px;
+  right: 24px;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--ds-radius-full);
+  background: var(--ds-brand-primary);
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--ds-shadow-md);
+  z-index: 10;
+  transition: transform 0.2s ease;
+}
+
+.scroll-to-bottom:hover {
+  transform: scale(1.1);
+}
+
+.scroll-pulse {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--ds-radius-full);
+  background: var(--ds-brand-primary);
+  animation: scroll-pulse 2s infinite;
+  z-index: -1;
+}
+
+@keyframes scroll-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.5; }
+  50% { transform: scale(1.4); opacity: 0; }
+}
+
+.scroll-btn-enter-active,
+.scroll-btn-leave-active {
+  transition: all 0.3s var(--ds-animation-easing-ease-out);
+}
+
+.scroll-btn-enter-from,
+.scroll-btn-leave-to {
+  opacity: 0;
+  transform: translateY(10px);
 }
 
 .message-input {
@@ -858,6 +1194,30 @@ defineExpose({
   display: flex;
   gap: 12px;
   align-items: flex-start;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.message-input.drag-over {
+  background: var(--ds-bg-tertiary);
+  border: 2px dashed var(--ds-brand-primary);
+  border-radius: var(--ds-radius-md);
+  margin: var(--ds-spacing-sm);
+}
+
+.drag-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--ds-bg-overlay);
+  border-radius: var(--ds-radius-md);
+  z-index: 20;
+  gap: var(--ds-spacing-sm);
+  color: var(--ds-brand-primary);
+  font-weight: 500;
 }
 
 .message-input .input-wrapper {
@@ -869,10 +1229,12 @@ defineExpose({
   background: var(--ds-bg-primary);
   border-color: var(--ds-border);
   color: var(--ds-text-primary);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .message-input .stratix-textarea:focus {
   border-color: var(--ds-brand-primary);
+  box-shadow: 0 0 0 3px var(--ds-border-focus, rgba(59, 130, 246, 0.15));
 }
 
 .message-input .stratix-textarea::placeholder {
@@ -896,6 +1258,16 @@ defineExpose({
   overflow-y: auto;
   margin-bottom: 8px;
   box-shadow: var(--ds-shadow-md);
+  z-index: 100;
+}
+
+.popup-header {
+  padding: 8px 14px;
+  font-size: var(--ds-font-size-xs);
+  color: var(--ds-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--ds-border);
 }
 
 .popup-item {
@@ -907,7 +1279,7 @@ defineExpose({
   transition: background 0.15s;
 }
 
-.popup-item:first-child {
+.popup-item:first-of-type {
   border-radius: 8px 8px 0 0;
 }
 
@@ -918,6 +1290,10 @@ defineExpose({
 .popup-item:hover,
 .popup-item.selected {
   background: var(--ds-bg-tertiary);
+}
+
+.popup-item .item-icon {
+  font-size: var(--ds-font-size-md);
 }
 
 .popup-item .item-label {
@@ -1030,5 +1406,18 @@ defineExpose({
 .message-agent :deep(pre),
 .message-agent :deep(.code-block-wrapper pre) {
   background: color-mix(in srgb, var(--ds-bg-base) 20%, transparent);
+}
+
+/* Prefers reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .channel-item,
+  .message-item,
+  .scroll-to-bottom,
+  .unread-badge,
+  .action-btn {
+    transition: none !important;
+    animation: none !important;
+    transform: none !important;
+  }
 }
 </style>

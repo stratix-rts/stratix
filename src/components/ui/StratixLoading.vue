@@ -1,14 +1,16 @@
 <script setup lang="ts">
 /**
  * StratixLoading - Unified loading states component
- * Supports 3 modes: spinner, skeleton, fullscreen
+ * Supports 4 modes: spinner, dots, pulse, ring, skeleton, fullscreen
  */
 import { computed } from 'vue';
 
+export type SpinnerType = 'ring' | 'dots' | 'pulse';
 export type LoadingMode = 'spinner' | 'skeleton' | 'fullscreen';
 
 interface Props {
   mode?: LoadingMode;
+  spinner?: SpinnerType;
   size?: 'sm' | 'md' | 'lg';
   text?: string;
   skeletonLines?: number;
@@ -17,6 +19,7 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   mode: 'spinner',
+  spinner: 'ring',
   size: 'md',
   text: '',
   skeletonLines: 3,
@@ -40,7 +43,19 @@ const skeletonLineHeight = computed(() => {
     <div v-if="mode === 'fullscreen' || fullscreen" class="stratix-loading-fullscreen">
       <div class="stratix-loading-fullscreen__content">
         <div
-          class="stratix-loading-spinner"
+          v-if="spinner === 'ring'"
+          class="stratix-loading-spinner stratix-loading-spinner--lg"
+          :style="{ width: `${spinnerSize * 1.5}px`, height: `${spinnerSize * 1.5}px` }"
+        ></div>
+        <div
+          v-else-if="spinner === 'dots'"
+          class="stratix-loading-dots"
+        >
+          <span></span><span></span><span></span>
+        </div>
+        <div
+          v-else-if="spinner === 'pulse'"
+          class="stratix-loading-pulse"
           :style="{ width: `${spinnerSize * 1.5}px`, height: `${spinnerSize * 1.5}px` }"
         ></div>
         <span v-if="text" class="stratix-loading-fullscreen__text">{{ text }}</span>
@@ -51,7 +66,22 @@ const skeletonLineHeight = computed(() => {
   <!-- Spinner mode: inline loading indicator -->
   <div v-if="mode === 'spinner' && !fullscreen" class="stratix-loading-spinner-container">
     <div
+      v-if="spinner === 'ring'"
       class="stratix-loading-spinner"
+      :class="`stratix-loading-spinner--${size}`"
+      :style="{ width: `${spinnerSize}px`, height: `${spinnerSize}px` }"
+    ></div>
+    <div
+      v-else-if="spinner === 'dots'"
+      class="stratix-loading-dots"
+      :class="`stratix-loading-dots--${size}`"
+    >
+      <span></span><span></span><span></span>
+    </div>
+    <div
+      v-else-if="spinner === 'pulse'"
+      class="stratix-loading-pulse"
+      :class="`stratix-loading-pulse--${size}`"
       :style="{ width: `${spinnerSize}px`, height: `${spinnerSize}px` }"
     ></div>
     <span v-if="text" class="stratix-loading-spinner__text">{{ text }}</span>
@@ -69,13 +99,14 @@ const skeletonLineHeight = computed(() => {
 </template>
 
 <style scoped>
-/* ============ Spinner ============ */
+/* ============ Spinner Container ============ */
 .stratix-loading-spinner-container {
   display: inline-flex;
   align-items: center;
   gap: var(--ds-spacing-sm);
 }
 
+/* ============ Ring Spinner ============ */
 .stratix-loading-spinner {
   border: 2px solid currentColor;
   border-top-color: transparent;
@@ -84,9 +115,76 @@ const skeletonLineHeight = computed(() => {
   flex-shrink: 0;
 }
 
+.stratix-loading-spinner--sm {
+  border-width: 1.5px;
+}
+
+.stratix-loading-spinner--lg {
+  border-width: 3px;
+}
+
+/* ============ Dots Spinner ============ */
+.stratix-loading-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.stratix-loading-dots--sm {
+  gap: 3px;
+}
+
+.stratix-loading-dots--lg {
+  gap: 6px;
+}
+
+.stratix-loading-dots span {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: currentColor;
+  border-radius: var(--ds-radius-full);
+  animation: ds-loading-dots 1.4s ease-in-out infinite both;
+}
+
+.stratix-loading-dots--sm span {
+  width: 4px;
+  height: 4px;
+}
+
+.stratix-loading-dots--lg span {
+  width: 10px;
+  height: 10px;
+}
+
+.stratix-loading-dots span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.stratix-loading-dots span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+/* ============ Pulse Spinner ============ */
+.stratix-loading-pulse {
+  border-radius: var(--ds-radius-full);
+  background: currentColor;
+  animation: ds-loading-pulse 1.5s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.stratix-loading-pulse--sm {
+  animation-duration: 1.2s;
+}
+
+.stratix-loading-pulse--lg {
+  animation-duration: 1.8s;
+}
+
+/* ============ Text ============ */
 .stratix-loading-spinner__text {
   font-size: var(--ds-font-size-md);
-  color: var(--text-secondary, #a0a0b0);
+  color: var(--ds-text-secondary, var(--text-secondary, #a0a0b0));
 }
 
 /* ============ Fullscreen ============ */
@@ -110,7 +208,7 @@ const skeletonLineHeight = computed(() => {
 
 .stratix-loading-fullscreen__text {
   font-size: var(--ds-font-size-md);
-  color: var(--text-secondary, #a0a0b0);
+  color: var(--ds-text-secondary, var(--text-secondary, #a0a0b0));
 }
 
 /* ============ Skeleton ============ */
@@ -145,7 +243,31 @@ const skeletonLineHeight = computed(() => {
 }
 
 /* ============ Animations ============ */
+@keyframes ds-spin {
+  to { transform: rotate(360deg); }
+}
 
+@keyframes ds-loading-dots {
+  0%, 80%, 100% {
+    transform: scale(0);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes ds-loading-pulse {
+  0%, 100% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
 
 @keyframes stratix-skeleton-pulse {
   0% {
@@ -153,6 +275,15 @@ const skeletonLineHeight = computed(() => {
   }
   100% {
     background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stratix-loading-spinner,
+  .stratix-loading-dots span,
+  .stratix-loading-pulse,
+  .stratix-loading-skeleton__line {
+    animation: none;
   }
 }
 </style>

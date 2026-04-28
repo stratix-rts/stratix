@@ -3,6 +3,7 @@
  * 
  * 使用EnhancedUIComponent和响应式Token
  * 自动响应主题变化
+ * V2升级: glassmorphism背景、按钮hover光效、状态脉冲
  */
 
 import Phaser from 'phaser';
@@ -14,6 +15,7 @@ import { ReactiveToken } from '@/stratix-core/ui/foundation/theme/ReactiveToken'
 
 import type { StatsCollector } from '../../debug/StatsCollector';
 import { PerformanceWidget } from '../debug/PerformanceWidget';
+import { getDSColor, isReducedMotion } from '../../themes/ThemeColors';
 
 export interface TopBarStats {
   totalAgents: number;
@@ -46,6 +48,8 @@ export class TopBarV2 extends EnhancedUIComponent {
   private warningColor: ReactiveToken<string>;
   private infoColor: ReactiveToken<string>;
   private borderColor: ReactiveToken<string>;
+  private glassBg: ReactiveToken<string>;
+  private glassBorder: ReactiveToken<string>;
   
   constructor(
     scene: Phaser.Scene,
@@ -74,6 +78,8 @@ export class TopBarV2 extends EnhancedUIComponent {
     this.warningColor = this.useToken('colors.semantic.warning');
     this.infoColor = this.useToken('colors.semantic.info');
     this.borderColor = this.useToken('colors.border.default');
+    this.glassBg = this.useToken('semantic.glass.background');
+    this.glassBorder = this.useToken('semantic.glass.border');
     
     // 订阅颜色变化，自动重绘
     this.backgroundColor.subscribe(() => this.redraw());
@@ -128,9 +134,17 @@ export class TopBarV2 extends EnhancedUIComponent {
     const height = this.config.height || 40;
     
     this.background.clear();
-    this.background.fillStyle(bgColor, 0.9);
+    // Glassmorphism: translucent background
+    this.background.fillStyle(bgColor, 0.65);
     this.background.fillRoundedRect(0, 0, width, height, 0);
-    this.background.lineStyle(1, borderClr, 0.3);
+    
+    // Subtle top highlight line
+    const primaryColor = getDSColor('color-primary');
+    this.background.lineStyle(1, primaryColor, 0.3);
+    this.background.lineBetween(0, 0, width, 0);
+    
+    // Bottom border
+    this.background.lineStyle(1, borderClr, 0.2);
     this.background.lineBetween(0, height, width, height);
   }
   
@@ -195,11 +209,22 @@ export class TopBarV2 extends EnhancedUIComponent {
     this.helpButton.add([bg, hitArea, questionMark]);
     
     hitArea.on('pointerover', () => {
+      const glowColor = getDSColor('color-primary');
       bg.clear();
-      bg.fillStyle(this.hexToNumber(this.infoColor.get()), 0.2);
+      bg.fillStyle(glowColor, 0.2);
       bg.fillRoundedRect(0, 0, buttonWidth, buttonHeight, 4);
-      bg.lineStyle(1, this.hexToNumber(this.infoColor.get()), 0.8);
+      bg.lineStyle(1, glowColor, 0.8);
       bg.strokeRoundedRect(0, 0, buttonWidth, buttonHeight, 4);
+      // Hover glow
+      if (!isReducedMotion()) {
+        this.scene.tweens.add({
+          targets: questionMark,
+          scaleX: 1.15,
+          scaleY: 1.15,
+          duration: 150,
+          ease: 'Sine.easeOut'
+        });
+      }
     });
     
     hitArea.on('pointerout', () => {
@@ -208,6 +233,7 @@ export class TopBarV2 extends EnhancedUIComponent {
       bg.fillRoundedRect(0, 0, buttonWidth, buttonHeight, 4);
       bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.5);
       bg.strokeRoundedRect(0, 0, buttonWidth, buttonHeight, 4);
+      questionMark.setScale(1);
     });
     
     hitArea.on('pointerdown', () => {
@@ -222,8 +248,12 @@ export class TopBarV2 extends EnhancedUIComponent {
   
   private createIcon(x: number, y: number, color: string): Phaser.GameObjects.Graphics {
     const graphics = this.scene.add.graphics();
-    graphics.fillStyle(this.hexToNumber(color), 1);
+    const c = this.hexToNumber(color);
+    graphics.fillStyle(c, 1);
     graphics.fillCircle(x + 8, y + 8, 8);
+    // Subtle glow behind icon
+    graphics.fillStyle(c, 0.2);
+    graphics.fillCircle(x + 8, y + 8, 12);
     return graphics;
   }
   
@@ -293,20 +323,29 @@ export class TopBarV2 extends EnhancedUIComponent {
     // 重绘图标颜色
     if (this.agentIcon) {
       this.agentIcon.clear();
-      this.agentIcon.fillStyle(this.hexToNumber(this.infoColor.get()), 1);
+      const c = this.hexToNumber(this.infoColor.get());
+      this.agentIcon.fillStyle(c, 1);
       this.agentIcon.fillCircle(28, 20, 8);
+      this.agentIcon.fillStyle(c, 0.2);
+      this.agentIcon.fillCircle(28, 20, 12);
     }
     
     if (this.busyIcon) {
       this.busyIcon.clear();
-      this.busyIcon.fillStyle(this.hexToNumber(this.warningColor.get()), 1);
+      const c = this.hexToNumber(this.warningColor.get());
+      this.busyIcon.fillStyle(c, 1);
       this.busyIcon.fillCircle(148, 20, 8);
+      this.busyIcon.fillStyle(c, 0.2);
+      this.busyIcon.fillCircle(148, 20, 12);
     }
     
     if (this.zoneIcon) {
       this.zoneIcon.clear();
-      this.zoneIcon.fillStyle(this.hexToNumber(this.successColor.get()), 1);
+      const c = this.hexToNumber(this.successColor.get());
+      this.zoneIcon.fillStyle(c, 1);
       this.zoneIcon.fillCircle(268, 20, 8);
+      this.zoneIcon.fillStyle(c, 0.2);
+      this.zoneIcon.fillCircle(268, 20, 12);
     }
     
     // 更新显示

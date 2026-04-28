@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 
+import { getDSColor, isReducedMotion } from '../themes/ThemeColors';
+
 import { ConnectionPoint } from '../zones/ZoneConnection';
 
 export type DataFlowStatus = 'normal' | 'warning' | 'error';
@@ -72,6 +74,15 @@ const DEFAULT_SPEED = 0.0003;
 const DEFAULT_GLOW_INTENSITY = 0.6;
 const TRAIL_LENGTH = 12;
 
+/** Get theme-aware status colors */
+function getThemeStatusColors(): Record<DataFlowStatus, number> {
+  return {
+    normal: getDSColor('status-success'),
+    warning: getDSColor('status-warning'),
+    error: getDSColor('status-danger'),
+  };
+}
+
 export class DataFlowAnimation {
   private scene: Phaser.Scene;
   private flows: Map<string, ActiveFlow> = new Map();
@@ -114,7 +125,7 @@ export class DataFlowAnimation {
       radius: 10,
       maxRadius: 80,
       alpha: 1,
-      color: color ?? STATUS_COLORS.normal,
+      color: color ?? getThemeStatusColors().normal,
     });
   }
 
@@ -140,8 +151,9 @@ export class DataFlowAnimation {
       return;
     }
 
+    const themeColors = getThemeStatusColors();
     const status = this.getStatusFromVolume(options.volume ?? 1);
-    const color = options.color ?? STATUS_COLORS[status];
+    const color = options.color ?? themeColors[status];
     const particleCount = options.particleCount ?? DEFAULT_PARTICLE_COUNT;
     const particleSize = options.particleSize ?? DEFAULT_PARTICLE_SIZE;
     const speed = options.speed ?? DEFAULT_SPEED;
@@ -322,8 +334,9 @@ export class DataFlowAnimation {
         const midY = (fromPos.y + toPos.y) / 2;
         const beamLength = Math.sqrt((toPos.x - fromPos.x) ** 2 + (toPos.y - fromPos.y) ** 2);
 
+        const primaryColor = getDSColor('color-primary');
         // Draw expanding ring at midpoint
-        this.agentBeamGraphics.lineStyle(2, 0x00ffff, pulse.alpha * 0.5);
+        this.agentBeamGraphics.lineStyle(2, primaryColor, pulse.alpha * 0.5);
         this.agentBeamGraphics.strokeCircle(
           midX + Math.cos(pulse.angle) * pulse.distance * 0.3,
           midY + Math.sin(pulse.angle) * pulse.distance * 0.3,
@@ -490,7 +503,7 @@ export class DataFlowAnimation {
 
       const pulseAlpha = Math.sin(packet.t * Math.PI);
 
-      // Draw packet trail (energy streak effect)
+      // Draw packet trail (energy streak effect with enhanced glow)
       if (packet.trail.length > 1) {
         for (let i = 1; i < packet.trail.length; i++) {
           const t = packet.trail[i];
@@ -498,6 +511,14 @@ export class DataFlowAnimation {
           const lineAlpha = fade * pulseAlpha * 0.6;
           const lineWidth = packet.size * fade * 0.5;
 
+          // Glow trail line
+          flow.graphics.lineStyle(lineWidth * 3, flow.options.color, lineAlpha * 0.3);
+          flow.graphics.beginPath();
+          flow.graphics.moveTo(packet.trail[i - 1].x, packet.trail[i - 1].y);
+          flow.graphics.lineTo(t.x, t.y);
+          flow.graphics.strokePath();
+
+          // Core trail line
           flow.graphics.lineStyle(lineWidth, packet.color, lineAlpha);
           flow.graphics.beginPath();
           flow.graphics.moveTo(packet.trail[i - 1].x, packet.trail[i - 1].y);

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useAgentStore } from '../stores/agent';
 
 const agentStore = useAgentStore();
@@ -141,6 +141,7 @@ const handleCreateSelect = (value: string | number) => {
           @click="handleRefresh"
           :disabled="isRefreshing"
           title="刷新列表"
+          class="refresh-btn"
         />
         
         <StratixButton 
@@ -171,52 +172,58 @@ const handleCreateSelect = (value: string | number) => {
     </div>
     
     <div class="agent-list">
-      <div 
-        v-for="agent in agents" 
-        :key="agent.agentId"
-        class="agent-card"
-        :class="{ selected: isSelected(agent.agentId) }"
-        @click="emit('select', agent.agentId)"
-      >
-        <div class="agent-avatar">
-          <img 
-            v-if="agent.profile?.thumbnail" 
-            :src="agent.profile.thumbnail!" 
-            class="avatar-img"
+      <TransitionGroup name="agent-card">
+        <div 
+          v-for="agent in agents" 
+          :key="agent.agentId"
+          class="agent-card"
+          :class="{ selected: isSelected(agent.agentId) }"
+          @click="emit('select', agent.agentId)"
+        >
+          <div class="agent-avatar">
+            <img 
+              v-if="agent.profile?.thumbnail" 
+              :src="agent.profile.thumbnail!" 
+              class="avatar-img"
+            />
+            <div 
+              v-else 
+              class="avatar-placeholder"
+              :style="{ background: getHeroTypeColor(agent.type) + '20' }"
+            >
+              <SvgIcon :name="user" :color="getHeroTypeColor(agent.type)" :size="16" />
+            </div>
+            <div 
+              class="status-dot"
+              :class="getAgentStatus(agent)"
+              :style="{ background: getStatusColor(getAgentStatus(agent)) }"
+            ></div>
+          </div>
+          <div class="agent-info">
+            <div class="agent-name">{{ agent.name }}</div>
+            <div class="agent-meta">
+              <span class="agent-status" :style="{ color: getStatusColor(getAgentStatus(agent)) }">
+                {{ getStatusText(getAgentStatus(agent)) }}
+              </span>
+              <span class="agent-divider">·</span>
+              <span class="agent-skills">{{ agent.skills?.length || 0 }} 技能</span>
+            </div>
+          </div>
+          <StratixButton 
+            variant="secondary" 
+            size="sm"
+            :icon="trash"
+            @click.stop="emit('delete', agent.agentId)"
+            title="删除"
+            class="delete-btn"
           />
-          <div 
-            v-else 
-            class="avatar-placeholder"
-            :style="{ background: getHeroTypeColor(agent.type) + '20' }"
-          >
-            <SvgIcon :name="user" :color="getHeroTypeColor(agent.type)" :size="16" />
-          </div>
-          <div 
-            class="status-dot"
-            :style="{ background: getStatusColor(getAgentStatus(agent)) }"
-          ></div>
         </div>
-        <div class="agent-info">
-          <div class="agent-name">{{ agent.name }}</div>
-          <div class="agent-meta">
-            <span class="agent-status" :style="{ color: getStatusColor(getAgentStatus(agent)) }">
-              {{ getStatusText(getAgentStatus(agent)) }}
-            </span>
-            <span class="agent-divider">·</span>
-            <span class="agent-skills">{{ agent.skills?.length || 0 }} 技能</span>
-          </div>
-        </div>
-        <StratixButton 
-          variant="secondary" 
-          size="sm"
-          :icon="trash"
-          @click.stop="emit('delete', agent.agentId)"
-          title="删除"
-        />
-      </div>
+      </TransitionGroup>
       
       <div v-if="agents?.length === 0" class="empty-state">
-        <SvgIcon :name="user" :color="getToken('colors.accent')" :size="48" :stroke-width="1.5" />
+        <div class="empty-float">
+          <SvgIcon :name="user" :color="getToken('colors.accent')" :size="48" :stroke-width="1.5" />
+        </div>
         <div class="empty-title">还没有英雄</div>
         <div class="empty-desc">点击上方按钮创建你的第一个英雄</div>
         <div class="empty-actions">
@@ -265,6 +272,18 @@ const handleCreateSelect = (value: string | number) => {
   gap: var(--ds-spacing-sm);
 }
 
+.refresh-btn :deep(svg) {
+  transition: transform 0.3s ease;
+}
+
+.refresh-btn.spinning :deep(svg) {
+  animation: ds-spin 0.8s linear infinite;
+}
+
+@keyframes ds-spin {
+  to { transform: rotate(360deg); }
+}
+
 .refresh-info {
   display: flex;
   align-items: center;
@@ -298,17 +317,23 @@ const handleCreateSelect = (value: string | number) => {
   background: v-bind('getToken("colors.background.tertiary")');
   border-radius: var(--ds-radius-md);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s var(--ds-animation-easing-ease-out);
   border: 1px solid transparent;
+  transform-style: preserve-3d;
+  perspective: 1000px;
 }
 
 .agent-card:hover {
   background: v-bind('getToken("colors.background.secondary")');
+  transform: perspective(1000px) rotateX(1deg) rotateY(-1deg) translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1), 0 2px 6px rgba(0, 0, 0, 0.05);
+  border-color: v-bind('getToken("colors.border.default")');
 }
 
 .agent-card.selected {
   border-color: var(--ds-brand-primary);
   background: var(--ds-bg-tertiary);
+  box-shadow: 0 0 0 1px var(--ds-brand-primary), 0 4px 12px rgba(59, 130, 246, 0.1);
 }
 
 .agent-avatar {
@@ -325,6 +350,11 @@ const handleCreateSelect = (value: string | number) => {
   border-radius: var(--ds-radius-md);
   object-fit: cover;
   image-rendering: pixelated;
+  transition: transform 0.2s ease;
+}
+
+.agent-card:hover .avatar-img {
+  transform: scale(1.05);
 }
 
 .avatar-placeholder {
@@ -334,6 +364,11 @@ const handleCreateSelect = (value: string | number) => {
   align-items: center;
   justify-content: center;
   border-radius: var(--ds-radius-md);
+  transition: transform 0.2s ease;
+}
+
+.agent-card:hover .avatar-placeholder {
+  transform: scale(1.05);
 }
 
 .status-dot {
@@ -344,7 +379,26 @@ const handleCreateSelect = (value: string | number) => {
   height: 10px;
   border-radius: var(--ds-radius-full);
   border: 2px solid v-bind('getToken("colors.background.secondary")');
-  box-shadow: 0 0 4px currentColor;
+  transition: box-shadow 0.3s ease;
+}
+
+.status-dot.online {
+  box-shadow: 0 0 4px var(--ds-status-success);
+  animation: status-glow 2s infinite;
+}
+
+.status-dot.busy {
+  box-shadow: 0 0 4px var(--ds-status-warning);
+}
+
+.status-dot.error {
+  box-shadow: 0 0 4px var(--ds-status-danger);
+  animation: status-glow 2s infinite;
+}
+
+@keyframes status-glow {
+  0%, 100% { box-shadow: 0 0 4px currentColor; }
+  50% { box-shadow: 0 0 8px currentColor, 0 0 4px currentColor; }
 }
 
 .agent-info {
@@ -380,11 +434,29 @@ const handleCreateSelect = (value: string | number) => {
   color: v-bind('getToken("colors.text.muted")');
 }
 
+.delete-btn {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.agent-card:hover .delete-btn {
+  opacity: 1;
+}
+
 .empty-state {
   text-align: center;
   padding: var(--ds-spacing-xl) var(--ds-spacing-lg);
   color: v-bind('getToken("colors.text.muted")');
   line-height: 1.8;
+}
+
+.empty-float {
+  animation: empty-float 3s ease-in-out infinite;
+}
+
+@keyframes empty-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
 }
 
 .empty-title {
@@ -410,5 +482,34 @@ const handleCreateSelect = (value: string | number) => {
   height: 8px;
   border-radius: var(--ds-radius-full);
   margin-right: 8px;
+}
+
+/* Transition group */
+.agent-card-enter-active,
+.agent-card-leave-active {
+  transition: all 0.3s ease;
+}
+
+.agent-card-enter-from,
+.agent-card-leave-to {
+  opacity: 0;
+  transform: translateX(-20px);
+}
+
+.agent-card-move {
+  transition: transform 0.3s ease;
+}
+
+/* Prefers reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .agent-card,
+  .status-dot,
+  .avatar-img,
+  .avatar-placeholder,
+  .empty-float {
+    transition: none !important;
+    animation: none !important;
+    transform: none !important;
+  }
 }
 </style>

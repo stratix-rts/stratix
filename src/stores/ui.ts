@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 
-export type Theme = 'light' | 'dark' | 'auto';
+export type Theme = 'cyberpunk' | 'minimal' | 'professional' | 'light' | 'dark' | 'auto';
 
 export interface ToastItem {
   id: string;
@@ -35,6 +35,17 @@ export const useUIStore = defineStore('ui', () => {
   const showZonePanel = ref(false);
   const showProjectConfig = ref(false);
   const showDataExplorer = ref(false);
+  const showCommandPalette = ref(false);
+
+  // Global loading overlay
+  const globalLoading = ref(false);
+  const globalLoadingMessage = ref('');
+
+  // Active header button index (for keyboard shortcuts)
+  const activeHeaderIndex = ref<number>(-1);
+
+  // Recent commands (for CommandPalette)
+  const recentCommandIds = ref<string[]>([]);
 
   // Theme
   const theme = ref<Theme>('auto');
@@ -51,6 +62,23 @@ export const useUIStore = defineStore('ui', () => {
   // Sound settings
   const soundEnabled = ref(true);
   const soundVolume = ref(0.5);
+
+  // Modal stack tracking (for Esc-to-close)
+  type ModalName = 'characterCreator' | 'chatModal' | 'zonePanel' | 'projectConfig' | 'dataExplorer' | 'commandPalette';
+  const modalStack = ref<ModalName[]>([]);
+
+  function pushModal(name: ModalName): void {
+    modalStack.value = modalStack.value.filter(m => m !== name);
+    modalStack.value.push(name);
+  }
+
+  function popModal(): ModalName | undefined {
+    return modalStack.value.pop();
+  }
+
+  function removeModalFromStack(name: ModalName): void {
+    modalStack.value = modalStack.value.filter(m => m !== name);
+  }
 
   // Computed
   const isDarkMode = computed(() => {
@@ -100,46 +128,81 @@ export const useUIStore = defineStore('ui', () => {
 
   function openChatModal(): void {
     showChatModal.value = true;
+    pushModal('chatModal');
   }
 
   function closeChatModal(): void {
     showChatModal.value = false;
+    removeModalFromStack('chatModal');
   }
 
   function openCharacterCreator(): void {
     showCharacterCreator.value = true;
+    pushModal('characterCreator');
   }
 
   function closeCharacterCreator(): void {
     showCharacterCreator.value = false;
+    removeModalFromStack('characterCreator');
   }
 
   function openZonePanel(): void {
     showZonePanel.value = true;
+    pushModal('zonePanel');
   }
 
   function closeZonePanel(): void {
     showZonePanel.value = false;
+    removeModalFromStack('zonePanel');
   }
 
   function toggleZonePanel(): void {
     showZonePanel.value = !showZonePanel.value;
+    if (showZonePanel.value) pushModal('zonePanel');
+    else removeModalFromStack('zonePanel');
   }
 
   function openProjectConfig(): void {
     showProjectConfig.value = true;
+    pushModal('projectConfig');
   }
 
   function closeProjectConfig(): void {
     showProjectConfig.value = false;
+    removeModalFromStack('projectConfig');
   }
 
   function openDataExplorer(): void {
     showDataExplorer.value = true;
+    pushModal('dataExplorer');
   }
 
   function closeDataExplorer(): void {
     showDataExplorer.value = false;
+    removeModalFromStack('dataExplorer');
+  }
+
+  function openCommandPalette(): void {
+    showCommandPalette.value = true;
+    pushModal('commandPalette');
+  }
+
+  function closeCommandPalette(): void {
+    showCommandPalette.value = false;
+    removeModalFromStack('commandPalette');
+  }
+
+  function setGlobalLoading(loading: boolean, message = ''): void {
+    globalLoading.value = loading;
+    globalLoadingMessage.value = message;
+  }
+
+  function setActiveHeaderIndex(index: number): void {
+    activeHeaderIndex.value = index;
+  }
+
+  function addRecentCommand(commandId: string): void {
+    recentCommandIds.value = [commandId, ...recentCommandIds.value.filter(id => id !== commandId)].slice(0, 10);
   }
 
   // Theme actions
@@ -229,6 +292,12 @@ export const useUIStore = defineStore('ui', () => {
     showZonePanel,
     showProjectConfig,
     showDataExplorer,
+    showCommandPalette,
+    globalLoading,
+    globalLoadingMessage,
+    activeHeaderIndex,
+    recentCommandIds,
+    modalStack,
     theme,
     toasts,
     commandLogs,
@@ -264,6 +333,20 @@ export const useUIStore = defineStore('ui', () => {
     closeProjectConfig,
     openDataExplorer,
     closeDataExplorer,
+    openCommandPalette,
+    closeCommandPalette,
+    pushModal,
+    popModal,
+    removeModalFromStack,
+
+    // Global loading
+    setGlobalLoading,
+
+    // Header
+    setActiveHeaderIndex,
+
+    // Recent commands
+    addRecentCommand,
 
     // Theme actions
     setTheme,

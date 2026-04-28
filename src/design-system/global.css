@@ -45,3 +45,89 @@ pre,
 kbd {
   font-family: var(--ds-font-mono);
 }
+
+/* ============ 全局平滑过渡 ============ */
+.ds-transition {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ds-transition-fast {
+  transition: all 0.1s ease-out;
+}
+
+.ds-transition-slow {
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ============ 交互元素基础 ============ */
+.ds-interactive {
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.ds-interactive:hover {
+  transform: translateY(-1px);
+}
+
+.ds-interactive:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* ============ 卡片 hover 效果 ============ */
+.ds-card-hover {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.ds-card-hover:hover {
+  transform: translateY(-4px) perspective(1000px) rotateX(2deg) rotateY(-2deg);
+  box-shadow: var(--ds-shadow-xl);
+}
+
+/* ============ 发光效果 ============ */
+.ds-glow {
+  transition: box-shadow 0.3s ease;
+}
+
+.ds-glow:hover {
+  box-shadow: 0 0 20px var(--ds-color-primary);
+}
+
+/* ============ 文字发光 ============ */
+.ds-text-glow {
+  transition: text-shadow 0.3s ease;
+}
+
+.ds-text-glow:hover {
+  text-shadow: 0 0 10px currentColor;
+}
+
+/* ============ 边框发光 ============ */
+.ds-border-glow {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ds-border-glow:focus-within {
+  border-color: var(--ds-color-primary);
+  box-shadow: 0 0 0 3px var(--ds-border-focus);
+}
+
+/* ============ 渐进增强：减少动画偏好 ============ */
+@media (prefers-reduced-motion: reduce) {
+  .ds-transition,
+  .ds-transition-fast,
+  .ds-transition-slow,
+  .ds-interactive,
+  .ds-interactive:hover,
+  .ds-interactive:active,
+  .ds-card-hover,
+  .ds-card-hover:hover,
+  .ds-glow,
+  .ds-glow:hover,
+  .ds-text-glow,
+  .ds-text-glow:hover,
+  .ds-border-glow,
+  .ds-border-glow:focus-within {
+    transition: none;
+    transform: none;
+  }
+}

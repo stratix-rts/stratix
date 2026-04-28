@@ -3,6 +3,7 @@
  * 
  * 使用EnhancedUIComponent和响应式Token
  * 自动响应主题变化
+ * V2升级: 主题色发光边框、Agent点呼吸光效、Zone框状态色填充、视口框动态边框
  */
 
 import Phaser from 'phaser';
@@ -13,6 +14,7 @@ import type { UIComponentConfig } from '@/stratix-core/ui/core/types/component.t
 import { ReactiveToken } from '@/stratix-core/ui/foundation/theme/ReactiveToken';
 
 import { MAP_WIDTH, MAP_HEIGHT } from '../../constants';
+import { getDSColor, isReducedMotion } from '../../themes/ThemeColors';
 
 interface MinimapConfig {
   width: number;
@@ -45,6 +47,7 @@ export class MinimapV2 extends EnhancedUIComponent {
   private dragHighlight: Phaser.GameObjects.Graphics | null = null;
   private pingGraphics: Phaser.GameObjects.Graphics | null = null;
   private agentLastPingTime: Map<string, number> = new Map();
+  private agentBreathingAlphas: Map<string, number> = new Map();
   
   private backgroundColor: ReactiveToken<string>;
   private borderColor: ReactiveToken<string>;
@@ -118,12 +121,19 @@ export class MinimapV2 extends EnhancedUIComponent {
     
     const bgColor = this.hexToNumber(this.backgroundColor.get());
     const borderClr = this.hexToNumber(this.borderColor.get());
+    const primaryColor = getDSColor('color-primary');
     
     this.background.clear();
-    this.background.fillStyle(bgColor, 0.9);
+    this.background.fillStyle(bgColor, 0.75);
     this.background.fillRoundedRect(0, 0, this.minimapConfig.width, this.minimapConfig.height, 4);
-    this.background.lineStyle(1, borderClr, 0.5);
+    
+    // Theme-colored glow border
+    this.background.lineStyle(1, primaryColor, 0.5);
     this.background.strokeRoundedRect(0, 0, this.minimapConfig.width, this.minimapConfig.height, 4);
+    
+    // Inner subtle border
+    this.background.lineStyle(1, borderClr, 0.25);
+    this.background.strokeRoundedRect(1, 1, this.minimapConfig.width - 2, this.minimapConfig.height - 2, 3);
   }
   
   private createMapGraphics(): void {
@@ -188,6 +198,9 @@ export class MinimapV2 extends EnhancedUIComponent {
     this.dragHighlight.clear();
     this.dragHighlight.fillStyle(color, 0.3);
     this.dragHighlight.fillCircle(x, y, 8);
+    // Glow
+    this.dragHighlight.fillStyle(color, 0.15);
+    this.dragHighlight.fillCircle(x, y, 12);
   }
 
   private updateHoverHighlight(localX: number, localY: number): void {
@@ -256,19 +269,34 @@ export class MinimapV2 extends EnhancedUIComponent {
       const height = bounds.height * this.minimapScaleY;
       
       const isSelected = selectedZoneIds.has(zoneId);
+      
+      // Status-colored fill
+      const status = zone.getZoneStatus?.() || 'idle';
+      const statusColorMap: Record<string, string> = {
+        idle: this.infoColor.get(),
+        active: this.successColor.get(),
+        busy: this.warningColor.get(),
+        error: getDSColor('status-danger')?.toString(16).padStart(6, '0') ? '#' + getDSColor('status-danger').toString(16).padStart(6, '0') : '#ff4444',
+        completed: this.successColor.get(),
+      };
+      const statusColor = statusColorMap[status] || this.infoColor.get();
       const color = isSelected
         ? this.hexToNumber(this.successColor.get())
-        : this.hexToNumber(this.infoColor.get());
+        : this.hexToNumber(statusColor);
       
-      this.mapGraphics?.fillStyle(color, 0.3);
+      // Fill with status alpha
+      this.mapGraphics?.fillStyle(color, isSelected ? 0.35 : 0.25);
       this.mapGraphics?.fillRect(minX, minY, width, height);
-      this.mapGraphics?.lineStyle(1, color, 0.8);
+      
+      // Border
+      this.mapGraphics?.lineStyle(isSelected ? 2 : 1, color, 0.9);
       this.mapGraphics?.strokeRect(minX, minY, width, height);
     });
   }
   
   private drawAgents(): void {
     const agents = this.getAgentSprites();
+    const now = this.scene.time.now;
 
     const agentColors: Record<string, string> = {
       writer: this.infoColor.get(),
@@ -277,14 +305,27 @@ export class MinimapV2 extends EnhancedUIComponent {
       custom: this.accentColor.get(),
     };
 
-    agents.forEach((sprite: any) => {
+    agents.forEach((sprite: any, agentId: string) => {
       const agentType = sprite.getAgentType?.() || 'custom';
       const color = agentColors[agentType] || agentColors.custom;
 
       const minimapX = sprite.x * this.minimapScaleX;
       const minimapY = sprite.y * this.minimapScaleY;
 
-      this.mapGraphics?.fillStyle(this.hexToNumber(color), 1);
+      // Breathing alpha effect
+      let alpha = 1;
+      if (!isReducedMotion()) {
+        const lastAlpha = this.agentBreathingAlphas.get(agentId) ?? 0.5;
+        alpha = 0.7 + Math.sin(now * 0.003 + sprite.x * 0.01) * 0.3;
+        this.agentBreathingAlphas.set(agentId, alpha);
+      }
+
+      // Glow dot
+      this.mapGraphics?.fillStyle(this.hexToNumber(color), alpha * 0.3);
+      this.mapGraphics?.fillCircle(minimapX, minimapY, 4);
+      
+      // Core dot
+      this.mapGraphics?.fillStyle(this.hexToNumber(color), alpha);
       this.mapGraphics?.fillCircle(minimapX, minimapY, 2);
     });
   }
@@ -296,7 +337,7 @@ export class MinimapV2 extends EnhancedUIComponent {
     const maxRadius = 8;
 
     agents.forEach((sprite: any, agentId: string) => {
-      const status = sprite.getStatus?.();
+      const status = sprite.getStatus?.() || sprite.getCurrentStatus?.();
       if (status !== 'busy') {
         this.agentLastPingTime.delete(agentId);
         return;
@@ -324,6 +365,9 @@ export class MinimapV2 extends EnhancedUIComponent {
       if (alpha > 0) {
         this.pingGraphics?.lineStyle(1, this.hexToNumber(this.warningColor.get()), alpha);
         this.pingGraphics?.strokeCircle(minimapX, minimapY, radius);
+        // Glow ring
+        this.pingGraphics?.lineStyle(1, this.hexToNumber(this.warningColor.get()), alpha * 0.3);
+        this.pingGraphics?.strokeCircle(minimapX, minimapY, radius + 2);
       }
     });
   }
@@ -348,10 +392,29 @@ export class MinimapV2 extends EnhancedUIComponent {
 
     this.viewportRect?.clear();
     // Fill semi-transparent to indicate draggable area
-    this.viewportRect?.fillStyle(this.hexToNumber(this.textPrimaryColor.get()), 0.1);
+    this.viewportRect?.fillStyle(this.hexToNumber(this.textPrimaryColor.get()), 0.08);
     this.viewportRect?.fillRect(viewportX, viewportY, viewportWidth, viewportHeight);
-    this.viewportRect?.lineStyle(1, this.hexToNumber(this.textPrimaryColor.get()), 0.8);
+    
+    // Dynamic border with primary color accent
+    const primaryColor = getDSColor('color-primary');
+    this.viewportRect?.lineStyle(1, primaryColor, 0.6);
     this.viewportRect?.strokeRect(viewportX, viewportY, viewportWidth, viewportHeight);
+    
+    // Corner highlights
+    const cornerSize = 4;
+    this.viewportRect?.fillStyle(primaryColor, 0.8);
+    // Top-left
+    this.viewportRect?.fillRect(viewportX - 1, viewportY - 1, cornerSize, 2);
+    this.viewportRect?.fillRect(viewportX - 1, viewportY - 1, 2, cornerSize);
+    // Top-right
+    this.viewportRect?.fillRect(viewportX + viewportWidth - cornerSize + 1, viewportY - 1, cornerSize, 2);
+    this.viewportRect?.fillRect(viewportX + viewportWidth - 1, viewportY - 1, 2, cornerSize);
+    // Bottom-left
+    this.viewportRect?.fillRect(viewportX - 1, viewportY + viewportHeight - 1, cornerSize, 2);
+    this.viewportRect?.fillRect(viewportX - 1, viewportY + viewportHeight - cornerSize + 1, 2, cornerSize);
+    // Bottom-right
+    this.viewportRect?.fillRect(viewportX + viewportWidth - cornerSize + 1, viewportY + viewportHeight - 1, cornerSize, 2);
+    this.viewportRect?.fillRect(viewportX + viewportWidth - 1, viewportY + viewportHeight - cornerSize + 1, 2, cornerSize);
   }
   
   public resize(width: number, height: number): void {

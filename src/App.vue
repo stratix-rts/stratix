@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import { createStratixRTS } from './stratix-rts';
 import { StratixEventBus, StratixAgentConfig, StratixFrontendOperationEvent } from './stratix-core';
 import MainLayout from './components/MainLayout.vue';
@@ -8,6 +8,7 @@ import AgentChatModal from './components/AgentChatModal.vue';
 import ProjectConfigPanel from './stratix-project/ui/ProjectConfigPanel.vue';
 import ZonePanel from './stratix-project/ui/ZonePanel.vue';
 import DataExplorer from './stratix-project/ui/DataExplorer.vue';
+import CommandPalette from './components/CommandPalette.vue';
 import { ToastContainer, toastService } from './components/ui';
 import Map3DView from './components/Map3DView.vue';
 import type { ToastItem } from './components/ui';
@@ -18,6 +19,7 @@ import type { SavedCharacter } from './stratix-character-creator/types';
 import type { ProjectConfig, Project } from './stratix-project/types';
 import { rtsEventBus } from './stratix-rts/events/core/RTSEventBus';
 import { soundService } from './services/SoundService';
+import { commandPaletteAPI } from './composables/useCommandPalette';
 
 // Pinia stores
 const agentStore = useAgentStore();
@@ -35,6 +37,10 @@ const dataExplorerZoneId = ref<string | undefined>(undefined);
 const show3DView = ref(false);
 const gameSceneRef = ref<any>(null);
 
+// Loading overlay state with debounce
+const showLoadingOverlay = ref(false);
+const loadingTimer = ref<ReturnType<typeof setTimeout> | null>(null);
+
 let game: Phaser.Game | null = null;
 let eventBus: StratixEventBus;
 let unsubscribeToasts: (() => void) | null = null;
@@ -43,6 +49,21 @@ let unsubscribeToasts: (() => void) | null = null;
 const agents = computed(() => agentStore.agents);
 const selectedAgentIds = computed(() => agentStore.selectedIds);
 const isRefreshing = computed(() => agentStore.isRefreshing);
+
+// Track global loading with debounce (>200ms to avoid flash)
+watch(() => uiStore.globalLoading, (loading) => {
+  if (loadingTimer.value) {
+    clearTimeout(loadingTimer.value);
+    loadingTimer.value = null;
+  }
+  if (loading) {
+    loadingTimer.value = setTimeout(() => {
+      showLoadingOverlay.value = true;
+    }, 200);
+  } else {
+    showLoadingOverlay.value = false;
+  }
+});
 
 const handleAgentSelect = (event: StratixFrontendOperationEvent) => {
   agentStore.setSelectedIds(event.payload.agentIds || []);
@@ -63,6 +84,7 @@ const handleCommandExecute = async (event: StratixFrontendOperationEvent) => {
   uiStore.addCommandLog(log);
 
   try {
+    uiStore.setGlobalLoading(true, '执行命令中...');
     const response = await fetch('/api/stratix/command/execute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -73,6 +95,8 @@ const handleCommandExecute = async (event: StratixFrontendOperationEvent) => {
     uiStore.updateCommandLogStatus(log.commandId, result.code === 200 ? 'success' : 'failed');
   } catch (error) {
     uiStore.updateCommandLogStatus(log.commandId, 'failed');
+  } finally {
+    uiStore.setGlobalLoading(false);
   }
 };
 
@@ -120,8 +144,6 @@ const closeCharacterCreator = () => {
 const handleCharacterCreated = async (character: SavedCharacter) => {
   console.log('[App] Character created:', character.name);
   closeCharacterCreator();
-  // 旧版 Phaser 游戏会在内部处理所有步骤，完成后只发送 created 事件
-  // App.vue 只需要通知 agentStore 创建 Agent
   agentStore.createCustomAgent(character, {
     backendType: character.backendType,
     openClawConfig: character.openClawConfig,
@@ -164,6 +186,7 @@ const handleProjectConfigSave = async (config: ProjectConfig) => {
   console.log('[App] Saving project config:', currentProject.value.id, config);
 
   try {
+    uiStore.setGlobalLoading(true, '保存项目配置...');
     const response = await fetch(`/api/projects/${currentProject.value.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -190,6 +213,8 @@ const handleProjectConfigSave = async (config: ProjectConfig) => {
   } catch (error: any) {
     console.error('[App] Failed to save project config:', error);
     throw error;
+  } finally {
+    uiStore.setGlobalLoading(false);
   }
 };
 
@@ -213,6 +238,92 @@ const openDataExplorer = (zoneId?: string) => {
 const toggle3DView = () => {
   show3DView.value = !show3DView.value;
 };
+
+// Toast helper for shortcuts
+const showShortcutToast = (message: string) => {
+  uiStore.addToast({
+    type: 'info',
+    message,
+    duration: 1500,
+  });
+};
+
+// Global keyboard shortcuts
+const handleGlobalKeydown = (e: KeyboardEvent) => {
+  const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+  const modKey = isMac ? e.metaKey : e.ctrlKey;
+
+  // Command Palette: Ctrl/Cmd+K
+  if (modKey && e.key === 'k') {
+    e.preventDefault();
+    commandPaletteAPI.toggle();
+    if (uiStore.showCommandPalette) {
+      showShortcutToast(`打开命令面板 ${isMac ? '⌘K' : 'Ctrl+K'}`);
+    }
+    return;
+  }
+
+  // Data Explorer: Ctrl/Cmd+D
+  if (modKey && e.key === 'd') {
+    e.preventDefault();
+    uiStore.openDataExplorer();
+    showShortcutToast(`打开数据浏览器 ${isMac ? '⌘D' : 'Ctrl+D'}`);
+    return;
+  }
+
+  // Header button shortcuts: Ctrl/Cmd+1-6
+  if (modKey && /^[1-6]$/.test(e.key)) {
+    e.preventDefault();
+    const index = parseInt(e.key, 10) - 1;
+    uiStore.setActiveHeaderIndex(index);
+    showShortcutToast(`切换工具栏 ${e.key}`);
+    return;
+  }
+
+  // Esc: close topmost modal
+  if (e.key === 'Escape') {
+    // If command palette is open, let its own handler close it
+    if (uiStore.showCommandPalette) return;
+
+    const stack = [...uiStore.modalStack];
+    const topModal = stack.pop();
+    if (topModal) {
+      e.preventDefault();
+      switch (topModal) {
+        case 'dataExplorer':
+          uiStore.closeDataExplorer();
+          break;
+        case 'zonePanel':
+          uiStore.closeZonePanel();
+          currentZone.value = null;
+          break;
+        case 'projectConfig':
+          uiStore.closeProjectConfig();
+          currentProject.value = null;
+          break;
+        case 'chatModal':
+          uiStore.closeChatModal();
+          break;
+        case 'characterCreator':
+          uiStore.closeCharacterCreator();
+          editCharacterId.value = undefined;
+          break;
+      }
+    }
+    return;
+  }
+};
+
+// Current time for MainLayout
+const currentTime = ref('');
+const currentDate = ref('');
+let timeInterval: ReturnType<typeof setInterval> | null = null;
+
+function updateTime() {
+  const now = new Date();
+  currentTime.value = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  currentDate.value = now.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', weekday: 'short' });
+}
 
 onMounted(async () => {
   eventBus = StratixEventBus.getInstance();
@@ -388,13 +499,12 @@ onMounted(async () => {
   // 启动自动刷新
   agentStore.startAutoRefresh(30000);
 
-  // 键盘快捷键：Ctrl+D 打开 Data Explorer
-  window.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.key === 'd') {
-      e.preventDefault();
-      uiStore.openDataExplorer();
-    }
-  });
+  // 全局键盘快捷键
+  window.addEventListener('keydown', handleGlobalKeydown);
+
+  // 时间更新
+  updateTime();
+  timeInterval = setInterval(updateTime, 1000);
 });
 
 onUnmounted(() => {
@@ -432,6 +542,15 @@ onUnmounted(() => {
     console.log('Stop agents:', agentIds);
   }) as any);
 
+  window.removeEventListener('keydown', handleGlobalKeydown);
+
+  if (timeInterval) {
+    clearInterval(timeInterval);
+  }
+  if (loadingTimer.value) {
+    clearTimeout(loadingTimer.value);
+  }
+
   if (game) {
     game.destroy(true);
   }
@@ -439,102 +558,169 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <MainLayout
-    :game-container="gameContainer"
-    :is-game-ready="uiStore.isGameReady"
-    :agents="agents"
-    :selected-agent-ids="selectedAgentIds"
-    :command-logs="uiStore.commandLogs"
-    :is-refreshing="isRefreshing"
-    :show-task-modal="uiStore.showTaskModal"
-    :selected-project-id="selectedProjectId"
-    :selected-project-path="selectedProjectPath"
-    @create-agent="createAgent"
-    @delete-agent="deleteAgent"
-    @select-agent="selectAgentInRTS"
-    @open-character-creator="openCharacterCreator()"
-    @refresh-agents="agentStore.refreshAgents()"
-    @update:show-task-modal="uiStore.showTaskModal = $event"
-    @open-data-explorer="uiStore.openDataExplorer()"
-  >
-    <template #game>
-      <div ref="gameContainer" class="game-container">
-        <Map3DView
-          :visible="show3DView"
-          :game-scene="gameSceneRef"
-          @zone-click="(zoneId) => { console.log('Zone clicked:', zoneId); }"
-          @zone-double-click="(zoneId) => { console.log('Zone double-clicked:', zoneId); }"
-          @agent-click="(agentId) => { console.log('Agent clicked:', agentId); }"
-        />
-        <!-- 3D View Toggle Button -->
-        <button
-          class="map3d-toggle"
-          :class="{ active: show3DView }"
-          @click="toggle3DView"
-          title="Toggle 3D View"
-        >
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 2L2 7l10 5 10-5-10-5z" />
-            <path d="M2 17l10 5 10-5" />
-            <path d="M2 12l10 5 10-5" />
+  <div class="app-root">
+    <!-- Subtle background grid -->
+    <div class="app-bg-grid" aria-hidden="true"></div>
+
+    <MainLayout
+      :game-container="gameContainer"
+      :is-game-ready="uiStore.isGameReady"
+      :agents="agents"
+      :selected-agent-ids="selectedAgentIds"
+      :command-logs="uiStore.commandLogs"
+      :is-refreshing="isRefreshing"
+      :show-task-modal="uiStore.showTaskModal"
+      :selected-project-id="selectedProjectId"
+      :selected-project-path="selectedProjectPath"
+      :current-time="currentTime"
+      :current-date="currentDate"
+      :active-header-index="uiStore.activeHeaderIndex"
+      @create-agent="createAgent"
+      @delete-agent="deleteAgent"
+      @select-agent="selectAgentInRTS"
+      @open-character-creator="openCharacterCreator()"
+      @refresh-agents="agentStore.refreshAgents()"
+      @update:show-task-modal="uiStore.showTaskModal = $event"
+      @open-data-explorer="uiStore.openDataExplorer()"
+    >
+      <template #game>
+        <div ref="gameContainer" class="game-container">
+          <Map3DView
+            :visible="show3DView"
+            :game-scene="gameSceneRef"
+            @zone-click="(zoneId) => { console.log('Zone clicked:', zoneId); }"
+            @zone-double-click="(zoneId) => { console.log('Zone double-clicked:', zoneId); }"
+            @agent-click="(agentId) => { console.log('Agent clicked:', agentId); }"
+          />
+          <!-- 3D View Toggle Button -->
+          <button
+            class="map3d-toggle"
+            :class="{ active: show3DView }"
+            @click="toggle3DView"
+            title="Toggle 3D View"
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2L2 7l10 5 10-5-10-5z" />
+              <path d="M2 17l10 5 10-5" />
+              <path d="M2 12l10 5 10-5" />
+            </svg>
+            <span>{{ show3DView ? '2D' : '3D' }}</span>
+          </button>
+        </div>
+      </template>
+    </MainLayout>
+
+    <!-- Modals -->
+    <CharacterCreatorModal
+      :visible="uiStore.showCharacterCreator"
+      :edit-character-id="editCharacterId"
+      @close="closeCharacterCreator"
+      @created="handleCharacterCreated"
+      @updated="handleCharacterUpdated"
+      @deleted="handleCharacterDeleted"
+    />
+
+    <AgentChatModal
+      :visible="uiStore.showChatModal"
+      :agent-ids="chatAgentIds"
+      :mode="chatAgentIds.length > 1 ? 'group' : 'single'"
+      @close="uiStore.closeChatModal()"
+    />
+
+    <ProjectConfigPanel
+      :visible="uiStore.showProjectConfig"
+      :project-id="currentProject?.id"
+      :initial-config="currentProject?.config"
+      :project-status="currentProject?.status"
+      @close="handleProjectConfigClose"
+      @save="handleProjectConfigSave"
+    />
+
+    <ZonePanel
+      :visible="uiStore.showZonePanel"
+      :zone="currentZone"
+      @close="handleZonePanelClose"
+      @update:visible="uiStore.showZonePanel = $event"
+      @open-data-explorer="openDataExplorer"
+    />
+
+    <DataExplorer
+      v-model:visible="uiStore.showDataExplorer"
+      :initial-zone-id="dataExplorerZoneId"
+    />
+
+    <!-- Command Palette (teleported to body) -->
+    <CommandPalette />
+
+    <!-- Global Loading Overlay -->
+    <Transition name="loading">
+      <div
+        v-if="showLoadingOverlay"
+        class="global-loading-overlay"
+        aria-busy="true"
+        aria-live="polite"
+      >
+        <div class="global-loading-content">
+          <svg class="global-loading-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10" stroke-opacity="0.25" />
+            <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round" />
           </svg>
-          <span>{{ show3DView ? '2D' : '3D' }}</span>
-        </button>
+          <span class="global-loading-text">{{ uiStore.globalLoadingMessage || '加载中...' }}</span>
+        </div>
       </div>
-    </template>
-  </MainLayout>
+    </Transition>
 
-  <CharacterCreatorModal
-    :visible="uiStore.showCharacterCreator"
-    :edit-character-id="editCharacterId"
-    @close="closeCharacterCreator"
-    @created="handleCharacterCreated"
-    @updated="handleCharacterUpdated"
-    @deleted="handleCharacterDeleted"
-  />
-
-  <AgentChatModal
-    :visible="uiStore.showChatModal"
-    :agent-ids="chatAgentIds"
-    :mode="chatAgentIds.length > 1 ? 'group' : 'single'"
-    @close="uiStore.closeChatModal()"
-  />
-
-  <ProjectConfigPanel
-    :visible="uiStore.showProjectConfig"
-    :project-id="currentProject?.id"
-    :initial-config="currentProject?.config"
-    :project-status="currentProject?.status"
-    @close="handleProjectConfigClose"
-    @save="handleProjectConfigSave"
-  />
-
-  <ZonePanel
-    :visible="uiStore.showZonePanel"
-    :zone="currentZone"
-    @close="handleZonePanelClose"
-    @update:visible="uiStore.showZonePanel = $event"
-    @open-data-explorer="openDataExplorer"
-  />
-
-  <DataExplorer
-    v-model:visible="uiStore.showDataExplorer"
-    :initial-zone-id="dataExplorerZoneId"
-  />
-
-  <ToastContainer
-    :toasts="uiStore.toasts"
-    position="top-right"
-    @dismiss="toastService.dismiss($event)"
-  />
+    <ToastContainer
+      :toasts="uiStore.toasts"
+      position="top-right"
+      @dismiss="toastService.dismiss($event)"
+    />
+  </div>
 </template>
 
 <style>
+.app-root {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  background: var(--ds-bg-primary);
+}
+
+/* Subtle animated background grid */
+.app-bg-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.03;
+  background-image:
+    radial-gradient(circle at 1px 1px, var(--ds-color-primary) 1px, transparent 0);
+  background-size: 40px 40px;
+  animation: bg-grid-drift 60s linear infinite;
+}
+
+@keyframes bg-grid-drift {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 40px 40px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-bg-grid {
+    animation: none;
+  }
+}
+
 .game-container {
   width: 100%;
   height: 100%;
   background: var(--ds-bg-primary);
   position: relative;
+  z-index: 1;
 }
 
 .map3d-toggle {
@@ -576,5 +762,63 @@ onUnmounted(() => {
 .map3d-toggle:hover svg,
 .map3d-toggle.active svg {
   opacity: 1;
+}
+
+/* Loading Overlay */
+.global-loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ds-glass-bg, rgba(18, 18, 26, 0.6));
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.global-loading-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 32px 48px;
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-glass-bg, rgba(255, 255, 255, 0.03));
+  border: var(--ds-glass-border, 1px solid rgba(255, 255, 255, 0.06));
+}
+
+.global-loading-spinner {
+  width: 40px;
+  height: 40px;
+  color: var(--ds-color-primary);
+  animation: ds-spin 1s linear infinite;
+}
+
+.global-loading-text {
+  font-size: var(--ds-font-size-sm);
+  color: var(--ds-text-secondary);
+  font-weight: 500;
+}
+
+.loading-enter-active,
+.loading-leave-active {
+  transition: opacity 200ms ease;
+}
+
+.loading-enter-from,
+.loading-leave-to {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-enter-active,
+  .loading-leave-active {
+    transition-duration: 0.01ms !important;
+  }
+
+  .global-loading-spinner {
+    animation: none;
+  }
 }
 </style>

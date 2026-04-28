@@ -50,6 +50,26 @@
   }
 }
 
+@keyframes ds-slide-left {
+  from {
+    opacity: 0;
+    transform: translateX(var(--ds-spacing-sm, 8px));
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ============ Shake ============ */
+@keyframes ds-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-2px); }
+  80% { transform: translateX(2px); }
+}
+
 /* ============ Scale ============ */
 @keyframes ds-scale-in {
   from {
@@ -95,6 +115,44 @@
   }
 }
 
+/* ============ Bounce In ============ */
+@keyframes ds-bounce-in {
+  0% { opacity: 0; transform: scale(0.3); }
+  50% { opacity: 1; transform: scale(1.05); }
+  70% { transform: scale(0.9); }
+  100% { transform: scale(1); }
+}
+
+/* ============ Pulse ============ */
+@keyframes ds-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ============ Blink ============ */
+@keyframes ds-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* ============ Float ============ */
+@keyframes ds-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+/* ============ Shimmer ============ */
+@keyframes ds-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* ============ Countdown ============ */
+@keyframes ds-countdown {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
 /* ============ 工具类 ============ */
 .ds-animate-fade-in {
   animation: ds-fade-in var(--ds-animation-duration-fast, 150ms) var(--ds-animation-easing-ease-out, ease-out);
@@ -126,6 +184,26 @@
 
 .ds-animate-glow-pulse {
   animation: ds-glow-pulse 2s var(--ds-animation-easing-linear, linear) infinite;
+}
+
+.ds-bounce-in {
+  animation: ds-bounce-in 0.5s ease-out;
+}
+
+.ds-shake {
+  animation: ds-shake 0.4s ease-in-out;
+}
+
+.ds-pulse {
+  animation: ds-pulse 2s infinite;
+}
+
+.ds-blink {
+  animation: ds-blink 1s infinite;
+}
+
+.ds-float {
+  animation: ds-float 3s ease-in-out infinite;
 }
 
 /* ============ 图标动画 ============ */

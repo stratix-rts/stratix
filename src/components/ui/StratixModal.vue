@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, toRef, type CSSProperties } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, toRef, nextTick, type CSSProperties } from 'vue';
 import { useZIndexManager } from '@/design-system/composables/useZIndexManager';
 import { provideSizeContext, type SizeVariant } from '@/design-system/composables/useSizeContext';
 import { ModalBaseConfig, POSITION_CONFIG, type ModalPosition } from '@/design-system/components/vue/modal';
@@ -20,6 +20,7 @@ interface Props {
   closeIcon?: string;
   keyboard?: boolean;
   draggable?: boolean;
+  resizable?: boolean;
   destroyOnClose?: boolean;
   mask?: boolean;
   maskStyle?: CSSProperties;
@@ -44,6 +45,7 @@ const props = withDefaults(defineProps<Props>(), {
   closeIcon: 'x',
   keyboard: true,
   draggable: false,
+  resizable: false,
   destroyOnClose: false,
   mask: true,
   footer: false,
@@ -68,10 +70,14 @@ provideSizeContext(toRef(props, 'size'));
 
 const modalRef = ref<HTMLElement | null>(null);
 const isDragging = ref(false);
+const isResizing = ref(false);
 const dragOffset = ref({ x: 0, y: 0 });
 const dragPosition = ref({ x: 0, y: 0 });
 const internalVisible = ref(false);
 const shouldRender = ref(false);
+const resizeSize = ref({ width: 0, height: 0 });
+const resizeStart = ref({ x: 0, y: 0, width: 0, height: 0 });
+const focusableElements = ref<HTMLElement[]>([]);
 
 const positionConfig = computed(() => POSITION_CONFIG[props.position]);
 const sizeConfig = computed(() => ModalBaseConfig.size[props.size]);
@@ -96,7 +102,6 @@ const headerStyleResolved = computed(() => {
 });
 
 const bodyStyleResolved = computed<CSSProperties>(() => {
-  // 上下保持原 padding，左右加大 50%
   const basePadding = sizeConfig.value.padding;
   const hPadding = `calc(${basePadding} * 1.5)`;
   return {
@@ -124,6 +129,13 @@ const modalStyle = computed<CSSProperties>(() => {
     style.height = ModalBaseConfig.drawer.height;
   } else if (sizeConfig.value.height) {
     style.height = sizeConfig.value.height;
+  }
+  
+  if (resizeSize.value.width > 0) {
+    style.width = `${resizeSize.value.width}px`;
+  }
+  if (resizeSize.value.height > 0) {
+    style.height = `${resizeSize.value.height}px`;
   }
   
   if (sizeConfig.value.maxWidth) {
@@ -159,6 +171,10 @@ watch(() => props.visible, (newVal) => {
     }, 0);
     document.body.style.overflow = 'hidden';
     openModal();
+    nextTick(() => {
+      updateFocusableElements();
+      trapFocus();
+    });
   } else {
     internalVisible.value = false;
     closeModal();
@@ -183,6 +199,7 @@ const handleAfterClose = () => {
   release();
   document.body.style.overflow = '';
   dragPosition.value = { x: 0, y: 0 };
+  resizeSize.value = { width: 0, height: 0 };
   if (props.destroyOnClose) {
     shouldRender.value = false;
   }
@@ -200,16 +217,64 @@ const handleMaskClick = (e: MouseEvent) => {
   }
 };
 
-/**
- * 阻止事件冒泡到 Phaser Canvas，防止点击穿透
- */
 const stopPropagation = (e: Event) => {
   e.stopPropagation();
+};
+
+const updateFocusableElements = () => {
+  if (!modalRef.value) return;
+  focusableElements.value = Array.from(
+    modalRef.value.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    )
+  ).filter((el) => {
+    const htmlEl = el as HTMLElement;
+    return !('disabled' in htmlEl && (htmlEl as any).disabled);
+  }) as HTMLElement[];
+};
+
+const trapFocus = () => {
+  if (focusableElements.value.length > 0) {
+    focusableElements.value[0].focus();
+  }
 };
 
 const handleKeydown = (e: KeyboardEvent) => {
   if (props.keyboard && e.key === 'Escape') {
     handleClose();
+    return;
+  }
+  
+  if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey) {
+    const activeEl = document.activeElement as HTMLElement;
+    if (activeEl?.tagName === 'TEXTAREA') return;
+    
+    const primaryBtn = modalRef.value?.querySelector('.stratix-modal__footer .stratix-btn--primary') as HTMLElement;
+    if (primaryBtn && props.footer) {
+      e.preventDefault();
+      primaryBtn.click();
+      return;
+    }
+  }
+  
+  if (e.key === 'Tab') {
+    if (focusableElements.value.length === 0) return;
+    
+    const firstEl = focusableElements.value[0];
+    const lastEl = focusableElements.value[focusableElements.value.length - 1];
+    const activeEl = document.activeElement;
+    
+    if (e.shiftKey) {
+      if (activeEl === firstEl) {
+        e.preventDefault();
+        lastEl.focus();
+      }
+    } else {
+      if (activeEl === lastEl) {
+        e.preventDefault();
+        firstEl.focus();
+      }
+    }
   }
 };
 
@@ -252,6 +317,42 @@ const handleDragEnd = () => {
   document.removeEventListener('mouseup', handleDragEnd);
 };
 
+const handleResizeStart = (e: MouseEvent) => {
+  if (!props.resizable || !modalRef.value) return;
+  
+  isResizing.value = true;
+  const rect = modalRef.value.getBoundingClientRect();
+  resizeStart.value = {
+    x: e.clientX,
+    y: e.clientY,
+    width: rect.width,
+    height: rect.height,
+  };
+  
+  document.addEventListener('mousemove', handleResizeMove);
+  document.addEventListener('mouseup', handleResizeEnd);
+  e.preventDefault();
+  e.stopPropagation();
+};
+
+const handleResizeMove = (e: MouseEvent) => {
+  if (!isResizing.value) return;
+  
+  const dx = e.clientX - resizeStart.value.x;
+  const dy = e.clientY - resizeStart.value.y;
+  
+  resizeSize.value = {
+    width: Math.max(300, resizeStart.value.width + dx),
+    height: Math.max(200, resizeStart.value.height + dy),
+  };
+};
+
+const handleResizeEnd = () => {
+  isResizing.value = false;
+  document.removeEventListener('mousemove', handleResizeMove);
+  document.removeEventListener('mouseup', handleResizeEnd);
+};
+
 onMounted(() => {
   if (props.keyboard) {
     document.addEventListener('keydown', handleKeydown);
@@ -265,6 +366,8 @@ onUnmounted(() => {
     document.body.style.overflow = '';
   }
 });
+
+
 </script>
 
 <template>
@@ -302,6 +405,7 @@ onUnmounted(() => {
                 'stratix-modal--drawer': isDrawer,
                 'stratix-modal--fullscreen': size === 'fullscreen',
                 'stratix-modal--dragging': isDragging,
+                'stratix-modal--resizing': isResizing,
               }
             ]"
             :style="modalStyle"
@@ -354,6 +458,18 @@ onUnmounted(() => {
                 </StratixButton>
               </slot>
             </footer>
+            
+            <!-- Resize handle -->
+            <div
+              v-if="resizable"
+              class="stratix-modal__resize-handle"
+              @mousedown="handleResizeStart"
+              title="拖动调整大小"
+            >
+              <div class="resize-indicator" v-if="isResizing">
+                {{ Math.round(resizeSize.width || 0) }} × {{ Math.round(resizeSize.height || 0) }}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -445,10 +561,18 @@ onUnmounted(() => {
   box-sizing: border-box;
   outline: none;
   overflow: hidden;
+  transition: transform 0.2s var(--ds-animation-easing-ease-out),
+              box-shadow 0.2s var(--ds-animation-easing-ease-out);
 }
 
 .stratix-modal--dragging {
   cursor: move;
+  user-select: none;
+  transform: scale(1.01) !important;
+  box-shadow: var(--ds-shadow-xl), 0 0 40px color-mix(in srgb, black 20%, transparent);
+}
+
+.stratix-modal--resizing {
   user-select: none;
 }
 
@@ -500,7 +624,7 @@ onUnmounted(() => {
 }
 
 .stratix-modal__close:hover {
-  background: v-bind('getToken("colors.background.tertiary")');
+  background: v-bind('getToken("colors.background.overlay")');
   color: v-bind('getToken("colors.text.primary")');
 }
 
@@ -521,6 +645,44 @@ onUnmounted(() => {
   border-top: 1px solid v-bind('getToken("colors.border.default")');
   flex-shrink: 0;
   background: var(--ds-bg-secondary);
+}
+
+/* Resize handle */
+.stratix-modal__resize-handle {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, var(--ds-text-muted) 50%);
+  background-size: 4px 4px;
+  opacity: 0.3;
+  transition: opacity 0.15s ease;
+  z-index: 10;
+}
+
+.stratix-modal__resize-handle:hover {
+  opacity: 0.6;
+}
+
+.stratix-modal--resizing .stratix-modal__resize-handle {
+  opacity: 0.8;
+}
+
+.resize-indicator {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  padding: 4px 10px;
+  background: var(--ds-bg-overlay);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-sm);
+  font-size: var(--ds-font-size-xs);
+  font-family: var(--ds-font-mono);
+  color: var(--ds-text-primary);
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 /* Zoom animation (center) */
@@ -633,5 +795,27 @@ onUnmounted(() => {
 .stratix-modal-slide-left-enter-from .stratix-modal,
 .stratix-modal-slide-left-leave-to .stratix-modal {
   transform: translateX(100%);
+}
+
+/* Prefers reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .stratix-modal,
+  .stratix-modal-zoom-enter-active .stratix-modal,
+  .stratix-modal-zoom-leave-active .stratix-modal,
+  .stratix-modal-slide-up-enter-active .stratix-modal,
+  .stratix-modal-slide-up-leave-active .stratix-modal,
+  .stratix-modal-slide-down-enter-active .stratix-modal,
+  .stratix-modal-slide-down-leave-active .stratix-modal,
+  .stratix-modal-slide-right-enter-active .stratix-modal,
+  .stratix-modal-slide-right-leave-active .stratix-modal,
+  .stratix-modal-slide-left-enter-active .stratix-modal,
+  .stratix-modal-slide-left-leave-active .stratix-modal {
+    transition: none !important;
+    animation: none !important;
+  }
+  
+  .stratix-modal--dragging {
+    transform: none !important;
+  }
 }
 </style>

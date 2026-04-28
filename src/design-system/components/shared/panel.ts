@@ -20,7 +20,7 @@ export const PanelBaseConfig: ComponentToken = {
     background: '#12121a',
     border: '1px solid #2a2a3e',
     borderRadius: 'md',
-    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.4)',
+    boxShadow: '0 4px 8px color-mix(in srgb, black 40%, transparent)',
   },
   animation: {
     enter: {
@@ -41,12 +41,12 @@ export const PanelVariants = {
   default: {
     background: '#12121a',
     border: '1px solid #2a2a3e',
-    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.4)',
+    boxShadow: '0 4px 8px color-mix(in srgb, black 40%, transparent)',
   },
   elevated: {
     background: '#1a1a2e',
     border: '1px solid #3a3a5e',
-    boxShadow: '0 8px 16px rgba(0, 0, 0, 0.5)',
+    boxShadow: '0 8px 16px color-mix(in srgb, black 50%, transparent)',
   },
   outlined: {
     background: 'transparent',
@@ -54,7 +54,7 @@ export const PanelVariants = {
     boxShadow: 'none',
   },
   ghost: {
-    background: 'rgba(18, 18, 26, 0.5)',
+    background: 'color-mix(in srgb, #12121a 50%, transparent)',
     border: 'none',
     boxShadow: 'none',
   },

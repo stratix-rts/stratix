@@ -127,7 +127,7 @@ const handleFilterChange = (params: any) => {
 }
 
 .vxe-grid .vxe-header--column {
-  background-color: var(--ds-bg-secondary, #f9fafb);
+  background-color: var(--ds-bg-secondary);
 }
 
 .vxe-grid .vxe-body--row {

@@ -6,6 +6,7 @@
  * - 增量渲染，无完全销毁重建
  * - 过渡动画支持
  * - Loading 状态支持
+ * V2升级: glassmorphism背景、按钮hover 3D tilt效果、选中发光
  */
 
 import Phaser from 'phaser';
@@ -13,6 +14,8 @@ import Phaser from 'phaser';
 import { EnhancedUIComponent } from '@/stratix-core/ui/components/base/EnhancedUIComponent';
 import type { UIComponentConfig } from '@/stratix-core/ui/core/types/component.types';
 import { ReactiveToken } from '@/stratix-core/ui/foundation/theme/ReactiveToken';
+
+import { getDSColor, isReducedMotion } from '../../themes/ThemeColors';
 
 // ============================================================================
 // Types
@@ -192,10 +195,23 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   private createBackground(): void {
     const bg = this.scene.add.graphics();
     const bgColor = this.hexToNumber(this.backgroundColor.get());
-    bg.fillStyle(bgColor, 0.95);
-    bg.fillRoundedRect(0, 0, this.config.width || 500, this.config.height || 180, 8);
-    bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.3);
-    bg.strokeRoundedRect(0, 0, this.config.width || 500, this.config.height || 180, 8);
+    const borderClr = this.hexToNumber(this.borderColor.get());
+    const primaryColor = getDSColor('color-primary');
+    const w = this.config.width || 500;
+    const h = this.config.height || 180;
+
+    // Glassmorphism background
+    bg.fillStyle(bgColor, 0.7);
+    bg.fillRoundedRect(0, 0, w, h, 8);
+    
+    // Subtle top glow line
+    bg.lineStyle(1, primaryColor, 0.3);
+    bg.lineBetween(8, 0, w - 8, 0);
+    
+    // Border
+    bg.lineStyle(1, borderClr, 0.25);
+    bg.strokeRoundedRect(0, 0, w, h, 8);
+
     (this.container as Phaser.GameObjects.Container).add(bg);
   }
 
@@ -357,6 +373,13 @@ export class CommandPanelV2 extends EnhancedUIComponent {
       }
       tabBg.fillRoundedRect(x, 8, tabWidth, tabHeight, { tl: 4, tr: 4, bl: 0, br: 0 });
 
+      // Active tab glow indicator
+      if (isActive) {
+        const primaryColor = getDSColor('color-primary');
+        tabBg.lineStyle(1, primaryColor, 0.5);
+        tabBg.lineBetween(x, 8, x + tabWidth, 8);
+      }
+
       const tabHitArea = this.scene.add.rectangle(x, 8, tabWidth, tabHeight, 0x000000, 0);
       tabHitArea.setOrigin(0, 0);
       tabHitArea.setInteractive({ useHandCursor: true });
@@ -374,6 +397,10 @@ export class CommandPanelV2 extends EnhancedUIComponent {
           tabBg.clear();
           tabBg.fillStyle(this.hexToNumber(this.backgroundTertiaryColor.get()), 0.7);
           tabBg.fillRoundedRect(x, 8, tabWidth, tabHeight, { tl: 4, tr: 4, bl: 0, br: 0 });
+          // Hover glow
+          const glowColor = getDSColor('color-primary');
+          tabBg.lineStyle(1, glowColor, 0.3);
+          tabBg.lineBetween(x, 8, x + tabWidth, 8);
         }
       });
       tabHitArea.on('pointerout', () => {
@@ -502,6 +529,9 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     const statusDot = this.scene.add.graphics();
     statusDot.fillStyle(this.hexToNumber(statusColor), 1);
     statusDot.fillCircle(78, yOffset + 54, 5);
+    // Status glow
+    statusDot.fillStyle(this.hexToNumber(statusColor), 0.3);
+    statusDot.fillCircle(78, yOffset + 54, 8);
     this.contentContainer?.add(statusDot);
 
     const statusText = this.createText(90, yOffset + 48, this.getStatusText(agent.status), {
@@ -714,6 +744,9 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     const statusColor = this.getStatusColor(agent.status);
     statusDot.fillStyle(this.hexToNumber(statusColor), 1);
     statusDot.fillCircle(size - 6, size - 6, 5);
+    // Glow
+    statusDot.fillStyle(this.hexToNumber(statusColor), 0.3);
+    statusDot.fillCircle(size - 6, size - 6, 8);
     container.add(statusDot);
 
     const hitArea = this.scene.add.rectangle(size / 2, size / 2, size, size, 0x000000, 0);
@@ -727,6 +760,16 @@ export class CommandPanelV2 extends EnhancedUIComponent {
       bg.fillRoundedRect(0, 0, size, size, 6);
       bg.lineStyle(1, this.hexToNumber(this.dangerColor.get()), 0.6);
       bg.strokeRoundedRect(0, 0, size, size, 6);
+      // Tilt effect (simplified as slight scale)
+      if (!isReducedMotion()) {
+        this.scene.tweens.add({
+          targets: container,
+          scaleX: 1.05,
+          scaleY: 1.05,
+          duration: 150,
+          ease: 'Sine.easeOut'
+        });
+      }
     });
     hitArea.on('pointerout', () => {
       bg.clear();
@@ -734,6 +777,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
       bg.fillRoundedRect(0, 0, size, size, 6);
       bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.3);
       bg.strokeRoundedRect(0, 0, size, size, 6);
+      container.setScale(1);
     });
 
     return container;
@@ -762,11 +806,21 @@ export class CommandPanelV2 extends EnhancedUIComponent {
 
     hitArea.on('pointerdown', onClick);
     hitArea.on('pointerover', () => {
+      const glowColor = getDSColor('color-primary');
       bg.clear();
-      bg.fillStyle(this.hexToNumber(this.accentColor.get()), 0.3);
+      bg.fillStyle(glowColor, 0.2);
       bg.fillRoundedRect(0, 0, width, height, 4);
-      bg.lineStyle(1, this.hexToNumber(this.accentColor.get()), 0.6);
+      bg.lineStyle(1, glowColor, 0.5);
       bg.strokeRoundedRect(0, 0, width, height, 4);
+      // Slight lift
+      if (!isReducedMotion()) {
+        this.scene.tweens.add({
+          targets: container,
+          y: y - 1,
+          duration: 100,
+          ease: 'Sine.easeOut'
+        });
+      }
     });
     hitArea.on('pointerout', () => {
       bg.clear();
@@ -774,6 +828,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
       bg.fillRoundedRect(0, 0, width, height, 4);
       bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.3);
       bg.strokeRoundedRect(0, 0, width, height, 4);
+      container.setY(y);
     });
 
     return container;
@@ -839,11 +894,23 @@ export class CommandPanelV2 extends EnhancedUIComponent {
 
     if (btn.enabled) {
       hitArea.on('pointerover', () => {
+        const glowColor = getDSColor('color-primary');
         bg.clear();
-        bg.fillStyle(this.hexToNumber(this.accentColor.get()), 0.3);
+        bg.fillStyle(glowColor, 0.25);
         bg.fillRoundedRect(0, 0, width, height, 4);
-        bg.lineStyle(1, this.hexToNumber(this.accentColor.get()), 0.6);
+        bg.lineStyle(1, glowColor, 0.6);
         bg.strokeRoundedRect(0, 0, width, height, 4);
+        
+        // Selected glow effect
+        if (!isReducedMotion()) {
+          this.scene.tweens.add({
+            targets: container,
+            scaleX: 1.03,
+            scaleY: 1.03,
+            duration: 120,
+            ease: 'Sine.easeOut'
+          });
+        }
       });
 
       hitArea.on('pointerout', () => {
@@ -852,6 +919,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
         bg.fillRoundedRect(0, 0, width, height, 4);
         bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.3);
         bg.strokeRoundedRect(0, 0, width, height, 4);
+        container.setScale(1);
       });
     }
 

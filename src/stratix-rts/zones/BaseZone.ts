@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 
 import { getToken } from '@/design-system/config';
 
+import { getDSColor, isReducedMotion, drawGlowRing } from '../themes/ThemeColors';
+
 // 辅助函数：将十六进制颜色字符串转换为 Phaser 数字格式
 const hexToNumber = (hex: string) => parseInt(hex.replace('#', ''), 16);
 
@@ -44,6 +46,7 @@ export abstract class BaseZone extends Phaser.GameObjects.Container {
   protected graphics: Phaser.GameObjects.Graphics;
   protected fillGraphics: Phaser.GameObjects.Graphics;
   protected shadowGraphics: Phaser.GameObjects.Graphics;
+  protected glowGraphics: Phaser.GameObjects.Graphics;
   protected cornerHandles: Map<CornerPosition, Phaser.GameObjects.Arc> = new Map();
   protected fencePosts: Phaser.GameObjects.Arc[] = [];
 
@@ -68,6 +71,7 @@ export abstract class BaseZone extends Phaser.GameObjects.Container {
   } | null = null;
 
   private dragTween: Phaser.Tweens.Tween | null = null;
+  private statusGlowTween: Phaser.Tweens.Tween | null = null;
 
   constructor(scene: Phaser.Scene, config: BaseZoneConfig) {
     super(scene, config.x, config.y);
@@ -86,6 +90,10 @@ export abstract class BaseZone extends Phaser.GameObjects.Container {
     this.shadowGraphics = scene.add.graphics();
     this.shadowGraphics.setDepth(998);
     this.add(this.shadowGraphics);
+
+    this.glowGraphics = scene.add.graphics();
+    this.glowGraphics.setDepth(-1);
+    this.add(this.glowGraphics);
 
     this.createBaseVisuals();
 
@@ -151,10 +159,14 @@ export abstract class BaseZone extends Phaser.GameObjects.Container {
     const halfH = this.zoneHeight / 2;
 
     this.fillGraphics.clear();
-    this.fillGraphics.fillStyle(BASE_ZONE_COLORS.fill, 0.1);
+
+    // Subtle gradient-like fill using multiple layers
+    const statusColor = BASE_ZONE_COLORS.status[this.zoneStatus] || BASE_ZONE_COLORS.fill;
+    this.fillGraphics.fillStyle(statusColor, 0.06);
     this.fillGraphics.fillRect(-halfW, -halfH, this.zoneWidth, this.zoneHeight);
 
-    this.fillGraphics.lineStyle(1, BASE_ZONE_COLORS.fill, 0.1);
+    // Inner subtle pattern
+    this.fillGraphics.lineStyle(1, statusColor, 0.05);
     for (let i = -halfW; i < halfW; i += 10) {
       this.fillGraphics.lineBetween(i, -halfH, i, halfH);
     }
@@ -189,8 +201,19 @@ export abstract class BaseZone extends Phaser.GameObjects.Container {
 
       handle.on('pointerover', () => {
         if (this.isSelected) {
-          handle.setFillStyle(BASE_ZONE_COLORS.handle);
-          handle.setRadius(10);
+          const glowColor = getDSColor('color-primary');
+          handle.setFillStyle(glowColor);
+          handle.setRadius(12);
+          // Glow effect
+          if (!isReducedMotion()) {
+            this.scene.tweens.add({
+              targets: handle,
+              scaleX: 1.2,
+              scaleY: 1.2,
+              duration: 150,
+              ease: 'Sine.easeOut'
+            });
+          }
         }
       });
 
@@ -198,6 +221,7 @@ export abstract class BaseZone extends Phaser.GameObjects.Container {
         if (this.isSelected && !this.isResizing) {
           handle.setFillStyle(this.isWarning ? BASE_ZONE_COLORS.warning : BASE_ZONE_COLORS.corner);
           handle.setRadius(8);
+          handle.setScale(1);
         }
       });
 
@@ -218,6 +242,10 @@ export abstract class BaseZone extends Phaser.GameObjects.Container {
     this.graphics.clear();
     const halfW = this.zoneWidth / 2;
     const halfH = this.zoneHeight / 2;
+
+    // Status glow behind border
+    this.updateStatusGlow();
+
     this.graphics.lineStyle(this.isSelected ? 4 : 3, color, this.isSelected ? 1 : 0.9);
     this.graphics.strokeRect(-halfW, -halfH, this.zoneWidth, this.zoneHeight);
 
@@ -234,9 +262,58 @@ export abstract class BaseZone extends Phaser.GameObjects.Container {
       handle.setVisible(this.isSelected);
       handle.setFillStyle(this.isWarning ? BASE_ZONE_COLORS.warning : BASE_ZONE_COLORS.corner);
       handle.setRadius(8);
+      handle.setScale(1);
     });
 
     this.updateVisuals();
+  }
+
+  private updateStatusGlow(): void {
+    this.glowGraphics.clear();
+    const halfW = this.zoneWidth / 2;
+    const halfH = this.zoneHeight / 2;
+
+    const statusColor = BASE_ZONE_COLORS.status[this.zoneStatus];
+    if (!statusColor) return;
+
+    const alpha = this.isSelected ? 0.2 : 0.08;
+    drawGlowRing(this.glowGraphics, 0, 0, Math.max(halfW, halfH) + 4, statusColor, alpha, 2);
+  }
+
+  private startStatusGlowPulse(): void {
+    if (!this.scene || this.statusGlowTween) return;
+    if (isReducedMotion()) return;
+    if (!this.isSelected) return;
+
+    const statusColor = BASE_ZONE_COLORS.status[this.zoneStatus];
+    if (!statusColor) return;
+
+    const halfW = this.zoneWidth / 2;
+    const halfH = this.zoneHeight / 2;
+    const maxR = Math.max(halfW, halfH) + 4;
+    const glowData = { radius: maxR, alpha: 0.15 };
+
+    this.statusGlowTween = this.scene.tweens.add({
+      targets: glowData,
+      radius: maxR + 6,
+      alpha: 0.3,
+      duration: 1200,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+      onUpdate: () => {
+        this.glowGraphics.clear();
+        drawGlowRing(this.glowGraphics, 0, 0, glowData.radius, statusColor, glowData.alpha, 2);
+      }
+    });
+  }
+
+  private stopStatusGlowPulse(): void {
+    if (this.statusGlowTween) {
+      this.statusGlowTween.stop();
+      this.statusGlowTween = null;
+    }
+    this.glowGraphics.clear();
   }
 
   public setZoneName(name: string): void {
@@ -254,6 +331,7 @@ export abstract class BaseZone extends Phaser.GameObjects.Container {
 
   public setZoneStatus(status: ZoneStatus): void {
     this.zoneStatus = status;
+    this.drawFill();
     this.updateVisuals();
   }
 
@@ -264,6 +342,11 @@ export abstract class BaseZone extends Phaser.GameObjects.Container {
   public setHighlight(selected: boolean): void {
     this.isSelected = selected;
     this.redraw();
+    if (selected) {
+      this.startStatusGlowPulse();
+    } else {
+      this.stopStatusGlowPulse();
+    }
   }
 
   public setWarning(warning: boolean): void {
@@ -351,6 +434,10 @@ export abstract class BaseZone extends Phaser.GameObjects.Container {
 
     this.shadowGraphics.lineStyle(2, 0xffffff, 0.15);
     this.shadowGraphics.strokeRoundedRect(-halfW + offsetX, -halfH + offsetY, this.zoneWidth, this.zoneHeight, 8);
+
+    // Outer glow on drag shadow
+    const statusColor = BASE_ZONE_COLORS.status[this.zoneStatus] || BASE_ZONE_COLORS.fence;
+    drawGlowRing(this.shadowGraphics, offsetX * 0.5, offsetY * 0.5, Math.max(halfW, halfH) + 4, statusColor, 0.15, 2);
   }
 
   private clearDragShadow(): void {
@@ -385,7 +472,7 @@ export abstract class BaseZone extends Phaser.GameObjects.Container {
     const halfW = this.zoneWidth / 2;
     const halfH = this.zoneHeight / 2;
 
-    const indicatorColor = 0x00ff00;
+    const indicatorColor = getDSColor('status-success');
     const alpha = 0.5;
 
     if (this.boundaryEdge === 'left') {
@@ -573,6 +660,7 @@ export abstract class BaseZone extends Phaser.GameObjects.Container {
   }
 
   public destroy(): void {
+    this.stopStatusGlowPulse();
     this.fencePosts.forEach(post => post.destroy());
     this.fencePosts = [];
     this.cornerHandles.forEach(handle => handle.destroy());
@@ -584,6 +672,9 @@ export abstract class BaseZone extends Phaser.GameObjects.Container {
     if (this.dragTween) {
       this.dragTween.stop();
       this.dragTween = null;
+    }
+    if (this.glowGraphics) {
+      this.glowGraphics.destroy();
     }
     super.destroy();
   }

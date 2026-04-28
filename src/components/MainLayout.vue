@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onUnmounted } from 'vue';
+import { ref, computed, onUnmounted, onMounted } from 'vue';
 import { StratixSkillConfig } from '../stratix-core';
 import type { Skill } from '../stratix-rts/ui/v2/CommandPanelV2';
 import { StratixButton, StratixPanel, StratixConfirmDialog } from '@/components/ui';
@@ -11,8 +11,10 @@ import { useAgentStore } from '../stores/agent';
 import { rtsBridge, rtsEventBus } from '../stratix-rts';
 import { usePerformanceMonitor } from '@/composables/usePerformanceMonitor';
 import { useSound } from '@/composables/useSound';
+import { useUIStore, type Theme } from '../stores/ui';
 
 const agentStore = useAgentStore();
+const uiStore = useUIStore();
 const { trackEvent, getReport } = usePerformanceMonitor({ threshold: 16 });
 const { enabled: soundEnabled, volume: soundVolume, setEnabled: setSoundEnabled, setVolume: setSoundVolume } = useSound();
 
@@ -32,6 +34,9 @@ const props = defineProps<{
   showTaskModal?: boolean;
   selectedProjectId?: string | null;
   selectedProjectPath?: string | null;
+  currentTime?: string;
+  currentDate?: string;
+  activeHeaderIndex?: number;
 }>();
 
 const emit = defineEmits<{
@@ -60,6 +65,27 @@ const agents = computed(() => agentStore.agents);
 const selectedAgentIds = computed(() => agentStore.selectedIds);
 const selectedAgents = computed(() => agentStore.selectedAgents);
 const agentCount = computed(() => agentStore.agentCount);
+
+// Theme toggle
+const isThemeRotating = ref(false);
+const themes: Theme[] = ['cyberpunk', 'minimal', 'professional'];
+
+function cycleTheme() {
+  isThemeRotating.value = true;
+  const current = uiStore.theme;
+  const currentIndex = themes.indexOf(current as any);
+  const nextIndex = (currentIndex + 1) % themes.length;
+  const nextTheme = themes[nextIndex];
+  uiStore.setTheme(nextTheme);
+  uiStore.addToast({
+    type: 'info',
+    message: `已切换到 ${nextTheme} 主题`,
+    duration: 2000,
+  });
+  setTimeout(() => {
+    isThemeRotating.value = false;
+  }, 500);
+}
 
 const handleOpenHeroModal = () => {
   showHeroModal.value = true;
@@ -167,9 +193,79 @@ const handleCancelDeleteZones = () => {
   pendingDeleteZoneIds.value = [];
 };
 
+// Local Esc handler for MainLayout modals
+const handleLocalKeydown = (e: KeyboardEvent) => {
+  if (e.key !== 'Escape') return;
+
+  // Close modals in reverse priority order
+  if (showDeleteZoneConfirm.value) {
+    e.stopPropagation();
+    showDeleteZoneConfirm.value = false;
+    return;
+  }
+  if (showParamFormModal.value) {
+    e.stopPropagation();
+    handleCancelCommand();
+    return;
+  }
+  if (showWorkflowEditor.value) {
+    e.stopPropagation();
+    showWorkflowEditor.value = false;
+    return;
+  }
+  if (props.showTaskModal) {
+    e.stopPropagation();
+    emit('update:show-task-modal', false);
+    return;
+  }
+  if (showAgentDashboard.value) {
+    e.stopPropagation();
+    showAgentDashboard.value = false;
+    return;
+  }
+  if (showStatusModal.value) {
+    e.stopPropagation();
+    showStatusModal.value = false;
+    return;
+  }
+  if (showLogModal.value) {
+    e.stopPropagation();
+    showLogModal.value = false;
+    return;
+  }
+  if (showHeroModal.value) {
+    e.stopPropagation();
+    showHeroModal.value = false;
+    return;
+  }
+};
+
+onMounted(() => {
+  window.addEventListener('keydown', handleLocalKeydown);
+});
+
 onUnmounted(() => {
   unsubscribeSkillSelected();
   unsubscribeZoneDeleteConfirm();
+  window.removeEventListener('keydown', handleLocalKeydown);
+});
+
+// Header button definitions for active state tracking
+const headerButtons = [
+  { id: 'hero', label: '英雄', action: handleOpenHeroModal, icon: 'users' },
+  { id: 'log', label: '日志', action: handleOpenLogModal, icon: 'file-text' },
+  { id: 'status', label: '状态', action: handleOpenStatusModal, icon: 'activity' },
+  { id: 'dashboard', label: '监控', action: handleOpenAgentDashboard, icon: 'layout' },
+  { id: 'data', label: '数据', action: () => emit('open-data-explorer'), icon: 'database' },
+  { id: 'workflow', label: '工作流', action: handleOpenWorkflowEditor, icon: 'git-branch' },
+];
+
+// Status indicator config
+const statusConfig = computed(() => {
+  if (props.isGameReady) {
+    return { text: '系统就绪', class: 'status-ready', color: 'var(--ds-success)' };
+  }
+  return { text: '加载中...', class: 'status-loading', color: 'var(--ds-warning)' };
 });
 
 // Icons - 直接使用 SVG 路径数据
@@ -179,95 +275,64 @@ const icons = {
   'file-text': 'M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2Z M14 2v6h6',
   activity: 'M22 12h-4l-3 9L9 3l-3 9H2',
   'database': 'M12 2C6.48 2 2 4.69 2 7v10c0 2.31 4.48 5 10 5s10-2.69 10-5V7c0-2.31-4.48-5-10-5zm0 18c-4.42 0-8-2.24-8-5s3.58-5 8-5 8 2.24 8 5-3.58 5-8 5z',
+  layout: 'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z',
+  'git-branch': 'M6 3v12 M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M18 9a9 9 0 0 1-9 9',
+  'sun': 'M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10z',
 } as const;
 </script>
 
 <template>
   <div class="main-layout">
     <header class="header">
-      <div class="logo">
-        <svg class="logo-icon" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2">
-          <path :d="icons.star" />
-        </svg>
-        <span class="logo-text">Stratix 星策系统</span>
+      <!-- Drag region (left side) -->
+      <div class="drag-region">
+        <div class="logo">
+          <svg class="logo-icon" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2">
+            <path :d="icons.star" />
+          </svg>
+          <span class="logo-text">Stratix 星策系统</span>
+        </div>
       </div>
       
       <div class="toolbar">
         <StratixButton 
+          v-for="(btn, index) in headerButtons"
+          :key="btn.id"
           variant="secondary"
-          @click="handleOpenHeroModal"
-          title="英雄管理"
+          @click="btn.action"
+          :title="btn.label"
+          :class="{
+            'header-btn--active': activeHeaderIndex === index,
+            'ds-icon-hover-slide': true
+          }"
         >
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-            <path :d="icons.users" />
+            <path v-if="btn.icon === 'users'" :d="icons.users" />
+            <path v-else-if="btn.icon === 'file-text'" :d="icons['file-text']" />
+            <path v-else-if="btn.icon === 'activity'" :d="icons.activity" />
+            <path v-else-if="btn.icon === 'database'" :d="icons.database" />
+            <path v-else-if="btn.icon === 'layout'" :d="icons.layout" />
+            <path v-else-if="btn.icon === 'git-branch'" :d="icons['git-branch']" />
           </svg>
-          <span>英雄</span>
-          <span v-if="agentCount > 0" class="btn-badge">{{ agentCount }}</span>
-        </StratixButton>
-        
-        <StratixButton 
-          variant="secondary"
-          @click="handleOpenLogModal"
-          title="日志"
-        >
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-            <path :d="icons['file-text']" />
-          </svg>
-          <span>日志</span>
-        </StratixButton>
-        
-        <StratixButton
-          variant="secondary"
-          @click="handleOpenStatusModal"
-          title="状态"
-        >
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-            <path :d="icons.activity" />
-          </svg>
-          <span>状态</span>
-        </StratixButton>
-
-        <StratixButton
-          variant="secondary"
-          @click="handleOpenAgentDashboard"
-          title="Agent 监控"
-        >
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="7" height="7" rx="1" />
-            <rect x="14" y="3" width="7" height="7" rx="1" />
-            <rect x="3" y="14" width="7" height="7" rx="1" />
-            <rect x="14" y="14" width="7" height="7" rx="1" />
-          </svg>
-          <span>监控</span>
-        </StratixButton>
-
-        <StratixButton
-          variant="secondary"
-          @click="emit('open-data-explorer')"
-          title="数据浏览器 (Ctrl+D)"
-        >
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-            <path :d="icons.database" />
-          </svg>
-          <span>数据</span>
-        </StratixButton>
-
-        <StratixButton
-          variant="secondary"
-          @click="handleOpenWorkflowEditor"
-          title="工作流编辑器"
-        >
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18" />
-          </svg>
-          <span>工作流</span>
+          <span>{{ btn.label }}</span>
+          <span v-if="btn.id === 'hero' && agentCount > 0" class="btn-badge">{{ agentCount }}</span>
         </StratixButton>
       </div>
       
       <div class="header-info">
-        <span class="status" :class="{ ready: isGameReady }">
-          {{ isGameReady ? '● 系统就绪' : '○ 加载中...' }}
-        </span>
+        <!-- Date/Time -->
+        <div class="datetime" v-if="currentTime">
+          <span class="datetime-time">{{ currentTime }}</span>
+          <span class="datetime-date" v-if="currentDate">{{ currentDate }}</span>
+        </div>
+
+        <!-- System Status -->
+        <div class="status-indicator" :class="statusConfig.class" :title="statusConfig.text">
+          <span class="status-pulse"></span>
+          <span class="status-text">{{ statusConfig.text }}</span>
+        </div>
+
+        <!-- Sound Controls -->
         <div class="sound-controls">
           <button
             class="sound-toggle"
@@ -286,18 +351,31 @@ const icons = {
               <line x1="17" y1="9" x2="23" y2="15" />
             </svg>
           </button>
-          <input
-            v-if="soundEnabled"
-            type="range"
-            class="sound-volume"
-            min="0"
-            max="1"
-            step="0.05"
-            :value="soundVolume"
-            @input="setSoundVolume(($event.target as HTMLInputElement).valueAsNumber)"
-            title="音量"
-          />
+          <div class="sound-volume-wrapper">
+            <input
+              type="range"
+              class="sound-volume"
+              min="0"
+              max="1"
+              step="0.05"
+              :value="soundVolume"
+              @input="setSoundVolume(($event.target as HTMLInputElement).valueAsNumber)"
+              title="音量"
+            />
+          </div>
         </div>
+
+        <!-- Theme Toggle -->
+        <button
+          class="theme-toggle"
+          :class="{ rotating: isThemeRotating }"
+          @click="cycleTheme"
+          title="切换主题"
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <path :d="icons.sun" />
+          </svg>
+        </button>
       </div>
     </header>
     
@@ -383,15 +461,31 @@ const icons = {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
-  gap: 20px;
+  padding: 0 var(--ds-spacing-md);
+  gap: var(--ds-spacing-md);
+}
+
+/* Drag region for Electron */
+.drag-region {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+  app-region: drag;
+  cursor: move;
+  padding-right: var(--ds-spacing-md);
+}
+
+.drag-region * {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 /* Responsive: narrow screens */
 @media (max-width: 1024px) {
   .header {
-    padding: 0 12px;
-    gap: 12px;
+    padding: 0 var(--ds-spacing-sm);
+    gap: var(--ds-spacing-sm);
   }
 
   .logo-text {
@@ -411,8 +505,12 @@ const icons = {
     margin: 0;
   }
 
-  .status {
-    font-size: var(--ds-font-size-sm);
+  .datetime {
+    display: none;
+  }
+
+  .status-text {
+    display: none;
   }
 }
 
@@ -425,33 +523,24 @@ const icons = {
 
 .logo-icon {
   color: var(--ds-brand-primary);
+  transition: transform var(--ds-animation-duration-normal, 250ms) ease,
+              filter var(--ds-animation-duration-normal, 250ms) ease;
+}
+
+.logo:hover .logo-icon {
+  transform: rotate(15deg);
+  filter: drop-shadow(0 0 8px var(--ds-brand-primary));
 }
 
 .logo-text {
   font-size: var(--ds-font-size-xl);
   font-weight: 600;
   color: var(--ds-text-primary);
+  transition: text-shadow var(--ds-animation-duration-normal, 250ms) ease;
 }
 
-.system-zone-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  background: color-mix(in srgb, var(--ds-status-info) 10%, transparent);
-  border: 1px solid rgba(59, 130, 246, 0.3);
-  border-radius: var(--ds-radius-md);
-  color: rgba(59, 130, 246, 0.8);
-  cursor: pointer;
-  transition: all var(--ds-animation-duration-fast) ease;
-  padding: 0;
-}
-.system-zone-btn:hover {
-  background: color-mix(in srgb, var(--ds-status-info) 20%, transparent);
-  border-color: rgba(59, 130, 246, 0.5);
-  color: #3b82f6;
-  transform: scale(1.05);
+.logo:hover .logo-text {
+  text-shadow: 0 0 12px var(--ds-brand-primary);
 }
 
 .toolbar {
@@ -460,6 +549,22 @@ const icons = {
   gap: var(--ds-spacing-sm);
   flex: 1;
   justify-content: center;
+}
+
+/* Header button active state with bottom glow */
+.toolbar :deep(.stratix-button) {
+  position: relative;
+  transition: all var(--ds-animation-duration-fast, 150ms) ease;
+}
+
+.toolbar :deep(.stratix-button.header-btn--active) {
+  box-shadow: 0 -2px 0 var(--ds-color-primary) inset;
+  background: color-mix(in srgb, var(--ds-color-primary) 10%, transparent);
+}
+
+/* Icon slide animation on hover */
+.toolbar :deep(.stratix-button:hover svg) {
+  animation: ds-icon-slide-right var(--ds-animation-duration-fast, 150ms) ease forwards;
 }
 
 .btn-badge {
@@ -483,10 +588,85 @@ const icons = {
 .header-info {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: var(--ds-spacing-md);
   flex-shrink: 0;
 }
 
+/* DateTime display */
+.datetime {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.2;
+}
+
+.datetime-time {
+  font-size: var(--ds-font-size-sm);
+  font-weight: 600;
+  color: var(--ds-text-primary);
+  font-family: var(--ds-font-mono);
+}
+
+.datetime-date {
+  font-size: var(--ds-font-size-xs);
+  color: var(--ds-text-muted);
+}
+
+/* Status indicator with pulse */
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--ds-font-size-sm);
+  color: var(--ds-text-muted);
+}
+
+.status-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--ds-radius-full);
+  flex-shrink: 0;
+}
+
+.status-indicator.status-ready .status-pulse {
+  background: var(--ds-success);
+  box-shadow: 0 0 0 0 var(--ds-success);
+  animation: ds-pulse 2s infinite;
+}
+
+.status-indicator.status-ready {
+  color: var(--ds-success);
+}
+
+.status-indicator.status-loading .status-pulse {
+  background: var(--ds-warning);
+  box-shadow: 0 0 0 0 var(--ds-warning);
+  animation: ds-pulse 2s infinite;
+}
+
+.status-indicator.status-loading {
+  color: var(--ds-warning);
+}
+
+@keyframes ds-pulse {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 currentColor;
+    opacity: 0.7;
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px currentColor;
+    opacity: 0;
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 currentColor;
+    opacity: 0;
+  }
+}
+
+/* Sound controls */
 .sound-controls {
   display: flex;
   align-items: center;
@@ -506,6 +686,7 @@ const icons = {
   cursor: pointer;
   transition: all var(--ds-animation-duration-fast) ease;
   padding: 0;
+  flex-shrink: 0;
 }
 
 .sound-toggle:hover {
@@ -516,6 +697,16 @@ const icons = {
 .sound-toggle.active {
   color: var(--ds-brand-primary);
   border-color: var(--ds-brand-primary);
+}
+
+.sound-volume-wrapper {
+  width: 0;
+  overflow: hidden;
+  transition: width var(--ds-animation-duration-normal, 250ms) cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sound-controls:hover .sound-volume-wrapper {
+  width: 64px;
 }
 
 .sound-volume {
@@ -537,13 +728,30 @@ const icons = {
   cursor: pointer;
 }
 
-.status {
-  font-size: var(--ds-font-size-md);
+/* Theme toggle */
+.theme-toggle {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
   color: var(--ds-text-muted);
+  cursor: pointer;
+  transition: all var(--ds-animation-duration-fast) ease;
+  padding: 0;
 }
 
-.status.ready {
-  color: var(--ds-success);
+.theme-toggle:hover {
+  background: var(--ds-bg-tertiary);
+  color: var(--ds-text-primary);
+  border-color: var(--ds-brand-primary);
+}
+
+.theme-toggle.rotating svg {
+  animation: ds-icon-rotate 500ms ease;
 }
 
 .main-content {
@@ -556,5 +764,15 @@ const icons = {
   width: 100%;
   height: 100%;
   position: relative;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logo-icon,
+  .logo-text,
+  .theme-toggle.rotating svg,
+  .status-pulse {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 </style>

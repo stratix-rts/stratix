@@ -8,6 +8,7 @@ interface Props {
   disabled?: boolean;
   size?: SizeVariant;
   label?: string;
+  labelPosition?: 'left' | 'right';
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -15,6 +16,7 @@ const props = withDefaults(defineProps<Props>(), {
   disabled: false,
   size: 'md',
   label: '',
+  labelPosition: 'right',
 });
 
 provideSizeContext(toRef(props, 'size'));
@@ -44,8 +46,12 @@ const handleChange = () => {
     :class="{
       'stratix-switch--disabled': disabled,
       'stratix-switch--checked': modelValue,
+      [`stratix-switch--${size}`]: true,
     }"
   >
+    <span v-if="label && labelPosition === 'left'" class="stratix-switch__label stratix-switch__label--left">
+      {{ label }}
+    </span>
     <input
       type="checkbox"
       :checked="modelValue"
@@ -62,7 +68,7 @@ const handleChange = () => {
         :class="[`stratix-switch__thumb--${size}`]"
       ></span>
     </span>
-    <span v-if="label" class="stratix-switch__label">
+    <span v-if="label && labelPosition === 'right'" class="stratix-switch__label stratix-switch__label--right">
       {{ label }}
     </span>
   </label>
@@ -80,6 +86,7 @@ const handleChange = () => {
 .stratix-switch--disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  filter: grayscale(100%);
 }
 
 .stratix-switch__input {
@@ -90,7 +97,7 @@ const handleChange = () => {
 
 .stratix-switch__track {
   position: relative;
-  background: v-bind('getToken("colors.background.tertiary")');
+  background: v-bind('getToken("colors.background.overlay")');
   border: 1px solid v-bind('getToken("colors.border.default")');
   border-radius: 999px;
   transition: all var(--ds-animation-duration-fast) ease;
@@ -113,19 +120,20 @@ const handleChange = () => {
 }
 
 .stratix-switch:hover:not(.stratix-switch--disabled) .stratix-switch__track {
-  border-color: v-bind('getToken("colors.info")');
+  border-color: v-bind('getToken("colors.status.info")');
+  box-shadow: 0 0 0 2px color-mix(in srgb, v-bind('getToken("colors.status.info")') 15%, transparent);
 }
 
 .stratix-switch--checked .stratix-switch__track {
-  background: v-bind('getToken("colors.info")');
-  border-color: v-bind('getToken("colors.info")');
+  background: v-bind('getToken("colors.status.info")');
+  border-color: v-bind('getToken("colors.status.info")');
 }
 
 .stratix-switch__thumb {
   position: absolute;
   top: 50%;
   left: 2px;
-  background: v-bind('getToken("colors.background.primary")');
+  background: v-bind('getToken("colors.background.base")');
   border-radius: var(--ds-radius-full);
   transition: transform var(--ds-animation-duration-normal, 250ms) cubic-bezier(0.34, 1.56, 0.64, 1);
   box-shadow: v-bind('getToken("shadows.sm")');
@@ -168,5 +176,12 @@ const handleChange = () => {
 
 .stratix-switch--disabled .stratix-switch__label {
   color: v-bind('getToken("colors.text.muted")');
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stratix-switch__track,
+  .stratix-switch__thumb {
+    transition: none;
+  }
 }
 </style>

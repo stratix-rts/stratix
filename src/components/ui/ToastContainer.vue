@@ -20,7 +20,7 @@ const emit = defineEmits<{
 }>();
 
 const displayedToasts = computed(() => {
-  return props.toasts.slice(0, props.maxToasts);
+  return props.toasts.slice(-props.maxToasts);
 });
 
 const getToastStyle = (type: ToastItem['type']) => {
@@ -36,6 +36,69 @@ const getToastStyle = (type: ToastItem['type']) => {
 const handleDismiss = (id: string) => {
   emit('dismiss', id);
 };
+
+const hoveredToast = ref<string | null>(null);
+
+const progressMap = ref<Record<string, number>>({});
+const rafIds = ref<Record<string, number>>({});
+
+const startProgress = (toast: ToastItem) => {
+  if (!toast.duration || toast.duration <= 0) return;
+  const start = performance.now();
+  const duration = toast.duration;
+
+  const tick = (now: number) => {
+    if (hoveredToast.value === toast.id) {
+      rafIds.value[toast.id] = requestAnimationFrame(tick);
+      return;
+    }
+    const elapsed = now - start;
+    const remaining = Math.max(0, duration - elapsed);
+    progressMap.value[toast.id] = (remaining / duration) * 100;
+
+    if (remaining > 0) {
+      rafIds.value[toast.id] = requestAnimationFrame(tick);
+    } else {
+      handleDismiss(toast.id);
+    }
+  };
+
+  rafIds.value[toast.id] = requestAnimationFrame(tick);
+};
+
+watch(() => props.toasts, (newToasts, oldToasts) => {
+  const newIds = new Set(newToasts.map(t => t.id));
+  const oldIds = new Set((oldToasts || []).map(t => t.id));
+
+  newToasts.forEach(toast => {
+    if (!oldIds.has(toast.id)) {
+      progressMap.value[toast.id] = 100;
+      startProgress(toast);
+    }
+  });
+
+  (oldToasts || []).forEach(toast => {
+    if (!newIds.has(toast.id) && rafIds.value[toast.id]) {
+      cancelAnimationFrame(rafIds.value[toast.id]);
+      delete rafIds.value[toast.id];
+      delete progressMap.value[toast.id];
+    }
+  });
+}, { deep: true });
+
+onUnmounted(() => {
+  Object.values(rafIds.value).forEach(id => cancelAnimationFrame(id));
+});
+
+const getIconAnimation = (type: ToastItem['type']) => {
+  const map = {
+    success: 'ds-toast-icon-bounce',
+    error: 'ds-toast-icon-shake',
+    warning: 'ds-toast-icon-pulse',
+    info: 'ds-toast-icon-slide',
+  };
+  return map[type];
+};
 </script>
 
 <template>
@@ -50,7 +113,7 @@ const handleDismiss = (id: string) => {
         class="toast-list"
       >
         <div
-          v-for="toast in displayedToasts"
+          v-for="(toast, index) in displayedToasts"
           :key="toast.id"
           class="toast-item"
           :class="`toast-item--${toast.type}`"
@@ -60,10 +123,13 @@ const handleDismiss = (id: string) => {
             '--toast-bg-subtle': getToastStyle(toast.type).backgroundSubtle,
             '--toast-text': getToastStyle(toast.type).text,
             '--toast-icon': getToastStyle(toast.type).icon,
+            '--toast-index': index,
           }"
           role="alert"
+          @mouseenter="hoveredToast = toast.id"
+          @mouseleave="hoveredToast = null"
         >
-          <div class="toast-icon">
+          <div class="toast-icon" :class="getIconAnimation(toast.type)">
             <svg
               v-if="toast.type === 'success'"
               viewBox="0 0 24 24"
@@ -124,6 +190,12 @@ const handleDismiss = (id: string) => {
               <line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
           </button>
+
+          <div
+            v-if="toast.duration && toast.duration > 0"
+            class="toast-progress"
+            :style="{ width: `${progressMap[toast.id] ?? 100}%` }"
+          ></div>
         </div>
       </TransitionGroup>
     </div>
@@ -170,14 +242,17 @@ const handleDismiss = (id: string) => {
   align-items: flex-start;
   gap: 12px;
   padding: var(--ds-spacing-md) var(--ds-spacing-md);
+  padding-bottom: calc(var(--ds-spacing-md) + 3px);
   background: var(--ds-glass-bg, var(--toast-bg));
   border: var(--ds-glass-border, 1px solid var(--toast-border));
   border-left: 3px solid var(--toast-icon);
   border-radius: var(--ds-radius-sm);
-  box-shadow: var(--ds-glass-shadow, 0 4px 12px rgba(0, 0, 0, 0.4));
+  box-shadow: var(--ds-glass-shadow, 0 4px 12px color-mix(in srgb, black 40%, transparent));
   pointer-events: auto;
   backdrop-filter: blur(var(--ds-glass-blur, 8px)) saturate(var(--ds-glass-saturate, 100%));
   -webkit-backdrop-filter: blur(var(--ds-glass-blur, 8px)) saturate(var(--ds-glass-saturate, 100%));
+  position: relative;
+  overflow: hidden;
 }
 
 .toast-item--success {
@@ -206,11 +281,6 @@ const handleDismiss = (id: string) => {
 .toast-icon svg {
   width: 100%;
   height: 100%;
-}
-
-/* Toast 入场时图标缩放动画 */
-.toast-enter-active .toast-icon svg {
-  animation: ds-scale-in 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 .toast-content {
@@ -243,7 +313,7 @@ const handleDismiss = (id: string) => {
   color: var(--toast-text);
   opacity: 0.6;
   cursor: pointer;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.15s ease, transform 0.15s ease;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -251,6 +321,7 @@ const handleDismiss = (id: string) => {
 
 .toast-dismiss:hover {
   opacity: 1;
+  transform: rotate(90deg);
 }
 
 .toast-dismiss svg {
@@ -258,9 +329,37 @@ const handleDismiss = (id: string) => {
   height: 16px;
 }
 
+.toast-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: var(--toast-icon);
+  opacity: 0.5;
+  transition: width 0.1s linear;
+}
+
+/* Icon animations */
+.ds-toast-icon-bounce {
+  animation: ds-toast-bounce 400ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.ds-toast-icon-shake {
+  animation: ds-toast-shake 400ms ease;
+}
+
+.ds-toast-icon-pulse {
+  animation: ds-toast-pulse 400ms ease;
+}
+
+.ds-toast-icon-slide {
+  animation: ds-toast-slide 300ms ease;
+}
+
 /* Transition animations */
 .toast-enter-active {
-  animation: ds-slide-up 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation: ds-slide-right 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation-delay: calc(var(--toast-index, 0) * 80ms);
 }
 
 .toast-leave-active {
@@ -271,19 +370,67 @@ const handleDismiss = (id: string) => {
   transition: transform 300ms ease;
 }
 
-.toast-container--top-right .toast-enter-active {
-  animation: ds-slide-right 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+.toast-container--top-left .toast-enter-active,
+.toast-container--bottom-left .toast-enter-active {
+  animation: ds-slide-left 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation-delay: calc(var(--toast-index, 0) * 80ms);
 }
 
-.toast-container--top-right .toast-leave-active {
-  animation: ds-fade-out 200ms var(--ds-animation-easing-ease-in, ease-in) forwards;
-}
-
-.toast-container--bottom-right .toast-enter-active {
+.toast-container--bottom-right .toast-enter-active,
+.toast-container--bottom-left .toast-enter-active {
   animation: ds-slide-up 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation-delay: calc(var(--toast-index, 0) * 80ms);
 }
 
-.toast-container--bottom-right .toast-leave-active {
-  animation: ds-fade-out 200ms var(--ds-animation-easing-ease-in, ease-in) forwards;
+@keyframes ds-toast-bounce {
+  0% { transform: scale(0); }
+  50% { transform: scale(1.3); }
+  100% { transform: scale(1); }
+}
+
+@keyframes ds-toast-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-2px); }
+  80% { transform: translateX(2px); }
+}
+
+@keyframes ds-toast-pulse {
+  0% { transform: scale(1); opacity: 0.7; }
+  50% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes ds-toast-slide {
+  0% { transform: translateX(-8px); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes ds-slide-left {
+  from {
+    opacity: 0;
+    transform: translateX(var(--ds-spacing-sm, 8px));
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-enter-active,
+  .toast-leave-active,
+  .toast-move,
+  .ds-toast-icon-bounce,
+  .ds-toast-icon-shake,
+  .ds-toast-icon-pulse,
+  .ds-toast-icon-slide {
+    animation: none;
+    transition: none;
+  }
+  .toast-dismiss:hover {
+    transform: none;
+  }
 }
 </style>

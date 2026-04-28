@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 
 import { getToken } from '@/design-system/config';
 
+import { getDSColor, isReducedMotion, drawGlowRing } from '../themes/ThemeColors';
+
 import { BaseZone, BaseZoneConfig, ZoneStatus } from './BaseZone';
 import type { CornerPosition } from './BaseZone';
 
@@ -58,6 +60,8 @@ export class TaskZone extends BaseZone {
   private progressBar: Phaser.GameObjects.Graphics | null = null;
   private progressText: Phaser.GameObjects.Text | null = null;
   private statusPulse: Phaser.Tweens.Tween | null = null;
+  private progressGlowTween: Phaser.Tweens.Tween | null = null;
+  private queueCards: Phaser.GameObjects.Container[] = [];
 
   constructor(scene: Phaser.Scene, config: TaskZoneConfig) {
     super(scene, config);
@@ -128,16 +132,25 @@ export class TaskZone extends BaseZone {
     const statusColor = TASK_ZONE_COLORS.status[this.getZoneStatus() as TaskZoneStatus];
     const halfH = this.zoneHeight / 2;
 
+    // Glowing status ring
+    drawGlowRing(this.statusIndicator, -this.zoneWidth / 2 + 24, -halfH - 12, 6, statusColor, 0.5, 2);
     this.statusIndicator.fillStyle(statusColor, 1);
     this.statusIndicator.fillCircle(-this.zoneWidth / 2 + 24, -halfH - 12, 5);
 
     if (this.getZoneStatus() === 'busy' && !this.statusPulse) {
+      const pulseData = { alpha: 1 };
       this.statusPulse = this.scene.tweens.add({
-        targets: this.statusIndicator,
-        alpha: { from: 1, to: 0.5 },
+        targets: pulseData,
+        alpha: 0.4,
         duration: 500,
         yoyo: true,
-        repeat: -1
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+        onUpdate: () => {
+          if (this.statusIndicator) {
+            this.statusIndicator.setAlpha(pulseData.alpha);
+          }
+        }
       });
     } else if (this.getZoneStatus() !== 'busy' && this.statusPulse) {
       this.statusPulse.stop();
@@ -152,9 +165,46 @@ export class TaskZone extends BaseZone {
     if (this.queuedAgentCount > 0) {
       this.queueText.setText(`⏳ ${this.queuedAgentCount}`);
       this.queueText.setVisible(true);
+      this.animateQueueCards();
     } else {
       this.queueText.setVisible(false);
+      this.clearQueueCards();
     }
+  }
+
+  private animateQueueCards(): void {
+    if (isReducedMotion()) return;
+    // Card-stack micro animation for queue
+    this.clearQueueCards();
+    const count = Math.min(this.queuedAgentCount, 3);
+    const halfW = this.zoneWidth / 2;
+    const halfH = this.zoneHeight / 2;
+
+    for (let i = 0; i < count; i++) {
+      const card = this.scene.add.container(halfW - 20 - i * 6, -halfH - 14);
+      const cardBg = this.scene.add.graphics();
+      cardBg.fillStyle(getDSColor('color-primary'), 0.6 - i * 0.15);
+      cardBg.fillRoundedRect(-8, -6, 16, 12, 2);
+      card.add(cardBg);
+      card.setDepth(1001 - i);
+      card.setScale(0);
+      this.add(card);
+      this.queueCards.push(card);
+
+      this.scene.tweens.add({
+        targets: card,
+        scaleX: 1,
+        scaleY: 1,
+        duration: 200,
+        delay: i * 60,
+        ease: 'Back.easeOut'
+      });
+    }
+  }
+
+  private clearQueueCards(): void {
+    this.queueCards.forEach(c => c.destroy());
+    this.queueCards = [];
   }
 
   private updateProgressBar(): void {
@@ -169,6 +219,7 @@ export class TaskZone extends BaseZone {
     const barY = halfH + 8;
 
     if (this.taskProgress > 0 && this.taskProgress < 100) {
+      // Track
       this.progressBar.fillStyle(0x333333, 0.8);
       this.progressBar.fillRoundedRect(barX, barY, barWidth, barHeight, 3);
 
@@ -177,13 +228,54 @@ export class TaskZone extends BaseZone {
         const fillColor = TASK_ZONE_COLORS.type[this.zoneType];
         this.progressBar.fillStyle(fillColor, 1);
         this.progressBar.fillRoundedRect(barX, barY, fillWidth, barHeight, 3);
+
+        // Glow tail at leading edge
+        if (!isReducedMotion()) {
+          drawGlowRing(this.progressBar, barX + fillWidth, barY + barHeight / 2, 4, fillColor, 0.5, 2);
+        }
       }
 
       this.progressText.setText(`${Math.floor(this.taskProgress)}%`);
       this.progressText.setPosition(0, barY + barHeight + 2);
       this.progressText.setVisible(true);
+
+      this.startProgressGlow(barX + fillWidth, barY + barHeight / 2, TASK_ZONE_COLORS.type[this.zoneType]);
     } else {
       this.progressText.setVisible(false);
+      this.stopProgressGlow();
+    }
+  }
+
+  private startProgressGlow(x: number, y: number, color: number): void {
+    if (!this.scene || this.progressGlowTween) return;
+    if (isReducedMotion()) return;
+
+    const glowData = { offset: 0, alpha: 0.4 };
+    this.progressGlowTween = this.scene.tweens.add({
+      targets: glowData,
+      offset: 3,
+      alpha: 0.7,
+      duration: 600,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+      onUpdate: () => {
+        if (this.progressBar && this.taskProgress > 0 && this.taskProgress < 100) {
+          const barWidth = Math.min(this.zoneWidth - 20, 100);
+          const fillWidth = Math.floor((this.taskProgress / 100) * barWidth);
+          const barX = -barWidth / 2;
+          const barY = this.zoneHeight / 2 + 8 + 6 / 2;
+          // Re-draw glow at leading edge with pulse
+          drawGlowRing(this.progressBar, barX + fillWidth + glowData.offset, barY, 5, color, glowData.alpha, 2);
+        }
+      }
+    });
+  }
+
+  private stopProgressGlow(): void {
+    if (this.progressGlowTween) {
+      this.progressGlowTween.stop();
+      this.progressGlowTween = null;
     }
   }
 
@@ -317,6 +409,8 @@ export class TaskZone extends BaseZone {
   }
 
   public destroy(): void {
+    this.stopProgressGlow();
+    this.clearQueueCards();
     if (this.statusIndicator) {
       this.statusIndicator.destroy();
       this.statusIndicator = null;

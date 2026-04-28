@@ -24,7 +24,7 @@ const sizeMap = {
 };
 
 const labelColor = computed(() => {
-  if (props.error) return getToken('colors.semantic.danger');
+  if (props.error) return getToken('colors.status.danger');
   if (props.optional) return getToken('colors.text.muted');
   return getToken('colors.text.secondary');
 });
@@ -58,7 +58,7 @@ const labelColor = computed(() => {
 }
 
 .stratix-label__marker {
-  color: v-bind('getToken("colors.semantic.danger")');
+  color: v-bind('getToken("colors.status.danger")');
   font-weight: 600;
 }
 

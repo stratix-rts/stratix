@@ -20,10 +20,10 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const colorMap: Record<string, string> = {
-  warning: getToken('colors.warning'),
-  danger: getToken('colors.semantic.danger'),
-  info: getToken('colors.info'),
-  success: getToken('colors.semantic.success'),
+  warning: getToken('colors.status.warning'),
+  danger: getToken('colors.status.danger'),
+  info: getToken('colors.status.info'),
+  success: getToken('colors.status.success'),
 };
 
 const iconMap: Record<string, string> = {

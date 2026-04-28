@@ -44,6 +44,50 @@
   transform: perspective(1000px) rotateX(2deg) rotateY(-2deg) translateZ(10px);
 }
 
+/* ============ 复制成功反馈 ============ */
+.ds-copy-success {
+  position: relative;
+}
+
+.ds-copy-success::after {
+  content: 'Copied!';
+  position: absolute;
+  top: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ds-status-success);
+  color: white;
+  padding: 2px 8px;
+  border-radius: var(--ds-radius-sm);
+  font-size: 12px;
+  animation: ds-fade-in 0.2s, ds-fade-out 0.2s 1s forwards;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* ============ 保存成功按钮 ============ */
+.ds-save-success {
+  background: var(--ds-status-success) !important;
+  box-shadow: 0 0 20px var(--ds-status-success) !important;
+  transition: all 0.3s ease;
+}
+
+/* ============ 拖拽 Ghost ============ */
+.ds-drag-ghost {
+  opacity: 0.5;
+  transform: scale(1.02);
+  box-shadow: var(--ds-shadow-xl);
+}
+
+/* ============ 拖拽放置指示器 ============ */
+.ds-drop-indicator {
+  height: 3px;
+  background: var(--ds-color-primary);
+  border-radius: 2px;
+  box-shadow: 0 0 8px var(--ds-color-primary);
+  animation: ds-pulse 1s infinite;
+}
+
 /* ============ 渐进增强：减少动画偏好 ============ */
 @media (prefers-reduced-motion: reduce) {
   .ds-ripple::after {
@@ -61,5 +105,14 @@
   .ds-tilt-card:hover {
     transform: none;
     transition: none;
+  }
+
+  .ds-copy-success::after {
+    animation: none;
+    opacity: 1;
+  }
+
+  .ds-drop-indicator {
+    animation: none;
   }
 }

@@ -65,6 +65,7 @@ const handleChange = (event: Event) => {
       :class="[`stratix-radio__circle--${size}`]"
     >
       <span v-if="isChecked" class="stratix-radio__dot"></span>
+      <span v-if="isChecked" class="stratix-radio__ripple"></span>
     </span>
     <span v-if="label" class="stratix-radio__label">
       {{ label }}
@@ -96,11 +97,12 @@ const handleChange = (event: Event) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: v-bind('getToken("colors.background.tertiary")');
+  background: v-bind('getToken("colors.background.overlay")');
   border: 1px solid v-bind('getToken("colors.border.default")');
   border-radius: var(--ds-radius-full);
   transition: all var(--ds-animation-duration-fast) ease;
   flex-shrink: 0;
+  position: relative;
 }
 
 .stratix-radio__circle--sm {
@@ -114,20 +116,31 @@ const handleChange = (event: Event) => {
 }
 
 .stratix-radio:hover:not(.stratix-radio--disabled) .stratix-radio__circle {
-  border-color: v-bind('getToken("colors.info")');
+  border-color: v-bind('getToken("colors.status.info")');
+  box-shadow: 0 0 0 2px color-mix(in srgb, v-bind('getToken("colors.status.info")') 15%, transparent);
 }
 
 .stratix-radio--checked .stratix-radio__circle {
-  border-color: v-bind('getToken("colors.info")');
+  border-color: v-bind('getToken("colors.status.info")');
   border-width: 5px;
 }
 
 .stratix-radio__dot {
   width: 40%;
   height: 40%;
-  background: v-bind('getToken("colors.info")');
+  background: v-bind('getToken("colors.status.info")');
   border-radius: var(--ds-radius-full);
-  animation: ds-check-bounce var(--ds-animation-duration-fast) var(--ds-animation-easing-ease-out, ease-out);
+  animation: ds-radio-dot-scale var(--ds-animation-duration-fast) var(--ds-animation-easing-ease-out, ease-out);
+}
+
+.stratix-radio__ripple {
+  position: absolute;
+  inset: -4px;
+  border-radius: var(--ds-radius-full);
+  border: 1px solid v-bind('getToken("colors.status.info")');
+  opacity: 0;
+  animation: ds-radio-ripple 400ms ease-out forwards;
+  pointer-events: none;
 }
 
 .stratix-radio__label {
@@ -137,5 +150,34 @@ const handleChange = (event: Event) => {
 
 .stratix-radio--disabled .stratix-radio__label {
   color: v-bind('getToken("colors.text.muted")');
+}
+
+@keyframes ds-radio-dot-scale {
+  0% { transform: scale(0); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+@keyframes ds-radio-ripple {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stratix-radio__circle,
+  .stratix-radio__dot,
+  .stratix-radio__ripple {
+    transition: none;
+    animation: none;
+  }
+  .stratix-radio__ripple {
+    display: none;
+  }
 }
 </style>

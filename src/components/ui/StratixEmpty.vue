@@ -1,12 +1,12 @@
 <script setup lang="ts">
 /**
  * StratixEmpty - Unified empty state component
- * Supports multiple scenarios: no-data, no-agents, no-tasks, no-messages, no-results
+ * Supports multiple scenarios: no-data, no-agents, no-tasks, no-messages, no-results, search, error, no-permission
  */
 import { computed } from 'vue';
 import StratixButton from './StratixButton.vue';
 
-export type EmptyScenario = 'no-data' | 'no-agents' | 'no-tasks' | 'no-messages' | 'no-results';
+export type EmptyScenario = 'no-data' | 'no-agents' | 'no-tasks' | 'no-messages' | 'no-results' | 'search' | 'error' | 'no-permission';
 
 interface ActionButton {
   label: string;
@@ -75,6 +75,24 @@ const svgIllustrations: Record<EmptyScenario, string> = {
     <path d="M48 43 L65 60" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
     <line x1="28" y1="25" x2="42" y2="35" stroke="currentColor" stroke-width="1" opacity="0.2"/>
   </svg>`,
+  'search': `<svg viewBox="0 0 80 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="32" cy="28" r="14" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.25"/>
+    <line x1="42" y1="38" x2="56" y2="52" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+    <circle cx="32" cy="28" r="5" stroke="currentColor" stroke-width="1" fill="none" opacity="0.15"/>
+  </svg>`,
+  'error': `<svg viewBox="0 0 80 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="40" cy="30" r="16" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.25"/>
+    <line x1="33" y1="23" x2="47" y2="37" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.3"/>
+    <line x1="47" y1="23" x2="33" y2="37" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.3"/>
+    <circle cx="65" cy="15" r="3" stroke="currentColor" stroke-width="1" fill="none" opacity="0.15"/>
+  </svg>`,
+  'no-permission': `<svg viewBox="0 0 80 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="20" y="10" width="40" height="40" rx="4" stroke="currentColor" stroke-width="1.5" fill="none" opacity="0.25"/>
+    <circle cx="40" cy="26" r="6" stroke="currentColor" stroke-width="1.2" fill="none" opacity="0.2"/>
+    <path d="M32 40 L48 40" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity="0.2"/>
+    <line x1="60" y1="20" x2="70" y2="30" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.3"/>
+    <circle cx="72" cy="32" r="3" stroke="currentColor" stroke-width="1" fill="none" opacity="0.2"/>
+  </svg>`,
 };
 
 // Default content by scenario
@@ -98,6 +116,18 @@ const defaults: Record<EmptyScenario, { title: string; description: string }> = 
   'no-results': {
     title: '无搜索结果',
     description: '尝试调整搜索条件',
+  },
+  'search': {
+    title: '开始搜索',
+    description: '输入关键词查找内容',
+  },
+  'error': {
+    title: '出错了',
+    description: '加载数据时发生错误，请稍后重试',
+  },
+  'no-permission': {
+    title: '无权限',
+    description: '你没有权限访问此内容',
   },
 };
 
@@ -127,7 +157,7 @@ const actionButton = computed(() => {
 </script>
 
 <template>
-  <div class="stratix-empty">
+  <div class="stratix-empty" :class="`stratix-empty--${scenario}`">
     <div class="stratix-empty__illustration" v-html="resolvedSvg"></div>
     <h3 class="stratix-empty__title">{{ resolvedTitle }}</h3>
     <p v-if="resolvedDescription" class="stratix-empty__description">
@@ -184,6 +214,20 @@ const actionButton = computed(() => {
   }
 }
 
+.stratix-empty__illustration {
+  animation: emptyFloat 3s ease-in-out infinite;
+  animation-delay: 0.5s;
+}
+
+@keyframes emptyFloat {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
 .stratix-empty__title {
   margin: 0 0 8px;
   font-size: var(--ds-font-size-xl);
@@ -203,5 +247,12 @@ const actionButton = computed(() => {
   display: flex;
   gap: 12px;
   align-items: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stratix-empty__illustration {
+    animation: none;
+    opacity: 1;
+  }
 }
 </style>

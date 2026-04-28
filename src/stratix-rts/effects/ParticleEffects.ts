@@ -3,9 +3,12 @@
  *
  * Uses tween-based circle particles (Phaser 3 built-in particle emitter can be swapped in later).
  * Singleton class, lazy-initialized with the scene.
+ * V2: Theme-aware colors, new animations (zone expand/shrink, agent ripple, confetti).
  */
 
 import Phaser from 'phaser';
+
+import { getDSColor, isReducedMotion } from '../themes/ThemeColors';
 
 export type ParticleEmitter = Phaser.Tweens.Tween[];
 
@@ -27,14 +30,19 @@ function tintToNumber(color: string): number {
   return parseInt(hex, 16);
 }
 
-const DEFAULT_PARTICLE_COLORS = {
-  spawn: 0x00ffff,
-  levelUp: 0xffd700,
-  error: 0xff3333,
-  idle: 0x88aaff,
-  taskExecution: 0x00ff88,
-  statusChange: 0xffffff,
-};
+/** Get theme-aware default particle colors */
+function getDefaultParticleColors() {
+  return {
+    spawn: getDSColor('color-primary'),
+    levelUp: getDSColor('status-success'),
+    error: getDSColor('status-danger'),
+    idle: getDSColor('text-muted'),
+    taskExecution: getDSColor('status-success'),
+    statusChange: 0xffffff,
+    confetti: [getDSColor('color-primary'), getDSColor('status-success'), getDSColor('status-warning'), getDSColor('accent')],
+    ripple: getDSColor('color-primary'),
+  };
+}
 
 export class ParticleEffects {
   private static instance: ParticleEffects | null = null;
@@ -94,7 +102,8 @@ export class ParticleEffects {
    */
   spawnBurst(scene: Phaser.Scene, x: number, y: number, color?: string): ParticleEmitter {
     this.ensureScene(scene);
-    const c = color ? tintToNumber(color) : DEFAULT_PARTICLE_COLORS.spawn;
+    const colors = getDefaultParticleColors();
+    const c = color ? tintToNumber(color) : colors.spawn;
     const tweens: Phaser.Tweens.Tween[] = [];
     const count = 12;
 
@@ -136,6 +145,7 @@ export class ParticleEffects {
    */
   levelUp(scene: Phaser.Scene, x: number, y: number): ParticleEmitter {
     this.ensureScene(scene);
+    const colors = getDefaultParticleColors();
     const tweens: Phaser.Tweens.Tween[] = [];
     const count = 16;
 
@@ -148,7 +158,7 @@ export class ParticleEffects {
       const delay = Math.random() * 200;
 
       const circle = this.scene!.add.graphics();
-      circle.fillStyle(DEFAULT_PARTICLE_COLORS.levelUp, 1);
+      circle.fillStyle(colors.levelUp, 1);
       circle.fillCircle(0, 0, size);
       circle.setPosition(x, y);
       circle.setDepth(901);
@@ -179,6 +189,7 @@ export class ParticleEffects {
    */
   errorFlash(scene: Phaser.Scene, x: number, y: number): ParticleEmitter {
     this.ensureScene(scene);
+    const colors = getDefaultParticleColors();
     const tweens: Phaser.Tweens.Tween[] = [];
     const count = 8;
 
@@ -191,7 +202,7 @@ export class ParticleEffects {
       const delay = Math.random() * 100;
 
       const circle = this.scene!.add.graphics();
-      circle.fillStyle(DEFAULT_PARTICLE_COLORS.error, 0.9);
+      circle.fillStyle(colors.error, 0.9);
       circle.fillCircle(0, 0, size);
       circle.setPosition(x, y);
       circle.setDepth(901);
@@ -223,7 +234,8 @@ export class ParticleEffects {
    */
   idlePulse(scene: Phaser.Scene, x: number, y: number, color?: string): ParticleEmitter {
     this.ensureScene(scene);
-    const c = color ? tintToNumber(color) : DEFAULT_PARTICLE_COLORS.idle;
+    const colors = getDefaultParticleColors();
+    const c = color ? tintToNumber(color) : colors.idle;
     const tweens: Phaser.Tweens.Tween[] = [];
     const circles: Phaser.GameObjects.Graphics[] = [];
     const delayedCalls: Phaser.Time.TimerEvent[] = [];
@@ -292,7 +304,8 @@ export class ParticleEffects {
    */
   taskExecution(scene: Phaser.Scene, x: number, y: number, color?: string): ParticleEmitter {
     this.ensureScene(scene);
-    const c = color ? tintToNumber(color) : DEFAULT_PARTICLE_COLORS.taskExecution;
+    const colors = getDefaultParticleColors();
+    const c = color ? tintToNumber(color) : colors.taskExecution;
     const tweens: Phaser.Tweens.Tween[] = [];
     const circles: Phaser.GameObjects.Graphics[] = [];
     const delayedCalls: Phaser.Time.TimerEvent[] = [];
@@ -343,13 +356,14 @@ export class ParticleEffects {
    */
   statusChange(scene: Phaser.Scene, x: number, y: number, status: 'online' | 'busy' | 'offline' | 'error'): ParticleEmitter {
     this.ensureScene(scene);
+    const colors = getDefaultParticleColors();
     const statusColorMap: Record<string, number> = {
-      online: DEFAULT_PARTICLE_COLORS.spawn,
-      busy: DEFAULT_PARTICLE_COLORS.taskExecution,
-      offline: DEFAULT_PARTICLE_COLORS.idle,
-      error: DEFAULT_PARTICLE_COLORS.error,
+      online: colors.spawn,
+      busy: colors.taskExecution,
+      offline: colors.idle,
+      error: colors.error,
     };
-    const c = statusColorMap[status] ?? DEFAULT_PARTICLE_COLORS.statusChange;
+    const c = statusColorMap[status] ?? colors.statusChange;
     const tweens: Phaser.Tweens.Tween[] = [];
     const count = 12;
 
@@ -377,6 +391,179 @@ export class ParticleEffects {
         ease: 'Power2.easeOut',
         onComplete: () => {
           circle.destroy();
+        },
+      });
+      tweens.push(tween);
+    }
+
+    return tweens;
+  }
+
+  // ========================================================================
+  // New V2 Effects
+  // ========================================================================
+
+  /**
+   * zoneCreateExpand - expanding ring animation when a zone is created
+   */
+  zoneCreateExpand(scene: Phaser.Scene, x: number, y: number, width: number, height: number, color?: number): ParticleEmitter {
+    this.ensureScene(scene);
+    if (isReducedMotion()) return [];
+
+    const c = color ?? getDSColor('color-primary');
+    const tweens: Phaser.Tweens.Tween[] = [];
+    const graphics = scene.add.graphics();
+    graphics.setDepth(902);
+
+    const halfW = width / 2;
+    const halfH = height / 2;
+    const expandData = { sx: 0, sy: 0, alpha: 0.8 };
+
+    const tween = scene.tweens.add({
+      targets: expandData,
+      sx: 1,
+      sy: 1,
+      alpha: 0,
+      duration: 500,
+      ease: 'Back.easeOut',
+      onUpdate: () => {
+        graphics.clear();
+        graphics.lineStyle(2, c, expandData.alpha);
+        graphics.strokeRect(
+          x - halfW * expandData.sx,
+          y - halfH * expandData.sy,
+          width * expandData.sx,
+          height * expandData.sy
+        );
+        graphics.fillStyle(c, expandData.alpha * 0.1);
+        graphics.fillRect(
+          x - halfW * expandData.sx,
+          y - halfH * expandData.sy,
+          width * expandData.sx,
+          height * expandData.sy
+        );
+      },
+      onComplete: () => {
+        graphics.destroy();
+      }
+    });
+    tweens.push(tween);
+    return tweens;
+  }
+
+  /**
+   * zoneDeleteShrink - shrinking animation when a zone is deleted
+   */
+  zoneDeleteShrink(scene: Phaser.Scene, x: number, y: number, width: number, height: number, color?: number): ParticleEmitter {
+    this.ensureScene(scene);
+    if (isReducedMotion()) return [];
+
+    const c = color ?? getDSColor('status-danger');
+    const tweens: Phaser.Tweens.Tween[] = [];
+    const graphics = scene.add.graphics();
+    graphics.setDepth(902);
+
+    const halfW = width / 2;
+    const halfH = height / 2;
+    const shrinkData = { sx: 1, sy: 1, alpha: 0.6 };
+
+    const tween = scene.tweens.add({
+      targets: shrinkData,
+      sx: 0,
+      sy: 0,
+      alpha: 0,
+      duration: 400,
+      ease: 'Power2.easeIn',
+      onUpdate: () => {
+        graphics.clear();
+        graphics.lineStyle(2, c, shrinkData.alpha);
+        graphics.strokeRect(
+          x - halfW * shrinkData.sx,
+          y - halfH * shrinkData.sy,
+          width * shrinkData.sx,
+          height * shrinkData.sy
+        );
+      },
+      onComplete: () => {
+        graphics.destroy();
+      }
+    });
+    tweens.push(tween);
+    return tweens;
+  }
+
+  /**
+   * agentArrivalRipple - ripple effect when an agent arrives at a destination
+   */
+  agentArrivalRipple(scene: Phaser.Scene, x: number, y: number, color?: number): ParticleEmitter {
+    this.ensureScene(scene);
+    if (isReducedMotion()) return [];
+
+    const c = color ?? getDSColor('color-primary');
+    const tweens: Phaser.Tweens.Tween[] = [];
+    const graphics = scene.add.graphics();
+    graphics.setDepth(902);
+
+    const rippleData = { radius: 10, alpha: 0.7 };
+    const tween = scene.tweens.add({
+      targets: rippleData,
+      radius: 50,
+      alpha: 0,
+      duration: 600,
+      ease: 'Power2.easeOut',
+      onUpdate: () => {
+        graphics.clear();
+        graphics.lineStyle(2, c, rippleData.alpha);
+        graphics.strokeCircle(x, y, rippleData.radius);
+        graphics.fillStyle(c, rippleData.alpha * 0.1);
+        graphics.fillCircle(x, y, rippleData.radius);
+      },
+      onComplete: () => {
+        graphics.destroy();
+      }
+    });
+    tweens.push(tween);
+    return tweens;
+  }
+
+  /**
+   * taskCompleteConfetti - confetti burst for task completion
+   */
+  taskCompleteConfetti(scene: Phaser.Scene, x: number, y: number): ParticleEmitter {
+    this.ensureScene(scene);
+    if (isReducedMotion()) return [];
+
+    const colors = getDefaultParticleColors();
+    const confettiColors = colors.confetti;
+    const tweens: Phaser.Tweens.Tween[] = [];
+    const count = 20;
+
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.5;
+      const distance = 50 + Math.random() * 80;
+      const targetX = x + Math.cos(angle) * distance;
+      const targetY = y + Math.sin(angle) * distance - Math.random() * 40;
+      const color = confettiColors[i % confettiColors.length];
+      const sizeW = 4 + Math.random() * 4;
+      const sizeH = 2 + Math.random() * 3;
+
+      const rect = scene.add.graphics();
+      rect.fillStyle(color, 1);
+      rect.fillRect(-sizeW / 2, -sizeH / 2, sizeW, sizeH);
+      rect.setPosition(x, y);
+      rect.setDepth(901);
+      rect.setRotation(Math.random() * Math.PI);
+
+      const tween = scene.tweens.add({
+        targets: rect,
+        x: targetX,
+        y: targetY,
+        alpha: 0,
+        rotation: rect.rotation + Math.PI * 2,
+        duration: 700 + Math.random() * 400,
+        ease: 'Power2.easeOut',
+        onComplete: () => {
+          rect.destroy();
         },
       });
       tweens.push(tween);

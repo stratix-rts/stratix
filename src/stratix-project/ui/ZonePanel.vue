@@ -137,7 +137,6 @@ const handleScanFolder = async (data: { folderPath: string; recursive?: boolean;
 
     const result = await response.json();
     if (result.success && result.files && filePickerRef.value) {
-      // Add scanned files to the picker's selected list
       const scannedFiles = result.files.map((f: any) => ({
         name: f.name,
         source: f.source,
@@ -156,7 +155,6 @@ const handleAddFiles = async (files: Array<{ name: string; sourceType: 'local' |
 
   loading.value = true;
   try {
-    // Parallelize file uploads for better performance
     const results = await Promise.all(
       files.map(file =>
         fetch(`/api/zones/${currentZone.value.id}/files`, {
@@ -254,7 +252,6 @@ const handleRefreshFile = async (zoneId: string, fileId: string) => {
 const handleAddMember = async (zoneId: string) => {
   if (!currentZone.value) return;
 
-  // Get available agents (not already in this zone)
   const availableAgents = await fetchAvailableAgents();
   const existingMemberIds = currentZone.value.members || [];
   const eligibleAgents = availableAgents.filter(a => !existingMemberIds.includes(a.agentId));
@@ -264,7 +261,6 @@ const handleAddMember = async (zoneId: string) => {
     return;
   }
 
-  // Show agent picker UI
   availableAgentsForPicker.value = eligibleAgents;
   showAgentPicker.value = true;
 };
@@ -350,30 +346,44 @@ const handleRemoveMember = async (zoneId: string, memberId: string) => {
     :visible="visible"
     :title="currentZone ? `Zone: ${currentZone.title}` : 'Zone 详情'"
     width="520px"
+    position="right"
     :maskClosable="true"
     :footer="false"
     @update:visible="emit('update:visible', $event)"
     @close="handleClose"
   >
     <!-- Notification toast -->
-    <div v-if="notification" class="zone-panel-notification" :class="`zone-panel-notification--${notification.type}`">
-      {{ notification.message }}
-    </div>
+    <Transition name="notification">
+      <div v-if="notification" class="zone-panel-notification" :class="`zone-panel-notification--${notification.type}`">
+        {{ notification.message }}
+      </div>
+    </Transition>
 
-    <ZoneDetail
-      v-if="currentZone"
-      :zone="currentZone"
-      @close="handleClose"
-      @update-zone="handleUpdateZone"
-      @delete-zone="handleDeleteZone"
-      @clone-zone="handleCloneZone"
-      @add-file="handleAddFile"
-      @remove-file="handleRemoveFile"
-      @refresh-file="handleRefreshFile"
-      @add-member="handleAddMember"
-      @remove-member="handleRemoveMember"
-      @open-data-explorer="(zoneId) => emit('open-data-explorer', zoneId)"
-    />
+    <div class="zone-panel-content">
+      <ZoneDetail
+        v-if="currentZone"
+        :zone="currentZone"
+        @close="handleClose"
+        @update-zone="handleUpdateZone"
+        @delete-zone="handleDeleteZone"
+        @clone-zone="handleCloneZone"
+        @add-file="handleAddFile"
+        @remove-file="handleRemoveFile"
+        @refresh-file="handleRefreshFile"
+        @add-member="handleAddMember"
+        @remove-member="handleRemoveMember"
+        @open-data-explorer="(zoneId) => emit('open-data-explorer', zoneId)"
+      />
+      
+      <!-- Empty state with glassmorphism -->
+      <div v-else class="zone-empty">
+        <div class="zone-empty-card">
+          <span class="zone-empty-icon">🎯</span>
+          <h4>未选择 Zone</h4>
+          <p>请从地图上选择一个 Zone 查看详情</p>
+        </div>
+      </div>
+    </div>
   </StratixModal>
 
   <!-- Agent Picker Modal -->
@@ -395,8 +405,14 @@ const handleRemoveMember = async (zoneId: string, memberId: string) => {
           class="agent-picker__item"
           @click="handleAgentPickerSelect(agent.agentId)"
         >
-          <span class="agent-picker__name">{{ agent.name || 'Unnamed Agent' }}</span>
-          <span class="agent-picker__id">{{ agent.agentId.slice(0, 8) }}...</span>
+          <div class="agent-picker__avatar">
+            <span>{{ agent.name?.charAt(0) || 'A' }}</span>
+            <div class="picker-status online"></div>
+          </div>
+          <div class="agent-picker__info">
+            <span class="agent-picker__name">{{ agent.name || 'Unnamed Agent' }}</span>
+            <span class="agent-picker__id">{{ agent.agentId.slice(0, 8) }}...</span>
+          </div>
         </button>
       </div>
       <button class="agent-picker__cancel" @click="handleAgentPickerCancel">取消</button>
@@ -414,6 +430,10 @@ const handleRemoveMember = async (zoneId: string, memberId: string) => {
 </template>
 
 <style scoped>
+.zone-panel-content {
+  position: relative;
+}
+
 .zone-panel-notification {
   position: fixed;
   top: 20px;
@@ -424,33 +444,79 @@ const handleRemoveMember = async (zoneId: string, memberId: string) => {
   font-size: var(--ds-font-size-md);
   font-weight: 500;
   z-index: 9999;
-  animation: slideDown 0.3s ease;
+  box-shadow: var(--ds-shadow-lg);
+}
+
+.notification-enter-active,
+.notification-leave-active {
+  transition: all 0.3s var(--ds-animation-easing-ease-out);
+}
+
+.notification-enter-from {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-20px);
+}
+
+.notification-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-10px);
 }
 
 .zone-panel-notification--success {
   background: var(--ds-status-success);
-  color: var(--ds-text-primary);
+  color: white;
 }
 
 .zone-panel-notification--error {
   background: var(--ds-status-danger);
-  color: var(--ds-text-primary);
+  color: white;
 }
 
 .zone-panel-notification--info {
-  background: var(--ds-color-primary);
-  color: var(--ds-text-primary);
+  background: var(--ds-brand-primary);
+  color: white;
 }
 
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
+.zone-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  padding: var(--ds-spacing-xl);
+}
+
+.zone-empty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ds-spacing-md);
+  padding: var(--ds-spacing-xl);
+  background: var(--ds-glass-bg, var(--ds-bg-secondary));
+  border: var(--ds-glass-border, 1px solid var(--ds-border));
+  border-radius: var(--ds-radius-lg);
+  backdrop-filter: blur(var(--ds-glass-blur));
+  -webkit-backdrop-filter: blur(var(--ds-glass-blur));
+  box-shadow: var(--ds-glass-shadow, var(--ds-shadow-md));
+  text-align: center;
+  max-width: 280px;
+  animation: ds-scale-in 0.3s var(--ds-animation-easing-ease-out);
+}
+
+.zone-empty-icon {
+  font-size: 48px;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1));
+}
+
+.zone-empty-card h4 {
+  margin: 0;
+  color: var(--ds-text-primary);
+  font-size: var(--ds-font-size-lg);
+}
+
+.zone-empty-card p {
+  margin: 0;
+  color: var(--ds-text-muted);
+  font-size: var(--ds-font-size-sm);
 }
 
 .agent-picker {
@@ -473,28 +539,71 @@ const handleRemoveMember = async (zoneId: string, memberId: string) => {
 
 .agent-picker__item {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: var(--ds-spacing-md) var(--ds-spacing-md);
+  gap: var(--ds-spacing-md);
+  padding: var(--ds-spacing-md);
   background: var(--ds-bg-elevated);
   border: 1px solid var(--ds-border-default);
   border-radius: var(--ds-radius-md);
   cursor: pointer;
   transition: all var(--ds-animation-duration-fast) ease;
+  text-align: left;
+  width: 100%;
 }
 
 .agent-picker__item:hover {
   background: var(--ds-bg-overlay);
   border-color: var(--ds-color-primary);
+  transform: translateX(4px);
+  box-shadow: var(--ds-shadow-sm);
+}
+
+.agent-picker__avatar {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-brand-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  font-size: var(--ds-font-size-sm);
+  flex-shrink: 0;
+}
+
+.picker-status {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--ds-radius-full);
+  border: 2px solid var(--ds-bg-secondary);
+}
+
+.picker-status.online {
+  background: var(--ds-status-success);
+  box-shadow: 0 0 4px var(--ds-status-success);
+}
+
+.agent-picker__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .agent-picker__name {
   font-weight: 500;
   color: var(--ds-text-primary);
+  font-size: var(--ds-font-size-sm);
 }
 
 .agent-picker__id {
-  font-size: var(--ds-font-size-sm);
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   font-family: var(--ds-font-mono);
 }
@@ -514,5 +623,16 @@ const handleRemoveMember = async (zoneId: string, memberId: string) => {
 .agent-picker__cancel:hover {
   background: var(--ds-bg-elevated);
   border-color: var(--ds-text-muted);
+}
+
+/* Prefers reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .zone-panel-notification,
+  .zone-empty-card,
+  .agent-picker__item {
+    transition: none !important;
+    animation: none !important;
+    transform: none !important;
+  }
 }
 </style>

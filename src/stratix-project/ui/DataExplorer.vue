@@ -47,16 +47,19 @@
           </svg>
         </button>
         <div class="tab-divider"></div>
-        <button
-          v-for="tab in tabs"
-          :key="tab.id"
-          class="tab-button"
-          :class="{ active: activeTab === tab.id }"
-          @click="activeTab = tab.id"
-        >
-          <span class="tab-icon">{{ tab.icon }}</span>
-          <span class="tab-label">{{ tab.label }}</span>
-        </button>
+        <div class="tab-items">
+          <div class="tab-indicator" :style="tabIndicatorStyle"></div>
+          <button
+            v-for="tab in tabs"
+            :key="tab.id"
+            class="tab-button"
+            :class="{ active: activeTab === tab.id }"
+            @click="activeTab = tab.id"
+          >
+            <span class="tab-icon">{{ tab.icon }}</span>
+            <span class="tab-label">{{ tab.label }}</span>
+          </button>
+        </div>
       </div>
 
       <!-- 内容区域 -->
@@ -88,10 +91,13 @@
               :class="{ selected: selectedZone?.id === zone.id }"
               @click="selectZone(zone)"
             >
-              <span class="zone-name">{{ zone.title || '(未命名)' }}</span>
-              <span class="zone-stats">
-                📄 {{ zone.files?.length || 0 }} · 👤 {{ zone.members?.length || 0 }}
-              </span>
+              <div class="zone-glow" v-if="selectedZone?.id === zone.id"></div>
+              <div class="zone-content">
+                <span class="zone-name">{{ zone.title || '(未命名)' }}</span>
+                <span class="zone-stats">
+                  📄 {{ zone.files?.length || 0 }} · 👤 {{ zone.members?.length || 0 }}
+                </span>
+              </div>
             </div>
 
             <div v-if="zones.length === 0" class="empty-state">
@@ -146,31 +152,33 @@
                 <polyline points="9 18 15 12 9 6" />
               </svg>
             </div>
-            <div v-if="showTemplateModal" class="template-list">
-              <div v-if="templates.length === 0" class="template-empty">
-                暂无模板
-              </div>
-              <div v-for="tpl in templates" :key="tpl.id" class="template-item">
-                <div class="template-info" @click="createFromTemplate(tpl)" title="点击创建新 Zone">
-                  <span class="template-name">{{ tpl.name }}</span>
-                  <span class="template-preview">{{ tpl.title || '(无标题)' }}</span>
+            <Transition name="template-expand">
+              <div v-if="showTemplateModal" class="template-list">
+                <div v-if="templates.length === 0" class="template-empty">
+                  暂无模板
                 </div>
-                <div class="template-actions">
-                  <button class="icon-btn" @click.stop="startEditTemplateName(tpl)" title="编辑名称">
-                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                    </svg>
-                  </button>
-                  <button class="icon-btn delete" @click.stop="deleteTemplate(tpl.id)" title="删除模板">
-                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
-                      <polyline points="3 6 5 6 21 6"/>
-                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                    </svg>
-                  </button>
+                <div v-for="tpl in templates" :key="tpl.id" class="template-item">
+                  <div class="template-info" @click="createFromTemplate(tpl)" title="点击创建新 Zone">
+                    <span class="template-name">{{ tpl.name }}</span>
+                    <span class="template-preview">{{ tpl.title || '(无标题)' }}</span>
+                  </div>
+                  <div class="template-actions">
+                    <button class="icon-btn" @click.stop="startEditTemplateName(tpl)" title="编辑名称">
+                      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                      </svg>
+                    </button>
+                    <button class="icon-btn delete" @click.stop="deleteTemplate(tpl.id)" title="删除模板">
+                      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
+            </Transition>
           </div>
         </aside>
 
@@ -385,6 +393,15 @@ const tabs = [
 const activeTab = ref('zones');
 const sidebarCollapsed = ref(false);
 
+// Tab indicator position
+const tabIndicatorStyle = computed(() => {
+  const index = tabs.findIndex(t => t.id === activeTab.value);
+  return {
+    left: `${index * (100 / tabs.length)}%`,
+    width: `${100 / tabs.length}%`,
+  };
+});
+
 // ============================================
 // Zone 模板管理
 // ============================================
@@ -394,7 +411,6 @@ const showShortcutHelp = ref(false);
 const editingTemplate = ref<ZoneTemplate | null>(null);
 const templateNameInput = ref('');
 
-// 加载模板从 localStorage
 const loadTemplates = () => {
   try {
     const stored = localStorage.getItem(TEMPLATES_KEY);
@@ -407,7 +423,6 @@ const loadTemplates = () => {
   }
 };
 
-// 保存模板到 localStorage
 const saveTemplatesToStorage = () => {
   try {
     localStorage.setItem(TEMPLATES_KEY, JSON.stringify(templates.value));
@@ -416,10 +431,8 @@ const saveTemplatesToStorage = () => {
   }
 };
 
-// 生成模板 ID
 const generateTemplateId = () => `tpl_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
-// 保存当前 Zone 为模板
 const saveAsTemplate = (zone: Zone) => {
   templateNameInput.value = zone.title || '';
   editingTemplate.value = {
@@ -432,7 +445,6 @@ const saveAsTemplate = (zone: Zone) => {
   showTemplateModal.value = true;
 };
 
-// 确认保存模板
 const confirmSaveTemplate = () => {
   if (!editingTemplate.value) return;
 
@@ -442,7 +454,6 @@ const confirmSaveTemplate = () => {
     return;
   }
 
-  // 检查名称是否重复
   const exists = templates.value.some(t => t.name === name);
   if (exists) {
     alert('模板名称已存在，请使用其他名称');
@@ -466,7 +477,6 @@ const confirmSaveTemplate = () => {
   console.log('[DataExplorer] Template saved:', newTemplate.name);
 };
 
-// 从模板创建 Zone
 const createFromTemplate = async (template: ZoneTemplate) => {
   try {
     const response = await fetch('/api/zones', {
@@ -490,7 +500,6 @@ const createFromTemplate = async (template: ZoneTemplate) => {
   }
 };
 
-// 删除模板
 const deleteTemplate = (templateId: string) => {
   const template = templates.value.find(t => t.id === templateId);
   if (!template) return;
@@ -502,7 +511,6 @@ const deleteTemplate = (templateId: string) => {
   }
 };
 
-// 编辑模板名称
 const startEditTemplateName = (template: ZoneTemplate) => {
   editingTemplate.value = { ...template };
   templateNameInput.value = template.name;
@@ -517,7 +525,6 @@ const confirmEditTemplateName = () => {
     return;
   }
 
-  // 检查名称是否重复（排除自己）
   const exists = templates.value.some(t => t.name === newName && t.id !== editingTemplate.value!.id);
   if (exists) {
     alert('模板名称已存在，请使用其他名称');
@@ -556,9 +563,7 @@ const canRedo = computed(() => historyIndex.value < historyStack.value.length - 
 
 const generateId = () => Math.random().toString(36).substring(2, 11);
 
-// 添加到历史
 const pushHistory = (command: Omit<HistoryCommand, 'id'>) => {
-  // 如果当前索引不在栈顶，删除栈顶之后的所有条目
   if (historyIndex.value < historyStack.value.length - 1) {
     historyStack.value = historyStack.value.slice(0, historyIndex.value + 1);
   }
@@ -571,7 +576,6 @@ const pushHistory = (command: Omit<HistoryCommand, 'id'>) => {
   historyStack.value.push(newCommand);
   historyIndex.value = historyStack.value.length - 1;
 
-  // 限制历史记录数量
   if (historyStack.value.length > MAX_HISTORY_SIZE) {
     historyStack.value.shift();
     historyIndex.value--;
@@ -580,7 +584,6 @@ const pushHistory = (command: Omit<HistoryCommand, 'id'>) => {
   console.log('[DataExplorer] History pushed:', newCommand.type, newCommand.description);
 };
 
-// 执行撤销
 const undo = async () => {
   if (!canUndo.value) return;
 
@@ -589,21 +592,18 @@ const undo = async () => {
 
   try {
     if (command.type === 'update_zone') {
-      // 撤销 Zone 更新：恢复旧数据
       await fetch(`/api/zones/${command.undoData.zoneId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(command.undoData.oldData),
       });
     } else if (command.type === 'delete_file') {
-      // 撤销文件删除：重新添加文件
       await fetch(`/api/zones/${command.undoData.zoneId}/files`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(command.undoData.file),
       });
     } else if (command.type === 'batch_delete_files') {
-      // 撤销批量文件删除：重新添加所有文件
       for (const file of command.undoData.files) {
         await fetch(`/api/zones/${file.zoneId}/files`, {
           method: 'POST',
@@ -612,8 +612,6 @@ const undo = async () => {
         });
       }
     } else if (command.type === 'batch_delete_zones') {
-      // 撤销批量 Zone 删除：重新添加所有 Zone（仅前端模拟，因为 API 可能不支持）
-      // 这里仅做前端状态恢复，不调用后端
       console.warn('[DataExplorer] Batch zone delete undo not fully supported');
     }
 
@@ -624,7 +622,6 @@ const undo = async () => {
   }
 };
 
-// 执行重做
 const redo = async () => {
   if (!canRedo.value) return;
 
@@ -634,26 +631,22 @@ const redo = async () => {
 
   try {
     if (command.type === 'update_zone') {
-      // 重做 Zone 更新：应用新数据
       await fetch(`/api/zones/${command.redoData.zoneId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(command.redoData.newData),
       });
     } else if (command.type === 'delete_file') {
-      // 重做文件删除：再次删除
       await fetch(`/api/zones/${command.redoData.zoneId}/files/${command.redoData.fileId}`, {
         method: 'DELETE',
       });
     } else if (command.type === 'batch_delete_files') {
-      // 重做批量文件删除
       for (const file of command.redoData.files) {
         await fetch(`/api/zones/${file.zoneId}/files/${file.id}`, {
           method: 'DELETE',
         });
       }
     } else if (command.type === 'batch_delete_zones') {
-      // 重做批量 Zone 删除
       for (const zone of command.redoData.zones) {
         await fetch(`/api/zones/${zone.id}`, { method: 'DELETE' });
       }
@@ -665,20 +658,16 @@ const redo = async () => {
   }
 };
 
-// 键盘事件处理
 const handleKeydown = (e: KeyboardEvent) => {
-  // F1 或 ?: 打开快捷键帮助
   if (e.key === 'F1' || (e.key === '?' && !e.ctrlKey && !e.altKey)) {
     e.preventDefault();
     showShortcutHelp.value = true;
     return;
   }
-  // Ctrl+Z: 撤销
   if (e.ctrlKey && !e.shiftKey && e.key === 'z') {
     e.preventDefault();
     undo();
   }
-  // Ctrl+Shift+Z 或 Ctrl+Y: 重做
   if ((e.ctrlKey && e.shiftKey && e.key === 'Z') || (e.ctrlKey && e.key === 'y')) {
     e.preventDefault();
     redo();
@@ -690,10 +679,8 @@ const zones = ref<Zone[]>([]);
 const agents = ref<any[]>([]);
 const selectedZone = ref<Zone | null>(null);
 
-// 加载 Zones
 const loadZones = async () => {
   try {
-    // 优先使用 projectId，其次使用 initialZoneId（新数据中 projectId === id）
     const projectId = props.projectId || props.initialZoneId || 'default';
     const response = await fetch(`/api/zones?projectId=${encodeURIComponent(projectId)}`);
     const result = await response.json();
@@ -705,7 +692,6 @@ const loadZones = async () => {
   }
 };
 
-// 加载 Agents
 const loadAgents = async () => {
   try {
     const response = await fetch('/api/stratix/config/agent/list');
@@ -718,12 +704,10 @@ const loadAgents = async () => {
   }
 };
 
-// 选择 Zone
 const selectZone = (zone: Zone) => {
   selectedZone.value = zone;
   emit('zone-select', zone);
 
-  // 自动获取 URL 文件的元信息（title, favicon）
   if (zone.files) {
     zone.files.forEach((file) => {
       if (file.sourceType === 'url' && !file.metadata?.title && !file.metadata?.favicon) {
@@ -733,7 +717,6 @@ const selectZone = (zone: Zone) => {
   }
 };
 
-// 获取 URL 文件的元信息
 const fetchUrlFileMeta = async (file: ZoneFile) => {
   if (file.sourceType !== 'url' || !selectedZone.value?.id) return;
 
@@ -742,7 +725,6 @@ const fetchUrlFileMeta = async (file: ZoneFile) => {
     const result = await response.json();
 
     if (result.success && (result.title || result.favicon)) {
-      // 更新文件的 metadata
       if (selectedZone.value.files) {
         const targetFile = selectedZone.value.files.find((f) => f.id === file.id);
         if (targetFile) {
@@ -755,7 +737,6 @@ const fetchUrlFileMeta = async (file: ZoneFile) => {
   }
 };
 
-// Event Handlers
 const handleZoneSelect = (zone: Zone) => {
   selectedZone.value = zone;
   emit('zone-select', zone);
@@ -791,7 +772,6 @@ const handleZoneBatchDelete = async (zones: Zone[]) => {
 
 const handleZoneUpdate = async (zone: Zone, updates: { title?: string; prompt?: string }) => {
   try {
-    // 记录历史：保存旧数据用于撤销
     pushHistory({
       type: 'update_zone',
       description: `修改 Zone "${zone.title || zone.id}"`,
@@ -822,7 +802,6 @@ const handleFileSelect = (file: ZoneFile) => {
 
 const handleFileDelete = async (file: ZoneFile) => {
   try {
-    // 记录历史：保存文件数据用于撤销
     pushHistory({
       type: 'delete_file',
       description: `删除文件 "${file.name}"`,
@@ -845,9 +824,7 @@ const handleFileDelete = async (file: ZoneFile) => {
   }
 };
 
-// 更新文件 metadata（用于 URL 元信息更新）
 const handleFileUpdate = (file: ZoneFile) => {
-  // 直接更新本地状态，不请求 API
   if (selectedZone.value && selectedZone.value.files) {
     const index = selectedZone.value.files.findIndex((f) => f.id === file.id);
     if (index !== -1) {
@@ -858,7 +835,6 @@ const handleFileUpdate = (file: ZoneFile) => {
 
 const handleFileBatchDelete = async (files: ZoneFile[]) => {
   try {
-    // 记录历史：保存所有文件数据用于撤销
     pushHistory({
       type: 'batch_delete_files',
       description: `批量删除 ${files.length} 个文件`,
@@ -911,19 +887,16 @@ const handleAgentDelete = async (agent: any) => {
   }
 };
 
-// 监听 visible 变化
 watch(
   () => props.visible,
   (visible) => {
     if (visible) {
-      // 打开时加载数据
       loadZones();
       loadAgents();
     }
   }
 );
 
-// 监听 zones 加载完成后，自动选中 initialZoneId 对应的 Zone
 watch(
   () => zones.value,
   (newZones) => {
@@ -931,25 +904,22 @@ watch(
       const targetZone = newZones.find(z => z.id === props.initialZoneId);
       if (targetZone) {
         selectZone(targetZone);
-        activeTab.value = 'files'; // 自动切换到文件 Tab
+        activeTab.value = 'files';
       }
     }
   },
   { immediate: true }
 );
-// 初始化
+
 onMounted(() => {
   loadZones();
   loadAgents();
   loadTemplates();
 
-  // 注册键盘事件
   window.addEventListener('keydown', handleKeydown);
 });
 
-// 清理
 onUnmounted(() => {
-  // 移除键盘事件
   window.removeEventListener('keydown', handleKeydown);
 });
 </script>
@@ -968,6 +938,7 @@ onUnmounted(() => {
   padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   border-bottom: 1px solid var(--ds-border, #e5e7eb);
   background-color: var(--ds-bg-secondary, #f9fafb);
+  position: relative;
 }
 
 .history-controls {
@@ -1010,6 +981,21 @@ onUnmounted(() => {
   margin: 0 var(--ds-spacing-xs);
 }
 
+.tab-items {
+  display: flex;
+  flex: 1;
+  position: relative;
+}
+
+.tab-indicator {
+  position: absolute;
+  bottom: -9px;
+  height: 2px;
+  background: var(--ds-brand-primary);
+  transition: left 0.3s var(--ds-animation-easing-ease-out), width 0.3s var(--ds-animation-easing-ease-out);
+  box-shadow: 0 -2px 8px var(--ds-brand-primary);
+}
+
 .tab-button {
   display: flex;
   align-items: center;
@@ -1022,6 +1008,8 @@ onUnmounted(() => {
   font-size: var(--ds-font-size-sm);
   color: var(--ds-text-secondary, #6b7280);
   transition: all var(--ds-animation-duration-fast) ease;
+  flex: 1;
+  justify-content: center;
 }
 
 .tab-button:hover {
@@ -1030,8 +1018,7 @@ onUnmounted(() => {
 }
 
 .tab-button.active {
-  background-color: var(--ds-primary, #3b82f6);
-  color: white;
+  color: var(--ds-brand-primary);
 }
 
 .tab-icon {
@@ -1091,6 +1078,10 @@ onUnmounted(() => {
   background-color: var(--ds-bg-hover, #f3f4f6);
 }
 
+.collapse-btn svg {
+  transition: transform 0.2s ease;
+}
+
 .zone-list {
   flex: 1;
   overflow-y: auto;
@@ -1099,22 +1090,42 @@ onUnmounted(() => {
 
 .zone-item {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: var(--ds-spacing-xs);
   padding: 10px var(--ds-spacing-md);
   margin-bottom: 4px;
   border-radius: var(--ds-radius-md);
   cursor: pointer;
   transition: all var(--ds-animation-duration-fast) ease;
+  position: relative;
+  overflow: hidden;
 }
 
 .zone-item:hover {
   background-color: var(--ds-bg-hover, #f3f4f6);
+  transform: translateX(2px);
 }
 
 .zone-item.selected {
   background-color: rgba(59, 130, 246, 0.1);
-  border-left: 3px solid var(--ds-primary, #3b82f6);
+}
+
+.zone-glow {
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  background: var(--ds-primary, #3b82f6);
+  border-radius: 0 2px 2px 0;
+  box-shadow: 0 0 8px var(--ds-primary, #3b82f6);
+}
+
+.zone-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-left: 8px;
 }
 
 .zone-name {
@@ -1213,6 +1224,10 @@ onUnmounted(() => {
   background-color: var(--ds-bg-hover, #f3f4f6);
 }
 
+.template-header svg {
+  transition: transform 0.2s ease;
+}
+
 .template-list {
   margin-top: 8px;
 }
@@ -1294,6 +1309,25 @@ onUnmounted(() => {
   color: #dc2626;
 }
 
+.template-expand-enter-active,
+.template-expand-leave-active {
+  transition: all 0.2s var(--ds-animation-easing-ease-out);
+  overflow: hidden;
+}
+
+.template-expand-enter-from,
+.template-expand-leave-to {
+  opacity: 0;
+  max-height: 0;
+  margin-top: 0;
+}
+
+.template-expand-enter-to,
+.template-expand-leave-from {
+  opacity: 1;
+  max-height: 300px;
+}
+
 /* 模板编辑弹窗 */
 .template-edit-modal {
   padding: var(--ds-spacing-sm);
@@ -1320,6 +1354,7 @@ onUnmounted(() => {
   color: var(--ds-text-primary, #111827);
   background-color: white;
   box-sizing: border-box;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .form-input:focus {
@@ -1468,5 +1503,19 @@ onUnmounted(() => {
 
 .shortcut-item span {
   margin-left: auto;
+}
+
+/* Prefers reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .zone-item,
+  .template-header svg,
+  .collapse-btn svg,
+  .tab-indicator,
+  .template-expand-enter-active,
+  .template-expand-leave-active {
+    transition: none !important;
+    animation: none !important;
+    transform: none !important;
+  }
 }
 </style>

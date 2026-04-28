@@ -25,6 +25,22 @@ const handleClose = () => {
     size="lg"
     @close="handleClose"
   >
-    <CommandLog :logs="logs" />
+    <div class="log-panel">
+      <CommandLog :logs="logs" />
+    </div>
   </StratixModal>
 </template>
+
+<style scoped>
+.log-panel {
+  min-height: 400px;
+  animation: ds-fade-in 0.3s ease;
+}
+
+/* Prefers reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .log-panel {
+    animation: none !important;
+  }
+}
+</style>

@@ -1,9 +1,12 @@
 /**
  * ThemeManager - 主题切换管理器
  * 管理四套皮肤纹理的加载和切换
+ * 新增：监听 Vue design-system 主题变化，同步到 Phaser 场景
  */
 
 import Phaser from 'phaser';
+
+import { getDSColor, initThemeRuntime, isReducedMotion, onReducedMotionChange } from './ThemeColors';
 
 export type ThemeName = 'fantasy' | 'cartoon' | 'cyberpunk' | 'nature';
 
@@ -72,10 +75,77 @@ export class ThemeManager extends Phaser.Events.EventEmitter {
   private scene: Phaser.Scene;
   private currentTheme: ThemeName = 'fantasy';
   private loadedThemes: Set<ThemeName> = new Set();
+  private dsThemeName: string = 'cyberpunk';
+  private reducedMotion: boolean = false;
+  private _removeMotionListener: (() => void) | null = null;
+  private _removeThemeListener: (() => void) | null = null;
+  private transitionOverlay: Phaser.GameObjects.Graphics | null = null;
 
   constructor(scene: Phaser.Scene) {
     super();
     this.scene = scene;
+    this.reducedMotion = isReducedMotion();
+    this.setupListeners();
+  }
+
+  private setupListeners(): void {
+    initThemeRuntime();
+
+    // Listen to design system theme:change events from Vue
+    if (typeof window !== 'undefined') {
+      const themeHandler = (e: Event) => {
+        const detail = (e as CustomEvent).detail;
+        if (detail?.theme && detail.theme !== this.dsThemeName) {
+          this.dsThemeName = detail.theme;
+          this.emit('dsTheme:changed', {
+            theme: detail.theme,
+            tokens: detail.tokens,
+            semantic: detail.semantic,
+          });
+          this.playTransitionEffect();
+        }
+      };
+      window.addEventListener('theme:change', themeHandler);
+      this._removeThemeListener = () => window.removeEventListener('theme:change', themeHandler);
+    }
+
+    // Listen to prefers-reduced-motion changes
+    this._removeMotionListener = onReducedMotionChange((reduced) => {
+      this.reducedMotion = reduced;
+      this.emit('motionPreference:changed', { reduced });
+    });
+  }
+
+  /** Play a brief flash transition when theme changes */
+  private playTransitionEffect(): void {
+    if (this.reducedMotion) return;
+    if (!this.scene || this.scene.scene.isPaused?.()) return;
+
+    if (!this.transitionOverlay) {
+      this.transitionOverlay = this.scene.add.graphics();
+      this.transitionOverlay.setDepth(10000);
+    }
+
+    const cam = this.scene.cameras.main;
+    const width = cam.width || 1600;
+    const height = cam.height || 960;
+    const primaryColor = getDSColor('color-primary');
+
+    this.transitionOverlay.clear();
+    this.transitionOverlay.fillStyle(primaryColor, 0.15);
+    this.transitionOverlay.fillRect(0, 0, width, height);
+    this.transitionOverlay.setAlpha(0);
+
+    this.scene.tweens.add({
+      targets: this.transitionOverlay,
+      alpha: { from: 0, to: 1 },
+      duration: 150,
+      yoyo: true,
+      ease: 'Sine.easeInOut',
+      onComplete: () => {
+        this.transitionOverlay?.clear();
+      },
+    });
   }
 
   /**
@@ -83,6 +153,20 @@ export class ThemeManager extends Phaser.Events.EventEmitter {
    */
   getCurrentTheme(): ThemeName {
     return this.currentTheme;
+  }
+
+  /**
+   * 获取当前 design system 主题名
+   */
+  getDSThemeName(): string {
+    return this.dsThemeName;
+  }
+
+  /**
+   * 获取是否减少动画
+   */
+  getReducedMotion(): boolean {
+    return this.reducedMotion;
   }
 
   /**
@@ -192,5 +276,13 @@ export class ThemeManager extends Phaser.Events.EventEmitter {
   isTextureLoaded(textureName: keyof ThemeTextureSet): boolean {
     const key = `${this.currentTheme}_${textureName}`;
     return this.scene.textures.exists(key);
+  }
+
+  destroy(): void {
+    this._removeThemeListener?.();
+    this._removeMotionListener?.();
+    this.transitionOverlay?.destroy();
+    this.transitionOverlay = null;
+    this.removeAllListeners();
   }
 }
