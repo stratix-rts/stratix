@@ -937,44 +937,11 @@ watch(
   },
   { immediate: true }
 );
-
-// WebSocket 事件处理
-const handleZoneUpdated = (event: StratixStateSyncEvent) => {
-  console.log('[DataExplorer] Zone updated, refreshing...', event.payload);
-  loadZones();
-};
-
-const handleZoneFileAdded = (event: StratixStateSyncEvent) => {
-  console.log('[DataExplorer] Zone file added, refreshing...', event.payload);
-  loadZones();
-};
-
-const handleZoneFileRemoved = (event: StratixStateSyncEvent) => {
-  console.log('[DataExplorer] Zone file removed, refreshing...', event.payload);
-  loadZones();
-};
-
-const handleZoneDeleted = (event: StratixStateSyncEvent) => {
-  console.log('[DataExplorer] Zone deleted, refreshing...', event.payload);
-  loadZones();
-  // 如果删除的是当前选中的 Zone，清除选中状态
-  if (selectedZone.value && event.payload?.zoneId === selectedZone.value.id) {
-    selectedZone.value = null;
-  }
-};
-
 // 初始化
 onMounted(() => {
   loadZones();
   loadAgents();
   loadTemplates();
-
-  // 订阅 Zone 相关 WebSocket 事件
-  const eventBus = StratixEventBus.getInstance();
-  eventBus.subscribe('stratix:zone_updated', handleZoneUpdated);
-  eventBus.subscribe('stratix:zone_file_added', handleZoneFileAdded);
-  eventBus.subscribe('stratix:zone_file_removed', handleZoneFileRemoved);
-  eventBus.subscribe('stratix:zone_deleted', handleZoneDeleted);
 
   // 注册键盘事件
   window.addEventListener('keydown', handleKeydown);
@@ -982,12 +949,6 @@ onMounted(() => {
 
 // 清理
 onUnmounted(() => {
-  const eventBus = StratixEventBus.getInstance();
-  eventBus.unsubscribe('stratix:zone_updated', handleZoneUpdated);
-  eventBus.unsubscribe('stratix:zone_file_added', handleZoneFileAdded);
-  eventBus.unsubscribe('stratix:zone_file_removed', handleZoneFileRemoved);
-  eventBus.unsubscribe('stratix:zone_deleted', handleZoneDeleted);
-
   // 移除键盘事件
   window.removeEventListener('keydown', handleKeydown);
 });
@@ -1003,8 +964,8 @@ onUnmounted(() => {
 
 .explorer-tabs {
   display: flex;
-  gap: 4px;
-  padding: 8px 12px;
+  gap: var(--ds-spacing-xs);
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   border-bottom: 1px solid var(--ds-border, #e5e7eb);
   background-color: var(--ds-bg-secondary, #f9fafb);
 }
@@ -1012,7 +973,7 @@ onUnmounted(() => {
 .history-controls {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
   margin-right: 8px;
 }
 
@@ -1023,7 +984,7 @@ onUnmounted(() => {
   width: 32px;
   height: 32px;
   padding: 0;
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
 }
 
 .history-btn:disabled {
@@ -1036,7 +997,7 @@ onUnmounted(() => {
 }
 
 .history-info {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-tertiary, #9ca3af);
   margin-left: 4px;
   white-space: nowrap;
@@ -1046,21 +1007,21 @@ onUnmounted(() => {
   width: 1px;
   height: 24px;
   background-color: var(--ds-border, #e5e7eb);
-  margin: 0 4px;
+  margin: 0 var(--ds-spacing-xs);
 }
 
 .tab-button {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 16px;
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   border: none;
   background: none;
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-secondary, #6b7280);
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .tab-button:hover {
@@ -1074,7 +1035,7 @@ onUnmounted(() => {
 }
 
 .tab-icon {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
 }
 
 .explorer-content {
@@ -1107,7 +1068,7 @@ onUnmounted(() => {
 }
 
 .sidebar-title {
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   font-weight: 600;
   color: var(--ds-text-primary, #111827);
 }
@@ -1120,10 +1081,10 @@ onUnmounted(() => {
   height: 24px;
   border: none;
   background: none;
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   cursor: pointer;
   color: var(--ds-text-secondary, #6b7280);
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .collapse-btn:hover {
@@ -1133,18 +1094,18 @@ onUnmounted(() => {
 .zone-list {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  padding: var(--ds-spacing-sm);
 }
 
 .zone-item {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 10px 12px;
+  gap: var(--ds-spacing-xs);
+  padding: 10px var(--ds-spacing-md);
   margin-bottom: 4px;
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .zone-item:hover {
@@ -1157,13 +1118,13 @@ onUnmounted(() => {
 }
 
 .zone-name {
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   font-weight: 500;
   color: var(--ds-text-primary, #111827);
 }
 
 .zone-stats {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-tertiary, #9ca3af);
 }
 
@@ -1173,7 +1134,7 @@ onUnmounted(() => {
 }
 
 .detail-title {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   font-weight: 600;
   color: var(--ds-text-secondary, #6b7280);
   margin-bottom: 8px;
@@ -1189,12 +1150,12 @@ onUnmounted(() => {
 }
 
 .detail-item label {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-tertiary, #9ca3af);
 }
 
 .detail-item span {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-primary, #111827);
 }
 
@@ -1203,7 +1164,7 @@ onUnmounted(() => {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-secondary, #6b7280);
 }
 
@@ -1218,14 +1179,14 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   width: 100%;
-  padding: 8px 12px;
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   border: none;
   background-color: var(--ds-bg-hover, #f3f4f6);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-secondary, #6b7280);
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .action-btn:hover {
@@ -1235,16 +1196,16 @@ onUnmounted(() => {
 
 .template-section {
   border-top: 1px solid var(--ds-border, #e5e7eb);
-  padding: 8px;
+  padding: var(--ds-spacing-sm);
 }
 
 .template-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px;
+  padding: var(--ds-spacing-sm);
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   transition: background-color 0.15s ease;
 }
 
@@ -1257,9 +1218,9 @@ onUnmounted(() => {
 }
 
 .template-empty {
-  padding: 16px;
+  padding: var(--ds-spacing-md);
   text-align: center;
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-tertiary, #9ca3af);
 }
 
@@ -1269,7 +1230,7 @@ onUnmounted(() => {
   justify-content: space-between;
   padding: 8px 10px;
   margin-bottom: 4px;
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   transition: background-color 0.15s ease;
 }
 
@@ -1285,7 +1246,7 @@ onUnmounted(() => {
 
 .template-name {
   display: block;
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   font-weight: 500;
   color: var(--ds-text-primary, #111827);
   white-space: nowrap;
@@ -1295,7 +1256,7 @@ onUnmounted(() => {
 
 .template-preview {
   display: block;
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-tertiary, #9ca3af);
   white-space: nowrap;
   overflow: hidden;
@@ -1305,7 +1266,7 @@ onUnmounted(() => {
 
 .template-actions {
   display: flex;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
   margin-left: 8px;
 }
 
@@ -1317,10 +1278,10 @@ onUnmounted(() => {
   height: 24px;
   border: none;
   background: none;
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   cursor: pointer;
   color: var(--ds-text-tertiary, #9ca3af);
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .icon-btn:hover {
@@ -1335,7 +1296,7 @@ onUnmounted(() => {
 
 /* 模板编辑弹窗 */
 .template-edit-modal {
-  padding: 8px;
+  padding: var(--ds-spacing-sm);
 }
 
 .form-group {
@@ -1344,7 +1305,7 @@ onUnmounted(() => {
 
 .form-group label {
   display: block;
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   font-weight: 500;
   color: var(--ds-text-secondary, #6b7280);
   margin-bottom: 6px;
@@ -1352,10 +1313,10 @@ onUnmounted(() => {
 
 .form-input {
   width: 100%;
-  padding: 10px 12px;
+  padding: 10px var(--ds-spacing-md);
   border: 1px solid var(--ds-border, #e5e7eb);
-  border-radius: 6px;
-  font-size: 14px;
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-font-size-md);
   color: var(--ds-text-primary, #111827);
   background-color: white;
   box-sizing: border-box;
@@ -1373,17 +1334,17 @@ onUnmounted(() => {
 
 .form-info label {
   display: block;
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   font-weight: 500;
   color: var(--ds-text-secondary, #6b7280);
   margin-bottom: 6px;
 }
 
 .template-preview-box {
-  padding: 10px 12px;
+  padding: 10px var(--ds-spacing-md);
   background-color: var(--ds-bg-secondary, #f9fafb);
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-primary, #111827);
 }
 
@@ -1398,17 +1359,17 @@ onUnmounted(() => {
 .modal-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   margin-top: 20px;
 }
 
 .btn-primary {
-  padding: 8px 16px;
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   border: none;
   background-color: var(--ds-primary, #3b82f6);
   color: white;
-  border-radius: 6px;
-  font-size: 13px;
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-font-size-sm);
   cursor: pointer;
   transition: background-color 0.15s ease;
 }
@@ -1418,14 +1379,14 @@ onUnmounted(() => {
 }
 
 .btn-secondary {
-  padding: 8px 16px;
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   border: 1px solid var(--ds-border, #e5e7eb);
   background-color: white;
   color: var(--ds-text-secondary, #6b7280);
-  border-radius: 6px;
-  font-size: 13px;
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-font-size-sm);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .btn-secondary:hover {
@@ -1434,7 +1395,7 @@ onUnmounted(() => {
 
 .explorer-main {
   flex: 1;
-  padding: 16px;
+  padding: var(--ds-spacing-md);
   overflow-y: auto;
 }
 
@@ -1443,7 +1404,7 @@ onUnmounted(() => {
 }
 
 .files-header h3 {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   font-weight: 600;
   color: var(--ds-text-primary, #111827);
 }
@@ -1454,12 +1415,12 @@ onUnmounted(() => {
   justify-content: center;
   height: 200px;
   color: var(--ds-text-tertiary, #9ca3af);
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
 }
 
 /* 快捷键帮助样式 */
 .shortcut-help {
-  padding: 8px;
+  padding: var(--ds-spacing-sm);
 }
 
 .shortcut-section {
@@ -1471,7 +1432,7 @@ onUnmounted(() => {
 }
 
 .shortcut-section h4 {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   font-weight: 600;
   color: var(--ds-text-primary, #1f2937);
   margin: 0 0 12px 0;
@@ -1482,9 +1443,9 @@ onUnmounted(() => {
 .shortcut-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   padding: 6px 0;
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-secondary, #4b5563);
 }
 
@@ -1494,15 +1455,15 @@ onUnmounted(() => {
   justify-content: center;
   min-width: 24px;
   height: 24px;
-  padding: 0 8px;
+  padding: 0 var(--ds-spacing-sm);
   background: var(--ds-bg-secondary, #f3f4f6);
   border: 1px solid var(--ds-border, #d1d5db);
-  border-radius: 4px;
-  font-family: monospace;
-  font-size: 12px;
+  border-radius: var(--ds-radius-sm);
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-font-size-sm);
   font-weight: 500;
   color: var(--ds-text-primary, #1f2937);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--ds-shadow-sm);
 }
 
 .shortcut-item span {

@@ -10,11 +10,20 @@ import {
 
 type StratixEvent = StratixFrontendOperationEvent | StratixStateSyncEvent;
 
+// Type-safe event constants aligned with StratixFrontendEventType
+const STRATIX_FRONTEND_EVENTS = {
+  AGENT_SELECT: 'stratix:agent_select' as const,
+  AGENT_DESELECT: 'stratix:agent_deselect' as const,
+  COMMAND_EXECUTE: 'stratix:command_execute' as const,
+  COMMAND_CANCEL: 'stratix:command_cancel' as const,
+};
+
 // Type-safe event constants aligned with StratixStateSyncEventType
 const STRATIX_STATE_SYNC_EVENTS = {
   AGENT_CREATE: 'stratix:agent_create' as const,
   AGENT_STATUS_UPDATE: 'stratix:agent_status_update' as const,
   COMMAND_STATUS_UPDATE: 'stratix:command_status_update' as const,
+  ZONE_CREATED: 'stratix:zone_created' as const,
   ZONE_UPDATED: 'stratix:zone_updated' as const,
   ZONE_DELETED: 'stratix:zone_deleted' as const,
   ZONE_MEMBER_JOINED: 'stratix:zone_member_joined' as const,
@@ -35,6 +44,7 @@ export class StratixRTSEventManager {
     this.subscribe(STRATIX_STATE_SYNC_EVENTS.AGENT_CREATE, this.onAgentCreate.bind(this));
     this.subscribe(STRATIX_STATE_SYNC_EVENTS.AGENT_STATUS_UPDATE, this.onAgentStatusUpdate.bind(this));
     this.subscribe(STRATIX_STATE_SYNC_EVENTS.COMMAND_STATUS_UPDATE, this.onCommandStatusUpdate.bind(this));
+    this.subscribe(STRATIX_STATE_SYNC_EVENTS.ZONE_CREATED, this.onZoneCreated.bind(this));
     this.subscribe(STRATIX_STATE_SYNC_EVENTS.ZONE_UPDATED, this.onZoneUpdated.bind(this));
     this.subscribe(STRATIX_STATE_SYNC_EVENTS.ZONE_DELETED, this.onZoneDeleted.bind(this));
     this.subscribe(STRATIX_STATE_SYNC_EVENTS.ZONE_MEMBER_JOINED, this.onZoneMemberJoined.bind(this));
@@ -58,7 +68,7 @@ export class StratixRTSEventManager {
 
   public emitAgentSelect(agentIds: string[]): void {
     const event: StratixFrontendOperationEvent = {
-      eventType: 'stratix:agent_select',
+      eventType: STRATIX_FRONTEND_EVENTS.AGENT_SELECT,
       payload: { agentIds },
       timestamp: Date.now(),
       requestId: this.generateRequestId()
@@ -68,7 +78,7 @@ export class StratixRTSEventManager {
 
   public emitAgentDeselect(agentIds: string[]): void {
     const event: StratixFrontendOperationEvent = {
-      eventType: 'stratix:agent_deselect',
+      eventType: STRATIX_FRONTEND_EVENTS.AGENT_DESELECT,
       payload: { agentIds },
       timestamp: Date.now(),
       requestId: this.generateRequestId()
@@ -78,7 +88,7 @@ export class StratixRTSEventManager {
 
   public emitCommandExecute(agentIds: string[], command: StratixCommandData): void {
     const event: StratixFrontendOperationEvent = {
-      eventType: 'stratix:command_execute',
+      eventType: STRATIX_FRONTEND_EVENTS.COMMAND_EXECUTE,
       payload: { agentIds, command },
       timestamp: Date.now(),
       requestId: this.generateRequestId()
@@ -88,7 +98,7 @@ export class StratixRTSEventManager {
 
   public emitCommandCancel(commandId: string): void {
     const event: StratixFrontendOperationEvent = {
-      eventType: 'stratix:command_cancel',
+      eventType: STRATIX_FRONTEND_EVENTS.COMMAND_CANCEL,
       payload: { commandId },
       timestamp: Date.now(),
       requestId: this.generateRequestId()
@@ -115,6 +125,13 @@ export class StratixRTSEventManager {
     const { agentId, commandStatus } = payload;
     if (!agentId || !commandStatus) return;
     this.scene.events.emit('stratix:update-command-status', { agentId, commandStatus });
+  }
+
+  private onZoneCreated(event: StratixEvent): void {
+    const payload = event.payload as { zoneId?: string; projectId?: string; title?: string; prompt?: string };
+    const { zoneId, projectId, title, prompt } = payload;
+    if (!zoneId) return;
+    this.scene.events.emit('stratix:zone-created', { zoneId, projectId, title, prompt });
   }
 
   private onZoneUpdated(event: StratixEvent): void {

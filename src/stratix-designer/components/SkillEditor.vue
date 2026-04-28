@@ -235,14 +235,14 @@ const typeOptions = [
 
 .section-title {
   font-family: v-bind('getToken("typography.fontFamily.mono")');
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   font-weight: 600;
   color: v-bind('getToken("colors.text.primary")');
 }
 
 .skill-count {
   flex: 1;
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: v-bind('getToken("colors.text.muted")');
 }
 
@@ -255,7 +255,7 @@ const typeOptions = [
 .skill-card {
   background: v-bind('getToken("colors.background.tertiary")');
   border: 1px solid v-bind('getToken("colors.border.default")');
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   overflow: hidden;
   transition: all 0.2s;
 }
@@ -264,7 +264,7 @@ const typeOptions = [
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 16px;
+  padding: var(--ds-spacing-md) var(--ds-spacing-md);
   cursor: pointer;
   background: v-bind('getToken("colors.background.primary")');
 }
@@ -276,13 +276,13 @@ const typeOptions = [
 .skill-icon {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
   font-weight: 700;
-  font-size: 18px;
+  font-size: var(--ds-font-size-xl);
   flex-shrink: 0;
 }
 
@@ -292,14 +292,14 @@ const typeOptions = [
 }
 
 .skill-card-name {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   font-weight: 600;
   color: v-bind('getToken("colors.text.primary")');
   margin-bottom: 2px;
 }
 
 .skill-card-id {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: v-bind('getToken("colors.text.muted")');
   font-family: v-bind('getToken("typography.fontFamily.mono")');
 }
@@ -307,15 +307,15 @@ const typeOptions = [
 .skill-card-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .param-badge {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: v-bind('getToken("colors.info")');
   background: v-bind('getToken("colors.info") + "1A"');
-  padding: 2px 8px;
-  border-radius: 12px;
+  padding: 2px var(--ds-spacing-sm);
+  border-radius: var(--ds-radius-lg);
   font-weight: 500;
 }
 
@@ -331,10 +331,10 @@ const typeOptions = [
 }
 
 .skill-card-body {
-  padding: 16px;
+  padding: var(--ds-spacing-md);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
   background: v-bind('getToken("colors.background.tertiary")');
 }
 
@@ -347,14 +347,14 @@ const typeOptions = [
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .flex-1 { flex: 1; }
 .flex-2 { flex: 2; }
 
 .label {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   font-weight: 500;
   color: v-bind('getToken("colors.text.secondary")');
 }
@@ -368,17 +368,17 @@ const typeOptions = [
 .params-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .param-item {
   display: grid;
   grid-template-columns: 80px 1fr 1fr 50px 1fr auto;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   align-items: center;
-  padding: 8px;
+  padding: var(--ds-spacing-sm);
   background: v-bind('getToken("colors.background.secondary")');
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
 }
 
 .param-id { min-width: 80px; }
@@ -394,6 +394,6 @@ const typeOptions = [
 
 .script-editor {
   font-family: v-bind('getToken("typography.fontFamily.mono")');
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
 }
 </style>

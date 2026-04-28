@@ -342,9 +342,9 @@ defineExpose({
   height: 100%;
   background: var(--ds-bg-secondary);
   border: 1px solid var(--ds-border);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   overflow: hidden;
-  font-family: 'SF Mono', 'Monaco', monospace;
+  font-family: var(--ds-font-mono);
 }
 
 .config-tabs {
@@ -355,15 +355,15 @@ defineExpose({
 
 .config-tab {
   flex: 1;
-  padding: 12px 16px;
+  padding: var(--ds-spacing-md) var(--ds-spacing-md);
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--ds-text-muted);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   font-family: inherit;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -381,11 +381,11 @@ defineExpose({
 }
 
 .tab-badge {
-  font-size: 10px;
-  padding: 2px 6px;
+  font-size: var(--ds-font-size-xs);
+  padding: 2px var(--ds-spacing-xs);
   background: var(--ds-color-primary);
   color: var(--ds-text-inverse);
-  border-radius: 10px;
+  border-radius: var(--ds-radius-lg);
 }
 
 .config-content {
@@ -409,7 +409,7 @@ defineExpose({
 
 .config-panel::-webkit-scrollbar-thumb {
   background: var(--ds-border);
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
 }
 
 .config-panel::-webkit-scrollbar-thumb:hover {

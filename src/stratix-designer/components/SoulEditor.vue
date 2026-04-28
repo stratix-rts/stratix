@@ -115,7 +115,7 @@ const updateGoal = (index: number, value: string) => {
 
 .section-title {
   font-family: v-bind('getToken("typography.fontFamily.mono")');
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   font-weight: 600;
   color: v-bind('getToken("colors.text.primary")');
 }
@@ -123,12 +123,12 @@ const updateGoal = (index: number, value: string) => {
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .label {
   display: block;
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   font-weight: 500;
   color: v-bind('getToken("colors.text.secondary")');
 }
@@ -141,7 +141,7 @@ const updateGoal = (index: number, value: string) => {
 
 .hint {
   display: block;
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: v-bind('getToken("colors.text.muted")');
 }
 
@@ -155,19 +155,19 @@ const updateGoal = (index: number, value: string) => {
 .goal-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .goal-number {
   width: 24px;
   height: 24px;
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   background: v-bind('getToken("colors.background.tertiary")');
   border: 1px solid v-bind('getToken("colors.border.default")');
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   font-weight: 600;
   color: v-bind('getToken("colors.text.primary")');
   flex-shrink: 0;

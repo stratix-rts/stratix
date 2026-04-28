@@ -546,19 +546,19 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  background: rgba(30, 30, 50, 0.9);
+  background: color-mix(in srgb, var(--ds-bg-base) 90%, transparent);
   border: 1px solid rgba(100, 100, 200, 0.3);
   border-radius: 20px;
   color: rgba(255, 255, 255, 0.8);
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
   backdrop-filter: blur(8px);
 }
 
 .map3d-toggle:hover {
-  background: rgba(50, 50, 80, 0.95);
+  background: color-mix(in srgb, var(--ds-bg-base) 95%, transparent);
   border-color: rgba(100, 100, 200, 0.5);
   color: white;
 }

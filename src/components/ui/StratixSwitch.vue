@@ -72,7 +72,7 @@ const handleChange = () => {
 .stratix-switch {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   cursor: pointer;
   user-select: none;
 }
@@ -93,7 +93,7 @@ const handleChange = () => {
   background: v-bind('getToken("colors.background.tertiary")');
   border: 1px solid v-bind('getToken("colors.border.default")');
   border-radius: 999px;
-  transition: all 0.2s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
   flex-shrink: 0;
 }
 
@@ -126,8 +126,8 @@ const handleChange = () => {
   top: 50%;
   left: 2px;
   background: v-bind('getToken("colors.background.primary")');
-  border-radius: 50%;
-  transition: transform 0.2s ease;
+  border-radius: var(--ds-radius-full);
+  transition: transform var(--ds-animation-duration-normal, 250ms) cubic-bezier(0.34, 1.56, 0.64, 1);
   box-shadow: v-bind('getToken("shadows.sm")');
 }
 
@@ -162,7 +162,7 @@ const handleChange = () => {
 }
 
 .stratix-switch__label {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   color: v-bind('getToken("colors.text.primary")');
 }
 

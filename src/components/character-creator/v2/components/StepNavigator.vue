@@ -101,21 +101,21 @@ function getStepState(step: CreatorStep): 'completed' | 'active' | 'pending' {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 12px 16px;
+  padding: var(--ds-spacing-md) var(--ds-spacing-md);
   background: var(--ds-bg-secondary);
   border: 1px solid var(--ds-border);
-  border-radius: 8px;
-  font-family: 'SF Mono', 'Monaco', monospace;
+  border-radius: var(--ds-radius-md);
+  font-family: var(--ds-font-mono);
 }
 
 .step-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   position: relative;
   cursor: default;
-  transition: all 0.2s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .step-item--navigable {
@@ -144,14 +144,14 @@ function getStepState(step: CreatorStep): 'completed' | 'active' | 'pending' {
 .step-circle {
   width: 36px;
   height: 36px;
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
   border: 2px solid var(--ds-border);
   background: var(--ds-bg-tertiary);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
-  font-size: 14px;
+  transition: all var(--ds-animation-duration-fast) ease;
+  font-size: var(--ds-font-size-md);
 }
 
 .step-item--active .step-circle {
@@ -168,11 +168,11 @@ function getStepState(step: CreatorStep): 'completed' | 'active' | 'pending' {
 }
 
 .step-icon {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
 }
 
 .step-label {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -198,7 +198,7 @@ function getStepState(step: CreatorStep): 'completed' | 'active' | 'pending' {
   .step-circle {
     width: 28px;
     height: 28px;
-    font-size: 12px;
+    font-size: var(--ds-font-size-sm);
   }
 
   .step-label {

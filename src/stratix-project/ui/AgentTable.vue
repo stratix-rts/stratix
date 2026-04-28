@@ -282,7 +282,7 @@ const handleDelete = (agent: Agent) => {
 
 .toolbar-left {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   flex-wrap: wrap;
   flex: 1;
 }
@@ -294,13 +294,13 @@ const handleDelete = (agent: Agent) => {
 
 .toolbar-right {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .agent-name-cell {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .agent-avatar {
@@ -311,8 +311,8 @@ const handleDelete = (agent: Agent) => {
   height: 32px;
   background: linear-gradient(135deg, var(--ds-color-primary) 0%, var(--ds-color-secondary) 100%);
   color: var(--ds-text-primary);
-  border-radius: 8px;
-  font-size: 12px;
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-font-size-sm);
   font-weight: 600;
 }
 
@@ -327,17 +327,17 @@ const handleDelete = (agent: Agent) => {
 }
 
 .agent-id {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
-  font-family: monospace;
+  font-family: var(--ds-font-mono);
 }
 
 .agent-status {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 12px;
+  padding: 2px var(--ds-spacing-sm);
+  border-radius: var(--ds-radius-sm);
+  font-size: var(--ds-font-size-sm);
   background-color: var(--ds-bg-elevated);
 }
 
@@ -367,18 +367,18 @@ const handleDelete = (agent: Agent) => {
 
 .backend-badge {
   display: inline-block;
-  padding: 2px 6px;
+  padding: 2px var(--ds-spacing-xs);
   background-color: color-mix(in srgb, var(--ds-color-primary) 10%, transparent);
   color: var(--ds-color-primary);
-  border-radius: 4px;
-  font-size: 11px;
-  font-family: monospace;
+  border-radius: var(--ds-radius-sm);
+  font-size: var(--ds-font-size-xs);
+  font-family: var(--ds-font-mono);
 }
 
 .zones-count {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
   color: var(--ds-text-secondary);
 }
 
@@ -392,6 +392,6 @@ const handleDelete = (agent: Agent) => {
 
 .action-cell {
   display: flex;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
 }
 </style>

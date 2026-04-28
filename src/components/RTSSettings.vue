@@ -147,10 +147,10 @@ onUnmounted(() => {
 .rts-settings {
   background: var(--ds-bg-elevated);
   border: 1px solid var(--ds-border-default);
-  border-radius: 8px;
-  padding: 16px;
+  border-radius: var(--ds-radius-md);
+  padding: var(--ds-spacing-md);
   color: var(--ds-text-primary);
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   min-width: 300px;
 }
 
@@ -158,7 +158,7 @@ onUnmounted(() => {
   margin: 0 0 16px 0;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--ds-border-default);
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
 }
 
 .setting-item {
@@ -176,9 +176,9 @@ onUnmounted(() => {
   padding: 6px 8px;
   background: var(--ds-bg-overlay);
   border: 1px solid var(--ds-border-default);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   color: var(--ds-text-primary);
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
 }
 
 .setting-item input[type="range"] {
@@ -192,7 +192,7 @@ onUnmounted(() => {
 
 .hint {
   display: block;
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-muted);
   margin-top: 4px;
 }
@@ -215,8 +215,8 @@ onUnmounted(() => {
 }
 
 .stats li {
-  margin: 4px 0;
-  font-size: 13px;
+  margin: var(--ds-spacing-xs) 0;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-muted);
 }
 </style>

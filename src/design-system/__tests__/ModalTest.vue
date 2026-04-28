@@ -185,7 +185,7 @@ const showConfirm = () => {
       console.log('确认操作');
     },
   });
-});
+};
 </script>
 
 <style scoped>
@@ -204,13 +204,13 @@ h1 {
 .test-section {
   margin-bottom: 40px;
   padding: 24px;
-  background: rgba(255, 255, 255, 0.03);
+  background: color-mix(in srgb, var(--ds-bg-elevated) 3%, transparent);
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .test-section h2 {
-  font-size: 18px;
+  font-size: var(--ds-font-size-xl);
   margin-bottom: 16px;
   color: #fff;
 }
@@ -223,7 +223,7 @@ h1 {
 
 .hint {
   margin-top: 12px;
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: #6a6a8a;
 }
 

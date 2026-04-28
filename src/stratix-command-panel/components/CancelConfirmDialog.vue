@@ -92,31 +92,31 @@ const statusText = computed(() => {
 .dialog-body {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
 }
 
 .dialog-desc {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   color: var(--ds-text-secondary);
 }
 
 .command-info {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   background: var(--ds-bg-secondary);
   border: 1px solid var(--ds-border-default);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   padding: 12px;
 }
 
 .status-badge {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 11px;
+  padding: 2px var(--ds-spacing-sm);
+  border-radius: var(--ds-radius-sm);
+  font-size: var(--ds-font-size-xs);
   font-weight: 500;
 }
 

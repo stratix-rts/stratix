@@ -187,43 +187,43 @@ const handleSave = async () => {
 .zone-editor {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
 }
 
 .zone-editor__label-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .zone-editor__label-hint {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   font-weight: 400;
   color: var(--ds-text-muted);
 }
 
 .zone-editor__error {
   color: var(--ds-semantic-danger);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   margin-top: 4px;
 }
 
 .zone-editor__preview {
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border-default);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   overflow: hidden;
 }
 
 .zone-editor__preview-header {
-  padding: 8px 12px;
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   background: var(--ds-bg-secondary);
   border-bottom: 1px solid var(--ds-border-default);
 }
 
 .zone-editor__preview-title {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   font-weight: 600;
   color: var(--ds-text-secondary);
   text-transform: uppercase;
@@ -234,24 +234,24 @@ const handleSave = async () => {
   padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .zone-editor__preview-section {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .zone-editor__preview-label {
   flex-shrink: 0;
   width: 60px;
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-muted);
 }
 
 .zone-editor__preview-value {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-primary);
   line-height: 1.4;
 }
@@ -263,16 +263,16 @@ const handleSave = async () => {
 .zone-editor__footer {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .zone-editor__save-error {
   margin-top: 12px;
-  padding: 10px 12px;
+  padding: 10px var(--ds-spacing-md);
   background: rgba(255, 68, 68, 0.1);
   border: 1px solid var(--ds-semantic-danger);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   color: var(--ds-semantic-danger);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
 }
 </style>

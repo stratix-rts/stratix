@@ -253,46 +253,46 @@ watch(
   max-width: 100%;
   max-height: 60vh;
   object-fit: contain;
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 /* Markdown 预览 */
 .markdown-preview {
-  padding: 16px;
+  padding: var(--ds-spacing-md);
   line-height: 1.6;
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   color: var(--ds-text-primary, #111827);
 }
 
 .markdown-preview :deep(h1) {
-  font-size: 24px;
+  font-size: var(--ds-font-size-2xl);
   margin-bottom: 16px;
   border-bottom: 1px solid var(--ds-border, #e5e7eb);
   padding-bottom: 8px;
 }
 
 .markdown-preview :deep(h2) {
-  font-size: 20px;
+  font-size: var(--ds-font-size-2xl);
   margin: 20px 0 12px;
 }
 
 .markdown-preview :deep(h3) {
-  font-size: 16px;
-  margin: 16px 0 8px;
+  font-size: var(--ds-font-size-lg);
+  margin: var(--ds-spacing-md) 0 8px;
 }
 
 .markdown-preview :deep(code) {
   background-color: var(--ds-bg-secondary, #f3f4f6);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: 'Monaco', 'Menlo', monospace;
-  font-size: 13px;
+  padding: 2px var(--ds-spacing-xs);
+  border-radius: var(--ds-radius-sm);
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-font-size-sm);
 }
 
 /* URL 预览 */
 .url-preview {
-  padding: 16px;
+  padding: var(--ds-spacing-md);
 }
 
 .url-header {
@@ -305,11 +305,11 @@ watch(
 .url-favicon {
   width: 32px;
   height: 32px;
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
 }
 
 .url-title {
-  font-size: 18px;
+  font-size: var(--ds-font-size-xl);
   font-weight: 600;
   color: var(--ds-text-primary, #111827);
 }
@@ -317,9 +317,9 @@ watch(
 .url-meta {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
   margin-bottom: 12px;
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
 }
 
 .url-domain {
@@ -329,7 +329,7 @@ watch(
 .url-link {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
   color: var(--ds-primary, #3b82f6);
   text-decoration: none;
 }
@@ -341,8 +341,8 @@ watch(
 .url-description {
   padding: 12px;
   background-color: var(--ds-bg-secondary, #f9fafb);
-  border-radius: 8px;
-  font-size: 13px;
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-secondary, #6b7280);
   line-height: 1.5;
 }
@@ -352,7 +352,7 @@ watch(
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
   padding: 40px;
 }
 
@@ -364,26 +364,26 @@ watch(
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
 }
 
 .folder-name {
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
   font-weight: 600;
   color: var(--ds-text-primary, #111827);
 }
 
 .folder-path {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-tertiary, #9ca3af);
-  font-family: monospace;
+  font-family: var(--ds-font-mono);
 }
 
 /* 代码预览 */
 .code-preview {
-  padding: 16px;
+  padding: var(--ds-spacing-md);
   background-color: #1e1e1e;
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   overflow: auto;
 }
 
@@ -392,8 +392,8 @@ watch(
 }
 
 .code-preview code {
-  font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
-  font-size: 13px;
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-font-size-sm);
   line-height: 1.5;
   color: #d4d4d4;
 }
@@ -413,14 +413,14 @@ watch(
 }
 
 .unknown-message {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   color: var(--ds-text-secondary, #6b7280);
 }
 
 .unknown-path {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-tertiary, #9ca3af);
-  font-family: monospace;
+  font-family: var(--ds-font-mono);
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -437,19 +437,19 @@ watch(
 
 .file-meta {
   display: flex;
-  gap: 16px;
-  font-size: 12px;
+  gap: var(--ds-spacing-md);
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-tertiary, #9ca3af);
 }
 
 .meta-item {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
 }
 
 .footer-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 </style>

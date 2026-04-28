@@ -186,14 +186,14 @@ const actionButton = computed(() => {
 
 .stratix-empty__title {
   margin: 0 0 8px;
-  font-size: 18px;
+  font-size: var(--ds-font-size-xl);
   font-weight: 600;
   color: var(--ds-text-primary, var(--text-primary, #e0e0e8));
 }
 
 .stratix-empty__description {
   margin: 0 0 24px;
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   color: var(--ds-text-muted, var(--text-secondary, #8888a0));
   max-width: 280px;
   line-height: 1.5;

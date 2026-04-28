@@ -336,20 +336,20 @@ function getTaskTypeName(type: string): string {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .step-number {
   width: 40px;
   height: 40px;
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
   background: var(--ds-bg-tertiary);
   color: var(--ds-text-muted);
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: bold;
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
   transition: all 0.3s;
 }
 
@@ -364,7 +364,7 @@ function getTaskTypeName(type: string): string {
 }
 
 .step-label {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-muted);
 }
 
@@ -376,7 +376,7 @@ function getTaskTypeName(type: string): string {
   width: 60px;
   height: 2px;
   background: var(--ds-border);
-  margin: 0 16px;
+  margin: 0 var(--ds-spacing-md);
   margin-bottom: 24px;
 }
 
@@ -407,7 +407,7 @@ function getTaskTypeName(type: string): string {
 
 .file-name {
   color: var(--ds-brand-primary);
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
 }
 
 .strategy-options {
@@ -423,7 +423,7 @@ function getTaskTypeName(type: string): string {
   padding: 12px;
   background: var(--ds-bg-primary);
   border: 1px solid var(--ds-border);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -440,22 +440,22 @@ function getTaskTypeName(type: string): string {
 .option-label {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
 }
 
 .option-label strong {
   color: var(--ds-text-primary);
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
 }
 
 .option-label small {
   color: var(--ds-text-muted);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
 }
 
 .ai-processing {
   text-align: center;
-  padding: 40px 20px;
+  padding: var(--ds-spacing-xl) var(--ds-spacing-lg);
 }
 
 .processing-animation {
@@ -468,7 +468,7 @@ function getTaskTypeName(type: string): string {
   margin: 0 auto;
   border: 4px solid var(--ds-border);
   border-top-color: var(--ds-brand-primary);
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
   animation: spin 1s linear infinite;
 }
 
@@ -478,15 +478,15 @@ function getTaskTypeName(type: string): string {
 
 .ai-processing h3 {
   color: var(--ds-text-primary);
-  font-size: 18px;
+  font-size: var(--ds-font-size-xl);
   margin-bottom: 24px;
 }
 
 .streaming-output {
   background: var(--ds-bg-primary);
   border: 1px solid var(--ds-border);
-  border-radius: 6px;
-  padding: 16px;
+  border-radius: var(--ds-radius-md);
+  padding: var(--ds-spacing-md);
   margin-bottom: 24px;
   max-height: 200px;
   overflow-y: auto;
@@ -496,7 +496,7 @@ function getTaskTypeName(type: string): string {
 .streaming-output pre {
   margin: 0;
   color: var(--ds-text-muted);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   white-space: pre-wrap;
   word-wrap: break-word;
 }
@@ -509,7 +509,7 @@ function getTaskTypeName(type: string): string {
 .progress-bar {
   height: 8px;
   background: var(--ds-bg-tertiary);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   overflow: hidden;
   margin-bottom: 8px;
 }
@@ -521,42 +521,42 @@ function getTaskTypeName(type: string): string {
 }
 
 .progress-text {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   color: var(--ds-text-muted);
 }
 
 .blueprint-summary {
   display: flex;
-  gap: 24px;
+  gap: var(--ds-spacing-lg);
   margin-bottom: 24px;
 }
 
 .summary-item {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .summary-item .label {
   color: var(--ds-text-muted);
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
 }
 
 .summary-item .value {
   color: var(--ds-brand-primary);
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   font-weight: bold;
 }
 
 .task-preview h4 {
   color: var(--ds-text-primary);
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   margin-bottom: 12px;
 }
 
 .task-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   max-height: 300px;
   overflow-y: auto;
 }
@@ -568,15 +568,15 @@ function getTaskTypeName(type: string): string {
   padding: 12px;
   background: var(--ds-bg-primary);
   border: 1px solid var(--ds-border);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
 }
 
 .task-priority {
-  padding: 4px 8px;
+  padding: var(--ds-spacing-xs) var(--ds-spacing-sm);
   background: var(--ds-bg-tertiary);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   color: var(--ds-text-primary);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   font-weight: bold;
 }
 
@@ -586,14 +586,14 @@ function getTaskTypeName(type: string): string {
 
 .task-name {
   color: var(--ds-text-primary);
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   margin-bottom: 4px;
 }
 
 .task-type {
-  font-size: 12px;
-  padding: 2px 6px;
-  border-radius: 3px;
+  font-size: var(--ds-font-size-sm);
+  padding: 2px var(--ds-spacing-xs);
+  border-radius: var(--ds-radius-sm);
   display: inline-block;
 }
 
@@ -608,7 +608,7 @@ function getTaskTypeName(type: string): string {
 
 .task-time {
   color: var(--ds-text-muted);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
 }
 
 .dialog-footer {
@@ -619,7 +619,7 @@ function getTaskTypeName(type: string): string {
 
 .error-message {
   color: var(--ds-status-danger);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   margin-top: 4px;
 }
 </style>

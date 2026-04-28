@@ -867,7 +867,7 @@ const uploadFile = async (file: File) => {
 
 .zone-file-table.is-dragging {
   background-color: rgba(59, 130, 246, 0.05);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
 }
 
 .drag-overlay {
@@ -875,7 +875,7 @@ const uploadFile = async (file: File) => {
   inset: 0;
   background-color: color-mix(in srgb, var(--ds-color-primary) 10%, transparent);
   border: 2px dashed var(--ds-color-primary);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -890,18 +890,18 @@ const uploadFile = async (file: File) => {
   gap: 12px;
   color: var(--ds-color-primary);
   font-weight: 500;
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
 }
 
 .upload-error {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: var(--ds-spacing-sm);
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   background-color: color-mix(in srgb, var(--ds-status-danger) 10%, transparent);
   color: var(--ds-status-danger);
-  border-radius: 6px;
-  font-size: 14px;
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-font-size-md);
 }
 
 .file-table-toolbar {
@@ -914,7 +914,7 @@ const uploadFile = async (file: File) => {
 
 .toolbar-left {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   flex-wrap: wrap;
   flex: 1;
 }
@@ -926,27 +926,27 @@ const uploadFile = async (file: File) => {
 
 .toolbar-right {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   align-items: center;
 }
 
 .select-count {
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-secondary);
   white-space: nowrap;
 }
 
 .file-type-icon {
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
   cursor: default;
 }
 
 .source-type {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 12px;
+  padding: 2px var(--ds-spacing-sm);
+  border-radius: var(--ds-radius-sm);
+  font-size: var(--ds-font-size-sm);
 }
 
 .source-type.local {
@@ -966,7 +966,7 @@ const uploadFile = async (file: File) => {
 .file-source {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1007,7 +1007,7 @@ const uploadFile = async (file: File) => {
   width: 48px;
   height: 48px;
   object-fit: cover;
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   cursor: pointer;
   transition: transform 0.15s ease;
 }
@@ -1023,9 +1023,9 @@ const uploadFile = async (file: File) => {
   width: 48px;
   height: 48px;
   background-color: var(--ds-bg-elevated);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   cursor: pointer;
-  font-size: 20px;
+  font-size: var(--ds-font-size-2xl);
 }
 
 .no-preview {
@@ -1034,7 +1034,7 @@ const uploadFile = async (file: File) => {
 
 .action-cell {
   display: flex;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
 }
 
 .preview-container {
@@ -1052,14 +1052,14 @@ const uploadFile = async (file: File) => {
 }
 
 .preview-text {
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-  font-size: 13px;
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-font-size-sm);
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
   background-color: var(--ds-bg-elevated);
-  padding: 16px;
-  border-radius: 8px;
+  padding: var(--ds-spacing-md);
+  border-radius: var(--ds-radius-md);
   margin: 0;
   width: 100%;
   max-height: 65vh;
@@ -1069,7 +1069,7 @@ const uploadFile = async (file: File) => {
 .preview-url {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
   padding: 20px;
 }
 
@@ -1086,7 +1086,7 @@ const uploadFile = async (file: File) => {
 }
 
 .url-preview-link {
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
   color: var(--ds-color-primary);
   text-decoration: none;
   word-break: break-all;
@@ -1097,7 +1097,7 @@ const uploadFile = async (file: File) => {
 }
 
 .url-preview-title {
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
   color: var(--ds-text-primary);
 }
 
@@ -1110,7 +1110,7 @@ const uploadFile = async (file: File) => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 60px 20px;
+  padding: var(--ds-spacing-2xl) var(--ds-spacing-lg);
   color: var(--ds-text-secondary, #6b7280);
   text-align: center;
 }
@@ -1122,12 +1122,12 @@ const uploadFile = async (file: File) => {
 
 .preview-unsupported p {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
 }
 
 .preview-unsupported-hint {
   margin-top: 8px !important;
-  font-size: 12px !important;
+  font-size: var(--ds-font-size-sm) !important;
   color: var(--ds-text-muted);
 }
 
@@ -1154,10 +1154,10 @@ const uploadFile = async (file: File) => {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  padding: 16px;
+  padding: var(--ds-spacing-md);
   border: 1px solid var(--ds-border-default);
-  border-radius: 8px;
-  transition: all 0.15s ease;
+  border-radius: var(--ds-radius-md);
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .version-item:hover {
@@ -1187,23 +1187,23 @@ const uploadFile = async (file: File) => {
 }
 
 .version-date {
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-secondary);
 }
 
 .version-desc {
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-secondary);
   margin-bottom: 8px;
 }
 
 .version-preview {
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-muted);
-  font-family: monospace;
+  font-family: var(--ds-font-mono);
   background-color: var(--ds-bg-elevated);
-  padding: 8px;
-  border-radius: 4px;
+  padding: var(--ds-spacing-sm);
+  border-radius: var(--ds-radius-sm);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1211,7 +1211,7 @@ const uploadFile = async (file: File) => {
 
 .version-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   flex-shrink: 0;
   margin-left: 16px;
 }
@@ -1222,14 +1222,14 @@ const uploadFile = async (file: File) => {
 }
 
 .version-content {
-  font-family: monospace;
-  font-size: 13px;
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-font-size-sm);
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
   background-color: var(--ds-bg-elevated);
-  padding: 16px;
-  border-radius: 8px;
+  padding: var(--ds-spacing-md);
+  border-radius: var(--ds-radius-md);
   margin: 0;
 }
 </style>

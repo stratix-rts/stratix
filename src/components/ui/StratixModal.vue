@@ -425,15 +425,26 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
+.stratix-modal-zoom-enter-active .stratix-modal-mask {
+  animation: ds-fade-in var(--ds-animation-duration-fast) var(--ds-animation-easing-ease-out);
+}
+
+.stratix-modal-zoom-leave-active .stratix-modal-mask {
+  animation: ds-fade-out var(--ds-animation-duration-fast) var(--ds-animation-easing-ease-in) forwards;
+}
+
 .stratix-modal {
   position: relative;
   display: flex;
   flex-direction: column;
-  background: var(--ds-bg-secondary);
-  border: 1px solid v-bind('getToken("colors.border.default")');
-  box-shadow: v-bind('ModalBaseConfig.style.shadow');
+  background: var(--ds-glass-bg, var(--ds-bg-secondary));
+  border: var(--ds-glass-border, 1px solid v-bind('getToken("colors.border.default")'));
+  box-shadow: var(--ds-glass-shadow, v-bind('ModalBaseConfig.style.shadow'));
+  backdrop-filter: blur(var(--ds-glass-blur)) saturate(var(--ds-glass-saturate));
+  -webkit-backdrop-filter: blur(var(--ds-glass-blur)) saturate(var(--ds-glass-saturate));
   box-sizing: border-box;
   outline: none;
+  overflow: hidden;
 }
 
 .stratix-modal--dragging {
@@ -458,7 +469,7 @@ onUnmounted(() => {
 
 .stratix-modal__header {
   height: 48px;
-  padding: 0 16px;
+  padding: 0 var(--ds-spacing-md);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -467,7 +478,7 @@ onUnmounted(() => {
 
 .stratix-modal__title {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
   font-weight: 600;
   color: var(--ds-text-primary);
   line-height: 1.2;
@@ -482,10 +493,10 @@ onUnmounted(() => {
   padding: 0;
   background: transparent;
   border: 1px solid v-bind('getToken("colors.border.default")');
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   color: v-bind('getToken("colors.text.muted")');
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .stratix-modal__close:hover {
@@ -502,7 +513,7 @@ onUnmounted(() => {
 
 .stratix-modal__footer {
   height: 56px;
-  padding: 0 16px;
+  padding: 0 var(--ds-spacing-md);
   display: flex;
   align-items: center;
   justify-content: flex-end;

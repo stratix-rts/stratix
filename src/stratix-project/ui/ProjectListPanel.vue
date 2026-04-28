@@ -21,7 +21,7 @@
         <div
           v-for="project in projects"
           :key="project.id"
-          class="project-item"
+          class="project-item ds-ripple ds-tilt-card"
           :class="{ selected: selectedProjectId === project.id }"
           @click="handleSelect(project)"
         >
@@ -202,7 +202,7 @@ watch(
   max-height: 600px;
   background: var(--ds-bg-secondary);
   border: 1px solid var(--ds-border);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   box-shadow: var(--ds-shadow-lg);
   z-index: 1000;
   display: flex;
@@ -213,19 +213,19 @@ watch(
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px;
+  padding: var(--ds-spacing-md);
   border-bottom: 1px solid var(--ds-border);
 }
 
 .panel-header h3 {
   margin: 0;
   color: var(--ds-text-primary);
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
 }
 
 .project-count {
   color: var(--ds-text-muted);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
 }
 
 .panel-body {
@@ -237,7 +237,7 @@ watch(
 .loading,
 .empty {
   text-align: center;
-  padding: 40px 20px;
+  padding: var(--ds-spacing-xl) var(--ds-spacing-lg);
   color: var(--ds-text-muted);
 }
 
@@ -253,7 +253,7 @@ watch(
   height: 32px;
   border: 3px solid var(--ds-border);
   border-top-color: var(--ds-brand-primary);
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
   animation: spin 0.8s linear infinite;
 }
 
@@ -267,7 +267,7 @@ watch(
 }
 
 .empty-hint {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-muted);
   margin-top: 8px;
 }
@@ -281,16 +281,15 @@ watch(
 .project-item {
   background: var(--ds-bg-primary);
   border: 1px solid var(--ds-border);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   padding: 12px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .project-item:hover {
   border-color: var(--ds-brand-primary);
   background: var(--ds-bg-secondary);
-  transform: translateY(-1px);
   box-shadow: var(--ds-shadow-md);
 }
 
@@ -308,17 +307,17 @@ watch(
 
 .project-name {
   color: var(--ds-text-primary);
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   font-weight: 500;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .status-indicator {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
 }
 
 .status-pending {
@@ -352,11 +351,11 @@ watch(
 }
 
 .project-priority {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-status-warning);
   background: var(--ds-bg-tertiary);
-  padding: 2px 6px;
-  border-radius: 3px;
+  padding: 2px var(--ds-spacing-xs);
+  border-radius: var(--ds-radius-sm);
 }
 
 .project-info {
@@ -367,21 +366,21 @@ watch(
 }
 
 .project-status {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-muted);
 }
 
 .project-progress {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .progress-bar {
   width: 80px;
   height: 4px;
   background: var(--ds-bg-tertiary);
-  border-radius: 2px;
+  border-radius: var(--ds-radius-sm);
   overflow: hidden;
 }
 
@@ -392,12 +391,12 @@ watch(
 }
 
 .progress-text {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-status-success);
 }
 
 .project-tasks {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   margin-bottom: 8px;
 }
@@ -414,8 +413,8 @@ watch(
   flex: 1;
   padding: 6px 8px;
   border: none;
-  border-radius: 3px;
-  font-size: 11px;
+  border-radius: var(--ds-radius-sm);
+  font-size: var(--ds-font-size-xs);
   cursor: pointer;
   transition: all 0.2s;
 }

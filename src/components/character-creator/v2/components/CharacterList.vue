@@ -197,13 +197,13 @@ function escapeHtml(text: string): string {
   height: 100%;
   background: var(--ds-bg-secondary);
   border: 1px solid var(--ds-border);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   overflow: hidden;
-  font-family: 'SF Mono', 'Monaco', monospace;
+  font-family: var(--ds-font-mono);
 }
 
 .character-list__header {
-  padding: 12px 16px;
+  padding: var(--ds-spacing-md) var(--ds-spacing-md);
   border-bottom: 1px solid var(--ds-border);
   display: flex;
   justify-content: space-between;
@@ -211,13 +211,13 @@ function escapeHtml(text: string): string {
 }
 
 .character-list__title {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   color: var(--ds-color-primary);
   font-weight: 500;
 }
 
 .character-list__subtitle {
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   letter-spacing: 1px;
 }
@@ -225,27 +225,27 @@ function escapeHtml(text: string): string {
 .character-list__content {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  padding: var(--ds-spacing-sm);
   background: var(--ds-bg-base);
 }
 
 .character-list__loading,
 .character-list__empty {
   text-align: center;
-  padding: 40px 20px;
+  padding: var(--ds-spacing-xl) var(--ds-spacing-lg);
   color: var(--ds-text-muted);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
 }
 
 .character-list__empty-sub {
   margin-top: 4px;
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
 }
 
 .character-list__empty-hint {
   margin-top: 16px;
   color: var(--ds-color-primary);
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
 }
 
 .character-item {
@@ -255,9 +255,9 @@ function escapeHtml(text: string): string {
   margin-bottom: 4px;
   background: var(--ds-bg-secondary);
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
   position: relative;
 }
 
@@ -280,7 +280,7 @@ function escapeHtml(text: string): string {
   height: 40px;
   background: var(--ds-bg-base);
   border: 1px solid var(--ds-border);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   margin-right: 12px;
   display: flex;
   align-items: center;
@@ -301,7 +301,7 @@ function escapeHtml(text: string): string {
 }
 
 .character-item__thumb-placeholder {
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
   color: var(--ds-text-muted);
 }
 
@@ -315,7 +315,7 @@ function escapeHtml(text: string): string {
 }
 
 .character-item__name {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   font-weight: 500;
   color: var(--ds-text-primary);
   white-space: nowrap;
@@ -328,7 +328,7 @@ function escapeHtml(text: string): string {
 }
 
 .character-item__meta {
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   margin-top: 2px;
 }
@@ -341,9 +341,9 @@ function escapeHtml(text: string): string {
   position: absolute;
   top: 4px;
   right: 4px;
-  padding: 2px 6px;
+  padding: 2px var(--ds-spacing-xs);
   background: var(--ds-status-success);
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
   font-size: 9px;
   color: var(--ds-text-on-accent);
   font-weight: 500;
@@ -351,7 +351,7 @@ function escapeHtml(text: string): string {
 
 .character-item__actions {
   display: flex;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
   margin-left: 8px;
 }
 
@@ -363,11 +363,11 @@ function escapeHtml(text: string): string {
   justify-content: center;
   background: transparent;
   border: 1px solid var(--ds-border);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   color: var(--ds-text-muted);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .action-btn:hover {
@@ -406,7 +406,7 @@ function escapeHtml(text: string): string {
 
 .character-list__content::-webkit-scrollbar-thumb {
   background: var(--ds-border);
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
 }
 
 .character-list__content::-webkit-scrollbar-thumb:hover {

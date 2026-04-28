@@ -137,7 +137,7 @@ const handleObjectParamInput = (paramId: string, value: string) => {
 <style scoped>
 .empty-state {
   text-align: center;
-  padding: 40px 20px;
+  padding: var(--ds-spacing-xl) var(--ds-spacing-lg);
   color: v-bind('getToken("colors.text.muted")');
 }
 
@@ -147,29 +147,29 @@ const handleObjectParamInput = (paramId: string, value: string) => {
 }
 
 .empty-title {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   color: v-bind('getToken("colors.text.secondary")');
 }
 
 .param-form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
 }
 
 .skill-description {
   padding: 12px;
-  background: rgba(0, 212, 255, 0.1);
-  border-radius: 8px;
+  background: color-mix(in srgb, var(--ds-status-info) 10%, transparent);
+  border-radius: var(--ds-radius-md);
   border: 1px solid rgba(0, 212, 255, 0.2);
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: v-bind('getToken("colors.text.secondary")');
   line-height: 1.6;
 }
 
 .param-section h4 {
   margin: 0 0 12px 0;
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: v-bind('getToken("colors.text.muted")');
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -184,7 +184,7 @@ const handleObjectParamInput = (paramId: string, value: string) => {
   align-items: center;
   gap: 6px;
   margin-bottom: 6px;
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: v-bind('getToken("colors.text.primary")');
 }
 
@@ -197,11 +197,11 @@ const handleObjectParamInput = (paramId: string, value: string) => {
 }
 
 .param-type {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: v-bind('getToken("colors.text.muted")');
   padding: 1px 4px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 3px;
+  background: color-mix(in srgb, var(--ds-bg-elevated) 5%, transparent);
+  border-radius: var(--ds-radius-sm);
 }
 
 .param-input-wrapper {
@@ -209,12 +209,12 @@ const handleObjectParamInput = (paramId: string, value: string) => {
 }
 
 .param-toggle {
-  padding: 10px 16px;
+  padding: 10px var(--ds-spacing-md);
   background: v-bind('getToken("colors.background.tertiary")');
   border: 1px solid v-bind('getToken("colors.border.default")');
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   color: v-bind('getToken("colors.text.primary")');
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
@@ -227,7 +227,7 @@ const handleObjectParamInput = (paramId: string, value: string) => {
 }
 
 .param-toggle.active {
-  background: rgba(0, 212, 255, 0.2);
+  background: color-mix(in srgb, var(--ds-status-info) 20%, transparent);
   border-color: v-bind('getToken("colors.info")');
   color: v-bind('getToken("colors.semantic.success")');
 }
@@ -238,13 +238,13 @@ const handleObjectParamInput = (paramId: string, value: string) => {
 
 .param-textarea {
   width: 100%;
-  padding: 10px 12px;
+  padding: 10px var(--ds-spacing-md);
   background: v-bind('getToken("colors.background.tertiary")');
   border: 1px solid v-bind('getToken("colors.border.default")');
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   color: v-bind('getToken("colors.text.primary")');
-  font-size: 12px;
-  font-family: 'SF Mono', 'Monaco', monospace;
+  font-size: var(--ds-font-size-sm);
+  font-family: var(--ds-font-mono);
   resize: vertical;
   transition: all 0.2s;
   box-sizing: border-box;
@@ -253,12 +253,12 @@ const handleObjectParamInput = (paramId: string, value: string) => {
 .param-textarea:focus {
   outline: none;
   border-color: v-bind('getToken("colors.info")');
-  background: rgba(0, 212, 255, 0.05);
+  background: color-mix(in srgb, var(--ds-status-info) 5%, transparent);
 }
 
 .param-desc {
   margin-top: 4px;
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: v-bind('getToken("colors.text.muted")');
   line-height: 1.4;
 }

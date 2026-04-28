@@ -807,6 +807,104 @@ export function generateSkeletonSemantic(
   };
 }
 
+// ============ 渐变语义 Token ============
+
+export interface GradientSemanticToken {
+  brand: {
+    primary: string;
+    subtle: string;
+    glow: string;
+  };
+  background: {
+    base: string;
+    elevated: string;
+    subtle: string;
+  };
+  status: {
+    success: string;
+    warning: string;
+    danger: string;
+    info: string;
+  };
+}
+
+export function generateGradientSemantic(
+  colors: ThemePrimitives
+): GradientSemanticToken {
+  const { brand, background, status } = colors;
+
+  return {
+    brand: {
+      primary: `linear-gradient(135deg, ${brand.primary} 0%, ${brand.secondary} 100%)`,
+      subtle: `linear-gradient(135deg, ${brand.primary}20 0%, ${brand.secondary}10 100%)`,
+      glow: `linear-gradient(135deg, ${brand.primary}40 0%, transparent 100%)`,
+    },
+    background: {
+      base: `linear-gradient(180deg, ${background.base} 0%, ${background.elevated} 100%)`,
+      elevated: `linear-gradient(180deg, ${background.elevated} 0%, ${background.overlay} 100%)`,
+      subtle: `linear-gradient(180deg, transparent 0%, ${background.overlay}60 100%)`,
+    },
+    status: {
+      success: `linear-gradient(135deg, ${status.success}20 0%, ${status.success}05 100%)`,
+      warning: `linear-gradient(135deg, ${status.warning}20 0%, ${status.warning}05 100%)`,
+      danger: `linear-gradient(135deg, ${status.danger}20 0%, ${status.danger}05 100%)`,
+      info: `linear-gradient(135deg, ${status.info}20 0%, ${status.info}05 100%)`,
+    },
+  };
+}
+
+// ============ Glassmorphism 语义 Token ============
+
+export interface GlassSemanticToken {
+  background: string;
+  backgroundHover: string;
+  border: string;
+  borderRadius: string;
+  shadow: string;
+  backdropBlur: string;
+  saturation: string;
+}
+
+export function generateGlassSemantic(
+  colors: ThemePrimitives,
+  radii: { md: string },
+  shadows: { md: string }
+): GlassSemanticToken {
+  const { background, border, brand } = colors;
+
+  // 根据背景色亮度判断主题类型
+  const bgHex = background.base.replace('#', '');
+  const r = parseInt(bgHex.slice(0, 2), 16);
+  const g = parseInt(bgHex.slice(2, 4), 16);
+  const b = parseInt(bgHex.slice(4, 6), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  const isDark = luminance < 0.5;
+
+  if (isDark) {
+    // Cyberpunk / 深色主题
+    return {
+      background: 'rgba(13, 13, 20, 0.7)',
+      backgroundHover: 'rgba(13, 13, 20, 0.8)',
+      border: `1px solid ${brand.primary}20`,
+      borderRadius: radii.md,
+      shadow: `0 8px 32px rgba(0, 0, 0, 0.5), 0 0 16px ${brand.primary}15`,
+      backdropBlur: '12px',
+      saturation: '120%',
+    };
+  }
+
+  // 浅色主题（Minimal / Professional）
+  return {
+    background: 'rgba(255, 255, 255, 0.8)',
+    backgroundHover: 'rgba(255, 255, 255, 0.9)',
+    border: `1px solid ${border.subtle}`,
+    borderRadius: radii.md,
+    shadow: shadows.md,
+    backdropBlur: '16px',
+    saturation: '100%',
+  };
+}
+
 // ============ 完整语义 Token 集合 ============
 
 export interface CompleteSemanticTokens {
@@ -825,6 +923,8 @@ export interface CompleteSemanticTokens {
   avatar: AvatarSemanticToken;
   progress: ProgressSemanticToken;
   skeleton: SkeletonSemanticToken;
+  gradient: GradientSemanticToken;
+  glass: GlassSemanticToken;
 }
 
 export function generateAllSemanticTokens(
@@ -848,5 +948,7 @@ export function generateAllSemanticTokens(
     avatar: generateAvatarSemantic(colors),
     progress: generateProgressSemantic(colors),
     skeleton: generateSkeletonSemantic(colors),
+    gradient: generateGradientSemantic(colors),
+    glass: generateGlassSemantic(colors, radii, shadows),
   };
 }

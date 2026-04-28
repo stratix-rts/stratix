@@ -530,10 +530,10 @@ const agentConfig = computed(() => buildAgentConfig());
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: var(--ds-spacing-md) var(--ds-spacing-md);
   background: var(--ds-bg-secondary);
   border-bottom: 1px solid var(--ds-border);
-  gap: 16px;
+  gap: var(--ds-spacing-md);
   flex-shrink: 0;
 }
 
@@ -541,12 +541,12 @@ const agentConfig = computed(() => buildAgentConfig());
 .cc-name {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   min-width: 120px;
 }
 
 .cc-name__text {
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
   font-weight: 600;
   color: var(--ds-text-primary);
 }
@@ -559,11 +559,11 @@ const agentConfig = computed(() => buildAgentConfig());
   justify-content: center;
   background: transparent;
   border: 1px solid var(--ds-border);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   color: var(--ds-text-muted);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .cc-name__edit:hover {
@@ -575,9 +575,9 @@ const agentConfig = computed(() => buildAgentConfig());
   padding: 6px 10px;
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-color-primary);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   color: var(--ds-text-primary);
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   font-family: inherit;
   text-align: center;
   outline: none;
@@ -587,19 +587,19 @@ const agentConfig = computed(() => buildAgentConfig());
 /* 步骤导航 */
 .cc-steps {
   display: flex;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
 }
 
 .cc-steps__btn {
   padding: 6px 14px;
   background: transparent;
   border: 1px solid var(--ds-border);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   color: var(--ds-text-muted);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   font-family: inherit;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .cc-steps__btn:hover {
@@ -617,7 +617,7 @@ const agentConfig = computed(() => buildAgentConfig());
 .cc-header__actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   min-width: 120px;
   justify-content: flex-end;
 }
@@ -637,7 +637,7 @@ const agentConfig = computed(() => buildAgentConfig());
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   padding: 12px;
   background: var(--ds-bg-secondary);
   border-right: 1px solid var(--ds-border);
@@ -664,15 +664,15 @@ const agentConfig = computed(() => buildAgentConfig());
 
 .cc-appearance-actions {
   display: flex;
-  gap: 8px;
-  padding: 8px 0;
+  gap: var(--ds-spacing-sm);
+  padding: var(--ds-spacing-sm) 0;
 }
 
 .cc-step-nav {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   padding: 12px 0;
   flex-shrink: 0;
   border-top: 1px solid var(--ds-border);
@@ -699,21 +699,21 @@ const agentConfig = computed(() => buildAgentConfig());
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   pointer-events: none;
   z-index: 9999;
 }
 
 .cc-toast {
   padding: 10px 20px;
-  background: rgba(0, 0, 0, 0.85);
-  border-radius: 6px;
-  font-size: 13px;
-  font-family: 'SF Mono', 'Monaco', monospace;
+  background: color-mix(in srgb, var(--ds-bg-base) 85%, transparent);
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-font-size-sm);
+  font-family: var(--ds-font-mono);
   font-weight: 500;
   letter-spacing: 0.02em;
   white-space: nowrap;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--ds-shadow-md);
 }
 
 .cc-toast--success { color: var(--ds-status-success, #34c759); }
@@ -750,7 +750,7 @@ const agentConfig = computed(() => buildAgentConfig());
 .cc-left::-webkit-scrollbar-thumb,
 .cc-right::-webkit-scrollbar-thumb {
   background: var(--ds-border);
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
 }
 
 .cc-left::-webkit-scrollbar-thumb:hover,

@@ -352,15 +352,15 @@ watch(
 .power-panel {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 24px;
+  gap: var(--ds-spacing-lg);
   min-height: 400px;
 }
 
 .section-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 14px;
+  gap: var(--ds-spacing-sm);
+  font-size: var(--ds-font-size-md);
   font-weight: 600;
   color: var(--ds-text-primary);
   margin-bottom: 16px;
@@ -374,9 +374,9 @@ watch(
 
 /* Agent 详情 */
 .agent-detail {
-  padding: 16px;
+  padding: var(--ds-spacing-md);
   background: var(--ds-bg-tertiary);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   border: 1px solid var(--ds-border);
 }
 
@@ -398,7 +398,7 @@ watch(
 }
 
 .center-label {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   fill: var(--ds-text-muted);
 }
 
@@ -412,7 +412,7 @@ watch(
   display: grid;
   grid-template-columns: 70px 1fr 30px;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .dimension-info {
@@ -424,29 +424,29 @@ watch(
 .dimension-dot {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
 }
 
 .dimension-name {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-secondary);
 }
 
 .dimension-bar-container {
   height: 6px;
   background: var(--ds-bg-primary);
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
   overflow: hidden;
 }
 
 .dimension-bar {
   height: 100%;
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
   transition: width 0.3s ease;
 }
 
 .dimension-value {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   font-weight: 600;
   color: var(--ds-text-primary);
   text-align: right;
@@ -458,33 +458,33 @@ watch(
   justify-content: center;
   height: 200px;
   color: var(--ds-text-muted);
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
 }
 
 /* 排名列表 */
 .agent-ranking {
-  padding: 16px;
+  padding: var(--ds-spacing-md);
   background: var(--ds-bg-tertiary);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   border: 1px solid var(--ds-border);
 }
 
 .ranking-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .ranking-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 12px;
+  padding: 10px var(--ds-spacing-md);
   background: var(--ds-bg-secondary);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   border: 1px solid transparent;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .ranking-item:hover {
@@ -503,8 +503,8 @@ watch(
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
-  font-size: 12px;
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-font-size-sm);
   font-weight: 700;
   background: var(--ds-bg-tertiary);
   color: var(--ds-text-secondary);
@@ -537,13 +537,13 @@ watch(
 }
 
 .agent-name {
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   font-weight: 500;
   color: var(--ds-text-primary);
 }
 
 .agent-level {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   font-weight: 500;
 }
 
@@ -553,7 +553,7 @@ watch(
 }
 
 .score-value {
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
   font-weight: 700;
 }
 
@@ -576,7 +576,7 @@ watch(
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
   margin-top: 20px;
   padding-top: 16px;
   border-top: 1px solid var(--ds-border);
@@ -591,11 +591,11 @@ watch(
 .legend-dot {
   width: 10px;
   height: 10px;
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
 }
 
 .legend-label {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-secondary);
 }
 </style>

@@ -767,7 +767,7 @@ watch(
 .cc-left::-webkit-scrollbar-thumb,
 .cc-right::-webkit-scrollbar-thumb {
   background: var(--ds-border);
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
 }
 
 .cc-left::-webkit-scrollbar-thumb:hover,

@@ -104,7 +104,7 @@ const handleCancel = () => {
 }
 
 .confirm-text {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   color: var(--ds-text-secondary);
   line-height: 1.6;
   max-width: 320px;

@@ -15,13 +15,15 @@
 .command-palette {
   width: 100%;
   max-width: 560px;
-  background: var(--ds-bg-secondary, #1a1d27);
-  border: 1px solid var(--ds-border, rgba(255, 255, 255, 0.08));
+  background: var(--ds-glass-bg, var(--ds-bg-secondary, #1a1d27));
+  border: var(--ds-glass-border, 1px solid var(--ds-border, rgba(255, 255, 255, 0.08)));
   border-radius: 12px;
-  box-shadow:
+  box-shadow: var(--ds-glass-shadow,
     0 0 0 1px rgba(255, 255, 255, 0.05) inset,
     0 8px 32px rgba(0, 0, 0, 0.4),
-    0 2px 8px rgba(0, 0, 0, 0.2);
+    0 2px 8px rgba(0, 0, 0, 0.2));
+  backdrop-filter: blur(var(--ds-glass-blur, 12px)) saturate(var(--ds-glass-saturate, 120%));
+  -webkit-backdrop-filter: blur(var(--ds-glass-blur, 12px)) saturate(var(--ds-glass-saturate, 120%));
   overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }

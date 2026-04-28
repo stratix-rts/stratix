@@ -30,6 +30,8 @@ export {
   generateAvatarSemantic,
   generateProgressSemantic,
   generateSkeletonSemantic,
+  generateGradientSemantic,
+  generateGlassSemantic,
 } from './_generator';
 
 export type {
@@ -56,6 +58,8 @@ export type {
   AvatarSemanticToken,
   ProgressSemanticToken,
   SkeletonSemanticToken,
+  GradientSemanticToken,
+  GlassSemanticToken,
 } from './_generator';
 
 // 按钮语义

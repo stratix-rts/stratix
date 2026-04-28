@@ -26,7 +26,7 @@ interface SceneRegistry {
 }
 
 export class RTSEventBus {
-  private static instance: RTSEventBus;
+  private static instance: RTSEventBus | undefined;
   private emitter = mitt<Record<string, unknown>>();
   private queue: EventQueue;
   private middlewares: Middleware[] = [];
@@ -51,7 +51,7 @@ export class RTSEventBus {
   static destroyInstance(): void {
     if (RTSEventBus.instance) {
       RTSEventBus.instance.destroy();
-      RTSEventBus.instance = undefined as unknown as RTSEventBus;
+      RTSEventBus.instance = undefined;
     }
   }
 

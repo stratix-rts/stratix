@@ -344,9 +344,9 @@ onMounted(() => {
   height: 100%;
   background: var(--ds-bg-secondary);
   border: 1px solid var(--ds-border);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   overflow: hidden;
-  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', monospace;
+  font-family: var(--ds-font-mono);
 }
 
 /* Header */
@@ -354,7 +354,7 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px;
+  padding: var(--ds-spacing-md);
   border-bottom: 1px solid var(--ds-border);
   flex-shrink: 0;
 }
@@ -362,17 +362,17 @@ onMounted(() => {
 .header-left {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
 }
 
 .step-label {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   letter-spacing: 1px;
 }
 
 .title {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   color: var(--ds-brand-primary);
 }
 
@@ -381,19 +381,19 @@ onMounted(() => {
 }
 
 .character-name {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-primary);
 }
 
 .character-type {
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
 }
 
 /* Messages */
 .chat-messages {
   flex: 1;
-  padding: 16px;
+  padding: var(--ds-spacing-md);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -403,18 +403,18 @@ onMounted(() => {
 .welcome-message {
   padding: 12px;
   background: var(--ds-brand-secondary);
-  border-radius: 4px;
-  font-size: 11px;
+  border-radius: var(--ds-radius-sm);
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-brand-primary);
   text-align: center;
 }
 
 .message {
-  padding: 10px 12px;
+  padding: 10px var(--ds-spacing-md);
   background: var(--ds-bg-tertiary);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   max-width: 85%;
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   line-height: 1.5;
 }
 
@@ -437,7 +437,7 @@ onMounted(() => {
 .message.error {
   background: var(--ds-status-danger);
   color: var(--ds-bg-base);
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   margin-top: 8px;
 }
 
@@ -454,18 +454,18 @@ onMounted(() => {
 }
 
 .message-content :deep(code) {
-  background: rgba(0, 0, 0, 0.2);
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-size: 11px;
+  background: color-mix(in srgb, var(--ds-bg-base) 20%, transparent);
+  padding: 2px var(--ds-spacing-xs);
+  border-radius: var(--ds-radius-sm);
+  font-size: var(--ds-font-size-xs);
 }
 
 .message-content :deep(pre) {
-  background: rgba(0, 0, 0, 0.2);
-  padding: 8px;
-  border-radius: 4px;
+  background: color-mix(in srgb, var(--ds-bg-base) 20%, transparent);
+  padding: var(--ds-spacing-sm);
+  border-radius: var(--ds-radius-sm);
   overflow-x: auto;
-  margin: 8px 0;
+  margin: var(--ds-spacing-sm) 0;
 }
 
 .message-content :deep(pre code) {
@@ -474,7 +474,7 @@ onMounted(() => {
 }
 
 .message-time {
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   margin-top: 4px;
   text-align: right;
@@ -482,26 +482,26 @@ onMounted(() => {
 
 /* Input Area */
 .chat-input-area {
-  padding: 16px;
+  padding: var(--ds-spacing-md);
   border-top: 1px solid var(--ds-border);
   flex-shrink: 0;
 }
 
 .input-row {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   align-items: flex-end;
 }
 
 .chat-textarea {
   flex: 1;
-  padding: 10px 12px;
+  padding: 10px var(--ds-spacing-md);
   background: var(--ds-bg-base);
   border: 1px solid var(--ds-border);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   color: var(--ds-text-primary);
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   line-height: 1.5;
   resize: none;
   overflow: hidden;
@@ -525,14 +525,14 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  padding: var(--ds-spacing-md) var(--ds-spacing-md);
   border-top: 1px solid var(--ds-border);
   flex-shrink: 0;
 }
 
 .actions-left {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 /* Scrollbar */
@@ -546,7 +546,7 @@ onMounted(() => {
 
 .chat-messages::-webkit-scrollbar-thumb {
   background: var(--ds-border);
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
 }
 
 .chat-messages::-webkit-scrollbar-thumb:hover {

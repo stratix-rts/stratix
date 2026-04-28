@@ -180,6 +180,7 @@ const handleAddFiles = async (files: Array<{ name: string; sourceType: 'local' |
     showFilePicker.value = false;
   } catch (error) {
     console.error('[ZonePanel] Failed to add files:', error);
+    showNotification('error', '添加文件失败，请重试');
   } finally {
     loading.value = false;
   }
@@ -210,9 +211,12 @@ const handleRemoveFile = async (zoneId: string, fileId: string) => {
     const result = await response.json();
     if (result.success && currentZone.value) {
       currentZone.value.files = currentZone.value.files.filter(f => f.id !== fileId);
+    } else {
+      showNotification('error', '删除文件失败');
     }
   } catch (error) {
     console.error('[ZonePanel] Failed to remove file:', error);
+    showNotification('error', '删除文件失败，请重试');
   } finally {
     loading.value = false;
   }
@@ -236,9 +240,12 @@ const handleRefreshFile = async (zoneId: string, fileId: string) => {
       if (index !== -1) {
         currentZone.value.files[index] = result.file;
       }
+    } else {
+      showNotification('error', '刷新文件失败');
     }
   } catch (error) {
     console.error('[ZonePanel] Failed to refresh file:', error);
+    showNotification('error', '刷新文件失败，请重试');
   } finally {
     loading.value = false;
   }
@@ -326,9 +333,12 @@ const handleRemoveMember = async (zoneId: string, memberId: string) => {
     const result = await response.json();
     if (result.success && currentZone.value) {
       currentZone.value.members = currentZone.value.members.filter(m => m !== memberId);
+    } else {
+      showNotification('error', '移除 Agent 失败');
     }
   } catch (error) {
     console.error('[ZonePanel] Failed to remove member:', error);
+    showNotification('error', '移除 Agent 失败，请重试');
   } finally {
     loading.value = false;
   }
@@ -410,8 +420,8 @@ const handleRemoveMember = async (zoneId: string, memberId: string) => {
   left: 50%;
   transform: translateX(-50%);
   padding: 12px 24px;
-  border-radius: 8px;
-  font-size: 14px;
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-font-size-md);
   font-weight: 500;
   z-index: 9999;
   animation: slideDown 0.3s ease;
@@ -444,19 +454,19 @@ const handleRemoveMember = async (zoneId: string, memberId: string) => {
 }
 
 .agent-picker {
-  padding: 8px 0;
+  padding: var(--ds-spacing-sm) 0;
 }
 
 .agent-picker__desc {
   margin: 0 0 16px 0;
   color: var(--ds-text-muted);
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
 }
 
 .agent-picker__list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   max-height: 300px;
   overflow-y: auto;
 }
@@ -465,12 +475,12 @@ const handleRemoveMember = async (zoneId: string, memberId: string) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  padding: var(--ds-spacing-md) var(--ds-spacing-md);
   background: var(--ds-bg-elevated);
   border: 1px solid var(--ds-border-default);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .agent-picker__item:hover {
@@ -484,9 +494,9 @@ const handleRemoveMember = async (zoneId: string, memberId: string) => {
 }
 
 .agent-picker__id {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-muted);
-  font-family: monospace;
+  font-family: var(--ds-font-mono);
 }
 
 .agent-picker__cancel {
@@ -495,10 +505,10 @@ const handleRemoveMember = async (zoneId: string, memberId: string) => {
   padding: 10px;
   background: transparent;
   border: 1px solid var(--ds-border-strong);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   color: var(--ds-text-muted);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .agent-picker__cancel:hover {

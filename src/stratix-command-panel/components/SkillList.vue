@@ -151,8 +151,8 @@ onUnmounted(() => {
 .skill-list {
   font-family: v-bind('getToken("typography.fontFamily.sans")');
   background: v-bind('getToken("colors.background.secondary")');
-  border-radius: 12px;
-  padding: 16px;
+  border-radius: var(--ds-radius-lg);
+  padding: var(--ds-spacing-md);
   color: v-bind('getToken("colors.text.primary")');
   height: 100%;
   display: flex;
@@ -170,18 +170,18 @@ onUnmounted(() => {
 
 .skill-title {
   font-family: v-bind('getToken("typography.fontFamily.mono")');
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
   font-weight: 600;
   margin: 0;
   color: v-bind('getToken("colors.text.primary")');
 }
 
 .agent-count {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: v-bind('getToken("colors.semantic.success")');
   background: v-bind('getToken("colors.semantic.success") + "1A"');
   padding: 4px 12px;
-  border-radius: 12px;
+  border-radius: var(--ds-radius-lg);
   font-weight: 500;
 }
 
@@ -219,7 +219,7 @@ onUnmounted(() => {
   margin-bottom: 8px;
   background: v-bind('getToken("colors.background.tertiary")');
   border: 1px solid v-bind('getToken("colors.border.default")');
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   cursor: pointer;
   transition: all 200ms ease;
 }
@@ -244,13 +244,13 @@ onUnmounted(() => {
 .skill-icon {
   width: 40px;
   height: 40px;
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
   font-weight: bold;
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
   margin-right: 12px;
   flex-shrink: 0;
 }
@@ -262,13 +262,13 @@ onUnmounted(() => {
 
 .skill-name {
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   margin-bottom: 4px;
   color: v-bind('getToken("colors.text.primary")');
 }
 
 .skill-desc {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: v-bind('getToken("colors.text.secondary")');
   overflow: hidden;
   text-overflow: ellipsis;
@@ -281,7 +281,7 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px 20px;
+  padding: var(--ds-spacing-xl) var(--ds-spacing-lg);
   color: v-bind('getToken("colors.text.muted")');
 }
 
@@ -290,7 +290,7 @@ onUnmounted(() => {
   height: 32px;
   border: 3px solid v-bind('getToken("colors.border.default")');
   border-top-color: v-bind('getToken("colors.semantic.success")');
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
   animation: spin 1s linear infinite;
   margin-bottom: 12px;
 }
@@ -310,7 +310,7 @@ onUnmounted(() => {
 .empty-state p,
 .loading-state p {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
 }
 
 .skills-container::-webkit-scrollbar {
@@ -319,12 +319,12 @@ onUnmounted(() => {
 
 .skills-container::-webkit-scrollbar-track {
   background: v-bind('getToken("colors.background.tertiary")');
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
 }
 
 .skills-container::-webkit-scrollbar-thumb {
   background: v-bind('getToken("colors.border.default")');
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
 }
 
 .skills-container::-webkit-scrollbar-thumb:hover {
@@ -350,7 +350,7 @@ onUnmounted(() => {
   .skill-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 8px;
+    gap: var(--ds-spacing-sm);
   }
   
   .skill-card {
@@ -360,7 +360,7 @@ onUnmounted(() => {
   .skill-icon {
     width: 36px;
     height: 36px;
-    font-size: 14px;
+    font-size: var(--ds-font-size-md);
   }
 }
 </style>

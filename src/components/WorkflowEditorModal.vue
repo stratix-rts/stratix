@@ -94,8 +94,8 @@ function initEditor() {
   width: 100%;
   height: 100%;
   min-height: 500px;
-  background: #1a1a2e;
-  border-radius: 4px;
+  background: var(--ds-bg-overlay);
+  border-radius: var(--ds-radius-sm);
   overflow: hidden;
 }
 </style>

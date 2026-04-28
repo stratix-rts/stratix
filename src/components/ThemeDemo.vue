@@ -187,7 +187,7 @@ onUnmounted(() => {
   padding: 20px;
   background: var(--ds-bg-secondary);
   border: 1px solid var(--ds-border);
-  border-radius: 12px;
+  border-radius: var(--ds-radius-lg);
 }
 
 h2 {
@@ -198,7 +198,7 @@ h2 {
 h3 {
   margin: 0 0 16px;
   color: var(--ds-text-secondary);
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
 }
 
 /* 主题按钮 */
@@ -212,11 +212,11 @@ h3 {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   padding: 12px;
   background: var(--ds-bg-tertiary);
   border: 2px solid var(--ds-border);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   cursor: pointer;
   transition: all 0.2s;
   min-width: 80px;
@@ -235,7 +235,7 @@ h3 {
 .theme-preview {
   width: 48px;
   height: 48px;
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   border: 2px solid;
   display: flex;
   align-items: center;
@@ -245,13 +245,13 @@ h3 {
 .preview-dot {
   width: 16px;
   height: 16px;
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
 }
 
 /* 颜色展示 */
 .color-palette {
   display: flex;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
   flex-wrap: wrap;
 }
 
@@ -259,19 +259,19 @@ h3 {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .color-box {
   width: 60px;
   height: 60px;
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   border: 2px solid var(--ds-border);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--ds-shadow-md);
 }
 
 .color-item span {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-muted);
 }
 
@@ -279,37 +279,37 @@ h3 {
 .component-preview {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 16px;
+  gap: var(--ds-spacing-md);
 }
 
 .preview-panel,
 .preview-status {
-  padding: 16px;
+  padding: var(--ds-spacing-md);
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
 }
 
 .preview-panel h4,
 .preview-status h4 {
   margin: 0 0 12px;
   color: var(--ds-text-primary);
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
 }
 
 .preview-panel p {
   margin: 0 0 16px;
   color: var(--ds-text-secondary);
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
 }
 
 .preview-btn {
-  padding: 8px 16px;
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   margin-right: 8px;
   margin-bottom: 8px;
   border: none;
-  border-radius: 6px;
-  font-size: 13px;
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-font-size-sm);
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -330,8 +330,8 @@ h3 {
   display: inline-block;
   padding: 4px 12px;
   margin: 4px;
-  border-radius: 4px;
-  font-size: 12px;
+  border-radius: var(--ds-radius-sm);
+  font-size: var(--ds-font-size-sm);
   font-weight: 500;
 }
 
@@ -367,8 +367,8 @@ h3 {
   background: var(--ds-primary);
   color: var(--ds-bg-primary);
   border: none;
-  border-radius: 6px;
-  font-size: 14px;
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-font-size-md);
   cursor: pointer;
   transition: all 0.2s;
 }

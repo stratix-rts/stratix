@@ -123,7 +123,7 @@ const handleFilterChange = (params: any) => {
 <style>
 /* Vxe Table 样式适配 */
 .vxe-grid {
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
 }
 
 .vxe-grid .vxe-header--column {
@@ -145,6 +145,6 @@ const handleFilterChange = (params: any) => {
 }
 
 .vxe-grid .vxe-cell--edit {
-  padding: 4px 8px;
+  padding: var(--ds-spacing-xs) var(--ds-spacing-sm);
 }
 </style>

@@ -76,7 +76,7 @@ const handleChange = (event: Event) => {
 .stratix-radio {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   cursor: pointer;
   user-select: none;
 }
@@ -98,8 +98,8 @@ const handleChange = (event: Event) => {
   justify-content: center;
   background: v-bind('getToken("colors.background.tertiary")');
   border: 1px solid v-bind('getToken("colors.border.default")');
-  border-radius: 50%;
-  transition: all 0.15s ease;
+  border-radius: var(--ds-radius-full);
+  transition: all var(--ds-animation-duration-fast) ease;
   flex-shrink: 0;
 }
 
@@ -126,11 +126,12 @@ const handleChange = (event: Event) => {
   width: 40%;
   height: 40%;
   background: v-bind('getToken("colors.info")');
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
+  animation: ds-check-bounce var(--ds-animation-duration-fast) var(--ds-animation-easing-ease-out, ease-out);
 }
 
 .stratix-radio__label {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   color: v-bind('getToken("colors.text.primary")');
 }
 

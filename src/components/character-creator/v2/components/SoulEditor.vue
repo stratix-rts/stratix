@@ -350,13 +350,13 @@ function escapeHtml(text: string): string {
   height: 100%;
   background: var(--ds-bg-secondary);
   border: 1px solid var(--ds-border);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   overflow: hidden;
-  font-family: 'SF Mono', 'Monaco', monospace;
+  font-family: var(--ds-font-mono);
 }
 
 .soul-editor__header {
-  padding: 12px 16px;
+  padding: var(--ds-spacing-md) var(--ds-spacing-md);
   border-bottom: 1px solid var(--ds-border);
   display: flex;
   justify-content: space-between;
@@ -364,24 +364,24 @@ function escapeHtml(text: string): string {
 }
 
 .soul-editor__title {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   color: var(--ds-color-primary);
   font-weight: 500;
 }
 
 .soul-editor__subtitle {
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   letter-spacing: 1px;
 }
 
 .soul-editor__template {
-  padding: 12px 16px;
+  padding: var(--ds-spacing-md) var(--ds-spacing-md);
   background: var(--ds-bg-base);
   border-bottom: 1px solid var(--ds-border);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .template-header {
@@ -395,9 +395,9 @@ function escapeHtml(text: string): string {
   padding: 6px 10px;
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   color: var(--ds-text-primary);
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   font-family: inherit;
   width: 140px;
 }
@@ -413,13 +413,13 @@ function escapeHtml(text: string): string {
 
 .domain-filter {
   padding: 4px 10px;
-  font-size: 10px;
-  border-radius: 12px;
+  font-size: var(--ds-font-size-xs);
+  border-radius: var(--ds-radius-lg);
   border: 1px solid var(--ds-border);
   background: var(--ds-bg-tertiary);
   color: var(--ds-text-secondary);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
   font-family: inherit;
 }
 
@@ -437,9 +437,9 @@ function escapeHtml(text: string): string {
   padding: 8px 10px;
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   color: var(--ds-text-primary);
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   font-family: inherit;
 }
 
@@ -451,20 +451,20 @@ function escapeHtml(text: string): string {
 .soul-editor__form {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding: var(--ds-spacing-md);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
 }
 
 .form-field {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .form-label {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -474,7 +474,7 @@ function escapeHtml(text: string): string {
 }
 
 .char-count {
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
   font-weight: normal;
   color: var(--ds-text-muted);
   text-transform: none;
@@ -483,12 +483,12 @@ function escapeHtml(text: string): string {
 .form-input,
 .form-textarea,
 .goal-input {
-  padding: 10px 12px;
+  padding: 10px var(--ds-spacing-md);
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   color: var(--ds-text-primary);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   font-family: inherit;
   transition: border-color 0.15s ease;
 }
@@ -521,15 +521,15 @@ function escapeHtml(text: string): string {
 .goal-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   padding: 8px 10px;
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
 }
 
 .goal-number {
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-color-primary);
   font-weight: 600;
   min-width: 16px;
@@ -537,7 +537,7 @@ function escapeHtml(text: string): string {
 
 .goal-text {
   flex: 1;
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-primary);
   word-break: break-word;
 }
@@ -551,10 +551,10 @@ function escapeHtml(text: string): string {
   background: transparent;
   border: none;
   color: var(--ds-text-muted);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   cursor: pointer;
-  border-radius: 4px;
-  transition: all 0.15s ease;
+  border-radius: var(--ds-radius-sm);
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .goal-remove:hover {
@@ -564,14 +564,14 @@ function escapeHtml(text: string): string {
 
 .goals-empty {
   text-align: center;
-  padding: 16px;
+  padding: var(--ds-spacing-md);
   color: var(--ds-text-muted);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
 }
 
 .goal-add {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .goal-input {
@@ -580,7 +580,7 @@ function escapeHtml(text: string): string {
 
 .soul-editor__preview {
   border-top: 1px solid var(--ds-border);
-  padding: 12px 16px;
+  padding: var(--ds-spacing-md) var(--ds-spacing-md);
   background: var(--ds-bg-base);
 }
 
@@ -592,20 +592,20 @@ function escapeHtml(text: string): string {
 }
 
 .empty-warning {
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
   color: #f59e0b;
-  background: rgba(245, 158, 11, 0.1);
-  padding: 2px 6px;
-  border-radius: 4px;
+  background: color-mix(in srgb, var(--ds-status-warning) 10%, transparent);
+  padding: 2px var(--ds-spacing-xs);
+  border-radius: var(--ds-radius-sm);
   margin-left: 8px;
 }
 
 .preview-content {
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   padding: 12px;
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
   line-height: 1.6;
   color: var(--ds-text-primary);
   white-space: pre-wrap;
@@ -617,11 +617,11 @@ function escapeHtml(text: string): string {
 }
 
 .soul-editor__footer {
-  padding: 12px 16px;
+  padding: var(--ds-spacing-md) var(--ds-spacing-md);
   border-top: 1px solid var(--ds-border);
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 /* 滚动条样式 */
@@ -638,7 +638,7 @@ function escapeHtml(text: string): string {
 .soul-editor__form::-webkit-scrollbar-thumb,
 .preview-content::-webkit-scrollbar-thumb {
   background: var(--ds-border);
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
 }
 
 .soul-editor__form::-webkit-scrollbar-thumb:hover,

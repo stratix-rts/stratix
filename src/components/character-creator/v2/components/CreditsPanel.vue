@@ -166,8 +166,8 @@ function closeModal(): void {
 }
 
 .credits-label {
-  font-size: 10px;
-  font-family: 'SF Mono', 'Monaco', monospace;
+  font-size: var(--ds-font-size-xs);
+  font-family: var(--ds-font-mono);
   color: var(--ds-text-muted);
   margin-bottom: 6px;
   text-transform: uppercase;
@@ -175,7 +175,7 @@ function closeModal(): void {
 }
 
 .credits-content {
-  font-family: 'SF Mono', 'Monaco', monospace;
+  font-family: var(--ds-font-mono);
 }
 
 .authors-list {
@@ -201,7 +201,7 @@ function closeModal(): void {
   margin-left: 4px;
   color: var(--ds-color-primary);
   font-size: 9px;
-  font-family: 'SF Mono', 'Monaco', monospace;
+  font-family: var(--ds-font-mono);
   cursor: pointer;
   text-decoration: none;
 }
@@ -214,23 +214,23 @@ function closeModal(): void {
   font-size: 8px;
   color: var(--ds-text-muted);
   margin-top: 4px;
-  font-family: 'SF Mono', 'Monaco', monospace;
+  font-family: var(--ds-font-mono);
 }
 
 .no-credits {
   font-size: 9px;
-  font-family: 'SF Mono', 'Monaco', monospace;
+  font-family: var(--ds-font-mono);
   color: var(--ds-text-muted);
 }
 
 /* Modal content styles */
 .credits-modal-content {
-  font-family: 'SF Mono', 'Monaco', monospace;
+  font-family: var(--ds-font-mono);
 }
 
 .modal-subtitle {
   text-align: center;
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   margin-bottom: 16px;
 }
@@ -240,7 +240,7 @@ function closeModal(): void {
 }
 
 .section-label {
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   margin-bottom: 8px;
   text-transform: uppercase;
@@ -250,14 +250,14 @@ function closeModal(): void {
 .authors-full-list {
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   padding: 12px;
   max-height: 200px;
   overflow-y: auto;
 }
 
 .author-item {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-secondary);
   line-height: 1.8;
 }
@@ -277,12 +277,12 @@ function closeModal(): void {
   padding: 10px;
   background: transparent;
   border: 1px solid var(--ds-border);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   color: var(--ds-text-secondary);
-  font-family: 'SF Mono', 'Monaco', monospace;
-  font-size: 12px;
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-font-size-sm);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .close-btn:hover {

@@ -14,7 +14,10 @@ import { generateAllSemanticTokens } from '../semantic/_generator';
 import { Animation } from '../tokens/animation';
 import {
   ProfessionalPrimitives,
+  Blue,
+  Slate,
 } from '../tokens/colors';
+import { generateGradients } from '../tokens/gradients';
 import { Depth } from '../tokens/depth';
 import { Spacing } from '../tokens/spacing';
 import type { DesignSystemTokens } from '../types';
@@ -29,14 +32,14 @@ const ProfessionalRadii = {
   full: '9999px',
 } as const;
 
-// 主题特定的阴影配置（更明显的阴影）
+// 主题特定的阴影配置（稳重但有层次）
 const ProfessionalShadows = {
-  sm: '0 1px 2px rgba(15, 23, 42, 0.08)',
-  md: '0 2px 4px rgba(15, 23, 42, 0.12)',
-  lg: '0 4px 8px rgba(15, 23, 42, 0.15)',
-  xl: '0 8px 16px rgba(15, 23, 42, 0.18)',
-  '2xl': '0 12px 24px rgba(15, 23, 42, 0.2)',
-  inner: 'inset 0 2px 4px rgba(15, 23, 42, 0.06)',
+  sm: '0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04)',
+  md: '0 3px 6px rgba(15, 23, 42, 0.08), 0 2px 4px rgba(15, 23, 42, 0.05)',
+  lg: '0 6px 12px rgba(15, 23, 42, 0.1), 0 4px 8px rgba(15, 23, 42, 0.06)',
+  xl: '0 12px 24px rgba(15, 23, 42, 0.12), 0 8px 16px rgba(15, 23, 42, 0.07)',
+  '2xl': '0 18px 36px rgba(15, 23, 42, 0.14), 0 12px 24px rgba(15, 23, 42, 0.08)',
+  inner: 'inset 0 2px 4px rgba(15, 23, 42, 0.05)',
 } as const;
 
 // 主题特定的字体配置（更注重可读性）
@@ -65,6 +68,19 @@ const ProfessionalTypography = {
     relaxed: 1.8,
   },
 } as const;
+
+// 主题特定渐变配置
+const ProfessionalGradients = generateGradients({
+  primary: Blue[700],
+  secondary: Slate[500],
+  bgBase: ProfessionalPrimitives.background.base,
+  bgElevated: ProfessionalPrimitives.background.elevated,
+  bgOverlay: ProfessionalPrimitives.background.overlay,
+  success: ProfessionalPrimitives.status.success,
+  warning: ProfessionalPrimitives.status.warning,
+  danger: ProfessionalPrimitives.status.danger,
+  info: ProfessionalPrimitives.status.info,
+});
 
 // 生成语义 Token
 const semanticTokens = generateAllSemanticTokens(
@@ -95,9 +111,10 @@ export const ProfessionalTheme: DesignSystemTokens = {
     sizes: IconSizes,
     registry: {},
   },
+  gradients: ProfessionalGradients,
   // 使用生成的语义 Token
   ...semanticTokens,
 };
 
 // 导出主题特定配置
-export { ProfessionalRadii, ProfessionalShadows, ProfessionalTypography };
+export { ProfessionalRadii, ProfessionalShadows, ProfessionalTypography, ProfessionalGradients };

@@ -302,63 +302,63 @@ watch(
 .project-config-form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 8px 0;
+  gap: var(--ds-spacing-md);
+  padding: var(--ds-spacing-sm) 0;
 }
 
 .status-banner {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 16px;
-  border-radius: 8px;
+  padding: var(--ds-spacing-md) var(--ds-spacing-md);
+  border-radius: var(--ds-radius-md);
   margin-bottom: 8px;
 }
 
 .status-banner--pending {
-  background: rgba(136, 136, 136, 0.15);
-  border: 1px solid rgba(136, 136, 136, 0.3);
+  background: color-mix(in srgb, var(--ds-text-muted) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ds-text-muted) 30%, transparent);
 }
 
 .status-banner--active {
-  background: rgba(0, 170, 255, 0.15);
-  border: 1px solid rgba(0, 170, 255, 0.3);
+  background: color-mix(in srgb, var(--ds-status-info) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ds-status-info) 30%, transparent);
 }
 
 .status-banner--paused {
-  background: rgba(255, 170, 0, 0.15);
-  border: 1px solid rgba(255, 170, 0, 0.3);
+  background: color-mix(in srgb, var(--ds-status-warning) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ds-status-warning) 30%, transparent);
 }
 
 .status-banner--completed {
-  background: rgba(0, 255, 0, 0.15);
-  border: 1px solid rgba(0, 255, 0, 0.3);
+  background: color-mix(in srgb, var(--ds-status-success) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ds-status-success) 30%, transparent);
 }
 
 .status-banner--failed {
-  background: rgba(255, 0, 0, 0.15);
-  border: 1px solid rgba(255, 0, 0, 0.3);
+  background: color-mix(in srgb, var(--ds-status-danger) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ds-status-danger) 30%, transparent);
 }
 
 .status-icon {
-  font-size: 20px;
+  font-size: var(--ds-font-size-2xl);
 }
 
 .status-text {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   font-weight: 600;
   color: var(--ds-text-primary);
 }
 
 .status-hint {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: color-mix(in srgb, var(--ds-text-primary) 60%, transparent);
   margin-left: auto;
 }
 
 .input-with-button {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .input-with-button > *:first-child {
@@ -367,12 +367,12 @@ watch(
 
 .error-message {
   color: var(--ds-status-danger);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   margin-top: 4px;
-  padding: 4px 8px;
+  padding: var(--ds-spacing-xs) var(--ds-spacing-sm);
   background: color-mix(in srgb, var(--ds-status-danger) 10%, transparent);
   border-left: 3px solid var(--ds-status-danger);
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
   animation: shake 0.3s ease-in-out;
 }
 
@@ -394,16 +394,16 @@ watch(
   padding: 12px;
   background: color-mix(in srgb, var(--ds-status-danger) 15%, transparent);
   border: 1px solid var(--ds-status-danger);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   color: var(--ds-status-danger);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   animation: fadeIn 0.3s ease-in;
 }
 
 .error-icon {
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
 }
 
 @keyframes fadeIn {

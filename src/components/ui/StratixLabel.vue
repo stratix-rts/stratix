@@ -50,7 +50,7 @@ const labelColor = computed(() => {
 .stratix-label {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
   font-size: v-bind('sizeMap[size]');
   font-weight: 500;
   color: v-bind('labelColor');

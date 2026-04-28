@@ -242,8 +242,8 @@ onUnmounted(() => {
 .param-form {
   font-family: v-bind('getToken("typography.fontFamily.sans")');
   background: v-bind('getToken("colors.background.secondary")');
-  border-radius: 12px;
-  padding: 16px;
+  border-radius: var(--ds-radius-lg);
+  padding: var(--ds-spacing-md);
   color: v-bind('getToken("colors.text.primary")');
   height: 100%;
   display: flex;
@@ -261,18 +261,18 @@ onUnmounted(() => {
 
 .form-title {
   font-family: v-bind('getToken("typography.fontFamily.mono")');
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
   font-weight: 600;
   margin: 0;
   color: v-bind('getToken("colors.text.primary")');
 }
 
 .skill-badge {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: v-bind('getToken("colors.semantic.success")');
   background: v-bind('getToken("colors.semantic.success") + "1A"');
   padding: 4px 12px;
-  border-radius: 12px;
+  border-radius: var(--ds-radius-lg);
   font-weight: 500;
   max-width: 150px;
   overflow: hidden;
@@ -285,7 +285,7 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px 20px;
+  padding: var(--ds-spacing-xl) var(--ds-spacing-lg);
   color: v-bind('getToken("colors.text.muted")');
   flex: 1;
 }
@@ -300,14 +300,14 @@ onUnmounted(() => {
 
 .empty-state p {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
 }
 
 .form-body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
   overflow-y: auto;
 }
 
@@ -345,7 +345,7 @@ onUnmounted(() => {
   width: 20px;
   height: 20px;
   background: v-bind('getToken("colors.text.primary")');
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
   transition: transform 200ms ease;
 }
 
@@ -354,7 +354,7 @@ onUnmounted(() => {
 }
 
 .toggle-label {
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: v-bind('getToken("colors.text.secondary")');
 }
 
@@ -378,11 +378,11 @@ onUnmounted(() => {
 
 .form-body::-webkit-scrollbar-track {
   background: v-bind('getToken("colors.background.tertiary")');
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
 }
 
 .form-body::-webkit-scrollbar-thumb {
   background: v-bind('getToken("colors.border.default")');
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
 }
 </style>

@@ -41,7 +41,7 @@
       <div
         v-for="zone in filteredZones"
         :key="zone.id"
-        class="zone-card"
+        class="zone-card ds-ripple ds-tilt-card"
         :class="{ 'zone-card--active': activeZoneId === zone.id }"
         @click="handleZoneClick(zone)"
       >
@@ -137,7 +137,7 @@ const formatTime = (timestamp: number): string => {
 .zone-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
   height: 100%;
 }
 
@@ -145,19 +145,19 @@ const formatTime = (timestamp: number): string => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 4px;
+  padding: 0 var(--ds-spacing-xs);
 }
 
 .zone-list__search {
-  padding: 0 4px;
+  padding: 0 var(--ds-spacing-xs);
 }
 
 .zone-list__search-input {
   width: 100%;
-  padding: 8px 12px;
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   border: 1px solid var(--ds-border);
   border-radius: var(--ds-radius-md);
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   background: var(--ds-bg-secondary);
   color: var(--ds-text-primary);
 }
@@ -169,13 +169,13 @@ const formatTime = (timestamp: number): string => {
 
 .zone-list__title {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
   font-weight: 600;
   color: var(--ds-text-primary);
 }
 
 .zone-list__add-icon {
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
   margin-right: 4px;
 }
 
@@ -185,24 +185,24 @@ const formatTime = (timestamp: number): string => {
   align-items: center;
   justify-content: center;
   flex: 1;
-  padding: 40px 20px;
+  padding: var(--ds-spacing-xl) var(--ds-spacing-lg);
   text-align: center;
 }
 
 .zone-list__grid {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   overflow-y: auto;
 }
 
 .zone-card {
-  padding: 12px 16px;
+  padding: var(--ds-spacing-md) var(--ds-spacing-md);
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border-default);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .zone-card:hover {
@@ -225,7 +225,7 @@ const formatTime = (timestamp: number): string => {
 
 .zone-card__title {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   font-weight: 600;
   color: var(--ds-text-primary);
   line-height: 1.3;
@@ -233,16 +233,16 @@ const formatTime = (timestamp: number): string => {
 
 .zone-card__count {
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   background: var(--ds-bg-primary);
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 2px var(--ds-spacing-xs);
+  border-radius: var(--ds-radius-sm);
 }
 
 .zone-card__prompt {
   margin: 0 0 12px;
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-secondary);
   line-height: 1.4;
 }
@@ -251,7 +251,7 @@ const formatTime = (timestamp: number): string => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .zone-card__stats {
@@ -263,17 +263,17 @@ const formatTime = (timestamp: number): string => {
 .zone-card__stat {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 11px;
+  gap: var(--ds-spacing-xs);
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
 }
 
 .zone-card__stat-icon {
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
 }
 
 .zone-card__time {
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
 }
 </style>

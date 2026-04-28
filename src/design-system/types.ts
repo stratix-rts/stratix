@@ -486,6 +486,37 @@ export interface SkeletonSemanticToken {
   shimmerDuration: number;
 }
 
+/** 渐变语义 Token */
+export interface GradientSemanticToken {
+  brand: {
+    primary: string;
+    subtle: string;
+    glow: string;
+  };
+  background: {
+    base: string;
+    elevated: string;
+    subtle: string;
+  };
+  status: {
+    success: string;
+    warning: string;
+    danger: string;
+    info: string;
+  };
+}
+
+/** Glassmorphism 语义 Token */
+export interface GlassSemanticToken {
+  background: string;
+  backgroundHover: string;
+  border: string;
+  borderRadius: string;
+  shadow: string;
+  backdropBlur: string;
+  saturation: string;
+}
+
 /** 完整语义 Token 集合 */
 export interface CompleteSemanticTokens {
   button: ButtonSemanticSet;
@@ -503,6 +534,8 @@ export interface CompleteSemanticTokens {
   avatar: AvatarSemanticToken;
   progress: ProgressSemanticToken;
   skeleton: SkeletonSemanticToken;
+  gradient: GradientSemanticToken;
+  glass: GlassSemanticToken;
 }
 
 // ============ Design System ============

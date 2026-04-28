@@ -778,7 +778,7 @@ const formatRelativeTime = (timestamp: number): string => {
 
 .zone-detail__header-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   flex-shrink: 0;
 }
 
@@ -789,17 +789,17 @@ const formatRelativeTime = (timestamp: number): string => {
 
 .zone-detail__title {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--ds-font-size-xl);
   font-weight: 600;
   color: var(--ds-text-primary);
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .zone-detail__edit-hint {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   font-weight: 400;
   color: var(--ds-text-muted);
   opacity: 0;
@@ -812,42 +812,42 @@ const formatRelativeTime = (timestamp: number): string => {
 
 .zone-detail__title-input {
   width: 100%;
-  padding: 4px 8px;
-  font-size: 18px;
+  padding: var(--ds-spacing-xs) var(--ds-spacing-sm);
+  font-size: var(--ds-font-size-xl);
   font-weight: 600;
   color: var(--ds-text-primary);
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-info);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   outline: none;
 }
 
 .zone-detail__section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .zone-detail__section-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .zone-detail__task-header-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .zone-detail__task-actions {
   display: flex;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
 }
 
 .zone-detail__section-title {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   font-weight: 600;
   color: var(--ds-text-secondary);
   text-transform: uppercase;
@@ -857,11 +857,11 @@ const formatRelativeTime = (timestamp: number): string => {
 .zone-detail__prompt-textarea {
   width: 100%;
   padding: 12px;
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-primary);
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border-default);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   resize: vertical;
   font-family: inherit;
   line-height: 1.5;
@@ -885,7 +885,7 @@ const formatRelativeTime = (timestamp: number): string => {
   text-align: center;
   background: var(--ds-bg-tertiary);
   border: 1px dashed var(--ds-border-default);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
 }
 
 .zone-detail__empty-illustration {
@@ -909,14 +909,14 @@ const formatRelativeTime = (timestamp: number): string => {
 
 .zone-detail__empty-text {
   margin: 0 0 4px;
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   font-weight: 500;
   color: var(--ds-text-secondary);
 }
 
 .zone-detail__empty-hint {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-muted);
 }
 
@@ -924,7 +924,7 @@ const formatRelativeTime = (timestamp: number): string => {
 .zone-detail__member-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
 }
 
 .zone-detail__file-item,
@@ -932,11 +932,11 @@ const formatRelativeTime = (timestamp: number): string => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: var(--ds-spacing-sm);
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border-default);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   transition: border-color 0.15s ease;
 }
 
@@ -948,18 +948,18 @@ const formatRelativeTime = (timestamp: number): string => {
 .zone-detail__file-info {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   flex: 1;
   min-width: 0;
 }
 
 .zone-detail__file-icon {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   flex-shrink: 0;
 }
 
 .zone-detail__file-name {
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -967,14 +967,14 @@ const formatRelativeTime = (timestamp: number): string => {
 }
 
 .zone-detail__file-source {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   flex-shrink: 0;
 }
 
 .zone-detail__file-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
   flex-shrink: 0;
 }
 
@@ -985,13 +985,13 @@ const formatRelativeTime = (timestamp: number): string => {
   width: 24px;
   height: 24px;
   padding: 0;
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
   color: var(--ds-text-muted);
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .zone-detail__file-action:hover {
@@ -1007,17 +1007,17 @@ const formatRelativeTime = (timestamp: number): string => {
 .zone-detail__member-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .zone-detail__member-avatar {
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
   flex-shrink: 0;
 }
 
 .zone-detail__member-name {
   flex: 1;
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1037,21 +1037,21 @@ const formatRelativeTime = (timestamp: number): string => {
 .zone-detail__task-create {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   padding: 12px;
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border-default);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
 }
 
 .zone-detail__task-input {
   width: 100%;
-  padding: 8px 12px;
-  font-size: 13px;
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-primary);
   background: var(--ds-bg-primary);
   border: 1px solid var(--ds-border-default);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   outline: none;
   transition: border-color 0.15s ease;
 }
@@ -1062,24 +1062,24 @@ const formatRelativeTime = (timestamp: number): string => {
 
 .zone-detail__task-create-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .zone-detail__task-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
 }
 
 .zone-detail__task-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: var(--ds-spacing-sm);
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border-default);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   transition: border-color 0.15s ease;
 }
 
@@ -1090,17 +1090,17 @@ const formatRelativeTime = (timestamp: number): string => {
 .zone-detail__task-info {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   flex: 1;
   min-width: 0;
 }
 
 .zone-detail__task-status {
-  padding: 4px 8px;
-  font-size: 11px;
+  padding: var(--ds-spacing-xs) var(--ds-spacing-sm);
+  font-size: var(--ds-font-size-xs);
   font-weight: 500;
   border: 1px solid var(--ds-border-default);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   background: var(--ds-bg-primary);
   cursor: pointer;
   flex-shrink: 0;
@@ -1121,7 +1121,7 @@ const formatRelativeTime = (timestamp: number): string => {
 }
 
 .zone-detail__task-title {
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1136,29 +1136,29 @@ const formatRelativeTime = (timestamp: number): string => {
 .zone-detail__task-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   flex-shrink: 0;
 }
 
 .zone-detail__task-assignee {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
 }
 
 .zone-detail__task-no-assignee {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-tertiary, #9ca3af);
 }
 
 .zone-detail__task-action {
-  padding: 2px 6px;
-  font-size: 11px;
+  padding: 2px var(--ds-spacing-xs);
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   background: transparent;
   border: 1px solid var(--ds-border-default);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .zone-detail__task-action:hover {
@@ -1173,11 +1173,11 @@ const formatRelativeTime = (timestamp: number): string => {
 
 /* Messages Section */
 .zone-detail__message-count {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   background: var(--ds-bg-tertiary);
-  padding: 2px 6px;
-  border-radius: 10px;
+  padding: 2px var(--ds-spacing-xs);
+  border-radius: var(--ds-radius-lg);
 }
 
 .zone-detail__messages {
@@ -1195,20 +1195,20 @@ const formatRelativeTime = (timestamp: number): string => {
 }
 
 .zone-detail__message-date {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   font-weight: 600;
   color: var(--ds-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  padding: 4px 0;
+  padding: var(--ds-spacing-xs) 0;
   border-bottom: 1px solid var(--ds-border-default);
   margin-bottom: 4px;
 }
 
 .zone-detail__message {
-  padding: 8px 12px;
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   background: var(--ds-bg-tertiary);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   border: 1px solid var(--ds-border-default);
 }
 
@@ -1220,23 +1220,23 @@ const formatRelativeTime = (timestamp: number): string => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   margin-bottom: 4px;
 }
 
 .zone-detail__message-sender {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   font-weight: 600;
   color: var(--ds-text-secondary);
 }
 
 .zone-detail__message-time {
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
 }
 
 .zone-detail__message-content {
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-primary);
   line-height: 1.4;
   white-space: pre-wrap;
@@ -1245,18 +1245,18 @@ const formatRelativeTime = (timestamp: number): string => {
 
 .zone-detail__message-form {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   margin-top: 8px;
 }
 
 .zone-detail__message-input {
   flex: 1;
-  padding: 8px 12px;
-  font-size: 13px;
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-primary);
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border-default);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   outline: none;
   transition: border-color 0.15s ease;
 }

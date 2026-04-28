@@ -427,7 +427,7 @@ const handleBatchDelete = () => {
 
 .toolbar-right {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .cell-text {
@@ -459,13 +459,13 @@ const handleBatchDelete = () => {
 .count-cell {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
   color: var(--ds-text-secondary);
 }
 
 .action-cell {
   display: flex;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
 }
 
 .seq-cell {
@@ -473,7 +473,7 @@ const handleBatchDelete = () => {
 }
 
 .select-count {
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-secondary);
   white-space: nowrap;
 }

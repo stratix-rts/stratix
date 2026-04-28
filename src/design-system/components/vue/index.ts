@@ -4,3 +4,4 @@
 
 export * from './commandPanel';
 export * from './agentPanel';
+export * from './modal';

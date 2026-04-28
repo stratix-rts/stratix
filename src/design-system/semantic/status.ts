@@ -47,8 +47,11 @@ export type { StatusSemanticSet, StatusToken };
  * errorAlert.style.borderLeft = `3px solid ${statuses.danger.border}`;
  * errorAlert.style.color = statuses.danger.text;
  */
+import { isColorPrimitives } from '../types';
+
 export function getStatusSemantic(theme: DesignSystemTokens): StatusSemanticSet {
-  return generateStatusSemantic(theme.colors as any);
+  const colors = isColorPrimitives(theme.colors) ? theme.colors : theme.colors as any;
+  return generateStatusSemantic(colors);
 }
 
 /**

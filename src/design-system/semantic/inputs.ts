@@ -46,8 +46,11 @@ export type { InputSemanticSet, InputStateToken };
  *   input.style.boxShadow = inputStates.error.shadow;
  * }
  */
+import { isColorPrimitives } from '../types';
+
 export function getInputSemantic(theme: DesignSystemTokens): InputSemanticSet {
-  return generateInputSemantic(theme.colors as any);
+  const colors = isColorPrimitives(theme.colors) ? theme.colors : theme.colors as any;
+  return generateInputSemantic(colors);
 }
 
 /**

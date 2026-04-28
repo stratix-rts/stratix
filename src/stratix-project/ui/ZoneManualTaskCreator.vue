@@ -175,15 +175,15 @@ onMounted(() => {
 
 <style scoped>
 .zone-manual-task-creator {
-  padding: 16px;
+  padding: var(--ds-spacing-md);
   background: var(--ds-bg-secondary);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
 }
 
 .zone-manual-task-creator__form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
 }
 
 .zone-manual-task-creator__field {
@@ -202,7 +202,7 @@ onMounted(() => {
 }
 
 .zone-manual-task-creator__label {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   font-weight: 500;
   color: var(--ds-text-secondary);
 }
@@ -214,12 +214,12 @@ onMounted(() => {
 .zone-manual-task-creator__input,
 .zone-manual-task-creator__textarea,
 .zone-manual-task-creator__select {
-  padding: 8px 12px;
-  font-size: 13px;
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-primary);
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border-default);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   outline: none;
   transition: border-color 0.15s ease;
 }

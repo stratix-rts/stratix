@@ -73,19 +73,19 @@ const skeletonLineHeight = computed(() => {
 .stratix-loading-spinner-container {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .stratix-loading-spinner {
   border: 2px solid currentColor;
   border-top-color: transparent;
-  border-radius: 50%;
-  animation: stratix-spin 0.6s linear infinite;
+  border-radius: var(--ds-radius-full);
+  animation: ds-spin var(--ds-animation-duration-slow, 400ms) linear infinite;
   flex-shrink: 0;
 }
 
 .stratix-loading-spinner__text {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   color: var(--text-secondary, #a0a0b0);
 }
 
@@ -97,7 +97,7 @@ const skeletonLineHeight = computed(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(13, 13, 20, 0.85);
+  background: color-mix(in srgb, var(--ds-bg-base) 85%, transparent);
   backdrop-filter: blur(4px);
 }
 
@@ -105,11 +105,11 @@ const skeletonLineHeight = computed(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
 }
 
 .stratix-loading-fullscreen__text {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   color: var(--text-secondary, #a0a0b0);
 }
 
@@ -117,7 +117,7 @@ const skeletonLineHeight = computed(() => {
 .stratix-loading-skeleton {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .stratix-loading-skeleton__line {
@@ -128,7 +128,7 @@ const skeletonLineHeight = computed(() => {
     var(--bg-elevated, #12121a) 100%
   );
   background-size: 200% 100%;
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   animation: stratix-skeleton-pulse 1.5s ease-in-out infinite;
 }
 
@@ -145,11 +145,7 @@ const skeletonLineHeight = computed(() => {
 }
 
 /* ============ Animations ============ */
-@keyframes stratix-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
+
 
 @keyframes stratix-skeleton-pulse {
   0% {

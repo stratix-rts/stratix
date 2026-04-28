@@ -122,22 +122,22 @@ const removeItem = (type: 'shortTerm' | 'longTerm', index: number) => {
 .memory-editor { font-family: v-bind('getToken("typography.fontFamily.sans")'); padding: 20px; }
 .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid v-bind('getToken("colors.border.default")'); }
 .section-icon { width: 20px; height: 20px; color: v-bind('getToken("colors.warning")'); }
-.section-title { font-family: v-bind('getToken("typography.fontFamily.mono")'); font-size: 14px; font-weight: 600; color: v-bind('getToken("colors.text.primary")'); }
+.section-title { font-family: v-bind('getToken("typography.fontFamily.mono")'); font-size: var(--ds-font-size-md); font-weight: 600; color: v-bind('getToken("colors.text.primary")'); }
 .panels { display: flex; flex-direction: column; gap: 12px; }
-.panel { background: v-bind('getToken("colors.background.tertiary")'); border: 1px solid v-bind('getToken("colors.border.default")'); border-radius: 8px; overflow: hidden; }
-.panel-header { display: flex; align-items: center; gap: 8px; padding: 12px 16px; cursor: pointer; background: v-bind('getToken("colors.background.primary")'); }
+.panel { background: v-bind('getToken("colors.background.tertiary")'); border: 1px solid v-bind('getToken("colors.border.default")'); border-radius: var(--ds-radius-md); overflow: hidden; }
+.panel-header { display: flex; align-items: center; gap: var(--ds-spacing-sm); padding: var(--ds-spacing-md) var(--ds-spacing-md); cursor: pointer; background: v-bind('getToken("colors.background.primary")'); }
 .panel-header:hover { background: v-bind('getToken("colors.background.secondary")'); }
 .panel-icon { width: 18px; height: 18px; color: v-bind('getToken("colors.info")'); }
-.panel-title { font-size: 13px; font-weight: 600; color: v-bind('getToken("colors.text.primary")'); flex: 1; }
-.panel-count { font-size: 12px; color: v-bind('getToken("colors.text.muted")'); background: v-bind('getToken("colors.background.tertiary")'); padding: 2px 8px; border-radius: 12px; }
+.panel-title { font-size: var(--ds-font-size-sm); font-weight: 600; color: v-bind('getToken("colors.text.primary")'); flex: 1; }
+.panel-count { font-size: var(--ds-font-size-sm); color: v-bind('getToken("colors.text.muted")'); background: v-bind('getToken("colors.background.tertiary")'); padding: 2px var(--ds-spacing-sm); border-radius: var(--ds-radius-lg); }
 .chevron { width: 16px; height: 16px; color: v-bind('getToken("colors.text.muted")'); transition: transform 0.2s; }
 .chevron.rotated { transform: rotate(180deg); }
-.panel-body { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
-.tags-container { display: flex; flex-direction: column; gap: 8px; }
-.memory-tag { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: v-bind('getToken("colors.background.secondary")'); border-radius: 6px; }
-.tag-text { flex: 1; font-size: 13px; color: v-bind('getToken("colors.text.primary")'); }
-.tag-remove { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; background: transparent; border: none; cursor: pointer; border-radius: 4px; color: v-bind('getToken("colors.text.muted")'); }
+.panel-body { padding: var(--ds-spacing-md); display: flex; flex-direction: column; gap: var(--ds-spacing-md); }
+.tags-container { display: flex; flex-direction: column; gap: var(--ds-spacing-sm); }
+.memory-tag { display: flex; align-items: center; gap: var(--ds-spacing-sm); padding: var(--ds-spacing-sm) var(--ds-spacing-md); background: v-bind('getToken("colors.background.secondary")'); border-radius: var(--ds-radius-md); }
+.tag-text { flex: 1; font-size: var(--ds-font-size-sm); color: v-bind('getToken("colors.text.primary")'); }
+.tag-remove { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; background: transparent; border: none; cursor: pointer; border-radius: var(--ds-radius-sm); color: v-bind('getToken("colors.text.muted")'); }
 .tag-remove:hover { background: v-bind('getToken("colors.semantic.danger")'); color: white; }
-.add-input-row { display: flex; gap: 8px; }
-.hint { font-size: 12px; color: v-bind('getToken("colors.text.muted")'); }
+.add-input-row { display: flex; gap: var(--ds-spacing-sm); }
+.hint { font-size: var(--ds-font-size-sm); color: v-bind('getToken("colors.text.muted")'); }
 </style>

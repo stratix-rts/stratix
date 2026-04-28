@@ -480,13 +480,13 @@ defineExpose({ validate });
   height: 100%;
   background: var(--ds-bg-secondary);
   border: 1px solid var(--ds-border);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   overflow: hidden;
-  font-family: 'SF Mono', 'Monaco', monospace;
+  font-family: var(--ds-font-mono);
 }
 
 .backend-selector__header {
-  padding: 12px 16px;
+  padding: var(--ds-spacing-md) var(--ds-spacing-md);
   border-bottom: 1px solid var(--ds-border);
   display: flex;
   justify-content: space-between;
@@ -494,21 +494,21 @@ defineExpose({ validate });
 }
 
 .backend-selector__title {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   color: var(--ds-color-primary);
   font-weight: 500;
 }
 
 .backend-selector__subtitle {
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   letter-spacing: 1px;
 }
 
 .backend-selector__type {
   display: flex;
-  gap: 8px;
-  padding: 12px 16px;
+  gap: var(--ds-spacing-sm);
+  padding: var(--ds-spacing-md) var(--ds-spacing-md);
   background: var(--ds-bg-base);
   border-bottom: 1px solid var(--ds-border);
 }
@@ -522,9 +522,9 @@ defineExpose({ validate });
   padding: 12px 8px;
   background: transparent;
   border: 1px solid var(--ds-border);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
   font-family: inherit;
 }
 
@@ -539,11 +539,11 @@ defineExpose({ validate });
 }
 
 .backend-type-btn__icon {
-  font-size: 20px;
+  font-size: var(--ds-font-size-2xl);
 }
 
 .backend-type-btn__label {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-secondary);
 }
 
@@ -554,13 +554,13 @@ defineExpose({ validate });
 .backend-selector__config {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding: var(--ds-spacing-md);
 }
 
 .config-panel {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
 }
 
 .form-field {
@@ -579,14 +579,14 @@ defineExpose({ validate });
 }
 
 .form-label {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .form-label__optional {
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   text-transform: none;
   font-weight: normal;
@@ -594,12 +594,12 @@ defineExpose({ validate });
 
 .form-input,
 .form-select {
-  padding: 10px 12px;
+  padding: 10px var(--ds-spacing-md);
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   color: var(--ds-text-primary);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   font-family: inherit;
   transition: border-color 0.15s ease;
 }
@@ -615,7 +615,7 @@ defineExpose({ validate });
 }
 
 .backend-selector__footer {
-  padding: 12px 16px;
+  padding: var(--ds-spacing-md) var(--ds-spacing-md);
   border-top: 1px solid var(--ds-border);
   display: flex;
   justify-content: space-between;
@@ -624,26 +624,26 @@ defineExpose({ validate });
 }
 
 .status-message {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   padding: 6px 12px;
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   background: var(--ds-bg-tertiary);
   color: var(--ds-text-secondary);
 }
 
 .status-message--success {
-  background: rgba(0, 255, 136, 0.1);
+  background: color-mix(in srgb, var(--ds-status-success) 10%, transparent);
   color: var(--ds-status-success);
 }
 
 .status-message--error {
-  background: rgba(255, 102, 102, 0.1);
+  background: color-mix(in srgb, var(--ds-status-danger) 10%, transparent);
   color: var(--ds-status-danger);
 }
 
 .status-message--testing {
-  background: rgba(255, 200, 0, 0.1);
-  color: #ffcc00;
+  background: color-mix(in srgb, var(--ds-status-warning) 10%, transparent);
+  color: var(--ds-status-warning);
 }
 
 /* Scrollbar */
@@ -657,7 +657,7 @@ defineExpose({ validate });
 
 .backend-selector__config::-webkit-scrollbar-thumb {
   background: var(--ds-border);
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
 }
 
 .backend-selector__config::-webkit-scrollbar-thumb:hover {

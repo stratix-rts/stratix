@@ -76,7 +76,7 @@ onMounted(() => {
 ┌─────────────────────────────────────────────────────────┐
 │ Level 1: Global Tokens (全局令牌)                        │
 │ - colors, spacing, radii, borders, shadows              │
-│ - typography, animation, depth, icons                   │
+│ - typography, animation, depth, icons, gradients        │
 │ - 平台无关，Vue 和 Phaser 共享                            │
 └─────────────────────────────────────────────────────────┘
                            ↓ 继承
@@ -85,6 +85,7 @@ onMounted(() => {
 │ - button.primary.background                             │
 │ - panel.elevated.shadow                                 │
 │ - input.focus.border                                    │
+│ - gradient.brand.primary, glass.background              │
 │ - 随主题变化，动态生成                                    │
 └─────────────────────────────────────────────────────────┘
                            ↓ 组合
@@ -92,6 +93,7 @@ onMounted(() => {
 │ Level 3: Component Tokens (组件级令牌)                   │
 │ - Vue 组件配置                                          │
 │ - Phaser 组件配置                                       │
+│ - 动画预设 (animations.css)                             │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -104,6 +106,8 @@ src/design-system/
 ├── config.ts              # 主配置（主题切换、CSS 注入）
 ├── types.ts               # TypeScript 类型定义
 ├── index.ts               # 统一入口
+├── animations.css         # 动画预设系统
+├── global.css             # 全局基础样式
 ├── tokens/                # Level 1: 全局 Token
 │   ├── colors.ts         # 颜色系统（Primitives + Themes）
 │   ├── spacing.ts
@@ -112,7 +116,8 @@ src/design-system/
 │   ├── shadows.ts
 │   ├── typography.ts
 │   ├── animation.ts
-│   └── depth.ts
+│   ├── depth.ts
+│   └── gradients.ts      # 渐变系统
 ├── semantic/              # Level 2: 语义 Token（主题感知）
 │   ├── _generator.ts     # 语义 Token 生成器
 │   ├── buttons.ts        # 按钮样式
@@ -264,6 +269,50 @@ status.success.text;             // 文字色
 status.success.icon;             // 图标色
 ```
 
+### 渐变系统
+
+```typescript
+const { gradient } = getSemanticTokens();
+
+// 品牌渐变
+gradient.brand.primary;  // linear-gradient(135deg, primary 0%, secondary 100%)
+gradient.brand.subtle;   // 低透明度版本
+gradient.brand.glow;     // 发光效果
+
+// 背景渐变
+gradient.background.base;     // 从 base 到 elevated
+gradient.background.elevated; // 从 elevated 到 overlay
+gradient.background.subtle;   // 半透明覆盖层
+
+// 状态渐变
+gradient.status.success; // 成功状态渐变
+gradient.status.warning;
+gradient.status.danger;
+gradient.status.info;
+```
+
+### Glassmorphism（毛玻璃）
+
+```typescript
+const { glass } = getSemanticTokens();
+
+// 获取毛玻璃参数
+glass.background;   // rgba 背景色
+glass.border;       // 半透明边框
+glass.backdropBlur; // blur 量（如 12px）
+glass.saturation;   // saturate 量（如 120%）
+glass.shadow;       // 专属阴影
+```
+
+在 CSS 中直接使用：
+```css
+.glass-panel {
+  background: var(--ds-glass-bg);
+  border: var(--ds-glass-border);
+  backdrop-filter: blur(var(--ds-glass-blur)) saturate(var(--ds-glass-saturate));
+}
+```
+
 ---
 
 ## 💅 CSS 变量
@@ -286,6 +335,18 @@ status.success.icon;             // 图标色
   --ds-btn-primary-text: #0d0d14;
   --ds-btn-secondary-bg: #12121a;
   --ds-btn-secondary-text: #00ffff;
+  
+  /* 渐变变量 */
+  --ds-gradient-brand-primary: linear-gradient(135deg, #00ffff 0%, #ff00ff 100%);
+  --ds-gradient-brand-subtle: linear-gradient(135deg, #00ffff20 0%, #ff00ff10 100%);
+  --ds-gradient-bg-base: linear-gradient(180deg, #0d0d14 0%, #12121a 100%);
+  --ds-gradient-status-success: linear-gradient(135deg, #00ff8820 0%, #00ff8805 100%);
+  
+  /* Glassmorphism 变量 */
+  --ds-glass-bg: rgba(13, 13, 20, 0.7);
+  --ds-glass-border: 1px solid rgba(0, 255, 255, 0.1);
+  --ds-glass-blur: 12px;
+  --ds-glass-saturate: 120%;
   
   /* 更多变量... */
 }
@@ -455,6 +516,40 @@ initDesignSystem();
 
 ---
 
+## 🎬 动画系统
+
+设计系统提供一套基于 CSS 变量的动画预设：
+
+```css
+/* 进入动画 */
+.ds-animate-fade-in      /* 淡入 */
+.ds-animate-slide-up     /* 从下方滑入 */
+.ds-animate-slide-down   /* 从上方滑入 */
+.ds-animate-slide-right  /* 从左侧滑入 */
+.ds-animate-scale-in     /* 缩放进入 */
+
+/* 退出动画 */
+.ds-animate-fade-out     /* 淡出 */
+.ds-animate-scale-out    /* 缩放退出 */
+
+/* 特殊效果 */
+.ds-animate-glow-pulse   /* 霓虹脉动（Cyberpunk） */
+```
+
+在组件中使用：
+```vue
+<div class="ds-animate-scale-in">内容</div>
+```
+
+动画持续时间与缓动函数自动跟随当前主题的 animation Token：
+```css
+.ds-animate-fade-in {
+  animation: ds-fade-in var(--ds-animation-duration-fast) var(--ds-animation-easing-ease-out);
+}
+```
+
+---
+
 ## 📝 设计原则
 
 1. **主题感知** - 所有语义 Token 随主题自动变化
@@ -463,6 +558,8 @@ initDesignSystem();
 4. **文档即代码** - TypeScript 类型即文档
 5. **渐进式增强** - 从全局 → 语义 → 组件
 6. **大模型友好** - 命名清晰，节约 Token
+7. **性能优先** - 动画仅使用 transform 和 opacity
+8. **向后兼容** - 新增特性不破坏现有 API
 
 ---
 

@@ -12,3 +12,4 @@ export * from './shadows';
 export * from './typography';
 export * from './animation';
 export * from './depth';
+export * from './gradients';

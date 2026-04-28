@@ -135,7 +135,7 @@ const handleDismiss = (id: string) => {
   position: fixed;
   z-index: 9999;
   pointer-events: none;
-  padding: 16px;
+  padding: var(--ds-spacing-md);
 }
 
 .toast-container--top-right {
@@ -161,7 +161,7 @@ const handleDismiss = (id: string) => {
 .toast-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   max-width: 400px;
 }
 
@@ -169,14 +169,31 @@ const handleDismiss = (id: string) => {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  padding: 12px 16px;
-  background: var(--toast-bg);
-  border: 1px solid var(--toast-border);
+  padding: var(--ds-spacing-md) var(--ds-spacing-md);
+  background: var(--ds-glass-bg, var(--toast-bg));
+  border: var(--ds-glass-border, 1px solid var(--toast-border));
   border-left: 3px solid var(--toast-icon);
-  border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  border-radius: var(--ds-radius-sm);
+  box-shadow: var(--ds-glass-shadow, 0 4px 12px rgba(0, 0, 0, 0.4));
   pointer-events: auto;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(var(--ds-glass-blur, 8px)) saturate(var(--ds-glass-saturate, 100%));
+  -webkit-backdrop-filter: blur(var(--ds-glass-blur, 8px)) saturate(var(--ds-glass-saturate, 100%));
+}
+
+.toast-item--success {
+  background: var(--ds-gradient-status-success, var(--toast-bg));
+}
+
+.toast-item--warning {
+  background: var(--ds-gradient-status-warning, var(--toast-bg));
+}
+
+.toast-item--error {
+  background: var(--ds-gradient-status-danger, var(--toast-bg));
+}
+
+.toast-item--info {
+  background: var(--ds-gradient-status-info, var(--toast-bg));
 }
 
 .toast-icon {
@@ -191,20 +208,25 @@ const handleDismiss = (id: string) => {
   height: 100%;
 }
 
+/* Toast 入场时图标缩放动画 */
+.toast-enter-active .toast-icon svg {
+  animation: ds-scale-in 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
 .toast-content {
   flex: 1;
   min-width: 0;
 }
 
 .toast-title {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   font-weight: 500;
   color: var(--toast-text);
   line-height: 1.4;
 }
 
 .toast-message {
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: var(--toast-text);
   opacity: 0.8;
   margin-top: 2px;
@@ -238,96 +260,30 @@ const handleDismiss = (id: string) => {
 
 /* Transition animations */
 .toast-enter-active {
-  animation: toast-in 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation: ds-slide-up 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 .toast-leave-active {
-  animation: toast-out 200ms ease-in forwards;
+  animation: ds-fade-out 200ms var(--ds-animation-easing-ease-in, ease-in) forwards;
 }
 
 .toast-move {
   transition: transform 300ms ease;
 }
 
-@keyframes toast-in {
-  from {
-    opacity: 0;
-    transform: translateX(100%);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes toast-out {
-  from {
-    opacity: 1;
-    transform: translateX(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateX(100%);
-  }
-}
-
 .toast-container--top-right .toast-enter-active {
-  animation: toast-in-right 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation: ds-slide-right 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 .toast-container--top-right .toast-leave-active {
-  animation: toast-out-right 200ms ease-in forwards;
-}
-
-@keyframes toast-in-right {
-  from {
-    opacity: 0;
-    transform: translateX(100%);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes toast-out-right {
-  from {
-    opacity: 1;
-    transform: translateX(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateX(100%);
-  }
+  animation: ds-fade-out 200ms var(--ds-animation-easing-ease-in, ease-in) forwards;
 }
 
 .toast-container--bottom-right .toast-enter-active {
-  animation: toast-in-bottom-right 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation: ds-slide-up 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 .toast-container--bottom-right .toast-leave-active {
-  animation: toast-out-bottom-right 200ms ease-in forwards;
-}
-
-@keyframes toast-in-bottom-right {
-  from {
-    opacity: 0;
-    transform: translateY(100%);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes toast-out-bottom-right {
-  from {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(100%);
-  }
+  animation: ds-fade-out 200ms var(--ds-animation-easing-ease-in, ease-in) forwards;
 }
 </style>

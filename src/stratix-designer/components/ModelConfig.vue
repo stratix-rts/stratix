@@ -167,7 +167,7 @@ const modelOptions = [
 
 .section-title {
   font-family: v-bind('getToken("typography.fontFamily.mono")');
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   font-weight: 600;
   color: v-bind('getToken("colors.text.primary")');
 }
@@ -178,7 +178,7 @@ const modelOptions = [
 
 .label {
   display: block;
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   font-weight: 500;
   color: v-bind('getToken("colors.text.secondary")');
   margin-bottom: 8px;
@@ -198,7 +198,7 @@ const modelOptions = [
 
 .model-group-label {
   grid-column: 1 / -1;
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   font-weight: 600;
   color: v-bind('getToken("colors.text.muted")');
   margin-top: 8px;
@@ -210,7 +210,7 @@ const modelOptions = [
   padding: 12px;
   background: v-bind('getToken("colors.background.tertiary")');
   border: 1px solid v-bind('getToken("colors.border.default")');
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   cursor: pointer;
   transition: all 0.2s;
   text-align: left;
@@ -227,21 +227,21 @@ const modelOptions = [
 }
 
 .model-option-name {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   font-weight: 600;
   color: v-bind('getToken("colors.text.primary")');
   margin-bottom: 4px;
 }
 
 .model-option-desc {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: v-bind('getToken("colors.text.muted")');
 }
 
 .divider {
   height: 1px;
   background: v-bind('getToken("colors.border.default")');
-  margin: 24px 0;
+  margin: var(--ds-spacing-lg) 0;
 }
 
 .params-section {
@@ -265,7 +265,7 @@ const modelOptions = [
 
 .params-title {
   font-family: v-bind('getToken("typography.fontFamily.mono")');
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   font-weight: 600;
   color: v-bind('getToken("colors.text.primary")');
 }
@@ -273,7 +273,7 @@ const modelOptions = [
 .param-item {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .param-header {
@@ -283,13 +283,13 @@ const modelOptions = [
 }
 
 .param-label {
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   font-weight: 500;
   color: v-bind('getToken("colors.text.secondary")');
 }
 
 .param-value {
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   font-weight: 600;
   color: v-bind('getToken("colors.info")');
   font-family: v-bind('getToken("typography.fontFamily.mono")');
@@ -298,7 +298,7 @@ const modelOptions = [
 .slider {
   width: 100%;
   height: 6px;
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
   background: v-bind('getToken("colors.background.tertiary")');
   outline: none;
   -webkit-appearance: none;
@@ -308,33 +308,33 @@ const modelOptions = [
   -webkit-appearance: none;
   width: 18px;
   height: 18px;
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
   background: v-bind('getToken("colors.info")');
   cursor: pointer;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--ds-shadow-sm);
 }
 
 .param-hints {
   display: flex;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: v-bind('getToken("colors.text.muted")');
 }
 
 .tokens-input-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .input-field {
   flex: 1;
-  padding: 8px 12px;
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   background: v-bind('getToken("colors.background.tertiary")');
   border: 1px solid v-bind('getToken("colors.border.default")');
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   color: v-bind('getToken("colors.text.primary")');
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   outline: none;
 }
 
@@ -343,7 +343,7 @@ const modelOptions = [
 }
 
 .tokens-unit {
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: v-bind('getToken("colors.text.muted")');
   white-space: nowrap;
 }

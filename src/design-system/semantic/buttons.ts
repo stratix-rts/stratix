@@ -34,11 +34,11 @@ export type { ButtonSemanticSet, ButtonSemanticToken };
  * button.style.backgroundColor = buttons.primary.background;
  * button.style.color = buttons.primary.text;
  */
+import { isColorPrimitives } from '../types';
+
 export function getButtonSemantic(theme: DesignSystemTokens): ButtonSemanticSet {
-  return generateButtonSemantic(
-    theme.colors as any,
-    theme.radii as any
-  );
+  const colors = isColorPrimitives(theme.colors) ? theme.colors : theme.colors as any;
+  return generateButtonSemantic(colors, theme.radii);
 }
 
 /**

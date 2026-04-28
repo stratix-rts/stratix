@@ -516,7 +516,7 @@ defineExpose({ validate });
   border: 1px solid var(--ds-border, #333);
   border-radius: var(--ds-radii-lg, 8px);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
   font-family: inherit;
 }
 
@@ -607,18 +607,18 @@ defineExpose({ validate });
 }
 
 .status-msg--success {
-  background: rgba(0, 255, 136, 0.1);
+  background: color-mix(in srgb, var(--ds-status-success) 10%, transparent);
   color: var(--ds-status-success, #00ff88);
 }
 
 .status-msg--error {
-  background: rgba(255, 68, 87, 0.1);
+  background: color-mix(in srgb, var(--ds-status-danger) 10%, transparent);
   color: var(--ds-status-danger, #ff4757);
 }
 
 .status-msg--testing {
-  background: rgba(255, 200, 0, 0.1);
-  color: var(--ds-color-warning, #ffcc00);
+  background: color-mix(in srgb, var(--ds-status-warning) 10%, transparent);
+  color: var(--ds-status-warning, #ffcc00);
 }
 
 /* ── Scrollbar ── 简洁 */
@@ -632,7 +632,7 @@ defineExpose({ validate });
 
 .backend-selector__body::-webkit-scrollbar-thumb {
   background: var(--ds-border, #333);
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
 }
 
 .backend-selector__body::-webkit-scrollbar-thumb:hover {

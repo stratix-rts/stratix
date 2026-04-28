@@ -76,15 +76,27 @@ export class ZoneRepository {
   }
 
   // Zone CRUD operations
-  getZonesByProject(projectId: string): Zone[] {
+  getZonesByProject(projectId: string, limit?: number, offset?: number): Zone[] {
     // JOIN with zones table to get location/config fields
-    const rows = this.db.prepare(`
+    let query = `
       SELECT zc.*, z.description, z.priority, z.status, z.path, z.present_agent_ids, z.started_at, z.completed_at, z.config as zone_config
       FROM zone_contexts zc
       LEFT JOIN zones z ON z.zone_context_id = zc.zone_id
       WHERE zc.project_id = ? AND zc.deleted_at IS NULL
       ORDER BY zc.created_at DESC
-    `).all(projectId) as ZoneContextRow[];
+    `;
+    const params: (string | number)[] = [projectId];
+
+    if (limit !== undefined) {
+      query += ' LIMIT ?';
+      params.push(limit);
+      if (offset !== undefined) {
+        query += ' OFFSET ?';
+        params.push(offset);
+      }
+    }
+
+    const rows = this.db.prepare(query).all(...params) as ZoneContextRow[];
 
     if (rows.length === 0) return [];
 
@@ -93,6 +105,14 @@ export class ZoneRepository {
     const filesByZone = this.getFilesBatch(zoneIds);
 
     return rows.map(row => this.mapRowToZone(row, filesByZone));
+  }
+
+  getZonesByProjectCount(projectId: string): number {
+    const result = this.db.prepare(`
+      SELECT COUNT(*) as count FROM zone_contexts
+      WHERE project_id = ? AND deleted_at IS NULL
+    `).get(projectId) as { count: number };
+    return result.count;
   }
 
   getZone(zoneId: string): Zone | null {
@@ -110,12 +130,18 @@ export class ZoneRepository {
     const now = Date.now();
     const zoneId = generateId('zone');
 
-    const stmt = this.db.prepare(`
+    // Insert into zone_contexts
+    this.db.prepare(`
       INSERT INTO zone_contexts (zone_id, project_id, title, prompt, members, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
+    `).run(zoneId, projectId, title, prompt, '[]', now, now);
 
-    stmt.run(zoneId, projectId, title, prompt, '[]', now, now);
+    // Also insert into zones table for FK consistency (zone_context_id = zone_id)
+    // This is needed because tasks table has FK REFERENCES zones(zone_id)
+    this.db.prepare(`
+      INSERT INTO zones (zone_id, name, type, project_id, position_x, position_y, width, height, status, config, zone_context_id, created_at, updated_at)
+      VALUES (?, ?, 'task', ?, 0, 0, 400, 300, 'idle', '{}', ?, ?, ?)
+    `).run(zoneId, title, projectId, zoneId, now, now);
 
     return {
       id: zoneId,
@@ -193,8 +219,8 @@ export class ZoneRepository {
   }
 
   permanentlyDeleteZone(zoneId: string): boolean {
-    // Physical delete - use with caution
-    const stmt = this.db.prepare('DELETE FROM zone_contexts WHERE zone_id = ?');
+    // Physical delete - only delete if already soft-deleted (deleted_at IS NOT NULL)
+    const stmt = this.db.prepare('DELETE FROM zone_contexts WHERE zone_id = ? AND deleted_at IS NOT NULL');
     const result = stmt.run(zoneId);
     return result.changes > 0;
   }

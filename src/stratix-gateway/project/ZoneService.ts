@@ -7,6 +7,7 @@ import { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskCreateRequest, ZoneTaskUpda
 import { gatewayEventBus } from '../GatewayEventBus';
 import { stratixStateStore, ZoneState } from '../../stratix-core/state';
 import { PermissionOrchestrator, PermissionContext } from '../../stratix-core/permission';
+import { ZoneAgent } from '../../stratix-agent/core/ZoneAgent';
 
 export interface ZoneFileBatchRequest {
   files: Array<{
@@ -175,7 +176,38 @@ export class ZoneService {
 
     const created = zoneRepository.createZone(projectId, title, prompt);
     this.syncZoneToStore(created);
+
+    // Publish zone:created event first (before ZoneAgent starts)
+    gatewayEventBus.publishZoneEvent('zone:created', created.id, created.projectId!, {
+      title: created.title,
+      prompt: created.prompt,
+      creator: agentId,
+    });
+
+    // Start ZoneAgent to split OKR into tasks
+    this.startZoneAgent(created);
+
     return created;
+  }
+
+  /**
+   * Start ZoneAgent for a newly created zone
+   * ZoneAgent will parse OKR and create tasks in TaskQueue
+   */
+  private async startZoneAgent(zone: Zone): Promise<void> {
+    try {
+      const zoneAgent = new ZoneAgent(zone.id, zone.title, zone.prompt || '');
+
+      // Check if zone has OKR content to split
+      if (zone.prompt && zone.prompt.trim().length > 0) {
+        const tasks = await zoneAgent.splitOKRToTasks();
+        console.log(`[ZoneService] ZoneAgent created ${tasks.length} tasks for zone ${zone.id}`);
+      } else {
+        console.log(`[ZoneService] Zone ${zone.id} has no OKR content to split`);
+      }
+    } catch (error) {
+      console.error(`[ZoneService] Failed to start ZoneAgent for zone ${zone.id}:`, error);
+    }
   }
 
   public async updateZone(zoneId: string, updates: { title?: string; prompt?: string }, agentId: string = 'system'): Promise<Zone> {
@@ -314,9 +346,15 @@ export class ZoneService {
 
     for (const zone of deletedZones) {
       try {
-        zoneRepository.permanentlyDeleteZone(zone.id);
-        this.removeZoneFromStore(zone.id);
-        deleted++;
+        const actuallyDeleted = zoneRepository.permanentlyDeleteZone(zone.id);
+        if (actuallyDeleted) {
+          this.removeZoneFromStore(zone.id);
+          deleted++;
+        } else {
+          // Zone wasn't actually deleted (e.g., not soft-deleted or already permanently deleted)
+          console.warn(`[ZoneService] Zone ${zone.id} was not permanently deleted - may not be soft-deleted`);
+          failed++;
+        }
       } catch (error) {
         console.warn(`[ZoneService] Failed to permanently delete zone ${zone.id}:`, error);
         failed++;

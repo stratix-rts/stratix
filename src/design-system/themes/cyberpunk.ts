@@ -13,7 +13,9 @@ import { Animation } from '../tokens/animation';
 import {
   CyberpunkPrimitives,
   Cyan,
+  Magenta,
 } from '../tokens/colors';
+import { generateGradients } from '../tokens/gradients';
 import { Depth } from '../tokens/depth';
 import { Spacing } from '../tokens/spacing';
 import type { DesignSystemTokens } from '../types';
@@ -29,17 +31,18 @@ const CyberpunkRadii = {
 } as const;
 
 // 主题特定的阴影配置
+// 使用多层阴影创造霓虹折射效果
 const CyberpunkShadows = {
-  sm: '0 1px 2px rgba(0, 0, 0, 0.3)',
-  md: '0 4px 8px rgba(0, 0, 0, 0.4)',
-  lg: '0 8px 16px rgba(0, 0, 0, 0.5)',
-  xl: '0 16px 32px rgba(0, 0, 0, 0.6)',
-  '2xl': '0 24px 48px rgba(0, 0, 0, 0.7)',
+  sm: '0 1px 2px rgba(0, 0, 0, 0.4), 0 0 2px rgba(0, 204, 204, 0.05)',
+  md: '0 4px 12px rgba(0, 0, 0, 0.5), 0 0 8px rgba(0, 204, 204, 0.08)',
+  lg: '0 8px 24px rgba(0, 0, 0, 0.6), 0 0 16px rgba(0, 204, 204, 0.1)',
+  xl: '0 16px 40px rgba(0, 0, 0, 0.7), 0 0 24px rgba(0, 204, 204, 0.12)',
+  '2xl': '0 24px 60px rgba(0, 0, 0, 0.8), 0 0 32px rgba(0, 204, 204, 0.15)',
   // Cyberpunk 特有的发光阴影
-  glow: `0 0 20px ${Cyan[500]}80`,
-  'glow-sm': `0 0 10px ${Cyan[500]}60`,
-  'glow-lg': `0 0 40px ${Cyan[500]}40`,
-  inner: 'inset 0 2px 4px rgba(0, 0, 0, 0.4)',
+  glow: `0 0 20px ${Cyan[500]}80, 0 0 40px ${Cyan[500]}40`,
+  'glow-sm': `0 0 10px ${Cyan[500]}60, 0 0 20px ${Cyan[500]}30`,
+  'glow-lg': `0 0 40px ${Cyan[500]}40, 0 0 80px ${Cyan[500]}20`,
+  inner: 'inset 0 2px 6px rgba(0, 0, 0, 0.5), inset 0 0 4px rgba(0, 204, 204, 0.05)',
 } as const;
 
 // 主题特定的字体配置
@@ -68,6 +71,19 @@ const CyberpunkTypography = {
     relaxed: 1.75,
   },
 } as const;
+
+// 主题特定渐变配置
+const CyberpunkGradients = generateGradients({
+  primary: Cyan[500],
+  secondary: Magenta[500],
+  bgBase: CyberpunkPrimitives.background.base,
+  bgElevated: CyberpunkPrimitives.background.elevated,
+  bgOverlay: CyberpunkPrimitives.background.overlay,
+  success: CyberpunkPrimitives.status.success,
+  warning: CyberpunkPrimitives.status.warning,
+  danger: CyberpunkPrimitives.status.danger,
+  info: CyberpunkPrimitives.status.info,
+});
 
 // 生成语义 Token
 const semanticTokens = generateAllSemanticTokens(
@@ -98,9 +114,10 @@ export const CyberpunkTheme: DesignSystemTokens = {
     sizes: IconSizes,
     registry: {},
   },
+  gradients: CyberpunkGradients,
   // 使用生成的语义 Token
   ...semanticTokens,
 };
 
 // 导出主题特定配置，供需要精细控制的组件使用
-export { CyberpunkRadii, CyberpunkShadows, CyberpunkTypography };
+export { CyberpunkRadii, CyberpunkShadows, CyberpunkTypography, CyberpunkGradients };

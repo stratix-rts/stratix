@@ -182,28 +182,30 @@ onUnmounted(() => {
 
 .stratix-dropdown {
   position: fixed;
-  background: var(--ds-bg-secondary);
-  border: 1px solid var(--ds-border-default);
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  background: var(--ds-glass-bg, var(--ds-bg-secondary));
+  border: var(--ds-glass-border, 1px solid var(--ds-border-default));
+  border-radius: var(--ds-radius-md);
+  box-shadow: var(--ds-glass-shadow, var(--ds-shadow-md));
+  backdrop-filter: blur(var(--ds-glass-blur)) saturate(var(--ds-glass-saturate));
+  -webkit-backdrop-filter: blur(var(--ds-glass-blur)) saturate(var(--ds-glass-saturate));
   min-width: 140px;
   overflow: hidden;
 }
 
 .stratix-dropdown__menu {
-  padding: 4px;
+  padding: var(--ds-spacing-xs);
 }
 
 .stratix-dropdown__item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 4px;
+  gap: var(--ds-spacing-sm);
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
+  border-radius: var(--ds-radius-sm);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-primary);
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .stratix-dropdown__item:hover:not(.stratix-dropdown__item--disabled) {
@@ -218,7 +220,7 @@ onUnmounted(() => {
 .stratix-dropdown__indicator {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
   flex-shrink: 0;
 }
 
@@ -235,7 +237,7 @@ onUnmounted(() => {
 .stratix-dropdown__divider {
   height: 1px;
   background: var(--ds-border-default);
-  margin: 4px 0;
+  margin: var(--ds-spacing-xs) 0;
 }
 
 /* 动画 */
@@ -247,6 +249,10 @@ onUnmounted(() => {
 .stratix-dropdown-enter-from,
 .stratix-dropdown-leave-to {
   opacity: 0;
-  transform: scale(0.95);
+  transform: translateY(calc(-1 * var(--ds-spacing-sm, 8px)));
+}
+
+.stratix-dropdown-enter-active .stratix-dropdown__menu {
+  animation: ds-slide-down var(--ds-animation-duration-normal) var(--ds-animation-easing-ease-out);
 }
 </style>

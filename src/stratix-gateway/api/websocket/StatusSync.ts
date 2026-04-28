@@ -133,6 +133,7 @@ export class StatusSyncService {
 
   private broadcastZoneEvent(event: ZoneEvent): void {
     const eventTypeMap: Record<ZoneEvent['type'], StratixStateSyncEventType> = {
+      'zone:created': 'stratix:zone_created',
       'zone:updated': 'stratix:zone_updated',
       'zone:file_added': 'stratix:zone_file_added',
       'zone:file_removed': 'stratix:zone_file_removed',
@@ -147,6 +148,11 @@ export class StatusSyncService {
       'zone:task_claimed': 'stratix:zone_task_claimed',
       'zone:message_added': 'stratix:zone_message_added'
     };
+
+    // For zone:created events, notify idle agents
+    if (event.type === 'zone:created') {
+      this.notifyIdleAgentsZoneCreated(event);
+    }
 
     this.broadcast({
       eventType: eventTypeMap[event.type],
@@ -170,6 +176,39 @@ export class StatusSyncService {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(welcomeMessage));
     }
+  }
+
+  /**
+   * Notify all connected idle agents about a new zone creation
+   * Agents can decide whether to join based on their capabilities
+   */
+  private notifyIdleAgentsZoneCreated(event: ZoneEvent): void {
+    const notification: StratixStateSyncEvent = {
+      eventType: 'stratix:zone_created',
+      payload: {
+        zoneId: event.zoneId,
+        projectId: event.projectId,
+        data: {
+          title: event.data?.title as string || 'Untitled Zone',
+          prompt: event.data?.prompt as string || '',
+          creator: event.data?.creator as string || 'system',
+        }
+      },
+      timestamp: Date.now(),
+      requestId: `stratix-req-${Date.now()}`
+    };
+
+    const message = JSON.stringify(notification);
+
+    // Send to all connected agent clients
+    // The agents will decide whether to join based on their capabilities
+    this.clients.forEach(client => {
+      const clientType = this.clientInfo.get(client)?.type;
+      if (clientType === 'agent' && client.readyState === WebSocket.OPEN) {
+        client.send(message);
+        console.log(`[StatusSync] Notified agent about new zone: ${event.zoneId}`);
+      }
+    });
   }
 
   private startHeartbeat(): void {

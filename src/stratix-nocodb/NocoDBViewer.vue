@@ -159,7 +159,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   border-bottom: 1px solid var(--border-color, #e5e7eb);
   background: var(--bg-secondary, #f9fafb);
 }
@@ -174,16 +174,16 @@ onUnmounted(() => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--warning, #f59e0b);
+  background: var(--ds-status-warning);
   transition: background-color 0.2s;
 }
 
 .status-dot.active {
-  background: var(--success, #10b981);
+  background: var(--ds-status-success);
 }
 
 .status-text {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--text-secondary, #6b7280);
 }
 

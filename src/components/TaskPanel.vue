@@ -354,11 +354,11 @@ onUnmounted(() => {
   }
 
   .panel-header {
-    padding: 12px 16px;
+    padding: var(--ds-spacing-md) var(--ds-spacing-md);
   }
 
   .panel-body {
-    padding: 12px 16px;
+    padding: var(--ds-spacing-md) var(--ds-spacing-md);
   }
 }
 
@@ -376,7 +376,7 @@ onUnmounted(() => {
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--ds-text-muted);
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -420,38 +420,38 @@ onUnmounted(() => {
 
 .project-info h3 {
   margin: 0 0 4px 0;
-  font-size: 18px;
+  font-size: var(--ds-font-size-xl);
   color: var(--ds-text-primary);
 }
 
 .project-path {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-muted);
-  font-family: monospace;
+  font-family: var(--ds-font-mono);
 }
 
 .task-stats {
   display: flex;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
 }
 
 .stat-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 8px 16px;
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   background: var(--ds-bg-tertiary);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
 }
 
 .stat-label {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   margin-bottom: 4px;
 }
 
 .stat-value {
-  font-size: 18px;
+  font-size: var(--ds-font-size-xl);
   font-weight: bold;
   color: var(--ds-text-primary);
 }
@@ -490,7 +490,7 @@ onUnmounted(() => {
   height: 40px;
   border: 3px solid var(--ds-border);
   border-top-color: var(--ds-brand-primary);
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
   animation: spin 0.8s linear infinite;
   margin-bottom: 16px;
 }
@@ -517,7 +517,7 @@ onUnmounted(() => {
 }
 
 .empty-hint {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   margin-top: 8px;
 }
 
@@ -528,10 +528,10 @@ onUnmounted(() => {
 }
 
 .task-item {
-  padding: 16px;
+  padding: var(--ds-spacing-md);
   background: var(--ds-bg-secondary);
   border: 1px solid var(--ds-border);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -549,7 +549,7 @@ onUnmounted(() => {
 .task-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   margin-bottom: 8px;
 }
 
@@ -562,13 +562,13 @@ onUnmounted(() => {
 .task-id {
   font-weight: bold;
   color: var(--ds-brand-primary);
-  font-family: monospace;
+  font-family: var(--ds-font-mono);
 }
 
 .priority-badge {
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 10px;
+  padding: 2px var(--ds-spacing-sm);
+  border-radius: var(--ds-radius-sm);
+  font-size: var(--ds-font-size-xs);
   font-weight: bold;
   color: var(--ds-text-primary);
   text-transform: uppercase;
@@ -576,21 +576,21 @@ onUnmounted(() => {
 
 .task-description {
   color: var(--ds-text-secondary);
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   margin-bottom: 12px;
   line-height: 1.4;
 }
 
 .task-meta {
   display: flex;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
   margin-bottom: 12px;
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
 }
 
 .meta-item {
   display: flex;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
 }
 
 .meta-label {
@@ -603,7 +603,7 @@ onUnmounted(() => {
 
 .task-progress {
   height: 4px;
-  border-radius: 2px;
+  border-radius: var(--ds-radius-sm);
   overflow: hidden;
 }
 

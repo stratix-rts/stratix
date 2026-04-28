@@ -255,14 +255,14 @@ const handleCreateSelect = (value: string | number) => {
 
 .panel-header h3 {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   color: v-bind('getToken("colors.text.primary")');
 }
 
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .refresh-info {
@@ -271,9 +271,9 @@ const handleCreateSelect = (value: string | number) => {
   gap: 6px;
   margin-bottom: 12px;
   padding: 6px 10px;
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: 4px;
-  font-size: 11px;
+  background: color-mix(in srgb, var(--ds-bg-elevated) 3%, transparent);
+  border-radius: var(--ds-radius-sm);
+  font-size: var(--ds-font-size-xs);
 }
 
 .refresh-label {
@@ -282,21 +282,21 @@ const handleCreateSelect = (value: string | number) => {
 
 .refresh-time {
   color: v-bind('getToken("colors.text.muted")');
-  font-family: 'SF Mono', 'Monaco', monospace;
+  font-family: var(--ds-font-mono);
 }
 
 .agent-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .agent-card {
   display: flex;
   align-items: center;
-  padding: 10px 12px;
+  padding: 10px var(--ds-spacing-md);
   background: v-bind('getToken("colors.background.tertiary")');
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   cursor: pointer;
   transition: all 0.2s;
   border: 1px solid transparent;
@@ -322,7 +322,7 @@ const handleCreateSelect = (value: string | number) => {
 .avatar-img {
   width: 100%;
   height: 100%;
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   object-fit: cover;
   image-rendering: pixelated;
 }
@@ -333,7 +333,7 @@ const handleCreateSelect = (value: string | number) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
 }
 
 .status-dot {
@@ -342,7 +342,7 @@ const handleCreateSelect = (value: string | number) => {
   right: -2px;
   width: 10px;
   height: 10px;
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
   border: 2px solid v-bind('getToken("colors.background.secondary")');
   box-shadow: 0 0 4px currentColor;
 }
@@ -353,7 +353,7 @@ const handleCreateSelect = (value: string | number) => {
 }
 
 .agent-name {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   color: v-bind('getToken("colors.text.primary")');
   white-space: nowrap;
   overflow: hidden;
@@ -364,8 +364,8 @@ const handleCreateSelect = (value: string | number) => {
 .agent-meta {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 11px;
+  gap: var(--ds-spacing-xs);
+  font-size: var(--ds-font-size-xs);
 }
 
 .agent-status {
@@ -382,25 +382,25 @@ const handleCreateSelect = (value: string | number) => {
 
 .empty-state {
   text-align: center;
-  padding: 40px 20px;
+  padding: var(--ds-spacing-xl) var(--ds-spacing-lg);
   color: v-bind('getToken("colors.text.muted")');
   line-height: 1.8;
 }
 
 .empty-title {
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
   color: v-bind('getToken("colors.text.secondary")');
-  margin: 16px 0 8px;
+  margin: var(--ds-spacing-md) 0 8px;
 }
 
 .empty-desc {
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   margin-bottom: 20px;
 }
 
 .empty-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   justify-content: center;
 }
 
@@ -408,7 +408,7 @@ const handleCreateSelect = (value: string | number) => {
   display: inline-block;
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
   margin-right: 8px;
 }
 </style>

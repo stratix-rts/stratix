@@ -294,12 +294,12 @@ function escapeHtml(text: string): string {
 .rules-editor {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
   padding: 12px;
   background: var(--ds-bg-secondary);
   border: 1px solid var(--ds-border);
-  border-radius: 8px;
-  font-family: 'SF Mono', 'Monaco', monospace;
+  border-radius: var(--ds-radius-md);
+  font-family: var(--ds-font-mono);
   max-height: 500px;
   overflow-y: auto;
 }
@@ -307,11 +307,11 @@ function escapeHtml(text: string): string {
 .section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .section__label {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -336,7 +336,7 @@ function escapeHtml(text: string): string {
 }
 
 .template-category__label {
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
 }
 
@@ -350,12 +350,12 @@ function escapeHtml(text: string): string {
   padding: 5px 10px;
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   color: var(--ds-text-secondary);
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   font-family: inherit;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .template-btn:hover {
@@ -373,33 +373,33 @@ function escapeHtml(text: string): string {
 .rules-empty {
   padding: 12px;
   color: var(--ds-text-muted);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   text-align: center;
   background: var(--ds-bg-tertiary);
   border: 1px dashed var(--ds-border);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
 }
 
 .rule-item {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   padding: 8px 10px;
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
 }
 
 .rule-item__number {
   color: var(--ds-color-primary);
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   min-width: 18px;
 }
 
 .rule-item__text {
   flex: 1;
   color: var(--ds-text-primary);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   line-height: 1.4;
   word-break: break-word;
 }
@@ -408,12 +408,12 @@ function escapeHtml(text: string): string {
   padding: 3px 8px;
   background: transparent;
   border: 1px solid var(--ds-border);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   color: var(--ds-text-secondary);
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
   font-family: inherit;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
   white-space: nowrap;
 }
 
@@ -434,17 +434,17 @@ function escapeHtml(text: string): string {
 /* 添加规则输入 */
 .add-rule-row {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .add-rule-input {
   flex: 1;
-  padding: 8px 12px;
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   color: var(--ds-text-primary);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   font-family: inherit;
   outline: none;
   transition: border-color 0.15s ease;
@@ -459,15 +459,15 @@ function escapeHtml(text: string): string {
 }
 
 .add-rule-btn {
-  padding: 8px 16px;
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   background: var(--ds-color-primary);
   border: 1px solid var(--ds-color-primary);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   color: var(--ds-text-on-accent);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   font-family: inherit;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .add-rule-btn:hover:not(:disabled) {
@@ -481,15 +481,15 @@ function escapeHtml(text: string): string {
 
 /* 清空按钮 */
 .clear-all-btn {
-  padding: 8px 16px;
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   background: transparent;
   border: 1px solid var(--ds-color-danger);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   color: var(--ds-color-danger);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   font-family: inherit;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .clear-all-btn:hover:not(:disabled) {

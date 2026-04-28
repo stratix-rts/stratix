@@ -609,7 +609,7 @@ onMounted(() => {
   color: var(--ds-text-primary, #eee);
   z-index: 10000;
   max-width: 220px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--ds-shadow-lg);
   pointer-events: none;
 }
 
@@ -646,7 +646,7 @@ onMounted(() => {
 .stp-tree::-webkit-scrollbar-thumb,
 .stp-attrs::-webkit-scrollbar-thumb {
   background: var(--ds-border, #333);
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
 }
 
 .stp-tree::-webkit-scrollbar-thumb:hover,

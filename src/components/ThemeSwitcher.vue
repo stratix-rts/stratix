@@ -68,11 +68,14 @@ onUnmounted(() => {
 <style scoped>
 .theme-switcher {
   display: flex;
-  gap: 8px;
-  padding: 8px;
-  background: var(--ds-bg-secondary);
-  border-radius: 8px;
-  border: 1px solid var(--ds-border);
+  gap: var(--ds-spacing-sm);
+  padding: var(--ds-spacing-sm);
+  background: var(--ds-glass-bg, var(--ds-bg-secondary));
+  border: var(--ds-glass-border, 1px solid var(--ds-border));
+  border-radius: var(--ds-radius-md);
+  box-shadow: var(--ds-glass-shadow, none);
+  backdrop-filter: blur(var(--ds-glass-blur)) saturate(var(--ds-glass-saturate));
+  -webkit-backdrop-filter: blur(var(--ds-glass-blur)) saturate(var(--ds-glass-saturate));
 }
 
 .theme-btn {
@@ -81,31 +84,36 @@ onUnmounted(() => {
   gap: 6px;
   padding: 6px 12px;
   border: 2px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   font-weight: 500;
-  transition: all 0.2s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .theme-btn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--ds-shadow-md);
 }
 
 .theme-btn.active {
   border-color: var(--ds-accent);
   box-shadow: 0 0 0 2px var(--ds-accent)40;
+  background: var(--ds-gradient-brand-subtle);
 }
 
 .theme-dot {
   width: 12px;
   height: 12px;
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
   box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
 }
 
+.theme-btn:hover .theme-dot {
+  animation: ds-icon-bounce var(--ds-animation-duration-fast) ease;
+}
+
 .theme-name {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
 }
 </style>

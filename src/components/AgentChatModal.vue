@@ -284,7 +284,7 @@ const formatTime = (ms: number) => {
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .settings-btn {
@@ -296,10 +296,10 @@ const formatTime = (ms: number) => {
   padding: 0;
   background: transparent;
   border: 1px solid var(--ds-border-default);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   cursor: pointer;
-  font-size: 14px;
-  transition: all 0.15s ease;
+  font-size: var(--ds-font-size-md);
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .settings-btn:hover {
@@ -318,8 +318,8 @@ const formatTime = (ms: number) => {
   max-height: 400px;
   background: var(--ds-bg-secondary);
   border: 1px solid var(--ds-border-default);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border-radius: var(--ds-radius-md);
+  box-shadow: var(--ds-shadow-md);
   z-index: 1000;
   margin-top: 4px;
   overflow: hidden;
@@ -331,7 +331,7 @@ const formatTime = (ms: number) => {
   align-items: center;
   padding: 12px;
   border-bottom: 1px solid var(--ds-border-default);
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   font-weight: 600;
   color: var(--ds-text-primary);
 }
@@ -340,9 +340,9 @@ const formatTime = (ms: number) => {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-muted);
-  padding: 4px;
+  padding: var(--ds-spacing-xs);
 }
 
 .close-btn:hover {
@@ -358,20 +358,20 @@ const formatTime = (ms: number) => {
   padding: 20px;
   text-align: center;
   color: var(--ds-text-muted);
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
 }
 
 .skill-list {
-  padding: 8px;
+  padding: var(--ds-spacing-sm);
 }
 
 .skill-history-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px;
-  border-radius: 4px;
-  font-size: 12px;
+  gap: var(--ds-spacing-sm);
+  padding: var(--ds-spacing-sm);
+  border-radius: var(--ds-radius-sm);
+  font-size: var(--ds-font-size-sm);
 }
 
 .skill-history-item:hover {
@@ -379,7 +379,7 @@ const formatTime = (ms: number) => {
 }
 
 .skill-history-item .skill-icon {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
 }
 
 .skill-history-item .skill-name {
@@ -389,7 +389,7 @@ const formatTime = (ms: number) => {
 
 .skill-history-item .skill-time {
   color: var(--ds-text-muted);
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
 }
 
 .tool-use-toggle {
@@ -399,7 +399,7 @@ const formatTime = (ms: number) => {
   width: 32px;
   height: 32px;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   transition: background 0.15s ease;
 }
 
@@ -412,9 +412,9 @@ const formatTime = (ms: number) => {
 }
 
 .toggle-label {
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
   opacity: 0.5;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
   filter: grayscale(100%);
 }
 
@@ -430,7 +430,7 @@ const formatTime = (ms: number) => {
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding: var(--ds-spacing-md);
 }
 
 .chat-empty {
@@ -445,7 +445,7 @@ const formatTime = (ms: number) => {
   text-align: center;
   color: var(--ds-accent);
   cursor: pointer;
-  padding: 8px;
+  padding: var(--ds-spacing-sm);
   margin-bottom: 8px;
 }
 
@@ -456,7 +456,7 @@ const formatTime = (ms: number) => {
 .loading-more {
   text-align: center;
   color: var(--ds-text-muted);
-  padding: 8px;
+  padding: var(--ds-spacing-sm);
   margin-bottom: 8px;
 }
 
@@ -485,8 +485,8 @@ const formatTime = (ms: number) => {
   align-items: center;
   justify-content: center;
   background: var(--ds-bg-tertiary);
-  border-radius: 50%;
-  font-size: 18px;
+  border-radius: var(--ds-radius-full);
+  font-size: var(--ds-font-size-xl);
   flex-shrink: 0;
 }
 
@@ -503,11 +503,11 @@ const formatTime = (ms: number) => {
   .message-avatar {
     width: 28px;
     height: 28px;
-    font-size: 14px;
+    font-size: var(--ds-font-size-md);
   }
 
   .message-text {
-    font-size: 13px;
+    font-size: var(--ds-font-size-sm);
     padding: 6px 10px;
   }
 
@@ -523,7 +523,7 @@ const formatTime = (ms: number) => {
 
 .message-header {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   align-items: center;
   margin-bottom: 4px;
 }
@@ -534,17 +534,17 @@ const formatTime = (ms: number) => {
 
 .message-name {
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-primary);
 }
 
 .message-time {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
 }
 
 .message-status {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
 }
 
@@ -554,7 +554,7 @@ const formatTime = (ms: number) => {
 }
 
 .message-error {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-status-danger);
   margin-top: 4px;
 }
@@ -564,11 +564,11 @@ const formatTime = (ms: number) => {
 }
 
 .message-text {
-  padding: 8px 12px;
-  border-radius: 8px;
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
+  border-radius: var(--ds-radius-md);
   background: var(--ds-bg-tertiary);
   color: var(--ds-text-primary);
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   line-height: 1.5;
 }
 
@@ -579,14 +579,14 @@ const formatTime = (ms: number) => {
 
 .skill-executions {
   margin-top: 8px;
-  padding: 8px;
+  padding: var(--ds-spacing-sm);
   background: var(--ds-bg-primary);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   border: 1px solid var(--ds-border-default);
 }
 
 .skill-executions-title {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   margin-bottom: 6px;
 }
@@ -595,12 +595,12 @@ const formatTime = (ms: number) => {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 0;
-  font-size: 12px;
+  padding: var(--ds-spacing-xs) 0;
+  font-size: var(--ds-font-size-sm);
 }
 
 .skill-icon {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
 }
 
 .skill-name {
@@ -610,7 +610,7 @@ const formatTime = (ms: number) => {
 
 .skill-time {
   color: var(--ds-text-muted);
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
 }
 
 .skill-success {
@@ -623,21 +623,21 @@ const formatTime = (ms: number) => {
 
 .chat-input {
   display: flex;
-  gap: 8px;
-  padding: 16px;
+  gap: var(--ds-spacing-sm);
+  padding: var(--ds-spacing-md);
   border-top: 1px solid var(--ds-border-default);
 }
 
 .chat-input textarea {
   flex: 1;
-  padding: 8px 12px;
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   border: 1px solid var(--ds-border-default);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   background: var(--ds-bg-primary);
   color: var(--ds-text-primary);
   resize: none;
   font-family: inherit;
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
 }
 
 .chat-input textarea:focus {
@@ -652,8 +652,8 @@ const formatTime = (ms: number) => {
 /* Code block styling for message content */
 :deep(.code-block-wrapper) {
   position: relative;
-  margin: 8px 0;
-  border-radius: 8px;
+  margin: var(--ds-spacing-sm) 0;
+  border-radius: var(--ds-radius-md);
   overflow: hidden;
   background: var(--ds-bg-primary);
   border: 1px solid var(--ds-border-default);
@@ -663,11 +663,11 @@ const formatTime = (ms: number) => {
   position: absolute;
   top: 8px;
   left: 12px;
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   background: var(--ds-bg-tertiary);
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 2px var(--ds-spacing-xs);
+  border-radius: var(--ds-radius-sm);
   z-index: 1;
 }
 
@@ -677,9 +677,9 @@ const formatTime = (ms: number) => {
   right: 8px;
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border-default);
-  border-radius: 4px;
-  padding: 4px 8px;
-  font-size: 12px;
+  border-radius: var(--ds-radius-sm);
+  padding: var(--ds-spacing-xs) var(--ds-spacing-sm);
+  font-size: var(--ds-font-size-sm);
   cursor: pointer;
   opacity: 0;
   transition: opacity 0.15s ease;
@@ -704,7 +704,7 @@ const formatTime = (ms: number) => {
 
 :deep(.code-block-wrapper) code {
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   line-height: 1.5;
   background: transparent;
 }
@@ -712,8 +712,8 @@ const formatTime = (ms: number) => {
 /* Inline code styling */
 :deep(.message-text code:not(.hljs)) {
   background: var(--ds-bg-tertiary);
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 2px var(--ds-spacing-xs);
+  border-radius: var(--ds-radius-sm);
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
   font-size: 0.9em;
 }

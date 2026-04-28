@@ -130,7 +130,7 @@ const copyToClipboard = () => {
 
 .section-title {
   margin: 0 0 12px 0;
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -154,15 +154,15 @@ const copyToClipboard = () => {
 .code-block {
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border-default);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   padding: 12px;
   overflow-x: auto;
 }
 
 .code-block pre {
   margin: 0;
-  font-family: 'SF Mono', 'Monaco', monospace;
-  font-size: 12px;
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-font-size-sm);
   line-height: 1.6;
   color: var(--ds-text-secondary);
 }
@@ -183,10 +183,10 @@ const copyToClipboard = () => {
 .error-block {
   background: rgba(255, 68, 68, 0.1);
   border: 1px solid rgba(255, 68, 68, 0.2);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   padding: 12px;
   color: var(--ds-semantic-danger);
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   line-height: 1.6;
 }
 </style>

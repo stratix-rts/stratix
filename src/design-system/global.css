@@ -1,0 +1,47 @@
+/**
+ * Stratix Design System - 全局基础样式
+ * 
+ * 基于设计系统 Token 的全局基础样式
+ * 由 initDesignSystem() 自动注入
+ */
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: var(--ds-scrollbar-width);
+}
+
+::-webkit-scrollbar-track {
+  background: var(--ds-scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--ds-scrollbar-thumb);
+  border-radius: var(--ds-scrollbar-radius);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ds-scrollbar-thumb-hover);
+}
+
+/* Selection */
+::selection {
+  background: var(--ds-color-primary);
+  color: var(--ds-text-inverse);
+}
+
+/* Focus Ring */
+*:focus-visible {
+  outline: 2px solid var(--ds-border-focus);
+  outline-offset: 2px;
+}
+
+/* Base Typography */
+body {
+  font-family: var(--ds-font-sans);
+}
+
+code,
+pre,
+kbd {
+  font-family: var(--ds-font-mono);
+}

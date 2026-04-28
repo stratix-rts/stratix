@@ -29,11 +29,16 @@ const token = computed(() => getButtonToken(props.variant));
 const sizeConfig = computed(() => ButtonSizes[props.size] || ButtonSizes.md);
 
 // 按钮样式计算属性（处理默认值）
-const buttonStyle = computed(() => ({
-  background: token.value.style.background || 'transparent',
-  border: token.value.style.border || 'none',
-  text: token.value.style.text || '#ffffff',
-}));
+const buttonStyle = computed(() => {
+  const isPrimary = props.variant === 'primary';
+  return {
+    background: isPrimary
+      ? 'var(--ds-gradient-brand-primary)'
+      : (token.value.style.background || 'transparent'),
+    border: token.value.style.border || 'none',
+    text: token.value.style.text || '#ffffff',
+  };
+});
 const iconSize = computed(() => {
   const sizes: Record<string, number> = { sm: 14, md: 16, lg: 18 };
   return sizes[props.size] || 16;
@@ -71,14 +76,14 @@ const handleClick = (event: MouseEvent) => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   padding: v-bind('sizeConfig.padding');
   font-size: v-bind('sizeConfig.fontSize');
-  font-family: 'SF Mono', 'Monaco', monospace;
+  font-family: var(--ds-font-mono);
   font-weight: 500;
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
   border: v-bind('buttonStyle.border');
   background: v-bind('buttonStyle.background');
   color: v-bind('buttonStyle.text');
@@ -86,11 +91,37 @@ const handleClick = (event: MouseEvent) => {
 
 .stratix-btn:hover:not(.stratix-btn--disabled) {
   filter: brightness(1.1);
-  transform: translateY(-1px);
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: var(--ds-shadow-md);
 }
 
 .stratix-btn:active:not(.stratix-btn--disabled) {
   transform: translateY(0) scale(0.98);
+}
+
+/* Ripple 效果 */
+.stratix-btn::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle, currentColor 10%, transparent 10.01%);
+  background-repeat: no-repeat;
+  background-position: 50%;
+  transform: scale(4) translate(-50%, -50%);
+  opacity: 0;
+  transition: transform var(--ds-animation-duration-fast) ease,
+              opacity var(--ds-animation-duration-fast) ease;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.stratix-btn:active::after {
+  transform: scale(0) translate(-50%, -50%);
+  opacity: 0.2;
+  transition: 0s;
 }
 
 .stratix-btn:focus-visible {
@@ -109,8 +140,8 @@ const handleClick = (event: MouseEvent) => {
   height: 14px;
   border: 2px solid currentColor;
   border-top-color: transparent;
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
+  border-radius: var(--ds-radius-full);
+  animation: ds-spin var(--ds-animation-duration-slow, 400ms) linear infinite;
   flex-shrink: 0;
 }
 
@@ -122,15 +153,15 @@ const handleClick = (event: MouseEvent) => {
   overflow: visible;
 }
 
+.stratix-btn:hover:not(.stratix-btn--disabled) .stratix-btn__icon {
+  animation: ds-icon-slide-right var(--ds-animation-duration-fast) ease;
+}
+
 .stratix-btn__text {
   line-height: 1;
   display: inline-flex;
   align-items: center;
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
+
 </style>

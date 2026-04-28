@@ -165,27 +165,27 @@ defineExpose({
   top: 16px;
   right: 16px;
   display: flex;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   z-index: 101;
 }
 
 .map3d-btn {
   width: 36px;
   height: 36px;
-  border-radius: 8px;
-  background: rgba(30, 30, 50, 0.9);
+  border-radius: var(--ds-radius-md);
+  background: color-mix(in srgb, var(--ds-bg-base) 90%, transparent);
   border: 1px solid rgba(100, 100, 200, 0.3);
   color: rgba(255, 255, 255, 0.8);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
   backdrop-filter: blur(8px);
 }
 
 .map3d-btn:hover {
-  background: rgba(50, 50, 80, 0.95);
+  background: color-mix(in srgb, var(--ds-bg-base) 95%, transparent);
   border-color: rgba(100, 100, 200, 0.5);
   color: white;
 }
@@ -197,11 +197,11 @@ defineExpose({
   transform: translateX(-50%);
   display: flex;
   gap: 12px;
-  padding: 8px 16px;
-  background: rgba(20, 20, 40, 0.85);
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
+  background: color-mix(in srgb, var(--ds-bg-base) 85%, transparent);
   border: 1px solid rgba(100, 100, 200, 0.2);
   border-radius: 20px;
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: rgba(255, 255, 255, 0.6);
   backdrop-filter: blur(8px);
   z-index: 101;

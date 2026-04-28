@@ -300,9 +300,9 @@ defineExpose({ updateAgentRuntime });
 .stats-bar {
   display: flex;
   gap: 12px;
-  padding: 16px;
+  padding: var(--ds-spacing-md);
   background: var(--ds-bg-tertiary);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   margin-bottom: 16px;
 }
 
@@ -313,10 +313,10 @@ defineExpose({ updateAgentRuntime });
   gap: 10px;
   padding: 12px 14px;
   background: var(--ds-bg-secondary);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   border: 1px solid var(--ds-border);
   cursor: default;
-  transition: all 0.2s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .stat-item:hover {
@@ -354,14 +354,14 @@ defineExpose({ updateAgentRuntime });
 }
 
 .stat-value {
-  font-size: 20px;
+  font-size: var(--ds-font-size-2xl);
   font-weight: 600;
   color: var(--ds-text-primary);
   line-height: 1;
 }
 
 .stat-label {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -382,12 +382,12 @@ defineExpose({ updateAgentRuntime });
 
 .agent-list::-webkit-scrollbar-track {
   background: var(--ds-bg-tertiary);
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
 }
 
 .agent-list::-webkit-scrollbar-thumb {
   background: var(--ds-border);
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
 }
 
 .agent-list::-webkit-scrollbar-thumb:hover {
@@ -397,10 +397,10 @@ defineExpose({ updateAgentRuntime });
 .agent-card {
   padding: 14px 16px;
   background: var(--ds-bg-tertiary);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   border: 1px solid var(--ds-border);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .agent-card:hover {
@@ -435,11 +435,11 @@ defineExpose({ updateAgentRuntime });
 .agent-avatar {
   width: 36px;
   height: 36px;
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   font-weight: 600;
   color: var(--ds-bg-primary);
   flex-shrink: 0;
@@ -454,7 +454,7 @@ defineExpose({ updateAgentRuntime });
   display: block;
   font-weight: 500;
   color: var(--ds-text-primary);
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -462,9 +462,9 @@ defineExpose({ updateAgentRuntime });
 
 .agent-id {
   display: block;
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
-  font-family: monospace;
+  font-family: var(--ds-font-mono);
 }
 
 .agent-status-badge {
@@ -472,8 +472,8 @@ defineExpose({ updateAgentRuntime });
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  border-radius: 12px;
-  font-size: 12px;
+  border-radius: var(--ds-radius-lg);
+  font-size: var(--ds-font-size-sm);
   font-weight: 500;
   flex-shrink: 0;
 }
@@ -481,7 +481,7 @@ defineExpose({ updateAgentRuntime });
 .status-dot {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
   animation: pulse 2s infinite;
 }
 
@@ -498,7 +498,7 @@ defineExpose({ updateAgentRuntime });
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-secondary);
   margin-bottom: 8px;
 }
@@ -519,14 +519,14 @@ defineExpose({ updateAgentRuntime });
 
 .agent-metrics {
   display: flex;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
 }
 
 .metric {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 12px;
+  gap: var(--ds-spacing-xs);
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-muted);
 }
 
@@ -542,7 +542,7 @@ defineExpose({ updateAgentRuntime });
 }
 
 .navigate-hint {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   opacity: 0;
   transition: opacity 0.15s ease;
@@ -567,6 +567,6 @@ defineExpose({ updateAgentRuntime });
 }
 
 .empty-state span {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
 }
 </style>

@@ -378,7 +378,7 @@ const icons = {
 
 .header {
   height: 56px;
-  background: var(--ds-bg-secondary);
+  background: var(--ds-gradient-bg-base, var(--ds-bg-secondary));
   border-bottom: 1px solid var(--ds-border);
   display: flex;
   align-items: center;
@@ -403,7 +403,7 @@ const icons = {
   }
 
   .toolbar :deep(.stratix-button) {
-    padding: 8px;
+    padding: var(--ds-spacing-sm);
     min-width: auto;
   }
 
@@ -412,7 +412,7 @@ const icons = {
   }
 
   .status {
-    font-size: 12px;
+    font-size: var(--ds-font-size-sm);
   }
 }
 
@@ -428,7 +428,7 @@ const icons = {
 }
 
 .logo-text {
-  font-size: 18px;
+  font-size: var(--ds-font-size-xl);
   font-weight: 600;
   color: var(--ds-text-primary);
 }
@@ -439,16 +439,16 @@ const icons = {
   justify-content: center;
   width: 32px;
   height: 32px;
-  background: rgba(59, 130, 246, 0.1);
+  background: color-mix(in srgb, var(--ds-status-info) 10%, transparent);
   border: 1px solid rgba(59, 130, 246, 0.3);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   color: rgba(59, 130, 246, 0.8);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
   padding: 0;
 }
 .system-zone-btn:hover {
-  background: rgba(59, 130, 246, 0.2);
+  background: color-mix(in srgb, var(--ds-status-info) 20%, transparent);
   border-color: rgba(59, 130, 246, 0.5);
   color: #3b82f6;
   transform: scale(1.05);
@@ -457,7 +457,7 @@ const icons = {
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   flex: 1;
   justify-content: center;
 }
@@ -471,13 +471,13 @@ const icons = {
   padding: 0 6px;
   background: linear-gradient(135deg, var(--ds-info), var(--ds-success));
   color: var(--ds-bg-primary);
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   font-weight: 600;
-  border-radius: 10px;
+  border-radius: var(--ds-radius-lg);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--ds-shadow-sm);
 }
 
 .header-info {
@@ -501,10 +501,10 @@ const icons = {
   justify-content: center;
   background: transparent;
   border: 1px solid var(--ds-border);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   color: var(--ds-text-muted);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
   padding: 0;
 }
 
@@ -523,7 +523,7 @@ const icons = {
   height: 4px;
   appearance: none;
   background: var(--ds-border);
-  border-radius: 2px;
+  border-radius: var(--ds-radius-sm);
   cursor: pointer;
   outline: none;
 }
@@ -533,12 +533,12 @@ const icons = {
   width: 12px;
   height: 12px;
   background: var(--ds-brand-primary);
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
   cursor: pointer;
 }
 
 .status {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   color: var(--ds-text-muted);
 }
 

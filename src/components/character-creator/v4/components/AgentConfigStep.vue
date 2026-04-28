@@ -408,7 +408,7 @@ defineExpose({ validate });
   padding: 1px var(--ds-spacing-xs, 4px);
   background: var(--ds-color-primary);
   color: var(--ds-text-inverse);
-  border-radius: 10px;
+  border-radius: var(--ds-radius-lg);
   min-width: 16px;
   text-align: center;
   line-height: 1.4;
@@ -441,7 +441,7 @@ defineExpose({ validate });
 
 .acs-panel::-webkit-scrollbar-thumb {
   background: var(--ds-border);
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
 }
 
 .acs-panel::-webkit-scrollbar-thumb:hover {

@@ -34,12 +34,11 @@ export type { PanelSemanticSet, PanelSemanticToken };
  * div.style.backgroundColor = panels.elevated.background;
  * div.style.boxShadow = panels.elevated.shadow;
  */
+import { isColorPrimitives } from '../types';
+
 export function getPanelSemantic(theme: DesignSystemTokens): PanelSemanticSet {
-  return generatePanelSemantic(
-    theme.colors as any,
-    theme.radii as any,
-    theme.shadows as any
-  );
+  const colors = isColorPrimitives(theme.colors) ? theme.colors : theme.colors as any;
+  return generatePanelSemantic(colors, theme.radii, theme.shadows);
 }
 
 /**

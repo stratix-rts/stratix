@@ -465,12 +465,12 @@ function clearAll(): void {
 .domain-chip {
   padding: var(--ds-spacing-xs, 4px) var(--ds-spacing-sm, 8px);
   font-size: var(--ds-font-size-xs, 10px);
-  border-radius: 12px;
+  border-radius: var(--ds-radius-lg);
   border: 1px solid var(--ds-border);
   background: var(--ds-bg-tertiary);
   color: var(--ds-text-secondary);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
   font-family: inherit;
 }
 
@@ -614,7 +614,7 @@ function clearAll(): void {
   font-size: var(--ds-font-size-sm, 12px);
   cursor: pointer;
   border-radius: var(--ds-radii-md, 4px);
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .goal-remove:hover {
@@ -707,7 +707,7 @@ function clearAll(): void {
 .soul-editor__form::-webkit-scrollbar-thumb,
 .preview-content::-webkit-scrollbar-thumb {
   background: var(--ds-border);
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
 }
 
 .soul-editor__form::-webkit-scrollbar-thumb:hover,

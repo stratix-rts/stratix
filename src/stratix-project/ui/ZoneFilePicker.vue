@@ -422,15 +422,15 @@ const handleAddFiles = () => {
 .zone-file-picker {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
 }
 
 .zone-file-picker__tabs {
   display: flex;
-  gap: 4px;
-  padding: 4px;
+  gap: var(--ds-spacing-xs);
+  padding: var(--ds-spacing-xs);
   background: var(--ds-bg-tertiary);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
 }
 
 .zone-file-picker__tab {
@@ -439,15 +439,15 @@ const handleAddFiles = () => {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 10px 12px;
-  font-size: 13px;
+  padding: 10px var(--ds-spacing-md);
+  font-size: var(--ds-font-size-sm);
   font-weight: 500;
   color: var(--ds-text-secondary);
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .zone-file-picker__tab:hover {
@@ -458,11 +458,11 @@ const handleAddFiles = () => {
 .zone-file-picker__tab--active {
   color: var(--ds-text-primary);
   background: var(--ds-bg-secondary);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--ds-shadow-sm);
 }
 
 .zone-file-picker__tab-icon {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
 }
 
 .zone-file-picker__content {
@@ -477,7 +477,7 @@ const handleAddFiles = () => {
 
 .zone-file-picker__input-row {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .zone-file-picker__input-row > *:first-child {
@@ -486,18 +486,18 @@ const handleAddFiles = () => {
 
 .zone-file-picker__error {
   color: var(--ds-semantic-danger);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   margin-top: 4px;
 }
 
 .zone-file-picker__help {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
 }
 
 .zone-file-picker__selected {
   border: 1px solid var(--ds-border-default);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   overflow: hidden;
 }
 
@@ -505,16 +505,16 @@ const handleAddFiles = () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
+  padding: 10px var(--ds-spacing-md);
   background: var(--ds-bg-tertiary);
   border-bottom: 1px solid var(--ds-border-default);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   font-weight: 600;
   color: var(--ds-text-secondary);
 }
 
 .zone-file-picker__clear {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   font-weight: 400;
   color: var(--ds-text-muted);
   background: none;
@@ -534,8 +534,8 @@ const handleAddFiles = () => {
 .zone-file-picker__selected-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: var(--ds-spacing-sm);
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   border-bottom: 1px solid var(--ds-border-default);
 }
 
@@ -544,13 +544,13 @@ const handleAddFiles = () => {
 }
 
 .zone-file-picker__selected-icon {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   flex-shrink: 0;
 }
 
 .zone-file-picker__selected-name {
   flex: 1;
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -559,7 +559,7 @@ const handleAddFiles = () => {
 
 .zone-file-picker__selected-source {
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   max-width: 120px;
   overflow: hidden;
@@ -575,11 +575,11 @@ const handleAddFiles = () => {
   width: 20px;
   height: 20px;
   padding: 0;
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   color: var(--ds-text-muted);
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   cursor: pointer;
 }
 
@@ -591,6 +591,6 @@ const handleAddFiles = () => {
 .zone-file-picker__footer {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 </style>

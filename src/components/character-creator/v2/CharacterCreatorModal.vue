@@ -750,17 +750,17 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: var(--ds-spacing-md) var(--ds-spacing-md);
   background: var(--ds-bg-secondary);
   border-bottom: 1px solid var(--ds-border);
-  gap: 16px;
+  gap: var(--ds-spacing-md);
   flex-shrink: 0;
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
 }
 
 .header-center {
@@ -772,19 +772,19 @@ onMounted(() => {
 .header-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 /* 角色名称 */
 .character-name {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-family: 'SF Mono', 'Monaco', monospace;
+  gap: var(--ds-spacing-sm);
+  font-family: var(--ds-font-mono);
 }
 
 .name-text {
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
   font-weight: 600;
   color: var(--ds-text-primary);
 }
@@ -797,11 +797,11 @@ onMounted(() => {
   justify-content: center;
   background: transparent;
   border: 1px solid var(--ds-border);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   color: var(--ds-text-muted);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .name-edit-btn:hover {
@@ -813,9 +813,9 @@ onMounted(() => {
   padding: 6px 10px;
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-color-primary);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   color: var(--ds-text-primary);
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   font-family: inherit;
   text-align: center;
   outline: none;
@@ -835,7 +835,7 @@ onMounted(() => {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   padding: 12px;
   background: var(--ds-bg-secondary);
   border-right: 1px solid var(--ds-border);
@@ -845,7 +845,7 @@ onMounted(() => {
 .canvas-area {
   flex: 1;
   min-height: 200px;
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   overflow: hidden;
 }
 
@@ -862,12 +862,12 @@ onMounted(() => {
 .attributes-display {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   padding: 6px 10px;
   background: var(--ds-bg-tertiary);
-  border-radius: 6px;
-  font-family: 'SF Mono', 'Monaco', monospace;
-  font-size: 11px;
+  border-radius: var(--ds-radius-md);
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-font-size-xs);
   flex-wrap: wrap;
 }
 
@@ -890,15 +890,15 @@ onMounted(() => {
 
 .json-editor-btn {
   width: 100%;
-  padding: 8px 12px;
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   background: transparent;
   border: 1px solid var(--ds-border);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   color: var(--ds-text-secondary);
-  font-family: 'SF Mono', 'Monaco', monospace;
-  font-size: 11px;
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-font-size-xs);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
   text-align: center;
 }
 
@@ -980,7 +980,7 @@ onMounted(() => {
 .right-panel::-webkit-scrollbar-thumb,
 .step-content::-webkit-scrollbar-thumb {
   background: var(--ds-border);
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
 }
 
 .left-panel::-webkit-scrollbar-thumb:hover,
@@ -998,22 +998,22 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   pointer-events: none;
   z-index: 9999;
 }
 
 .toast {
   padding: 10px 20px;
-  background: rgba(0, 0, 0, 0.85);
-  border-radius: 6px;
-  font-size: 13px;
-  font-family: 'SF Mono', 'Monaco', monospace;
+  background: color-mix(in srgb, var(--ds-bg-base) 85%, transparent);
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-font-size-sm);
+  font-family: var(--ds-font-mono);
   font-weight: 500;
   letter-spacing: 0.02em;
   text-transform: uppercase;
   white-space: nowrap;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--ds-shadow-md);
 }
 
 .toast-success {

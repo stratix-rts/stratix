@@ -563,7 +563,7 @@ defineExpose({
   .channel-list {
     flex-direction: row;
     overflow-x: auto;
-    gap: 8px;
+    gap: var(--ds-spacing-sm);
   }
 
   .agent-item,
@@ -574,12 +574,12 @@ defineExpose({
 }
 
 .sidebar-section {
-  padding: 16px;
+  padding: var(--ds-spacing-md);
   border-bottom: 1px solid var(--ds-border);
 }
 
 .section-title {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -589,15 +589,15 @@ defineExpose({
 .agent-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .agent-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px;
-  border-radius: 6px;
+  gap: var(--ds-spacing-sm);
+  padding: var(--ds-spacing-sm);
+  border-radius: var(--ds-radius-md);
   cursor: pointer;
   transition: background 0.2s;
 }
@@ -609,7 +609,7 @@ defineExpose({
 .agent-avatar {
   width: 32px;
   height: 32px;
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
   overflow: hidden;
 }
 
@@ -627,7 +627,7 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   font-weight: bold;
 }
 
@@ -637,7 +637,7 @@ defineExpose({
 }
 
 .agent-name {
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -645,14 +645,14 @@ defineExpose({
 }
 
 .agent-role {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
 }
 
 .agent-status {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
 }
 
 .agent-status.online {
@@ -670,15 +670,15 @@ defineExpose({
 .channel-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
 }
 
 .channel-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 6px;
+  gap: var(--ds-spacing-sm);
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
+  border-radius: var(--ds-radius-md);
   cursor: pointer;
   color: var(--ds-text-muted);
   transition: all 0.2s;
@@ -695,11 +695,11 @@ defineExpose({
 }
 
 .channel-icon {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
 }
 
 .channel-name {
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
 }
 
 .chat-main {
@@ -710,7 +710,7 @@ defineExpose({
 }
 
 .chat-header {
-  padding: 16px 20px;
+  padding: var(--ds-spacing-md) var(--ds-spacing-lg);
   border-bottom: 1px solid var(--ds-border);
   background: var(--ds-bg-secondary);
 }
@@ -718,22 +718,22 @@ defineExpose({
 .channel-info {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .channel-info .channel-icon {
-  font-size: 18px;
+  font-size: var(--ds-font-size-xl);
   color: var(--ds-text-muted);
 }
 
 .channel-info .channel-name {
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
   font-weight: bold;
   color: var(--ds-text-primary);
 }
 
 .channel-description {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-muted);
   margin-top: 4px;
 }
@@ -741,7 +741,7 @@ defineExpose({
 .message-list {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding: var(--ds-spacing-md);
 }
 
 .loading,
@@ -759,7 +759,7 @@ defineExpose({
   height: 32px;
   border: 3px solid var(--ds-border);
   border-top-color: var(--ds-brand-primary);
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
   animation: spin 0.8s linear infinite;
   margin-bottom: 12px;
 }
@@ -776,20 +776,20 @@ defineExpose({
 }
 
 .empty-hint {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   margin-top: 8px;
 }
 
 .messages {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
 }
 
 .message-item {
   padding: 12px;
   background: var(--ds-bg-secondary);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
 }
 
 .message-item.own-message {
@@ -800,14 +800,14 @@ defineExpose({
 .message-sender {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   margin-bottom: 8px;
 }
 
 .sender-avatar {
   width: 28px;
   height: 28px;
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
   overflow: hidden;
 }
 
@@ -821,27 +821,27 @@ defineExpose({
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .sender-name {
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   font-weight: bold;
   color: var(--ds-text-primary);
 }
 
 .sender-role {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
 }
 
 .message-time {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
 }
 
 .message-content {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   color: var(--ds-text-secondary);
   line-height: 1.5;
 }
@@ -852,7 +852,7 @@ defineExpose({
 }
 
 .message-input {
-  padding: 16px;
+  padding: var(--ds-spacing-md);
   border-top: 1px solid var(--ds-border);
   background: var(--ds-bg-secondary);
   display: flex;
@@ -891,7 +891,7 @@ defineExpose({
   right: 0;
   background: var(--ds-bg-secondary);
   border: 1px solid var(--ds-border);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   max-height: 200px;
   overflow-y: auto;
   margin-bottom: 8px;
@@ -901,7 +901,7 @@ defineExpose({
 .popup-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   padding: 10px 14px;
   cursor: pointer;
   transition: background 0.15s;
@@ -928,13 +928,13 @@ defineExpose({
 
 .popup-item .item-desc {
   color: var(--ds-text-muted);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
 }
 
 .agent-avatar-small {
   width: 24px;
   height: 24px;
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
   overflow: hidden;
   flex-shrink: 0;
 }
@@ -953,16 +953,16 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   font-weight: bold;
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
 }
 
 /* Code block styling for message content */
 :deep(.code-block-wrapper) {
   position: relative;
-  margin: 8px 0;
-  border-radius: 8px;
+  margin: var(--ds-spacing-sm) 0;
+  border-radius: var(--ds-radius-md);
   overflow: hidden;
   background: var(--ds-bg-primary);
   border: 1px solid var(--ds-border-default);
@@ -972,11 +972,11 @@ defineExpose({
   position: absolute;
   top: 8px;
   left: 12px;
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   background: var(--ds-bg-tertiary);
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 2px var(--ds-spacing-xs);
+  border-radius: var(--ds-radius-sm);
   z-index: 1;
 }
 
@@ -986,9 +986,9 @@ defineExpose({
   right: 8px;
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border-default);
-  border-radius: 4px;
-  padding: 4px 8px;
-  font-size: 12px;
+  border-radius: var(--ds-radius-sm);
+  padding: var(--ds-spacing-xs) var(--ds-spacing-sm);
+  font-size: var(--ds-font-size-sm);
   cursor: pointer;
   opacity: 0;
   transition: opacity 0.15s ease;
@@ -1013,7 +1013,7 @@ defineExpose({
 
 :deep(.code-block-wrapper) code {
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   line-height: 1.5;
   background: transparent;
 }
@@ -1021,14 +1021,14 @@ defineExpose({
 /* Inline code styling */
 :deep(.message-text code:not(.hljs)) {
   background: var(--ds-bg-tertiary);
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 2px var(--ds-spacing-xs);
+  border-radius: var(--ds-radius-sm);
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
   font-size: 0.9em;
 }
 
 .message-agent :deep(pre),
 .message-agent :deep(.code-block-wrapper pre) {
-  background: rgba(0, 0, 0, 0.2);
+  background: color-mix(in srgb, var(--ds-bg-base) 20%, transparent);
 }
 </style>

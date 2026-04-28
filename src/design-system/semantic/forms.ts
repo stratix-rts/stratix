@@ -73,8 +73,11 @@ export type FormSize = keyof typeof FormSizes;
  * // 表单布局间距
  * formContainer.style.gap = form.layout.gap;
  */
+import { isColorPrimitives } from '../types';
+
 export function getFormSemantic(theme: DesignSystemTokens): FormSemanticSet {
-  return generateFormSemantic(theme.colors as any);
+  const colors = isColorPrimitives(theme.colors) ? theme.colors : theme.colors as any;
+  return generateFormSemantic(colors);
 }
 
 /**

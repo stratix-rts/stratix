@@ -98,7 +98,7 @@ const handleCancel = () => {
 .params-list {
   background: var(--ds-bg-secondary);
   border: 1px solid var(--ds-border-default);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   padding: 12px;
   max-height: 120px;
   overflow-y: auto;
@@ -118,12 +118,12 @@ const handleCancel = () => {
 
 .param-key {
   font-family: var(--ds-fontFamily-mono);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-secondary);
 }
 
 .param-value {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-semantic-success);
   max-width: 200px;
   overflow: hidden;
@@ -141,6 +141,6 @@ const handleCancel = () => {
 
 .params-list::-webkit-scrollbar-thumb {
   background: var(--ds-border-default);
-  border-radius: 2px;
+  border-radius: var(--ds-radius-sm);
 }
 </style>

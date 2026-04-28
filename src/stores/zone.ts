@@ -4,6 +4,7 @@ import { ref, computed } from 'vue';
 import { ApiClient } from '@/stratix-gateway/api/client';
 import { API_PATHS, isApiError } from '@/stratix-gateway/api/types/api';
 import type { Zone, ZoneCreateRequest, ZoneUpdateRequest, ZoneFile, ZoneTask, ZoneMessage } from '@/stratix-project/types';
+import { StratixEventBus } from '@/stratix-core';
 
 // Create zone store API client with frontend base URL
 const createZoneApiClient = () => new ApiClient({
@@ -22,6 +23,12 @@ export const useZoneStore = defineStore('zone', () => {
   // API client for zone operations
   const client = createZoneApiClient();
 
+  // Event bus for real-time updates
+  const eventBus = StratixEventBus.getInstance();
+
+  // Track if event bus has been initialized (singleton)
+  let eventBusInitialized = false;
+
   // Computed
   const selectedZone = computed(() =>
     selectedZoneId.value ? zones.value.find(z => z.id === selectedZoneId.value) ?? null : null
@@ -32,6 +39,116 @@ export const useZoneStore = defineStore('zone', () => {
   );
 
   const zoneCount = computed(() => zones.value.length);
+
+  // ==================== WebSocket Event Handlers ====================
+
+  function handleZoneCreated(event: any) {
+    const { zoneId } = event.payload || {};
+    if (!zoneId) return;
+    // Fetch full zone data and add to store
+    fetchZone(zoneId).then(zone => {
+      if (zone && !zones.value.find(z => z.id === zoneId)) {
+        zones.value.push(zone);
+      }
+    });
+  }
+
+  function handleZoneUpdated(event: any) {
+    const { zoneId, ...updates } = event.payload || {};
+    if (!zoneId) return;
+    const zone = zones.value.find(z => z.id === zoneId);
+    if (zone) {
+      Object.assign(zone, updates);
+    }
+  }
+
+  function handleZoneDeleted(event: any) {
+    const { zoneId } = event.payload || {};
+    if (!zoneId) return;
+    zones.value = zones.value.filter(z => z.id !== zoneId);
+    if (selectedZoneId.value === zoneId) {
+      selectedZoneId.value = null;
+    }
+  }
+
+  function handleZoneFileAdded(event: any) {
+    const { zoneId, file } = event.payload || {};
+    if (!zoneId || !file) return;
+    const zone = zones.value.find(z => z.id === zoneId);
+    if (zone) {
+      zone.files = zone.files || [];
+      zone.files.push(file);
+    }
+  }
+
+  function handleZoneFileRemoved(event: any) {
+    const { zoneId, fileId } = event.payload || {};
+    if (!zoneId || !fileId) return;
+    const zone = zones.value.find(z => z.id === zoneId);
+    if (zone) {
+      zone.files = (zone.files || []).filter(f => f.id !== fileId);
+    }
+  }
+
+  function handleZoneMemberJoined(event: any) {
+    const { zoneId, agentId } = event.payload || {};
+    if (!zoneId || !agentId) return;
+    const zone = zones.value.find(z => z.id === zoneId);
+    if (zone) {
+      zone.members = zone.members || [];
+      if (!zone.members.includes(agentId)) {
+        zone.members.push(agentId);
+      }
+    }
+  }
+
+  function handleZoneMemberLeft(event: any) {
+    const { zoneId, agentId } = event.payload || {};
+    if (!zoneId || !agentId) return;
+    const zone = zones.value.find(z => z.id === zoneId);
+    if (zone) {
+      zone.members = (zone.members || []).filter(m => m !== agentId);
+    }
+  }
+
+  // ==================== Initialize WebSocket Subscriptions ====================
+
+  // Store event handlers for cleanup
+  const eventHandlers = {
+    handleZoneCreated,
+    handleZoneUpdated,
+    handleZoneDeleted,
+    handleZoneFileAdded,
+    handleZoneFileRemoved,
+    handleZoneMemberJoined,
+    handleZoneMemberLeft,
+  };
+
+  function initializeEventBus(): void {
+    if (typeof window === 'undefined') return;  // SSR guard
+    if (eventBusInitialized) return;  // Already initialized
+
+    eventBus.subscribe('stratix:zone_created', eventHandlers.handleZoneCreated);
+    eventBus.subscribe('stratix:zone_updated', eventHandlers.handleZoneUpdated);
+    eventBus.subscribe('stratix:zone_deleted', eventHandlers.handleZoneDeleted);
+    eventBus.subscribe('stratix:zone_file_added', eventHandlers.handleZoneFileAdded);
+    eventBus.subscribe('stratix:zone_file_removed', eventHandlers.handleZoneFileRemoved);
+    eventBus.subscribe('stratix:zone_member_joined', eventHandlers.handleZoneMemberJoined);
+    eventBus.subscribe('stratix:zone_member_left', eventHandlers.handleZoneMemberLeft);
+    eventBusInitialized = true;
+    console.log('[ZoneStore] Subscribed to zone events');
+  }
+
+  function cleanupEventBus(): void {
+    eventBus.unsubscribe('stratix:zone_created', eventHandlers.handleZoneCreated);
+    eventBus.unsubscribe('stratix:zone_updated', eventHandlers.handleZoneUpdated);
+    eventBus.unsubscribe('stratix:zone_deleted', eventHandlers.handleZoneDeleted);
+    eventBus.unsubscribe('stratix:zone_file_added', eventHandlers.handleZoneFileAdded);
+    eventBus.unsubscribe('stratix:zone_file_removed', eventHandlers.handleZoneFileRemoved);
+    eventBus.unsubscribe('stratix:zone_member_joined', eventHandlers.handleZoneMemberJoined);
+    eventBus.unsubscribe('stratix:zone_member_left', eventHandlers.handleZoneMemberLeft);
+    console.log('[ZoneStore] Unsubscribed from zone events');
+  }
 
   // Load all zones
   async function loadZones(projectId?: string): Promise<void> {
@@ -261,6 +378,10 @@ export const useZoneStore = defineStore('zone', () => {
     updateTask,
     addMessage,
     getZoneById,
-    clear
+    clear,
+
+    // Event bus lifecycle
+    initializeEventBus,
+    cleanupEventBus
   };
 });

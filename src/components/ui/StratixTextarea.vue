@@ -88,7 +88,7 @@ const resizeMap = {
   color: v-bind('getToken("colors.text.primary")');
   font-size: v-bind('sizeConfig[size].fontSize');
   font-family: v-bind('getToken("typography.fontFamily.sans")');
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
   resize: v-bind('resizeMap[resize]');
 }
 

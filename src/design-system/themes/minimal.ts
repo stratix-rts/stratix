@@ -14,7 +14,10 @@ import { generateAllSemanticTokens } from '../semantic/_generator';
 import { Animation } from '../tokens/animation';
 import {
   MinimalPrimitives,
+  Indigo,
+  Violet,
 } from '../tokens/colors';
+import { generateGradients } from '../tokens/gradients';
 import { Depth } from '../tokens/depth';
 import { Spacing } from '../tokens/spacing';
 import type { DesignSystemTokens } from '../types';
@@ -29,14 +32,14 @@ const MinimalRadii = {
   full: '9999px',
 } as const;
 
-// 主题特定的阴影配置（极简、几乎不可见）
+// 主题特定的阴影配置（柔和但有层次）
 const MinimalShadows = {
-  sm: '0 1px 2px rgba(0, 0, 0, 0.04)',
-  md: '0 2px 4px rgba(0, 0, 0, 0.06)',
-  lg: '0 4px 8px rgba(0, 0, 0, 0.08)',
-  xl: '0 8px 16px rgba(0, 0, 0, 0.1)',
-  '2xl': '0 12px 24px rgba(0, 0, 0, 0.12)',
-  inner: 'inset 0 1px 2px rgba(0, 0, 0, 0.04)',
+  sm: '0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04)',
+  md: '0 4px 8px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04)',
+  lg: '0 8px 16px rgba(0, 0, 0, 0.1), 0 4px 8px rgba(0, 0, 0, 0.05)',
+  xl: '0 16px 32px rgba(0, 0, 0, 0.12), 0 8px 16px rgba(0, 0, 0, 0.06)',
+  '2xl': '0 24px 48px rgba(0, 0, 0, 0.14), 0 12px 24px rgba(0, 0, 0, 0.07)',
+  inner: 'inset 0 1px 3px rgba(0, 0, 0, 0.06)',
 } as const;
 
 // 主题特定的字体配置
@@ -65,6 +68,19 @@ const MinimalTypography = {
     relaxed: 1.8,
   },
 } as const;
+
+// 主题特定渐变配置
+const MinimalGradients = generateGradients({
+  primary: Indigo[600],
+  secondary: Violet[500],
+  bgBase: MinimalPrimitives.background.base,
+  bgElevated: MinimalPrimitives.background.elevated,
+  bgOverlay: MinimalPrimitives.background.overlay,
+  success: MinimalPrimitives.status.success,
+  warning: MinimalPrimitives.status.warning,
+  danger: MinimalPrimitives.status.danger,
+  info: MinimalPrimitives.status.info,
+});
 
 // 生成语义 Token
 const semanticTokens = generateAllSemanticTokens(
@@ -95,9 +111,10 @@ export const MinimalTheme: DesignSystemTokens = {
     sizes: IconSizes,
     registry: {},
   },
+  gradients: MinimalGradients,
   // 使用生成的语义 Token
   ...semanticTokens,
 };
 
 // 导出主题特定配置
-export { MinimalRadii, MinimalShadows, MinimalTypography };
+export { MinimalRadii, MinimalShadows, MinimalTypography, MinimalGradients };

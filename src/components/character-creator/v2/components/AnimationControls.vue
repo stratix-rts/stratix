@@ -210,22 +210,22 @@ const canZoomOut = computed(() => currentScale.value > MIN_SCALE);
 .animation-controls {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
   padding: 12px;
   background: var(--ds-bg-secondary);
   border: 1px solid var(--ds-border);
-  border-radius: 8px;
-  font-family: 'SF Mono', 'Monaco', monospace;
+  border-radius: var(--ds-radius-md);
+  font-family: var(--ds-font-mono);
 }
 
 .control-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .control-section__label {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -241,12 +241,12 @@ const canZoomOut = computed(() => currentScale.value > MIN_SCALE);
   padding: 6px 8px;
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   color: var(--ds-text-secondary);
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   font-family: inherit;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -265,7 +265,7 @@ const canZoomOut = computed(() => currentScale.value > MIN_SCALE);
 
 .control-row {
   display: flex;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
   flex-wrap: wrap;
 }
 
@@ -276,7 +276,7 @@ const canZoomOut = computed(() => currentScale.value > MIN_SCALE);
 }
 
 .control-group__label {
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -284,7 +284,7 @@ const canZoomOut = computed(() => currentScale.value > MIN_SCALE);
 
 .direction-controls {
   display: flex;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
 }
 
 .direction-btn {
@@ -295,11 +295,11 @@ const canZoomOut = computed(() => currentScale.value > MIN_SCALE);
   justify-content: center;
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   color: var(--ds-text-primary);
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .direction-btn:hover {
@@ -317,7 +317,7 @@ const canZoomOut = computed(() => currentScale.value > MIN_SCALE);
 .scale-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .scale-btn {
@@ -328,12 +328,12 @@ const canZoomOut = computed(() => currentScale.value > MIN_SCALE);
   justify-content: center;
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   color: var(--ds-text-primary);
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
   font-weight: bold;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .scale-btn:hover:not(:disabled) {
@@ -347,7 +347,7 @@ const canZoomOut = computed(() => currentScale.value > MIN_SCALE);
 }
 
 .scale-value {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-primary);
   min-width: 40px;
   text-align: center;
@@ -361,11 +361,11 @@ const canZoomOut = computed(() => currentScale.value > MIN_SCALE);
   justify-content: center;
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   color: var(--ds-text-primary);
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .play-btn:hover {

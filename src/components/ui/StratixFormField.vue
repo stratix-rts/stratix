@@ -56,11 +56,11 @@ const gapMap = {
 .stratix-form-field__content {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
 }
 
 .stratix-form-field__help {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: v-bind('getToken("colors.text.muted")');
   margin-top: 2px;
 }
@@ -69,7 +69,7 @@ const gapMap = {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: v-bind('getToken("colors.semantic.danger")');
   margin-top: 2px;
   animation: error-fade-in 150ms ease;

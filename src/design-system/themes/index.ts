@@ -9,9 +9,9 @@
 
 
 // 主题配置
-export { CyberpunkTheme, CyberpunkRadii, CyberpunkShadows, CyberpunkTypography } from './cyberpunk';
-export { MinimalTheme, MinimalRadii, MinimalShadows, MinimalTypography } from './minimal';
-export { ProfessionalTheme, ProfessionalRadii, ProfessionalShadows, ProfessionalTypography } from './professional';
+export { CyberpunkTheme, CyberpunkRadii, CyberpunkShadows, CyberpunkTypography, CyberpunkGradients } from './cyberpunk';
+export { MinimalTheme, MinimalRadii, MinimalShadows, MinimalTypography, MinimalGradients } from './minimal';
+export { ProfessionalTheme, ProfessionalRadii, ProfessionalShadows, ProfessionalTypography, ProfessionalGradients } from './professional';
 
 // 主题元数据
 export interface ThemeMeta {

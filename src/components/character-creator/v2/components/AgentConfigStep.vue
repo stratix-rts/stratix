@@ -279,9 +279,9 @@ defineExpose({
   height: 100%;
   background: var(--ds-bg-secondary);
   border: 1px solid var(--ds-border);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   overflow: hidden;
-  font-family: 'SF Mono', 'Monaco', monospace;
+  font-family: var(--ds-font-mono);
 }
 
 .config-tabs {
@@ -292,15 +292,15 @@ defineExpose({
 
 .config-tab {
   flex: 1;
-  padding: 12px 16px;
+  padding: var(--ds-spacing-md) var(--ds-spacing-md);
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--ds-text-muted);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   font-family: inherit;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -318,11 +318,11 @@ defineExpose({
 }
 
 .tab-badge {
-  font-size: 10px;
-  padding: 2px 6px;
+  font-size: var(--ds-font-size-xs);
+  padding: 2px var(--ds-spacing-xs);
   background: var(--ds-color-primary);
   color: var(--ds-text-inverse);
-  border-radius: 10px;
+  border-radius: var(--ds-radius-lg);
 }
 
 .config-content {
@@ -336,14 +336,14 @@ defineExpose({
 }
 
 .rules-panel {
-  padding: 16px;
+  padding: var(--ds-spacing-md);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
 }
 
 .section-label {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -351,7 +351,7 @@ defineExpose({
 }
 
 .rules-count {
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
   font-weight: normal;
   color: var(--ds-text-muted);
   text-transform: none;
@@ -365,19 +365,19 @@ defineExpose({
 .template-buttons {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .template-btn {
   padding: 6px 12px;
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   color: var(--ds-text-secondary);
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   font-family: inherit;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .template-btn:hover {
@@ -398,15 +398,15 @@ defineExpose({
 .rule-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: var(--ds-spacing-sm);
+  padding: 10px var(--ds-spacing-md);
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
 }
 
 .rule-number {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-color-primary);
   font-weight: 600;
   min-width: 20px;
@@ -414,7 +414,7 @@ defineExpose({
 
 .rule-text {
   flex: 1;
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-primary);
   line-height: 1.4;
 }
@@ -428,10 +428,10 @@ defineExpose({
   background: transparent;
   border: none;
   color: var(--ds-text-muted);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   cursor: pointer;
-  border-radius: 4px;
-  transition: all 0.15s ease;
+  border-radius: var(--ds-radius-sm);
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .rule-remove:hover {
@@ -441,24 +441,24 @@ defineExpose({
 
 .rules-empty {
   text-align: center;
-  padding: 24px;
+  padding: var(--ds-spacing-lg);
   color: var(--ds-text-muted);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
 }
 
 .rules-add {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .rule-input {
   flex: 1;
-  padding: 10px 12px;
+  padding: 10px var(--ds-spacing-md);
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   color: var(--ds-text-primary);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   font-family: inherit;
 }
 
@@ -472,15 +472,15 @@ defineExpose({
 }
 
 .add-btn {
-  padding: 10px 16px;
+  padding: 10px var(--ds-spacing-md);
   background: var(--ds-color-primary);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   color: var(--ds-text-inverse);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   font-family: inherit;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .add-btn:hover {
@@ -497,12 +497,12 @@ defineExpose({
   padding: 6px 12px;
   background: transparent;
   border: 1px solid var(--ds-status-danger);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   color: var(--ds-status-danger);
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   font-family: inherit;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .clear-btn:hover {
@@ -521,7 +521,7 @@ defineExpose({
 
 .config-panel::-webkit-scrollbar-thumb {
   background: var(--ds-border);
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
 }
 
 .config-panel::-webkit-scrollbar-thumb:hover {

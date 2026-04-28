@@ -62,8 +62,8 @@ const iconName = computed(() => props.icon || iconMap[props.type]);
   gap: 10px;
   padding: 12px;
   border: 1px solid;
-  border-radius: 6px;
-  font-size: 13px;
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-font-size-sm);
   line-height: 1.5;
 }
 

@@ -326,7 +326,7 @@ defineExpose({
 @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap');
 
 .command-log {
-  font-family: 'Fira Sans', sans-serif;
+  font-family: var(--ds-font-sans);
   background: v-bind("getToken('panel.default')");
   border-radius: v-bind("getToken('radius.md')");
   padding: v-bind("getToken('space.4')");
@@ -346,8 +346,8 @@ defineExpose({
 }
 
 .log-title {
-  font-family: 'Fira Code', monospace;
-  font-size: 16px;
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-font-size-lg);
   font-weight: 600;
   margin: 0;
   color: v-bind("getToken('color.foreground.default')");
@@ -395,10 +395,10 @@ defineExpose({
   border: none;
   border-radius: v-bind("getToken('radius.sm')");
   color: v-bind("getToken('color.foreground.muted')");
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   cursor: pointer;
   transition: all 150ms ease;
-  font-family: 'Fira Sans', sans-serif;
+  font-family: var(--ds-font-sans);
 }
 
 .filter-option:hover {
@@ -414,7 +414,7 @@ defineExpose({
 .status-dot {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
   flex-shrink: 0;
 }
 
@@ -441,7 +441,7 @@ defineExpose({
 
 .empty-state p {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
 }
 
 .logs-container {
@@ -477,7 +477,7 @@ defineExpose({
 .log-status-icon {
   width: 32px;
   height: 32px;
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -533,7 +533,7 @@ defineExpose({
 
 .log-skill {
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: v-bind("getToken('color.foreground.default')");
   overflow: hidden;
   text-overflow: ellipsis;
@@ -541,7 +541,7 @@ defineExpose({
 }
 
 .log-agent {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: v-bind("getToken('color.foreground.muted')");
   padding: v-bind("getToken('space.0\\.5')") v-bind("getToken('space.1\\.5')");
   background: v-bind("getToken('panel.subtle')");
@@ -556,13 +556,13 @@ defineExpose({
 }
 
 .log-time {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: v-bind("getToken('color.foreground.muted')");
 }
 
 .log-id {
-  font-family: 'Fira Code', monospace;
-  font-size: 10px;
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-font-size-xs);
   color: v-bind("getToken('color.foreground.muted')");
 }
 

@@ -13,6 +13,10 @@ import 'vxe-table/lib/style.css';
 // Highlight.js for syntax highlighting
 import 'highlight.js/styles/github-dark.css';
 
+// Design System 动画预设
+import './design-system/animations.css';
+import './design-system/micro-interactions.css';
+
 const app = createApp(App);
 const pinia = createPinia();
 

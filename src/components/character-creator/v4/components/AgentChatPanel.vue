@@ -372,7 +372,7 @@ onMounted(() => {
 .acp-header__left {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
 }
 
 .acp-header__step {
@@ -392,7 +392,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
 }
 
 .acp-header__name {
@@ -475,7 +475,7 @@ onMounted(() => {
 
 .acp-bubble__content :deep(code) {
   background: var(--ds-bg-overlay);
-  padding: 2px 6px;
+  padding: 2px var(--ds-spacing-xs);
   border-radius: var(--ds-radius-sm, 2px);
   font-size: var(--ds-typography-fontSize-xs, 10px);
 }
@@ -573,7 +573,7 @@ onMounted(() => {
 
 .acp-messages::-webkit-scrollbar-thumb {
   background: var(--ds-border);
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
 }
 
 .acp-messages::-webkit-scrollbar-thumb:hover {

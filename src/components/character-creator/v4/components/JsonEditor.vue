@@ -120,7 +120,7 @@ function handleSave(): void {
 /* A3: 10px mono label, A5: 视觉层级第三层 */
 .json-editor__label {
   font-size: var(--ds-font-size-xs, 10px);
-  font-family: 'SF Mono', 'Monaco', monospace;
+  font-family: var(--ds-font-mono);
   color: var(--ds-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -137,7 +137,7 @@ function handleSave(): void {
   border-radius: var(--ds-radii-md, 4px);
   color: var(--ds-text-primary);
   font-size: var(--ds-font-size-sm, 12px);
-  font-family: 'SF Mono', 'Monaco', monospace;
+  font-family: var(--ds-font-mono);
   line-height: 1.6;
   resize: none;
   outline: none;
@@ -152,7 +152,7 @@ function handleSave(): void {
 /* A3: 状态色 */
 .json-editor__error {
   font-size: var(--ds-font-size-xs, 10px);
-  font-family: 'SF Mono', 'Monaco', monospace;
+  font-family: var(--ds-font-mono);
   color: var(--ds-status-danger, #ff3b30);
 }
 

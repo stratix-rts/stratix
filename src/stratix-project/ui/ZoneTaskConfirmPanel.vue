@@ -304,7 +304,7 @@ onMounted(() => {
 .zone-task-confirm-panel {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
   height: 100%;
   overflow: hidden;
 }
@@ -321,15 +321,15 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
   padding: 12px;
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border-default);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
 }
 
 .zone-task-confirm-panel__stat-value {
-  font-size: 20px;
+  font-size: var(--ds-font-size-2xl);
   font-weight: 700;
   color: var(--ds-text-primary);
 }
@@ -351,7 +351,7 @@ onMounted(() => {
 }
 
 .zone-task-confirm-panel__stat-label {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -360,18 +360,18 @@ onMounted(() => {
 /* Input */
 .zone-task-confirm-panel__input {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   flex-shrink: 0;
 }
 
 .zone-task-confirm-panel__input-field {
   flex: 1;
-  padding: 8px 12px;
-  font-size: 13px;
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-primary);
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border-default);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   outline: none;
 }
 
@@ -398,11 +398,11 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   height: 100px;
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-muted);
   background: var(--ds-bg-tertiary);
   border: 1px dashed var(--ds-border-default);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
 }
 
 /* Task Card */
@@ -410,7 +410,7 @@ onMounted(() => {
   padding: 12px;
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border-default);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   transition: border-color 0.15s ease;
 }
 
@@ -421,18 +421,18 @@ onMounted(() => {
 .zone-task-confirm-panel__task-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   margin-bottom: 8px;
 }
 
 .zone-task-confirm-panel__task-type-icon {
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
   flex-shrink: 0;
 }
 
 .zone-task-confirm-panel__task-title {
   flex: 1;
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   font-weight: 600;
   color: var(--ds-text-primary);
   overflow: hidden;
@@ -441,10 +441,10 @@ onMounted(() => {
 }
 
 .zone-task-confirm-panel__task-priority {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 2px var(--ds-spacing-xs);
+  border-radius: var(--ds-radius-sm);
   flex-shrink: 0;
 }
 
@@ -474,7 +474,7 @@ onMounted(() => {
 }
 
 .zone-task-confirm-panel__task-desc {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-secondary);
   margin-bottom: 8px;
   line-height: 1.4;
@@ -489,16 +489,16 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   margin-bottom: 10px;
 }
 
 .zone-task-confirm-panel__task-type {
-  padding: 2px 6px;
+  padding: 2px var(--ds-spacing-xs);
   background: var(--ds-bg-primary);
   border: 1px solid var(--ds-border-default);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
 }
 
 .zone-task-confirm-panel__task-agent {
@@ -508,7 +508,7 @@ onMounted(() => {
 .zone-task-confirm-panel__task-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .zone-task-confirm-panel__agent-select {
@@ -517,12 +517,12 @@ onMounted(() => {
 
 .zone-task-confirm-panel__select {
   width: 100%;
-  padding: 4px 8px;
-  font-size: 12px;
+  padding: var(--ds-spacing-xs) var(--ds-spacing-sm);
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-primary);
   background: var(--ds-bg-primary);
   border: 1px solid var(--ds-border-default);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   outline: none;
 }
 
@@ -534,7 +534,7 @@ onMounted(() => {
 .zone-task-confirm-panel__footer {
   display: flex;
   justify-content: center;
-  padding: 8px;
+  padding: var(--ds-spacing-sm);
   flex-shrink: 0;
 }
 </style>

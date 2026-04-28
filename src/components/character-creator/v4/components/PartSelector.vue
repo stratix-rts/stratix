@@ -407,7 +407,7 @@ function getCurrentVariant(part: PartMetadata): string {
   width: 6px;
   height: 6px;
   background: var(--ds-color-secondary, #7b61ff);
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
 }
 
 .ps-cat-btn--active .ps-cat-btn__dot {
@@ -548,7 +548,7 @@ function getCurrentVariant(part: PartMetadata): string {
 
 .ps-list::-webkit-scrollbar-thumb {
   background: var(--ds-border, #333);
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
 }
 
 .ps-list::-webkit-scrollbar-thumb:hover {

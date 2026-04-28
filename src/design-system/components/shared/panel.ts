@@ -58,6 +58,12 @@ export const PanelVariants = {
     border: 'none',
     boxShadow: 'none',
   },
+  glass: {
+    background: 'var(--ds-glass-bg)',
+    border: 'var(--ds-glass-border)',
+    boxShadow: 'var(--ds-glass-shadow)',
+    backdropFilter: 'blur(var(--ds-glass-blur)) saturate(var(--ds-glass-saturate))',
+  },
 } as const;
 
 /**

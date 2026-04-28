@@ -97,6 +97,8 @@ export type {
   AvatarSemanticToken,
   ProgressSemanticToken,
   SkeletonSemanticToken,
+  GradientSemanticToken,
+  GlassSemanticToken,
   SemanticCategory,
 
   // 组件类型
@@ -186,6 +188,8 @@ export {
   generateAvatarSemantic,
   generateProgressSemantic,
   generateSkeletonSemantic,
+  generateGradientSemantic,
+  generateGlassSemantic,
 } from './semantic/_generator';
 
 export {
@@ -445,5 +449,8 @@ export const DesignSystemInfo = {
     '完整的类型定义',
     'CSS 变量自动注入',
     '离线图标系统',
+    '渐变系统 (Gradient Tokens)',
+    '毛玻璃效果 (Glassmorphism)',
+    '动画预设系统 (Animation Presets)',
   ],
 };

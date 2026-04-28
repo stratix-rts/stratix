@@ -1,0 +1,65 @@
+/**
+ * Stratix Design System - 微交互系统
+ *
+ * Ripple、3D Tilt、Click Feedback 等微交互效果
+ * 由 main.ts 自动导入
+ */
+
+/* ============ Ripple 效果（纯 CSS） ============ */
+.ds-ripple {
+  position: relative;
+  overflow: hidden;
+}
+
+.ds-ripple::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle, currentColor 10%, transparent 10.01%);
+  background-repeat: no-repeat;
+  background-position: 50%;
+  transform: scale(4) translate(-50%, -50%);
+  opacity: 0;
+  transition: transform var(--ds-animation-duration-fast, 150ms) ease,
+              opacity var(--ds-animation-duration-fast, 150ms) ease;
+  pointer-events: none;
+}
+
+.ds-ripple:active::after {
+  transform: scale(0) translate(-50%, -50%);
+  opacity: 0.2;
+  transition: 0s;
+}
+
+/* ============ 3D Tilt 卡片效果 ============ */
+.ds-tilt-card {
+  transform-style: preserve-3d;
+  transition: transform var(--ds-animation-duration-fast, 150ms) ease;
+}
+
+.ds-tilt-card:hover {
+  transform: perspective(1000px) rotateX(2deg) rotateY(-2deg) translateZ(10px);
+}
+
+/* ============ 渐进增强：减少动画偏好 ============ */
+@media (prefers-reduced-motion: reduce) {
+  .ds-ripple::after {
+    transition: none;
+    animation: none;
+  }
+
+  .ds-ripple:active::after {
+    transition: none;
+    transform: scale(4) translate(-50%, -50%);
+    opacity: 0;
+  }
+
+  .ds-tilt-card,
+  .ds-tilt-card:hover {
+    transform: none;
+    transition: none;
+  }
+}

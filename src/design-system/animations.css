@@ -1,0 +1,194 @@
+/**
+ * Stratix Design System - 动画预设系统
+ *
+ * 基于 CSS 变量的动画预设，与主题动画 Token 联动
+ * 由 initDesignSystem() 自动注入
+ */
+
+/* ============ Fade ============ */
+@keyframes ds-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes ds-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* ============ Slide ============ */
+@keyframes ds-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(var(--ds-spacing-sm, 8px));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ds-slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-1 * var(--ds-spacing-sm, 8px)));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ds-slide-right {
+  from {
+    opacity: 0;
+    transform: translateX(calc(-1 * var(--ds-spacing-sm, 8px)));
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ============ Scale ============ */
+@keyframes ds-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes ds-scale-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+/* ============ Glow Pulse (Cyberpunk) ============ */
+@keyframes ds-glow-pulse {
+  0%, 100% {
+    box-shadow: 0 0 10px var(--ds-color-primary)40;
+  }
+  50% {
+    box-shadow: 0 0 20px var(--ds-color-primary)80;
+  }
+}
+
+/* ============ Backdrop blur reveal ============ */
+@keyframes ds-blur-in {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(4px);
+  }
+}
+
+/* ============ 工具类 ============ */
+.ds-animate-fade-in {
+  animation: ds-fade-in var(--ds-animation-duration-fast, 150ms) var(--ds-animation-easing-ease-out, ease-out);
+}
+
+.ds-animate-fade-out {
+  animation: ds-fade-out var(--ds-animation-duration-fast, 150ms) var(--ds-animation-easing-ease-in, ease-in) forwards;
+}
+
+.ds-animate-slide-up {
+  animation: ds-slide-up var(--ds-animation-duration-normal, 250ms) var(--ds-animation-easing-ease-out, ease-out);
+}
+
+.ds-animate-slide-down {
+  animation: ds-slide-down var(--ds-animation-duration-normal, 250ms) var(--ds-animation-easing-ease-out, ease-out);
+}
+
+.ds-animate-slide-right {
+  animation: ds-slide-right var(--ds-animation-duration-normal, 250ms) var(--ds-animation-easing-ease-out, ease-out);
+}
+
+.ds-animate-scale-in {
+  animation: ds-scale-in var(--ds-animation-duration-fast, 150ms) var(--ds-animation-easing-ease-out, ease-out);
+}
+
+.ds-animate-scale-out {
+  animation: ds-scale-out var(--ds-animation-duration-fast, 150ms) var(--ds-animation-easing-ease-in, ease-in) forwards;
+}
+
+.ds-animate-glow-pulse {
+  animation: ds-glow-pulse 2s var(--ds-animation-easing-linear, linear) infinite;
+}
+
+/* ============ 图标动画 ============ */
+@keyframes ds-icon-slide-right {
+  from { transform: translateX(-2px); opacity: 0.7; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes ds-icon-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(180deg); }
+}
+
+@keyframes ds-icon-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+@keyframes ds-icon-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes ds-check-bounce {
+  0% { transform: scale(0); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+@keyframes ds-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ============ 图标悬停工具类 ============ */
+.ds-icon-hover-slide:hover svg {
+  animation: ds-icon-slide-right var(--ds-animation-duration-fast, 150ms) ease;
+}
+
+.ds-icon-hover-rotate:hover svg {
+  animation: ds-icon-rotate var(--ds-animation-duration-normal, 250ms) ease;
+}
+
+.ds-icon-hover-pulse:hover svg {
+  animation: ds-icon-pulse var(--ds-animation-duration-fast, 150ms) ease;
+}
+
+.ds-icon-hover-bounce:hover svg {
+  animation: ds-icon-bounce var(--ds-animation-duration-fast, 150ms) ease;
+}
+
+/* ============ 性能优化：仅动画 transform 和 opacity ============ */
+.ds-animate-gpu {
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+}
+
+/* ============ 渐进增强：减少动画偏好 ============ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

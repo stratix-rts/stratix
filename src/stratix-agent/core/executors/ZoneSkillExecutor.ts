@@ -242,6 +242,45 @@ export class ZoneSkillExecutor implements SkillExecutor {
         };
       }
 
+      case 'zone_recent': {
+        // Get recently created zones for potential joining
+        // Agent can call this to discover new zones that might need agents
+        const { limit = 10, projectId } = params;
+
+        let url = `${gatewayUrl}/api/zones?limit=${encodeURIComponent(String(limit))}`;
+        if (projectId) {
+          url += `&projectId=${encodeURIComponent(projectId)}`;
+        }
+
+        const response = await fetchWithRetry(url, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to get recent zones: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const zones = (data.zones || []).map((zone: any) => ({
+          zoneId: zone.id || zone.zoneId,
+          name: zone.name || zone.title || 'Unnamed Zone',
+          title: zone.title || '',
+          prompt: zone.prompt || '',
+          agentCount: zone.members?.length || 0,
+          status: zone.status,
+          projectId: zone.projectId,
+          createdAt: zone.createdAt
+        }));
+
+        return {
+          success: true,
+          zones,
+          total: zones.length,
+          fetchedAt: Date.now()
+        };
+      }
+
       default:
         throw new Error(`Unknown zone skill: ${skill.skillId}`);
     }

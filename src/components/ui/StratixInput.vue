@@ -78,17 +78,18 @@ const handleBlur = () => {
 .stratix-input-wrapper {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   padding: v-bind('sizeConfig.padding');
   background: v-bind('getToken("colors.background.tertiary")');
   border: 1px solid v-bind('getToken("colors.border.default")');
   border-radius: v-bind('getToken("radii.md")');
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .stratix-input-wrapper--focused {
   border-color: v-bind('getToken("colors.info")');
-  box-shadow: 0 0 0 2px v-bind('getToken("colors.info") + "1A"');
+  box-shadow: 0 0 0 2px v-bind('getToken("colors.info") + "1A"'),
+              0 0 0 4px v-bind('getToken("colors.info") + "0D"');
 }
 
 .stratix-input-wrapper--error {
@@ -129,7 +130,7 @@ const handleBlur = () => {
 .stratix-input__error-message {
   display: block;
   margin-top: 6px;
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: v-bind('getToken("colors.semantic.danger")');
 }
 </style>

@@ -271,7 +271,7 @@ onUnmounted(() => {
   flex-direction: column;
   background: var(--ds-bg-secondary);
   border: 1px solid var(--ds-border);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   overflow: hidden;
   font-family: system-ui, sans-serif;
   color: var(--ds-text-primary);
@@ -280,7 +280,7 @@ onUnmounted(() => {
 }
 
 .panel-header {
-  padding: 10px 12px;
+  padding: 10px var(--ds-spacing-md);
   background: var(--ds-bg-tertiary);
   border-bottom: 1px solid var(--ds-border);
   display: flex;
@@ -289,12 +289,12 @@ onUnmounted(() => {
 }
 
 .panel-title {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   font-weight: bold;
 }
 
 .points-info {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-muted);
   display: flex;
   align-items: center;
@@ -345,7 +345,7 @@ onUnmounted(() => {
 
 .skill-node {
   position: absolute;
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -379,23 +379,23 @@ onUnmounted(() => {
 }
 
 .node-icon {
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
   margin-bottom: 2px;
 }
 
 .node-name {
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
   text-align: center;
   line-height: 1.2;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 0 4px;
+  padding: 0 var(--ds-spacing-xs);
 }
 
 .attributes-panel {
-  padding: 10px 12px;
+  padding: 10px var(--ds-spacing-md);
   background: var(--ds-bg-tertiary);
   border-top: 1px solid var(--ds-border);
   max-height: 80px;
@@ -404,25 +404,25 @@ onUnmounted(() => {
 
 .attributes-empty {
   color: var(--ds-text-muted);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   text-align: center;
-  padding: 4px 0;
+  padding: var(--ds-spacing-xs) 0;
 }
 
 .attributes-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .attr-item {
-  padding: 4px 8px;
+  padding: var(--ds-spacing-xs) var(--ds-spacing-sm);
   background: var(--ds-bg-secondary);
-  border-radius: 4px;
-  font-size: 11px;
+  border-radius: var(--ds-radius-sm);
+  font-size: var(--ds-font-size-xs);
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
 }
 
 .attr-name {
@@ -435,7 +435,7 @@ onUnmounted(() => {
 }
 
 .panel-footer {
-  padding: 8px 12px;
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   background: var(--ds-bg-tertiary);
   border-top: 1px solid var(--ds-border);
   display: flex;
@@ -444,11 +444,11 @@ onUnmounted(() => {
 
 .reset-button {
   padding: 6px 16px;
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   background: var(--ds-bg-secondary);
   color: var(--ds-text-primary);
   border: 1px solid var(--ds-border);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -463,13 +463,13 @@ onUnmounted(() => {
   position: fixed;
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   padding: 10px;
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-primary);
   z-index: 10000;
   max-width: 200px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--ds-shadow-md);
   pointer-events: none;
 }
 
@@ -479,13 +479,13 @@ onUnmounted(() => {
 }
 
 .tooltip-desc {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   margin-bottom: 6px;
 }
 
 .tooltip-attrs {
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-status-success);
 }
 </style>

@@ -119,7 +119,7 @@ const getHeroTypeColor = (type: string) => {
 
 .status-section h4 {
   margin: 0 0 12px 0;
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   color: v-bind('getToken("colors.text.muted")');
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -128,28 +128,28 @@ const getHeroTypeColor = (type: string) => {
 .selected-info {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .agent-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 12px;
+  padding: 10px var(--ds-spacing-md);
   background: v-bind('getToken("colors.background.tertiary")');
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
 }
 
 .agent-item-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .agent-thumb {
   width: 32px;
   height: 32px;
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   object-fit: cover;
   image-rendering: pixelated;
 }
@@ -160,27 +160,27 @@ const getHeroTypeColor = (type: string) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
 }
 
 .agent-name {
   color: v-bind('getToken("colors.text.primary")');
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
 }
 
 .agent-type {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   font-weight: 500;
-  padding: 2px 6px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
+  padding: 2px var(--ds-spacing-xs);
+  background: color-mix(in srgb, var(--ds-bg-elevated) 10%, transparent);
+  border-radius: var(--ds-radius-sm);
 }
 
 .empty-state {
   text-align: center;
   padding: 30px 20px;
   color: v-bind('getToken("colors.text.muted")');
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
 }
 
 .stats-grid {
@@ -194,45 +194,45 @@ const getHeroTypeColor = (type: string) => {
   flex-direction: column;
   align-items: center;
   padding: 16px 12px;
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: 8px;
+  background: color-mix(in srgb, var(--ds-bg-elevated) 3%, transparent);
+  border-radius: var(--ds-radius-md);
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .stat-value {
-  font-size: 24px;
+  font-size: var(--ds-font-size-2xl);
   font-weight: 600;
   color: v-bind('getToken("colors.info")');
   margin-bottom: 4px;
 }
 
 .stat-label {
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   color: v-bind('getToken("colors.text.muted")');
 }
 
 .system-status {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .status-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: 6px;
+  padding: 10px var(--ds-spacing-md);
+  background: color-mix(in srgb, var(--ds-bg-elevated) 3%, transparent);
+  border-radius: var(--ds-radius-md);
 }
 
 .status-item .label {
   color: v-bind('getToken("colors.text.muted")');
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
 }
 
 .status-item .value {
-  font-size: 13px;
+  font-size: var(--ds-font-size-sm);
   font-weight: 500;
   color: v-bind('getToken("colors.semantic.danger")');
 }

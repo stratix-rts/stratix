@@ -65,15 +65,15 @@ const selectedType = computed({
 }
 
 .body-type-selector__label {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-muted);
-  font-family: 'SF Mono', 'Monaco', monospace;
+  font-family: var(--ds-font-mono);
   flex-shrink: 0;
 }
 
 .body-type-selector__options {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   flex-wrap: wrap;
 }
 
@@ -81,14 +81,14 @@ const selectedType = computed({
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 8px 12px;
+  gap: var(--ds-spacing-xs);
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   background: var(--ds-bg-secondary);
   border: 1px solid var(--ds-border);
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   cursor: pointer;
-  transition: all 0.15s ease;
-  font-family: 'SF Mono', 'Monaco', monospace;
+  transition: all var(--ds-animation-duration-fast) ease;
+  font-family: var(--ds-font-mono);
   min-width: 56px;
 }
 
@@ -103,7 +103,7 @@ const selectedType = computed({
 }
 
 .body-type-btn__icon {
-  font-size: 18px;
+  font-size: var(--ds-font-size-xl);
   line-height: 1;
 }
 
@@ -112,7 +112,7 @@ const selectedType = computed({
 }
 
 .body-type-btn__label {
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-secondary);
   font-weight: 500;
 }

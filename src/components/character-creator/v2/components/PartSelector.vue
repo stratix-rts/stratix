@@ -244,13 +244,13 @@ defineExpose({
   height: 100%;
   background: var(--ds-bg-secondary);
   border: 1px solid var(--ds-border);
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   overflow: hidden;
-  font-family: 'SF Mono', 'Monaco', monospace;
+  font-family: var(--ds-font-mono);
 }
 
 .part-selector__header {
-  padding: 12px 16px;
+  padding: var(--ds-spacing-md) var(--ds-spacing-md);
   border-bottom: 1px solid var(--ds-border);
   display: flex;
   justify-content: space-between;
@@ -258,13 +258,13 @@ defineExpose({
 }
 
 .part-selector__title {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   color: var(--ds-color-primary);
   font-weight: 500;
 }
 
 .part-selector__subtitle {
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   letter-spacing: 1px;
 }
@@ -272,8 +272,8 @@ defineExpose({
 .part-selector__categories {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  padding: 12px 16px;
+  gap: var(--ds-spacing-xs);
+  padding: var(--ds-spacing-md) var(--ds-spacing-md);
   background: var(--ds-bg-base);
   border-bottom: 1px solid var(--ds-border);
 }
@@ -283,12 +283,12 @@ defineExpose({
   padding: 6px 12px;
   background: transparent;
   border: 1px solid var(--ds-border);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   color: var(--ds-text-secondary);
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   font-family: inherit;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .category-btn:hover {
@@ -314,7 +314,7 @@ defineExpose({
   width: 6px;
   height: 6px;
   background: var(--ds-color-secondary);
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
 }
 
 .category-btn--active .category-btn__dot {
@@ -323,7 +323,7 @@ defineExpose({
 
 .part-selector__list {
   flex: 1;
-  padding: 8px;
+  padding: var(--ds-spacing-sm);
   overflow-y: auto;
   background: var(--ds-bg-base);
 }
@@ -331,22 +331,22 @@ defineExpose({
 .part-selector__loading,
 .part-selector__empty {
   text-align: center;
-  padding: 40px 20px;
+  padding: var(--ds-spacing-xl) var(--ds-spacing-lg);
   color: var(--ds-text-muted);
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
 }
 
 .part-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
+  padding: 10px var(--ds-spacing-md);
   margin-bottom: 4px;
   background: var(--ds-bg-secondary);
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
   font-family: inherit;
   width: 100%;
   text-align: left;
@@ -375,7 +375,7 @@ defineExpose({
 }
 
 .part-item__name {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-primary);
   font-weight: 500;
 }
@@ -385,7 +385,7 @@ defineExpose({
 }
 
 .part-item__meta {
-  font-size: 10px;
+  font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
 }
 
@@ -394,12 +394,12 @@ defineExpose({
 }
 
 .part-item__variant {
-  padding: 4px 8px;
+  padding: var(--ds-spacing-xs) var(--ds-spacing-sm);
   background: var(--ds-bg-base);
   border: 1px solid var(--ds-border);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   color: var(--ds-text-primary);
-  font-size: 11px;
+  font-size: var(--ds-font-size-xs);
   font-family: inherit;
   cursor: pointer;
   margin-left: 8px;
@@ -411,7 +411,7 @@ defineExpose({
 }
 
 .part-selector__footer {
-  padding: 16px;
+  padding: var(--ds-spacing-md);
   border-top: 1px solid var(--ds-border);
   display: flex;
   justify-content: flex-end;
@@ -429,7 +429,7 @@ defineExpose({
 
 .part-selector__list::-webkit-scrollbar-thumb {
   background: var(--ds-border);
-  border-radius: 3px;
+  border-radius: var(--ds-radius-sm);
 }
 
 .part-selector__list::-webkit-scrollbar-thumb:hover {

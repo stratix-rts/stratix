@@ -70,7 +70,7 @@ const handleChange = (event: Event) => {
 .stratix-checkbox {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
   cursor: pointer;
   user-select: none;
 }
@@ -93,7 +93,7 @@ const handleChange = (event: Event) => {
   background: v-bind('getToken("colors.background.tertiary")');
   border: 1px solid v-bind('getToken("colors.border.default")');
   border-radius: v-bind('getToken("radii.sm")');
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
   flex-shrink: 0;
 }
 
@@ -120,10 +120,11 @@ const handleChange = (event: Event) => {
   width: 70%;
   height: 70%;
   color: v-bind('getToken("colors.background.primary")');
+  animation: ds-check-bounce var(--ds-animation-duration-fast) var(--ds-animation-easing-ease-out, ease-out);
 }
 
 .stratix-checkbox__label {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   color: v-bind('getToken("colors.text.primary")');
 }
 

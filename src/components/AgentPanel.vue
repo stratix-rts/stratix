@@ -233,20 +233,20 @@ const panelStyle = computed(() => getToken('panel.default'));
 
 .panel-title {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--ds-font-size-lg);
   font-weight: 600;
   color: var(--ds-text);
 }
 
 .header-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .refresh-info {
   display: flex;
-  gap: 8px;
-  font-size: 12px;
+  gap: var(--ds-spacing-sm);
+  font-size: var(--ds-font-size-sm);
   color: var(--ds-text-secondary);
   margin-bottom: 16px;
 }
@@ -256,13 +256,13 @@ const panelStyle = computed(() => getToken('panel.default'));
 }
 
 .refresh-time {
-  font-family: 'SF Mono', 'Monaco', monospace;
+  font-family: var(--ds-font-mono);
 }
 
 .agent-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .agent-card {
@@ -272,9 +272,9 @@ const panelStyle = computed(() => getToken('panel.default'));
   padding: 12px;
   background: var(--ds-bg-tertiary);
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .agent-card:hover {
@@ -284,14 +284,14 @@ const panelStyle = computed(() => getToken('panel.default'));
 
 .agent-card.selected {
   border-color: var(--ds-accent);
-  background: rgba(0, 212, 255, 0.1);
+  background: color-mix(in srgb, var(--ds-status-info) 10%, transparent);
 }
 
 .agent-avatar {
   flex-shrink: 0;
   width: 40px;
   height: 40px;
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   overflow: hidden;
   background: var(--ds-bg-secondary);
 }
@@ -316,7 +316,7 @@ const panelStyle = computed(() => getToken('panel.default'));
 }
 
 .agent-name {
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   font-weight: 500;
   color: var(--ds-text);
   margin-bottom: 4px;
@@ -324,8 +324,8 @@ const panelStyle = computed(() => getToken('panel.default'));
 
 .agent-meta {
   display: flex;
-  gap: 8px;
-  font-size: 12px;
+  gap: var(--ds-spacing-sm);
+  font-size: var(--ds-font-size-sm);
 }
 
 .agent-type,
@@ -335,7 +335,7 @@ const panelStyle = computed(() => getToken('panel.default'));
 
 .agent-actions {
   display: flex;
-  gap: 4px;
+  gap: var(--ds-spacing-xs);
 }
 
 .action-btn {
@@ -346,10 +346,10 @@ const panelStyle = computed(() => getToken('panel.default'));
   justify-content: center;
   background: transparent;
   border: 1px solid var(--ds-border);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   color: var(--ds-text-secondary);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--ds-animation-duration-fast) ease;
 }
 
 .action-btn:hover {
@@ -360,23 +360,23 @@ const panelStyle = computed(() => getToken('panel.default'));
 
 .empty-state {
   text-align: center;
-  padding: 40px 20px;
+  padding: var(--ds-spacing-xl) var(--ds-spacing-lg);
   color: var(--ds-text-muted);
 }
 
 .empty-state p {
-  margin: 8px 0;
+  margin: var(--ds-spacing-sm) 0;
 }
 
 .empty-hint {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
 }
 
 .type-indicator {
   display: inline-block;
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: var(--ds-radius-full);
   margin-right: 8px;
 }
 </style>

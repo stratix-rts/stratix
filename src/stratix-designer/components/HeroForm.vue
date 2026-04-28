@@ -172,20 +172,20 @@ const heroColor = computed(() => getHeroColor(config.value.type));
 .header-left {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: var(--ds-spacing-md);
 }
 
 .hero-badge {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
+  border-radius: var(--ds-radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
   color: v-bind('getToken("colors.background.primary")');
   font-weight: 700;
-  font-size: 18px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  font-size: var(--ds-font-size-xl);
+  box-shadow: var(--ds-shadow-md);
 }
 
 .header-info {
@@ -195,13 +195,13 @@ const heroColor = computed(() => getHeroColor(config.value.type));
 
 .header-title {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--ds-font-size-xl);
   font-weight: 600;
   color: v-bind('getToken("colors.text.primary")');
 }
 
 .header-id {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: v-bind('getToken("colors.text.muted")');
   font-family: v-bind('getToken("typography.fontFamily.mono")');
 }
@@ -224,22 +224,22 @@ const heroColor = computed(() => getHeroColor(config.value.type));
   display: flex;
   flex-direction: column;
   padding: 20px 16px;
-  gap: 24px;
+  gap: var(--ds-spacing-lg);
 }
 
 .tabs {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .tab-btn {
   padding: 10px 14px;
   background: v-bind('getToken("colors.background.tertiary")');
   border: 1px solid v-bind('getToken("colors.border.default")');
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   color: v-bind('getToken("colors.text.secondary")');
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
@@ -260,22 +260,22 @@ const heroColor = computed(() => getHeroColor(config.value.type));
 .type-selector {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--ds-spacing-sm);
 }
 
 .type-label {
-  font-size: 12px;
+  font-size: var(--ds-font-size-sm);
   color: v-bind('getToken("colors.text.muted")');
   font-weight: 500;
 }
 
 .type-select {
-  padding: 8px 12px;
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   background: v-bind('getToken("colors.background.tertiary")');
   border: 1px solid v-bind('getToken("colors.border.default")');
-  border-radius: 6px;
+  border-radius: var(--ds-radius-md);
   color: v-bind('getToken("colors.text.primary")');
-  font-size: 14px;
+  font-size: var(--ds-font-size-md);
   outline: none;
   transition: border-color 0.2s;
 }

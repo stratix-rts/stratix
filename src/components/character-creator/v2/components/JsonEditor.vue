@@ -110,8 +110,8 @@ function handleSave(): void {
 }
 
 .editor-label {
-  font-size: 10px;
-  font-family: 'SF Mono', 'Monaco', monospace;
+  font-size: var(--ds-font-size-xs);
+  font-family: var(--ds-font-mono);
   color: var(--ds-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -128,10 +128,10 @@ function handleSave(): void {
   min-height: 280px;
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
-  border-radius: 4px;
+  border-radius: var(--ds-radius-sm);
   color: var(--ds-text-primary);
-  font-size: 12px;
-  font-family: 'SF Mono', 'Monaco', monospace;
+  font-size: var(--ds-font-size-sm);
+  font-family: var(--ds-font-mono);
   resize: none;
   padding: 12px;
   box-sizing: border-box;
@@ -148,9 +148,9 @@ function handleSave(): void {
 }
 
 .error-message {
-  padding: 8px 0;
-  font-size: 11px;
-  font-family: 'SF Mono', 'Monaco', monospace;
+  padding: var(--ds-spacing-sm) 0;
+  font-size: var(--ds-font-size-xs);
+  font-family: var(--ds-font-mono);
   color: var(--ds-status-danger, #ff3b30);
 }
 
