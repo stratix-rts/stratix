@@ -1,9 +1,14 @@
+import { ChildProcess, exec, spawn } from 'child_process';
+import { existsSync } from 'fs';
+import { appendFile, readFile, readdir, rm, stat, unlink, writeFile } from 'fs/promises';
+import * as os from 'os';
+import * as path from 'path';
+
 import { zoneContextManager } from '../../stratix-character-creator/core/ZoneContextManager';
 import { SkillDefinition, SkillExecutor, ExecutionContext } from '../types';
 
 import { SafetyValidator } from './SafetyValidator';
 import { ZoneCoordinatorSkillExecutor } from './ZoneCoordinatorSkillExecutor';
-import { SystemZoneSkillExecutor } from './SystemZoneSkillExecutor';
 
 export class HttpSkillExecutor implements SkillExecutor {
   async execute(
@@ -67,7 +72,6 @@ export class HttpSkillExecutor implements SkillExecutor {
     // Handle file_download specially - fetch and save to file
     if (skill.skillId === 'file_download') {
       const { url, path } = params;
-      const { writeFile } = require('fs/promises');
 
       // Validate URL
       const urlValidation = SafetyValidator.validateUrl(url, context);
@@ -314,10 +318,6 @@ export class FileSystemSkillExecutor implements SkillExecutor {
     params: Record<string, any>,
     context: ExecutionContext
   ): Promise<any> {
-    const { readFile, writeFile, appendFile, readdir, rm, stat } = require('fs/promises');
-    const { existsSync } = require('fs');
-    const path = require('path');
-
     const basePath = context.variables?.basePath || process.cwd();
     const filePath = path.isAbsolute(params.path)
       ? params.path
@@ -710,10 +710,6 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
 
   private executePython(code: string, progress?: (p: any) => void, config?: ReturnType<typeof this.getSandboxConfig>): Promise<any> {
     return new Promise((resolve, reject) => {
-      const { spawn } = require('child_process');
-      const { writeFile, unlink } = require('fs/promises');
-      const { join } = require('path');
-      const os = require('os');
 
       // Validate code before execution
       const validation = this.validatePython(code);
@@ -723,7 +719,7 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
       }
 
       // Write code to temp file
-      const tempFile = join(os.tmpdir(), `stratix_sandbox_${Date.now()}_${Math.random().toString(36).slice(2)}.py`);
+      const tempFile = path.join(os.tmpdir(), `stratix_sandbox_${Date.now()}_${Math.random().toString(36).slice(2)}.py`);
 
       (async () => {
         try {
@@ -735,14 +731,13 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
 
           const proc = spawn('python3', [tempFile], {
             timeout: cpuTime * 1000,
-            maxBuffer: maxOutput,
-          });
+          }) as ChildProcess;
 
           let stdout = '';
           let stderr = '';
           let outputTruncated = false;
 
-          proc.stdout.on('data', (data: Buffer) => {
+          proc.stdout!.on('data', (data: Buffer) => {
             if (stdout.length + data.length > maxOutput) {
               stdout += data.toString().slice(0, maxOutput - stdout.length);
               outputTruncated = true;
@@ -751,7 +746,7 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
             stdout += data.toString();
           });
 
-          proc.stderr.on('data', (data: Buffer) => {
+          proc.stderr!.on('data', (data: Buffer) => {
             stderr += data.toString();
           });
 
@@ -833,7 +828,6 @@ export class BashSkillExecutor implements SkillExecutor {
 
     // 执行命令
     return new Promise((resolve, reject) => {
-      const { exec } = require('child_process');
       const options: any = {
         timeout: Math.min((timeout as number), 120) * 1000,  // 最多120秒
         maxBuffer: 10 * 1024 * 1024  // 10MB
@@ -1117,8 +1111,6 @@ export function createExecutor(type: string): SkillExecutor {
       return new ZoneSkillExecutor();
     case 'zone_coordinator':
       return new ZoneCoordinatorSkillExecutor();
-    case 'systemzone':
-      return new SystemZoneSkillExecutor();
     default:
       return new DefaultSkillExecutor();
   }

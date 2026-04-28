@@ -38,9 +38,10 @@ export {
   initDesignSystem,
   restoreThemeFromStorage,
   injectThemeCSSVariables,
-  
-  // 新增：语义 Token 获取
+
+  // 语义 Token 获取
   getSemanticTokens,
+  invalidateSemanticTokenCache,
 } from './config';
 
 // ============ 类型定义 ============
@@ -176,6 +177,15 @@ export {
   generateStatusSemantic,
   generateFormSemantic,
   generateNavigationSemantic,
+  generateTooltipSemantic,
+  generateTableSemantic,
+  generateCardSemantic,
+  generateDividerSemantic,
+  generateScrollbarSemantic,
+  generateBadgeSemantic,
+  generateAvatarSemantic,
+  generateProgressSemantic,
+  generateSkeletonSemantic,
 } from './semantic/_generator';
 
 export {
@@ -226,6 +236,78 @@ export {
   FormSemantic,    // 向后兼容常量
   FormSizes,
 } from './semantic/forms';
+
+export {
+  // 导航
+  getNavigationSemantic,
+  generateNavigationCSSVariables,
+} from './semantic/navigation';
+
+export {
+  // Tooltip
+  getTooltipSemantic,
+  getTooltipVariant,
+  generateTooltipCSSVariables,
+  applyTooltipStyles,
+} from './semantic/tooltip';
+
+export {
+  // Table
+  getTableSemantic,
+  generateTableCSSVariables,
+  applyTableStyles,
+} from './semantic/table';
+
+export {
+  // Card
+  getCardSemantic,
+  getCardVariant,
+  generateCardCSSVariables,
+  applyCardStyles,
+} from './semantic/card';
+
+export {
+  // Divider
+  getDividerSemantic,
+  generateDividerCSSVariables,
+  applyDividerStyles,
+} from './semantic/divider';
+
+export {
+  // Scrollbar
+  getScrollbarSemantic,
+  generateScrollbarCSSVariables,
+  generateScrollbarCSS,
+} from './semantic/scrollbar';
+
+export {
+  // Badge
+  getBadgeSemantic,
+  getBadgeVariant,
+  generateBadgeCSSVariables,
+  applyBadgeStyles,
+} from './semantic/badge';
+
+export {
+  // Avatar
+  getAvatarSemantic,
+  generateAvatarCSSVariables,
+  applyAvatarStyles,
+} from './semantic/avatar';
+
+export {
+  // Progress
+  getProgressSemantic,
+  generateProgressCSSVariables,
+  applyProgressStyles,
+} from './semantic/progress';
+
+export {
+  // Skeleton
+  getSkeletonSemantic,
+  generateSkeletonCSSVariables,
+  applySkeletonStyles,
+} from './semantic/skeleton';
 
 // ============ 主题系统 ============
 export {

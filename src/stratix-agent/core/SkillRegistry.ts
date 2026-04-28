@@ -134,9 +134,26 @@ export class SkillRegistry {
 
   /**
    * 生成本地缓存 key
+   * 对小对象使用直接 stringify；对大对象使用哈希避免 key 过长和性能问题
    */
   private getCacheKey(skillId: string, params: Record<string, any>): string {
-    return `${skillId}:${JSON.stringify(params)}`;
+    const str = JSON.stringify(params);
+    if (str.length <= 500) {
+      return `${skillId}:${str}`;
+    }
+    return `${skillId}:${this.quickHash(str)}`;
+  }
+
+  /**
+   * 快速字符串哈希（FNV-1a 变体）
+   */
+  private quickHash(str: string): string {
+    let hash = 2166136261;
+    for (let i = 0; i < str.length; i++) {
+      hash ^= str.charCodeAt(i);
+      hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+    }
+    return (hash >>> 0).toString(16);
   }
 
   /**

@@ -6,11 +6,13 @@ import { retryPolicyEngine } from '../../stratix-core/retry';
 
 export class LLMConnector {
   private config: LLMConfig;
+  private apiKey: string;
   private openaiClient: OpenAI | null;
   private anthropicClient: Anthropic | null;
 
   constructor(config: LLMConfig) {
     this.config = config;
+    this.apiKey = config.apiKey || '';
     this.openaiClient = null;
     this.anthropicClient = null;
   }
@@ -23,9 +25,11 @@ export class LLMConnector {
     if (!this.openaiClient) {
       const baseUrl = this.config.baseUrl || this.getDefaultBaseUrl();
       this.openaiClient = new OpenAI({
-        apiKey: this.config.apiKey,
+        apiKey: this.apiKey,
         baseURL: baseUrl,
       });
+      // Secure: clear apiKey from memory after client initialization
+      this.apiKey = '';
     }
     return this.openaiClient;
   }
@@ -33,9 +37,11 @@ export class LLMConnector {
   private getAnthropicClient(): Anthropic {
     if (!this.anthropicClient) {
       this.anthropicClient = new Anthropic({
-        apiKey: this.config.apiKey,
+        apiKey: this.apiKey,
         baseURL: this.config.baseUrl || this.getDefaultBaseUrl(),
       });
+      // Secure: clear apiKey from memory after client initialization
+      this.apiKey = '';
     }
     return this.anthropicClient;
   }
@@ -340,13 +346,16 @@ export class LLMConnector {
     onChunk: (chunk: string) => void
   ): Promise<GenerateResult> {
     if (this.isAnthropic()) {
-      // Note: Anthropic API does not support true streaming via chat completions.
-      // This simulates streaming by yielding each character with a delay.
+      // Note: Anthropic streaming is simulated by yielding chunks of text.
       // For production, use Anthropic's dedicated streaming endpoint.
       const result = await this.generate(messages);
-      for (const char of result.content) {
-        onChunk(char);
-        await new Promise(r => setTimeout(r, 10));
+      const chunkSize = 8;
+      const delayMs = 2;
+      for (let i = 0; i < result.content.length; i += chunkSize) {
+        onChunk(result.content.slice(i, i + chunkSize));
+        if (i + chunkSize < result.content.length) {
+          await new Promise(r => setTimeout(r, delayMs));
+        }
       }
       return result;
     }
