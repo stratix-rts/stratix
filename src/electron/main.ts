@@ -121,7 +121,7 @@ function createWindow() {
   loadDevUrl().then(success => {
     if (!success) {
       console.log('[Electron] Loading from local file');
-      mainWindow!.loadFile(path.join(__dirname, '../frontend/index.html'));
+      mainWindow!.loadFile(path.join(__dirname, '../../frontend/index.html'));
     }
   });
   
@@ -213,49 +213,6 @@ function setupIPC() {
       console.error('[TextureService] Delete failed:', error);
       return { success: false, error: error.message };
     }
-  });
-
-  // ==================== System Zone Window IPC ====================
-  let systemZoneWindow: BrowserWindow | null = null;
-
-  ipcMain.on('open-system-zone', () => {
-    if (systemZoneWindow && !systemZoneWindow.isDestroyed()) {
-      systemZoneWindow.focus();
-      return;
-    }
-
-    systemZoneWindow = new BrowserWindow({
-      width: 1000,
-      height: 700,
-      parent: mainWindow || undefined,
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        preload: path.join(__dirname, 'preload.js'),
-      },
-      title: 'System Zone 控制台',
-      backgroundColor: '#0f1117',
-    });
-
-    // Load the system zone page via query param
-    const loadUrl = async () => {
-      for (const port of DEV_PORTS) {
-        try {
-          const url = `http://127.0.0.1:${port}?view=systemzone`;
-          const response = await fetch(url, { method: 'HEAD' });
-          if (response.ok) {
-            await systemZoneWindow!.loadURL(url);
-            return;
-          }
-        } catch { /* next port */ }
-      }
-    };
-
-    loadUrl().catch(console.error);
-
-    systemZoneWindow.on('closed', () => {
-      systemZoneWindow = null;
-    });
   });
 
   // ==================== Tailscale IPC ====================

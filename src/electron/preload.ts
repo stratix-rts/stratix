@@ -83,10 +83,6 @@ export interface ElectronAPI {
     delete: (filePath: string) => Promise<{ success: boolean; error?: string }>;
   };
 
-  // System Zone
-  systemZone: {
-    open: () => void;
-  };
 }
 
 const electronAPI: ElectronAPI = {
@@ -171,10 +167,6 @@ const electronAPI: ElectronAPI = {
     delete: (filePath) => ipcRenderer.invoke('texture:delete', filePath),
   },
 
-  // System Zone
-  systemZone: {
-    open: () => ipcRenderer.send('open-system-zone'),
-  },
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);
