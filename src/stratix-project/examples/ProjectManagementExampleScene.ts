@@ -11,10 +11,12 @@ import {
   Project, 
   ProjectConfig 
 } from '..';
+import { UnifiedZoneManager } from '../../stratix-rts/zones/UnifiedZoneManager';
 import { MAP_WIDTH, MAP_HEIGHT, DEFAULT_ZOOM } from '../../stratix-rts/constants';
 
 export class ProjectManagementExampleScene extends Phaser.Scene {
   private projectManager: ProjectManagerIntegration;
+  private unifiedZoneManager: UnifiedZoneManager;
   private isProjectDrawMode: boolean = false;
   private projectConfigCallback: ((project: Project) => void) | null = null;
 
@@ -36,9 +38,11 @@ export class ProjectManagementExampleScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, MAP_WIDTH, MAP_HEIGHT);
     this.cameras.main.setZoom(DEFAULT_ZOOM);
 
+    // 初始化区域管理器
+    this.unifiedZoneManager = new UnifiedZoneManager(this);
+
     // 初始化项目管理器
-    this.projectManager = new ProjectManagerIntegration(this, {
-      dataDir: 'stratix-data',
+    this.projectManager = new ProjectManagerIntegration(this, this.unifiedZoneManager, {
       autoLoad: true
     });
 
@@ -162,49 +166,49 @@ export class ProjectManagementExampleScene extends Phaser.Scene {
    * 保存项目配置
    */
   public async saveProjectConfig(projectId: string, config: ProjectConfig): Promise<void> {
-    await this.projectManager.getProjectManager().updateProject(projectId, { config });
+    await this.projectManager.getProjectClient().updateProject(projectId, { config });
   }
 
   /**
    * 启动项目
    */
   public async startProject(projectId: string): Promise<void> {
-    await this.projectManager.getProjectManager().startProject(projectId);
+    await this.projectManager.getProjectClient().startProject(projectId);
   }
 
   /**
    * 暂停项目
    */
   public async pauseProject(projectId: string): Promise<void> {
-    await this.projectManager.getProjectManager().pauseProject(projectId);
+    await this.projectManager.getProjectClient().pauseProject(projectId);
   }
 
   /**
    * 完成项目
    */
   public async completeProject(projectId: string): Promise<void> {
-    await this.projectManager.getProjectManager().completeProject(projectId);
+    await this.projectManager.getProjectClient().completeProject(projectId);
   }
 
   /**
    * 删除项目
    */
   public async deleteProject(projectId: string): Promise<void> {
-    await this.projectManager.getProjectManager().deleteProject(projectId);
+    await this.projectManager.getProjectClient().deleteProject(projectId);
   }
 
   /**
    * 获取所有项目
    */
   public async getAllProjects(): Promise<Project[]> {
-    return await this.projectManager.getProjectManager().getAllProjects();
+    return await this.projectManager.getProjectClient().getAllProjects();
   }
 
   /**
    * 获取项目
    */
   public async getProject(projectId: string): Promise<Project | null> {
-    return await this.projectManager.getProjectManager().getProject(projectId);
+    return await this.projectManager.getProjectClient().getProject(projectId);
   }
 
   /**

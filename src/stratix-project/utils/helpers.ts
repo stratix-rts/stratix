@@ -1,6 +1,8 @@
 export function generateId(prefix: string): string {
   const timestamp = Date.now().toString(36);
-  const random = Math.random().toString(36).substr(2, 9);
+  const random = typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID
+    ? globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 9)
+    : Math.random().toString(36).substr(2, 9);
   return `${prefix}_${timestamp}_${random}`;
 }
 
@@ -84,13 +86,15 @@ export function debounce<T extends (...args: any[]) => any>(
   wait: number
 ): (...args: Parameters<T>) => void {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  
+
   return function(this: any, ...args: Parameters<T>) {
     if (timeoutId) {
       clearTimeout(timeoutId);
+      timeoutId = null;
     }
-    
+
     timeoutId = setTimeout(() => {
+      timeoutId = null;
       func.apply(this, args);
     }, wait);
   };

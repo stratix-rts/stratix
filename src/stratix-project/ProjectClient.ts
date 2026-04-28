@@ -30,7 +30,7 @@ export class ProjectClient {
 
   constructor(config?: ProjectClientConfig) {
     this.client = new ApiClient({
-      baseURL: config?.baseURL || 'http://localhost:7524'
+      baseURL: config?.baseURL || process.env.GATEWAY_URL || 'http://localhost:7524'
     });
   }
 
