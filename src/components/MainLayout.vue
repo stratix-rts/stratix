@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onUnmounted, onMounted } from 'vue';
+import { ref, computed, onUnmounted, onMounted, defineAsyncComponent } from 'vue';
 import { StratixSkillConfig } from '../stratix-core';
 import type { Skill } from '../stratix-rts/ui/v2/CommandPanelV2';
 import { StratixButton, StratixPanel, StratixConfirmDialog } from '@/components/ui';
@@ -18,13 +18,13 @@ const uiStore = useUIStore();
 const { trackEvent, getReport } = usePerformanceMonitor({ threshold: 16 });
 const { enabled: soundEnabled, volume: soundVolume, setEnabled: setSoundEnabled, setVolume: setSoundVolume } = useSound();
 
-import HeroManagementModal from './HeroManagementModal.vue';
-import LogPanelModal from './LogPanelModal.vue';
-import StatusPanelModal from './StatusPanelModal.vue';
-import AgentDashboard from './AgentDashboard.vue';
-import ParamFormModal from './ParamFormModal.vue';
-import TaskPanel from './TaskPanel.vue';
-import WorkflowEditorModal from './WorkflowEditorModal.vue';
+const HeroManagementModal = defineAsyncComponent(() => import('./HeroManagementModal.vue'));
+const LogPanelModal = defineAsyncComponent(() => import('./LogPanelModal.vue'));
+const StatusPanelModal = defineAsyncComponent(() => import('./StatusPanelModal.vue'));
+const AgentDashboard = defineAsyncComponent(() => import('./AgentDashboard.vue'));
+const ParamFormModal = defineAsyncComponent(() => import('./ParamFormModal.vue'));
+const TaskPanel = defineAsyncComponent(() => import('./TaskPanel.vue'));
+const WorkflowEditorModal = defineAsyncComponent(() => import('./WorkflowEditorModal.vue'));
 
 const props = defineProps<{
   gameContainer: HTMLElement | null;
