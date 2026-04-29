@@ -12,7 +12,7 @@ import { getDSColor, isReducedMotion } from '../themes/ThemeColors';
 
 export type ParticleEmitter = Phaser.Tweens.Tween[];
 
-interface ParticleOptions {
+interface _ParticleOptions {
   x: number;
   y: number;
   color?: number;

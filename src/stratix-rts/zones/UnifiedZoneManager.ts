@@ -12,7 +12,7 @@ export class UnifiedZoneManager {
   private zones: Map<string, BaseZone> = new Map();
   private spatialIndex: ZoneSpatialIndex;
 
-  constructor(scene: Phaser.Scene) {
+  constructor(_scene: Phaser.Scene) {
     this.spatialIndex = new ZoneSpatialIndex(100);
   }
 

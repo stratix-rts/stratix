@@ -40,7 +40,7 @@ export class TemplateApplicationAction implements ZoneAction {
       templateId: template.id,
       templateName: template.name,
       positions: template.positions,
-      zones: zones.map((zone, index) => ({
+      zones: zones.map((zone, _index) => ({
         zoneId: zone.getZoneId ? zone.getZoneId() : zone.id,
         config: {
           id: zone.getZoneId ? zone.getZoneId() : zone.id,

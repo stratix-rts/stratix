@@ -316,7 +316,7 @@ export class MinimapV2 extends EnhancedUIComponent {
       // Breathing alpha effect
       let alpha = 1;
       if (!isReducedMotion()) {
-        const _lastAlpha = this.agentBreathingAlphas.get(agentId) ?? 0.5;
+        this.agentBreathingAlphas.get(agentId) ?? 0.5;
         alpha = 0.7 + Math.sin(now * 0.003 + sprite.x * 0.01) * 0.3;
         this.agentBreathingAlphas.set(agentId, alpha);
       }

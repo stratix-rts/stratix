@@ -26,8 +26,8 @@ export class CharacterSpawnEffect {
     scene: Phaser.Scene,
     x: number,
     y: number,
-    characterId: string,
-    characterName: string
+    _characterId: string,
+    _characterName: string
   ) {
     this.scene = scene;
 
