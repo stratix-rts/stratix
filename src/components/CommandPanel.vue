@@ -91,7 +91,7 @@ const getAvatarColor = (name: string): string => {
     <div class="header">
       <h3>指令面板</h3>
       <div class="actions">
-        <button class="action-btn" title="设置">
+        <button class="header-action-btn" title="设置">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
             <SvgIcon :name="settingsIcon" size="16" />
           </svg>
@@ -195,7 +195,7 @@ const getAvatarColor = (name: string): string => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: var(--ds-spacing-md);
 }
 
 .header h3 {
@@ -210,9 +210,9 @@ const getAvatarColor = (name: string): string => {
   gap: var(--ds-spacing-sm);
 }
 
-.action-btn {
-  width: 32px;
-  height: 32px;
+.header-action-btn {
+  width: calc(var(--ds-spacing-lg) + var(--ds-spacing-xs));
+  height: calc(var(--ds-spacing-lg) + var(--ds-spacing-xs));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -224,9 +224,9 @@ const getAvatarColor = (name: string): string => {
   transition: all var(--ds-animation-duration-fast) ease;
 }
 
-.action-btn:hover {
-  background: var(--ds-accent);
-  border-color: var(--ds-accent);
+.header-action-btn:hover {
+  background: var(--ds-brand-primary);
+  border-color: var(--ds-brand-primary);
   color: var(--ds-bg-primary);
 }
 
@@ -245,7 +245,7 @@ const getAvatarColor = (name: string): string => {
 }
 
 .selected-info p {
-  margin: 0 0 12px 0;
+  margin: 0 0 var(--ds-spacing-sm) 0;
   font-size: var(--ds-font-size-md);
   font-weight: 500;
 }
@@ -306,8 +306,8 @@ const getAvatarColor = (name: string): string => {
 }
 
 .avatar {
-  width: 48px;
-  height: 48px;
+  width: calc(var(--ds-spacing-xl) + var(--ds-spacing-md));
+  height: calc(var(--ds-spacing-xl) + var(--ds-spacing-md));
   border-radius: var(--ds-radius-full);
   display: flex;
   align-items: center;
@@ -322,7 +322,7 @@ const getAvatarColor = (name: string): string => {
 .avatar-name {
   font-size: var(--ds-font-size-xs);
   color: var(--ds-text-secondary);
-  max-width: 56px;
+  max-width: calc(var(--ds-spacing-2xl) + var(--ds-spacing-sm));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -352,12 +352,12 @@ const getAvatarColor = (name: string): string => {
 
 .action-btn:hover {
   background: var(--ds-bg-secondary);
-  border-color: var(--ds-accent);
+  border-color: var(--ds-brand-primary);
 }
 
 .action-btn.primary {
-  background: var(--ds-accent);
-  border-color: var(--ds-accent);
+  background: var(--ds-brand-primary);
+  border-color: var(--ds-brand-primary);
   color: white;
 }
 

@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 
+import { getDSColor } from '../themes/ThemeColors';
 import { MagicCircle } from './MagicCircle';
 import { ParticleSystem } from './ParticleSystem';
 
@@ -106,7 +107,7 @@ export class CharacterSpawnEffect {
       const camera = this.scene.cameras.main;
       
       this.flashOverlay = this.scene.add.graphics();
-      this.flashOverlay.fillStyle(0xffffff, 0.8);
+      this.flashOverlay.fillStyle(getDSColor('text-primary'), 0.8);
       this.flashOverlay.fillRect(
         camera.scrollX,
         camera.scrollY,

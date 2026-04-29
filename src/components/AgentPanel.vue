@@ -66,7 +66,7 @@ const filteredAgents = computed(() => {
 const heroTypes = [
   { type: 'writer' as const, name: '文案英雄', color: getToken('colors.semantic.success') },
   { type: 'dev' as const, name: '开发英雄', color: getToken('colors.info') },
-  { type: 'analyst' as const, name: '数据英雄', color: '#ff6b9d' }
+  { type: 'analyst' as const, name: '数据英雄', color: getToken('colors.magenta.400') }
 ];
 
 // Dropdown 选项配置
@@ -355,7 +355,7 @@ const panelStyle = computed(() => getToken('panel.default'));
 .collapse-toggle {
   position: absolute;
   right: -12px;
-  top: 16px;
+  top: var(--ds-spacing-md);
   z-index: 10;
   width: 24px;
   height: 24px;
@@ -405,7 +405,7 @@ const panelStyle = computed(() => getToken('panel.default'));
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: var(--ds-spacing-md);
 }
 
 .panel-title {
@@ -426,7 +426,7 @@ const panelStyle = computed(() => getToken('panel.default'));
 /* Search box */
 .search-box {
   position: relative;
-  margin-bottom: 12px;
+  margin-bottom: var(--ds-spacing-sm);
   transition: opacity 0.2s ease;
 }
 
@@ -441,7 +441,7 @@ const panelStyle = computed(() => getToken('panel.default'));
 
 .search-input {
   width: 100%;
-  padding: 8px 28px 8px 32px;
+  padding: var(--ds-spacing-sm) var(--ds-spacing-lg) var(--ds-spacing-sm) var(--ds-spacing-xl);
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
   border-radius: var(--ds-radius-md);
@@ -483,7 +483,7 @@ const panelStyle = computed(() => getToken('panel.default'));
 :deep(.search-highlight) {
   background: color-mix(in srgb, var(--ds-color-primary) 30%, transparent);
   color: var(--ds-text-primary);
-  border-radius: 2px;
+  border-radius: var(--ds-radius-sm);
   padding: 0 1px;
 }
 
@@ -492,7 +492,7 @@ const panelStyle = computed(() => getToken('panel.default'));
   gap: var(--ds-spacing-sm);
   font-size: var(--ds-font-size-sm);
   color: var(--ds-text-secondary);
-  margin-bottom: 16px;
+  margin-bottom: var(--ds-spacing-md);
 }
 
 .refresh-label {
@@ -521,7 +521,7 @@ const panelStyle = computed(() => getToken('panel.default'));
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 8px;
+  padding: var(--ds-spacing-xs) var(--ds-spacing-sm);
   position: sticky;
   top: 0;
   background: v-bind('panelStyle.background');
@@ -548,17 +548,17 @@ const panelStyle = computed(() => getToken('panel.default'));
   height: 1px;
   background: var(--ds-border);
   opacity: 0.5;
-  margin-bottom: 2px;
+  margin-bottom: calc(var(--ds-spacing-xs) / 2);
 }
 
 .agent-card {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px;
+  gap: var(--ds-spacing-sm);
+  padding: calc(var(--ds-spacing-sm) + var(--ds-spacing-xs));
   background: var(--ds-bg-tertiary);
   border: 1px solid transparent;
-  border-left: 3px solid transparent;
+  border-left: var(--ds-border-width-lg, 3px) solid transparent;
   border-radius: var(--ds-radius-md);
   cursor: pointer;
   transition: all var(--ds-animation-duration-fast) ease;
@@ -572,7 +572,7 @@ const panelStyle = computed(() => getToken('panel.default'));
 }
 
 .agent-card.selected {
-  border-left: 3px solid var(--ds-color-primary);
+  border-left: var(--ds-border-width-lg, 3px) solid var(--ds-color-primary);
   background: color-mix(in srgb, var(--ds-color-primary) 8%, transparent);
   box-shadow: 0 0 12px color-mix(in srgb, var(--ds-color-primary) 15%, transparent);
 }
@@ -606,13 +606,13 @@ const panelStyle = computed(() => getToken('panel.default'));
 
 .agent-avatar {
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
+  width: calc(var(--ds-spacing-xl) + var(--ds-spacing-xs));
+  height: calc(var(--ds-spacing-xl) + var(--ds-spacing-xs));
   border-radius: var(--ds-radius-md);
   overflow: hidden;
   background: var(--ds-bg-secondary);
   position: relative;
-  border: 2px solid var(--ds-border);
+  border: var(--ds-border-width-sm, 2px) solid var(--ds-border);
   transition: border-color 0.15s ease;
 }
 
@@ -682,8 +682,8 @@ const panelStyle = computed(() => getToken('panel.default'));
 }
 
 .action-btn {
-  width: 28px;
-  height: 28px;
+  width: calc(var(--ds-spacing-lg) + var(--ds-spacing-xs));
+  height: calc(var(--ds-spacing-lg) + var(--ds-spacing-xs));
   display: flex;
   align-items: center;
   justify-content: center;

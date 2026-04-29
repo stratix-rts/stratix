@@ -15,7 +15,7 @@ export type ParticleEmitter = Phaser.Tweens.Tween[];
 function tintToNumber(color: string): number {
   const hex = color.replace('#', '');
   if (!/^[0-9A-Fa-f]{6}$/.test(hex)) {
-    return 0x00ffff; // fallback
+    return getDSColor('color-primary'); // fallback
   }
   return parseInt(hex, 16);
 }
@@ -28,7 +28,7 @@ function getDefaultParticleColors() {
     error: getDSColor('status-danger'),
     idle: getDSColor('text-muted'),
     taskExecution: getDSColor('status-success'),
-    statusChange: 0xffffff,
+    statusChange: getDSColor('text-primary'),
     confetti: [getDSColor('color-primary'), getDSColor('status-success'), getDSColor('status-warning'), getDSColor('accent')],
     ripple: getDSColor('color-primary'),
   };
@@ -79,7 +79,7 @@ export class ParticleEffects {
   private generateParticleTexture(scene: Phaser.Scene): void {
     if (this.particleTextureGenerated) return;
     const graphics = scene.make.graphics({ x: 0, y: 0 });
-    graphics.fillStyle(0xffffff, 1);
+    graphics.fillStyle(getDSColor('text-primary'), 1);
     graphics.fillCircle(8, 8, 8);
     graphics.generateTexture('particle', 16, 16);
     graphics.destroy();

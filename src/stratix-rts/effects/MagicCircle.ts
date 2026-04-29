@@ -10,6 +10,8 @@
 
 import Phaser from 'phaser';
 
+import { getDSColor } from '../themes/ThemeColors';
+
 export interface MagicCircleConfig {
   x: number;
   y: number;
@@ -42,8 +44,8 @@ export class MagicCircle {
       y: config.y,
       outerRadius: config.outerRadius ?? 80,
       innerRadius: config.innerRadius ?? 50,
-      color1: config.color1 ?? 0x00ffff,
-      color2: config.color2 ?? 0xff00ff
+      color1: config.color1 ?? getDSColor('color-primary'),
+      color2: config.color2 ?? getDSColor('accent')
     };
     
     this.container = scene.add.container(this.config.x, this.config.y);

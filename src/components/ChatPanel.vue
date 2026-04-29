@@ -740,7 +740,7 @@ defineExpose({
   color: var(--ds-text-muted);
   text-transform: uppercase;
   letter-spacing: 1px;
-  margin-bottom: 12px;
+  margin-bottom: var(--ds-spacing-sm);
 }
 
 .agent-list {
@@ -764,8 +764,8 @@ defineExpose({
 }
 
 .agent-avatar {
-  width: 32px;
-  height: 32px;
+  width: var(--ds-spacing-xl);
+  height: var(--ds-spacing-xl);
   border-radius: var(--ds-radius-full);
   overflow: hidden;
 }
@@ -807,14 +807,14 @@ defineExpose({
 }
 
 .agent-status {
-  width: 8px;
-  height: 8px;
+  width: var(--ds-spacing-sm);
+  height: var(--ds-spacing-sm);
   border-radius: var(--ds-radius-full);
 }
 
 .agent-status.online {
   background: var(--ds-status-success);
-  box-shadow: 0 0 4px var(--ds-status-success);
+  box-shadow: 0 0 var(--ds-spacing-xs) var(--ds-status-success);
 }
 
 .agent-status.offline {
@@ -878,9 +878,9 @@ defineExpose({
 .channel-glow-bar {
   position: absolute;
   left: 0;
-  top: 4px;
-  bottom: 4px;
-  width: 3px;
+  top: var(--ds-spacing-xs);
+  bottom: var(--ds-spacing-xs);
+  width: var(--ds-border-width-md, 3px);
   background: var(--ds-brand-primary);
   border-radius: 0 2px 2px 0;
   box-shadow: 0 0 8px var(--ds-brand-primary);
@@ -899,9 +899,9 @@ defineExpose({
 }
 
 .unread-badge {
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
+  min-width: calc(var(--ds-spacing-md) + var(--ds-spacing-xs));
+  height: calc(var(--ds-spacing-md) + var(--ds-spacing-xs));
+  padding: 0 var(--ds-spacing-xs);
   background: var(--ds-status-danger);
   color: white;
   border-radius: var(--ds-radius-full);
@@ -914,8 +914,8 @@ defineExpose({
 }
 
 @keyframes badge-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-  50% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ds-status-danger) 40%, transparent); }
+  50% { box-shadow: 0 0 0 var(--ds-spacing-sm) color-mix(in srgb, var(--ds-status-danger) 0%, transparent); }
 }
 
 .chat-main {
@@ -951,7 +951,7 @@ defineExpose({
 .channel-description {
   font-size: var(--ds-font-size-sm);
   color: var(--ds-text-muted);
-  margin-top: 4px;
+  margin-top: var(--ds-spacing-xs);
 }
 
 .message-list {
@@ -972,13 +972,13 @@ defineExpose({
 }
 
 .loading-spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid var(--ds-border);
+  width: var(--ds-spacing-xl);
+  height: var(--ds-spacing-xl);
+  border: var(--ds-border-width-md, 3px) solid var(--ds-border);
   border-top-color: var(--ds-brand-primary);
   border-radius: var(--ds-radius-full);
   animation: spin 0.8s linear infinite;
-  margin-bottom: 12px;
+  margin-bottom: var(--ds-spacing-sm);
 }
 
 @keyframes spin {
@@ -988,13 +988,13 @@ defineExpose({
 }
 
 .empty-icon {
-  font-size: 48px;
-  margin-bottom: 12px;
+  font-size: var(--ds-font-size-4xl);
+  margin-bottom: var(--ds-spacing-sm);
 }
 
 .empty-hint {
   font-size: var(--ds-font-size-sm);
-  margin-top: 8px;
+  margin-top: var(--ds-spacing-sm);
 }
 
 .messages {
@@ -1032,7 +1032,7 @@ defineExpose({
 }
 
 .message-item {
-  padding: 12px;
+  padding: calc(var(--ds-spacing-sm) + var(--ds-spacing-xs));
   background: var(--ds-bg-secondary);
   border-radius: var(--ds-radius-md);
   transition: all 0.2s ease;
@@ -1056,12 +1056,12 @@ defineExpose({
   display: flex;
   align-items: center;
   gap: var(--ds-spacing-sm);
-  margin-bottom: 8px;
+  margin-bottom: var(--ds-spacing-sm);
 }
 
 .sender-avatar {
-  width: 28px;
-  height: 28px;
+  width: calc(var(--ds-spacing-lg) + var(--ds-spacing-xs));
+  height: calc(var(--ds-spacing-lg) + var(--ds-spacing-xs));
   border-radius: var(--ds-radius-full);
   overflow: hidden;
 }
@@ -1104,15 +1104,15 @@ defineExpose({
 .message-content .mention {
   color: var(--ds-brand-primary);
   font-weight: bold;
-  background: rgba(59, 130, 246, 0.1);
-  padding: 0 4px;
+  background: color-mix(in srgb, var(--ds-brand-primary) 10%, transparent);
+  padding: 0 var(--ds-spacing-xs);
   border-radius: var(--ds-radius-sm);
 }
 
 .message-actions {
   display: flex;
-  gap: 4px;
-  margin-top: 8px;
+  gap: var(--ds-spacing-xs);
+  margin-top: var(--ds-spacing-sm);
   opacity: 0;
   transition: opacity 0.15s ease;
 }
@@ -1121,8 +1121,8 @@ defineExpose({
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: calc(var(--ds-spacing-lg) + var(--ds-spacing-xs));
+  height: calc(var(--ds-spacing-lg) + var(--ds-spacing-xs));
   padding: 0;
   background: var(--ds-bg-primary);
   border: 1px solid var(--ds-border);
@@ -1140,10 +1140,10 @@ defineExpose({
 
 .scroll-to-bottom {
   position: absolute;
-  bottom: 16px;
-  right: 24px;
-  width: 40px;
-  height: 40px;
+  bottom: var(--ds-spacing-md);
+  right: var(--ds-spacing-lg);
+  width: var(--ds-spacing-2xl);
+  height: var(--ds-spacing-2xl);
   border-radius: var(--ds-radius-full);
   background: var(--ds-brand-primary);
   color: white;
@@ -1184,7 +1184,7 @@ defineExpose({
 .scroll-btn-enter-from,
 .scroll-btn-leave-to {
   opacity: 0;
-  transform: translateY(10px);
+  transform: translateY(var(--ds-spacing-sm));
 }
 
 .message-input {
@@ -1192,7 +1192,7 @@ defineExpose({
   border-top: 1px solid var(--ds-border);
   background: var(--ds-bg-secondary);
   display: flex;
-  gap: 12px;
+  gap: calc(var(--ds-spacing-sm) + var(--ds-spacing-xs));
   align-items: flex-start;
   position: relative;
   transition: all 0.2s ease;
@@ -1234,7 +1234,7 @@ defineExpose({
 
 .message-input .stratix-textarea:focus {
   border-color: var(--ds-brand-primary);
-  box-shadow: 0 0 0 3px var(--ds-border-focus, rgba(59, 130, 246, 0.15));
+  box-shadow: 0 0 0 var(--ds-spacing-xs) var(--ds-border-focus, color-mix(in srgb, var(--ds-brand-primary) 15%, transparent));
 }
 
 .message-input .stratix-textarea::placeholder {
@@ -1256,13 +1256,13 @@ defineExpose({
   border-radius: var(--ds-radius-md);
   max-height: 200px;
   overflow-y: auto;
-  margin-bottom: 8px;
+  margin-bottom: var(--ds-spacing-sm);
   box-shadow: var(--ds-shadow-md);
   z-index: 100;
 }
 
 .popup-header {
-  padding: 8px 14px;
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   text-transform: uppercase;
@@ -1274,17 +1274,17 @@ defineExpose({
   display: flex;
   align-items: center;
   gap: var(--ds-spacing-sm);
-  padding: 10px 14px;
+  padding: calc(var(--ds-spacing-sm) + var(--ds-spacing-xs)) var(--ds-spacing-md);
   cursor: pointer;
   transition: background 0.15s;
 }
 
 .popup-item:first-of-type {
-  border-radius: 8px 8px 0 0;
+  border-radius: var(--ds-radius-lg) var(--ds-radius-lg) 0 0;
 }
 
 .popup-item:last-child {
-  border-radius: 0 0 8px 8px;
+  border-radius: 0 0 var(--ds-radius-lg) var(--ds-radius-lg);
 }
 
 .popup-item:hover,
@@ -1308,8 +1308,8 @@ defineExpose({
 }
 
 .agent-avatar-small {
-  width: 24px;
-  height: 24px;
+  width: var(--ds-spacing-lg);
+  height: var(--ds-spacing-lg);
   border-radius: var(--ds-radius-full);
   overflow: hidden;
   flex-shrink: 0;
@@ -1346,8 +1346,8 @@ defineExpose({
 
 :deep(.code-block-wrapper) .code-lang {
   position: absolute;
-  top: 8px;
-  left: 12px;
+  top: var(--ds-spacing-sm);
+  left: calc(var(--ds-spacing-sm) + var(--ds-spacing-xs));
   font-size: var(--ds-font-size-xs);
   color: var(--ds-text-muted);
   background: var(--ds-bg-tertiary);
@@ -1358,8 +1358,8 @@ defineExpose({
 
 :deep(.code-block-wrapper) .copy-button {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: var(--ds-spacing-sm);
+  right: var(--ds-spacing-sm);
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border-default);
   border-radius: var(--ds-radius-sm);
@@ -1381,8 +1381,8 @@ defineExpose({
 
 :deep(.code-block-wrapper) pre {
   margin: 0;
-  padding: 12px;
-  padding-top: 36px;
+  padding: calc(var(--ds-spacing-sm) + var(--ds-spacing-xs));
+  padding-top: calc(var(--ds-spacing-xl) + var(--ds-spacing-xs));
   overflow-x: auto;
   background: transparent;
 }

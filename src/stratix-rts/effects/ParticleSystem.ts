@@ -7,6 +7,8 @@
 
 import Phaser from 'phaser';
 
+import { getDSColor } from '../themes/ThemeColors';
+
 interface Particle {
   x: number;
   y: number;
@@ -43,8 +45,8 @@ export class ParticleSystem {
       x: config.x,
       y: config.y,
       particleCount: config.particleCount ?? 20,
-      color1: config.color1 ?? 0x00ffff,
-      color2: config.color2 ?? 0xff00ff
+      color1: config.color1 ?? getDSColor('color-primary'),
+      color2: config.color2 ?? getDSColor('accent')
     };
     
     this.container = scene.add.container(0, 0);
@@ -188,7 +190,7 @@ export class ParticleSystem {
       particle.graphics.fillStyle(particle.color, particle.alpha);
       particle.graphics.fillCircle(particle.x, particle.y, 4 * particle.scale);
       
-      particle.graphics.fillStyle(0xffffff, particle.alpha * 0.8);
+      particle.graphics.fillStyle(getDSColor('text-primary'), particle.alpha * 0.8);
       particle.graphics.fillCircle(particle.x, particle.y, 2 * particle.scale);
     });
   }
