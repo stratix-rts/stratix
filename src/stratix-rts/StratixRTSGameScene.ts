@@ -14,7 +14,7 @@ import type { TopBarStats, ViewportState } from './events/types/RTSEventTypes';
 import { RTSStateBridge } from './state/RTSStateBridge';
 import RTSCharacterRenderer from './services/RTSCharacterRenderer';
 import { AgentSprite, AgentStatus, CommandStatus } from './sprites/AgentSprite';
-import { CommandSystem, CommandType } from './systems/CommandSystem';
+import { CommandType } from './systems/CommandSystem';
 import { ControlGroupSystem } from './systems/ControlGroupSystem';
 import { MovementSystem } from './systems/MovementSystem';
 import { SelectBox } from './ui/SelectBox';
@@ -37,7 +37,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   private inputHandler: InputHandler;
   private selectBox: SelectBox;
   private taskZonePreview: TaskZonePreview;
-  private commandSystem: CommandSystem;
+
   private controlGroupSystem: ControlGroupSystem;
   private movementSystem: MovementSystem;
   private statsCollector: StatsCollector;
@@ -46,7 +46,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   unifiedZoneManager: UnifiedZoneManager;
   private projectManagerIntegration: ProjectManagerIntegration;
   private zoneInteractionManager: ZoneInteractionManager;
-  private currentCommandType: CommandType | null = null;
+
   private characterRenderer: RTSCharacterRenderer;
   private eventUnsubscribers: (() => void)[] = [];
   private agentZoneTracking: Map<string, string> = new Map();
@@ -264,7 +264,6 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   }
 
   private initSystems(): void {
-    // this.commandSystem = new CommandSystem();
     this.controlGroupSystem = new ControlGroupSystem();
     this.movementSystem = new MovementSystem();
     this.statsCollector = new StatsCollector();
@@ -589,12 +588,10 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   }
 
   private handleCommandMode(commandType: CommandType): void {
-    // this.currentCommandType = commandType;
     console.log('[StratixRTS] Command mode:', commandType);
   }
 
   private handleCancelCommandMode(): void {
-    // this.currentCommandType = null;
     console.log('[StratixRTS] Command mode cancelled');
   }
 
