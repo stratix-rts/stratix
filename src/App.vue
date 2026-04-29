@@ -11,7 +11,6 @@ import DataExplorer from './stratix-project/ui/DataExplorer.vue';
 import CommandPalette from './components/CommandPalette.vue';
 import { ToastContainer, toastService } from './components/ui';
 import Map3DView from './components/Map3DView.vue';
-import type { ToastItem } from './components/ui';
 import type { Zone } from './stratix-project/types';
 import { useAgentStore } from './stores/agent';
 import { useUIStore } from './stores/ui';
@@ -26,7 +25,6 @@ const agentStore = useAgentStore();
 const uiStore = useUIStore();
 
 const gameContainer = ref<HTMLElement | null>(null);
-const currentSkill = ref<any>(null);
 const editCharacterId = ref<string | undefined>(undefined);
 const chatAgentIds = ref<string[]>([]);
 const selectedProjectId = ref<string | null>(null);

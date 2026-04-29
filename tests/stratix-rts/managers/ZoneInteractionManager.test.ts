@@ -180,7 +180,7 @@ import type { InputHandler } from '@/stratix-rts/utils/InputHandler';
 import type { DataFlowAnimation } from '@/stratix-rts/effects/DataFlowAnimation';
 import type { MovementSystem } from '@/stratix-rts/systems/MovementSystem';
 import type { AgentSprite } from '@/stratix-rts/sprites/AgentSprite';
-import type { ProjectManagerIntegration } from '@/stratix-project/ProjectManagerIntegrationHTTP';
+import type { ProjectManagerIntegration } from '@/stratix-project/ProjectManagerIntegration';
 import { MAP_WIDTH, MAP_HEIGHT } from '@/stratix-rts/constants';
 
 // Helper to create a mock zone

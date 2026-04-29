@@ -83,7 +83,7 @@ import { rtsEventBus } from '@/stratix-rts/events/core/RTSEventBus';
 import type { MovementSystem } from '@/stratix-rts/systems/MovementSystem';
 import type { RTSStateBridge } from '@/stratix-rts/state/RTSStateBridge';
 import type RTSCharacterRenderer from '@/stratix-rts/services/RTSCharacterRenderer';
-import type { ProjectManagerIntegration } from '@/stratix-project/ProjectManagerIntegrationHTTP';
+import type { ProjectManagerIntegration } from '@/stratix-project/ProjectManagerIntegration';
 import type { UnifiedZoneManager } from '@/stratix-rts/zones/UnifiedZoneManager';
 import type { StratixAgentConfig } from '@/stratix-core/stratix-protocol';
 
