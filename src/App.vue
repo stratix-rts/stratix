@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch, defineAsyncComponent } from 'vue';
 import { createStratixRTS } from './stratix-rts';
-import { StratixEventBus, StratixAgentConfig, StratixFrontendOperationEvent } from './stratix-core';
+import { StratixEventBus } from './stratix-core';
+import type { StratixAgentConfig, StratixFrontendOperationEvent } from './stratix-core';
 import MainLayout from './components/MainLayout.vue';
 import { ToastContainer, toastService } from './components/ui';
 import type { Zone } from './stratix-project/types';

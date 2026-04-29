@@ -9,7 +9,7 @@ import type {
   OpenClawConfig
 } from '@/stratix-core';
 import { POSITION_SAVE_DELAY_MS } from '@/stratix-core/config/defaults';
-import { WriterHeroTemplate, DevHeroTemplate, AnalystHeroTemplate, generateAgentId } from '@/stratix-designer';
+
 
 function savedCharacterToProfile(character: SavedCharacter): CharacterProfile {
   return {
@@ -217,6 +217,7 @@ export const useAgentStore = defineStore('agent', () => {
 
   // Create agent
   async function createAgent(type: 'writer' | 'dev' | 'analyst'): Promise<StratixAgentConfig | null> {
+    const { WriterHeroTemplate, DevHeroTemplate, AnalystHeroTemplate, generateAgentId } = await import('@/stratix-designer');
     const TemplateClass = type === 'writer' ? WriterHeroTemplate
       : type === 'dev' ? DevHeroTemplate
       : AnalystHeroTemplate;

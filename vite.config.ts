@@ -67,6 +67,7 @@ export default defineConfig(async () => {
               if (id.includes('vue') || id.includes('@vue')) return 'vue-vendor';
               if (id.includes('vxe-pc-ui') || id.includes('vxe-table') || id.includes('xe-utils')) return 'vxe-ui';
               if (id.includes('@anthropic') || id.includes('openai') || id.includes('@langchain')) return 'ai-langchain';
+            if (id.includes('highlight.js') || id.includes('marked')) return 'markdown-vendor';
             }
           },
         },
