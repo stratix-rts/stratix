@@ -12,16 +12,6 @@ import { getDSColor, isReducedMotion } from '../themes/ThemeColors';
 
 export type ParticleEmitter = Phaser.Tweens.Tween[];
 
-interface _ParticleOptions {
-  x: number;
-  y: number;
-  color?: number;
-  count?: number;
-  radius?: number;
-  duration?: number;
-  speed?: number;
-}
-
 function tintToNumber(color: string): number {
   const hex = color.replace('#', '');
   if (!/^[0-9A-Fa-f]{6}$/.test(hex)) {
