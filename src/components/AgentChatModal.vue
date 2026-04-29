@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, nextTick, defineAsyncComponent } from 'vue';
 import { StratixModal, StratixButton } from '@/components/ui';
-import ProviderSettingsModal from '@/components/ProviderSettingsModal.vue';
 import { useAgentStore } from '@/stores/agent';
+
+const ProviderSettingsModal = defineAsyncComponent(() => import('@/components/ProviderSettingsModal.vue'));
 
 const agentStore = useAgentStore();
 import { useChat } from '@/composables/useChat';
@@ -27,7 +28,6 @@ const isTyping = ref(false);
 const inputRef = ref<HTMLTextAreaElement | null>(null);
 
 // Provider settings modal
-const showProviderSettingsRef = ref(false);
 
 const scrollToBottom = async () => {
   await nextTick();
