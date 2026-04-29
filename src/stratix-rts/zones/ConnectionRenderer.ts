@@ -635,7 +635,8 @@ export class ConnectionRenderer {
       this.particleGraphics.fillStyle(style.color, alphaBase * 0.25);
       this.particleGraphics.fillCircle(pos.x, pos.y, size * 2);
       // Core
-      this.particleGraphics.fillStyle(0xffffff, alphaBase * 0.9);
+      const coreColor = getDSColor('text-primary');
+      this.particleGraphics.fillStyle(coreColor, alphaBase * 0.9);
       this.particleGraphics.fillCircle(pos.x, pos.y, size * 0.6);
     }
   }

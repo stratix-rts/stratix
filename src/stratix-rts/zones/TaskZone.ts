@@ -220,8 +220,12 @@ export class TaskZone extends BaseZone {
 
     if (this.taskProgress > 0 && this.taskProgress < 100) {
       // Track
-      this.progressBar.fillStyle(0x333333, 0.8);
+      const trackColor = hexToNumber(getToken('colors.background.sunken'));
+      const trackBorder = hexToNumber(getToken('colors.border.subtle'));
+      this.progressBar.fillStyle(trackColor, 0.9);
       this.progressBar.fillRoundedRect(barX, barY, barWidth, barHeight, 3);
+      this.progressBar.lineStyle(1, trackBorder, 0.5);
+      this.progressBar.strokeRoundedRect(barX, barY, barWidth, barHeight, 3);
 
       const fillWidth = Math.floor((this.taskProgress / 100) * barWidth);
       if (fillWidth > 0) {

@@ -176,7 +176,7 @@ export class DataFlowAnimation {
         dataPackets.push({
           t: (i / packetCount) + 0.2,
           speed: speed * 0.8 * (0.9 + Math.random() * 0.2),
-          color: 0xffffff,
+          color: getDSColor('text-primary'),
           size: particleSize * 2,
           offset: Math.random(),
           trail: [],
@@ -458,8 +458,9 @@ export class DataFlowAnimation {
       flow.graphics.fillStyle(particle.color, mainAlpha * 0.7);
       flow.graphics.fillCircle(pos.x, pos.y, mainSize * 1.5);
 
-      // Core (white)
-      flow.graphics.fillStyle(0xffffff, mainAlpha);
+      // Core (theme text color for visibility)
+      const coreColor = getDSColor('text-primary');
+      flow.graphics.fillStyle(coreColor, mainAlpha);
       flow.graphics.fillCircle(pos.x, pos.y, mainSize * 0.5);
     }
   }
@@ -530,7 +531,8 @@ export class DataFlowAnimation {
       flow.graphics.fillRect(pos.x - size, pos.y - size, size * 2, size * 2);
 
       // Highlight
-      flow.graphics.fillStyle(0xffffff, pulseAlpha * 0.8);
+      const highlightColor = getDSColor('text-primary');
+      flow.graphics.fillStyle(highlightColor, pulseAlpha * 0.8);
       flow.graphics.fillRect(pos.x - size * 0.5, pos.y - size * 0.5, size, size);
     }
   }
