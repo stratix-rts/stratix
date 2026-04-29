@@ -26,7 +26,7 @@ export class AgentManager {
 
   constructor(
     private scene: Phaser.Scene,
-    private movementSystem: MovementSystem,
+    movementSystem: MovementSystem,
     private deps: AgentManagerDeps
   ) {}
 

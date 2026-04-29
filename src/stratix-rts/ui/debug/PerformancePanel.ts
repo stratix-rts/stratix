@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 
 import { EnhancedUIComponent } from '@/stratix-core/ui/components/base/EnhancedUIComponent';
 
-import type { StatsCollector, DetailedPerformanceData } from '../../debug/StatsCollector';
+import type { StatsCollector } from '../../debug/StatsCollector';
 
 
 export class PerformancePanel extends EnhancedUIComponent {
@@ -331,7 +331,7 @@ export class PerformancePanel extends EnhancedUIComponent {
     const panelHeight = this.config.height || 600;
     const maxScroll = Math.max(0, this.contentHeight - (panelHeight - headerHeight));
     
-    (this.container as Phaser.GameObjects.Container).on('wheel', (pointer: any, deltaX: number, deltaY: number) => {
+    (this.container as Phaser.GameObjects.Container).on('wheel', (_pointer: any, _deltaX: number, deltaY: number) => {
       if (this.contentContainer) {
         this.scrollY = Phaser.Math.Clamp(
           this.scrollY - deltaY * 0.5,

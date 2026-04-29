@@ -6,15 +6,6 @@ import type { BodyType } from '@/stratix-core/stratix-protocol';
 
 import { generateBaseTextureInBrowser } from '../scripts/BaseTextureGenerator';
 
-const BODY_COLORS: Record<BodyType, { primary: string; secondary: string; outline: string }> = {
-  male: { primary: '#4a7c7c', secondary: '#3d6666', outline: '#2d4f4f' },
-  female: { primary: '#7c4a7c', secondary: '#663d66', outline: '#4f2d4f' },
-  teen: { primary: '#7c7c4a', secondary: '#66663d', outline: '#4f4f2d' },
-  muscular: { primary: '#7c4a4a', secondary: '#663d3d', outline: '#4f2d2d' },
-  pregnant: { primary: '#4a7c4a', secondary: '#3d663d', outline: '#2d4f2d' },
-  child: { primary: '#7c9c7c', secondary: '#668066', outline: '#4f604f' }
-};
-
 const BASE_TEXTURE_PATH = '/spritesheets/base/';
 
 class BaseBodyTextureManager {

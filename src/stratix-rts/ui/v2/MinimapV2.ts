@@ -10,7 +10,7 @@ import Phaser from 'phaser';
 
 
 import { EnhancedUIComponent } from '@/stratix-core/ui/components/base/EnhancedUIComponent';
-import type { UIComponentConfig } from '@/stratix-core/ui/core/types/component.types';
+
 import { ReactiveToken } from '@/stratix-core/ui/foundation/theme/ReactiveToken';
 
 import { MAP_WIDTH, MAP_HEIGHT } from '../../constants';
@@ -42,6 +42,7 @@ export class MinimapV2 extends EnhancedUIComponent {
   private camera: Phaser.Cameras.Scene2D.Camera;
   private isDragging: boolean = false;
   private isHovering: boolean = false;
+
   private updateTimer: Phaser.Time.TimerEvent | null = null;
   private hoverHighlight: Phaser.GameObjects.Graphics | null = null;
   private dragHighlight: Phaser.GameObjects.Graphics | null = null;
@@ -315,7 +316,7 @@ export class MinimapV2 extends EnhancedUIComponent {
       // Breathing alpha effect
       let alpha = 1;
       if (!isReducedMotion()) {
-        const lastAlpha = this.agentBreathingAlphas.get(agentId) ?? 0.5;
+        const _lastAlpha = this.agentBreathingAlphas.get(agentId) ?? 0.5;
         alpha = 0.7 + Math.sin(now * 0.003 + sprite.x * 0.01) * 0.3;
         this.agentBreathingAlphas.set(agentId, alpha);
       }

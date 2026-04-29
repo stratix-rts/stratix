@@ -11,10 +11,8 @@ export type ZoneType = 'task' | 'project' | 'unknown';
 export class UnifiedZoneManager {
   private zones: Map<string, BaseZone> = new Map();
   private spatialIndex: ZoneSpatialIndex;
-  private scene: Phaser.Scene;
 
   constructor(scene: Phaser.Scene) {
-    this.scene = scene;
     this.spatialIndex = new ZoneSpatialIndex(100);
   }
 

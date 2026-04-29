@@ -125,7 +125,7 @@ export class ZoneTemplateManager {
   private async applyTemplateInternal(
     template: ZoneTemplate,
     positions: ZoneTemplatePosition[],
-    scale: number,
+    _scale: number,
     createZoneFn: (config: BaseZoneConfig) => Promise<any>,
     actionId: string
   ): Promise<{ zones: any[]; actionId: string }> {

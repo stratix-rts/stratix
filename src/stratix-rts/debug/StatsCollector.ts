@@ -91,7 +91,6 @@ export class StatsCollector {
   private currentFPS: number = 60;
   
   private gameScene: any = null;
-  private uiScene: any = null;
   private collisionSystem: any = null;
   private movementSystem: any = null;
   private renderModeSystem: any = null;
@@ -100,10 +99,6 @@ export class StatsCollector {
   
   setGameScene(scene: any): void {
     this.gameScene = scene;
-  }
-  
-  setUIScene(scene: any): void {
-    this.uiScene = scene;
   }
   
   setCollisionSystem(system: any): void {

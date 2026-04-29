@@ -447,7 +447,6 @@ export class Map3DView {
     const success = getToken('colors.status.success');
     const warning = getToken('colors.status.warning');
     const danger = getToken('colors.status.danger');
-    const muted = getToken('colors.text.muted');
 
     return {
       zoneBorder: (status: string) => {

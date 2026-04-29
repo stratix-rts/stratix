@@ -259,8 +259,6 @@ export class InputHandler {
   private handleNumberKey(groupId: number): void {
     if (!this.isEnabled) return;
     const isCtrlDown = this.ctrlKey.isDown;
-    const isShiftDown = this.shiftKey.isDown;
-
     if (isCtrlDown) {
       if (this.callbacks.onCreateControlGroup) {
         this.callbacks.onCreateControlGroup(groupId);
@@ -495,11 +493,6 @@ export class InputHandler {
     }
 
     return null;
-  }
-
-  private getTaskZoneAtPointer(pointer: Phaser.Input.Pointer): Phaser.GameObjects.GameObject | null {
-    const gameObjects = this.scene.input.hitTestPointer(pointer);
-    return this.getZoneFromHitTest(gameObjects);
   }
 
   private isAgentSelected(agentId: string): boolean {

@@ -68,8 +68,6 @@ export class RTSStateBridge {
 
   // ── Selection operations ─────────────────────────────────────
 
-  private previousSelectedAgents: string[] = [];
-
   syncSelection(selectedAgentIds: string[], selectedZoneId: string | null): void {
     const uiState = stratixStateStore.get('ui');
     const agentsChanged = uiState.selectedAgents.join(',') !== selectedAgentIds.join(',');

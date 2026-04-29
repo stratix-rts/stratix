@@ -12,7 +12,7 @@
 import Phaser from 'phaser';
 
 import { EnhancedUIComponent } from '@/stratix-core/ui/components/base/EnhancedUIComponent';
-import type { UIComponentConfig } from '@/stratix-core/ui/core/types/component.types';
+
 import { ReactiveToken } from '@/stratix-core/ui/foundation/theme/ReactiveToken';
 
 import { getDSColor, isReducedMotion } from '../../themes/ThemeColors';
@@ -106,7 +106,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   private contentContainer: Phaser.GameObjects.Container | null = null;
   private actionButtonContainer: Phaser.GameObjects.Container | null = null;
   private currentTab: 'detail' | 'skills' = 'detail';
-  private notificationText: Phaser.GameObjects.Text | null = null;
+
 
   // Theme tokens
   private backgroundColor: ReactiveToken<string>;
@@ -117,6 +117,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   private textMutedColor: ReactiveToken<string>;
   private borderColor: ReactiveToken<string>;
   private accentColor: ReactiveToken<string>;
+
   private infoColor: ReactiveToken<string>;
   private successColor: ReactiveToken<string>;
   private warningColor: ReactiveToken<string>;
@@ -668,7 +669,6 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   }
 
   private renderZoneDetail(zone: ZoneInfo): void {
-    const contentWidth = (this.config.width || 500) - 24;
     const yOffset = 0;
 
     const zoneIconBg = this.scene.add.graphics();

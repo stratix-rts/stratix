@@ -19,7 +19,7 @@ export class ZoneBatchOperations {
 
   static deleteZones(
     zones: TaskZone[],
-    scene: any,
+    _scene: any,
     showConfirmation: boolean = true
   ): void {
     if (zones.length === 0) return;
@@ -45,7 +45,7 @@ export class ZoneBatchOperations {
 
   static duplicateZones(
     zones: TaskZone[],
-    scene: any,
+    _scene: any,
     offsetX: number = 20,
     offsetY: number = 20
   ): TaskZone[] {

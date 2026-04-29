@@ -263,7 +263,7 @@ export class ZoneDeleteAction implements ZoneAction {
 
   constructor(
     private zone: any,
-    private scene: any,
+    scene: any,
     private recreateFn: () => Promise<any>
   ) {
     this.id = `delete-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;

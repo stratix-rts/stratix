@@ -138,17 +138,9 @@ export class FocusIndicator {
     const radius = this.config.cornerRadius;
     const dashLength = this.config.dashLength;
     const dashGap = this.config.dashGap;
-    const totalLength = 2 * (width + height);
     const dashPattern = dashLength + dashGap;
 
     this.dashOffset = (this.dashOffset + 1) % dashPattern;
-
-    const perimeter = [
-      { x1: x + radius, y1: y, x2: x + width - radius, y2: y },
-      { x1: x + width, y1: y + radius, x2: x + width, y2: y + height - radius },
-      { x1: x + width - radius, y1: y + height, x2: x + radius, y2: y + height },
-      { x1: x, y1: y + height - radius, x2: x, y2: y + radius },
-    ];
 
     this.graphics.beginPath();
 
@@ -160,17 +152,6 @@ export class FocusIndicator {
     this.graphics.lineTo(x + radius, y + height);
     this.graphics.moveTo(x, y + height - radius);
     this.graphics.lineTo(x, y + radius);
-
-    const corners = [
-      { x: x + radius, y, cx: x + radius, cy: y + radius, startAngle: Math.PI * 1.5 },
-      { x: x + width - radius, y, cx: x + width - radius, cy: y + radius, startAngle: 0 },
-      { x: x + width, y: y + radius, cx: x + width - radius, cy: y + radius, startAngle: 0 },
-      { x: x + width, y: y + height - radius, cx: x + width - radius, cy: y + height - radius, startAngle: Math.PI / 2 },
-      { x: x + width - radius, y: y + height, cx: x + width - radius, cy: y + height - radius, startAngle: Math.PI / 2 },
-      { x: x + radius, y: y + height, cx: x + radius, cy: y + height - radius, startAngle: Math.PI },
-      { x: x, y: y + height - radius, cx: x + radius, cy: y + height - radius, startAngle: Math.PI },
-      { x: x, y: y + radius, cx: x + radius, cy: y + radius, startAngle: Math.PI * 1.5 },
-    ];
 
     this.graphics.strokePath();
 

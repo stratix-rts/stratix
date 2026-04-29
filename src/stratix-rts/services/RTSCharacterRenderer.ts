@@ -6,7 +6,7 @@ import { textureManager } from '@/stratix-core/services';
 import type { StratixAgentConfig, BodyType } from '@/stratix-core/stratix-protocol';
 
 import { baseBodyTextureManager } from './BaseBodyTextureManager';
-import { textureLoadQueue, TextureLoadTask } from './TextureLoadQueue';
+import { textureLoadQueue } from './TextureLoadQueue';
 
 const SCALE = 0.75;
 
@@ -114,7 +114,7 @@ class RTSCharacterRenderer {
     }
 
     textureLoadQueue.enqueue(config, 5, {
-      onComplete: (canvas) => {
+      onComplete: (_canvas) => {
         // Handled via event
       },
       onError: (error) => {

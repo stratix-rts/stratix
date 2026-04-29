@@ -29,8 +29,8 @@ export class TemplateApplicationAction implements ZoneAction {
 
   constructor(
     private zones: any[],
-    private scene: any,
-    private template: ZoneTemplate,
+    scene: any,
+    template: ZoneTemplate,
     private recreateZoneFn: (config: any) => Promise<any>
   ) {
     this.id = `template-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;

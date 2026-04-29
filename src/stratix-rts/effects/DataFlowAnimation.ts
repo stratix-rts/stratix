@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 
-import { getDSColor, isReducedMotion } from '../themes/ThemeColors';
+import { getDSColor } from '../themes/ThemeColors';
 
 import { ConnectionPoint } from '../zones/ZoneConnection';
 
@@ -60,12 +60,6 @@ export interface ActiveFlow {
   beamGraphics: Phaser.GameObjects.Graphics;
   beamPhase: number;
 }
-
-const STATUS_COLORS: Record<DataFlowStatus, number> = {
-  normal: 0x00ff88,
-  warning: 0xffcc00,
-  error: 0xff4444,
-};
 
 const DEFAULT_PARTICLE_COUNT = 8;
 const DEFAULT_PARTICLE_SIZE = 3;
@@ -332,8 +326,6 @@ export class DataFlowAnimation {
       if (fromPos && toPos) {
         const midX = (fromPos.x + toPos.x) / 2;
         const midY = (fromPos.y + toPos.y) / 2;
-        const beamLength = Math.sqrt((toPos.x - fromPos.x) ** 2 + (toPos.y - fromPos.y) ** 2);
-
         const primaryColor = getDSColor('color-primary');
         // Draw expanding ring at midpoint
         this.agentBeamGraphics.lineStyle(2, primaryColor, pulse.alpha * 0.5);
@@ -437,7 +429,7 @@ export class DataFlowAnimation {
       if (particle.trail.length > 1) {
         for (let i = 1; i < particle.trail.length; i++) {
           const t = particle.trail[i];
-          const prev = particle.trail[i - 1];
+          const _prev = particle.trail[i - 1];
           const fadeAlpha = (1 - i / particle.trail.length) * trailAlpha * 0.5;
           const size = particle.size * (1 - i / particle.trail.length) * 0.7;
 

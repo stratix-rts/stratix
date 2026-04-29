@@ -52,7 +52,7 @@ export class ErrorClassifier {
     return ES.ERROR;
   }
 
-  private determineCategory(error: Error, context?: ErrorContext): ErrorCategory {
+  private determineCategory(error: Error, _context?: ErrorContext): ErrorCategory {
     if (error instanceof AppError) {
       return error.name === 'ValidationError' ? EC.VALIDATION : EC.BUSINESS;
     }

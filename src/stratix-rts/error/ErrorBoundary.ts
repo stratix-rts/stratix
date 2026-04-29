@@ -26,7 +26,7 @@ export class RTSErrorBoundary implements ErrorHandler {
 
   private setupGlobalHandlers(): void {
     if (typeof window !== 'undefined') {
-      window.onerror = (message, source, lineno, colno, error) => {
+      window.onerror = (_message, source, lineno, colno, error) => {
         if (error) {
           this.handleError(error, {
             component: 'global',
@@ -161,7 +161,7 @@ export class RTSErrorBoundary implements ErrorHandler {
 export const globalErrorHandler = new RTSErrorBoundary();
 
 export function withErrorBoundary<T>(
-  target: any,
+  _target: any,
   propertyKey: string,
   descriptor: TypedPropertyDescriptor<(...args: any[]) => Promise<T>>
 ): TypedPropertyDescriptor<(...args: any[]) => Promise<T>> {

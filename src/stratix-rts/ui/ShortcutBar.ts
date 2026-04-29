@@ -52,7 +52,7 @@ export class ShortcutBar {
       this.updateShortcuts();
     });
 
-    this.unsubscribeContext = shortcutManager.onContextChange((context: ShortcutContext) => {
+    this.unsubscribeContext = shortcutManager.onContextChange((_context: ShortcutContext) => {
       if (this.config.showOnContextChange) {
         this.updateShortcuts();
         if (this.config.autoHide) {

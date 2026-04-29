@@ -246,7 +246,7 @@ export class TaskZone extends BaseZone {
     }
   }
 
-  private startProgressGlow(x: number, y: number, color: number): void {
+  private startProgressGlow(_x: number, _y: number, color: number): void {
     if (!this.scene || this.progressGlowTween) return;
     if (isReducedMotion()) return;
 

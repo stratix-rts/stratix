@@ -11,7 +11,7 @@
 
 import Phaser from 'phaser';
 
-import { CombatPowerCalculator, CombatPowerScore, COMBAT_DIMENSIONS, CombatDimension } from './CombatPowerCalculator';
+import { CombatPowerCalculator, CombatPowerScore } from './CombatPowerCalculator';
 
 export interface RankedAgent {
   agentId: string;
@@ -33,13 +33,7 @@ export interface RankingItemConfig {
 const RANK_COLORS = ['#ffd700', '#c0c0c0', '#cd7f32']; // 金银铜
 const DEFAULT_RANK_COLOR = '#6b7280';
 
-const LEVEL_COLORS: Record<string, string> = {
-  '传说': '#ffd700',
-  '精英': '#c0c0c0',
-  '优秀': '#4169e1',
-  '普通': '#228b22',
-  '新手': '#808080',
-};
+
 
 export class AgentPowerRanking {
   private scene: Phaser.Scene;
@@ -68,9 +62,7 @@ export class AgentPowerRanking {
   private readonly NAME_WIDTH_RATIO = 0.5;
   private readonly SCORE_WIDTH = 50;
   private readonly FONT_SIZE = '12px';
-  private readonly ITEM_ALPHA = 0.9;
-  private readonly SELECTED_ALPHA = 1.0;
-  private readonly HOVER_ALPHA = 0.95;
+
 
   constructor(
     scene: Phaser.Scene,

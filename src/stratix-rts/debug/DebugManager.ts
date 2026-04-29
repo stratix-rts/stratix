@@ -10,7 +10,6 @@ import { MovementDebugger } from './MovementDebugger';
 import { SpatialGridDebugger } from './SpatialGridDebugger';
 
 export class DebugManager {
-  private scene: Phaser.Scene;
   private collisionDebugger: CollisionDebugger;
   private movementDebugger: MovementDebugger;
   private spatialGridDebugger: SpatialGridDebugger | null;
@@ -21,8 +20,6 @@ export class DebugManager {
     movementSystem: MovementSystem,
     spatialGrid?: SpatialHashGrid | null
   ) {
-    this.scene = scene;
-    
     this.collisionDebugger = new CollisionDebugger(scene, collisionSystem);
     this.movementDebugger = new MovementDebugger(scene, movementSystem);
     

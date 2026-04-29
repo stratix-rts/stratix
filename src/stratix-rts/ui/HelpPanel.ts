@@ -1,4 +1,4 @@
-import { shortcutManager, type ShortcutDefinition, type ShortcutCategory, type ShortcutContext } from './ShortcutManager';
+import { shortcutManager, type ShortcutDefinition, type ShortcutCategory } from './ShortcutManager';
 
 export interface HelpPanelConfig {
   width?: number;
@@ -522,7 +522,7 @@ export class HelpPanel {
               ` : Object.entries(groupedShortcuts).map(([category, shortcuts]) => `
                 <div class="help-panel-section">
                   <div class="help-panel-section-title">${category}</div>
-                  ${shortcuts.map((s, i) => `
+                  ${shortcuts.map((s, _i) => `
                     <div
                       class="help-panel-shortcut ${filteredShortcuts.indexOf(s) === selectedIndex ? 'selected' : ''}"
                       data-index="${filteredShortcuts.indexOf(s)}"

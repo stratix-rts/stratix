@@ -50,6 +50,7 @@ export class TopBarV2 extends EnhancedUIComponent {
   private borderColor: ReactiveToken<string>;
   private glassBg: ReactiveToken<string>;
   private glassBorder: ReactiveToken<string>;
+
   
   constructor(
     scene: Phaser.Scene,
@@ -300,7 +301,7 @@ export class TopBarV2 extends EnhancedUIComponent {
     this.zoneText?.setText(`${stats.totalZones} 个区域`);
   }
   
-  public setStats(stats: TopBarStats): void {
+  public setStats(_stats: TopBarStats): void {
     this.updateDisplay();
   }
   

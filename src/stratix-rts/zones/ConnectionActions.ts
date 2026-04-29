@@ -78,7 +78,7 @@ export class ConnectionDeleteAction implements ZoneAction {
 
   constructor(
     private connectionManager: ZoneConnectionManager,
-    private connectionId: string
+    connectionId: string
   ) {
     this.id = `conn-delete-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     this.timestamp = Date.now();

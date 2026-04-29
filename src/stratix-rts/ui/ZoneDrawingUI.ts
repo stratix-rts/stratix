@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 
-import { rtsEventBus } from '../events/core/RTSEventBus';
+
 
 export class ZoneDrawingUI {
   private scene: Phaser.Scene;

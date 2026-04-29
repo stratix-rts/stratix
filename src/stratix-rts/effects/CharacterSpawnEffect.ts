@@ -12,7 +12,6 @@ export interface CharacterSpawnEffectConfig {
 
 export class CharacterSpawnEffect {
   private scene: Phaser.Scene;
-  private config: CharacterSpawnEffectConfig;
   
   private magicCircle: MagicCircle;
   private particles: ParticleSystem;
@@ -31,7 +30,6 @@ export class CharacterSpawnEffect {
     characterName: string
   ) {
     this.scene = scene;
-    this.config = { x, y, characterId, characterName };
 
     this.magicCircle = new MagicCircle(scene, { x, y });
     this.particles = new ParticleSystem(scene, { x, y });
