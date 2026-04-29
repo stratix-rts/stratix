@@ -92,7 +92,7 @@ export const SVGIconRegistry: Record<string, SVGIconPath> = {
  * 用于游戏内 UI，支持动态着色
  */
 export const CustomIconRegistry: Record<string, GraphicsIconRenderer> = {
-  'agent-writer': (graphics, size, color) => {
+  'agent-writer': (graphics, _size, color) => {
     // 羽毛笔图标 - 写作 Agent
     graphics.lineStyle(2, color);
     graphics.beginPath();
@@ -103,7 +103,7 @@ export const CustomIconRegistry: Record<string, GraphicsIconRenderer> = {
     graphics.strokePath();
   },
   
-  'agent-dev': (graphics, size, color) => {
+  'agent-dev': (graphics, _size, color) => {
     // 代码图标 - 开发 Agent
     graphics.lineStyle(2, color);
     graphics.beginPath();
@@ -113,7 +113,7 @@ export const CustomIconRegistry: Record<string, GraphicsIconRenderer> = {
     graphics.strokePath();
   },
   
-  'agent-analyst': (graphics, size, color) => {
+  'agent-analyst': (graphics, _size, color) => {
     // 图表图标 - 分析 Agent
     graphics.lineStyle(2, color);
     graphics.strokeRect(0, 4, 6, 16);
@@ -121,14 +121,14 @@ export const CustomIconRegistry: Record<string, GraphicsIconRenderer> = {
     graphics.strokeRect(18, 2, 6, 18);
   },
   
-  'zone-gather': (graphics, size, color) => {
+  'zone-gather': (graphics, _size, color) => {
     // 采集区图标
     graphics.lineStyle(2, color);
     graphics.strokeCircle(0, 0, 12);
     graphics.fillCircle(0, 0, 4);
   },
   
-  'zone-process': (graphics, size, color) => {
+  'zone-process': (graphics, _size, color) => {
     // 处理区图标
     graphics.lineStyle(2, color);
     graphics.strokeRect(-10, -10, 20, 20);

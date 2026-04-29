@@ -19,7 +19,7 @@ import { ControlGroupSystem } from './systems/ControlGroupSystem';
 import { MovementSystem } from './systems/MovementSystem';
 import { SelectBox } from './ui/SelectBox';
 
-import { InputHandler, InputCallbacks, InputMode } from './utils/InputHandler';
+import { InputHandler, InputCallbacks } from './utils/InputHandler';
 import { TaskZone } from './zones/TaskZone';
 import { TaskZonePreview } from './zones/TaskZonePreview';
 import { UnifiedZoneManager } from './zones/UnifiedZoneManager';
@@ -264,7 +264,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   }
 
   private initSystems(): void {
-    this.commandSystem = new CommandSystem();
+    // this.commandSystem = new CommandSystem();
     this.controlGroupSystem = new ControlGroupSystem();
     this.movementSystem = new MovementSystem();
     this.statsCollector = new StatsCollector();
@@ -589,12 +589,12 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   }
 
   private handleCommandMode(commandType: CommandType): void {
-    this.currentCommandType = commandType;
+    // this.currentCommandType = commandType;
     console.log('[StratixRTS] Command mode:', commandType);
   }
 
   private handleCancelCommandMode(): void {
-    this.currentCommandType = null;
+    // this.currentCommandType = null;
     console.log('[StratixRTS] Command mode cancelled');
   }
 

@@ -1,14 +1,13 @@
 import {
   FRAME_SIZE,
-  SHEET_WIDTH,
   ANIMATION_OFFSETS
 } from '@/stratix-character-creator/constants';
-import { characterComposer } from '@/stratix-character-creator/core/CharacterComposer';
+
 import { textureManager } from '@/stratix-core/services';
 import { services } from '@/stratix-core/services/ServiceLocator';
 import type { CharacterData, CharacterTexture } from '@/stratix-core/stratix-protocol';
 
-const RTS_ANIMATIONS = ['walk', 'idle', 'run'];
+
 
 /**
  * @deprecated Use textureManager from '@/stratix-core/services' instead

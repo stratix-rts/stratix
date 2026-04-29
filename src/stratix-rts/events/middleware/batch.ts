@@ -21,7 +21,7 @@ export function createBatchMiddleware(
     return states.get(event)!;
   };
 
-  const flush = <K extends RTSEventName>(event: K, ctx: MiddlewareContext<K>): void => {
+  const flush = <K extends RTSEventName>(event: K, _ctx: MiddlewareContext<K>): void => {
     const state = getState(event);
     const handler = batchHandlers.get(event);
 

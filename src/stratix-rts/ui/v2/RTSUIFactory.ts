@@ -7,7 +7,7 @@
 
 import Phaser from 'phaser';
 
-import { CommandPanelV2, UnitInfo, Skill, AgentInfo, ZoneInfo, CommandPanelCallbacks } from './CommandPanelV2';
+import { CommandPanelV2, Skill, CommandPanelCallbacks } from './CommandPanelV2';
 import { MinimapV2 } from './MinimapV2';
 import { TopBarV2, TopBarStats } from './TopBarV2';
 

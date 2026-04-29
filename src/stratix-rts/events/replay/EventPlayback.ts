@@ -4,8 +4,6 @@
  */
 
 import { rtsEventBus } from '../core/RTSEventBus';
-import type { RTSEventName, RTSEventData } from '../types/RTSEventTypes';
-
 import type {
   RecordingSession,
   RecordedEvent,
@@ -14,7 +12,7 @@ import type {
   ReplayConfig,
   PlaybackProgress,
 } from './types';
-import { calculateDuration } from './types';
+
 
 /**
  * Default playback configuration

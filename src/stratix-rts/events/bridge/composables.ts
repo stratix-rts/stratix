@@ -1,16 +1,13 @@
 import { ref, onUnmounted, onMounted, type Ref } from 'vue';
 
-import { RTSEventBus, rtsEventBus } from '../core/RTSEventBus';
+import { rtsEventBus } from '../core/RTSEventBus';
 import type {
-  RTSEventName,
   RTSEventData,
   GameToVueEvents,
-  VueToGameEvents,
   RequestResponseMap,
 } from '../types/RTSEventTypes';
 
 type GameToVueEventName = keyof GameToVueEvents;
-type VueToGameEventName = keyof VueToGameEvents;
 
 export interface UseSubscriptionOptions<T> {
   immediate?: boolean;

@@ -5,7 +5,7 @@
  * All schemas export both the schema and inferred TypeScript types.
  */
 
-import { z, ZodSchema, ZodError } from 'zod';
+import { z, ZodSchema } from 'zod';
 
 // ============================================================================
 // Primitive & Shared Schemas

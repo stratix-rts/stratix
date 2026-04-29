@@ -105,7 +105,6 @@ export class SoulEditor {
   private config: SoulEditorConfig;
   private container: Phaser.GameObjects.DOMElement | null = null;
   private soul: StratixSoulConfig;
-  private rawContent: string = '';
   private onChange?: (soul: StratixSoulConfig) => void;
 
   // 目标完成状态
@@ -1067,7 +1066,6 @@ export class SoulEditor {
       goals: soul.goals ? [...soul.goals] : [],
       personality: soul.personality || '',
     };
-    this.rawContent = template.rawContent || '';
     this.addToRecentTemplates(template.id);
     this.incrementTemplateStats(template.id);
 

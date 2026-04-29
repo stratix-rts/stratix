@@ -43,14 +43,11 @@ export class OpenClawConnectionPanel {
   private config: OpenClawConnectionPanelConfig;
   private container: DOMContainer | null = null;
   private currentMode: PanelMode = 'pairing';
-  private pairingState: PairingUIState = 'input';
   private tailscaleNodes: TailscaleNode[] = [];
   private selectedNode: TailscaleNode | null = null;
   private savedConnections: StoredConnection[] = [];
   private deviceId: string = '';
-  private pairingRequestId: string = '';
   private connectionId: string | null = null;
-  private existingConnection: { id: string; name: string; status?: string } | null = null;
 
   constructor(scene: Phaser.Scene, config: OpenClawConnectionPanelConfig) {
     this.scene = scene;
@@ -800,7 +797,6 @@ export class OpenClawConnectionPanel {
     statusText.style.color = states[state].color;
 
     if (state === 'waiting' && requestId) {
-      this.pairingRequestId = requestId;
       statusHint!.style.display = 'block';
       statusHint!.innerHTML = `
         💡 请在 OpenClaw Gateway 终端执行:<br>

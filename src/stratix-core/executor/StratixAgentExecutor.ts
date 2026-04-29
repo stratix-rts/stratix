@@ -41,7 +41,7 @@ export class StratixAgentExecutor implements AgentExecutor {
   }
 
   validate(
-    command: StratixCommandData,
+    _command: StratixCommandData,
     agentConfig: StratixAgentConfig
   ): { valid: boolean; errors: string[] } {
     const errors: string[] = [];

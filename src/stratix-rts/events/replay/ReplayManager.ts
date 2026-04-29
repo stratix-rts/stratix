@@ -14,7 +14,6 @@ import type {
   PlaybackProgress,
   ReplayConfig,
   ReplayEvents,
-  RecordedEvent,
 } from './types';
 import { generateSessionId } from './types';
 

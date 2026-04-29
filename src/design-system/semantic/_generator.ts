@@ -484,7 +484,7 @@ export function generateTooltipSemantic(
   radii: { sm: string; md: string },
   shadows: { sm: string; md: string }
 ): TooltipSemanticSet {
-  const { background, text, border, brand } = colors;
+  const { background, text, border } = colors;
 
   return {
     default: {
@@ -625,7 +625,7 @@ export interface DividerSemanticToken {
 export function generateDividerSemantic(
   colors: ThemePrimitives
 ): DividerSemanticToken {
-  const { border, text } = colors;
+  const { border } = colors;
 
   return {
     color: border.subtle,
@@ -681,7 +681,7 @@ export interface BadgeSemanticSet {
 export function generateBadgeSemantic(
   colors: ThemePrimitives
 ): BadgeSemanticSet {
-  const { text, status, brand, background } = colors;
+  const { text, status, brand } = colors;
 
   return {
     success: {
@@ -771,7 +771,7 @@ export interface ProgressSemanticToken {
 export function generateProgressSemantic(
   colors: ThemePrimitives
 ): ProgressSemanticToken {
-  const { background, text, status, brand, border } = colors;
+  const { background, text, status, brand } = colors;
 
   return {
     track: background.sunken,

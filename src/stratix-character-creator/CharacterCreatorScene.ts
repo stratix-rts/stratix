@@ -363,7 +363,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
     });
   }
 
-  private createLeftPanel(width: number, height: number): void {
+  private createLeftPanel(_width: number, height: number): void {
     const panelX = 0;
     const panelY = THEME().headerHeight;
     const panelW = THEME().leftPanelWidth;
@@ -1026,38 +1026,6 @@ export class CharacterCreatorScene extends Phaser.Scene {
     this.buildAgentChatPanel(panelW, panelH);
   }
 
-  /**
-   * @deprecated This method is never called - AgentConfigPanel (Soul/Rules/Skills) is skipped
-   * in favor of direct chat/save flow. Kept for potential future use.
-   */
-  private buildStratixAgentConfigPanel(panelW: number, panelH: number): void {
-    if (!this.mainPanelContainer || !this.currentCharacter) return;
-
-    const agentConfigPanel = new AgentConfigPanel(this, {
-      x: 16,
-      y: 16,
-      width: panelW - 32,
-      height: panelH - 32,
-      character: this.currentCharacter,
-      onComplete: (config: any) => {
-        // Save soul/rules/skills config to character
-        if (this.currentCharacter) {
-          this.currentCharacter.soul = config.soul;
-          this.currentCharacter.rules = config.rules;
-          this.currentCharacter.skillTree = config.skillTree;
-        }
-        // Proceed to chat panel
-        this.buildAgentChatPanel(panelW, panelH);
-      },
-      onBack: () => {
-        this.setStep('openclaw');
-      },
-      dialog: this.dialogCallbacks,
-    });
-    const dom = agentConfigPanel.create();
-    this.mainPanelContainer.add(dom);
-  }
-
   private buildAgentChatPanel(panelW: number, panelH: number): void {
     if (!this.mainPanelContainer || !this.currentCharacter) return;
 
@@ -1365,8 +1333,6 @@ export class CharacterCreatorScene extends Phaser.Scene {
       }
 
       const existingChar = await characterStorage.load(this.currentCharacter.characterId);
-      const _isNew = !existingChar;
-
       await characterStorage.save(characterToSave);
       this.isDirty = false;
 
@@ -1446,20 +1412,6 @@ export class CharacterCreatorScene extends Phaser.Scene {
       this.currentCharacter = characterStorage.createNew();
       await this.initializeDefaultParts();
       await this.updatePreview();
-    }
-  }
-
-  private updateAttributesDisplay(attributes: Record<string, number>): void {
-    if (!this.uiElements.attrLabel) return;
-
-    if (Object.keys(attributes).length === 0) {
-      this.uiElements.attrLabel.setText('No bonuses');
-    } else {
-      const displayAttrs = Object.entries(attributes)
-        .slice(0, 3)
-        .map(([k, v]) => `${k.toUpperCase()}+${v}`)
-        .join('  ');
-      this.uiElements.attrLabel.setText(displayAttrs);
     }
   }
 

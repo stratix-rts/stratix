@@ -19,9 +19,6 @@ import {
 import type { AnimationName } from '../constants';
 
 
-// Phaser 图形对象使用数字颜色（运行时获取）
-const getPhaserColor = (tokenPath: string) => parseInt(getToken(tokenPath).replace('#', '0x'));
-
 export interface CharacterPreviewConfig {
   x: number;
   y: number;
@@ -31,7 +28,6 @@ export interface CharacterPreviewConfig {
 
 export class CharacterPreview {
   private scene: Phaser.Scene;
-  private config: CharacterPreviewConfig;
   private container: Phaser.GameObjects.Container;
   private sprite: Phaser.GameObjects.Sprite | null = null;
   private currentAnimation: AnimationName = 'idle';
@@ -43,7 +39,6 @@ export class CharacterPreview {
 
   constructor(scene: Phaser.Scene, config: CharacterPreviewConfig) {
     this.scene = scene;
-    this.config = config;
     this.currentScale = config.scale ?? 2;
 
     this.container = scene.add.container(config.x, config.y).setDepth(Depth.UI_MODAL_CONTENT);
@@ -147,8 +142,6 @@ export class CharacterPreview {
     if (frameIndexes.length === 0) return;
     
     const firstFrame = frameIndexes[0];
-    const srcX = (firstFrame % FRAMES_PER_ROW) * FRAME_SIZE;
-    const srcY = Math.floor(firstFrame / FRAMES_PER_ROW) * FRAME_SIZE;
     
     const frameKey = `${this.textureKey}_frame_${firstFrame}`;
     

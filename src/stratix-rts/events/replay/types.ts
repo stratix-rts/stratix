@@ -3,7 +3,7 @@
  * Defines types for the event recording and playback system
  */
 
-import type { RTSEventName, RTSEventData, AllRTSEvents } from '../types/RTSEventTypes';
+import type { RTSEventName, RTSEventData } from '../types/RTSEventTypes';
 
 /**
  * A single recorded event with relative timestamp

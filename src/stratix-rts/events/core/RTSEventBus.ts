@@ -1,8 +1,7 @@
 import mitt from 'mitt';
 import type Phaser from 'phaser';
 
-import { createErrorMiddleware, createLoggerMiddleware } from '../middleware/logger';
-import { createThrottleMiddleware } from '../middleware/throttle';
+import { createErrorMiddleware } from '../middleware/logger';
 import type { Middleware, MiddlewareContext } from '../middleware/types';
 import { composeMiddleware } from '../middleware/types';
 import type {

@@ -305,13 +305,6 @@ export class StratixAgentConfigPanel {
     return !providerConfig || !providerConfig.defaultEndpoint;
   }
 
-  private requiresApiKey(): boolean {
-    const provider = this.currentConfig.provider;
-    if (provider === 'ollama') return false;
-    if (provider === 'custom') return false;
-    return true;
-  }
-
   private showCustomModelInput(): boolean {
     const provider = this.currentConfig.provider;
     const models = getModelsForProvider(provider);

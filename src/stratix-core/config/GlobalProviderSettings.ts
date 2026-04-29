@@ -165,23 +165,6 @@ class GlobalProviderSettings {
   }
 
   /**
-   * Load API key from electron secure storage or localStorage
-   */
-  private async loadApiKey(providerId: string): Promise<string | undefined> {
-    try {
-      if (this.isElectron()) {
-        const result = await (window as any).electronAPI.apiKey.load(providerId);
-        return result.success ? result.data : undefined;
-      } else {
-        return localStorage.getItem(`${STORAGE_KEY}:apikey:${providerId}`) || undefined;
-      }
-    } catch (error) {
-      console.error('[GlobalProviderSettings] Failed to load API key:', error);
-      return undefined;
-    }
-  }
-
-  /**
    * Check if a provider name already exists (for duplicate detection)
    */
   hasDuplicateName(name: string, excludeId?: string): boolean {

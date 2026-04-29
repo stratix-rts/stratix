@@ -13,7 +13,6 @@ import type { ServiceProvider, TailscaleNode, AppConfiguration } from './Service
 
 export class ElectronServiceProvider implements ServiceProvider {
   private electronAPI: any;
-  private initialized = false;
   
   constructor() {
     this.electronAPI = (typeof window !== 'undefined') ? (window as any).electronAPI : null;
@@ -40,12 +39,12 @@ export class ElectronServiceProvider implements ServiceProvider {
     if (!this.electronAPI) {
       throw new Error('Electron API not available');
     }
-    this.initialized = true;
+    // initialized
   }
   
   async destroy(): Promise<void> {
     // Electron 模式下由主进程清理资源
-    this.initialized = false;
+    // destroyed
   }
   
   // ==================== 数据服务 ====================

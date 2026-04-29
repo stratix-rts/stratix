@@ -13,7 +13,6 @@ import type { ServiceProvider, TailscaleNode, AppConfiguration } from './Service
 
 export class WebServiceProvider implements ServiceProvider {
   private apiBase: string;
-  private initialized = false;
   
   constructor(apiBase = '/api/stratix') {
     this.apiBase = apiBase;
@@ -33,12 +32,12 @@ export class WebServiceProvider implements ServiceProvider {
   
   async initialize(): Promise<void> {
     // Web 模式不需要额外初始化
-    this.initialized = true;
+    // initialized
   }
   
   async destroy(): Promise<void> {
     // Web 模式不需要清理
-    this.initialized = false;
+    // destroyed
   }
   
   // ==================== 数据服务 ====================

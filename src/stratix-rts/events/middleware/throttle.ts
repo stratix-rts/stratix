@@ -13,7 +13,6 @@ export function createThrottleMiddleware(
   config: Partial<Record<RTSEventName, number>> = {}
 ): Middleware {
   const states = new Map<RTSEventName, ThrottleState>();
-  const defaultThrottle = 16;
 
   const getState = (event: RTSEventName): ThrottleState => {
     if (!states.has(event)) {

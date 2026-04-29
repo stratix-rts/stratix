@@ -8,7 +8,6 @@ import type {
   AgentTask,
   TaskHandle,
   TaskStatus,
-  IsolationStrategy,
 } from "./types";
 import * as fs from "fs-extra";
 import * as path from "path";

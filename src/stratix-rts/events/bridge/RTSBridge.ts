@@ -1,7 +1,5 @@
 import { rtsEventBus } from '../core/RTSEventBus';
 import type {
-  RTSEventName,
-  RTSEventData,
   AllRTSEvents,
   GameToVueEvents,
   VueToGameEvents,

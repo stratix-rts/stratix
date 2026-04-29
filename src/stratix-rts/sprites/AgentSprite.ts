@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 
-import { getToken, getCurrentTheme } from '@/design-system/config';
+import { getToken } from '@/design-system/config';
 import { LPC_DIRECTION_ROWS } from '@/stratix-character-creator/constants';
 
 import { StratixAgentConfig } from '../../stratix-core/stratix-protocol';
@@ -60,7 +60,6 @@ export class AgentSprite extends Phaser.GameObjects.Container {
   private isDragging: boolean = false;
   private dragOffset: { x: number; y: number } = { x: 0, y: 0 };
   private customTextureKey: string | null = null;
-  private placeholderTextureKey: string | null = null;
   private characterId: string | null = null;
   private currentDirection: number = 0;
   private currentAnimation: 'idle' | 'walk' | 'run' = 'idle';
@@ -71,7 +70,7 @@ export class AgentSprite extends Phaser.GameObjects.Container {
   private characterThumbnail: string | null = null;
   private zoneBadge: Phaser.GameObjects.Graphics | null = null;
   private currentZoneId: string | null = null;
-  private currentZoneName: string | null = null;
+
 
   // V2 visual enhancements
   private glowGraphics: Phaser.GameObjects.Graphics;
@@ -163,7 +162,6 @@ export class AgentSprite extends Phaser.GameObjects.Container {
     // Skip if already tweening (texture replace in progress)
     if (this.scene.tweens.isTweening(this)) return;
 
-    const wasPlaying = this.sprite.anims.isPlaying;
     const currentAnim = this.sprite.anims.currentAnim;
 
     this.customTextureKey = newTextureKey;
@@ -490,7 +488,7 @@ export class AgentSprite extends Phaser.GameObjects.Container {
    */
   public setZoneBadge(zoneId: string, zoneName?: string): void {
     this.currentZoneId = zoneId;
-    this.currentZoneName = zoneName || null;
+    // this.currentZoneName = zoneName || null;
 
     // Create zone badge if doesn't exist
     if (!this.zoneBadge) {
@@ -546,7 +544,7 @@ export class AgentSprite extends Phaser.GameObjects.Container {
    */
   public clearZoneBadge(): void {
     this.currentZoneId = null;
-    this.currentZoneName = null;
+    // this.currentZoneName = null;
 
     if (this.zoneBadge) {
       // Destroy zone text if exists

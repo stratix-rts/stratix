@@ -147,14 +147,6 @@ export class PartSelector {
     `;
   }
 
-  /**
-   * @deprecated Never implemented - returns empty string. Category tabs are handled via
-   * showCategory() and the category button click handlers in setupEventListeners().
-   */
-  private createCategoryTabs(): string {
-    return '';
-  }
-
   private setupEventListeners(): void {
     const node = this.container?.getNode();
     if (!node) return;

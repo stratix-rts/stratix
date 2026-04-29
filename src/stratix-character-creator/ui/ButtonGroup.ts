@@ -26,7 +26,6 @@ export interface ButtonGroupConfig {
 }
 
 class StyledButton {
-  private scene: Phaser.Scene;
   private container: Phaser.GameObjects.Container;
   private background: Phaser.GameObjects.Rectangle;
   private text: Phaser.GameObjects.Text;
@@ -35,7 +34,6 @@ class StyledButton {
   private height: number = 40;
 
   constructor(scene: Phaser.Scene, x: number, y: number, config: ButtonConfig) {
-    this.scene = scene;
     this.config = config;
     this.container = scene.add.container(x, y).setDepth(Depth.UI_MODAL_CONTENT);
 

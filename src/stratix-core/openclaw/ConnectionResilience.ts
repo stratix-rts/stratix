@@ -107,7 +107,6 @@ export class ConnectionResilience<T = unknown> extends EventEmitter {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private isShuttingDown = false;
   private lastHealthCheck: HealthCheckResult | null = null;
-  private injectedHeaders: Record<string, string> = {};
   private connectionResult: T | null = null;
 
   constructor(config: Partial<ResilienceConfig> = {}) {
@@ -398,7 +397,7 @@ export class ConnectionResilience<T = unknown> extends EventEmitter {
     if (this.config.authRefreshFn) {
       try {
         this.emit('auth_refresh');
-        this.injectedHeaders = await this.config.authRefreshFn();
+        await this.config.authRefreshFn();
       } catch {
         // Auth refresh failed, continue with current headers
       }

@@ -564,11 +564,6 @@ export class BackendSelector {
     return validation.valid;
   }
 
-  private async testStratixConnectionFromPanel(node: HTMLElement): Promise<void> {
-    const statusDiv = node.querySelector('#stratix-status') as HTMLDivElement;
-    await this.testStratixConnection(node, statusDiv);
-  }
-
   private async testStratixConnectionFromPanelStatic(node: HTMLElement): Promise<void> {
     console.log('[BackendSelector] testStratixConnectionFromPanelStatic called');
     const statusDiv = node.querySelector('#stratix-status-static') as HTMLDivElement;

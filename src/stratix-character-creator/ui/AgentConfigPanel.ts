@@ -62,7 +62,6 @@ export class AgentConfigPanel {
   private scene: Phaser.Scene;
   private config: AgentConfigPanelConfig;
   private container: Phaser.GameObjects.DOMElement | null = null;
-  private currentTab: TabKey = 'soul';
   private currentSkillsSubTab: SkillsSubTab = 'installed';
   private isEditingPrompt: boolean = false;
 
@@ -74,7 +73,6 @@ export class AgentConfigPanel {
 
   // SkillHub state
   private skillSearchQuery: string = '';
-  private skillSearchResults: SkillHubSkill[] = [];
   private selectedCategory: SkillCategory | 'all' = 'all';
 
   // Soul template state
@@ -271,8 +269,6 @@ export class AgentConfigPanel {
   }
 
   private showTab(tab: TabKey): void {
-    this.currentTab = tab;
-
     const node = this.container?.node as HTMLElement;
     if (!node) return;
 
@@ -1428,30 +1424,6 @@ ${learnedList}`;
     if (attrs.some(a => a.includes('speed') || a.includes('dodge'))) return 'mobility';
     if (attrs.some(a => a.includes('mana') || a.includes('magic'))) return 'magic';
     return 'utility';
-  }
-
-  private setupSkillsEventListeners(panel: HTMLElement): void {
-    panel.querySelectorAll('.skill-node').forEach(nodeEl => {
-      nodeEl.addEventListener('click', (e) => {
-        const nodeId = (e.currentTarget as HTMLElement).dataset.nodeId;
-        if (!nodeId) return;
-
-        if (this.skillTree.isNodeSelected(nodeId)) {
-          this.skillTree.deselectNode(nodeId);
-        } else {
-          const { canSelect, reason } = this.skillTree.canSelectNode(nodeId);
-          if (canSelect) {
-            this.skillTree.selectNode(nodeId);
-          } else {
-            alert(reason || '无法选择');
-          }
-        }
-
-        this.attributes = this.skillTree.calculateAttributes();
-        this.updateAttributesDisplay();
-        this.renderSkillsContent(panel);
-      });
-    });
   }
 
   private updateAttributesDisplay(): void {

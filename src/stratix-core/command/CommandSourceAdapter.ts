@@ -1,4 +1,4 @@
-import type { Command, CommandContext, CommandResult, CommandSource } from './types';
+import type { Command, CommandContext, CommandResult } from './types';
 import { CommandOrchestrator } from './CommandOrchestrator';
 import { CommandTransformer } from '../../stratix-gateway/command-transformer/CommandTransformer';
 import type { StratixAgentConfig } from '../stratix-protocol';
