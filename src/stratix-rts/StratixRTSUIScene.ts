@@ -23,9 +23,6 @@ export default class StratixRTSUIScene extends Phaser.Scene {
     overallProgress: 0,
   };
   private selectedAgentIds: string[] = [];
-  private selectedZoneIds: string[] = [];
-  private selectedAgentInfo: AgentInfo | null = null;
-  private selectedZoneInfo: ZoneInfo | null = null;
   private eventUnsubscribers: (() => void)[] = [];
   private isUIInitialized: boolean = false;
 
@@ -132,7 +129,6 @@ export default class StratixRTSUIScene extends Phaser.Scene {
     this.eventUnsubscribers.push(
       rtsEventBus.on('scene:ui:update_selection', (data) => {
         this.selectedAgentIds = data.selectedAgentIds;
-        // this.selectedZoneIds = data.selectedZoneIds;
         
         if (this.uiComponents?.commandPanel) {
           if (this.selectedAgentIds.length > 1) {
@@ -160,7 +156,6 @@ export default class StratixRTSUIScene extends Phaser.Scene {
 
     this.eventUnsubscribers.push(
       rtsEventBus.on('scene:ui:agent_info', (data) => {
-        // this.selectedAgentInfo = data;
         if (this.uiComponents?.commandPanel) {
           this.uiComponents.commandPanel.updateAgentInfo(data);
         }
@@ -169,7 +164,6 @@ export default class StratixRTSUIScene extends Phaser.Scene {
 
     this.eventUnsubscribers.push(
       rtsEventBus.on('scene:ui:zone_info', (data) => {
-        // this.selectedZoneInfo = data;
         if (this.uiComponents?.commandPanel) {
           this.uiComponents.commandPanel.updateZoneInfo(data);
         }
