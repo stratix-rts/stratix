@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue';
 import StratixModal from '@/components/ui/StratixModal.vue';
-import { WorkflowEditorPanel, type WorkflowExecutionStatus } from '@/stratix-character-creator/ui/workflow-editor/WorkflowEditorPanel';
+import type { WorkflowEditorPanel as WorkflowEditorPanelType, WorkflowExecutionStatus } from '@/stratix-character-creator/ui/workflow-editor/WorkflowEditorPanel';
 import type { WorkflowDefinition } from '@/agent-platform/workflow/types';
 
 interface Props {
@@ -18,7 +18,7 @@ const emit = defineEmits<{
 }>();
 
 const editorContainer = ref<HTMLDivElement | null>(null);
-let editorPanel: WorkflowEditorPanel | null = null;
+let editorPanel: WorkflowEditorPanelType | null = null;
 
 const handleClose = () => {
   emit('update:visible', false);
@@ -53,9 +53,10 @@ onUnmounted(() => {
   }
 });
 
-function initEditor() {
+async function initEditor() {
   if (!editorContainer.value || editorPanel) return;
 
+  const { WorkflowEditorPanel } = await import('@/stratix-character-creator/ui/workflow-editor/WorkflowEditorPanel');
   editorPanel = new WorkflowEditorPanel({
     x: 0,
     y: 0,

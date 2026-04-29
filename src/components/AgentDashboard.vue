@@ -5,7 +5,7 @@ import { getToken } from '@/design-system/config';
 import { useAgentStore } from '@/stores/agent';
 
 const agentStore = useAgentStore();
-import { rtsBridge } from '@/stratix-rts';
+
 
 interface AgentDashboardItem {
   agentId: string;
@@ -147,7 +147,8 @@ const formatRuntime = (seconds: number): string => {
   return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
 };
 
-const navigateToAgent = (agentId: string) => {
+const navigateToAgent = async (agentId: string) => {
+  const { rtsBridge } = await import('@/stratix-rts');
   rtsBridge.focusAgent(agentId);
 };
 

@@ -15,7 +15,7 @@ import { useUIStore, type Theme } from '../stores/ui';
 
 const agentStore = useAgentStore();
 const uiStore = useUIStore();
-const { trackEvent, getReport } = usePerformanceMonitor({ threshold: 16 });
+const { trackEvent } = usePerformanceMonitor({ threshold: 16 });
 const { enabled: soundEnabled, volume: soundVolume, setEnabled: setSoundEnabled, setVolume: setSoundVolume } = useSound();
 
 const HeroManagementModal = defineAsyncComponent(() => import('./HeroManagementModal.vue'));
