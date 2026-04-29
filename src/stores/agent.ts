@@ -344,7 +344,6 @@ export const useAgentStore = defineStore('agent', () => {
 
     if (index >= 0) {
       const profile = savedCharacterToProfile(character);
-      const _backendType = options?.backendType || agents.value[index].backendType;
 
       agents.value[index].profile = profile;
       agents.value[index].name = character.name;

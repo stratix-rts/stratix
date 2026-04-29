@@ -73,9 +73,6 @@ export function usePartSelection(character?: Ref<SavedCharacter | null>) {
   const initialBodyType = character?.value?.bodyType ?? DEFAULT_BODY_TYPE;
   const bodyType = ref<BodyType>(initialBodyType);
 
-  // 当前随机化模式
-  const randomizeMode = ref<RandomizationMode>('normal');
-
   // 部件元数据缓存
   const partsMetadata = ref<Map<string, PartMetadata>>(new Map());
 

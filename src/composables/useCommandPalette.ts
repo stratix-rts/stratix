@@ -93,11 +93,6 @@ function fuzzyMatch(text: string, pattern: string): boolean {
   return pi === lowerPattern.length
 }
 
-function getRecentCommandIds(): string[] {
-  const uiStore = useUIStore()
-  return uiStore.recentCommandIds
-}
-
 function addRecentCommandId(commandId: string): void {
   const uiStore = useUIStore()
   uiStore.addRecentCommand(commandId)

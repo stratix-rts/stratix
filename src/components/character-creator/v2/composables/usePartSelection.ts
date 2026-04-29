@@ -12,7 +12,7 @@ import {
   type PartCategory,
   type BodyType,
 } from '@/stratix-character-creator/constants';
-import type { PartSelection, PartMetadata, PartCategoryInfo } from '@/stratix-character-creator/types';
+import type { PartSelection, PartMetadata } from '@/stratix-character-creator/types';
 
 // ============================================================================
 // 三档随机化常量 (from V1 CharacterCreatorScene.ts)

@@ -3,7 +3,7 @@
  * 管理动画、方向、缩放和播放状态
  */
 
-import { ref, computed } from 'vue';
+import { ref } from 'vue';
 import type { AnimationName } from '@/stratix-character-creator/constants';
 import { DEFAULT_ANIMATION, DEFAULT_DIRECTION } from '@/stratix-character-creator/constants';
 

@@ -131,11 +131,11 @@
 
 <script setup lang="ts">
 import { SvgIcon } from '@/components/ui';
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, defineAsyncComponent } from 'vue';
 import type { StratixStateSyncEvent, StratixFrontendOperationEvent } from '@/stratix-core/stratix-protocol';
 import StratixEventBus from '../../stratix-core/StratixEventBus';
-import LogDetailModal from './LogDetailModal.vue';
-import CancelConfirmDialog from './CancelConfirmDialog.vue';
+const LogDetailModal = defineAsyncComponent(() => import('./LogDetailModal.vue'));
+const CancelConfirmDialog = defineAsyncComponent(() => import('./CancelConfirmDialog.vue'));
 import StratixInput from '@/components/ui/StratixInput.vue';
 import StratixButton from '@/components/ui/StratixButton.vue';
 import { getToken } from '@/design-system/config';
