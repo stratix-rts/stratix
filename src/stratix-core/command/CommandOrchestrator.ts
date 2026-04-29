@@ -1,5 +1,5 @@
 import type { Command, CommandContext, CommandResult, CommandSource } from './types';
-import { ExecutorFactory } from '../executor/ExecutorFactory';
+
 import { ConnectionPool } from '../../stratix-openclaw-adapter';
 
 /**
