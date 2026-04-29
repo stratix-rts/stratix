@@ -429,7 +429,6 @@ export class DataFlowAnimation {
       if (particle.trail.length > 1) {
         for (let i = 1; i < particle.trail.length; i++) {
           const t = particle.trail[i];
-          // const prev = particle.trail[i - 1];
           const fadeAlpha = (1 - i / particle.trail.length) * trailAlpha * 0.5;
           const size = particle.size * (1 - i / particle.trail.length) * 0.7;
 
