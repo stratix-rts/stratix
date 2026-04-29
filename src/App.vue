@@ -43,6 +43,16 @@ const loadingTimer = ref<ReturnType<typeof setTimeout> | null>(null);
 
 let game: Phaser.Game | null = null;
 let eventBus: StratixEventBus;
+
+// Event handlers (declared here to ensure proper unsubscribe in onUnmounted)
+let handleZoneTaskClaimed: (() => void) | null = null;
+let handleZoneMemberJoined: (() => void) | null = null;
+let handleZoneMemberLeft: (() => void) | null = null;
+let handleConfigClick: (({ agentId }: { agentId: string }) => void) | null = null;
+let handleTaskClick: (({ agentIds }: { agentIds: string[] }) => void) | null = null;
+let handleStopAgents: (({ agentIds }: { agentIds: string[] }) => Promise<void>) | null = null;
+let handleChatClick: (({ agentIds }: { agentIds: string[] }) => void) | null = null;
+
 // 从 store 获取状态 (Pinia refs are auto-unwrapped)
 const agents = computed(() => agentStore.agents);
 const selectedAgentIds = computed(() => agentStore.selectedIds);
