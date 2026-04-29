@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, defineAsyncComponent } from 'vue';
 import { StratixModal, StratixButton, StratixLoading, StratixEmpty, SvgIcon } from '@/components/ui';
 import type { LraTask } from '../stratix-lra-bridge/types';
 import { LRAClient } from '../stratix-lra-bridge/LRAClient';
 import { LRAWatcher } from '../stratix-lra-bridge/LRAWatcher';
-import ChatPanel from './ChatPanel.vue';
-import TaskLogViewer from './TaskLogViewer.vue';
+
+const ChatPanel = defineAsyncComponent(() => import('./ChatPanel.vue'));
+const TaskLogViewer = defineAsyncComponent(() => import('./TaskLogViewer.vue'));
 
 const props = defineProps<{
   visible: boolean;

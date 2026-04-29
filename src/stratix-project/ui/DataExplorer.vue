@@ -335,14 +335,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, defineAsyncComponent } from 'vue';
 import StratixModal from '@/components/ui/StratixModal.vue';
 import ZoneTable from './ZoneTable.vue';
-import ZoneFileTable from './ZoneFileTable.vue';
-import AgentTable from './AgentTable.vue';
 import type { Zone, ZoneFile } from '../types';
 import StratixEventBus from '@stratix-core/StratixEventBus';
 import type { StratixStateSyncEvent } from '@stratix-core/stratix-protocol';
+
+const ZoneFileTable = defineAsyncComponent(() => import('./ZoneFileTable.vue'));
+const AgentTable = defineAsyncComponent(() => import('./AgentTable.vue'));
 
 // ============================================
 // Zone 模板类型定义

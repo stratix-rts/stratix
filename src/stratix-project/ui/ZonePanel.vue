@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, defineAsyncComponent } from 'vue';
+import type { ComponentPublicInstance } from 'vue';
 import StratixModal from '@/components/ui/StratixModal.vue';
 import ZoneDetail from './ZoneDetail.vue';
-import ZoneFilePicker from './ZoneFilePicker.vue';
 import type { Zone, ZoneFile, ZoneUpdateRequest, ZoneFileAddRequest } from '../types';
+
+const ZoneFilePicker = defineAsyncComponent(() => import('./ZoneFilePicker.vue'));
 
 interface Props {
   visible: boolean;
@@ -21,7 +23,7 @@ const emit = defineEmits<{
 const currentZone = ref<Zone | null>(null);
 const loading = ref(false);
 const showFilePicker = ref(false);
-const filePickerRef = ref<InstanceType<typeof ZoneFilePicker> | null>(null);
+const filePickerRef = ref<ComponentPublicInstance | null>(null);
 const notification = ref<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
 const showAgentPicker = ref(false);
 const availableAgentsForPicker = ref<Array<{ agentId: string; name: string }>>([]);
