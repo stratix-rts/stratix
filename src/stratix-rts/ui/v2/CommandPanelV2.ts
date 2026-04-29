@@ -15,6 +15,7 @@ import { EnhancedUIComponent } from '@/stratix-core/ui/components/base/EnhancedU
 
 import { ReactiveToken } from '@/stratix-core/ui/foundation/theme/ReactiveToken';
 
+import { getToken } from '@/design-system/config';
 import { getDSColor, isReducedMotion } from '../../themes/ThemeColors';
 
 // ============================================================================
@@ -965,7 +966,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   }
 
   private hexToNumber(hex: string): number {
-    if (!hex || typeof hex !== 'string') return 0xffffff;
+    if (!hex || typeof hex !== 'string') return parseInt(getToken('colors.text.primary').replace('#', ''), 16);
     return parseInt(hex.slice(1), 16);
   }
 

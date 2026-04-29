@@ -13,6 +13,7 @@ import { EnhancedUIComponent } from '@/stratix-core/ui/components/base/EnhancedU
 
 import { ReactiveToken } from '@/stratix-core/ui/foundation/theme/ReactiveToken';
 
+import { getToken } from '@/design-system/config';
 import { MAP_WIDTH, MAP_HEIGHT } from '../../constants';
 import { getDSColor, isReducedMotion } from '../../themes/ThemeColors';
 
@@ -277,7 +278,7 @@ export class MinimapV2 extends EnhancedUIComponent {
         idle: this.infoColor.get(),
         active: this.successColor.get(),
         busy: this.warningColor.get(),
-        error: getDSColor('status-danger')?.toString(16).padStart(6, '0') ? '#' + getDSColor('status-danger').toString(16).padStart(6, '0') : '#ff4444',
+        error: getDSColor('status-danger')?.toString(16).padStart(6, '0') ? '#' + getDSColor('status-danger').toString(16).padStart(6, '0') : getToken('colors.status.danger'),
         completed: this.successColor.get(),
       };
       const statusColor = statusColorMap[status] || this.infoColor.get();
@@ -437,7 +438,7 @@ export class MinimapV2 extends EnhancedUIComponent {
   }
   
   private hexToNumber(hex: string): number {
-    if (!hex || typeof hex !== 'string') return 0xffffff;
+    if (!hex || typeof hex !== 'string') return parseInt(getToken('colors.text.primary').replace('#', ''), 16);
     return parseInt(hex.slice(1), 16);
   }
   

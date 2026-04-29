@@ -13,6 +13,7 @@ import { EnhancedUIComponent } from '@/stratix-core/ui/components/base/EnhancedU
 import type { UIComponentConfig } from '@/stratix-core/ui/core/types/component.types';
 import { ReactiveToken } from '@/stratix-core/ui/foundation/theme/ReactiveToken';
 
+import { getToken } from '@/design-system/config';
 import type { StatsCollector } from '../../debug/StatsCollector';
 import { PerformanceWidget } from '../debug/PerformanceWidget';
 import { getDSColor, isReducedMotion } from '../../themes/ThemeColors';
@@ -354,7 +355,7 @@ export class TopBarV2 extends EnhancedUIComponent {
   }
   
   private hexToNumber(hex: string): number {
-    if (!hex || typeof hex !== 'string') return 0xffffff;
+    if (!hex || typeof hex !== 'string') return parseInt(getToken('colors.text.primary').replace('#', ''), 16);
     return parseInt(hex.slice(1), 16);
   }
   

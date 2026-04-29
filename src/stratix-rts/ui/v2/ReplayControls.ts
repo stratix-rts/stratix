@@ -4,6 +4,7 @@
 
 import Phaser from 'phaser';
 
+import { getToken } from '@/design-system/config';
 import { rtsEventBus } from '../../events/core/RTSEventBus';
 import { replayManager, PlaybackState, PlaybackSpeed, RecordingSession } from '../../events/replay';
 
@@ -18,17 +19,19 @@ interface ReplayControlsConfig {
   onPlaybackEnded?: () => void;
 }
 
-const COLORS = {
-  background: 0x1a1a2e,
-  backgroundHover: 0x252540,
-  primary: 0x00d4ff,
-  secondary: 0x6366f1,
-  danger: 0xff4757,
-  success: 0x00ff88,
-  text: 0xffffff,
-  textMuted: 0x888899,
-  border: 0x3a3a5c,
-};
+const hexToNumber = (hex: string) => parseInt(hex.replace('#', ''), 16);
+
+const getThemeColors = () => ({
+  background: hexToNumber(getToken('colors.background.base')),
+  backgroundHover: hexToNumber(getToken('colors.background.elevated')),
+  primary: hexToNumber(getToken('colors.brand.primary')),
+  secondary: hexToNumber(getToken('colors.brand.secondary')),
+  danger: hexToNumber(getToken('colors.status.danger')),
+  success: hexToNumber(getToken('colors.status.success')),
+  text: hexToNumber(getToken('colors.text.primary')),
+  textMuted: hexToNumber(getToken('colors.text.muted')),
+  border: hexToNumber(getToken('colors.border.default')),
+});
 
 const BUTTON_SIZE = 32;
 const ICON_SIZE = 16;
@@ -64,6 +67,7 @@ export class ReplayControls {
 
   // Graphics
   private bgGraphics!: Phaser.GameObjects.Graphics;
+  private colors!: ReturnType<typeof getThemeColors>;
 
   private unsubscribers: (() => void)[] = [];
 
@@ -71,6 +75,7 @@ export class ReplayControls {
     this.scene = scene;
     this.config = config;
     this.container = scene.add.container(config.x, config.y);
+    this.colors = getThemeColors();
     this.setupEventListeners();
   }
 
@@ -94,9 +99,9 @@ export class ReplayControls {
     const height = 60;
 
     this.bgGraphics = this.scene.add.graphics();
-    this.bgGraphics.fillStyle(COLORS.background, 0.95);
+    this.bgGraphics.fillStyle(this.colors.background, 0.95);
     this.bgGraphics.fillRoundedRect(0, 0, width, height, 8);
-    this.bgGraphics.lineStyle(1, COLORS.border, 0.5);
+    this.bgGraphics.lineStyle(1, this.colors.border, 0.5);
     this.bgGraphics.strokeRoundedRect(0, 0, width, height, 8);
 
     this.container.add(this.bgGraphics);
@@ -120,7 +125,7 @@ export class ReplayControls {
       BUTTON_SIZE,
       BUTTON_SIZE,
       this.isRecording ? this.drawStopIcon.bind(this) : this.drawRecordIcon.bind(this),
-      this.isRecording ? COLORS.danger : COLORS.danger,
+      this.isRecording ? this.colors.danger : this.colors.danger,
       this.onRecordClick.bind(this)
     );
     this.container.add(this.recordBtn);
@@ -137,7 +142,7 @@ export class ReplayControls {
       BUTTON_SIZE,
       BUTTON_SIZE,
       this.drawStepBackIcon.bind(this),
-      COLORS.secondary,
+      this.colors.secondary,
       this.onStepBack.bind(this)
     );
     this.container.add(this.stepBackBtn);
@@ -149,7 +154,7 @@ export class ReplayControls {
       BUTTON_SIZE,
       BUTTON_SIZE,
       this.drawPlayIcon.bind(this),
-      COLORS.primary,
+      this.colors.primary,
       this.onPlayPauseClick.bind(this)
     );
     this.container.add(this.playPauseBtn);
@@ -161,7 +166,7 @@ export class ReplayControls {
       BUTTON_SIZE,
       BUTTON_SIZE,
       this.drawStopIcon.bind(this),
-      COLORS.textMuted,
+      this.colors.textMuted,
       this.onStopClick.bind(this)
     );
     this.container.add(this.stopBtn);
@@ -173,7 +178,7 @@ export class ReplayControls {
       BUTTON_SIZE,
       BUTTON_SIZE,
       this.drawStepForwardIcon.bind(this),
-      COLORS.secondary,
+      this.colors.secondary,
       this.onStepForward.bind(this)
     );
     this.container.add(this.stepForwardBtn);
@@ -187,12 +192,12 @@ export class ReplayControls {
 
     // Background
     this.progressBar = this.scene.add.graphics();
-    this.progressBar.fillStyle(COLORS.border, 0.5);
+    this.progressBar.fillStyle(this.colors.border, 0.5);
     this.progressBar.fillRoundedRect(barX, barY, barWidth, barHeight, 4);
 
     // Progress fill
     this.progressFill = this.scene.add.graphics();
-    this.progressFill.fillStyle(COLORS.primary, 1);
+    this.progressFill.fillStyle(this.colors.primary, 1);
     this.progressFill.fillRoundedRect(barX, barY, 0, barHeight, 4);
 
     this.container.add(this.progressBar);
@@ -305,7 +310,7 @@ export class ReplayControls {
     const cx = size / 2;
     const cy = size / 2;
     const r = size / 3;
-    graphics.fillStyle(COLORS.danger, 1);
+    graphics.fillStyle(this.colors.danger, 1);
     graphics.fillCircle(cx, cy, r);
   }
 
@@ -313,7 +318,7 @@ export class ReplayControls {
     const s = size * 0.3;
     const cx = size / 2;
     const cy = size / 2;
-    graphics.fillStyle(COLORS.text, 1);
+    graphics.fillStyle(this.colors.text, 1);
     graphics.fillRoundedRect(cx - s, cy - s, s * 2, s * 2, 2);
   }
 
@@ -324,12 +329,12 @@ export class ReplayControls {
 
     if (this.playbackState === 'playing') {
       // Pause icon (two bars)
-      graphics.fillStyle(COLORS.text, 1);
+      graphics.fillStyle(this.colors.text, 1);
       graphics.fillRoundedRect(cx - s - 2, cy - s, s * 0.6, s * 2, 2);
       graphics.fillRoundedRect(cx + 2, cy - s, s * 0.6, s * 2, 2);
     } else {
       // Play icon (triangle)
-      graphics.fillStyle(COLORS.text, 1);
+      graphics.fillStyle(this.colors.text, 1);
       graphics.fillTriangle(
         cx - s * 0.6, cy - s,
         cx + s * 0.6, cy,
@@ -343,7 +348,7 @@ export class ReplayControls {
     const cy = size / 2;
     const s = size * 0.35;
 
-    graphics.fillStyle(COLORS.text, 1);
+    graphics.fillStyle(this.colors.text, 1);
     // Triangle
     graphics.fillTriangle(cx + s * 0.3, cy - s, cx + s * 0.3, cy + s, cx - s * 0.6, cy);
     // Bar
@@ -355,7 +360,7 @@ export class ReplayControls {
     const cy = size / 2;
     const s = size * 0.35;
 
-    graphics.fillStyle(COLORS.text, 1);
+    graphics.fillStyle(this.colors.text, 1);
     // Triangle
     graphics.fillTriangle(cx - s * 0.3, cy - s, cx - s * 0.3, cy + s, cx + s * 0.6, cy);
     // Bar
@@ -464,7 +469,7 @@ export class ReplayControls {
     const bg = this.recordBtn.getAt(0) as Phaser.GameObjects.Graphics;
     bg.clear();
 
-    const color = this.isRecording ? COLORS.danger : COLORS.danger;
+    const color = this.isRecording ? this.colors.danger : this.colors.danger;
     bg.fillStyle(color, 0.2);
     bg.fillRoundedRect(0, 0, BUTTON_SIZE, BUTTON_SIZE, 6);
     bg.lineStyle(1, color, 0.5);
@@ -507,7 +512,7 @@ export class ReplayControls {
     const percentage = this.duration > 0 ? this.progress / this.duration : 0;
 
     this.progressFill.clear();
-    this.progressFill.fillStyle(COLORS.primary, 1);
+    this.progressFill.fillStyle(this.colors.primary, 1);
     this.progressFill.fillRoundedRect(barX, barY, barWidth * percentage, barHeight, 4);
   }
 
@@ -527,9 +532,9 @@ export class ReplayControls {
   resize(width: number): void {
     this.config.width = width;
     this.bgGraphics.clear();
-    this.bgGraphics.fillStyle(COLORS.background, 0.95);
+    this.bgGraphics.fillStyle(this.colors.background, 0.95);
     this.bgGraphics.fillRoundedRect(0, 0, width, 60, 8);
-    this.bgGraphics.lineStyle(1, COLORS.border, 0.5);
+    this.bgGraphics.lineStyle(1, this.colors.border, 0.5);
     this.bgGraphics.strokeRoundedRect(0, 0, width, 60, 8);
     this.updateProgress();
     this.timeText.setX(width - PADDING);

@@ -607,7 +607,8 @@ defineExpose({ updateAgentRuntime });
 }
 
 .status-dot {
-  width: calc(var(--ds-spacing-xs) + var(--ds-spacing-xs) - 2px);\n  height: calc(var(--ds-spacing-xs) + var(--ds-spacing-xs) - 2px);
+  width: calc(var(--ds-spacing-xs) + var(--ds-spacing-xs) - 2px);
+  height: calc(var(--ds-spacing-xs) + var(--ds-spacing-xs) - 2px);
   border-radius: var(--ds-radius-full);
   animation: pulse 2s infinite;
 }
@@ -662,7 +663,8 @@ defineExpose({ updateAgentRuntime });
 }
 
 .agent-card-footer {
-  margin-top: var(--ds-spacing-sm);\n  padding-top: var(--ds-spacing-sm);
+  margin-top: var(--ds-spacing-sm);
+  padding-top: var(--ds-spacing-sm);
   border-top: 1px solid var(--ds-border);
   text-align: right;
 }
