@@ -28,6 +28,7 @@ import { GroundDecorationSystem } from './ground/GroundDecorationSystem';
 import { ThemeSelectorUI } from './ui/ThemeSelectorUI';
 import { AgentManager } from './managers/AgentManager';
 import { ZoneInteractionManager } from './managers/ZoneInteractionManager';
+import { RenderModeSystem } from './systems/RenderModeSystem';
 
 
 export { MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, DEFAULT_ZOOM, MIN_ZOOM, MAX_ZOOM, BG_COLOR } from './constants';
@@ -57,6 +58,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   private themeManager: ThemeManager;
   private groundDecorationSystem: GroundDecorationSystem;
   private themeSelectorUI: ThemeSelectorUI;
+  private renderModeSystem: RenderModeSystem;
 
   // Backward compatibility fields
   get agentSprites(): Map<string, AgentSprite> {
@@ -200,6 +202,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
       emitSelectionChanged: () => this.agentManager.emitSelectionChanged(),
     });
 
+    this.renderModeSystem = new RenderModeSystem();
     this.initInputHandler();
     this.initEventManager();
     this.initEventBusListeners();
@@ -242,9 +245,21 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     this.movementSystem?.update(_delta, this.agentManager.agentSprites);
     this.dataFlowAnimation?.update(_delta);
     this.dataFlowAnimation?.drawZonePulses(this.zonePulseGraphics);
-    // Update agent positions for beam effects
+
+    // Render mode LOD system: auto-switch agents to thumbnail mode in dense viewports
+    this.renderModeSystem?.update(this.agentManager.agentSprites, this.cameras.main, _time);
+
+    // Update agent positions for beam effects (only for agents in viewport)
+    const camera = this.cameras.main;
+    const buffer = 200;
     this.agentManager.agentSprites.forEach((sprite, agentId) => {
-      this.dataFlowAnimation?.setAgentPosition(agentId, sprite.x, sprite.y);
+      const inViewport = sprite.x >= camera.scrollX - buffer &&
+        sprite.x <= camera.scrollX + camera.width + buffer &&
+        sprite.y >= camera.scrollY - buffer &&
+        sprite.y <= camera.scrollY + camera.height + buffer;
+      if (inViewport) {
+        this.dataFlowAnimation?.setAgentPosition(agentId, sprite.x, sprite.y);
+      }
     });
   }
 

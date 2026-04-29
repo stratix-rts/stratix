@@ -66,7 +66,7 @@ const DEFAULT_PARTICLE_SIZE = 3;
 const DEFAULT_DATA_PACKET_COUNT = 3;
 const DEFAULT_SPEED = 0.0003;
 const DEFAULT_GLOW_INTENSITY = 0.6;
-const TRAIL_LENGTH = 12;
+const TRAIL_LENGTH = 8;
 
 /** Get theme-aware status colors */
 function getThemeStatusColors(): Record<DataFlowStatus, number> {
@@ -86,6 +86,8 @@ export class DataFlowAnimation {
   private agentPositions: Map<string, { x: number; y: number }> = new Map();
   private agentBeamGraphics: Phaser.GameObjects.Graphics;
   private agentPulses: Map<string, { angle: number; distance: number; alpha: number }> = new Map();
+  private maxFlows: number = 20;
+  private zoomLodFactor: number = 1;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -126,6 +128,17 @@ export class DataFlowAnimation {
   /**
    * Start data flow between two zones
    */
+  setZoomLevel(zoom: number): void {
+    // Reduce particle quality when zoomed out (< 0.5) or in very far (> 2.0)
+    if (zoom < 0.5) {
+      this.zoomLodFactor = 0.4;
+    } else if (zoom > 2.0) {
+      this.zoomLodFactor = 1.2;
+    } else {
+      this.zoomLodFactor = 1.0;
+    }
+  }
+
   startFlow(
     fromZoneId: string,
     toZoneId: string,
@@ -135,6 +148,16 @@ export class DataFlowAnimation {
 
     if (this.flows.has(key)) {
       this.stopFlow(fromZoneId, toZoneId);
+    }
+
+    // Performance: limit max concurrent flows
+    if (this.flows.size >= this.maxFlows) {
+      // Remove oldest flow
+      const firstKey = this.flows.keys().next().value;
+      if (firstKey) {
+        const [oldFrom, oldTo] = firstKey.split('->');
+        this.stopFlow(oldFrom, oldTo);
+      }
     }
 
     const sourcePos = this.zonePositions.get(fromZoneId);
@@ -148,7 +171,7 @@ export class DataFlowAnimation {
     const themeColors = getThemeStatusColors();
     const status = this.getStatusFromVolume(options.volume ?? 1);
     const color = options.color ?? themeColors[status];
-    const particleCount = options.particleCount ?? DEFAULT_PARTICLE_COUNT;
+    const particleCount = Math.floor((options.particleCount ?? DEFAULT_PARTICLE_COUNT) * this.zoomLodFactor);
     const particleSize = options.particleSize ?? DEFAULT_PARTICLE_SIZE;
     const speed = options.speed ?? DEFAULT_SPEED;
     const glowIntensity = options.glowIntensity ?? DEFAULT_GLOW_INTENSITY;
