@@ -76,8 +76,4 @@ export { default as PanelTransition } from './PanelTransition.vue';
 export { default as ListTransition } from './ListTransition.vue';
 
 // Motion & Feedback System - Composables
-export { useFocusTrap } from '@/composables/useFocusTrap';
-export { useKeyboardShortcuts } from '@/composables/useKeyboardShortcuts';
-export { useNetworkStatus } from '@/composables/useNetworkStatus';
-export { useGlobalLoading } from '@/composables/useGlobalLoading';
-export { useClipboard } from '@/composables/useClipboard';
+// (removed unused composables: useFocusTrap, useKeyboardShortcuts, useNetworkStatus, useGlobalLoading, useClipboard)

@@ -1,16 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch, defineAsyncComponent } from 'vue';
 import { createStratixRTS } from './stratix-rts';
 import { StratixEventBus, StratixAgentConfig, StratixFrontendOperationEvent } from './stratix-core';
 import MainLayout from './components/MainLayout.vue';
-import CharacterCreatorModal from './components/character-creator';
-import AgentChatModal from './components/AgentChatModal.vue';
-import ProjectConfigPanel from './stratix-project/ui/ProjectConfigPanel.vue';
-import ZonePanel from './stratix-project/ui/ZonePanel.vue';
-import DataExplorer from './stratix-project/ui/DataExplorer.vue';
-import CommandPalette from './components/CommandPalette.vue';
 import { ToastContainer, toastService } from './components/ui';
-import Map3DView from './components/Map3DView.vue';
 import type { Zone } from './stratix-project/types';
 import { useAgentStore } from './stores/agent';
 import { useUIStore } from './stores/ui';
@@ -19,6 +12,14 @@ import type { ProjectConfig, Project } from './stratix-project/types';
 import { rtsEventBus } from './stratix-rts/events/core/RTSEventBus';
 import { soundService } from './services/SoundService';
 import { commandPaletteAPI } from './composables/useCommandPalette';
+
+const CharacterCreatorModal = defineAsyncComponent(() => import('./components/character-creator'));
+const AgentChatModal = defineAsyncComponent(() => import('./components/AgentChatModal.vue'));
+const ProjectConfigPanel = defineAsyncComponent(() => import('./stratix-project/ui/ProjectConfigPanel.vue'));
+const ZonePanel = defineAsyncComponent(() => import('./stratix-project/ui/ZonePanel.vue'));
+const DataExplorer = defineAsyncComponent(() => import('./stratix-project/ui/DataExplorer.vue'));
+const Map3DView = defineAsyncComponent(() => import('./components/Map3DView.vue'));
+const CommandPalette = defineAsyncComponent(() => import('./components/CommandPalette.vue'));
 
 // Pinia stores
 const agentStore = useAgentStore();
@@ -41,8 +42,6 @@ const loadingTimer = ref<ReturnType<typeof setTimeout> | null>(null);
 
 let game: Phaser.Game | null = null;
 let eventBus: StratixEventBus;
-let unsubscribeToasts: (() => void) | null = null;
-
 // 从 store 获取状态 (Pinia refs are auto-unwrapped)
 const agents = computed(() => agentStore.agents);
 const selectedAgentIds = computed(() => agentStore.selectedIds);
@@ -142,7 +141,7 @@ const closeCharacterCreator = () => {
 const handleCharacterCreated = async (character: SavedCharacter) => {
   console.log('[App] Character created:', character.name);
   closeCharacterCreator();
-  agentStore.createCustomAgent(character, {
+  agentStore.createAgentFromCharacter(character, {
     backendType: character.backendType,
     openClawConfig: character.openClawConfig,
     stratixConfig: character.stratixConfig
@@ -153,7 +152,11 @@ const handleCharacterCreated = async (character: SavedCharacter) => {
 
 const handleCharacterUpdated = (character: SavedCharacter) => {
   console.log('Character updated:', character);
-  agentStore.updateCustomAgent(character);
+  agentStore.updateAgentProfile(character.characterId, character, {
+    backendType: character.backendType,
+    openClawConfig: character.openClawConfig,
+    stratixConfig: character.stratixConfig
+  });
 };
 
 const handleCharacterDeleted = (characterId: string) => {
@@ -326,24 +329,16 @@ function updateTime() {
 onMounted(async () => {
   eventBus = StratixEventBus.getInstance();
 
-  // Subscribe to toast updates
-  unsubscribeToasts = toastService.subscribe((newToasts) => {
-    // Sync with uiStore toasts - but we use uiStore.toasts directly
-  });
-
   eventBus.subscribe('stratix:agent_select', handleAgentSelect);
   eventBus.subscribe('stratix:command_execute', handleCommandExecute as any);
 
   // Zone event sound feedback
-  eventBus.subscribe('stratix:zone_task_claimed', () => {
-    soundService.playTaskComplete();
-  });
-  eventBus.subscribe('stratix:zone_member_joined', () => {
-    soundService.playAgentStatusChange();
-  });
-  eventBus.subscribe('stratix:zone_member_left', () => {
-    soundService.playAgentStatusChange();
-  });
+  handleZoneTaskClaimed = () => { soundService.playTaskComplete(); };
+  handleZoneMemberJoined = () => { soundService.playAgentStatusChange(); };
+  handleZoneMemberLeft = () => { soundService.playAgentStatusChange(); };
+  eventBus.subscribe('stratix:zone_task_claimed', handleZoneTaskClaimed);
+  eventBus.subscribe('stratix:zone_member_joined', handleZoneMemberJoined);
+  eventBus.subscribe('stratix:zone_member_left', handleZoneMemberLeft);
 
   // 设置 agent 创建/删除回调
   agentStore.setOnAgentCreated((config, centerOnScreen) => {
@@ -463,11 +458,10 @@ onMounted(async () => {
         });
       }
       
-      rtsEventBus.on('game:ui:project_created', handleProjectCreated);
-      rtsEventBus.on('game:ui:config_click', ({ agentId }: { agentId: string }) => {
+      handleConfigClick = ({ agentId }: { agentId: string }) => {
         openCharacterCreator(agentId.replace('custom-', ''));
-      });
-      rtsEventBus.on('game:ui:task_click', ({ agentIds }: { agentIds: string[] }) => {
+      };
+      handleTaskClick = ({ agentIds }: { agentIds: string[] }) => {
         if (agentIds.length > 0) {
           const agentId = agentIds[0];
           const agent = agents.value.find(a => a.agentId === agentId);
@@ -475,8 +469,8 @@ onMounted(async () => {
             handleOpenTaskModal(agentId, agent.config?.projectPath || '');
           }
         }
-      });
-      rtsEventBus.on('game:ui:stop_agents', async ({ agentIds }: { agentIds: string[] }) => {
+      };
+      handleStopAgents = async ({ agentIds }: { agentIds: string[] }) => {
         try {
           for (const agentId of agentIds) {
             await fetch(`/api/agents/${agentId}/stop`, {
@@ -486,11 +480,17 @@ onMounted(async () => {
         } catch (error) {
           console.error('[App] Failed to stop agents:', error);
         }
-      });
-      rtsEventBus.on('game:ui:chat_click', ({ agentIds }: { agentIds: string[] }) => {
+      };
+      handleChatClick = ({ agentIds }: { agentIds: string[] }) => {
         chatAgentIds.value = agentIds;
         uiStore.openChatModal();
-      });
+      };
+
+      rtsEventBus.on('game:ui:project_created', handleProjectCreated);
+      rtsEventBus.on('game:ui:config_click', handleConfigClick);
+      rtsEventBus.on('game:ui:task_click', handleTaskClick);
+      rtsEventBus.on('game:ui:stop_agents', handleStopAgents);
+      rtsEventBus.on('game:ui:chat_click', handleChatClick);
     });
   }
 
@@ -509,36 +509,19 @@ onUnmounted(() => {
   agentStore.stopAutoRefresh();
   agentStore.clear();
 
-  // Unsubscribe from toast updates
-  if (unsubscribeToasts) {
-    unsubscribeToasts();
-    unsubscribeToasts = null;
-  }
-
   if (eventBus) {
     eventBus.unsubscribe('stratix:agent_select', handleAgentSelect);
     eventBus.unsubscribe('stratix:command_execute', handleCommandExecute as any);
-    eventBus.unsubscribe('stratix:zone_task_claimed', () => {});
-    eventBus.unsubscribe('stratix:zone_member_joined', () => {});
-    eventBus.unsubscribe('stratix:zone_member_left', () => {});
+    if (handleZoneTaskClaimed) eventBus.unsubscribe('stratix:zone_task_claimed', handleZoneTaskClaimed);
+    if (handleZoneMemberJoined) eventBus.unsubscribe('stratix:zone_member_joined', handleZoneMemberJoined);
+    if (handleZoneMemberLeft) eventBus.unsubscribe('stratix:zone_member_left', handleZoneMemberLeft);
   }
 
   rtsEventBus.off('game:ui:project_created', handleProjectCreated);
-  rtsEventBus.off('game:ui:config_click', (({ agentId }: { agentId: string }) => {
-    openCharacterCreator(agentId.replace('custom-', ''));
-  }) as any);
-  rtsEventBus.off('game:ui:task_click', (({ agentIds }: { agentIds: string[] }) => {
-    if (agentIds.length > 0) {
-      const agentId = agentIds[0];
-      const agent = agents.value.find(a => a.agentId === agentId);
-      if (agent) {
-        handleOpenTaskModal(agentId, agent.config?.projectPath || '');
-      }
-    }
-  }) as any);
-  rtsEventBus.off('game:ui:stop_agents', (({ agentIds }: { agentIds: string[] }) => {
-    console.log('Stop agents:', agentIds);
-  }) as any);
+  if (handleConfigClick) rtsEventBus.off('game:ui:config_click', handleConfigClick as any);
+  if (handleTaskClick) rtsEventBus.off('game:ui:task_click', handleTaskClick as any);
+  if (handleStopAgents) rtsEventBus.off('game:ui:stop_agents', handleStopAgents as any);
+  if (handleChatClick) rtsEventBus.off('game:ui:chat_click', handleChatClick as any);
 
   window.removeEventListener('keydown', handleGlobalKeydown);
 
