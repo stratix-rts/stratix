@@ -437,15 +437,15 @@ const handleRemoveMember = async (zoneId: string, memberId: string) => {
 }
 
 .zone-panel-notification {
-  position: fixed;
-  top: 20px;
+  position: absolute;
+  top: var(--ds-spacing-lg);
   left: 50%;
   transform: translateX(-50%);
-  padding: 12px 24px;
+  padding: calc(var(--ds-spacing-sm) + var(--ds-spacing-xs)) var(--ds-spacing-lg);
   border-radius: var(--ds-radius-md);
   font-size: var(--ds-font-size-md);
   font-weight: 500;
-  z-index: 9999;
+  z-index: var(--ds-depth-ui-notification, 9999);
   box-shadow: var(--ds-shadow-lg);
 }
 
@@ -466,17 +466,17 @@ const handleRemoveMember = async (zoneId: string, memberId: string) => {
 
 .zone-panel-notification--success {
   background: var(--ds-status-success);
-  color: white;
+  color: var(--ds-text-inverse);
 }
 
 .zone-panel-notification--error {
   background: var(--ds-status-danger);
-  color: white;
+  color: var(--ds-text-inverse);
 }
 
 .zone-panel-notification--info {
   background: var(--ds-brand-primary);
-  color: white;
+  color: var(--ds-text-inverse);
 }
 
 .zone-empty {
@@ -505,8 +505,8 @@ const handleRemoveMember = async (zoneId: string, memberId: string) => {
 }
 
 .zone-empty-icon {
-  font-size: 48px;
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1));
+  font-size: var(--ds-font-size-4xl);
+  filter: drop-shadow(0 var(--ds-spacing-sm) var(--ds-spacing-lg) rgba(0, 0, 0, 0.1));
 }
 
 .zone-empty-card h4 {
@@ -526,7 +526,7 @@ const handleRemoveMember = async (zoneId: string, memberId: string) => {
 }
 
 .agent-picker__desc {
-  margin: 0 0 16px 0;
+  margin: 0 0 var(--ds-spacing-md) 0;
   color: var(--ds-text-muted);
   font-size: var(--ds-font-size-md);
 }
@@ -562,14 +562,14 @@ const handleRemoveMember = async (zoneId: string, memberId: string) => {
 
 .agent-picker__avatar {
   position: relative;
-  width: 36px;
-  height: 36px;
+  width: calc(var(--ds-spacing-xl) + var(--ds-spacing-xs));
+  height: calc(var(--ds-spacing-xl) + var(--ds-spacing-xs));
   border-radius: var(--ds-radius-md);
   background: var(--ds-brand-primary);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: var(--ds-text-inverse);
   font-weight: 600;
   font-size: var(--ds-font-size-sm);
   flex-shrink: 0;
@@ -587,7 +587,7 @@ const handleRemoveMember = async (zoneId: string, memberId: string) => {
 
 .picker-status.online {
   background: var(--ds-status-success);
-  box-shadow: 0 0 4px var(--ds-status-success);
+  box-shadow: 0 0 var(--ds-spacing-xs) var(--ds-status-success);
 }
 
 .agent-picker__info {
@@ -595,7 +595,7 @@ const handleRemoveMember = async (zoneId: string, memberId: string) => {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: calc(var(--ds-spacing-xs) / 2);
 }
 
 .agent-picker__name {
@@ -612,10 +612,10 @@ const handleRemoveMember = async (zoneId: string, memberId: string) => {
 
 .agent-picker__cancel {
   width: 100%;
-  margin-top: 12px;
-  padding: 10px;
+  margin-top: var(--ds-spacing-sm);
+  padding: calc(var(--ds-spacing-sm) + var(--ds-spacing-xs));
   background: transparent;
-  border: 1px solid var(--ds-border-strong);
+  border: 1px solid var(--ds-border);
   border-radius: var(--ds-radius-md);
   color: var(--ds-text-muted);
   cursor: pointer;

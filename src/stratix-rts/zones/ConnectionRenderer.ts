@@ -35,7 +35,7 @@ export class ConnectionRenderer {
   private scene: Phaser.Scene;
   private graphics: Phaser.GameObjects.Graphics;
   private particleGraphics: Phaser.GameObjects.Graphics;
-  private animatedConnections: Map<string, { offset: number; connection: any; controlPoints?: { cp1: ConnectionPoint; cp2: ConnectionPoint }; particles: Array<{ t: number; speed: number }> }> = new Map();
+  private animatedConnections: Map<string, { offset: number; connection: any; controlPoints?: { cp1: ConnectionPoint; cp2: ConnectionPoint }; particles: Array<{ t: number; speed: number }>; cachedPoints?: { x: number; y: number }[] }> = new Map();
   private animationActive: boolean = false;
   private hoveredConnectionId: string | null = null;
 
@@ -475,6 +475,7 @@ export class ConnectionRenderer {
         controlPoints,
       },
       particles,
+      cachedPoints: controlPoints ? undefined : undefined,
     });
   }
 
@@ -540,21 +541,29 @@ export class ConnectionRenderer {
 
     const { cp1, cp2 } = controlPoints;
     const dashArray = style.dashArray || [10, 5];
-    const samples = 100;
+    const samples = 80; // Reduced from 100 for performance
     const totalDashLength = dashArray.reduce((a: number, b: number) => a + b, 0);
     const startOffset = (data.offset / 100) * totalDashLength;
 
+    // Cache bezier points to avoid recalculating every frame
+    let points: { x: number; y: number }[];
+    if (data.cachedPoints && data.cachedPoints.length === samples + 1) {
+      points = data.cachedPoints;
+    } else {
+      points = [];
+      for (let i = 0; i <= samples; i++) {
+        const t = i / samples;
+        points.push(this.getPointOnBezierCurve(source, cp1, cp2, target, t));
+      }
+      data.cachedPoints = points;
+    }
+
     // Calculate total curve length
     let curveLength = 0;
-    const points: { x: number; y: number }[] = [];
-    for (let i = 0; i <= samples; i++) {
-      const t = i / samples;
-      const point = this.getPointOnBezierCurve(source, cp1, cp2, target, t);
-      points.push(point);
-      if (i > 0) {
-        const prev = points[i - 1];
-        curveLength += Math.sqrt((point.x - prev.x) ** 2 + (point.y - prev.y) ** 2);
-      }
+    for (let i = 1; i < points.length; i++) {
+      const prev = points[i - 1];
+      const point = points[i];
+      curveLength += Math.sqrt((point.x - prev.x) ** 2 + (point.y - prev.y) ** 2);
     }
 
     let currentLength = -startOffset;

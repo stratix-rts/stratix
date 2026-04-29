@@ -341,7 +341,10 @@ export default class StratixRTSGameScene extends Phaser.Scene {
       onZoneDoubleClick: (zoneId) => this.zoneInteractionManager.handleZoneDoubleClick(zoneId),
       onDeleteSelectedZones: () => this.zoneInteractionManager.handleDeleteSelectedZones(),
       getTaskZoneAtPoint: (worldX, worldY) => this.zoneInteractionManager.getTaskZoneAtPoint(worldX, worldY),
-      onZoom: (zoom) => console.log('[StratixRTS] Zoom:', zoom.toFixed(2))
+      onZoom: (zoom) => {
+        this.dataFlowAnimation?.setZoomLevel(zoom);
+        console.log('[StratixRTS] Zoom:', zoom.toFixed(2));
+      }
     };
 
     this.inputHandler = new InputHandler(this, callbacks);

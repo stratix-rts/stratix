@@ -365,14 +365,14 @@ defineExpose({ updateAgentRuntime });
 .refresh-bar {
   display: flex;
   justify-content: flex-end;
-  margin-bottom: 12px;
+  margin-bottom: var(--ds-spacing-sm);
 }
 
 .refresh-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
+  gap: var(--ds-spacing-xs);
+  padding: var(--ds-spacing-sm) calc(var(--ds-spacing-sm) + var(--ds-spacing-xs));
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border);
   border-radius: var(--ds-radius-md);
@@ -418,19 +418,19 @@ defineExpose({ updateAgentRuntime });
 
 .stats-bar {
   display: flex;
-  gap: 12px;
+  gap: calc(var(--ds-spacing-sm) + var(--ds-spacing-xs));
   padding: var(--ds-spacing-md);
   background: var(--ds-bg-tertiary);
   border-radius: var(--ds-radius-md);
-  margin-bottom: 16px;
+  margin-bottom: var(--ds-spacing-md);
 }
 
 .stat-item {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
+  gap: var(--ds-spacing-sm);
+  padding: calc(var(--ds-spacing-sm) + var(--ds-spacing-xs)) calc(var(--ds-spacing-sm) + var(--ds-spacing-xs));
   background: var(--ds-bg-secondary);
   border-radius: var(--ds-radius-md);
   border: 1px solid var(--ds-border);
@@ -492,10 +492,10 @@ defineExpose({ updateAgentRuntime });
 .agent-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  max-height: 400px;
+  gap: var(--ds-spacing-sm);
+  max-height: var(--ds-spacing-3xl);
   overflow-y: auto;
-  padding-right: 4px;
+  padding-right: var(--ds-spacing-xs);
 }
 
 .agent-list::-webkit-scrollbar {
@@ -517,7 +517,7 @@ defineExpose({ updateAgentRuntime });
 }
 
 .agent-card {
-  padding: 14px 16px;
+  padding: calc(var(--ds-spacing-sm) + var(--ds-spacing-xs)) var(--ds-spacing-md);
   background: var(--ds-bg-tertiary);
   border-radius: var(--ds-radius-md);
   border: 1px solid var(--ds-border);
@@ -532,32 +532,32 @@ defineExpose({ updateAgentRuntime });
 }
 
 .agent-card.status-working {
-  border-left: 3px solid var(--ds-status-info);
+  border-left: var(--ds-border-width-lg, 3px) solid var(--ds-status-info);
 }
 
 .agent-card.status-idle {
-  border-left: 3px solid var(--ds-status-success);
+  border-left: var(--ds-border-width-lg, 3px) solid var(--ds-status-success);
 }
 
 .agent-card.status-error {
-  border-left: 3px solid var(--ds-status-danger);
+  border-left: var(--ds-border-width-lg, 3px) solid var(--ds-status-danger);
 }
 
 .agent-card.status-offline {
-  border-left: 3px solid var(--ds-text-muted);
+  border-left: var(--ds-border-width-lg, 3px) solid var(--ds-text-muted);
   opacity: 0.7;
 }
 
 .agent-card-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 10px;
+  gap: calc(var(--ds-spacing-sm) + var(--ds-spacing-xs));
+  margin-bottom: var(--ds-spacing-sm);
 }
 
 .agent-avatar {
-  width: 36px;
-  height: 36px;
+  width: calc(var(--ds-spacing-xl) + var(--ds-spacing-xs));
+  height: calc(var(--ds-spacing-xl) + var(--ds-spacing-xs));
   border-radius: var(--ds-radius-md);
   display: flex;
   align-items: center;
@@ -598,8 +598,8 @@ defineExpose({ updateAgentRuntime });
 .agent-status-badge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
+  gap: var(--ds-spacing-xs);
+  padding: var(--ds-spacing-xs) calc(var(--ds-spacing-sm) + var(--ds-spacing-xs));
   border-radius: var(--ds-radius-lg);
   font-size: var(--ds-font-size-sm);
   font-weight: 500;
@@ -607,8 +607,7 @@ defineExpose({ updateAgentRuntime });
 }
 
 .status-dot {
-  width: 6px;
-  height: 6px;
+  width: calc(var(--ds-spacing-xs) + var(--ds-spacing-xs) - 2px);\n  height: calc(var(--ds-spacing-xs) + var(--ds-spacing-xs) - 2px);
   border-radius: var(--ds-radius-full);
   animation: pulse 2s infinite;
 }
@@ -619,7 +618,7 @@ defineExpose({ updateAgentRuntime });
 }
 
 .agent-card-body {
-  padding-left: 48px;
+  padding-left: var(--ds-spacing-2xl);
 }
 
 .agent-task {
@@ -628,7 +627,7 @@ defineExpose({ updateAgentRuntime });
   gap: 6px;
   font-size: var(--ds-font-size-sm);
   color: var(--ds-text-secondary);
-  margin-bottom: 8px;
+  margin-bottom: var(--ds-spacing-sm);
 }
 
 .agent-task svg {
@@ -663,8 +662,7 @@ defineExpose({ updateAgentRuntime });
 }
 
 .agent-card-footer {
-  margin-top: 8px;
-  padding-top: 8px;
+  margin-top: var(--ds-spacing-sm);\n  padding-top: var(--ds-spacing-sm);
   border-top: 1px solid var(--ds-border);
   text-align: right;
 }
@@ -685,9 +683,9 @@ defineExpose({ updateAgentRuntime });
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 48px 24px;
+  padding: var(--ds-spacing-2xl) var(--ds-spacing-lg);
   color: var(--ds-text-muted);
-  gap: 12px;
+  gap: calc(var(--ds-spacing-sm) + var(--ds-spacing-xs));
 }
 
 .empty-state svg {
@@ -707,7 +705,7 @@ defineExpose({ updateAgentRuntime });
 .agent-card-enter-from,
 .agent-card-leave-to {
   opacity: 0;
-  transform: translateX(-20px);
+  transform: translateX(calc(var(--ds-spacing-lg) * -1));
 }
 
 .agent-card-move {

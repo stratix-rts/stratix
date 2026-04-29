@@ -206,7 +206,7 @@ const handleSave = async () => {
 .zone-editor__error {
   color: var(--ds-semantic-danger);
   font-size: var(--ds-font-size-sm);
-  margin-top: 4px;
+  margin-top: var(--ds-spacing-xs);
 }
 
 .zone-editor__preview {
@@ -231,7 +231,7 @@ const handleSave = async () => {
 }
 
 .zone-editor__preview-content {
-  padding: 12px;
+  padding: calc(var(--ds-spacing-sm) + var(--ds-spacing-xs));
   display: flex;
   flex-direction: column;
   gap: var(--ds-spacing-sm);
@@ -267,9 +267,9 @@ const handleSave = async () => {
 }
 
 .zone-editor__save-error {
-  margin-top: 12px;
-  padding: 10px var(--ds-spacing-md);
-  background: rgba(255, 68, 68, 0.1);
+  margin-top: var(--ds-spacing-sm);
+  padding: calc(var(--ds-spacing-sm) + var(--ds-spacing-xs)) var(--ds-spacing-md);
+  background: color-mix(in srgb, var(--ds-semantic-danger) 10%, transparent);
   border: 1px solid var(--ds-semantic-danger);
   border-radius: var(--ds-radius-md);
   color: var(--ds-semantic-danger);

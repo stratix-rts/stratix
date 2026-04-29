@@ -773,7 +773,7 @@ const formatRelativeTime = (timestamp: number): string => {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: calc(var(--ds-spacing-sm) + var(--ds-spacing-xs));
 }
 
 .zone-detail__header-actions {
@@ -856,7 +856,7 @@ const formatRelativeTime = (timestamp: number): string => {
 
 .zone-detail__prompt-textarea {
   width: 100%;
-  padding: 12px;
+  padding: calc(var(--ds-spacing-sm) + var(--ds-spacing-xs));
   font-size: var(--ds-font-size-sm);
   color: var(--ds-text-primary);
   background: var(--ds-bg-tertiary);
@@ -881,7 +881,7 @@ const formatRelativeTime = (timestamp: number): string => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 24px 20px;
+  padding: var(--ds-spacing-lg) var(--ds-spacing-md);
   text-align: center;
   background: var(--ds-bg-tertiary);
   border: 1px dashed var(--ds-border-default);
@@ -889,9 +889,9 @@ const formatRelativeTime = (timestamp: number): string => {
 }
 
 .zone-detail__empty-illustration {
-  width: 80px;
-  height: 60px;
-  margin-bottom: 12px;
+  width: calc(var(--ds-spacing-2xl) + var(--ds-spacing-xl));
+  height: calc(var(--ds-spacing-xl) + var(--ds-spacing-lg));
+  margin-bottom: var(--ds-spacing-sm);
   opacity: 0;
   animation: zoneFadeIn 0.5s ease forwards;
 }
@@ -982,8 +982,8 @@ const formatRelativeTime = (timestamp: number): string => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: var(--ds-spacing-lg);
+  height: var(--ds-spacing-lg);
   padding: 0;
   font-size: var(--ds-font-size-lg);
   color: var(--ds-text-muted);
@@ -1001,7 +1001,7 @@ const formatRelativeTime = (timestamp: number): string => {
 
 .zone-detail__file-action--danger:hover {
   color: var(--ds-semantic-danger);
-  background: rgba(255, 68, 68, 0.1);
+  background: color-mix(in srgb, var(--ds-semantic-danger) 10%, transparent);
 }
 
 .zone-detail__member-item {
@@ -1029,7 +1029,7 @@ const formatRelativeTime = (timestamp: number): string => {
   justify-content: space-between;
   gap: 12px;
   margin-top: auto;
-  padding-top: 16px;
+  padding-top: var(--ds-spacing-md);
   border-top: 1px solid var(--ds-border-default);
 }
 
@@ -1038,7 +1038,7 @@ const formatRelativeTime = (timestamp: number): string => {
   display: flex;
   flex-direction: column;
   gap: var(--ds-spacing-sm);
-  padding: 12px;
+  padding: calc(var(--ds-spacing-sm) + var(--ds-spacing-xs));
   background: var(--ds-bg-tertiary);
   border: 1px solid var(--ds-border-default);
   border-radius: var(--ds-radius-md);
@@ -1181,7 +1181,7 @@ const formatRelativeTime = (timestamp: number): string => {
 }
 
 .zone-detail__messages {
-  max-height: 300px;
+  max-height: var(--ds-spacing-3xl);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -1191,7 +1191,7 @@ const formatRelativeTime = (timestamp: number): string => {
 .zone-detail__message-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--ds-spacing-xs);
 }
 
 .zone-detail__message-date {
@@ -1202,7 +1202,7 @@ const formatRelativeTime = (timestamp: number): string => {
   letter-spacing: 0.5px;
   padding: var(--ds-spacing-xs) 0;
   border-bottom: 1px solid var(--ds-border-default);
-  margin-bottom: 4px;
+  margin-bottom: var(--ds-spacing-xs);
 }
 
 .zone-detail__message {
@@ -1221,7 +1221,7 @@ const formatRelativeTime = (timestamp: number): string => {
   align-items: center;
   justify-content: space-between;
   gap: var(--ds-spacing-sm);
-  margin-bottom: 4px;
+  margin-bottom: var(--ds-spacing-xs);
 }
 
 .zone-detail__message-sender {
@@ -1246,7 +1246,7 @@ const formatRelativeTime = (timestamp: number): string => {
 .zone-detail__message-form {
   display: flex;
   gap: var(--ds-spacing-sm);
-  margin-top: 8px;
+  margin-top: var(--ds-spacing-sm);
 }
 
 .zone-detail__message-input {
