@@ -71,7 +71,6 @@ export class AgentSprite extends Phaser.GameObjects.Container {
   private zoneBadge: Phaser.GameObjects.Graphics | null = null;
   private currentZoneId: string | null = null;
 
-
   // V2 visual enhancements
   private glowGraphics: Phaser.GameObjects.Graphics;
   private dragShadows: Phaser.GameObjects.Graphics[] = [];
@@ -488,7 +487,6 @@ export class AgentSprite extends Phaser.GameObjects.Container {
    */
   public setZoneBadge(zoneId: string, zoneName?: string): void {
     this.currentZoneId = zoneId;
-    // this.currentZoneName = zoneName || null;
 
     // Create zone badge if doesn't exist
     if (!this.zoneBadge) {
@@ -544,7 +542,6 @@ export class AgentSprite extends Phaser.GameObjects.Container {
    */
   public clearZoneBadge(): void {
     this.currentZoneId = null;
-    // this.currentZoneName = null;
 
     if (this.zoneBadge) {
       // Destroy zone text if exists
