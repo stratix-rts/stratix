@@ -429,10 +429,12 @@ export abstract class BaseZone extends Phaser.GameObjects.Container {
     const offsetX = 6;
     const offsetY = 6;
 
-    this.shadowGraphics.fillStyle(0x000000, 0.3);
+    const shadowColor = hexToNumber(getToken('colors.background.sunken'));
+    const shadowBorderColor = hexToNumber(getToken('colors.border.subtle'));
+    this.shadowGraphics.fillStyle(shadowColor, 0.4);
     this.shadowGraphics.fillRoundedRect(-halfW + offsetX, -halfH + offsetY, this.zoneWidth, this.zoneHeight, 8);
 
-    this.shadowGraphics.lineStyle(2, 0xffffff, 0.15);
+    this.shadowGraphics.lineStyle(2, shadowBorderColor, 0.25);
     this.shadowGraphics.strokeRoundedRect(-halfW + offsetX, -halfH + offsetY, this.zoneWidth, this.zoneHeight, 8);
 
     // Outer glow on drag shadow

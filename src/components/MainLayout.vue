@@ -517,7 +517,7 @@ const icons = {
 .logo {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--ds-spacing-sm);
   flex-shrink: 0;
 }
 
@@ -571,9 +571,9 @@ const icons = {
   position: absolute;
   top: -6px;
   right: -6px;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
+  min-width: calc(var(--ds-spacing-md) + var(--ds-spacing-xs));
+  height: calc(var(--ds-spacing-md) + var(--ds-spacing-xs));
+  padding: 0 var(--ds-spacing-xs);
   background: linear-gradient(135deg, var(--ds-info), var(--ds-success));
   color: var(--ds-bg-primary);
   font-size: var(--ds-font-size-xs);
@@ -616,14 +616,14 @@ const icons = {
 .status-indicator {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--ds-spacing-xs);
   font-size: var(--ds-font-size-sm);
   color: var(--ds-text-muted);
 }
 
 .status-pulse {
-  width: 8px;
-  height: 8px;
+  width: var(--ds-spacing-sm);
+  height: var(--ds-spacing-sm);
   border-radius: var(--ds-radius-full);
   flex-shrink: 0;
 }
@@ -656,7 +656,7 @@ const icons = {
   }
   70% {
     transform: scale(1);
-    box-shadow: 0 0 0 6px currentColor;
+    box-shadow: 0 0 0 var(--ds-spacing-sm) currentColor;
     opacity: 0;
   }
   100% {
@@ -670,12 +670,12 @@ const icons = {
 .sound-controls {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--ds-spacing-xs);
 }
 
 .sound-toggle {
-  width: 28px;
-  height: 28px;
+  width: var(--ds-spacing-lg);
+  height: var(--ds-spacing-lg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -702,7 +702,7 @@ const icons = {
 .sound-volume-wrapper {
   width: 0;
   overflow: hidden;
-  transition: width var(--ds-animation-duration-normal, 250ms) cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width var(--ds-animation-duration-normal, 250ms) var(--ds-animation-easing-ease-out, cubic-bezier(0.4, 0, 0.2, 1));
 }
 
 .sound-controls:hover .sound-volume-wrapper {
@@ -710,8 +710,8 @@ const icons = {
 }
 
 .sound-volume {
-  width: 64px;
-  height: 4px;
+  width: var(--ds-spacing-3xl);
+  height: var(--ds-spacing-xs);
   appearance: none;
   background: var(--ds-border);
   border-radius: var(--ds-radius-sm);
@@ -721,8 +721,8 @@ const icons = {
 
 .sound-volume::-webkit-slider-thumb {
   appearance: none;
-  width: 12px;
-  height: 12px;
+  width: calc(var(--ds-spacing-xs) + var(--ds-spacing-sm));
+  height: calc(var(--ds-spacing-xs) + var(--ds-spacing-sm));
   background: var(--ds-brand-primary);
   border-radius: var(--ds-radius-full);
   cursor: pointer;
@@ -730,8 +730,8 @@ const icons = {
 
 /* Theme toggle */
 .theme-toggle {
-  width: 28px;
-  height: 28px;
+  width: var(--ds-spacing-lg);
+  height: var(--ds-spacing-lg);
   display: flex;
   align-items: center;
   justify-content: center;

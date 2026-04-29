@@ -688,7 +688,7 @@ onUnmounted(() => {
   opacity: 0.03;
   background-image:
     radial-gradient(circle at 1px 1px, var(--ds-color-primary) 1px, transparent 0);
-  background-size: 40px 40px;
+  background-size: var(--ds-spacing-xl) var(--ds-spacing-xl);
   animation: bg-grid-drift 60s linear infinite;
 }
 
@@ -697,7 +697,7 @@ onUnmounted(() => {
     background-position: 0 0;
   }
   100% {
-    background-position: 40px 40px;
+    background-position: var(--ds-spacing-xl) var(--ds-spacing-xl);
   }
 }
 
@@ -717,17 +717,17 @@ onUnmounted(() => {
 
 .map3d-toggle {
   position: absolute;
-  bottom: 20px;
-  right: 20px;
-  z-index: 200;
+  bottom: var(--ds-spacing-lg);
+  right: var(--ds-spacing-lg);
+  z-index: var(--ds-depth-ui-ground, 200);
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
+  gap: var(--ds-spacing-xs);
+  padding: var(--ds-spacing-sm) var(--ds-spacing-md);
   background: color-mix(in srgb, var(--ds-bg-base) 90%, transparent);
-  border: 1px solid rgba(100, 100, 200, 0.3);
-  border-radius: 20px;
-  color: rgba(255, 255, 255, 0.8);
+  border: 1px solid color-mix(in srgb, var(--ds-brand-primary) 30%, transparent);
+  border-radius: var(--ds-radius-full);
+  color: var(--ds-text-secondary);
   font-size: var(--ds-font-size-sm);
   font-weight: 500;
   cursor: pointer;
@@ -737,14 +737,14 @@ onUnmounted(() => {
 
 .map3d-toggle:hover {
   background: color-mix(in srgb, var(--ds-bg-base) 95%, transparent);
-  border-color: rgba(100, 100, 200, 0.5);
-  color: white;
+  border-color: color-mix(in srgb, var(--ds-brand-primary) 50%, transparent);
+  color: var(--ds-text-primary);
 }
 
 .map3d-toggle.active {
-  background: rgba(74, 158, 255, 0.3);
-  border-color: rgba(74, 158, 255, 0.6);
-  color: white;
+  background: color-mix(in srgb, var(--ds-brand-primary) 30%, transparent);
+  border-color: color-mix(in srgb, var(--ds-brand-primary) 60%, transparent);
+  color: var(--ds-text-primary);
 }
 
 .map3d-toggle svg {
@@ -773,16 +773,16 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
-  padding: 32px 48px;
+  gap: var(--ds-spacing-md);
+  padding: var(--ds-spacing-xl) var(--ds-spacing-2xl);
   border-radius: var(--ds-radius-lg);
   background: var(--ds-glass-bg, rgba(255, 255, 255, 0.03));
   border: var(--ds-glass-border, 1px solid rgba(255, 255, 255, 0.06));
 }
 
 .global-loading-spinner {
-  width: 40px;
-  height: 40px;
+  width: var(--ds-spacing-2xl);
+  height: var(--ds-spacing-2xl);
   color: var(--ds-color-primary);
   animation: ds-spin 1s linear infinite;
 }

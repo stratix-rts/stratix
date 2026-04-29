@@ -1,5 +1,9 @@
 import Phaser from 'phaser';
 
+import { getToken } from '@/design-system/config';
+
+const hexToNumber = (hex: string) => parseInt(hex.replace('#', ''), 16);
+
 export interface TaskZonePreviewConfig {
   lineColor: number;
   fillColor: number;
@@ -11,16 +15,16 @@ export interface TaskZonePreviewConfig {
   overlapFillAlpha: number;
 }
 
-const DEFAULT_CONFIG: TaskZonePreviewConfig = {
-  lineColor: 0xff6600,
-  fillColor: 0xff6600,
+const getDefaultConfig = (): TaskZonePreviewConfig => ({
+  lineColor: hexToNumber(getToken('colors.brand.primary')),
+  fillColor: hexToNumber(getToken('colors.brand.primary')),
   lineWidth: 3,
   fillAlpha: 0.15,
   postSpacing: 20,
   postRadius: 2,
-  overlapColor: 0xff0000,
+  overlapColor: hexToNumber(getToken('colors.status.danger')),
   overlapFillAlpha: 0.3
-};
+});
 
 export class TaskZonePreview {
   private scene: Phaser.Scene;
@@ -33,7 +37,7 @@ export class TaskZonePreview {
 
   constructor(scene: Phaser.Scene, config?: Partial<TaskZonePreviewConfig>) {
     this.scene = scene;
-    this.config = { ...DEFAULT_CONFIG, ...config };
+    this.config = { ...getDefaultConfig(), ...config };
     
     this.graphics = scene.add.graphics();
     this.graphics.setDepth(999);

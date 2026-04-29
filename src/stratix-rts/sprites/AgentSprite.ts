@@ -133,11 +133,14 @@ export class AgentSprite extends Phaser.GameObjects.Container {
     this.drawStatusIndicator(COLORS.status.online);
     this.add(this.statusIndicator);
 
+    const textPrimary = getToken('colors.text.primary');
+    const bgOverlay = getToken('colors.background.overlay');
+    const fontSans = (getToken('typography.fontFamily.sans') || 'Arial, sans-serif').replace(/"/g, '');
     this.nameText = scene.add.text(0, -32, config.name, {
       fontSize: '12px',
-      fontFamily: 'Arial, sans-serif',
-      color: '#ffffff',
-      backgroundColor: '#000000',
+      fontFamily: fontSans,
+      color: textPrimary,
+      backgroundColor: bgOverlay + 'CC',
       padding: { x: 6, y: 2 }
     });
     this.nameText.setOrigin(0.5);
@@ -301,11 +304,11 @@ export class AgentSprite extends Phaser.GameObjects.Container {
     const text = `${title} · ${statusText[status] || status}`;
     const tooltipY = -56;
 
+    const tooltipFont = (getToken('typography.fontFamily.sans') || 'Arial, sans-serif').replace(/"/g, '');
     this.tooltipText = this.scene.add.text(0, tooltipY, text, {
       fontSize: '11px',
-      fontFamily: 'Arial, sans-serif',
-      color: '#ffffff',
-      backgroundColor: '#00000088',
+      fontFamily: tooltipFont,
+      color: getToken('colors.text.primary'),
       padding: { x: 8, y: 4 }
     });
     this.tooltipText.setOrigin(0.5);
@@ -315,7 +318,8 @@ export class AgentSprite extends Phaser.GameObjects.Container {
     this.tooltipBg.setDepth(10000);
     const bounds = this.tooltipText.getBounds();
     const pad = 4;
-    this.tooltipBg.fillStyle(0x000000, 0.75);
+    const tooltipBgColor = hexToNumber(getToken('colors.background.elevated'));
+    this.tooltipBg.fillStyle(tooltipBgColor, 0.85);
     this.tooltipBg.fillRoundedRect(
       bounds.x - pad, bounds.y - pad,
       bounds.width + pad * 2, bounds.height + pad * 2, 4
@@ -390,8 +394,15 @@ export class AgentSprite extends Phaser.GameObjects.Container {
 
   private drawSelectionRing(): void {
     this.selectionRing.clear();
-    this.selectionRing.lineStyle(2, COLORS.ui.selection, 1);
+    const color = COLORS.ui.selection;
+    // Outer glow for better visibility
+    drawGlowRing(this.selectionRing, 0, 0, 24, color, 0.25, 2);
+    // Main ring - slightly thicker
+    this.selectionRing.lineStyle(2.5, color, 1);
     this.selectionRing.strokeCircle(0, 0, 22);
+    // Inner subtle ring
+    this.selectionRing.lineStyle(1, color, 0.4);
+    this.selectionRing.strokeCircle(0, 0, 18);
   }
 
   private drawStatusIndicator(color: number): void {
@@ -502,25 +513,28 @@ export class AgentSprite extends Phaser.GameObjects.Container {
     // Badge background
     const badgeWidth = zoneName ? Math.min(zoneName.length * 6 + 16, 80) : 40;
     const badgeHeight = 14;
+    const badgeBgColor = hexToNumber(getToken('colors.brand.primary'));
+    const badgeTextColor = hexToNumber(getToken('colors.text.inverse'));
 
-    this.zoneBadge.fillStyle(0x4a9eff, 0.9); // Blue badge
+    this.zoneBadge.fillStyle(badgeBgColor, 0.9);
     this.zoneBadge.fillRoundedRect(-badgeWidth / 2, 0, badgeWidth, badgeHeight, 4);
 
     // Badge border
-    this.zoneBadge.lineStyle(1, 0xffffff, 0.5);
+    this.zoneBadge.lineStyle(1, badgeTextColor, 0.5);
     this.zoneBadge.strokeRoundedRect(-badgeWidth / 2, 0, badgeWidth, badgeHeight, 4);
 
     // Zone icon (small rectangle representing zone)
-    this.zoneBadge.fillStyle(0xffffff, 0.8);
+    this.zoneBadge.fillStyle(badgeTextColor, 0.8);
     this.zoneBadge.fillRect(-badgeWidth / 2 + 4, 4, 6, 6);
 
     // Zone text
     if (zoneName) {
       const truncatedName = zoneName.length > 8 ? zoneName.substring(0, 8) + '...' : zoneName;
+      const zoneTextFont = (getToken('typography.fontFamily.sans') || 'Arial, sans-serif').replace(/"/g, '');
       const zoneText = this.scene.add.text(0, 0, truncatedName, {
         fontSize: '9px',
-        fontFamily: 'Arial, sans-serif',
-        color: '#ffffff'
+        fontFamily: zoneTextFont,
+        color: getToken('colors.text.inverse')
       });
       zoneText.setOrigin(0.5);
       zoneText.setPosition(4, badgeHeight / 2);
