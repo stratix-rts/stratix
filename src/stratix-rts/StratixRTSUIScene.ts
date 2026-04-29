@@ -1,10 +1,6 @@
 import Phaser from 'phaser';
 
 import { rtsEventBus } from './events/core/RTSEventBus';
-import type {
-  AgentInfo,
-  ZoneInfo,
-} from './events/types/RTSEventTypes';
 import { HelpPanel } from './ui/HelpPanel';
 import { ShortcutBar } from './ui/ShortcutBar';
 import { RTSUIFactory, type RTSUIComponents, type TopBarStats } from './ui/v2';
