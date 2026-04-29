@@ -493,9 +493,14 @@ defineExpose({ updateAgentRuntime });
   display: flex;
   flex-direction: column;
   gap: var(--ds-spacing-sm);
-  max-height: var(--ds-spacing-3xl);
+  max-height: 400px;
   overflow-y: auto;
   padding-right: var(--ds-spacing-xs);
+}
+
+.agent-list {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ds-border) var(--ds-bg-tertiary);
 }
 
 .agent-list::-webkit-scrollbar {

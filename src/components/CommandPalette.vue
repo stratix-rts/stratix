@@ -179,7 +179,7 @@ function getItemStyle(index: number) {
   backdrop-filter: blur(var(--ds-glass-blur, 12px)) saturate(var(--ds-glass-saturate, 120%));
   -webkit-backdrop-filter: blur(var(--ds-glass-blur, 12px)) saturate(var(--ds-glass-saturate, 120%));
   overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--ds-font-sans);
 }
 
 .command-palette__search {

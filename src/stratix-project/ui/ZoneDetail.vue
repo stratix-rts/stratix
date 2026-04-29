@@ -1181,7 +1181,7 @@ const formatRelativeTime = (timestamp: number): string => {
 }
 
 .zone-detail__messages {
-  max-height: var(--ds-spacing-3xl);
+  max-height: 300px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;

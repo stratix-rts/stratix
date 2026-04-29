@@ -612,7 +612,7 @@ onUnmounted(() => {
 .task-item:hover {
   background: var(--ds-bg-tertiary);
   border-color: var(--ds-brand-primary);
-  transform: perspective(1000px) rotateX(2deg) rotateY(-2deg) translateY(-2px);
+  transform: translateY(calc(var(--ds-spacing-xs) / 2));
   box-shadow: var(--ds-shadow-lg);
 }
 
