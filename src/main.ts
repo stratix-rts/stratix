@@ -4,7 +4,7 @@ import VXETable from 'vxe-table';
 
 import App from './App.vue';
 import { initDesignSystem, setTheme } from './design-system/config';
-import { partRegistry } from './stratix-character-creator/core/PartRegistry';
+
 import { statusSyncWS } from './stratix-core/services/StatusSyncWebSocketService';
 
 // Vxe Table 全局初始化
@@ -34,7 +34,10 @@ setTheme('cyberpunk');
 // 连接 StatusSync WebSocket 服务，转发 zone 事件到 StratixEventBus
 statusSyncWS.connect();
 
-// 预加载角色部件元数据（确保 RTS 加载角色纹理时部件数据已就绪）
-partRegistry.loadMetadata();
+// 预加载角色部件元数据（延迟加载，减小首屏体积）
+(async () => {
+  const { partRegistry } = await import('./stratix-character-creator/core/PartRegistry');
+  partRegistry.loadMetadata();
+})();
 
 app.mount('#app');

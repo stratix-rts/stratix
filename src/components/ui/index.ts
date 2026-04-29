@@ -22,18 +22,9 @@ export { default as StratixEmpty } from './StratixEmpty.vue';
 
 // 新增/补全组件
 export { default as StratixBadge } from './StratixBadge.vue';
-export { default as StratixTable } from './StratixTable.vue';
-export { default as StratixTabs } from './StratixTabs.vue';
-export { default as StratixAccordion } from './StratixAccordion.vue';
-export { default as StratixAlert } from './StratixAlert.vue';
-export { default as StratixDrawer } from './StratixDrawer.vue';
-export { default as StratixBreadcrumb } from './StratixBreadcrumb.vue';
-export { default as StratixSlider } from './StratixSlider.vue';
-export { default as StratixPagination } from './StratixPagination.vue';
 
 // Shared UI components for duplication abstraction
 export { default as ButtonGroup } from './ButtonGroup.vue';
-export { default as DataTable } from './DataTable.vue';
 export { default as InfoItem } from './InfoItem.vue';
 export { default as WarningBox } from './WarningBox.vue';
 
@@ -70,10 +61,7 @@ export { toastService } from './ToastService';
 export { useToast } from '@/composables/useToast';
 
 // Motion & Feedback System - New Components
-export { default as StratixSkeleton } from './StratixSkeleton.vue';
-export { default as ModalTransition } from './ModalTransition.vue';
-export { default as PanelTransition } from './PanelTransition.vue';
-export { default as ListTransition } from './ListTransition.vue';
+// (removed unused components: StratixSkeleton, ModalTransition, PanelTransition, ListTransition)
 
 // Motion & Feedback System - Composables
 // (removed unused composables: useFocusTrap, useKeyboardShortcuts, useNetworkStatus, useGlobalLoading, useClipboard)
