@@ -17,3 +17,13 @@ export {
 
 export type { BuildingState, RoomState } from './types/BuildingState';
 export { AgentStateAnimator, AgentWorkState } from './AgentStateAnimator';
+
+export {
+  generateBuildingTextureCanvas,
+  registerBuildingTextures,
+  registerAllBuildingTextures,
+  getBuildingTextureKey,
+  TEXTURE_SIZE,
+} from './BuildingTextureGenerator';
+
+export type { BuildingFace, LightState } from './BuildingTextureGenerator';

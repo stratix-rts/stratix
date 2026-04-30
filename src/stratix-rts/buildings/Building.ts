@@ -8,6 +8,11 @@ import Phaser from 'phaser';
 import { BuildingConfig, BUILDING_COLORS, BUILDING_NAMES, BuildingType } from './types/BuildingType';
 import { BuildingState } from './types/BuildingState';
 import { Room, ROOM_SIZE, RoomConfig } from './Room';
+import {
+  registerBuildingTextures,
+  getBuildingTextureKey,
+  TEXTURE_SIZE,
+} from './BuildingTextureGenerator';
 
 /** 格子间布局计算结果 */
 interface GridLayout {
@@ -23,13 +28,19 @@ export class Building extends Phaser.GameObjects.Container {
   private buildingWidth: number;
   private buildingHeight: number;
 
-  private foundationGraphics: Phaser.GameObjects.Graphics;
+  private foundationTileSprite: Phaser.GameObjects.TileSprite;
   private shellGraphics: Phaser.GameObjects.Graphics;
   private roomsContainer: Phaser.GameObjects.Container;
   private buildingShell: Phaser.GameObjects.Container;
   private nameLabel: Phaser.GameObjects.Text;
   private statusLabel: Phaser.GameObjects.Text;
   private progressBar: Phaser.GameObjects.Graphics;
+
+  private wallTileSprite: Phaser.GameObjects.TileSprite;
+  private roofTileSprite: Phaser.GameObjects.TileSprite;
+  private detailGraphics: Phaser.GameObjects.Graphics;
+  private hoverGlow: Phaser.GameObjects.Graphics;
+  private textureSeed: string;
 
   private rooms: Room[] = [];
   private _buildingState: BuildingState = 'empty';
@@ -43,12 +54,41 @@ export class Building extends Phaser.GameObjects.Container {
     this.buildingType = config.buildingType;
     this.buildingWidth = config.width;
     this.buildingHeight = config.height;
+    this.textureSeed = `${config.buildingType}-${Math.round(config.x)}-${Math.round(config.y)}`;
 
-    // 初始化容器
-    this.foundationGraphics = scene.add.graphics();
+    // 注册建筑纹理
+    registerBuildingTextures(scene, this.buildingType, this.textureSeed, TEXTURE_SIZE);
+
+    // 纹理精灵
+    this.foundationTileSprite = scene.add.tileSprite(
+      0,
+      0,
+      config.width,
+      config.height,
+      getBuildingTextureKey(this.buildingType, 'foundation', 'dim')
+    );
+
+    this.wallTileSprite = scene.add.tileSprite(
+      0,
+      0,
+      config.width,
+      config.height,
+      getBuildingTextureKey(this.buildingType, 'wall', 'dim')
+    );
+
+    this.roofTileSprite = scene.add.tileSprite(
+      0,
+      0,
+      config.width,
+      config.height,
+      getBuildingTextureKey(this.buildingType, 'roof', 'dim')
+    );
+
     this.roomsContainer = scene.add.container(0, 0);
     this.buildingShell = scene.add.container(0, 0);
     this.shellGraphics = scene.add.graphics();
+    this.detailGraphics = scene.add.graphics();
+    this.hoverGlow = scene.add.graphics();
 
     // 标签
     this.nameLabel = scene.add.text(0, -this.buildingHeight / 2 - 20, '', {
@@ -70,17 +110,26 @@ export class Building extends Phaser.GameObjects.Container {
     this.progressBar.setDepth(5);
 
     // 组装层级
-    this.buildingShell.add(this.shellGraphics);
+    this.buildingShell.add([this.wallTileSprite, this.roofTileSprite, this.detailGraphics, this.shellGraphics]);
     this.add([
-      this.foundationGraphics,   // Depth 1: 地基
+      this.foundationTileSprite, // Depth 1: 地基
       this.roomsContainer,       // Depth 2-3: 格子间 + Agent
-      this.buildingShell,        // Depth 4: 外墙 + 屋顶
+      this.buildingShell,        // Depth 4: 外墙 + 屋顶 + 装饰
       this.nameLabel,
       this.statusLabel,
       this.progressBar,
+      this.hoverGlow,
     ]);
 
     this.setDepth(1);
+
+    // 交互：悬停
+    this.setInteractive(
+      new Phaser.Geom.Rectangle(-config.width / 2, -config.height / 2, config.width, config.height),
+      Phaser.Geom.Rectangle.Contains
+    );
+    this.on('pointerover', this.onPointerOver, this);
+    this.on('pointerout', this.onPointerOut, this);
 
     // 初始渲染
     this.renderFoundation();
@@ -90,6 +139,25 @@ export class Building extends Phaser.GameObjects.Container {
     // 默认隐藏内部
     this.roomsContainer.setVisible(false);
     this.isInteriorVisible = false;
+  }
+
+  /** 悬停进入 */
+  private onPointerOver(): void {
+    this.hoverGlow.clear();
+    this.hoverGlow.lineStyle(2, 0xfbbf24, 0.6);
+    this.hoverGlow.strokeRect(
+      -this.buildingWidth / 2 - 2,
+      -this.buildingHeight / 2 - 2,
+      this.buildingWidth + 4,
+      this.buildingHeight + 4
+    );
+    this.setAlpha(0.95);
+  }
+
+  /** 悬停离开 */
+  private onPointerOut(): void {
+    this.hoverGlow.clear();
+    this.setAlpha(1);
   }
 
   /** 显示内部（选中态） */
@@ -314,30 +382,24 @@ export class Building extends Phaser.GameObjects.Container {
   /** 渲染地基 */
   private renderFoundation(): void {
     if (this.buildingWidth <= 0 || this.buildingHeight <= 0) return;
-    this.foundationGraphics.clear();
-    this.foundationGraphics.fillStyle(0x1f2937, 0.6);
-    this.foundationGraphics.fillRect(
-      -this.buildingWidth / 2,
-      -this.buildingHeight / 2,
-      this.buildingWidth,
-      this.buildingHeight
-    );
+    const key = getBuildingTextureKey(this.buildingType, 'foundation', this.isLit ? 'lit' : 'dim');
+    this.foundationTileSprite.setTexture(key);
+    this.foundationTileSprite.setSize(this.buildingWidth, this.buildingHeight);
   }
 
   /** 渲染外壳（屋顶 + 墙壁） */
   private renderShell(): void {
     if (this.buildingWidth <= 0 || this.buildingHeight <= 0) return;
     this.shellGraphics.clear();
-    const color = BUILDING_COLORS[this.buildingType];
 
-    // 填充
-    this.shellGraphics.fillStyle(color, 0.85);
-    this.shellGraphics.fillRect(
-      -this.buildingWidth / 2,
-      -this.buildingHeight / 2,
-      this.buildingWidth,
-      this.buildingHeight
-    );
+    const wallKey = getBuildingTextureKey(this.buildingType, 'wall', this.isLit ? 'lit' : 'dim');
+    const roofKey = getBuildingTextureKey(this.buildingType, 'roof', this.isLit ? 'lit' : 'dim');
+
+    this.wallTileSprite.setTexture(wallKey);
+    this.wallTileSprite.setSize(this.buildingWidth, this.buildingHeight);
+
+    this.roofTileSprite.setTexture(roofKey);
+    this.roofTileSprite.setSize(this.buildingWidth, this.buildingHeight);
 
     // 边框
     this.shellGraphics.lineStyle(2, 0x000000, 0.4);
@@ -358,15 +420,83 @@ export class Building extends Phaser.GameObjects.Container {
       6
     );
 
-    // 亮灯叠加层
-    if (this.isLit) {
-      this.shellGraphics.fillStyle(0xfbbf24, 0.15);
-      this.shellGraphics.fillRect(
-        -this.buildingWidth / 2,
-        -this.buildingHeight / 2,
-        this.buildingWidth,
-        this.buildingHeight
-      );
+    // 建筑装饰细节
+    this.renderDetails();
+  }
+
+  /** 渲染建筑类型专属装饰细节 */
+  private renderDetails(): void {
+    this.detailGraphics.clear();
+    const w = this.buildingWidth;
+    const h = this.buildingHeight;
+    const halfW = w / 2;
+    const halfH = h / 2;
+
+    switch (this.buildingType) {
+      case BuildingType.DataCenter: {
+        // 服务器机架竖线
+        this.detailGraphics.lineStyle(1, 0xffffff, 0.12);
+        const rackCount = Math.max(2, Math.floor(w / 32));
+        for (let i = 1; i <= rackCount; i++) {
+          const x = -halfW + (w * i) / (rackCount + 1);
+          this.detailGraphics.beginPath();
+          this.detailGraphics.moveTo(x, -halfH + 6);
+          this.detailGraphics.lineTo(x, halfH - 12);
+          this.detailGraphics.strokePath();
+        }
+        break;
+      }
+      case BuildingType.Workshop: {
+        // 烟囱（小矩形在顶部右侧）
+        const chimW = Math.min(12, w * 0.1);
+        const chimH = Math.min(14, h * 0.15);
+        this.detailGraphics.fillStyle(0x2d3748, 0.7);
+        this.detailGraphics.fillRect(halfW - chimW - 10, -halfH - chimH + 6, chimW, chimH);
+        break;
+      }
+      case BuildingType.Studio: {
+        // 大窗户框架
+        const winW = Math.min(32, w * 0.3);
+        const winH = Math.min(24, h * 0.22);
+        const winY = -halfH + 10;
+        this.detailGraphics.lineStyle(2, 0x2d3748, 0.45);
+        this.detailGraphics.strokeRect(-winW / 2, winY, winW, winH);
+        // 十字分隔
+        this.detailGraphics.beginPath();
+        this.detailGraphics.moveTo(0, winY);
+        this.detailGraphics.lineTo(0, winY + winH);
+        this.detailGraphics.moveTo(-winW / 2, winY + winH / 2);
+        this.detailGraphics.lineTo(winW / 2, winY + winH / 2);
+        this.detailGraphics.strokePath();
+        break;
+      }
+      case BuildingType.Library: {
+        // 书架横线
+        this.detailGraphics.lineStyle(1, 0x3d2614, 0.3);
+        const shelfCount = Math.max(2, Math.floor(h / 30));
+        for (let i = 1; i <= shelfCount; i++) {
+          const y = -halfH + (h * i) / (shelfCount + 1);
+          this.detailGraphics.beginPath();
+          this.detailGraphics.moveTo(-halfW + 6, y);
+          this.detailGraphics.lineTo(halfW - 6, y);
+          this.detailGraphics.strokePath();
+        }
+        break;
+      }
+      case BuildingType.Command: {
+        // 天线线条
+        this.detailGraphics.lineStyle(1, 0xe2e8f0, 0.35);
+        const cx = 0;
+        const cy = -halfH + 12;
+        this.detailGraphics.beginPath();
+        this.detailGraphics.moveTo(cx, cy);
+        this.detailGraphics.lineTo(cx, cy - 12);
+        this.detailGraphics.strokePath();
+        // 小圆盘
+        this.detailGraphics.fillStyle(0xe2e8f0, 0.45);
+        this.detailGraphics.fillCircle(cx, cy - 12, 3);
+        break;
+      }
     }
   }
 
@@ -374,6 +504,7 @@ export class Building extends Phaser.GameObjects.Container {
   public setLit(lit: boolean): void {
     if (this.isLit === lit) return;
     this.isLit = lit;
+    this.renderFoundation();
     this.renderShell();
   }
 
@@ -424,11 +555,12 @@ export class Building extends Phaser.GameObjects.Container {
       this.growTween = null;
     }
     // roomsContainer.destroy() 会销毁所有 Room 子对象
-    // buildingShell.destroy() 会销毁 shellGraphics 子对象
+    // buildingShell.destroy() 会销毁 wallTileSprite、roofTileSprite、detailGraphics、shellGraphics
     this.rooms = [];
     this.roomsContainer?.destroy();
     this.buildingShell?.destroy();
-    this.foundationGraphics?.destroy();
+    this.foundationTileSprite?.destroy();
+    this.hoverGlow?.destroy();
     this.nameLabel?.destroy();
     this.statusLabel?.destroy();
     this.progressBar?.destroy();
