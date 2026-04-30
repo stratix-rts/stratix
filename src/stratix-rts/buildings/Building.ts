@@ -316,6 +316,9 @@ export class Building extends Phaser.GameObjects.Container {
   }
 
   destroy(fromScene?: boolean): void {
+    // roomsContainer.destroy() 会销毁所有 Room 子对象
+    // buildingShell.destroy() 会销毁 shellGraphics 子对象
+    this.rooms = [];
     this.roomsContainer?.destroy();
     this.buildingShell?.destroy();
     this.foundationGraphics?.destroy();

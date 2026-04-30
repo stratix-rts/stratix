@@ -99,8 +99,8 @@ export class Room extends Phaser.GameObjects.Container {
   }
 
   destroy(fromScene?: boolean): void {
-    this.roomGraphics?.destroy();
-    this.agentLabel?.destroy();
+    // 子对象（roomGraphics, agentLabel）由 Container.destroy() 自动销毁
+    this.agentLabel = null;
     super.destroy(fromScene);
   }
 }

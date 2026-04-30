@@ -9,6 +9,7 @@ import RTSCharacterRenderer from '../services/RTSCharacterRenderer';
 import { AgentSprite } from '../sprites/AgentSprite';
 import { MovementSystem } from '../systems/MovementSystem';
 import { UnifiedZoneManager } from '../zones/UnifiedZoneManager';
+import { TaskZone } from '../zones/TaskZone';
 
 export interface AgentManagerDeps {
   stateBridge: RTSStateBridge;
@@ -324,7 +325,7 @@ export class AgentManager {
           // 将 Agent 分配到建筑的格子间
           const zone = this.deps.getUnifiedZoneManager()?.getZone(zoneId);
           if (zone && 'getBuilding' in zone) {
-            const building = (zone as any).getBuilding();
+            const building = (zone as TaskZone).getBuilding();
             if (building) {
               building.assignAgent(id);
               sprite.setVisible(false); // Agent 在格子间内，隐藏自由 sprite
@@ -340,7 +341,7 @@ export class AgentManager {
           // 从建筑的格子间移出
           const prevZone = this.deps.getUnifiedZoneManager()?.getZone(previousZoneId);
           if (prevZone && 'getBuilding' in prevZone) {
-            const building = (prevZone as any).getBuilding();
+            const building = (prevZone as TaskZone).getBuilding();
             if (building) {
               building.unassignAgent(id);
               sprite.setVisible(true); // Agent 离开建筑，恢复自由 sprite

@@ -29,6 +29,8 @@ export class ZoneTypeSelectorUI {
     { type: BuildingType.Command, icon: BUILDING_ICONS[BuildingType.Command], name: BUILDING_NAMES[BuildingType.Command], color: BUILDING_COLORS[BuildingType.Command] },
   ];
 
+  private escHandler: (() => void) | null = null;
+
   constructor(scene: Phaser.Scene, callbacks: ZoneTypeSelectorCallbacks) {
     this.scene = scene;
     this.callbacks = callbacks;
@@ -56,9 +58,10 @@ export class ZoneTypeSelectorUI {
 
     // ESC 键关闭
     if (scene.input.keyboard) {
-      scene.input.keyboard.on('keydown-ESC', () => {
+      this.escHandler = () => {
         if (this.isVisible) this.hide();
-      });
+      };
+      scene.input.keyboard.on('keydown-ESC', this.escHandler);
     }
   }
 
@@ -177,6 +180,10 @@ export class ZoneTypeSelectorUI {
   }
 
   destroy(): void {
+    if (this.escHandler && this.scene.input.keyboard) {
+      this.scene.input.keyboard.off('keydown-ESC', this.escHandler);
+      this.escHandler = null;
+    }
     this.container?.destroy();
   }
 }
