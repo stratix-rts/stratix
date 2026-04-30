@@ -21,6 +21,8 @@ export class BuildingFactory {
     // 初始化格子间布局（默认 4 个空位）
     building.updateLayout(config.width, config.height, 2);
 
+    building.growIn();
+
     return building;
   }
 }

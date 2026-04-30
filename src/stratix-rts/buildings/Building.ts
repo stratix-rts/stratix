@@ -103,6 +103,18 @@ export class Building extends Phaser.GameObjects.Container {
     this.buildingShell.setAlpha(1);
   }
 
+  /** 生长入场动画 */
+  public growIn(): void {
+    this.setScale(0, 0);
+    this.scene.tweens.add({
+      targets: this,
+      scaleX: 1,
+      scaleY: 1,
+      duration: 400,
+      ease: 'Back.easeOut',
+    });
+  }
+
   /** 分配 Agent 到空格子间 */
   public assignAgent(agentId: string): boolean {
     const emptyRoom = this.rooms.find(r => r.getConfig().state === 'empty');
