@@ -684,7 +684,21 @@ const loadZones = async () => {
   try {
     const projectId = props.projectId || props.initialZoneId || 'default';
     const response = await fetch(`/api/zones?projectId=${encodeURIComponent(projectId)}`);
-    const result = await response.json();
+    if (!response.ok) {
+      console.warn('[DataExplorer] loadZones failed with status:', response.status);
+      return;
+    }
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      console.warn('[DataExplorer] loadZones received non-JSON response');
+      return;
+    }
+    const text = await response.text();
+    if (!text.trim()) {
+      console.warn('[DataExplorer] loadZones received empty response');
+      return;
+    }
+    const result = JSON.parse(text);
     if (result.success) {
       zones.value = result.zones || [];
     }
@@ -696,7 +710,21 @@ const loadZones = async () => {
 const loadAgents = async () => {
   try {
     const response = await fetch('/api/stratix/config/agent/list');
-    const result = await response.json();
+    if (!response.ok) {
+      console.warn('[DataExplorer] loadAgents failed with status:', response.status);
+      return;
+    }
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      console.warn('[DataExplorer] loadAgents received non-JSON response');
+      return;
+    }
+    const text = await response.text();
+    if (!text.trim()) {
+      console.warn('[DataExplorer] loadAgents received empty response');
+      return;
+    }
+    const result = JSON.parse(text);
     if (result.code === 200) {
       agents.value = result.data || [];
     }
