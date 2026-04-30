@@ -33,7 +33,7 @@ export class SeededRandom {
 
   /** 返回 min-max 范围内的伪随机整数 */
   public between(min: number, max: number): number {
-    return Math.floor(min + this.next() * (max - min + 1));
+    return Math.floor(min + this.next() * (max - min));
   }
 
   /** 返回 min-max 范围内的伪随机浮点数 */
