@@ -210,9 +210,27 @@ export class Building extends Phaser.GameObjects.Container {
     this.progressBar.fillStyle(0x374151, 1);
     this.progressBar.fillRect(barX, barY, barWidth, 4);
 
-    // 进度
-    this.progressBar.fillStyle(0x10b981, 1);
-    this.progressBar.fillRect(barX, barY, barWidth * Math.min(percent, 1), 4);
+    // 根据进度选择颜色
+    const clampedPercent = Math.min(percent, 1);
+    let fillColor: number;
+    if (clampedPercent < 0.3) {
+      fillColor = 0xef4444; // 红色
+    } else if (clampedPercent <= 0.7) {
+      fillColor = 0xf59e0b; // 黄色
+    } else {
+      fillColor = 0x10b981; // 绿色
+    }
+
+    // 进度填充
+    const fillWidth = barWidth * clampedPercent;
+    if (fillWidth > 0) {
+      this.progressBar.fillStyle(fillColor, 1);
+      this.progressBar.fillRect(barX, barY, fillWidth, 4);
+
+      // 发光圆点
+      this.progressBar.fillStyle(fillColor, 0.8);
+      this.progressBar.fillCircle(barX + fillWidth, barY + 2, 3);
+    }
   }
 
   /** 计算格子间网格布局 */
