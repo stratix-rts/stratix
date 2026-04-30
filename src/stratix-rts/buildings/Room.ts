@@ -6,6 +6,7 @@
 import Phaser from 'phaser';
 
 import { RoomState } from './types/BuildingState';
+import { AgentStateAnimator, AgentWorkState } from './AgentStateAnimator';
 
 export interface RoomConfig {
   roomId: string;
@@ -27,6 +28,7 @@ export class Room extends Phaser.GameObjects.Container {
   private config: RoomConfig;
   private roomGraphics: Phaser.GameObjects.Graphics;
   private agentLabel: Phaser.GameObjects.Text;
+  private animator: AgentStateAnimator;
 
   constructor(scene: Phaser.Scene, config: RoomConfig) {
     super(scene, config.x, config.y);
@@ -39,6 +41,7 @@ export class Room extends Phaser.GameObjects.Container {
       color: '#ffffff',
     }).setOrigin(0.5).setVisible(false);
     this.add(this.agentLabel);
+    this.animator = new AgentStateAnimator(scene, this.roomGraphics);
     this.render();
   }
 
@@ -54,6 +57,14 @@ export class Room extends Phaser.GameObjects.Container {
     this.config.agentId = undefined;
     this.config.state = 'empty';
     this.render();
+  }
+
+  /** 设置 Agent 工作状态 */
+  public setAgentState(state: AgentWorkState): void {
+    this.animator.setState(state);
+    if (state === AgentWorkState.Error) {
+      this.render();
+    }
   }
 
   /** 获取格子间配置 */
@@ -78,8 +89,15 @@ export class Room extends Phaser.GameObjects.Container {
     const w = this.config.width;
     const h = this.config.height;
 
-    // 填充颜色：占用=绿色，空闲=灰色
-    const fillColor = this.config.state === 'occupied' ? 0x22c55e : 0x4b5563;
+    // 填充颜色：error=红色，占用=绿色，空闲=灰色
+    let fillColor: number;
+    if (this.config.state === 'occupied' && this.animator.getState() === AgentWorkState.Error) {
+      fillColor = 0xef4444;
+    } else if (this.config.state === 'occupied') {
+      fillColor = 0x22c55e;
+    } else {
+      fillColor = 0x4b5563;
+    }
     const fillAlpha = this.config.state === 'occupied' ? 0.8 : 0.5;
 
     this.roomGraphics.fillStyle(fillColor, fillAlpha);
@@ -98,7 +116,7 @@ export class Room extends Phaser.GameObjects.Container {
   }
 
   destroy(fromScene?: boolean): void {
-    // 子对象（roomGraphics, agentLabel）由 Container.destroy() 自动销毁
+    this.animator?.destroy();
     super.destroy(fromScene);
   }
 }

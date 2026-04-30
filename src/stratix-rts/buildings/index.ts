@@ -16,3 +16,4 @@ export {
 } from './types/BuildingType';
 
 export type { BuildingState, RoomState } from './types/BuildingState';
+export { AgentStateAnimator, AgentWorkState } from './AgentStateAnimator';
