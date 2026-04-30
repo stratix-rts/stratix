@@ -6,6 +6,7 @@ import { getDSColor, isReducedMotion, drawGlowRing } from '../themes/ThemeColors
 
 import { BaseZone, BaseZoneConfig, ZoneStatus } from './BaseZone';
 import type { CornerPosition } from './BaseZone';
+import { Building, BuildingFactory, BuildingType } from '../buildings';
 
 
 // 辅助函数：将十六进制颜色字符串转换为 Phaser 数字格式
@@ -54,6 +55,7 @@ export class TaskZone extends BaseZone {
   private taskProgress: number = 0;
   private activeTaskName: string = '';
 
+  private building: Building | null = null;
   private statusIndicator: Phaser.GameObjects.Graphics | null = null;
   private typeIcon: Phaser.GameObjects.Text | null = null;
   private queueText: Phaser.GameObjects.Text | null = null;
@@ -384,6 +386,47 @@ export class TaskZone extends BaseZone {
     return this.activeTaskName;
   }
 
+  /** 创建建筑（Zone 创建后调用） */
+  public createBuilding(buildingType: BuildingType): void {
+    if (this.building) return;
+
+    this.building = BuildingFactory.create(this.scene, {
+      x: 0,
+      y: 0,
+      width: this.zoneWidth,
+      height: this.zoneHeight,
+      buildingType,
+    });
+
+    this.add(this.building);
+    this.building.setDepth(1);
+
+    // 建筑模式下隐藏原有边框
+    this.graphics.setVisible(false);
+    this.fillGraphics?.setVisible(false);
+    this.shadowGraphics?.setVisible(false);
+    this.glowGraphics?.setVisible(false);
+  }
+
+  /** 获取建筑实例 */
+  public getBuilding(): Building | null {
+    return this.building;
+  }
+
+  /** 销毁建筑 */
+  public removeBuilding(): void {
+    if (this.building) {
+      this.building.destroy();
+      this.building = null;
+
+      // 恢复原有边框
+      this.graphics.setVisible(true);
+      this.fillGraphics?.setVisible(true);
+      this.shadowGraphics?.setVisible(true);
+      this.glowGraphics?.setVisible(true);
+    }
+  }
+
   public overlapsZone(other: TaskZone): boolean {
     const bounds1 = this.getBounds();
     const bounds2 = other.getBounds();
@@ -395,8 +438,13 @@ export class TaskZone extends BaseZone {
     return Phaser.Geom.Rectangle.Overlaps(bounds, rect);
   }
 
-  protected applyNewSize(newWidth: number, newHeight: number): void {
+  protected override applyNewSize(newWidth: number, newHeight: number): void {
     super.applyNewSize(newWidth, newHeight);
+
+    // 更新建筑布局
+    if (this.building) {
+      this.building.updateLayout(newWidth, newHeight, this.assignedAgentCount);
+    }
 
     const halfW = this.zoneWidth / 2;
     const halfH = this.zoneHeight / 2;
@@ -412,7 +460,19 @@ export class TaskZone extends BaseZone {
     this.updateProgressBar();
   }
 
-  public destroy(): void {
+  /** 选中/取消选中时切换建筑内部可见性 */
+  public override setHighlight(selected: boolean): void {
+    super.setHighlight(selected);
+    if (selected) {
+      this.building?.showInterior();
+    } else {
+      this.building?.hideInterior();
+    }
+  }
+
+  public override destroy(): void {
+    this.building?.destroy();
+    this.building = null;
     this.stopProgressGlow();
     this.clearQueueCards();
     if (this.statusIndicator) {
