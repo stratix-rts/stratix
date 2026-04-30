@@ -35,6 +35,7 @@ export class Building extends Phaser.GameObjects.Container {
   private _buildingState: BuildingState = 'empty';
   private isInteriorVisible = false;
   private roofTween: Phaser.Tweens.Tween | null = null;
+  private growTween: Phaser.Tweens.Tween | null = null;
   private isLit = false;
 
   constructor(scene: Phaser.Scene, config: BuildingConfig) {
@@ -96,6 +97,7 @@ export class Building extends Phaser.GameObjects.Container {
     this.isInteriorVisible = true;
     this.roomsContainer.setVisible(true);
     this.roofTween?.stop();
+    this.buildingShell.setAlpha(0);
     this.roofTween = this.scene.tweens.add({
       targets: this.buildingShell,
       alpha: 0,
@@ -108,6 +110,7 @@ export class Building extends Phaser.GameObjects.Container {
     this.isInteriorVisible = false;
     this.roomsContainer.setVisible(false);
     this.roofTween?.stop();
+    this.buildingShell.setAlpha(1);
     this.roofTween = this.scene.tweens.add({
       targets: this.buildingShell,
       alpha: 1,
@@ -118,7 +121,7 @@ export class Building extends Phaser.GameObjects.Container {
   /** 生长入场动画 */
   public growIn(): void {
     this.setScale(0, 0);
-    this.scene.tweens.add({
+    this.growTween = this.scene.tweens.add({
       targets: this,
       scaleX: 1,
       scaleY: 1,
@@ -153,13 +156,15 @@ export class Building extends Phaser.GameObjects.Container {
 
   /** 重新计算格子间布局（Zone resize 时调用） */
   public updateLayout(width: number, height: number, agentCount: number): void {
+    if (this.buildingWidth === width && this.buildingHeight === height) return;
     this.buildingWidth = width;
     this.buildingHeight = height;
 
     // 记录当前已分配的 Agent
     const assignedAgents = this.rooms
       .filter(r => r.getConfig().state === 'occupied')
-      .map(r => r.getConfig().agentId!);
+      .map(r => r.getConfig().agentId)
+      .filter((id): id is string => id !== null && id !== undefined);
 
     // 清除旧格子间
     this.roomsContainer.removeAll(true);
@@ -396,6 +401,8 @@ export class Building extends Phaser.GameObjects.Container {
   destroy(fromScene?: boolean): void {
     this.roofTween?.stop();
     this.roofTween = null;
+    this.growTween?.stop();
+    this.growTween = null;
     // roomsContainer.destroy() 会销毁所有 Room 子对象
     // buildingShell.destroy() 会销毁 shellGraphics 子对象
     this.rooms = [];
