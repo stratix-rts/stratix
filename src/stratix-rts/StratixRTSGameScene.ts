@@ -546,14 +546,14 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     let onlineCount = 0;
     let busyCount = 0;
     
-    this.agentManager.agentSprites.forEach((sprite) => {
+    this.agentManager?.agentSprites.forEach((sprite) => {
       const status = sprite.getCurrentStatus();
       if (status === 'online') onlineCount++;
       else if (status === 'busy') busyCount++;
     });
     
     let totalProgress = 0;
-    const taskZones = this.unifiedZoneManager.getTaskZones();
+    const taskZones = this.unifiedZoneManager?.getTaskZones() ?? new Map();
     taskZones.forEach((zone: TaskZone) => {
       totalProgress += zone.getTaskProgress();
     });
@@ -561,7 +561,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
       totalProgress /= taskZones.size;
     }
     
-    const allZones = this.unifiedZoneManager.getAllZones();
+    const allZones = this.unifiedZoneManager?.getAllZones() ?? new Map();
     return {
       totalAgents: this.agentManager.agentSprites.size,
       onlineAgents: onlineCount,
@@ -837,6 +837,9 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   }
 
   public getTaskZones(): Map<string, TaskZone> {
+    if (!this.zoneInteractionManager) {
+      return new Map();
+    }
     return this.zoneInteractionManager.getTaskZones();
   }
 
