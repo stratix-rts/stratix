@@ -66,7 +66,7 @@ const filteredAgents = computed(() => {
 const heroTypes = [
   { type: 'writer' as const, name: '文案英雄', color: getToken('colors.semantic.success') },
   { type: 'dev' as const, name: '开发英雄', color: getToken('colors.info') },
-  { type: 'analyst' as const, name: '数据英雄', color: getToken('colors.magenta.400') }
+  { type: 'analyst' as const, name: '数据英雄', color: '#ff6b9d' }
 ];
 
 // Dropdown 选项配置
