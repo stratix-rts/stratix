@@ -11,10 +11,11 @@ class StatusSyncWebSocketService {
   private ws: WebSocket | null = null;
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private reconnectDelay: number = 3000;
-  private maxReconnectDelay: number = 300000; // 5 minutes cap
+  private maxReconnectDelay: number = 60000; // 1 minute cap
   private isConnecting: boolean = false;
   private reconnectAttempts: number = 0;
-  private maxReconnectAttempts: number = 10;
+  private maxReconnectAttempts: number = 3;
+  private hasLoggedFailure: boolean = false;
 
   private static instance: StatusSyncWebSocketService;
 
@@ -64,11 +65,16 @@ class StatusSyncWebSocketService {
       };
 
       this.ws.onerror = (error) => {
-        console.error('[StatusSyncWS] WebSocket error:', error);
+        if (!this.hasLoggedFailure) {
+          console.warn('[StatusSyncWS] WebSocket error (will retry):', error);
+          this.hasLoggedFailure = true;
+        }
       };
 
       this.ws.onclose = () => {
-        console.log('[StatusSyncWS] Disconnected');
+        if (!this.hasLoggedFailure) {
+          console.warn('[StatusSyncWS] Disconnected');
+        }
         this.isConnecting = false;
         this.ws = null;
         this.scheduleReconnect();
@@ -118,14 +124,19 @@ class StatusSyncWebSocketService {
     }
 
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.error('[StatusSyncWS] Max reconnect attempts reached. Giving up.');
+      if (!this.hasLoggedFailure) {
+        console.warn('[StatusSyncWS] Max reconnect attempts reached. StatusSync is unavailable.');
+        this.hasLoggedFailure = true;
+      }
       return;
     }
 
     this.reconnectAttempts++;
 
     this.reconnectTimeout = setTimeout(() => {
-      console.log(`[StatusSyncWS] Attempting to reconnect... (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+      if (!this.hasLoggedFailure) {
+        console.log(`[StatusSyncWS] Attempting to reconnect... (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+      }
       this.connect();
     }, this.reconnectDelay);
 
@@ -149,6 +160,7 @@ class StatusSyncWebSocketService {
 
     this.reconnectAttempts = 0;
     this.reconnectDelay = 3000;
+    this.hasLoggedFailure = false;
   }
 
   public isConnected(): boolean {
