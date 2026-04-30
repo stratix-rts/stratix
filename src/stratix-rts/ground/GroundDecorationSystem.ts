@@ -7,6 +7,7 @@ import Phaser from 'phaser';
 
 import { MAP_WIDTH, MAP_HEIGHT, TILE_SIZE } from '../constants';
 import { ThemeManager, ThemeName } from '../themes/ThemeManager';
+import { SeededRandom } from '../utils/SeededRandom';
 
 export interface DecorationConfig {
   /** 装饰物类型 */
@@ -40,6 +41,7 @@ export class GroundDecorationSystem extends Phaser.Events.EventEmitter {
   private cloudLayer: Phaser.GameObjects.Sprite[] = [];
   private config: Required<GroundDecorationSystemConfig>;
   private isInitialized: boolean = false;
+  private rng: SeededRandom | null = null;
 
   constructor(
     scene: Phaser.Scene,
@@ -57,6 +59,14 @@ export class GroundDecorationSystem extends Phaser.Events.EventEmitter {
 
     // 监听主题切换
     this.themeManager.on('theme:changed', this.onThemeChanged, this);
+  }
+
+  /**
+   * 设置种子，实现确定性装饰生成
+   * @param seed 种子字符串（如 Device ID）
+   */
+  setSeed(seed: string): void {
+    this.rng = new SeededRandom(seed);
   }
 
   /**
@@ -131,8 +141,8 @@ export class GroundDecorationSystem extends Phaser.Events.EventEmitter {
     ];
 
     for (let i = 0; i < decorationCount; i++) {
-      const x = Phaser.Math.Between(TILE_SIZE, MAP_WIDTH - TILE_SIZE);
-      const y = Phaser.Math.Between(TILE_SIZE, MAP_HEIGHT - TILE_SIZE);
+      const x = this.rng ? this.rng.between(TILE_SIZE, MAP_WIDTH - TILE_SIZE) : Phaser.Math.Between(TILE_SIZE, MAP_WIDTH - TILE_SIZE);
+      const y = this.rng ? this.rng.between(TILE_SIZE, MAP_HEIGHT - TILE_SIZE) : Phaser.Math.Between(TILE_SIZE, MAP_HEIGHT - TILE_SIZE);
 
       // 根据权重随机选择类型
       const type = this.pickWeightedRandom(typeWeights);
@@ -162,15 +172,16 @@ export class GroundDecorationSystem extends Phaser.Events.EventEmitter {
    * 获取装饰物的随机缩放
    */
   private getRandomScale(type: DecorationConfig['type']): number {
+    const rng = this.rng;
     switch (type) {
       case 'tree':
-        return Phaser.Math.FloatBetween(0.8, 1.4);
+        return rng ? rng.floatBetween(0.8, 1.4) : Phaser.Math.FloatBetween(0.8, 1.4);
       case 'rock_large':
-        return Phaser.Math.FloatBetween(0.7, 1.2);
+        return rng ? rng.floatBetween(0.7, 1.2) : Phaser.Math.FloatBetween(0.7, 1.2);
       case 'grass':
-        return Phaser.Math.FloatBetween(0.5, 1.0);
+        return rng ? rng.floatBetween(0.5, 1.0) : Phaser.Math.FloatBetween(0.5, 1.0);
       default:
-        return Phaser.Math.FloatBetween(0.6, 1.1);
+        return rng ? rng.floatBetween(0.6, 1.1) : Phaser.Math.FloatBetween(0.6, 1.1);
     }
   }
 
@@ -181,7 +192,7 @@ export class GroundDecorationSystem extends Phaser.Events.EventEmitter {
     items: { type: DecorationConfig['type']; weight: number }[]
   ): DecorationConfig['type'] {
     const totalWeight = items.reduce((sum, item) => sum + item.weight, 0);
-    let random = Phaser.Math.Between(1, totalWeight);
+    let random = this.rng ? this.rng.between(1, totalWeight) : Phaser.Math.Between(1, totalWeight);
 
     for (const item of items) {
       random -= item.weight;
@@ -231,7 +242,7 @@ export class GroundDecorationSystem extends Phaser.Events.EventEmitter {
     sprite.setScale(config.scale ?? 1);
 
     if (config.randomRotation) {
-      sprite.setRotation(Phaser.Math.FloatBetween(-0.3, 0.3));
+      sprite.setRotation(this.rng ? this.rng.floatBetween(-0.3, 0.3) : Phaser.Math.FloatBetween(-0.3, 0.3));
     }
 
     // 设置深度
@@ -246,7 +257,7 @@ export class GroundDecorationSystem extends Phaser.Events.EventEmitter {
       this.scene.tweens.add({
         targets: sprite,
         y: config.y - 3,
-        duration: 2000 + Math.random() * 1000,
+        duration: 2000 + (this.rng ? this.rng.floatBetween(0, 1) : Math.random()) * 1000,
         yoyo: true,
         repeat: -1,
         ease: 'Sine.easeInOut',
