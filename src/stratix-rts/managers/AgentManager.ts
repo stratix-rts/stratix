@@ -321,6 +321,15 @@ export class AgentManager {
         try {
           await projectClient.addZoneMember(zoneId, id);
           this.deps.agentZoneTracking.set(id, zoneId);
+          // 将 Agent 分配到建筑的格子间
+          const zone = this.deps.getUnifiedZoneManager()?.getZone(zoneId);
+          if (zone && 'getBuilding' in zone) {
+            const building = (zone as any).getBuilding();
+            if (building) {
+              building.assignAgent(id);
+              sprite.setVisible(false); // Agent 在格子间内，隐藏自由 sprite
+            }
+          }
           console.log(`[StratixRTS] Agent ${id} immediately registered in zone ${zoneId} on drag end`);
         } catch (error) {
           console.error(`[StratixRTS] Failed to register agent ${id} in zone ${zoneId}:`, error);
@@ -328,6 +337,15 @@ export class AgentManager {
       } else if (!zoneId && previousZoneId) {
         // Agent was dragged out of a zone
         try {
+          // 从建筑的格子间移出
+          const prevZone = this.deps.getUnifiedZoneManager()?.getZone(previousZoneId);
+          if (prevZone && 'getBuilding' in prevZone) {
+            const building = (prevZone as any).getBuilding();
+            if (building) {
+              building.unassignAgent(id);
+              sprite.setVisible(true); // Agent 离开建筑，恢复自由 sprite
+            }
+          }
           await projectClient.removeZoneMember(previousZoneId, id);
           this.deps.agentZoneTracking.delete(id);
           console.log(`[StratixRTS] Agent ${id} removed from zone ${previousZoneId} on drag end`);
