@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Building Texture Preview</title>
+<style>
+  body { background: #111; color: #eee; font-family: monospace; margin: 20px; }
+  h1 { font-size: 16px; }
+  h2 { font-size: 13px; color: #aaa; margin-top: 20px; }
+  .grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+  .tile { text-align: center; }
+  .tile canvas { border: 1px solid #333; image-rendering: pixelated; }
+  .tile p { font-size: 10px; color: #888; margin: 2px 0; }
+</style>
+</head>
+<body>
+<h1>Building Texture Preview (128×128 each)</h1>
+<div id="output"></div>
+
+<script type="module">
+// Inline the minimal dependencies to avoid import issues
+
+class SeededRandom {
+  constructor(seed) {
+    this.seed = this.hashString(seed || 'default');
+  }
+  hashString(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    return Math.abs(hash) || 1;
+  }
+  next() {
+    this.seed = (this.seed * 9301 + 49297) % 233280;
+    return this.seed / 233280;
+  }
+  between(min, max) {
+    return Math.floor(min + this.next() * (max - min));
+  }
+  floatBetween(min, max) {
+    return min + this.next() * (max - min);
+  }
+}
+
+// Copy all helper functions from BuildingTextureGenerator.ts
+function adjustBrightness(hexColor, factor) {
+  const r = parseInt(hexColor.slice(1, 3), 16);
+  const g = parseInt(hexColor.slice(3, 5), 16);
+  const b = parseInt(hexColor.slice(5, 7), 16);
+  const nr = Math.min(255, Math.max(0, Math.round(r * factor)));
+  const ng = Math.min(255, Math.max(0, Math.round(g * factor)));
+  const nb = Math.min(255, Math.max(0, Math.round(b * factor)));
+  return `#${nr.toString(16).padStart(2, '0')}${ng.toString(16).padStart(2, '0')}${nb.toString(16).padStart(2, '0')}`;
+}
+
+function drawNoise(ctx, size, random, density, lightColor, darkColor, opacity) {
+  const count = Math.floor(size * size * density);
+  for (let i = 0; i < count; i++) {
+    const x = Math.floor(random.next() * size);
+    const y = Math.floor(random.next() * size);
+    ctx.fillStyle = random.next() > 0.5 ? lightColor : darkColor;
+    ctx.globalAlpha = opacity * (0.5 + random.next() * 0.5);
+    ctx.fillRect(x, y, 1, 1);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function applyDimOverlay(ctx, size, lit) {
+  if (!lit) {
+    ctx.fillStyle = '#000000';
+    ctx.globalAlpha = 0.15;
+    ctx.fillRect(0, 0, size, size);
+    ctx.globalAlpha = 1;
+  }
+}
+
+// === DATACENTER ===
+function drawDataCenterWall(ctx, size, random, lit) {
+  const baseColor = lit ? '#4a5568' : '#2d3748';
+  ctx.fillStyle = baseColor;
+  ctx.fillRect(0, 0, size, size);
+  drawNoise(ctx, size, random, 0.15, '#718096', '#1a202c', 0.3);
+
+  const rackHeights = [16, 14, 18, 12, 20, 14, 16, 18];
+  let y = 0;
+  for (const rh of rackHeights) {
+    const rackColor = lit ? '#2d3748' : '#1a202c';
+    ctx.fillStyle = rackColor;
+    ctx.fillRect(4, y + 1, size - 8, rh - 2);
+    const ledCount = lit ? random.between(5, 8) : random.between(1, 3);
+    for (let l = 0; l < ledCount; l++) {
+      ctx.fillStyle = lit
+        ? (random.next() > 0.3 ? '#48bb78' : '#f6ad55')
+        : (random.next() > 0.5 ? '#276749' : '#744210');
+      ctx.fillRect(6 + l * 6, y + rh / 2, 4, 2);
+    }
+    y += rh;
+  }
+  applyDimOverlay(ctx, size, lit);
+}
+
+function drawDataCenterRoof(ctx, size, random, lit) {
+  const baseColor = lit ? '#3d4858' : '#252f3a';
+  ctx.fillStyle = baseColor;
+  ctx.fillRect(0, 0, size, size);
+
+  const gridColor = lit ? '#2d3748' : '#1a202c';
+  ctx.strokeStyle = gridColor;
+  ctx.lineWidth = 1;
+  const gridSize = 16;
+  for (let x = gridSize; x < size; x += gridSize) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, size); ctx.stroke();
+  }
+  for (let y = gridSize; y < size; y += gridSize) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(size, y); ctx.stroke();
+  }
+  ctx.fillStyle = lit ? '#48bb78' : '#276749';
+  for (let x = gridSize; x < size; x += gridSize) {
+    for (let y = gridSize; y < size; y += gridSize) {
+      if (random.next() > 0.7) {
+        ctx.fillRect(x - 2, y - 2, 4, 2);
+      }
+    }
+  }
+  applyDimOverlay(ctx, size, lit);
+}
+
+function drawDataCenterFoundation(ctx, size, random, lit) {
+  const baseColor = lit ? '#2d3748' : '#1a202c';
+  ctx.fillStyle = baseColor;
+  ctx.fillRect(0, 0, size, size);
+  drawNoise(ctx, size, random, 0.2, '#4a5568', '#0d1117', 0.4);
+  ctx.strokeStyle = lit ? '#4a5568' : '#2d3748';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, size / 2); ctx.lineTo(size, size / 2);
+  ctx.moveTo(size / 4, 0); ctx.lineTo(size / 4, size);
+  ctx.moveTo((size * 3) / 4, 0); ctx.lineTo((size * 3) / 4, size);
+  ctx.stroke();
+  applyDimOverlay(ctx, size, lit);
+}
+
+// === WORKSHOP ===
+function drawWorkshopWall(ctx, size, random, lit) {
+  const mortarColor = lit ? '#a0aec0' : '#718096';
+  const brickColors = lit
+    ? ['#c53030', '#e53e3e', '#dd6b20']
+    : ['#742a2a', '#9b2c2c', '#7b341e'];
+
+  ctx.fillStyle = mortarColor;
+  ctx.fillRect(0, 0, size, size);
+
+  const brickH = 16;
+  const brickW = 32;
+  const brickRows = size / brickH;
+  const brickCols = size / brickW;
+
+  for (let r = 0; r < brickRows; r++) {
+    const offset = (r % 2) * (brickW / 2);
+    for (let c = -1; c <= brickCols; c++) {
+      const x = c * brickW + offset;
+      const y = r * brickH;
+      ctx.fillStyle = brickColors[random.between(0, brickColors.length - 1)];
+      ctx.fillRect(x + 1, y + 1, brickW - 2, brickH - 2);
+    }
+  }
+  applyDimOverlay(ctx, size, lit);
+}
+
+function drawWorkshopRoof(ctx, size, random, lit) {
+  const woodColor = lit ? '#c4956a' : '#8b6f47';
+  const tileColor = lit ? '#9c6b3c' : '#5c3a1e';
+  const tileDark = lit ? '#7a5430' : '#3d2614';
+
+  ctx.fillStyle = woodColor;
+  ctx.fillRect(0, 0, size, size);
+
+  const beamCount = 4;
+  const beamH = size / beamCount;
+  for (let i = 0; i < beamCount; i++) {
+    const y = i * beamH;
+    ctx.fillStyle = adjustBrightness(woodColor, 0.8);
+    ctx.fillRect(0, y, size, 3);
+  }
+
+  const tileSize = 16;
+  for (let y = 0; y < size; y += tileSize) {
+    for (let x = 0; x < size; x += tileSize) {
+      const isDark = random.next() > 0.5;
+      ctx.fillStyle = isDark ? tileDark : tileColor;
+      ctx.fillRect(x + 1, y + 4, tileSize - 2, tileSize - 4);
+    }
+  }
+  applyDimOverlay(ctx, size, lit);
+}
+
+function drawWorkshopFoundation(ctx, size, random, lit) {
+  const baseColor = lit ? '#d69e2e' : '#975a16';
+  ctx.fillStyle = baseColor;
+  ctx.fillRect(0, 0, size, size);
+  drawNoise(ctx, size, random, 0.12, '#f6e05e', '#744210', 0.3);
+
+  const cols = 4, rows = 4;
+  const cellW = size / cols, cellH = size / rows;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cx = c * cellW + random.between(4, Math.floor(cellW) - 8);
+      const cy = r * cellH + random.between(4, Math.floor(cellH) - 8);
+      const radius = random.between(2, 4);
+      ctx.fillStyle = random.next() > 0.5 ? '#a0aec0' : '#718096';
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  applyDimOverlay(ctx, size, lit);
+}
+
+// === STUDIO ===
+function drawStudioWall(ctx, size, random, lit) {
+  const wallColor = lit ? '#e2e8f0' : '#a0aec0';
+  const glassColor = lit ? '#90cdf4' : '#4299e1';
+  const glassReflect = lit ? '#ebf8ff' : '#bee3f8';
+  const frameColor = lit ? '#4a5568' : '#2d3748';
+
+  ctx.fillStyle = frameColor;
+  ctx.fillRect(0, 0, size, size);
+
+  if (!lit) {
+    applyDimOverlay(ctx, size, lit);
+    return;
+  }
+
+  const cols = 4, rows = 2;
+  const windowW = 30, windowH = 62;
+  const frameW = 2, frameH = 2;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = frameW + c * (windowW + frameW);
+      const y = frameH + r * (windowH + frameH);
+
+      ctx.shadowColor = glassColor;
+      ctx.shadowBlur = 6;
+      ctx.fillStyle = glassColor;
+      ctx.fillRect(x, y, windowW, windowH);
+      ctx.shadowBlur = 0;
+
+      ctx.fillStyle = glassReflect;
+      ctx.globalAlpha = 0.4;
+      ctx.beginPath();
+      ctx.moveTo(x, y + windowH);
+      ctx.lineTo(x + windowW * 0.4, y);
+      ctx.lineTo(x + windowW * 0.6, y);
+      ctx.lineTo(x, y + windowH);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+  applyDimOverlay(ctx, size, lit);
+}
+
+function drawStudioRoof(ctx, size, random, lit) {
+  const baseColor = lit ? '#d1d5db' : '#cbd5e0';
+  const skylightFrame = lit ? '#4a5568' : '#2d3748';
+  const skylightGlass = lit ? '#63b3ed' : '#3182ce';
+
+  ctx.fillStyle = baseColor;
+  ctx.fillRect(0, 0, size, size);
+
+  const cols = 2, rows = 2;
+  const cellW = size / cols, cellH = size / rows;
+  const margin = 4;
+  const glassW = cellW - margin * 2;
+  const glassH = cellH - margin * 2;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = c * cellW + margin;
+      const y = r * cellH + margin;
+
+      ctx.fillStyle = skylightFrame;
+      ctx.fillRect(x - 2, y - 2, glassW + 4, glassH + 4);
+
+      if (lit) {
+        ctx.fillStyle = skylightGlass;
+        ctx.fillRect(x, y, glassW, glassH);
+
+        ctx.fillStyle = '#bee3f8';
+        ctx.globalAlpha = 0.3;
+        ctx.fillRect(x, y, glassW * 0.5, glassH * 0.5);
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+  applyDimOverlay(ctx, size, lit);
+}
+
+function drawStudioFoundation(ctx, size, random, lit) {
+  const tileColor1 = lit ? '#e2e8f0' : '#a0aec0';
+  const tileColor2 = lit ? '#cbd5e0' : '#718096';
+  const groutColor = lit ? '#64748b' : '#3a4554';
+
+  ctx.fillStyle = groutColor;
+  ctx.fillRect(0, 0, size, size);
+
+  const tileSize = 16;
+  for (let y = 0; y < size; y += tileSize) {
+    for (let x = 0; x < size; x += tileSize) {
+      const isEven = ((x / tileSize) + (y / tileSize)) % 2 === 0;
+      ctx.fillStyle = isEven ? tileColor1 : tileColor2;
+      ctx.fillRect(x + 1, y + 1, tileSize - 2, tileSize - 2);
+    }
+  }
+  applyDimOverlay(ctx, size, lit);
+}
+
+// === LIBRARY ===
+function drawLibraryWall(ctx, size, random, lit) {
+  const woodBase = lit ? '#8b5a2b' : '#5c3a1e';
+  const shelfColor = lit ? '#6b4226' : '#4a2c17';
+  const bookColors = lit
+    ? ['#c53030', '#2b6cb0', '#276749', '#744210', '#6b46c1']
+    : ['#742a2a', '#1a365d', '#1c4532', '#453311', '#44337a'];
+
+  ctx.fillStyle = woodBase;
+  ctx.fillRect(0, 0, size, size);
+
+  const colCount = 4;
+  const colW = size / colCount;
+  for (let i = 1; i < colCount; i++) {
+    ctx.fillStyle = adjustBrightness(woodBase, 0.7);
+    ctx.fillRect(i * colW - 2, 0, 4, size);
+  }
+
+  const shelfCount = 4;
+  const shelfH = size / shelfCount;
+  for (let i = 0; i < shelfCount; i++) {
+    const y = (i + 1) * shelfH - 3;
+    ctx.fillStyle = shelfColor;
+    ctx.fillRect(0, y, size, 3);
+
+    for (let c = 0; c < colCount; c++) {
+      const cx = c * colW + 4;
+      const cw = colW - 8;
+      let bx = cx;
+      while (bx < cx + cw - 6) {
+        const bw = random.between(4, 10);
+        const bh = random.between(shelfH * 0.4, shelfH * 0.75);
+        const by = y - bh;
+        ctx.fillStyle = bookColors[random.between(0, bookColors.length - 1)];
+        ctx.fillRect(bx, by, bw, bh);
+        bx += bw + 1;
+      }
+    }
+  }
+  applyDimOverlay(ctx, size, lit);
+}
+
+function drawLibraryRoof(ctx, size, random, lit) {
+  const baseColor = lit ? '#5c3a1e' : '#3d2614';
+  const tileColor = lit ? '#744210' : '#4a2c17';
+  const tileDark = lit ? '#55300d' : '#331d0a';
+
+  ctx.fillStyle = baseColor;
+  ctx.fillRect(0, 0, size, size);
+
+  const tileW = 16, tileH = 16;
+  const rows = Math.ceil(size / tileH) + 1;
+  const cols = Math.ceil(size / tileW) + 1;
+
+  for (let row = 0; row < rows; row++) {
+    const y = row * tileH;
+    const offset = (row % 2) * (tileW / 2);
+    for (let col = -1; col < cols; col++) {
+      const x = col * tileW + offset;
+      ctx.fillStyle = random.next() > 0.5 ? tileDark : tileColor;
+      ctx.beginPath();
+      ctx.arc(x + tileW / 2, y, tileW / 2, 0, Math.PI);
+      ctx.fill();
+    }
+  }
+  applyDimOverlay(ctx, size, lit);
+}
+
+function drawLibraryFoundation(ctx, size, random, lit) {
+  const woodBase = lit ? '#8b5a2b' : '#5c3a1e';
+  ctx.fillStyle = woodBase;
+  ctx.fillRect(0, 0, size, size);
+
+  const plankCount = 4;
+  const linesPerPlank = 3;
+  ctx.strokeStyle = lit ? '#6b4226' : '#4a2c17';
+  ctx.lineWidth = 1;
+  for (let p = 0; p < plankCount; p++) {
+    for (let l = 0; l < linesPerPlank; l++) {
+      const baseY = (p * linesPerPlank + l + 1) * (size / (plankCount * linesPerPlank));
+      const y = Math.floor(baseY + random.between(-2, 2));
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(size, y); ctx.stroke();
+    }
+  }
+
+  ctx.strokeStyle = lit ? '#4a2c17' : '#2d1a0d';
+  ctx.lineWidth = 2;
+  const plankW = size / plankCount;
+  for (let i = 1; i < plankCount; i++) {
+    const x = i * plankW;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, size); ctx.stroke();
+  }
+  applyDimOverlay(ctx, size, lit);
+}
+
+// === COMMAND ===
+function drawCommandWall(ctx, size, random, lit) {
+  const concreteBase = lit ? '#6b7a6b' : '#4a554a';
+  const metalColor = lit ? '#9ca88c' : '#6b7a6b';
+  const metalDark = lit ? '#7a8a6a' : '#4a5a4a';
+
+  ctx.fillStyle = concreteBase;
+  ctx.fillRect(0, 0, size, size);
+
+  ctx.strokeStyle = lit ? '#4a554a' : '#2d3748';
+  ctx.lineWidth = 1;
+  ctx.globalAlpha = 0.4;
+  for (let i = -size; i < size * 2; i += 8) {
+    ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i + size, size); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  const strip1 = 40, strip2 = 88;
+  ctx.fillStyle = metalColor;
+  ctx.fillRect(0, strip1, size, 4);
+  ctx.fillRect(0, strip2, size, 4);
+  ctx.fillRect(strip1, 0, 4, size);
+  ctx.fillRect(strip2, 0, 4, size);
+
+  const rivetPositions = [
+    { x: strip1, y: strip1 }, { x: strip2, y: strip1 },
+    { x: strip1, y: strip2 }, { x: strip2, y: strip2 },
+  ];
+  for (const rp of rivetPositions) {
+    ctx.fillStyle = metalDark;
+    ctx.beginPath(); ctx.arc(rp.x + 2, rp.y + 2, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = lit ? '#ffffff' : '#cbd5e0';
+    ctx.beginPath(); ctx.arc(rp.x + 1, rp.y + 1, 1.5, 0, Math.PI * 2); ctx.fill();
+  }
+  applyDimOverlay(ctx, size, lit);
+}
+
+function drawCommandRoof(ctx, size, random, lit) {
+  const baseColor = lit ? '#3d4a3d' : '#1f291f';
+  const antennaColor = lit ? '#7a8a6a' : '#4a5a4a';
+  const antennaHighlight = lit ? '#9ca88c' : '#6b7a6b';
+
+  ctx.fillStyle = baseColor;
+  ctx.fillRect(0, 0, size, size);
+
+  const cells = 2;
+  const cellSize = size / cells;
+
+  for (let ry = 0; ry < cells; ry++) {
+    for (let rx = 0; rx < cells; rx++) {
+      const cx = rx * cellSize + cellSize / 2;
+      const cy = ry * cellSize + cellSize / 2;
+
+      ctx.fillStyle = antennaColor;
+      ctx.fillRect(cx - 4, cy - 4, 8, 8);
+
+      ctx.fillStyle = antennaHighlight;
+      ctx.fillRect(cx - 1, cy - 7, 2, 14);
+      ctx.fillRect(cx - 7, cy - 1, 14, 2);
+
+      if (lit) { ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 4; }
+      ctx.fillStyle = lit ? '#ef4444' : '#991b1b';
+      ctx.beginPath(); ctx.arc(cx, cy, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+
+      ctx.fillStyle = lit ? '#fbbf24' : '#b45309';
+      const orbitRadius = cellSize * 0.3;
+      for (let i = 0; i < 4; i++) {
+        const angle = (i * Math.PI) / 2 + (lit ? 0.2 : 0);
+        const ox = cx + Math.cos(angle) * orbitRadius;
+        const oy = cy + Math.sin(angle) * orbitRadius;
+        ctx.beginPath(); ctx.arc(ox, oy, 2, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+  }
+  applyDimOverlay(ctx, size, lit);
+}
+
+function drawCommandFoundation(ctx, size, random, lit) {
+  const baseColor = lit ? '#374151' : '#1f2937';
+  ctx.fillStyle = baseColor;
+  ctx.fillRect(0, 0, size, size);
+  drawNoise(ctx, size, random, 0.2, '#4b5563', '#111827', 0.5);
+
+  ctx.strokeStyle = lit ? '#1f2937' : '#000000';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(size / 4, 0); ctx.lineTo(size / 4, size);
+  ctx.moveTo(size / 2, 0); ctx.lineTo(size / 2, size);
+  ctx.moveTo((size * 3) / 4, 0); ctx.lineTo((size * 3) / 4, size);
+  ctx.moveTo(0, size / 2); ctx.lineTo(size, size / 2);
+  ctx.stroke();
+  applyDimOverlay(ctx, size, lit);
+}
+
+// === GENERATE ALL TEXTURES ===
+const types = ['data-center', 'workshop', 'studio', 'library', 'command'];
+const faces = ['wall', 'roof', 'foundation'];
+const states = ['lit', 'dim'];
+
+const drawFns = {
+  'data-center': { wall: drawDataCenterWall, roof: drawDataCenterRoof, foundation: drawDataCenterFoundation },
+  workshop: { wall: drawWorkshopWall, roof: drawWorkshopRoof, foundation: drawWorkshopFoundation },
+  studio: { wall: drawStudioWall, roof: drawStudioRoof, foundation: drawStudioFoundation },
+  library: { wall: drawLibraryWall, roof: drawLibraryRoof, foundation: drawLibraryFoundation },
+  command: { wall: drawCommandWall, roof: drawCommandRoof, foundation: drawCommandFoundation },
+};
+
+const output = document.getElementById('output');
+const SIZE = 128;
+const allImages = [];
+
+for (const type of types) {
+  const h2 = document.createElement('h2');
+  h2.textContent = `=== ${type.toUpperCase()} ===`;
+  output.appendChild(h2);
+
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+
+  for (const face of faces) {
+    for (const state of states) {
+      const canvas = document.createElement('canvas');
+      canvas.width = SIZE;
+      canvas.height = SIZE;
+      const ctx = canvas.getContext('2d');
+      const random = new SeededRandom(`preview-${type}-${face}-${state}`);
+      drawFns[type][face](ctx, SIZE, random, state === 'lit');
+
+      const tile = document.createElement('div');
+      tile.className = 'tile';
+      tile.appendChild(canvas);
+      const label = document.createElement('p');
+      label.textContent = `${face} / ${state}`;
+      tile.appendChild(label);
+      grid.appendChild(tile);
+
+      allImages.push({ type, face, state, canvas });
+    }
+  }
+  output.appendChild(grid);
+}
+
+// Also render tiling preview (2x2)
+const h2tile = document.createElement('h2');
+h2tile.textContent = '=== TILING PREVIEW (2×2) ===';
+output.appendChild(h2tile);
+
+for (const type of types) {
+  const h3 = document.createElement('h2');
+  h3.textContent = type.toUpperCase();
+  output.appendChild(h3);
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+
+  for (const face of faces) {
+    for (const state of states) {
+      const tileCanvas = document.createElement('canvas');
+      tileCanvas.width = SIZE * 2;
+      tileCanvas.height = SIZE * 2;
+      const tCtx = tileCanvas.getContext('2d');
+      const random = new SeededRandom(`preview-${type}-${face}-${state}`);
+      
+      // Draw original to offscreen
+      const srcCanvas = document.createElement('canvas');
+      srcCanvas.width = SIZE;
+      srcCanvas.height = SIZE;
+      const sCtx = srcCanvas.getContext('2d');
+      drawFns[type][face](sCtx, SIZE, random, state === 'lit');
+
+      // Tile 2x2
+      tCtx.drawImage(srcCanvas, 0, 0);
+      tCtx.drawImage(srcCanvas, SIZE, 0);
+      tCtx.drawImage(srcCanvas, 0, SIZE);
+      tCtx.drawImage(srcCanvas, SIZE, SIZE);
+
+      // Draw red lines at seams
+      tCtx.strokeStyle = 'rgba(255,0,0,0.4)';
+      tCtx.lineWidth = 1;
+      tCtx.setLineDash([4, 4]);
+      tCtx.beginPath();
+      tCtx.moveTo(SIZE, 0); tCtx.lineTo(SIZE, SIZE * 2);
+      tCtx.moveTo(0, SIZE); tCtx.lineTo(SIZE * 2, SIZE);
+      tCtx.stroke();
+
+      const tile = document.createElement('div');
+      tile.className = 'tile';
+      tile.appendChild(tileCanvas);
+      const label = document.createElement('p');
+      label.textContent = `${face} / ${state}`;
+      tile.appendChild(label);
+      grid.appendChild(tile);
+    }
+  }
+  output.appendChild(grid);
+}
+</script>
+</body>
+</html>

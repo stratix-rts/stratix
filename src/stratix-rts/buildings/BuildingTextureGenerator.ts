@@ -72,11 +72,12 @@ function drawNoise(
 function applyDimOverlay(
   ctx: CanvasRenderingContext2D,
   size: number,
-  lit: boolean
+  lit: boolean,
+  opacity = 0.2
 ): void {
   if (!lit) {
     ctx.fillStyle = '#000000';
-    ctx.globalAlpha = 0.2;
+    ctx.globalAlpha = opacity;
     ctx.fillRect(0, 0, size, size);
     ctx.globalAlpha = 1;
   }
@@ -94,8 +95,8 @@ function drawDataCenterWall(
 ): void {
   const baseColor = lit ? '#4a5568' : '#2d3748';
   const lineColor = lit ? '#718096' : '#4a5568';
-  const ledColor = lit ? '#63b3ed' : '#2c5282';
-  const ledBright = lit ? '#bee3f8' : '#63b3ed';
+  const ledColor = lit ? '#63b3ed' : '#2f855a';
+  const ledBright = lit ? '#bee3f8' : '#c05621';
 
   // 背景
   ctx.fillStyle = baseColor;
@@ -109,7 +110,7 @@ function drawDataCenterWall(
     ctx.fillRect(0, y + rackH - 2, size, 2);
 
     // 服务器指示灯：lit 时更多更亮，dim 时减少
-    const ledCount = lit ? random.between(5, 8) : random.between(1, 3);
+    const ledCount = lit ? random.between(5, 8) : random.between(2, 4);
     for (let j = 0; j < ledCount; j++) {
       const lx = random.between(4, size - 8);
       const ly = y + random.between(2, Math.max(3, rackH - 4));
@@ -161,7 +162,7 @@ function drawDataCenterRoof(
       ctx.fillRect(x - 1, y - 1, 3, 3);
     }
   }
-  applyDimOverlay(ctx, size, lit);
+  applyDimOverlay(ctx, size, lit, 0.08);
 }
 
 function drawDataCenterFoundation(
@@ -187,6 +188,17 @@ function drawDataCenterFoundation(
   ctx.moveTo(0, size / 2);
   ctx.lineTo(size, size / 2);
   ctx.stroke();
+
+  // 散热格栅/电缆槽（细横线）
+  const grilleSpacing = 16;
+  ctx.strokeStyle = lit ? '#4b5563' : '#374151';
+  ctx.lineWidth = 1;
+  for (let gy = grilleSpacing; gy < size; gy += grilleSpacing) {
+    ctx.beginPath();
+    ctx.moveTo(0, gy);
+    ctx.lineTo(size, gy);
+    ctx.stroke();
+  }
   applyDimOverlay(ctx, size, lit);
 }
 
@@ -337,17 +349,10 @@ function drawStudioWall(
         ctx.fillStyle = glassColor;
         ctx.fillRect(x, y, windowW, windowH);
         ctx.shadowBlur = 0;
-
-        // 反光条
-        ctx.fillStyle = glassReflect;
-        ctx.globalAlpha = 0.4;
-        ctx.beginPath();
-        ctx.moveTo(x, y + windowH);
-        ctx.lineTo(x + windowW * 0.4, y);
-        ctx.lineTo(x + windowW * 0.6, y);
-        ctx.lineTo(x, y + windowH);
-        ctx.fill();
-        ctx.globalAlpha = 1;
+      } else {
+        // dim 状态：深色空洞，保留窗框结构
+        ctx.fillStyle = '#1a202c';
+        ctx.fillRect(x, y, windowW, windowH);
       }
     }
   }
@@ -577,7 +582,7 @@ function drawCommandWall(
   // 混凝土纹理（斜向线条）
   ctx.strokeStyle = lit ? '#4a554a' : '#2d3748';
   ctx.lineWidth = 1;
-  ctx.globalAlpha = 0.4;
+  ctx.globalAlpha = lit ? 0.4 : 0.65;
   for (let i = -size; i < size * 2; i += 8) {
     ctx.beginPath();
     ctx.moveTo(i, 0);
