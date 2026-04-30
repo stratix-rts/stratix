@@ -50,6 +50,7 @@ export interface ProjectZoneConfig {
   color?: number;
   opacity?: number;
   visible?: boolean;
+  buildingType?: 'data-center' | 'workshop' | 'studio' | 'library' | 'command';
 }
 
 export interface Project {
