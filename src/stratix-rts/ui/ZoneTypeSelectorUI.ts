@@ -41,10 +41,8 @@ export class ZoneTypeSelectorUI {
 
     // 遮罩层
     this.overlay = scene.add.graphics();
-    this.overlay.fillStyle(0x000000, 0.4);
-    this.overlay.fillRect(-960, -540, 1920, 1080);
     this.overlay.setInteractive(
-      new Phaser.Geom.Rectangle(-960, -540, 1920, 1080),
+      new Phaser.Geom.Rectangle(0, 0, 1, 1),
       Phaser.Geom.Rectangle.Contains
     );
     this.overlay.on('pointerdown', () => this.hide());
@@ -69,6 +67,17 @@ export class ZoneTypeSelectorUI {
   show(): void {
     this.isVisible = true;
     this.container.setVisible(true);
+    // 动态绘制遮罩覆盖整个相机视口
+    const cam = this.scene.cameras.main;
+    const cx = cam.scrollX;
+    const cy = cam.scrollY;
+    this.overlay.clear();
+    this.overlay.fillStyle(0x000000, 0.4);
+    this.overlay.fillRect(cx, cy, cam.width, cam.height);
+    this.overlay.setInteractive(
+      new Phaser.Geom.Rectangle(cx, cy, cam.width, cam.height),
+      Phaser.Geom.Rectangle.Contains
+    );
     this.buildPanel();
   }
 

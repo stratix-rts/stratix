@@ -7,6 +7,10 @@ export class SeededRandom {
   private seed: number;
 
   constructor(seed: string) {
+    if (!seed || seed.length === 0) {
+      console.warn('[SeededRandom] Empty seed provided, using default');
+      seed = 'default-seed';
+    }
     this.seed = this.hashString(seed);
   }
 

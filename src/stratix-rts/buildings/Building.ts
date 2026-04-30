@@ -132,6 +132,11 @@ export class Building extends Phaser.GameObjects.Container {
     this.buildingWidth = width;
     this.buildingHeight = height;
 
+    // 记录当前已分配的 Agent
+    const assignedAgents = this.rooms
+      .filter(r => r.getConfig().state === 'occupied')
+      .map(r => r.getConfig().agentId!);
+
     // 清除旧格子间
     this.roomsContainer.removeAll(true);
     this.rooms = [];
@@ -142,6 +147,11 @@ export class Building extends Phaser.GameObjects.Container {
       const room = new Room(this.scene, roomConfig);
       this.rooms.push(room);
       this.roomsContainer.add(room);
+    }
+
+    // 重新分配之前已占用的 Agent
+    for (const agentId of assignedAgents) {
+      this.assignAgent(agentId);
     }
 
     // 重新渲染
@@ -211,6 +221,12 @@ export class Building extends Phaser.GameObjects.Container {
         bestCols = cols;
         bestRows = rows;
       }
+    }
+
+    // 兜底：如果没有任何配置满足约束，用最宽松的 1x1 布局
+    if (bestScore === Infinity) {
+      bestCols = 1;
+      bestRows = 1;
     }
 
     const cellWidth = availW / bestCols;

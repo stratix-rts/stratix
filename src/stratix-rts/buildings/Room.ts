@@ -26,13 +26,19 @@ export const ROOM_SIZE = {
 export class Room extends Phaser.GameObjects.Container {
   private config: RoomConfig;
   private roomGraphics: Phaser.GameObjects.Graphics;
-  private agentLabel: Phaser.GameObjects.Text | null = null;
+  private agentLabel: Phaser.GameObjects.Text;
 
   constructor(scene: Phaser.Scene, config: RoomConfig) {
     super(scene, config.x, config.y);
     this.config = config;
     this.roomGraphics = scene.add.graphics();
     this.add(this.roomGraphics);
+    // 预创建 Agent 标签
+    this.agentLabel = this.scene.add.text(0, 0, '', {
+      fontSize: '10px',
+      color: '#ffffff',
+    }).setOrigin(0.5).setVisible(false);
+    this.add(this.agentLabel);
     this.render();
   }
 
@@ -84,23 +90,15 @@ export class Room extends Phaser.GameObjects.Container {
     this.roomGraphics.strokeRect(-w / 2, -h / 2, w, h);
 
     // 更新 Agent 标签
-    if (this.agentLabel) {
-      this.agentLabel.destroy();
-      this.agentLabel = null;
-    }
-
     if (this.config.agentId) {
-      this.agentLabel = this.scene.add.text(0, 0, this.config.agentId.slice(0, 4), {
-        fontSize: '10px',
-        color: '#ffffff',
-      }).setOrigin(0.5);
-      this.add(this.agentLabel);
+      this.agentLabel!.setText(this.config.agentId.slice(0, 4)).setVisible(true);
+    } else {
+      this.agentLabel!.setVisible(false);
     }
   }
 
   destroy(fromScene?: boolean): void {
     // 子对象（roomGraphics, agentLabel）由 Container.destroy() 自动销毁
-    this.agentLabel = null;
     super.destroy(fromScene);
   }
 }
