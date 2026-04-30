@@ -34,6 +34,7 @@ export class Building extends Phaser.GameObjects.Container {
   private rooms: Room[] = [];
   private _buildingState: BuildingState = 'empty';
   private isInteriorVisible = false;
+  private roofTween: Phaser.Tweens.Tween | null = null;
 
   constructor(scene: Phaser.Scene, config: BuildingConfig) {
     super(scene, config.x, config.y);
@@ -93,14 +94,24 @@ export class Building extends Phaser.GameObjects.Container {
   public showInterior(): void {
     this.isInteriorVisible = true;
     this.roomsContainer.setVisible(true);
-    this.buildingShell.setAlpha(0);
+    this.roofTween?.stop();
+    this.roofTween = this.scene.tweens.add({
+      targets: this.buildingShell,
+      alpha: 0,
+      duration: 200,
+    });
   }
 
   /** 隐藏内部（默认态） */
   public hideInterior(): void {
     this.isInteriorVisible = false;
     this.roomsContainer.setVisible(false);
-    this.buildingShell.setAlpha(1);
+    this.roofTween?.stop();
+    this.roofTween = this.scene.tweens.add({
+      targets: this.buildingShell,
+      alpha: 1,
+      duration: 200,
+    });
   }
 
   /** 生长入场动画 */
@@ -344,6 +355,8 @@ export class Building extends Phaser.GameObjects.Container {
   }
 
   destroy(fromScene?: boolean): void {
+    this.roofTween?.stop();
+    this.roofTween = null;
     // roomsContainer.destroy() 会销毁所有 Room 子对象
     // buildingShell.destroy() 会销毁 shellGraphics 子对象
     this.rooms = [];
