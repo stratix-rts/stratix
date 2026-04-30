@@ -35,6 +35,7 @@ export class Building extends Phaser.GameObjects.Container {
   private _buildingState: BuildingState = 'empty';
   private isInteriorVisible = false;
   private roofTween: Phaser.Tweens.Tween | null = null;
+  private isLit = false;
 
   constructor(scene: Phaser.Scene, config: BuildingConfig) {
     super(scene, config.x, config.y);
@@ -317,6 +318,24 @@ export class Building extends Phaser.GameObjects.Container {
       doorWidth,
       6
     );
+
+    // 亮灯叠加层
+    if (this.isLit) {
+      this.shellGraphics.fillStyle(0xfbbf24, 0.15);
+      this.shellGraphics.fillRect(
+        -this.buildingWidth / 2,
+        -this.buildingHeight / 2,
+        this.buildingWidth,
+        this.buildingHeight
+      );
+    }
+  }
+
+  /** 设置亮灯/暗灯 */
+  public setLit(lit: boolean): void {
+    if (this.isLit === lit) return;
+    this.isLit = lit;
+    this.renderShell();
   }
 
   /** 更新建筑状态 */
@@ -333,6 +352,8 @@ export class Building extends Phaser.GameObjects.Container {
     } else {
       this._buildingState = 'active';
     }
+
+    this.setLit(occupied > 0);
   }
 
   /** 更新标签 */
