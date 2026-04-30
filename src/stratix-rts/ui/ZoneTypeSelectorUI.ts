@@ -30,6 +30,7 @@ export class ZoneTypeSelectorUI {
   ];
 
   private escHandler: (() => void) | null = null;
+  private overlayHandler: (() => void) | null = null;
 
   constructor(scene: Phaser.Scene, callbacks: ZoneTypeSelectorCallbacks) {
     this.scene = scene;
@@ -45,7 +46,8 @@ export class ZoneTypeSelectorUI {
       new Phaser.Geom.Rectangle(0, 0, 1, 1),
       Phaser.Geom.Rectangle.Contains
     );
-    this.overlay.on('pointerdown', () => this.hide());
+    this.overlayHandler = () => this.hide();
+    this.overlay.on('pointerdown', this.overlayHandler);
     this.container.add(this.overlay);
 
     // 面板
@@ -192,6 +194,10 @@ export class ZoneTypeSelectorUI {
     if (this.escHandler && this.scene.input.keyboard) {
       this.scene.input.keyboard.off('keydown-ESC', this.escHandler);
       this.escHandler = null;
+    }
+    if (this.overlayHandler) {
+      this.overlay.off('pointerdown', this.overlayHandler);
+      this.overlayHandler = null;
     }
     this.container?.destroy();
   }
