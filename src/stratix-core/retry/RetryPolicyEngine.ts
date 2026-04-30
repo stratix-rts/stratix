@@ -78,7 +78,10 @@ export class RetryPolicyEngine {
       }
     }
 
-    throw new CannotRetryError('fatal', 'Max retries exceeded');
+    if (lastError instanceof CannotRetryError) {
+      throw lastError;
+    }
+    throw new CannotRetryError('fatal', `Max retries exceeded: ${lastError?.message || 'Unknown error'}`);
   }
 
   /**

@@ -34,10 +34,25 @@ setTheme('cyberpunk');
 // 连接 StatusSync WebSocket 服务，转发 zone 事件到 StratixEventBus
 statusSyncWS.connect();
 
+// 全局未捕获 Promise rejection 处理器
+window.addEventListener('unhandledrejection', (event) => {
+  const error = event.reason;
+  if (error?.name === 'CannotRetryError') {
+    console.warn('[Global] Unhandled CannotRetryError:', error.message);
+    event.preventDefault();
+    return;
+  }
+  console.error('[Global] Unhandled promise rejection:', error);
+});
+
 // 预加载角色部件元数据（延迟加载，减小首屏体积）
 (async () => {
-  const { partRegistry } = await import('./stratix-character-creator/core/PartRegistry');
-  partRegistry.loadMetadata();
+  try {
+    const { partRegistry } = await import('./stratix-character-creator/core/PartRegistry');
+    partRegistry.loadMetadata();
+  } catch (error) {
+    console.warn('[Main] Failed to preload part registry:', error);
+  }
 })();
 
 app.mount('#app');
