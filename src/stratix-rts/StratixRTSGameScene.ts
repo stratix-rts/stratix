@@ -793,7 +793,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   }
 
   public getAgentSprites(): Map<string, AgentSprite> {
-    return this.agentManager.getAgentSprites();
+    return this.agentManager?.getAgentSprites() ?? new Map();
   }
 
   public updateAgentPosition(agentId: string, position: { x: number; y: number }): void {
