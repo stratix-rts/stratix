@@ -67,6 +67,7 @@ export class ZoneTypeSelectorUI {
 
   /** 显示选择器 */
   show(): void {
+    if (this.isVisible) return;
     this.isVisible = true;
     this.container.setVisible(true);
     // 动态绘制遮罩覆盖整个相机视口
@@ -87,6 +88,7 @@ export class ZoneTypeSelectorUI {
   hide(): void {
     this.isVisible = false;
     this.container.setVisible(false);
+    this.overlay.disableInteractive();
     this.panel.removeAll(true);
   }
 
@@ -195,10 +197,12 @@ export class ZoneTypeSelectorUI {
       this.scene.input.keyboard.off('keydown-ESC', this.escHandler);
       this.escHandler = null;
     }
-    if (this.overlayHandler) {
+    if (this.overlayHandler && this.overlay.active) {
       this.overlay.off('pointerdown', this.overlayHandler);
       this.overlayHandler = null;
     }
-    this.container?.destroy();
+    if (this.container?.active) {
+      this.container.destroy();
+    }
   }
 }
