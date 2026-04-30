@@ -66,6 +66,22 @@ function drawNoise(
   ctx.globalAlpha = 1;
 }
 
+/**
+ * dim 版本末尾叠加深色压暗层
+ */
+function applyDimOverlay(
+  ctx: CanvasRenderingContext2D,
+  size: number,
+  lit: boolean
+): void {
+  if (!lit) {
+    ctx.fillStyle = '#000000';
+    ctx.globalAlpha = 0.2;
+    ctx.fillRect(0, 0, size, size);
+    ctx.globalAlpha = 1;
+  }
+}
+
 // =============================================================================
 // DataCenter（数据机房）— 冷色调、金属感、服务器机架纹理
 // =============================================================================
@@ -85,27 +101,28 @@ function drawDataCenterWall(
   ctx.fillStyle = baseColor;
   ctx.fillRect(0, 0, size, size);
 
-  // 水平机架线条
-  const rackCount = 8;
-  const rackH = size / rackCount;
-  for (let i = 0; i < rackCount; i++) {
-    const y = i * rackH;
+  // 非均匀高度机架（高度和为 128，确保平铺连续）
+  const rackHeights = [16, 14, 18, 12, 20, 14, 16, 18];
+  let y = 0;
+  for (const rackH of rackHeights) {
     ctx.fillStyle = lineColor;
     ctx.fillRect(0, y + rackH - 2, size, 2);
 
-    // 服务器指示灯
-    const ledCount = random.between(3, 6);
+    // 服务器指示灯：lit 时更多更亮，dim 时减少
+    const ledCount = lit ? random.between(5, 8) : random.between(1, 3);
     for (let j = 0; j < ledCount; j++) {
       const lx = random.between(4, size - 8);
-      const ly = y + random.between(2, Math.max(3, Math.floor(rackH) - 4));
+      const ly = y + random.between(2, Math.max(3, rackH - 4));
       const isBright = random.next() > 0.6;
       ctx.fillStyle = isBright ? ledBright : ledColor;
       ctx.fillRect(lx, ly, 3, 2);
     }
+    y += rackH;
   }
 
   // 细微噪点增加金属质感
   drawNoise(ctx, size, random, 0.05, '#1a202c', '#2d3748', 0.3);
+  applyDimOverlay(ctx, size, lit);
 }
 
 function drawDataCenterRoof(
@@ -114,36 +131,37 @@ function drawDataCenterRoof(
   random: SeededRandom,
   lit: boolean
 ): void {
-  const baseColor = lit ? '#4a5568' : '#1a202c';
-  const gridColor = lit ? '#718096' : '#2d3748';
+  const baseColor = lit ? '#3d4858' : '#252f3a';
+  const gridColor = lit ? '#5a6a7a' : '#3a4a5a';
 
   ctx.fillStyle = baseColor;
   ctx.fillRect(0, 0, size, size);
 
-  // 散热格栅（网格线）
+  // 散热格栅（网格线）— 从 gridSize 开始到 < size，避免边界线宽加倍
   const gridSize = 16;
   ctx.strokeStyle = gridColor;
   ctx.lineWidth = 1;
-  for (let x = 0; x <= size; x += gridSize) {
+  for (let x = gridSize; x < size; x += gridSize) {
     ctx.beginPath();
     ctx.moveTo(x, 0);
     ctx.lineTo(x, size);
     ctx.stroke();
   }
-  for (let y = 0; y <= size; y += gridSize) {
+  for (let y = gridSize; y < size; y += gridSize) {
     ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(size, y);
     ctx.stroke();
   }
 
-  // 格栅交叉点加粗
-  ctx.fillStyle = lit ? '#2d3748' : '#1a202c';
-  for (let x = 0; x < size; x += gridSize) {
-    for (let y = 0; y < size; y += gridSize) {
+  // 格栅交叉点加粗 — 同样避开边界
+  ctx.fillStyle = lit ? '#252f3a' : '#151f2a';
+  for (let x = gridSize; x < size; x += gridSize) {
+    for (let y = gridSize; y < size; y += gridSize) {
       ctx.fillRect(x - 1, y - 1, 3, 3);
     }
   }
+  applyDimOverlay(ctx, size, lit);
 }
 
 function drawDataCenterFoundation(
@@ -169,6 +187,7 @@ function drawDataCenterFoundation(
   ctx.moveTo(0, size / 2);
   ctx.lineTo(size, size / 2);
   ctx.stroke();
+  applyDimOverlay(ctx, size, lit);
 }
 
 // =============================================================================
@@ -187,8 +206,8 @@ function drawWorkshopWall(
   ctx.fillStyle = mortarColor;
   ctx.fillRect(0, 0, size, size);
 
-  const brickH = 14;
-  const brickW = 28;
+  const brickH = 16;
+  const brickW = 32;
   const rows = Math.ceil(size / brickH);
 
   for (let row = 0; row < rows; row++) {
@@ -204,6 +223,7 @@ function drawWorkshopWall(
       ctx.fillRect(x + 1, y + 1, brickW - 2, brickH - 2);
     }
   }
+  applyDimOverlay(ctx, size, lit);
 }
 
 function drawWorkshopRoof(
@@ -213,8 +233,8 @@ function drawWorkshopRoof(
   lit: boolean
 ): void {
   const woodColor = lit ? '#b7791f' : '#744210';
-  const tileColor = lit ? '#4a5568' : '#2d3748';
-  const tileDark = lit ? '#2d3748' : '#1a202c';
+  const tileColor = lit ? '#9c6b3c' : '#5c3a1e';
+  const tileDark = lit ? '#7a5430' : '#3d2614';
 
   // 木质横梁背景
   ctx.fillStyle = woodColor;
@@ -229,8 +249,8 @@ function drawWorkshopRoof(
     ctx.fillRect(0, y, size, 3);
   }
 
-  // 瓦片（在木梁之间的小方块）
-  const tileSize = 10;
+  // 瓦片（暖色陶瓦，tileSize 整除 128）
+  const tileSize = 16;
   for (let y = 0; y < size; y += tileSize) {
     for (let x = 0; x < size; x += tileSize) {
       const isDark = random.next() > 0.5;
@@ -238,6 +258,7 @@ function drawWorkshopRoof(
       ctx.fillRect(x + 1, y + 4, tileSize - 2, tileSize - 4);
     }
   }
+  applyDimOverlay(ctx, size, lit);
 }
 
 function drawWorkshopFoundation(
@@ -254,17 +275,23 @@ function drawWorkshopFoundation(
   // 沙石噪点
   drawNoise(ctx, size, random, 0.12, '#f6e05e', '#744210', 0.3);
 
-  // 小石子
-  const stoneCount = 20;
-  for (let i = 0; i < stoneCount; i++) {
-    const x = random.between(2, size - 6);
-    const y = random.between(2, size - 6);
-    const r = random.between(2, 4);
-    ctx.fillStyle = random.next() > 0.5 ? '#a0aec0' : '#718096';
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
+  // 小石子 — 规则 4x4 网格内随机偏移，确保平铺连续
+  const gridCols = 4;
+  const gridRows = 4;
+  const cellW = size / gridCols;
+  const cellH = size / gridRows;
+  for (let row = 0; row < gridRows; row++) {
+    for (let col = 0; col < gridCols; col++) {
+      const cx = col * cellW + random.between(4, Math.floor(cellW) - 8);
+      const cy = row * cellH + random.between(4, Math.floor(cellH) - 8);
+      const radius = random.between(2, 4);
+      ctx.fillStyle = random.next() > 0.5 ? '#a0aec0' : '#718096';
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
+  applyDimOverlay(ctx, size, lit);
 }
 
 // =============================================================================
@@ -286,38 +313,45 @@ function drawStudioWall(
   ctx.fillStyle = wallColor;
   ctx.fillRect(0, 0, size, size);
 
-  // 大玻璃窗格（3x2 布局）
-  const cols = 3;
+  // 大玻璃窗格（4x2 布局，无边缘 padding，窗框作为内部间隔）
+  const cols = 4;
   const rows = 2;
-  const pad = 8;
-  const cellW = (size - pad * (cols + 1)) / cols;
-  const cellH = (size - pad * (rows + 1)) / rows;
+  const frameW = 2;
+  const frameH = 2;
+  const windowW = 30;
+  const windowH = 62;
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      const x = pad + c * (cellW + pad);
-      const y = pad + r * (cellH + pad);
+      const x = frameW + c * (windowW + frameW);
+      const y = frameH + r * (windowH + frameH);
 
       // 窗框
       ctx.fillStyle = frameColor;
-      ctx.fillRect(x - 2, y - 2, cellW + 4, cellH + 4);
+      ctx.fillRect(x - frameW, y - frameH, windowW + frameW * 2, windowH + frameH * 2);
 
-      // 玻璃
-      ctx.fillStyle = glassColor;
-      ctx.fillRect(x, y, cellW, cellH);
+      if (lit) {
+        // 玻璃 — lit 时加发光效果
+        ctx.shadowColor = glassColor;
+        ctx.shadowBlur = 6;
+        ctx.fillStyle = glassColor;
+        ctx.fillRect(x, y, windowW, windowH);
+        ctx.shadowBlur = 0;
 
-      // 反光条
-      ctx.fillStyle = glassReflect;
-      ctx.globalAlpha = 0.4;
-      ctx.beginPath();
-      ctx.moveTo(x, y + cellH);
-      ctx.lineTo(x + cellW * 0.4, y);
-      ctx.lineTo(x + cellW * 0.6, y);
-      ctx.lineTo(x, y + cellH);
-      ctx.fill();
-      ctx.globalAlpha = 1;
+        // 反光条
+        ctx.fillStyle = glassReflect;
+        ctx.globalAlpha = 0.4;
+        ctx.beginPath();
+        ctx.moveTo(x, y + windowH);
+        ctx.lineTo(x + windowW * 0.4, y);
+        ctx.lineTo(x + windowW * 0.6, y);
+        ctx.lineTo(x, y + windowH);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
     }
   }
+  applyDimOverlay(ctx, size, lit);
 }
 
 function drawStudioRoof(
@@ -326,33 +360,45 @@ function drawStudioRoof(
   random: SeededRandom,
   lit: boolean
 ): void {
-  const baseColor = lit ? '#e2e8f0' : '#cbd5e0';
+  const baseColor = lit ? '#d1d5db' : '#cbd5e0';
   const skylightFrame = lit ? '#4a5568' : '#2d3748';
   const skylightGlass = lit ? '#63b3ed' : '#3182ce';
 
   ctx.fillStyle = baseColor;
   ctx.fillRect(0, 0, size, size);
 
-  // 天窗（中间大矩形 + 小矩形）
-  const skylights = [
-    { x: size * 0.25, y: size * 0.2, w: size * 0.5, h: size * 0.25 },
-    { x: size * 0.1, y: size * 0.6, w: size * 0.3, h: size * 0.15 },
-    { x: size * 0.6, y: size * 0.6, w: size * 0.3, h: size * 0.15 },
-  ];
+  // 天窗 — 规则 2x2 等大小网格排列，整数坐标
+  const cols = 2;
+  const rows = 2;
+  const cellW = size / cols;
+  const cellH = size / rows;
+  const margin = 4;
+  const glassW = cellW - margin * 2;
+  const glassH = cellH - margin * 2;
 
-  for (const s of skylights) {
-    // 窗框
-    ctx.fillStyle = skylightFrame;
-    ctx.fillRect(s.x - 3, s.y - 3, s.w + 6, s.h + 6);
-    // 玻璃
-    ctx.fillStyle = skylightGlass;
-    ctx.fillRect(s.x, s.y, s.w, s.h);
-    // 反光
-    ctx.fillStyle = lit ? '#bee3f8' : '#90cdf4';
-    ctx.globalAlpha = 0.3;
-    ctx.fillRect(s.x, s.y, s.w * 0.5, s.h * 0.5);
-    ctx.globalAlpha = 1;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = c * cellW + margin;
+      const y = r * cellH + margin;
+
+      // 窗框
+      ctx.fillStyle = skylightFrame;
+      ctx.fillRect(x - 2, y - 2, glassW + 4, glassH + 4);
+
+      if (lit) {
+        // 玻璃
+        ctx.fillStyle = skylightGlass;
+        ctx.fillRect(x, y, glassW, glassH);
+
+        // 反光
+        ctx.fillStyle = '#bee3f8';
+        ctx.globalAlpha = 0.3;
+        ctx.fillRect(x, y, glassW * 0.5, glassH * 0.5);
+        ctx.globalAlpha = 1;
+      }
+    }
   }
+  applyDimOverlay(ctx, size, lit);
 }
 
 function drawStudioFoundation(
@@ -363,7 +409,7 @@ function drawStudioFoundation(
 ): void {
   const tileColor1 = lit ? '#e2e8f0' : '#a0aec0';
   const tileColor2 = lit ? '#cbd5e0' : '#718096';
-  const groutColor = lit ? '#718096' : '#4a5568';
+  const groutColor = lit ? '#64748b' : '#3a4554';
 
   // 填缝背景
   ctx.fillStyle = groutColor;
@@ -378,6 +424,7 @@ function drawStudioFoundation(
       ctx.fillRect(x + 1, y + 1, tileSize - 2, tileSize - 2);
     }
   }
+  applyDimOverlay(ctx, size, lit);
 }
 
 // =============================================================================
@@ -399,16 +446,16 @@ function drawLibraryWall(
   ctx.fillStyle = woodBase;
   ctx.fillRect(0, 0, size, size);
 
-  // 垂直木柱分隔
-  const colCount = 3;
+  // 垂直木柱分隔 — 4 列，整数宽度
+  const colCount = 4;
   const colW = size / colCount;
   for (let i = 1; i < colCount; i++) {
     ctx.fillStyle = adjustBrightness(woodBase, 0.7);
     ctx.fillRect(i * colW - 2, 0, 4, size);
   }
 
-  // 水平书架层
-  const shelfCount = 5;
+  // 水平书架层 — 4 层，整数高度
+  const shelfCount = 4;
   const shelfH = size / shelfCount;
   for (let i = 0; i < shelfCount; i++) {
     const y = (i + 1) * shelfH - 3;
@@ -431,6 +478,7 @@ function drawLibraryWall(
       }
     }
   }
+  applyDimOverlay(ctx, size, lit);
 }
 
 function drawLibraryRoof(
@@ -446,9 +494,9 @@ function drawLibraryRoof(
   ctx.fillStyle = baseColor;
   ctx.fillRect(0, 0, size, size);
 
-  // 传统斜屋顶瓦片（交错半圆/圆弧）
+  // 传统斜屋顶瓦片 — tileH=16 整除 128，arc 半径改为 tileW/2 使瓦片完全在周期内
   const tileW = 16;
-  const tileH = 12;
+  const tileH = 16;
   const rows = Math.ceil(size / tileH) + 1;
   const cols = Math.ceil(size / tileW) + 1;
 
@@ -460,10 +508,11 @@ function drawLibraryRoof(
       const isDark = random.next() > 0.5;
       ctx.fillStyle = isDark ? tileDark : tileColor;
       ctx.beginPath();
-      ctx.arc(x + tileW / 2, y, tileW / 2 + 1, 0, Math.PI);
+      ctx.arc(x + tileW / 2, y, tileW / 2, 0, Math.PI);
       ctx.fill();
     }
   }
+  applyDimOverlay(ctx, size, lit);
 }
 
 function drawLibraryFoundation(
@@ -477,22 +526,26 @@ function drawLibraryFoundation(
   ctx.fillStyle = woodBase;
   ctx.fillRect(0, 0, size, size);
 
-  // 平行木纹线条
-  const grainCount = 12;
+  // 基于木板的确定性木纹线条（4 块木板，每板 3 条线）
+  const plankCount = 4;
+  const linesPerPlank = 3;
   ctx.strokeStyle = lit ? '#6b4226' : '#4a2c17';
   ctx.lineWidth = 1;
-  for (let i = 0; i < grainCount; i++) {
-    const y = random.between(0, size);
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(size, y);
-    ctx.stroke();
+  for (let p = 0; p < plankCount; p++) {
+    for (let l = 0; l < linesPerPlank; l++) {
+      const baseY =
+        (p * linesPerPlank + l + 1) * (size / (plankCount * linesPerPlank));
+      const y = Math.floor(baseY + random.between(-2, 2));
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(size, y);
+      ctx.stroke();
+    }
   }
 
   // 木板接缝
   ctx.strokeStyle = lit ? '#4a2c17' : '#2d1a0d';
   ctx.lineWidth = 2;
-  const plankCount = 4;
   const plankW = size / plankCount;
   for (let i = 1; i < plankCount; i++) {
     const x = i * plankW;
@@ -501,6 +554,7 @@ function drawLibraryFoundation(
     ctx.lineTo(x, size);
     ctx.stroke();
   }
+  applyDimOverlay(ctx, size, lit);
 }
 
 // =============================================================================
@@ -513,15 +567,15 @@ function drawCommandWall(
   random: SeededRandom,
   lit: boolean
 ): void {
-  const concreteBase = lit ? '#718096' : '#4a5568';
-  const metalColor = lit ? '#e2e8f0' : '#a0aec0';
-  const metalDark = lit ? '#cbd5e0' : '#718096';
+  const concreteBase = lit ? '#6b7a6b' : '#4a554a';
+  const metalColor = lit ? '#9ca88c' : '#6b7a6b';
+  const metalDark = lit ? '#7a8a6a' : '#4a5a4a';
 
   ctx.fillStyle = concreteBase;
   ctx.fillRect(0, 0, size, size);
 
   // 混凝土纹理（斜向线条）
-  ctx.strokeStyle = lit ? '#4a5568' : '#2d3748';
+  ctx.strokeStyle = lit ? '#4a554a' : '#2d3748';
   ctx.lineWidth = 1;
   ctx.globalAlpha = 0.4;
   for (let i = -size; i < size * 2; i += 8) {
@@ -532,19 +586,21 @@ function drawCommandWall(
   }
   ctx.globalAlpha = 1;
 
-  // 金属装饰条（横向 + 纵向）
+  // 金属装饰条（整数坐标）
+  const strip1 = 40;
+  const strip2 = 88;
   ctx.fillStyle = metalColor;
-  ctx.fillRect(0, size * 0.3, size, 4);
-  ctx.fillRect(0, size * 0.7, size, 4);
-  ctx.fillRect(size * 0.3, 0, 4, size);
-  ctx.fillRect(size * 0.7, 0, 4, size);
+  ctx.fillRect(0, strip1, size, 4);
+  ctx.fillRect(0, strip2, size, 4);
+  ctx.fillRect(strip1, 0, 4, size);
+  ctx.fillRect(strip2, 0, 4, size);
 
   // 金属铆钉
   const rivetPositions = [
-    { x: size * 0.3, y: size * 0.3 },
-    { x: size * 0.7, y: size * 0.3 },
-    { x: size * 0.3, y: size * 0.7 },
-    { x: size * 0.7, y: size * 0.7 },
+    { x: strip1, y: strip1 },
+    { x: strip2, y: strip1 },
+    { x: strip1, y: strip2 },
+    { x: strip2, y: strip2 },
   ];
   for (const rp of rivetPositions) {
     ctx.fillStyle = metalDark;
@@ -556,6 +612,7 @@ function drawCommandWall(
     ctx.arc(rp.x + 1, rp.y + 1, 1.5, 0, Math.PI * 2);
     ctx.fill();
   }
+  applyDimOverlay(ctx, size, lit);
 }
 
 function drawCommandRoof(
@@ -564,43 +621,56 @@ function drawCommandRoof(
   random: SeededRandom,
   lit: boolean
 ): void {
-  const baseColor = lit ? '#4a5568' : '#1a202c';
-  const antennaColor = lit ? '#a0aec0' : '#4a5568';
-  const antennaHighlight = lit ? '#e2e8f0' : '#a0aec0';
+  const baseColor = lit ? '#3d4a3d' : '#1f291f';
+  const antennaColor = lit ? '#7a8a6a' : '#4a5a4a';
+  const antennaHighlight = lit ? '#9ca88c' : '#6b7a6b';
 
   ctx.fillStyle = baseColor;
   ctx.fillRect(0, 0, size, size);
 
-  // 军事风格天线基座（十字形 + 圆点）
-  const cx = size / 2;
-  const cy = size / 2;
+  // 2x2 可平铺小型天线阵列
+  const cells = 2;
+  const cellSize = size / cells;
 
-  // 基座
-  ctx.fillStyle = antennaColor;
-  ctx.fillRect(cx - 8, cy - 8, 16, 16);
+  for (let ry = 0; ry < cells; ry++) {
+    for (let rx = 0; rx < cells; rx++) {
+      const cx = rx * cellSize + cellSize / 2;
+      const cy = ry * cellSize + cellSize / 2;
 
-  // 十字
-  ctx.fillStyle = antennaHighlight;
-  ctx.fillRect(cx - 2, cy - 14, 4, 28);
-  ctx.fillRect(cx - 14, cy - 2, 28, 4);
+      // 基座
+      ctx.fillStyle = antennaColor;
+      ctx.fillRect(cx - 4, cy - 4, 8, 8);
 
-  // 中心圆
-  ctx.fillStyle = lit ? '#ef4444' : '#991b1b';
-  ctx.beginPath();
-  ctx.arc(cx, cy, 4, 0, Math.PI * 2);
-  ctx.fill();
+      // 十字
+      ctx.fillStyle = antennaHighlight;
+      ctx.fillRect(cx - 1, cy - 7, 2, 14);
+      ctx.fillRect(cx - 7, cy - 1, 14, 2);
 
-  // 外围小圆点（雷达感）
-  ctx.fillStyle = lit ? '#fbbf24' : '#b45309';
-  const orbitRadius = size * 0.35;
-  for (let i = 0; i < 4; i++) {
-    const angle = (i * Math.PI) / 2 + (lit ? 0.2 : 0);
-    const ox = cx + Math.cos(angle) * orbitRadius;
-    const oy = cy + Math.sin(angle) * orbitRadius;
-    ctx.beginPath();
-    ctx.arc(ox, oy, 2.5, 0, Math.PI * 2);
-    ctx.fill();
+      // 中心圆 — lit 时微弱发光
+      if (lit) {
+        ctx.shadowColor = '#ef4444';
+        ctx.shadowBlur = 4;
+      }
+      ctx.fillStyle = lit ? '#ef4444' : '#991b1b';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // 外围小圆点（雷达感）
+      ctx.fillStyle = lit ? '#fbbf24' : '#b45309';
+      const orbitRadius = cellSize * 0.3;
+      for (let i = 0; i < 4; i++) {
+        const angle = (i * Math.PI) / 2 + (lit ? 0.2 : 0);
+        const ox = cx + Math.cos(angle) * orbitRadius;
+        const oy = cy + Math.sin(angle) * orbitRadius;
+        ctx.beginPath();
+        ctx.arc(ox, oy, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
   }
+  applyDimOverlay(ctx, size, lit);
 }
 
 function drawCommandFoundation(
@@ -617,17 +687,20 @@ function drawCommandFoundation(
   // 粗噪点
   drawNoise(ctx, size, random, 0.2, '#4b5563', '#111827', 0.5);
 
-  // 接缝线（大块混凝土板）
+  // 接缝线 — size/4 = 32 整数
   ctx.strokeStyle = lit ? '#1f2937' : '#000000';
   ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.moveTo(size / 3, 0);
-  ctx.lineTo(size / 3, size);
-  ctx.moveTo((size * 2) / 3, 0);
-  ctx.lineTo((size * 2) / 3, size);
+  ctx.moveTo(size / 4, 0);
+  ctx.lineTo(size / 4, size);
+  ctx.moveTo(size / 2, 0);
+  ctx.lineTo(size / 2, size);
+  ctx.moveTo((size * 3) / 4, 0);
+  ctx.lineTo((size * 3) / 4, size);
   ctx.moveTo(0, size / 2);
   ctx.lineTo(size, size / 2);
   ctx.stroke();
+  applyDimOverlay(ctx, size, lit);
 }
 
 // =============================================================================
