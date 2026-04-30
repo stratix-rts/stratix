@@ -76,8 +76,8 @@ export class Room extends Phaser.GameObjects.Container {
   public updateLayout(x: number, y: number, width: number, height: number): void {
     this.config.x = x;
     this.config.y = y;
-    this.config.width = width;
-    this.config.height = height;
+    this.config.width = Math.max(width, 0);
+    this.config.height = Math.max(height, 0);
     this.setPosition(x, y);
     this.render();
   }
@@ -88,6 +88,12 @@ export class Room extends Phaser.GameObjects.Container {
 
     const w = this.config.width;
     const h = this.config.height;
+
+    // 跳过零或负尺寸绘制
+    if (w <= 0 || h <= 0) {
+      this.agentLabel.setVisible(false);
+      return;
+    }
 
     // 填充颜色：error=红色，占用=绿色，空闲=灰色
     let fillColor: number;
@@ -109,9 +115,9 @@ export class Room extends Phaser.GameObjects.Container {
 
     // 更新 Agent 标签
     if (this.config.agentId) {
-      this.agentLabel!.setText(this.config.agentId.slice(0, 4)).setVisible(true);
+      this.agentLabel.setText(this.config.agentId.slice(0, 4)).setVisible(true);
     } else {
-      this.agentLabel!.setVisible(false);
+      this.agentLabel.setVisible(false);
     }
   }
 
