@@ -96,7 +96,10 @@ export class Building extends Phaser.GameObjects.Container {
   public showInterior(): void {
     this.isInteriorVisible = true;
     this.roomsContainer.setVisible(true);
-    this.roofTween?.stop();
+    if (this.roofTween) {
+      this.scene.tweens.remove(this.roofTween);
+      this.roofTween = null;
+    }
     this.buildingShell.setAlpha(0);
     this.roofTween = this.scene.tweens.add({
       targets: this.buildingShell,
@@ -109,7 +112,10 @@ export class Building extends Phaser.GameObjects.Container {
   public hideInterior(): void {
     this.isInteriorVisible = false;
     this.roomsContainer.setVisible(false);
-    this.roofTween?.stop();
+    if (this.roofTween) {
+      this.scene.tweens.remove(this.roofTween);
+      this.roofTween = null;
+    }
     this.buildingShell.setAlpha(1);
     this.roofTween = this.scene.tweens.add({
       targets: this.buildingShell,
@@ -120,6 +126,10 @@ export class Building extends Phaser.GameObjects.Container {
 
   /** 生长入场动画 */
   public growIn(): void {
+    if (this.growTween) {
+      this.scene.tweens.remove(this.growTween);
+      this.growTween = null;
+    }
     this.setScale(0, 0);
     this.growTween = this.scene.tweens.add({
       targets: this,
@@ -178,14 +188,18 @@ export class Building extends Phaser.GameObjects.Container {
       this.roomsContainer.add(room);
     }
 
-    // 重新分配之前已占用的 Agent
+    // 重新分配之前已占用的 Agent（直接操作避免重复触发 Building 级重渲染）
     for (const agentId of assignedAgents) {
-      this.assignAgent(agentId);
+      const emptyRoom = this.rooms.find(r => r.getConfig().state === 'empty');
+      if (emptyRoom) {
+        emptyRoom.assignAgent(agentId);
+      }
     }
 
     // 重新渲染
     this.renderFoundation();
     this.renderShell();
+    this.updateState();
     this.updateLabel();
   }
 
@@ -216,7 +230,7 @@ export class Building extends Phaser.GameObjects.Container {
     this.progressBar.fillRect(barX, barY, barWidth, 4);
 
     // 根据进度选择颜色
-    const clampedPercent = Math.min(percent, 1);
+    const clampedPercent = Math.max(0, Math.min(percent, 1));
     let fillColor: number;
     if (clampedPercent < 0.3) {
       fillColor = 0xef4444; // 红色
@@ -242,8 +256,8 @@ export class Building extends Phaser.GameObjects.Container {
   private calculateGridLayout(width: number, height: number, targetRooms: number): GridLayout {
     // 计算可用空间（留 padding）
     const padding = 8;
-    const availW = width - padding * 2;
-    const availH = height - padding * 2;
+    const availW = Math.max(width - padding * 2, 1);
+    const availH = Math.max(height - padding * 2, 1);
 
     // 计算最佳的列数和行数
     let bestCols = 1;
@@ -287,8 +301,8 @@ export class Building extends Phaser.GameObjects.Container {
           roomId: `room_${row}_${col}`,
           x: -availW / 2 + cellWidth / 2 + col * cellWidth,
           y: -availH / 2 + cellHeight / 2 + row * cellHeight,
-          width: cellWidth - 4,
-          height: cellHeight - 4,
+          width: Math.max(cellWidth - 4, 1),
+          height: Math.max(cellHeight - 4, 1),
           state: 'empty',
         });
       }
@@ -299,6 +313,7 @@ export class Building extends Phaser.GameObjects.Container {
 
   /** 渲染地基 */
   private renderFoundation(): void {
+    if (this.buildingWidth <= 0 || this.buildingHeight <= 0) return;
     this.foundationGraphics.clear();
     this.foundationGraphics.fillStyle(0x1f2937, 0.6);
     this.foundationGraphics.fillRect(
@@ -311,6 +326,7 @@ export class Building extends Phaser.GameObjects.Container {
 
   /** 渲染外壳（屋顶 + 墙壁） */
   private renderShell(): void {
+    if (this.buildingWidth <= 0 || this.buildingHeight <= 0) return;
     this.shellGraphics.clear();
     const color = BUILDING_COLORS[this.buildingType];
 
@@ -399,10 +415,14 @@ export class Building extends Phaser.GameObjects.Container {
   }
 
   destroy(fromScene?: boolean): void {
-    this.roofTween?.stop();
-    this.roofTween = null;
-    this.growTween?.stop();
-    this.growTween = null;
+    if (this.roofTween) {
+      this.scene.tweens.remove(this.roofTween);
+      this.roofTween = null;
+    }
+    if (this.growTween) {
+      this.scene.tweens.remove(this.growTween);
+      this.growTween = null;
+    }
     // roomsContainer.destroy() 会销毁所有 Room 子对象
     // buildingShell.destroy() 会销毁 shellGraphics 子对象
     this.rooms = [];
