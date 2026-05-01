@@ -258,10 +258,11 @@ High（任务完成、Agent 状态变化）
   → 音符数 = min(eventCount, 5)，超过 5 个用最高音收尾
   → 用户听到的是"很多事情同时完成了"，信息不丢
 
-Normal（UI 交互）
-  → Queue: 排队播放，间隔 ≥ 50ms
-  → 5 个 click 在 100ms 内 → 排队播 5 次，每次间隔 50ms，总耗时 250ms
-  → 用户感知为连续点击反馈，合理
+Normal（UI 交互、游戏事件）
+  → Stack（叠加播放）: 不同 SoundId 直接叠加，同 SoundId 短间隔排队
+  → click + panelOpen + tabSwitch 同时触发 → 3 个声音同时播放（不同通道）
+  → click × 3 快速触发 → 排队播 3 次，间隔 30ms
+  → 优先叠加，只在同 SoundId 连续触发时才排队
 
 Low（Hover）
   → Debounce: 只播放最后一次
@@ -274,12 +275,14 @@ Low（Hover）
 ```typescript
 interface AggregationConfig {
   /** 策略 */
-  strategy: 'restart' | 'arpeggio' | 'queue' | 'debounce';
+  strategy: 'restart' | 'arpeggio' | 'stack' | 'debounce';
   /** 聚合窗口 (ms)，窗口内的同类事件合并处理 */
   windowMs: number;
   /** 琥音最大音符数 (arpeggio 策略) */
   maxNotes?: number;
-  /** 排队最小间隔 (ms) (queue 策略) */
+  /** 同 SoundId 叠加最小间隔 (ms) (stack 策略) */
+  stackInterval?: number;
+  /** 排队最小间隔 (ms) (queue 策略，已弃用) */
   queueInterval?: number;
   /** 防抖冷却 (ms) (debounce 策略) */
   cooldown?: number;
@@ -300,16 +303,16 @@ interface AggregationConfig {
 | game.taskFail | High | arpeggio | 200 | C4→A3→F3 递降 |
 | game.connect | High | arpeggio | 200 | 三连升调 |
 | game.disconnect | High | arpeggio | 200 | 三连降调 |
-| game.agentSelect | Normal | queue | 50 | 排队，maxDepth=3 |
+| game.agentSelect | Normal | stack | 30 | 同 SoundId 间隔 30ms 排队，不同 ID 叠加 |
 | game.agentDeselect | Normal | debounce | 80 | 快速连点合并 |
-| game.taskAssign | Normal | queue | 50 | 排队，maxDepth=3 |
-| game.zoneCreate | Normal | queue | 50 | 排队，maxDepth=3 |
-| game.zoneDestroy | Normal | queue | 50 | 排队，maxDepth=3 |
-| ui.click | Normal | queue | 30 | 快速排队，maxDepth=5，maxLatency=200ms |
+| game.taskAssign | Normal | stack | 30 | 同上 |
+| game.zoneCreate | Normal | stack | 30 | 同上 |
+| game.zoneDestroy | Normal | stack | 30 | 同上 |
+| ui.click | Normal | stack | 30 | 同 SoundId 排队，maxDepth=5，maxLatency=200ms |
 | ui.tabSwitch | Normal | debounce | 80 | 防重复 |
-| ui.panelOpen | Normal | queue | 50 | 排队，maxDepth=2 |
-| ui.panelClose | Normal | queue | 50 | 排队，maxDepth=2 |
-| ui.toast | Normal | queue | 100 | 多条排队，maxDepth=3 |
+| ui.panelOpen | Normal | stack | 50 | 同上 |
+| ui.panelClose | Normal | stack | 50 | 同上 |
+| ui.toast | Normal | stack | 80 | 同上，maxDepth=3 |
 | ui.toggle | Normal | debounce | 80 | 防重复 |
 | ui.hover | Low | debounce | 150 | 防抖 |
 | ui.dragStart | Low | debounce | 100 | 防抖 |
@@ -365,7 +368,70 @@ interface AggregationConfig {
   结果：播了 5 次，用户感知“连续快速点击反馈”，合理
 ```
 
-### 5.5 SFC 8 通道约束
+### 5.5 管线极限场景推演
+
+Stratix 实际规模：地图 1600×960，默认 10 Agent，最大 500 Zone。以下推演所有极限叠加场景。
+
+**场景 A：批量任务完成（最常见的高频场景）**
+```
+触发: 10 个 Agent 同时完成任务 → 10 × game.taskComplete
+策略: arpeggio 合并 → 播放 1 次 C5-E5-G5-C6 递升琶音
+通道: 仅占通道 4
+结果: ✓ 无问题，用户听到"大量任务完成"
+```
+
+**场景 B：用户 UI 密集操作**
+```
+触发: 用户点了按钮 + 切了 tab + 开了面板 + 弹了 toast（100ms 内）
+事件: click + tabSwitch + panelOpen + toast
+策略: 不同 SoundId 直接叠加播放（stack）
+通道: click 占通道 6，panelOpen 占通道 6（但声音短不冲突），
+       tabSwitch debounce 不响（刚切完），toast 排队等 80ms
+实际同时发声: 2 个（click + panelOpen）
+结果: ✓ 无问题
+```
+
+**场景 C：混合极端（最坏情况）**
+```
+触发: 同时发生——
+  - 3 个 Agent 完成任务
+  - 1 个警报
+  - 用户点了 2 下按钮
+  - 1 个面板展开
+  - BGM 在播
+  - 环境音在播
+
+通道分配:
+  通道 0-2: BGM              — 始终占用
+  通道 3:   Ambient drone     — 始终占用
+  通道 4:   taskComplete 琶音  — arpeggio 合并 3 个事件为 1 次播放
+  通道 5:   (空闲)
+  通道 6:   click + panelOpen  — stack 叠加，2 个短音重叠
+  通道 7:   alert             — Critical 专用通道
+
+总占用: 7/8 通道，1 个备用
+结果: ✓ 无问题，每个事件都有声音反馈
+```
+
+**场景 D：管线批量操作（Zone 级联）**
+```
+触发: 用户删除 1 个 Zone → 级联触发 zoneDestroy + agentDeselect × 3 + disconnect × 3
+事件: 1 个 zoneDestroy + 3 个 agentDeselect + 3 个 disconnect
+策略:
+  zoneDestroy: stack 立即播放
+  agentDeselect: debounce 80ms → 只播 1 次
+  disconnect: arpeggio 合并 → 播 1 次三连降调
+通道: zoneDestroy 占通道 4，disconnect 琶音占通道 5
+gentDeselect 和 zoneDestroy 是不同 SoundId → 叠加播放
+实际同时发声: 3 个（zoneDestroy + agentDeselect + disconnect 琶音）
+结果: ✓ 无问题
+```
+
+**结论**：以 Stratix 10 Agent / 500 Zone 的规模，8 通道绰绰有余。
+真正的并发压力来自同种事件的高频触发（arpeggio 已解决），
+不是来自不同事件的叠加（stack 天然支持）。
+
+### 5.6 SFC 8 通道约束
 
 SFC 硬件只有 8 个音频通道，这是风格约束。Web Audio API 没有这个限制，但我们主动遵守以保持像素风音色。
 
@@ -385,7 +451,7 @@ SFC 硬件只有 8 个音频通道，这是风格约束。Web Audio API 没有�
 - SFX 的时长都在 30-300ms，等待极短
 - 最坏情况：300ms 延迟，RTS 中可接受
 
-### 5.6 不同类型事件互不挤占
+### 5.7 不同类型事件互不挤占
 
 **关键设计：不同 Bus 的通道独立，互不挤占。**
 
