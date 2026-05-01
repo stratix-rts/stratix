@@ -496,16 +496,16 @@ export class CommandPanelV2 extends EnhancedUIComponent {
 
     if (isMultiSelect) {
       buttons = [
-        { key: 'chat', label: '群聊', icon: '💬', enabled: !this.data.isLoading },
-        { key: 'task', label: '任务', icon: '📋', enabled: !this.data.isLoading },
-        { key: 'stop', label: '停止', icon: '⏹️', enabled: !this.data.isLoading },
+        { key: 'chat', label: '群聊', icon: 'chat', enabled: !this.data.isLoading },
+        { key: 'task', label: '任务', icon: 'task', enabled: !this.data.isLoading },
+        { key: 'stop', label: '停止', icon: 'stop', enabled: !this.data.isLoading },
       ];
     } else {
       buttons = [
-        { key: 'chat', label: '聊天', icon: '💬', enabled: !this.data.isLoading && this.panelState !== 'zone' },
-        { key: 'config', label: '配置', icon: '⚙️', enabled: !this.data.isLoading && this.panelState === 'single_agent' },
-        { key: 'task', label: '任务', icon: '📋', enabled: !this.data.isLoading },
-        { key: 'stop', label: '停止', icon: '⏹️', enabled: !this.data.isLoading },
+        { key: 'chat', label: '聊天', icon: 'chat', enabled: !this.data.isLoading && this.panelState !== 'zone' },
+        { key: 'config', label: '配置', icon: 'config', enabled: !this.data.isLoading && this.panelState === 'single_agent' },
+        { key: 'task', label: '任务', icon: 'task', enabled: !this.data.isLoading },
+        { key: 'stop', label: '停止', icon: 'stop', enabled: !this.data.isLoading },
       ];
     }
 
@@ -548,17 +548,19 @@ export class CommandPanelV2 extends EnhancedUIComponent {
         const px = 8 + Math.random() * (contentWidth - 16);
         const py = 8 + Math.random() * (contentHeight - 16);
         const size = 6 + Math.random() * 8;
-        const star = this.scene.add.text(px, py, Math.random() > 0.5 ? '✦' : '•', {
-          fontSize: `${size}px`,
-          color: this.accentColor.get(),
-        });
-        star.setOrigin(0.5);
+        const particleGraphics = this.scene.add.graphics();
+        const particleColor = this.hexToNumber(this.accentColor.get());
+        if (Math.random() > 0.5) {
+          this.drawStarIcon(particleGraphics, px, py, size * 0.4, particleColor);
+        } else {
+          this.drawDotIcon(particleGraphics, px, py, size * 0.2, particleColor);
+        }
         const baseAlpha = 0.2 + Math.random() * 0.4;
-        star.setAlpha(baseAlpha);
-        this.contentContainer?.add(star);
+        particleGraphics.setAlpha(baseAlpha);
+        this.contentContainer?.add(particleGraphics);
 
         const tween = this.scene.tweens.add({
-          targets: star,
+          targets: particleGraphics,
           alpha: { from: baseAlpha, to: 0.05 },
           y: py - 8 - Math.random() * 12,
           duration: 1800 + Math.random() * 2200,
@@ -571,10 +573,9 @@ export class CommandPanelV2 extends EnhancedUIComponent {
       }
     }
 
-    const emptyIcon = this.scene.add.text(contentWidth / 2, contentHeight / 2 - 20, '📋', {
-      fontSize: '32px',
-    });
-    emptyIcon.setOrigin(0.5);
+    const emptyIcon = this.scene.add.graphics();
+    const emptyIconColor = this.hexToNumber(this.textMutedColor.get());
+    this.drawTaskIcon(emptyIcon, contentWidth / 2, contentHeight / 2 - 20, 16, emptyIconColor);
     this.contentContainer?.add(emptyIcon);
 
     const emptyText = this.createText(contentWidth / 2, contentHeight / 2 + 20, '未选中任何对象', {
@@ -597,8 +598,9 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     avatarBg.strokeRoundedRect(0, yOffset, 60, 60, 8);
     this.contentContainer?.add(avatarBg);
 
-    const typeIcon = this.scene.add.text(30, yOffset + 30, '👤', { fontSize: '28px' });
-    typeIcon.setOrigin(0.5);
+    const typeIcon = this.scene.add.graphics();
+    const iconColor = this.hexToNumber(this.textPrimaryColor.get());
+    this.drawPersonIcon(typeIcon, 30, yOffset + 30, 14, iconColor);
     this.contentContainer?.add(typeIcon);
 
     // Name
@@ -771,8 +773,9 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     zoneIconBg.strokeRoundedRect(0, yOffset, 60, 60, 8);
     this.contentContainer?.add(zoneIconBg);
 
-    const zoneIcon = this.scene.add.text(30, yOffset + 30, '📦', { fontSize: '28px' });
-    zoneIcon.setOrigin(0.5);
+    const zoneIcon = this.scene.add.graphics();
+    const iconColor = this.hexToNumber(this.textPrimaryColor.get());
+    this.drawBoxIcon(zoneIcon, 30, yOffset + 30, 14, iconColor);
     this.contentContainer?.add(zoneIcon);
 
     const nameText = this.createText(72, yOffset + 8, zone.name, {
@@ -856,8 +859,9 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     bg.strokeRoundedRect(0, 0, size, size, 6);
     container.add(bg);
 
-    const icon = this.scene.add.text(size / 2, size / 2, '👤', { fontSize: `${size * 0.5}px` });
-    icon.setOrigin(0.5);
+    const icon = this.scene.add.graphics();
+    const iconColor = this.hexToNumber(this.textPrimaryColor.get());
+    this.drawPersonIcon(icon, size / 2, size / 2, size * 0.25, iconColor);
     container.add(icon);
 
     const statusColor = this.getStatusColor(agent.status);
@@ -1109,9 +1113,23 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     hitArea.setInteractive({ useHandCursor: btn.enabled });
     container.add(hitArea);
 
-    const iconText = this.scene.add.text(8, height / 2, btn.icon, { fontSize: '12px' });
-    iconText.setOrigin(0, 0.5);
-    container.add(iconText);
+    const iconGraphics = this.scene.add.graphics();
+    const iconColor = this.hexToNumber(this.textPrimaryColor.get());
+    switch (btn.icon) {
+      case 'chat':
+        this.drawChatIcon(iconGraphics, 14, height / 2, 5, iconColor);
+        break;
+      case 'config':
+        this.drawGearIcon(iconGraphics, 14, height / 2, 5, iconColor);
+        break;
+      case 'task':
+        this.drawTaskIcon(iconGraphics, 14, height / 2, 5, iconColor);
+        break;
+      case 'stop':
+        this.drawStopIcon(iconGraphics, 14, height / 2, 5, iconColor);
+        break;
+    }
+    container.add(iconGraphics);
 
     const labelText = this.createText(24, height / 2, btn.label, {
       fontSize: '11px',
@@ -1244,6 +1262,173 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     }
 
     this.renderContent();
+  }
+
+  // --------------------------------------------------------------------------
+  // Icon Drawing
+  // --------------------------------------------------------------------------
+
+  private drawChatIcon(graphics: Phaser.GameObjects.Graphics, cx: number, cy: number, size: number, color: number): void {
+    const w = size * 1.6;
+    const h = size * 1.2;
+    const r = size * 0.3;
+
+    graphics.fillStyle(color, 1);
+    graphics.fillRoundedRect(cx - w / 2, cy - h / 2, w, h, r);
+
+    graphics.beginPath();
+    graphics.moveTo(cx - w / 2 + r, cy + h / 2);
+    graphics.lineTo(cx - w / 2 - size * 0.1, cy + h / 2 + size * 0.35);
+    graphics.lineTo(cx - w / 2 + r + size * 0.25, cy + h / 2);
+    graphics.closePath();
+    graphics.fillPath();
+
+    graphics.fillStyle(color, 0.2);
+    graphics.fillRoundedRect(cx - w / 2 - 2, cy - h / 2 - 2, w + 4, h + 4, r + 2);
+    graphics.beginPath();
+    graphics.moveTo(cx - w / 2 + r - 1, cy + h / 2 + 1);
+    graphics.lineTo(cx - w / 2 - size * 0.1 - 2, cy + h / 2 + size * 0.35 + 2);
+    graphics.lineTo(cx - w / 2 + r + size * 0.25 + 2, cy + h / 2 + 1);
+    graphics.closePath();
+    graphics.fillPath();
+  }
+
+  private drawGearIcon(graphics: Phaser.GameObjects.Graphics, cx: number, cy: number, size: number, color: number): void {
+    const teeth = 6;
+    const outerR = size;
+    const innerR = size * 0.55;
+
+    graphics.fillStyle(color, 1);
+    graphics.beginPath();
+    for (let i = 0; i < teeth * 2; i++) {
+      const angle = (Math.PI / teeth) * i - Math.PI / 2;
+      const r = i % 2 === 0 ? outerR : innerR;
+      const px = cx + Math.cos(angle) * r;
+      const py = cy + Math.sin(angle) * r;
+      if (i === 0) graphics.moveTo(px, py);
+      else graphics.lineTo(px, py);
+    }
+    graphics.closePath();
+    graphics.fillPath();
+
+    graphics.fillStyle(color, 0.2);
+    graphics.beginPath();
+    for (let i = 0; i < teeth * 2; i++) {
+      const angle = (Math.PI / teeth) * i - Math.PI / 2;
+      const r = i % 2 === 0 ? outerR + 3 : innerR + 2;
+      const px = cx + Math.cos(angle) * r;
+      const py = cy + Math.sin(angle) * r;
+      if (i === 0) graphics.moveTo(px, py);
+      else graphics.lineTo(px, py);
+    }
+    graphics.closePath();
+    graphics.fillPath();
+  }
+
+  private drawTaskIcon(graphics: Phaser.GameObjects.Graphics, cx: number, cy: number, size: number, color: number): void {
+    const w = size * 1.2;
+    const h = size * 1.5;
+    const r = size * 0.15;
+
+    graphics.fillStyle(color, 1);
+    graphics.fillRoundedRect(cx - w / 2, cy - h / 2 + size * 0.15, w, h - size * 0.15, r);
+    graphics.fillRect(cx - size * 0.3, cy - h / 2, size * 0.6, size * 0.3);
+
+    graphics.fillStyle(color, 0.2);
+    graphics.fillRoundedRect(cx - w / 2 - 2, cy - h / 2 + size * 0.15 - 2, w + 4, h - size * 0.15 + 4, r + 2);
+    graphics.fillRect(cx - size * 0.3 - 2, cy - h / 2 - 2, size * 0.6 + 4, size * 0.3 + 2);
+  }
+
+  private drawStopIcon(graphics: Phaser.GameObjects.Graphics, cx: number, cy: number, size: number, color: number): void {
+    const s = size * 0.8;
+    graphics.fillStyle(color, 1);
+    graphics.fillRoundedRect(cx - s / 2, cy - s / 2, s, s, size * 0.1);
+
+    graphics.fillStyle(color, 0.2);
+    graphics.fillRoundedRect(cx - s / 2 - 2, cy - s / 2 - 2, s + 4, s + 4, size * 0.1 + 2);
+  }
+
+  private drawPersonIcon(graphics: Phaser.GameObjects.Graphics, cx: number, cy: number, size: number, color: number): void {
+    graphics.fillStyle(color, 1);
+    graphics.fillCircle(cx, cy - size * 0.25, size * 0.35);
+
+    graphics.beginPath();
+    graphics.moveTo(cx - size * 0.7, cy + size * 0.6);
+    graphics.lineTo(cx + size * 0.7, cy + size * 0.6);
+    graphics.lineTo(cx + size * 0.5, cy + size * 0.1);
+    graphics.lineTo(cx - size * 0.5, cy + size * 0.1);
+    graphics.closePath();
+    graphics.fillPath();
+
+    graphics.fillStyle(color, 0.2);
+    graphics.fillCircle(cx, cy - size * 0.25, size * 0.35 + 3);
+
+    graphics.beginPath();
+    graphics.moveTo(cx - size * 0.7 - 2, cy + size * 0.6 + 2);
+    graphics.lineTo(cx + size * 0.7 + 2, cy + size * 0.6 + 2);
+    graphics.lineTo(cx + size * 0.5 + 2, cy + size * 0.1 - 2);
+    graphics.lineTo(cx - size * 0.5 - 2, cy + size * 0.1 - 2);
+    graphics.closePath();
+    graphics.fillPath();
+  }
+
+  private drawBoxIcon(graphics: Phaser.GameObjects.Graphics, cx: number, cy: number, size: number, color: number): void {
+    const s = size;
+
+    graphics.fillStyle(color, 1);
+    graphics.fillRoundedRect(cx - s * 0.6, cy - s * 0.3, s * 1.2, s * 1.0, s * 0.1);
+
+    graphics.lineStyle(1, color, 0.6);
+    graphics.lineBetween(cx - s * 0.5, cy - s * 0.1, cx + s * 0.5, cy - s * 0.1);
+
+    graphics.fillStyle(color, 0.2);
+    graphics.fillRoundedRect(cx - s * 0.6 - 2, cy - s * 0.3 - 2, s * 1.2 + 4, s * 1.0 + 4, s * 0.1 + 2);
+  }
+
+  private drawStarIcon(graphics: Phaser.GameObjects.Graphics, cx: number, cy: number, size: number, color: number): void {
+    graphics.fillStyle(color, 1);
+
+    graphics.beginPath();
+    graphics.moveTo(cx, cy - size);
+    graphics.lineTo(cx + size * 0.35, cy);
+    graphics.lineTo(cx, cy + size);
+    graphics.lineTo(cx - size * 0.35, cy);
+    graphics.closePath();
+    graphics.fillPath();
+
+    graphics.beginPath();
+    graphics.moveTo(cx + size * 0.6, cy);
+    graphics.lineTo(cx, cy + size * 0.4);
+    graphics.lineTo(cx - size * 0.6, cy);
+    graphics.lineTo(cx, cy - size * 0.4);
+    graphics.closePath();
+    graphics.fillPath();
+
+    graphics.fillStyle(color, 0.2);
+
+    graphics.beginPath();
+    graphics.moveTo(cx, cy - size - 2);
+    graphics.lineTo(cx + size * 0.35 + 2, cy);
+    graphics.lineTo(cx, cy + size + 2);
+    graphics.lineTo(cx - size * 0.35 - 2, cy);
+    graphics.closePath();
+    graphics.fillPath();
+
+    graphics.beginPath();
+    graphics.moveTo(cx + size * 0.6 + 2, cy);
+    graphics.lineTo(cx, cy + size * 0.4 + 2);
+    graphics.lineTo(cx - size * 0.6 - 2, cy);
+    graphics.lineTo(cx, cy - size * 0.4 - 2);
+    graphics.closePath();
+    graphics.fillPath();
+  }
+
+  private drawDotIcon(graphics: Phaser.GameObjects.Graphics, cx: number, cy: number, size: number, color: number): void {
+    graphics.fillStyle(color, 1);
+    graphics.fillCircle(cx, cy, size);
+
+    graphics.fillStyle(color, 0.2);
+    graphics.fillCircle(cx, cy, size + 2);
   }
 
   // --------------------------------------------------------------------------
