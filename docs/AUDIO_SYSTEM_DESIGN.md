@@ -283,6 +283,10 @@ interface AggregationConfig {
   queueInterval?: number;
   /** 防抖冷却 (ms) (debounce 策略) */
   cooldown?: number;
+  /** 队列最大深度，超出的丢弃最新（queue 策略） */
+  maxQueueDepth?: number;
+  /** 队列最大延迟 (ms)，超过此时间的待播事件自动丢弃 */
+  maxQueueLatency?: number;
 }
 ```
 
@@ -296,23 +300,72 @@ interface AggregationConfig {
 | game.taskFail | High | arpeggio | 200 | C4→A3→F3 递降 |
 | game.connect | High | arpeggio | 200 | 三连升调 |
 | game.disconnect | High | arpeggio | 200 | 三连降调 |
-| game.agentSelect | Normal | queue | 50 | 排队 |
+| game.agentSelect | Normal | queue | 50 | 排队，maxDepth=3 |
 | game.agentDeselect | Normal | debounce | 80 | 快速连点合并 |
-| game.taskAssign | Normal | queue | 50 | 排队 |
-| game.zoneCreate | Normal | queue | 50 | 排队 |
-| game.zoneDestroy | Normal | queue | 50 | 排队 |
-| ui.click | Normal | queue | 30 | 快速排队 |
+| game.taskAssign | Normal | queue | 50 | 排队，maxDepth=3 |
+| game.zoneCreate | Normal | queue | 50 | 排队，maxDepth=3 |
+| game.zoneDestroy | Normal | queue | 50 | 排队，maxDepth=3 |
+| ui.click | Normal | queue | 30 | 快速排队，maxDepth=5，maxLatency=200ms |
 | ui.tabSwitch | Normal | debounce | 80 | 防重复 |
-| ui.panelOpen | Normal | queue | 50 | 排队 |
-| ui.panelClose | Normal | queue | 50 | 排队 |
-| ui.toast | Normal | queue | 100 | 多条排队 |
+| ui.panelOpen | Normal | queue | 50 | 排队，maxDepth=2 |
+| ui.panelClose | Normal | queue | 50 | 排队，maxDepth=2 |
+| ui.toast | Normal | queue | 100 | 多条排队，maxDepth=3 |
 | ui.toggle | Normal | debounce | 80 | 防重复 |
 | ui.hover | Low | debounce | 150 | 防抖 |
 | ui.dragStart | Low | debounce | 100 | 防抖 |
 | bgm.* | — | — | — | 不走聚合，由 BGM 系统管理 |
 | ambient.* | — | — | — | 不走聚合，持续播放 |
 
-### 5.4 SFC 8 通道约束
+### 5.4 队列防护：防队头阻塞
+
+队列的天然问题是队头阻塞——前面没播完，后面全等着。RTS 场景下声音跟操作脱节 = 体验灾难。
+
+**防护规则**：
+
+```
+1. 深度限制（maxQueueDepth）
+   - 每个 queue 策略的声音有最大队列深度（2-5）
+   - 队列满时，新事件直接丢弃（不是插队，不是踢旧）
+   - 因为此时声音已经滞后于操作，多播一个反而更乱
+
+2. 延迟窗口（maxQueueLatency）
+   - 每个入队事件记录入队时间
+   - 当轮到它播放时，如果已经等了超过 maxQueueLatency → 丢弃
+   - ui.click: maxLatency=200ms（超过 200ms 的点击声没意义）
+   - game.taskAssign: maxLatency=500ms（游戏事件稍宽容）
+
+3. 没有“超长声音”问题
+   - 所有 SFX 由芯片合成器生成，时长硬编码在 30-300ms
+   - BGM/Ambient 不走队列，由独立系统管理
+   - 不存在外部音频文件，不存在无法预估时长的声音
+```
+
+**极端场景推演**：
+
+```
+场景：用户疯狂连点按钮，1 秒内 20 次 click
+
+无防护：
+  队列积压 20 个 → 最后一个等 1 秒才播 → 操作和声音完全脱节
+
+有防护（maxDepth=5, maxLatency=200ms）：
+  T+0ms:   click-1 播放
+  T+30ms:  click-2 入队
+  T+60ms:  click-3 入队
+  T+90ms:  click-4 入队
+  T+120ms: click-5 入队
+  T+150ms: click-6 入队 → 队列满，丢弃
+  T+180ms: click-7 → 丢弃
+  ...
+  T+110ms: click-1 播完 → click-2 播放
+  T+140ms: click-2 播完 → click-3 播放
+  T+170ms: click-3 播完 → click-4 播放
+  T+200ms: click-4 播完 → click-5 此时已等了 80ms < 200ms → 播放
+  T+230ms: click-5 播完 → 队列空
+  结果：播了 5 次，用户感知“连续快速点击反馈”，合理
+```
+
+### 5.5 SFC 8 通道约束
 
 SFC 硬件只有 8 个音频通道，这是风格约束。Web Audio API 没有这个限制，但我们主动遵守以保持像素风音色。
 
@@ -332,7 +385,7 @@ SFC 硬件只有 8 个音频通道，这是风格约束。Web Audio API 没有�
 - SFX 的时长都在 30-300ms，等待极短
 - 最坏情况：300ms 延迟，RTS 中可接受
 
-### 5.5 不同类型事件互不挤占
+### 5.6 不同类型事件互不挤占
 
 **关键设计：不同 Bus 的通道独立，互不挤占。**
 
