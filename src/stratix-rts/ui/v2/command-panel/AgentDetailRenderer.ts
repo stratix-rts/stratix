@@ -26,6 +26,23 @@ export class AgentDetailRenderer implements IStateRenderer {
     const { scene } = this.context;
     let yOffset = 0;
 
+    // Selected agent breathing glow effect
+    const avatarGlow = scene.add.graphics();
+    avatarGlow.fillStyle(this.context.hexToNumber(this.context.getAccentColor()), 0.15);
+    avatarGlow.fillRoundedRect(-4, yOffset - 4, 68, 68, 10);
+    container.add(avatarGlow);
+
+    if (!isReducedMotion()) {
+      tweens.push(scene.tweens.add({
+        targets: avatarGlow,
+        alpha: 0.35,
+        duration: 1000,
+        ease: 'Sine.easeInOut',
+        yoyo: true,
+        repeat: -1,
+      }));
+    }
+
     const avatarBg = scene.add.graphics();
     avatarBg.fillStyle(0x2a2a4e, 1);
     avatarBg.fillRoundedRect(0, yOffset, 60, 60, 8);

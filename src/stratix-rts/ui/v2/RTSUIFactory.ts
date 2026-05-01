@@ -31,6 +31,7 @@ export interface RTSUIConfig {
   getAgentSprites: () => Map<string, any>;
   getTaskZones: () => Map<string, any>;
   getSelectedZoneIds: () => Set<string>;
+  getSelectedAgentIds?: () => Set<string>;
   getSelectedAgent: () => any | null;
   getSelectedZone: () => any | null;
   onSkillSelect: (skill: Skill) => void;
@@ -103,7 +104,8 @@ export class RTSUIFactory {
       this.config.camera,
       this.config.getAgentSprites,
       this.config.getTaskZones,
-      this.config.getSelectedZoneIds
+      this.config.getSelectedZoneIds,
+      this.config.getSelectedAgentIds
     );
     minimap.create();
     return minimap;

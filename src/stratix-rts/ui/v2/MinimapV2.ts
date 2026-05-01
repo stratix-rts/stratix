@@ -22,6 +22,13 @@ interface MinimapConfig {
   padding: number;
 }
 
+interface SelectedAgentPulse {
+  agentId: string;
+  minimapX: number;
+  minimapY: number;
+  startTime: number;
+}
+
 const DEFAULT_CONFIG: MinimapConfig = {
   width: HUD_LAYOUT.minimap.width,
   height: HUD_LAYOUT.minimap.height,
@@ -60,6 +67,8 @@ export class MinimapV2 extends EnhancedUIComponent {
   private hoverCoordText: Phaser.GameObjects.Text | null = null;
   private viewportDashOffset: number = 0;
   private viewportDashTween: Phaser.Tweens.Tween | null = null;
+  private getSelectedAgentIds: (() => Set<string>) | null = null;
+  private selectedAgentPulses: SelectedAgentPulse[] = [];
 
   private backgroundColor: ReactiveToken<string>;
   private borderColor: ReactiveToken<string>;
@@ -80,6 +89,7 @@ export class MinimapV2 extends EnhancedUIComponent {
     getAgentSprites: () => Map<string, unknown>,
     getTaskZones: () => Map<string, unknown>,
     getSelectedZoneIds: () => Set<string>,
+    getSelectedAgentIds?: () => Set<string>,
     config?: Partial<MinimapConfig>
   ) {
     super(scene, {
@@ -95,6 +105,7 @@ export class MinimapV2 extends EnhancedUIComponent {
     this.getAgentSprites = getAgentSprites;
     this.getTaskZones = getTaskZones;
     this.getSelectedZoneIds = getSelectedZoneIds;
+    this.getSelectedAgentIds = getSelectedAgentIds ?? null;
 
     this.minimapScaleX = this.minimapConfig.width / MAP_WIDTH;
     this.minimapScaleY = this.minimapConfig.height / MAP_HEIGHT;
@@ -317,6 +328,7 @@ export class MinimapV2 extends EnhancedUIComponent {
     this.pingGraphics?.clear();
     this.drawZones();
     this.drawAgents();
+    this.drawSelectedAgentPulses();
     this.drawPings();
     this.drawClickPings();
     this.drawViewport();
@@ -380,9 +392,10 @@ export class MinimapV2 extends EnhancedUIComponent {
 
   private drawAgents(): void {
     const agents = this.getAgentSprites();
+    const selectedAgentIds = this.getSelectedAgentIds?.() ?? new Set<string>();
     const now = this.scene.time.now;
 
-    agents.forEach((sprite: unknown) => {
+    agents.forEach((sprite: unknown, agentId: string) => {
       const s = sprite as {
         x: number;
         y: number;
@@ -425,6 +438,45 @@ export class MinimapV2 extends EnhancedUIComponent {
       // Core dot
       this.mapGraphics?.fillStyle(color, alpha);
       this.mapGraphics?.fillCircle(minimapX, minimapY, 2);
+
+      // Track selected agents for pulse effect
+      if (selectedAgentIds.has(agentId)) {
+        this.selectedAgentPulses.push({
+          agentId,
+          minimapX,
+          minimapY,
+          startTime: now,
+        });
+      }
+    });
+  }
+
+  private drawSelectedAgentPulses(): void {
+    if (!this.getSelectedAgentIds || isReducedMotion()) return;
+
+    const now = this.scene.time.now;
+    const pulseDuration = 1500;
+    const accentColor = this.hexToNumber(this.accentColor.get());
+
+    // Filter to only keep recent pulses and draw them
+    this.selectedAgentPulses = this.selectedAgentPulses.filter(
+      (p) => now - p.startTime < pulseDuration
+    );
+
+    this.selectedAgentPulses.forEach((pulse) => {
+      const elapsed = now - pulse.startTime;
+      const progress = elapsed / pulseDuration;
+      const radius = 6 + progress * 8;
+      const alpha = 1 - progress;
+
+      if (alpha > 0) {
+        // Outer pulse ring
+        this.pingGraphics?.lineStyle(1.5, accentColor, alpha * 0.5);
+        this.pingGraphics?.strokeCircle(pulse.minimapX, pulse.minimapY, radius);
+        // Inner glow
+        this.pingGraphics?.lineStyle(1, accentColor, alpha * 0.3);
+        this.pingGraphics?.strokeCircle(pulse.minimapX, pulse.minimapY, radius * 0.6);
+      }
     });
   }
 
