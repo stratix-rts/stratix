@@ -6,6 +6,15 @@
 import Phaser from 'phaser';
 
 import { BuildingConfig, BUILDING_COLORS, BUILDING_NAMES, BuildingType } from './types/BuildingType';
+
+/** 建筑主题霓虹色（赛博朋克×奇幻） */
+const BUILDING_THEME_COLORS: Record<BuildingType, number> = {
+  [BuildingType.DataCenter]: 0x00f5d4, // 青色
+  [BuildingType.Workshop]: 0xff6b35,   // 琥珀
+  [BuildingType.Studio]: 0xb24bf3,     // 紫色
+  [BuildingType.Library]: 0xffd700,    // 金色
+  [BuildingType.Command]: 0xff2e63,    // 红色
+};
 import { BuildingState } from './types/BuildingState';
 import { Room, ROOM_SIZE, RoomConfig } from './Room';
 import {
@@ -47,7 +56,12 @@ export class Building extends Phaser.GameObjects.Container {
   private isInteriorVisible = false;
   private roofTween: Phaser.Tweens.Tween | null = null;
   private growTween: Phaser.Tweens.Tween | null = null;
+  private litTween: Phaser.Tweens.Tween | null = null;
   private isLit = false;
+  private themeColor: number;
+  private selectionGlow: Phaser.GameObjects.Graphics;
+  private litGlowGraphics: Phaser.GameObjects.Graphics;
+  private growParticleGfx: Phaser.GameObjects.Graphics | null = null;
 
   constructor(scene: Phaser.Scene, config: BuildingConfig) {
     super(scene, config.x, config.y);
@@ -55,6 +69,7 @@ export class Building extends Phaser.GameObjects.Container {
     this.buildingWidth = config.width;
     this.buildingHeight = config.height;
     this.textureSeed = `${config.buildingType}-${Math.round(config.x)}-${Math.round(config.y)}`;
+    this.themeColor = BUILDING_THEME_COLORS[config.buildingType];
 
     // 注册建筑纹理
     registerBuildingTextures(scene, this.buildingType, this.textureSeed, TEXTURE_SIZE);
@@ -89,6 +104,8 @@ export class Building extends Phaser.GameObjects.Container {
     this.shellGraphics = scene.add.graphics();
     this.detailGraphics = scene.add.graphics();
     this.hoverGlow = scene.add.graphics();
+    this.selectionGlow = scene.add.graphics();
+    this.litGlowGraphics = scene.add.graphics();
 
     // 标签
     this.nameLabel = scene.add.text(0, -this.buildingHeight / 2 - 20, '', {
@@ -119,6 +136,8 @@ export class Building extends Phaser.GameObjects.Container {
       this.statusLabel,
       this.progressBar,
       this.hoverGlow,
+      this.selectionGlow,
+      this.litGlowGraphics,
     ]);
 
     this.setDepth(1);
@@ -144,13 +163,24 @@ export class Building extends Phaser.GameObjects.Container {
   /** 悬停进入 */
   private onPointerOver(): void {
     this.hoverGlow.clear();
-    this.hoverGlow.lineStyle(2, 0xfbbf24, 0.6);
-    this.hoverGlow.strokeRect(
-      -this.buildingWidth / 2 - 2,
-      -this.buildingHeight / 2 - 2,
-      this.buildingWidth + 4,
-      this.buildingHeight + 4
-    );
+    const color = this.themeColor;
+    const w = this.buildingWidth;
+    const h = this.buildingHeight;
+    const x = -w / 2;
+    const y = -h / 2;
+
+    // 外层光晕
+    this.hoverGlow.fillStyle(color, 0.08);
+    this.hoverGlow.fillRect(x - 12, y - 12, w + 24, h + 24);
+
+    // 中层光晕
+    this.hoverGlow.fillStyle(color, 0.14);
+    this.hoverGlow.fillRect(x - 6, y - 6, w + 12, h + 12);
+
+    // 内层边框
+    this.hoverGlow.lineStyle(2, color, 0.55);
+    this.hoverGlow.strokeRect(x - 2, y - 2, w + 4, h + 4);
+
     this.setAlpha(0.95);
   }
 
@@ -168,11 +198,14 @@ export class Building extends Phaser.GameObjects.Container {
       this.scene.tweens.remove(this.roofTween);
       this.roofTween = null;
     }
-    this.buildingShell.setAlpha(0);
     this.roofTween = this.scene.tweens.add({
       targets: this.buildingShell,
       alpha: 0,
-      duration: 200,
+      duration: 300,
+      ease: 'Power2',
+      onComplete: () => {
+        this.drawSelectionGlow();
+      },
     });
   }
 
@@ -184,12 +217,33 @@ export class Building extends Phaser.GameObjects.Container {
       this.scene.tweens.remove(this.roofTween);
       this.roofTween = null;
     }
-    this.buildingShell.setAlpha(1);
+    this.selectionGlow.clear();
     this.roofTween = this.scene.tweens.add({
       targets: this.buildingShell,
       alpha: 1,
-      duration: 200,
+      duration: 300,
+      ease: 'Power2',
     });
+  }
+
+  /** 绘制选中发光边框 */
+  private drawSelectionGlow(): void {
+    if (!this.isInteriorVisible) return;
+    const color = this.themeColor;
+    const w = this.buildingWidth;
+    const h = this.buildingHeight;
+    const x = -w / 2;
+    const y = -h / 2;
+
+    this.selectionGlow.clear();
+
+    // 外发光
+    this.selectionGlow.fillStyle(color, 0.1);
+    this.selectionGlow.fillRect(x - 8, y - 8, w + 16, h + 16);
+
+    // 主题色边框
+    this.selectionGlow.lineStyle(2, color, 0.75);
+    this.selectionGlow.strokeRect(x - 2, y - 2, w + 4, h + 4);
   }
 
   /** 生长入场动画 */
@@ -205,6 +259,62 @@ export class Building extends Phaser.GameObjects.Container {
       scaleY: 1,
       duration: 400,
       ease: 'Back.easeOut',
+    });
+
+    // 底部向上扩散粒子（最多 8 个）
+    this.spawnGrowParticles();
+  }
+
+  /** 生长粒子扩散效果 */
+  private spawnGrowParticles(): void {
+    if (this.growParticleGfx) {
+      this.growParticleGfx.destroy();
+      this.growParticleGfx = null;
+    }
+
+    const maxParticles = 8;
+    const particles = Array.from({ length: maxParticles }, () => {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 0.8 + Math.random() * 1.8;
+      return {
+        x: 0,
+        y: this.buildingHeight / 2,
+        vx: Math.cos(angle) * speed,
+        vy: -Math.sin(Math.abs(angle - Math.PI / 2)) * speed - 0.5,
+        radius: 1.5 + Math.random() * 2,
+      };
+    });
+
+    this.growParticleGfx = this.scene.add.graphics();
+    this.add(this.growParticleGfx);
+    this.growParticleGfx.setDepth(10);
+
+    const data = { progress: 0 };
+    this.scene.tweens.add({
+      targets: data,
+      progress: 1,
+      duration: 700,
+      ease: 'Power2',
+      onUpdate: () => {
+        if (!this.growParticleGfx) return;
+        this.growParticleGfx.clear();
+        const prog = data.progress;
+
+        for (const p of particles) {
+          const px = p.x + p.vx * prog * 60;
+          const py = p.y + p.vy * prog * 60;
+          const alpha = (1 - prog) * 0.75;
+          const r = p.radius * (1 + prog * 0.5);
+          this.growParticleGfx.fillStyle(this.themeColor, alpha);
+          this.growParticleGfx.fillCircle(px, py, Math.max(r, 0.5));
+        }
+      },
+      onComplete: () => {
+        if (this.growParticleGfx) {
+          this.growParticleGfx.destroy();
+          this.growParticleGfx = null;
+        }
+      },
     });
   }
 
@@ -252,6 +362,7 @@ export class Building extends Phaser.GameObjects.Container {
     const layout = this.calculateGridLayout(width, height, Math.max(agentCount + 2, 4));
     for (const roomConfig of layout.rooms) {
       const room = new Room(this.scene, roomConfig);
+      room.setThemeColor(this.themeColor);
       this.rooms.push(room);
       this.roomsContainer.add(room);
     }
@@ -504,8 +615,44 @@ export class Building extends Phaser.GameObjects.Container {
   public setLit(lit: boolean): void {
     if (this.isLit === lit) return;
     this.isLit = lit;
+    this.playLitTransition(lit);
     this.renderFoundation();
     this.renderShell();
+  }
+
+  /** 亮灯/暗灯光效过渡 */
+  private playLitTransition(lit: boolean): void {
+    if (this.litTween) {
+      this.scene.tweens.remove(this.litTween);
+      this.litTween = null;
+    }
+
+    this.litGlowGraphics.clear();
+    this.litGlowGraphics.setVisible(true);
+
+    const maxRadius = Math.max(this.buildingWidth, this.buildingHeight) * 0.6;
+    const color = lit ? this.themeColor : 0x666666;
+
+    const data = { radius: 2, alpha: 0.5 };
+    this.litTween = this.scene.tweens.add({
+      targets: data,
+      radius: maxRadius,
+      alpha: 0,
+      duration: 450,
+      ease: 'Power2',
+      onUpdate: () => {
+        this.litGlowGraphics.clear();
+        this.litGlowGraphics.fillStyle(color, data.alpha * 0.2);
+        this.litGlowGraphics.fillCircle(0, 0, data.radius);
+        this.litGlowGraphics.lineStyle(2, color, data.alpha * 0.6);
+        this.litGlowGraphics.strokeCircle(0, 0, data.radius);
+      },
+      onComplete: () => {
+        this.litGlowGraphics.clear();
+        this.litGlowGraphics.setVisible(false);
+        this.litTween = null;
+      },
+    });
   }
 
   /** 更新建筑状态 */
@@ -554,6 +701,14 @@ export class Building extends Phaser.GameObjects.Container {
       this.scene.tweens.remove(this.growTween);
       this.growTween = null;
     }
+    if (this.litTween) {
+      this.scene.tweens.remove(this.litTween);
+      this.litTween = null;
+    }
+    if (this.growParticleGfx) {
+      this.growParticleGfx.destroy();
+      this.growParticleGfx = null;
+    }
     // roomsContainer.destroy() 会销毁所有 Room 子对象
     // buildingShell.destroy() 会销毁 wallTileSprite、roofTileSprite、detailGraphics、shellGraphics
     this.rooms = [];
@@ -561,6 +716,8 @@ export class Building extends Phaser.GameObjects.Container {
     this.buildingShell?.destroy();
     this.foundationTileSprite?.destroy();
     this.hoverGlow?.destroy();
+    this.selectionGlow?.destroy();
+    this.litGlowGraphics?.destroy();
     this.nameLabel?.destroy();
     this.statusLabel?.destroy();
     this.progressBar?.destroy();

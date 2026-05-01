@@ -66,6 +66,11 @@ export class Room extends Phaser.GameObjects.Container {
     this.render();
   }
 
+  /** 设置主题色（来自建筑） */
+  public setThemeColor(color: number): void {
+    this.animator.setThemeColor(color);
+  }
+
   /** 设置 Agent 工作状态 */
   public setAgentState(state: AgentWorkState): void {
     this.animator.setState(state);

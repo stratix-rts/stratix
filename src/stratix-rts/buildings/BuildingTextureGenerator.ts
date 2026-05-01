@@ -253,12 +253,22 @@ function drawDataCenterFoundation(
   ctx.fillRect(0, size - 4, size, 4);
   ctx.globalAlpha = 1;
 
-  // 底边微弱青色光带（模拟地下数据线）
-  const glowAlpha = lit ? 0.35 : 0.1;
+  // 底边青色光带（模拟地下数据线）— 加强 2-3 倍
+  const glowAlpha = lit ? 0.8 : 0.25;
   ctx.fillStyle = '#00f5d4';
   ctx.globalAlpha = glowAlpha;
-  ctx.fillRect(0, size - 2, size, 2);
+  ctx.fillRect(0, size - 3, size, 3);
   ctx.globalAlpha = 1;
+  if (lit) {
+    ctx.save();
+    ctx.shadowColor = '#00f5d4';
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = '#00f5d4';
+    ctx.globalAlpha = 0.5;
+    ctx.fillRect(0, size - 4, size, 4);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
 
   applyDimOverlay(ctx, size, lit, 0.05);
 }
@@ -273,10 +283,12 @@ function drawWorkshopWall(
   random: SeededRandom,
   lit: boolean
 ): void {
-  const mortarColor = '#323232';
-  const brickBase = '#6b2020';
-  const glowColor = lit ? '#ff6b35' : '#8b3010';
-  const glowAlpha = lit ? 0.6 : 0.2;
+  // 暗灰金属基底 + 琥珀色砖缝发光
+  const mortarColor = '#1a1a1a';
+  const brickBase = '#252528';
+  const glowColor = lit ? '#ff6b35' : '#8b4515';
+  const glowAlpha = lit ? 0.8 : 0.25;
+  const runeColor = lit ? '#ff8c42' : '#7a3a10';
 
   ctx.fillStyle = mortarColor;
   ctx.fillRect(0, 0, size, size);
@@ -292,16 +304,16 @@ function drawWorkshopWall(
 
     for (let col = -1; col < cols; col++) {
       const x = col * brickW + offset;
-      // 随机砖色变化（低饱和暗红）
-      const variation = random.floatBetween(0.9, 1.1);
+      // 暗灰金属砖块，微弱色变
+      const variation = random.floatBetween(0.92, 1.08);
       ctx.fillStyle = adjustBrightness(brickBase, variation);
       ctx.fillRect(x + 1, y + 1, brickW - 2, brickH - 2);
     }
 
-    // 某些水平砖缝中有微弱橙色发光（像余烬）
-    if (random.next() > 0.65) {
+    // 琥珀色砖缝发光（余烬效果）— 频率更高
+    if (random.next() > 0.35) {
       const glowX = random.between(0, size - 16);
-      const glowLen = random.between(6, 14);
+      const glowLen = random.between(8, 20);
       ctx.globalAlpha = glowAlpha;
       ctx.fillStyle = glowColor;
       ctx.fillRect(glowX, y + brickH - 1, glowLen, 1);
@@ -310,10 +322,54 @@ function drawWorkshopWall(
       if (lit) {
         ctx.save();
         ctx.shadowColor = '#ff6b35';
-        ctx.shadowBlur = 4;
+        ctx.shadowBlur = 6;
         ctx.fillRect(glowX, y + brickH - 1, glowLen, 1);
         ctx.restore();
       }
+    }
+
+    // 垂直砖缝也加入琥珀发光
+    for (let col = 0; col < cols; col++) {
+      const x = col * brickW + offset;
+      if (random.next() > 0.6) {
+        const glowY = y + random.between(2, brickH - 4);
+        const glowH = random.between(4, 10);
+        ctx.globalAlpha = glowAlpha * 0.7;
+        ctx.fillStyle = glowColor;
+        ctx.fillRect(x, glowY, 1, glowH);
+        ctx.globalAlpha = 1;
+
+        if (lit) {
+          ctx.save();
+          ctx.shadowColor = '#ff6b35';
+          ctx.shadowBlur = 4;
+          ctx.fillRect(x, glowY, 1, glowH);
+          ctx.restore();
+        }
+      }
+    }
+  }
+
+  // 随机魔法符文亮点（琥珀色光斑）
+  const runeCount = lit ? random.between(4, 8) : random.between(1, 3);
+  for (let i = 0; i < runeCount; i++) {
+    const rx = random.between(8, size - 8);
+    const ry = random.between(8, size - 8);
+    ctx.globalAlpha = lit ? 0.7 : 0.2;
+    ctx.fillStyle = runeColor;
+    ctx.beginPath();
+    ctx.arc(rx, ry, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    if (lit) {
+      ctx.save();
+      ctx.shadowColor = '#ff6b35';
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = runeColor;
+      ctx.beginPath();
+      ctx.arc(rx, ry, 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
   }
 
@@ -414,12 +470,22 @@ function drawWorkshopFoundation(
   ctx.fillRect(0, size - 4, size, 4);
   ctx.globalAlpha = 1;
 
-  // 底边橙色光晕（熔炉余热倒映地面）
-  const glowAlpha = lit ? 0.3 : 0.1;
+  // 底边琥珀色光带（熔炉余热倒映地面）— 加强可见度
+  const glowAlpha = lit ? 0.7 : 0.2;
   ctx.fillStyle = '#ff6b35';
   ctx.globalAlpha = glowAlpha;
-  ctx.fillRect(0, size - 2, size, 2);
+  ctx.fillRect(0, size - 3, size, 3);
   ctx.globalAlpha = 1;
+  if (lit) {
+    ctx.save();
+    ctx.shadowColor = '#ff6b35';
+    ctx.shadowBlur = 6;
+    ctx.fillStyle = '#ff6b35';
+    ctx.globalAlpha = 0.4;
+    ctx.fillRect(0, size - 4, size, 4);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
 
   applyDimOverlay(ctx, size, lit, 0.05);
 }
@@ -437,7 +503,9 @@ function drawStudioWall(
   const wallColor = '#1a1a2e';
   const frameColor = '#2d2d42';
   const glassColor = '#b24bf3';
-  const glassAlpha = lit ? 0.6 : 0;
+  const glassAlpha = lit ? 0.5 : 0.15;
+  const frameGlowColor = lit ? '#b24bf3' : '#5a2080';
+  const frameGlowAlpha = lit ? 0.7 : 0.3;
 
   // 整体墙面
   ctx.fillStyle = wallColor;
@@ -456,25 +524,37 @@ function drawStudioWall(
       const x = frameW + c * (windowW + frameW);
       const y = frameH + r * (windowH + frameH);
 
-      // 窗框
+      // 窗框（紫色霓虹边框）
       ctx.fillStyle = frameColor;
       ctx.fillRect(x - frameW, y - frameH, windowW + frameW * 2, windowH + frameH * 2);
 
+      // 窗框发光描边
+      ctx.globalAlpha = frameGlowAlpha;
+      ctx.strokeStyle = frameGlowColor;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x - 1, y - 1, windowW + 1, windowH + 1);
+      ctx.globalAlpha = 1;
       if (lit) {
-        // 紫色半透明全息光
         ctx.save();
+        ctx.shadowColor = '#b24bf3';
+        ctx.shadowBlur = 4;
+        ctx.strokeStyle = frameGlowColor;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x - 1, y - 1, windowW + 1, windowH + 1);
+        ctx.restore();
+      }
+
+      // 玻璃内填充（lit 和 dim 都有紫色）
+      ctx.save();
+      if (lit) {
         ctx.shadowColor = glassColor;
         ctx.shadowBlur = 8;
-        ctx.fillStyle = glassColor;
-        ctx.globalAlpha = glassAlpha;
-        ctx.fillRect(x, y, windowW, windowH);
-        ctx.restore();
-        ctx.globalAlpha = 1;
-      } else {
-        // dim 状态：深色空洞，保留窗框结构
-        ctx.fillStyle = '#0a0a14';
-        ctx.fillRect(x, y, windowW, windowH);
       }
+      ctx.fillStyle = glassColor;
+      ctx.globalAlpha = glassAlpha;
+      ctx.fillRect(x, y, windowW, windowH);
+      ctx.restore();
+      ctx.globalAlpha = 1;
     }
   }
 
@@ -496,7 +576,9 @@ function drawStudioRoof(
   const baseColor = '#161625';
   const skylightFrame = '#2d2d42';
   const skylightGlass = '#b24bf3';
-  const glassAlpha = lit ? 0.5 : 0.12;
+  const glassAlpha = lit ? 0.4 : 0.1;
+  const frameGlowColor = lit ? '#b24bf3' : '#5a2080';
+  const frameGlowAlpha = lit ? 0.6 : 0.25;
 
   ctx.fillStyle = baseColor;
   ctx.fillRect(0, 0, size, size);
@@ -519,21 +601,33 @@ function drawStudioRoof(
       ctx.fillStyle = skylightFrame;
       ctx.fillRect(x - 2, y - 2, glassW + 4, glassH + 4);
 
+      // 窗框紫色霓虹描边
+      ctx.globalAlpha = frameGlowAlpha;
+      ctx.strokeStyle = frameGlowColor;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x - 1, y - 1, glassW + 1, glassH + 1);
+      ctx.globalAlpha = 1;
       if (lit) {
-        // 天窗内填充紫色微弱全息光
         ctx.save();
+        ctx.shadowColor = '#b24bf3';
+        ctx.shadowBlur = 4;
+        ctx.strokeStyle = frameGlowColor;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x - 1, y - 1, glassW + 1, glassH + 1);
+        ctx.restore();
+      }
+
+      // 天窗填充（lit 和 dim 都有紫色）
+      ctx.save();
+      if (lit) {
         ctx.shadowColor = skylightGlass;
         ctx.shadowBlur = 6;
-        ctx.fillStyle = skylightGlass;
-        ctx.globalAlpha = glassAlpha;
-        ctx.fillRect(x, y, glassW, glassH);
-        ctx.restore();
-        ctx.globalAlpha = 1;
-      } else {
-        // dim 状态：天窗暗淡但窗框可见
-        ctx.fillStyle = '#0a0a14';
-        ctx.fillRect(x, y, glassW, glassH);
       }
+      ctx.fillStyle = skylightGlass;
+      ctx.globalAlpha = glassAlpha;
+      ctx.fillRect(x, y, glassW, glassH);
+      ctx.restore();
+      ctx.globalAlpha = 1;
     }
   }
 
@@ -575,12 +669,22 @@ function drawStudioFoundation(
   ctx.fillRect(0, size - 4, size, 4);
   ctx.globalAlpha = 1;
 
-  // 底边微弱紫色光带
-  const glowAlpha = lit ? 0.3 : 0.1;
+  // 底边紫色光带 — 加强可见度
+  const glowAlpha = lit ? 0.6 : 0.15;
   ctx.fillStyle = '#b24bf3';
   ctx.globalAlpha = glowAlpha;
-  ctx.fillRect(0, size - 2, size, 2);
+  ctx.fillRect(0, size - 3, size, 3);
   ctx.globalAlpha = 1;
+  if (lit) {
+    ctx.save();
+    ctx.shadowColor = '#b24bf3';
+    ctx.shadowBlur = 6;
+    ctx.fillStyle = '#b24bf3';
+    ctx.globalAlpha = 0.35;
+    ctx.fillRect(0, size - 4, size, 4);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
 
   applyDimOverlay(ctx, size, lit, 0.05);
 }
@@ -633,19 +737,35 @@ function drawLibraryWall(
         ctx.fillStyle = color;
         ctx.fillRect(bx, by, bw, bh);
 
-        // 某些书脊有金色符文发光
-        if (random.next() > 0.75) {
+        // 书脊金色符文发光 — 更高频率，更明显
+        if (random.next() > 0.45) {
           ctx.globalAlpha = runeAlpha;
           ctx.fillStyle = runeColor;
+          // 书脊边缘细线
           ctx.fillRect(bx + 1, by + 2, 1, bh - 4);
           ctx.globalAlpha = 1;
 
           if (lit) {
             ctx.save();
             ctx.shadowColor = '#ffd700';
-            ctx.shadowBlur = 4;
+            ctx.shadowBlur = 5;
             ctx.fillStyle = runeColor;
             ctx.fillRect(bx + 1, by + 2, 1, bh - 4);
+            ctx.restore();
+          }
+        }
+        // 部分书脊增加第二道金色线（书脊顶部微光）
+        if (random.next() > 0.7) {
+          ctx.globalAlpha = runeAlpha * 0.6;
+          ctx.fillStyle = runeColor;
+          ctx.fillRect(bx, by, bw, 1);
+          ctx.globalAlpha = 1;
+          if (lit) {
+            ctx.save();
+            ctx.shadowColor = '#ffd700';
+            ctx.shadowBlur = 3;
+            ctx.fillStyle = runeColor;
+            ctx.fillRect(bx, by, bw, 1);
             ctx.restore();
           }
         }
@@ -696,22 +816,20 @@ function drawLibraryRoof(
       ctx.arc(x + tileW / 2, y, tileW / 2, 0, Math.PI);
       ctx.fill();
 
-      // 偶尔有金色微光（模拟魔法防护结界）
-      if (random.next() > 0.85) {
+      // 瓦缝金色符文光效 — 更高频率
+      if (random.next() > 0.55) {
         ctx.globalAlpha = goldAlpha;
         ctx.fillStyle = goldColor;
-        ctx.beginPath();
-        ctx.arc(x + tileW / 2, y + 2, 2, 0, Math.PI * 2);
-        ctx.fill();
+        // 瓦缝底部弧线处金色微光
+        ctx.fillRect(x + 2, y + tileH - 3, tileW - 4, 1);
         ctx.globalAlpha = 1;
 
         if (lit) {
           ctx.save();
           ctx.shadowColor = '#ffd700';
           ctx.shadowBlur = 4;
-          ctx.beginPath();
-          ctx.arc(x + tileW / 2, y + 2, 2, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.fillStyle = goldColor;
+          ctx.fillRect(x + 2, y + tileH - 3, tileW - 4, 1);
           ctx.restore();
         }
       }
@@ -767,12 +885,42 @@ function drawLibraryFoundation(
   ctx.fillRect(0, size - 4, size, 4);
   ctx.globalAlpha = 1;
 
-  // 底边微弱金色光带（魔法结界底部）
-  const glowAlpha = lit ? 0.3 : 0.1;
+  // 木板接缝渗出金色光
+  const seamGoldAlpha = lit ? 0.5 : 0.15;
+  for (let i = 1; i < plankCount; i++) {
+    const px = i * plankW;
+    ctx.fillStyle = '#ffd700';
+    ctx.globalAlpha = seamGoldAlpha;
+    ctx.fillRect(px - 1, 0, 1, size);
+    ctx.globalAlpha = 1;
+    if (lit) {
+      ctx.save();
+      ctx.shadowColor = '#ffd700';
+      ctx.shadowBlur = 3;
+      ctx.fillStyle = '#ffd700';
+      ctx.globalAlpha = seamGoldAlpha * 0.5;
+      ctx.fillRect(px - 1, 0, 1, size);
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // 底边金色光带（魔法结界底部）— 加强
+  const glowAlpha = lit ? 0.6 : 0.15;
   ctx.fillStyle = '#ffd700';
   ctx.globalAlpha = glowAlpha;
-  ctx.fillRect(0, size - 2, size, 2);
+  ctx.fillRect(0, size - 3, size, 3);
   ctx.globalAlpha = 1;
+  if (lit) {
+    ctx.save();
+    ctx.shadowColor = '#ffd700';
+    ctx.shadowBlur = 6;
+    ctx.fillStyle = '#ffd700';
+    ctx.globalAlpha = 0.35;
+    ctx.fillRect(0, size - 4, size, 4);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
 
   applyDimOverlay(ctx, size, lit, 0.05);
 }
@@ -817,6 +965,38 @@ function drawCommandWall(
   ctx.fillRect(0, strip2, size, 4);
   ctx.fillRect(strip1, 0, 4, size);
   ctx.fillRect(strip2, 0, 4, size);
+
+  // 金属条上红色能量灯带（沿水平条）
+  const stripAlpha = lit ? 0.5 : 0.15;
+  ctx.fillStyle = lightColor;
+  ctx.globalAlpha = stripAlpha;
+  ctx.fillRect(0, strip1, size, 1);
+  ctx.fillRect(0, strip1 + 3, size, 1);
+  ctx.fillRect(0, strip2, size, 1);
+  ctx.fillRect(0, strip2 + 3, size, 1);
+  // 沿垂直条
+  ctx.fillRect(strip1, 0, 1, size);
+  ctx.fillRect(strip1 + 3, 0, 1, size);
+  ctx.fillRect(strip2, 0, 1, size);
+  ctx.fillRect(strip2 + 3, 0, 1, size);
+  ctx.globalAlpha = 1;
+  if (lit) {
+    ctx.save();
+    ctx.shadowColor = '#ff2e63';
+    ctx.shadowBlur = 4;
+    ctx.fillStyle = lightColor;
+    ctx.globalAlpha = 0.3;
+    ctx.fillRect(0, strip1, size, 1);
+    ctx.fillRect(0, strip1 + 3, size, 1);
+    ctx.fillRect(0, strip2, size, 1);
+    ctx.fillRect(0, strip2 + 3, size, 1);
+    ctx.fillRect(strip1, 0, 1, size);
+    ctx.fillRect(strip1 + 3, 0, 1, size);
+    ctx.fillRect(strip2, 0, 1, size);
+    ctx.fillRect(strip2 + 3, 0, 1, size);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
 
   // 金属条交叉点红色战术灯
   const lightPositions = [
