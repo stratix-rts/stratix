@@ -224,45 +224,123 @@ type SoundId =
 
 ---
 
-## 5. 优先级与并发控制
+## 5. 事件聚合与并发控制
+
+> **核心原则：事件零丢失。** Stratix 是 RTS 界面，声音是信息通道。
+> 任何事件都不应该被静默丢弃。能立即播放就播放，不能就合并，但绝不丢。
 
 ### 5.1 优先级定义
 
+优先级决定的是**聚合策略的激进程度**，不是"能不能播"。
+
 ```typescript
 enum SoundPriority {
-  Critical = 0,  // 警报、错误 — 总是播放，可打断一切
-  High     = 1,  // 任务完成/失败、Agent 连接/断线
-  Normal   = 2,  // UI 点击、Tab 切换、面板操作
-  Low      = 3,  // Hover、环境音
+  Critical = 0,  // 警报、错误 — 立即播放，可打断同类型正在播放的
+  High     = 1,  // 任务完成/失败、Agent 连接/断线 — 排队或琶音合并
+  Normal   = 2,  // UI 点击、Tab 切换 — 可短间隔排队
+  Low      = 3,  // Hover、拖拽 — 防抖合并（用户感知不到丢失）
 }
 ```
 
-### 5.2 并发规则
+### 5.2 事件聚合策略
+
+当同一声音短时间内被多次触发时，不同优先级采用不同策略：
 
 ```
-每个 Bus 的最大同时播放数（SFC 8 通道硬件约束）：
-  MusicBus:    2-3  — BGM 占 bass + lead + pad 通道
-  UIBus:       2    — SFC 风格：留通道给其他 Bus
-  GameplayBus: 2    — 像素风不需要密集音效
-  AmbientBus:  1    — 环境音用 1 个 drone 通道
-  // 总计 ≤ 8 通道（SFC 硬件上限）
+Critical（警报、错误）
+  → Restart: 立即重新播放，覆盖当前
+  → 因为警报本身就是"现在注意"，延迟 = 失败
+  → 例: 3 个 error 在 100ms 内触发 → 播放 1 次但有 3 次重复感（音高微升）
 
-全局规则：
-  - 同一 SoundId 100ms 内不重复播放（防抖）
-  - 新声音进来时，如果 Bus 满了，踢掉最低优先级的
-  - Critical 级别不受限制
+High（任务完成、Agent 状态变化）
+  → Arpeggio Merge: 合并为琶音序列
+  → 5 个 taskComplete 在 200ms 内 → 播放 1 次递升琶音 C5-E5-G5-C6
+  → 音符数 = min(eventCount, 5)，超过 5 个用最高音收尾
+  → 用户听到的是"很多事情同时完成了"，信息不丢
+
+Normal（UI 交互）
+  → Queue: 排队播放，间隔 ≥ 50ms
+  → 5 个 click 在 100ms 内 → 排队播 5 次，每次间隔 50ms，总耗时 250ms
+  → 用户感知为连续点击反馈，合理
+
+Low（Hover）
+  → Debounce: 只播放最后一次
+  → hover 天然高频，用户不感知单次丢失
+  → cooldown 150ms
 ```
 
-### 5.3 各声音的优先级映射
+### 5.3 聚合配置
 
-| SoundId | Priority |
-|---------|----------|
-| game.alert, game.error | Critical |
-| game.taskComplete, game.taskFail, game.connect, game.disconnect | High |
-| game.agentSelect, game.taskAssign, game.zoneCreate, game.zoneDestroy | Normal |
-| ui.click, ui.tabSwitch, ui.panelOpen, ui.panelClose, ui.toast, ui.toggle | Normal |
-| ui.hover, ui.dragStart | Low |
-| bgm.*, ambient.* | N/A（持续播放，不走优先级） |
+```typescript
+interface AggregationConfig {
+  /** 策略 */
+  strategy: 'restart' | 'arpeggio' | 'queue' | 'debounce';
+  /** 聚合窗口 (ms)，窗口内的同类事件合并处理 */
+  windowMs: number;
+  /** 琥音最大音符数 (arpeggio 策略) */
+  maxNotes?: number;
+  /** 排队最小间隔 (ms) (queue 策略) */
+  queueInterval?: number;
+  /** 防抖冷却 (ms) (debounce 策略) */
+  cooldown?: number;
+}
+```
+
+各声音的聚合配置：
+
+| SoundId | Priority | Strategy | Window | 说明 |
+|---------|----------|----------|--------|------|
+| game.alert | Critical | restart | 0 | 立即重播 |
+| game.error | Critical | restart | 0 | 立即重播 |
+| game.taskComplete | High | arpeggio | 200 | C5→E5→G5→C6 递升 |
+| game.taskFail | High | arpeggio | 200 | C4→A3→F3 递降 |
+| game.connect | High | arpeggio | 200 | 三连升调 |
+| game.disconnect | High | arpeggio | 200 | 三连降调 |
+| game.agentSelect | Normal | queue | 50 | 排队 |
+| game.agentDeselect | Normal | debounce | 80 | 快速连点合并 |
+| game.taskAssign | Normal | queue | 50 | 排队 |
+| game.zoneCreate | Normal | queue | 50 | 排队 |
+| game.zoneDestroy | Normal | queue | 50 | 排队 |
+| ui.click | Normal | queue | 30 | 快速排队 |
+| ui.tabSwitch | Normal | debounce | 80 | 防重复 |
+| ui.panelOpen | Normal | queue | 50 | 排队 |
+| ui.panelClose | Normal | queue | 50 | 排队 |
+| ui.toast | Normal | queue | 100 | 多条排队 |
+| ui.toggle | Normal | debounce | 80 | 防重复 |
+| ui.hover | Low | debounce | 150 | 防抖 |
+| ui.dragStart | Low | debounce | 100 | 防抖 |
+| bgm.* | — | — | — | 不走聚合，由 BGM 系统管理 |
+| ambient.* | — | — | — | 不走聚合，持续播放 |
+
+### 5.4 SFC 8 通道约束
+
+SFC 硬件只有 8 个音频通道，这是风格约束。Web Audio API 没有这个限制，但我们主动遵守以保持像素风音色。
+
+**通道分配（推荐默认）**：
+
+```
+通道 0-2:  BGM (bass + lead + pad)      — 始终占用
+通道 3:    Ambient drone                 — 始终占用
+通道 4:    Gameplay 音效                  — 按需使用
+通道 5:    Gameplay 音效（备用/琶音扩展） — 按需使用
+通道 6:    UI 音效                        — 按需使用
+通道 7:    保留（Critical 专用）
+```
+
+**当通道全部占满时**：
+- 不是丢弃事件，而是**等待最短的声音播完释放通道**
+- SFX 的时长都在 30-300ms，等待极短
+- 最坏情况：300ms 延迟，RTS 中可接受
+
+### 5.5 不同类型事件互不挤占
+
+**关键设计：不同 Bus 的通道独立，互不挤占。**
+
+```
+❌ 错误: 6 个 taskComplete 挤占了所有通道，alert 无法播放
+✅ 正确: GameplayBus 用通道 4-5，UIBus 用通道 6，Critical 用通道 7
+         即使 Gameplay 在密集播放，alert 仍然立即发声
+```
 
 ---
 
