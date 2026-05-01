@@ -23,6 +23,7 @@ import { AgentDetailRenderer } from './command-panel/AgentDetailRenderer';
 import { EmptyStateRenderer } from './command-panel/EmptyStateRenderer';
 import { GradientHelper, hexToNumber } from './command-panel/GradientHelper';
 import { MultiAgentRenderer } from './command-panel/MultiAgentRenderer';
+import { ToastManager } from './ToastManager';
 import { ZoneDetailRenderer } from './command-panel/ZoneDetailRenderer';
 
 import type {
@@ -59,6 +60,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   private tabPositions: number[] = [];
   private contentTweens: Phaser.Tweens.Tween[] = [];
   private gradientHelper: GradientHelper;
+  private toastManager?: ToastManager;
 
   private renderers: Record<PanelState, import('./command-panel/IStateRenderer').IStateRenderer>;
   private buttonFactory: CommandButtonFactory;
@@ -89,7 +91,8 @@ export class CommandPanelV2 extends EnhancedUIComponent {
       onConfigClick: () => {},
       onTaskClick: () => {},
       onStopClick: () => {},
-    }
+    },
+    toastManager?: ToastManager
   ) {
     super(scene, {
       x,
@@ -116,6 +119,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     this.dangerColor = this.useToken('colors.semantic.danger');
     this.primaryColor = this.useToken('colors.accent');
 
+    this.toastManager = toastManager;
     this.buttonFactory = new CommandButtonFactory(scene, this.theme.typography.fontFamily.sans);
     this.gradientHelper = new GradientHelper(scene, this.id);
 
@@ -235,7 +239,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   public setSkills(skills: Skill[]): void { this.updatePanelData({ skills }); }
   public setLoading(loading: boolean): void { this.updatePanelData({ isLoading: loading }); }
   public showNotification(message: string, type: 'info' | 'success' | 'warning' | 'error' = 'info'): void {
-    console.log(`[CommandPanel] ${type}: ${message}`);
+    this.toastManager?.show(message, type);
   }
 
   private deriveState(): PanelState {

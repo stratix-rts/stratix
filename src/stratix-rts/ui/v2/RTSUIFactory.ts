@@ -12,6 +12,7 @@ import { HUD_LAYOUT } from './layout/HUDLayout';
 import { MinimapV2 } from './MinimapV2';
 import { TopBarV2, TopBarStats } from './TopBarV2';
 import { ReplayControls } from './ReplayControls';
+import { ToastManager } from './ToastManager';
 import type { RecordingSession } from '../../events/replay';
 
 export interface RTSUIComponents {
@@ -19,6 +20,7 @@ export interface RTSUIComponents {
   minimap: MinimapV2;
   commandPanel: CommandPanelV2;
   replayControls: ReplayControls;
+  toastManager: ToastManager;
 }
 
 export interface RTSUIConfig {
@@ -63,7 +65,8 @@ export class RTSUIFactory {
   createAll(): RTSUIComponents {
     const topBar = this.createTopBar();
     const minimap = this.createMinimap();
-    const commandPanel = this.createCommandPanel();
+    const toastManager = this.createToastManager();
+    const commandPanel = this.createCommandPanel(toastManager);
     const replayControls = this.createReplayControls();
     
     this.components = {
@@ -71,6 +74,7 @@ export class RTSUIFactory {
       minimap,
       commandPanel,
       replayControls,
+      toastManager,
     };
     
     this.mountAll();
@@ -105,7 +109,12 @@ export class RTSUIFactory {
     return minimap;
   }
   
-  private createCommandPanel(): CommandPanelV2 {
+  private createToastManager(): ToastManager {
+    const toastManager = new ToastManager(this.scene);
+    return toastManager;
+  }
+  
+  private createCommandPanel(toastManager: ToastManager): CommandPanelV2 {
     const callbacks: CommandPanelCallbacks = {
       onChatClick: this.config.onChatClick || (() => {}),
       onConfigClick: this.config.onConfigClick || (() => {}),
@@ -124,7 +133,8 @@ export class RTSUIFactory {
       HUD_LAYOUT.commandPanel.height,
       this.config.onSkillSelect,
       this.config.onCommandExecute,
-      callbacks
+      callbacks,
+      toastManager
     );
     commandPanel.create();
     return commandPanel;
@@ -154,6 +164,7 @@ export class RTSUIFactory {
     this.components.minimap.mount();
     this.components.commandPanel.mount();
     this.components.replayControls.mount();
+    // ToastManager 不需要 mount，Toast 实例会自行 mount
   }
   
   getComponents(): RTSUIComponents | null {
@@ -166,6 +177,7 @@ export class RTSUIFactory {
     this.components.topBar.resize(width);
     this.components.minimap.resize(HUD_LAYOUT.minimap.width, HUD_LAYOUT.minimap.height);
     this.components.replayControls.resize(width * 0.4);
+    this.components.toastManager.resize(width);
     
     this.components.commandPanel.getConfig().width = width - HUD_LAYOUT.minimapRightMargin;
     this.components.commandPanel.getConfig().y = height - HUD_LAYOUT.commandPanelBottomMargin;
@@ -178,6 +190,7 @@ export class RTSUIFactory {
     this.components.minimap.destroy();
     this.components.commandPanel.destroy();
     this.components.replayControls.destroy();
+    this.components.toastManager.destroy();
     
     this.components = null;
   }
