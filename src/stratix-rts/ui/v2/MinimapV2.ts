@@ -12,9 +12,8 @@ import { EnhancedUIComponent } from '@/stratix-core/ui/components/base/EnhancedU
 
 import { ReactiveToken } from '@/stratix-core/ui/foundation/theme/ReactiveToken';
 
-import { getToken } from '@/design-system/config';
 import { MAP_WIDTH, MAP_HEIGHT } from '../../constants';
-import { getDSColor, isReducedMotion } from '../../themes/ThemeColors';
+import { isReducedMotion } from '../../themes/ThemeColors';
 
 interface MinimapConfig {
   width: number;
@@ -70,6 +69,7 @@ export class MinimapV2 extends EnhancedUIComponent {
   private accentColor: ReactiveToken<string>;
   private dangerColor: ReactiveToken<string>;
   private textMutedColor: ReactiveToken<string>;
+  private primaryColor: ReactiveToken<string>;
 
   constructor(
     scene: Phaser.Scene,
@@ -107,6 +107,7 @@ export class MinimapV2 extends EnhancedUIComponent {
     this.accentColor = this.useToken('colors.accent');
     this.dangerColor = this.useToken('colors.status.danger');
     this.textMutedColor = this.useToken('colors.text.muted');
+    this.primaryColor = this.useToken('colors.accent');
 
     this.backgroundColor.subscribe(() => this.redraw());
     this.borderColor.subscribe(() => this.redraw());
@@ -148,7 +149,7 @@ export class MinimapV2 extends EnhancedUIComponent {
 
     const bgColor = this.hexToNumber(this.backgroundColor.get());
     const borderClr = this.hexToNumber(this.borderColor.get());
-    const primaryColor = getDSColor('color-primary');
+    const primaryColor = this.hexToNumber(this.primaryColor.get());
 
     this.background.clear();
     this.background.fillStyle(bgColor, 0.75);
@@ -576,7 +577,7 @@ export class MinimapV2 extends EnhancedUIComponent {
     this.viewportRect?.fillRect(viewportX, viewportY, viewportWidth, viewportHeight);
 
     // Dynamic dashed border with primary color accent
-    const primaryColor = getDSColor('color-primary');
+    const primaryColor = this.hexToNumber(this.primaryColor.get());
     this.viewportRect?.lineStyle(1, primaryColor, 0.85);
     this.drawDashedRect(
       this.viewportRect!,
@@ -625,7 +626,7 @@ export class MinimapV2 extends EnhancedUIComponent {
   }
 
   private hexToNumber(hex: string): number {
-    if (!hex || typeof hex !== 'string') return parseInt(getToken('colors.text.primary').replace('#', ''), 16);
+    if (!hex || typeof hex !== 'string') return 0xffffff;
     return parseInt(hex.slice(1), 16);
   }
 

@@ -12,10 +12,9 @@ import { EnhancedUIComponent } from '@/stratix-core/ui/components/base/EnhancedU
 import type { UIComponentConfig } from '@/stratix-core/ui/core/types/component.types';
 import { ReactiveToken } from '@/stratix-core/ui/foundation/theme/ReactiveToken';
 
-import { getToken } from '@/design-system/config';
 import type { StatsCollector } from '../../debug/StatsCollector';
 import { PerformanceWidget } from '../debug/PerformanceWidget';
-import { getDSColor, isReducedMotion } from '../../themes/ThemeColors';
+import { isReducedMotion } from '../../themes/ThemeColors';
 
 export interface TopBarStats {
   totalAgents: number;
@@ -53,6 +52,7 @@ export class TopBarV2 extends EnhancedUIComponent {
   private borderColor: ReactiveToken<string>;
   private glassBg: ReactiveToken<string>;
   private glassBorder: ReactiveToken<string>;
+  private primaryColor: ReactiveToken<string>;
 
   // 动画与状态
   private displayedValues: Record<string, number> = {
@@ -95,6 +95,7 @@ export class TopBarV2 extends EnhancedUIComponent {
     this.borderColor = this.useToken('colors.border.default');
     this.glassBg = this.useToken('semantic.glass.background');
     this.glassBorder = this.useToken('semantic.glass.border');
+    this.primaryColor = this.useToken('colors.accent');
 
     // 订阅颜色变化，自动重绘
     this.backgroundColor.subscribe(() => this.redraw());
@@ -180,7 +181,7 @@ export class TopBarV2 extends EnhancedUIComponent {
       repeat: -1,
       onUpdate: () => {
         if (!this.scanlineGraphics) return;
-        const primaryColor = getDSColor('color-primary');
+        const primaryColor = this.hexToNumber(this.primaryColor.get());
         this.scanlineGraphics.clear();
         // Core bright segment
         this.scanlineGraphics.fillStyle(primaryColor, 0.3);
@@ -207,7 +208,7 @@ export class TopBarV2 extends EnhancedUIComponent {
     this.background.fillRoundedRect(0, 0, width, height, 0);
 
     // Subtle top highlight line
-    const primaryColor = getDSColor('color-primary');
+    const primaryColor = this.hexToNumber(this.primaryColor.get());
     this.background.lineStyle(1, primaryColor, 0.3);
     this.background.lineBetween(0, 0, width, 0);
 
@@ -281,7 +282,7 @@ export class TopBarV2 extends EnhancedUIComponent {
     this.helpButton.add([this.helpButtonGlow, bg, hitArea, questionMark]);
 
     hitArea.on('pointerover', () => {
-      const glowColor = getDSColor('color-primary');
+      const glowColor = this.hexToNumber(this.primaryColor.get());
       bg.clear();
       bg.fillStyle(glowColor, 0.2);
       bg.fillRoundedRect(0, 0, buttonWidth, buttonHeight, 4);
@@ -591,7 +592,7 @@ export class TopBarV2 extends EnhancedUIComponent {
   }
 
   private hexToNumber(hex: string): number {
-    if (!hex || typeof hex !== 'string') return parseInt(getToken('colors.text.primary').replace('#', ''), 16);
+    if (!hex || typeof hex !== 'string') return 0xffffff;
     return parseInt(hex.slice(1), 16);
   }
 

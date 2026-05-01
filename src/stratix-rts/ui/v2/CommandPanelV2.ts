@@ -15,8 +15,7 @@ import { EnhancedUIComponent } from '@/stratix-core/ui/components/base/EnhancedU
 
 import { ReactiveToken } from '@/stratix-core/ui/foundation/theme/ReactiveToken';
 
-import { getToken } from '@/design-system/config';
-import { getDSColor, isReducedMotion } from '../../themes/ThemeColors';
+import { isReducedMotion } from '../../themes/ThemeColors';
 
 // ============================================================================
 // Types
@@ -129,6 +128,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   private successColor: ReactiveToken<string>;
   private warningColor: ReactiveToken<string>;
   private dangerColor: ReactiveToken<string>;
+  private primaryColor: ReactiveToken<string>;
 
   // --------------------------------------------------------------------------
   // Constructor
@@ -174,6 +174,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     this.successColor = this.useToken('colors.semantic.success');
     this.warningColor = this.useToken('colors.semantic.warning');
     this.dangerColor = this.useToken('colors.semantic.danger');
+    this.primaryColor = this.useToken('colors.accent');
   }
 
   // --------------------------------------------------------------------------
@@ -220,7 +221,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     const bg = this.scene.add.graphics();
     const bgColor = this.hexToNumber(this.backgroundColor.get());
     const borderClr = this.hexToNumber(this.borderColor.get());
-    const primaryColor = getDSColor('color-primary');
+    const primaryColor = this.hexToNumber(this.primaryColor.get());
     const w = this.config.width || 500;
     const h = this.config.height || 180;
 
@@ -402,7 +403,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
 
       // Active tab glow indicator (top line)
       if (isActive) {
-        const primaryColor = getDSColor('color-primary');
+        const primaryColor = this.hexToNumber(this.primaryColor.get());
         tabBg.lineStyle(1, primaryColor, 0.5);
         tabBg.lineBetween(x, 8, x + tabWidth, 8);
       }
@@ -425,7 +426,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
           tabBg.fillStyle(this.hexToNumber(this.backgroundTertiaryColor.get()), 0.7);
           tabBg.fillRoundedRect(x, 8, tabWidth, tabHeight, { tl: 4, tr: 4, bl: 0, br: 0 });
           // Hover glow
-          const glowColor = getDSColor('color-primary');
+          const glowColor = this.hexToNumber(this.primaryColor.get());
           tabBg.lineStyle(1, glowColor, 0.3);
           tabBg.lineBetween(x, 8, x + tabWidth, 8);
         }
@@ -1014,7 +1015,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     hitArea.on('pointerdown', onClick);
 
     hitArea.on('pointerover', () => {
-      const glowColor = getDSColor('color-primary');
+      const glowColor = this.hexToNumber(this.primaryColor.get());
       bg.clear();
       // Glow border
       bg.lineStyle(3, glowColor, 0.25);
@@ -1145,7 +1146,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
 
     if (btn.enabled) {
       hitArea.on('pointerover', () => {
-        const glowColor = getDSColor('color-primary');
+        const glowColor = this.hexToNumber(this.primaryColor.get());
         bg.clear();
         // Outer glow
         bg.lineStyle(3, glowColor, 0.25);
@@ -1285,7 +1286,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   }
 
   private hexToNumber(hex: string): number {
-    if (!hex || typeof hex !== 'string') return parseInt(getToken('colors.text.primary').replace('#', ''), 16);
+    if (!hex || typeof hex !== 'string') return 0xffffff;
     return parseInt(hex.slice(1), 16);
   }
 
