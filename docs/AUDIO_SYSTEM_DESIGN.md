@@ -93,7 +93,7 @@ AudioContext
     │       ├── [ambient.datacenter] — 数据中心嗡鸣
     │       ├── [ambient.studio]     — 工作室环境
     │       ├── [ambient.workshop]   — 工坊机械
-    │       └── [ambient.electric]   — 电流噼啪（赛博朋克）
+    │       └── [ambient.electric]   — 电流噼啪
     │
     └── VoiceBus (GainNode) — 语音/TTS（预留）
         └── (TTS 输出、语音指令反馈等)
@@ -197,7 +197,7 @@ type SoundId =
   | 'game.connect'      // 连接建立，~200ms，sine 300→600→900Hz 三连
   | 'game.disconnect'   // 断线，~200ms，sine 800→200Hz 下降
 
-  // BGM（外部音频文件）
+  // BGM（MIDI 脚本生成 Chiptune）
   | 'bgm.main'
   | 'bgm.intense'
   | 'bgm.ambient'
