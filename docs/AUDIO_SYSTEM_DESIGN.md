@@ -1,6 +1,6 @@
 # Stratix Audio System Design
 
-> 状态：Draft v0.5
+> 状态：Draft v0.6
 > 日期：2026-05-01
 > 作者：锻 + 姜琦
 
@@ -42,9 +42,380 @@
 
 ---
 
-## 1. 现状分析
+## 1. 产品边界与 IO 契约
 
-### 1.1 当前音频代码
+### 1.1 产品定义
+
+**名称**：Chip Audio Engine (CAE)
+**定位**：通用像素风音频引擎，可独立于任何宿主项目使用
+**形态**：TypeScript 库（npm 包），零外部依赖，纯 Web Audio API
+
+```
+┌──────────────────────────────────────────────┐
+│                宿主应用（Stratix / 其他）       │
+│  ┌─────────┐  ┌─────────┐  ┌──────────────┐ │
+│  │ UI 层   │  │ 游戏层  │  │ 配置文件     │ │
+│  └────┬────┘  └────┬────┘  └──────┬───────┘ │
+│       │            │              │           │
+│       ▼            ▼              ▼           │
+│  ┌──────────────────────────────────────┐    │
+│  │     Chip Audio Engine (CAE)          │    │
+│  │  ┌───────────┐  ┌───────────────┐   │    │
+│  │  │ Public API│  │ Config System │   │    │
+│  │  └─────┬─────┘  └───────┬───────┘   │    │
+│  │        │                │            │    │
+│  │  ┌─────▼────────────────▼────────┐  │    │
+│  │  │         Engine Core            │  │    │
+│  │  │  Bus Tree │ Aggregator │ Mixer │  │    │
+│  │  └─────┬────────────────┬────────┘  │    │
+│  │        │                │            │    │
+│  │  ┌─────▼─────┐  ┌──────▼───────┐   │    │
+│  │  │ Sound      │  │ Spatial      │   │    │
+│  │  │ Providers  │  │ Provider     │   │    │
+│  │  └───────────┘  └──────────────┘   │    │
+│  └──────────────────────────────────────┘    │
+│                     │                        │
+│                     ▼                        │
+│              Web Audio API                   │
+│              (AudioContext)                  │
+└──────────────────────────────────────────────┘
+```
+
+### 1.2 IO 契约
+
+引擎的输入输出严格定义。宿主应用只通过以下接口交互，不直接操作内部模块。
+
+**输入（宿主 → 引擎）**：
+
+| 输入 | 类型 | 说明 |
+|------|------|------|
+| 配置 | `AudioEngineConfig` | 初始化时传入，定义总线、声音、聚合规则 |
+| 播放请求 | `play(soundId, options?)` | 触发一个声音 |
+| 控制指令 | `setVolume / fadeTo / setMuted` | 音量、静音控制 |
+| 空间上下文 | `updateFocus(position, mode)` | 更新声音焦点位置和模式 |
+| 生命周期 | `init() / destroy() / suspend() / resume()` | 引擎生命周期管理 |
+
+**输出（引擎 → 宿主）**：
+
+| 输出 | 类型 | 说明 |
+|------|------|------|
+| 播放状态 | `onPlay / onStop / onQueueDrop` 事件 | 声音播放/停止/丢弃时通知宿主 |
+| 熔断事件 | `onCircuitBreak(state, stats)` | 熔断器状态变化时通知宿主 |
+| 性能指标 | `getMetrics()` | CPU 使用率、活跃通道数、队列深度等 |
+| 错误 | `onError(error)` | 音频系统内部错误 |
+
+**不输出**：引擎不产生任何 UI 渲染、网络请求、或业务逻辑。纯音频信号。
+
+### 1.3 解耦契约
+
+引擎和宿主之间**不共享任何类型定义或业务概念**：
+
+```
+❌ 引擎不知道什么是 "Zone"、"Agent"、"HUD"
+❌ 引擎不知道什么是 "Stratix"
+❌ 引擎不依赖宿主的事件总线、状态管理、或 UI 框架
+
+✅ 引擎只知道: soundId (string), position (x,y), priority (enum), config (JSON)
+✅ 宿主通过映射层把业务事件翻译成引擎的输入
+✅ 宿主可以随时替换引擎，只要实现相同的 IO 契约
+```
+
+**映射层示例（Stratix 的集成代码，不属于引擎）**：
+
+```typescript
+// stratix-audio-bridge.ts（宿主侧，不属于 CAE）
+class StratixAudioBridge {
+  private engine: ChipAudioEngine;
+
+  // 业务事件 → 引擎输入
+  onZoneTaskClaimed(zoneId: string, zonePos: Position) {
+    this.engine.play('game.taskComplete', {
+      spatial: { x: zonePos.x, y: zonePos.y }
+    });
+  }
+
+  // 焦点模式切换（Stratix 特有概念 → 引擎通用接口）
+  onSelectionChanged(selection: Selection) {
+    if (selection.type === 'zone') {
+      this.engine.updateFocus(selection.zone.center, 'area');
+    } else if (selection.type === 'agents' && selection.count > 1) {
+      this.engine.updateFocus(selection.boundingBox.center, 'legion');
+    } else {
+      this.engine.updateFocus(null, 'viewport');
+    }
+  }
+}
+```
+
+---
+
+## 2. 可扩展性架构
+
+### 2.1 三维扩展模型
+
+引擎在三个维度上可扩展，互不干扰：
+
+```
+         音源层（Sound Provider）
+         ↕ 可替换：振荡器合成 → 采样播放 → 外部音源
+         ─────────────────────
+         曲风层（Sound Pack）
+         ↕ 可替换：像素风 → 赛博朋克 → 管弦乐
+         ─────────────────────
+         规则层（Rule Config）
+         ↕ 可替换：聚合策略 / 空间参数 / 通道分配
+```
+
+**换音源**：不改引擎代码，换 SoundProvider
+**换曲风**：不改引擎代码，换 SoundPack 配置
+**换规则**：不改引擎代码，改 Config JSON
+
+### 2.2 音源层：SoundProvider 接口
+
+```typescript
+/** 音源提供者接口 — 引擎通过此接口获取声音，不关心实现 */
+interface SoundProvider {
+  /** 唯一标识 */
+  readonly id: string;
+  /** 能力声明 */
+  readonly capabilities: SoundProviderCapabilities;
+
+  /** 创建一个可播放的声音实例 */
+  createSound(
+    ctx: BaseAudioContext,
+    soundId: string,
+    params: SoundParams
+  ): SoundInstance;
+
+  /** 预加载（可选） */
+  preload?(soundIds: string[]): Promise<void>;
+}
+
+interface SoundProviderCapabilities {
+  /** 支持的声音类型 */
+  supportedTypes: ('synth' | 'sample' | 'stream')[];
+  /** 最大同时发声数（-1 = 无限制） */
+  maxPolyphony: number;
+  /** 是否支持实时参数调节（音高、滤波器等） */
+  realtimeParams: boolean;
+}
+
+interface SoundInstance {
+  /** 连接到音频图 */
+  connect(node: AudioNode): void;
+  /** 播放 */
+  start(when: number, params: PlayParams): void;
+  /** 停止 */
+  stop(when: number): void;
+  /** 销毁资源 */
+  dispose(): void;
+}
+```
+
+**内置 Provider（开箱即用）**：
+
+| Provider | 说明 | 适用场景 |
+|----------|------|----------|
+| `OscillatorProvider` | Web Audio API 振荡器合成 | 默认，零依赖，像素风 |
+| `SampleProvider` | AudioBuffer 采样播放 | 有外部音效文件 |
+| `ChiptuneProvider` | MIDI 脚本驱动的芯片合成器 | BGM 生成 |
+
+**自定义 Provider（用户扩展）**：
+
+```typescript
+// 示例：接入 FM 合成器
+const fmSynthProvider: SoundProvider = {
+  id: 'fm-synth',
+  capabilities: { supportedTypes: ['synth'], maxPolyphony: 8, realtimeParams: true },
+  createSound(ctx, soundId, params) {
+    // 自定义 FM 合成逻辑
+    return new FMSynthInstance(ctx, params);
+  }
+};
+
+engine.registerProvider(fmSynthProvider);
+```
+
+### 2.3 曲风层：SoundPack 配置驱动
+
+**当前问题**：波形参数硬编码在代码里（`sine 600Hz`, `square 1200Hz`）。换曲风要改代码。
+
+**解法**：所有声音参数外置为配置文件，引擎启动时加载。
+
+```typescript
+/** SoundPack = 一套完整的音色配置 */
+interface SoundPack {
+  /** Pack 名称 */
+  name: string;
+  /** 风格标签，供 UI 展示 */
+  style: string;
+  /** 每个声音的完整参数 */
+  sounds: Record<SoundId, SoundDefinition>;
+  /** 全局混音参数 */
+  masterConfig: MasterConfig;
+  /** BGM 定义 */
+  bgm?: Record<BgmId, BgmDefinition>;
+  /** 环境音定义 */
+  ambient?: Record<AmbientId, AmbientDefinition>;
+}
+
+interface SoundDefinition {
+  /** 使用哪个 Provider */
+  provider: string;
+  /** 波形类型 */
+  waveforms: WaveformConfig[];
+  /** ADSR 包络 */
+  envelope: ADSRConfig;
+  /** 滤波器 */
+  filter?: FilterConfig;
+  /** 默认音量 */
+  volume: number;
+  /** 默认时长 (ms) */
+  duration: number;
+  /** 音高变化曲线 */
+  pitch?: PitchCurve;
+}
+
+interface ADSRConfig {
+  attack: number;    // ms
+  decay: number;     // ms
+  sustain: number;   // 0-1
+  release: number;   // ms
+}
+
+interface WaveformConfig {
+  type: OscillatorType;
+  frequency: number | [number, number]; // Hz 或 [start, end] 表示滑音
+  detune?: number;
+  gain?: number;
+}
+
+interface FilterConfig {
+  type: BiquadFilterType;
+  frequency: number;
+  Q?: number;
+  gain?: number;
+}
+```
+
+**示例：像素风 SoundPack（默认）**：
+
+```json
+{
+  "name": "pixel-sfc",
+  "style": "像素风 SFC/GBA 16-bit 芯片音源",
+  "sounds": {
+    "ui.click": {
+      "provider": "oscillator",
+      "waveforms": [{ "type": "square", "frequency": 1200, "gain": 0.3 }],
+      "envelope": { "attack": 0, "decay": 20, "sustain": 0.8, "release": 30 },
+      "volume": 0.4,
+      "duration": 50
+    },
+    "game.taskComplete": {
+      "provider": "oscillator",
+      "waveforms": [
+        { "type": "triangle", "frequency": [523, 659], "gain": 0.4, "detune": 5 }
+      ],
+      "envelope": { "attack": 5, "decay": 50, "sustain": 0.6, "release": 100 },
+      "filter": { "type": "lowpass", "frequency": 3000, "Q": 1 },
+      "volume": 0.5,
+      "duration": 300
+    }
+  }
+}
+```
+
+**换曲风**：加载不同的 SoundPack JSON，引擎代码不变。
+
+```typescript
+// 切换到赛博朋克风
+engine.loadSoundPack(cyberpunkPack);
+// 所有声音参数自动替换，无需改代码
+```
+
+### 2.4 规则层：Config JSON
+
+聚合策略、空间参数、通道分配全部可配置：
+
+```typescript
+interface AudioEngineConfig {
+  // === 总线配置 ===
+  buses: BusConfig[];
+  channelCount: number; // 默认 8（SFC 约束）
+
+  // === 聚合规则 ===
+  aggregation: Record<SoundId, AggregationConfig>;
+
+  // === 空间参数 ===
+  spatial: SpatialConfig;
+
+  // === 焦点模式 ===
+  focusModes: FocusModeConfig[];
+
+  // === 熔断器 ===
+  circuitBreaker: CircuitBreakerConfig;
+
+  // === Ducking 规则 ===
+  duckRules: DuckRule[];
+}
+```
+
+**所有配置都可在运行时热更新**：
+
+```typescript
+// 运行时调整空间参数
+engine.updateConfig({
+  spatial: { fullVolumeRatio: 0.8, maxAudibleRatio: 3.0 }
+});
+
+// 运行时调整聚合策略
+engine.updateConfig({
+  aggregation: { 'game.taskComplete': { strategy: 'arpeggio', windowMs: 300 } }
+});
+```
+
+### 2.5 复用性保障
+
+**引擎作为独立 npm 包发布时的目录结构**：
+
+```
+chip-audio-engine/
+├── src/
+│   ├── core/            # 核心引擎（Bus/Aggregator/Mixer/ChannelPool）
+│   ├── providers/       # 内置音源（Oscillator/Sample/Chiptune）
+│   ├── spatial/         # 空间音频模块
+│   ├── config/          # 配置系统 + Schema 校验
+│   └── index.ts         # Public API
+├── packs/
+│   ├── pixel-sfc.json   # 默认像素风 SoundPack
+│   ├── cyberpunk.json   # 可选赛博朋克 SoundPack
+│   └── schema.json      # SoundPack JSON Schema
+├── README.md
+├── package.json
+└── tsconfig.json
+```
+
+**在其他项目中复用**：
+
+```typescript
+import { ChipAudioEngine } from 'chip-audio-engine';
+import pixelPack from 'chip-audio-engine/packs/pixel-sfc.json';
+
+const engine = new ChipAudioEngine({
+  soundPack: pixelPack,
+  channelCount: 8,
+});
+
+engine.init();
+engine.play('ui.click');
+```
+
+---
+
+## 3. 现状分析
+
+### 3.1 当前音频代码
 
 Stratix 当前有**两套并行、互不关联**的音频系统：
 
@@ -55,7 +426,7 @@ Stratix 当前有**两套并行、互不关联**的音频系统：
 
 两者都基于 Web Audio API，都用振荡器合成声音，都只有一个 masterGain 控制总音量。
 
-### 1.2 缺失的能力
+### 3.2 缺失的能力
 
 - ❌ 没有总线分层（所有声音一锅炖）
 - ❌ 没有优先级系统（N 个声音同时响时无法管理）
@@ -67,7 +438,7 @@ Stratix 当前有**两套并行、互不关联**的音频系统：
 
 ---
 
-## 2. 行业方案对比
+## 4. 行业方案对比
 
 | 方案 | 代表产品 | 优点 | 缺点 | 适用性 |
 |------|---------|------|------|--------|
@@ -86,7 +457,7 @@ Stratix 当前有**两套并行、互不关联**的音频系统：
 
 ---
 
-## 3. 总线架构
+## 5. 总线架构
 
 ### 3.1 Bus 树
 
@@ -204,7 +575,7 @@ BGM 切换触发条件（初版）：
 
 ---
 
-## 4. 声音清单
+## 6. 声音清单
 
 ### 4.1 全部声音 ID 及参数
 
@@ -247,7 +618,7 @@ type SoundId =
 
 ### 4.2 声音生成策略
 
-基于第 9 章像素风 16-bit 芯片音源约束：
+基于第 13 章像素风 16-bit 芯片音源约束：
 
 | 类型 | 策略 | 波形 | 理由 |
 |------|------|------|------|
@@ -260,7 +631,7 @@ type SoundId =
 
 ---
 
-## 5. 事件聚合与并发控制
+## 7. 事件聚合与并发控制
 
 > **核心原则：事件零丢失。** Stratix 是 RTS 界面，声音是信息通道。
 > 任何事件都不应该被静默丢弃。能立即播放就播放，不能就合并，但绝不丢。
@@ -499,7 +870,7 @@ SFC 硬件只有 8 个音频通道，这是风格约束。Web Audio API 没有�
 
 ---
 
-## 6. 音频与 HUD 的集成点
+## 8. 音频与 HUD 的集成点
 
 ### 6.1 HUD 组件 → 音频触发映射
 
@@ -530,7 +901,7 @@ SFC 硬件只有 8 个音频通道，这是风格约束。Web Audio API 没有�
 
 ---
 
-## 7. API 设计（Draft）
+## 9. API 设计（Draft）
 
 ### 7.1 核心接口
 
@@ -609,7 +980,7 @@ audioEngine.masterMuted = true;
 
 ---
 
-## 8. 与现有系统的关系
+## 10. 与现有系统的关系
 
 ### 8.1 迁移计划
 
@@ -631,7 +1002,7 @@ audioEngine.masterMuted = true;
 
 ---
 
-## 9. 声音风格定义
+## 11. 声音风格定义
 
 ### 9.1 核心风格：像素风复古音频
 
@@ -714,7 +1085,7 @@ Ambient = 像素风环境层
 
 ---
 
-## 10. 实时性与连贯性
+## 12. 实时性与连贯性
 
 ### 10.1 问题：声音的实时性如何保证？
 
@@ -822,7 +1193,7 @@ oscillator.stop(now + 0.006);
 
 ---
 
-## 11. 异常防护：循环触发熔断
+## 13. 异常防护：循环触发熔断
 
 ### 11.1 问题场景
 
@@ -902,7 +1273,7 @@ interface AudioEngineConfig {
 
 ---
 
-## 12. 规模化声音准入与空间收音
+## 14. 规模化声音准入与空间收音
 
 > **前提**：Stratix 的目标是 5000 Agent（500 Zone × 10 Agent/Zone）。
 > 声音是注意力聚焦工具，不是全景广播。
@@ -1212,7 +1583,7 @@ function calculateAwarenessVolume(
 
 ---
 
-## 13. 待讨论
+## 15. 待讨论
 
 - [ ] Bus 树结构是否需要调整？
 - [ ] 声音列表是否有遗漏？
