@@ -120,7 +120,12 @@ export class CommandButtonFactory {
     bg.strokeRoundedRect(0, 0, config.width, config.height, 4);
     container.add(bg);
 
-    if (config.enabled === false) {
+    // Ripple container for click effect
+    const rippleContainer = scene.add.container(0, 0);
+    container.add(rippleContainer);
+
+    const isDisabled = config.enabled === false;
+    if (isDisabled) {
       container.setAlpha(0.5);
     }
 
@@ -132,15 +137,17 @@ export class CommandButtonFactory {
       0x000000,
       0
     );
-    hitArea.setInteractive({ useHandCursor: config.enabled !== false });
+    hitArea.setInteractive({ useHandCursor: !isDisabled });
     container.add(hitArea);
+
+    let labelText: Phaser.GameObjects.Text;
 
     if (config.icon) {
       const iconText = scene.add.text(8, config.height / 2, config.icon, { fontSize: '12px' });
       iconText.setOrigin(0, 0.5);
       container.add(iconText);
 
-      const labelText = scene.add.text(24, config.height / 2, config.label, {
+      labelText = scene.add.text(24, config.height / 2, config.label, {
         fontFamily: this.fontFamily,
         fontSize: '11px',
         color: '#' + config.labelColor.toString(16).padStart(6, '0'),
@@ -148,7 +155,7 @@ export class CommandButtonFactory {
       labelText.setOrigin(0, 0.5);
       container.add(labelText);
     } else {
-      const labelText = scene.add.text(config.width / 2, config.height / 2, config.label, {
+      labelText = scene.add.text(config.width / 2, config.height / 2, config.label, {
         fontFamily: this.fontFamily,
         fontSize: '11px',
         color: '#' + config.labelColor.toString(16).padStart(6, '0'),
@@ -162,8 +169,7 @@ export class CommandButtonFactory {
     // Handle click
     hitArea.on('pointerdown', config.onClick);
 
-    if (config.enabled !== false) {
-
+    if (!isDisabled) {
 
       hitArea.on('pointerover', () => {
         bg.clear();
@@ -199,7 +205,7 @@ export class CommandButtonFactory {
         }
       });
 
-      hitArea.on('pointerdown', () => {
+      hitArea.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
         if (!isReducedMotion()) {
           if (pressTween && pressTween.isPlaying()) pressTween.stop();
           pressTween = scene.tweens.add({
@@ -210,9 +216,34 @@ export class CommandButtonFactory {
             ease: 'Sine.easeInOut',
           });
         }
+
+        // Press visual reinforcement: darken background
+        bg.clear();
+        bg.fillStyle(config.glowColor, 0.15);
+        bg.fillRoundedRect(0, 0, config.width, config.height, 4);
+        bg.lineStyle(3, config.glowColor, 0.25);
+        bg.strokeRoundedRect(-1, -1, config.width + 2, config.height + 2, 5);
+        bg.lineStyle(2, config.glowColor, 0.8);
+        bg.strokeRoundedRect(0, 0, config.width, config.height, 4);
+
+        // Click ripple effect
+        if (!isReducedMotion()) {
+          const localX = pointer.x - config.x;
+          const localY = pointer.y - config.y;
+          this.createRipple(rippleContainer, localX, localY, config.glowColor);
+        }
       });
 
       hitArea.on('pointerup', () => {
+        // Restore hover state or normal state
+        bg.clear();
+        bg.fillStyle(config.glowColor, config.hoverFillAlpha);
+        bg.fillRoundedRect(0, 0, config.width, config.height, 4);
+        bg.lineStyle(3, config.glowColor, 0.25);
+        bg.strokeRoundedRect(-1, -1, config.width + 2, config.height + 2, 5);
+        bg.lineStyle(2, config.glowColor, 0.8);
+        bg.strokeRoundedRect(0, 0, config.width, config.height, 4);
+
         if (!isReducedMotion()) {
           if (pressTween && pressTween.isPlaying()) pressTween.stop();
           pressTween = scene.tweens.add({
@@ -236,5 +267,25 @@ export class CommandButtonFactory {
     }
 
     return container;
+  }
+
+  private createRipple(container: Phaser.GameObjects.Container, x: number, y: number, color: number): void {
+    const { scene } = this;
+    const ripple = scene.add.graphics();
+    ripple.fillStyle(color, 0.4);
+    ripple.fillCircle(x, y, 2);
+    container.add(ripple);
+
+    const tween = scene.tweens.add({
+      targets: ripple,
+      scaleX: 12,
+      scaleY: 12,
+      alpha: 0,
+      duration: 300,
+      ease: 'Sine.easeOut',
+      onComplete: () => {
+        ripple.destroy();
+      },
+    });
   }
 }
