@@ -33,10 +33,20 @@ jest.mock('@/stratix-rts/ui/v2/CommandPanelV2', () => ({
   })),
 }));
 
+jest.mock('@/stratix-rts/ui/v2/ReplayControls', () => ({
+  ReplayControls: jest.fn().mockImplementation(() => ({
+    create: jest.fn().mockReturnThis(),
+    mount: jest.fn(),
+    resize: jest.fn(),
+    destroy: jest.fn(),
+  })),
+}));
+
 import { RTSUIFactory } from '@/stratix-rts/ui/v2/RTSUIFactory';
 import { TopBarV2 } from '@/stratix-rts/ui/v2/TopBarV2';
 import { MinimapV2 } from '@/stratix-rts/ui/v2/MinimapV2';
 import { CommandPanelV2 } from '@/stratix-rts/ui/v2/CommandPanelV2';
+import { ReplayControls } from '@/stratix-rts/ui/v2/ReplayControls';
 
 describe('RTSUIFactory', () => {
   let factory: RTSUIFactory;
@@ -94,12 +104,13 @@ describe('RTSUIFactory', () => {
   });
 
   describe('createAll', () => {
-    it('should create all three UI components', () => {
+    it('should create all four UI components', () => {
       const components = factory.createAll();
 
       expect(TopBarV2).toHaveBeenCalled();
       expect(MinimapV2).toHaveBeenCalled();
       expect(CommandPanelV2).toHaveBeenCalled();
+      expect(ReplayControls).toHaveBeenCalled();
     });
 
     it('should return RTSUIComponents object', () => {
@@ -108,6 +119,7 @@ describe('RTSUIFactory', () => {
       expect(components).toHaveProperty('topBar');
       expect(components).toHaveProperty('minimap');
       expect(components).toHaveProperty('commandPanel');
+      expect(components).toHaveProperty('replayControls');
     });
 
     it('should mount all components', () => {
@@ -123,6 +135,7 @@ describe('RTSUIFactory', () => {
       expect(components.topBar.create).toHaveBeenCalled();
       expect(components.minimap.create).toHaveBeenCalled();
       expect(components.commandPanel.create).toHaveBeenCalled();
+      expect(components.replayControls.create).toHaveBeenCalled();
     });
 
     it('should call mount on each component', () => {
@@ -131,6 +144,7 @@ describe('RTSUIFactory', () => {
       expect(components.topBar.mount).toHaveBeenCalled();
       expect(components.minimap.mount).toHaveBeenCalled();
       expect(components.commandPanel.mount).toHaveBeenCalled();
+      expect(components.replayControls.mount).toHaveBeenCalled();
     });
   });
 
@@ -154,6 +168,7 @@ describe('RTSUIFactory', () => {
       const components = factory.getComponents();
       expect(components!.topBar.resize).toHaveBeenCalledWith(1280);
       expect(components!.minimap.resize).toHaveBeenCalledWith(200, 120);
+      expect(components!.replayControls.resize).toHaveBeenCalledWith(1280 * 0.4);
     });
 
     it('should not throw if components not created', () => {
@@ -170,12 +185,14 @@ describe('RTSUIFactory', () => {
       const topBarDestroy = jest.spyOn(componentsBeforeDestroy!.topBar, 'destroy');
       const minimapDestroy = jest.spyOn(componentsBeforeDestroy!.minimap, 'destroy');
       const commandPanelDestroy = jest.spyOn(componentsBeforeDestroy!.commandPanel, 'destroy');
+      const replayControlsDestroy = jest.spyOn(componentsBeforeDestroy!.replayControls, 'destroy');
 
       factory.destroy();
 
       expect(topBarDestroy).toHaveBeenCalled();
       expect(minimapDestroy).toHaveBeenCalled();
       expect(commandPanelDestroy).toHaveBeenCalled();
+      expect(replayControlsDestroy).toHaveBeenCalled();
     });
 
     it('should set components to null', () => {
@@ -223,6 +240,15 @@ describe('RTSUIFactory', () => {
       expect(commandPanelCall[4]).toBe(180); // height
       expect(commandPanelCall[5]).toBe(mockConfig.onSkillSelect); // onSkillSelect
       expect(commandPanelCall[6]).toBe(mockConfig.onCommandExecute); // onCommandExecute
+    });
+
+    it('should pass correct parameters to ReplayControls', () => {
+      factory.createAll();
+
+      const replayControlsCall = (ReplayControls as jest.Mock).mock.calls[0];
+      expect(replayControlsCall[1].x).toBe(0); // x
+      expect(replayControlsCall[1].y).toBe(48); // y
+      expect(replayControlsCall[1].width).toBe(mockConfig.screenWidth * 0.4); // width
     });
   });
 

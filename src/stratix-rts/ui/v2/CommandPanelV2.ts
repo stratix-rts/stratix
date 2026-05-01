@@ -17,6 +17,7 @@ import { ReactiveToken } from '@/stratix-core/ui/foundation/theme/ReactiveToken'
 
 import { isReducedMotion } from '../../themes/ThemeColors';
 
+import { HUD_LAYOUT } from './layout/HUDLayout';
 import { CommandButtonFactory } from './command-panel/CommandButtonFactory';
 import { AgentDetailRenderer } from './command-panel/AgentDetailRenderer';
 import { EmptyStateRenderer } from './command-panel/EmptyStateRenderer';
@@ -148,7 +149,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
 
     if (!isReducedMotion()) {
       const targetY = this.config.y ?? 0;
-      this.container.setY(targetY + 40);
+      this.container.setY(targetY + HUD_LAYOUT.commandPanel.slideInOffset);
       this.container.setAlpha(0);
       this.scene.tweens.add({
         targets: this.container,
@@ -166,7 +167,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     const borderClr = hexToNumber(this.borderColor.get());
     const primaryColor = hexToNumber(this.primaryColor.get());
     const w = this.config.width || 500;
-    const h = this.config.height || 180;
+    const h = this.config.height || HUD_LAYOUT.commandPanel.height;
 
     bg.fillStyle(bgColor, 0.7);
     bg.fillRoundedRect(0, 0, w, h, 8);
@@ -184,12 +185,12 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   }
 
   private createContentContainer(): void {
-    this.contentContainer = this.scene.add.container(12, 48);
+    this.contentContainer = this.scene.add.container(HUD_LAYOUT.commandPanel.contentPadding, 48);
     (this.container as Phaser.GameObjects.Container).add(this.contentContainer);
   }
 
   private createActionButtonContainer(): void {
-    this.actionButtonContainer = this.scene.add.container(12, (this.config.height || 180) - 40);
+    this.actionButtonContainer = this.scene.add.container(HUD_LAYOUT.commandPanel.contentPadding, (this.config.height || HUD_LAYOUT.commandPanel.height) - 40);
     (this.container as Phaser.GameObjects.Container).add(this.actionButtonContainer);
   }
 
@@ -274,9 +275,9 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     if (!this.tabContainer) return;
     this.tabContainer.removeAll(true);
 
-    const tabWidth = 80;
-    const tabHeight = 32;
-    const tabSpacing = 4;
+    const tabWidth = HUD_LAYOUT.commandPanel.tabWidth;
+    const tabHeight = HUD_LAYOUT.commandPanel.tabHeight;
+    const tabSpacing = HUD_LAYOUT.commandPanel.tabSpacing;
 
     const tabs: { key: 'detail' | 'skills'; label: string }[] = [
       { key: 'detail', label: '详情' },
@@ -286,7 +287,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     this.tabPositions = [];
 
     tabs.forEach((tab, index) => {
-      const x = 12 + index * (tabWidth + tabSpacing);
+      const x = HUD_LAYOUT.commandPanel.tabPaddingX + index * (tabWidth + tabSpacing);
       this.tabPositions.push(x);
       const isActive = this.currentTab === tab.key;
 
@@ -339,7 +340,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     });
 
     const activeIndex = this.currentTab === 'detail' ? 0 : 1;
-    const indicatorX = this.tabPositions[activeIndex] ?? 12;
+    const indicatorX = this.tabPositions[activeIndex] ?? HUD_LAYOUT.commandPanel.tabPaddingX;
     const indicatorY = 8 + tabHeight - 2;
     if (!this.tabIndicator) {
       this.tabIndicator = this.scene.add.graphics();
@@ -361,7 +362,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     this.contentContainer.removeAll(true);
     this.contentContainer.alpha = 1;
 
-    const contentWidth = (this.config.width || 500) - 24;
+    const contentWidth = (this.config.width || 500) - HUD_LAYOUT.commandPanel.contentPadding * 2;
     const renderer = this.renderers[this.panelState];
     if (renderer) {
       const newTweens = renderer.render(this.contentContainer, this.data, contentWidth);
@@ -374,9 +375,9 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     this.actionButtonContainer.removeAll(true);
 
     const isMultiSelect = this.panelState === 'multi_agent';
-    const buttonWidth = 70;
-    const buttonHeight = 28;
-    const buttonSpacing = 8;
+    const buttonWidth = HUD_LAYOUT.commandPanel.actionButtonWidth;
+    const buttonHeight = HUD_LAYOUT.commandPanel.actionButtonHeight;
+    const buttonSpacing = HUD_LAYOUT.commandPanel.actionButtonSpacing;
 
     let buttons: { key: string; label: string; icon: string; enabled: boolean }[];
 
@@ -396,7 +397,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     }
 
     const totalWidth = buttons.length * buttonWidth + (buttons.length - 1) * buttonSpacing;
-    const startX = ((this.config.width || 500) - 24 - totalWidth) / 2;
+    const startX = ((this.config.width || 500) - HUD_LAYOUT.commandPanel.contentPadding * 2 - totalWidth) / 2;
 
     const btnColors = {
       baseFill: hexToNumber(this.backgroundTertiaryColor.get()),
@@ -477,7 +478,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
       getDangerColor: t(this.dangerColor),
       getProgressGradKey: () => this.gradientHelper.progressGradKey,
       getEmptyGradKey: () => this.gradientHelper.emptyGradKey,
-      getContentHeight: () => (this.config.height || 180) - 60,
+      getContentHeight: () => (this.config.height || HUD_LAYOUT.commandPanel.height) - 60,
       hexToNumber,
     };
   }

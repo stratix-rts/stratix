@@ -14,6 +14,7 @@ import { ReactiveToken } from '@/stratix-core/ui/foundation/theme/ReactiveToken'
 
 import { MAP_WIDTH, MAP_HEIGHT } from '../../constants';
 import { isReducedMotion } from '../../themes/ThemeColors';
+import { HUD_LAYOUT } from './layout/HUDLayout';
 
 interface MinimapConfig {
   width: number;
@@ -22,9 +23,9 @@ interface MinimapConfig {
 }
 
 const DEFAULT_CONFIG: MinimapConfig = {
-  width: 200,
-  height: 120,
-  padding: 8,
+  width: HUD_LAYOUT.minimap.width,
+  height: HUD_LAYOUT.minimap.height,
+  padding: HUD_LAYOUT.minimap.padding,
 };
 
 interface ClickPing {

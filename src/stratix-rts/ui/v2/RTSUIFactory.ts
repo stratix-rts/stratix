@@ -8,13 +8,17 @@
 import Phaser from 'phaser';
 
 import { CommandPanelV2, Skill, CommandPanelCallbacks } from './CommandPanelV2';
+import { HUD_LAYOUT } from './layout/HUDLayout';
 import { MinimapV2 } from './MinimapV2';
 import { TopBarV2, TopBarStats } from './TopBarV2';
+import { ReplayControls } from './ReplayControls';
+import type { RecordingSession } from '../../events/replay';
 
 export interface RTSUIComponents {
   topBar: TopBarV2;
   minimap: MinimapV2;
   commandPanel: CommandPanelV2;
+  replayControls: ReplayControls;
 }
 
 export interface RTSUIConfig {
@@ -37,6 +41,13 @@ export interface RTSUIConfig {
   onSelectAll?: () => void;
   onDeselectAll?: () => void;
   statsCollector?: any;
+  replayControls?: {
+    onRecordingStarted?: () => void;
+    onRecordingStopped?: (session: RecordingSession) => void;
+    onPlaybackStarted?: () => void;
+    onPlaybackPaused?: () => void;
+    onPlaybackEnded?: () => void;
+  };
 }
 
 export class RTSUIFactory {
@@ -53,11 +64,13 @@ export class RTSUIFactory {
     const topBar = this.createTopBar();
     const minimap = this.createMinimap();
     const commandPanel = this.createCommandPanel();
+    const replayControls = this.createReplayControls();
     
     this.components = {
       topBar,
       minimap,
       commandPanel,
+      replayControls,
     };
     
     this.mountAll();
@@ -81,8 +94,8 @@ export class RTSUIFactory {
   private createMinimap(): MinimapV2 {
     const minimap = new MinimapV2(
       this.scene,
-      this.config.screenWidth - 220,
-      this.config.screenHeight - 140,
+      this.config.screenWidth - HUD_LAYOUT.minimapRightMargin,
+      this.config.screenHeight - HUD_LAYOUT.minimapBottomMargin,
       this.config.camera,
       this.config.getAgentSprites,
       this.config.getTaskZones,
@@ -106,9 +119,9 @@ export class RTSUIFactory {
     const commandPanel = new CommandPanelV2(
       this.scene,
       0,
-      this.config.screenHeight - 200,
-      this.config.screenWidth - 220,
-      180,
+      this.config.screenHeight - HUD_LAYOUT.commandPanelBottomMargin,
+      this.config.screenWidth - HUD_LAYOUT.minimapRightMargin,
+      HUD_LAYOUT.commandPanel.height,
       this.config.onSkillSelect,
       this.config.onCommandExecute,
       callbacks
@@ -117,12 +130,30 @@ export class RTSUIFactory {
     return commandPanel;
   }
   
+  private createReplayControls(): ReplayControls {
+    const replayConfig = this.config.replayControls || {};
+    const width = this.config.screenWidth * 0.4;
+    const replayControls = new ReplayControls(this.scene, {
+      x: 0,
+      y: 48,
+      width,
+      onRecordingStarted: replayConfig.onRecordingStarted,
+      onRecordingStopped: replayConfig.onRecordingStopped,
+      onPlaybackStarted: replayConfig.onPlaybackStarted,
+      onPlaybackPaused: replayConfig.onPlaybackPaused,
+      onPlaybackEnded: replayConfig.onPlaybackEnded,
+    });
+    replayControls.create();
+    return replayControls;
+  }
+  
   private mountAll(): void {
     if (!this.components) return;
     
     this.components.topBar.mount();
     this.components.minimap.mount();
     this.components.commandPanel.mount();
+    this.components.replayControls.mount();
   }
   
   getComponents(): RTSUIComponents | null {
@@ -133,10 +164,11 @@ export class RTSUIFactory {
     if (!this.components) return;
     
     this.components.topBar.resize(width);
-    this.components.minimap.resize(200, 120);
+    this.components.minimap.resize(HUD_LAYOUT.minimap.width, HUD_LAYOUT.minimap.height);
+    this.components.replayControls.resize(width * 0.4);
     
-    this.components.commandPanel.getConfig().width = width - 220;
-    this.components.commandPanel.getConfig().y = height - 200;
+    this.components.commandPanel.getConfig().width = width - HUD_LAYOUT.minimapRightMargin;
+    this.components.commandPanel.getConfig().y = height - HUD_LAYOUT.commandPanelBottomMargin;
   }
   
   destroy(): void {
@@ -145,6 +177,7 @@ export class RTSUIFactory {
     this.components.topBar.destroy();
     this.components.minimap.destroy();
     this.components.commandPanel.destroy();
+    this.components.replayControls.destroy();
     
     this.components = null;
   }

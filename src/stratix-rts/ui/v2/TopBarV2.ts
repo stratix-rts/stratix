@@ -15,6 +15,7 @@ import { ReactiveToken } from '@/stratix-core/ui/foundation/theme/ReactiveToken'
 import type { StatsCollector } from '../../debug/StatsCollector';
 import { PerformanceWidget } from '../debug/PerformanceWidget';
 import { isReducedMotion } from '../../themes/ThemeColors';
+import { HUD_LAYOUT } from './layout/HUDLayout';
 
 export interface TopBarStats {
   totalAgents: number;
@@ -78,7 +79,7 @@ export class TopBarV2 extends EnhancedUIComponent {
       x,
       y,
       width,
-      height: 40,
+      height: HUD_LAYOUT.topBar.height,
       reactiveTheme: true,
     });
 
@@ -110,9 +111,9 @@ export class TopBarV2 extends EnhancedUIComponent {
     this.createBackground();
     this.createGridBackground();
     this.createScanline();
-    this.createAgentSection(20, 12);
-    this.createBusySection(140, 12);
-    this.createZoneSection(260, 12);
+    this.createAgentSection(HUD_LAYOUT.topBar.sectionStartX, 12);
+    this.createBusySection(HUD_LAYOUT.topBar.sectionStartX + HUD_LAYOUT.topBar.sectionSpacing, 12);
+    this.createZoneSection(HUD_LAYOUT.topBar.sectionStartX + HUD_LAYOUT.topBar.sectionSpacing * 2, 12);
     this.createHelpButton();
 
     if (this.statsCollector) {
@@ -129,7 +130,7 @@ export class TopBarV2 extends EnhancedUIComponent {
 
     this.performanceWidget = new PerformanceWidget(
       this.scene,
-      (this.config.width || 1920) - 50,
+      (this.config.width || 1920) - HUD_LAYOUT.topBar.perfWidgetOffset,
       20,
       this.statsCollector
     );
@@ -152,11 +153,11 @@ export class TopBarV2 extends EnhancedUIComponent {
   private drawGrid(): void {
     if (!this.gridGraphics) return;
     const width = this.config.width || 1920;
-    const height = this.config.height || 40;
+    const height = this.config.height || HUD_LAYOUT.topBar.height;
     const gridColor = this.hexToNumber(this.borderColor.get());
     this.gridGraphics.clear();
     this.gridGraphics.lineStyle(1, gridColor, 0.04);
-    const step = 20;
+    const step = HUD_LAYOUT.topBar.gridStep;
     for (let x = 0; x <= width; x += step) {
       this.gridGraphics.lineBetween(x, 0, x, height);
     }
@@ -200,7 +201,7 @@ export class TopBarV2 extends EnhancedUIComponent {
     const bgColor = this.hexToNumber(this.backgroundColor.get());
     const borderClr = this.hexToNumber(this.borderColor.get());
     const width = this.config.width || 1920;
-    const height = this.config.height || 40;
+    const height = this.config.height || HUD_LAYOUT.topBar.height;
 
     this.background.clear();
     // Glassmorphism: translucent background
@@ -254,10 +255,10 @@ export class TopBarV2 extends EnhancedUIComponent {
   }
 
   private createHelpButton(): void {
-    const buttonX = (this.config.width || 1920) - 150;
+    const buttonX = (this.config.width || 1920) - HUD_LAYOUT.topBar.helpButtonOffset;
     const buttonY = 8;
-    const buttonWidth = 32;
-    const buttonHeight = 24;
+    const buttonWidth = HUD_LAYOUT.topBar.helpButtonWidth;
+    const buttonHeight = HUD_LAYOUT.topBar.helpButtonHeight;
 
     this.helpButton = this.scene.add.container(buttonX, buttonY);
 

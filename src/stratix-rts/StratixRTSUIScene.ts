@@ -86,6 +86,13 @@ export default class StratixRTSUIScene extends Phaser.Scene {
       onSelectAll: () => this.handleSelectAll(),
       onDeselectAll: () => this.handleDeselectAll(),
       statsCollector: gameScene.getStatsCollector(),
+      replayControls: {
+        onRecordingStarted: () => {},
+        onRecordingStopped: () => {},
+        onPlaybackStarted: () => {},
+        onPlaybackPaused: () => {},
+        onPlaybackEnded: () => {},
+      },
     });
 
     this.uiComponents = this.uiFactory.createAll();
