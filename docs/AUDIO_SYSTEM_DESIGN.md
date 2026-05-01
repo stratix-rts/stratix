@@ -866,126 +866,213 @@ interface AudioEngineConfig {
 
 ---
 
-## 12. 空间音频与视口收音
+## 12. 规模化声音准入与空间收音
 
-### 12.1 问题：可视范围的声音收集
+> **前提**：Stratix 的目标是 5000 Agent（500 Zone × 10 Agent/Zone）。
+> 声音是注意力聚焦工具，不是全景广播。
+> 5000 个 Agent 同时发出声音 = 噪音，不是信息。
 
-类比 RTS 游戏的视口音频：
+### 12.1 声音准入原则
 
-- StarCraft II：只能听到视口内单位的声音
-- Age of Empires IV：远处战斗声模糊，近处清晰
-- 你在地图左边，听不到右边的 Agent 报警
+**核心规则：只有与用户当前关注点相关的声音才准入。**
 
-### 12.2 空间音频模型
+```
+全局视角（5000 Agent）
 
-Stratix 的场景是一个 2D 俯视地图，有摄像机（viewport）。声音的来源是地图上的 Agent、Zone 等。
+                    用户当前视口
+                 ┌─────────────┐
+                 │  ← 聚焦区 → │  ← 约 20-50 个 Agent
+                 │  声音全开   │
+                 └─────────────┘
+           ┌───────────────────────┐
+           │    外围感知区         │  ← 约 100-200 个 Agent
+           │    仅 Critical 声音   │    视口外 1-2 屏范围
+           └───────────────────────┘
+   ┌─────────────────────────────────────┐
+   │           安全区                    │  ← 约 4700+ Agent
+   │           完全静默                  │    不在关注范围内
+   └─────────────────────────────────────┘
+```
 
-**坐标系统**：
+### 12.2 三层声音准入
+
+| 层级 | 范围 | Agent 数（估算） | 可播放声音 | 说明 |
+|------|------|-----------------|-----------|------|
+| **聚焦层** | 视口内 | 20-50 | 全部声音 | 用户正在看的，完整音频反馈 |
+| **感知层** | 视口外 1-2 屏 | 100-200 | 仅 Critical（alert、error） | 远处出事了能听到，但不吵 |
+| **静默层** | 更远 | 4000+ | 无声音 | 不在关注范围，不产生任何音频 |
+
+**为什么是这三层**：
+
+- 聚焦层：用户主动看的区域，每个操作都需要即时声音反馈
+- 感知层：用户没在看但可能关心——只有警报级别的信息值得穿透
+- 静默层：5000 个 Agent 的大部分工作不需要用户实时关注
+
+### 12.3 各事件类型的准入规则
+
+**规则 1：UI 交互音效 → 始终准入（全局）**
+
+UI 元素不在地图上，不受空间限制。用户点击按钮、切换 tab，无论地图上有多少 Agent，UI 反馈都不能丢。
+
+```
+ui.click, ui.hover, ui.tabSwitch, ui.panelOpen, ui.panelClose,
+ui.toast, ui.toggle, ui.dragStart
+→ 始终全局播放，不受视口约束
+```
+
+**规则 2：BGM / Ambient → 始终播放（全局）**
+
+背景音乐和环境音跟随用户，不跟随地图位置。
+
+```
+bgm.*, ambient.*
+→ 始终播放，按 Zone 覆盖比例混合
+```
+
+**规则 3：Gameplay 事件 → 按层级准入**
+
+| 事件 | 聚焦层 | 感知层 | 静默层 | 理由 |
+|------|--------|--------|--------|------|
+| game.alert | ✅ 全音量 | ✅ 30% 音量 | ❌ | 警报需要穿透，但远处降低音量 |
+| game.error | ✅ 全音量 | ✅ 20% 音量 | ❌ | 同上，但更安静 |
+| game.taskComplete | ✅ 全音量 | ❌ | ❌ | 正常事件只限视口内 |
+| game.taskFail | ✅ 全音量 | ✅ 20% 音量 | ❌ | 失败比成功更值得关注 |
+| game.connect | ✅ 全音量 | ❌ | ❌ | 连接是常规事件 |
+| game.disconnect | ✅ 全音量 | ✅ 30% 音量 | ❌ | 断线是异常事件，值得感知 |
+| game.agentSelect | ✅ 全音量 | — | — | 只在用户主动选择时触发 |
+| game.agentDeselect | ✅ 全音量 | — | — | 同上 |
+| game.taskAssign | ✅ 全音量 | ❌ | ❌ | 用户分配的任务，只在视口内响 |
+| game.zoneCreate | ✅ 全音量 | ❌ | ❌ | 同上 |
+| game.zoneDestroy | ✅ 全音量 | ✅ 20% 音量 | ❌ | 销毁比创建更值得关注 |
+
+**关键设计：失败 > 成功 的声音穿透优先级。**
+- 任务完成只在视口内响——用户在看才关心
+- 任务失败在感知层也响——用户可能没在看但应该知道
+- 断线在感知层也响——异常事件需要穿透
+
+### 12.4 视口收音：聚焦层的声音衰减
+
+在聚焦层（视口内）进一步做距离衰减，让声音有"近大远小"的空间感：
 
 ```typescript
-interface SpatialSource {
-  /** 声音源在世界坐标中的位置 */
-  worldX: number;
-  worldY: number;
+function calculateFocusVolume(
+  sourceX: number,
+  sourceY: number,
+  camera: Phaser.Cameras.Scene2D.Camera
+): number {
+  const centerX = camera.scrollX + camera.width / 2;
+  const centerY = camera.scrollY + camera.height / 2;
+  const distance = Math.hypot(sourceX - centerX, sourceY - centerY);
+  const viewportRadius = Math.hypot(camera.width, camera.height) / 2;
+
+  // 视口中心 40% 范围内全音量
+  const fullVolumeRadius = viewportRadius * 0.4;
+  // 视口边缘衰减到 0.5（不是 0，视口内的声音都要听到）
+  const edgeVolume = 0.5;
+
+  if (distance <= fullVolumeRadius) return 1.0;
+  if (distance >= viewportRadius) return edgeVolume;
+
+  const t = (distance - fullVolumeRadius) / (viewportRadius - fullVolumeRadius);
+  return 1.0 - t * (1.0 - edgeVolume);
 }
 ```
 
-**视口收音规则**：
+**注意**：视口内最低音量是 0.5（不是 0），因为聚焦层内的声音都要可听。
 
-```
-              Camera Viewport
-         ┌─────────────────────┐
-         │                     │
-         │   🔵 Agent A        │  ← 全音量 (在视口内)
-         │                     │
-    🔴   │                     │   ← 静音 (在视口外)
-  Agent B│                     │
-         │         🟡 Agent C  │  ← 50% 音量 (在边缘)
-         └─────────────────────┘
-              ↑ 边缘过渡带
-```
+### 12.5 感知层：穿透声音的音量
 
-**音量衰减模型**：
+感知层的声音走更激进的衰减，只保留"远处有事发生"的信息量：
 
 ```typescript
-function calculateSpatialVolume(
+function calculateAwarenessVolume(
   sourceX: number,
   sourceY: number,
   camera: Phaser.Cameras.Scene2D.Camera,
-  config: SpatialConfig
+  eventType: 'alert' | 'error' | 'fail' | 'disconnect' | 'destroy'
 ): number {
-  // 1. 计算声音源到视口中心的距离
-  const viewportCenterX = camera.scrollX + camera.width / 2;
-  const viewportCenterY = camera.scrollY + camera.height / 2;
-  const distance = Math.hypot(sourceX - viewportCenterX, sourceY - viewportCenterY);
+  // 感知层基础音量（很小）
+  const baseVolumes: Record<string, number> = {
+    alert: 0.30,
+    error: 0.20,
+    fail: 0.20,
+    disconnect: 0.30,
+    destroy: 0.20,
+  };
 
-  // 2. 视口半径（对角线的一半）
+  const centerX = camera.scrollX + camera.width / 2;
+  const centerY = camera.scrollY + camera.height / 2;
+  const distance = Math.hypot(sourceX - centerX, sourceY - centerY);
   const viewportRadius = Math.hypot(camera.width, camera.height) / 2;
 
-  // 3. 衰减区间
-  const { fullVolumeRadius, maxAudibleRadius } = config;
-  // fullVolumeRadius: 视口中心到该距离内全音量
-  // maxAudibleRadius: 超过该距离静音
+  // 感知层范围：1-2 屏（viewportRadius * 2 到 viewportRadius * 4）
+  const innerEdge = viewportRadius * 2;
+  const outerEdge = viewportRadius * 4;
 
-  if (distance <= fullVolumeRadius) return 1.0;
-  if (distance >= maxAudibleRadius) return 0.0;
+  if (distance < innerEdge) return baseVolumes[eventType];
+  if (distance > outerEdge) return 0;
 
-  // 4. 线性插值衰减（也可用对数衰减更自然）
-  const t = (distance - fullVolumeRadius) / (maxAudibleRadius - fullVolumeRadius);
-  return 1.0 - t;
+  const t = (distance - innerEdge) / (outerEdge - innerEdge);
+  return baseVolumes[eventType] * (1.0 - t);
 }
 ```
 
-**空间配置**：
+### 12.6 视口环境音混合
 
-```typescript
-interface SpatialConfig {
-  /** 全音量范围（像素），= 视口半径 * 此系数 */
-  fullVolumeRatio: number;     // 默认 0.6 (视口中心 60% 范围全音量)
-  /** 最大可听范围（像素），超过则静音 */
-  maxAudibleRatio: number;     // 默认 1.5 (视口对角线 1.5 倍)
-  /** 衰减曲线 */
-  rollOffCurve: 'linear' | 'logarithmic';  // 默认 logarithmic
-}
-```
-
-### 12.3 声音的空间分类
-
-| 分类 | 空间模式 | 说明 |
-|------|---------|------|
-| UI 音效 | **无空间**（全局） | UI 元素不在地图上，始终全音量 |
-| BGM | **无空间**（全局） | 背景音乐跟随玩家，不跟随位置 |
-| Ambient | **Zone 绑定** | 环境音绑定到 Zone 位置，根据 Zone 与视口距离衰减 |
-| Gameplay | **事件源位置** | Agent 选中/任务完成等跟随事件发生的地图位置 |
-
-### 12.4 视口环境音混合
-
-当视口同时覆盖多个 Zone 时，环境音按面积比例混合：
+500 个 Zone 可能同时存在多种类型，但用户一次只看到其中几个。环境音按视口内 Zone 的覆盖面积比例混合：
 
 ```
-Camera Viewport
-┌────────────────────────────┐
-│  Zone A (DataCenter)  60%  │  ← ambient.datacenter 60% 音量
-│                    ┌───────┤
-│                    │Zone B │  ← ambient.studio 40% 音量
-│                    │Studio │
-└────────────────────┴───────┘
+视口内 3 个 Zone:
+  DataCenter Zone 占 50% → ambient.datacenter 音量 0.5
+  Studio Zone 占 30%     → ambient.studio 音量 0.3
+  Workshop Zone 占 20%   → ambient.workshop 音量 0.2
 
-混合结果:
-  ambient.datacenter → volume 0.6
-  ambient.studio     → volume 0.4
+视口外 497 个 Zone → 不产生环境音
 ```
 
-这创造了「移动摄像机穿过不同区域时环境音自然过渡」的效果。
-
-### 12.5 特殊情况
+### 12.7 特殊情况
 
 | 场景 | 处理 |
 |------|------|
-| 全局事件（系统警报） | 不走空间衰减，全局播放 |
-| 视口快速移动（快捷跳转） | 环境音 crossfade 300ms 过渡 |
-| 缩放（zoom in/out） | 缩放越大→fullVolumeRatio 越小→声音更聚焦 |
-| Minimap 点击跳转 | 触发目标位置的环境音 crossfade |
+| 全局警报（系统级） | 不走空间衰减，全局播放，不受感知层限制 |
+| 视口快速移动（快捷跳转） | 声音场景切换：旧视口 fade out 300ms + 新视口 fade in 300ms |
+| 缩放（zoom in/out） | zoom in → 聚焦层变窄 → 更少 Agent 有声音；zoom out → 反之 |
+| Minimap 点击跳转 | 触发目标位置的声音场景重建 |
+| "全屏警报"模式 | 紧急状态下所有层级的 Critical 声音全局播放（由业务层控制） |
+
+### 12.8 规模化极限推演
+
+**5000 Agent 同时在线的最坏情况**：
+
+```
+场景：5000 Agent 中，1000 个同时完成任务
+
+无准入规则：
+  1000 × game.taskComplete → 声音系统崩溃
+
+有三层准入：
+  聚焦层（视口内 ~40 Agent）: 8 个完成任务 → arpeggio 合并为 1 次琶音
+  感知层（~200 Agent）: taskComplete 不准入 → 静默
+  静默层（~4760 Agent）: 完全静默
+  
+  实际播放：1 次 taskComplete 琶音
+  结果：✓ 用户只听到视口内完成的声音，清晰不乱
+```
+
+```
+场景：5000 Agent 中，50 个同时断线
+
+无准入规则：
+  50 × game.disconnect → 声音灾难
+
+有三层准入：
+  聚焦层: 3 个断线 → arpeggio 合并为 1 次降调琶音（全音量）
+  感知层: 10 个断线 → arpeggio 合并为 1 次（30% 音量）
+  静默层: 37 个断线 → 静默
+  
+  实际播放：2 次 disconnect（1 次大声 + 1 次小声）
+  结果：✓ 用户知道附近有断线，远处也有但很远
+```
 
 ---
 
