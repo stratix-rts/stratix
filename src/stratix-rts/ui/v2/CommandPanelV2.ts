@@ -190,7 +190,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   }
 
   private createActionButtonContainer(): void {
-    this.actionButtonContainer = this.scene.add.container(HUD_LAYOUT.commandPanel.contentPadding, (this.config.height || HUD_LAYOUT.commandPanel.height) - 40);
+    this.actionButtonContainer = this.scene.add.container(HUD_LAYOUT.commandPanel.contentPadding, (this.config.height || HUD_LAYOUT.commandPanel.height) - (HUD_LAYOUT.commandPanel.actionButtonHeight + HUD_LAYOUT.commandPanel.contentPadding));
     (this.container as Phaser.GameObjects.Container).add(this.actionButtonContainer);
   }
 
