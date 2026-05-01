@@ -406,6 +406,7 @@ export class TaskZone extends BaseZone {
     this.fillGraphics?.setVisible(false);
     this.shadowGraphics?.setVisible(false);
     this.glowGraphics?.setVisible(false);
+    this.selectionGraphics?.setVisible(false);
   }
 
   /** 获取建筑实例 */
@@ -424,6 +425,7 @@ export class TaskZone extends BaseZone {
       this.fillGraphics?.setVisible(true);
       this.shadowGraphics?.setVisible(true);
       this.glowGraphics?.setVisible(true);
+      this.selectionGraphics?.setVisible(true);
     }
   }
 
