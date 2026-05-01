@@ -17,82 +17,30 @@ import { ReactiveToken } from '@/stratix-core/ui/foundation/theme/ReactiveToken'
 
 import { isReducedMotion } from '../../themes/ThemeColors';
 
-// ============================================================================
-// Types
-// ============================================================================
+import { CommandButtonFactory } from './command-panel/CommandButtonFactory';
+import { AgentDetailRenderer } from './command-panel/AgentDetailRenderer';
+import { EmptyStateRenderer } from './command-panel/EmptyStateRenderer';
+import { GradientHelper, hexToNumber } from './command-panel/GradientHelper';
+import { MultiAgentRenderer } from './command-panel/MultiAgentRenderer';
+import { ZoneDetailRenderer } from './command-panel/ZoneDetailRenderer';
 
-export interface AgentInfo {
-  agentId: string;
-  name: string;
-  type: string;
-  status: string;
-  position: { x: number; y: number };
-  currentTask?: string;
-  taskProgress?: number;
-  skills?: Record<string, number>;
-}
+import type {
+  AgentInfo,
+  CommandPanelCallbacks,
+  PanelData,
+  PanelState,
+  Skill,
+  UnitInfo,
+  ZoneInfo,
+} from './command-panel/types';
 
-export interface ZoneInfo {
-  zoneId: string;
-  name: string;
-  status: string;
-  agentCount: number;
-}
-
-export interface Skill {
-  skillId: string;
-  name: string;
-  description: string;
-  icon?: string;
-  hotkey?: string;
-}
-
-export interface UnitInfo {
-  name: string;
-  type: string;
-  status: string;
-  thumbnail?: string;
-  health?: number;
-  maxHealth?: number;
-  currentTask?: string;
-  taskProgress?: number;
-  skills?: Record<string, number>;
-}
-
-export interface CommandPanelCallbacks {
-  onChatClick: (agentIds: string[]) => void;
-  onConfigClick: (agentId: string) => void;
-  onTaskClick: (agentIds: string[]) => void;
-  onStopClick: (agentIds: string[]) => void;
-  onAgentDeselect?: (agentId: string) => void;
-  onSelectAll?: () => void;
-  onDeselectAll?: () => void;
-}
-
-// ============================================================================
-// Panel State
-// ============================================================================
-
-export type PanelState = 'empty' | 'single_agent' | 'multi_agent' | 'zone';
-
-export interface PanelData {
-  agents: AgentInfo[];
-  zone: ZoneInfo | null;
-  skills: Skill[];
-  isLoading: boolean;
-}
-
-// ============================================================================
-// CommandPanelV2
-// ============================================================================
+export type { AgentInfo, CommandPanelCallbacks, PanelData, PanelState, Skill, UnitInfo, ZoneInfo };
 
 export class CommandPanelV2 extends EnhancedUIComponent {
-  // Callbacks
   private onSkillSelect: (skill: Skill) => void;
   private onCommandExecute: (command: string) => void;
   private callbacks: CommandPanelCallbacks;
 
-  // State & Data
   private panelState: PanelState = 'empty';
   private data: PanelData = {
     agents: [],
@@ -101,20 +49,19 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     isLoading: false,
   };
 
-  // Cached references for incremental updates
   private tabContainer: Phaser.GameObjects.Container | null = null;
   private contentContainer: Phaser.GameObjects.Container | null = null;
   private actionButtonContainer: Phaser.GameObjects.Container | null = null;
   private currentTab: 'detail' | 'skills' = 'detail';
 
-  // Visual enhancement refs
   private tabIndicator: Phaser.GameObjects.Graphics | null = null;
   private tabPositions: number[] = [];
-  private progressGradKey: string | null = null;
-  private emptyGradKey: string | null = null;
   private contentTweens: Phaser.Tweens.Tween[] = [];
+  private gradientHelper: GradientHelper;
 
-  // Theme tokens
+  private renderers: Record<PanelState, import('./command-panel/IStateRenderer').IStateRenderer>;
+  private buttonFactory: CommandButtonFactory;
+
   private backgroundColor: ReactiveToken<string>;
   private backgroundSecondaryColor: ReactiveToken<string>;
   private backgroundTertiaryColor: ReactiveToken<string>;
@@ -123,16 +70,10 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   private textMutedColor: ReactiveToken<string>;
   private borderColor: ReactiveToken<string>;
   private accentColor: ReactiveToken<string>;
-
-  private infoColor: ReactiveToken<string>;
   private successColor: ReactiveToken<string>;
   private warningColor: ReactiveToken<string>;
   private dangerColor: ReactiveToken<string>;
   private primaryColor: ReactiveToken<string>;
-
-  // --------------------------------------------------------------------------
-  // Constructor
-  // --------------------------------------------------------------------------
 
   constructor(
     scene: Phaser.Scene,
@@ -161,7 +102,6 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     this.onCommandExecute = onCommandExecute;
     this.callbacks = callbacks;
 
-    // Initialize theme tokens
     this.backgroundColor = this.useToken('colors.background.primary');
     this.backgroundSecondaryColor = this.useToken('colors.background.secondary');
     this.backgroundTertiaryColor = this.useToken('colors.background.tertiary');
@@ -170,35 +110,42 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     this.textMutedColor = this.useToken('colors.text.muted');
     this.borderColor = this.useToken('colors.border.default');
     this.accentColor = this.useToken('colors.accent');
-    this.infoColor = this.useToken('colors.semantic.info');
     this.successColor = this.useToken('colors.semantic.success');
     this.warningColor = this.useToken('colors.semantic.warning');
     this.dangerColor = this.useToken('colors.semantic.danger');
     this.primaryColor = this.useToken('colors.accent');
-  }
 
-  // --------------------------------------------------------------------------
-  // Lifecycle
-  // --------------------------------------------------------------------------
+    this.buttonFactory = new CommandButtonFactory(scene, this.theme.typography.fontFamily.sans);
+    this.gradientHelper = new GradientHelper(scene, this.id);
+
+    const renderContext = this.buildRenderContext();
+    this.renderers = {
+      empty: new EmptyStateRenderer(renderContext),
+      single_agent: new AgentDetailRenderer(renderContext),
+      multi_agent: new MultiAgentRenderer(renderContext, callbacks),
+      zone: new ZoneDetailRenderer(renderContext),
+    };
+  }
 
   create(): void {
     this.container = this.scene.add.container(this.config.x, this.config.y);
     this.container.setScrollFactor(0, 0);
     this.container.setDepth(1000);
 
-    this.initGradientTextures();
+    this.gradientHelper.init(
+      this.accentColor.get(),
+      this.successColor.get(),
+      this.backgroundColor.get()
+    );
 
     this.createBackground();
     this.createTabBar();
     this.createContentContainer();
     this.createActionButtonContainer();
 
-    // Initial render
     this.render();
-
     this.onCreate();
 
-    // Slide-in from bottom
     if (!isReducedMotion()) {
       const targetY = this.config.y ?? 0;
       this.container.setY(targetY + 40);
@@ -213,27 +160,18 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     }
   }
 
-  // --------------------------------------------------------------------------
-  // Private: Component Creation
-  // --------------------------------------------------------------------------
-
   private createBackground(): void {
     const bg = this.scene.add.graphics();
-    const bgColor = this.hexToNumber(this.backgroundColor.get());
-    const borderClr = this.hexToNumber(this.borderColor.get());
-    const primaryColor = this.hexToNumber(this.primaryColor.get());
+    const bgColor = hexToNumber(this.backgroundColor.get());
+    const borderClr = hexToNumber(this.borderColor.get());
+    const primaryColor = hexToNumber(this.primaryColor.get());
     const w = this.config.width || 500;
     const h = this.config.height || 180;
 
-    // Glassmorphism background
     bg.fillStyle(bgColor, 0.7);
     bg.fillRoundedRect(0, 0, w, h, 8);
-
-    // Subtle top glow line
     bg.lineStyle(1, primaryColor, 0.3);
     bg.lineBetween(8, 0, w - 8, 0);
-
-    // Border
     bg.lineStyle(1, borderClr, 0.25);
     bg.strokeRoundedRect(0, 0, w, h, 8);
 
@@ -255,26 +193,16 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     (this.container as Phaser.GameObjects.Container).add(this.actionButtonContainer);
   }
 
-  // --------------------------------------------------------------------------
-  // Public API (Unified Update)
-  // --------------------------------------------------------------------------
-
-  /**
-   * Unified update entry point - automatically derives state from data
-   */
   public updatePanelData(data: Partial<PanelData>): void {
     const prevState = this.panelState;
 
-    // Merge data
     if (data.agents !== undefined) this.data.agents = data.agents;
     if (data.zone !== undefined) this.data.zone = data.zone;
     if (data.skills !== undefined) this.data.skills = data.skills;
     if (data.isLoading !== undefined) this.data.isLoading = data.isLoading;
 
-    // Auto-derive state
     this.panelState = this.deriveState();
 
-    // Render with transition if state changed
     if (prevState !== this.panelState) {
       this.renderWithTransition();
     } else {
@@ -282,9 +210,6 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     }
   }
 
-  /**
-   * @deprecated Use update() instead - kept for backward compatibility
-   */
   public updateAgentInfo(agent: AgentInfo | null): void {
     this.updatePanelData({
       agents: agent ? [agent] : [],
@@ -292,9 +217,6 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     });
   }
 
-  /**
-   * @deprecated Use updatePanelData() instead - kept for backward compatibility
-   */
   public updateSelectedAgents(agents: AgentInfo[]): void {
     this.updatePanelData({
       agents,
@@ -302,9 +224,6 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     });
   }
 
-  /**
-   * @deprecated Use updatePanelData() instead - kept for backward compatibility
-   */
   public updateZoneInfo(zone: ZoneInfo | null): void {
     this.updatePanelData({
       agents: [],
@@ -312,39 +231,18 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     });
   }
 
-  public setSkills(skills: Skill[]): void {
-    this.updatePanelData({ skills });
-  }
-
-  public setLoading(loading: boolean): void {
-    this.updatePanelData({ isLoading: loading });
-  }
-
+  public setSkills(skills: Skill[]): void { this.updatePanelData({ skills }); }
+  public setLoading(loading: boolean): void { this.updatePanelData({ isLoading: loading }); }
   public showNotification(message: string, type: 'info' | 'success' | 'warning' | 'error' = 'info'): void {
-    // TODO: Implement toast notification
     console.log(`[CommandPanel] ${type}: ${message}`);
   }
 
-  // --------------------------------------------------------------------------
-  // State Derivation
-  // --------------------------------------------------------------------------
-
   private deriveState(): PanelState {
-    if (this.data.agents.length === 0 && !this.data.zone) {
-      return 'empty';
-    }
-    if (this.data.zone && this.data.agents.length === 0) {
-      return 'zone';
-    }
-    if (this.data.agents.length === 1) {
-      return 'single_agent';
-    }
+    if (this.data.agents.length === 0 && !this.data.zone) return 'empty';
+    if (this.data.zone && this.data.agents.length === 0) return 'zone';
+    if (this.data.agents.length === 1) return 'single_agent';
     return 'multi_agent';
   }
-
-  // --------------------------------------------------------------------------
-  // Rendering
-  // --------------------------------------------------------------------------
 
   private render(): void {
     this.renderTabs();
@@ -353,7 +251,6 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   }
 
   private renderWithTransition(): void {
-    // Fade out content, switch state, fade in
     if (this.contentContainer) {
       this.scene.tweens.add({
         targets: this.contentContainer,
@@ -395,15 +292,14 @@ export class CommandPanelV2 extends EnhancedUIComponent {
 
       const tabBg = this.scene.add.graphics();
       if (isActive) {
-        tabBg.fillStyle(this.hexToNumber(this.backgroundTertiaryColor.get()), 1);
+        tabBg.fillStyle(hexToNumber(this.backgroundTertiaryColor.get()), 1);
       } else {
-        tabBg.fillStyle(this.hexToNumber(this.backgroundSecondaryColor.get()), 0.5);
+        tabBg.fillStyle(hexToNumber(this.backgroundSecondaryColor.get()), 0.5);
       }
       tabBg.fillRoundedRect(x, 8, tabWidth, tabHeight, { tl: 4, tr: 4, bl: 0, br: 0 });
 
-      // Active tab glow indicator (top line)
       if (isActive) {
-        const primaryColor = this.hexToNumber(this.primaryColor.get());
+        const primaryColor = hexToNumber(this.primaryColor.get());
         tabBg.lineStyle(1, primaryColor, 0.5);
         tabBg.lineBetween(x, 8, x + tabWidth, 8);
       }
@@ -412,7 +308,8 @@ export class CommandPanelV2 extends EnhancedUIComponent {
       tabHitArea.setOrigin(0, 0);
       tabHitArea.setInteractive({ useHandCursor: true });
 
-      const tabText = this.createText(x + tabWidth / 2, 8 + tabHeight / 2, tab.label, {
+      const tabText = this.scene.add.text(x + tabWidth / 2, 8 + tabHeight / 2, tab.label, {
+        fontFamily: this.theme.typography.fontFamily.sans,
         fontSize: '13px',
         fontStyle: isActive ? 'bold' : 'normal',
         color: isActive ? this.textPrimaryColor.get() : this.textMutedColor.get(),
@@ -423,10 +320,9 @@ export class CommandPanelV2 extends EnhancedUIComponent {
       tabHitArea.on('pointerover', () => {
         if (!isActive) {
           tabBg.clear();
-          tabBg.fillStyle(this.hexToNumber(this.backgroundTertiaryColor.get()), 0.7);
+          tabBg.fillStyle(hexToNumber(this.backgroundTertiaryColor.get()), 0.7);
           tabBg.fillRoundedRect(x, 8, tabWidth, tabHeight, { tl: 4, tr: 4, bl: 0, br: 0 });
-          // Hover glow
-          const glowColor = this.hexToNumber(this.primaryColor.get());
+          const glowColor = hexToNumber(this.primaryColor.get());
           tabBg.lineStyle(1, glowColor, 0.3);
           tabBg.lineBetween(x, 8, x + tabWidth, 8);
         }
@@ -434,7 +330,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
       tabHitArea.on('pointerout', () => {
         if (!isActive) {
           tabBg.clear();
-          tabBg.fillStyle(this.hexToNumber(this.backgroundSecondaryColor.get()), 0.5);
+          tabBg.fillStyle(hexToNumber(this.backgroundSecondaryColor.get()), 0.5);
           tabBg.fillRoundedRect(x, 8, tabWidth, tabHeight, { tl: 4, tr: 4, bl: 0, br: 0 });
         }
       });
@@ -442,7 +338,6 @@ export class CommandPanelV2 extends EnhancedUIComponent {
       this.tabContainer?.add([tabBg, tabHitArea, tabText]);
     });
 
-    // Tab indicator
     const activeIndex = this.currentTab === 'detail' ? 0 : 1;
     const indicatorX = this.tabPositions[activeIndex] ?? 12;
     const indicatorY = 8 + tabHeight - 2;
@@ -451,7 +346,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
       (this.container as Phaser.GameObjects.Container).add(this.tabIndicator);
     }
     this.tabIndicator.clear();
-    const indicatorColor = this.hexToNumber(this.accentColor.get());
+    const indicatorColor = hexToNumber(this.accentColor.get());
     this.tabIndicator.fillStyle(indicatorColor, 1);
     this.tabIndicator.fillRoundedRect(0, indicatorY, tabWidth, 3, 1.5);
     this.tabIndicator.setPosition(indicatorX, 0);
@@ -459,27 +354,18 @@ export class CommandPanelV2 extends EnhancedUIComponent {
 
   private renderContent(): void {
     if (!this.contentContainer) return;
-    // Clean up content tweens before removing children
     this.contentTweens.forEach(t => {
       if (t.isPlaying()) t.stop();
     });
     this.contentTweens = [];
     this.contentContainer.removeAll(true);
-    this.contentContainer.alpha = 1; // Reset alpha after tween
+    this.contentContainer.alpha = 1;
 
-    switch (this.panelState) {
-      case 'empty':
-        this.renderEmptyState();
-        break;
-      case 'single_agent':
-        this.renderAgentDetail(this.data.agents[0]);
-        break;
-      case 'multi_agent':
-        this.renderMultiAgentDetail();
-        break;
-      case 'zone':
-        this.renderZoneDetail(this.data.zone!);
-        break;
+    const contentWidth = (this.config.width || 500) - 24;
+    const renderer = this.renderers[this.panelState];
+    if (renderer) {
+      const newTweens = renderer.render(this.contentContainer, this.data, contentWidth);
+      this.contentTweens.push(...newTweens);
     }
   }
 
@@ -496,750 +382,39 @@ export class CommandPanelV2 extends EnhancedUIComponent {
 
     if (isMultiSelect) {
       buttons = [
-        { key: 'chat', label: '群聊', icon: 'chat', enabled: !this.data.isLoading },
-        { key: 'task', label: '任务', icon: 'task', enabled: !this.data.isLoading },
-        { key: 'stop', label: '停止', icon: 'stop', enabled: !this.data.isLoading },
+        { key: 'chat', label: '群聊', icon: '💬', enabled: !this.data.isLoading },
+        { key: 'task', label: '任务', icon: '📋', enabled: !this.data.isLoading },
+        { key: 'stop', label: '停止', icon: '⏹️', enabled: !this.data.isLoading },
       ];
     } else {
       buttons = [
-        { key: 'chat', label: '聊天', icon: 'chat', enabled: !this.data.isLoading && this.panelState !== 'zone' },
-        { key: 'config', label: '配置', icon: 'config', enabled: !this.data.isLoading && this.panelState === 'single_agent' },
-        { key: 'task', label: '任务', icon: 'task', enabled: !this.data.isLoading },
-        { key: 'stop', label: '停止', icon: 'stop', enabled: !this.data.isLoading },
+        { key: 'chat', label: '聊天', icon: '💬', enabled: !this.data.isLoading && this.panelState !== 'zone' },
+        { key: 'config', label: '配置', icon: '⚙️', enabled: !this.data.isLoading && this.panelState === 'single_agent' },
+        { key: 'task', label: '任务', icon: '📋', enabled: !this.data.isLoading },
+        { key: 'stop', label: '停止', icon: '⏹️', enabled: !this.data.isLoading },
       ];
     }
 
     const totalWidth = buttons.length * buttonWidth + (buttons.length - 1) * buttonSpacing;
     const startX = ((this.config.width || 500) - 24 - totalWidth) / 2;
 
+    const btnColors = {
+      baseFill: hexToNumber(this.backgroundTertiaryColor.get()),
+      border: hexToNumber(this.borderColor.get()),
+      label: hexToNumber(this.textPrimaryColor.get()),
+      glow: hexToNumber(this.primaryColor.get()),
+    };
+
     buttons.forEach((btn, index) => {
       const x = startX + index * (buttonWidth + buttonSpacing);
-      const button = this.createActionButton(x, 0, buttonWidth, buttonHeight, btn);
+      const button = this.buttonFactory.createActionButton(
+        x, 0, buttonWidth, buttonHeight, btn, btnColors, this.callbacks,
+        () => this.data.agents.map(a => a.agentId),
+        () => (this.data.agents.length === 1 ? this.data.agents[0].agentId : null)
+      );
       this.actionButtonContainer?.add(button);
     });
   }
-
-  // --------------------------------------------------------------------------
-  // Content Renderers
-  // --------------------------------------------------------------------------
-
-  private renderEmptyState(): void {
-    const contentWidth = (this.config.width || 500) - 24;
-    const contentHeight = (this.config.height || 180) - 60;
-
-    // Gradient background
-    if (this.emptyGradKey) {
-      const gradBg = this.scene.add.image(0, 0, this.emptyGradKey);
-      gradBg.setOrigin(0, 0);
-      gradBg.setDisplaySize(contentWidth, contentHeight);
-      gradBg.setAlpha(0.7);
-      this.contentContainer?.add(gradBg);
-    }
-
-    // Subtle overlay
-    const overlay = this.scene.add.graphics();
-    overlay.fillStyle(this.hexToNumber(this.backgroundColor.get()), 0.3);
-    overlay.fillRoundedRect(0, 0, contentWidth, contentHeight, 8);
-    this.contentContainer?.add(overlay);
-
-    // Particles
-    if (!isReducedMotion()) {
-      for (let i = 0; i < 14; i++) {
-        const px = 8 + Math.random() * (contentWidth - 16);
-        const py = 8 + Math.random() * (contentHeight - 16);
-        const size = 6 + Math.random() * 8;
-        const particleGraphics = this.scene.add.graphics();
-        const particleColor = this.hexToNumber(this.accentColor.get());
-        if (Math.random() > 0.5) {
-          this.drawStarIcon(particleGraphics, px, py, size * 0.4, particleColor);
-        } else {
-          this.drawDotIcon(particleGraphics, px, py, size * 0.2, particleColor);
-        }
-        const baseAlpha = 0.2 + Math.random() * 0.4;
-        particleGraphics.setAlpha(baseAlpha);
-        this.contentContainer?.add(particleGraphics);
-
-        const tween = this.scene.tweens.add({
-          targets: particleGraphics,
-          alpha: { from: baseAlpha, to: 0.05 },
-          y: py - 8 - Math.random() * 12,
-          duration: 1800 + Math.random() * 2200,
-          ease: 'Sine.easeInOut',
-          yoyo: true,
-          repeat: -1,
-          delay: Math.random() * 1200,
-        });
-        this.contentTweens.push(tween);
-      }
-    }
-
-    const emptyIcon = this.scene.add.graphics();
-    const emptyIconColor = this.hexToNumber(this.textMutedColor.get());
-    this.drawTaskIcon(emptyIcon, contentWidth / 2, contentHeight / 2 - 20, 16, emptyIconColor);
-    this.contentContainer?.add(emptyIcon);
-
-    const emptyText = this.createText(contentWidth / 2, contentHeight / 2 + 20, '未选中任何对象', {
-      fontSize: '14px',
-      color: this.textMutedColor.get(),
-    });
-    emptyText.setOrigin(0.5);
-    this.contentContainer?.add(emptyText);
-  }
-
-  private renderAgentDetail(agent: AgentInfo): void {
-    const contentWidth = (this.config.width || 500) - 24;
-    let yOffset = 0;
-
-    // Avatar
-    const avatarBg = this.scene.add.graphics();
-    avatarBg.fillStyle(0x2a2a4e, 1);
-    avatarBg.fillRoundedRect(0, yOffset, 60, 60, 8);
-    avatarBg.lineStyle(2, this.hexToNumber(this.borderColor.get()), 0.5);
-    avatarBg.strokeRoundedRect(0, yOffset, 60, 60, 8);
-    this.contentContainer?.add(avatarBg);
-
-    const typeIcon = this.scene.add.graphics();
-    const iconColor = this.hexToNumber(this.textPrimaryColor.get());
-    this.drawPersonIcon(typeIcon, 30, yOffset + 30, 14, iconColor);
-    this.contentContainer?.add(typeIcon);
-
-    // Name
-    const nameText = this.createText(72, yOffset + 8, agent.name, {
-      fontSize: '16px',
-      fontStyle: 'bold',
-    });
-    this.contentContainer?.add(nameText);
-
-    // Type
-    const typeText = this.createText(72, yOffset + 30, `类型: ${agent.type}`, {
-      fontSize: '12px',
-      color: this.textSecondaryColor.get(),
-    });
-    this.contentContainer?.add(typeText);
-
-    // Status with breathing pulse
-    const statusColor = this.getStatusColor(agent.status);
-    const statusColorNum = this.hexToNumber(statusColor);
-    const statusY = yOffset + 54;
-
-    const pulse = this.scene.add.graphics();
-    pulse.fillStyle(statusColorNum, 0.35);
-    pulse.fillCircle(0, 0, 8);
-    pulse.setPosition(78, statusY);
-    this.contentContainer?.add(pulse);
-    if (!isReducedMotion()) {
-      const tween = this.scene.tweens.add({
-        targets: pulse,
-        scaleX: 1.7,
-        scaleY: 1.7,
-        alpha: 0.05,
-        duration: 1400,
-        ease: 'Sine.easeInOut',
-        yoyo: true,
-        repeat: -1,
-      });
-      this.contentTweens.push(tween);
-    }
-
-    const statusDot = this.scene.add.graphics();
-    statusDot.fillStyle(statusColorNum, 1);
-    statusDot.fillCircle(78, statusY, 5);
-    this.contentContainer?.add(statusDot);
-
-    const statusText = this.createText(90, yOffset + 48, this.getStatusText(agent.status), {
-      fontSize: '12px',
-      color: statusColor,
-    });
-    this.contentContainer?.add(statusText);
-
-    yOffset += 75;
-
-    // Current Task
-    if (agent.currentTask) {
-      const taskLabel = this.createText(0, yOffset, '当前任务', {
-        fontSize: '12px',
-        fontStyle: 'bold',
-        color: this.textSecondaryColor.get(),
-      });
-      this.contentContainer?.add(taskLabel);
-      yOffset += 18;
-
-      const taskText = this.createText(0, yOffset, agent.currentTask, {
-        fontSize: '11px',
-        color: this.textMutedColor.get(),
-        wordWrap: { width: contentWidth },
-      });
-      this.contentContainer?.add(taskText);
-      yOffset += 20;
-
-      if (agent.taskProgress !== undefined) {
-        this.renderProgressBar(0, yOffset, contentWidth, agent.taskProgress);
-        yOffset += 25;
-      }
-    }
-
-    // Skills
-    if (agent.skills && Object.keys(agent.skills).length > 0) {
-      const skillsLabel = this.createText(0, yOffset, '技能', {
-        fontSize: '12px',
-        fontStyle: 'bold',
-        color: this.textSecondaryColor.get(),
-      });
-      this.contentContainer?.add(skillsLabel);
-      yOffset += 18;
-
-      const skillEntries = Object.entries(agent.skills).slice(0, 4);
-      const skillWidth = (contentWidth - (skillEntries.length - 1) * 8) / skillEntries.length;
-
-      skillEntries.forEach(([skillName, level], index) => {
-        const sx = index * (skillWidth + 8);
-        const card = this.createSkillCard(sx, yOffset, skillWidth, 24, skillName, level);
-        this.contentContainer?.add(card);
-      });
-    }
-  }
-
-  private renderMultiAgentDetail(): void {
-    const contentWidth = (this.config.width || 500) - 24;
-    let yOffset = 0;
-
-    const headerText = this.createText(0, yOffset, '选中头像列表', {
-      fontSize: '12px',
-      fontStyle: 'bold',
-      color: this.textSecondaryColor.get(),
-    });
-    this.contentContainer?.add(headerText);
-    yOffset += 20;
-
-    const avatarSize = 40;
-    const avatarSpacing = 8;
-    const avatarsPerRow = Math.floor((contentWidth + avatarSpacing) / (avatarSize + avatarSpacing));
-    const maxVisibleAvatars = avatarsPerRow * 2;
-    const displayAgents = this.data.agents.slice(0, maxVisibleAvatars);
-
-    displayAgents.forEach((agent, index) => {
-      const row = Math.floor(index / avatarsPerRow);
-      const col = index % avatarsPerRow;
-      const x = col * (avatarSize + avatarSpacing);
-      const y = yOffset + row * (avatarSize + avatarSpacing);
-
-      const avatarContainer = this.createAvatarItem(x, y, avatarSize, agent);
-      this.contentContainer?.add(avatarContainer);
-    });
-
-    yOffset += Math.ceil(displayAgents.length / avatarsPerRow) * (avatarSize + avatarSpacing);
-
-    if (this.data.agents.length > maxVisibleAvatars) {
-      const moreText = this.createText(0, yOffset, `+${this.data.agents.length - maxVisibleAvatars} 个`, {
-        fontSize: '11px',
-        color: this.textMutedColor.get(),
-      });
-      this.contentContainer?.add(moreText);
-      yOffset += 20;
-    }
-
-    yOffset += 8;
-
-    const countText = this.createText(0, yOffset, `已选择 ${this.data.agents.length} 个 Agent`, {
-      fontSize: '12px',
-      fontStyle: 'bold',
-      color: this.textPrimaryColor.get(),
-    });
-    this.contentContainer?.add(countText);
-    yOffset += 24;
-
-    const buttonWidth = 60;
-    const buttonHeight = 24;
-    const buttonSpacing = 8;
-
-    const selectAllBtn = this.createSmallButton(0, yOffset, buttonWidth, buttonHeight, '全选', () => {
-      this.callbacks.onSelectAll?.();
-    });
-    this.contentContainer?.add(selectAllBtn);
-
-    const deselectAllBtn = this.createSmallButton(buttonWidth + buttonSpacing, yOffset, buttonWidth, buttonHeight, '取消', () => {
-      this.callbacks.onDeselectAll?.();
-    });
-    this.contentContainer?.add(deselectAllBtn);
-  }
-
-  private renderZoneDetail(zone: ZoneInfo): void {
-    const yOffset = 0;
-
-    const zoneIconBg = this.scene.add.graphics();
-    zoneIconBg.fillStyle(this.hexToNumber(this.accentColor.get()), 0.2);
-    zoneIconBg.fillRoundedRect(0, yOffset, 60, 60, 8);
-    zoneIconBg.lineStyle(2, this.hexToNumber(this.accentColor.get()), 0.5);
-    zoneIconBg.strokeRoundedRect(0, yOffset, 60, 60, 8);
-    this.contentContainer?.add(zoneIconBg);
-
-    const zoneIcon = this.scene.add.graphics();
-    const iconColor = this.hexToNumber(this.textPrimaryColor.get());
-    this.drawBoxIcon(zoneIcon, 30, yOffset + 30, 14, iconColor);
-    this.contentContainer?.add(zoneIcon);
-
-    const nameText = this.createText(72, yOffset + 8, zone.name, {
-      fontSize: '16px',
-      fontStyle: 'bold',
-    });
-    this.contentContainer?.add(nameText);
-
-    const statusColor = this.getZoneStatusColor(zone.status);
-    const statusText = this.createText(72, yOffset + 30, `状态: ${this.getZoneStatusText(zone.status)}`, {
-      fontSize: '12px',
-      color: statusColor,
-    });
-    this.contentContainer?.add(statusText);
-
-    const agentsText = this.createText(72, yOffset + 48, `代理数量: ${zone.agentCount}`, {
-      fontSize: '12px',
-      color: this.textSecondaryColor.get(),
-    });
-    this.contentContainer?.add(agentsText);
-  }
-
-  private renderProgressBar(x: number, y: number, width: number, progress: number): void {
-    const barHeight = 6;
-    const ratio = Math.min(progress, 100) / 100;
-    const fillWidth = width * ratio;
-
-    // Shadow
-    const shadow = this.scene.add.graphics();
-    shadow.fillStyle(0x000000, 0.2);
-    shadow.fillRoundedRect(x, y + 2, width, barHeight, 3);
-    this.contentContainer?.add(shadow);
-
-    // Background
-    const progressBg = this.scene.add.graphics();
-    progressBg.fillStyle(this.hexToNumber(this.borderColor.get()), 1);
-    progressBg.fillRoundedRect(x, y, width, barHeight, 3);
-    this.contentContainer?.add(progressBg);
-
-    // Gradient fill
-    if (this.progressGradKey && fillWidth > 0) {
-      const gradImage = this.scene.add.image(x, y + barHeight / 2, this.progressGradKey);
-      gradImage.setOrigin(0, 0.5);
-      gradImage.setDisplaySize(fillWidth, barHeight);
-      gradImage.setCrop(0, 0, 256 * ratio, 8);
-      this.contentContainer?.add(gradImage);
-    }
-
-    // Head glow dot
-    if (fillWidth > 0) {
-      const headX = x + fillWidth;
-      const headY = y + barHeight / 2;
-      const headGlow = this.scene.add.graphics();
-      headGlow.fillStyle(this.hexToNumber(this.accentColor.get()), 0.35);
-      headGlow.fillCircle(headX, headY, 6);
-      headGlow.fillStyle(this.hexToNumber(this.accentColor.get()), 0.9);
-      headGlow.fillCircle(headX, headY, 3);
-      headGlow.fillStyle(0xffffff, 1);
-      headGlow.fillCircle(headX, headY, 1.5);
-      this.contentContainer?.add(headGlow);
-    }
-
-    const progressText = this.createText(x + width + 8, y - 2, `${Math.round(progress)}%`, {
-      fontSize: '11px',
-      color: this.textSecondaryColor.get(),
-    });
-    this.contentContainer?.add(progressText);
-  }
-
-  // --------------------------------------------------------------------------
-  // UI Components
-  // --------------------------------------------------------------------------
-
-  private createAvatarItem(x: number, y: number, size: number, agent: AgentInfo): Phaser.GameObjects.Container {
-    const container = this.scene.add.container(x, y);
-
-    const bg = this.scene.add.graphics();
-    bg.fillStyle(this.hexToNumber(this.backgroundTertiaryColor.get()), 1);
-    bg.fillRoundedRect(0, 0, size, size, 6);
-    bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.3);
-    bg.strokeRoundedRect(0, 0, size, size, 6);
-    container.add(bg);
-
-    const icon = this.scene.add.graphics();
-    const iconColor = this.hexToNumber(this.textPrimaryColor.get());
-    this.drawPersonIcon(icon, size / 2, size / 2, size * 0.25, iconColor);
-    container.add(icon);
-
-    const statusColor = this.getStatusColor(agent.status);
-    const statusColorNum = this.hexToNumber(statusColor);
-
-    // Breathing pulse
-    const pulse = this.scene.add.graphics();
-    pulse.fillStyle(statusColorNum, 0.35);
-    pulse.fillCircle(0, 0, 8);
-    pulse.setPosition(size - 6, size - 6);
-    container.add(pulse);
-    if (!isReducedMotion()) {
-      const tween = this.scene.tweens.add({
-        targets: pulse,
-        scaleX: 1.7,
-        scaleY: 1.7,
-        alpha: 0.05,
-        duration: 1400,
-        ease: 'Sine.easeInOut',
-        yoyo: true,
-        repeat: -1,
-      });
-      this.contentTweens.push(tween);
-    }
-
-    const statusCore = this.scene.add.graphics();
-    statusCore.fillStyle(statusColorNum, 1);
-    statusCore.fillCircle(size - 6, size - 6, 5);
-    container.add(statusCore);
-
-    const hitArea = this.scene.add.rectangle(size / 2, size / 2, size, size, 0x000000, 0);
-    hitArea.setInteractive({ useHandCursor: true });
-    container.add(hitArea);
-
-    hitArea.on('pointerdown', () => this.callbacks.onAgentDeselect?.(agent.agentId));
-    hitArea.on('pointerover', () => {
-      const glowColor = this.hexToNumber(this.accentColor.get());
-      bg.clear();
-      // Outer glow
-      bg.lineStyle(3, glowColor, 0.3);
-      bg.strokeRoundedRect(-1, -1, size + 2, size + 2, 6);
-      bg.fillStyle(this.hexToNumber(this.backgroundTertiaryColor.get()), 1);
-      bg.fillRoundedRect(0, 0, size, size, 6);
-      bg.lineStyle(1, glowColor, 0.8);
-      bg.strokeRoundedRect(0, 0, size, size, 6);
-      // Lift effect
-      if (!isReducedMotion()) {
-        this.scene.tweens.add({
-          targets: container,
-          scaleX: 1.08,
-          scaleY: 1.08,
-          y: y - 4,
-          duration: 150,
-          ease: 'Sine.easeOut',
-        });
-      }
-    });
-    hitArea.on('pointerout', () => {
-      bg.clear();
-      bg.fillStyle(this.hexToNumber(this.backgroundTertiaryColor.get()), 1);
-      bg.fillRoundedRect(0, 0, size, size, 6);
-      bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.3);
-      bg.strokeRoundedRect(0, 0, size, size, 6);
-      container.setScale(1);
-      container.setY(y);
-    });
-
-    return container;
-  }
-
-  private createSkillCard(x: number, y: number, width: number, height: number, skillName: string, level: number): Phaser.GameObjects.Container {
-    const container = this.scene.add.container(x, y);
-
-    const bg = this.scene.add.graphics();
-    bg.fillStyle(this.hexToNumber(this.backgroundTertiaryColor.get()), 1);
-    bg.fillRoundedRect(0, 0, width, height, 4);
-    bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.2);
-    bg.strokeRoundedRect(0, 0, width, height, 4);
-    container.add(bg);
-
-    const accent = this.hexToNumber(this.accentColor.get());
-    const mark = this.scene.add.graphics();
-    mark.fillStyle(accent, 1);
-    mark.fillRoundedRect(0, 2, 3, height - 4, 1.5);
-    container.add(mark);
-
-    const skillText = this.createText(8, 6, skillName, {
-      fontSize: '10px',
-      color: this.textSecondaryColor.get(),
-    });
-    container.add(skillText);
-
-    const levelText = this.createText(width - 8, 6, `Lv.${level}`, {
-      fontSize: '10px',
-      fontStyle: 'bold',
-      color: this.accentColor.get(),
-    });
-    levelText.setOrigin(1, 0);
-    container.add(levelText);
-
-    const hitArea = this.scene.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0);
-    hitArea.setInteractive({ useHandCursor: true });
-    container.add(hitArea);
-
-    hitArea.on('pointerover', () => {
-      bg.clear();
-      bg.fillStyle(this.hexToNumber(this.backgroundSecondaryColor.get()), 1);
-      bg.fillRoundedRect(0, 0, width, height, 4);
-      bg.lineStyle(1, accent, 0.6);
-      bg.strokeRoundedRect(0, 0, width, height, 4);
-      if (!isReducedMotion()) {
-        this.scene.tweens.add({
-          targets: container,
-          y: y - 2,
-          duration: 120,
-          ease: 'Sine.easeOut',
-        });
-      }
-    });
-    hitArea.on('pointerout', () => {
-      bg.clear();
-      bg.fillStyle(this.hexToNumber(this.backgroundTertiaryColor.get()), 1);
-      bg.fillRoundedRect(0, 0, width, height, 4);
-      bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.2);
-      bg.strokeRoundedRect(0, 0, width, height, 4);
-      container.setY(y);
-    });
-
-    return container;
-  }
-
-  private createSmallButton(x: number, y: number, width: number, height: number, label: string, onClick: () => void): Phaser.GameObjects.Container {
-    const container = this.scene.add.container(x, y);
-
-    const bg = this.scene.add.graphics();
-    bg.fillStyle(this.hexToNumber(this.backgroundSecondaryColor.get()), 1);
-    bg.fillRoundedRect(0, 0, width, height, 4);
-    bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.3);
-    bg.strokeRoundedRect(0, 0, width, height, 4);
-    container.add(bg);
-
-    const hitArea = this.scene.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0);
-    hitArea.setInteractive({ useHandCursor: true });
-    container.add(hitArea);
-
-    const labelText = this.createText(width / 2, height / 2, label, {
-      fontSize: '11px',
-      color: this.textPrimaryColor.get(),
-    });
-    labelText.setOrigin(0.5);
-    container.add(labelText);
-
-    let pressTween: Phaser.Tweens.Tween | undefined;
-
-    hitArea.on('pointerdown', onClick);
-
-    hitArea.on('pointerover', () => {
-      const glowColor = this.hexToNumber(this.primaryColor.get());
-      bg.clear();
-      // Glow border
-      bg.lineStyle(3, glowColor, 0.25);
-      bg.strokeRoundedRect(-1, -1, width + 2, height + 2, 5);
-      bg.fillStyle(glowColor, 0.2);
-      bg.fillRoundedRect(0, 0, width, height, 4);
-      bg.lineStyle(2, glowColor, 0.8);
-      bg.strokeRoundedRect(0, 0, width, height, 4);
-
-      if (!isReducedMotion()) {
-        this.scene.tweens.add({
-          targets: container,
-          scaleX: 1.05,
-          scaleY: 1.05,
-          duration: 120,
-          ease: 'Sine.easeOut',
-        });
-      }
-    });
-    hitArea.on('pointerout', () => {
-      bg.clear();
-      bg.fillStyle(this.hexToNumber(this.backgroundSecondaryColor.get()), 1);
-      bg.fillRoundedRect(0, 0, width, height, 4);
-      bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.3);
-      bg.strokeRoundedRect(0, 0, width, height, 4);
-      container.setScale(1);
-      if (pressTween && pressTween.isPlaying()) {
-        pressTween.stop();
-      }
-    });
-
-    hitArea.on('pointerdown', () => {
-      if (!isReducedMotion()) {
-        if (pressTween && pressTween.isPlaying()) pressTween.stop();
-        pressTween = this.scene.tweens.add({
-          targets: container,
-          scaleX: 0.95,
-          scaleY: 0.95,
-          duration: 60,
-          ease: 'Sine.easeInOut',
-        });
-      }
-    });
-    hitArea.on('pointerup', () => {
-      if (!isReducedMotion()) {
-        if (pressTween && pressTween.isPlaying()) pressTween.stop();
-        pressTween = this.scene.tweens.add({
-          targets: container,
-          scaleX: 1.05,
-          scaleY: 1.05,
-          duration: 80,
-          ease: 'Sine.easeOut',
-          onComplete: () => {
-            this.scene.tweens.add({
-              targets: container,
-              scaleX: 1,
-              scaleY: 1,
-              duration: 80,
-              ease: 'Sine.easeInOut',
-            });
-          },
-        });
-      }
-    });
-
-    return container;
-  }
-
-  private createActionButton(
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    btn: { key: string; label: string; icon: string; enabled: boolean }
-  ): Phaser.GameObjects.Container {
-    const container = this.scene.add.container(x, y);
-
-    const bg = this.scene.add.graphics();
-    bg.fillStyle(this.hexToNumber(this.backgroundTertiaryColor.get()), 1);
-    bg.fillRoundedRect(0, 0, width, height, 4);
-    bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.3);
-    bg.strokeRoundedRect(0, 0, width, height, 4);
-    container.add(bg);
-
-    // Dim if disabled
-    if (!btn.enabled) {
-      container.setAlpha(0.5);
-    }
-
-    const hitArea = this.scene.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0);
-    hitArea.setInteractive({ useHandCursor: btn.enabled });
-    container.add(hitArea);
-
-    const iconGraphics = this.scene.add.graphics();
-    const iconColor = this.hexToNumber(this.textPrimaryColor.get());
-    switch (btn.icon) {
-      case 'chat':
-        this.drawChatIcon(iconGraphics, 14, height / 2, 5, iconColor);
-        break;
-      case 'config':
-        this.drawGearIcon(iconGraphics, 14, height / 2, 5, iconColor);
-        break;
-      case 'task':
-        this.drawTaskIcon(iconGraphics, 14, height / 2, 5, iconColor);
-        break;
-      case 'stop':
-        this.drawStopIcon(iconGraphics, 14, height / 2, 5, iconColor);
-        break;
-    }
-    container.add(iconGraphics);
-
-    const labelText = this.createText(24, height / 2, btn.label, {
-      fontSize: '11px',
-      color: this.textPrimaryColor.get(),
-    });
-    labelText.setOrigin(0, 0.5);
-    container.add(labelText);
-
-    let pressTween: Phaser.Tweens.Tween | undefined;
-
-    hitArea.on('pointerdown', () => {
-      if (!btn.enabled) return;
-
-      const agentIds = this.data.agents.map(a => a.agentId);
-      const singleAgentId = this.data.agents.length === 1 ? this.data.agents[0].agentId : null;
-
-      switch (btn.key) {
-        case 'chat':
-          this.callbacks.onChatClick(agentIds);
-          break;
-        case 'config':
-          if (singleAgentId) this.callbacks.onConfigClick(singleAgentId);
-          break;
-        case 'task':
-          this.callbacks.onTaskClick(agentIds);
-          break;
-        case 'stop':
-          this.callbacks.onStopClick(agentIds);
-          break;
-      }
-    });
-
-    if (btn.enabled) {
-      hitArea.on('pointerover', () => {
-        const glowColor = this.hexToNumber(this.primaryColor.get());
-        bg.clear();
-        // Outer glow
-        bg.lineStyle(3, glowColor, 0.25);
-        bg.strokeRoundedRect(-1, -1, width + 2, height + 2, 5);
-        bg.fillStyle(glowColor, 0.25);
-        bg.fillRoundedRect(0, 0, width, height, 4);
-        // Bright border
-        bg.lineStyle(2, glowColor, 0.8);
-        bg.strokeRoundedRect(0, 0, width, height, 4);
-
-        if (!isReducedMotion()) {
-          this.scene.tweens.add({
-            targets: container,
-            scaleX: 1.05,
-            scaleY: 1.05,
-            duration: 120,
-            ease: 'Sine.easeOut',
-          });
-        }
-      });
-
-      hitArea.on('pointerout', () => {
-        bg.clear();
-        bg.fillStyle(this.hexToNumber(this.backgroundTertiaryColor.get()), 1);
-        bg.fillRoundedRect(0, 0, width, height, 4);
-        bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.3);
-        bg.strokeRoundedRect(0, 0, width, height, 4);
-        container.setScale(1);
-        if (pressTween && pressTween.isPlaying()) {
-          pressTween.stop();
-        }
-      });
-
-      hitArea.on('pointerdown', () => {
-        if (!isReducedMotion()) {
-          if (pressTween && pressTween.isPlaying()) pressTween.stop();
-          pressTween = this.scene.tweens.add({
-            targets: container,
-            scaleX: 0.95,
-            scaleY: 0.95,
-            duration: 60,
-            ease: 'Sine.easeInOut',
-          });
-        }
-      });
-
-      hitArea.on('pointerup', () => {
-        if (!isReducedMotion()) {
-          if (pressTween && pressTween.isPlaying()) pressTween.stop();
-          pressTween = this.scene.tweens.add({
-            targets: container,
-            scaleX: 1.05,
-            scaleY: 1.05,
-            duration: 80,
-            ease: 'Sine.easeOut',
-            onComplete: () => {
-              this.scene.tweens.add({
-                targets: container,
-                scaleX: 1,
-                scaleY: 1,
-                duration: 80,
-                ease: 'Sine.easeInOut',
-              });
-            },
-          });
-        }
-      });
-    }
-
-    return container;
-  }
-
-  // --------------------------------------------------------------------------
-  // Tab Switching
-  // --------------------------------------------------------------------------
 
   private switchTab(tab: 'detail' | 'skills'): void {
     if (this.currentTab === tab) return;
@@ -1264,186 +439,8 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     this.renderContent();
   }
 
-  // --------------------------------------------------------------------------
-  // Icon Drawing
-  // --------------------------------------------------------------------------
-
-  private drawChatIcon(graphics: Phaser.GameObjects.Graphics, cx: number, cy: number, size: number, color: number): void {
-    const w = size * 1.6;
-    const h = size * 1.2;
-    const r = size * 0.3;
-
-    graphics.fillStyle(color, 1);
-    graphics.fillRoundedRect(cx - w / 2, cy - h / 2, w, h, r);
-
-    graphics.beginPath();
-    graphics.moveTo(cx - w / 2 + r, cy + h / 2);
-    graphics.lineTo(cx - w / 2 - size * 0.1, cy + h / 2 + size * 0.35);
-    graphics.lineTo(cx - w / 2 + r + size * 0.25, cy + h / 2);
-    graphics.closePath();
-    graphics.fillPath();
-
-    graphics.fillStyle(color, 0.2);
-    graphics.fillRoundedRect(cx - w / 2 - 2, cy - h / 2 - 2, w + 4, h + 4, r + 2);
-    graphics.beginPath();
-    graphics.moveTo(cx - w / 2 + r - 1, cy + h / 2 + 1);
-    graphics.lineTo(cx - w / 2 - size * 0.1 - 2, cy + h / 2 + size * 0.35 + 2);
-    graphics.lineTo(cx - w / 2 + r + size * 0.25 + 2, cy + h / 2 + 1);
-    graphics.closePath();
-    graphics.fillPath();
-  }
-
-  private drawGearIcon(graphics: Phaser.GameObjects.Graphics, cx: number, cy: number, size: number, color: number): void {
-    const teeth = 6;
-    const outerR = size;
-    const innerR = size * 0.55;
-
-    graphics.fillStyle(color, 1);
-    graphics.beginPath();
-    for (let i = 0; i < teeth * 2; i++) {
-      const angle = (Math.PI / teeth) * i - Math.PI / 2;
-      const r = i % 2 === 0 ? outerR : innerR;
-      const px = cx + Math.cos(angle) * r;
-      const py = cy + Math.sin(angle) * r;
-      if (i === 0) graphics.moveTo(px, py);
-      else graphics.lineTo(px, py);
-    }
-    graphics.closePath();
-    graphics.fillPath();
-
-    graphics.fillStyle(color, 0.2);
-    graphics.beginPath();
-    for (let i = 0; i < teeth * 2; i++) {
-      const angle = (Math.PI / teeth) * i - Math.PI / 2;
-      const r = i % 2 === 0 ? outerR + 3 : innerR + 2;
-      const px = cx + Math.cos(angle) * r;
-      const py = cy + Math.sin(angle) * r;
-      if (i === 0) graphics.moveTo(px, py);
-      else graphics.lineTo(px, py);
-    }
-    graphics.closePath();
-    graphics.fillPath();
-  }
-
-  private drawTaskIcon(graphics: Phaser.GameObjects.Graphics, cx: number, cy: number, size: number, color: number): void {
-    const w = size * 1.2;
-    const h = size * 1.5;
-    const r = size * 0.15;
-
-    graphics.fillStyle(color, 1);
-    graphics.fillRoundedRect(cx - w / 2, cy - h / 2 + size * 0.15, w, h - size * 0.15, r);
-    graphics.fillRect(cx - size * 0.3, cy - h / 2, size * 0.6, size * 0.3);
-
-    graphics.fillStyle(color, 0.2);
-    graphics.fillRoundedRect(cx - w / 2 - 2, cy - h / 2 + size * 0.15 - 2, w + 4, h - size * 0.15 + 4, r + 2);
-    graphics.fillRect(cx - size * 0.3 - 2, cy - h / 2 - 2, size * 0.6 + 4, size * 0.3 + 2);
-  }
-
-  private drawStopIcon(graphics: Phaser.GameObjects.Graphics, cx: number, cy: number, size: number, color: number): void {
-    const s = size * 0.8;
-    graphics.fillStyle(color, 1);
-    graphics.fillRoundedRect(cx - s / 2, cy - s / 2, s, s, size * 0.1);
-
-    graphics.fillStyle(color, 0.2);
-    graphics.fillRoundedRect(cx - s / 2 - 2, cy - s / 2 - 2, s + 4, s + 4, size * 0.1 + 2);
-  }
-
-  private drawPersonIcon(graphics: Phaser.GameObjects.Graphics, cx: number, cy: number, size: number, color: number): void {
-    graphics.fillStyle(color, 1);
-    graphics.fillCircle(cx, cy - size * 0.25, size * 0.35);
-
-    graphics.beginPath();
-    graphics.moveTo(cx - size * 0.7, cy + size * 0.6);
-    graphics.lineTo(cx + size * 0.7, cy + size * 0.6);
-    graphics.lineTo(cx + size * 0.5, cy + size * 0.1);
-    graphics.lineTo(cx - size * 0.5, cy + size * 0.1);
-    graphics.closePath();
-    graphics.fillPath();
-
-    graphics.fillStyle(color, 0.2);
-    graphics.fillCircle(cx, cy - size * 0.25, size * 0.35 + 3);
-
-    graphics.beginPath();
-    graphics.moveTo(cx - size * 0.7 - 2, cy + size * 0.6 + 2);
-    graphics.lineTo(cx + size * 0.7 + 2, cy + size * 0.6 + 2);
-    graphics.lineTo(cx + size * 0.5 + 2, cy + size * 0.1 - 2);
-    graphics.lineTo(cx - size * 0.5 - 2, cy + size * 0.1 - 2);
-    graphics.closePath();
-    graphics.fillPath();
-  }
-
-  private drawBoxIcon(graphics: Phaser.GameObjects.Graphics, cx: number, cy: number, size: number, color: number): void {
-    const s = size;
-
-    graphics.fillStyle(color, 1);
-    graphics.fillRoundedRect(cx - s * 0.6, cy - s * 0.3, s * 1.2, s * 1.0, s * 0.1);
-
-    graphics.lineStyle(1, color, 0.6);
-    graphics.lineBetween(cx - s * 0.5, cy - s * 0.1, cx + s * 0.5, cy - s * 0.1);
-
-    graphics.fillStyle(color, 0.2);
-    graphics.fillRoundedRect(cx - s * 0.6 - 2, cy - s * 0.3 - 2, s * 1.2 + 4, s * 1.0 + 4, s * 0.1 + 2);
-  }
-
-  private drawStarIcon(graphics: Phaser.GameObjects.Graphics, cx: number, cy: number, size: number, color: number): void {
-    graphics.fillStyle(color, 1);
-
-    graphics.beginPath();
-    graphics.moveTo(cx, cy - size);
-    graphics.lineTo(cx + size * 0.35, cy);
-    graphics.lineTo(cx, cy + size);
-    graphics.lineTo(cx - size * 0.35, cy);
-    graphics.closePath();
-    graphics.fillPath();
-
-    graphics.beginPath();
-    graphics.moveTo(cx + size * 0.6, cy);
-    graphics.lineTo(cx, cy + size * 0.4);
-    graphics.lineTo(cx - size * 0.6, cy);
-    graphics.lineTo(cx, cy - size * 0.4);
-    graphics.closePath();
-    graphics.fillPath();
-
-    graphics.fillStyle(color, 0.2);
-
-    graphics.beginPath();
-    graphics.moveTo(cx, cy - size - 2);
-    graphics.lineTo(cx + size * 0.35 + 2, cy);
-    graphics.lineTo(cx, cy + size + 2);
-    graphics.lineTo(cx - size * 0.35 - 2, cy);
-    graphics.closePath();
-    graphics.fillPath();
-
-    graphics.beginPath();
-    graphics.moveTo(cx + size * 0.6 + 2, cy);
-    graphics.lineTo(cx, cy + size * 0.4 + 2);
-    graphics.lineTo(cx - size * 0.6 - 2, cy);
-    graphics.lineTo(cx, cy - size * 0.4 - 2);
-    graphics.closePath();
-    graphics.fillPath();
-  }
-
-  private drawDotIcon(graphics: Phaser.GameObjects.Graphics, cx: number, cy: number, size: number, color: number): void {
-    graphics.fillStyle(color, 1);
-    graphics.fillCircle(cx, cy, size);
-
-    graphics.fillStyle(color, 0.2);
-    graphics.fillCircle(cx, cy, size + 2);
-  }
-
-  // --------------------------------------------------------------------------
-  // Theme & Utilities
-  // --------------------------------------------------------------------------
-
   protected updateThemeStyles(): void {
-    if (this.progressGradKey) {
-      this.scene.textures.remove(this.progressGradKey);
-      this.progressGradKey = null;
-    }
-    if (this.emptyGradKey) {
-      this.scene.textures.remove(this.emptyGradKey);
-      this.emptyGradKey = null;
-    }
+    this.gradientHelper.cleanup();
     this.tabIndicator = null;
     this.tabPositions = [];
 
@@ -1453,133 +450,46 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     this.createContentContainer();
     this.createActionButtonContainer();
 
-    this.initGradientTextures();
+    this.gradientHelper.init(
+      this.accentColor.get(),
+      this.successColor.get(),
+      this.backgroundColor.get()
+    );
     this.render();
   }
 
-  private createText(
-    x: number,
-    y: number,
-    text: string,
-    style: Phaser.Types.GameObjects.Text.TextStyle
-  ): Phaser.GameObjects.Text {
-    return this.scene.add.text(x, y, text, {
+  private buildRenderContext(): import('./command-panel/types').RenderContext {
+    const t = (token: ReactiveToken<string>) => () => token.get();
+    return {
+      scene: this.scene,
       fontFamily: this.theme.typography.fontFamily.sans,
-      color: this.textPrimaryColor.get(),
-      ...style,
-    });
-  }
-
-  private hexToNumber(hex: string): number {
-    if (!hex || typeof hex !== 'string') return 0xffffff;
-    return parseInt(hex.slice(1), 16);
-  }
-
-  private hexToRgba(hex: string, alpha: number): string {
-    const num = this.hexToNumber(hex);
-    const r = (num >> 16) & 0xff;
-    const g = (num >> 8) & 0xff;
-    const b = num & 0xff;
-    return `rgba(${r},${g},${b},${alpha})`;
-  }
-
-  private createGradientTexture(
-    key: string,
-    width: number,
-    height: number,
-    colorStops: { offset: number; color: string; alpha?: number }[]
-  ): void {
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const gradient = ctx.createLinearGradient(0, 0, width, 0);
-    colorStops.forEach(s => {
-      gradient.addColorStop(s.offset, this.hexToRgba(s.color, s.alpha ?? 1));
-    });
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, width, height);
-    this.scene.textures.addCanvas(key, canvas);
-  }
-
-  private initGradientTextures(): void {
-    if (this.progressGradKey) {
-      this.scene.textures.remove(this.progressGradKey);
-    }
-    if (this.emptyGradKey) {
-      this.scene.textures.remove(this.emptyGradKey);
-    }
-    this.progressGradKey = `${this.id}_progGrad`;
-    this.emptyGradKey = `${this.id}_emptyGrad`;
-    this.createGradientTexture(this.progressGradKey, 256, 8, [
-      { offset: 0, color: this.accentColor.get() },
-      { offset: 1, color: this.successColor.get() },
-    ]);
-    this.createGradientTexture(this.emptyGradKey, 512, 128, [
-      { offset: 0, color: this.accentColor.get(), alpha: 0.15 },
-      { offset: 0.5, color: this.backgroundColor.get(), alpha: 0.05 },
-      { offset: 1, color: this.successColor.get(), alpha: 0.15 },
-    ]);
-  }
-
-  private getStatusColor(status: string): string {
-    const colors: Record<string, string> = {
-      online: this.successColor.get(),
-      offline: this.textMutedColor.get(),
-      busy: this.warningColor.get(),
-      error: this.dangerColor.get(),
+      getBackgroundColor: t(this.backgroundColor),
+      getBackgroundSecondaryColor: t(this.backgroundSecondaryColor),
+      getBackgroundTertiaryColor: t(this.backgroundTertiaryColor),
+      getTextPrimaryColor: t(this.textPrimaryColor),
+      getTextSecondaryColor: t(this.textSecondaryColor),
+      getTextMutedColor: t(this.textMutedColor),
+      getBorderColor: t(this.borderColor),
+      getAccentColor: t(this.accentColor),
+      getPrimaryColor: t(this.primaryColor),
+      getSuccessColor: t(this.successColor),
+      getWarningColor: t(this.warningColor),
+      getDangerColor: t(this.dangerColor),
+      getProgressGradKey: () => this.gradientHelper.progressGradKey,
+      getEmptyGradKey: () => this.gradientHelper.emptyGradKey,
+      getContentHeight: () => (this.config.height || 180) - 60,
+      hexToNumber,
     };
-    return colors[status] || this.textMutedColor.get();
   }
-
-  private getStatusText(status: string): string {
-    const texts: Record<string, string> = {
-      online: '在线',
-      offline: '离线',
-      busy: '忙碌',
-      error: '错误',
-    };
-    return texts[status] || '未知';
-  }
-
-  private getZoneStatusColor(status: string): string {
-    const colors: Record<string, string> = {
-      idle: this.textMutedColor.get(),
-      busy: this.warningColor.get(),
-      active: this.successColor.get(),
-      error: this.dangerColor.get(),
-    };
-    return colors[status] || this.textMutedColor.get();
-  }
-
-  private getZoneStatusText(status: string): string {
-    const texts: Record<string, string> = {
-      idle: '空闲',
-      busy: '忙碌',
-      active: '活跃',
-      error: '错误',
-    };
-    return texts[status] || '未知';
-  }
-
-  // --------------------------------------------------------------------------
-  // Cleanup
-  // --------------------------------------------------------------------------
 
   destroy(): void {
     this.contentTweens.forEach(t => {
       if (t.isPlaying()) t.stop();
     });
     this.contentTweens = [];
-    if (this.progressGradKey) {
-      this.scene.textures.remove(this.progressGradKey);
-      this.progressGradKey = null;
-    }
-    if (this.emptyGradKey) {
-      this.scene.textures.remove(this.emptyGradKey);
-      this.emptyGradKey = null;
-    }
+
+    Object.values(this.renderers).forEach(r => r.destroy());
+    this.gradientHelper.cleanup();
     this.tabIndicator = null;
     this.tabContainer?.destroy();
     this.contentContainer?.destroy();
