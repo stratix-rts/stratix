@@ -159,8 +159,8 @@ export class CommandPanelV2 extends EnhancedUIComponent {
         targets: this.container,
         y: targetY,
         alpha: 1,
-        duration: 200,
-        ease: 'Cubic.easeOut',
+        duration: 300,
+        ease: 'Back.easeOut',
       });
     }
   }
@@ -173,10 +173,35 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     const w = this.config.width || 500;
     const h = this.config.height || HUD_LAYOUT.commandPanel.height;
 
+    // Three-layer background: Tab area (darker), Content area (medium), Action area (lighter)
+    const tabHeight = 48;
+    const contentHeight = h - tabHeight - HUD_LAYOUT.commandPanel.actionButtonHeight - 8;
+    const actionHeight = HUD_LAYOUT.commandPanel.actionButtonHeight;
+
+    // Tab area background (darkest)
+    bg.fillStyle(bgColor, 0.5);
+    bg.fillRoundedRect(0, 0, w, tabHeight, { tl: 8, tr: 8, bl: 0, br: 0 });
+
+    // Content area background (medium)
     bg.fillStyle(bgColor, 0.7);
-    bg.fillRoundedRect(0, 0, w, h, 8);
+    bg.fillRect(0, tabHeight, w, contentHeight);
+
+    // Action button area background (lightest)
+    bg.fillStyle(bgColor, 0.8);
+    bg.fillRoundedRect(0, tabHeight + contentHeight, w, actionHeight, { tl: 0, tr: 0, bl: 8, br: 8 });
+
+    // Top highlight line
     bg.lineStyle(1, primaryColor, 0.3);
     bg.lineBetween(8, 0, w - 8, 0);
+
+    // Divider line: Tab area vs Content area
+    bg.lineStyle(1, borderClr, 0.15);
+    bg.lineBetween(12, tabHeight, w - 12, tabHeight);
+
+    // Divider line: Content area vs Action button area
+    bg.lineBetween(12, tabHeight + contentHeight, w - 12, tabHeight + contentHeight);
+
+    // Outer border
     bg.lineStyle(1, borderClr, 0.25);
     bg.strokeRoundedRect(0, 0, w, h, 8);
 
@@ -257,19 +282,33 @@ export class CommandPanelV2 extends EnhancedUIComponent {
 
   private renderWithTransition(): void {
     if (this.contentContainer) {
-      this.scene.tweens.add({
-        targets: this.contentContainer,
-        alpha: 0,
-        duration: 150,
-        onComplete: () => {
-          this.render();
-          this.scene.tweens.add({
-            targets: this.contentContainer,
-            alpha: 1,
-            duration: 150,
-          });
-        },
-      });
+      if (!isReducedMotion()) {
+        const oldY = this.contentContainer.y;
+        // Fade out old content while sliding down 8px
+        this.scene.tweens.add({
+          targets: this.contentContainer,
+          alpha: 0,
+          y: oldY + 8,
+          duration: 150,
+          ease: 'Sine.easeIn',
+          onComplete: () => {
+            this.contentContainer!.y = oldY;
+            this.render();
+            // New content starts 8px below, slide in while fading in
+            this.contentContainer!.setAlpha(0);
+            this.contentContainer!.setY(oldY + 8);
+            this.scene.tweens.add({
+              targets: this.contentContainer,
+              alpha: 1,
+              y: oldY,
+              duration: 150,
+              ease: 'Sine.easeOut',
+            });
+          },
+        });
+      } else {
+        this.render();
+      }
     } else {
       this.render();
     }
