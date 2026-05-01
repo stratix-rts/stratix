@@ -108,6 +108,12 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   private actionButtonContainer: Phaser.GameObjects.Container | null = null;
   private currentTab: 'detail' | 'skills' = 'detail';
 
+  // Visual enhancement refs
+  private tabIndicator: Phaser.GameObjects.Graphics | null = null;
+  private tabPositions: number[] = [];
+  private progressGradKey: string | null = null;
+  private emptyGradKey: string | null = null;
+  private contentTweens: Phaser.Tweens.Tween[] = [];
 
   // Theme tokens
   private backgroundColor: ReactiveToken<string>;
@@ -179,6 +185,8 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     this.container.setScrollFactor(0, 0);
     this.container.setDepth(1000);
 
+    this.initGradientTextures();
+
     this.createBackground();
     this.createTabBar();
     this.createContentContainer();
@@ -188,6 +196,20 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     this.render();
 
     this.onCreate();
+
+    // Slide-in from bottom
+    if (!isReducedMotion()) {
+      const targetY = this.config.y ?? 0;
+      this.container.setY(targetY + 40);
+      this.container.setAlpha(0);
+      this.scene.tweens.add({
+        targets: this.container,
+        y: targetY,
+        alpha: 1,
+        duration: 200,
+        ease: 'Cubic.easeOut',
+      });
+    }
   }
 
   // --------------------------------------------------------------------------
@@ -205,11 +227,11 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     // Glassmorphism background
     bg.fillStyle(bgColor, 0.7);
     bg.fillRoundedRect(0, 0, w, h, 8);
-    
+
     // Subtle top glow line
     bg.lineStyle(1, primaryColor, 0.3);
     bg.lineBetween(8, 0, w - 8, 0);
-    
+
     // Border
     bg.lineStyle(1, borderClr, 0.25);
     bg.strokeRoundedRect(0, 0, w, h, 8);
@@ -363,8 +385,11 @@ export class CommandPanelV2 extends EnhancedUIComponent {
       { key: 'skills', label: '技能' },
     ];
 
+    this.tabPositions = [];
+
     tabs.forEach((tab, index) => {
       const x = 12 + index * (tabWidth + tabSpacing);
+      this.tabPositions.push(x);
       const isActive = this.currentTab === tab.key;
 
       const tabBg = this.scene.add.graphics();
@@ -375,7 +400,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
       }
       tabBg.fillRoundedRect(x, 8, tabWidth, tabHeight, { tl: 4, tr: 4, bl: 0, br: 0 });
 
-      // Active tab glow indicator
+      // Active tab glow indicator (top line)
       if (isActive) {
         const primaryColor = getDSColor('color-primary');
         tabBg.lineStyle(1, primaryColor, 0.5);
@@ -415,10 +440,29 @@ export class CommandPanelV2 extends EnhancedUIComponent {
 
       this.tabContainer?.add([tabBg, tabHitArea, tabText]);
     });
+
+    // Tab indicator
+    const activeIndex = this.currentTab === 'detail' ? 0 : 1;
+    const indicatorX = this.tabPositions[activeIndex] ?? 12;
+    const indicatorY = 8 + tabHeight - 2;
+    if (!this.tabIndicator) {
+      this.tabIndicator = this.scene.add.graphics();
+      (this.container as Phaser.GameObjects.Container).add(this.tabIndicator);
+    }
+    this.tabIndicator.clear();
+    const indicatorColor = this.hexToNumber(this.accentColor.get());
+    this.tabIndicator.fillStyle(indicatorColor, 1);
+    this.tabIndicator.fillRoundedRect(0, indicatorY, tabWidth, 3, 1.5);
+    this.tabIndicator.setPosition(indicatorX, 0);
   }
 
   private renderContent(): void {
     if (!this.contentContainer) return;
+    // Clean up content tweens before removing children
+    this.contentTweens.forEach(t => {
+      if (t.isPlaying()) t.stop();
+    });
+    this.contentTweens = [];
     this.contentContainer.removeAll(true);
     this.contentContainer.alpha = 1; // Reset alpha after tween
 
@@ -482,6 +526,50 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     const contentWidth = (this.config.width || 500) - 24;
     const contentHeight = (this.config.height || 180) - 60;
 
+    // Gradient background
+    if (this.emptyGradKey) {
+      const gradBg = this.scene.add.image(0, 0, this.emptyGradKey);
+      gradBg.setOrigin(0, 0);
+      gradBg.setDisplaySize(contentWidth, contentHeight);
+      gradBg.setAlpha(0.7);
+      this.contentContainer?.add(gradBg);
+    }
+
+    // Subtle overlay
+    const overlay = this.scene.add.graphics();
+    overlay.fillStyle(this.hexToNumber(this.backgroundColor.get()), 0.3);
+    overlay.fillRoundedRect(0, 0, contentWidth, contentHeight, 8);
+    this.contentContainer?.add(overlay);
+
+    // Particles
+    if (!isReducedMotion()) {
+      for (let i = 0; i < 14; i++) {
+        const px = 8 + Math.random() * (contentWidth - 16);
+        const py = 8 + Math.random() * (contentHeight - 16);
+        const size = 6 + Math.random() * 8;
+        const star = this.scene.add.text(px, py, Math.random() > 0.5 ? '✦' : '•', {
+          fontSize: `${size}px`,
+          color: this.accentColor.get(),
+        });
+        star.setOrigin(0.5);
+        const baseAlpha = 0.2 + Math.random() * 0.4;
+        star.setAlpha(baseAlpha);
+        this.contentContainer?.add(star);
+
+        const tween = this.scene.tweens.add({
+          targets: star,
+          alpha: { from: baseAlpha, to: 0.05 },
+          y: py - 8 - Math.random() * 12,
+          duration: 1800 + Math.random() * 2200,
+          ease: 'Sine.easeInOut',
+          yoyo: true,
+          repeat: -1,
+          delay: Math.random() * 1200,
+        });
+        this.contentTweens.push(tween);
+      }
+    }
+
     const emptyIcon = this.scene.add.text(contentWidth / 2, contentHeight / 2 - 20, '📋', {
       fontSize: '32px',
     });
@@ -526,14 +614,33 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     });
     this.contentContainer?.add(typeText);
 
-    // Status
+    // Status with breathing pulse
     const statusColor = this.getStatusColor(agent.status);
+    const statusColorNum = this.hexToNumber(statusColor);
+    const statusY = yOffset + 54;
+
+    const pulse = this.scene.add.graphics();
+    pulse.fillStyle(statusColorNum, 0.35);
+    pulse.fillCircle(0, 0, 8);
+    pulse.setPosition(78, statusY);
+    this.contentContainer?.add(pulse);
+    if (!isReducedMotion()) {
+      const tween = this.scene.tweens.add({
+        targets: pulse,
+        scaleX: 1.7,
+        scaleY: 1.7,
+        alpha: 0.05,
+        duration: 1400,
+        ease: 'Sine.easeInOut',
+        yoyo: true,
+        repeat: -1,
+      });
+      this.contentTweens.push(tween);
+    }
+
     const statusDot = this.scene.add.graphics();
-    statusDot.fillStyle(this.hexToNumber(statusColor), 1);
-    statusDot.fillCircle(78, yOffset + 54, 5);
-    // Status glow
-    statusDot.fillStyle(this.hexToNumber(statusColor), 0.3);
-    statusDot.fillCircle(78, yOffset + 54, 8);
+    statusDot.fillStyle(statusColorNum, 1);
+    statusDot.fillCircle(78, statusY, 5);
     this.contentContainer?.add(statusDot);
 
     const statusText = this.createText(90, yOffset + 48, this.getStatusText(agent.status), {
@@ -582,25 +689,9 @@ export class CommandPanelV2 extends EnhancedUIComponent {
       const skillWidth = (contentWidth - (skillEntries.length - 1) * 8) / skillEntries.length;
 
       skillEntries.forEach(([skillName, level], index) => {
-        const x = index * (skillWidth + 8);
-        const skillBg = this.scene.add.graphics();
-        skillBg.fillStyle(this.hexToNumber(this.backgroundTertiaryColor.get()), 1);
-        skillBg.fillRoundedRect(x, yOffset, skillWidth, 24, 4);
-        this.contentContainer?.add(skillBg);
-
-        const skillText = this.createText(x + 8, yOffset + 6, skillName, {
-          fontSize: '10px',
-          color: this.textSecondaryColor.get(),
-        });
-        this.contentContainer?.add(skillText);
-
-        const levelText = this.createText(x + skillWidth - 8, yOffset + 6, `Lv.${level}`, {
-          fontSize: '10px',
-          fontStyle: 'bold',
-          color: this.accentColor.get(),
-        });
-        levelText.setOrigin(1, 0);
-        this.contentContainer?.add(levelText);
+        const sx = index * (skillWidth + 8);
+        const card = this.createSkillCard(sx, yOffset, skillWidth, 24, skillName, level);
+        this.contentContainer?.add(card);
       });
     }
   }
@@ -705,16 +796,43 @@ export class CommandPanelV2 extends EnhancedUIComponent {
 
   private renderProgressBar(x: number, y: number, width: number, progress: number): void {
     const barHeight = 6;
+    const ratio = Math.min(progress, 100) / 100;
+    const fillWidth = width * ratio;
 
+    // Shadow
+    const shadow = this.scene.add.graphics();
+    shadow.fillStyle(0x000000, 0.2);
+    shadow.fillRoundedRect(x, y + 2, width, barHeight, 3);
+    this.contentContainer?.add(shadow);
+
+    // Background
     const progressBg = this.scene.add.graphics();
     progressBg.fillStyle(this.hexToNumber(this.borderColor.get()), 1);
     progressBg.fillRoundedRect(x, y, width, barHeight, 3);
     this.contentContainer?.add(progressBg);
 
-    const progressFill = this.scene.add.graphics();
-    progressFill.fillStyle(this.hexToNumber(this.successColor.get()), 1);
-    progressFill.fillRoundedRect(x, y, width * Math.min(progress, 100) / 100, barHeight, 3);
-    this.contentContainer?.add(progressFill);
+    // Gradient fill
+    if (this.progressGradKey && fillWidth > 0) {
+      const gradImage = this.scene.add.image(x, y + barHeight / 2, this.progressGradKey);
+      gradImage.setOrigin(0, 0.5);
+      gradImage.setDisplaySize(fillWidth, barHeight);
+      gradImage.setCrop(0, 0, 256 * ratio, 8);
+      this.contentContainer?.add(gradImage);
+    }
+
+    // Head glow dot
+    if (fillWidth > 0) {
+      const headX = x + fillWidth;
+      const headY = y + barHeight / 2;
+      const headGlow = this.scene.add.graphics();
+      headGlow.fillStyle(this.hexToNumber(this.accentColor.get()), 0.35);
+      headGlow.fillCircle(headX, headY, 6);
+      headGlow.fillStyle(this.hexToNumber(this.accentColor.get()), 0.9);
+      headGlow.fillCircle(headX, headY, 3);
+      headGlow.fillStyle(0xffffff, 1);
+      headGlow.fillCircle(headX, headY, 1.5);
+      this.contentContainer?.add(headGlow);
+    }
 
     const progressText = this.createText(x + width + 8, y - 2, `${Math.round(progress)}%`, {
       fontSize: '11px',
@@ -741,14 +859,33 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     icon.setOrigin(0.5);
     container.add(icon);
 
-    const statusDot = this.scene.add.graphics();
     const statusColor = this.getStatusColor(agent.status);
-    statusDot.fillStyle(this.hexToNumber(statusColor), 1);
-    statusDot.fillCircle(size - 6, size - 6, 5);
-    // Glow
-    statusDot.fillStyle(this.hexToNumber(statusColor), 0.3);
-    statusDot.fillCircle(size - 6, size - 6, 8);
-    container.add(statusDot);
+    const statusColorNum = this.hexToNumber(statusColor);
+
+    // Breathing pulse
+    const pulse = this.scene.add.graphics();
+    pulse.fillStyle(statusColorNum, 0.35);
+    pulse.fillCircle(0, 0, 8);
+    pulse.setPosition(size - 6, size - 6);
+    container.add(pulse);
+    if (!isReducedMotion()) {
+      const tween = this.scene.tweens.add({
+        targets: pulse,
+        scaleX: 1.7,
+        scaleY: 1.7,
+        alpha: 0.05,
+        duration: 1400,
+        ease: 'Sine.easeInOut',
+        yoyo: true,
+        repeat: -1,
+      });
+      this.contentTweens.push(tween);
+    }
+
+    const statusCore = this.scene.add.graphics();
+    statusCore.fillStyle(statusColorNum, 1);
+    statusCore.fillCircle(size - 6, size - 6, 5);
+    container.add(statusCore);
 
     const hitArea = this.scene.add.rectangle(size / 2, size / 2, size, size, 0x000000, 0);
     hitArea.setInteractive({ useHandCursor: true });
@@ -756,19 +893,24 @@ export class CommandPanelV2 extends EnhancedUIComponent {
 
     hitArea.on('pointerdown', () => this.callbacks.onAgentDeselect?.(agent.agentId));
     hitArea.on('pointerover', () => {
+      const glowColor = this.hexToNumber(this.accentColor.get());
       bg.clear();
-      bg.fillStyle(this.hexToNumber(this.dangerColor.get()), 0.3);
+      // Outer glow
+      bg.lineStyle(3, glowColor, 0.3);
+      bg.strokeRoundedRect(-1, -1, size + 2, size + 2, 6);
+      bg.fillStyle(this.hexToNumber(this.backgroundTertiaryColor.get()), 1);
       bg.fillRoundedRect(0, 0, size, size, 6);
-      bg.lineStyle(1, this.hexToNumber(this.dangerColor.get()), 0.6);
+      bg.lineStyle(1, glowColor, 0.8);
       bg.strokeRoundedRect(0, 0, size, size, 6);
-      // Tilt effect (simplified as slight scale)
+      // Lift effect
       if (!isReducedMotion()) {
         this.scene.tweens.add({
           targets: container,
-          scaleX: 1.05,
-          scaleY: 1.05,
+          scaleX: 1.08,
+          scaleY: 1.08,
+          y: y - 4,
           duration: 150,
-          ease: 'Sine.easeOut'
+          ease: 'Sine.easeOut',
         });
       }
     });
@@ -779,6 +921,68 @@ export class CommandPanelV2 extends EnhancedUIComponent {
       bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.3);
       bg.strokeRoundedRect(0, 0, size, size, 6);
       container.setScale(1);
+      container.setY(y);
+    });
+
+    return container;
+  }
+
+  private createSkillCard(x: number, y: number, width: number, height: number, skillName: string, level: number): Phaser.GameObjects.Container {
+    const container = this.scene.add.container(x, y);
+
+    const bg = this.scene.add.graphics();
+    bg.fillStyle(this.hexToNumber(this.backgroundTertiaryColor.get()), 1);
+    bg.fillRoundedRect(0, 0, width, height, 4);
+    bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.2);
+    bg.strokeRoundedRect(0, 0, width, height, 4);
+    container.add(bg);
+
+    const accent = this.hexToNumber(this.accentColor.get());
+    const mark = this.scene.add.graphics();
+    mark.fillStyle(accent, 1);
+    mark.fillRoundedRect(0, 2, 3, height - 4, 1.5);
+    container.add(mark);
+
+    const skillText = this.createText(8, 6, skillName, {
+      fontSize: '10px',
+      color: this.textSecondaryColor.get(),
+    });
+    container.add(skillText);
+
+    const levelText = this.createText(width - 8, 6, `Lv.${level}`, {
+      fontSize: '10px',
+      fontStyle: 'bold',
+      color: this.accentColor.get(),
+    });
+    levelText.setOrigin(1, 0);
+    container.add(levelText);
+
+    const hitArea = this.scene.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0);
+    hitArea.setInteractive({ useHandCursor: true });
+    container.add(hitArea);
+
+    hitArea.on('pointerover', () => {
+      bg.clear();
+      bg.fillStyle(this.hexToNumber(this.backgroundSecondaryColor.get()), 1);
+      bg.fillRoundedRect(0, 0, width, height, 4);
+      bg.lineStyle(1, accent, 0.6);
+      bg.strokeRoundedRect(0, 0, width, height, 4);
+      if (!isReducedMotion()) {
+        this.scene.tweens.add({
+          targets: container,
+          y: y - 2,
+          duration: 120,
+          ease: 'Sine.easeOut',
+        });
+      }
+    });
+    hitArea.on('pointerout', () => {
+      bg.clear();
+      bg.fillStyle(this.hexToNumber(this.backgroundTertiaryColor.get()), 1);
+      bg.fillRoundedRect(0, 0, width, height, 4);
+      bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.2);
+      bg.strokeRoundedRect(0, 0, width, height, 4);
+      container.setY(y);
     });
 
     return container;
@@ -805,21 +1009,28 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     labelText.setOrigin(0.5);
     container.add(labelText);
 
+    let pressTween: Phaser.Tweens.Tween | undefined;
+
     hitArea.on('pointerdown', onClick);
+
     hitArea.on('pointerover', () => {
       const glowColor = getDSColor('color-primary');
       bg.clear();
+      // Glow border
+      bg.lineStyle(3, glowColor, 0.25);
+      bg.strokeRoundedRect(-1, -1, width + 2, height + 2, 5);
       bg.fillStyle(glowColor, 0.2);
       bg.fillRoundedRect(0, 0, width, height, 4);
-      bg.lineStyle(1, glowColor, 0.5);
+      bg.lineStyle(2, glowColor, 0.8);
       bg.strokeRoundedRect(0, 0, width, height, 4);
-      // Slight lift
+
       if (!isReducedMotion()) {
         this.scene.tweens.add({
           targets: container,
-          y: y - 1,
-          duration: 100,
-          ease: 'Sine.easeOut'
+          scaleX: 1.05,
+          scaleY: 1.05,
+          duration: 120,
+          ease: 'Sine.easeOut',
         });
       }
     });
@@ -829,7 +1040,44 @@ export class CommandPanelV2 extends EnhancedUIComponent {
       bg.fillRoundedRect(0, 0, width, height, 4);
       bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.3);
       bg.strokeRoundedRect(0, 0, width, height, 4);
-      container.setY(y);
+      container.setScale(1);
+      if (pressTween && pressTween.isPlaying()) {
+        pressTween.stop();
+      }
+    });
+
+    hitArea.on('pointerdown', () => {
+      if (!isReducedMotion()) {
+        if (pressTween && pressTween.isPlaying()) pressTween.stop();
+        pressTween = this.scene.tweens.add({
+          targets: container,
+          scaleX: 0.95,
+          scaleY: 0.95,
+          duration: 60,
+          ease: 'Sine.easeInOut',
+        });
+      }
+    });
+    hitArea.on('pointerup', () => {
+      if (!isReducedMotion()) {
+        if (pressTween && pressTween.isPlaying()) pressTween.stop();
+        pressTween = this.scene.tweens.add({
+          targets: container,
+          scaleX: 1.05,
+          scaleY: 1.05,
+          duration: 80,
+          ease: 'Sine.easeOut',
+          onComplete: () => {
+            this.scene.tweens.add({
+              targets: container,
+              scaleX: 1,
+              scaleY: 1,
+              duration: 80,
+              ease: 'Sine.easeInOut',
+            });
+          },
+        });
+      }
     });
 
     return container;
@@ -871,6 +1119,8 @@ export class CommandPanelV2 extends EnhancedUIComponent {
     labelText.setOrigin(0, 0.5);
     container.add(labelText);
 
+    let pressTween: Phaser.Tweens.Tween | undefined;
+
     hitArea.on('pointerdown', () => {
       if (!btn.enabled) return;
 
@@ -897,19 +1147,22 @@ export class CommandPanelV2 extends EnhancedUIComponent {
       hitArea.on('pointerover', () => {
         const glowColor = getDSColor('color-primary');
         bg.clear();
+        // Outer glow
+        bg.lineStyle(3, glowColor, 0.25);
+        bg.strokeRoundedRect(-1, -1, width + 2, height + 2, 5);
         bg.fillStyle(glowColor, 0.25);
         bg.fillRoundedRect(0, 0, width, height, 4);
-        bg.lineStyle(1, glowColor, 0.6);
+        // Bright border
+        bg.lineStyle(2, glowColor, 0.8);
         bg.strokeRoundedRect(0, 0, width, height, 4);
-        
-        // Selected glow effect
+
         if (!isReducedMotion()) {
           this.scene.tweens.add({
             targets: container,
-            scaleX: 1.03,
-            scaleY: 1.03,
+            scaleX: 1.05,
+            scaleY: 1.05,
             duration: 120,
-            ease: 'Sine.easeOut'
+            ease: 'Sine.easeOut',
           });
         }
       });
@@ -921,6 +1174,44 @@ export class CommandPanelV2 extends EnhancedUIComponent {
         bg.lineStyle(1, this.hexToNumber(this.borderColor.get()), 0.3);
         bg.strokeRoundedRect(0, 0, width, height, 4);
         container.setScale(1);
+        if (pressTween && pressTween.isPlaying()) {
+          pressTween.stop();
+        }
+      });
+
+      hitArea.on('pointerdown', () => {
+        if (!isReducedMotion()) {
+          if (pressTween && pressTween.isPlaying()) pressTween.stop();
+          pressTween = this.scene.tweens.add({
+            targets: container,
+            scaleX: 0.95,
+            scaleY: 0.95,
+            duration: 60,
+            ease: 'Sine.easeInOut',
+          });
+        }
+      });
+
+      hitArea.on('pointerup', () => {
+        if (!isReducedMotion()) {
+          if (pressTween && pressTween.isPlaying()) pressTween.stop();
+          pressTween = this.scene.tweens.add({
+            targets: container,
+            scaleX: 1.05,
+            scaleY: 1.05,
+            duration: 80,
+            ease: 'Sine.easeOut',
+            onComplete: () => {
+              this.scene.tweens.add({
+                targets: container,
+                scaleX: 1,
+                scaleY: 1,
+                duration: 80,
+                ease: 'Sine.easeInOut',
+              });
+            },
+          });
+        }
       });
     }
 
@@ -934,8 +1225,23 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   private switchTab(tab: 'detail' | 'skills'): void {
     if (this.currentTab === tab) return;
 
+    const oldX = this.tabIndicator?.x ?? 0;
     this.currentTab = tab;
     this.renderTabs();
+
+    const activeIndex = this.currentTab === 'detail' ? 0 : 1;
+    const newX = this.tabPositions[activeIndex] ?? oldX;
+
+    if (this.tabIndicator) {
+      this.tabIndicator.x = oldX;
+      this.scene.tweens.add({
+        targets: this.tabIndicator,
+        x: newX,
+        duration: 200,
+        ease: 'Cubic.easeOut',
+      });
+    }
+
     this.renderContent();
   }
 
@@ -944,11 +1250,24 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   // --------------------------------------------------------------------------
 
   protected updateThemeStyles(): void {
+    if (this.progressGradKey) {
+      this.scene.textures.remove(this.progressGradKey);
+      this.progressGradKey = null;
+    }
+    if (this.emptyGradKey) {
+      this.scene.textures.remove(this.emptyGradKey);
+      this.emptyGradKey = null;
+    }
+    this.tabIndicator = null;
+    this.tabPositions = [];
+
     (this.container as Phaser.GameObjects.Container)?.removeAll(true);
     this.createBackground();
     this.createTabBar();
     this.createContentContainer();
     this.createActionButtonContainer();
+
+    this.initGradientTextures();
     this.render();
   }
 
@@ -968,6 +1287,54 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   private hexToNumber(hex: string): number {
     if (!hex || typeof hex !== 'string') return parseInt(getToken('colors.text.primary').replace('#', ''), 16);
     return parseInt(hex.slice(1), 16);
+  }
+
+  private hexToRgba(hex: string, alpha: number): string {
+    const num = this.hexToNumber(hex);
+    const r = (num >> 16) & 0xff;
+    const g = (num >> 8) & 0xff;
+    const b = num & 0xff;
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  private createGradientTexture(
+    key: string,
+    width: number,
+    height: number,
+    colorStops: { offset: number; color: string; alpha?: number }[]
+  ): void {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const gradient = ctx.createLinearGradient(0, 0, width, 0);
+    colorStops.forEach(s => {
+      gradient.addColorStop(s.offset, this.hexToRgba(s.color, s.alpha ?? 1));
+    });
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+    this.scene.textures.addCanvas(key, canvas);
+  }
+
+  private initGradientTextures(): void {
+    if (this.progressGradKey) {
+      this.scene.textures.remove(this.progressGradKey);
+    }
+    if (this.emptyGradKey) {
+      this.scene.textures.remove(this.emptyGradKey);
+    }
+    this.progressGradKey = `${this.id}_progGrad`;
+    this.emptyGradKey = `${this.id}_emptyGrad`;
+    this.createGradientTexture(this.progressGradKey, 256, 8, [
+      { offset: 0, color: this.accentColor.get() },
+      { offset: 1, color: this.successColor.get() },
+    ]);
+    this.createGradientTexture(this.emptyGradKey, 512, 128, [
+      { offset: 0, color: this.accentColor.get(), alpha: 0.15 },
+      { offset: 0.5, color: this.backgroundColor.get(), alpha: 0.05 },
+      { offset: 1, color: this.successColor.get(), alpha: 0.15 },
+    ]);
   }
 
   private getStatusColor(status: string): string {
@@ -1015,6 +1382,19 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   // --------------------------------------------------------------------------
 
   destroy(): void {
+    this.contentTweens.forEach(t => {
+      if (t.isPlaying()) t.stop();
+    });
+    this.contentTweens = [];
+    if (this.progressGradKey) {
+      this.scene.textures.remove(this.progressGradKey);
+      this.progressGradKey = null;
+    }
+    if (this.emptyGradKey) {
+      this.scene.textures.remove(this.emptyGradKey);
+      this.emptyGradKey = null;
+    }
+    this.tabIndicator = null;
     this.tabContainer?.destroy();
     this.contentContainer?.destroy();
     this.actionButtonContainer?.destroy();
