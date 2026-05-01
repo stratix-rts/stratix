@@ -156,7 +156,7 @@ export class TopBarV2 extends EnhancedUIComponent {
     const height = this.config.height || HUD_LAYOUT.topBar.height;
     const gridColor = this.hexToNumber(this.borderColor.get());
     this.gridGraphics.clear();
-    this.gridGraphics.lineStyle(1, gridColor, 0.04);
+    this.gridGraphics.lineStyle(1, gridColor, 0.02);
     const step = HUD_LAYOUT.topBar.gridStep;
     for (let x = 0; x <= width; x += step) {
       this.gridGraphics.lineBetween(x, 0, x, height);
@@ -184,13 +184,13 @@ export class TopBarV2 extends EnhancedUIComponent {
         if (!this.scanlineGraphics) return;
         const primaryColor = this.hexToNumber(this.primaryColor.get());
         this.scanlineGraphics.clear();
-        // Core bright segment
-        this.scanlineGraphics.fillStyle(primaryColor, 0.3);
-        this.scanlineGraphics.fillRect(scanlineState.x, 0, 36, 2);
+        // Core bright segment - thinner and more subtle
+        this.scanlineGraphics.fillStyle(primaryColor, 0.15);
+        this.scanlineGraphics.fillRect(scanlineState.x, 0, 20, 1);
         // Fade tails
-        this.scanlineGraphics.fillStyle(primaryColor, 0.12);
-        this.scanlineGraphics.fillRect(scanlineState.x - 14, 0, 14, 2);
-        this.scanlineGraphics.fillRect(scanlineState.x + 36, 0, 14, 2);
+        this.scanlineGraphics.fillStyle(primaryColor, 0.06);
+        this.scanlineGraphics.fillRect(scanlineState.x - 14, 0, 14, 1);
+        this.scanlineGraphics.fillRect(scanlineState.x + 20, 0, 14, 1);
       },
     });
   }
@@ -205,7 +205,7 @@ export class TopBarV2 extends EnhancedUIComponent {
 
     this.background.clear();
     // Glassmorphism: translucent background
-    this.background.fillStyle(bgColor, 0.65);
+    this.background.fillStyle(bgColor, 0.45);
     this.background.fillRoundedRect(0, 0, width, height, 0);
 
     // Subtle top highlight line
