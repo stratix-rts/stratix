@@ -98,12 +98,12 @@ function drawDataCenterWall(
   lit: boolean
 ): void {
   const baseColor = '#1a1f2e';
-  const panelColor1 = '#1e2433';
-  const panelColor2 = '#232a3d';
-  const lineColor = '#2d354a';
-  const ledColor = lit ? '#00f5d4' : '#004d42';
-  const ledBright = lit ? '#80ffea' : '#006b5b';
-  const ledAlpha = lit ? 1 : 0.35;
+  const panelColor1 = '#242b3d';
+  const panelColor2 = '#2a3247';
+  const lineColor = '#3a4560';
+  const ledColor = lit ? '#00f5d4' : '#007a66';
+  const ledBright = lit ? '#80ffea' : '#00997a';
+  const ledAlpha = lit ? 1 : 0.6;
 
   // 背景
   ctx.fillStyle = baseColor;
@@ -217,8 +217,8 @@ function drawDataCenterFoundation(
   random: SeededRandom,
   lit: boolean
 ): void {
-  const baseColor = '#0f1218';
-  const lineColor = '#1a1f2a';
+  const baseColor = '#131825';
+  const lineColor = '#252b3a';
 
   ctx.fillStyle = baseColor;
   ctx.fillRect(0, 0, size, size);
@@ -234,7 +234,7 @@ function drawDataCenterFoundation(
   ctx.stroke();
 
   // 细微噪点
-  drawNoise(ctx, size, random, 0.08, '#1a1f2a', '#0a0c12', 0.4);
+  drawNoise(ctx, size, random, 0.08, '#252b3a', '#0a0c12', 0.65);
 
   // 散热格栅/电缆槽（细横线）
   const grilleSpacing = 16;
@@ -254,7 +254,7 @@ function drawDataCenterFoundation(
   ctx.globalAlpha = 1;
 
   // 底边青色光带（模拟地下数据线）— 加强 2-3 倍
-  const glowAlpha = lit ? 0.8 : 0.25;
+  const glowAlpha = lit ? 0.8 : 0.45;
   ctx.fillStyle = '#00f5d4';
   ctx.globalAlpha = glowAlpha;
   ctx.fillRect(0, size - 3, size, 3);
@@ -439,13 +439,13 @@ function drawWorkshopFoundation(
   random: SeededRandom,
   lit: boolean
 ): void {
-  const baseColor = '#1a1510';
+  const baseColor = '#1a1a1a';
 
   ctx.fillStyle = baseColor;
   ctx.fillRect(0, 0, size, size);
 
-  // 碎石/夯土质感的噪点
-  drawNoise(ctx, size, random, 0.15, '#2a2018', '#120e0a', 0.4);
+  // 碎石/混凝土质感的噪点
+  drawNoise(ctx, size, random, 0.15, '#2a2a2a', '#0f0f0f', 0.5);
 
   // 小石子 — 规则 4x4 网格内随机偏移，确保平铺连续
   const gridCols = 4;
@@ -457,7 +457,7 @@ function drawWorkshopFoundation(
       const cx = col * cellW + random.between(4, Math.floor(cellW) - 8);
       const cy = row * cellH + random.between(4, Math.floor(cellH) - 8);
       const radius = random.between(2, 4);
-      ctx.fillStyle = random.next() > 0.5 ? '#3a3028' : '#252018';
+      ctx.fillStyle = random.next() > 0.5 ? '#3a3a3a' : '#252525';
       ctx.beginPath();
       ctx.arc(cx, cy, radius, 0, Math.PI * 2);
       ctx.fill();
@@ -503,9 +503,9 @@ function drawStudioWall(
   const wallColor = '#1a1a2e';
   const frameColor = '#2d2d42';
   const glassColor = '#b24bf3';
-  const glassAlpha = lit ? 0.5 : 0.15;
-  const frameGlowColor = lit ? '#b24bf3' : '#5a2080';
-  const frameGlowAlpha = lit ? 0.7 : 0.3;
+  const glassAlpha = lit ? 0.5 : 0.35;
+  const frameGlowColor = lit ? '#b24bf3' : '#7a35a0';
+  const frameGlowAlpha = lit ? 0.7 : 0.55;
 
   // 整体墙面
   ctx.fillStyle = wallColor;
@@ -576,9 +576,9 @@ function drawStudioRoof(
   const baseColor = '#161625';
   const skylightFrame = '#2d2d42';
   const skylightGlass = '#b24bf3';
-  const glassAlpha = lit ? 0.4 : 0.1;
-  const frameGlowColor = lit ? '#b24bf3' : '#5a2080';
-  const frameGlowAlpha = lit ? 0.6 : 0.25;
+  const glassAlpha = lit ? 0.4 : 0.3;
+  const frameGlowColor = lit ? '#b24bf3' : '#7a35a0';
+  const frameGlowAlpha = lit ? 0.6 : 0.5;
 
   ctx.fillStyle = baseColor;
   ctx.fillRect(0, 0, size, size);
