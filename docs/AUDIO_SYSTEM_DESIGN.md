@@ -1,6 +1,6 @@
 # Stratix Audio System Design
 
-> 状态：Draft v0.6
+> 状态：Draft v0.7
 > 日期：2026-05-01
 > 作者：锻 + 姜琦
 
@@ -47,8 +47,142 @@
 ### 1.1 产品定义
 
 **名称**：Chip Audio Engine (CAE)
-**定位**：通用像素风音频引擎，可独立于任何宿主项目使用
-**形态**：TypeScript 库（npm 包），零外部依赖，纯 Web Audio API
+**定位**：通用浏览器端音频引擎，可独立于任何宿主项目使用
+**形态**：TypeScript npm 包，零外部依赖，纯 Web Audio API
+**仓库**：独立 Git 仓库（不在任何宿主项目内）
+**协议**：MIT 开源
+
+### 1.2 发布形态
+
+**NPM 包**，非二进制文件。
+
+```
+npm install chip-audio-engine
+```
+
+**包结构**：
+
+```
+chip-audio-engine/
+├── dist/
+│   ├── index.js          # UMD + ESM 双格式
+│   ├── index.d.ts        # TypeScript 类型声明
+│   └── chunk-*.js        # 按需加载的子模块
+├── packs/
+│   ├── pixel-sfc.json    # 内置像素风 SoundPack
+│   ├── cyberpunk.json    # 可选 SoundPack
+│   └── schema.json       # SoundPack JSON Schema（可校验用户自定义 Pack）
+├── adapters/
+│   ├── phaser.js         # Phaser 3 适配层
+│   ├── pixi.js           # PixiJS 适配层
+│   ├── react.js          # React hooks 适配层
+│   └── vanilla.js        # 原生 JS 适配层（默认）
+└── package.json
+```
+
+**适配器模式**：
+
+核心包（`chip-audio-engine`）不依赖任何框架。框架集成通过适配层实现：
+
+```typescript
+// 原生 JS（无框架）
+import { ChipAudioEngine } from 'chip-audio-engine';
+
+// Phaser 3
+import { createPhaserAudio } from 'chip-audio-engine/adapters/phaser';
+const engine = createPhaserAudio(scene, config);
+// 自动复用 Phaser 的 AudioContext
+
+// React
+import { useAudioEngine } from 'chip-audio-engine/adapters/react';
+const engine = useAudioEngine(config);
+```
+
+### 1.3 通用化设计约束
+
+CAE 要服务任何浏览器端应用/游戏，不能只服务 Stratix。以下是通用化的硬约束：
+
+**1. 框架无关**
+
+```
+❌ 引擎不 import 任何框架的模块（phaser, react, vue, pixi）
+❌ 引擎不假设 DOM 结构、Canvas 类型、游戏循环模式
+
+✅ 引擎只依赖浏览器原生 API：Web Audio API + BaseAudioContext
+✅ 框架集成走适配器层（adapters/）
+✅ 适配器负责把框架概念翻译成引擎的通用接口
+```
+
+**2. AudioContext 可外部注入**
+
+```typescript
+interface AudioEngineConfig {
+  // 引擎可以创建自己的 AudioContext...
+  audioContext?: BaseAudioContext;
+  // ...也可以复用宿主已有的（比如 Phaser 自带的）
+}
+
+// 场景 A：引擎自己创建
+const engine = new ChipAudioEngine({});
+
+// 场景 B：复用 Phaser 的 AudioContext
+const engine = new ChipAudioEngine({
+  audioContext: scene.sound.context as BaseAudioContext
+});
+```
+
+**3. 空间参数不依赖游戏引擎的 Camera**
+
+```typescript
+// ❌ 引擎不应该接收 Phaser.Camera
+engine.updateFocus(phaserCamera); // 错误
+
+// ✅ 引擎接收通用的 viewport 参数
+interface Viewport {
+  centerX: number;
+  centerY: number;
+  width: number;
+  height: number;
+  zoom?: number;
+}
+
+engine.updateSpatial({ viewport: { centerX: 800, centerY: 480, width: 800, height: 600 } });
+
+// 适配器负责把 Phaser.Camera → Viewport
+```
+
+**4. 事件系统自包含**
+
+```typescript
+// 引擎自带轻量事件系统，不依赖宿主
+interface IAudioEngine {
+  on(event: AudioEvent, handler: (...args: any[]) => void): void;
+  off(event: AudioEvent, handler: (...args: any[]) => void): void;
+}
+
+type AudioEvent =
+  | 'play'           // 声音开始播放
+  | 'stop'           // 声音停止
+  | 'queueDrop'      // 事件被聚合丢弃
+  | 'circuitBreak'   // 熔断器触发
+  | 'error';         // 错误
+
+// 适配器可以桥接到宿主的事件系统
+```
+
+**5. 两种集成模式**
+
+```
+模式 A：嵌入式（宿主控制生命周期）
+  适用于：游戏、应用内集成
+  宿主调用 init() / destroy() 管理引擎
+  引擎和宿主共享同一个 AudioContext
+
+模式 B：独立运行（引擎自己管理一切）
+  适用于：音频工具、调试面板、独立演示
+  引擎自己创建 AudioContext
+  引擎提供自己的简单 UI（音量控制、状态面板）
+```
 
 ```
 ┌──────────────────────────────────────────────┐
