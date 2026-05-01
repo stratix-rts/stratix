@@ -1074,6 +1074,106 @@ function calculateAwarenessVolume(
   结果：✓ 用户知道附近有断线，远处也有但很远
 ```
 
+### 12.9 声音焦点模式
+
+三层准入（聚焦/感知/静默）是基于视口的静态模型。但用户的操作有**意图上下文**，声音焦点应该跟随意图变化。
+
+**焦点模式定义**：
+
+| 模式 | 焦点位置 | 声音范围 | 触发条件 |
+|------|---------|---------|----------|
+| **视口模式** | 视口中心 | 视口内全声音 + 感知层 Critical | 默认状态，未选中任何对象 |
+| **跟随模式** | 选中 Agent 的位置 | 以 Agent 为圆心的动态范围 | 选中单个 Agent 且跟随移动 |
+| **Zone 模式** | 选中 Zone 的区域 | Zone 内全声音 + 相邻 Zone 环境音渗透 | 选中 Zone 时 |
+| **军团模式** | 军团中心点 | 军团范围内声音，但个体事件只播 1 次 | 选中多个 Agent 时 |
+
+#### 跟随模式（Agent 移动）
+
+```
+用户选中 Agent A，Agent 在地图上移动
+
+声音焦点跟随 Agent A：
+  - Agent 所在位置为中心，半径 200px 范围全音量
+  - 路过 Zone 时，该 Zone 的环境音渐入渐出
+  - Agent 路过的 Zone 工作声（taskComplete 等）可听
+  - 远处 Zone 的 Critical 事件感知层仍生效
+
+变化过程（Agent 从 Zone A 走到 Zone B）：
+  T+0s:   Zone A 环境音 100%, Zone B 0%
+  T+1s:   Zone A 70%, Zone B 30%  （交叉渐变）
+  T+2s:   Zone A 30%, Zone B 70%
+  T+3s:   Zone A 0%, Zone B 100%  （完成切换）
+```
+
+#### Zone 模式（选中 Zone）
+
+```
+用户选中 Zone B（有 5 个 Agent 在工作）
+
+声音层次：
+  Layer 1 — Zone B 内部：
+    完整声音（环境音 + Agent 工作声 + 任务事件）
+    5 个 Agent 的 taskComplete 各自触发但走 arpeggio 合并
+
+  Layer 2 — 相邻 Zone（直接相邻，共享边界）：
+    仅环境音渗透，音量 15%
+    像隔壁房间的嗡嗡声
+    不播相邻 Zone 的 Agent 事件声
+
+  Layer 3 — 更远 Zone：
+    仅 Critical 穿透（alert/error），音量 10%
+    环境音静默
+
+空间临场感：用户在 Zone B 里工作，能感受到"周围有其他 Zone 在运转"。
+```
+
+#### 军团模式（选中多个 Agent）
+
+```
+星际争霸规则：声音代表意图，不代表数量。
+
+选中 50 个 Agent → 点移动：
+  ❌ 不播 50 次 game.taskAssign
+  ❌ 不播每种类型各一次的 taskAssign
+  ✅ 播 1 次 game.taskAssign（代表"指令已下达"）
+
+选中 50 个 Agent → 其中 20 个同时完成任务：
+  ❌ 不播 20 次 game.taskComplete
+  ✅ 播 1 次 arpeggio（代表"军团有进展"）
+
+选中混合类型（30 个 Studio Agent + 20 个 DataCenter Agent）→ 点移动：
+  ✅ 播 1 次 game.taskAssign
+  不需要按类型各播一次——用户的意图是"这群 Agent 去那里"，不是"Studio 去那里，DC 去那里"
+```
+
+**军团模式的声音范围**：
+
+```
+选中 50 个 Agent，分布在 300×300 的区域内
+
+声音焦点 = 军团的 bounding box 中心
+声音范围 = bounding box + 100px padding
+
+范围内：
+  - 军团成员的事件声可听（但走 arpeggio/stack 聚合）
+  - 范围内其他非军团 Agent 的事件也可见（视口模式规则）
+
+范围外：
+  - 感知层和静默层规则不变
+```
+
+### 12.10 声音焦点切换过渡
+
+不同焦点模式之间切换时，声音场景平滑过渡：
+
+| 切换 | 过渡方式 | 时长 |
+|------|---------|------|
+| 视口 → 跟随 | 焦点从视口中心滑向 Agent 位置，环境音重新混合 | 300ms |
+| 跟随 → Zone | 焦点固定到 Zone 中心，相邻 Zone 环境音渐入 | 200ms |
+| Zone → 军团 | 焦点扩展到 bounding box，声音范围扩大 | 200ms |
+| 军团 → 视口 | 焦点收缩回视口中心，范围缩小 | 300ms |
+| 取消选中（任何模式 → 视口） | 渐变回视口模式 | 300ms |
+
 ---
 
 ## 13. 待讨论
