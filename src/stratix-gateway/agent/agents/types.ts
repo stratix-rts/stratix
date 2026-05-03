@@ -45,3 +45,10 @@ export interface AgentInterface {
    */
   getTranscript?(limit?: number): Array<{ id: string; role: string; content: string; timestamp: number }>;
 }
+
+export interface AgentUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  turnCount: number;
+}

@@ -39,7 +39,7 @@ export class AgentOrchestrationService {
         if (!agent) {
           return Promise.reject(new Error(`Agent ${actualAgentId} not found`));
         }
-        return agent.start().catch((error: any) => {
+        return agent.start().catch((error: unknown) => {
           this.agents.delete(actualAgentId);
           this.agentStates.delete(actualAgentId);
           throw error;
@@ -260,23 +260,36 @@ export class AgentOrchestrationService {
 
   async stopAll(): Promise<void> {
     console.log('[AgentOrchestrationService] Stopping all agents');
-    
-    const stopPromises = Array.from(this.agents.keys()).map(agentId => 
-      this.stopAgent(agentId)
+
+    const results = await Promise.allSettled(
+      Array.from(this.agents.keys()).map(agentId => this.stopAgent(agentId))
     );
 
-    await Promise.all(stopPromises);
+    const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    if (failures.length > 0) {
+      console.error(`[AgentOrchestrationService] ${failures.length} agents failed to stop:`, failures.map(f => f.reason));
+    }
   }
 
   async stopProjectAgents(projectId: string): Promise<void> {
     console.log(`[AgentOrchestrationService] Stopping all agents in project ${projectId}`);
-    
+
     const projectAgents = this.getProjectAgents(projectId);
-    const stopPromises = projectAgents.map(state => 
-      this.stopAgent(state.agentId)
+    const results = await Promise.allSettled(
+      projectAgents.map(state => this.stopAgent(state.agentId))
     );
 
-    await Promise.all(stopPromises);
+    const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    if (failures.length > 0) {
+      console.error(`[AgentOrchestrationService] ${failures.length} agents failed to stop in project ${projectId}:`, failures.map(f => f.reason));
+    }
+  }
+
+  destroy(): void {
+    this.agents.clear();
+    this.agentStates.clear();
+    this.usageStats.clear();
+    this.agentConfigs.clear();
   }
 }
 

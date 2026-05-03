@@ -1,8 +1,3 @@
-import path from 'path';
-
-import * as fs from 'fs-extra';
-
-
 import { StratixAgentConfig } from '../../../stratix-core';
 import { LRAClient } from '../../../stratix-lra-bridge/LRAClient';
 import type { LraTask } from '../../../stratix-lra-bridge/types';
@@ -158,13 +153,17 @@ export class LLMAgent implements AgentInterface {
   }
   
   private async processTask(task: LraTask): Promise<void> {
-    const soul = (this.agentConfig.soul as any)?.prompt || 'You are a helpful assistant.';
+    const soul = this.agentConfig.soul?.identity || 'You are a helpful assistant.';
     const prompt = `${soul}\n\nTask: ${task.description}\n\nProject: ${this.effectiveProjectPath}`;
+    await this.executeWithBudget(prompt, task.id);
+    await this.lraClient.publish(this.effectiveProjectPath, task.id);
+  }
 
+  private async executeWithBudget(prompt: string, taskId: string): Promise<string> {
     // Check budget before executing
     const preCheck = budgetController.evaluate(this.totalTokenUsage, 0);
     if (preCheck.action === 'stop') {
-      console.warn(`[LLMAgent] Budget exceeded before task ${task.id}: ${preCheck.nudgeMessage}`);
+      console.warn(`[LLMAgent] Budget exceeded before task ${taskId}: ${preCheck.nudgeMessage}`);
       throw new Error(`Budget exceeded: ${preCheck.reason}. ${preCheck.nudgeMessage || ''}`);
     }
 
@@ -188,58 +187,35 @@ export class LLMAgent implements AgentInterface {
     // Check budget after execution
     const postCheck = budgetController.evaluate(this.totalTokenUsage, 0);
     if (postCheck.action === 'stop') {
-      console.warn(`[LLMAgent] Budget exhausted after task ${task.id}: ${postCheck.nudgeMessage}`);
+      console.warn(`[LLMAgent] Budget exhausted after task ${taskId}: ${postCheck.nudgeMessage}`);
       throw new Error(`Budget exhausted: ${postCheck.reason}. ${postCheck.nudgeMessage || ''}`);
     }
 
-    await this.lraClient.publish(this.effectiveProjectPath, task.id);
+    return content;
   }
 
   /**
    * Process a task delegated via ZoneCoordinator / TaskQueueService
    */
   private async processZoneTask(task: { taskId: string; zoneId: string; name: string; description?: string; type?: string }): Promise<void> {
-    const soul = (this.agentConfig.soul as any)?.prompt || 'You are a helpful assistant.';
+    const soul = this.agentConfig.soul?.identity || 'You are a helpful assistant.';
     const taskDescription = task.description || task.name;
     const prompt = `${soul}\n\nZone Task: ${task.name}\n\nDescription: ${taskDescription}\n\nZone: ${task.zoneId}\nProject: ${this.effectiveProjectPath}\n\nPlease complete this task and report the results.`;
 
-    // Check budget before executing
-    const preCheck = budgetController.evaluate(this.totalTokenUsage, 0);
-    if (preCheck.action === 'stop') {
-      console.warn(`[LLMAgent] Budget exceeded before Zone task ${task.taskId}: ${preCheck.nudgeMessage}`);
-      throw new Error(`Budget exceeded: ${preCheck.reason}. ${preCheck.nudgeMessage || ''}`);
-    }
-
-    const response = await this.adapter.openaiChatCompletion({
-      model: 'openclaw',
-      messages: [{ role: 'user', content: prompt }],
-    });
-
-    const usage = response.usage;
-    if (usage) {
-      this.totalTokenUsage = {
-        totalTokens: this.totalTokenUsage.totalTokens + usage.total_tokens,
-        promptTokens: this.totalTokenUsage.promptTokens + usage.prompt_tokens,
-        completionTokens: this.totalTokenUsage.completionTokens + usage.completion_tokens,
-      };
-    }
-
-    const content = response.choices[0]?.message?.content || '';
-    console.log(`[LLMAgent] Zone task response:`, content.substring(0, 200));
-
-    // Check budget after execution
-    const postCheck = budgetController.evaluate(this.totalTokenUsage, 0);
-    if (postCheck.action === 'stop') {
-      console.warn(`[LLMAgent] Budget exhausted after Zone task ${task.taskId}: ${postCheck.nudgeMessage}`);
-      throw new Error(`Budget exhausted: ${postCheck.reason}. ${postCheck.nudgeMessage || ''}`);
-    }
+    const content = await this.executeWithBudget(prompt, task.taskId);
 
     // Notify ZoneCoordinator via the agentTask API
     try {
-      const axios = (await import('axios')).default;
-      await axios.post(`/api/agent/${this.agentConfig.agentId}/tasks/${task.taskId}/complete`, {
-        result: { output: content }
+      const apiPort = process.env.STRATIX_API_PORT || '7524';
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      await fetch(`http://127.0.0.1:${apiPort}/api/agent/${this.agentConfig.agentId}/tasks/${task.taskId}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ result: { output: content } }),
+        signal: controller.signal
       });
+      clearTimeout(timeout);
     } catch (notifyError) {
       console.warn(`[LLMAgent] Failed to notify task completion:`, notifyError);
     }

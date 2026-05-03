@@ -1,7 +1,3 @@
-import path from 'path';
-
-import * as fs from 'fs-extra';
-
 import { StratixAgentConfig } from '../../../stratix-core';
 import { LRAClient } from '../../../stratix-lra-bridge/LRAClient';
 import type { LraTask } from '../../../stratix-lra-bridge/types';
@@ -149,11 +145,15 @@ export class OpenClawAgent implements AgentInterface {
   
   private async processTask(task: LraTask): Promise<void> {
     const prompt = `You are working on task: ${task.description}\n\nProject context: ${this.effectiveProjectPath}\n\nPlease complete this task and save any output files.`;
+    await this.executeWithBudget(prompt, task.id);
+    await this.lraClient.publish(this.effectiveProjectPath, task.id);
+  }
 
+  private async executeWithBudget(prompt: string, taskId: string): Promise<string> {
     // Check budget before executing
     const preCheck = budgetController.evaluate(this.totalTokenUsage, 0);
     if (preCheck.action === 'stop') {
-      console.warn(`[OpenClawAgent] Budget exceeded before task ${task.id}: ${preCheck.nudgeMessage}`);
+      console.warn(`[OpenClawAgent] Budget exceeded before task ${taskId}: ${preCheck.nudgeMessage}`);
       throw new Error(`Budget exceeded: ${preCheck.reason}. ${preCheck.nudgeMessage || ''}`);
     }
 
@@ -177,11 +177,11 @@ export class OpenClawAgent implements AgentInterface {
     // Check budget after execution
     const postCheck = budgetController.evaluate(this.totalTokenUsage, 0);
     if (postCheck.action === 'stop') {
-      console.warn(`[OpenClawAgent] Budget exhausted after task ${task.id}: ${postCheck.nudgeMessage}`);
+      console.warn(`[OpenClawAgent] Budget exhausted after task ${taskId}: ${postCheck.nudgeMessage}`);
       throw new Error(`Budget exhausted: ${postCheck.reason}. ${postCheck.nudgeMessage || ''}`);
     }
 
-    await this.lraClient.publish(this.effectiveProjectPath, task.id);
+    return content;
   }
   
   private startHeartbeat(taskId: string): void {
@@ -243,35 +243,13 @@ User message: ${message.content}
 Please respond to the user's message. Keep your response concise and helpful.`;
 
     try {
-      // Check budget before responding
-      const preCheck = budgetController.evaluate(this.totalTokenUsage, 0);
-      if (preCheck.action === 'stop') {
-        console.warn(`[OpenClawAgent] Budget exceeded, skipping message handling: ${preCheck.nudgeMessage}`);
-        await this.sendMessageToChannel(message.channelId, 'I apologize, but I have reached my operational budget limit for this session.');
-        return;
-      }
-
-      const response = await this.adapter.openaiChatCompletion({
-        model: 'openclaw',
-        messages: [{ role: 'user', content: prompt }],
-      });
-
-      const usage = response.usage;
-      if (usage) {
-        this.totalTokenUsage = {
-          totalTokens: this.totalTokenUsage.totalTokens + usage.total_tokens,
-          promptTokens: this.totalTokenUsage.promptTokens + usage.prompt_tokens,
-          completionTokens: this.totalTokenUsage.completionTokens + usage.completion_tokens,
-        };
-      }
-
-      const content = response.choices[0]?.message?.content || '';
-      console.log(`[OpenClawAgent] ${this.agentConfig.name} responded:`, content.substring(0, 200));
-
-      // 发送回复到 channel（通过 HTTP API）
+      const content = await this.executeWithBudget(prompt, 'mention-response');
       await this.sendMessageToChannel(message.channelId, content || 'I received your message.');
     } catch (error) {
       console.error(`[OpenClawAgent] ${this.agentConfig.name} failed to handle message:`, error);
+      if (error instanceof Error && error.message.includes('Budget')) {
+        await this.sendMessageToChannel(message.channelId, 'I apologize, but I have reached my operational budget limit for this session.').catch(() => {});
+      }
     }
   }
 
@@ -280,7 +258,10 @@ Please respond to the user's message. Keep your response concise and helpful.`;
    */
   private async sendMessageToChannel(channelId: string, content: string): Promise<void> {
     try {
-      const response = await fetch(`http://127.0.0.1:7524/api/projects/${this.projectId}/messages`, {
+      const apiPort = process.env.STRATIX_API_PORT || '7524';
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      const response = await fetch(`http://127.0.0.1:${apiPort}/api/projects/${this.projectId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -293,8 +274,10 @@ Please respond to the user's message. Keep your response concise and helpful.`;
           },
           content: content.trim(),
           source: 'local'
-        })
+        }),
+        signal: controller.signal
       });
+      clearTimeout(timeout);
 
       if (!response.ok) {
         console.error(`[OpenClawAgent] Failed to send message to channel: ${response.status}`);
