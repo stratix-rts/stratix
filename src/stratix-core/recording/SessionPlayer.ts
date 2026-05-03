@@ -25,7 +25,7 @@ export class SessionPlayer {
   private playbackElapsed: number = 0; // accumulated playback time in ms
   private lastTickTime: number = 0; // last real time when tick was called
   private events: SessionPlayerEvents = {};
-  private animationFrameId: ReturnType<typeof setInterval> | null = null;
+  private playbackIntervalId: ReturnType<typeof setInterval> | null = null;
 
   constructor(events?: SessionPlayerEvents) {
     if (events) {
@@ -223,7 +223,7 @@ export class SessionPlayer {
 
     // Use setInterval which works with Jest fake timers
     // The interval fires frequently (16ms) to allow precise timing control
-    this.animationFrameId = setInterval(() => {
+    this.playbackIntervalId = setInterval(() => {
       if (this.state !== 'playing') {
         return;
       }
@@ -232,9 +232,9 @@ export class SessionPlayer {
   }
 
   private stopPlaybackLoop(): void {
-    if (this.animationFrameId !== null) {
-      clearInterval(this.animationFrameId);
-      this.animationFrameId = null;
+    if (this.playbackIntervalId !== null) {
+      clearInterval(this.playbackIntervalId);
+      this.playbackIntervalId = null;
     }
   }
 

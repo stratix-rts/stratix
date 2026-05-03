@@ -314,34 +314,38 @@ export class StratixConfigValidator {
   /**
    * 校验 StratixAgent 配置
    */
-  public validateStratixConfig(config: any): ValidationResult {
+  public validateStratixConfig(config: unknown): ValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    if (!config.provider) {
+    const cfg = config as Record<string, unknown>;
+
+    if (!cfg.provider) {
       errors.push('provider 是必填字段');
     }
 
-    if (!config.model || config.model.trim() === '') {
+    if (!cfg.model || typeof cfg.model !== 'string' || cfg.model.trim() === '') {
       errors.push('model 是必填字段');
     }
 
-    if (config.endpoint) {
+    if (cfg.endpoint) {
       try {
-        new URL(config.endpoint);
+        new URL(String(cfg.endpoint));
       } catch {
         errors.push('endpoint 必须是有效的 URL');
       }
     }
 
-    if (config.temperature !== undefined) {
-      if (config.temperature < 0 || config.temperature > 2) {
+    if (cfg.temperature !== undefined) {
+      const temp = Number(cfg.temperature);
+      if (temp < 0 || temp > 2) {
         errors.push('temperature 应在 0-2 之间');
       }
     }
 
-    if (config.maxTokens !== undefined) {
-      if (config.maxTokens < 1) {
+    if (cfg.maxTokens !== undefined) {
+      const maxTokens = Number(cfg.maxTokens);
+      if (maxTokens < 1) {
         errors.push('maxTokens 应大于 0');
       }
     }

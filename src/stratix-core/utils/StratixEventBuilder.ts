@@ -123,7 +123,7 @@ export class StratixEventBuilder {
    * @param agentId Agent ID
    * @param data Agent 配置数据
    */
-  public buildAgentCreateEvent(agentId: string, data: any): StratixStateSyncEvent {
+  public buildAgentCreateEvent(agentId: string, data: unknown): StratixStateSyncEvent {
     return {
       eventType: 'stratix:agent_create',
       payload: { agentId, data },
@@ -137,7 +137,7 @@ export class StratixEventBuilder {
    * @param agentId Agent ID
    * @param data 更新的配置数据
    */
-  public buildConfigUpdatedEvent(agentId: string, data: any): StratixStateSyncEvent {
+  public buildConfigUpdatedEvent(agentId: string, data: unknown): StratixStateSyncEvent {
     return {
       eventType: 'stratix:config_updated',
       payload: { agentId, data },
@@ -189,7 +189,7 @@ export class StratixEventBuilder {
   public buildCommandData(
     skillId: string,
     agentId: string,
-    params: Record<string, any>
+    params: Record<string, unknown>
   ): StratixCommandData {
     return {
       commandId: this.idGenerator.generateCommandId(),

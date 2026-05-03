@@ -31,6 +31,7 @@ export class SessionRecorder {
   private tags: string[] = [];
   private snapshotInterval: number = 5000; // ms between automatic snapshots
   private snapshotTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly maxActions = 10000; // Prevent unbounded memory growth during long recordings
 
   /**
    * Start a new recording session
@@ -89,6 +90,11 @@ export class SessionRecorder {
    */
   recordAction(type: string, data: unknown): void {
     if (!this.isRecording || this.isPaused) {
+      return;
+    }
+
+    if (this.actions.length >= this.maxActions) {
+      console.warn(`[SessionRecorder] Action limit reached (${this.maxActions}), dropping new action`);
       return;
     }
 
@@ -199,6 +205,11 @@ export class SessionRecorder {
    */
   recordActionWithSnapshot(type: string, data: unknown): void {
     if (!this.isRecording || this.isPaused) {
+      return;
+    }
+
+    if (this.actions.length >= this.maxActions) {
+      console.warn(`[SessionRecorder] Action limit reached (${this.maxActions}), dropping new action`);
       return;
     }
 
