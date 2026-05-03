@@ -1,3 +1,5 @@
+import path from 'path';
+
 import { BackupManager } from './BackupManager';
 import { LogStore } from './LogStore';
 import { OpenClawConnectionStore } from './OpenClawConnectionStore';
@@ -7,7 +9,7 @@ import { TemplateLibrary } from './TemplateLibrary';
 export { StratixDataStore, TemplateLibrary, LogStore, BackupManager, OpenClawConnectionStore };
 export * from './types';
 
-export function createDataStore(): {
+export function createDataStore(dataDir?: string): {
   store: StratixDataStore;
   templates: TemplateLibrary;
   logs: LogStore;
@@ -16,7 +18,7 @@ export function createDataStore(): {
   const store = new StratixDataStore();
   const templates = new TemplateLibrary(store);
   const logs = new LogStore(store);
-  const backup = new BackupManager(store);
+  const backup = new BackupManager(store, dataDir ? path.join(dataDir, 'backups') : undefined);
   
   return { store, templates, logs, backup };
 }
@@ -27,7 +29,7 @@ export async function initializeDataStore(dataDir?: string): Promise<{
   logs: LogStore;
   backup: BackupManager;
 }> {
-  const instance = createDataStore();
+  const instance = createDataStore(dataDir);
   await instance.store.initialize(dataDir);
   await instance.templates.initialize();
   return instance;

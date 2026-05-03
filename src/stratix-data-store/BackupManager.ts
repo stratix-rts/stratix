@@ -37,7 +37,13 @@ export class BackupManager {
       throw new Error(`Backup file not found: ${backupPath}`);
     }
     
-    const data = await fs.readFile(backupPath, 'utf-8');
+    const content = await fs.readFile(backupPath, 'utf-8');
+    let data: unknown;
+    try {
+      data = JSON.parse(content);
+    } catch (error) {
+      throw new Error(`Invalid backup file format: ${error instanceof Error ? error.message : String(error)}`);
+    }
     await this.dataStore.importData(data);
   }
 

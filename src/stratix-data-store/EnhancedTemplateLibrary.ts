@@ -368,6 +368,8 @@ export class EnhancedTemplateLibrary {
     const template = this.templates.get(templateId);
     if (!template) return [];
 
+    const templateTagSet = new Set(template.tags.map(tg => tg.toLowerCase()));
+
     const scored = Array.from(this.templates.values())
       .filter(t => t.id !== templateId)
       .map(t => {
@@ -377,9 +379,7 @@ export class EnhancedTemplateLibrary {
         if (t.domain === template.domain) score += 5;
 
         // 共同标签
-        const commonTags = t.tags.filter(tag =>
-          template.tags.map(tg => tg.toLowerCase()).includes(tag.toLowerCase())
-        );
+        const commonTags = t.tags.filter(tag => templateTagSet.has(tag.toLowerCase()));
         score += commonTags.length * 2;
 
         // 共同 mixin
@@ -502,7 +502,7 @@ export class EnhancedTemplateLibrary {
    */
   async loadFromFile(filePath: string): Promise<number> {
     const content = await fs.promises.readFile(filePath, 'utf-8');
-    let data: { templates?: AgentTemplate[] };
+    let data: unknown;
     try {
       data = JSON.parse(content);
     } catch {
@@ -510,11 +510,14 @@ export class EnhancedTemplateLibrary {
       return 0;
     }
 
-    if (data.templates && Array.isArray(data.templates)) {
-      for (const template of data.templates) {
-        this.registerTemplate(template as AgentTemplate);
+    if (data && typeof data === 'object' && 'templates' in data) {
+      const templates = (data as Record<string, unknown>).templates;
+      if (Array.isArray(templates)) {
+        for (const template of templates) {
+          this.registerTemplate(template as AgentTemplate);
+        }
+        return templates.length;
       }
-      return data.templates.length;
     }
 
     return 0;

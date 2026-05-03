@@ -84,3 +84,13 @@ export interface LogQueryOptions {
   limit?: number;
   offset?: number;
 }
+
+export function isValidLogQueryOptions(options: unknown): options is LogQueryOptions {
+  if (!options || typeof options !== 'object') return false;
+  const opts = options as LogQueryOptions;
+  if (opts.limit !== undefined && (!Number.isInteger(opts.limit) || opts.limit < 0)) return false;
+  if (opts.offset !== undefined && (!Number.isInteger(opts.offset) || opts.offset < 0)) return false;
+  if (opts.agentId !== undefined && typeof opts.agentId !== 'string') return false;
+  if (opts.status !== undefined && !['pending', 'running', 'success', 'failed'].includes(opts.status)) return false;
+  return true;
+}

@@ -1,5 +1,5 @@
 import { StratixDataStore } from './StratixDataStore';
-import { StratixCommandLog, LogQueryOptions } from './types';
+import { StratixCommandLog, LogQueryOptions, isValidLogQueryOptions } from './types';
 
 export class LogStore {
   private dataStore: StratixDataStore;
@@ -84,6 +84,9 @@ export class LogStore {
   }
 
   public async getLogs(options: LogQueryOptions = {}): Promise<StratixCommandLog[]> {
+    if (!isValidLogQueryOptions(options)) {
+      throw new Error('Invalid log query options');
+    }
     return this.dataStore.getLogs(options);
   }
 
@@ -100,7 +103,7 @@ export class LogStore {
 
   public async getDuration(logId: string): Promise<number | null> {
     const log = await this.getLog(logId);
-    if (!log || !log.endTime) return null;
+    if (!log || typeof log.endTime !== 'number') return null;
     return log.endTime - log.startTime;
   }
 }

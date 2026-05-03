@@ -124,11 +124,12 @@ export class TemplateLibrary {
   }
 
   public getPresetTemplates(): StratixAgentConfig[] {
-    return PRESET_TEMPLATES.map(t => ({ ...t }));
+    return JSON.parse(JSON.stringify(PRESET_TEMPLATES));
   }
 
   public getPresetTemplateByType(type: 'writer' | 'dev' | 'analyst'): StratixAgentConfig | null {
-    return PRESET_TEMPLATES.find(t => t.type === type) || null;
+    const template = PRESET_TEMPLATES.find(t => t.type === type);
+    return template ? JSON.parse(JSON.stringify(template)) : null;
   }
 
   public async getCustomTemplates(): Promise<StratixAgentConfig[]> {

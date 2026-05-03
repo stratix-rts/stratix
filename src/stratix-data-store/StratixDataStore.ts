@@ -114,13 +114,19 @@ export class StratixDataStore {
       INSERT INTO command_logs (log_id, command_id, agent_id, skill_id, skill_name, params, status, result, error, start_time, end_time, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
+    let paramsJson: string;
+    try {
+      paramsJson = JSON.stringify(log.params);
+    } catch {
+      paramsJson = '{}';
+    }
     stmt.run(
       log.logId,
       log.commandId,
       log.agentId,
       log.skillId,
       log.skillName,
-      JSON.stringify(log.params),
+      paramsJson,
       log.status,
       log.result || null,
       log.error || null,
@@ -183,11 +189,15 @@ export class StratixDataStore {
     return { agents, templates, logs, exportedAt: Date.now() };
   }
 
-  public async importData(data: any): Promise<void> {
+  public async importData(data: unknown): Promise<void> {
     await this.ensureInitialized();
-    if (data.agents) {
-      for (const agent of data.agents) {
-        await this.saveAgent(agent);
+    if (!data || typeof data !== 'object') {
+      throw new Error('Invalid import data: expected object');
+    }
+    const importData = data as Record<string, unknown>;
+    if (Array.isArray(importData.agents)) {
+      for (const agent of importData.agents) {
+        await this.saveAgent(agent as StratixAgentConfig);
       }
     }
   }
@@ -219,10 +229,11 @@ export class StratixDataStore {
       values.push(updates.endTime);
     }
     
-    if (fields.length > 0) {
-      values.push(logId);
-      await db.prepare(`UPDATE command_logs SET ${fields.join(', ')} WHERE log_id = ?`).run(...values);
+    if (fields.length === 0) {
+      return;
     }
+    values.push(logId);
+    await db.prepare(`UPDATE command_logs SET ${fields.join(', ')} WHERE log_id = ?`).run(...values);
   }
 
   public async getLog(logId: string): Promise<StratixCommandLog | null> {

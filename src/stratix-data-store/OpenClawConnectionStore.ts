@@ -19,7 +19,7 @@ export class OpenClawConnectionStore {
   private config: OpenClawConnectionsConfig;
   private initialized: boolean = false;
   private initPromise: Promise<void> | null = null;
-  private watcher: fs.FSWatcher | null = null;
+  private watcher: ReturnType<typeof watch> | null = null;
   private listeners: Set<ConfigChangeListener> = new Set();
 
   constructor(dataDir: string = 'stratix-data') {
@@ -186,7 +186,11 @@ export class OpenClawConnectionStore {
 
   stopWatching(): void {
     if (this.watcher) {
-      this.watcher.close();
+      try {
+        this.watcher.close();
+      } catch (error) {
+        console.warn('[OpenClawConnectionStore] Failed to stop watcher:', error instanceof Error ? error.message : String(error));
+      }
       this.watcher = null;
     }
   }
