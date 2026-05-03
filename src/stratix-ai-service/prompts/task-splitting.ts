@@ -86,6 +86,6 @@ export function getTaskSplittingPrompt(
   tasks: string
 ): string {
   return TASK_SPLITTING_PROMPTS[strategy]
-    .replace('{summary}', summary)
-    .replace('{tasks}', tasks);
+    .replace(/\{summary\}/g, summary)
+    .replace(/\{tasks\}/g, tasks);
 }

@@ -58,13 +58,10 @@ export class AIServiceFactory {
   }
   
   private resolveEnvVar(value: string): string {
-    const envVarMatch = value.match(/\$\{([^}]+)\}/);
-    if (envVarMatch) {
-      const envVar = envVarMatch[1];
-      const [name, defaultValue] = envVar.split(':');
+    return value.replace(/\$\{([^}]+)\}/g, (match, envExpr) => {
+      const [name, defaultValue] = envExpr.split(':');
       return process.env[name] || defaultValue || '';
-    }
-    return value;
+    });
   }
   
   private getDefaultConfig(): AIConfig {

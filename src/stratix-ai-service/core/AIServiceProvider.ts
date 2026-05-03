@@ -25,8 +25,8 @@ export abstract class BaseAIProvider implements AIServiceProvider {
   abstract complete(prompt: string): Promise<AIResponse>;
   abstract healthCheck(): Promise<boolean>;
   
-  protected handleError(error: any, operation: string): never {
-    const message = error?.message || 'Unknown error';
+  protected handleError(error: unknown, operation: string): never {
+    const message = error instanceof Error ? error.message : String(error);
     throw new Error(`[${this.name}] ${operation} failed: ${message}`);
   }
 }

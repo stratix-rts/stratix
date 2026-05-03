@@ -1,6 +1,6 @@
 import { AIServiceFactory } from '../core/AIServiceFactory';
 import { getRequirementParsingPrompt } from '../prompts/requirement-parsing';
-import { ParsedRequirement, ParsedTask, AIStreamCallback } from '../types';
+import { ParsedRequirement, ParsedTask, AIStreamCallback, TaskType } from '../types';
 
 export class RequirementParser {
   private aiFactory: AIServiceFactory;
@@ -67,38 +67,49 @@ export class RequirementParser {
 
   private parseResponse(response: string, model: string, provider: string, requirement?: string): ParsedRequirement {
     try {
-      // Try to extract JSON from response
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('No JSON found in response');
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(response.trim());
+      } catch {
+        const jsonMatch = response.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          throw new Error('No JSON found in response');
+        }
+        parsed = JSON.parse(jsonMatch[0]);
       }
 
-      const parsed = JSON.parse(jsonMatch[0]);
+      const parsedObj = parsed as Record<string, unknown>;
 
       // Validate and transform
-      const tasks: ParsedTask[] = (parsed.tasks || []).map((task: any) => ({
-        id: task.id || `task_${Date.now()}`,
-        name: task.name || '未命名任务',
-        type: task.type || 'custom',
-        description: task.description || '',
-        estimatedTime: task.estimatedTime,
-        dependencies: task.dependencies || [],
-        priority: task.priority || 3,
-      }));
+      const rawTasks = (parsedObj.tasks as unknown[] || []);
+      const tasks: ParsedTask[] = rawTasks.map((task: unknown) => {
+        const t = task as Record<string, unknown>;
+        return {
+          id: (t.id as string) || `task_${Date.now()}`,
+          name: (t.name as string) || '未命名任务',
+          type: ((t.type as string) || 'custom') as TaskType,
+          description: (t.description as string) || '',
+          estimatedTime: t.estimatedTime as number | undefined,
+          dependencies: (t.dependencies as string[]) || [],
+          priority: (t.priority as number) || 3,
+        };
+      });
+
+      const metadataObj = (parsedObj.metadata as Record<string, unknown>) || {};
 
       return {
-        summary: parsed.summary || '需求解析结果',
+        summary: (parsedObj.summary as string) || '需求解析结果',
         tasks,
         metadata: {
-          originalRequirement: requirement,
+          originalRequirement: requirement ?? '',
           parseTime: new Date(),
           model: model || '',
           provider: provider || '',
-          ...parsed.metadata,
+          ...metadataObj,
         },
       };
     } catch (error) {
-      throw new Error(`Failed to parse AI response: ${error}`);
+      throw new Error(`Failed to parse AI response: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
   

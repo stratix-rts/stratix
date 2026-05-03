@@ -37,7 +37,7 @@ export const REQUIREMENT_PARSING_PROMPT = `你是一个专业的项目需求分�
 请仅输出 JSON，不要有其他文字。`;
 
 export function getRequirementParsingPrompt(requirement: string): string {
-  return REQUIREMENT_PARSING_PROMPT.replace('{requirement}', requirement);
+  return REQUIREMENT_PARSING_PROMPT.replace(/\{requirement\}/g, requirement);
 }
 
 export const TASK_TYPE_DESCRIPTIONS: Record<TaskType, string> = {

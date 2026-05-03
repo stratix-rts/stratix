@@ -1,6 +1,6 @@
 import { AIServiceFactory } from '../core/AIServiceFactory';
 import { getTaskSplittingPrompt } from '../prompts/task-splitting';
-import { ParsedRequirement, ParsedTask, SplitStrategy, AIStreamCallback } from '../types';
+import { ParsedRequirement, ParsedTask, SplitStrategy, AIStreamCallback, TaskType } from '../types';
 
 export class TaskSplitter {
   private aiFactory: AIServiceFactory;
@@ -66,24 +66,34 @@ export class TaskSplitter {
   
   private parseTasks(response: string): ParsedTask[] {
     try {
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('No JSON found in response');
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(response.trim());
+      } catch {
+        const jsonMatch = response.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          throw new Error('No JSON found in response');
+        }
+        parsed = JSON.parse(jsonMatch[0]);
       }
       
-      const parsed = JSON.parse(jsonMatch[0]);
+      const parsedObj = parsed as Record<string, unknown>;
+      const rawTasks = (parsedObj.tasks as unknown[]) || [];
       
-      return (parsed.tasks || []).map((task: any) => ({
-        id: task.id || `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        name: task.name || '未命名任务',
-        type: task.type || 'custom',
-        description: task.description || '',
-        estimatedTime: task.estimatedTime,
-        dependencies: task.dependencies || [],
-        priority: task.priority || 3,
-      }));
+      return rawTasks.map((task: unknown) => {
+        const t = task as Record<string, unknown>;
+        return {
+          id: (t.id as string) || `task_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+          name: (t.name as string) || '未命名任务',
+          type: ((t.type as string) || 'custom') as TaskType,
+          description: (t.description as string) || '',
+          estimatedTime: t.estimatedTime as number | undefined,
+          dependencies: (t.dependencies as string[]) || [],
+          priority: (t.priority as number) || 3,
+        };
+      });
     } catch (error) {
-      throw new Error(`Failed to parse split tasks: ${error}`);
+      throw new Error(`Failed to parse split tasks: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
   
@@ -95,9 +105,7 @@ export class TaskSplitter {
     const sorted = uniqueTasks.sort((a, b) => a.priority - b.priority);
     
     // Validate dependencies
-    this.validateDependencies(sorted);
-    
-    return sorted;
+    return this.validateDependencies(sorted);
   }
   
   private removeDuplicates(tasks: ParsedTask[]): ParsedTask[] {
@@ -119,11 +127,12 @@ export class TaskSplitter {
     return Array.from(seen.values());
   }
   
-  private validateDependencies(tasks: ParsedTask[]): void {
+  private validateDependencies(tasks: ParsedTask[]): ParsedTask[] {
     const taskIds = new Set(tasks.map(t => t.id));
     
-    for (const task of tasks) {
-      task.dependencies = task.dependencies.filter(dep => taskIds.has(dep));
-    }
+    return tasks.map(task => ({
+      ...task,
+      dependencies: task.dependencies.filter(dep => taskIds.has(dep))
+    }));
   }
 }

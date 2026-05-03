@@ -21,6 +21,8 @@ export class OpenAIProvider extends BaseAIProvider {
   }
   
   async chat(messages: AIMessage[]): Promise<AIResponse> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
     try {
       const response = await this.client.chat.completions.create({
         model: this.config.model,
@@ -30,7 +32,7 @@ export class OpenAIProvider extends BaseAIProvider {
         })),
         temperature: this.config.temperature || 0.7,
         max_tokens: this.config.maxTokens,
-      });
+      }, { signal: controller.signal });
       
       const choice = response.choices[0];
       
@@ -46,6 +48,8 @@ export class OpenAIProvider extends BaseAIProvider {
       };
     } catch (error) {
       this.handleError(error, 'chat');
+    } finally {
+      clearTimeout(timeout);
     }
   }
   

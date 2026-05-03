@@ -71,7 +71,7 @@ export interface AIMessage {
 
 export interface AIStreamCallback {
   onToken: (token: string) => void;
-  onComplete: (result: any) => void;
+  onComplete: (result: { content: string; model: string; provider: string }) => void;
   onError: (error: Error) => void;
 }
 

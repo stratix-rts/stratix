@@ -25,6 +25,10 @@ export class ClaudeProvider extends BaseAIProvider {
       const systemMessage = messages.find(m => m.role === 'system');
       const otherMessages = messages.filter(m => m.role !== 'system');
       
+      if (otherMessages.length === 0) {
+        throw new Error('At least one non-system message is required');
+      }
+      
       const response = await this.client.messages.create({
         model: this.config.model,
         max_tokens: this.config.maxTokens || 4096,
