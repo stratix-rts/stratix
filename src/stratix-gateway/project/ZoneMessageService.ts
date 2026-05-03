@@ -36,7 +36,15 @@ export class ZoneMessageService {
       throw new Error(`Zone not found: ${zoneId}`);
     }
 
-    const message = zoneRepository.addMessage(zoneId, senderId, senderType, content);
+    if (!content || content.trim().length === 0) {
+      throw new Error('Message content cannot be empty');
+    }
+
+    if (content.length > 10000) {
+      throw new Error('Message content exceeds maximum length of 10000 characters');
+    }
+
+    const message = zoneRepository.addMessage(zoneId, senderId, senderType, content.trim());
 
     gatewayEventBus.publishZoneEvent('zone:message_added', zoneId, zone.id, {
       message

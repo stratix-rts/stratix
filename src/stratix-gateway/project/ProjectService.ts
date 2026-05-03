@@ -46,10 +46,11 @@ export class ProjectService {
     return projectRepository.getProject(id);
   }
 
-  public async createProject(config: ProjectConfig, zoneConfig?: any): Promise<Project> {
+  public async createProject(config: ProjectConfig, zoneConfig?: unknown): Promise<Project> {
     await this.ensureInitialized();
 
     const now = new Date();
+    const safeZoneConfig = (zoneConfig as Project['zoneConfig']) || { x: 0, y: 0, width: 400, height: 300, color: 15790320, opacity: 0.3, visible: true };
     const project: Project = {
       id: generateId('proj'),
       name: config.name,
@@ -59,7 +60,7 @@ export class ProjectService {
       config,
       path: config.localFolderPath || '',
       presentAgentIds: [],
-      zoneConfig: zoneConfig || { x: 0, y: 0, width: 400, height: 300, color: 15790320, opacity: 0.3, visible: true },
+      zoneConfig: safeZoneConfig,
       createdAt: now,
       updatedAt: now
     };
@@ -68,7 +69,7 @@ export class ProjectService {
 
     // Also create a zone record to mirror the project
     const db = getDatabase().getDatabase();
-    const zoneConfigData = zoneConfig || { x: 0, y: 0, width: 400, height: 300, color: 15790320, opacity: 0.3, visible: true };
+    const zoneConfigData = safeZoneConfig;
     const nowMs = Date.now();
 
     db.prepare(`
@@ -179,9 +180,9 @@ export class ProjectService {
     await this.autoSubscribeChannels(projectId, agentId);
 
     if (!project.presentAgentIds.includes(agentId)) {
-      project.presentAgentIds.push(agentId);
+      const updatedPresentAgentIds = [...project.presentAgentIds, agentId];
       const updated = await this.updateProject(projectId, {
-        presentAgentIds: project.presentAgentIds
+        presentAgentIds: updatedPresentAgentIds
       });
       
       console.log(`[ProjectService] Agent ${agentId} entered project ${projectId}`);
@@ -199,10 +200,10 @@ export class ProjectService {
       throw new Error(`Project not found: ${projectId}`);
     }
 
-    project.presentAgentIds = project.presentAgentIds.filter(id => id !== agentId);
+    const updatedPresentAgentIds = project.presentAgentIds.filter(id => id !== agentId);
     
     const updated = await this.updateProject(projectId, {
-      presentAgentIds: project.presentAgentIds
+      presentAgentIds: updatedPresentAgentIds
     });
 
     await this.autoUnsubscribeChannels(projectId, agentId);
@@ -255,7 +256,7 @@ export class ProjectService {
         id: generateId('ch'),
         projectId,
         name: 'general',
-        type: 'general' as any,
+        type: 'general' as ProjectChannel['type'],
         description: 'General discussion channel',
         subscriberIds: [],
         isPrivate: false,
@@ -273,7 +274,7 @@ export class ProjectService {
       id: generateId('ch'),
       projectId,
       name,
-      type: type as any,
+      type: type as ProjectChannel['type'],
       description: description || '',
       subscriberIds: [],
       isPrivate: false,

@@ -16,7 +16,7 @@ export interface ZoneFileBatchRequest {
     sourceType: 'local' | 'url';
     source: string;
     fileType?: FileType;
-    metadata?: any;
+    metadata?: Record<string, unknown>;
   }>;
 }
 

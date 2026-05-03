@@ -51,6 +51,14 @@ export class ZoneTaskService {
       throw new Error(`Zone not found: ${zoneId}`);
     }
 
+    if (!title || title.trim().length === 0) {
+      throw new Error('Task title cannot be empty');
+    }
+
+    if (title.length > 500) {
+      throw new Error('Task title exceeds maximum length of 500 characters');
+    }
+
     const ctx = zoneRepository.getZoneContext(zoneId);
     if (!ctx) {
       throw new Error(`Zone context not found: ${zoneId}`);
@@ -62,7 +70,7 @@ export class ZoneTaskService {
       throw new Error('只有任务创建者可以创建新任务');
     }
 
-    const task = zoneRepository.createTask(zoneId, title, agentId);
+    const task = zoneRepository.createTask(zoneId, title.trim(), agentId);
 
     gatewayEventBus.publishZoneEvent('zone:task_created', zoneId, zone.id, {
       task
@@ -242,7 +250,7 @@ export class ZoneTaskService {
 
         const updated = zoneRepository.updateTask(update.taskId, {
           title: update.title,
-          status: update.status as any,
+          status: update.status as ZoneTask['status'],
           assignee: update.assignee
         });
 

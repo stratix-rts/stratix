@@ -42,7 +42,14 @@ export class ZoneFileService {
       this.allowedBasePaths = options.allowedBasePaths;
     }
     if (options.allowedUrlPatterns !== undefined) {
-      this.allowedUrlPatterns = options.allowedUrlPatterns.map(p => new RegExp(p));
+      this.allowedUrlPatterns = options.allowedUrlPatterns.map(p => {
+        try {
+          return new RegExp(p);
+        } catch {
+          console.warn(`[ZoneFileService] Invalid URL pattern ignored: ${p}`);
+          return /^$/; // Match nothing
+        }
+      });
     }
     if (options.blockedIpRanges !== undefined) {
       this.blockedIpRanges = options.blockedIpRanges;
@@ -101,7 +108,7 @@ export class ZoneFileService {
     return finalFile;
   }
 
-  public async addFiles(zoneId: string, files: Array<{ name: string; sourceType: 'local' | 'url'; source: string; fileType?: FileType; metadata?: any }>, agentId: string = 'system'): Promise<ZoneFile[]> {
+  public async addFiles(zoneId: string, files: Array<{ name: string; sourceType: 'local' | 'url'; source: string; fileType?: FileType; metadata?: Record<string, unknown> }>, agentId: string = 'system'): Promise<ZoneFile[]> {
     await this.ensureInitialized();
 
     this.checkPermission('add_files', `zone:${zoneId}`, agentId);
@@ -457,17 +464,18 @@ export class ZoneFileService {
 
   // Helper: Validate file path security (prevent path traversal)
   private validateFilePath(filePath: string): void {
-    // Check for path traversal attempts
+    // Resolve to absolute path to prevent traversal
+    const resolved = path.resolve(filePath);
     const normalized = path.normalize(filePath);
-    if (normalized.includes('..')) {
+    if (normalized.includes('..') || resolved.includes('..')) {
       throw new Error(`Path traversal not allowed: ${filePath}`);
     }
 
     // If allowedBasePaths is configured, verify file is within allowed paths
     if (this.allowedBasePaths.length > 0) {
       const isAllowed = this.allowedBasePaths.some(basePath => {
-        const normalizedBase = path.normalize(basePath);
-        return normalized.startsWith(normalizedBase);
+        const normalizedBase = path.resolve(basePath);
+        return resolved.startsWith(normalizedBase + path.sep) || resolved === normalizedBase;
       });
       if (!isAllowed) {
         throw new Error(`File path not in allowed directories: ${filePath}`);
@@ -539,8 +547,8 @@ export class ZoneFileService {
   private async fetchUrl(url: string): Promise<string> {
     // Check for blocked protocols
     const parsedUrl = new URL(url);
-    if (parsedUrl.protocol === 'file:') {
-      throw new Error('File protocol not allowed for URL fetch');
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+      throw new Error('Only HTTP/HTTPS protocols allowed for URL fetch');
     }
 
     // If allowed patterns are configured, check against them
@@ -558,11 +566,22 @@ export class ZoneFileService {
       throw new Error(`Private IP not allowed: ${hostname}`);
     }
 
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
+
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const text = await response.text();
+      if (text.length > this.maxFileSize) {
+        throw new Error(`URL content too large: ${text.length} bytes (max: ${this.maxFileSize} bytes)`);
+      }
+      return text;
+    } finally {
+      clearTimeout(timeout);
     }
-    return response.text();
   }
 
   // Helper: Check if hostname is a private IP
@@ -602,8 +621,15 @@ export class ZoneFileService {
   private async scanLocalFolder(
     folderPath: string,
     recursive: boolean,
-    extensions?: string[]
+    extensions?: string[],
+    currentDepth: number = 0,
+    maxDepth: number = 10
   ): Promise<{ name: string; source: string; fileType: FileType }[]> {
+    if (currentDepth > maxDepth) {
+      console.warn(`[ZoneFileService] Max scan depth ${maxDepth} reached at ${folderPath}`);
+      return [];
+    }
+
     return new Promise((resolve, reject) => {
       fs.readdir(folderPath, { withFileTypes: true }, async (err, entries) => {
         if (err) {
@@ -634,7 +660,7 @@ export class ZoneFileService {
             });
           } else if (entry.isDirectory() && recursive) {
             try {
-              const subFiles = await this.scanLocalFolder(fullPath, recursive, extensions);
+              const subFiles = await this.scanLocalFolder(fullPath, recursive, extensions, currentDepth + 1, maxDepth);
               results.push(...subFiles);
             } catch (error) {
               console.warn(`[ZoneFileService] Failed to scan subfolder ${fullPath}:`, error);
