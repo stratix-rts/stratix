@@ -30,22 +30,73 @@ const mcpServer = new McpServer({
   version: '0.1.0',
 });
 
-// 活跃的 ZoneCoordinator 实例缓存
-const coordinatorCache = new Map<string, ZoneCoordinator>();
+// ============================================================
+// Unified response helpers
+// ============================================================
+
+function textResponse(text: string) {
+  return { content: [{ type: 'text' as const, text }] };
+}
+
+function jsonResponse(data: unknown) {
+  return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+}
+
+// ============================================================
+// Zone validation helper
+// ============================================================
+
+function validateZone(zoneId: string): { valid: false; response: ReturnType<typeof textResponse> } | { valid: true } {
+  const zone = zoneRepository.getZone(zoneId);
+  if (!zone) {
+    return { valid: false, response: textResponse(`Error: Zone ${zoneId} not found.`) };
+  }
+  return { valid: true };
+}
+
+// ============================================================
+// ZoneCoordinator cache with TTL cleanup
+// ============================================================
+
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+interface CachedCoordinator {
+  coordinator: ZoneCoordinator;
+  lastAccessed: number;
+}
+
+const coordinatorCache = new Map<string, CachedCoordinator>();
 
 async function getCoordinator(zoneId: string): Promise<ZoneCoordinator> {
-  if (coordinatorCache.has(zoneId)) {
-    return coordinatorCache.get(zoneId)!;
+  const cached = coordinatorCache.get(zoneId);
+  if (cached && Date.now() - cached.lastAccessed < CACHE_TTL_MS) {
+    cached.lastAccessed = Date.now();
+    return cached.coordinator;
   }
+
+  if (cached) {
+    coordinatorCache.delete(zoneId);
+  }
+
   const coordinator = await ZoneCoordinator.create(zoneId, {
     autoDecompose: true,
     autoAssign: true,
     requireUserConfirm: false,
     assignStrategy: 'capability_match',
   });
-  coordinatorCache.set(zoneId, coordinator);
+  coordinatorCache.set(zoneId, { coordinator, lastAccessed: Date.now() });
   return coordinator;
 }
+
+// Periodic cleanup of expired cache entries
+setInterval(() => {
+  const now = Date.now();
+  for (const [zoneId, cached] of coordinatorCache.entries()) {
+    if (now - cached.lastAccessed > CACHE_TTL_MS) {
+      coordinatorCache.delete(zoneId);
+    }
+  }
+}, 5 * 60 * 1000);
 
 function getDefaultProjectId(): string | null {
   const projects = projectRepository.getAllProjects();
@@ -133,9 +184,9 @@ mcpServer.tool(
     requirement: z.string().describe('The requirement or task description in natural language'),
   },
   async ({ zoneId, requirement }) => {
-    const zone = zoneRepository.getZone(zoneId);
-    if (!zone) {
-      return { content: [{ type: 'text' as const, text: `Error: Zone ${zoneId} not found.` }] };
+    const validation = validateZone(zoneId);
+    if (!validation.valid) {
+      return validation.response;
     }
 
     try {
@@ -156,19 +207,9 @@ mcpServer.tool(
         })),
       };
 
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(summary, null, 2),
-        }],
-      };
+      return jsonResponse(summary);
     } catch (error) {
-      return {
-        content: [{
-          type: 'text' as const,
-          text: `Error processing requirement: ${error instanceof Error ? error.message : String(error)}`,
-        }],
-      };
+      return textResponse(`Error processing requirement: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 );
@@ -186,33 +227,23 @@ mcpServer.tool(
   async ({ zoneId }) => {
     const zone = zoneRepository.getZone(zoneId);
     if (!zone) {
-      return { content: [{ type: 'text' as const, text: `Error: Zone ${zoneId} not found.` }] };
+      return textResponse(`Error: Zone ${zoneId} not found.`);
     }
 
     try {
       const coordinator = await getCoordinator(zoneId);
       const status = coordinator.getStatusSummary();
 
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify(status, null, 2),
-        }],
-      };
+      return jsonResponse(status);
     } catch (error) {
       // Coordinator might not exist yet
       const members = zoneMemberRepository.getMembers(zoneId);
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify({
-            zoneId,
-            title: zone.title,
-            memberCount: members.length,
-            message: 'Zone exists but no coordinator activity yet. Submit a requirement to activate.',
-          }, null, 2),
-        }],
-      };
+      return jsonResponse({
+        zoneId,
+        title: zone.title,
+        memberCount: members.length,
+        message: 'Zone exists but no coordinator activity yet. Submit a requirement to activate.',
+      });
     }
   }
 );
@@ -290,9 +321,9 @@ mcpServer.tool(
     capabilities: z.record(z.string(), z.number().min(1).max(10)).optional().describe('Capability map: { "coding": 5, "writing": 3 }'),
   },
   async ({ zoneId, agentId, capabilities }) => {
-    const zone = zoneRepository.getZone(zoneId);
-    if (!zone) {
-      return { content: [{ type: 'text' as const, text: `Error: Zone ${zoneId} not found.` }] };
+    const validation = validateZone(zoneId);
+    if (!validation.valid) {
+      return validation.response;
     }
 
     // Add member to zone (both tables)
@@ -305,18 +336,13 @@ mcpServer.tool(
       }
     }
 
-    return {
-      content: [{
-        type: 'text' as const,
-        text: JSON.stringify({
-          success: true,
-          agentId,
-          zoneId,
-          capabilities: capabilities || {},
-          message: `Agent ${agentId} added to zone with ${Object.keys(capabilities || {}).length} capabilities.`,
-        }, null, 2),
-      }],
-    };
+    return jsonResponse({
+      success: true,
+      agentId,
+      zoneId,
+      capabilities: capabilities || {},
+      message: `Agent ${agentId} added to zone with ${Object.keys(capabilities || {}).length} capabilities.`,
+    });
   }
 );
 
@@ -326,22 +352,44 @@ mcpServer.tool(
 
 export function createMcpRouter(): Router {
   const router = Router();
+  const transports = new Map<string, SSEServerTransport>();
 
   // SSE endpoint for MCP connections
   router.get('/sse', async (_req: Request, res: Response) => {
     const transport = new SSEServerTransport('/mcp/messages', res);
+    transports.set(transport.sessionId, transport);
     await mcpServer.connect(transport);
 
     _req.on('close', () => {
-      transport.close();
+      transports.delete(transport.sessionId);
+      transport.close().catch((err) => {
+        console.error('[MCP] Error closing SSE transport:', err);
+      });
     });
   });
 
   // Message endpoint for MCP
   router.post('/messages', async (req: Request, res: Response) => {
-    // SSEServerTransport handles this internally
-    // This route needs to be matched by the transport
-    res.status(200).json({ ok: true });
+    const sessionId = req.query.sessionId as string;
+    if (!sessionId) {
+      res.status(400).json({ error: 'Missing sessionId query parameter' });
+      return;
+    }
+
+    const transport = transports.get(sessionId);
+    if (!transport) {
+      res.status(400).json({ error: 'No active SSE connection for sessionId' });
+      return;
+    }
+
+    try {
+      await transport.handlePostMessage(req, res, req.body);
+    } catch (error) {
+      console.error('[MCP] Error handling POST message:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to process message' });
+      }
+    }
   });
 
   return router;
