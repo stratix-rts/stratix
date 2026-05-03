@@ -56,6 +56,26 @@ export interface FlowQueryOptions {
   actions?: TaskFlowAction[];
 }
 
+function buildFlowQuery(
+  baseSql: string,
+  baseParams: (string | number)[],
+  options?: FlowQueryOptions
+): { sql: string; params: (string | number)[] } {
+  let sql = baseSql;
+  const params = [...baseParams];
+
+  if (options?.actions && options.actions.length > 0) {
+    const placeholders = options.actions.map(() => '?').join(', ');
+    sql += ` AND action IN (${placeholders})`;
+    params.push(...options.actions);
+  }
+
+  sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  params.push(options?.limit ?? DEFAULT_LIMIT, options?.offset ?? DEFAULT_OFFSET);
+
+  return { sql, params };
+}
+
 /**
  * TaskFlowRepository - 任务流转记录持久化
  */
@@ -134,21 +154,7 @@ export class TaskFlowRepository {
    * 获取 Zone 的流转记录（支持分页、过滤 action）
    */
   getZoneFlows(zoneId: string, options?: FlowQueryOptions): TaskFlowRecord[] {
-    const limit = options?.limit ?? DEFAULT_LIMIT;
-    const offset = options?.offset ?? DEFAULT_OFFSET;
-
-    let sql = 'SELECT * FROM task_flow WHERE zone_id = ?';
-    const params: (string | number)[] = [zoneId];
-
-    if (options?.actions && options.actions.length > 0) {
-      const placeholders = options.actions.map(() => '?').join(', ');
-      sql += ` AND action IN (${placeholders})`;
-      params.push(...options.actions);
-    }
-
-    sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-    params.push(limit, offset);
-
+    const { sql, params } = buildFlowQuery('SELECT * FROM task_flow WHERE zone_id = ?', [zoneId], options);
     const rows = this.db.prepare(sql).all(...params) as TaskFlowRow[];
     return rows.map(row => this.mapRowToRecord(row));
   }
@@ -157,26 +163,15 @@ export class TaskFlowRepository {
    * 获取 Agent 相关流转记录
    */
   getAgentFlows(agentId: string, zoneId?: string, options?: FlowQueryOptions): TaskFlowRecord[] {
-    const limit = options?.limit ?? DEFAULT_LIMIT;
-    const offset = options?.offset ?? DEFAULT_OFFSET;
-
-    let sql = 'SELECT * FROM task_flow WHERE to_agent_id = ?';
-    const params: (string | number)[] = [agentId];
+    let baseSql = 'SELECT * FROM task_flow WHERE to_agent_id = ?';
+    const baseParams: (string | number)[] = [agentId];
 
     if (zoneId) {
-      sql += ' AND zone_id = ?';
-      params.push(zoneId);
+      baseSql += ' AND zone_id = ?';
+      baseParams.push(zoneId);
     }
 
-    if (options?.actions && options.actions.length > 0) {
-      const placeholders = options.actions.map(() => '?').join(', ');
-      sql += ` AND action IN (${placeholders})`;
-      params.push(...options.actions);
-    }
-
-    sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-    params.push(limit, offset);
-
+    const { sql, params } = buildFlowQuery(baseSql, baseParams, options);
     const rows = this.db.prepare(sql).all(...params) as TaskFlowRow[];
     return rows.map(row => this.mapRowToRecord(row));
   }

@@ -95,100 +95,96 @@ export class StratixDatabase {
   }
 
   private migrateMissingColumns(): void {
-    // 检测并添加 agents 表缺失的列
-    const agentColumns = this.db.prepare('PRAGMA table_info(agents)').all() as TableInfoRow[];
-    const agentColumnNames = new Set(agentColumns.map(c => c.name));
+    this.migrateAgentColumns();
+    this.migrateZoneColumns();
+    this.migrateZoneContextColumns();
+    this.migrateZoneCoordinatorColumns();
+    this.migrateNewTables();
+    this.migrateSafetyIndexes();
+  }
 
-    if (!agentColumnNames.has('openclaw_config')) {
+  private migrateAgentColumns(): void {
+    const columns = this.getColumnNames('agents');
+    if (!columns.has('openclaw_config')) {
       this.db.exec('ALTER TABLE agents ADD COLUMN openclaw_config TEXT');
       log('info', 'Added openclaw_config column to agents table');
     }
-    if (!agentColumnNames.has('stratix_config')) {
+    if (!columns.has('stratix_config')) {
       this.db.exec('ALTER TABLE agents ADD COLUMN stratix_config TEXT');
       log('info', 'Added stratix_config column to agents table');
     }
+  }
 
-    // 检测并添加 zones 表缺失的 zone_context_id 列
-    const zoneColumns = this.db.prepare('PRAGMA table_info(zones)').all() as TableInfoRow[];
-    const zoneColumnNames = new Set(zoneColumns.map(c => c.name));
-
-    if (!zoneColumnNames.has('zone_context_id')) {
+  private migrateZoneColumns(): void {
+    const columns = this.getColumnNames('zones');
+    if (!columns.has('zone_context_id')) {
       this.db.exec('ALTER TABLE zones ADD COLUMN zone_context_id TEXT REFERENCES zone_contexts(zone_id)');
       log('info', 'Added zone_context_id column to zones table');
     }
-
-    // 添加 projects 表字段到 zones 表（统一 Zone 和 Project）
-    if (!zoneColumnNames.has('description')) {
+    if (!columns.has('description')) {
       this.db.exec("ALTER TABLE zones ADD COLUMN description TEXT DEFAULT ''");
       log('info', 'Added description column to zones table');
     }
-    if (!zoneColumnNames.has('priority')) {
+    if (!columns.has('priority')) {
       this.db.exec('ALTER TABLE zones ADD COLUMN priority INTEGER DEFAULT 3');
       log('info', 'Added priority column to zones table');
     }
-    if (!zoneColumnNames.has('path')) {
+    if (!columns.has('path')) {
       this.db.exec("ALTER TABLE zones ADD COLUMN path TEXT DEFAULT ''");
       log('info', 'Added path column to zones table');
     }
-    if (!zoneColumnNames.has('present_agent_ids')) {
+    if (!columns.has('present_agent_ids')) {
       this.db.exec("ALTER TABLE zones ADD COLUMN present_agent_ids TEXT DEFAULT '[]'");
       log('info', 'Added present_agent_ids column to zones table');
     }
-    if (!zoneColumnNames.has('started_at')) {
+    if (!columns.has('started_at')) {
       this.db.exec('ALTER TABLE zones ADD COLUMN started_at INTEGER');
       log('info', 'Added started_at column to zones table');
     }
-    if (!zoneColumnNames.has('completed_at')) {
+    if (!columns.has('completed_at')) {
       this.db.exec('ALTER TABLE zones ADD COLUMN completed_at INTEGER');
       log('info', 'Added completed_at column to zones table');
     }
+  }
 
-    // 检测并添加 zone_contexts 表缺失的 deleted_at 列（软删除）
-    const zoneCtxColumns = this.db.prepare('PRAGMA table_info(zone_contexts)').all() as TableInfoRow[];
-    const zoneCtxColumnNames = new Set(zoneCtxColumns.map(c => c.name));
-
-    if (!zoneCtxColumnNames.has('deleted_at')) {
+  private migrateZoneContextColumns(): void {
+    const columns = this.getColumnNames('zone_contexts');
+    if (!columns.has('deleted_at')) {
       this.db.exec('ALTER TABLE zone_contexts ADD COLUMN deleted_at INTEGER');
       this.db.exec('CREATE INDEX IF NOT EXISTS idx_zone_contexts_deleted_at ON zone_contexts(deleted_at)');
       this.db.exec('CREATE INDEX IF NOT EXISTS idx_zone_contexts_project_deleted ON zone_contexts(project_id, deleted_at)');
       log('info', 'Added deleted_at column to zone_contexts table');
     }
-
-    // 添加 task_policy 和 task_creator_id 列到 zone_contexts
-    if (!zoneCtxColumnNames.has('task_policy')) {
+    if (!columns.has('task_policy')) {
       this.db.exec("ALTER TABLE zone_contexts ADD COLUMN task_policy TEXT DEFAULT 'creator'");
       log('info', 'Added task_policy column to zone_contexts table');
     }
-    if (!zoneCtxColumnNames.has('task_creator_id')) {
+    if (!columns.has('task_creator_id')) {
       this.db.exec('ALTER TABLE zone_contexts ADD COLUMN task_creator_id TEXT');
       log('info', 'Added task_creator_id column to zone_contexts table');
     }
+  }
 
-    // 检测并添加 zone_coordinators 表缺失的列
-    const zcColumns = this.db.prepare('PRAGMA table_info(zone_coordinators)').all() as TableInfoRow[];
-    const zcColumnNames = new Set(zcColumns.map(c => c.name));
-
-    if (!zcColumnNames.has('api_key')) {
+  private migrateZoneCoordinatorColumns(): void {
+    const columns = this.getColumnNames('zone_coordinators');
+    if (!columns.has('api_key')) {
       this.db.exec('ALTER TABLE zone_coordinators ADD COLUMN api_key TEXT');
       log('info', 'Added api_key column to zone_coordinators table');
     }
-    if (!zcColumnNames.has('base_url')) {
+    if (!columns.has('base_url')) {
       this.db.exec('ALTER TABLE zone_coordinators ADD COLUMN base_url TEXT');
       log('info', 'Added base_url column to zone_coordinators table');
     }
-    if (!zcColumnNames.has('cycle_config')) {
+    if (!columns.has('cycle_config')) {
       this.db.exec('ALTER TABLE zone_coordinators ADD COLUMN cycle_config TEXT');
       log('info', 'Added cycle_config column to zone_coordinators table');
     }
+  }
 
-    // 检测表是否存在
-    const tables = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as TableNameRow[];
-    const tableNames = new Set(tables.map(t => t.name));
+  private migrateNewTables(): void {
+    const tables = this.getTableNames();
 
-    // ============================================
-    // Zone Tasks 表迁移
-    // ============================================
-    if (!tableNames.has('zone_tasks')) {
+    if (!tables.has('zone_tasks')) {
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS zone_tasks (
           task_id TEXT PRIMARY KEY,
@@ -206,10 +202,7 @@ export class StratixDatabase {
       log('info', 'Created zone_tasks table');
     }
 
-    // ============================================
-    // Zone Messages 表迁移
-    // ============================================
-    if (!tableNames.has('zone_messages')) {
+    if (!tables.has('zone_messages')) {
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS zone_messages (
           message_id TEXT PRIMARY KEY,
@@ -224,15 +217,9 @@ export class StratixDatabase {
       this.db.exec('CREATE INDEX IF NOT EXISTS idx_zone_messages_zone_id ON zone_messages(zone_id)');
       log('info', 'Created zone_messages table');
     }
+  }
 
-    // ============================================
-    // Agent Career System 表迁移
-    // ============================================
-    // Note: shared_skills, shared_skill_installs, agent_learned_skills,
-    // zone_contexts_simple, agent_zone_bindings tables and their indexes
-    // are already created in createTables(). The following index creation
-    // is kept for safety in case indexes weren't in the original createTables().
-
+  private migrateSafetyIndexes(): void {
     this.createIndexSafely('idx_shared_skill_installs_agent', 'CREATE INDEX IF NOT EXISTS idx_shared_skill_installs_agent ON shared_skill_installs(agent_id)');
     this.createIndexSafely('idx_agent_learned_skills_agent', 'CREATE INDEX IF NOT EXISTS idx_agent_learned_skills_agent ON agent_learned_skills(agent_id)');
     this.createIndexSafely('idx_zone_contexts_simple_zone_id', 'CREATE INDEX IF NOT EXISTS idx_zone_contexts_simple_zone_id ON zone_contexts_simple(zone_id)');
@@ -240,6 +227,16 @@ export class StratixDatabase {
     this.createIndexSafely('idx_agent_zone_bindings_zone', 'CREATE INDEX IF NOT EXISTS idx_agent_zone_bindings_zone ON agent_zone_bindings(zone_id)');
     this.createIndexSafely('idx_zone_members_zone_id', 'CREATE INDEX IF NOT EXISTS idx_zone_members_zone_id ON zone_members(zone_id)');
     this.createIndexSafely('idx_zone_members_agent', 'CREATE INDEX IF NOT EXISTS idx_zone_members_agent ON zone_members(agent_id)');
+  }
+
+  private getColumnNames(tableName: string): Set<string> {
+    const rows = this.db.prepare(`PRAGMA table_info(${tableName})`).all() as TableInfoRow[];
+    return new Set(rows.map(c => c.name));
+  }
+
+  private getTableNames(): Set<string> {
+    const rows = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as TableNameRow[];
+    return new Set(rows.map(t => t.name));
   }
 
   private createIndexSafely(indexName: string, sql: string): void {

@@ -61,6 +61,48 @@ export interface AuditLogQueryOptions {
   offset?: number;
 }
 
+interface WhereClauseResult {
+  whereClause: string;
+  params: (string | number)[];
+}
+
+function buildWhereConditions(
+  baseConditions: string[],
+  baseParams: (string | number)[],
+  options?: AuditLogQueryOptions
+): WhereClauseResult {
+  const conditions = [...baseConditions];
+  const params = [...baseParams];
+
+  if (options?.eventTypes && options.eventTypes.length > 0) {
+    const placeholders = options.eventTypes.map(() => '?').join(', ');
+    conditions.push(`event_type IN (${placeholders})`);
+    params.push(...options.eventTypes);
+  }
+
+  if (options?.actorId) {
+    conditions.push('actor_id = ?');
+    params.push(options.actorId);
+  }
+
+  if (options?.targetId) {
+    conditions.push('target_id = ?');
+    params.push(options.targetId);
+  }
+
+  if (options?.startTime !== undefined) {
+    conditions.push('created_at >= ?');
+    params.push(options.startTime);
+  }
+
+  if (options?.endTime !== undefined) {
+    conditions.push('created_at <= ?');
+    params.push(options.endTime);
+  }
+
+  return { whereClause: conditions.join(' AND '), params };
+}
+
 /**
  * AuditLogRepository - Zone 操作审计日志持久化
  */
@@ -117,37 +159,7 @@ export class AuditLogRepository {
     const limit = options?.limit ?? DEFAULT_LIMIT;
     const offset = options?.offset ?? DEFAULT_OFFSET;
 
-    // Build WHERE clause
-    const conditions: string[] = ['zone_id = ?'];
-    const params: (string | number)[] = [zoneId];
-
-    if (options?.eventTypes && options.eventTypes.length > 0) {
-      const placeholders = options.eventTypes.map(() => '?').join(', ');
-      conditions.push(`event_type IN (${placeholders})`);
-      params.push(...options.eventTypes);
-    }
-
-    if (options?.actorId) {
-      conditions.push('actor_id = ?');
-      params.push(options.actorId);
-    }
-
-    if (options?.targetId) {
-      conditions.push('target_id = ?');
-      params.push(options.targetId);
-    }
-
-    if (options?.startTime !== undefined) {
-      conditions.push('created_at >= ?');
-      params.push(options.startTime);
-    }
-
-    if (options?.endTime !== undefined) {
-      conditions.push('created_at <= ?');
-      params.push(options.endTime);
-    }
-
-    const whereClause = conditions.join(' AND ');
+    const { whereClause, params } = buildWhereConditions(['zone_id = ?'], [zoneId], options);
 
     // Get total count
     const countRow = this.db.prepare(`
@@ -181,31 +193,15 @@ export class AuditLogRepository {
     const limit = options?.limit ?? DEFAULT_LIMIT;
     const offset = options?.offset ?? DEFAULT_OFFSET;
 
-    const conditions: string[] = ['actor_id = ?'];
-    const params: (string | number)[] = [agentId];
+    const baseConditions: string[] = ['actor_id = ?'];
+    const baseParams: (string | number)[] = [agentId];
 
     if (zoneId) {
-      conditions.push('zone_id = ?');
-      params.push(zoneId);
+      baseConditions.push('zone_id = ?');
+      baseParams.push(zoneId);
     }
 
-    if (options?.eventTypes && options.eventTypes.length > 0) {
-      const placeholders = options.eventTypes.map(() => '?').join(', ');
-      conditions.push(`event_type IN (${placeholders})`);
-      params.push(...options.eventTypes);
-    }
-
-    if (options?.startTime !== undefined) {
-      conditions.push('created_at >= ?');
-      params.push(options.startTime);
-    }
-
-    if (options?.endTime !== undefined) {
-      conditions.push('created_at <= ?');
-      params.push(options.endTime);
-    }
-
-    const whereClause = conditions.join(' AND ');
+    const { whereClause, params } = buildWhereConditions(baseConditions, baseParams, options);
     const queryParams = [...params, limit, offset];
 
     const rows = this.db.prepare(`
