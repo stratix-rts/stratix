@@ -87,23 +87,41 @@ class ServerDeviceIdentityManager {
 
   private async doInitialize(): Promise<void> {
     const filePath = path.join(this.dataDir, IDENTITY_FILENAME);
-    
+
     try {
       if (await fs.pathExists(filePath)) {
-        const stored: StoredIdentity = await fs.readJson(filePath);
-        this.identity = {
-          deviceId: stored.deviceId,
-          publicKey: hexToUint8Array(stored.publicKeyHex),
-          privateKey: hexToUint8Array(stored.privateKeyHex),
-        };
-        console.log('[ServerDeviceIdentity] Loaded existing identity:', this.identity.deviceId);
-        return;
+        const stored = await fs.readJson(filePath);
+        if (this.isValidStoredIdentity(stored)) {
+          this.identity = {
+            deviceId: stored.deviceId,
+            publicKey: hexToUint8Array(stored.publicKeyHex),
+            privateKey: hexToUint8Array(stored.privateKeyHex),
+          };
+          console.log('[ServerDeviceIdentity] Loaded existing identity:', this.identity.deviceId);
+          return;
+        }
+        console.warn('[ServerDeviceIdentity] Invalid identity file format, generating new one');
       }
     } catch (e) {
       console.warn('[ServerDeviceIdentity] Failed to load identity, generating new one:', e);
     }
 
     await this.generateNewIdentity(filePath);
+  }
+
+  private isValidStoredIdentity(stored: unknown): stored is StoredIdentity {
+    return (
+      typeof stored === 'object' &&
+      stored !== null &&
+      'deviceId' in stored &&
+      typeof (stored as StoredIdentity).deviceId === 'string' &&
+      'publicKeyHex' in stored &&
+      typeof (stored as StoredIdentity).publicKeyHex === 'string' &&
+      'privateKeyHex' in stored &&
+      typeof (stored as StoredIdentity).privateKeyHex === 'string' &&
+      'createdAt' in stored &&
+      typeof (stored as StoredIdentity).createdAt === 'number'
+    );
   }
 
   private async generateNewIdentity(filePath: string): Promise<void> {
@@ -116,6 +134,17 @@ class ServerDeviceIdentityManager {
     this.identity = { deviceId, publicKey, privateKey };
 
     await fs.ensureDir(path.dirname(filePath));
+
+    // Backup existing identity if present
+    if (await fs.pathExists(filePath)) {
+      const backupPath = `${filePath}.backup-${Date.now()}`;
+      try {
+        await fs.move(filePath, backupPath, { overwrite: true });
+      } catch {
+        console.warn('[ServerDeviceIdentity] Failed to backup existing identity');
+      }
+    }
+
     await fs.writeJson(filePath, {
       deviceId,
       publicKeyHex: uint8ArrayToHex(publicKey),
@@ -124,6 +153,12 @@ class ServerDeviceIdentityManager {
     }, { spaces: 2 });
 
     console.log('[ServerDeviceIdentity] Generated new identity:', deviceId);
+  }
+
+  destroy(): void {
+    this.identity = null;
+    this.initPromise = null;
+    this.dataDir = '';
   }
 
   async getDeviceId(): Promise<string> {

@@ -24,6 +24,7 @@ class OpenClawConnectionManager {
   private config: StratixOpenClawConfig | null = null;
   private statusListeners: Set<(status: OpenClawStatus) => void> = new Set();
   private statusCheckInterval: ReturnType<typeof setInterval> | null = null;
+  private readonly maxListeners = 100;
 
   private constructor() {}
 
@@ -136,12 +137,16 @@ class OpenClawConnectionManager {
 
   async disconnect(): Promise<void> {
     this.stopStatusCheck();
-    
+
     if (this.adapter) {
-      await this.adapter.disconnect();
+      try {
+        await this.adapter.disconnect();
+      } catch (error) {
+        console.error('[OpenClawConnectionManager] Adapter disconnect error:', error);
+      }
       this.adapter = null;
     }
-    
+
     this.config = null;
     this.notifyStatusListeners({
       connected: false,
@@ -149,6 +154,13 @@ class OpenClawConnectionManager {
       lastActive: 0,
       error: 'Disconnected',
     });
+  }
+
+  destroy(): void {
+    this.stopStatusCheck();
+    this.statusListeners.clear();
+    this.adapter = null;
+    this.config = null;
   }
 
   getAdapter(): WebSocketOpenClawAdapter | null {
@@ -176,6 +188,11 @@ class OpenClawConnectionManager {
   }
 
   addStatusListener(listener: (status: OpenClawStatus) => void): () => void {
+    if (this.statusListeners.size >= this.maxListeners) {
+      console.warn('[OpenClawConnectionManager] Status listener limit reached, evicting oldest');
+      const first = this.statusListeners.values().next().value;
+      if (first) this.statusListeners.delete(first);
+    }
     this.statusListeners.add(listener);
     return () => {
       this.statusListeners.delete(listener);
@@ -199,8 +216,12 @@ class OpenClawConnectionManager {
 
     this.statusCheckInterval = setInterval(async () => {
       if (this.adapter) {
-        const status = await this.adapter.getStatus();
-        this.notifyStatusListeners(status);
+        try {
+          const status = await this.adapter.getStatus();
+          this.notifyStatusListeners(status);
+        } catch (error) {
+          console.error('[OpenClawConnectionManager] Status check failed:', error);
+        }
       }
     }, 30000);
   }

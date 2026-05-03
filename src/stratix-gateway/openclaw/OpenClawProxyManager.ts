@@ -30,6 +30,8 @@ const SCOPES = ['operator.read', 'operator.write', 'operator.admin', 'operator.a
 class OpenClawProxyManager extends EventEmitter {
   private pool: Map<string, PoolEntry> = new Map();
   private initPromise: Promise<void> | null = null;
+  private readonly maxPoolSize = 50;
+  private authTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   async initialize(dataDir: string): Promise<void> {
     if (this.initPromise) return this.initPromise;
@@ -45,18 +47,33 @@ class OpenClawProxyManager extends EventEmitter {
       hasSharedToken: !!record.sharedToken,
       hasDeviceToken: !!record.deviceToken,
     });
-    
+
+    // Validate endpoint
+    try {
+      const url = new URL(record.endpoint);
+      if (url.protocol !== 'ws:' && url.protocol !== 'wss:') {
+        return { success: false, error: 'Invalid endpoint protocol. Must be ws: or wss:' };
+      }
+    } catch {
+      return { success: false, error: 'Invalid endpoint URL' };
+    }
+
+    // Enforce pool size limit
+    if (!this.pool.has(record.id) && this.pool.size >= this.maxPoolSize) {
+      return { success: false, error: `Connection pool full (max ${this.maxPoolSize})` };
+    }
+
     const existing = this.pool.get(record.id);
     if (existing) {
       // 更新 entry 中的 record，确保使用最新的 sharedToken
       console.log('[ProxyManager] Updating existing entry with new record');
       existing.record = record;
-      
+
       if (existing.ws?.readyState === WebSocket.OPEN) {
         console.log('[ProxyManager] WebSocket already open, returning success');
         return { success: true };
       }
-      
+
       // 连接已断开，需要重新连接
       console.log('[ProxyManager] WebSocket not open, disconnecting and reconnecting');
       await this.disconnect(record.id);
@@ -138,7 +155,7 @@ class OpenClawProxyManager extends EventEmitter {
     authHandler = async (data: RawData) => {
       try {
         const msg = JSON.parse(data.toString());
-        
+
         if (msg.event === 'connect.challenge') {
           const { nonce } = msg.payload || {};
           await this.sendAuthResponse(ws, record, nonce);
@@ -146,10 +163,17 @@ class OpenClawProxyManager extends EventEmitter {
         }
 
         if ((msg.type === 'res' || msg.ok !== undefined) && msg.id === 'connect-1') {
+          // Clear auth timeout on response
+          const timer = this.authTimers.get(record.id);
+          if (timer) {
+            clearTimeout(timer);
+            this.authTimers.delete(record.id);
+          }
+
           if (msg.ok) {
             entry.status.status = 'connected';
             entry.status.lastConnected = Date.now();
-            
+
             const deviceToken = msg.result?.auth?.deviceToken || msg.payload?.auth?.deviceToken;
             if (deviceToken) {
               entry.record.deviceToken = deviceToken;
@@ -173,7 +197,8 @@ class OpenClawProxyManager extends EventEmitter {
 
     ws.on('message', authHandler);
 
-    setTimeout(() => {
+    const authTimer = setTimeout(() => {
+      this.authTimers.delete(record.id);
       if (entry.status.status === 'connecting') {
         ws.off('message', authHandler);
         entry.status.status = 'error';
@@ -182,6 +207,7 @@ class OpenClawProxyManager extends EventEmitter {
         resolve({ success: false, error: 'Authentication timeout' });
       }
     }, AUTH_TIMEOUT);
+    this.authTimers.set(record.id, authTimer);
   }
 
   private async sendAuthResponse(
@@ -286,7 +312,12 @@ class OpenClawProxyManager extends EventEmitter {
 
     entry.heartbeatTimer = setInterval(() => {
       if (entry.ws?.readyState === WebSocket.OPEN) {
-        entry.ws.ping();
+        try {
+          entry.ws.ping();
+        } catch {
+          // ping failed, connection likely dead
+          this.handleDisconnect(entry);
+        }
       }
     }, HEARTBEAT_INTERVAL);
   }
@@ -301,17 +332,31 @@ class OpenClawProxyManager extends EventEmitter {
     entry.status.clientCount = entry.pendingClients.size;
     this.emitStatusChange(connectionId);
 
-    clientWs.on('message', (data: RawData) => {
+    const onMessage = (data: RawData) => {
       if (entry.ws?.readyState === WebSocket.OPEN) {
         entry.ws.send(data);
       }
-    });
+    };
 
-    clientWs.on('close', () => {
+    const onClose = () => {
+      clientWs.off('message', onMessage);
+      clientWs.off('error', onError);
       entry.pendingClients.delete(clientWs);
       entry.status.clientCount = entry.pendingClients.size;
       this.emitStatusChange(connectionId);
-    });
+    };
+
+    const onError = () => {
+      clientWs.off('message', onMessage);
+      clientWs.off('close', onClose);
+      entry.pendingClients.delete(clientWs);
+      entry.status.clientCount = entry.pendingClients.size;
+      this.emitStatusChange(connectionId);
+    };
+
+    clientWs.on('message', onMessage);
+    clientWs.on('close', onClose);
+    clientWs.on('error', onError);
 
     return true;
   }
@@ -347,9 +392,32 @@ class OpenClawProxyManager extends EventEmitter {
     this.emitStatusChange(connectionId);
   }
 
-  remove(connectionId: string): void {
-    this.disconnect(connectionId);
+  async remove(connectionId: string): Promise<void> {
+    await this.disconnect(connectionId);
     this.pool.delete(connectionId);
+    const timer = this.authTimers.get(connectionId);
+    if (timer) {
+      clearTimeout(timer);
+      this.authTimers.delete(connectionId);
+    }
+  }
+
+  destroy(): void {
+    for (const [id, entry] of this.pool.entries()) {
+      if (entry.heartbeatTimer) clearInterval(entry.heartbeatTimer);
+      if (entry.reconnectTimer) clearTimeout(entry.reconnectTimer);
+      if (entry.ws) {
+        try { entry.ws.close(); } catch { /* ignore */ }
+      }
+      entry.pendingClients.forEach((client) => {
+        try { client.close(); } catch { /* ignore */ }
+      });
+      entry.pendingClients.clear();
+    }
+    this.pool.clear();
+    for (const timer of this.authTimers.values()) clearTimeout(timer);
+    this.authTimers.clear();
+    this.removeAllListeners();
   }
 
   getStatus(connectionId: string): ConnectionPoolStatus | null {
