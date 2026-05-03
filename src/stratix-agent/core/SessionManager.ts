@@ -1,6 +1,10 @@
 import { access } from 'fs/promises';
 import { readFile, writeFile, mkdir, readdir } from 'fs/promises';
 
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[SessionManager] ${message}`, ctx || '');
+}
+
 import { Session, ChatMessage } from '../types';
 
 export class SessionManager {
@@ -61,7 +65,7 @@ export class SessionManager {
       const trimmedCount = session.messages.length - this.maxMessagesPerSession + 1;
       session.messages = session.messages.slice(-(this.maxMessagesPerSession - 1));
       if (trimmedCount > 0) {
-        console.warn(`[SessionManager] Session ${sessionId} trimmed ${trimmedCount} messages (max: ${this.maxMessagesPerSession})`);
+        log('warn', `Session ${sessionId} trimmed ${trimmedCount} messages`, { maxMessagesPerSession: this.maxMessagesPerSession });
       }
     }
 
@@ -86,6 +90,7 @@ export class SessionManager {
     try {
       await access(this.storagePath);
     } catch {
+      /* expected: directory does not exist, will create */
       await mkdir(this.storagePath, { recursive: true });
     }
 
@@ -97,6 +102,7 @@ export class SessionManager {
     try {
       await access(this.storagePath);
     } catch {
+      /* expected: directory does not exist, will create */
       await mkdir(this.storagePath, { recursive: true });
       return;
     }
@@ -113,11 +119,11 @@ export class SessionManager {
             this.sessions.set(session.sessionId, session);
           }
         } catch (e) {
-          console.warn(`[SessionManager] Failed to load session file ${file}:`, e);
+          log('warn', `Failed to load session file ${file}`, { error: String(e) });
         }
       }
     } catch (e) {
-      console.warn('[SessionManager] Failed to load sessions:', e);
+      log('warn', 'Failed to load sessions', { error: String(e) });
     }
   }
 
@@ -167,7 +173,7 @@ export class SessionManager {
       const trimCount = Math.min(overflow, session.messages.length);
       session.messages = session.messages.slice(trimCount);
       overflow -= trimCount;
-      console.warn(`[SessionManager] Global limit enforced: trimmed ${trimCount} messages from ${session.sessionId}`);
+      log('warn', `Global limit enforced: trimmed ${trimCount} messages`, { sessionId: session.sessionId });
     }
   }
 
@@ -183,7 +189,7 @@ export class SessionManager {
 
     for (let i = 0; i < Math.min(count, sorted.length); i++) {
       this.sessions.delete(sorted[i][0]);
-      console.warn(`[SessionManager] Evicted session ${sorted[i][0]} due to maxSessions limit`);
+      log('warn', `Evicted session ${sorted[i][0]} due to maxSessions limit`);
     }
   }
 }

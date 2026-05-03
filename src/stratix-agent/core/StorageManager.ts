@@ -1,5 +1,9 @@
 import { access } from 'fs/promises';
 import { readFile, writeFile, mkdir } from 'fs/promises';
+
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[StorageManager] ${message}`, ctx || '');
+}
 import { join as pathJoin } from 'path';
 
 import { AgentConfig, SoulConfig } from '../types';
@@ -15,6 +19,7 @@ export class StorageManager {
     try {
       await access(dirPath);
     } catch {
+      /* expected: directory does not exist, will create */
       await mkdir(dirPath, { recursive: true });
     }
   }
@@ -35,13 +40,14 @@ export class StorageManager {
     try {
       await access(configPath);
     } catch {
+      /* expected: file does not exist */
       return null;
     }
     try {
       const content = await readFile(configPath, 'utf-8');
       return JSON.parse(content);
     } catch (e) {
-      console.error(`[StorageManager] Failed to load config for ${agentId}:`, e);
+      log('error', `Failed to load config for ${agentId}`, { error: String(e) });
       return null;
     }
   }
@@ -58,13 +64,14 @@ export class StorageManager {
     try {
       await access(soulPath);
     } catch {
+      /* expected: file does not exist */
       return null;
     }
     try {
       const content = await readFile(soulPath, 'utf-8');
       return JSON.parse(content);
     } catch (e) {
-      console.error(`[StorageManager] Failed to load soul for ${agentId}:`, e);
+      log('error', `Failed to load soul for ${agentId}`, { error: String(e) });
       return null;
     }
   }
@@ -81,6 +88,7 @@ export class StorageManager {
     try {
       await access(rulesPath);
     } catch {
+      /* expected: file does not exist */
       return [];
     }
     try {
@@ -88,7 +96,7 @@ export class StorageManager {
       const data = JSON.parse(content);
       return data.rules || [];
     } catch (e) {
-      console.error(`[StorageManager] Failed to load rules for ${agentId}:`, e);
+      log('error', `Failed to load rules for ${agentId}`, { error: String(e) });
       return [];
     }
   }
@@ -99,7 +107,9 @@ export class StorageManager {
     try {
       await access(agentPath);
       await rm(agentPath, { recursive: true, force: true });
-    } catch { /* ignore */ }
+    } catch {
+      /* expected: path does not exist, nothing to delete */
+    }
   }
 
   async listAgents(): Promise<string[]> {
@@ -107,6 +117,7 @@ export class StorageManager {
     try {
       await access(this.basePath);
     } catch {
+      /* expected: directory does not exist */
       return [];
     }
     const entries = await readdir(this.basePath, { withFileTypes: true });

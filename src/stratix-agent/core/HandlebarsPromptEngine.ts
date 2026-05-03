@@ -211,17 +211,7 @@ export class HandlebarsPromptEngine {
       return this.compiledTemplates.get(name)!;
     }
 
-    const templatePath = path.join(this.templatesDir, `${name}.hbs`);
-
-    if (!fs.existsSync(templatePath)) {
-      throw new Error(`Template not found: ${templatePath}`);
-    }
-
-    const content = fs.readFileSync(templatePath, 'utf-8');
-    const template = this.handlebars.compile(content);
-
-    this.compiledTemplates.set(name, template);
-    return template;
+    throw new Error(`Template not found: ${name}`);
   }
 
   /**
@@ -272,17 +262,7 @@ export class HandlebarsPromptEngine {
    * Get template source for debugging
    */
   getTemplateSource(name: string): string | null {
-    if (this.templateSources.has(name)) {
-      return this.templateSources.get(name)!;
-    }
-
-    const templatePath = path.join(this.templatesDir, `${name}.hbs`);
-    if (fs.existsSync(templatePath)) {
-      const content = fs.readFileSync(templatePath, 'utf-8');
-      this.templateSources.set(name, content);
-      return content;
-    }
-    return null;
+    return this.templateSources.get(name) || null;
   }
 }
 

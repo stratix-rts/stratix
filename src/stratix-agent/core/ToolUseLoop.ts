@@ -14,6 +14,10 @@ import { LLMConnector } from './LLMConnector';
 import { skillAuditLogger } from './SkillAuditLogger';
 import { SkillRegistry } from './SkillRegistry';
 
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[ToolUseLoop] ${message}`, ctx || '');
+}
+
 /**
  * ToolUseLoop - 处理 LLM → 工具执行 → LLM → ... 的完整循环
  *
@@ -225,7 +229,7 @@ export class ToolUseLoop {
       // 工具去重：过滤掉已调用的工具
       const uniqueToolCalls = result.tool_calls.filter(tc => {
         if (calledTools.has(tc.name)) {
-          console.warn(`[ToolUseLoop] Tool "${tc.name}" already called in this loop, skipping duplicate`);
+          log('warn', `Tool "${tc.name}" already called in this loop, skipping duplicate`);
           return false;
         }
         calledTools.add(tc.name);
@@ -345,7 +349,7 @@ export class ToolUseLoop {
 
           // 自适应回退：同一工具连续调用超过 3 次记录警告
           if (count > 3) {
-            console.warn(`[ToolUseLoop] Tool "${tc.name}" has been called ${count} times consecutively. Consider optimizing.`);
+            log('warn', `Tool "${tc.name}" has been called ${count} times consecutively. Consider optimizing.`);
           }
 
           // 审计日志记录

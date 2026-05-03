@@ -1,5 +1,9 @@
 import { SkillDefinition, SkillCall } from '../types';
 
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[SkillTrigger] ${message}`, ctx || '');
+}
+
 export class SkillTrigger {
   parseSkillCalls(llmResponse: string, availableSkills: SkillDefinition[]): SkillCall[] {
     const calls: SkillCall[] = [];
@@ -8,9 +12,9 @@ export class SkillTrigger {
     if (jsonMatch) {
       try {
         const parsed = JSON.parse(jsonMatch[1]);
-        return parsed.filter((p: any) => this.isValidSkillCall(p, availableSkills));
+        return parsed.filter((p: unknown) => this.isValidSkillCall(p, availableSkills));
       } catch (e) {
-        console.warn('[SkillTrigger] Failed to parse JSON skill calls:', e);
+        log('warn', 'Failed to parse JSON skill calls', { error: String(e) });
       }
     }
 

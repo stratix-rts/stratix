@@ -5,6 +5,10 @@ import { unlink, writeFile } from 'fs/promises';
 
 import { SkillDefinition, SkillExecutor, ExecutionContext } from '../../types';
 
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[CodeSandboxSkillExecutor] ${message}`, ctx || '');
+}
+
 /**
  * Code Sandbox Executor - Enhanced Security Version
  * Executes JavaScript using isolated Function() with restricted globals
@@ -362,7 +366,7 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
             try {
               await unlink(tempFile);
             } catch (err) {
-              console.warn('[CodeSandbox] Temp file cleanup failed:', err);
+              log('warn', 'Temp file cleanup failed', { error: String(err) });
             }
 
             if (code === 0) {
@@ -384,7 +388,7 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
             try {
               await unlink(tempFile);
             } catch (cleanupErr) {
-              console.warn('[CodeSandbox] Temp file cleanup failed:', cleanupErr);
+              log('warn', 'Temp file cleanup failed', { error: String(cleanupErr) });
             }
             progress?.({ skillId: 'code_execute', stage: 'failed' });
             reject(new Error(`Python spawn error: ${err.message}`));

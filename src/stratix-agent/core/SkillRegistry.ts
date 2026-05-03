@@ -1,5 +1,9 @@
 import { SkillDefinition, SkillExecutor, SkillResult, ExecutionContext } from '../types';
 
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[SkillRegistry] ${message}`, ctx || '');
+}
+
 /**
  * LRU Cache entry with insertion order tracking for reliable eviction
  */
@@ -48,7 +52,7 @@ export class SkillRegistry {
       try {
         this.progressCallback(skillId, stage, data);
       } catch (error) {
-        console.error('[SkillRegistry] Progress callback error:', error);
+        log('error', 'Progress callback error', { error: String(error) });
       }
     }
   }

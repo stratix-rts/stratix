@@ -22,6 +22,10 @@ import type { TaskCompleteParams } from '../../stratix-orchestration/zone/ZoneCo
 
 const gatewayUrl = process.env.GATEWAY_URL || 'http://127.0.0.1:7524';
 
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[ZoneAgentSkills] ${message}`, ctx || '');
+}
+
 /**
  * Task claim parameters
  */
@@ -272,7 +276,7 @@ export async function taskComplete(
       });
     } catch (apiError) {
       // Non-fatal: log but don't fail the operation
-      console.warn(`[ZoneAgentSkills] Failed to notify Zone Coordinator: ${apiError}`);
+      log('warn', 'Failed to notify Zone Coordinator', { error: String(apiError) });
     }
 
     return {

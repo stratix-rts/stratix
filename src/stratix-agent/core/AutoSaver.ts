@@ -1,3 +1,7 @@
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[AutoSaver] ${message}`, ctx || '');
+}
+
 export class AutoSaver {
   private saveTimer: NodeJS.Timeout | null = null;
   private readonly debounceMs: number;
@@ -17,9 +21,9 @@ export class AutoSaver {
     this.saveTimer = setTimeout(async () => {
       try {
         await this.onSave();
-        console.log('Auto-save completed');
+        log('info', 'Auto-save completed');
       } catch (error) {
-        console.error('Auto-save failed:', error);
+        log('error', 'Auto-save failed', { error: String(error) });
       }
     }, this.debounceMs);
   }

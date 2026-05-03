@@ -31,6 +31,7 @@ export class TranscriptStore {
     try {
       await access(this.baseDir);
     } catch {
+      /* expected: directory does not exist, will create */
       await mkdir(this.baseDir, { recursive: true });
     }
     this.dirEnsured = true;
@@ -73,6 +74,7 @@ export class TranscriptStore {
         const filtered = this.filterEntries(entries, startTime, endTime, limit);
         return filtered;
       } catch {
+        /* expected: file does not exist */
         return [];
       }
     }
@@ -102,6 +104,7 @@ export class TranscriptStore {
       await access(filePath);
       return this.readFileEntries(filePath);
     } catch {
+      /* expected: file does not exist */
       return [];
     }
   }
@@ -174,6 +177,7 @@ export class TranscriptStore {
       await access(this.baseDir);
       return true;
     } catch {
+      /* expected: directory does not exist */
       return false;
     }
   }
@@ -188,6 +192,7 @@ export class TranscriptStore {
       const stats = await stat(filePath);
       return stats.size;
     } catch {
+      /* expected: file does not exist */
       return 0;
     }
   }

@@ -39,6 +39,7 @@ export class AgentExporter {
       try {
         await access(this.exportPath);
       } catch {
+        /* expected: directory does not exist, will create */
         await mkdir(this.exportPath, { recursive: true });
       }
 

@@ -11,6 +11,10 @@ export interface TemplateContext {
 
 type TemplateFunction = (...args: unknown[]) => string;
 
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[PromptTemplateEngine] ${message}`, ctx || '');
+}
+
 export class PromptTemplateEngine {
   private functions: Map<string, TemplateFunction> = new Map();
 
@@ -181,7 +185,7 @@ export class PromptTemplateEngine {
       try {
         return fn(...args) || '';
       } catch (e) {
-        console.warn(`[PromptTemplateEngine] Function ${name} failed:`, e);
+        log('warn', `Function ${name} failed`, { error: String(e) });
         return '';
       }
     });

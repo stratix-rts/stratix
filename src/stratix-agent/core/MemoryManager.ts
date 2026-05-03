@@ -1,6 +1,10 @@
 import { access } from 'fs/promises';
 import { readFile, writeFile, mkdir } from 'fs/promises';
 
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[MemoryManager] ${message}`, ctx || '');
+}
+
 import { ChatMessage, MemoryEntry, MemoryLayers, SkillLearningRecord } from '../types';
 
 export class MemoryManager {
@@ -103,6 +107,7 @@ export class MemoryManager {
     try {
       await access(this.storagePath);
     } catch {
+      /* expected: directory does not exist, will create */
       await mkdir(this.storagePath, { recursive: true });
     }
   }
@@ -130,7 +135,7 @@ export class MemoryManager {
       this.longTerm = data.longTerm || [];
     } catch (e) {
       // 文件不存在或损坏，使用空内存
-      console.warn('[MemoryManager] Failed to load memory:', e);
+      log('warn', 'Failed to load memory', { error: String(e) });
     }
   }
 

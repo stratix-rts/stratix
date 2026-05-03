@@ -11,6 +11,10 @@ import { AgentTemplate } from '../types/template';
 
 import { getHandlebarsEngine, type PromptRenderContext } from './HandlebarsPromptEngine';
 
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[EnhancedPromptBuilder] ${message}`, ctx || '');
+}
+
 interface PromptConfig {
   includeReflection?: boolean;
   includeWorkflow?: boolean;
@@ -580,7 +584,7 @@ export class EnhancedPromptBuilder {
         content,
       };
     } catch (error) {
-      console.warn('[EnhancedPromptBuilder] Handlebars Zone rendering failed, falling back to string building:', error);
+      log('warn', 'Handlebars Zone rendering failed, falling back to string building', { error: String(error) });
       return this.buildZoneContextLayer(zoneContext, options);
     }
   }

@@ -13,6 +13,10 @@ const taskQueueService = TaskQueueService.getInstance();
 import type { TaskContext, TaskItem } from '../../stratix-orchestration/task-queue/TaskItem';
 import { generateId } from '../../stratix-project/utils/helpers';
 
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[ZoneAgent] ${message}`, ctx || '');
+}
+
 export interface ZoneOKR {
   objective: string;      // Zone 的 O (Objective)
   keyResults: string[];  // Zone 的 KR (Key Results) 列表
@@ -123,9 +127,9 @@ export class ZoneAgent {
         // 入队以便 Agent 认领
         await this.taskQueue.enqueueTask(taskId);
 
-        console.log(`[ZoneAgent] Task created and enqueued: ${task.title}`);
+        log('info', `Task created and enqueued: ${task.title}`);
       } catch (error) {
-        console.error(`[ZoneAgent] Failed to create task: ${task.title}`, error);
+        log('error', `Failed to create task: ${task.title}`, { error: String(error) });
       }
     }
 
