@@ -1496,17 +1496,32 @@ ${assignStrategyDescription}
   }
 
   private loadTasksFromDB(): void {
+    interface TaskRow {
+      task_id: string;
+      name: string;
+      description: string | null;
+      type: string;
+      priority: number;
+      status: string;
+      assigned_agent_id: string | null;
+      zone_id: string;
+    }
+
+    interface CompletedTaskRow {
+      task_id: string;
+    }
+
     try {
       const rows = this.db.prepare(`
         SELECT * FROM tasks
         WHERE zone_id = ? AND status IN ('pending', 'assigned', 'in_progress')
-      `).all(this.zoneId) as any[];
+      `).all(this.zoneId) as TaskRow[];
 
       // Also load completed/failed task IDs for status summary fallback
       const completedRows = this.db.prepare(`
         SELECT task_id FROM tasks
         WHERE zone_id = ? AND status IN ('completed', 'failed')
-      `).all(this.zoneId) as any[];
+      `).all(this.zoneId) as CompletedTaskRow[];
       this.completedTaskIds.clear();
       for (const row of completedRows) {
         this.completedTaskIds.add(row.task_id);

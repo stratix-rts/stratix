@@ -89,7 +89,7 @@ export class ZoneCoordinatorConfigRepository {
   getConfig(zoneId: string): ZoneCoordinatorConfigRecord | null {
     const row = this.db.prepare(`
       SELECT * FROM zone_coordinators WHERE zone_id = ?
-    `).get(zoneId) as any;
+    `).get(zoneId);
     return row ? this.mapRowToConfig(row) : null;
   }
 
@@ -195,7 +195,7 @@ export class ZoneCoordinatorConfigRepository {
   listConfigs(): ZoneCoordinatorConfigRecord[] {
     const rows = this.db.prepare(`
       SELECT * FROM zone_coordinators ORDER BY updated_at DESC
-    `).all() as any[];
+    `).all();
     return rows.map(row => this.mapRowToConfig(row));
   }
 }
