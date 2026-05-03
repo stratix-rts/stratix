@@ -7,6 +7,9 @@ const DEFAULT_DATA_DIR = 'stratix-data';
 const DEFAULT_FILENAME = 'stratix.db';
 const TARGET_SCHEMA_VERSION = 1;
 
+/** Valid table name characters (alphanumeric + underscore) */
+const VALID_TABLE_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
 export interface DatabaseConfig {
   dataDir?: string;
   filename?: string;
@@ -31,16 +34,17 @@ function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<str
 export class StratixDatabase {
   private db: Database.Database;
   private dbPath: string;
+  private statements = new Map<string, Database.Statement>();
 
   constructor(config: DatabaseConfig = {}) {
     const dataDir = config.dataDir || DEFAULT_DATA_DIR;
     const filename = config.filename || DEFAULT_FILENAME;
-    
+
     // Sync dir creation is acceptable during initialization phase
     fs.ensureDirSync(dataDir);
     this.dbPath = path.join(dataDir, `${filename}.sqlite`);
     this.db = new Database(this.dbPath);
-    
+
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
   }
@@ -64,14 +68,18 @@ export class StratixDatabase {
 
     if (currentVersion < TARGET_SCHEMA_VERSION) {
       log('info', `Running migrations from version ${currentVersion} to ${TARGET_SCHEMA_VERSION}`);
-      this.migrateMissingColumns();
-      this.setSchemaVersion(TARGET_SCHEMA_VERSION);
+      // Wrap migration steps in a transaction for atomicity
+      const migration = this.db.transaction(() => {
+        this.migrateMissingColumns();
+        this.setSchemaVersion(TARGET_SCHEMA_VERSION);
+      });
+      migration();
       log('info', `Migration complete. Now at version ${TARGET_SCHEMA_VERSION}`);
     }
   }
 
   private ensureSchemaVersionTable(): void {
-    const tables = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'").all() as TableNameRow[];
+    const tables = this.stmtSchemaVersionTables().all() as TableNameRow[];
     if (tables.length === 0) {
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS schema_version (
@@ -80,18 +88,18 @@ export class StratixDatabase {
         )
       `);
       // Insert version 0 as baseline
-      this.db.prepare('INSERT INTO schema_version (version, applied_at) VALUES (0, ?)').run(Date.now());
+      this.stmtInsertSchemaVersion().run(0, Date.now());
       log('info', 'Created schema_version table');
     }
   }
 
   private getSchemaVersion(): number {
-    const row = this.db.prepare('SELECT MAX(version) as version FROM schema_version').get() as SchemaVersionRow | undefined;
+    const row = this.stmtGetSchemaVersion().get() as SchemaVersionRow | undefined;
     return row?.version ?? 0;
   }
 
   private setSchemaVersion(version: number): void {
-    this.db.prepare('INSERT INTO schema_version (version, applied_at) VALUES (?, ?)').run(version, Date.now());
+    this.stmtInsertSchemaVersion().run(version, Date.now());
   }
 
   private migrateMissingColumns(): void {
@@ -229,13 +237,20 @@ export class StratixDatabase {
     this.createIndexSafely('idx_zone_members_agent', 'CREATE INDEX IF NOT EXISTS idx_zone_members_agent ON zone_members(agent_id)');
   }
 
+  /**
+   * Get column names for a table.
+   * Validates table name to prevent SQL injection (PRAGMA does not support parameter binding).
+   */
   private getColumnNames(tableName: string): Set<string> {
-    const rows = this.db.prepare(`PRAGMA table_info(${tableName})`).all() as TableInfoRow[];
+    if (!VALID_TABLE_NAME_RE.test(tableName)) {
+      throw new Error(`Invalid table name: ${tableName}`);
+    }
+    const rows = this.stmtTableInfo(tableName).all() as TableInfoRow[];
     return new Set(rows.map(c => c.name));
   }
 
   private getTableNames(): Set<string> {
-    const rows = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as TableNameRow[];
+    const rows = this.stmtTableNames().all() as TableNameRow[];
     return new Set(rows.map(t => t.name));
   }
 
@@ -714,7 +729,40 @@ export class StratixDatabase {
     this.db.exec(sql);
   }
 
+  // ---- Cached prepared statements ----
+
+  private stmtSchemaVersionTables(): Database.Statement {
+    return this.getStmt("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'");
+  }
+
+  private stmtInsertSchemaVersion(): Database.Statement {
+    return this.getStmt('INSERT INTO schema_version (version, applied_at) VALUES (?, ?)');
+  }
+
+  private stmtGetSchemaVersion(): Database.Statement {
+    return this.getStmt('SELECT MAX(version) as version FROM schema_version');
+  }
+
+  private stmtTableInfo(tableName: string): Database.Statement {
+    // PRAGMA does not support parameter binding; tableName is validated before call.
+    return this.db.prepare(`PRAGMA table_info(${tableName})`);
+  }
+
+  private stmtTableNames(): Database.Statement {
+    return this.getStmt("SELECT name FROM sqlite_master WHERE type='table'");
+  }
+
+  private getStmt(sql: string): Database.Statement {
+    let stmt = this.statements.get(sql);
+    if (!stmt) {
+      stmt = this.db.prepare(sql);
+      this.statements.set(sql, stmt);
+    }
+    return stmt;
+  }
+
   public close(): void {
+    this.statements.clear();
     this.db.close();
   }
 
