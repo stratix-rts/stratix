@@ -50,11 +50,19 @@ export interface ContextUpdateParams {
  * - capability_query: Zone queries Agent capabilities
  */
 export class ZoneCoordinatorSkillExecutor implements SkillExecutor {
+  private resolveZoneId(params: Record<string, unknown>, context: ExecutionContext): string {
+    const zoneId = params.zoneId || context.variables?.zoneId;
+    if (!zoneId || typeof zoneId !== 'string') {
+      throw new Error('zoneId is required (pass as param or set context.variables.zoneId)');
+    }
+    return zoneId;
+  }
+
   async execute(
     skill: SkillDefinition,
-    params: Record<string, any>,
+    params: Record<string, unknown>,
     context: ExecutionContext
-  ): Promise<any> {
+  ): Promise<unknown> {
     const { agentId } = context;
 
     switch (skill.skillId) {
@@ -67,17 +75,13 @@ export class ZoneCoordinatorSkillExecutor implements SkillExecutor {
           priority,
           deadline,
           context: taskContext,
-        } = params as TaskDelegateParams;
+        } = params as unknown as TaskDelegateParams;
 
         if (!taskId || !taskTitle || !taskType || !priority) {
           throw new Error('task_delegate requires: taskId, taskTitle, taskType, priority');
         }
 
-        // Get zoneId from context.variables or params
-        const zoneId = params.zoneId || context.variables?.zoneId;
-        if (!zoneId) {
-          throw new Error('zoneId is required for task_delegate (pass as param or set context.variables.zoneId)');
-        }
+        const zoneId = this.resolveZoneId(params, context);
 
         // Record task_flow (started - Zone initiated the delegation)
         const flowRecord = taskFlowRepository.addFlow(
@@ -120,16 +124,13 @@ export class ZoneCoordinatorSkillExecutor implements SkillExecutor {
       }
 
       case 'task_cancel': {
-        const { taskId, reason } = params as TaskCancelParams;
+        const { taskId, reason } = params as unknown as TaskCancelParams;
 
         if (!taskId || !reason) {
           throw new Error('task_cancel requires: taskId, reason');
         }
 
-        const zoneId = params.zoneId || context.variables?.zoneId;
-        if (!zoneId) {
-          throw new Error('zoneId is required for task_cancel (pass as param or set context.variables.zoneId)');
-        }
+        const zoneId = this.resolveZoneId(params, context);
 
         // Get the task flow to find the assignee
         const latestFlow = taskFlowRepository.getLatestFlow(taskId);
@@ -170,16 +171,13 @@ export class ZoneCoordinatorSkillExecutor implements SkillExecutor {
       }
 
       case 'context_update': {
-        const { contextDelta } = params as ContextUpdateParams;
+        const { contextDelta } = params as unknown as ContextUpdateParams;
 
         if (!contextDelta || typeof contextDelta !== 'object') {
           throw new Error('context_update requires: contextDelta (object)');
         }
 
-        const zoneId = params.zoneId || context.variables?.zoneId;
-        if (!zoneId) {
-          throw new Error('zoneId is required for context_update (pass as param or set context.variables.zoneId)');
-        }
+        const zoneId = this.resolveZoneId(params, context);
 
         // Record audit_log (context_shared)
         auditLogRepository.log(
@@ -200,10 +198,7 @@ export class ZoneCoordinatorSkillExecutor implements SkillExecutor {
       }
 
       case 'capability_query': {
-        const zoneId = params.zoneId || context.variables?.zoneId;
-        if (!zoneId) {
-          throw new Error('zoneId is required for capability_query (pass as param or set context.variables.zoneId)');
-        }
+        const zoneId = this.resolveZoneId(params, context);
 
         // Get agent's capabilities from repository
         const capabilities = agentCapabilityRepository.getCapabilities(agentId, zoneId);

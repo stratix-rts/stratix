@@ -45,10 +45,12 @@ export class SkillTrigger {
   private isValidSkillCall(call: unknown, skills: SkillDefinition[]): boolean {
     if (!call || typeof call !== 'object') return false;
     const c = call as Record<string, unknown>;
+    const skillId = c.skillId;
+    const params = c.params;
     return (
-      typeof c.skillId === 'string' &&
-      this.skillExists(c.skillId, skills) &&
-      (c.params === undefined || typeof c.params === 'object')
+      typeof skillId === 'string' &&
+      this.skillExists(skillId, skills) &&
+      (params === undefined || params === null || typeof params === 'object')
     );
   }
 

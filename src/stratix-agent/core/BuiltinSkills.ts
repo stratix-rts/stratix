@@ -438,5 +438,5 @@ export const SKILLS_BY_CATEGORY = {
   api: ['api_call', 'web_search', 'file_download'],
   calculator: ['calculator'],
   code: ['code_execute'],
-  zone: ['zone_move_to', 'zone_leave', 'zone_list', 'zone_info']
+  zone: ['zone_search', 'zone_move_to', 'zone_leave', 'zone_list', 'zone_info']
 };

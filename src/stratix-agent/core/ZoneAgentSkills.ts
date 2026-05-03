@@ -261,6 +261,8 @@ export async function taskComplete(
 
     // Notify Zone Coordinator via API if available
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
       await fetch(`${gatewayUrl}/api/zones/${zoneId}/tasks/${taskId}/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -273,7 +275,9 @@ export async function taskComplete(
           issues,
           duration,
         }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
     } catch (apiError) {
       // Non-fatal: log but don't fail the operation
       log('warn', 'Failed to notify Zone Coordinator', { error: String(apiError) });

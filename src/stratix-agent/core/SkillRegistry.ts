@@ -92,9 +92,12 @@ export class SkillRegistry {
   }
 
   getEnabledSkills(): SkillDefinition[] {
-    return Array.from(this.enabledSkills)
-      .map(id => this.availableSkills.get(id)!)
-      .filter(Boolean);
+    const results: SkillDefinition[] = [];
+    for (const id of this.enabledSkills) {
+      const skill = this.availableSkills.get(id);
+      if (skill) results.push(skill);
+    }
+    return results;
   }
 
   registerExecutor(name: string, executor: SkillExecutor): void {
@@ -256,7 +259,7 @@ export class SkillRegistry {
 
   async execute(
     skillId: string,
-    params: Record<string, any>,
+    params: Record<string, unknown>,
     context: ExecutionContext
   ): Promise<SkillResult> {
     const startTime = Date.now();
@@ -326,18 +329,20 @@ export class SkillRegistry {
         ? Math.min(skill.timeout, this.maxTimeout)
         : this.defaultTimeout;
 
-      // 创建超时 Promise
+      // 执行 Promise
+      const executePromise = executor.execute(skill, params, context);
+
+      // 创建超时 Promise（清理 timer 防止泄漏）
+      let timeoutTimer: NodeJS.Timeout | undefined;
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => {
+        timeoutTimer = setTimeout(() => {
           reject(new Error(`Skill execution timed out after ${timeout}ms`));
         }, timeout);
       });
 
-      // 执行 Promise
-      const executePromise = executor.execute(skill, params, context);
-
       // Race 执行
       const result = await Promise.race([executePromise, timeoutPromise]);
+      if (timeoutTimer) clearTimeout(timeoutTimer);
 
       // 只有成功的结果才缓存
       const finalResult: SkillResult = {

@@ -95,21 +95,19 @@ export class SkillAuditLogger {
   getAllLogs(query: AuditLogQuery = {}): SkillExecutionLog[] {
     let logs = Array.from(this.logs.values());
 
-    // 按时间倒序
-    logs.sort((a, b) => b.timestamp - a.timestamp);
-
-    // 时间范围过滤
+    // 先过滤再排序，减少排序数据量
     if (query.startTime) {
       logs = logs.filter(log => log.timestamp >= query.startTime!);
     }
     if (query.endTime) {
       logs = logs.filter(log => log.timestamp <= query.endTime!);
     }
-
-    // 技能 ID 过滤
     if (query.skillId) {
       logs = logs.filter(log => log.skillId === query.skillId);
     }
+
+    // 按时间倒序
+    logs.sort((a, b) => b.timestamp - a.timestamp);
 
     // 分页
     const offset = query.offset || 0;
@@ -195,7 +193,7 @@ export class SkillAuditLogger {
    */
   private evictOldestLogs(): void {
     const EVICTION_HEADROOM = 100;
-    const toEvict = this.logs.size - SkillAuditLogger.MAX_LOG_ENTRIES + EVICTION_HEADROOM;
+    const toEvict = Math.max(0, this.logs.size - SkillAuditLogger.MAX_LOG_ENTRIES + EVICTION_HEADROOM);
 
     // 按时间排序（最旧的在前）
     const sortedLogs = Array.from(this.logs.entries())
