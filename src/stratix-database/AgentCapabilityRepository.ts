@@ -1,3 +1,5 @@
+import type Database from 'better-sqlite3';
+
 import { generateId } from '../stratix-project/utils/helpers';
 
 import { getDatabase } from './StratixDatabase';
@@ -29,6 +31,36 @@ export class AgentCapabilityRepository {
     return getDatabase().getDatabase();
   }
 
+  private statements = new Map<string, Database.Statement>();
+
+  private stmt(sql: string): Database.Statement {
+    let s = this.statements.get(sql);
+    if (!s) {
+      s = this.db.prepare(sql);
+      this.statements.set(sql, s);
+    }
+    return s;
+  }
+
+  /**
+   * 清理 prepared statement 缓存
+   */
+  shutdown(): void {
+    this.statements.clear();
+  }
+
+  /**
+   * 检查数据库连接是否健康
+   */
+  isHealthy(): boolean {
+    try {
+      this.db.prepare('SELECT 1').get();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /**
    * Set a capability level for an agent in a zone (UPSERT)
    */
@@ -36,14 +68,13 @@ export class AgentCapabilityRepository {
     const now = Date.now();
     const id = generateId('acap');
 
-    const stmt = this.db.prepare(`
+    this.stmt(`
       INSERT INTO agent_capabilities (id, agent_id, zone_id, capability, level, current_load, updated_at)
       VALUES (?, ?, ?, ?, ?, 0, ?)
       ON CONFLICT(agent_id, zone_id, capability) DO UPDATE SET
         level = excluded.level,
         updated_at = excluded.updated_at
-    `);
-    stmt.run(id, agentId, zoneId, capability, level, now);
+    `).run(id, agentId, zoneId, capability, level, now);
 
     return this.getCapability(agentId, zoneId, capability)!;
   }
@@ -52,7 +83,7 @@ export class AgentCapabilityRepository {
    * Get a specific capability for an agent in a zone
    */
   getCapability(agentId: string, zoneId: string, capability: Capability): AgentCapability | null {
-    const row = this.db.prepare(`
+    const row = this.stmt(`
       SELECT * FROM agent_capabilities
       WHERE agent_id = ? AND zone_id = ? AND capability = ?
     `).get(agentId, zoneId, capability) as CapabilityRow | undefined;
@@ -63,7 +94,7 @@ export class AgentCapabilityRepository {
    * Get all capabilities for an agent in a zone
    */
   getCapabilities(agentId: string, zoneId: string): AgentCapability[] {
-    const rows = this.db.prepare(`
+    const rows = this.stmt(`
       SELECT * FROM agent_capabilities
       WHERE agent_id = ? AND zone_id = ?
       ORDER BY level DESC, capability ASC
@@ -93,7 +124,7 @@ export class AgentCapabilityRepository {
 
     sql += ` ORDER BY current_load ASC, level DESC`;
 
-    const rows = this.db.prepare(sql).all(...params) as CapabilityRow[];
+    const rows = this.stmt(sql).all(...params) as CapabilityRow[];
     return rows.map(row => this.mapRowToCapability(row));
   }
 
@@ -102,11 +133,10 @@ export class AgentCapabilityRepository {
    */
   updateLoad(agentId: string, zoneId: string, load: number): boolean {
     const now = Date.now();
-    const stmt = this.db.prepare(`
+    const result = this.stmt(`
       UPDATE agent_capabilities SET current_load = ?, updated_at = ?
       WHERE agent_id = ? AND zone_id = ?
-    `);
-    const result = stmt.run(load, now, agentId, zoneId);
+    `).run(load, now, agentId, zoneId);
     return result.changes > 0;
   }
 
@@ -115,11 +145,10 @@ export class AgentCapabilityRepository {
    */
   incrementLoad(agentId: string, zoneId: string): boolean {
     const now = Date.now();
-    const stmt = this.db.prepare(`
+    const result = this.stmt(`
       UPDATE agent_capabilities SET current_load = current_load + 1, updated_at = ?
       WHERE agent_id = ? AND zone_id = ?
-    `);
-    const result = stmt.run(now, agentId, zoneId);
+    `).run(now, agentId, zoneId);
     return result.changes > 0;
   }
 
@@ -128,12 +157,11 @@ export class AgentCapabilityRepository {
    */
   decrementLoad(agentId: string, zoneId: string): boolean {
     const now = Date.now();
-    const stmt = this.db.prepare(`
+    const result = this.stmt(`
       UPDATE agent_capabilities
       SET current_load = MAX(0, current_load - 1), updated_at = ?
       WHERE agent_id = ? AND zone_id = ?
-    `);
-    const result = stmt.run(now, agentId, zoneId);
+    `).run(now, agentId, zoneId);
     return result.changes > 0;
   }
 
@@ -141,10 +169,9 @@ export class AgentCapabilityRepository {
    * Remove all capabilities for an agent in a zone
    */
   removeCapabilities(agentId: string, zoneId: string): boolean {
-    const stmt = this.db.prepare(`
+    const result = this.stmt(`
       DELETE FROM agent_capabilities WHERE agent_id = ? AND zone_id = ?
-    `);
-    const result = stmt.run(agentId, zoneId);
+    `).run(agentId, zoneId);
     return result.changes > 0;
   }
 
@@ -152,7 +179,7 @@ export class AgentCapabilityRepository {
    * Get top agents by capability and level in a zone
    */
   getTopAgents(zoneId: string, capability: Capability, limit: number = 5): AgentCapability[] {
-    const rows = this.db.prepare(`
+    const rows = this.stmt(`
       SELECT * FROM agent_capabilities
       WHERE zone_id = ? AND capability = ?
       ORDER BY level DESC, current_load ASC
