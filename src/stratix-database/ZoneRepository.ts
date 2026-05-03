@@ -1,3 +1,5 @@
+import { mkdirSync } from 'fs';
+
 import { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskStatus, ZoneMessage, SenderType, FileVersion, FileMetadata } from '../stratix-project/types';
 import { ZoneStatus } from '../stratix-rts/zones/BaseZone';
 import { generateId } from '../stratix-project/utils/helpers';
@@ -136,23 +138,26 @@ export class ZoneRepository {
     const homeDir = process.env.HOME || process.env.USERPROFILE || '/tmp';
     const zonePath = path.join(homeDir, 'Stratix', 'zones', zoneId);
 
-    // Insert into zone_contexts
-    this.db.prepare(`
-      INSERT INTO zone_contexts (zone_id, project_id, title, prompt, members, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(zoneId, projectId, title, prompt, '[]', now, now);
+    // Dual-write with transaction protection
+    const insertZone = this.db.transaction(() => {
+      // Insert into zone_contexts
+      this.db.prepare(`
+        INSERT INTO zone_contexts (zone_id, project_id, title, prompt, members, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(zoneId, projectId, title, prompt, '[]', now, now);
 
-    // Also insert into zones table for FK consistency (zone_context_id = zone_id)
-    // This is needed because tasks table has FK REFERENCES zones(zone_id)
-    this.db.prepare(`
-      INSERT INTO zones (zone_id, name, type, project_id, position_x, position_y, width, height, status, config, zone_context_id, path, created_at, updated_at)
-      VALUES (?, ?, 'task', ?, 0, 0, 400, 300, 'idle', '{}', ?, ?, ?, ?)
-    `).run(zoneId, title, projectId, zoneId, zonePath, now, now);
+      // Also insert into zones table for FK consistency (zone_context_id = zone_id)
+      // This is needed because tasks table has FK REFERENCES zones(zone_id)
+      this.db.prepare(`
+        INSERT INTO zones (zone_id, name, type, project_id, position_x, position_y, width, height, status, config, zone_context_id, path, created_at, updated_at)
+        VALUES (?, ?, 'task', ?, 0, 0, 400, 300, 'idle', '{}', ?, ?, ?, ?)
+      `).run(zoneId, title, projectId, zoneId, zonePath, now, now);
+    });
+    insertZone();
 
     // 创建沙箱目录
     try {
-      const fs = require('fs');
-      fs.mkdirSync(zonePath, { recursive: true });
+      mkdirSync(zonePath, { recursive: true });
     } catch (e) {
       console.warn(`[ZoneRepository] Failed to create zone path: ${zonePath}`, e);
     }
@@ -272,72 +277,84 @@ export class ZoneRepository {
 
   // Zone Members operations
   addMember(zoneId: string, agentId: string): Zone | null {
-    // 同步写入 zone_members 表（权威源）
-    zoneMemberRepository.addMember(zoneId, agentId);
+    const tx = this.db.transaction(() => {
+      // 同步写入 zone_members 表（权威源）
+      zoneMemberRepository.addMember(zoneId, agentId);
 
-    const zone = this.getZone(zoneId);
-    if (!zone) return null;
+      const zone = this.getZone(zoneId);
+      if (!zone) return null;
 
-    const currentMembers = zone.members || [];
-    const currentPresentAgentIds = zone.presentAgentIds || [];
+      const currentMembers = zone.members || [];
+      const currentPresentAgentIds = zone.presentAgentIds || [];
 
-    const newMembers = currentMembers.includes(agentId)
-      ? currentMembers
-      : [...currentMembers, agentId];
+      const newMembers = currentMembers.includes(agentId)
+        ? currentMembers
+        : [...currentMembers, agentId];
 
-    const newPresentAgentIds = currentPresentAgentIds.includes(agentId)
-      ? currentPresentAgentIds
-      : [...currentPresentAgentIds, agentId];
+      const newPresentAgentIds = currentPresentAgentIds.includes(agentId)
+        ? currentPresentAgentIds
+        : [...currentPresentAgentIds, agentId];
 
-    return this.updateZone(zoneId, { members: newMembers, presentAgentIds: newPresentAgentIds });
+      return this.updateZone(zoneId, { members: newMembers, presentAgentIds: newPresentAgentIds });
+    });
+    return tx();
   }
 
   removeMember(zoneId: string, agentId: string): Zone | null {
-    // 同步写入 zone_members 表（soft remove）
-    zoneMemberRepository.removeMember(zoneId, agentId);
+    const tx = this.db.transaction(() => {
+      // 同步写入 zone_members 表（soft remove）
+      zoneMemberRepository.removeMember(zoneId, agentId);
 
-    const zone = this.getZone(zoneId);
-    if (!zone) return null;
+      const zone = this.getZone(zoneId);
+      if (!zone) return null;
 
-    const newMembers = (zone.members || []).filter(id => id !== agentId);
-    const newPresentAgentIds = (zone.presentAgentIds || []).filter(id => id !== agentId);
+      const newMembers = (zone.members || []).filter(id => id !== agentId);
+      const newPresentAgentIds = (zone.presentAgentIds || []).filter(id => id !== agentId);
 
-    return this.updateZone(zoneId, { members: newMembers, presentAgentIds: newPresentAgentIds });
+      return this.updateZone(zoneId, { members: newMembers, presentAgentIds: newPresentAgentIds });
+    });
+    return tx();
   }
 
   // Bulk add members
   addMembers(zoneId: string, agentIds: string[]): Zone | null {
-    // 同步写入 zone_members 表
-    for (const agentId of agentIds) {
-      zoneMemberRepository.addMember(zoneId, agentId);
-    }
+    const tx = this.db.transaction(() => {
+      // 同步写入 zone_members 表
+      for (const agentId of agentIds) {
+        zoneMemberRepository.addMember(zoneId, agentId);
+      }
 
-    const zone = this.getZone(zoneId);
-    if (!zone) return null;
+      const zone = this.getZone(zoneId);
+      if (!zone) return null;
 
-    const currentMembers = zone.members || [];
-    const currentPresentAgentIds = zone.presentAgentIds || [];
+      const currentMembers = zone.members || [];
+      const currentPresentAgentIds = zone.presentAgentIds || [];
 
-    const newMembers = [...new Set([...currentMembers, ...agentIds])];
-    const newPresentAgentIds = [...new Set([...currentPresentAgentIds, ...agentIds])];
+      const newMembers = [...new Set([...currentMembers, ...agentIds])];
+      const newPresentAgentIds = [...new Set([...currentPresentAgentIds, ...agentIds])];
 
-    return this.updateZone(zoneId, { members: newMembers, presentAgentIds: newPresentAgentIds });
+      return this.updateZone(zoneId, { members: newMembers, presentAgentIds: newPresentAgentIds });
+    });
+    return tx();
   }
 
   // Bulk remove members
   removeMembers(zoneId: string, agentIds: string[]): Zone | null {
-    // 同步写入 zone_members 表（soft remove）
-    for (const agentId of agentIds) {
-      zoneMemberRepository.removeMember(zoneId, agentId);
-    }
+    const tx = this.db.transaction(() => {
+      // 同步写入 zone_members 表（soft remove）
+      for (const agentId of agentIds) {
+        zoneMemberRepository.removeMember(zoneId, agentId);
+      }
 
-    const zone = this.getZone(zoneId);
-    if (!zone) return null;
+      const zone = this.getZone(zoneId);
+      if (!zone) return null;
 
-    const newMembers = (zone.members || []).filter(id => !agentIds.includes(id));
-    const newPresentAgentIds = (zone.presentAgentIds || []).filter(id => !agentIds.includes(id));
+      const newMembers = (zone.members || []).filter(id => !agentIds.includes(id));
+      const newPresentAgentIds = (zone.presentAgentIds || []).filter(id => !agentIds.includes(id));
 
-    return this.updateZone(zoneId, { members: newMembers, presentAgentIds: newPresentAgentIds });
+      return this.updateZone(zoneId, { members: newMembers, presentAgentIds: newPresentAgentIds });
+    });
+    return tx();
   }
 
   // Zone Files operations
