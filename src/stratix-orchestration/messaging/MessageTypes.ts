@@ -1,5 +1,11 @@
 export type AgentMessageType = 'direct' | 'broadcast' | 'mention' | 'task_request' | 'context_share';
 
+export const AGENT_MESSAGE_TYPES: AgentMessageType[] = ['direct', 'broadcast', 'mention', 'task_request', 'context_share'];
+
+export function isAgentMessageType(value: string): value is AgentMessageType {
+  return AGENT_MESSAGE_TYPES.includes(value as AgentMessageType);
+}
+
 export interface AgentMessage {
   messageId: string;
   conversationId: string;

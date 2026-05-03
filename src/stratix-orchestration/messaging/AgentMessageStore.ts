@@ -111,7 +111,7 @@ export class AgentMessageStore {
     const db = getDatabase().getDatabase();
 
     // Check if DM already exists (order-independent lookup)
-    // Find conversations where both agents are participants
+    // Find conversations where both agents are the ONLY participants
     const existing = db.prepare(`
       SELECT c.conversation_id FROM conversations c
       WHERE c.type = 'dm'
@@ -119,6 +119,10 @@ export class AgentMessageStore {
           SELECT COUNT(*) FROM conversation_participants
           WHERE conversation_id = c.conversation_id
             AND participant_id IN (?, ?)
+        ) = 2
+        AND (
+          SELECT COUNT(*) FROM conversation_participants
+          WHERE conversation_id = c.conversation_id
         ) = 2
     `).get(agent1, agent2) as { conversation_id: string } | undefined;
 
@@ -143,22 +147,33 @@ export class AgentMessageStore {
       ORDER BY c.updated_at DESC
     `).all(agentId) as ConversationRow[];
 
-    const conversations: Conversation[] = [];
-    for (const row of rows) {
-      const participants = this.getConversationParticipants(row.conversation_id);
-      conversations.push({
-        conversationId: row.conversation_id,
-        type: row.type,
-        name: row.name ?? undefined,
-        participants,
-        zoneId: row.zone_id ?? undefined,
-        projectId: row.project_id ?? undefined,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-      });
+    if (rows.length === 0) return [];
+
+    // Batch load participants for all conversations
+    const conversationIds = rows.map(r => r.conversation_id);
+    const placeholders = conversationIds.map(() => '?').join(',');
+    const participantRows = db.prepare(
+      `SELECT conversation_id, participant_id FROM conversation_participants WHERE conversation_id IN (${placeholders})`
+    ).all(...conversationIds) as { conversation_id: string; participant_id: string }[];
+
+    const participantsByConv = new Map<string, string[]>();
+    for (const pr of participantRows) {
+      if (!participantsByConv.has(pr.conversation_id)) {
+        participantsByConv.set(pr.conversation_id, []);
+      }
+      participantsByConv.get(pr.conversation_id)!.push(pr.participant_id);
     }
 
-    return conversations;
+    return rows.map(row => ({
+      conversationId: row.conversation_id,
+      type: row.type,
+      name: row.name ?? undefined,
+      participants: participantsByConv.get(row.conversation_id) || [],
+      zoneId: row.zone_id ?? undefined,
+      projectId: row.project_id ?? undefined,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
   }
 
   private getConversationParticipants(conversationId: string): string[] {
@@ -290,6 +305,13 @@ export class AgentMessageStore {
       references,
       createdAt: row.created_at,
     };
+  }
+
+  /**
+   * Health check for the message store
+   */
+  isHealthy(): boolean {
+    return true;
   }
 
   /**

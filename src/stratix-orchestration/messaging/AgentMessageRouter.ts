@@ -146,23 +146,25 @@ export class AgentMessageRouter {
 
     // Get all agents in zone
     const agentsInZone = await this.zoneManager.getAgentsInZone(zoneId);
+    const targets = agentsInZone.filter(id => id !== senderId);
 
-    const sentMessages: string[] = [];
+    if (targets.length === 0) {
+      return { success: true, messageId: undefined };
+    }
 
-    for (const recipientId of agentsInZone) {
-      if (recipientId === senderId) continue; // Don't send to self
-
+    // Send messages in parallel for better performance
+    const sendPromises = targets.map(async recipientId => {
       const conversation = await this.messageStore.getOrCreateDMConversation(senderId, recipientId);
-
       const message = await this.messageStore.sendMessage(senderId, content, {
         conversationId: conversation.conversationId,
         messageType: 'broadcast',
         references: options.references,
         zoneId,
       });
+      return message.messageId;
+    });
 
-      sentMessages.push(message.messageId);
-    }
+    const sentMessages = await Promise.all(sendPromises);
 
     return {
       success: true,
@@ -270,23 +272,31 @@ export class AgentMessageRouter {
     } else {
       // Share with all agents in zone
       const agentsInZone = await this.zoneManager.getAgentsInZone(options.zoneId!);
-      const sentMessages: string[] = [];
+      const targets = agentsInZone.filter(id => id !== senderId);
 
-      for (const rid of agentsInZone) {
-        if (rid === senderId) continue;
+      if (targets.length === 0) {
+        return { success: false, error: 'No agents available in zone for context sharing' };
+      }
 
+      // Check permissions and send in parallel
+      const sendPromises = targets.map(async rid => {
         const check = await this.constraints.canShare(senderId, rid, 'context', { zoneId: options.zoneId });
-        if (!check.allowed) continue;
+        if (!check.allowed) return null;
 
         const conversation = await this.messageStore.getOrCreateDMConversation(senderId, rid);
-
         const message = await this.messageStore.sendMessage(senderId, content, {
           conversationId: conversation.conversationId,
           messageType: 'context_share',
           references,
         });
+        return message.messageId;
+      });
 
-        sentMessages.push(message.messageId);
+      const results = await Promise.all(sendPromises);
+      const sentMessages = results.filter((id): id is string => id !== null);
+
+      if (sentMessages.length === 0) {
+        return { success: false, error: 'Context sharing blocked by policy for all agents' };
       }
 
       return { success: true, messageId: sentMessages[0] };
@@ -315,6 +325,13 @@ export class AgentMessageRouter {
 
   destroy(): void {
     this.clearAllListeners();
+  }
+
+  /**
+   * Health check for the message router
+   */
+  isHealthy(): boolean {
+    return this.eventListeners.size < 1000;
   }
 
   private emitEvent(event: MessageRouterEvent): void {

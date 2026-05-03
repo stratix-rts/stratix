@@ -38,8 +38,16 @@ export interface PolicyCheckResult {
   reason?: string;
 }
 
+interface CachedPolicy {
+  policy: ConversationPolicy | null;
+  expiresAt: number;
+}
+
+const CACHE_TTL_MS = 30000; // 30 seconds
+
 export class ConversationConstraints {
   private static instance: ConversationConstraints;
+  private policyCache: Map<string, CachedPolicy> = new Map();
 
   private constructor() {}
 
@@ -48,6 +56,24 @@ export class ConversationConstraints {
       ConversationConstraints.instance = new ConversationConstraints();
     }
     return ConversationConstraints.instance;
+  }
+
+  private getCachedPolicy(key: string): ConversationPolicy | null | undefined {
+    const cached = this.policyCache.get(key);
+    if (!cached) return undefined;
+    if (Date.now() > cached.expiresAt) {
+      this.policyCache.delete(key);
+      return undefined;
+    }
+    return cached.policy;
+  }
+
+  private setCachedPolicy(key: string, policy: ConversationPolicy | null): void {
+    this.policyCache.set(key, { policy, expiresAt: Date.now() + CACHE_TTL_MS });
+  }
+
+  private invalidateCache(): void {
+    this.policyCache.clear();
   }
 
   /**
@@ -185,27 +211,42 @@ export class ConversationConstraints {
   }
 
   async getAgentPolicy(agentId: string): Promise<ConversationPolicy | null> {
+    const cached = this.getCachedPolicy(`agent:${agentId}`);
+    if (cached !== undefined) return cached;
+
     const db = getDatabase().getDatabase();
     const row = db.prepare(
       "SELECT * FROM conversation_policies WHERE scope = 'agent' AND scope_id = ?"
     ).get(agentId) as PolicyRow | undefined;
-    return row ? this.rowToPolicy(row) : null;
+    const policy = row ? this.rowToPolicy(row) : null;
+    this.setCachedPolicy(`agent:${agentId}`, policy);
+    return policy;
   }
 
   async getZonePolicy(zoneId: string): Promise<ConversationPolicy | null> {
+    const cached = this.getCachedPolicy(`zone:${zoneId}`);
+    if (cached !== undefined) return cached;
+
     const db = getDatabase().getDatabase();
     const row = db.prepare(
       "SELECT * FROM conversation_policies WHERE scope = 'zone' AND scope_id = ?"
     ).get(zoneId) as PolicyRow | undefined;
-    return row ? this.rowToPolicy(row) : null;
+    const policy = row ? this.rowToPolicy(row) : null;
+    this.setCachedPolicy(`zone:${zoneId}`, policy);
+    return policy;
   }
 
   async getGlobalPolicy(): Promise<ConversationPolicy | null> {
+    const cached = this.getCachedPolicy('global');
+    if (cached !== undefined) return cached;
+
     const db = getDatabase().getDatabase();
     const row = db.prepare(
       "SELECT * FROM conversation_policies WHERE scope = 'global' LIMIT 1"
     ).get() as PolicyRow | undefined;
-    return row ? this.rowToPolicy(row) : null;
+    const policy = row ? this.rowToPolicy(row) : null;
+    this.setCachedPolicy('global', policy);
+    return policy;
   }
 
   async updatePolicy(policyId: string, updates: Partial<ConversationPolicy>): Promise<ConversationPolicy | null> {
@@ -213,7 +254,7 @@ export class ConversationConstraints {
     const now = Date.now();
 
     const setClauses: string[] = ['updated_at = ?'];
-    const values: Array<string | number | null | boolean> = [now];
+    const values: Array<string | number | null> = [now];
 
     if (updates.allowDM !== undefined) {
       setClauses.push('allow_dm = ?');
@@ -249,7 +290,15 @@ export class ConversationConstraints {
   async deletePolicy(policyId: string): Promise<boolean> {
     const db = getDatabase().getDatabase();
     const result = db.prepare('DELETE FROM conversation_policies WHERE policy_id = ?').run(policyId);
+    this.invalidateCache();
     return result.changes > 0;
+  }
+
+  /**
+   * Health check for the conversation constraints service
+   */
+  isHealthy(): boolean {
+    return this.policyCache.size < 10000;
   }
 
   // ==================== Helpers ====================
