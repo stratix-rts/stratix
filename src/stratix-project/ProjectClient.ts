@@ -114,7 +114,16 @@ export class ProjectClient {
   }
 
   async updateZoneConfig(id: string, zoneConfig: Partial<ProjectZoneConfig>): Promise<Project> {
-    return this.updateProject(id, { zoneConfig } as Partial<Project>);
+    const project = await this.getProject(id);
+    if (!project) {
+      throw new Error(`Project not found: ${id}`);
+    }
+    return this.updateProject(id, {
+      zoneConfig: {
+        ...project.zoneConfig,
+        ...zoneConfig
+      }
+    });
   }
 
   async updateZoneContextId(zoneId: string, zoneContextId: string): Promise<void> {

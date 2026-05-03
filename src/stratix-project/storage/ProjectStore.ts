@@ -187,7 +187,12 @@ export class ProjectStore {
 
   public async importData(jsonData: string): Promise<void> {
     await this.ensureInitialized();
-    const data = JSON.parse(jsonData) as ProjectDatabase;
+    let data: ProjectDatabase;
+    try {
+      data = JSON.parse(jsonData) as ProjectDatabase;
+    } catch (error) {
+      throw new Error(`Invalid JSON data: ${error instanceof Error ? error.message : String(error)}`);
+    }
     this.db.data = data;
     await this.persist();
   }
@@ -342,7 +347,7 @@ export class ProjectStore {
     await this.refresh();
 
     const messages = this.db.data.messages[projectId] || [];
-    return messages.filter(m => m.mentions.includes(agentId));
+    return JSON.parse(JSON.stringify(messages.filter(m => m.mentions.includes(agentId))));
   }
 
   public async getLastMessageTime(projectId: string): Promise<number> {

@@ -104,29 +104,25 @@ export class ProjectManagementExampleScene extends Phaser.Scene {
     const eventBus = this.projectManager.getEventBus();
 
     // 监听项目创建事件
-    (eventBus as any).on('project:created', ({ project }: { project: Project }) => {
+    eventBus.on('project:created', ({ project }) => {
       console.log('[ProjectManagement] Project created:', project.name);
     });
 
     // 监听项目更新事件
-    (eventBus as any).on('project:updated', ({ project }: { project: Project }) => {
+    eventBus.on('project:updated', ({ project }) => {
       console.log('[ProjectManagement] Project updated:', project.name);
     });
 
     // 监听项目删除事件
-    (eventBus as any).on('project:deleted', ({ projectId }: { projectId: string }) => {
+    eventBus.on('project:deleted', ({ projectId }) => {
       console.log('[ProjectManagement] Project deleted:', projectId);
     });
 
     // 监听状态变化
-    (eventBus as any).on('project:status-changed', ({ 
+    eventBus.on('project:status-changed', ({ 
       project, 
       oldStatus, 
       newStatus 
-    }: { 
-      project: Project; 
-      oldStatus: string; 
-      newStatus: string 
     }) => {
       console.log(`[ProjectManagement] ${project.name}: ${oldStatus} -> ${newStatus}`);
     });

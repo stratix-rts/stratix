@@ -95,7 +95,7 @@ export class ProjectZonePreview {
       const dx = side.endX - side.startX;
       const dy = side.endY - side.startY;
       const length = Math.sqrt(dx * dx + dy * dy);
-      const steps = Math.floor(length / this.config.postSpacing);
+      const steps = Math.max(1, Math.floor(length / this.config.postSpacing));
 
       for (let i = 0; i <= steps; i++) {
         const t = i / steps;

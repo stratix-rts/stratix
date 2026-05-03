@@ -5,3 +5,4 @@ export * from './core/ProjectManager';
 export * from './core/ProjectZone';
 export * from './core/ProjectZonePreview';
 export * from './ProjectManagerIntegration';
+export * from './ProjectClient';

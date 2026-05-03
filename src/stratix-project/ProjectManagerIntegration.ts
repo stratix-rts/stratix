@@ -1,5 +1,6 @@
 import axios from 'axios';
 import mitt from 'mitt';
+import type { Emitter } from 'mitt';
 import Phaser from 'phaser';
 
 import { rtsEventBus } from '../stratix-rts/events/core/RTSEventBus';
@@ -17,12 +18,21 @@ export interface ProjectManagerIntegrationConfig {
   autoLoad?: boolean;
 }
 
+type ProjectManagerEvents = {
+  'project:created': { project: Project };
+  'project:updated': { project: Project };
+  'project:deleted': { projectId: string };
+  'project:status-changed': { project: Project; oldStatus: string; newStatus: string };
+  'projects:loaded': void;
+  'project:zone-moved': { project: Project } & Record<string, unknown>;
+};
+
 export class ProjectManagerIntegration {
   private scene: Phaser.Scene;
   private projectClient: ProjectClient;
   private unifiedZoneManager: UnifiedZoneManager;
   private projectZonePreview: ProjectZonePreview;
-  private eventBus: ReturnType<typeof mitt>;
+  private eventBus: Emitter<ProjectManagerEvents>;
   private isDrawingProjectZone: boolean = false;
   private visibleZones: Set<string> = new Set();
   private viewportUpdateThrottled: (camera: Phaser.Cameras.Scene2D.Camera) => void;
@@ -31,7 +41,7 @@ export class ProjectManagerIntegration {
     this.scene = scene;
     this.unifiedZoneManager = unifiedZoneManager;
     
-    this.eventBus = mitt();
+    this.eventBus = mitt<ProjectManagerEvents>();
     this.projectClient = new ProjectClient();
     
     this.projectZonePreview = new ProjectZonePreview(scene, {
@@ -54,21 +64,21 @@ export class ProjectManagerIntegration {
   }
 
   public onLoaded(callback: () => void): void {
-    (this.eventBus as any).on('projects:loaded', callback);
+    this.eventBus.on('projects:loaded', callback);
   }
 
   private setupEventListeners(): void {
-    (this.eventBus as any).on('project:created', ({ project }: any) => {
+    this.eventBus.on('project:created', ({ project }) => {
       console.log('[ProjectManager] Project created:', project.id);
       this.createProjectZone(project);
     });
 
-    (this.eventBus as any).on('project:updated', ({ project }: any) => {
+    this.eventBus.on('project:updated', ({ project }) => {
       console.log('[ProjectManager] Project updated:', project.id);
       this.updateProjectZone(project);
     });
 
-    (this.eventBus as any).on('project:deleted', ({ projectId }: any) => {
+    this.eventBus.on('project:deleted', ({ projectId }) => {
       console.log('[ProjectManager] Project deleted:', projectId);
       this.removeProjectZone(projectId);
     });
@@ -238,7 +248,7 @@ export class ProjectManagerIntegration {
       });
 
       // Create Zone context for the project with retry
-      let createdZone: any = null;
+      let createdZone: { id: string } | null = null;
       const maxRetries = 3;
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
@@ -248,7 +258,7 @@ export class ProjectManagerIntegration {
             prompt: ''
           });
           createdZone = response.data.zone;
-          console.log('[ProjectManager] Zone context created for project:', project.id, createdZone.id);
+          console.log('[ProjectManager] Zone context created for project:', project.id, createdZone?.id);
           break; // Success, exit retry loop
         } catch (zoneError) {
           console.error(`[ProjectManager] Zone context creation attempt ${attempt}/${maxRetries} failed:`, zoneError);
@@ -292,7 +302,7 @@ export class ProjectManagerIntegration {
     return this.unifiedZoneManager.getProjectZones();
   }
 
-  public getEventBus(): ReturnType<typeof mitt> {
+  public getEventBus(): Emitter<ProjectManagerEvents> {
     return this.eventBus;
   }
 
@@ -347,7 +357,10 @@ export class ProjectManagerIntegration {
    */
   private async fetchZoneContext(projectId: string): Promise<{ title: string; prompt: string; members: string[] } | null> {
     try {
-      const response = await axios.get(`/api/zones/${projectId}`);
+      const response = await axios.get<{
+        success?: boolean;
+        zone?: { title: string; prompt: string; members: string[] };
+      }>(`/api/zones/${projectId}`);
       if (response.data.success && response.data.zone) {
         return {
           title: response.data.zone.title,

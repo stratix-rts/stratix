@@ -40,13 +40,13 @@ export function validateProgress(progress: number): boolean {
 export const PROJECT_STATUS_VALUES = ['pending', 'active', 'paused', 'completed', 'failed'] as const;
 
 export function validateProjectStatus(status: string): status is 'pending' | 'active' | 'paused' | 'completed' | 'failed' {
-  return PROJECT_STATUS_VALUES.includes(status as any);
+  return (PROJECT_STATUS_VALUES as readonly string[]).includes(status);
 }
 
 export const TASK_STATUS_VALUES = ['pending', 'configured', 'waiting', 'running', 'completed', 'paused', 'failed'] as const;
 
 export function validateTaskStatus(status: string): status is 'pending' | 'configured' | 'waiting' | 'running' | 'completed' | 'paused' | 'failed' {
-  return TASK_STATUS_VALUES.includes(status as any);
+  return (TASK_STATUS_VALUES as readonly string[]).includes(status);
 }
 
 export function validateRequired(value: any, fieldName: string): void {
@@ -87,7 +87,7 @@ export function debounce<T extends (...args: any[]) => any>(
 ): (...args: Parameters<T>) => void {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-  return function(this: any, ...args: Parameters<T>) {
+  return function(this: unknown, ...args: Parameters<T>) {
     if (timeoutId) {
       clearTimeout(timeoutId);
       timeoutId = null;
@@ -107,7 +107,7 @@ export function throttle<T extends (...args: any[]) => any>(
   let inThrottle: boolean = false;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-  return function(this: any, ...args: Parameters<T>) {
+  return function(this: unknown, ...args: Parameters<T>) {
     if (!inThrottle) {
       func.apply(this, args);
       inThrottle = true;

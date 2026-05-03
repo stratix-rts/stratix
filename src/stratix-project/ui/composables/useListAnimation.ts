@@ -5,8 +5,8 @@ export const listTransitionProps = {
   moveClass: 'list-move',
   enterFromClass: 'list-enter-from',
   leaveToClass: 'list-leave-to',
-}
+} as const
 
-export function useListAnimation() {
+export function useListAnimation(): { listTransitionProps: typeof listTransitionProps } {
   return { listTransitionProps }
 }

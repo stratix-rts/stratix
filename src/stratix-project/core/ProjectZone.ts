@@ -185,7 +185,8 @@ export class ProjectZone extends BaseZone {
 
   private redrawWithCustomColors(): void {
     const statusColor = this.getStatusColor();
-    const color = this.isWarningState()
+    const warning = this.isWarningState();
+    const color = warning
       ? PROJECT_ZONE_COLORS.warning
       : this.isSelected
         ? PROJECT_ZONE_COLORS.selected
@@ -199,7 +200,7 @@ export class ProjectZone extends BaseZone {
     this.graphics.strokeRect(-halfW, -halfH, this.zoneWidth, this.zoneHeight);
 
     if (this.isSelected) {
-      this.graphics.fillStyle(color, this.isWarningState() ? 0.25 : 0.15);
+      this.graphics.fillStyle(color, warning ? 0.25 : 0.15);
       this.graphics.fillRect(-halfW, -halfH, this.zoneWidth, this.zoneHeight);
     }
 
@@ -209,7 +210,7 @@ export class ProjectZone extends BaseZone {
 
     this.cornerHandles.forEach((handle) => {
       handle.setVisible(this.isSelected);
-      handle.setFillStyle(this.isWarningState() ? PROJECT_ZONE_COLORS.warning : PROJECT_ZONE_COLORS.corner);
+      handle.setFillStyle(warning ? PROJECT_ZONE_COLORS.warning : PROJECT_ZONE_COLORS.corner);
       handle.setRadius(8);
     });
 

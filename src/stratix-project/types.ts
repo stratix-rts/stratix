@@ -157,13 +157,13 @@ export interface TaskLog {
   timestamp: Date;
   level: 'info' | 'warning' | 'error' | 'success';
   message: string;
-  details?: any;
+  details?: unknown;
 }
 
 export interface TaskResult {
   status: 'success' | 'failed';
   outputFiles: string[];
-  outputData?: any;
+  outputData?: unknown;
   error?: string;
   logs: TaskLog[];
   completedAt: Date;
@@ -319,7 +319,7 @@ export interface FileMetadata {
   currentVersionId?: string;     // 当前版本 ID
   size?: number;
   mimeType?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 // ============================================

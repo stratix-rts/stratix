@@ -177,7 +177,7 @@ export class ProjectManager {
       await this.lraClient.init(projectPath, projectName);
       console.log(`[ProjectManager] LRA initialized for project: ${projectName}`);
     } catch (error) {
-      console.error('[ProjectManager] Failed to initialize LRA:', error);
+      console.error('[ProjectManager] Failed to initialize LRA:', error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -248,6 +248,10 @@ export class ProjectManager {
     const project = await this.getProject(projectId);
     if (!project) {
       throw new Error(`Project not found: ${projectId}`);
+    }
+
+    if (!project.presentAgentIds.includes(agentId)) {
+      return;
     }
 
     project.presentAgentIds = project.presentAgentIds.filter(id => id !== agentId);
