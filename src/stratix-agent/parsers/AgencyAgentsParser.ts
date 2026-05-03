@@ -30,6 +30,13 @@ interface ParseResult {
 }
 
 // ============================================
+// Structured logging helper
+// ============================================
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[AgencyAgentsParser] ${message}`, ctx || '');
+}
+
+// ============================================
 // Constants
 // ============================================
 const DEFAULT_VERSION = '1.0.0';
@@ -120,11 +127,11 @@ export class AgencyAgentsParser {
         templates.push(template);
       } catch (error) {
         errors.push(`Failed to parse ${file}: ${error}`);
-        console.error(`Failed to parse ${file}:`, error);
+        log('error', 'Failed to parse file', { file, error: String(error) });
       }
     }
 
-    console.log(`Imported ${templates.length} templates, ${errors.length} failures`);
+    log('info', 'Import completed', { imported: templates.length, failures: errors.length });
     return templates;
   }
 

@@ -169,91 +169,122 @@ export class SessionRuntime {
 
     const startTime = Date.now();
     const turnId = generateTurnId();
+
+    await this.recordUserMessage(session, message, turnId, startTime);
+
+    const { response, usage, retries, interrupted, error } = await this.executeWithRetries(
+      session,
+      message,
+      timeout,
+      signal,
+      maxRetries
+    );
+
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+
+    await this.recordAssistantMessage(session, response, turnId, retries, usage, endTime);
+    this.updateSessionUsage(session, usage, endTime);
+    this.syncSessionToStateStore(session);
+
+    const metadata: TurnMetadata = {
+      turnId,
+      sessionId,
+      timestamp: endTime,
+      duration,
+      retries,
+      interrupted,
+      error: retries > maxRetries ? error : undefined,
+    };
+
+    return {
+      response,
+      usage,
+      metadata,
+      interrupted,
+    };
+  }
+
+  private async recordUserMessage(
+    session: SessionContext,
+    message: string,
+    turnId: string,
+    timestamp: number
+  ): Promise<void> {
+    session.messages.push({ id: turnId, role: 'user', content: message, timestamp });
+    await this.transcriptStore.append({ sessionId: session.sessionId, turnId, role: 'user', content: message, timestamp });
+  }
+
+  private async executeWithRetries(
+    session: SessionContext,
+    message: string,
+    timeout: number,
+    signal: AbortSignal | undefined,
+    maxRetries: number
+  ): Promise<{ response: string; usage: TokenUsage; retries: number; interrupted: boolean; error?: string }> {
     let retries = 0;
     let interrupted = false;
     let error: string | undefined;
-
-    // Add user message to session
-    const userMsg: ChatMessage = {
-      id: turnId,
-      role: 'user',
-      content: message,
-      timestamp: startTime,
-    };
-    session.messages.push(userMsg);
-
-    // Record in transcript
-    const userEntry: TranscriptEntry = {
-      sessionId,
-      turnId,
-      role: 'user',
-      content: message,
-      timestamp: startTime,
-    };
-    await this.transcriptStore.append(userEntry);
-
-    // Execute turn with retries
     let response = '';
     let usage = createEmptyUsage();
 
     while (retries <= maxRetries) {
       try {
-        // Check abort signal
         if (signal?.aborted) {
           interrupted = true;
           break;
         }
-
-        // Execute the actual turn - placeholder for agent execution
-        // In real implementation, this would call the agent runtime
         const result = await this.executeAgentTurn(session, message, timeout, signal);
-
         response = result.response;
         usage = result.usage;
         break;
       } catch (err) {
         retries++;
         error = err instanceof Error ? err.message : String(err);
-
         if (retries > maxRetries) {
           response = `Error after ${maxRetries} retries: ${error}`;
         }
       }
     }
 
-    const endTime = Date.now();
-    const duration = endTime - startTime;
+    return { response, usage, retries, interrupted, error };
+  }
 
-    // Add assistant response to session
-    const assistantMsg: ChatMessage = {
+  private async recordAssistantMessage(
+    session: SessionContext,
+    response: string,
+    turnId: string,
+    retries: number,
+    usage: TokenUsage,
+    timestamp: number
+  ): Promise<void> {
+    session.messages.push({
       id: `asst_${turnId}`,
       role: 'assistant',
       content: response,
-      timestamp: endTime,
+      timestamp,
       metadata: { turnId, retries },
-    };
-    session.messages.push(assistantMsg);
-
-    // Record in transcript
-    const assistantEntry: TranscriptEntry = {
-      sessionId,
+    });
+    await this.transcriptStore.append({
+      sessionId: session.sessionId,
       turnId: `asst_${turnId}`,
       role: 'assistant',
       content: response,
-      timestamp: endTime,
+      timestamp,
       usage,
       metadata: { originalTurnId: turnId, retries },
-    };
-    await this.transcriptStore.append(assistantEntry);
+    });
+  }
 
-    // Update session usage
+  private updateSessionUsage(session: SessionContext, usage: TokenUsage, timestamp: number): void {
     session.usage.promptTokens += usage.promptTokens;
     session.usage.completionTokens += usage.completionTokens;
     session.usage.totalTokens += usage.totalTokens;
     session.usage.turnCount += 1;
-    session.updatedAt = endTime;
+    session.updatedAt = timestamp;
+  }
 
-    // Sync to StateStore
+  private syncSessionToStateStore(session: SessionContext): void {
     const sessionState: SessionState = {
       id: session.sessionId,
       agentId: session.agentId,
@@ -272,24 +303,7 @@ export class SessionRuntime {
       },
       startedAt: session.createdAt,
     };
-    stratixStateStore.setSession(sessionId, sessionState);
-
-    const metadata: TurnMetadata = {
-      turnId,
-      sessionId,
-      timestamp: endTime,
-      duration,
-      retries,
-      interrupted,
-      error: retries > maxRetries ? error : undefined,
-    };
-
-    return {
-      response,
-      usage,
-      metadata,
-      interrupted,
-    };
+    stratixStateStore.setSession(session.sessionId, sessionState);
   }
 
   /**

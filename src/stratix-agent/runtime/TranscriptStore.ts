@@ -11,6 +11,13 @@ import type { TranscriptEntry, TranscriptQuery } from './types.js';
 
 const DEFAULT_QUERY_LIMIT = 1000;
 
+// ============================================
+// Structured logging helper
+// ============================================
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[TranscriptStore] ${message}`, ctx || '');
+}
+
 export class TranscriptStore {
   private baseDir: string;
 
@@ -135,7 +142,7 @@ export class TranscriptStore {
       const lines = content.split('\n').filter((line) => line.trim() !== '');
       return lines.map((line) => JSON.parse(line) as TranscriptEntry);
     } catch (e) {
-      console.warn(`[TranscriptStore] Failed to read entries from ${filePath}:`, e);
+      log('warn', 'Failed to read entries', { filePath, error: String(e) });
       return [];
     }
   }
@@ -149,7 +156,7 @@ export class TranscriptStore {
     try {
       await unlink(filePath);
     } catch (err: unknown) {
-      console.warn(`[TranscriptStore] Failed to delete transcript for session ${sessionId}:`, err);
+      log('warn', 'Failed to delete transcript', { sessionId, error: String(err) });
     }
   }
 

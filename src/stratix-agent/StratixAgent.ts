@@ -16,7 +16,7 @@ import { SkillTrigger } from './core/SkillTrigger';
 import { StorageManager } from './core/StorageManager';
 import { TokenManager } from './core/TokenManager';
 import { ToolUseLoop } from './core/ToolUseLoop';
-import { AgentConfig, SoulConfig, AgentResponse, SkillResult } from './types';
+import { AgentConfig, SoulConfig, AgentResponse, SkillResult, ChatMessage, GenerateResult, Session, HealthStatus, MetricsData } from './types';
 
 // ============================================
 // Constants
@@ -31,6 +31,13 @@ const DEFAULT_TOOL_USE_MAX_TOTAL_TIME_MS = 120000;
 const DEFAULT_MAX_TOOL_CALLS = 20;
 const BACKGROUND_SAVE_INTERVAL_MS = 300000; // 5 minutes
 const HEALTH_CHECK_INTERVAL_MS = 60000; // 1 minute
+
+// ============================================
+// Structured logging helper
+// ============================================
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[StratixAgent] ${message}`, ctx || '');
+}
 
 export class StratixAgent {
   public config: AgentConfig;
@@ -134,11 +141,11 @@ export class StratixAgent {
           this.skills.registerSkill(skillDef);
           this.skills.enableSkill(skillDef.skillId);
         } catch (err) {
-          console.warn(`[StratixAgent] Failed to load skill from ${skillPath}:`, err);
+          log('warn', 'Failed to load skill from file', { skillPath, error: String(err) });
         }
       }
     } catch (error) {
-      console.warn('Failed to load builtin skills:', error);
+      log('warn', 'Failed to load builtin skills', { error: String(error) });
     }
   }
 
@@ -163,91 +170,11 @@ export class StratixAgent {
     this.sessions.addMessage(session.sessionId, { role: 'user', content: message });
     this.memory.addMessage('user', message);
 
-    const systemMessages = this.promptBuilder.buildSystemPrompt(
-      this.soul,
-      this.memory.buildContext(),
-      this.skills.getEnabledSkills(),
-      []
-    );
+    const truncatedMessages = this.prepareChatMessages(session.sessionId);
 
-    const historyMessages = this.sessions.getMessages(session.sessionId, DEFAULT_MESSAGE_HISTORY_LIMIT);
-    const truncatedMessages = this.tokenManager.truncateMessages(
-      [...systemMessages, ...historyMessages],
-      0
-    );
-
-    let result;
-    const skillExecutions: SkillResult[] = [];
-
-    // Tool Use 模式：使用结构化工具调用
-    if (useToolUse) {
-      // 如果没有初始化 ToolUseLoop，自动创建
-      if (!this.toolUseLoop) {
-        this.toolUseLoop = new ToolUseLoop(
-          this.skills,
-          this.llm,
-          { maxIterations: DEFAULT_TOOL_USE_MAX_ITERATIONS, maxTotalTime: DEFAULT_TOOL_USE_MAX_TOTAL_TIME_MS }
-        );
-      }
-      const tools = LLMConnector.skillsToTools(this.skills.getEnabledSkills());
-      const loopResult = await this.toolUseLoop.execute(
-        truncatedMessages,
-        tools,
-        {
-          agentId: this.config.agentId,
-          sessionId: session.sessionId,
-          allowedPaths: [process.cwd(), '/tmp'],
-          maxToolCalls: DEFAULT_MAX_TOOL_CALLS
-        }
-      );
-
-      // 将 tool calls 转换为 skill executions
-      for (const tc of loopResult.toolCalls) {
-        skillExecutions.push({
-          success: !tc.error,
-          skillId: tc.name,
-          result: tc.result,
-          error: tc.error,
-          executionTime: tc.executionTime
-        });
-      }
-
-      result = {
-        content: loopResult.finalContent,
-        usage: undefined,
-        finishReason: loopResult.success ? 'stop' as const : 'error' as const
-      };
-    } else {
-      // 传统模式：文本解析
-      if (stream && onChunk) {
-        result = await this.llm.generateStream(truncatedMessages, onChunk);
-      } else {
-        result = await this.llm.generate(truncatedMessages);
-      }
-
-      // 解析并执行文本中的 skill calls（并行执行）
-      const skillCalls = this.skillTrigger.parseSkillCalls(
-        result.content,
-        this.skills.getEnabledSkills()
-      );
-
-      if (skillCalls.length > 0) {
-        const executionResults = await Promise.allSettled(
-          skillCalls.map(call =>
-            this.skills.execute(call.skillId, call.params, {
-              agentId: this.config.agentId,
-              sessionId: session.sessionId,
-            })
-          )
-        );
-
-        for (const execResult of executionResults) {
-          if (execResult.status === 'fulfilled') {
-            skillExecutions.push(execResult.value);
-          }
-        }
-      }
-    }
+    const { result, skillExecutions } = useToolUse
+      ? await this.runToolUseChat(truncatedMessages, session)
+      : await this.runTraditionalChat(truncatedMessages, stream, onChunk, session);
 
     const latency = Date.now() - startTime;
     this.metricsCollector.recordRequest(latency, result.usage?.totalTokens || 0, true);
@@ -261,6 +188,95 @@ export class StratixAgent {
       skillExecutions: skillExecutions.length > 0 ? skillExecutions : undefined,
       usage: result.usage,
     };
+  }
+
+  private prepareChatMessages(sessionId: string): ChatMessage[] {
+    const systemMessages = this.promptBuilder.buildSystemPrompt(
+      this.soul,
+      this.memory.buildContext(),
+      this.skills.getEnabledSkills(),
+      []
+    );
+    const historyMessages = this.sessions.getMessages(sessionId, DEFAULT_MESSAGE_HISTORY_LIMIT);
+    return this.tokenManager.truncateMessages([...systemMessages, ...historyMessages], 0);
+  }
+
+  private async runToolUseChat(
+    messages: ChatMessage[],
+    session: Session
+  ): Promise<{ result: GenerateResult; skillExecutions: SkillResult[] }> {
+    if (!this.toolUseLoop) {
+      this.toolUseLoop = new ToolUseLoop(
+        this.skills,
+        this.llm,
+        { maxIterations: DEFAULT_TOOL_USE_MAX_ITERATIONS, maxTotalTime: DEFAULT_TOOL_USE_MAX_TOTAL_TIME_MS }
+      );
+    }
+    const tools = LLMConnector.skillsToTools(this.skills.getEnabledSkills());
+    const loopResult = await this.toolUseLoop.execute(messages, tools, {
+      agentId: this.config.agentId,
+      sessionId: session.sessionId,
+      allowedPaths: [process.cwd(), '/tmp'],
+      maxToolCalls: DEFAULT_MAX_TOOL_CALLS,
+    });
+
+    const skillExecutions: SkillResult[] = loopResult.toolCalls.map(tc => ({
+      success: !tc.error,
+      skillId: tc.name,
+      result: tc.result,
+      error: tc.error,
+      executionTime: tc.executionTime,
+    }));
+
+    const result: GenerateResult = {
+      content: loopResult.finalContent,
+      usage: undefined,
+      finishReason: loopResult.success ? 'stop' : 'error',
+    };
+
+    return { result, skillExecutions };
+  }
+
+  private async runTraditionalChat(
+    messages: ChatMessage[],
+    stream: boolean | undefined,
+    onChunk: ((chunk: string) => void) | undefined,
+    session: Session
+  ): Promise<{ result: GenerateResult; skillExecutions: SkillResult[] }> {
+    const skillExecutions: SkillResult[] = [];
+
+    const llmResult = stream && onChunk
+      ? await this.llm.generateStream(messages, onChunk)
+      : await this.llm.generate(messages);
+
+    const skillCalls = this.skillTrigger.parseSkillCalls(
+      llmResult.content,
+      this.skills.getEnabledSkills()
+    );
+
+    if (skillCalls.length > 0) {
+      const executionResults = await Promise.allSettled(
+        skillCalls.map(call =>
+          this.skills.execute(call.skillId, call.params, {
+            agentId: this.config.agentId,
+            sessionId: session.sessionId,
+          })
+        )
+      );
+      for (const execResult of executionResults) {
+        if (execResult.status === 'fulfilled') {
+          skillExecutions.push(execResult.value);
+        }
+      }
+    }
+
+    const result: GenerateResult = {
+      content: llmResult.content,
+      usage: llmResult.usage,
+      finishReason: 'stop',
+    };
+
+    return { result, skillExecutions };
   }
 
   /**
@@ -325,7 +341,7 @@ export class StratixAgent {
         await this.memory.save();
         await this.sessions.saveSessions(this.config.agentId);
       } catch (error) {
-        console.error('Background save failed:', error);
+        log('error', 'Background save failed', { error: String(error) });
       }
     }, BACKGROUND_SAVE_INTERVAL_MS);
     this.backgroundTasks.push(saveTask);
@@ -350,11 +366,11 @@ export class StratixAgent {
     this.initialized = false;
   }
 
-  getHealthStatus() {
+  getHealthStatus(): HealthStatus {
     return this.healthChecker.getStatus();
   }
 
-  getMetrics() {
+  getMetrics(): MetricsData {
     return this.metricsCollector.getMetrics();
   }
 }

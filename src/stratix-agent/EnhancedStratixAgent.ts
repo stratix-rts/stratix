@@ -57,6 +57,13 @@ const DEFAULT_TASK_POLL_INTERVAL_MS = 5000;
 const DEFAULT_TRANSCRIPT_LIMIT = 50;
 
 // ============================================
+// Structured logging helper
+// ============================================
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[EnhancedStratixAgent] ${message}`, ctx || '');
+}
+
+// ============================================
 // Internal interfaces for test-proxy access
 // Eliminates `as any` casts by typing the private shape
 // ============================================
@@ -185,7 +192,7 @@ export class EnhancedStratixAgent extends StratixAgent {
           if (this.evolutionManager.canEvolve()) {
             if (!this.evolutionManager.getPendingEvolutionProposal()) {
               this.evolutionManager.performEvolution().catch((err: unknown) => {
-                console.warn(`[EnhancedStratixAgent] Evolution failed:`, err);
+                log('warn', 'Evolution failed', { error: String(err) });
               });
             }
           }
@@ -292,21 +299,8 @@ export class EnhancedStratixAgent extends StratixAgent {
     // 2. 获取 Zone 上下文（通过注入的 provider，消除硬依赖）
     const zoneContext = await this.zoneContextProvider.getZonePromptContext(this.config.agentId);
 
-    // 3. 获取历史消息（用于构建增强提示词）
-    const recentMessages: AgentChatMessage[] = [];
-    if (options?.sessionId) {
-      const sess = await this.runtime.getSession(options.sessionId);
-      if (sess) {
-        // Convert from SessionRuntime ChatMessage to AgentChatMessage
-        for (const m of sess.messages.slice(-DEFAULT_RECENT_MESSAGE_COUNT)) {
-          recentMessages.push({
-            role: m.role,
-            content: m.content,
-            timestamp: m.timestamp ? new Date(m.timestamp).toISOString() : undefined,
-          });
-        }
-      }
-    }
+    // 3. 获取历史消息
+    const recentMessages = await this.buildRecentMessages(options?.sessionId);
 
     // 4. 构建增强提示词
     const systemMessages = this.enhancedPromptBuilder.buildFullSystemPrompt(
@@ -319,17 +313,8 @@ export class EnhancedStratixAgent extends StratixAgent {
       this.memory.buildSkillContext()
     );
 
-    // 5. 使用 SessionRuntime 管理会话
-    let session;
-    if (options?.sessionId) {
-      const existingSession = await this.runtime.getSession(options.sessionId);
-      if (existingSession) {
-        session = existingSession;
-      }
-    }
-    if (!session) {
-      session = await this.runtime.createSession(this.config.agentId);
-    }
+    // 5. 解析或创建会话
+    const session = await this.resolveSession(options?.sessionId);
     this.currentSessionId = session.sessionId;
 
     // 6. 存储增强上下文到 session.memory（供 executeAgentTurn 使用）
@@ -357,11 +342,44 @@ export class EnhancedStratixAgent extends StratixAgent {
         await this.performReflection(message, turnResult.response);
         response.reflectionUsed = true;
       } catch (err: unknown) {
-        console.warn(`[EnhancedStratixAgent] Reflection failed:`, err);
+        log('warn', 'Reflection failed', { error: String(err) });
       }
     }
 
     return response;
+  }
+
+  /**
+   * 从 SessionRuntime 构建最近的历史消息列表
+   */
+  private async buildRecentMessages(sessionId?: string): Promise<AgentChatMessage[]> {
+    const recentMessages: AgentChatMessage[] = [];
+    if (!sessionId) return recentMessages;
+
+    const sess = await this.runtime.getSession(sessionId);
+    if (!sess) return recentMessages;
+
+    for (const m of sess.messages.slice(-DEFAULT_RECENT_MESSAGE_COUNT)) {
+      recentMessages.push({
+        role: m.role,
+        content: m.content,
+        timestamp: m.timestamp ? new Date(m.timestamp).toISOString() : undefined,
+      });
+    }
+    return recentMessages;
+  }
+
+  /**
+   * 获取现有会话或创建新会话
+   */
+  private async resolveSession(sessionId?: string): Promise<SessionContext> {
+    if (sessionId) {
+      const existingSession = await this.runtime.getSession(sessionId);
+      if (existingSession) {
+        return existingSession;
+      }
+    }
+    return this.runtime.createSession(this.config.agentId);
   }
 
   /**
@@ -527,7 +545,7 @@ export class EnhancedStratixAgent extends StratixAgent {
       try {
         await this.runtime.destroy(this.currentSessionId);
       } catch (err: unknown) {
-        console.warn(`[EnhancedStratixAgent] Failed to destroy session on stop:`, err);
+        log('warn', 'Failed to destroy session on stop', { error: String(err) });
       }
       this.currentSessionId = null;
     }
@@ -542,7 +560,7 @@ export class EnhancedStratixAgent extends StratixAgent {
       try {
         this.runtime.destroy(this.currentSessionId);
       } catch (err: unknown) {
-        console.warn(`[EnhancedStratixAgent] Failed to destroy session on cleanup:`, err);
+        log('warn', 'Failed to destroy session on cleanup', { error: String(err) });
       }
       this.currentSessionId = null;
     }
@@ -574,11 +592,11 @@ export class EnhancedStratixAgent extends StratixAgent {
    */
   async startTaskPolling(intervalMs: number = DEFAULT_TASK_POLL_INTERVAL_MS): Promise<void> {
     if (this.taskPollInterval) {
-      console.warn(`[Agent ${this.config.agentId}] Task polling already running`);
+      log('warn', 'Task polling already running', { agentId: this.config.agentId });
       return;
     }
 
-    console.log(`[Agent ${this.config.agentId}] Starting task polling every ${intervalMs}ms`);
+    log('info', 'Starting task polling', { agentId: this.config.agentId, intervalMs });
 
     // Initial fetch
     await this.pollTasksInternal();
@@ -596,7 +614,7 @@ export class EnhancedStratixAgent extends StratixAgent {
     if (this.taskPollInterval) {
       clearInterval(this.taskPollInterval);
       this.taskPollInterval = null;
-      console.log(`[Agent ${this.config.agentId}] Task polling stopped`);
+      log('info', 'Task polling stopped', { agentId: this.config.agentId });
     }
   }
 
@@ -620,10 +638,10 @@ export class EnhancedStratixAgent extends StratixAgent {
           priority: t.priority,
         }));
 
-        console.log(`[Agent ${this.config.agentId}] Polled ${tasks.length} pending tasks`);
+        log('info', 'Polled pending tasks', { agentId: this.config.agentId, count: tasks.length });
       }
     } catch (error) {
-      console.error(`[Agent ${this.config.agentId}] Task polling error:`, error);
+      log('error', 'Task polling error', { agentId: this.config.agentId, error: String(error) });
     }
   }
 
@@ -660,7 +678,7 @@ export class EnhancedStratixAgent extends StratixAgent {
       }
       return false;
     } catch (error) {
-      console.error(`[Agent ${this.config.agentId}] Failed to complete task ${taskId}:`, error);
+      log('error', 'Failed to complete task', { agentId: this.config.agentId, taskId, error: String(error) });
       return false;
     }
   }
