@@ -147,7 +147,8 @@ export class MCPResultTransformer {
       return { type: 'text', text: block.text };
     }
 
-    const truncated = block.text.slice(0, this.config.maxTextLength);
+    const suffix = '...[truncated]';
+    const truncated = block.text.slice(0, Math.max(0, this.config.maxTextLength - suffix.length)) + suffix;
     return { type: 'text', text: truncated, truncated: true };
   }
 
@@ -186,16 +187,16 @@ export class MCPResultTransformer {
    */
   private async transformBinary(block: RawBinaryBlock): Promise<BinaryBlock> {
     const dataBuffer = Buffer.from(block.data, 'base64');
-    const fileName = block.fileName ?? `mcp_binary_${Date.now()}`;
+    const safeFileName = block.fileName?.replace(/[^a-zA-Z0-9._-]/g, '_') ?? `mcp_binary_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const tmpDir = os.tmpdir();
-    const filePath = path.join(tmpDir, fileName);
+    const filePath = path.join(tmpDir, safeFileName);
 
     await fs.writeFile(filePath, dataBuffer);
 
     return {
       type: 'binary',
       filePath,
-      fileName,
+      fileName: safeFileName,
       mimeType: block.mimeType,
       sizeBytes: dataBuffer.length,
     };

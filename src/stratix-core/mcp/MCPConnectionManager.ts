@@ -25,8 +25,8 @@ import {
 
 interface InternalConnection {
   handle: ConnectionHandle;
-  reconnectTimer?: ReturnType<typeof setTimeout>;
-  healthCheckTimer?: ReturnType<typeof setInterval>;
+  reconnectTimer: ReturnType<typeof setTimeout> | null;
+  healthCheckTimer: ReturnType<typeof setInterval> | null;
   isIntentionalDisconnect: boolean;
 }
 
@@ -66,6 +66,8 @@ export class MCPConnectionManager {
 
     const internal: InternalConnection = {
       handle,
+      reconnectTimer: null,
+      healthCheckTimer: null,
       isIntentionalDisconnect: false,
     };
 
@@ -255,8 +257,9 @@ export class MCPConnectionManager {
       if (internal.isIntentionalDisconnect) return;
       try {
         await this.establishConnection(serverRef, handle, internal, config);
-      } catch {
+      } catch (err) {
         // establishConnection handles scheduling the next reconnect
+        console.warn(`[MCPConnectionManager] Reconnect attempt failed for ${serverRef.id}:`, err);
       }
     }, delay);
   }
@@ -287,14 +290,14 @@ export class MCPConnectionManager {
   private clearHealthCheck(internal: InternalConnection): void {
     if (internal.healthCheckTimer) {
       clearInterval(internal.healthCheckTimer);
-      internal.healthCheckTimer = undefined;
+      internal.healthCheckTimer = null;
     }
   }
 
   private clearTimers(internal: InternalConnection): void {
     if (internal.reconnectTimer) {
       clearTimeout(internal.reconnectTimer);
-      internal.reconnectTimer = undefined;
+      internal.reconnectTimer = null;
     }
     this.clearHealthCheck(internal);
   }
