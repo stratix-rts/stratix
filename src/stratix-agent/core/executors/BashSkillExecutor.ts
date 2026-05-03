@@ -1,4 +1,4 @@
-import { exec } from 'child_process';
+import { exec, ExecException, ExecOptions } from 'child_process';
 
 import { SkillDefinition, SkillExecutor, ExecutionContext } from '../../types';
 import { SafetyValidator } from '../SafetyValidator';
@@ -26,13 +26,13 @@ export class BashSkillExecutor implements SkillExecutor {
 
     // 执行命令
     return new Promise((resolve, reject) => {
-      const options: any = {
-        timeout: Math.min((timeout as number), 120) * 1000,  // 最多120秒
-        maxBuffer: 10 * 1024 * 1024  // 10MB
+      const options: { timeout: number; maxBuffer: number; cwd?: string } = {
+        timeout: Math.min((timeout as number), 120) * 1000,
+        maxBuffer: 10 * 1024 * 1024
       };
       if (cwd) options.cwd = cwd;
 
-      exec(command, options, (error: any, stdout: string, stderr: string) => {
+      exec(command, options, (error, stdout, stderr) => {
         if (error) {
           progress?.({ skillId: skill.skillId, stage: 'failed' });
           reject(new Error(`Command failed: ${error.message}\nStderr: ${stderr}`));

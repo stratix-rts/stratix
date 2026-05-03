@@ -1,5 +1,17 @@
 import { SkillDefinition, SkillExecutor, ExecutionContext } from '../../types';
 
+interface ZoneApiItem {
+  id?: string;
+  zoneId?: string;
+  name?: string;
+  title?: string;
+  prompt?: string;
+  members?: unknown[];
+  status?: string;
+  projectId?: string;
+  createdAt?: string;
+}
+
 /**
  * 带重试的 fetch 封装
  */
@@ -166,7 +178,8 @@ export class ZoneSkillExecutor implements SkillExecutor {
         }
 
         const data = await response.json();
-        const zones = (data.zones || []).map((zone: any) => ({
+        interface ZoneApiItem { id?: string; zoneId?: string; name?: string; title?: string; prompt?: string; members?: unknown[]; status?: string; }
+        const zones = (data.zones || []).map((zone: ZoneApiItem) => ({
           zoneId: zone.id || zone.zoneId,
           name: zone.name || zone.title || 'Unnamed Zone',
           title: zone.title || '',
@@ -223,7 +236,7 @@ export class ZoneSkillExecutor implements SkillExecutor {
         }
 
         const data = await response.json();
-        const zones = (data.zones || []).map((zone: any) => ({
+        const zones = (data.zones || []).map((zone: ZoneApiItem & { projectId?: string }) => ({
           zoneId: zone.id || zone.zoneId,
           name: zone.name || zone.title || 'Unnamed Zone',
           title: zone.title || '',
@@ -262,7 +275,7 @@ export class ZoneSkillExecutor implements SkillExecutor {
         }
 
         const data = await response.json();
-        const zones = (data.zones || []).map((zone: any) => ({
+        const zones = (data.zones || []).map((zone: ZoneApiItem & { projectId?: string; createdAt?: string }) => ({
           zoneId: zone.id || zone.zoneId,
           name: zone.name || zone.title || 'Unnamed Zone',
           title: zone.title || '',

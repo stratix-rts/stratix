@@ -98,13 +98,15 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
     const { code, language } = params;
     const progress = context.progressCallback;
     const config = this.getSandboxConfig(context);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const progressAny = progress as any;
 
     progress?.({ skillId: skill.skillId, stage: 'started', message: `Executing ${language}...` });
 
     if (language === 'javascript') {
-      return this.executeJavaScript(code, progress, config);
+      return this.executeJavaScript(code, progressAny, config);
     } else if (language === 'python') {
-      return this.executePython(code, progress, config);
+      return this.executePython(code, progressAny, config);
     } else {
       throw new Error(`Unsupported language: ${language}. Supported: javascript, python`);
     }
@@ -137,7 +139,9 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
     return { valid: true };
   }
 
-  private executeJavaScript(code: string, progress?: (p: any) => void, config?: ReturnType<typeof this.getSandboxConfig>): Promise<any> {
+  private executeJavaScript(code: string, progress?: (p: unknown) => void, config?: ReturnType<typeof this.getSandboxConfig>): Promise<unknown> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const progressAny = progress as any;
     return new Promise((resolve, reject) => {
       try {
         // Validate code before execution
@@ -150,7 +154,7 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
         // Capture console.log output
         const logs: string[] = [];
         const mockConsole = {
-          log: (...args: any[]) => {
+          log: (...args: unknown[]) => {
             const msg = args.map(String).join(' ');
             // Enforce output size limit
             if (logs.join('\n').length + msg.length > (config?.maxOutputSize ?? 1024 * 1024)) {
@@ -159,10 +163,10 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
             }
             logs.push(msg);
           },
-          error: (...args: any[]) => logs.push('[error] ' + args.map(String).join(' ')),
-          warn: (...args: any[]) => logs.push('[warn] ' + args.map(String).join(' ')),
-          info: (...args: any[]) => logs.push('[info] ' + args.map(String).join(' ')),
-          debug: (...args: any[]) => logs.push('[debug] ' + args.map(String).join(' ')),
+          error: (...args: unknown[]) => logs.push('[error] ' + args.map(String).join(' ')),
+          warn: (...args: unknown[]) => logs.push('[warn] ' + args.map(String).join(' ')),
+          info: (...args: unknown[]) => logs.push('[info] ' + args.map(String).join(' ')),
+          debug: (...args: unknown[]) => logs.push('[debug] ' + args.map(String).join(' ')),
         };
 
         // Create a sandboxed function with limited globals
@@ -212,7 +216,7 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
         // These cannot be used as function parameter names but are either global or handled separately
         const INVALID_IDENTIFIERS = new Set(['null', 'true', 'false', 'undefined', 'Infinity', 'NaN']);
         const validKeys: string[] = [];
-        const validValues: any[] = [];
+        const validValues: unknown[] = [];
         for (let i = 0; i < sandboxKeys.length; i++) {
           const key = sandboxKeys[i];
           // Skip invalid identifiers that can't be function parameter names
@@ -254,7 +258,7 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
         const result = fn(...validValues);
 
         // Handle async results
-        const handleResult = (value: any) => {
+        const handleResult = (value: unknown) => {
           if (timeoutId) clearTimeout(timeoutId);
           progress?.({ skillId: 'code_execute', stage: 'completed' });
           const output = logs.length > 0 ? logs.join('\n') : String(value);
@@ -319,7 +323,9 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
     return { valid: true };
   }
 
-  private executePython(code: string, progress?: (p: any) => void, config?: ReturnType<typeof this.getSandboxConfig>): Promise<any> {
+  private executePython(code: string, progress?: (p: unknown) => void, config?: ReturnType<typeof this.getSandboxConfig>): Promise<unknown> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const progressAny = progress as any;
     return new Promise((resolve, reject) => {
 
       // Validate code before execution

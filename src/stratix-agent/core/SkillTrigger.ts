@@ -42,11 +42,13 @@ export class SkillTrigger {
     return calls;
   }
 
-  private isValidSkillCall(call: any, skills: SkillDefinition[]): boolean {
+  private isValidSkillCall(call: unknown, skills: SkillDefinition[]): boolean {
+    if (!call || typeof call !== 'object') return false;
+    const c = call as Record<string, unknown>;
     return (
-      typeof call.skillId === 'string' &&
-      this.skillExists(call.skillId, skills) &&
-      typeof call.params === 'object'
+      typeof c.skillId === 'string' &&
+      this.skillExists(c.skillId, skills) &&
+      (c.params === undefined || typeof c.params === 'object')
     );
   }
 
