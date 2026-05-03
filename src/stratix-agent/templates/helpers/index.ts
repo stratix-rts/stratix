@@ -37,10 +37,11 @@ export function registerHelpers(handlebars: typeof Handlebars): void {
   handlebars.registerHelper('not', (val: unknown): boolean => !val);
 
   // String helpers
-  handlebars.registerHelper('truncate', (str: unknown, len: number): string => {
+  handlebars.registerHelper('truncate', (str: unknown, len: unknown): string => {
     const s = str == null ? '' : String(str);
-    if (s.length <= len) return s;
-    return s.slice(0, len) + '...';
+    const maxLen = typeof len === 'number' ? len : 100;
+    if (s.length <= maxLen) return s;
+    return s.slice(0, maxLen) + '...';
   });
 
   handlebars.registerHelper('upper', (str: string | undefined): string => {
@@ -90,8 +91,9 @@ export function registerHelpers(handlebars: typeof Handlebars): void {
   });
 
   // Join array elements
-  handlebars.registerHelper('join', (arr: string[], separator = ', '): string => {
-    return arr?.join(separator) || '';
+  handlebars.registerHelper('join', (arr: string[], separator: unknown): string => {
+    const sep = typeof separator === 'string' ? separator : ', ';
+    return arr?.join(sep) || '';
   });
 
   // Default value

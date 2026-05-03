@@ -17,6 +17,10 @@ import { BashSkillExecutor } from './BashSkillExecutor';
 import { ZoneSkillExecutor } from './ZoneSkillExecutor';
 import { DefaultSkillExecutor } from './DefaultSkillExecutor';
 
+function log(level: 'warn', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[ExecutorFactory] ${message}`, ctx || '');
+}
+
 /**
  * Factory function to create a SkillExecutor by type.
  * Maintains backward-compatible signature.
@@ -38,6 +42,7 @@ export function createExecutor(type: string): SkillExecutor {
     case 'zone_coordinator':
       return new ZoneCoordinatorSkillExecutor();
     default:
+      log('warn', `Unknown executor type "${type}", falling back to DefaultSkillExecutor`);
       return new DefaultSkillExecutor();
   }
 }
