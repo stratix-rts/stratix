@@ -133,6 +133,7 @@ export class ZoneCoordinator {
   private agentCapabilities: Map<string, Map<string, AgentCapability>> = new Map();
   private pendingTasks: TaskItem[] = [];
   private activeTasks: Map<string, TaskItem> = new Map();
+  private completedTaskIds: Set<string> = new Set();
   private lastAssignedIndex: number = -1;
   private permissionOrchestrator: PermissionOrchestrator | null = null;
 
@@ -511,6 +512,9 @@ export class ZoneCoordinator {
     const { url, apiKey, model } = this.getLLMConfig();
     const provider = this.config.llmProvider || 'openai';
 
+    // Use shorter timeout for ollama/local providers (likely to fail fast)
+    const timeout = provider === 'ollama' ? 3000 : 30000;
+
     let body: Record<string, unknown>;
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -552,7 +556,7 @@ export class ZoneCoordinator {
           method: 'POST',
           headers,
           body: JSON.stringify(body),
-          signal: AbortSignal.timeout(30000),
+          signal: AbortSignal.timeout(timeout),
         });
 
         if (!response.ok) {
@@ -985,6 +989,8 @@ ${assignStrategyDescription}
       this.updateTaskInDB(taskId, { status: 'delegated', assigneeId: toAgentId });
 
       // Emit task_delegated event with full task info for agent notification
+      // Include sandboxRoot so Agent Worker knows where to write files
+      const zone = zoneRepository.getZone(this.zoneId);
       ZoneCoordinatorEventEmitter.getInstance().emit({
         type: 'task_delegated',
         zoneId: this.zoneId,
@@ -997,6 +1003,7 @@ ${assignStrategyDescription}
           type: task.type,
           priority: task.priority,
         },
+        sandboxRoot: zone?.path || null,
         timestamp: Date.now(),
       });
 
@@ -1163,6 +1170,24 @@ ${assignStrategyDescription}
     task.status = report.success ? 'completed' : 'failed';
     this.activeTasks.delete(report.taskId);
 
+    // Track completed tasks for status summary
+    if (report.success) {
+      this.completedTaskIds.add(report.taskId);
+    }
+
+    // e. Register output files to zone_files (if Agent reported files)
+    if (report.success && report.files && report.files.length > 0) {
+      const zone = zoneRepository.getZone(this.zoneId);
+      for (const filePath of report.files) {
+        try {
+          const fileName = filePath.split('/').pop() || filePath;
+          zoneRepository.addFile(this.zoneId, fileName, 'local', filePath);
+        } catch (e) {
+          console.warn(`[ZoneCoordinator] Failed to register output file: ${filePath}`, e);
+        }
+      }
+    }
+
     // Persist to database
     this.updateTaskInDB(report.taskId, { status: task.status });
 
@@ -1264,13 +1289,12 @@ ${assignStrategyDescription}
 
     const recentActivity = auditLogRepository.getRecentEvents(this.zoneId, 10);
 
-    let completedCount = 0;
+    const completedCount = this.completedTaskIds.size;
     let activeCount = 0;
     const pendingCount = this.pendingTasks.length;
 
     for (const task of this.activeTasks.values()) {
-      if (task.status === 'completed') completedCount++;
-      else if (task.status === 'in_progress' || task.status === 'delegated') activeCount++;
+      if (task.status === 'in_progress' || task.status === 'delegated') activeCount++;
     }
 
     return {
@@ -1410,6 +1434,15 @@ ${assignStrategyDescription}
       SELECT * FROM tasks
       WHERE zone_id = ? AND status IN ('pending', 'assigned', 'in_progress')
     `).all(this.zoneId) as any[];
+
+    // Also load completed/failed task IDs for status summary
+    const completedRows = this.db.prepare(`
+      SELECT task_id FROM tasks
+      WHERE zone_id = ? AND status IN ('completed', 'failed')
+    `).all(this.zoneId) as any[];
+    for (const row of completedRows) {
+      this.completedTaskIds.add(row.task_id);
+    }
 
     for (const row of rows) {
       // Map DB status to ZoneCoordinator status: assigned -> delegated

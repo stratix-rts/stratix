@@ -93,6 +93,47 @@ export const FILE_SKILLS: SkillDefinition[] = [
       }
     ],
     executor: 'fs'
+  },
+  {
+    skillId: 'file_mkdir',
+    name: 'file_mkdir',
+    description: 'Create a directory. Supports recursive creation of parent directories (mkdir -p semantics).',
+    parameters: [
+      {
+        name: 'path',
+        type: 'string',
+        required: true,
+        description: 'Absolute path to the directory to create'
+      },
+      {
+        name: 'recursive',
+        type: 'boolean',
+        required: false,
+        default: true,
+        description: 'Create parent directories recursively (mkdir -p semantics)'
+      }
+    ],
+    executor: 'fs'
+  },
+  {
+    skillId: 'file_rename',
+    name: 'file_rename',
+    description: 'Rename or move a file or directory from one path to another.',
+    parameters: [
+      {
+        name: 'oldPath',
+        type: 'string',
+        required: true,
+        description: 'Absolute path to the source file or directory'
+      },
+      {
+        name: 'newPath',
+        type: 'string',
+        required: true,
+        description: 'Absolute path to the target file or directory'
+      }
+    ],
+    executor: 'fs'
   }
 ];
 
@@ -385,7 +426,7 @@ export const BUILTIN_SKILLS: SkillDefinition[] = [
  * 技能分类索引（用于快速查找）
  */
 export const SKILLS_BY_CATEGORY = {
-  file: ['file_read', 'file_write', 'file_list', 'file_delete'],
+  file: ['file_read', 'file_write', 'file_list', 'file_delete', 'file_mkdir', 'file_rename'],
   command: ['bash'],
   api: ['api_call', 'web_search', 'file_download'],
   calculator: ['calculator'],

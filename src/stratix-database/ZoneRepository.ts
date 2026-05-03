@@ -1,8 +1,10 @@
 import { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskStatus, ZoneMessage, SenderType, FileVersion, FileMetadata } from '../stratix-project/types';
 import { ZoneStatus } from '../stratix-rts/zones/BaseZone';
 import { generateId } from '../stratix-project/utils/helpers';
+import path from 'path';
 
 import { getDatabase } from './StratixDatabase';
+import { zoneMemberRepository } from './ZoneMemberRepository';
 
 // Database row types
 interface ZoneContextRow {
@@ -130,6 +132,10 @@ export class ZoneRepository {
     const now = Date.now();
     const zoneId = generateId('zone');
 
+    // 沙箱工作目录：~/Stratix/zones/{zoneId}/
+    const homeDir = process.env.HOME || process.env.USERPROFILE || '/tmp';
+    const zonePath = path.join(homeDir, 'Stratix', 'zones', zoneId);
+
     // Insert into zone_contexts
     this.db.prepare(`
       INSERT INTO zone_contexts (zone_id, project_id, title, prompt, members, created_at, updated_at)
@@ -139,15 +145,24 @@ export class ZoneRepository {
     // Also insert into zones table for FK consistency (zone_context_id = zone_id)
     // This is needed because tasks table has FK REFERENCES zones(zone_id)
     this.db.prepare(`
-      INSERT INTO zones (zone_id, name, type, project_id, position_x, position_y, width, height, status, config, zone_context_id, created_at, updated_at)
-      VALUES (?, ?, 'task', ?, 0, 0, 400, 300, 'idle', '{}', ?, ?, ?)
-    `).run(zoneId, title, projectId, zoneId, now, now);
+      INSERT INTO zones (zone_id, name, type, project_id, position_x, position_y, width, height, status, config, zone_context_id, path, created_at, updated_at)
+      VALUES (?, ?, 'task', ?, 0, 0, 400, 300, 'idle', '{}', ?, ?, ?, ?)
+    `).run(zoneId, title, projectId, zoneId, zonePath, now, now);
+
+    // 创建沙箱目录
+    try {
+      const fs = require('fs');
+      fs.mkdirSync(zonePath, { recursive: true });
+    } catch (e) {
+      console.warn(`[ZoneRepository] Failed to create zone path: ${zonePath}`, e);
+    }
 
     return {
       id: zoneId,
       projectId,
       title,
       prompt,
+      path: zonePath,
       files: [],
       members: [],
       createdAt: now,
@@ -257,18 +272,19 @@ export class ZoneRepository {
 
   // Zone Members operations
   addMember(zoneId: string, agentId: string): Zone | null {
+    // 同步写入 zone_members 表（权威源）
+    zoneMemberRepository.addMember(zoneId, agentId);
+
     const zone = this.getZone(zoneId);
     if (!zone) return null;
 
     const currentMembers = zone.members || [];
     const currentPresentAgentIds = zone.presentAgentIds || [];
 
-    // Only add to members if not already there
     const newMembers = currentMembers.includes(agentId)
       ? currentMembers
       : [...currentMembers, agentId];
 
-    // Only add to presentAgentIds if not already there
     const newPresentAgentIds = currentPresentAgentIds.includes(agentId)
       ? currentPresentAgentIds
       : [...currentPresentAgentIds, agentId];
@@ -277,6 +293,9 @@ export class ZoneRepository {
   }
 
   removeMember(zoneId: string, agentId: string): Zone | null {
+    // 同步写入 zone_members 表（soft remove）
+    zoneMemberRepository.removeMember(zoneId, agentId);
+
     const zone = this.getZone(zoneId);
     if (!zone) return null;
 
@@ -288,6 +307,11 @@ export class ZoneRepository {
 
   // Bulk add members
   addMembers(zoneId: string, agentIds: string[]): Zone | null {
+    // 同步写入 zone_members 表
+    for (const agentId of agentIds) {
+      zoneMemberRepository.addMember(zoneId, agentId);
+    }
+
     const zone = this.getZone(zoneId);
     if (!zone) return null;
 
@@ -302,6 +326,11 @@ export class ZoneRepository {
 
   // Bulk remove members
   removeMembers(zoneId: string, agentIds: string[]): Zone | null {
+    // 同步写入 zone_members 表（soft remove）
+    for (const agentId of agentIds) {
+      zoneMemberRepository.removeMember(zoneId, agentId);
+    }
+
     const zone = this.getZone(zoneId);
     if (!zone) return null;
 

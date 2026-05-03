@@ -46,6 +46,7 @@ export interface ZoneCoordinatorEventPayload {
     issues?: string[];
     duration?: number;
   };
+  sandboxRoot?: string | null;
   timestamp: number;
 }
 

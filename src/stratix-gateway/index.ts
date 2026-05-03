@@ -32,6 +32,7 @@ import zoneRoutes from './api/routes/zone';
 import zoneAuditRoutes from './api/routes/zone-audit';
 import zoneContextRoutes from './api/routes/zone-context';
 import zoneCoordinatorRoutes from './api/routes/zone-coordinator';
+import { createMcpRouter } from '../stratix-mcp/server';
 import { StatusSyncService } from './api/websocket/StatusSync';
 import { dataStoreService } from './dataStoreService';
 import { openClawProxyManager } from './openclaw/OpenClawProxyManager';
@@ -146,6 +147,8 @@ export async function startGatewayService(
   app.use('/api/zone-context', zoneContextRoutes);
   app.use('/api/agents/orchestration', agentOrchestrationRoutes);
   app.use('/api/skills', skillRoutes);
+  // MCP Server endpoint
+  app.use('/mcp', createMcpRouter());
   // 健康检查
   app.get('/health', (req, res) => {
     res.json({

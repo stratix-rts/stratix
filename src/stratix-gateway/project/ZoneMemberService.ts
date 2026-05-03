@@ -1,4 +1,5 @@
 import { zoneRepository } from '../../stratix-database/ZoneRepository';
+import { zoneMemberRepository } from '../../stratix-database/ZoneMemberRepository';
 import { Zone } from '../../stratix-project/types';
 import { gatewayEventBus } from '../GatewayEventBus';
 
@@ -14,6 +15,9 @@ export class ZoneMemberService {
 
     this.checkPermission('add_member', `zone:${zoneId}`, requesterId);
 
+    // 权威源：zone_members 表
+    zoneMemberRepository.addMember(zoneId, agentId);
+    // 同步到 zone_contexts.members JSON（冗余缓存，供 UI 查询）
     const zone = zoneRepository.addMember(zoneId, agentId);
     if (!zone) {
       throw new Error(`Zone not found: ${zoneId}`);
@@ -56,6 +60,9 @@ export class ZoneMemberService {
 
     this.checkPermission('remove_member', `zone:${zoneId}`, requesterId);
 
+    // 权威源：zone_members 表（soft remove）
+    zoneMemberRepository.removeMember(zoneId, agentId);
+    // 同步到 zone_contexts.members JSON
     const zone = zoneRepository.removeMember(zoneId, agentId);
     if (!zone) {
       throw new Error(`Zone not found: ${zoneId}`);
@@ -75,6 +82,11 @@ export class ZoneMemberService {
 
     this.checkPermission('add_members', `zone:${zoneId}`, requesterId);
 
+    // 权威源：zone_members 表
+    for (const agentId of agentIds) {
+      zoneMemberRepository.addMember(zoneId, agentId);
+    }
+    // 同步到 zone_contexts.members JSON
     const zone = zoneRepository.addMembers(zoneId, agentIds);
     if (!zone) {
       throw new Error(`Zone not found: ${zoneId}`);
@@ -96,6 +108,11 @@ export class ZoneMemberService {
 
     this.checkPermission('remove_members', `zone:${zoneId}`, requesterId);
 
+    // 权威源：zone_members 表（soft remove）
+    for (const agentId of agentIds) {
+      zoneMemberRepository.removeMember(zoneId, agentId);
+    }
+    // 同步到 zone_contexts.members JSON
     const zone = zoneRepository.removeMembers(zoneId, agentIds);
     if (!zone) {
       throw new Error(`Zone not found: ${zoneId}`);

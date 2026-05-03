@@ -1,5 +1,5 @@
-import { existsSync } from 'fs';
-import { appendFile, readFile, readdir, rm, stat, writeFile } from 'fs/promises';
+import { existsSync, mkdirSync } from 'fs';
+import { appendFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'fs/promises';
 import * as path from 'path';
 
 import { SkillDefinition, SkillExecutor, ExecutionContext } from '../../types';
@@ -40,6 +40,10 @@ export class FileSystemSkillExecutor implements SkillExecutor {
 
       case 'file_write': {
         progress?.({ skillId: skill.skillId, stage: 'processing', message: 'Writing file...' });
+        const dir = path.dirname(filePath);
+        if (!existsSync(dir)) {
+          mkdirSync(dir, { recursive: true });
+        }
         await writeFile(filePath, params.content, params.encoding || 'utf-8');
         progress?.({ skillId: skill.skillId, stage: 'completed' });
         return { success: true, path: filePath };
@@ -64,6 +68,21 @@ export class FileSystemSkillExecutor implements SkillExecutor {
 
       case 'file_delete': {
         progress?.({ skillId: skill.skillId, stage: 'processing', message: 'Deleting...' });
+        const sandboxRoot = context.variables?.sandboxRoot;
+        if (sandboxRoot) {
+          const normalizedSandbox = sandboxRoot.replace(/\/+$/, '');
+          const normalizedFilePath = filePath.replace(/\/+/g, '/');
+          if (normalizedFilePath === normalizedSandbox) {
+            throw new Error(`Cannot delete sandbox root: ${filePath}`);
+          }
+          const parentDir = path.dirname(normalizedSandbox);
+          if (normalizedFilePath === parentDir) {
+            throw new Error(`Cannot delete parent of sandbox root: ${filePath}`);
+          }
+          if (params.recursive) {
+            console.warn(`[SafetyAudit] Recursive delete: ${filePath} by agent ${context.agentId}`);
+          }
+        }
         await rm(filePath, { recursive: params.recursive || false });
         progress?.({ skillId: skill.skillId, stage: 'completed' });
         return { success: true, path: filePath };
@@ -83,6 +102,36 @@ export class FileSystemSkillExecutor implements SkillExecutor {
           path: filePath,
           preview: { type: 'json', content: JSON.stringify({ size: info.size, type: info.isDirectory() ? 'directory' : 'file' }) }
         };
+      }
+
+      case 'file_mkdir': {
+        progress?.({ skillId: skill.skillId, stage: 'processing', message: 'Creating directory...' });
+        await mkdir(filePath, { recursive: params.recursive !== false });
+        progress?.({ skillId: skill.skillId, stage: 'completed' });
+        return { success: true, path: filePath };
+      }
+
+      case 'file_rename': {
+        progress?.({ skillId: skill.skillId, stage: 'processing', message: 'Renaming...' });
+        const oldPath = path.isAbsolute(params.oldPath)
+          ? params.oldPath
+          : path.join(basePath, params.oldPath);
+        const newPath = path.isAbsolute(params.newPath)
+          ? params.newPath
+          : path.join(basePath, params.newPath);
+
+        const oldValidation = SafetyValidator.validateFilePath(oldPath, context);
+        if (!oldValidation.valid) {
+          throw new Error(`File path validation failed: ${oldValidation.reason}`);
+        }
+        const newValidation = SafetyValidator.validateFilePath(newPath, context);
+        if (!newValidation.valid) {
+          throw new Error(`File path validation failed: ${newValidation.reason}`);
+        }
+
+        await rename(oldPath, newPath);
+        progress?.({ skillId: skill.skillId, stage: 'completed' });
+        return { success: true, oldPath, newPath };
       }
 
       default:

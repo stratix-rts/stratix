@@ -111,6 +111,19 @@ export class SafetyValidator {
       }
     }
 
+    // Zone 沙箱模式：强制限制在 sandboxRoot 内
+    const sandboxRoot = context?.variables?.sandboxRoot;
+    if (sandboxRoot) {
+      const normalizedSandbox = sandboxRoot.replace(/\/+$/, '');
+      const normalizedFilePath = normalizedPath;
+      if (
+        normalizedFilePath !== normalizedSandbox &&
+        !normalizedFilePath.startsWith(normalizedSandbox + '/')
+      ) {
+        return { valid: false, reason: 'Path outside sandbox: ' + filePath };
+      }
+    }
+
     return { valid: true };
   }
 
