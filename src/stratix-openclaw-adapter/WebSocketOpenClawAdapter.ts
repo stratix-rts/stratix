@@ -66,6 +66,7 @@ export class WebSocketOpenClawAdapter implements OpenClawAdapterInterface {
   private subscribers: ((event: OpenClawEvent) => void)[] = [];
   private messageQueue: WSMessage[] = [];
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private disconnecting = false;
 
   constructor(config: StratixOpenClawConfig) {
     this.config = config;
@@ -147,14 +148,17 @@ export class WebSocketOpenClawAdapter implements OpenClawAdapterInterface {
   }
 
   async disconnect(): Promise<void> {
+    this.disconnecting = true;
+
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
 
     if (this.ws) {
-      this.ws.close();
+      const ws = this.ws;
       this.ws = null;
+      ws.close();
     }
     this.wsConnected = false;
     this.wsHandshaked = false;
@@ -213,7 +217,9 @@ export class WebSocketOpenClawAdapter implements OpenClawAdapterInterface {
           this.wsConnected = false;
           this.wsHandshaked = false;
           console.log('[WebSocketAdapter] WebSocket closed');
-          this.scheduleReconnect();
+          if (!this.disconnecting) {
+            this.scheduleReconnect();
+          }
         };
       } catch (e) {
         clearTimeout(timeout);
@@ -316,9 +322,9 @@ export class WebSocketOpenClawAdapter implements OpenClawAdapterInterface {
       clearTimeout(pending.timeout);
       this.pendingRequests.delete(msg.id);
 
-      if (!msg.ok && msg.error) {
-        pending.reject(new Error(msg.error.message || 'Unknown error'));
-      } else if (msg.ok) {
+      if (!msg.ok) {
+        pending.reject(new Error(msg.error?.message || 'Request failed'));
+      } else {
         pending.resolve(msg.payload);
       }
     } else if (msg.type === 'event') {

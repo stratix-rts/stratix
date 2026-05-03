@@ -7,6 +7,7 @@
 import { StratixOpenClawConfig } from '@/stratix-core/stratix-protocol';
 
 import { ConnectionPool } from './ConnectionPool';
+import type { ConnectionPoolOptions } from './ConnectionPool';
 import { GatewayOpenClawAdapter } from './GatewayOpenClawAdapter';
 import { LocalOpenClawAdapter } from './LocalOpenClawAdapter';
 import { RemoteOpenClawAdapter } from './RemoteOpenClawAdapter';
@@ -54,6 +55,6 @@ export function createWebSocketAdapter(config: StratixOpenClawConfig): WebSocket
   return new WebSocketOpenClawAdapter(config);
 }
 
-export function createConnectionPool(options?: import('./ConnectionPool').ConnectionPoolOptions): ConnectionPool {
+export function createConnectionPool(options?: ConnectionPoolOptions): ConnectionPool {
   return new ConnectionPool(options);
 }

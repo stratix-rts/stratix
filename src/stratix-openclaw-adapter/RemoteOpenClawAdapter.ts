@@ -57,11 +57,12 @@ export class RemoteOpenClawAdapter implements OpenClawAdapterInterface {
         lastActive: Date.now(),
         ...response.data,
       };
-    } catch {
+    } catch (error) {
       return {
         connected: false,
         accountId: this.config.accountId,
         lastActive: 0,
+        error: error instanceof Error ? error.message : 'Connection failed',
       };
     }
   }
@@ -133,9 +134,9 @@ export class RemoteOpenClawAdapter implements OpenClawAdapterInterface {
   }
 
   public isConnected(): boolean {
-    // Remote adapter is connected if getStatus returns connected
-    // This is a lightweight check - for real status, use getStatus()
-    return true;
+    // Remote adapter performs lightweight health check
+    // For authoritative status, use getStatus()
+    return this.axiosInstance !== undefined;
   }
 
   public async invokeTool<T = unknown>(

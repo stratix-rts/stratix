@@ -76,6 +76,12 @@ export class GatewayOpenClawAdapter implements OpenClawAdapterInterface {
       return true;
     }
 
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+      this.wsConnected = false;
+    }
+
     return new Promise((resolve) => {
       try {
         const url = this.getWebSocketUrl();
@@ -460,12 +466,15 @@ export class GatewayOpenClawAdapter implements OpenClawAdapterInterface {
       );
 
       return new Promise<void>((resolve, reject) => {
-        response.data.on('data', (chunk: Buffer) => {
+        const onData = (chunk: Buffer) => {
           const lines = chunk.toString().split('\n');
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               const data = line.slice(6);
               if (data === '[DONE]') {
+                response.data.off('data', onData);
+                response.data.off('end', onEnd);
+                response.data.off('error', onError);
                 resolve();
                 return;
               }
@@ -480,10 +489,23 @@ export class GatewayOpenClawAdapter implements OpenClawAdapterInterface {
               }
             }
           }
-        });
+        };
 
-        response.data.on('end', resolve);
-        response.data.on('error', reject);
+        const onEnd = () => {
+          response.data.off('data', onData);
+          response.data.off('error', onError);
+          resolve();
+        };
+
+        const onError = (err: Error) => {
+          response.data.off('data', onData);
+          response.data.off('end', onEnd);
+          reject(err);
+        };
+
+        response.data.on('data', onData);
+        response.data.on('end', onEnd);
+        response.data.on('error', onError);
       });
     });
   }

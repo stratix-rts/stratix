@@ -43,7 +43,6 @@ export interface OpenClawStatus {
   version?: string;
   status?: string;
   error?: string;
-  [key: string]: unknown;
 }
 
 export interface OpenClawEvent {

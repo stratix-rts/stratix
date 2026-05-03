@@ -15,45 +15,6 @@ import type {
 } from './types';
 
 
-const isBrowser = typeof window !== 'undefined';
-const BrowserWebSocket = isBrowser ? window.WebSocket : null;
-
-const PROTOCOL_VERSION = 3;
-
-interface ConnectChallenge {
-  nonce: string;
-  ts: number;
-}
-
-interface ConnectParams {
-  minProtocol: number;
-  maxProtocol: number;
-  client: {
-    id: string;
-    version: string;
-    platform?: string;
-    mode: string;
-    displayName?: string;
-  };
-  role: 'operator' | 'node';
-  scopes?: string[];
-  auth?: { token?: string; password?: string };
-}
-
-interface ToolsInvokeRequest {
-  tool: string;
-  action?: string;
-  args?: Record<string, unknown>;
-  sessionKey?: string;
-  dryRun?: boolean;
-}
-
-interface ToolsInvokeResponse {
-  ok: boolean;
-  result?: unknown;
-  error?: { type: string; message: string };
-}
-
 export class LocalOpenClawAdapter implements OpenClawAdapterInterface {
   private config: StratixOpenClawConfig;
   private subscribers: ((event: OpenClawEvent) => void)[] = [];
@@ -124,7 +85,7 @@ export class LocalOpenClawAdapter implements OpenClawAdapterInterface {
     args?: Record<string, unknown>,
     options?: { sessionKey?: string; action?: string }
   ): Promise<T> {
-    const request: ToolsInvokeRequest = {
+    const request = {
       tool,
       args: args || {},
       sessionKey: options?.sessionKey,
@@ -222,12 +183,15 @@ export class LocalOpenClawAdapter implements OpenClawAdapterInterface {
     );
 
     return new Promise((resolve, reject) => {
-      response.data.on('data', (chunk: Buffer) => {
+      const onData = (chunk: Buffer) => {
         const lines = chunk.toString().split('\n');
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const data = line.slice(6);
             if (data === '[DONE]') {
+              response.data.off('data', onData);
+              response.data.off('end', onEnd);
+              response.data.off('error', onError);
               resolve();
               return;
             }
@@ -242,10 +206,23 @@ export class LocalOpenClawAdapter implements OpenClawAdapterInterface {
             }
           }
         }
-      });
+      };
 
-      response.data.on('end', resolve);
-      response.data.on('error', reject);
+      const onEnd = () => {
+        response.data.off('data', onData);
+        response.data.off('error', onError);
+        resolve();
+      };
+
+      const onError = (err: Error) => {
+        response.data.off('data', onData);
+        response.data.off('end', onEnd);
+        reject(err);
+      };
+
+      response.data.on('data', onData);
+      response.data.on('end', onEnd);
+      response.data.on('error', onError);
     });
   }
 

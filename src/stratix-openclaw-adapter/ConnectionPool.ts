@@ -115,6 +115,8 @@ export class ConnectionPool {
     } catch (error) {
       this.connections.get(key)!.info.status = 'error';
       this.connections.get(key)!.info.lastError = (error as Error).message;
+      this.connections.delete(key);
+      throw error;
     }
 
     return adapter;
@@ -325,7 +327,7 @@ export class ConnectionPool {
       })
     );
 
-    return Array.from(results);
+    return results;
   }
 
   public async invokeFirst<T = unknown>(
