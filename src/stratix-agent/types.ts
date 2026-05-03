@@ -46,14 +46,14 @@ export interface SkillParameter {
   name: string;
   type: string;
   required: boolean;
-  default?: any;
+  default?: unknown;
   description?: string;
 }
 
 export interface SkillResult {
   success: boolean;
   skillId: string;
-  result?: any;
+  result?: unknown;
   error?: string;
   executionTime: number;
   preview?: SkillResultPreview;  // 中间结果预览
@@ -82,7 +82,7 @@ export interface SkillProgress {
   stage: 'started' | 'processing' | 'completed' | 'failed';
   message?: string;
   percent?: number;        // 0-100
-  partialResult?: any;    // 部分结果（用于预览）
+  partialResult?: unknown; // 部分结果（用于预览）
 }
 
 /**
@@ -132,7 +132,7 @@ export interface Session {
   createdAt: number;
   updatedAt: number;
   messages: ChatMessage[];
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   messageCount?: number;
 }
 
@@ -144,6 +144,7 @@ export interface AgentResponse {
     promptTokens: number;
     completionTokens: number;
     totalTokens: number;
+    turnCount?: number;
   };
 }
 
@@ -186,7 +187,7 @@ export interface RateLimitConfig {
 export interface HealthStatus {
   healthy: boolean;
   lastCheck: number;
-  details?: Record<string, any>;
+  details?: Record<string, unknown>;
 }
 
 export interface MetricsData {
@@ -432,7 +433,7 @@ export interface SkillLearningRecord extends MemoryEntry {
 export interface ToolParameterProperty {
   type: 'string' | 'number' | 'boolean' | 'object' | 'array' | 'null';
   description?: string;
-  default?: any;
+  default?: unknown;
   enum?: string[];
   minimum?: number;
   maximum?: number;
@@ -458,7 +459,7 @@ export interface ToolDefinition {
 export interface ToolUseRequest {
   type: 'tool_use';
   name: string;
-  input: Record<string, any>;
+  input: Record<string, unknown>;
   id: string;                        // 用于标识此次调用
 }
 
@@ -477,8 +478,8 @@ export interface ToolUseResult {
 export interface ToolCall {
   id: string;
   name: string;
-  input: Record<string, any>;
-  result?: any;
+  input: Record<string, unknown>;
+  result?: unknown;
   error?: string;
   executionTime: number;
 }
