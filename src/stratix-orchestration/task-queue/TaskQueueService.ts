@@ -23,6 +23,11 @@ interface TaskRow {
   completed_at: number | null;
 }
 
+const DEFAULT_TASK_LIMIT = 50;
+const DEFAULT_SEARCH_LIMIT = 20;
+const DEFAULT_PRIORITY = 5;
+const ABANDONED_TASK_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+
 export class TaskQueueService {
   private static instance: TaskQueueService;
   private tasks: Map<string, TaskItem> = new Map();
@@ -64,7 +69,7 @@ export class TaskQueueService {
       name,
       description: options.description,
       type,
-      priority: options.priority ?? 5,
+      priority: options.priority ?? DEFAULT_PRIORITY,
       status: 'pending',
       dependencies: options.dependencies || [],
       context,
@@ -181,7 +186,7 @@ export class TaskQueueService {
     const now = Date.now();
 
     const setClauses: string[] = [];
-    const values: any[] = [];
+    const values: Array<string | number | null> = [];
 
     if (updates.status !== undefined) {
       task.status = updates.status;
@@ -325,7 +330,7 @@ export class TaskQueueService {
       LEFT JOIN agent_backgrounds ab ON t.assigned_agent_id = ab.agent_id
       WHERE t.status IN ('assigned', 'in_progress')
         AND (ab.last_heartbeat_at IS NULL OR ab.last_heartbeat_at < ?)
-    `).all(now - 5 * 60 * 1000) as TaskRow[];
+    `).all(now - ABANDONED_TASK_THRESHOLD_MS) as TaskRow[];
 
     const requeued: string[] = [];
 
@@ -381,6 +386,11 @@ export class TaskQueueService {
     }
   }
 
+  clearAllListeners(): void {
+    this.globalListeners = [];
+    this.eventListeners.clear();
+  }
+
   private emitEvent(event: TaskEvent): void {
     const listeners = this.eventListeners.get(event.type);
     if (listeners) {
@@ -428,15 +438,21 @@ export class TaskQueueService {
 
     try {
       dependencies = JSON.parse(row.dependencies || '[]');
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.warn('[TaskQueueService] Failed to parse task dependencies:', err);
+    }
 
     try {
       context = JSON.parse(row.context || '{}');
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.warn('[TaskQueueService] Failed to parse task context:', err);
+    }
 
     try {
       if (row.result) result = JSON.parse(row.result);
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.warn('[TaskQueueService] Failed to parse task result:', err);
+    }
 
     return {
       taskId: row.task_id,

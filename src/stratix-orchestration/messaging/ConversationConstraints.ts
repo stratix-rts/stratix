@@ -209,7 +209,7 @@ export class ConversationConstraints {
     const now = Date.now();
 
     const setClauses: string[] = ['updated_at = ?'];
-    const values: any[] = [now];
+    const values: Array<string | number | null | boolean> = [now];
 
     if (updates.allowDM !== undefined) {
       setClauses.push('allow_dm = ?');
@@ -254,7 +254,9 @@ export class ConversationConstraints {
     let allowedParticipants: string[] | undefined;
     try {
       allowedParticipants = row.allowed_participants ? JSON.parse(row.allowed_participants) : undefined;
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.warn('[ConversationConstraints] Failed to parse allowed participants:', err);
+    }
 
     return {
       policyId: row.policy_id,

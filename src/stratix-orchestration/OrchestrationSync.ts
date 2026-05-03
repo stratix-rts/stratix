@@ -8,6 +8,7 @@
 import path from 'path';
 
 import { BackgroundAgentService } from './background/BackgroundAgentService';
+import type { BackgroundAgentEvent } from './background/BackgroundAgentService';
 import { AgentMessageRouter } from './messaging/AgentMessageRouter';
 import { MessageEvent } from './messaging/MessageTypes';
 import { TaskEvent } from './task-queue/TaskItem';
@@ -15,7 +16,6 @@ import { TaskQueueService } from './task-queue/TaskQueueService';
 import ZoneCoordinatorEventEmitter, { type ZoneCoordinatorEventPayload } from './zone/ZoneCoordinatorEvents';
 import { ZoneManager } from './zone/ZoneManager';
 import { ZoneEvent } from './zone/ZoneState';
-
 
 // Type for StatusSync - avoid circular dependency at type level
 interface StatusSyncInterface {
@@ -32,6 +32,7 @@ interface StatusSyncInterface {
     type: string;
     priority: number;
   }): void;
+  notify?: (payload: { type: string; payload: unknown }) => void;
 }
 
 export class OrchestrationSync {
@@ -80,7 +81,7 @@ export class OrchestrationSync {
     }
   }
 
-  private getZoneService() {
+  private getZoneService(): { addFiles: (zoneId: string, files: Array<{ name: string; sourceType: 'local'; source: string }>) => Promise<void> } | null {
     try {
       if (typeof require !== 'undefined') {
         const module = require('../stratix-gateway/project/ZoneService');
@@ -98,8 +99,8 @@ export class OrchestrationSync {
    */
   private notifyZoneCoordinatorEvent(event: ZoneCoordinatorEventPayload): void {
     const sync = this.getStatusSync();
-    if (sync) {
-      (sync as any).notify?.({
+    if (sync?.notify) {
+      sync.notify({
         type: 'zone_coordinator_event',
         payload: event,
       });
@@ -174,7 +175,7 @@ export class OrchestrationSync {
     this.cleanupFns.push(() => this.taskQueue.off('*', taskHandler));
 
     // Background agent events
-    const bgHandler = (event: any) => {
+    const bgHandler = (event: BackgroundAgentEvent) => {
       const sync = this.getStatusSync();
       if (sync) {
         if (event.type === 'agent_started') {
@@ -186,9 +187,9 @@ export class OrchestrationSync {
         } else if (event.type === 'agent_resumed') {
           sync.notifyBackgroundAgentStatus(event.agentId, 'running');
         } else if (event.type === 'task_assigned') {
-          sync.notifyTaskAssigned(event.taskId, event.agentId, '');
+          sync.notifyTaskAssigned(event.taskId || '', event.agentId, '');
         } else if (event.type === 'task_completed') {
-          sync.notifyTaskCompleted(event.taskId, event.agentId);
+          sync.notifyTaskCompleted(event.taskId || '', event.agentId);
         }
       }
     };

@@ -3,24 +3,35 @@ import type { AgentCheckpointData } from './AgentProcess';
 
 export type AgentStatusCallback = (agentId: string, status: string, error?: string) => void;
 
+const HEARTBEAT_INTERVAL_MS = 30000; // 30 seconds
+
+export interface BackgroundAgentEvent {
+  type: 'agent_started' | 'agent_stopped' | 'agent_paused' | 'agent_resumed' | 'task_assigned' | 'task_completed';
+  agentId: string;
+  zoneId?: string;
+  taskId?: string;
+  reason?: string;
+  timestamp: number;
+}
+
+interface AgentProcessInfo {
+  agentId: string;
+  zoneId?: string;
+  status: string;
+  currentTaskId?: string;
+  heartbeatTimer?: NodeJS.Timeout;
+  startedAt: number;
+  lastHeartbeat: number;
+}
+
 export class BackgroundAgentService {
   private static instance: BackgroundAgentService;
 
-  private processes: Map<string, {
-    agentId: string;
-    zoneId?: string;
-    status: string;
-    currentTaskId?: string;
-    heartbeatTimer?: NodeJS.Timeout;
-    startedAt: number;
-    lastHeartbeat: number;
-  }> = new Map();
+  private processes: Map<string, AgentProcessInfo> = new Map();
 
   private checkpoint: AgentCheckpointManager;
   private statusListeners: AgentStatusCallback[] = [];
-  private globalListeners: ((event: any) => void)[] = [];
-
-  private heartbeatInterval = 30000; // 30 seconds
+  private globalListeners: ((event: BackgroundAgentEvent) => void)[] = [];
 
   private constructor() {
     this.checkpoint = AgentCheckpointManager.getInstance();
@@ -48,7 +59,7 @@ export class BackgroundAgentService {
     console.log(`[BackgroundAgentService] Starting agent ${agentId} in zone ${zoneId || 'none'}`);
 
     const now = Date.now();
-    const processInfo = {
+    const processInfo: AgentProcessInfo = {
       agentId,
       zoneId,
       status: 'starting',
@@ -238,18 +249,11 @@ export class BackgroundAgentService {
 
   // ==================== Status & Info ====================
 
-  getAgentInfo(agentId: string) {
+  getAgentInfo(agentId: string): AgentProcessInfo | null {
     return this.processes.get(agentId) || null;
   }
 
-  getAllAgents(): Array<{
-    agentId: string;
-    zoneId?: string;
-    status: string;
-    currentTaskId?: string;
-    startedAt: number;
-    lastHeartbeat: number;
-  }> {
+  getAllAgents(): AgentProcessInfo[] {
     return Array.from(this.processes.values());
   }
 
@@ -267,11 +271,11 @@ export class BackgroundAgentService {
     this.statusListeners = this.statusListeners.filter(cb => cb !== callback);
   }
 
-  onEvent(callback: (event: any) => void): void {
+  onEvent(callback: (event: BackgroundAgentEvent) => void): void {
     this.globalListeners.push(callback);
   }
 
-  offEvent(callback: (event: any) => void): void {
+  offEvent(callback: (event: BackgroundAgentEvent) => void): void {
     this.globalListeners = this.globalListeners.filter(cb => cb !== callback);
   }
 
@@ -279,7 +283,7 @@ export class BackgroundAgentService {
     this.statusListeners.forEach(cb => cb(agentId, status, error));
   }
 
-  private emitEvent(event: any): void {
+  private emitEvent(event: BackgroundAgentEvent): void {
     this.globalListeners.forEach(cb => cb(event));
   }
 
@@ -298,7 +302,7 @@ export class BackgroundAgentService {
       } catch (error) {
         console.error(`[BackgroundAgentService] Heartbeat failed for ${agentId}:`, error);
       }
-    }, this.heartbeatInterval);
+    }, HEARTBEAT_INTERVAL_MS);
   }
 
   private stopHeartbeat(agentId: string): void {
@@ -321,6 +325,15 @@ export class BackgroundAgentService {
     await Promise.all(stopPromises);
 
     console.log('[BackgroundAgentService] All agents stopped');
+  }
+
+  destroy(): void {
+    this.statusListeners = [];
+    this.globalListeners = [];
+    for (const [agentId] of this.processes) {
+      this.stopHeartbeat(agentId);
+    }
+    this.processes.clear();
   }
 }
 

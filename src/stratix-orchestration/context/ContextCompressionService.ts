@@ -21,6 +21,11 @@ export interface CompressionResult {
   outstandingTasks: string[];
 }
 
+const MAX_DECISIONS = 10;
+const MAX_TASKS = 10;
+const MAX_KEYWORDS = 10;
+const DEFAULT_ARCHIVE_LIMIT = 5;
+
 // Default LLM config for compression (can be overridden via setLLMConfig)
 const DEFAULT_COMPRESSION_LLM: LLMConfig = {
   provider: 'deepseek',
@@ -164,7 +169,7 @@ ${messageText}
   async getRelevantArchives(
     agentId: string,
     query: string,
-    limit: number = 5
+    limit: number = DEFAULT_ARCHIVE_LIMIT
   ): Promise<CompressionResult[]> {
     const db = getDatabase().getDatabase();
 
@@ -177,7 +182,7 @@ ${messageText}
       WHERE agent_id = ?
         AND (expires_at IS NULL OR expires_at > ?)
     `;
-    const params: any[] = [agentId, Date.now()];
+    const params: unknown[] = [agentId, Date.now()];
 
     // Add keyword-based filtering if keywords exist
     if (keywords.length > 0) {
@@ -257,7 +262,7 @@ ${messageText}
       }
     }
 
-    return decisions.slice(0, 10); // Limit to 10 decisions
+    return decisions.slice(0, MAX_DECISIONS);
   }
 
   private extractBasicTasks(
@@ -278,7 +283,7 @@ ${messageText}
       }
     }
 
-    return tasks.slice(0, 10); // Limit to 10 tasks
+    return tasks.slice(0, MAX_TASKS);
   }
 
   private extractSentence(text: string, keyword: string): string {
@@ -302,7 +307,7 @@ ${messageText}
       .filter(w => w.length > 2 && !stopWords.has(w))
       .map(w => w.replace(/[^a-z0-9\u4e00-\u9fff]/g, '')) // Keep alphanumeric and CJK
       .filter(w => w.length > 0)
-      .slice(0, 10);
+      .slice(0, MAX_KEYWORDS);
   }
 
   private async storeArchive(

@@ -6,6 +6,16 @@ export interface ScoredContext {
   matchedKeywords: string[];
 }
 
+const DEFAULT_KEYWORD_WEIGHT = 0.4;
+const DEFAULT_RECENCY_WEIGHT = 0.3;
+const DEFAULT_TASK_RELEVANCE_WEIGHT = 0.3;
+const DEFAULT_THRESHOLD = 0.3;
+const DEFAULT_TOP_N = 5;
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+const RECENCY_HALF_LIFE_DAYS = 7;
+const MAX_RELEVANCE_SCORE = 1.0;
+const TASK_WORD_MATCH_INCREMENT = 0.1;
+
 export class RelevanceScorer {
   private static instance: RelevanceScorer;
 
@@ -31,9 +41,9 @@ export class RelevanceScorer {
     } = {}
   ): ScoredContext[] {
     const {
-      keywordWeight = 0.4,
-      recencyWeight = 0.3,
-      taskRelevanceWeight = 0.3,
+      keywordWeight = DEFAULT_KEYWORD_WEIGHT,
+      recencyWeight = DEFAULT_RECENCY_WEIGHT,
+      taskRelevanceWeight = DEFAULT_TASK_RELEVANCE_WEIGHT,
     } = options;
 
     const keywords = this.extractKeywords(query);
@@ -45,8 +55,8 @@ export class RelevanceScorer {
 
       // Recency score (exponential decay)
       const ageMs = now - archive.archivedAt;
-      const ageDays = ageMs / (1000 * 60 * 60 * 24);
-      const recencyScore = Math.exp(-ageDays / 7); // Half-life of 7 days
+      const ageDays = ageMs / MS_PER_DAY;
+      const recencyScore = Math.exp(-ageDays / RECENCY_HALF_LIFE_DAYS);
 
       // Task relevance score
       const taskScore = this.calculateTaskRelevance(archive, query);
@@ -70,7 +80,7 @@ export class RelevanceScorer {
    */
   filterByThreshold(
     scored: ScoredContext[],
-    threshold: number = 0.3
+    threshold: number = DEFAULT_THRESHOLD
   ): ScoredContext[] {
     return scored.filter(s => s.score >= threshold);
   }
@@ -81,7 +91,7 @@ export class RelevanceScorer {
   getTopContexts(
     archives: ContextArchive[],
     query: string,
-    topN: number = 5
+    topN: number = DEFAULT_TOP_N
   ): ScoredContext[] {
     const scored = this.score(archives, query);
     return scored.slice(0, topN);
@@ -146,13 +156,13 @@ export class RelevanceScorer {
       const taskWords = this.extractKeywords(task);
       for (const word of taskWords) {
         if (queryLower.includes(word)) {
-          relevance += 0.1;
+          relevance += TASK_WORD_MATCH_INCREMENT;
         }
       }
     }
 
     // Cap at 1.0
-    return Math.min(relevance, 1.0);
+    return Math.min(relevance, MAX_RELEVANCE_SCORE);
   }
 }
 

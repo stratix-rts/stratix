@@ -228,7 +228,7 @@ export class AgentMessageStore {
     const limit = options.limit || 50;
 
     let query = 'SELECT * FROM agent_messages WHERE conversation_id = ?';
-    const params: any[] = [conversationId];
+    const params: unknown[] = [conversationId];
 
     if (options.before) {
       query += ' AND created_at < ?';
@@ -273,7 +273,9 @@ export class AgentMessageStore {
     let references: MessageReference[] = [];
     try {
       references = JSON.parse(row.references || '[]');
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.warn('[AgentMessageStore] Failed to parse message references:', err);
+    }
 
     return {
       messageId: row.message_id,

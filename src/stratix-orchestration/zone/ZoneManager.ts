@@ -28,6 +28,10 @@ interface TaskRow {
   task_id: string;
 }
 
+interface TaskQueueServiceLike {
+  getTasksByZone(zoneId: string): Promise<unknown[]>;
+}
+
 export class ZoneManager {
   private static instance: ZoneManager;
   private zones: Map<string, ZoneState> = new Map();
@@ -35,11 +39,11 @@ export class ZoneManager {
   private globalListeners: ZoneEventCallback[] = [];
 
   // Lazy import to avoid circular dependency
-  private taskQueueService: any = null;
+  private taskQueueService: TaskQueueServiceLike | null = null;
 
   private constructor() {}
 
-  private getTaskQueueService() {
+  private getTaskQueueService(): TaskQueueServiceLike | null {
     if (!this.taskQueueService) {
       try {
         const { TaskQueueService } = require('../task-queue/TaskQueueService');
@@ -148,7 +152,7 @@ export class ZoneManager {
     const now = Date.now();
 
     const setClauses: string[] = ['updated_at = ?'];
-    const values: any[] = [now];
+    const values: Array<string | number | null> = [now];
 
     if (updates.name !== undefined) {
       zone.name = updates.name;
@@ -328,6 +332,11 @@ export class ZoneManager {
     }
   }
 
+  clearAllListeners(): void {
+    this.globalListeners = [];
+    this.eventListeners.clear();
+  }
+
   private emitEvent(event: ZoneEvent): void {
     // Call specific listeners
     const listeners = this.eventListeners.get(event.type);
@@ -351,11 +360,12 @@ export class ZoneManager {
 
   // ==================== Helpers ====================
 
-  private rowToZone(row: any): ZoneState {
+  private rowToZone(row: ZoneRow): ZoneState {
     let config: ZoneConfig;
     try {
       config = JSON.parse(row.config || '{}');
-    } catch {
+    } catch (err) {
+      console.warn('[ZoneManager] Failed to parse zone config, using default:', err);
       config = DEFAULT_ZONE_CONFIG;
     }
 
@@ -375,10 +385,10 @@ export class ZoneManager {
       zoneId: row.zone_id,
       name: row.name,
       type: row.type,
-      projectId: row.project_id,
+      projectId: row.project_id ?? undefined,
       position: { x: row.position_x, y: row.position_y },
       size: { width: row.width, height: row.height },
-      status: row.status,
+      status: row.status as ZoneState['status'],
       config,
       enteredAgents: members.map(m => m.agent_id),
       taskPool, // Loaded from tasks table

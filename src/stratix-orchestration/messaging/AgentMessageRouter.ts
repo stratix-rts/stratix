@@ -17,6 +17,14 @@ export interface RouteOptions {
   conversationId?: string;
 }
 
+interface MessageRouterEvent {
+  type: 'sent';
+  messageId: string;
+  conversationId: string;
+  recipientId?: string;
+  timestamp: number;
+}
+
 export class AgentMessageRouter {
   private static instance: AgentMessageRouter;
 
@@ -301,7 +309,11 @@ export class AgentMessageRouter {
     }
   }
 
-  private emitEvent(event: any): void {
+  clearAllListeners(): void {
+    this.eventListeners.clear();
+  }
+
+  private emitEvent(event: MessageRouterEvent): void {
     const listeners = this.eventListeners.get(event.type);
     if (listeners) {
       listeners.forEach(cb => cb(event));

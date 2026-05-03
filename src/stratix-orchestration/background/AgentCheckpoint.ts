@@ -34,7 +34,7 @@ export class AgentCheckpointManager {
 
     const existing = db.prepare(
       'SELECT agent_id FROM agent_backgrounds WHERE agent_id = ?'
-    ).get(agentId);
+    ).get(agentId) as { agent_id: string } | undefined;
 
     const checkpointData = JSON.stringify({
       currentTaskId: checkpoint.currentTaskId,
@@ -93,7 +93,7 @@ export class AgentCheckpointManager {
     const now = Date.now();
 
     const updates: string[] = ['last_heartbeat_at = ?'];
-    const values: any[] = [now];
+    const values: Array<string | number | null> = [now];
 
     if (status === 'stopped') {
       updates.push('stopped_at = ?');
