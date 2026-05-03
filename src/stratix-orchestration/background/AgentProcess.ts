@@ -31,3 +31,12 @@ export interface BackgroundAgentConfig {
   maxRestarts?: number;
   heartbeatInterval?: number;
 }
+
+export const AGENT_STATUSES: AgentProcess['status'][] = ['starting', 'running', 'paused', 'stopping', 'stopped', 'error'];
+
+/**
+ * Check if an agent is in a running or active state
+ */
+export function isAgentRunning(agent: AgentProcess): boolean {
+  return agent.status === 'running' || agent.status === 'starting';
+}

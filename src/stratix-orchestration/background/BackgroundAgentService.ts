@@ -55,9 +55,15 @@ export class BackgroundAgentService {
     zoneId?: string,
     options: { autoRestart?: boolean; maxRestarts?: number } = {}
   ): Promise<boolean> {
-    if (this.processes.has(agentId)) {
+    const existing = this.processes.get(agentId);
+    if (existing && !['error', 'stopped'].includes(existing.status)) {
       log('warn', `Agent ${agentId} is already running`);
       return false;
+    }
+    // Clean up stale entry if agent previously failed or stopped
+    if (existing) {
+      this.stopHeartbeat(agentId);
+      this.processes.delete(agentId);
     }
 
     log('info', `Starting agent ${agentId} in zone ${zoneId || 'none'}`);
@@ -97,7 +103,8 @@ export class BackgroundAgentService {
       return true;
     } catch (error) {
       log('error', `Failed to start agent ${agentId}`, { error: String(error) });
-      processInfo.status = 'error';
+      this.stopHeartbeat(agentId);
+      this.processes.delete(agentId);
       await this.checkpoint.updateStatus(agentId, 'error', String(error));
       this.notifyStatusChange(agentId, 'error', String(error));
       return false;
@@ -342,10 +349,21 @@ export class BackgroundAgentService {
   destroy(): void {
     this.statusListeners = [];
     this.globalListeners = [];
-    for (const [agentId] of this.processes) {
+    for (const [agentId, info] of this.processes) {
       this.stopHeartbeat(agentId);
+      info.status = 'stopped';
     }
     this.processes.clear();
+  }
+
+  /**
+   * Health check for the background agent service
+   */
+  isHealthy(): boolean {
+    const now = Date.now();
+    return Array.from(this.processes.values()).every(
+      p => p.status !== 'running' || now - p.lastHeartbeat < HEARTBEAT_INTERVAL_MS * 3
+    );
   }
 }
 
