@@ -1,4 +1,4 @@
-import { existsSync } from 'fs';
+import { access } from 'fs/promises';
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join as pathJoin } from 'path';
 
@@ -12,7 +12,9 @@ export class StorageManager {
   }
 
   private async ensureDir(dirPath: string): Promise<void> {
-    if (!existsSync(dirPath)) {
+    try {
+      await access(dirPath);
+    } catch {
       await mkdir(dirPath, { recursive: true });
     }
   }
@@ -30,7 +32,9 @@ export class StorageManager {
 
   async loadConfig(agentId: string): Promise<AgentConfig | null> {
     const configPath = pathJoin(this.getAgentPath(agentId), 'config.json');
-    if (!existsSync(configPath)) {
+    try {
+      await access(configPath);
+    } catch {
       return null;
     }
     try {
@@ -51,7 +55,9 @@ export class StorageManager {
 
   async loadSoul(agentId: string): Promise<SoulConfig | null> {
     const soulPath = pathJoin(this.getAgentPath(agentId), 'soul.json');
-    if (!existsSync(soulPath)) {
+    try {
+      await access(soulPath);
+    } catch {
       return null;
     }
     try {
@@ -72,7 +78,9 @@ export class StorageManager {
 
   async loadRules(agentId: string): Promise<string[]> {
     const rulesPath = pathJoin(this.getAgentPath(agentId), 'rules.json');
-    if (!existsSync(rulesPath)) {
+    try {
+      await access(rulesPath);
+    } catch {
       return [];
     }
     try {
@@ -88,14 +96,17 @@ export class StorageManager {
   async deleteAgent(agentId: string): Promise<void> {
     const { rm } = await import('fs/promises');
     const agentPath = this.getAgentPath(agentId);
-    if (existsSync(agentPath)) {
+    try {
+      await access(agentPath);
       await rm(agentPath, { recursive: true, force: true });
-    }
+    } catch { /* ignore */ }
   }
 
   async listAgents(): Promise<string[]> {
     const { readdir } = await import('fs/promises');
-    if (!existsSync(this.basePath)) {
+    try {
+      await access(this.basePath);
+    } catch {
       return [];
     }
     const entries = await readdir(this.basePath, { withFileTypes: true });

@@ -1,5 +1,9 @@
 import { HealthStatus } from '../types';
 
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[HealthChecker] ${message}`, ctx || '');
+}
+
 export class HealthChecker {
   private lastCheck: number = 0;
   private status: HealthStatus = { healthy: true, lastCheck: 0 };
@@ -17,7 +21,8 @@ export class HealthChecker {
     for (const [name, checkFn] of entries) {
       try {
         results[name] = await checkFn();
-      } catch {
+      } catch (err) {
+        log('warn', `Health check "${name}" failed`, { error: String(err) });
         results[name] = false;
       }
     }

@@ -107,10 +107,15 @@ export interface PromptRenderContext {
   now?: Date;
 }
 
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[HandlebarsPromptEngine] ${message}`, ctx || '');
+}
+
 export class HandlebarsPromptEngine {
   private handlebars: typeof Handlebars;
   private templatesDir: string;
   private compiledTemplates: Map<string, Handlebars.TemplateDelegate> = new Map();
+  private templateSources: Map<string, string> = new Map();
 
   constructor(templatesDir?: string) {
     this.handlebars = Handlebars.create();
@@ -119,8 +124,9 @@ export class HandlebarsPromptEngine {
     // Register helpers
     registerHelpers(this.handlebars);
 
-    // Register partials
+    // Register partials and eagerly preload all templates
     this.registerPartials();
+    this.preloadTemplates();
   }
 
   /**
@@ -139,7 +145,7 @@ export class HandlebarsPromptEngine {
     const partialsDir = path.join(this.templatesDir, 'partials');
 
     if (!fs.existsSync(partialsDir)) {
-      console.warn(`[HandlebarsPromptEngine] Partials directory not found: ${partialsDir}`);
+      log('warn', 'Partials directory not found', { partialsDir });
       return;
     }
 
@@ -165,7 +171,33 @@ export class HandlebarsPromptEngine {
         try {
           this.handlebars.registerPartial(partialName, content);
         } catch (e) {
-          console.warn(`[HandlebarsPromptEngine] Failed to register partial "${partialName}":`, e);
+          log('warn', `Failed to register partial "${partialName}"`, { error: String(e) });
+        }
+      }
+    }
+  }
+
+  /**
+   * Eagerly preload all templates from the templates directory during initialization
+   */
+  private preloadTemplates(): void {
+    if (!fs.existsSync(this.templatesDir)) {
+      log('warn', 'Templates directory not found', { templatesDir: this.templatesDir });
+      return;
+    }
+
+    const files = fs.readdirSync(this.templatesDir);
+    for (const file of files) {
+      if (file.endsWith('.hbs')) {
+        const name = file.replace('.hbs', '');
+        const templatePath = path.join(this.templatesDir, file);
+        try {
+          const content = fs.readFileSync(templatePath, 'utf-8');
+          this.templateSources.set(name, content);
+          const compiled = this.handlebars.compile(content);
+          this.compiledTemplates.set(name, compiled);
+        } catch (e) {
+          log('warn', `Failed to preload template "${name}"`, { error: String(e) });
         }
       }
     }
@@ -233,15 +265,22 @@ export class HandlebarsPromptEngine {
    */
   clearCache(): void {
     this.compiledTemplates.clear();
+    this.templateSources.clear();
   }
 
   /**
    * Get template source for debugging
    */
   getTemplateSource(name: string): string | null {
+    if (this.templateSources.has(name)) {
+      return this.templateSources.get(name)!;
+    }
+
     const templatePath = path.join(this.templatesDir, `${name}.hbs`);
     if (fs.existsSync(templatePath)) {
-      return fs.readFileSync(templatePath, 'utf-8');
+      const content = fs.readFileSync(templatePath, 'utf-8');
+      this.templateSources.set(name, content);
+      return content;
     }
     return null;
   }

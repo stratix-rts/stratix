@@ -7,6 +7,10 @@ import type { LLMConnector } from './LLMConnector';
 import type { EnhancedSoulConfig, ReflectionEntry } from '../types/soul';
 import type { EvolutionResult, EvolutionProposal } from '../types';
 
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[EvolutionManager] ${message}`, ctx || '');
+}
+
 // 进化提示词模板（原从 stratix-character-creator 导入，现内联以消除循环依赖）
 const EVOLUTION_PROMPT = `你是一个持续成长的 Agent。在完成任务时：
 
@@ -267,7 +271,8 @@ ${reflections}
       }
 
       return result;
-    } catch {
+    } catch (err) {
+      log('warn', 'Failed to parse evolution response', { error: String(err) });
       return null;
     }
   }

@@ -1,4 +1,4 @@
-import { existsSync } from 'fs';
+import { access } from 'fs/promises';
 import { readFile, writeFile, mkdir } from 'fs/promises';
 
 import { ChatMessage, MemoryEntry, MemoryLayers, SkillLearningRecord } from '../types';
@@ -100,7 +100,9 @@ export class MemoryManager {
   }
 
   private async ensureStoragePath(): Promise<void> {
-    if (!existsSync(this.storagePath)) {
+    try {
+      await access(this.storagePath);
+    } catch {
       await mkdir(this.storagePath, { recursive: true });
     }
   }

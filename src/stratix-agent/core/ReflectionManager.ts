@@ -18,7 +18,7 @@ export interface MemoryEntry {
   id: string;
   title: string;
   content: string;
-  importance: number;
+  importance: 1 | 2 | 3;
   createdAt: string;
 }
 
@@ -135,13 +135,11 @@ export class ReflectionManager {
       this.memoryEntries.push(entry);
 
       // 如果支持长期记忆，添加到 MemoryManager
-      if ((this.memory as any).addLongTermMemory) {
-        (this.memory as any).addLongTermMemory({
-          title: entry.title,
-          content: entry.content,
-          importance: entry.importance,
-        });
-      }
+      this.memory.addLongTermMemory({
+        title: entry.title,
+        content: entry.content,
+        importance: entry.importance,
+      });
     }
   }
 

@@ -3,8 +3,7 @@
  * Append-only JSONL storage for session transcripts
  */
 
-import { existsSync, mkdirSync } from 'fs';
-import { access, appendFile, readFile, readdir, stat } from 'fs/promises';
+import { access, appendFile, mkdir, readFile, readdir, stat } from 'fs/promises';
 import { join } from 'path';
 
 import type { TranscriptEntry, TranscriptQuery } from './types.js';
@@ -21,15 +20,20 @@ function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<str
 export class TranscriptStore {
   private baseDir: string;
 
+  private dirEnsured: boolean = false;
+
   constructor(baseDir: string = '.transcripts') {
     this.baseDir = baseDir;
-    this.ensureDirectory();
   }
 
-  private ensureDirectory(): void {
-    if (!existsSync(this.baseDir)) {
-      mkdirSync(this.baseDir, { recursive: true });
+  private async ensureDirectory(): Promise<void> {
+    if (this.dirEnsured) return;
+    try {
+      await access(this.baseDir);
+    } catch {
+      await mkdir(this.baseDir, { recursive: true });
     }
+    this.dirEnsured = true;
   }
 
   private getFilePath(sessionId: string): string {
@@ -40,6 +44,7 @@ export class TranscriptStore {
    * Append a single entry to the transcript (append-only)
    */
   async append(entry: TranscriptEntry): Promise<void> {
+    await this.ensureDirectory();
     const line = JSON.stringify(entry) + '\n';
     await appendFile(this.getFilePath(entry.sessionId), line, 'utf-8');
   }
@@ -48,6 +53,7 @@ export class TranscriptStore {
    * Append multiple entries in a batch
    */
   async appendBatch(entries: TranscriptEntry[]): Promise<void> {
+    await this.ensureDirectory();
     const lines = entries.map((e) => JSON.stringify(e)).join('\n') + '\n';
     await appendFile(this.getFilePath(entries[0].sessionId), lines, 'utf-8');
   }

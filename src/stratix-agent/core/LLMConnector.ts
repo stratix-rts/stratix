@@ -4,6 +4,10 @@ import OpenAI from 'openai';
 import { LLMConfig, GenerateResult, ChatMessage, ToolDefinition, ToolUseRequest, SkillDefinition } from '../types';
 import { retryPolicyEngine } from '../../stratix-core/retry';
 
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[LLMConnector] ${message}`, ctx || '');
+}
+
 export class LLMConnector {
   private config: LLMConfig;
   private apiKey: string;
@@ -125,14 +129,14 @@ export class LLMConnector {
       description: skill.description,
       input_schema: {
         type: 'object',
-        properties: skill.parameters.reduce((acc, p) => {
+        properties: skill.parameters.reduce<Record<string, ToolDefinition['input_schema']['properties'][string]>>((acc, p) => {
           acc[p.name] = {
             type: p.type as ToolDefinition['input_schema']['properties'][string]['type'],
             description: p.description,
             default: p.default
           };
           return acc;
-        }, {} as Record<string, any>),
+        }, {}),
         required: skill.parameters.filter(p => p.required).map(p => p.name)
       }
     };
@@ -179,12 +183,19 @@ export class LLMConnector {
     };
   }
 
+  private convertToOpenAIMessages(messages: ChatMessage[]): OpenAI.Chat.ChatCompletionMessageParam[] {
+    return messages.map(m => {
+      const base: OpenAI.Chat.ChatCompletionMessageParam = { role: m.role, content: m.content };
+      return base;
+    });
+  }
+
   private async generateOpenAICompatible(messages: ChatMessage[]): Promise<GenerateResult> {
     const client = this.getOpenAIClient();
 
     const request = async () => client.chat.completions.create({
       model: this.config.model,
-      messages: messages as any,
+      messages: this.convertToOpenAIMessages(messages),
       temperature: this.config.temperature ?? 0.7,
       max_tokens: this.config.maxTokens ?? 4096,
     });
@@ -248,7 +259,7 @@ export class LLMConnector {
         tool_calls.push({
           type: 'tool_use',
           name: block.name,
-          input: block.input as Record<string, any>,
+          input: block.input as Record<string, unknown>,
           id: block.id
         });
       }
@@ -291,7 +302,7 @@ export class LLMConnector {
 
     const request = async () => client.chat.completions.create({
       model: this.config.model,
-      messages: messages as any,
+      messages: this.convertToOpenAIMessages(messages),
       temperature: this.config.temperature ?? 0.7,
       max_tokens: this.config.maxTokens ?? 4096,
       tools: openaiTools,
@@ -315,7 +326,7 @@ export class LLMConnector {
           try {
             input = JSON.parse(tc.function.arguments);
           } catch (e) {
-            console.warn('[LLMConnector] Failed to parse tool arguments:', e);
+            log('warn', 'Failed to parse tool arguments', { error: String(e) });
             input = {};
           }
           tool_calls.push({
@@ -363,7 +374,7 @@ export class LLMConnector {
     const client = this.getOpenAIClient();
     const stream = await client.chat.completions.create({
       model: this.config.model,
-      messages: messages as any,
+      messages: this.convertToOpenAIMessages(messages),
       temperature: this.config.temperature ?? 0.7,
       max_tokens: this.config.maxTokens ?? 4096,
       stream: true,

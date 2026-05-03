@@ -1,4 +1,4 @@
-import { existsSync } from 'fs';
+import { access } from 'fs/promises';
 import { readFile, writeFile, mkdir, readdir } from 'fs/promises';
 
 import { Session, ChatMessage } from '../types';
@@ -83,7 +83,9 @@ export class SessionManager {
   }
 
   async saveSession(session: Session): Promise<void> {
-    if (!existsSync(this.storagePath)) {
+    try {
+      await access(this.storagePath);
+    } catch {
       await mkdir(this.storagePath, { recursive: true });
     }
 
@@ -92,7 +94,9 @@ export class SessionManager {
   }
 
   async loadSessions(agentId: string): Promise<void> {
-    if (!existsSync(this.storagePath)) {
+    try {
+      await access(this.storagePath);
+    } catch {
       await mkdir(this.storagePath, { recursive: true });
       return;
     }

@@ -124,6 +124,7 @@ export class StratixAgent {
     try {
       await access(indexFile);
     } catch {
+      log('warn', 'Skills library index not found, skipping', { indexFile });
       return;
     }
 
@@ -289,7 +290,7 @@ export class StratixAgent {
       this.toolUseLoop = new ToolUseLoop(
         this.skills,
         this.llm,
-        { maxIterations: 10, maxTotalTime: 120000 }
+        { maxIterations: DEFAULT_TOOL_USE_MAX_ITERATIONS, maxTotalTime: DEFAULT_TOOL_USE_MAX_TOTAL_TIME_MS }
       );
     } else if (!enabled) {
       this.toolUseLoop = null;
@@ -303,7 +304,7 @@ export class StratixAgent {
     return this.toolUseEnabled;
   }
 
-  async executeSkill(skillId: string, params: Record<string, any>): Promise<SkillResult> {
+  async executeSkill(skillId: string, params: Record<string, unknown>): Promise<SkillResult> {
     return this.skills.execute(skillId, params, {
       agentId: this.config.agentId,
     });

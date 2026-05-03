@@ -1,4 +1,4 @@
-import { existsSync } from 'fs';
+import { access } from 'fs/promises';
 import { writeFile, mkdir } from 'fs/promises';
 
 import { AgentConfig, SoulConfig, MemoryLayers, Session } from '../types';
@@ -36,11 +36,13 @@ export class AgentExporter {
     const { includeMemory = true, includeSessions = true, minify = false } = options;
 
     try {
-      if (!existsSync(this.exportPath)) {
+      try {
+        await access(this.exportPath);
+      } catch {
         await mkdir(this.exportPath, { recursive: true });
       }
 
-      const data: any = {
+      const data: Record<string, unknown> = {
         agentId,
         exportedAt: new Date().toISOString(),
         version: '1.0',
