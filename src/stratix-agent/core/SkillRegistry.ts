@@ -16,7 +16,7 @@ interface LRUCacheEntry {
 /**
  * 技能执行进度回调（新版本）
  */
-export type SkillExecutionCallback = (skillId: string, stage: 'started' | 'validating' | 'executing' | 'completed' | 'error', data?: any) => void;
+export type SkillExecutionCallback = (skillId: string, stage: 'started' | 'validating' | 'executing' | 'completed' | 'error', data?: unknown) => void;
 
 export class SkillRegistry {
   private availableSkills: Map<string, SkillDefinition> = new Map();
@@ -47,7 +47,7 @@ export class SkillRegistry {
   /**
    * 触发进度回调
    */
-  private notifyProgress(skillId: string, stage: 'started' | 'validating' | 'executing' | 'completed' | 'error', data?: any): void {
+  private notifyProgress(skillId: string, stage: 'started' | 'validating' | 'executing' | 'completed' | 'error', data?: unknown): void {
     if (this.progressCallback) {
       try {
         this.progressCallback(skillId, stage, data);

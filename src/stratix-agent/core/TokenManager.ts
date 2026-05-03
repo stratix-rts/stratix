@@ -2,6 +2,10 @@ import { MODEL_TOKEN_LIMITS } from '@/stratix-core/config/defaults';
 
 import { ChatMessage, TokenLimit } from '../types';
 
+/** Fallback token limit when model is not recognized */
+const FALLBACK_MAX_TOKENS = 4096;
+/** Fallback reserved tokens for response when model is not recognized */
+const FALLBACK_RESERVED_TOKENS = 1024;
 
 export class TokenManager {
   private modelLimits: Map<string, TokenLimit> = new Map([
@@ -62,6 +66,6 @@ export class TokenManager {
   }
 
   private getTokenLimit(): TokenLimit {
-    return this.modelLimits.get(this.model) || { maxTokens: 4096, reservedForResponse: 1024 };
+    return this.modelLimits.get(this.model) || { maxTokens: FALLBACK_MAX_TOKENS, reservedForResponse: FALLBACK_RESERVED_TOKENS };
   }
 }

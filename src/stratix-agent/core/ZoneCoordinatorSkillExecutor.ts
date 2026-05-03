@@ -36,7 +36,7 @@ export interface TaskCancelParams {
  * Context update parameters (Zone → Agent)
  */
 export interface ContextUpdateParams {
-  contextDelta: Record<string, any>;
+  contextDelta: Record<string, unknown>;
 }
 
 /**

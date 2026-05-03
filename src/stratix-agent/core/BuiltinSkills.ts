@@ -1,5 +1,12 @@
 import { SkillDefinition } from '../types';
 
+/** Default timeout for bash commands in seconds */
+const DEFAULT_BASH_TIMEOUT = 30;
+/** Default number of search results */
+const DEFAULT_SEARCH_RESULTS = 5;
+/** Default limit for zone search results */
+const DEFAULT_ZONE_SEARCH_LIMIT = 20;
+
 /**
  * 内置通用技能定义
  *
@@ -156,7 +163,7 @@ export const COMMAND_SKILLS: SkillDefinition[] = [
         name: 'timeout',
         type: 'number',
         required: false,
-        default: 30,
+        default: DEFAULT_BASH_TIMEOUT,
         description: 'Timeout in seconds (max 120)'
       },
       {
@@ -228,7 +235,7 @@ export const SEARCH_SKILLS: SkillDefinition[] = [
         name: 'num_results',
         type: 'number',
         required: false,
-        default: 5,
+        default: DEFAULT_SEARCH_RESULTS,
         description: 'Number of results to return (default: 5)'
       }
     ],
@@ -345,7 +352,7 @@ export const ZONE_SKILLS: SkillDefinition[] = [
         name: 'limit',
         type: 'number',
         required: false,
-        default: 20,
+        default: DEFAULT_ZONE_SEARCH_LIMIT,
         description: 'Maximum number of results to return'
       }
     ],

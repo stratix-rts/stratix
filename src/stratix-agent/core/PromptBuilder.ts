@@ -122,7 +122,7 @@ export class PromptBuilder {
     }];
   }
 
-  buildSkillPrompt(skill: SkillDefinition, params: Record<string, any>): string {
+  buildSkillPrompt(skill: SkillDefinition, params: Record<string, unknown>): string {
     let prompt = skill.description;
 
     if (skill.parameters.length > 0) {

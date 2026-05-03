@@ -15,6 +15,10 @@ export class RateLimiter {
     let timestamps = this.requestCounts.get(identifier) || [];
     timestamps = timestamps.filter(t => t > windowStart);
     
+    if (timestamps.length === 0) {
+      this.requestCounts.delete(identifier);
+    }
+    
     if (timestamps.length >= this.config.maxRequests) {
       return false;
     }
@@ -30,6 +34,10 @@ export class RateLimiter {
     
     const timestamps = (this.requestCounts.get(identifier) || [])
       .filter(t => t > windowStart);
+    
+    if (timestamps.length === 0) {
+      this.requestCounts.delete(identifier);
+    }
     
     return Math.max(0, this.config.maxRequests - timestamps.length);
   }

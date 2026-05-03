@@ -1,6 +1,9 @@
 import { SkillDefinition, SkillExecutor, ExecutionContext } from '../../types';
 import { SafetyValidator } from '../SafetyValidator';
 
+/** Default number of search results for web_search */
+const DEFAULT_SEARCH_RESULTS = 5;
+
 export class HttpSkillExecutor implements SkillExecutor {
   async execute(
     skill: SkillDefinition,
@@ -9,7 +12,7 @@ export class HttpSkillExecutor implements SkillExecutor {
   ): Promise<any> {
     // Handle web_search specially - uses DuckDuckGo API
     if (skill.skillId === 'web_search') {
-      const { query, num_results = 5 } = params;
+      const { query, num_results = DEFAULT_SEARCH_RESULTS } = params;
       const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1`;
 
       // Validate URL

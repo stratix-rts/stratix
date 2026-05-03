@@ -14,8 +14,8 @@ export interface SkillExecutionLog {
   id: string;
   agentId: string;
   skillId: string;
-  params: Record<string, any>;
-  result?: any;
+  params: Record<string, unknown>;
+  result?: unknown;
   error?: string;
   executionTime: number;
   timestamp: number;
@@ -38,6 +38,7 @@ export class SkillAuditLogger {
 
   // 最大日志数量限制，防止内存溢出
   private static readonly MAX_LOG_ENTRIES = 10000;
+  private static readonly DEFAULT_QUERY_LIMIT = 100;
 
   constructor() {
     this.logs = new Map();
@@ -51,8 +52,8 @@ export class SkillAuditLogger {
   log(params: {
     agentId: string;
     skillId: string;
-    params: Record<string, any>;
-    result?: any;
+    params: Record<string, unknown>;
+    result?: unknown;
     error?: string;
     executionTime: number;
     sessionId?: string;
@@ -112,7 +113,7 @@ export class SkillAuditLogger {
 
     // 分页
     const offset = query.offset || 0;
-    const limit = query.limit || 100;
+    const limit = query.limit || SkillAuditLogger.DEFAULT_QUERY_LIMIT;
 
     return logs.slice(offset, offset + limit);
   }
@@ -137,7 +138,7 @@ export class SkillAuditLogger {
 
     // 分页
     const offset = query.offset || 0;
-    const limit = query.limit || 100;
+    const limit = query.limit || SkillAuditLogger.DEFAULT_QUERY_LIMIT;
 
     return logs.slice(offset, offset + limit);
   }

@@ -1,3 +1,8 @@
+/** Default maximum cache entries */
+const DEFAULT_MAX_SIZE = 1000;
+/** Default TTL in milliseconds (5 minutes) */
+const DEFAULT_TTL_MS = 5 * 60 * 1000;
+
 interface CacheEntry {
   value: unknown;
   timestamp: number;
@@ -9,8 +14,8 @@ export class SharedMemoryCache {
   private agentAccessCount: Map<string, Map<string, number>> = new Map();
 
   constructor(
-    private maxSize: number = 1000,
-    private ttl: number = 5 * 60 * 1000
+    private maxSize: number = DEFAULT_MAX_SIZE,
+    private ttl: number = DEFAULT_TTL_MS
   ) {}
 
   getFromCache(key: string): unknown {
@@ -73,6 +78,7 @@ export class SharedMemoryCache {
 
   clear(): void {
     this.cache.clear();
+    this.agentAccessCount.clear();
   }
 
   size(): number {

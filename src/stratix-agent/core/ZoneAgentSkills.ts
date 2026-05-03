@@ -71,7 +71,7 @@ export interface CapabilityUpdateParams {
 export interface ZoneSkillResult {
   success: boolean;
   error?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**
