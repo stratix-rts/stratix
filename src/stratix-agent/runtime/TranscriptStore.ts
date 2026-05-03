@@ -161,6 +161,18 @@ export class TranscriptStore {
   }
 
   /**
+   * Health check - verifies the base directory is accessible
+   */
+  async isHealthy(): Promise<boolean> {
+    try {
+      await access(this.baseDir);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Get transcript file size in bytes
    */
   async getTranscriptSize(sessionId: string): Promise<number> {

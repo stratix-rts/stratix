@@ -566,6 +566,21 @@ export class EnhancedStratixAgent extends StratixAgent {
     }
   }
 
+  /**
+   * Graceful shutdown - stops polling, destroys sessions, and disposes runtime.
+   */
+  async dispose(): Promise<void> {
+    await this.stop();
+    this.runtime.dispose();
+  }
+
+  /**
+   * Health check for the enhanced agent and its subsystems.
+   */
+  isHealthy(): boolean {
+    return !this.shouldStop && this.runtime.isHealthy();
+  }
+
   private shouldStop = false;
 
   // ============================================

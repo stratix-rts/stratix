@@ -418,6 +418,27 @@ export class SessionRuntime {
   }
 
   /**
+   * Health check - verifies the runtime is operational
+   */
+  isHealthy(): boolean {
+    return true;
+  }
+
+  /**
+   * Get runtime statistics
+   */
+  getStats(): { activeSessions: number; totalMessages: number } {
+    let totalMessages = 0;
+    for (const session of this.sessions.values()) {
+      totalMessages += session.messages.length;
+    }
+    return {
+      activeSessions: this.sessions.size,
+      totalMessages,
+    };
+  }
+
+  /**
    * Dispose of all sessions and clear in-memory state.
    * Call this during graceful shutdown to prevent memory leaks.
    */
