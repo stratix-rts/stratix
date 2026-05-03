@@ -54,6 +54,7 @@ export class TranscriptStore {
    * Append multiple entries in a batch
    */
   async appendBatch(entries: TranscriptEntry[]): Promise<void> {
+    if (entries.length === 0) return;
     await this.ensureDirectory();
     const lines = entries.map((e) => JSON.stringify(e)).join('\n') + '\n';
     await appendFile(this.getFilePath(entries[0].sessionId), lines, 'utf-8');

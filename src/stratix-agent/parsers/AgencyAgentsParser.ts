@@ -613,7 +613,7 @@ export class AgencyAgentsParser {
    */
   private extractCodeDescription(context: string): string {
     const lines = context.split('\n').filter(l => l.trim());
-    for (const line of lines.reverse()) {
+    for (const line of [...lines].reverse()) {
       const cleaned = line.replace(/^[-*]\s*/, '').replace(/\*\*/g, '').trim();
       if (cleaned && !cleaned.startsWith('```')) {
         return cleaned.substring(0, MAX_CODE_DESC_LENGTH);
