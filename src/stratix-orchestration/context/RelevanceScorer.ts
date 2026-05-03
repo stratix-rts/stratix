@@ -16,6 +16,16 @@ const RECENCY_HALF_LIFE_DAYS = 7;
 const MAX_RELEVANCE_SCORE = 1.0;
 const TASK_WORD_MATCH_INCREMENT = 0.1;
 
+const STOP_WORDS = new Set([
+  'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+  'to', 'of', 'in', 'for', 'and', 'or', 'but', 'if', 'then', 'else',
+  'when', 'at', 'from', 'by', 'on', 'off', 'out', 'over', 'into',
+  'i', 'you', 'he', 'she', 'it', 'we', 'they', 'what', 'which',
+  'who', 'whom', 'this', 'that', 'these', 'those', 'am', 'do', 'does',
+  'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must',
+  'have', 'has', 'had', 'having', 'doing', 'can', 'need',
+]);
+
 export class RelevanceScorer {
   private static instance: RelevanceScorer;
 
@@ -40,6 +50,10 @@ export class RelevanceScorer {
       taskRelevanceWeight?: number;
     } = {}
   ): ScoredContext[] {
+    if (archives.length === 0 || !query.trim()) {
+      return [];
+    }
+
     const {
       keywordWeight = DEFAULT_KEYWORD_WEIGHT,
       recencyWeight = DEFAULT_RECENCY_WEIGHT,
@@ -101,18 +115,9 @@ export class RelevanceScorer {
 
   private extractKeywords(text: string): string[] {
     const words = text.toLowerCase().split(/\s+/);
-    const stopWords = new Set([
-      'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
-      'to', 'of', 'in', 'for', 'and', 'or', 'but', 'if', 'then', 'else',
-      'when', 'at', 'from', 'by', 'on', 'off', 'out', 'over', 'into',
-      'i', 'you', 'he', 'she', 'it', 'we', 'they', 'what', 'which',
-      'who', 'whom', 'this', 'that', 'these', 'those', 'am', 'do', 'does',
-      'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must',
-      'have', 'has', 'had', 'having', 'doing', 'can', 'need',
-    ]);
 
     return words
-      .filter(w => w.length > 2 && !stopWords.has(w) && !/^\d+$/.test(w))
+      .filter(w => w.length > 2 && !STOP_WORDS.has(w) && !/^\d+$/.test(w))
       .map(w => w.replace(/[^a-z0-9\u4e00-\u9fff]/g, '')) // Keep alphanumeric and CJK
       .filter(w => w.length > 0);
   }

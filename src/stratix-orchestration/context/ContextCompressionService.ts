@@ -30,6 +30,18 @@ const MAX_TASKS = 10;
 const MAX_KEYWORDS = 10;
 const DEFAULT_ARCHIVE_LIMIT = 5;
 
+const DECISION_KEYWORDS = ['决定', 'decided', '选择', 'chose', '方案', 'plan'];
+const TASK_KEYWORDS = ['todo', '任务', '需要做', 'should', 'must', '需要', '待办'];
+const STOP_WORDS = new Set([
+  'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+  'to', 'of', 'in', 'for', 'and', 'or', 'but', 'if', 'then', 'else',
+  'when', 'at', 'from', 'by', 'on', 'off', 'out', 'over', 'into',
+  'i', 'you', 'he', 'she', 'it', 'we', 'they', 'what', 'which',
+  'who', 'whom', 'this', 'that', 'these', 'those', 'am', 'do', 'does',
+  'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must',
+  'have', 'has', 'had', 'having', 'doing', 'can', 'need',
+]);
+
 // Default LLM config for compression (can be overridden via setLLMConfig)
 const DEFAULT_COMPRESSION_LLM: LLMConfig = {
   provider: 'deepseek',
@@ -58,6 +70,13 @@ export class ContextCompressionService {
   setLLMConfig(config: Partial<LLMConfig>): void {
     this.llmConfig = { ...this.llmConfig, ...config };
     this.llm = null; // Reset LLM instance to use new config
+  }
+
+  /**
+   * Clean up LLM connector reference
+   */
+  destroy(): void {
+    this.llm = null;
   }
 
   /**
@@ -216,10 +235,23 @@ ${messageText}
         };
       }
 
+      let keyDecisions: string[] = [];
+      let outstandingTasks: string[] = [];
+      try {
+        keyDecisions = JSON.parse(row.key_decisions || '[]');
+      } catch {
+        /* expected: corrupted key decisions */
+      }
+      try {
+        outstandingTasks = JSON.parse(row.outstanding_tasks || '[]');
+      } catch {
+        /* expected: corrupted outstanding tasks */
+      }
+
       return {
         summary: content.summary,
-        keyDecisions: JSON.parse(row.key_decisions || '[]'),
-        outstandingTasks: JSON.parse(row.outstanding_tasks || '[]'),
+        keyDecisions,
+        outstandingTasks,
       };
     });
   }
@@ -253,11 +285,10 @@ ${messageText}
     messages: Array<{ role: string; content: string; timestamp: number }>
   ): string[] {
     const decisions: string[] = [];
-    const decisionKeywords = ['决定', 'decided', '选择', 'chose', '方案', 'plan'];
 
     for (const msg of messages) {
       const lower = msg.content.toLowerCase();
-      for (const keyword of decisionKeywords) {
+      for (const keyword of DECISION_KEYWORDS) {
         if (lower.includes(keyword)) {
           const sentence = this.extractSentence(msg.content, keyword);
           if (sentence && !decisions.includes(sentence)) {
@@ -274,11 +305,10 @@ ${messageText}
     messages: Array<{ role: string; content: string; timestamp: number }>
   ): string[] {
     const tasks: string[] = [];
-    const taskKeywords = ['todo', '任务', '需要做', 'should', 'must', '需要', '待办'];
 
     for (const msg of messages) {
       const lower = msg.content.toLowerCase();
-      for (const keyword of taskKeywords) {
+      for (const keyword of TASK_KEYWORDS) {
         if (lower.includes(keyword)) {
           const sentence = this.extractSentence(msg.content, keyword);
           if (sentence && !tasks.includes(sentence)) {
@@ -306,10 +336,9 @@ ${messageText}
   private extractKeywords(text: string): string[] {
     // Simple keyword extraction
     const words = text.toLowerCase().split(/\s+/);
-    const stopWords = new Set(['the', 'a', 'an', 'is', 'are', 'was', 'were', 'to', 'of', 'in', 'for', 'and', 'or']);
 
     return words
-      .filter(w => w.length > 2 && !stopWords.has(w))
+      .filter(w => w.length > 2 && !STOP_WORDS.has(w))
       .map(w => w.replace(/[^a-z0-9\u4e00-\u9fff]/g, '')) // Keep alphanumeric and CJK
       .filter(w => w.length > 0)
       .slice(0, MAX_KEYWORDS);
@@ -322,20 +351,25 @@ ${messageText}
   ): Promise<void> {
     const db = getDatabase().getDatabase();
     const now = Date.now();
-    const archiveId = `archive_${agentId}_${now}`;
+    const archiveId = `archive_${agentId}_${now}_${Math.random().toString(36).slice(2, 8)}`;
 
-    db.prepare(`
-      INSERT INTO context_archives (archive_id, agent_id, zone_id, archive_type, content, key_decisions, outstanding_tasks, archived_at)
-      VALUES (?, ?, ?, 'session_summary', ?, ?, ?, ?)
-    `).run(
-      archiveId,
-      agentId,
-      options.zoneId || null,
-      JSON.stringify(data),
-      JSON.stringify(data.keyDecisions),
-      JSON.stringify(data.outstandingTasks),
-      now
-    );
+    try {
+      db.prepare(`
+        INSERT INTO context_archives (archive_id, agent_id, zone_id, archive_type, content, key_decisions, outstanding_tasks, archived_at)
+        VALUES (?, ?, ?, 'session_summary', ?, ?, ?, ?)
+      `).run(
+        archiveId,
+        agentId,
+        options.zoneId || null,
+        JSON.stringify(data),
+        JSON.stringify(data.keyDecisions),
+        JSON.stringify(data.outstandingTasks),
+        now
+      );
+    } catch (err) {
+      log('error', 'Failed to store archive', { agentId, error: String(err) });
+      throw err;
+    }
   }
 
   /**

@@ -43,3 +43,18 @@ export const DEFAULT_MAX_TOKENS = {
   layer1: 8000,
   layer2: 64000,
 };
+
+/**
+ * Estimate token count from text (rough approximation: 1 token ≈ 4 chars for English/Chinese mixed text)
+ */
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+/**
+ * Check if a context archive has expired
+ */
+export function isContextArchiveExpired(archive: ContextArchive): boolean {
+  if (!archive.expiresAt) return false;
+  return Date.now() > archive.expiresAt;
+}
