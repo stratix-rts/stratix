@@ -8,17 +8,20 @@ export class RateLimiter {
     this.config = config;
   }
 
-  check(identifier: string = 'default'): boolean {
-    const now = Date.now();
+  private getActiveTimestamps(identifier: string, now: number): number[] {
     const windowStart = now - this.config.windowMs;
-    
-    let timestamps = this.requestCounts.get(identifier) || [];
-    timestamps = timestamps.filter(t => t > windowStart);
-    
+    const timestamps = (this.requestCounts.get(identifier) || [])
+      .filter(t => t > windowStart);
     if (timestamps.length === 0) {
       this.requestCounts.delete(identifier);
     }
-    
+    return timestamps;
+  }
+
+  check(identifier: string = 'default'): boolean {
+    const now = Date.now();
+    const timestamps = this.getActiveTimestamps(identifier, now);
+
     if (timestamps.length >= this.config.maxRequests) {
       return false;
     }
@@ -30,15 +33,7 @@ export class RateLimiter {
 
   getRemainingRequests(identifier: string = 'default'): number {
     const now = Date.now();
-    const windowStart = now - this.config.windowMs;
-    
-    const timestamps = (this.requestCounts.get(identifier) || [])
-      .filter(t => t > windowStart);
-    
-    if (timestamps.length === 0) {
-      this.requestCounts.delete(identifier);
-    }
-    
+    const timestamps = this.getActiveTimestamps(identifier, now);
     return Math.max(0, this.config.maxRequests - timestamps.length);
   }
 

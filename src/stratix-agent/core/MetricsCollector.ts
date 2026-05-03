@@ -42,10 +42,11 @@ export class MetricsCollector {
   }
 
   getPercentile(p: number): number {
-    if (this.latencies.length === 0) return 0;
+    if (this.latencies.length === 0 || p <= 0) return 0;
+    if (p >= 100) return this.latencies[this.latencies.length - 1];
     const sorted = [...this.latencies].sort((a, b) => a - b);
     const index = Math.ceil((p / 100) * sorted.length) - 1;
-    return sorted[index] || 0;
+    return sorted[Math.max(0, index)] ?? 0;
   }
 
   reset(): void {

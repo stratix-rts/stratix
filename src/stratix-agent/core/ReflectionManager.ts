@@ -32,11 +32,24 @@ export class ReflectionManager {
   private reflectionHistory: ReflectionEntry[] = [];
   private memoryEntries: MemoryEntry[] = [];
 
+  /** Default timeout for LLM calls during reflection (ms) */
+  private static readonly DEFAULT_LLM_TIMEOUT_MS = 30000;
+
   constructor(options: ReflectionManagerOptions) {
     this.llm = options.llm;
     this.soul = options.soul;
     this.memory = options.memory;
     this.onEvolutionCheck = options.onEvolutionCheck;
+  }
+
+  private async generateWithTimeout(
+    messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
+    timeoutMs: number = ReflectionManager.DEFAULT_LLM_TIMEOUT_MS
+  ): Promise<{ content: string }> {
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(`Reflection LLM call timed out after ${timeoutMs}ms`)), timeoutMs);
+    });
+    return Promise.race([this.llm.generate(messages), timeoutPromise]);
   }
 
   /**
@@ -54,7 +67,7 @@ export class ReflectionManager {
 2. 有什么可以改进的地方？
 3. 从中学到了什么？`;
 
-    const response = await this.llm.generate([{ role: 'user', content: reflectionPrompt }]);
+    const response = await this.generateWithTimeout([{ role: 'user', content: reflectionPrompt }]);
     const reflectionContent = response.content;
 
     // 创建反思条目
@@ -96,7 +109,7 @@ export class ReflectionManager {
 
 请分析问题并提出纠正方案。不要重复相同的错误。`;
 
-    const correction = await this.llm.generate([{ role: 'user', content: correctionPrompt }]);
+    const correction = await this.generateWithTimeout([{ role: 'user', content: correctionPrompt }]);
 
     // 保存纠正历史
     await this.addMemoryEntry(
@@ -115,7 +128,7 @@ export class ReflectionManager {
       this.reflectionHistory.map(r => `- ${r.reflection}`).join('\n')
     }`;
 
-    const response = await this.llm.generate([{ role: 'user', content: summaryPrompt }]);
+    const response = await this.generateWithTimeout([{ role: 'user', content: summaryPrompt }]);
     return response.content;
   }
 

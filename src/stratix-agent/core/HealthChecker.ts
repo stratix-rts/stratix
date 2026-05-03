@@ -13,14 +13,17 @@ export class HealthChecker {
     this.checks.set(name, checkFn);
   }
 
-  async check(): Promise<HealthStatus> {
+  async check(timeoutMs: number = 5000): Promise<HealthStatus> {
     this.lastCheck = Date.now();
     const results: Record<string, boolean> = {};
 
     const entries = Array.from(this.checks.entries());
     for (const [name, checkFn] of entries) {
       try {
-        results[name] = await checkFn();
+        const timeoutPromise = new Promise<boolean>((_, reject) => {
+          setTimeout(() => reject(new Error(`Health check "${name}" timed out after ${timeoutMs}ms`)), timeoutMs);
+        });
+        results[name] = await Promise.race([checkFn(), timeoutPromise]);
       } catch (err) {
         log('warn', `Health check "${name}" failed`, { error: String(err) });
         results[name] = false;
@@ -34,11 +37,11 @@ export class HealthChecker {
       details: results,
     };
 
-    return this.status;
+    return { ...this.status };
   }
 
   getStatus(): HealthStatus {
-    return this.status;
+    return { ...this.status };
   }
 
   isHealthy(): boolean {
