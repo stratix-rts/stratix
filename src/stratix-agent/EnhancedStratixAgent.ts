@@ -215,7 +215,7 @@ export class EnhancedStratixAgent extends StratixAgent {
    */
   loadTemplate(template: AgentTemplate): AgentTemplate {
     // 应用 mixin 组合
-    if (template.mixins.length > 0) {
+    if (template.mixins && template.mixins.length > 0) {
       template = this.mixinComposer.compose(template, template.mixins);
     }
     this.template = template;
@@ -389,19 +389,28 @@ export class EnhancedStratixAgent extends StratixAgent {
   public async executeAgentTurn(
     session: SessionContext,
     message: string,
-    _timeout: number,
-    _signal?: AbortSignal
+    timeout: number,
+    signal?: AbortSignal
   ): Promise<{ response: string; usage: TokenUsage }> {
     // Retrieve enhanced context stored by chat()
-    // enhancedPrompt is AgentChatMessage[] (from ./types)
     const enhancedPrompt = session.memory.get('enhancedPrompt') as AgentChatMessage[] | undefined;
-    // recentMessages from session.memory was stored as AgentChatMessage[]
     const recentMessages = session.memory.get('recentMessages') as AgentChatMessage[] | undefined;
+
+    const generatePromise = (promptMessages: AgentChatMessage[]): Promise<{ response: string; usage: TokenUsage }> =>
+      this.llm.generate(promptMessages).then(result => ({
+        response: result.content,
+        usage: {
+          promptTokens: result.usage?.promptTokens ?? 0,
+          completionTokens: result.usage?.completionTokens ?? 0,
+          totalTokens: result.usage?.totalTokens ?? 0,
+          turnCount: 1,
+        },
+      }));
 
     if (!enhancedPrompt) {
       // Fallback: simple response without enhanced prompt
-      const result = await this.llm.generate([{ role: 'user', content: message }]);
-      return { response: result.content, usage: { ...result.usage!, turnCount: 1 } };
+      const result = await this.raceWithTimeout(generatePromise([{ role: 'user', content: message }]), timeout, signal);
+      return result;
     }
 
     // Build messages array with system prompt + recent history + current message
@@ -411,13 +420,9 @@ export class EnhancedStratixAgent extends StratixAgent {
       { role: 'user', content: message },
     ];
 
-    // Call LLM
-    const result = await this.llm.generate(messages);
-
-    return {
-      response: result.content,
-      usage: { ...result.usage!, turnCount: 1 },
-    };
+    // Call LLM with timeout and abort signal
+    const result = await this.raceWithTimeout(generatePromise(messages), timeout, signal);
+    return result;
   }
 
   // ============================================
@@ -582,6 +587,32 @@ export class EnhancedStratixAgent extends StratixAgent {
   }
 
   private shouldStop = false;
+
+  /**
+   * Race a promise against a timeout and optional abort signal.
+   */
+  private async raceWithTimeout<T>(
+    promise: Promise<T>,
+    timeout: number,
+    signal?: AbortSignal
+  ): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    const timerPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Agent turn timed out after ${timeout}ms`)), timeout);
+    });
+    if (signal) {
+      const result = await Promise.race([
+        promise.finally(() => clearTimeout(timer)),
+        timerPromise,
+        new Promise<never>((_, reject) => {
+          signal.addEventListener('abort', () => reject(new Error('Agent turn aborted')), { once: true });
+        }),
+      ]);
+      return result;
+    }
+    const result = await Promise.race([promise.finally(() => clearTimeout(timer)), timerPromise]);
+    return result;
+  }
 
   // ============================================
   // Task Polling (Agent Task Management)

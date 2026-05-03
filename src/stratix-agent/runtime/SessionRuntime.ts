@@ -122,9 +122,10 @@ export class SessionRuntime {
     }
 
     // Reconstruct session context from transcript
-    // First entry should have agentId
+    // First entry should have agentId in metadata
     const firstEntry = entries[0];
-    const context = createEmptyContext(sessionId, firstEntry.sessionId);
+    const recoveredAgentId = (firstEntry.metadata?.agentId as string | undefined) || firstEntry.sessionId;
+    const context = createEmptyContext(sessionId, recoveredAgentId);
 
     for (const entry of entries) {
       const msg: ChatMessage = {
@@ -164,7 +165,7 @@ export class SessionRuntime {
       throw new Error(`Session ${sessionId} not found`);
     }
     if (session.status !== 'active') {
-      throw new Error(`Session ${sessionId} is ${session.status}`);
+      throw new Error(`Session ${sessionId} is ${session.status} (expected active)`);
     }
 
     const startTime = Date.now();
@@ -178,7 +179,16 @@ export class SessionRuntime {
       timeout,
       signal,
       maxRetries
-    );
+    ).catch(err => {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        response: `Error: ${msg}`,
+        usage: createEmptyUsage(),
+        retries: maxRetries,
+        interrupted: false,
+        error: msg,
+      };
+    });
 
     const endTime = Date.now();
     const duration = endTime - startTime;
@@ -285,13 +295,14 @@ export class SessionRuntime {
   }
 
   private syncSessionToStateStore(session: SessionContext): void {
+    if (!stratixStateStore) return;
     const sessionState: SessionState = {
       id: session.sessionId,
       agentId: session.agentId,
       messages: session.messages
-        .filter(m => m.role === 'user' || m.role === 'assistant')
+        .filter((m): m is ChatMessage & { role: 'user' | 'assistant' } => m.role === 'user' || m.role === 'assistant')
         .map(m => ({
-          role: m.role as 'user' | 'assistant',
+          role: m.role,
           content: m.content,
           timestamp: m.timestamp,
         })),
@@ -444,5 +455,6 @@ export class SessionRuntime {
    */
   dispose(): void {
     this.sessions.clear();
+    this.agentDelegate = null;
   }
 }

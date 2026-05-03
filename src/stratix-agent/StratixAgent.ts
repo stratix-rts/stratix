@@ -267,6 +267,15 @@ export class StratixAgent {
       for (const execResult of executionResults) {
         if (execResult.status === 'fulfilled') {
           skillExecutions.push(execResult.value);
+        } else {
+          skillExecutions.push({
+            success: false,
+            skillId: 'unknown',
+            result: undefined,
+            error: execResult.reason instanceof Error ? execResult.reason.message : String(execResult.reason),
+            executionTime: 0,
+          });
+          log('warn', 'Skill execution failed', { reason: String(execResult.reason) });
         }
       }
     }
@@ -311,7 +320,9 @@ export class StratixAgent {
   }
 
   async updateConfig(updates: Partial<AgentConfig>): Promise<void> {
-    Object.assign(this.config, updates);
+    // Defensive copy to avoid accidental mutation of external object
+    const sanitized = { ...updates };
+    Object.assign(this.config, sanitized);
     this.config.updatedAt = new Date().toISOString();
     await this.storage.saveConfig(this.config);
     this.autoSaver.trigger();
@@ -337,6 +348,10 @@ export class StratixAgent {
   }
 
   startBackgroundTasks(): void {
+    if (this.backgroundTasks.length > 0) {
+      log('warn', 'Background tasks already running');
+      return;
+    }
     const saveTask = setInterval(async () => {
       try {
         await this.memory.save();
@@ -348,7 +363,11 @@ export class StratixAgent {
     this.backgroundTasks.push(saveTask);
 
     const healthTask = setInterval(() => {
-      this.healthChecker.check();
+      try {
+        this.healthChecker.check();
+      } catch (error) {
+        log('error', 'Health check failed', { error: String(error) });
+      }
     }, HEALTH_CHECK_INTERVAL_MS);
     this.backgroundTasks.push(healthTask);
   }
@@ -360,6 +379,8 @@ export class StratixAgent {
     this.backgroundTasks = [];
 
     this.autoSaver.dispose();
+    this.toolUseLoop = null;
+    this.toolUseEnabled = false;
 
     await this.memory.save();
     await this.sessions.saveSessions(this.config.agentId);

@@ -80,7 +80,7 @@ export class SessionManager {
     const session = this.sessions.get(sessionId);
     if (!session) return [];
 
-    if (count) {
+    if (typeof count === 'number') {
       return session.messages.slice(-count);
     }
     return [...session.messages];
@@ -94,7 +94,7 @@ export class SessionManager {
       await mkdir(this.storagePath, { recursive: true });
     }
 
-    const filePath = `${this.storagePath}/${session.sessionId}.json`;
+    const filePath = `${this.storagePath.replace(/\/$/, '')}/${session.sessionId}.json`;
     await writeFile(filePath, JSON.stringify(session, null, 2));
   }
 
@@ -113,7 +113,7 @@ export class SessionManager {
 
       for (const file of sessionFiles) {
         try {
-          const content = await readFile(`${this.storagePath}/${file}`, 'utf-8');
+          const content = await readFile(`${this.storagePath.replace(/\/$/, '')}/${file}`, 'utf-8');
           const session: Session = JSON.parse(content);
           if (session.agentId === agentId) {
             this.sessions.set(session.sessionId, session);
@@ -188,8 +188,13 @@ export class SessionManager {
     });
 
     for (let i = 0; i < Math.min(count, sorted.length); i++) {
-      this.sessions.delete(sorted[i][0]);
-      log('warn', `Evicted session ${sorted[i][0]} due to maxSessions limit`);
+      const [evictedId, evictedSession] = sorted[i];
+      this.sessions.delete(evictedId);
+      // Persist evicted session before dropping from memory
+      this.saveSession(evictedSession).catch((err: unknown) => {
+        log('warn', `Failed to save evicted session ${evictedId}`, { error: String(err) });
+      });
+      log('warn', `Evicted session ${evictedId} due to maxSessions limit`);
     }
   }
 }
