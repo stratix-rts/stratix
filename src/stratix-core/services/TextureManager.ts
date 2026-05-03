@@ -82,10 +82,14 @@ class TextureManager {
     // 4. 生成新的纹理
     const generatePromise = (async () => {
       try {
+        const supportedBodyTypes: Array<'male' | 'female' | 'teen' | 'muscular' | 'pregnant'> = ['male', 'female', 'teen', 'muscular', 'pregnant'];
+        const bodyType = supportedBodyTypes.includes(characterData.bodyType as typeof supportedBodyTypes[number])
+          ? (characterData.bodyType as typeof supportedBodyTypes[number])
+          : 'male';
         const result = await characterComposer.composeCharacter(
           characterData.parts,
           {
-            bodyType: characterData.bodyType as any,
+            bodyType,
             animations: ALL_ANIMATIONS
           }
         );

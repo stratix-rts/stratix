@@ -157,10 +157,10 @@ export class WebServiceProvider implements ServiceProvider {
           endpoint: connections[0]?.endpoint,
         };
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       return {
         connected: false,
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
     

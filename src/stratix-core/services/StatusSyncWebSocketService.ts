@@ -27,7 +27,17 @@ class StatusSyncWebSocketService {
   }
 
   public connect(): void {
-    if (this.ws || this.isConnecting) {
+    if (this.isConnecting) {
+      return;
+    }
+
+    // Close stale connection before reconnecting
+    if (this.ws && this.ws.readyState !== WebSocket.OPEN) {
+      this.ws.close();
+      this.ws = null;
+    }
+
+    if (this.ws) {
       return;
     }
 

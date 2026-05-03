@@ -16,6 +16,7 @@ import {
 export class RetryPolicyEngine {
   private static instance: RetryPolicyEngine | null = null;
   private attempts: RetryAttempt[] = [];
+  private readonly maxAttemptHistory = 1000;
 
   /**
    * 获取 RetryPolicyEngine 单例实例（向后兼容）
@@ -50,11 +51,11 @@ export class RetryPolicyEngine {
 
       try {
         const result = await request();
-        this.attempts.push({ attemptNumber, delayMs, result });
+        this.recordAttempt({ attemptNumber, delayMs, result });
         return result;
       } catch (error) {
         lastError = error as Error;
-        this.attempts.push({ attemptNumber, delayMs, error: lastError });
+        this.recordAttempt({ attemptNumber, delayMs, error: lastError });
 
         // Determine if we can retry
         const retryDecision = this.shouldRetry(lastError, fullConfig, attemptNumber, source);
@@ -231,6 +232,16 @@ export class RetryPolicyEngine {
    */
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Record an attempt with history limit to prevent unbounded growth
+   */
+  private recordAttempt(attempt: RetryAttempt): void {
+    this.attempts.push(attempt);
+    if (this.attempts.length > this.maxAttemptHistory) {
+      this.attempts = this.attempts.slice(-Math.floor(this.maxAttemptHistory / 2));
+    }
   }
 
   /**

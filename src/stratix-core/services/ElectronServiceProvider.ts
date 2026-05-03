@@ -11,11 +11,28 @@ import type { ChatResponse } from '@/stratix-openclaw-adapter/types';
 
 import type { ServiceProvider, TailscaleNode, AppConfiguration } from './ServiceProvider';
 
+interface ElectronAPI {
+  invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
+  openclaw?: {
+    connectDirect: (endpoint: string, config: unknown) => Promise<unknown>;
+    disconnectDirect: () => Promise<void>;
+  };
+  tailscale?: {
+    discoverNodes: () => Promise<unknown[]>;
+    connectNode: (nodeId: string) => Promise<unknown>;
+    getStatus: () => Promise<unknown>;
+    getNodes: () => Promise<unknown[]>;
+  };
+}
+
 export class ElectronServiceProvider implements ServiceProvider {
-  private electronAPI: any;
+  private electronAPI: ElectronAPI | null;
   
   constructor() {
-    this.electronAPI = (typeof window !== 'undefined') ? (window as any).electronAPI : null;
+    const win = typeof window !== 'undefined' ? window : undefined;
+    this.electronAPI = win && (win as unknown as { electronAPI?: ElectronAPI }).electronAPI
+      ? (win as unknown as { electronAPI: ElectronAPI }).electronAPI
+      : null;
   }
   
   getEnvironment(): 'electron' {
@@ -60,7 +77,7 @@ export class ElectronServiceProvider implements ServiceProvider {
     if (!this.electronAPI) {
       throw new Error('Electron API not available');
     }
-    return await this.electronAPI.invoke('service:loadAgent', id);
+    return (await this.electronAPI.invoke('service:loadAgent', id)) as StratixAgentConfig | null;
   }
   
   async deleteAgent(id: string): Promise<void> {
@@ -74,7 +91,7 @@ export class ElectronServiceProvider implements ServiceProvider {
     if (!this.electronAPI) {
       throw new Error('Electron API not available');
     }
-    return await this.electronAPI.invoke('service:listAgents');
+    return (await this.electronAPI.invoke('service:listAgents')) as StratixAgentConfig[];
   }
   
   // ==================== OpenClaw 连接服务 ====================
@@ -89,7 +106,7 @@ export class ElectronServiceProvider implements ServiceProvider {
       throw new Error('No endpoint provided');
     }
 
-    const result = await this.electronAPI.openclaw.connectDirect(endpoint, config);
+    const result = await this.electronAPI.openclaw?.connectDirect(endpoint, config);
     return result === true;
   }
 
@@ -98,14 +115,14 @@ export class ElectronServiceProvider implements ServiceProvider {
       throw new Error('Electron API not available');
     }
 
-    return await this.electronAPI.invoke('openclaw:sendMessage', { message, sessionId });
+    return (await this.electronAPI.invoke('openclaw:sendMessage', { message, sessionId })) as ChatResponse;
   }
 
   async disconnectOpenClaw(): Promise<void> {
     if (!this.electronAPI) {
       throw new Error('Electron API not available');
     }
-    await this.electronAPI.openclaw.disconnectDirect();
+    await this.electronAPI.openclaw?.disconnectDirect();
   }
   
   async getOpenClawStatus(): Promise<{ connected: boolean; endpoint?: string; error?: string }> {
@@ -116,7 +133,7 @@ export class ElectronServiceProvider implements ServiceProvider {
       };
     }
     
-    return await this.electronAPI.invoke('service:getOpenClawStatus');
+    return (await this.electronAPI.invoke('service:getOpenClawStatus')) as { connected: boolean; endpoint?: string; error?: string };
   }
   
   // ==================== Tailscale 服务 ====================
@@ -125,14 +142,14 @@ export class ElectronServiceProvider implements ServiceProvider {
     if (!this.electronAPI?.tailscale) {
       return [];
     }
-    return await this.electronAPI.tailscale.discoverNodes();
+    return (await this.electronAPI.tailscale.discoverNodes()) as TailscaleNode[];
   }
   
   async connectTailscaleNode(nodeId: string): Promise<boolean> {
     if (!this.electronAPI?.tailscale) {
       return false;
     }
-    return await this.electronAPI.tailscale.connectNode(nodeId);
+    return (await this.electronAPI.tailscale.connectNode(nodeId)) as boolean;
   }
   
   async getTailscaleStatus(): Promise<{ running: boolean; authenticated: boolean; nodes: number }> {
@@ -144,8 +161,8 @@ export class ElectronServiceProvider implements ServiceProvider {
       };
     }
     
-    const status = await this.electronAPI.tailscale.getStatus();
-    const nodes = await this.electronAPI.tailscale.getNodes();
+    const status = (await this.electronAPI.tailscale.getStatus()) as { running?: boolean; authenticated?: boolean } | undefined;
+    const nodes = (await this.electronAPI.tailscale.getNodes()) as unknown[] | undefined;
     
     return {
       running: status?.running || false,
@@ -165,11 +182,11 @@ export class ElectronServiceProvider implements ServiceProvider {
       throw new Error('Electron API not available');
     }
 
-    const result = await this.electronAPI.invoke('texture:upload', {
+    const result = (await this.electronAPI.invoke('texture:upload', {
       characterId,
       imageData,
       filename
-    });
+    })) as { success: boolean; data: import('@/stratix-core/stratix-protocol').CharacterTexture; error?: string };
 
     if (result.success) {
       return result.data;
@@ -188,7 +205,7 @@ export class ElectronServiceProvider implements ServiceProvider {
       return { exists: false, url: null };
     }
 
-    return await this.electronAPI.invoke('texture:check', filePath);
+    return (await this.electronAPI.invoke('texture:check', filePath)) as { exists: boolean; url: string | null; size?: number; generatedAt?: number };
   }
 
   async deleteTexture(filePath: string): Promise<void> {
