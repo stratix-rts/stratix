@@ -18,6 +18,12 @@ interface ClientInfo {
   agentId?: string;
 }
 
+interface AliveMarker {
+  isAlive: boolean;
+}
+
+const aliveMarkers = new WeakMap<WebSocket, AliveMarker>();
+
 export class StatusSyncService {
   private wss: WebSocketServer;
   private clients: Set<WebSocket> = new Set();
@@ -35,15 +41,28 @@ export class StatusSyncService {
     this.setupZoneCoordinatorListeners();
   }
 
+  private setAlive(ws: WebSocket, value: boolean): void {
+    let marker = aliveMarkers.get(ws);
+    if (!marker) {
+      marker = { isAlive: true };
+      aliveMarkers.set(ws, marker);
+    }
+    marker.isAlive = value;
+  }
+
+  private getAlive(ws: WebSocket): boolean {
+    return aliveMarkers.get(ws)?.isAlive ?? true;
+  }
+
   private setupServer(): void {
     this.wss.on('connection', (ws: WebSocket) => {
       this.clients.add(ws);
       console.log(`[StatusSync] Client connected. Total clients: ${this.clients.size}`);
 
-      (ws as any).isAlive = true;
+      this.setAlive(ws, true);
 
       ws.on('pong', () => {
-        (ws as any).isAlive = true;
+        this.setAlive(ws, true);
       });
 
       ws.on('message', (data: Buffer) => {
@@ -69,6 +88,7 @@ export class StatusSyncService {
       ws.on('close', () => {
         this.clients.delete(ws);
         this.clientInfo.delete(ws);
+        aliveMarkers.delete(ws);
         console.log(`[StatusSync] Client disconnected. Total clients: ${this.clients.size}`);
       });
 
@@ -76,6 +96,7 @@ export class StatusSyncService {
         console.error('[StatusSync] WebSocket error:', error);
         this.clients.delete(ws);
         this.clientInfo.delete(ws);
+        aliveMarkers.delete(ws);
       });
 
       this.sendWelcome(ws);
@@ -213,15 +234,29 @@ export class StatusSyncService {
 
   private startHeartbeat(): void {
     this.heartbeatInterval = setInterval(() => {
+      const deadClients: WebSocket[] = [];
       this.clients.forEach((ws: WebSocket) => {
-        if (!(ws as any).isAlive) {
-          this.clients.delete(ws);
-          return ws.terminate();
+        if (!this.getAlive(ws)) {
+          deadClients.push(ws);
+          return;
         }
-
-        (ws as any).isAlive = false;
-        ws.ping();
+        this.setAlive(ws, false);
+        try {
+          ws.ping();
+        } catch {
+          deadClients.push(ws);
+        }
       });
+      for (const ws of deadClients) {
+        this.clients.delete(ws);
+        this.clientInfo.delete(ws);
+        aliveMarkers.delete(ws);
+        try {
+          ws.terminate();
+        } catch {
+          // ignore termination errors
+        }
+      }
     }, 30000);
   }
 
@@ -273,7 +308,7 @@ export class StatusSyncService {
     agentId: string,
     status: 'pending' | 'running' | 'success' | 'failed',
     progress?: number,
-    result?: any,
+    result?: unknown,
     error?: string
   ): void {
     this.broadcast({
@@ -294,7 +329,7 @@ export class StatusSyncService {
   /**
    * Notify zone state change
    */
-  public notifyZoneUpdate(zoneId: string, zoneData: any): void {
+  public notifyZoneUpdate(zoneId: string, zoneData: Record<string, unknown>): void {
     this.broadcast({
       eventType: 'orchestration:zone_updated',
       payload: { zoneId, ...zoneData },
@@ -348,7 +383,7 @@ export class StatusSyncService {
   /**
    * Notify task completion
    */
-  public notifyTaskCompleted(taskId: string, agentId: string, result?: any): void {
+  public notifyTaskCompleted(taskId: string, agentId: string, result?: unknown): void {
     this.broadcast({
       eventType: 'orchestration:task_completed',
       payload: { taskId, agentId, result },
@@ -397,16 +432,30 @@ export class StatusSyncService {
   public close(): void {
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
     }
     if (this.unsubscribeChannelMessage) {
       this.unsubscribeChannelMessage();
+      this.unsubscribeChannelMessage = null;
     }
     if (this.unsubscribeZoneEvent) {
       this.unsubscribeZoneEvent();
+      this.unsubscribeZoneEvent = null;
     }
     if (this.unsubscribeZoneCoordinatorEvent) {
       this.unsubscribeZoneCoordinatorEvent();
+      this.unsubscribeZoneCoordinatorEvent = null;
     }
+    // Close all client connections before closing server
+    this.clients.forEach((ws) => {
+      try {
+        ws.terminate();
+      } catch {
+        // ignore
+      }
+    });
+    this.clients.clear();
+    this.clientInfo.clear();
     this.wss.close();
   }
 

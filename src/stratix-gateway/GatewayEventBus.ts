@@ -40,11 +40,21 @@ export type GatewayEvent = ChannelMessageEvent | AgentMentionEvent | ZoneEvent;
 class GatewayEventBus extends EventEmitter {
   private static instance: GatewayEventBus;
 
+  constructor() {
+    super();
+    // Prevent memory leak warnings for expected high listener counts
+    this.setMaxListeners(100);
+  }
+
   static getInstance(): GatewayEventBus {
     if (!GatewayEventBus.instance) {
       GatewayEventBus.instance = new GatewayEventBus();
     }
     return GatewayEventBus.instance;
+  }
+
+  destroy(): void {
+    this.removeAllListeners();
   }
 
   /**
@@ -60,7 +70,7 @@ class GatewayEventBus extends EventEmitter {
     console.log(`[GatewayEventBus] Publishing message to channel ${channelId}:`, {
       messageId: message.id,
       mentions: message.mentions,
-      subscriberIds: subscriberIds
+      subscriberCount: subscriberIds.length
     });
 
     const event: ChannelMessageEvent = {
