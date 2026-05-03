@@ -1,9 +1,25 @@
+import type Database from 'better-sqlite3';
+
 import { generateId } from '../stratix-project/utils/helpers';
 
 import { getDatabase } from './StratixDatabase';
 
 const DEFAULT_LIMIT = 50;
 const DEFAULT_OFFSET = 0;
+
+const ALL_EVENT_TYPES: AuditEventType[] = [
+  'agent_entered',
+  'agent_left',
+  'task_created',
+  'task_assigned',
+  'task_claimed',
+  'task_started',
+  'task_completed',
+  'task_failed',
+  'message_sent',
+  'skill_executed',
+  'context_shared'
+];
 
 /**
  * 审计事件类型
@@ -31,7 +47,7 @@ interface AuditLogRow {
   created_at: number;
 }
 
-interface CountRow {
+interface AuditLogCountRow {
   total: number;
 }
 
@@ -111,6 +127,36 @@ export class AuditLogRepository {
     return getDatabase().getDatabase();
   }
 
+  private statements = new Map<string, Database.Statement>();
+
+  private stmt(sql: string): Database.Statement {
+    let s = this.statements.get(sql);
+    if (!s) {
+      s = this.db.prepare(sql);
+      this.statements.set(sql, s);
+    }
+    return s;
+  }
+
+  /**
+   * 清理 prepared statement 缓存
+   */
+  shutdown(): void {
+    this.statements.clear();
+  }
+
+  /**
+   * 检查数据库连接是否健康
+   */
+  isHealthy(): boolean {
+    try {
+      this.db.prepare('SELECT 1').get();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /**
    * 记录审计事件
    */
@@ -124,11 +170,10 @@ export class AuditLogRepository {
     const now = Date.now();
     const id = generateId('audit');
 
-    const stmt = this.db.prepare(`
+    this.stmt(`
       INSERT INTO zone_audit_log (id, zone_id, event_type, actor_id, target_id, metadata, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-    stmt.run(
+    `).run(
       id,
       zoneId,
       eventType,
@@ -150,7 +195,40 @@ export class AuditLogRepository {
   }
 
   /**
+   * 批量记录审计事件（事务包装）
+   */
+  logBatch(records: Omit<AuditLogRecord, 'id' | 'createdAt'>[]): AuditLogRecord[] {
+    const now = Date.now();
+    const inserted: AuditLogRecord[] = [];
+
+    const insert = this.stmt(`
+      INSERT INTO zone_audit_log (id, zone_id, event_type, actor_id, target_id, metadata, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const tx = this.db.transaction(() => {
+      for (const rec of records) {
+        const id = generateId('audit');
+        insert.run(
+          id,
+          rec.zoneId,
+          rec.eventType,
+          rec.actorId ?? null,
+          rec.targetId ?? null,
+          rec.metadata ? JSON.stringify(rec.metadata) : null,
+          now
+        );
+        inserted.push({ ...rec, id, createdAt: now });
+      }
+    });
+
+    tx();
+    return inserted;
+  }
+
+  /**
    * 获取 Zone 审计轨迹（支持分页和过滤）
+   * 使用窗口函数 COUNT(*) OVER() 在单次查询中返回总数与数据
    */
   getZoneAuditTrail(
     zoneId: string,
@@ -161,21 +239,15 @@ export class AuditLogRepository {
 
     const { whereClause, params } = buildWhereConditions(['zone_id = ?'], [zoneId], options);
 
-    // Get total count
-    const countRow = this.db.prepare(`
-      SELECT COUNT(*) as total FROM zone_audit_log WHERE ${whereClause}
-    `).get(...params) as CountRow | undefined;
-    const total = countRow?.total ?? 0;
-
-    // Get paginated results
-    const queryParams = [...params, limit, offset];
-    const rows = this.db.prepare(`
-      SELECT * FROM zone_audit_log
+    const rows = this.stmt(`
+      SELECT *, COUNT(*) OVER() as _total
+      FROM zone_audit_log
       WHERE ${whereClause}
       ORDER BY created_at DESC
       LIMIT ? OFFSET ?
-    `).all(...queryParams) as AuditLogRow[];
+    `).all(...params, limit, offset) as Array<AuditLogRow & { _total: number }>;
 
+    const total = rows.length > 0 ? rows[0]._total : 0;
     const events = rows.map(row => this.mapRowToRecord(row));
     const hasMore = offset + events.length < total;
 
@@ -204,7 +276,7 @@ export class AuditLogRepository {
     const { whereClause, params } = buildWhereConditions(baseConditions, baseParams, options);
     const queryParams = [...params, limit, offset];
 
-    const rows = this.db.prepare(`
+    const rows = this.stmt(`
       SELECT * FROM zone_audit_log
       WHERE ${whereClause}
       ORDER BY created_at DESC
@@ -218,7 +290,7 @@ export class AuditLogRepository {
    * 获取 Zone 最近事件
    */
   getRecentEvents(zoneId: string, limit: number = 10): AuditLogRecord[] {
-    const rows = this.db.prepare(`
+    const rows = this.stmt(`
       SELECT * FROM zone_audit_log
       WHERE zone_id = ?
       ORDER BY created_at DESC
@@ -232,36 +304,21 @@ export class AuditLogRepository {
    * 按事件类型统计
    */
   countByEventType(zoneId: string): Record<AuditEventType, number> {
-    const rows = this.db.prepare(`
+    const rows = this.stmt(`
       SELECT event_type, COUNT(*) as count
       FROM zone_audit_log
       WHERE zone_id = ?
       GROUP BY event_type
     `).all(zoneId) as Array<{ event_type: string; count: number }>;
 
-    const counts: Record<string, number> = {};
+    const counts = new Map<string, number>();
     for (const row of rows) {
-      counts[row.event_type] = row.count;
+      counts.set(row.event_type, row.count);
     }
 
-    // Initialize all event types with 0
-    const allTypes: AuditEventType[] = [
-      'agent_entered',
-      'agent_left',
-      'task_created',
-      'task_assigned',
-      'task_claimed',
-      'task_started',
-      'task_completed',
-      'task_failed',
-      'message_sent',
-      'skill_executed',
-      'context_shared'
-    ];
-
     const result = {} as Record<AuditEventType, number>;
-    for (const type of allTypes) {
-      result[type] = counts[type] ?? 0;
+    for (const type of ALL_EVENT_TYPES) {
+      result[type] = counts.get(type) ?? 0;
     }
 
     return result;
@@ -271,11 +328,10 @@ export class AuditLogRepository {
    * 清理旧日志
    */
   cleanup(zoneId: string, olderThan: number): number {
-    const stmt = this.db.prepare(`
+    const result = this.stmt(`
       DELETE FROM zone_audit_log
       WHERE zone_id = ? AND created_at < ?
-    `);
-    const result = stmt.run(zoneId, olderThan);
+    `).run(zoneId, olderThan);
     return result.changes;
   }
 
