@@ -50,6 +50,8 @@ function defaultClassifier(context: PermissionContext): PermissionDecision | nul
 export class PermissionOrchestrator {
   private hooks: PermissionHook[] = [];
   private zoneRules: ZoneRule[] = [];
+  private readonly maxHooks = 100;
+  private readonly maxZoneRules = 100;
 
   constructor(rules?: ZoneRule[], hooks?: PermissionHook[]) {
     if (rules) {
@@ -64,6 +66,10 @@ export class PermissionOrchestrator {
    * Register a permission hook
    */
   addHook(hook: PermissionHook): void {
+    if (this.hooks.length >= this.maxHooks) {
+      console.warn('[PermissionOrchestrator] Hook limit reached, ignoring new hook');
+      return;
+    }
     this.hooks.push(hook);
   }
 
@@ -71,6 +77,10 @@ export class PermissionOrchestrator {
    * Add a zone rule
    */
   addZoneRule(rule: ZoneRule): void {
+    if (this.zoneRules.length >= this.maxZoneRules) {
+      console.warn('[PermissionOrchestrator] Zone rule limit reached, ignoring new rule');
+      return;
+    }
     this.zoneRules.push(rule);
   }
 

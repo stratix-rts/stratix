@@ -16,6 +16,16 @@ export class BudgetController {
   constructor(private config: BudgetConfig = DEFAULT_CONFIG) {}
 
   evaluate(usage: TokenUsage, continuationCount: number): BudgetDecision {
+    if (this.config.maxTokens <= 0) {
+      return {
+        action: 'stop',
+        reason: 'invalid_budget',
+        pctUsed: 1,
+        remainingBudget: 0,
+        nudgeMessage: 'Invalid budget configuration (maxTokens must be > 0)',
+      };
+    }
+
     const pctUsed = usage.totalTokens / this.config.maxTokens;
     const remainingBudget = this.config.maxTokens - usage.totalTokens;
 

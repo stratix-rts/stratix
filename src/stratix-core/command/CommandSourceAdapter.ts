@@ -29,7 +29,14 @@ export class CommandSourceAdapter {
   registerAgentCommands(agentConfig: StratixAgentConfig): void {
     if (!agentConfig.skills) return;
 
+    // Prevent duplicate registration for the same agent
+    const existing = this.orchestrator.getCommands({ agentId: agentConfig.agentId, sessionId: '', args: {} });
+    const existingSkillIds = new Set(existing.map((cmd) => cmd.name));
+
     for (const skill of agentConfig.skills) {
+      if (existingSkillIds.has(skill.skillId)) {
+        continue;
+      }
       const command: Command = {
         name: skill.skillId,
         description: skill.description || skill.name,

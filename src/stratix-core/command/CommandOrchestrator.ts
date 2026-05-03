@@ -24,10 +24,9 @@ const SOURCE_PRIORITY: Record<CommandSource, number> = {
 
 export class CommandOrchestrator {
   private commands = new Map<string, Command>();
-  private connectionPool: ConnectionPool;
 
-  constructor(connectionPool?: ConnectionPool) {
-    this.connectionPool = connectionPool || new ConnectionPool();
+  constructor(_connectionPool?: ConnectionPool) {
+    // ConnectionPool reserved for future use
   }
 
   register(command: Command): void {
