@@ -74,7 +74,13 @@ export function resolveGradient(
   template: string,
   colors: Record<string, string>
 ): string {
-  return template.replace(/\{([^}]+)\}/g, (_, key) => colors[key] || '');
+  return template.replace(/\{([^}]+)\}/g, (_, key) => {
+    const value = colors[key];
+    if (value === undefined || value === null) {
+      console.warn(`[resolveGradient] Missing color for placeholder: ${key}`);
+    }
+    return value || 'transparent';
+  });
 }
 
 /**

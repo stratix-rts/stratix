@@ -61,6 +61,10 @@ export function applyCardStyles(
   element: HTMLElement,
   token: CardSemanticToken
 ): void {
+  if (!element) {
+    console.warn('[applyCardStyles] element is required');
+    return;
+  }
   element.style.backgroundColor = token.background;
   element.style.border = token.border;
   element.style.borderRadius = token.borderRadius;

@@ -451,15 +451,15 @@ export class ShortcutManager {
 
   formatKeyDisplay(key: string): string {
     return key
-      .replace('Ctrl', '⌃')
-      .replace('Shift', '⇧')
-      .replace('Alt', '⌥')
-      .replace('Meta', '⌘')
-      .replace('ArrowUp', '↑')
-      .replace('ArrowDown', '↓')
-      .replace('ArrowLeft', '←')
-      .replace('ArrowRight', '→')
-      .replace('+', ' + ');
+      .replace(/Ctrl/g, '⌃')
+      .replace(/Shift/g, '⇧')
+      .replace(/Alt/g, '⌥')
+      .replace(/Meta/g, '⌘')
+      .replace(/ArrowUp/g, '↑')
+      .replace(/ArrowDown/g, '↓')
+      .replace(/ArrowLeft/g, '←')
+      .replace(/ArrowRight/g, '→')
+      .replace(/\+/g, ' + ');
   }
 
   searchShortcuts(query: string): ShortcutDefinition[] {

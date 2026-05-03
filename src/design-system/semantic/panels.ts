@@ -37,7 +37,7 @@ export type { PanelSemanticSet, PanelSemanticToken };
 import { isColorPrimitives } from '../types';
 
 export function getPanelSemantic(theme: DesignSystemTokens): PanelSemanticSet {
-  const colors = isColorPrimitives(theme.colors) ? theme.colors : theme.colors as any;
+  const colors = isColorPrimitives(theme.colors) ? theme.colors : (theme.colors as unknown as Parameters<typeof generatePanelSemantic>[0]);
   return generatePanelSemantic(colors, theme.radii, theme.shadows);
 }
 

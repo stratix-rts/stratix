@@ -32,20 +32,30 @@ import { characterStorage } from './core/CharacterStorage';
 import { characterCreatorEvents } from './core/EventEmitter';
 import { partRegistry } from './core/PartRegistry';
 import { SkillTree } from './core/SkillTree';
-import type { SavedCharacter, PartMetadata, CreatorStep } from './types';
+import type { SavedCharacter, PartMetadata, CreatorStep, OpenClawConfigLocal } from './types';
+import type { StratixDirectConfig } from '@/stratix-core/stratix-protocol';
 import { PartSelector, CharacterPreview, CharacterList, OpenClawConnectionPanel, AgentChatPanel, AgentConfigPanel, BackendSelector } from './ui';
 import { getButtonInlineStyles } from './ui/_buttonStyles';
 
 
 // 辅助函数：将十六进制颜色字符串转换为 Phaser 数字格式
 function hexToNumber(hex: string): number {
-  return parseInt(hex.replace('#', ''), 16);
+  const clean = hex.replace('#', '');
+  if (!/^[0-9A-Fa-f]{6}$/.test(clean)) {
+    console.warn(`[hexToNumber] Invalid hex color: ${hex}, falling back to 0`);
+    return 0;
+  }
+  return parseInt(clean, 16);
 }
 
 // 辅助函数：将颜色值转换为 CSS 字符串格式
 function toCssColor(color: string | number): string {
   if (typeof color === 'string') return color;
-  return '#' + color.toString(16).padStart(6, '0');
+  if (typeof color !== 'number' || !Number.isFinite(color) || color < 0 || color > 0xffffff) {
+    console.warn(`[toCssColor] Invalid color value: ${color}, falling back to #000000`);
+    return '#000000';
+  }
+  return '#' + Math.round(color).toString(16).padStart(6, '0');
 }
 
 // 动态获取主题的 THEME 函数
@@ -88,7 +98,7 @@ export class CharacterCreatorScene extends Phaser.Scene {
   private agentChatPanel: AgentChatPanel | null = null;
   private backendSelector: BackendSelector | null = null;
   private selectedBackendType: 'openclaw' | 'stratix' = 'stratix';
-  private selectedBackendConfig: any = null;
+  private selectedBackendConfig: unknown = null;
   private characterPreview: CharacterPreview | null = null;
   private characterList: CharacterList | null = null;
   private skillTree: SkillTree | null = null;
@@ -1051,8 +1061,8 @@ export class CharacterCreatorScene extends Phaser.Scene {
         
         if (characterSnapshot && this.currentCharacter) {
           characterSnapshot.backendType = this.selectedBackendType;
-          characterSnapshot.openClawConfig = this.selectedBackendType === 'openclaw' ? this.selectedBackendConfig : undefined;
-          characterSnapshot.stratixConfig = this.selectedBackendType === 'stratix' ? this.selectedBackendConfig : undefined;
+          characterSnapshot.openClawConfig = this.selectedBackendType === 'openclaw' ? this.selectedBackendConfig as OpenClawConfigLocal : undefined;
+          characterSnapshot.stratixConfig = this.selectedBackendType === 'stratix' ? this.selectedBackendConfig as StratixDirectConfig : undefined;
           
           console.log('[CharacterCreatorScene] 🚀 Step 1: Emitting scene event');
           this.events.emit('character:created', characterSnapshot);

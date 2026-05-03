@@ -18,6 +18,9 @@ export const SIZE_TO_ICON_SIZE: Record<SizeVariant, number> = {
 };
 
 export function provideSizeContext(size: Ref<SizeVariant> | SizeVariant): SizeContext {
+  if (size === null || size === undefined) {
+    throw new TypeError('[useSizeContext] size must be a SizeVariant string or Ref<SizeVariant>');
+  }
   const sizeRef = typeof size === 'string' ? ref(size) : size;
   const iconSize = computed(() => SIZE_TO_ICON_SIZE[sizeRef.value]);
   

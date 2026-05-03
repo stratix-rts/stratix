@@ -25,6 +25,8 @@ export class ShortcutBar {
   private unsubscribeManager: (() => void) | null = null;
   private unsubscribeContext: (() => void) | null = null;
   private container: HTMLElement | null = null;
+  private styleElement: HTMLStyleElement | null = null;
+  private barElement: HTMLElement | null = null;
 
   constructor(config?: ShortcutBarConfig) {
     this.config = {
@@ -289,19 +291,21 @@ export class ShortcutBar {
   mount(container: HTMLElement): void {
     this.container = container;
 
-    const styleElement = document.createElement('style');
-    styleElement.textContent = this.getStyles();
-    document.head.appendChild(styleElement);
+    this.styleElement = document.createElement('style');
+    this.styleElement.textContent = this.getStyles();
+    document.head.appendChild(this.styleElement);
 
-    const barElement = document.createElement('div');
-    barElement.className = 'shortcut-bar-wrapper';
-    container.appendChild(barElement);
+    this.barElement = document.createElement('div');
+    this.barElement.className = 'shortcut-bar-wrapper';
+    container.appendChild(this.barElement);
 
     this.subscribe(() => {
-      barElement.innerHTML = this.render();
+      if (this.barElement) {
+        this.barElement.innerHTML = this.render();
+      }
     });
 
-    barElement.innerHTML = this.render();
+    this.barElement.innerHTML = this.render();
   }
 
   destroy(): void {
@@ -313,6 +317,14 @@ export class ShortcutBar {
     }
     if (this.unsubscribeContext) {
       this.unsubscribeContext();
+    }
+    if (this.styleElement) {
+      this.styleElement.remove();
+      this.styleElement = null;
+    }
+    if (this.barElement) {
+      this.barElement.remove();
+      this.barElement = null;
     }
     this.listeners.clear();
     this.container = null;

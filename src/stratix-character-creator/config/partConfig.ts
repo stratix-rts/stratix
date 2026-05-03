@@ -54,4 +54,4 @@ export function getZPosForCategory(category: PartCategory): number {
 export const DEFAULT_PARTS: Record<string, string> = {
   body: 'body_male',
   shadow: 'shadow_default'
-};
+} as const;

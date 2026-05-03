@@ -7,6 +7,7 @@ export class ZoneDrawingUI {
   private cursorIndicator: Phaser.GameObjects.Graphics;
   private tooltipText: Phaser.GameObjects.Text | null = null;
   private isEnabled: boolean = false;
+  private boundPointerMove: (pointer: Phaser.Input.Pointer) => void;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -14,15 +15,12 @@ export class ZoneDrawingUI {
     this.cursorIndicator.setDepth(10000);
     this.cursorIndicator.setVisible(false);
 
-    this.setupEventListeners();
-  }
-
-  private setupEventListeners(): void {
-    this.scene.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+    this.boundPointerMove = (pointer: Phaser.Input.Pointer) => {
       if (this.isEnabled) {
         this.drawDrawingCursor(pointer.worldX, pointer.worldY);
       }
-    });
+    };
+    this.scene.input.on('pointermove', this.boundPointerMove);
   }
 
   enable(): void {
@@ -76,6 +74,6 @@ export class ZoneDrawingUI {
     if (this.tooltipText) {
       this.tooltipText?.destroy();
     }
-    this.scene.input.off('pointermove');
+    this.scene.input.off('pointermove', this.boundPointerMove);
   }
 }

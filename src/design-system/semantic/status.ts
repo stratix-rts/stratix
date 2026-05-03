@@ -50,7 +50,7 @@ export type { StatusSemanticSet, StatusToken };
 import { isColorPrimitives } from '../types';
 
 export function getStatusSemantic(theme: DesignSystemTokens): StatusSemanticSet {
-  const colors = isColorPrimitives(theme.colors) ? theme.colors : theme.colors as any;
+  const colors = isColorPrimitives(theme.colors) ? theme.colors : (theme.colors as unknown as Parameters<typeof generateStatusSemantic>[0]);
   return generateStatusSemantic(colors);
 }
 
@@ -107,6 +107,10 @@ export function applyStatusStyles(
     radii?: string;
   }
 ): void {
+  if (!element) {
+    console.warn('[applyStatusStyles] element is required');
+    return;
+  }
   const { variant = 'default', radii = '6px' } = options || {};
   
   switch (variant) {
@@ -139,7 +143,7 @@ export function applyStatusStyles(
  * @returns 图标名称
  */
 export function getStatusIcon(status: keyof StatusSemanticSet): string {
-  const iconMap: Record<string, string> = {
+  const iconMap: Record<keyof StatusSemanticSet, string> = {
     success: 'check-circle',
     warning: 'alert-triangle',
     danger: 'alert-circle',

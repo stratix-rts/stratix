@@ -11,7 +11,7 @@ import { SOUL_TEMPLATES, DEFAULT_SOUL, type SoulTemplate } from '../config/soulT
 import { sharedSkillStore } from '../core/SharedSkillStore';
 import { SkillTree } from '../core/SkillTree';
 import { renderTemplatePrompt } from '../core/SoulTemplateRenderer';
-import type { SavedCharacter } from '../types';
+import type { SavedCharacter, SkillNode } from '../types';
 
 import { getButtonInlineStyles } from './_buttonStyles';
 
@@ -1279,7 +1279,7 @@ ${learnedList}`;
 
     const nodesHtml = nodes.map(node => {
       const category = this.getNodeCategory(node);
-      const categoryConfig = (SKILL_CATEGORIES as any)[category] ?? SKILL_CATEGORIES.utility;
+      const categoryConfig = (SKILL_CATEGORIES as Record<string, { color: string; icon: string }>)[category] ?? SKILL_CATEGORIES.utility;
       const x = node.position.x * spacing + 40;
       const y = node.position.y * spacing + 60;
       const isSelected = this.skillTree.isNodeSelected(node.nodeId);
@@ -1393,7 +1393,7 @@ ${learnedList}`;
     });
   }
 
-  private generateConnections(nodes: any[], spacing: number): string {
+  private generateConnections(nodes: SkillNode[], spacing: number): string {
     const lines: string[] = [];
 
     for (const node of nodes) {
@@ -1417,7 +1417,7 @@ ${learnedList}`;
     return lines.join('');
   }
 
-  private getNodeCategory(node: any): string {
+  private getNodeCategory(node: SkillNode): string {
     const attrs = Object.keys(node.attributes);
     if (attrs.some(a => a.includes('attack') || a.includes('damage'))) return 'combat';
     if (attrs.some(a => a.includes('defense') || a.includes('armor') || a.includes('block'))) return 'defense';

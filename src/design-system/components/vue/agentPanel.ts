@@ -30,7 +30,7 @@ export const VueAgentPanelConfig: ComponentToken = {
       easing: 'ease-out',
     },
   },
-} as const;
+};
 
 /**
  * Agent 状态指示器配置

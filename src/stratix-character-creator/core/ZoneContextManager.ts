@@ -250,6 +250,7 @@ export class ZoneContextManager {
 
       const data = await response.json();
       if (data.success && Array.isArray(data.zones)) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         return data.zones.map((zone: any) => ({
           zoneId: zone.id || zone.zoneId,
           name: zone.name || '',

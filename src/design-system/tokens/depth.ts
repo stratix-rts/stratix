@@ -60,8 +60,13 @@ export class DepthManager {
     objects: Array<{ setDepth: (d: number) => void }>,
     layer: number
   ): void {
+    if (!Array.isArray(objects)) {
+      throw new TypeError('[DepthManager.setDepths] objects must be an array');
+    }
     objects.forEach((obj, index) => {
-      obj.setDepth(layer + index);
+      if (obj && typeof obj.setDepth === 'function') {
+        obj.setDepth(layer + index);
+      }
     });
   }
   

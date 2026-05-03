@@ -18,9 +18,12 @@ export class MovementDebugger extends DebugRenderer {
     
     this.clear();
     
+    const activeAgentIds = new Set<string>();
+    
     agents.forEach(agent => {
       const agentId = (agent as any).agentId || (agent as any).getAgentId?.();
       if (!agentId) return;
+      activeAgentIds.add(agentId);
       
       const target = this.movementSystem.getTarget(agentId);
       
@@ -37,6 +40,13 @@ export class MovementDebugger extends DebugRenderer {
         this.drawArrow(agent.x, agent.y, angle, 20);
         
         this.recordPath(agentId, agent);
+      }
+    });
+    
+    // Clean up path history for removed agents
+    this.pathHistory.forEach((_, id) => {
+      if (!activeAgentIds.has(id)) {
+        this.pathHistory.delete(id);
       }
     });
     

@@ -32,6 +32,9 @@ export const Spacing = {
  * 间距工具函数
  */
 export function spacingToPx(value: keyof typeof Spacing): string {
+  if (!(value in Spacing)) {
+    throw new TypeError(`[spacingToPx] Invalid spacing key: ${String(value)}`);
+  }
   return `${Spacing[value]}px`;
 }
 

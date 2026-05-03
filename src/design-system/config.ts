@@ -9,7 +9,7 @@ import { generateAllSemanticTokens } from './semantic/_generator';
 import { CyberpunkTheme } from './themes/cyberpunk';
 import { MinimalTheme } from './themes/minimal';
 import { ProfessionalTheme } from './themes/professional';
-import type { DesignSystemTokens } from './types';
+import type { DesignSystemTokens, ThemeName } from './types';
 import { isColorPrimitives } from './types';
 
 export const DesignSystemConfig = {
@@ -464,12 +464,12 @@ export function restoreThemeFromStorage(): void {
 }
 
 export function onThemeChange(
-  callback: (event: { theme: string; tokens: DesignSystemTokens; semantic: CompleteSemanticTokens }) => void
+  callback: (event: { theme: ThemeName; tokens: DesignSystemTokens; semantic: CompleteSemanticTokens }) => void
 ): () => void {
   const handler = (e: Event) => {
     const detail = (e as CustomEvent).detail;
     callback({
-      theme: detail.theme,
+      theme: detail.theme as ThemeName,
       tokens: detail.tokens,
       semantic: detail.semantic,
     });
@@ -594,14 +594,20 @@ function mapTokenPath(path: string): string {
   return TOKEN_PATH_MAPPING[path] || path;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function getToken(path: string): any {
+  if (!path) {
+    console.warn('[DesignSystem] Token path is empty');
+    return undefined;
+  }
+
   const theme = getCurrentTheme();
   
   // 处理语义 Token 路径
   if (path.startsWith('semantic.')) {
     const semantic = getSemanticTokens();
     const parts = path.replace('semantic.', '').split('.');
-    return parts.reduce((obj: any, key) => obj?.[key], semantic);
+    return parts.reduce((obj: Record<string, unknown> | undefined, key) => obj?.[key] as Record<string, unknown> | undefined, semantic as unknown as Record<string, unknown>);
   }
   
   // 映射旧路径到新路径
@@ -609,6 +615,7 @@ export function getToken(path: string): any {
   const parts = mappedPath.split('.');
   
   // 逐级访问对象属性
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let result: any = theme;
   for (const part of parts) {
     if (result === undefined || result === null) {
@@ -621,7 +628,9 @@ export function getToken(path: string): any {
   return result;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function getTokens(paths: string[]): Record<string, any> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result: Record<string, any> = {};
   paths.forEach(path => {
     result[path] = getToken(path);

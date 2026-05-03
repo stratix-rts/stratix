@@ -22,12 +22,18 @@ export type ThemePrimitives =
 // 辅助函数：为 hex 颜色添加透明度（返回 rgba）
 function alpha(color: string, opacity: number): string {
   const hex = color.replace('#', '');
-  if (hex.length < 6 || !/^[0-9A-Fa-f]{6}$/.test(hex)) {
+  if (!/^[0-9A-Fa-f]{3}([0-9A-Fa-f]{3})?$/.test(hex)) {
     return `rgba(128, 128, 128, ${opacity})`;
   }
-  const r = parseInt(hex.slice(0, 2), 16);
-  const g = parseInt(hex.slice(2, 4), 16);
-  const b = parseInt(hex.slice(4, 6), 16);
+  let fullHex: string;
+  if (hex.length === 3) {
+    fullHex = hex.split('').map(c => c + c).join('');
+  } else {
+    fullHex = hex;
+  }
+  const r = parseInt(fullHex.slice(0, 2), 16);
+  const g = parseInt(fullHex.slice(2, 4), 16);
+  const b = parseInt(fullHex.slice(4, 6), 16);
   return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 }
 

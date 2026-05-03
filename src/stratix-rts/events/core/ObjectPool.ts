@@ -71,6 +71,7 @@ export class SimpleObjectPool<T> {
   private pool: T[] = [];
   private factory: Factory<T>;
   private resetFn?: (obj: T) => void;
+  private maxSize: number;
 
   constructor(
     factory: Factory<T>,
@@ -79,6 +80,7 @@ export class SimpleObjectPool<T> {
   ) {
     this.factory = factory;
     this.resetFn = resetFn;
+    this.maxSize = options?.maxSize ?? Infinity;
     
     const preallocate = options?.preallocate ?? 0;
     for (let i = 0; i < preallocate; i++) {
@@ -91,6 +93,7 @@ export class SimpleObjectPool<T> {
   }
 
   release(obj: T): void {
+    if (this.pool.length >= this.maxSize) return;
     this.resetFn?.(obj);
     this.pool.push(obj);
   }

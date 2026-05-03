@@ -254,7 +254,7 @@ export class RulesEditor {
   }
 
   private escapeHtml(text: string): string {
-    const div = { innerHTML: '' } as HTMLElement;
+    const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
   }

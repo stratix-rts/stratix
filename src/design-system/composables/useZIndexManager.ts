@@ -13,14 +13,19 @@ export interface ZIndexManager {
 }
 
 export function useZIndexManager(): ZIndexManager {
+  let localCount = 0;
   return {
     acquire: () => {
       zIndexCounter += 1;
+      localCount += 1;
       return BASE_Z_INDEX + zIndexCounter;
     },
     release: () => {
-      if (zIndexCounter > 0) {
-        zIndexCounter -= 1;
+      if (localCount > 0) {
+        localCount -= 1;
+        if (zIndexCounter > 0) {
+          zIndexCounter -= 1;
+        }
       }
     },
     current: () => BASE_Z_INDEX + zIndexCounter,

@@ -40,6 +40,10 @@ export function applyTableStyles(
   element: HTMLElement,
   token: TableSemanticToken
 ): void {
+  if (!element) {
+    console.warn('[applyTableStyles] element is required');
+    return;
+  }
   element.style.setProperty('--table-header-bg', token.headerBackground);
   element.style.setProperty('--table-header-text', token.headerText);
   element.style.setProperty('--table-row-bg', token.rowBackground);

@@ -53,6 +53,10 @@ export function applyBadgeStyles(
   element: HTMLElement,
   token: BadgeSemanticToken
 ): void {
+  if (!element) {
+    console.warn('[applyBadgeStyles] element is required');
+    return;
+  }
   element.style.backgroundColor = token.background;
   element.style.color = token.text;
   element.style.border = token.border;

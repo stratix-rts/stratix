@@ -225,7 +225,7 @@ export class WorkflowConfigPanel {
           <div class="workflow-list" style="margin-bottom: 16px;">
             ${result.workflows
               .map(
-                (w: any) => `
+                (w: { id: string; name: string; updatedAt: number }) => `
               <div class="workflow-item" data-id="${w.id}" style="
                 padding: 12px;
                 background: ${THEME.bgSecondary};

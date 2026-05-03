@@ -34,6 +34,8 @@ export {
   generateGlassSemantic,
 } from './_generator';
 
+export type { ThemePrimitives } from './_generator';
+
 export type {
   CompleteSemanticTokens,
   ButtonSemanticSet,

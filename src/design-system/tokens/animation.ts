@@ -93,6 +93,12 @@ export function createAnimationCSS(
   duration: number,
   easing: string = 'ease-in-out'
 ): string {
+  if (!property || typeof property !== 'string') {
+    throw new TypeError('[createAnimationCSS] property must be a non-empty string');
+  }
+  if (typeof duration !== 'number' || duration < 0) {
+    throw new RangeError('[createAnimationCSS] duration must be a non-negative number');
+  }
   return `${property} ${duration}ms ${easing}`;
 }
 

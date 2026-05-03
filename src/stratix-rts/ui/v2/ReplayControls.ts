@@ -240,9 +240,6 @@ export class ReplayControls {
     const speedY = PADDING + 36;
 
     const speeds: PlaybackSpeed[] = [0.25, 0.5, 1, 1.5, 2, 4];
-    const currentIndex = speeds.indexOf(this.speed);
-    const nextIndex = (currentIndex + 1) % speeds.length;
-    const nextSpeed = speeds[nextIndex];
 
     this.speedText = this.scene.add.text(speedX, speedY, `${this.speed}x`, {
       fontSize: '11px',
@@ -251,6 +248,9 @@ export class ReplayControls {
     });
     this.speedText.setInteractive({ useHandCursor: true });
     this.speedText.on('pointerdown', () => {
+      const currentIndex = speeds.indexOf(this.speed);
+      const nextIndex = (currentIndex + 1) % speeds.length;
+      const nextSpeed = speeds[nextIndex];
       replayManager.setSpeed(nextSpeed);
       this.speed = nextSpeed;
       this.speedText.setText(`${nextSpeed}x`);

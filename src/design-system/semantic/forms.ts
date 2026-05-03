@@ -76,7 +76,7 @@ export type FormSize = keyof typeof FormSizes;
 import { isColorPrimitives } from '../types';
 
 export function getFormSemantic(theme: DesignSystemTokens): FormSemanticSet {
-  const colors = isColorPrimitives(theme.colors) ? theme.colors : theme.colors as any;
+  const colors = isColorPrimitives(theme.colors) ? theme.colors : (theme.colors as unknown as Parameters<typeof generateFormSemantic>[0]);
   return generateFormSemantic(colors);
 }
 
@@ -116,6 +116,10 @@ export function generateFormCSSVariables(theme: DesignSystemTokens): string {
  * @returns 尺寸配置
  */
 export function getFormSize(size: FormSize) {
+  if (!(size in FormSizes)) {
+    console.warn(`[getFormSize] Unknown size: ${size}, falling back to 'md'`);
+    return FormSizes.md;
+  }
   return FormSizes[size];
 }
 

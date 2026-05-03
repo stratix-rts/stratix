@@ -34,7 +34,7 @@ const isTransitioning = ref(false);
 
 /** Flatten a nested object into CSS custom property entries */
 function flattenToCssVars(
-  obj: any,
+  obj: Record<string, unknown>,
   prefix = '--stratix',
   result: Record<string, string> = {}
 ): Record<string, string> {
@@ -42,7 +42,7 @@ function flattenToCssVars(
     const value = obj[key];
     const varName = `${prefix}-${key}`;
     if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-      flattenToCssVars(value, varName, result);
+      flattenToCssVars(value as Record<string, unknown>, varName, result);
     } else {
       result[varName] = String(value);
     }
@@ -82,10 +82,18 @@ export function useTheme() {
 
   const currentTheme = computed(() => themeTokens[currentThemeName.value]);
 
+  let transitionTimer: ReturnType<typeof setTimeout> | null = null;
+
   function setTheme(name: ThemeName): void {
     if (name === currentThemeName.value) return;
     if (isTransitioning.value) return;
     if (typeof document === 'undefined') return;
+
+    // Clear any pending transition timer to prevent state desync
+    if (transitionTimer) {
+      clearTimeout(transitionTimer);
+      transitionTimer = null;
+    }
 
     // Start transition overlay
     isTransitioning.value = true;
@@ -99,9 +107,10 @@ export function useTheme() {
     localStorage.setItem(STORAGE_KEY, name);
 
     // Remove transition overlay after duration
-    setTimeout(() => {
+    transitionTimer = setTimeout(() => {
       document.documentElement.classList.remove(TRANSITION_CLASS);
       isTransitioning.value = false;
+      transitionTimer = null;
     }, TRANSITION_DURATION_MS);
   }
 

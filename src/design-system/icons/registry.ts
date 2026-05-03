@@ -181,7 +181,7 @@ export function createSVGIcon(_name: string, size: number = 24, color: string = 
  * 图标工具：绘制 Phaser Graphics 图标
  */
 export function drawIcon(
-  graphics: any,
+  graphics: { x: number; y: number; lineStyle: (lineWidth: number, color: string) => void; beginPath: () => void; moveTo: (x: number, y: number) => void; quadraticCurveTo: (cpX: number, cpY: number, toX: number, toY: number) => void; closePath: () => void; strokePath: () => void; strokeRect: (x: number, y: number, width: number, height: number) => void; strokeCircle: (x: number, y: number, radius: number) => void; fillCircle: (x: number, y: number, radius: number) => void; lineTo: (x: number, y: number) => void },
   _name: string,
   x: number,
   y: number,

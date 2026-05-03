@@ -24,12 +24,18 @@ const THEME = {
   error: 'var(--ds-status-danger)'
 };
 
+interface AgentInfo {
+  name?: string;
+  agentId?: string;
+  status?: string;
+}
+
 export interface AgentListPanelConfig {
   x: number;
   y: number;
   width: number;
   height: number;
-  onAgentSelected?: (agent: any) => void;
+  onAgentSelected?: (agent: AgentInfo | null) => void;
   onBack?: () => void;
 }
 
@@ -37,7 +43,7 @@ export class AgentListPanel {
   private scene: Phaser.Scene;
   private config: AgentListPanelConfig;
   private container: Phaser.GameObjects.DOMElement | null = null;
-  private agents: any[] = [];
+  private agents: AgentInfo[] = [];
 
   constructor(scene: Phaser.Scene, config: AgentListPanelConfig) {
     this.scene = scene;
@@ -225,7 +231,7 @@ export class AgentListPanel {
         return;
       }
 
-      this.agents = agents;
+      this.agents = agents as AgentInfo[];
     } catch (error: any) {
       loadingState.style.display = 'none';
       errorState.style.display = 'flex';

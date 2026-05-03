@@ -135,7 +135,7 @@ export default class StratixRTSUIScene extends Phaser.Scene {
         
         if (this.uiComponents?.commandPanel) {
           if (this.selectedAgentIds.length > 1) {
-            const agentsInfo: any[] = [];
+            const agentsInfo: Array<{ agentId: string; name: string; type: string; status: string; position: { x: number; y: number } }> = [];
             this.selectedAgentIds.forEach(agentId => {
               const agent = this.getAgentInfoById(agentId);
               if (agent) {
@@ -240,7 +240,7 @@ export default class StratixRTSUIScene extends Phaser.Scene {
     rtsEventBus.emit('game:vue:deselect_all' as any, {});
   }
 
-  private getAgentInfoById(agentId: string): any {
+  private getAgentInfoById(agentId: string): { agentId: string; name: string; type: string; status: string; position: { x: number; y: number } } | null {
     const gameScene = rtsEventBus.getScene('game') as any;
     if (!gameScene) return null;
     

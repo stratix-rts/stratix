@@ -51,6 +51,7 @@ export class AgentPowerRanking {
   private rankTexts: Phaser.GameObjects.Text[] = [];
   private nameTexts: Phaser.GameObjects.Text[] = [];
   private scoreTexts: Phaser.GameObjects.Text[] = [];
+  private hitAreas: Phaser.GameObjects.Rectangle[] = [];
   private levelBadges: Phaser.GameObjects.Container | null = null;
 
   private rankedAgents: RankedAgent[] = [];
@@ -152,10 +153,13 @@ export class AgentPowerRanking {
       this.levelBadges = null;
     }
 
+    this.hitAreas.forEach((area) => area.destroy());
+
     this.items = [];
     this.rankTexts = [];
     this.nameTexts = [];
     this.scoreTexts = [];
+    this.hitAreas = [];
   }
 
   /**
@@ -256,6 +260,7 @@ export class AgentPowerRanking {
     });
 
     this.container.add(hitArea);
+    this.hitAreas.push(hitArea);
   }
 
   /**

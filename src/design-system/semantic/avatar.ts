@@ -38,6 +38,10 @@ export function applyAvatarStyles(
   element: HTMLElement,
   token: AvatarSemanticToken
 ): void {
+  if (!element) {
+    console.warn('[applyAvatarStyles] element is required');
+    return;
+  }
   element.style.backgroundColor = token.background;
   element.style.color = token.text;
   element.style.border = token.border;

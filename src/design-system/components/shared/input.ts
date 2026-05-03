@@ -14,7 +14,7 @@ export const InputBaseConfig = {
     border: '1px solid #2a2a3e',
     borderRadius: 'md',
   },
-};
+} as const;
 
 /**
  * Input 尺寸配置

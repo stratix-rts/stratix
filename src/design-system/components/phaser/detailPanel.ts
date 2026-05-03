@@ -27,7 +27,7 @@ export const PhaserDetailPanelConfig: ComponentToken = {
       easing: 'ease-out',
     },
   },
-} as const;
+};
 
 /**
  * DetailPanel 内部区域配置

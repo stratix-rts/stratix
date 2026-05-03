@@ -148,10 +148,11 @@ class CharacterStorage {
   }
 
   createNew(bodyType: string = 'male'): SavedCharacter {
+    const validBodyType = ['male', 'female', 'teen', 'muscular', 'pregnant'].includes(bodyType) ? bodyType : 'male';
     return {
       characterId: this.generateId(),
       name: `新角色 ${Date.now().toString(36).slice(-4)}`,
-      bodyType: bodyType as SavedCharacter['bodyType'],
+      bodyType: validBodyType as SavedCharacter['bodyType'],
       parts: {},
       skillTree: {
         selectedNodes: [],

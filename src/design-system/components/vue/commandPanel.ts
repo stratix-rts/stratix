@@ -53,7 +53,7 @@ export const VueCommandPanelConfig: ComponentToken = {
       },
     },
   },
-} as const;
+};
 
 /**
  * CommandPanel 内部区域配置

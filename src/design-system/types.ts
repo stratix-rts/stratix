@@ -705,7 +705,20 @@ export type SVGIconPath = string;
 
 /** Phaser Graphics 图标绘制函数 */
 export type GraphicsIconRenderer = (
-  graphics: any,
+  graphics: {
+    x: number;
+    y: number;
+    lineStyle: (lineWidth: number, color: string) => void;
+    beginPath: () => void;
+    moveTo: (x: number, y: number) => void;
+    quadraticCurveTo: (cpX: number, cpY: number, toX: number, toY: number) => void;
+    closePath: () => void;
+    strokePath: () => void;
+    strokeRect: (x: number, y: number, width: number, height: number) => void;
+    strokeCircle: (x: number, y: number, radius: number) => void;
+    fillCircle: (x: number, y: number, radius: number) => void;
+    lineTo: (x: number, y: number) => void;
+  },
   size: number,
   color: string
 ) => void;
@@ -768,5 +781,14 @@ export interface ComponentToken {
 
 /** 类型守卫：检查是否为 ColorPrimitives */
 export function isColorPrimitives(colors: Colors): colors is ColorPrimitives {
-  return 'brand' in colors && 'background' in colors && 'border' in colors;
+  return (
+    typeof colors === 'object' &&
+    colors !== null &&
+    'brand' in colors &&
+    'background' in colors &&
+    'border' in colors &&
+    'text' in colors &&
+    'status' in colors &&
+    'interactive' in colors
+  );
 }

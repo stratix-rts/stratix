@@ -37,7 +37,7 @@ export type { ButtonSemanticSet, ButtonSemanticToken };
 import { isColorPrimitives } from '../types';
 
 export function getButtonSemantic(theme: DesignSystemTokens): ButtonSemanticSet {
-  const colors = isColorPrimitives(theme.colors) ? theme.colors : theme.colors as any;
+  const colors = isColorPrimitives(theme.colors) ? theme.colors : (theme.colors as unknown as Parameters<typeof generateButtonSemantic>[0]);
   return generateButtonSemantic(colors, theme.radii);
 }
 
@@ -208,6 +208,6 @@ export const ButtonSemantic = {
 /**
  * @deprecated 使用 getButtonVariant(theme, variant) 替代
  */
-export function getButtonStyle(variant: keyof typeof ButtonSemantic) {
+export function getButtonStyle(variant: keyof typeof ButtonSemantic): (typeof ButtonSemantic)[keyof typeof ButtonSemantic] {
   return ButtonSemantic[variant];
 }

@@ -64,6 +64,9 @@ export const ThemeRegistry: Record<string, ThemeMeta> = {
  * 获取主题元数据
  */
 export function getThemeMeta(themeId: string): ThemeMeta | undefined {
+  if (!themeId || typeof themeId !== 'string') {
+    return undefined;
+  }
   return ThemeRegistry[themeId];
 }
 
@@ -88,5 +91,5 @@ export function getThemePreviewStyles(themeId: string): Record<string, string> {
     '--theme-primary': meta.preview.primary,
     '--theme-bg': meta.preview.background,
     '--theme-text': meta.preview.text,
-  } as Record<string, string>;
+  };
 }

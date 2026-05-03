@@ -40,6 +40,10 @@ export function applyProgressStyles(
   element: HTMLElement,
   token: ProgressSemanticToken
 ): void {
+  if (!element) {
+    console.warn('[applyProgressStyles] element is required');
+    return;
+  }
   element.style.backgroundColor = token.track;
   element.style.height = token.height;
   element.style.borderRadius = token.borderRadius;

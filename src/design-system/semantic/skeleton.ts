@@ -36,6 +36,10 @@ export function applySkeletonStyles(
   element: HTMLElement,
   token: SkeletonSemanticToken
 ): void {
+  if (!element) {
+    console.warn('[applySkeletonStyles] element is required');
+    return;
+  }
   element.style.backgroundColor = token.base;
   element.style.borderRadius = token.borderRadius;
 }

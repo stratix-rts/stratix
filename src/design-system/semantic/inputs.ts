@@ -49,7 +49,7 @@ export type { InputSemanticSet, InputStateToken };
 import { isColorPrimitives } from '../types';
 
 export function getInputSemantic(theme: DesignSystemTokens): InputSemanticSet {
-  const colors = isColorPrimitives(theme.colors) ? theme.colors : theme.colors as any;
+  const colors = isColorPrimitives(theme.colors) ? theme.colors : (theme.colors as unknown as Parameters<typeof generateInputSemantic>[0]);
   return generateInputSemantic(colors);
 }
 
@@ -142,7 +142,10 @@ function isReadOnlyElement(element: HTMLElement): boolean {
  * 检查元素是否禁用（处理不同类型元素）
  */
 function isDisabledElement(element: HTMLElement): boolean {
-  return (element as HTMLInputElement).disabled === true;
+  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement || element instanceof HTMLButtonElement) {
+    return element.disabled;
+  }
+  return false;
 }
 
 /**
@@ -160,7 +163,7 @@ export function bindInputStateEvents(
     radii?: string;
     padding?: string;
   }
-): void {
+): () => void {
   const states = getInputSemantic(theme);
   const { radii = '4px', padding = '8px 12px' } = options || {};
   
@@ -168,13 +171,13 @@ export function bindInputStateEvents(
   applyInputStyles(element, states.default, radii, padding);
   
   // 悬停状态
-  element.addEventListener('mouseenter', () => {
+  const onMouseEnter = () => {
     if (!isDisabledElement(element) && !isReadOnlyElement(element)) {
       applyInputStyles(element, states.hover, radii, padding);
     }
-  });
+  };
   
-  element.addEventListener('mouseleave', () => {
+  const onMouseLeave = () => {
     if (!isDisabledElement(element) && !isReadOnlyElement(element)) {
       if (document.activeElement === element) {
         applyInputStyles(element, states.focus, radii, padding);
@@ -182,16 +185,16 @@ export function bindInputStateEvents(
         applyInputStyles(element, states.default, radii, padding);
       }
     }
-  });
+  };
   
   // 聚焦状态
-  element.addEventListener('focus', () => {
+  const onFocus = () => {
     if (!isDisabledElement(element) && !isReadOnlyElement(element)) {
       applyInputStyles(element, states.focus, radii, padding);
     }
-  });
+  };
   
-  element.addEventListener('blur', () => {
+  const onBlur = () => {
     if (isDisabledElement(element)) {
       applyInputStyles(element, states.disabled, radii, padding);
     } else if (isReadOnlyElement(element)) {
@@ -202,7 +205,20 @@ export function bindInputStateEvents(
     } else {
       applyInputStyles(element, states.default, radii, padding);
     }
-  });
+  };
+
+  element.addEventListener('mouseenter', onMouseEnter);
+  element.addEventListener('mouseleave', onMouseLeave);
+  element.addEventListener('focus', onFocus);
+  element.addEventListener('blur', onBlur);
+
+  // 返回清理函数，便于调用方在组件卸载时移除事件监听
+  return () => {
+    element.removeEventListener('mouseenter', onMouseEnter);
+    element.removeEventListener('mouseleave', onMouseLeave);
+    element.removeEventListener('focus', onFocus);
+    element.removeEventListener('blur', onBlur);
+  };
 }
 
 // ============ 向后兼容的常量导出（Cyberpunk 主题默认值） ============

@@ -33,7 +33,7 @@ export const PhaserCommandPanelConfig: ComponentToken = {
       easing: 'ease-in',
     },
   },
-} as const;
+};
 
 /**
  * CommandPanel 内部区域配置

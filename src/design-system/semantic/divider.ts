@@ -36,6 +36,10 @@ export function applyDividerStyles(
   element: HTMLElement,
   token: DividerSemanticToken
 ): void {
+  if (!element) {
+    console.warn('[applyDividerStyles] element is required');
+    return;
+  }
   element.style.backgroundColor = token.color;
   element.style.height = token.width;
   element.style.border = 'none';

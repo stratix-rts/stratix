@@ -34,7 +34,7 @@ export const ButtonBaseConfig: ComponentToken = {
 /**
  * Button 尺寸配置
  */
-export const ButtonSizes: Record<string, { padding: string; fontSize: string }> = {
+export const ButtonSizes = {
   sm: {
     padding: '4px 8px',
     fontSize: '12px',
@@ -55,7 +55,7 @@ export const ButtonSizes: Record<string, { padding: string; fontSize: string }> 
     padding: '20px 40px',
     fontSize: '20px',
   },
-};
+} as const;
 
 /**
  * Button 变体类型
@@ -67,8 +67,6 @@ export type ButtonVariant = 'primary' | 'secondary' | 'success' | 'danger' | 'wa
  * 使用 CSS 变量以支持主题切换
  */
 export function getButtonToken(variant: ButtonVariant) {
-  // 确保 variant 有默认值
-  const safeVariant = variant || 'primary';
   const variants = {
     primary: {
       background: 'var(--ds-btn-primary-bg)',
@@ -100,9 +98,9 @@ export function getButtonToken(variant: ButtonVariant) {
       text: 'var(--ds-text-inverse)',
       border: 'none',
     },
-  };
+  } as const;
   
-  const variantConfig = variants[safeVariant] || variants.primary;
+  const variantConfig = variants[variant];
   
   return {
     ...ButtonBaseConfig,

@@ -25,6 +25,8 @@ export class HelpPanel {
   private listeners: Set<HelpPanelListener> = new Set();
   private boundKeyHandler: ((event: KeyboardEvent) => void) | null = null;
   private unsubscribeContext: (() => void) | null = null;
+  private styleElement: HTMLStyleElement | null = null;
+  private panelElement: HTMLElement | null = null;
 
   constructor(config?: HelpPanelConfig) {
     this.config = {
@@ -571,21 +573,23 @@ export class HelpPanel {
   }
 
   mount(container: HTMLElement): void {
-    const styleElement = document.createElement('style');
-    styleElement.textContent = this.getStyles();
-    document.head.appendChild(styleElement);
+    this.styleElement = document.createElement('style');
+    this.styleElement.textContent = this.getStyles();
+    document.head.appendChild(this.styleElement);
 
-    const panelElement = document.createElement('div');
-    panelElement.className = 'help-panel-wrapper';
-    container.appendChild(panelElement);
+    this.panelElement = document.createElement('div');
+    this.panelElement.className = 'help-panel-wrapper';
+    container.appendChild(this.panelElement);
 
     (window as unknown as Record<string, unknown>).helpPanel = this;
 
     this.subscribe(() => {
-      panelElement.innerHTML = this.render();
+      if (this.panelElement) {
+        this.panelElement.innerHTML = this.render();
+      }
     });
 
-    panelElement.innerHTML = this.render();
+    this.panelElement.innerHTML = this.render();
   }
 
   destroy(): void {
@@ -595,6 +599,14 @@ export class HelpPanel {
     }
     if (this.unsubscribeContext) {
       this.unsubscribeContext();
+    }
+    if (this.styleElement) {
+      this.styleElement.remove();
+      this.styleElement = null;
+    }
+    if (this.panelElement) {
+      this.panelElement.remove();
+      this.panelElement = null;
     }
     delete (window as unknown as Record<string, unknown>).helpPanel;
     this.listeners.clear();

@@ -66,6 +66,10 @@ export function applyTooltipStyles(
   element: HTMLElement,
   token: TooltipSemanticToken
 ): void {
+  if (!element) {
+    console.warn('[applyTooltipStyles] element is required');
+    return;
+  }
   element.style.backgroundColor = token.background;
   element.style.color = token.text;
   element.style.border = token.border;

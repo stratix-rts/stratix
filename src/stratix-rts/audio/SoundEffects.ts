@@ -100,8 +100,8 @@ export class SoundEffects {
    */
   setVolume(level: number): void {
     this._volume = Math.max(0, Math.min(1, level));
-    if (this.masterGain) {
-      this.masterGain.gain.setValueAtTime(this._muted ? 0 : this._volume, this.audioContext!.currentTime);
+    if (this.masterGain && this.audioContext) {
+      this.masterGain.gain.setValueAtTime(this._muted ? 0 : this._volume, this.audioContext.currentTime);
     }
   }
 
@@ -110,8 +110,8 @@ export class SoundEffects {
    */
   setMuted(muted: boolean): void {
     this._muted = muted;
-    if (this.masterGain) {
-      this.masterGain.gain.setValueAtTime(muted ? 0 : this._volume, this.audioContext!.currentTime);
+    if (this.masterGain && this.audioContext) {
+      this.masterGain.gain.setValueAtTime(muted ? 0 : this._volume, this.audioContext.currentTime);
     }
   }
 

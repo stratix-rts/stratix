@@ -127,9 +127,10 @@ class SkillTree {
         continue;
       }
 
-      const allPrereqsMet = node.prerequisites.every(prereq =>
-        this.isNodeSelected(prereq) || this.isNodeUnlocked(prereq)
-      );
+      const allPrereqsMet = node.prerequisites.every(prereq => {
+        const prereqNode = this.nodes.get(prereq);
+        return this.isNodeSelected(prereq) || (prereqNode?.prerequisites.length === 0);
+      });
 
       if (allPrereqsMet) {
         this.state.unlockedNodes.push(nodeId);

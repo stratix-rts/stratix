@@ -5,3 +5,5 @@
 export * from './commandPanel';
 export * from './agentPanel';
 export * from './modal';
+
+export type { ModalToken, ModalSizeConfig, ModalPosition } from './modal';

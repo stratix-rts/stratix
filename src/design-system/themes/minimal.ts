@@ -112,7 +112,7 @@ export const MinimalTheme: DesignSystemTokens = {
     registry: {},
   },
   gradients: MinimalGradients,
-  // 使用生成的语义 Token
+  // 使用生成的语义 Token — 语义 Token 的属性结构与 DesignSystemTokens 兼容
   ...semanticTokens,
 };
 
