@@ -17,6 +17,10 @@ export function setStatusSyncService(service: StatusSyncService) {
   statusSyncService = service;
 }
 
+export function getStatusSyncService(): StatusSyncService | null {
+  return statusSyncService;
+}
+
 /**
  * POST /api/projects/initialize
  * 初始化项目存储
@@ -49,7 +53,15 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
     if (status) {
       projects = await projectService.getProjectsByStatus(status as ProjectStatus);
     } else if (priority) {
-      projects = await projectService.getProjectsByPriority(parseInt(priority as string));
+      const priorityNum = parseInt(priority as string, 10);
+      if (Number.isNaN(priorityNum) || priorityNum < 1 || priorityNum > 5) {
+        res.status(400).json({
+          success: false,
+          error: 'Invalid priority. Must be an integer between 1 and 5'
+        });
+        return;
+      }
+      projects = await projectService.getProjectsByPriority(priorityNum);
     } else {
       projects = await projectService.getProjects();
     }
@@ -341,11 +353,11 @@ router.post('/:id/agents/enter', async (req: Request, res: Response): Promise<vo
       // 3. 获取 Agent 配置并启动 Agent
       try {
         // 从 dataStore 获取 agent 配置
-        const agentConfig = await dataStoreService.getStore().getAgent(agentId) as StratixAgentConfig | null;
+        const agentConfig = await dataStoreService.getStore().getAgent(agentId);
         
-        if (agentConfig) {
+        if (agentConfig && typeof agentConfig === 'object') {
           // 注册 agent 配置
-          orchestrator.registerAgentConfig(agentId, agentConfig);
+          orchestrator.registerAgentConfig(agentId, agentConfig as StratixAgentConfig);
           
           // 启动 agent
           await orchestrator.startAgent(agentId, projectPath, projectId);
@@ -418,7 +430,7 @@ router.post('/:id/agents/leave', async (req: Request, res: Response): Promise<vo
  * GET /api/projects/metadata/info
  * 获取数据库元数据
  */
-router.get('/metadata/info', async (req: Request, res: Response): Promise<void> => {
+router.get('/metadata/info', async (_req: Request, res: Response): Promise<void> => {
   try {
     const metadata = await projectService.getMetadata();
     

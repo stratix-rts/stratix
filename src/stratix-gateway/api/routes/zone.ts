@@ -6,6 +6,42 @@ import { zoneService, ZoneFileBatchRequest } from '../../project/ZoneService';
 const router = Router();
 
 // ============================================
+// Constants & Helpers
+// ============================================
+
+const MAX_SEARCH_LIMIT = 100;
+const MAX_BATCH_SIZE = 50;
+const MAX_MESSAGE_LIMIT = 500;
+
+function clampInt(value: unknown, min: number, max: number, defaultValue: number): number {
+  const parsed = parseInt(value as string, 10);
+  if (Number.isNaN(parsed)) return defaultValue;
+  return Math.max(min, Math.min(max, parsed));
+}
+
+function getParam(req: Request, key: string): string {
+  const val = req.params[key];
+  return Array.isArray(val) ? val[0] : val;
+}
+
+function handleZoneError(res: Response, error: unknown, context: string, statusMap?: Record<string, number>): void {
+  console.error(`[Zone API] ${context} failed:`, error);
+  const message = error instanceof Error ? error.message : `Failed to ${context}`;
+  let status = 500;
+  if (statusMap) {
+    for (const [pattern, code] of Object.entries(statusMap)) {
+      if (message.includes(pattern)) {
+        status = code;
+        break;
+      }
+    }
+  } else if (message.includes('not found')) {
+    status = 404;
+  }
+  res.status(status).json({ success: false, error: message });
+}
+
+// ============================================
 // Zone CRUD
 // ============================================
 
@@ -99,7 +135,7 @@ router.get('/zones/search', async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    const limit = parseInt(req.query.limit as string) || 20;
+    const limit = clampInt(req.query.limit, 1, MAX_SEARCH_LIMIT, 20);
     const zones = await zoneService.searchZones(keyword.trim(), limit);
 
     res.json({
@@ -122,7 +158,7 @@ router.get('/zones/search', async (req: Request, res: Response): Promise<void> =
  */
 router.get('/zones/:zoneId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
+    const zoneId = getParam(req, 'zoneId');
     const zone = await zoneService.getZone(zoneId);
 
     if (!zone) {
@@ -152,7 +188,7 @@ router.get('/zones/:zoneId', async (req: Request, res: Response): Promise<void> 
  */
 router.put('/zones/:zoneId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
+    const zoneId = getParam(req, 'zoneId');
     const updates = req.body as ZoneUpdateRequest;
 
     const zone = await zoneService.updateZone(zoneId, updates);
@@ -178,7 +214,7 @@ router.put('/zones/:zoneId', async (req: Request, res: Response): Promise<void> 
  */
 router.delete('/zones/:zoneId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
+    const zoneId = getParam(req, 'zoneId');
     const deleted = await zoneService.deleteZone(zoneId);
 
     if (!deleted) {
@@ -212,7 +248,7 @@ router.delete('/zones/:zoneId', async (req: Request, res: Response): Promise<voi
  */
 router.get('/zones/:projectId/trash', async (req: Request, res: Response): Promise<void> => {
   try {
-    const projectId = req.params.projectId as string;
+    const projectId = getParam(req, 'projectId');
     const zones = await zoneService.getDeletedZones(projectId);
 
     res.json({
@@ -236,7 +272,7 @@ router.get('/zones/:projectId/trash', async (req: Request, res: Response): Promi
  */
 router.get('/zones/:zoneId/statistics', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
+    const zoneId = getParam(req, 'zoneId');
 
     const stats = await zoneService.getZoneStatistics(zoneId);
 
@@ -261,7 +297,7 @@ router.get('/zones/:zoneId/statistics', async (req: Request, res: Response): Pro
  */
 router.delete('/zones/:projectId/trash', async (req: Request, res: Response): Promise<void> => {
   try {
-    const projectId = req.params.projectId as string;
+    const projectId = getParam(req, 'projectId');
 
     const result = await zoneService.emptyTrash(projectId);
 
@@ -287,7 +323,7 @@ router.delete('/zones/:projectId/trash', async (req: Request, res: Response): Pr
  */
 router.post('/zones/:zoneId/restore', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
+    const zoneId = getParam(req, 'zoneId');
     const zone = await zoneService.restoreZone(zoneId);
 
     res.json({
@@ -311,7 +347,7 @@ router.post('/zones/:zoneId/restore', async (req: Request, res: Response): Promi
  */
 router.delete('/zones/:zoneId/permanent', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
+    const zoneId = getParam(req, 'zoneId');
     const deleted = await zoneService.permanentlyDeleteZone(zoneId);
 
     if (!deleted) {
@@ -345,7 +381,7 @@ router.delete('/zones/:zoneId/permanent', async (req: Request, res: Response): P
  */
 router.post('/zones/:zoneId/files', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
+    const zoneId = getParam(req, 'zoneId');
     const { name, sourceType, source } = req.body as ZoneFileAddRequest;
 
     if (!name || !sourceType || !source) {
@@ -387,8 +423,8 @@ router.post('/zones/:zoneId/files', async (req: Request, res: Response): Promise
  */
 router.delete('/zones/:zoneId/files/:fileId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
-    const fileId = req.params.fileId as string;
+    const zoneId = getParam(req, 'zoneId');
+    const fileId = getParam(req, 'fileId');
     const deleted = await zoneService.removeFile(zoneId, fileId);
 
     if (!deleted) {
@@ -420,8 +456,8 @@ router.delete('/zones/:zoneId/files/:fileId', async (req: Request, res: Response
  */
 router.get('/zones/:zoneId/files/:fileId/content', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
-    const fileId = req.params.fileId as string;
+    const zoneId = getParam(req, 'zoneId');
+    const fileId = getParam(req, 'fileId');
 
     const { file, content, cacheHit } = await zoneService.getFileWithContent(zoneId, fileId);
 
@@ -455,8 +491,8 @@ router.get('/zones/:zoneId/files/:fileId/content', async (req: Request, res: Res
  */
 router.post('/zones/:zoneId/files/:fileId/refresh', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
-    const fileId = req.params.fileId as string;
+    const zoneId = getParam(req, 'zoneId');
+    const fileId = getParam(req, 'fileId');
     const file = await zoneService.refreshFile(zoneId, fileId);
 
     res.json({
@@ -480,8 +516,8 @@ router.post('/zones/:zoneId/files/:fileId/refresh', async (req: Request, res: Re
  */
 router.get('/zones/:zoneId/files/:fileId/metadata', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
-    const fileId = req.params.fileId as string;
+    const zoneId = getParam(req, 'zoneId');
+    const fileId = getParam(req, 'fileId');
     const metadata = await zoneService.fetchUrlMetadata(zoneId, fileId);
 
     res.json({
@@ -505,7 +541,7 @@ router.get('/zones/:zoneId/files/:fileId/metadata', async (req: Request, res: Re
  */
 router.get('/zones/:zoneId/files/search', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
+    const zoneId = getParam(req, 'zoneId');
     const keyword = req.query.keyword as string;
 
     if (!keyword) {
@@ -540,8 +576,8 @@ router.get('/zones/:zoneId/files/search', async (req: Request, res: Response): P
  */
 router.get('/zones/:zoneId/files/:fileId/versions', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
-    const fileId = req.params.fileId as string;
+    const zoneId = getParam(req, 'zoneId');
+    const fileId = getParam(req, 'fileId');
     const versions = await zoneService.getFileVersions(zoneId, fileId);
 
     res.json({
@@ -565,8 +601,8 @@ router.get('/zones/:zoneId/files/:fileId/versions', async (req: Request, res: Re
  */
 router.put('/zones/:zoneId/files/:fileId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
-    const fileId = req.params.fileId as string;
+    const zoneId = getParam(req, 'zoneId');
+    const fileId = getParam(req, 'fileId');
     const { content, description } = req.body as { content: string; description?: string };
 
     if (content === undefined) {
@@ -600,9 +636,9 @@ router.put('/zones/:zoneId/files/:fileId', async (req: Request, res: Response): 
  */
 router.post('/zones/:zoneId/files/:fileId/rollback/:versionId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
-    const fileId = req.params.fileId as string;
-    const versionId = req.params.versionId as string;
+    const zoneId = getParam(req, 'zoneId');
+    const fileId = getParam(req, 'fileId');
+    const versionId = getParam(req, 'versionId');
 
     const file = await zoneService.rollbackFileToVersion(zoneId, fileId, versionId);
 
@@ -627,7 +663,7 @@ router.post('/zones/:zoneId/files/:fileId/rollback/:versionId', async (req: Requ
  */
 router.post('/zones/:zoneId/files/scan-folder', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
+    const zoneId = getParam(req, 'zoneId');
     const { folderPath, recursive, extensions } = req.body as ZoneFolderScanRequest;
 
     if (!folderPath) {
@@ -661,7 +697,7 @@ router.post('/zones/:zoneId/files/scan-folder', async (req: Request, res: Respon
  */
 router.post('/zones/:zoneId/files/batch', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
+    const zoneId = getParam(req, 'zoneId');
     const { files } = req.body as ZoneFileBatchRequest;
 
     if (!files || !Array.isArray(files) || files.length === 0) {
@@ -672,10 +708,10 @@ router.post('/zones/:zoneId/files/batch', async (req: Request, res: Response): P
       return;
     }
 
-    if (files.length > 50) {
+    if (files.length > MAX_BATCH_SIZE) {
       res.status(400).json({
         success: false,
-        error: 'Maximum 50 files per batch'
+        error: `Maximum ${MAX_BATCH_SIZE} files per batch`
       });
       return;
     }
@@ -726,8 +762,8 @@ router.post('/zones/:zoneId/files/batch', async (req: Request, res: Response): P
  */
 router.post('/zones/:zoneId/members/:agentId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
-    const agentId = req.params.agentId as string;
+    const zoneId = getParam(req, 'zoneId');
+    const agentId = getParam(req, 'agentId');
     const zone = await zoneService.addMember(zoneId, agentId);
 
     res.json({
@@ -751,8 +787,8 @@ router.post('/zones/:zoneId/members/:agentId', async (req: Request, res: Respons
  */
 router.delete('/zones/:zoneId/members/:agentId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
-    const agentId = req.params.agentId as string;
+    const zoneId = getParam(req, 'zoneId');
+    const agentId = getParam(req, 'agentId');
     const zone = await zoneService.removeMember(zoneId, agentId);
 
     res.json({
@@ -776,7 +812,7 @@ router.delete('/zones/:zoneId/members/:agentId', async (req: Request, res: Respo
  */
 router.post('/zones/:zoneId/members/batch', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
+    const zoneId = getParam(req, 'zoneId');
     const { agentIds } = req.body as { agentIds: string[] };
 
     if (!agentIds || !Array.isArray(agentIds) || agentIds.length === 0) {
@@ -787,10 +823,10 @@ router.post('/zones/:zoneId/members/batch', async (req: Request, res: Response):
       return;
     }
 
-    if (agentIds.length > 20) {
+    if (agentIds.length > MAX_BATCH_SIZE) {
       res.status(400).json({
         success: false,
-        error: 'Maximum 20 agents can be added at once'
+        error: `Maximum ${MAX_BATCH_SIZE} agents can be added at once`
       });
       return;
     }
@@ -819,7 +855,7 @@ router.post('/zones/:zoneId/members/batch', async (req: Request, res: Response):
  */
 router.delete('/zones/:zoneId/members/batch', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
+    const zoneId = getParam(req, 'zoneId');
     const { agentIds } = req.body as { agentIds: string[] };
 
     if (!agentIds || !Array.isArray(agentIds) || agentIds.length === 0) {
@@ -830,10 +866,10 @@ router.delete('/zones/:zoneId/members/batch', async (req: Request, res: Response
       return;
     }
 
-    if (agentIds.length > 20) {
+    if (agentIds.length > MAX_BATCH_SIZE) {
       res.status(400).json({
         success: false,
-        error: 'Maximum 20 agents can be removed at once'
+        error: `Maximum ${MAX_BATCH_SIZE} agents can be removed at once`
       });
       return;
     }
@@ -866,9 +902,9 @@ router.delete('/zones/:zoneId/members/batch', async (req: Request, res: Response
  */
 router.get('/zones/:zoneId/tasks', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
-    const limit = parseInt(req.query.limit as string) || undefined;
-    const offset = parseInt(req.query.offset as string) || undefined;
+    const zoneId = getParam(req, 'zoneId');
+    const limit = req.query.limit ? clampInt(req.query.limit, 1, MAX_SEARCH_LIMIT, 20) : undefined;
+    const offset = req.query.offset ? clampInt(req.query.offset, 0, Number.MAX_SAFE_INTEGER, 0) : undefined;
 
     const [tasks, total] = await Promise.all([
       zoneService.getTasks(zoneId, limit, offset),
@@ -901,8 +937,8 @@ router.get('/zones/:zoneId/tasks', async (req: Request, res: Response): Promise<
  */
 router.get('/zones/:zoneId/tasks/:taskId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
-    const taskId = req.params.taskId as string;
+    const zoneId = getParam(req, 'zoneId');
+    const taskId = getParam(req, 'taskId');
 
     const task = await zoneService.getTask(zoneId, taskId);
 
@@ -935,7 +971,7 @@ router.get('/zones/:zoneId/tasks/:taskId', async (req: Request, res: Response): 
  */
 router.post('/zones/:zoneId/tasks', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
+    const zoneId = getParam(req, 'zoneId');
     const { agentId, title } = req.body as { agentId: string; title: string };
 
     if (!agentId || !title) {
@@ -969,8 +1005,8 @@ router.post('/zones/:zoneId/tasks', async (req: Request, res: Response): Promise
  */
 router.put('/zones/:zoneId/tasks/:taskId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
-    const taskId = req.params.taskId as string;
+    const zoneId = getParam(req, 'zoneId');
+    const taskId = getParam(req, 'taskId');
     const { agentId, title, status, assignee } = req.body as { agentId: string; title?: string; status?: string; assignee?: string | null };
 
     if (!agentId) {
@@ -1010,8 +1046,8 @@ router.put('/zones/:zoneId/tasks/:taskId', async (req: Request, res: Response): 
  */
 router.delete('/zones/:zoneId/tasks/:taskId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
-    const taskId = req.params.taskId as string;
+    const zoneId = getParam(req, 'zoneId');
+    const taskId = getParam(req, 'taskId');
     const { agentId } = req.body as { agentId: string };
 
     if (!agentId) {
@@ -1055,8 +1091,8 @@ router.delete('/zones/:zoneId/tasks/:taskId', async (req: Request, res: Response
  */
 router.post('/zones/:zoneId/tasks/:taskId/claim', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
-    const taskId = req.params.taskId as string;
+    const zoneId = getParam(req, 'zoneId');
+    const taskId = getParam(req, 'taskId');
     const { agentId } = req.body as { agentId: string };
 
     if (!agentId) {
@@ -1092,7 +1128,7 @@ router.post('/zones/:zoneId/tasks/:taskId/claim', async (req: Request, res: Resp
  */
 router.post('/zones/:zoneId/tasks/batch', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
+    const zoneId = getParam(req, 'zoneId');
     const { agentId, titles } = req.body as { agentId: string; titles: string[] };
 
     if (!agentId || !titles || !Array.isArray(titles)) {
@@ -1145,7 +1181,7 @@ router.post('/zones/:zoneId/tasks/batch', async (req: Request, res: Response): P
  */
 router.put('/zones/:zoneId/tasks/batch', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
+    const zoneId = getParam(req, 'zoneId');
     const { agentId, updates } = req.body as {
       agentId: string;
       updates: Array<{ taskId: string; title?: string; status?: string; assignee?: string | null }>;
@@ -1205,9 +1241,9 @@ router.put('/zones/:zoneId/tasks/batch', async (req: Request, res: Response): Pr
  */
 router.get('/zones/:zoneId/messages', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
-    const limit = parseInt(req.query.limit as string) || 100;
-    const offset = parseInt(req.query.offset as string) || 0;
+    const zoneId = getParam(req, 'zoneId');
+    const limit = clampInt(req.query.limit, 1, MAX_MESSAGE_LIMIT, 100);
+    const offset = clampInt(req.query.offset, 0, Number.MAX_SAFE_INTEGER, 0);
 
     const [messages, total] = await Promise.all([
       zoneService.getMessages(zoneId, limit, offset),
@@ -1240,8 +1276,24 @@ router.get('/zones/:zoneId/messages', async (req: Request, res: Response): Promi
  */
 router.post('/zones/:zoneId/messages', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
+    const zoneId = getParam(req, 'zoneId');
     const { senderId, senderType, content } = req.body as { senderId: string; senderType: 'user' | 'agent'; content: string };
+
+    if (!content || content.trim().length === 0) {
+      res.status(400).json({
+        success: false,
+        error: 'Content cannot be empty'
+      });
+      return;
+    }
+
+    if (content.length > 10000) {
+      res.status(400).json({
+        success: false,
+        error: 'Content exceeds maximum length of 10000 characters'
+      });
+      return;
+    }
 
     if (!senderId || !senderType || !content) {
       res.status(400).json({
@@ -1286,7 +1338,7 @@ router.post('/zones/:zoneId/messages', async (req: Request, res: Response): Prom
  */
 router.get('/zones/:zoneId/export', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
+    const zoneId = getParam(req, 'zoneId');
     const exportData = await zoneService.exportZone(zoneId);
 
     res.json({
@@ -1310,7 +1362,7 @@ router.get('/zones/:zoneId/export', async (req: Request, res: Response): Promise
  */
 router.post('/zones/:zoneId/clone', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
+    const zoneId = getParam(req, 'zoneId');
     const { includeFiles, includeTasks } = req.body as { includeFiles?: boolean; includeTasks?: boolean };
 
     const zone = await zoneService.cloneZone(zoneId, { includeFiles, includeTasks });
@@ -1341,6 +1393,38 @@ router.post('/zones/import', async (req: Request, res: Response): Promise<void> 
       template: { title: string; prompt: string; files?: Array<{ name: string; sourceType: 'local' | 'url'; source: string }>; tasks?: Array<{ title: string }> };
       creatorAgentId?: string;
     };
+
+    if (template.files && template.files.length > MAX_BATCH_SIZE) {
+      res.status(400).json({
+        success: false,
+        error: `Maximum ${MAX_BATCH_SIZE} files in import template`
+      });
+      return;
+    }
+
+    if (template.tasks && template.tasks.length > MAX_BATCH_SIZE) {
+      res.status(400).json({
+        success: false,
+        error: `Maximum ${MAX_BATCH_SIZE} tasks in import template`
+      });
+      return;
+    }
+
+    if (template.files && template.files.length > MAX_BATCH_SIZE) {
+      res.status(400).json({
+        success: false,
+        error: `Maximum ${MAX_BATCH_SIZE} files in import template`
+      });
+      return;
+    }
+
+    if (template.tasks && template.tasks.length > MAX_BATCH_SIZE) {
+      res.status(400).json({
+        success: false,
+        error: `Maximum ${MAX_BATCH_SIZE} tasks in import template`
+      });
+      return;
+    }
 
     if (!projectId || !template || !template.title) {
       res.status(400).json({

@@ -5,6 +5,19 @@ import { taskFlowRepository } from '../../../stratix-database/TaskFlowRepository
 
 const router = Router();
 
+const MAX_AUDIT_LIMIT = 1000;
+
+function getParam(req: Request, key: string): string {
+  const val = req.params[key];
+  return Array.isArray(val) ? val[0] : val;
+}
+
+function clampInt(value: unknown, min: number, max: number, defaultValue: number): number {
+  const parsed = parseInt(value as string, 10);
+  if (Number.isNaN(parsed)) return defaultValue;
+  return Math.max(min, Math.min(max, parsed));
+}
+
 // ============================================
 // Zone Audit Trail
 // ============================================
@@ -15,17 +28,17 @@ const router = Router();
  */
 router.get('/zones/:zoneId/audit', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
+    const zoneId = getParam(req, 'zoneId');
 
     const eventTypes = req.query.eventTypes
-      ? (req.query.eventTypes as string).split(',') as AuditEventType[]
+      ? (req.query.eventTypes as string).split(',').filter(Boolean) as AuditEventType[]
       : undefined;
     const actorId = req.query.actorId as string | undefined;
     const targetId = req.query.targetId as string | undefined;
-    const startTime = req.query.startTime ? parseInt(req.query.startTime as string) : undefined;
-    const endTime = req.query.endTime ? parseInt(req.query.endTime as string) : undefined;
-    const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
-    const offset = req.query.offset ? parseInt(req.query.offset as string) : undefined;
+    const startTime = req.query.startTime ? parseInt(req.query.startTime as string, 10) : undefined;
+    const endTime = req.query.endTime ? parseInt(req.query.endTime as string, 10) : undefined;
+    const limit = req.query.limit ? clampInt(req.query.limit, 1, MAX_AUDIT_LIMIT, 100) : undefined;
+    const offset = req.query.offset ? clampInt(req.query.offset, 0, Number.MAX_SAFE_INTEGER, 0) : undefined;
 
     const result = auditLogRepository.getZoneAuditTrail(zoneId, {
       eventTypes,
@@ -56,7 +69,7 @@ router.get('/zones/:zoneId/audit', async (req: Request, res: Response): Promise<
  */
 router.get('/zones/:zoneId/audit/stats', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
+    const zoneId = getParam(req, 'zoneId');
 
     const stats = auditLogRepository.countByEventType(zoneId);
 
@@ -79,7 +92,7 @@ router.get('/zones/:zoneId/audit/stats', async (req: Request, res: Response): Pr
  */
 router.get('/zones/:zoneId/tasks/:taskId/flow', async (req: Request, res: Response): Promise<void> => {
   try {
-    const taskId = req.params.taskId as string;
+    const taskId = getParam(req, 'taskId');
 
     const flows = taskFlowRepository.getTaskFlowHistory(taskId);
 
@@ -102,13 +115,13 @@ router.get('/zones/:zoneId/tasks/:taskId/flow', async (req: Request, res: Respon
  */
 router.get('/zones/:zoneId/agents/:agentId/activity', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
-    const agentId = req.params.agentId as string;
+    const zoneId = getParam(req, 'zoneId');
+    const agentId = getParam(req, 'agentId');
 
-    const startTime = req.query.startTime ? parseInt(req.query.startTime as string) : undefined;
-    const endTime = req.query.endTime ? parseInt(req.query.endTime as string) : undefined;
-    const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
-    const offset = req.query.offset ? parseInt(req.query.offset as string) : undefined;
+    const startTime = req.query.startTime ? parseInt(req.query.startTime as string, 10) : undefined;
+    const endTime = req.query.endTime ? parseInt(req.query.endTime as string, 10) : undefined;
+    const limit = req.query.limit ? clampInt(req.query.limit, 1, MAX_AUDIT_LIMIT, 100) : undefined;
+    const offset = req.query.offset ? clampInt(req.query.offset, 0, Number.MAX_SAFE_INTEGER, 0) : undefined;
 
     const events = auditLogRepository.getAgentActivityLog(agentId, zoneId, {
       startTime,
@@ -136,7 +149,7 @@ router.get('/zones/:zoneId/agents/:agentId/activity', async (req: Request, res: 
  */
 router.delete('/zones/:zoneId/audit', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
+    const zoneId = getParam(req, 'zoneId');
     const olderThan = req.query.olderThan as string;
 
     if (!olderThan) {
@@ -147,8 +160,8 @@ router.delete('/zones/:zoneId/audit', async (req: Request, res: Response): Promi
       return;
     }
 
-    const olderThanTimestamp = parseInt(olderThan);
-    if (isNaN(olderThanTimestamp)) {
+    const olderThanTimestamp = parseInt(olderThan, 10);
+    if (Number.isNaN(olderThanTimestamp)) {
       res.status(400).json({
         success: false,
         error: 'Invalid olderThan parameter: must be a unix timestamp in milliseconds'
@@ -177,8 +190,8 @@ router.delete('/zones/:zoneId/audit', async (req: Request, res: Response): Promi
  */
 router.get('/zones/:zoneId/audit/recent', async (req: Request, res: Response): Promise<void> => {
   try {
-    const zoneId = req.params.zoneId as string;
-    const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
+    const zoneId = getParam(req, 'zoneId');
+    const limit = req.query.limit ? clampInt(req.query.limit, 1, MAX_AUDIT_LIMIT, 10) : 10;
 
     const events = auditLogRepository.getRecentEvents(zoneId, limit);
 

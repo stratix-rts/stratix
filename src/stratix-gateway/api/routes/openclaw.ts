@@ -24,7 +24,17 @@ interface ProxyConfig {
 }
 
 const activeProxies = new Map<string, ProxyConfig>();
+const MAX_PROXIES = 100;
 let wss: WebSocketServer | null = null;
+
+function isValidEndpoint(endpoint: string): boolean {
+  try {
+    const url = new URL(endpoint);
+    return ['http:', 'https:', 'ws:', 'wss:'].includes(url.protocol);
+  } catch {
+    return false;
+  }
+}
 
 function getProxyKey(endpoint: string): string {
   return endpoint.replace(/[^a-zA-Z0-9]/g, '_');
@@ -34,8 +44,18 @@ router.post('/connect', async (req: Request, res: Response) => {
   try {
     const { endpoint, apiKey } = req.body;
     
-    if (!endpoint) {
+    if (!endpoint || typeof endpoint !== 'string') {
       res.status(400).json(requestHelper.badRequest('endpoint is required'));
+      return;
+    }
+
+    if (!isValidEndpoint(endpoint)) {
+      res.status(400).json(requestHelper.badRequest('Invalid endpoint URL'));
+      return;
+    }
+
+    if (activeProxies.size >= MAX_PROXIES) {
+      res.status(429).json(requestHelper.error(429, 'Maximum number of active proxies reached'));
       return;
     }
 
@@ -47,7 +67,8 @@ router.post('/connect', async (req: Request, res: Response) => {
       connected: true,
       proxyKey
     }, 'OpenClaw connection configured'));
-  } catch {
+  } catch (error) {
+    console.error('[OpenClaw] Connect error:', error);
     res.status(500).json(requestHelper.serverError('Internal server error'));
   }
 });
@@ -56,8 +77,13 @@ router.post('/ws-connect', async (req: Request, res: Response) => {
   try {
     const { endpoint, accountId, apiKey } = req.body;
 
-    if (!endpoint) {
+    if (!endpoint || typeof endpoint !== 'string') {
       res.status(400).json(requestHelper.badRequest('endpoint is required'));
+      return;
+    }
+
+    if (!isValidEndpoint(endpoint)) {
+      res.status(400).json(requestHelper.badRequest('Invalid endpoint URL'));
       return;
     }
 
@@ -87,8 +113,13 @@ router.get('/test', async (req: Request, res: Response) => {
     const endpoint = req.query.endpoint as string;
     const apiKey = req.query.apiKey as string | undefined;
 
-    if (!endpoint) {
+    if (!endpoint || typeof endpoint !== 'string') {
       res.status(400).json(requestHelper.badRequest('endpoint is required'));
+      return;
+    }
+
+    if (!isValidEndpoint(endpoint)) {
+      res.status(400).json(requestHelper.badRequest('Invalid endpoint URL'));
       return;
     }
 
@@ -131,7 +162,18 @@ router.use('/proxy/:proxyKey', (req: Request, res: Response) => {
   const baseUrl = `/api/stratix/openclaw/proxy/${proxyKey}`;
   const pathAfterProxy = req.originalUrl.slice(req.originalUrl.indexOf(baseUrl) + baseUrl.length) || '/';
   const targetUrl = `${config.endpoint}${pathAfterProxy}`;
-  const urlObj = new URL(targetUrl);
+  
+  let urlObj: URL;
+  try {
+    urlObj = new URL(targetUrl);
+    if (!['http:', 'https:'].includes(urlObj.protocol)) {
+      res.status(400).json(requestHelper.badRequest('Invalid target URL protocol'));
+      return;
+    }
+  } catch {
+    res.status(400).json(requestHelper.badRequest('Invalid target URL'));
+    return;
+  }
   
   const isHttps = urlObj.protocol === 'https:';
   const httpModule = isHttps ? https : http;
@@ -197,7 +239,7 @@ router.post('/disconnect', async (req: Request, res: Response) => {
   try {
     const { endpoint } = req.body;
     
-    if (!endpoint) {
+    if (!endpoint || typeof endpoint !== 'string') {
       res.status(400).json(requestHelper.badRequest('endpoint is required'));
       return;
     }
@@ -206,7 +248,8 @@ router.post('/disconnect', async (req: Request, res: Response) => {
     activeProxies.delete(proxyKey);
 
     res.json(requestHelper.success({ endpoint }, 'OpenClaw connection removed'));
-  } catch {
+  } catch (error) {
+    console.error('[OpenClaw] Disconnect error:', error);
     res.status(500).json(requestHelper.serverError('Internal server error'));
   }
 });
@@ -218,7 +261,8 @@ router.get('/connections', async (_req: Request, res: Response) => {
       endpoint: config.endpoint
     }));
     res.json(requestHelper.success(connections, 'Active connections'));
-  } catch {
+  } catch (error) {
+    console.error('[OpenClaw] List connections error:', error);
     res.status(500).json(requestHelper.serverError('Internal server error'));
   }
 });
@@ -258,7 +302,11 @@ router.get('/tailscale/nodes', async (_req: Request, res: Response) => {
       TailscaleIPs?: string[];
       Online?: boolean;
       Latency?: unknown;
-    }>;
+    }> | null;
+    if (!Array.isArray(data)) {
+      res.json(requestHelper.success([], 'Tailscale returned invalid data'));
+      return;
+    }
 
     const nodes = data.map((machine) => ({
       nodeId: machine.ID || machine.NodeId,
@@ -432,10 +480,16 @@ router.put('/connections/:id', async (req: Request, res: Response) => {
     const connectionId = Array.isArray(id) ? id[0] : id;
     const updates = req.body;
     
-    delete updates.id;
-    delete updates.createdAt;
+    if (!updates || typeof updates !== 'object') {
+      res.status(400).json(requestHelper.badRequest('updates must be an object'));
+      return;
+    }
     
-    const connection = await connectionStore.update(connectionId, updates);
+    const sanitizedUpdates = { ...updates };
+    delete sanitizedUpdates.id;
+    delete sanitizedUpdates.createdAt;
+    
+    const connection = await connectionStore.update(connectionId, sanitizedUpdates);
     
     if (!connection) {
       res.json(requestHelper.notFound('Connection not found'));
@@ -674,7 +728,7 @@ export function initWebSocketServer(server: http.Server) {
     console.log('[WS Proxy] Client attached to connection:', connectionId);
   });
   
-  server.on('upgrade', (req: http.IncomingMessage, socket: any, head: Buffer) => {
+  server.on('upgrade', (req: http.IncomingMessage, socket: import('net').Socket, head: Buffer) => {
     const url = req.url || '';
     
     const connectionMatch = url.match(/\/api\/stratix\/openclaw\/ws-proxy\/([^/]+)$/);
@@ -701,6 +755,20 @@ export function initWebSocketServer(server: http.Server) {
       return;
     }
   });
+}
+
+export function destroyOpenClawWebSockets(): void {
+  if (wss) {
+    wss.clients.forEach((client) => client.terminate());
+    wss.close();
+    wss = null;
+  }
+  if (connectionStoreWss) {
+    connectionStoreWss.clients.forEach((client) => client.terminate());
+    connectionStoreWss.close();
+    connectionStoreWss = null;
+  }
+  activeProxies.clear();
 }
 
 export default router;

@@ -4,6 +4,11 @@ import { zoneContextManager } from '../../../stratix-character-creator/core/Zone
 
 const router = Router();
 
+function getParam(req: Request, key: string): string {
+  const val = req.params[key];
+  return Array.isArray(val) ? val[0] : val;
+}
+
 // ============================================
 // Zone Context API
 // ============================================
@@ -89,7 +94,7 @@ router.delete('/detach', async (req: Request, res: Response): Promise<void> => {
  */
 router.get('/:agentId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const agentId = req.params.agentId as string;
+    const agentId = getParam(req, 'agentId');
 
     if (!agentId) {
       res.status(400).json({
@@ -122,7 +127,7 @@ router.get('/:agentId', async (req: Request, res: Response): Promise<void> => {
  */
 router.get('/:agentId/zones', async (req: Request, res: Response): Promise<void> => {
   try {
-    const agentId = req.params.agentId as string;
+    const agentId = getParam(req, 'agentId');
 
     if (!agentId) {
       res.status(400).json({
@@ -173,6 +178,14 @@ router.post('/mcp-tools', async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
+    if (typeof binding.timeout === 'number' && (binding.timeout < 1000 || binding.timeout > 300000)) {
+      res.status(400).json({
+        success: false,
+        error: 'timeout must be between 1000ms and 300000ms (5 minutes)',
+      });
+      return;
+    }
+
     zoneContextManager.registerMCPTool(binding);
 
     res.json({
@@ -194,7 +207,7 @@ router.post('/mcp-tools', async (req: Request, res: Response): Promise<void> => 
  */
 router.get('/mcp-tools/:skillId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const skillId = req.params.skillId as string;
+    const skillId = getParam(req, 'skillId');
 
     if (!skillId) {
       res.status(400).json({

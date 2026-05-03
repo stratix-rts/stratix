@@ -36,6 +36,7 @@ class ZoneCoordinatorService {
   private lastCleanup: number = 0;
   private readonly cleanupInterval: number = 60000; // 1 minute
   private readonly maxAge: number = 3600000; // 1 hour TTL
+  private readonly maxCoordinators: number = 50;
 
   async getCoordinator(zoneId: string, config?: Partial<ZoneCoordinatorConfig>): Promise<ZoneCoordinator> {
     this.maybeCleanup();
@@ -44,6 +45,21 @@ class ZoneCoordinatorService {
     if (entry) {
       entry.lastAccess = Date.now();
       return entry.coordinator;
+    }
+
+    // Prevent unbounded growth: evict oldest if at capacity
+    if (this.coordinators.size >= this.maxCoordinators) {
+      let oldestId: string | null = null;
+      let oldestTime = Infinity;
+      for (const [id, e] of this.coordinators.entries()) {
+        if (e.lastAccess < oldestTime) {
+          oldestTime = e.lastAccess;
+          oldestId = id;
+        }
+      }
+      if (oldestId) {
+        this.coordinators.delete(oldestId);
+      }
     }
 
     const coordinator = await ZoneCoordinator.create(zoneId, config);
@@ -57,6 +73,18 @@ class ZoneCoordinatorService {
 
   clearCoordinator(zoneId: string): void {
     this.coordinators.delete(zoneId);
+  }
+
+  destroy(): void {
+    for (const entry of this.coordinators.values()) {
+      try {
+        (entry.coordinator as unknown as { destroy?: () => void }).destroy?.();
+      } catch {
+        // ignore cleanup errors
+      }
+    }
+    this.coordinators.clear();
+    this.lastCleanup = 0;
   }
 
   private maybeCleanup(): void {
@@ -472,10 +500,10 @@ router.post('/zones/:zoneId/cycle', async (req: Request, res: Response): Promise
         return;
       }
 
-      if (intervalMs === undefined || intervalMs < 1000) {
+      if (intervalMs === undefined || intervalMs < 1000 || intervalMs > 3600000) {
         res.status(400).json({
           success: false,
-          error: 'intervalMs must be at least 1000ms'
+          error: 'intervalMs must be between 1000ms and 3600000ms (1 hour)'
         });
         return;
       }

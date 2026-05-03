@@ -20,6 +20,11 @@ export function setStatusSyncService(service: StatusSyncService) {
 
 // Track registered agents to avoid re-registering on every request
 const registeredAgents = new Set<string>();
+const MAX_REGISTERED_AGENTS = 1000;
+
+export function getStatusSyncService(): StatusSyncService | null {
+  return statusSyncService;
+}
 
 router.post('/execute', async (req: Request, res: Response): Promise<void> => {
   try {
@@ -28,7 +33,7 @@ router.post('/execute', async (req: Request, res: Response): Promise<void> => {
       command = validateOrThrow(CommandLogSchema, req.body);
     } catch (err) {
       const zErr = err as ZodError;
-      res.status(400).json(requestHelper.badRequest(`Schema validation failed: ${zErr.issues.map((e: any) => e.message).join('; ')}`));
+      res.status(400).json(requestHelper.badRequest(`Schema validation failed: ${zErr.issues.map((e) => e.message).join('; ')}`));
       return;
     }
     const { agentId } = command;
@@ -42,6 +47,13 @@ router.post('/execute', async (req: Request, res: Response): Promise<void> => {
 
     // Register agent's commands in the orchestrator (once per agent)
     if (!registeredAgents.has(agentId)) {
+      if (registeredAgents.size >= MAX_REGISTERED_AGENTS) {
+        // Evict oldest entries to prevent unbounded growth
+        const entries = Array.from(registeredAgents).slice(0, 100);
+        for (const id of entries) {
+          registeredAgents.delete(id);
+        }
+      }
       commandSourceAdapter.registerAgentCommands(agentConfig);
       registeredAgents.add(agentId);
     }
@@ -56,7 +68,14 @@ router.post('/execute', async (req: Request, res: Response): Promise<void> => {
       const ctx = { agentId, sessionId: '', args: command.params || {} };
       const result = await commandSourceAdapter.executeCommand(command.skillId, ctx, command.commandId);
       if (result.success) {
-        const output = result.output ? JSON.parse(result.output) : undefined;
+        let output: unknown = undefined;
+        if (result.output) {
+          try {
+            output = JSON.parse(result.output);
+          } catch {
+            output = result.output;
+          }
+        }
         statusSyncService?.notifyCommandStatus(
           command.commandId,
           agentId,
@@ -86,7 +105,7 @@ router.post('/execute', async (req: Request, res: Response): Promise<void> => {
     }
 
     res.json(requestHelper.success(
-      { commandId: command.commandId, status: 'pending' },
+      { commandId: command.commandId, status: 'accepted' },
       'Command execution started'
     ));
   } catch (error) {

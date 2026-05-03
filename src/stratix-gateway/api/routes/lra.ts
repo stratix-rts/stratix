@@ -5,6 +5,13 @@ import { LRAService } from '../../lra/LRAService';
 const router = Router();
 const lraService = new LRAService();
 
+const VALID_STATUSES = ['pending', 'in_progress', 'completed', 'failed', 'cancelled'];
+
+function getParam(req: Request, key: string): string {
+  const val = req.params[key];
+  return Array.isArray(val) ? val[0] : val;
+}
+
 /**
  * POST /api/lra/init
  * 初始化 LRA 项目
@@ -104,7 +111,7 @@ router.post('/tasks', async (req: Request, res: Response): Promise<void> => {
  */
 router.post('/tasks/:taskId/claim', async (req: Request, res: Response): Promise<void> => {
   try {
-    const taskId = req.params.taskId as string;
+    const taskId = getParam(req, 'taskId');
     const { projectPath } = req.body;
     
     if (!projectPath) {
@@ -136,7 +143,7 @@ router.post('/tasks/:taskId/claim', async (req: Request, res: Response): Promise
  */
 router.post('/tasks/:taskId/heartbeat', async (req: Request, res: Response): Promise<void> => {
   try {
-    const taskId = req.params.taskId as string;
+    const taskId = getParam(req, 'taskId');
     const { projectPath } = req.body;
     
     if (!projectPath) {
@@ -168,7 +175,7 @@ router.post('/tasks/:taskId/heartbeat', async (req: Request, res: Response): Pro
  */
 router.post('/tasks/:taskId/publish', async (req: Request, res: Response): Promise<void> => {
   try {
-    const taskId = req.params.taskId as string;
+    const taskId = getParam(req, 'taskId');
     const { projectPath } = req.body;
     
     if (!projectPath) {
@@ -200,9 +207,9 @@ router.post('/tasks/:taskId/publish', async (req: Request, res: Response): Promi
  */
 router.put('/tasks/:taskId/status', async (req: Request, res: Response): Promise<void> => {
   try {
-    const taskId = req.params.taskId as string;
+    const taskId = getParam(req, 'taskId');
     const { projectPath, status } = req.body;
-    
+
     if (!projectPath || !status) {
       res.status(400).json({
         success: false,
@@ -210,8 +217,16 @@ router.put('/tasks/:taskId/status', async (req: Request, res: Response): Promise
       });
       return;
     }
-    
-    await lraService.setTaskStatus(projectPath as string, taskId, status as string);
+
+    if (!VALID_STATUSES.includes(status)) {
+      res.status(400).json({
+        success: false,
+        error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}`
+      });
+      return;
+    }
+
+    await lraService.setTaskStatus(projectPath as string, taskId, status);
     
     res.json({
       success: true
@@ -231,7 +246,7 @@ router.put('/tasks/:taskId/status', async (req: Request, res: Response): Promise
  */
 router.get('/tasks/:taskId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const taskId = req.params.taskId as string;
+    const taskId = getParam(req, 'taskId');
     const { projectPath } = req.query;
     
     if (!projectPath) {

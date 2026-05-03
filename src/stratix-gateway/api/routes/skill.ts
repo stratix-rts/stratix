@@ -12,6 +12,15 @@ import { skillRepository, type SharedSkill, type SharedSkillInstall, type AgentL
 
 const router = Router();
 
+const MAX_AUDIT_LIMIT = 1000;
+const MAX_EXPERIENCE_GAIN = 10000;
+
+function clampInt(value: unknown, min: number, max: number, defaultValue: number): number {
+  const parsed = parseInt(value as string, 10);
+  if (Number.isNaN(parsed)) return defaultValue;
+  return Math.max(min, Math.min(max, parsed));
+}
+
 // ============================================
 // Builtin Skills API
 // ============================================
@@ -106,7 +115,7 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
  */
 router.get('/:skillId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const skillId = req.params.skillId as string;
+    const skillId = Array.isArray(req.params.skillId) ? req.params.skillId[0] : req.params.skillId;
     const skill = skillRepository.getSharedSkill(skillId);
 
     if (!skill) {
@@ -178,7 +187,7 @@ router.post('/', async (req: Request, res: Response): Promise<void> => {
  */
 router.put('/:skillId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const skillId = req.params.skillId as string;
+    const skillId = Array.isArray(req.params.skillId) ? req.params.skillId[0] : req.params.skillId;
     const skillData = req.body as Partial<SharedSkill>;
 
     const existing = skillRepository.getSharedSkill(skillId);
@@ -219,7 +228,7 @@ router.put('/:skillId', async (req: Request, res: Response): Promise<void> => {
  */
 router.delete('/:skillId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const skillId = req.params.skillId as string;
+    const skillId = Array.isArray(req.params.skillId) ? req.params.skillId[0] : req.params.skillId;
     const deleted = skillRepository.deleteSharedSkill(skillId);
 
     if (!deleted) {
@@ -253,7 +262,7 @@ router.delete('/:skillId', async (req: Request, res: Response): Promise<void> =>
  */
 router.get('/installs/:agentId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const agentId = req.params.agentId as string;
+    const agentId = Array.isArray(req.params.agentId) ? req.params.agentId[0] : req.params.agentId;
     const installs = skillRepository.getInstalledSkillsForAgent(agentId);
 
     // 获取完整的技能信息
@@ -451,9 +460,12 @@ router.post('/learned', async (req: Request, res: Response): Promise<void> => {
  */
 router.put('/learned/:skillId/:agentId/practice', async (req: Request, res: Response): Promise<void> => {
   try {
-    const skillId = req.params.skillId as string;
-    const agentId = req.params.agentId as string;
-    const { experienceGained = 10 } = req.body as { experienceGained?: number };
+    const skillId = Array.isArray(req.params.skillId) ? req.params.skillId[0] : req.params.skillId;
+    const agentId = Array.isArray(req.params.agentId) ? req.params.agentId[0] : req.params.agentId;
+    const rawExp = (req.body as { experienceGained?: number }).experienceGained;
+    const experienceGained = typeof rawExp === 'number'
+      ? Math.max(1, Math.min(MAX_EXPERIENCE_GAIN, Math.floor(rawExp)))
+      : 10;
 
     const updated = skillRepository.updateLearnedSkillPractice(skillId, agentId, experienceGained);
 
@@ -485,8 +497,8 @@ router.put('/learned/:skillId/:agentId/practice', async (req: Request, res: Resp
  */
 router.put('/learned/:skillId/:agentId/certify', async (req: Request, res: Response): Promise<void> => {
   try {
-    const skillId = req.params.skillId as string;
-    const agentId = req.params.agentId as string;
+    const skillId = Array.isArray(req.params.skillId) ? req.params.skillId[0] : req.params.skillId;
+    const agentId = Array.isArray(req.params.agentId) ? req.params.agentId[0] : req.params.agentId;
     const { certified = true } = req.body as { certified?: boolean };
 
     const skill = skillRepository.getLearnedSkill(skillId, agentId);
@@ -521,8 +533,8 @@ router.put('/learned/:skillId/:agentId/certify', async (req: Request, res: Respo
  */
 router.delete('/learned/:skillId/:agentId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const skillId = req.params.skillId as string;
-    const agentId = req.params.agentId as string;
+    const skillId = Array.isArray(req.params.skillId) ? req.params.skillId[0] : req.params.skillId;
+    const agentId = Array.isArray(req.params.agentId) ? req.params.agentId[0] : req.params.agentId;
     const deleted = skillRepository.deleteLearnedSkill(skillId, agentId);
 
     res.json({
@@ -553,8 +565,8 @@ router.get('/audit', async (req: Request, res: Response): Promise<void> => {
       skillId: req.query.skillId as string,
       startTime: req.query.startTime ? parseInt(req.query.startTime as string, 10) : undefined,
       endTime: req.query.endTime ? parseInt(req.query.endTime as string, 10) : undefined,
-      limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 100,
-      offset: req.query.offset ? parseInt(req.query.offset as string, 10) : 0,
+      limit: clampInt(req.query.limit, 1, MAX_AUDIT_LIMIT, 100),
+      offset: clampInt(req.query.offset, 0, Number.MAX_SAFE_INTEGER, 0),
     };
 
     const logs = skillAuditLogger.getAllLogs(query);
@@ -586,8 +598,8 @@ router.get('/audit/:agentId', async (req: Request, res: Response): Promise<void>
       skillId: req.query.skillId as string,
       startTime: req.query.startTime ? parseInt(req.query.startTime as string, 10) : undefined,
       endTime: req.query.endTime ? parseInt(req.query.endTime as string, 10) : undefined,
-      limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 100,
-      offset: req.query.offset ? parseInt(req.query.offset as string, 10) : 0,
+      limit: clampInt(req.query.limit, 1, MAX_AUDIT_LIMIT, 100),
+      offset: clampInt(req.query.offset, 0, Number.MAX_SAFE_INTEGER, 0),
     };
 
     const logs = skillAuditLogger.getLogsByAgent(agentId, query);

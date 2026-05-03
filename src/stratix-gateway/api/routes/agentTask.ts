@@ -13,6 +13,11 @@ import { StratixRequestHelper } from '../../../stratix-core/utils';
 const router = Router();
 const requestHelper = StratixRequestHelper.getInstance();
 
+function getParam(req: Request, key: string): string {
+  const val = req.params[key];
+  return Array.isArray(val) ? val[0] : val;
+}
+
 /**
  * Verify task belongs to the agent
  */
@@ -29,7 +34,7 @@ function verifyTaskOwnership(
  */
 router.get('/:agentId/tasks', async (req: Request, res: Response) => {
   try {
-    const agentId = req.params.agentId as string;
+    const agentId = getParam(req, 'agentId');
     const taskQueue = TaskQueueService.getInstance();
 
     const tasks = await taskQueue.getTasksByAgent(agentId);
@@ -63,8 +68,13 @@ router.get('/:agentId/tasks', async (req: Request, res: Response) => {
  */
 router.post('/:agentId/tasks/claim', async (req: Request, res: Response) => {
   try {
-    const agentId = req.params.agentId as string;
+    const agentId = getParam(req, 'agentId');
     const { zoneId } = req.body;
+
+    if (!zoneId || typeof zoneId !== 'string') {
+      res.status(400).json(requestHelper.badRequest('zoneId is required'));
+      return;
+    }
 
     if (!zoneId) {
       res.status(400).json(requestHelper.badRequest('zoneId is required'));
@@ -109,8 +119,8 @@ router.post('/:agentId/tasks/claim', async (req: Request, res: Response) => {
  */
 router.post('/:agentId/tasks/:taskId/start', async (req: Request, res: Response) => {
   try {
-    const agentId = req.params.agentId as string;
-    const taskId = req.params.taskId as string;
+    const agentId = getParam(req, 'agentId');
+    const taskId = getParam(req, 'taskId');
     const taskQueue = TaskQueueService.getInstance();
 
     // Verify task belongs to this agent before starting
@@ -141,9 +151,14 @@ router.post('/:agentId/tasks/:taskId/start', async (req: Request, res: Response)
  */
 router.post('/:agentId/tasks/:taskId/complete', async (req: Request, res: Response) => {
   try {
-    const agentId = req.params.agentId as string;
-    const taskId = req.params.taskId as string;
+    const agentId = getParam(req, 'agentId');
+    const taskId = getParam(req, 'taskId');
     const { result } = req.body;
+
+    if (result !== undefined && typeof result === 'string' && result.length > 100000) {
+      res.status(400).json(requestHelper.badRequest('Result exceeds maximum length of 100000 characters'));
+      return;
+    }
     const taskQueue = TaskQueueService.getInstance();
 
     // Verify task belongs to this agent before completing
@@ -181,9 +196,14 @@ router.post('/:agentId/tasks/:taskId/complete', async (req: Request, res: Respon
  */
 router.post('/:agentId/tasks/:taskId/fail', async (req: Request, res: Response) => {
   try {
-    const agentId = req.params.agentId as string;
-    const taskId = req.params.taskId as string;
+    const agentId = getParam(req, 'agentId');
+    const taskId = getParam(req, 'taskId');
     const { error } = req.body;
+
+    if (error !== undefined && typeof error === 'string' && error.length > 100000) {
+      res.status(400).json(requestHelper.badRequest('Error message exceeds maximum length of 100000 characters'));
+      return;
+    }
     const taskQueue = TaskQueueService.getInstance();
 
     // Verify task belongs to this agent before marking failed

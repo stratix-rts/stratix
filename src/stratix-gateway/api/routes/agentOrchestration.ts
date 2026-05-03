@@ -6,6 +6,11 @@ import { AgentOrchestrationService, AgentState, UsageStats } from '../../agent/A
 const router = Router();
 const orchestrator = AgentOrchestrationService.getInstance();
 
+function getParam(req: Request, key: string): string {
+  const val = req.params[key];
+  return Array.isArray(val) ? val[0] : val;
+}
+
 router.post('/register', async (req: Request, res: Response): Promise<void> => {
   try {
     const { agentId, config } = req.body;
@@ -18,6 +23,13 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
       return;
     }
     
+    if (!config || typeof config !== 'object') {
+      res.status(400).json({
+        success: false,
+        error: 'config must be an object'
+      });
+      return;
+    }
     orchestrator.registerAgentConfig(agentId, config as StratixAgentConfig);
     
     res.json({
@@ -62,7 +74,7 @@ router.post('/start', async (req: Request, res: Response): Promise<void> => {
 
 router.post('/stop/:agentId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const agentId = req.params.agentId as string;
+    const agentId = getParam(req, 'agentId');
     
     await orchestrator.stopAgent(agentId);
     
@@ -81,7 +93,7 @@ router.post('/stop/:agentId', async (req: Request, res: Response): Promise<void>
 
 router.post('/pause/:agentId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const agentId = req.params.agentId as string;
+    const agentId = getParam(req, 'agentId');
     
     await orchestrator.pauseAgent(agentId);
     
@@ -100,7 +112,7 @@ router.post('/pause/:agentId', async (req: Request, res: Response): Promise<void
 
 router.post('/resume/:agentId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const agentId = req.params.agentId as string;
+    const agentId = getParam(req, 'agentId');
     
     await orchestrator.resumeAgent(agentId);
     
@@ -119,7 +131,7 @@ router.post('/resume/:agentId', async (req: Request, res: Response): Promise<voi
 
 router.get('/state/:agentId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const agentId = req.params.agentId as string;
+    const agentId = getParam(req, 'agentId');
     const state = orchestrator.getAgentState(agentId);
 
     if (!state) {
@@ -145,7 +157,7 @@ router.get('/state/:agentId', async (req: Request, res: Response): Promise<void>
 
 router.get('/usage/:agentId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const agentId = req.params.agentId as string;
+    const agentId = getParam(req, 'agentId');
 
     if (!orchestrator.isAgentWorking(agentId)) {
       res.status(404).json({
@@ -189,7 +201,7 @@ router.get('/active', async (req: Request, res: Response): Promise<void> => {
 
 router.get('/project/:projectId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const projectId = req.params.projectId as string;
+    const projectId = getParam(req, 'projectId');
     const agents = orchestrator.getProjectAgents(projectId);
     
     res.json({

@@ -11,6 +11,13 @@ import { dataStoreService } from '../../dataStoreService';
 const router = Router();
 const requestHelper = StratixRequestHelper.getInstance();
 
+const MAX_IMPORT_BATCH = 100;
+
+function getAgentIdParam(req: Request): string {
+  const val = req.params.agentId;
+  return Array.isArray(val) ? val[0] : val;
+}
+
 /**
  * 转换模板为消费态响应
  * 只包含运行时需要的数据
@@ -152,26 +159,32 @@ router.post('/create', async (req: Request, res: Response) => {
   try {
     const templateLibrary = dataStoreService.getTemplateLibrary();
     const config: StratixAgentConfig = req.body;
-    
+
+    if (!config || typeof config !== 'object') {
+      res.status(400).json(requestHelper.badRequest('Template config is required'));
+      return;
+    }
+
     if (!config.agentId) {
       config.agentId = templateLibrary.generateId();
     }
-    
+
     await templateLibrary.saveCustomTemplate(config);
     res.json(requestHelper.success(config, 'Template created'));
   } catch (error) {
+    console.error('[Template API] Create failed:', error);
     res.status(500).json(requestHelper.serverError('Internal server error'));
   }
 });
 
 router.put('/:agentId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const agentId = String(req.params.agentId);
+    const agentId = getAgentIdParam(req);
     const templateLibrary = dataStoreService.getTemplateLibrary();
-    
+
     const custom = await templateLibrary.getCustomTemplates();
     const existing = custom.find(t => t.agentId === agentId);
-    
+
     if (!existing) {
       res.status(404).json(requestHelper.notFound('Template not found'));
       return;
@@ -181,27 +194,29 @@ router.put('/:agentId', async (req: Request, res: Response): Promise<void> => {
       ...req.body,
       agentId
     };
-    
+
     await templateLibrary.saveCustomTemplate(config);
     res.json(requestHelper.success(config, 'Template updated'));
   } catch (error) {
+    console.error('[Template API] Update failed:', error);
     res.status(500).json(requestHelper.serverError('Internal server error'));
   }
 });
 
 router.delete('/:agentId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const agentId = String(req.params.agentId);
+    const agentId = getAgentIdParam(req);
     const templateLibrary = dataStoreService.getTemplateLibrary();
-    
+
     const deleted = await templateLibrary.deleteCustomTemplate(agentId);
     if (!deleted) {
       res.status(404).json(requestHelper.notFound('Template not found or is preset'));
       return;
     }
-    
+
     res.json(requestHelper.success(null, 'Template deleted'));
   } catch (error) {
+    console.error('[Template API] Delete failed:', error);
     res.status(500).json(requestHelper.serverError('Internal server error'));
   }
 });
@@ -239,9 +254,14 @@ router.post('/apply/:type', async (req: Request, res: Response): Promise<void> =
 router.post('/import', async (req: Request, res: Response) => {
   try {
     const { templates } = req.body;
-    
+
     if (!Array.isArray(templates)) {
       res.status(400).json(requestHelper.badRequest('Invalid data format. Expected { templates: [] }'));
+      return;
+    }
+
+    if (templates.length > MAX_IMPORT_BATCH) {
+      res.status(400).json(requestHelper.badRequest(`Maximum ${MAX_IMPORT_BATCH} templates per import`));
       return;
     }
 
@@ -257,13 +277,15 @@ router.post('/import', async (req: Request, res: Response) => {
         };
         await templateLibrary.saveCustomTemplate(config);
         imported++;
-      } catch {
+      } catch (err) {
+        console.warn('[Template API] Import skipped:', err);
         skipped++;
       }
     }
 
     res.json(requestHelper.success({ imported, skipped }, 'Templates imported'));
   } catch (error) {
+    console.error('[Template API] Import failed:', error);
     res.status(500).json(requestHelper.serverError('Internal server error'));
   }
 });
