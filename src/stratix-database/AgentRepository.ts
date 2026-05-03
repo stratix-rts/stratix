@@ -25,6 +25,7 @@ function parseJsonSafe<T>(value: string | null | undefined, fallback: T): T {
   try {
     return JSON.parse(value) as T;
   } catch {
+    /* expected: invalid JSON, return fallback */
     return fallback;
   }
 }

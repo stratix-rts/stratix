@@ -140,7 +140,7 @@ export class SkillRegistry {
    * 生成本地缓存 key
    * 对小对象使用直接 stringify；对大对象使用哈希避免 key 过长和性能问题
    */
-  private getCacheKey(skillId: string, params: Record<string, any>): string {
+  private getCacheKey(skillId: string, params: Record<string, unknown>): string {
     const str = JSON.stringify(params);
     if (str.length <= 500) {
       return `${skillId}:${str}`;
@@ -370,7 +370,7 @@ export class SkillRegistry {
     }
   }
 
-  private validateParams(skill: SkillDefinition, params: Record<string, any>): string | null {
+  private validateParams(skill: SkillDefinition, params: Record<string, unknown>): string | null {
     for (const param of skill.parameters) {
       if (param.required && !(param.name in params) && param.default === undefined) {
         return `Missing required parameter: ${param.name}`;

@@ -56,8 +56,8 @@ export class SkillTrigger {
     return skills.some(s => s.skillId === skillId);
   }
 
-  private parseXmlParams(xmlContent: string): Record<string, any> {
-    const params: Record<string, any> = {};
+  private parseXmlParams(xmlContent: string): Record<string, unknown> {
+    const params: Record<string, unknown> = {};
     const paramMatches = Array.from(xmlContent.matchAll(/<param\s+name="([^"]+)">([^<]+)<\/param>/g));
     for (const match of paramMatches) {
       params[match[1]] = match[2];
@@ -65,7 +65,7 @@ export class SkillTrigger {
     return params;
   }
 
-  private extractParamsFromText(_text: string, _skillId: string): Record<string, any> {
+  private extractParamsFromText(_text: string, _skillId: string): Record<string, unknown> {
     return {};
   }
 }

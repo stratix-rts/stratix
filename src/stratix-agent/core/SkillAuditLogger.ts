@@ -193,7 +193,8 @@ export class SkillAuditLogger {
    * 驱逐最旧的日志以保持在限制内
    */
   private evictOldestLogs(): void {
-    const toEvict = this.logs.size - SkillAuditLogger.MAX_LOG_ENTRIES + 100; // 驱逐到限制以下，留点余地
+    const EVICTION_HEADROOM = 100;
+    const toEvict = this.logs.size - SkillAuditLogger.MAX_LOG_ENTRIES + EVICTION_HEADROOM;
 
     // 按时间排序（最旧的在前）
     const sortedLogs = Array.from(this.logs.entries())

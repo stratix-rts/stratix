@@ -1,5 +1,5 @@
 interface CacheEntry {
-  value: any;
+  value: unknown;
   timestamp: number;
   accessCount: number;
 }
@@ -13,7 +13,7 @@ export class SharedMemoryCache {
     private ttl: number = 5 * 60 * 1000
   ) {}
 
-  getFromCache(key: string): any {
+  getFromCache(key: string): unknown {
     const entry = this.cache.get(key);
     if (!entry) return null;
     
@@ -26,7 +26,7 @@ export class SharedMemoryCache {
     return entry.value;
   }
 
-  set(key: string, value: any): void {
+  set(key: string, value: unknown): void {
     if (this.cache.size >= this.maxSize) {
       this.evictLRU();
     }

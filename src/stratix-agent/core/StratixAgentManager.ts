@@ -5,6 +5,8 @@ import { LLMConnectionPool } from './LLMConnectionPool';
 import { SharedMemoryCache } from './SharedMemoryCache';
 import { StorageManager } from './StorageManager';
 
+const DEFAULT_MAX_AGENTS = 10;
+
 export interface ManagerOptions {
   maxAgents?: number;
   enableSharedCache?: boolean;
@@ -18,7 +20,7 @@ export class StratixAgentManager {
   private maxAgents: number;
 
   constructor(options: ManagerOptions = {}) {
-    this.maxAgents = options.maxAgents || 10;
+    this.maxAgents = options.maxAgents || DEFAULT_MAX_AGENTS;
     this.storage = new StorageManager();
     this.sharedCache = options.enableSharedCache !== false 
       ? new SharedMemoryCache() 

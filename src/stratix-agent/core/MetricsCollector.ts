@@ -1,5 +1,7 @@
 import { MetricsData } from '../types';
 
+const MAX_LATENCY_SAMPLES = 1000;
+
 export class MetricsCollector {
   private requestCount: number = 0;
   private errorCount: number = 0;
@@ -17,8 +19,8 @@ export class MetricsCollector {
       this.errorCount++;
     }
 
-    if (this.latencies.length > 1000) {
-      this.latencies = this.latencies.slice(-1000);
+    if (this.latencies.length > MAX_LATENCY_SAMPLES) {
+      this.latencies = this.latencies.slice(-MAX_LATENCY_SAMPLES);
     }
   }
 
