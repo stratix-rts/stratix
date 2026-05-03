@@ -1,5 +1,4 @@
 import { readdir, stat } from 'fs/promises';
-import { readdirSync, statSync } from 'fs';
 import { join, resolve } from 'path';
 
 export interface AgentWorkerConfig {
@@ -66,8 +65,10 @@ export class AgentWorker {
       return;
     }
 
+    let tasksToExecute: Task[] = [];
+
     try {
-      const res = await fetch(
+      const res = await this.fetchWithRetry(
         `${this.config.gatewayUrl}/api/agent/${this.config.agentId}/tasks`
       );
       if (!res.ok) {
@@ -75,28 +76,44 @@ export class AgentWorker {
       }
 
       const data = (await res.json()) as { tasks: Task[]; count: number };
-      const tasks = data.tasks.filter(
+      tasksToExecute = data.tasks.filter(
         (t) => t.status === 'assigned' || t.status === 'delegated'
       );
-
-      for (const task of tasks) {
-        await this.executeTask(task);
-      }
     } catch (err) {
-      console.error('[AgentWorker] Poll error:', err);
+      console.error(
+        `[AgentWorker] Poll error for agent ${this.config.agentId}:`,
+        err
+      );
     }
 
+    // Schedule next poll before executing tasks to avoid blocking the interval
     if (this.running) {
       this.timer = setTimeout(
         () => void this.poll(),
         this.config.pollIntervalMs || 5000
       );
     }
+
+    // Execute tasks after scheduling next poll
+    for (const task of tasksToExecute) {
+      try {
+        await this.executeTask(task);
+      } catch (execErr) {
+        console.error(
+          `[AgentWorker] Unhandled execution error for task ${task.taskId} in zone ${task.zoneId}:`,
+          execErr
+        );
+      }
+    }
   }
 
   private async executeTask(task: Task): Promise<void> {
+    const logPrefix = `[AgentWorker][${this.config.agentId}][zone:${task.zoneId}][task:${task.taskId}]`;
+
     try {
-      const startRes = await fetch(
+      console.log(`${logPrefix} Starting execution`);
+
+      const startRes = await this.fetchWithRetry(
         `${this.config.gatewayUrl}/api/agent/${this.config.agentId}/tasks/${task.taskId}/start`,
         { method: 'POST' }
       );
@@ -114,7 +131,7 @@ export class AgentWorker {
           : new Set<string>();
       } catch (snapErr) {
         console.error(
-          `[AgentWorker] Failed to build snapshot for ${sandboxRoot}:`,
+          `${logPrefix} Failed to build snapshot for ${sandboxRoot}:`,
           snapErr
         );
         beforeSnap = new Set<string>();
@@ -124,7 +141,7 @@ export class AgentWorker {
       const output = await this.callLLM(prompt);
 
       const files = sandboxRoot
-        ? this.scanNewFiles(sandboxRoot, beforeSnap)
+        ? await this.scanNewFiles(sandboxRoot, beforeSnap)
         : [];
 
       const result: TaskResult = {
@@ -134,13 +151,11 @@ export class AgentWorker {
         summary: `任务 "${task.name}" 已完成。`,
       };
 
+      console.log(`${logPrefix} Execution completed, reporting success`);
       await this.reportComplete(task.taskId, result);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
-      console.error(
-        `[AgentWorker] Task ${task.taskId} execution failed:`,
-        errorMessage
-      );
+      console.error(`${logPrefix} Execution failed:`, errorMessage);
       await this.reportFail(task.taskId, errorMessage);
     }
   }
@@ -164,15 +179,15 @@ export class AgentWorker {
     }
   }
 
-  private scanNewFiles(sandboxRoot: string, beforeSnap: Set<string>): string[] {
+  private async scanNewFiles(sandboxRoot: string, beforeSnap: Set<string>): Promise<string[]> {
     const newFiles: string[] = [];
-    const walk = (dir: string): void => {
-      const entries = readdirSync(dir);
+    const walk = async (dir: string): Promise<void> => {
+      const entries = await readdir(dir);
       for (const entry of entries) {
         const fullPath = join(dir, entry);
-        const st = statSync(fullPath);
+        const st = await stat(fullPath);
         if (st.isDirectory()) {
-          walk(fullPath);
+          await walk(fullPath);
         } else if (st.isFile()) {
           const absPath = resolve(fullPath);
           if (!beforeSnap.has(absPath)) {
@@ -181,7 +196,7 @@ export class AgentWorker {
         }
       }
     };
-    walk(sandboxRoot);
+    await walk(sandboxRoot);
     return newFiles;
   }
 
@@ -192,45 +207,38 @@ export class AgentWorker {
     const apiKey = this.config.llmApiKey || '';
 
     if (provider === 'ollama') {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000);
+      const response = await this.fetchWithRetry(`${baseUrl}/api/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: '你是一个执行任务的 AI Agent。' },
+            { role: 'user', content: prompt },
+          ],
+          stream: false,
+        }),
+        signal: AbortSignal.timeout(60000),
+      });
 
-      try {
-        const response = await fetch(`${baseUrl}/api/chat`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model,
-            messages: [
-              { role: 'system', content: '你是一个执行任务的 AI Agent。' },
-              { role: 'user', content: prompt },
-            ],
-            stream: false,
-          }),
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          throw new Error(
-            `LLM API error: ${response.status} ${response.statusText}`
-          );
-        }
-
-        const data = (await response.json()) as {
-          message?: { content?: string };
-          error?: string;
-        };
-
-        if (data.error) {
-          throw new Error(`LLM API error: ${data.error}`);
-        }
-
-        return data.message?.content || '';
-      } finally {
-        clearTimeout(timeoutId);
+      if (!response.ok) {
+        throw new Error(
+          `LLM API error: ${response.status} ${response.statusText}`
+        );
       }
+
+      const data = (await response.json()) as {
+        message?: { content?: string };
+        error?: string;
+      };
+
+      if (data.error) {
+        throw new Error(`LLM API error: ${data.error}`);
+      }
+
+      return data.message?.content || '';
     }
 
     // openai or custom
@@ -241,49 +249,89 @@ export class AgentWorker {
       headers['Authorization'] = `Bearer ${apiKey}`;
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 60000);
+    const response = await this.fetchWithRetry(`${baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: '你是一个执行任务的 AI Agent。' },
+          { role: 'user', content: prompt },
+        ],
+        max_tokens: 4096,
+      }),
+      signal: AbortSignal.timeout(60000),
+    });
 
-    try {
-      const response = await fetch(`${baseUrl}/v1/chat/completions`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: 'system', content: '你是一个执行任务的 AI Agent。' },
-            { role: 'user', content: prompt },
-          ],
-          max_tokens: 4096,
-        }),
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        throw new Error(
-          `LLM API error: ${response.status} ${response.statusText}`
-        );
-      }
-
-      const data = (await response.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
-        error?: { message?: string };
-      };
-
-      if (data.error) {
-        throw new Error(
-          `LLM API error: ${data.error.message || JSON.stringify(data.error)}`
-        );
-      }
-
-      return data.choices?.[0]?.message?.content || '';
-    } finally {
-      clearTimeout(timeoutId);
+    if (!response.ok) {
+      throw new Error(
+        `LLM API error: ${response.status} ${response.statusText}`
+      );
     }
+
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+      error?: { message?: string };
+    };
+
+    if (data.error) {
+      throw new Error(
+        `LLM API error: ${data.error.message || JSON.stringify(data.error)}`
+      );
+    }
+
+    return data.choices?.[0]?.message?.content || '';
+  }
+
+  /**
+   * Fetch with retry support (exponential backoff, max 3 attempts).
+   * Retries on network errors, timeouts, and 5xx server errors.
+   */
+  private async fetchWithRetry(
+    url: string,
+    options?: RequestInit,
+    maxRetries: number = 2
+  ): Promise<Response> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await fetch(url, options);
+
+        // Retry on 5xx errors
+        if (response.status >= 500 && attempt < maxRetries) {
+          await this.delay(1000 * Math.pow(2, attempt));
+          continue;
+        }
+
+        return response;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+
+        const isRetryable =
+          lastError.name === 'AbortError' ||
+          lastError.message.includes('fetch') ||
+          lastError.message.includes('network') ||
+          lastError.message.includes('ECONNREFUSED');
+
+        if (isRetryable && attempt < maxRetries) {
+          await this.delay(1000 * Math.pow(2, attempt));
+          continue;
+        }
+
+        throw lastError;
+      }
+    }
+
+    throw lastError || new Error(`Fetch failed after ${maxRetries + 1} attempts`);
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private async reportComplete(taskId: string, result: TaskResult): Promise<void> {
-    const res = await fetch(
+    const res = await this.fetchWithRetry(
       `${this.config.gatewayUrl}/api/agent/${this.config.agentId}/tasks/${taskId}/complete`,
       {
         method: 'POST',
@@ -301,7 +349,7 @@ export class AgentWorker {
   }
 
   private async reportFail(taskId: string, error: string): Promise<void> {
-    const res = await fetch(
+    const res = await this.fetchWithRetry(
       `${this.config.gatewayUrl}/api/agent/${this.config.agentId}/tasks/${taskId}/fail`,
       {
         method: 'POST',
