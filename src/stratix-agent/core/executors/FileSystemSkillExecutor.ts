@@ -1,5 +1,4 @@
-import { existsSync, mkdirSync } from 'fs';
-import { appendFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'fs/promises';
+import { access, appendFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'fs/promises';
 import * as path from 'path';
 
 import { SkillDefinition, SkillExecutor, ExecutionContext } from '../../types';
@@ -27,7 +26,7 @@ export class FileSystemSkillExecutor implements SkillExecutor {
     switch (skill.skillId) {
       case 'file_read': {
         progress?.({ skillId: skill.skillId, stage: 'processing', message: 'Reading file...' });
-        if (!existsSync(filePath)) {
+        if (!(await this.pathExists(filePath))) {
           throw new Error(`File not found: ${filePath}`);
         }
         const content = await readFile(filePath, params.encoding || 'utf-8');
@@ -41,8 +40,8 @@ export class FileSystemSkillExecutor implements SkillExecutor {
       case 'file_write': {
         progress?.({ skillId: skill.skillId, stage: 'processing', message: 'Writing file...' });
         const dir = path.dirname(filePath);
-        if (!existsSync(dir)) {
-          mkdirSync(dir, { recursive: true });
+        if (!(await this.pathExists(dir))) {
+          await mkdir(dir, { recursive: true });
         }
         await writeFile(filePath, params.content, params.encoding || 'utf-8');
         progress?.({ skillId: skill.skillId, stage: 'completed' });
@@ -58,7 +57,7 @@ export class FileSystemSkillExecutor implements SkillExecutor {
 
       case 'file_list': {
         progress?.({ skillId: skill.skillId, stage: 'processing', message: 'Listing directory...' });
-        if (!existsSync(filePath)) {
+        if (!(await this.pathExists(filePath))) {
           throw new Error(`Directory not found: ${filePath}`);
         }
         const files = await readdir(filePath);
@@ -89,7 +88,7 @@ export class FileSystemSkillExecutor implements SkillExecutor {
       }
 
       case 'file_info': {
-        if (!existsSync(filePath)) {
+        if (!(await this.pathExists(filePath))) {
           throw new Error(`File not found: ${filePath}`);
         }
         const info = await stat(filePath);
@@ -136,6 +135,15 @@ export class FileSystemSkillExecutor implements SkillExecutor {
 
       default:
         throw new Error(`Unknown file operation: ${skill.skillId}`);
+    }
+  }
+
+  private async pathExists(filePath: string): Promise<boolean> {
+    try {
+      await access(filePath);
+      return true;
+    } catch {
+      return false;
     }
   }
 }
