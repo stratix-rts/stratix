@@ -41,3 +41,29 @@ export interface TaskEvent {
 }
 
 export type TaskEventCallback = (event: TaskEvent) => void;
+
+export const TASK_STATUSES: TaskItem['status'][] = ['pending', 'assigned', 'in_progress', 'completed', 'failed', 'cancelled'];
+export const TASK_TYPES: TaskItem['type'][] = ['coding', 'writing', 'analysis', 'research', 'general'];
+
+/**
+ * Check if a task status is terminal (completed, failed, or cancelled)
+ */
+export function isTerminalStatus(status: TaskItem['status']): boolean {
+  return status === 'completed' || status === 'failed' || status === 'cancelled';
+}
+
+/**
+ * Check if a task can be transitioned from one status to another
+ */
+export function isValidStatusTransition(from: TaskItem['status'], to: TaskItem['status']): boolean {
+  if (isTerminalStatus(from)) return false;
+  const validTransitions: Record<TaskItem['status'], TaskItem['status'][]> = {
+    pending: ['assigned', 'cancelled'],
+    assigned: ['in_progress', 'pending', 'cancelled'],
+    in_progress: ['completed', 'failed', 'pending'],
+    completed: [],
+    failed: ['pending'],
+    cancelled: ['pending'],
+  };
+  return validTransitions[from]?.includes(to) ?? false;
+}

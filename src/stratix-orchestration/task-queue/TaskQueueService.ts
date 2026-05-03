@@ -36,8 +36,10 @@ export class TaskQueueService {
   private static instance: TaskQueueService;
   private tasks: Map<string, TaskItem> = new Map();
   private zoneTaskPools: Map<string, string[]> = new Map(); // zoneId -> taskIds (priority order)
+  private zoneTaskPoolSets: Map<string, Set<string>> = new Map(); // zoneId -> taskId Set (for O(1) lookup)
   private eventListeners: Map<string, TaskEventCallback[]> = new Map();
   private globalListeners: TaskEventCallback[] = [];
+  private inFlightDequeues: Set<string> = new Set(); // Prevent concurrent dequeue of same task
 
   private constructor() {}
 
@@ -293,6 +295,9 @@ export class TaskQueueService {
 
     // Find highest priority task with satisfied dependencies
     for (const taskId of pool) {
+      // Skip if another dequeue is currently processing this task
+      if (this.inFlightDequeues.has(taskId)) continue;
+
       const task = await this.getTask(taskId);
       if (!task || task.status !== 'pending') continue;
 
@@ -307,16 +312,26 @@ export class TaskQueueService {
       }
 
       if (depsSatisfied) {
-        // Assign to agent
-        await this.updateTask(taskId, {
-          status: 'assigned',
-          assignedAgentId: agentId,
-        });
+        // Prevent concurrent assignment of the same task
+        this.inFlightDequeues.add(taskId);
+        try {
+          // Re-fetch and re-verify status to avoid race conditions
+          const freshTask = await this.getTask(taskId);
+          if (!freshTask || freshTask.status !== 'pending') continue;
 
-        // Remove from pending pool but keep in task
-        this.removeFromZonePool(zoneId, taskId);
+          // Assign to agent
+          await this.updateTask(taskId, {
+            status: 'assigned',
+            assignedAgentId: agentId,
+          });
 
-        return task;
+          // Remove from pending pool but keep in task
+          this.removeFromZonePool(zoneId, taskId);
+
+          return freshTask;
+        } finally {
+          this.inFlightDequeues.delete(taskId);
+        }
       }
     }
 
@@ -328,12 +343,12 @@ export class TaskQueueService {
     const now = Date.now();
 
     // Find tasks assigned to agents that haven't sent heartbeat in 5 minutes
-    // For now, just find tasks in 'assigned' or 'in_progress' status
+    // Only check agents that are registered in agent_backgrounds (INNER JOIN)
     const abandonedTasks = db.prepare(`
       SELECT t.* FROM tasks t
-      LEFT JOIN agent_backgrounds ab ON t.assigned_agent_id = ab.agent_id
+      INNER JOIN agent_backgrounds ab ON t.assigned_agent_id = ab.agent_id
       WHERE t.status IN ('assigned', 'in_progress')
-        AND (ab.last_heartbeat_at IS NULL OR ab.last_heartbeat_at < ?)
+        AND ab.last_heartbeat_at < ?
     `).all(now - ABANDONED_TASK_THRESHOLD_MS) as TaskRow[];
 
     const requeued: string[] = [];
@@ -407,6 +422,15 @@ export class TaskQueueService {
     this.clearAllListeners();
     this.tasks.clear();
     this.zoneTaskPools.clear();
+    this.zoneTaskPoolSets.clear();
+    this.inFlightDequeues.clear();
+  }
+
+  /**
+   * Health check for the task queue service
+   */
+  isHealthy(): boolean {
+    return this.inFlightDequeues.size < 100;
   }
 
   private emitEvent(event: TaskEvent): void {
@@ -422,11 +446,14 @@ export class TaskQueueService {
   private addToZonePool(zoneId: string, taskId: string): void {
     if (!this.zoneTaskPools.has(zoneId)) {
       this.zoneTaskPools.set(zoneId, []);
+      this.zoneTaskPoolSets.set(zoneId, new Set());
     }
 
     const pool = this.zoneTaskPools.get(zoneId)!;
-    if (!pool.includes(taskId)) {
+    const poolSet = this.zoneTaskPoolSets.get(zoneId)!;
+    if (!poolSet.has(taskId)) {
       pool.push(taskId);
+      poolSet.add(taskId);
       // Re-sort by priority
       pool.sort((a, b) => {
         const taskA = this.tasks.get(a);
@@ -444,6 +471,10 @@ export class TaskQueueService {
       if (index !== -1) {
         pool.splice(index, 1);
       }
+    }
+    const poolSet = this.zoneTaskPoolSets.get(zoneId);
+    if (poolSet) {
+      poolSet.delete(taskId);
     }
   }
 
