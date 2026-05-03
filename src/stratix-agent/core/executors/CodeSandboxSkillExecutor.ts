@@ -92,23 +92,20 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
 
   async execute(
     skill: SkillDefinition,
-    params: Record<string, any>,
+    params: Record<string, unknown>,
     context: ExecutionContext
-  ): Promise<any> {
-    const { code, language } = params;
+  ): Promise<unknown> {
+    const code = typeof params.code === 'string' ? params.code : '';
+    const language = typeof params.language === 'string' ? params.language : '';
     const progress = context.progressCallback;
     const config = this.getSandboxConfig(context);
-    // ProgressCallback has a complex type that is incompatible with the private method signature.
-    // Cast is necessary because we cannot change the SkillExecutor interface type definition.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const progressAny = progress as any;
 
     progress?.({ skillId: skill.skillId, stage: 'started', message: `Executing ${language}...` });
 
     if (language === 'javascript') {
-      return this.executeJavaScript(code, progressAny, config);
+      return this.executeJavaScript(code, progress as (p: unknown) => void, config);
     } else if (language === 'python') {
-      return this.executePython(code, progressAny, config);
+      return this.executePython(code, progress as (p: unknown) => void, config);
     } else {
       throw new Error(`Unsupported language: ${language}. Supported: javascript, python`);
     }
@@ -142,10 +139,6 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
   }
 
   private executeJavaScript(code: string, progress?: (p: unknown) => void, config?: ReturnType<typeof this.getSandboxConfig>): Promise<unknown> {
-    // ProgressCallback has a complex type that is incompatible with the private method signature.
-    // Cast is necessary because we cannot change the SkillExecutor interface type definition.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const progressAny = progress as any;
     return new Promise((resolve, reject) => {
       try {
         // Validate code before execution
@@ -157,14 +150,17 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
 
         // Capture console.log output
         const logs: string[] = [];
+        let currentOutputSize = 0;
+        const maxOutput = config?.maxOutputSize ?? 1024 * 1024;
         const mockConsole = {
           log: (...args: unknown[]) => {
             const msg = args.map(String).join(' ');
-            // Enforce output size limit
-            if (logs.join('\n').length + msg.length > (config?.maxOutputSize ?? 1024 * 1024)) {
-              logs.push('[output truncated]');
+            // Enforce output size limit (O(1) check)
+            if (currentOutputSize + msg.length > maxOutput) {
+              if (!logs.includes('[output truncated]')) logs.push('[output truncated]');
               return;
             }
+            currentOutputSize += msg.length + 1; // +1 for newline
             logs.push(msg);
           },
           error: (...args: unknown[]) => logs.push('[error] ' + args.map(String).join(' ')),
@@ -270,7 +266,7 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
             result: value,
             logs,
             success: true,
-            preview: { type: 'code', content: output.slice(0, Math.min(output.length, config?.maxOutputSize ?? 1024 * 1024)) }
+            preview: { type: 'code', content: output.slice(0, Math.min(output.length, maxOutput)) }
           });
         };
 
@@ -328,10 +324,6 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
   }
 
   private executePython(code: string, progress?: (p: unknown) => void, config?: ReturnType<typeof this.getSandboxConfig>): Promise<unknown> {
-    // ProgressCallback has a complex type that is incompatible with the private method signature.
-    // Cast is necessary because we cannot change the SkillExecutor interface type definition.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const progressAny = progress as any;
     return new Promise((resolve, reject) => {
 
       // Validate code before execution

@@ -3,9 +3,9 @@ import { SkillDefinition, SkillExecutor, ExecutionContext } from '../../types';
 export class DefaultSkillExecutor implements SkillExecutor {
   async execute(
     skill: SkillDefinition,
-    params: Record<string, any>,
+    params: Record<string, unknown>,
     _context: ExecutionContext
-  ): Promise<any> {
+  ): Promise<unknown> {
     return {
       skillId: skill.skillId,
       params,

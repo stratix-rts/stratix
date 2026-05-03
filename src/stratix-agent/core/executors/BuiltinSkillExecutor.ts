@@ -36,7 +36,9 @@ export class BuiltinSkillExecutor implements SkillExecutor {
           num += sanitized[i];
           i++;
         }
-        tokens.push(parseFloat(num));
+        const parsed = parseFloat(num);
+        if (Number.isNaN(parsed)) throw new Error(`Invalid number: ${num}`);
+        tokens.push(parsed);
       } else if (/[+\-*/^()]/.test(char)) {
         tokens.push(char);
         i++;
@@ -160,10 +162,11 @@ export class BuiltinSkillExecutor implements SkillExecutor {
 
   async execute(
     skill: SkillDefinition,
-    params: Record<string, any>,
+    params: Record<string, unknown>,
     _context: ExecutionContext
-  ): Promise<any> {
-    const { operation, expression } = params;
+  ): Promise<unknown> {
+    const operation = typeof params.operation === 'string' ? params.operation : undefined;
+    const expression = typeof params.expression === 'string' ? params.expression : undefined;
 
     if (expression) {
       try {
@@ -177,9 +180,14 @@ export class BuiltinSkillExecutor implements SkillExecutor {
     if (operation && this.calculators[operation as keyof typeof this.calculators]) {
       const op = operation as keyof typeof this.calculators;
       if (op === 'sqrt' || op === 'abs' || op === 'round' || op === 'floor' || op === 'ceil') {
-        return { result: this.calculators[op](params.a ?? params.value), operation };
+        const operand = typeof params.a === 'number' ? params.a : (typeof params.value === 'number' ? params.value : NaN);
+        if (Number.isNaN(operand)) throw new Error(`Invalid operand for ${op}`);
+        return { result: this.calculators[op](operand), operation };
       }
-      return { result: this.calculators[op](params.a, params.b), operation };
+      const a = typeof params.a === 'number' ? params.a : NaN;
+      const b = typeof params.b === 'number' ? params.b : NaN;
+      if (Number.isNaN(a) || Number.isNaN(b)) throw new Error(`Invalid operands for ${op}`);
+      return { result: this.calculators[op](a, b), operation };
     }
 
     throw new Error('No operation or expression provided');

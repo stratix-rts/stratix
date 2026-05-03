@@ -10,11 +10,17 @@ import { SafetyValidator } from '../SafetyValidator';
 export class BashSkillExecutor implements SkillExecutor {
   async execute(
     skill: SkillDefinition,
-    params: Record<string, any>,
+    params: Record<string, unknown>,
     context: ExecutionContext
-  ): Promise<any> {
-    const { command, timeout = 30, cwd } = params;
+  ): Promise<unknown> {
+    const command = typeof params.command === 'string' ? params.command : '';
+    const timeoutRaw = typeof params.timeout === 'number' ? params.timeout : 30;
+    const cwd = typeof params.cwd === 'string' ? params.cwd : undefined;
     const progress = context.progressCallback;
+
+    if (!command) {
+      throw new Error('Missing required parameter: command');
+    }
 
     // 验证命令安全性
     const validation = SafetyValidator.validateBashCommand(command, context);
@@ -27,7 +33,7 @@ export class BashSkillExecutor implements SkillExecutor {
     // 执行命令
     return new Promise((resolve, reject) => {
       const options: { timeout: number; maxBuffer: number; cwd?: string } = {
-        timeout: Math.min((timeout as number), 120) * 1000,
+        timeout: Math.min(timeoutRaw, 120) * 1000,
         maxBuffer: 10 * 1024 * 1024
       };
       if (cwd) options.cwd = cwd;

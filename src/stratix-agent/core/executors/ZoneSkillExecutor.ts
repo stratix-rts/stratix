@@ -19,13 +19,17 @@ async function fetchWithRetry(
   url: string,
   options: RequestInit,
   maxRetries: number = 3,
-  baseDelayMs: number = 100
+  baseDelayMs: number = 100,
+  timeoutMs: number = 30000
 ): Promise<Response> {
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const response = await fetch(url, options);
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timeoutId);
 
       // 5xx 错误或网络错误时重试
       if (!response.ok && response.status >= 500 && attempt < maxRetries) {
@@ -37,7 +41,8 @@ async function fetchWithRetry(
 
       return response;
     } catch (error) {
-      lastError = error as Error;
+      clearTimeout(timeoutId);
+      lastError = error instanceof Error ? error : new Error(String(error));
 
       // 网络错误（超时、连接失败等）时重试
       if (attempt < maxRetries) {
@@ -60,9 +65,9 @@ async function fetchWithRetry(
 export class ZoneSkillExecutor implements SkillExecutor {
   async execute(
     skill: SkillDefinition,
-    params: Record<string, any>,
+    params: Record<string, unknown>,
     context: ExecutionContext
-  ): Promise<any> {
+  ): Promise<unknown> {
     const { agentId } = context;
     const gatewayUrl = process.env.GATEWAY_URL || 'http://127.0.0.1:7524';
 
@@ -71,7 +76,8 @@ export class ZoneSkillExecutor implements SkillExecutor {
 
     switch (skill.skillId) {
       case 'zone_move_to': {
-        const { zoneId, reason } = params;
+        const zoneId = typeof params.zoneId === 'string' ? params.zoneId : '';
+        const reason = typeof params.reason === 'string' ? params.reason : undefined;
         if (!zoneId) {
           throw new Error('zoneId is required for zone_move_to');
         }
@@ -102,9 +108,10 @@ export class ZoneSkillExecutor implements SkillExecutor {
       }
 
       case 'zone_leave': {
-        const { reason, zoneId: directZoneId } = params;
+        const reason = typeof params.reason === 'string' ? params.reason : undefined;
+        const directZoneId = typeof params.zoneId === 'string' ? params.zoneId : undefined;
         // projectId can come from params or context.variables
-        const projectId = params.projectId || context.variables?.projectId;
+        const projectId = typeof params.projectId === 'string' ? params.projectId : context.variables?.projectId;
 
         let currentZoneId = directZoneId;
 
@@ -178,7 +185,6 @@ export class ZoneSkillExecutor implements SkillExecutor {
         }
 
         const data = await response.json();
-        interface ZoneApiItem { id?: string; zoneId?: string; name?: string; title?: string; prompt?: string; members?: unknown[]; status?: string; }
         const zones = (data.zones || []).map((zone: ZoneApiItem) => ({
           zoneId: zone.id || zone.zoneId,
           name: zone.name || zone.title || 'Unnamed Zone',
@@ -218,7 +224,8 @@ export class ZoneSkillExecutor implements SkillExecutor {
       }
 
       case 'zone_search': {
-        const { keyword, limit = 20 } = params;
+        const keyword = typeof params.keyword === 'string' ? params.keyword : '';
+        const limit = typeof params.limit === 'number' ? params.limit : 20;
         if (!keyword || keyword.trim().length < 2) {
           throw new Error('keyword is required for zone_search (minimum 2 characters)');
         }
@@ -258,7 +265,8 @@ export class ZoneSkillExecutor implements SkillExecutor {
       case 'zone_recent': {
         // Get recently created zones for potential joining
         // Agent can call this to discover new zones that might need agents
-        const { limit = 10, projectId } = params;
+        const limit = typeof params.limit === 'number' ? params.limit : 10;
+        const projectId = typeof params.projectId === 'string' ? params.projectId : undefined;
 
         let url = `${gatewayUrl}/api/zones?limit=${encodeURIComponent(String(limit))}`;
         if (projectId) {
