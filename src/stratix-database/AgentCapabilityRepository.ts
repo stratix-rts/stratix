@@ -14,6 +14,16 @@ export interface AgentCapability {
   updatedAt: number;
 }
 
+interface CapabilityRow {
+  id: string;
+  agent_id: string;
+  zone_id: string;
+  capability: string;
+  level: number;
+  current_load: number;
+  updated_at: number;
+}
+
 export class AgentCapabilityRepository {
   private get db() {
     return getDatabase().getDatabase();
@@ -45,7 +55,7 @@ export class AgentCapabilityRepository {
     const row = this.db.prepare(`
       SELECT * FROM agent_capabilities
       WHERE agent_id = ? AND zone_id = ? AND capability = ?
-    `).get(agentId, zoneId, capability) as any;
+    `).get(agentId, zoneId, capability) as CapabilityRow | undefined;
     return row ? this.mapRowToCapability(row) : null;
   }
 
@@ -57,7 +67,7 @@ export class AgentCapabilityRepository {
       SELECT * FROM agent_capabilities
       WHERE agent_id = ? AND zone_id = ?
       ORDER BY level DESC, capability ASC
-    `).all(agentId, zoneId) as any[];
+    `).all(agentId, zoneId) as CapabilityRow[];
     return rows.map(row => this.mapRowToCapability(row));
   }
 
@@ -69,7 +79,7 @@ export class AgentCapabilityRepository {
       SELECT * FROM agent_capabilities
       WHERE zone_id = ?
     `;
-    const params: any[] = [zoneId];
+    const params: (string | number)[] = [zoneId];
 
     if (capability) {
       sql += ` AND capability = ?`;
@@ -83,7 +93,7 @@ export class AgentCapabilityRepository {
 
     sql += ` ORDER BY current_load ASC, level DESC`;
 
-    const rows = this.db.prepare(sql).all(...params) as any[];
+    const rows = this.db.prepare(sql).all(...params) as CapabilityRow[];
     return rows.map(row => this.mapRowToCapability(row));
   }
 
@@ -147,11 +157,11 @@ export class AgentCapabilityRepository {
       WHERE zone_id = ? AND capability = ?
       ORDER BY level DESC, current_load ASC
       LIMIT ?
-    `).all(zoneId, capability, limit) as any[];
+    `).all(zoneId, capability, limit) as CapabilityRow[];
     return rows.map(row => this.mapRowToCapability(row));
   }
 
-  private mapRowToCapability(row: any): AgentCapability {
+  private mapRowToCapability(row: CapabilityRow): AgentCapability {
     return {
       id: row.id,
       agentId: row.agent_id,

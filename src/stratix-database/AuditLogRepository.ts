@@ -2,6 +2,9 @@ import { generateId } from '../stratix-project/utils/helpers';
 
 import { getDatabase } from './StratixDatabase';
 
+const DEFAULT_LIMIT = 50;
+const DEFAULT_OFFSET = 0;
+
 /**
  * 审计事件类型
  */
@@ -18,6 +21,20 @@ export type AuditEventType =
   | 'skill_executed'     // Skill 执行
   | 'context_shared';    // 上下文共享
 
+interface AuditLogRow {
+  id: string;
+  zone_id: string;
+  event_type: string;
+  actor_id: string | null;
+  target_id: string | null;
+  metadata: string | null;
+  created_at: number;
+}
+
+interface CountRow {
+  total: number;
+}
+
 /**
  * 审计日志记录
  */
@@ -27,7 +44,7 @@ export interface AuditLogRecord {
   eventType: AuditEventType;
   actorId: string | null;   // agentId 或 userId
   targetId: string | null;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   createdAt: number;
 }
 
@@ -60,7 +77,7 @@ export class AuditLogRepository {
     eventType: AuditEventType,
     actorId?: string,
     targetId?: string,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   ): AuditLogRecord {
     const now = Date.now();
     const id = generateId('audit');
@@ -97,12 +114,12 @@ export class AuditLogRepository {
     zoneId: string,
     options?: AuditLogQueryOptions
   ): { events: AuditLogRecord[]; total: number; hasMore: boolean } {
-    const limit = options?.limit ?? 50;
-    const offset = options?.offset ?? 0;
+    const limit = options?.limit ?? DEFAULT_LIMIT;
+    const offset = options?.offset ?? DEFAULT_OFFSET;
 
     // Build WHERE clause
     const conditions: string[] = ['zone_id = ?'];
-    const params: any[] = [zoneId];
+    const params: (string | number)[] = [zoneId];
 
     if (options?.eventTypes && options.eventTypes.length > 0) {
       const placeholders = options.eventTypes.map(() => '?').join(', ');
@@ -135,8 +152,8 @@ export class AuditLogRepository {
     // Get total count
     const countRow = this.db.prepare(`
       SELECT COUNT(*) as total FROM zone_audit_log WHERE ${whereClause}
-    `).get(...params) as any;
-    const total = countRow.total;
+    `).get(...params) as CountRow | undefined;
+    const total = countRow?.total ?? 0;
 
     // Get paginated results
     const queryParams = [...params, limit, offset];
@@ -145,7 +162,7 @@ export class AuditLogRepository {
       WHERE ${whereClause}
       ORDER BY created_at DESC
       LIMIT ? OFFSET ?
-    `).all(...queryParams) as any[];
+    `).all(...queryParams) as AuditLogRow[];
 
     const events = rows.map(row => this.mapRowToRecord(row));
     const hasMore = offset + events.length < total;
@@ -161,11 +178,11 @@ export class AuditLogRepository {
     zoneId?: string,
     options?: AuditLogQueryOptions
   ): AuditLogRecord[] {
-    const limit = options?.limit ?? 50;
-    const offset = options?.offset ?? 0;
+    const limit = options?.limit ?? DEFAULT_LIMIT;
+    const offset = options?.offset ?? DEFAULT_OFFSET;
 
     const conditions: string[] = ['actor_id = ?'];
-    const params: any[] = [agentId];
+    const params: (string | number)[] = [agentId];
 
     if (zoneId) {
       conditions.push('zone_id = ?');
@@ -196,7 +213,7 @@ export class AuditLogRepository {
       WHERE ${whereClause}
       ORDER BY created_at DESC
       LIMIT ? OFFSET ?
-    `).all(...queryParams) as any[];
+    `).all(...queryParams) as AuditLogRow[];
 
     return rows.map(row => this.mapRowToRecord(row));
   }
@@ -210,7 +227,7 @@ export class AuditLogRepository {
       WHERE zone_id = ?
       ORDER BY created_at DESC
       LIMIT ?
-    `).all(zoneId, limit) as any[];
+    `).all(zoneId, limit) as AuditLogRow[];
 
     return rows.map(row => this.mapRowToRecord(row));
   }
@@ -224,7 +241,7 @@ export class AuditLogRepository {
       FROM zone_audit_log
       WHERE zone_id = ?
       GROUP BY event_type
-    `).all(zoneId) as any[];
+    `).all(zoneId) as Array<{ event_type: string; count: number }>;
 
     const counts: Record<string, number> = {};
     for (const row of rows) {
@@ -246,7 +263,7 @@ export class AuditLogRepository {
       'context_shared'
     ];
 
-    const result: Record<AuditEventType, number> = {} as any;
+    const result = {} as Record<AuditEventType, number>;
     for (const type of allTypes) {
       result[type] = counts[type] ?? 0;
     }
@@ -266,11 +283,11 @@ export class AuditLogRepository {
     return result.changes;
   }
 
-  private mapRowToRecord(row: any): AuditLogRecord {
+  private mapRowToRecord(row: AuditLogRow): AuditLogRecord {
     let metadata: AuditLogRecord['metadata'];
     if (row.metadata) {
       try {
-        metadata = JSON.parse(row.metadata);
+        metadata = JSON.parse(row.metadata) as Record<string, unknown>;
       } catch {
         metadata = undefined;
       }

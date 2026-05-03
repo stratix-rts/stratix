@@ -1,4 +1,4 @@
-export { StratixDatabase, initializeDatabase, getDatabase } from './StratixDatabase';
+export { StratixDatabase, initializeDatabase, getDatabase, destroyDatabase } from './StratixDatabase';
 export { projectRepository, ProjectRepository } from './ProjectRepository';
 export { agentRepository, AgentRepository } from './AgentRepository';
 export { zoneRepository, ZoneRepository } from './ZoneRepository';
@@ -14,3 +14,5 @@ export { taskFlowRepository, TaskFlowRepository } from './TaskFlowRepository';
 export type { TaskFlowRecord, TaskFlowAction } from './TaskFlowRepository';
 export { auditLogRepository, AuditLogRepository } from './AuditLogRepository';
 export type { AuditLogRecord, AuditEventType, AuditLogQueryOptions } from './AuditLogRepository';
+export { agentChatMessageRepository, AgentChatMessageRepository } from './AgentChatMessageRepository';
+export type { ChatMessage } from './AgentChatMessageRepository';

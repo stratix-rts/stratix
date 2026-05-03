@@ -7,6 +7,11 @@ import type { SkillCategory, SkillProvider } from '../stratix-agent/types';
 
 import { getDatabase } from './StratixDatabase';
 
+const XP_PER_LEVEL = 100;
+const MAX_LEVEL = 5;
+const MAX_PROFICIENCY = 100;
+const PROFICIENCY_GAIN_DIVISOR = 10;
+
 export interface SharedSkill {
   skillId: string;
   name: string;
@@ -42,6 +47,57 @@ export interface AgentLearnedSkill {
   lastPracticedAt: number;
 }
 
+interface SharedSkillRow {
+  skill_id: string;
+  name: string;
+  description: string;
+  category: string;
+  icon: string | null;
+  mcp_tool: string | null;
+  endpoint: string | null;
+  provider: string;
+  created_at: number;
+  updated_at: number;
+}
+
+interface SharedSkillInstallRow {
+  skill_id: string;
+  agent_id: string;
+  installed_at: number;
+  installed_by: string;
+}
+
+interface AgentLearnedSkillRow {
+  skill_id: string;
+  agent_id: string;
+  name: string;
+  description: string;
+  category: string;
+  level: number;
+  experience_points: number;
+  proficiency: number;
+  certified: number;
+  learned_from: string | null;
+  learned_at: number;
+  last_practiced_at: number;
+}
+
+interface ZoneContextRow {
+  zone_id: string;
+  context_json: string;
+  updated_at: number;
+}
+
+interface AgentZoneBindingRow {
+  zone_id: string;
+  agent_id: string;
+  joined_at: number;
+}
+
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[SkillRepository] ${message}`, ctx || '');
+}
+
 export class SkillRepository {
   private get db() {
     return getDatabase().getDatabase();
@@ -52,12 +108,12 @@ export class SkillRepository {
   // ============================================
 
   getAllSharedSkills(): SharedSkill[] {
-    const rows = this.db.prepare('SELECT * FROM shared_skills ORDER BY name ASC').all() as any[];
+    const rows = this.db.prepare('SELECT * FROM shared_skills ORDER BY name ASC').all() as SharedSkillRow[];
     return rows.map(this.mapRowToSharedSkill);
   }
 
   getSharedSkill(skillId: string): SharedSkill | null {
-    const row = this.db.prepare('SELECT * FROM shared_skills WHERE skill_id = ?').get(skillId) as any;
+    const row = this.db.prepare('SELECT * FROM shared_skills WHERE skill_id = ?').get(skillId) as SharedSkillRow | undefined;
     return row ? this.mapRowToSharedSkill(row) : null;
   }
 
@@ -110,7 +166,7 @@ export class SkillRepository {
 
   searchSharedSkills(query: string, category?: SkillCategory): SharedSkill[] {
     let sql = 'SELECT * FROM shared_skills WHERE 1=1';
-    const params: any[] = [];
+    const params: (string | SkillCategory)[] = [];
 
     if (query) {
       sql += ' AND (name LIKE ? OR description LIKE ?)';
@@ -125,7 +181,7 @@ export class SkillRepository {
 
     sql += ' ORDER BY name ASC';
 
-    const rows = this.db.prepare(sql).all(...params) as any[];
+    const rows = this.db.prepare(sql).all(...params) as SharedSkillRow[];
     return rows.map(this.mapRowToSharedSkill);
   }
 
@@ -136,15 +192,15 @@ export class SkillRepository {
   getInstalledSkillsForAgent(agentId: string): SharedSkillInstall[] {
     const rows = this.db.prepare(
       'SELECT * FROM shared_skill_installs WHERE agent_id = ? ORDER BY installed_at DESC'
-    ).all(agentId) as any[];
+    ).all(agentId) as SharedSkillInstallRow[];
     return rows.map(this.mapRowToSharedSkillInstall);
   }
 
   getAgentsWithSkillInstalled(skillId: string): string[] {
     const rows = this.db.prepare(
       'SELECT agent_id FROM shared_skill_installs WHERE skill_id = ?'
-    ).all(skillId) as any[];
-    return rows.map((r: any) => r.agent_id);
+    ).all(skillId) as Array<{ agent_id: string }>;
+    return rows.map(r => r.agent_id);
   }
 
   isSkillInstalledForAgent(skillId: string, agentId: string): boolean {
@@ -163,7 +219,7 @@ export class SkillRepository {
       stmt.run(skillId, agentId, Date.now(), installedBy);
       return true;
     } catch (e) {
-      console.error('[SkillRepository] Failed to install skill:', e);
+      log('error', 'Failed to install skill', { skillId, agentId, error: String(e) });
       return false;
     }
   }
@@ -183,14 +239,14 @@ export class SkillRepository {
   getLearnedSkillsForAgent(agentId: string): AgentLearnedSkill[] {
     const rows = this.db.prepare(
       'SELECT * FROM agent_learned_skills WHERE agent_id = ? ORDER BY learned_at DESC'
-    ).all(agentId) as any[];
+    ).all(agentId) as AgentLearnedSkillRow[];
     return rows.map(this.mapRowToAgentLearnedSkill);
   }
 
   getLearnedSkill(skillId: string, agentId: string): AgentLearnedSkill | null {
     const row = this.db.prepare(
       'SELECT * FROM agent_learned_skills WHERE skill_id = ? AND agent_id = ?'
-    ).get(skillId, agentId) as any;
+    ).get(skillId, agentId) as AgentLearnedSkillRow | undefined;
     return row ? this.mapRowToAgentLearnedSkill(row) : null;
   }
 
@@ -255,11 +311,11 @@ export class SkillRepository {
     skill.lastPracticedAt = Date.now();
 
     // Level up logic: every 100 XP = 1 level, max level 5
-    const newLevel = Math.min(5, Math.floor(skill.experiencePoints / 100) + 1);
+    const newLevel = Math.min(MAX_LEVEL, Math.floor(skill.experiencePoints / XP_PER_LEVEL) + 1);
     skill.level = newLevel;
 
     // Update proficiency (0-100)
-    skill.proficiency = Math.min(100, skill.proficiency + Math.floor(experienceGained / 10));
+    skill.proficiency = Math.min(MAX_PROFICIENCY, skill.proficiency + Math.floor(experienceGained / PROFICIENCY_GAIN_DIVISOR));
 
     this.saveLearnedSkill(skill);
     return skill;
@@ -272,7 +328,7 @@ export class SkillRepository {
   getZoneContext(zoneId: string): { zoneId: string; contextJson: string; updatedAt: number } | null {
     const row = this.db.prepare(
       'SELECT * FROM zone_contexts_simple WHERE zone_id = ?'
-    ).get(zoneId) as any;
+    ).get(zoneId) as ZoneContextRow | undefined;
     return row ? { zoneId: row.zone_id, contextJson: row.context_json, updatedAt: row.updated_at } : null;
   }
 
@@ -297,15 +353,15 @@ export class SkillRepository {
   getZonesForAgent(agentId: string): string[] {
     const rows = this.db.prepare(
       'SELECT zone_id FROM agent_zone_bindings WHERE agent_id = ? ORDER BY joined_at DESC'
-    ).all(agentId) as any[];
-    return rows.map((r: any) => r.zone_id);
+    ).all(agentId) as Array<{ zone_id: string }>;
+    return rows.map(r => r.zone_id);
   }
 
   getAgentsInZone(zoneId: string): string[] {
     const rows = this.db.prepare(
       'SELECT agent_id FROM agent_zone_bindings WHERE zone_id = ? ORDER BY joined_at DESC'
-    ).all(zoneId) as any[];
-    return rows.map((r: any) => r.agent_id);
+    ).all(zoneId) as Array<{ agent_id: string }>;
+    return rows.map(r => r.agent_id);
   }
 
   bindAgentToZone(agentId: string, zoneId: string): boolean {
@@ -317,7 +373,7 @@ export class SkillRepository {
       stmt.run(agentId, zoneId, Date.now());
       return true;
     } catch (e) {
-      console.error('[SkillRepository] Failed to bind agent to zone:', e);
+      log('error', 'Failed to bind agent to zone', { agentId, zoneId, error: String(e) });
       return false;
     }
   }
@@ -340,22 +396,22 @@ export class SkillRepository {
   // Private Mappers
   // ============================================
 
-  private mapRowToSharedSkill(row: any): SharedSkill {
+  private mapRowToSharedSkill(row: SharedSkillRow): SharedSkill {
     return {
       skillId: row.skill_id,
       name: row.name,
       description: row.description || '',
       category: row.category as SkillCategory,
-      icon: row.icon,
-      mcpTool: row.mcp_tool,
-      endpoint: row.endpoint,
+      icon: row.icon ?? undefined,
+      mcpTool: row.mcp_tool ?? undefined,
+      endpoint: row.endpoint ?? undefined,
       provider: (row.provider || 'builtin') as SkillProvider,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
   }
 
-  private mapRowToSharedSkillInstall(row: any): SharedSkillInstall {
+  private mapRowToSharedSkillInstall(row: SharedSkillInstallRow): SharedSkillInstall {
     return {
       skillId: row.skill_id,
       agentId: row.agent_id,
@@ -364,7 +420,7 @@ export class SkillRepository {
     };
   }
 
-  private mapRowToAgentLearnedSkill(row: any): AgentLearnedSkill {
+  private mapRowToAgentLearnedSkill(row: AgentLearnedSkillRow): AgentLearnedSkill {
     return {
       skillId: row.skill_id,
       agentId: row.agent_id,
@@ -375,7 +431,7 @@ export class SkillRepository {
       experiencePoints: row.experience_points,
       proficiency: row.proficiency,
       certified: !!row.certified,
-      learnedFrom: row.learned_from,
+      learnedFrom: row.learned_from ?? undefined,
       learnedAt: row.learned_at,
       lastPracticedAt: row.last_practiced_at || row.learned_at
     };

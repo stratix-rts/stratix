@@ -3,9 +3,29 @@ import path from 'path';
 import Database from 'better-sqlite3';
 import * as fs from 'fs-extra';
 
+const DEFAULT_DATA_DIR = 'stratix-data';
+const DEFAULT_FILENAME = 'stratix.db';
+const TARGET_SCHEMA_VERSION = 1;
+
 export interface DatabaseConfig {
   dataDir?: string;
   filename?: string;
+}
+
+interface SchemaVersionRow {
+  version: number;
+}
+
+interface TableInfoRow {
+  name: string;
+}
+
+interface TableNameRow {
+  name: string;
+}
+
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[Database] ${message}`, ctx || '');
 }
 
 export class StratixDatabase {
@@ -13,9 +33,10 @@ export class StratixDatabase {
   private dbPath: string;
 
   constructor(config: DatabaseConfig = {}) {
-    const dataDir = config.dataDir || 'stratix-data';
-    const filename = config.filename || 'stratix.db';
+    const dataDir = config.dataDir || DEFAULT_DATA_DIR;
+    const filename = config.filename || DEFAULT_FILENAME;
     
+    // Sync dir creation is acceptable during initialization phase
     fs.ensureDirSync(dataDir);
     this.dbPath = path.join(dataDir, `${filename}.sqlite`);
     this.db = new Database(this.dbPath);
@@ -31,7 +52,7 @@ export class StratixDatabase {
   public initialize(): void {
     this.createTables();
     this.migrateIfNeeded();
-    console.log(`[Database] Initialized at: ${this.dbPath}`);
+    log('info', `Initialized at: ${this.dbPath}`);
   }
 
   private migrateIfNeeded(): void {
@@ -40,18 +61,17 @@ export class StratixDatabase {
 
     // Get current schema version
     const currentVersion = this.getSchemaVersion();
-    const targetVersion = 1; // Increment when migrations are added
 
-    if (currentVersion < targetVersion) {
-      console.log(`[Database] Running migrations from version ${currentVersion} to ${targetVersion}`);
+    if (currentVersion < TARGET_SCHEMA_VERSION) {
+      log('info', `Running migrations from version ${currentVersion} to ${TARGET_SCHEMA_VERSION}`);
       this.migrateMissingColumns();
-      this.setSchemaVersion(targetVersion);
-      console.log(`[Database] Migration complete. Now at version ${targetVersion}`);
+      this.setSchemaVersion(TARGET_SCHEMA_VERSION);
+      log('info', `Migration complete. Now at version ${TARGET_SCHEMA_VERSION}`);
     }
   }
 
   private ensureSchemaVersionTable(): void {
-    const tables = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'").all();
+    const tables = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'").all() as TableNameRow[];
     if (tables.length === 0) {
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS schema_version (
@@ -61,12 +81,12 @@ export class StratixDatabase {
       `);
       // Insert version 0 as baseline
       this.db.prepare('INSERT INTO schema_version (version, applied_at) VALUES (0, ?)').run(Date.now());
-      console.log('[Database] Created schema_version table');
+      log('info', 'Created schema_version table');
     }
   }
 
   private getSchemaVersion(): number {
-    const row = this.db.prepare('SELECT MAX(version) as version FROM schema_version').get() as { version: number } | undefined;
+    const row = this.db.prepare('SELECT MAX(version) as version FROM schema_version').get() as SchemaVersionRow | undefined;
     return row?.version ?? 0;
   }
 
@@ -76,94 +96,94 @@ export class StratixDatabase {
 
   private migrateMissingColumns(): void {
     // 检测并添加 agents 表缺失的列
-    const agentColumns = this.db.prepare('PRAGMA table_info(agents)').all() as any[];
-    const agentColumnNames = new Set(agentColumns.map((c: any) => c.name));
+    const agentColumns = this.db.prepare('PRAGMA table_info(agents)').all() as TableInfoRow[];
+    const agentColumnNames = new Set(agentColumns.map(c => c.name));
 
     if (!agentColumnNames.has('openclaw_config')) {
       this.db.exec('ALTER TABLE agents ADD COLUMN openclaw_config TEXT');
-      console.log('[Database] Added openclaw_config column to agents table');
+      log('info', 'Added openclaw_config column to agents table');
     }
     if (!agentColumnNames.has('stratix_config')) {
       this.db.exec('ALTER TABLE agents ADD COLUMN stratix_config TEXT');
-      console.log('[Database] Added stratix_config column to agents table');
+      log('info', 'Added stratix_config column to agents table');
     }
 
     // 检测并添加 zones 表缺失的 zone_context_id 列
-    const zoneColumns = this.db.prepare('PRAGMA table_info(zones)').all() as any[];
-    const zoneColumnNames = new Set(zoneColumns.map((c: any) => c.name));
+    const zoneColumns = this.db.prepare('PRAGMA table_info(zones)').all() as TableInfoRow[];
+    const zoneColumnNames = new Set(zoneColumns.map(c => c.name));
 
     if (!zoneColumnNames.has('zone_context_id')) {
       this.db.exec('ALTER TABLE zones ADD COLUMN zone_context_id TEXT REFERENCES zone_contexts(zone_id)');
-      console.log('[Database] Added zone_context_id column to zones table');
+      log('info', 'Added zone_context_id column to zones table');
     }
 
     // 添加 projects 表字段到 zones 表（统一 Zone 和 Project）
     if (!zoneColumnNames.has('description')) {
-      this.db.exec('ALTER TABLE zones ADD COLUMN description TEXT DEFAULT \'\'');
-      console.log('[Database] Added description column to zones table');
+      this.db.exec("ALTER TABLE zones ADD COLUMN description TEXT DEFAULT ''");
+      log('info', 'Added description column to zones table');
     }
     if (!zoneColumnNames.has('priority')) {
       this.db.exec('ALTER TABLE zones ADD COLUMN priority INTEGER DEFAULT 3');
-      console.log('[Database] Added priority column to zones table');
+      log('info', 'Added priority column to zones table');
     }
     if (!zoneColumnNames.has('path')) {
-      this.db.exec('ALTER TABLE zones ADD COLUMN path TEXT DEFAULT \'\'');
-      console.log('[Database] Added path column to zones table');
+      this.db.exec("ALTER TABLE zones ADD COLUMN path TEXT DEFAULT ''");
+      log('info', 'Added path column to zones table');
     }
     if (!zoneColumnNames.has('present_agent_ids')) {
-      this.db.exec('ALTER TABLE zones ADD COLUMN present_agent_ids TEXT DEFAULT \'[]\'');
-      console.log('[Database] Added present_agent_ids column to zones table');
+      this.db.exec("ALTER TABLE zones ADD COLUMN present_agent_ids TEXT DEFAULT '[]'");
+      log('info', 'Added present_agent_ids column to zones table');
     }
     if (!zoneColumnNames.has('started_at')) {
       this.db.exec('ALTER TABLE zones ADD COLUMN started_at INTEGER');
-      console.log('[Database] Added started_at column to zones table');
+      log('info', 'Added started_at column to zones table');
     }
     if (!zoneColumnNames.has('completed_at')) {
       this.db.exec('ALTER TABLE zones ADD COLUMN completed_at INTEGER');
-      console.log('[Database] Added completed_at column to zones table');
+      log('info', 'Added completed_at column to zones table');
     }
 
     // 检测并添加 zone_contexts 表缺失的 deleted_at 列（软删除）
-    const zoneCtxColumns = this.db.prepare('PRAGMA table_info(zone_contexts)').all() as any[];
-    const zoneCtxColumnNames = new Set(zoneCtxColumns.map((c: any) => c.name));
+    const zoneCtxColumns = this.db.prepare('PRAGMA table_info(zone_contexts)').all() as TableInfoRow[];
+    const zoneCtxColumnNames = new Set(zoneCtxColumns.map(c => c.name));
 
     if (!zoneCtxColumnNames.has('deleted_at')) {
       this.db.exec('ALTER TABLE zone_contexts ADD COLUMN deleted_at INTEGER');
       this.db.exec('CREATE INDEX IF NOT EXISTS idx_zone_contexts_deleted_at ON zone_contexts(deleted_at)');
       this.db.exec('CREATE INDEX IF NOT EXISTS idx_zone_contexts_project_deleted ON zone_contexts(project_id, deleted_at)');
-      console.log('[Database] Added deleted_at column to zone_contexts table');
+      log('info', 'Added deleted_at column to zone_contexts table');
     }
 
     // 添加 task_policy 和 task_creator_id 列到 zone_contexts
     if (!zoneCtxColumnNames.has('task_policy')) {
       this.db.exec("ALTER TABLE zone_contexts ADD COLUMN task_policy TEXT DEFAULT 'creator'");
-      console.log('[Database] Added task_policy column to zone_contexts table');
+      log('info', 'Added task_policy column to zone_contexts table');
     }
     if (!zoneCtxColumnNames.has('task_creator_id')) {
       this.db.exec('ALTER TABLE zone_contexts ADD COLUMN task_creator_id TEXT');
-      console.log('[Database] Added task_creator_id column to zone_contexts table');
+      log('info', 'Added task_creator_id column to zone_contexts table');
     }
 
     // 检测并添加 zone_coordinators 表缺失的列
-    const zcColumns = this.db.prepare('PRAGMA table_info(zone_coordinators)').all() as any[];
-    const zcColumnNames = new Set(zcColumns.map((c: any) => c.name));
+    const zcColumns = this.db.prepare('PRAGMA table_info(zone_coordinators)').all() as TableInfoRow[];
+    const zcColumnNames = new Set(zcColumns.map(c => c.name));
 
     if (!zcColumnNames.has('api_key')) {
       this.db.exec('ALTER TABLE zone_coordinators ADD COLUMN api_key TEXT');
-      console.log('[Database] Added api_key column to zone_coordinators table');
+      log('info', 'Added api_key column to zone_coordinators table');
     }
     if (!zcColumnNames.has('base_url')) {
       this.db.exec('ALTER TABLE zone_coordinators ADD COLUMN base_url TEXT');
-      console.log('[Database] Added base_url column to zone_coordinators table');
+      log('info', 'Added base_url column to zone_coordinators table');
     }
     if (!zcColumnNames.has('cycle_config')) {
       this.db.exec('ALTER TABLE zone_coordinators ADD COLUMN cycle_config TEXT');
-      console.log('[Database] Added cycle_config column to zone_coordinators table');
+      log('info', 'Added cycle_config column to zone_coordinators table');
     }
 
     // 检测表是否存在
-    const tables = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as any[];
-    const tableNames = new Set(tables.map((t: any) => t.name));
+    const tables = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as TableNameRow[];
+    const tableNames = new Set(tables.map(t => t.name));
 
     // ============================================
     // Zone Tasks 表迁移
@@ -179,11 +199,11 @@ export class StratixDatabase {
           created_by TEXT NOT NULL,
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL,
-          FOREIGN KEY (zone_id) REFERENCES zone_contexts(zone_id) ON DELETE CASCADE
+          FOREIGN KEY (zone_id) REFERENCES zones(zone_id) ON DELETE CASCADE
         )
       `);
       this.db.exec('CREATE INDEX IF NOT EXISTS idx_zone_tasks_zone_id ON zone_tasks(zone_id)');
-      console.log('[Database] Created zone_tasks table');
+      log('info', 'Created zone_tasks table');
     }
 
     // ============================================
@@ -202,7 +222,7 @@ export class StratixDatabase {
         )
       `);
       this.db.exec('CREATE INDEX IF NOT EXISTS idx_zone_messages_zone_id ON zone_messages(zone_id)');
-      console.log('[Database] Created zone_messages table');
+      log('info', 'Created zone_messages table');
     }
 
     // ============================================
@@ -213,49 +233,20 @@ export class StratixDatabase {
     // are already created in createTables(). The following index creation
     // is kept for safety in case indexes weren't in the original createTables().
 
-    // 为 shared_skill_installs 添加索引（如果不存在）
-    try {
-      this.db.exec('CREATE INDEX IF NOT EXISTS idx_shared_skill_installs_agent ON shared_skill_installs(agent_id)');
-    } catch (e) {
-      // 索引可能已存在
-    }
+    this.createIndexSafely('idx_shared_skill_installs_agent', 'CREATE INDEX IF NOT EXISTS idx_shared_skill_installs_agent ON shared_skill_installs(agent_id)');
+    this.createIndexSafely('idx_agent_learned_skills_agent', 'CREATE INDEX IF NOT EXISTS idx_agent_learned_skills_agent ON agent_learned_skills(agent_id)');
+    this.createIndexSafely('idx_zone_contexts_simple_zone_id', 'CREATE INDEX IF NOT EXISTS idx_zone_contexts_simple_zone_id ON zone_contexts_simple(zone_id)');
+    this.createIndexSafely('idx_agent_zone_bindings_agent', 'CREATE INDEX IF NOT EXISTS idx_agent_zone_bindings_agent ON agent_zone_bindings(agent_id)');
+    this.createIndexSafely('idx_agent_zone_bindings_zone', 'CREATE INDEX IF NOT EXISTS idx_agent_zone_bindings_zone ON agent_zone_bindings(zone_id)');
+    this.createIndexSafely('idx_zone_members_zone_id', 'CREATE INDEX IF NOT EXISTS idx_zone_members_zone_id ON zone_members(zone_id)');
+    this.createIndexSafely('idx_zone_members_agent', 'CREATE INDEX IF NOT EXISTS idx_zone_members_agent ON zone_members(agent_id)');
+  }
 
-    // 为 agent_learned_skills 添加索引（如果不存在）
+  private createIndexSafely(indexName: string, sql: string): void {
     try {
-      this.db.exec('CREATE INDEX IF NOT EXISTS idx_agent_learned_skills_agent ON agent_learned_skills(agent_id)');
+      this.db.exec(sql);
     } catch (e) {
-      // 索引可能已存在
-    }
-
-    // 为 zone_contexts_simple 添加索引（如果不存在）
-    try {
-      this.db.exec('CREATE INDEX IF NOT EXISTS idx_zone_contexts_simple_zone_id ON zone_contexts_simple(zone_id)');
-    } catch (e) {
-      // 索引可能已存在
-    }
-
-    // 为 agent_zone_bindings 添加索引（如果不存在）
-    try {
-      this.db.exec('CREATE INDEX IF NOT EXISTS idx_agent_zone_bindings_agent ON agent_zone_bindings(agent_id)');
-    } catch (e) {
-      // 索引可能已存在
-    }
-    try {
-      this.db.exec('CREATE INDEX IF NOT EXISTS idx_agent_zone_bindings_zone ON agent_zone_bindings(zone_id)');
-    } catch (e) {
-      // 索引可能已存在
-    }
-
-    // 为 zone_members 表添加索引（如果不存在）
-    try {
-      this.db.exec('CREATE INDEX IF NOT EXISTS idx_zone_members_zone_id ON zone_members(zone_id)');
-    } catch (e) {
-      // 索引可能已存在
-    }
-    try {
-      this.db.exec('CREATE INDEX IF NOT EXISTS idx_zone_members_agent ON zone_members(agent_id)');
-    } catch (e) {
-      // 索引可能已存在
+      log('warn', `Failed to create index ${indexName}`, { error: String(e) });
     }
   }
 
@@ -463,6 +454,7 @@ export class StratixDatabase {
         entry_condition TEXT,
         api_key TEXT,
         base_url TEXT,
+        cycle_config TEXT,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       );
@@ -749,6 +741,13 @@ export function getDatabase(): StratixDatabase {
     throw new Error('Database not initialized. Call initializeDatabase() first.');
   }
   return databaseInstance;
+}
+
+export function destroyDatabase(): void {
+  if (databaseInstance) {
+    databaseInstance.close();
+    databaseInstance = null;
+  }
 }
 
 export default StratixDatabase;

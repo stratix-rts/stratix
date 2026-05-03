@@ -2,6 +2,9 @@ import { generateId } from '../stratix-project/utils/helpers';
 
 import { getDatabase } from './StratixDatabase';
 
+const DEFAULT_LIMIT = 50;
+const DEFAULT_OFFSET = 0;
+
 /**
  * Task 流转动作
  */
@@ -13,6 +16,17 @@ export type TaskFlowAction =
   | 'completed'  // Agent 完成
   | 'failed'     // Agent 失败
   | 'cancelled'; // 取消
+
+interface TaskFlowRow {
+  flow_id: string;
+  task_id: string;
+  zone_id: string;
+  from_agent_id: string | null;
+  to_agent_id: string | null;
+  action: string;
+  metadata: string | null;
+  created_at: number;
+}
 
 /**
  * Task 流转记录
@@ -99,7 +113,7 @@ export class TaskFlowRepository {
       SELECT * FROM task_flow
       WHERE task_id = ?
       ORDER BY created_at ASC
-    `).all(taskId) as any[];
+    `).all(taskId) as TaskFlowRow[];
     return rows.map(row => this.mapRowToRecord(row));
   }
 
@@ -112,7 +126,7 @@ export class TaskFlowRepository {
       WHERE task_id = ?
       ORDER BY created_at DESC
       LIMIT 1
-    `).get(taskId) as any;
+    `).get(taskId) as TaskFlowRow | undefined;
     return row ? this.mapRowToRecord(row) : null;
   }
 
@@ -120,11 +134,11 @@ export class TaskFlowRepository {
    * 获取 Zone 的流转记录（支持分页、过滤 action）
    */
   getZoneFlows(zoneId: string, options?: FlowQueryOptions): TaskFlowRecord[] {
-    const limit = options?.limit ?? 50;
-    const offset = options?.offset ?? 0;
+    const limit = options?.limit ?? DEFAULT_LIMIT;
+    const offset = options?.offset ?? DEFAULT_OFFSET;
 
     let sql = 'SELECT * FROM task_flow WHERE zone_id = ?';
-    const params: any[] = [zoneId];
+    const params: (string | number)[] = [zoneId];
 
     if (options?.actions && options.actions.length > 0) {
       const placeholders = options.actions.map(() => '?').join(', ');
@@ -135,7 +149,7 @@ export class TaskFlowRepository {
     sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
     params.push(limit, offset);
 
-    const rows = this.db.prepare(sql).all(...params) as any[];
+    const rows = this.db.prepare(sql).all(...params) as TaskFlowRow[];
     return rows.map(row => this.mapRowToRecord(row));
   }
 
@@ -143,11 +157,11 @@ export class TaskFlowRepository {
    * 获取 Agent 相关流转记录
    */
   getAgentFlows(agentId: string, zoneId?: string, options?: FlowQueryOptions): TaskFlowRecord[] {
-    const limit = options?.limit ?? 50;
-    const offset = options?.offset ?? 0;
+    const limit = options?.limit ?? DEFAULT_LIMIT;
+    const offset = options?.offset ?? DEFAULT_OFFSET;
 
     let sql = 'SELECT * FROM task_flow WHERE to_agent_id = ?';
-    const params: any[] = [agentId];
+    const params: (string | number)[] = [agentId];
 
     if (zoneId) {
       sql += ' AND zone_id = ?';
@@ -163,7 +177,7 @@ export class TaskFlowRepository {
     sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
     params.push(limit, offset);
 
-    const rows = this.db.prepare(sql).all(...params) as any[];
+    const rows = this.db.prepare(sql).all(...params) as TaskFlowRow[];
     return rows.map(row => this.mapRowToRecord(row));
   }
 
@@ -176,7 +190,7 @@ export class TaskFlowRepository {
       FROM task_flow
       WHERE zone_id = ?
       GROUP BY action
-    `).all(zoneId) as any[];
+    `).all(zoneId) as Array<{ action: string; count: number }>;
 
     const counts: Record<string, number> = {};
     for (const row of rows) {
@@ -194,11 +208,11 @@ export class TaskFlowRepository {
     };
   }
 
-  private mapRowToRecord(row: any): TaskFlowRecord {
+  private mapRowToRecord(row: TaskFlowRow): TaskFlowRecord {
     let metadata: TaskFlowRecord['metadata'];
     if (row.metadata) {
       try {
-        metadata = JSON.parse(row.metadata);
+        metadata = JSON.parse(row.metadata) as TaskFlowRecord['metadata'];
       } catch {
         metadata = undefined;
       }

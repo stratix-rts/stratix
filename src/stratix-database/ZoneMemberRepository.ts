@@ -13,6 +13,19 @@ export interface ZoneMember {
   leftAt: number | null;
 }
 
+interface ZoneMemberRow {
+  id: string;
+  zone_id: string;
+  agent_id: string;
+  role: string;
+  entered_at: number;
+  left_at: number | null;
+}
+
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[ZoneMemberRepository] ${message}`, ctx || '');
+}
+
 export class ZoneMemberRepository {
   private get db() {
     return getDatabase().getDatabase();
@@ -48,7 +61,7 @@ export class ZoneMemberRepository {
         leftAt: null
       };
     } catch (e) {
-      // If unique constraint violated, member already exists
+      log('warn', 'Unique constraint violated when adding member', { zoneId, agentId, error: String(e) });
       return this.getMember(zoneId, agentId);
     }
   }
@@ -74,7 +87,7 @@ export class ZoneMemberRepository {
       SELECT * FROM zone_members
       WHERE zone_id = ? AND left_at IS NULL
       ORDER BY entered_at ASC
-    `).all(zoneId) as any[];
+    `).all(zoneId) as ZoneMemberRow[];
     return rows.map(row => this.mapRowToMember(row));
   }
 
@@ -85,7 +98,7 @@ export class ZoneMemberRepository {
     const row = this.db.prepare(`
       SELECT * FROM zone_members
       WHERE zone_id = ? AND agent_id = ? AND left_at IS NULL
-    `).get(zoneId, agentId) as any;
+    `).get(zoneId, agentId) as ZoneMemberRow | undefined;
     return row ? this.mapRowToMember(row) : null;
   }
 
@@ -110,7 +123,7 @@ export class ZoneMemberRepository {
       SELECT * FROM zone_members
       WHERE agent_id = ? AND left_at IS NULL
       ORDER BY entered_at DESC
-    `).all(agentId) as any[];
+    `).all(agentId) as ZoneMemberRow[];
     return rows.map(row => this.mapRowToMember(row));
   }
 
@@ -122,7 +135,7 @@ export class ZoneMemberRepository {
       SELECT * FROM zone_members
       WHERE zone_id = ? AND role = 'coordinator' AND left_at IS NULL
       ORDER BY entered_at ASC
-    `).all(zoneId) as any[];
+    `).all(zoneId) as ZoneMemberRow[];
     return rows.map(row => this.mapRowToMember(row));
   }
 
@@ -134,11 +147,11 @@ export class ZoneMemberRepository {
       SELECT * FROM zone_members
       WHERE zone_id = ? AND role = 'executor' AND left_at IS NULL
       ORDER BY entered_at ASC
-    `).all(zoneId) as any[];
+    `).all(zoneId) as ZoneMemberRow[];
     return rows.map(row => this.mapRowToMember(row));
   }
 
-  private mapRowToMember(row: any): ZoneMember {
+  private mapRowToMember(row: ZoneMemberRow): ZoneMember {
     return {
       id: row.id,
       zoneId: row.zone_id,
