@@ -1,3 +1,5 @@
+import type Database from 'better-sqlite3';
+
 import { Project, ProjectChannel, ProjectChannelMessage, MessageSender, ProjectConfig, ProjectZoneConfig, ProjectStatus, ProjectChannelType, MessageRole, ProjectMessageType } from '../stratix-project/types';
 
 import { getDatabase } from './StratixDatabase';
@@ -46,33 +48,75 @@ interface MessageRow {
   timestamp: number;
 }
 
+function normalizeDate(value: Date | number | undefined | null): number | null {
+  if (value === undefined || value === null) return null;
+  return value instanceof Date ? value.getTime() : value;
+}
+
+function parseJsonSafe<T>(value: string | null | undefined, fallback: T): T {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 export class ProjectRepository {
   private get db() {
     return getDatabase().getDatabase();
   }
 
+  private statements = new Map<string, Database.Statement>();
+
+  private stmt(sql: string): Database.Statement {
+    let s = this.statements.get(sql);
+    if (!s) {
+      s = this.db.prepare(sql);
+      this.statements.set(sql, s);
+    }
+    return s;
+  }
+
+  /**
+   * 清理 prepared statement 缓存
+   */
+  shutdown(): void {
+    this.statements.clear();
+  }
+
+  /**
+   * 检查数据库连接是否健康
+   */
+  isHealthy(): boolean {
+    try {
+      this.db.prepare('SELECT 1').get();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   getAllProjects(): Project[] {
-    const rows = this.db.prepare('SELECT * FROM projects ORDER BY created_at DESC').all() as ProjectRow[];
+    const rows = this.stmt('SELECT * FROM projects ORDER BY created_at DESC').all() as ProjectRow[];
     return rows.map(this.mapRowToProject);
   }
 
   getProject(projectId: string): Project | null {
-    const row = this.db.prepare('SELECT * FROM projects WHERE project_id = ?').get(projectId) as ProjectRow | undefined;
+    const row = this.stmt('SELECT * FROM projects WHERE project_id = ?').get(projectId) as ProjectRow | undefined;
     return row ? this.mapRowToProject(row) : null;
   }
 
   createProject(project: Project): Project {
-    const stmt = this.db.prepare(`
+    const createdAt = normalizeDate(project.createdAt);
+    const updatedAt = normalizeDate(project.updatedAt);
+    const startedAt = normalizeDate(project.startedAt);
+    const completedAt = normalizeDate(project.completedAt);
+
+    this.stmt(`
       INSERT INTO projects (project_id, name, description, priority, status, config, path, present_agent_ids, zone_config, created_at, updated_at, started_at, completed_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    
-    const createdAt = project.createdAt instanceof Date ? project.createdAt.getTime() : project.createdAt;
-    const updatedAt = project.updatedAt instanceof Date ? project.updatedAt.getTime() : project.updatedAt;
-    const startedAt = project.startedAt ? (project.startedAt instanceof Date ? project.startedAt.getTime() : project.startedAt) : null;
-    const completedAt = project.completedAt ? (project.completedAt instanceof Date ? project.completedAt.getTime() : project.completedAt) : null;
-    
-    stmt.run(
+    `).run(
       project.id,
       project.name,
       project.description,
@@ -87,7 +131,7 @@ export class ProjectRepository {
       startedAt,
       completedAt
     );
-    
+
     return project;
   }
 
@@ -96,19 +140,17 @@ export class ProjectRepository {
     if (!existing) return null;
 
     const updated: Project = { ...existing, ...updates, id: projectId, updatedAt: new Date() };
-    
-    const stmt = this.db.prepare(`
-      UPDATE projects SET 
-        name = ?, description = ?, priority = ?, status = ?, config = ?, path = ?, 
+
+    const updatedAt = normalizeDate(updated.updatedAt);
+    const startedAt = normalizeDate(updated.startedAt);
+    const completedAt = normalizeDate(updated.completedAt);
+
+    this.stmt(`
+      UPDATE projects SET
+        name = ?, description = ?, priority = ?, status = ?, config = ?, path = ?,
         present_agent_ids = ?, zone_config = ?, updated_at = ?, started_at = ?, completed_at = ?
       WHERE project_id = ?
-    `);
-    
-    const updatedAt = updated.updatedAt instanceof Date ? updated.updatedAt.getTime() : updated.updatedAt;
-    const startedAt = updated.startedAt ? (updated.startedAt instanceof Date ? updated.startedAt.getTime() : updated.startedAt) : null;
-    const completedAt = updated.completedAt ? (updated.completedAt instanceof Date ? updated.completedAt.getTime() : updated.completedAt) : null;
-    
-    stmt.run(
+    `).run(
       updated.name,
       updated.description,
       updated.priority,
@@ -122,33 +164,30 @@ export class ProjectRepository {
       completedAt,
       projectId
     );
-    
+
     return updated;
   }
 
   deleteProject(projectId: string): boolean {
-    const stmt = this.db.prepare('DELETE FROM projects WHERE project_id = ?');
-    const result = stmt.run(projectId);
+    const result = this.stmt('DELETE FROM projects WHERE project_id = ?').run(projectId);
     return result.changes > 0;
   }
 
   getChannels(projectId: string): ProjectChannel[] {
-    const rows = this.db.prepare('SELECT * FROM channels WHERE project_id = ?').all(projectId) as ChannelRow[];
+    const rows = this.stmt('SELECT * FROM channels WHERE project_id = ?').all(projectId) as ChannelRow[];
     return rows.map(this.mapRowToChannel);
   }
 
   getChannel(projectId: string, channelId: string): ProjectChannel | null {
-    const row = this.db.prepare('SELECT * FROM channels WHERE project_id = ? AND channel_id = ?').get(projectId, channelId) as ChannelRow | undefined;
+    const row = this.stmt('SELECT * FROM channels WHERE project_id = ? AND channel_id = ?').get(projectId, channelId) as ChannelRow | undefined;
     return row ? this.mapRowToChannel(row) : null;
   }
 
   createChannel(channel: ProjectChannel): ProjectChannel {
-    const stmt = this.db.prepare(`
+    this.stmt(`
       INSERT INTO channels (channel_id, project_id, name, type, description, subscriber_ids, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    
-    stmt.run(
+    `).run(
       channel.id,
       channel.projectId,
       channel.name,
@@ -158,47 +197,46 @@ export class ProjectRepository {
       channel.createdAt,
       channel.updatedAt
     );
-    
+
     return channel;
   }
 
   updateChannel(projectId: string, channelId: string, subscriberIds: string[]): ProjectChannel | null {
-    const stmt = this.db.prepare(`
+    this.stmt(`
       UPDATE channels SET subscriber_ids = ?, updated_at = ? WHERE project_id = ? AND channel_id = ?
-    `);
-    stmt.run(JSON.stringify(subscriberIds), Date.now(), projectId, channelId);
+    `).run(JSON.stringify(subscriberIds), Date.now(), projectId, channelId);
     return this.getChannel(projectId, channelId);
   }
 
   getMessages(projectId: string, channelId?: string): ProjectChannelMessage[] {
-    let rows;
+    let rows: MessageRow[];
     if (channelId) {
-      rows = this.db.prepare('SELECT * FROM messages WHERE project_id = ? AND channel_id = ? ORDER BY timestamp ASC').all(projectId, channelId);
+      rows = this.stmt('SELECT * FROM messages WHERE project_id = ? AND channel_id = ? ORDER BY timestamp ASC').all(projectId, channelId) as MessageRow[];
     } else {
-      rows = this.db.prepare('SELECT * FROM messages WHERE project_id = ? ORDER BY timestamp ASC').all(projectId);
+      rows = this.stmt('SELECT * FROM messages WHERE project_id = ? ORDER BY timestamp ASC').all(projectId) as MessageRow[];
     }
-    return (rows as MessageRow[]).map(this.mapRowToMessage);
+    return rows.map(this.mapRowToMessage);
   }
 
+  /**
+   * 获取提及某个 Agent 的消息（使用 json_each 在 SQL 层过滤，避免全表扫描）
+   */
   getMessagesByMention(projectId: string, agentId: string): ProjectChannelMessage[] {
-    const rows = this.db.prepare(`
-      SELECT * FROM messages 
-      WHERE project_id = ? 
+    const rows = this.stmt(`
+      SELECT * FROM messages
+      WHERE project_id = ?
+        AND EXISTS (SELECT 1 FROM json_each(mentions) WHERE value = ?)
       ORDER BY timestamp ASC
-    `).all(projectId) as MessageRow[];
-    
-    return rows
-      .map(row => this.mapRowToMessage(row))
-      .filter(msg => msg.mentions.includes(agentId));
+    `).all(projectId, agentId) as MessageRow[];
+
+    return rows.map(row => this.mapRowToMessage(row));
   }
 
   createMessage(message: ProjectChannelMessage): ProjectChannelMessage {
-    const stmt = this.db.prepare(`
+    this.stmt(`
       INSERT INTO messages (message_id, project_id, channel_id, role, content, sender, mentions, raw_content, message_type, task_id, session_key, run_id, metadata, timestamp, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    
-    stmt.run(
+    `).run(
       message.id,
       message.projectId,
       message.channelId,
@@ -215,7 +253,7 @@ export class ProjectRepository {
       message.timestamp,
       message.timestamp
     );
-    
+
     return message;
   }
 
@@ -226,10 +264,10 @@ export class ProjectRepository {
       description: row.description,
       priority: row.priority,
       status: row.status as ProjectStatus,
-      config: JSON.parse(row.config || '{}') as ProjectConfig,
+      config: parseJsonSafe(row.config, {} as ProjectConfig),
       path: row.path,
-      presentAgentIds: JSON.parse(row.present_agent_ids || '[]') as string[],
-      zoneConfig: JSON.parse(row.zone_config || '{}') as ProjectZoneConfig,
+      presentAgentIds: parseJsonSafe(row.present_agent_ids, [] as string[]),
+      zoneConfig: parseJsonSafe(row.zone_config, {} as ProjectZoneConfig),
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
       startedAt: row.started_at ? new Date(row.started_at) : undefined,
@@ -244,7 +282,7 @@ export class ProjectRepository {
       name: row.name,
       type: row.type as ProjectChannelType,
       description: row.description,
-      subscriberIds: JSON.parse(row.subscriber_ids || '[]') as string[],
+      subscriberIds: parseJsonSafe(row.subscriber_ids, [] as string[]),
       isPrivate: false,
       createdAt: row.created_at,
       updatedAt: row.updated_at
