@@ -20,6 +20,7 @@ import { zoneMemberRepository } from '../stratix-database/ZoneMemberRepository';
 import { agentCapabilityRepository } from '../stratix-database/AgentCapabilityRepository';
 import { projectRepository } from '../stratix-database/ProjectRepository';
 import { ZoneCoordinator } from '../stratix-orchestration/zone/ZoneCoordinator';
+import type { Capability } from '../stratix-database/AgentCapabilityRepository';
 
 // ============================================================
 // MCP Server 定义
@@ -97,6 +98,15 @@ setInterval(() => {
     }
   }
 }, 5 * 60 * 1000);
+
+const VALID_CAPABILITIES: Capability[] = ['coding', 'writing', 'analysis', 'research', 'general'];
+
+function toValidCapability(cap: string): Capability | null {
+  if (VALID_CAPABILITIES.includes(cap as Capability)) {
+    return cap as Capability;
+  }
+  return null;
+}
 
 function getDefaultProjectId(): string | null {
   const projects = projectRepository.getAllProjects();
@@ -332,7 +342,10 @@ mcpServer.tool(
     // Register capabilities
     if (capabilities) {
       for (const [cap, level] of Object.entries(capabilities)) {
-        agentCapabilityRepository.setCapability(agentId, zoneId, cap as any, Number(level));
+        const validCap = toValidCapability(cap);
+        if (validCap) {
+          agentCapabilityRepository.setCapability(agentId, zoneId, validCap, Number(level));
+        }
       }
     }
 
