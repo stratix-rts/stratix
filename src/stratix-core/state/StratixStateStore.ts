@@ -256,7 +256,13 @@ class StratixStateStore {
 
   private notify(): void {
     if (this.batchDepth > 0) return;
-    this.subscribers.forEach((fn) => fn(this.state));
+    this.subscribers.forEach((fn) => {
+      try {
+        fn(this.state);
+      } catch (e) {
+        console.error('[StratixStateStore] Subscriber error:', e);
+      }
+    });
   }
 }
 

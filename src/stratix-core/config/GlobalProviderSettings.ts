@@ -73,8 +73,20 @@ class GlobalProviderSettings {
    */
   async load(): Promise<void> {
     if (this.loaded) return;
-    if (this.loading) await this.loading;
+    if (this.loading) {
+      await this.loading;
+      return;
+    }
 
+    this.loading = this.doLoad();
+    try {
+      await this.loading;
+    } finally {
+      this.loading = null;
+    }
+  }
+
+  private async doLoad(): Promise<void> {
     try {
       if (this.isElectron()) {
         // Electron: load config from file, API keys from secure storage
@@ -100,7 +112,6 @@ class GlobalProviderSettings {
     }
 
     this.loaded = true;
-    this.loading = null;
   }
 
   /**

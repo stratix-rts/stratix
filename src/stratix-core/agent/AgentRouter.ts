@@ -166,6 +166,7 @@ export class AgentRouter {
     }
 
     let worktreePath: string | undefined;
+    const executorTask = { ...task };
 
     if (isolation === "worktree") {
       worktreePath = path.join(os.tmpdir(), `agent-worktree-${task.taskId}-${Date.now()}`);
@@ -179,12 +180,12 @@ export class AgentRouter {
           console.warn(`[AgentRouter] Failed to copy project files to worktree: ${copyErr}`);
         }
       }
-      task.workingDirectory = worktreePath;
+      executorTask.workingDirectory = worktreePath;
       console.log(`[AgentRouter] Worktree isolation active for task ${task.taskId}: ${worktreePath}`);
     }
 
     try {
-      return await this.executor(task, agentId, abortController.signal);
+      return await this.executor(executorTask, agentId, abortController.signal);
     } finally {
       // Cleanup worktree after execution
       if (worktreePath) {
