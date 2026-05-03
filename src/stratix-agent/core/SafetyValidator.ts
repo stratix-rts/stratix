@@ -89,18 +89,16 @@ export class SafetyValidator {
       return { valid: false, reason: 'Path traversal not allowed' };
     }
 
-    // 检查危险路径
-    const dangerousPaths = [
-      '/etc/passwd',
-      '/etc/shadow',
-      '/etc/sudoers',
-      '/root/.ssh',
-      '/home',
-      '/var/spool/mail'
-    ];
-    for (const dangerous of dangerousPaths) {
-      if (normalizedPath.startsWith(dangerous)) {
-        return { valid: false, reason: `Access to system file not allowed: ${filePath}` };
+    // Zone 沙箱模式：强制限制在 sandboxRoot 内（最高优先级）
+    const sandboxRoot = context?.variables?.sandboxRoot;
+    if (sandboxRoot) {
+      const normalizedSandbox = sandboxRoot.replace(/\/+$/, '');
+      const normalizedFilePath = normalizedPath;
+      if (
+        normalizedFilePath !== normalizedSandbox &&
+        !normalizedFilePath.startsWith(normalizedSandbox + '/')
+      ) {
+        return { valid: false, reason: 'Path outside sandbox: ' + filePath };
       }
     }
 
@@ -111,16 +109,17 @@ export class SafetyValidator {
       }
     }
 
-    // Zone 沙箱模式：强制限制在 sandboxRoot 内
-    const sandboxRoot = context?.variables?.sandboxRoot;
-    if (sandboxRoot) {
-      const normalizedSandbox = sandboxRoot.replace(/\/+$/, '');
-      const normalizedFilePath = normalizedPath;
-      if (
-        normalizedFilePath !== normalizedSandbox &&
-        !normalizedFilePath.startsWith(normalizedSandbox + '/')
-      ) {
-        return { valid: false, reason: 'Path outside sandbox: ' + filePath };
+    // 检查危险路径（系统敏感目录）
+    const dangerousPaths = [
+      '/etc/passwd',
+      '/etc/shadow',
+      '/etc/sudoers',
+      '/root/.ssh',
+      '/var/spool/mail'
+    ];
+    for (const dangerous of dangerousPaths) {
+      if (normalizedPath.startsWith(dangerous)) {
+        return { valid: false, reason: `Access to system file not allowed: ${filePath}` };
       }
     }
 
