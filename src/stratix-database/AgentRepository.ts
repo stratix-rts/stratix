@@ -1,3 +1,5 @@
+import type Database from 'better-sqlite3';
+
 import { StratixAgentConfig, AgentBackendType, AgentConfigStatus } from '../stratix-core/stratix-protocol';
 
 import { getDatabase } from './StratixDatabase';
@@ -35,69 +37,88 @@ export class AgentRepository {
     return getDatabase().getDatabase();
   }
 
+  private statements = new Map<string, Database.Statement>();
+
+  private stmt(sql: string): Database.Statement {
+    let s = this.statements.get(sql);
+    if (!s) {
+      s = this.db.prepare(sql);
+      this.statements.set(sql, s);
+    }
+    return s;
+  }
+
+  /**
+   * 清理 prepared statement 缓存
+   */
+  shutdown(): void {
+    this.statements.clear();
+  }
+
+  /**
+   * 检查数据库连接是否健康
+   */
+  isHealthy(): boolean {
+    try {
+      this.db.prepare('SELECT 1').get();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   getAllAgents(): StratixAgentConfig[] {
-    const rows = this.db.prepare('SELECT * FROM agents ORDER BY created_at DESC').all() as AgentRow[];
+    const rows = this.stmt('SELECT * FROM agents ORDER BY created_at DESC').all() as AgentRow[];
     return rows.map(this.mapRowToAgent);
   }
 
   getAgent(agentId: string): StratixAgentConfig | null {
-    const row = this.db.prepare('SELECT * FROM agents WHERE agent_id = ?').get(agentId) as AgentRow | undefined;
+    const row = this.stmt('SELECT * FROM agents WHERE agent_id = ?').get(agentId) as AgentRow | undefined;
     return row ? this.mapRowToAgent(row) : null;
   }
 
+  /**
+   * 保存 Agent（UPSERT，避免先查后写的竞态条件）
+   */
   saveAgent(agent: StratixAgentConfig): void {
-    const existing = this.getAgent(agent.agentId);
-
-    if (existing) {
-      const stmt = this.db.prepare(`
-        UPDATE agents SET
-          name = ?, type = ?, profile = ?, soul = ?, rules = ?,
-          backend_type = ?, config_status = ?, position = ?, memory = ?,
-          openclaw_config = ?, stratix_config = ?, updated_at = ?
-        WHERE agent_id = ?
-      `);
-      stmt.run(
-        agent.name,
-        agent.type,
-        JSON.stringify(agent.profile),
-        JSON.stringify(agent.soul),
-        JSON.stringify(agent.rules),
-        agent.backendType,
-        agent.configStatus,
-        agent.position ? JSON.stringify(agent.position) : null,
-        agent.memory ? JSON.stringify(agent.memory) : null,
-        agent.openClawConfig ? JSON.stringify(agent.openClawConfig) : null,
-        agent.stratixConfig ? JSON.stringify(agent.stratixConfig) : null,
-        Date.now(),
-        agent.agentId
-      );
-    } else {
-      const stmt = this.db.prepare(`
-        INSERT INTO agents (agent_id, name, type, profile, soul, rules, backend_type, config_status, position, memory, openclaw_config, stratix_config, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      stmt.run(
-        agent.agentId,
-        agent.name,
-        agent.type,
-        JSON.stringify(agent.profile),
-        JSON.stringify(agent.soul),
-        JSON.stringify(agent.rules),
-        agent.backendType || 'direct',
-        agent.configStatus || 'draft',
-        agent.position ? JSON.stringify(agent.position) : null,
-        agent.memory ? JSON.stringify(agent.memory) : null,
-        agent.openClawConfig ? JSON.stringify(agent.openClawConfig) : null,
-        agent.stratixConfig ? JSON.stringify(agent.stratixConfig) : null,
-        agent.createdAt,
-        agent.updatedAt
-      );
-    }
+    const now = Date.now();
+    this.stmt(`
+      INSERT INTO agents (agent_id, name, type, profile, soul, rules, backend_type, config_status, position, memory, openclaw_config, stratix_config, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(agent_id) DO UPDATE SET
+        name = excluded.name,
+        type = excluded.type,
+        profile = excluded.profile,
+        soul = excluded.soul,
+        rules = excluded.rules,
+        backend_type = excluded.backend_type,
+        config_status = excluded.config_status,
+        position = excluded.position,
+        memory = excluded.memory,
+        openclaw_config = excluded.openclaw_config,
+        stratix_config = excluded.stratix_config,
+        updated_at = excluded.updated_at,
+        created_at = agents.created_at
+    `).run(
+      agent.agentId,
+      agent.name,
+      agent.type,
+      JSON.stringify(agent.profile),
+      JSON.stringify(agent.soul),
+      JSON.stringify(agent.rules),
+      agent.backendType || 'direct',
+      agent.configStatus || 'draft',
+      agent.position ? JSON.stringify(agent.position) : null,
+      agent.memory ? JSON.stringify(agent.memory) : null,
+      agent.openClawConfig ? JSON.stringify(agent.openClawConfig) : null,
+      agent.stratixConfig ? JSON.stringify(agent.stratixConfig) : null,
+      agent.createdAt ?? now,
+      agent.updatedAt ?? now
+    );
   }
 
   deleteAgent(agentId: string): boolean {
-    const stmt = this.db.prepare('DELETE FROM agents WHERE agent_id = ?');
-    const result = stmt.run(agentId);
+    const result = this.stmt('DELETE FROM agents WHERE agent_id = ?').run(agentId);
     return result.changes > 0;
   }
 
