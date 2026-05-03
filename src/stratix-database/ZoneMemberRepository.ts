@@ -1,3 +1,5 @@
+import type Database from 'better-sqlite3';
+
 import { generateId } from '../stratix-project/utils/helpers';
 
 import { getDatabase } from './StratixDatabase';
@@ -31,28 +33,60 @@ export class ZoneMemberRepository {
     return getDatabase().getDatabase();
   }
 
+  private statements = new Map<string, Database.Statement>();
+
+  private stmt(sql: string): Database.Statement {
+    let s = this.statements.get(sql);
+    if (!s) {
+      s = this.db.prepare(sql);
+      this.statements.set(sql, s);
+    }
+    return s;
+  }
+
   /**
-   * Add a member to a zone
+   * 清理 prepared statement 缓存
+   */
+  shutdown(): void {
+    this.statements.clear();
+  }
+
+  /**
+   * 检查数据库连接是否健康
+   */
+  isHealthy(): boolean {
+    try {
+      this.db.prepare('SELECT 1').get();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Add a member to a zone.
+   * If the member already exists and is active, returns the existing record.
+   * Uses a transaction to ensure atomic read-then-write.
    */
   addMember(zoneId: string, agentId: string, role: ZoneMemberRole = 'executor'): ZoneMember | null {
     const now = Date.now();
     const id = generateId('zmem');
 
-    // Use INSERT OR REPLACE to handle re-entry: if member already exists and left, update left_at
-    const existing = this.getMember(zoneId, agentId);
-    if (existing) {
-      // Member already exists and is active
-      return existing;
-    }
+    let result: ZoneMember | null = null;
 
-    try {
-      const stmt = this.db.prepare(`
+    const tx = this.db.transaction(() => {
+      const existing = this.getMember(zoneId, agentId);
+      if (existing) {
+        result = existing;
+        return;
+      }
+
+      this.stmt(`
         INSERT INTO zone_members (id, zone_id, agent_id, role, entered_at, left_at)
         VALUES (?, ?, ?, ?, ?, NULL)
-      `);
-      stmt.run(id, zoneId, agentId, role, now);
+      `).run(id, zoneId, agentId, role, now);
 
-      return {
+      result = {
         id,
         zoneId,
         agentId,
@@ -60,10 +94,16 @@ export class ZoneMemberRepository {
         enteredAt: now,
         leftAt: null
       };
+    });
+
+    try {
+      tx();
     } catch (e) {
       log('warn', 'Unique constraint violated when adding member', { zoneId, agentId, error: String(e) });
-      return this.getMember(zoneId, agentId);
+      result = this.getMember(zoneId, agentId);
     }
+
+    return result;
   }
 
   /**
@@ -71,11 +111,10 @@ export class ZoneMemberRepository {
    */
   removeMember(zoneId: string, agentId: string): boolean {
     const now = Date.now();
-    const stmt = this.db.prepare(`
+    const result = this.stmt(`
       UPDATE zone_members SET left_at = ?
       WHERE zone_id = ? AND agent_id = ? AND left_at IS NULL
-    `);
-    const result = stmt.run(now, zoneId, agentId);
+    `).run(now, zoneId, agentId);
     return result.changes > 0;
   }
 
@@ -83,7 +122,7 @@ export class ZoneMemberRepository {
    * Get all active members of a zone (left_at IS NULL)
    */
   getMembers(zoneId: string): ZoneMember[] {
-    const rows = this.db.prepare(`
+    const rows = this.stmt(`
       SELECT * FROM zone_members
       WHERE zone_id = ? AND left_at IS NULL
       ORDER BY entered_at ASC
@@ -95,7 +134,7 @@ export class ZoneMemberRepository {
    * Get a specific member record (only active members)
    */
   getMember(zoneId: string, agentId: string): ZoneMember | null {
-    const row = this.db.prepare(`
+    const row = this.stmt(`
       SELECT * FROM zone_members
       WHERE zone_id = ? AND agent_id = ? AND left_at IS NULL
     `).get(zoneId, agentId) as ZoneMemberRow | undefined;
@@ -106,11 +145,10 @@ export class ZoneMemberRepository {
    * Update a member's role
    */
   updateRole(zoneId: string, agentId: string, role: ZoneMemberRole): ZoneMember | null {
-    const stmt = this.db.prepare(`
+    const result = this.stmt(`
       UPDATE zone_members SET role = ?
       WHERE zone_id = ? AND agent_id = ? AND left_at IS NULL
-    `);
-    const result = stmt.run(role, zoneId, agentId);
+    `).run(role, zoneId, agentId);
     if (result.changes === 0) return null;
     return this.getMember(zoneId, agentId);
   }
@@ -119,7 +157,7 @@ export class ZoneMemberRepository {
    * Get all zones an agent is currently in
    */
   getMembersByAgent(agentId: string): ZoneMember[] {
-    const rows = this.db.prepare(`
+    const rows = this.stmt(`
       SELECT * FROM zone_members
       WHERE agent_id = ? AND left_at IS NULL
       ORDER BY entered_at DESC
@@ -131,7 +169,7 @@ export class ZoneMemberRepository {
    * Get all coordinators in a zone
    */
   getCoordinators(zoneId: string): ZoneMember[] {
-    const rows = this.db.prepare(`
+    const rows = this.stmt(`
       SELECT * FROM zone_members
       WHERE zone_id = ? AND role = 'coordinator' AND left_at IS NULL
       ORDER BY entered_at ASC
@@ -143,7 +181,7 @@ export class ZoneMemberRepository {
    * Get all executors in a zone
    */
   getExecutors(zoneId: string): ZoneMember[] {
-    const rows = this.db.prepare(`
+    const rows = this.stmt(`
       SELECT * FROM zone_members
       WHERE zone_id = ? AND role = 'executor' AND left_at IS NULL
       ORDER BY entered_at ASC
