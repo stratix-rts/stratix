@@ -202,7 +202,7 @@ export class PromptTemplateEngine {
       if (current === null || current === undefined) {
         return undefined;
       }
-      if (typeof current === 'object') {
+      if (typeof current === 'object' && current !== null) {
         current = (current as Record<string, unknown>)[part];
       } else {
         return undefined;

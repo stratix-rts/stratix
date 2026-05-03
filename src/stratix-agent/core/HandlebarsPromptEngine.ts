@@ -207,8 +207,9 @@ export class HandlebarsPromptEngine {
    * Compile and cache a template
    */
   private getTemplate(name: string): Handlebars.TemplateDelegate {
-    if (this.compiledTemplates.has(name)) {
-      return this.compiledTemplates.get(name)!;
+    const template = this.compiledTemplates.get(name);
+    if (template) {
+      return template;
     }
 
     throw new Error(`Template not found: ${name}`);

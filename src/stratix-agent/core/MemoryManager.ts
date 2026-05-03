@@ -47,7 +47,7 @@ export class MemoryManager {
   }
 
   getRecentMessages(count?: number): ChatMessage[] {
-    if (count) {
+    if (typeof count === 'number') {
       return this.shortTerm.slice(-count);
     }
     return [...this.shortTerm];
@@ -120,7 +120,7 @@ export class MemoryManager {
       longTerm: this.longTerm,
     };
     await writeFile(
-      `${this.storagePath}/memory.json`,
+      `${this.storagePath.replace(/\/$/, '')}/memory.json`,
       JSON.stringify(data, null, 2)
     );
   }
@@ -128,7 +128,7 @@ export class MemoryManager {
   async load(): Promise<void> {
     try {
       await this.ensureStoragePath();
-      const content = await readFile(`${this.storagePath}/memory.json`, 'utf-8');
+      const content = await readFile(`${this.storagePath.replace(/\/$/, '')}/memory.json`, 'utf-8');
       const data: MemoryLayers = JSON.parse(content);
       this.shortTerm = data.shortTerm || [];
       this.midTerm = data.midTerm || [];
@@ -188,7 +188,7 @@ export class MemoryManager {
    */
   getSkillRecords(): SkillLearningRecord[] {
     return this.longTerm
-      .filter(e => e.type === 'skill')
-      .map(e => e as SkillLearningRecord);
+      .filter((e): e is SkillLearningRecord => e.type === 'skill')
+      .map(e => e);
   }
 }

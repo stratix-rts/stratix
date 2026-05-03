@@ -331,10 +331,12 @@ export class EnhancedPromptBuilder {
 
       if (skill.parameters && Array.isArray(skill.parameters) && skill.parameters.length > 0) {
         parts.push('\n### 参数 Parameters:');
-        for (const param of skill.parameters as Array<{ name: string; type: string; required?: boolean; description?: string }>) {
-          const required = param.required ? '[必需]' : '[可选]';
-          const desc = param.description ? ` - ${param.description}` : '';
-          parts.push(`- \`${param.name}\`: ${param.type} ${required}${desc}`);
+        for (const param of skill.parameters) {
+          if (!param || typeof param !== 'object') continue;
+          const p = param as { name?: string; type?: string; required?: boolean; description?: string };
+          const required = p.required ? '[必需]' : '[可选]';
+          const desc = p.description ? ` - ${p.description}` : '';
+          parts.push(`- \`${p.name ?? 'unknown'}\`: ${p.type ?? 'unknown'} ${required}${desc}`);
         }
       }
 
@@ -574,7 +576,7 @@ export class EnhancedPromptBuilder {
           maxHistoryLength: 10,
           maxContextLength: 4000,
         },
-        zone: zoneContext as PromptRenderContext['zone'],
+        zone: zoneContext as unknown as PromptRenderContext['zone'],
       };
 
       const content = engine.render('layers/layer10-zone', context);
