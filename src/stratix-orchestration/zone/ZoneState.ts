@@ -33,3 +33,12 @@ export const DEFAULT_ZONE_CONFIG: ZoneConfig = {
   allowBroadcast: true,
   contextSharingPolicy: 'isolated',
 };
+
+export const ZONE_STATUSES: ZoneState['status'][] = ['idle', 'active', 'busy', 'completed', 'error'];
+
+/**
+ * Check if a zone is in an active state (has agents working or can receive tasks)
+ */
+export function isZoneActive(zone: ZoneState): boolean {
+  return zone.status === 'active' || zone.status === 'busy';
+}

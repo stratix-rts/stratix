@@ -107,10 +107,16 @@ class ZoneCoordinatorEventEmitter {
    */
   emit(payload: ZoneCoordinatorEventPayload): void {
     // Notify specific event listeners with error isolation
-    try {
-      this.emitter.emit(payload.type, payload);
-    } catch (error) {
-      log('error', 'Error in specific listener', { error: String(error) });
+    // Manually iterate to ensure one failing listener doesn't block others
+    const specificListeners = this.emitter.all.get(payload.type) as Array<(payload: ZoneCoordinatorEventPayload) => void> | undefined;
+    if (specificListeners) {
+      for (const handler of specificListeners) {
+        try {
+          handler(payload);
+        } catch (error) {
+          log('error', 'Error in specific listener', { error: String(error) });
+        }
+      }
     }
 
     // Notify wildcard listeners

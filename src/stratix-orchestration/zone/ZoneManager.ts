@@ -141,8 +141,34 @@ export class ZoneManager {
     const db = getDatabase().getDatabase();
     const rows = db.prepare('SELECT * FROM zones ORDER BY created_at DESC').all() as ZoneRow[];
 
+    if (rows.length === 0) return [];
+
+    // Batch load all members and pending tasks to avoid N+1 queries
+    const zoneIds = rows.map(r => r.zone_id);
+    const placeholders = zoneIds.map(() => '?').join(',');
+
+    const allMembers = db.prepare(
+      `SELECT zone_id, agent_id FROM agent_zone_members WHERE zone_id IN (${placeholders})`
+    ).all(...zoneIds) as { zone_id: string; agent_id: string }[];
+
+    const allTasks = db.prepare(
+      `SELECT zone_id, task_id FROM tasks WHERE zone_id IN (${placeholders}) AND status = 'pending'`
+    ).all(...zoneIds) as { zone_id: string; task_id: string }[];
+
+    const membersByZone = new Map<string, string[]>();
+    for (const m of allMembers) {
+      if (!membersByZone.has(m.zone_id)) membersByZone.set(m.zone_id, []);
+      membersByZone.get(m.zone_id)!.push(m.agent_id);
+    }
+
+    const tasksByZone = new Map<string, string[]>();
+    for (const t of allTasks) {
+      if (!tasksByZone.has(t.zone_id)) tasksByZone.set(t.zone_id, []);
+      tasksByZone.get(t.zone_id)!.push(t.task_id);
+    }
+
     return rows.map(row => {
-      const zone = this.rowToZone(row);
+      const zone = this.rowToZoneWithData(row, membersByZone.get(row.zone_id) || [], tasksByZone.get(row.zone_id) || []);
       this.zones.set(zone.zoneId, zone);
       return zone;
     });
@@ -188,6 +214,11 @@ export class ZoneManager {
 
   async deleteZone(zoneId: string): Promise<boolean> {
     const db = getDatabase().getDatabase();
+
+    // Clean up related records to prevent orphan data
+    db.prepare('DELETE FROM agent_zone_members WHERE zone_id = ?').run(zoneId);
+    db.prepare('DELETE FROM tasks WHERE zone_id = ?').run(zoneId);
+
     const result = db.prepare('DELETE FROM zones WHERE zone_id = ?').run(zoneId);
 
     if (result.changes > 0) {
@@ -346,6 +377,13 @@ export class ZoneManager {
     this.zones.clear();
   }
 
+  /**
+   * Health check for the zone manager
+   */
+  isHealthy(): boolean {
+    return this.zones.size < 10000;
+  }
+
   private emitEvent(event: ZoneEvent): void {
     // Call specific listeners
     const listeners = this.eventListeners.get(event.type);
@@ -398,6 +436,21 @@ export class ZoneManager {
     ).all(row.zone_id) as TaskRow[];
     const taskPool = tasks.map(t => t.task_id);
 
+    return this.buildZoneState(row, config, members.map(m => m.agent_id), taskPool);
+  }
+
+  private rowToZoneWithData(row: ZoneRow, members: string[], taskPool: string[]): ZoneState {
+    let config: ZoneConfig;
+    try {
+      config = JSON.parse(row.config || '{}');
+    } catch (err) {
+      log('warn', 'Failed to parse zone config, using default', { error: String(err) });
+      config = DEFAULT_ZONE_CONFIG;
+    }
+    return this.buildZoneState(row, config, members, taskPool);
+  }
+
+  private buildZoneState(row: ZoneRow, config: ZoneConfig, enteredAgents: string[], taskPool: string[]): ZoneState {
     return {
       zoneId: row.zone_id,
       name: row.name,
@@ -407,8 +460,8 @@ export class ZoneManager {
       size: { width: row.width, height: row.height },
       status: row.status as ZoneState['status'],
       config,
-      enteredAgents: members.map(m => m.agent_id),
-      taskPool, // Loaded from tasks table
+      enteredAgents,
+      taskPool,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
