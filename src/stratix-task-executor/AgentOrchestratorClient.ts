@@ -1,30 +1,46 @@
-import axios from 'axios';
+import axios, { AxiosInstance } from 'axios';
 
 import { StratixAgentConfig } from '../stratix-core';
 import type { AgentState } from '../stratix-gateway/agent/agents/types';
 
 export interface AgentOrchestratorClientConfig {
   baseURL?: string;
+  timeout?: number;
 }
 
 export class AgentOrchestratorClient {
   private static instance: AgentOrchestratorClient;
   private baseURL: string;
+  private http: AxiosInstance;
   
   private constructor(config?: AgentOrchestratorClientConfig) {
     this.baseURL = config?.baseURL || '/api/agents/orchestration';
+    this.http = axios.create({
+      baseURL: this.baseURL,
+      timeout: config?.timeout ?? 30000,
+    });
   }
   
-  static getInstance(): AgentOrchestratorClient {
+  static getInstance(config?: AgentOrchestratorClientConfig): AgentOrchestratorClient {
     if (!AgentOrchestratorClient.instance) {
-      AgentOrchestratorClient.instance = new AgentOrchestratorClient();
+      AgentOrchestratorClient.instance = new AgentOrchestratorClient(config);
     }
     return AgentOrchestratorClient.instance;
+  }
+
+  configure(config: AgentOrchestratorClientConfig): void {
+    if (config.baseURL) {
+      this.baseURL = config.baseURL;
+      this.http.defaults.baseURL = config.baseURL;
+    }
+    if (config.timeout !== undefined) {
+      this.http.defaults.timeout = config.timeout;
+    }
   }
   
   async registerAgent(agentId: string, config: StratixAgentConfig): Promise<void> {
     try {
-      await axios.post(`${this.baseURL}/register`, { agentId, config });
+      await this.http.post('/register', { agentId, config });
       console.log(`[AgentOrchestratorClient] Agent ${agentId} registered`);
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -35,7 +51,7 @@ export class AgentOrchestratorClient {
   
   async startAgent(agentId: string, projectPath: string, projectId: string): Promise<void> {
     try {
-      await axios.post(`${this.baseURL}/start`, {
+      await this.http.post('/start', {
         agentId,
         projectPath,
         projectId
@@ -49,7 +65,7 @@ export class AgentOrchestratorClient {
 
   async stopAgent(agentId: string): Promise<void> {
     try {
-      await axios.post(`${this.baseURL}/stop/${agentId}`);
+      await this.http.post(`/stop/${agentId}`);
       console.log(`[AgentOrchestratorClient] Agent ${agentId} stopped`);
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -60,7 +76,7 @@ export class AgentOrchestratorClient {
   
   async pauseAgent(agentId: string): Promise<void> {
     try {
-      await axios.post(`${this.baseURL}/pause/${agentId}`);
+      await this.http.post(`/pause/${agentId}`);
       console.log(`[AgentOrchestratorClient] Agent ${agentId} paused`);
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -70,7 +86,7 @@ export class AgentOrchestratorClient {
 
   async resumeAgent(agentId: string): Promise<void> {
     try {
-      await axios.post(`${this.baseURL}/resume/${agentId}`);
+      await this.http.post(`/resume/${agentId}`);
       console.log(`[AgentOrchestratorClient] Agent ${agentId} resumed`);
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -80,7 +96,7 @@ export class AgentOrchestratorClient {
   
   async getAgentState(agentId: string): Promise<AgentState | null> {
     try {
-      const { data } = await axios.get(`${this.baseURL}/state/${agentId}`);
+      const { data } = await this.http.get(`/state/${agentId}`);
       return data.state;
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -91,7 +107,7 @@ export class AgentOrchestratorClient {
 
   async getActiveAgents(): Promise<AgentState[]> {
     try {
-      const { data } = await axios.get(`${this.baseURL}/active`);
+      const { data } = await this.http.get('/active');
       return data.agents || [];
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -102,7 +118,7 @@ export class AgentOrchestratorClient {
 
   async getProjectAgents(projectId: string): Promise<AgentState[]> {
     try {
-      const { data } = await axios.get(`${this.baseURL}/project/${projectId}`);
+      const { data } = await this.http.get(`/project/${projectId}`);
       return data.agents || [];
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -113,7 +129,7 @@ export class AgentOrchestratorClient {
   
   async stopAll(): Promise<void> {
     try {
-      await axios.post(`${this.baseURL}/stop-all`);
+      await this.http.post('/stop-all');
       console.log('[AgentOrchestratorClient] All agents stopped');
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);

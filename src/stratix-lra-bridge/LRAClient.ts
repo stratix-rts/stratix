@@ -2,19 +2,23 @@ import axios from 'axios';
 
 import { LraTask, LraTaskDetail } from './types';
 
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /**
  * LRA Client - 前端版本
- * 
+ *
  * 通过 HTTP API 调用 Gateway 后端
  * 不再直接使用 Node.js 模块
  */
 export class LRAClient {
   private baseURL: string;
-  
+
   constructor(baseURL: string = '/api/lra') {
     this.baseURL = baseURL;
   }
-  
+
   /**
    * 初始化 LRA 项目
    */
@@ -23,7 +27,7 @@ export class LRAClient {
       await axios.post(`${this.baseURL}/init`, { projectPath, name });
       console.log(`[LRAClient] LRA initialized: ${projectPath}`);
     } catch (error) {
-      throw new Error(`Failed to initialize LRA: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to initialize LRA: ${formatError(error)}`);
     }
   }
 
@@ -46,7 +50,7 @@ export class LRAClient {
       console.log(`[LRAClient] Task created: ${taskId}`);
       return taskId;
     } catch (error) {
-      throw new Error(`Failed to create task: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to create task: ${formatError(error)}`);
     }
   }
 
@@ -62,9 +66,9 @@ export class LRAClient {
       const tasks = data.tasks || [];
       return tasks;
     } catch (error) {
-      console.error('[LRAClient] Failed to list tasks:', error instanceof Error ? error.message : String(error));
+      console.error('[LRAClient] Failed to list tasks:', formatError(error));
       // 抛出错误而不是返回空数组，让调用方区分"无任务"和"查询失败"
-      throw new Error(`Failed to list tasks: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to list tasks: ${formatError(error)}`);
     }
   }
 
@@ -82,10 +86,10 @@ export class LRAClient {
       console.log(`[LRAClient] Task claimed: ${taskId} (session: ${sessionId})`);
       return sessionId;
     } catch (error) {
-      throw new Error(`Failed to claim task ${taskId}: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to claim task ${taskId}: ${formatError(error)}`);
     }
   }
-  
+
   /**
    * 发送心跳
    */
@@ -95,7 +99,7 @@ export class LRAClient {
         `${this.baseURL}/tasks/${taskId}/heartbeat`,
         { projectPath }
       );
-      
+
       const alive = data.alive;
       console.log(`[LRAClient] Heartbeat for ${taskId}: ${alive}`);
       return alive;
@@ -104,7 +108,7 @@ export class LRAClient {
       return false;
     }
   }
-  
+
   /**
    * 发布任务（释放锁）
    */
@@ -114,7 +118,7 @@ export class LRAClient {
         `${this.baseURL}/tasks/${taskId}/publish`,
         { projectPath }
       );
-      
+
       const published = data.published;
       console.log(`[LRAClient] Task published: ${taskId} (success: ${published})`);
       return published;
@@ -123,13 +127,13 @@ export class LRAClient {
       return false;
     }
   }
-  
+
   /**
    * 设置任务状态
    */
   async setTaskStatus(
-    projectPath: string, 
-    taskId: string, 
+    projectPath: string,
+    taskId: string,
     status: string
   ): Promise<void> {
     try {
@@ -139,7 +143,7 @@ export class LRAClient {
       );
       console.log(`[LRAClient] Task status updated: ${taskId} → ${status}`);
     } catch (error) {
-      throw new Error(`Failed to set task status: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to set task status: ${formatError(error)}`);
     }
   }
 
@@ -154,7 +158,7 @@ export class LRAClient {
 
       return data.task;
     } catch (error) {
-      throw new Error(`Failed to show task ${taskId}: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to show task ${taskId}: ${formatError(error)}`);
     }
   }
 }

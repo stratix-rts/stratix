@@ -237,6 +237,12 @@ export class NocoDBService {
           }
         };
 
+        // 进程已经退出
+        if (proc.exitCode !== null || proc.signalCode !== null) {
+          doResolve();
+          return;
+        }
+
         // 设置超时强制杀死
         const timeout = setTimeout(() => {
           console.log('[NocoDBService] Force killing process...');

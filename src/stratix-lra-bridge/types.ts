@@ -27,7 +27,7 @@ export interface LraTaskList {
 
 export interface LraTaskDetail {
   id: string;
-  status: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'paused';
   priority: string;
   template: string;
   desc: string;

@@ -16,8 +16,8 @@ export enum ProjectStatus {
 }
 
 export interface TaskExecution {
-  taskId: string;
-  projectId: string;
+  readonly taskId: string;
+  readonly projectId: string;
   status: TaskStatus;
   progress: number;
   startTime?: Date;
@@ -27,7 +27,7 @@ export interface TaskExecution {
 }
 
 export interface ProjectExecution {
-  projectId: string;
+  readonly projectId: string;
   status: ProjectStatus;
   totalTasks: number;
   completedTasks: number;
@@ -38,7 +38,7 @@ export interface ProjectExecution {
 }
 
 export interface TaskResult {
-  taskId: string;
+  readonly taskId: string;
   success: boolean;
   outputPath?: string;
   files?: string[];
@@ -47,11 +47,11 @@ export interface TaskResult {
 }
 
 export interface ProgressFile {
-  taskId: string;
+  readonly taskId: string;
   progress: number;
   status: TaskStatus;
   message?: string;
-  timestamp: string;
+  readonly timestamp: string;
 }
 
 export const PROGRESS_FILE_NAME = '.stratix-progress.json';

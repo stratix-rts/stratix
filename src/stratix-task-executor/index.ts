@@ -1,4 +1,5 @@
-export * from './types';
+export type { TaskExecution, ProjectExecution, TaskResult, ProgressFile, TaskStatus, ProjectStatus } from './types';
+export { PROGRESS_FILE_NAME, RESULT_FILE_NAME } from './types';
 export { LRAClient } from '../stratix-lra-bridge/LRAClient';
 export { LRAWatcher } from '../stratix-lra-bridge/LRAWatcher';
 export { AgentOrchestratorClient } from './AgentOrchestratorClient';

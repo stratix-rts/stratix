@@ -22,7 +22,7 @@ export class LRAWatcher {
   private projectPath: string;
   private interval: number;
   private onTaskListChanged: (tasks: LraTask[]) => void;
-  private intervalId: NodeJS.Timeout | null = null;
+  private intervalId: ReturnType<typeof setInterval> | null = null;
   private lastTaskCount: number = -1; // -1 表示第一次加载
   private isPolling: boolean = false;
   

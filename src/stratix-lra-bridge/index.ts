@@ -1,5 +1,6 @@
 export { LRAClient } from './LRAClient';
 export { LRAWatcher } from './LRAWatcher';
+export type { LRAWatcherOptions } from './LRAWatcher';
 
 export type {
   LraTask,

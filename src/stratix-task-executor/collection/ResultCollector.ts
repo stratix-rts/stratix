@@ -76,14 +76,14 @@ export class ResultCollector {
     if (successfulTasks.length > 0) {
       markdown += `## 成功的任务\n\n`;
       for (const result of successfulTasks) {
-        markdown += `### ${result.taskId}\n\n`;
+        markdown += `### ${this.escapeMarkdown(result.taskId)}\n\n`;
         if (result.summary) {
-          markdown += `${result.summary}\n\n`;
+          markdown += `${this.escapeMarkdown(result.summary)}\n\n`;
         }
         if (result.files && result.files.length > 0) {
           markdown += `**生成文件:**\n`;
           for (const file of result.files) {
-            markdown += `- ${file}\n`;
+            markdown += `- ${this.escapeMarkdown(file)}\n`;
           }
           markdown += `\n`;
         }
@@ -93,8 +93,8 @@ export class ResultCollector {
     if (failedTasks.length > 0) {
       markdown += `## 失败的任务\n\n`;
       for (const result of failedTasks) {
-        markdown += `### ${result.taskId}\n\n`;
-        markdown += `**错误:** ${result.error}\n\n`;
+        markdown += `### ${this.escapeMarkdown(result.taskId)}\n\n`;
+        markdown += `**错误:** ${this.escapeMarkdown(result.error ?? 'Unknown error')}\n\n`;
       }
     }
     
@@ -127,9 +127,24 @@ export class ResultCollector {
     const match = dirName.match(/^task-(.+)$/);
     return match ? match[1] : null;
   }
+
+  private escapeMarkdown(text: string): string {
+    return text
+      .replace(/\\/g, '\\\\')
+      .replace(/\*/g, '\\*')
+      .replace(/_/g, '\\_')
+      .replace(/\[/g, '\\[')
+      .replace(/\]/g, '\\]')
+      .replace(/</g, '\\<')
+      .replace(/>/g, '\\>');
+  }
   
-  private async getTaskFiles(taskDir: string): Promise<string[]> {
+  private async getTaskFiles(taskDir: string, maxDepth = 5, currentDepth = 0): Promise<string[]> {
     const files: string[] = [];
+
+    if (currentDepth >= maxDepth) {
+      return files;
+    }
 
     try {
       const entries = await fs.readdir(taskDir, { withFileTypes: true });
@@ -140,7 +155,7 @@ export class ResultCollector {
           files.push(entry.name);
         } else if (entry.isDirectory()) {
           const subDir = path.join(taskDir, entry.name);
-          const subFiles = await this.getTaskFiles(subDir);
+          const subFiles = await this.getTaskFiles(subDir, maxDepth, currentDepth + 1);
           files.push(...subFiles.map(f => path.join(entry.name, f)));
         }
       }
