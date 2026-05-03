@@ -136,6 +136,7 @@ export class ZoneCoordinator {
   private completedTaskIds: Set<string> = new Set();
   private lastAssignedIndex: number = -1;
   private permissionOrchestrator: PermissionOrchestrator | null = null;
+  private zonePath: string = '';
 
   // Cycle execution state
   private cycleTimer: NodeJS.Timeout | null = null;
@@ -181,6 +182,7 @@ export class ZoneCoordinator {
     this.projectId = zone.projectId;
     this.title = zone.title;
     this.prompt = zone.prompt;
+    this.zonePath = zone.path || '';
 
     // Load or create coordinator config
     const existingConfig = zoneCoordinatorConfigRepository.getConfig(zoneId);
@@ -200,6 +202,7 @@ export class ZoneCoordinator {
         apiKey: config.apiKey,
         baseUrl: config.baseUrl,
         cycleConfig: config.cycleConfig,
+        llmTimeout: config.llmTimeout,
       };
       this.cycleConfig = config.cycleConfig || null;
       zoneCoordinatorConfigRepository.setConfig(zoneId, this.config);
@@ -386,7 +389,7 @@ export class ZoneCoordinator {
     });
 
     try {
-      // 1. 调用 decomposeRequirement 获取任务列表（stub）
+      // 1. Decompose requirement into tasks
       const tasks = await this.decomposeRequirement(requirement);
 
       // Emit requirement_decomposed
@@ -408,59 +411,14 @@ export class ZoneCoordinator {
         };
       }
 
-      // Store pending tasks and persist to database
-      for (const task of tasks) {
-        this.saveTaskToDB(task);
-        this.pendingTasks.push(task);
-      }
+      // 2. Persist and queue tasks
+      this.persistAndQueueTasks(tasks);
 
-      const delegated: string[] = [];
-      const pending: string[] = [];
-      const requiresUserConfirm: string[] = [];
+      // 3. Match and delegate tasks
+      const { delegated, pending, requiresUserConfirm } = await this.delegateTasks(tasks);
 
-      // 2. 对每个任务调用 matchTaskToAgent 匹配 Agent
-      for (const task of tasks) {
-        const agentId = await this.matchTaskToAgent(task);
-
-        if (!agentId) {
-          pending.push(task.id);
-          continue;
-        }
-
-        // Emit task_claimed event
-        emitter.emit({
-          type: 'task_claimed',
-          zoneId: this.zoneId,
-          taskId: task.id,
-          agentId,
-          timestamp: Date.now(),
-        });
-
-        // Check if user confirmation is required
-        if (this.config.requireUserConfirm) {
-          requiresUserConfirm.push(task.id);
-          continue;
-        }
-
-        // 3. 调用 delegateTask 分派任务
-        const result = await this.delegateTask(task.id, agentId);
-        if (result.success) {
-          delegated.push(task.id);
-        } else {
-          pending.push(task.id);
-        }
-      }
-
-      // 4. 记录 audit_log（task_created）
-      for (const task of tasks) {
-        auditLogRepository.log(
-          this.zoneId,
-          'task_created',
-          undefined,
-          task.id,
-          { taskType: task.type, priority: task.priority, title: task.title }
-        );
-      }
+      // 4. Log task creation
+      this.logTaskCreation(tasks);
 
       return {
         success: true,
@@ -481,6 +439,66 @@ export class ZoneCoordinator {
     }
   }
 
+  private persistAndQueueTasks(tasks: TaskItem[]): void {
+    for (const task of tasks) {
+      this.saveTaskToDB(task);
+      this.pendingTasks.push(task);
+    }
+  }
+
+  private async delegateTasks(tasks: TaskItem[]): Promise<{ delegated: string[]; pending: string[]; requiresUserConfirm: string[] }> {
+    const delegated: string[] = [];
+    const pending: string[] = [];
+    const requiresUserConfirm: string[] = [];
+    const emitter = ZoneCoordinatorEventEmitter.getInstance();
+
+    for (const task of tasks) {
+      const agentId = await this.matchTaskToAgent(task);
+
+      if (!agentId) {
+        pending.push(task.id);
+        continue;
+      }
+
+      // Emit task_claimed event
+      emitter.emit({
+        type: 'task_claimed',
+        zoneId: this.zoneId,
+        taskId: task.id,
+        agentId,
+        timestamp: Date.now(),
+      });
+
+      // Check if user confirmation is required
+      if (this.config.requireUserConfirm) {
+        requiresUserConfirm.push(task.id);
+        continue;
+      }
+
+      // Delegate task to matched agent
+      const result = await this.delegateTask(task.id, agentId);
+      if (result.success) {
+        delegated.push(task.id);
+      } else {
+        pending.push(task.id);
+      }
+    }
+
+    return { delegated, pending, requiresUserConfirm };
+  }
+
+  private logTaskCreation(tasks: TaskItem[]): void {
+    for (const task of tasks) {
+      auditLogRepository.log(
+        this.zoneId,
+        'task_created',
+        undefined,
+        task.id,
+        { taskType: task.type, priority: task.priority, title: task.title }
+      );
+    }
+  }
+
   /**
    * 分解需求为任务（使用 LLM）
    */
@@ -490,18 +508,52 @@ export class ZoneCoordinator {
       const llmResponse = await this.callLLM(systemPrompt, requirement);
       return this.parseTaskItems(llmResponse);
     } catch (error) {
-      console.warn(`[ZoneCoordinator] LLM decomposition failed, using fallback: ${error}`);
-      // Fallback: return a single general task
-      return [{
+      console.warn(`[ZoneCoordinator] LLM decomposition failed, using structured fallback: ${error}`);
+      return this.createFallbackTasks(requirement);
+    }
+  }
+
+  /**
+   * Structured fallback: split requirement by sentence delimiters
+   * to create multiple tasks instead of a single monolithic one.
+   */
+  private createFallbackTasks(requirement: string): TaskItem[] {
+    const sentences = requirement
+      .split(/[。.!！?？;；\n]+/)
+      .map(s => s.trim())
+      .filter(s => s.length > 3);
+
+    if (sentences.length > 1) {
+      return sentences.map((sentence, index) => ({
         id: this.generateId(),
-        title: requirement.slice(0, 100),
-        description: requirement,
-        type: 'general',
-        priority: 3,
+        title: sentence.slice(0, 100),
+        description: sentence,
+        type: this.inferTaskType(sentence),
+        priority: Math.min(5, Math.max(1, index + 1)) as TaskPriority,
         status: 'pending',
         zoneId: this.zoneId,
-      }];
+      }));
     }
+
+    // Single task fallback
+    return [{
+      id: this.generateId(),
+      title: requirement.slice(0, 100),
+      description: requirement,
+      type: 'general',
+      priority: 3,
+      status: 'pending',
+      zoneId: this.zoneId,
+    }];
+  }
+
+  private inferTaskType(text: string): TaskType {
+    const lower = text.toLowerCase();
+    if (lower.includes('code') || lower.includes('dev') || lower.includes('编程') || lower.includes('代码')) return 'coding';
+    if (lower.includes('write') || lower.includes('doc') || lower.includes('写') || lower.includes('文档')) return 'writing';
+    if (lower.includes('analy') || lower.includes('分析')) return 'analysis';
+    if (lower.includes('research') || lower.includes('search') || lower.includes('调研') || lower.includes('搜索')) return 'research';
+    return 'general';
   }
 
   /**
@@ -513,7 +565,9 @@ export class ZoneCoordinator {
     const provider = this.config.llmProvider || 'openai';
 
     // Use shorter timeout for ollama/local providers (likely to fail fast)
-    const timeout = provider === 'ollama' ? 3000 : 30000;
+    // Allow override via config.llmTimeout
+    const defaultTimeout = provider === 'ollama' ? 3000 : 30000;
+    const timeout = this.config.llmTimeout ?? defaultTimeout;
 
     let body: Record<string, unknown>;
     const headers: Record<string, string> = {
@@ -990,7 +1044,6 @@ ${assignStrategyDescription}
 
       // Emit task_delegated event with full task info for agent notification
       // Include sandboxRoot so Agent Worker knows where to write files
-      const zone = zoneRepository.getZone(this.zoneId);
       ZoneCoordinatorEventEmitter.getInstance().emit({
         type: 'task_delegated',
         zoneId: this.zoneId,
@@ -1003,7 +1056,7 @@ ${assignStrategyDescription}
           type: task.type,
           priority: task.priority,
         },
-        sandboxRoot: zone?.path || null,
+        sandboxRoot: this.zonePath || null,
         timestamp: Date.now(),
       });
 
@@ -1177,7 +1230,6 @@ ${assignStrategyDescription}
 
     // e. Register output files to zone_files (if Agent reported files)
     if (report.success && report.files && report.files.length > 0) {
-      const zone = zoneRepository.getZone(this.zoneId);
       for (const filePath of report.files) {
         try {
           const fileName = filePath.split('/').pop() || filePath;
@@ -1289,7 +1341,8 @@ ${assignStrategyDescription}
 
     const recentActivity = auditLogRepository.getRecentEvents(this.zoneId, 10);
 
-    const completedCount = this.completedTaskIds.size;
+    // Query DB for accurate completed count instead of relying on in-memory Set
+    const completedCount = this.getCompletedTaskCountFromDB();
     let activeCount = 0;
     const pendingCount = this.pendingTasks.length;
 
@@ -1311,6 +1364,19 @@ ${assignStrategyDescription}
         createdAt: e.createdAt,
       })),
     };
+  }
+
+  private getCompletedTaskCountFromDB(): number {
+    try {
+      const row = this.db.prepare(`
+        SELECT COUNT(*) as count FROM tasks
+        WHERE zone_id = ? AND status IN ('completed', 'failed')
+      `).get(this.zoneId) as { count: number } | undefined;
+      return row?.count || 0;
+    } catch (error) {
+      console.warn(`[ZoneCoordinator] Failed to query completed task count: ${error}`);
+      return this.completedTaskIds.size;
+    }
   }
 
   // ==================== 能力管理 ====================
@@ -1430,39 +1496,44 @@ ${assignStrategyDescription}
   }
 
   private loadTasksFromDB(): void {
-    const rows = this.db.prepare(`
-      SELECT * FROM tasks
-      WHERE zone_id = ? AND status IN ('pending', 'assigned', 'in_progress')
-    `).all(this.zoneId) as any[];
+    try {
+      const rows = this.db.prepare(`
+        SELECT * FROM tasks
+        WHERE zone_id = ? AND status IN ('pending', 'assigned', 'in_progress')
+      `).all(this.zoneId) as any[];
 
-    // Also load completed/failed task IDs for status summary
-    const completedRows = this.db.prepare(`
-      SELECT task_id FROM tasks
-      WHERE zone_id = ? AND status IN ('completed', 'failed')
-    `).all(this.zoneId) as any[];
-    for (const row of completedRows) {
-      this.completedTaskIds.add(row.task_id);
-    }
-
-    for (const row of rows) {
-      // Map DB status to ZoneCoordinator status: assigned -> delegated
-      const status: TaskStatus = row.status === 'assigned' ? 'delegated' : row.status as TaskStatus;
-      const task: TaskItem = {
-        id: row.task_id,
-        title: row.name,
-        description: row.description || '',
-        type: row.type as TaskType,
-        priority: row.priority as TaskPriority,
-        assigneeId: row.assigned_agent_id || undefined,
-        status,
-        zoneId: row.zone_id,
-      };
-
-      if (row.status === 'pending') {
-        this.pendingTasks.push(task);
-      } else {
-        this.activeTasks.set(task.id, task);
+      // Also load completed/failed task IDs for status summary fallback
+      const completedRows = this.db.prepare(`
+        SELECT task_id FROM tasks
+        WHERE zone_id = ? AND status IN ('completed', 'failed')
+      `).all(this.zoneId) as any[];
+      this.completedTaskIds.clear();
+      for (const row of completedRows) {
+        this.completedTaskIds.add(row.task_id);
       }
+
+      for (const row of rows) {
+        // Map DB status to ZoneCoordinator status: assigned -> delegated
+        const status: TaskStatus = row.status === 'assigned' ? 'delegated' : row.status as TaskStatus;
+        const task: TaskItem = {
+          id: row.task_id,
+          title: row.name,
+          description: row.description || '',
+          type: row.type as TaskType,
+          priority: row.priority as TaskPriority,
+          assigneeId: row.assigned_agent_id || undefined,
+          status,
+          zoneId: row.zone_id,
+        };
+
+        if (row.status === 'pending') {
+          this.pendingTasks.push(task);
+        } else {
+          this.activeTasks.set(task.id, task);
+        }
+      }
+    } catch (error) {
+      console.error(`[ZoneCoordinator] Failed to load tasks from DB: ${error}`);
     }
   }
 

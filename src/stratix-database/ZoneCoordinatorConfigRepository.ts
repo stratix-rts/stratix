@@ -25,6 +25,7 @@ export interface ZoneCoordinatorConfig {
   apiKey?: string;
   baseUrl?: string;
   cycleConfig?: CycleConfig;
+  llmTimeout?: number;
 }
 
 export type ZoneCoordinatorConfigRecord = ZoneCoordinatorConfig & {
