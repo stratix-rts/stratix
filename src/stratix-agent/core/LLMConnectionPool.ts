@@ -2,9 +2,17 @@ import { LLMConfig } from '../types';
 
 import { LLMConnector } from './LLMConnector';
 
+/** Maximum connectors to retain per key in the pool */
+const DEFAULT_MAX_POOL_SIZE = 5;
+
 export class LLMConnectionPool {
   private pool: Map<string, LLMConnector[]> = new Map();
   private configPool: Map<string, LLMConfig> = new Map();
+  private maxPoolSize: number;
+
+  constructor(maxPoolSize: number = DEFAULT_MAX_POOL_SIZE) {
+    this.maxPoolSize = maxPoolSize;
+  }
 
   registerConfig(key: string, config: LLMConfig): void {
     this.configPool.set(key, config);
@@ -33,7 +41,10 @@ export class LLMConnectionPool {
     if (!this.pool.has(key)) {
       this.pool.set(key, []);
     }
-    this.pool.get(key)!.push(connector);
+    const connectors = this.pool.get(key)!;
+    if (connectors.length < this.maxPoolSize) {
+      connectors.push(connector);
+    }
   }
 
   clear(key?: string): void {
