@@ -265,6 +265,14 @@ export class BackgroundAgentService {
     return Array.from(this.processes.values()).filter(p => p.status === 'running').length;
   }
 
+  getStatus(): { running: number; total: number; healthy: boolean } {
+    const now = Date.now();
+    const agents = Array.from(this.processes.values());
+    const running = agents.filter(p => p.status === 'running').length;
+    const healthy = agents.every(p => p.status !== 'running' || (now - p.lastHeartbeat) < HEARTBEAT_INTERVAL_MS * 2);
+    return { running, total: agents.length, healthy };
+  }
+
   // ==================== Event System ====================
 
   onStatusChange(callback: AgentStatusCallback): void {

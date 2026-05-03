@@ -366,6 +366,14 @@ export class TaskQueueService {
     return pending[0] || null;
   }
 
+  getStatus(): { pending: number; total: number } {
+    const allTasks = Array.from(this.tasks.values());
+    return {
+      pending: allTasks.filter(t => t.status === 'pending').length,
+      total: allTasks.length,
+    };
+  }
+
   // ==================== Event System ====================
 
   on(event: string, callback: TaskEventCallback): void {
@@ -393,6 +401,12 @@ export class TaskQueueService {
   clearAllListeners(): void {
     this.globalListeners = [];
     this.eventListeners.clear();
+  }
+
+  destroy(): void {
+    this.clearAllListeners();
+    this.tasks.clear();
+    this.zoneTaskPools.clear();
   }
 
   private emitEvent(event: TaskEvent): void {

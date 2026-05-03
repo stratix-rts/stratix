@@ -313,6 +313,10 @@ export class AgentMessageRouter {
     this.eventListeners.clear();
   }
 
+  destroy(): void {
+    this.clearAllListeners();
+  }
+
   private emitEvent(event: MessageRouterEvent): void {
     const listeners = this.eventListeners.get(event.type);
     if (listeners) {

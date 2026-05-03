@@ -341,6 +341,11 @@ export class ZoneManager {
     this.eventListeners.clear();
   }
 
+  destroy(): void {
+    this.clearAllListeners();
+    this.zones.clear();
+  }
+
   private emitEvent(event: ZoneEvent): void {
     // Call specific listeners
     const listeners = this.eventListeners.get(event.type);
@@ -360,6 +365,14 @@ export class ZoneManager {
       ...zone,
       taskPool: zone.taskPool, // Include task pool for frontend sync
     }));
+  }
+
+  getStatus(): { zoneCount: number; activeZones: number } {
+    const zones = Array.from(this.zones.values());
+    return {
+      zoneCount: zones.length,
+      activeZones: zones.filter(z => z.status === 'active').length,
+    };
   }
 
   // ==================== Helpers ====================
