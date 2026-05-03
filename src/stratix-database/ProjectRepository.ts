@@ -256,6 +256,7 @@ export class ProjectRepository {
     try {
       sender = row.sender ? JSON.parse(row.sender) as MessageSender : { id: '', type: 'user', name: '' };
     } catch {
+      /* expected: corrupted sender JSON */
       sender = { id: '', type: 'user', name: '' };
     }
 
@@ -263,6 +264,7 @@ export class ProjectRepository {
     try {
       mentions = JSON.parse(row.mentions || '[]') as string[];
     } catch {
+      /* expected: corrupted mentions JSON */
       mentions = [];
     }
 
@@ -270,6 +272,7 @@ export class ProjectRepository {
     try {
       metadata = JSON.parse(row.metadata || '{}') as { source: 'openclaw' | 'local' | 'user'; createdAt: string };
     } catch {
+      /* expected: corrupted metadata JSON */
       metadata = { source: 'user', createdAt: new Date().toISOString() };
     }
 

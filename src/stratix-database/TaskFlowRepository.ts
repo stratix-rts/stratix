@@ -209,6 +209,7 @@ export class TaskFlowRepository {
       try {
         metadata = JSON.parse(row.metadata) as TaskFlowRecord['metadata'];
       } catch {
+        /* expected: corrupted metadata JSON */
         metadata = undefined;
       }
     }

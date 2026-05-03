@@ -71,6 +71,7 @@ export class AgentCheckpointManager {
     try {
       return JSON.parse(row.checkpoint_data);
     } catch {
+      /* expected: corrupted checkpoint data */
       return null;
     }
   }

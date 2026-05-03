@@ -727,6 +727,7 @@ export class StratixDatabase {
       this.db.prepare('SELECT 1').get();
       return true;
     } catch {
+      /* expected: database not accessible */
       return false;
     }
   }

@@ -208,6 +208,7 @@ ${messageText}
       try {
         content = JSON.parse(row.content);
       } catch {
+        /* expected: corrupted archive content */
         content = {
           summary: row.content,
           keyDecisions: [],

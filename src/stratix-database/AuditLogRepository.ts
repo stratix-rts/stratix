@@ -285,6 +285,7 @@ export class AuditLogRepository {
       try {
         metadata = JSON.parse(row.metadata) as Record<string, unknown>;
       } catch {
+        /* expected: corrupted metadata JSON */
         metadata = undefined;
       }
     }
