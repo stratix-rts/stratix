@@ -1,5 +1,6 @@
 import { access } from 'fs/promises';
 import { writeFile, mkdir } from 'fs/promises';
+import { join as pathJoin } from 'path';
 
 import { AgentConfig, SoulConfig, MemoryLayers, Session } from '../types';
 
@@ -60,7 +61,7 @@ export class AgentExporter {
       }
 
       const fileName = `${agentId}_${Date.now()}.json`;
-      const filePath = `${this.exportPath}/${fileName}`;
+      const filePath = pathJoin(this.exportPath, fileName);
 
       const json = minify ? JSON.stringify(data) : JSON.stringify(data, null, 2);
       await writeFile(filePath, json, 'utf-8');
@@ -68,7 +69,7 @@ export class AgentExporter {
       return {
         success: true,
         filePath,
-        size: json.length,
+        size: Buffer.byteLength(json, 'utf-8'),
       };
     } catch (error) {
       return {

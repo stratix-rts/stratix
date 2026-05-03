@@ -18,10 +18,10 @@ export class SharedMemoryCache {
     private ttl: number = DEFAULT_TTL_MS
   ) {}
 
-  getFromCache(key: string): unknown {
+  getFromCache(key: string): unknown | null {
     const entry = this.cache.get(key);
     if (!entry) return null;
-    
+
     if (Date.now() - entry.timestamp > this.ttl) {
       this.cache.delete(key);
       return null;
@@ -45,19 +45,15 @@ export class SharedMemoryCache {
 
   shareMemory(agentId: string, memoryKey: string): void {
     const key = `shared:${memoryKey}`;
-    const value = this.cache.get(key);
-    if (value) {
-      this.agentAccessCount.set(agentId, this.agentAccessCount.get(agentId) || new Map());
-      this.agentAccessCount.get(agentId)!.set(key, 0);
+    const entry = this.cache.get(key);
+    if (entry) {
+      let agentMap = this.agentAccessCount.get(agentId);
+      if (!agentMap) {
+        agentMap = new Map();
+        this.agentAccessCount.set(agentId, agentMap);
+      }
+      agentMap.set(key, 0);
     }
-  }
-
-  private trackAccess(agentId: string, key: string): void {
-    if (!this.agentAccessCount.has(agentId)) {
-      this.agentAccessCount.set(agentId, new Map());
-    }
-    const counts = this.agentAccessCount.get(agentId)!;
-    counts.set(key, (counts.get(key) || 0) + 1);
   }
 
   private evictLRU(): void {

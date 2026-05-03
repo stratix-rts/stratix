@@ -147,10 +147,16 @@ export class EvolutionManager {
     const evolutionPrompt = this.buildEvolutionPrompt(soul);
 
     try {
-      // 调用 LLM 生成进化建议
-      const response = await this.llm.generate([
-        { role: 'system', content: EVOLUTION_PROMPT },
-        { role: 'user', content: evolutionPrompt }
+      // 调用 LLM 生成进化建议（带超时）
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Evolution LLM call timed out after 30s')), 30000);
+      });
+      const response = await Promise.race([
+        this.llm.generate([
+          { role: 'system', content: EVOLUTION_PROMPT },
+          { role: 'user', content: evolutionPrompt }
+        ]),
+        timeoutPromise
       ]);
 
       // 解析进化建议
@@ -191,7 +197,7 @@ export class EvolutionManager {
 
     } catch (error) {
       this.consecutiveFailures++;
-      result.error = `Evolution error: ${error}`;
+      result.error = `Evolution error: ${error instanceof Error ? error.message : String(error)}`;
       return result;
     }
   }
@@ -235,8 +241,8 @@ ${reflections}
     soul: EnhancedSoulConfig
   ): { goals?: string[]; personality?: string; constraints?: string[] } | null {
     try {
-      // 尝试从响应中提取 JSON
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      // 尝试从响应中提取 JSON（非贪婪匹配最外层大括号）
+      const jsonMatch = content.match(/\{[\s\S]*?\}/);
       if (!jsonMatch) {
         return null;
       }

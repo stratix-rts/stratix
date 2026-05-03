@@ -33,7 +33,12 @@ export class AutoSaver {
       clearTimeout(this.saveTimer);
       this.saveTimer = null;
     }
-    await this.onSave();
+    try {
+      await this.onSave();
+    } catch (error) {
+      log('error', 'Immediate save failed', { error: String(error) });
+      throw error;
+    }
   }
 
   dispose(): void {

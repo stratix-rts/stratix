@@ -11,12 +11,19 @@ export class CredentialManager {
       return undefined;
     }
 
+    // Check cache first
+    const cached = this.cache.get(config.apiKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+
     if (config.apiKey.startsWith('${') && config.apiKey.endsWith('}')) {
       const envVar = config.apiKey.slice(2, -1);
       const value = process.env[envVar];
       if (!value) {
         throw new Error(`Environment variable ${envVar} is not set`);
       }
+      this.cache.set(config.apiKey, value);
       return value;
     }
 
