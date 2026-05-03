@@ -147,23 +147,24 @@ export class WorkflowExecutor {
     const finalResponse = results.join('\n');
 
     // 保存到会话（通过 SessionRuntime）
-    session.messages.push({ id: `user_${Date.now()}`, role: 'user', content: initialMessage, timestamp: Date.now() });
-    session.messages.push({ id: `asst_${Date.now()}`, role: 'assistant', content: finalResponse, timestamp: Date.now() });
+    const now = Date.now();
+    session.messages.push({ id: `user_${now}`, role: 'user', content: initialMessage, timestamp: now });
+    session.messages.push({ id: `asst_${now}`, role: 'assistant', content: finalResponse, timestamp: now });
 
     // 记录到 transcript
     await runtime.getTranscriptStore().append({
       sessionId: session.sessionId,
-      turnId: `user_${Date.now()}`,
+      turnId: `user_${now}`,
       role: 'user',
       content: initialMessage,
-      timestamp: Date.now(),
+      timestamp: now,
     });
     await runtime.getTranscriptStore().append({
       sessionId: session.sessionId,
-      turnId: `asst_${Date.now()}`,
+      turnId: `asst_${now}`,
       role: 'assistant',
       content: finalResponse,
-      timestamp: Date.now(),
+      timestamp: now,
     });
 
     return {
@@ -188,7 +189,7 @@ export class WorkflowExecutor {
 
     if (step.skills && step.skills.length > 0) {
       const relevantSkills = this.skills.getEnabledSkills()
-        .filter(s => step.skills!.includes(s.skillId));
+        .filter(s => step.skills?.includes(s.skillId));
 
       if (relevantSkills.length > 0) {
         prompt += `使用技能:\n`;

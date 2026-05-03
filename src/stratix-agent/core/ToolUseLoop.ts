@@ -37,7 +37,7 @@ function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<str
 export class ToolUseLoop {
   private skillRegistry: SkillRegistry;
   private llmConnector: LLMConnector;
-  private config: ToolUseLoopConfig;
+  private config: Required<Pick<ToolUseLoopConfig, 'maxIterations' | 'maxTotalTime' | 'continueOnError' | 'maxToolTimeout' | 'maxConsecutiveErrors'>> & Pick<ToolUseLoopConfig, 'maxTotalTokens'>;
   private abortController: AbortController;
   private consecutiveErrors: number;
   private toolCallCount: Map<string, number>;
@@ -106,7 +106,7 @@ export class ToolUseLoop {
     // 记录本次循环中已调用的工具（用于去重）
     const calledTools = new Set<string>();
 
-    for (let iteration = 0; iteration < this.config.maxIterations!; iteration++) {
+    for (let iteration = 0; iteration < this.config.maxIterations; iteration++) {
       // 检查中断信号
       if (this.abortController.signal.aborted) {
         return {
@@ -120,7 +120,7 @@ export class ToolUseLoop {
       }
 
       // 检查超时
-      if (Date.now() - startTime > this.config.maxTotalTime!) {
+      if (Date.now() - startTime > this.config.maxTotalTime) {
         return {
           finalContent: this.buildTimeoutMessage(iteration),
           toolCalls,
@@ -323,14 +323,15 @@ export class ToolUseLoop {
       toolCalls.map(async (tc) => {
         const skillId = toolToSkill.get(tc.name);
         if (!skillId) {
-          throw { type: 'unknown_tool', tc };
+          throw new Error(`Unknown tool: ${tc.name}`);
         }
 
         const callStart = Date.now();
 
-        // 使用 Promise.race 实现单工具超时
+        // 使用 Promise.race 实现单工具超时（清理 timer 防止泄漏）
+        let timeoutTimer: NodeJS.Timeout | undefined;
         const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => {
+          timeoutTimer = setTimeout(() => {
             reject(new Error(`Tool "${tc.name}" execution timed out after ${this.config.maxToolTimeout}ms`));
           }, this.config.maxToolTimeout);
         });
@@ -367,7 +368,7 @@ export class ToolUseLoop {
         })();
 
         // race 执行
-        const skillResult = await Promise.race([executePromise, timeoutPromise]);
+        const skillResult = await Promise.race([executePromise.finally(() => clearTimeout(timeoutTimer)), timeoutPromise]);
 
         return {
           id: tc.id,
@@ -385,15 +386,6 @@ export class ToolUseLoop {
 
       if (result.status === 'rejected') {
         const reason = result.reason;
-        if (reason?.type === 'unknown_tool') {
-          return {
-            id: tc.id,
-            name: tc.name,
-            input: tc.input,
-            error: `Unknown tool: ${tc.name}`,
-            executionTime: 0
-          };
-        }
         // 判断是否是超时错误
         const errorMsg = reason instanceof Error ? reason.message : 'Unknown error';
         const isTimeout = errorMsg.includes('timed out');
@@ -402,8 +394,8 @@ export class ToolUseLoop {
           name: tc.name,
           input: tc.input,
           error: isTimeout ? `[TIMEOUT] ${errorMsg}` : errorMsg,
-          executionTime: isTimeout ? this.config.maxToolTimeout! : 0
-        };
+          executionTime: isTimeout ? this.config.maxToolTimeout : 0
+        } as ToolCall;
       }
 
       return result.value;
