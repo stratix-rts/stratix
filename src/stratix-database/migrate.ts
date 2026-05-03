@@ -15,6 +15,75 @@ function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<str
   console[level](`[Migration] ${message}`, ctx || '');
 }
 
+// Strict row interfaces for legacy JSON data
+interface LegacyAgentJson {
+  agentId?: unknown;
+  name?: unknown;
+  type?: unknown;
+  profile?: unknown;
+  soul?: unknown;
+  rules?: unknown;
+  backendType?: unknown;
+  configStatus?: unknown;
+  position?: unknown;
+  memory?: unknown;
+  openClawConfig?: unknown;
+  stratixConfig?: unknown;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+}
+
+interface LegacyProjectJson {
+  id?: unknown;
+  name?: unknown;
+  description?: unknown;
+  priority?: unknown;
+  status?: unknown;
+  config?: unknown;
+  path?: unknown;
+  presentAgentIds?: unknown;
+  zoneConfig?: unknown;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+  startedAt?: unknown;
+  completedAt?: unknown;
+}
+
+interface LegacyChannelJson {
+  id?: unknown;
+  projectId?: unknown;
+  name?: unknown;
+  type?: unknown;
+  description?: unknown;
+  subscriberIds?: unknown;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+}
+
+interface LegacyMessageJson {
+  id?: unknown;
+  projectId?: unknown;
+  channelId?: unknown;
+  role?: unknown;
+  content?: unknown;
+  sender?: unknown;
+  mentions?: unknown;
+  rawContent?: unknown;
+  messageType?: unknown;
+  taskId?: unknown;
+  sessionKey?: unknown;
+  runId?: unknown;
+  metadata?: unknown;
+  timestamp?: unknown;
+}
+
+interface LegacyDataJson {
+  agents?: LegacyAgentJson[];
+  projects?: LegacyProjectJson[];
+  channels?: Record<string, LegacyChannelJson[]>;
+  messages?: Record<string, LegacyMessageJson[]>;
+}
+
 async function migrate() {
   const dataDir = 'stratix-data';
 
@@ -26,12 +95,8 @@ async function migrate() {
   const agentsData = await fs.readFile(path.join(dataDir, 'stratix.db.json'), 'utf8');
   const projectsData = await fs.readFile(path.join(dataDir, 'projects.json'), 'utf8');
 
-  const agentsJson = JSON.parse(agentsData) as { agents?: Array<Record<string, unknown>> };
-  const projectsJson = JSON.parse(projectsData) as {
-    projects?: Array<Record<string, unknown>>;
-    channels?: Record<string, Array<Record<string, unknown>>>;
-    messages?: Record<string, Array<Record<string, unknown>>>;
-  };
+  const agentsJson = JSON.parse(agentsData) as { agents?: LegacyAgentJson[] };
+  const projectsJson = JSON.parse(projectsData) as LegacyDataJson;
 
   // Wrap entire migration in a transaction
   const db = getDatabase().getDatabase();
@@ -39,7 +104,7 @@ async function migrate() {
     if (agentsJson.agents && agentsJson.agents.length > 0) {
       log('info', `Migrating ${agentsJson.agents.length} agents...`);
       for (const agent of agentsJson.agents) {
-        agentRepository.saveAgent(agent as unknown as StratixAgentConfig);
+        agentRepository.saveAgent(agent as StratixAgentConfig);
         log('info', `Agent migrated: ${String(agent.agentId)}`);
       }
     }
