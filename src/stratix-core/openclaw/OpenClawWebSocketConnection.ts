@@ -96,6 +96,7 @@ export class OpenClawWebSocketConnection {
   private state: ConnectionState = 'disconnected';
   private stateListeners: Set<(state: ConnectionState) => void> = new Set();
   private pendingRequests: Map<string, PendingRequest> = new Map();
+  private readonly maxPendingRequests = 100;
   private requestId = 0;
   private endpoint: string = '';
   
@@ -215,6 +216,13 @@ export class OpenClawWebSocketConnection {
   async disconnect(): Promise<void> {
     this.stopPairingPolling();
 
+    // Reject all pending requests
+    this.pendingRequests.forEach((p) => {
+      clearTimeout(p.timeout);
+      p.reject(new Error('连接已断开'));
+    });
+    this.pendingRequests.clear();
+
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -222,6 +230,7 @@ export class OpenClawWebSocketConnection {
     this.setState('disconnected');
     this.currentChatCallbacks = null;
     this.currentRunId = null;
+    this.currentChatText = '';
   }
 
   // ============ 公共方法：带重试的连接 ============
@@ -374,6 +383,13 @@ export class OpenClawWebSocketConnection {
           attachments: options?.attachments,
         },
       };
+
+      // Enforce pending request limit to prevent unbounded memory growth
+      if (this.pendingRequests.size >= this.maxPendingRequests) {
+        this.ws!.removeEventListener('message', tempHandler);
+        clearTimeout(timeout);
+        throw new Error('请求队列已满，请稍后重试');
+      }
 
       console.log('[OpenClawWS] Sending chat message:', { sessionId, runId });
       this.ws!.send(JSON.stringify(request));
@@ -535,12 +551,14 @@ export class OpenClawWebSocketConnection {
       }, 30000);
 
       this.pendingRequests.set(requestId, {
-        resolve: (result) => {
-          const messages = result?.messages || [];
-          resolve(messages.map((m: any) => ({
-            role: m.role,
-            content: typeof m.content === 'string' ? m.content : this.extractTextContent(m.content),
-            timestamp: m.timestamp || Date.now(),
+        resolve: (result: unknown) => {
+          const messages = (result as { messages?: unknown[] })?.messages || [];
+          resolve(messages.map((m: unknown) => ({
+            role: ((m as { role?: string }).role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+            content: typeof (m as { content?: unknown }).content === 'string'
+              ? (m as { content: string }).content
+              : this.extractTextContent((m as { content?: unknown }).content),
+            timestamp: (m as { timestamp?: number }).timestamp || Date.now(),
           })));
         },
         reject,
@@ -583,6 +601,7 @@ export class OpenClawWebSocketConnection {
 
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
+        this.ws!.onmessage = originalHandler;
         resolve({ success: false, state: 'pairing', message: '等待管理员批准...' });
       }, 5000);
 
@@ -660,7 +679,10 @@ export class OpenClawWebSocketConnection {
 
   private async performConnect(token: string | null, useDeviceToken: boolean): Promise<ConnectionResult> {
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('认证超时')), DEFAULT_TIMEOUT);
+      const timeout = setTimeout(() => {
+        this.ws!.onmessage = originalHandler;
+        reject(new Error('认证超时'));
+      }, DEFAULT_TIMEOUT);
       const originalHandler = this.ws!.onmessage;
       
       this.ws!.onmessage = async (event) => {
@@ -673,6 +695,7 @@ export class OpenClawWebSocketConnection {
             
             if (!nonce) {
               clearTimeout(timeout);
+              this.ws!.onmessage = originalHandler;
               reject(new Error('无效的 challenge'));
               return;
             }

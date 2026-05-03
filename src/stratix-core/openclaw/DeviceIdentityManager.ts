@@ -159,8 +159,7 @@ class DeviceIdentityManager {
     const publicKey = await ed.getPublicKeyAsync(privateKey);
 
     // 计算 deviceId（公钥的完整 SHA-256 哈希，64 个十六进制字符）
-    const publicKeyBuffer = new Uint8Array(publicKey).buffer as ArrayBuffer;
-    const publicKeyHash = await crypto.subtle.digest('SHA-256', publicKeyBuffer);
+    const publicKeyHash = await crypto.subtle.digest('SHA-256', publicKey);
     const hashBytes = new Uint8Array(publicKeyHash);
     const deviceId = Array.from(hashBytes)
       .map(b => b.toString(16).padStart(2, '0'))
@@ -262,8 +261,7 @@ class DeviceIdentityManager {
       this.saveConnections(connections);
     } else {
       const deviceId = await this.getDeviceId();
-      const conns = this.getConnections();
-      conns.push({
+      connections.push({
         id: this.generateId(),
         name: this.extractNameFromEndpoint(endpoint),
         endpoint,
@@ -272,7 +270,7 @@ class DeviceIdentityManager {
         deviceId,
         lastConnected: Date.now(),
       });
-      this.saveConnections(conns);
+      this.saveConnections(connections);
     }
   }
 

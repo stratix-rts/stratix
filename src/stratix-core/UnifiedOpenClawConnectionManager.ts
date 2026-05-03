@@ -123,6 +123,7 @@ class UnifiedOpenClawConnectionManager {
   private static instance: UnifiedOpenClawConnectionManager | null = null;
   private connection: OpenClawWebSocketConnection | null = null;
   private statusListeners: Set<(status: OpenClawStatus) => void> = new Set();
+  private readonly maxStatusListeners = 100;
   private electronAPI: ElectronAPI | null = null;
   private tailscaleNodes: TailscaleNode[] = [];
   private connectionId: string | null = null;
@@ -207,7 +208,7 @@ class UnifiedOpenClawConnectionManager {
       
       return { success: false, error: result.message || 'Failed to create connection' };
     } catch (error) {
-      const err = error as Error;
+      const err = error instanceof Error ? error : new Error(String(error));
       return { success: false, error: err.message };
     }
   }
@@ -485,11 +486,13 @@ class UnifiedOpenClawConnectionManager {
       // 处理流式格式 - { stream: 'assistant', data: { text, delta }, runId }
       if (this.isStreamMessage(msg)) {
         this.handleStreamMessage(msg, ctx);
+        return;
       }
 
       // 错误处理
       if (this.isErrorMessage(msg)) {
         this.handleErrorMessage(msg, ctx);
+        return;
       }
     } catch (e) {
       console.error('[UnifiedOpenClaw] Failed to parse message:', e);
@@ -724,74 +727,89 @@ class UnifiedOpenClawConnectionManager {
     const sessionId = options?.sessionId || 'main';
     let accumulatedText = '';
     let lastText = '';
-    let resolveFunc: ((value: ChatResponse) => void) | null = null;
-    let rejectFunc: ((reason: Error) => void) | null = null;
+    let settled = false;
     let idleTimer: ReturnType<typeof setTimeout> | null = null;
+    let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
     
-    const responsePromise = new Promise<ChatResponse>((resolve, reject) => {
-      resolveFunc = resolve;
-      rejectFunc = reject;
-    });
-    
-    const cleanup = (error?: Error) => {
-      if (idleTimer) clearTimeout(idleTimer);
-      if (error && rejectFunc) rejectFunc(error);
+    const cleanup = () => {
+      if (idleTimer) {
+        clearTimeout(idleTimer);
+        idleTimer = null;
+      }
+      if (timeoutTimer) {
+        clearTimeout(timeoutTimer);
+        timeoutTimer = null;
+      }
     };
     
-    this.connection!.sendMessage(message, {
-      onDelta: (text) => {
-        accumulatedText = text;
-        
-        if (text === lastText) return;
-        lastText = text;
-        
-        if (idleTimer) clearTimeout(idleTimer);
-        idleTimer = setTimeout(() => {
-          if (accumulatedText && resolveFunc) {
-            cleanup();
-            resolveFunc({
-              messageId: '',
-              content: accumulatedText,
-              role: 'assistant',
-              sessionId,
-              done: true,
-            });
-          }
-        }, 1000);
-      },
-      onFinal: (msg) => {
-        cleanup();
-        if (resolveFunc) {
-          resolveFunc({
+    const responsePromise = new Promise<ChatResponse>((resolve, reject) => {
+      const safeResolve = (value: ChatResponse) => {
+        if (!settled) {
+          settled = true;
+          cleanup();
+          resolve(value);
+        }
+      };
+      
+      const safeReject = (reason: Error) => {
+        if (!settled) {
+          settled = true;
+          cleanup();
+          reject(reason);
+        }
+      };
+      
+      this.connection!.sendMessage(message, {
+        onDelta: (text) => {
+          if (settled) return;
+          accumulatedText = text;
+          
+          if (text === lastText) return;
+          lastText = text;
+          
+          if (idleTimer) clearTimeout(idleTimer);
+          idleTimer = setTimeout(() => {
+            if (accumulatedText) {
+              safeResolve({
+                messageId: '',
+                content: accumulatedText,
+                role: 'assistant',
+                sessionId,
+                done: true,
+              });
+            }
+          }, 1000);
+        },
+        onFinal: (msg) => {
+          safeResolve({
             messageId: '',
             content: msg.content,
             role: 'assistant',
             sessionId,
             done: true,
           });
+        },
+        onError: (err) => {
+          safeReject(new Error(err));
+        },
+      }, { sessionId }).catch((err) => {
+        safeReject(err instanceof Error ? err : new Error(String(err)));
+      });
+      
+      timeoutTimer = setTimeout(() => {
+        if (accumulatedText) {
+          safeResolve({
+            messageId: '',
+            content: accumulatedText,
+            role: 'assistant',
+            sessionId,
+            done: true,
+          });
+        } else {
+          safeReject(new Error('请求超时'));
         }
-      },
-      onError: (err) => {
-        cleanup(new Error(err));
-      },
-    }, { sessionId }).catch((err) => {
-      cleanup(err instanceof Error ? err : new Error(String(err)));
+      }, 120000);
     });
-    
-    setTimeout(() => {
-      cleanup();
-      if (accumulatedText && resolveFunc) {
-        resolveFunc({
-          messageId: '',
-          content: accumulatedText,
-          role: 'assistant',
-          sessionId,
-          done: true,
-        });
-      } else if (rejectFunc) {
-        rejectFunc(new Error('请求超时'));
-      }
-    }, 120000);
     
     return responsePromise;
   }
@@ -947,6 +965,11 @@ class UnifiedOpenClawConnectionManager {
   }
 
   addStatusListener(listener: (status: OpenClawStatus) => void): () => void {
+    if (this.statusListeners.size >= this.maxStatusListeners) {
+      console.warn('[UnifiedOpenClaw] Status listener limit reached, evicting oldest');
+      const first = this.statusListeners.values().next().value;
+      if (first) this.statusListeners.delete(first);
+    }
     this.statusListeners.add(listener);
     return () => {
       this.statusListeners.delete(listener);

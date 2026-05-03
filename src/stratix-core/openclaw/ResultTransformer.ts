@@ -148,12 +148,11 @@ export class ResultTransformer {
     // Explicit type discriminator
     if (obj.type === 'image') return true;
 
-    // Has base64 or data properties
-    if (obj.data !== undefined || obj.base64 !== undefined) return true;
-
-    // Has mimeType starting with image/
+    // Must have both image mimeType and actual data to be considered an image
     if (typeof obj.mimeType === 'string' && obj.mimeType.startsWith('image/')) {
-      return true;
+      if (typeof obj.data === 'string' || typeof obj.base64 === 'string') {
+        return true;
+      }
     }
 
     return false;
@@ -167,8 +166,8 @@ export class ResultTransformer {
     const data = (obj.data as string) || (obj.base64 as string) || '';
     const mimeType = (obj.mimeType as string) || 'image/png';
 
-    // Calculate size: base64 is ~4/3 of original binary
-    const sizeBytes = Math.round((data.length * 3) / 4);
+    // Calculate size: base64 is ~4/3 of original binary, adjust for padding
+    const sizeBytes = Math.round((data.length * 3) / 4) - (data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0);
 
     const truncated = sizeBytes > MAX_IMAGE_SIZE;
 

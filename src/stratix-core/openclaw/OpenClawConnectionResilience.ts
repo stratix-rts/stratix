@@ -29,6 +29,7 @@ export interface ConnectionEvent {
 export class OpenClawConnectionResilience {
   private connections: Map<string, ConnectionHandle> = new Map();
   private eventLog: ConnectionEvent[] = [];
+  private readonly maxEventLogSize = 1000;
   private config: ResilienceConfig;
 
   constructor(config: Partial<ResilienceConfig> = {}) {
@@ -91,6 +92,11 @@ export class OpenClawConnectionResilience {
   ): Promise<boolean> {
     const handle = this.connections.get(id);
     if (!handle) return false;
+
+    // Guard against overlapping reconnect attempts
+    if (handle.status === 'reconnecting') {
+      return false;
+    }
 
     handle.status = 'reconnecting';
     const { maxRetries, baseDelayMs, maxDelayMs } = handle.config;
@@ -162,6 +168,10 @@ export class OpenClawConnectionResilience {
       timestamp: Date.now(),
       detail,
     });
+    // Prevent unbounded memory growth
+    if (this.eventLog.length > this.maxEventLogSize) {
+      this.eventLog = this.eventLog.slice(-Math.floor(this.maxEventLogSize / 2));
+    }
   }
 
   private sleep(ms: number): Promise<void> {

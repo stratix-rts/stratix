@@ -105,6 +105,7 @@ export class ConnectionResilience<T = unknown> extends EventEmitter {
   private circuitOpenSince = 0;
   private healthCheckTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private circuitResetTimer: ReturnType<typeof setTimeout> | null = null;
   private isShuttingDown = false;
   private lastHealthCheck: HealthCheckResult | null = null;
   private connectionResult: T | null = null;
@@ -112,8 +113,10 @@ export class ConnectionResilience<T = unknown> extends EventEmitter {
   constructor(config: Partial<ResilienceConfig> = {}) {
     super();
     this.config = { ...DEFAULT_CONFIG, ...config };
-    // Prevent unhandled error events from crashing
-    this.on('error', () => {});
+    // Prevent unhandled error events from crashing, but only if no other listeners exist
+    this.on('error', () => {
+      // EventEmitter will still emit to other listeners; this just prevents crashes
+    });
   }
 
   // ============ Public Methods ============
@@ -154,11 +157,7 @@ export class ConnectionResilience<T = unknown> extends EventEmitter {
     this.isShuttingDown = true;
     this.stopHealthCheck();
     this.stopReconnectTimer();
-
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
+    this.stopCircuitResetTimer();
 
     if (this.connection) {
       try {
@@ -333,9 +332,10 @@ export class ConnectionResilience<T = unknown> extends EventEmitter {
     this.state = 'circuit_open';
     this.circuitOpenSince = Date.now();
     this.stopHealthCheck();
+    this.stopCircuitResetTimer();
 
     // Schedule circuit reset
-    setTimeout(() => {
+    this.circuitResetTimer = setTimeout(() => {
       this.halfOpenCircuit();
     }, this.config.circuitResetMs);
 
@@ -360,12 +360,13 @@ export class ConnectionResilience<T = unknown> extends EventEmitter {
     this.consecutiveFailures = 0;
     this.consecutiveSuccesses = 0;
     this.circuitOpenSince = 0;
+    this.stopCircuitResetTimer();
     this.emit('circuit_closed');
     this.startHealthCheck();
   }
 
   private async attemptTestConnection(): Promise<void> {
-    if (!this.connection) return;
+    if (!this.connection || this.isShuttingDown) return;
 
     try {
       await this.connection.connect();
@@ -433,6 +434,13 @@ export class ConnectionResilience<T = unknown> extends EventEmitter {
     }
   }
 
+  private stopCircuitResetTimer(): void {
+    if (this.circuitResetTimer) {
+      clearTimeout(this.circuitResetTimer);
+      this.circuitResetTimer = null;
+    }
+  }
+
   // ============ Private Methods: Health Check ============
 
   private startHealthCheck(): void {
@@ -458,6 +466,8 @@ export class ConnectionResilience<T = unknown> extends EventEmitter {
         timestamp: Date.now(),
       };
       this.emit('health_check_failed', -1);
+      // Treat disconnected as a connection failure for circuit breaker
+      this.onSendFailure(new Error('Health check failed: connection not established'));
       return;
     }
 

@@ -138,16 +138,18 @@ class OpenClawConnectionManager {
   async disconnect(): Promise<void> {
     this.stopStatusCheck();
 
-    if (this.adapter) {
+    const adapter = this.adapter;
+    this.adapter = null;
+    this.config = null;
+
+    if (adapter) {
       try {
-        await this.adapter.disconnect();
+        await adapter.disconnect();
       } catch (error) {
         console.error('[OpenClawConnectionManager] Adapter disconnect error:', error);
       }
-      this.adapter = null;
     }
 
-    this.config = null;
     this.notifyStatusListeners({
       connected: false,
       accountId: '',
@@ -159,8 +161,16 @@ class OpenClawConnectionManager {
   destroy(): void {
     this.stopStatusCheck();
     this.statusListeners.clear();
+    const adapter = this.adapter;
     this.adapter = null;
     this.config = null;
+    if (adapter) {
+      try {
+        adapter.disconnect();
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
   }
 
   getAdapter(): WebSocketOpenClawAdapter | null {
