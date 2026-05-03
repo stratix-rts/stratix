@@ -158,7 +158,9 @@ export class OrchestrationSync {
       const sync = this.getStatusSync();
       if (sync) {
         if (event.type === 'assigned' || event.type === 'started') {
-          sync.notifyTaskAssigned(event.taskId, event.agentId || '', '');
+          // Try to resolve zoneId from event data or task record
+          const zoneId = (event.data?.zoneId as string) || '';
+          sync.notifyTaskAssigned(event.taskId, event.agentId || '', zoneId);
         } else if (event.type === 'completed') {
           sync.notifyTaskCompleted(event.taskId, event.agentId || '');
           this.syncTaskFilesToZone(event.taskId).catch(err => {
@@ -190,7 +192,7 @@ export class OrchestrationSync {
           sync.notifyBackgroundAgentStatus(event.agentId, 'running');
           break;
         case 'task_assigned':
-          sync.notifyTaskAssigned(event.taskId || '', event.agentId, '');
+          sync.notifyTaskAssigned(event.taskId || '', event.agentId, event.zoneId || '');
           break;
         case 'task_completed':
           sync.notifyTaskCompleted(event.taskId || '', event.agentId);
@@ -205,11 +207,13 @@ export class OrchestrationSync {
     const msgHandler = (event: MessageEvent) => {
       const sync = this.getStatusSync();
       if (sync) {
+        // Map internal event type to a broader message type; fallback to direct
+        const messageType = event.type === 'sent' ? 'direct' : event.type;
         sync.notifyAgentMessageSent(
           event.messageId,
           event.conversationId,
           event.recipientId || '',
-          'direct'
+          messageType
         );
       }
     };
@@ -262,12 +266,23 @@ export class OrchestrationSync {
     if (!this.isInitialized) return;
 
     for (const cleanupFn of this.cleanupFns) {
-      cleanupFn();
+      try {
+        cleanupFn();
+      } catch (err) {
+        log('warn', 'Error during orchestration sync cleanup', { error: String(err) });
+      }
     }
     this.cleanupFns = [];
 
     this.isInitialized = false;
     log('info', 'Orchestration sync cleanup complete');
+  }
+
+  /**
+   * Health check for the orchestration sync
+   */
+  isHealthy(): boolean {
+    return this.isInitialized;
   }
 }
 
