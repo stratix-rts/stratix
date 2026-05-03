@@ -98,6 +98,8 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
     const { code, language } = params;
     const progress = context.progressCallback;
     const config = this.getSandboxConfig(context);
+    // ProgressCallback has a complex type that is incompatible with the private method signature.
+    // Cast is necessary because we cannot change the SkillExecutor interface type definition.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const progressAny = progress as any;
 
@@ -140,6 +142,8 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
   }
 
   private executeJavaScript(code: string, progress?: (p: unknown) => void, config?: ReturnType<typeof this.getSandboxConfig>): Promise<unknown> {
+    // ProgressCallback has a complex type that is incompatible with the private method signature.
+    // Cast is necessary because we cannot change the SkillExecutor interface type definition.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const progressAny = progress as any;
     return new Promise((resolve, reject) => {
@@ -324,6 +328,8 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
   }
 
   private executePython(code: string, progress?: (p: unknown) => void, config?: ReturnType<typeof this.getSandboxConfig>): Promise<unknown> {
+    // ProgressCallback has a complex type that is incompatible with the private method signature.
+    // Cast is necessary because we cannot change the SkillExecutor interface type definition.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const progressAny = progress as any;
     return new Promise((resolve, reject) => {
