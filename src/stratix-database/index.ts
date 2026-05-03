@@ -1,4 +1,5 @@
 export { StratixDatabase, initializeDatabase, getDatabase, destroyDatabase } from './StratixDatabase';
+export type { DatabaseConfig } from './StratixDatabase';
 export { projectRepository, ProjectRepository } from './ProjectRepository';
 export { agentRepository, AgentRepository } from './AgentRepository';
 export { zoneRepository, ZoneRepository } from './ZoneRepository';
