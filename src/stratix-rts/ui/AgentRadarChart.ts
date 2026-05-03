@@ -234,7 +234,7 @@ export class AgentRadarChart {
     this.agentName = name;
 
     if (this.agentNameText) {
-      this.agentNameText.destroy();
+      this.agentNameText?.destroy();
     }
 
     if (name) {
@@ -312,14 +312,14 @@ export class AgentRadarChart {
   public destroy(): void {
     this.destroyed = true;
 
-    this.gridGraphics.destroy();
-    this.scoreGraphics.destroy();
+    this.gridGraphics?.destroy();
+    this.scoreGraphics?.destroy();
 
     this.labelTexts.forEach((label) => label.destroy());
     this.labelTexts = [];
 
     if (this.agentNameText) {
-      this.agentNameText.destroy();
+      this.agentNameText?.destroy();
       this.agentNameText = null;
     }
   }

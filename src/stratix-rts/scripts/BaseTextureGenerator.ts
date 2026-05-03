@@ -161,4 +161,4 @@ export function downloadAllBaseTextures(): void {
   console.log(`[BaseTextureGenerator] Downloaded ${bodyTypes.length} base textures`);
 }
 
-(window as any).downloadAllBaseTextures = downloadAllBaseTextures;
+(window as unknown as Record<string, unknown>).downloadAllBaseTextures = downloadAllBaseTextures;

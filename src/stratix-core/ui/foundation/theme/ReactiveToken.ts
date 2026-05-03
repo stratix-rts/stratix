@@ -18,7 +18,7 @@ export class ReactiveToken<T = any> {
   constructor(context: ThemeContext, path: string) {
     this.context = context;
     this.path = path;
-    this.currentValue = context.getTokenValue(path);
+    this.currentValue = context.getTokenValue(path) as T;
     
     // 自动订阅Token变化
     this.unsubscribe = context.subscribeToken(path, (value: T) => {
@@ -75,7 +75,7 @@ export class ReactiveToken<T = any> {
    * 强制刷新（重新从context获取值）
    */
   refresh(): void {
-    const newValue = this.context.getTokenValue(this.path);
+    const newValue = this.context.getTokenValue(this.path) as T;
     if (this.currentValue !== newValue) {
       const oldValue = this.currentValue;
       this.currentValue = newValue;
@@ -95,9 +95,23 @@ export class ReactiveToken<T = any> {
   }
   
   /**
+   * 安全获取字符串表示（调试用）
+   */
+  private formatValue(): string {
+    if (typeof this.currentValue === 'object' && this.currentValue !== null) {
+      try {
+        return JSON.stringify(this.currentValue);
+      } catch {
+        return '[unserializable]';
+      }
+    }
+    return String(this.currentValue);
+  }
+  
+  /**
    * 转换为字符串（调试用）
    */
   toString(): string {
-    return `ReactiveToken(${this.path}=${this.currentValue})`;
+    return `ReactiveToken(${this.path}=${this.formatValue()})`;
   }
 }

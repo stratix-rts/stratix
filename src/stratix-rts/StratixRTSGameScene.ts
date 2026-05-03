@@ -51,7 +51,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   private characterRenderer: RTSCharacterRenderer;
   private eventUnsubscribers: (() => void)[] = [];
   private agentZoneTracking: Map<string, string> = new Map();
-  private projectZoneCheckTimer: NodeJS.Timeout | null = null;
+  private projectZoneCheckTimer: ReturnType<typeof setInterval> | null = null;
   private dataFlowAnimation: DataFlowAnimation;
   private zonePulseGraphics: Phaser.GameObjects.Graphics;
   private stateBridge: RTSStateBridge;
@@ -237,7 +237,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     } as any);
 
     // 暴露到 window 用于 Playwright E2E 测试
-    (window as any).__rtsGameScene__ = this;
+    (window as unknown as Record<string, unknown>).__rtsGameScene__ = this;
   }
 
   update(_time: number, _delta: number): void {
@@ -524,14 +524,14 @@ export default class StratixRTSGameScene extends Phaser.Scene {
         try {
           await projectClient.addZoneMember(currentProjectZoneId, agentId);
           this.agentZoneTracking.set(agentId, currentProjectZoneId);
-        } catch (error) {
+        } catch (error: unknown) {
           console.error(`[StratixRTS] Failed to register agent ${agentId} in zone ${currentProjectZoneId}:`, error);
         }
       } else if (!currentProjectZoneId && previousZoneId) {
         try {
           await projectClient.removeZoneMember(previousZoneId, agentId);
           this.agentZoneTracking.delete(agentId);
-        } catch (error) {
+        } catch (error: unknown) {
           console.error(`[StratixRTS] Failed to unregister agent ${agentId} from zone ${previousZoneId}:`, error);
         }
       }
@@ -735,7 +735,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
         try {
           await projectClient.agentLeaveProject(data.zoneId, agentId);
           console.log(`[StratixRTS] Backend notified: Agent ${agentId} left deleted zone ${data.zoneId}`);
-        } catch (error) {
+        } catch (error: unknown) {
           console.error(`[StratixRTS] Failed to notify backend for agent ${agentId} leaving zone:`, error);
         }
       }

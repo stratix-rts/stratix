@@ -42,7 +42,19 @@ export const useZoneStore = defineStore('zone', () => {
 
   // ==================== WebSocket Event Handlers ====================
 
-  function handleZoneCreated(event: any) {
+  interface ZoneEventPayload {
+    zoneId?: string;
+    file?: ZoneFile;
+    fileId?: string;
+    agentId?: string;
+    [key: string]: unknown;
+  }
+
+  interface ZoneEvent {
+    payload?: ZoneEventPayload;
+  }
+
+  function handleZoneCreated(event: ZoneEvent) {
     const { zoneId } = event.payload || {};
     if (!zoneId) return;
     // Fetch full zone data and add to store
@@ -50,10 +62,12 @@ export const useZoneStore = defineStore('zone', () => {
       if (zone && !zones.value.find(z => z.id === zoneId)) {
         zones.value.push(zone);
       }
+    }).catch(e => {
+      console.warn('[ZoneStore] Failed to fetch created zone:', e);
     });
   }
 
-  function handleZoneUpdated(event: any) {
+  function handleZoneUpdated(event: ZoneEvent) {
     const { zoneId, ...updates } = event.payload || {};
     if (!zoneId) return;
     const zone = zones.value.find(z => z.id === zoneId);
@@ -62,7 +76,7 @@ export const useZoneStore = defineStore('zone', () => {
     }
   }
 
-  function handleZoneDeleted(event: any) {
+  function handleZoneDeleted(event: ZoneEvent) {
     const { zoneId } = event.payload || {};
     if (!zoneId) return;
     zones.value = zones.value.filter(z => z.id !== zoneId);
@@ -71,7 +85,7 @@ export const useZoneStore = defineStore('zone', () => {
     }
   }
 
-  function handleZoneFileAdded(event: any) {
+  function handleZoneFileAdded(event: ZoneEvent) {
     const { zoneId, file } = event.payload || {};
     if (!zoneId || !file) return;
     const zone = zones.value.find(z => z.id === zoneId);
@@ -81,7 +95,7 @@ export const useZoneStore = defineStore('zone', () => {
     }
   }
 
-  function handleZoneFileRemoved(event: any) {
+  function handleZoneFileRemoved(event: ZoneEvent) {
     const { zoneId, fileId } = event.payload || {};
     if (!zoneId || !fileId) return;
     const zone = zones.value.find(z => z.id === zoneId);
@@ -90,7 +104,7 @@ export const useZoneStore = defineStore('zone', () => {
     }
   }
 
-  function handleZoneMemberJoined(event: any) {
+  function handleZoneMemberJoined(event: ZoneEvent) {
     const { zoneId, agentId } = event.payload || {};
     if (!zoneId || !agentId) return;
     const zone = zones.value.find(z => z.id === zoneId);
@@ -102,7 +116,7 @@ export const useZoneStore = defineStore('zone', () => {
     }
   }
 
-  function handleZoneMemberLeft(event: any) {
+  function handleZoneMemberLeft(event: ZoneEvent) {
     const { zoneId, agentId } = event.payload || {};
     if (!zoneId || !agentId) return;
     const zone = zones.value.find(z => z.id === zoneId);
@@ -147,6 +161,7 @@ export const useZoneStore = defineStore('zone', () => {
     eventBus.unsubscribe('stratix:zone_file_removed', eventHandlers.handleZoneFileRemoved);
     eventBus.unsubscribe('stratix:zone_member_joined', eventHandlers.handleZoneMemberJoined);
     eventBus.unsubscribe('stratix:zone_member_left', eventHandlers.handleZoneMemberLeft);
+    eventBusInitialized = false;
     console.log('[ZoneStore] Unsubscribed from zone events');
   }
 
@@ -178,46 +193,63 @@ export const useZoneStore = defineStore('zone', () => {
 
   // Get zone by ID
   async function fetchZone(zoneId: string): Promise<Zone | null> {
-    const result = await client.get<{ zone: Zone }>(API_PATHS.ZONE_BY_ID(zoneId), { timeout: 5000 });
+    try {
+      const result = await client.get<{ zone: Zone }>(API_PATHS.ZONE_BY_ID(zoneId), { timeout: 5000 });
 
-    if (!result.success) {
-      console.warn(`[ZoneStore] Failed to fetch zone ${zoneId}:`, result.error);
+      if (!result.success) {
+        console.warn(`[ZoneStore] Failed to fetch zone ${zoneId}:`, result.error);
+        return null;
+      }
+      return result.data.zone || null;
+    } catch (e) {
+      console.warn(`[ZoneStore] Failed to fetch zone ${zoneId}:`, e);
       return null;
     }
-    return result.data.zone || null;
   }
 
   // Create zone
   async function createZone(request: ZoneCreateRequest): Promise<Zone | null> {
-    const result = await client.post<{ zone: Zone }>(API_PATHS.ZONES, request);
+    try {
+      const result = await client.post<{ zone: Zone }>(API_PATHS.ZONES, request);
 
-    if (isApiError(result)) {
-      console.warn('[ZoneStore] Failed to create zone:', result.error);
+      if (isApiError(result)) {
+        console.warn('[ZoneStore] Failed to create zone:', result.error);
+        return null;
+      }
+      if (result.data.zone) {
+        zones.value.push(result.data.zone);
+        return result.data.zone;
+      }
+      return null;
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : '创建 Zone 失败';
+      console.warn('[ZoneStore] Failed to create zone:', e);
       return null;
     }
-    if (result.data.zone) {
-      zones.value.push(result.data.zone);
-      return result.data.zone;
-    }
-    return null;
   }
 
   // Update zone
   async function updateZone(zoneId: string, request: ZoneUpdateRequest): Promise<boolean> {
-    const result = await client.put<{ zone: Zone }>(API_PATHS.ZONE_BY_ID(zoneId), request);
+    try {
+      const result = await client.put<{ zone: Zone }>(API_PATHS.ZONE_BY_ID(zoneId), request);
 
-    if (isApiError(result)) {
-      console.warn('[ZoneStore] Failed to update zone:', result.error);
+      if (isApiError(result)) {
+        console.warn('[ZoneStore] Failed to update zone:', result.error);
+        return false;
+      }
+      if (result.data.zone) {
+        const index = zones.value.findIndex(z => z.id === zoneId);
+        if (index >= 0) {
+          zones.value[index] = result.data.zone;
+        }
+        return true;
+      }
+      return false;
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : '更新 Zone 失败';
+      console.warn('[ZoneStore] Failed to update zone:', e);
       return false;
     }
-    if (result.data.zone) {
-      const index = zones.value.findIndex(z => z.id === zoneId);
-      if (index >= 0) {
-        zones.value[index] = result.data.zone;
-      }
-      return true;
-    }
-    return false;
   }
 
   // Delete zone
@@ -248,97 +280,127 @@ export const useZoneStore = defineStore('zone', () => {
 
   // Add file to zone
   async function addFile(zoneId: string, file: Omit<ZoneFile, 'id' | 'zoneId' | 'createdAt' | 'updatedAt'>): Promise<ZoneFile | null> {
-    const result = await client.post<{ file: ZoneFile }>(API_PATHS.ZONE_FILES(zoneId), file);
+    try {
+      const result = await client.post<{ file: ZoneFile }>(API_PATHS.ZONE_FILES(zoneId), file);
 
-    if (isApiError(result)) {
-      console.warn('[ZoneStore] Failed to add file:', result.error);
+      if (isApiError(result)) {
+        console.warn('[ZoneStore] Failed to add file:', result.error);
+        return null;
+      }
+      if (result.data.file) {
+        const zone = zones.value.find(z => z.id === zoneId);
+        if (zone) {
+          zone.files = zone.files || [];
+          zone.files.push(result.data.file);
+        }
+        return result.data.file;
+      }
+      return null;
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : '添加文件失败';
+      console.warn('[ZoneStore] Failed to add file:', e);
       return null;
     }
-    if (result.data.file) {
-      const zone = zones.value.find(z => z.id === zoneId);
-      if (zone) {
-        zone.files = zone.files || [];
-        zone.files.push(result.data.file);
-      }
-      return result.data.file;
-    }
-    return null;
   }
 
   // Remove file from zone
   async function removeFile(zoneId: string, fileId: string): Promise<boolean> {
-    const result = await client.delete<{ message: string }>(API_PATHS.ZONE_FILE_BY_ID(zoneId, fileId));
+    try {
+      const result = await client.delete<{ message: string }>(API_PATHS.ZONE_FILE_BY_ID(zoneId, fileId));
 
-    if (isApiError(result)) {
-      console.warn('[ZoneStore] Failed to remove file:', result.error);
+      if (isApiError(result)) {
+        console.warn('[ZoneStore] Failed to remove file:', result.error);
+        return false;
+      }
+      const zone = zones.value.find(z => z.id === zoneId);
+      if (zone) {
+        zone.files = (zone.files || []).filter(f => f.id !== fileId);
+      }
+      return true;
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : '删除文件失败';
+      console.warn('[ZoneStore] Failed to remove file:', e);
       return false;
     }
-    const zone = zones.value.find(z => z.id === zoneId);
-    if (zone) {
-      zone.files = (zone.files || []).filter(f => f.id !== fileId);
-    }
-    return true;
   }
 
   // Add task to zone
   async function addTask(zoneId: string, title: string): Promise<ZoneTask | null> {
-    const result = await client.post<{ task: ZoneTask }>(API_PATHS.ZONE_TASKS(zoneId), { title });
+    try {
+      const result = await client.post<{ task: ZoneTask }>(API_PATHS.ZONE_TASKS(zoneId), { title });
 
-    if (isApiError(result)) {
-      console.warn('[ZoneStore] Failed to add task:', result.error);
+      if (isApiError(result)) {
+        console.warn('[ZoneStore] Failed to add task:', result.error);
+        return null;
+      }
+      if (result.data.task) {
+        const zone = zones.value.find(z => z.id === zoneId);
+        if (zone && zone.tasks) {
+          zone.tasks.push(result.data.task);
+        }
+        return result.data.task;
+      }
+      return null;
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : '添加任务失败';
+      console.warn('[ZoneStore] Failed to add task:', e);
       return null;
     }
-    if (result.data.task) {
-      const zone = zones.value.find(z => z.id === zoneId);
-      if (zone && zone.tasks) {
-        zone.tasks.push(result.data.task);
-      }
-      return result.data.task;
-    }
-    return null;
   }
 
   // Update task
   async function updateTask(zoneId: string, taskId: string, updates: Partial<ZoneTask>): Promise<boolean> {
-    const result = await client.put<{ task: ZoneTask }>(API_PATHS.ZONE_TASK(zoneId, taskId), updates);
+    try {
+      const result = await client.put<{ task: ZoneTask }>(API_PATHS.ZONE_TASK(zoneId, taskId), updates);
 
-    if (isApiError(result)) {
-      console.warn('[ZoneStore] Failed to update task:', result.error);
+      if (isApiError(result)) {
+        console.warn('[ZoneStore] Failed to update task:', result.error);
+        return false;
+      }
+      if (result.data.task) {
+        const zone = zones.value.find(z => z.id === zoneId);
+        if (zone && zone.tasks) {
+          const taskIndex = zone.tasks.findIndex(t => t.id === taskId);
+          if (taskIndex >= 0) {
+            zone.tasks[taskIndex] = result.data.task;
+          }
+        }
+        return true;
+      }
+      return false;
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : '更新任务失败';
+      console.warn('[ZoneStore] Failed to update task:', e);
       return false;
     }
-    if (result.data.task) {
-      const zone = zones.value.find(z => z.id === zoneId);
-      if (zone && zone.tasks) {
-        const taskIndex = zone.tasks.findIndex(t => t.id === taskId);
-        if (taskIndex >= 0) {
-          zone.tasks[taskIndex] = result.data.task;
-        }
-      }
-      return true;
-    }
-    return false;
   }
 
   // Add message to zone
   async function addMessage(zoneId: string, content: string, senderId: string, senderType: 'user' | 'agent'): Promise<ZoneMessage | null> {
-    const result = await client.post<{ message: ZoneMessage }>(API_PATHS.ZONE_MESSAGES(zoneId), {
-      content,
-      senderId,
-      senderType
-    });
+    try {
+      const result = await client.post<{ message: ZoneMessage }>(API_PATHS.ZONE_MESSAGES(zoneId), {
+        content,
+        senderId,
+        senderType
+      });
 
-    if (isApiError(result)) {
-      console.warn('[ZoneStore] Failed to add message:', result.error);
+      if (isApiError(result)) {
+        console.warn('[ZoneStore] Failed to add message:', result.error);
+        return null;
+      }
+      if (result.data.message) {
+        const zone = zones.value.find(z => z.id === zoneId);
+        if (zone && zone.messages) {
+          zone.messages.push(result.data.message);
+        }
+        return result.data.message;
+      }
+      return null;
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : '添加消息失败';
+      console.warn('[ZoneStore] Failed to add message:', e);
       return null;
     }
-    if (result.data.message) {
-      const zone = zones.value.find(z => z.id === zoneId);
-      if (zone && zone.messages) {
-        zone.messages.push(result.data.message);
-      }
-      return result.data.message;
-    }
-    return null;
   }
 
   // Get zone by ID (local)

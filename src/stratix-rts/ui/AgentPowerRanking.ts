@@ -287,7 +287,7 @@ export class AgentPowerRanking {
   public destroy(): void {
     this.destroyed = true;
     this.clearItems();
-    this.container.destroy();
+    this.container?.destroy();
   }
 }
 

@@ -67,10 +67,9 @@ export class DOMContainer {
     this.domElement.setDepth(this.config.depth ?? Depth.UI_MODAL_CONTENT);
 
     // 启用点击防护 - 阻止弹窗内点击冒泡到 Phaser Canvas
-    if (this.domElement.node) {
-      this.protectId = domOverlayManager.protectElement(
-        this.domElement.node as HTMLElement
-      );
+    const node = this.domElement.node;
+    if (node instanceof HTMLElement) {
+      this.protectId = domOverlayManager.protectElement(node);
     }
 
     return this.domElement;
@@ -109,7 +108,8 @@ export class DOMContainer {
    * 获取内部 HTMLElement
    */
   getNode(): HTMLElement | null {
-    return this.domElement?.node as HTMLElement | null;
+    const node = this.domElement?.node;
+    return node instanceof HTMLElement ? node : null;
   }
 
   /**

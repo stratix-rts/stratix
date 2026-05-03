@@ -94,7 +94,8 @@ const selectSkill = (skill: StratixSkillConfig) => {
 
 const getSkillColor = (skill: StratixSkillConfig): string => {
   // Use category field if available, otherwise fall back to name-based matching
-  const skillType = (skill as any).category || skill.name.toLowerCase();
+  const category = (skill as unknown as { category?: string }).category;
+  const skillType = category || skill.name.toLowerCase();
   const colors: Record<string, string> = {
     writer: getToken('colors.info'),
     dev: '#9B59B6',

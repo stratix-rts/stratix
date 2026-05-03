@@ -84,7 +84,7 @@ export class DataFlowAnimation {
   private zonePulses: Map<string, ZonePulse> = new Map();
   private depth: number = 55;
   private agentPositions: Map<string, { x: number; y: number }> = new Map();
-  private agentBeamGraphics: Phaser.GameObjects.Graphics;
+  private agentBeamGraphics: Phaser.GameObjects.Graphics | null = null;
   private agentPulses: Map<string, { angle: number; distance: number; alpha: number }> = new Map();
   private maxFlows: number = 20;
   private zoomLodFactor: number = 1;
@@ -329,6 +329,7 @@ export class DataFlowAnimation {
   }
 
   private updateAgentBeams(delta: number): void {
+    if (!this.agentBeamGraphics) return;
     this.agentBeamGraphics.clear();
     const toRemove: string[] = [];
 
@@ -599,7 +600,7 @@ export class DataFlowAnimation {
       this.agentBeamGraphics.destroy();
     }
     this.agentPulses.clear();
-    this.agentBeamGraphics = null as any;
+    this.agentBeamGraphics = null;
   }
 
   private getStatusFromVolume(volume: number): DataFlowStatus {

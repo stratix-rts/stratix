@@ -47,7 +47,7 @@ const formatJSON = (obj: any) => {
 
 const copyToClipboard = () => {
   if (props.log?.commandId) {
-    navigator.clipboard.writeText(props.log.commandId);
+    navigator.clipboard.writeText(props.log.commandId).catch(() => {});
   }
 };
 </script>

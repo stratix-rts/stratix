@@ -362,7 +362,7 @@ export class StatsCollector {
   }
   
   private collectMemoryStats(): DetailedPerformanceData['memory'] | undefined {
-    const perf = performance as any;
+    const perf = performance as Performance & { memory?: { usedJSHeapSize: number } };
     
     if (!perf.memory) {
       return undefined;

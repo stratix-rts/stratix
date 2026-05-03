@@ -151,9 +151,7 @@ export class BlueprintCanvas extends Phaser.Scene {
         const fromNode = nodeMap.get(edge.fromNodeId);
         const toNode = nodeMap.get(edge.toNodeId);
         if (fromNode && toNode) {
-          (line as any).fromNode = fromNode;
-          (line as any).toNode = toNode;
-          line.update();
+          line.setNodes(fromNode, toNode);
         }
       }
     }

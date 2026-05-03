@@ -254,6 +254,6 @@ export class ThemeSelectorUI {
    * 销毁
    */
   public destroy(): void {
-    this.container.destroy();
+    this.container?.destroy();
   }
 }

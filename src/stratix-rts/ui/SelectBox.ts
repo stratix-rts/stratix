@@ -118,6 +118,6 @@ export class SelectBox {
   }
 
   public destroy(): void {
-    this.graphics.destroy();
+    this.graphics?.destroy();
   }
 }

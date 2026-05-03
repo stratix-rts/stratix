@@ -33,10 +33,16 @@ export function getBuildingTextureKey(
 /**
  * 颜色变体：整体提亮或压暗
  */
+function safeHexChannel(hex: string, start: number, end: number): number {
+  const ch = hex.slice(start, end);
+  const val = parseInt(ch, 16);
+  return Number.isNaN(val) ? 0 : val;
+}
+
 function adjustBrightness(hexColor: string, factor: number): string {
-  const r = parseInt(hexColor.slice(1, 3), 16);
-  const g = parseInt(hexColor.slice(3, 5), 16);
-  const b = parseInt(hexColor.slice(5, 7), 16);
+  const r = safeHexChannel(hexColor, 1, 3);
+  const g = safeHexChannel(hexColor, 3, 5);
+  const b = safeHexChannel(hexColor, 5, 7);
 
   const nr = Math.min(255, Math.max(0, Math.round(r * factor)));
   const ng = Math.min(255, Math.max(0, Math.round(g * factor)));

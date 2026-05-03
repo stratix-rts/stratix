@@ -10,6 +10,7 @@ export class TaskNode extends Phaser.GameObjects.Container {
   private nameText: Phaser.GameObjects.Text;
   private typeText: Phaser.GameObjects.Text;
   private priorityBadge: Phaser.GameObjects.Container;
+  private priorityText!: Phaser.GameObjects.Text;
   private isHovered: boolean = false;
   private isSelected: boolean = false;
   
@@ -89,15 +90,15 @@ export class TaskNode extends Phaser.GameObjects.Container {
     const bg = this.scene.add.circle(0, 0, 12, 0x2c3e50);
     badge.add(bg);
     
-    const text = this.scene.add.text(0, 0, `P${this.node.priority}`, {
+    this.priorityText = this.scene.add.text(0, 0, `P${this.node.priority}`, {
       fontSize: '10px',
       fontFamily: 'Arial',
       color: '#ffffff',
       fontStyle: 'bold',
     });
-    text.setOrigin(0.5, 0.5);
-    badge.add(text);
-    
+    this.priorityText.setOrigin(0.5, 0.5);
+    badge.add(this.priorityText);
+
     return badge;
   }
   
@@ -158,9 +159,8 @@ export class TaskNode extends Phaser.GameObjects.Container {
       this.nameText.setText(updates.name);
     }
     
-    if (updates.priority) {
-      const text = this.priorityBadge.getAt(1) as Phaser.GameObjects.Text;
-      text.setText(`P${updates.priority}`);
+    if (updates.priority !== undefined) {
+      this.priorityText.setText(`P${updates.priority}`);
     }
   }
 }

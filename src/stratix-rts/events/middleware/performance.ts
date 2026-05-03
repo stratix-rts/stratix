@@ -3,10 +3,10 @@ import type { RTSEventName } from '../types/RTSEventTypes';
 import type { Middleware, MiddlewareContext } from './types';
 
 export interface PerformanceStats {
-  totalEvents: number;
-  eventsPerSecond: number;
-  averageLatency: number;
-  slowEvents: Array<{ event: RTSEventName; duration: number; timestamp: number }>;
+  readonly totalEvents: number;
+  readonly eventsPerSecond: number;
+  readonly averageLatency: number;
+  readonly slowEvents: Array<{ event: RTSEventName; duration: number; timestamp: number }>;
   eventCounts: Map<RTSEventName, number>;
 }
 

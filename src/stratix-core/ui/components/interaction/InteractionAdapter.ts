@@ -84,7 +84,7 @@ export abstract class InteractionAdapter {
   /**
    * 获取主题Token值
    */
-  protected getToken(path: string): any {
+  protected getToken(path: string): unknown {
     return this.themeContext.getTokenValue(path);
   }
   
@@ -92,6 +92,11 @@ export abstract class InteractionAdapter {
    * 颜色转换：Hex string -> Number
    */
   protected hexToNumber(hex: string): number {
-    return parseInt(hex.slice(1), 16);
+    if (!hex || !hex.startsWith('#')) {
+      console.warn(`[InteractionAdapter] Invalid hex color: "${hex}"`);
+      return 0;
+    }
+    const parsed = parseInt(hex.slice(1), 16);
+    return Number.isNaN(parsed) ? 0 : parsed;
   }
 }

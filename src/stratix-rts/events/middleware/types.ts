@@ -13,7 +13,7 @@ export type Middleware = <K extends RTSEventName>(
 ) => void | Promise<void>;
 
 export interface MiddlewareOptions {
-  enabled: boolean;
+  readonly enabled: boolean;
 }
 
 export function composeMiddleware(middlewares: Middleware[]): (ctx: MiddlewareContext) => Promise<void> {

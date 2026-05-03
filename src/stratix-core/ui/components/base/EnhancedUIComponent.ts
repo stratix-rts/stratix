@@ -82,10 +82,15 @@ export abstract class EnhancedUIComponent implements IThemeAware, IUIComponentLi
       return;
     }
     
+    if (!this.container) {
+      console.error(`[${this.constructor.name}] Cannot mount: container not created`);
+      return;
+    }
+    
     if (parent) {
-      parent.add(this.container!);
+      parent.add(this.container);
     } else {
-      this.scene.add.existing(this.container!);
+      this.scene.add.existing(this.container);
     }
     
     this.onMount();
@@ -207,7 +212,7 @@ export abstract class EnhancedUIComponent implements IThemeAware, IUIComponentLi
   /**
    * 获取Token当前值（非响应式）
    */
-  protected getTokenValue(path: string): any {
+  protected getTokenValue(path: string): unknown {
     return this.themeContext.getTokenValue(path);
   }
   

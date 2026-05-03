@@ -15,8 +15,8 @@ import type { ContainerComponentConfig } from './types';
 
 
 export abstract class ContainerComponentBase extends UIComponentBase {
-  protected container: Phaser.GameObjects.Container = undefined as any;
-  protected config: ContainerComponentConfig = undefined as any;
+  protected declare container: Phaser.GameObjects.Container;
+  protected declare config: ContainerComponentConfig;
 
   constructor(scene: Phaser.Scene, config: ContainerComponentConfig) {
     super(scene, config);
@@ -49,11 +49,14 @@ export abstract class ContainerComponentBase extends UIComponentBase {
     const bgElevated = getToken('colors.background.secondary') || '#12121a';
     const borderDefault = getToken('colors.border.default') || '#2a2a3e';
     
+    const bgColor = bgConfig.color ?? this.safeHexToInt(bgElevated);
+    const borderColor = bgConfig.borderColor ?? this.safeHexToInt(borderDefault);
+    
     const bg = this.scene.add.rectangle(
       0, 0,
       width,
       height,
-      bgConfig.color ?? parseInt(bgElevated.slice(1), 16),
+      bgColor,
       bgConfig.alpha ?? 1
     );
     
@@ -62,7 +65,7 @@ export abstract class ContainerComponentBase extends UIComponentBase {
     if (bgConfig.borderThickness) {
       bg.setStrokeStyle(
         bgConfig.borderThickness,
-        bgConfig.borderColor ?? parseInt(borderDefault.slice(1), 16)
+        borderColor
       );
     }
     
@@ -72,6 +75,15 @@ export abstract class ContainerComponentBase extends UIComponentBase {
   protected abstract createContent(): void;
   protected setupEventListeners(): void {}
   protected onMounted(): void {}
+  
+  /**
+   * 安全将hex字符串转换为整数，失败时返回默认值
+   */
+  private safeHexToInt(hex: string, defaultValue: number = 0x12121a): number {
+    const cleaned = hex.replace(/^#/, '');
+    const parsed = parseInt(cleaned, 16);
+    return Number.isNaN(parsed) ? defaultValue : parsed;
+  }
   
   protected createText(
     x: number,
@@ -109,7 +121,7 @@ export abstract class ContainerComponentBase extends UIComponentBase {
     button.add(bg);
     
     const label = this.createText(0, 0, text, {
-      fontSize: this.scene.add.text(0, 0, '').style.fontSize as string || '14px',
+      fontSize: '14px',
     });
     label.setOrigin(0.5);
     button.add(label);

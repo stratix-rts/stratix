@@ -10,11 +10,11 @@ import { ref, readonly, onUnmounted } from 'vue';
 import { toastService, type ToastOptions } from '@/components/ui/ToastService';
 
 export function useToast() {
-  const toasts = ref(toastService.getToasts());
+  const toasts = ref([...toastService.getToasts()]);
 
   // Subscribe to toast updates
   const unsubscribe = toastService.subscribe((newToasts) => {
-    toasts.value = newToasts;
+    toasts.value = [...newToasts];
   });
 
   onUnmounted(() => {

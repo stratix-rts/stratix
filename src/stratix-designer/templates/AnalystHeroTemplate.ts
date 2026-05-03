@@ -49,8 +49,8 @@ export class AnalystHeroTemplate implements HeroTemplateBase {
         personality: '严谨、客观、细致，善于挖掘数据背后的规律',
       },
       memory: {
-        shortTerm: [],
-        longTerm: [],
+        shortTerm: [] as string[],
+        longTerm: [] as string[],
         context: '我是 Stratix 星策系统的数据分析英雄，专注于数据处理与分析。',
       },
       skills: [

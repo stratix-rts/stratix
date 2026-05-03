@@ -146,17 +146,7 @@ export class StratixHeroDesigner {
   }
 
   exportHeroConfig(agentId?: string): string {
-    let exportConfig: StratixAgentConfig | undefined;
-
-    if (agentId) {
-      if (this.currentConfig?.agentId === agentId) {
-        exportConfig = this.currentConfig;
-      } else {
-        exportConfig = StratixHeroDesigner.PRESET_TEMPLATES.find((t) => t.agentId === agentId);
-      }
-    } else {
-      exportConfig = this.currentConfig || undefined;
-    }
+    const exportConfig = this.resolveConfig(agentId);
 
     if (!exportConfig) {
       throw new Error('无当前配置可导出');
@@ -165,21 +155,29 @@ export class StratixHeroDesigner {
     return ConfigConverter.toJson(exportConfig);
   }
 
+  private resolveConfig(agentId?: string): StratixAgentConfig | undefined {
+    if (agentId) {
+      return this.currentConfig?.agentId === agentId
+        ? this.currentConfig
+        : StratixHeroDesigner.PRESET_TEMPLATES.find((t) => t.agentId === agentId);
+    }
+    return this.currentConfig ?? undefined;
+  }
+
   downloadHeroConfig(agentId?: string): void {
-    const globalScope = globalThis as any;
+    interface BrowserGlobal {
+      document?: Document;
+    }
+    const globalScope = globalThis as BrowserGlobal;
     if (!globalScope.document) {
       throw new Error('downloadHeroConfig 仅在浏览器环境中可用，请使用 exportHeroConfig 获取 JSON 字符串');
     }
 
     const json = this.exportHeroConfig(agentId);
-    let config: StratixAgentConfig;
+    const config = this.resolveConfig(agentId);
 
-    if (agentId) {
-      config = this.currentConfig?.agentId === agentId
-        ? this.currentConfig
-        : StratixHeroDesigner.PRESET_TEMPLATES.find((t) => t.agentId === agentId)!;
-    } else {
-      config = this.currentConfig!;
+    if (!config) {
+      throw new Error('无当前配置可下载');
     }
 
     const blob = new Blob([json], { type: 'application/json' });

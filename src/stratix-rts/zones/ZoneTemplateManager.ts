@@ -159,7 +159,7 @@ export class ZoneTemplateManager {
       }
 
       return { zones, actionId };
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('[ZoneTemplateManager] Failed to apply template:', error);
       
       for (const { zone } of createdZones) {
@@ -274,7 +274,7 @@ export class ZoneTemplateManager {
       }
 
       return template;
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('[ZoneTemplateManager] Failed to deserialize template:', error);
       return null;
     }
@@ -320,7 +320,7 @@ export class ZoneTemplateManager {
     try {
       const templatesArray = Array.from(this.customTemplates.values());
       localStorage.setItem(this.storageKey, JSON.stringify(templatesArray));
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('[ZoneTemplateManager] Failed to persist templates:', error);
     }
   }
@@ -339,7 +339,7 @@ export class ZoneTemplateManager {
           }
         });
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('[ZoneTemplateManager] Failed to load custom templates:', error);
     }
   }
@@ -390,7 +390,7 @@ export class ZoneTemplateManager {
         this.persistCustomTemplates();
         rtsEventBus.emit('templates:imported' as any, { count: result.imported });
       }
-    } catch (error) {
+    } catch (error: unknown) {
       result.errors.push(error instanceof Error ? error.message : 'Unknown error');
     }
 

@@ -6,7 +6,7 @@ export interface ChatCommand {
   action?: (params?: string) => void | Promise<void>;
 }
 
-export const CHAT_COMMANDS: ChatCommand[] = [
+export const CHAT_COMMANDS: readonly ChatCommand[] = [
   {
     id: 'help',
     label: '帮助',
@@ -40,10 +40,10 @@ export const CHAT_COMMANDS: ChatCommand[] = [
 ];
 
 export function filterCommands(query: string): ChatCommand[] {
-  if (!query) return CHAT_COMMANDS;
-  const lowerQuery = query.toLowerCase();
-  return CHAT_COMMANDS.filter(cmd => 
-    cmd.label.toLowerCase().includes(lowerQuery) ||
-    cmd.id.toLowerCase().includes(lowerQuery)
+  const trimmed = query.trim().toLowerCase();
+  if (!trimmed) return [...CHAT_COMMANDS];
+  return CHAT_COMMANDS.filter(cmd =>
+    cmd.label.toLowerCase().includes(trimmed) ||
+    cmd.id.toLowerCase().includes(trimmed)
   );
 }

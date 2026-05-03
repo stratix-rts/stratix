@@ -160,17 +160,17 @@ export class Map3DView {
       }
       .map3d-zone-top {
         position: absolute;
-        transform: translateZ(var(--zone-height, 30px));
+        transform: translateZ(const(--zone-height, 30px));
       }
       .map3d-zone-front {
         position: absolute;
         transform-origin: top center;
-        transform: rotateX(-90deg) translateZ(var(--zone-height, 30px));
+        transform: rotateX(-90deg) translateZ(const(--zone-height, 30px));
       }
       .map3d-zone-right {
         position: absolute;
         transform-origin: left center;
-        transform: rotateY(90deg) rotateZ(-90deg) translateX(calc(var(--zone-height, 30px) / 2)) translateZ(calc(var(--zone-width, 100px) / 2));
+        transform: rotateY(90deg) rotateZ(-90deg) translateX(calc(const(--zone-height, 30px) / 2)) translateZ(calc(const(--zone-width, 100px) / 2));
       }
       .map3d-agent-marker {
         position: absolute;
@@ -185,9 +185,9 @@ export class Map3DView {
         width: 24px;
         height: 24px;
         border-radius: 50%;
-        background: linear-gradient(135deg, var(--agent-color, #4a9eff), var(--agent-color-dark, #2a6edf));
+        background: linear-gradient(135deg, const(--agent-color, #4a9eff), const(--agent-color-dark, #2a6edf));
         border: 2px solid rgba(255,255,255,0.8);
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3), 0 0 12px var(--agent-glow, rgba(74,158,255,0.5));
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3), 0 0 12px const(--agent-glow, rgba(74,158,255,0.5));
         display: flex;
         align-items: center;
         justify-content: center;

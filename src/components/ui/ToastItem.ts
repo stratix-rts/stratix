@@ -20,3 +20,6 @@ export interface ToastOptions {
   message?: string;
   duration?: number;
 }
+
+/** Default auto-dismiss duration in milliseconds */
+export const DEFAULT_TOAST_DURATION = 4000;

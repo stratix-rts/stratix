@@ -88,7 +88,7 @@ export class ThumbnailGenerator {
 
       this.loadedThumbnails.add(textureKey);
       return textureKey;
-    } catch (error) {
+    } catch (error: unknown) {
       console.warn(`[ThumbnailGenerator] Failed to load thumbnail for ${agentId}, using fallback`);
       return this.getFallbackThumbnail('custom');
     }
@@ -125,7 +125,7 @@ export class ThumbnailGenerator {
         };
         img.onerror = () => reject(new Error('Failed to load image'));
         img.src = base64;
-      } catch (error) {
+      } catch (error: unknown) {
         reject(error);
       }
     });

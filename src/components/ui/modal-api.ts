@@ -26,7 +26,7 @@ interface ModalResult {
 
 interface ModalInstance {
   container: HTMLDivElement;
-  props: Record<string, any>;
+  props: Record<string, unknown>;
   destroy: () => void;
   update: (options: Partial<ModalOptions>) => void;
 }
@@ -34,12 +34,16 @@ interface ModalInstance {
 const modalInstances: ModalInstance[] = [];
 
 function createModal(type: ModalType, options: ModalOptions): ModalResult {
+  if (typeof document === 'undefined') {
+    throw new Error('Modal cannot be created outside of a browser environment');
+  }
   const container = document.createElement('div');
   document.body.appendChild(container);
-  
+
   let resolved = false;
-  
-  const props: Record<string, any> = {
+  let removeTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const props: Record<string, unknown> = {
     visible: true,
     type,
     title: options.title,
@@ -76,14 +80,16 @@ function createModal(type: ModalType, options: ModalOptions): ModalResult {
   function destroy() {
     if (resolved) return;
     resolved = true;
-    
+
     render(null, container);
-    setTimeout(() => {
+    if (removeTimer) clearTimeout(removeTimer);
+    removeTimer = setTimeout(() => {
+      removeTimer = null;
       if (document.body.contains(container)) {
         document.body.removeChild(container);
       }
     }, 0);
-    
+
     const index = modalInstances.findIndex(m => m.container === container);
     if (index > -1) {
       modalInstances.splice(index, 1);

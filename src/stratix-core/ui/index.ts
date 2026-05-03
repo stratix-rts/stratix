@@ -1,6 +1,6 @@
 /**
  * Phaser UI Base Classes
- * 
+ *
  * Unified component system for Phaser rendering
  */
 
@@ -10,4 +10,5 @@ export { ContainerComponentBase } from './ContainerComponent.base';
 export { DOMContainer, createDOMContainer } from './DOMContainer';
 export { domOverlayManager } from './DOMOverlayManager';
 
-export * from './types';
+export type { UIComponentConfig, DOMComponentConfig, ContainerComponentConfig } from './types';
+export type { ThemeName, ComponentTokenRef } from './types';

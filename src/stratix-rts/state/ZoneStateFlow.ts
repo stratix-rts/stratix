@@ -211,7 +211,7 @@ export class ZoneStateFlow {
       if (Array.isArray(events)) {
         this.eventLog = events;
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to import event log:', error);
     }
   }
@@ -226,7 +226,7 @@ export class ZoneStateFlow {
       
       const trimmed = log.slice(-this.maxHistorySize);
       localStorage.setItem(storageKey, JSON.stringify(trimmed));
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to persist event:', error);
     }
   }
@@ -242,7 +242,7 @@ export class ZoneStateFlow {
           this.eventLog = log;
         }
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to load persisted log:', error);
     }
   }

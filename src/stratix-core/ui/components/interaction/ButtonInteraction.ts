@@ -28,10 +28,10 @@ export class ButtonInteraction extends InteractionAdapter {
     this.onClick = config.onClick;
     
     // 从设计系统获取默认颜色
-    this.normalColor = config.normalColor || this.getToken('colors.background.tertiary');
-    this.hoverColor = config.hoverColor || this.getToken('colors.accent');
-    this.activeColor = config.activeColor || this.getToken('colors.secondary');
-    this.disabledColor = config.disabledColor || this.getToken('colors.border.default');
+    this.normalColor = config.normalColor || (this.getToken('colors.background.tertiary') as string) ?? '#12121a';
+    this.hoverColor = config.hoverColor || (this.getToken('colors.accent') as string) ?? '#00d4ff';
+    this.activeColor = config.activeColor || (this.getToken('colors.secondary') as string) ?? '#7c3aed';
+    this.disabledColor = config.disabledColor || (this.getToken('colors.border.default') as string) ?? '#2a2a3e';
     this.animationDuration = config.animationDuration || this.theme.animation.duration.fast;
   }
   
@@ -49,6 +49,10 @@ export class ButtonInteraction extends InteractionAdapter {
   }
   
   disable(): void {
+    if (!this.rectangleTarget.active) {
+      return;
+    }
+    
     this.rectangleTarget.removeInteractive();
     
     this.rectangleTarget.off('pointerover', this.onPointerOver, this);
@@ -58,7 +62,9 @@ export class ButtonInteraction extends InteractionAdapter {
   }
   
   destroy(): void {
-    this.disable();
+    if (this.rectangleTarget.active) {
+      this.disable();
+    }
   }
   
   /**

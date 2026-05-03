@@ -222,6 +222,6 @@ export class ParticleSystem {
       particle.trail.destroy();
     });
     this.particles = [];
-    this.container.destroy();
+    this.container?.destroy();
   }
 }

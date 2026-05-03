@@ -1,6 +1,6 @@
 export interface ControlGroup {
-  id: number;
-  agentIds: Set<string>;
+  readonly id: number;
+  readonly agentIds: Set<string>;
 }
 
 export class ControlGroupSystem {

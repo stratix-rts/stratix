@@ -167,7 +167,7 @@ export class RTSEventBus {
         timeoutPromise,
       ]) as RequestResponseMap[K]['response'];
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       console.error(`[RTSEventBus] Request error for ${event}:`, error);
       return undefined;
     } finally {

@@ -168,6 +168,6 @@ export class TaskZonePreview {
   }
 
   public destroy(): void {
-    this.graphics.destroy();
+    this.graphics?.destroy();
   }
 }

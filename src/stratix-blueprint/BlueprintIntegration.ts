@@ -63,7 +63,7 @@ export class BlueprintIntegration {
   private async handleFallback(
     requirement: string,
     strategy: SplitStrategy,
-    originalError: any,
+    originalError: unknown,
     streamCallback?: AIStreamCallback
   ): Promise<BlueprintGenerationResult> {
     console.log('[BlueprintIntegration] Attempting fallback...');

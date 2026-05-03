@@ -12,6 +12,14 @@ export interface CommandBuildResult {
   agentCount: number;
 }
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 export class CommandBuilder {
   private static generateCommandId(): string {
     const timestamp = Date.now();
@@ -44,6 +52,10 @@ export class CommandBuilder {
     const { agentIds, skill, params, executeAt } = options;
     const commands: StratixCommandData[] = [];
     const timestamp = executeAt ?? Date.now();
+
+    if (!agentIds.length) {
+      return { commands, agentCount: 0 };
+    }
 
     for (const agentId of agentIds) {
       commands.push({
@@ -94,18 +106,15 @@ export class CommandBuilder {
   }
 
   static formatCommandPreview(command: StratixCommandData, skillName: string): string {
-    const escapeHtml = (str: string): string => {
-      return str
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-    };
-
     const paramsPreview = Object.entries(command.params)
       .slice(0, 5) // Limit to 5 params to prevent DoS
       .map(([key, value]) => {
-        const valueStr = JSON.stringify(value);
+        let valueStr: string;
+        try {
+          valueStr = JSON.stringify(value);
+        } catch {
+          valueStr = '[Circular]';
+        }
         const truncatedValue = valueStr.length > 200 ? valueStr.slice(0, 200) + '...' : valueStr;
         return `${key}: ${truncatedValue}`;
       })
@@ -119,7 +128,7 @@ export class CommandBuilder {
     params: Record<string, any>
   ): { isValid: boolean; missingParams: string[] } {
     const missingParams: string[] = [];
-    
+
     for (const param of skill.parameters) {
       if (param.required) {
         const value = params[param.paramId];

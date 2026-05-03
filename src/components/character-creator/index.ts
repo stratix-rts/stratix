@@ -1,6 +1,11 @@
-// Character Creator - V1 (保留，需要时切换回来)
+/**
+ * @deprecated V1 Character Creator. Consider migrating to v4 for new projects.
+ */
 export { default } from './v1/CharacterCreatorModal.vue';
 
+/**
+ * @deprecated V1 Character Creator. Consider migrating to v4 for new projects.
+ */
 export { default as CharacterCreatorModal } from './v1/CharacterCreatorModal.vue';
 
 // V4 (C1-C6 + A1-A8 美学约束)

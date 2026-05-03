@@ -126,7 +126,7 @@ class TextureLoadQueue {
 
         this.processQueue();
         return;
-      } catch (error) {
+      } catch (error: unknown) {
         lastError = error as Error;
         console.warn(`[TextureLoadQueue] Attempt ${attempt + 1} failed for ${task.id}:`, error);
         

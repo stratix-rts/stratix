@@ -15,19 +15,25 @@
 import { rtsEventBus } from '@/stratix-rts/events/core/RTSEventBus';
 
 import type { ToastItem, ToastOptions } from './ToastItem';
-
+import { DEFAULT_TOAST_DURATION } from './ToastItem';
 
 export type { ToastOptions };
 
 type ToastSubscriber = (toasts: ToastItem[]) => void;
 
+interface NotificationEvent {
+  message: string;
+  type: ToastOptions['type'];
+}
+
 class ToastService {
   private static instance: ToastService;
   private toasts = new Map<string, ToastItem>();
   private maxToasts = 5;
-  private defaultDuration = 4000;
+  private defaultDuration = DEFAULT_TOAST_DURATION;
   private subscribers = new Set<ToastSubscriber>();
   private eventUnsubscribe: (() => void) | null = null;
+  private pendingTimers = new Set<ReturnType<typeof setTimeout>>();
 
   private constructor() {
     this.setupEventListeners();
@@ -45,13 +51,16 @@ class ToastService {
    */
   private setupEventListeners(): void {
     // Listen for scene:ui:notification events from RTS layer
-    this.eventUnsubscribe = rtsEventBus.on('scene:ui:notification' as any, (data: { message: string; type: ToastOptions['type'] }) => {
-      this.show({
-        type: data.type,
-        title: data.type.charAt(0).toUpperCase() + data.type.slice(1),
-        message: data.message,
-      });
-    });
+    this.eventUnsubscribe = (rtsEventBus.on as (event: string, handler: (data: NotificationEvent) => void) => (() => void))(
+      'scene:ui:notification',
+      (data: NotificationEvent) => {
+        this.show({
+          type: data.type,
+          title: data.type.charAt(0).toUpperCase() + data.type.slice(1),
+          message: data.message,
+        });
+      }
+    );
   }
 
   /**
@@ -80,7 +89,7 @@ class ToastService {
    * @returns toast ID
    */
   show(options: ToastOptions): string {
-    const id = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const id = `toast-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 
     const toast: ToastItem = {
       id,
@@ -98,9 +107,11 @@ class ToastService {
 
     // Auto-dismiss after duration
     if (toast.duration && toast.duration > 0) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
+        this.pendingTimers.delete(timer);
         this.dismiss(id);
       }, toast.duration);
+      this.pendingTimers.add(timer);
     }
 
     return id;
@@ -165,6 +176,10 @@ class ToastService {
       this.eventUnsubscribe();
       this.eventUnsubscribe = null;
     }
+    for (const timer of this.pendingTimers) {
+      clearTimeout(timer);
+    }
+    this.pendingTimers.clear();
     this.toasts.clear();
     this.subscribers.clear();
   }

@@ -58,7 +58,7 @@ export function usePerformanceMonitor(options: { threshold?: number } = {}) {
     addMetric(`render:${stage}`, duration);
   }
 
-  function trackEvent(name: string, fn: () => void): ReturnType<typeof fn> {
+  function trackEvent<T>(name: string, fn: () => T): T {
     const start = performance.now();
     const result = fn();
     const duration = performance.now() - start;

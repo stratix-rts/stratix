@@ -715,9 +715,9 @@ export class Building extends Phaser.GameObjects.Container {
     this.roomsContainer?.destroy();
     this.buildingShell?.destroy();
     this.foundationTileSprite?.destroy();
-    this.hoverGlow?.destroy();
-    this.selectionGlow?.destroy();
-    this.litGlowGraphics?.destroy();
+    if (this.hoverGlow?.active) this.hoverGlow.destroy();
+    if (this.selectionGlow?.active) this.selectionGlow.destroy();
+    if (this.litGlowGraphics?.active) this.litGlowGraphics.destroy();
     this.nameLabel?.destroy();
     this.statusLabel?.destroy();
     this.progressBar?.destroy();

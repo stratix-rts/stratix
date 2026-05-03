@@ -486,7 +486,7 @@ export class TaskZone extends BaseZone {
       this.typeIcon = null;
     }
     if (this.queueText) {
-      this.queueText.destroy();
+      this.queueText?.destroy();
       this.queueText = null;
     }
     if (this.progressBar) {
@@ -494,7 +494,7 @@ export class TaskZone extends BaseZone {
       this.progressBar = null;
     }
     if (this.progressText) {
-      this.progressText.destroy();
+      this.progressText?.destroy();
       this.progressText = null;
     }
     if (this.statusPulse) {

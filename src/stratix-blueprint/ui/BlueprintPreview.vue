@@ -92,6 +92,7 @@ const taskCount = ref(0);
 
 let game: Phaser.Game | null = null;
 let blueprintCanvas: BlueprintCanvas | null = null;
+let loadTimeout: ReturnType<typeof setTimeout> | null = null;
 
 onMounted(() => {
   initializeGame();
@@ -100,8 +101,13 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize);
   window.removeEventListener('orientationchange', handleResize);
+  if (loadTimeout) {
+    clearTimeout(loadTimeout);
+  }
   if (game) {
     game.destroy(true);
+    game = null;
+    blueprintCanvas = null;
   }
 });
 
@@ -139,9 +145,11 @@ function loadBlueprint() {
   if (!blueprintCanvas) return;
 
   loading.value = true;
-  
-  setTimeout(() => {
-    blueprintCanvas!.loadBlueprint(props.tasks, props.projectId);
+
+  loadTimeout = setTimeout(() => {
+    loadTimeout = null;
+    if (!blueprintCanvas) return;
+    blueprintCanvas.loadBlueprint(props.tasks, props.projectId);
     taskCount.value = props.tasks.length;
     loading.value = false;
   }, 100);
@@ -194,19 +202,23 @@ function handleResize() {
 
 function handleConfirm() {
   if (!blueprintCanvas) return;
-  
+
   const blueprint = blueprintCanvas.getBlueprint();
   if (blueprint) {
-    const tasks: ParsedTask[] = blueprint.nodes.map(node => ({
-      id: node.id,
-      name: node.name,
-      type: node.type,
-      description: node.description,
-      estimatedTime: 60,
-      dependencies: node.dependencies,
-      priority: node.priority,
-    }));
-    
+    const originalTaskMap = new Map(props.tasks.map(t => [t.id, t]));
+    const tasks: ParsedTask[] = blueprint.nodes.map(node => {
+      const original = originalTaskMap.get(node.id);
+      return {
+        id: node.id,
+        name: node.name,
+        type: node.type,
+        description: node.description,
+        estimatedTime: original?.estimatedTime ?? 60,
+        dependencies: node.dependencies,
+        priority: node.priority,
+      };
+    });
+
     emit('confirm', tasks);
   }
 }

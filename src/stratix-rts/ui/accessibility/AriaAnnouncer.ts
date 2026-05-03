@@ -212,7 +212,7 @@ export class AriaAnnouncer {
     this.listeners.forEach(listener => {
       try {
         listener(announcement);
-      } catch (error) {
+      } catch (error: unknown) {
         console.error('[AriaAnnouncer] Error in announcement listener:', error);
       }
     });

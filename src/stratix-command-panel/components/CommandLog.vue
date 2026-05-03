@@ -195,14 +195,14 @@ const formatTime = (timestamp: number): string => {
   const now = new Date();
   const diff = now.getTime() - date.getTime();
 
-  if (diff < 60000) {
+  if (Math.abs(diff) < 60000) {
     return '刚刚';
-  } else if (diff < 3600000) {
+  } else if (diff > 0 && diff < 3600000) {
     return `${Math.floor(diff / 60000)} 分钟前`;
-  } else if (diff < 86400000) {
+  } else if (diff > 0 && diff < 86400000) {
     return `${Math.floor(diff / 3600000)} 小时前`;
   } else {
-    return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+    return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
 };
 

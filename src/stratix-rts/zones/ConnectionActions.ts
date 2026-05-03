@@ -26,7 +26,7 @@ export class ConnectionCreateAction implements ZoneAction {
     connectionType: ConnectionType = 'sequential',
     metadata: ConnectionMetadata = {}
   ) {
-    this.id = `conn-create-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    this.id = `conn-create-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     this.timestamp = Date.now();
     this.zoneId = `${sourceZoneId}-${targetZoneId}`;
     this.data = {
@@ -80,7 +80,7 @@ export class ConnectionDeleteAction implements ZoneAction {
     private connectionManager: ZoneConnectionManager,
     connectionId: string
   ) {
-    this.id = `conn-delete-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    this.id = `conn-delete-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     this.timestamp = Date.now();
     
     const connection = connectionManager.getConnection(connectionId);
@@ -146,7 +146,7 @@ export class ConnectionUpdateAction implements ZoneAction {
       metadata?: Partial<ConnectionMetadata>;
     }
   ) {
-    this.id = `conn-update-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    this.id = `conn-update-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     this.timestamp = Date.now();
 
     const connection = connectionManager.getConnection(connectionId);

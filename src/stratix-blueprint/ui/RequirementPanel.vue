@@ -196,6 +196,7 @@ const progress = ref(0);
 const progressText = ref('准备中...');
 const tasks = ref<ParsedTask[]>([]);
 const showBlueprintPreview = ref(false);
+let stepTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const integration = new BlueprintIntegration();
 
@@ -267,8 +268,9 @@ async function handleStartAI() {
     
     if (result.success && result.tasks) {
       tasks.value = result.tasks;
-      
-      setTimeout(() => {
+
+      stepTimeout = setTimeout(() => {
+        stepTimeout = null;
         currentStep.value = 3;
       }, 500);
     } else {
@@ -296,6 +298,10 @@ function handleBlueprintConfirm(confirmedTasks: ParsedTask[]) {
 }
 
 function handleClose() {
+  if (stepTimeout) {
+    clearTimeout(stepTimeout);
+    stepTimeout = null;
+  }
   currentStep.value = 1;
   requirement.value = '';
   uploadedFileName.value = '';

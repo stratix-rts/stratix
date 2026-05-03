@@ -16,7 +16,7 @@ export abstract class UIComponentBase {
   protected scene: Phaser.Scene;
   protected config: UIComponentConfig;
   
-  protected container: Phaser.GameObjects.Container | Phaser.GameObjects.DOMElement;
+  protected container: Phaser.GameObjects.Container | Phaser.GameObjects.DOMElement | null = null;
   protected isVisible: boolean = true;
   protected depthLayer: number;
   
@@ -39,6 +39,7 @@ export abstract class UIComponentBase {
   destroy(): void {
     this.onBeforeDestroy();
     this.container?.destroy();
+    this.container = null;
     this.onAfterDestroy();
   }
   
@@ -109,6 +110,6 @@ export abstract class UIComponentBase {
   protected onAfterDestroy(): void {}
   
   private generateId(): string {
-    return `${this.constructor.name}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `${this.constructor.name}_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }
 }

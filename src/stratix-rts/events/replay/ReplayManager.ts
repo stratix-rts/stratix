@@ -193,7 +193,7 @@ export class ReplayManager {
       sessions.push(session);
       localStorage.setItem('rts_replay_sessions', JSON.stringify(sessions));
       console.log(`[ReplayManager] Session saved: ${session.id}`);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('[ReplayManager] Failed to save session:', error);
     }
   }
@@ -225,7 +225,7 @@ export class ReplayManager {
     try {
       const sessions = this.getSavedSessions().filter(s => s.id !== id);
       localStorage.setItem('rts_replay_sessions', JSON.stringify(sessions));
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('[ReplayManager] Failed to delete session:', error);
     }
   }
@@ -253,9 +253,9 @@ export class ReplayManager {
     try {
       const session = JSON.parse(json) as RecordingSession;
       // Assign new ID to avoid conflicts
-      session.id = generateSessionId();
+      (session as unknown as { id: string }).id = generateSessionId();
       return session;
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('[ReplayManager] Failed to import session:', error);
       this.emit('replay:error', { error: 'Invalid session format' });
       return null;

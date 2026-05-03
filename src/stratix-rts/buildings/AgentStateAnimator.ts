@@ -58,7 +58,7 @@ export class AgentStateAnimator {
 
   public destroy(): void {
     this.stop();
-    this.fxGraphics.destroy();
+    this.fxGraphics?.destroy();
   }
 
   private apply(): void {

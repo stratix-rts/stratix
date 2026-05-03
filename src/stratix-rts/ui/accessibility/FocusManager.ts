@@ -436,7 +436,7 @@ export class FocusManager {
     this.listeners.forEach(listener => {
       try {
         listener(event);
-      } catch (error) {
+      } catch (error: unknown) {
         console.error('[FocusManager] Error in focus listener:', error);
       }
     });

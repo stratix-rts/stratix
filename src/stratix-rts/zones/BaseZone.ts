@@ -5,7 +5,11 @@ import { getToken } from '@/design-system/config';
 import { getDSColor, isReducedMotion, drawGlowRing } from '../themes/ThemeColors';
 
 // 辅助函数：将十六进制颜色字符串转换为 Phaser 数字格式
-const hexToNumber = (hex: string) => parseInt(hex.replace('#', ''), 16);
+const hexToNumber = (hex: string): number => {
+  if (!hex || !hex.startsWith('#')) return 0x888888;
+  const parsed = parseInt(hex.slice(1), 16);
+  return Number.isNaN(parsed) ? 0x888888 : parsed;
+};
 
 export type ZoneStatus = 'idle' | 'active' | 'busy' | 'error' | 'completed';
 

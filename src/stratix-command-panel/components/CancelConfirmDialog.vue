@@ -16,7 +16,7 @@
 
       <div v-if="log" class="command-info">
         <InfoItem label="指令 ID" direction="horizontal" plain mono>
-          {{ log.commandId.slice(0, 20) }}...
+          {{ log.commandId.length > 23 ? log.commandId.slice(0, 20) + '...' : log.commandId }}
         </InfoItem>
         <InfoItem label="技能名称" direction="horizontal" plain>
           {{ log.skillName }}

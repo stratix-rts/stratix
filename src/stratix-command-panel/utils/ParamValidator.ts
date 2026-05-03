@@ -88,6 +88,14 @@ export class ParamValidator {
   }
 
   private static validateNumber(param: ValidatedParam, value: any): ValidationResult {
+    // Reject boolean values early
+    if (typeof value === 'boolean') {
+      return {
+        isValid: false,
+        errorMessage: `${param.name} 必须为有效数字`
+      };
+    }
+
     // Strict string validation - must be a valid number format
     if (typeof value === 'string') {
       if (!/^-?\d+(\.\d+)?$/.test(value.trim())) {
@@ -100,7 +108,7 @@ export class ParamValidator {
 
     const numValue = typeof value === 'string' ? parseFloat(value) : value;
 
-    if (isNaN(numValue)) {
+    if (!isFinite(numValue)) {
       return {
         isValid: false,
         errorMessage: `${param.name} 必须为有效数字`
@@ -135,7 +143,7 @@ export class ParamValidator {
   }
 
   private static validateObject(value: any): ValidationResult {
-    if (typeof value !== 'object' || Array.isArray(value)) {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
       return {
         isValid: false,
         errorMessage: '必须为对象类型'

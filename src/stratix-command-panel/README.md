@@ -22,26 +22,18 @@ Stratix Command Panel 是 Stratix 星策系统的指令编辑与提交模块，�
 src/stratix-command-panel/
 ├── init.md                      # 模块初始化文档
 ├── README.md                    # 本文档
-├── StratixCommandPanel.ts       # 核心逻辑类（Phaser Scene）
+├── FEATURE_002_PROMPT.md        # Feature 002 开发提示
+├── index.ts                     # 模块入口（barrel 导出）
 ├── components/
 │   ├── SkillList.vue            # 技能列表组件
 │   ├── ParamForm.vue            # 参数表单组件
-│   └── CommandLog.vue           # 指令日志组件
-├── utils/
-│   ├── CommandBuilder.ts        # 指令构建工具
-│   └── ParamValidator.ts        # 参数校验工具
-├── types/
-│   └── index.ts                 # 类型定义（扩展 Stratix 协议）
-└── .long-run-agent/             # LRA 工具配置目录
-    ├── config.json              # 项目配置
-    ├── feature_list.json        # 功能清单
-    ├── specs/                   # 功能规格文档
-    │   ├── feature_001.md       # 技能列表展示
-    │   ├── feature_002.md       # 参数表单编辑
-    │   ├── feature_003.md       # 指令构建与提交
-    │   ├── feature_004.md       # 指令日志展示
-    │   └── feature_005.md       # 指令取消功能
-    └── records/                 # 代码变更记录
+│   ├── CommandLog.vue           # 指令日志组件
+│   ├── ConfirmDialog.vue        # 执行确认对话框
+│   ├── LogDetailModal.vue       # 日志详情弹窗
+│   └── CancelConfirmDialog.vue  # 取消确认对话框
+└── utils/
+    ├── CommandBuilder.ts        # 指令构建工具
+    └── ParamValidator.ts        # 参数校验工具
 ```
 
 ## Feature 拆分

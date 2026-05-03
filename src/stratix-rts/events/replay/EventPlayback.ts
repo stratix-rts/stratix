@@ -275,7 +275,7 @@ export class EventPlayback {
 
     try {
       rtsEventBus.emit(event.event, event.data);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error(`[EventPlayback] Error emitting event ${event.event}:`, error);
     }
   }

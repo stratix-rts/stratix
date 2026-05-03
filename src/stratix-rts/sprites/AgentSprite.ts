@@ -13,7 +13,11 @@ export type CommandStatus = 'pending' | 'running' | 'success' | 'failed';
 export type AgentType = 'writer' | 'dev' | 'analyst' | string;
 
 // 辅助函数：将十六进制颜色字符串转换为 Phaser 数字格式
-const hexToNumber = (hex: string) => parseInt(hex.replace('#', ''), 16);
+const hexToNumber = (hex: string): number => {
+  if (!hex || !hex.startsWith('#')) return 0;
+  const parsed = parseInt(hex.slice(1), 16);
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
 
 // 动态获取主题颜色
 const getThemeColors = () => ({
@@ -382,7 +386,7 @@ export class AgentSprite extends Phaser.GameObjects.Container {
 
       try {
         this.sprite.play(animKey);
-      } catch (error) {
+      } catch (error: unknown) {
         console.warn(`[AgentSprite] Failed to play animation ${animKey}:`, error);
       }
     }
@@ -991,7 +995,7 @@ export class AgentSprite extends Phaser.GameObjects.Container {
       if (this.renderMode === 'thumbnail' && this.thumbnailSprite) {
         this.thumbnailSprite.setTexture(textureKey);
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.warn(`[AgentSprite] Failed to load thumbnail:`, error);
     }
   }

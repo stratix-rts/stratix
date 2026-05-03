@@ -31,6 +31,7 @@ export class LayoutEngine {
     const getLayer = (taskId: string): number => {
       if (visiting.has(taskId)) {
         // Circular dependency detected - break the cycle by returning current layer
+        console.warn(`[LayoutEngine] Circular dependency detected at task: ${taskId}`);
         return layerCache.get(taskId) ?? 0;
       }
 

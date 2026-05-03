@@ -181,7 +181,7 @@ export class AgentPowerRingChart {
     this.agentName = name;
 
     if (this.agentNameText) {
-      this.agentNameText.destroy();
+      this.agentNameText?.destroy();
     }
 
     if (name) {
@@ -242,15 +242,15 @@ export class AgentPowerRingChart {
    */
   public destroy(): void {
     this.destroyed = true;
-    this.graphics.destroy();
+    this.graphics?.destroy();
 
     if (this.centerText) {
-      this.centerText.destroy();
+      this.centerText?.destroy();
       this.centerText = null;
     }
 
     if (this.agentNameText) {
-      this.agentNameText.destroy();
+      this.agentNameText?.destroy();
       this.agentNameText = null;
     }
   }

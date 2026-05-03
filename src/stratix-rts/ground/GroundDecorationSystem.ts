@@ -105,7 +105,7 @@ export class GroundDecorationSystem extends Phaser.Events.EventEmitter {
 
     // 移除旧的 tile sprite
     if (this.groundTileSprite) {
-      this.groundTileSprite.destroy();
+      this.groundTileSprite?.destroy();
     }
 
     // 创建新的 tile sprite 覆盖整个地图
@@ -411,7 +411,7 @@ export class GroundDecorationSystem extends Phaser.Events.EventEmitter {
     this.cloudLayer = [];
 
     if (this.groundTileSprite) {
-      this.groundTileSprite.destroy();
+      this.groundTileSprite?.destroy();
     }
   }
 }

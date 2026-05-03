@@ -4,4 +4,4 @@
 
 export { ThemeContext } from './ThemeContext';
 export { ReactiveToken } from './ReactiveToken';
-export type * from '../../core/types/theme.types';
+export type { ThemeChangeHandler, TokenChangeHandler, ThemeSubscriptionConfig, ReactiveTokenConfig, ThemeContextState } from '../../core/types/theme.types';

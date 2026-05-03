@@ -887,5 +887,23 @@ export class InputHandler {
     this.scene.input.off('pointermove', this.boundHandlers.pointermove);
     this.scene.input.off('pointerup', this.boundHandlers.pointerup);
     this.scene.input.off('wheel', this.boundHandlers.wheel);
+    
+    if (this.scene.input.keyboard) {
+      this.scene.input.keyboard.off('keydown-ESC');
+      this.scene.input.keyboard.off('keydown-A');
+      this.scene.input.keyboard.off('keydown-S');
+      this.scene.input.keyboard.off('keydown-P');
+      this.scene.input.keyboard.off('keydown-H');
+      this.scene.input.keyboard.off('keydown-Z');
+      this.scene.input.keyboard.off('keydown-ONE');
+      this.scene.input.keyboard.off('keydown-TWO');
+      this.scene.input.keyboard.off('keydown-THREE');
+      this.scene.input.keyboard.off('keydown-FOUR');
+      this.scene.input.keyboard.off('keydown-FIVE');
+      this.scene.input.keyboard.off('keydown-SIX');
+      this.scene.input.keyboard.off('keydown-SEVEN');
+      this.scene.input.keyboard.off('keydown-EIGHT');
+      this.scene.input.keyboard.off('keydown-NINE');
+    }
   }
 }

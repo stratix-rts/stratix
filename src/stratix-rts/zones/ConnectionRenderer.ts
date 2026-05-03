@@ -122,8 +122,8 @@ export class ConnectionRenderer {
   }
 
   destroy(): void {
-    this.graphics.destroy();
-    this.particleGraphics.destroy();
+    this.graphics?.destroy();
+    this.particleGraphics?.destroy();
     this.animatedConnections.clear();
     this.animationActive = false;
   }

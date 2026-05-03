@@ -1,12 +1,12 @@
 import { rtsEventBus } from '../../events/core/RTSEventBus';
 
 export interface ToastConfig {
-  type: 'info' | 'success' | 'warning' | 'error';
-  title: string;
-  message: string;
-  duration?: number;
-  actions?: Array<{
-    label: string;
+  readonly type: 'info' | 'success' | 'warning' | 'error';
+  readonly title: string;
+  readonly message: string;
+  readonly duration?: number;
+  readonly actions?: Array<{
+    readonly label: string;
     action: () => void | Promise<void>;
   }>;
 }
@@ -33,7 +33,7 @@ export class ToastManager {
   }
 
   show(config: ToastConfig): string {
-    const id = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const id = `toast-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     
     const toast: Toast = {
       id,

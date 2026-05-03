@@ -93,7 +93,7 @@ export class UIRecorder {
   /**
    * 记录事件
    */
-  recordEvent(type: EventType, target: string, data: any): void {
+  recordEvent(type: EventType, target: string, data: unknown): void {
     if (!this.isRecording) return;
     if (!this.options.eventTypes.includes(type)) return;
     if (this.events.length >= this.options.maxEvents) {
@@ -150,7 +150,7 @@ export class UIRecorder {
   /**
    * 记录状态变化
    */
-  recordStateChange(targetId: string, oldState: any, newState: any): void {
+  recordStateChange(targetId: string, oldState: unknown, newState: unknown): void {
     this.recordEvent(EventType.STATE_CHANGE, targetId, { oldState, newState });
   }
   
@@ -232,13 +232,15 @@ export class UIRecorder {
    */
   private createMetadata(): RecordingMetadata {
     const game = this.scene.game;
+    const width = Number(game.config.width);
+    const height = Number(game.config.height);
     
     return {
       version: '1.0.0',
       gameVersion: '0.1.0', // TODO: 从package.json读取
       screenResolution: {
-        width: game.config.width as number,
-        height: game.config.height as number,
+        width: Number.isFinite(width) ? width : 1920,
+        height: Number.isFinite(height) ? height : 1080,
       },
       fps: 60, // TODO: 从game loop获取实际FPS
       tags: [],
@@ -251,7 +253,7 @@ export class UIRecorder {
   /**
    * 清理数据（移除不可序列化的值）
    */
-  private sanitizeData(data: any): any {
+  private sanitizeData(data: unknown): unknown {
     try {
       // 尝试序列化和反序列化，以移除不可序列化的值
       return JSON.parse(JSON.stringify(data));

@@ -60,7 +60,9 @@ const server = createServer((req, res) => {
   serveFile(filePath, res);
 });
 
-function serveFile(filePath: string, res: any) {
+import type { ServerResponse } from 'http';
+
+function serveFile(filePath: string, res: ServerResponse) {
   if (!existsSync(filePath)) {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     res.end('Not Found: ' + filePath);
@@ -77,9 +79,9 @@ function serveFile(filePath: string, res: any) {
       'Access-Control-Allow-Origin': '*'
     });
     res.end(content);
-  } catch (e: any) {
+  } catch (e: unknown) {
     res.writeHead(500, { 'Content-Type': 'text/plain' });
-    res.end('Server Error: ' + e.message);
+    res.end('Server Error: ' + (e instanceof Error ? e.message : String(e)));
   }
 }
 

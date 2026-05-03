@@ -133,8 +133,9 @@ watch(
   (visible) => {
     if (visible) {
       // Reset state when modal opens
-      isLoading.value = true;
-      isConnected.value = getNocoDBService().isRunning();
+      const running = getNocoDBService().isRunning();
+      isConnected.value = running;
+      isLoading.value = running;
     }
   }
 );

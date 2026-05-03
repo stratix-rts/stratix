@@ -579,7 +579,7 @@ export class HelpPanel {
     panelElement.className = 'help-panel-wrapper';
     container.appendChild(panelElement);
 
-    (window as any).helpPanel = this;
+    (window as unknown as Record<string, unknown>).helpPanel = this;
 
     this.subscribe(() => {
       panelElement.innerHTML = this.render();
@@ -596,7 +596,7 @@ export class HelpPanel {
     if (this.unsubscribeContext) {
       this.unsubscribeContext();
     }
-    delete (window as any).helpPanel;
+    delete (window as unknown as Record<string, unknown>).helpPanel;
     this.listeners.clear();
   }
 }

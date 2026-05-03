@@ -165,6 +165,6 @@ export class MagicCircle {
     this.outerGlow.destroy();
     this.innerGlow.destroy();
     this.runes.destroy();
-    this.container.destroy();
+    this.container?.destroy();
   }
 }

@@ -50,7 +50,9 @@ export function useCharacterState(options: UseCharacterStateOptions = {}) {
   // 创建新角色
   function createNew(bodyType: BodyType = DEFAULT_BODY_TYPE): SavedCharacter {
     const newChar = characterStorage.createNew(bodyType);
+    isInternalUpdate = true;
     currentCharacter.value = newChar;
+    isInternalUpdate = false;
     isDirty.value = true;
     return newChar;
   }
@@ -61,7 +63,9 @@ export function useCharacterState(options: UseCharacterStateOptions = {}) {
     try {
       const character = await characterStorage.load(characterId);
       if (character) {
+        isInternalUpdate = true;
         currentCharacter.value = character;
+        isInternalUpdate = false;
         isDirty.value = false;
       }
       return character;
@@ -222,20 +226,25 @@ export function useCharacterState(options: UseCharacterStateOptions = {}) {
     if (currentCharacter.value) {
       characterStorage.load(currentCharacter.value.characterId).then(char => {
         if (char) {
+          isInternalUpdate = true;
           currentCharacter.value = char;
+          isInternalUpdate = false;
           isDirty.value = false;
         }
+      }).catch(error => {
+        console.error('[useCharacterState] Failed to reset character:', error);
       });
     }
   }
 
-  // 监听 currentCharacter 变化，自动标记 dirty
+  // 监听 currentCharacter 属性变化，自动标记 dirty（排除内部赋值）
+  let isInternalUpdate = false;
+
   watch(
     currentCharacter,
     () => {
-      if (currentCharacter.value !== null) {
-        isDirty.value = true;
-      }
+      if (isInternalUpdate) return;
+      isDirty.value = true;
     },
     { deep: true }
   );

@@ -14,27 +14,27 @@ export enum ErrorCategory {
 }
 
 export interface ErrorContext {
-  method?: string;
-  args?: any[];
-  timestamp?: number;
-  userId?: string;
-  sessionId?: string;
-  component?: string;
-  action?: string;
-  metadata?: Record<string, unknown>;
+  readonly method?: string;
+  readonly args?: unknown[];
+  readonly timestamp?: number;
+  readonly userId?: string;
+  readonly sessionId?: string;
+  readonly component?: string;
+  readonly action?: string;
+  readonly metadata?: Record<string, unknown>;
 }
 
 export interface ClassifiedError {
-  originalError: Error;
-  severity: ErrorSeverity;
-  category: ErrorCategory;
-  userFacing: boolean;
-  recoverable: boolean;
-  title: string;
-  message: string;
-  duration?: number;
-  actions?: Array<{
-    label: string;
+  readonly originalError: Error;
+  readonly severity: ErrorSeverity;
+  readonly category: ErrorCategory;
+  readonly userFacing: boolean;
+  readonly recoverable: boolean;
+  readonly title: string;
+  readonly message: string;
+  readonly duration?: number;
+  readonly actions?: Array<{
+    readonly label: string;
     action: () => void | Promise<void>;
   }>;
   metadata?: Record<string, unknown>;

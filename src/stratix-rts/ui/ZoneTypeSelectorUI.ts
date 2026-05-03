@@ -202,7 +202,7 @@ export class ZoneTypeSelectorUI {
       this.overlayHandler = null;
     }
     if (this.container?.active) {
-      this.container.destroy();
+      this.container?.destroy();
     }
   }
 }

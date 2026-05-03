@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 
 export type Theme = 'cyberpunk' | 'minimal' | 'professional' | 'light' | 'dark' | 'auto';
 
@@ -80,11 +80,29 @@ export const useUIStore = defineStore('ui', () => {
     modalStack.value = modalStack.value.filter(m => m !== name);
   }
 
+  // Dark mode tracking with system preference listener
+  const systemDarkMode = ref(false);
+  let mediaQuery: MediaQueryList | null = null;
+
+  function updateSystemDarkMode() {
+    if (typeof window === 'undefined') return;
+    systemDarkMode.value = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+
+  function setupMediaQueryListener() {
+    if (typeof window === 'undefined' || mediaQuery) return;
+    mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    updateSystemDarkMode();
+    mediaQuery.addEventListener?.('change', updateSystemDarkMode);
+  }
+
+  // Setup listener immediately (store is a singleton)
+  setupMediaQueryListener();
+
   // Computed
   const isDarkMode = computed(() => {
     if (theme.value === 'auto') {
-      if (typeof window === 'undefined') return false;
-      return window.matchMedia('(prefers-color-scheme: dark)').matches;
+      return systemDarkMode.value;
     }
     return theme.value === 'dark';
   });
@@ -214,7 +232,7 @@ export const useUIStore = defineStore('ui', () => {
   const MAX_TOASTS = 10;
 
   function addToast(toast: Omit<ToastItem, 'id'>): string {
-    const id = `toast_${crypto.randomUUID()}`;
+    const id = `toast_${typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}_${Math.random().toString(36).slice(2)}`}`;
     const newToast: ToastItem = { ...toast, id };
 
     // Trim oldest toasts if at limit

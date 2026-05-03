@@ -194,9 +194,9 @@ export class CharacterSpawnEffect {
       this.updateEvent = null;
     }
     
-    this.magicCircle.destroy();
+    this.magicCircle?.destroy();
     this.particles.destroy();
-    this.text.destroy();
+    this.text?.destroy();
     
     if (this.flashOverlay) {
       this.flashOverlay.destroy();

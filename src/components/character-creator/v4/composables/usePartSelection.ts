@@ -112,15 +112,24 @@ export function usePartSelection(character?: Ref<SavedCharacter | null>) {
     );
   }
 
+  // 加载状态
+  const isLoading = ref<boolean>(false);
+
   // 初始化：加载部件元数据
   async function loadParts(): Promise<void> {
-    if (isLoaded.value) return;
+    if (isLoaded.value || isLoading.value) return;
 
-    await partRegistry.loadMetadata();
-    isLoaded.value = true;
-
-    // 元数据缓存
-    refreshPartsMetadata();
+    isLoading.value = true;
+    try {
+      await partRegistry.loadMetadata();
+      isLoaded.value = true;
+      // 元数据缓存
+      refreshPartsMetadata();
+    } catch (error) {
+      console.error('[usePartSelection] Failed to load parts metadata:', error);
+    } finally {
+      isLoading.value = false;
+    }
   }
 
   // 刷新元数据缓存
@@ -362,6 +371,8 @@ export function usePartSelection(character?: Ref<SavedCharacter | null>) {
     bodyType,
     selectedParts,
     availableParts,
+    isLoaded,
+    isLoading,
 
     // Actions
     selectPart,

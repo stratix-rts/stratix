@@ -1,8 +1,11 @@
-// 兼容旧代码 - 重导出 design-system
-export { 
-  provideSizeContext, 
-  useSizeContext, 
-  useIconSize, 
+/**
+ * @deprecated Re-export from design-system for backward compatibility.
+ * Use `@/design-system/composables/useSizeContext` directly in new code.
+ */
+export {
+  provideSizeContext,
+  useSizeContext,
+  useIconSize,
   type SizeVariant,
   type SizeContext,
   SIZE_CONTEXT_KEY,

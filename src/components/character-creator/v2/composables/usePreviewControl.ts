@@ -48,6 +48,13 @@ export function usePreviewControl(options: UsePreviewControlOptions = {}) {
     setScale(scale.value - 0.5);
   }
 
+  function reset(): void {
+    animation.value = options.initialAnimation ?? DEFAULT_ANIMATION;
+    direction.value = options.initialDirection ?? DEFAULT_DIRECTION;
+    scale.value = options.initialScale ?? 2;
+    isPlaying.value = true;
+  }
+
   return {
     animation,
     direction,
@@ -60,5 +67,6 @@ export function usePreviewControl(options: UsePreviewControlOptions = {}) {
     cycleDirection,
     zoomIn,
     zoomOut,
+    reset,
   };
 }

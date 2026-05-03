@@ -52,13 +52,15 @@ export const designTokens = {
   },
 };
 
-export const getHeroColor = (type: string): string => {
-  const colors: Record<string, string> = {
+export type HeroColorType = 'writer' | 'dev' | 'analyst';
+
+export const getHeroColor = (type: HeroColorType | string): string => {
+  const colors: Record<HeroColorType, string> = {
     writer: designTokens.colors.hero.writer,
     dev: designTokens.colors.hero.dev,
     analyst: designTokens.colors.hero.analyst,
   };
-  return colors[type] || designTokens.colors.text.muted;
+  return colors[type as HeroColorType] || designTokens.colors.text.muted;
 };
 
 export const commonStyles = `

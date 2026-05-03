@@ -104,6 +104,9 @@ export function useChat(options: UseChatOptions): UseChatReturn {
       const limit = maxHistory;
       const offset = append ? historyOffset.value : 0;
       const response = await fetch(`/api/stratix/agent/${agentId}/messages?limit=${limit}&offset=${offset}`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
       const result = await response.json();
 
       if (result.code === 200 && result.data.messages) {
@@ -270,6 +273,9 @@ export function useChat(options: UseChatOptions): UseChatReturn {
               timestamp: Date.now()
             })
           });
+          if (!aiSaveResponse.ok) {
+            throw new Error(`HTTP ${aiSaveResponse.status}: 保存 AI 消息失败`);
+          }
 
           const aiSaveResult = await aiSaveResponse.json();
           aiMessageId = aiSaveResult.data?.messageId || aiMessageId;

@@ -16,7 +16,7 @@ interface EventSubscription {
 }
 
 export class UIEventBus {
-  private static instance: UIEventBus;
+  private static instance?: UIEventBus;
   private subscriptions: Map<string, Set<EventSubscription>> = new Map();
   private subscriptionId: number = 0;
   private enabled: boolean = true;
@@ -30,7 +30,7 @@ export class UIEventBus {
     if (!UIEventBus.instance) {
       UIEventBus.instance = new UIEventBus();
     }
-    return UIEventBus.instance;
+    return UIEventBus.instance!;
   }
   
   /**
@@ -177,7 +177,7 @@ export class UIEventBus {
   static destroyInstance(): void {
     if (UIEventBus.instance) {
       UIEventBus.instance.subscriptions.clear();
-      UIEventBus.instance = undefined as any;
+      UIEventBus.instance = undefined;
     }
   }
   

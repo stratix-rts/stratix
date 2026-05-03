@@ -264,8 +264,8 @@ export class ParticleEffects {
     }
 
     // Augment tweens with circles so stopEmitters can clean them up
-    (tweens as any).__circles = circles;
-    (tweens as any).__delayedCalls = delayedCalls;
+    (tweens as unknown as { __circles?: Phaser.GameObjects.Graphics[]; __delayedCalls?: Phaser.Time.TimerEvent[] }).__circles = circles;
+    (tweens as unknown as { __circles?: Phaser.GameObjects.Graphics[]; __delayedCalls?: Phaser.Time.TimerEvent[] }).__delayedCalls = delayedCalls;
     return tweens;
   }
 
@@ -335,8 +335,8 @@ export class ParticleEffects {
       delayedCalls.push(this.scene!.time.delayedCall(delay, createPulse));
     }
 
-    (tweens as any).__circles = circles;
-    (tweens as any).__delayedCalls = delayedCalls;
+    (tweens as unknown as { __circles?: Phaser.GameObjects.Graphics[]; __delayedCalls?: Phaser.Time.TimerEvent[] }).__circles = circles;
+    (tweens as unknown as { __circles?: Phaser.GameObjects.Graphics[]; __delayedCalls?: Phaser.Time.TimerEvent[] }).__delayedCalls = delayedCalls;
     return tweens;
   }
 

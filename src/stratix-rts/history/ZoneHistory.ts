@@ -120,7 +120,7 @@ export class ZoneMoveAction implements ZoneAction {
     private oldPosition: { x: number; y: number },
     private newPosition: { x: number; y: number }
   ) {
-    this.id = `move-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    this.id = `move-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     this.timestamp = Date.now();
     this.zoneId = zone.getZoneId ? zone.getZoneId() : zone.id;
     this.data = {
@@ -172,7 +172,7 @@ export class ZoneResizeAction implements ZoneAction {
     private oldSize: { width: number; height: number },
     private newSize: { width: number; height: number }
   ) {
-    this.id = `resize-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    this.id = `resize-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     this.timestamp = Date.now();
     this.zoneId = zone.getZoneId ? zone.getZoneId() : zone.id;
     this.data = {
@@ -217,7 +217,7 @@ export class ZoneCreateAction implements ZoneAction {
     private zone: any,
     private scene: any
   ) {
-    this.id = `create-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    this.id = `create-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     this.timestamp = Date.now();
     this.zoneId = zone.getZoneId ? zone.getZoneId() : zone.id;
     this.data = {
@@ -266,7 +266,7 @@ export class ZoneDeleteAction implements ZoneAction {
     _scene: any,
     private recreateFn: () => Promise<any>
   ) {
-    this.id = `delete-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    this.id = `delete-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     this.timestamp = Date.now();
     this.zoneId = zone.getZoneId ? zone.getZoneId() : zone.id;
     this.data = {

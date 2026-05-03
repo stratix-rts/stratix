@@ -150,9 +150,24 @@ const isFormValid = computed(() => {
   return true;
 });
 
+const normalizeValue = (param: StratixSkillParameter, value: any): any => {
+  if (param.type === 'object' && typeof value === 'string' && value.trim()) {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  }
+  return value;
+};
+
 const validateField = (param: StratixSkillParameter) => {
-  const result = ParamValidator.validate(param, formValues.value[param.paramId]);
-  
+  const value = normalizeValue(param, formValues.value[param.paramId]);
+  if (value !== formValues.value[param.paramId]) {
+    formValues.value[param.paramId] = value;
+  }
+  const result = ParamValidator.validate(param, value);
+
   if (!result.isValid) {
     errors.value[param.paramId] = result.errorMessage;
   } else {
@@ -179,6 +194,16 @@ const resetForm = () => {
 
 const handleSubmit = () => {
   if (!selectedSkill.value) return;
+
+  // Normalize object-type params before validation
+  for (const param of selectedSkill.value.parameters) {
+    if (param.type === 'object') {
+      const normalized = normalizeValue(param, formValues.value[param.paramId]);
+      if (normalized !== formValues.value[param.paramId]) {
+        formValues.value[param.paramId] = normalized;
+      }
+    }
+  }
 
   const { isValid, errors: validationErrors } = ParamValidator.validateAll(
     selectedSkill.value.parameters,

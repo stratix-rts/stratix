@@ -72,7 +72,7 @@ export class ZoneInteractionManager {
           console.log('[StratixRTS] createProjectWithBounds returned null, creating local TaskZone');
           this.createTaskZone(bounds);
         }
-      } catch (error) {
+      } catch (error: unknown) {
         console.error('[StratixRTS] Failed to create project zone via API:', error);
         // API 调用失败时，创建本地 TaskZone 作为降级
         this.createTaskZone(bounds);
@@ -130,7 +130,7 @@ export class ZoneInteractionManager {
       this.selectedZoneIds.add(zoneId);
       this.deps.emitSelectionChanged();
       // 暴露选中状态用于 E2E 测试
-      (window as any).__SELECTED_ZONE_ID__ = zoneId;
+      (window as unknown as Record<string, unknown>).__SELECTED_ZONE_ID__ = zoneId;
     }
   }
 
@@ -414,7 +414,7 @@ export class ZoneInteractionManager {
 
     for (const [zoneId, zone] of this.unifiedZoneManager.getAllZones()) {
       const bounds = zone.getBounds();
-      const zoneName = (zone as any).zoneName || (zone as any).name || zoneId;
+      const zoneName = (zone as unknown as { zoneName?: string; name?: string }).zoneName || (zone as unknown as { zoneName?: string; name?: string }).name || zoneId;
 
       let agentCount = 0;
       this.deps.getAgentSprites().forEach((sprite) => {
@@ -431,7 +431,7 @@ export class ZoneInteractionManager {
         width: bounds.width,
         height: bounds.height,
         agentCount,
-        status: (zone as any).zoneStatus || 'idle'
+        status: (zone as unknown as { zoneStatus?: string }).zoneStatus || 'idle'
       });
     }
 
@@ -693,7 +693,7 @@ export class ZoneInteractionManager {
       const projectClient = this.deps.projectManagerIntegration.getProjectClient();
       await projectClient.addZoneMember(zoneId, agentId);
       console.log(`[StratixRTS] Agent ${agentId} entered zone ${zoneId} (backend notified)`);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error(`[StratixRTS] Failed to notify backend about zone entry:`, error);
     }
   }
@@ -743,7 +743,7 @@ export class ZoneInteractionManager {
       const projectClient = this.deps.projectManagerIntegration.getProjectClient();
       await projectClient.removeZoneMember(currentZoneId, agentId);
       console.log(`[StratixRTS] Agent ${agentId} left zone ${currentZoneId} (backend notified)`);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error(`[StratixRTS] Failed to notify backend about zone leave:`, error);
     }
 

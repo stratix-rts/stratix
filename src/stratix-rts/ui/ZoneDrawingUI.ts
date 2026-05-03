@@ -51,7 +51,7 @@ export class ZoneDrawingUI {
 
   showTooltip(x: number, y: number, message: string): void {
     if (this.tooltipText) {
-      this.tooltipText.destroy();
+      this.tooltipText?.destroy();
     }
 
     this.tooltipText = this.scene.add.text(x, y - 30, message, {
@@ -66,7 +66,7 @@ export class ZoneDrawingUI {
 
   hideTooltip(): void {
     if (this.tooltipText) {
-      this.tooltipText.destroy();
+      this.tooltipText?.destroy();
       this.tooltipText = null;
     }
   }
@@ -74,7 +74,7 @@ export class ZoneDrawingUI {
   destroy(): void {
     this.cursorIndicator.destroy();
     if (this.tooltipText) {
-      this.tooltipText.destroy();
+      this.tooltipText?.destroy();
     }
     this.scene.input.off('pointermove');
   }

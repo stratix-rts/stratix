@@ -81,7 +81,7 @@ export class RTSErrorBoundary implements ErrorHandler {
       for (const action of error.actions) {
         try {
           action.action();
-        } catch (e) {
+        } catch (e: unknown) {
           console.error('[RTSErrorBoundary] Recovery action failed:', e);
         }
       }
@@ -170,7 +170,7 @@ export function withErrorBoundary<T>(
   descriptor.value = async function(...args: any[]): Promise<T> {
     try {
       return await originalMethod.apply(this, args);
-    } catch (error) {
+    } catch (error: unknown) {
       globalErrorHandler.handleError(error instanceof Error ? error : new Error(String(error)), {
         method: propertyKey,
         args,

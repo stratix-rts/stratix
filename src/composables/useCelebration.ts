@@ -84,6 +84,7 @@ export function useCelebration() {
   let canvasHeight = 0
   let burstTimer: ReturnType<typeof setInterval> | null = null
   let currentBurstTimer: ReturnType<typeof setInterval> | null = null
+  let autoCleanupTimer: ReturnType<typeof setTimeout> | null = null
 
   function randomRange(min: number, max: number): number {
     return Math.random() * (max - min) + min
@@ -196,6 +197,10 @@ export function useCelebration() {
       clearInterval(currentBurstTimer)
       currentBurstTimer = null
     }
+    if (autoCleanupTimer !== null) {
+      clearTimeout(autoCleanupTimer)
+      autoCleanupTimer = null
+    }
     isAnimating = false
 
     // Clear canvas
@@ -210,6 +215,7 @@ export function useCelebration() {
   }
 
   function resizeCanvas(canvas: HTMLCanvasElement): void {
+    if (typeof window === 'undefined') return
     canvas.width = window.innerWidth
     canvas.height = window.innerHeight
     canvasWidth = canvas.width
@@ -253,19 +259,14 @@ export function useCelebration() {
     animate(canvas)
 
     // Auto-cleanup after duration
-    setTimeout(() => {
+    autoCleanupTimer = setTimeout(() => {
       stopAnimation()
     }, duration)
   }
 
-  // Cleanup on unmount
-  onUnmounted(() => {
-    stopAnimation()
-    window.removeEventListener('resize', handleResize)
-  })
-
   // Listen for window resize to update canvas dimensions
   function handleResize(): void {
+    if (typeof window === 'undefined') return
     const canvas = celebrationCanvas.value
     if (canvas) {
       resizeCanvas(canvas)
@@ -273,7 +274,17 @@ export function useCelebration() {
   }
 
   onMounted(() => {
-    window.addEventListener('resize', handleResize)
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', handleResize)
+    }
+  })
+
+  // Cleanup on unmount
+  onUnmounted(() => {
+    stopAnimation()
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('resize', handleResize)
+    }
   })
 
   return {

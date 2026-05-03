@@ -148,11 +148,11 @@ export interface ZoneSyncEvents {
 export interface ErrorEvents {
   'error:occurred': {
     error: Error;
-    classified: any;
-    context?: any;
+    classified: unknown;
+    context?: unknown;
   };
   'toast:updated': {
-    toasts: any[];
+    toasts: unknown[];
   };
 }
 
@@ -197,7 +197,7 @@ export interface GameToVueEvents {
     skill: Skill;
   };
 'game:ui:project_created': {
-    project: any;
+    project: unknown;
     needsConfig: boolean;
   };
 }

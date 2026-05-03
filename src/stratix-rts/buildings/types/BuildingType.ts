@@ -40,10 +40,10 @@ export const BUILDING_ICONS: Record<BuildingType, string> = {
 
 /** 建筑配置接口 */
 export interface BuildingConfig {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  buildingType: BuildingType;
-  name?: string;
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly buildingType: BuildingType;
+  readonly name?: string;
 }

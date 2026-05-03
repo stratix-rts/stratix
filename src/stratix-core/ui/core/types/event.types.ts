@@ -130,7 +130,7 @@ export interface StateChangeEvent extends UIEventBase {
 /**
  * 事件监听器
  */
-export type UIEventListener<T = any> = (event: T) => void;
+export type UIEventListener<T = unknown> = (event: T) => void;
 
 /**
  * 事件订阅选项

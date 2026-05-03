@@ -139,7 +139,7 @@ export class PerformancePanel extends EnhancedUIComponent {
         sections: this.contentContainer.length,
         contentHeight: this.contentHeight
       });
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('[PerformancePanel] Error creating content:', error);
     }
   }

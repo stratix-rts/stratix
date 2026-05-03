@@ -30,12 +30,12 @@ export { default as WarningBox } from './WarningBox.vue';
 
 // Dropdown 类型定义
 export interface DropdownOption {
-  label: string;
-  value: string | number;
-  icon?: string;
-  color?: string;
-  disabled?: boolean;
-  divided?: boolean;
+  readonly label: string;
+  readonly value: string | number;
+  readonly icon?: string;
+  readonly color?: string;
+  readonly disabled?: boolean;
+  readonly divided?: boolean;
 }
 export { Modal, type ModalOptions, type ModalResult } from './modal-api';
 

@@ -39,7 +39,7 @@ export abstract class DebugRenderer {
     this.graphics.clear();
   }
   
-  abstract render(...args: any[]): void;
+  abstract render(...args: unknown[]): void;
   
   destroy(): void {
     this.graphics.destroy();

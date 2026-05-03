@@ -61,7 +61,7 @@ export function parseShortcut(shortcut: string): {
 export function matchesShortcut(
   event: KeyboardEvent,
   shortcut: string,
-  platform: string = navigator.platform
+  platform: string = typeof navigator !== 'undefined' ? navigator.platform : ''
 ): boolean {
   const { modifiers, key } = parseShortcut(shortcut)
   const isMac = platform.toUpperCase().includes('MAC')

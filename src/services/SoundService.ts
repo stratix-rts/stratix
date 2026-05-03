@@ -35,6 +35,7 @@ class SoundService {
   private masterGain: GainNode | null = null;
   private _enabled = true;
   private _volume = 0.5;
+  private _settingsLoaded = false;
 
   private soundConfigs: Record<SoundType, SoundConfig> = {
     taskComplete: {
@@ -254,19 +255,27 @@ class SoundService {
   }
 
   loadSettings(): void {
-    if (typeof localStorage === 'undefined') return;
+    if (this._settingsLoaded || typeof localStorage === 'undefined') return;
     try {
       const saved = localStorage.getItem('stratix-sound-settings');
       if (saved) {
-        const { enabled, volume } = JSON.parse(saved);
-        this._enabled = enabled ?? true;
-        this._volume = volume ?? 0.5;
+        const parsed = JSON.parse(saved);
+        if (typeof parsed === 'object' && parsed !== null) {
+          if (typeof parsed.enabled === 'boolean') {
+            this._enabled = parsed.enabled;
+          }
+          if (typeof parsed.volume === 'number' && !isNaN(parsed.volume)) {
+            this._volume = Math.max(0, Math.min(1, parsed.volume));
+          }
+        }
         if (this.masterGain) {
           this.masterGain.gain.value = this._volume;
         }
       }
     } catch (e) {
       console.warn('[SoundService] Failed to parse saved settings:', e);
+    } finally {
+      this._settingsLoaded = true;
     }
   }
 
@@ -275,6 +284,7 @@ class SoundService {
       this.audioContext.close();
       this.audioContext = null;
     }
+    this.masterGain = null;
   }
 }
 

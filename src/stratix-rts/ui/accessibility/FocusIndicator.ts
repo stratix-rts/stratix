@@ -114,7 +114,7 @@ export class FocusIndicator {
   destroy(): void {
     this.removeAnimation();
     this.hide();
-    this.graphics.destroy();
+    this.graphics?.destroy();
   }
 
   private getBounds(): { x: number; y: number; width: number; height: number } | null {

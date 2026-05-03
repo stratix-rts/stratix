@@ -197,7 +197,7 @@ export function useCommandPalette() {
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
+    const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0
     const modKey = isMac ? e.metaKey : e.ctrlKey
 
     if (modKey && e.key === 'k') {

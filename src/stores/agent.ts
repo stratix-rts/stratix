@@ -153,6 +153,9 @@ export const useAgentStore = defineStore('agent', () => {
 
     try {
       const response = await fetch('/api/stratix/config/agent/list');
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
       const result = await response.json();
 
       if (result.code === 200 && result.data) {
@@ -160,7 +163,7 @@ export const useAgentStore = defineStore('agent', () => {
         lastRefreshTime.value = new Date();
       }
     } catch (e) {
-      error.value = '加载失败';
+      error.value = e instanceof Error ? e.message : '加载失败';
       console.warn('[AgentStore] Failed to load agents:', e);
     } finally {
       isLoading.value = false;
@@ -176,6 +179,9 @@ export const useAgentStore = defineStore('agent', () => {
 
     try {
       const response = await fetch('/api/stratix/config/agent/list');
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
       const result = await response.json();
 
       if (result.code === 200 && result.data) {
@@ -206,12 +212,10 @@ export const useAgentStore = defineStore('agent', () => {
         lastRefreshTime.value = new Date();
       }
     } catch (e) {
-      error.value = '刷新失败';
+      error.value = e instanceof Error ? e.message : '刷新失败';
       console.warn('[AgentStore] Failed to refresh agents:', e);
     } finally {
-      setTimeout(() => {
-        isRefreshing.value = false;
-      }, 500);
+      isRefreshing.value = false;
     }
   }
 
@@ -226,20 +230,23 @@ export const useAgentStore = defineStore('agent', () => {
     const config = t.getTemplate(generateAgentId(type));
 
     try {
-      await fetch('/api/stratix/config/agent/create', {
+      const response = await fetch('/api/stratix/config/agent/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config)
       });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      agents.value.push(config);
+      onAgentCreatedCallback?.(config, false);
+      await refreshAgents();
+      return config;
     } catch (e) {
+      error.value = e instanceof Error ? e.message : '创建 Agent 失败';
       console.warn('[AgentStore] Failed to save agent:', e);
+      return null;
     }
-
-    agents.value.push(config);
-    onAgentCreatedCallback?.(config, false);
-
-    await refreshAgents();
-    return config;
   }
 
   // Create agent from character
@@ -283,20 +290,23 @@ export const useAgentStore = defineStore('agent', () => {
     };
 
     try {
-      await fetch('/api/stratix/config/agent/create', {
+      const response = await fetch('/api/stratix/config/agent/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config)
       });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      agents.value.push(config);
+      onAgentCreatedCallback?.(config, true);
+      await refreshAgents();
+      return config;
     } catch (e) {
+      error.value = e instanceof Error ? e.message : '从角色创建 Agent 失败';
       console.warn('[AgentStore] Failed to save agent from character:', e);
+      return null;
     }
-
-    agents.value.push(config);
-    onAgentCreatedCallback?.(config, true);
-
-    await refreshAgents();
-    return config;
   }
 
   // Test backend connection
@@ -498,7 +508,11 @@ export const useAgentStore = defineStore('agent', () => {
     stopAutoRefresh();
     if (stopPositionSaveTimer) {
       stopPositionSaveTimer();
+      stopPositionSaveTimer = null;
     }
+    onAgentCreatedCallback = null;
+    onAgentDeletedCallback = null;
+    onAgentUpdatedCallback = null;
     agents.value = [];
     selectedIds.value = [];
     error.value = null;

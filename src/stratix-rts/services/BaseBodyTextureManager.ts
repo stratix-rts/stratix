@@ -77,7 +77,7 @@ class BaseBodyTextureManager {
       await this.loadTextureFromUrl(textureKey, assetUrl);
       this.loadedTextures.set(bodyType, textureKey);
       return textureKey;
-    } catch (error) {
+    } catch (error: unknown) {
       return this.generateBaseBodyTexture(bodyType);
     }
   }

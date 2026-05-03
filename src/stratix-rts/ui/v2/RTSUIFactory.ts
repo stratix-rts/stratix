@@ -43,7 +43,7 @@ export interface RTSUIConfig {
   onAgentDeselect?: (agentId: string) => void;
   onSelectAll?: () => void;
   onDeselectAll?: () => void;
-  statsCollector?: any;
+  statsCollector?: import('../../debug/StatsCollector').StatsCollector;
   replayControls?: {
     onRecordingStarted?: () => void;
     onRecordingStopped?: (session: RecordingSession) => void;

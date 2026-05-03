@@ -71,7 +71,13 @@ const hasParams = computed(() => {
 const formatValue = (value: any): string => {
   if (value === null || value === undefined) return '-';
   if (typeof value === 'boolean') return value ? '是' : '否';
-  if (typeof value === 'object') return JSON.stringify(value);
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return '[Object]';
+    }
+  }
   return String(value);
 };
 

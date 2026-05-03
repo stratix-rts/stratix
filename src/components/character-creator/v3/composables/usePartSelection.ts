@@ -88,6 +88,7 @@ export function usePartSelection(character?: Ref<SavedCharacter | null>) {
 
   // 是否已加载
   const isLoaded = ref<boolean>(false);
+  const isLoading = ref<boolean>(false);
 
   // 监听 character 变化，同步 bodyType 和 parts
   if (character) {
@@ -105,11 +106,15 @@ export function usePartSelection(character?: Ref<SavedCharacter | null>) {
 
   // 初始化：加载部件元数据
   async function loadParts(): Promise<void> {
-    if (isLoaded.value) return;
-
-    await partRegistry.loadMetadata();
-    isLoaded.value = true;
-    refreshAvailableParts();
+    if (isLoaded.value || isLoading.value) return;
+    isLoading.value = true;
+    try {
+      await partRegistry.loadMetadata();
+      isLoaded.value = true;
+      refreshAvailableParts();
+    } finally {
+      isLoading.value = false;
+    }
   }
 
   // 根据体型刷新可用部件
@@ -412,5 +417,6 @@ export function usePartSelection(character?: Ref<SavedCharacter | null>) {
     loadFromCharacter,
     getVariantsForPart,
     getPartName,
+    isLoading,
   };
 }

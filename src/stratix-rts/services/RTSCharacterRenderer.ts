@@ -92,7 +92,7 @@ class RTSCharacterRenderer {
         await this.loadTextureFromUrl(textureKey, textureUrl);
         this.loadedTextures.add(textureKey);
         return { type: 'ready', textureKey };
-      } catch (error) {
+      } catch (error: unknown) {
         console.warn(`[RTSCharacterRenderer] Failed to load texture from URL:`, error);
       }
     }

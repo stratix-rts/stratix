@@ -1,4 +1,4 @@
-import { TaskType } from '../stratix-ai-service/types';
+import { TaskType, SplitStrategy } from '../stratix-ai-service/types';
 
 export interface BlueprintNode {
   id: string;
@@ -27,7 +27,7 @@ export interface Blueprint {
   metadata: {
     createdAt: Date;
     updatedAt: Date;
-    strategy: string;
+    strategy: SplitStrategy;
   };
 }
 

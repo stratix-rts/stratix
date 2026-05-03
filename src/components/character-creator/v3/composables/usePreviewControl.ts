@@ -25,7 +25,7 @@ export function usePreviewControl() {
   }
 
   function setDirection(value: number) {
-    direction.value = value;
+    direction.value = Math.max(0, Math.min(3, value));
   }
 
   function setScale(value: number) {
@@ -48,6 +48,13 @@ export function usePreviewControl() {
     setScale(scale.value - SCALE_STEP);
   }
 
+  function reset() {
+    animation.value = DEFAULT_ANIMATION;
+    direction.value = DEFAULT_DIRECTION;
+    scale.value = DEFAULT_SCALE;
+    isPlaying.value = true;
+  }
+
   return {
     animation,
     direction,
@@ -60,5 +67,6 @@ export function usePreviewControl() {
     cycleDirection,
     zoomIn,
     zoomOut,
+    reset,
   };
 }

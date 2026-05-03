@@ -35,7 +35,7 @@ export interface UIManagerConfig {
 }
 
 export class UIManager {
-  private static instance: UIManager;
+  private static instance?: UIManager;
   private scene: Phaser.Scene | null = null;
   private layers: Map<string, UILayerContainer> = new Map();
   private components: Map<string, EnhancedUIComponent> = new Map();
@@ -60,7 +60,7 @@ export class UIManager {
     if (!UIManager.instance) {
       UIManager.instance = new UIManager();
     }
-    return UIManager.instance;
+    return UIManager.instance!;
   }
   
   /**
@@ -159,8 +159,9 @@ export class UIManager {
    */
   addToLayer(component: EnhancedUIComponent, layerName: string): void {
     const layer = this.layers.get(layerName);
-    if (layer && component['container']) {
-      layer.container.add(component['container']);
+    const container = component.getContainer();
+    if (layer && container) {
+      layer.container.add(container);
       this.registerComponent(component);
     } else {
       console.warn(`[UIManager] Layer ${layerName} not found or component has no container`);
@@ -327,7 +328,7 @@ export class UIManager {
   static destroyInstance(): void {
     if (UIManager.instance) {
       UIManager.instance.shutdown();
-      UIManager.instance = undefined as any;
+      UIManager.instance = undefined;
     }
   }
 }

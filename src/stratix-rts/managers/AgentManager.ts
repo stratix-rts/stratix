@@ -98,7 +98,7 @@ export class AgentManager {
         body: JSON.stringify({ agentId, position: { x, y } })
       });
       console.log(`[StratixRTS] Saved agent position: ${agentId}`, { x, y });
-    } catch (e) {
+    } catch (e: unknown) {
       console.warn(`[StratixRTS] Failed to save agent position: ${agentId}`, e);
     }
   }
@@ -111,7 +111,7 @@ export class AgentManager {
         body: JSON.stringify({ ...config, position })
       });
       console.log(`[StratixRTS] Saved initial position for agent ${agentId}:`, position);
-    } catch (e) {
+    } catch (e: unknown) {
       console.warn(`[StratixRTS] Failed to save initial position for agent ${agentId}:`, e);
     }
   }
@@ -218,7 +218,7 @@ export class AgentManager {
       if (zone) {
         rtsEventBus.emit('scene:ui:zone_info' as any, {
           zoneId: zone.getZoneId(),
-          name: (zone as any).zoneName || zone.getZoneId(),
+          name: (zone as unknown as { zoneName?: string }).zoneName || zone.getZoneId(),
           status: 'idle',
           agentCount: 0,
         });
@@ -332,7 +332,7 @@ export class AgentManager {
             }
           }
           console.log(`[StratixRTS] Agent ${id} immediately registered in zone ${zoneId} on drag end`);
-        } catch (error) {
+        } catch (error: unknown) {
           console.error(`[StratixRTS] Failed to register agent ${id} in zone ${zoneId}:`, error);
         }
       } else if (!zoneId && previousZoneId) {
@@ -350,7 +350,7 @@ export class AgentManager {
           await projectClient.removeZoneMember(previousZoneId, id);
           this.deps.agentZoneTracking.delete(id);
           console.log(`[StratixRTS] Agent ${id} removed from zone ${previousZoneId} on drag end`);
-        } catch (error) {
+        } catch (error: unknown) {
           console.error(`[StratixRTS] Failed to remove agent ${id} from zone ${previousZoneId}:`, error);
         }
       }

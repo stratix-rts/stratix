@@ -7,6 +7,7 @@
 import Phaser from 'phaser';
 
 import type { UIComponentConfig } from '../../core/types/component.types';
+import { ReactiveToken } from '../../foundation/theme/ReactiveToken';
 import { EnhancedUIComponent } from '../base/EnhancedUIComponent';
 
 export interface ThemeAwareButtonConfig extends UIComponentConfig {
@@ -21,9 +22,9 @@ export class ThemeAwareButton extends EnhancedUIComponent {
   private variant: 'primary' | 'secondary' | 'danger';
   
   // 响应式Tokens
-  private backgroundColor: any;
-  private textColor: any;
-  private hoverColor: any;
+  private backgroundColor: ReactiveToken<string>;
+  private textColor: ReactiveToken<string>;
+  private hoverColor: ReactiveToken<string>;
   
   private background!: Phaser.GameObjects.Rectangle;
   private text!: Phaser.GameObjects.Text;
@@ -35,9 +36,9 @@ export class ThemeAwareButton extends EnhancedUIComponent {
     this.variant = config.variant || 'primary';
     
     // 创建响应式Token
-    this.backgroundColor = this.useToken<string>(`colors.${this.variant === 'primary' ? 'primary' : this.variant === 'danger' ? 'semantic.danger' : 'secondary'}`);
-    this.textColor = this.useToken<string>('colors.text.primary');
-    this.hoverColor = this.useToken<string>('colors.accent');
+    this.backgroundColor = this.useToken<string>(`colors.${this.variant === 'primary' ? 'primary' : this.variant === 'danger' ? 'semantic.danger' : 'secondary'}`) as ReactiveToken<string>;
+    this.textColor = this.useToken<string>('colors.text.primary') as ReactiveToken<string>;
+    this.hoverColor = this.useToken<string>('colors.accent') as ReactiveToken<string>;
     
     // 订阅Token变化
     this.backgroundColor.subscribe(() => this.updateColors());
@@ -73,7 +74,9 @@ export class ThemeAwareButton extends EnhancedUIComponent {
     this.text.setOrigin(0.5);
     
     // 添加到容器
-    (this.container as Phaser.GameObjects.Container).add([this.background, this.text]);
+    if (this.container) {
+      (this.container as Phaser.GameObjects.Container).add([this.background, this.text]);
+    }
     
     // 设置交互
     this.setupInteraction();

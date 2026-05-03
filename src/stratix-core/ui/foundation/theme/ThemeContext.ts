@@ -5,7 +5,7 @@
  * 与Design System深度集成
  */
 
-import { DesignSystemConfig, getCurrentTheme } from '@/design-system/config';
+import { DesignSystemConfig, getCurrentTheme, setTheme } from '@/design-system/config';
 import type { DesignSystemTokens, ThemeName } from '@/design-system/types';
 
 import type { ThemeChangeHandler, TokenChangeHandler, ThemeContextState } from '../../core/types/theme.types';
@@ -14,11 +14,12 @@ import { ReactiveToken } from './ReactiveToken';
 
 
 export class ThemeContext {
-  private static instance: ThemeContext;
+  private static instance?: ThemeContext;
   private currentTheme: ThemeName;
   private subscribers: Set<ThemeChangeHandler> = new Set();
   private tokenSubscriptions: Map<string, Set<TokenChangeHandler>> = new Map();
   private isTransitioning: boolean = false;
+  private themeChangeListener: ((event: Event) => void) | null = null;
   
   private constructor() {
     this.currentTheme = DesignSystemConfig.activeTheme;
@@ -32,16 +33,28 @@ export class ThemeContext {
     if (!ThemeContext.instance) {
       ThemeContext.instance = new ThemeContext();
     }
-    return ThemeContext.instance;
+    return ThemeContext.instance!;
   }
   
   /**
    * 监听全局主题变化事件（由design-system/config.ts触发）
    */
   private listenToThemeChanges(): void {
-    window.addEventListener('theme:change', ((event: CustomEvent<ThemeName>) => {
-      this.handleThemeChange(event.detail);
-    }) as EventListener);
+    this.themeChangeListener = ((event: Event) => {
+      const customEvent = event as CustomEvent<ThemeName>;
+      this.handleThemeChange(customEvent.detail);
+    });
+    window.addEventListener('theme:change', this.themeChangeListener);
+  }
+  
+  /**
+   * 移除主题变化监听
+   */
+  private removeThemeChangeListener(): void {
+    if (this.themeChangeListener) {
+      window.removeEventListener('theme:change', this.themeChangeListener);
+      this.themeChangeListener = null;
+    }
   }
   
   /**
@@ -143,7 +156,6 @@ export class ThemeContext {
     }
     
     // 使用design-system的setTheme方法，会自动触发theme:change事件
-    const { setTheme } = require('@/design-system/config');
     setTheme(themeName);
   }
   
@@ -199,18 +211,18 @@ export class ThemeContext {
    * @param path - Token路径，如 'colors.primary'
    * @returns Token值
    */
-  getTokenValue(path: string): any {
+  getTokenValue(path: string): unknown {
     const theme = this.getTheme();
     const mappedPath = this.mapTokenPath(path);
     const parts = mappedPath.split('.');
     
-    let result: any = theme;
+    let result: unknown = theme;
     for (const part of parts) {
       if (result === undefined || result === null) {
         console.warn(`[ThemeContext] Token path not found: "${path}" (mapped to "${mappedPath}")`);
         return undefined;
       }
-      result = result[part];
+      result = (result as Record<string, unknown>)[part];
     }
     
     return result;
@@ -250,8 +262,9 @@ export class ThemeContext {
    */
   static destroyInstance(): void {
     if (ThemeContext.instance) {
+      ThemeContext.instance.removeThemeChangeListener();
       ThemeContext.instance.clearAllSubscriptions();
-      ThemeContext.instance = undefined as any;
+      ThemeContext.instance = undefined;
     }
   }
 }

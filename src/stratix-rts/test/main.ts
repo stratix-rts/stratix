@@ -63,7 +63,7 @@ game.events.once('ready', () => {
   log('游戏场景就绪', 'success');
   
   const scene = game.scene.getScene('StratixRTSGameScene') as StratixRTSGameScene;
-  (window as any).testScene = scene;
+  (window as unknown as Record<string, unknown>).testScene = scene;
   
   scene.addAgentSprite(createAgentConfig('writer'));
   log('添加初始 Agent: Writer 1', 'success');

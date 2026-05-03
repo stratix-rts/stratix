@@ -9,6 +9,7 @@
 
 interface ProtectedElement {
   element: HTMLElement;
+  handler: (e: Event) => void;
 }
 
 class DOMOverlayManager {
@@ -28,9 +29,6 @@ class DOMOverlayManager {
       e.stopPropagation();
     };
     
-    // 保存引用以便后续移除
-    (element as any)._stopPropagationHandler = stopPropagation;
-    
     // 关键事件都阻止冒泡
     element.addEventListener('click', stopPropagation);
     element.addEventListener('mousedown', stopPropagation);
@@ -38,7 +36,7 @@ class DOMOverlayManager {
     element.addEventListener('touchstart', stopPropagation);
     element.addEventListener('touchend', stopPropagation);
     
-    this.protectedElements.set(id, { element });
+    this.protectedElements.set(id, { element, handler: stopPropagation });
     
     return id;
   }
@@ -51,18 +49,14 @@ class DOMOverlayManager {
     const entry = this.protectedElements.get(elementId);
     if (!entry) return;
     
-    const { element } = entry;
-    const stopPropagation = (element as any)._stopPropagationHandler;
+    const { element, handler } = entry;
     
-    if (stopPropagation) {
-      element.removeEventListener('click', stopPropagation);
-      element.removeEventListener('mousedown', stopPropagation);
-      element.removeEventListener('mouseup', stopPropagation);
-      element.removeEventListener('touchstart', stopPropagation);
-      element.removeEventListener('touchend', stopPropagation);
-    }
+    element.removeEventListener('click', handler);
+    element.removeEventListener('mousedown', handler);
+    element.removeEventListener('mouseup', handler);
+    element.removeEventListener('touchstart', handler);
+    element.removeEventListener('touchend', handler);
     
-    delete (element as any)._stopPropagationHandler;
     this.protectedElements.delete(elementId);
   }
 

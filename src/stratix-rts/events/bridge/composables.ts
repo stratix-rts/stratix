@@ -118,7 +118,7 @@ export function useRTSRequest<K extends keyof RequestResponseMap>(
       const result = await rtsEventBus.request(event, requestData);
       data.value = result ?? null;
       return result ?? null;
-    } catch (e) {
+    } catch (e: unknown) {
       error.value = e as Error;
       return null;
     } finally {

@@ -420,7 +420,7 @@ export class ReplayControls {
         if (data.state === 'ended') {
           this.config.onPlaybackEnded?.();
         }
-      }) as any
+      })
     );
 
     this.unsubscribers.push(
@@ -428,14 +428,14 @@ export class ReplayControls {
         this.progress = data.currentTime;
         this.duration = data.duration;
         this.updateProgress();
-      }) as any
+      })
     );
 
     this.unsubscribers.push(
       rtsEventBus.on('replay:recording_started', () => {
         this.isRecording = true;
         this.updateAll();
-      }) as any
+      })
     );
 
     this.unsubscribers.push(
@@ -444,7 +444,7 @@ export class ReplayControls {
         this.currentSessionData = data.session;
         this.currentSession = data.session as RecordingSession;
         this.updateAll();
-      }) as any
+      })
     );
 
     this.unsubscribers.push(
@@ -453,7 +453,7 @@ export class ReplayControls {
         this.currentSession = data.session as RecordingSession;
         this.duration = data.session.duration;
         this.updateAll();
-      }) as any
+      })
     );
   }
 

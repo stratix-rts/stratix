@@ -28,8 +28,8 @@ export class ZoneTemplateIntegration {
     templateId: string,
     options: TemplateApplicationOptions,
     createZoneFn: (config: BaseZoneConfig) => Promise<any>,
-    scene: any
-  ): Promise<{ zones: any[]; actionId: string }> {
+    scene: unknown
+  ): Promise<{ zones: unknown[]; actionId: string }> {
     const template = this.templateManager.getTemplate(templateId);
     if (!template) {
       throw new Error(`Template not found: ${templateId}`);

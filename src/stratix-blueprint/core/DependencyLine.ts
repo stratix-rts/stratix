@@ -64,10 +64,16 @@ export class DependencyLine extends Phaser.GameObjects.Graphics {
     this.fillPath();
   }
   
+  setNodes(fromNode: BlueprintNode, toNode: BlueprintNode): void {
+    this.fromNode = fromNode;
+    this.toNode = toNode;
+    this.draw();
+  }
+
   update(): void {
     this.draw();
   }
-  
+
   getEdge(): BlueprintEdge {
     return this.edge;
   }

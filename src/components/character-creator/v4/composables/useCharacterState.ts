@@ -58,7 +58,7 @@ export function useCharacterState(options: UseCharacterStateOptions = {}) {
   }
 
   // 创建新角色
-  function createNew(bodyType: BodyType = DEFAULT_BODY_TYPE as BodyType): SavedCharacter {
+  function createNew(bodyType: BodyType = DEFAULT_BODY_TYPE): SavedCharacter {
     const newChar = characterStorage.createNew(bodyType);
     currentCharacter.value = newChar;
     isDirty.value = true;
@@ -222,6 +222,8 @@ export function useCharacterState(options: UseCharacterStateOptions = {}) {
           currentCharacter.value = char;
           isDirty.value = false;
         }
+      }).catch(error => {
+        console.error('[useCharacterState] Failed to reset character:', error);
       });
     }
   }

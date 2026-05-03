@@ -34,7 +34,7 @@ export class ZoneSyncManager {
   private syncQueue: SyncTask[] = [];
   private zoneStates = new Map<string, ZoneState>();
   private isProcessing = false;
-  private syncInterval: NodeJS.Timeout | null = null;
+  private syncInterval: ReturnType<typeof setInterval> | null = null;
   private readonly batchSize = 10;
   private readonly syncDelay = 100;
   private readonly maxRetries = 3;
@@ -121,7 +121,7 @@ export class ZoneSyncManager {
       const batch = this.syncQueue.splice(0, this.batchSize);
       
       await Promise.all(batch.map(task => this.processSyncTask(task)));
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('[ZoneSyncManager] Batch processing error:', error);
     } finally {
       this.isProcessing = false;
@@ -149,7 +149,7 @@ export class ZoneSyncManager {
       } as any);
 
       this.retryCount.delete(task.zoneId);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error(`[ZoneSyncManager] Sync failed for zone ${task.zoneId}:`, error);
       
       const retries = this.retryCount.get(task.zoneId) || 0;

@@ -88,7 +88,7 @@ export class TemplateApplicationAction implements ZoneAction {
           zoneConfig: zoneData.config,
           isRedo: true
         });
-      } catch (error) {
+      } catch (error: unknown) {
         console.error('[TemplateApplicationAction] Failed to recreate zone:', error);
       }
     }

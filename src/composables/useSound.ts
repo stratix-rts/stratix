@@ -10,8 +10,7 @@ import { computed } from 'vue';
 import { soundService } from '@/services/SoundService';
 
 export function useSound() {
-
-  // Load persisted settings on first use
+  // Load persisted settings on first use (idempotent)
   soundService.loadSettings();
 
   // Sync enabled state to store

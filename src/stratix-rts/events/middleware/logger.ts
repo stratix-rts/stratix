@@ -55,7 +55,7 @@ export function createErrorMiddleware(
   return <K extends RTSEventName>(ctx: MiddlewareContext<K>) => {
     try {
       ctx.next();
-    } catch (error) {
+    } catch (error: unknown) {
       onError(error as Error, ctx.event, ctx.data);
     }
   };

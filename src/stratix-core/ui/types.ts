@@ -1,19 +1,21 @@
 /**
- * UI Component Types
+ * UI Component Types (基础层)
+ *
+ * 注意：core/types/component.types.ts 包含扩展版本（含 reactiveTheme, data 等）
  */
 
 /**
- * UI Component Config
+ * UI Component Config（基础版）
  */
 export interface UIComponentConfig {
-  x?: number;
-  y?: number;
-  width?: number;
-  height?: number;
-  padding?: number;
-  depth?: number;
-  visible?: boolean;
-  className?: string;
+  readonly x?: number;
+  readonly y?: number;
+  readonly width?: number;
+  readonly height?: number;
+  readonly padding?: number;
+  readonly depth?: number;
+  readonly visible?: boolean;
+  readonly className?: string;
 }
 
 /**
