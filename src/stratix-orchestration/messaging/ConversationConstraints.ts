@@ -1,5 +1,9 @@
 import { getDatabase } from '../../stratix-database/StratixDatabase';
 
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[ConversationConstraints] ${message}`, ctx);
+}
+
 // Database row interface
 interface PolicyRow {
   policy_id: string;
@@ -255,7 +259,7 @@ export class ConversationConstraints {
     try {
       allowedParticipants = row.allowed_participants ? JSON.parse(row.allowed_participants) : undefined;
     } catch (err) {
-      console.warn('[ConversationConstraints] Failed to parse allowed participants:', err);
+      log('warn', 'Failed to parse allowed participants', { error: String(err) });
     }
 
     return {

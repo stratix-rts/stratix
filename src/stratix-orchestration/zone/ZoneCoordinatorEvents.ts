@@ -9,6 +9,10 @@
 
 import mitt, { Emitter } from 'mitt';
 
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[ZoneCoordinatorEvents] ${message}`, ctx);
+}
+
 export type ZoneCoordinatorEvent =
   | 'task_delegated'
   | 'task_completed'
@@ -106,7 +110,7 @@ class ZoneCoordinatorEventEmitter {
     try {
       this.emitter.emit(payload.type, payload);
     } catch (error) {
-      console.error('[ZoneCoordinatorEventEmitter] Error in specific listener:', error);
+      log('error', 'Error in specific listener', { error: String(error) });
     }
 
     // Notify wildcard listeners
@@ -114,7 +118,7 @@ class ZoneCoordinatorEventEmitter {
       try {
         callback(payload);
       } catch (error) {
-        console.error('[ZoneCoordinatorEventEmitter] Error in wildcard callback:', error);
+        log('error', 'Error in wildcard callback', { error: String(error) });
       }
     }
   }

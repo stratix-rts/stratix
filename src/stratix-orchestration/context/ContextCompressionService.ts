@@ -2,6 +2,10 @@ import { LLMConnector } from '../../stratix-agent/core/LLMConnector';
 import type { LLMConfig, ChatMessage } from '../../stratix-agent/types';
 import { getDatabase } from '../../stratix-database/StratixDatabase';
 
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[ContextCompression] ${message}`, ctx);
+}
+
 // Database row interface
 interface ArchiveRow {
   archive_id: string;
@@ -82,7 +86,7 @@ export class ContextCompressionService {
     try {
       result = await this.compressWithLLM(messages, options.summaryPrompt);
     } catch (error) {
-      console.warn('[ContextCompression] LLM compression failed, using basic extraction:', error);
+      log('warn', 'LLM compression failed, using basic extraction', { error: String(error) });
       result = this.basicCompress(messages);
     }
 
@@ -118,7 +122,7 @@ export class ContextCompressionService {
       };
     } catch (error) {
       // If JSON parsing fails, try to extract information via basic methods
-      console.warn('[ContextCompression] Failed to parse LLM response as JSON:', error);
+      log('warn', 'Failed to parse LLM response as JSON', { error: String(error) });
       return this.basicCompress(messages);
     }
   }

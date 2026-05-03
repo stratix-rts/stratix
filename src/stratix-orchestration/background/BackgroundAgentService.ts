@@ -3,6 +3,10 @@ import type { AgentCheckpointData } from './AgentProcess';
 
 export type AgentStatusCallback = (agentId: string, status: string, error?: string) => void;
 
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[BackgroundAgentService] ${message}`, ctx);
+}
+
 const HEARTBEAT_INTERVAL_MS = 30000; // 30 seconds
 
 export interface BackgroundAgentEvent {
@@ -52,11 +56,11 @@ export class BackgroundAgentService {
     options: { autoRestart?: boolean; maxRestarts?: number } = {}
   ): Promise<boolean> {
     if (this.processes.has(agentId)) {
-      console.warn(`[BackgroundAgentService] Agent ${agentId} is already running`);
+      log('warn', `Agent ${agentId} is already running`);
       return false;
     }
 
-    console.log(`[BackgroundAgentService] Starting agent ${agentId} in zone ${zoneId || 'none'}`);
+    log('info', `Starting agent ${agentId} in zone ${zoneId || 'none'}`);
 
     const now = Date.now();
     const processInfo: AgentProcessInfo = {
@@ -92,7 +96,7 @@ export class BackgroundAgentService {
 
       return true;
     } catch (error) {
-      console.error(`[BackgroundAgentService] Failed to start agent ${agentId}:`, error);
+      log('error', `Failed to start agent ${agentId}`, { error: String(error) });
       processInfo.status = 'error';
       await this.checkpoint.updateStatus(agentId, 'error', String(error));
       this.notifyStatusChange(agentId, 'error', String(error));
@@ -103,11 +107,11 @@ export class BackgroundAgentService {
   async stopAgent(agentId: string, reason?: string): Promise<boolean> {
     const processInfo = this.processes.get(agentId);
     if (!processInfo) {
-      console.warn(`[BackgroundAgentService] Agent ${agentId} is not running`);
+      log('warn', `Agent ${agentId} is not running`);
       return false;
     }
 
-    console.log(`[BackgroundAgentService] Stopping agent ${agentId}, reason: ${reason || 'none'}`);
+    log('info', `Stopping agent ${agentId}, reason: ${reason || 'none'}`);
 
     processInfo.status = 'stopping';
     this.notifyStatusChange(agentId, 'stopping');
@@ -127,7 +131,7 @@ export class BackgroundAgentService {
       // Update status to stopped
       await this.checkpoint.updateStatus(agentId, 'stopped');
     } catch (error) {
-      console.error(`[BackgroundAgentService] Error during checkpoint for ${agentId}:`, error);
+      log('error', `Error during checkpoint for ${agentId}`, { error: String(error) });
       // Continue with cleanup even if checkpoint fails
     }
 
@@ -179,7 +183,7 @@ export class BackgroundAgentService {
   // ==================== Recovery ====================
 
   async recoverAgents(): Promise<{ recovered: number; failed: number }> {
-    console.log('[BackgroundAgentService] Starting agent recovery...');
+    log('info', 'Starting agent recovery...');
 
     const runningAgents = await this.checkpoint.getRunningAgents();
     let recovered = 0;
@@ -197,13 +201,13 @@ export class BackgroundAgentService {
           recovered++;
         }
       } catch (error) {
-        console.error(`[BackgroundAgentService] Failed to recover agent ${agentId}:`, error);
+        log('error', `Failed to recover agent ${agentId}`, { error: String(error) });
         await this.checkpoint.updateStatus(agentId, 'error', String(error));
         failed++;
       }
     }
 
-    console.log(`[BackgroundAgentService] Recovery complete: ${recovered} recovered, ${failed} failed`);
+    log('info', `Recovery complete: ${recovered} recovered, ${failed} failed`);
     return { recovered, failed };
   }
 
@@ -300,7 +304,7 @@ export class BackgroundAgentService {
         await this.checkpoint.updateHeartbeat(agentId);
         processInfo.lastHeartbeat = Date.now();
       } catch (error) {
-        console.error(`[BackgroundAgentService] Heartbeat failed for ${agentId}:`, error);
+        log('error', `Heartbeat failed for ${agentId}`, { error: String(error) });
       }
     }, HEARTBEAT_INTERVAL_MS);
   }
@@ -316,7 +320,7 @@ export class BackgroundAgentService {
   // ==================== Cleanup ====================
 
   async shutdown(): Promise<void> {
-    console.log('[BackgroundAgentService] Shutting down all agents...');
+    log('info', 'Shutting down all agents...');
 
     const stopPromises = Array.from(this.processes.keys()).map(agentId =>
       this.stopAgent(agentId, 'service_shutdown')
@@ -324,7 +328,7 @@ export class BackgroundAgentService {
 
     await Promise.all(stopPromises);
 
-    console.log('[BackgroundAgentService] All agents stopped');
+    log('info', 'All agents stopped');
   }
 
   destroy(): void {

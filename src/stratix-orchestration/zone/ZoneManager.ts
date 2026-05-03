@@ -2,6 +2,10 @@ import { getDatabase } from '../../stratix-database/StratixDatabase';
 
 import { ZoneState, ZoneConfig, ZoneEvent, DEFAULT_ZONE_CONFIG } from './ZoneState';
 
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[ZoneManager] ${message}`, ctx);
+}
+
 type ZoneEventCallback = (event: ZoneEvent) => void;
 
 // Database row interfaces
@@ -49,7 +53,7 @@ export class ZoneManager {
         const { TaskQueueService } = require('../task-queue/TaskQueueService');
         this.taskQueueService = TaskQueueService.getInstance();
       } catch (e) {
-        console.warn('[ZoneManager] TaskQueueService not available:', e);
+        log('warn', 'TaskQueueService not available', { error: String(e) });
       }
     }
     return this.taskQueueService;
@@ -365,7 +369,7 @@ export class ZoneManager {
     try {
       config = JSON.parse(row.config || '{}');
     } catch (err) {
-      console.warn('[ZoneManager] Failed to parse zone config, using default:', err);
+      log('warn', 'Failed to parse zone config, using default', { error: String(err) });
       config = DEFAULT_ZONE_CONFIG;
     }
 

@@ -17,6 +17,10 @@ import ZoneCoordinatorEventEmitter, { type ZoneCoordinatorEventPayload } from '.
 import { ZoneManager } from './zone/ZoneManager';
 import { ZoneEvent } from './zone/ZoneState';
 
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[OrchestrationSync] ${message}`, ctx);
+}
+
 // Type for StatusSync - avoid circular dependency at type level
 interface StatusSyncInterface {
   notifyZoneUpdate(zoneId: string, data: Record<string, unknown>): void;
@@ -76,7 +80,7 @@ export class OrchestrationSync {
       }
       return null;
     } catch (e) {
-      console.warn('[OrchestrationSync] StatusSync not available:', e);
+      log('warn', 'StatusSync not available', { error: String(e) });
       return null;
     }
   }
@@ -89,7 +93,7 @@ export class OrchestrationSync {
       }
       return null;
     } catch (e) {
-      console.warn('[OrchestrationSync] ZoneService not available:', e);
+      log('warn', 'ZoneService not available', { error: String(e) });
       return null;
     }
   }
@@ -128,21 +132,13 @@ export class OrchestrationSync {
 
     try {
       await zoneService.addFiles(task.zoneId, files);
-      console.log(`[OrchestrationSync] Synced ${files.length} output files to zone ${task.zoneId}`);
+      log('info', `Synced ${files.length} output files to zone ${task.zoneId}`);
     } catch (err) {
-      console.warn(`[OrchestrationSync] Failed to add files to zone ${task.zoneId}:`, err);
+      log('warn', `Failed to add files to zone ${task.zoneId}`, { error: String(err) });
     }
   }
 
-  /**
-   * Initialize all event listeners
-   */
-  initialize(): void {
-    if (this.isInitialized) return;
-
-    console.log('[OrchestrationSync] Initializing orchestration sync...');
-
-    // Zone events
+  private setupZoneListeners(): void {
     const zoneHandler = (event: ZoneEvent) => {
       const sync = this.getStatusSync();
       if (sync) {
@@ -155,8 +151,9 @@ export class OrchestrationSync {
     };
     this.zoneManager.on('*', zoneHandler);
     this.cleanupFns.push(() => this.zoneManager.off('*', zoneHandler));
+  }
 
-    // Task events
+  private setupTaskListeners(): void {
     const taskHandler = (event: TaskEvent) => {
       const sync = this.getStatusSync();
       if (sync) {
@@ -164,39 +161,47 @@ export class OrchestrationSync {
           sync.notifyTaskAssigned(event.taskId, event.agentId || '', '');
         } else if (event.type === 'completed') {
           sync.notifyTaskCompleted(event.taskId, event.agentId || '');
-          // Sync task output files to zone
           this.syncTaskFilesToZone(event.taskId).catch(err => {
-            console.error('[OrchestrationSync] Failed to sync task files to zone:', err);
+            log('error', 'Failed to sync task files to zone', { error: String(err) });
           });
         }
       }
     };
     this.taskQueue.on('*', taskHandler);
     this.cleanupFns.push(() => this.taskQueue.off('*', taskHandler));
+  }
 
-    // Background agent events
+  private setupBackgroundAgentListeners(): void {
     const bgHandler = (event: BackgroundAgentEvent) => {
       const sync = this.getStatusSync();
-      if (sync) {
-        if (event.type === 'agent_started') {
+      if (!sync) return;
+
+      switch (event.type) {
+        case 'agent_started':
           sync.notifyBackgroundAgentStatus(event.agentId, 'running', event.zoneId);
-        } else if (event.type === 'agent_stopped') {
+          break;
+        case 'agent_stopped':
           sync.notifyBackgroundAgentStatus(event.agentId, 'stopped');
-        } else if (event.type === 'agent_paused') {
+          break;
+        case 'agent_paused':
           sync.notifyBackgroundAgentStatus(event.agentId, 'paused');
-        } else if (event.type === 'agent_resumed') {
+          break;
+        case 'agent_resumed':
           sync.notifyBackgroundAgentStatus(event.agentId, 'running');
-        } else if (event.type === 'task_assigned') {
+          break;
+        case 'task_assigned':
           sync.notifyTaskAssigned(event.taskId || '', event.agentId, '');
-        } else if (event.type === 'task_completed') {
+          break;
+        case 'task_completed':
           sync.notifyTaskCompleted(event.taskId || '', event.agentId);
-        }
+          break;
       }
     };
     this.backgroundService.onEvent(bgHandler);
     this.cleanupFns.push(() => this.backgroundService.offEvent(bgHandler));
+  }
 
-    // Agent message events
+  private setupMessageListeners(): void {
     const msgHandler = (event: MessageEvent) => {
       const sync = this.getStatusSync();
       if (sync) {
@@ -210,31 +215,44 @@ export class OrchestrationSync {
     };
     this.messageRouter.on('sent', msgHandler);
     this.cleanupFns.push(() => this.messageRouter.off('sent', msgHandler));
+  }
 
-    // ZoneCoordinator events
+  private setupZoneCoordinatorListeners(): void {
     const zoneCoordinatorEmitter = ZoneCoordinatorEventEmitter.getInstance();
     const zoneCoordHandler = (payload: ZoneCoordinatorEventPayload) => {
       const sync = this.getStatusSync();
-      if (sync) {
-        // Handle task_delegated - push task directly to specific agent
-        if (payload.type === 'task_delegated' && payload.agentId && payload.task) {
-          sync.notifyAgentTaskAssigned(payload.agentId, {
-            taskId: payload.task.id,
-            zoneId: payload.zoneId,
-            name: payload.task.title,
-            description: payload.task.description,
-            type: payload.task.type,
-            priority: payload.task.priority,
-          });
-        }
+      if (sync && payload.type === 'task_delegated' && payload.agentId && payload.task) {
+        sync.notifyAgentTaskAssigned(payload.agentId, {
+          taskId: payload.task.id,
+          zoneId: payload.zoneId,
+          name: payload.task.title,
+          description: payload.task.description,
+          type: payload.task.type,
+          priority: payload.task.priority,
+        });
       }
       this.notifyZoneCoordinatorEvent(payload);
     };
     zoneCoordinatorEmitter.onAny(zoneCoordHandler);
     this.cleanupFns.push(() => zoneCoordinatorEmitter.offAny(zoneCoordHandler));
+  }
+
+  /**
+   * Initialize all event listeners
+   */
+  initialize(): void {
+    if (this.isInitialized) return;
+
+    log('info', 'Initializing orchestration sync...');
+
+    this.setupZoneListeners();
+    this.setupTaskListeners();
+    this.setupBackgroundAgentListeners();
+    this.setupMessageListeners();
+    this.setupZoneCoordinatorListeners();
 
     this.isInitialized = true;
-    console.log('[OrchestrationSync] Orchestration sync initialized');
+    log('info', 'Orchestration sync initialized');
   }
 
   /**
@@ -243,14 +261,13 @@ export class OrchestrationSync {
   cleanup(): void {
     if (!this.isInitialized) return;
 
-    // Remove all registered listeners
     for (const cleanupFn of this.cleanupFns) {
       cleanupFn();
     }
     this.cleanupFns = [];
 
     this.isInitialized = false;
-    console.log('[OrchestrationSync] Orchestration sync cleanup complete');
+    log('info', 'Orchestration sync cleanup complete');
   }
 }
 

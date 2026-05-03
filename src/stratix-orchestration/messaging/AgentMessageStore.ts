@@ -2,6 +2,10 @@ import { getDatabase } from '../../stratix-database/StratixDatabase';
 
 import { AgentMessage, Conversation, SendMessageOptions, MessageReference } from './MessageTypes';
 
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[AgentMessageStore] ${message}`, ctx);
+}
+
 // Database row interfaces
 interface ConversationRow {
   conversation_id: string;
@@ -274,7 +278,7 @@ export class AgentMessageStore {
     try {
       references = JSON.parse(row.references || '[]');
     } catch (err) {
-      console.warn('[AgentMessageStore] Failed to parse message references:', err);
+      log('warn', 'Failed to parse message references', { error: String(err) });
     }
 
     return {

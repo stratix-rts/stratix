@@ -2,6 +2,10 @@ import { getDatabase } from '../../stratix-database';
 
 import { TaskItem, TaskContext, TaskResult, TaskEvent, TaskEventCallback } from './TaskItem';
 
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[TaskQueueService] ${message}`, ctx);
+}
+
 // Database row interface
 interface TaskRow {
   task_id: string;
@@ -439,19 +443,19 @@ export class TaskQueueService {
     try {
       dependencies = JSON.parse(row.dependencies || '[]');
     } catch (err) {
-      console.warn('[TaskQueueService] Failed to parse task dependencies:', err);
+      log('warn', 'Failed to parse task dependencies', { error: String(err) });
     }
 
     try {
       context = JSON.parse(row.context || '{}');
     } catch (err) {
-      console.warn('[TaskQueueService] Failed to parse task context:', err);
+      log('warn', 'Failed to parse task context', { error: String(err) });
     }
 
     try {
       if (row.result) result = JSON.parse(row.result);
     } catch (err) {
-      console.warn('[TaskQueueService] Failed to parse task result:', err);
+      log('warn', 'Failed to parse task result', { error: String(err) });
     }
 
     return {
