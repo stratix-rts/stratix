@@ -50,9 +50,19 @@ export class LLMConnectionPool {
   clear(key?: string): void {
     if (key) {
       this.pool.delete(key);
+      this.configPool.delete(key);
     } else {
       this.pool.clear();
+      this.configPool.clear();
     }
+  }
+
+  /**
+   * Dispose all pooled connectors and clear configuration state.
+   */
+  dispose(): void {
+    this.pool.clear();
+    this.configPool.clear();
   }
 
   size(key: string): number {

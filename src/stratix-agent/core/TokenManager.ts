@@ -48,15 +48,17 @@ export class TokenManager {
 
     const systemMsg = messages.find(m => m.role === 'system');
     const truncated: ChatMessage[] = systemMsg ? [systemMsg] : [];
+    // Pre-calculate base token count for system message to avoid repeated O(n) scans
+    let currentTokens = systemMsg ? this.estimateTokens(systemMsg.content) + 4 : 0;
     const nonSystem = messages.filter(m => m.role !== 'system');
 
     for (let i = nonSystem.length - 1; i >= 0; i--) {
       const msg = nonSystem[i];
-      const currentTokens = this.calculateMessagesTokenCount(truncated);
       const msgTokens = this.estimateTokens(msg.content) + 4;
 
       if (currentTokens + msgTokens <= availableTokens) {
         truncated.unshift(msg);
+        currentTokens += msgTokens;
       } else {
         break;
       }

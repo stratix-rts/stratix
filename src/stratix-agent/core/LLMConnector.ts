@@ -10,13 +10,15 @@ function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<str
 
 export class LLMConnector {
   private config: LLMConfig;
-  private apiKey: string;
+  private openaiApiKey: string;
+  private anthropicApiKey: string;
   private openaiClient: OpenAI | null;
   private anthropicClient: Anthropic | null;
 
   constructor(config: LLMConfig) {
     this.config = config;
-    this.apiKey = config.apiKey || '';
+    this.openaiApiKey = config.apiKey || '';
+    this.anthropicApiKey = config.apiKey || '';
     this.openaiClient = null;
     this.anthropicClient = null;
   }
@@ -29,11 +31,11 @@ export class LLMConnector {
     if (!this.openaiClient) {
       const baseUrl = this.config.baseUrl || this.getDefaultBaseUrl();
       this.openaiClient = new OpenAI({
-        apiKey: this.apiKey,
+        apiKey: this.openaiApiKey,
         baseURL: baseUrl,
       });
       // Secure: clear apiKey from memory after client initialization
-      this.apiKey = '';
+      this.openaiApiKey = '';
     }
     return this.openaiClient;
   }
@@ -41,11 +43,11 @@ export class LLMConnector {
   private getAnthropicClient(): Anthropic {
     if (!this.anthropicClient) {
       this.anthropicClient = new Anthropic({
-        apiKey: this.apiKey,
+        apiKey: this.anthropicApiKey,
         baseURL: this.config.baseUrl || this.getDefaultBaseUrl(),
       });
       // Secure: clear apiKey from memory after client initialization
-      this.apiKey = '';
+      this.anthropicApiKey = '';
     }
     return this.anthropicClient;
   }
@@ -372,32 +374,50 @@ export class LLMConnector {
     }
 
     const client = this.getOpenAIClient();
-    const stream = await client.chat.completions.create({
-      model: this.config.model,
-      messages: this.convertToOpenAIMessages(messages),
-      temperature: this.config.temperature ?? 0.7,
-      max_tokens: this.config.maxTokens ?? 4096,
-      stream: true,
-    });
+    let usage: GenerateResult['usage'];
+    try {
+      const stream = await client.chat.completions.create({
+        model: this.config.model,
+        messages: this.convertToOpenAIMessages(messages),
+        temperature: this.config.temperature ?? 0.7,
+        max_tokens: this.config.maxTokens ?? 4096,
+        stream: true,
+        stream_options: { include_usage: true },
+      });
 
-    let fullContent = '';
-    for await (const chunk of stream) {
-      const content = chunk.choices[0]?.delta?.content;
-      if (content) {
-        fullContent += content;
-        onChunk(content);
+      let fullContent = '';
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content;
+        if (content) {
+          fullContent += content;
+          onChunk(content);
+        }
+        if (chunk.usage) {
+          usage = {
+            promptTokens: chunk.usage.prompt_tokens,
+            completionTokens: chunk.usage.completion_tokens,
+            totalTokens: chunk.usage.total_tokens,
+          };
+        }
       }
-    }
 
-    return { content: fullContent, finishReason: 'stop' };
+      return { content: fullContent, finishReason: 'stop', usage };
+    } catch (err) {
+      log('error', 'Stream generation failed', { error: String(err) });
+      throw err;
+    }
   }
 
-  async testConnection(): Promise<{ success: boolean; message: string; latency?: number }> {
+  async testConnection(timeoutMs: number = 10000): Promise<{ success: boolean; message: string; latency?: number }> {
     const start = Date.now();
     try {
-      const result = await this.generate([
+      const testPromise = this.generate([
         { role: 'user', content: 'Hi' }
       ]);
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`Connection test timed out after ${timeoutMs}ms`)), timeoutMs)
+      );
+      const result = await Promise.race([testPromise, timeoutPromise]);
       const latency = Date.now() - start;
 
       if (result.content) {
@@ -405,9 +425,9 @@ export class LLMConnector {
       }
       return { success: false, message: 'No response from model' };
     } catch (error) {
-      return { 
-        success: false, 
-        message: error instanceof Error ? error.message : 'Connection failed' 
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Connection failed'
       };
     }
   }
