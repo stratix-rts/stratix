@@ -75,9 +75,13 @@ export class StratixAgentExecutor implements AgentExecutor {
       const testMessage = 'Hello';
 
       const timeoutMs = LLM_DEFAULTS.TIMEOUT_MS;
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error(`Connection timeout (${timeoutMs / 1000}s)`)), timeoutMs)
-      );
+      const timeoutController = new AbortController();
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        const timer = setTimeout(() => {
+          reject(new Error(`Connection timeout (${timeoutMs / 1000}s)`));
+        }, timeoutMs);
+        timeoutController.signal.addEventListener('abort', () => clearTimeout(timer));
+      });
 
       const connectionPromise = this.callLLM(config, testMessage, {
         identity: 'You are a test assistant.',
@@ -85,7 +89,11 @@ export class StratixAgentExecutor implements AgentExecutor {
         personality: 'Helpful'
       }, undefined);
 
-      await Promise.race([connectionPromise, timeoutPromise]);
+      try {
+        await Promise.race([connectionPromise, timeoutPromise]);
+      } finally {
+        timeoutController.abort();
+      }
 
       return { success: true, message: 'Connection successful' };
     } catch (error) {
@@ -125,7 +133,7 @@ export class StratixAgentExecutor implements AgentExecutor {
     return messages;
   }
 
-  private buildUserMessage(skill: StratixSkillConfig | null, params: Record<string, any>): string {
+  private buildUserMessage(skill: StratixSkillConfig | null, params: Record<string, unknown>): string {
     if (!skill) {
       return Object.keys(params).length > 0 
         ? JSON.stringify(params) 
@@ -204,7 +212,7 @@ export class StratixAgentExecutor implements AgentExecutor {
           { role: 'user', content: userMessage }
         ];
 
-    const body: Record<string, any> = {
+    const body: Record<string, unknown> = {
       model,
       messages,
       temperature: temperature || LLM_DEFAULTS.TEMPERATURE
@@ -234,20 +242,21 @@ export class StratixAgentExecutor implements AgentExecutor {
     return this.extractResponse(data, responsePath);
   }
 
-  private extractResponse(data: any, path: string): string {
+  private extractResponse(data: unknown, path: string): string {
     const parts = path.split('.');
-    let result = data;
+    let result: unknown = data;
     for (const part of parts) {
       if (result == null) return '';
       // Support array index notation like 'choices.0.message.content'
       const match = part.match(/^(\w+)\[(\d+)\]$/);
       if (match) {
-        result = result[match[1]]?.[parseInt(match[2])];
+        const arr = (result as Record<string, unknown>)[match[1]];
+        result = Array.isArray(arr) ? arr[parseInt(match[2])] : undefined;
       } else {
-        result = result[part];
+        result = (result as Record<string, unknown>)[part];
       }
     }
-    return result || '';
+    return typeof result === 'string' ? result : '';
   }
 }
 

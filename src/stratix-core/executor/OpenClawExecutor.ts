@@ -155,7 +155,7 @@ export class OpenClawExecutor implements AgentExecutor {
 
   private replaceTemplateVariables(
     template: string,
-    params: Record<string, any>
+    params: Record<string, unknown>
   ): string {
     let result = template;
 
@@ -184,7 +184,7 @@ export class OpenClawExecutor implements AgentExecutor {
     return [...new Set(matches)];
   }
 
-  private parseExecuteScript(script: string): any {
+  private parseExecuteScript(script: string): unknown {
     try {
       return JSON.parse(script);
     } catch (error) {
