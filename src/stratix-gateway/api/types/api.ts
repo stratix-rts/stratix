@@ -36,10 +36,20 @@ export function unwrapApiResult<T>(result: ApiResult<T>): T {
   return result.data;
 }
 
+/** Safely unwrap a result without throwing */
+export function safeUnwrapApiResult<T>(result: ApiResult<T>): { data: T | null; error: string | null } {
+  if (isApiError(result)) {
+    return { data: null, error: result.error };
+  }
+  return { data: result.data, error: null };
+}
+
 /** Request options for typed API calls */
 export interface ApiRequestOptions {
   timeout?: number;
   headers?: Record<string, string>;
+  /** External AbortSignal for request cancellation */
+  signal?: AbortSignal;
 }
 
 /** Pagination metadata */

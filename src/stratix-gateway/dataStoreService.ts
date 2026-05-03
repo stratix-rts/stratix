@@ -87,7 +87,7 @@ class DataStoreService {
     agentId: string,
     limit = 20,
     offset = 0
-  ) {
+  ): Promise<Array<{ messageId: string; agentId: string; role: 'user' | 'assistant'; content: string; timestamp: number }>> {
     this.ensureInitialized();
     return this.dataStore!.getChatMessages(agentId, limit, offset);
   }
@@ -96,7 +96,7 @@ class DataStoreService {
     agentId: string,
     keywords: string[],
     limit = 10
-  ) {
+  ): Promise<Array<{ messageId: string; agentId: string; role: 'user' | 'assistant'; content: string; timestamp: number }>> {
     this.ensureInitialized();
     return this.dataStore!.searchChatMessages(agentId, keywords, limit);
   }
@@ -104,6 +104,16 @@ class DataStoreService {
   async deleteChatMessages(agentId: string): Promise<void> {
     this.ensureInitialized();
     return this.dataStore!.deleteChatMessages(agentId);
+  }
+
+  /** Shutdown the service and release references */
+  shutdown(): void {
+    this.dataStore = null;
+    this.templateLibrary = null;
+    this.logStore = null;
+    this.backupManager = null;
+    this.initialized = false;
+    this.initPromise = null;
   }
 }
 

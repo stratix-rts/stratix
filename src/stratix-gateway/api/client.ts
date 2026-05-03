@@ -125,6 +125,15 @@ export class ApiClient {
         const timeoutId = setTimeout(() => controller.abort(), options?.timeout || this.timeout);
 
         try {
+          // Compose internal timeout signal with external signal if provided
+          const signals: AbortSignal[] = [controller.signal];
+          if (options?.signal) {
+            signals.push(options.signal);
+          }
+          const signal = signals.length === 1
+            ? signals[0]
+            : AbortSignal.any(signals);
+
           const response = await fetch(this.buildUrl(path), {
             method,
             headers: {
@@ -132,7 +141,7 @@ export class ApiClient {
               ...options?.headers
             },
             body: body ? JSON.stringify(body) : undefined,
-            signal: controller.signal
+            signal
           });
 
           clearTimeout(timeoutId);
@@ -141,7 +150,7 @@ export class ApiClient {
           clearTimeout(timeoutId);
           if (error instanceof Error) {
             if (error.name === 'AbortError') {
-              return { success: false, error: 'Request timeout' };
+              return { success: false, error: options?.signal?.aborted ? 'Request aborted' : 'Request timeout' };
             }
             // Network errors are thrown for retry engine to handle
             const networkError = new Error(`network_error: ${error.message}`) as Error & { status?: number };

@@ -27,16 +27,21 @@ export class GatewayRetryAdapter {
   }
 
   /**
-   * Execute fetch with retry
+   * Execute fetch with retry and optional timeout
    */
   async fetch<T>(
     url: string,
     options?: RequestInit,
-    source?: RetryContext['source']
+    source?: RetryContext['source'],
+    timeoutMs?: number
   ): Promise<T> {
     return this.execute(
       async () => {
-        const response = await fetch(url, options);
+        const fetchOptions = { ...options };
+        if (timeoutMs && timeoutMs > 0) {
+          fetchOptions.signal = AbortSignal.timeout(timeoutMs);
+        }
+        const response = await fetch(url, fetchOptions);
         if (!response.ok) {
           const error = new Error(`HTTP ${response.status}`) as Error & { status: number };
           error.status = response.status;
