@@ -12,14 +12,14 @@ export type SkillType = 'copywriting' | 'development' | 'analysis' | 'custom';
 
 export interface SkillExecutionContext {
   skill: StratixSkillConfig;
-  params: Record<string, any>;
+  params: Record<string, unknown>;
   agentConfig: StratixAgentConfig;
   requestId: string;
 }
 
 export interface SkillExecutionResult {
   success: boolean;
-  data?: any;
+  data?: unknown;
   error?: string;
   duration: number;
 }
@@ -102,7 +102,7 @@ export class SkillExecutor {
       }
       
       const adapter = await this.connectionPool.getAdapter(processedContext.agentConfig.openClawConfig);
-      const response = await adapter.execute(action as OpenClawAction);
+      const response = await adapter.execute(action as unknown as OpenClawAction);
 
       let executionResult: SkillExecutionResult = {
         success: response.success,
@@ -135,7 +135,7 @@ export class SkillExecutor {
     return Promise.all(contexts.map(context => this.execute(context)));
   }
 
-  public validateParams(skill: StratixSkillConfig, params: Record<string, any>): { valid: boolean; errors: string[] } {
+  public validateParams(skill: StratixSkillConfig, params: Record<string, unknown>): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
 
     for (const param of skill.parameters) {
@@ -160,7 +160,7 @@ export class SkillExecutor {
     };
   }
 
-  private validateParamType(value: any, type: string): boolean {
+  private validateParamType(value: unknown, type: string): boolean {
     switch (type) {
       case 'string':
         return typeof value === 'string';
@@ -183,7 +183,7 @@ export class SkillExecutor {
     return this.skillTypes.get('custom');
   }
 
-  private buildAction(context: SkillExecutionContext): any {
+  private buildAction(context: SkillExecutionContext): Record<string, unknown> {
     let executeScript = context.skill.executeScript || context.skill.prompt || '';
 
     Object.entries(context.params).forEach(([key, value]) => {
@@ -192,7 +192,7 @@ export class SkillExecutor {
     });
 
     try {
-      return JSON.parse(executeScript);
+      return JSON.parse(executeScript) as Record<string, unknown>;
     } catch {
       return { action: executeScript, params: context.params };
     }
@@ -230,7 +230,7 @@ export class SkillExecutor {
 
   public createExecutionContext(
     skill: StratixSkillConfig,
-    params: Record<string, any>,
+    params: Record<string, unknown>,
     agentConfig: StratixAgentConfig,
     requestId?: string
   ): SkillExecutionContext {

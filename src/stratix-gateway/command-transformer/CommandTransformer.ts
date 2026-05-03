@@ -15,7 +15,7 @@ export class CommandTransformer {
   public async transformAndExecute(
     command: StratixCommandData,
     agentConfig: StratixAgentConfig
-  ): Promise<any> {
+  ): Promise<unknown> {
     const executor = this.executorFactory.getExecutor(agentConfig);
     const result: ExecutorResult = await executor.execute(command, agentConfig);
 

@@ -316,7 +316,7 @@ export async function startGatewayService(
     
     process.on('uncaughtException', (error) => {
       console.error('Uncaught Exception:', error);
-      gracefulShutdown();
+      gracefulShutdown().finally(finalCleanup);
     });
     
     process.on('unhandledRejection', (reason, promise) => {

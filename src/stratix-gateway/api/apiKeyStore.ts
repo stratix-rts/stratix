@@ -24,7 +24,7 @@ export async function saveApiKey(providerId: string, apiKey: string): Promise<{ 
     let keys: ApiKeyStore = {};
     if (fs.existsSync(keysPath)) {
       const existing = fs.readFileSync(keysPath);
-      keys = JSON.parse(existing.toString('base64'));
+      keys = JSON.parse(existing.toString('utf-8'));
     }
 
     keys[providerId] = encrypted.toString('base64');
@@ -48,7 +48,7 @@ export async function loadApiKey(providerId: string): Promise<{ success: boolean
       return { success: true, data: null };
     }
 
-    const keys: ApiKeyStore = JSON.parse(fs.readFileSync(keysPath).toString('base64'));
+    const keys: ApiKeyStore = JSON.parse(fs.readFileSync(keysPath).toString('utf-8'));
     const encrypted = keys[providerId];
 
     if (!encrypted) {
@@ -70,7 +70,7 @@ export async function deleteApiKey(providerId: string): Promise<{ success: boole
       return { success: true };
     }
 
-    const keys: ApiKeyStore = JSON.parse(fs.readFileSync(keysPath).toString('base64'));
+    const keys: ApiKeyStore = JSON.parse(fs.readFileSync(keysPath).toString('utf-8'));
     delete keys[providerId];
     fs.writeFileSync(keysPath, Buffer.from(JSON.stringify(keys)));
 
@@ -88,7 +88,7 @@ export async function listApiKeys(): Promise<{ success: boolean; data: string[];
       return { success: true, data: [] };
     }
 
-    const keys: ApiKeyStore = JSON.parse(fs.readFileSync(keysPath).toString('base64'));
+    const keys: ApiKeyStore = JSON.parse(fs.readFileSync(keysPath).toString('utf-8'));
     return { success: true, data: Object.keys(keys) };
   } catch (error) {
     console.error('[ApiKeyStore] Failed to list API keys:', error);

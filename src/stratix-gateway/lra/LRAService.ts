@@ -10,6 +10,14 @@ import { LraTask, LraTaskDetail } from '../../stratix-lra-bridge/types';
 const execAsync = promisify(exec);
 
 /**
+ * Escape a string for safe use in shell commands.
+ * Wraps in single quotes and escapes embedded single quotes.
+ */
+function shellQuote(arg: string): string {
+  return `'${arg.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
  * LRA Service - Gateway 后端服务
  * 
  * 负责：
@@ -28,7 +36,7 @@ export class LRAService {
    */
   async init(projectPath: string, name: string): Promise<void> {
     try {
-      await execAsync(`lra init --name "${name}"`, { cwd: projectPath });
+      await execAsync(`lra init --name ${shellQuote(name)}`, { cwd: projectPath });
       console.log(`[LRAService] LRA initialized: ${projectPath}`);
     } catch (error) {
       throw new Error(`Failed to initialize LRA: ${error}`);
@@ -45,8 +53,8 @@ export class LRAService {
   ): Promise<string> {
     try {
       const cmd = template 
-        ? `lra create "${description}" --template ${template}`
-        : `lra create "${description}"`;
+        ? `lra create ${shellQuote(description)} --template ${shellQuote(template)}`
+        : `lra create ${shellQuote(description)}`;
       
       const { stdout } = await execAsync(cmd, { cwd: projectPath });
       const taskId = this.parseTaskId(stdout);
@@ -91,7 +99,7 @@ export class LRAService {
    */
   async claimTask(projectPath: string, taskId: string): Promise<string> {
     try {
-      const { stdout } = await execAsync(`lra claim ${taskId}`, { 
+      const { stdout } = await execAsync(`lra claim ${shellQuote(taskId)}`, { 
         cwd: projectPath 
       });
       
@@ -108,7 +116,7 @@ export class LRAService {
    */
   async heartbeat(projectPath: string, taskId: string): Promise<boolean> {
     try {
-      const { stdout } = await execAsync(`lra heartbeat ${taskId}`, { 
+      const { stdout } = await execAsync(`lra heartbeat ${shellQuote(taskId)}`, { 
         cwd: projectPath 
       });
       
@@ -126,7 +134,7 @@ export class LRAService {
    */
   async publish(projectPath: string, taskId: string): Promise<boolean> {
     try {
-      const { stdout } = await execAsync(`lra publish ${taskId}`, { 
+      const { stdout } = await execAsync(`lra publish ${shellQuote(taskId)}`, { 
         cwd: projectPath 
       });
       
@@ -148,7 +156,7 @@ export class LRAService {
     status: string
   ): Promise<void> {
     try {
-      await execAsync(`lra set ${taskId} ${status}`, { cwd: projectPath });
+      await execAsync(`lra set ${shellQuote(taskId)} ${shellQuote(status)}`, { cwd: projectPath });
       console.log(`[LRAService] Task status updated: ${taskId} → ${status}`);
     } catch (error) {
       throw new Error(`Failed to set task status: ${error}`);
@@ -160,7 +168,7 @@ export class LRAService {
    */
   async showTask(projectPath: string, taskId: string): Promise<LraTaskDetail> {
     try {
-      const { stdout } = await execAsync(`lra show ${taskId}`, { 
+      const { stdout } = await execAsync(`lra show ${shellQuote(taskId)}`, { 
         cwd: projectPath 
       });
       
@@ -259,7 +267,7 @@ export class LRAService {
    */
   private parseTaskDetail(output: string): LraTaskDetail {
     const lines = output.split('\n');
-    const detail: any = {};
+    const detail: Record<string, string> = {};
     
     lines.forEach(line => {
       const [key, ...valueParts] = line.split(': ');
@@ -271,6 +279,6 @@ export class LRAService {
       }
     });
     
-    return detail as LraTaskDetail;
+    return detail as unknown as LraTaskDetail;
   }
 }
