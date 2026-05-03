@@ -17,6 +17,12 @@ import type {
   TranscriptEntry,
 } from './types';
 
+// ============================================
+// Constants
+// ============================================
+const DEFAULT_MAX_RETRIES = 2;
+const DEFAULT_TURN_TIMEOUT_MS = 30000;
+
 /**
  * Default token usage structure
  */
@@ -151,7 +157,7 @@ export class SessionRuntime {
     message: string,
     options: TurnOptions = {}
   ): Promise<TurnResult> {
-    const { maxRetries = 2, timeout = 30000, signal } = options;
+    const { maxRetries = DEFAULT_MAX_RETRIES, timeout = DEFAULT_TURN_TIMEOUT_MS, signal } = options;
 
     const session = await this.getSession(sessionId);
     if (!session) {
@@ -395,5 +401,13 @@ export class SessionRuntime {
    */
   getTranscriptStore(): TranscriptStore {
     return this.transcriptStore;
+  }
+
+  /**
+   * Dispose of all sessions and clear in-memory state.
+   * Call this during graceful shutdown to prevent memory leaks.
+   */
+  dispose(): void {
+    this.sessions.clear();
   }
 }

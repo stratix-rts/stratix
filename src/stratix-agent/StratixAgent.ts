@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from 'fs';
+import { access, readFile } from 'fs/promises';
 import { join as pathJoin } from 'path';
 
 import { AutoSaver } from './core/AutoSaver';
@@ -17,6 +17,20 @@ import { StorageManager } from './core/StorageManager';
 import { TokenManager } from './core/TokenManager';
 import { ToolUseLoop } from './core/ToolUseLoop';
 import { AgentConfig, SoulConfig, AgentResponse, SkillResult } from './types';
+
+// ============================================
+// Constants
+// ============================================
+const DEFAULT_MAX_SHORT_TERM = 20;
+const DEFAULT_RATE_LIMIT_MAX_REQUESTS = 60;
+const DEFAULT_RATE_LIMIT_WINDOW_MS = 60000;
+const AUTO_SAVE_INTERVAL_MS = 5000;
+const DEFAULT_MESSAGE_HISTORY_LIMIT = 10;
+const DEFAULT_TOOL_USE_MAX_ITERATIONS = 10;
+const DEFAULT_TOOL_USE_MAX_TOTAL_TIME_MS = 120000;
+const DEFAULT_MAX_TOOL_CALLS = 20;
+const BACKGROUND_SAVE_INTERVAL_MS = 300000; // 5 minutes
+const HEALTH_CHECK_INTERVAL_MS = 60000; // 1 minute
 
 export class StratixAgent {
   public config: AgentConfig;
@@ -53,7 +67,7 @@ export class StratixAgent {
     });
 
     this.memory = new MemoryManager({
-      maxShortTerm: config.maxShortTerm || 20,
+      maxShortTerm: config.maxShortTerm || DEFAULT_MAX_SHORT_TERM,
       storagePath: pathJoin(process.cwd(), 'stratix-data', 'agents', config.agentId, 'memory'),
     });
 
@@ -71,13 +85,13 @@ export class StratixAgent {
     this.tokenManager = new TokenManager(config.model);
     this.skillTrigger = new SkillTrigger();
     this.healthChecker = new HealthChecker();
-    this.rateLimiter = new RateLimiter({ maxRequests: 60, windowMs: 60000 });
+    this.rateLimiter = new RateLimiter({ maxRequests: DEFAULT_RATE_LIMIT_MAX_REQUESTS, windowMs: DEFAULT_RATE_LIMIT_WINDOW_MS });
     this.metricsCollector = new MetricsCollector();
     this.storage = new StorageManager();
     this.autoSaver = new AutoSaver(async () => {
       await this.memory.save();
       await this.sessions.saveSessions(this.config.agentId);
-    }, 5000);
+    }, AUTO_SAVE_INTERVAL_MS);
   }
 
   async initialize(): Promise<void> {
@@ -85,11 +99,11 @@ export class StratixAgent {
 
     await this.memory.load();
     await this.sessions.loadSessions(this.config.agentId);
-    this.registerBuiltinSkills();
+    await this.registerBuiltinSkills();
     this.initialized = true;
   }
 
-  private registerBuiltinSkills(): void {
+  private async registerBuiltinSkills(): Promise<void> {
     // 注册内置技能（file_read, file_write, bash, api_call, calculator）
     for (const skill of BUILTIN_SKILLS) {
       this.skills.registerSkill(skill);
@@ -100,20 +114,27 @@ export class StratixAgent {
     const skillsLibPath = pathJoin(process.cwd(), 'stratix-data', 'skills-lib');
     const indexFile = pathJoin(skillsLibPath, 'index.json');
 
-    if (!existsSync(indexFile)) {
+    try {
+      await access(indexFile);
+    } catch {
       return;
     }
 
     try {
-      const index = JSON.parse(readFileSync(indexFile, 'utf-8'));
+      const indexContent = await readFile(indexFile, 'utf-8');
+      const index = JSON.parse(indexContent);
       const skillsDir = skillsLibPath;
 
       for (const skillFile of index.skills || []) {
         const skillPath = pathJoin(skillsDir, skillFile);
-        if (existsSync(skillPath)) {
-          const skillDef = JSON.parse(readFileSync(skillPath, 'utf-8'));
+        try {
+          await access(skillPath);
+          const skillContent = await readFile(skillPath, 'utf-8');
+          const skillDef = JSON.parse(skillContent);
           this.skills.registerSkill(skillDef);
           this.skills.enableSkill(skillDef.skillId);
+        } catch (err) {
+          console.warn(`[StratixAgent] Failed to load skill from ${skillPath}:`, err);
         }
       }
     } catch (error) {
@@ -149,7 +170,7 @@ export class StratixAgent {
       []
     );
 
-    const historyMessages = this.sessions.getMessages(session.sessionId, 10);
+    const historyMessages = this.sessions.getMessages(session.sessionId, DEFAULT_MESSAGE_HISTORY_LIMIT);
     const truncatedMessages = this.tokenManager.truncateMessages(
       [...systemMessages, ...historyMessages],
       0
@@ -165,7 +186,7 @@ export class StratixAgent {
         this.toolUseLoop = new ToolUseLoop(
           this.skills,
           this.llm,
-          { maxIterations: 10, maxTotalTime: 120000 }
+          { maxIterations: DEFAULT_TOOL_USE_MAX_ITERATIONS, maxTotalTime: DEFAULT_TOOL_USE_MAX_TOTAL_TIME_MS }
         );
       }
       const tools = LLMConnector.skillsToTools(this.skills.getEnabledSkills());
@@ -176,7 +197,7 @@ export class StratixAgent {
           agentId: this.config.agentId,
           sessionId: session.sessionId,
           allowedPaths: [process.cwd(), '/tmp'],
-          maxToolCalls: 20
+          maxToolCalls: DEFAULT_MAX_TOOL_CALLS
         }
       );
 
@@ -306,12 +327,12 @@ export class StratixAgent {
       } catch (error) {
         console.error('Background save failed:', error);
       }
-    }, 5 * 60 * 1000);
+    }, BACKGROUND_SAVE_INTERVAL_MS);
     this.backgroundTasks.push(saveTask);
 
     const healthTask = setInterval(() => {
       this.healthChecker.check();
-    }, 60 * 1000);
+    }, HEALTH_CHECK_INTERVAL_MS);
     this.backgroundTasks.push(healthTask);
   }
 

@@ -29,6 +29,23 @@ interface ParseResult {
   frontmatter: Record<string, unknown>;
 }
 
+// ============================================
+// Constants
+// ============================================
+const DEFAULT_VERSION = '1.0.0';
+const MAX_TAGS = 10;
+const MAX_NAME_LENGTH = 100;
+const MAX_DESCRIPTION_LENGTH = 500;
+const MAX_IDENTITY_LENGTH = 1000;
+const MAX_PERSONALITY_LENGTH = 500;
+const MAX_TONE_LENGTH = 200;
+const MAX_MISSION_LENGTH = 500;
+const MAX_SKILL_NAME_LENGTH = 100;
+const MAX_SKILL_DESC_LENGTH = 200;
+const MAX_CODE_DESC_LENGTH = 100;
+const MIN_FILENAME_WORD_LENGTH = 2;
+const MAX_FILENAME_WORD_LENGTH = 20;
+
 /**
  * 从 agency-agents 仓库解析 Markdown 文件
  */
@@ -48,7 +65,7 @@ export class AgencyAgentsParser {
     return {
       id,
       name: this.extractName(parsed, filePath),
-      version: '1.0.0',
+      version: DEFAULT_VERSION,
       description: this.extractDescription(parsed),
       domain,
       tags: this.extractTags(parsed, filePath),
@@ -242,7 +259,7 @@ export class AgencyAgentsParser {
       const lines = identitySection.content.split('\n').filter(l => l.trim());
       if (lines.length > 0) {
         const firstLine = lines[0].replace(/^[-*]\s*/, '').replace(/\*\*/g, '').trim();
-        if (firstLine && firstLine.length < 100) {
+        if (firstLine && firstLine.length < MAX_NAME_LENGTH) {
           return firstLine;
         }
       }
@@ -262,7 +279,7 @@ export class AgencyAgentsParser {
     if (missionSection) {
       const lines = missionSection.content.split('\n').filter(l => l.trim() && !l.startsWith('#'));
       if (lines.length > 0) {
-        return lines.slice(0, 3).join(' ').substring(0, 500);
+        return lines.slice(0, 3).join(' ').substring(0, MAX_DESCRIPTION_LENGTH);
       }
     }
     return '';
@@ -276,7 +293,7 @@ export class AgencyAgentsParser {
 
     // 从文件名提取
     const filename = path.basename(filePath, path.extname(filePath));
-    const words = filename.split(/[-_]/).filter(w => w.length > 2 && w.length < 20);
+    const words = filename.split(/[-_]/).filter(w => w.length > MIN_FILENAME_WORD_LENGTH && w.length < MAX_FILENAME_WORD_LENGTH);
     tags.push(...words.map(w => w.toLowerCase()));
 
     // 从 domain 提取
@@ -284,7 +301,7 @@ export class AgencyAgentsParser {
     tags.push(domain);
 
     // 去重并限制数量
-    return [...new Set(tags)].slice(0, 10);
+    return [...new Set(tags)].slice(0, MAX_TAGS);
   }
 
   /**
@@ -344,7 +361,7 @@ export class AgencyAgentsParser {
       }
     }
 
-    return identityLines.join(' ').trim().substring(0, 1000);
+    return identityLines.join(' ').trim().substring(0, MAX_IDENTITY_LENGTH);
   }
 
   /**
@@ -355,7 +372,7 @@ export class AgencyAgentsParser {
     if (!section) return '';
 
     const lines = section.content.split('\n').filter(l => l.trim() && !l.startsWith('#'));
-    return lines.join(' ').substring(0, 500);
+    return lines.join(' ').substring(0, MAX_PERSONALITY_LENGTH);
   }
 
   /**
@@ -366,7 +383,7 @@ export class AgencyAgentsParser {
     if (!section) return '';
 
     const lines = section.content.split('\n').filter(l => l.trim() && !l.startsWith('#'));
-    return lines.join(' ').substring(0, 200);
+    return lines.join(' ').substring(0, MAX_TONE_LENGTH);
   }
 
   /**
@@ -377,7 +394,7 @@ export class AgencyAgentsParser {
     if (!section) return '';
 
     const lines = section.content.split('\n').filter(l => l.trim() && !l.startsWith('#'));
-    return lines.join(' ').substring(0, 500);
+    return lines.join(' ').substring(0, MAX_MISSION_LENGTH);
   }
 
   /**
@@ -569,7 +586,7 @@ export class AgencyAgentsParser {
     const lines = context.split('\n').filter(l => l.trim());
     if (lines.length > 0) {
       const lastLine = lines[lines.length - 1].replace(/^[-*]\s*/, '').replace(/\*\*/g, '').trim();
-      if (lastLine && lastLine.length < 100) {
+      if (lastLine && lastLine.length < MAX_SKILL_NAME_LENGTH) {
         return lastLine;
       }
     }
@@ -581,7 +598,7 @@ export class AgencyAgentsParser {
    */
   private extractSkillDescription(context: string): string {
     const lines = context.split('\n').filter(l => l.trim() && !l.startsWith('#'));
-    return lines.join(' ').substring(0, 200);
+    return lines.join(' ').substring(0, MAX_SKILL_DESC_LENGTH);
   }
 
   /**
@@ -592,7 +609,7 @@ export class AgencyAgentsParser {
     for (const line of lines.reverse()) {
       const cleaned = line.replace(/^[-*]\s*/, '').replace(/\*\*/g, '').trim();
       if (cleaned && !cleaned.startsWith('```')) {
-        return cleaned.substring(0, 100);
+        return cleaned.substring(0, MAX_CODE_DESC_LENGTH);
       }
     }
     return '';

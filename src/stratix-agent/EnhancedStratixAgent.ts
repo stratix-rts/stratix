@@ -9,6 +9,7 @@
  */
 
 import { TaskQueueService } from '../stratix-orchestration/task-queue/TaskQueueService';
+import type { TaskItem } from '../stratix-orchestration/task-queue/TaskItem';
 
 import { StratixAgent } from './StratixAgent';
 import { EnhancedPromptBuilder } from './core/EnhancedPromptBuilder';
@@ -48,6 +49,30 @@ const DEFAULT_ZONE_PROVIDER: ZoneContextProvider = {
   getZonePromptContext: async () => ({ inZone: false, availableZones: [] }),
 };
 
+// ============================================
+// Constants
+// ============================================
+const DEFAULT_RECENT_MESSAGE_COUNT = 10;
+const DEFAULT_TASK_POLL_INTERVAL_MS = 5000;
+const DEFAULT_TRANSCRIPT_LIMIT = 50;
+
+// ============================================
+// Internal interfaces for test-proxy access
+// Eliminates `as any` casts by typing the private shape
+// ============================================
+interface ReflectionManagerInternal {
+  reflectionHistory: ReflectionEntry[];
+  memoryEntries: MemoryEntry[];
+}
+
+interface EvolutionManagerInternal {
+  evolutionCount: number;
+  consecutiveFailures: number;
+  consecutiveFailuresToBreak: number;
+  lastEvolutionTime: number;
+  pendingEvolutionProposal: EvolutionProposal | null;
+}
+
 /**
  * 增强的 StratixAgent
  * 支持模板加载、工作流执行、反思机制
@@ -76,49 +101,56 @@ export class EnhancedStratixAgent extends StratixAgent {
 
   /** @internal proxy for test access */
   get reflectionHistory(): ReflectionEntry[] {
-    return (this.reflectionManager as any).reflectionHistory;
+    return (this.reflectionManager as unknown as ReflectionManagerInternal).reflectionHistory;
   }
 
   /** @internal proxy for test access */
   get memoryEntries(): MemoryEntry[] {
-    return (this.reflectionManager as any).memoryEntries;
+    return (this.reflectionManager as unknown as ReflectionManagerInternal).memoryEntries;
   }
 
   /** @internal proxy for test access */
   get evolutionCount(): number {
-    return (this.evolutionManager as any).evolutionCount;
+    return (this.evolutionManager as unknown as EvolutionManagerInternal).evolutionCount;
   }
 
   /** @internal proxy for test access */
   get consecutiveFailures(): number {
-    return (this.evolutionManager as any).consecutiveFailures;
+    return (this.evolutionManager as unknown as EvolutionManagerInternal).consecutiveFailures;
   }
   set consecutiveFailures(value: number) {
-    (this.evolutionManager as any).consecutiveFailures = value;
+    (this.evolutionManager as unknown as EvolutionManagerInternal).consecutiveFailures = value;
   }
 
   /** @internal proxy for test access */
   get consecutiveFailuresToBreak(): number {
-    return (this.evolutionManager as any).consecutiveFailuresToBreak;
+    return (this.evolutionManager as unknown as EvolutionManagerInternal).consecutiveFailuresToBreak;
   }
   set consecutiveFailuresToBreak(value: number) {
-    (this.evolutionManager as any).consecutiveFailuresToBreak = value;
+    (this.evolutionManager as unknown as EvolutionManagerInternal).consecutiveFailuresToBreak = value;
   }
 
   /** @internal proxy for test access */
   get lastEvolutionTime(): number {
-    return (this.evolutionManager as any).lastEvolutionTime;
+    return (this.evolutionManager as unknown as EvolutionManagerInternal).lastEvolutionTime;
   }
   set lastEvolutionTime(value: number) {
-    (this.evolutionManager as any).lastEvolutionTime = value;
+    (this.evolutionManager as unknown as EvolutionManagerInternal).lastEvolutionTime = value;
   }
 
   /** @internal proxy for test access */
   get pendingEvolutionProposal(): EvolutionProposal | null {
-    return (this.evolutionManager as any).pendingEvolutionProposal;
+    return (this.evolutionManager as unknown as EvolutionManagerInternal).pendingEvolutionProposal;
   }
   set pendingEvolutionProposal(value: EvolutionProposal | null) {
-    (this.evolutionManager as any).pendingEvolutionProposal = value;
+    (this.evolutionManager as unknown as EvolutionManagerInternal).pendingEvolutionProposal = value;
+  }
+
+  /**
+   * Typed accessor for EnhancedSoulConfig (eliminates repeated `as` casts).
+   */
+  private get enhancedSoul(): EnhancedSoulConfig {
+    return this.soul as EnhancedSoulConfig;
   }
 
   constructor(config: AgentConfig, soul: SoulConfig, template?: AgentTemplate, zoneContextProvider?: ZoneContextProvider) {
@@ -140,21 +172,20 @@ export class EnhancedStratixAgent extends StratixAgent {
 
     this.reflectionManager = new ReflectionManager({
       llm: this.llm,
-      soul: this.soul as EnhancedSoulConfig,
+      soul: this.enhancedSoul,
       memory: this.memory,
       onEvolutionCheck: () => {
-        const soul = this.soul as EnhancedSoulConfig;
-        if (soul.reflection?.evolutionCheck?.enabled) {
+        if (this.enhancedSoul.reflection?.evolutionCheck?.enabled) {
           this.evolutionManager.initEvolution({
             enabled: true,
-            triggerThreshold: soul.reflection.evolutionCheck.triggerThreshold,
-            cooldownHours: soul.reflection.evolutionCheck.cooldownHours,
-            maxEvolutionsPerDay: soul.reflection.evolutionCheck.maxEvolutionsPerDay,
+            triggerThreshold: this.enhancedSoul.reflection.evolutionCheck.triggerThreshold,
+            cooldownHours: this.enhancedSoul.reflection.evolutionCheck.cooldownHours,
+            maxEvolutionsPerDay: this.enhancedSoul.reflection.evolutionCheck.maxEvolutionsPerDay,
           });
           if (this.evolutionManager.canEvolve()) {
             if (!this.evolutionManager.getPendingEvolutionProposal()) {
-              this.evolutionManager.performEvolution().catch(() => {
-                // 进化失败静默处理
+              this.evolutionManager.performEvolution().catch((err: unknown) => {
+                console.warn(`[EnhancedStratixAgent] Evolution failed:`, err);
               });
             }
           }
@@ -164,7 +195,7 @@ export class EnhancedStratixAgent extends StratixAgent {
 
     this.evolutionManager = new EvolutionManager({
       llm: this.llm,
-      soul: this.soul as EnhancedSoulConfig,
+      soul: this.enhancedSoul,
       agentId: this.config.agentId,
       getReflectionHistory: () => this.reflectionManager.getReflectionHistory(),
       clearReflectionHistory: () => this.reflectionManager.clearReflectionHistory(),
@@ -267,9 +298,9 @@ export class EnhancedStratixAgent extends StratixAgent {
       const sess = await this.runtime.getSession(options.sessionId);
       if (sess) {
         // Convert from SessionRuntime ChatMessage to AgentChatMessage
-        for (const m of sess.messages.slice(-10)) {
+        for (const m of sess.messages.slice(-DEFAULT_RECENT_MESSAGE_COUNT)) {
           recentMessages.push({
-            role: m.role as 'user' | 'assistant' | 'system',
+            role: m.role,
             content: m.content,
             timestamp: m.timestamp ? new Date(m.timestamp).toISOString() : undefined,
           });
@@ -280,7 +311,7 @@ export class EnhancedStratixAgent extends StratixAgent {
     // 4. 构建增强提示词
     const systemMessages = this.enhancedPromptBuilder.buildFullSystemPrompt(
       this.template,
-      this.soul as EnhancedSoulConfig,
+      this.enhancedSoul,
       this.memory.buildContext(),
       this.skills.getEnabledSkills(),
       recentMessages,
@@ -321,12 +352,12 @@ export class EnhancedStratixAgent extends StratixAgent {
     };
 
     // 8. 反思机制
-    if (includeReflection && (this.soul as EnhancedSoulConfig).reflection?.afterEachTask) {
+    if (includeReflection && this.enhancedSoul.reflection?.afterEachTask) {
       try {
         await this.performReflection(message, turnResult.response);
         response.reflectionUsed = true;
-      } catch {
-        // 反思失败静默处理
+      } catch (err: unknown) {
+        console.warn(`[EnhancedStratixAgent] Reflection failed:`, err);
       }
     }
 
@@ -495,8 +526,8 @@ export class EnhancedStratixAgent extends StratixAgent {
     if (this.currentSessionId) {
       try {
         await this.runtime.destroy(this.currentSessionId);
-      } catch {
-        // Session 可能已经不存在，忽略错误
+      } catch (err: unknown) {
+        console.warn(`[EnhancedStratixAgent] Failed to destroy session on stop:`, err);
       }
       this.currentSessionId = null;
     }
@@ -510,8 +541,8 @@ export class EnhancedStratixAgent extends StratixAgent {
     if (this.currentSessionId) {
       try {
         this.runtime.destroy(this.currentSessionId);
-      } catch {
-        // Session 可能已经不存在，忽略错误
+      } catch (err: unknown) {
+        console.warn(`[EnhancedStratixAgent] Failed to destroy session on cleanup:`, err);
       }
       this.currentSessionId = null;
     }
@@ -541,7 +572,7 @@ export class EnhancedStratixAgent extends StratixAgent {
    * Start polling for tasks assigned to this agent
    * Uses TaskQueueService via REST API to fetch pending tasks
    */
-  async startTaskPolling(intervalMs: number = 5000): Promise<void> {
+  async startTaskPolling(intervalMs: number = DEFAULT_TASK_POLL_INTERVAL_MS): Promise<void> {
     if (this.taskPollInterval) {
       console.warn(`[Agent ${this.config.agentId}] Task polling already running`);
       return;
@@ -577,10 +608,10 @@ export class EnhancedStratixAgent extends StratixAgent {
 
     try {
       const taskQueue = this.getTaskQueueService();
-      const tasks: any[] = await taskQueue.getTasksByAgent(this.config.agentId);
+      const tasks: TaskItem[] = await taskQueue.getTasksByAgent(this.config.agentId);
 
       if (tasks.length > 0) {
-        this.pendingTasks = tasks.map((t: any) => ({
+        this.pendingTasks = tasks.map((t) => ({
           taskId: t.taskId,
           zoneId: t.zoneId,
           name: t.name,
@@ -648,9 +679,9 @@ export class EnhancedStratixAgent extends StratixAgent {
   /**
    * 获取当前 session 的 transcript（最近 N 条）
    */
-  getTranscript(limit: number = 50): RuntimeChatMessage[] {
+  getTranscript(limit: number = DEFAULT_TRANSCRIPT_LIMIT): RuntimeChatMessage[] {
     if (!this.currentSessionId) return [];
-    return this.runtime.getRecentMessages(this.currentSessionId, limit) as RuntimeChatMessage[];
+    return this.runtime.getRecentMessages(this.currentSessionId, limit);
   }
 
   /**

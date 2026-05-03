@@ -4,10 +4,12 @@
  */
 
 import { existsSync, mkdirSync } from 'fs';
-import { appendFile, readFile, readdir, stat } from 'fs/promises';
+import { access, appendFile, readFile, readdir, stat } from 'fs/promises';
 import { join } from 'path';
 
 import type { TranscriptEntry, TranscriptQuery } from './types.js';
+
+const DEFAULT_QUERY_LIMIT = 1000;
 
 export class TranscriptStore {
   private baseDir: string;
@@ -47,17 +49,19 @@ export class TranscriptStore {
    * Query transcript entries by session and/or time range
    */
   async query(query: TranscriptQuery): Promise<TranscriptEntry[]> {
-    const { sessionId, startTime, endTime, limit = 1000 } = query;
+    const { sessionId, startTime, endTime, limit = DEFAULT_QUERY_LIMIT } = query;
     const results: TranscriptEntry[] = [];
 
     if (sessionId) {
       const filePath = this.getFilePath(sessionId);
-      if (existsSync(filePath)) {
+      try {
+        await access(filePath);
         const entries = await this.readFileEntries(filePath);
         const filtered = this.filterEntries(entries, startTime, endTime, limit);
         return filtered;
+      } catch {
+        return [];
       }
-      return [];
     }
 
     // Query across all session files
@@ -81,10 +85,12 @@ export class TranscriptStore {
    */
   async getBySession(sessionId: string): Promise<TranscriptEntry[]> {
     const filePath = this.getFilePath(sessionId);
-    if (!existsSync(filePath)) {
+    try {
+      await access(filePath);
+      return this.readFileEntries(filePath);
+    } catch {
       return [];
     }
-    return this.readFileEntries(filePath);
   }
 
   /**
@@ -142,8 +148,8 @@ export class TranscriptStore {
     const filePath = this.getFilePath(sessionId);
     try {
       await unlink(filePath);
-    } catch {
-      // File doesn't exist, ignore
+    } catch (err: unknown) {
+      console.warn(`[TranscriptStore] Failed to delete transcript for session ${sessionId}:`, err);
     }
   }
 
@@ -152,10 +158,12 @@ export class TranscriptStore {
    */
   async getTranscriptSize(sessionId: string): Promise<number> {
     const filePath = this.getFilePath(sessionId);
-    if (!existsSync(filePath)) {
+    try {
+      await access(filePath);
+      const stats = await stat(filePath);
+      return stats.size;
+    } catch {
       return 0;
     }
-    const stats = await stat(filePath);
-    return stats.size;
   }
 }
