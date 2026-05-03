@@ -1,3 +1,5 @@
+import type Database from 'better-sqlite3';
+
 import { generateId } from '../stratix-project/utils/helpers';
 
 import { getDatabase } from './StratixDatabase';
@@ -84,6 +86,36 @@ export class TaskFlowRepository {
     return getDatabase().getDatabase();
   }
 
+  private statements = new Map<string, Database.Statement>();
+
+  private stmt(sql: string): Database.Statement {
+    let s = this.statements.get(sql);
+    if (!s) {
+      s = this.db.prepare(sql);
+      this.statements.set(sql, s);
+    }
+    return s;
+  }
+
+  /**
+   * 清理 prepared statement 缓存
+   */
+  shutdown(): void {
+    this.statements.clear();
+  }
+
+  /**
+   * 检查数据库连接是否健康
+   */
+  isHealthy(): boolean {
+    try {
+      this.db.prepare('SELECT 1').get();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /**
    * 创建流转记录
    */
@@ -98,11 +130,10 @@ export class TaskFlowRepository {
     const now = Date.now();
     const flowId = generateId('flow');
 
-    const stmt = this.db.prepare(`
+    this.stmt(`
       INSERT INTO task_flow (flow_id, task_id, zone_id, from_agent_id, to_agent_id, action, metadata, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    stmt.run(
+    `).run(
       flowId,
       taskId,
       zoneId,
@@ -126,10 +157,43 @@ export class TaskFlowRepository {
   }
 
   /**
+   * 批量创建流转记录（事务包装）
+   */
+  addFlows(flows: Array<Omit<TaskFlowRecord, 'flowId' | 'createdAt'>>): TaskFlowRecord[] {
+    const now = Date.now();
+    const result: TaskFlowRecord[] = [];
+
+    const insert = this.stmt(`
+      INSERT INTO task_flow (flow_id, task_id, zone_id, from_agent_id, to_agent_id, action, metadata, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const tx = this.db.transaction(() => {
+      for (const flow of flows) {
+        const flowId = generateId('flow');
+        insert.run(
+          flowId,
+          flow.taskId,
+          flow.zoneId,
+          flow.fromAgentId,
+          flow.toAgentId,
+          flow.action,
+          flow.metadata ? JSON.stringify(flow.metadata) : null,
+          now
+        );
+        result.push({ ...flow, flowId, createdAt: now });
+      }
+    });
+
+    tx();
+    return result;
+  }
+
+  /**
    * 获取任务完整流转历史
    */
   getTaskFlowHistory(taskId: string): TaskFlowRecord[] {
-    const rows = this.db.prepare(`
+    const rows = this.stmt(`
       SELECT * FROM task_flow
       WHERE task_id = ?
       ORDER BY created_at ASC
@@ -141,7 +205,7 @@ export class TaskFlowRepository {
    * 获取任务最新流转记录
    */
   getLatestFlow(taskId: string): TaskFlowRecord | null {
-    const row = this.db.prepare(`
+    const row = this.stmt(`
       SELECT * FROM task_flow
       WHERE task_id = ?
       ORDER BY created_at DESC
@@ -155,7 +219,7 @@ export class TaskFlowRepository {
    */
   getZoneFlows(zoneId: string, options?: FlowQueryOptions): TaskFlowRecord[] {
     const { sql, params } = buildFlowQuery('SELECT * FROM task_flow WHERE zone_id = ?', [zoneId], options);
-    const rows = this.db.prepare(sql).all(...params) as TaskFlowRow[];
+    const rows = this.stmt(sql).all(...params) as TaskFlowRow[];
     return rows.map(row => this.mapRowToRecord(row));
   }
 
@@ -172,7 +236,7 @@ export class TaskFlowRepository {
     }
 
     const { sql, params } = buildFlowQuery(baseSql, baseParams, options);
-    const rows = this.db.prepare(sql).all(...params) as TaskFlowRow[];
+    const rows = this.stmt(sql).all(...params) as TaskFlowRow[];
     return rows.map(row => this.mapRowToRecord(row));
   }
 
@@ -180,26 +244,26 @@ export class TaskFlowRepository {
    * 按 action 统计任务数量
    */
   getTaskCountByStatus(zoneId: string): Record<TaskFlowAction, number> {
-    const rows = this.db.prepare(`
+    const rows = this.stmt(`
       SELECT action, COUNT(*) as count
       FROM task_flow
       WHERE zone_id = ?
       GROUP BY action
     `).all(zoneId) as Array<{ action: string; count: number }>;
 
-    const counts: Record<string, number> = {};
+    const counts = new Map<string, number>();
     for (const row of rows) {
-      counts[row.action] = row.count;
+      counts.set(row.action, row.count);
     }
 
     return {
-      created: counts['created'] ?? 0,
-      delegated: counts['delegated'] ?? 0,
-      claimed: counts['claimed'] ?? 0,
-      started: counts['started'] ?? 0,
-      completed: counts['completed'] ?? 0,
-      failed: counts['failed'] ?? 0,
-      cancelled: counts['cancelled'] ?? 0
+      created: counts.get('created') ?? 0,
+      delegated: counts.get('delegated') ?? 0,
+      claimed: counts.get('claimed') ?? 0,
+      started: counts.get('started') ?? 0,
+      completed: counts.get('completed') ?? 0,
+      failed: counts.get('failed') ?? 0,
+      cancelled: counts.get('cancelled') ?? 0
     };
   }
 
