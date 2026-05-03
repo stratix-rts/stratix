@@ -37,7 +37,7 @@ export function registerWorkflowHandlers(userDataPath: string, fs: any, path: an
               continue;
             }
             workflows.push({
-              id: file.replace('.json', ''),
+              id: file.slice(0, -5),
               name: def.properties.name || 'Unnamed Workflow',
               updatedAt: def.properties.updatedAt || 0,
             });
@@ -78,11 +78,15 @@ export function registerWorkflowHandlers(userDataPath: string, fs: any, path: an
         ensureDir();
         // Validate id before using it
         getWorkflowPath(id); // Will throw if invalid
-        workflow.properties.updatedAt = Date.now();
-        if (!workflow.properties.createdAt) {
-          workflow.properties.createdAt = workflow.properties.updatedAt;
-        }
-        fs.writeFileSync(getWorkflowPath(id), JSON.stringify(workflow, null, 2), 'utf-8');
+        const workflowToSave: WorkflowDefinition = {
+          ...workflow,
+          properties: {
+            ...workflow.properties,
+            updatedAt: Date.now(),
+            createdAt: workflow.properties.createdAt || Date.now(),
+          },
+        };
+        fs.writeFileSync(getWorkflowPath(id), JSON.stringify(workflowToSave, null, 2), 'utf-8');
         return { success: true };
       } catch (error) {
         if (error instanceof Error && error.message === 'Invalid workflow ID') {

@@ -4,7 +4,7 @@ import type { CreateProviderOptions, ProviderConfig } from '../types';
 
 import { LLMAdapter } from './base';
 
-const OLLAMA_CONFIG: ProviderConfig = {
+const OLLAMA_CONFIG: Readonly<ProviderConfig> = {
   id: 'ollama',
   name: 'Ollama (本地)',
   icon: '🐑',

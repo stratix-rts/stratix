@@ -10,6 +10,16 @@ async function testEmbeddedTailscale() {
     hostname: 'stratix-test',
   });
 
+  let exiting = false;
+  async function gracefulExit(code: number) {
+    if (exiting) return;
+    exiting = true;
+    console.log('\nStopping Tailscale...');
+    await tailscale.stop();
+    process.exit(code);
+  }
+  process.on('SIGINT', () => gracefulExit(0));
+
   tailscale.subscribe((event) => {
     console.log(`[Event] ${event.type}`, event.data ? JSON.stringify(event.data).slice(0, 100) : '');
   });
@@ -24,7 +34,7 @@ async function testEmbeddedTailscale() {
     console.log(`   ✗ Error: ${(error as Error).message}`);
     console.log('\n   Note: tailscaled binary must be available.');
     console.log('   Install via: brew install tailscale');
-    process.exit(1);
+    await gracefulExit(1);
   }
 
   console.log('\n2. Checking status...');
@@ -50,7 +60,7 @@ async function testEmbeddedTailscale() {
     
     console.log('\n   Waiting for authentication (60s timeout)...');
     await new Promise(r => setTimeout(r, 60000));
-    process.exit(0);
+    await gracefulExit(0);
   }
 
   console.log('\n3. Discovering OpenClaw nodes...');
@@ -76,4 +86,7 @@ async function testEmbeddedTailscale() {
   console.log('═══════════════════════════════════════════\n');
 }
 
-testEmbeddedTailscale().catch(console.error);
+testEmbeddedTailscale().catch(async (err) => {
+  console.error(err);
+  process.exit(1);
+});

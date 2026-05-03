@@ -14,8 +14,13 @@ export async function buildGraphFromWorkflow(definition: WorkflowDefinition) {
 export class GraphBuilder {
   buildFromDefinition(definition: WorkflowDefinition): StateGraph<typeof AgentGraphState> {
     const graph = new StateGraph(AgentGraphState);
+    const seenIds = new Set<string>();
 
     for (const step of definition.sequence) {
+      if (seenIds.has(step.id)) {
+        throw new Error(`Duplicate step ID in workflow: ${step.id}`);
+      }
+      seenIds.add(step.id);
       this.addNode(graph, step);
     }
 
@@ -71,7 +76,7 @@ export class GraphBuilder {
           maxTokens,
         });
 
-        const messages = [];
+        const messages: Array<{ role: string; content: string }> = [];
         if (systemPrompt) {
           messages.push({ role: 'system', content: systemPrompt });
         }
@@ -220,8 +225,10 @@ export class GraphBuilder {
   }
 
   private async getApiKey(providerId: string): Promise<string | undefined> {
-    if (typeof window !== 'undefined' && (window as any).electronAPI?.apiKey?.load) {
-      const result = await (window as any).electronAPI.apiKey.load(providerId);
+    const win = typeof window !== 'undefined' ? window : undefined;
+    const electronAPI = (win as unknown as { electronAPI?: { apiKey?: { load?: (id: string) => Promise<{ success: boolean; data?: string }> } } })?.electronAPI;
+    if (electronAPI?.apiKey?.load) {
+      const result = await electronAPI.apiKey.load(providerId);
       if (result.success && result.data) {
         return result.data;
       }

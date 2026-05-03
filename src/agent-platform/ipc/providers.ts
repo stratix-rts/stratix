@@ -35,7 +35,7 @@ export function registerProviderHandlers() {
         });
         return {
           success: result.success,
-          message: result.error || 'Connection successful',
+          message: result.success ? 'Connection successful' : (result.error || 'Connection failed'),
           latency: result.latency,
         };
       } catch (error) {

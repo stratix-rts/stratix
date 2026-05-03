@@ -4,7 +4,7 @@ import type { CreateProviderOptions, ProviderConfig } from '../types';
 
 import { LLMAdapter } from './base';
 
-const MOONSHOT_CONFIG: ProviderConfig = {
+const MOONSHOT_CONFIG: Readonly<ProviderConfig> = {
   id: 'moonshot',
   name: 'Moonshot (月之暗面)',
   icon: '🌙',

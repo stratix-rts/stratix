@@ -18,6 +18,10 @@ export abstract class LLMAdapter {
       return { valid: false, error: 'Model is required' };
     }
     
+    if (config.models.length > 0 && !config.models.includes(options.model)) {
+      return { valid: false, error: `Model "${options.model}" is not supported by ${config.name}` };
+    }
+    
     return { valid: true };
   }
 }

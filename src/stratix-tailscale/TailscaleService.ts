@@ -142,8 +142,12 @@ export class TailscaleService {
       await this.refreshStatus();
     }
 
+    if (!this.status) {
+      return [];
+    }
+
     const discovered: OpenClawNode[] = [];
-    const checkPromises = this.status!.peers
+    const checkPromises = this.status.peers
       .filter((peer) => peer.online)
       .map(async (peer) => {
         const ip = peer.tailscaleIps[0] || peer.dnsName;

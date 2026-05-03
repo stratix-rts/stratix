@@ -4,7 +4,7 @@ import type { CreateProviderOptions, ProviderConfig } from '../types';
 
 import { LLMAdapter } from './base';
 
-const GOOGLE_CONFIG: ProviderConfig = {
+const GOOGLE_CONFIG: Readonly<ProviderConfig> = {
   id: 'google',
   name: 'Google',
   icon: '🔍',

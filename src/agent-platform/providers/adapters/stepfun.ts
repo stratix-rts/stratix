@@ -4,7 +4,7 @@ import type { CreateProviderOptions, ProviderConfig } from '../types';
 
 import { LLMAdapter } from './base';
 
-const STEPFUN_CONFIG: ProviderConfig = {
+const STEPFUN_CONFIG: Readonly<ProviderConfig> = {
   id: 'stepfun',
   name: 'StepFun (阶跃星辰)',
   icon: '📈',

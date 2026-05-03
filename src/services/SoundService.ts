@@ -84,7 +84,7 @@ class SoundService {
     if (typeof window === 'undefined') return;
 
     try {
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!AudioContextClass) {
         throw new Error('Web Audio API not supported');
       }
@@ -103,7 +103,7 @@ class SoundService {
     }
 
     if (this.audioContext && this.audioContext.state === 'suspended') {
-      this.audioContext.resume();
+      this.audioContext.resume().catch(() => {});
     }
 
     return this.audioContext;
@@ -144,6 +144,11 @@ class SoundService {
 
     osc.start(now);
     osc.stop(now + duration + 0.01);
+
+    osc.onended = () => {
+      gainNode.disconnect();
+      osc.disconnect();
+    };
   }
 
   play(sound: SoundType): void {

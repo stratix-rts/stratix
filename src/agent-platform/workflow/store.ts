@@ -28,10 +28,16 @@ class WorkflowStore {
     }
   }
 
+  private getElectronAPI() {
+    const win = typeof window !== 'undefined' ? window : undefined;
+    return (win as unknown as { electronAPI?: { workflow?: { list?: () => Promise<{ success: boolean; data?: StoredWorkflow[] }>; save?: (w: StoredWorkflow) => Promise<{ success: boolean; error?: string }>; delete?: (id: string) => Promise<{ success: boolean; error?: string }> } } })?.electronAPI;
+  }
+
   private async doLoad(): Promise<void> {
-    if (typeof window !== 'undefined' && (window as any).electronAPI?.workflow?.list) {
+    const electronAPI = this.getElectronAPI();
+    if (electronAPI?.workflow?.list) {
       try {
-        const result = await (window as any).electronAPI.workflow.list();
+        const result = await electronAPI.workflow.list();
         if (result.success && result.data) {
           for (const workflow of result.data) {
             this.workflows.set(workflow.id, workflow);
@@ -83,11 +89,10 @@ class WorkflowStore {
       createdAt: existing?.createdAt ?? Date.now(),
     };
 
-    this.workflows.set(toSave.id, toSave);
-
-    if (typeof window !== 'undefined' && (window as any).electronAPI?.workflow?.save) {
+    const electronAPI = this.getElectronAPI();
+    if (electronAPI?.workflow?.save) {
       try {
-        const result = await (window as any).electronAPI.workflow.save(toSave);
+        const result = await electronAPI.workflow.save(toSave);
         if (!result.success) {
           return { success: false, error: result.error };
         }
@@ -96,6 +101,7 @@ class WorkflowStore {
       }
     }
 
+    this.workflows.set(toSave.id, toSave);
     return { success: true };
   }
 
@@ -105,11 +111,10 @@ class WorkflowStore {
       return { success: false, error: 'Cannot delete preset workflow' };
     }
 
-    this.workflows.delete(id);
-
-    if (typeof window !== 'undefined' && (window as any).electronAPI?.workflow?.delete) {
+    const electronAPI = this.getElectronAPI();
+    if (electronAPI?.workflow?.delete) {
       try {
-        const result = await (window as any).electronAPI.workflow.delete(id);
+        const result = await electronAPI.workflow.delete(id);
         if (!result.success) {
           return { success: false, error: result.error };
         }
@@ -118,6 +123,7 @@ class WorkflowStore {
       }
     }
 
+    this.workflows.delete(id);
     return { success: true };
   }
 

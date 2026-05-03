@@ -43,6 +43,7 @@ export class EmbeddedTailscale {
   private openClawNodes: Map<string, OpenClawNode> = new Map();
   private subscribers: ((event: TailscaleEvent) => void)[] = [];
   private healthTimer?: ReturnType<typeof setInterval>;
+  private startTimeout?: ReturnType<typeof setTimeout>;
   private socketPath: string;
   private binaryPath: string;
   private isRunning = false;
@@ -133,10 +134,11 @@ export class EmbeddedTailscale {
 
         this.tailscaled.on('close', (code) => {
           this.isRunning = false;
+          this.tailscaled = null;
           this.emit({ type: 'stopped', data: { code } });
         });
 
-        setTimeout(async () => {
+        this.startTimeout = setTimeout(async () => {
           this.isRunning = true;
 
           if (this.config.authKey) {
@@ -189,7 +191,7 @@ export class EmbeddedTailscale {
   }
 
   private async runTailscale(args: string[]): Promise<{ stdout: string; stderr: string }> {
-    const tailscaleBin = this.binaryPath.replace('tailscaled', 'tailscale');
+    const tailscaleBin = this.binaryPath.replace(/tailscaled\.exe$/, 'tailscale.exe').replace(/tailscaled$/, 'tailscale');
     const fullArgs = [`--socket=${this.socketPath}`, ...args];
 
     return new Promise((resolve, reject) => {
@@ -263,39 +265,43 @@ export class EmbeddedTailscale {
       return [];
     }
 
+    const checkPromises = this.status.peers
+      .filter((peer) => peer.online && peer.tailscaleIps.length > 0)
+      .map(async (peer) => {
+        const ip = peer.tailscaleIps[0];
+        const url = `http://${ip}:${this.config.openClawPort}`;
+        const node: OpenClawNode = {
+          peer,
+          url,
+          port: this.config.openClawPort,
+          healthy: false,
+          lastChecked: Date.now(),
+        };
+
+        try {
+          const response = await axios.get(url, { timeout: 3000 });
+          node.healthy = response.status === 200;
+        } catch {
+          node.healthy = false;
+        }
+
+        return node;
+      });
+
+    const results = await Promise.all(checkPromises);
     const discovered: OpenClawNode[] = [];
 
-    for (const peer of this.status.peers) {
-      if (!peer.online) continue;
+    for (const node of results) {
+      const existing = this.openClawNodes.get(node.peer.id);
+      this.openClawNodes.set(node.peer.id, node);
 
-      const ip = peer.tailscaleIps[0];
-      if (!ip) continue;
-
-      const url = `http://${ip}:${this.config.openClawPort}`;
-      const node: OpenClawNode = {
-        peer,
-        url,
-        port: this.config.openClawPort,
-        healthy: false,
-        lastChecked: Date.now(),
-      };
-
-      try {
-        const response = await axios.get(url, { timeout: 3000 });
-        node.healthy = response.status === 200;
-      } catch {
-        node.healthy = false;
+      if (node.healthy && !existing?.healthy) {
+        this.emit({ type: 'openclaw_found', data: node });
       }
 
       if (node.healthy) {
         discovered.push(node);
-        const existing = this.openClawNodes.get(peer.id);
-        if (!existing?.healthy) {
-          this.emit({ type: 'openclaw_found', data: node });
-        }
       }
-
-      this.openClawNodes.set(peer.id, node);
     }
 
     return discovered;
@@ -341,26 +347,34 @@ export class EmbeddedTailscale {
   }
 
   public async stop(): Promise<void> {
+    if (this.startTimeout) {
+      clearTimeout(this.startTimeout);
+      this.startTimeout = undefined;
+    }
     if (this.healthTimer) {
       clearInterval(this.healthTimer);
       this.healthTimer = undefined;
     }
-
-    if (this.tailscaled) {
-      return new Promise((resolve) => {
-        this.tailscaled!.on('close', () => {
-          this.tailscaled = null;
-          this.isRunning = false;
-          resolve();
-        });
-        this.tailscaled!.kill('SIGTERM');
-
-        setTimeout(() => {
-          if (this.tailscaled) {
-            this.tailscaled.kill('SIGKILL');
-          }
-        }, 5000);
-      });
+    if (!this.tailscaled || !this.isRunning) {
+      this.tailscaled = null;
+      this.isRunning = false;
+      return;
     }
+    return new Promise((resolve) => {
+      const handle = this.tailscaled!;
+      const onClose = () => {
+        this.tailscaled = null;
+        this.isRunning = false;
+        resolve();
+      };
+      handle.once('close', onClose);
+      handle.kill('SIGTERM');
+
+      setTimeout(() => {
+        if (this.tailscaled) {
+          handle.kill('SIGKILL');
+        }
+      }, 5000);
+    });
   }
 }

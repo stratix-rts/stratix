@@ -18,6 +18,8 @@ export const codeReviewPreset: WorkflowPreset = {
         type: 'llm',
         name: '安全审查',
         properties: {
+          providerId: 'openai',
+          model: 'gpt-4o',
           role: 'security-reviewer',
           systemPrompt: '你是安全审查专家。检查代码中的安全漏洞、SQL注入、XSS等风险。',
         },
@@ -28,6 +30,8 @@ export const codeReviewPreset: WorkflowPreset = {
         type: 'llm',
         name: '性能审查',
         properties: {
+          providerId: 'openai',
+          model: 'gpt-4o',
           role: 'performance-reviewer',
           systemPrompt: '你是性能优化专家。分析代码的时间复杂度、内存使用和优化机会。',
         },
@@ -38,6 +42,8 @@ export const codeReviewPreset: WorkflowPreset = {
         type: 'llm',
         name: '最佳实践审查',
         properties: {
+          providerId: 'openai',
+          model: 'gpt-4o',
           role: 'best-practice-reviewer',
           systemPrompt: '你是代码规范专家。检查代码风格、命名规范、设计模式应用。',
         },
@@ -48,6 +54,8 @@ export const codeReviewPreset: WorkflowPreset = {
         type: 'llm',
         name: '综合评估',
         properties: {
+          providerId: 'openai',
+          model: 'gpt-4o',
           role: 'final-reviewer',
           systemPrompt: '整合所有审查结果，提供最终的代码评估报告和改进建议。',
         },

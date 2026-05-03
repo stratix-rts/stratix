@@ -8,7 +8,6 @@ export interface WorkflowStepProperties {
   systemPrompt?: string;
   userPrompt?: string;
   tools?: string[];
-  condition?: string;
   maxIterations?: number;
   timeout?: number;
   role?: string;

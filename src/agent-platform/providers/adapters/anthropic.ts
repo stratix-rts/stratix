@@ -4,7 +4,7 @@ import type { CreateProviderOptions, ProviderConfig } from '../types';
 
 import { LLMAdapter } from './base';
 
-const ANTHROPIC_CONFIG: ProviderConfig = {
+const ANTHROPIC_CONFIG: Readonly<ProviderConfig> = {
   id: 'anthropic',
   name: 'Anthropic',
   icon: '🧠',

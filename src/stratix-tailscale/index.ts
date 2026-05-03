@@ -1,4 +1,5 @@
 import { EmbeddedTailscale } from './EmbeddedTailscale';
+import type { TailscaleConfig as EmbeddedTailscaleConfig } from './EmbeddedTailscale';
 import { TailscaleService } from './TailscaleService';
 import type { TailscaleConfig } from './types';
 
@@ -17,6 +18,6 @@ export function createTailscaleService(config?: TailscaleConfig): TailscaleServi
   return new TailscaleService(config);
 }
 
-export function createEmbeddedTailscale(config?: import('./EmbeddedTailscale').TailscaleConfig): EmbeddedTailscale {
+export function createEmbeddedTailscale(config?: EmbeddedTailscaleConfig): EmbeddedTailscale {
   return new EmbeddedTailscale(config);
 }

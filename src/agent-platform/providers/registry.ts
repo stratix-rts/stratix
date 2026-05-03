@@ -102,7 +102,7 @@ class ProviderRegistry {
     this.evictOldestIfNeeded();
 
     const llm = this.createModel(options);
-    const instance: ProviderInstance = { config, llm };
+    const instance: ProviderInstance = { config, llm, cacheKey };
 
     this.instances.set(instanceId, instance);
     this.instances.set(cacheKey, instance);
@@ -114,6 +114,10 @@ class ProviderRegistry {
   }
 
   removeInstance(instanceId: string): boolean {
+    const instance = this.instances.get(instanceId);
+    if (instance?.cacheKey && instance.cacheKey !== instanceId) {
+      this.instances.delete(instance.cacheKey);
+    }
     return this.instances.delete(instanceId);
   }
 
@@ -126,7 +130,7 @@ class ProviderRegistry {
         this.evictOldestIfNeeded();
         llm = this.createModel(options);
         const config = this.getConfig(options.providerId)!;
-        this.instances.set(cacheKey, { config, llm });
+        this.instances.set(cacheKey, { config, llm, cacheKey });
       }
 
       const start = Date.now();

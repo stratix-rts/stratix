@@ -1,3 +1,5 @@
+import axios from 'axios';
+
 import { TailscaleService } from './TailscaleService';
 
 async function testTailscale() {
@@ -8,6 +10,15 @@ async function testTailscale() {
   const service = new TailscaleService({
     openClawPort: 18789,
   });
+
+  let exiting = false;
+  function gracefulExit(code: number) {
+    if (exiting) return;
+    exiting = true;
+    service.stop();
+    process.exit(code);
+  }
+  process.on('SIGINT', () => gracefulExit(0));
 
   service.subscribe((event) => {
     console.log(`[Event] ${event.type}`);
@@ -22,7 +33,7 @@ async function testTailscale() {
     console.log('   1. Tailscale is installed: https://tailscale.com/download');
     console.log('   2. Tailscale is running: tailscale up');
     console.log('   3. You are connected to a tailnet');
-    process.exit(1);
+    gracefulExit(1);
   }
 
   console.log('   ✓ Tailscale service initialized');
@@ -55,7 +66,6 @@ async function testTailscale() {
   const healthyNode = service.getFirstHealthyNode();
   if (healthyNode) {
     try {
-      const axios = require('axios');
       const response = await axios.get(`${healthyNode.url}/`, { timeout: 5000 });
       console.log(`   ✓ ${healthyNode.peer.hostName} responded with status ${response.status}`);
     } catch (error) {
@@ -70,4 +80,7 @@ async function testTailscale() {
   service.stop();
 }
 
-testTailscale().catch(console.error);
+testTailscale().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

@@ -34,12 +34,17 @@ async function interactiveLogin() {
     console.log('Or get an auth key from:');
     console.log('https://login.tailscale.com/admin/settings/keys\n');
 
-    rl.question('Press Enter after you have logged in...', async () => {
-      rl.close();
-      
+    await new Promise<void>((resolve) => {
+      rl.question('Press Enter after you have logged in...', () => {
+        rl.close();
+        resolve();
+      });
+    });
+
+    try {
       const newStatus = await tailscale.getStatus();
       console.log('\nStatus:', newStatus?.backendState);
-      
+
       if (newStatus?.backendState === 'Running') {
         console.log('\n✓ Authenticated successfully!');
         console.log(`Self: ${newStatus.self.hostName} (${newStatus.self.dnsName})`);
@@ -54,9 +59,11 @@ async function interactiveLogin() {
       } else {
         console.log('\n✗ Still not authenticated');
       }
-
+    } catch (error) {
+      console.error('\n✗ Error during post-login check:', (error as Error).message);
+    } finally {
       await tailscale.stop();
-    });
+    }
   } else {
     console.log('✓ Already authenticated');
     await tailscale.stop();

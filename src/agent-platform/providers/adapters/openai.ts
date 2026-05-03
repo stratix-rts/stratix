@@ -4,7 +4,7 @@ import type { CreateProviderOptions, ProviderConfig } from '../types';
 
 import { LLMAdapter } from './base';
 
-const OPENAI_CONFIG: ProviderConfig = {
+const OPENAI_CONFIG: Readonly<ProviderConfig> = {
   id: 'openai',
   name: 'OpenAI',
   icon: '🤖',

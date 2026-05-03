@@ -4,7 +4,7 @@ import type { CreateProviderOptions, ProviderConfig } from '../types';
 
 import { LLMAdapter } from './base';
 
-const DEEPSEEK_CONFIG: ProviderConfig = {
+const DEEPSEEK_CONFIG: Readonly<ProviderConfig> = {
   id: 'deepseek',
   name: 'DeepSeek',
   icon: '📊',

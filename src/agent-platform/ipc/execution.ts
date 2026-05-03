@@ -1,6 +1,6 @@
 import type { WorkflowDefinition, WorkflowExecutionResult } from '../workflow/types';
 
-interface ActiveExecution {
+export interface ActiveExecution {
   id: string;
   workflowId: string;
   status: 'running' | 'paused' | 'completed' | 'error';
@@ -9,6 +9,7 @@ interface ActiveExecution {
 }
 
 const activeExecutions = new Map<string, ActiveExecution>();
+const MAX_EXECUTIONS = 1000;
 
 export function registerExecutionHandlers() {
   return {
@@ -29,6 +30,11 @@ export function registerExecutionHandlers() {
         };
 
         activeExecutions.set(executionId, execution);
+
+        if (activeExecutions.size > MAX_EXECUTIONS) {
+          const firstKey = activeExecutions.keys().next().value;
+          if (firstKey) activeExecutions.delete(firstKey);
+        }
 
         try {
           const { buildGraphFromWorkflow } = await import('../orchestration/graph-builder');
@@ -86,6 +92,10 @@ export function registerExecutionHandlers() {
         activeExecutions.clear();
       }
       return { success: true };
+    },
+
+    'execution:count': async (): Promise<{ success: boolean; count: number }> => {
+      return { success: true, count: activeExecutions.size };
     },
   };
 }

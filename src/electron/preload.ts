@@ -31,8 +31,8 @@ export interface ElectronAPI {
 
   // OpenClaw
   openclaw: {
-    connectDirect: (endpoint: string, config: any) => Promise<boolean>;
-    disconnectDirect: () => Promise<void>;
+    connectDirect: (endpoint: string, config: any) => Promise<{ success: boolean; deviceId?: string; error?: string }>;
+    disconnectDirect: () => Promise<{ success: boolean }>;
     sendMessage: (message: string, sessionId?: string) => Promise<any>;
   };
 
@@ -105,7 +105,7 @@ const electronAPI: ElectronAPI = {
     needsAuth: () => ipcRenderer.invoke('tailscale:needsAuth'),
     connectNode: (nodeId) => ipcRenderer.invoke('tailscale:connectNode', nodeId),
     onEvent: (callback) => {
-      const handler = (_event: any, data: any) => callback(data);
+      const handler = (_event: Electron.IpcRendererEvent, data: any) => callback(data);
       ipcRenderer.on('tailscale:event', handler);
       return () => ipcRenderer.off('tailscale:event', handler);
     },

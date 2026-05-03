@@ -1,6 +1,6 @@
 import type { WorkflowPreset } from '../types';
 
-export const singleAgentPreset: WorkflowPreset = {
+export const singleAgentPreset = {
   id: 'single-agent',
   name: '单 Agent 模式',
   description: '基础的单 Agent 对话模式，适用于简单问答和任务',
@@ -27,4 +27,4 @@ export const singleAgentPreset: WorkflowPreset = {
       },
     ],
   },
-};
+} satisfies WorkflowPreset;

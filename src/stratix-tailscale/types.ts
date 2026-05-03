@@ -21,7 +21,7 @@ export interface TailscaleStatus {
   };
   peers: TailscalePeer[];
   health: 'ok' | 'warning' | 'error';
-  backendState: 'Running' | 'Stopped' | 'NeedsLogin' | 'NoState';
+  backendState: 'Running' | 'Stopped' | 'NeedsLogin' | 'NoState' | 'Starting';
   magicDnsSuffix: string;
   currentTailnet: {
     name: string;
@@ -44,5 +44,5 @@ export interface TailscaleConfig {
 
 export interface TailscaleEvent {
   type: 'connected' | 'disconnected' | 'peer_online' | 'peer_offline' | 'openclaw_discovered' | 'error';
-  data: unknown;
+  data?: unknown;
 }

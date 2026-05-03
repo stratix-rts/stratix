@@ -4,7 +4,7 @@ import type { CreateProviderOptions, ProviderConfig } from '../types';
 
 import { LLMAdapter } from './base';
 
-const QWEN_CONFIG: ProviderConfig = {
+const QWEN_CONFIG: Readonly<ProviderConfig> = {
   id: 'qwen',
   name: 'Qwen (阿里)',
   icon: '🐱',

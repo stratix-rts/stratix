@@ -25,6 +25,7 @@ export interface CreateProviderOptions {
 export interface ProviderInstance {
   config: ProviderConfig;
   llm: BaseChatModel;
+  cacheKey?: string;
 }
 
 export interface ProviderTestResult {

@@ -8,7 +8,7 @@ export const AgentGraphState = Annotation.Root({
   }),
   input: Annotation<string>,
   currentStep: Annotation<string | null>,
-  results: Annotation<Record<string, any>>({
+  results: Annotation<Record<string, unknown>>({
     value: (x, y) => ({ ...x, ...y }),
     default: () => ({}),
   }),

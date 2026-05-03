@@ -100,14 +100,16 @@ function createWindow() {
 
   // 尝试从 Vite 开发服务器加载（端口 7523-7530）
   const loadDevUrl = async () => {
+    const win = mainWindow;
+    if (!win) return false;
     for (const port of DEV_PORTS) {
       try {
         const url = `http://127.0.0.1:${port}`;
         const response = await fetch(url, { method: 'HEAD' });
         if (response.ok) {
           console.log('[Electron] Loading from Vite dev server:', url);
-          await mainWindow!.loadURL(url);
-          mainWindow!.webContents.openDevTools();
+          await win.loadURL(url);
+          win.webContents.openDevTools();
           return true;
         }
       } catch {
@@ -390,8 +392,8 @@ function setupIPC() {
       
       let keys: Record<string, string> = {};
       if (fs.existsSync(keysPath)) {
-        const existing = fs.readFileSync(keysPath);
-        keys = safeParseJson(Buffer.from(existing.toString('base64'), 'base64').toString('utf-8'), {});
+        const existing = fs.readFileSync(keysPath, 'utf-8');
+        keys = safeParseJson(Buffer.from(existing, 'base64').toString('utf-8'), {});
       }
 
       keys[providerId] = encrypted.toString('base64');
@@ -522,24 +524,20 @@ app.on('window-all-closed', () => {
 /**
  * 应用退出前清理资源
  */
-app.on('before-quit', async () => {
+app.on('before-quit', () => {
   console.log('[Electron] Shutting down...');
-  
+
   // 停止 Tailscale
-  tailscale?.stop();
+  tailscale?.stop().catch((err) => console.error('[Electron] Tailscale stop failed:', err));
   console.log('[Electron] Tailscale stopped');
-  
+
   // 关闭 OpenClaw 连接
   if (activeOpenClawConnection) {
-    await activeOpenClawConnection.disconnect();
+    activeOpenClawConnection.disconnect().catch((err) => console.error('[Electron] OpenClaw disconnect failed:', err));
+    activeOpenClawConnection = null;
     console.log('[Electron] OpenClaw connection closed');
   }
-  
+
   // 创建数据备份
-  try {
-    await dataStoreService.getBackupManager()?.createBackup();
-    console.log('[Electron] Data backup created');
-  } catch (error) {
-    console.error('[Electron] Backup failed:', error);
-  }
+  dataStoreService.getBackupManager()?.createBackup().catch((err) => console.error('[Electron] Backup failed:', err));
 });
