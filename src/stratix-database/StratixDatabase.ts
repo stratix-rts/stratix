@@ -721,6 +721,23 @@ export class StratixDatabase {
   public getPath(): string {
     return this.dbPath;
   }
+
+  public isHealthy(): boolean {
+    try {
+      this.db.prepare('SELECT 1').get();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  public getStatus(): { path: string; healthy: boolean; schemaVersion: number } {
+    return {
+      path: this.dbPath,
+      healthy: this.isHealthy(),
+      schemaVersion: this.getSchemaVersion()
+    };
+  }
 }
 
 let databaseInstance: StratixDatabase | null = null;
