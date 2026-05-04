@@ -1,7 +1,7 @@
 {
   "name": "stratix",
   "version": "0.1.0",
-  "description": "Stratix 星策系统 - 基于 Phaser RTS 游戏化界面的多 Agent 可视化指挥平台",
+  "description": "Stratix \u661f\u7b56\u7cfb\u7edf - \u57fa\u4e8e Phaser RTS \u6e38\u620f\u5316\u754c\u9762\u7684\u591a Agent \u53ef\u89c6\u5316\u6307\u6325\u5e73\u53f0",
   "main": "dist/electron/electron/main.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -37,7 +37,8 @@
     "nocodb:start": "node vendor/nocodb/packages/nocodb/dist/bundle.js",
     "nocodb:start:dev": "cd vendor/nocodb/packages/nocodb && pnpm start",
     "textures:generate": "node tools/texture-generator/generate-textures.js",
-    "textures:deploy": "node tools/texture-generator/generate-textures.js --deploy"
+    "textures:deploy": "node tools/texture-generator/generate-textures.js --deploy",
+    "dev:setup": "bash scripts/setup-textures.sh"
   },
   "keywords": [
     "stratix",

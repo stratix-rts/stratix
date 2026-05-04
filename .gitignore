@@ -35,9 +35,18 @@ stratix-data/
 stratix-backups/
 *.db.json
 
-# Theme textures (in public so they get packaged)
-!public/rts-textures/
-assets/
+# Theme textures - tracked in public/, copied to assets/ by dev:setup script
+assets/rts-textures/
+
+# Raw assets (sprite sheets, etc) - tracked via public/ or separate storage
+assets/GrassAssests/
+assets/pixel_tiles_pack/
+assets/tree/
+assets/base/
+assets/sheet_definitions/
+assets/spritesheets/
+assets/stratix/
+assets/tools/
 
 # Coverage
 coverage/
@@ -67,3 +76,4 @@ release/
 dev.log
 .test-worktrees/
 .test-worktrees/
+public/rts-textures.bak/
