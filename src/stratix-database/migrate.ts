@@ -160,7 +160,7 @@ async function migrate() {
 
   log('info', 'Starting data migration...');
 
-  initializeDatabase({ dataDir });
+  await initializeDatabase({ dataDir });
   log('info', 'Database initialized');
 
   const agentsData = await fs.readFile(path.join(dataDir, 'stratix.db.json'), 'utf8');

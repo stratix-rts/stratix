@@ -177,7 +177,7 @@ export async function startGatewayService(
   
   // 初始化SQLite数据库
   console.log('Initializing SQLite database...');
-  const db = initializeDatabase({ dataDir });
+  const db = await initializeDatabase({ dataDir });
   console.log('SQLite database initialized:', db.getPath());
 
   // 初始化 NocoDB 服务 (可选)

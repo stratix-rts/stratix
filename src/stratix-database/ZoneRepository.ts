@@ -1,6 +1,6 @@
 import { mkdirSync } from 'fs';
 
-import type Database from 'better-sqlite3';
+import type { Database, Statement } from './sqlite-adapter';
 
 import { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskStatus, ZoneMessage, SenderType, FileVersion, FileMetadata, ProjectZoneConfig } from '../stratix-project/types';
 import { ZoneStatus } from '../stratix-rts/zones/BaseZone';
@@ -85,9 +85,9 @@ export class ZoneRepository {
     return getDatabase().getDatabase();
   }
 
-  private statements = new Map<string, Database.Statement>();
+  private statements = new Map<string, Statement>();
 
-  private stmt(sql: string): Database.Statement {
+  private stmt(sql: string): Statement {
     let s = this.statements.get(sql);
     if (!s) {
       s = this.db.prepare(sql);

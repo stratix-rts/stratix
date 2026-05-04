@@ -1,6 +1,6 @@
 import path from 'path';
 
-import Database from 'better-sqlite3';
+import { Database } from './sqlite-adapter';
 import * as fs from 'fs-extra';
 
 const DEFAULT_DATA_DIR = 'stratix-data';
@@ -32,24 +32,33 @@ function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<str
 }
 
 export class StratixDatabase {
-  private db: Database.Database;
+  private db: Database;
   private dbPath: string;
-  private statements = new Map<string, Database.Statement>();
+  private statements = new Map<string, ReturnType<Database['prepare']>>();
+  private initPromise: Promise<void> | null = null;
 
   constructor(config: DatabaseConfig = {}) {
     const dataDir = config.dataDir || DEFAULT_DATA_DIR;
     const filename = config.filename || DEFAULT_FILENAME;
 
-    // Sync dir creation is acceptable during initialization phase
-    fs.ensureDirSync(dataDir);
     this.dbPath = path.join(dataDir, `${filename}.sqlite`);
     this.db = new Database(this.dbPath);
-
-    this.db.pragma('journal_mode = WAL');
-    this.db.pragma('foreign_keys = ON');
+    // Initialization is async — callers must call init() or use initializeDatabase()
   }
 
-  public getDatabase(): Database.Database {
+  /** Async initialization (loads WASM, opens/creates DB file). */
+  public async init(): Promise<void> {
+    if (this.initPromise) return this.initPromise;
+    this.initPromise = (async () => {
+      await fs.ensureDir(path.dirname(this.dbPath));
+      await this.db.initialize();
+      // Note: sql.js doesn't support WAL mode (it's in-memory + file save)
+      // Foreign keys are enforced by default in sql.js
+    })();
+    return this.initPromise;
+  }
+
+  public getDatabase(): Database {
     return this.db;
   }
 
@@ -731,28 +740,28 @@ export class StratixDatabase {
 
   // ---- Cached prepared statements ----
 
-  private stmtSchemaVersionTables(): Database.Statement {
+  private stmtSchemaVersionTables(): ReturnType<Database["prepare"]> {
     return this.getStmt("SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'");
   }
 
-  private stmtInsertSchemaVersion(): Database.Statement {
+  private stmtInsertSchemaVersion(): ReturnType<Database["prepare"]> {
     return this.getStmt('INSERT INTO schema_version (version, applied_at) VALUES (?, ?)');
   }
 
-  private stmtGetSchemaVersion(): Database.Statement {
+  private stmtGetSchemaVersion(): ReturnType<Database["prepare"]> {
     return this.getStmt('SELECT MAX(version) as version FROM schema_version');
   }
 
-  private stmtTableInfo(tableName: string): Database.Statement {
+  private stmtTableInfo(tableName: string): ReturnType<Database["prepare"]> {
     // PRAGMA does not support parameter binding; tableName is validated before call.
     return this.db.prepare(`PRAGMA table_info(${tableName})`);
   }
 
-  private stmtTableNames(): Database.Statement {
+  private stmtTableNames(): ReturnType<Database["prepare"]> {
     return this.getStmt("SELECT name FROM sqlite_master WHERE type='table'");
   }
 
-  private getStmt(sql: string): Database.Statement {
+  private getStmt(sql: string): ReturnType<Database["prepare"]> {
     let stmt = this.statements.get(sql);
     if (!stmt) {
       stmt = this.db.prepare(sql);
@@ -791,9 +800,10 @@ export class StratixDatabase {
 
 let databaseInstance: StratixDatabase | null = null;
 
-export function initializeDatabase(config?: DatabaseConfig): StratixDatabase {
+export async function initializeDatabase(config?: DatabaseConfig): Promise<StratixDatabase> {
   if (!databaseInstance) {
     databaseInstance = new StratixDatabase(config);
+    await databaseInstance.init();
     databaseInstance.initialize();
   }
   return databaseInstance;

@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3';
+import type { Database, Statement } from './sqlite-adapter';
 
 import { generateId } from '../stratix-project/utils/helpers';
 
@@ -31,9 +31,9 @@ export class AgentCapabilityRepository {
     return getDatabase().getDatabase();
   }
 
-  private statements = new Map<string, Database.Statement>();
+  private statements = new Map<string, Statement>();
 
-  private stmt(sql: string): Database.Statement {
+  private stmt(sql: string): Statement {
     let s = this.statements.get(sql);
     if (!s) {
       s = this.db.prepare(sql);

@@ -37,7 +37,7 @@ export class StratixDataStore {
   public async initialize(dataDir?: string): Promise<void> {
     if (this.initialized) return;
 
-    initializeDatabase({ dataDir });
+    await initializeDatabase({ dataDir });
     getDatabase();
     this.initialized = true;
     console.log('[StratixDataStore] Initialized with SQLite');

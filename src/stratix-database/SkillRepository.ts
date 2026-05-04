@@ -3,7 +3,7 @@
  * 处理 shared_skills、shared_skill_installs、agent_learned_skills 表的 CRUD 操作
  */
 
-import type Database from 'better-sqlite3';
+import type { Database, Statement } from './sqlite-adapter';
 
 import type { SkillCategory, SkillProvider } from '../stratix-agent/types';
 
@@ -105,9 +105,9 @@ export class SkillRepository {
     return getDatabase().getDatabase();
   }
 
-  private statements = new Map<string, Database.Statement>();
+  private statements = new Map<string, Statement>();
 
-  private stmt(sql: string): Database.Statement {
+  private stmt(sql: string): Statement {
     let s = this.statements.get(sql);
     if (!s) {
       s = this.db.prepare(sql);

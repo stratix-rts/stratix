@@ -1,7 +1,7 @@
 {
   "name": "stratix",
   "version": "0.1.0",
-  "description": "Stratix \u661f\u7b56\u7cfb\u7edf - \u57fa\u4e8e Phaser RTS \u6e38\u620f\u5316\u754c\u9762\u7684\u591a Agent \u53ef\u89c6\u5316\u6307\u6325\u5e73\u53f0",
+  "description": "Stratix 星策系统 - 基于 Phaser RTS 游戏化界面的多 Agent 可视化指挥平台",
   "main": "dist/electron/electron/main.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -64,7 +64,6 @@
     "@types/handlebars": "^4.1.0",
     "@types/lodash-es": "^4.17.12",
     "axios": "^1.13.5",
-    "better-sqlite3": "^11.10.0",
     "chokidar": "^3.6.0",
     "cors": "^2.8.6",
     "dotenv": "^16.4.5",
@@ -82,6 +81,7 @@
     "openai": "^6.25.0",
     "phaser": "^3.90.0",
     "sequential-workflow-designer": "^0.37.1",
+    "sql.js": "^1.14.1",
     "tsconfig-paths": "^4.2.0",
     "vue": "^3.5.28",
     "vxe-pc-ui": "^4.13.16",
@@ -102,6 +102,7 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.19.33",
     "@types/pixelmatch": "^5.2.0",
+    "@types/sql.js": "^1.4.11",
     "@types/supertest": "^7.2.0",
     "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^6.19.0",
