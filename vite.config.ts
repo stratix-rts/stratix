@@ -49,7 +49,7 @@ export default defineConfig(async () => {
           changeOrigin: true,
         },
         '/ws': {
-          target: 'ws://127.0.0.1:3011',
+          target: 'ws://127.0.0.1:7525',
           changeOrigin: true,
           ws: true,
         },
