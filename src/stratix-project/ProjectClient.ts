@@ -43,41 +43,41 @@ export class ProjectClient {
   }
 
   async getAllProjects(): Promise<Project[]> {
-    const result = await this.client.get<ProjectsResponse>(API_PATHS.PROJECTS);
+    const result = await this.client.get<Project[]>(API_PATHS.PROJECTS);
     if (isApiError(result)) {
       console.error('[ProjectClient] Failed to get projects:', result.error);
       return [];
     }
-    return result.data.projects || [];
+    return result.data || [];
   }
 
   async getProjectsByStatus(status: ProjectStatus): Promise<Project[]> {
-    const result = await this.client.get<ProjectsResponse>(API_PATHS.PROJECTS, {
+    const result = await this.client.get<Project[]>(API_PATHS.PROJECTS, {
       headers: { params: JSON.stringify({ status }) }
     });
     if (isApiError(result)) {
       console.error('[ProjectClient] Failed to get projects by status:', result.error);
       return [];
     }
-    return result.data.projects || [];
+    return result.data || [];
   }
 
   async getProjectsByPriority(priority: number): Promise<Project[]> {
-    const result = await this.client.get<ProjectsResponse>(API_PATHS.PROJECTS, {
+    const result = await this.client.get<Project[]>(API_PATHS.PROJECTS, {
       headers: { params: JSON.stringify({ priority }) }
     });
     if (isApiError(result)) {
       console.error('[ProjectClient] Failed to get projects by priority:', result.error);
       return [];
     }
-    return result.data.projects || [];
+    return result.data || [];
   }
 
   async createProject(
     config: ProjectConfig,
     zoneConfig?: Partial<ProjectZoneConfig>
   ): Promise<Project> {
-    const result = await this.client.post<ProjectResponse>(API_PATHS.PROJECTS, {
+    const result = await this.client.post<Project>(API_PATHS.PROJECTS, {
       config,
       zoneConfig
     });
@@ -86,21 +86,21 @@ export class ProjectClient {
       throw new Error(`Failed to create project: ${result.error}`);
     }
 
-    console.log(`[ProjectClient] Project created: ${result.data.project.id}`);
-    return result.data.project;
+    console.log(`[ProjectClient] Project created: ${result.data.id}`);
+    return result.data;
   }
 
   async getProject(id: string): Promise<Project | null> {
-    const result = await this.client.get<ProjectResponse>(API_PATHS.PROJECT_BY_ID(id));
+    const result = await this.client.get<Project>(API_PATHS.PROJECT_BY_ID(id));
     if (isApiError(result)) {
       console.error(`[ProjectClient] Failed to get project ${id}:`, result.error);
       return null;
     }
-    return result.data.project;
+    return result.data;
   }
 
   async updateProject(id: string, updates: Partial<Project>): Promise<Project> {
-    const result = await this.client.put<ProjectResponse>(
+    const result = await this.client.put<Project>(
       API_PATHS.PROJECT_BY_ID(id),
       { updates }
     );
@@ -110,7 +110,7 @@ export class ProjectClient {
     }
 
     console.log(`[ProjectClient] Project updated: ${id}`);
-    return result.data.project;
+    return result.data;
   }
 
   async updateZoneConfig(id: string, zoneConfig: Partial<ProjectZoneConfig>): Promise<Project> {
@@ -154,43 +154,43 @@ export class ProjectClient {
   }
 
   async startProject(id: string): Promise<Project> {
-    const result = await this.client.post<ProjectResponse>(API_PATHS.PROJECT_START(id));
+    const result = await this.client.post<Project>(API_PATHS.PROJECT_START(id));
     if (isApiError(result)) {
       throw new Error(`Failed to start project ${id}: ${result.error}`);
     }
     console.log(`[ProjectClient] Project started: ${id}`);
-    return result.data.project;
+    return result.data;
   }
 
   async pauseProject(id: string): Promise<Project> {
-    const result = await this.client.post<ProjectResponse>(API_PATHS.PROJECT_PAUSE(id));
+    const result = await this.client.post<Project>(API_PATHS.PROJECT_PAUSE(id));
     if (isApiError(result)) {
       throw new Error(`Failed to pause project ${id}: ${result.error}`);
     }
     console.log(`[ProjectClient] Project paused: ${id}`);
-    return result.data.project;
+    return result.data;
   }
 
   async completeProject(id: string): Promise<Project> {
-    const result = await this.client.post<ProjectResponse>(API_PATHS.PROJECT_COMPLETE(id));
+    const result = await this.client.post<Project>(API_PATHS.PROJECT_COMPLETE(id));
     if (isApiError(result)) {
       throw new Error(`Failed to complete project ${id}: ${result.error}`);
     }
     console.log(`[ProjectClient] Project completed: ${id}`);
-    return result.data.project;
+    return result.data;
   }
 
   async failProject(id: string): Promise<Project> {
-    const result = await this.client.post<ProjectResponse>(API_PATHS.PROJECT_FAIL(id));
+    const result = await this.client.post<Project>(API_PATHS.PROJECT_FAIL(id));
     if (isApiError(result)) {
       throw new Error(`Failed to mark project ${id} as failed: ${result.error}`);
     }
     console.log(`[ProjectClient] Project marked as failed: ${id}`);
-    return result.data.project;
+    return result.data;
   }
 
   async agentEnterProject(projectId: string, agentId: string): Promise<Project> {
-    const result = await this.client.post<ProjectResponse>(
+    const result = await this.client.post<Project>(
       API_PATHS.PROJECT_AGENTS_ENTER(projectId),
       { agentId }
     );
@@ -200,11 +200,11 @@ export class ProjectClient {
     }
 
     console.log(`[ProjectClient] Agent ${agentId} entered project ${projectId}`);
-    return result.data.project;
+    return result.data;
   }
 
   async agentLeaveProject(projectId: string, agentId: string): Promise<Project> {
-    const result = await this.client.post<ProjectResponse>(
+    const result = await this.client.post<Project>(
       API_PATHS.PROJECT_AGENTS_LEAVE(projectId),
       { agentId }
     );
@@ -214,7 +214,7 @@ export class ProjectClient {
     }
 
     console.log(`[ProjectClient] Agent ${agentId} left project ${projectId}`);
-    return result.data.project;
+    return result.data;
   }
 
   async getMetadata(): Promise<MetadataResponse> {
