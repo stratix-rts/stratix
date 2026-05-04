@@ -229,6 +229,39 @@ export class ZoneCoordinator {
     // Load persisted tasks from database
     this.loadTasksFromDB();
 
+    // Listen for external task completion/failure events to sync memory state
+    const emitter = ZoneCoordinatorEventEmitter.getInstance();
+    emitter.on('task_completed', (payload) => {
+      if (payload.zoneId !== this.zoneId || !payload.taskId) return;
+      if (this.activeTasks.has(payload.taskId)) {
+        this.receiveTaskReport({
+          taskId: payload.taskId,
+          success: true,
+          output: payload.report?.output,
+          files: payload.report?.files,
+          issues: payload.report?.issues,
+          duration: payload.report?.duration,
+        }, true).catch(err => {
+          console.error(`[ZoneCoordinator] Error handling task_completed event: ${err}`);
+        });
+      }
+    });
+    emitter.on('task_failed', (payload) => {
+      if (payload.zoneId !== this.zoneId || !payload.taskId) return;
+      if (this.activeTasks.has(payload.taskId)) {
+        this.receiveTaskReport({
+          taskId: payload.taskId,
+          success: false,
+          output: payload.report?.output,
+          files: payload.report?.files,
+          issues: payload.report?.issues,
+          duration: payload.report?.duration,
+        }, true).catch(err => {
+          console.error(`[ZoneCoordinator] Error handling task_failed event: ${err}`);
+        });
+      }
+    });
+
     // Resume cycle if enabled
     if (this.cycleConfig?.enabled) {
       this.cycleCount = this.cycleConfig.count || 0;
@@ -1174,7 +1207,7 @@ ${assignStrategyDescription}
    * c. 更新 AgentCapability 的 load（decrementLoad）
    * d. 检查是否所有任务完成
    */
-  async receiveTaskReport(report: TaskCompleteParams): Promise<void> {
+  async receiveTaskReport(report: TaskCompleteParams, skipEmit = false): Promise<void> {
     const task = this.activeTasks.get(report.taskId);
 
     if (!task) {
@@ -1244,20 +1277,22 @@ ${assignStrategyDescription}
     this.updateTaskInDB(report.taskId, { status: task.status });
 
     // Emit task_completed or task_failed event
-    ZoneCoordinatorEventEmitter.getInstance().emit({
-      type: report.success ? 'task_completed' : 'task_failed',
-      zoneId: this.zoneId,
-      taskId: report.taskId,
-      agentId: task.assigneeId,
-      report: {
-        success: report.success,
-        output: report.output,
-        files: report.files,
-        issues: report.issues,
-        duration: report.duration,
-      },
-      timestamp: Date.now(),
-    });
+    if (!skipEmit) {
+      ZoneCoordinatorEventEmitter.getInstance().emit({
+        type: report.success ? 'task_completed' : 'task_failed',
+        zoneId: this.zoneId,
+        taskId: report.taskId,
+        agentId: task.assigneeId,
+        report: {
+          success: report.success,
+          output: report.output,
+          files: report.files,
+          issues: report.issues,
+          duration: report.duration,
+        },
+        timestamp: Date.now(),
+      });
+    }
 
     // Check if all tasks are complete and trigger cycle if enabled
     this.checkAndTriggerCycle();

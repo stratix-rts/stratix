@@ -7,6 +7,7 @@
 
 import { Router, Request, Response } from 'express';
 import { TaskQueueService } from '../../../stratix-orchestration/task-queue/TaskQueueService';
+import ZoneCoordinatorEventEmitter from '../../../stratix-orchestration/zone/ZoneCoordinatorEvents';
 import { gatewayEventBus } from '../../GatewayEventBus';
 import { StratixRequestHelper } from '../../../stratix-core/utils';
 
@@ -177,6 +178,18 @@ router.post('/:agentId/tasks/:taskId/complete', async (req: Request, res: Respon
       result,
     });
 
+    // Emit task completed event for ZoneCoordinator memory sync
+    if (task?.zoneId) {
+      ZoneCoordinatorEventEmitter.getInstance().emit({
+        type: 'task_completed',
+        zoneId: task.zoneId,
+        taskId: task.taskId,
+        agentId,
+        report: { success: true, output: result },
+        timestamp: Date.now(),
+      });
+    }
+
     // Publish task completed event
     gatewayEventBus.publishZoneEvent('zone:task_updated', task?.zoneId || '', task?.zoneId || '', {
       taskId: task?.taskId,
@@ -221,6 +234,18 @@ router.post('/:agentId/tasks/:taskId/fail', async (req: Request, res: Response) 
       status: 'failed',
       error,
     });
+
+    // Emit task failed event for ZoneCoordinator memory sync
+    if (task?.zoneId) {
+      ZoneCoordinatorEventEmitter.getInstance().emit({
+        type: 'task_failed',
+        zoneId: task.zoneId,
+        taskId: task.taskId,
+        agentId,
+        report: { success: false, output: error },
+        timestamp: Date.now(),
+      });
+    }
 
     res.json(requestHelper.success({ taskId: task?.taskId, status: task?.status }));
   } catch (error) {
