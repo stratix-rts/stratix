@@ -10,7 +10,7 @@
  *   5. list_agents         — 列出可用 Agent
  */
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { z } from 'zod';
 import { Router, Request, Response } from 'express';
@@ -43,6 +43,12 @@ function jsonResponse(data: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
 }
 
+function logMcp(level: 'info' | 'warning' | 'error', data: unknown) {
+  mcpServer.sendLoggingMessage({ level, logger: 'stratix-mcp', data }).catch(() => {
+    // Silently ignore if not connected
+  });
+}
+
 // ============================================================
 // Zone validation helper
 // ============================================================
@@ -72,6 +78,7 @@ async function getCoordinator(zoneId: string): Promise<ZoneCoordinator> {
   const cached = coordinatorCache.get(zoneId);
   if (cached && Date.now() - cached.lastAccessed < CACHE_TTL_MS) {
     cached.lastAccessed = Date.now();
+    logMcp('info', `Coordinator cache hit for zone ${zoneId}`);
     return cached.coordinator;
   }
 
@@ -86,6 +93,7 @@ async function getCoordinator(zoneId: string): Promise<ZoneCoordinator> {
     assignStrategy: 'capability_match',
   });
   coordinatorCache.set(zoneId, { coordinator, lastAccessed: Date.now() });
+  logMcp('info', `Coordinator created for zone ${zoneId}`);
   return coordinator;
 }
 
@@ -203,6 +211,12 @@ mcpServer.tool(
       const coordinator = await getCoordinator(zoneId);
       const result = await coordinator.processRequirement(requirement);
 
+      logMcp('info', `Requirement submitted to zone ${zoneId}: ${result.tasks.length} tasks created`);
+
+      if (result.delegated.length > 0) {
+        logMcp('info', `Tasks assigned in zone ${zoneId}: ${result.delegated.length} delegated`);
+      }
+
       const summary = {
         success: result.success,
         taskCount: result.tasks.length,
@@ -219,6 +233,7 @@ mcpServer.tool(
 
       return jsonResponse(summary);
     } catch (error) {
+      logMcp('error', `Requirement submission failed for zone ${zoneId}: ${error instanceof Error ? error.message : String(error)}`);
       return textResponse(`Error processing requirement: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -360,6 +375,235 @@ mcpServer.tool(
 );
 
 // ============================================================
+// Resources
+// ============================================================
+
+mcpServer.resource(
+  'zone-status',
+  new ResourceTemplate('zone://{zoneId}/status', { list: undefined }),
+  {
+    description: 'Zone status summary including member count, task counts, and recent activity',
+    mimeType: 'application/json',
+  },
+  async (uri, variables) => {
+    const zoneId = Array.isArray(variables.zoneId) ? variables.zoneId[0] : variables.zoneId;
+    const zone = zoneRepository.getZone(zoneId);
+    if (!zone) {
+      return {
+        contents: [{
+          uri: uri.href,
+          mimeType: 'application/json',
+          text: JSON.stringify({ error: `Zone ${zoneId} not found` }),
+        }],
+      };
+    }
+
+    const members = zoneMemberRepository.getMembers(zoneId);
+    let status: Record<string, unknown>;
+    try {
+      const coordinator = await getCoordinator(zoneId);
+      status = coordinator.getStatusSummary() as unknown as Record<string, unknown>;
+    } catch {
+      status = { message: 'No coordinator activity yet' };
+    }
+
+    return {
+      contents: [{
+        uri: uri.href,
+        mimeType: 'application/json',
+        text: JSON.stringify({
+          zoneId,
+          title: zone.title,
+          memberCount: members.length,
+          ...status,
+        }, null, 2),
+      }],
+    };
+  }
+);
+
+mcpServer.resource(
+  'zone-tasks',
+  new ResourceTemplate('zone://{zoneId}/tasks', { list: undefined }),
+  {
+    description: 'All tasks within a Zone',
+    mimeType: 'application/json',
+  },
+  async (uri, variables) => {
+    const zoneId = Array.isArray(variables.zoneId) ? variables.zoneId[0] : variables.zoneId;
+    const zone = zoneRepository.getZone(zoneId);
+    if (!zone) {
+      return {
+        contents: [{
+          uri: uri.href,
+          mimeType: 'application/json',
+          text: JSON.stringify({ error: `Zone ${zoneId} not found` }),
+        }],
+      };
+    }
+
+    const tasks = zoneRepository.getTasks(zoneId);
+
+    return {
+      contents: [{
+        uri: uri.href,
+        mimeType: 'application/json',
+        text: JSON.stringify({ zoneId, tasks }, null, 2),
+      }],
+    };
+  }
+);
+
+mcpServer.resource(
+  'zone-agents',
+  new ResourceTemplate('zone://{zoneId}/agents', { list: undefined }),
+  {
+    description: 'Agents in a Zone with their capabilities',
+    mimeType: 'application/json',
+  },
+  async (uri, variables) => {
+    const zoneId = Array.isArray(variables.zoneId) ? variables.zoneId[0] : variables.zoneId;
+    const zone = zoneRepository.getZone(zoneId);
+    if (!zone) {
+      return {
+        contents: [{
+          uri: uri.href,
+          mimeType: 'application/json',
+          text: JSON.stringify({ error: `Zone ${zoneId} not found` }),
+        }],
+      };
+    }
+
+    const members = zoneMemberRepository.getMembers(zoneId);
+    const agents = members.map(m => {
+      const caps = agentCapabilityRepository.getCapabilities(m.agentId, zoneId);
+      return {
+        agentId: m.agentId,
+        role: m.role,
+        capabilities: caps.map(c => ({ name: c.capability, level: c.level })),
+      };
+    });
+
+    return {
+      contents: [{
+        uri: uri.href,
+        mimeType: 'application/json',
+        text: JSON.stringify({ zoneId, agents }, null, 2),
+      }],
+    };
+  }
+);
+
+mcpServer.resource(
+  'system-info',
+  'stratix://system/info',
+  {
+    description: 'System information including version, zone count, agent count, and database status',
+    mimeType: 'application/json',
+  },
+  async (uri) => {
+    const projectId = getDefaultProjectId();
+    const zones = projectId ? zoneRepository.getZonesByProject(projectId) : [];
+    let agentCount = 0;
+    for (const z of zones) {
+      agentCount += zoneMemberRepository.getMembers(z.id).length;
+    }
+
+    return {
+      contents: [{
+        uri: uri.href,
+        mimeType: 'application/json',
+        text: JSON.stringify({
+          version: '0.1.0',
+          zoneCount: zones.length,
+          agentCount,
+          databaseStatus: projectId ? 'connected' : 'no_project',
+        }, null, 2),
+      }],
+    };
+  }
+);
+
+// ============================================================
+// Prompts
+// ============================================================
+
+mcpServer.prompt(
+  'submit_requirement',
+  'Guidance for submitting a requirement to a Zone with proper context',
+  {
+    zoneId: z.string().describe('The Zone ID to submit the requirement to'),
+    requirement: z.string().describe('The requirement or task description in natural language'),
+  },
+  ({ zoneId, requirement }) => {
+    const zone = zoneRepository.getZone(zoneId);
+    const zoneTitle = zone?.title || zoneId;
+    return {
+      messages: [{
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `Submitting requirement to Zone "${zoneTitle}" (${zoneId}):\n\n${requirement}\n\nPlease use the submit_requirement tool to process this requirement.`,
+        },
+      }],
+    };
+  }
+);
+
+mcpServer.prompt(
+  'agent_onboarding',
+  'Onboarding guidance for a new agent joining a Zone',
+  {
+    zoneId: z.string().describe('The Zone ID the agent is joining'),
+    agentId: z.string().describe('The unique agent identifier'),
+  },
+  ({ zoneId, agentId }) => {
+    const zone = zoneRepository.getZone(zoneId);
+    const zoneTitle = zone?.title || zoneId;
+    const members = zoneMemberRepository.getMembers(zoneId);
+    const capabilities = agentCapabilityRepository.getCapabilities(agentId, zoneId);
+
+    return {
+      messages: [{
+        role: 'assistant',
+        content: {
+          type: 'text',
+          text: `Welcome agent ${agentId} to Zone "${zoneTitle}" (${zoneId}).\n\n` +
+            `Zone Objective: ${zone?.prompt || 'No objective set'}\n\n` +
+            `Current Members: ${members.length}\n\n` +
+            `Your Capabilities: ${capabilities.map(c => `${c.capability} (level ${c.level})`).join(', ') || 'None registered yet'}\n\n` +
+            `Available Tools: list_zones, create_zone, submit_requirement, get_zone_status, list_agents, add_agent_to_zone\n\n` +
+            `Workflow: 1) Review Zone status, 2) Receive task assignments, 3) Execute tasks, 4) Report completion.`,
+        },
+      }],
+    };
+  }
+);
+
+mcpServer.prompt(
+  'task_review',
+  'Prompt template for reviewing a completed task',
+  {
+    zoneId: z.string().describe('The Zone ID containing the task'),
+    taskId: z.string().describe('The task ID to review'),
+  },
+  ({ zoneId, taskId }) => {
+    const zone = zoneRepository.getZone(zoneId);
+    const zoneTitle = zone?.title || zoneId;
+    return {
+      messages: [{
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `Please review task ${taskId} in Zone "${zoneTitle}" (${zoneId}).\n\n` +
+            `Check the task execution results, verify quality, and confirm completion or request revisions using the appropriate tools.`,
+        },
+      }],
+    };
+  }
+);
+
+// ============================================================
 // Express Router（嵌入 Gateway）
 // ============================================================
 
@@ -398,6 +642,7 @@ export function createMcpRouter(): Router {
     try {
       await transport.handlePostMessage(req, res, req.body);
     } catch (error) {
+      logMcp('error', `Error handling POST message: ${error instanceof Error ? error.message : String(error)}`);
       console.error('[MCP] Error handling POST message:', error);
       if (!res.headersSent) {
         res.status(500).json({ error: 'Failed to process message' });
