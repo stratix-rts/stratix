@@ -109,8 +109,8 @@ export class ZoneInteractionManager {
     this.unifiedZoneManager.register(taskZone);
 
     taskZone.setInteractive();
-    taskZone.on('pointerdown', () => {
-      if (!this.isZoneDrawingMode) {
+    taskZone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (pointer.leftButtonDown() && !this.isZoneDrawingMode) {
         this.selectZone(zoneId);
       }
     });

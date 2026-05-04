@@ -114,6 +114,10 @@ export class ProjectClient {
   }
 
   async updateZoneConfig(id: string, zoneConfig: Partial<ProjectZoneConfig>): Promise<Project> {
+    // Local task zones (non-project zones) don't have a project record
+    if (id.startsWith('zone-')) {
+      throw new Error(`Cannot update zone config for local task zone: ${id}`);
+    }
     const project = await this.getProject(id);
     if (!project) {
       throw new Error(`Project not found: ${id}`);

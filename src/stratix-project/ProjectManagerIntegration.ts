@@ -9,7 +9,7 @@ import { UnifiedZoneManager } from '../stratix-rts/zones/UnifiedZoneManager';
 import { ProjectClient } from './ProjectClient';
 import { ProjectZone } from './core/ProjectZone';
 import { ProjectZonePreview } from './core/ProjectZonePreview';
-import { Project, ProjectConfig, ProjectZoneConfig } from './types';
+import { Project, ProjectConfig, ProjectZoneConfig, Zone } from './types';
 import { throttle } from './utils/helpers';
 
 
@@ -85,8 +85,8 @@ export class ProjectManagerIntegration {
 
     rtsEventBus.on('zone:moved' as any, async (event: any) => {
       const zoneId = event.zoneId;
-      const projectZone = this.unifiedZoneManager.getZone(zoneId) as ProjectZone | undefined;
-      if (projectZone) {
+      const zone = this.unifiedZoneManager.getZone(zoneId);
+      if (zone instanceof ProjectZone) {
         const bounds = event.bounds;
         try {
           await this.projectClient.updateZoneConfig(zoneId, {
@@ -104,8 +104,8 @@ export class ProjectManagerIntegration {
 
     rtsEventBus.on('zone:resized' as any, async (event: any) => {
       const zoneId = event.zoneId;
-      const projectZone = this.unifiedZoneManager.getZone(zoneId) as ProjectZone | undefined;
-      if (projectZone) {
+      const zone = this.unifiedZoneManager.getZone(zoneId);
+      if (zone instanceof ProjectZone) {
         const bounds = event.bounds;
         try {
           await this.projectClient.updateZoneConfig(zoneId, {
@@ -123,8 +123,8 @@ export class ProjectManagerIntegration {
 
     rtsEventBus.on('zone:deleted' as any, async (event: any) => {
       const zoneId = event.zoneId;
-      const projectZone = this.unifiedZoneManager.getZone(zoneId) as ProjectZone | undefined;
-      if (projectZone) {
+      const zone = this.unifiedZoneManager.getZone(zoneId);
+      if (zone instanceof ProjectZone) {
         try {
           await this.projectClient.deleteProject(zoneId);
           console.log(`[ProjectManager] Zone deleted: ${zoneId}`);
@@ -280,6 +280,25 @@ export class ProjectManagerIntegration {
         } catch (linkError) {
           console.error('[ProjectManager] Failed to link zone context FK:', linkError);
         }
+
+        // Emit zone created event so UI can open zone panel immediately
+        rtsEventBus.emit('game:ui:zone_created' as any, {
+          zone: {
+            id: project.id,
+            title: project.name,
+            prompt: '',
+            description: project.description,
+            priority: project.priority,
+            status: project.status,
+            config: project.zoneConfig,
+            path: project.path,
+            presentAgentIds: project.presentAgentIds,
+            members: [],
+            files: [],
+            createdAt: project.createdAt instanceof Date ? project.createdAt.getTime() : Number(project.createdAt),
+            updatedAt: project.updatedAt instanceof Date ? project.updatedAt.getTime() : Number(project.updatedAt),
+          }
+        });
       }
 
       this.eventBus.emit('project:created', { project });
@@ -401,8 +420,8 @@ export class ProjectManagerIntegration {
       console.log(`[ProjectManager] ProjectZone registered: ${project.id}`);
 
       projectZone.setInteractive();
-      projectZone.on('pointerdown', () => {
-        if (!this.isDrawingProjectZone) {
+      projectZone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+        if (pointer.leftButtonDown() && !this.isDrawingProjectZone) {
           this.selectProjectZone(project.id);
         }
       });

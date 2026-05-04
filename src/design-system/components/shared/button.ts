@@ -60,7 +60,7 @@ export const ButtonSizes = {
 /**
  * Button 变体类型
  */
-export type ButtonVariant = 'primary' | 'secondary' | 'success' | 'danger' | 'warning';
+export type ButtonVariant = 'primary' | 'secondary' | 'success' | 'danger' | 'warning' | 'ghost';
 
 /**
  * 获取 Button Token
@@ -96,6 +96,12 @@ export function getButtonToken(variant: ButtonVariant) {
       background: 'var(--ds-status-warning)',
       hover: 'var(--ds-status-warning)',
       text: 'var(--ds-text-inverse)',
+      border: 'none',
+    },
+    ghost: {
+      background: 'transparent',
+      hover: 'var(--ds-bg-hover)',
+      text: 'var(--ds-text-secondary)',
       border: 'none',
     },
   } as const;

@@ -192,6 +192,12 @@ const handleProjectCreated = (data: { project: Project; needsConfig: boolean }) 
   }
 };
 
+const handleZoneCreated = (data: { zone: Zone }) => {
+  console.log('[App] Zone created, opening panel:', data.zone.id);
+  currentZone.value = data.zone;
+  uiStore.openZonePanel();
+};
+
 const handleProjectConfigSave = async (config: ProjectConfig) => {
   if (!currentProject.value) return;
 
@@ -416,7 +422,22 @@ onMounted(async () => {
               currentZone.value = result.zone;
               uiStore.openZonePanel();
             } else {
-              console.error('[App] Failed to fetch zone:', result.error);
+              // Fallback: use scene zone data if API returns nothing
+              const sceneZone = scene.unifiedZoneManager?.getZone(zoneId);
+              if (sceneZone) {
+                currentZone.value = {
+                  id: zoneId,
+                  title: sceneZone.getZoneName?.() || zoneId,
+                  prompt: '',
+                  members: [],
+                  files: [],
+                  createdAt: Date.now(),
+                  updatedAt: Date.now(),
+                } as Zone;
+                uiStore.openZonePanel();
+              } else {
+                console.error('[App] Failed to fetch zone:', result.error);
+              }
             }
           } catch (error) {
             console.error('[App] Error fetching zone:', error);
@@ -498,6 +519,7 @@ onMounted(async () => {
       };
 
       rtsEventBus.on('game:ui:project_created', handleProjectCreated);
+      rtsEventBus.on('game:ui:zone_created', handleZoneCreated);
       rtsEventBus.on('game:ui:config_click', handleConfigClick);
       rtsEventBus.on('game:ui:task_click', handleTaskClick);
       rtsEventBus.on('game:ui:stop_agents', handleStopAgents);
@@ -529,6 +551,7 @@ onUnmounted(() => {
   }
 
   rtsEventBus.off('game:ui:project_created', handleProjectCreated);
+  rtsEventBus.off('game:ui:zone_created', handleZoneCreated);
   if (handleConfigClick) rtsEventBus.off('game:ui:config_click', handleConfigClick as any);
   if (handleTaskClick) rtsEventBus.off('game:ui:task_click', handleTaskClick as any);
   if (handleStopAgents) rtsEventBus.off('game:ui:stop_agents', handleStopAgents as any);
