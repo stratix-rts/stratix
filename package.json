@@ -1,7 +1,7 @@
 {
   "name": "stratix",
   "version": "0.1.0",
-  "description": "Stratix 星策系统 - 基于 Phaser RTS 游戏化界面的多 Agent 可视化指挥平台",
+  "description": "Stratix \u661f\u7b56\u7cfb\u7edf - \u57fa\u4e8e Phaser RTS \u6e38\u620f\u5316\u754c\u9762\u7684\u591a Agent \u53ef\u89c6\u5316\u6307\u6325\u5e73\u53f0",
   "main": "dist/electron/electron/main.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -28,7 +28,7 @@
     "start": "node dist/stratix-gateway/index.js",
     "start:dev": "tsx src/stratix-gateway/index.ts",
     "electron": "NODE_PATH=dist/electron npm run build:electron && electron . --config electron.config.json",
-    "electron:dev": "./scripts/kill-ports.sh && concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run build:electron && electron . --config electron.config.json\"",
+    "electron:dev": "./scripts/kill-ports.sh && concurrently --kill-others \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run build:electron && electron . --config electron.config.json\"",
     "electron:build": "npm run build && npm run build:electron && electron-builder --config electron.config.json",
     "build:electron": "tsc -p tsconfig.electron.json && tsc-alias -p tsconfig.electron.json && node scripts/fix-electron-require.js && node scripts/bundle-electron.js",
     "tailscale:test": "tsx src/stratix-tailscale/test-embedded.ts",
