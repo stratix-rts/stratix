@@ -36,7 +36,8 @@ export interface GroundDecorationSystemConfig {
 export class GroundDecorationSystem extends Phaser.Events.EventEmitter {
   private scene: Phaser.Scene;
   private themeManager: ThemeManager;
-  private groundTileSprite: Phaser.GameObjects.TileSprite | null = null;
+  private groundTilemap: Phaser.Tilemaps.Tilemap | null = null;
+  private groundLayer: Phaser.Tilemaps.TilemapLayer | null = null;
   private decorations: Phaser.GameObjects.Sprite[] = [];
   private cloudLayer: Phaser.GameObjects.Sprite[] = [];
   private config: Required<GroundDecorationSystemConfig>;
@@ -93,7 +94,7 @@ export class GroundDecorationSystem extends Phaser.Events.EventEmitter {
   }
 
   /**
-   * 创建地表层（平铺）
+   * 创建地表层（Tilemap + 随机铺贴）
    */
   private createGroundLayer(): void {
     const textureKey = this.themeManager.getTextureKey('ground_base');
@@ -103,21 +104,72 @@ export class GroundDecorationSystem extends Phaser.Events.EventEmitter {
       return;
     }
 
-    // 移除旧的 tile sprite
-    if (this.groundTileSprite) {
-      this.groundTileSprite?.destroy();
+    // 移除旧的地表层
+    this.clearGroundLayer();
+
+    const cols = MAP_WIDTH / TILE_SIZE;
+    const rows = MAP_HEIGHT / TILE_SIZE;
+
+    // 创建 Tilemap
+    this.groundTilemap = this.scene.make.tilemap({
+      width: cols,
+      height: rows,
+      tileWidth: TILE_SIZE,
+      tileHeight: TILE_SIZE,
+    });
+
+    // 从已加载的纹理创建 Tileset
+    const tileset = this.groundTilemap.addTilesetImage(
+      textureKey,
+      undefined,
+      TILE_SIZE,
+      TILE_SIZE
+    );
+
+    if (!tileset) {
+      console.warn(`[GroundDecorationSystem] Failed to create tileset from: ${textureKey}`);
+      this.groundTilemap.destroy();
+      this.groundTilemap = null;
+      return;
     }
 
-    // 创建新的 tile sprite 覆盖整个地图
-    this.groundTileSprite = this.scene.add.tileSprite(
-      MAP_WIDTH / 2,
-      MAP_HEIGHT / 2,
-      MAP_WIDTH,
-      MAP_HEIGHT,
-      textureKey
-    );
-    this.groundTileSprite.setDepth(0);
-    this.groundTileSprite.setOrigin(0.5, 0.5);
+    // 创建空白图层
+    this.groundLayer = this.groundTilemap.createBlankLayer('ground', tileset);
+    if (!this.groundLayer) {
+      console.warn(`[GroundDecorationSystem] Failed to create ground layer`);
+      this.groundTilemap.destroy();
+      this.groundTilemap = null;
+      return;
+    }
+
+    this.groundLayer.setDepth(0);
+
+    // 随机铺贴 tiles
+    const totalTiles = tileset.total;
+    const rng = this.rng;
+
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const tileIndex = rng
+          ? rng.between(0, totalTiles - 1)
+          : Phaser.Math.Between(0, totalTiles - 1);
+        this.groundLayer.putTileAt(tileIndex, x, y);
+      }
+    }
+  }
+
+  /**
+   * 清除地表层
+   */
+  private clearGroundLayer(): void {
+    if (this.groundLayer) {
+      this.groundLayer.destroy();
+      this.groundLayer = null;
+    }
+    if (this.groundTilemap) {
+      this.groundTilemap.destroy();
+      this.groundTilemap = null;
+    }
   }
 
   /**
@@ -410,8 +462,6 @@ export class GroundDecorationSystem extends Phaser.Events.EventEmitter {
     }
     this.cloudLayer = [];
 
-    if (this.groundTileSprite) {
-      this.groundTileSprite?.destroy();
-    }
+    this.clearGroundLayer();
   }
 }
