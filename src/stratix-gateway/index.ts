@@ -132,7 +132,6 @@ export async function startGatewayService(
   app.use('/textures', express.static(TEXTURES_DIR));
   
   // 注册路由
-  app.use('/api/stratix/config/agent', agentRoutes);
   app.use('/api/stratix/agent', agentRoutes);
   app.use('/api/agent', agentTaskRoutes);
   app.use('/api/stratix/command', commandRoutes);
