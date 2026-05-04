@@ -54,7 +54,11 @@ async function initializeServices() {
   ensureDirSync(texturesDir);
   console.log('[Electron] Textures directory:', texturesDir);
 
-  // 2. 启动 Gateway 服务（嵌入式，仅本地访问）
+  // 2. 初始化 DataStoreService
+  await dataStoreService.initialize(dataDir);
+  console.log('[Electron] DataStoreService initialized');
+
+  // 3. 启动 Gateway 服务（嵌入式，仅本地访问）
   // Note: Gateway 服务已在 electron:dev 时通过 standalone backend 启动
   // 端口 7524 用于 OpenClaw 连接
 
@@ -539,5 +543,7 @@ app.on('before-quit', () => {
   }
 
   // 创建数据备份
-  dataStoreService.getBackupManager()?.createBackup().catch((err) => console.error('[Electron] Backup failed:', err));
+  if (dataStoreService.isInitialized()) {
+    dataStoreService.getBackupManager()?.createBackup().catch((err) => console.error('[Electron] Backup failed:', err));
+  }
 });
