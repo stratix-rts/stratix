@@ -133,6 +133,7 @@ export async function startGatewayService(
   
   // 注册路由
   app.use('/api/stratix/agent', agentRoutes);
+  app.use('/api/stratix/config/agent', agentRoutes);
   app.use('/api/agent', agentTaskRoutes);
   app.use('/api/stratix/command', commandRoutes);
   app.use('/api/stratix/config/template', templateRoutes);
