@@ -54,9 +54,13 @@ async function initializeServices() {
   ensureDirSync(texturesDir);
   console.log('[Electron] Textures directory:', texturesDir);
 
-  // 2. 初始化 DataStoreService
-  await dataStoreService.initialize(dataDir);
-  console.log('[Electron] DataStoreService initialized');
+  // 2. 初始化 DataStoreService（可选，依赖 better-sqlite3 原生模块）
+  try {
+    await dataStoreService.initialize(dataDir);
+    console.log('[Electron] DataStoreService initialized');
+  } catch (err) {
+    console.warn('[Electron] DataStoreService initialization skipped (native module not available in Electron):', (err as Error).message);
+  }
 
   // 3. 启动 Gateway 服务（嵌入式，仅本地访问）
   // Note: Gateway 服务已在 electron:dev 时通过 standalone backend 启动
@@ -330,19 +334,29 @@ function setupIPC() {
   });
 
   // ==================== 数据服务 IPC ====================
+  const dsReady = () => {
+    if (!dataStoreService.isInitialized()) {
+      throw new Error('DataStoreService not available in Electron mode. Use Gateway API instead.');
+    }
+  };
+
   ipcMain.handle('service:saveAgent', async (_event, config) => {
+    dsReady();
     return await dataStoreService.getStore().saveAgent(config);
   });
   
   ipcMain.handle('service:loadAgent', async (_event, id) => {
+    dsReady();
     return await dataStoreService.getStore().loadAgent(id);
   });
   
   ipcMain.handle('service:deleteAgent', async (_event, id) => {
+    dsReady();
     await dataStoreService.getStore().deleteAgent(id);
   });
   
   ipcMain.handle('service:listAgents', async () => {
+    dsReady();
     return await dataStoreService.getStore().listAgents();
   });
   
