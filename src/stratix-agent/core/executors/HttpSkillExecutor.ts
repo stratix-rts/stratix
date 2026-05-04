@@ -1,3 +1,4 @@
+import { writeFile } from 'fs/promises';
 import { SkillDefinition, SkillExecutor, ExecutionContext } from '../../types';
 import { SafetyValidator } from '../SafetyValidator';
 
@@ -133,5 +134,4 @@ export class HttpSkillExecutor implements SkillExecutor {
   }
 }
 
-// Need writeFile for file_download - import here to avoid top-level fs import in original
-import { writeFile } from 'fs/promises';
+

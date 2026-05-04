@@ -126,8 +126,9 @@ export class AgencyAgentsParser {
         const template = await this.parseFile(file);
         templates.push(template);
       } catch (error) {
-        errors.push(`Failed to parse ${file}: ${error}`);
-        log('error', 'Failed to parse file', { file, error: String(error) });
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        errors.push(`Failed to parse ${file}: ${errorMsg}`);
+        log('error', 'Failed to parse file', { file, error: errorMsg });
       }
     }
 

@@ -3,7 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { unlink, writeFile } from 'fs/promises';
 
-import { SkillDefinition, SkillExecutor, ExecutionContext } from '../../types';
+import { SkillDefinition, SkillExecutor, ExecutionContext, ProgressCallback } from '../../types';
 
 function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
   console[level](`[CodeSandboxSkillExecutor] ${message}`, ctx || '');
@@ -103,9 +103,9 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
     progress?.({ skillId: skill.skillId, stage: 'started', message: `Executing ${language}...` });
 
     if (language === 'javascript') {
-      return this.executeJavaScript(code, progress as (p: unknown) => void, config);
+      return this.executeJavaScript(code, progress, config);
     } else if (language === 'python') {
-      return this.executePython(code, progress as (p: unknown) => void, config);
+      return this.executePython(code, progress, config);
     } else {
       throw new Error(`Unsupported language: ${language}. Supported: javascript, python`);
     }
@@ -138,8 +138,9 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
     return { valid: true };
   }
 
-  private executeJavaScript(code: string, progress?: (p: unknown) => void, config?: ReturnType<typeof this.getSandboxConfig>): Promise<unknown> {
+  private executeJavaScript(code: string, progress?: ProgressCallback, config?: ReturnType<typeof this.getSandboxConfig>): Promise<unknown> {
     return new Promise((resolve, reject) => {
+      let timeoutId: NodeJS.Timeout | null = null;
       try {
         // Validate code before execution
         const validation = this.validateJavaScript(code);
@@ -228,7 +229,6 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
 
         // Set up timeout for execution
         const timeoutMs = (config?.maxCpuTime ?? 10) * 1000;
-        let timeoutId: NodeJS.Timeout | null = null;
 
         // Auto-wrap single-expression code with return
         // Check if code is a simple expression (no semicolons at top level)
@@ -270,10 +270,10 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
           });
         };
 
-        const handleError = (err: Error) => {
+        const handleError = (err: unknown) => {
           if (timeoutId) clearTimeout(timeoutId);
           progress?.({ skillId: 'code_execute', stage: 'failed' });
-          reject(new Error(`Execution error: ${err.message}`));
+          reject(new Error(`Execution error: ${err instanceof Error ? err.message : String(err)}`));
         };
 
         // Set up timeout
@@ -289,8 +289,9 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
           handleResult(result);
         }
       } catch (error) {
+        if (timeoutId) clearTimeout(timeoutId);
         progress?.({ skillId: 'code_execute', stage: 'failed' });
-        reject(new Error(`JavaScript execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`));
+        reject(new Error(`JavaScript execution failed: ${error instanceof Error ? error.message : String(error)}`));
       }
     });
   }
@@ -323,7 +324,7 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
     return { valid: true };
   }
 
-  private executePython(code: string, progress?: (p: unknown) => void, config?: ReturnType<typeof this.getSandboxConfig>): Promise<unknown> {
+  private executePython(code: string, progress?: ProgressCallback, config?: ReturnType<typeof this.getSandboxConfig>): Promise<unknown> {
     return new Promise((resolve, reject) => {
 
       // Validate code before execution
@@ -337,6 +338,7 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
       const tempFile = path.join(os.tmpdir(), `stratix_sandbox_${Date.now()}_${Math.random().toString(36).slice(2)}.py`);
 
       (async () => {
+        let proc: ChildProcess | undefined;
         try {
           await writeFile(tempFile, code);
           progress?.({ skillId: 'code_execute', stage: 'processing', message: 'Running Python...' });
@@ -344,7 +346,7 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
           const cpuTime = config?.maxCpuTime ?? 10;
           const maxOutput = config?.maxOutputSize ?? 1024 * 1024;
 
-          const proc = spawn('python3', [tempFile], {
+          proc = spawn('python3', [tempFile], {
             timeout: cpuTime * 1000,
           }) as ChildProcess;
 
@@ -352,7 +354,7 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
           let stderr = '';
           let outputTruncated = false;
 
-          proc.stdout!.on('data', (data: Buffer) => {
+          proc.stdout?.on('data', (data: Buffer) => {
             if (stdout.length + data.length > maxOutput) {
               stdout += data.toString().slice(0, maxOutput - stdout.length);
               outputTruncated = true;
@@ -361,11 +363,11 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
             stdout += data.toString();
           });
 
-          proc.stderr!.on('data', (data: Buffer) => {
+          proc.stderr?.on('data', (data: Buffer) => {
             stderr += data.toString();
           });
 
-          proc.on('close', async (code: number) => {
+          proc.on('close', async (code: number | null) => {
             // Clean up temp file
             try {
               await unlink(tempFile);
@@ -398,8 +400,9 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
             reject(new Error(`Python spawn error: ${err.message}`));
           });
         } catch (error) {
+          proc?.kill();
           progress?.({ skillId: 'code_execute', stage: 'failed' });
-          reject(new Error(`Failed to execute Python: ${error instanceof Error ? error.message : 'Unknown error'}`));
+          reject(new Error(`Failed to execute Python: ${error instanceof Error ? error.message : String(error)}`));
         }
       })();
     });

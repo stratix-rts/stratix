@@ -173,7 +173,7 @@ export class BuiltinSkillExecutor implements SkillExecutor {
         const result = this.evaluateExpression(expression);
         return { result };
       } catch (error) {
-        throw new Error(`Expression evaluation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        throw new Error(`Expression evaluation failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
 

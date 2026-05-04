@@ -124,7 +124,7 @@ export class SessionRuntime {
     // Reconstruct session context from transcript
     // First entry should have agentId in metadata
     const firstEntry = entries[0];
-    const recoveredAgentId = (firstEntry.metadata?.agentId as string | undefined) || firstEntry.sessionId;
+    const recoveredAgentId = typeof firstEntry.metadata?.agentId === 'string' ? firstEntry.metadata.agentId : firstEntry.sessionId;
     const context = createEmptyContext(sessionId, recoveredAgentId);
 
     for (const entry of entries) {
@@ -179,16 +179,7 @@ export class SessionRuntime {
       timeout,
       signal,
       maxRetries
-    ).catch(err => {
-      const msg = err instanceof Error ? err.message : String(err);
-      return {
-        response: `Error: ${msg}`,
-        usage: createEmptyUsage(),
-        retries: maxRetries,
-        interrupted: false,
-        error: msg,
-      };
-    });
+    );
 
     const endTime = Date.now();
     const duration = endTime - startTime;
