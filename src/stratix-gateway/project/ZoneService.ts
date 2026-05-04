@@ -139,10 +139,22 @@ export class ZoneService {
   public async getZones(projectId: string): Promise<Zone[]> {
     await this.ensureInitialized();
 
-    // Verify project exists
-    const project = projectRepository.getProject(projectId);
+    // Verify project exists, auto-create default if missing
+    let project = projectRepository.getProject(projectId);
     if (!project) {
-      throw new Error(`Project not found: ${projectId}`);
+      project = projectRepository.createProject({
+        id: projectId,
+        name: projectId,
+        priority: 0,
+        status: 'active',
+        config: { name: projectId, priority: 0, localFolderPath: '', agentMode: 'llm', planningRule: 'sequential', executionPermission: 'auto', progressRule: 'average', requirement: { type: 'text', content: '' } },
+        path: '',
+        presentAgentIds: [],
+        zoneConfig: { x: 0, y: 0, width: 100, height: 100 },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      console.log(`[ZoneService] Auto-created project: ${projectId}`);
     }
 
     return zoneRepository.getZonesByProject(projectId);

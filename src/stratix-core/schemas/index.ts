@@ -79,7 +79,7 @@ export const OpenClawConfigSchema = z.object({
 });
 
 export const StratixDirectConfigSchema = z.object({
-  provider: z.enum(['openai', 'anthropic', 'ollama', 'deepseek', 'qwen', 'custom']),
+  provider: z.string().min(1),
   model: z.string(),
   apiKey: z.string().optional(),
   endpoint: z.string().optional(),
