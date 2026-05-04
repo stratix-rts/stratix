@@ -9,11 +9,12 @@ export { ROOM_SIZE } from './Room';
 
 export {
   BuildingType,
-  BuildingConfig,
   BUILDING_COLORS,
   BUILDING_NAMES,
   BUILDING_ICONS,
 } from './types/BuildingType';
+
+export type { BuildingConfig } from './types/BuildingType';
 
 export type { BuildingState, RoomState } from './types/BuildingState';
 export { AgentStateAnimator, AgentWorkState } from './AgentStateAnimator';
