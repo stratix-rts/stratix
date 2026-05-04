@@ -42,6 +42,11 @@ export class Toast extends EnhancedUIComponent {
   private slideTween: Phaser.Tweens.Tween | null = null;
   private fadeTween: Phaser.Tweens.Tween | null = null;
   private isClosing = false;
+
+  // Layout constants (must be before _calculatedHeight)
+  static readonly WIDTH = 280;
+  static readonly MIN_HEIGHT = 40;
+
   private _calculatedHeight = Toast.MIN_HEIGHT;
 
   // Reactive tokens
@@ -49,10 +54,6 @@ export class Toast extends EnhancedUIComponent {
   private glassBg: ReactiveToken<string>;
   private glassBorder: ReactiveToken<string>;
   private textPrimaryColor: ReactiveToken<string>;
-
-  // Layout constants
-  static readonly WIDTH = 280;
-  static readonly MIN_HEIGHT = 40;
   static readonly BORDER_RADIUS = 6;
   static readonly LEFT_BAR_WIDTH = 3;
   static readonly ICON_SIZE = 16;

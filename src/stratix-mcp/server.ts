@@ -59,12 +59,17 @@ function logMcp(level: 'info' | 'warning' | 'error', data: unknown) {
 // Zone validation helper
 // ============================================================
 
-function validateZone(zoneId: string): { valid: false; response: ReturnType<typeof textResponse> } | { valid: true } {
+function validateZone(zoneId: string): { valid: false; response: { content: { type: 'text'; text: string }[] } } | { valid: true } {
   const zone = zoneRepository.getZone(zoneId);
   if (!zone) {
     return { valid: false, response: textResponse(`Error: Zone ${zoneId} not found.`) };
   }
   return { valid: true };
+}
+
+// Type guard for validateZone result
+function isInvalidZone(v: ReturnType<typeof validateZone>): v is { valid: false; response: { content: { type: 'text'; text: string }[] } } {
+  return !v.valid;
 }
 
 // ============================================================
@@ -209,7 +214,7 @@ mcpServer.tool(
   },
   async ({ zoneId, requirement }) => {
     const validation = validateZone(zoneId);
-    if (!validation.valid) {
+    if (isInvalidZone(validation)) {
       return validation.response;
     }
 
@@ -353,7 +358,7 @@ mcpServer.tool(
   },
   async ({ zoneId, agentId, capabilities }) => {
     const validation = validateZone(zoneId);
-    if (!validation.valid) {
+    if (isInvalidZone(validation)) {
       return validation.response;
     }
 
@@ -516,7 +521,7 @@ mcpServer.tool(
   },
   async ({ zoneId, agentId }) => {
     const validation = validateZone(zoneId);
-    if (!validation.valid) {
+    if (isInvalidZone(validation)) {
       return validation.response;
     }
 
@@ -683,7 +688,7 @@ mcpServer.tool(
   },
   async ({ zoneId, title, description, type, priority, assigneeId }) => {
     const validation = validateZone(zoneId);
-    if (!validation.valid) {
+    if (isInvalidZone(validation)) {
       return validation.response;
     }
 
