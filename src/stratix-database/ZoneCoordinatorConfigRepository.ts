@@ -1,3 +1,5 @@
+import type Database from 'better-sqlite3';
+
 import { getDatabase } from './StratixDatabase';
 
 export type AssignStrategy = 'random' | 'capability_match' | 'load_balance' | 'priority' | 'round_robin';
@@ -34,18 +36,80 @@ export type ZoneCoordinatorConfigRecord = ZoneCoordinatorConfig & {
   updatedAt: number;
 };
 
+interface ZoneCoordinatorRow {
+  zone_id: string;
+  llm_provider: string;
+  model: string | null;
+  auto_decompose: number;
+  auto_assign: number;
+  require_user_confirm: number;
+  assign_strategy: string;
+  entry_condition: string | null;
+  api_key: string | null;
+  base_url: string | null;
+  cycle_config: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+interface ZoneCoordinatorInsertRow {
+  zone_id: string;
+  llm_provider: string;
+  model: string | null;
+  auto_decompose: number;
+  auto_assign: number;
+  require_user_confirm: number;
+  assign_strategy: string;
+  entry_condition: string | null;
+  api_key: string | null;
+  base_url: string | null;
+  cycle_config: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
 export class ZoneCoordinatorConfigRepository {
   private get db() {
     return getDatabase().getDatabase();
   }
 
-  private mapRowToConfig(row: any): ZoneCoordinatorConfigRecord {
+  private statements = new Map<string, Database.Statement>();
+
+  private stmt(sql: string): Database.Statement {
+    let s = this.statements.get(sql);
+    if (!s) {
+      s = this.db.prepare(sql);
+      this.statements.set(sql, s);
+    }
+    return s;
+  }
+
+  /**
+   * 清理 prepared statement 缓存
+   */
+  shutdown(): void {
+    this.statements.clear();
+  }
+
+  /**
+   * 检查数据库连接是否健康
+   */
+  isHealthy(): boolean {
+    try {
+      this.db.prepare('SELECT 1').get();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private mapRowToConfig(row: ZoneCoordinatorRow): ZoneCoordinatorConfigRecord {
     let cycleConfig: CycleConfig | undefined;
     if (row.cycle_config) {
       try {
         cycleConfig = JSON.parse(row.cycle_config) as CycleConfig;
       } catch {
-        // Ignore parse errors
+        /* expected: corrupted cycle_config JSON */
       }
     }
     return {
@@ -65,7 +129,7 @@ export class ZoneCoordinatorConfigRepository {
     };
   }
 
-  private mapConfigToRow(zoneId: string, config: Partial<ZoneCoordinatorConfig>): any {
+  private mapConfigToRow(zoneId: string, config: Partial<ZoneCoordinatorConfig>): ZoneCoordinatorInsertRow {
     const now = Date.now();
     return {
       zone_id: zoneId,
@@ -78,6 +142,7 @@ export class ZoneCoordinatorConfigRepository {
       entry_condition: config.entryCondition ?? null,
       api_key: config.apiKey ?? null,
       base_url: config.baseUrl ?? null,
+      cycle_config: config.cycleConfig ? JSON.stringify(config.cycleConfig) : null,
       created_at: now,
       updated_at: now
     };
@@ -87,9 +152,9 @@ export class ZoneCoordinatorConfigRepository {
    * Get coordinator config for a zone
    */
   getConfig(zoneId: string): ZoneCoordinatorConfigRecord | null {
-    const row = this.db.prepare(`
+    const row = this.stmt(`
       SELECT * FROM zone_coordinators WHERE zone_id = ?
-    `).get(zoneId);
+    `).get(zoneId) as ZoneCoordinatorRow | undefined;
     return row ? this.mapRowToConfig(row) : null;
   }
 
@@ -101,7 +166,7 @@ export class ZoneCoordinatorConfigRepository {
     const existing = this.getConfig(zoneId);
 
     if (existing) {
-      const stmt = this.db.prepare(`
+      this.stmt(`
         UPDATE zone_coordinators SET
           llm_provider = ?,
           model = ?,
@@ -115,8 +180,7 @@ export class ZoneCoordinatorConfigRepository {
           cycle_config = ?,
           updated_at = ?
         WHERE zone_id = ?
-      `);
-      stmt.run(
+      `).run(
         config.llmProvider,
         config.model,
         config.autoDecompose ? 1 : 0,
@@ -131,13 +195,12 @@ export class ZoneCoordinatorConfigRepository {
         zoneId
       );
     } else {
-      const stmt = this.db.prepare(`
+      this.stmt(`
         INSERT INTO zone_coordinators (
           zone_id, llm_provider, model, auto_decompose, auto_assign,
           require_user_confirm, assign_strategy, entry_condition, api_key, base_url, cycle_config, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      stmt.run(
+      `).run(
         zoneId,
         config.llmProvider,
         config.model,
@@ -184,8 +247,7 @@ export class ZoneCoordinatorConfigRepository {
    * Delete coordinator config for a zone
    */
   deleteConfig(zoneId: string): boolean {
-    const stmt = this.db.prepare(`DELETE FROM zone_coordinators WHERE zone_id = ?`);
-    const result = stmt.run(zoneId);
+    const result = this.stmt(`DELETE FROM zone_coordinators WHERE zone_id = ?`).run(zoneId);
     return result.changes > 0;
   }
 
@@ -193,9 +255,9 @@ export class ZoneCoordinatorConfigRepository {
    * List all zones that have coordinator config
    */
   listConfigs(): ZoneCoordinatorConfigRecord[] {
-    const rows = this.db.prepare(`
+    const rows = this.stmt(`
       SELECT * FROM zone_coordinators ORDER BY updated_at DESC
-    `).all();
+    `).all() as ZoneCoordinatorRow[];
     return rows.map(row => this.mapRowToConfig(row));
   }
 }

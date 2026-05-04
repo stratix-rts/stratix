@@ -1,12 +1,18 @@
 import { mkdirSync } from 'fs';
 
-import { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskStatus, ZoneMessage, SenderType, FileVersion, FileMetadata } from '../stratix-project/types';
+import type Database from 'better-sqlite3';
+
+import { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskStatus, ZoneMessage, SenderType, FileVersion, FileMetadata, ProjectZoneConfig } from '../stratix-project/types';
 import { ZoneStatus } from '../stratix-rts/zones/BaseZone';
 import { generateId } from '../stratix-project/utils/helpers';
 import path from 'path';
 
 import { getDatabase } from './StratixDatabase';
 import { zoneMemberRepository } from './ZoneMemberRepository';
+
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[ZoneRepository] ${message}`, ctx || '');
+}
 
 // Database row types
 interface ZoneContextRow {
@@ -79,6 +85,36 @@ export class ZoneRepository {
     return getDatabase().getDatabase();
   }
 
+  private statements = new Map<string, Database.Statement>();
+
+  private stmt(sql: string): Database.Statement {
+    let s = this.statements.get(sql);
+    if (!s) {
+      s = this.db.prepare(sql);
+      this.statements.set(sql, s);
+    }
+    return s;
+  }
+
+  /**
+   * 清理 prepared statement 缓存
+   */
+  shutdown(): void {
+    this.statements.clear();
+  }
+
+  /**
+   * 检查数据库连接是否健康
+   */
+  isHealthy(): boolean {
+    try {
+      this.db.prepare('SELECT 1').get();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   // Zone CRUD operations
   getZonesByProject(projectId: string, limit?: number, offset?: number): Zone[] {
     // JOIN with zones table to get location/config fields
@@ -100,7 +136,7 @@ export class ZoneRepository {
       }
     }
 
-    const rows = this.db.prepare(query).all(...params) as ZoneContextRow[];
+    const rows = this.stmt(query).all(...params) as ZoneContextRow[];
 
     if (rows.length === 0) return [];
 
@@ -112,7 +148,7 @@ export class ZoneRepository {
   }
 
   getZonesByProjectCount(projectId: string): number {
-    const result = this.db.prepare(`
+    const result = this.stmt(`
       SELECT COUNT(*) as count FROM zone_contexts
       WHERE project_id = ? AND deleted_at IS NULL
     `).get(projectId) as { count: number };
@@ -121,7 +157,7 @@ export class ZoneRepository {
 
   getZone(zoneId: string): Zone | null {
     // JOIN with zones table to get location/config fields
-    const row = this.db.prepare(`
+    const row = this.stmt(`
       SELECT zc.*, z.description, z.priority, z.status, z.path, z.present_agent_ids, z.started_at, z.completed_at, z.config as zone_config
       FROM zone_contexts zc
       LEFT JOIN zones z ON z.zone_context_id = zc.zone_id
@@ -141,14 +177,14 @@ export class ZoneRepository {
     // Dual-write with transaction protection
     const insertZone = this.db.transaction(() => {
       // Insert into zone_contexts
-      this.db.prepare(`
+      this.stmt(`
         INSERT INTO zone_contexts (zone_id, project_id, title, prompt, members, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(zoneId, projectId, title, prompt, '[]', now, now);
 
       // Also insert into zones table for FK consistency (zone_context_id = zone_id)
       // This is needed because tasks table has FK REFERENCES zones(zone_id)
-      this.db.prepare(`
+      this.stmt(`
         INSERT INTO zones (zone_id, name, type, project_id, position_x, position_y, width, height, status, config, zone_context_id, path, created_at, updated_at)
         VALUES (?, ?, 'task', ?, 0, 0, 400, 300, 'idle', '{}', ?, ?, ?, ?)
       `).run(zoneId, title, projectId, zoneId, zonePath, now, now);
@@ -159,7 +195,7 @@ export class ZoneRepository {
     try {
       mkdirSync(zonePath, { recursive: true });
     } catch (e) {
-      console.warn(`[ZoneRepository] Failed to create zone path: ${zonePath}`, e);
+      log('warn', `Failed to create zone path: ${zonePath}`, { error: String(e) });
     }
 
     return {
@@ -184,20 +220,17 @@ export class ZoneRepository {
     const prompt = updates.prompt ?? existing.prompt;
     const members = updates.members ?? existing.members;
 
-    const stmt = this.db.prepare(`
+    this.stmt(`
       UPDATE zone_contexts SET title = ?, prompt = ?, members = ?, updated_at = ?
       WHERE zone_id = ?
-    `);
-
-    stmt.run(title, prompt, JSON.stringify(members), now, zoneId);
+    `).run(title, prompt, JSON.stringify(members), now, zoneId);
 
     // Also update present_agent_ids in zones table if provided
     if (updates.presentAgentIds !== undefined) {
-      const presentStmt = this.db.prepare(`
+      this.stmt(`
         UPDATE zones SET present_agent_ids = ?, updated_at = ?
         WHERE zone_context_id = ?
-      `);
-      presentStmt.run(JSON.stringify(updates.presentAgentIds), now, zoneId);
+      `).run(JSON.stringify(updates.presentAgentIds), now, zoneId);
     }
 
     return this.getZone(zoneId);
@@ -206,8 +239,7 @@ export class ZoneRepository {
   deleteZone(zoneId: string): boolean {
     // Soft delete: set deleted_at timestamp instead of physical deletion
     const now = Date.now();
-    const stmt = this.db.prepare('UPDATE zone_contexts SET deleted_at = ? WHERE zone_id = ? AND deleted_at IS NULL');
-    const result = stmt.run(now, zoneId);
+    const result = this.stmt('UPDATE zone_contexts SET deleted_at = ? WHERE zone_id = ? AND deleted_at IS NULL').run(now, zoneId);
     return result.changes > 0;
   }
 
@@ -216,7 +248,7 @@ export class ZoneRepository {
   // ============================================
 
   getDeletedZones(projectId: string): Zone[] {
-    const rows = this.db.prepare(`
+    const rows = this.stmt(`
       SELECT zc.*, z.description, z.priority, z.status, z.path, z.present_agent_ids, z.started_at, z.completed_at, z.config as zone_config
       FROM zone_contexts zc
       LEFT JOIN zones z ON z.zone_context_id = zc.zone_id
@@ -232,21 +264,19 @@ export class ZoneRepository {
   }
 
   restoreZone(zoneId: string): Zone | null {
-    const stmt = this.db.prepare('UPDATE zone_contexts SET deleted_at = NULL WHERE zone_id = ? AND deleted_at IS NOT NULL');
-    const result = stmt.run(zoneId);
+    const result = this.stmt('UPDATE zone_contexts SET deleted_at = NULL WHERE zone_id = ? AND deleted_at IS NOT NULL').run(zoneId);
     if (result.changes === 0) return null;
     return this.getZone(zoneId);
   }
 
   permanentlyDeleteZone(zoneId: string): boolean {
     // Physical delete - only delete if already soft-deleted (deleted_at IS NOT NULL)
-    const stmt = this.db.prepare('DELETE FROM zone_contexts WHERE zone_id = ? AND deleted_at IS NOT NULL');
-    const result = stmt.run(zoneId);
+    const result = this.stmt('DELETE FROM zone_contexts WHERE zone_id = ? AND deleted_at IS NOT NULL').run(zoneId);
     return result.changes > 0;
   }
 
   getDeletedZone(zoneId: string): Zone | null {
-    const row = this.db.prepare(`
+    const row = this.stmt(`
       SELECT zc.*, z.description, z.priority, z.status, z.path, z.present_agent_ids, z.started_at, z.completed_at, z.config as zone_config
       FROM zone_contexts zc
       LEFT JOIN zones z ON z.zone_context_id = zc.zone_id
@@ -258,7 +288,7 @@ export class ZoneRepository {
   // Search zones across all projects (global search)
   searchZones(keyword: string, limit: number = 20): Zone[] {
     const pattern = `%${keyword}%`;
-    const rows = this.db.prepare(`
+    const rows = this.stmt(`
       SELECT zc.*, z.description, z.priority, z.status, z.path, z.present_agent_ids, z.started_at, z.completed_at, z.config as zone_config
       FROM zone_contexts zc
       LEFT JOIN zones z ON z.zone_context_id = zc.zone_id
@@ -359,7 +389,7 @@ export class ZoneRepository {
 
   // Zone Files operations
   getFilesByZone(zoneId: string): ZoneFile[] {
-    const rows = this.db.prepare('SELECT * FROM zone_files WHERE zone_id = ? ORDER BY created_at DESC').all(zoneId) as ZoneFileRow[];
+    const rows = this.stmt('SELECT * FROM zone_files WHERE zone_id = ? ORDER BY created_at DESC').all(zoneId) as ZoneFileRow[];
     return rows.map(row => this.mapRowToFile(row));
   }
 
@@ -368,7 +398,7 @@ export class ZoneRepository {
     if (zoneIds.length === 0) return new Map();
 
     const placeholders = zoneIds.map(() => '?').join(', ');
-    const rows = this.db.prepare(
+    const rows = this.stmt(
       `SELECT * FROM zone_files WHERE zone_id IN (${placeholders}) ORDER BY zone_id, created_at DESC`
     ).all(...zoneIds) as ZoneFileRow[];
 
@@ -386,14 +416,14 @@ export class ZoneRepository {
   }
 
   getFile(fileId: string): ZoneFile | null {
-    const row = this.db.prepare('SELECT * FROM zone_files WHERE file_id = ?').get(fileId) as ZoneFileRow | undefined;
+    const row = this.stmt('SELECT * FROM zone_files WHERE file_id = ?').get(fileId) as ZoneFileRow | undefined;
     return row ? this.mapRowToFile(row) : null;
   }
 
   // Search files by name or content within a zone
   searchFiles(zoneId: string, keyword: string): ZoneFile[] {
     const pattern = `%${keyword}%`;
-    const rows = this.db.prepare(`
+    const rows = this.stmt(`
       SELECT * FROM zone_files
       WHERE zone_id = ? AND (name LIKE ? OR (content IS NOT NULL AND file_type IN ('md', 'txt', 'ts', 'js', 'fig', 'link', 'other')))
       ORDER BY created_at DESC
@@ -424,16 +454,14 @@ export class ZoneRepository {
     return textTypes.includes(fileType);
   }
 
-  addFile(zoneId: string, name: string, sourceType: 'local' | 'url', source: string, fileType?: FileType, metadata?: any): ZoneFile {
+  addFile(zoneId: string, name: string, sourceType: 'local' | 'url', source: string, fileType?: FileType, metadata?: FileMetadata): ZoneFile {
     const now = Date.now();
     const fileId = generateId('zf');
 
-    const stmt = this.db.prepare(`
+    this.stmt(`
       INSERT INTO zone_files (file_id, zone_id, name, source_type, source, content, file_type, last_fetched, metadata, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    stmt.run(fileId, zoneId, name, sourceType, source, null, fileType || null, null, JSON.stringify(metadata || {}), now, now);
+    `).run(fileId, zoneId, name, sourceType, source, null, fileType || null, null, JSON.stringify(metadata || {}), now, now);
 
     return {
       id: fileId,
@@ -448,7 +476,7 @@ export class ZoneRepository {
     };
   }
 
-  updateFile(fileId: string, updates: { content?: string; lastFetched?: number; metadata?: any }): ZoneFile | null {
+  updateFile(fileId: string, updates: { content?: string; lastFetched?: number; metadata?: FileMetadata }): ZoneFile | null {
     const existing = this.getFile(fileId);
     if (!existing) return null;
 
@@ -457,12 +485,10 @@ export class ZoneRepository {
     const lastFetched = updates.lastFetched ?? now;
     const metadata = updates.metadata ?? existing.metadata;
 
-    const stmt = this.db.prepare(`
+    this.stmt(`
       UPDATE zone_files SET content = ?, last_fetched = ?, metadata = ?, updated_at = ?
       WHERE file_id = ?
-    `);
-
-    stmt.run(content, lastFetched, JSON.stringify(metadata), now, fileId);
+    `).run(content, lastFetched, JSON.stringify(metadata), now, fileId);
 
     return this.getFile(fileId);
   }
@@ -557,8 +583,7 @@ export class ZoneRepository {
   }
 
   deleteFile(fileId: string): boolean {
-    const stmt = this.db.prepare('DELETE FROM zone_files WHERE file_id = ?');
-    const result = stmt.run(fileId);
+    const result = this.stmt('DELETE FROM zone_files WHERE file_id = ?').run(fileId);
     return result.changes > 0;
   }
 
@@ -566,18 +591,18 @@ export class ZoneRepository {
   // Batch File Operations
   // ============================================
 
-  addFiles(zoneId: string, files: Array<{ name: string; sourceType: 'local' | 'url'; source: string; fileType?: FileType; metadata?: any }>): ZoneFile[] {
+  addFiles(zoneId: string, files: Array<{ name: string; sourceType: 'local' | 'url'; source: string; fileType?: FileType; metadata?: FileMetadata }>): ZoneFile[] {
     const now = Date.now();
     const addedFiles: ZoneFile[] = [];
 
-    const stmt = this.db.prepare(`
+    const insert = this.stmt(`
       INSERT INTO zone_files (file_id, zone_id, name, source_type, source, content, file_type, last_fetched, metadata, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     for (const file of files) {
       const fileId = generateId('zf');
-      stmt.run(fileId, zoneId, file.name, file.sourceType, file.source, null, file.fileType || null, null, JSON.stringify(file.metadata || {}), now, now);
+      insert.run(fileId, zoneId, file.name, file.sourceType, file.source, null, file.fileType || null, null, JSON.stringify(file.metadata || {}), now, now);
 
       addedFiles.push({
         id: fileId,
@@ -600,7 +625,7 @@ export class ZoneRepository {
   // ============================================
 
   getZoneContext(zoneId: string): { taskPolicy: string; taskCreatorId: string | null; members: string[] } | null {
-    const row = this.db.prepare('SELECT task_policy, task_creator_id, members FROM zone_contexts WHERE zone_id = ? AND deleted_at IS NULL').get(zoneId) as ZoneContextSimpleRow | undefined;
+    const row = this.stmt('SELECT task_policy, task_creator_id, members FROM zone_contexts WHERE zone_id = ? AND deleted_at IS NULL').get(zoneId) as ZoneContextSimpleRow | undefined;
     if (!row) return null;
 
     let members: string[] = [];
@@ -624,11 +649,10 @@ export class ZoneRepository {
     const taskCreatorId = updates.taskCreatorId !== undefined ? updates.taskCreatorId : existing.taskCreatorId;
     const members = updates.members ?? existing.members;
 
-    const stmt = this.db.prepare(`
+    this.stmt(`
       UPDATE zone_contexts SET task_policy = ?, task_creator_id = ?, members = ?, updated_at = ?
       WHERE zone_id = ?
-    `);
-    stmt.run(taskPolicy, taskCreatorId, JSON.stringify(members), now, zoneId);
+    `).run(taskPolicy, taskCreatorId, JSON.stringify(members), now, zoneId);
     return true;
   }
 
@@ -649,17 +673,17 @@ export class ZoneRepository {
       }
     }
 
-    const rows = this.db.prepare(query).all(...params) as ZoneTaskRow[];
+    const rows = this.stmt(query).all(...params) as ZoneTaskRow[];
     return rows.map(row => this.mapRowToTask(row));
   }
 
   getTasksCount(zoneId: string): number {
-    const row = this.db.prepare('SELECT COUNT(*) as count FROM zone_tasks WHERE zone_id = ?').get(zoneId) as CountRow | undefined;
-    return row?.count || 0;
+    const row = this.stmt('SELECT COUNT(*) as count FROM zone_tasks WHERE zone_id = ?').get(zoneId) as CountRow | undefined;
+    return row?.count ?? 0;
   }
 
   getTask(taskId: string): ZoneTask | null {
-    const row = this.db.prepare('SELECT * FROM zone_tasks WHERE task_id = ?').get(taskId) as ZoneTaskRow | undefined;
+    const row = this.stmt('SELECT * FROM zone_tasks WHERE task_id = ?').get(taskId) as ZoneTaskRow | undefined;
     return row ? this.mapRowToTask(row) : null;
   }
 
@@ -667,11 +691,10 @@ export class ZoneRepository {
     const now = Date.now();
     const taskId = generateId('task');
 
-    const stmt = this.db.prepare(`
+    this.stmt(`
       INSERT INTO zone_tasks (task_id, zone_id, title, status, assignee, created_by, created_at, updated_at)
       VALUES (?, ?, ?, 'pending', NULL, ?, ?, ?)
-    `);
-    stmt.run(taskId, zoneId, title, createdBy, now, now);
+    `).run(taskId, zoneId, title, createdBy, now, now);
 
     return {
       id: taskId,
@@ -694,18 +717,16 @@ export class ZoneRepository {
     const status = updates.status ?? existing.status;
     const assignee = updates.assignee !== undefined ? updates.assignee : existing.assignee;
 
-    const stmt = this.db.prepare(`
+    this.stmt(`
       UPDATE zone_tasks SET title = ?, status = ?, assignee = ?, updated_at = ?
       WHERE task_id = ?
-    `);
-    stmt.run(title, status, assignee, now, taskId);
+    `).run(title, status, assignee, now, taskId);
 
     return this.getTask(taskId);
   }
 
   deleteTask(taskId: string): boolean {
-    const stmt = this.db.prepare('DELETE FROM zone_tasks WHERE task_id = ?');
-    const result = stmt.run(taskId);
+    const result = this.stmt('DELETE FROM zone_tasks WHERE task_id = ?').run(taskId);
     return result.changes > 0;
   }
 
@@ -715,24 +736,23 @@ export class ZoneRepository {
 
   getMessages(zoneId: string, limit: number = 100, offset: number = 0): ZoneMessage[] {
     // Use ASC order directly for oldest-first display, no reversal needed
-    const rows = this.db.prepare('SELECT * FROM zone_messages WHERE zone_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?').all(zoneId, limit, offset) as ZoneMessageRow[];
+    const rows = this.stmt('SELECT * FROM zone_messages WHERE zone_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?').all(zoneId, limit, offset) as ZoneMessageRow[];
     return rows.map(row => this.mapRowToMessage(row));
   }
 
   getMessagesCount(zoneId: string): number {
-    const row = this.db.prepare('SELECT COUNT(*) as count FROM zone_messages WHERE zone_id = ?').get(zoneId) as CountRow | undefined;
-    return row?.count || 0;
+    const row = this.stmt('SELECT COUNT(*) as count FROM zone_messages WHERE zone_id = ?').get(zoneId) as CountRow | undefined;
+    return row?.count ?? 0;
   }
 
   addMessage(zoneId: string, senderId: string, senderType: SenderType, content: string): ZoneMessage {
     const now = Date.now();
     const messageId = generateId('msg');
 
-    const stmt = this.db.prepare(`
+    this.stmt(`
       INSERT INTO zone_messages (message_id, zone_id, sender_id, sender_type, content, created_at)
       VALUES (?, ?, ?, ?, ?, ?)
-    `);
-    stmt.run(messageId, zoneId, senderId, senderType, content, now);
+    `).run(messageId, zoneId, senderId, senderType, content, now);
 
     return {
       id: messageId,
@@ -778,7 +798,7 @@ export class ZoneRepository {
     const files = filesByZone?.get(row.zone_id) ?? this.getFilesByZone(row.zone_id);
     let presentAgentIds: string[] = [];
     let members: string[] = [];
-    let config: any;
+    let config: ProjectZoneConfig | undefined;
 
     try {
       presentAgentIds = JSON.parse(row.present_agent_ids || '[]');
@@ -790,7 +810,7 @@ export class ZoneRepository {
 
     if (row.zone_config) {
       try {
-        config = JSON.parse(row.zone_config);
+        config = JSON.parse(row.zone_config) as ProjectZoneConfig;
       } catch { /* ignore malformed JSON */ }
     }
 

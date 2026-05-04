@@ -2,7 +2,7 @@ import path from 'path';
 
 import * as fs from 'fs-extra';
 
-import { StratixAgentConfig } from '../stratix-core/stratix-protocol';
+import { StratixAgentConfig, AgentBackendType, AgentConfigStatus, CharacterProfile, StratixSoulConfig, StratixMemoryConfig, OpenClawConfig, StratixDirectConfig } from '../stratix-core/stratix-protocol';
 import { MessageSender, ProjectChannelType, MessageRole, ProjectMessageType, ProjectStatus, ProjectConfig, ProjectZoneConfig } from '../stratix-project/types';
 
 import { agentRepository } from './AgentRepository';
@@ -13,6 +13,77 @@ const DEFAULT_PRIORITY = 3;
 
 function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
   console[level](`[Migration] ${message}`, ctx || '');
+}
+
+function toString(value: unknown, fallback = ''): string {
+  return value !== undefined && value !== null ? String(value) : fallback;
+}
+
+function toNumber(value: unknown, fallback = 0): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function parseJsonSafe<T>(value: unknown, fallback: T): T {
+  if (typeof value !== 'string') return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function coerceToObject<T extends object>(value: unknown): T | undefined {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as T;
+  }
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+function mapLegacyAgent(agent: LegacyAgentJson): StratixAgentConfig {
+  const agentId = toString(agent.agentId);
+  const name = toString(agent.name);
+  const profile: CharacterProfile = coerceToObject<CharacterProfile>(agent.profile) ?? {
+    characterId: agentId,
+    name,
+    bodyType: 'male',
+    parts: {}
+  };
+  return {
+    agentId,
+    name,
+    type: toString(agent.type, 'custom'),
+    profile,
+    backendType: toString(agent.backendType, 'direct') as AgentBackendType,
+    configStatus: toString(agent.configStatus, 'draft') as AgentConfigStatus,
+    soul: coerceToObject<StratixSoulConfig>(agent.soul),
+    memory: coerceToObject<StratixMemoryConfig>(agent.memory),
+    rules: Array.isArray(agent.rules) ? agent.rules as string[] : parseJsonSafe(toString(agent.rules), undefined),
+    position: coerceToObject<{ x: number; y: number }>(agent.position),
+    openClawConfig: coerceToObject<OpenClawConfig>(agent.openClawConfig),
+    stratixConfig: coerceToObject<StratixDirectConfig>(agent.stratixConfig),
+    createdAt: toNumber(agent.createdAt, Date.now()),
+    updatedAt: toNumber(agent.updatedAt, Date.now())
+  };
+}
+
+function parseMessageSender(value: unknown): MessageSender {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const obj = value as Record<string, unknown>;
+    return {
+      id: toString(obj.id),
+      type: obj.type === 'agent' ? 'agent' : 'user',
+      name: toString(obj.name)
+    };
+  }
+  return { id: '', type: 'user', name: '' };
 }
 
 // Strict row interfaces for legacy JSON data
@@ -104,7 +175,7 @@ async function migrate() {
     if (agentsJson.agents && agentsJson.agents.length > 0) {
       log('info', `Migrating ${agentsJson.agents.length} agents...`);
       for (const agent of agentsJson.agents) {
-        agentRepository.saveAgent(agent as StratixAgentConfig);
+        agentRepository.saveAgent(mapLegacyAgent(agent));
         log('info', `Agent migrated: ${String(agent.agentId)}`);
       }
     }
@@ -162,7 +233,7 @@ async function migrate() {
             channelId: String(msg.channelId),
             role: String(msg.role) as MessageRole,
             content: String(msg.content),
-            sender: msg.sender as MessageSender,
+            sender: parseMessageSender(msg.sender),
             mentions: (msg.mentions || []) as string[],
             rawContent: msg.rawContent ? String(msg.rawContent) : undefined,
             messageType: String(msg.messageType || 'chat') as ProjectMessageType,
