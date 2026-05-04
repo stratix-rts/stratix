@@ -46,10 +46,15 @@ export class ReflectionManager {
     messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
     timeoutMs: number = ReflectionManager.DEFAULT_LLM_TIMEOUT_MS
   ): Promise<{ content: string }> {
+    let reflectTimer: NodeJS.Timeout | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error(`Reflection LLM call timed out after ${timeoutMs}ms`)), timeoutMs);
+      reflectTimer = setTimeout(() => reject(new Error(`Reflection LLM call timed out after ${timeoutMs}ms`)), timeoutMs);
     });
-    return Promise.race([this.llm.generate(messages), timeoutPromise]);
+    try {
+      return await Promise.race([this.llm.generate(messages), timeoutPromise]);
+    } finally {
+      if (reflectTimer) clearTimeout(reflectTimer);
+    }
   }
 
   /**

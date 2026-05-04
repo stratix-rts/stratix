@@ -90,7 +90,7 @@ export class SafetyValidator {
     }
 
     // Zone 沙箱模式：强制限制在 sandboxRoot 内（最高优先级）
-    const sandboxRoot = context?.variables?.sandboxRoot;
+    const sandboxRoot = typeof context?.variables?.sandboxRoot === 'string' ? context.variables.sandboxRoot : undefined;
     if (sandboxRoot) {
       const normalizedSandbox = sandboxRoot.replace(/\/+$/, '');
       const normalizedFilePath = normalizedPath;

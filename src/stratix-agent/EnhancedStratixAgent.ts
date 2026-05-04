@@ -601,17 +601,25 @@ export class EnhancedStratixAgent extends StratixAgent {
       timer = setTimeout(() => reject(new Error(`Agent turn timed out after ${timeout}ms`)), timeout);
     });
     if (signal) {
-      const result = await Promise.race([
-        promise.finally(() => clearTimeout(timer)),
-        timerPromise,
-        new Promise<never>((_, reject) => {
-          signal.addEventListener('abort', () => reject(new Error('Agent turn aborted')), { once: true });
-        }),
-      ]);
-      return result;
+      let abortHandler: (() => void) | undefined;
+      const abortPromise = new Promise<never>((_, reject) => {
+        abortHandler = () => reject(new Error('Agent turn aborted'));
+        signal.addEventListener('abort', abortHandler, { once: true });
+      });
+      try {
+        return await Promise.race([promise, timerPromise, abortPromise]);
+      } finally {
+        clearTimeout(timer);
+        if (abortHandler) {
+          signal.removeEventListener('abort', abortHandler);
+        }
+      }
     }
-    const result = await Promise.race([promise.finally(() => clearTimeout(timer)), timerPromise]);
-    return result;
+    try {
+      return await Promise.race([promise, timerPromise]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   // ============================================

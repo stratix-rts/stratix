@@ -51,8 +51,9 @@ export interface ContextUpdateParams {
  */
 export class ZoneCoordinatorSkillExecutor implements SkillExecutor {
   private resolveZoneId(params: Record<string, unknown>, context: ExecutionContext): string {
-    const zoneId = params.zoneId || context.variables?.zoneId;
-    if (!zoneId || typeof zoneId !== 'string') {
+    const zoneId = typeof params.zoneId === 'string' ? params.zoneId :
+      (typeof context.variables?.zoneId === 'string' ? context.variables.zoneId : undefined);
+    if (!zoneId) {
       throw new Error('zoneId is required (pass as param or set context.variables.zoneId)');
     }
     return zoneId;

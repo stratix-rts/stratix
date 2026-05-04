@@ -146,10 +146,11 @@ export class EvolutionManager {
     // 构建进化提示词
     const evolutionPrompt = this.buildEvolutionPrompt(soul);
 
+    let evolutionTimer: NodeJS.Timeout | undefined;
     try {
       // 调用 LLM 生成进化建议（带超时）
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Evolution LLM call timed out after 30s')), 30000);
+        evolutionTimer = setTimeout(() => reject(new Error('Evolution LLM call timed out after 30s')), 30000);
       });
       const response = await Promise.race([
         this.llm.generate([
@@ -199,6 +200,8 @@ export class EvolutionManager {
       this.consecutiveFailures++;
       result.error = `Evolution error: ${error instanceof Error ? error.message : String(error)}`;
       return result;
+    } finally {
+      if (evolutionTimer) clearTimeout(evolutionTimer);
     }
   }
 

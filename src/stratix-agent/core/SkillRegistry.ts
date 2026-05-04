@@ -341,8 +341,12 @@ export class SkillRegistry {
       });
 
       // Race 执行
-      const result = await Promise.race([executePromise, timeoutPromise]);
-      if (timeoutTimer) clearTimeout(timeoutTimer);
+      let result: unknown;
+      try {
+        result = await Promise.race([executePromise, timeoutPromise]);
+      } finally {
+        if (timeoutTimer) clearTimeout(timeoutTimer);
+      }
 
       // 只有成功的结果才缓存
       const finalResult: SkillResult = {

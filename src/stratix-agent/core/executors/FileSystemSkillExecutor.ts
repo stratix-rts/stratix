@@ -7,13 +7,14 @@ import { SafetyValidator } from '../SafetyValidator';
 export class FileSystemSkillExecutor implements SkillExecutor {
   async execute(
     skill: SkillDefinition,
-    params: Record<string, any>,
+    params: Record<string, unknown>,
     context: ExecutionContext
-  ): Promise<any> {
-    const basePath = context.variables?.basePath || process.cwd();
-    const filePath = path.isAbsolute(params.path)
-      ? params.path
-      : path.join(basePath, params.path);
+  ): Promise<unknown> {
+    const basePath = typeof context.variables?.basePath === 'string' ? context.variables.basePath : process.cwd();
+    const pathParam = typeof params.path === 'string' ? params.path : '';
+    const filePath = path.isAbsolute(pathParam)
+      ? pathParam
+      : path.join(basePath, pathParam);
 
     // 验证文件路径安全性
     const validation = SafetyValidator.validateFilePath(filePath, context);
@@ -29,7 +30,8 @@ export class FileSystemSkillExecutor implements SkillExecutor {
         if (!(await this.pathExists(filePath))) {
           throw new Error(`File not found: ${filePath}`);
         }
-        const content = await readFile(filePath, params.encoding || 'utf-8');
+        const encoding = (typeof params.encoding === 'string' ? params.encoding : 'utf-8') as BufferEncoding;
+        const content = await readFile(filePath, { encoding });
         const preview = content.length > 1000
           ? { type: 'text' as const, content: content.slice(0, 1000) + '...[truncated]' }
           : { type: 'text' as const, content };
@@ -43,14 +45,18 @@ export class FileSystemSkillExecutor implements SkillExecutor {
         if (!(await this.pathExists(dir))) {
           await mkdir(dir, { recursive: true });
         }
-        await writeFile(filePath, params.content, params.encoding || 'utf-8');
+        const content = typeof params.content === 'string' ? params.content : '';
+        const encoding = (typeof params.encoding === 'string' ? params.encoding : 'utf-8') as BufferEncoding;
+        await writeFile(filePath, content, { encoding });
         progress?.({ skillId: skill.skillId, stage: 'completed' });
         return { success: true, path: filePath };
       }
 
       case 'file_append': {
         progress?.({ skillId: skill.skillId, stage: 'processing', message: 'Appending to file...' });
-        await appendFile(filePath, params.content, params.encoding || 'utf-8');
+        const content = typeof params.content === 'string' ? params.content : '';
+        const encoding = (typeof params.encoding === 'string' ? params.encoding : 'utf-8') as BufferEncoding;
+        await appendFile(filePath, content, { encoding });
         progress?.({ skillId: skill.skillId, stage: 'completed' });
         return { success: true, path: filePath };
       }
@@ -67,7 +73,7 @@ export class FileSystemSkillExecutor implements SkillExecutor {
 
       case 'file_delete': {
         progress?.({ skillId: skill.skillId, stage: 'processing', message: 'Deleting...' });
-        const sandboxRoot = context.variables?.sandboxRoot;
+        const sandboxRoot = typeof context.variables?.sandboxRoot === 'string' ? context.variables.sandboxRoot : undefined;
         if (sandboxRoot) {
           const normalizedSandbox = sandboxRoot.replace(/\/+$/, '');
           const normalizedFilePath = filePath.replace(/\/+/g, '/');
@@ -82,7 +88,8 @@ export class FileSystemSkillExecutor implements SkillExecutor {
             console.warn(`[SafetyAudit] Recursive delete: ${filePath} by agent ${context.agentId}`);
           }
         }
-        await rm(filePath, { recursive: params.recursive || false });
+        const recursive = typeof params.recursive === 'boolean' ? params.recursive : false;
+        await rm(filePath, { recursive });
         progress?.({ skillId: skill.skillId, stage: 'completed' });
         return { success: true, path: filePath };
       }
@@ -105,19 +112,22 @@ export class FileSystemSkillExecutor implements SkillExecutor {
 
       case 'file_mkdir': {
         progress?.({ skillId: skill.skillId, stage: 'processing', message: 'Creating directory...' });
-        await mkdir(filePath, { recursive: params.recursive !== false });
+        const recursive = typeof params.recursive === 'boolean' ? params.recursive : true;
+        await mkdir(filePath, { recursive });
         progress?.({ skillId: skill.skillId, stage: 'completed' });
         return { success: true, path: filePath };
       }
 
       case 'file_rename': {
         progress?.({ skillId: skill.skillId, stage: 'processing', message: 'Renaming...' });
-        const oldPath = path.isAbsolute(params.oldPath)
-          ? params.oldPath
-          : path.join(basePath, params.oldPath);
-        const newPath = path.isAbsolute(params.newPath)
-          ? params.newPath
-          : path.join(basePath, params.newPath);
+        const oldPathParam = typeof params.oldPath === 'string' ? params.oldPath : '';
+        const newPathParam = typeof params.newPath === 'string' ? params.newPath : '';
+        const oldPath = path.isAbsolute(oldPathParam)
+          ? oldPathParam
+          : path.join(basePath, oldPathParam);
+        const newPath = path.isAbsolute(newPathParam)
+          ? newPathParam
+          : path.join(basePath, newPathParam);
 
         const oldValidation = SafetyValidator.validateFilePath(oldPath, context);
         if (!oldValidation.valid) {

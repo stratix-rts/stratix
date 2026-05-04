@@ -9,6 +9,10 @@ import type { SkillRegistry } from './SkillRegistry';
 import type { AgentTemplate, WorkflowDefinition, WorkflowStep } from '../types/template';
 import type { ChatMessage as AgentChatMessage, SkillResult } from '../types';
 
+function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
+  console[level](`[WorkflowExecutor] ${message}`, ctx || '');
+}
+
 export interface EnhancedAgentResponse {
   sessionId: string;
   response: string;
@@ -137,7 +141,9 @@ export class WorkflowExecutor {
           }
         }
       } catch (error) {
-        results.push(`\n[ERROR in Step ${step.order}]: ${error}\n`);
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        log('error', `Workflow step "${step.name}" failed`, { stepOrder: step.order, error: errorMsg });
+        results.push(`\n[ERROR in Step ${step.order}]: ${errorMsg}\n`);
         if (step.onError === 'stop') break;
       }
     }

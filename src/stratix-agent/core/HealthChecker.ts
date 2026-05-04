@@ -19,14 +19,17 @@ export class HealthChecker {
 
     const entries = Array.from(this.checks.entries());
     for (const [name, checkFn] of entries) {
+      let healthTimer: NodeJS.Timeout | undefined;
       try {
         const timeoutPromise = new Promise<boolean>((_, reject) => {
-          setTimeout(() => reject(new Error(`Health check "${name}" timed out after ${timeoutMs}ms`)), timeoutMs);
+          healthTimer = setTimeout(() => reject(new Error(`Health check "${name}" timed out after ${timeoutMs}ms`)), timeoutMs);
         });
         results[name] = await Promise.race([checkFn(), timeoutPromise]);
       } catch (err) {
         log('warn', `Health check "${name}" failed`, { error: String(err) });
         results[name] = false;
+      } finally {
+        if (healthTimer) clearTimeout(healthTimer);
       }
     }
 

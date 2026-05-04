@@ -111,7 +111,8 @@ export class ZoneSkillExecutor implements SkillExecutor {
         const reason = typeof params.reason === 'string' ? params.reason : undefined;
         const directZoneId = typeof params.zoneId === 'string' ? params.zoneId : undefined;
         // projectId can come from params or context.variables
-        const projectId = typeof params.projectId === 'string' ? params.projectId : context.variables?.projectId;
+        const projectId = typeof params.projectId === 'string' ? params.projectId :
+          (typeof context.variables?.projectId === 'string' ? context.variables.projectId : undefined);
 
         let currentZoneId = directZoneId;
 
@@ -170,7 +171,8 @@ export class ZoneSkillExecutor implements SkillExecutor {
 
       case 'zone_list': {
         // projectId can come from params or context.variables
-        const projectId = params.projectId || context.variables?.projectId;
+        const projectId = typeof params.projectId === 'string' ? params.projectId :
+          (typeof context.variables?.projectId === 'string' ? context.variables.projectId : undefined);
         if (!projectId) {
           throw new Error('projectId is required for zone_list (pass as param or set in context.variables.projectId)');
         }

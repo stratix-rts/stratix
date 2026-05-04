@@ -410,13 +410,14 @@ export class LLMConnector {
 
   async testConnection(timeoutMs: number = 10000): Promise<{ success: boolean; message: string; latency?: number }> {
     const start = Date.now();
+    let connTimer: NodeJS.Timeout | undefined;
     try {
       const testPromise = this.generate([
         { role: 'user', content: 'Hi' }
       ]);
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`Connection test timed out after ${timeoutMs}ms`)), timeoutMs)
-      );
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        connTimer = setTimeout(() => reject(new Error(`Connection test timed out after ${timeoutMs}ms`)), timeoutMs);
+      });
       const result = await Promise.race([testPromise, timeoutPromise]);
       const latency = Date.now() - start;
 
@@ -429,6 +430,8 @@ export class LLMConnector {
         success: false,
         message: error instanceof Error ? error.message : 'Connection failed'
       };
+    } finally {
+      if (connTimer) clearTimeout(connTimer);
     }
   }
 }

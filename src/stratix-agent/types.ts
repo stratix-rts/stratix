@@ -113,14 +113,14 @@ export type SkillExecutionResult = SkillResultSuccess | SkillResultError;
 export interface SkillExecutor {
   execute(
     skill: SkillDefinition,
-    params: Record<string, any>,
+    params: Record<string, unknown>,
     context: ExecutionContext
-  ): Promise<any>;
+  ): Promise<unknown>;
 }
 
 export interface SkillCall {
   skillId: string;
-  params: Record<string, any>;
+  params: Record<string, unknown>;
   reasoning?: string;
 }
 
@@ -502,7 +502,7 @@ export interface ExecutionContext {
   agentId: string;
   sessionId?: string;
   userId?: string;
-  variables?: Record<string, any>;
+  variables?: Record<string, unknown>;
   // 安全相关
   allowedPaths?: string[];           // 允许的文件操作路径
   allowedDomains?: string[];         // 允许的网络请求域名

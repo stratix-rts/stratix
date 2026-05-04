@@ -263,21 +263,24 @@ export async function taskComplete(
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
-      await fetch(`${gatewayUrl}/api/zones/${zoneId}/tasks/${taskId}/complete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agentId,
-          success,
-          output,
-          files,
-          summary,
-          issues,
-          duration,
-        }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
+      try {
+        await fetch(`${gatewayUrl}/api/zones/${zoneId}/tasks/${taskId}/complete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agentId,
+            success,
+            output,
+            files,
+            summary,
+            issues,
+            duration,
+          }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
     } catch (apiError) {
       // Non-fatal: log but don't fail the operation
       log('warn', 'Failed to notify Zone Coordinator', { error: String(apiError) });
