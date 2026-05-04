@@ -281,6 +281,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   }
 
   private renderWithTransition(): void {
+    if (!this.scene) return;
     if (this.contentContainer) {
       if (!isReducedMotion()) {
         const oldY = this.contentContainer.y;
@@ -315,7 +316,7 @@ export class CommandPanelV2 extends EnhancedUIComponent {
   }
 
   private renderTabs(): void {
-    if (!this.tabContainer) return;
+    if (!this.tabContainer || !this.scene) return;
     this.tabContainer.removeAll(true);
 
     const tabWidth = HUD_LAYOUT.commandPanel.tabWidth;

@@ -175,10 +175,10 @@ export const useZoneStore = defineStore('zone', () => {
         ? `${API_PATHS.ZONES}?projectId=${projectId}`
         : API_PATHS.ZONES;
 
-      const result = await client.get<{ zones: Zone[] }>(path, { timeout: 10000 });
+      const result = await client.get<Zone[]>(path, { timeout: 10000 });
 
       if (result.success) {
-        zones.value = result.data.zones || [];
+        zones.value = result.data || [];
       } else {
         error.value = result.error;
         console.warn('[ZoneStore] Failed to load zones:', result.error);
@@ -194,13 +194,13 @@ export const useZoneStore = defineStore('zone', () => {
   // Get zone by ID
   async function fetchZone(zoneId: string): Promise<Zone | null> {
     try {
-      const result = await client.get<{ zone: Zone }>(API_PATHS.ZONE_BY_ID(zoneId), { timeout: 5000 });
+      const result = await client.get<Zone>(API_PATHS.ZONE_BY_ID(zoneId), { timeout: 5000 });
 
       if (!result.success) {
         console.warn(`[ZoneStore] Failed to fetch zone ${zoneId}:`, result.error);
         return null;
       }
-      return result.data.zone || null;
+      return result.data || null;
     } catch (e) {
       console.warn(`[ZoneStore] Failed to fetch zone ${zoneId}:`, e);
       return null;
@@ -210,15 +210,15 @@ export const useZoneStore = defineStore('zone', () => {
   // Create zone
   async function createZone(request: ZoneCreateRequest): Promise<Zone | null> {
     try {
-      const result = await client.post<{ zone: Zone }>(API_PATHS.ZONES, request);
+      const result = await client.post<Zone>(API_PATHS.ZONES, request);
 
       if (isApiError(result)) {
         console.warn('[ZoneStore] Failed to create zone:', result.error);
         return null;
       }
-      if (result.data.zone) {
-        zones.value.push(result.data.zone);
-        return result.data.zone;
+      if (result.data) {
+        zones.value.push(result.data);
+        return result.data;
       }
       return null;
     } catch (e) {
@@ -231,16 +231,16 @@ export const useZoneStore = defineStore('zone', () => {
   // Update zone
   async function updateZone(zoneId: string, request: ZoneUpdateRequest): Promise<boolean> {
     try {
-      const result = await client.put<{ zone: Zone }>(API_PATHS.ZONE_BY_ID(zoneId), request);
+      const result = await client.put<Zone>(API_PATHS.ZONE_BY_ID(zoneId), request);
 
       if (isApiError(result)) {
         console.warn('[ZoneStore] Failed to update zone:', result.error);
         return false;
       }
-      if (result.data.zone) {
+      if (result.data) {
         const index = zones.value.findIndex(z => z.id === zoneId);
         if (index >= 0) {
-          zones.value[index] = result.data.zone;
+          zones.value[index] = result.data;
         }
         return true;
       }
@@ -281,19 +281,19 @@ export const useZoneStore = defineStore('zone', () => {
   // Add file to zone
   async function addFile(zoneId: string, file: Omit<ZoneFile, 'id' | 'zoneId' | 'createdAt' | 'updatedAt'>): Promise<ZoneFile | null> {
     try {
-      const result = await client.post<{ file: ZoneFile }>(API_PATHS.ZONE_FILES(zoneId), file);
+      const result = await client.post<ZoneFile>(API_PATHS.ZONE_FILES(zoneId), file);
 
       if (isApiError(result)) {
         console.warn('[ZoneStore] Failed to add file:', result.error);
         return null;
       }
-      if (result.data.file) {
+      if (result.data) {
         const zone = zones.value.find(z => z.id === zoneId);
         if (zone) {
           zone.files = zone.files || [];
-          zone.files.push(result.data.file);
+          zone.files.push(result.data);
         }
-        return result.data.file;
+        return result.data;
       }
       return null;
     } catch (e) {
@@ -327,18 +327,18 @@ export const useZoneStore = defineStore('zone', () => {
   // Add task to zone
   async function addTask(zoneId: string, title: string): Promise<ZoneTask | null> {
     try {
-      const result = await client.post<{ task: ZoneTask }>(API_PATHS.ZONE_TASKS(zoneId), { title });
+      const result = await client.post<ZoneTask>(API_PATHS.ZONE_TASKS(zoneId), { title });
 
       if (isApiError(result)) {
         console.warn('[ZoneStore] Failed to add task:', result.error);
         return null;
       }
-      if (result.data.task) {
+      if (result.data) {
         const zone = zones.value.find(z => z.id === zoneId);
         if (zone && zone.tasks) {
-          zone.tasks.push(result.data.task);
+          zone.tasks.push(result.data);
         }
-        return result.data.task;
+        return result.data;
       }
       return null;
     } catch (e) {
@@ -351,18 +351,18 @@ export const useZoneStore = defineStore('zone', () => {
   // Update task
   async function updateTask(zoneId: string, taskId: string, updates: Partial<ZoneTask>): Promise<boolean> {
     try {
-      const result = await client.put<{ task: ZoneTask }>(API_PATHS.ZONE_TASK(zoneId, taskId), updates);
+      const result = await client.put<ZoneTask>(API_PATHS.ZONE_TASK(zoneId, taskId), updates);
 
       if (isApiError(result)) {
         console.warn('[ZoneStore] Failed to update task:', result.error);
         return false;
       }
-      if (result.data.task) {
+      if (result.data) {
         const zone = zones.value.find(z => z.id === zoneId);
         if (zone && zone.tasks) {
           const taskIndex = zone.tasks.findIndex(t => t.id === taskId);
           if (taskIndex >= 0) {
-            zone.tasks[taskIndex] = result.data.task;
+            zone.tasks[taskIndex] = result.data;
           }
         }
         return true;
@@ -378,7 +378,7 @@ export const useZoneStore = defineStore('zone', () => {
   // Add message to zone
   async function addMessage(zoneId: string, content: string, senderId: string, senderType: 'user' | 'agent'): Promise<ZoneMessage | null> {
     try {
-      const result = await client.post<{ message: ZoneMessage }>(API_PATHS.ZONE_MESSAGES(zoneId), {
+      const result = await client.post<ZoneMessage>(API_PATHS.ZONE_MESSAGES(zoneId), {
         content,
         senderId,
         senderType
@@ -388,12 +388,12 @@ export const useZoneStore = defineStore('zone', () => {
         console.warn('[ZoneStore] Failed to add message:', result.error);
         return null;
       }
-      if (result.data.message) {
+      if (result.data) {
         const zone = zones.value.find(z => z.id === zoneId);
         if (zone && zone.messages) {
-          zone.messages.push(result.data.message);
+          zone.messages.push(result.data);
         }
-        return result.data.message;
+        return result.data;
       }
       return null;
     } catch (e) {

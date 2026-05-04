@@ -372,19 +372,20 @@ export class ProjectManagerIntegration {
 
   /**
    * Fetch zone context (title, prompt, members) from zone_contexts table
-   * Since project.id === zone.id, we use projectId to fetch zone data
+   * Uses GET /api/zones?projectId=xxx which returns zones array
    */
   private async fetchZoneContext(projectId: string): Promise<{ title: string; prompt: string; members: string[] } | null> {
     try {
       const response = await axios.get<{
         success?: boolean;
-        zone?: { title: string; prompt: string; members: string[] };
-      }>(`/api/zones/${projectId}`);
-      if (response.data.success && response.data.zone) {
+        zones?: Array<{ title: string; prompt: string; members: string[] }>;
+      }>(`/api/zones?projectId=${encodeURIComponent(projectId)}`);
+      if (response.data.success && response.data.zones && response.data.zones.length > 0) {
+        const zone = response.data.zones[0];
         return {
-          title: response.data.zone.title,
-          prompt: response.data.zone.prompt,
-          members: response.data.zone.members
+          title: zone.title,
+          prompt: zone.prompt,
+          members: zone.members
         };
       }
     } catch (error) {
