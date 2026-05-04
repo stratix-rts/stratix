@@ -1556,11 +1556,12 @@ ${assignStrategyDescription}
     const now = Date.now();
     // Map ZoneCoordinator status to DB status: delegated -> assigned
     const dbStatus = task.status === 'delegated' ? 'assigned' : task.status;
+    const context = JSON.stringify({ sandboxRoot: this.zonePath || null, description: task.description });
     this.db.prepare(`
       INSERT OR REPLACE INTO tasks (
         task_id, zone_id, project_id, name, description, type, priority,
-        status, assigned_agent_id, created_at, assigned_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        status, assigned_agent_id, created_at, assigned_at, context
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       task.id,
       task.zoneId,
@@ -1572,7 +1573,8 @@ ${assignStrategyDescription}
       dbStatus,
       task.assigneeId || null,
       now,
-      task.assigneeId ? now : null
+      task.assigneeId ? now : null,
+      context
     );
   }
 
