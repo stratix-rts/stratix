@@ -144,16 +144,36 @@ export class GroundDecorationSystem extends Phaser.Events.EventEmitter {
 
     this.groundLayer.setDepth(0);
 
-    // 随机铺贴 tiles
+    // 铺贴 tiles — 区域填充策略，避免"迷宫感"
+    // 大部分格子用主 tile，少数区域用不同 tile 做自然变化
     const totalTiles = tileset.total;
     const rng = this.rng;
+    const primaryTile = 0; // 主 tile（左上角的纯色填充）
 
-    for (let y = 0; y < rows; y++) {
-      for (let x = 0; x < cols; x++) {
-        const tileIndex = rng
-          ? rng.between(0, totalTiles - 1)
-          : Phaser.Math.Between(0, totalTiles - 1);
-        this.groundLayer.putTileAt(tileIndex, x, y);
+    // 先全部填充主 tile
+    this.groundLayer.fill(primaryTile);
+
+    // 然后随机放置一些"斑块"（3x3 到 5x5 的小区域）用不同 tile
+    const patchCount = Math.floor(cols * rows * 0.08); // ~8% 的格子作为斑块中心
+    for (let i = 0; i < patchCount; i++) {
+      const cx = rng ? rng.between(0, cols - 1) : Phaser.Math.Between(0, cols - 1);
+      const cy = rng ? rng.between(0, rows - 1) : Phaser.Math.Between(0, rows - 1);
+      const patchSize = rng ? rng.between(1, 3) : Phaser.Math.Between(1, 3); // 1-3 radius
+      const tileIndex = rng ? rng.between(0, totalTiles - 1) : Phaser.Math.Between(0, totalTiles - 1);
+
+      for (let dy = -patchSize; dy <= patchSize; dy++) {
+        for (let dx = -patchSize; dx <= patchSize; dx++) {
+          const px = cx + dx;
+          const py = cy + dy;
+          if (px >= 0 && px < cols && py >= 0 && py < rows) {
+            // 中心 100% 放置，边缘衰减
+            const dist = Math.abs(dx) + Math.abs(dy);
+            const shouldPlace = dist === 0 || (rng ? rng.floatBetween(0, 1) : Math.random()) > dist * 0.3;
+            if (shouldPlace) {
+              this.groundLayer.putTileAt(tileIndex, px, py);
+            }
+          }
+        }
       }
     }
   }
