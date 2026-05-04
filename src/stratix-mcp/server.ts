@@ -21,6 +21,12 @@ import { agentCapabilityRepository } from '../stratix-database/AgentCapabilityRe
 import { projectRepository } from '../stratix-database/ProjectRepository';
 import { ZoneCoordinator } from '../stratix-orchestration/zone/ZoneCoordinator';
 import type { Capability } from '../stratix-database/AgentCapabilityRepository';
+import { TaskQueueService } from '../stratix-orchestration/task-queue/TaskQueueService';
+import { auditLogRepository } from '../stratix-database/AuditLogRepository';
+import { taskFlowRepository } from '../stratix-database/TaskFlowRepository';
+import { getDatabase } from '../stratix-database/StratixDatabase';
+import { readdirSync, statSync } from 'fs';
+import path from 'path';
 
 // ============================================================
 // MCP Server 定义
@@ -375,6 +381,476 @@ mcpServer.tool(
 );
 
 // ============================================================
+// Tool 7: get_task_detail
+// ============================================================
+
+mcpServer.tool(
+  'get_task_detail',
+  'Get detailed information about a task from the task queue. Returns status, assigned agent, execution result, creation time, and more.',
+  {
+    taskId: z.string().describe('The task ID to look up'),
+  },
+  async ({ taskId }) => {
+    try {
+      const taskQueue = TaskQueueService.getInstance();
+      const task = await taskQueue.getTask(taskId);
+      if (!task) {
+        return textResponse(`Error: Task ${taskId} not found.`);
+      }
+      return jsonResponse(task);
+    } catch (error) {
+      logMcp('error', `Failed to get task detail for ${taskId}: ${error instanceof Error ? error.message : String(error)}`);
+      return textResponse(`Error retrieving task detail: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+);
+
+// ============================================================
+// Tool 8: cancel_task
+// ============================================================
+
+mcpServer.tool(
+  'cancel_task',
+  'Cancel a task by updating its status to cancelled. Records the reason and notifies any assigned agent.',
+  {
+    taskId: z.string().describe('The task ID to cancel'),
+    reason: z.string().optional().describe('Optional reason for cancellation'),
+  },
+  async ({ taskId, reason }) => {
+    try {
+      const taskQueue = TaskQueueService.getInstance();
+      const task = await taskQueue.getTask(taskId);
+      if (!task) {
+        return textResponse(`Error: Task ${taskId} not found.`);
+      }
+      if (task.status === 'cancelled' || task.status === 'completed' || task.status === 'failed') {
+        return textResponse(`Error: Task ${taskId} is already in terminal status (${task.status}).`);
+      }
+      await taskQueue.updateTask(taskId, { status: 'cancelled' });
+      taskFlowRepository.addFlow(
+        taskId,
+        task.zoneId,
+        task.assignedAgentId || null,
+        task.assignedAgentId || null,
+        'cancelled',
+        { reason: reason || 'Cancelled by admin' }
+      );
+      logMcp('info', `Task ${taskId} cancelled. Reason: ${reason || 'No reason provided'}`);
+      return jsonResponse({
+        success: true,
+        taskId,
+        status: 'cancelled',
+        reason: reason || null,
+        message: `Task ${taskId} has been cancelled.`,
+      });
+    } catch (error) {
+      logMcp('error', `Failed to cancel task ${taskId}: ${error instanceof Error ? error.message : String(error)}`);
+      return textResponse(`Error cancelling task: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+);
+
+// ============================================================
+// Tool 9: reassign_task
+// ============================================================
+
+mcpServer.tool(
+  'reassign_task',
+  'Reassign a task from its current agent to a new agent. Updates assigned_agent_id and records the change in task_flow.',
+  {
+    taskId: z.string().describe('The task ID to reassign'),
+    newAgentId: z.string().describe('The new agent ID to assign the task to'),
+  },
+  async ({ taskId, newAgentId }) => {
+    try {
+      const taskQueue = TaskQueueService.getInstance();
+      const task = await taskQueue.getTask(taskId);
+      if (!task) {
+        return textResponse(`Error: Task ${taskId} not found.`);
+      }
+      const zone = zoneRepository.getZone(task.zoneId);
+      if (!zone) {
+        return textResponse(`Error: Zone ${task.zoneId} not found.`);
+      }
+      if (!task.assignedAgentId) {
+        return textResponse(`Error: Task ${taskId} has no current assignee.`);
+      }
+      if (task.assignedAgentId === newAgentId) {
+        return textResponse(`Error: New agent ${newAgentId} is already assigned to this task.`);
+      }
+
+      const coordinator = await getCoordinator(task.zoneId);
+      const result = await coordinator.reassignTask(taskId, newAgentId);
+
+      if (!result.success) {
+        return textResponse(`Error reassigning task: ${result.error || 'Unknown error'}`);
+      }
+
+      await taskQueue.updateTask(taskId, { assignedAgentId: newAgentId, status: 'assigned' });
+
+      logMcp('info', `Task ${taskId} reassigned from ${task.assignedAgentId} to ${newAgentId}`);
+      return jsonResponse({
+        success: true,
+        taskId,
+        previousAgentId: task.assignedAgentId,
+        newAgentId,
+        message: `Task ${taskId} reassigned from ${task.assignedAgentId} to ${newAgentId}.`,
+      });
+    } catch (error) {
+      logMcp('error', `Failed to reassign task ${taskId}: ${error instanceof Error ? error.message : String(error)}`);
+      return textResponse(`Error reassigning task: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+);
+
+// ============================================================
+// Tool 10: remove_agent_from_zone
+// ============================================================
+
+mcpServer.tool(
+  'remove_agent_from_zone',
+  'Remove an agent from a Zone. Cleans up zone_members, zone_contexts.members, and capabilities. If the agent has in-progress tasks, the operation is blocked unless tasks are handled first.',
+  {
+    zoneId: z.string().describe('The Zone ID'),
+    agentId: z.string().describe('The agent ID to remove'),
+  },
+  async ({ zoneId, agentId }) => {
+    const validation = validateZone(zoneId);
+    if (!validation.valid) {
+      return validation.response;
+    }
+
+    try {
+      const db = getDatabase().getDatabase();
+      const activeTasks = db.prepare(
+        `SELECT task_id FROM tasks WHERE zone_id = ? AND assigned_agent_id = ? AND status IN ('assigned', 'in_progress')`
+      ).all(zoneId, agentId) as Array<{ task_id: string }>;
+
+      if (activeTasks.length > 0) {
+        return textResponse(
+          `Error: Agent ${agentId} has ${activeTasks.length} active task(s) in Zone ${zoneId}. ` +
+          `Cancel or reassign these tasks first: ${activeTasks.map(t => t.task_id).join(', ')}`
+        );
+      }
+
+      zoneRepository.removeMember(zoneId, agentId);
+      agentCapabilityRepository.removeCapabilities(agentId, zoneId);
+
+      const cached = coordinatorCache.get(zoneId);
+      if (cached) {
+        coordinatorCache.delete(zoneId);
+      }
+
+      auditLogRepository.log(zoneId, 'agent_left', agentId, undefined, { reason: 'admin_removed' });
+      logMcp('info', `Agent ${agentId} removed from zone ${zoneId}`);
+
+      return jsonResponse({
+        success: true,
+        agentId,
+        zoneId,
+        message: `Agent ${agentId} removed from Zone ${zoneId}.`,
+      });
+    } catch (error) {
+      logMcp('error', `Failed to remove agent ${agentId} from zone ${zoneId}: ${error instanceof Error ? error.message : String(error)}`);
+      return textResponse(`Error removing agent: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+);
+
+// ============================================================
+// Tool 11: delete_zone
+// ============================================================
+
+mcpServer.tool(
+  'delete_zone',
+  'Delete a Zone and clean up associated data (members, tasks, capabilities). If force=true, deletes even with active tasks.',
+  {
+    zoneId: z.string().describe('The Zone ID to delete'),
+    force: z.boolean().optional().describe('Force delete even if there are active tasks'),
+  },
+  async ({ zoneId, force }) => {
+    const zone = zoneRepository.getZone(zoneId);
+    if (!zone) {
+      return textResponse(`Error: Zone ${zoneId} not found.`);
+    }
+
+    try {
+      if (!force) {
+        const db = getDatabase().getDatabase();
+        const activeTasks = db.prepare(
+          `SELECT COUNT(*) as count FROM tasks WHERE zone_id = ? AND status IN ('pending', 'assigned', 'in_progress')`
+        ).get(zoneId) as { count: number } | undefined;
+
+        if (activeTasks && activeTasks.count > 0) {
+          return textResponse(
+            `Error: Zone ${zoneId} has ${activeTasks.count} active task(s). ` +
+            `Set force=true to delete anyway, or cancel/reassign tasks first.`
+          );
+        }
+      }
+
+      const cached = coordinatorCache.get(zoneId);
+      if (cached) {
+        coordinatorCache.delete(zoneId);
+      }
+
+      const db = getDatabase().getDatabase();
+      db.prepare('DELETE FROM zones WHERE zone_id = ?').run(zoneId);
+      db.prepare('DELETE FROM zone_contexts WHERE zone_id = ?').run(zoneId);
+
+      logMcp('info', `Zone ${zoneId} deleted${force ? ' (forced)' : ''}`);
+      return jsonResponse({
+        success: true,
+        zoneId,
+        force: !!force,
+        message: `Zone ${zoneId} has been deleted.`,
+      });
+    } catch (error) {
+      logMcp('error', `Failed to delete zone ${zoneId}: ${error instanceof Error ? error.message : String(error)}`);
+      return textResponse(`Error deleting zone: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+);
+
+// ============================================================
+// Tool 12: list_zone_files
+// ============================================================
+
+mcpServer.tool(
+  'list_zone_files',
+  'List files in a Zone sandbox directory. Supports browsing subdirectories. Only allows reading within the zone sandbox.',
+  {
+    zoneId: z.string().describe('The Zone ID'),
+    subpath: z.string().optional().describe('Optional subdirectory path relative to the zone sandbox root'),
+  },
+  async ({ zoneId, subpath }) => {
+    const zone = zoneRepository.getZone(zoneId);
+    if (!zone) {
+      return textResponse(`Error: Zone ${zoneId} not found.`);
+    }
+
+    try {
+      const basePath = zone.path || '';
+      if (!basePath) {
+        return textResponse(`Error: Zone ${zoneId} has no sandbox path configured.`);
+      }
+
+      const targetPath = subpath ? path.join(basePath, subpath) : basePath;
+      const resolvedBase = path.resolve(basePath);
+      const resolvedTarget = path.resolve(targetPath);
+
+      if (!resolvedTarget.startsWith(resolvedBase)) {
+        return textResponse(`Error: Access denied. Path ${subpath || ''} is outside the zone sandbox.`);
+      }
+
+      const entries = readdirSync(resolvedTarget, { withFileTypes: true });
+      const files = entries.map(entry => {
+        const stat = statSync(path.join(resolvedTarget, entry.name));
+        return {
+          name: entry.name,
+          type: entry.isDirectory() ? 'directory' : 'file',
+          size: stat.size,
+          modifiedAt: stat.mtime.getTime(),
+        };
+      });
+
+      return jsonResponse({
+        zoneId,
+        path: resolvedTarget,
+        files,
+      });
+    } catch (error) {
+      logMcp('error', `Failed to list files for zone ${zoneId}: ${error instanceof Error ? error.message : String(error)}`);
+      return textResponse(`Error listing zone files: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+);
+
+// ============================================================
+// Tool 13: create_manual_task
+// ============================================================
+
+mcpServer.tool(
+  'create_manual_task',
+  'Manually create a task in a Zone without requirement decomposition. Directly writes to the tasks table. If assigneeId is provided, the task is immediately assigned; otherwise it remains pending.',
+  {
+    zoneId: z.string().describe('The Zone ID'),
+    title: z.string().describe('Task title'),
+    description: z.string().optional().describe('Task description'),
+    type: z.enum(['coding', 'writing', 'analysis', 'research', 'general']).optional().describe('Task type'),
+    priority: z.number().min(1).max(5).optional().describe('Task priority (1-5, 1 = highest)'),
+    assigneeId: z.string().optional().describe('Optional agent ID to assign the task to immediately'),
+  },
+  async ({ zoneId, title, description, type, priority, assigneeId }) => {
+    const validation = validateZone(zoneId);
+    if (!validation.valid) {
+      return validation.response;
+    }
+
+    try {
+      const coordinator = await getCoordinator(zoneId);
+      const task = coordinator.createManualTask({
+        title,
+        description,
+        type: (type || 'general') as 'coding' | 'writing' | 'analysis' | 'research' | 'general',
+        priority: (priority || 3) as 1 | 2 | 3 | 4 | 5,
+        assigneeId,
+      });
+
+      logMcp('info', `Manual task created in zone ${zoneId}: ${task.id}`);
+      return jsonResponse({
+        success: true,
+        taskId: task.id,
+        title: task.title,
+        type: task.type,
+        priority: task.priority,
+        status: task.status,
+        assigneeId: task.assigneeId || null,
+        message: `Task "${title}" created in Zone ${zoneId}.`,
+      });
+    } catch (error) {
+      logMcp('error', `Failed to create manual task in zone ${zoneId}: ${error instanceof Error ? error.message : String(error)}`);
+      return textResponse(`Error creating manual task: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+);
+
+// ============================================================
+// Tool 14: update_zone
+// ============================================================
+
+mcpServer.tool(
+  'update_zone',
+  'Update Zone configuration including title, description (prompt), and status.',
+  {
+    zoneId: z.string().describe('The Zone ID'),
+    title: z.string().optional().describe('New zone title'),
+    prompt: z.string().optional().describe('New zone description/prompt'),
+    status: z.enum(['idle', 'active', 'busy', 'completed', 'error']).optional().describe('New zone status'),
+  },
+  async ({ zoneId, title, prompt, status }) => {
+    const zone = zoneRepository.getZone(zoneId);
+    if (!zone) {
+      return textResponse(`Error: Zone ${zoneId} not found.`);
+    }
+
+    try {
+      const updates: { title?: string; prompt?: string } = {};
+      if (title !== undefined) updates.title = title;
+      if (prompt !== undefined) updates.prompt = prompt;
+
+      if (Object.keys(updates).length > 0) {
+        zoneRepository.updateZone(zoneId, updates);
+      }
+
+      if (status !== undefined) {
+        const db = getDatabase().getDatabase();
+        db.prepare('UPDATE zones SET status = ? WHERE zone_id = ?').run(status, zoneId);
+      }
+
+      logMcp('info', `Zone ${zoneId} updated`);
+      return jsonResponse({
+        success: true,
+        zoneId,
+        updates: {
+          title: title !== undefined ? title : zone.title,
+          prompt: prompt !== undefined ? prompt : zone.prompt,
+          status: status !== undefined ? status : zone.status,
+        },
+        message: `Zone ${zoneId} updated successfully.`,
+      });
+    } catch (error) {
+      logMcp('error', `Failed to update zone ${zoneId}: ${error instanceof Error ? error.message : String(error)}`);
+      return textResponse(`Error updating zone: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+);
+
+// ============================================================
+// Tool 15: get_agent_status
+// ============================================================
+
+mcpServer.tool(
+  'get_agent_status',
+  'Get agent status including current task counts, associated zones, and online/offline state. If no agentId is provided, returns status for all agents.',
+  {
+    agentId: z.string().optional().describe('Optional agent ID. If omitted, returns all agents.'),
+  },
+  async ({ agentId }) => {
+    try {
+      const db = getDatabase().getDatabase();
+      const HEARTBEAT_THRESHOLD_MS = 5 * 60 * 1000;
+
+      if (agentId) {
+        const zones = zoneMemberRepository.getMembersByAgent(agentId);
+        const activeResult = db.prepare(
+          `SELECT COUNT(*) as count FROM tasks WHERE assigned_agent_id = ? AND status IN ('assigned', 'in_progress')`
+        ).get(agentId) as { count: number } | undefined;
+        const pendingResult = db.prepare(
+          `SELECT COUNT(*) as count FROM tasks WHERE assigned_agent_id = ? AND status = 'pending'`
+        ).get(agentId) as { count: number } | undefined;
+        const bg = db.prepare(
+          `SELECT status, last_heartbeat_at FROM agent_backgrounds WHERE agent_id = ?`
+        ).get(agentId) as { status: string; last_heartbeat_at: number | null } | undefined;
+
+        const isOnline = bg?.status === 'running' && bg?.last_heartbeat_at
+          ? (Date.now() - bg.last_heartbeat_at) < HEARTBEAT_THRESHOLD_MS
+          : false;
+
+        return jsonResponse({
+          agentId,
+          activeTaskCount: activeResult?.count ?? 0,
+          pendingTaskCount: pendingResult?.count ?? 0,
+          isOnline,
+          lastHeartbeatAt: bg?.last_heartbeat_at || null,
+          zones: zones.map(z => ({ zoneId: z.zoneId, role: z.role, enteredAt: z.enteredAt })),
+        });
+      }
+
+      const allAgents = db.prepare(
+        `SELECT DISTINCT agent_id FROM zone_members WHERE left_at IS NULL
+         UNION
+         SELECT DISTINCT agent_id FROM agent_capabilities`
+      ).all() as Array<{ agent_id: string }>;
+
+      const statuses = [];
+      for (const row of allAgents) {
+        const id = row.agent_id;
+        const zones = zoneMemberRepository.getMembersByAgent(id);
+        const activeResult = db.prepare(
+          `SELECT COUNT(*) as count FROM tasks WHERE assigned_agent_id = ? AND status IN ('assigned', 'in_progress')`
+        ).get(id) as { count: number } | undefined;
+        const pendingResult = db.prepare(
+          `SELECT COUNT(*) as count FROM tasks WHERE assigned_agent_id = ? AND status = 'pending'`
+        ).get(id) as { count: number } | undefined;
+        const bg = db.prepare(
+          `SELECT status, last_heartbeat_at FROM agent_backgrounds WHERE agent_id = ?`
+        ).get(id) as { status: string; last_heartbeat_at: number | null } | undefined;
+
+        const isOnline = bg?.status === 'running' && bg?.last_heartbeat_at
+          ? (Date.now() - bg.last_heartbeat_at) < HEARTBEAT_THRESHOLD_MS
+          : false;
+
+        statuses.push({
+          agentId: id,
+          activeTaskCount: activeResult?.count ?? 0,
+          pendingTaskCount: pendingResult?.count ?? 0,
+          isOnline,
+          lastHeartbeatAt: bg?.last_heartbeat_at || null,
+          zoneCount: zones.length,
+          zones: zones.map(z => ({ zoneId: z.zoneId, role: z.role })),
+        });
+      }
+
+      return jsonResponse({ agents: statuses });
+    } catch (error) {
+      logMcp('error', `Failed to get agent status: ${error instanceof Error ? error.message : String(error)}`);
+      return textResponse(`Error getting agent status: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+);
+
+// ============================================================
 // Resources
 // ============================================================
 
@@ -518,6 +994,43 @@ mcpServer.resource(
           zoneCount: zones.length,
           agentCount,
           databaseStatus: projectId ? 'connected' : 'no_project',
+        }, null, 2),
+      }],
+    };
+  }
+);
+
+mcpServer.resource(
+  'zone-audit-log',
+  new ResourceTemplate('zone://{zoneId}/audit-log', { list: undefined }),
+  {
+    description: 'Zone audit log with the 50 most recent events in descending chronological order',
+    mimeType: 'application/json',
+  },
+  async (uri, variables) => {
+    const zoneId = Array.isArray(variables.zoneId) ? variables.zoneId[0] : variables.zoneId;
+    const zone = zoneRepository.getZone(zoneId);
+    if (!zone) {
+      return {
+        contents: [{
+          uri: uri.href,
+          mimeType: 'application/json',
+          text: JSON.stringify({ error: `Zone ${zoneId} not found` }),
+        }],
+      };
+    }
+
+    const result = auditLogRepository.getZoneAuditTrail(zoneId, { limit: 50 });
+
+    return {
+      contents: [{
+        uri: uri.href,
+        mimeType: 'application/json',
+        text: JSON.stringify({
+          zoneId,
+          total: result.total,
+          hasMore: result.hasMore,
+          events: result.events,
         }, null, 2),
       }],
     };
