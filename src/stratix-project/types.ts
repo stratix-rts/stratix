@@ -1,7 +1,8 @@
-// Unified Zone status (superset of old ProjectStatus)
+// Unified Zone status (superset of old ZoneStatus)
 export type ZoneStatus = 'idle' | 'active' | 'busy' | 'completed' | 'error' | 'pending' | 'paused' | 'failed';
 
 /** @deprecated Use ZoneStatus */
+/** @deprecated Use ZoneStatus — kept for backward compat */
 export type ProjectStatus = ZoneStatus;
 
 export type TaskType = 'writing' | 'coding' | 'drawing' | 'video' | 'research';

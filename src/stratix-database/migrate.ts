@@ -3,7 +3,7 @@ import path from 'path';
 import * as fs from 'fs-extra';
 
 import { StratixAgentConfig, AgentBackendType, AgentConfigStatus, CharacterProfile, StratixSoulConfig, StratixMemoryConfig, OpenClawConfig, StratixDirectConfig } from '../stratix-core/stratix-protocol';
-import { MessageSender, ProjectChannelType, MessageRole, ProjectMessageType, ProjectStatus, ProjectConfig, ProjectZoneConfig } from '../stratix-project/types';
+import { MessageSender, ProjectChannelType, MessageRole, ProjectMessageType, ZoneStatus, ProjectConfig, ProjectZoneConfig } from '../stratix-project/types';
 
 import { agentRepository } from './AgentRepository';
 import { zoneRepository } from './ZoneRepository';
@@ -188,7 +188,7 @@ async function migrate() {
           name: String(project.name),
           description: String(project.description || ''),
           priority: Number(project.priority) || DEFAULT_PRIORITY,
-          status: String(project.status) as ProjectStatus,
+          status: String(project.status) as ZoneStatus,
           config: (project.config || {}) as ProjectConfig,
           path: String(project.path || ''),
           presentAgentIds: (project.presentAgentIds || []) as string[],

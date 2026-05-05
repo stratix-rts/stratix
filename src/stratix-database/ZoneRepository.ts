@@ -2,7 +2,7 @@ import { mkdirSync } from 'fs';
 
 import type { Database, Statement } from './sqlite-adapter';
 
-import { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskStatus, ZoneMessage, SenderType, FileVersion, FileMetadata, ZoneConfig, Project, ProjectConfig, ProjectChannel, ProjectChannelMessage, ProjectStatus, ProjectZoneConfig, ProjectChannelType, MessageRole, ProjectMessageType } from '../stratix-project/types';
+import { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskStatus, ZoneMessage, SenderType, FileVersion, FileMetadata, ZoneConfig, Project, ProjectConfig, ProjectChannel, ProjectChannelMessage, ProjectZoneConfig, ProjectChannelType, MessageRole, ProjectMessageType } from '../stratix-project/types';
 import { ZoneStatus } from '../stratix-rts/zones/BaseZone';
 import { generateId } from '../stratix-project/utils/helpers';
 import path from 'path';
@@ -1055,7 +1055,7 @@ export class ZoneRepository {
       name: row.name,
       description: row.description,
       priority: row.priority,
-      status: row.status as ProjectStatus,
+      status: row.status as ZoneStatus,
       config: parseJsonSafe(row.config, {} as ProjectConfig),
       path: row.path,
       presentAgentIds: parseJsonSafe(row.present_agent_ids, [] as string[]),

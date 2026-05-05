@@ -1,7 +1,7 @@
 import { ApiClient } from '../stratix-gateway/api/client';
 import { API_PATHS, isApiSuccess, isApiError } from '../stratix-gateway/api/types/api';
 
-import { Project, ProjectConfig, ProjectZoneConfig, ProjectStatus, ZoneConfig } from './types';
+import { Project, ProjectConfig, ProjectZoneConfig, ZoneStatus, ZoneConfig } from './types';
 
 export interface ProjectClientConfig {
   baseURL?: string;
@@ -51,7 +51,7 @@ export class ZoneClient {
     return result.data || [];
   }
 
-  async getZonesByStatus(status: ProjectStatus): Promise<Project[]> {
+  async getZonesByStatus(status: ZoneStatus): Promise<Project[]> {
     const result = await this.client.get<Project[]>(API_PATHS.PROJECTS, {
       headers: { params: JSON.stringify({ status }) }
     });

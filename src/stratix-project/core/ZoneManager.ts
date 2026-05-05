@@ -3,7 +3,7 @@ import mitt from 'mitt';
 import { ParsedTask } from '../../stratix-ai-service/types';
 import { LRAClient } from '../../stratix-lra-bridge';
 import { ZoneStore } from '../storage/ZoneStore';
-import { Project, ProjectConfig, ProjectStatus, ZoneConfig } from '../types';
+import { Project, ProjectConfig, ZoneStatus, ZoneConfig } from '../types';
 import { generateId } from '../utils/helpers';
 
 
@@ -110,7 +110,7 @@ export class ZoneManager {
     return await this.store.getAllZones();
   }
 
-  public async getZonesByStatus(status: ProjectStatus): Promise<Project[]> {
+  public async getZonesByStatus(status: ZoneStatus): Promise<Project[]> {
     return await this.store.getZonesByStatus(status);
   }
 

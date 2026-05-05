@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 
 import { BaseZone, BaseZoneConfig, ZoneStatus } from '../../stratix-rts/zones/BaseZone';
-import { Project, ProjectStatus, ProjectZoneConfig, ZoneConfig } from '../types';
+import { Project, ProjectZoneConfig, ZoneConfig } from '../types';
 
 const PROJECT_ZONE_COLORS = {
   fence: 0x00aaff,
@@ -178,7 +178,7 @@ export class GameZone extends BaseZone {
     this.redrawWithCustomColors();
   }
 
-  private mapProjectStatus(status: ProjectStatus): ZoneStatus {
+  private mapProjectStatus(status: ZoneStatus): ZoneStatus {
     const mapping: Record<string, ZoneStatus> = {
       idle: 'idle',
       pending: 'idle',
