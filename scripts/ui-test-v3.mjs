@@ -51,8 +51,9 @@ async function run() {
   if (await canvas.count() > 0) {
     const box = await canvas.boundingBox();
     if (box) {
-      const sx = box.x + 350, sy = box.y + 250;
-      const ex = box.x + 650, ey = box.y + 500;
+      // Draw in top-left area to avoid overlapping existing zones (which are centered ~529,451)
+      const sx = box.x + 50, sy = box.y + 50;
+      const ex = box.x + 250, ey = box.y + 200;
       
       await page.mouse.move(sx, sy);
       await sleep(100);

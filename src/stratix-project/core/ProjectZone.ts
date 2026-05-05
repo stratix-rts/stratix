@@ -35,14 +35,17 @@ export class ProjectZone extends BaseZone {
   private agentCountText: Phaser.GameObjects.Text | null = null;
 
   constructor(scene: Phaser.Scene, project: Project, zoneConfig?: Partial<ProjectZoneConfig>) {
+    const defaultZoneConfig: ProjectZoneConfig = { x: 200, y: 200, width: 300, height: 200 };
+    const effectiveConfig = { ...defaultZoneConfig, ...project.zoneConfig };
+
     const config: BaseZoneConfig = {
       ...PROJECT_ZONE_CONFIG,
       id: project.id,
       name: project.name,
-      x: zoneConfig?.x ?? project.zoneConfig.x,
-      y: zoneConfig?.y ?? project.zoneConfig.y,
-      width: zoneConfig?.width ?? project.zoneConfig.width,
-      height: zoneConfig?.height ?? project.zoneConfig.height
+      x: zoneConfig?.x ?? effectiveConfig.x,
+      y: zoneConfig?.y ?? effectiveConfig.y,
+      width: zoneConfig?.width ?? effectiveConfig.width,
+      height: zoneConfig?.height ?? effectiveConfig.height
     };
 
     super(scene, config);
