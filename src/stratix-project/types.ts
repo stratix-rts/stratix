@@ -1,4 +1,8 @@
-export type ProjectStatus = 'pending' | 'active' | 'paused' | 'completed' | 'failed';
+// Unified Zone status (superset of old ProjectStatus)
+export type ZoneStatus = 'idle' | 'active' | 'busy' | 'completed' | 'error' | 'pending' | 'paused' | 'failed';
+
+/** @deprecated Use ZoneStatus */
+export type ProjectStatus = ZoneStatus;
 
 export type TaskType = 'writing' | 'coding' | 'drawing' | 'video' | 'research';
 
@@ -42,7 +46,8 @@ export interface ProjectConfig {
   progressRule: ProgressRule;
 }
 
-export interface ProjectZoneConfig {
+// Unified Zone visual config
+export interface ZoneConfig {
   x: number;
   y: number;
   width: number;
@@ -53,6 +58,13 @@ export interface ProjectZoneConfig {
   buildingType?: 'data-center' | 'workshop' | 'studio' | 'library' | 'command';
 }
 
+/** @deprecated Use ZoneConfig */
+export type ProjectZoneConfig = ZoneConfig;
+
+// ============================================================
+// Project — kept as standalone interface for backward compat
+// Will be eliminated in subsequent batches
+// ============================================================
 export interface Project {
   id: string;
   name: string;
@@ -67,7 +79,6 @@ export interface Project {
   updatedAt: Date;
   startedAt?: Date;
   completedAt?: Date;
-  // Zone context (OKR data from zone_contexts table)
   zoneContext?: {
     title: string;
     prompt: string;
@@ -143,15 +154,8 @@ export interface TaskConfig {
   typeSpecificConfig?: TypeSpecificConfig;
 }
 
-export interface TaskZoneConfig {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  color?: number;
-  opacity?: number;
-  visible?: boolean;
-}
+/** @deprecated Use ZoneConfig */
+export type TaskZoneConfig = ZoneConfig;
 
 export interface TaskLog {
   timestamp: Date;
@@ -182,11 +186,11 @@ export interface Task {
   dependencies: string[];
   progress: number;
   result?: TaskResult;
-  zoneConfig: TaskZoneConfig;
-  createdAt: Date;
-  updatedAt: Date;
-  startedAt?: Date;
-  completedAt?: Date;
+  zoneConfig: ZoneConfig;
+  createdAt: number | Date;
+  updatedAt: number | Date;
+  startedAt?: number | Date;
+  completedAt?: number | Date;
 }
 
 export interface SuggestedTask {
@@ -342,23 +346,37 @@ export interface ZoneFile {
 
 export interface Zone {
   id: string;
-  projectId?: string;  // 兼容旧数据，新数据中 projectId 就是 id
-  title: string;  // 来自 projects.name 或 zone_contexts.title
-  prompt: string;  // 来自 zone_contexts.prompt
-  description?: string;  // 来自 projects.description
-  priority?: number;  // 来自 projects.priority
-  status?: 'idle' | 'active' | 'busy' | 'completed' | 'error';
-  config?: ProjectZoneConfig;  // 位置、大小等配置
-  path?: string;  // 来自 projects.path
-  presentAgentIds?: string[];  // 当前在区域内的 agent
-  members: string[];  // zone 成员（来自 zone_contexts）
+  projectId?: string;
+  name?: string;  // From Project, for compatibility
+  title: string;
+  prompt: string;
+  description?: string;
+  priority?: number;
+  status?: ZoneStatus;
+  config?: any;  // Accepts ProjectConfig, ZoneConfig, etc.
+  localFolderPath?: string;  // From ProjectConfig
+  gitConfig?: GitConfig;
+  agentMode?: AgentMode;
+  planningRule?: PlanningRule;
+  executionPermission?: ExecutionPermission;
+  requirement?: ProjectRequirement;
+  progressRule?: ProgressRule;
+  path?: string;
+  presentAgentIds?: string[];
+  zoneConfig?: ZoneConfig;  // Visual config
+  members: string[];
   files: ZoneFile[];
   tasks?: ZoneTask[];
   messages?: ZoneMessage[];
   createdAt: number;
   updatedAt: number;
-  startedAt?: number;  // 开始时间
-  completedAt?: number;  // 完成时间
+  startedAt?: number;
+  completedAt?: number;
+  zoneContext?: {
+    title: string;
+    prompt: string;
+    members: string[];
+  };
 }
 
 export interface ZoneCreateRequest {

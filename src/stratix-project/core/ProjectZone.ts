@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 
 import { BaseZone, BaseZoneConfig, ZoneStatus } from '../../stratix-rts/zones/BaseZone';
-import { Project, ProjectStatus, ProjectZoneConfig } from '../types';
+import { Project, ProjectStatus, ProjectZoneConfig, ZoneConfig } from '../types';
 
 const PROJECT_ZONE_COLORS = {
   fence: 0x00aaff,
@@ -11,11 +11,14 @@ const PROJECT_ZONE_COLORS = {
   warning: 0xff0000,
   handle: 0xffff00,
   status: {
+    idle: 0x888888,
     pending: 0x888888,
     active: 0x00aaff,
+    busy: 0xffaa00,
     completed: 0x00ff00,
     paused: 0xffaa00,
-    failed: 0xff0000
+    failed: 0xff0000,
+    error: 0xff0000
   }
 };
 
@@ -176,14 +179,17 @@ export class ProjectZone extends BaseZone {
   }
 
   private mapProjectStatus(status: ProjectStatus): ZoneStatus {
-    const mapping: Record<ProjectStatus, ZoneStatus> = {
+    const mapping: Record<string, ZoneStatus> = {
+      idle: 'idle',
       pending: 'idle',
       active: 'active',
+      busy: 'busy',
       completed: 'completed',
-      paused: 'idle',
-      failed: 'error'
+      paused: 'paused',
+      failed: 'failed',
+      error: 'error'
     };
-    return mapping[status];
+    return mapping[status] || 'idle';
   }
 
   private redrawWithCustomColors(): void {

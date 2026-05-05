@@ -11,7 +11,7 @@ const hexToNumber = (hex: string): number => {
   return Number.isNaN(parsed) ? 0x888888 : parsed;
 };
 
-export type ZoneStatus = 'idle' | 'active' | 'busy' | 'error' | 'completed';
+export type ZoneStatus = 'idle' | 'active' | 'busy' | 'error' | 'completed' | 'pending' | 'paused' | 'failed';
 
 export interface BaseZoneConfig {
   id: string;
@@ -33,10 +33,13 @@ const BASE_ZONE_COLORS = {
   handle: hexToNumber(getToken("colors.status.warning")),
   status: {
     idle: hexToNumber(getToken("colors.text.muted")),
+    pending: hexToNumber(getToken("colors.text.muted")),
     active: hexToNumber(getToken("colors.status.success")),
     busy: hexToNumber(getToken("colors.status.warning")),
     error: hexToNumber(getToken("colors.status.danger")),
-    completed: hexToNumber(getToken("colors.status.success"))
+    completed: hexToNumber(getToken("colors.status.success")),
+    paused: hexToNumber(getToken("colors.status.warning")),
+    failed: hexToNumber(getToken("colors.status.danger"))
   }
 };
 
