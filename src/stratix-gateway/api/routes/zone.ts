@@ -214,9 +214,21 @@ router.get('/zones/:zoneId', async (req: Request, res: Response): Promise<void> 
 router.put('/zones/:zoneId', async (req: Request, res: Response): Promise<void> => {
   try {
     const zoneId = getParam(req, 'zoneId');
-    const updates = req.body as ZoneUpdateRequest;
+    const body = req.body as ZoneUpdateRequest & { config?: any; zoneConfig?: any; status?: string; presentAgentIds?: string[]; path?: string };
 
-    const zone = await zoneService.updateZone(zoneId, updates);
+    // Project-compat: if body has `updates` wrapper or project-style fields, use projectRepository
+    const updates = body.updates ? (body as any).updates : body;
+    if (updates.config || updates.zoneConfig || updates.status || updates.path !== undefined || body.updates) {
+      const updated = zoneRepository.updateProject(zoneId, updates as any);
+      if (!updated) {
+        res.status(404).json({ success: false, error: 'Project not found' });
+        return;
+      }
+      res.json({ success: true, data: updated });
+      return;
+    }
+
+    const zone = await zoneService.updateZone(zoneId, body);
 
     res.json({
       success: true,
