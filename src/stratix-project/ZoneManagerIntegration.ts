@@ -21,7 +21,7 @@ export interface ZoneManagerIntegrationConfig {
 type ProjectManagerEvents = {
   'project:created': { project: Project };
   'project:updated': { project: Project };
-  'project:deleted': { projectId: string };
+  'zone:deleted': { projectId: string };
   'project:status-changed': { project: Project; oldStatus: string; newStatus: string };
   'projects:loaded': void;
   'project:zone-moved': { project: Project } & Record<string, unknown>;
@@ -78,7 +78,7 @@ export class ZoneManagerIntegration {
       this.updateProjectZone(project);
     });
 
-    this.eventBus.on('project:deleted', ({ projectId }) => {
+    this.eventBus.on('zone:deleted', ({ projectId }) => {
       console.log('[ZoneManager] Project deleted:', projectId);
       this.removeProjectZone(projectId);
     });

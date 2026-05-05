@@ -199,7 +199,7 @@ export class ZoneClient {
       throw new Error(`Failed to add agent to project ${projectId}: ${result.error}`);
     }
 
-    console.log(`[ZoneClient] Agent ${agentId} entered project ${projectId}`);
+    console.log(`[ZoneClient] Agent  entered zone ${projectId}`);
     return result.data;
   }
 
@@ -213,7 +213,7 @@ export class ZoneClient {
       throw new Error(`Failed to remove agent from project ${projectId}: ${result.error}`);
     }
 
-    console.log(`[ZoneClient] Agent ${agentId} left project ${projectId}`);
+    console.log(`[ZoneClient] Agent  left zone ${projectId}`);
     return result.data;
   }
 

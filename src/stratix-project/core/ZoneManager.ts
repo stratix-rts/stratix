@@ -103,7 +103,7 @@ export class ZoneManager {
     }
 
     await this.store.deleteZone(id);
-    this.eventBus.emit('project:deleted', { projectId: id });
+    this.eventBus.emit('zone:deleted', { projectId: id });
   }
 
   public async getAllZones(): Promise<Project[]> {
@@ -198,7 +198,7 @@ export class ZoneManager {
       );
     }
 
-    console.log(`[ZoneManager] Created ${tasks.length} tasks from AI for project ${projectId}`);
+    console.log(`[ZoneManager] Created  tasks from AI for zone ${projectId}`);
   }
 
   public async createTaskManually(
@@ -217,7 +217,7 @@ export class ZoneManager {
       template
     );
 
-    console.log(`[ZoneManager] Created task ${taskId} for project ${projectId}`);
+    console.log(`[ZoneManager] Created task  for zone ${projectId}`);
     return taskId;
   }
 
@@ -237,8 +237,8 @@ export class ZoneManager {
         presentAgentIds: project.presentAgentIds
       });
 
-      this.eventBus.emit('project:agent-entered', { projectId, agentId });
-      console.log(`[ZoneManager] Agent ${agentId} entered project ${projectId}`);
+      this.eventBus.emit('zone:agent-entered', { projectId, agentId });
+      console.log(`[ZoneManager] Agent  entered zone ${projectId}`);
     }
   }
 
@@ -262,7 +262,7 @@ export class ZoneManager {
       presentAgentIds: project.presentAgentIds
     });
 
-    this.eventBus.emit('project:agent-left', { projectId, agentId });
-    console.log(`[ZoneManager] Agent ${agentId} left project ${projectId}`);
+    this.eventBus.emit('zone:agent-left', { projectId, agentId });
+    console.log(`[ZoneManager] Agent  left zone ${projectId}`);
   }
 }

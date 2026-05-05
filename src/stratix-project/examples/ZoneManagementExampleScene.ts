@@ -114,7 +114,7 @@ export class ProjectManagementExampleScene extends Phaser.Scene {
     });
 
     // 监听项目删除事件
-    eventBus.on('project:deleted', ({ projectId }) => {
+    eventBus.on('zone:deleted', ({ projectId }) => {
       console.log('[ProjectManagement] Project deleted:', projectId);
     });
 
