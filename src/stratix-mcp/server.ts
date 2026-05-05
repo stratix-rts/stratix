@@ -18,7 +18,7 @@ import { Router, Request, Response } from 'express';
 import { zoneRepository } from '../stratix-database/ZoneRepository';
 import { zoneMemberRepository } from '../stratix-database/ZoneMemberRepository';
 import { agentCapabilityRepository } from '../stratix-database/AgentCapabilityRepository';
-import { projectRepository } from '../stratix-database/ProjectRepository';
+import { zoneRepository as projectRepository } from '../stratix-database/ZoneRepository';
 import { ZoneCoordinator } from '../stratix-orchestration/zone/ZoneCoordinator';
 import type { Capability } from '../stratix-database/AgentCapabilityRepository';
 import { TaskQueueService } from '../stratix-orchestration/task-queue/TaskQueueService';

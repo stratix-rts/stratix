@@ -1,4 +1,3 @@
-import { projectRepository } from '../../stratix-database/ProjectRepository';
 import { zoneRepository } from '../../stratix-database/ZoneRepository';
 import { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskUpdateRequest, ZoneMessage, FileVersion } from '../../stratix-project/types';
 import { gatewayEventBus } from '../GatewayEventBus';
@@ -140,9 +139,9 @@ export class ZoneService {
     await this.ensureInitialized();
 
     // Verify project exists, auto-create default if missing
-    let project = projectRepository.getProject(projectId);
+    let project = zoneRepository.getProject(projectId);
     if (!project) {
-      project = projectRepository.createProject({
+      project = zoneRepository.createProject({
         id: projectId,
         name: projectId,
         priority: 0,
@@ -171,7 +170,7 @@ export class ZoneService {
     this.checkPermission('create', `project:${projectId}`, agentId);
 
     // Verify project exists
-    const project = projectRepository.getProject(projectId);
+    const project = zoneRepository.getProject(projectId);
     if (!project) {
       throw new Error(`Project not found: ${projectId}`);
     }
@@ -269,7 +268,7 @@ export class ZoneService {
     await this.ensureInitialized();
 
     // Verify project exists
-    const project = projectRepository.getProject(projectId);
+    const project = zoneRepository.getProject(projectId);
     if (!project) {
       throw new Error(`Project not found: ${projectId}`);
     }
@@ -632,7 +631,7 @@ export class ZoneService {
     this.checkPermission('import', `project:${projectId}`, agentId);
 
     // Verify project exists
-    const project = projectRepository.getProject(projectId);
+    const project = zoneRepository.getProject(projectId);
     if (!project) {
       throw new Error(`Project not found: ${projectId}`);
     }

@@ -6,7 +6,7 @@ import { StratixAgentConfig, AgentBackendType, AgentConfigStatus, CharacterProfi
 import { MessageSender, ProjectChannelType, MessageRole, ProjectMessageType, ProjectStatus, ProjectConfig, ProjectZoneConfig } from '../stratix-project/types';
 
 import { agentRepository } from './AgentRepository';
-import { projectRepository } from './ProjectRepository';
+import { zoneRepository } from './ZoneRepository';
 import { initializeDatabase, getDatabase } from './StratixDatabase';
 
 const DEFAULT_PRIORITY = 3;
@@ -198,7 +198,7 @@ async function migrate() {
           startedAt: project.startedAt ? new Date(String(project.startedAt)) : undefined,
           completedAt: project.completedAt ? new Date(String(project.completedAt)) : undefined
         };
-        projectRepository.createProject(mappedProject);
+        zoneRepository.createProject(mappedProject);
         log('info', `Project migrated: ${String(project.id)}`);
       }
     }
@@ -207,7 +207,7 @@ async function migrate() {
       for (const [projectId, channels] of Object.entries(projectsJson.channels)) {
         log('info', `Migrating ${channels.length} channels for project ${projectId}...`);
         for (const channel of channels) {
-          projectRepository.createChannel({
+          zoneRepository.createChannel({
             id: String(channel.id),
             projectId: String(channel.projectId),
             name: String(channel.name),
@@ -227,7 +227,7 @@ async function migrate() {
       for (const [projectId, messages] of Object.entries(projectsJson.messages)) {
         log('info', `Migrating ${messages.length} messages for project ${projectId}...`);
         for (const msg of messages) {
-          projectRepository.createMessage({
+          zoneRepository.createMessage({
             id: String(msg.id),
             projectId: String(msg.projectId),
             channelId: String(msg.channelId),
@@ -257,7 +257,7 @@ async function migrate() {
     throw error;
   }
 
-  const projectCount = projectRepository.getAllProjects().length;
+  const projectCount = zoneRepository.getAllProjects().length;
   log('info', `Verification: ${projectCount} projects in database`);
 }
 

@@ -2,13 +2,23 @@ import { mkdirSync } from 'fs';
 
 import type { Database, Statement } from './sqlite-adapter';
 
-import { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskStatus, ZoneMessage, SenderType, FileVersion, FileMetadata, ProjectZoneConfig } from '../stratix-project/types';
+import { Zone, ZoneFile, FileType, ZoneTask, ZoneTaskStatus, ZoneMessage, SenderType, FileVersion, FileMetadata, ZoneConfig, Project, ProjectConfig, ProjectChannel, ProjectChannelMessage, ProjectStatus, ProjectZoneConfig, ProjectChannelType, MessageRole, ProjectMessageType } from '../stratix-project/types';
 import { ZoneStatus } from '../stratix-rts/zones/BaseZone';
 import { generateId } from '../stratix-project/utils/helpers';
 import path from 'path';
 
 import { getDatabase } from './StratixDatabase';
 import { zoneMemberRepository } from './ZoneMemberRepository';
+
+function normalizeDate(value: Date | number | undefined | null): number | null {
+  if (value === undefined || value === null) return null;
+  return value instanceof Date ? value.getTime() : value;
+}
+
+function parseJsonSafe<T>(value: string | null | undefined, fallback: T): T {
+  if (!value) return fallback;
+  try { return JSON.parse(value) as T; } catch { return fallback; }
+}
 
 function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
   console[level](`[ZoneRepository] ${message}`, ctx || '');
@@ -879,6 +889,233 @@ export class ZoneRepository {
       senderType: row.sender_type as SenderType,
       content: row.content,
       createdAt: row.created_at
+    };
+  }
+
+  // ============================================================================
+  // ProjectRepository methods (migrated from ProjectRepository.ts)
+  // ============================================================================
+
+  private ProjectRow: undefined; // type hint only
+  private ChannelRow: undefined; // type hint only
+  private MessageRow: undefined; // type hint only
+
+  getAllProjects(): Project[] {
+    const rows = this.stmt('SELECT * FROM projects ORDER BY created_at DESC').all() as Array<{
+      project_id: string; name: string; description: string; priority: number;
+      status: string; config: string; path: string; present_agent_ids: string;
+      zone_config: string; created_at: number; updated_at: number;
+      started_at: number | null; completed_at: number | null;
+    }>;
+    return rows.map(row => this.mapProjectRow(row));
+  }
+
+  getProject(projectId: string): Project | null {
+    const row = this.stmt('SELECT * FROM projects WHERE project_id = ?').get(projectId) as {
+      project_id: string; name: string; description: string; priority: number;
+      status: string; config: string; path: string; present_agent_ids: string;
+      zone_config: string; created_at: number; updated_at: number;
+      started_at: number | null; completed_at: number | null;
+    } | undefined;
+    return row ? this.mapProjectRow(row) : null;
+  }
+
+  createProject(project: Project): Project {
+    const createdAt = normalizeDate(project.createdAt);
+    const updatedAt = normalizeDate(project.updatedAt);
+    const startedAt = normalizeDate(project.startedAt);
+    const completedAt = normalizeDate(project.completedAt);
+
+    this.stmt(`
+      INSERT INTO projects (project_id, name, description, priority, status, config, path, present_agent_ids, zone_config, created_at, updated_at, started_at, completed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      project.id, project.name, project.description, project.priority,
+      project.status, JSON.stringify(project.config), project.path,
+      JSON.stringify(project.presentAgentIds), JSON.stringify(project.zoneConfig),
+      createdAt, updatedAt, startedAt, completedAt
+    );
+
+    return project;
+  }
+
+  updateProject(projectId: string, updates: Partial<Project>): Project | null {
+    const existing = this.getProject(projectId);
+    if (!existing) return null;
+
+    const updated: Project = { ...existing, ...updates, id: projectId, updatedAt: new Date() };
+
+    this.stmt(`
+      UPDATE projects SET
+        name = ?, description = ?, priority = ?, status = ?, config = ?, path = ?,
+        present_agent_ids = ?, zone_config = ?, updated_at = ?, started_at = ?, completed_at = ?
+      WHERE project_id = ?
+    `).run(
+      updated.name, updated.description, updated.priority, updated.status,
+      JSON.stringify(updated.config), updated.path,
+      JSON.stringify(updated.presentAgentIds), JSON.stringify(updated.zoneConfig),
+      normalizeDate(updated.updatedAt), normalizeDate(updated.startedAt),
+      normalizeDate(updated.completedAt), projectId
+    );
+
+    return updated;
+  }
+
+  deleteProject(projectId: string): boolean {
+    const result = this.stmt('DELETE FROM projects WHERE project_id = ?').run(projectId);
+    return result.changes > 0;
+  }
+
+  getChannels(projectId: string): ProjectChannel[] {
+    const rows = this.stmt('SELECT * FROM channels WHERE project_id = ?').all(projectId) as Array<{
+      channel_id: string; project_id: string; name: string; type: string;
+      description: string; subscriber_ids: string; created_at: number; updated_at: number;
+    }>;
+    return rows.map(row => this.mapChannelRow(row));
+  }
+
+  getChannel(projectId: string, channelId: string): ProjectChannel | null {
+    const row = this.stmt('SELECT * FROM channels WHERE project_id = ? AND channel_id = ?').get(projectId, channelId) as {
+      channel_id: string; project_id: string; name: string; type: string;
+      description: string; subscriber_ids: string; created_at: number; updated_at: number;
+    } | undefined;
+    return row ? this.mapChannelRow(row) : null;
+  }
+
+  createChannel(channel: ProjectChannel): ProjectChannel {
+    this.stmt(`
+      INSERT INTO channels (channel_id, project_id, name, type, description, subscriber_ids, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      channel.id, channel.projectId, channel.name, channel.type,
+      channel.description || '', JSON.stringify(channel.subscriberIds),
+      channel.createdAt, channel.updatedAt
+    );
+    return channel;
+  }
+
+  updateChannel(projectId: string, channelId: string, subscriberIds: string[]): ProjectChannel | null {
+    this.stmt('UPDATE channels SET subscriber_ids = ?, updated_at = ? WHERE project_id = ? AND channel_id = ?')
+      .run(JSON.stringify(subscriberIds), Date.now(), projectId, channelId);
+    return this.getChannel(projectId, channelId);
+  }
+
+  getProjectMessages(projectId: string, channelId?: string): ProjectChannelMessage[] {
+    let rows: Array<{
+      message_id: string; project_id: string; channel_id: string; role: string;
+      content: string; sender: string; mentions: string; raw_content: string;
+      message_type: string; task_id: string; session_key: string; run_id: string;
+      metadata: string; timestamp: number;
+    }>;
+    if (channelId) {
+      rows = this.stmt('SELECT * FROM messages WHERE project_id = ? AND channel_id = ? ORDER BY timestamp ASC').all(projectId, channelId) as typeof rows;
+    } else {
+      rows = this.stmt('SELECT * FROM messages WHERE project_id = ? ORDER BY timestamp ASC').all(projectId) as typeof rows;
+    }
+    return rows.map(row => this.mapMessageRow(row));
+  }
+
+  getMessagesByMention(projectId: string, agentId: string): ProjectChannelMessage[] {
+    const rows = this.stmt(`
+      SELECT * FROM messages
+      WHERE project_id = ?
+        AND EXISTS (SELECT 1 FROM json_each(mentions) WHERE value = ?)
+      ORDER BY timestamp ASC
+    `).all(projectId, agentId) as Array<{
+      message_id: string; project_id: string; channel_id: string; role: string;
+      content: string; sender: string; mentions: string; raw_content: string;
+      message_type: string; task_id: string; session_key: string; run_id: string;
+      metadata: string; timestamp: number;
+    }>;
+    return rows.map(row => this.mapMessageRow(row));
+  }
+
+  createMessage(message: ProjectChannelMessage): ProjectChannelMessage {
+    this.stmt(`
+      INSERT INTO messages (message_id, project_id, channel_id, role, content, sender, mentions, raw_content, message_type, task_id, session_key, run_id, metadata, timestamp, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      message.id, message.projectId, message.channelId, message.role,
+      message.content, JSON.stringify(message.sender), JSON.stringify(message.mentions),
+      message.rawContent || '', message.messageType, message.taskId || '',
+      message.sessionKey || '', message.runId || '', JSON.stringify(message.metadata),
+      message.timestamp, message.timestamp
+    );
+    return message;
+  }
+
+  private mapProjectRow(row: {
+    project_id: string; name: string; description: string; priority: number;
+    status: string; config: string; path: string; present_agent_ids: string;
+    zone_config: string; created_at: number; updated_at: number;
+    started_at: number | null; completed_at: number | null;
+  }): Project {
+    return {
+      id: row.project_id,
+      name: row.name,
+      description: row.description,
+      priority: row.priority,
+      status: row.status as ProjectStatus,
+      config: parseJsonSafe(row.config, {} as ProjectConfig),
+      path: row.path,
+      presentAgentIds: parseJsonSafe(row.present_agent_ids, [] as string[]),
+      zoneConfig: parseJsonSafe(row.zone_config, {} as ZoneConfig),
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at),
+      startedAt: row.started_at ? new Date(row.started_at) : undefined,
+      completedAt: row.completed_at ? new Date(row.completed_at) : undefined
+    };
+  }
+
+  private mapChannelRow(row: {
+    channel_id: string; project_id: string; name: string; type: string;
+    description: string; subscriber_ids: string; created_at: number; updated_at: number;
+  }): ProjectChannel {
+    return {
+      id: row.channel_id,
+      projectId: row.project_id,
+      name: row.name,
+      type: row.type as ProjectChannelType,
+      description: row.description,
+      subscriberIds: parseJsonSafe(row.subscriber_ids, [] as string[]),
+      isPrivate: false,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
+  private mapMessageRow(row: {
+    message_id: string; project_id: string; channel_id: string; role: string;
+    content: string; sender: string; mentions: string; raw_content: string;
+    message_type: string; task_id: string; session_key: string; run_id: string;
+    metadata: string; timestamp: number;
+  }): ProjectChannelMessage {
+    let sender: { id: string; type: 'agent' | 'user'; name: string; avatar?: string; role?: string };
+    try {
+      sender = row.sender ? JSON.parse(row.sender) : { id: '', type: 'user' as const, name: '' };
+    } catch { sender = { id: '', type: 'user' as const, name: '' }; }
+
+    let mentions: string[] = [];
+    try { mentions = JSON.parse(row.mentions || '[]'); } catch { mentions = []; }
+
+    let metadata: { source: 'openclaw' | 'local' | 'user'; createdAt: string };
+    try { metadata = JSON.parse(row.metadata || '{}'); } catch { metadata = { source: 'user', createdAt: new Date().toISOString() }; }
+
+    return {
+      id: row.message_id,
+      projectId: row.project_id,
+      channelId: row.channel_id,
+      role: row.role as MessageRole,
+      content: row.content,
+      sender,
+      mentions,
+      rawContent: row.raw_content,
+      messageType: row.message_type as ProjectMessageType,
+      taskId: row.task_id || undefined,
+      sessionKey: row.session_key || undefined,
+      runId: row.run_id || undefined,
+      metadata,
+      timestamp: row.timestamp
     };
   }
 }

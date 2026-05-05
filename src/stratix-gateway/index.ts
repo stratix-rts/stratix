@@ -24,7 +24,6 @@ import agentTaskRoutes from './api/routes/agentTask';
 import commandRoutes, { setStatusSyncService as setCommandStatusSyncService } from './api/routes/command';
 import lraRoutes from './api/routes/lra';
 import openclawRoutes, { initWebSocketServer, initConnectionStore } from './api/routes/openclaw';
-import projectRoutes, { setStatusSyncService as setProjectStatusSyncService } from './api/routes/project';
 import skillRoutes from './api/routes/skill';
 import templateRoutes from './api/routes/template';
 import textureRoutes from './api/routes/texture';
@@ -140,7 +139,6 @@ export async function startGatewayService(
   app.use('/api/stratix/texture', textureRoutes);
   app.use('/api/stratix/openclaw', openclawRoutes);
   app.use('/api/lra', lraRoutes);
-  app.use('/api/projects', projectRoutes);
   app.use('/api', zoneRoutes);
   app.use('/api', zoneAuditRoutes);
   app.use('/api', zoneCoordinatorRoutes);
@@ -235,7 +233,6 @@ export async function startGatewayService(
   // 启动状态同步服务
   const statusSyncService = new StatusSyncService(WS_PORT);
   setCommandStatusSyncService(statusSyncService);
-  setProjectStatusSyncService(statusSyncService);
   console.log(`WebSocket status sync running on port ${WS_PORT}`);
 
   // 启动遗弃任务定时复活（每5分钟检查一次）

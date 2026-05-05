@@ -1,6 +1,7 @@
 export { StratixDatabase, initializeDatabase, getDatabase, destroyDatabase } from './StratixDatabase';
 export type { DatabaseConfig } from './StratixDatabase';
-export { projectRepository, ProjectRepository } from './ProjectRepository';
+// ProjectRepository merged into ZoneRepository — re-export from ZoneRepository for backward compat
+export { zoneRepository as projectRepository, ZoneRepository as ProjectRepository } from './ZoneRepository';
 export { agentRepository, AgentRepository } from './AgentRepository';
 export { zoneRepository, ZoneRepository } from './ZoneRepository';
 export { zoneMemberRepository, ZoneMemberRepository } from './ZoneMemberRepository';
