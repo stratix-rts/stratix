@@ -69,16 +69,17 @@ export interface PaginatedApiResponse<T> {
 /** API endpoint paths */
 export const API_PATHS = {
   // Project endpoints
-  PROJECTS: '/api/projects',
-  PROJECT_BY_ID: (id: string) => `/api/projects/${id}`,
-  PROJECT_START: (id: string) => `/api/projects/${id}/start`,
-  PROJECT_PAUSE: (id: string) => `/api/projects/${id}/pause`,
-  PROJECT_COMPLETE: (id: string) => `/api/projects/${id}/complete`,
-  PROJECT_FAIL: (id: string) => `/api/projects/${id}/fail`,
-  PROJECT_AGENTS_ENTER: (id: string) => `/api/projects/${id}/agents/enter`,
-  PROJECT_AGENTS_LEAVE: (id: string) => `/api/projects/${id}/agents/leave`,
-  PROJECT_METADATA: '/api/projects/metadata/info',
-  PROJECT_ZONE_CONTEXT_LINK: (id: string) => `/api/projects/${id}/zone-context-link`,
+  // Project paths now point to /api/zones (backward compat)
+  PROJECTS: '/api/zones',
+  PROJECT_BY_ID: (id: string) => `/api/zones/${id}`,
+  PROJECT_START: (id: string) => `/api/zones/${id}/start`,
+  PROJECT_PAUSE: (id: string) => `/api/zones/${id}/pause`,
+  PROJECT_COMPLETE: (id: string) => `/api/zones/${id}/complete`,
+  PROJECT_FAIL: (id: string) => `/api/zones/${id}/fail`,
+  PROJECT_AGENTS_ENTER: (id: string) => `/api/zones/${id}/agents/enter`,
+  PROJECT_AGENTS_LEAVE: (id: string) => `/api/zones/${id}/agents/leave`,
+  PROJECT_METADATA: '/api/zones/metadata/info',
+  PROJECT_ZONE_CONTEXT_LINK: (id: string) => `/api/zones/${id}/zone-context-link`,
 
   // Zone endpoints
   ZONES: '/api/zones',

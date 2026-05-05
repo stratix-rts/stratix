@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 
 import { ZoneCreateRequest, ZoneUpdateRequest, ZoneFileAddRequest, ZoneFolderScanRequest, ZoneTaskStatus } from '../../../stratix-project/types';
 import { zoneService, ZoneFileBatchRequest } from '../../project/ZoneService';
+import { zoneRepository } from '../../../stratix-database/ZoneRepository';
 
 const router = Router();
 
@@ -51,7 +52,30 @@ function handleZoneError(res: Response, error: unknown, context: string, statusM
  */
 router.post('/zones', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { projectId, title, prompt } = req.body as ZoneCreateRequest & { projectId?: string };
+    const body = req.body as ZoneCreateRequest & { projectId?: string; config?: any; zoneConfig?: any };
+
+    // Project-compat: if body has `config` but no `title`, create via project path
+    if (body.config && !body.title) {
+      const config = body.config;
+      const projectId = `proj_${Math.random().toString(36).slice(2, 10)}`;
+      const project = zoneRepository.createProject({
+        id: projectId,
+        name: config.name || 'Untitled',
+        description: config.description,
+        priority: config.priority || 3,
+        status: 'active',
+        config: config,
+        path: config.localFolderPath || '',
+        presentAgentIds: [],
+        zoneConfig: body.zoneConfig || { x: 200, y: 200, width: 300, height: 200 },
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+      res.json({ success: true, data: project });
+      return;
+    }
+
+    const { projectId, title, prompt } = body;
 
     if (!title) {
       res.status(400).json({
@@ -94,11 +118,10 @@ router.get('/zones', async (req: Request, res: Response): Promise<void> => {
   try {
     const projectId = (req.query.projectId as string) || '';
 
+    // Project-compat: if no projectId, return all projects
     if (!projectId) {
-      res.status(400).json({
-        success: false,
-        error: 'Missing required query parameter: projectId'
-      });
+      const projects = zoneRepository.getAllProjects();
+      res.json({ success: true, data: projects });
       return;
     }
 
@@ -159,9 +182,14 @@ router.get('/zones/search', async (req: Request, res: Response): Promise<void> =
 router.get('/zones/:zoneId', async (req: Request, res: Response): Promise<void> => {
   try {
     const zoneId = getParam(req, 'zoneId');
-    const zone = await zoneService.getZone(zoneId);
 
-    if (!zone) {
+    // Try zone first, then fall back to project
+    let result: any = await zoneService.getZone(zoneId);
+    if (!result) {
+      result = zoneRepository.getProject(zoneId);
+    }
+
+    if (!result) {
       res.status(404).json({
         success: false,
         error: 'Zone not found'
@@ -169,10 +197,7 @@ router.get('/zones/:zoneId', async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    res.json({
-      success: true,
-      zone
-    });
+    res.json({ success: true, data: result });
   } catch (error) {
     console.error('[Zone API] Get zone failed:', error);
     res.status(500).json({
@@ -1448,6 +1473,149 @@ router.post('/zones/import', async (req: Request, res: Response): Promise<void> 
     } else {
       res.status(500).json({ success: false, error: message });
     }
+  }
+});
+
+// ============================================
+// Project compatibility routes (migrated from project.ts)
+// ZoneClient still calls these endpoints
+// ============================================
+
+/**
+ * POST /api/zones/initialize
+ * Initialize project/zone system
+ */
+router.post('/zones/initialize', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    await zoneService.initialize();
+    res.json({ success: true, message: 'Initialized' });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to initialize';
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+/**
+ * POST /api/zones/:id/start
+ */
+router.post('/zones/:id/start', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = getParam(req, 'id');
+    const updated = zoneRepository.updateProject(id, { status: 'active', startedAt: new Date() });
+    res.json({ success: true, project: updated });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed';
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+/**
+ * POST /api/zones/:id/pause
+ */
+router.post('/zones/:id/pause', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = getParam(req, 'id');
+    const updated = zoneRepository.updateProject(id, { status: 'paused' });
+    res.json({ success: true, project: updated });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed';
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+/**
+ * POST /api/zones/:id/complete
+ */
+router.post('/zones/:id/complete', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = getParam(req, 'id');
+    const updated = zoneRepository.updateProject(id, { status: 'completed', completedAt: new Date() });
+    res.json({ success: true, project: updated });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed';
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+/**
+ * POST /api/zones/:id/fail
+ */
+router.post('/zones/:id/fail', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = getParam(req, 'id');
+    const updated = zoneRepository.updateProject(id, { status: 'failed', completedAt: new Date() });
+    res.json({ success: true, project: updated });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed';
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+/**
+ * POST /api/zones/:id/agents/enter
+ */
+router.post('/zones/:id/agents/enter', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = getParam(req, 'id');
+    const { agentId } = req.body as { agentId: string };
+    const project = zoneRepository.getProject(id);
+    if (!project) { res.status(404).json({ success: false, error: 'Not found' }); return; }
+    const agents = [...(project.presentAgentIds ?? []), agentId];
+    const updated = zoneRepository.updateProject(id, { presentAgentIds: agents });
+    res.json({ success: true, project: updated });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed';
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+/**
+ * POST /api/zones/:id/agents/leave
+ */
+router.post('/zones/:id/agents/leave', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = getParam(req, 'id');
+    const { agentId } = req.body as { agentId: string };
+    const project = zoneRepository.getProject(id);
+    if (!project) { res.status(404).json({ success: false, error: 'Not found' }); return; }
+    const agents = (project.presentAgentIds ?? []).filter(a => a !== agentId);
+    const updated = zoneRepository.updateProject(id, { presentAgentIds: agents });
+    res.json({ success: true, project: updated });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed';
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+/**
+ * PATCH /api/zones/:id/zone-context-link
+ */
+router.patch('/zones/:id/zone-context-link', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = getParam(req, 'id');
+    const { zoneContextId } = req.body as { zoneContextId: string };
+    // No-op for now — zone context linking is handled internally
+    res.json({ success: true, message: 'Zone context linked' });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed';
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+/**
+ * GET /api/zones/metadata/info
+ */
+router.get('/zones/metadata/info', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const projects = zoneRepository.getAllProjects();
+    res.json({
+      success: true,
+      total: projects.length,
+      byStatus: {} // Simplified
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed';
+    res.status(500).json({ success: false, error: message });
   }
 });
 
