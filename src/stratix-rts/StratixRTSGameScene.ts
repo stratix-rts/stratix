@@ -3,7 +3,7 @@ import Phaser from 'phaser';
 import { getToken, getCurrentTheme } from '@/design-system/config';
 
 import { StratixAgentConfig, ZoneInfo } from '../stratix-core/stratix-protocol';
-import { ProjectManagerIntegration } from '../stratix-project/ProjectManagerIntegration';
+import { ProjectManagerIntegration } from '../stratix-project/ZoneManagerIntegration';
 
 import { StratixRTSEventManager } from './StratixRTSEventManager';
 import { MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, DEFAULT_ZOOM } from './constants';

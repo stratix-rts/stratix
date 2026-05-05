@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 
 import { ZoneInfo } from '../../stratix-core/stratix-protocol';
-import { ProjectManagerIntegration } from '../../stratix-project/ProjectManagerIntegration';
+import { ProjectManagerIntegration } from '../../stratix-project/ZoneManagerIntegration';
 import { MAP_WIDTH, MAP_HEIGHT } from '../constants';
 import { rtsEventBus } from '../events/core/RTSEventBus';
 import { DataFlowAnimation } from '../effects/DataFlowAnimation';

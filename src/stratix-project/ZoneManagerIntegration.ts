@@ -6,8 +6,8 @@ import Phaser from 'phaser';
 import { rtsEventBus } from '../stratix-rts/events/core/RTSEventBus';
 import { UnifiedZoneManager } from '../stratix-rts/zones/UnifiedZoneManager';
 
-import { ProjectClient } from './ProjectClient';
-import { ProjectZone } from './core/ProjectZone';
+import { ProjectClient } from './ZoneClient';
+import { ProjectZone } from './core/GameZone';
 import { ProjectZonePreview } from './core/ProjectZonePreview';
 import { Project, ProjectConfig, ProjectZoneConfig, Zone } from './types';
 import { throttle } from './utils/helpers';

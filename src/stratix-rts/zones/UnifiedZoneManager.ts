@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 
-import { ProjectZone } from '../../stratix-project/core/ProjectZone';
+import { ProjectZone } from '../../stratix-project/core/GameZone';
 import { ZoneSpatialIndex, SpatialZone } from '../spatial/ZoneSpatialIndex';
 
 import { BaseZone } from './BaseZone';

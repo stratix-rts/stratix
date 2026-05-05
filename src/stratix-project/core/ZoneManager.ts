@@ -2,7 +2,7 @@ import mitt from 'mitt';
 
 import { ParsedTask } from '../../stratix-ai-service/types';
 import { LRAClient } from '../../stratix-lra-bridge';
-import { ProjectStore } from '../storage/ProjectStore';
+import { ProjectStore } from '../storage/ZoneStore';
 import { Project, ProjectConfig, ProjectStatus } from '../types';
 import { generateId } from '../utils/helpers';
 
