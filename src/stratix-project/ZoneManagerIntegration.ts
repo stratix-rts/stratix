@@ -21,7 +21,7 @@ export interface ZoneManagerIntegrationConfig {
 type ProjectManagerEvents = {
   'project:created': { project: Project };
   'project:updated': { project: Project };
-  'zone:deleted': { projectId: string };
+  'zone:deleted': { zoneId: string };
   'project:status-changed': { project: Project; oldStatus: string; newStatus: string };
   'projects:loaded': void;
   'project:zone-moved': { project: Project } & Record<string, unknown>;
@@ -78,9 +78,9 @@ export class ZoneManagerIntegration {
       this.updateProjectZone(project);
     });
 
-    this.eventBus.on('zone:deleted', ({ projectId }) => {
-      console.log('[ZoneManager] Project deleted:', projectId);
-      this.removeProjectZone(projectId);
+    this.eventBus.on('zone:deleted', ({ zoneId }) => {
+      console.log('[ZoneManager] Project deleted:', zoneId);
+      this.removeProjectZone(zoneId);
     });
 
     rtsEventBus.on('zone:moved' as any, async (event: any) => {
@@ -158,18 +158,18 @@ export class ZoneManagerIntegration {
     }
   }
 
-  public removeProjectZone(projectId: string): void {
-    const projectZone = this.unifiedZoneManager.getZone(projectId) as GameZone | undefined;
+  public removeProjectZone(zoneId: string): void {
+    const projectZone = this.unifiedZoneManager.getZone(zoneId) as GameZone | undefined;
     if (projectZone) {
       projectZone.destroy();
-      this.unifiedZoneManager.unregister(projectId);
+      this.unifiedZoneManager.unregister(zoneId);
     }
-    this.visibleZones.delete(projectId);
+    this.visibleZones.delete(zoneId);
   }
 
-  public selectProjectZone(projectId: string): void {
+  public selectProjectZone(zoneId: string): void {
     this.clearProjectZoneSelection();
-    const projectZone = this.unifiedZoneManager.getZone(projectId) as GameZone | undefined;
+    const projectZone = this.unifiedZoneManager.getZone(zoneId) as GameZone | undefined;
     if (projectZone) {
       projectZone.setHighlight(true);
     }
@@ -253,7 +253,7 @@ export class ZoneManagerIntegration {
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
           const response = await axios.post(`/api/zones`, {
-            projectId: project.id,
+            zoneId: project.id,
             title: '新建区域',
             prompt: ''
           });
@@ -313,8 +313,8 @@ export class ZoneManagerIntegration {
     return this.projectClient;
   }
 
-  public getProjectZone(projectId: string): GameZone | undefined {
-    return this.unifiedZoneManager.getZone(projectId) as GameZone | undefined;
+  public getProjectZone(zoneId: string): GameZone | undefined {
+    return this.unifiedZoneManager.getZone(zoneId) as GameZone | undefined;
   }
 
   public getAllProjectZones(): Map<string, GameZone> {
@@ -363,8 +363,8 @@ export class ZoneManagerIntegration {
     return this.visibleZones.size;
   }
 
-  public updateProjectZoneTitle(projectId: string, title: string): void {
-    const projectZone = this.unifiedZoneManager.getZone(projectId) as GameZone | undefined;
+  public updateProjectZoneTitle(zoneId: string, title: string): void {
+    const projectZone = this.unifiedZoneManager.getZone(zoneId) as GameZone | undefined;
     if (projectZone) {
       projectZone.updateZoneTitle(title);
     }
@@ -372,14 +372,14 @@ export class ZoneManagerIntegration {
 
   /**
    * Fetch zone context (title, prompt, members) from zone_contexts table
-   * Uses GET /api/zones?projectId=xxx which returns zones array
+   * Uses GET /api/zones?zoneId=xxx which returns zones array
    */
-  private async fetchZoneContext(projectId: string): Promise<{ title: string; prompt: string; members: string[] } | null> {
+  private async fetchZoneContext(zoneId: string): Promise<{ title: string; prompt: string; members: string[] } | null> {
     try {
       const response = await axios.get<{
         success?: boolean;
         zones?: Array<{ title: string; prompt: string; members: string[] }>;
-      }>(`/api/zones?projectId=${encodeURIComponent(projectId)}`);
+      }>(`/api/zones?zoneId=${encodeURIComponent(zoneId)}`);
       if (response.data.success && response.data.zones && response.data.zones.length > 0) {
         const zone = response.data.zones[0];
         return {
@@ -389,7 +389,7 @@ export class ZoneManagerIntegration {
         };
       }
     } catch (error) {
-      console.warn(`[ZoneManager] Failed to fetch zone context for ${projectId}:`, error);
+      console.warn(`[ZoneManager] Failed to fetch zone context for ${zoneId}:`, error);
     }
     return null;
   }

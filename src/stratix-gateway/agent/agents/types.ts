@@ -3,7 +3,7 @@ export type AgentStatus = 'idle' | 'working' | 'paused' | 'stopping' | 'error';
 export interface AgentState {
   agentId: string;
   name: string;
-  projectId: string;
+  zoneId: string;
   status: AgentStatus;
   currentTaskId?: string;
   startedAt?: Date;
@@ -12,7 +12,7 @@ export interface AgentState {
 
 export interface ProjectChannelMessage {
   id: string;
-  projectId: string;
+  zoneId: string;
   channelId: string;
   content: string;
   timestamp: number;

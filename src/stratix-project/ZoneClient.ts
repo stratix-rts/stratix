@@ -189,31 +189,31 @@ export class ZoneClient {
     return result.data;
   }
 
-  async agentEnterProject(projectId: string, agentId: string): Promise<Project> {
+  async agentEnterProject(zoneId: string, agentId: string): Promise<Project> {
     const result = await this.client.post<Project>(
-      API_PATHS.PROJECT_AGENTS_ENTER(projectId),
+      API_PATHS.PROJECT_AGENTS_ENTER(zoneId),
       { agentId }
     );
 
     if (isApiError(result)) {
-      throw new Error(`Failed to add agent to project ${projectId}: ${result.error}`);
+      throw new Error(`Failed to add agent to project ${zoneId}: ${result.error}`);
     }
 
-    console.log(`[ZoneClient] Agent  entered zone ${projectId}`);
+    console.log(`[ZoneClient] Agent  entered zone ${zoneId}`);
     return result.data;
   }
 
-  async agentLeaveProject(projectId: string, agentId: string): Promise<Project> {
+  async agentLeaveProject(zoneId: string, agentId: string): Promise<Project> {
     const result = await this.client.post<Project>(
-      API_PATHS.PROJECT_AGENTS_LEAVE(projectId),
+      API_PATHS.PROJECT_AGENTS_LEAVE(zoneId),
       { agentId }
     );
 
     if (isApiError(result)) {
-      throw new Error(`Failed to remove agent from project ${projectId}: ${result.error}`);
+      throw new Error(`Failed to remove agent from project ${zoneId}: ${result.error}`);
     }
 
-    console.log(`[ZoneClient] Agent  left zone ${projectId}`);
+    console.log(`[ZoneClient] Agent  left zone ${zoneId}`);
     return result.data;
   }
 

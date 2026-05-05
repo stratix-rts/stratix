@@ -166,13 +166,13 @@ export const useZoneStore = defineStore('zone', () => {
   }
 
   // Load all zones
-  async function loadZones(projectId?: string): Promise<void> {
+  async function loadZones(zoneId?: string): Promise<void> {
     isLoading.value = true;
     error.value = null;
 
     try {
-      const path = projectId
-        ? `${API_PATHS.ZONES}?projectId=${projectId}`
+      const path = zoneId
+        ? `${API_PATHS.ZONES}?zoneId=${zoneId}`
         : API_PATHS.ZONES;
 
       const result = await client.get<Zone[]>(path, { timeout: 10000 });

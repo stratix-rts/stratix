@@ -331,7 +331,7 @@ export class InputHandler {
 
       const taskZoneHit = this.getZoneFromHitTest(hitTestResults);
       if (taskZoneHit) {
-        const zoneId = taskZoneHit.getData('zoneId') || taskZoneHit.getData('projectId');
+        const zoneId = taskZoneHit.getData('zoneId') || taskZoneHit.getData('zoneId');
         if (zoneId) {
           if (this.callbacks.onZoneClick) {
             this.callbacks.onZoneClick(zoneId);

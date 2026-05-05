@@ -21,7 +21,7 @@ export interface BlueprintEdge {
 
 export interface Blueprint {
   id: string;
-  projectId: string;
+  zoneId: string;
   nodes: BlueprintNode[];
   edges: BlueprintEdge[];
   metadata: {

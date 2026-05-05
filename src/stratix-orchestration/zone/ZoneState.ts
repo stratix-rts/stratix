@@ -2,7 +2,6 @@ export interface ZoneState {
   zoneId: string;
   name: string;
   type: 'task' | 'project' | 'general';
-  projectId?: string;
   position: { x: number; y: number };
   size: { width: number; height: number };
   status: 'idle' | 'active' | 'busy' | 'completed' | 'error';

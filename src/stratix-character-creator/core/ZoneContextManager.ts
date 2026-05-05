@@ -274,13 +274,13 @@ export class ZoneContextManager {
   /**
    * 获取 Zone 提示词上下文
    */
-  async getZonePromptContext(agentId: string, projectId: string = '-'): Promise<{
+  async getZonePromptContext(agentId: string, zoneId: string = '-'): Promise<{
     inZone: boolean;
     currentZone?: ZoneContext;
     availableZones: ZoneInfo[];
   }> {
     const currentZone = this.getContext(agentId);
-    const availableZones = await this.getAvailableZones(projectId);
+    const availableZones = await this.getAvailableZones(zoneId);
 
     return {
       inZone: currentZone !== null,

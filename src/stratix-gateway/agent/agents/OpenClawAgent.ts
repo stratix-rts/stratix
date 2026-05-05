@@ -11,7 +11,7 @@ import { AgentInterface, AgentState, ProjectChannelMessage } from './types';
 export class OpenClawAgent implements AgentInterface {
   private agentConfig: StratixAgentConfig;
   private projectPath: string;
-  private projectId: string;
+  private zoneId: string;
   private lraClient: LRAClient;
   private adapter: OpenClawAdapterInterface;
   private _workDirOverride: string | undefined;
@@ -27,12 +27,12 @@ export class OpenClawAgent implements AgentInterface {
   constructor(
     agentConfig: StratixAgentConfig,
     projectPath: string,
-    projectId: string,
+    zoneId: string,
     lraClient: LRAClient
   ) {
     this.agentConfig = agentConfig;
     this.projectPath = projectPath;
-    this.projectId = projectId;
+    this.zoneId = zoneId;
     this.lraClient = lraClient;
     
     if (!agentConfig.openClawConfig) {
@@ -58,7 +58,7 @@ export class OpenClawAgent implements AgentInterface {
     return {
       agentId: this.agentConfig.agentId,
       name: this.agentConfig.name,
-      projectId: this.projectId,
+      zoneId: this.zoneId,
       status: this.shouldStop ? 'stopping' : (this.isPaused ? 'paused' : 'working'),
       currentTaskId: this.currentTaskId || undefined,
       startedAt: this.startedAt
@@ -261,7 +261,7 @@ Please respond to the user's message. Keep your response concise and helpful.`;
       const apiPort = process.env.STRATIX_API_PORT || '7524';
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10000);
-      const response = await fetch(`http://127.0.0.1:${apiPort}/api/projects/${this.projectId}/messages`, {
+      const response = await fetch(`http://127.0.0.1:${apiPort}/api/projects/${this.zoneId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

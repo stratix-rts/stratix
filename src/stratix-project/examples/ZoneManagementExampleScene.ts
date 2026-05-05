@@ -114,8 +114,8 @@ export class ProjectManagementExampleScene extends Phaser.Scene {
     });
 
     // 监听项目删除事件
-    eventBus.on('zone:deleted', ({ projectId }) => {
-      console.log('[ProjectManagement] Project deleted:', projectId);
+    eventBus.on('zone:deleted', ({ zoneId }) => {
+      console.log('[ProjectManagement] Project deleted:', zoneId);
     });
 
     // 监听状态变化
@@ -161,36 +161,36 @@ export class ProjectManagementExampleScene extends Phaser.Scene {
   /**
    * 保存项目配置
    */
-  public async saveProjectConfig(projectId: string, config: ProjectConfig): Promise<void> {
-    await this.projectManager.getProjectClient().updateZone(projectId, { config });
+  public async saveProjectConfig(zoneId: string, config: ProjectConfig): Promise<void> {
+    await this.projectManager.getProjectClient().updateZone(zoneId, { config });
   }
 
   /**
    * 启动项目
    */
-  public async startProject(projectId: string): Promise<void> {
-    await this.projectManager.getProjectClient().startProject(projectId);
+  public async startProject(zoneId: string): Promise<void> {
+    await this.projectManager.getProjectClient().startProject(zoneId);
   }
 
   /**
    * 暂停项目
    */
-  public async pauseProject(projectId: string): Promise<void> {
-    await this.projectManager.getProjectClient().pauseProject(projectId);
+  public async pauseProject(zoneId: string): Promise<void> {
+    await this.projectManager.getProjectClient().pauseProject(zoneId);
   }
 
   /**
    * 完成项目
    */
-  public async completeProject(projectId: string): Promise<void> {
-    await this.projectManager.getProjectClient().completeProject(projectId);
+  public async completeProject(zoneId: string): Promise<void> {
+    await this.projectManager.getProjectClient().completeProject(zoneId);
   }
 
   /**
    * 删除项目
    */
-  public async deleteZone(projectId: string): Promise<void> {
-    await this.projectManager.getProjectClient().deleteZone(projectId);
+  public async deleteZone(zoneId: string): Promise<void> {
+    await this.projectManager.getProjectClient().deleteZone(zoneId);
   }
 
   /**
@@ -203,15 +203,15 @@ export class ProjectManagementExampleScene extends Phaser.Scene {
   /**
    * 获取项目
    */
-  public async getZone(projectId: string): Promise<Project | null> {
-    return await this.projectManager.getProjectClient().getZone(projectId);
+  public async getZone(zoneId: string): Promise<Project | null> {
+    return await this.projectManager.getProjectClient().getZone(zoneId);
   }
 
   /**
    * 选中项目区
    */
-  public selectProject(projectId: string): void {
-    this.projectManager.selectProjectZone(projectId);
+  public selectProject(zoneId: string): void {
+    this.projectManager.selectProjectZone(zoneId);
   }
 
   /**

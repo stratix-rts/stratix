@@ -62,7 +62,7 @@ export class AgentOrchestrationService {
   async startAgent(
     agentId: string,
     projectPath: string,
-    projectId: string
+    zoneId: string
   ): Promise<void> {
     if (this.agents.has(agentId)) {
       throw new Error(`Agent ${agentId} is already working`);
@@ -91,7 +91,7 @@ export class AgentOrchestrationService {
       return;
     }
 
-    console.log(`[AgentOrchestrationService] Starting agent ${agentId} for project ${projectId}`);
+    console.log(`[AgentOrchestrationService] Starting agent ${agentId} for project ${zoneId}`);
 
     let agent: AgentInterface;
 
@@ -99,14 +99,14 @@ export class AgentOrchestrationService {
       agent = new OpenClawAgent(
         configWithApiKey,
         projectPath,
-        projectId,
+        zoneId,
         this.lraClient
       );
     } else {
       agent = new LLMAgent(
         configWithApiKey,
         projectPath,
-        projectId,
+        zoneId,
         this.lraClient
       );
     }
@@ -190,9 +190,9 @@ export class AgentOrchestrationService {
     return Array.from(this.agentStates.values());
   }
 
-  getProjectAgents(projectId: string): AgentState[] {
+  getProjectAgents(zoneId: string): AgentState[] {
     return this.getActiveAgents().filter(
-      state => state.projectId === projectId
+      state => state.zoneId === zoneId
     );
   }
 
@@ -271,17 +271,17 @@ export class AgentOrchestrationService {
     }
   }
 
-  async stopProjectAgents(projectId: string): Promise<void> {
-    console.log(`[AgentOrchestrationService] Stopping all agents in project ${projectId}`);
+  async stopProjectAgents(zoneId: string): Promise<void> {
+    console.log(`[AgentOrchestrationService] Stopping all agents in project ${zoneId}`);
 
-    const projectAgents = this.getProjectAgents(projectId);
+    const projectAgents = this.getProjectAgents(zoneId);
     const results = await Promise.allSettled(
       projectAgents.map(state => this.stopAgent(state.agentId))
     );
 
     const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
     if (failures.length > 0) {
-      console.error(`[AgentOrchestrationService] ${failures.length} agents failed to stop in project ${projectId}:`, failures.map(f => f.reason));
+      console.error(`[AgentOrchestrationService] ${failures.length} agents failed to stop in project ${zoneId}:`, failures.map(f => f.reason));
     }
   }
 

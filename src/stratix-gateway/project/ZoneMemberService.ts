@@ -22,7 +22,7 @@ export class ZoneMemberService {
 
     this.syncZoneToStore(zone);
 
-    gatewayEventBus.publishZoneEvent('zone:member_joined', zoneId, zone.projectId!, {
+    gatewayEventBus.publishZoneEvent('zone:member_joined', zoneId, {
       agentId
     });
 
@@ -65,7 +65,7 @@ export class ZoneMemberService {
 
     this.syncZoneToStore(zone);
 
-    gatewayEventBus.publishZoneEvent('zone:member_left', zoneId, zone.projectId!, {
+    gatewayEventBus.publishZoneEvent('zone:member_left', zoneId, {
       agentId
     });
 
@@ -86,7 +86,7 @@ export class ZoneMemberService {
     this.syncZoneToStore(zone);
 
     for (const agentId of agentIds) {
-      gatewayEventBus.publishZoneEvent('zone:member_joined', zoneId, zone.projectId!, {
+      gatewayEventBus.publishZoneEvent('zone:member_joined', zoneId, {
         agentId
       });
     }
@@ -108,7 +108,7 @@ export class ZoneMemberService {
     this.syncZoneToStore(zone);
 
     for (const agentId of agentIds) {
-      gatewayEventBus.publishZoneEvent('zone:member_left', zoneId, zone.projectId!, {
+      gatewayEventBus.publishZoneEvent('zone:member_left', zoneId, {
         agentId
       });
     }

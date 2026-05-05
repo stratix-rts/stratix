@@ -705,7 +705,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
     }
   }
 
-  private onZoneCreated(data: { zoneId: string; projectId?: string; title?: string; prompt?: string }): void {
+  private onZoneCreated(data: { zoneId: string; title?: string; prompt?: string }): void {
     console.log(`[StratixRTS] Zone ${data.zoneId} created with title: ${data.title || 'Untitled'}`);
   }
 

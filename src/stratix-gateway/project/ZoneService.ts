@@ -80,18 +80,18 @@ export class ZoneService {
   /**
    * Check permission for an action on a resource.
    * @param action - Permission action (e.g., 'create', 'update', 'delete')
-   * @param resource - Full resource identifier: 'zone:${zoneId}' or 'project:${projectId}'
+   * @param resource - Full resource identifier: 'zone:${zoneId}' or 'project:${zoneId}'
    * @param agentId - Agent requesting the action
    */
   private checkPermission(action: string, resource: string, agentId: string): void {
     if (!this.permissionOrchestrator) return;
 
-    // Parse resource to extract zoneId/projectId for params
-    const params: { zoneId?: string; projectId?: string } = {};
+    // Parse resource to extract zoneId for params
+    const params: { zoneId?: string } = {};
     if (resource.startsWith('zone:')) {
       params.zoneId = resource.slice(5);
     } else if (resource.startsWith('project:')) {
-      params.projectId = resource.slice(8);
+      params.zoneId = resource.slice(8);
     }
 
     const context: PermissionContext = {
@@ -135,28 +135,28 @@ export class ZoneService {
   }
 
   // Zone CRUD
-  public async getZones(projectId: string): Promise<Zone[]> {
+  public async getZones(zoneId: string): Promise<Zone[]> {
     await this.ensureInitialized();
 
     // Verify project exists, auto-create default if missing
-    let project = zoneRepository.getProject(projectId);
+    let project = zoneRepository.getProject(zoneId);
     if (!project) {
       project = zoneRepository.createProjectRecord({
-        id: projectId,
-        name: projectId,
+        id: zoneId,
+        name: zoneId,
         priority: 0,
         status: 'active',
-        config: { name: projectId, priority: 0, localFolderPath: '', agentMode: 'llm', planningRule: 'sequential', executionPermission: 'auto', progressRule: 'average', requirement: { type: 'text', content: '' } },
+        config: { name: zoneId, priority: 0, localFolderPath: '', agentMode: 'llm', planningRule: 'sequential', executionPermission: 'auto', progressRule: 'average', requirement: { type: 'text', content: '' } },
         path: '',
         presentAgentIds: [],
         zoneConfig: { x: 0, y: 0, width: 100, height: 100 },
         createdAt: new Date(),
         updatedAt: new Date(),
       });
-      console.log(`[ZoneService] Auto-created project: ${projectId}`);
+      console.log(`[ZoneService] Auto-created project: ${zoneId}`);
     }
 
-    return zoneRepository.getZonesByProject(projectId);
+    return zoneRepository.getZonesByProject(zoneId);
   }
 
   public async getZone(zoneId: string): Promise<Zone | null> {
@@ -164,22 +164,22 @@ export class ZoneService {
     return zoneRepository.getZone(zoneId);
   }
 
-  public async createZone(projectId: string, title: string, prompt: string = '', agentId: string = 'system'): Promise<Zone> {
+  public async createZone(zoneId: string, title: string, prompt: string = '', agentId: string = 'system'): Promise<Zone> {
     await this.ensureInitialized();
 
-    this.checkPermission('create', `project:${projectId}`, agentId);
+    this.checkPermission('create', `project:${zoneId}`, agentId);
 
     // Verify project exists
-    const project = zoneRepository.getProject(projectId);
+    const project = zoneRepository.getProject(zoneId);
     if (!project) {
-      throw new Error(`Project not found: ${projectId}`);
+      throw new Error(`Project not found: ${zoneId}`);
     }
 
-    const created = zoneRepository.createZone(projectId, title, prompt);
+    const created = zoneRepository.createZone(zoneId, title, prompt);
     this.syncZoneToStore(created);
 
     // Publish zone:created event first (before ZoneAgent starts)
-    gatewayEventBus.publishZoneEvent('zone:created', created.id, created.projectId!, {
+    gatewayEventBus.publishZoneEvent('zone:created', created.id, {
       title: created.title,
       prompt: created.prompt,
       creator: agentId,
@@ -225,7 +225,7 @@ export class ZoneService {
     this.syncZoneToStore(updated);
 
     // Publish zone:updated event
-    gatewayEventBus.publishZoneEvent('zone:updated', zoneId, updated.projectId!, {
+    gatewayEventBus.publishZoneEvent('zone:updated', zoneId, {
       title: updated.title,
       prompt: updated.prompt
     });
@@ -249,7 +249,7 @@ export class ZoneService {
       // Remove from StratixStateStore
       this.removeZoneFromStore(zoneId);
       // Publish zone:deleted event
-      gatewayEventBus.publishZoneEvent('zone:deleted', zoneId, zone.projectId!, {
+      gatewayEventBus.publishZoneEvent('zone:deleted', zoneId, {
         title: zone.title
       });
     }
@@ -264,16 +264,16 @@ export class ZoneService {
   /**
    * Get all soft-deleted zones for a project (recycle bin)
    */
-  public async getDeletedZones(projectId: string): Promise<Zone[]> {
+  public async getDeletedZones(zoneId: string): Promise<Zone[]> {
     await this.ensureInitialized();
 
     // Verify project exists
-    const project = zoneRepository.getProject(projectId);
+    const project = zoneRepository.getProject(zoneId);
     if (!project) {
-      throw new Error(`Project not found: ${projectId}`);
+      throw new Error(`Project not found: ${zoneId}`);
     }
 
-    return zoneRepository.getDeletedZones(projectId);
+    return zoneRepository.getDeletedZones(zoneId);
   }
 
   /**
@@ -306,7 +306,7 @@ export class ZoneService {
     this.syncZoneToStore(restored);
 
     // Publish zone:restored event
-    gatewayEventBus.publishZoneEvent('zone:restored', zoneId, zone.projectId!, {
+    gatewayEventBus.publishZoneEvent('zone:restored', zoneId, {
       title: restored.title
     });
 
@@ -336,12 +336,12 @@ export class ZoneService {
   /**
    * 清空回收站（永久删除项目中所有软删除的 Zone）
    */
-  public async emptyTrash(projectId: string, agentId: string = 'system'): Promise<{ deleted: number; failed: number }> {
+  public async emptyTrash(zoneId: string, agentId: string = 'system'): Promise<{ deleted: number; failed: number }> {
     await this.ensureInitialized();
 
-    this.checkPermission('empty_trash', `project:${projectId}`, agentId);
+    this.checkPermission('empty_trash', `project:${zoneId}`, agentId);
 
-    const deletedZones = zoneRepository.getDeletedZones(projectId);
+    const deletedZones = zoneRepository.getDeletedZones(zoneId);
     let deleted = 0;
     let failed = 0;
 
@@ -589,10 +589,10 @@ export class ZoneService {
 
     // Create new zone with cloned title
     const cloneTitle = `Clone of ${sourceZone.title}`;
-    if (!sourceZone.projectId) {
-      throw new Error(`Cannot clone zone ${zoneId}: missing projectId`);
+    if (!sourceZone.zoneId) {
+      throw new Error(`Cannot clone zone ${zoneId}: missing zoneId`);
     }
-    const newZone = zoneRepository.createZone(sourceZone.projectId, cloneTitle, sourceZone.prompt || '');
+    const newZone = zoneRepository.createZone(sourceZone.zoneId, cloneTitle, sourceZone.prompt || '');
     this.syncZoneToStore(newZone);
 
     // Clone files if requested
@@ -625,19 +625,19 @@ export class ZoneService {
   /**
    * Import Zone from template
    */
-  public async importZone(projectId: string, template: { title: string; prompt: string; files?: Array<{ name: string; sourceType: 'local' | 'url'; source: string }>; tasks?: Array<{ title: string }> }, creatorAgentId?: string, agentId: string = 'system'): Promise<Zone> {
+  public async importZone(zoneId: string, template: { title: string; prompt: string; files?: Array<{ name: string; sourceType: 'local' | 'url'; source: string }>; tasks?: Array<{ title: string }> }, creatorAgentId?: string, agentId: string = 'system'): Promise<Zone> {
     await this.ensureInitialized();
 
-    this.checkPermission('import', `project:${projectId}`, agentId);
+    this.checkPermission('import', `project:${zoneId}`, agentId);
 
     // Verify project exists
-    const project = zoneRepository.getProject(projectId);
+    const project = zoneRepository.getProject(zoneId);
     if (!project) {
-      throw new Error(`Project not found: ${projectId}`);
+      throw new Error(`Project not found: ${zoneId}`);
     }
 
     // Create zone from template
-    const zone = zoneRepository.createZone(projectId, template.title, template.prompt);
+    const zone = zoneRepository.createZone(zoneId, template.title, template.prompt);
     this.syncZoneToStore(zone);
 
     // Add files if provided

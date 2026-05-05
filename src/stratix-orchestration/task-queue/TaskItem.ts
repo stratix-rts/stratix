@@ -1,7 +1,6 @@
 export interface TaskItem {
   taskId: string;
   zoneId: string;
-  projectId: string;
   name: string;
   description?: string;
   type: 'coding' | 'writing' | 'analysis' | 'research' | 'general';

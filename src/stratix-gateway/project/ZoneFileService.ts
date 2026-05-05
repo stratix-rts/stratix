@@ -101,7 +101,7 @@ export class ZoneFileService {
     const finalFile = zoneRepository.getFile(file.id)!;
 
     // Publish zone:file_added event
-    gatewayEventBus.publishZoneEvent('zone:file_added', zoneId, zone.id, {
+    gatewayEventBus.publishZoneEvent('zone:file_added', zoneId, {
       file: finalFile
     });
 
@@ -138,7 +138,7 @@ export class ZoneFileService {
 
     // Publish zone:file_added event for each file
     for (const file of addedFiles) {
-      gatewayEventBus.publishZoneEvent('zone:file_added', zoneId, zone.id, {
+      gatewayEventBus.publishZoneEvent('zone:file_added', zoneId, {
         file
       });
     }
@@ -167,7 +167,7 @@ export class ZoneFileService {
 
     if (deleted) {
       // Publish zone:file_removed event
-      gatewayEventBus.publishZoneEvent('zone:file_removed', zoneId, zone.id, {
+      gatewayEventBus.publishZoneEvent('zone:file_removed', zoneId, {
         fileId,
         fileName: file?.name
       });
@@ -385,7 +385,7 @@ export class ZoneFileService {
     // Publish file:updated event
     const zone = zoneRepository.getZone(zoneId);
     if (zone) {
-      gatewayEventBus.publishZoneEvent('zone:file_updated', zoneId, zone.id, {
+      gatewayEventBus.publishZoneEvent('zone:file_updated', zoneId, {
         file: updated
       });
     }
@@ -411,7 +411,7 @@ export class ZoneFileService {
     // Publish file:updated event
     const zone = zoneRepository.getZone(zoneId);
     if (zone) {
-      gatewayEventBus.publishZoneEvent('zone:file_updated', zoneId, zone.id, {
+      gatewayEventBus.publishZoneEvent('zone:file_updated', zoneId, {
         file: updated
       });
     }

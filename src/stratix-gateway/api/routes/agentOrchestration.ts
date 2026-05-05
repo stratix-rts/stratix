@@ -47,17 +47,17 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
 
 router.post('/start', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { agentId, projectPath, projectId } = req.body;
+    const { agentId, projectPath, zoneId } = req.body;
     
-    if (!agentId || !projectPath || !projectId) {
+    if (!agentId || !projectPath || !zoneId) {
       res.status(400).json({
         success: false,
-        error: 'Missing required fields: agentId, projectPath, projectId'
+        error: 'Missing required fields: agentId, projectPath, zoneId'
       });
       return;
     }
     
-    await orchestrator.startAgent(agentId, projectPath, projectId);
+    await orchestrator.startAgent(agentId, projectPath, zoneId);
     
     res.json({
       success: true,
@@ -199,10 +199,10 @@ router.get('/active', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
-router.get('/project/:projectId', async (req: Request, res: Response): Promise<void> => {
+router.get('/project/:zoneId', async (req: Request, res: Response): Promise<void> => {
   try {
-    const projectId = getParam(req, 'projectId');
-    const agents = orchestrator.getProjectAgents(projectId);
+    const zoneId = getParam(req, 'zoneId');
+    const agents = orchestrator.getProjectAgents(zoneId);
     
     res.json({
       success: true,

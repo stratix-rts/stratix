@@ -155,7 +155,7 @@ export interface TaskResult {
 
 export interface Task {
   id: string;
-  projectId: string;
+  zoneId: string;
   name: string;
   type: TaskType;
   description?: string;
@@ -182,7 +182,7 @@ export interface SuggestedTask {
 }
 
 export interface ParsedRequirement {
-  projectId: string;
+  zoneId: string;
   projectType: TaskType;
   objectives: string[];
   scope: string[];
@@ -232,7 +232,7 @@ export type ProjectMessageType = 'chat' | 'task_assign' | 'task_update' | 'syste
 // 项目Channel消息
 export interface ProjectChannelMessage {
   id: string;
-  projectId: string;
+  zoneId: string;
   channelId: string;
   role: MessageRole;
   content: string;
@@ -256,7 +256,7 @@ export type ProjectChannelType = 'general' | 'tasks' | 'agent_dm';
 // Channel配置
 export interface ProjectChannel {
   id: string;
-  projectId: string;
+  zoneId: string;
   name: string;
   type: ProjectChannelType;
   description?: string;
@@ -325,7 +325,7 @@ export interface ZoneFile {
 
 export interface Zone {
   id: string;
-  projectId?: string;
+  zoneId?: string;
   name?: string;  // From Project, for compatibility
   title?: string;
   prompt?: string;

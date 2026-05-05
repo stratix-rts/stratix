@@ -48,18 +48,18 @@ function handleZoneError(res: Response, error: unknown, context: string, statusM
 
 /**
  * POST /api/zones
- * Create a new Zone (projectId in body since zoneId === projectId)
+ * Create a new Zone (zoneId in body since zoneId === zoneId)
  */
 router.post('/zones', async (req: Request, res: Response): Promise<void> => {
   try {
-    const body = req.body as ZoneCreateRequest & { projectId?: string; config?: any; zoneConfig?: any };
+    const body = req.body as ZoneCreateRequest & { zoneId?: string; config?: any; zoneConfig?: any };
 
     // Project-compat: if body has `config` but no `title`, create via project path
     if (body.config && !body.title) {
       const config = body.config;
-      const projectId = `proj_${Math.random().toString(36).slice(2, 10)}`;
+      const zoneId = `proj_${Math.random().toString(36).slice(2, 10)}`;
       const project = zoneRepository.createProjectRecord({
-        id: projectId,
+        id: zoneId,
         name: config.name || 'Untitled',
         description: config.description,
         priority: config.priority || 3,
@@ -75,7 +75,7 @@ router.post('/zones', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const { projectId, title, prompt } = body;
+    const { zoneId, title, prompt } = body;
 
     if (!title) {
       res.status(400).json({
@@ -85,15 +85,15 @@ router.post('/zones', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    if (!projectId) {
+    if (!zoneId) {
       res.status(400).json({
         success: false,
-        error: 'Missing required field: projectId'
+        error: 'Missing required field: zoneId'
       });
       return;
     }
 
-    const zone = await zoneService.createZone(projectId, title, prompt || '');
+    const zone = await zoneService.createZone(zoneId, title, prompt || '');
 
     res.json({
       success: true,
@@ -111,21 +111,21 @@ router.post('/zones', async (req: Request, res: Response): Promise<void> => {
 });
 
 /**
- * GET /api/zones?projectId=xxx
- * Get all Zones filtered by projectId
+ * GET /api/zones?zoneId=xxx
+ * Get all Zones filtered by zoneId
  */
 router.get('/zones', async (req: Request, res: Response): Promise<void> => {
   try {
-    const projectId = (req.query.projectId as string) || '';
+    const zoneId = (req.query.zoneId as string) || '';
 
-    // Project-compat: if no projectId, return all projects
-    if (!projectId) {
+    // Project-compat: if no zoneId, return all projects
+    if (!zoneId) {
       const projects = zoneRepository.getAllProjects();
       res.json({ success: true, data: projects });
       return;
     }
 
-    const zones = await zoneService.getZones(projectId);
+    const zones = await zoneService.getZones(zoneId);
 
     res.json({
       success: true,
@@ -280,13 +280,13 @@ router.delete('/zones/:zoneId', async (req: Request, res: Response): Promise<voi
 // ============================================
 
 /**
- * GET /api/zones/:projectId/trash
+ * GET /api/zones/:zoneId/trash
  * Get all soft-deleted zones for a project (recycle bin)
  */
-router.get('/zones/:projectId/trash', async (req: Request, res: Response): Promise<void> => {
+router.get('/zones/:zoneId/trash', async (req: Request, res: Response): Promise<void> => {
   try {
-    const projectId = getParam(req, 'projectId');
-    const zones = await zoneService.getDeletedZones(projectId);
+    const zoneId = getParam(req, 'zoneId');
+    const zones = await zoneService.getDeletedZones(zoneId);
 
     res.json({
       success: true,
@@ -329,14 +329,14 @@ router.get('/zones/:zoneId/statistics', async (req: Request, res: Response): Pro
 });
 
 /**
- * DELETE /api/zones/:projectId/trash
+ * DELETE /api/zones/:zoneId/trash
  * Empty trash - permanently delete all soft-deleted zones in a project
  */
-router.delete('/zones/:projectId/trash', async (req: Request, res: Response): Promise<void> => {
+router.delete('/zones/:zoneId/trash', async (req: Request, res: Response): Promise<void> => {
   try {
-    const projectId = getParam(req, 'projectId');
+    const zoneId = getParam(req, 'zoneId');
 
-    const result = await zoneService.emptyTrash(projectId);
+    const result = await zoneService.emptyTrash(zoneId);
 
     res.json({
       success: true,
@@ -1425,8 +1425,8 @@ router.post('/zones/:zoneId/clone', async (req: Request, res: Response): Promise
  */
 router.post('/zones/import', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { projectId, template, creatorAgentId } = req.body as {
-      projectId: string;
+    const { zoneId, template, creatorAgentId } = req.body as {
+      zoneId: string;
       template: { title: string; prompt: string; files?: Array<{ name: string; sourceType: 'local' | 'url'; source: string }>; tasks?: Array<{ title: string }> };
       creatorAgentId?: string;
     };
@@ -1463,15 +1463,15 @@ router.post('/zones/import', async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    if (!projectId || !template || !template.title) {
+    if (!zoneId || !template || !template.title) {
       res.status(400).json({
         success: false,
-        error: 'Missing required fields: projectId, template.title'
+        error: 'Missing required fields: zoneId, template.title'
       });
       return;
     }
 
-    const zone = await zoneService.importZone(projectId, template, creatorAgentId);
+    const zone = await zoneService.importZone(zoneId, template, creatorAgentId);
 
     res.json({
       success: true,

@@ -141,12 +141,12 @@ mcpServer.tool(
   'List all zones in the default project. Returns zone id, title, status, and member count.',
   {},
   async () => {
-    const projectId = getDefaultProjectId();
-    if (!projectId) {
+    const zoneId = getDefaultProjectId();
+    if (!zoneId) {
       return { content: [{ type: 'text' as const, text: 'No projects found. Create a project first.' }] };
     }
 
-    const zones = zoneRepository.getZonesByProject(projectId);
+    const zones = zoneRepository.getZonesByProject(zoneId);
     const result = zones.map(z => {
       const members = zoneMemberRepository.getMembers(z.id);
       return {
@@ -180,12 +180,12 @@ mcpServer.tool(
     prompt: z.string().optional().describe('Detailed description or instructions for the Zone'),
   },
   async ({ title, prompt }) => {
-    const projectId = getDefaultProjectId();
-    if (!projectId) {
+    const zoneId = getDefaultProjectId();
+    if (!zoneId) {
       return { content: [{ type: 'text' as const, text: 'Error: No default project found.' }] };
     }
 
-    const zone = zoneRepository.createZone(projectId, title, prompt || '');
+    const zone = zoneRepository.createZone(zoneId, title, prompt || '');
 
     return {
       content: [{
@@ -314,12 +314,11 @@ mcpServer.tool(
     }
 
     // List all zones' members
-    const projectId = getDefaultProjectId();
-    if (!projectId) {
-      return { content: [{ type: 'text' as const, text: 'No projects found.' }] };
-    }
+    const defaultZoneId = getDefaultProjectId();
+    if (!defaultZoneId) {
+      return { content: [{ type: 'text' as const, text: 'No projects found.' }] };}
 
-    const zones = zoneRepository.getZonesByProject(projectId);
+    const zones = zoneRepository.getZonesByProject(defaultZoneId);
     const allAgents: any[] = [];
     for (const z of zones) {
       const members = zoneMemberRepository.getMembers(z.id);
@@ -983,8 +982,8 @@ mcpServer.resource(
     mimeType: 'application/json',
   },
   async (uri) => {
-    const projectId = getDefaultProjectId();
-    const zones = projectId ? zoneRepository.getZonesByProject(projectId) : [];
+    const zoneId = getDefaultProjectId();
+    const zones = zoneId ? zoneRepository.getZonesByProject(zoneId) : [];
     let agentCount = 0;
     for (const z of zones) {
       agentCount += zoneMemberRepository.getMembers(z.id).length;
@@ -998,7 +997,7 @@ mcpServer.resource(
           version: '0.1.0',
           zoneCount: zones.length,
           agentCount,
-          databaseStatus: projectId ? 'connected' : 'no_project',
+          databaseStatus: zoneId ? 'connected' : 'no_project',
         }, null, 2),
       }],
     };

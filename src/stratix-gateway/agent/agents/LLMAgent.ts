@@ -11,7 +11,7 @@ import { AgentInterface, AgentState } from './types';
 export class LLMAgent implements AgentInterface {
   private agentConfig: StratixAgentConfig;
   private projectPath: string;
-  private projectId: string;
+  private zoneId: string;
   private lraClient: LRAClient;
   private adapter: OpenClawAdapterInterface;
   private _workDirOverride: string | undefined;
@@ -27,12 +27,12 @@ export class LLMAgent implements AgentInterface {
   constructor(
     agentConfig: StratixAgentConfig,
     projectPath: string,
-    projectId: string,
+    zoneId: string,
     lraClient: LRAClient
   ) {
     this.agentConfig = agentConfig;
     this.effectiveProjectPath = projectPath;
-    this.projectId = projectId;
+    this.zoneId = zoneId;
     this.lraClient = lraClient;
     
     if (!agentConfig.openClawConfig) {
@@ -62,7 +62,7 @@ export class LLMAgent implements AgentInterface {
     return {
       agentId: this.agentConfig.agentId,
       name: this.agentConfig.name,
-      projectId: this.projectId,
+      zoneId: this.zoneId,
       status: this.shouldStop ? 'stopping' : (this.isPaused ? 'paused' : 'working'),
       currentTaskId: this.currentTaskId || undefined,
       startedAt: this.startedAt

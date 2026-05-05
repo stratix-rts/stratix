@@ -1,7 +1,7 @@
 /**
  * ZoneAgent - Zone as Agent 实现
  *
- * Zone 本身作为一个 Agent 运行，agentId = zoneId = projectId
+ * Zone 本身作为一个 Agent 运行，agentId = zoneId = zoneId
  * ZoneAgent 负责：
  * 1. 解析 Zone 的 OKR (prompt 字段)
  * 2. 将 OKR 拆分为具体的 Task
@@ -29,18 +29,16 @@ export interface ZoneTask {
   priority?: number;
   createdBy: string;
   zoneId: string;
-  projectId: string;
 }
 
 /**
  * ZoneAgent - Zone 作为一个 Agent
  *
- * agentId = zoneId = projectId
+ * agentId = zoneId = zoneId
  */
 export class ZoneAgent {
   public readonly agentId: string;
   public readonly zoneId: string;
-  public readonly projectId: string;
   public title: string;
   public okr: ZoneOKR;
 
@@ -48,7 +46,7 @@ export class ZoneAgent {
 
   constructor(zoneId: string, title: string, prompt: string) {
     this.zoneId = zoneId;
-    this.projectId = zoneId;  // zoneId === projectId
+    this.zoneId = zoneId;  // zoneId === zoneId
     this.agentId = zoneId;    // agentId === zoneId
     this.title = title;
     this.okr = this.parseOKR(prompt);
@@ -104,7 +102,6 @@ export class ZoneAgent {
         priority: 5,  // medium priority
         createdBy: this.agentId,
         zoneId: this.zoneId,
-        projectId: this.projectId,
       };
 
       tasks.push(task);
@@ -114,7 +111,6 @@ export class ZoneAgent {
         await this.taskQueue.createTask(
           taskId,
           this.zoneId,
-          this.projectId,
           task.title,
           'general',  // type
           taskContext,
@@ -155,7 +151,6 @@ export class ZoneAgent {
       priority: item.priority,
       createdBy: this.agentId,
       zoneId: item.zoneId,
-      projectId: item.projectId,
     }));
   }
 }

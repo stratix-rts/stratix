@@ -25,10 +25,10 @@ export class ZoneManager {
   }
 
   public async createZone(config: ProjectConfig, zoneConfig?: Partial<Project['zoneConfig']>): Promise<Project> {
-    const projectId = generateId('proj');
+    const zoneId = generateId('proj');
     
     const project: Project = {
-      id: projectId,
+      id: zoneId,
       name: config.name,
       description: config.description,
       priority: config.priority,
@@ -103,7 +103,7 @@ export class ZoneManager {
     }
 
     await this.store.deleteZone(id);
-    this.eventBus.emit('zone:deleted', { projectId: id });
+    this.eventBus.emit('zone:deleted', { zoneId: id });
   }
 
   public async getAllZones(): Promise<Project[]> {
@@ -182,12 +182,12 @@ export class ZoneManager {
   }
 
   public async createTasksFromAI(
-    projectId: string, 
+    zoneId: string, 
     tasks: ParsedTask[]
   ): Promise<void> {
-    const project = await this.getZone(projectId);
+    const project = await this.getZone(zoneId);
     if (!project) {
-      throw new Error(`Zone not found: ${projectId ?? ""}`);
+      throw new Error(`Zone not found: ${zoneId ?? ""}`);
     }
 
     for (const task of tasks) {
@@ -198,17 +198,17 @@ export class ZoneManager {
       );
     }
 
-    console.log(`[ZoneManager] Created  tasks from AI for zone ${projectId}`);
+    console.log(`[ZoneManager] Created  tasks from AI for zone ${zoneId}`);
   }
 
   public async createTaskManually(
-    projectId: string,
+    zoneId: string,
     description: string,
     template?: string
   ): Promise<string> {
-    const project = await this.getZone(projectId);
+    const project = await this.getZone(zoneId);
     if (!project) {
-      throw new Error(`Zone not found: ${projectId ?? ""}`);
+      throw new Error(`Zone not found: ${zoneId ?? ""}`);
     }
 
     const taskId = await this.lraClient.createTask(
@@ -217,38 +217,38 @@ export class ZoneManager {
       template
     );
 
-    console.log(`[ZoneManager] Created task  for zone ${projectId}`);
+    console.log(`[ZoneManager] Created task  for zone ${zoneId}`);
     return taskId;
   }
 
   public async agentEnterProject(
-    projectId: string,
+    zoneId: string,
     agentId: string
   ): Promise<void> {
-    const project = await this.getZone(projectId);
+    const project = await this.getZone(zoneId);
     if (!project) {
-      throw new Error(`Zone not found: ${projectId ?? ""}`);
+      throw new Error(`Zone not found: ${zoneId ?? ""}`);
     }
 
     if (!project.presentAgentIds?.includes(agentId)) {
       project.presentAgentIds = project.presentAgentIds ?? [];
       project.presentAgentIds.push(agentId);
-      await this.updateZone(projectId, {
+      await this.updateZone(zoneId, {
         presentAgentIds: project.presentAgentIds
       });
 
-      this.eventBus.emit('zone:agent-entered', { projectId, agentId });
-      console.log(`[ZoneManager] Agent  entered zone ${projectId}`);
+      this.eventBus.emit('zone:agent-entered', { zoneId, agentId });
+      console.log(`[ZoneManager] Agent  entered zone ${zoneId}`);
     }
   }
 
   public async agentLeaveProject(
-    projectId: string,
+    zoneId: string,
     agentId: string
   ): Promise<void> {
-    const project = await this.getZone(projectId);
+    const project = await this.getZone(zoneId);
     if (!project) {
-      throw new Error(`Zone not found: ${projectId ?? ""}`);
+      throw new Error(`Zone not found: ${zoneId ?? ""}`);
     }
 
     if (!project.presentAgentIds?.includes(agentId)) {
@@ -258,11 +258,11 @@ export class ZoneManager {
 
     project.presentAgentIds = project.presentAgentIds?.filter(id => id !== agentId);
     
-    await this.updateZone(projectId, {
+    await this.updateZone(zoneId, {
       presentAgentIds: project.presentAgentIds
     });
 
-    this.eventBus.emit('zone:agent-left', { projectId, agentId });
-    console.log(`[ZoneManager] Agent  left zone ${projectId}`);
+    this.eventBus.emit('zone:agent-left', { zoneId, agentId });
+    console.log(`[ZoneManager] Agent  left zone ${zoneId}`);
   }
 }

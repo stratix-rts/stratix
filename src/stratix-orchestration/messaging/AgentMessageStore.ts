@@ -49,7 +49,7 @@ export class AgentMessageStore {
     conversationId: string,
     type: 'dm' | 'group' | 'zone_channel',
     participants: string[],
-    options: { name?: string; zoneId?: string; projectId?: string } = {}
+    options: { name?: string; zoneId?: string } = {}
   ): Promise<Conversation> {
     const db = getDatabase().getDatabase();
     const now = Date.now();
@@ -62,7 +62,7 @@ export class AgentMessageStore {
       type,
       options.name || null,
       options.zoneId || null,
-      options.projectId || null,
+      options.zoneId || null,
       now,
       now
     );
@@ -81,7 +81,6 @@ export class AgentMessageStore {
       name: options.name,
       participants,
       zoneId: options.zoneId,
-      projectId: options.projectId,
       createdAt: now,
       updatedAt: now,
     };
@@ -101,7 +100,6 @@ export class AgentMessageStore {
       name: row.name ?? undefined,
       participants,
       zoneId: row.zone_id ?? undefined,
-      projectId: row.project_id ?? undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -170,7 +168,6 @@ export class AgentMessageStore {
       name: row.name ?? undefined,
       participants: participantsByConv.get(row.conversation_id) || [],
       zoneId: row.zone_id ?? undefined,
-      projectId: row.project_id ?? undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     }));

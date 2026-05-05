@@ -60,7 +60,7 @@ export class GameZone extends BaseZone {
     this.createAgentCountText();
 
     this.setData('isProjectZone', true);
-    this.setData('projectId', project.id);
+    this.setData('zoneId', project.id);
 
     this.updateFromProject();
   }

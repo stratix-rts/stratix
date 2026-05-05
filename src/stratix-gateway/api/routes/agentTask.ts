@@ -91,7 +91,7 @@ router.post('/:agentId/tasks/claim', async (req: Request, res: Response) => {
     }
 
     // Publish task claimed event (zone:task_claimed is a valid event type)
-    gatewayEventBus.publishZoneEvent('zone:task_claimed', task.zoneId, task.zoneId, {
+    gatewayEventBus.publishZoneEvent('zone:task_claimed', task.zoneId, {
       taskId: task.taskId,
       agentId,
     });
@@ -191,7 +191,7 @@ router.post('/:agentId/tasks/:taskId/complete', async (req: Request, res: Respon
     }
 
     // Publish task completed event
-    gatewayEventBus.publishZoneEvent('zone:task_updated', task?.zoneId || '', task?.zoneId || '', {
+    gatewayEventBus.publishZoneEvent('zone:task_updated', task?.zoneId || '', {
       taskId: task?.taskId,
       status: 'completed',
     });

@@ -46,7 +46,7 @@ export class ZoneMessageService {
 
     const message = zoneRepository.addMessage(zoneId, senderId, senderType, content.trim());
 
-    gatewayEventBus.publishZoneEvent('zone:message_added', zoneId, zone.id, {
+    gatewayEventBus.publishZoneEvent('zone:message_added', zoneId, {
       message
     });
 

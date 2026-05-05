@@ -352,13 +352,12 @@ export interface StratixStateSyncEvent {
     commandId?: string;
     data?: any;
     // 项目消息相关
-    projectId?: string;
+    zoneId?: string;
     channelId?: string;
     message?: any;
     messages?: any[];
     subscriberIds?: string[];
     // Orchestration 相关
-    zoneId?: string;
     taskId?: string;
     zoneType?: string;
     result?: any;

@@ -201,16 +201,16 @@ export class ZoneStore {
   // Channel 存储方法
   // ============================================
 
-  public async getChannels(projectId: string): Promise<ProjectChannel[]> {
+  public async getChannels(zoneId: string): Promise<ProjectChannel[]> {
     await this.ensureInitialized();
     await this.refresh();
-    return this.db.data.channels[projectId] || [];
+    return this.db.data.channels[zoneId] || [];
   }
 
-  public async getChannel(projectId: string, channelId: string): Promise<ProjectChannel | null> {
+  public async getChannel(zoneId: string, channelId: string): Promise<ProjectChannel | null> {
     await this.ensureInitialized();
     await this.refresh();
-    const channels = this.db.data.channels[projectId] || [];
+    const channels = this.db.data.channels[zoneId] || [];
     return channels.find(c => c.id === channelId) || null;
   }
 
@@ -218,16 +218,16 @@ export class ZoneStore {
     await this.ensureInitialized();
     await this.refresh();
 
-    if (!this.db.data.channels[channel.projectId]) {
-      this.db.data.channels[channel.projectId] = [];
+    if (!this.db.data.channels[channel.zoneId]) {
+      this.db.data.channels[channel.zoneId] = [];
     }
 
-    const existingIndex = this.db.data.channels[channel.projectId].findIndex(c => c.id === channel.id);
+    const existingIndex = this.db.data.channels[channel.zoneId].findIndex(c => c.id === channel.id);
     if (existingIndex >= 0) {
       throw new Error(`Channel with id ${channel.id} already exists`);
     }
 
-    this.db.data.channels[channel.projectId].push(channel);
+    this.db.data.channels[channel.zoneId].push(channel);
     await this.persist();
   }
 
@@ -235,9 +235,9 @@ export class ZoneStore {
     await this.ensureInitialized();
     await this.refresh();
 
-    const channels = this.db.data.channels[channel.projectId];
+    const channels = this.db.data.channels[channel.zoneId];
     if (!channels) {
-      throw new Error(`Project ${channel.projectId} has no channels`);
+      throw new Error(`Project ${channel.zoneId} has no channels`);
     }
 
     const index = channels.findIndex(c => c.id === channel.id);
@@ -249,30 +249,30 @@ export class ZoneStore {
     await this.persist();
   }
 
-  public async deleteChannel(projectId: string, channelId: string): Promise<boolean> {
+  public async deleteChannel(zoneId: string, channelId: string): Promise<boolean> {
     await this.ensureInitialized();
     await this.refresh();
 
-    const channels = this.db.data.channels[projectId];
+    const channels = this.db.data.channels[zoneId];
     if (!channels) return false;
 
     const initialLength = channels.length;
-    this.db.data.channels[projectId] = channels.filter(c => c.id !== channelId);
+    this.db.data.channels[zoneId] = channels.filter(c => c.id !== channelId);
 
-    if (this.db.data.channels[projectId].length < initialLength) {
+    if (this.db.data.channels[zoneId].length < initialLength) {
       await this.persist();
       return true;
     }
     return false;
   }
 
-  public async subscribeToChannel(projectId: string, channelId: string, agentId: string): Promise<void> {
+  public async subscribeToChannel(zoneId: string, channelId: string, agentId: string): Promise<void> {
     await this.ensureInitialized();
     await this.refresh();
 
-    const channels = this.db.data.channels[projectId];
+    const channels = this.db.data.channels[zoneId];
     if (!channels) {
-      throw new Error(`Project ${projectId} has no channels`);
+      throw new Error(`Project ${zoneId} has no channels`);
     }
 
     const channel = channels.find(c => c.id === channelId);
@@ -287,11 +287,11 @@ export class ZoneStore {
     }
   }
 
-  public async unsubscribeFromChannel(projectId: string, channelId: string, agentId: string): Promise<void> {
+  public async unsubscribeFromChannel(zoneId: string, channelId: string, agentId: string): Promise<void> {
     await this.ensureInitialized();
     await this.refresh();
 
-    const channels = this.db.data.channels[projectId];
+    const channels = this.db.data.channels[zoneId];
     if (!channels) return;
 
     const channel = channels.find(c => c.id === channelId);
@@ -306,11 +306,11 @@ export class ZoneStore {
   // Message 存储方法
   // ============================================
 
-  public async getMessages(projectId: string, channelId?: string, since?: number): Promise<ProjectChannelMessage[]> {
+  public async getMessages(zoneId: string, channelId?: string, since?: number): Promise<ProjectChannelMessage[]> {
     await this.ensureInitialized();
     await this.refresh();
 
-    const messages = this.db.data.messages[projectId] || [];
+    const messages = this.db.data.messages[zoneId] || [];
     let filtered = channelId ? messages.filter(m => m.channelId === channelId) : messages;
 
     if (since) {
@@ -324,16 +324,16 @@ export class ZoneStore {
     await this.ensureInitialized();
     await this.refresh();
 
-    if (!this.db.data.messages[message.projectId]) {
-      this.db.data.messages[message.projectId] = [];
+    if (!this.db.data.messages[message.zoneId]) {
+      this.db.data.messages[message.zoneId] = [];
     }
 
-    this.db.data.messages[message.projectId].push(message);
+    this.db.data.messages[message.zoneId].push(message);
     await this.persist();
 
     console.log('[ZoneStore] Message added:', JSON.stringify({
       id: message.id,
-      projectId: message.projectId,
+      zoneId: message.zoneId,
       channelId: message.channelId,
       sender: message.sender.name,
       contentLength: message.content.length,
@@ -342,30 +342,30 @@ export class ZoneStore {
     }));
   }
 
-  public async getMessagesByMention(projectId: string, agentId: string): Promise<ProjectChannelMessage[]> {
+  public async getMessagesByMention(zoneId: string, agentId: string): Promise<ProjectChannelMessage[]> {
     await this.ensureInitialized();
     await this.refresh();
 
-    const messages = this.db.data.messages[projectId] || [];
+    const messages = this.db.data.messages[zoneId] || [];
     return JSON.parse(JSON.stringify(messages.filter(m => m.mentions.includes(agentId))));
   }
 
-  public async getLastMessageTime(projectId: string): Promise<number> {
+  public async getLastMessageTime(zoneId: string): Promise<number> {
     await this.ensureInitialized();
     await this.refresh();
 
-    const messages = this.db.data.messages[projectId] || [];
+    const messages = this.db.data.messages[zoneId] || [];
     if (messages.length === 0) return 0;
 
     return Math.max(...messages.map(m => m.timestamp));
   }
 
-  public async deleteProjectMessages(projectId: string): Promise<void> {
+  public async deleteProjectMessages(zoneId: string): Promise<void> {
     await this.ensureInitialized();
     await this.refresh();
 
-    delete this.db.data.messages[projectId];
-    delete this.db.data.channels[projectId];
+    delete this.db.data.messages[zoneId];
+    delete this.db.data.channels[zoneId];
     await this.persist();
   }
 }

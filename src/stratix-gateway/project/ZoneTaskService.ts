@@ -72,7 +72,7 @@ export class ZoneTaskService {
 
     const task = zoneRepository.createTask(zoneId, title.trim(), agentId);
 
-    gatewayEventBus.publishZoneEvent('zone:task_created', zoneId, zone.id, {
+    gatewayEventBus.publishZoneEvent('zone:task_created', zoneId, {
       task
     });
 
@@ -107,7 +107,7 @@ export class ZoneTaskService {
       throw new Error(`Task not found: ${taskId}`);
     }
 
-    gatewayEventBus.publishZoneEvent('zone:task_updated', zoneId, zone.id, {
+    gatewayEventBus.publishZoneEvent('zone:task_updated', zoneId, {
       task: updated
     });
 
@@ -132,7 +132,7 @@ export class ZoneTaskService {
     const deleted = zoneRepository.deleteTask(taskId);
 
     if (deleted) {
-      gatewayEventBus.publishZoneEvent('zone:task_deleted', zoneId, zone.id, {
+      gatewayEventBus.publishZoneEvent('zone:task_deleted', zoneId, {
         taskId
       });
     }
@@ -172,7 +172,7 @@ export class ZoneTaskService {
       throw new Error(`Task not found: ${taskId}`);
     }
 
-    gatewayEventBus.publishZoneEvent('zone:task_claimed', zoneId, zone.id, {
+    gatewayEventBus.publishZoneEvent('zone:task_claimed', zoneId, {
       taskId,
       assignee: agentId
     });
@@ -202,7 +202,7 @@ export class ZoneTaskService {
         const task = zoneRepository.createTask(zoneId, title, agentId);
         success.push(task);
 
-        gatewayEventBus.publishZoneEvent('zone:task_created', zoneId, zone.id, {
+        gatewayEventBus.publishZoneEvent('zone:task_created', zoneId, {
           task
         });
       } catch (error) {
@@ -257,7 +257,7 @@ export class ZoneTaskService {
         if (updated) {
           success.push(updated);
 
-          gatewayEventBus.publishZoneEvent('zone:task_updated', zoneId, zone.id, {
+          gatewayEventBus.publishZoneEvent('zone:task_updated', zoneId, {
             task: updated
           });
         }

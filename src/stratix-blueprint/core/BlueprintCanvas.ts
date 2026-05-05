@@ -84,14 +84,14 @@ export class BlueprintCanvas extends Phaser.Scene {
     });
   }
   
-  loadBlueprint(tasks: ParsedTask[], projectId: string): void {
+  loadBlueprint(tasks: ParsedTask[], zoneId: string): void {
     this.clearBlueprint();
     
     const { nodes, edges } = this.layoutEngine.layout(tasks);
     
     this.blueprint = {
       id: `blueprint_${Date.now()}`,
-      projectId,
+      zoneId,
       nodes,
       edges,
       metadata: {

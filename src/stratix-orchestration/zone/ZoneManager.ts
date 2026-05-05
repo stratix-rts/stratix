@@ -75,7 +75,6 @@ export class ZoneManager {
     position: { x: number; y: number },
     size: { width: number; height: number },
     config: Partial<ZoneConfig> = {},
-    projectId?: string
   ): Promise<ZoneState> {
     const db = getDatabase().getDatabase();
     const now = Date.now();
@@ -89,7 +88,7 @@ export class ZoneManager {
       zoneId,
       name,
       type,
-      projectId || null,
+      zoneId || null,
       position.x,
       position.y,
       size.width,
@@ -103,7 +102,6 @@ export class ZoneManager {
       zoneId,
       name,
       type,
-      projectId,
       position,
       size,
       status: 'idle',
@@ -455,7 +453,6 @@ export class ZoneManager {
       zoneId: row.zone_id,
       name: row.name,
       type: row.type,
-      projectId: row.project_id ?? undefined,
       position: { x: row.position_x, y: row.position_y },
       size: { width: row.width, height: row.height },
       status: row.status as ZoneState['status'],

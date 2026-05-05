@@ -124,7 +124,6 @@ interface TaskUpdate {
 
 export class ZoneCoordinator {
   readonly zoneId: string;
-  readonly projectId: string;
   readonly title: string;
   readonly prompt: string;
 
@@ -176,10 +175,10 @@ export class ZoneCoordinator {
     if (!zone) {
       throw new Error(`Zone ${zoneId} not found`);
     }
-    if (!zone.projectId) {
-      throw new Error(`Zone ${zoneId} has no projectId`);
+    if (!zone.zoneId) {
+      throw new Error(`Zone ${zoneId} has no zoneId`);
     }
-    this.projectId = zone.projectId;
+    this.zoneId = zone.zoneId;
     this.title = zone.title ?? "";
     this.prompt = zone.prompt ?? "";
     this.zonePath = zone.path || '';
@@ -1600,7 +1599,7 @@ ${assignStrategyDescription}
     `).run(
       task.id,
       task.zoneId,
-      this.projectId,
+      this.zoneId,
       task.title,
       task.description,
       task.type,

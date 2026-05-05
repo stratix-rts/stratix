@@ -28,7 +28,6 @@ export interface Conversation {
   name?: string;
   participants: string[];
   zoneId?: string;
-  projectId?: string;
   createdAt: number;
   updatedAt: number;
 }

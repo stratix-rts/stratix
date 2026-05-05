@@ -122,7 +122,7 @@ interface LegacyProjectJson {
 
 interface LegacyChannelJson {
   id?: unknown;
-  projectId?: unknown;
+  zoneId?: unknown;
   name?: unknown;
   type?: unknown;
   description?: unknown;
@@ -133,7 +133,7 @@ interface LegacyChannelJson {
 
 interface LegacyMessageJson {
   id?: unknown;
-  projectId?: unknown;
+  zoneId?: unknown;
   channelId?: unknown;
   role?: unknown;
   content?: unknown;
@@ -204,12 +204,12 @@ async function migrate() {
     }
 
     if (projectsJson.channels) {
-      for (const [projectId, channels] of Object.entries(projectsJson.channels)) {
-        log('info', `Migrating ${channels.length} channels for project ${projectId}...`);
+      for (const [zoneId, channels] of Object.entries(projectsJson.channels)) {
+        log('info', `Migrating ${channels.length} channels for project ${zoneId}...`);
         for (const channel of channels) {
           zoneRepository.createChannel({
             id: String(channel.id),
-            projectId: String(channel.projectId),
+            zoneId: String(channel.zoneId),
             name: String(channel.name),
             type: String(channel.type) as ProjectChannelType,
             description: String(channel.description || ''),
@@ -224,12 +224,12 @@ async function migrate() {
     }
 
     if (projectsJson.messages) {
-      for (const [projectId, messages] of Object.entries(projectsJson.messages)) {
-        log('info', `Migrating ${messages.length} messages for project ${projectId}...`);
+      for (const [zoneId, messages] of Object.entries(projectsJson.messages)) {
+        log('info', `Migrating ${messages.length} messages for project ${zoneId}...`);
         for (const msg of messages) {
           zoneRepository.createMessage({
             id: String(msg.id),
-            projectId: String(msg.projectId),
+            zoneId: String(msg.zoneId),
             channelId: String(msg.channelId),
             role: String(msg.role) as MessageRole,
             content: String(msg.content),
@@ -244,7 +244,7 @@ async function migrate() {
             timestamp: Number(msg.timestamp)
           });
         }
-        log('info', `${messages.length} messages migrated for project ${projectId}`);
+        log('info', `${messages.length} messages migrated for project ${zoneId}`);
       }
     }
   });

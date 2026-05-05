@@ -13,7 +13,7 @@ import { ProjectChannelMessage } from '../stratix-project/types';
 
 export interface ChannelMessageEvent {
   type: 'channel_message';
-  projectId: string;
+  zoneId: string;
   channelId: string;
   message: ProjectChannelMessage;
   subscriberIds: string[];
@@ -21,7 +21,7 @@ export interface ChannelMessageEvent {
 
 export interface AgentMentionEvent {
   type: 'agent_mention';
-  projectId: string;
+  zoneId: string;
   channelId: string;
   message: ProjectChannelMessage;
   agentId: string;
@@ -31,7 +31,6 @@ export interface AgentMentionEvent {
 export interface ZoneEvent {
   type: 'zone:created' | 'zone:updated' | 'zone:file_added' | 'zone:file_removed' | 'zone:file_updated' | 'zone:member_joined' | 'zone:member_left' | 'zone:deleted' | 'zone:restored' | 'zone:task_created' | 'zone:task_updated' | 'zone:task_deleted' | 'zone:task_claimed' | 'zone:message_added';
   zoneId: string;
-  projectId: string;
   data?: Record<string, unknown>;
 }
 
@@ -62,7 +61,7 @@ class GatewayEventBus extends EventEmitter {
    * 所有订阅者（包括 WebSocket 和内部 Agent）都会收到
    */
   publishChannelMessage(
-    projectId: string,
+    zoneId: string,
     channelId: string,
     message: ProjectChannelMessage,
     subscriberIds: string[]
@@ -75,7 +74,7 @@ class GatewayEventBus extends EventEmitter {
 
     const event: ChannelMessageEvent = {
       type: 'channel_message',
-      projectId,
+      zoneId,
       channelId,
       message,
       subscriberIds
@@ -95,7 +94,7 @@ class GatewayEventBus extends EventEmitter {
         if (subscriberIds.includes(agentId)) {
           const mentionEvent: AgentMentionEvent = {
             type: 'agent_mention',
-            projectId,
+            zoneId,
             channelId,
             message,
             agentId
@@ -136,7 +135,6 @@ class GatewayEventBus extends EventEmitter {
   publishZoneEvent(
     type: ZoneEvent['type'],
     zoneId: string,
-    projectId: string,
     data?: Record<string, unknown>
   ): void {
     console.log(`[GatewayEventBus] Publishing zone event ${type} for zone ${zoneId}:`, data);
@@ -144,7 +142,6 @@ class GatewayEventBus extends EventEmitter {
     const event: ZoneEvent = {
       type,
       zoneId,
-      projectId,
       data
     };
 

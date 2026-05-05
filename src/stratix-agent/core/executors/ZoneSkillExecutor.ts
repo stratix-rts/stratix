@@ -8,7 +8,6 @@ interface ZoneApiItem {
   prompt?: string;
   members?: unknown[];
   status?: string;
-  projectId?: string;
   createdAt?: string;
 }
 
@@ -110,20 +109,20 @@ export class ZoneSkillExecutor implements SkillExecutor {
       case 'zone_leave': {
         const reason = typeof params.reason === 'string' ? params.reason : undefined;
         const directZoneId = typeof params.zoneId === 'string' ? params.zoneId : undefined;
-        // projectId can come from params or context.variables
-        const projectId = typeof params.projectId === 'string' ? params.projectId :
-          (typeof context.variables?.projectId === 'string' ? context.variables.projectId : undefined);
+        // zoneId can come from params or context.variables
+        const zoneId = typeof params.zoneId === 'string' ? params.zoneId :
+          (typeof context.variables?.zoneId === 'string' ? context.variables.zoneId : undefined);
 
         let currentZoneId = directZoneId;
 
-        // If zoneId not provided directly, need projectId to find current zone
+        // If zoneId not provided directly, need zoneId to find current zone
         if (!currentZoneId) {
-          if (!projectId) {
-            throw new Error('projectId is required for zone_leave (pass zoneId directly or set context.variables.projectId)');
+          if (!zoneId) {
+            throw new Error('zoneId is required for zone_leave (pass zoneId directly or set context.variables.zoneId)');
           }
 
           // First get current zone membership
-          const listResponse = await fetchWithRetry(`${gatewayUrl}/api/zones?projectId=${encodeURIComponent(projectId)}`, {
+          const listResponse = await fetchWithRetry(`${gatewayUrl}/api/zones?zoneId=${encodeURIComponent(zoneId)}`, {
             method: 'GET',
             headers: { 'Content-Type': 'application/json' },
           });
@@ -170,14 +169,14 @@ export class ZoneSkillExecutor implements SkillExecutor {
       }
 
       case 'zone_list': {
-        // projectId can come from params or context.variables
-        const projectId = typeof params.projectId === 'string' ? params.projectId :
-          (typeof context.variables?.projectId === 'string' ? context.variables.projectId : undefined);
-        if (!projectId) {
-          throw new Error('projectId is required for zone_list (pass as param or set in context.variables.projectId)');
+        // zoneId can come from params or context.variables
+        const zoneId = typeof params.zoneId === 'string' ? params.zoneId :
+          (typeof context.variables?.zoneId === 'string' ? context.variables.zoneId : undefined);
+        if (!zoneId) {
+          throw new Error('zoneId is required for zone_list (pass as param or set in context.variables.zoneId)');
         }
 
-        const response = await fetchWithRetry(`${gatewayUrl}/api/zones?projectId=${encodeURIComponent(projectId)}`, {
+        const response = await fetchWithRetry(`${gatewayUrl}/api/zones?zoneId=${encodeURIComponent(zoneId)}`, {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' },
         });
@@ -245,14 +244,13 @@ export class ZoneSkillExecutor implements SkillExecutor {
         }
 
         const data = await response.json();
-        const zones = (data.zones || []).map((zone: ZoneApiItem & { projectId?: string }) => ({
+        const zones = (data.zones || []).map((zone: ZoneApiItem & { zoneId?: string }) => ({
           zoneId: zone.id || zone.zoneId,
           name: zone.name || zone.title || 'Unnamed Zone',
           title: zone.title || '',
           prompt: zone.prompt || '',
           agentCount: zone.members?.length || 0,
           status: zone.status,
-          projectId: zone.projectId
         }));
 
         return {
@@ -268,11 +266,11 @@ export class ZoneSkillExecutor implements SkillExecutor {
         // Get recently created zones for potential joining
         // Agent can call this to discover new zones that might need agents
         const limit = typeof params.limit === 'number' ? params.limit : 10;
-        const projectId = typeof params.projectId === 'string' ? params.projectId : undefined;
+        const zoneId = typeof params.zoneId === 'string' ? params.zoneId : undefined;
 
         let url = `${gatewayUrl}/api/zones?limit=${encodeURIComponent(String(limit))}`;
-        if (projectId) {
-          url += `&projectId=${encodeURIComponent(projectId)}`;
+        if (zoneId) {
+          url += `&zoneId=${encodeURIComponent(zoneId)}`;
         }
 
         const response = await fetchWithRetry(url, {
@@ -285,14 +283,13 @@ export class ZoneSkillExecutor implements SkillExecutor {
         }
 
         const data = await response.json();
-        const zones = (data.zones || []).map((zone: ZoneApiItem & { projectId?: string; createdAt?: string }) => ({
+        const zones = (data.zones || []).map((zone: ZoneApiItem & { zoneId?: string; createdAt?: string }) => ({
           zoneId: zone.id || zone.zoneId,
           name: zone.name || zone.title || 'Unnamed Zone',
           title: zone.title || '',
           prompt: zone.prompt || '',
           agentCount: zone.members?.length || 0,
           status: zone.status,
-          projectId: zone.projectId,
           createdAt: zone.createdAt
         }));
 

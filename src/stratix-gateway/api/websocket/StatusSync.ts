@@ -110,7 +110,7 @@ export class StatusSyncService {
       this.broadcast({
         eventType: 'stratix:project_message_new',
         payload: {
-          projectId: event.projectId,
+          zoneId: event.zoneId,
           channelId: event.channelId,
           message: event.message
         },
@@ -179,7 +179,6 @@ export class StatusSyncService {
       eventType: eventTypeMap[event.type],
       payload: {
         zoneId: event.zoneId,
-        projectId: event.projectId,
         ...event.data
       },
       timestamp: Date.now(),
@@ -208,7 +207,6 @@ export class StatusSyncService {
       eventType: 'stratix:zone_created',
       payload: {
         zoneId: event.zoneId,
-        projectId: event.projectId,
         data: {
           title: event.data?.title as string || 'Untitled Zone',
           prompt: event.data?.prompt as string || '',

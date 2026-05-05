@@ -128,10 +128,10 @@ export class StratixRTSEventManager {
   }
 
   private onZoneCreated(event: StratixEvent): void {
-    const payload = event.payload as { zoneId?: string; projectId?: string; title?: string; prompt?: string };
-    const { zoneId, projectId, title, prompt } = payload;
+    const payload = event.payload as { zoneId?: string; title?: string; prompt?: string };
+    const { zoneId, title, prompt } = payload;
     if (!zoneId) return;
-    this.scene.events.emit('stratix:zone-created', { zoneId, projectId, title, prompt });
+    this.scene.events.emit('stratix:zone-created', { zoneId, title, prompt });
   }
 
   private onZoneUpdated(event: StratixEvent): void {

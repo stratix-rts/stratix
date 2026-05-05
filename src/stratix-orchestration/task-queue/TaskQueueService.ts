@@ -55,7 +55,6 @@ export class TaskQueueService {
   async createTask(
     taskId: string,
     zoneId: string,
-    projectId: string,
     name: string,
     type: 'coding' | 'writing' | 'analysis' | 'research' | 'general',
     context: TaskContext,
@@ -71,7 +70,6 @@ export class TaskQueueService {
     const task: TaskItem = {
       taskId,
       zoneId,
-      projectId,
       name,
       description: options.description,
       type,
@@ -88,7 +86,7 @@ export class TaskQueueService {
     `).run(
       taskId,
       zoneId,
-      projectId,
+      zoneId,
       name,
       options.description || null,
       type,
@@ -506,7 +504,6 @@ export class TaskQueueService {
     return {
       taskId: row.task_id,
       zoneId: row.zone_id,
-      projectId: row.project_id,
       name: row.name,
       description: row.description ?? undefined,
       type: row.type as TaskItem['type'],

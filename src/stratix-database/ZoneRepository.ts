@@ -126,7 +126,7 @@ export class ZoneRepository {
   }
 
   // Zone CRUD operations
-  getZonesByProject(projectId: string, limit?: number, offset?: number): Zone[] {
+  getZonesByProject(zoneId: string, limit?: number, offset?: number): Zone[] {
     // JOIN with zones table to get location/config fields
     let query = `
       SELECT zc.*, z.description, z.priority, z.status, z.path, z.present_agent_ids, z.started_at, z.completed_at, z.config as zone_config
@@ -135,7 +135,7 @@ export class ZoneRepository {
       WHERE zc.project_id = ? AND zc.deleted_at IS NULL
       ORDER BY zc.created_at DESC
     `;
-    const params: (string | number)[] = [projectId];
+    const params: (string | number)[] = [zoneId];
 
     if (limit !== undefined) {
       query += ' LIMIT ?';
@@ -157,11 +157,11 @@ export class ZoneRepository {
     return rows.map(row => this.mapRowToZone(row, filesByZone));
   }
 
-  getZonesByProjectCount(projectId: string): number {
+  getZonesByProjectCount(zoneId: string): number {
     const result = this.stmt(`
       SELECT COUNT(*) as count FROM zone_contexts
       WHERE project_id = ? AND deleted_at IS NULL
-    `).get(projectId) as { count: number };
+    `).get(zoneId) as { count: number };
     return result.count;
   }
 
@@ -176,7 +176,7 @@ export class ZoneRepository {
     return row ? this.mapRowToZone(row) : null;
   }
 
-  createZone(projectId: string, title: string, prompt: string = ''): Zone {
+  createZone(parentId: string, title: string, prompt: string = ''): Zone {
     const now = Date.now();
     const zoneId = generateId('zone');
 
@@ -190,14 +190,14 @@ export class ZoneRepository {
       this.stmt(`
         INSERT INTO zone_contexts (zone_id, project_id, title, prompt, members, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(zoneId, projectId, title, prompt, '[]', now, now);
+      `).run(zoneId, parentId, title, prompt, '[]', now, now);
 
       // Also insert into zones table for FK consistency (zone_context_id = zone_id)
       // This is needed because tasks table has FK REFERENCES zones(zone_id)
       this.stmt(`
         INSERT INTO zones (zone_id, name, type, project_id, position_x, position_y, width, height, status, config, zone_context_id, path, created_at, updated_at)
         VALUES (?, ?, 'task', ?, 0, 0, 400, 300, 'idle', '{}', ?, ?, ?, ?)
-      `).run(zoneId, title, projectId, zoneId, zonePath, now, now);
+      `).run(zoneId, title, parentId, zoneId, zonePath, now, now);
     });
     insertZone();
 
@@ -210,7 +210,7 @@ export class ZoneRepository {
 
     return {
       id: zoneId,
-      projectId,
+      zoneId: parentId,
       title,
       prompt,
       path: zonePath,
@@ -257,14 +257,14 @@ export class ZoneRepository {
   // Zone Soft Delete Recovery (Recycle Bin)
   // ============================================
 
-  getDeletedZones(projectId: string): Zone[] {
+  getDeletedZones(zoneId: string): Zone[] {
     const rows = this.stmt(`
       SELECT zc.*, z.description, z.priority, z.status, z.path, z.present_agent_ids, z.started_at, z.completed_at, z.config as zone_config
       FROM zone_contexts zc
       LEFT JOIN zones z ON z.zone_context_id = zc.zone_id
       WHERE zc.project_id = ? AND zc.deleted_at IS NOT NULL
       ORDER BY zc.deleted_at DESC
-    `).all(projectId) as ZoneContextRow[];
+    `).all(zoneId) as ZoneContextRow[];
 
     if (rows.length === 0) return [];
 
@@ -826,7 +826,7 @@ export class ZoneRepository {
 
     return {
       id: row.zone_id,
-      projectId: row.project_id,
+      zoneId: row.project_id,
       title: row.title || '',
       prompt: row.prompt || '',
       description: row.description || '',
@@ -910,8 +910,8 @@ export class ZoneRepository {
     return rows.map(row => this.mapProjectRow(row));
   }
 
-  getProject(projectId: string): Project | null {
-    const row = this.stmt('SELECT * FROM projects WHERE project_id = ?').get(projectId) as {
+  getProject(zoneId: string): Project | null {
+    const row = this.stmt('SELECT * FROM projects WHERE project_id = ?').get(zoneId) as {
       project_id: string; name: string; description: string; priority: number;
       status: string; config: string; path: string; present_agent_ids: string;
       zone_config: string; created_at: number; updated_at: number;
@@ -939,11 +939,11 @@ export class ZoneRepository {
     return project;
   }
 
-  updateProject(projectId: string, updates: Partial<Project>): Project | null {
-    const existing = this.getProject(projectId);
+  updateProject(zoneId: string, updates: Partial<Project>): Project | null {
+    const existing = this.getProject(zoneId);
     if (!existing) return null;
 
-    const updated: Project = { ...existing, ...updates, id: projectId, updatedAt: new Date() };
+    const updated: Project = { ...existing, ...updates, id: zoneId, updatedAt: new Date() };
 
     this.stmt(`
       UPDATE projects SET
@@ -955,27 +955,27 @@ export class ZoneRepository {
       JSON.stringify(updated.config), updated.path,
       JSON.stringify(updated.presentAgentIds), JSON.stringify(updated.zoneConfig),
       normalizeDate(updated.updatedAt), normalizeDate(updated.startedAt),
-      normalizeDate(updated.completedAt), projectId
+      normalizeDate(updated.completedAt), zoneId
     );
 
     return updated;
   }
 
-  deleteProjectRecord(projectId: string): boolean {
-    const result = this.stmt('DELETE FROM projects WHERE project_id = ?').run(projectId);
+  deleteProjectRecord(zoneId: string): boolean {
+    const result = this.stmt('DELETE FROM projects WHERE project_id = ?').run(zoneId);
     return result.changes > 0;
   }
 
-  getChannels(projectId: string): ProjectChannel[] {
-    const rows = this.stmt('SELECT * FROM channels WHERE project_id = ?').all(projectId) as Array<{
+  getChannels(zoneId: string): ProjectChannel[] {
+    const rows = this.stmt('SELECT * FROM channels WHERE project_id = ?').all(zoneId) as Array<{
       channel_id: string; project_id: string; name: string; type: string;
       description: string; subscriber_ids: string; created_at: number; updated_at: number;
     }>;
     return rows.map(row => this.mapChannelRow(row));
   }
 
-  getChannel(projectId: string, channelId: string): ProjectChannel | null {
-    const row = this.stmt('SELECT * FROM channels WHERE project_id = ? AND channel_id = ?').get(projectId, channelId) as {
+  getChannel(zoneId: string, channelId: string): ProjectChannel | null {
+    const row = this.stmt('SELECT * FROM channels WHERE project_id = ? AND channel_id = ?').get(zoneId, channelId) as {
       channel_id: string; project_id: string; name: string; type: string;
       description: string; subscriber_ids: string; created_at: number; updated_at: number;
     } | undefined;
@@ -987,20 +987,20 @@ export class ZoneRepository {
       INSERT INTO channels (channel_id, project_id, name, type, description, subscriber_ids, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      channel.id, channel.projectId, channel.name, channel.type,
+      channel.id, channel.zoneId, channel.name, channel.type,
       channel.description || '', JSON.stringify(channel.subscriberIds),
       channel.createdAt, channel.updatedAt
     );
     return channel;
   }
 
-  updateChannel(projectId: string, channelId: string, subscriberIds: string[]): ProjectChannel | null {
+  updateChannel(zoneId: string, channelId: string, subscriberIds: string[]): ProjectChannel | null {
     this.stmt('UPDATE channels SET subscriber_ids = ?, updated_at = ? WHERE project_id = ? AND channel_id = ?')
-      .run(JSON.stringify(subscriberIds), Date.now(), projectId, channelId);
-    return this.getChannel(projectId, channelId);
+      .run(JSON.stringify(subscriberIds), Date.now(), zoneId, channelId);
+    return this.getChannel(zoneId, channelId);
   }
 
-  getProjectMessages(projectId: string, channelId?: string): ProjectChannelMessage[] {
+  getProjectMessages(zoneId: string, channelId?: string): ProjectChannelMessage[] {
     let rows: Array<{
       message_id: string; project_id: string; channel_id: string; role: string;
       content: string; sender: string; mentions: string; raw_content: string;
@@ -1008,20 +1008,20 @@ export class ZoneRepository {
       metadata: string; timestamp: number;
     }>;
     if (channelId) {
-      rows = this.stmt('SELECT * FROM messages WHERE project_id = ? AND channel_id = ? ORDER BY timestamp ASC').all(projectId, channelId) as typeof rows;
+      rows = this.stmt('SELECT * FROM messages WHERE project_id = ? AND channel_id = ? ORDER BY timestamp ASC').all(zoneId, channelId) as typeof rows;
     } else {
-      rows = this.stmt('SELECT * FROM messages WHERE project_id = ? ORDER BY timestamp ASC').all(projectId) as typeof rows;
+      rows = this.stmt('SELECT * FROM messages WHERE project_id = ? ORDER BY timestamp ASC').all(zoneId) as typeof rows;
     }
     return rows.map(row => this.mapMessageRow(row));
   }
 
-  getMessagesByMention(projectId: string, agentId: string): ProjectChannelMessage[] {
+  getMessagesByMention(zoneId: string, agentId: string): ProjectChannelMessage[] {
     const rows = this.stmt(`
       SELECT * FROM messages
       WHERE project_id = ?
         AND EXISTS (SELECT 1 FROM json_each(mentions) WHERE value = ?)
       ORDER BY timestamp ASC
-    `).all(projectId, agentId) as Array<{
+    `).all(zoneId, agentId) as Array<{
       message_id: string; project_id: string; channel_id: string; role: string;
       content: string; sender: string; mentions: string; raw_content: string;
       message_type: string; task_id: string; session_key: string; run_id: string;
@@ -1035,7 +1035,7 @@ export class ZoneRepository {
       INSERT INTO messages (message_id, project_id, channel_id, role, content, sender, mentions, raw_content, message_type, task_id, session_key, run_id, metadata, timestamp, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      message.id, message.projectId, message.channelId, message.role,
+      message.id, message.zoneId, message.channelId, message.role,
       message.content, JSON.stringify(message.sender), JSON.stringify(message.mentions),
       message.rawContent || '', message.messageType, message.taskId || '',
       message.sessionKey || '', message.runId || '', JSON.stringify(message.metadata),
@@ -1073,7 +1073,7 @@ export class ZoneRepository {
   }): ProjectChannel {
     return {
       id: row.channel_id,
-      projectId: row.project_id,
+      zoneId: row.project_id,
       name: row.name,
       type: row.type as ProjectChannelType,
       description: row.description,
@@ -1103,7 +1103,7 @@ export class ZoneRepository {
 
     return {
       id: row.message_id,
-      projectId: row.project_id,
+      zoneId: row.project_id,
       channelId: row.channel_id,
       role: row.role as MessageRole,
       content: row.content,
