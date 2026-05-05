@@ -7,7 +7,7 @@
 import Phaser from 'phaser';
 
 import { 
-  ProjectManagerIntegration, 
+  ZoneManagerIntegration, 
   Project, 
   ProjectConfig 
 } from '..';
@@ -15,7 +15,7 @@ import { UnifiedZoneManager } from '../../stratix-rts/zones/UnifiedZoneManager';
 import { MAP_WIDTH, MAP_HEIGHT, DEFAULT_ZOOM } from '../../stratix-rts/constants';
 
 export class ProjectManagementExampleScene extends Phaser.Scene {
-  private projectManager: ProjectManagerIntegration;
+  private projectManager: ZoneManagerIntegration;
   private unifiedZoneManager: UnifiedZoneManager;
   private isProjectDrawMode: boolean = false;
   private projectConfigCallback: ((project: Project) => void) | null = null;
@@ -42,7 +42,7 @@ export class ProjectManagementExampleScene extends Phaser.Scene {
     this.unifiedZoneManager = new UnifiedZoneManager(this);
 
     // 初始化项目管理器
-    this.projectManager = new ProjectManagerIntegration(this, this.unifiedZoneManager, {
+    this.projectManager = new ZoneManagerIntegration(this, this.unifiedZoneManager, {
       autoLoad: true
     });
 
@@ -224,7 +224,7 @@ export class ProjectManagementExampleScene extends Phaser.Scene {
   /**
    * 获取项目管理器实例
    */
-  public getProjectManager(): ProjectManagerIntegration {
+  public getProjectManager(): ZoneManagerIntegration {
     return this.projectManager;
   }
 

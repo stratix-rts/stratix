@@ -6,15 +6,15 @@ import Phaser from 'phaser';
 import { rtsEventBus } from '../stratix-rts/events/core/RTSEventBus';
 import { UnifiedZoneManager } from '../stratix-rts/zones/UnifiedZoneManager';
 
-import { ProjectClient } from './ZoneClient';
-import { ProjectZone } from './core/GameZone';
-import { ProjectZonePreview } from './core/ProjectZonePreview';
+import { ZoneClient } from './ZoneClient';
+import { GameZone } from './core/GameZone';
+import { GameZonePreview } from './core/GameZonePreview';
 import { Project, ProjectConfig, ProjectZoneConfig, Zone } from './types';
 import { throttle } from './utils/helpers';
 
 
 
-export interface ProjectManagerIntegrationConfig {
+export interface ZoneManagerIntegrationConfig {
   autoLoad?: boolean;
 }
 
@@ -27,24 +27,24 @@ type ProjectManagerEvents = {
   'project:zone-moved': { project: Project } & Record<string, unknown>;
 };
 
-export class ProjectManagerIntegration {
+export class ZoneManagerIntegration {
   private scene: Phaser.Scene;
-  private projectClient: ProjectClient;
+  private projectClient: ZoneClient;
   private unifiedZoneManager: UnifiedZoneManager;
-  private projectZonePreview: ProjectZonePreview;
+  private projectZonePreview: GameZonePreview;
   private eventBus: Emitter<ProjectManagerEvents>;
   private isDrawingProjectZone: boolean = false;
   private visibleZones: Set<string> = new Set();
   private viewportUpdateThrottled: (camera: Phaser.Cameras.Scene2D.Camera) => void;
 
-  constructor(scene: Phaser.Scene, unifiedZoneManager: UnifiedZoneManager, config?: ProjectManagerIntegrationConfig) {
+  constructor(scene: Phaser.Scene, unifiedZoneManager: UnifiedZoneManager, config?: ZoneManagerIntegrationConfig) {
     this.scene = scene;
     this.unifiedZoneManager = unifiedZoneManager;
     
     this.eventBus = mitt<ProjectManagerEvents>();
-    this.projectClient = new ProjectClient();
+    this.projectClient = new ZoneClient();
     
-    this.projectZonePreview = new ProjectZonePreview(scene, {
+    this.projectZonePreview = new GameZonePreview(scene, {
       lineColor: 0x00aaff,
       fillColor: 0x00aaff,
       lineWidth: 4
@@ -69,24 +69,24 @@ export class ProjectManagerIntegration {
 
   private setupEventListeners(): void {
     this.eventBus.on('project:created', ({ project }) => {
-      console.log('[ProjectManager] Project created:', project.id);
+      console.log('[ZoneManager] Project created:', project.id);
       this.createProjectZone(project);
     });
 
     this.eventBus.on('project:updated', ({ project }) => {
-      console.log('[ProjectManager] Project updated:', project.id);
+      console.log('[ZoneManager] Project updated:', project.id);
       this.updateProjectZone(project);
     });
 
     this.eventBus.on('project:deleted', ({ projectId }) => {
-      console.log('[ProjectManager] Project deleted:', projectId);
+      console.log('[ZoneManager] Project deleted:', projectId);
       this.removeProjectZone(projectId);
     });
 
     rtsEventBus.on('zone:moved' as any, async (event: any) => {
       const zoneId = event.zoneId;
       const zone = this.unifiedZoneManager.getZone(zoneId);
-      if (zone instanceof ProjectZone) {
+      if (zone instanceof GameZone) {
         const bounds = event.bounds;
         try {
           await this.projectClient.updateZoneConfig(zoneId, {
@@ -95,9 +95,9 @@ export class ProjectManagerIntegration {
             width: bounds.width,
             height: bounds.height,
           });
-          console.log(`[ProjectManager] Zone position saved: ${zoneId}`);
+          console.log(`[ZoneManager] Zone position saved: ${zoneId}`);
         } catch (error) {
-          console.error(`[ProjectManager] Failed to save zone position: ${zoneId}`, error);
+          console.error(`[ZoneManager] Failed to save zone position: ${zoneId}`, error);
         }
       }
     });
@@ -105,7 +105,7 @@ export class ProjectManagerIntegration {
     rtsEventBus.on('zone:resized' as any, async (event: any) => {
       const zoneId = event.zoneId;
       const zone = this.unifiedZoneManager.getZone(zoneId);
-      if (zone instanceof ProjectZone) {
+      if (zone instanceof GameZone) {
         const bounds = event.bounds;
         try {
           await this.projectClient.updateZoneConfig(zoneId, {
@@ -114,9 +114,9 @@ export class ProjectManagerIntegration {
             width: bounds.width,
             height: bounds.height,
           });
-          console.log(`[ProjectManager] Zone size saved: ${zoneId}`);
+          console.log(`[ZoneManager] Zone size saved: ${zoneId}`);
         } catch (error) {
-          console.error(`[ProjectManager] Failed to save zone size: ${zoneId}`, error);
+          console.error(`[ZoneManager] Failed to save zone size: ${zoneId}`, error);
         }
       }
     });
@@ -124,12 +124,12 @@ export class ProjectManagerIntegration {
     rtsEventBus.on('zone:deleted' as any, async (event: any) => {
       const zoneId = event.zoneId;
       const zone = this.unifiedZoneManager.getZone(zoneId);
-      if (zone instanceof ProjectZone) {
+      if (zone instanceof GameZone) {
         try {
           await this.projectClient.deleteProject(zoneId);
-          console.log(`[ProjectManager] Zone deleted: ${zoneId}`);
+          console.log(`[ZoneManager] Zone deleted: ${zoneId}`);
         } catch (error) {
-          console.error(`[ProjectManager] Failed to delete zone: ${zoneId}`, error);
+          console.error(`[ZoneManager] Failed to delete zone: ${zoneId}`, error);
         }
       }
     });
@@ -143,7 +143,7 @@ export class ProjectManagerIntegration {
     await this.initialize();
 
     const projects = await this.projectClient.getAllProjects();
-    console.log(`[ProjectManager] Loading ${projects.length} existing projects`);
+    console.log(`[ZoneManager] Loading ${projects.length} existing projects`);
 
     // Parallelize project zone creation for better performance
     await Promise.all(projects.map(project => this.createProjectZone(project)));
@@ -152,14 +152,14 @@ export class ProjectManagerIntegration {
   }
 
   private updateProjectZone(project: Project): void {
-    const projectZone = this.unifiedZoneManager.getZone(project.id) as ProjectZone | undefined;
+    const projectZone = this.unifiedZoneManager.getZone(project.id) as GameZone | undefined;
     if (projectZone) {
       projectZone.updateProject(project);
     }
   }
 
   public removeProjectZone(projectId: string): void {
-    const projectZone = this.unifiedZoneManager.getZone(projectId) as ProjectZone | undefined;
+    const projectZone = this.unifiedZoneManager.getZone(projectId) as GameZone | undefined;
     if (projectZone) {
       projectZone.destroy();
       this.unifiedZoneManager.unregister(projectId);
@@ -169,7 +169,7 @@ export class ProjectManagerIntegration {
 
   public selectProjectZone(projectId: string): void {
     this.clearProjectZoneSelection();
-    const projectZone = this.unifiedZoneManager.getZone(projectId) as ProjectZone | undefined;
+    const projectZone = this.unifiedZoneManager.getZone(projectId) as GameZone | undefined;
     if (projectZone) {
       projectZone.setHighlight(true);
     }
@@ -199,13 +199,13 @@ export class ProjectManagerIntegration {
 
     if (this.projectZonePreview.isOverlapping()) {
       this.projectZonePreview.cancel();
-      console.log('[ProjectManager] Cannot create project zone: overlaps existing zone');
+      console.log('[ZoneManager] Cannot create project zone: overlaps existing zone');
       return null;
     }
 
     const bounds = this.projectZonePreview.end();
     if (!bounds || bounds.width < 100 || bounds.height < 100) {
-      console.log('[ProjectManager] Project zone too small');
+      console.log('[ZoneManager] Project zone too small');
       return null;
     }
 
@@ -258,13 +258,13 @@ export class ProjectManagerIntegration {
             prompt: ''
           });
           createdZone = response.data.zone;
-          console.log('[ProjectManager] Zone context created for project:', project.id, createdZone?.id);
+          console.log('[ZoneManager] Zone context created for project:', project.id, createdZone?.id);
           break; // Success, exit retry loop
         } catch (zoneError) {
-          console.error(`[ProjectManager] Zone context creation attempt ${attempt}/${maxRetries} failed:`, zoneError);
+          console.error(`[ZoneManager] Zone context creation attempt ${attempt}/${maxRetries} failed:`, zoneError);
           if (attempt === maxRetries) {
             // After final attempt, log error but don't fail the whole operation
-            console.error('[ProjectManager] Failed to create zone context after all retries:', zoneError);
+            console.error('[ZoneManager] Failed to create zone context after all retries:', zoneError);
           } else {
             // Wait before retry with exponential backoff
             await new Promise(resolve => setTimeout(resolve, 100 * Math.pow(2, attempt - 1)));
@@ -276,9 +276,9 @@ export class ProjectManagerIntegration {
       if (createdZone) {
         try {
           await this.projectClient.updateZoneContextId(project.id, createdZone.id);
-          console.log('[ProjectManager] Zone context FK linked:', project.id, '->', createdZone.id);
+          console.log('[ZoneManager] Zone context FK linked:', project.id, '->', createdZone.id);
         } catch (linkError) {
-          console.error('[ProjectManager] Failed to link zone context FK:', linkError);
+          console.error('[ZoneManager] Failed to link zone context FK:', linkError);
         }
 
         // Emit zone created event so UI can open zone panel immediately
@@ -304,20 +304,20 @@ export class ProjectManagerIntegration {
       this.eventBus.emit('project:created', { project });
       return project;
     } catch (error) {
-      console.error('[ProjectManager] Failed to create project:', error);
+      console.error('[ZoneManager] Failed to create project:', error);
       return null;
     }
   }
 
-  public getProjectClient(): ProjectClient {
+  public getProjectClient(): ZoneClient {
     return this.projectClient;
   }
 
-  public getProjectZone(projectId: string): ProjectZone | undefined {
-    return this.unifiedZoneManager.getZone(projectId) as ProjectZone | undefined;
+  public getProjectZone(projectId: string): GameZone | undefined {
+    return this.unifiedZoneManager.getZone(projectId) as GameZone | undefined;
   }
 
-  public getAllProjectZones(): Map<string, ProjectZone> {
+  public getAllProjectZones(): Map<string, GameZone> {
     return this.unifiedZoneManager.getProjectZones();
   }
 
@@ -364,7 +364,7 @@ export class ProjectManagerIntegration {
   }
 
   public updateProjectZoneTitle(projectId: string, title: string): void {
-    const projectZone = this.unifiedZoneManager.getZone(projectId) as ProjectZone | undefined;
+    const projectZone = this.unifiedZoneManager.getZone(projectId) as GameZone | undefined;
     if (projectZone) {
       projectZone.updateZoneTitle(title);
     }
@@ -389,17 +389,17 @@ export class ProjectManagerIntegration {
         };
       }
     } catch (error) {
-      console.warn(`[ProjectManager] Failed to fetch zone context for ${projectId}:`, error);
+      console.warn(`[ZoneManager] Failed to fetch zone context for ${projectId}:`, error);
     }
     return null;
   }
 
-  private async createProjectZone(project: Project): Promise<ProjectZone | null> {
-    console.log(`[ProjectManager] Creating zone for project: ${project.id}`, project.zoneConfig);
+  private async createProjectZone(project: Project): Promise<GameZone | null> {
+    console.log(`[ZoneManager] Creating zone for project: ${project.id}`, project.zoneConfig);
 
     const existing = this.unifiedZoneManager.getZone(project.id);
     if (existing) {
-      console.warn(`[ProjectManager] Project zone already exists: ${project.id}`);
+      console.warn(`[ZoneManager] Project zone already exists: ${project.id}`);
       return null;
     }
 
@@ -408,17 +408,17 @@ export class ProjectManagerIntegration {
       const zoneContext = await this.fetchZoneContext(project.id);
       if (zoneContext) {
         project.zoneContext = zoneContext;
-        console.log(`[ProjectManager] Zone context loaded for ${project.id}:`, zoneContext.title);
+        console.log(`[ZoneManager] Zone context loaded for ${project.id}:`, zoneContext.title);
       }
 
-      const projectZone = new ProjectZone(this.scene, project, project.zoneConfig);
-      console.log(`[ProjectManager] ProjectZone created successfully: ${project.id}`);
+      const projectZone = new GameZone(this.scene, project, project.zoneConfig);
+      console.log(`[ZoneManager] GameZone created successfully: ${project.id}`);
 
       this.scene.add.existing(projectZone);
-      console.log(`[ProjectManager] ProjectZone added to scene: ${project.id}`);
+      console.log(`[ZoneManager] GameZone added to scene: ${project.id}`);
 
       this.unifiedZoneManager.register(projectZone);
-      console.log(`[ProjectManager] ProjectZone registered: ${project.id}`);
+      console.log(`[ZoneManager] GameZone registered: ${project.id}`);
 
       projectZone.setInteractive();
       projectZone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
@@ -428,14 +428,14 @@ export class ProjectManagerIntegration {
       });
 
       projectZone.on('zone-moved', (data: any) => {
-        console.log(`[ProjectManager] Zone moved: ${project.id}`, data);
+        console.log(`[ZoneManager] Zone moved: ${project.id}`, data);
         this.eventBus.emit('project:zone-moved', { project, ...data });
       });
 
-      console.log(`[ProjectManager] ✅ ProjectZone setup complete: ${project.id}`);
+      console.log(`[ZoneManager] ✅ GameZone setup complete: ${project.id}`);
       return projectZone;
     } catch (error) {
-      console.error(`[ProjectManager] ❌ Failed to create zone for project ${project.id}:`, error);
+      console.error(`[ZoneManager] ❌ Failed to create zone for project ${project.id}:`, error);
       return null;
     }
   }

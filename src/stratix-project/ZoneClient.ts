@@ -25,7 +25,7 @@ interface MetadataResponse {
   version: string;
 }
 
-export class ProjectClient {
+export class ZoneClient {
   private client: ApiClient;
 
   constructor(config?: ProjectClientConfig) {
@@ -39,13 +39,13 @@ export class ProjectClient {
     if (isApiError(result)) {
       throw new Error(`Failed to initialize project service: ${result.error}`);
     }
-    console.log('[ProjectClient] Project service initialized');
+    console.log('[ZoneClient] Project service initialized');
   }
 
   async getAllProjects(): Promise<Project[]> {
     const result = await this.client.get<Project[]>(API_PATHS.PROJECTS);
     if (isApiError(result)) {
-      console.error('[ProjectClient] Failed to get projects:', result.error);
+      console.error('[ZoneClient] Failed to get projects:', result.error);
       return [];
     }
     return result.data || [];
@@ -56,7 +56,7 @@ export class ProjectClient {
       headers: { params: JSON.stringify({ status }) }
     });
     if (isApiError(result)) {
-      console.error('[ProjectClient] Failed to get projects by status:', result.error);
+      console.error('[ZoneClient] Failed to get projects by status:', result.error);
       return [];
     }
     return result.data || [];
@@ -67,7 +67,7 @@ export class ProjectClient {
       headers: { params: JSON.stringify({ priority }) }
     });
     if (isApiError(result)) {
-      console.error('[ProjectClient] Failed to get projects by priority:', result.error);
+      console.error('[ZoneClient] Failed to get projects by priority:', result.error);
       return [];
     }
     return result.data || [];
@@ -86,14 +86,14 @@ export class ProjectClient {
       throw new Error(`Failed to create project: ${result.error}`);
     }
 
-    console.log(`[ProjectClient] Project created: ${result.data.id}`);
+    console.log(`[ZoneClient] Project created: ${result.data.id}`);
     return result.data;
   }
 
   async getProject(id: string): Promise<Project | null> {
     const result = await this.client.get<Project>(API_PATHS.PROJECT_BY_ID(id));
     if (isApiError(result)) {
-      console.error(`[ProjectClient] Failed to get project ${id}:`, result.error);
+      console.error(`[ZoneClient] Failed to get project ${id}:`, result.error);
       return null;
     }
     return result.data;
@@ -109,7 +109,7 @@ export class ProjectClient {
       throw new Error(`Failed to update project ${id}: ${result.error}`);
     }
 
-    console.log(`[ProjectClient] Project updated: ${id}`);
+    console.log(`[ZoneClient] Project updated: ${id}`);
     return result.data;
   }
 
@@ -137,19 +137,19 @@ export class ProjectClient {
     );
 
     if (isApiError(result)) {
-      console.error(`[ProjectClient] Failed to update zone context FK for ${zoneId}:`, result.error);
+      console.error(`[ZoneClient] Failed to update zone context FK for ${zoneId}:`, result.error);
       throw new Error(`Failed to update zone context FK: ${result.error}`);
     }
-    console.log(`[ProjectClient] Zone context FK updated: ${zoneId} -> ${zoneContextId}`);
+    console.log(`[ZoneClient] Zone context FK updated: ${zoneId} -> ${zoneContextId}`);
   }
 
   async deleteProject(id: string): Promise<boolean> {
     const result = await this.client.delete<{ message: string }>(API_PATHS.PROJECT_BY_ID(id));
     if (isApiError(result)) {
-      console.error(`[ProjectClient] Failed to delete project ${id}:`, result.error);
+      console.error(`[ZoneClient] Failed to delete project ${id}:`, result.error);
       return false;
     }
-    console.log(`[ProjectClient] Project deleted: ${id}`);
+    console.log(`[ZoneClient] Project deleted: ${id}`);
     return true;
   }
 
@@ -158,7 +158,7 @@ export class ProjectClient {
     if (isApiError(result)) {
       throw new Error(`Failed to start project ${id}: ${result.error}`);
     }
-    console.log(`[ProjectClient] Project started: ${id}`);
+    console.log(`[ZoneClient] Project started: ${id}`);
     return result.data;
   }
 
@@ -167,7 +167,7 @@ export class ProjectClient {
     if (isApiError(result)) {
       throw new Error(`Failed to pause project ${id}: ${result.error}`);
     }
-    console.log(`[ProjectClient] Project paused: ${id}`);
+    console.log(`[ZoneClient] Project paused: ${id}`);
     return result.data;
   }
 
@@ -176,7 +176,7 @@ export class ProjectClient {
     if (isApiError(result)) {
       throw new Error(`Failed to complete project ${id}: ${result.error}`);
     }
-    console.log(`[ProjectClient] Project completed: ${id}`);
+    console.log(`[ZoneClient] Project completed: ${id}`);
     return result.data;
   }
 
@@ -185,7 +185,7 @@ export class ProjectClient {
     if (isApiError(result)) {
       throw new Error(`Failed to mark project ${id} as failed: ${result.error}`);
     }
-    console.log(`[ProjectClient] Project marked as failed: ${id}`);
+    console.log(`[ZoneClient] Project marked as failed: ${id}`);
     return result.data;
   }
 
@@ -199,7 +199,7 @@ export class ProjectClient {
       throw new Error(`Failed to add agent to project ${projectId}: ${result.error}`);
     }
 
-    console.log(`[ProjectClient] Agent ${agentId} entered project ${projectId}`);
+    console.log(`[ZoneClient] Agent ${agentId} entered project ${projectId}`);
     return result.data;
   }
 
@@ -213,7 +213,7 @@ export class ProjectClient {
       throw new Error(`Failed to remove agent from project ${projectId}: ${result.error}`);
     }
 
-    console.log(`[ProjectClient] Agent ${agentId} left project ${projectId}`);
+    console.log(`[ZoneClient] Agent ${agentId} left project ${projectId}`);
     return result.data;
   }
 
@@ -232,10 +232,10 @@ export class ProjectClient {
     );
 
     if (isApiError(result)) {
-      console.error(`[ProjectClient] Failed to add agent ${agentId} to zone ${zoneId}:`, result.error);
+      console.error(`[ZoneClient] Failed to add agent ${agentId} to zone ${zoneId}:`, result.error);
       throw new Error(`Failed to add agent to zone: ${result.error}`);
     }
-    console.log(`[ProjectClient] Agent ${agentId} added to zone ${zoneId}`);
+    console.log(`[ZoneClient] Agent ${agentId} added to zone ${zoneId}`);
   }
 
   async removeZoneMember(zoneId: string, agentId: string): Promise<void> {
@@ -244,9 +244,9 @@ export class ProjectClient {
     );
 
     if (isApiError(result)) {
-      console.error(`[ProjectClient] Failed to remove agent ${agentId} from zone ${zoneId}:`, result.error);
+      console.error(`[ZoneClient] Failed to remove agent ${agentId} from zone ${zoneId}:`, result.error);
       throw new Error(`Failed to remove agent from zone: ${result.error}`);
     }
-    console.log(`[ProjectClient] Agent ${agentId} removed from zone ${zoneId}`);
+    console.log(`[ZoneClient] Agent ${agentId} removed from zone ${zoneId}`);
   }
 }

@@ -2,19 +2,19 @@ import mitt from 'mitt';
 
 import { ParsedTask } from '../../stratix-ai-service/types';
 import { LRAClient } from '../../stratix-lra-bridge';
-import { ProjectStore } from '../storage/ZoneStore';
+import { ZoneStore } from '../storage/ZoneStore';
 import { Project, ProjectConfig, ProjectStatus } from '../types';
 import { generateId } from '../utils/helpers';
 
 
 type EventBus = ReturnType<typeof mitt>;
 
-export class ProjectManager {
-  private store: ProjectStore;
+export class ZoneManager {
+  private store: ZoneStore;
   private eventBus: EventBus;
   private lraClient: LRAClient;
 
-  constructor(store: ProjectStore, eventBus?: EventBus) {
+  constructor(store: ZoneStore, eventBus?: EventBus) {
     this.store = store;
     this.eventBus = eventBus || mitt();
     this.lraClient = new LRAClient();
@@ -175,9 +175,9 @@ export class ProjectManager {
   private async initializeLRA(projectPath: string, projectName: string): Promise<void> {
     try {
       await this.lraClient.init(projectPath, projectName);
-      console.log(`[ProjectManager] LRA initialized for project: ${projectName}`);
+      console.log(`[ZoneManager] LRA initialized for project: ${projectName}`);
     } catch (error) {
-      console.error('[ProjectManager] Failed to initialize LRA:', error instanceof Error ? error.message : String(error));
+      console.error('[ZoneManager] Failed to initialize LRA:', error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -198,7 +198,7 @@ export class ProjectManager {
       );
     }
 
-    console.log(`[ProjectManager] Created ${tasks.length} tasks from AI for project ${projectId}`);
+    console.log(`[ZoneManager] Created ${tasks.length} tasks from AI for project ${projectId}`);
   }
 
   public async createTaskManually(
@@ -217,7 +217,7 @@ export class ProjectManager {
       template
     );
 
-    console.log(`[ProjectManager] Created task ${taskId} for project ${projectId}`);
+    console.log(`[ZoneManager] Created task ${taskId} for project ${projectId}`);
     return taskId;
   }
 
@@ -237,7 +237,7 @@ export class ProjectManager {
       });
 
       this.eventBus.emit('project:agent-entered', { projectId, agentId });
-      console.log(`[ProjectManager] Agent ${agentId} entered project ${projectId}`);
+      console.log(`[ZoneManager] Agent ${agentId} entered project ${projectId}`);
     }
   }
 
@@ -261,6 +261,6 @@ export class ProjectManager {
     });
 
     this.eventBus.emit('project:agent-left', { projectId, agentId });
-    console.log(`[ProjectManager] Agent ${agentId} left project ${projectId}`);
+    console.log(`[ZoneManager] Agent ${agentId} left project ${projectId}`);
   }
 }

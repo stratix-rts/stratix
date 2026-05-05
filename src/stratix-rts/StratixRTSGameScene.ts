@@ -3,7 +3,7 @@ import Phaser from 'phaser';
 import { getToken, getCurrentTheme } from '@/design-system/config';
 
 import { StratixAgentConfig, ZoneInfo } from '../stratix-core/stratix-protocol';
-import { ProjectManagerIntegration } from '../stratix-project/ZoneManagerIntegration';
+import { ZoneManagerIntegration } from '../stratix-project/ZoneManagerIntegration';
 
 import { StratixRTSEventManager } from './StratixRTSEventManager';
 import { MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, DEFAULT_ZOOM } from './constants';
@@ -45,7 +45,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
   private agentManager: AgentManager;
   private previewSelection: Set<string> = new Set();
   unifiedZoneManager: UnifiedZoneManager;
-  private projectManagerIntegration: ProjectManagerIntegration;
+  private projectManagerIntegration: ZoneManagerIntegration;
   private zoneInteractionManager: ZoneInteractionManager;
 
   private characterRenderer: RTSCharacterRenderer;
@@ -471,7 +471,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
 
 
   private initProjectManager(): void {
-    this.projectManagerIntegration = new ProjectManagerIntegration(
+    this.projectManagerIntegration = new ZoneManagerIntegration(
       this,
       this.unifiedZoneManager,
       {
@@ -479,7 +479,7 @@ export default class StratixRTSGameScene extends Phaser.Scene {
       }
     );
     
-    console.log('[StratixRTS] ProjectManager initialized');
+    console.log('[StratixRTS] ZoneManager initialized');
     
     this.projectManagerIntegration.onLoaded(() => {
       console.log('[StratixRTS] Projects loaded, checking zone bounds...');

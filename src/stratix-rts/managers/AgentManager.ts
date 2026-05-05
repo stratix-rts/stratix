@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 
 import { StratixAgentConfig } from '../../stratix-core/stratix-protocol';
-import { ProjectManagerIntegration } from '../../stratix-project/ZoneManagerIntegration';
+import { ZoneManagerIntegration } from '../../stratix-project/ZoneManagerIntegration';
 import { MAP_WIDTH, MAP_HEIGHT } from '../constants';
 import { rtsEventBus } from '../events/core/RTSEventBus';
 import { RTSStateBridge } from '../state/RTSStateBridge';
@@ -14,7 +14,7 @@ import { TaskZone } from '../zones/TaskZone';
 export interface AgentManagerDeps {
   stateBridge: RTSStateBridge;
   characterRenderer: RTSCharacterRenderer;
-  projectManagerIntegration: ProjectManagerIntegration;
+  projectManagerIntegration: ZoneManagerIntegration;
   agentZoneTracking: Map<string, string>;
   getSelectedZoneIds: () => Set<string>;
   getUnifiedZoneManager: () => UnifiedZoneManager;

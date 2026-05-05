@@ -31,7 +31,7 @@ const PROJECT_ZONE_CONFIG: BaseZoneConfig = {
   height: 600
 };
 
-export class ProjectZone extends BaseZone {
+export class GameZone extends BaseZone {
   private project: Project;
   private statusText: Phaser.GameObjects.Text | null = null;
   private priorityText: Phaser.GameObjects.Text | null = null;

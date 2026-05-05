@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 
 import { ZoneInfo } from '../../stratix-core/stratix-protocol';
-import { ProjectManagerIntegration } from '../../stratix-project/ZoneManagerIntegration';
+import { ZoneManagerIntegration } from '../../stratix-project/ZoneManagerIntegration';
 import { MAP_WIDTH, MAP_HEIGHT } from '../constants';
 import { rtsEventBus } from '../events/core/RTSEventBus';
 import { DataFlowAnimation } from '../effects/DataFlowAnimation';
@@ -16,7 +16,7 @@ import { UnifiedZoneManager } from '../zones/UnifiedZoneManager';
 export interface ZoneInteractionManagerDeps {
   taskZonePreview: TaskZonePreview;
   getAgentSprites: () => Map<string, AgentSprite>;
-  projectManagerIntegration: ProjectManagerIntegration;
+  projectManagerIntegration: ZoneManagerIntegration;
   agentZoneTracking: Map<string, string>;
   movementSystem: MovementSystem;
   dataFlowAnimation: DataFlowAnimation | null;

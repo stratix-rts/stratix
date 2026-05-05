@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 
-export interface ProjectZonePreviewConfig {
+export interface GameZonePreviewConfig {
   lineColor: number;
   fillColor: number;
   lineWidth: number;
@@ -11,7 +11,7 @@ export interface ProjectZonePreviewConfig {
   overlapFillAlpha: number;
 }
 
-const DEFAULT_CONFIG: ProjectZonePreviewConfig = {
+const DEFAULT_CONFIG: GameZonePreviewConfig = {
   lineColor: 0x00aaff,
   fillColor: 0x00aaff,
   lineWidth: 4,
@@ -22,16 +22,16 @@ const DEFAULT_CONFIG: ProjectZonePreviewConfig = {
   overlapFillAlpha: 0.3
 };
 
-export class ProjectZonePreview {
+export class GameZonePreview {
   private scene: Phaser.Scene;
   private graphics: Phaser.GameObjects.Graphics;
-  private config: ProjectZonePreviewConfig;
+  private config: GameZonePreviewConfig;
   private startPoint: { x: number; y: number } | null = null;
   private isActive: boolean = false;
   private checkOverlapCallback: ((rect: Phaser.Geom.Rectangle) => boolean) | null = null;
   private currentOverlap: boolean = false;
 
-  constructor(scene: Phaser.Scene, config?: Partial<ProjectZonePreviewConfig>) {
+  constructor(scene: Phaser.Scene, config?: Partial<GameZonePreviewConfig>) {
     this.scene = scene;
     this.config = { ...DEFAULT_CONFIG, ...config };
     

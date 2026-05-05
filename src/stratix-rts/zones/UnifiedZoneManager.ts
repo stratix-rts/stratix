@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 
-import { ProjectZone } from '../../stratix-project/core/GameZone';
+import { GameZone } from '../../stratix-project/core/GameZone';
 import { ZoneSpatialIndex, SpatialZone } from '../spatial/ZoneSpatialIndex';
 
 import { BaseZone } from './BaseZone';
@@ -70,10 +70,10 @@ export class UnifiedZoneManager {
     return taskZones;
   }
 
-  getProjectZones(): Map<string, ProjectZone> {
-    const projectZones = new Map<string, ProjectZone>();
+  getProjectZones(): Map<string, GameZone> {
+    const projectZones = new Map<string, GameZone>();
     this.zones.forEach((zone, id) => {
-      if (zone instanceof ProjectZone) {
+      if (zone instanceof GameZone) {
         projectZones.set(id, zone);
       }
     });
@@ -85,7 +85,7 @@ export class UnifiedZoneManager {
     if (!zone) return 'unknown';
 
     if (zone instanceof TaskZone) return 'task';
-    if (zone instanceof ProjectZone) return 'project';
+    if (zone instanceof GameZone) return 'project';
 
     return 'unknown';
   }
@@ -156,7 +156,7 @@ export class UnifiedZoneManager {
       spatialIndex: this.spatialIndex.getStatistics(),
       zoneTypes: {
         task: this.getZonesByType(TaskZone).length,
-        project: this.getZonesByType(ProjectZone).length
+        project: this.getZonesByType(GameZone).length
       }
     };
   }

@@ -28,7 +28,7 @@ const DEFAULT_DB: ProjectDatabase = {
   }
 };
 
-export class ProjectStore {
+export class ZoneStore {
   private db: Low<ProjectDatabase>;
   private dbPath: string;
   private initialized: boolean = false;
@@ -331,7 +331,7 @@ export class ProjectStore {
     this.db.data.messages[message.projectId].push(message);
     await this.persist();
 
-    console.log('[ProjectStore] Message added:', JSON.stringify({
+    console.log('[ZoneStore] Message added:', JSON.stringify({
       id: message.id,
       projectId: message.projectId,
       channelId: message.channelId,
