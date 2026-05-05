@@ -58,7 +58,7 @@ router.post('/zones', async (req: Request, res: Response): Promise<void> => {
     if (body.config && !body.title) {
       const config = body.config;
       const projectId = `proj_${Math.random().toString(36).slice(2, 10)}`;
-      const project = zoneRepository.createProject({
+      const project = zoneRepository.createProjectRecord({
         id: projectId,
         name: config.name || 'Untitled',
         description: config.description,
@@ -214,10 +214,10 @@ router.get('/zones/:zoneId', async (req: Request, res: Response): Promise<void> 
 router.put('/zones/:zoneId', async (req: Request, res: Response): Promise<void> => {
   try {
     const zoneId = getParam(req, 'zoneId');
-    const body = req.body as ZoneUpdateRequest & { config?: any; zoneConfig?: any; status?: string; presentAgentIds?: string[]; path?: string };
+    const body = req.body as ZoneUpdateRequest & { config?: any; zoneConfig?: any; status?: string; presentAgentIds?: string[]; path?: string; updates?: any };
 
     // Project-compat: if body has `updates` wrapper or project-style fields, use projectRepository
-    const updates = body.updates ? (body as any).updates : body;
+    const updates = body.updates ? body.updates : body;
     if (updates.config || updates.zoneConfig || updates.status || updates.path !== undefined || body.updates) {
       const updated = zoneRepository.updateProject(zoneId, updates as any);
       if (!updated) {

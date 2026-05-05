@@ -24,7 +24,7 @@ export class ZoneManager {
     return this.eventBus;
   }
 
-  public async createProject(config: ProjectConfig, zoneConfig?: Partial<Project['zoneConfig']>): Promise<Project> {
+  public async createZone(config: ProjectConfig, zoneConfig?: Partial<Project['zoneConfig']>): Promise<Project> {
     const projectId = generateId('proj');
     
     const project: Project = {
@@ -58,12 +58,12 @@ export class ZoneManager {
     return project;
   }
 
-  public async getProject(id: string): Promise<Project | null> {
-    return await this.store.getProject(id);
+  public async getZone(id: string): Promise<Project | null> {
+    return await this.store.getZone(id);
   }
 
-  public async updateProject(id: string, updates: Partial<Project>): Promise<Project> {
-    const project = await this.getProject(id);
+  public async updateZone(id: string, updates: Partial<Project>): Promise<Project> {
+    const project = await this.getZone(id);
     if (!project) {
       throw new Error(`Zone not found: ${id}`);
     }
@@ -78,7 +78,7 @@ export class ZoneManager {
       updatedAt: new Date()
     };
 
-    await this.store.updateProject(updatedProject);
+    await this.store.updateZone(updatedProject);
     
     this.eventBus.emit('project:updated', {
       project: updatedProject,
@@ -96,61 +96,61 @@ export class ZoneManager {
     return updatedProject;
   }
 
-  public async deleteProject(id: string): Promise<void> {
-    const project = await this.getProject(id);
+  public async deleteZone(id: string): Promise<void> {
+    const project = await this.getZone(id);
     if (!project) {
       throw new Error(`Zone not found: ${id}`);
     }
 
-    await this.store.deleteProject(id);
+    await this.store.deleteZone(id);
     this.eventBus.emit('project:deleted', { projectId: id });
   }
 
-  public async getAllProjects(): Promise<Project[]> {
-    return await this.store.getAllProjects();
+  public async getAllZones(): Promise<Project[]> {
+    return await this.store.getAllZones();
   }
 
-  public async getProjectsByStatus(status: ProjectStatus): Promise<Project[]> {
-    return await this.store.getProjectsByStatus(status);
+  public async getZonesByStatus(status: ProjectStatus): Promise<Project[]> {
+    return await this.store.getZonesByStatus(status);
   }
 
-  public async getProjectsByPriority(priority: number): Promise<Project[]> {
-    return await this.store.getProjectsByPriority(priority);
+  public async getZonesByPriority(priority: number): Promise<Project[]> {
+    return await this.store.getZonesByPriority(priority);
   }
 
   public async startProject(id: string): Promise<Project> {
-    return await this.updateProject(id, {
+    return await this.updateZone(id, {
       status: 'active',
       startedAt: new Date()
     });
   }
 
   public async pauseProject(id: string): Promise<Project> {
-    return await this.updateProject(id, {
+    return await this.updateZone(id, {
       status: 'paused'
     });
   }
 
   public async completeProject(id: string): Promise<Project> {
-    return await this.updateProject(id, {
+    return await this.updateZone(id, {
       status: 'completed',
       completedAt: new Date()
     });
   }
 
   public async failProject(id: string): Promise<Project> {
-    return await this.updateProject(id, {
+    return await this.updateZone(id, {
       status: 'failed'
     });
   }
 
-  public async updateProjectZoneConfig(id: string, zoneConfig: Partial<Project['zoneConfig']>): Promise<Project> {
-    const project = await this.getProject(id);
+  public async updateZoneConfig(id: string, zoneConfig: Partial<Project['zoneConfig']>): Promise<Project> {
+    const project = await this.getZone(id);
     if (!project) {
       throw new Error(`Zone not found: ${id}`);
     }
 
-    return await this.updateProject(id, {
+    return await this.updateZone(id, {
       zoneConfig: {
         ...(project.zoneConfig ?? {} as any),
         ...zoneConfig
@@ -158,17 +158,17 @@ export class ZoneManager {
     });
   }
 
-  public async getProjectCount(): Promise<number> {
-    return await this.store.getProjectCount();
+  public async getZoneCount(): Promise<number> {
+    return await this.store.getZoneCount();
   }
 
   public async getActiveProjectCount(): Promise<number> {
-    const activeProjects = await this.getProjectsByStatus('active');
+    const activeProjects = await this.getZonesByStatus('active');
     return activeProjects.length;
   }
 
   public async getCompletedProjectCount(): Promise<number> {
-    const completedProjects = await this.getProjectsByStatus('completed');
+    const completedProjects = await this.getZonesByStatus('completed');
     return completedProjects.length;
   }
 
@@ -185,7 +185,7 @@ export class ZoneManager {
     projectId: string, 
     tasks: ParsedTask[]
   ): Promise<void> {
-    const project = await this.getProject(projectId);
+    const project = await this.getZone(projectId);
     if (!project) {
       throw new Error(`Zone not found: ${projectId ?? ""}`);
     }
@@ -206,7 +206,7 @@ export class ZoneManager {
     description: string,
     template?: string
   ): Promise<string> {
-    const project = await this.getProject(projectId);
+    const project = await this.getZone(projectId);
     if (!project) {
       throw new Error(`Zone not found: ${projectId ?? ""}`);
     }
@@ -225,7 +225,7 @@ export class ZoneManager {
     projectId: string,
     agentId: string
   ): Promise<void> {
-    const project = await this.getProject(projectId);
+    const project = await this.getZone(projectId);
     if (!project) {
       throw new Error(`Zone not found: ${projectId ?? ""}`);
     }
@@ -233,7 +233,7 @@ export class ZoneManager {
     if (!project.presentAgentIds?.includes(agentId)) {
       project.presentAgentIds = project.presentAgentIds ?? [];
       project.presentAgentIds.push(agentId);
-      await this.updateProject(projectId, {
+      await this.updateZone(projectId, {
         presentAgentIds: project.presentAgentIds
       });
 
@@ -246,7 +246,7 @@ export class ZoneManager {
     projectId: string,
     agentId: string
   ): Promise<void> {
-    const project = await this.getProject(projectId);
+    const project = await this.getZone(projectId);
     if (!project) {
       throw new Error(`Zone not found: ${projectId ?? ""}`);
     }
@@ -258,7 +258,7 @@ export class ZoneManager {
 
     project.presentAgentIds = project.presentAgentIds?.filter(id => id !== agentId);
     
-    await this.updateProject(projectId, {
+    await this.updateZone(projectId, {
       presentAgentIds: project.presentAgentIds
     });
 

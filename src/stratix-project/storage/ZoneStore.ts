@@ -100,7 +100,7 @@ export class ZoneStore {
     await this.persist();
   }
 
-  public async getProject(id: string): Promise<Project | null> {
+  public async getZone(id: string): Promise<Project | null> {
     await this.ensureInitialized();
     await this.refresh();
     
@@ -108,7 +108,7 @@ export class ZoneStore {
     return project ? JSON.parse(JSON.stringify(project)) : null;
   }
 
-  public async updateProject(project: Project): Promise<void> {
+  public async updateZone(project: Project): Promise<void> {
     await this.ensureInitialized();
     await this.refresh();
 
@@ -124,7 +124,7 @@ export class ZoneStore {
     await this.persist();
   }
 
-  public async deleteProject(id: string): Promise<boolean> {
+  public async deleteZone(id: string): Promise<boolean> {
     await this.ensureInitialized();
     await this.refresh();
 
@@ -138,25 +138,25 @@ export class ZoneStore {
     return false;
   }
 
-  public async getAllProjects(): Promise<Project[]> {
+  public async getAllZones(): Promise<Project[]> {
     await this.ensureInitialized();
     await this.refresh();
     return JSON.parse(JSON.stringify(this.db.data.projects));
   }
 
-  public async getProjectsByStatus(status: string): Promise<Project[]> {
+  public async getZonesByStatus(status: string): Promise<Project[]> {
     await this.ensureInitialized();
     await this.refresh();
     return this.db.data.projects.filter(p => p.status === status);
   }
 
-  public async getProjectsByPriority(priority: number): Promise<Project[]> {
+  public async getZonesByPriority(priority: number): Promise<Project[]> {
     await this.ensureInitialized();
     await this.refresh();
     return this.db.data.projects.filter(p => p.priority === priority);
   }
 
-  public async getProjectCount(): Promise<number> {
+  public async getZoneCount(): Promise<number> {
     await this.ensureInitialized();
     await this.refresh();
     return this.db.data.projects.length;

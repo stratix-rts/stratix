@@ -162,7 +162,7 @@ export class ProjectManagementExampleScene extends Phaser.Scene {
    * 保存项目配置
    */
   public async saveProjectConfig(projectId: string, config: ProjectConfig): Promise<void> {
-    await this.projectManager.getProjectClient().updateProject(projectId, { config });
+    await this.projectManager.getProjectClient().updateZone(projectId, { config });
   }
 
   /**
@@ -189,22 +189,22 @@ export class ProjectManagementExampleScene extends Phaser.Scene {
   /**
    * 删除项目
    */
-  public async deleteProject(projectId: string): Promise<void> {
-    await this.projectManager.getProjectClient().deleteProject(projectId);
+  public async deleteZone(projectId: string): Promise<void> {
+    await this.projectManager.getProjectClient().deleteZone(projectId);
   }
 
   /**
    * 获取所有项目
    */
-  public async getAllProjects(): Promise<Project[]> {
-    return await this.projectManager.getProjectClient().getAllProjects();
+  public async getAllZones(): Promise<Project[]> {
+    return await this.projectManager.getProjectClient().getAllZones();
   }
 
   /**
    * 获取项目
    */
-  public async getProject(projectId: string): Promise<Project | null> {
-    return await this.projectManager.getProjectClient().getProject(projectId);
+  public async getZone(projectId: string): Promise<Project | null> {
+    return await this.projectManager.getProjectClient().getZone(projectId);
   }
 
   /**

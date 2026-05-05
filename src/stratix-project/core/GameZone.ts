@@ -226,7 +226,7 @@ export class GameZone extends BaseZone {
     this.updateVisuals();
   }
 
-  public updateProject(project: Project): void {
+  public updateZone(project: Project): void {
     this.project = project;
     this.updateFromProject();
   }
@@ -242,11 +242,11 @@ export class GameZone extends BaseZone {
     this.redrawWithCustomColors();
   }
 
-  public getProject(): Project {
+  public getZone(): Project {
     return this.project;
   }
 
-  public getProjectId(): string {
+  public getZoneId(): string {
     return this.project.id;
   }
 

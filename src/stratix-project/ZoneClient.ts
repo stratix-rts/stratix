@@ -42,7 +42,7 @@ export class ZoneClient {
     console.log('[ZoneClient] Project service initialized');
   }
 
-  async getAllProjects(): Promise<Project[]> {
+  async getAllZones(): Promise<Project[]> {
     const result = await this.client.get<Project[]>(API_PATHS.PROJECTS);
     if (isApiError(result)) {
       console.error('[ZoneClient] Failed to get projects:', result.error);
@@ -51,7 +51,7 @@ export class ZoneClient {
     return result.data || [];
   }
 
-  async getProjectsByStatus(status: ProjectStatus): Promise<Project[]> {
+  async getZonesByStatus(status: ProjectStatus): Promise<Project[]> {
     const result = await this.client.get<Project[]>(API_PATHS.PROJECTS, {
       headers: { params: JSON.stringify({ status }) }
     });
@@ -62,7 +62,7 @@ export class ZoneClient {
     return result.data || [];
   }
 
-  async getProjectsByPriority(priority: number): Promise<Project[]> {
+  async getZonesByPriority(priority: number): Promise<Project[]> {
     const result = await this.client.get<Project[]>(API_PATHS.PROJECTS, {
       headers: { params: JSON.stringify({ priority }) }
     });
@@ -73,7 +73,7 @@ export class ZoneClient {
     return result.data || [];
   }
 
-  async createProject(
+  async createZone(
     config: ProjectConfig,
     zoneConfig?: Partial<ProjectZoneConfig>
   ): Promise<Project> {
@@ -90,7 +90,7 @@ export class ZoneClient {
     return result.data;
   }
 
-  async getProject(id: string): Promise<Project | null> {
+  async getZone(id: string): Promise<Project | null> {
     const result = await this.client.get<Project>(API_PATHS.PROJECT_BY_ID(id));
     if (isApiError(result)) {
       console.error(`[ZoneClient] Failed to get project ${id}:`, result.error);
@@ -99,7 +99,7 @@ export class ZoneClient {
     return result.data;
   }
 
-  async updateProject(id: string, updates: Partial<Project>): Promise<Project> {
+  async updateZone(id: string, updates: Partial<Project>): Promise<Project> {
     const result = await this.client.put<Project>(
       API_PATHS.PROJECT_BY_ID(id),
       { updates }
@@ -118,11 +118,11 @@ export class ZoneClient {
     if (id.startsWith('zone-')) {
       throw new Error(`Cannot update zone config for local task zone: ${id}`);
     }
-    const project = await this.getProject(id);
+    const project = await this.getZone(id);
     if (!project) {
       throw new Error(`Project not found: ${id}`);
     }
-    return this.updateProject(id, {
+    return this.updateZone(id, {
       zoneConfig: {
         ...(project.zoneConfig ?? {} as any),
         ...zoneConfig
@@ -143,7 +143,7 @@ export class ZoneClient {
     console.log(`[ZoneClient] Zone context FK updated: ${zoneId} -> ${zoneContextId}`);
   }
 
-  async deleteProject(id: string): Promise<boolean> {
+  async deleteZone(id: string): Promise<boolean> {
     const result = await this.client.delete<{ message: string }>(API_PATHS.PROJECT_BY_ID(id));
     if (isApiError(result)) {
       console.error(`[ZoneClient] Failed to delete project ${id}:`, result.error);

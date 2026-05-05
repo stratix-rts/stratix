@@ -141,7 +141,7 @@ export class ZoneService {
     // Verify project exists, auto-create default if missing
     let project = zoneRepository.getProject(projectId);
     if (!project) {
-      project = zoneRepository.createProject({
+      project = zoneRepository.createProjectRecord({
         id: projectId,
         name: projectId,
         priority: 0,

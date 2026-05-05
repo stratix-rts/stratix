@@ -920,7 +920,7 @@ export class ZoneRepository {
     return row ? this.mapProjectRow(row) : null;
   }
 
-  createProject(project: Project): Project {
+  createProjectRecord(project: Project): Project {
     const createdAt = normalizeDate(project.createdAt);
     const updatedAt = normalizeDate(project.updatedAt);
     const startedAt = normalizeDate(project.startedAt);
@@ -961,7 +961,7 @@ export class ZoneRepository {
     return updated;
   }
 
-  deleteProject(projectId: string): boolean {
+  deleteProjectRecord(projectId: string): boolean {
     const result = this.stmt('DELETE FROM projects WHERE project_id = ?').run(projectId);
     return result.changes > 0;
   }

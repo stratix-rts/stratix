@@ -126,7 +126,7 @@ export class ZoneManagerIntegration {
       const zone = this.unifiedZoneManager.getZone(zoneId);
       if (zone instanceof GameZone) {
         try {
-          await this.projectClient.deleteProject(zoneId);
+          await this.projectClient.deleteZone(zoneId);
           console.log(`[ZoneManager] Zone deleted: ${zoneId}`);
         } catch (error) {
           console.error(`[ZoneManager] Failed to delete zone: ${zoneId}`, error);
@@ -142,7 +142,7 @@ export class ZoneManagerIntegration {
   public async loadExistingProjects(): Promise<void> {
     await this.initialize();
 
-    const projects = await this.projectClient.getAllProjects();
+    const projects = await this.projectClient.getAllZones();
     console.log(`[ZoneManager] Loading ${projects.length} existing projects`);
 
     // Parallelize project zone creation for better performance
@@ -154,7 +154,7 @@ export class ZoneManagerIntegration {
   private updateProjectZone(project: Project): void {
     const projectZone = this.unifiedZoneManager.getZone(project.id) as GameZone | undefined;
     if (projectZone) {
-      projectZone.updateProject(project);
+      projectZone.updateZone(project);
     }
   }
 
@@ -237,7 +237,7 @@ export class ZoneManagerIntegration {
         ...config
       };
 
-      const project = await this.projectClient.createProject(defaultConfig, {
+      const project = await this.projectClient.createZone(defaultConfig, {
         x: bounds.x + bounds.width / 2,
         y: bounds.y + bounds.height / 2,
         width: bounds.width,

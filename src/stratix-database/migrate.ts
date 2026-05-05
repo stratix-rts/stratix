@@ -198,7 +198,7 @@ async function migrate() {
           startedAt: project.startedAt ? new Date(String(project.startedAt)) : undefined,
           completedAt: project.completedAt ? new Date(String(project.completedAt)) : undefined
         };
-        zoneRepository.createProject(mappedProject);
+        zoneRepository.createProjectRecord(mappedProject);
         log('info', `Project migrated: ${String(project.id)}`);
       }
     }
