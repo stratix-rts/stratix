@@ -180,8 +180,8 @@ export class ZoneCoordinator {
       throw new Error(`Zone ${zoneId} has no projectId`);
     }
     this.projectId = zone.projectId;
-    this.title = zone.title;
-    this.prompt = zone.prompt;
+    this.title = zone.title ?? "";
+    this.prompt = zone.prompt ?? "";
     this.zonePath = zone.path || '';
 
     // Load or create coordinator config

@@ -3,7 +3,7 @@ import mitt from 'mitt';
 import { ParsedTask } from '../../stratix-ai-service/types';
 import { LRAClient } from '../../stratix-lra-bridge';
 import { ZoneStore } from '../storage/ZoneStore';
-import { Project, ProjectConfig, ProjectStatus } from '../types';
+import { Project, ProjectConfig, ProjectStatus, ZoneConfig } from '../types';
 import { generateId } from '../utils/helpers';
 
 
@@ -53,7 +53,7 @@ export class ZoneManager {
     await this.store.addProject(project);
     this.eventBus.emit('project:created', { project });
 
-    await this.initializeLRA(project.path, project.name);
+    await this.initializeLRA(project.path ?? "", project.name ?? "");
 
     return project;
   }
@@ -65,7 +65,7 @@ export class ZoneManager {
   public async updateProject(id: string, updates: Partial<Project>): Promise<Project> {
     const project = await this.getProject(id);
     if (!project) {
-      throw new Error(`Project not found: ${id}`);
+      throw new Error(`Zone not found: ${id}`);
     }
 
     const oldStatus = project.status;
@@ -99,7 +99,7 @@ export class ZoneManager {
   public async deleteProject(id: string): Promise<void> {
     const project = await this.getProject(id);
     if (!project) {
-      throw new Error(`Project not found: ${id}`);
+      throw new Error(`Zone not found: ${id}`);
     }
 
     await this.store.deleteProject(id);
@@ -147,14 +147,14 @@ export class ZoneManager {
   public async updateProjectZoneConfig(id: string, zoneConfig: Partial<Project['zoneConfig']>): Promise<Project> {
     const project = await this.getProject(id);
     if (!project) {
-      throw new Error(`Project not found: ${id}`);
+      throw new Error(`Zone not found: ${id}`);
     }
 
     return await this.updateProject(id, {
       zoneConfig: {
-        ...project.zoneConfig,
+        ...(project.zoneConfig ?? {} as any),
         ...zoneConfig
-      }
+      } as ZoneConfig
     });
   }
 
@@ -187,12 +187,12 @@ export class ZoneManager {
   ): Promise<void> {
     const project = await this.getProject(projectId);
     if (!project) {
-      throw new Error(`Project not found: ${projectId}`);
+      throw new Error(`Zone not found: ${projectId ?? ""}`);
     }
 
     for (const task of tasks) {
       await this.lraClient.createTask(
-        project.path,
+        project.path ?? "",
         `${task.name}: ${task.description}`,
         task.type
       );
@@ -208,11 +208,11 @@ export class ZoneManager {
   ): Promise<string> {
     const project = await this.getProject(projectId);
     if (!project) {
-      throw new Error(`Project not found: ${projectId}`);
+      throw new Error(`Zone not found: ${projectId ?? ""}`);
     }
 
     const taskId = await this.lraClient.createTask(
-      project.path,
+      project.path ?? "",
       description,
       template
     );
@@ -227,10 +227,11 @@ export class ZoneManager {
   ): Promise<void> {
     const project = await this.getProject(projectId);
     if (!project) {
-      throw new Error(`Project not found: ${projectId}`);
+      throw new Error(`Zone not found: ${projectId ?? ""}`);
     }
 
-    if (!project.presentAgentIds.includes(agentId)) {
+    if (!project.presentAgentIds?.includes(agentId)) {
+      project.presentAgentIds = project.presentAgentIds ?? [];
       project.presentAgentIds.push(agentId);
       await this.updateProject(projectId, {
         presentAgentIds: project.presentAgentIds
@@ -247,14 +248,15 @@ export class ZoneManager {
   ): Promise<void> {
     const project = await this.getProject(projectId);
     if (!project) {
-      throw new Error(`Project not found: ${projectId}`);
+      throw new Error(`Zone not found: ${projectId ?? ""}`);
     }
 
-    if (!project.presentAgentIds.includes(agentId)) {
+    if (!project.presentAgentIds?.includes(agentId)) {
+      project.presentAgentIds = project.presentAgentIds ?? [];
       return;
     }
 
-    project.presentAgentIds = project.presentAgentIds.filter(id => id !== agentId);
+    project.presentAgentIds = project.presentAgentIds?.filter(id => id !== agentId);
     
     await this.updateProject(projectId, {
       presentAgentIds: project.presentAgentIds

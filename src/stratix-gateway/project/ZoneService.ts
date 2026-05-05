@@ -51,11 +51,11 @@ export class ZoneService {
   private syncZoneToStore(zone: Zone): void {
     const zoneState: ZoneState = {
       id: zone.id,
-      title: zone.title,
+      title: zone.title ?? "",
       status: zone.status ?? 'idle',
       members: zone.members ?? [],
       tasks: zone.tasks?.map(t => t.id) ?? [],
-      createdAt: zone.createdAt,
+      createdAt: typeof zone.createdAt === "number" ? zone.createdAt : (zone.createdAt instanceof Date ? zone.createdAt.getTime() : Date.now()),
     };
     stratixStateStore.setZone(zone.id, zoneState);
   }
@@ -197,7 +197,7 @@ export class ZoneService {
    */
   private async startZoneAgent(zone: Zone): Promise<void> {
     try {
-      const zoneAgent = new ZoneAgent(zone.id, zone.title, zone.prompt || '');
+      const zoneAgent = new ZoneAgent(zone.id, zone.title ?? "", zone.prompt || '');
 
       // Check if zone has OKR content to split
       if (zone.prompt && zone.prompt.trim().length > 0) {

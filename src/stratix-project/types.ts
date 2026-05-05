@@ -61,30 +61,8 @@ export interface ZoneConfig {
 /** @deprecated Use ZoneConfig */
 export type ProjectZoneConfig = ZoneConfig;
 
-// ============================================================
-// Project — kept as standalone interface for backward compat
-// Will be eliminated in subsequent batches
-// ============================================================
-export interface Project {
-  id: string;
-  name: string;
-  description?: string;
-  priority: number;
-  status: ProjectStatus;
-  config: ProjectConfig;
-  path: string;
-  presentAgentIds: string[];
-  zoneConfig: ProjectZoneConfig;
-  createdAt: Date;
-  updatedAt: Date;
-  startedAt?: Date;
-  completedAt?: Date;
-  zoneContext?: {
-    title: string;
-    prompt: string;
-    members: string[];
-  };
-}
+/** @deprecated Use Zone instead */
+export type Project = Zone;
 
 export type TaskStatus = 'pending' | 'configured' | 'waiting' | 'running' | 'completed' | 'paused' | 'failed';
 
@@ -348,8 +326,8 @@ export interface Zone {
   id: string;
   projectId?: string;
   name?: string;  // From Project, for compatibility
-  title: string;
-  prompt: string;
+  title?: string;
+  prompt?: string;
   description?: string;
   priority?: number;
   status?: ZoneStatus;
@@ -364,17 +342,17 @@ export interface Zone {
   path?: string;
   presentAgentIds?: string[];
   zoneConfig?: ZoneConfig;  // Visual config
-  members: string[];
-  files: ZoneFile[];
+  members?: string[];
+  files?: ZoneFile[];
   tasks?: ZoneTask[];
   messages?: ZoneMessage[];
-  createdAt: number;
-  updatedAt: number;
-  startedAt?: number;
-  completedAt?: number;
+  createdAt: number | Date;
+  updatedAt: number | Date;
+  startedAt?: number | Date;
+  completedAt?: number | Date;
   zoneContext?: {
-    title: string;
-    prompt: string;
+    title?: string;
+    prompt?: string;
     members: string[];
   };
 }

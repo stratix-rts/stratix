@@ -138,7 +138,7 @@ export class GameZone extends BaseZone {
     const halfW = this.zoneWidth / 2;
     const halfH = this.zoneHeight / 2;
 
-    const agentCount = this.project.presentAgentIds.length;
+    const agentCount = (this.project.presentAgentIds ?? []).length;
     if (agentCount > 0) {
       this.agentCountText.setText(`英雄: ${agentCount}`);
       this.agentCountText.setPosition(halfW - 15, halfH - 15);
@@ -167,14 +167,14 @@ export class GameZone extends BaseZone {
   }
 
   private getStatusColor(): number {
-    return PROJECT_ZONE_COLORS.status[this.project.status] || PROJECT_ZONE_COLORS.status.pending;
+    return PROJECT_ZONE_COLORS.status[(this.project.status ?? "idle")] || PROJECT_ZONE_COLORS.status.pending;
   }
 
   private updateFromProject(): void {
     // Use zone_contexts.title if available (OKR data), otherwise fallback to project.name
-    const displayName = this.project.zoneContext?.title || this.project.name;
+    const displayName = this.project.zoneContext?.title || this.project.name || "";
     this.setZoneName(displayName);
-    this.setZoneStatus(this.mapProjectStatus(this.project.status));
+    this.setZoneStatus(this.mapProjectStatus(this.project.status ?? "idle"));
     this.redrawWithCustomColors();
   }
 

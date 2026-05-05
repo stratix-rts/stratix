@@ -1,7 +1,7 @@
 import { ApiClient } from '../stratix-gateway/api/client';
 import { API_PATHS, isApiSuccess, isApiError } from '../stratix-gateway/api/types/api';
 
-import { Project, ProjectConfig, ProjectZoneConfig, ProjectStatus } from './types';
+import { Project, ProjectConfig, ProjectZoneConfig, ProjectStatus, ZoneConfig } from './types';
 
 export interface ProjectClientConfig {
   baseURL?: string;
@@ -124,9 +124,9 @@ export class ZoneClient {
     }
     return this.updateProject(id, {
       zoneConfig: {
-        ...project.zoneConfig,
+        ...(project.zoneConfig ?? {} as any),
         ...zoneConfig
-      }
+      } as ZoneConfig
     });
   }
 

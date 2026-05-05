@@ -786,8 +786,8 @@ export class ZoneRepository {
     const tasks = this.getTasks(zoneId);
 
     return {
-      title: zone.title,
-      prompt: zone.prompt,
+      title: zone.title ?? "",
+      prompt: zone.prompt ?? "",
       files: files.map(f => ({
         name: f.name,
         sourceType: f.sourceType,
