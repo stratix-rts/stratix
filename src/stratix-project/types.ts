@@ -331,8 +331,8 @@ export interface Zone {
   description?: string;
   priority?: number;
   status?: ZoneStatus;
-  config?: any;  // Accepts ProjectConfig, ZoneConfig, etc.
-  localFolderPath?: string;  // From ProjectConfig
+  config?: any;  // Accepts ZoneConfig, ZoneConfig, etc.
+  localFolderPath?: string;  // From ZoneConfig
   gitConfig?: GitConfig;
   agentMode?: AgentMode;
   planningRule?: PlanningRule;
