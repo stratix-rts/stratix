@@ -9,7 +9,15 @@
  *   4. 让 notices / selection 无限增长 —— 超过契约上限必须截断（见 types.ts 常量）。
  */
 
-import { MAX_NOTICES, type Notice, type SelectionState, type WorldState } from './types';
+import {
+  DEFAULT_SETTINGS,
+  MAX_NOTICES,
+  type BooleanPreferenceKey,
+  type Notice,
+  type SelectionState,
+  type SettingsView,
+  type WorldState,
+} from './types';
 
 export type StateListener = (state: WorldState) => void;
 export type StateUpdater = (state: WorldState) => WorldState;
@@ -20,13 +28,42 @@ export interface CoreStore {
   patch(partial: Partial<WorldState>): WorldState;
   subscribe(listener: StateListener): () => void;
   pushNotice(notice: Notice): WorldState;
+  /**
+   * @since v3.5 写一条布尔偏好（settings.set 的落库入口）。
+   * why 放 store 而不放 runtime：偏好没有领域语义、不经状态机，落库动作就是"换个字段"，
+   * 放在 store 里才能被两侧独立单测（runtime 接线是薄薄一层，见 core/runtime.ts TODO）。
+   */
+  setPreference(key: BooleanPreferenceKey, value: boolean): WorldState;
 }
 
 /** 初始状态：空世界。字段名与契约一一对应，便于 bridge 直接整体替换。 */
 export function createInitialState(): WorldState {
   const selection: SelectionState = { unitIds: [], previewUnitIds: [], revision: 0 };
   // links / messages（@since v3.1）由 core/agent-link 投影写入，这里只是空数组起点
-  return { units: [], missions: [], selection, characters: [], notices: [], links: [], messages: [] };
+  // settings（@since v3.5）按契约默认值起步，hud/screens/settings-screen 直接读它即可
+  return {
+    units: [],
+    missions: [],
+    selection,
+    characters: [],
+    notices: [],
+    links: [],
+    messages: [],
+    settings: DEFAULT_SETTINGS,
+  };
+}
+
+/**
+ * 写一条布尔偏好（纯函数，@since v3.5）。抽成纯函数是为了能脱离 store 单测"写完是否变引用"。
+ * 值没变就**原样返回同一引用**：与 setState 的约定一致 —— 无实质变化的广播会把两侧无谓地重绘一遍。
+ */
+export function applyPreference(
+  settings: SettingsView | undefined,
+  key: BooleanPreferenceKey,
+  value: boolean
+): SettingsView {
+  const base = settings ?? DEFAULT_SETTINGS;
+  return base[key] === value ? base : { ...base, [key]: value };
 }
 
 /** 剔除已过期通知，并按时间倒序截断到 MAX_NOTICES（每次写入都做，队列长度天然有界）。 */
@@ -67,6 +104,13 @@ export function createStore(initial?: Partial<WorldState>): CoreStore {
 
     pushNotice: (notice) =>
       notify({ ...state, notices: pruneNotices([notice, ...state.notices], now()) }),
+
+    // @since v3.5 偏好写入：同 setState 的约定 —— 值没实质变化就不广播。
+    setPreference: (key, value) => {
+      const next = applyPreference(state.settings, key, value);
+      if (next === state.settings) return state;
+      return notify({ ...state, settings: next });
+    },
   };
 
   return store;

@@ -177,6 +177,35 @@ export interface SelectionState {
 }
 
 // ============================================================================
+// 用户偏好（@since v3.5 —— hud/screens/settings-screen 的持久化落点）
+// ============================================================================
+
+/** 布尔型偏好键。词表即契约：core 按键落库、HUD 按键渲染，两侧不许各写一份。 */
+export type BooleanPreferenceKey = 'soundEnabled' | 'notificationsEnabled';
+
+/**
+ * 用户偏好视图（@since v3.5）。
+ * why 只收布尔开关：偏好没有领域语义（不进任何状态机），因此它归 core 存一份、
+ * 随 WorldState 全量广播，HUD 只渲染 + 发 `settings.set` 改 —— HUD 侧不留第二份真相。
+ * **皮肤不在这里**：theme.set 由 hud bridge 本地消费 token 完成切换（core 侧只记账，
+ * 见 core/runtime.ts 的 TODO），契约里没有回读通道，另立一个字段只会造出第二个真相源。
+ */
+export interface SettingsView {
+  readonly soundEnabled: boolean;
+  readonly notificationsEnabled: boolean;
+}
+
+/**
+ * 偏好默认值（契约级冻结常量）。
+ * why 要这一份：WorldState.settings 是可选字段（见下），读取方必须回落到**同一个**默认值，
+ * 否则 core / HUD 各编一套默认，用户会看到"没设过的偏好"两边不一样。
+ */
+export const DEFAULT_SETTINGS: SettingsView = {
+  soundEnabled: true,
+  notificationsEnabled: true,
+};
+
+// ============================================================================
 // 角色
 // ============================================================================
 
@@ -281,6 +310,13 @@ export interface WorldState {
   links: AgentLinkView[];
   /** @since v3.1 会话消息流（供 hud/panels/chat-drawer），上限 MAX_AGENT_MESSAGES。 */
   messages: AgentMessageView[];
+  /**
+   * @since v3.5 用户偏好（供 hud/screens/settings-screen）。
+   * **刻意可选**：与 Notice.source / Notice.missionId 同理走可选增补 ——
+   * 契约增补不许打破既有 WorldState 构造点（core 单测夹具、hud 测试夹具）的编译。
+   * 读取方缺省时回落到 DEFAULT_SETTINGS。
+   */
+  settings?: SettingsView;
 }
 
 // ============================================================================
@@ -332,7 +368,28 @@ export type HudCommand =
   | { type: 'link.open'; kind: AgentLinkKind; endpoint: string; displayName?: string; apiKey?: string }
   | { type: 'link.resume'; linkId: string }
   | { type: 'link.reconnect'; linkId: string }
-  | { type: 'link.close'; linkId: string };
+  | { type: 'link.close'; linkId: string }
+  /**
+   * @since v3.5 偏好开关写入。why 单开一条：偏好既不是领域动作（mission.*）也不是导航
+   *   （ui.navigate），塞进现有任何一条都会逼 core 侧多一个"这一支其实是偏好"的判断分支。
+   *   落到 core/store.ts 的 setPreference（纯函数 applyPreference），HUD 一律经 adapter.dispatch。
+   *   TODO(v3.Phase2): core/runtime.ts 接线 —— 本任务按分工不动 runtime.ts，命令暂走
+   *   onUnhandled（未落地）通道；接线后 core 侧即成为偏好的唯一写入方。
+   */
+  | { type: 'settings.set'; key: BooleanPreferenceKey; value: boolean }
+  /**
+   * @since v3.5 危险区：重置编组（清空当前选择集）。
+   *   为什么不复用 unit.select 配空数组：重置编组是一次显式的破坏性动作，
+   *   让调用方去拼一个空数组会把"清空"这个意图摊平成普通选择，审计日志里也认不出。
+   *   TODO(v3.Phase2): core/runtime.ts 接线到 core/unit/selection（当前按未落地处理）。
+   */
+  | { type: 'selection.reset' }
+  /**
+   * @since v3.5 危险区：清理缓存。
+   *   TODO(v3.Phase2): core/runtime.ts 接线到持久化层 —— 本仓库当前还没有缓存层，
+   *   先把命令位占住，避免将来 HUD 与 core 各发明一套"清缓存"语义。
+   */
+  | { type: 'cache.clear' };
 
 // ============================================================================
 // ★ 总线契约：world → core 的交互事件（单向，world 不直接改 HUD）
