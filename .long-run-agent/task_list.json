@@ -379,168 +379,456 @@
       "deadline": null
     },
     {
-      "id": "task_002_01_01",
-      "description": "添加操作按钮区域容器",
-      "template": "task",
-      "priority": "P0",
-      "status": "pending",
-      "parent_id": "task_002_01",
-      "output_req": "4k",
-      "task_file": "tasks/task_002_01_01.md",
-      "created_at": "2026-03-14T14:54:36.375292",
-      "updated_at": "2026-03-14T14:54:36.375429",
-      "dependencies": [],
-      "dependency_type": "all",
-      "deadline": null
-    },
-    {
-      "id": "task_002_01_02",
-      "description": "实现聊天按钮UI和点击事件",
-      "template": "task",
-      "priority": "P0",
-      "status": "pending",
-      "parent_id": "task_002_01",
-      "output_req": "4k",
-      "task_file": "tasks/task_002_01_02.md",
-      "created_at": "2026-03-14T14:54:51.509490",
-      "updated_at": "2026-03-14T14:54:51.509633",
-      "dependencies": [],
-      "dependency_type": "all",
-      "deadline": null
-    },
-    {
-      "id": "task_002_01_03",
-      "description": "实现配置按钮UI和点击事件",
-      "template": "task",
-      "priority": "P0",
-      "status": "pending",
-      "parent_id": "task_002_01",
-      "output_req": "4k",
-      "task_file": "tasks/task_002_01_03.md",
-      "created_at": "2026-03-14T14:55:07.002335",
-      "updated_at": "2026-03-14T14:55:07.002480",
-      "dependencies": [],
-      "dependency_type": "all",
-      "deadline": null
-    },
-    {
-      "id": "task_002_01_04",
-      "description": "实现任务按钮UI和点击事件",
-      "template": "task",
-      "priority": "P0",
-      "status": "pending",
-      "parent_id": "task_002_01",
-      "output_req": "4k",
-      "task_file": "tasks/task_002_01_04.md",
-      "created_at": "2026-03-14T14:55:22.204684",
-      "updated_at": "2026-03-14T14:55:22.204827",
-      "dependencies": [],
-      "dependency_type": "all",
-      "deadline": null
-    },
-    {
-      "id": "task_002_01_05",
-      "description": "实现停止按钮UI和点击事件",
-      "template": "task",
-      "priority": "P0",
-      "status": "pending",
-      "parent_id": "task_002_01",
-      "output_req": "4k",
-      "task_file": "tasks/task_002_01_05.md",
-      "created_at": "2026-03-14T14:55:37.567918",
-      "updated_at": "2026-03-14T14:55:37.568063",
-      "dependencies": [],
-      "dependency_type": "all",
-      "deadline": null
-    },
-    {
-      "id": "task_002_04_01",
-      "description": "设计头像列表数据结构",
-      "template": "task",
-      "priority": "P0",
-      "status": "pending",
-      "parent_id": "task_002_04",
-      "output_req": "4k",
-      "task_file": "tasks/task_002_04_01.md",
-      "created_at": "2026-03-14T14:55:54.948444",
-      "updated_at": "2026-03-14T14:55:54.948585",
-      "dependencies": [],
-      "dependency_type": "all",
-      "deadline": null
-    },
-    {
-      "id": "task_002_04_02",
-      "description": "实现多选头像列表渲染",
-      "template": "task",
-      "priority": "P0",
-      "status": "pending",
-      "parent_id": "task_002_04",
-      "output_req": "4k",
-      "task_file": "tasks/task_002_04_02.md",
-      "created_at": "2026-03-14T14:56:10.011166",
-      "updated_at": "2026-03-14T14:56:10.011308",
-      "dependencies": [],
-      "dependency_type": "all",
-      "deadline": null
-    },
-    {
-      "id": "task_002_04_03",
-      "description": "实现单选多选模式切换逻辑",
-      "template": "task",
-      "priority": "P0",
-      "status": "pending",
-      "parent_id": "task_002_04",
-      "output_req": "4k",
-      "task_file": "tasks/task_002_04_03.md",
-      "created_at": "2026-03-14T14:56:25.670249",
-      "updated_at": "2026-03-14T14:56:25.670384",
-      "dependencies": [],
-      "dependency_type": "all",
-      "deadline": null
-    },
-    {
-      "id": "task_002_07_01",
-      "description": "创建AgentChatModal弹窗组件",
-      "template": "task",
-      "priority": "P1",
-      "status": "pending",
-      "parent_id": "task_002_07",
-      "output_req": "4k",
-      "task_file": "tasks/task_002_07_01.md",
-      "created_at": "2026-03-14T14:56:40.914487",
-      "updated_at": "2026-03-14T14:56:40.914637",
-      "dependencies": [],
-      "dependency_type": "all",
-      "deadline": null
-    },
-    {
-      "id": "task_002_07_02",
-      "description": "抽取ChatPanel通用逻辑为composable",
-      "template": "task",
-      "priority": "P1",
-      "status": "pending",
-      "parent_id": "task_002_07",
-      "output_req": "4k",
-      "task_file": "tasks/task_002_07_02.md",
-      "created_at": "2026-03-14T14:57:00.377337",
-      "updated_at": "2026-03-14T14:57:00.377480",
-      "dependencies": [],
-      "dependency_type": "all",
-      "deadline": null
-    },
-    {
       "id": "task_003",
-      "description": "Zone Building System v1 - 骨架实现-模块",
+      "description": "V3骨架: core/ 总线契约与状态机-模块",
       "template": "task",
-      "priority": "P1",
-      "status": "in_progress",
+      "priority": "P0",
+      "status": "completed",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_003.md",
-      "created_at": "2026-04-30T14:48:44.516943",
-      "updated_at": "2026-04-30T14:49:01.411180",
+      "created_at": "2026-10-21T12:10:35.532501",
+      "updated_at": "2026-10-21T12:44:31.740239",
       "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_004",
+      "description": "V3骨架: world/ Phaser战场骨架-模块",
+      "template": "task",
+      "priority": "P0",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_004.md",
+      "created_at": "2026-10-21T12:12:22.924363",
+      "updated_at": "2026-10-21T12:34:09.066825",
+      "dependencies": [
+        "task_003"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_005",
+      "description": "V3骨架: hud/ WebComponents壳-模块",
+      "template": "task",
+      "priority": "P0",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_005.md",
+      "created_at": "2026-10-21T12:12:23.389118",
+      "updated_at": "2026-10-21T12:34:09.068373",
+      "dependencies": [
+        "task_003"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_006",
+      "description": "V3骨架: HelloLoop联调验收-模块",
+      "template": "task",
+      "priority": "P0",
+      "status": "blocked",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_006.md",
+      "created_at": "2026-10-21T12:12:23.855812",
+      "updated_at": "2026-10-21T12:12:23.855823",
+      "dependencies": [
+        "task_004",
+        "task_005"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_007",
+      "description": "V3连接: agent-link外部agent连接重做-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "blocked",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_007.md",
+      "created_at": "2026-10-21T12:12:24.328153",
+      "updated_at": "2026-10-21T12:12:24.328163",
+      "dependencies": [
+        "task_006"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_008",
+      "description": "V3屏: command-panel命令面板-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "blocked",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_008.md",
+      "created_at": "2026-10-21T12:12:24.820615",
+      "updated_at": "2026-10-21T12:12:24.820643",
+      "dependencies": [
+        "task_006"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_009",
+      "description": "V3屏: agent-panel侧栏-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "blocked",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_009.md",
+      "created_at": "2026-10-21T12:12:25.308880",
+      "updated_at": "2026-10-21T12:12:25.308894",
+      "dependencies": [
+        "task_006"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_010",
+      "description": "V3屏: mission-confirm编组指派确认-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "blocked",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_010.md",
+      "created_at": "2026-10-21T12:12:25.774126",
+      "updated_at": "2026-10-21T12:12:25.774140",
+      "dependencies": [
+        "task_008"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_011",
+      "description": "V3屏: log-drawer统一日志-模块",
+      "template": "task",
+      "priority": "P2",
+      "status": "blocked",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_011.md",
+      "created_at": "2026-10-21T12:12:26.253155",
+      "updated_at": "2026-10-21T12:12:26.253168",
+      "dependencies": [
+        "task_006"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_012",
+      "description": "V3屏: chat-drawer聊天抽屉-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "blocked",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_012.md",
+      "created_at": "2026-10-21T12:12:26.728050",
+      "updated_at": "2026-10-21T12:12:26.728059",
+      "dependencies": [
+        "task_007"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_013",
+      "description": "V3屏: settings设置屏-模块",
+      "template": "task",
+      "priority": "P2",
+      "status": "blocked",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_013.md",
+      "created_at": "2026-10-21T12:12:27.190078",
+      "updated_at": "2026-10-21T12:12:27.190094",
+      "dependencies": [
+        "task_006"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_014",
+      "description": "V3屏: 状态屏-模块",
+      "template": "task",
+      "priority": "P2",
+      "status": "blocked",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_014.md",
+      "created_at": "2026-10-21T12:12:27.663787",
+      "updated_at": "2026-10-21T12:12:27.663805",
+      "dependencies": [
+        "task_006"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_015",
+      "description": "V3屏: character-screen角色屏-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "blocked",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_015.md",
+      "created_at": "2026-10-21T12:12:28.128508",
+      "updated_at": "2026-10-21T12:12:28.128517",
+      "dependencies": [
+        "task_006"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_016",
+      "description": "V3切换: Electron主入口切换-模块",
+      "template": "task",
+      "priority": "P0",
+      "status": "blocked",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_016.md",
+      "created_at": "2026-10-21T12:12:28.590688",
+      "updated_at": "2026-10-21T12:12:28.590709",
+      "dependencies": [
+        "task_008",
+        "task_012",
+        "task_015"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_017",
+      "description": "V3退役: legacy删除与死代码清理-模块",
+      "template": "task",
+      "priority": "P0",
+      "status": "blocked",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_017.md",
+      "created_at": "2026-10-21T12:12:29.054868",
+      "updated_at": "2026-10-21T12:12:29.054882",
+      "dependencies": [
+        "task_016"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_018",
+      "description": "V3验收: 全量验收与合入-模块",
+      "template": "task",
+      "priority": "P0",
+      "status": "blocked",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_018.md",
+      "created_at": "2026-10-21T12:12:29.522702",
+      "updated_at": "2026-10-21T12:12:29.522712",
+      "dependencies": [
+        "task_017"
+      ],
       "dependency_type": "all",
       "deadline": null,
       "ralph": {

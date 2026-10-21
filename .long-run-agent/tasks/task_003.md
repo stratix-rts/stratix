@@ -14,6 +14,26 @@
 
 V3骨架: core/ 总线契约与状态机-模块
 
+## requirements
+
+依据 `docs/REFACTOR_PLAN_V3.md`（V3.1 冻结版）第 0/1/5 节建立引擎无关核心层 `src/core/`：
+
+1. `src/core/types.ts`：严格按 §5 契约草案给出 `WorldState` / `HudCommand` / `WorldEvent`，含 §5 提到的全部支撑类型；零 import、零 any、零渲染依赖。
+2. `src/core/store.ts`：自建极简响应式 store（红线 <100 行），不引入任何状态库。
+3. `src/core/bus.ts`：复用项目已有 `mitt` 依赖封装总线，不新增依赖。
+4. `src/core/unit/`：从 `src/stratix-rts`（`SelectionManager` / `SelectBox`）抽取 unit 选择与编组语义到纯逻辑；编组 = 当前多选集合，无持久化编队。
+5. jest 单测覆盖选择状态机全路径。
+6. 每个新文件头部写契约注释（职责 / 输入输出 / 禁止事项）。
+7. 禁止携带 Phaser / Vue / DOM 类型进 core，形状类型（Point/Bounds）在 core 内自定义。
+
+## acceptance
+
+- [x] `typecheck` 通过
+- [x] `build` 通过
+- [x] core 单测全绿
+- [x] `src/core/types.ts` 零 any
+- [x] `src/core/` 零渲染依赖（不 import phaser/vue/任何 UI 库）
+
 ## 交付物
 
 新增 `src/core/`（纯 TS、零渲染依赖、jest 可测），无任何旧文件改动：
