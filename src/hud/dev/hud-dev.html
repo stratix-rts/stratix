@@ -1,0 +1,19 @@
+<!--
+  文件职责：HUD dev-only 最小挂载入口，独立 HTML —— 不接入现有主 UI。
+  使用：在 vite dev server 中打开（如 `vite --config vite.hud-dev.config.ts`，后续任务补）；
+        或用任意静态文件服务器 + 自带 TS 编译。
+  本文件不强制打进生产；任务 005 仅作为骨架存在。
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Stratix HUD (dev)</title>
+  <link rel="stylesheet" href="../theme/tokens-default.css" />
+  <link rel="stylesheet" href="../theme/tokens-pixel.css" disabled id="srf-theme-pixel" />
+</head>
+<body>
+  <div id="hud-root" style="height: 100vh"></div>
+  <script type="module" src="./hud-dev-entry.ts"></script>
+</body>
+</html>

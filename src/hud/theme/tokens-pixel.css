@@ -1,0 +1,44 @@
+/**
+ * 文件职责：HUD 像素风皮肤 —— 仅覆盖与默认不同的 token，组件零改动即可整体切换。
+ *   来源：docs/REFACTOR_PLAN_V3.md §3「HUD 主题与像素风」—— 直角边框、硬边框、pixelated 渲染。
+ * 输入：依赖 tokens-default.css 先挂上基础 token（先于本文件 import）。
+ * 输出：`:root` 上重新赋值的 `--srf-*` token；所有引用这些 token 的组件会自动重渲染。
+ * 禁止事项：
+ *   1. 删除或清空默认值 —— 像素风只覆写差异字段，未列字段保持默认；
+ *   2. 写组件级选择器 —— 本文件仍只发 token；
+ *   3. 引入网络字体文件 —— 字体栈改走 "像素字体优先 + 等宽回退"。
+ */
+
+:root {
+  /* —— 颜色：像素风偏冷 / 高对比 —— */
+  --srf-bg: #0a0a14;
+  --srf-panel: #14141f;
+  --srf-panel-elevated: #1c1c2a;
+  --srf-border: #2a2a3a;
+  --srf-border-strong: #4a4a6a;
+
+  --srf-text: #f0f0ff;
+  --srf-text-muted: #b0b0c8;
+  --srf-text-disabled: #707088;
+
+  --srf-accent: #ffb86c;
+  --srf-accent-hover: #ffd09c;
+  --srf-success: #50fa7b;
+  --srf-warn: #f1fa8c;
+  --srf-danger: #ff5555;
+
+  /* —— 字体：像素等宽 —— */
+  --srf-font-ui: "Courier New", "Lucida Console", Monaco, monospace;
+  --srf-font-size-sm: 11px;
+  --srf-font-size-md: 13px;
+  --srf-font-size-lg: 15px;
+
+  /* —— 形状：直角 + 硬边框 —— */
+  --srf-radius: 0;
+  --srf-border-width: 2px;
+
+  /* —— 渲染：像素化（图像 + canvas 都生效） —— */
+  --srf-image-rendering: pixelated;
+  --srf-scanline-opacity: 0.08;
+  --srf-shadow: none;
+}
