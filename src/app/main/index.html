@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stratix v3</title>
+    <style>
+      /*
+        页面骨架 = 两个并列容器：左 HUD（Web Components 屏/面板），右 world（Phaser 战场）。
+        布局与 src/app/dev/hello-loop.html 同构（左列 HUD / 右列战场，两块不重叠），
+        但去掉了 dev-only 的观测面板 —— 正式入口不留任何调试 UI。
+      */
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #0f1116;
+        color: #e6e9ef;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
+      #app {
+        display: grid;
+        grid-template-columns: minmax(420px, 34%) 1fr;
+        height: 100%;
+      }
+      #hud-side {
+        min-height: 0;
+        min-width: 0;
+        overflow: hidden;
+        border-right: 1px solid #2a313d;
+      }
+      #battlefield {
+        position: relative;
+        min-height: 0;
+        min-width: 0;
+      }
+      /* 装配失败时的兜底提示：宁可报错也不要静默白屏（诊断入口在 renderer console）。 */
+      #boot-error {
+        position: fixed;
+        inset: auto 12px 12px 12px;
+        margin: 0;
+        padding: 10px 12px;
+        border: 1px solid #7d3b3b;
+        background: rgba(38, 16, 18, 0.94);
+        color: #f0b4b4;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <!-- HUD 层容器：main-screen（命令面板 / agent 侧栏 / 状态屏 / 抽屉）挂这里 -->
+      <div id="hud-side">
+        <div id="hud-root"></div>
+      </div>
+
+      <!-- world 层容器：Phaser.Game 挂这里，BattlefieldScene 只读 core 广播的 WorldState -->
+      <div id="battlefield"></div>
+    </div>
+
+    <pre id="boot-error" hidden></pre>
+
+    <script type="module" src="./main-entry.ts"></script>
+  </body>
+</html>

@@ -14,6 +14,7 @@ import path from 'path';
 import { app, BrowserWindow, ipcMain, safeStorage, dialog } from 'electron';
 import { ensureDirSync } from 'fs-extra';
 
+import { entryHtmlPath, isLegacyEntry } from '../app/entry-paths';
 import { startGatewayService } from '../stratix-gateway';
 import { dataStoreService } from '../stratix-gateway/dataStoreService';
 import { WebSocketOpenClawAdapter } from '../stratix-openclaw-adapter/WebSocketOpenClawAdapter';
@@ -82,6 +83,10 @@ async function initializeServices() {
 
 /**
  * 创建主窗口
+ *
+ * 入口双轨（v3 Phase 3）：默认加载新游戏化 UI（src/app/main/index.html），
+ * 设 STRATIX_LEGACY=1 时加载旧 Vue 入口（根 index.html）。两个入口的文件都保留在构建产物里，
+ * 回退只改"加载哪个"，不删不改任何一侧 —— 见 src/app/entry-paths.ts。
  */
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -102,13 +107,22 @@ function createWindow() {
     }
   });
 
+  // 当前生效入口（相对 vite root 的 HTML 路径）：dev 与正式产物共用同一个常量，避免两边各写一份
+  const entryPath = entryHtmlPath();
+  console.log(
+    `[Electron] Entry: ${entryPath} (${isLegacyEntry() ? 'legacy' : 'v3 new UI'}` +
+    `${isLegacyEntry() ? '' : `, set STRATIX_LEGACY=1 to fall back`})`
+  );
+
   // 尝试从 Vite 开发服务器加载（端口 7523-7530）
   const loadDevUrl = async () => {
     const win = mainWindow;
     if (!win) return false;
     for (const port of DEV_PORTS) {
       try {
-        const url = `http://127.0.0.1:${port}`;
+        // why 带入口路径而不是只探端口根：dev server 端口根会返回 legacy 首页，
+        // 不显式指向入口的话 electron:dev 会"连上了"却加载了旧 UI。
+        const url = `http://127.0.0.1:${port}/${entryPath}`;
         const response = await fetch(url, { method: 'HEAD' });
         if (response.ok) {
           console.log('[Electron] Loading from Vite dev server:', url);
@@ -126,11 +140,13 @@ function createWindow() {
   // 尝试开发服务器，失败则加载本地文件
   loadDevUrl().then(success => {
     if (!success) {
-      console.log('[Electron] Loading from local file');
-      mainWindow!.loadFile(path.join(__dirname, '../../frontend/index.html'));
+      // 正式产物：dist/electron/electron → ../../frontend/<入口路径>（与 vite 多入口产物同构）
+      const filePath = path.join(__dirname, '../../frontend', entryPath);
+      console.log('[Electron] Loading from local file:', filePath);
+      mainWindow!.loadFile(filePath);
     }
   });
-  
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
