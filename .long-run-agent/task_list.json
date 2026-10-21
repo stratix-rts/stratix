@@ -410,13 +410,13 @@
       "description": "V3骨架: world/ Phaser战场骨架-模块",
       "template": "task",
       "priority": "P0",
-      "status": "pending",
+      "status": "completed",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_004.md",
       "created_at": "2026-10-21T12:12:22.924363",
-      "updated_at": "2026-10-21T12:34:09.066825",
+      "updated_at": "2026-10-21T13:02:07.198495",
       "dependencies": [
         "task_003"
       ],
@@ -439,13 +439,13 @@
       "description": "V3骨架: hud/ WebComponents壳-模块",
       "template": "task",
       "priority": "P0",
-      "status": "pending",
+      "status": "completed",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_005.md",
       "created_at": "2026-10-21T12:12:23.389118",
-      "updated_at": "2026-10-21T12:34:09.068373",
+      "updated_at": "2026-10-21T13:17:31.074109",
       "dependencies": [
         "task_003"
       ],
@@ -468,13 +468,13 @@
       "description": "V3骨架: HelloLoop联调验收-模块",
       "template": "task",
       "priority": "P0",
-      "status": "blocked",
+      "status": "completed",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_006.md",
       "created_at": "2026-10-21T12:12:23.855812",
-      "updated_at": "2026-10-21T12:12:23.855823",
+      "updated_at": "2026-10-21T13:44:55.647363",
       "dependencies": [
         "task_004",
         "task_005"
@@ -489,7 +489,14 @@
           "lint_passed": false,
           "acceptance_met": false
         },
-        "issues": [],
+        "issues": [
+          {
+            "round": 0,
+            "type": "unknown_issue",
+            "message": "文档覆盖率过低 (21.9%)",
+            "timestamp": "2026-10-21T13:44:55.647360"
+          }
+        ],
         "optimization_history": []
       }
     },
@@ -498,13 +505,13 @@
       "description": "V3连接: agent-link外部agent连接重做-模块",
       "template": "task",
       "priority": "P1",
-      "status": "blocked",
+      "status": "pending",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_007.md",
       "created_at": "2026-10-21T12:12:24.328153",
-      "updated_at": "2026-10-21T12:12:24.328163",
+      "updated_at": "2026-10-21T13:36:05.757238",
       "dependencies": [
         "task_006"
       ],
@@ -527,13 +534,13 @@
       "description": "V3屏: command-panel命令面板-模块",
       "template": "task",
       "priority": "P1",
-      "status": "blocked",
+      "status": "pending",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_008.md",
       "created_at": "2026-10-21T12:12:24.820615",
-      "updated_at": "2026-10-21T12:12:24.820643",
+      "updated_at": "2026-10-21T13:36:05.758770",
       "dependencies": [
         "task_006"
       ],
@@ -556,13 +563,13 @@
       "description": "V3屏: agent-panel侧栏-模块",
       "template": "task",
       "priority": "P1",
-      "status": "blocked",
+      "status": "pending",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_009.md",
       "created_at": "2026-10-21T12:12:25.308880",
-      "updated_at": "2026-10-21T12:12:25.308894",
+      "updated_at": "2026-10-21T13:36:05.760275",
       "dependencies": [
         "task_006"
       ],
@@ -614,13 +621,13 @@
       "description": "V3屏: log-drawer统一日志-模块",
       "template": "task",
       "priority": "P2",
-      "status": "blocked",
+      "status": "pending",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_011.md",
       "created_at": "2026-10-21T12:12:26.253155",
-      "updated_at": "2026-10-21T12:12:26.253168",
+      "updated_at": "2026-10-21T13:36:05.761782",
       "dependencies": [
         "task_006"
       ],
@@ -672,13 +679,13 @@
       "description": "V3屏: settings设置屏-模块",
       "template": "task",
       "priority": "P2",
-      "status": "blocked",
+      "status": "pending",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_013.md",
       "created_at": "2026-10-21T12:12:27.190078",
-      "updated_at": "2026-10-21T12:12:27.190094",
+      "updated_at": "2026-10-21T13:36:05.763312",
       "dependencies": [
         "task_006"
       ],
@@ -701,13 +708,13 @@
       "description": "V3屏: 状态屏-模块",
       "template": "task",
       "priority": "P2",
-      "status": "blocked",
+      "status": "pending",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_014.md",
       "created_at": "2026-10-21T12:12:27.663787",
-      "updated_at": "2026-10-21T12:12:27.663805",
+      "updated_at": "2026-10-21T13:36:05.764833",
       "dependencies": [
         "task_006"
       ],
@@ -730,13 +737,13 @@
       "description": "V3屏: character-screen角色屏-模块",
       "template": "task",
       "priority": "P1",
-      "status": "blocked",
+      "status": "pending",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_015.md",
       "created_at": "2026-10-21T12:12:28.128508",
-      "updated_at": "2026-10-21T12:12:28.128517",
+      "updated_at": "2026-10-21T13:36:05.766358",
       "dependencies": [
         "task_006"
       ],

@@ -47,7 +47,14 @@ export function createStore(initial?: Partial<WorldState>): CoreStore {
   const store: CoreStore = {
     getState: () => state,
 
-    setState: (updater) => notify(updater(state)),
+    // updater 原样返回当前引用 = "这次没变"。此时不广播：广播有成本（两侧都会因此重渲染），
+    // 且 SelectionState.revision 的语义本就是"选择集实质变了才递增"，无变化的广播会把
+    // revision 与渲染成本一起刷上去（core/runtime.ts 的动作 + 对账合并依赖这个约定）。
+    setState: (updater) => {
+      const next = updater(state);
+      if (next === state) return state;
+      return notify(next);
+    },
 
     patch: (partial) => notify({ ...state, ...partial }),
 

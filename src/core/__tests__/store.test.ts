@@ -38,6 +38,17 @@ describe('createStore', () => {
     expect(store.getState().characters).toHaveLength(1);
   });
 
+  test('setState 的更新函数原样返回当前态时不广播（无变化不该刷 revision 与重渲染）', () => {
+    const store = createStore();
+    const listener = jest.fn();
+    store.subscribe(listener);
+
+    const result = store.setState((s) => s);
+
+    expect(result).toBe(store.getState());
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   test('subscribe 收到变更，退订后不再收到', () => {
     const store = createStore();
     const listener = jest.fn();

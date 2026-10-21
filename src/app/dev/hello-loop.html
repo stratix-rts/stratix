@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stratix v3 · HelloLoop 联调（dev-only）</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #0f1116;
+        color: #e6e9ef;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+      }
+      /* 左：HUD 侧（主屏 + 操作面板）；右：world 侧战场。两块容器互不重叠。 */
+      #app {
+        display: grid;
+        grid-template-columns: minmax(420px, 38%) 1fr;
+        height: 100%;
+      }
+      #hud-side {
+        display: grid;
+        grid-template-rows: minmax(180px, 1fr) auto auto;
+        min-height: 0;
+        border-right: 1px solid #2a313d;
+      }
+      #hud-root {
+        min-height: 0;
+        overflow: hidden;
+      }
+      #battlefield {
+        position: relative;
+        min-height: 0;
+      }
+      #loop-log {
+        margin: 0;
+        padding: 8px 10px;
+        border-top: 1px solid #2a313d;
+        line-height: 1.6;
+        white-space: pre;
+        overflow: hidden;
+        color: #9aa3b2;
+        max-height: 30vh;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <!-- HUD 层容器：main-screen 与 HelloLoop 操作面板挂这里（都在 hud/ 内实现） -->
+      <div id="hud-side">
+        <div id="hud-root"></div>
+        <div id="loop-panel"></div>
+        <pre id="loop-log">闭环日志
+（点击左侧按钮或在战场上点单位）</pre>
+      </div>
+
+      <!-- world 层容器：Phaser.Game 挂这里，BattlefieldScene 只读 core 广播的 WorldState -->
+      <div id="battlefield"></div>
+    </div>
+
+    <script type="module" src="./hello-loop-entry.ts"></script>
+  </body>
+</html>
