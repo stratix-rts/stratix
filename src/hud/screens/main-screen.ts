@@ -19,6 +19,8 @@ import { mountCommandPanel } from '../panels/command-panel';
 import { mountLogDrawer } from '../panels/log-drawer';
 import { defineStratButton, STRAT_BUTTON_TAG } from '../widgets/strat-button';
 
+import { mountStatusScreen } from './status-screen';
+
 export const MAIN_SCREEN_TAG = 'strat-main-screen';
 
 export interface MainScreenHandle {
@@ -72,6 +74,8 @@ export function createMainScreen(adapter: HudBusAdapter): MainScreenHandle {
         }
         /* 日志抽屉贴在主区底部、可折叠：不抢战斗视野，收起时只留一行标题栏。 */
         .drawer-slot { padding: 0 var(--srf-spacing-md, 12px) var(--srf-spacing-md, 12px); }
+        /* 态势屏跟在两栏之下：不另开屏位（契约 ScreenId 里没有 status），作为主屏的一个区块挂载。 */
+        .status-slot { margin-top: var(--srf-spacing-md, 12px); }
       </style>
       <div class="root" part="root">
         <div class="topbar">
@@ -86,7 +90,7 @@ export function createMainScreen(adapter: HudBusAdapter): MainScreenHandle {
             <div data-role="command-panel"></div>
             <div data-role="agent-panel"></div>
           </div>
-          <p>主屏骨架就绪。后续任务将在此插入 chat-drawer。</p>
+          <div class="status-slot" data-role="status-screen"></div>
         </div>
         <div class="drawer-slot" data-role="log-drawer"></div>
         <div class="footer">
@@ -127,6 +131,11 @@ export function createMainScreen(adapter: HudBusAdapter): MainScreenHandle {
     const drawerHost = host.querySelector<HTMLElement>('[data-role="log-drawer"]');
     const unmountDrawer = drawerHost ? mountLogDrawer(adapter, drawerHost) : null;
 
+    // 态势屏：同为纯展示区块（指标卡 / 系统状态 / 最近事件全由 WorldState 派生），
+    // 复用同一个 adapter —— 它唯一的出口是导航 ui.navigate，不发任何业务命令。
+    const statusHost = host.querySelector<HTMLElement>('[data-role="status-screen"]');
+    const unmountStatus = statusHost ? mountStatusScreen(adapter, statusHost) : null;
+
     const unsubscribe = adapter.subscribe((state) => {
       const counter = host.querySelector('[data-role="unit-count"]');
       if (counter) counter.textContent = String(state.units.length);
@@ -134,6 +143,7 @@ export function createMainScreen(adapter: HudBusAdapter): MainScreenHandle {
 
     return () => {
       unmountDrawer?.();
+      unmountStatus?.();
       unmountAgentPanel?.();
       unmountPanel?.();
       host.removeEventListener('strat-button-click', themeHandler);
