@@ -15,6 +15,9 @@ const emptyState = (): WorldState => ({
   selection: { unitIds: [], previewUnitIds: [], revision: 0 },
   characters: [],
   notices: [],
+  // @since v3.1 core/agent-link 的状态投影字段（WorldState 契约要求显式存在，空数组即"无会话"）
+  links: [],
+  messages: [],
 });
 
 interface Harness {

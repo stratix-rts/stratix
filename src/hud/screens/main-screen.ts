@@ -14,6 +14,7 @@
  */
 
 import type { HudBusAdapter } from '../bridge/bus-adapter';
+import { mountCommandPanel } from '../panels/command-panel';
 import { defineStratButton, STRAT_BUTTON_TAG } from '../widgets/strat-button';
 
 export const MAIN_SCREEN_TAG = 'strat-main-screen';
@@ -71,6 +72,7 @@ export function createMainScreen(adapter: HudBusAdapter): MainScreenHandle {
           </div>
         </div>
         <div class="body" data-role="body">
+          <div data-role="command-panel"></div>
           <p>主屏骨架就绪。后续任务将在此插入 agent-panel / chat-drawer / log-drawer。</p>
         </div>
         <div class="footer">
@@ -98,12 +100,18 @@ export function createMainScreen(adapter: HudBusAdapter): MainScreenHandle {
     host.addEventListener('strat-button-click', themeHandler);
     host.addEventListener('strat-button-click', navHandler);
 
+    // 命令面板：唯一命令入口。注入同一个 adapter —— 与顶栏按钮共用一条派发通道，
+    // 不给面板另开总线口子。必须在 host.innerHTML 之后挂（容器节点得先存在）。
+    const panelHost = host.querySelector<HTMLElement>('[data-role="command-panel"]');
+    const unmountPanel = panelHost ? mountCommandPanel(adapter, panelHost) : null;
+
     const unsubscribe = adapter.subscribe((state) => {
       const counter = host.querySelector('[data-role="unit-count"]');
       if (counter) counter.textContent = String(state.units.length);
     });
 
     return () => {
+      unmountPanel?.();
       host.removeEventListener('strat-button-click', themeHandler);
       host.removeEventListener('strat-button-click', navHandler);
       unsubscribe();
