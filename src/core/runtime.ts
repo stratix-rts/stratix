@@ -12,15 +12,19 @@
  *   4. 一次用户操作打多次 state —— 动作 + 对账合并在同一次 setState 里（perf：广播有成本）；
  *   5. 在这里算坐标 —— core 不持有单位位置，框选命中判定在 world/objects/unit-registry.ts；
  *   6. 在这里 emitState 之外再开广播口 —— state 通道的唯一出口就是本文件的 store 订阅，
- *      子模块（agent-link）只写 store，由本文件统一广播，避免一次变更广播两遍。
+ *      子模块（agent-link / mission）只写 store，由本文件统一广播，避免一次变更广播两遍。
  *
  * @since v3.1 外部 agent 连接（core/agent-link）接入：manager 注入本运行时后，
  *   link.open / link.resume / link.reconnect / link.close 与 chat.send 由 manager 消费；
  *   未注入 manager 时这些命令照旧走 onUnhandled（默认单例行为不变，单测基线不破）。
+ * @since v3.3 任务域（core/mission）接入：mission.create / assign / confirm / cancel 由本文件
+ *   **直接调用** manager（不像 agent-link 那样由它自己订阅总线）—— 任务域无 IO、无长驻资源，
+ *   省掉一次订阅与一层归属判定；写库仍走同一个 store，广播仍走本文件的 store 订阅。
  */
 
 import type { AgentLinkManager } from './agent-link';
 import { emitState, onCommand, onWorldEvent, type Unsubscribe } from './bus';
+import { createMissionManager, type MissionManager } from './mission';
 import type { CoreStore } from './store';
 import { worldStore } from './store';
 import type { HudCommand, WorldEvent } from './types';
@@ -39,6 +43,13 @@ export interface CoreRuntimeOptions {
    * 注入后由本运行时负责随 start/stop 一起起停，卸载时连接一并关闭（资源必须可清理）。
    */
   readonly agentLink?: AgentLinkManager;
+  /**
+   * 任务域写入面（@since v3.3）。
+   * why 可以注入：manager 无 IO 无资源，构造它只为了绑一个 store —— 但单测要能把两段接线
+   * （runtime 的命令分发 / mission 的 store 投影）各自隔离，故留注入口子。
+   * 默认按本运行时自己的 store 构造，保证命令落到**本运行时**的状态里而不是 worldStore 单例。
+   */
+  readonly mission?: MissionManager;
   /**
    * 尚未实现的命令 / 事件出口。
    * why 需要它：契约已冻结（§5），Phase 2 的 mission.* / chat.send / ui.navigate 等还没落地，
@@ -80,6 +91,7 @@ function applySelection(store: CoreStore, action: SelectionAction): void {
 export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime {
   const store = options.store ?? worldStore;
   const agentLink = options.agentLink;
+  const mission = options.mission ?? createMissionManager({ store });
   const reportUnhandled = options.onUnhandled ?? ((): void => { /* 默认不打扰；dev 入口与单测会注入 */ });
 
   /**
@@ -106,11 +118,23 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         // HudCommand 的 mode 只有 set / toggle，与选择状态机的动作同名，直接映射，不做二次翻译
         applySelection(store, { type: command.mode, unitIds: command.unitIds });
         return;
+      // @since v3.3 任务域：命令翻译只在 core/mission 里有一份（manager 负责转状态机动作 + 写库 + 报错）
+      case 'mission.create':
+        mission.createMission({ title: command.title, unitIds: command.unitIds });
+        return;
+      case 'mission.assign':
+        mission.assignMission(command.missionId, command.unitIds);
+        return;
+      case 'mission.confirm':
+        mission.decideMission(command.missionId, command.decision);
+        return;
+      case 'mission.cancel':
+        mission.cancelMission(command.missionId);
+        return;
       default:
         if (isAgentLinkCommand(command)) return; // agent-link 已订阅处理
-        // TODO(v3.Phase2): mission.assign / mission.confirm / character.persona.update /
-        //                 ui.navigate / theme.set（theme.set 由 hud bridge 本地消费，
-        //                 core 侧只记账，记账形态定了再落这里）
+        // TODO(v3.Phase2): character.persona.update / ui.navigate / theme.set
+        //                 （theme.set 由 hud bridge 本地消费，core 侧只记账，记账形态定了再落这里）
         reportUnhandled('command', command);
     }
   };

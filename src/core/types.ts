@@ -41,6 +41,14 @@ export const MAX_AGENT_MESSAGES = 200;
 /** @since v3.1 单个会话的消息保留上限。多会话并行时防止一个 agent 挤掉其他 agent 的上下文。 */
 export const MAX_AGENT_MESSAGES_PER_LINK = 100;
 
+/**
+ * @since v3.3 任务条数上限（core/mission 强制）。missions 只保留最近的 MAX_MISSIONS 条：
+ * 超限时先丢终态（done / cancelled）的旧任务，仍超限才丢最旧的一条。
+ * why 需要它：mission.create 由 HUD 反复触发，不设上限 missions 会无限增长，
+ * 而 WorldState 每次变更都**全量**广播（perf 硬约束：广播体积必须有界）。
+ */
+export const MAX_MISSIONS = 100;
+
 // ============================================================================
 // 基础形状（core 自定义，与渲染引擎解耦）
 // ============================================================================
@@ -129,7 +137,17 @@ export interface UnitView {
 // 任务
 // ============================================================================
 
-/** 任务相位。状态机迁移规则实现在 core/mission，本文件只冻结相位取值。 */
+/**
+ * 任务相位。状态机迁移规则实现在 core/mission，本文件只冻结相位取值。
+ *
+ * @since v3.3 语义澄清（**词表未变**，只是把隐含约定写明，免得两侧各猜一套）：
+ *   - 'draft'     = 已立任务、还没指派任何人（mission.create 的 unitIds 为空即落在这里）；
+ *   - 'pending'   = 已指派编组、**待确认**（mission-confirm 面板要确认的就是这一相）；
+ *   - 'confirmed' = 已被接收（ConfirmDecision='accept' 的落点），紧接即进入 'running'；
+ *   - 'done' / 'cancelled' 为终态。
+ *   **拒绝 = 'cancelled'**：契约里没有 'rejected' —— ConfirmDecision='reject' 落到 cancelled，
+ *   "被拒绝作废"与"被叫停"在业务上同源，分成两个相位只会让 HUD 多一套词表。
+ */
 export type MissionPhase = 'draft' | 'pending' | 'confirmed' | 'running' | 'done' | 'cancelled';
 
 export interface MissionView {
@@ -184,6 +202,18 @@ export interface Notice {
   readonly text: string;
   readonly createdAt: number;
   readonly expiresAt: number;
+  /**
+   * @since v3.4 产生方标识（如 'core/mission'、'core/agent-link'），供 hud/panels/log-drawer
+   * 渲染"来源"列。缺省表示 core 未标注来源，HUD 显示通用来源 —— **不编造来源**。
+   * 可选而非必填：契约增补不许打破既有 pushNotice 构造点（core/runtime.ts、单测夹具）的编译。
+   */
+  readonly source?: string;
+  /**
+   * @since v3.4 关联任务 id。命中 WorldState.missions 才能按任务过滤日志；
+   * 缺省 / null 表示与任务无关的全局通知（仍会出现在"全部任务"视图里）。
+   * 与 source 同理走可选增补，纯类型不动运行时。
+   */
+  readonly missionId?: string | null;
 }
 
 // ============================================================================
