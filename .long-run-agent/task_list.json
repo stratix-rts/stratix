@@ -971,6 +971,33 @@
         "issues": [],
         "optimization_history": []
       }
+    },
+    {
+      "id": "task_020",
+      "description": "V3.x: HUD 改 RTS 悬浮布局——战场全屏，HUD 边缘悬浮（顶栏态势/左单位栏/底命令条/抽屉覆盖），消灭左右分屏-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_020.md",
+      "created_at": "2026-10-21T21:38:52.700803",
+      "updated_at": "2026-10-21T22:10:02.724927",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
     }
   ]
 }

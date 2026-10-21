@@ -37,6 +37,10 @@
   --srf-radius: 0;
   --srf-border-width: 2px;
 
+  /* —— 悬浮层：像素风同样需要半透明底（RTS 覆盖层），不透明面板会盖住战场 —— */
+  --srf-panel-overlay: rgba(20, 20, 31, 0.9);
+  --srf-panel-elevated-overlay: rgba(28, 28, 42, 0.94);
+
   /* —— 渲染：像素化（图像 + canvas 都生效） —— */
   --srf-image-rendering: pixelated;
   --srf-scanline-opacity: 0.08;

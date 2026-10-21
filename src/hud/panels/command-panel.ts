@@ -17,6 +17,11 @@
  * 渲染策略（perf）：core 每次状态变更都全量广播，面板不能跟着无脑重建 DOM。
  *   用 renderSignature（选择集 revision + 单位数 + 任务相位 + 前 N 条通知）判重，
  *   签名不变就跳过重渲染；输入框所在的"外壳"只在挂载时建一次，输入时光标不丢。
+ *
+ * 外部样式钩子（@since v3.7，task_020）：命令分组根节点带 `part="group"`，
+ *   供 hud/screens/main-screen.ts 把分组内的命令按钮排成横排（底栏"命令横条"用）。
+ *   why 用 part 而不是改内部样式：面板内部布局不动（见文件头禁止事项），
+ *   挂载方按 part 适配即可；本组件不因外部样式改变行为。
  */
 
 import type { HudCommand, WorldState } from '../../core/types';
@@ -353,7 +358,7 @@ export function defineCommandPanel(): typeof HTMLElement {
     private renderGroup(scope: CommandScope, items: ResolvedCommand[]): string {
       const buttons = items.map((c) => this.renderCommand(c)).join('');
       return `
-        <div class="group" data-scope="${scope}">
+        <div class="group" part="group" data-scope="${scope}">
           <div class="group-name">${SECTION_LABELS[scope]}</div>
           ${buttons}
         </div>

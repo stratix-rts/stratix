@@ -259,6 +259,119 @@ describe('卸载与跨屏切换的资源释放', () => {
   });
 });
 
+// ============================================================================
+// 5. RTS 悬浮布局（@since v3.7，task_020）
+//   背景：用户反馈「hud 并没有环绕整个 rts 屏幕，看起来更像是左右分屏」。
+//   本组用例把"RTS 形态"钉成可回归的断言：战场全屏、HUD 环绕四周悬浮、
+//   空白区域事件穿透（容器 pointer-events:none，只有实体面板开 auto）。
+// ============================================================================
+
+describe('RTS 悬浮布局：HUD 环绕战场而不是分栏', () => {
+  test('布局容器铺满视口且不拦事件；只有 HUD 实体面板自己开 pointer-events', () => {
+    const h = mountHarness(makeState());
+    const root = h.host.querySelector<HTMLElement>('.hud-root');
+    expect(root).not.toBeNull();
+
+    // 容器层：铺满挂载方 + 事件穿透（空白处点到的是下方 Phaser 画布，不是 HUD）。
+    // 定位由挂载方（#hud-root）负责，本屏只做 relative 定位上下文 + 四边浮层。
+    expect(getComputedStyle(root as HTMLElement).position).toBe('relative');
+    expect(getComputedStyle(root as HTMLElement).pointerEvents).toBe('none');
+    expect(getComputedStyle(root as HTMLElement).height).toBe('100%');
+
+    // 实体面板层：顶栏 / 左栏 / 底栏 / 抽屉各自开 pointer-events:auto（否则面板点不动）。
+    const surfaces = h.host.querySelectorAll<HTMLElement>('.hud-surface');
+    expect(surfaces.length).toBeGreaterThan(0);
+    surfaces.forEach((el) => {
+      expect(getComputedStyle(el).pointerEvents).toBe('auto');
+    });
+    // 顶栏不是 .hud-surface（它自己带背景），但同样必须可交互。
+    expect(getComputedStyle(h.host.querySelector<HTMLElement>('.hud-topbar') as HTMLElement).pointerEvents)
+      .toBe('auto');
+  });
+
+  test('四个方向的浮层各就各位：顶栏 / 左竖栏 / 右竖栏 / 底横条都是绝对定位', () => {
+    const h = mountHarness(makeState());
+    const topbar = h.host.querySelector<HTMLElement>('.hud-topbar');
+    const railLeft = h.host.querySelector<HTMLElement>('.hud-rail-left');
+    const railRight = h.host.querySelector<HTMLElement>('.hud-rail-right');
+    const bottomBar = h.host.querySelector<HTMLElement>('.hud-bottom-bar');
+
+    [topbar, railLeft, railRight, bottomBar].forEach((el) => {
+      expect(el).not.toBeNull();
+      expect(getComputedStyle(el as HTMLElement).position).toBe('absolute');
+    });
+    // 左竖栏挂在左边、底横条贴底、顶栏贴顶、右竖栏挂右边 —— 这是"环绕"的形状，不是左右两栏。
+    // 注：jsdom 不解析 var()，间距类断言只看"有没有贴边"，具体数值交给浏览器端的截图/DOM 断言。
+    expect(getComputedStyle(railLeft as HTMLElement).left).not.toBe('');
+    expect(getComputedStyle(railRight as HTMLElement).right).not.toBe('');
+    expect(getComputedStyle(bottomBar as HTMLElement).bottom).toBe('0px');
+    expect(getComputedStyle(topbar as HTMLElement).top).toBe('0px');
+    h.unmount();
+  });
+
+  test('态势摘要横条：单位 / 任务 / 会话计数随广播更新，未读通知角标按 notices 数显隐', () => {
+    const h = mountHarness(makeState());
+    const badge = h.host.querySelector<HTMLElement>('[data-role="notice-badge"]');
+    expect(badge).not.toBeNull();
+    expect(badge?.hidden).toBe(true); // 无通知时不占位
+
+    h.emit(makeState({
+      units: [
+        { id: 'u1', name: 'Neo', status: 'idle', missionId: null, power: 3 },
+        { id: 'u2', name: 'Trinity', status: 'busy', missionId: null, power: 5 },
+      ],
+      missions: [{
+        id: 'm1',
+        title: '侦察',
+        phase: 'running',
+        unitIds: ['u1'],
+        createdAt: 0,
+      }],
+      links: [{
+        id: 'l1',
+        kind: 'openclaw',
+        displayName: 'agent-1',
+        phase: 'connected',
+        phaseReason: null,
+        agentId: null,
+        sessionId: null,
+        endpoint: 'ws://127.0.0.1:18080/ws',
+        connectedAt: 1000,
+        lastError: null,
+      }],
+      notices: [{
+        id: 'n1',
+        level: 'info',
+        text: '新事件',
+        createdAt: 0,
+        expiresAt: 10_000,
+      }],
+    }));
+
+    expect(h.host.querySelector('[data-role="unit-count"]')?.textContent).toBe('2');
+    expect(h.host.querySelector('[data-role="mission-count"]')?.textContent).toBe('1');
+    expect(h.host.querySelector('[data-role="link-count"]')?.textContent).toBe('1');
+    expect(badge?.hidden).toBe(false);
+    expect(badge?.textContent).toBe('1');
+    h.unmount();
+  });
+
+  test('聊天抽屉：默认收起（覆盖层），点顶栏「打开聊天」展开', () => {
+    const h = mountHarness(makeState());
+    const slot = h.host.querySelector<HTMLElement>('[data-role="chat-drawer"]');
+    expect(slot).not.toBeNull();
+    expect(slot?.hidden).toBe(true);
+
+    h.host.querySelector<HTMLElement>('[data-role="chat"]')
+      ?.dispatchEvent(new CustomEvent('strat-button-click', { bubbles: true }));
+
+    expect(h.host.querySelector<HTMLElement>('[data-role="chat-drawer"]')?.hidden).toBe(false);
+    // 命令照旧进总线（core 不回写 currentScreen='chat'，开合是本屏展示态）。
+    expect(h.commands).toContainEqual({ type: 'ui.navigate', screen: 'chat' });
+    h.unmount();
+  });
+});
+
 // 进一层断言：mountSettingsScreen / mountCharacterScreen 的 tidiness 与主屏一致 —— 这里直接复用
 // 已有 settings-screen / character-screen / status-screen 测试用例（每个屏均独立验证过
 // disconnectedCallback 释放订阅与定时器）。本文件专注壳层路由。

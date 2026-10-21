@@ -6,9 +6,12 @@
     <title>Stratix v3</title>
     <style>
       /*
-        页面骨架 = 两个并列容器：左 HUD（Web Components 屏/面板），右 world（Phaser 战场）。
-        布局与 src/app/dev/hello-loop.html 同构（左列 HUD / 右列战场，两块不重叠），
-        但去掉了 dev-only 的观测面板 —— 正式入口不留任何调试 UI。
+        页面骨架 = **全屏战场 + 悬浮 HUD 覆盖层**（RTS 形态，不再是左右分屏）：
+        - #battlefield 铺满视口，Phaser 以 Scale.RESIZE 跟随父容器尺寸；
+        - #hud-side 整层绝对定位覆盖在战场之上，但 pointer-events:none ——
+          只有 HUD 的实体面板（顶栏 / 侧栏 / 底栏 / 抽屉）自行开 pointer-events:auto，
+          其余空白区域的事件穿透到下方 Phaser 画布，拖拽平移 / 框选 / 滚轮缩放不受遮挡。
+        z-index 分层：战场 0 < HUD 面板 20–30 < 子屏（settings / character）覆盖层 50。
       */
       html,
       body {
@@ -21,20 +24,34 @@
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       }
       #app {
-        display: grid;
-        grid-template-columns: minmax(420px, 34%) 1fr;
+        position: relative;
+        width: 100%;
         height: 100%;
       }
-      #hud-side {
-        min-height: 0;
-        min-width: 0;
-        overflow: hidden;
-        border-right: 1px solid #2a313d;
-      }
+      /* 战场：全屏铺满（DOM 顺序在前 + z-index 0，保证不被 HUD 覆盖层压住）。 */
       #battlefield {
-        position: relative;
+        position: absolute;
+        inset: 0;
+        z-index: 0;
         min-height: 0;
         min-width: 0;
+      }
+      #battlefield canvas {
+        display: block;
+      }
+      /* HUD 覆盖层：整层不拦事件 —— 空白处穿透到战场。 */
+      #hud-side {
+        position: absolute;
+        inset: 0;
+        z-index: 10;
+        pointer-events: none;
+        min-height: 0;
+        min-width: 0;
+      }
+      #hud-root {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
       }
       /* 装配失败时的兜底提示：宁可报错也不要静默白屏（诊断入口在 renderer console）。 */
       #boot-error {
@@ -49,18 +66,19 @@
         font-size: 12px;
         line-height: 1.6;
         white-space: pre-wrap;
+        z-index: 100;
       }
     </style>
   </head>
   <body>
     <div id="app">
-      <!-- HUD 层容器：main-screen（命令面板 / agent 侧栏 / 状态屏 / 抽屉）挂这里 -->
+      <!-- world 层容器：Phaser.Game 挂这里，BattlefieldScene 只读 core 广播的 WorldState -->
+      <div id="battlefield"></div>
+
+      <!-- HUD 层容器：main-screen（命令面板 / agent 侧栏 / 态势屏 / 抽屉）挂这里 -->
       <div id="hud-side">
         <div id="hud-root"></div>
       </div>
-
-      <!-- world 层容器：Phaser.Game 挂这里，BattlefieldScene 只读 core 广播的 WorldState -->
-      <div id="battlefield"></div>
     </div>
 
     <pre id="boot-error" hidden></pre>
