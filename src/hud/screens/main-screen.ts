@@ -14,6 +14,7 @@
  */
 
 import type { HudBusAdapter } from '../bridge/bus-adapter';
+import { mountAgentPanel } from '../panels/agent-panel';
 import { mountCommandPanel } from '../panels/command-panel';
 import { defineStratButton, STRAT_BUTTON_TAG } from '../widgets/strat-button';
 
@@ -55,6 +56,12 @@ export function createMainScreen(adapter: HudBusAdapter): MainScreenHandle {
         .title { font-size: var(--srf-font-size-lg, 16px); color: var(--srf-text, #e6e9ef); }
         .actions { display: flex; gap: var(--srf-spacing-sm, 8px); }
         .body { padding: var(--srf-spacing-md, 12px); overflow: auto; }
+        .columns {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) minmax(0, 320px);
+          gap: var(--srf-spacing-md, 12px);
+          align-items: start;
+        }
         .footer {
           padding: var(--srf-spacing-sm, 8px) var(--srf-spacing-md, 12px);
           background: var(--srf-panel, #181c25);
@@ -72,8 +79,11 @@ export function createMainScreen(adapter: HudBusAdapter): MainScreenHandle {
           </div>
         </div>
         <div class="body" data-role="body">
-          <div data-role="command-panel"></div>
-          <p>主屏骨架就绪。后续任务将在此插入 agent-panel / chat-drawer / log-drawer。</p>
+          <div class="columns">
+            <div data-role="command-panel"></div>
+            <div data-role="agent-panel"></div>
+          </div>
+          <p>主屏骨架就绪。后续任务将在此插入 chat-drawer / log-drawer。</p>
         </div>
         <div class="footer">
           皮肤: <span data-role="theme-tag">default</span> · 单元: <span data-role="unit-count">0</span>
@@ -105,12 +115,17 @@ export function createMainScreen(adapter: HudBusAdapter): MainScreenHandle {
     const panelHost = host.querySelector<HTMLElement>('[data-role="command-panel"]');
     const unmountPanel = panelHost ? mountCommandPanel(adapter, panelHost) : null;
 
+    // Agent 侧栏：选中单位的业务态。与命令面板共用同一个 adapter —— 两条派发通道合成一条。
+    const agentHost = host.querySelector<HTMLElement>('[data-role="agent-panel"]');
+    const unmountAgentPanel = agentHost ? mountAgentPanel(adapter, agentHost) : null;
+
     const unsubscribe = adapter.subscribe((state) => {
       const counter = host.querySelector('[data-role="unit-count"]');
       if (counter) counter.textContent = String(state.units.length);
     });
 
     return () => {
+      unmountAgentPanel?.();
       unmountPanel?.();
       host.removeEventListener('strat-button-click', themeHandler);
       host.removeEventListener('strat-button-click', navHandler);

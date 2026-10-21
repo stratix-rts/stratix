@@ -74,6 +74,36 @@ export interface ClickMods {
 export type UnitStatus = 'idle' | 'busy' | 'offline' | 'error';
 
 /**
+ * 能力维度键。@since v3.2 —— 合并旧 AgentPowerPanel（Agent 战斗力评估）所需。
+ * 键与旧 CombatPowerCalculator.COMBAT_DIMENSIONS 一一对应（攻击/防御/机动/魔法/生存/辅助）。
+ * 词表是契约的一部分：core 计算、HUD 按此顺序渲染，改词表必须同步两侧。
+ */
+export const CAPABILITY_DIMENSIONS = [
+  'offense',
+  'defense',
+  'mobility',
+  'magic',
+  'survivability',
+  'utility',
+] as const;
+
+export type CapabilityDimension = (typeof CAPABILITY_DIMENSIONS)[number];
+
+/**
+ * 单位能力面板（AgentPowerPanel 的 v3 契约形态）@since v3.2。
+ * **由 core 计算、HUD 只渲染**：维度得分与分档词表只在 core 一处存在，
+ * HUD 侧若再写一份阈值，两处必然漂移（本任务刻意不在 hud 里复刻旧 CombatPowerCalculator）。
+ */
+export interface UnitCapabilitiesView {
+  /** 综合战力 0–100。 */
+  readonly overall: number;
+  /** 分档名（如「优秀」）。core 按阈值给出，HUD 不自算。 */
+  readonly level: string;
+  /** 各维度得分 0–100，键集合固定为 CAPABILITY_DIMENSIONS。 */
+  readonly dimensions: Readonly<Record<CapabilityDimension, number>>;
+}
+
+/**
  * 单位业务态视图。注意：**不含位置**——位置由世界层自治，core 与 HUD 都不持有坐标真相。
  */
 export interface UnitView {
@@ -83,6 +113,16 @@ export interface UnitView {
   /** 当前承担的任务；空闲为 null。任务状态机的相位见 MissionView.phase。 */
   readonly missionId: string | null;
   readonly power: number;
+  /**
+   * @since v3.2 关联角色 id：命中 WorldState.characters 即可展示成长数值（等级/经验），
+   * 合并旧 AgentPanel 的角色档案区。为空表示未关联 —— HUD 显示「未关联角色」，不编造档案。
+   */
+  readonly characterId?: string | null;
+  /**
+   * @since v3.2 能力面板数据（合并 AgentPowerPanel）。未评估时缺省/null，HUD 显示「未评估」。
+   * 可选而非必填：契约增补不许打破已有 UnitView 构造点（world 侧适配器、单测夹具）的编译。
+   */
+  readonly capabilities?: UnitCapabilitiesView | null;
 }
 
 // ============================================================================
@@ -230,6 +270,13 @@ export type ScreenId =
 
 export type HudCommand =
   | { type: 'unit.select'; unitIds: string[]; mode: 'set' | 'toggle' }
+  /**
+   * @since v3.2 相机聚焦到某个单位（合并旧 AgentPanel 侧栏的「定位/聚焦」语义）。
+   *   为什么单开一条而不是复用 ui.navigate：相机由世界层自治、契约里没有相机字段，
+   *   但「聚焦某个单位」是 HUD 侧对世界的合法表达 —— core 只做转发与审计（phase 2 落地），
+   *   最终由 world 层消费；HUD 绝不直接调 world（铁律）。
+   */
+  | { type: 'unit.focus'; unitId: string }
   | { type: 'mission.assign'; missionId: string; unitIds: string[] }
   | { type: 'mission.confirm'; missionId: string; decision: ConfirmDecision }
   /**
