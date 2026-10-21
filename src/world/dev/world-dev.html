@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stratix world dev (v3 骨架)</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #0f131b;
+        color: #cbd5e1;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+      }
+      #battlefield {
+        position: absolute;
+        inset: 0;
+      }
+      #legend {
+        position: absolute;
+        left: 12px;
+        top: 12px;
+        padding: 8px 10px;
+        background: rgba(15, 19, 27, 0.82);
+        border: 1px solid #3a4557;
+        line-height: 1.6;
+        pointer-events: none;
+        white-space: pre;
+      }
+      #event-log {
+        position: absolute;
+        right: 12px;
+        top: 12px;
+        width: 320px;
+        max-height: 60vh;
+        overflow: hidden;
+        padding: 8px 10px;
+        background: rgba(15, 19, 27, 0.82);
+        border: 1px solid #3a4557;
+        line-height: 1.6;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- 战场容器：BattlefieldScene 的 Phaser.Game 挂在这里 -->
+    <div id="battlefield"></div>
+
+    <!--
+      以下两块是 **dev 观测面板**，不属于 world 层（world 只画战场，不画 HUD）。
+      它们只读取真实发生的状态与事件，不塞任何假数据。
+    -->
+    <div id="legend">world dev (v3 骨架) — dev-only，不接入主 UI
+
+左键拖拽空地 = 框选 selection.box
+左键点击单位 = unit.click（带修饰键）
+右键 / 中键拖拽 = 平移相机
+滚轮 = 缩放相机
+相机被钳制在战场边界内
+
+战场是空的：core 尚未广播任何 UnitView。
+core 一旦广播 state，总线桥会把单位画上来。</div>
+
+    <div id="event-log">world → core 事件（最近 12 条）
+（等待交互）</div>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
