@@ -17,11 +17,13 @@ import { emitCommand, onState, resetBus } from '../bus';
 import {
   EXP_PER_LEVEL,
   MAX_LEVEL,
+  PERSONA_MAX_LEN,
   experienceIntoLevel,
   experienceToNextLevel,
   grantExperience,
   isMaxLevel,
   levelForExperience,
+  updatePersona,
 } from '../character';
 import { createCharacterManager } from '../character/manager';
 import { createCoreRuntime } from '../runtime';
@@ -166,6 +168,72 @@ describe('grantExperience：加一次经验（全路径）', () => {
 });
 
 // ============================================================================
+// 1.b persona：角色提示词改写（纯函数，零 store）
+// ============================================================================
+
+describe('updatePersona：角色提示词改写（纯函数）', () => {
+  const base = characterAt({ persona: '稳' });
+
+  test('与原值一致（含 trim 后相等）→ 原样返回入参引用、不广播', () => {
+    const t = updatePersona(base, '  稳  ');
+    expect(t.changed).toBe(false);
+    expect(t.next).toBe(base); // 原引用
+    expect(t.prompt).toBe('稳');
+  });
+
+  test('trim 后的新值合法 → 返回新对象（immutable），其它字段不被动', () => {
+    const t = updatePersona(base, '\n  新提示词\n');
+    expect(t.changed).toBe(true);
+    expect(t.next).not.toBe(base);
+    expect(t.prompt).toBe('新提示词');
+    expect(t.next.id).toBe(base.id);
+    expect(t.next.name).toBe(base.name);
+    expect(t.next.level).toBe(base.level);
+    expect(t.next.experience).toBe(base.experience);
+  });
+
+  test('trim 保留中间换行/缩进（persona 多行文本，不该被压成单行）', () => {
+    const t = updatePersona(base, 'a\n  b\nc');
+    expect(t.changed).toBe(true);
+    expect(t.prompt).toBe('a\n  b\nc');
+  });
+
+  test('空串 / 纯空白 → 拒发（empty），原引用', () => {
+    for (const raw of ['', '   ', '\n\t  \n']) {
+      const t = updatePersona(base, raw);
+      expect(t.error).toBe('empty');
+      expect(t.next).toBe(base);
+      expect(t.changed).toBe(false);
+    }
+  });
+
+  test('非字符串（null / undefined / 数字）→ 拒发（not-a-string）', () => {
+    for (const raw of [null, undefined, 42, {}, []]) {
+      const t = updatePersona(base, raw);
+      expect(t.error).toBe('not-a-string');
+      expect(t.next).toBe(base);
+      expect(t.changed).toBe(false);
+    }
+  });
+
+  test('长度超限 → 拒发（too-long），原引用', () => {
+    const tooLong = 'x'.repeat(PERSONA_MAX_LEN + 1);
+    const t = updatePersona(base, tooLong);
+    expect(t.error).toBe('too-long');
+    expect(t.next).toBe(base);
+    expect(t.changed).toBe(false);
+  });
+
+  test('等于上限（含两侧空白后）→ 合法', () => {
+    const atLimit = '  ' + 'x'.repeat(PERSONA_MAX_LEN) + '  ';
+    const t = updatePersona(base, atLimit);
+    expect(t.changed).toBe(true);
+    expect(t.prompt.length).toBe(PERSONA_MAX_LEN);
+    expect(t.error).toBeUndefined();
+  });
+});
+
+// ============================================================================
 // 2. manager：store 投影 + Notice
 // ============================================================================
 
@@ -246,6 +314,80 @@ describe('CharacterManager.grantExperience：写库投影', () => {
   });
 });
 
+describe('CharacterManager.updatePersona：persona 写库投影（@since v3.6）', () => {
+  test('合法 prompt：投影进 WorldState.characters 并广播一次', () => {
+    const store = createStore(stateWith([characterAt({ persona: '稳' })]));
+    const manager = createCharacterManager({ store });
+    let broadcasts = 0;
+    store.subscribe(() => { broadcasts += 1; });
+
+    const result = manager.updatePersona('c-neo', '  激进一些\n');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.character.persona).toBe('激进一些');
+    }
+    expect(store.getState().characters[0]?.persona).toBe('激进一些');
+    expect(broadcasts).toBe(1);
+  });
+
+  test('与原值相等（trim 后）：不写库、不广播（store 引用未变即不广播约定）', () => {
+    const store = createStore(stateWith([characterAt({ persona: '稳' })]));
+    const manager = createCharacterManager({ store });
+    let broadcasts = 0;
+    store.subscribe(() => { broadcasts += 1; });
+
+    const result = manager.updatePersona('c-neo', '  稳  ');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.character.persona).toBe('稳');
+    }
+    expect(store.getState().characters[0]?.persona).toBe('稳');
+    expect(broadcasts).toBe(0);
+  });
+
+  test('只改目标角色，其余角色不受影响（逐条投影，不整表替换）', () => {
+    const store = createStore(
+      stateWith([
+        characterAt({ id: 'c-a', persona: 'a' }),
+        characterAt({ id: 'c-b', persona: 'b' }),
+      ])
+    );
+    const manager = createCharacterManager({ store });
+
+    manager.updatePersona('c-a', 'A2');
+
+    const [a, b] = store.getState().characters;
+    expect(a?.persona).toBe('A2');
+    expect(b?.persona).toBe('b');
+  });
+
+  test('角色不存在：拒发 + warn Notice（source = core/character），characters 不变', () => {
+    const store = createStore(stateWith([characterAt()]));
+    const manager = createCharacterManager({ store });
+
+    const result = manager.updatePersona('c-ghost', 'new');
+
+    expect(result).toEqual({ ok: false, code: 'not-found', characterId: 'c-ghost' });
+    expect(store.getState().characters[0]?.persona).toBe(characterAt().persona);
+    expect(store.getState().notices).toHaveLength(1);
+    expect(store.getState().notices[0]).toMatchObject({ level: 'warn', source: 'core/character' });
+  });
+
+  test('非法 prompt（空）：拒发 + Notice + characters 不变', () => {
+    const store = createStore(stateWith([characterAt({ persona: '原' })]));
+    const manager = createCharacterManager({ store });
+
+    const result = manager.updatePersona('c-neo', '   ');
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe('empty');
+    expect(store.getState().characters[0]?.persona).toBe('原');
+    expect(store.getState().notices[0]?.text).toContain('empty');
+  });
+});
+
 // ============================================================================
 // 3. 总线闭环：manager 写库 → runtime 广播 → 订阅者（= HUD 侧）拿到成长数值
 // ============================================================================
@@ -268,22 +410,56 @@ describe('经总线集成：core 写库 → state 通道 → HUD 订阅侧', () 
     expect(seen[0]).toMatchObject({ level: 2, experience: 120 });
   });
 
-  test('未接线的角色命令走 onUnhandled 而不是被吞（character.persona.update 仍待 runtime 接线）', () => {
+  test('character.persona.update 走 manager 写库并广播新 persona（@since v3.6 接线）', () => {
     resetBus();
-    const store = createStore(stateWith([characterAt()]));
-    const unhandled: unknown[] = [];
-    const runtime = createCoreRuntime({
-      store,
-      onUnhandled: (channel, payload) => { unhandled.push({ channel, type: payload.type }); },
-    });
+    const store = createStore(stateWith([characterAt({ persona: '旧提示词' })]));
+    const runtime = createCoreRuntime({ store });
+    const seen: CharacterView[] = [];
+    const off = onState((state) => { seen.push(state.characters[0] as CharacterView); });
     const stop = runtime.start();
 
-    // 契约里目前**没有**"加经验"的 HudCommand（见 core/character/manager.ts 文件头 TODO）：
-    // 角色数值只由 core 侧写入面驱动。这里断言尚未接线的角色命令**没有**被悄悄处理掉。
-    emitCommand({ type: 'character.persona.update', characterId: 'c-neo', prompt: '更激进一些' });
+    emitCommand({ type: 'character.persona.update', characterId: 'c-neo', prompt: '  更激进一些\n' });
     stop();
+    off();
 
-    expect(unhandled).toEqual([{ channel: 'command', type: 'character.persona.update' }]);
+    // trim 后写入；广播一次（无变化不广播的约定自动生效：原值不同 → 必广播）。
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.persona).toBe('更激进一些');
+    expect(store.getState().characters[0]?.persona).toBe('更激进一些');
+  });
+
+  test('character.persona.update：与原值一致则不写入、不广播（store 「引用未变即不广播」约定）', () => {
+    resetBus();
+    const store = createStore(stateWith([characterAt({ persona: '稳' })]));
+    const runtime = createCoreRuntime({ store });
+    let broadcasts = 0;
+    const off = onState(() => { broadcasts += 1; });
+    const stop = runtime.start();
+
+    emitCommand({ type: 'character.persona.update', characterId: 'c-neo', prompt: '  稳  ' });
+    stop();
+    off();
+
+    expect(broadcasts).toBe(0);
+    expect(store.getState().characters[0]?.persona).toBe('稳');
+  });
+
+  test('character.persona.update：被拒（角色不在 / 非法 prompt）走 Notice 通道，不改 characters', () => {
+    resetBus();
+    const store = createStore(stateWith([characterAt()]));
+    const runtime = createCoreRuntime({ store });
+    const stop = runtime.start();
+
+    // 角色不存在 → not-found + 推一条 warn Notice；characters 不变。
+    emitCommand({ type: 'character.persona.update', characterId: 'c-ghost', prompt: 'x' });
     expect(store.getState().characters[0]).toEqual(characterAt());
+    expect(store.getState().notices[0]).toMatchObject({ level: 'warn', source: 'core/character' });
+
+    // 空 prompt → empty + 再一条 Notice；characters 不变。
+    emitCommand({ type: 'character.persona.update', characterId: 'c-neo', prompt: '   ' });
+    expect(store.getState().characters[0]).toEqual(characterAt());
+    expect(store.getState().notices).toHaveLength(2);
+
+    stop();
   });
 });

@@ -136,19 +136,70 @@ describe('WorldEvent → 选择状态机（world → core 那一半）', () => {
 });
 
 describe('未落地的消息走 onUnhandled（不静默吞掉）', () => {
-  test('Phase 2 才接的命令被上报，不改动状态', () => {
+  test('Phase 2 才接的命令被上报，不改动状态；已接线的 ui.navigate 不再上报', () => {
     const { unhandled, store, states, stop } = harness();
     cleanups.push(stop);
 
+    // @since v3.6 ui.navigate 已落库（写 currentScreen）；不再是"未落地"。
     emitCommand({ type: 'ui.navigate', screen: 'settings' });
     emitCommand({ type: 'chat.send', text: 'hi' });
 
     expect(unhandled).toEqual([
-      { channel: 'command', type: 'ui.navigate' },
       { channel: 'command', type: 'chat.send' },
     ]);
-    expect(states).toHaveLength(0);
+    // ui.navigate → setCurrentScreen('settings') 会触发一次 state 广播。
+    expect(states).toHaveLength(1);
+    expect(states[0].currentScreen).toBe('settings');
     expect(store.getState().selection.unitIds).toEqual([]);
+  });
+});
+
+describe('ui.navigate → currentScreen（@since v3.6）', () => {
+  test('导航到 settings/character：写入 store.currentScreen 并广播', () => {
+    const { store, states, stop } = harness();
+    cleanups.push(stop);
+
+    emitCommand({ type: 'ui.navigate', screen: 'character' });
+    expect(store.getState().currentScreen).toBe('character');
+    expect(states.at(-1)?.currentScreen).toBe('character');
+
+    emitCommand({ type: 'ui.navigate', screen: 'settings' });
+    expect(store.getState().currentScreen).toBe('settings');
+
+    stop();
+  });
+
+  test('导航到 main：清空 currentScreen（缺省回落读取方自管），仍广播一次', () => {
+    const { store, states, stop } = harness();
+    cleanups.push(stop);
+
+    // 先切到 character
+    emitCommand({ type: 'ui.navigate', screen: 'character' });
+    expect(store.getState().currentScreen).toBe('character');
+    // 再回 main
+    emitCommand({ type: 'ui.navigate', screen: 'main' });
+    expect(store.getState().currentScreen).toBeUndefined();
+    expect(states).toHaveLength(2);
+  });
+
+  test('导航到 chat：不写 currentScreen（chat 由抽屈自治）；也不广播', () => {
+    const { store, states, stop } = harness();
+    cleanups.push(stop);
+
+    emitCommand({ type: 'ui.navigate', screen: 'chat' });
+    // 'chat' 由 core 解释为打开抽屈 —— 不入 currentScreen。
+    expect(store.getState().currentScreen).toBeUndefined();
+    expect(states).toHaveLength(0);
+  });
+
+  test('同一屏位重复导航不广播（store 引用未变即不广播约定）', () => {
+    const { states, stop } = harness();
+    cleanups.push(stop);
+
+    emitCommand({ type: 'ui.navigate', screen: 'settings' });
+    emitCommand({ type: 'ui.navigate', screen: 'settings' });
+
+    expect(states).toHaveLength(1);
   });
 
   test('core 算不出坐标的 world 事件被上报而不是硬算', () => {

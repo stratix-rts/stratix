@@ -317,6 +317,18 @@ export interface WorldState {
    * 读取方缺省时回落到 DEFAULT_SETTINGS。
    */
   settings?: SettingsView;
+  /**
+   * @since v3.6 当前激活屏（ScreenId 的当前投影，由 ui.navigate 写入）。
+   * why 走可选：与 settings 同理 ——
+   * 契约增补不许打破既有 WorldState 构造点（core 单测夹具、hud 测试夹具）的编译。
+   * 读取方缺省时回落到 'main'（即主屏主导视图）。
+   * 路由约定：core/runtime.ts 在收到 `ui.navigate` 时调 CoreStore.setCurrentScreen，
+   * HUD 侧 main-screen 据此切换 settings / character / main 三屏之一的渲染。
+   * 'chat' 由 core 解释为"打开聊天抽屉"，不是跳屏 —— 故 'chat' 不写入 currentScreen
+   * （HUD 抽屉仍由原 chat-drawer 自治；落到 currentScreen 会让 main-screen 多一个分支，
+   * 与现有抽屉协议不符）。
+   */
+  currentScreen?: ScreenId;
 }
 
 // ============================================================================
@@ -356,12 +368,24 @@ export type HudCommand =
    *   却没有任何命令能到达它（旧 UI 的「停止」语义落在这条上），这里把缺口补齐。
    */
   | { type: 'mission.cancel'; missionId: string }
+  /**
+   * @since v3.6 已接线：core/runtime.ts 在收到本命令时调 core/character/manager.updatePersona，
+   *   落库 + 失败转 Notice（source = 'core/character'）。合法性与 trim 由 persona.ts 校验。
+   *   之前 Phase 2 留 TODO（handler 未接），HUD 端能派发但走 onUnhandled。
+   */
   | { type: 'character.persona.update'; characterId: string; prompt: string }
   /**
    * @since v3.1 新增可选 linkId：缺省表示"投给当前唯一的已连接会话"；
    * 会话不唯一时不猜，走 onUnhandled 上报（宁可让调用方显式指定，也不投错 agent）。
    */
   | { type: 'chat.send'; text: string; linkId?: string }
+  /**
+   * @since v3.6 已接线：core/runtime.ts 在收到本命令时调 CoreStore.setCurrentScreen
+   *   （纯函数 applyCurrentScreen）落库 + 广播；HUD 侧 main-screen 据此切换 settings /
+   *   character / main 三屏之一渲染。'chat' 由 core 解释为"打开聊天抽屉"，不进 currentScreen
+   *   （抽屉仍由 chat-drawer 自治，HUD 仍可派发但无屏位切换效果）。
+   *   之前 Phase 2 留 TODO（handler 未接），HUD 端能派发但走 onUnhandled。
+   */
   | { type: 'ui.navigate'; screen: ScreenId }
   | { type: 'theme.set'; themeId: 'default' | 'pixel' }
   // @since v3.1 外部 agent 会话生命周期（core/agent-link 消费，见 §2 目录职责）

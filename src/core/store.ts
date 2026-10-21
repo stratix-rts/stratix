@@ -14,6 +14,7 @@ import {
   MAX_NOTICES,
   type BooleanPreferenceKey,
   type Notice,
+  type ScreenId,
   type SelectionState,
   type SettingsView,
   type WorldState,
@@ -34,6 +35,13 @@ export interface CoreStore {
    * 放在 store 里才能被两侧独立单测（runtime 接线是薄薄一层，见 core/runtime.ts TODO）。
    */
   setPreference(key: BooleanPreferenceKey, value: boolean): WorldState;
+  /**
+   * @since v3.6 写当前屏（ui.navigate 的落库入口；'chat' 不入 currentScreen，
+   *   由抽屈自治 —— 见 types.ts WorldState.currentScreen 注释）。
+   * why 放 store 而不放 runtime：currentScreen 也不经状态机，落库动作等同替换一个可选字段，
+   * 与 setPreference 同一口径 —— 都是"换一个字段"，由 store 统一承担"是否广播"。
+   */
+  setCurrentScreen(screen: ScreenId | null): WorldState;
 }
 
 /** 初始状态：空世界。字段名与契约一一对应，便于 bridge 直接整体替换。 */
@@ -64,6 +72,25 @@ export function applyPreference(
 ): SettingsView {
   const base = settings ?? DEFAULT_SETTINGS;
   return base[key] === value ? base : { ...base, [key]: value };
+}
+
+/**
+ * 当前屏写入（纯函数，@since v3.6）—— 与 applyPreference 同口径：值没变就**原样返回同一引用**，
+ *   让 store 「引用未变即不广播」约定自动生效。
+ *
+ * 输入约定：
+ *   - 传 null 表示「返回主屏」：清空 currentScreen 字段（缺省回落 'main' 的职责在读取方）。
+ *     'chat' 既不被允许进入 currentScreen（见 types.ts 注释），runtime 也不应将 'chat' 转 null
+ *     —— 这里只做"接到什么就如实写"，语义过滤在 runtime。
+ *   - 同一屏重复 → 返回同一引用，不广播。
+ */
+export function applyCurrentScreen(
+  current: ScreenId | undefined,
+  next: ScreenId | null
+): ScreenId | undefined {
+  const nextValue = next ?? undefined;
+  if (current === nextValue) return current;
+  return nextValue;
 }
 
 /** 剔除已过期通知，并按时间倒序截断到 MAX_NOTICES（每次写入都做，队列长度天然有界）。 */
@@ -110,6 +137,14 @@ export function createStore(initial?: Partial<WorldState>): CoreStore {
       const next = applyPreference(state.settings, key, value);
       if (next === state.settings) return state;
       return notify({ ...state, settings: next });
+    },
+
+    // @since v3.6 当前屏写入：同上 —— 同一屏不广播（main-screen 渲染判重会跳过重绘），
+    // 不同屏则整屏重渲染（屏壳切换）。
+    setCurrentScreen: (screen) => {
+      const next = applyCurrentScreen(state.currentScreen, screen);
+      if (next === state.currentScreen) return state;
+      return notify({ ...state, currentScreen: next });
     },
   };
 

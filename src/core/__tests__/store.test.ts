@@ -88,6 +88,56 @@ describe('createStore', () => {
       expect(store.getState().notices[0].id).toBe(`n${MAX_NOTICES + 9}`);
     });
   });
+
+  describe('setCurrentScreen（@since v3.6，ui.navigate 落库入口）', () => {
+    test('写入新屏：广播一次，store 当前屏位随变', () => {
+      const store = createStore();
+      let broadcasts = 0;
+      store.subscribe(() => { broadcasts += 1; });
+
+      const next = store.setCurrentScreen('settings');
+
+      expect(broadcasts).toBe(1);
+      expect(store.getState().currentScreen).toBe('settings');
+      expect(next).toBe(store.getState());
+    });
+
+    test('与当前屏一致：原样返回、不广播（引用未变即不广播约定）', () => {
+      const store = createStore();
+      store.setCurrentScreen('character');
+      let broadcasts = 0;
+      store.subscribe(() => { broadcasts += 1; });
+
+      const next = store.setCurrentScreen('character');
+
+      expect(broadcasts).toBe(0);
+      expect(next).toBe(store.getState());
+    });
+
+    test('传 null 表示「返回主屏」：清空 currentScreen（缺省回落读取方自管）', () => {
+      const store = createStore();
+      store.setCurrentScreen('settings');
+      let broadcasts = 0;
+      store.subscribe(() => { broadcasts += 1; });
+
+      const next = store.setCurrentScreen(null);
+
+      expect(broadcasts).toBe(1);
+      expect(next.currentScreen).toBeUndefined();
+      expect(store.getState().currentScreen).toBeUndefined();
+    });
+
+    test('null → null：不广播', () => {
+      const store = createStore();
+      let broadcasts = 0;
+      store.subscribe(() => { broadcasts += 1; });
+
+      const next = store.setCurrentScreen(null);
+
+      expect(broadcasts).toBe(0);
+      expect(next.currentScreen).toBeUndefined();
+    });
+  });
 });
 
 describe('bus', () => {

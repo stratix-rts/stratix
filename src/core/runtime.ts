@@ -24,6 +24,7 @@
 
 import type { AgentLinkManager } from './agent-link';
 import { emitState, onCommand, onWorldEvent, type Unsubscribe } from './bus';
+import { createCharacterManager, type CharacterManager } from './character';
 import { createMissionManager, type MissionManager } from './mission';
 import type { CoreStore } from './store';
 import { worldStore } from './store';
@@ -51,9 +52,16 @@ export interface CoreRuntimeOptions {
    */
   readonly mission?: MissionManager;
   /**
+   * 角色域写入面（@since v3.6 接线：character.persona.update 的消费方）。
+   * why 注入而非内部 new：与 mission 同一原因 —— 单测要把"命令分发"与"store 投影"两段隔离。
+   * 默认按本运行时自己的 store 构造；grantExperience 仍只暴露给程序化入口（无 HudCommand 接线）。
+   */
+  readonly character?: CharacterManager;
+  /**
    * 尚未实现的命令 / 事件出口。
-   * why 需要它：契约已冻结（§5），Phase 2 的 mission.* / chat.send / ui.navigate 等还没落地，
+   * why 需要它：契约已冻结（§5），Phase 2 之前留了一些尚未接地的命令（chat.send 等）；
    * 直接 switch 落空会让"没接上"和"接上了但没反应"长得一模一样，排查成本极高。
+   * @since v3.6 已把 ui.navigate / character.persona.update 接线从这里摘除，不再走 onUnhandled。
    */
   readonly onUnhandled?: (channel: UnhandledChannel, payload: HudCommand | WorldEvent) => void;
 }
@@ -92,6 +100,9 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
   const store = options.store ?? worldStore;
   const agentLink = options.agentLink;
   const mission = options.mission ?? createMissionManager({ store });
+  // @since v3.6 角色域写入面：character.persona.update 的落库管道。
+  // 与 mission 同一理由 —— manager 无 IO，纯靠 store 投影；不注入口子会让单测无法隔离接线层。
+  const character = options.character ?? createCharacterManager({ store });
   const reportUnhandled = options.onUnhandled ?? ((): void => { /* 默认不打扰；dev 入口与单测会注入 */ });
 
   /**
@@ -131,10 +142,24 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
       case 'mission.cancel':
         mission.cancelMission(command.missionId);
         return;
+      // @since v3.6 角色提示词写入：落到 character manager（不再走 onUnhandled）。
+      // 合法性与 trim 由 core/character/persona.ts 校验；被拒走 Notice（manager 内部完成）。
+      case 'character.persona.update':
+        character.updatePersona(command.characterId, command.prompt);
+        return;
+      // @since v3.6 屏位路由：
+      //   'main' 与 'chat' 都不入 currentScreen：
+      //     - 'main' 是"回主屏"语义，与字段为空等价（缺省回落读取方自管）；
+      //     - 'chat' 由 core 解释为"打开聊天抽屉"（HUD 抽屉仍由原 chat-drawer 自治），
+      //       不写屏位字段就与现有抽屉协议不冲突。
+      //   'settings' / 'character' 落到 currentScreen，供 main-screen 据此切换渲染。
+      case 'ui.navigate':
+        store.setCurrentScreen(command.screen === 'main' || command.screen === 'chat' ? null : command.screen);
+        return;
       default:
         if (isAgentLinkCommand(command)) return; // agent-link 已订阅处理
-        // TODO(v3.Phase2): character.persona.update / ui.navigate / theme.set
-        //                 （theme.set 由 hud bridge 本地消费，core 侧只记账，记账形态定了再落这里）
+        // theme.set 由 hud bridge 本地消费（见 hud/bridge/bus-adapter），core 侧仅记账；
+        // 记账形态尚未定（见 types.ts theme.set 注释），目前命令不进入 core runtime 的 switch。
         reportUnhandled('command', command);
     }
   };

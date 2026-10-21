@@ -16,7 +16,7 @@
  *   4. 本地改角色数值 —— 等级/经验只认 core 广播的 WorldState.characters，本屏一改就发命令等回广播；
  *   5. 渲染未经转义的用户数据 —— 角色名与提示词（persona）都是自由文本，一律走 escapeHtml；
  *   6. 泄漏监听器 / 定时器 —— disconnectedCallback 必须退订并清 timer（perf 硬约束）；
- *   7. 自己改 mount 接线 —— 本屏尚未被 main-screen 挂载（见文件末 TODO(v3.task_016)）。
+ *   7. 自己改 mount 接线 —— 本屏尚未被 main-screen 挂载（见文件末 TODO(v3.task_019)）。
  *
  * 经验增长动画钩子（占位，事件驱动）：
  *   本屏通过**前后两帧快照的经验差**观察到增长（gained > 0）后做两件事：
@@ -28,8 +28,8 @@
  *   注意 gained / levelUps 是 HUD 侧观测（相邻两次广播之差），不是 core 的内部计数 ——
  *   真实值以 core/character/manager 的 grantExperience 返回为准。
  *
- * 挂载接线：TODO(v3.task_016) —— 本屏目前只提供 mountCharacterScreen 工厂，
- *   尚未接进 main-screen / hud-dev-entry（由 Phase 3 的入口切换任务统一接线，避免两个任务同时改同一处壳）。
+ * 挂载接线：TODO(v3.task_019) —— 本屏目前只提供 mountCharacterScreen 工厂，
+ *   尚未接进 main-screen / hud-dev-entry（由 task_019 的屏位路由接线任务统一挂载，避免两个任务同时改同一处壳）。
  */
 
 import type { WorldState } from '../../core/types';
@@ -492,7 +492,7 @@ export function defineCharacterScreen(): typeof HTMLElement {
 /**
  * 挂载工厂：本仓库屏 / 面板的统一装配口径（与 mountSettingsScreen 一致）——
  *   建元素、注入 adapter、挂进容器，返回 unmount 闭包。
- * TODO(v3.task_016): 由 main-screen / Electron 新入口统一接线挂载。
+ * TODO(v3.task_019): 由 main-screen / Electron 新入口统一接线挂载。
  */
 export function mountCharacterScreen(deps: CharacterScreenDeps, host: HTMLElement): () => void {
   defineCharacterScreen();
