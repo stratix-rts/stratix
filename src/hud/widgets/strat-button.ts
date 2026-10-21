@@ -128,8 +128,12 @@ export function defineStratButton(): typeof HTMLElement {
   return StratButton as unknown as typeof HTMLElement;
 }
 
-/** HTML 文本转义的最简实现：组件文本可能包含用户输入，避免 innerHTML 注入。 */
-function escapeHtml(s: string): string {
+/**
+ * HTML 文本转义的最简实现：组件文本可能包含用户输入，避免 innerHTML 注入。
+ * @since v3.6 改为具名导出：screens / panels 渲染用户数据（角色名、提示词）时同样要转义，
+ *   各屏各抄一份转义函数必然出现"这屏忘了转义"的注入漏洞，故提到 widget 层共用（纯增补，不改行为）。
+ */
+export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({
     '&': '&amp;',
     '<': '&lt;',
