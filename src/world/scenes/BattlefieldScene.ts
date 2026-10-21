@@ -33,6 +33,11 @@ export const BATTLEFIELD_SCENE_KEY = 'battlefield';
 const BACKGROUND_COLOR = 0x0f131b;
 const BOUNDS_COLOR = 0x3a4557;
 const BOUNDS_FILL = 0x161c27;
+/** 空状态网格线：让零单位时的战场不再是“纯色虚空”，也为拖拽/缩放提供参照物。 */
+const GRID_COLOR = 0x232c3d;
+const GRID_STEP = 200;
+/** 空状态提示文字（世界坐标层，随镜头移动；有单位后自动隐藏）。 */
+const EMPTY_HINT = '空战场 · 0 单位接入（单位来自 gateway 真实数据流）\n拖拽平移 · 滚轮缩放 · 空框选无害';
 
 /** 超过该屏幕位移才算"拖拽"，否则按点击处理。 */
 const DRAG_THRESHOLD_PX = 4;
@@ -61,6 +66,7 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   private bridge!: WorldBridge;
   private readonly units = new UnitRegistry({ worldBounds: DEFAULT_WORLD_BOUNDS });
   private unitLayer!: UnitLayer;
+  private emptyHint?: Phaser.GameObjects.Text;
   private selectionBox!: SelectionBox;
 
   private dragMode: DragMode = 'none';
@@ -77,6 +83,8 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   create(): void {
     this.cameras.main.setBackgroundColor(BACKGROUND_COLOR);
     this.drawWorldBounds();
+    this.drawGrid();
+    this.drawEmptyHint();
 
     // 桥接层先建：相机控制器的 onChange 会立刻回调它上报初始位姿
     this.bridge = createWorldBridge(this);
@@ -107,6 +115,37 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   syncUnits(units: readonly UnitView[]): void {
     this.units.sync(units);
     this.unitLayer.sync();
+    this.emptyHint?.setVisible(units.length === 0);
+  }
+
+  /** 空战场网格：横纵每 GRID_STEP 世界单位一条低对比线，给镜头运动提供参照。 */
+  private drawGrid(): void {
+    const g = this.add.graphics();
+    g.lineStyle(1, GRID_COLOR, 1);
+    for (let x = DEFAULT_WORLD_BOUNDS.x; x <= DEFAULT_WORLD_BOUNDS.x + DEFAULT_WORLD_BOUNDS.width; x += GRID_STEP) {
+      g.lineBetween(x, DEFAULT_WORLD_BOUNDS.y, x, DEFAULT_WORLD_BOUNDS.y + DEFAULT_WORLD_BOUNDS.height);
+    }
+    for (let y = DEFAULT_WORLD_BOUNDS.y; y <= DEFAULT_WORLD_BOUNDS.y + DEFAULT_WORLD_BOUNDS.height; y += GRID_STEP) {
+      g.lineBetween(DEFAULT_WORLD_BOUNDS.x, y, DEFAULT_WORLD_BOUNDS.x + DEFAULT_WORLD_BOUNDS.width, y);
+    }
+  }
+
+  /** 空状态提示：居中置于世界中心，首单位接入即隐藏（零假数据，不是种子单位）。 */
+  private drawEmptyHint(): void {
+    this.emptyHint = this.add
+      .text(
+        DEFAULT_WORLD_BOUNDS.x + DEFAULT_WORLD_BOUNDS.width / 2,
+        DEFAULT_WORLD_BOUNDS.y + DEFAULT_WORLD_BOUNDS.height / 2,
+        EMPTY_HINT,
+        {
+          fontFamily: 'monospace',
+          fontSize: '20px',
+          color: '#8fa0b8',
+          align: 'center',
+        }
+      )
+      .setOrigin(0.5)
+      .setDepth(1);
   }
 
   syncSelection(selection: SelectionState): void {
