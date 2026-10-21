@@ -5,8 +5,9 @@
 
 import { randomUUID } from 'crypto';
 
-import { TranscriptStore } from './TranscriptStore';
 import { stratixStateStore, type SessionState } from '../../stratix-core/state/StratixStateStore';
+
+import { TranscriptStore } from './TranscriptStore';
 import type {
   SessionContext,
   TurnOptions,

@@ -8,6 +8,7 @@
 
 import { retryPolicyEngine, RetryPolicyEngine } from '@/stratix-core/retry';
 import type { RetryContext } from '@/stratix-core/retry/types';
+
 import type { ApiResult, ApiRequestOptions } from './types/api';
 
 const DEFAULT_TIMEOUT = 10000;

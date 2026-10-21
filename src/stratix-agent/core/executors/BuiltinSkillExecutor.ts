@@ -164,7 +164,7 @@ export class BuiltinSkillExecutor implements SkillExecutor {
     skill: SkillDefinition,
     params: Record<string, unknown>,
     _context: ExecutionContext
-  ): Promise<unknown> {
+  ): Promise<any> {
     const operation = typeof params.operation === 'string' ? params.operation : undefined;
     const expression = typeof params.expression === 'string' ? params.expression : undefined;
 

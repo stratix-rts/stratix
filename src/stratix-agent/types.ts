@@ -115,7 +115,7 @@ export interface SkillExecutor {
     skill: SkillDefinition,
     params: Record<string, unknown>,
     context: ExecutionContext
-  ): Promise<unknown>;
+  ): Promise<any>;
 }
 
 export interface SkillCall {

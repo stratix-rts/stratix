@@ -14,7 +14,7 @@ build({
   platform: 'node',
   format: 'cjs',
   outfile: outFile,
-  external: ['electron', 'electron/app', 'electron/common'],
+  external: ['electron', 'electron/app', 'electron/common', 'sql.js/dist/sql-wasm.wasm'],
   logLevel: 'info',
 }).then(() => {
   // Replace main.js with the bundled version

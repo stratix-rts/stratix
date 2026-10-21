@@ -15,8 +15,9 @@
  *   5. 引入新的运行时依赖 —— 仅用已有依赖（phaser + 浏览器原生 API）。
  *
  * 加载路径：dev 走 vite dev server 的 /src/app/main/index.html；
- *   正式构建走 dist/frontend/src/app/main/index.html（由 vite.config.ts 的多入口 input 产出）。
- *   切回旧入口：STRATIX_LEGACY=1（判定逻辑见 src/app/entry-paths.ts，主进程侧消费）。
+ *   正式构建走 dist/frontend/src/app/main/index.html（由 vite.config.ts 的 input 产出）。
+ *   本页是**唯一**入口：旧 Vue 入口链随 task_017 退役，STRATIX_LEGACY 开关已下线，
+ *   回退手段为 git 历史（见 src/app/entry-paths.ts）。
  */
 
 import Phaser from 'phaser';

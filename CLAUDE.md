@@ -103,6 +103,28 @@ npm run electron:dev   # 启动 Electron + backend + frontend（三合一）
 
 > ⚠️ **重要**：Electron 40 使用 Node 23 (MODULE_VERSION 143)，系统 Node 22 不兼容。
 
+## Agent Workbench（P0 实施中）
+
+Stratix 当前定位为**本地多 Agent 工作台（Workbench）**，不再自建 Agent 大脑。
+
+> ⚠️ **与 v3 游戏化重构的冲突说明（2026-10-21，task_017 补）**：下面「保留 Zone / RTS」一条已被
+> [REFACTOR_PLAN_V3.md](docs/REFACTOR_PLAN_V3.md) §4 的冻结决策覆盖 —— D5「Zone 整体砍掉」、D6「stratix-project 砍掉」，
+> 旧 Vue 入口链（含 stratix-rts 战场）已在 `refactor/game-v3` 分支整体退役。
+> 冲突根因：旧战场场景本身就是 Zone 模型（Zone 即建筑 / 任务区 / 单位移动目标），保旧链就得留 Zone，与 D5 互斥。
+> **以 REFACTOR_PLAN_V3.md 为准**；本节其余条目（Workbench 定位 / ADP 协议 / 接入计划）仍然有效。
+
+- 设计文档：[STRATIX_WORKBENCH_DESIGN.md](docs/STRATIX_WORKBENCH_DESIGN.md)
+- 核心协议：Agent Driver Protocol (ADP)，P0 产出 `docs/protocol/ADP_v1.md`
+- 改造决策：
+  - ❌ 移除自研 Agent 模块（`stratix-agent` / `stratix-ai-service`）— 走 deprecated 1 个版本后删除
+  - ✅ 保留 ~~Zone / RTS~~ 像素形象 / 命令面板 / LRA / Gateway（Zone / RTS 已被 D5/D6 砍掉，见上方冲突说明）
+  - 🟡 `stratix-character-creator` 像素资源保留，编辑器转可选插件
+  - ❌ 归档 `stratix-designer` / `stratix-nocodb` / `stratix-blueprint`
+- 接入计划：MVP 接入 **Claude Code**（P1）；P3+ 接入 Codex / OpenClaw / ClawAI
+- 发现机制：用户触发 → PathScanner 自动扫描 PATH
+- 性能预算遵循 [PERFORMANCE_GUIDELINES.md](docs/PERFORMANCE_GUIDELINES.md)
+- 安全基线：PermissionPolicy 默认 deny、危险操作 UI 确认、全审计
+
 <!-- BEGIN LRA CLAUDE SECTION -->
 
 ## LRA Task Management

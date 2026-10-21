@@ -1,7 +1,7 @@
 import { ChildProcess, spawn } from 'child_process';
+import { unlink, writeFile } from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
-import { unlink, writeFile } from 'fs/promises';
 
 import { SkillDefinition, SkillExecutor, ExecutionContext, ProgressCallback } from '../../types';
 
@@ -94,7 +94,7 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
     skill: SkillDefinition,
     params: Record<string, unknown>,
     context: ExecutionContext
-  ): Promise<unknown> {
+  ): Promise<any> {
     const code = typeof params.code === 'string' ? params.code : '';
     const language = typeof params.language === 'string' ? params.language : '';
     const progress = context.progressCallback;
@@ -138,7 +138,7 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
     return { valid: true };
   }
 
-  private executeJavaScript(code: string, progress?: ProgressCallback, config?: ReturnType<typeof this.getSandboxConfig>): Promise<unknown> {
+  private executeJavaScript(code: string, progress?: ProgressCallback, config?: ReturnType<typeof this.getSandboxConfig>): Promise<any> {
     return new Promise((resolve, reject) => {
       let timeoutId: NodeJS.Timeout | null = null;
       try {
@@ -324,7 +324,7 @@ export class CodeSandboxSkillExecutor implements SkillExecutor {
     return { valid: true };
   }
 
-  private executePython(code: string, progress?: ProgressCallback, config?: ReturnType<typeof this.getSandboxConfig>): Promise<unknown> {
+  private executePython(code: string, progress?: ProgressCallback, config?: ReturnType<typeof this.getSandboxConfig>): Promise<any> {
     return new Promise((resolve, reject) => {
 
       // Validate code before execution

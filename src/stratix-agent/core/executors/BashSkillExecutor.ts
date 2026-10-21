@@ -12,7 +12,7 @@ export class BashSkillExecutor implements SkillExecutor {
     skill: SkillDefinition,
     params: Record<string, unknown>,
     context: ExecutionContext
-  ): Promise<unknown> {
+  ): Promise<any> {
     const command = typeof params.command === 'string' ? params.command : '';
     const timeoutRaw = typeof params.timeout === 'number' ? params.timeout : 30;
     const cwd = typeof params.cwd === 'string' ? params.cwd : undefined;

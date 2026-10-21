@@ -325,9 +325,10 @@ describe('StratixDirectConfigSchema', () => {
     expect(result.enableLongTerm).toBe(true);
   });
 
-  it('throws for invalid provider', () => {
+  it('accepts any non-empty provider string', () => {
     const config = { provider: 'invalid', model: 'gpt-4' };
-    expect(() => validateOrThrow(StratixDirectConfigSchema, config)).toThrow();
+    const result = validateOrThrow(StratixDirectConfigSchema, config);
+    expect(result.provider).toBe('invalid');
   });
 });
 

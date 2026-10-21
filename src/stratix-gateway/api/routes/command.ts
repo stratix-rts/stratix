@@ -1,12 +1,12 @@
 import { Router, Request, Response } from 'express';
 
+import { CommandSourceAdapter } from '../../../stratix-core/command';
+import { CommandLogSchema, validateOrThrow, ZodError } from '../../../stratix-core/schemas';
 import { StratixCommandData } from '../../../stratix-core/stratix-protocol';
 import { StratixRequestHelper } from '../../../stratix-core/utils';
 import { CommandTransformer } from '../../command-transformer/CommandTransformer';
-import { CommandSourceAdapter } from '../../../stratix-core/command';
 import { dataStoreService } from '../../dataStoreService';
 import { StatusSyncService } from '../websocket/StatusSync';
-import { CommandLogSchema, validateOrThrow, ZodError } from '../../../stratix-core/schemas';
 
 const router = Router();
 const commandTransformer = new CommandTransformer();

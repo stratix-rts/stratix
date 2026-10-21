@@ -1,7 +1,7 @@
 import { ConnectionPool, OpenClawAction } from '../../stratix-openclaw-adapter';
-import type { StratixCommandData, StratixAgentConfig, StratixSkillConfig } from '../stratix-protocol';
 import { retryPolicyEngine } from '../retry/RetryPolicyEngine';
 import type { RetryConfig } from '../retry/types';
+import type { StratixCommandData, StratixAgentConfig, StratixSkillConfig } from '../stratix-protocol';
 
 import type { AgentExecutor, ExecutorResult, ExecutorOptions } from './AgentExecutor';
 

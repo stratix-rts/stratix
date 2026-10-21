@@ -6,6 +6,7 @@ import * as path from 'path';
 import axios from 'axios';
 
 import { TailscalePeer, OpenClawNode } from './types';
+
 export { OpenClawNode };
 
 // EmbeddedTailscale-specific TailscaleStatus (differs from types.ts version)

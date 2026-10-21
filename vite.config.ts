@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { resolve } from 'path';
-import { LEGACY_ENTRY_HTML, NEW_ENTRY_HTML } from './src/app/entry-paths';
+import { NEW_ENTRY_HTML } from './src/app/entry-paths';
 
 const ANALYZE = process.env.ANALYZE === 'true';
 
@@ -9,7 +9,11 @@ export default defineConfig(async () => {
   const plugins = [vue()];
 
   if (ANALYZE) {
-    const { visualizer } = await import('rollup-plugin-visualizer');
+    // why 用变量形式的 specifier：rollup-plugin-visualizer 是可选的按需依赖（ANALYZE=true 才需要），
+    // 不在 package.json 里。写成字符串字面量会让 tsc 报 TS2307，写成变量则跳过模块解析，
+    // 运行时行为不变（没装依赖时 ANALYZE=true 依旧直接报错，符合"可选依赖"的预期）。
+    const visualizerModule = 'rollup-plugin-visualizer';
+    const { visualizer } = await import(visualizerModule);
     plugins.push(visualizer({
       filename: 'dist/.stats.html',
       open: true,
@@ -26,11 +30,8 @@ export default defineConfig(async () => {
         '@': resolve(__dirname, 'src'),
         '@stratix-core': resolve(__dirname, 'src/stratix-core'),
         '@stratix-gateway': resolve(__dirname, 'src/stratix-gateway'),
-        '@stratix-designer': resolve(__dirname, 'src/stratix-designer'),
         '@stratix-data-store': resolve(__dirname, 'src/stratix-data-store'),
         '@stratix-openclaw-adapter': resolve(__dirname, 'src/stratix-openclaw-adapter'),
-        '@stratix-command-panel': resolve(__dirname, 'src/stratix-command-panel'),
-        '@stratix-rts': resolve(__dirname, 'src/stratix-rts'),
       },
     },
 
@@ -62,25 +63,26 @@ export default defineConfig(async () => {
       sourcemap: true,
       rollupOptions: {
         /**
-         * 多入口构建：新游戏化 UI（NEW_ENTRY_HTML）与旧 Vue 入口（LEGACY_ENTRY_HTML）同时产出。
-         * why 都进产物：回退开关 STRATIX_LEGACY=1 要在正式包里也能回退（Phase 3 只切换默认入口，不删旧入口）。
-         * why 两个都要写：一旦显式给 input，vite 就不再默认收 index.html，不写就会把 legacy 产物弄丢。
-         * 产物路径与输入同构 —— dist/frontend/index.html（legacy）与 dist/frontend/src/app/main/index.html（新），
-         * 主进程按 src/app/entry-paths.ts 的常量拼路径，两边不会各写一份。
+         * 单入口构建：只产出新游戏化 UI（NEW_ENTRY_HTML）。
+         * why task_017 起只有这一个入口：D5「Zone 整体砍掉」把旧 Vue 链（index.html → src/main.ts → App.vue）
+         * 的地基抽掉了 —— 旧战场场景本身就是 Zone 模型（zone 即建筑/任务区/移动目标），保不住旧链。
+         * 回退开关 STRATIX_LEGACY 随之失效（已下线），回退手段改为 git 历史，
+         * 见 src/app/entry-paths.ts 的「回退策略变更」。
          */
         input: {
           main: resolve(__dirname, NEW_ENTRY_HTML),
-          legacy: resolve(__dirname, LEGACY_ENTRY_HTML),
         },
         output: {
-          manualChunks: (id) => {
+          // why 显式返回 undefined：noImplicitReturns 打开时"隐式落空"也算错误分支，
+          // 而"不归入任何手写 chunk"正是这里想要的行为（交给 rollup 默认切分）。
+          manualChunks: (id: string): string | undefined => {
             if (id.includes('node_modules')) {
               if (id.includes('phaser')) return 'phaser';
               if (id.includes('vue') || id.includes('@vue')) return 'vue-vendor';
-              if (id.includes('vxe-pc-ui') || id.includes('vxe-table') || id.includes('xe-utils')) return 'vxe-ui';
               if (id.includes('@anthropic') || id.includes('openai') || id.includes('@langchain')) return 'ai-langchain';
-            if (id.includes('highlight.js') || id.includes('marked')) return 'markdown-vendor';
             }
+            if (id.includes('highlight.js') || id.includes('marked')) return 'markdown-vendor';
+            return undefined;
           },
         },
         external: ['fs-extra', 'graceful-fs'],

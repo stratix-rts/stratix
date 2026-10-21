@@ -3,9 +3,10 @@
  * 从 EnhancedStratixAgent 拆分出来的独立职责类
  */
 
+import type { EnhancedSoulConfig, ReflectionEntry } from '../types/soul';
+
 import type { LLMConnector } from './LLMConnector';
 import type { MemoryManager } from './MemoryManager';
-import type { EnhancedSoulConfig, ReflectionEntry } from '../types/soul';
 
 export interface ReflectionManagerOptions {
   llm: LLMConnector;

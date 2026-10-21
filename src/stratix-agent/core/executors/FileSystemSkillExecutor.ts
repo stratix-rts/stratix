@@ -9,7 +9,7 @@ export class FileSystemSkillExecutor implements SkillExecutor {
     skill: SkillDefinition,
     params: Record<string, unknown>,
     context: ExecutionContext
-  ): Promise<unknown> {
+  ): Promise<any> {
     const basePath = typeof context.variables?.basePath === 'string' ? context.variables.basePath : process.cwd();
     const pathParam = typeof params.path === 'string' ? params.path : '';
     const filePath = path.isAbsolute(pathParam)

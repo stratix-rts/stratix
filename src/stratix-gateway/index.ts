@@ -17,21 +17,18 @@ import { ensureDirSync } from 'fs-extra';
 import { OpenClawConnectionStore } from '../stratix-data-store/OpenClawConnectionStore';
 import { initializeDatabase } from '../stratix-database';
 import { createNocoDBService, type NocoDBServiceOptions } from '../stratix-nocodb';
+import { OrchestrationSync } from '../stratix-orchestration/OrchestrationSync';
 
+import { AgentRuntimeService } from './agent-runtime/AgentRuntimeService';
 import agentRoutes from './api/routes/agent';
 import agentOrchestrationRoutes from './api/routes/agentOrchestration';
 import agentTaskRoutes from './api/routes/agentTask';
 import commandRoutes, { setStatusSyncService as setCommandStatusSyncService } from './api/routes/command';
 import lraRoutes from './api/routes/lra';
-import openclawRoutes, { initWebSocketServer, initConnectionStore } from './api/routes/openclaw';
+import openclawRoutes, { initWebSocketServer, initConnectionStore, destroyOpenClawWebSockets } from './api/routes/openclaw';
 import skillRoutes from './api/routes/skill';
 import templateRoutes from './api/routes/template';
 import textureRoutes from './api/routes/texture';
-import zoneRoutes from './api/routes/zone';
-import zoneAuditRoutes from './api/routes/zone-audit';
-import zoneContextRoutes from './api/routes/zone-context';
-import zoneCoordinatorRoutes from './api/routes/zone-coordinator';
-import { createMcpRouter } from '../stratix-mcp/server';
 import { StatusSyncService } from './api/websocket/StatusSync';
 import { dataStoreService } from './dataStoreService';
 import { openClawProxyManager } from './openclaw/OpenClawProxyManager';
@@ -139,14 +136,8 @@ export async function startGatewayService(
   app.use('/api/stratix/texture', textureRoutes);
   app.use('/api/stratix/openclaw', openclawRoutes);
   app.use('/api/lra', lraRoutes);
-  app.use('/api', zoneRoutes);
-  app.use('/api', zoneAuditRoutes);
-  app.use('/api', zoneCoordinatorRoutes);
-  app.use('/api/zone-context', zoneContextRoutes);
   app.use('/api/agents/orchestration', agentOrchestrationRoutes);
   app.use('/api/skills', skillRoutes);
-  // MCP Server endpoint
-  app.use('/mcp', createMcpRouter());
   // 健康检查
   app.get('/health', (req, res) => {
     res.json({
@@ -250,6 +241,16 @@ export async function startGatewayService(
   }, 5 * 60 * 1000);
   console.log('[Gateway] Abandoned task requeuer started (every 5 min)');
 
+  // 初始化 OrchestrationSync — 连接 Task/Agent 事件到 WebSocket
+  try {
+    const orchestrationSync = OrchestrationSync.getInstance();
+    orchestrationSync.setStatusSync(statusSyncService);
+    orchestrationSync.initialize();
+    console.log('[Gateway] OrchestrationSync initialized');
+  } catch (err) {
+    console.warn('[Gateway] OrchestrationSync initialization failed:', err);
+  }
+
   // 优雅关闭处理
   let shutdownComplete = false;
   const onShutdownComplete = (): void => {
@@ -258,41 +259,92 @@ export async function startGatewayService(
 
   const SHUTDOWN_TIMEOUT_MS = 10000; // 10 秒强制退出
 
-  const gracefulShutdown = async () => {
-    console.log('Shutting down gracefully...');
+  // 统一关闭逻辑：按顺序清理各子系统，收集错误并返回退出码
+  const shutdown = async (signal?: string): Promise<number> => {
+    const errors: Error[] = [];
+    console.log(`Shutting down gracefully${signal ? ` (signal: ${signal})` : ''}...`);
 
-    // 启动强制退出定时器
+    const runStep = async (name: string, fn: () => Promise<void> | void): Promise<void> => {
+      try {
+        await fn();
+        console.log(`[Gateway] ${name} completed`);
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        console.error(`[Gateway] ${name} failed:`, error);
+        errors.push(error);
+      }
+    };
+
+    await runStep('Stop abandoned task requeuer', () => {
+      if (abandonedTaskInterval) {
+        clearInterval(abandonedTaskInterval);
+      }
+    });
+
+    await runStep('Stop agent runtimes', async () => {
+      await AgentRuntimeService.getInstance().stopAll();
+    });
+
+    await runStep('Cleanup orchestration sync', () => {
+      OrchestrationSync.getInstance().cleanup();
+    });
+
+    await runStep('Destroy OpenClaw proxy manager', () => {
+      openClawProxyManager.destroy();
+    });
+
+    await runStep('Close OpenClaw websockets', () => {
+      destroyOpenClawWebSockets();
+    });
+
+    if (nocoDBServiceInstance) {
+      await runStep('Stop NocoDB service', async () => {
+        await nocoDBServiceInstance!.stop();
+      });
+    }
+
+    await runStep('Close HTTP server', async () => {
+      await new Promise<void>((resolve, reject) => {
+        server.close((err) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
+      });
+    });
+
+    await runStep('Close status sync service', () => {
+      statusSyncService.close();
+    });
+
+    const exitCode = errors.length > 0 ? 1 : 0;
+    if (exitCode !== 0) {
+      console.error(`[Gateway] Shutdown completed with ${errors.length} error(s)`);
+    } else {
+      console.log('[Gateway] Shutdown completed successfully');
+    }
+    return exitCode;
+  };
+
+  const gracefulShutdown = async (signal?: string) => {
     const forceExitTimer = setTimeout(() => {
       console.error(`[Gateway] Shutdown timed out after ${SHUTDOWN_TIMEOUT_MS}ms, forcing exit`);
       process.exit(1);
     }, SHUTDOWN_TIMEOUT_MS);
 
+    let exitCode = 1;
     try {
-      // 停止遗弃任务定时复活
-      if (abandonedTaskInterval) {
-        clearInterval(abandonedTaskInterval);
-        console.log('Abandoned task requeuer stopped');
-      }
-
-      // 关闭 NocoDB 服务
-      if (nocoDBServiceInstance) {
-        await nocoDBServiceInstance.stop();
-        console.log('NocoDB service closed');
-      }
-
-      await new Promise<void>((resolve) => {
-        server.close(() => {
-          console.log('HTTP server closed');
-          resolve();
-        });
-      });
-
-      statusSyncService.close();
-      console.log('WebSocket server closed');
-
+      exitCode = await shutdown(signal);
       onShutdownComplete();
+    } catch (err) {
+      console.error('[Gateway] Unexpected error during shutdown:', err);
+      exitCode = 1;
     } finally {
       clearTimeout(forceExitTimer);
+      finalCleanup();
+      process.exit(exitCode);
     }
   };
 
@@ -300,20 +352,19 @@ export async function startGatewayService(
     if (!shutdownComplete) {
       console.log('Final cleanup...');
     }
-    process.exit(0);
   };
 
   if (mode === 'standalone') {
     process.on('SIGTERM', () => {
-      gracefulShutdown().finally(finalCleanup);
+      gracefulShutdown('SIGTERM').finally(finalCleanup);
     });
     process.on('SIGINT', () => {
-      gracefulShutdown().finally(finalCleanup);
+      gracefulShutdown('SIGINT').finally(finalCleanup);
     });
     
     process.on('uncaughtException', (error) => {
       console.error('Uncaught Exception:', error);
-      gracefulShutdown().finally(finalCleanup);
+      gracefulShutdown('uncaughtException').finally(finalCleanup);
     });
     
     process.on('unhandledRejection', (reason, promise) => {
@@ -334,10 +385,10 @@ export async function startGatewayService(
     server,
     statusSyncService,
     close: async () => {
-      await new Promise<void>((resolve) => {
-        server.close(() => resolve());
-      });
-      statusSyncService.close();
+      const exitCode = await shutdown();
+      if (exitCode !== 0) {
+        throw new Error(`Gateway shutdown completed with errors (exit code ${exitCode})`);
+      }
     },
   };
 }

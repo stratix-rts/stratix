@@ -11,8 +11,6 @@ export { ElectronServiceProvider } from './ElectronServiceProvider';
 
 export { ServiceLocator, services } from './ServiceLocator';
 
-export { textureManager } from './TextureManager';
-export { default as TextureManager } from './TextureManager';
 
 // 默认导出服务实例
 export { services as default } from './ServiceLocator';

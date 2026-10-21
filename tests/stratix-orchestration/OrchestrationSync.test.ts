@@ -18,11 +18,6 @@ jest.mock('@/stratix-database/StratixDatabase', () => ({
 }));
 
 // Create persistent mock instances for tracking
-const mockZoneManagerInstance = {
-  on: jest.fn(),
-  off: jest.fn(),
-};
-
 const mockTaskQueueInstance = {
   on: jest.fn(),
   off: jest.fn(),
@@ -39,19 +34,11 @@ const mockMessageRouterInstance = {
 };
 
 const mockStatusSync = {
-  notifyZoneUpdate: jest.fn(),
   notifyTaskAssigned: jest.fn(),
   notifyTaskCompleted: jest.fn(),
   notifyBackgroundAgentStatus: jest.fn(),
   notifyAgentMessageSent: jest.fn(),
 };
-
-// Mock ZoneManager
-jest.mock('@/stratix-orchestration/zone/ZoneManager', () => ({
-  ZoneManager: {
-    getInstance: jest.fn().mockReturnValue(mockZoneManagerInstance),
-  },
-}));
 
 // Mock TaskQueueService
 jest.mock('@/stratix-orchestration/task-queue/TaskQueueService', () => ({
@@ -91,8 +78,6 @@ describe('OrchestrationSync', () => {
     (OrchestrationSync as any).instance = undefined;
 
     // Reset mock instances
-    mockZoneManagerInstance.on.mockClear();
-    mockZoneManagerInstance.off.mockClear();
     mockTaskQueueInstance.on.mockClear();
     mockTaskQueueInstance.off.mockClear();
     mockBackgroundServiceInstance.onEvent.mockClear();
@@ -101,6 +86,7 @@ describe('OrchestrationSync', () => {
     mockMessageRouterInstance.off.mockClear();
 
     orchestrationSync = OrchestrationSync.getInstance();
+    orchestrationSync.setStatusSync(mockStatusSync as any);
   });
 
   describe('getInstance', () => {
@@ -127,13 +113,6 @@ describe('OrchestrationSync', () => {
 
       // Should be the same instance
       expect(OrchestrationSync.getInstance()).toBe(firstInstance);
-    });
-
-    it('should register zone event listeners with wildcard', () => {
-      orchestrationSync.initialize();
-
-      // The ZoneManager.on should have been called with '*' to listen to all zone events
-      expect(mockZoneManagerInstance.on).toHaveBeenCalledWith('*', expect.any(Function));
     });
 
     it('should register task queue event listeners with wildcard', () => {
@@ -189,7 +168,6 @@ describe('OrchestrationSync', () => {
       orchestrationSync.cleanup();
 
       // Verify off methods were called to clean up listeners
-      expect(mockZoneManagerInstance.off).toHaveBeenCalled();
       expect(mockTaskQueueInstance.off).toHaveBeenCalled();
       expect(mockBackgroundServiceInstance.offEvent).toHaveBeenCalled();
       expect(mockMessageRouterInstance.off).toHaveBeenCalled();
@@ -197,36 +175,6 @@ describe('OrchestrationSync', () => {
   });
 
   describe('WebSocket notification integration', () => {
-    it('should call StatusSync.notifyZoneUpdate when zone event is emitted', () => {
-      // Initialize with a mock StatusSync
-      orchestrationSync.initialize();
-
-      // Clear previous calls
-      mockStatusSync.notifyZoneUpdate.mockClear();
-
-      // Find the zone handler that was registered
-      const zoneHandler = mockZoneManagerInstance.on.mock.calls.find(
-        call => call[0] === '*'
-      )?.[1];
-
-      // Simulate a zone event
-      if (zoneHandler) {
-        zoneHandler({
-          type: 'status_change',
-          zoneId: 'zone-1',
-          timestamp: Date.now(),
-          data: { status: 'active' },
-        });
-      }
-
-      // StatusSync.notifyZoneUpdate should have been called
-      expect(mockStatusSync.notifyZoneUpdate).toHaveBeenCalledWith(
-        'zone-1',
-        expect.objectContaining({
-          type: 'status_change',
-        })
-      );
-    });
 
     it('should call StatusSync.notifyTaskAssigned when task is assigned', () => {
       orchestrationSync.initialize();
@@ -307,10 +255,10 @@ describe('OrchestrationSync', () => {
   describe('multiple initialize/cleanup cycles', () => {
     it('should handle multiple initialize calls without duplicating listeners', () => {
       orchestrationSync.initialize();
-      const firstOnCalls = mockZoneManagerInstance.on.mock.calls.length;
+      const firstOnCalls = mockTaskQueueInstance.on.mock.calls.length;
 
       orchestrationSync.initialize();
-      const secondOnCalls = mockZoneManagerInstance.on.mock.calls.length;
+      const secondOnCalls = mockTaskQueueInstance.on.mock.calls.length;
 
       // Should not have added duplicate listeners
       expect(secondOnCalls).toBe(firstOnCalls);
@@ -324,10 +272,10 @@ describe('OrchestrationSync', () => {
       expect((orchestrationSync as any).isInitialized).toBe(false);
 
       // After cleanup, initialize again should register fresh listeners
-      const offCallsAfterCleanup = mockZoneManagerInstance.off.mock.calls.length;
+      const offCallsAfterCleanup = mockTaskQueueInstance.off.mock.calls.length;
 
       orchestrationSync.initialize();
-      const onCallsAfterReinit = mockZoneManagerInstance.on.mock.calls.length;
+      const onCallsAfterReinit = mockTaskQueueInstance.on.mock.calls.length;
 
       // Should have called on again (to register new listeners)
       expect(onCallsAfterReinit).toBeGreaterThan(offCallsAfterCleanup);

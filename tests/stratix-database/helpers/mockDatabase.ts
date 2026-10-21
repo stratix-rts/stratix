@@ -13,6 +13,7 @@ export interface MockStatement {
 
 export interface MockDatabase {
   prepare: jest.Mock<MockStatement, [string]>;
+  transaction<T>(fn: () => T): () => T;
 }
 
 export interface MockDatabaseConfig {
@@ -49,7 +50,8 @@ export function createMockDatabase(config: MockDatabaseConfig = {}): MockDatabas
   });
 
   return {
-    prepare: mockPrepare
+    prepare: mockPrepare,
+    transaction: <T>(fn: () => T): () => T => () => fn(),
   };
 }
 

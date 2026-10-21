@@ -1,6 +1,7 @@
+import { ConnectionPool } from '../../stratix-openclaw-adapter';
+
 import type { Command, CommandContext, CommandResult, CommandSource } from './types';
 
-import { ConnectionPool } from '../../stratix-openclaw-adapter';
 
 /**
  * Command Orchestrator — 命令发现与注册中心。

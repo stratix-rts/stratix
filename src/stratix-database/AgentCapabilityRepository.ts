@@ -1,8 +1,8 @@
-import type { Database, Statement } from './sqlite-adapter';
 
-import { generateId } from '../stratix-project/utils/helpers';
+import { generateId } from '../stratix-core/utils/id';
 
 import { getDatabase } from './StratixDatabase';
+import type { Database, Statement } from './sqlite-adapter';
 
 export type Capability = 'coding' | 'writing' | 'analysis' | 'research' | 'general';
 

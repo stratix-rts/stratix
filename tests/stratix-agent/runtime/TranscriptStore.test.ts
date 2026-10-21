@@ -15,6 +15,7 @@ describe('TranscriptStore', () => {
 
   beforeEach(() => {
     tempDir = path.join(os.tmpdir(), `transcript-test-${Date.now()}`);
+    fs.mkdirSync(tempDir, { recursive: true });
     store = new TranscriptStore(tempDir);
   });
 
@@ -40,8 +41,13 @@ describe('TranscriptStore', () => {
   });
 
   describe('constructor', () => {
-    test('creates base directory if it does not exist', () => {
-      expect(fs.existsSync(tempDir)).toBe(true);
+    test('creates base directory if it does not exist', async () => {
+      const newDir = path.join(os.tmpdir(), `transcript-test-create-${Date.now()}`);
+      const newStore = new TranscriptStore(newDir);
+
+      expect(fs.existsSync(newDir)).toBe(false);
+      await newStore.append(createEntry('session-create', 'turn-1', 'user', 'Hello'));
+      expect(fs.existsSync(newDir)).toBe(true);
     });
 
     test('reuses existing directory', () => {

@@ -1,5 +1,5 @@
 /**
- * ZoneCoordinatorEvents - Event system for ZoneCoordinator
+ * ZoneCoordinatorEvents - 任务生命周期事件总线
  *
  * Provides a singleton event emitter for ZoneCoordinator lifecycle events
  * so other modules (like OrchestrationSync) can subscribe to them.

@@ -13,11 +13,6 @@ import { EnhancedSoulConfig } from '@/stratix-agent/types/soul';
 
 // Mock dependencies
 jest.mock('@/stratix-agent/runtime/TranscriptStore');
-jest.mock('@/stratix-character-creator/core/ZoneContextManager', () => ({
-  zoneContextManager: {
-    getZonePromptContext: jest.fn().mockResolvedValue(''),
-  },
-}));
 
 // Mock LLMConnector to avoid actual API calls
 jest.mock('@/stratix-agent/core/LLMConnector', () => {

@@ -1,7 +1,7 @@
 /**
  * OrchestrationSync - Connects orchestration services to StatusSync WebSocket
  *
- * This service bridges ZoneManager, TaskQueueService, BackgroundAgentService,
+ * This service bridges TaskQueueService, BackgroundAgentService,
  * and AgentMessageRouter events to the WebSocket layer for frontend sync.
  */
 
@@ -14,8 +14,6 @@ import { MessageEvent } from './messaging/MessageTypes';
 import { TaskEvent } from './task-queue/TaskItem';
 import { TaskQueueService } from './task-queue/TaskQueueService';
 import ZoneCoordinatorEventEmitter, { type ZoneCoordinatorEventPayload } from './zone/ZoneCoordinatorEvents';
-import { ZoneManager } from './zone/ZoneManager';
-import { ZoneEvent } from './zone/ZoneState';
 
 function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
   console[level](`[OrchestrationSync] ${message}`, ctx);
@@ -23,7 +21,6 @@ function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<str
 
 // Type for StatusSync - avoid circular dependency at type level
 interface StatusSyncInterface {
-  notifyZoneUpdate(zoneId: string, data: Record<string, unknown>): void;
   notifyTaskAssigned(taskId: string, agentId: string, zoneId: string): void;
   notifyTaskCompleted(taskId: string, agentId: string, result?: unknown): void;
   notifyBackgroundAgentStatus(agentId: string, status: string, zoneId?: string, error?: string): void;
@@ -41,7 +38,6 @@ interface StatusSyncInterface {
 
 export class OrchestrationSync {
   private static instance: OrchestrationSync;
-  private zoneManager: ZoneManager;
   private taskQueue: TaskQueueService;
   private backgroundService: BackgroundAgentService;
   private messageRouter: AgentMessageRouter;
@@ -54,7 +50,6 @@ export class OrchestrationSync {
   private statusSyncRef: StatusSyncInterface | null = null;
 
   private constructor() {
-    this.zoneManager = ZoneManager.getInstance();
     this.taskQueue = TaskQueueService.getInstance();
     this.backgroundService = BackgroundAgentService.getInstance();
     this.messageRouter = AgentMessageRouter.getInstance();
@@ -71,12 +66,15 @@ export class OrchestrationSync {
     if (this.statusSyncRef) return this.statusSyncRef;
 
     try {
-      // Static import at runtime - avoid circular import at module load time
-      // by using dynamic require only when first accessed
+      // Try to find a registered singleton instance
       if (typeof require !== 'undefined') {
         const StatusSyncModule = require('../stratix-gateway/api/websocket/StatusSync');
-        this.statusSyncRef = StatusSyncModule.default || StatusSyncModule;
-        return this.statusSyncRef;
+        // StatusSyncModule.default is the class, not instance
+        // We need an instance — check if one was registered
+        if (StatusSyncModule._instance) {
+          this.statusSyncRef = StatusSyncModule._instance;
+          return this.statusSyncRef;
+        }
       }
       return null;
     } catch (e) {
@@ -85,17 +83,11 @@ export class OrchestrationSync {
     }
   }
 
-  private getZoneService(): { addFiles: (zoneId: string, files: Array<{ name: string; sourceType: 'local'; source: string }>) => Promise<void> } | null {
-    try {
-      if (typeof require !== 'undefined') {
-        const module = require('../stratix-gateway/project/ZoneService');
-        return module.zoneService;
-      }
-      return null;
-    } catch (e) {
-      log('warn', 'ZoneService not available', { error: String(e) });
-      return null;
-    }
+  /**
+   * Register a StatusSync instance for OrchestrationSync to use
+   */
+  setStatusSync(sync: StatusSyncInterface): void {
+    this.statusSyncRef = sync;
   }
 
   /**
@@ -111,48 +103,6 @@ export class OrchestrationSync {
     }
   }
 
-  /**
-   * Sync task output files to the associated zone
-   */
-  private async syncTaskFilesToZone(taskId: string): Promise<void> {
-    const task = await this.taskQueue.getTask(taskId);
-    if (!task) return;
-
-    // Skip if task has no zone or no output files
-    if (!task.zoneId || !task.result?.files?.length) return;
-
-    const zoneService = this.getZoneService();
-    if (!zoneService) return;
-
-    const files = task.result.files.map(filePath => ({
-      name: path.basename(filePath),
-      sourceType: 'local' as const,
-      source: filePath,
-    }));
-
-    try {
-      await zoneService.addFiles(task.zoneId, files);
-      log('info', `Synced ${files.length} output files to zone ${task.zoneId}`);
-    } catch (err) {
-      log('warn', `Failed to add files to zone ${task.zoneId}`, { error: String(err) });
-    }
-  }
-
-  private setupZoneListeners(): void {
-    const zoneHandler = (event: ZoneEvent) => {
-      const sync = this.getStatusSync();
-      if (sync) {
-        sync.notifyZoneUpdate(event.zoneId, {
-          type: event.type,
-          agentId: event.agentId,
-          ...event.data,
-        });
-      }
-    };
-    this.zoneManager.on('*', zoneHandler);
-    this.cleanupFns.push(() => this.zoneManager.off('*', zoneHandler));
-  }
-
   private setupTaskListeners(): void {
     const taskHandler = (event: TaskEvent) => {
       const sync = this.getStatusSync();
@@ -163,9 +113,6 @@ export class OrchestrationSync {
           sync.notifyTaskAssigned(event.taskId, event.agentId || '', zoneId);
         } else if (event.type === 'completed') {
           sync.notifyTaskCompleted(event.taskId, event.agentId || '');
-          this.syncTaskFilesToZone(event.taskId).catch(err => {
-            log('error', 'Failed to sync task files to zone', { error: String(err) });
-          });
         }
       }
     };
@@ -249,7 +196,6 @@ export class OrchestrationSync {
 
     log('info', 'Initializing orchestration sync...');
 
-    this.setupZoneListeners();
     this.setupTaskListeners();
     this.setupBackgroundAgentListeners();
     this.setupMessageListeners();

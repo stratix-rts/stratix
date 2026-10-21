@@ -505,13 +505,13 @@
       "description": "V3连接: agent-link外部agent连接重做-模块",
       "template": "task",
       "priority": "P1",
-      "status": "pending",
+      "status": "completed",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_007.md",
       "created_at": "2026-10-21T12:12:24.328153",
-      "updated_at": "2026-10-21T13:36:05.757238",
+      "updated_at": "2026-10-21T14:28:12.158695",
       "dependencies": [
         "task_006"
       ],
@@ -534,13 +534,13 @@
       "description": "V3屏: command-panel命令面板-模块",
       "template": "task",
       "priority": "P1",
-      "status": "pending",
+      "status": "completed",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_008.md",
       "created_at": "2026-10-21T12:12:24.820615",
-      "updated_at": "2026-10-21T13:36:05.758770",
+      "updated_at": "2026-10-21T14:30:06.943781",
       "dependencies": [
         "task_006"
       ],
@@ -563,13 +563,13 @@
       "description": "V3屏: agent-panel侧栏-模块",
       "template": "task",
       "priority": "P1",
-      "status": "pending",
+      "status": "completed",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_009.md",
       "created_at": "2026-10-21T12:12:25.308880",
-      "updated_at": "2026-10-21T13:36:05.760275",
+      "updated_at": "2026-10-21T14:51:05.141547",
       "dependencies": [
         "task_006"
       ],
@@ -592,13 +592,13 @@
       "description": "V3屏: mission-confirm编组指派确认-模块",
       "template": "task",
       "priority": "P1",
-      "status": "blocked",
+      "status": "completed",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_010.md",
       "created_at": "2026-10-21T12:12:25.774126",
-      "updated_at": "2026-10-21T12:12:25.774140",
+      "updated_at": "2026-10-21T15:24:53.174906",
       "dependencies": [
         "task_008"
       ],
@@ -612,7 +612,38 @@
           "lint_passed": false,
           "acceptance_met": false
         },
-        "issues": [],
+        "issues": [
+          {
+            "round": 0,
+            "type": "documentation_issue",
+            "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/backpack'",
+            "timestamp": "2026-10-21T15:24:53.168974"
+          },
+          {
+            "round": 0,
+            "type": "complexity_issue",
+            "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/body/tail/wolf/child/bg/hurt'",
+            "timestamp": "2026-10-21T15:24:53.170536"
+          },
+          {
+            "round": 0,
+            "type": "naming_issue",
+            "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/cape'",
+            "timestamp": "2026-10-21T15:24:53.171970"
+          },
+          {
+            "round": 0,
+            "type": "structure_issue",
+            "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/eyes'",
+            "timestamp": "2026-10-21T15:24:53.173447"
+          },
+          {
+            "round": 0,
+            "type": "testing_issue",
+            "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/facial/patches/eyepatch/ambi/child/emote'",
+            "timestamp": "2026-10-21T15:24:53.174902"
+          }
+        ],
         "optimization_history": []
       }
     },
@@ -621,13 +652,13 @@
       "description": "V3屏: log-drawer统一日志-模块",
       "template": "task",
       "priority": "P2",
-      "status": "pending",
+      "status": "completed",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_011.md",
       "created_at": "2026-10-21T12:12:26.253155",
-      "updated_at": "2026-10-21T13:36:05.761782",
+      "updated_at": "2026-10-21T15:41:41.858098",
       "dependencies": [
         "task_006"
       ],
@@ -641,7 +672,32 @@
           "lint_passed": false,
           "acceptance_met": false
         },
-        "issues": [],
+        "issues": [
+          {
+            "round": 0,
+            "type": "unknown_issue",
+            "message": "文档覆盖率过低 (21.9%)",
+            "timestamp": "2026-10-21T15:41:41.853367"
+          },
+          {
+            "round": 0,
+            "type": "naming_issue",
+            "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/hair/pigtails_bangs'",
+            "timestamp": "2026-10-21T15:41:41.854894"
+          },
+          {
+            "round": 0,
+            "type": "structure_issue",
+            "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/hat/cloth'",
+            "timestamp": "2026-10-21T15:41:41.856549"
+          },
+          {
+            "round": 0,
+            "type": "testing_issue",
+            "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/shield/heater/revised/pattern/chief/fg/hurt'",
+            "timestamp": "2026-10-21T15:41:41.858094"
+          }
+        ],
         "optimization_history": []
       }
     },
@@ -650,13 +706,13 @@
       "description": "V3屏: chat-drawer聊天抽屉-模块",
       "template": "task",
       "priority": "P1",
-      "status": "blocked",
+      "status": "completed",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_012.md",
       "created_at": "2026-10-21T12:12:26.728050",
-      "updated_at": "2026-10-21T12:12:26.728059",
+      "updated_at": "2026-10-21T15:47:20.947271",
       "dependencies": [
         "task_007"
       ],
@@ -679,13 +735,13 @@
       "description": "V3屏: settings设置屏-模块",
       "template": "task",
       "priority": "P2",
-      "status": "pending",
+      "status": "completed",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_013.md",
       "created_at": "2026-10-21T12:12:27.190078",
-      "updated_at": "2026-10-21T13:36:05.763312",
+      "updated_at": "2026-10-21T16:06:55.718784",
       "dependencies": [
         "task_006"
       ],
@@ -699,7 +755,38 @@
           "lint_passed": false,
           "acceptance_met": false
         },
-        "issues": [],
+        "issues": [
+          {
+            "round": 0,
+            "type": "documentation_issue",
+            "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/bauldron'",
+            "timestamp": "2026-10-21T16:06:55.712637"
+          },
+          {
+            "round": 0,
+            "type": "complexity_issue",
+            "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/body/bodies/male'",
+            "timestamp": "2026-10-21T16:06:55.714080"
+          },
+          {
+            "round": 0,
+            "type": "naming_issue",
+            "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/cape'",
+            "timestamp": "2026-10-21T16:06:55.715353"
+          },
+          {
+            "round": 0,
+            "type": "structure_issue",
+            "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/hair/bangs_bun'",
+            "timestamp": "2026-10-21T16:06:55.717159"
+          },
+          {
+            "round": 0,
+            "type": "testing_issue",
+            "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/head'",
+            "timestamp": "2026-10-21T16:06:55.718782"
+          }
+        ],
         "optimization_history": []
       }
     },
@@ -708,13 +795,13 @@
       "description": "V3屏: 状态屏-模块",
       "template": "task",
       "priority": "P2",
-      "status": "pending",
+      "status": "completed",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_014.md",
       "created_at": "2026-10-21T12:12:27.663787",
-      "updated_at": "2026-10-21T13:36:05.764833",
+      "updated_at": "2026-10-21T16:11:31.888320",
       "dependencies": [
         "task_006"
       ],
@@ -737,13 +824,13 @@
       "description": "V3屏: character-screen角色屏-模块",
       "template": "task",
       "priority": "P1",
-      "status": "pending",
+      "status": "completed",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_015.md",
       "created_at": "2026-10-21T12:12:28.128508",
-      "updated_at": "2026-10-21T13:36:05.766358",
+      "updated_at": "2026-10-21T16:34:54.769791",
       "dependencies": [
         "task_006"
       ],
@@ -766,13 +853,13 @@
       "description": "V3切换: Electron主入口切换-模块",
       "template": "task",
       "priority": "P0",
-      "status": "blocked",
+      "status": "completed",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_016.md",
       "created_at": "2026-10-21T12:12:28.590688",
-      "updated_at": "2026-10-21T12:12:28.590709",
+      "updated_at": "2026-10-21T17:18:07.958665",
       "dependencies": [
         "task_008",
         "task_012",
@@ -797,13 +884,13 @@
       "description": "V3退役: legacy删除与死代码清理-模块",
       "template": "task",
       "priority": "P0",
-      "status": "blocked",
+      "status": "completed",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_017.md",
       "created_at": "2026-10-21T12:12:29.054868",
-      "updated_at": "2026-10-21T12:12:29.054882",
+      "updated_at": "2026-10-21T18:28:03.503428",
       "dependencies": [
         "task_016"
       ],
@@ -826,15 +913,44 @@
       "description": "V3验收: 全量验收与合入-模块",
       "template": "task",
       "priority": "P0",
-      "status": "blocked",
+      "status": "pending",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_018.md",
       "created_at": "2026-10-21T12:12:29.522702",
-      "updated_at": "2026-10-21T12:12:29.522712",
+      "updated_at": "2026-10-21T18:28:03.510194",
       "dependencies": [
         "task_017"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_019",
+      "description": "V3接线: 屏幕导航与挂载补全（settings/character 屏挂进 main-screen 导航 + core 路由契约位）-模块",
+      "template": "task",
+      "priority": "P2",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_019.md",
+      "created_at": "2026-10-21T16:14:58.023911",
+      "updated_at": "2026-10-21T17:05:44.741523",
+      "dependencies": [
+        "task_015"
       ],
       "dependency_type": "all",
       "deadline": null,

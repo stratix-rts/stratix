@@ -1,7 +1,8 @@
 import path from 'path';
 
-import { Database } from './sqlite-adapter';
 import * as fs from 'fs-extra';
+
+import { Database } from './sqlite-adapter';
 
 const DEFAULT_DATA_DIR = 'stratix-data';
 const DEFAULT_FILENAME = 'stratix.db';

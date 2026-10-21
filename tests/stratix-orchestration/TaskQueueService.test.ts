@@ -51,20 +51,18 @@ describe('TaskQueueService', () => {
       const context: TaskContext = { description: 'Test task description' };
 
       const result = await taskQueue.createTask(
-        'task-1',
-        'zone-1',
-        'project-1',
-        'Test Task',
-        'coding',
-        context,
-        { priority: 5, description: 'A test task' }
-      );
+      'task-1',
+      'zone-1',
+      'Test Task',
+      'coding',
+      context,
+      { priority: 5, description: 'A test task' }
+    );
 
       expect(result).toMatchObject({
         taskId: 'task-1',
         zoneId: 'zone-1',
-        projectId: 'project-1',
-        name: 'Test Task',
+                name: 'Test Task',
         type: 'coding',
         priority: 5,
         status: 'pending',
@@ -77,13 +75,12 @@ describe('TaskQueueService', () => {
       const context: TaskContext = { description: 'Test' };
 
       const result = await taskQueue.createTask(
-        'task-2',
-        'zone-1',
-        'project-1',
-        'Default Priority Task',
-        'general',
-        context
-      );
+      'task-2',
+      'zone-1',
+      'Default Priority Task',
+      'general',
+      context
+    );
 
       expect(result.priority).toBe(5);
     });
@@ -92,14 +89,13 @@ describe('TaskQueueService', () => {
       const context: TaskContext = { description: 'Dependent task' };
 
       const result = await taskQueue.createTask(
-        'task-3',
-        'zone-1',
-        'project-1',
-        'Dependent Task',
-        'analysis',
-        context,
-        { dependencies: ['task-1', 'task-2'] }
-      );
+      'task-3',
+      'zone-1',
+      'Dependent Task',
+      'analysis',
+      context,
+      { dependencies: ['task-1', 'task-2'] }
+    );
 
       expect(result.dependencies).toEqual(['task-1', 'task-2']);
     });
@@ -109,13 +105,12 @@ describe('TaskQueueService', () => {
       const context: TaskContext = { description: 'Test' };
 
       await taskQueue.createTask(
-        'event-task',
-        'zone-1',
-        'project-1',
-        'Event Task',
-        'general',
-        context
-      );
+      'event-task',
+      'zone-1',
+      'Event Task',
+      'general',
+      context
+    );
 
       expect(eventHandler).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -142,13 +137,12 @@ describe('TaskQueueService', () => {
       const context: TaskContext = { description: 'Test' };
 
       await taskQueue.createTask(
-        'cached-task',
-        'zone-1',
-        'project-1',
-        'Cached Task',
-        'coding',
-        context
-      );
+      'cached-task',
+      'zone-1',
+      'Cached Task',
+      'coding',
+      context
+    );
 
       jest.clearAllMocks();
 
@@ -169,13 +163,12 @@ describe('TaskQueueService', () => {
       const context: TaskContext = { description: 'Test' };
 
       await taskQueue.createTask(
-        'update-task',
-        'zone-1',
-        'project-1',
-        'Update Test',
-        'coding',
-        context
-      );
+      'update-task',
+      'zone-1',
+      'Update Test',
+      'coding',
+      context
+    );
 
       const result = await taskQueue.updateTask('update-task', { status: 'assigned', assignedAgentId: 'agent-1' });
 
@@ -193,13 +186,12 @@ describe('TaskQueueService', () => {
       const context: TaskContext = { description: 'Test' };
 
       await taskQueue.createTask(
-        'assigned-task',
-        'zone-1',
-        'project-1',
-        'Assigned Test',
-        'coding',
-        context
-      );
+      'assigned-task',
+      'zone-1',
+      'Assigned Test',
+      'coding',
+      context
+    );
 
       taskQueue.on('assigned', eventHandler);
 
@@ -224,13 +216,12 @@ describe('TaskQueueService', () => {
       const context: TaskContext = { description: 'Test' };
 
       await taskQueue.createTask(
-        'completed-task',
-        'zone-1',
-        'project-1',
-        'Completed Test',
-        'coding',
-        context
-      );
+      'completed-task',
+      'zone-1',
+      'Completed Test',
+      'coding',
+      context
+    );
 
       taskQueue.on('completed', eventHandler);
 
@@ -285,13 +276,12 @@ describe('TaskQueueService', () => {
       const context: TaskContext = { description: 'Test' };
 
       await taskQueue.createTask(
-        'enqueue-task',
-        'zone-1',
-        'project-1',
-        'Enqueue Test',
-        'coding',
-        context
-      );
+      'enqueue-task',
+      'zone-1',
+      'Enqueue Test',
+      'coding',
+      context
+    );
 
       // Mock the getTask call to return a completed dependency
       mockDb.prepare.mockReturnValue({
@@ -350,14 +340,13 @@ describe('TaskQueueService', () => {
       const context: TaskContext = { description: 'Test' };
 
       await taskQueue.createTask(
-        'unsatisfied-task',
-        'zone-1',
-        'project-1',
-        'Unsatisfied Test',
-        'coding',
-        context,
-        { dependencies: ['non-existent-task'] }
-      );
+      'unsatisfied-task',
+      'zone-1',
+      'Unsatisfied Test',
+      'coding',
+      context,
+      { dependencies: ['non-existent-task'] }
+    );
 
       const result = await taskQueue.enqueueTask('unsatisfied-task');
       expect(result).toBe(false);
@@ -491,13 +480,12 @@ describe('TaskQueueService', () => {
       const context: TaskContext = { description: 'Test' };
 
       await taskQueue.createTask(
-        'event-task-1',
-        'zone-1',
-        'project-1',
-        'Event Task 1',
-        'coding',
-        context
-      );
+      'event-task-1',
+      'zone-1',
+      'Event Task 1',
+      'coding',
+      context
+    );
 
       expect(createdHandler).toHaveBeenCalled();
       expect(completedHandler).not.toHaveBeenCalled();
@@ -517,13 +505,12 @@ describe('TaskQueueService', () => {
       const context: TaskContext = { description: 'Test' };
 
       await taskQueue.createTask(
-        'global-event-task',
-        'zone-1',
-        'project-1',
-        'Global Event Task',
-        'coding',
-        context
-      );
+      'global-event-task',
+      'zone-1',
+      'Global Event Task',
+      'coding',
+      context
+    );
 
       expect(globalHandler).toHaveBeenCalled();
     });
@@ -543,13 +530,12 @@ describe('TaskQueueService', () => {
       const context: TaskContext = { description: 'Test' };
 
       await taskQueue.createTask(
-        'off-event-task',
-        'zone-1',
-        'project-1',
-        'Off Event Task',
-        'coding',
-        context
-      );
+      'off-event-task',
+      'zone-1',
+      'Off Event Task',
+      'coding',
+      context
+    );
 
       expect(handler).not.toHaveBeenCalled();
     });
@@ -584,13 +570,12 @@ describe('TaskQueueService', () => {
       const context: TaskContext = { description: 'Test' };
 
       await taskQueue.createTask(
-        'delete-task',
-        'zone-1',
-        'project-1',
-        'Delete Task',
-        'coding',
-        context
-      );
+      'delete-task',
+      'zone-1',
+      'Delete Task',
+      'coding',
+      context
+    );
 
       const result = await taskQueue.deleteTask('delete-task');
       expect(result).toBe(true);

@@ -2,7 +2,7 @@ import { FileSystemSkillExecutor } from '@/stratix-agent/core/executors/FileSyst
 import { SkillDefinition, ExecutionContext } from '@/stratix-agent/types';
 import { SafetyValidator } from '@/stratix-agent/core/SafetyValidator';
 import * as fs from 'fs';
-import { readFile, writeFile, appendFile, readdir, rm, stat } from 'fs/promises';
+import { access, readFile, writeFile, appendFile, readdir, rm, stat } from 'fs/promises';
 
 jest.mock('fs');
 jest.mock('fs/promises');
@@ -21,6 +21,7 @@ describe('FileSystemSkillExecutor', () => {
       progressCallback: (p: any) => progressCallbacks.push(p),
     };
     jest.clearAllMocks();
+    (access as jest.Mock).mockResolvedValue(undefined);
   });
 
   describe('file_read', () => {
@@ -57,7 +58,7 @@ describe('FileSystemSkillExecutor', () => {
 
     test('throws when file does not exist', async () => {
       (SafetyValidator.validateFilePath as jest.Mock).mockReturnValue({ valid: true });
-      (fs.existsSync as jest.Mock).mockReturnValue(false);
+      (access as jest.Mock).mockRejectedValue(new Error('ENOENT'));
 
       await expect(executor.execute(readSkill, { path: '/tmp/missing.txt' }, mockContext))
         .rejects.toThrow('File not found');
@@ -80,7 +81,7 @@ describe('FileSystemSkillExecutor', () => {
 
       await executor.execute(readSkill, { path: '/tmp/test.txt', encoding: 'base64' }, mockContext);
 
-      expect(readFile).toHaveBeenCalledWith('/tmp/test.txt', 'base64');
+      expect(readFile).toHaveBeenCalledWith('/tmp/test.txt', { encoding: 'base64' });
     });
 
     test('uses basePath from context for relative paths', async () => {
@@ -95,7 +96,7 @@ describe('FileSystemSkillExecutor', () => {
 
       await executor.execute(readSkill, { path: 'relative.txt' }, contextWithBase);
 
-      expect(readFile).toHaveBeenCalledWith(expect.stringContaining('/workspace/relative.txt'), 'utf-8');
+      expect(readFile).toHaveBeenCalledWith(expect.stringContaining('/workspace/relative.txt'), { encoding: 'utf-8' });
     });
 
     test('sends progress callbacks', async () => {
@@ -128,7 +129,7 @@ describe('FileSystemSkillExecutor', () => {
 
       expect(result.success).toBe(true);
       expect(result.path).toBe('/tmp/test.txt');
-      expect(writeFile).toHaveBeenCalledWith('/tmp/test.txt', 'hello', 'utf-8');
+      expect(writeFile).toHaveBeenCalledWith('/tmp/test.txt', 'hello', { encoding: 'utf-8' });
     });
 
     test('throws when path validation fails', async () => {
@@ -158,7 +159,7 @@ describe('FileSystemSkillExecutor', () => {
       const result = await executor.execute(appendSkill, { path: '/tmp/test.txt', content: 'more' }, mockContext);
 
       expect(result.success).toBe(true);
-      expect(appendFile).toHaveBeenCalledWith('/tmp/test.txt', 'more', 'utf-8');
+      expect(appendFile).toHaveBeenCalledWith('/tmp/test.txt', 'more', { encoding: 'utf-8' });
     });
   });
 
@@ -185,7 +186,7 @@ describe('FileSystemSkillExecutor', () => {
 
     test('throws when directory does not exist', async () => {
       (SafetyValidator.validateFilePath as jest.Mock).mockReturnValue({ valid: true });
-      (fs.existsSync as jest.Mock).mockReturnValue(false);
+      (access as jest.Mock).mockRejectedValue(new Error('ENOENT'));
 
       await expect(executor.execute(listSkill, { path: '/tmp/missing' }, mockContext))
         .rejects.toThrow('Directory not found');
@@ -252,7 +253,7 @@ describe('FileSystemSkillExecutor', () => {
 
     test('throws when file does not exist', async () => {
       (SafetyValidator.validateFilePath as jest.Mock).mockReturnValue({ valid: true });
-      (fs.existsSync as jest.Mock).mockReturnValue(false);
+      (access as jest.Mock).mockRejectedValue(new Error('ENOENT'));
 
       await expect(executor.execute(infoSkill, { path: '/tmp/missing.txt' }, mockContext))
         .rejects.toThrow('File not found');

@@ -2,14 +2,12 @@
  * Stratix Gateway - 状态同步服务
  *
  * 通过 WebSocket 实时推送 Agent 和指令状态到前端
- * 监听 GatewayEventBus 将内部事件转发到 WebSocket
+ * 监听编排事件（任务生命周期）转发到 WebSocket
  */
 
 import { WebSocketServer, WebSocket } from 'ws';
 
 import { StratixStateSyncEvent, StratixStateSyncEventType, AgentStatusInfo } from '../../../stratix-core/stratix-protocol';
-import { ProjectChannelMessage } from '../../../stratix-project/types';
-import { gatewayEventBus, ChannelMessageEvent, ZoneEvent } from '../../GatewayEventBus';
 import ZoneCoordinatorEventEmitter, { type ZoneCoordinatorEventPayload } from '../../../stratix-orchestration/zone/ZoneCoordinatorEvents';
 
 interface ClientInfo {
@@ -29,15 +27,12 @@ export class StatusSyncService {
   private clients: Set<WebSocket> = new Set();
   private clientInfo: Map<WebSocket, ClientInfo> = new Map();
   private heartbeatInterval: NodeJS.Timeout | null = null;
-  private unsubscribeChannelMessage: (() => void) | null = null;
-  private unsubscribeZoneEvent: (() => void) | null = null;
   private unsubscribeZoneCoordinatorEvent: (() => void) | null = null;
 
   constructor(port: number = 3001) {
     this.wss = new WebSocketServer({ port });
     this.setupServer();
     this.startHeartbeat();
-    this.setupEventBusListeners();
     this.setupZoneCoordinatorListeners();
   }
 
@@ -103,37 +98,6 @@ export class StatusSyncService {
     });
   }
 
-  private setupEventBusListeners(): void {
-    // 监听 channel 消息事件，转发到 WebSocket
-    this.unsubscribeChannelMessage = gatewayEventBus.onChannelMessage((event: ChannelMessageEvent) => {
-      // 广播新消息给所有前端客户端
-      this.broadcast({
-        eventType: 'stratix:project_message_new',
-        payload: {
-          zoneId: event.zoneId,
-          channelId: event.channelId,
-          message: event.message
-        },
-        timestamp: Date.now(),
-        requestId: `stratix-req-${Date.now()}`
-      });
-
-      // 单独通知被提及的 agent（通过 WebSocket）
-      if (event.message.mentions && event.message.mentions.length > 0) {
-        for (const agentId of event.message.mentions) {
-          if (event.subscriberIds.includes(agentId)) {
-            this.notifyAgentMention(agentId, event);
-          }
-        }
-      }
-    });
-
-    // 监听 Zone 事件，转发到 WebSocket
-    this.unsubscribeZoneEvent = gatewayEventBus.onZoneEvent((event: ZoneEvent) => {
-      this.broadcastZoneEvent(event);
-    });
-  }
-
   private setupZoneCoordinatorListeners(): void {
     const eventEmitter = ZoneCoordinatorEventEmitter.getInstance();
 
@@ -152,40 +116,6 @@ export class StatusSyncService {
     });
   }
 
-  private broadcastZoneEvent(event: ZoneEvent): void {
-    const eventTypeMap: Record<ZoneEvent['type'], StratixStateSyncEventType> = {
-      'zone:created': 'stratix:zone_created',
-      'zone:updated': 'stratix:zone_updated',
-      'zone:file_added': 'stratix:zone_file_added',
-      'zone:file_removed': 'stratix:zone_file_removed',
-      'zone:file_updated': 'stratix:zone_file_updated',
-      'zone:member_joined': 'stratix:zone_member_joined',
-      'zone:member_left': 'stratix:zone_member_left',
-      'zone:deleted': 'stratix:zone_deleted',
-      'zone:restored': 'stratix:zone_restored',
-      'zone:task_created': 'stratix:zone_task_created',
-      'zone:task_updated': 'stratix:zone_task_updated',
-      'zone:task_deleted': 'stratix:zone_task_deleted',
-      'zone:task_claimed': 'stratix:zone_task_claimed',
-      'zone:message_added': 'stratix:zone_message_added'
-    };
-
-    // For zone:created events, notify idle agents
-    if (event.type === 'zone:created') {
-      this.notifyIdleAgentsZoneCreated(event);
-    }
-
-    this.broadcast({
-      eventType: eventTypeMap[event.type],
-      payload: {
-        zoneId: event.zoneId,
-        ...event.data
-      },
-      timestamp: Date.now(),
-      requestId: `stratix-req-${Date.now()}`
-    });
-  }
-
   private sendWelcome(ws: WebSocket): void {
     const welcomeMessage: StratixStateSyncEvent = {
       eventType: 'stratix:agent_status_update',
@@ -196,38 +126,6 @@ export class StatusSyncService {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(welcomeMessage));
     }
-  }
-
-  /**
-   * Notify all connected idle agents about a new zone creation
-   * Agents can decide whether to join based on their capabilities
-   */
-  private notifyIdleAgentsZoneCreated(event: ZoneEvent): void {
-    const notification: StratixStateSyncEvent = {
-      eventType: 'stratix:zone_created',
-      payload: {
-        zoneId: event.zoneId,
-        data: {
-          title: event.data?.title as string || 'Untitled Zone',
-          prompt: event.data?.prompt as string || '',
-          creator: event.data?.creator as string || 'system',
-        }
-      },
-      timestamp: Date.now(),
-      requestId: `stratix-req-${Date.now()}`
-    };
-
-    const message = JSON.stringify(notification);
-
-    // Send to all connected agent clients
-    // The agents will decide whether to join based on their capabilities
-    this.clients.forEach(client => {
-      const clientType = this.clientInfo.get(client)?.type;
-      if (clientType === 'agent' && client.readyState === WebSocket.OPEN) {
-        client.send(message);
-        console.log(`[StatusSync] Notified agent about new zone: ${event.zoneId}`);
-      }
-    });
   }
 
   private startHeartbeat(): void {
@@ -267,28 +165,6 @@ export class StatusSyncService {
     });
   }
 
-  private notifyAgentMention(agentId: string, event: ChannelMessageEvent): void {
-    const messageStr = JSON.stringify({
-      eventType: 'stratix:project_message_to_agent',
-      payload: {
-        channelId: event.channelId,
-        subscriberIds: event.subscriberIds,
-        message: event.message
-      },
-      timestamp: Date.now(),
-      requestId: `stratix-req-${Date.now()}`
-    });
-
-    // 发送给通过 WebSocket 连接的 agent
-    this.clientInfo.forEach((info, ws) => {
-      if (info.type === 'agent' && info.agentId === agentId) {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(messageStr);
-        }
-      }
-    });
-  }
-
   public notifyAgentStatus(
     agentId: string,
     status: AgentStatusInfo
@@ -323,18 +199,6 @@ export class StatusSyncService {
   }
 
   // ==================== Orchestration Events ====================
-
-  /**
-   * Notify zone state change
-   */
-  public notifyZoneUpdate(zoneId: string, zoneData: Record<string, unknown>): void {
-    this.broadcast({
-      eventType: 'orchestration:zone_updated',
-      payload: { zoneId, ...zoneData },
-      timestamp: Date.now(),
-      requestId: `orchestration-req-${Date.now()}`
-    });
-  }
 
   /**
    * Notify task assignment
@@ -431,14 +295,6 @@ export class StatusSyncService {
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
-    }
-    if (this.unsubscribeChannelMessage) {
-      this.unsubscribeChannelMessage();
-      this.unsubscribeChannelMessage = null;
-    }
-    if (this.unsubscribeZoneEvent) {
-      this.unsubscribeZoneEvent();
-      this.unsubscribeZoneEvent = null;
     }
     if (this.unsubscribeZoneCoordinatorEvent) {
       this.unsubscribeZoneCoordinatorEvent();

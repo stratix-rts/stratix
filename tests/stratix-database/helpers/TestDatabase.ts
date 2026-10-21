@@ -455,7 +455,11 @@ export function createTestDatabase(): Database.Database {
 /**
  * Creates a mock database wrapper that simulates the getDatabase() interface
  */
-export function createMockDatabaseWrapper(db: Database.Database) {
+export function createMockDatabaseWrapper(db: Database.Database): {
+  getDatabase: () => Database.Database;
+  close: () => void;
+  getPath: () => string;
+} {
   return {
     getDatabase: () => db,
     close: () => db.close(),

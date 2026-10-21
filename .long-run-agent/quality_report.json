@@ -1,98 +1,118 @@
 {
-  "task_id": "task_006",
+  "task_id": "task_013",
   "template": "task",
-  "score": 75,
+  "score": 0,
   "max_score": 100,
   "checks": [
     {
-      "score": 21,
+      "type": "documentation",
+      "required": false,
+      "weight": 0.25,
+      "passed": false,
+      "score": 0,
       "issues": [
         {
-          "type": "low_documentation",
+          "type": "documentation_error",
           "severity": "high",
-          "message": "文档覆盖率过低 (21.9%)"
+          "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/bauldron'"
         }
       ],
-      "suggestions": [
-        "建议为主要函数和类添加文档字符串"
-      ],
-      "stats": {
-        "total_functions": 32,
-        "documented_functions": 14,
-        "function_coverage": "43.8%",
-        "total_classes": 2,
-        "documented_classes": 0,
-        "class_coverage": "0.0%"
-      },
-      "passed": false
+      "suggestions": [],
+      "details": {}
     },
     {
-      "score": 90,
+      "type": "complexity",
+      "required": false,
+      "weight": 0.2,
+      "passed": false,
+      "score": 0,
       "issues": [
         {
-          "type": "long_file",
-          "severity": "medium",
-          "file": "tools/texture-generator/generate-textures.js",
-          "message": "文件过长 (800 行)"
+          "type": "complexity_error",
+          "severity": "high",
+          "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/body/bodies/male'"
         }
       ],
-      "suggestions": [
-        "建议拆分超长文件，每个文件保持500行以内"
+      "suggestions": [],
+      "details": {}
+    },
+    {
+      "type": "naming",
+      "required": false,
+      "weight": 0.2,
+      "passed": false,
+      "score": 0,
+      "issues": [
+        {
+          "type": "naming_error",
+          "severity": "high",
+          "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/cape'"
+        }
       ],
-      "stats": {
-        "total_lines": 1988,
-        "files_checked": 10
-      },
-      "passed": true
+      "suggestions": [],
+      "details": {}
     },
     {
-      "score": 100,
-      "issues": [],
+      "type": "structure",
+      "required": false,
+      "weight": 0.2,
+      "passed": false,
+      "score": 0,
+      "issues": [
+        {
+          "type": "structure_error",
+          "severity": "high",
+          "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/hair/bangs_bun'"
+        }
+      ],
       "suggestions": [],
-      "stats": {},
-      "passed": true
+      "details": {}
     },
     {
-      "score": 100,
-      "issues": [],
+      "type": "testing",
+      "required": false,
+      "weight": 0.15,
+      "passed": false,
+      "score": 0,
+      "issues": [
+        {
+          "type": "testing_error",
+          "severity": "high",
+          "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/head'"
+        }
+      ],
       "suggestions": [],
-      "stats": {
-        "has_readme": true,
-        "has_gitignore": true,
-        "has_src": true,
-        "has_tests": true
-      },
-      "passed": true
-    },
-    {
-      "score": 100,
-      "issues": [],
-      "suggestions": [],
-      "stats": {
-        "test_files": 138,
-        "code_files": 815,
-        "test_ratio": "16.9%"
-      },
-      "passed": true
+      "details": {}
     }
   ],
   "failed_required": [],
   "issues": [
     {
-      "type": "low_documentation",
+      "type": "documentation_error",
       "severity": "high",
-      "message": "文档覆盖率过低 (21.9%)"
+      "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/bauldron'"
     },
     {
-      "type": "long_file",
-      "severity": "medium",
-      "file": "tools/texture-generator/generate-textures.js",
-      "message": "文件过长 (800 行)"
+      "type": "complexity_error",
+      "severity": "high",
+      "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/body/bodies/male'"
+    },
+    {
+      "type": "naming_error",
+      "severity": "high",
+      "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/cape'"
+    },
+    {
+      "type": "structure_error",
+      "severity": "high",
+      "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/hair/bangs_bun'"
+    },
+    {
+      "type": "testing_error",
+      "severity": "high",
+      "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/head'"
     }
   ],
-  "suggestions": [
-    "建议为主要函数和类添加文档字符串",
-    "建议拆分超长文件，每个文件保持500行以内"
-  ],
-  "timestamp": "2026-10-21T13:36:05.779306"
+  "suggestions": [],
+  "timestamp": "2026-10-21T16:06:21.444252"
 }

@@ -55,17 +55,6 @@ jest.mock('@/stratix-orchestration/messaging/ConversationConstraints', () => ({
   },
 }));
 
-// Mock ZoneManager
-const mockZoneManagerInstance = {
-  getAgentsInZone: jest.fn().mockResolvedValue(['agent-2', 'agent-3']),
-};
-
-jest.mock('@/stratix-orchestration/zone/ZoneManager', () => ({
-  ZoneManager: {
-    getInstance: jest.fn().mockReturnValue(mockZoneManagerInstance),
-  },
-}));
-
 import { AgentMessageRouter } from '@/stratix-orchestration/messaging/AgentMessageRouter';
 
 describe('AgentMessageRouter', () => {
@@ -102,7 +91,6 @@ describe('AgentMessageRouter', () => {
     mockConstraintsInstance.canSend.mockResolvedValue({ allowed: true });
     mockConstraintsInstance.canShare.mockResolvedValue({ allowed: true });
 
-    mockZoneManagerInstance.getAgentsInZone.mockResolvedValue(['agent-2', 'agent-3']);
   });
 
   describe('getInstance', () => {
@@ -157,28 +145,17 @@ describe('AgentMessageRouter', () => {
     });
   });
 
-  describe('routeMessage - broadcast messages', () => {
-    it('should route broadcast message successfully', async () => {
+  describe('routeMessage - broadcast messages (retired in v3)', () => {
+    it('should reject broadcast: zones were removed so there is no broadcast scope', async () => {
       const result = await messageRouter.routeMessage(
         'agent-1',
         'Hello everyone',
-        'broadcast',
-        { zoneId: 'zone-1' }
-      );
-
-      expect(result.success).toBe(true);
-    });
-
-    it('should fail when zoneId is missing for broadcast', async () => {
-      const result = await messageRouter.routeMessage(
-        'agent-1',
-        'Hello',
         'broadcast',
         {}
       );
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('Zone ID required');
+      expect(result.error).toContain('no longer supported');
     });
   });
 
@@ -264,28 +241,6 @@ describe('AgentMessageRouter', () => {
       expect(result.success).toBe(true);
     });
 
-    it('should route context share to zone successfully', async () => {
-      const result = await messageRouter.routeMessage(
-        'agent-1',
-        'Here is some context for the zone',
-        'context_share',
-        { zoneId: 'zone-1' }
-      );
-
-      expect(result.success).toBe(true);
-    });
-
-    it('should fail when both recipientId and zoneId are missing for context_share', async () => {
-      const result = await messageRouter.routeMessage(
-        'agent-1',
-        'Here is some context',
-        'context_share',
-        {}
-      );
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('Recipient or zone ID required');
-    });
   });
 
   describe('routeMessage - unknown message type', () => {

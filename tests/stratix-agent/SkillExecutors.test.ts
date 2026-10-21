@@ -5,7 +5,6 @@ import {
   HttpSkillExecutor,
   CodeSandboxSkillExecutor,
   DefaultSkillExecutor,
-  ZoneSkillExecutor,
   createExecutor,
 } from '@/stratix-agent/core/SkillExecutors';
 import { SafetyValidator } from '@/stratix-agent/core/SafetyValidator';
@@ -663,54 +662,10 @@ describe('createExecutor', () => {
     expect(executor).toBeInstanceOf(DefaultSkillExecutor);
   });
 
-  test('creates zone executor', () => {
-    const executor = createExecutor('zone');
-    expect(executor).toBeInstanceOf(ZoneSkillExecutor);
-  });
 });
 
 // ============================================
-// ZoneSkillExecutor Tests
-// ============================================
-describe('ZoneSkillExecutor', () => {
-  let executor: ZoneSkillExecutor;
-  let context: ExecutionContext;
 
-  beforeEach(() => {
-    executor = new ZoneSkillExecutor();
-    context = { agentId: 'test-agent' };
-  });
-
-  const mockSkill = (skillId: string): SkillDefinition => ({
-    skillId,
-    name: skillId,
-    description: `Test ${skillId} skill`,
-    parameters: [],
-    executor: 'zone',
-  });
-
-  // Note: Network-dependent tests are skipped because Node.js 16 (Jest environment)
-  // doesn't have native fetch. These would work in integration tests.
-  describe('zone_list', () => {
-    test.skip('returns list of zones (requires fetch polyfill)', async () => {
-      // Integration test - requires Node 18+ or fetch polyfill
-    });
-  });
-
-  describe('zone_info', () => {
-    test('throws error when zoneId missing', async () => {
-      await expect(executor.execute(mockSkill('zone_info'), {}, context))
-        .rejects.toThrow('zoneId is required');
-    });
-  });
-
-  describe('zone_move_to', () => {
-    test('throws error when zoneId missing', async () => {
-      await expect(executor.execute(mockSkill('zone_move_to'), {}, context))
-        .rejects.toThrow('zoneId is required');
-    });
-  });
-});
 
 // ============================================
 // ToolUseLoop Tests (with Mocks)

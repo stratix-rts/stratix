@@ -1,8 +1,8 @@
 import { StratixAgentConfig } from '../../stratix-core';
-import { LRAClient } from '../../stratix-lra-bridge/LRAClient';
-import { loadApiKey } from '../api/apiKeyStore';
 import { AgentRouter, agentRouter } from '../../stratix-core/agent/AgentRouter';
 import type { AgentTask } from '../../stratix-core/agent/types';
+import { LRAClient } from '../../stratix-lra-bridge/LRAClient';
+import { loadApiKey } from '../api/apiKeyStore';
 
 import { LLMAgent } from './agents/LLMAgent';
 import { OpenClawAgent } from './agents/OpenClawAgent';

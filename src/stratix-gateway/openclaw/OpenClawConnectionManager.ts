@@ -5,11 +5,11 @@
  * 支持单例模式、自动重连、状态同步
  */
 
+import { retryPolicyEngine, RetryPolicyEngine } from '@/stratix-core/retry';
+import type { RetryContext } from '@/stratix-core/retry/types';
 import type { StratixOpenClawConfig } from '@/stratix-core/stratix-protocol';
 import { WebSocketOpenClawAdapter } from '@/stratix-openclaw-adapter';
 import type { OpenClawStatus } from '@/stratix-openclaw-adapter/types';
-import { retryPolicyEngine, RetryPolicyEngine } from '@/stratix-core/retry';
-import type { RetryContext } from '@/stratix-core/retry/types';
 
 export interface ConnectionTestResult {
   success: boolean;

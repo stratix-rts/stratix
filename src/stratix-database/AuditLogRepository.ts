@@ -1,8 +1,8 @@
-import type { Database, Statement } from './sqlite-adapter';
 
-import { generateId } from '../stratix-project/utils/helpers';
+import { generateId } from '../stratix-core/utils/id';
 
 import { getDatabase } from './StratixDatabase';
+import type { Database, Statement } from './sqlite-adapter';
 
 const DEFAULT_LIMIT = 50;
 const DEFAULT_OFFSET = 0;

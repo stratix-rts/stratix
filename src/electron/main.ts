@@ -14,8 +14,7 @@ import path from 'path';
 import { app, BrowserWindow, ipcMain, safeStorage, dialog } from 'electron';
 import { ensureDirSync } from 'fs-extra';
 
-import { entryHtmlPath, isLegacyEntry } from '../app/entry-paths';
-import { startGatewayService } from '../stratix-gateway';
+import { entryHtmlPath, isRetiredLegacyFlagSet } from '../app/entry-paths';
 import { dataStoreService } from '../stratix-gateway/dataStoreService';
 import { WebSocketOpenClawAdapter } from '../stratix-openclaw-adapter/WebSocketOpenClawAdapter';
 import { EmbeddedTailscale } from '../stratix-tailscale/EmbeddedTailscale';
@@ -84,9 +83,10 @@ async function initializeServices() {
 /**
  * 创建主窗口
  *
- * 入口双轨（v3 Phase 3）：默认加载新游戏化 UI（src/app/main/index.html），
- * 设 STRATIX_LEGACY=1 时加载旧 Vue 入口（根 index.html）。两个入口的文件都保留在构建产物里，
- * 回退只改"加载哪个"，不删不改任何一侧 —— 见 src/app/entry-paths.ts。
+ * 单入口（v3 Phase 3 / task_017）：只加载新游戏化 UI（src/app/main/index.html）。
+ * 旧 Vue 入口链已随 Zone 退役整体删除，原 STRATIX_LEGACY 回退开关随之失效 ——
+ * 仍在环境里设了它的话这里只打印一句提示，回退手段是 git 历史（git checkout master / git revert），
+ * 见 src/app/entry-paths.ts 的「回退策略变更」。
  */
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -109,10 +109,13 @@ function createWindow() {
 
   // 当前生效入口（相对 vite root 的 HTML 路径）：dev 与正式产物共用同一个常量，避免两边各写一份
   const entryPath = entryHtmlPath();
-  console.log(
-    `[Electron] Entry: ${entryPath} (${isLegacyEntry() ? 'legacy' : 'v3 new UI'}` +
-    `${isLegacyEntry() ? '' : `, set STRATIX_LEGACY=1 to fall back`})`
-  );
+  console.log(`[Electron] Entry: ${entryPath} (v3 new UI, 单入口)`);
+  if (isRetiredLegacyFlagSet()) {
+    console.warn(
+      '[Electron] STRATIX_LEGACY 已失效：旧 Vue 入口链随 task_017 退役（Zone 模型是旧链的地基），' +
+      '本次仍加载新入口。回退请用 git 历史（git checkout master 或 git revert 该次提交）。'
+    );
+  }
 
   // 尝试从 Vite 开发服务器加载（端口 7523-7530）
   const loadDevUrl = async () => {
@@ -120,8 +123,8 @@ function createWindow() {
     if (!win) return false;
     for (const port of DEV_PORTS) {
       try {
-        // why 带入口路径而不是只探端口根：dev server 端口根会返回 legacy 首页，
-        // 不显式指向入口的话 electron:dev 会"连上了"却加载了旧 UI。
+        // why 带入口路径而不是只探端口根：单入口后 dev server 的端口根没有 index.html，
+        // 不显式指向入口的话 electron:dev 会"连上了"却拿到 404。
         const url = `http://127.0.0.1:${port}/${entryPath}`;
         const response = await fetch(url, { method: 'HEAD' });
         if (response.ok) {

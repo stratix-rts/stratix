@@ -75,5 +75,16 @@ temp/
 release/
 dev.log
 .test-worktrees/
-.test-worktrees/
 public/rts-textures.bak/
+
+# Lint cache (本地产物，绝不入库 —— task_017 起从版本控制移除）
+.eslintcache
+
+# 运行时/工具产物（task_017 清理未跟踪垃圾时补进忽略）
+# why 注释单独占行：.gitignore 不支持行尾注释，"pattern # 注释" 会被当成整个字面 pattern。
+# agent 会话 JSON（应用运行时写出）
+sessions/
+# 外部 CLI 工具的本地 sqlite 状态目录
+.opencode/
+# 旧 Vue UI 的 playwright 截图目录（脚本已随 legacy 删除）
+.ui-test-screenshots/
