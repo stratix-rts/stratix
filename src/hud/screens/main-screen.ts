@@ -10,12 +10,13 @@
  *   3. 写死颜色 / 边框 —— 全部引用 --srf-* 变量；
  *   4. 跨屏状态 —— 本屏不持有业务态，只持有"当前选中皮肤 / 显示滚动日志"等纯展示态。
  *
- * 后续任务会在 panels/ 下加 agent-panel / chat-drawer 等，本屏负责骨架与路由接线。
+ * 后续任务会在 panels/ 下加 chat-drawer 等，本屏负责骨架与路由接线。
  */
 
 import type { HudBusAdapter } from '../bridge/bus-adapter';
 import { mountAgentPanel } from '../panels/agent-panel';
 import { mountCommandPanel } from '../panels/command-panel';
+import { mountLogDrawer } from '../panels/log-drawer';
 import { defineStratButton, STRAT_BUTTON_TAG } from '../widgets/strat-button';
 
 export const MAIN_SCREEN_TAG = 'strat-main-screen';
@@ -38,7 +39,7 @@ export function createMainScreen(adapter: HudBusAdapter): MainScreenHandle {
         :host { all: initial; }
         .root {
           display: grid;
-          grid-template-rows: auto 1fr auto;
+          grid-template-rows: auto 1fr auto auto;
           height: 100%;
           background: var(--srf-bg, #0f1116);
           color: var(--srf-text, #e6e9ef);
@@ -69,6 +70,8 @@ export function createMainScreen(adapter: HudBusAdapter): MainScreenHandle {
           color: var(--srf-text-muted, #9aa3b2);
           font-size: var(--srf-font-size-sm, 12px);
         }
+        /* 日志抽屉贴在主区底部、可折叠：不抢战斗视野，收起时只留一行标题栏。 */
+        .drawer-slot { padding: 0 var(--srf-spacing-md, 12px) var(--srf-spacing-md, 12px); }
       </style>
       <div class="root" part="root">
         <div class="topbar">
@@ -83,8 +86,9 @@ export function createMainScreen(adapter: HudBusAdapter): MainScreenHandle {
             <div data-role="command-panel"></div>
             <div data-role="agent-panel"></div>
           </div>
-          <p>主屏骨架就绪。后续任务将在此插入 chat-drawer / log-drawer。</p>
+          <p>主屏骨架就绪。后续任务将在此插入 chat-drawer。</p>
         </div>
+        <div class="drawer-slot" data-role="log-drawer"></div>
         <div class="footer">
           皮肤: <span data-role="theme-tag">default</span> · 单元: <span data-role="unit-count">0</span>
         </div>
@@ -119,12 +123,17 @@ export function createMainScreen(adapter: HudBusAdapter): MainScreenHandle {
     const agentHost = host.querySelector<HTMLElement>('[data-role="agent-panel"]');
     const unmountAgentPanel = agentHost ? mountAgentPanel(adapter, agentHost) : null;
 
+    // 日志抽屉：纯展示，不发命令 —— 只把同一个 adapter 的 subscribe 能力给它。
+    const drawerHost = host.querySelector<HTMLElement>('[data-role="log-drawer"]');
+    const unmountDrawer = drawerHost ? mountLogDrawer(adapter, drawerHost) : null;
+
     const unsubscribe = adapter.subscribe((state) => {
       const counter = host.querySelector('[data-role="unit-count"]');
       if (counter) counter.textContent = String(state.units.length);
     });
 
     return () => {
+      unmountDrawer?.();
       unmountAgentPanel?.();
       unmountPanel?.();
       host.removeEventListener('strat-button-click', themeHandler);
