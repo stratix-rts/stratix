@@ -913,28 +913,34 @@
       "description": "V3验收: 全量验收与合入-模块",
       "template": "task",
       "priority": "P0",
-      "status": "pending",
+      "status": "completed",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_018.md",
       "created_at": "2026-10-21T12:12:29.522702",
-      "updated_at": "2026-10-21T18:28:03.510194",
+      "updated_at": "2026-10-21T10:39:56.000000",
       "dependencies": [
         "task_017"
       ],
       "dependency_type": "all",
       "deadline": null,
       "ralph": {
-        "iteration": 0,
+        "iteration": 1,
         "max_iterations": 7,
         "quality_checks": {
-          "tests_passed": false,
-          "lint_passed": false,
-          "acceptance_met": false
+          "tests_passed": true,
+          "lint_passed": true,
+          "acceptance_met": true
         },
         "issues": [],
-        "optimization_history": []
+        "optimization_history": [
+          {
+            "timestamp": "2026-10-21T10:39:56.000000",
+            "result": "accepted",
+            "note": "全量验收通过：typecheck/build/jest(2141 passed) 全绿；架构扫描 src/hud 无 phaser/world 引用、src/world 无 hud/vue、src/core 零渲染依赖；README 三份（core/world/hud）落地并引用 REFACTOR_PLAN_V3.md；D1-D6 决策核对完毕；tag v3.0 落地。遗留 backlog：mission.complete 回报链路、Notice source 标记、演示单位接 gateway、养成感曲线设计。"
+          }
+        ]
       }
     },
     {

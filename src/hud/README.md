@@ -6,8 +6,8 @@ DOM-layer shell for V3. Zero framework deps: vanilla Custom Elements + Shadow DO
 - Import from `core/` (bus, types) via `bridge/bus-adapter.ts` only.
 - Reference CSS variables `--srf-*` defined by `theme/tokens-*.css`.
 
-## Forbidden
-- `import` from `world/`, `stratix-rts/`, Vue/React/Pinia.
+## Forbidden（铁律 — `docs/REFACTOR_PLAN_V3.md` §1、§3）
+- `import` from `world/`、`stratix-rts/`、Vue/React/Pinia；任何渲染库或业务决策。
 - Hard-coded color / font / border / radius literals in components.
 - Bypass `bus-adapter.ts` to emit commands or subscribe to state directly.
 
