@@ -25,7 +25,8 @@ export interface CoreStore {
 /** 初始状态：空世界。字段名与契约一一对应，便于 bridge 直接整体替换。 */
 export function createInitialState(): WorldState {
   const selection: SelectionState = { unitIds: [], previewUnitIds: [], revision: 0 };
-  return { units: [], missions: [], selection, characters: [], notices: [] };
+  // links / messages（@since v3.1）由 core/agent-link 投影写入，这里只是空数组起点
+  return { units: [], missions: [], selection, characters: [], notices: [], links: [], messages: [] };
 }
 
 /** 剔除已过期通知，并按时间倒序截断到 MAX_NOTICES（每次写入都做，队列长度天然有界）。 */

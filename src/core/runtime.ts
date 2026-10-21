@@ -10,9 +10,16 @@
  *   2. 持有第二份状态 —— 业务真相只在 store，本文件只做「事件 → 状态机 → store」的三段翻译；
  *   3. 静默吞掉看不懂的事件 —— 未落地的命令/事件一律转交 onUnhandled，dev 入口用它打观测面板；
  *   4. 一次用户操作打多次 state —— 动作 + 对账合并在同一次 setState 里（perf：广播有成本）；
- *   5. 在这里算坐标 —— core 不持有单位位置，框选命中判定在 world/objects/unit-registry.ts。
+ *   5. 在这里算坐标 —— core 不持有单位位置，框选命中判定在 world/objects/unit-registry.ts；
+ *   6. 在这里 emitState 之外再开广播口 —— state 通道的唯一出口就是本文件的 store 订阅，
+ *      子模块（agent-link）只写 store，由本文件统一广播，避免一次变更广播两遍。
+ *
+ * @since v3.1 外部 agent 连接（core/agent-link）接入：manager 注入本运行时后，
+ *   link.open / link.resume / link.reconnect / link.close 与 chat.send 由 manager 消费；
+ *   未注入 manager 时这些命令照旧走 onUnhandled（默认单例行为不变，单测基线不破）。
  */
 
+import type { AgentLinkManager } from './agent-link';
 import { emitState, onCommand, onWorldEvent, type Unsubscribe } from './bus';
 import type { CoreStore } from './store';
 import { worldStore } from './store';
@@ -26,6 +33,12 @@ export type UnhandledChannel = 'command' | 'world';
 export interface CoreRuntimeOptions {
   /** 状态持有者；默认用 store.ts 的 worldStore 单例（两侧共用同一份世界态）。 */
   readonly store?: CoreStore;
+  /**
+   * 外部 agent 连接管理器（@since v3.1）。
+   * why 是"注入"而不是内部 new：构造它需要 transport（真实 IO 依赖），而 runtime 必须保持零 IO；
+   * 注入后由本运行时负责随 start/stop 一起起停，卸载时连接一并关闭（资源必须可清理）。
+   */
+  readonly agentLink?: AgentLinkManager;
   /**
    * 尚未实现的命令 / 事件出口。
    * why 需要它：契约已冻结（§5），Phase 2 的 mission.* / chat.send / ui.navigate 等还没落地，
@@ -66,7 +79,26 @@ function applySelection(store: CoreStore, action: SelectionAction): void {
 
 export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime {
   const store = options.store ?? worldStore;
+  const agentLink = options.agentLink;
   const reportUnhandled = options.onUnhandled ?? ((): void => { /* 默认不打扰；dev 入口与单测会注入 */ });
+
+  /**
+   * @since v3.1 这五条命令由 agent-link 消费（它自己订阅同一通道）。
+   * runtime 这里**不转发**——转发会让同一命令被处理两次（重复建链、重复发消息）。
+   * 识别出来只为把它们从 unhandled 里摘掉；未注入 manager 时它们仍按未落地处理。
+   */
+  const isAgentLinkCommand = (command: HudCommand): boolean => {
+    switch (command.type) {
+      case 'link.open':
+      case 'link.resume':
+      case 'link.reconnect':
+      case 'link.close':
+      case 'chat.send':
+        return agentLink !== undefined;
+      default:
+        return false;
+    }
+  };
 
   const handleCommand = (command: HudCommand): void => {
     switch (command.type) {
@@ -75,8 +107,9 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         applySelection(store, { type: command.mode, unitIds: command.unitIds });
         return;
       default:
+        if (isAgentLinkCommand(command)) return; // agent-link 已订阅处理
         // TODO(v3.Phase2): mission.assign / mission.confirm / character.persona.update /
-        //                 chat.send / ui.navigate / theme.set（theme.set 由 hud bridge 本地消费，
+        //                 ui.navigate / theme.set（theme.set 由 hud bridge 本地消费，
         //                 core 侧只记账，记账形态定了再落这里）
         reportUnhandled('command', command);
     }
@@ -107,8 +140,11 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         onCommand(handleCommand),
         onWorldEvent(handleWorldEvent),
       ];
+      // @since v3.1 agent-link 与总线同生共死：连接是外部资源，运行时停了就必须关（资源必须可清理）
+      const stopAgentLink = agentLink?.start();
       stop = () => {
         offs.forEach((off) => off());
+        stopAgentLink?.();
         stop = null;
       };
     }

@@ -29,6 +29,18 @@ export const MAX_NOTICES = 50;
 /** 选择集上限。全选/框选时按数组顺序保留前 N 个，避免超大编组拖垮状态广播与渲染。 */
 export const MAX_SELECTION_SIZE = 256;
 
+/**
+ * @since v3.1 外部 agent 会话数上限。core/agent-link 建立会话时硬性拒绝超额请求
+ * （对齐 stratix-gateway 的 MAX_PROXIES=100 收紧到本地工作台量级）。
+ */
+export const MAX_AGENT_LINKS = 16;
+
+/** @since v3.1 会话消息保留上限（全局）。聊天抽屉只渲染最近的这些，历史不回放。 */
+export const MAX_AGENT_MESSAGES = 200;
+
+/** @since v3.1 单个会话的消息保留上限。多会话并行时防止一个 agent 挤掉其他 agent 的上下文。 */
+export const MAX_AGENT_MESSAGES_PER_LINK = 100;
+
 // ============================================================================
 // 基础形状（core 自定义，与渲染引擎解耦）
 // ============================================================================
@@ -135,6 +147,57 @@ export interface Notice {
 }
 
 // ============================================================================
+// 外部 agent 连接（@since v3.1 —— core/agent-link 的状态投影，状态机实现在 core/agent-link/）
+// ============================================================================
+
+/**
+ * 会话相位。与 gateway 侧词表对齐但更细一档：handshake 期间（已开通道、尚未 hello-ok）
+ * 对 HUD 显式可见，避免"卡在 connecting 不知道卡在哪"。
+ * 状态迁移规则见 core/agent-link/session.ts，本文件只冻结相位取值。
+ */
+export type AgentLinkPhase =
+  | 'idle'
+  | 'connecting'
+  | 'connected'
+  | 'reconnecting'
+  | 'closing'
+  | 'closed'
+  | 'error';
+
+/**
+ * 外部 agent 种类。'custom' 是前两者都不适用时的兜底：协议仍是同一条网关协议，
+ * 只是不再对上游 agent 的语义做归一（事件原样透传为 raw 事件）。
+ */
+export type AgentLinkKind = 'openclaw' | 'claude-code' | 'custom';
+
+/** 会话在 HUD 侧可见的投影。**刻意不含传输细节**（URL、token、socket 实例一律不进状态）。 */
+export interface AgentLinkView {
+  readonly id: string;
+  readonly kind: AgentLinkKind;
+  readonly displayName: string;
+  readonly phase: AgentLinkPhase;
+  readonly phaseReason: string | null;
+  /** 远端 agent 标识；握手中拿到才有。用于把远端状态回写到同 id 的 UnitView。 */
+  readonly agentId: string | null;
+  /** 会话键（sessionKey）。**恢复会话靠它**：重连后带上同一个 key 即接上原来的上下文。 */
+  readonly sessionId: string | null;
+  /** 已脱敏的端点（query 串替换为 ***）。仅供人辨认连接目标，不回显凭据。 */
+  readonly endpoint: string;
+  readonly connectedAt: number | null;
+  readonly lastError: string | null;
+}
+
+/** 会话内的一条消息。inbound = 远端 agent 说的，outbound = 本端发出的。 */
+export interface AgentMessageView {
+  readonly id: string;
+  readonly linkId: string;
+  readonly direction: 'inbound' | 'outbound';
+  readonly author: string;
+  readonly text: string;
+  readonly at: number;
+}
+
+// ============================================================================
 // ★ 总线契约：core → 两层广播的完整世界快照
 // ============================================================================
 
@@ -144,22 +207,55 @@ export interface WorldState {
   selection: SelectionState; // 当前选择集（编组 = 多选集合）
   characters: CharacterView[]; // 角色档案 + 成长数值（level/exp）
   notices: Notice[]; // 待 HUD 提示的事件（自动过期）
+  /** @since v3.1 外部 agent 会话投影（core/agent-link 写入），上限 MAX_AGENT_LINKS。 */
+  links: AgentLinkView[];
+  /** @since v3.1 会话消息流（供 hud/panels/chat-drawer），上限 MAX_AGENT_MESSAGES。 */
+  messages: AgentMessageView[];
 }
 
 // ============================================================================
 // ★ 总线契约：hud → core 的命令（单向，HUD 不发任何"事件"）
 // ============================================================================
 
-export type ScreenId = 'main' | 'settings' | 'character';
+export type ScreenId =
+  | 'main'
+  | 'settings'
+  | 'character'
+  /**
+   * @since v3.1 聊天屏位。聊天以抽屉形态挂在主屏上、不占独立屏位，但 HUD 侧仍需要一条
+   *   可派发命令来表达「打开聊天」（旧 CommandPanel 的首要动作），故纳入 ScreenId：
+   *   core 侧把它解释为"打开聊天抽屉"，而不是跳转到另一个屏。
+   */
+  | 'chat';
 
 export type HudCommand =
   | { type: 'unit.select'; unitIds: string[]; mode: 'set' | 'toggle' }
   | { type: 'mission.assign'; missionId: string; unitIds: string[] }
   | { type: 'mission.confirm'; missionId: string; decision: ConfirmDecision }
+  /**
+   * @since v3.1 任务创建。why 补这条：mission.assign 只认**已存在**的 missionId，
+   *   而「发起任务」是 HUD 的首要动作，必须能从 HUD 直接开出一条新任务。
+   *   unitIds 为空表示"待指派"的草稿任务（先立任务、后选人），非空表示直接指派给这些单位。
+   */
+  | { type: 'mission.create'; title: string; unitIds: string[] }
+  /**
+   * @since v3.1 任务取消。契约里 MissionPhase 早已冻结了 'cancelled' 相位，
+   *   却没有任何命令能到达它（旧 UI 的「停止」语义落在这条上），这里把缺口补齐。
+   */
+  | { type: 'mission.cancel'; missionId: string }
   | { type: 'character.persona.update'; characterId: string; prompt: string }
-  | { type: 'chat.send'; text: string }
+  /**
+   * @since v3.1 新增可选 linkId：缺省表示"投给当前唯一的已连接会话"；
+   * 会话不唯一时不猜，走 onUnhandled 上报（宁可让调用方显式指定，也不投错 agent）。
+   */
+  | { type: 'chat.send'; text: string; linkId?: string }
   | { type: 'ui.navigate'; screen: ScreenId }
-  | { type: 'theme.set'; themeId: 'default' | 'pixel' };
+  | { type: 'theme.set'; themeId: 'default' | 'pixel' }
+  // @since v3.1 外部 agent 会话生命周期（core/agent-link 消费，见 §2 目录职责）
+  | { type: 'link.open'; kind: AgentLinkKind; endpoint: string; displayName?: string; apiKey?: string }
+  | { type: 'link.resume'; linkId: string }
+  | { type: 'link.reconnect'; linkId: string }
+  | { type: 'link.close'; linkId: string };
 
 // ============================================================================
 // ★ 总线契约：world → core 的交互事件（单向，world 不直接改 HUD）
