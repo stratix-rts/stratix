@@ -73,7 +73,7 @@ $ npx jest --silent --maxWorkers=2
 Test Suites: 108 passed, 108 total
 Tests:       6 skipped, 2439 passed, 2445 total
 Snapshots:   0 total
-Time:        21.867 s
+Time:        20.847 s
 
 $ npm run build
 > stratix@0.1.0 build
@@ -83,10 +83,13 @@ $ npm run build
 > stratix@0.1.0 build:frontend
 > vite build
 ✓ 70 modules transformed.
-dist/frontend/assets/main-JjhOq4dn.js      181.71 kB │ gzip:  49.22 kB
+dist/frontend/assets/main-XuvOwtbL.js      181.83 kB │ gzip:  49.25 kB
 dist/frontend/assets/phaser-DaAX4wSk.js  1,208.13 kB │ gzip: 332.21 kB
-✓ built in 2m 4s
+✓ built in 1m 44s
 ```
+
+（上面这份是**最终提交代码**（含销毁竞态修复）上重跑的结果；首次跑出来的主包 hash 是
+`main-JjhOq4dn.js`，差异只来自那处 `destroyed` 标志的补充改动。）
 
 新增测试：
 - `src/world/__tests__/unit-sprite-sheet.test.ts` —— 纯几何/命名（纹理 key、帧名、帧序、行数、动画参数有界、"要不要形象精灵"判定）；
@@ -140,7 +143,7 @@ $ npx eslint --cache=false <本次改动的 11 个源文件>
 
 **未尽事项（非本任务范围，仅记录）**：
 - 角色档案目前只落在 `WorldState.characters`（core store，会话内），刷新页面后角色与战场单位都不在了 —— 是 v3 core 的会话级设计（"落库"指写入 store），不是 task_029 引入的。
-- `shadow` 素材没有 `idle` 动画目录（只有 `walk` 等）：预览走 idle 时影子层会被跳过并打一条 warn，不影响画面。战场用 walk，影子正常。
+- `shadow` 素材只有 `walk` / `shoot` / `spellcast` 等动画目录，**没有 `idle`** —— 预览与战场都用 `walk`（`DEFAULT_ANIMATION = 'walk'`），所以影子层正常合成；将来若改走 idle，影子层会被跳过（只是少一层影子，不影响画面）。
 
 ### 验证结果
 
