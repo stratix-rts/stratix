@@ -35,6 +35,7 @@
     "tailscale:test": "tsx src/stratix-tailscale/test-embedded.ts",
     "tailscale:login": "tsx src/stratix-tailscale/interactive-login.ts",
     "smoke:agent-link": "tsx scripts/smoke-agent-link.ts",
+    "smoke:cli-transport": "tsx scripts/smoke-cli-transport.ts",
     "detect:agents": "tsx scripts/detect-agents.ts",
     "nocodb:build": "cd vendor/nocodb && pnpm install && pnpm -r build --filter=nocodb",
     "nocodb:start": "node vendor/nocodb/packages/nocodb/dist/bundle.js",
