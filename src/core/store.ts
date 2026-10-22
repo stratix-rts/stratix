@@ -13,6 +13,7 @@ import {
   DEFAULT_SETTINGS,
   MAX_NOTICES,
   type BooleanPreferenceKey,
+  type DetectedAgent,
   type Notice,
   type ScreenId,
   type SelectionState,
@@ -42,6 +43,15 @@ export interface CoreStore {
    * 与 setPreference 同一口径 —— 都是"换一个字段"，由 store 统一承担"是否广播"。
    */
   setCurrentScreen(screen: ScreenId | null): WorldState;
+  /**
+   * @since v3.8 写本地 CLI agent 检测结果（WorldState.detectedAgents 的落库入口）。
+   * 语义：**整份替换**（调用方给的是当前快照，不是增量补丁）——
+   *   检测是「逐条到达」的，但状态里只留一份当前快照，读取方不必自己拼（拼两份就成两份真相）。
+   * 写入方：app/services/agent-detector 的结果经 IPC 到达渲染层后，由 app/main/main-entry.ts 调用。
+   * 无实质变化就**原样返回同一引用** → 不广播（与 setPreference / setCurrentScreen 同一口径：
+   *   重复扫描出同样结果时不该把两侧无谓地重渲染一遍）。
+   */
+  setDetectedAgents(agents: readonly DetectedAgent[]): WorldState;
 }
 
 /** 初始状态：空世界。字段名与契约一一对应，便于 bridge 直接整体替换。 */
@@ -58,6 +68,8 @@ export function createInitialState(): WorldState {
     links: [],
     messages: [],
     settings: DEFAULT_SETTINGS,
+    // detectedAgents（@since v3.8）：本地 CLI agent 检测结果，空数组即「尚未检测」
+    detectedAgents: [],
   };
 }
 
@@ -96,6 +108,28 @@ export function applyCurrentScreen(
 /** 剔除已过期通知，并按时间倒序截断到 MAX_NOTICES（每次写入都做，队列长度天然有界）。 */
 function pruneNotices(notices: readonly Notice[], now: number): Notice[] {
   return notices.filter((n) => n.expiresAt > now).slice(0, MAX_NOTICES);
+}
+
+/**
+ * 检测结果逐项比较（@since v3.8）—— 判断「这次扫描的结果与上次是否实质相同」。
+ * why 要内容比较而不是引用比较：IPC 每次推送的都是新数组（引用必不同），
+ * 若按引用判会每次重扫都广播一遍，两侧白白重渲染（与 setPreference 的「引用未变即不广播」同一目的，
+ * 只是这里的数组是**新引用但同内容**）。
+ */
+function sameDetectedAgents(a: readonly DetectedAgent[], b: readonly DetectedAgent[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((agent, i) => {
+    const other = b[i];
+    return (
+      other !== undefined &&
+      agent.kind === other.kind &&
+      agent.tier === other.tier &&
+      agent.installed === other.installed &&
+      agent.status === other.status &&
+      agent.version === other.version &&
+      agent.path === other.path
+    );
+  });
 }
 
 export function createStore(initial?: Partial<WorldState>): CoreStore {
@@ -145,6 +179,13 @@ export function createStore(initial?: Partial<WorldState>): CoreStore {
       const next = applyCurrentScreen(state.currentScreen, screen);
       if (next === state.currentScreen) return state;
       return notify({ ...state, currentScreen: next });
+    },
+
+    // @since v3.8 本地 CLI agent 检测结果：整份替换；内容没变就不广播（同上口径）。
+    setDetectedAgents: (agents) => {
+      const current = state.detectedAgents ?? [];
+      if (sameDetectedAgents(current, agents)) return state;
+      return notify({ ...state, detectedAgents: [...agents] });
     },
   };
 

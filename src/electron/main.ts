@@ -15,6 +15,13 @@ import { app, BrowserWindow, ipcMain, safeStorage, dialog } from 'electron';
 import { ensureDirSync } from 'fs-extra';
 
 import { entryHtmlPath, isRetiredLegacyFlagSet } from '../app/entry-paths';
+import {
+  detectAllAgents,
+  mergeDetectedAgents,
+  verifyAgentRoster,
+} from '../app/services/agent-detector';
+import { createNodeExec } from '../app/services/node-exec';
+import type { DetectedAgent } from '../core/types';
 import { dataStoreService } from '../stratix-gateway/dataStoreService';
 import { WebSocketOpenClawAdapter } from '../stratix-openclaw-adapter/WebSocketOpenClawAdapter';
 import { EmbeddedTailscale } from '../stratix-tailscale/EmbeddedTailscale';
@@ -30,6 +37,12 @@ const DEV_PORTS = [7523, 7524, 7525, 7526, 7527, 7528, 7529, 7530] as const;
 
 // Backend server port (standalone backend started by electron:dev)
 const BACKEND_PORT = 7524;
+
+// ==================== 本地 CLI agent 检测（task_022） ====================
+// 状态放主进程：只有 Node 侧能 spawn 子进程（渲染进程没有 child_process）。
+// 检测结果经 IPC 交给渲染层并入 WorldState.detectedAgents（广播出口仍是 core/runtime.ts 的 store 订阅）。
+let detectedAgents: DetectedAgent[] = [];
+let detectionAbort: AbortController | null = null;
 
 // Helper function for safe JSON parsing
 function safeParseJson<T>(data: string, fallback: T): T {
@@ -156,9 +169,46 @@ function createWindow() {
 }
 
 /**
+ * 启动本地 CLI agent 检测（task_022）。
+ *
+ * why 放主进程：只有 Node 侧能 spawn 子进程（渲染进程没有 child_process，且 nodeIntegration 关闭）。
+ * 不阻塞启动：整轮探测是异步的，窗口照常加载；每探测完一项就把当前快照推给渲染层（渐进展示）。
+ * 取消：退出前 abort（外层不再开始下一项；正在跑的那条由它自己的 10s 超时兜底）。
+ */
+function startAgentDetection(): void {
+  const roster = verifyAgentRoster();
+  if (!roster.ok) {
+    console.error('[AgentDetector] 名单自检未通过：', roster.problems.join('；'));
+  }
+  detectionAbort = new AbortController();
+  const execFn = createNodeExec();
+  void detectAllAgents({
+    execFn,
+    signal: detectionAbort.signal,
+    logger: (line) => console.log(line),
+    onResult: (result) => {
+      detectedAgents = mergeDetectedAgents(detectedAgents, result);
+      broadcastDetectedAgents();
+    },
+  }).catch((error) => {
+    console.error('[AgentDetector] 探测失败', error);
+  });
+}
+
+/** 把当前检测快照推给渲染层（渲染层并入 core 状态，由 core 广播 WorldState）。 */
+function broadcastDetectedAgents(): void {
+  if (!mainWindow) return;
+  mainWindow.webContents.send('agent:detected:update', detectedAgents);
+}
+
+/**
  * 设置 IPC 处理程序
  */
 function setupIPC() {
+  // ==================== 本地 CLI agent 检测 IPC ====================
+  // 渲染层启动时拉一次快照（补上「订阅之前就检测完」的那部分），之后靠推送更新。
+  ipcMain.handle('agent:detected:snapshot', async () => detectedAgents);
+
   // ==================== Dialog IPC ====================
   ipcMain.handle('dialog:openDirectory', async () => {
     const result = await dialog.showOpenDialog(mainWindow!, {
@@ -522,6 +572,8 @@ app.whenReady().then(async () => {
     await initializeServices();
     setupIPC();
     createWindow();
+    // 检测放在最后：窗口先建好，探测结果才有地方推（推不出去的快照由渲染层启动时拉取补上）。
+    startAgentDetection();
   } catch (error) {
     console.error('[Electron] Failed to start:', error);
     app.quit();
@@ -549,6 +601,10 @@ app.on('window-all-closed', () => {
  */
 app.on('before-quit', () => {
   console.log('[Electron] Shutting down...');
+
+  // 停止本地 agent 检测（不再开始下一项；正在跑的那条由它自己的超时兜底）
+  detectionAbort?.abort();
+  detectionAbort = null;
 
   // 停止 Tailscale
   tailscale?.stop().catch((err) => console.error('[Electron] Tailscale stop failed:', err));

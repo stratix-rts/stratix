@@ -7,6 +7,8 @@
 
 import { contextBridge, ipcRenderer } from 'electron';
 
+import type { DetectedAgent } from '../core/types';
+
 export interface ElectronAPI {
   // 通用服务调用
   invoke: (channel: string, ...args: any[]) => Promise<any>;
@@ -81,6 +83,15 @@ export interface ElectronAPI {
     upload: (characterId: string, imageData: string, filename?: string) => Promise<{ success: boolean; data?: any; error?: string }>;
     check: (filePath: string) => Promise<{ exists: boolean; url?: string | null; size?: number; generatedAt?: number }>;
     delete: (filePath: string) => Promise<{ success: boolean; error?: string }>;
+  };
+
+  // 本地 CLI agent 检测（@since v3.8，task_022）
+  // 主进程探测 → 这里转给渲染层 → 渲染层并入 core 状态（WorldState.detectedAgents）。
+  agentDetection: {
+    /** 拉当前检测快照（渲染层启动时补上「订阅之前就检测完」的那部分）。 */
+    snapshot: () => Promise<DetectedAgent[]>;
+    /** 订阅检测更新（主进程每探测完一项推一次全量快照）；返回退订函数。 */
+    onUpdate: (callback: (agents: DetectedAgent[]) => void) => () => void;
   };
 
 }
@@ -165,6 +176,16 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('texture:upload', { characterId, imageData, filename }),
     check: (filePath) => ipcRenderer.invoke('texture:check', filePath),
     delete: (filePath) => ipcRenderer.invoke('texture:delete', filePath),
+  },
+
+  // 本地 CLI agent 检测（@since v3.8，task_022）
+  agentDetection: {
+    snapshot: () => ipcRenderer.invoke('agent:detected:snapshot'),
+    onUpdate: (callback) => {
+      const handler = (_event: Electron.IpcRendererEvent, agents: DetectedAgent[]) => callback(agents);
+      ipcRenderer.on('agent:detected:update', handler);
+      return () => ipcRenderer.off('agent:detected:update', handler);
+    },
   },
 
 };

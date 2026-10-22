@@ -25,7 +25,7 @@ import Phaser from 'phaser';
 import { emitCommand, emitState, onState } from '../../core/bus';
 import { createCoreRuntime, type UnhandledChannel } from '../../core/runtime';
 import { worldStore } from '../../core/store';
-import type { HudCommand, WorldEvent } from '../../core/types';
+import type { DetectedAgent, HudCommand, WorldEvent } from '../../core/types';
 import { createHudBusAdapter } from '../../hud/bridge/bus-adapter';
 import { createMainScreen } from '../../hud/screens/main-screen';
 import { createThemeController } from '../../hud/theme/theme-controller';
@@ -38,6 +38,55 @@ function must<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
   if (!el) throw new Error(`main-entry: #${id} not found`);
   return el as T;
+}
+
+/**
+ * preload 暴露的检测接口（形状取自 src/electron/preload.ts 的 agentDetection）。
+ * why 这里自己声明一份而不是 import preload 的类型：preload 依赖 electron 模块，
+ * 渲染层 bundle 里不能有它（import type 虽会被擦除，但形状重复一份反而更清楚 —— 两边本就该解耦）。
+ */
+interface AgentDetectionApi {
+  readonly snapshot?: () => Promise<DetectedAgent[]>;
+  readonly onUpdate?: (callback: (agents: DetectedAgent[]) => void) => () => void;
+}
+
+/** 取 preload 上的检测接口；非 Electron 环境（纯 vite dev）没有它，返回 null。 */
+function agentDetectionApi(): AgentDetectionApi | null {
+  const api = (window as unknown as { electronAPI?: { agentDetection?: AgentDetectionApi } }).electronAPI;
+  return api?.agentDetection ?? null;
+}
+
+/**
+ * 订阅本地 CLI agent 检测结果并入 core 状态（@since v3.8，task_022）。
+ *
+ * 数据流：Electron 主进程探测（Node 侧才有 child_process）→ IPC 推送 → 这里写 store
+ *   → core/runtime.ts 的 store 订阅广播 WorldState.detectedAgents → hud 读取。
+ * 本文件只做「搬运 + 落库」，不碰探测逻辑（那是 app/services/agent-detector 的职责）。
+ *
+ * why **先订阅、后拉快照**：反过来（先拉后订阅）的话，"拉快照那一刻到订阅生效那一刻"之间
+ *   到达的推送会永久丢失 —— 那一项就再也不会出现在状态里。
+ * 返回退订函数（资源必须可清理）：页面卸载时调用。
+ */
+function subscribeDetectedAgents(): () => void {
+  const api = agentDetectionApi();
+  if (!api) return () => {};
+
+  const unsubscribe = api.onUpdate?.((agents) => {
+    worldStore.setDetectedAgents(agents);
+  });
+
+  // 快照是补充，不是替代：订阅已经覆盖后续推送，快照只补上"订阅之前就检测完"的那部分。
+  void api
+    .snapshot?.()
+    .then((agents) => {
+      worldStore.setDetectedAgents(agents);
+    })
+    .catch((error) => {
+      // 拉不到快照不是故障：订阅还在，等下一次推送即可（不打断启动）。
+      console.warn('[Stratix] 检测快照拉取失败，等待后续推送', error);
+    });
+
+  return () => unsubscribe?.();
 }
 
 /** 装配失败时的兜底提示（空白页无法诊断）。正式入口没有 dev 观测面板，只能就地报错。 */
@@ -86,6 +135,10 @@ function boot(): void {
   });
   const stopRuntime = runtime.start();
 
+  // ===== 本地 CLI agent 检测（@since v3.8）=====
+  // 主进程探测 → IPC → 这里并入 core 状态 → runtime 的 store 订阅广播给 hud。
+  const stopAgentDetection = subscribeDetectedAgents();
+
   /**
    * 首帧后补发一次当前 WorldState。
    * why 必须等 POST_RENDER：Phaser 第一个 step 里先 boot 场景（跑完 create，桥接层此时才订阅好），
@@ -101,6 +154,7 @@ function boot(): void {
   window.addEventListener(
     'pagehide',
     () => {
+      stopAgentDetection();
       stopRuntime();
       unmountAdapter();
       unmountScreen();

@@ -5,7 +5,14 @@
 
 import { emitCommand, emitState, emitWorldEvent, onCommand, onState, onWorldEvent, resetBus } from '../bus';
 import { createStore } from '../store';
-import { MAX_NOTICES, NOTICE_TTL_MS, type HudCommand, type Notice, type WorldEvent } from '../types';
+import {
+  MAX_NOTICES,
+  NOTICE_TTL_MS,
+  type DetectedAgent,
+  type HudCommand,
+  type Notice,
+  type WorldEvent,
+} from '../types';
 
 const notice = (id: string, ttlMs: number, at: number): Notice => ({
   id,
@@ -136,6 +143,63 @@ describe('createStore', () => {
 
       expect(broadcasts).toBe(0);
       expect(next.currentScreen).toBeUndefined();
+    });
+  });
+
+  describe('setDetectedAgents（@since v3.8，本地 CLI agent 检测结果落库入口）', () => {
+    const detected = (kind: 'claude-code' | 'codex'): DetectedAgent => ({
+      kind,
+      tier: 'T1',
+      installed: true,
+      status: 'installed',
+      version: '1.2.3',
+      path: `/usr/local/bin/${kind}`,
+    });
+
+    test('写入后状态里带 detectedAgents（随下一次广播全量下发）', () => {
+      const store = createStore();
+      let broadcasts = 0;
+      store.subscribe(() => { broadcasts += 1; });
+
+      const next = store.setDetectedAgents([detected('claude-code')]);
+
+      expect(broadcasts).toBe(1);
+      expect(next.detectedAgents).toHaveLength(1);
+      expect(next.detectedAgents?.[0]?.kind).toBe('claude-code');
+      expect(store.getState().detectedAgents).toHaveLength(1);
+    });
+
+    test('整份替换语义：新快照覆盖旧快照，不做增量合并', () => {
+      const store = createStore();
+      store.setDetectedAgents([detected('claude-code'), detected('codex')]);
+
+      const next = store.setDetectedAgents([detected('codex')]);
+
+      expect(next.detectedAgents).toHaveLength(1);
+      expect(next.detectedAgents?.[0]?.kind).toBe('codex');
+    });
+
+    test('同内容重复写入不广播（重复扫描不该把两侧白白重渲染一遍）', () => {
+      const store = createStore();
+      store.setDetectedAgents([detected('claude-code')]);
+      let broadcasts = 0;
+      store.subscribe(() => { broadcasts += 1; });
+
+      const next = store.setDetectedAgents([detected('claude-code')]);
+
+      expect(broadcasts).toBe(0);
+      expect(next).toBe(store.getState());
+    });
+
+    test('内容变了就广播（版本更新也算变化）', () => {
+      const store = createStore();
+      store.setDetectedAgents([detected('claude-code')]);
+      let broadcasts = 0;
+      store.subscribe(() => { broadcasts += 1; });
+
+      store.setDetectedAgents([{ ...detected('claude-code'), version: '1.2.4' }]);
+
+      expect(broadcasts).toBe(1);
     });
   });
 });

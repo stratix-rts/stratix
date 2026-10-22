@@ -298,6 +298,81 @@ export interface CharacterView {
 }
 
 // ============================================================================
+// 本地 CLI agent 检测（@since v3.8 —— app/services/agent-detector 的契约面）
+// ============================================================================
+
+/**
+ * @since v3.8 本地 CLI agent 的**探测分层**。取值来源：docs/AGENT-MATRIX.md。
+ *   - T1：深度适配（流式 + 会话恢复 + 结构化输出）；
+ *   - T2：基础适配（headless 可用，会话 / 结构化能力有限）；
+ *   - T3：仅探测注册（首启引导展示「即将支持」）。
+ * 词表即契约：检测器按此分层产出，首启引导按此排序展示 —— 两边不许各写一份分层。
+ */
+export type AgentDetectionTier = 'T1' | 'T2' | 'T3';
+
+/**
+ * @since v3.8 **可检测**的本地 CLI agent 词表（T1-T3 全量 11 种）。
+ * why 与 AgentKind 分开成两份词表：AgentKind 是「角色**已绑定**的 agent 种类」
+ *   （目前只有 T1 的 5 种，见 core/character/profile.ts 的建档校验），
+ *   而检测词表覆盖 T1-T3 全量 —— 「探测到但还不能绑定」的 agent（T2/T3）得有地方安放，
+ *   硬塞进 AgentKind 会让建档校验放行一批尚无适配实现的种类。
+ * 两份词表是**包含关系**（AgentKind ⊂ DetectableAgentKind），不是同一份清单。
+ */
+export const DETECTABLE_AGENT_KINDS = [
+  // T1 —— 深度适配
+  'claude-code',
+  'codex',
+  'opencode',
+  'kimi',
+  'openclaw',
+  // T2 —— 基础适配
+  'gemini',
+  'qwen',
+  'crush',
+  'goose',
+  // T3 —— 仅探测注册
+  'aider',
+  'copilot',
+] as const;
+
+/** @since v3.8 可检测 agent 种类的类型（DETECTABLE_AGENT_KINDS 的元素类型）。 */
+export type DetectableAgentKind = (typeof DETECTABLE_AGENT_KINDS)[number];
+
+/**
+ * @since v3.8 单项探测的结论。
+ *   - 'installed'     ：which 找到了二进制（版本命令可能仍失败 —— 此时 version 允许为 null）；
+ *   - 'not-installed' ：which **确定**没找到二进制（这是「确定没装」，不是「没探测出来」）；
+ *   - 'timeout'       ：探测超时，安装状态**未确认**；
+ *   - 'failed'        ：执行出错（命令抛异常等），同样未确认。
+ */
+export type AgentDetectionStatus = 'installed' | 'not-installed' | 'timeout' | 'failed';
+
+/**
+ * @since v3.8 单个本地 CLI agent 的检测结果。
+ * 由 app/services/agent-detector 产出，随 WorldState.detectedAgents 全量广播。
+ */
+export interface DetectedAgent {
+  /** agent 种类（DETECTABLE_AGENT_KINDS 内）。 */
+  readonly kind: DetectableAgentKind;
+  /** 探测分层（T1 / T2 / T3）。 */
+  readonly tier: AgentDetectionTier;
+  /**
+   * 是否**确认**已安装。
+   * why 与 status 分开两个字段：status 说的是「这次探测的结论」，installed 说的是「二进制的客观存在」。
+   * 二者只在 timeout / failed 时会不同 —— 例如 which 成功但 `--version` 卡住：
+   * 此时 status='timeout'（版本未知）而 installed=true（which 已确认路径）；
+   * 反过来 which 自己卡住时 installed=false，因为**未知不等于没装**。
+   */
+  readonly installed: boolean;
+  /** 本次探测的结论（见 AgentDetectionStatus）。 */
+  readonly status: AgentDetectionStatus;
+  /** 版本号（首个 semver 片段；取不到时为 null）。 */
+  readonly version: string | null;
+  /** 二进制路径（which 的输出；未确认时为 null）。 */
+  readonly path: string | null;
+}
+
+// ============================================================================
 // 通知
 // ============================================================================
 
@@ -408,6 +483,14 @@ export interface WorldState {
    * 与现有抽屉协议不符）。
    */
   currentScreen?: ScreenId;
+  /**
+   * @since v3.8 本地 CLI agent 检测结果（app/services/agent-detector 写入）。
+   * 刻意可选：与 settings / currentScreen 同理走可选增补 —— 契约增补不许打破既有
+   * WorldState 构造点（core / hud 单测夹具）的编译；读取方缺省时按「尚未检测」处理。
+   * 体积天然有界：名单是固定 11 项（DETECTABLE_AGENT_KINDS），逐条到达也只是覆盖同名项，
+   * 不存在无限增长（perf：全量广播的数据必须有界）。
+   */
+  detectedAgents?: DetectedAgent[];
 }
 
 // ============================================================================
