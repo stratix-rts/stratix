@@ -34,7 +34,12 @@ import { createThemeController } from '../../hud/theme/theme-controller';
 import defaultCss from '../../hud/theme/tokens-default.css?inline';
 import pixelCss from '../../hud/theme/tokens-pixel.css?inline';
 import { defineStratButton } from '../../hud/widgets/strat-button';
+import { PartRegistry } from '../../world/appearance/part-registry';
 import { BattlefieldScene } from '../../world/scenes/BattlefieldScene';
+
+import { createBrowserAppearanceEnvironment } from '../services/appearance-environment';
+import { createPhaserPreviewGame } from '../services/appearance-preview-game';
+import { createAppearancePreviewService } from '../services/appearance-preview-service';
 
 import { isOnboardingForced } from './dev-flags';
 import { createOnboardingHost } from './onboarding-host';
@@ -122,12 +127,25 @@ function boot(): void {
   const unmountScreen = screen.mount(hudRoot);
   const unmountAdapter = adapter.mount();
 
+  // ===== 形象预览（@since v3.10，task_028）=====
+  // 组合根是唯一能同时认识 hud 与 world 的地方：向导屏要 canvas 预览（hud），
+  // 合成器与素材注册表在 world/appearance —— 两侧都不许直接互认，故在这里接线。
+  // 素材元数据在后台加载（失败降级：向导照常能走完，只是没有随机形象可选）。
+  const appearanceEnv = createBrowserAppearanceEnvironment();
+  const appearancePreview = createAppearancePreviewService({
+    registry: new PartRegistry({ basePath: appearanceEnv.spritesheetBaseUrl }),
+    createCanvas: appearanceEnv.createCanvas,
+    createImage: appearanceEnv.createImage,
+    createGame: createPhaserPreviewGame,
+  });
+
   // ===== 首启向导覆盖层（@since v3.9，task_026）=====
   // 判定：还没有角色 且 探到 ≥1 个已装 agent（开发期 STRATIX_ONBOARDING_FORCE=1 每次都触发）。
   // 走完向导 → 角色落库 → 同一次广播里多出该角色的战场单位（core/character/unit-projection.ts）。
   const onboarding = createOnboardingHost({
     deps: adapter,
     host: onboardingHost,
+    appearance: appearancePreview,
     force: isOnboardingForced(),
     onComplete: () => {
       // 引导走完落在角色屏：用户第一眼看到自己刚建的角色（而不是空荡荡的主屏）。
@@ -185,6 +203,8 @@ function boot(): void {
     () => {
       stopOnboardingWatch();
       onboarding.dispose();
+      // 预览实例（Phaser）由向导屏在卸载时销毁；这里再兜一次底（向导没挂过时也不会有事）。
+      appearancePreview.destroy();
       stopAgentDetection();
       stopRuntime();
       unmountAdapter();

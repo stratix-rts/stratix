@@ -158,6 +158,7 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
           agentKind: command.agentKind,
           skinId: command.skinId,
           persona: command.persona,
+          appearance: command.appearance,
         });
         return;
       // @since v3.6 屏位路由：

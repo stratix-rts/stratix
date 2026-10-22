@@ -617,8 +617,17 @@ export type HudCommand =
    *   - skinId：皮肤资源键，**由调用方传入**（引导屏负责随机 / 换肤；core 不猜）；
    *   - persona：缺省或空串 → 套默认模板（**不拒发**：引导流程允许"先起名、回头再调人设"）。
    * 重复同名 → 拒发 + 错误 Notice（状态不变）；core 侧落库后由 WorldState.characters 全量广播。
+   * @since v3.10 追加 appearance：首启向导第②步选定的 LPC 形象（体型 + 部位变体）。
+   *   缺省 = 不带外观（老档案照旧合法）；给了就按 profile.ts 的外观校验逐项判，非法 → 拒发。
    */
-  | { type: 'character.create'; name: string; agentKind: AgentKind; skinId: string; persona?: string }
+  | {
+      type: 'character.create';
+      name: string;
+      agentKind: AgentKind;
+      skinId: string;
+      persona?: string;
+      appearance?: CharacterAppearance;
+    }
   /**
    * @since v3.1 新增可选 linkId：缺省表示"投给当前唯一的已连接会话"；
    * 会话不唯一时不猜，走 onUnhandled 上报（宁可让调用方显式指定，也不投错 agent）。

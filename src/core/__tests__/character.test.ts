@@ -929,6 +929,59 @@ describe('经总线集成：core 写库 → state 通道 → HUD 订阅侧', () 
     expect(store.getState().characters[0]?.persona).toBe(DEFAULT_PERSONA_TEMPLATE);
   });
 
+  test('character.create：带 appearance 的角色把外观落库（@since v3.10，task_028）', () => {
+    resetBus();
+    const store = createStore();
+    const runtime = createCoreRuntime({ store });
+    const stop = runtime.start();
+
+    emitCommand({
+      type: 'character.create',
+      name: 'Trinity',
+      agentKind: 'codex',
+      skinId: 'skin-default',
+      appearance: { bodyType: 'female', parts: { body: 'light', hair: 'blonde' } },
+    });
+    stop();
+
+    expect(store.getState().characters[0]?.appearance).toEqual({
+      bodyType: 'female',
+      parts: { body: 'light', hair: 'blonde' },
+    });
+  });
+
+  test('character.create：不带 appearance 的角色**没有**这个键（老档案形状不变）', () => {
+    resetBus();
+    const store = createStore();
+    const runtime = createCoreRuntime({ store });
+    const stop = runtime.start();
+
+    emitCommand({ type: 'character.create', name: 'Trinity', agentKind: 'codex', skinId: 'skin-default' });
+    stop();
+
+    expect(store.getState().characters[0]).not.toHaveProperty('appearance');
+  });
+
+  test('character.create：非法 appearance 被拒（不落库）', () => {
+    resetBus();
+    const store = createStore();
+    const runtime = createCoreRuntime({ store });
+    const stop = runtime.start();
+
+    emitCommand({
+      type: 'character.create',
+      name: 'Trinity',
+      agentKind: 'codex',
+      skinId: 'skin-default',
+      // 体型不在词表内 → core 拒发（宁可不建档，也不建个画不出来的角色）
+      appearance: { bodyType: 'giant', parts: {} },
+    } as never);
+    stop();
+
+    expect(store.getState().characters).toHaveLength(0);
+    expect(store.getState().notices[0]).toMatchObject({ level: 'warn', source: 'core/character' });
+  });
+
   test('character.create：重复同名经总线走 error Notice，characters 只有一份', () => {
     resetBus();
     const store = createStore();

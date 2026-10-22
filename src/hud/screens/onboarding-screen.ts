@@ -1,12 +1,14 @@
 /**
  * 文件职责：首启向导屏 Web Component（`<strat-onboarding-screen>`）—— 四步引导：
  *   ① 扫描报告（WorldState.detectedAgents：已装高亮 + tier 标签）
- *   ② 逐个已装 agent 起名 + 随机皮肤（可换）
+ *   ② 逐个已装 agent 起名 + 随机皮肤（可换）+ **形象预览（canvas 动画 + 随机形象 + 部件选择器）**
  *   ③ 人设生成（4 题问答拼装 persona 模板，预览可直接改）
- *   ④ 确认 → 逐个 character.create → 完成事件。
- *   来源：.long-run-agent/tasks/task_025.md「hud 首启向导屏」。
- *   依赖：task_022（detectedAgents）、task_021（character.create 建档口径）、task_024（皮肤库）。
- * 输入：注入的 HudBusAdapter（dispatch / subscribe 两个能力，与 screens / panels 同口径）；WorldState 快照。
+ *   ④ 确认 → 逐个 character.create（带 appearance）→ 完成事件。
+ *   来源：.long-run-agent/tasks/task_025.md「hud 首启向导屏」；第②步的形象能力见 task_028。
+ *   依赖：task_022（detectedAgents）、task_021（character.create 建档口径）、task_024（皮肤库）、
+ *   task_027（world/appearance 的 LPC 合成栈，**只经端口消费**）。
+ * 输入：注入的 HudBusAdapter（dispatch / subscribe 两个能力，与 screens / panels 同口径）；
+ *   WorldState 快照；注入的形象预览端口（AppearancePreviewPort）。
  * 输出：Shadow DOM 向导屏（覆盖层，z-index 50，与 main-screen 的 .hud-sub-screen 同规范）；
  *   交互 → HudCommand（character.create / ui.navigate）；完成 → 自定义 DOM 事件 `onboarding-complete`。
  * 禁止事项：
@@ -23,8 +25,16 @@
  *   - 扫描结果（core 广播）→ 扫描报告行；
  *   - 可建档名单（已装 ∩ AGENT_KINDS）→ 第二步的起名条目（名字默认取 agent 显示名）；
  *   - 皮肤由皮肤库抽签器给（可注入 skinSource，测试可确定性复现）；
+ *   - 形象由**注入的预览端口**给（随机形象 / 部件变体清单 / canvas 预览）——
+ *     屏不认识合成器与素材，只发意图（见 appearance-preview-port.ts）；
  *   - 问卷答案 → 人设模板（core 默认模板打底 + 各题 fragment），预览可改，改过之后不再被答案覆盖；
- *   - 确认页 → 逐条 character.create → 完成事件。
+ *   - 确认页 → 逐条 character.create（带 appearance）→ 完成事件。
+ *
+ * ★ 形象预览与"总线隔离"的关系（task_028 的核心约束）：
+ *   hud 不 import world，但第②步要显示真实角色长相。解法是**端口**：
+ *   屏只依赖 AppearancePreviewPort（纯接口），实现住在 app 层
+ *   （app/services/appearance-preview-service.ts，组合根 main-entry.ts 注入）。
+ *   于是：屏的单测注入桩即可（不碰真 canvas），真 canvas 的手测归 task_029。
  *
  * 挂载接线（@since v3.9，task_026 已接）：本屏只提供 mountOnboardingScreen 工厂，
  *   何时挂载由 app 层决定（app/main/onboarding-host.ts：WorldState.characters 为空
@@ -33,9 +43,14 @@
  */
 
 import { getSkin, randomSkin, resolveAccent, type SkinDefinition, type SkinId } from '../../core/theme/skin-registry';
-import type { AgentKind, WorldState } from '../../core/types';
+import type { AgentKind, CharacterAppearance, WorldState } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
 import { defineStratButton, escapeHtml, STRAT_BUTTON_TAG } from '../widgets/strat-button';
+
+import type {
+  AppearanceCategoryInfo,
+  AppearancePreviewPort,
+} from './appearance-preview-port';
 
 import {
   DETECTION_STATUS_LABELS,
@@ -79,6 +94,8 @@ export interface OnboardingCompleteDetail {
     readonly kind: AgentKind;
     readonly name: string;
     readonly skinId: SkinId;
+    /** 选定的形象（@since v3.10）；没选 → null。 */
+    readonly appearance: CharacterAppearance | null;
   }[];
 }
 
@@ -100,6 +117,8 @@ interface MutableIdentity {
   label: string;
   name: string;
   skinId: SkinId;
+  /** 选定的形象（@since v3.10）；null = 还没选（提交时不带 appearance）。 */
+  appearance: CharacterAppearance | null;
 }
 
 /** 自定义元素的对外形状（测试与挂载方按它断言）。 */
@@ -108,6 +127,11 @@ export interface StratOnboardingScreenElement extends HTMLElement {
   adapter: OnboardingScreenDeps | null;
   /** 皮肤抽签源；null = 走皮肤库默认抽签。 */
   skinSource: SkinSource | null;
+  /**
+   * 形象预览端口（@since v3.10）：null = 没接合成器（向导照常能走完，只是没有形象功能）。
+   * 注入即生效；断开连接（disconnectedCallback）时屏会 destroy 它 —— Phaser 实例的生命周期归屏。
+   */
+  appearancePort: AppearancePreviewPort | null;
   /** 强制重算重渲染。 */
   refresh(): void;
   /** 当前步骤。 */
@@ -120,6 +144,12 @@ export interface StratOnboardingScreenElement extends HTMLElement {
   readonly errors: Readonly<Record<string, string>>;
   /** 扫描报告行。 */
   readonly scanRows: readonly OnboardingScanRow[];
+  /** 某个 agent 选定的形象（没有 → null）。 */
+  appearanceOf(kind: string): CharacterAppearance | null;
+  /** 当前在预览区展示的是哪个 agent（null = 没有）。 */
+  readonly previewKind: string | null;
+  /** 给当前预览对象抽一套随机形象（端口没接 / 素材没就绪 → 不动）。 */
+  randomizeAppearance(): void;
   /** 前进一步（校验不通过则原地报错，不前进）。 */
   next(): void;
   /** 后退一步。 */
@@ -218,6 +248,8 @@ const ONBOARDING_STYLE = `
   }
   .identity-head { display: flex; align-items: center; gap: var(--srf-spacing-sm); flex-wrap: wrap; }
   .identity-label { font-weight: 600; }
+  /* 正在预览的那条：画布只有一块，得让人一眼看出在看谁。 */
+  .identity[data-preview="true"] { border-color: var(--srf-accent); }
   /* 徽标色走 token：皮肤库给的 accent 覆写 --srf-badge-accent，本文件不含色值字面量。 */
   .badge { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: var(--srf-badge-accent); }
   .skin-name { color: var(--srf-text-muted); font-size: var(--srf-font-size-sm); }
@@ -262,6 +294,33 @@ const ONBOARDING_STYLE = `
     background: var(--srf-panel);
     border-top: var(--srf-border-width) solid var(--srf-border);
   }
+  /* 形象预览（@since v3.10）：画布宿主 + 部件选择器 */
+  .canvas-slot { display: flex; justify-content: center; padding: var(--srf-spacing-sm); }
+  .canvas {
+    width: 128px;
+    height: 128px;
+    border: var(--srf-border-width) solid var(--srf-border);
+    border-radius: var(--srf-radius);
+    background: var(--srf-panel-elevated);
+    overflow: hidden;
+  }
+  .appearance-actions { display: flex; gap: var(--srf-spacing-sm); flex-wrap: wrap; }
+  .appearance-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: var(--srf-spacing-sm);
+  }
+  .field { display: grid; gap: var(--srf-spacing-xs); font-size: var(--srf-font-size-sm); }
+  .field-name { color: var(--srf-text-muted); }
+  .select {
+    background: var(--srf-bg);
+    color: var(--srf-text);
+    border: var(--srf-border-width) solid var(--srf-border);
+    border-radius: var(--srf-radius);
+    padding: var(--srf-spacing-xs) var(--srf-spacing-sm);
+    font-family: var(--srf-font-ui);
+    font-size: var(--srf-font-size-sm);
+  }
 `;
 
 /** 工厂：注册 `<strat-onboarding-screen>`。幂等（与 defineCharacterScreen 同一约定）。 */
@@ -274,6 +333,7 @@ export function defineOnboardingScreen(): typeof HTMLElement {
   class OnboardingScreen extends HTMLElement implements StratOnboardingScreenElement {
     private _adapter: OnboardingScreenDeps | null = null;
     private _skinSource: SkinSource | null = null;
+    private _appearancePort: AppearancePreviewPort | null = null;
     private _state: WorldState | null = null;
     private _unsubscribe: (() => void) | null = null;
     private _listenersBound = false;
@@ -291,6 +351,17 @@ export function defineOnboardingScreen(): typeof HTMLElement {
     private _submitted = false;
     /** 上次渲染时的扫描结果签名（避免无关广播反复重画扫描步）。 */
     private _lastScanSignature: string | null = null;
+    /**
+     * 预览区当前展示的是哪个 agent（@since v3.10）。
+     * why 需要它：起名清单可能有多个 agent，但画布只有一块 —— 得有个"正在看谁"的约定。
+     */
+    private _previewKind: string | null = null;
+    /**
+     * 预览画布的宿主元素（@since v3.10）。
+     * why 单独留着：Phaser 的 canvas 是它的子节点，重渲染时若换掉这个元素，
+     * 画布就跟着被摘掉（画面直接黑掉）。故重渲染时**搬走同一个元素**再放回去。
+     */
+    private _canvasHost: HTMLDivElement | null = null;
 
     get adapter(): OnboardingScreenDeps | null { return this._adapter; }
     set adapter(value: OnboardingScreenDeps | null) {
@@ -304,6 +375,17 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       this._skinSource = value;
     }
 
+    get appearancePort(): AppearancePreviewPort | null { return this._appearancePort; }
+    set appearancePort(value: AppearancePreviewPort | null) {
+      const previous = this._appearancePort;
+      this._appearancePort = value;
+      if (!this.isConnected) return;
+      // 换了端口：旧端口的预览实例（Phaser）得收掉 —— 两个实例抢同一块画布会互相覆盖。
+      if (previous && previous !== value) previous.destroy();
+      this.awaitAppearanceReady();
+      this.renderStep();
+    }
+
     get step(): OnboardingStep { return this._step; }
     get identities(): readonly OnboardingIdentity[] { return this._identities; }
     get persona(): string { return this._persona; }
@@ -311,6 +393,11 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       return Object.fromEntries(this._errors.entries());
     }
     get scanRows(): readonly OnboardingScanRow[] { return resolveScanRows(this._state); }
+    get previewKind(): string | null { return this._previewKind; }
+
+    appearanceOf(kind: string): CharacterAppearance | null {
+      return this._identities.find((item) => item.kind === kind)?.appearance ?? null;
+    }
 
     connectedCallback(): void {
       if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
@@ -318,11 +405,14 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       // 清签名强制首绘：挂载前 adapter setter 那次 refresh 已记过键，而那时还没有内容可画
       this._lastScanSignature = null;
       this.bindAdapter();
+      this.awaitAppearanceReady();
       this.refresh();
     }
 
     disconnectedCallback(): void {
       this.releaseAdapter();
+      // Phaser 实例的生命周期归屏：向导一关，预览就没用了 —— 立刻销毁（perf 硬约束）。
+      this._appearancePort?.destroy();
     }
 
     refresh(): void {
@@ -410,6 +500,7 @@ export function defineOnboardingScreen(): typeof HTMLElement {
         kind: identity.kind,
         name: identity.name,
         skinId: identity.skinId,
+        appearance: identity.appearance,
       }));
       for (const identity of this._identities) {
         this._adapter?.dispatch({
@@ -418,6 +509,8 @@ export function defineOnboardingScreen(): typeof HTMLElement {
           agentKind: identity.kind,
           skinId: identity.skinId,
           ...(persona.length > 0 ? { persona } : {}),
+          // 选过形象才带上 appearance（没选 → 字段缺省，老档案照旧合法）。
+          ...(identity.appearance ? { appearance: identity.appearance } : {}),
         });
       }
       this.dispatchEvent(new CustomEvent<OnboardingCompleteDetail>(ONBOARDING_COMPLETE_EVENT, {
@@ -429,7 +522,7 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       this.renderStep();
     }
 
-    // —— 身份（起名 + 皮肤）——
+    // —— 身份（起名 + 皮肤 + 形象）——
     /**
      * 同步起名清单：按当前可建档名单重建。
      * 已存在的条目保留（用户改过的名字不能丢），名单里新增的补默认名与随机皮肤，消失的移除。
@@ -445,8 +538,14 @@ export function defineOnboardingScreen(): typeof HTMLElement {
           label: agentKindLabel(kind),
           name: agentKindLabel(kind),
           skinId: this.pickSkin(),
+          // 新条目顺手抽一套随机形象（素材没就绪时是 null —— 屏据此提示，不编造长相）。
+          appearance: this.pickAppearance(),
         };
       });
+      // 预览对象没了（agent 被移除）→ 预览目标跟着换人。
+      if (!this._identities.some((item) => item.kind === this._previewKind)) {
+        this._previewKind = this._identities[0]?.kind ?? null;
+      }
     }
 
     /** 抽一套皮肤（默认走皮肤库；注入 skinSource 时用注入的）。 */
@@ -455,12 +554,107 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       return source().id;
     }
 
+    /**
+     * 抽一套随机形象（@since v3.10）。
+     * why 走端口：变体名只有素材注册表知道，屏不认识 LPC 素材（铁律）。
+     */
+    private pickAppearance(): CharacterAppearance | null {
+      return this._appearancePort?.randomize() ?? null;
+    }
+
+    /** 当前预览区展示的是哪个 agent（没定 → 第一个）。 */
+    private currentPreviewIdentity(): MutableIdentity | null {
+      if (this._identities.length === 0) return null;
+      const found = this._identities.find((item) => item.kind === this._previewKind);
+      return found ?? this._identities[0] ?? null;
+    }
+
+    /**
+     * 等素材元数据就绪（@since v3.10）。
+     * why 要等：变体清单与随机形象都来自素材元数据，素材没加载出来时清单是空的。
+     * 就绪后给还没形象的条目补一套，并刷新选择器。
+     */
+    private awaitAppearanceReady(): void {
+      const port = this._appearancePort;
+      if (!port) return;
+      void port
+        .whenReady()
+        .then(() => {
+          if (!this.isConnected || this._step !== 'identity') return;
+          let changed = false;
+          for (const identity of this._identities) {
+            if (identity.appearance) continue;
+            const appearance = port.randomize();
+            if (!appearance) continue;
+            identity.appearance = appearance;
+            changed = true;
+          }
+          if (changed) this.renderStep();
+          else this.refreshAppearanceControls();
+        })
+        .catch(() => {
+          // 端口契约：失败也 resolve（降级成空清单）。这里只是兜底 —— 失败时向导照常能走完。
+        });
+    }
+
     /** 换肤：给指定 agent 抽下一套。 */
     private reroll(kind: string): void {
       const target = this._identities.find((item) => item.kind === kind);
       if (!target) return;
       target.skinId = this.pickSkin();
       this.renderStep();
+    }
+
+    // —— 形象（@since v3.10）——
+    /** 换预览对象：画布切到另一个 agent 的形象。 */
+    private selectPreview(kind: string): void {
+      if (!this._identities.some((item) => item.kind === kind)) return;
+      this._previewKind = kind;
+      this.renderStep();
+    }
+
+    /** 给当前预览对象抽一套随机形象（"随机形象"按钮）。 */
+    randomizeAppearance(): void {
+      const target = this.currentPreviewIdentity();
+      if (!target) return;
+      const appearance = this.pickAppearance();
+      if (!appearance) {
+        this.setError('appearance', '素材还没加载出来，暂时抽不到随机形象');
+        return;
+      }
+      this.setError('appearance', null);
+      target.appearance = appearance;
+      this.refreshAppearanceControls();
+      this.syncPreviewSurface();
+    }
+
+    /** 改体型（体型变了，可选变体清单也跟着变 → 选择器要重画）。 */
+    private setBodyType(raw: string): void {
+      const port = this._appearancePort;
+      const target = this.currentPreviewIdentity();
+      if (!port || !target) return;
+      const bodyType = port.bodyTypes.find((item) => item === raw);
+      if (!bodyType) return;
+      const parts = target.appearance?.parts ?? {};
+      target.appearance = { bodyType, parts: { ...parts } };
+      this.refreshAppearanceControls();
+      this.syncPreviewSurface();
+    }
+
+    /** 改某个部位的变体（部件选择器）。 */
+    private setAppearancePart(category: string, variant: string): void {
+      const target = this.currentPreviewIdentity();
+      if (!target || !category || !variant) return;
+      const appearance = target.appearance;
+      const bodyType = appearance?.bodyType ?? this._appearancePort?.bodyTypes[0] ?? 'male';
+      target.appearance = {
+        bodyType,
+        parts: { ...(appearance?.parts ?? {}), [category]: variant },
+      };
+      this.setError('appearance', null);
+      // 只刷新摘要（不重画整个选择器）：重画会把用户正在操作的 select 换掉（焦点丢失）。
+      this.refreshAppearanceSummary();
+      this.syncPreviewSurface();
     }
 
     /** 改名（输入框实时输入）。 */
@@ -574,6 +768,12 @@ export function defineOnboardingScreen(): typeof HTMLElement {
         case 'reroll':
           this.reroll(action.getAttribute('data-kind') ?? '');
           return;
+        case 'randomize-appearance':
+          this.randomizeAppearance();
+          return;
+        case 'preview-appearance':
+          this.selectPreview(action.getAttribute('data-kind') ?? '');
+          return;
         default:
           return;
       }
@@ -593,10 +793,21 @@ export function defineOnboardingScreen(): typeof HTMLElement {
     }
 
     private onChange(ev: Event): void {
-      const target = ev.target as HTMLInputElement | null;
+      const target = ev.target as HTMLInputElement | HTMLSelectElement | null;
       if (!target?.getAttribute) return;
-      if (target.getAttribute('data-field') !== 'answer') return;
-      this.answer(target.getAttribute('data-question') ?? '', target.value);
+      const field = target.getAttribute('data-field');
+      if (field === 'answer') {
+        this.answer(target.getAttribute('data-question') ?? '', target.value);
+        return;
+      }
+      // 形象选择器（@since v3.10）：体型 / 部位变体。
+      if (field === 'body-type') {
+        this.setBodyType(target.value);
+        return;
+      }
+      if (field === 'appearance-part') {
+        this.setAppearancePart(target.getAttribute('data-category') ?? '', target.value);
+      }
     }
 
     // —— 渲染 ——
@@ -643,10 +854,34 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       if (stepper) stepper.innerHTML = this.renderStepper();
 
       const body = root.querySelector('[data-role="body"]');
-      if (body) body.innerHTML = this.renderBody();
+      if (body) {
+        // 预览画布宿主必须跨重渲染存活：Phaser 的 canvas 挂在它里面，
+        // 换掉这个元素 = 把画布一起从 DOM 里摘走（画面直接黑掉）。
+        // 故先把老宿主摘出来（元素本身留着），重画后再放回新位置。
+        this._canvasHost?.remove();
+        body.innerHTML = this.renderBody();
+        // 注意读的是**重画之后**的宿主：首次进入第②步时它才被创建（见 renderAppearanceGroup）。
+        const slot = body.querySelector('[data-role="appearance-canvas-slot"]');
+        if (slot && this._canvasHost) slot.appendChild(this._canvasHost);
+      }
 
       const footer = root.querySelector('[data-role="footer"]');
       if (footer) footer.innerHTML = this.renderFooter();
+
+      this.syncPreviewSurface();
+    }
+
+    /**
+     * 把预览挂到画布宿主上，并把当前预览对象的形象推给预览服务（@since v3.10）。
+     * why 每次重渲染都调：宿主元素可能被搬了位置，重画后要确保实例还指着它。
+     */
+    private syncPreviewSurface(): void {
+      const port = this._appearancePort;
+      const canvasHost = this._canvasHost;
+      if (!port || !canvasHost || this._step !== 'identity') return;
+      port.attach(canvasHost);
+      const target = this.currentPreviewIdentity();
+      if (target?.appearance) port.preview(target.appearance);
     }
 
     private renderBody(): string {
@@ -704,7 +939,7 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       `;
     }
 
-    /** ② 起名 + 皮肤。 */
+    /** ② 起名 + 皮肤 + 形象。 */
     private renderIdentity(): string {
       if (this._identities.length === 0) {
         return `
@@ -720,6 +955,7 @@ export function defineOnboardingScreen(): typeof HTMLElement {
           <div class="group-name">起名与皮肤</div>
           ${rows}
         </div>
+        ${this.renderAppearanceGroup()}
       `;
     }
 
@@ -727,19 +963,157 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       const skinLabel = getSkin(identity.skinId)?.label ?? identity.skinId;
       const error = this._errors.get(`name:${identity.kind}`) ?? '';
       const errorAttr = error ? '' : 'hidden';
+      // 预览中的那个 agent 标出来（画布只有一块，得让人知道在看谁）。
+      const previewing = identity.kind === this.currentPreviewIdentity()?.kind;
+      const previewLabel = previewing ? '预览中' : '预览形象';
       return `
-        <div class="identity" data-role="identity" data-kind="${escapeHtml(identity.kind)}">
+        <div class="identity" data-role="identity" data-kind="${escapeHtml(identity.kind)}" data-preview="${previewing}">
           <div class="identity-head">
             <span class="identity-label">${escapeHtml(identity.label)}</span>
             <span class="badge" data-role="skin-badge" style="--srf-badge-accent: ${resolveAccent(identity.skinId)}"></span>
             <span class="skin-name" data-role="skin-label">${escapeHtml(skinLabel)}</span>
             <${STRAT_BUTTON_TAG} label="换一套皮肤" variant="default" data-action="reroll" data-kind="${escapeHtml(identity.kind)}"></${STRAT_BUTTON_TAG}>
+            <${STRAT_BUTTON_TAG} label="${previewLabel}" variant="default" data-action="preview-appearance" data-kind="${escapeHtml(identity.kind)}"></${STRAT_BUTTON_TAG}>
           </div>
           <input class="input" type="text" data-role="name-input" data-field="name" data-kind="${escapeHtml(identity.kind)}"
                  value="${escapeHtml(identity.name)}" placeholder="给这个 agent 起个名字">
           <div class="error" data-role="name-error" data-error-key="name:${escapeHtml(identity.kind)}" ${errorAttr}>${escapeHtml(error)}</div>
         </div>
       `;
+    }
+
+    /**
+     * 形象面板（@since v3.10）：预览画布 + 随机形象按钮 + 部件选择器。
+     * why 画布宿主是**占位**：真正的宿主元素由屏长期持有（_canvasHost），
+     * 重渲染时搬来搬去 —— 见 renderStep 的注释。
+     */
+    private renderAppearanceGroup(): string {
+      const port = this._appearancePort;
+      if (!port) {
+        return `
+          <div class="group" data-group="appearance">
+            <div class="group-name">形象预览</div>
+            <div class="empty" data-role="appearance-unavailable">形象预览没接上（没有角色合成器）</div>
+          </div>
+        `;
+      }
+      const target = this.currentPreviewIdentity();
+      if (!target) {
+        return `
+          <div class="group" data-group="appearance">
+            <div class="group-name">形象预览</div>
+            <div class="empty" data-role="appearance-empty">没有可预览的角色</div>
+          </div>
+        `;
+      }
+      this._canvasHost = this.ensureCanvasHost();
+      const error = this._errors.get('appearance') ?? '';
+      const errorAttr = error ? '' : 'hidden';
+      return `
+        <div class="group" data-group="appearance">
+          <div class="group-name">形象预览 · ${escapeHtml(target.label)}</div>
+          <div class="canvas-slot" data-role="appearance-canvas-slot"></div>
+          <div class="appearance-actions">
+            <${STRAT_BUTTON_TAG} label="随机形象" variant="default" data-action="randomize-appearance"></${STRAT_BUTTON_TAG}>
+          </div>
+          <div data-role="appearance-controls">${this.renderAppearanceControls()}</div>
+          <div class="error" data-role="appearance-error" data-error-key="appearance" ${errorAttr}>${escapeHtml(error)}</div>
+        </div>
+      `;
+    }
+
+    /** 形象选择器（体型 + 各部位变体下拉）。 */
+    private renderAppearanceControls(): string {
+      const port = this._appearancePort;
+      const target = this.currentPreviewIdentity();
+      if (!port || !target) return '';
+      const bodyType = target.appearance?.bodyType ?? port.bodyTypes[0] ?? 'male';
+      const categories = port.listCategories(bodyType);
+      const bodyTypeField = `
+        <label class="field">
+          <span class="field-name">体型</span>
+          <select class="select" data-role="body-type" data-field="body-type">
+            ${port.bodyTypes
+              .map(
+                (item) =>
+                  `<option value="${escapeHtml(item)}"${item === bodyType ? ' selected' : ''}>${escapeHtml(item)}</option>`
+              )
+              .join('')}
+          </select>
+        </label>`;
+      const partFields = categories.map((category) => this.renderAppearanceField(category)).join('');
+      return `
+        <div class="appearance-fields">${bodyTypeField}${partFields}</div>
+        <div class="summary" data-role="appearance-summary">${escapeHtml(this.appearanceSummary(target))}</div>
+      `;
+    }
+
+    /** 单个部位的下拉框（变体清单来自注入的端口）。 */
+    private renderAppearanceField(category: AppearanceCategoryInfo): string {
+      const target = this.currentPreviewIdentity();
+      const current = target?.appearance?.parts[category.category] ?? '';
+      const options =
+        category.variants.length === 0
+          ? '<option value="">（没有可用素材）</option>'
+          : category.variants
+              .map(
+                (variant) =>
+                  `<option value="${escapeHtml(variant)}"${variant === current ? ' selected' : ''}>${escapeHtml(variant)}</option>`
+              )
+              .join('');
+      return `
+        <label class="field">
+          <span class="field-name">${escapeHtml(category.name)}</span>
+          <select class="select" data-role="appearance-part" data-field="appearance-part" data-category="${escapeHtml(category.category)}">
+            ${options}
+          </select>
+        </label>`;
+    }
+
+    /** 形象摘要（一行文字，给不方便看画布的人留个说法）。 */
+    private appearanceSummary(target: MutableIdentity): string {
+      const appearance = target.appearance;
+      if (!appearance) return '还没选形象';
+      const parts = Object.entries(appearance.parts)
+        .map(([category, variant]) => `${category}:${variant}`)
+        .join(' · ');
+      return parts.length > 0 ? `${appearance.bodyType} · ${parts}` : appearance.bodyType;
+    }
+
+    /** 拿到（或造出）预览画布宿主元素。 */
+    private ensureCanvasHost(): HTMLDivElement {
+      if (!this._canvasHost) {
+        const host = document.createElement('div');
+        host.className = 'canvas';
+        host.setAttribute('data-role', 'appearance-canvas');
+        this._canvasHost = host;
+      }
+      return this._canvasHost;
+    }
+
+    /** 重画选择器（保留焦点：用户正在操作的那个 select 重画后要还能接着用）。 */
+    private refreshAppearanceControls(): void {
+      const root = this.shadowRoot;
+      const container = root?.querySelector('[data-role="appearance-controls"]');
+      if (!root || !container) return;
+      const active = root.activeElement as HTMLElement | null;
+      const activeField = active?.getAttribute('data-field') ?? null;
+      const activeCategory = active?.getAttribute('data-category') ?? null;
+      container.innerHTML = this.renderAppearanceControls();
+      if (!activeField) return;
+      const selector = activeCategory
+        ? `[data-field="${activeField}"][data-category="${activeCategory}"]`
+        : `[data-field="${activeField}"]`;
+      const next = root.querySelector(selector) as HTMLElement | null;
+      next?.focus();
+    }
+
+    /** 只刷新摘要文字（不重画选择器 —— 重画会把用户正在点的下拉框换掉）。 */
+    private refreshAppearanceSummary(): void {
+      const node = this.shadowRoot?.querySelector('[data-role="appearance-summary"]');
+      const target = this.currentPreviewIdentity();
+      if (!node || !target) return;
+      node.textContent = this.appearanceSummary(target);
     }
 
     /** ③ 人设生成。 */
@@ -796,6 +1170,7 @@ export function defineOnboardingScreen(): typeof HTMLElement {
             <span class="row-name">${escapeHtml(identity.name)}</span>
             <span class="meta">${escapeHtml(identity.label)}</span>
             <span class="meta" data-role="summary-skin">${escapeHtml(skinLabel)}</span>
+            <span class="meta" data-role="summary-appearance">${escapeHtml(this.appearanceSummary(identity))}</span>
           </li>
         `;
       }).join('');
@@ -832,16 +1207,31 @@ export function defineOnboardingScreen(): typeof HTMLElement {
   return OnboardingScreen as unknown as typeof HTMLElement;
 }
 
+/** 挂载选项。 */
+export interface OnboardingScreenOptions {
+  /**
+   * 形象预览端口（@since v3.10）。
+   * 缺省 = 不带形象功能（向导照常能走完，只是没有 canvas 预览与部件选择器）。
+   * 由组合根（app/main/main-entry.ts）注入 —— 屏自己不认识合成器。
+   */
+  readonly appearance?: AppearancePreviewPort;
+}
+
 /**
  * 挂载工厂：本仓库屏 / 面板的统一装配口径（与 mountCharacterScreen 一致）——
  *   建元素、注入 adapter、挂进容器，返回 unmount 闭包。
  * 挂载时机由 app 侧首启逻辑决定（app/main/onboarding-host.ts）。
  */
-export function mountOnboardingScreen(deps: OnboardingScreenDeps, host: HTMLElement): () => void {
+export function mountOnboardingScreen(
+  deps: OnboardingScreenDeps,
+  host: HTMLElement,
+  options: OnboardingScreenOptions = {}
+): () => void {
   defineOnboardingScreen();
   const element = document.createElement(ONBOARDING_SCREEN_TAG) as StratOnboardingScreenElement;
   element.adapter = deps;
+  if (options.appearance) element.appearancePort = options.appearance;
   host.appendChild(element);
-  // 移除元素会触发 disconnectedCallback → 退订，订阅随之释放。
+  // 移除元素会触发 disconnectedCallback → 退订 + 销毁预览实例，订阅与 Phaser 随之释放。
   return () => { element.remove(); };
 }

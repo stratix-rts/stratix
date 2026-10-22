@@ -13,6 +13,7 @@
  */
 
 import type { WorldState } from '../../core/types';
+import type { AppearancePreviewPort } from '../../hud/screens/appearance-preview-port';
 import {
   ONBOARDING_COMPLETE_EVENT,
   ONBOARDING_SKIPPED_EVENT,
@@ -28,6 +29,11 @@ export interface OnboardingHostOptions {
   readonly deps: OnboardingScreenDeps;
   /** 覆盖层宿主（页面里预留的空容器；向导屏以绝对定位覆盖它）。 */
   readonly host: HTMLElement;
+  /**
+   * 形象预览端口（@since v3.10）：向导第②步的 canvas 预览与部件选择器靠它。
+   * 缺省 = 不带形象功能（屏自己跑得起来，只是没有预览）。
+   */
+  readonly appearance?: AppearancePreviewPort;
   /** 开发期强制开关（STRATIX_ONBOARDING_FORCE=1）。 */
   readonly force?: boolean;
   /** 引导走完（建档完成）时的回调。 */
@@ -73,7 +79,9 @@ export function createOnboardingHost(options: OnboardingHostOptions): Onboarding
     });
     if (!should) return;
 
-    unmount = mountOnboardingScreen(options.deps, options.host);
+    unmount = mountOnboardingScreen(options.deps, options.host, {
+      ...(options.appearance ? { appearance: options.appearance } : {}),
+    });
 
     // 完成 / 跳过事件由向导屏派发（冒泡 + composed，故在宿主上收即可）。
     const handleComplete = (event: Event): void => {

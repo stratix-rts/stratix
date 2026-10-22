@@ -36,6 +36,7 @@ import {
   NOTICE_TTL_MS,
   type AgentKind,
   type AgentProfile,
+  type CharacterAppearance,
   type CharacterView,
   type NoticeLevel,
 } from '../types';
@@ -69,6 +70,11 @@ export interface CharacterCreateInput {
   readonly persona?: string;
   /** 外部会话 id（各 CLI 原样透传）；缺省为 null。 */
   readonly externalSessionId?: string | null;
+  /**
+   * 角色外观（@since v3.10）：体型 + 部位变体。
+   * 缺省 / null = 不带外观（老档案照旧合法）；非法形状由 profile.ts 裁决（拒发）。
+   */
+  readonly appearance?: CharacterAppearance | null;
 }
 
 export type CharacterCreateResult =
@@ -226,6 +232,7 @@ export function createCharacterManager(options: CharacterManagerOptions = {}): C
       skinId: input.skinId,
       persona: input.persona,
       externalSessionId: input.externalSessionId,
+      appearance: input.appearance,
     });
     if (!built.ok) {
       reportFailure(store, `character-create-rejected:${built.code}`, createRejectionLabel(built.code, maxCharacters));
@@ -254,6 +261,8 @@ export function createCharacterManager(options: CharacterManagerOptions = {}): C
         agentKind: profile.agentKind,
         skinId: profile.skinId,
         externalSessionId: profile.externalSessionId ?? null,
+        // 只有真给了外观才带上这个键：老档案的投影形状保持原样（不凭空多一个 undefined 字段）。
+        ...(profile.appearance ? { appearance: profile.appearance } : {}),
       };
       result = { ok: true, character, profile };
       // @since v3.9（task_026）：角色建档 = 战场上多一个 agent 单位（投影见 unit-projection.ts）。
