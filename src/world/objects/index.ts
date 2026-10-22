@@ -13,4 +13,6 @@
 export * from './unit-object';
 export * from './unit-registry';
 export * from './unit-layer';
+export * from './unit-sprite-source';
+export * from './unit-sprite-sheet';
 export * from './selection-box';

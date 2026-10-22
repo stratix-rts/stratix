@@ -740,7 +740,24 @@ describe('角色 → 战场单位（建档即入战场）', () => {
       power: 0,
       characterId: 'character_1_1',
       skinId: 'crimson',
+      // @since v3.10：没有外观 → null（渲染侧回落到占位形体，不编造长相）。
+      appearance: null,
     });
+  });
+
+  test('toCharacterUnit：带 appearance 的角色把外观投影给单位（渲染侧据此合成精灵表）', () => {
+    const appearance = { bodyType: 'female' as const, parts: { hair: 'black' } };
+    const unit = toCharacterUnit({
+      id: 'c-2',
+      name: 'B',
+      persona: '',
+      level: 1,
+      experience: 0,
+      agentKind: 'claude-code',
+      appearance,
+    });
+
+    expect(unit.appearance).toEqual(appearance);
   });
 
   test('toCharacterUnit：没有皮肤时 skinId 为 null（渲染侧回落到业务态颜色）', () => {

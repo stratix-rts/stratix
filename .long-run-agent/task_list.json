@@ -1264,7 +1264,7 @@
       "context_hint": "8k",
       "task_file": "tasks/task_028.md",
       "created_at": "2026-10-22T20:01:57.155081",
-      "updated_at": "2026-10-22T20:45:37.801530",
+      "updated_at": "2026-10-22T20:54:00.117966",
       "dependencies": [
         "task_027"
       ],
@@ -1278,7 +1278,14 @@
           "lint_passed": false,
           "acceptance_met": false
         },
-        "issues": [],
+        "issues": [
+          {
+            "round": 0,
+            "type": "unknown_issue",
+            "message": "文档覆盖率过低 (21.9%)",
+            "timestamp": "2026-10-22T20:54:00.117961"
+          }
+        ],
         "optimization_history": []
       },
       "requirements": "hud 向导第②步（src/hud/screens/onboarding-screen）升级：①内嵌 Phaser 迷你 canvas 实时预览合成角色（走路动画帧步进，参考历史 CanvasPreview.vue 的实现思路——Phaser sprite + 手动帧推进，历史源码 git show a9498ae~1:src/components/character-creator/v3/components/CanvasPreview.vue）②「随机形象」按钮（随机 LPC 部件组合，body/hair/eyes/ears/facial 五类精选）③分类部件选择器 UI（每类列 variant，元数据来自 PartRegistry 注入）④character.create 提交带 appearance 字段。UI 主题色随机（024 皮肤库）保留。WebComponent 内嵌 Phaser 实例注意销毁清理（向导关闭即 destroy）。",
@@ -1295,13 +1302,13 @@
       "description": "world: 战场单位渲染用 AgentProfile.appearance 合成形象 + 全链路验收-模块",
       "template": "task",
       "priority": "P1",
-      "status": "pending",
+      "status": "completed",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_029.md",
       "created_at": "2026-10-22T20:01:57.415956",
-      "updated_at": "2026-10-22T20:01:57.415970",
+      "updated_at": "2026-10-22T21:48:10.130310",
       "dependencies": [
         "task_027",
         "task_028"

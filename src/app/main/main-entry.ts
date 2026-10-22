@@ -34,12 +34,14 @@ import { createThemeController } from '../../hud/theme/theme-controller';
 import defaultCss from '../../hud/theme/tokens-default.css?inline';
 import pixelCss from '../../hud/theme/tokens-pixel.css?inline';
 import { defineStratButton } from '../../hud/widgets/strat-button';
+import { CharacterComposer } from '../../world/appearance/character-composer';
 import { PartRegistry } from '../../world/appearance/part-registry';
+import { UNIT_SPRITE_SOURCE_KEY } from '../../world/objects/unit-sprite-source';
 import { BattlefieldScene } from '../../world/scenes/BattlefieldScene';
-
 import { createBrowserAppearanceEnvironment } from '../services/appearance-environment';
 import { createPhaserPreviewGame } from '../services/appearance-preview-game';
 import { createAppearancePreviewService } from '../services/appearance-preview-service';
+import { createUnitSpriteSource } from '../services/unit-sprite-source';
 
 import { isOnboardingForced } from './dev-flags';
 import { createOnboardingHost } from './onboarding-host';
@@ -131,12 +133,29 @@ function boot(): void {
   // 组合根是唯一能同时认识 hud 与 world 的地方：向导屏要 canvas 预览（hud），
   // 合成器与素材注册表在 world/appearance —— 两侧都不许直接互认，故在这里接线。
   // 素材元数据在后台加载（失败降级：向导照常能走完，只是没有随机形象可选）。
+  // 注册表与合成器**与战场侧共用同一份**：元数据（1.4MB）只加载一次，位图 LRU 缓存也共用。
   const appearanceEnv = createBrowserAppearanceEnvironment();
+  const appearanceRegistry = new PartRegistry({ basePath: appearanceEnv.spritesheetBaseUrl });
+  const appearanceComposer = new CharacterComposer({
+    registry: appearanceRegistry,
+    createCanvas: appearanceEnv.createCanvas,
+    createImage: appearanceEnv.createImage,
+  });
   const appearancePreview = createAppearancePreviewService({
-    registry: new PartRegistry({ basePath: appearanceEnv.spritesheetBaseUrl }),
+    registry: appearanceRegistry,
+    composer: appearanceComposer,
     createCanvas: appearanceEnv.createCanvas,
     createImage: appearanceEnv.createImage,
     createGame: createPhaserPreviewGame,
+  });
+
+  // ===== 战场单位的形象（@since v3.10，task_029）=====
+  // 单位带 appearance 时，战场用合成好的 LPC 精灵表当身体（走路动画）。
+  // 合成要 DOM（canvas / Image），world 层零 DOM —— 故实现在 app 层，world 只认端口。
+  const unitSpriteSource = createUnitSpriteSource({
+    registry: appearanceRegistry,
+    composer: appearanceComposer,
+    createCanvas: appearanceEnv.createCanvas,
   });
 
   // ===== 首启向导覆盖层（@since v3.9，task_026）=====
@@ -164,6 +183,12 @@ function boot(): void {
     backgroundColor: '#0f131b',
     scale: { mode: Phaser.Scale.RESIZE },
     scene: [BattlefieldScene],
+    // 形象精灵源在 boot 前就位（场景自己实例化，构造器拿不到注入 —— 走 game.registry）。
+    callbacks: {
+      preBoot: (booting) => {
+        booting.registry.set(UNIT_SPRITE_SOURCE_KEY, unitSpriteSource);
+      },
+    },
   });
 
   // ===== core 侧：闭环接线（command/world → store → state 广播）=====

@@ -27,6 +27,7 @@ import { CameraController, DEFAULT_WORLD_BOUNDS } from '../camera';
 import { SelectionBox } from '../objects/selection-box';
 import { UnitLayer } from '../objects/unit-layer';
 import { UnitRegistry } from '../objects/unit-registry';
+import { UNIT_SPRITE_SOURCE_KEY, type UnitSpriteSource } from '../objects/unit-sprite-source';
 
 export const BATTLEFIELD_SCENE_KEY = 'battlefield';
 
@@ -91,7 +92,10 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     this.bridge = createWorldBridge(this);
 
     this.selectionBox = new SelectionBox(this);
-    this.unitLayer = new UnitLayer(this, this.units);
+    // 形象精灵源由组合根放在 game.registry 里（场景由 Phaser 实例化，构造器拿不到注入）。
+    // 没接上 → 单位一律走占位形体（老单位 / dev 页都是这样）。
+    const spriteSource = (this.registry.get(UNIT_SPRITE_SOURCE_KEY) as UnitSpriteSource | undefined) ?? null;
+    this.unitLayer = new UnitLayer(this, this.units, spriteSource);
 
     this.view = new CameraController(this.cameras.main, {
       viewport: () => ({ width: this.scale.width, height: this.scale.height }),

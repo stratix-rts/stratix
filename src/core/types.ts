@@ -134,6 +134,13 @@ export interface UnitView {
    */
   readonly skinId?: string | null;
   /**
+   * @since v3.10 角色外观（LPC 合成栈的数据面）：单位带出角色的形象，
+   * 渲染侧据此合成精灵表并播走路动画（见 world/objects/unit-layer.ts）。
+   * 缺省 / null = 没有外观 —— 渲染侧回落到占位形体（老单位照旧合法）。
+   * 与 skinId 同理走契约增补：可选字段，不破既有 UnitView 构造点。
+   */
+  readonly appearance?: CharacterAppearance | null;
+  /**
    * @since v3.2 能力面板数据（合并 AgentPowerPanel）。未评估时缺省/null，HUD 显示「未评估」。
    * 可选而非必填：契约增补不许打破已有 UnitView 构造点（world 侧适配器、单测夹具）的编译。
    */

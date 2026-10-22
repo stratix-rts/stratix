@@ -69,6 +69,8 @@ export class PartRegistry {
   private readonly fetchImpl: FetchLike;
   private readonly basePath: string;
   private loaded = false;
+  /** 在途的加载 promise（并发去重：同一个注册表只拉一次 1.4MB 的元数据）。 */
+  private loading: Promise<void> | null = null;
 
   constructor(options: PartRegistryOptions = {}) {
     this.fetchImpl = options.fetchImpl ?? defaultFetch;
@@ -81,24 +83,36 @@ export class PartRegistry {
    * why 失败不抛：素材缺失不该让整个应用起不来 —— 注册表退化成"空表"，
    * 合成时没有部位可画（画面上是空角色），比整个渲染层崩掉好。
    * 但**必须记住失败过**（loaded = true）：否则每次合成都重试一次网络请求。
+   *
+   * why 加了并发去重（@since v3.10，task_029）：同一个注册表实例会被**两处**并发触发加载
+   * （向导的随机形象 + 战场的形象合成），各自 await 同一个 promise 即可 —— 不去重就是白拉 1.4MB。
    */
   async loadMetadata(): Promise<void> {
     if (this.loaded) return;
-
-    try {
-      const response = await this.fetchImpl(`${this.basePath}/item-metadata.json`);
-      if (!response.ok) {
-        throw new Error(`Failed to load metadata: ${response.status}`);
-      }
-      const data = await response.json();
-      this.parseMetadata(data);
-    } catch (error) {
-      console.warn('[PartRegistry] 素材元数据加载失败，退化为空注册表：', error);
-      this.metadata.clear();
-      this.byCategory.clear();
-    } finally {
-      this.loaded = true;
+    if (this.loading) {
+      await this.loading;
+      return;
     }
+
+    this.loading = (async () => {
+      try {
+        const response = await this.fetchImpl(`${this.basePath}/item-metadata.json`);
+        if (!response.ok) {
+          throw new Error(`Failed to load metadata: ${response.status}`);
+        }
+        const data = await response.json();
+        this.parseMetadata(data);
+      } catch (error) {
+        console.warn('[PartRegistry] 素材元数据加载失败，退化为空注册表：', error);
+        this.metadata.clear();
+        this.byCategory.clear();
+      } finally {
+        this.loaded = true;
+        this.loading = null;
+      }
+    })();
+
+    await this.loading;
   }
 
   /**

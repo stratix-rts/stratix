@@ -11,7 +11,7 @@
  *   4. 塞业务规则（能否被指派任务等）—— 那是 core/unit 的状态机职责。
  */
 
-import type { Point, UnitStatus, UnitView } from '../../core/types';
+import type { CharacterAppearance, Point, UnitStatus, UnitView } from '../../core/types';
 
 /** 点击 / 框选共用的命中半径（世界坐标像素）。 */
 export const UNIT_HIT_RADIUS = 20;
@@ -62,6 +62,22 @@ export class UnitObject {
     return this.view.skinId ?? null;
   }
 
+  /**
+   * 单位带的角色外观（@since v3.10）：渲染层据此合成 LPC 精灵表（见 objects/unit-layer.ts）。
+   * 没有外观的单位返回 null —— 渲染层回落到占位形体，不编造长相。
+   */
+  get appearance(): CharacterAppearance | null {
+    return this.view.appearance ?? null;
+  }
+
+  /**
+   * 单位关联的角色 id（@since v3.10）：形象精灵的缓存键就是它
+   * （同一角色的多个单位共用一张精灵表）。
+   */
+  get characterId(): string | null {
+    return this.view.characterId ?? null;
+  }
+
   /** 移动到新的世界坐标，返回是否真的动了（调用方可据此跳过无变化重绘）。 */
   setPosition(x: number, y: number): boolean {
     if (this.x === x && this.y === y) return false;
@@ -81,7 +97,8 @@ export class UnitObject {
       this.view.name === view.name &&
       this.view.power === view.power &&
       this.view.missionId === view.missionId &&
-      (this.view.skinId ?? null) === (view.skinId ?? null)
+      (this.view.skinId ?? null) === (view.skinId ?? null) &&
+      appearanceKey(this.view.appearance) === appearanceKey(view.appearance)
     ) {
       return false;
     }
@@ -95,4 +112,17 @@ export class UnitObject {
     const dy = point.y - this.y;
     return dx * dx + dy * dy <= radius * radius;
   }
+}
+
+/**
+ * 外观的**比较键**（体型 + 部位变体，按类别名排序）。
+ * why 要一个键：appearance 是嵌套字典，逐字段比对啰嗦；排序后拼串即可判"变没变"。
+ */
+function appearanceKey(appearance: CharacterAppearance | null | undefined): string {
+  if (!appearance) return '';
+  const parts = Object.entries(appearance.parts)
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .map(([category, variant]) => `${category}=${variant}`)
+    .join(',');
+  return `${appearance.bodyType}|${parts}`;
 }

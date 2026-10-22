@@ -29,9 +29,11 @@ export const CHARACTER_UNIT_ID_PREFIX = 'unit_';
  *   - name：角色名（战场上显示的就是用户起的名字）；
  *   - status：恒为 'idle' —— 角色建档时尚未接入任何任务；
  *   - power：0 —— 能力评估器未落地，不编造数值；
- *   - characterId / skinId：回指角色档案与它的皮肤（渲染侧据此染色）。
+ *   - characterId / skinId：回指角色档案与它的皮肤（渲染侧据此染色）；
+ *   - appearance：角色外观（@since v3.10）—— 渲染侧据此合成 LPC 精灵表，
+ *     没有外观的单位回落到占位形体。
  *
- * @param character 已落库的角色档案（id / name / skinId 取自它）。
+ * @param character 已落库的角色档案（id / name / skinId / appearance 取自它）。
  */
 export function toCharacterUnit(character: CharacterView): UnitView {
   return {
@@ -42,5 +44,7 @@ export function toCharacterUnit(character: CharacterView): UnitView {
     power: 0,
     characterId: character.id,
     skinId: character.skinId ?? null,
+    // 老角色没有外观 → null（渲染侧回落到占位形体，不编造长相）。
+    appearance: character.appearance ?? null,
   };
 }
