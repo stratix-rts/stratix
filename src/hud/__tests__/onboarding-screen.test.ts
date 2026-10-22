@@ -1,0 +1,512 @@
+/**
+ * 集成测试：首启向导屏（hud/screens/onboarding-screen.ts + onboarding-catalog.ts）。
+ * 覆盖：扫描报告渲染（已装高亮 / tier 标签 / 仅探测标记）、四步流转、名字校验（空 / 超长 / 重复）、
+ *   换肤、人设问卷与可编辑预览、提交命令序列与完成事件、用户数据转义、卸载退订。
+ * @jest-environment jsdom
+ *
+ * 边界说明：本屏只与 WorldState.detectedAgents（读）与 character.create / ui.navigate（写）打交道，
+ * 所以夹具是**注入的适配器**而不是真总线 —— 屏的行为与总线实现无关，测的就是屏本身。
+ */
+
+import type { DetectedAgent, HudCommand, WorldState } from '../../core/types';
+import { createSkinRandomizer } from '../theme/skin-registry';
+
+import {
+  buildPersona,
+  findDuplicateNames,
+  missingPersonaAnswers,
+  resolveBindableKinds,
+  resolveScanRows,
+  validateAgentName,
+  validatePersona,
+  PERSONA_QUESTIONS,
+} from '../screens/onboarding-catalog';
+import {
+  ONBOARDING_COMPLETE_EVENT,
+  ONBOARDING_SCREEN_TAG,
+  mountOnboardingScreen,
+  type OnboardingCompleteDetail,
+  type OnboardingScreenDeps,
+  type StratOnboardingScreenElement,
+} from '../screens/onboarding-screen';
+
+function detected(partial: Partial<DetectedAgent> & { kind: DetectedAgent['kind'] }): DetectedAgent {
+  return {
+    tier: 'T1',
+    installed: false,
+    status: 'not-installed',
+    version: null,
+    path: null,
+    ...partial,
+  };
+}
+
+const CLAUDE = detected({ kind: 'claude-code', tier: 'T1', installed: true, status: 'installed', version: '1.2.3', path: '/usr/bin/claude' });
+const CODEX = detected({ kind: 'codex', tier: 'T1', installed: true, status: 'installed', version: '0.9.0', path: '/usr/bin/codex' });
+/** T2：探到了，但还没适配 —— 不该出现在起名清单里。 */
+const GEMINI = detected({ kind: 'gemini', tier: 'T2', installed: true, status: 'installed', version: '2.0.0' });
+/** 探测超时且没确认安装 —— 不算"已装"。 */
+const TIMEOUT = detected({ kind: 'kimi', tier: 'T1', installed: false, status: 'timeout' });
+
+function makeState(detectedAgents?: DetectedAgent[]): WorldState {
+  return {
+    units: [],
+    missions: [],
+    selection: { unitIds: [], previewUnitIds: [], revision: 0 },
+    characters: [],
+    notices: [],
+    links: [],
+    messages: [],
+    ...(detectedAgents ? { detectedAgents } : {}),
+  };
+}
+
+interface Harness {
+  readonly screen: StratOnboardingScreenElement;
+  readonly commands: HudCommand[];
+  /** 推一份新状态（走订阅的真实调用链）。 */
+  emit(state: WorldState): void;
+  /** 当前订阅者数量（卸载后应为 0）。 */
+  subscriberCount(): number;
+  unmount(): void;
+}
+
+function mountScreen(initial?: WorldState): Harness {
+  const commands: HudCommand[] = [];
+  // why 用数组而不是单个 handler 变量：TS 的控制流分析会把"只在回调里赋值"的变量收窄成 null，
+  // 后面再调用就变成 "never has no call signatures"。数组不参与这种收窄。
+  const handlers: ((state: WorldState) => void)[] = [];
+  let subscribers = 0;
+
+  const deps: OnboardingScreenDeps = {
+    dispatch: (command) => { commands.push(command); },
+    subscribe: (next) => {
+      subscribers += 1;
+      handlers.push(next);
+      return () => {
+        subscribers -= 1;
+        const index = handlers.indexOf(next);
+        if (index >= 0) handlers.splice(index, 1);
+      };
+    },
+  };
+
+  const emit = (state: WorldState): void => {
+    for (const handler of handlers.slice()) handler(state);
+  };
+
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  const unmountScreen = mountOnboardingScreen(deps, host);
+  const screen = host.querySelector(ONBOARDING_SCREEN_TAG) as StratOnboardingScreenElement;
+  if (!screen?.shadowRoot) throw new Error('向导屏未 upgrade（shadowRoot 为空）');
+  // 皮肤抽签源固定种子 → 测试可复现。
+  const randomizer = createSkinRandomizer(42);
+  screen.skinSource = () => randomizer.next();
+
+  if (initial) emit(initial);
+
+  return {
+    screen,
+    commands,
+    emit,
+    subscriberCount: () => subscribers,
+    unmount: () => { unmountScreen(); host.remove(); },
+  };
+}
+
+function all(screen: StratOnboardingScreenElement, selector: string): HTMLElement[] {
+  return Array.from(screen.shadowRoot?.querySelectorAll(selector) ?? []);
+}
+
+function one(screen: StratOnboardingScreenElement, selector: string): HTMLElement {
+  const node = screen.shadowRoot?.querySelector(selector);
+  if (!node) throw new Error(`节点未渲染: ${selector}`);
+  return node as HTMLElement;
+}
+
+function click(screen: StratOnboardingScreenElement, selector: string): void {
+  one(screen, selector).click();
+}
+
+/** 模拟输入：改值 + 派发 input 事件（走真实的委托链）。 */
+function type(screen: StratOnboardingScreenElement, selector: string, value: string): void {
+  const field = one(screen, selector) as HTMLInputElement | HTMLTextAreaElement;
+  field.value = value;
+  field.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function choose(screen: StratOnboardingScreenElement, questionId: string, optionId: string): void {
+  const radio = screen.shadowRoot?.querySelector(
+    `[data-role="option"][data-question="${questionId}"][value="${optionId}"]`
+  ) as HTMLInputElement | null;
+  if (!radio) throw new Error(`选项未渲染: ${questionId}/${optionId}`);
+  radio.checked = true;
+  radio.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+afterEach(() => {
+  document.body.innerHTML = '';
+});
+
+// ============================================================================
+// 1. 纯派生函数（onboarding-catalog）
+// ============================================================================
+
+describe('向导派生逻辑', () => {
+  test('扫描报告：已装高亮依据 installed，tier 与结论如实透传', () => {
+    const rows = resolveScanRows(makeState([CLAUDE, GEMINI, TIMEOUT]));
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toMatchObject({ kind: 'claude-code', installed: true, tier: 'T1', status: 'installed', version: '1.2.3' });
+    expect(rows[1]).toMatchObject({ kind: 'gemini', installed: true, tier: 'T2' });
+    // 探测超时且没确认安装 → 不算已装
+    expect(rows[2]).toMatchObject({ kind: 'kimi', installed: false, status: 'timeout' });
+  });
+
+  test('可建档名单 = 已装 ∩ AGENT_KINDS（T2 的 gemini 探到了也不进名单）', () => {
+    expect(resolveBindableKinds(makeState([CLAUDE, CODEX, GEMINI, TIMEOUT]))).toEqual([
+      'claude-code',
+      'codex',
+    ]);
+  });
+
+  test('没有广播 / 没有检测结果 → 空名单（不编数据）', () => {
+    expect(resolveScanRows(null)).toEqual([]);
+    expect(resolveBindableKinds(null)).toEqual([]);
+    expect(resolveScanRows(makeState())).toEqual([]);
+  });
+
+  test('名字校验：空 / 超长 / 合法，且长度按码点算', () => {
+    expect(validateAgentName('   ')).toMatchObject({ ok: false, code: 'empty-name' });
+    expect(validateAgentName('a'.repeat(24))).toMatchObject({ ok: true });
+    expect(validateAgentName('a'.repeat(25))).toMatchObject({ ok: false, code: 'name-too-long' });
+    // 25 个 emoji = 25 码点（但 50 个 UTF-16 单元）→ 按码点判才是超长
+    expect(validateAgentName('😀'.repeat(25))).toMatchObject({ ok: false, code: 'name-too-long' });
+    expect(validateAgentName('😀'.repeat(24))).toMatchObject({ ok: true });
+  });
+
+  test('重复名字：只报一次重复项', () => {
+    expect(findDuplicateNames(['Neo', ' Neo ', 'Trinity'])).toEqual(['Neo']);
+    expect(findDuplicateNames(['Neo', 'Trinity'])).toEqual([]);
+  });
+
+  test('人设拼装：core 默认模板打底 + 各题 fragment；没答的题不出现在人设里', () => {
+    const persona = buildPersona({ role: 'builder' });
+    expect(persona).toContain('你是一名在 Stratix 工作台里干活的本地 coding agent');
+    expect(persona).toContain('角色定位：编码主力');
+    expect(persona).not.toContain('沟通风格');
+    expect(missingPersonaAnswers({ role: 'builder' })).toEqual(['tone', 'autonomy', 'delivery']);
+    expect(missingPersonaAnswers({})).toHaveLength(PERSONA_QUESTIONS.length);
+  });
+
+  test('人设长度校验：超长被拒，空串不算错（core 会套默认模板）', () => {
+    expect(validatePersona('')).toMatchObject({ ok: true });
+    expect(validatePersona('x'.repeat(32_001))).toMatchObject({ ok: false, code: 'persona-too-long' });
+  });
+});
+
+// ============================================================================
+// 2. 扫描报告（步骤①）
+// ============================================================================
+
+describe('① 扫描报告', () => {
+  test('挂载即在扫描步；已装行高亮 + tier 标签 + 仅探测标记', () => {
+    const h = mountScreen(makeState([CLAUDE, GEMINI, TIMEOUT]));
+    expect(h.screen.step).toBe('scan');
+
+    const rows = all(h.screen, '[data-role="scan-row"]');
+    expect(rows).toHaveLength(3);
+    expect(rows[0]?.getAttribute('data-installed')).toBe('true');
+    expect(rows[0]?.querySelector('[data-role="tier"]')?.textContent).toBe('T1 深度适配');
+    expect(rows[1]?.querySelector('[data-role="tier"]')?.textContent).toBe('T2 基础适配');
+    // T2 不是可建档种类 → 标「仅探测」
+    expect(rows[1]?.querySelector('[data-role="only-probe"]')?.textContent).toBe('仅探测');
+    expect(rows[2]?.getAttribute('data-installed')).toBe('false');
+    h.unmount();
+  });
+
+  test('core 广播新状态 → 扫描报告跟着更新', () => {
+    const h = mountScreen(makeState([TIMEOUT]));
+    expect(all(h.screen, '[data-role="scan-row"]')).toHaveLength(1);
+
+    h.emit(makeState([CLAUDE, CODEX]));
+    const rows = all(h.screen, '[data-role="scan-row"]');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.getAttribute('data-kind')).toBe('claude-code');
+    h.unmount();
+  });
+
+  test('没有任何检测结果 → 空态说明，不编数据', () => {
+    const h = mountScreen(makeState([]));
+    expect(one(h.screen, '[data-role="scan-empty"]').textContent).toContain('还没探测到本机 agent');
+    h.unmount();
+  });
+});
+
+// ============================================================================
+// 3. 起名与皮肤（步骤②）
+// ============================================================================
+
+describe('② 起名与皮肤', () => {
+  test('下一步 → 只为可建档的已装 agent 生成起名条目（默认名 = agent 显示名）', () => {
+    const h = mountScreen(makeState([CLAUDE, CODEX, GEMINI, TIMEOUT]));
+    click(h.screen, '[data-action="next"]');
+
+    expect(h.screen.step).toBe('identity');
+    const identities = all(h.screen, '[data-role="identity"]');
+    expect(identities).toHaveLength(2);
+    expect(identities.map((node) => node.getAttribute('data-kind'))).toEqual(['claude-code', 'codex']);
+    expect(identities[0]?.querySelector('[data-role="name-input"]')?.getAttribute('value')).toBe('Claude Code');
+    expect(identities[0]?.querySelector('[data-role="skin-label"]')?.textContent).toBeTruthy();
+    h.unmount();
+  });
+
+  test('名字留空 → 拦在原地并给出提示', () => {
+    const h = mountScreen(makeState([CLAUDE]));
+    click(h.screen, '[data-action="next"]');
+
+    type(h.screen, '[data-role="name-input"]', '   ');
+    click(h.screen, '[data-action="next"]');
+
+    expect(h.screen.step).toBe('identity');
+    expect(one(h.screen, '[data-role="name-error"]').textContent).toBe('名字不能为空');
+    expect(h.screen.errors['name:claude-code']).toBe('名字不能为空');
+    h.unmount();
+  });
+
+  test('名字超长 → 拦在原地并给出提示', () => {
+    const h = mountScreen(makeState([CLAUDE]));
+    click(h.screen, '[data-action="next"]');
+
+    type(h.screen, '[data-role="name-input"]', 'x'.repeat(25));
+    click(h.screen, '[data-action="next"]');
+
+    expect(h.screen.step).toBe('identity');
+    expect(one(h.screen, '[data-role="name-error"]').textContent).toContain('不能超过');
+    h.unmount();
+  });
+
+  test('名字重复 → 拦在原地并给出提示', () => {
+    const h = mountScreen(makeState([CLAUDE, CODEX]));
+    click(h.screen, '[data-action="next"]');
+
+    type(h.screen, '[data-kind="claude-code"][data-role="name-input"]', 'Neo');
+    type(h.screen, '[data-kind="codex"][data-role="name-input"]', 'Neo');
+    click(h.screen, '[data-action="next"]');
+
+    expect(h.screen.step).toBe('identity');
+    expect(h.screen.errors['name:claude-code']).toBe('名字重复了，换一个');
+    h.unmount();
+  });
+
+  test('改完名字后错误提示自动撤掉', () => {
+    const h = mountScreen(makeState([CLAUDE]));
+    click(h.screen, '[data-action="next"]');
+    type(h.screen, '[data-role="name-input"]', '');
+    click(h.screen, '[data-action="next"]');
+    expect(h.screen.errors['name:claude-code']).toBeTruthy();
+
+    type(h.screen, '[data-role="name-input"]', 'Neo');
+    expect(h.screen.errors['name:claude-code']).toBeUndefined();
+    h.unmount();
+  });
+
+  test('换肤 → 皮肤 id 变化（抽签源可注入 → 结果可复现）', () => {
+    const h = mountScreen(makeState([CLAUDE]));
+    click(h.screen, '[data-action="next"]');
+    const before = h.screen.identities[0]?.skinId;
+
+    click(h.screen, '[data-action="reroll"]');
+    expect(h.screen.identities[0]?.skinId).not.toBe(before);
+    h.unmount();
+  });
+
+  test('用户输入的名字按文本渲染，不产生 DOM 注入', () => {
+    const h = mountScreen(makeState([CLAUDE]));
+    click(h.screen, '[data-action="next"]');
+    type(h.screen, '[data-role="name-input"]', '<img src=x onerror=1>');
+    // 换肤会整块重画身份区 —— 名字此时是走 escapeHtml 拼进 HTML 的
+    click(h.screen, '[data-action="reroll"]');
+
+    const input = one(h.screen, '[data-role="name-input"]');
+    expect(input.querySelector('img')).toBeNull();
+    expect(input.getAttribute('value')).toBe('<img src=x onerror=1>');
+    // 名字进了属性值：转义后不可能生成元素节点
+    expect(h.screen.shadowRoot?.querySelector('img')).toBeNull();
+    expect(h.screen.identities[0]?.name).toBe('<img src=x onerror=1>');
+    h.unmount();
+  });
+});
+
+// ============================================================================
+// 4. 人设生成（步骤③）
+// ============================================================================
+
+describe('③ 人设生成', () => {
+  test('题目没答完 → 拦在原地并逐题提示', () => {
+    const h = mountScreen(makeState([CLAUDE]));
+    click(h.screen, '[data-action="next"]'); // → identity
+    click(h.screen, '[data-action="next"]'); // → persona
+    expect(h.screen.step).toBe('persona');
+
+    click(h.screen, '[data-action="next"]');
+    expect(h.screen.step).toBe('persona');
+    expect(h.screen.errors['answer:role']).toBe('这一题还没选');
+    expect(h.screen.errors['answer:delivery']).toBe('这一题还没选');
+    h.unmount();
+  });
+
+  test('答完题 → 人设预览里出现对应 fragment，并进入确认步', () => {
+    const h = mountScreen(makeState([CLAUDE]));
+    click(h.screen, '[data-action="next"]');
+    click(h.screen, '[data-action="next"]');
+
+    choose(h.screen, 'role', 'builder');
+    choose(h.screen, 'tone', 'terse');
+    choose(h.screen, 'autonomy', 'balanced');
+    choose(h.screen, 'delivery', 'iterative');
+
+    const preview = one(h.screen, '[data-role="persona-input"]') as HTMLTextAreaElement;
+    expect(preview.value).toContain('角色定位：编码主力');
+    expect(preview.value).toContain('沟通风格：简洁直给');
+
+    click(h.screen, '[data-action="next"]');
+    expect(h.screen.step).toBe('confirm');
+    expect(all(h.screen, '[data-role="summary-row"]')).toHaveLength(1);
+    h.unmount();
+  });
+
+  test('手动改过的人设不被后续答题覆盖（用户编辑优先）', () => {
+    const h = mountScreen(makeState([CLAUDE]));
+    click(h.screen, '[data-action="next"]');
+    click(h.screen, '[data-action="next"]');
+
+    type(h.screen, '[data-role="persona-input"]', '我的人设');
+    choose(h.screen, 'role', 'builder');
+
+    expect(h.screen.persona).toBe('我的人设');
+    expect((one(h.screen, '[data-role="persona-input"]') as HTMLTextAreaElement).value).toBe('我的人设');
+    h.unmount();
+  });
+});
+
+// ============================================================================
+// 5. 确认 → 建档 → 完成（步骤④）
+// ============================================================================
+
+describe('④ 确认与提交', () => {
+  test('提交：逐个 character.create → 完成事件 → 回主屏', () => {
+    const h = mountScreen(makeState([CLAUDE, CODEX]));
+    const seen: OnboardingCompleteDetail[] = [];
+    h.screen.addEventListener(ONBOARDING_COMPLETE_EVENT, (ev) => {
+      seen.push((ev as CustomEvent<OnboardingCompleteDetail>).detail);
+    });
+
+    click(h.screen, '[data-action="next"]'); // → identity
+    type(h.screen, '[data-kind="claude-code"][data-role="name-input"]', 'Neo');
+    type(h.screen, '[data-kind="codex"][data-role="name-input"]', 'Trinity');
+    click(h.screen, '[data-action="next"]'); // → persona
+    choose(h.screen, 'role', 'builder');
+    choose(h.screen, 'tone', 'terse');
+    choose(h.screen, 'autonomy', 'balanced');
+    choose(h.screen, 'delivery', 'iterative');
+    click(h.screen, '[data-action="next"]'); // → confirm
+    click(h.screen, '[data-action="submit"]');
+
+    const creates = h.commands.filter((c) => c.type === 'character.create');
+    expect(creates).toHaveLength(2);
+    expect(creates[0]).toMatchObject({ type: 'character.create', name: 'Neo', agentKind: 'claude-code' });
+    expect(creates[1]).toMatchObject({ type: 'character.create', name: 'Trinity', agentKind: 'codex' });
+    // 人设随建档一起发（core 的建档口径：persona 可选，缺省套默认模板）
+    expect((creates[0] as { persona?: string }).persona).toContain('角色定位：编码主力');
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.created.map((c) => c.name)).toEqual(['Neo', 'Trinity']);
+
+    // 事件序列：建档命令在前，完成事件在中，导航在最后
+    expect(h.commands[h.commands.length - 1]).toEqual({ type: 'ui.navigate', screen: 'main' });
+    h.unmount();
+  });
+
+  test('重复提交只发一次命令（防重复建档）', () => {
+    const h = mountScreen(makeState([CLAUDE]));
+    click(h.screen, '[data-action="next"]');
+    click(h.screen, '[data-action="next"]');
+    choose(h.screen, 'role', 'builder');
+    choose(h.screen, 'tone', 'terse');
+    choose(h.screen, 'autonomy', 'balanced');
+    choose(h.screen, 'delivery', 'iterative');
+    click(h.screen, '[data-action="next"]');
+
+    h.screen.submit();
+    h.screen.submit();
+
+    expect(h.commands.filter((c) => c.type === 'character.create')).toHaveLength(1);
+    h.unmount();
+  });
+
+  test('跳过引导 → 回主屏，不建档', () => {
+    const h = mountScreen(makeState([CLAUDE]));
+    click(h.screen, '[data-action="skip"]');
+    expect(h.commands).toEqual([{ type: 'ui.navigate', screen: 'main' }]);
+    h.unmount();
+  });
+
+  test('人设预览按文本渲染，不产生 DOM 注入', () => {
+    const h = mountScreen(makeState([CLAUDE]));
+    click(h.screen, '[data-action="next"]'); // → identity
+    click(h.screen, '[data-action="next"]'); // → persona
+    type(h.screen, '[data-role="persona-input"]', '<img src=x onerror=1>');
+    choose(h.screen, 'role', 'builder');
+    choose(h.screen, 'tone', 'terse');
+    choose(h.screen, 'autonomy', 'balanced');
+    choose(h.screen, 'delivery', 'iterative');
+    click(h.screen, '[data-action="next"]'); // → confirm
+
+    const preview = one(h.screen, '[data-role="persona-preview"]');
+    expect(preview.querySelector('img')).toBeNull();
+    expect(preview.textContent).toContain('<img src=x onerror=1>');
+    h.unmount();
+  });
+
+  test('可回退：确认 → 人设 → 起名 → 扫描', () => {
+    const h = mountScreen(makeState([CLAUDE]));
+    click(h.screen, '[data-action="next"]');
+    click(h.screen, '[data-action="next"]');
+    expect(h.screen.step).toBe('persona');
+
+    click(h.screen, '[data-action="back"]');
+    expect(h.screen.step).toBe('identity');
+    click(h.screen, '[data-action="back"]');
+    expect(h.screen.step).toBe('scan');
+    // 扫描步是第一步，不能再退
+    h.screen.back();
+    expect(h.screen.step).toBe('scan');
+    h.unmount();
+  });
+});
+
+// ============================================================================
+// 6. 生命周期
+// ============================================================================
+
+describe('生命周期', () => {
+  test('卸载即退订（不留监听器在全局）', () => {
+    const h = mountScreen(makeState([CLAUDE]));
+    expect(h.subscriberCount()).toBe(1);
+    h.unmount();
+    expect(h.subscriberCount()).toBe(0);
+  });
+
+  test('步骤条标出当前步', () => {
+    const h = mountScreen(makeState([CLAUDE]));
+    const steps = all(h.screen, '[data-role="step"]');
+    expect(steps).toHaveLength(4);
+    expect(steps[0]?.getAttribute('data-state')).toBe('active');
+
+    click(h.screen, '[data-action="next"]');
+    expect(all(h.screen, '[data-role="step"]')[0]?.getAttribute('data-state')).toBe('done');
+    expect(all(h.screen, '[data-role="step"]')[1]?.getAttribute('data-state')).toBe('active');
+    h.unmount();
+  });
+});
