@@ -71,8 +71,9 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
 
   private dragMode: DragMode = 'none';
   private dragStartScreen: Point = { x: 0, y: 0 };
+  /** 拖拽平移用屏幕空间增量：不依赖相机位姿，避免"测量-修正-再测量"反馈环导致的抖动。 */
+  private dragLastScreen: Point = { x: 0, y: 0 };
   private dragStartWorld: Point = { x: 0, y: 0 };
-  private dragLastWorld: Point = { x: 0, y: 0 };
   private draggedFar = false;
   private cameraFlushScheduled = false;
 
@@ -161,14 +162,13 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     if (pointer.rightButtonDown() || pointer.middleButtonDown()) {
       this.dragMode = 'pan';
       this.draggedFar = false;
-      this.dragLastWorld = { x: pointer.worldX, y: pointer.worldY };
+      this.dragLastScreen = { x: pointer.x, y: pointer.y };
       return;
     }
 
     const world = this.toWorldPoint(pointer);
     this.dragStartScreen = { x: pointer.x, y: pointer.y };
     this.dragStartWorld = world;
-    this.dragLastWorld = world;
     this.draggedFar = false;
 
     // 起点落在单位上就先按"点击"处理；落在空地才是框选
@@ -179,10 +179,13 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     if (this.dragMode === 'none') return;
 
     if (this.dragMode === 'pan') {
-      // 指针下的世界点会随相机移动而反向漂移，反向平移同样的距离即可让"抓住的点"贴在光标下
-      const world = this.toWorldPoint(pointer);
-      this.view.panBy(this.dragLastWorld.x - world.x, this.dragLastWorld.y - world.y);
-      this.dragLastWorld = world;
+      // 屏幕空间增量拖拽：相机反向跟随指针（内容跟手），每步只看屏幕位移，与相机当前位姿无关。
+      const zoom = this.view.current.zoom;
+      this.view.panBy(
+        (this.dragLastScreen.x - pointer.x) / zoom,
+        (this.dragLastScreen.y - pointer.y) / zoom
+      );
+      this.dragLastScreen = { x: pointer.x, y: pointer.y };
       return;
     }
 
