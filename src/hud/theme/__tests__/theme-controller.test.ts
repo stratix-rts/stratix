@@ -112,3 +112,35 @@ describe('createThemeController', () => {
     expect(ctrl.current).toBe('default');
   });
 });
+
+/**
+ * @since task_024：控制器放开 id 词表后，新增皮肤不必再改控制器 —— 换掉样式表来源即可。
+ */
+describe('createThemeController：多皮肤', () => {
+  const SKIN_SOURCES = {
+    default: defaultCss,
+    pixel: pixelCss,
+    crimson: readCss('tokens-crimson.css'),
+    forest: readCss('tokens-forest.css'),
+  } as const;
+
+  test('可以切到新增皮肤，且只有目标样式表被启用', () => {
+    const { inject, getNode } = makeRecorder();
+    const ctrl = createThemeController({ inject, sources: SKIN_SOURCES });
+    ctrl.apply('crimson');
+    expect(getNode('srf-theme-crimson').disabled).toBe(false);
+    expect(getNode('srf-theme-default').disabled).toBe(true);
+    expect(getNode('srf-theme-pixel').disabled).toBe(true);
+    expect(getNode('srf-theme-forest').disabled).toBe(true);
+    expect(ctrl.current).toBe('crimson');
+  });
+
+  test('未知 id 直接抛错（不把已有样式表全部 disable 掉）', () => {
+    const { inject, getNode } = makeRecorder();
+    const ctrl = createThemeController({ inject, sources: SKIN_SOURCES });
+    expect(() => ctrl.apply('no-such-skin')).toThrow(/unknown theme id/);
+    expect(getNode('srf-theme-default').disabled).toBe(true);
+    expect(getNode('srf-theme-pixel').disabled).toBe(true);
+    expect(ctrl.current).toBeNull();
+  });
+});

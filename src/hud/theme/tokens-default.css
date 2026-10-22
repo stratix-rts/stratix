@@ -31,6 +31,9 @@
   --srf-warn: #f0c674;
   --srf-danger: #e06c75;
 
+  /* —— 徽标色：角色头像 / 单位染色（与 skin-registry 的 accent 同值）—— */
+  --srf-badge-accent: #7fb3ff;
+
   /* —— 字体 —— */
   --srf-font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --srf-font-size-sm: 12px;

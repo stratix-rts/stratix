@@ -14,7 +14,8 @@ DOM-layer shell for V3. Zero framework deps: vanilla Custom Elements + Shadow DO
 ## Layout
 - `screens/main-screen.ts` — shell renderer
 - `widgets/strat-button.ts` — base button (Shadow DOM, CSS-var only)
-- `theme/tokens-default.css` / `tokens-pixel.css` — skin tokens
+- `theme/tokens-*.css` — skin tokens（8 套：default / pixel / crimson / forest / ocean / sunset / mono / aurora）
+- `theme/skin-registry.ts` — skin registry: `listSkins()` / `randomSkin(seed?)` / `resolveAccent()`
 - `theme/theme-controller.ts` — theme switching
 - `bridge/bus-adapter.ts` — sole core gateway
 - `dev/hud-dev.html` + `dev/hud-dev-entry.ts` — dev-only mount entry
