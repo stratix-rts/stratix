@@ -1,9 +1,12 @@
 /**
- * 单测：角色成长数值状态机（core/character/growth.ts）+ store 投影（core/character/manager.ts）+ 总线闭环。
+ * 单测：角色成长数值状态机（core/character/growth.ts）+ 建档（core/character/profile.ts）
+ *   + store 投影（core/character/manager.ts）+ 总线闭环。
  *
- * 分三段：
+ * 分四段：
  *   1. growth —— 纯函数，把**全路径**穷举一遍（含阈值边界、封顶、脏数据、非法增量）；
- *   2. manager —— 真 store，验证投影、失败 Notice、"被拒不改状态不广播"；
+ *   1.b persona —— 纯函数，提示词改写合法性；
+ *   1.c profile —— 纯函数，建档合法性（合法名 / 非法名 / 空 persona 默认模板 / agent 种类 / 皮肤）；
+ *   2. manager —— 真 store，验证投影、失败 Notice、"被拒不改状态不广播"、同名冲突、条数上限；
  *   3. 闭环 —— 真 core/bus + 真 createCoreRuntime：manager 写库 → state 通道广播 → HUD 侧订阅者拿到成长数值。
  *
  * 边界重点（验收要求的"恰好升级 / 连升"）：
@@ -15,6 +18,7 @@
 
 import { emitCommand, onState, resetBus } from '../bus';
 import {
+  DEFAULT_PERSONA_TEMPLATE,
   EXP_PER_LEVEL,
   MAX_LEVEL,
   PERSONA_MAX_LEN,
@@ -23,12 +27,19 @@ import {
   grantExperience,
   isMaxLevel,
   levelForExperience,
+  toAgentProfile,
   updatePersona,
 } from '../character';
+import { createAgentProfile } from '../character/profile';
 import { createCharacterManager } from '../character/manager';
 import { createCoreRuntime } from '../runtime';
 import { createStore } from '../store';
-import type { CharacterView, WorldState } from '../types';
+import {
+  MAX_CHARACTERS,
+  MAX_CHARACTER_NAME_LEN,
+  type CharacterView,
+  type WorldState,
+} from '../types';
 
 /** 造一个角色（默认 0 级 0 经验）。 */
 function characterAt(patch: Partial<CharacterView> = {}): CharacterView {
@@ -234,6 +245,148 @@ describe('updatePersona：角色提示词改写（纯函数）', () => {
 });
 
 // ============================================================================
+// 1.c profile：角色建档（纯函数，零 store）
+// ============================================================================
+
+describe('createAgentProfile：建档合法性（纯函数）', () => {
+  const valid = {
+    id: 'c-1',
+    name: 'Neo',
+    agentKind: 'claude-code',
+    skinId: 'skin-default',
+  } as const;
+
+  test('合法输入：档案字段齐整，初始等级 1 / 经验 0', () => {
+    const r = createAgentProfile({ ...valid });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.profile).toEqual({
+      id: 'c-1',
+      agentKind: 'claude-code',
+      displayName: 'Neo',
+      skinId: 'skin-default',
+      persona: DEFAULT_PERSONA_TEMPLATE,
+      level: 1,
+      exp: 0,
+      externalSessionId: null,
+    });
+  });
+
+  test('名字 trim 后入库（首尾空白不算名字的一部分）', () => {
+    const r = createAgentProfile({ ...valid, name: '  Neo  ' });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.profile.displayName).toBe('Neo');
+  });
+
+  test('空名 / 纯空白名 → 拒发（empty-name）', () => {
+    for (const name of ['', '   ', '\n\t']) {
+      const r = createAgentProfile({ ...valid, name });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('empty-name');
+    }
+  });
+
+  test('名字非字符串 → 拒发（empty-name）', () => {
+    for (const name of [null, undefined, 42, {}]) {
+      const r = createAgentProfile({ ...valid, name: name as unknown });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('empty-name');
+    }
+  });
+
+  test('名字超长 → 拒发（name-too-long）；恰好 24 码点合法', () => {
+    const atLimit = '名'.repeat(MAX_CHARACTER_NAME_LEN);
+    const ok = createAgentProfile({ ...valid, name: atLimit });
+    expect(ok.ok).toBe(true);
+
+    const tooLong = createAgentProfile({ ...valid, name: '名'.repeat(MAX_CHARACTER_NAME_LEN + 1) });
+    expect(tooLong.ok).toBe(false);
+    if (!tooLong.ok) expect(tooLong.code).toBe('name-too-long');
+  });
+
+  test('未知的 agent 种类 → 拒发（unknown-agent-kind），不擅自归一到某个 agent', () => {
+    for (const agentKind of ['gpt', 'Claude-Code', '', 42]) {
+      const r = createAgentProfile({ ...valid, agentKind });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('unknown-agent-kind');
+    }
+  });
+
+  test('皮肤 id：空 / 纯空白 → 拒发（invalid-skin-id）', () => {
+    for (const skinId of ['', '   ', 42]) {
+      const r = createAgentProfile({ ...valid, skinId: skinId as unknown });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('invalid-skin-id');
+    }
+  });
+
+  test('空 persona（缺省 / 空串 / 纯空白）→ 套默认模板，不拒发', () => {
+    for (const persona of [undefined, null, '', '   ']) {
+      const r = createAgentProfile({ ...valid, persona });
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.profile.persona).toBe(DEFAULT_PERSONA_TEMPLATE);
+    }
+  });
+
+  test('合法 persona：trim 后写入', () => {
+    const r = createAgentProfile({ ...valid, persona: '  谨慎的数据分析师\n' });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.profile.persona).toBe('谨慎的数据分析师');
+  });
+
+  test('persona 超长 → 拒发（too-long），口径与 persona.ts 一致', () => {
+    const r = createAgentProfile({ ...valid, persona: 'x'.repeat(PERSONA_MAX_LEN + 1) });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('too-long');
+  });
+
+  test('persona 非字符串 → 拒发（not-a-string）', () => {
+    const r = createAgentProfile({ ...valid, persona: 42 });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('not-a-string');
+  });
+
+  test('externalSessionId：缺省 → null；给了就原样（trim 后）透传', () => {
+    const none = createAgentProfile({ ...valid });
+    expect(none.ok).toBe(true);
+    if (none.ok) expect(none.profile.externalSessionId).toBeNull();
+
+    const withSession = createAgentProfile({ ...valid, externalSessionId: '  sess-abc-123 ' });
+    expect(withSession.ok).toBe(true);
+    if (withSession.ok) expect(withSession.profile.externalSessionId).toBe('sess-abc-123');
+  });
+});
+
+describe('toAgentProfile：agent 视角投影（同一份真相，不另存一份）', () => {
+  test('已绑定 agent 的角色 → 投影字段与 CharacterView 一致', () => {
+    const character = characterAt({
+      id: 'c-neo',
+      name: 'Neo',
+      persona: '稳',
+      level: 2,
+      experience: 100,
+      agentKind: 'codex',
+      skinId: 'skin-blue',
+      externalSessionId: 'sess-1',
+    });
+    expect(toAgentProfile(character)).toEqual({
+      id: 'c-neo',
+      agentKind: 'codex',
+      displayName: 'Neo',
+      skinId: 'skin-blue',
+      persona: '稳',
+      level: 2,
+      exp: 100,
+      externalSessionId: 'sess-1',
+    });
+  });
+
+  test('未绑定 agent 的角色 → null（不编造 agentKind）', () => {
+    expect(toAgentProfile(characterAt())).toBeNull();
+  });
+});
+
+// ============================================================================
 // 2. manager：store 投影 + Notice
 // ============================================================================
 
@@ -389,6 +542,173 @@ describe('CharacterManager.updatePersona：persona 写库投影（@since v3.6）
 });
 
 // ============================================================================
+// 2.b CharacterManager.createCharacter：建档落库 + 同名冲突 + 上限（@since v3.7）
+// ============================================================================
+
+describe('CharacterManager.createCharacter：建档落库', () => {
+  const input = {
+    name: 'Neo',
+    agentKind: 'claude-code',
+    skinId: 'skin-default',
+    persona: '谨慎的数据分析师',
+  } as const;
+
+  test('合法建档：落进 WorldState.characters，初始 1 级 0 经验，广播一次', () => {
+    const store = createStore();
+    const manager = createCharacterManager({ store });
+    let broadcasts = 0;
+    store.subscribe(() => { broadcasts += 1; });
+
+    const result = manager.createCharacter(input);
+
+    expect(result.ok).toBe(true);
+    const characters = store.getState().characters;
+    expect(characters).toHaveLength(1);
+    expect(characters[0]).toMatchObject({
+      name: 'Neo',
+      persona: '谨慎的数据分析师',
+      level: 1,
+      experience: 0,
+      agentKind: 'claude-code',
+      skinId: 'skin-default',
+      externalSessionId: null,
+    });
+    expect(characters[0]?.id).toBeTruthy();
+    expect(broadcasts).toBe(1);
+  });
+
+  test('成功建档不打扰用户（不推成功 Notice）——状态广播本身就是反馈', () => {
+    const store = createStore();
+    const manager = createCharacterManager({ store });
+
+    manager.createCharacter(input);
+
+    expect(store.getState().notices).toHaveLength(0);
+  });
+
+  test('非法名（空 / 纯空白）：拒发 + Notice，characters 不变', () => {
+    const store = createStore();
+    const manager = createCharacterManager({ store });
+
+    const result = manager.createCharacter({ ...input, name: '   ' });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe('empty-name');
+    expect(store.getState().characters).toHaveLength(0);
+    expect(store.getState().notices).toHaveLength(1);
+    expect(store.getState().notices[0]).toMatchObject({ level: 'warn', source: 'core/character' });
+  });
+
+  test('名字超长：拒发 + Notice，characters 不变', () => {
+    const store = createStore();
+    const manager = createCharacterManager({ store });
+
+    const result = manager.createCharacter({
+      ...input,
+      name: '名'.repeat(MAX_CHARACTER_NAME_LEN + 1),
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe('name-too-long');
+    expect(store.getState().characters).toHaveLength(0);
+    expect(store.getState().notices).toHaveLength(1);
+  });
+
+  test('空 persona：套默认模板落库（不拒发）', () => {
+    const store = createStore();
+    const manager = createCharacterManager({ store });
+
+    const result = manager.createCharacter({ ...input, persona: '  ' });
+
+    expect(result.ok).toBe(true);
+    expect(store.getState().characters[0]?.persona).toBe(DEFAULT_PERSONA_TEMPLATE);
+  });
+
+  test('persona 缺省：同样套默认模板', () => {
+    const store = createStore();
+    const manager = createCharacterManager({ store });
+
+    const result = manager.createCharacter({
+      name: 'Trinity',
+      agentKind: 'codex',
+      skinId: 'skin-default',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(store.getState().characters[0]?.persona).toBe(DEFAULT_PERSONA_TEMPLATE);
+  });
+
+  test('重复同名：拒发 + **error 级** Notice，characters 不变（不建第二份）', () => {
+    const store = createStore();
+    const manager = createCharacterManager({ store });
+
+    const first = manager.createCharacter(input);
+    expect(first.ok).toBe(true);
+
+    const second = manager.createCharacter(input);
+
+    expect(second.ok).toBe(false);
+    if (!second.ok) expect(second.code).toBe('duplicate-name');
+    expect(store.getState().characters).toHaveLength(1);
+    expect(store.getState().notices).toHaveLength(1);
+    expect(store.getState().notices[0]).toMatchObject({ level: 'error', source: 'core/character' });
+  });
+
+  test('重复同名大小写不敏感（Neo / neo 视为同一个）', () => {
+    const store = createStore();
+    const manager = createCharacterManager({ store });
+
+    manager.createCharacter(input);
+    const second = manager.createCharacter({ ...input, name: ' neo ' });
+
+    expect(second.ok).toBe(false);
+    if (!second.ok) expect(second.code).toBe('duplicate-name');
+    expect(store.getState().characters).toHaveLength(1);
+  });
+
+  test('未知 agent 种类：拒发 + Notice', () => {
+    const store = createStore();
+    const manager = createCharacterManager({ store });
+
+    const result = manager.createCharacter({
+      ...input,
+      agentKind: 'gpt' as unknown as 'codex',
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe('unknown-agent-kind');
+    expect(store.getState().characters).toHaveLength(0);
+    expect(store.getState().notices).toHaveLength(1);
+  });
+
+  test('条数达上限：拒发 + Notice，绝不静默挤掉已有角色', () => {
+    const existing = Array.from({ length: MAX_CHARACTERS }, (_, i) =>
+      characterAt({ id: `c-${i}`, name: `Agent${i}` })
+    );
+    const store = createStore(stateWith(existing));
+    const manager = createCharacterManager({ store });
+
+    const result = manager.createCharacter(input);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe('limit-exceeded');
+    expect(store.getState().characters).toHaveLength(MAX_CHARACTERS);
+    expect(store.getState().notices[0]?.text).toContain(String(MAX_CHARACTERS));
+  });
+
+  test('建档后原有角色不受影响（追加而非整表替换）', () => {
+    const store = createStore(stateWith([characterAt({ id: 'c-a', name: 'A' })]));
+    const manager = createCharacterManager({ store });
+
+    manager.createCharacter(input);
+
+    const [a, b] = store.getState().characters;
+    expect(a).toEqual(characterAt({ id: 'c-a', name: 'A' }));
+    expect(b?.name).toBe('Neo');
+  });
+});
+
+// ============================================================================
 // 3. 总线闭环：manager 写库 → runtime 广播 → 订阅者（= HUD 侧）拿到成长数值
 // ============================================================================
 
@@ -461,5 +781,76 @@ describe('经总线集成：core 写库 → state 通道 → HUD 订阅侧', () 
     expect(store.getState().notices).toHaveLength(2);
 
     stop();
+  });
+
+  test('character.create 走 manager 落库并广播新角色（@since v3.7 接线）', () => {
+    resetBus();
+    const store = createStore();
+    const runtime = createCoreRuntime({ store });
+    const seen: WorldState[] = [];
+    const off = onState((state) => { seen.push(state); });
+    const stop = runtime.start();
+
+    emitCommand({
+      type: 'character.create',
+      name: '  Neo  ',
+      agentKind: 'claude-code',
+      skinId: 'skin-default',
+      persona: '谨慎的数据分析师',
+    });
+    stop();
+    off();
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.characters).toHaveLength(1);
+    expect(seen[0]?.characters[0]).toMatchObject({
+      name: 'Neo',
+      persona: '谨慎的数据分析师',
+      level: 1,
+      experience: 0,
+      agentKind: 'claude-code',
+      skinId: 'skin-default',
+    });
+  });
+
+  test('character.create：空 persona 经总线也套默认模板', () => {
+    resetBus();
+    const store = createStore();
+    const runtime = createCoreRuntime({ store });
+    const stop = runtime.start();
+
+    emitCommand({ type: 'character.create', name: 'Trinity', agentKind: 'codex', skinId: 'skin-default' });
+    stop();
+
+    expect(store.getState().characters[0]?.persona).toBe(DEFAULT_PERSONA_TEMPLATE);
+  });
+
+  test('character.create：重复同名经总线走 error Notice，characters 只有一份', () => {
+    resetBus();
+    const store = createStore();
+    const runtime = createCoreRuntime({ store });
+    const stop = runtime.start();
+
+    emitCommand({ type: 'character.create', name: 'Neo', agentKind: 'claude-code', skinId: 'skin-default' });
+    emitCommand({ type: 'character.create', name: 'Neo', agentKind: 'codex', skinId: 'skin-default' });
+    stop();
+
+    expect(store.getState().characters).toHaveLength(1);
+    expect(store.getState().notices).toHaveLength(1);
+    expect(store.getState().notices[0]).toMatchObject({ level: 'error', source: 'core/character' });
+  });
+
+  test('character.create：非法名经总线走 warn Notice，不落库', () => {
+    resetBus();
+    const store = createStore();
+    const runtime = createCoreRuntime({ store });
+    const stop = runtime.start();
+
+    emitCommand({ type: 'character.create', name: '  ', agentKind: 'claude-code', skinId: 'skin-default' });
+    stop();
+
+    expect(store.getState().characters).toHaveLength(0);
+    expect(store.getState().notices).toHaveLength(1);
+    expect(store.getState().notices[0]).toMatchObject({ level: 'warn', source: 'core/character' });
   });
 });

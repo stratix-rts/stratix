@@ -20,16 +20,62 @@
  *     见 core/runtime.ts 的 handleCommand 'character.persona.update' case。
  *   - 经验（grantExperience）：契约里**没有**对应的 HudCommand 位（per HUD 手动涨经验会变成假养成），
  *     故仍只作为 manager 的程序化入口暴露给 world/agent-link 的回报链路使用。
+ *
+ * @since v3.7 角色建档（character.create）：
+ *   新增 createCharacter —— 建档合法性裁决在 profile.ts（纯函数），本文件只做「找冲突 → 落库 → 上报」。
+ *   落库后由 core/runtime.ts 的 store 订阅**全量广播** WorldState.characters（广播出口仍只有一处）。
  */
 
 import { worldStore, type CoreStore } from '../store';
-import { NOTICE_TTL_MS, type CharacterView, type NoticeLevel } from '../types';
+import {
+  MAX_CHARACTERS,
+  NOTICE_TTL_MS,
+  type AgentKind,
+  type AgentProfile,
+  type CharacterView,
+  type NoticeLevel,
+} from '../types';
 
 import { grantExperience as applyExperience, type GrowthErrorCode } from './growth';
 import { updatePersona as applyPersona, type PersonaErrorCode } from './persona';
+import {
+  createAgentProfile,
+  hasDuplicateCharacterName,
+  type ProfileErrorCode,
+} from './profile';
 
 /** 写经验 / persona 被拒的机器可读原因（对应纯函数错误码 + "角色不在状态里"）。 */
 export type CharacterRejectionCode = 'not-found' | GrowthErrorCode | PersonaErrorCode;
+
+/**
+ * 建档被拒的机器可读原因（@since v3.7）。
+ * - ProfileErrorCode：单个档案本身不合法（名字 / agent 种类 / 皮肤 / 人设），来自 profile.ts；
+ * - duplicate-name：状态里已有同名角色（**要看状态，故判在 manager**，不在纯函数里）；
+ * - limit-exceeded：角色数已达上限（MAX_CHARACTERS）—— 拒绝新建，绝不静默挤掉已有角色。
+ */
+export type CharacterCreateRejectionCode = ProfileErrorCode | 'duplicate-name' | 'limit-exceeded';
+
+/** 建档入参。字段类型按契约收，运行时脏值由 profile.ts 兜（unknown 校验在纯函数里）。 */
+export interface CharacterCreateInput {
+  readonly name: string;
+  readonly agentKind: AgentKind;
+  readonly skinId: string;
+  /** 人设提示词；缺省 / 空串 → 套默认模板（profile.ts 的 DEFAULT_PERSONA_TEMPLATE）。 */
+  readonly persona?: string;
+  /** 外部会话 id（各 CLI 原样透传）；缺省为 null。 */
+  readonly externalSessionId?: string | null;
+}
+
+export type CharacterCreateResult =
+  | {
+      readonly ok: true;
+      /** 落库后的角色（WorldState.characters 里那一条）。 */
+      readonly character: CharacterView;
+      /** agent 视角的同一份档案（投影，不是第二份存储）。 */
+      readonly profile: AgentProfile;
+    }
+  | { readonly ok: false; readonly code: CharacterCreateRejectionCode };
+
 
 export type CharacterGrantResult =
   | {
@@ -53,10 +99,22 @@ export type CharacterPersonaResult =
 export interface CharacterManagerOptions {
   /** 状态持有者；默认 worldStore 单例。单测用 createStore() 隔离。 */
   readonly store?: CoreStore;
+  /** 角色档案条数上限；默认契约常量 MAX_CHARACTERS（perf：characters 全量广播，必须有界）。 */
+  readonly maxCharacters?: number;
+  /** 角色 id 生成器；默认按 `character_<时间戳>_<序号>` 生成（与 mission 域同一形状）。 */
+  readonly createId?: (prefix: string) => string;
 }
 
 export interface CharacterManager {
   readonly store: CoreStore;
+  /**
+   * 新建角色档案（对应 HudCommand 'character.create'，@since v3.7）。
+   * 合法性裁决在 profile.ts（纯函数）：名字 trim 非空且 ≤24 码点、agentKind 在词表内、
+   * skinId 非空、persona 走 persona.ts 既有校验（空 → 默认模板）。
+   * 状态相关的两件事判在本文件：**同名冲突**（大小写不敏感）与**条数上限**。
+   * 成功 → 角色进 WorldState.characters（随下一次广播**全量**下发）；失败 → 拒发 + Notice（状态不变）。
+   */
+  createCharacter(input: CharacterCreateInput): CharacterCreateResult;
   /**
    * 给角色加经验（成长数值写入面的唯一入口）。
    * 成功即**一次** store 写入 → 广播；角色不存在 / 增量非法返回失败码并推一条 warn 级 Notice。
@@ -106,8 +164,108 @@ function rejectionLabel(code: CharacterRejectionCode, subject: '经验' | '提�
   return `${subject}写入被拒（${code}）：${characterId}`;
 }
 
+/**
+ * 建档被拒的中文标签（Notice 用）。集中一处，免得 manager 与单测各写一份文案漂移。
+ * why 分「error / warn」两级：
+ *   - duplicate-name 是**冲突**（用户想建的角色已经存在），用 error 级；
+ *   - 其余是**输入不合法**（名字/皮肤/人设写错了），用 warn 级。
+ */
+function createRejectionLabel(code: CharacterCreateRejectionCode, maxCharacters: number): string {
+  switch (code) {
+    case 'duplicate-name':
+      return '已存在同名角色，请换一个名字';
+    case 'limit-exceeded':
+      return `角色数已达上限（${maxCharacters}），请先移除不需要的角色`;
+    case 'empty-name':
+      return '角色名不能为空';
+    case 'name-too-long':
+      return '角色名过长';
+    case 'unknown-agent-kind':
+      return '不认识这个 agent 类型';
+    case 'invalid-skin-id':
+      return '皮肤 id 不合法';
+    case 'invalid-session-id':
+      return '外部会话 id 不合法';
+    case 'not-a-string':
+      return '人设提示词必须是字符串';
+    case 'too-long':
+      return '人设提示词过长';
+    case 'empty':
+      return '人设提示词不能为空';
+    default:
+      return `角色创建被拒（${code}）`;
+  }
+}
+
 export function createCharacterManager(options: CharacterManagerOptions = {}): CharacterManager {
   const store = options.store ?? worldStore;
+  const maxCharacters = options.maxCharacters ?? MAX_CHARACTERS;
+  let seq = 0;
+  // id 生成器与 mission 域同一形状（时间戳 + 序号）：同一毫秒内连建两个角色也不会撞号。
+  const createId = options.createId ?? ((prefix: string): string => `${prefix}_${Date.now()}_${++seq}`);
+
+  /**
+   * 建档（@since v3.7）：合法性 → profile.ts（纯函数）；冲突与上限 → 本文件（要看状态）；
+   * 落库 → **同一次 setState** 内原子完成（与 grantExperience / updatePersona 同一口径）。
+   * 广播：state 一变，core/runtime.ts 的 store 订阅会把整份 WorldState（含 characters）全量下发，
+   * 本文件**不自己广播**（广播出口唯一，见文件头禁止事项第 1 条）。
+   */
+  const createCharacter = (input: CharacterCreateInput): CharacterCreateResult => {
+    const id = createId('character');
+    const built = createAgentProfile({
+      id,
+      name: input.name,
+      agentKind: input.agentKind,
+      skinId: input.skinId,
+      persona: input.persona,
+      externalSessionId: input.externalSessionId,
+    });
+    if (!built.ok) {
+      reportFailure(store, `character-create-rejected:${built.code}`, createRejectionLabel(built.code, maxCharacters));
+      return { ok: false, code: built.code };
+    }
+    const profile = built.profile;
+
+    let result: CharacterCreateResult | null = null;
+    store.setState((current) => {
+      // 同名冲突与上限都判在**同一次** setState 内：判在前、写在后，中间没有别的写入插进来
+      // （两个域都写同一个 store，陈旧快照判出的"不冲突"可能已被另一个写入抢先占了名字）。
+      if (hasDuplicateCharacterName(current.characters, profile.displayName)) {
+        result = { ok: false, code: 'duplicate-name' };
+        return current;
+      }
+      if (current.characters.length >= maxCharacters) {
+        result = { ok: false, code: 'limit-exceeded' };
+        return current;
+      }
+      const character: CharacterView = {
+        id: profile.id,
+        name: profile.displayName,
+        persona: profile.persona,
+        level: profile.level,
+        experience: profile.exp,
+        agentKind: profile.agentKind,
+        skinId: profile.skinId,
+        externalSessionId: profile.externalSessionId ?? null,
+      };
+      result = { ok: true, character, profile };
+      return { ...current, characters: [...current.characters, character] };
+    });
+
+    // setState 是同步的，返回时 result 必已赋值；保底兜一层（只可能是编程错误，不是用户路径）。
+    if (result === null) return { ok: false, code: 'duplicate-name' };
+    const settled = result as CharacterCreateResult;
+    if (!settled.ok) {
+      const level: NoticeLevel = settled.code === 'duplicate-name' ? 'error' : 'warn';
+      reportFailure(
+        store,
+        `character-create-rejected:${settled.code}`,
+        createRejectionLabel(settled.code, maxCharacters),
+        level
+      );
+    }
+    return settled;
+  };
 
   /**
    * 查找 → 判定 → 写库全部发生在**同一次 setState 内**（读改写原子化）。
@@ -196,5 +354,5 @@ export function createCharacterManager(options: CharacterManagerOptions = {}): C
     return settled;
   };
 
-  return { store, grantExperience, updatePersona };
+  return { store, createCharacter, grantExperience, updatePersona };
 }

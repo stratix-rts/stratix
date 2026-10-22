@@ -20,6 +20,8 @@
  * @since v3.3 任务域（core/mission）接入：mission.create / assign / confirm / cancel 由本文件
  *   **直接调用** manager（不像 agent-link 那样由它自己订阅总线）—— 任务域无 IO、无长驻资源，
  *   省掉一次订阅与一层归属判定；写库仍走同一个 store，广播仍走本文件的 store 订阅。
+ * @since v3.7 角色建档（core/character/profile.ts + manager.createCharacter）接入：
+ *   character.create 由本文件直接调用 character manager（与 persona.update 同一口径）。
  */
 
 import type { AgentLinkManager } from './agent-link';
@@ -146,6 +148,17 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
       // 合法性与 trim 由 core/character/persona.ts 校验；被拒走 Notice（manager 内部完成）。
       case 'character.persona.update':
         character.updatePersona(command.characterId, command.prompt);
+        return;
+      // @since v3.7 角色建档（首启引导）：落到 character manager（不再走 onUnhandled）。
+      // 建档合法性由 core/character/profile.ts 的纯函数裁决；同名冲突 / 条数上限由 manager 判；
+      // 落库后由本文件的 store 订阅把整份 WorldState（含 characters）全量广播给两侧。
+      case 'character.create':
+        character.createCharacter({
+          name: command.name,
+          agentKind: command.agentKind,
+          skinId: command.skinId,
+          persona: command.persona,
+        });
         return;
       // @since v3.6 屏位路由：
       //   'main' 与 'chat' 都不入 currentScreen：

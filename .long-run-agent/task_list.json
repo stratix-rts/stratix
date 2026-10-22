@@ -998,6 +998,225 @@
         "issues": [],
         "optimization_history": []
       }
+    },
+    {
+      "id": "task_021",
+      "description": "core: AgentProfile 模型 + character.create 命令（名字/皮肤/persona/agent绑定/初始数值）+ WorldState.characters 扩展-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_021.md",
+      "created_at": "2026-10-22T15:18:17.358027",
+      "updated_at": "2026-10-22T15:29:23.724727",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      },
+      "requirements": "core 层新增 AgentProfile（agentKind 如 claude-code/codex/opencode/kimi/openclaw、displayName、skinId、persona、level=1、exp=0、externalSessionId?）。扩展 HudCommand 增加 character.create{name, agentKind, skinId, persona}，manager 校验（名字 trim 非空≤24 字、persona 走 persona.ts 既有校验）后落库。WorldState.characters 全量广播。依赖关系：仅 core，零渲染。",
+      "acceptance": [
+        "tsc 零错误",
+        "character.test.ts 新增 create 用例（合法/非法名/空 persona 默认模板）全过",
+        "重复 create 同名返回错误 Notice",
+        "jest src/core 全绿"
+      ],
+      "design": "放 src/core/character/（manager.ts 扩展或新 profile.ts）；类型进 types.ts（契约注释）。随机皮肤分配不在此任务（skinId 由调用方传入）。"
+    },
+    {
+      "id": "task_022",
+      "description": "world/hud: 本地 agent 检测器（which+version 扫描，T1-T3 名单，结果进 WorldState.detectedAgents）-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_022.md",
+      "created_at": "2026-10-22T15:18:17.583571",
+      "updated_at": "2026-10-22T15:18:17.583582",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      },
+      "requirements": "新增 src/app/services/agent-detector.ts（Electron 主进程侧）：按 docs/AGENT-MATRIX.md T1-T3 名单逐个 which+--version 探测（每项 10s 超时），返回 DetectedAgent{kind, installed, version, path, tier}。经 IPC/preload 暴露给渲染层，检测结果并入 WorldState.detectedAgents 广播。纯 Node 可测：探测函数接受注入的 execFn。",
+      "acceptance": [
+        "tsc 零错误",
+        "注入假 execFn 的单测：已装/未装/超时三态",
+        "jest 新增套件全绿",
+        "真机跑一次 dev 输出探测日志（claude/openclaw 必检出）"
+      ],
+      "design": "不阻塞启动：异步探测，逐个出结果逐个广播。名单常量与 AGENT-MATRIX.md 对齐（claude-code, codex, opencode, kimi, openclaw, gemini, qwen, crush, goose, aider, copilot）。"
+    },
+    {
+      "id": "task_023",
+      "description": "agent-link: CliTransport 抽象 + Claude/Codex/OpenCode/Kimi/OpenClaw 五家 adapter-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_023.md",
+      "created_at": "2026-10-22T15:18:17.802966",
+      "updated_at": "2026-10-22T15:18:17.802979",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      },
+      "requirements": "src/app/services/cli-transport/：CliTransport 抽象 spawn(prompt,{sessionId?})→AsyncIterable<TransportEvent{type:message|tool_use|done|error,...}> + AbortSignal 取消。adapter：claude（-p --output-format stream-json --resume）、codex（exec --json）、kimi（--yolo --prompt --session）、opencode（run，serve 探测失败降级）、openclaw（sessions API 或 CLI）。会话 id 原样透传存 AgentProfile.externalSessionId。",
+      "acceptance": [
+        "tsc 零错误",
+        "每家 adapter 有假 stdout 流的单测（喂样例 JSONL 断言事件序列）",
+        "AbortSignal 触发进程树终止的单测",
+        "jest 新增套件全绿",
+        "真机与 claude adapter 跑通一轮 echo 往返"
+      ],
+      "design": "参考 docs/AGENT-MATRIX.md「集成要点」。真机 claude 往返用 -p \"回复 pong\" 验证。spawn 一律注入 child_process 工厂保可测。"
+    },
+    {
+      "id": "task_024",
+      "description": "hud: 皮肤库扩展（≥6 套 token 变体 + 徽标色 + 随机分配）-模块",
+      "template": "task",
+      "priority": "P2",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_024.md",
+      "created_at": "2026-10-22T15:18:18.033656",
+      "updated_at": "2026-10-22T15:18:18.033668",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      },
+      "requirements": "src/hud/theme/ 扩展皮肤库：在现有 tokens-default/pixel 基础上新增 ≥6 套 token 变体（命名如 crimson/forest/ocean/sunset/mono/aurora），每套含徽标色 accent。skin-registry.ts 提供 listSkins()/randomSkin()。角色头像/单位染色用 skin accent。",
+      "acceptance": [
+        "tsc 零错误",
+        "randomSkin() 不重复抽签单测（种子注入）",
+        "每套皮肤 CSS 变量齐全性单测（键集合一致）",
+        "jest src/hud 全绿"
+      ],
+      "design": "纯 token 文件 + registry，不动组件结构。像素皮肤保留既有像素变体位。"
+    },
+    {
+      "id": "task_025",
+      "description": "hud: 首启向导屏（扫描报告→起名+皮肤→人设生成→完成 四步）-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_025.md",
+      "created_at": "2026-10-22T15:18:18.251744",
+      "updated_at": "2026-10-22T15:18:18.251755",
+      "dependencies": [
+        "task_021",
+        "task_022",
+        "task_024"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      },
+      "requirements": "src/hud/screens/onboarding-screen.ts WebComponent 向导四步：①扫描报告（复用 detectedAgents，已装高亮+tier 标签）②逐 agent 起名+随机皮肤（可换）③人设生成（3-4 题问答拼装 persona 模板，预览可编辑）④确认→character.create→完成。覆盖层 z-index 50 规范同其他子屏。",
+      "acceptance": [
+        "tsc 零错误",
+        "步骤流转/表单校验/提交事件的单测",
+        "jest src/hud 全绿"
+      ],
+      "design": "依赖 task_021/022/024 完成后可联。样式走既有 token 体系，无硬编码色值。"
+    },
+    {
+      "id": "task_026",
+      "description": "app: 首启触发逻辑 + 全链路联调验收-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_026.md",
+      "created_at": "2026-10-22T15:18:18.467829",
+      "updated_at": "2026-10-22T15:18:18.467838",
+      "dependencies": [
+        "task_021",
+        "task_022",
+        "task_023",
+        "task_025"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      },
+      "requirements": "main-entry.ts 首启判定（WorldState.characters 为空且检测到 ≥1 个已装 agent → 进 onboarding；开发期开关 STRATIX_ONBOARDING_FORCE=1 每次触发）。全链路验收：typecheck+全量 jest+build；dev 起动走完向导创建 1 个角色出现在战场/角色屏。",
+      "acceptance": [
+        "typecheck 零错误",
+        "jest 全量通过",
+        "npm run build 成功",
+        "dev 手测向导全流程留截图路径记录"
+      ],
+      "design": "依赖 021/022/025。手测步骤写进 PR 描述或 commit message。"
     }
   ]
 }

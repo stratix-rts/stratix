@@ -209,6 +209,73 @@ export const DEFAULT_SETTINGS: SettingsView = {
 // 角色
 // ============================================================================
 
+/**
+ * @since v3.7 本地 agent 种类词表。**词表即契约**：core 按它校验 agentKind（不认识的一律拒发），
+ *   HUD / 首启引导屏按同一份词表渲染"绑的是哪个 CLI agent"；新增一种 CLI agent 两侧同步改。
+ *   取值来源：docs/AGENT-MATRIX.md 的 T1/T2 名单（claude / codex / opencode / kimi / openclaw）。
+ */
+export type AgentKind = 'claude-code' | 'codex' | 'opencode' | 'kimi' | 'openclaw';
+
+/** @since v3.7 agent 种类词表的运行时可枚举一份（core 校验用；HUD 也可 import 同一份渲染标签）。 */
+export const AGENT_KINDS: readonly AgentKind[] = ['claude-code', 'codex', 'opencode', 'kimi', 'openclaw'];
+
+/**
+ * @since v3.7 角色名长度上限（按 Unicode 码点计，不是 UTF-16 code unit ——
+ *   "24 字"对用户是 24 个汉字/字母，不是 24 个存储单元）。
+ *   why 要上限：名字随 WorldState 全量广播，且要画在像素头像旁边；无上限的名字既撑爆广播也画不下。
+ */
+export const MAX_CHARACTER_NAME_LEN = 24;
+
+/**
+ * @since v3.7 皮肤 id 长度上限。skinId 是**资源键**（core 不解析、不校验资源是否存在），
+ *   但它会随每次状态广播外发，故必须有界。
+ */
+export const MAX_SKIN_ID_LEN = 64;
+
+/**
+ * @since v3.7 外部会话 id 长度上限。各家 CLI 的 session id 原样透传（见 docs/AGENT-MATRIX.md），
+ *   长度差异很大（codex rollup / claude uuid），但仍要给个上限兜住异常输入。
+ */
+export const MAX_EXTERNAL_SESSION_ID_LEN = 200;
+
+/**
+ * @since v3.7 角色档案条数上限。
+ * why 必须有界：characters 随 WorldState **全量**广播，每次广播都带着整份档案；
+ * 不设上限则角色数无界增长、广播体积无界增长（perf 硬约束：数据不许无限增长）。
+ * 超限时**拒绝新建并回 Notice**，绝不静默挤掉已有角色（角色是用户亲手建的，丢掉即数据丢失）。
+ */
+export const MAX_CHARACTERS = 64;
+
+/**
+ * @since v3.7 Agent 档案 —— agent 视角的完整角色模型。
+ *
+ * 与 CharacterView 的关系（重要，别当成两份真相）：
+ *   - **CharacterView 是状态里的真相**：随 WorldState.characters 广播，是 HUD 读的那一份；
+ *   - **AgentProfile 是同一份数据的 agent 视角投影**：由 core/character/profile.ts 的 toAgentProfile
+ *     现算，状态里**不存第二份** persona / 等级，故不存在两份真相漂移。
+ *   字段名不同（displayName ↔ name、exp ↔ experience）是刻意的：CharacterView 已被 hud 多处消费，
+ *   不能为了新词表改字段名（改了会破既有构造点）；AgentProfile 是给 agent 侧（cli transport /
+ *   首启引导）用的新词表。两者的对应关系由 toAgentProfile 一处固定。
+ */
+export interface AgentProfile {
+  /** 角色 id（与 CharacterView.id 同值）。 */
+  readonly id: string;
+  /** 绑定的本地 agent 种类。 */
+  readonly agentKind: AgentKind;
+  /** 展示名（= CharacterView.name）。 */
+  readonly displayName: string;
+  /** 皮肤 id（渲染侧资源键；core 不解析内容）。 */
+  readonly skinId: string;
+  /** 人设提示词（= CharacterView.persona）。 */
+  readonly persona: string;
+  /** 等级（= CharacterView.level）。 */
+  readonly level: number;
+  /** 经验（= CharacterView.experience）。 */
+  readonly exp: number;
+  /** 外部会话 id（各家 CLI 原样透传）；未建立会话时为 null。 */
+  readonly externalSessionId?: string | null;
+}
+
 /** 角色档案 + 成长数值（技能树不迁移，见 D3）。 */
 export interface CharacterView {
   readonly id: string;
@@ -216,6 +283,18 @@ export interface CharacterView {
   readonly persona: string;
   readonly level: number;
   readonly experience: number;
+  /**
+   * @since v3.7 绑定的本地 agent 种类（首启引导建档时写入）。
+   * 缺省 / null 表示**未绑定** —— HUD 显示「未绑定 agent」，core 不替它猜一个。
+   */
+  readonly agentKind?: AgentKind | null;
+  /** @since v3.7 皮肤 id（渲染侧资源键；core 不解析内容、不校验资源是否存在）。 */
+  readonly skinId?: string | null;
+  /**
+   * @since v3.7 外部会话 id（各家 CLI 的 session id 原样透传，见 docs/AGENT-MATRIX.md）。
+   * 未建立会话时为 null；由 core/agent-link / cli transport 侧回填（TODO(v3.x) 接链路）。
+   */
+  readonly externalSessionId?: string | null;
 }
 
 // ============================================================================
@@ -374,6 +453,16 @@ export type HudCommand =
    *   之前 Phase 2 留 TODO（handler 未接），HUD 端能派发但走 onUnhandled。
    */
   | { type: 'character.persona.update'; characterId: string; prompt: string }
+  /**
+   * @since v3.7 新建角色档案（首启引导的落地动作：起名 → 选 agent → 选皮肤 → 写人设）。
+   * 载荷口径：
+   *   - name：trim 后非空、≤ MAX_CHARACTER_NAME_LEN（24 码点）；
+   *   - agentKind：必须是词表内的种类（AGENT_KINDS），不认识的一律拒发；
+   *   - skinId：皮肤资源键，**由调用方传入**（引导屏负责随机 / 换肤；core 不猜）；
+   *   - persona：缺省或空串 → 套默认模板（**不拒发**：引导流程允许"先起名、回头再调人设"）。
+   * 重复同名 → 拒发 + 错误 Notice（状态不变）；core 侧落库后由 WorldState.characters 全量广播。
+   */
+  | { type: 'character.create'; name: string; agentKind: AgentKind; skinId: string; persona?: string }
   /**
    * @since v3.1 新增可选 linkId：缺省表示"投给当前唯一的已连接会话"；
    * 会话不唯一时不猜，走 onUnhandled 上报（宁可让调用方显式指定，也不投错 agent）。

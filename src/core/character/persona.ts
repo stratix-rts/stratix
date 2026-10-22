@@ -48,8 +48,15 @@ function codeUnits(s: string): number {
   return s.length;
 }
 
-/** 校验 prompt 是否合法；返回 null = 合法 + 已 trim 的字符串；非 null = 错误码。 */
-function normalizePrompt(raw: unknown): { prompt: string } | { error: PersonaErrorCode } {
+/**
+ * 校验 prompt 是否合法；返回 null = 合法 + 已 trim 的字符串；非 null = 错误码。
+ *
+ * @since v3.7 **导出**给 core/character/profile.ts 复用（建档时的 persona 合法性必须与改写时同口径，
+ *   两处各判一次必然漂移：一边放行 40000 字、一边拒发，用户看到的现象是"建档成功但保存失败"）。
+ *   注意口径差异只在**调用方**：本函数对空串一律判 'empty'，而建档时空 persona 走默认模板
+ *   （那是 profile.ts 的分支，不是本函数的放宽）。
+ */
+export function normalizePersonaPrompt(raw: unknown): { prompt: string } | { error: PersonaErrorCode } {
   if (typeof raw !== 'string') return { error: 'not-a-string' };
   const trimmed = raw.trim();
   if (trimmed.length === 0) return { error: 'empty' };
@@ -64,7 +71,7 @@ function normalizePrompt(raw: unknown): { prompt: string } | { error: PersonaErr
  *   2. 非法 prompt → next 为入参引用 + error 码（manager 据此走 Notice，不写库、不广播状态）。
  */
 export function updatePersona(current: CharacterView, raw: unknown): PersonaTransition {
-  const normalized = normalizePrompt(raw);
+  const normalized = normalizePersonaPrompt(raw);
   if ('error' in normalized) {
     return { next: current, changed: false, prompt: current.persona, error: normalized.error };
   }
