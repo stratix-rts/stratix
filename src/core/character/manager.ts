@@ -24,6 +24,10 @@
  * @since v3.7 角色建档（character.create）：
  *   新增 createCharacter —— 建档合法性裁决在 profile.ts（纯函数），本文件只做「找冲突 → 落库 → 上报」。
  *   落库后由 core/runtime.ts 的 store 订阅**全量广播** WorldState.characters（广播出口仍只有一处）。
+ *
+ * @since v3.9 角色 → 战场单位（task_026）：
+ *   建档成功的**同一次** setState 里，一并写入该角色的战场单位（投影见 unit-projection.ts）——
+ *   「战场上的组织单位是 Agent 单位」（D5 组织模型），角色建档即入战场。
  */
 
 import { worldStore, type CoreStore } from '../store';
@@ -43,6 +47,7 @@ import {
   hasDuplicateCharacterName,
   type ProfileErrorCode,
 } from './profile';
+import { toCharacterUnit } from './unit-projection';
 
 /** 写经验 / persona 被拒的机器可读原因（对应纯函数错误码 + "角色不在状态里"）。 */
 export type CharacterRejectionCode = 'not-found' | GrowthErrorCode | PersonaErrorCode;
@@ -112,7 +117,9 @@ export interface CharacterManager {
    * 合法性裁决在 profile.ts（纯函数）：名字 trim 非空且 ≤24 码点、agentKind 在词表内、
    * skinId 非空、persona 走 persona.ts 既有校验（空 → 默认模板）。
    * 状态相关的两件事判在本文件：**同名冲突**（大小写不敏感）与**条数上限**。
-   * 成功 → 角色进 WorldState.characters（随下一次广播**全量**下发）；失败 → 拒发 + Notice（状态不变）。
+   * 成功 → 角色进 WorldState.characters，**且**同一次写入里投影出它的战场单位
+   * （@since v3.9，投影见 unit-projection.ts）—— 一次广播两侧同时看到角色与单位；
+   * 失败 → 拒发 + Notice（状态不变）。
    */
   createCharacter(input: CharacterCreateInput): CharacterCreateResult;
   /**
@@ -249,7 +256,14 @@ export function createCharacterManager(options: CharacterManagerOptions = {}): C
         externalSessionId: profile.externalSessionId ?? null,
       };
       result = { ok: true, character, profile };
-      return { ...current, characters: [...current.characters, character] };
+      // @since v3.9（task_026）：角色建档 = 战场上多一个 agent 单位（投影见 unit-projection.ts）。
+      // 与角色**同一次** setState 落库：一次广播两侧同时看到「角色 + 单位」，
+      // 分两次写就会广播两遍（runtime 明令「一次用户操作只打一次 state」）。
+      return {
+        ...current,
+        characters: [...current.characters, character],
+        units: [...current.units, toCharacterUnit(character)],
+      };
     });
 
     // setState 是同步的，返回时 result 必已赋值；保底兜一层（只可能是编程错误，不是用户路径）。

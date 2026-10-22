@@ -246,4 +246,24 @@ describe('CameraController（结构化相机替身，不启动 Phaser）', () =>
     expect(controller.current.center.x).toBe(800);
     expect(camera.scrollX).toBe(800 - 800);
   });
+
+  test('位姿没变但视口变了 → 仍要重写 scroll（resize 后画面不能偏一边）', () => {
+    // @since v3.9（task_026）：窗口尺寸变化时位姿（中心 + 缩放）往往没变，
+    // 但 scroll 的换算（center - width/2）跟着视口变 —— 不重写的话相机会停在旧 scroll 上，
+    // 战场中心的单位被推到屏幕边缘（用户看不到刚建好的角色）。
+    const camera = createFakeCamera(1000, 800);
+    const controller = new CameraController(camera, {
+      viewport: () => ({ width: camera.width, height: camera.height }),
+      worldBounds: WORLD,
+      initial: { center: { x: 1000, y: 500 }, zoom: 1 },
+    });
+    expect(camera.scrollX).toBe(1000 - 500);
+
+    // 视口变窄，位姿本身仍然合法（中心 1000 在 [200,1800] 内）→ 中心不变
+    camera.width = 400;
+    controller.syncViewport();
+
+    expect(controller.current.center.x).toBe(1000);
+    expect(camera.scrollX).toBe(1000 - 200);
+  });
 });

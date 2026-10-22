@@ -1,7 +1,8 @@
 /**
- * 文件职责：HUD 皮肤库注册表 —— 皮肤清单、徽标色、随机抽签。
- *   来源：.long-run-agent/tasks/task_024.md「hud 皮肤库扩展」。
- *   设计：皮肤 = 一份 token 样式表（theme/tokens-*.css）+ 一条元数据（id / 徽标色 / 文案）。
+ * 文件职责：**皮肤库注册表** —— 皮肤清单、徽标色、随机抽签。
+ *   来源：.long-run-agent/tasks/task_024.md「hud 皮肤库扩展」；
+ *   @since v3.9（task_026）由 src/hud/theme/ 迁到 src/core/theme/。
+ *   设计：皮肤 = 一份 token 样式表（hud/theme/tokens-*.css）+ 一条元数据（id / 徽标色 / 文案）。
  * 输入：无（纯静态清单 + 可注入的随机源）。
  * 输出：listSkins() / getSkin() / isSkinId() / resolveAccent() / randomSkin() / createSkinRandomizer()。
  * 禁止事项：
@@ -9,7 +10,15 @@
  *      （避免 jest transform 与 css 解析耦合）；
  *   2. 依赖 Math.random 直接取数 —— 随机源必须可注入（seed），否则不可测；
  *   3. 依赖 DOM —— 本模块零 DOM 副作用；
- *   4. 在 registry 内做配色推导 —— 色值是既定事实，登记即可。
+ *   4. 在 registry 内做配色推导 —— 色值是既定事实，登记即可；
+ *   5. 引用 hud / world —— **core 是 hud 与 world 唯一的共用底座**，本模块放 core 正是为了两侧共用。
+ *
+ * ★ 为什么从 hud/theme 迁到 core/theme（task_026）：
+ *   皮肤的**徽标色**有两处消费者 —— HUD 的角色徽标（hud）与战场的单位染色（world）。
+ *   按 §1 通信铁律「任何 hud ↔ world 直接调用 = 架构违规」，两侧不能互相 import；
+ *   而 world 只允许认识 core。故这份「皮肤 → 颜色」的登记表必须落在两侧共用的 core。
+ *   留在 hud/theme 会逼出两条坏路：world import hud（跨层违规），或把颜色表抄一份进 world（两份真相）。
+ *   `file` 字段只是 token 样式表的**文件名**（样式表本体仍在 hud/theme）—— core 只存键，不 import CSS。
  *
  * 兼容性：SkinId 是**字符串资源键**，可直接当作 core 侧 AgentProfile.skinId 使用
  *   （core 只校验「非空字符串 + 长度上限」，不解析资源是否存在，见 core/character/profile.ts）。

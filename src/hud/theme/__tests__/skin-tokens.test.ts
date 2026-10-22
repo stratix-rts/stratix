@@ -2,9 +2,13 @@
  * 单测：HUD 皮肤库的 token 齐全性（hud/theme/tokens-*.css）。
  * 覆盖：每套皮肤的 CSS 变量键集合完全一致、每个 token 有值、徽标色存在、像素风保留像素变体位。
  * 依赖：fs 直读样式表（jest 不配 css transform）。
+ *
+ * @since v3.9（task_026）：「注册表里的 accent ↔ 样式表里的 --srf-badge-accent 同值」这条断言
+ *   从 core 侧的注册表单测搬到这里 —— 样式表在 hud，core 不读 hud 的文件（core 只存键）。
+ *   注册表本体（清单 / 抽签 / 取色）在 core/theme/__tests__/skin-registry.test.ts。
  */
 
-import { SKINS } from '../skin-registry';
+import { SKINS } from '../../../core/theme/skin-registry';
 import { parseTokenCss, readTokenCss, tokenCssExists } from './css-token-parser';
 
 /**
@@ -74,6 +78,17 @@ describe('皮肤 token 集：键集合一致性', () => {
 
   test.each(SKIN_CASES)('皮肤 %s 有徽标色 token', (_id, file) => {
     expect(parseTokenCss(readTokenCss(file)).has('--srf-badge-accent')).toBe(true);
+  });
+
+  test.each(SKIN_CASES)('皮肤 %s 的注册表 accent 与 token 的 --srf-badge-accent 同值', (id, file) => {
+    // why 这条断言住在 hud 侧：样式表在 hud/theme，注册表在 core/theme（两侧共用），
+    // 一致性只能在看得见样式表的一侧断言 —— 否则 core 单测就得反向依赖 hud 的文件。
+    const skin = SKINS.find((item) => item.id === id);
+    expect(skin).toBeDefined();
+    expect({ skin: id, accent: skin?.accent }).toEqual({
+      skin: id,
+      accent: parseTokenCss(readTokenCss(file)).get('--srf-badge-accent'),
+    });
   });
 });
 

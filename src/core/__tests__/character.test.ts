@@ -32,6 +32,7 @@ import {
 } from '../character';
 import { createAgentProfile } from '../character/profile';
 import { createCharacterManager } from '../character/manager';
+import { toCharacterUnit } from '../character/unit-projection';
 import { createCoreRuntime } from '../runtime';
 import { createStore } from '../store';
 import {
@@ -705,6 +706,109 @@ describe('CharacterManager.createCharacter：建档落库', () => {
     const [a, b] = store.getState().characters;
     expect(a).toEqual(characterAt({ id: 'c-a', name: 'A' }));
     expect(b?.name).toBe('Neo');
+  });
+});
+
+// ============================================================================
+// 2.c 角色 → 战场单位的投影（@since v3.9，task_026）
+// ============================================================================
+
+describe('角色 → 战场单位（建档即入战场）', () => {
+  const input = {
+    name: 'Neo',
+    agentKind: 'claude-code',
+    skinId: 'crimson',
+    persona: '谨慎的数据分析师',
+  } as const;
+
+  test('toCharacterUnit：字段按角色档案投影（id 加前缀，回指角色与皮肤）', () => {
+    const unit = toCharacterUnit({
+      id: 'character_1_1',
+      name: 'Neo',
+      persona: 'x',
+      level: 1,
+      experience: 0,
+      agentKind: 'claude-code',
+      skinId: 'crimson',
+    });
+
+    expect(unit).toEqual({
+      id: 'unit_character_1_1',
+      name: 'Neo',
+      status: 'idle',
+      missionId: null,
+      power: 0,
+      characterId: 'character_1_1',
+      skinId: 'crimson',
+    });
+  });
+
+  test('toCharacterUnit：没有皮肤时 skinId 为 null（渲染侧回落到业务态颜色）', () => {
+    const unit = toCharacterUnit({
+      id: 'c-1',
+      name: 'A',
+      persona: '',
+      level: 1,
+      experience: 0,
+      agentKind: 'claude-code',
+    });
+
+    expect(unit.skinId).toBeNull();
+  });
+
+  test('建档成功 → 同一次写入里多出该角色的战场单位', () => {
+    const store = createStore();
+    const manager = createCharacterManager({ store });
+
+    const result = manager.createCharacter(input);
+    expect(result.ok).toBe(true);
+
+    const units = store.getState().units;
+    expect(units).toHaveLength(1);
+    expect(units[0]).toMatchObject({
+      name: 'Neo',
+      status: 'idle',
+      missionId: null,
+      characterId: result.ok ? result.character.id : '',
+      skinId: 'crimson',
+    });
+    // 单位 id 带上角色 id：既唯一，又能一眼回溯到角色。
+    expect(units[0]?.id).toBe(`unit_${result.ok ? result.character.id : ''}`);
+  });
+
+  test('角色与单位在同一次广播里下发（一次建档 = 一次广播）', () => {
+    const store = createStore();
+    const manager = createCharacterManager({ store });
+    let broadcasts = 0;
+    store.subscribe(() => { broadcasts += 1; });
+
+    manager.createCharacter(input);
+
+    expect(broadcasts).toBe(1);
+    const state = store.getState();
+    expect(state.characters).toHaveLength(1);
+    expect(state.units).toHaveLength(1);
+  });
+
+  test('建档被拒 → 不产生单位（units 不变）', () => {
+    const store = createStore();
+    const manager = createCharacterManager({ store });
+
+    manager.createCharacter({ ...input, name: '   ' });
+
+    expect(store.getState().characters).toHaveLength(0);
+    expect(store.getState().units).toHaveLength(0);
+  });
+
+  test('同名冲突 → 不产生第二个单位', () => {
+    const store = createStore();
+    const manager = createCharacterManager({ store });
+
+    manager.createCharacter(input);
+    manager.createCharacter(input);
+
+    expect(store.getState().characters).toHaveLength(1);
+    expect(store.getState().units).toHaveLength(1);
   });
 });
 

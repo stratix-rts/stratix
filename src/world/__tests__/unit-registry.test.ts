@@ -43,6 +43,34 @@ describe('sync —— 对账', () => {
     expect(new Set(positions).size).toBe(3);
   });
 
+  test('第一个新单位落在战场中心（默认镜头就能看见它）', () => {
+    // @since v3.9（task_026）：落位从中心向外铺 —— 建完角色若落在战场角落，
+    // 用户在画面上根本看不到，等于"角色没进战场"。
+    const registry = createRegistry();
+
+    registry.sync([unit('u1')]);
+
+    const { x, y } = registry.get('u1')?.position ?? { x: -1, y: -1 };
+    expect(x).toBe(WORLD.x + WORLD.width / 2);
+    expect(y).toBe(WORLD.y + WORLD.height / 2);
+  });
+
+  test('后续单位以战场中心为轴左右交替铺开（不被推到右半边）', () => {
+    // @since v3.9（task_026）：默认镜头右半边压着 HUD 右栏（半透明面板），
+    // 单向向右铺的单位会被面板压暗 —— 角色的皮肤色就看不清了。
+    const registry = createRegistry();
+
+    registry.sync([unit('u1'), unit('u2'), unit('u3'), unit('u4')]);
+
+    const centerX = WORLD.x + WORLD.width / 2;
+    const xs = registry.list().map((o) => o.position.x);
+    // 既有中心上的单位，也有中心左边的单位 → 至少有一个落在中心左侧。
+    expect(xs.some((x) => x < centerX)).toBe(true);
+    expect(xs.some((x) => x === centerX)).toBe(true);
+    // 每个单位都不重复占格。
+    expect(new Set(registry.list().map((o) => `${o.position.x},${o.position.y}`)).size).toBe(4);
+  });
+
   test('广播里消失的单位被移除（state 发的是完整快照）', () => {
     const registry = createRegistry();
     registry.sync([unit('u1'), unit('u2')]);

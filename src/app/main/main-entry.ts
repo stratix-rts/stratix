@@ -12,7 +12,9 @@
  *   2. 在这里写业务态 —— 选中与否一律由 core 状态机裁决，本文件只发命令、只读状态；
  *   3. 造演示数据（种子单位 / 假任务）—— 页面上的每个单位都必须来自 core 广播的 UnitView；
  *   4. 挂 dev-only 调试句柄（window.__srf*）到生产 bundle —— 需要排查时看 renderer console；
- *   5. 引入新的运行时依赖 —— 仅用已有依赖（phaser + 浏览器原生 API）。
+ *   5. 引入新的运行时依赖 —— 仅用已有依赖（phaser + 浏览器原生 API）；
+ *   6. 在这里写首启判定 —— 判定与挂载分别住在 onboarding-trigger.ts / onboarding-host.ts，
+ *      本文件只负责把两者接进总线（组合根的职责就是接线）。
  *
  * 加载路径：dev 走 vite dev server 的 /src/app/main/index.html；
  *   正式构建走 dist/frontend/src/app/main/index.html（由 vite.config.ts 的 input 产出）。
@@ -33,6 +35,9 @@ import defaultCss from '../../hud/theme/tokens-default.css?inline';
 import pixelCss from '../../hud/theme/tokens-pixel.css?inline';
 import { defineStratButton } from '../../hud/widgets/strat-button';
 import { BattlefieldScene } from '../../world/scenes/BattlefieldScene';
+
+import { isOnboardingForced } from './dev-flags';
+import { createOnboardingHost } from './onboarding-host';
 
 function must<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
@@ -103,6 +108,7 @@ function reportBootFailure(error: unknown): void {
 function boot(): void {
   const hudRoot = must<HTMLElement>('hud-root');
   const battlefieldHost = must<HTMLElement>('battlefield');
+  const onboardingHost = must<HTMLElement>('onboarding-host');
 
   // ===== HUD 侧：真实 main-screen + 主题控制器，走注入的 bus-adapter =====
   defineStratButton();
@@ -115,6 +121,23 @@ function boot(): void {
   const screen = createMainScreen(adapter);
   const unmountScreen = screen.mount(hudRoot);
   const unmountAdapter = adapter.mount();
+
+  // ===== 首启向导覆盖层（@since v3.9，task_026）=====
+  // 判定：还没有角色 且 探到 ≥1 个已装 agent（开发期 STRATIX_ONBOARDING_FORCE=1 每次都触发）。
+  // 走完向导 → 角色落库 → 同一次广播里多出该角色的战场单位（core/character/unit-projection.ts）。
+  const onboarding = createOnboardingHost({
+    deps: adapter,
+    host: onboardingHost,
+    force: isOnboardingForced(),
+    onComplete: () => {
+      // 引导走完落在角色屏：用户第一眼看到自己刚建的角色（而不是空荡荡的主屏）。
+      // why 排到微任务里：向导屏在完成事件之后还会派发 ui.navigate('main')，
+      //   同步跳转会被它盖掉 —— 微任务保证最终停在角色屏。
+      queueMicrotask(() => {
+        adapter.dispatch({ type: 'ui.navigate', screen: 'character' });
+      });
+    },
+  });
 
   // ===== world 侧：Phaser 战场（BattlefieldScene 内部自带 world ↔ core 桥接层）=====
   const game = new Phaser.Game({
@@ -139,6 +162,12 @@ function boot(): void {
   // 主进程探测 → IPC → 这里并入 core 状态 → runtime 的 store 订阅广播给 hud。
   const stopAgentDetection = subscribeDetectedAgents();
 
+  // ===== 首启判定：跟着 core 广播走（角色为空 + 探到已装 agent → 挂向导）=====
+  // 订阅放在 runtime 启动之后：广播是 runtime 的 store 订阅发出的，晚订阅会漏掉首次快照。
+  const stopOnboardingWatch = onState((state) => {
+    onboarding.evaluate(state);
+  });
+
   /**
    * 首帧后补发一次当前 WorldState。
    * why 必须等 POST_RENDER：Phaser 第一个 step 里先 boot 场景（跑完 create，桥接层此时才订阅好），
@@ -154,6 +183,8 @@ function boot(): void {
   window.addEventListener(
     'pagehide',
     () => {
+      stopOnboardingWatch();
+      onboarding.dispose();
       stopAgentDetection();
       stopRuntime();
       unmountAdapter();

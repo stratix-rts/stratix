@@ -97,6 +97,13 @@ export default defineConfig(async () => {
     define: {
       'process.env': {},
       global: 'globalThis',
+      /**
+       * 开发期开关：首启向导强制触发（@since v3.9，task_026）。
+       * why 不用 import.meta.env：本仓库的 tsc 构建走 CommonJS（tsconfig.json），
+       *   import.meta 在那里编译不过（TS1343），故由构建期注入一个常量。
+       * 取值口径：'1' = 开，其余（含未设置）= 关。见 src/app/main/dev-flags.ts。
+       */
+      __STRATIX_ONBOARDING_FORCE__: JSON.stringify(process.env.STRATIX_ONBOARDING_FORCE ?? ''),
     },
   };
 });

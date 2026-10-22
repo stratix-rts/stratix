@@ -1,7 +1,11 @@
 /**
- * 单测：HUD 皮肤库注册表（hud/theme/skin-registry.ts）。
- * 覆盖：清单完整性、id 唯一、徽标色 ↔ token 一致、随机抽签不重复（种子注入）、同种子可复现。
- * 依赖：fs 直读样式表（jest 不配 css transform）。
+ * 单测：皮肤库注册表（core/theme/skin-registry.ts）。
+ * 覆盖：清单完整性、id 唯一、徽标色取值、随机抽签不重复（种子注入）、同种子可复现。
+ *
+ * 边界说明（@since v3.9，task_026）：注册表随任务从 hud/theme 迁到 core/theme ——
+ *   皮肤的徽标色两侧都要用（HUD 徽标 / 战场单位染色），按铁律 hud ↔ world 不能互相 import，
+ *   故这份登记表必须落在共用底座 core。**与 CSS 的一致性断言留在 hud 侧**
+ *   （hud/theme/__tests__/skin-tokens.test.ts）—— core 不读 hud 的样式表。
  */
 
 import {
@@ -16,7 +20,6 @@ import {
   resolveAccent,
   type SkinId,
 } from '../skin-registry';
-import { parseTokenCss, readTokenCss } from './css-token-parser';
 
 /** task_024 要求新增的六套皮肤。 */
 const NEW_SKIN_IDS: readonly SkinId[] = ['crimson', 'forest', 'ocean', 'sunset', 'mono', 'aurora'];
@@ -53,16 +56,6 @@ describe('皮肤库清单', () => {
 });
 
 describe('徽标色', () => {
-  test('每套皮肤的 accent 与其 token 的 --srf-badge-accent 同值', () => {
-    for (const skin of SKINS) {
-      const tokens = parseTokenCss(readTokenCss(skin.file));
-      expect({ skin: skin.id, accent: skin.accent }).toEqual({
-        skin: skin.id,
-        accent: tokens.get('--srf-badge-accent'),
-      });
-    }
-  });
-
   test('resolveAccent 按 id 取徽标色', () => {
     for (const skin of SKINS) {
       expect(resolveAccent(skin.id)).toBe(skin.accent);

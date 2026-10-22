@@ -25,15 +25,16 @@
 
 import { PERSONA_MAX_LEN } from '../../core/character/persona';
 import { DEFAULT_PERSONA_TEMPLATE } from '../../core/character/profile';
+import type { SkinId } from '../../core/theme/skin-registry';
 import {
   AGENT_KINDS,
+  DETECTABLE_AGENT_KINDS,
   MAX_CHARACTER_NAME_LEN,
   type AgentDetectionStatus,
   type AgentDetectionTier,
   type AgentKind,
   type WorldState,
 } from '../../core/types';
-import type { SkinId } from '../theme/skin-registry';
 
 // ============================================================================
 // 步骤
@@ -149,6 +150,29 @@ export function resolveBindableKinds(state: WorldState | null): AgentKind[] {
   return resolveScanRows(state)
     .filter((row) => row.installed && row.bindable)
     .map((row) => row.kind as AgentKind);
+}
+
+/**
+ * 扫描是否跑完（检测器把名单逐个跑完，每个目标都会产出一条结论 —— 装的 / 没装的都算一条）。
+ *
+ * why 用「名单长度」判定完成（@since v3.9，task_026）：检测是**逐条推送**的，
+ *   用户可能在扫到一半时就点了"下一步"，那样只会给已探到的 agent 建档。
+ *   屏上据此如实说明"扫描中 / 扫描完成"，不把半张名单说成全部。
+ *   判据取自 core 的名单词表（DETECTABLE_AGENT_KINDS）—— 名单变了这里自动跟着变。
+ */
+export function isDetectionComplete(state: WorldState | null): boolean {
+  const detected = state?.detectedAgents ?? [];
+  return detected.length >= DETECTABLE_AGENT_KINDS.length;
+}
+
+/** 扫描进度文案（扫描中 / 已完成）。 */
+export function resolveScanStatus(state: WorldState | null): { readonly complete: boolean; readonly text: string } {
+  const detected = state?.detectedAgents ?? [];
+  const total = DETECTABLE_AGENT_KINDS.length;
+  if (isDetectionComplete(state)) {
+    return { complete: true, text: `扫描完成（${detected.length}/${total} 项已探测）` };
+  }
+  return { complete: false, text: `扫描中…（已探测 ${detected.length}/${total} 项）` };
 }
 
 // ============================================================================

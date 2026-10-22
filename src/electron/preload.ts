@@ -94,6 +94,15 @@ export interface ElectronAPI {
     onUpdate: (callback: (agents: DetectedAgent[]) => void) => () => void;
   };
 
+  /**
+   * 开发期开关透传（@since v3.9，task_026）。
+   * why 只透传白名单里的开关：process.env 整个交给渲染层等于把主进程环境（含凭据）暴露出去。
+   */
+  env: {
+    /** 首启向导强制触发（'1' = 每次启动都触发）。 */
+    STRATIX_ONBOARDING_FORCE: string | null;
+  };
+
 }
 
 const electronAPI: ElectronAPI = {
@@ -186,6 +195,11 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.on('agent:detected:update', handler);
       return () => ipcRenderer.off('agent:detected:update', handler);
     },
+  },
+
+  // 开发期开关透传（@since v3.9，task_026）：只给白名单里的开关。
+  env: {
+    STRATIX_ONBOARDING_FORCE: process.env.STRATIX_ONBOARDING_FORCE ?? null,
   },
 
 };

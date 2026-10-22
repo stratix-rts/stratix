@@ -26,13 +26,15 @@
  *   - 问卷答案 → 人设模板（core 默认模板打底 + 各题 fragment），预览可改，改过之后不再被答案覆盖；
  *   - 确认页 → 逐条 character.create → 完成事件。
  *
- * 挂载接线：TODO(v3.task_026) —— 本屏只提供 mountOnboardingScreen 工厂，
- *   由 app 侧首启判定（WorldState.characters 为空且探到已装 agent）决定何时挂载。
+ * 挂载接线（@since v3.9，task_026 已接）：本屏只提供 mountOnboardingScreen 工厂，
+ *   何时挂载由 app 层决定（app/main/onboarding-host.ts：WorldState.characters 为空
+ *   且探到已装 agent 时挂；开发期 STRATIX_ONBOARDING_FORCE=1 每次启动都挂）。
+ *   宿主靠两个 DOM 事件收起覆盖层：onboarding-complete（建档完成）/ onboarding-skipped（用户跳过）。
  */
 
+import { getSkin, randomSkin, resolveAccent, type SkinDefinition, type SkinId } from '../../core/theme/skin-registry';
 import type { AgentKind, WorldState } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
-import { getSkin, randomSkin, resolveAccent, type SkinDefinition, type SkinId } from '../theme/skin-registry';
 import { defineStratButton, escapeHtml, STRAT_BUTTON_TAG } from '../widgets/strat-button';
 
 import {
@@ -49,6 +51,7 @@ import {
   missingPersonaAnswers,
   resolveBindableKinds,
   resolveScanRows,
+  resolveScanStatus,
   validateAgentName,
   validatePersona,
   type OnboardingIdentity,
@@ -61,6 +64,14 @@ export const ONBOARDING_SCREEN_TAG = 'strat-onboarding-screen';
 
 /** 向导走完时派发的 DOM 事件（冒泡 + composed，宿主据此收起覆盖层）。 */
 export const ONBOARDING_COMPLETE_EVENT = 'onboarding-complete';
+
+/**
+ * 用户跳过引导时派发的 DOM 事件（冒泡 + composed）。
+ * @since v3.9（task_026）：覆盖层由 app 层挂载（app/main/onboarding-host.ts），
+ *   宿主需要知道"用户跳过了"才能收起覆盖层 —— 只发 ui.navigate 的话宿主无从分辨
+ *   "跳过"与"别的组件导航回主屏"。
+ */
+export const ONBOARDING_SKIPPED_EVENT = 'onboarding-skipped';
 
 /** 完成事件的载荷：实际建了哪些角色。 */
 export interface OnboardingCompleteDetail {
@@ -224,6 +235,7 @@ const ONBOARDING_STYLE = `
   .error { color: var(--srf-danger); font-size: var(--srf-font-size-sm); }
   .error[hidden] { display: none; }
   .empty { color: var(--srf-text-muted); font-size: var(--srf-font-size-sm); }
+  .hint { color: var(--srf-warn); font-size: var(--srf-font-size-sm); }
   .question {
     margin: 0;
     display: grid;
@@ -378,6 +390,8 @@ export function defineOnboardingScreen(): typeof HTMLElement {
 
     /** 跳过引导：回主屏（宿主也可监听 ui.navigate 自行收起覆盖层）。 */
     skip(): void {
+      // 派发跳过事件：宿主据此收起覆盖层（app/main/onboarding-host.ts）。
+      this.dispatchEvent(new CustomEvent(ONBOARDING_SKIPPED_EVENT, { bubbles: true, composed: true }));
       this._adapter?.dispatch({ type: 'ui.navigate', screen: 'main' });
     }
 
@@ -655,14 +669,21 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       const rows = resolveScanRows(this._state);
       const installed = rows.filter((row) => row.installed).length;
       const bindable = resolveBindableKinds(this._state).length;
+      const status = resolveScanStatus(this._state);
       const list =
         rows.length === 0
           ? `<div class="empty" data-role="scan-empty">${this._state ? '还没探测到本机 agent：确认 PATH 里装了 CLI 后重进向导' : '正在等扫描结果…'}</div>`
           : `<ul class="rows">${rows.map((row) => this.renderScanRow(row)).join('')}</ul>`;
+      // 扫描没跑完时的提醒：检测是逐条推送的，此刻点下一步只会给**已探到的** agent 建档。
+      const pendingHint = status.complete
+        ? ''
+        : `<div class="hint" data-role="scan-pending">扫描还没结束：现在继续只会为已探到的 agent 建档（可以回到这一步补齐）</div>`;
       return `
         <div class="group" data-group="scan">
           <div class="group-name">扫描报告</div>
+          <div class="summary" data-role="scan-status" data-complete="${status.complete}">${escapeHtml(status.text)}</div>
           <div class="summary" data-role="scan-summary">探测到 ${rows.length} 个 agent · 确认已装 ${installed} 个 · 可建档 ${bindable} 个</div>
+          ${pendingHint}
           ${list}
         </div>
       `;
@@ -814,7 +835,7 @@ export function defineOnboardingScreen(): typeof HTMLElement {
 /**
  * 挂载工厂：本仓库屏 / 面板的统一装配口径（与 mountCharacterScreen 一致）——
  *   建元素、注入 adapter、挂进容器，返回 unmount 闭包。
- * TODO(v3.task_026): 由 app 侧首启逻辑（WorldState.characters 为空且探到已装 agent）决定挂载时机。
+ * 挂载时机由 app 侧首启逻辑决定（app/main/onboarding-host.ts）。
  */
 export function mountOnboardingScreen(deps: OnboardingScreenDeps, host: HTMLElement): () => void {
   defineOnboardingScreen();

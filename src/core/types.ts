@@ -127,6 +127,13 @@ export interface UnitView {
    */
   readonly characterId?: string | null;
   /**
+   * @since v3.9 皮肤资源键（渲染侧染色用）：角色单位带上自己的皮肤 id，
+   * world 侧据此取徽标色给单位上色（见 world/theme.ts 的 resolveUnitColor）。
+   * 缺省 / null = 没有皮肤的普通单位 —— 渲染侧回落到业务态颜色。
+   * 可选而非必填：与 characterId 同理走契约增补，不破既有 UnitView 构造点。
+   */
+  readonly skinId?: string | null;
+  /**
    * @since v3.2 能力面板数据（合并 AgentPowerPanel）。未评估时缺省/null，HUD 显示「未评估」。
    * 可选而非必填：契约增补不许打破已有 UnitView 构造点（world 侧适配器、单测夹具）的编译。
    */

@@ -9,13 +9,15 @@
  *   3. 每帧全量重建 GameObject —— sync() 按 id 增删改，稳定的单位复用同一显示对象（perf）；
  *   4. 现在就画业务态文字 / 徽标 —— 本任务只出最小可辨形体，文字与徽标留给后续任务。
  *
- * 配色：v3 的 world/theme.ts（对应 HUD 的 tokens 主题体系）尚未建立，
- *   这里用局部常量占位；接入主题后只改本文件，不动上游逻辑。
+ * 配色：普通单位按业务态上色（idle / busy / offline / error，见下方常量）；
+ *   带皮肤的 agent 单位（@since v3.9，角色单位）按**皮肤徽标色**上色 ——
+ *   颜色换算在 world/theme.ts（皮肤登记表在 core/theme/skin-registry.ts，world 不认识 hud）。
  */
 
 import Phaser from 'phaser';
 
 import type { UnitStatus } from '../../core/types';
+import { resolveUnitColor } from '../theme';
 
 import { UNIT_HIT_RADIUS, type UnitObject } from './unit-object';
 import type { UnitRegistry } from './unit-registry';
@@ -64,7 +66,7 @@ export class UnitLayer {
       live.add(object.id);
       const node = this.nodes.get(object.id) ?? this.createNode(object.id);
       node.container.setPosition(object.position.x, object.position.y);
-      node.body.setFillStyle(COLOR_BY_STATUS[object.status] ?? DEFAULT_STATUS_COLOR);
+      node.body.setFillStyle(this.fillColorOf(object));
       this.refreshRing(node, object.id);
     }
 
@@ -87,6 +89,16 @@ export class UnitLayer {
   /** 点击命中：判定规则在 UnitRegistry，这里只做转发，保持命中逻辑可单测。 */
   hitTest(x: number, y: number): UnitObject | null {
     return this.registry.hitTest({ x, y });
+  }
+
+  /**
+   * 单位填充色（@since v3.9）：带皮肤的 agent 单位按**皮肤徽标色**上色（身份标识），
+   * 没有皮肤的普通单位按业务态颜色（idle / busy / offline / error）。
+   * 换肤只需改 skinId —— 颜色换算集中在 world/theme.ts，本层只取结果。
+   */
+  private fillColorOf(object: UnitObject): number {
+    const statusColor = COLOR_BY_STATUS[object.status] ?? DEFAULT_STATUS_COLOR;
+    return resolveUnitColor(object.skinId, statusColor);
   }
 
   destroy(): void {

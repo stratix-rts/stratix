@@ -9,7 +9,8 @@
  */
 
 import type { DetectedAgent, HudCommand, WorldState } from '../../core/types';
-import { createSkinRandomizer } from '../theme/skin-registry';
+import { DETECTABLE_AGENT_KINDS } from '../../core/types';
+import { createSkinRandomizer } from '../../core/theme/skin-registry';
 
 import {
   buildPersona,
@@ -24,6 +25,7 @@ import {
 import {
   ONBOARDING_COMPLETE_EVENT,
   ONBOARDING_SCREEN_TAG,
+  ONBOARDING_SKIPPED_EVENT,
   mountOnboardingScreen,
   type OnboardingCompleteDetail,
   type OnboardingScreenDeps,
@@ -241,6 +243,23 @@ describe('① 扫描报告', () => {
     expect(one(h.screen, '[data-role="scan-empty"]').textContent).toContain('还没探测到本机 agent');
     h.unmount();
   });
+
+  test('扫描进度如实显示：没跑完说"扫描中"，名单跑满说"扫描完成"', () => {
+    // @since v3.9（task_026）：检测是逐条推送的，半张名单不能说成"扫完了"。
+    const h = mountScreen(makeState([CLAUDE]));
+    const status = () => one(h.screen, '[data-role="scan-status"]');
+    expect(status().textContent).toContain('扫描中');
+    expect(status().getAttribute('data-complete')).toBe('false');
+    // 扫描没完时提醒用户：现在继续只会给已探到的 agent 建档。
+    expect(one(h.screen, '[data-role="scan-pending"]').textContent).toContain('扫描还没结束');
+
+    const full = DETECTABLE_AGENT_KINDS.map((kind) => detected({ kind, installed: false }));
+    h.emit(makeState(full));
+    expect(status().textContent).toContain('扫描完成');
+    expect(status().getAttribute('data-complete')).toBe('true');
+    expect(h.screen.shadowRoot?.querySelector('[data-role="scan-pending"]')).toBeNull();
+    h.unmount();
+  });
 });
 
 // ============================================================================
@@ -449,6 +468,18 @@ describe('④ 确认与提交', () => {
     const h = mountScreen(makeState([CLAUDE]));
     click(h.screen, '[data-action="skip"]');
     expect(h.commands).toEqual([{ type: 'ui.navigate', screen: 'main' }]);
+    h.unmount();
+  });
+
+  test('跳过引导 → 派发 onboarding-skipped 事件（宿主据此收起覆盖层）', () => {
+    // @since v3.9（task_026）：覆盖层由 app 层挂载，宿主需要知道"用户跳过了"。
+    const h = mountScreen(makeState([CLAUDE]));
+    let skipped = 0;
+    h.screen.addEventListener(ONBOARDING_SKIPPED_EVENT, () => { skipped += 1; });
+
+    click(h.screen, '[data-action="skip"]');
+
+    expect(skipped).toBe(1);
     h.unmount();
   });
 

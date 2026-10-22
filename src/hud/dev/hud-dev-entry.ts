@@ -12,9 +12,9 @@
  */
 
 import { onState, emitCommand } from '../../core/bus';
+import { type SkinId } from '../../core/theme/skin-registry';
 import { createHudBusAdapter } from '../bridge/bus-adapter';
 import { createMainScreen } from '../screens/main-screen';
-import { type SkinId } from '../theme/skin-registry';
 import { createThemeController } from '../theme/theme-controller';
 import auroraCss from '../theme/tokens-aurora.css';
 import crimsonCss from '../theme/tokens-crimson.css';

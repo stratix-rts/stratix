@@ -21,9 +21,14 @@
  * profile.ts 落地史（@since v3.7）：
  *   随 `character.create` 命令一同落地（首启引导建档）。建档合法性（名字 / agent 种类 /
  *   皮肤 / 人设）全在 profile.ts 的纯函数里，manager 只管冲突、上限与落库。
+ *
+ * unit-projection.ts 落地史（@since v3.9，task_026）：
+ *   角色 → 战场单位的投影（纯函数）。建档时由 manager 在同一次写入里落库，
+ *   于是「建了角色」与「战场上多了这个 agent 单位」是一次广播里的同一件事。
  */
 
 export * from './growth';
 export * from './persona';
 export * from './profile';
+export * from './unit-projection';
 export * from './manager';

@@ -53,6 +53,16 @@
         inset: 0;
         pointer-events: none;
       }
+      /* 首启向导覆盖层宿主（task_026）：空容器常驻，向导屏以绝对定位覆盖它。
+         pointer-events:none —— 空宿主不挡战场；向导屏自身（all:initial）把事件接回来。 */
+      #onboarding-host {
+        position: absolute;
+        inset: 0;
+        z-index: 60;
+        pointer-events: none;
+        min-height: 0;
+        min-width: 0;
+      }
       /* 装配失败时的兜底提示：宁可报错也不要静默白屏（诊断入口在 renderer console）。 */
       #boot-error {
         position: fixed;
@@ -79,6 +89,9 @@
       <div id="hud-side">
         <div id="hud-root"></div>
       </div>
+
+      <!-- 首启向导覆盖层宿主（task_026）：向导屏挂这里（层级在 HUD 子屏之上） -->
+      <div id="onboarding-host"></div>
     </div>
 
     <pre id="boot-error" hidden></pre>

@@ -54,6 +54,14 @@ export class UnitObject {
     return this.view.missionId;
   }
 
+  /**
+   * 单位带的皮肤 id（@since v3.9）：角色单位带自己的皮肤，渲染层据此染色（见 world/theme.ts）。
+   * 没有皮肤的普通单位返回 null —— 渲染层回落到业务态颜色。
+   */
+  get skinId(): string | null {
+    return this.view.skinId ?? null;
+  }
+
   /** 移动到新的世界坐标，返回是否真的动了（调用方可据此跳过无变化重绘）。 */
   setPosition(x: number, y: number): boolean {
     if (this.x === x && this.y === y) return false;
@@ -72,7 +80,8 @@ export class UnitObject {
       this.view.status === view.status &&
       this.view.name === view.name &&
       this.view.power === view.power &&
-      this.view.missionId === view.missionId
+      this.view.missionId === view.missionId &&
+      (this.view.skinId ?? null) === (view.skinId ?? null)
     ) {
       return false;
     }

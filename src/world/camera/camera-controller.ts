@@ -109,9 +109,18 @@ export class CameraController {
   /**
    * 视口尺寸变化后重新钳制（窗口 resize）。
    * why 需要显式调用：Phaser 会在 resize 时直接改相机宽高，但不会替我们重算边界。
+   *
+   * why 这里**不**走 commit()：位姿（中心 + 缩放）没变时 commit 会跳过写回，
+   *   可视口变了就意味着 scroll 的换算（center - width/2）也变了 —— 不重写的话，
+   *   相机会停在按旧视口算出来的 scroll 上，画面整体偏一边（战场中心的单位被推到屏幕边缘）。
    */
   syncViewport(): CameraPose {
-    return this.commit(resolveCameraPose(this.pose, this.options.viewport(), this.limits, this.worldBounds));
+    const next = resolveCameraPose(this.pose, this.options.viewport(), this.limits, this.worldBounds);
+    const changed = !isSamePose(this.pose, next);
+    this.pose = next;
+    this.writeToCamera(next);
+    if (changed) this.options.onChange?.(next);
+    return this.pose;
   }
 
   /** 钳制 → 写回相机 → 位姿真变了才通知上层（perf：无变化不重绘、不上报）。 */

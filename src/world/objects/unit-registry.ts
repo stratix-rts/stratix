@@ -129,7 +129,11 @@ export class UnitRegistry {
   }
 
   /**
-   * 网格落位：沿战场左上角逐格铺开，槽位用满后回绕到起点。
+   * 网格落位：**以战场中心为轴左右交替铺开**（0, -1, +1, -2, +2 …），每两个单位换一行。
+   * why 从中心铺（@since v3.9，task_026）：默认镜头就对着战场中心，
+   *   新单位若落在左上角，用户建完角色在画面上什么也看不到（"角色进战场"等于没发生）。
+   * why 左右交替而不是单向向右铺：单向铺会把后来的单位全推到右半边，
+   *   而默认镜头的右半边正好压着 HUD 右栏（半透明面板）—— 角色的皮肤色被压暗，看不出染没染上。
    * why 回绕：宁可与已有单位重叠，也不能让新单位落在战场之外（那样既看不见也点不到）。
    */
   private nextSpawnPosition(): Point {
@@ -138,15 +142,27 @@ export class UnitRegistry {
 
     const columns = Math.max(1, Math.floor(usableWidth / SPAWN_GAP));
     const rows = Math.max(1, Math.floor(usableHeight / SPAWN_GAP));
-    const slot = this.spawnCursor % (columns * rows);
+
+    const index = this.spawnCursor;
     this.spawnCursor += 1;
 
-    const col = slot % columns;
-    const row = Math.floor(slot / columns);
+    // 中心格：网格的中点（0 号单位正好落在它上面）。
+    const centerCol = Math.floor((columns - 1) / 2);
+    const centerRow = Math.floor((rows - 1) / 2);
 
+    // 左右交替：奇数号往左、偶数号往右，距离逐个加一格。
+    const distance = Math.floor((index + 1) / 2);
+    const direction = index % 2 === 1 ? -1 : 1;
+    // 每两个单位换一行（左右各一个）。
+    const layer = Math.floor(index / 2);
+
+    const col = (((centerCol + direction * distance) % columns) + columns) % columns;
+    const row = (centerRow + layer) % rows;
+
+    // 网格原点对齐战场中心（默认镜头正对着它）→ 新单位一出现就在画面里。
     return {
-      x: this.worldBounds.x + SPAWN_MARGIN + col * SPAWN_GAP,
-      y: this.worldBounds.y + SPAWN_MARGIN + row * SPAWN_GAP,
+      x: this.worldBounds.x + this.worldBounds.width / 2 + (col - centerCol) * SPAWN_GAP,
+      y: this.worldBounds.y + this.worldBounds.height / 2 + (row - centerRow) * SPAWN_GAP,
     };
   }
 }
