@@ -15,3 +15,6 @@
 ## Layout
 - `scenes/BattlefieldScene.ts` · `objects/` Unit/SelectionBox/Registry · `camera/` 镜头
 - `bridge/bus-adapter.ts` 唯一与 core 通信通道 · `theme.ts` 镜像 token · `dev/` 独立挂载
+- `appearance/` LPC 角色合成栈（注册表 + 合成器 + LRU 缓存，@since v3.10 task_027）。
+  **零 DOM**：画布与图片对象由 app 层注入（`src/app/services/appearance-environment.ts`），
+  素材取自 `assets/spritesheets/`（vite publicDir 静态服务，不入库、不搬动）。

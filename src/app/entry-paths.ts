@@ -28,6 +28,16 @@ export const NEW_ENTRY_HTML = 'src/app/main/index.html';
 export const RETIRED_LEGACY_ENV_FLAG = 'STRATIX_LEGACY';
 
 /**
+ * 入口 HTML 相对**站点根**的目录层数（'src/app/main/index.html' → 3 层）。
+ *
+ * why 需要它：LPC 素材根在站点根下一层（`spritesheets/`），而入口 HTML 在 3 层目录下。
+ * 渲染层要用**相对**基址去取素材（electron 正式包走 file://，绝对路径 '/spritesheets'
+ * 会被解析到文件系统根），于是需要知道"入口深了几层"才能算出相对路径。
+ * 事实源是本文件的 NEW_ENTRY_HTML —— 入口挪位置时这里自动跟着变，别处不要再写死层数。
+ */
+export const ENTRY_PATH_DEPTH = NEW_ENTRY_HTML.split('/').length - 1;
+
+/**
  * 当前生效的入口 HTML 相对路径（相对 vite root；dist/frontend 下同构）。
  * 单入口后是常量函数，但保留函数形态：electron 主进程与 vite 配置共用同一份路径来源，避免两边各写一份字符串。
  */

@@ -1217,6 +1217,116 @@
         "dev 手测向导全流程留截图路径记录"
       ],
       "design": "依赖 021/022/025。手测步骤写进 PR 描述或 commit message。"
+    },
+    {
+      "id": "task_027",
+      "description": "world: 复活 LPC 角色合成器（CharacterComposer+PartRegistry+appearance 模型，素材指向幸存 spritesheets）-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_027.md",
+      "created_at": "2026-10-22T20:01:56.886444",
+      "updated_at": "2026-10-22T20:23:07.886794",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      },
+      "requirements": "从 git 历史 a9498ae~1 复活 LPC 角色合成栈：src/stratix-character-creator/core/CharacterComposer.ts、PartRegistry.ts、constants.ts（含 SPRITESHEET_BASE_PATH）、types 里 PartSelection、config/partConfig.ts。落位新架构：合成器+注册表放 src/world/appearance/（渲染层）；appearance 数据模型（Record<category, variant> 字典 + bodyType）进 src/core/types.ts 并挂 AgentProfile.appearance（021 的 AgentProfile 扩展，向后兼容：字段可选）。素材不挪动，SPRITESHEET_BASE_PATH 指向 dist/frontend/spritesheets（vite publicDir 或显式静态路由，调研后选最稳的，写清注释）。PartRegistry 的 fetch 注入保可测。",
+      "design": "git show a9498ae~1:src/stratix-character-creator/core/CharacterComposer.ts 取源码，适配：去掉 Vue 依赖（本就纯 TS）、types.ts 契约注释、world/appearance 新文件头契约注释。body 目录 18 肤色×male/female 体型。合成含 LRU 图缓存逻辑原样保留。测试：注入假 fetch/Image 的单测（元数据解析/精灵路径构建/LRU），canvas 合成真机手测归 029。",
+      "acceptance": [
+        "tsc 零错误",
+        "appearance 模型单测（元数据解析/路径构建/LRU 驱逐）",
+        "AgentProfile.appearance 可选字段向后兼容（021 测试不破）",
+        "jest src/world + src/core 全绿"
+      ]
+    },
+    {
+      "id": "task_028",
+      "description": "hud: 向导第②步重做——canvas 动画预览+随机形象+部件选择器（LPC）-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_028.md",
+      "created_at": "2026-10-22T20:01:57.155081",
+      "updated_at": "2026-10-22T20:01:57.155097",
+      "dependencies": [
+        "task_027"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      },
+      "requirements": "hud 向导第②步（src/hud/screens/onboarding-screen）升级：①内嵌 Phaser 迷你 canvas 实时预览合成角色（走路动画帧步进，参考历史 CanvasPreview.vue 的实现思路——Phaser sprite + 手动帧推进，历史源码 git show a9498ae~1:src/components/character-creator/v3/components/CanvasPreview.vue）②「随机形象」按钮（随机 LPC 部件组合，body/hair/eyes/ears/facial 五类精选）③分类部件选择器 UI（每类列 variant，元数据来自 PartRegistry 注入）④character.create 提交带 appearance 字段。UI 主题色随机（024 皮肤库）保留。WebComponent 内嵌 Phaser 实例注意销毁清理（向导关闭即 destroy）。",
+      "design": "hud 组件不直接 import world 合成器？——总线铁律是 hud/world 互不引用。方案：main-entry 组合根创建 appearance 预览服务（持 Phaser 迷实例与合成器）注入向导屏；向导屏只发「部件变更/随机/预览」事件给服务。向导屏单测不碰真 canvas（注入桩预览服务），真 canvas 手测归 029。",
+      "acceptance": [
+        "tsc 零错误",
+        "步骤流转/随机形象/选择器事件/提交带 appearance 单测（预览服务注入桩）",
+        "Phaser 实例生命周期（destroy）单测",
+        "jest src/hud 全绿"
+      ]
+    },
+    {
+      "id": "task_029",
+      "description": "world: 战场单位渲染用 AgentProfile.appearance 合成形象 + 全链路验收-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_029.md",
+      "created_at": "2026-10-22T20:01:57.415956",
+      "updated_at": "2026-10-22T20:01:57.415970",
+      "dependencies": [
+        "task_027",
+        "task_028"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      },
+      "requirements": "①战场单位渲染换合成形象：BattlefieldScene/unit-layer 按 AgentProfile.appearance 用 CharacterComposer 合成精灵表加载（缓存纹理 key=characterId），走路动画；无 appearance 的角色回退现有 placeholder。②全链路验收：typecheck+jest 全量+build+dev 手测（向导：随机形象→canvas 预览动画→创建→战场单位=合成形象走路）。③素材路径真机可达验证。",
+      "design": "依赖 027/028。手测记录写任务文件。联调含 dev 手测，节奏：断点续传+机械锁定+单缺口卡 5 分钟记未尽继续。",
+      "acceptance": [
+        "typecheck 零错误",
+        "jest 全量通过",
+        "npm run build 成功",
+        "dev 手测向导全流程（含 canvas 动画预览、战场合成形象）记录在案"
+      ]
     }
   ]
 }

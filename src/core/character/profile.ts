@@ -20,11 +20,16 @@
 
 import {
   AGENT_KINDS,
+  APPEARANCE_BODY_TYPES,
+  MAX_APPEARANCE_PARTS,
+  MAX_APPEARANCE_VARIANT_LEN,
   MAX_CHARACTER_NAME_LEN,
   MAX_EXTERNAL_SESSION_ID_LEN,
   MAX_SKIN_ID_LEN,
   type AgentKind,
   type AgentProfile,
+  type AppearanceBodyType,
+  type CharacterAppearance,
   type CharacterView,
 } from '../types';
 
@@ -55,6 +60,8 @@ export type ProfileErrorCode =
   | 'invalid-skin-id'
   /** externalSessionId 不是非空字符串，或超长。 */
   | 'invalid-session-id'
+  /** 外观（@since v3.10）不是合法形状：体型不在词表内 / 部位字典非法 / 条数或长度超限。 */
+  | 'invalid-appearance'
   /** persona 的类型 / 长度问题（口径来自 persona.ts）。 */
   | PersonaErrorCode;
 
@@ -66,6 +73,8 @@ export interface AgentProfileInput {
   readonly skinId: unknown;
   readonly persona?: unknown;
   readonly externalSessionId?: unknown;
+  /** 外观（@since v3.10）：缺省 / null = 无外观（老档案照旧合法，不补默认长相）。 */
+  readonly appearance?: unknown;
 }
 
 export type ProfileResult =
@@ -93,7 +102,9 @@ function isAgentKind(value: unknown): value is AgentKind {
  *   3. skinId：trim 后的非空资源键（core 不解析资源是否存在 —— 那是渲染侧的事）；
  *   4. persona：缺省 / null / 空串 / 纯空白 → 套 DEFAULT_PERSONA_TEMPLATE；
  *      其余走 persona.ts 的既有校验（类型 / 长度口径与改写 persona 时完全一致）；
- *   5. externalSessionId：缺省 / null → null；给了就必须是非空字符串且不超长。
+ *   5. externalSessionId：缺省 / null → null；给了就必须是非空字符串且不超长；
+ *   6. appearance（@since v3.10）：缺省 / null → 档案不带外观（老档案照旧合法）；
+ *      给了就按 resolveAppearance 的四条校验逐项判，给了但非法 → 拒发。
  * 被拒一律返回错误码，**不抛异常**（命令总线是同步的）。
  */
 export function createAgentProfile(input: AgentProfileInput): ProfileResult {
@@ -121,6 +132,10 @@ export function createAgentProfile(input: AgentProfileInput): ProfileResult {
   const externalSessionId = resolveExternalSessionId(input.externalSessionId);
   if ('error' in externalSessionId) return { ok: false, code: 'invalid-session-id' };
 
+  // —— 外观（@since v3.10，可选） ——
+  const appearance = resolveAppearance(input.appearance);
+  if ('error' in appearance) return { ok: false, code: 'invalid-appearance' };
+
   return {
     ok: true,
     profile: {
@@ -132,6 +147,8 @@ export function createAgentProfile(input: AgentProfileInput): ProfileResult {
       level: 1,
       exp: 0,
       externalSessionId: externalSessionId.sessionId,
+      // 只有真给了外观才带上这个键：老档案的投影形状保持原样（不凭空多一个 undefined 字段）。
+      ...(appearance.appearance ? { appearance: appearance.appearance } : {}),
     },
   };
 }
@@ -157,6 +174,58 @@ function resolveExternalSessionId(
   if (sessionId.length === 0) return { sessionId: null };
   if (sessionId.length > MAX_EXTERNAL_SESSION_ID_LEN) return { error: 'invalid-session-id' };
   return { sessionId };
+}
+
+/**
+ * 外观归一（@since v3.10）：缺省 / null → 无外观（不补默认长相，老档案照旧合法）。
+ *
+ * 合法性四条：
+ *   1. 必须是普通对象（不是数组 / null / 原始值）；
+ *   2. bodyType 必须在 APPEARANCE_BODY_TYPES 词表内（词表 = 素材目录事实，见 core/types.ts）；
+ *   3. parts 必须是普通对象，条数 ≤ MAX_APPEARANCE_PARTS（随状态广播，必须有界）；
+ *   4. 每个部位键与变体值都必须是长度合规的非空字符串。
+ *
+ * why 校验得这么细：外观直接决定"这个角色长什么样"，写错体型 → 渲染侧找不到素材目录；
+ *   部位塞垃圾 → 渲染侧静默不画，用户看不出哪里错。宁可建档时拒发并报明确错误码。
+ *   注意 core **不校验素材是否存在**（那是渲染侧资源的事，core 不该碰文件系统 / 网络）。
+ */
+function resolveAppearance(
+  raw: unknown
+): { appearance: CharacterAppearance | null } | { error: ProfileErrorCode } {
+  if (raw === undefined || raw === null) return { appearance: null };
+  if (typeof raw !== 'object' || Array.isArray(raw)) return { error: 'invalid-appearance' };
+
+  const meta = raw as Record<string, unknown>;
+
+  const bodyType = meta.bodyType;
+  if (
+    typeof bodyType !== 'string' ||
+    !(APPEARANCE_BODY_TYPES as readonly string[]).includes(bodyType)
+  ) {
+    return { error: 'invalid-appearance' };
+  }
+
+  const rawParts = meta.parts;
+  if (typeof rawParts !== 'object' || rawParts === null || Array.isArray(rawParts)) {
+    return { error: 'invalid-appearance' };
+  }
+  const entries = Object.entries(rawParts as Record<string, unknown>);
+  if (entries.length > MAX_APPEARANCE_PARTS) return { error: 'invalid-appearance' };
+
+  const parts: Record<string, string> = {};
+  for (const [category, variant] of entries) {
+    if (category.length === 0 || category.length > MAX_APPEARANCE_VARIANT_LEN) {
+      return { error: 'invalid-appearance' };
+    }
+    if (typeof variant !== 'string') return { error: 'invalid-appearance' };
+    const trimmed = variant.trim();
+    if (trimmed.length === 0 || trimmed.length > MAX_APPEARANCE_VARIANT_LEN) {
+      return { error: 'invalid-appearance' };
+    }
+    parts[category] = trimmed;
+  }
+
+  return { appearance: { bodyType: bodyType as AppearanceBodyType, parts } };
 }
 
 /**
@@ -193,5 +262,7 @@ export function toAgentProfile(character: CharacterView): AgentProfile | null {
     level: character.level,
     exp: character.experience,
     externalSessionId: character.externalSessionId ?? null,
+    // 同理：角色没外观 → 投影里就不带这个键（老档案的投影形状保持原样）。
+    ...(character.appearance ? { appearance: character.appearance } : {}),
   };
 }

@@ -254,6 +254,61 @@ export const MAX_EXTERNAL_SESSION_ID_LEN = 200;
 export const MAX_CHARACTERS = 64;
 
 /**
+ * @since v3.10 外观体型词表（LPC body 类型）。
+ *
+ * why 是"素材事实"而不是随意取值：LPC 素材按体型分目录存放
+ * （body/bodies/{male,female,teen,muscular,pregnant,child}/…），
+ * 体型写错 → 合成器找不到对应的图目录 → 角色画不出来。
+ * 故 core 认这 6 种（与素材目录一一对应），不认识的一律拒发。
+ */
+export const APPEARANCE_BODY_TYPES = [
+  'male',
+  'female',
+  'teen',
+  'muscular',
+  'pregnant',
+  'child',
+] as const;
+
+/** @since v3.10 角色体型（= APPEARANCE_BODY_TYPES 的元素类型）。 */
+export type AppearanceBodyType = (typeof APPEARANCE_BODY_TYPES)[number];
+
+/**
+ * @since v3.10 角色外观模型 —— 「体型 + 各部位选的变体」。
+ *
+ * 形状刻意做得很薄：**category → variant 字典**（不是完整的 LPC 元数据）。
+ * why：core 只存"这个角色长什么样"的最小事实集 —— 部位 id、图层 z 序、动画偏移、
+ *   版权署名这些全是**渲染侧的事**（src/world/appearance/ 的合成器与注册表），core 不该知道。
+ *   core 存了等于把渲染细节搬进状态，广播体积也白涨。
+ *   渲染侧靠这个字典反查部位（world/appearance 的 PartRegistry.resolveSelections）。
+ *
+ * ⚠️ 这个模型的边界：字典里存的是**变体**（如发色 black、肤色 light），不是"素材条目"（如某款发型）。
+ *   LPC 素材里同一类别的多个条目常共用同一套变体名（91 个发型共用一套发色），
+ *   故"类别 + 变体"未必定位到唯一素材 —— 渲染侧取第一个命中项（见 resolveSelections 的说明）。
+ *   要精确指定款式，渲染侧需自行记住 itemId（core 不为此再加字段：字段越多越难演进）。
+ *
+ * 兼容性：新增字段一律可选 —— 本字段是 @since v3.10 追加的，
+ *   老档案（无 appearance）依然合法，core 不为它编造默认外观。
+ */
+export interface CharacterAppearance {
+  /** 体型（词表见 APPEARANCE_BODY_TYPES）。 */
+  readonly bodyType: AppearanceBodyType;
+  /** 部位 → 变体。键是部位类别（body / hair / torso / hat …），值是该部位的变体名。 */
+  readonly parts: Readonly<Record<string, string>>;
+}
+
+/**
+ * @since v3.10 外观部位条数上限。appearance 随状态广播，必须有界（perf 硬约束）。
+ * LPC 常见部位类别 22 个，留一倍余量；超限一律拒发，不静默截断（截断会造出"半个人"的角色）。
+ */
+export const MAX_APPEARANCE_PARTS = 48;
+
+/**
+ * @since v3.10 单个部位变体名的长度上限。变体名是素材文件名（小写下划线形式），64 绰绰有余。
+ */
+export const MAX_APPEARANCE_VARIANT_LEN = 64;
+
+/**
  * @since v3.7 Agent 档案 —— agent 视角的完整角色模型。
  *
  * 与 CharacterView 的关系（重要，别当成两份真相）：
@@ -281,6 +336,12 @@ export interface AgentProfile {
   readonly exp: number;
   /** 外部会话 id（各家 CLI 原样透传）；未建立会话时为 null。 */
   readonly externalSessionId?: string | null;
+  /**
+   * @since v3.10 角色外观（LPC 合成栈的数据面）。
+   * 可选：老档案没有外观 → 字段缺省（core 不替它编一个默认长相）。
+   * 渲染侧（world/appearance）据此合成精灵；core 不解析素材、不校验资源是否存在。
+   */
+  readonly appearance?: CharacterAppearance | null;
 }
 
 /** 角色档案 + 成长数值（技能树不迁移，见 D3）。 */
@@ -302,6 +363,11 @@ export interface CharacterView {
    * 未建立会话时为 null；由 core/agent-link / cli transport 侧回填（TODO(v3.x) 接链路）。
    */
   readonly externalSessionId?: string | null;
+  /**
+   * @since v3.10 角色外观（= CharacterView 与 AgentProfile 之间的同名字段，见 AgentProfile 的说明）。
+   * 可选：老档案无外观 → 缺省。core 不解析素材、不校验部位资源是否存在（那是渲染侧的事）。
+   */
+  readonly appearance?: CharacterAppearance | null;
 }
 
 // ============================================================================
