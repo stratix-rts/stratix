@@ -8,6 +8,7 @@
 
 import {
   emitState,
+  emitWorldEvent,
   onWorldEvent,
   resetBus,
   type Unsubscribe,
@@ -296,5 +297,93 @@ describe('场景 → core：unit.position', () => {
     bridge.unitPosition('unit_character_1', 1, 2);
 
     expect(events).toHaveLength(0);
+  });
+});
+
+// ============================================================================
+// task.* 生命周期转发（@since v3.17，task_038）：world 通道 → 场景表现钩子
+// ============================================================================
+
+describe('任务生命周期 → syncTaskEvent 转发', () => {
+  interface TaskPortCall {
+    readonly taskId: string;
+    readonly characterId: string;
+    readonly phase: string;
+  }
+
+  function createTaskPort() {
+    const calls: TaskPortCall[] = [];
+    const port: WorldScenePort = {
+      syncUnits: () => {},
+      syncSelection: () => {},
+      syncTaskEvent: (task, phase) => {
+        calls.push({ taskId: task.id, characterId: task.characterId, phase });
+      },
+    };
+    return { port, calls };
+  }
+
+  const task = (id: string, status: 'queued' | 'running' | 'completed' | 'failed') => ({
+    id,
+    characterId: 'ch-a',
+    prompt: '干活',
+    status,
+    createdAt: 1,
+    startedAt: null,
+    endedAt: null,
+    output: '',
+  });
+
+  test('started / completed / failed 三条转发给 syncTaskEvent，任务快照原样带走', () => {
+    const { port, calls } = createTaskPort();
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+
+    emitWorldEvent({ type: 'task.started', task: task('t1', 'running') });
+    emitWorldEvent({ type: 'task.completed', task: task('t1', 'completed') });
+    emitWorldEvent({ type: 'task.failed', task: task('t2', 'failed') });
+
+    expect(calls).toEqual([
+      { taskId: 't1', characterId: 'ch-a', phase: 'started' },
+      { taskId: 't1', characterId: 'ch-a', phase: 'completed' },
+      { taskId: 't2', characterId: 'ch-a', phase: 'failed' },
+    ]);
+  });
+
+  test('task.queued 不转发（还没轮到它动）；场景事件照旧直通不受影响', () => {
+    const { port, calls } = createTaskPort();
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+    const { events, stop } = collectWorldEvents();
+    stops.push(stop);
+
+    emitWorldEvent({ type: 'task.queued', task: task('t0', 'queued') });
+    expect(calls).toHaveLength(0);
+
+    bridge.unitClick('u1', NO_MODS);
+    // 收集器同在 world 通道上（task.queued 也会被它收到），只断言场景上报的那条原样直通。
+    expect(events.filter((event) => event.type === 'unit.click')).toEqual([
+      { type: 'unit.click', unitId: 'u1', mods: NO_MODS },
+    ]);
+  });
+
+  test('port 不实现 syncTaskEvent（可选钩子）：任务事件安静跳过，不炸不报', () => {
+    const { port } = createFakePort(); // 老桩：没有 syncTaskEvent
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+
+    expect(() => {
+      emitWorldEvent({ type: 'task.started', task: task('t1', 'running') });
+    }).not.toThrow();
+  });
+
+  test('destroy 之后任务事件不再进场景（退订生效）', () => {
+    const { port, calls } = createTaskPort();
+    const bridge = createWorldBridge(port, { now: clock });
+
+    bridge.destroy();
+    emitWorldEvent({ type: 'task.started', task: task('t1', 'running') });
+
+    expect(calls).toHaveLength(0);
   });
 });

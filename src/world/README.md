@@ -13,7 +13,7 @@
 - `core` 状态真相在 core —— 桥接层只转发，不缓存不判断。
 
 ## Layout
-- `scenes/BattlefieldScene.ts` · `objects/` Unit/SelectionBox/Registry · `camera/` 镜头
+- `scenes/BattlefieldScene.ts` · `objects/` Unit/SelectionBox/Registry/TaskFx（task_038：task 生命周期→单位头顶 working 环/✓/!，纯映射 objects/task-fx.ts + Phaser 绘制 objects/task-fx-layer.ts） · `camera/` 镜头
 - `bridge/bus-adapter.ts` 唯一与 core 通信通道 · `theme.ts` 镜像 token · `dev/` 独立挂载
 - `appearance/` LPC 角色合成栈（注册表 + 合成器 + LRU 缓存，@since v3.10 task_027）。
   **零 DOM**：画布与图片对象由 app 层注入（`src/app/services/appearance-environment.ts`），

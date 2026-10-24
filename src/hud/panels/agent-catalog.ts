@@ -21,11 +21,15 @@
  *     单向广播、面板没有"主动拉取"这个动作，硬做就得在 hud 里私藏一份名单，故不迁移；
  *   - 摄像头详情/雷达图/榜单排序：旧 AgentPowerPanel 本来就是 mock 数据驱动，
  *     契约里没有 ranking 概念（编组列表的顺序是 core 的选择顺序，不在 hud 侧重排）。
+ *
+ * @since v3.17（task_038）追加：角色任务队列可见性 —— WorldState.tasks → 当前任务摘要（40 字截断）
+ *   + 排队数，以及派发表单的命令构造 buildTaskAssignCommand（表单 UI 在 agent-panel.ts）。
  */
 
 import {
   CAPABILITY_DIMENSIONS,
   type CapabilityDimension,
+  type CharacterTask,
   type HudCommand,
   type MissionPhase,
   type MissionView,
@@ -46,6 +50,13 @@ export type AgentPanelAction = 'inspect' | 'focus' | 'remove';
  *   200+ 行的侧栏既挤爆视口也让每次重绘变贵）。超出的只计数不渲染，并明确告诉用户还剩多少。
  */
 export const MAX_VISIBLE_GROUP_ROWS = 50;
+
+/**
+ * 任务队列摘要的展示截断长度（task_038 规格：40 字）。
+ * 与 core 的 MAX_TASK_SUMMARY_LEN（广播摘要 2000 字）不是一回事：这是卡片上的一行读数，
+ * 不是数据上限 —— 全文与完整摘要都在状态/库里，截断只发生在渲染前。
+ */
+export const TASK_SUMMARY_DISPLAY_LEN = 40;
 
 // ============================================================================
 // 词表（契约取值 → 中文标签；改这里即可改文案，不牵连组件）
@@ -118,6 +129,16 @@ export interface GrowthModel {
   readonly experience: number;
 }
 
+/**
+ * 角色任务队列的卡片读数（@since v3.17，task_038）。
+ * summary = 当前任务（running 优先，否则 FIFO 队首的 queued）的指令摘要（40 字截断）；
+ * waiting = 除当前任务外在排队的条数（如「+2」）。两者都是**读数**，不是任务真相。
+ */
+export interface CharacterTaskQueueModel {
+  readonly summary: string | null;
+  readonly waiting: number;
+}
+
 /** 单选形态的详情模型。 */
 export interface UnitDetailModel {
   readonly id: string;
@@ -128,6 +149,10 @@ export interface UnitDetailModel {
   readonly mission: MissionRef | null;
   readonly capabilities: CapabilityModel | null;
   readonly growth: GrowthModel | null;
+  /** 关联角色 id（@since v3.17，task_038）：没有角色的单位没有任务队列，也不给派任务入口。 */
+  readonly characterId: string | null;
+  /** 角色任务队列读数（@since v3.17，task_038）；未关联角色 = 空读数。 */
+  readonly taskQueue: CharacterTaskQueueModel;
 }
 
 /** 编组形态的一行。字段是详情的子集 —— 行内空间小，只放能一眼扫完的读数。 */
@@ -203,6 +228,7 @@ function resolveCapabilities(capabilities: UnitCapabilitiesView | null | undefin
 /** 单选详情模型。id 在 units 里查不到（已销毁但选择集尚未对账）时仍返回模型，名字退化成 id。 */
 function toDetail(state: WorldState, unit: UnitView): UnitDetailModel {
   const mission = findMission(state, unit.missionId);
+  const characterId = unit.characterId ?? null;
   return {
     id: unit.id,
     name: unit.name || unit.id,
@@ -219,6 +245,8 @@ function toDetail(state: WorldState, unit: UnitView): UnitDetailModel {
       : null,
     capabilities: resolveCapabilities(unit.capabilities),
     growth: resolveGrowth(state, unit),
+    characterId,
+    taskQueue: characterId ? resolveCharacterTaskQueue(state.tasks, characterId) : EMPTY_TASK_QUEUE,
   };
 }
 
@@ -232,6 +260,41 @@ function toRow(state: WorldState, unit: UnitView): UnitRowModel {
     missionTitle: findMission(state, unit.missionId)?.title ?? null,
   };
 }
+
+// ============================================================================
+// 角色任务队列（@since v3.17，task_038）
+// ============================================================================
+
+/**
+ * 指令摘要的展示截断：trim 后 ≤ maxLen 原样返回，超长载 maxLen 字 + 省略号。
+ * 导出供单测与渲染层共用（别在两侧各写一份截断）。
+ */
+export function truncateTaskSummary(prompt: string, maxLen: number = TASK_SUMMARY_DISPLAY_LEN): string {
+  const trimmed = prompt.trim();
+  return trimmed.length <= maxLen ? trimmed : `${trimmed.slice(0, maxLen)}…`;
+}
+
+/** 在办任务（queued / running）。终态不进队列读数 —— 它们是历史，不是排队。 */
+function isActiveTask(task: CharacterTask): boolean {
+  return task.status === 'queued' || task.status === 'running';
+}
+
+/**
+ * WorldState.tasks → 某角色的队列读数。纯函数。
+ * 当前任务取 running（有正在跑的优先），否则取队首 queued（FIFO 语义与 app 层 task-service 一致）；
+ * tasks 缺省 / 没有在办任务 → 空读数（卡片显示空闲，不编造）。
+ */
+export function resolveCharacterTaskQueue(
+  tasks: readonly CharacterTask[] | undefined,
+  characterId: string
+): CharacterTaskQueueModel {
+  const active = (tasks ?? []).filter((task) => task.characterId === characterId && isActiveTask(task));
+  const current = active.find((task) => task.status === 'running') ?? active[0];
+  if (!current) return { summary: null, waiting: 0 };
+  return { summary: truncateTaskSummary(current.prompt), waiting: active.length - 1 };
+}
+
+const EMPTY_TASK_QUEUE: CharacterTaskQueueModel = { summary: null, waiting: 0 };
 
 // ============================================================================
 // WorldState → 视图模型
@@ -308,6 +371,22 @@ export function buildAgentCommand(action: AgentPanelAction, unitId: string): Hud
   }
 }
 
+/**
+ * 派发表单提交 → task.assign 命令（@since v3.17，task_038）。
+ * 返回 null = 不发：没关联角色 / 指令 trim 后为空（core 侧也会拒，但空命令不值得一次广播）。
+ * 长度上限由 core 守门（MAX_TASK_PROMPT_LEN）—— 表单的 maxlength 已挡住越界输入，
+ * 这里不重复判，免得两侧阈值漂移。
+ */
+export function buildTaskAssignCommand(
+  characterId: string | null | undefined,
+  prompt: string
+): HudCommand | null {
+  if (!characterId) return null;
+  const trimmed = prompt.trim();
+  if (trimmed.length === 0) return null;
+  return { type: 'task.assign', characterId, prompt: trimmed };
+}
+
 // ============================================================================
 // 渲染签名（perf：WorldState 高频广播，侧栏只渲染真正变了的那次）
 // ============================================================================
@@ -333,6 +412,10 @@ export function agentPanelSignature(state: WorldState | null): string {
     const growth = resolveGrowth(state, unit);
     const caps = unit.capabilities;
     const capSig = caps ? `${caps.overall}/${caps.level}/${CAPABILITY_DIMENSIONS.map((k) => caps.dimensions[k] ?? 0).join('.')}` : '-';
+    // @since v3.17（task_038）：队列读数进签名 —— 任务相位变了（排队/开工/收尾）卡片必须重画，
+    // 没被选中的单位任务怎么变都与侧栏无关，不进签名（与下方读数同一取舍）。
+    const queue = unit.characterId ? resolveCharacterTaskQueue(state.tasks, unit.characterId) : null;
+    const queueSig = queue ? `${queue.summary ?? '-'}+${queue.waiting}` : '-';
     parts.push(
       [
         id,
@@ -342,6 +425,7 @@ export function agentPanelSignature(state: WorldState | null): string {
         mission ? `${mission.id}:${mission.phase}:${mission.title}` : '-',
         capSig,
         growth ? `${growth.characterId}:${growth.name}:${growth.level}:${growth.experience}` : '-',
+        queueSig,
       ].join(':')
     );
   }

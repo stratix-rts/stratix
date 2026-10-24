@@ -10,12 +10,15 @@
  * @jest-environment node
  */
 
-import type { CharacterView, MissionView, UnitCapabilitiesView, UnitView, WorldState } from '../../core/types';
+import type { CharacterTask, CharacterView, MissionView, UnitCapabilitiesView, UnitView, WorldState } from '../../core/types';
 import {
   agentPanelSignature,
   buildAgentCommand,
+  buildTaskAssignCommand,
   MAX_VISIBLE_GROUP_ROWS,
   resolveAgentPanel,
+  resolveCharacterTaskQueue,
+  truncateTaskSummary,
 } from '../panels/agent-catalog';
 
 const CAPS: UnitCapabilitiesView = {
@@ -296,5 +299,153 @@ describe('渲染签名：只对"选中单位的可见读数"敏感', () => {
 
   test('null state 有稳定签名', () => {
     expect(agentPanelSignature(null)).toBe('none');
+  });
+});
+// ============================================================================
+// 角色任务队列 + 派发命令（@since v3.17，task_038）
+// ============================================================================
+
+describe('角色任务队列读数：WorldState.tasks → 当前摘要 + 排队数', () => {
+  const task = (id: string, status: CharacterTask['status'], prompt: string, createdAt = 1): CharacterTask => ({
+    id,
+    characterId: 'c-neo',
+    prompt,
+    status,
+    createdAt,
+    startedAt: null,
+    endedAt: null,
+    output: '',
+  });
+
+  test('tasks 缺省 / 没有在办任务 → 空读数（不编造）', () => {
+    expect(resolveCharacterTaskQueue(undefined, 'c-neo')).toEqual({ summary: null, waiting: 0 });
+    expect(
+      resolveCharacterTaskQueue([task('t1', 'completed', '已收尾')], 'c-neo')
+    ).toEqual({ summary: null, waiting: 0 });
+  });
+
+  test('running 优先于 queued：当前任务是正在跑的那条', () => {
+    const queue = resolveCharacterTaskQueue(
+      [task('t1', 'queued', '第一条排队', 1), task('t2', 'running', '正在跑', 2)],
+      'c-neo'
+    );
+    expect(queue.summary).toBe('正在跑');
+    expect(queue.waiting).toBe(1);
+  });
+
+  test('没有 running 时取 FIFO 队首的 queued', () => {
+    const queue = resolveCharacterTaskQueue(
+      [task('t1', 'queued', '第一条', 1), task('t2', 'queued', '第二条', 2)],
+      'c-neo'
+    );
+    expect(queue.summary).toBe('第一条');
+    expect(queue.waiting).toBe(1);
+  });
+
+  test('只统计该角色的任务（别人的队列不算进来）', () => {
+    const queue = resolveCharacterTaskQueue(
+      [task('t1', 'running', '我的'), { ...task('t9', 'running', '别人的', 3), characterId: 'c-trinity' }],
+      'c-neo'
+    );
+    expect(queue.summary).toBe('我的');
+    expect(queue.waiting).toBe(0);
+  });
+
+  test('摘要 40 字截断加省略号；未超长原样（trim 后计）', () => {
+    expect(truncateTaskSummary('  短任务  ')).toBe('短任务');
+    const long = '长'.repeat(50);
+    expect(truncateTaskSummary(long)).toBe(`${'长'.repeat(40)}…`);
+    expect(truncateTaskSummary(long).length).toBe(41);
+    expect(truncateTaskSummary('整'.repeat(40))).toBe('整'.repeat(40));
+  });
+});
+
+describe('派发命令构造：buildTaskAssignCommand', () => {
+  test('有角色 + 非空指令 → task.assign（prompt 已 trim）', () => {
+    expect(buildTaskAssignCommand('c-neo', '  写周报  ')).toEqual({
+      type: 'task.assign',
+      characterId: 'c-neo',
+      prompt: '写周报',
+    });
+  });
+
+  test('没角色 / 空白指令 → null（不发空命令）', () => {
+    expect(buildTaskAssignCommand(null, '写周报')).toBeNull();
+    expect(buildTaskAssignCommand(undefined, '写周报')).toBeNull();
+    expect(buildTaskAssignCommand('c-neo', '   ')).toBeNull();
+  });
+});
+
+describe('单选详情的队列字段（task_038）', () => {
+  test('关联角色的单位带 characterId 与队列读数；未关联的角色字段为 null + 空读数', () => {
+    const state = makeState({
+      units: [unit({ id: 'u-neo', name: 'Neo', characterId: 'c-neo' })],
+      characters: [CHARACTER],
+      selection: { unitIds: ['u-neo'], previewUnitIds: [], revision: 1 },
+      tasks: [
+        {
+          id: 't1', characterId: 'c-neo', prompt: '正在跑的任务', status: 'running',
+          createdAt: 1, startedAt: 1, endedAt: null, output: '',
+        },
+        {
+          id: 't2', characterId: 'c-neo', prompt: '排队的任务', status: 'queued',
+          createdAt: 2, startedAt: null, endedAt: null, output: '',
+        },
+      ],
+    });
+    const model = resolveAgentPanel(state);
+    expect(model.detail?.characterId).toBe('c-neo');
+    expect(model.detail?.taskQueue.summary).toBe('正在跑的任务');
+    expect(model.detail?.taskQueue.waiting).toBe(1);
+
+    const stateNoCharacter = makeState({
+      units: [unit({ id: 'u-plain', name: '无角色单位' })],
+      selection: { unitIds: ['u-plain'], previewUnitIds: [], revision: 1 },
+    });
+    const plain = resolveAgentPanel(stateNoCharacter);
+    expect(plain.detail?.characterId).toBeNull();
+    expect(plain.detail?.taskQueue).toEqual({ summary: null, waiting: 0 });
+  });
+});
+
+describe('渲染签名：任务队列变化也算变化（否则队列读了旧数）', () => {
+  test('选中单位的任务离队 / 排队数变化 → 签名变；别人任务变化 → 签名不变', () => {
+    const makeTaskState = (
+      tasks: readonly { id: string; status: CharacterTask['status']; characterId?: string }[]
+    ): WorldState =>
+      makeState({
+        units: [unit({ id: 'u-neo', name: 'Neo', characterId: 'c-neo' })],
+        selection: { unitIds: ['u-neo'], previewUnitIds: [], revision: 1 },
+        tasks: tasks.map(({ id, status, characterId }, i) => ({
+          id,
+          characterId: characterId ?? 'c-neo',
+          prompt: `任务${id}`,
+          status,
+          createdAt: i,
+          startedAt: null,
+          endedAt: null,
+          output: '',
+        })),
+      });
+
+    // 收尾离队：队列从有读数变空闲
+    expect(agentPanelSignature(makeTaskState([{ id: 't1', status: 'queued' }]))).not.toBe(
+      agentPanelSignature(makeTaskState([{ id: 't1', status: 'completed' }]))
+    );
+    // 排队数变化：+1 条 queued → waiting 0→1
+    expect(
+      agentPanelSignature(makeTaskState([{ id: 't1', status: 'queued' }]))
+    ).not.toBe(
+      agentPanelSignature(makeTaskState([{ id: 't1', status: 'queued' }, { id: 't2', status: 'queued' }]))
+    );
+    // 别人的任务（同状态同指令）不进签名
+    expect(agentPanelSignature(makeTaskState([{ id: 't1', status: 'queued' }]))).toBe(
+      agentPanelSignature(
+        makeTaskState([
+          { id: 't1', status: 'queued' },
+          { id: 't9', status: 'queued', characterId: 'c-trinity' },
+        ])
+      )
+    );
   });
 });

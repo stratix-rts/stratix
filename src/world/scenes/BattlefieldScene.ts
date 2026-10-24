@@ -3,6 +3,8 @@
  *   方案来源：docs/REFACTOR_PLAN_V3.md §2「world/scenes BattlefieldScene（唯一主场景起步）」。
  * 输入：
  *   - core/bus 的 state 通道（经 bridge/bus-adapter 转发到本场景的 WorldScenePort 回调）；
+ *   - core/bus 的 world 通道上的 task.started/completed/failed（@since v3.17，task_038，
+ *     经同一个桥接层筛出并转发到 syncTaskEvent）——驱动单位头顶的工作表现（objects/task-fx*）；
  *   - 浏览器指针输入（按下 / 移动 / 松开 / 滚轮）。
  * 输出：把交互转成 WorldEvent（unit.click / selection.box / camera.moved），经桥接层发回 core。
  * 禁止事项：
@@ -16,15 +18,18 @@
 
 import Phaser from 'phaser';
 
-import type { Bounds, ClickMods, Point, SelectionState, UnitView } from '../../core/types';
+import type { Bounds, CharacterTask, ClickMods, Point, SelectionState, UnitView } from '../../core/types';
 import {
   CAMERA_EVENT_INTERVAL_MS,
   createWorldBridge,
+  type TaskFxPhase,
   type WorldBridge,
   type WorldScenePort,
 } from '../bridge/bus-adapter';
 import { CameraController, DEFAULT_WORLD_BOUNDS } from '../camera';
 import { SelectionBox } from '../objects/selection-box';
+import { TaskFxBoard, applyTaskFxEvent } from '../objects/task-fx';
+import { TaskFxLayer } from '../objects/task-fx-layer';
 import { UnitLayer } from '../objects/unit-layer';
 import { UnitRegistry, UNIT_POSITION_SEED_KEY } from '../objects/unit-registry';
 import { UNIT_SPRITE_SOURCE_KEY, type UnitSpriteSource } from '../objects/unit-sprite-source';
@@ -67,6 +72,9 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   private bridge!: WorldBridge;
   private readonly units = new UnitRegistry({ worldBounds: DEFAULT_WORLD_BOUNDS });
   private unitLayer!: UnitLayer;
+  /** 任务表现状态板（task_038）：瞬态浮标（✓/!）的唯一真相，环由 busy 派生裁决。 */
+  private readonly taskFx = new TaskFxBoard();
+  private taskFxLayer!: TaskFxLayer;
   private emptyHint?: Phaser.GameObjects.Text;
   private selectionBox!: SelectionBox;
 
@@ -97,6 +105,10 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     const spriteSource = (this.registry.get(UNIT_SPRITE_SOURCE_KEY) as UnitSpriteSource | undefined) ?? null;
     this.unitLayer = new UnitLayer(this, this.units, spriteSource);
 
+    // 任务表现层（@since v3.17，task_038）：单位头顶的 working 环 / ✓ / ! 浮标。
+    // 订阅在桥接层（bridge/bus-adapter 的 syncTaskEvent 转发），场景只被驱动。
+    this.taskFxLayer = new TaskFxLayer(this, this.units, this.taskFx);
+
     // 恢复站位种子（@since v3.12，task_033）：组合根启动读档后放在 game.registry 里。
     // 没接上（纯 vite dev / 读档失败）→ undefined，注册表全部按网格落位，行为与从前一致。
     const restoredPositions = this.registry.get(UNIT_POSITION_SEED_KEY) as ReadonlyMap<string, Point> | undefined;
@@ -125,6 +137,11 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   syncUnits(units: readonly UnitView[]): void {
     const result = this.units.sync(units);
     this.unitLayer.sync();
+    // 单位离场，浮标一并收掉：表现不许悬在已不存在的单位头顶（task_038）。
+    for (const id of result.removed) {
+      this.taskFx.clear(id);
+    }
+    this.taskFxLayer.sync();
     this.emptyHint?.setVisible(units.length === 0);
     // 落位上报（@since v3.12，task_033）：新增单位的坐标（恢复位或网格位）发回 core 方向，
     // 由 app 层持久化订阅者防抖落库。只对新增单位发：位置真相在本层，后续移动由移动链路上报。
@@ -166,6 +183,15 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
 
   syncSelection(selection: SelectionState): void {
     this.unitLayer.setSelection(selection.unitIds, selection.previewUnitIds);
+  }
+
+  /**
+   * 任务生命周期 → 战场表现（@since v3.17，task_038；由桥接层转发 task.started/completed/failed）。
+   * 事件带 characterId，战场认单位：applyTaskFxEvent 反查 + 落板，表现层对账重画。
+   */
+  syncTaskEvent(task: CharacterTask, phase: TaskFxPhase): void {
+    applyTaskFxEvent(this.taskFx, this.units.list(), task, phase);
+    this.taskFxLayer.sync();
   }
 
   // ==========================================================================
@@ -252,6 +278,7 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   private onShutdown(): void {
     this.bridge.destroy();
     this.unitLayer.destroy();
+    this.taskFxLayer.destroy();
     this.selectionBox.destroy();
     this.units.destroy();
   }

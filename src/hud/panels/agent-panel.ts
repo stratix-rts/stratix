@@ -17,13 +17,19 @@
  *
  * 渲染策略（perf，与 command-panel 同一口径）：core 每次状态变更都全量广播，
  *   侧栏用 agentPanelSignature 判重，签名不变就跳过重渲染；外壳只在挂载时建一次。
+ *
+ * @since v3.17（task_038）追加：派任务表单 + 队列读数。
+ *   - 表单挂在外壳（chrome，建一次），不在 body 里 —— body 随签名重建，textarea 里的半截输入
+ *     会被一次无关广播冲掉；表单开合/草稿是面板本地瞬时态（同 chat-drawer 的 draft 口径），
+ *     不是业务真相，不进 core。提交 → buildTaskAssignCommand → adapter.dispatch（命令端口）。
+ *   - 队列读数（当前任务摘要 40 字 + 排队数）随详情模型渲染，签名已覆盖任务变化。
  */
 
-import type { HudCommand, WorldState } from '../../core/types';
+import { MAX_TASK_PROMPT_LEN, type HudCommand, type WorldState } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
 
 import type { AgentPanelAction, AgentPanelModel, CapabilityBar, UnitDetailModel, UnitRowModel } from './agent-catalog';
-import { agentPanelSignature, buildAgentCommand, resolveAgentPanel } from './agent-catalog';
+import { agentPanelSignature, buildAgentCommand, buildTaskAssignCommand, resolveAgentPanel } from './agent-catalog';
 
 export const AGENT_PANEL_TAG = 'strat-agent-panel';
 
@@ -73,6 +79,9 @@ export function defineAgentPanel(): typeof HTMLElement {
     private _lastSignature: string | null = null;
     private _unsubscribe: (() => void) | null = null;
     private _listenersBound = false;
+    /** 派任务表单的本地瞬时态（task_038）：开着时指向哪个单位/角色；关闭时均为 null。 */
+    private _formUnitId: string | null = null;
+    private _formCharacterId: string | null = null;
 
     // —— 属性面 ——
     get adapter(): AgentPanelDeps | null { return this._adapter; }
@@ -115,6 +124,21 @@ export function defineAgentPanel(): typeof HTMLElement {
       this._lastSignature = signature;
       this._model = resolveAgentPanel(this._state);
       this.renderBody();
+      this.reconcileTaskForm();
+    }
+
+    /**
+     * 表单与选择集对账（task_038）：表单开着的单位不再是当前单选详情（切了人/进了编组/清空），
+     * 或单位换了关联角色 → 表单自动收起。开着且目标没变 → 不碰（打字中不重置草稿）。
+     */
+    private reconcileTaskForm(): void {
+      if (!this._formCharacterId) return;
+      const detail = this._model.mode === 'single' ? this._model.detail : null;
+      const stillOnTarget =
+        detail !== null &&
+        detail.id === this._formUnitId &&
+        (detail.characterId ?? null) === this._formCharacterId;
+      if (!stillOnTarget) this.closeTaskForm();
     }
 
     // —— 订阅生命周期 ——
@@ -235,6 +259,41 @@ export function defineAgentPanel(): typeof HTMLElement {
           }
           button.action:hover { border-color: var(--srf-accent, #6ea8ff); color: var(--srf-accent, #6ea8ff); }
           .actions { display: flex; gap: var(--srf-spacing-sm, 8px); }
+          .queue-badge {
+            color: var(--srf-warn, #f0c674);
+            font-size: var(--srf-font-size-sm, 12px);
+            margin-left: var(--srf-spacing-xs, 4px);
+          }
+          /* 派任务表单（task_038）：挂在外壳里，不随 body 重建 —— 草稿不被广播冲掉 */
+          .task-form {
+            display: grid;
+            gap: var(--srf-spacing-xs, 4px);
+            padding: var(--srf-spacing-sm, 8px);
+            background: var(--srf-panel-elevated, #20262f);
+            border: var(--srf-border-width, 1px) solid var(--srf-border-strong, #3a4252);
+            border-radius: var(--srf-radius, 6px);
+          }
+          .task-form[hidden] { display: none; }
+          .task-form-title {
+            color: var(--srf-text-muted, #9aa3b2);
+            font-size: var(--srf-font-size-sm, 12px);
+          }
+          .task-input {
+            width: 100%;
+            box-sizing: border-box;
+            resize: vertical;
+            min-height: 3em;
+            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-sm, 8px);
+            background: var(--srf-panel, #181c25);
+            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
+            border-radius: var(--srf-radius, 6px);
+            color: var(--srf-text, #e6e9ef);
+            font-family: var(--srf-font-ui, sans-serif);
+            font-size: var(--srf-font-size-sm, 12px);
+            line-height: var(--srf-line-height, 1.4);
+          }
+          .task-input:focus { outline: none; border-color: var(--srf-accent, #6ea8ff); }
+          .task-form-actions { display: flex; gap: var(--srf-spacing-sm, 8px); justify-content: flex-end; }
         </style>
         <div class="panel" part="panel">
           <div class="head">
@@ -242,6 +301,20 @@ export function defineAgentPanel(): typeof HTMLElement {
             <span class="summary" data-role="summary">等待世界状态…</span>
           </div>
           <div class="body" data-role="body"></div>
+          <div class="task-form" data-role="task-form" hidden>
+            <div class="task-form-title">派任务 · <span data-role="task-form-name"></span></div>
+            <textarea
+              class="task-input"
+              data-role="task-input"
+              rows="3"
+              maxlength="${MAX_TASK_PROMPT_LEN}"
+              placeholder="要它做什么？一段话描述（Ctrl+Enter 派发）"
+            ></textarea>
+            <div class="task-form-actions">
+              <button type="button" class="action" data-action="task-submit">派发</button>
+              <button type="button" class="action" data-action="task-cancel">取消</button>
+            </div>
+          </div>
         </div>
       `;
 
@@ -249,15 +322,81 @@ export function defineAgentPanel(): typeof HTMLElement {
         this._listenersBound = true;
 
         // 行/按钮点击：data-action + data-unit 上的目录坐标 → HudCommand。
+        // 表单动作（task-open/submit/cancel）是本地瞬时态，先拦截，不进命令构造。
         root.addEventListener('click', (ev: Event) => {
           const target = ev.target as HTMLElement | null;
           const host = target?.closest?.('[data-action]') as HTMLElement | null;
           const action = host?.getAttribute('data-action');
-          const unitId = host?.getAttribute('data-unit');
-          if (!action || !unitId) return;
+          if (!action || !host) return;
+          switch (action) {
+            case 'task-open':
+              this.openTaskForm(host.getAttribute('data-character'));
+              return;
+            case 'task-submit':
+              this.submitTaskForm();
+              return;
+            case 'task-cancel':
+              this.closeTaskForm();
+              return;
+            default:
+              break;
+          }
+          const unitId = host.getAttribute('data-unit');
+          if (!unitId) return;
           this.runAction(action as AgentPanelAction, unitId);
         });
+
+        // Ctrl/Cmd + Enter 在 textarea 里直接派发（表单快捷提交，不占用全局键盘）。Shift+Enter 留给换行。
+        const input = root.querySelector('[data-role="task-input"]');
+        input?.addEventListener('keydown', (ev: Event) => {
+          const key = (ev as KeyboardEvent).key;
+          const withModifier = (ev as KeyboardEvent).ctrlKey || (ev as KeyboardEvent).metaKey;
+          if (withModifier && key === 'Enter') {
+            ev.preventDefault();
+            this.submitTaskForm();
+          }
+        });
       }
+    }
+
+    // —— 派任务表单（task_038）：本地瞬时态，开/关/提交三条路径 ——
+
+    private openTaskForm(characterId: string | null): void {
+      if (!characterId) return; // 没关联角色的单位没有任务可派（按钮也不会渲染）
+      const detail = this._model.mode === 'single' ? this._model.detail : null;
+      if (!detail) return;
+      this._formUnitId = detail.id;
+      this._formCharacterId = characterId;
+
+      const root = this.shadowRoot;
+      const form = root?.querySelector('[data-role="task-form"]') as HTMLElement | null;
+      const name = root?.querySelector('[data-role="task-form-name"]') as HTMLElement | null;
+      const input = root?.querySelector('[data-role="task-input"]') as HTMLTextAreaElement | null;
+      if (!form || !input) return;
+      if (name) name.textContent = detail.name;
+      input.value = '';
+      form.hidden = false;
+      input.focus();
+    }
+
+    private submitTaskForm(): void {
+      const characterId = this._formCharacterId;
+      if (!characterId || !this._adapter) return;
+      const input = this.shadowRoot?.querySelector('[data-role="task-input"]') as HTMLTextAreaElement | null;
+      const command = buildTaskAssignCommand(characterId, input?.value ?? '');
+      if (!command) return; // 空指令不发（表单保持开着，用户接着写）
+      this._adapter.dispatch(command);
+      this.closeTaskForm();
+    }
+
+    private closeTaskForm(): void {
+      this._formUnitId = null;
+      this._formCharacterId = null;
+      const root = this.shadowRoot;
+      const form = root?.querySelector('[data-role="task-form"]') as HTMLElement | null;
+      const input = root?.querySelector('[data-role="task-input"]') as HTMLTextAreaElement | null;
+      if (form) form.hidden = true;
+      if (input) input.value = '';
     }
 
     private renderBody(): void {
@@ -287,6 +426,18 @@ export function defineAgentPanel(): typeof HTMLElement {
       const mission = detail.mission
         ? `${escapeHtml(detail.mission.title)} · ${escapeHtml(detail.mission.phaseLabel)}`
         : '无在办任务';
+      // 队列读数（task_038）：当前任务摘要（≤40 字）+ 排队数（如 +2）；没在办任务 = 空闲。
+      const queue = detail.taskQueue.summary
+        ? `${escapeHtml(detail.taskQueue.summary)}${
+            detail.taskQueue.waiting > 0
+              ? `<span class="queue-badge" data-role="queue-badge">+${detail.taskQueue.waiting}</span>`
+              : ''
+          }`
+        : '空闲';
+      // 派任务入口（task_038）：只给关联了角色的单位 —— task.assign 的载荷是 characterId。
+      const assignButton = detail.characterId
+        ? `<button type="button" class="action" data-action="task-open" data-unit="${escapeHtml(detail.id)}" data-character="${escapeHtml(detail.characterId)}">派任务</button>`
+        : '';
 
       return `
         <div class="detail" data-role="detail" data-unit="${escapeHtml(detail.id)}">
@@ -298,10 +449,12 @@ export function defineAgentPanel(): typeof HTMLElement {
             <div class="fact"><dt>战力</dt><dd data-role="power">${detail.power}</dd></div>
             <div class="fact"><dt>任务</dt><dd data-role="mission">${mission}</dd></div>
             <div class="fact"><dt>成长</dt><dd data-role="growth">${growth}</dd></div>
+            ${detail.characterId ? `<div class="fact"><dt>队列</dt><dd data-role="task-queue">${queue}</dd></div>` : ''}
           </dl>
           ${this.renderCapabilities(detail)}
           <div class="actions">
             <button type="button" class="action" data-action="focus" data-unit="${escapeHtml(detail.id)}">聚焦</button>
+            ${assignButton}
             <button type="button" class="action" data-action="remove" data-unit="${escapeHtml(detail.id)}">移出选择</button>
           </div>
         </div>

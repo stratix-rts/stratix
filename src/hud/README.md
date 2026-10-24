@@ -15,6 +15,7 @@ DOM-layer shell for V3. Zero framework deps: vanilla Custom Elements + Shadow DO
 - `screens/main-screen.ts` — shell renderer
 - `widgets/strat-button.ts` — base button (Shadow DOM, CSS-var only)
 - `components/chat-drawer/` — 角色聊天抽屉（task_034：右侧滑入滑出、多角色会话隔离、流式公开接口 appendStream/finalizeStream；DEMO 假流仅 dev/单测，正式接线 035）
+- `panels/agent-panel.ts` — Agent 侧栏（单选详情/编组；task_038：角色任务队列读数 40 字摘要+排队数，与「派任务」自由文本表单 → task.assign 命令）
 - `theme/tokens-*.css` — skin tokens（8 套：default / pixel / crimson / forest / ocean / sunset / mono / aurora）
 - `theme/skin-registry.ts` — skin registry: `listSkins()` / `randomSkin(seed?)` / `resolveAccent()`
 - `theme/theme-controller.ts` — theme switching

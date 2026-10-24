@@ -8,7 +8,7 @@
  * —— 也就是 HUD 与总线之间的全部边界。断言打在"派发出了什么命令 / 画出了什么读数"上，不断言像素。
  */
 
-import type { HudCommand, UnitView, WorldState } from '../../core/types';
+import type { CharacterTask, HudCommand, UnitView, WorldState } from '../../core/types';
 import {
   AGENT_PANEL_TAG,
   mountAgentPanel,
@@ -95,6 +95,15 @@ function clickAction(panel: StratAgentPanelElement, action: string, unitId: stri
     `button[data-action="${action}"][data-unit="${unitId}"]`
   );
   if (!btn) throw new Error(`侧栏按钮未渲染: ${action}/${unitId}`);
+  btn.click();
+}
+
+/** 表单按钮（task-submit/cancel）没有 data-unit，单独一个点击口。 */
+function clickFormAction(panel: StratAgentPanelElement, action: string): void {
+  const btn = panel.shadowRoot?.querySelector<HTMLButtonElement>(
+    `button[data-action="${action}"]`
+  );
+  if (!btn) throw new Error(`表单按钮未渲染: ${action}`);
   btn.click();
 }
 
@@ -236,7 +245,9 @@ describe('交互：一切经注入的 adapter 变成 HudCommand', () => {
     mounted.push(harness.unmount);
 
     harness.emit(makeState());
-    expect(panel.shadowRoot?.querySelector('[data-action]')).toBeNull();
+    // body 里没有可点动作；表单按钮在外壳里但整块 hidden（点不到，也不产生命令）。
+    expect(panel.shadowRoot?.querySelector('[data-role="body"] [data-action]')).toBeNull();
+    expect(panel.shadowRoot?.querySelector('[data-role="task-form"]')?.hasAttribute('hidden')).toBe(true);
     expect(harness.commands).toEqual([]);
   });
 });
@@ -336,5 +347,194 @@ describe('装配进 main-screen（dev 页走的就是这条路径）', () => {
     host.remove();
     // 主屏卸载后面板随之退订，订阅归零
     expect(subs.size).toBe(0);
+  });
+});
+// ============================================================================
+// 派任务表单 + 队列可见性（@since v3.17，task_038）
+// ============================================================================
+
+describe('派任务表单：提交 → 命令端口，取消 → 清理', () => {
+  const taskOf = (id: string, status: 'queued' | 'running', prompt: string): CharacterTask => ({
+    id,
+    characterId: 'c-neo',
+    prompt,
+    status,
+    createdAt: Number(id.slice(1)),
+    startedAt: null,
+    endedAt: null,
+    output: '',
+  });
+
+  /** 选中带角色的单位（u-neo → c-neo）并可选注入任务队列。 */
+  const selectedWithTasks = (tasks?: CharacterTask[]): WorldState =>
+    makeState({
+      tasks,
+      selection: { unitIds: ['u-neo'], previewUnitIds: [], revision: 1 },
+    });
+
+  const formOf = (panel: StratAgentPanelElement): HTMLElement | null =>
+    panel.shadowRoot?.querySelector('[data-role="task-form"]') ?? null;
+
+  const inputOf = (panel: StratAgentPanelElement): HTMLTextAreaElement | null =>
+    panel.shadowRoot?.querySelector('[data-role="task-input"]') ?? null;
+
+  test('有角色的单位渲染「派任务」按钮；没角色的单位不渲染（也没有队列行）', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    harness.emit(selected('u-neo'));
+    expect(panel.shadowRoot?.querySelector('button[data-action="task-open"]')).not.toBeNull();
+
+    harness.emit(selected('u-trinity')); // 无 characterId
+    expect(panel.shadowRoot?.querySelector('button[data-action="task-open"]')).toBeNull();
+    expect(panel.shadowRoot?.querySelector('[data-role="task-queue"]')).toBeNull();
+  });
+
+  test('打开 → textarea 可见且聚焦；提交 → task.assign 经命令端口发出，表单关闭清空', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    harness.emit(selected('u-neo'));
+    clickAction(panel, 'task-open', 'u-neo');
+
+    const form = formOf(panel);
+    const input = inputOf(panel);
+    expect(form?.hidden).toBe(false);
+    expect(input).not.toBeNull();
+    // shadow DOM 焦点重定向：文档层 activeElement 是宿主，真正持焦的是 shadowRoot 里的 textarea
+    // （jsdom 与浏览器同一口径），断言两者其一命中即可。
+    expect(document.activeElement === input || panel.shadowRoot?.activeElement === input).toBe(true);
+
+    input!.value = '  写一份周报并同步到知识库  ';
+    clickFormAction(panel, 'task-submit');
+
+    expect(harness.commands).toEqual([
+      { type: 'task.assign', characterId: 'c-neo', prompt: '写一份周报并同步到知识库' },
+    ]);
+    expect(formOf(panel)?.hidden).toBe(true);
+    expect(inputOf(panel)?.value).toBe('');
+  });
+
+  test('取消 → 不发命令，表单关闭且草稿清空', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    harness.emit(selected('u-neo'));
+    clickAction(panel, 'task-open', 'u-neo');
+    inputOf(panel)!.value = '写到一半的草稿';
+    clickFormAction(panel, 'task-cancel');
+
+    expect(harness.commands).toEqual([]);
+    expect(formOf(panel)?.hidden).toBe(true);
+    expect(inputOf(panel)?.value).toBe('');
+  });
+
+  test('空指令提交 → 不发命令，表单保持开着（用户接着写）', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    harness.emit(selected('u-neo'));
+    clickAction(panel, 'task-open', 'u-neo');
+    inputOf(panel)!.value = '   ';
+    clickFormAction(panel, 'task-submit');
+
+    expect(harness.commands).toEqual([]);
+    expect(formOf(panel)?.hidden).toBe(false);
+  });
+
+  test('Ctrl+Enter 在 textarea 里直接派发', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    harness.emit(selected('u-neo'));
+    clickAction(panel, 'task-open', 'u-neo');
+    const input = inputOf(panel)!;
+    input.value = '快捷键派发';
+    input.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true })
+    );
+
+    expect(harness.commands).toEqual([
+      { type: 'task.assign', characterId: 'c-neo', prompt: '快捷键派发' },
+    ]);
+    expect(formOf(panel)?.hidden).toBe(true);
+  });
+
+  test('切换单位/清空选择 → 表单自动收起（表单不跨单位存活）', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    harness.emit(selected('u-neo'));
+    clickAction(panel, 'task-open', 'u-neo');
+    inputOf(panel)!.value = '半截草稿';
+
+    harness.emit(selected('u-neo', 'u-trinity')); // 切到编组 → 目标单位不再是单选详情
+    expect(formOf(panel)?.hidden).toBe(true);
+    expect(inputOf(panel)?.value).toBe('');
+    expect(harness.commands).toEqual([]);
+  });
+
+  test('表单开着时无关广播不冲掉草稿（表单在外壳，不随 body 重建）', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    harness.emit(selectedWithTasks([taskOf('t1', 'running', '正在跑')]));
+    clickAction(panel, 'task-open', 'u-neo');
+    inputOf(panel)!.value = '打了一半';
+
+    // 一次真实的状态广播（未选中单位有变化 → 签名不变；即便签名变了，表单也不重建）
+    harness.emit(selectedWithTasks([taskOf('t1', 'running', '正在跑')]));
+    expect(inputOf(panel)?.value).toBe('打了一半');
+    expect(formOf(panel)?.hidden).toBe(false);
+
+    // 队列读数变了 → body 重画，但 textarea 是外壳节点，草稿仍在
+    harness.emit(selectedWithTasks([taskOf('t1', 'running', '正在跑'), taskOf('t2', 'queued', '新排的')]));
+    expect(inputOf(panel)?.value).toBe('打了一半');
+    expect(text(panel, 'task-queue')).toContain('+1');
+  });
+});
+
+describe('队列可见性：当前任务摘要 + 排队数', () => {
+  const taskOf = (id: string, status: 'queued' | 'running', prompt: string): CharacterTask => ({
+    id,
+    characterId: 'c-neo',
+    prompt,
+    status,
+    createdAt: Number(id.slice(1)),
+    startedAt: null,
+    endedAt: null,
+    output: '',
+  });
+
+  test('running 优先显示；排队数以 +N 呈现；无任务显示空闲', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    harness.emit(
+      makeState({
+        tasks: [taskOf('t1', 'queued', '先排的'), taskOf('t2', 'running', '正在跑的任务'), taskOf('t3', 'queued', '后又排的')],
+        selection: { unitIds: ['u-neo'], previewUnitIds: [], revision: 1 },
+      })
+    );
+    expect(text(panel, 'task-queue')).toContain('正在跑的任务');
+    expect(text(panel, 'queue-badge')).toBe('+2');
+
+    harness.emit(makeState({ selection: { unitIds: ['u-neo'], previewUnitIds: [], revision: 1 } }));
+    expect(text(panel, 'task-queue')).toBe('空闲');
+  });
+
+  test('长指令 40 字截断（卡片读数不撑爆）', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    harness.emit(
+      makeState({
+        tasks: [taskOf('t1', 'running', '长'.repeat(60))],
+        selection: { unitIds: ['u-neo'], previewUnitIds: [], revision: 1 },
+      })
+    );
+    const summary = text(panel, 'task-queue') ?? '';
+    expect(summary.length).toBe(41); // 40 字 + 省略号
+    expect(summary.endsWith('…')).toBe(true);
   });
 });
