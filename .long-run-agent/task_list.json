@@ -1367,13 +1367,13 @@
       "description": "world: 品牌 agent 默认形象库——按各 CLI 品牌(claude/kimi/opencode/openclaw/codex等)标志色与风格从素材元数据搭配固定预设-模块",
       "template": "task",
       "priority": "P1",
-      "status": "pending",
+      "status": "completed",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_031.md",
       "created_at": "2026-10-24T09:32:34.637040",
-      "updated_at": "2026-10-24T09:32:34.637056",
+      "updated_at": "2026-10-24T02:14:53.320612+00:00",
       "dependencies": [],
       "dependency_type": "all",
       "deadline": null,
@@ -1381,9 +1381,9 @@
         "iteration": 0,
         "max_iterations": 7,
         "quality_checks": {
-          "tests_passed": false,
-          "lint_passed": false,
-          "acceptance_met": false
+          "tests_passed": true,
+          "lint_passed": true,
+          "acceptance_met": true
         },
         "issues": [],
         "optimization_history": []
@@ -1402,6 +1402,295 @@
       "created_at": "2026-10-24T09:32:34.904448",
       "updated_at": "2026-10-24T09:32:34.904470",
       "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_033",
+      "description": "app: 角色档案持久化——characters+appearance+单位站位落 SQLite，启动恢复-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_033.md",
+      "created_at": "2026-10-24T10:11:08.556472",
+      "updated_at": "2026-10-24T10:11:08.556487",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_034",
+      "description": "hud: chat-drawer 右侧抽屉 UI——消息列表/点单位切上下文/流式渲染接口(transport 打桩)-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_034.md",
+      "created_at": "2026-10-24T10:11:08.811677",
+      "updated_at": "2026-10-24T10:11:08.811705",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_035",
+      "description": "app: 对话回路接线——chat-drawer↔CliTransport 往返+流式回显+错误中断处理-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_035.md",
+      "created_at": "2026-10-24T10:11:09.059545",
+      "updated_at": "2026-10-24T10:11:09.059563",
+      "dependencies": [
+        "task_034"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_036",
+      "description": "app: 会话历史落库——messages 表持久化+抽屉打开加载历史-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_036.md",
+      "created_at": "2026-10-24T10:11:09.309690",
+      "updated_at": "2026-10-24T10:11:09.309700",
+      "dependencies": [
+        "task_033",
+        "task_035"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_037",
+      "description": "core: 任务派发命令与队列——unit 状态机 idle/working/done+每单位并发1+走 transport-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_037.md",
+      "created_at": "2026-10-24T10:11:09.564731",
+      "updated_at": "2026-10-24T10:11:09.564746",
+      "dependencies": [
+        "task_035"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_038",
+      "description": "world: 战场工作状态表现——working 动画/进度指示/完成提示-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_038.md",
+      "created_at": "2026-10-24T10:11:09.822577",
+      "updated_at": "2026-10-24T10:11:09.822594",
+      "dependencies": [
+        "task_037"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_039",
+      "description": "app: 任务结果回流——完成通知+结果摘要进对话流+exp 事件发射-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_039.md",
+      "created_at": "2026-10-24T10:11:10.079082",
+      "updated_at": "2026-10-24T10:11:10.079093",
+      "dependencies": [
+        "task_037",
+        "task_038"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_040",
+      "description": "core: 养成曲线——exp 权重表/等级曲线/外观解锁门槛数据，挂真实事件-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_040.md",
+      "created_at": "2026-10-24T10:11:10.333212",
+      "updated_at": "2026-10-24T10:11:10.333226",
+      "dependencies": [
+        "task_039"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_041",
+      "description": "hud: 外观解锁接线——部件选择器按角色等级过滤未解锁部件-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_041.md",
+      "created_at": "2026-10-24T10:11:10.593334",
+      "updated_at": "2026-10-24T10:11:10.593350",
+      "dependencies": [
+        "task_040",
+        "task_032"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_042",
+      "description": "release: 合 master+tag v3.1——全链路验收+合并(保留历史)-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_042.md",
+      "created_at": "2026-10-24T10:11:10.850157",
+      "updated_at": "2026-10-24T10:11:10.850172",
+      "dependencies": [
+        "task_041"
+      ],
       "dependency_type": "all",
       "deadline": null,
       "ralph": {
