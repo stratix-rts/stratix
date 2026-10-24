@@ -14,6 +14,7 @@ DOM-layer shell for V3. Zero framework deps: vanilla Custom Elements + Shadow DO
 ## Layout
 - `screens/main-screen.ts` — shell renderer
 - `widgets/strat-button.ts` — base button (Shadow DOM, CSS-var only)
+- `components/chat-drawer/` — 角色聊天抽屉（task_034：右侧滑入滑出、多角色会话隔离、流式公开接口 appendStream/finalizeStream；DEMO 假流仅 dev/单测，正式接线 035）
 - `theme/tokens-*.css` — skin tokens（8 套：default / pixel / crimson / forest / ocean / sunset / mono / aurora）
 - `theme/skin-registry.ts` — skin registry: `listSkins()` / `randomSkin(seed?)` / `resolveAccent()`
 - `theme/theme-controller.ts` — theme switching
