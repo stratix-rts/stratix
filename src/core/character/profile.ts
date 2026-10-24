@@ -21,14 +21,17 @@
 import {
   AGENT_KINDS,
   APPEARANCE_BODY_TYPES,
+  MAX_APPEARANCE_ITEM_ID_LEN,
   MAX_APPEARANCE_PARTS,
   MAX_APPEARANCE_VARIANT_LEN,
   MAX_CHARACTER_NAME_LEN,
   MAX_EXTERNAL_SESSION_ID_LEN,
   MAX_SKIN_ID_LEN,
+  isAppearancePartSelection,
   type AgentKind,
   type AgentProfile,
   type AppearanceBodyType,
+  type AppearancePartValue,
   type CharacterAppearance,
   type CharacterView,
 } from '../types';
@@ -185,6 +188,9 @@ function resolveExternalSessionId(
  *   3. parts 必须是普通对象，条数 ≤ MAX_APPEARANCE_PARTS（随状态广播，必须有界）；
  *   4. 每个部位键与变体值都必须是长度合规的非空字符串。
  *
+ * @since v3.11：部位值有两种形态 —— 旧的**纯变体串**（原样保留，不变形）与
+ *   新的**精确选择** `{ variant, itemId? }`（itemId 可选；带了就校验长度）。
+ *
  * why 校验得这么细：外观直接决定"这个角色长什么样"，写错体型 → 渲染侧找不到素材目录；
  *   部位塞垃圾 → 渲染侧静默不画，用户看不出哪里错。宁可建档时拒发并报明确错误码。
  *   注意 core **不校验素材是否存在**（那是渲染侧资源的事，core 不该碰文件系统 / 网络）。
@@ -212,17 +218,40 @@ function resolveAppearance(
   const entries = Object.entries(rawParts as Record<string, unknown>);
   if (entries.length > MAX_APPEARANCE_PARTS) return { error: 'invalid-appearance' };
 
-  const parts: Record<string, string> = {};
-  for (const [category, variant] of entries) {
+  const parts: Record<string, AppearancePartValue> = {};
+  for (const [category, value] of entries) {
     if (category.length === 0 || category.length > MAX_APPEARANCE_VARIANT_LEN) {
       return { error: 'invalid-appearance' };
     }
+
+    // —— 旧形态（纯变体串）—— 原样保留为串：存档里的老数据不因模型扩展而变形。
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed.length === 0 || trimmed.length > MAX_APPEARANCE_VARIANT_LEN) {
+        return { error: 'invalid-appearance' };
+      }
+      parts[category] = trimmed;
+      continue;
+    }
+
+    // —— 新形态（@since v3.11：{ variant, itemId? }）——
+    if (!isAppearancePartSelection(value)) return { error: 'invalid-appearance' };
+    const variant = value.variant;
     if (typeof variant !== 'string') return { error: 'invalid-appearance' };
-    const trimmed = variant.trim();
-    if (trimmed.length === 0 || trimmed.length > MAX_APPEARANCE_VARIANT_LEN) {
+    const trimmedVariant = variant.trim();
+    if (trimmedVariant.length === 0 || trimmedVariant.length > MAX_APPEARANCE_VARIANT_LEN) {
       return { error: 'invalid-appearance' };
     }
-    parts[category] = trimmed;
+    if (value.itemId === undefined) {
+      parts[category] = { variant: trimmedVariant };
+      continue;
+    }
+    if (typeof value.itemId !== 'string') return { error: 'invalid-appearance' };
+    const trimmedItemId = value.itemId.trim();
+    if (trimmedItemId.length === 0 || trimmedItemId.length > MAX_APPEARANCE_ITEM_ID_LEN) {
+      return { error: 'invalid-appearance' };
+    }
+    parts[category] = { variant: trimmedVariant, itemId: trimmedItemId };
   }
 
   return { appearance: { bodyType: bodyType as AppearanceBodyType, parts } };

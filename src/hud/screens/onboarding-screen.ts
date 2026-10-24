@@ -43,7 +43,12 @@
  */
 
 import { getSkin, randomSkin, resolveAccent, type SkinDefinition, type SkinId } from '../../core/theme/skin-registry';
-import type { AgentKind, CharacterAppearance, WorldState } from '../../core/types';
+import {
+  appearancePartVariant,
+  type AgentKind,
+  type CharacterAppearance,
+  type WorldState,
+} from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
 import { defineStratButton, escapeHtml, STRAT_BUTTON_TAG } from '../widgets/strat-button';
 
@@ -1051,7 +1056,9 @@ export function defineOnboardingScreen(): typeof HTMLElement {
     /** 单个部位的下拉框（变体清单来自注入的端口）。 */
     private renderAppearanceField(category: AppearanceCategoryInfo): string {
       const target = this.currentPreviewIdentity();
-      const current = target?.appearance?.parts[category.category] ?? '';
+      const current = target?.appearance
+        ? appearancePartVariant(target.appearance.parts[category.category] ?? '')
+        : '';
       const options =
         category.variants.length === 0
           ? '<option value="">（没有可用素材）</option>'
@@ -1075,7 +1082,7 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       const appearance = target.appearance;
       if (!appearance) return '还没选形象';
       const parts = Object.entries(appearance.parts)
-        .map(([category, variant]) => `${category}:${variant}`)
+        .map(([category, value]) => `${category}:${appearancePartVariant(value)}`)
         .join(' · ');
       return parts.length > 0 ? `${appearance.bodyType} · ${parts}` : appearance.bodyType;
     }

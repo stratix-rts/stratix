@@ -1334,6 +1334,87 @@
         "npm run build 成功",
         "dev 手测向导全流程（含 canvas 动画预览、战场合成形象）记录在案"
       ]
+    },
+    {
+      "id": "task_030",
+      "description": "world: 恢复规则化随机形象生成器——移植旧三档随机逻辑(minimal/normal/full)并扩展 appearance 模型支持可选 itemId 精度-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_030.md",
+      "created_at": "2026-10-24T09:32:34.373820",
+      "updated_at": "2026-10-24T09:56:00.000000",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": true,
+          "lint_passed": true,
+          "acceptance_met": true
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_031",
+      "description": "world: 品牌 agent 默认形象库——按各 CLI 品牌(claude/kimi/opencode/openclaw/codex等)标志色与风格从素材元数据搭配固定预设-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_031.md",
+      "created_at": "2026-10-24T09:32:34.637040",
+      "updated_at": "2026-10-24T09:32:34.637056",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_032",
+      "description": "hud: 向导交互重做——每个 agent 独立形象(默认品牌预设+可修改+规则化重随机按钮)-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_032.md",
+      "created_at": "2026-10-24T09:32:34.904448",
+      "updated_at": "2026-10-24T09:32:34.904470",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
     }
   ]
 }

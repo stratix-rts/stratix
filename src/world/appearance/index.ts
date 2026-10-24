@@ -1,8 +1,8 @@
 /**
  * 文件职责：world/appearance 目录的统一出口（LPC 角色合成栈）。
  *   任务：.long-run-agent/tasks/task_027.md「复活 LPC 角色合成器」。
- * 输入/输出：见各子文件（constants / types / part-registry / character-composer / image-cache /
- *   part-config / spritesheet-path）。
+ * 输入/输出：见各子文件（constants / types / part-registry / appearance-randomizer /
+ *   character-composer / image-cache / part-config / spritesheet-path）。
  * 禁止事项：
  *   1. import hud / core 的状态模块 —— world 只认识 core 的**类型**（appearance 只用到
  *      CharacterAppearance 这一个纯数据类型）；
@@ -18,6 +18,7 @@
 export * from './constants';
 export * from './types';
 export * from './part-registry';
+export * from './appearance-randomizer';
 export * from './image-cache';
 export * from './character-composer';
 export * from './part-config';

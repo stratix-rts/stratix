@@ -12,6 +12,9 @@ import { createAgentProfile, toAgentProfile } from '../character';
 import {
   APPEARANCE_BODY_TYPES,
   MAX_APPEARANCE_PARTS,
+  appearancePartItemId,
+  appearancePartVariant,
+  isAppearancePartSelection,
   type CharacterAppearance,
   type CharacterView,
 } from '../types';
@@ -73,6 +76,81 @@ describe('外观模型：可选字段向后兼容', () => {
     const without = toAgentProfile(characterAt());
     expect(without).not.toBeNull();
     expect('appearance' in (without as object)).toBe(false);
+  });
+});
+
+describe('外观模型：部位选择的两种形态（@since v3.11）', () => {
+  test('旧形态（纯变体串）原样保留 —— 老数据解析不回归', () => {
+    const r = createAgentProfile({
+      ...VALID,
+      appearance: { bodyType: 'male', parts: { hair: ' black ' } },
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.profile.appearance?.parts.hair).toBe('black');
+    // 仍是"串"，不是被改写成对象（旧存档的形状不因模型扩展而变形）
+    expect(typeof r.profile.appearance?.parts.hair).toBe('string');
+  });
+
+  test('新形态（{ variant, itemId }）被接受并保留', () => {
+    const r = createAgentProfile({
+      ...VALID,
+      appearance: {
+        bodyType: 'male',
+        parts: { hair: { variant: 'black', itemId: 'hair_afro' } },
+      },
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.profile.appearance?.parts.hair).toEqual({ variant: 'black', itemId: 'hair_afro' });
+  });
+
+  test('新形态不带 itemId 也合法（精确形态可退化成"只认变体"）', () => {
+    const r = createAgentProfile({
+      ...VALID,
+      appearance: { bodyType: 'male', parts: { hair: { variant: 'black' } } },
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.profile.appearance?.parts.hair).toEqual({ variant: 'black' });
+  });
+
+  test('新形态的变体非法 → 拒发', () => {
+    for (const part of [
+      { variant: '' },
+      { variant: '   ' },
+      { variant: 42 },
+      {},
+    ]) {
+      const r = createAgentProfile({
+        ...VALID,
+        appearance: { bodyType: 'male', parts: { hair: part } },
+      });
+      expect(r.ok).toBe(false);
+      if (r.ok) continue;
+      expect(r.code).toBe('invalid-appearance');
+    }
+  });
+
+  test('新形态的 itemId 非法（空串 / 非字符串 / 超长）→ 拒发', () => {
+    for (const itemId of ['', '   ', 42, null, 'x'.repeat(500)]) {
+      const r = createAgentProfile({
+        ...VALID,
+        appearance: { bodyType: 'male', parts: { hair: { variant: 'black', itemId } } },
+      });
+      expect(r.ok).toBe(false);
+      if (r.ok) continue;
+      expect(r.code).toBe('invalid-appearance');
+    }
+  });
+
+  test('读取helper：两种形态都归一化成变体名 / 条目 id', () => {
+    expect(appearancePartVariant('black')).toBe('black');
+    expect(appearancePartVariant({ variant: 'black', itemId: 'hair_afro' })).toBe('black');
+    expect(appearancePartItemId('black')).toBeUndefined();
+    expect(appearancePartItemId({ variant: 'black', itemId: 'hair_afro' })).toBe('hair_afro');
+    expect(isAppearancePartSelection('black')).toBe(false);
+    expect(isAppearancePartSelection({ variant: 'black' })).toBe(true);
   });
 });
 

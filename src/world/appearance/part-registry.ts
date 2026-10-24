@@ -17,7 +17,11 @@
  *   于是"选一个 torso"能同时看到衣服/裙子/甲胄。
  */
 
-import type { CharacterAppearance } from '../../core/types';
+import {
+  appearancePartItemId,
+  appearancePartVariant,
+  type CharacterAppearance,
+} from '../../core/types';
 
 import {
   ANIM_ALIASES,
@@ -265,7 +269,7 @@ export class PartRegistry {
   }
 
   /**
-   * 由 core 的外观模型（category → variant 字典）展开成渲染面的部位选择。
+   * 由 core 的外观模型（category → 部位选择）展开成渲染面的部位选择。
    *
    * why 要这一步：core 存的是"部位的变体名"（薄），渲染要的是"哪个素材 + 哪个变体"（厚）。
    * 同一个类别下可能有多个素材（如 torso 下有 clothes / dress / jacket），
@@ -273,15 +277,32 @@ export class PartRegistry {
    * （宁缺毋滥 —— 画错素材比不画更刺眼）。
    *
    * ⚠️ 同类别多素材共用变体名时（如所有发型共用发色），变体名定位不到唯一款式，
-   *    这里取元数据顺序里的第一个命中项 —— 即 core 的外观模型表达的是"发色"级别的选择，
-   *    不是"发型款式"级别的选择。要选具体款式，渲染侧得自己记住款式（itemId）。
+   *    这里取元数据顺序里的第一个命中项 —— 即"纯变体"形态表达的是"发色"级别的选择，
+   *    不是"发型款式"级别的选择。
+   *
+   * @since v3.11 **精确形态优先**：部位值带了 itemId 时，先按 itemId 精确定位
+   *   （素材存在 + 属于该类别 → 直接命中），定位失败才回落到变体反查。
+   *   这样规则化随机（world/appearance/appearance-randomizer.ts）抽出来的具体款式
+   *   不会被"第一个命中项"顶掉 —— 那正是"随机抽了个头却画成另一个头"的根因。
    *
    * @returns 部位类别 → 部位选择。
    */
   resolveSelections(appearance: CharacterAppearance): Record<string, PartSelection> {
     const selections: Record<string, PartSelection> = {};
 
-    for (const [category, variant] of Object.entries(appearance.parts)) {
+    for (const [category, value] of Object.entries(appearance.parts)) {
+      const variant = appearancePartVariant(value);
+      const itemId = appearancePartItemId(value);
+
+      if (itemId) {
+        const exact = this.resolveByItemId(category, itemId, variant);
+        if (exact) {
+          selections[category] = exact;
+          continue;
+        }
+        // 精确定位失败（素材没了 / 不属于该类别）→ 回落变体反查（下面的公共路径）。
+      }
+
       const hits = this.findPartsByVariant(category, variant);
       const hit = hits[0];
       if (!hit) {
@@ -294,6 +315,45 @@ export class PartRegistry {
     }
 
     return selections;
+  }
+
+  /**
+   * 按 itemId 精确定位一个部位（@since v3.11）。
+   *
+   * why 要检查"属于该类别"：类别决定绘制层级（z 序）与图层组 —— 把帽子当躯干画会穿模。
+   *   定位不到就返回 null，让调用方回落到变体反查（宁缺毋滥）。
+   *
+   * why 变体可能要对齐：精确形态可能带着一个该素材并没有的变体名（素材更新过），
+   *   这时用素材自己的第一个变体顶上并记一条警告 —— 画出一张能看的图，
+   *   好过拼出一个不存在的文件名让图片加载失败。
+   */
+  private resolveByItemId(
+    category: string,
+    itemId: string,
+    variant: string
+  ): PartSelection | null {
+    const part = this.getPart(itemId);
+    if (!part) {
+      console.warn(
+        `[PartRegistry] 部位「${category}」指定的素材「${itemId}」不存在，回落到变体查找`
+      );
+      return null;
+    }
+    const inCategory = this.getPartsByCategory(category).some((p) => p.itemId === itemId);
+    if (!inCategory) {
+      console.warn(
+        `[PartRegistry] 素材「${itemId}」不属于部位类别「${category}」，回落到变体查找`
+      );
+      return null;
+    }
+    if (part.variants.length > 0 && !part.variants.includes(variant)) {
+      const fallback = part.variants[0];
+      console.warn(
+        `[PartRegistry] 素材「${itemId}」没有变体「${variant}」，改用「${fallback}」`
+      );
+      return { itemId, variant: fallback };
+    }
+    return { itemId, variant };
   }
 
   /**

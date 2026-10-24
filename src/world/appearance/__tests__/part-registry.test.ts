@@ -223,6 +223,65 @@ describe('PartRegistry：由 core 外观模型展开部位选择', () => {
   });
 });
 
+describe('PartRegistry：@since v3.11 itemId 精确定位', () => {
+  test('带 itemId → 精确命中那一条素材（同变体多素材时不再取"第一个命中项"）', async () => {
+    const registry = await registryWithFixture();
+    const selections = registry.resolveSelections({
+      bodyType: 'male',
+      // hair_long 与 hair_curly 共用变体 '1'/'2' —— 只有 itemId 能区分
+      parts: { hair: { variant: '1', itemId: 'hair_curly' } },
+    });
+    expect(selections.hair).toEqual({ itemId: 'hair_curly', variant: '1' });
+  });
+
+  test('带 itemId 且变体名正确 → 原样带出', async () => {
+    const registry = await registryWithFixture();
+    const selections = registry.resolveSelections({
+      bodyType: 'male',
+      parts: { body: { variant: 'dark', itemId: 'body' } },
+    });
+    expect(selections.body).toEqual({ itemId: 'body', variant: 'dark' });
+  });
+
+  test('itemId 在素材里不存在 → 回落到变体反查（不整个部位丢掉）', async () => {
+    const registry = await registryWithFixture();
+    const selections = registry.resolveSelections({
+      bodyType: 'male',
+      parts: { hair: { variant: '2', itemId: '根本没有这个条目' } },
+    });
+    // 变体 '2' 命中 hair_long → 回落成功
+    expect(selections.hair).toEqual({ itemId: 'hair_long', variant: '2' });
+  });
+
+  test('itemId 不属于该类别 → 回落到变体反查', async () => {
+    const registry = await registryWithFixture();
+    const selections = registry.resolveSelections({
+      bodyType: 'male',
+      // body 是素材，但它不属于 hair 类别
+      parts: { hair: { variant: '1', itemId: 'body' } },
+    });
+    expect(selections.hair).toEqual({ itemId: 'hair_long', variant: '1' });
+  });
+
+  test('itemId 指定的变体素材没有 → 用素材自己的第一个变体顶上', async () => {
+    const registry = await registryWithFixture();
+    const selections = registry.resolveSelections({
+      bodyType: 'male',
+      parts: { hair: { variant: '这个变体不存在', itemId: 'hair_curly' } },
+    });
+    expect(selections.hair).toEqual({ itemId: 'hair_curly', variant: '1' });
+  });
+
+  test('纯变体形态（旧数据）行为不变', async () => {
+    const registry = await registryWithFixture();
+    const selections = registry.resolveSelections({
+      bodyType: 'male',
+      parts: { hair: '2' },
+    });
+    expect(selections.hair).toEqual({ itemId: 'hair_long', variant: '2' });
+  });
+});
+
 describe('PartRegistry：版权署名', () => {
   test('按部位汇总并按作者去重', async () => {
     const registry = await registryWithFixture();

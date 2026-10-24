@@ -281,9 +281,38 @@ export const APPEARANCE_BODY_TYPES = [
 export type AppearanceBodyType = (typeof APPEARANCE_BODY_TYPES)[number];
 
 /**
+ * @since v3.11 单个部位的**精确选择**（部件选择的第二种形态）。
+ *
+ * why 需要它：旧的「category → variant」定位不到唯一素材 —— LPC 里同一类别的多个条目
+ *   常共用同一套变体名（91 个发型共用一套发色），渲染侧只能取"第一个命中项"。
+ *   于是"随机抽一个发型"抽不出具体款式，规则化随机（见 world/appearance/appearance-randomizer.ts）
+ *   也没法做条目级白名单。带上 itemId 才谈得上"精确指定某一款素材"。
+ *
+ * 字段：
+ *   - variant：变体名（必填）—— 素材文件名的一部分，如 'light' / 'black'；
+ *   - itemId：素材条目 id（可选）—— item-metadata.json 的键，如 'heads_human_male'。
+ *     缺省 = 不指定条目，渲染侧按「类别 + 变体」反查（= 旧行为）。
+ */
+export interface AppearancePartSelection {
+  /** 变体名（素材文件名的一部分，如 'light' / 'black'）。 */
+  readonly variant: string;
+  /** 素材条目 id（item-metadata.json 的键）。缺省 = 不指定具体条目。 */
+  readonly itemId?: string;
+}
+
+/**
+ * @since v3.11 部位选择的**并集形态**：旧的纯变体串 / 新的精确选择。
+ *
+ * why 是并集而不是直接把 string 换成对象：存档里已有的外观是**纯变体**形态，
+ *   直接换类型等于让所有老数据失效（违反"契约增补不许破既有构造点"）。
+ *   并集形态让读方按「是串就用 variant，是对象就用 variant(+itemId)」处理，两种数据都能读。
+ */
+export type AppearancePartValue = string | AppearancePartSelection;
+
+/**
  * @since v3.10 角色外观模型 —— 「体型 + 各部位选的变体」。
  *
- * 形状刻意做得很薄：**category → variant 字典**（不是完整的 LPC 元数据）。
+ * 形状刻意做得很薄：**category → 部位选择**（不是完整的 LPC 元数据）。
  * why：core 只存"这个角色长什么样"的最小事实集 —— 部位 id、图层 z 序、动画偏移、
  *   版权署名这些全是**渲染侧的事**（src/world/appearance/ 的合成器与注册表），core 不该知道。
  *   core 存了等于把渲染细节搬进状态，广播体积也白涨。
@@ -292,7 +321,8 @@ export type AppearanceBodyType = (typeof APPEARANCE_BODY_TYPES)[number];
  * ⚠️ 这个模型的边界：字典里存的是**变体**（如发色 black、肤色 light），不是"素材条目"（如某款发型）。
  *   LPC 素材里同一类别的多个条目常共用同一套变体名（91 个发型共用一套发色），
  *   故"类别 + 变体"未必定位到唯一素材 —— 渲染侧取第一个命中项（见 resolveSelections 的说明）。
- *   要精确指定款式，渲染侧需自行记住 itemId（core 不为此再加字段：字段越多越难演进）。
+ *   @since v3.11：**部位值可以额外带 itemId**（见 AppearancePartSelection），
+ *   带了才谈得上精确指定款式；不带就是旧行为（不变）。
  *
  * 兼容性：新增字段一律可选 —— 本字段是 @since v3.10 追加的，
  *   老档案（无 appearance）依然合法，core 不为它编造默认外观。
@@ -300,8 +330,35 @@ export type AppearanceBodyType = (typeof APPEARANCE_BODY_TYPES)[number];
 export interface CharacterAppearance {
   /** 体型（词表见 APPEARANCE_BODY_TYPES）。 */
   readonly bodyType: AppearanceBodyType;
-  /** 部位 → 变体。键是部位类别（body / hair / torso / hat …），值是该部位的变体名。 */
-  readonly parts: Readonly<Record<string, string>>;
+  /**
+   * 部位 → 部位选择。键是部位类别（body / hair / torso / hat …），
+   * 值是「纯变体串」（旧形态）或「{ variant, itemId? }」（@since v3.11 精确形态）。
+   */
+  readonly parts: Readonly<Record<string, AppearancePartValue>>;
+}
+
+/**
+ * @since v3.11 判断一个部位值是不是「精确选择」形态（对象）。
+ * why 需要它：并集形态在 TypeScript 里必须先判形再取值（直接取 .variant 会报错）。
+ */
+export function isAppearancePartSelection(value: unknown): value is AppearancePartSelection {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * @since v3.11 取部位值的变体名（两种形态都归一化成字符串）。
+ * why 需要它：读方（渲染侧 / HUD 摘要 / 比较键）要的是一个稳定的字符串视图，
+ *   不该在每个读点都写一遍判形分支（判形散落 = 早晚漏一处）。
+ */
+export function appearancePartVariant(value: AppearancePartValue): string {
+  return isAppearancePartSelection(value) ? value.variant : value;
+}
+
+/**
+ * @since v3.11 取部位值的素材条目 id（没有精确指定 → undefined）。
+ */
+export function appearancePartItemId(value: AppearancePartValue): string | undefined {
+  return isAppearancePartSelection(value) ? value.itemId : undefined;
 }
 
 /**
@@ -314,6 +371,12 @@ export const MAX_APPEARANCE_PARTS = 48;
  * @since v3.10 单个部位变体名的长度上限。变体名是素材文件名（小写下划线形式），64 绰绰有余。
  */
 export const MAX_APPEARANCE_VARIANT_LEN = 64;
+
+/**
+ * @since v3.11 单个部位素材条目 id（itemId）的长度上限。
+ * itemId 是素材元数据的键（形如 'shield_heater_revised_wood'），随状态广播，必须有界。
+ */
+export const MAX_APPEARANCE_ITEM_ID_LEN = 64;
 
 /**
  * @since v3.7 Agent 档案 —— agent 视角的完整角色模型。

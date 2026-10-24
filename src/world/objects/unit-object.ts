@@ -11,7 +11,14 @@
  *   4. 塞业务规则（能否被指派任务等）—— 那是 core/unit 的状态机职责。
  */
 
-import type { CharacterAppearance, Point, UnitStatus, UnitView } from '../../core/types';
+import {
+  appearancePartItemId,
+  appearancePartVariant,
+  type CharacterAppearance,
+  type Point,
+  type UnitStatus,
+  type UnitView,
+} from '../../core/types';
 
 /** 点击 / 框选共用的命中半径（世界坐标像素）。 */
 export const UNIT_HIT_RADIUS = 20;
@@ -117,12 +124,17 @@ export class UnitObject {
 /**
  * 外观的**比较键**（体型 + 部位变体，按类别名排序）。
  * why 要一个键：appearance 是嵌套字典，逐字段比对啰嗦；排序后拼串即可判"变没变"。
+ * @since v3.11：键里带上 itemId —— 同变体不同素材（91 个发型共用一套发色）是两张脸，
+ *   只比变体会把"换了发型"误判成"没变"。
  */
 function appearanceKey(appearance: CharacterAppearance | null | undefined): string {
   if (!appearance) return '';
   const parts = Object.entries(appearance.parts)
     .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
-    .map(([category, variant]) => `${category}=${variant}`)
+    .map(
+      ([category, value]) =>
+        `${category}=${appearancePartItemId(value) ?? ''}:${appearancePartVariant(value)}`
+    )
     .join(',');
   return `${appearance.bodyType}|${parts}`;
 }
