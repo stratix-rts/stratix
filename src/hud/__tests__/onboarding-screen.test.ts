@@ -8,12 +8,14 @@
  * 所以夹具是**注入的适配器**而不是真总线 —— 屏的行为与总线实现无关，测的就是屏本身。
  */
 
-import type { DetectedAgent, HudCommand, WorldState } from '../../core/types';
+import type { CharacterAppearance, DetectedAgent, HudCommand, WorldState } from '../../core/types';
 import { DETECTABLE_AGENT_KINDS } from '../../core/types';
 import { createSkinRandomizer } from '../../core/theme/skin-registry';
 
 import {
   buildPersona,
+  cloneAppearance,
+  createAppearanceDrafts,
   findDuplicateNames,
   missingPersonaAnswers,
   resolveBindableKinds,
@@ -204,6 +206,59 @@ describe('向导派生逻辑', () => {
   test('人设长度校验：超长被拒，空串不算错（core 会套默认模板）', () => {
     expect(validatePersona('')).toMatchObject({ ok: true });
     expect(validatePersona('x'.repeat(32_001))).toMatchObject({ ok: false, code: 'persona-too-long' });
+  });
+});
+
+// ============================================================================
+// 1b. 形象草稿的纯逻辑（@since v3.12，task_032：每 agent 独立形象）
+// ============================================================================
+
+describe('向导派生逻辑 · 形象草稿', () => {
+  const PRESET: CharacterAppearance = {
+    bodyType: 'male',
+    parts: {
+      body: { variant: 'light', itemId: 'heads_human_male' },
+      hair: { variant: 'chestnut', itemId: 'hair_parted' },
+      // 旧格式（纯变体串）也要能拷 —— 存档里已有这种形态
+      torso: 'orange',
+    },
+  };
+
+  test('cloneAppearance：深拷贝（顶层与部件值都不是同一份引用），两种部件形态都保留', () => {
+    const copy = cloneAppearance(PRESET);
+    expect(copy).toEqual(PRESET);
+    expect(copy).not.toBe(PRESET);
+    expect(copy.parts.body).not.toBe(PRESET.parts.body);
+    // 旧格式字符串原样保留
+    expect(copy.parts.torso).toBe('orange');
+    // 精确格式带 itemId
+    expect(copy.parts.hair).toMatchObject({ variant: 'chestnut', itemId: 'hair_parted' });
+  });
+
+  test('createAppearanceDrafts：预设命中 → 每个 kind 一份独立深拷贝；预设返 null → 不进表（兑底）', () => {
+    const presets: Record<string, CharacterAppearance> = {
+      'claude-code': PRESET,
+      codex: { bodyType: 'male', parts: { hair: { variant: 'ash', itemId: 'hair_buzzcut' } } },
+    };
+    // 词表外的 kind（预设源返 null，模拟"素材未就绪"）→ 不进表
+    const drafts = createAppearanceDrafts(
+      ['claude-code', 'codex', 'kimi'],
+      (kind) => presets[kind] ?? null
+    );
+
+    expect(drafts.size).toBe(2);
+    expect(drafts.get('claude-code')).toEqual(PRESET);
+    expect(drafts.get('claude-code')).not.toBe(PRESET); // 独立深拷贝
+    expect(drafts.get('codex')?.parts.hair).toMatchObject({ variant: 'ash', itemId: 'hair_buzzcut' });
+    expect(drafts.has('kimi')).toBe(false); // 兑底：取不到不编造
+
+    // 两个 kind 命中同一份预设 → 各自独立（改一个不影响另一个）
+    const shared = createAppearanceDrafts(
+      ['claude-code', 'kimi'],
+      () => PRESET
+    );
+    expect(shared.get('claude-code')).toEqual(shared.get('kimi'));
+    expect(shared.get('claude-code')).not.toBe(shared.get('kimi'));
   });
 });
 

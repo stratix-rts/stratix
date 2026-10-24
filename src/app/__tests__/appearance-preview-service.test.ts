@@ -10,6 +10,7 @@
  */
 
 import { PartRegistry } from '../../world/appearance/part-registry';
+import { BRAND_PRESETS } from '../../world/appearance/brand-presets';
 import {
   createFakeCanvas,
   createFakeImageFactory,
@@ -131,22 +132,55 @@ describe('形象预览服务', () => {
     expect(female.find((c) => c.category === 'facial')?.variants).toEqual([]);
   });
 
-  test('随机形象：体型在 male/female 之间，部位变体来自素材', async () => {
+  test('默认形象（preset）：已知 kind → 品牌预设原样（素材元数据没加载也能取）', async () => {
+    // 空素材注册表（不调 whenReady、不加载元数据）：预设是静态数据，照样能取。
+    const { service } = createService({ registry: createRegistry({}) });
+
+    expect(service.preset('claude-code')).toEqual(BRAND_PRESETS['claude-code']);
+    expect(service.preset('kimi')).toEqual(BRAND_PRESETS['kimi']);
+    // 确定性：同 kind 反复取，同一份（屏可以放心在渲染热路径上反复调）
+    expect(service.preset('claude-code')).toEqual(service.preset('claude-code'));
+  });
+
+  test('默认形象（preset）：词表外 kind → minimal 档规则随机兑底；素材没就绪 → null', async () => {
+    // 素材没加载（空注册表）→ minimal 档抽不出任何部位 → null（不编造）
+    const empty = createService({ registry: createRegistry({}) });
+    expect(empty.service.preset('some-unknown-agent')).toBeNull();
+
+    // 素材就绪 → 能抽出一套（itemId 格式），且不带 minimal 档跳过的那些"怪"部位
+    const { service } = createService({ random: () => 0 });
+    await service.whenReady();
+    const fallback = service.preset('some-unknown-agent');
+    expect(fallback).not.toBeNull();
+    expect(fallback?.bodyType).toBe('male'); // random=0 → 体型抽第一个
+    expect(Object.keys(fallback?.parts ?? {})).not.toContain('hat');
+    expect(Object.keys(fallback?.parts ?? {})).not.toContain('weapon');
+    // itemId 精确格式
+    expect(fallback?.parts.hair).toMatchObject({ itemId: 'hair' });
+  });
+
+  test('规则随机（randomizeNormal，normal 档）：itemId 格式，变体来自素材', async () => {
     const { service } = createService({ random: () => 0 });
     await service.whenReady();
 
-    const appearance = service.randomize();
+    const appearance = service.randomizeNormal();
     expect(appearance).not.toBeNull();
     expect(['male', 'female']).toContain(appearance?.bodyType);
-    expect(appearance?.parts.hair).toBeDefined();
-    expect(appearance?.parts.eyes).toBeDefined();
+    // 每个部件都是精确选择（{ variant, itemId }）—— 手工改部件前的"整套替换"才不会丢款式
+    for (const value of Object.values(appearance?.parts ?? {})) {
+      expect(typeof value).toBe('object');
+      expect(value).toHaveProperty('itemId');
+    }
+    expect(appearance?.parts.hair).toMatchObject({ variant: 'black', itemId: 'hair' });
+    // 裸身层不张冠李戴（body 素材的正主是 body，不该出现在 torso 里）
+    expect(Object.keys(appearance?.parts ?? {})).not.toContain('torso');
   });
 
-  test('素材没加载出来（清单全空）→ randomize 返 null（不编造长相）', async () => {
+  test('素材没加载出来（清单全空）→ randomizeNormal 返 null（不编造长相）', async () => {
     const { service } = createService({ registry: createRegistry({}) });
     await service.whenReady();
 
-    expect(service.randomize()).toBeNull();
+    expect(service.randomizeNormal()).toBeNull();
   });
 
   test('attach：同一个容器重复挂只建一个实例；换容器才重建', () => {

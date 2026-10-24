@@ -1,9 +1,10 @@
 /**
  * 文件职责：首启向导屏 Web Component（`<strat-onboarding-screen>`）—— 四步引导：
  *   ① 扫描报告（WorldState.detectedAgents：已装高亮 + tier 标签）
- *   ② 逐个已装 agent 起名 + 随机皮肤（可换）+ **形象预览（canvas 动画 + 随机形象 + 部件选择器）**
+ *   ② 逐个已装 agent 起名 + 随机皮肤（可换）+ **每 agent 独立形象**（@since v3.12，task_032：
+ *      默认品牌预设 + 可单独改部件 + 规则化重随机 + 重置默认；canvas 预览走路动画）
  *   ③ 人设生成（4 题问答拼装 persona 模板，预览可直接改）
- *   ④ 确认 → 逐个 character.create（带 appearance）→ 完成事件。
+ *   ④ 确认 → 逐个 character.create（各带各的 appearance）→ 完成事件。
  *   来源：.long-run-agent/tasks/task_025.md「hud 首启向导屏」；第②步的形象能力见 task_028。
  *   依赖：task_022（detectedAgents）、task_021（character.create 建档口径）、task_024（皮肤库）、
  *   task_027（world/appearance 的 LPC 合成栈，**只经端口消费**）。
@@ -25,15 +26,18 @@
  *   - 扫描结果（core 广播）→ 扫描报告行；
  *   - 可建档名单（已装 ∩ AGENT_KINDS）→ 第二步的起名条目（名字默认取 agent 显示名）；
  *   - 皮肤由皮肤库抽签器给（可注入 skinSource，测试可确定性复现）；
- *   - 形象由**注入的预览端口**给（随机形象 / 部件变体清单 / canvas 预览）——
- *     屏不认识合成器与素材，只发意图（见 appearance-preview-port.ts）；
+ *   - 形象草稿是**每 agent 一份**（@since v3.12，task_032）：`Map<kind, AppearanceDraft>`，
+ *     初始值 = 注入端口给的默认形象（品牌预设，独立深拷贝）——屏不认识预设库与随机器，
+ *     只发意图（preset / randomizeNormal，见 appearance-preview-port.ts）；
  *   - 问卷答案 → 人设模板（core 默认模板打底 + 各题 fragment），预览可改，改过之后不再被答案覆盖；
- *   - 确认页 → 逐条 character.create（带 appearance）→ 完成事件。
+ *   - 确认页 → 逐条 character.create（各带各的 appearance）→ 完成事件。
  *
- * ★ 形象预览与"总线隔离"的关系（task_028 的核心约束）：
+ * ★ 形象预览与"总线隔离"的关系（task_028 的核心约束，task_032 延续）：
  *   hud 不 import world，但第②步要显示真实角色长相。解法是**端口**：
  *   屏只依赖 AppearancePreviewPort（纯接口），实现住在 app 层
- *   （app/services/appearance-preview-service.ts，组合根 main-entry.ts 注入）。
+ *   （app/services/appearance-preview-service.ts，组合根 main-entry.ts 注入）——
+ *   品牌预设（world/appearance/brand-presets）与规则化随机器（appearance-randomizer）
+ *   都由端口的实现方接入，屏只拿到注入的 preset/randomizeNormal 两个动作。
  *   于是：屏的单测注入桩即可（不碰真 canvas），真 canvas 的手测归 task_029。
  *
  * 挂载接线（@since v3.9，task_026 已接）：本屏只提供 mountOnboardingScreen 工厂，
@@ -56,7 +60,6 @@ import type {
   AppearanceCategoryInfo,
   AppearancePreviewPort,
 } from './appearance-preview-port';
-
 import {
   DETECTION_STATUS_LABELS,
   NAME_ERROR_MESSAGES,
@@ -67,6 +70,8 @@ import {
   TIER_LABELS,
   agentKindLabel,
   buildPersona,
+  cloneAppearance,
+  createAppearanceDrafts,
   findDuplicateNames,
   missingPersonaAnswers,
   resolveBindableKinds,
@@ -74,6 +79,7 @@ import {
   resolveScanStatus,
   validateAgentName,
   validatePersona,
+  type AppearanceDraft,
   type OnboardingIdentity,
   type OnboardingScanRow,
   type OnboardingStep,
@@ -116,14 +122,14 @@ export type SkinSource = () => SkinDefinition;
 /**
  * 屏内可变的身份条目。
  * why 不直接用 OnboardingIdentity：那份是**对外只读**的渲染模型，屏内改名 / 换肤需要就地改。
+ * 形象草稿不在这几（@since v3.12，task_032）：所有 agent 的形象统一存在
+ * `_appearanceDrafts`（Map<kind, AppearanceDraft>）—— 身份条目的增删与形象草稿的存取解耦。
  */
 interface MutableIdentity {
   kind: AgentKind;
   label: string;
   name: string;
   skinId: SkinId;
-  /** 选定的形象（@since v3.10）；null = 还没选（提交时不带 appearance）。 */
-  appearance: CharacterAppearance | null;
 }
 
 /** 自定义元素的对外形状（测试与挂载方按它断言）。 */
@@ -153,7 +159,7 @@ export interface StratOnboardingScreenElement extends HTMLElement {
   appearanceOf(kind: string): CharacterAppearance | null;
   /** 当前在预览区展示的是哪个 agent（null = 没有）。 */
   readonly previewKind: string | null;
-  /** 给当前预览对象抽一套随机形象（端口没接 / 素材没就绪 → 不动）。 */
+  /** 给当前预览对象抽一套随机形象（规则随机 normal 档；端口没接 / 素材没就绪 → 不动）。 */
   randomizeAppearance(): void;
   /** 前进一步（校验不通过则原地报错，不前进）。 */
   next(): void;
@@ -345,6 +351,12 @@ export function defineOnboardingScreen(): typeof HTMLElement {
 
     private _step: OnboardingStep = 'scan';
     private _identities: MutableIdentity[] = [];
+    /**
+     * 每 agent 一份的形象草稿（@since v3.12，task_032）。
+     * key = agent kind；初始值 = 注入端口给的默认形象（品牌预设）的**独立深拷贝**——
+     * 预设是共享常量，直接存引用会让"改 A 的形象"写穿预设、连带别的 agent 一起变。
+     */
+    private _appearanceDrafts = new Map<string, AppearanceDraft>();
     private _answers: Record<string, string> = {};
     /** 人设草稿（预览区可改）。初值 = core 的默认人设模板（没答任何题时的底线）。 */
     private _persona = buildPersona({});
@@ -401,7 +413,7 @@ export function defineOnboardingScreen(): typeof HTMLElement {
     get previewKind(): string | null { return this._previewKind; }
 
     appearanceOf(kind: string): CharacterAppearance | null {
-      return this._identities.find((item) => item.kind === kind)?.appearance ?? null;
+      return this._appearanceDrafts.get(kind) ?? null;
     }
 
     connectedCallback(): void {
@@ -460,6 +472,8 @@ export function defineOnboardingScreen(): typeof HTMLElement {
         case 'scan':
           this.syncIdentities();
           this._step = 'identity';
+          // 进第②步时补一次"素材就绪后回填"：初始化时没取到默认形象的条目等 whenReady 后补上。
+          this.awaitAppearanceReady();
           break;
         case 'identity':
           if (!this.validateIdentities()) return;
@@ -505,17 +519,19 @@ export function defineOnboardingScreen(): typeof HTMLElement {
         kind: identity.kind,
         name: identity.name,
         skinId: identity.skinId,
-        appearance: identity.appearance,
+        // 每 agent 各带各的形象（@since v3.12，task_032）：从各自的草稿里取，没有 → null。
+        appearance: this._appearanceDrafts.get(identity.kind) ?? null,
       }));
       for (const identity of this._identities) {
+        // 各 agent 的形象草稿（没抽到 → 字段缺省，老档案照旧合法）。
+        const appearance = this._appearanceDrafts.get(identity.kind);
         this._adapter?.dispatch({
           type: 'character.create',
           name: identity.name,
           agentKind: identity.kind,
           skinId: identity.skinId,
           ...(persona.length > 0 ? { persona } : {}),
-          // 选过形象才带上 appearance（没选 → 字段缺省，老档案照旧合法）。
-          ...(identity.appearance ? { appearance: identity.appearance } : {}),
+          ...(appearance ? { appearance } : {}),
         });
       }
       this.dispatchEvent(new CustomEvent<OnboardingCompleteDetail>(ONBOARDING_COMPLETE_EVENT, {
@@ -531,6 +547,8 @@ export function defineOnboardingScreen(): typeof HTMLElement {
     /**
      * 同步起名清单：按当前可建档名单重建。
      * 已存在的条目保留（用户改过的名字不能丢），名单里新增的补默认名与随机皮肤，消失的移除。
+     * 形象草稿同步维护（@since v3.12，task_032）：新增的 kind 补默认形象（独立深拷贝），
+     * 消失的 kind 连草稿一起清（不留死数据）。
      */
     private syncIdentities(): void {
       const kinds = resolveBindableKinds(this._state);
@@ -543,10 +561,19 @@ export function defineOnboardingScreen(): typeof HTMLElement {
           label: agentKindLabel(kind),
           name: agentKindLabel(kind),
           skinId: this.pickSkin(),
-          // 新条目顺手抽一套随机形象（素材没就绪时是 null —— 屏据此提示，不编造长相）。
-          appearance: this.pickAppearance(),
         };
       });
+      // 形象草稿：每个 kind 一份独立深拷贝的默认形象（品牌预设；取不到的等素材就绪后补）。
+      const fresh = createAppearanceDrafts(
+        kinds.filter((kind) => !this._appearanceDrafts.has(kind)),
+        (kind) => this._appearancePort?.preset(kind) ?? null
+      );
+      for (const [kind, draft] of fresh) this._appearanceDrafts.set(kind, draft);
+      // 名单里消失的 kind：草稿一并清掉。
+      const liveKinds = kinds as readonly string[];
+      for (const kind of [...this._appearanceDrafts.keys()]) {
+        if (!liveKinds.includes(kind)) this._appearanceDrafts.delete(kind);
+      }
       // 预览对象没了（agent 被移除）→ 预览目标跟着换人。
       if (!this._identities.some((item) => item.kind === this._previewKind)) {
         this._previewKind = this._identities[0]?.kind ?? null;
@@ -559,14 +586,6 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       return source().id;
     }
 
-    /**
-     * 抽一套随机形象（@since v3.10）。
-     * why 走端口：变体名只有素材注册表知道，屏不认识 LPC 素材（铁律）。
-     */
-    private pickAppearance(): CharacterAppearance | null {
-      return this._appearancePort?.randomize() ?? null;
-    }
-
     /** 当前预览区展示的是哪个 agent（没定 → 第一个）。 */
     private currentPreviewIdentity(): MutableIdentity | null {
       if (this._identities.length === 0) return null;
@@ -575,9 +594,9 @@ export function defineOnboardingScreen(): typeof HTMLElement {
     }
 
     /**
-     * 等素材元数据就绪（@since v3.10）。
-     * why 要等：变体清单与随机形象都来自素材元数据，素材没加载出来时清单是空的。
-     * 就绪后给还没形象的条目补一套，并刷新选择器。
+     * 等素材元数据就绪（@since v3.10；@since v3.12 改为补默认形象）。
+     * why 要等：无预设的 kind 走规则随机兑底，那要素材元数据；素材没加载出来时取不到。
+     * 就绪后给还没有草稿的条目补默认形象，并刷新选择器。
      */
     private awaitAppearanceReady(): void {
       const port = this._appearancePort;
@@ -588,10 +607,10 @@ export function defineOnboardingScreen(): typeof HTMLElement {
           if (!this.isConnected || this._step !== 'identity') return;
           let changed = false;
           for (const identity of this._identities) {
-            if (identity.appearance) continue;
-            const appearance = port.randomize();
-            if (!appearance) continue;
-            identity.appearance = appearance;
+            if (this._appearanceDrafts.has(identity.kind)) continue;
+            const preset = port.preset(identity.kind);
+            if (!preset) continue;
+            this._appearanceDrafts.set(identity.kind, cloneAppearance(preset));
             changed = true;
           }
           if (changed) this.renderStep();
@@ -610,7 +629,7 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       this.renderStep();
     }
 
-    // —— 形象（@since v3.10）——
+    // —— 形象（@since v3.10；@since v3.12 改为每 agent 独立草稿）——
     /** 换预览对象：画布切到另一个 agent 的形象。 */
     private selectPreview(kind: string): void {
       if (!this._identities.some((item) => item.kind === kind)) return;
@@ -618,17 +637,49 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       this.renderStep();
     }
 
-    /** 给当前预览对象抽一套随机形象（"随机形象"按钮）。 */
+    /** 给当前预览对象重随机一套形象（对外 API：作用在正在看的那个人上）。 */
     randomizeAppearance(): void {
       const target = this.currentPreviewIdentity();
       if (!target) return;
-      const appearance = this.pickAppearance();
-      if (!appearance) {
+      this.rerollAppearance(target.kind);
+    }
+
+    /**
+     * 给某个 agent 重随机形象（「重随机」按钮，规则随机 normal 档，itemId 精确格式）。
+     * why 走端口：随机器的规则与素材表都在 world 侧，屏只发意图（铁律）。
+     */
+    private rerollAppearance(kind: string): void {
+      const port = this._appearancePort;
+      if (!port) return;
+      if (!this._identities.some((item) => item.kind === kind)) return;
+      const next = port.randomizeNormal();
+      if (!next) {
         this.setError('appearance', '素材还没加载出来，暂时抽不到随机形象');
         return;
       }
       this.setError('appearance', null);
-      target.appearance = appearance;
+      this._appearanceDrafts.set(kind, cloneAppearance(next));
+      this.refreshDraftSurface(kind);
+    }
+
+    /** 把某个 agent 的形象重置回品牌默认（「重置为品牌默认」按钮）。 */
+    private resetAppearance(kind: string): void {
+      const port = this._appearancePort;
+      if (!port) return;
+      if (!this._identities.some((item) => item.kind === kind)) return;
+      const preset = port.preset(kind);
+      if (!preset) {
+        this.setError('appearance', '素材还没加载出来，暂时取不到默认形象');
+        return;
+      }
+      this.setError('appearance', null);
+      this._appearanceDrafts.set(kind, cloneAppearance(preset));
+      this.refreshDraftSurface(kind);
+    }
+
+    /** 草稿变了：只有"正在预览的那个"需要刷新画面与选择器（其余 agent 的草稿只进表）。 */
+    private refreshDraftSurface(kind: string): void {
+      if (kind !== this.currentPreviewIdentity()?.kind) return;
       this.refreshAppearanceControls();
       this.syncPreviewSurface();
     }
@@ -640,22 +691,25 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       if (!port || !target) return;
       const bodyType = port.bodyTypes.find((item) => item === raw);
       if (!bodyType) return;
-      const parts = target.appearance?.parts ?? {};
-      target.appearance = { bodyType, parts: { ...parts } };
+      const draft = this._appearanceDrafts.get(target.kind);
+      this._appearanceDrafts.set(target.kind, {
+        bodyType,
+        parts: { ...(draft?.parts ?? {}) },
+      });
       this.refreshAppearanceControls();
       this.syncPreviewSurface();
     }
 
-    /** 改某个部位的变体（部件选择器）。 */
+    /** 改某个部位的变体（部件选择器，作用在**当前预览对象**的草稿上）。 */
     private setAppearancePart(category: string, variant: string): void {
       const target = this.currentPreviewIdentity();
       if (!target || !category || !variant) return;
-      const appearance = target.appearance;
-      const bodyType = appearance?.bodyType ?? this._appearancePort?.bodyTypes[0] ?? 'male';
-      target.appearance = {
+      const draft = this._appearanceDrafts.get(target.kind);
+      const bodyType = draft?.bodyType ?? this._appearancePort?.bodyTypes[0] ?? 'male';
+      this._appearanceDrafts.set(target.kind, {
         bodyType,
-        parts: { ...(appearance?.parts ?? {}), [category]: variant },
-      };
+        parts: { ...(draft?.parts ?? {}), [category]: variant },
+      });
       this.setError('appearance', null);
       // 只刷新摘要（不重画整个选择器）：重画会把用户正在操作的 select 换掉（焦点丢失）。
       this.refreshAppearanceSummary();
@@ -774,7 +828,11 @@ export function defineOnboardingScreen(): typeof HTMLElement {
           this.reroll(action.getAttribute('data-kind') ?? '');
           return;
         case 'randomize-appearance':
-          this.randomizeAppearance();
+          // 每 agent 一份的重随机按钮（卡片上，带 data-kind）。
+          this.rerollAppearance(action.getAttribute('data-kind') ?? '');
+          return;
+        case 'reset-appearance':
+          this.resetAppearance(action.getAttribute('data-kind') ?? '');
           return;
         case 'preview-appearance':
           this.selectPreview(action.getAttribute('data-kind') ?? '');
@@ -886,7 +944,8 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       if (!port || !canvasHost || this._step !== 'identity') return;
       port.attach(canvasHost);
       const target = this.currentPreviewIdentity();
-      if (target?.appearance) port.preview(target.appearance);
+      const draft = target ? this._appearanceDrafts.get(target.kind) : undefined;
+      if (draft) port.preview(draft);
     }
 
     private renderBody(): string {
@@ -982,13 +1041,19 @@ export function defineOnboardingScreen(): typeof HTMLElement {
           </div>
           <input class="input" type="text" data-role="name-input" data-field="name" data-kind="${escapeHtml(identity.kind)}"
                  value="${escapeHtml(identity.name)}" placeholder="给这个 agent 起个名字">
+          <div class="appearance-actions">
+            <${STRAT_BUTTON_TAG} label="重随机" variant="default" data-action="randomize-appearance" data-kind="${escapeHtml(identity.kind)}"></${STRAT_BUTTON_TAG}>
+            <${STRAT_BUTTON_TAG} label="重置为品牌默认" variant="default" data-action="reset-appearance" data-kind="${escapeHtml(identity.kind)}"></${STRAT_BUTTON_TAG}>
+          </div>
           <div class="error" data-role="name-error" data-error-key="name:${escapeHtml(identity.kind)}" ${errorAttr}>${escapeHtml(error)}</div>
         </div>
       `;
     }
 
     /**
-     * 形象面板（@since v3.10）：预览画布 + 随机形象按钮 + 部件选择器。
+     * 形象面板（@since v3.10）：预览画布 + **当前预览对象**的部件选择器。
+     * @since v3.12（task_032）：「重随机 / 重置为品牌默认」按钮移到了每个 agent 的卡片上
+     * （作用对象跟着 data-kind 走，不再挂在面板上）。
      * why 画布宿主是**占位**：真正的宿主元素由屏长期持有（_canvasHost），
      * 重渲染时搬来搬去 —— 见 renderStep 的注释。
      */
@@ -1018,21 +1083,19 @@ export function defineOnboardingScreen(): typeof HTMLElement {
         <div class="group" data-group="appearance">
           <div class="group-name">形象预览 · ${escapeHtml(target.label)}</div>
           <div class="canvas-slot" data-role="appearance-canvas-slot"></div>
-          <div class="appearance-actions">
-            <${STRAT_BUTTON_TAG} label="随机形象" variant="default" data-action="randomize-appearance"></${STRAT_BUTTON_TAG}>
-          </div>
           <div data-role="appearance-controls">${this.renderAppearanceControls()}</div>
           <div class="error" data-role="appearance-error" data-error-key="appearance" ${errorAttr}>${escapeHtml(error)}</div>
         </div>
       `;
     }
 
-    /** 形象选择器（体型 + 各部位变体下拉）。 */
+    /** 形象选择器（体型 + 各部位变体下拉）—— 数据源 = 当前预览对象的草稿。 */
     private renderAppearanceControls(): string {
       const port = this._appearancePort;
       const target = this.currentPreviewIdentity();
       if (!port || !target) return '';
-      const bodyType = target.appearance?.bodyType ?? port.bodyTypes[0] ?? 'male';
+      const draft = this._appearanceDrafts.get(target.kind);
+      const bodyType = draft?.bodyType ?? port.bodyTypes[0] ?? 'male';
       const categories = port.listCategories(bodyType);
       const bodyTypeField = `
         <label class="field">
@@ -1056,8 +1119,9 @@ export function defineOnboardingScreen(): typeof HTMLElement {
     /** 单个部位的下拉框（变体清单来自注入的端口）。 */
     private renderAppearanceField(category: AppearanceCategoryInfo): string {
       const target = this.currentPreviewIdentity();
-      const current = target?.appearance
-        ? appearancePartVariant(target.appearance.parts[category.category] ?? '')
+      const draft = target ? this._appearanceDrafts.get(target.kind) : undefined;
+      const current = draft
+        ? appearancePartVariant(draft.parts[category.category] ?? '')
         : '';
       const options =
         category.variants.length === 0
@@ -1079,7 +1143,7 @@ export function defineOnboardingScreen(): typeof HTMLElement {
 
     /** 形象摘要（一行文字，给不方便看画布的人留个说法）。 */
     private appearanceSummary(target: MutableIdentity): string {
-      const appearance = target.appearance;
+      const appearance = this._appearanceDrafts.get(target.kind);
       if (!appearance) return '还没选形象';
       const parts = Object.entries(appearance.parts)
         .map(([category, value]) => `${category}:${appearancePartVariant(value)}`)

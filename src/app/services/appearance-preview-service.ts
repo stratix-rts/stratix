@@ -12,17 +12,19 @@
  *      world/appearance 是零 DOM 模块，本文件是"绑定层"，同理不自己造 DOM；
  *   4. 无上限缓存 —— 合成画布复用同一张（832×3456），不每次新建。
  *
- * ★ 为什么随机逻辑在这层而不在 hud：
- *   "随机形象"要抽的是**素材里的变体名**（发色 / 肤色 / 眼睛颜色…），
- *   这些名字只有素材注册表知道 —— hud 不认识 LPC 素材（铁律）。
- *   于是屏只发"给我一套随机的"这个意图，具体抽什么由本服务回答。
+ * ★ 为什么随机逻辑在这层而不在 hud（@since v3.12，task_032 扩到两件）：
+ *   "重随机"要走规则化随机器（normal 档，task_030），"默认形象"要查品牌预设库
+ *   （task_031）—— 两者都在 world/appearance，hud 不认识它们（铁律）。
+ *   于是屏只发"给我默认形象 / 给我一套随机的"这两个意图，具体取什么由本服务回答。
  */
 
-import type { AppearanceBodyType, CharacterAppearance } from '../../core/types';
+import type { AppearanceBodyType, CharacterAppearance, DetectableAgentKind } from '../../core/types';
 import type {
   AppearanceCategoryInfo,
   AppearancePreviewPort,
 } from '../../hud/screens/appearance-preview-port';
+import { randomizeAppearance } from '../../world/appearance/appearance-randomizer';
+import { BRAND_PRESETS } from '../../world/appearance/brand-presets';
 import { CharacterComposer } from '../../world/appearance/character-composer';
 import { DEFAULT_ANIMATION } from '../../world/appearance/constants';
 import { PartRegistry } from '../../world/appearance/part-registry';
@@ -146,6 +148,16 @@ export function createAppearancePreviewService(
     return result.canvas;
   };
 
+  /**
+   * 按规则随机出一份带 itemId 的外观；素材没加载出来 → parts 为空 → 收敛成 null。
+   * （供 preset 的兑底与 randomizeNormal 共用：空 parts = 不编造长相。）
+   */
+  const ruleRandom = (mode: 'minimal' | 'normal'): CharacterAppearance | null => {
+    const bodyType = pick(bodyTypes) ?? bodyTypes[0] ?? 'male';
+    const candidate = randomizeAppearance(registry, { mode, bodyType, random });
+    return Object.keys(candidate.parts).length > 0 ? candidate : null;
+  };
+
   const destroyGame = (): void => {
     if (!game) return;
     game.destroy();
@@ -167,17 +179,18 @@ export function createAppearancePreviewService(
       return ensureReady();
     },
 
-    randomize(): CharacterAppearance | null {
-      const bodyType = pick(bodyTypes) ?? bodyTypes[0] ?? 'male';
-      const parts: Record<string, string> = {};
-      for (const category of PREVIEW_CATEGORIES) {
-        const variant = pick(variantsFor(category, bodyType));
-        if (variant === null) continue;
-        parts[category] = variant;
-      }
-      // 一个变体都抽不到 = 素材没加载出来 → 返 null（屏据此提示，不编造长相）。
-      if (Object.keys(parts).length === 0) return null;
-      return { bodyType, parts };
+    preset(kind: string): CharacterAppearance | null {
+      // 已知 kind → 品牌预设（静态数据：素材元数据没加载也能取，确定性、无随机）。
+      const preset = BRAND_PRESETS[kind as DetectableAgentKind];
+      if (preset) return preset;
+      // 词表外的 kind：minimal 档规则随机一次当默认（task_032 口径）；
+      // 素材没就绪（抽不出任何部位）→ null，屏据此提示，不编造长相。
+      return ruleRandom('minimal');
+    },
+
+    randomizeNormal(): CharacterAppearance | null {
+      // 「重随机」按钮：normal 档规则随机（task_030），itemId 精确格式。
+      return ruleRandom('normal');
     },
 
     attach(nextHost: HTMLElement): void {

@@ -31,12 +31,21 @@ export interface AppearanceCategoryInfo {
 /**
  * 形象预览端口（由 app 层实现，由组合根注入）。
  *
- * 屏对它的全部依赖就这五个动作：
+ * 屏对它的全部依赖就这七个动作（@since v3.12，task_032 扩到 7 个）：
  *   1. 问有哪些部位类别与变体（渲染选择器）；
  *   2. 等素材元数据就绪（不阻塞向导 —— 失败也 resolve，降级成空清单）；
- *   3. 抽一套随机形象（换装按钮）；
- *   4. 把预览画布挂到自己的容器 / 刷新预览内容；
- *   5. 释放（向导关闭时销毁 Phaser 实例）。
+ *   3. 取某 agent 种类的**默认形象**（品牌预设；实现方对无预设的种类给规则随机兜底）；
+ *   4. 按规则随机抽一套形象（normal 档，itemId 精确格式）——「重随机」按钮；
+ *   5. 把预览画布挂到自己的容器；
+ *   6. 刷新预览内容（部件变更后调用；实现内部异步合成，屏不等待）；
+ *   7. 释放（向导关闭时销毁 Phaser 实例）。
+ *
+ * ★ @since v3.12（task_032）「每 agent 独立形象」的接口口径：
+ *   向导屏给**每个** agent 各存一份形象草稿 —— 初始值来自 preset(kind)（品牌预设，
+ *   静态数据、不依赖素材加载），「重随机」来自 randomizeNormal()（task_030 的规则化
+ *   随机器 normal 档，产物带 itemId）。「重置为品牌默认」再调一次 preset(kind)。
+ *   两个方法都住在端口上而不是屏里直接 import —— 预设与随机器都在 world/appearance，
+ *   hud 只认这份注入的接口（总线铁律）。
  */
 export interface AppearancePreviewPort {
   /** 可选的体型（任务口径：male / female）。 */
@@ -49,8 +58,20 @@ export interface AppearancePreviewPort {
   listCategories(bodyType: AppearanceBodyType): readonly AppearanceCategoryInfo[];
   /** 素材元数据就绪后 resolve（**失败也 resolve**：降级成空清单，不卡住向导）。 */
   whenReady(): Promise<void>;
-  /** 抽一套随机形象；素材未就绪（无任何可选变体）→ null（屏据此提示"素材没加载出来"）。 */
-  randomize(): CharacterAppearance | null;
+  /**
+   * 取某 agent 种类的默认形象（@since v3.12，task_032）。
+   * 已知 kind → 品牌预设（确定性、静态数据，不依赖素材元数据加载）；
+   * 无预设的 kind → 实现方给规则随机兜底（minimal 档一次生成，素材未就绪 → null）。
+   * 屏拿到后必须**深拷贝**再存（见 onboarding-catalog.cloneAppearance）——
+   * 同一份预设对象会被多个调用点共享引用，屏内草稿必须各自独立。
+   */
+  preset(kind: string): CharacterAppearance | null;
+  /**
+   * 规则化随机一套形象（@since v3.12，task_032）：normal 档（task_030 的随机器），
+   * parts 每项 = { variant, itemId }（itemId 精确格式）。
+   * 素材未就绪（抽不到任何部位）→ null（屏据此提示"素材没加载出来"，不编造长相）。
+   */
+  randomizeNormal(): CharacterAppearance | null;
   /** 把预览画布挂到宿主容器（同一个容器重复挂 = 无副作用）。 */
   attach(host: HTMLElement): void;
   /** 刷新预览内容（部件变更后调用；实现内部异步合成，屏不等待）。 */

@@ -33,6 +33,8 @@ import {
   type AgentDetectionStatus,
   type AgentDetectionTier,
   type AgentKind,
+  type AppearancePartValue,
+  type CharacterAppearance,
   type WorldState,
 } from '../../core/types';
 
@@ -223,6 +225,56 @@ export function findDuplicateNames(names: readonly string[]): string[] {
     else seen.add(value);
   }
   return [...duplicated];
+}
+
+// ============================================================================
+// ② 形象草稿（@since v3.12，task_032：每 agent 一份独立形象）
+// ============================================================================
+
+/**
+ * 一个 agent 的形象草稿 —— 就是 CharacterAppearance，单独起名是为了把
+ * "向导屏内可变的那份"与"core 状态里只读的那份"在类型层区分开。
+ */
+export type AppearanceDraft = CharacterAppearance;
+
+/**
+ * 默认形象的来源（注入式）：按 agent 种类给一份初始形象，取不到 → null。
+ * 正式实现住在 app 层（品牌预设查表 + 无预设时 minimal 档规则随机兜底），
+ * 向导屏只认这个函数形状 —— hud 不 import world（铁律）。
+ */
+export type AppearancePresetSource = (kind: string) => CharacterAppearance | null;
+
+/**
+ * 深拷贝一份外观。
+ * why 必须：品牌预设是模块级常量（world/appearance/brand-presets），多个调用点共享同一份引用 ——
+ * 直接存进屏内草稿的话，"改 A 的部件"会写穿到预设常量、连带 B 的初始形象一起变。
+ * 部件值（AppearancePartSelection）一并克隆：字符串形态（旧格式）本就不可变，原样保留。
+ */
+export function cloneAppearance(source: CharacterAppearance): AppearanceDraft {
+  const parts: Record<string, AppearancePartValue> = {};
+  for (const [category, value] of Object.entries(source.parts)) {
+    parts[category] =
+      typeof value === 'string' ? value : { variant: value.variant, ...(value.itemId !== undefined ? { itemId: value.itemId } : {}) };
+  }
+  return { bodyType: source.bodyType, parts };
+}
+
+/**
+ * 给一批 agent 种类初始化形象草稿表：每个 kind 一份**独立深拷贝**的默认形象。
+ * 预设源返 null（素材没就绪、无预设且兜底也抽不出）的 kind 不进表 ——
+ * 屠里靠 appearanceOf(kind) === null 提示，等素材就绪后再补（不编造长相）。
+ */
+export function createAppearanceDrafts(
+  kinds: readonly string[],
+  presetSource: AppearancePresetSource
+): Map<string, AppearanceDraft> {
+  const drafts = new Map<string, AppearanceDraft>();
+  for (const kind of kinds) {
+    const preset = presetSource(kind);
+    if (!preset) continue;
+    drafts.set(kind, cloneAppearance(preset));
+  }
+  return drafts;
 }
 
 // ============================================================================
