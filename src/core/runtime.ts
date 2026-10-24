@@ -217,7 +217,11 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         // task.queued / started / completed / failed（@since v3.16，task_037）：core/task 的
         //   manager 发出的生命周期事件，消费者是 app 层 task-service（出队执行）与任务落库订阅者，
         //   core 状态机不消费 —— 同 unit.position 惯例显式接地，不进 onUnhandled。
+        // exp.gained（@since v3.18，task_039）：app 层发射的经验事件，消费者是 task_040 起的
+        //   养成模块（当前仅单测订阅）；core 状态机不消费（经验累计不进 WorldState），
+        //   同惯例显式接地 —— 否则每次任务收尾 / 对话轮都会报一次「未处理」噪音。
         if (event.type === 'unit.position') return;
+        if (event.type === 'exp.gained') return;
         if (event.type.startsWith('task.')) return;
         reportUnhandled('world', event);
     }

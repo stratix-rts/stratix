@@ -260,3 +260,21 @@ describe('world 事件：unit.position', () => {
     expect(unhandled).toHaveLength(0);
   });
 });
+
+// ============================================================================
+// exp.gained 接地（@since v3.18，task_039）：app 层发射的经验事件，core 状态机
+// 不消费（经验累计不进 WorldState，归 task_040 的 progression 模块）—— 同 unit.position
+// 惯例显式接地，不进 onUnhandled（否则每次任务收尾/对话轮都是一条噪音）。
+// ============================================================================
+
+describe('world 事件：exp.gained（task_039）', () => {
+  test('不进 onUnhandled，也不改任何状态（观察面事件）', () => {
+    const { unhandled, states, stop } = harness();
+    cleanups.push(stop);
+
+    emitWorldEvent({ type: 'exp.gained', characterId: 'ch-1', source: 'chat_round', amount: 5 });
+
+    expect(unhandled).toHaveLength(0);
+    expect(states).toHaveLength(0); // 不广播、不改状态 —— 经验累计归 task_040 的 progression，core 只接地
+  });
+});

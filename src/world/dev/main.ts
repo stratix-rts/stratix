@@ -88,5 +88,8 @@ function describe(event: WorldEvent): string {
     case 'task.completed':
     case 'task.failed':
       return `${event.type.padEnd(15)} ${event.task.characterId} :: ${event.task.prompt.slice(0, 20)}`;
+    // 经验事件（@since v3.18，task_039）：app 层发射，这里看一眼来源与数额（养成侧观察）。
+    case 'exp.gained':
+      return `${event.type.padEnd(15)} ${event.characterId} +${event.amount} (${event.source})`;
   }
 }

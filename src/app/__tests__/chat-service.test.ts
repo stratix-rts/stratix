@@ -9,8 +9,10 @@
  * 另有全局单飞锁（抽屉只有一条活跃流缓冲，两路并发会串台）与超时参数透传。
  */
 
-import type { AgentKind, CharacterView, DetectedAgent, WorldState } from '../../core/types';
+import type { AgentKind, CharacterView, DetectedAgent, ExpSource, WorldEvent, WorldState } from '../../core/types';
+import { onWorldEvent, resetBus } from '../../core/bus';
 import type { SpawnOptions, TransportEvent } from '../services/cli-transport/transport';
+import { DEFAULT_EXP_WEIGHTS } from '../services/exp-config';
 import {
   buildFirstPrompt,
   CHAT_MSG_EMPTY_REPLY,
@@ -155,6 +157,8 @@ interface HarnessOptions {
   readonly detected?: readonly DetectedAgent[] | undefined;
   readonly scripts?: Script[];
   readonly timeoutMs?: number;
+  /** 经验权重注入（task_039）；缺省走 exp-config 的临时常量。 */
+  readonly expWeight?: (source: ExpSource) => number;
 }
 
 interface ServiceHarness {
@@ -189,6 +193,7 @@ function makeHarness(options: HarnessOptions = {}): ServiceHarness {
     persistMessage: (message) => {
       messages.push(message);
     },
+    expWeight: options.expWeight,
     timeoutMs: options.timeoutMs,
   });
   return {
@@ -598,5 +603,117 @@ describe('消息落库：user 即时 / assistant 收束整段 / error 走 role=e
     await expect(service.send('ch-1', '在吗')).resolves.toBeUndefined();
     expect(calls).toHaveLength(1); // transport 照常跑完
     expect(view.log.at(-1)).toBe('sending:false'); // 状态复位
+  });
+});
+
+// ============================================================================
+// 每轮经验事件：exp.gained（task_039）
+// ============================================================================
+
+describe('exp.gained：每轮成功收束发射 chat_round（task_039）', () => {
+  /** 收集总线上的 exp 事件；resetBus 隔离（本文件其他用例不碰总线，这里进出都清干净）。 */
+  function collectExp(): { events: WorldEvent[]; stop: () => void } {
+    const events: WorldEvent[] = [];
+    const off = onWorldEvent((event) => {
+      if (event.type === 'exp.gained') events.push(event);
+    });
+    return { events, stop: off };
+  }
+
+  let collected: ReturnType<typeof collectExp>;
+
+  beforeEach(() => {
+    resetBus();
+    collected = collectExp();
+  });
+
+  afterEach(() => {
+    collected.stop();
+    resetBus();
+  });
+
+  test('done 收束 → 恰好一条 exp.gained(chat_round, 默认 5)', async () => {
+    const h = makeHarness({
+      scripts: [
+        scripted({ type: 'message', text: '在的' }, { type: 'done', exitCode: 0, text: '在的', sessionId: null }),
+      ],
+    });
+    await h.service.send('ch-1', '在吗');
+
+    expect(collected.events).toEqual([
+      { type: 'exp.gained', characterId: 'ch-1', source: 'chat_round', amount: DEFAULT_EXP_WEIGHTS.chat_round },
+    ]);
+  });
+
+  test('多轮 → 每轮一条（时机：每轮 finalize 之后）', async () => {
+    const h = makeHarness({
+      scripts: [
+        scripted({ type: 'message', text: '一' }, { type: 'done', exitCode: 0, text: '一', sessionId: null }),
+        scripted({ type: 'message', text: '二' }, { type: 'done', exitCode: 0, text: '二', sessionId: null }),
+      ],
+    });
+    await h.service.send('ch-1', '第一轮');
+    await h.service.send('ch-1', '第二轮');
+
+    expect(collected.events).toHaveLength(2);
+    expect(collected.events.every((e) => e.type === 'exp.gained' && e.source === 'chat_round')).toBe(true);
+  });
+
+  test('注入 expWeight 换算 amount（task_040 接管口）；权重 0 → 整轮不发', async () => {
+    const h = makeHarness({
+      scripts: [
+        scripted({ type: 'message', text: '好' }, { type: 'done', exitCode: 0, text: '好', sessionId: null }),
+      ],
+      expWeight: (source) => (source === 'chat_round' ? 9 : 0),
+    });
+    await h.service.send('ch-1', '加权轮');
+    expect(collected.events).toEqual([
+      { type: 'exp.gained', characterId: 'ch-1', source: 'chat_round', amount: 9 },
+    ]);
+
+    const h0 = makeHarness({
+      scripts: [
+        scripted({ type: 'message', text: '静默' }, { type: 'done', exitCode: 0, text: '静默', sessionId: null }),
+      ],
+      expWeight: () => 0,
+    });
+    await h0.service.send('ch-1', '零权重轮');
+    expect(collected.events).toHaveLength(1); // 还是只有上面那一条
+  });
+
+  test('error 轮（transport 失败）→ 不发（error 轮不计经验）', async () => {
+    const h = makeHarness({
+      scripts: [scripted({ type: 'error', message: '失败了', code: 'cli_error' })],
+    });
+    await h.service.send('ch-1', '会失败的一轮');
+    expect(collected.events).toHaveLength(0);
+  });
+
+  test('守门拒绝轮（agent 未检出）→ 不发（根本没进 runRound）', async () => {
+    const h = makeHarness({ detected: [] });
+    await h.service.send('ch-1', '没装 CLI 也要聊');
+    expect(collected.events).toHaveLength(0);
+    expect(h.calls).toHaveLength(0);
+  });
+
+  test('用户中断轮（aborted）→ 不发（中断不是完成）', async () => {
+    const h = makeHarness({ scripts: [abortableScript('说到一半')] });
+    const sending = h.service.send('ch-1', '会被打断的话');
+    await flush();
+    h.service.stop('ch-1');
+    await sending;
+    expect(collected.events).toHaveLength(0);
+  });
+
+  test('空回复占位轮 → 照发（done 到了就是完整回合，agent 只调了工具不算失败）', async () => {
+    const h = makeHarness({
+      scripts: [
+        scripted({ type: 'tool_use', tool: 'Bash', input: {}, id: 't1' }, { type: 'done', exitCode: 0, text: '', sessionId: null }),
+      ],
+    });
+    await h.service.send('ch-1', '只调工具别说话');
+    expect(collected.events).toEqual([
+      { type: 'exp.gained', characterId: 'ch-1', source: 'chat_round', amount: DEFAULT_EXP_WEIGHTS.chat_round },
+    ]);
   });
 });

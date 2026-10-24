@@ -50,16 +50,27 @@
  *   ⑥ retry 不重复写 user（原文已在库/会话里，重试是服务侧动作 —— 与不新增 user 气泡同一口径）。
  * 消息真相仍在抽屉会话存储 + SQLite（本服务只转发，不存第二份）。
  *
- * @since v3.14（task_035）；v3.15（task_036）追加消息落库时机。
+ * ============ 每轮经验事件（task_039）============
+ * done 收束（一轮**成功**对话）后发 exp.gained（source=chat_round，amount 经注入的 expWeight
+ * 换算，缺省 app/services/exp-config.ts 的临时常量）。不计发的轮次：error 事件（含用户中断
+ * aborted）、守门拦截（没进 runRound）、防御性流尾（没收到 done —— 回合未成立）；空回复占位轮
+ * 照发（done 到了就是完整回合，agent 只调了工具不算失败）。
+ * **数值表归 task_040 的 progression 模块**（交接注记见 exp-config.ts 文件头，两侧已注明）；
+ * 与 task-service（任务侧发射点）是同一注入形状，040 接管时组合根换注入件即可、两侧零改动。
+ *
+ * @since v3.14（task_035）；v3.15（task_036）追加消息落库时机；v3.18（task_039）追加每轮经验事件。
  */
 
+import { emitWorldEvent } from '../../core/bus';
 import type {
   AgentKind,
   CharacterView,
   DetectedAgent,
+  ExpSource,
   WorldState,
 } from '../../core/types';
 import type { SpawnOptions, TransportErrorCode, TransportEvent } from './cli-transport/transport';
+import { defaultExpWeight } from './exp-config';
 
 // ============================================================================
 // 端口（结构类型 —— 不 import hud，与 034 组件公开方法保持形状一致）
@@ -204,6 +215,12 @@ export interface ChatServiceDeps {
    * 组合根注入 makeChatMessagePersister(chatHistoryApi())；时机见文件头「消息落库」。
    */
   readonly persistMessage?: (message: ChatPersistedMessage) => void;
+  /**
+   * 经验权重函数（@since v3.18，task_039；缺省 exp-config 的临时常量表）。
+   * **task_040 交接点**：progression 模块接管数值时换掉这个注入件，本服务零改动
+   * （与 task-service 的同形注入是刻意的一对，040 换一次注入两侧都接管）。
+   */
+  readonly expWeight?: (source: ExpSource) => number;
   /** 单轮超时；缺省 DEFAULT_CHAT_ROUND_TIMEOUT_MS。 */
   readonly timeoutMs?: number;
   /** 日志口；缺省静默。 */
@@ -234,6 +251,7 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
   const view = deps.view;
   const logger = deps.logger ?? ((): void => { /* 缺省静默 */ });
   const timeoutMs = deps.timeoutMs ?? DEFAULT_CHAT_ROUND_TIMEOUT_MS;
+  const expWeight = deps.expWeight ?? defaultExpWeight;
 
   /** characterId → 会话状态。懒建：首次对话的角色才进表。 */
   const sessions = new Map<string, ChatSessionState>();
@@ -271,6 +289,20 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
       deps.persistMessage(message);
     } catch (error) {
       logger(`[chat-service] 消息落库回调抛错（${message.characterId}/${message.role}）：${describe(error)}`);
+    }
+  };
+
+  /**
+   * 每轮经验事件（task_039）：只在 done 收束后调（时机与不计发口径见文件头）；
+   * 权重 ≤ 0 不发；mitt 不该抛，防御性包一层 —— exp 是旁路事件，不绑架对话回路。
+   */
+  const emitChatRoundExp = (characterId: string): void => {
+    const amount = expWeight('chat_round');
+    if (amount <= 0) return;
+    try {
+      emitWorldEvent({ type: 'exp.gained', characterId, source: 'chat_round', amount });
+    } catch (error) {
+      logger(`[chat-service] exp.gained 发射失败（${characterId}/chat_round）：${describe(error)}`);
     }
   };
 
@@ -337,6 +369,9 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
           if (finalText.length > 0) {
             persist({ characterId, role: 'assistant', text: finalText, sessionRef: session.sessionId });
           }
+          // 每轮经验（task_039）：done 到了就是完整回合（空回复占位也计）；error 轮在下面分支返回，
+          // 根本走不到这里 —— 不计发的口径见文件头「每轮经验事件」。
+          emitChatRoundExp(characterId);
           return;
         }
         if (event.type === 'error') {

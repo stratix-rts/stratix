@@ -811,6 +811,18 @@ export type HudCommand =
    */
   | { type: 'task.assign'; characterId: string; prompt: string };
 
+/**
+ * @since v3.18 经验来源词表（`exp.gained` 事件的 source 字段，task_039）。
+ *   - task_completed / task_failed：任务终态（task-service 在任务收尾时发射 —— 失败亦有经验，
+ *     「做过就有收获」是养成口径，数值归 app 层权重，见下）；
+ *   - chat_round：一轮**成功**对话（chat-service 在 done 收束后发射；error / 守门拒绝 / 中断轮不发）。
+ * ============ 与 task_040（progression 模块）的交接 ============
+ * 本类型只声明「经验从哪来」，**不定义数值**：amount 由发射点经注入的权重函数换算
+ * （app/services/exp-config.ts 的临时常量），040 落地 progression 模块（等级曲线 / 数值表）时
+ * 在模块内接管权重并替换组合根的注入件 —— 事件契约本身（source 词表 / amount > 0）不变。
+ */
+export type ExpSource = 'task_completed' | 'task_failed' | 'chat_round';
+
 // ============================================================================
 // ★ 总线契约：world → core 的交互事件（单向，world 不直接改 HUD）
 // ============================================================================
@@ -839,4 +851,14 @@ export type WorldEvent =
   | { type: 'task.queued'; task: CharacterTask }
   | { type: 'task.started'; task: CharacterTask }
   | { type: 'task.completed'; task: CharacterTask }
-  | { type: 'task.failed'; task: CharacterTask };
+  | { type: 'task.failed'; task: CharacterTask }
+  /**
+   * @since v3.18 经验获得事件（task_039，规格指定走 WorldEvent 通道 —— 与 task.* 同一先例：
+   *   发出方是 app 层服务（task-service / chat-service），消费者是未来的养成模块）。
+   * 载荷口径：characterId 命中 WorldState.characters（发射点用派发时的角色，档案被删的
+   *   边角由消费者自行容错）；source ∈ ExpSource；amount > 0（权重为 0 → 发射点直接不发）。
+   * core 状态机不消费（不写 WorldState —— 经验累计归 task_040 的 progression 模块），
+   *   runtime 的 handleWorldEvent 显式接地（同 task.* 惯例，不进 onUnhandled）。
+   * 数值表交接见 ExpSource 的注释与 app/services/exp-config.ts 文件头（两侧已互相注明）。
+   */
+  | { type: 'exp.gained'; characterId: string; source: ExpSource; amount: number };

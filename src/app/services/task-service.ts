@@ -35,20 +35,36 @@
  * 状态里只存摘要（MAX_TASK_SUMMARY_LEN，见 core/task/machine.summarizeTaskOutput），
  * 全文只在 SQLite。fire-and-forget：落库失败记日志，不绑架任务执行回路（与 035 同一口径）。
  *
- * @since v3.16（task_037）。
+ * ============ 终态收尾的副作用：结果回流 + exp 事件（task_039）============
+ * 任务到终态（completed / failed）时额外做两件事，两者都是 fire-and-forget（抛错只记日志，
+ * 绝不倒灌任务执行回路）：
+ *   ① onTaskSettled 回调：把带**全文输出**的终态记录交给注入方（组合根接 task-report，
+ *     组装「任务报告」消息注入角色会话 + 落 character_chat_messages + hud 轻提示）；
+ *   ② 发 exp.gained 总线事件（source=task_completed / task_failed）：失败也发 —— 「做过就有
+ *     收获」是养成口径。发射点时机与口径：
+ *       - completed 在 runTask 的 done 收尾处（全文在手，回调拿全文）；
+ *       - failed 挂在 handleEvent 的 task.failed 分支 —— 状态机事件是失败相位的唯一真相源，
+ *         服务内四条失败路径（守门拦截 / transport 报错 / 防御性收尾 / 异常兑底）与外部直发的
+ *         task.failed 事件都恰好流经这里一次，不会双发也不会漏发。
+ *   amount 由注入的 expWeight 换算，缺省 app/services/exp-config.ts 的临时常量；
+ *   **数值表归 task_040 的 progression 模块**（交接注记见 exp-config.ts 文件头，两侧已注明）。
+ *
+ * @since v3.16（task_037）；v3.18（task_039）追加终态副作用。
  */
 
-import { onWorldEvent } from '../../core/bus';
+import { emitWorldEvent, onWorldEvent } from '../../core/bus';
 import type {
   AgentKind,
   CharacterTask,
   CharacterView,
+  ExpSource,
   TaskStatus,
   WorldEvent,
   WorldState,
 } from '../../core/types';
 import type { TaskManager } from '../../core/task';
 import type { SpawnOptions, TransportErrorCode, TransportEvent } from './cli-transport/transport';
+import { defaultExpWeight } from './exp-config';
 
 // ============================================================================
 // 端口与常量
@@ -173,6 +189,17 @@ export interface TaskServiceDeps {
   readonly taskManager: TaskManager;
   /** 任务落库口（缺省不落库）。同步签名、实现方内部异步 —— fire-and-forget，失败只记日志。 */
   readonly persistTask?: (record: TaskPersistRecord) => void;
+  /**
+   * 任务终态回调（@since v3.18，task_039；缺省不回调）。携带**全文输出**的终态记录
+   * （completed = 执行全文；failed = 失败原因）恰好一次/任务。同步签名、fire-and-forget：
+   * 抛错只记日志，绝不绑架任务执行回路。组合根接 task-report（报告消息 + 轻提示）。
+   */
+  readonly onTaskSettled?: (record: TaskPersistRecord) => void;
+  /**
+   * 经验权重函数（@since v3.18，task_039；缺省 exp-config 的临时常量表）。
+   * **task_040 交接点**：progression 模块接管数值时换掉这个注入件，本服务零改动。
+   */
+  readonly expWeight?: (source: ExpSource) => number;
   /** 单轮执行超时；缺省 DEFAULT_TASK_TIMEOUT_MS（10min，主进程上限同档）。 */
   readonly timeoutMs?: number;
   /** 日志口；缺省静默。 */
@@ -196,6 +223,7 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
   const logger = deps.logger ?? ((): void => { /* 缺省静默 */ });
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TASK_TIMEOUT_MS;
   const manager = deps.taskManager;
+  const expWeight = deps.expWeight ?? defaultExpWeight;
 
   /** characterId → 待执行队列（FIFO；队头即下一个执行）。 */
   const queues = new Map<string, CharacterTask[]>();
@@ -222,6 +250,35 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
     }
   };
 
+  /**
+   * 发 exp.gained（task_039）：权重 ≤ 0 直接不发（040 接管后可整类关掉某来源）；
+   * mitt 不该抛，防御性包一层 —— exp 是旁路观察事件，绝不让它倒灌任务回路。
+   */
+  const emitExp = (characterId: string, source: ExpSource): void => {
+    const amount = expWeight(source);
+    if (amount <= 0) return;
+    try {
+      emitWorldEvent({ type: 'exp.gained', characterId, source, amount });
+    } catch (error) {
+      logger(`[task-service] exp.gained 发射失败（${characterId}/${source}）：${describe(error)}`);
+    }
+  };
+
+  /**
+   * 终态收尾副作用（task_039）：回流回调 + exp 事件。回调抛错只记日志（fire-and-forget）。
+   * 只在状态机相位迁移成功时调（迁移没走动就不算终态，不发生副作用）。
+   */
+  const settle = (record: TaskPersistRecord, source: ExpSource): void => {
+    if (deps.onTaskSettled) {
+      try {
+        deps.onTaskSettled(record);
+      } catch (error) {
+        logger(`[task-service] 任务收尾回调抛错（${record.id}/${record.status}）：${describe(error)}`);
+      }
+    }
+    emitExp(record.characterId, source);
+  };
+
   /** 总线事件处理：task.queued → 出队执行；其余相位 → 落状态快照。 */
   const handleEvent = (event: WorldEvent): void => {
     switch (event.type) {
@@ -230,10 +287,15 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
         enqueue(event.task);
         return;
       case 'task.started':
+        persist(taskEventToRecord(event.task));
+        return;
       case 'task.failed':
         // started / failed 的 output 都很短（空串 / 失败原因），快照直接落库。
         // completed 不在这里落：全文在 runTask 手里，那边落（见文件头「落库口径」）。
+        // failed 的终态副作用（回流回调 + exp）挂在这里（task_039）：见文件头「终态收尾」 ——
+        //   服务内四条失败路径与外部直发的 task.failed 都恰好流经这里一次。
         persist(taskEventToRecord(event.task));
+        settle(taskEventToRecord(event.task), 'task_failed');
         return;
       case 'task.completed':
         return;
@@ -300,11 +362,15 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
           // 空输出也给一句占位（与 chat 的空回复占位同一口径），失败/成功都有可读的 output。
           const fullText = output.length > 0 ? output : '（任务完成，无文本输出）';
           const finished = manager.completeTask(task.id, fullText); // 状态里存摘要
-          persist({
+          const record: TaskPersistRecord = {
             ...taskEventToRecord(finished ?? started),
             status: 'completed',
             output: fullText, // 库里存全文（状态/事件里只有摘要）
-          });
+          };
+          persist(record);
+          // 终态副作用（task_039）：回流回调拿全文 + 发 exp。只在状态机确认收尾时发生
+          // （finished 为 null = 状态没走动，不产生副作用；防御性落库照旧，见上面 record 兑底）。
+          if (finished) settle(record, 'task_completed');
           return;
         }
         if (event.type === 'error') {

@@ -16,8 +16,17 @@ import { emitWorldEvent, onWorldEvent, resetBus } from '../../core/bus';
 import { createTaskManager } from '../../core/task';
 import type { CoreStore } from '../../core/store';
 import { createStore } from '../../core/store';
-import type { AgentKind, CharacterTask, CharacterView, DetectedAgent, WorldEvent, WorldState } from '../../core/types';
+import type {
+  AgentKind,
+  CharacterTask,
+  CharacterView,
+  DetectedAgent,
+  ExpSource,
+  WorldEvent,
+  WorldState,
+} from '../../core/types';
 import type { SpawnOptions, TransportEvent } from '../services/cli-transport/transport';
+import { DEFAULT_EXP_WEIGHTS } from '../services/exp-config';
 import {
   buildTaskPrompt,
   createTaskService,
@@ -111,6 +120,8 @@ interface HarnessOptions {
   readonly scripts?: Script[];
   readonly timeoutMs?: number;
   readonly maxTasks?: number;
+  /** 经验权重注入（task_039）；缺省走 exp-config 的临时常量（完成 50 / 失败 10 / 轮 5）。 */
+  readonly expWeight?: (source: ExpSource) => number;
 }
 
 interface Harness {
@@ -119,6 +130,8 @@ interface Harness {
   readonly store: CoreStore;
   readonly calls: SpawnRecord[];
   readonly persisted: TaskPersistRecord[];
+  /** onTaskSettled 回调收到的终态记录（task_039；完成带全文 / 失败带原因）。 */
+  readonly settled: TaskPersistRecord[];
   setState(patch: Partial<Pick<WorldState, 'characters' | 'detectedAgents'>>): void;
 }
 
@@ -140,11 +153,14 @@ function makeHarness(options: HarnessOptions = {}): Harness {
   });
   const { factory, calls } = makeFactory(options.scripts ?? [scripted()]);
   const persisted: TaskPersistRecord[] = [];
+  const settled: TaskPersistRecord[] = [];
   const service = createTaskService({
     getState: () => store.getState(),
     createTransport: factory,
     taskManager: manager,
     persistTask: (record) => persisted.push(record),
+    onTaskSettled: (record) => settled.push(record),
+    expWeight: options.expWeight,
     timeoutMs: options.timeoutMs,
   });
   const stop = service.start();
@@ -155,6 +171,7 @@ function makeHarness(options: HarnessOptions = {}): Harness {
     store,
     calls,
     persisted,
+    settled,
     setState: (patch) => store.setState((state) => ({ ...state, ...patch })),
   };
 }
@@ -500,5 +517,159 @@ describe('事件转发面：非 queued 生命周期事件也走落库', () => {
     ]);
     expect(h.calls).toHaveLength(0); // started/failed 不触发执行
     off();
+  });
+});
+
+// ============================================================================
+// 终态副作用：结果回流回调 + exp.gained（task_039）
+// ============================================================================
+
+describe('终态副作用：onTaskSettled 回调 + exp.gained 发射（task_039）', () => {
+  /** 订阅总线收集 exp 事件（结束后退订 —— 别把监听漏到后续用例）。 */
+  function collectExp(): { events: WorldEvent[]; stop: () => void } {
+    const events: WorldEvent[] = [];
+    const off = onWorldEvent((event) => {
+      if (event.type === 'exp.gained') events.push(event);
+    });
+    return { events, stop: off };
+  }
+
+  test('completed → 回调恰好一次且带全文（不是摘要）+ exp.gained(task_completed, 默认 50)', async () => {
+    const full = '北门无敌情。'.repeat(600); // 3000 码点：状态里存摘要，回调必须拿全文
+    const h = makeHarness({
+      scripts: [scripted({ type: 'message', text: full }, { type: 'done', exitCode: 0, text: full, sessionId: null })],
+    });
+    const exp = collectExp();
+    assign(h, '写一份详尽侦察报告');
+    await flush();
+    exp.stop();
+
+    expect(h.settled).toHaveLength(1);
+    expect(h.settled[0]).toMatchObject({ id: 'task_1', characterId: 'ch-1', status: 'completed' });
+    expect(h.settled[0].output).toBe(full); // 全文（与落库口径一致），状态里只是摘要
+    expect(exp.events).toEqual([
+      { type: 'exp.gained', characterId: 'ch-1', source: 'task_completed', amount: DEFAULT_EXP_WEIGHTS.task_completed },
+    ]);
+  });
+
+  test('transport 报错 → failed 终态也回调 + 发 exp.gained(task_failed, 默认 10)；恰好各一次不双发', async () => {
+    const h = makeHarness({
+      scripts: [scripted({ type: 'error', message: '等了 600 秒', code: 'timeout' })],
+    });
+    const exp = collectExp();
+    assign(h, '会失败的任务');
+    await flush();
+    exp.stop();
+
+    expect(h.settled).toHaveLength(1);
+    expect(h.settled[0]).toMatchObject({ status: 'failed' });
+    expect(h.settled[0].output).toBe('执行超时：等了 600 秒'); // 失败回调带原因
+    expect(exp.events).toEqual([
+      { type: 'exp.gained', characterId: 'ch-1', source: 'task_failed', amount: DEFAULT_EXP_WEIGHTS.task_failed },
+    ]);
+  });
+
+  test('守门拦截（agent 未检出，没进 transport）→ 同样回调 + 发事件（做过就有收获）', async () => {
+    const h = makeHarness({ detected: [], scripts: [scripted()] });
+    const exp = collectExp();
+    assign(h, '干活');
+    await flush();
+    exp.stop();
+
+    expect(h.settled).toHaveLength(1);
+    expect(h.settled[0]).toMatchObject({ status: 'failed', output: TASK_MSG_NOT_INSTALLED });
+    expect(exp.events).toEqual([
+      { type: 'exp.gained', characterId: 'ch-1', source: 'task_failed', amount: DEFAULT_EXP_WEIGHTS.task_failed },
+    ]);
+  });
+
+  test('注入 expWeight 换算 amount（task_040 接管口）；权重 0 → 该来源整类不发', async () => {
+    const h = makeHarness({
+      scripts: [scripted({ type: 'done', exitCode: 0, text: 'ok', sessionId: null })],
+      expWeight: (source: ExpSource) => (source === 'task_completed' ? 77 : 0),
+    });
+    const exp = collectExp();
+    assign(h, '自定义权重');
+    await flush();
+    exp.stop();
+
+    expect(h.settled).toHaveLength(1); // 回调照常（权重只影响事件，不影响回流）
+    expect(exp.events).toEqual([
+      { type: 'exp.gained', characterId: 'ch-1', source: 'task_completed', amount: 77 },
+    ]);
+
+    // 权重 0 的失败来源：不发事件，但回流回调不受影响
+    const h2 = makeHarness({
+      scripts: [scripted({ type: 'error', message: 'boom', code: 'cli_error' })],
+      expWeight: () => 0,
+    });
+    const exp2 = collectExp();
+    assign(h2, '会被关掉经验的失败');
+    await flush();
+    exp2.stop();
+    expect(h2.settled).toHaveLength(1);
+    expect(exp2.events).toHaveLength(0);
+  });
+
+  test('回调抛错不绑架执行回路：任务照常收尾、队列继续、exp 照发', async () => {
+    resetBus();
+    const store = createStore();
+    store.setState((state) => ({
+      ...state,
+      characters: [character],
+      detectedAgents: [detectedClaude],
+    }));
+    let seq = 0;
+    const manager = createTaskManager({ store, now: () => 1, createId: (p) => `${p}_${++seq}` });
+    const { factory, calls } = makeFactory([
+      scripted({ type: 'done', exitCode: 0, text: 'A ok', sessionId: null }),
+      scripted({ type: 'done', exitCode: 0, text: 'B ok', sessionId: null }),
+    ]);
+    const service = createTaskService({
+      getState: () => store.getState(),
+      createTransport: factory,
+      taskManager: manager,
+      onTaskSettled: (): void => {
+        throw new Error('回流接线炸了');
+      },
+      logger: (): void => {
+        /* 缺省静默即可（本用例只验证不向外抛） */
+      },
+    });
+    const stop = service.start();
+    const exp = collectExp();
+    manager.assignTask({ characterId: 'ch-1', prompt: '第一条' });
+    manager.assignTask({ characterId: 'ch-1', prompt: '第二条' });
+    await flush();
+    exp.stop();
+    stop();
+
+    expect(store.getState().tasks!.map((t) => t.status)).toEqual(['completed', 'completed']); // 执行没被打断
+    expect(calls).toHaveLength(2); // 队列继续走
+    expect(exp.events).toHaveLength(2); // exp 照发（回调炸不炸它无感）
+  });
+
+  test('外部直发的 task.failed 事件也触发回调与事件（失败相位真相源在总线，不只在 runTask）', async () => {
+    const h = makeHarness({ scripts: [scripted()] });
+    const exp = collectExp();
+    const task: CharacterTask = {
+      id: 'task_ext_fail',
+      characterId: 'ch-1',
+      prompt: '外部任务',
+      status: 'running',
+      createdAt: 1,
+      startedAt: 2,
+      endedAt: null,
+      output: '',
+    };
+    emitWorldEvent({ type: 'task.failed', task: { ...task, status: 'failed', endedAt: 3, output: '外部原因' } });
+    await flush();
+    exp.stop();
+
+    expect(h.settled).toHaveLength(1);
+    expect(h.settled[0]).toMatchObject({ id: 'task_ext_fail', status: 'failed', output: '外部原因' });
+    expect(exp.events).toEqual([
+      { type: 'exp.gained', characterId: 'ch-1', source: 'task_failed', amount: DEFAULT_EXP_WEIGHTS.task_failed },
+    ]);
   });
 });

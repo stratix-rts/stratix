@@ -33,6 +33,10 @@
  *   + task-service（每角色 FIFO、并发 1，经 chat IPC 通道跑 transport，相位回报 core）+
  *   任务落库（character_tasks 表，schema v4）。UI 入口（派发表单/战场表现）归 038，本任务只接线。
  *
+ * @since v3.18（task_039）结果回流 + exp 事件：hud 挂 toast 宿主（右上角轻提示）；task-service
+ *   的终态回调接 task-report（报告消息落 character_chat_messages + 抽屉注入 + toast）。经验事件
+ *   （exp.gained）的发射与权重缺省都在服务层内部（task-service / chat-service），本文件零业务。
+ *
  * 加载路径：dev 走 vite dev server 的 /src/app/main/index.html；
  *   正式构建走 dist/frontend/src/app/main/index.html（由 vite.config.ts 的 input 产出）。
  *   本页是**唯一**入口：旧 Vue 入口链随 task_017 退役，STRATIX_LEGACY 开关已下线，
@@ -74,7 +78,9 @@ import { createAppearancePreviewService } from '../services/appearance-preview-s
 import { createChatService } from '../services/chat-service';
 import { cliChatIpcApi, createIpcChatTransportFactory } from '../services/chat-transport-bridge';
 import { createTaskService } from '../services/task-service';
+import { createTaskReportHandler } from '../services/task-report';
 import { taskRecordApi, makeTaskRecordPersister } from '../services/persistence/task-record';
+import { mountToastHost } from '../../hud/components/toast/toast-host';
 import { createTaskManager } from '../../core/task';
 import { createUnitSpriteSource } from '../services/unit-sprite-source';
 
@@ -220,6 +226,11 @@ async function boot(): Promise<void> {
     };
   }
 
+  // ===== 任务轻提示（@since v3.18，task_039）=====
+  // toast 宿主是跨面板的顶层反馈面：fixed 定位不占布局，挂上即可；show 由下方 task-report
+  // 回调驱动（hud 组件只被驱动、零订阅，与抽屉流式方法同一装配口径）。无 Electron 时挂着也无妨（没人调它）。
+  const { element: toastHost, unmount: unmountToastHost } = mountToastHost(hudRoot);
+
   // ===== 形象预览（@since v3.10，task_028）=====
   // 组合根是唯一能同时认识 hud 与 world 的地方：向导屏要 canvas 预览（hud），
   // 合成器与素材注册表在 world/appearance —— 两侧都不许直接互认，故在这里接线。
@@ -338,6 +349,17 @@ async function boot(): Promise<void> {
         const taskApi = taskRecordApi();
         return taskApi ? makeTaskRecordPersister(taskApi) : undefined;
       })(),
+      // task_039：终态回调 → 结果回流（报告落库 + 抽屉注入 + toast）。消息落库与聊天共用同一个
+      // persister（同表同词表）；toast 借上面挂的宿主。抽屉元素拿不到（非 Electron 边角）时
+      // view 传 undefined：只落库 + 轻提示，不注入。
+      onTaskSettled: createTaskReportHandler({
+        view: characterDrawer ?? undefined,
+        getState: () => worldStore.getState(),
+        persistMessage: chatHistory ? makeChatMessagePersister(chatHistory) : undefined,
+        toast: (text, tone) => {
+          toastHost.show(text, tone);
+        },
+      }),
     });
     stopTaskService = taskService.start();
   }
@@ -377,6 +399,7 @@ async function boot(): Promise<void> {
       appearancePreview.destroy();
       // 角色抽屉先卸（退订总线；在跑的对话由主进程超时 / 页面销毁兜底）。
       unmountCharacterDrawer();
+      unmountToastHost();
       stopAgentDetection();
       // 存档协调器先停（内部会冲刷未落盘的站位缓冲），再拆任务服务与 runtime。
       saveCoordinator?.stop();
