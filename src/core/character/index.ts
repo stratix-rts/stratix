@@ -5,7 +5,8 @@
  *   1. 让上层跨层 import 子文件（hud/world 只认本出口，否则模块边界形同虚设）；
  *   2. 在本文件写逻辑 —— 出口只做再导出。
  *
- * 分层：growth（纯函数，算等级/经验）+ persona（纯函数，改提示词合法性）
+ * 分层：growth（纯函数，算等级/经验：CharacterView 级状态机，**数值真相在 core/progression**，task_040 起）
+ *   + persona（纯函数，改提示词合法性）
  *   + profile（纯函数，建档合法性 / AgentProfile 投影）
  *   → manager（写 store + 上报 Notice）。
  * world/hud 都**不直接**改角色数值：HUD 只发 HudCommand 并读 WorldState.characters 展示，

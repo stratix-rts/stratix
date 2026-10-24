@@ -262,19 +262,37 @@ describe('world 事件：unit.position', () => {
 });
 
 // ============================================================================
-// exp.gained 接地（@since v3.18，task_039）：app 层发射的经验事件，core 状态机
-// 不消费（经验累计不进 WorldState，归 task_040 的 progression 模块）—— 同 unit.position
-// 惯例显式接地，不进 onUnhandled（否则每次任务收尾/对话轮都是一条噪音）。
+// exp.gained 接地（@since v3.18，task_039）：app 层发射的经验事件，task_040 起
+// 由 app 层 progression-service 消费（经 character manager 累加进 store，core 状态机
+// 不碰）—— 同 unit.position 惯例显式接地，不进 onUnhandled（否则每次任务收尾/对话轮都是一条噪音）。
 // ============================================================================
 
 describe('world 事件：exp.gained（task_039）', () => {
-  test('不进 onUnhandled，也不改任何状态（观察面事件）', () => {
+  test('不进 onUnhandled，也不改任何状态（消费归 app 层 progression-service，task_040）', () => {
     const { unhandled, states, stop } = harness();
     cleanups.push(stop);
 
     emitWorldEvent({ type: 'exp.gained', characterId: 'ch-1', source: 'chat_round', amount: 5 });
 
     expect(unhandled).toHaveLength(0);
-    expect(states).toHaveLength(0); // 不广播、不改状态 —— 经验累计归 task_040 的 progression，core 只接地
+    expect(states).toHaveLength(0); // core 只接地：累加/结算在 app 层 progression-service 里做
+  });
+});
+
+// ============================================================================
+// level.up 接地（@since v3.19，task_040）：progression-service 发出的升级广播，
+// 消费者是 UI 反馈（041）—— 等级真相在 characters 且已先行落库，core 状态机不消费，
+// 同惯例显式接地，不进 onUnhandled（否则每次升级都是一条噪音）。
+// ============================================================================
+
+describe('world 事件：level.up（task_040）', () => {
+  test('不进 onUnhandled，也不改任何状态（观察面事件，真相在 characters）', () => {
+    const { unhandled, states, stop } = harness();
+    cleanups.push(stop);
+
+    emitWorldEvent({ type: 'level.up', characterId: 'ch-1', fromLevel: 2, toLevel: 4 });
+
+    expect(unhandled).toHaveLength(0);
+    expect(states).toHaveLength(0);
   });
 });

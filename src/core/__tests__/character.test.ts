@@ -10,8 +10,10 @@
  *   3. 闭环 —— 真 core/bus + 真 createCoreRuntime：manager 写库 → state 通道广播 → HUD 侧订阅者拿到成长数值。
  *
  * 边界重点（验收要求的"恰好升级 / 连升"）：
- *   exp 99 → Lv.1；exp 100 → **恰好** Lv.2；exp 199 → Lv.2；一次加 250 → **连升**到 Lv.3；
+ *   exp 99 → Lv.1；exp 100 → **恰好** Lv.2；exp 249 → Lv.2；一次加 250 → **连升**到 Lv.3；
  *   封顶后经验继续累计但等级停在 MAX_LEVEL；等级是派生量（入参自相矛盾即被对账）。
+ *   曲线阈值（×1.5 递增、L1→L20）的完整对拍在 progression.test.ts —— 本文件只从
+ *   progression 常量取阈值引用（EXP_TABLE / totalExpForLevel），不复制魔法数。
  *
  * 隔离靠 resetBus() 与每个用例新建的 createStore()；不打桩总线 —— 闭环那一段的职责就是接在总线上。
  */
@@ -19,20 +21,23 @@
 import { emitCommand, onState, resetBus } from '../bus';
 import {
   DEFAULT_PERSONA_TEMPLATE,
-  EXP_PER_LEVEL,
-  MAX_LEVEL,
   PERSONA_MAX_LEN,
-  experienceIntoLevel,
-  experienceToNextLevel,
   grantExperience,
-  isMaxLevel,
-  levelForExperience,
   toAgentProfile,
   updatePersona,
 } from '../character';
 import { createAgentProfile } from '../character/profile';
 import { createCharacterManager } from '../character/manager';
 import { toCharacterUnit } from '../character/unit-projection';
+import {
+  EXP_TABLE,
+  MAX_LEVEL,
+  experienceIntoLevel,
+  experienceToNextLevel,
+  isMaxLevel,
+  levelForExperience,
+  totalExpForLevel,
+} from '../progression';
 import { createCoreRuntime } from '../runtime';
 import { createStore } from '../store';
 import {
@@ -64,19 +69,19 @@ describe('levelForExperience：经验 → 等级（全路径）', () => {
   });
 
   test('恰好卡在阈值下方不升级：99 经验仍是 1 级', () => {
-    expect(levelForExperience(EXP_PER_LEVEL - 1)).toBe(1);
+    expect(levelForExperience(EXP_TABLE[1]! - 1)).toBe(1);
   });
 
   test('恰好卡在阈值上立刻升级：100 经验 = 2 级', () => {
-    expect(levelForExperience(EXP_PER_LEVEL)).toBe(2);
+    expect(levelForExperience(EXP_TABLE[1]!)).toBe(2);
   });
 
-  test('一个阈值区间内等级恒定（199 经验还是 2 级）', () => {
-    expect(levelForExperience(EXP_PER_LEVEL * 2 - 1)).toBe(2);
+  test('一个阈值区间内等级恒定（L2 区间上端 249 还是 2 级 —— 第二档起每级所需不同）', () => {
+    expect(levelForExperience(totalExpForLevel(3) - 1)).toBe(2);
   });
 
   test('等级封顶：远超阈值也停在 MAX_LEVEL（经验继续累计是另一件事）', () => {
-    expect(levelForExperience(EXP_PER_LEVEL * 50)).toBe(MAX_LEVEL);
+    expect(levelForExperience(totalExpForLevel(MAX_LEVEL) + 500)).toBe(MAX_LEVEL);
     expect(levelForExperience(Number.MAX_SAFE_INTEGER)).toBe(MAX_LEVEL);
   });
 
@@ -88,24 +93,27 @@ describe('levelForExperience：经验 → 等级（全路径）', () => {
 });
 
 describe('本级进度 / 距下一级', () => {
-  test('本级内已积累 = exp 对每级经验取余', () => {
+  test('本级内已积累 = 总经验 − 到达本级所需累计（曲线化后不再是取余）', () => {
     expect(experienceIntoLevel(0)).toBe(0);
-    expect(experienceIntoLevel(EXP_PER_LEVEL)).toBe(0);
-    expect(experienceIntoLevel(EXP_PER_LEVEL + 40)).toBe(40);
+    expect(experienceIntoLevel(EXP_TABLE[1]!)).toBe(0); // 100 = L2 起点
+    expect(experienceIntoLevel(EXP_TABLE[1]! + 40)).toBe(40); // 140 在 L2 区间内
+    expect(experienceIntoLevel(totalExpForLevel(3))).toBe(0); // 250 = L3 起点
   });
 
   test('距下一级：恰好差 0 时报 0（尚未升级），差 1 时报 1', () => {
-    expect(experienceToNextLevel(EXP_PER_LEVEL * 2 - 1)).toBe(1);
-    expect(experienceToNextLevel(EXP_PER_LEVEL * 3)).toBe(EXP_PER_LEVEL);
+    expect(experienceToNextLevel(totalExpForLevel(3) - 1)).toBe(1);
+    expect(experienceToNextLevel(totalExpForLevel(3))).toBe(EXP_TABLE[3]!); // 到 L3 后距 L4 = 第三档跨度
   });
 
-  test('满级：距下一级为 null（"已满级"，而不是"还差 0"）', () => {
-    expect(experienceToNextLevel(EXP_PER_LEVEL * (MAX_LEVEL - 1))).toBeNull();
-    expect(isMaxLevel(levelForExperience(EXP_PER_LEVEL * (MAX_LEVEL - 1)))).toBe(true);
+  test('满级：距下一级为 null（"已满级"，而不是"还差 0"）；恰好差 1 点不算满', () => {
+    expect(experienceToNextLevel(totalExpForLevel(MAX_LEVEL))).toBeNull();
+    expect(experienceToNextLevel(totalExpForLevel(MAX_LEVEL) - 1)).toBe(1);
+    expect(isMaxLevel(levelForExperience(totalExpForLevel(MAX_LEVEL)))).toBe(true);
+    expect(isMaxLevel(levelForExperience(totalExpForLevel(MAX_LEVEL) - 1))).toBe(false);
   });
 
   test('满级后本级进度记 0：没有"下一级"可言，让它满格比假性回零诚实', () => {
-    expect(experienceIntoLevel(EXP_PER_LEVEL * MAX_LEVEL)).toBe(0);
+    expect(experienceIntoLevel(totalExpForLevel(MAX_LEVEL) + 9999)).toBe(0);
   });
 });
 
@@ -131,18 +139,21 @@ describe('grantExperience：加一次经验（全路径）', () => {
     expect(t.levelUps).toBe(0);
   });
 
-  test('连升：一次加 250 从 1 级跨到 3 级（levelUps = 2）', () => {
-    const t = grantExperience(characterAt({ level: 1, experience: 0 }), 250);
+  test('连升：一次加 250 从 1 级跨到 3 级（levelUps = 2，恰好等于新曲线 L3 累计阈值）', () => {
+    const t = grantExperience(characterAt({ level: 1, experience: 0 }), totalExpForLevel(3));
     expect(t.next.level).toBe(3);
     expect(t.levelUps).toBe(2);
     expect(t.next.experience).toBe(250);
   });
 
   test('封顶后经验照常累计、等级停在上限', () => {
-    const t = grantExperience(characterAt({ level: MAX_LEVEL, experience: 400 }), 500);
+    const t = grantExperience(
+      characterAt({ level: MAX_LEVEL, experience: totalExpForLevel(MAX_LEVEL) }),
+      500
+    );
     expect(t.next.level).toBe(MAX_LEVEL);
     expect(t.levelUps).toBe(0);
-    expect(t.next.experience).toBe(900);
+    expect(t.next.experience).toBe(totalExpForLevel(MAX_LEVEL) + 500);
     expect(t.changed).toBe(true);
   });
 
@@ -464,7 +475,8 @@ describe('CharacterManager.grantExperience：写库投影', () => {
     manager.grantExperience('c-neo', 300);
 
     expect(broadcasts).toBe(1);
-    expect(store.getState().characters[0]?.level).toBe(4);
+    // 300 落在 L3 区间（新曲线：250 到 L3、475 才到 L4）。
+    expect(store.getState().characters[0]?.level).toBe(3);
   });
 });
 

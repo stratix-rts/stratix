@@ -37,6 +37,13 @@
  *   的终态回调接 task-report（报告消息落 character_chat_messages + 抽屉注入 + toast）。经验事件
  *   （exp.gained）的发射与权重缺省都在服务层内部（task-service / chat-service），本文件零业务。
  *
+ * @since v3.19（task_040）养成回路：core/progression 成为养成数值的单一真相源 ——
+ *   ① chat-service / task-service 的 expWeight 注入件换为 progression.expWeightFor（两服务零改动，
+ *     交接面在注入件）；② progression-service 订阅 exp.gained → character manager 累加落库
+ *     （等级曲线结算在 core）→ 升级广播 level.up（UI 反馈归 041，本文件只接线）。
+ *   character manager 在组合根显式创建，与 runtime / progression-service 共享同一实例
+ *     （与 taskManager 同一模式：两处写的是同一份 WorldState）。
+ *
  * 加载路径：dev 走 vite dev server 的 /src/app/main/index.html；
  *   正式构建走 dist/frontend/src/app/main/index.html（由 vite.config.ts 的 input 产出）。
  *   本页是**唯一**入口：旧 Vue 入口链随 task_017 退役，STRATIX_LEGACY 开关已下线，
@@ -46,7 +53,9 @@
 import Phaser from 'phaser';
 
 import { emitCommand, emitState, onState } from '../../core/bus';
+import { createCharacterManager } from '../../core/character';
 import { createCoreRuntime, type UnhandledChannel } from '../../core/runtime';
+import { expWeightFor } from '../../core/progression';
 import { worldStore } from '../../core/store';
 import type { DetectedAgent, HudCommand, WorldEvent } from '../../core/types';
 import { createHudBusAdapter } from '../../hud/bridge/bus-adapter';
@@ -77,6 +86,7 @@ import { createPhaserPreviewGame } from '../services/appearance-preview-game';
 import { createAppearancePreviewService } from '../services/appearance-preview-service';
 import { createChatService } from '../services/chat-service';
 import { cliChatIpcApi, createIpcChatTransportFactory } from '../services/chat-transport-bridge';
+import { createProgressionService } from '../services/progression-service';
 import { createTaskService } from '../services/task-service';
 import { createTaskReportHandler } from '../services/task-report';
 import { taskRecordApi, makeTaskRecordPersister } from '../services/persistence/task-record';
@@ -191,6 +201,9 @@ async function boot(): Promise<void> {
       view: characterDrawer,
       getState: () => worldStore.getState(),
       createTransport: createIpcChatTransportFactory(cliChat),
+      // task_040：权重数值真相源在 core/progression（旧缺省 exp-config 已降为转发层），
+      // 换注入件即接管 —— 本服务零改动（交接注记见 chat-service.ts 文件头）。
+      expWeight: expWeightFor,
       persistSessionId: (characterId, sessionId) => {
         worldStore.setState((current) => {
           const index = current.characters.findIndex((c) => c.id === characterId);
@@ -325,14 +338,25 @@ async function boot(): Promise<void> {
   // 任务域写入面（@since v3.16，task_037）：组合根持一个实例，注入 runtime（task.assign 落点）
   // 与 task-service（相位回报口）—— 两处写的是同一份 WorldState.tasks。
   const taskManager = createTaskManager({ store: worldStore });
+  // 角色域写入面（@since v3.19，task_040）：与 taskManager 同一模式 —— 组合根持一个实例，
+  // 注入 runtime（character.create / persona.update 落点）与 progression-service
+  // （exp.gained → 累加落库）—— 两处写的是同一份 WorldState.characters。
+  const characterManager = createCharacterManager({ store: worldStore });
   const runtime = createCoreRuntime({
     store: worldStore,
+    character: characterManager,
     task: taskManager,
     onUnhandled: (channel: UnhandledChannel, payload: HudCommand | WorldEvent) => {
       console.warn(`[Stratix] 未处理 ${channel}: ${payload.type}`);
     },
   });
   const stopRuntime = runtime.start();
+
+  // ===== 养成回路（@since v3.19，task_040）=====
+  // exp.gained（task-service / chat-service 发射）→ character manager 累加落库（曲线结算在
+  // core/progression）→ 升级广播 level.up（UI 反馈归 041）。不依赖 Electron IPC（纯总线订阅），
+  // 无条件起：非 Electron 的 dev 环境里事件不会发，订阅空转零成本。
+  const stopProgressionService = createProgressionService({ characterManager }).start();
 
   // ===== 角色任务执行回路（@since v3.16，task_037）=====
   // core/task 发的 task.queued 事件 → task-service 出队（每角色 FIFO、并发 1）→ 经
@@ -345,6 +369,9 @@ async function boot(): Promise<void> {
       getState: () => worldStore.getState(),
       createTransport: createIpcChatTransportFactory(cliChat),
       taskManager,
+      // task_040：权重数值真相源在 core/progression（旧缺省 exp-config 已降为转发层），
+      // 换注入件即接管 —— 本服务零改动（交接注记见 task-service.ts 文件头）。
+      expWeight: expWeightFor,
       persistTask: (() => {
         const taskApi = taskRecordApi();
         return taskApi ? makeTaskRecordPersister(taskApi) : undefined;
@@ -401,8 +428,9 @@ async function boot(): Promise<void> {
       unmountCharacterDrawer();
       unmountToastHost();
       stopAgentDetection();
-      // 存档协调器先停（内部会冲刷未落盘的站位缓冲），再拆任务服务与 runtime。
+      // 存档协调器先停（内部会冲刷未落盘的站位缓冲），再拆养成服务、任务服务与 runtime。
       saveCoordinator?.stop();
+      stopProgressionService();
       stopTaskService?.();
       stopRuntime();
       unmountAdapter();

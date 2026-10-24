@@ -1,8 +1,8 @@
 /**
  * 文件职责：角色屏 Web Component（`<strat-character-screen>`）—— 角色（养成）总览屏：
  *   单选单位的角色详情卡 + 编组内单位↔角色关联列表 + 全部角色养成总览卡片。
- *   数值模型来自 core/character/growth（旧 src/stratix-character-creator/core/SharedSkillStore.ts 的
- *   level/experience/addExperience 语义**提炼**为纯函数，本屏只渲染、绝不重算阈值）。
+ *   数值模型来自 core/progression（task_040 起的等级曲线；旧 SharedSkillStore 的
+ *   level/experience/addExperience 语义提炼为纯函数，本屏只渲染、绝不重算阈值）。
  *   来源：docs/REFACTOR_PLAN_V3.md §2 screens/ 层级 + D3「角色提示词保留；技能树砍；数值系统保留」
  *        + §6 Phase 2「character 屏先落 persona 编辑 + level/exp 展示位」。
  * 输入：注入的 HudBusAdapter（dispatch / subscribe 两个能力，与 screens / panels 同口径）；WorldState 快照。
@@ -10,7 +10,7 @@
  * 禁止事项：
  *   1. import world/、phaser、vue、任何 UI 库 —— 铁律；
  *   2. 直接 import core/bus —— HUD 一律经注入的 adapter 发命令与订阅状态
- *      （唯一例外是 **import core/character/growth 的纯函数与常量**去渲染进度条阈值：
+ *      （唯一例外是 **import core/progression 的纯函数与常量**（经 character-catalog）去渲染进度条阈值：
  *       数值裁决只在 core 一处存在，见 character-catalog 文件头）；
  *   3. 硬编码颜色 / 字体 / 边框 / 圆角 —— 视觉一律引用 --srf-* token；
  *   4. 本地改角色数值 —— 等级/经验只认 core 广播的 WorldState.characters，本屏一改就发命令等回广播；

@@ -814,12 +814,11 @@ export type HudCommand =
 /**
  * @since v3.18 经验来源词表（`exp.gained` 事件的 source 字段，task_039）。
  *   - task_completed / task_failed：任务终态（task-service 在任务收尾时发射 —— 失败亦有经验，
- *     「做过就有收获」是养成口径，数值归 app 层权重，见下）；
+ *     「做过就有收获」是养成口径）；
  *   - chat_round：一轮**成功**对话（chat-service 在 done 收束后发射；error / 守门拒绝 / 中断轮不发）。
- * ============ 与 task_040（progression 模块）的交接 ============
- * 本类型只声明「经验从哪来」，**不定义数值**：amount 由发射点经注入的权重函数换算
- * （app/services/exp-config.ts 的临时常量），040 落地 progression 模块（等级曲线 / 数值表）时
- * 在模块内接管权重并替换组合根的注入件 —— 事件契约本身（source 词表 / amount > 0）不变。
+ * 数值表：@since v3.19（task_040）起由 **core/progression 的 weights 表**接管（单一数值真相源），
+ *   发射点仍经注入的权重函数换算（组合根注入 expWeightFor）；app/services/exp-config.ts 降级为
+ *   转发层（见其文件头）。本类型只声明「经验从哪来」—— 事件契约本身（source 词表 / amount > 0）不变。
  */
 export type ExpSource = 'task_completed' | 'task_failed' | 'chat_round';
 
@@ -854,11 +853,24 @@ export type WorldEvent =
   | { type: 'task.failed'; task: CharacterTask }
   /**
    * @since v3.18 经验获得事件（task_039，规格指定走 WorldEvent 通道 —— 与 task.* 同一先例：
-   *   发出方是 app 层服务（task-service / chat-service），消费者是未来的养成模块）。
+   *   发出方是 app 层服务（task-service / chat-service），消费者是养成模块）。
    * 载荷口径：characterId 命中 WorldState.characters（发射点用派发时的角色，档案被删的
    *   边角由消费者自行容错）；source ∈ ExpSource；amount > 0（权重为 0 → 发射点直接不发）。
-   * core 状态机不消费（不写 WorldState —— 经验累计归 task_040 的 progression 模块），
+   * @since v3.19（task_040）：消费者落地 —— app 层 progression-service 订阅本事件，经
+   *   character manager 累加进 WorldState.characters（等级结算走 core/progression 的曲线），
+   *   升级则广播 level.up。core 状态机仍不消费（经验累计不写进 core 的命令面），
    *   runtime 的 handleWorldEvent 显式接地（同 task.* 惯例，不进 onUnhandled）。
-   * 数值表交接见 ExpSource 的注释与 app/services/exp-config.ts 文件头（两侧已互相注明）。
    */
-  | { type: 'exp.gained'; characterId: string; source: ExpSource; amount: number };
+  | { type: 'exp.gained'; characterId: string; source: ExpSource; amount: number }
+  /**
+   * @since v3.19 角色升级事件（task_040，与 exp.gained 同一先例：发出方是 app 层
+   *   progression-service，走 world 通道广播；消费者是 UI 反馈（041 的解锁提示 / toast）等）。
+   * 载荷口径：characterId 命中 WorldState.characters；fromLevel/toLevel 为升级前后等级，
+   *   **恒有 toLevel > fromLevel**；跨多级也只发一条（级差由 toLevel - fromLevel 表达 ——
+   *   「一次结算一条事件」，与 progression.levelUpCheck 的结算口径一致）。
+   * 时序约定：等级与经验的真相已在本事件**之前**写入 WorldState.characters（progression-service
+   *   经 character manager 落库后才广播本事件）—— 订阅者拿最新 state 即可对齐，无需载荷携带数值。
+   * core 状态机不消费（等级是 characters 里的既有字段，不另立第二份真相），
+   *   runtime 的 handleWorldEvent 显式接地（同 exp.gained 惯例，不进 onUnhandled）。
+   */
+  | { type: 'level.up'; characterId: string; fromLevel: number; toLevel: number };

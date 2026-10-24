@@ -177,14 +177,15 @@ describe('角色屏派生模型', () => {
     expect(model.unboundUnits).toBe(1);
   });
 
-  test('成长数值投影：本级进度 / 距下一级 / 满级', () => {
+  test('成长数值投影：本级进度 / 距下一级 / 满级（task_040 曲线：分母按当前等级查表）', () => {
     const [neo] = resolveCharacterModel(makeState()).cards;
-    expect(neo?.growth).toMatchObject({ level: 2, experience: 130, intoLevel: 30, levelSpan: 100, toNext: 70, percent: 30 });
+    // L2 升 L3 需 150（曲线第二档）：130 经验 → 本级 30、距下一级 120。
+    expect(neo?.growth).toMatchObject({ level: 2, experience: 130, intoLevel: 30, levelSpan: 150, toNext: 120, percent: 20 });
 
     const maxed = resolveCharacterModel(
-      makeState({ characters: [{ ...(CHARACTERS[0] as CharacterView), level: 5, experience: 900 }] })
+      makeState({ characters: [{ ...(CHARACTERS[0] as CharacterView), level: 20, experience: 443175 }] })
     ).cards[0];
-    expect(maxed?.growth).toMatchObject({ maxed: true, toNext: null, percent: 100 });
+    expect(maxed?.growth).toMatchObject({ maxed: true, levelSpan: 0, toNext: null, percent: 100 });
   });
 
   test('卡片有上限且如实报溢出数（派生数据必须是有界的）', () => {
@@ -232,14 +233,14 @@ describe('角色屏渲染', () => {
     expect(cards).toHaveLength(2);
     expect(cards[0]?.textContent).toContain('Neo');
     expect(cards[0]?.textContent).toContain('Lv.2');
-    expect(cards[0]?.textContent).toContain('距下一级 70');
+    expect(cards[0]?.textContent).toContain('距下一级 120');
     expect(cards[0]?.querySelector('[data-role="persona"]')?.textContent).toBe('谨慎的数据分析师');
     h.unmount();
   });
 
   test('core 广播新状态 → 本屏重渲染（角色改名/升级都跟着变）', () => {
     const h = mountScreen();
-    h.emit({ characters: [{ ...(CHARACTERS[0] as CharacterView), name: 'Neo-改名', level: 5, experience: 400 }] });
+    h.emit({ characters: [{ ...(CHARACTERS[0] as CharacterView), name: 'Neo-改名', level: 20, experience: 443175 }] });
     const card = h.screen.shadowRoot?.querySelector('[data-role="card"]');
     expect(card?.textContent).toContain('Neo-改名');
     expect(card?.textContent).toContain('已满级');

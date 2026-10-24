@@ -1,7 +1,8 @@
 /**
  * 文件职责：角色屏的**视图模型派生**（纯逻辑，零 DOM）—— 把一份 WorldState 派生成
  *   「单选单位的角色详情 + 编组内单位↔角色关联行 + 角色养成总览卡片」，UI 呈现全在 character-screen.ts。
- *   成长阈值（每级经验 / 等级上限）**不复制**：直接 import core/character/growth 的纯函数与常量 ——
+ *   成长阈值（每级经验 / 等级上限）**不复制**：直接 import core/progression 的纯函数与常量
+ *   （task_040 起曲线化：每级所需不再是全局常数，分母按当前等级查表）——
  *   HUD 只渲染、不重算数值裁决（与 types.ts UnitCapabilitiesView 的「由 core 计算、HUD 只渲染」同一铁律）。
  *   来源：docs/REFACTOR_PLAN_V3.md §2 screens/ 层级（main / settings / character）+ D3（技能树砍、成长数值保留）。
  * 输入：WorldState 快照（只读）。
@@ -29,11 +30,11 @@
  */
 
 import {
-  EXP_PER_LEVEL,
   experienceIntoLevel,
   experienceToNextLevel,
+  expSpanForLevel,
   isMaxLevel,
-} from '../../core/character/growth';
+} from '../../core/progression';
 import type { CharacterView, SelectionState, UnitView, WorldState } from '../../core/types';
 
 // ============================================================================
@@ -54,9 +55,10 @@ export type CharacterScreenMode = 'empty' | 'single' | 'group';
 // ============================================================================
 
 /**
- * 一个角色的成长数值投影。所有阈值来自 core/character/growth，HUD 不重算等级：
+ * 一个角色的成长数值投影。所有阈值来自 core/progression（task_040 起的曲线表），HUD 不重算等级：
  *   - percent 是**本级内**进度（0–100 整数），不是"总经验 / 满级所需"（后者在满级后没有上界）；
- *   - toNext 为 null = 已满级（core 的 experienceToNextLevel 语义），屏上写「已满级」而不是「还差 0」；
+ *   - toNext 为 null = 已满级（progression 的 experienceToNextLevel 语义），屏上写「已满级」而不是「还差 0」；
+ *   - levelSpan 按当前等级查表（曲线化之后每级所需不同；满级为 0 —— 没有下一级）；
  *   - level 原样取 core 广播的值（core/character/growth 保证它与 experience 一致，见该文件「等级是派生量」）。
  */
 export interface CharacterGrowthModel {
@@ -64,7 +66,7 @@ export interface CharacterGrowthModel {
   readonly experience: number;
   /** 本级内已积累经验（进度条已填）。 */
   readonly intoLevel: number;
-  /** 每级所需经验（进度条满格值）。 */
+  /** 当前等级升下一级所需经验（进度条满格值；满级为 0 —— 没有下一级）。 */
   readonly levelSpan: number;
   /** 距下一级还差多少；满级为 null。 */
   readonly toNext: number | null;
@@ -77,13 +79,15 @@ export function resolveGrowth(character: CharacterView): CharacterGrowthModel {
   const level = character.level;
   const intoLevel = experienceIntoLevel(character.experience);
   const maxed = isMaxLevel(level);
+  // 分母按当前等级查表（task_040 曲线化：每级所需不同，不再是全局常数 EXP_PER_LEVEL）。
+  const levelSpan = expSpanForLevel(level);
   return {
     level,
     experience: character.experience,
     intoLevel,
-    levelSpan: EXP_PER_LEVEL,
+    levelSpan,
     toNext: experienceToNextLevel(character.experience),
-    percent: maxed ? 100 : Math.min(100, Math.round((intoLevel / EXP_PER_LEVEL) * 100)),
+    percent: maxed || levelSpan <= 0 ? 100 : Math.min(100, Math.round((intoLevel / levelSpan) * 100)),
     maxed,
   };
 }
