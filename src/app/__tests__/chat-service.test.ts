@@ -23,6 +23,7 @@ import {
   DEFAULT_CHAT_ROUND_TIMEOUT_MS,
   isAgentKindInstalled,
   type ChatDrawerView,
+  type ChatPersistedMessage,
   type ChatTransportFactory,
 } from '../services/chat-service';
 
@@ -161,6 +162,8 @@ interface ServiceHarness {
   readonly view: ViewHarness;
   readonly calls: SpawnRecord[];
   readonly persisted: Array<[string, string]>;
+  /** persistMessage 收到的落库消息序列（task_036）。 */
+  readonly messages: ChatPersistedMessage[];
   setState(patch: Partial<Pick<WorldState, 'characters' | 'detectedAgents'>>): void;
 }
 
@@ -175,12 +178,16 @@ function makeHarness(options: HarnessOptions = {}): ServiceHarness {
   };
   const { factory, calls } = makeFactory(options.scripts ?? [scripted()]);
   const persisted: Array<[string, string]> = [];
+  const messages: ChatPersistedMessage[] = [];
   const service = createChatService({
     view: view.view,
     getState: () => state,
     createTransport: factory,
     persistSessionId: (characterId, sessionId) => {
       persisted.push([characterId, sessionId]);
+    },
+    persistMessage: (message) => {
+      messages.push(message);
     },
     timeoutMs: options.timeoutMs,
   });
@@ -189,6 +196,7 @@ function makeHarness(options: HarnessOptions = {}): ServiceHarness {
     view,
     calls,
     persisted,
+    messages,
     setState: (patch) => Object.assign(state, patch),
   };
 }
@@ -457,3 +465,138 @@ describe('全局单飞锁（抽屉只有一条活跃流缓冲）', () => {
 });
 
 // gated（挂起脚本）的 release 句柄已在各用例闭包里持有，无需全局辅助。
+
+// ============================================================================
+// 消息落库（task_036）：时机 / 角色 / sessionRef / retry 不重复写
+// ============================================================================
+
+describe('消息落库：user 即时 / assistant 收束整段 / error 走 role=error', () => {
+  test('完整回合：user 先落（sessionRef 空）→ assistant 整段落（sessionRef 回执）', async () => {
+    const h = makeHarness({
+      scripts: [
+        scripted(
+          { type: 'session', sessionId: 'sess-9' },
+          { type: 'message', text: '你' },
+          { type: 'message', text: '好' },
+          { type: 'done', exitCode: 0, text: '你好', sessionId: 'sess-9' }
+        ),
+      ],
+    });
+    await h.service.send('ch-1', '在吗');
+
+    expect(h.messages).toEqual([
+      { characterId: 'ch-1', role: 'user', text: '在吗', sessionRef: null }, // 即时写，还没会话
+      { characterId: 'ch-1', role: 'assistant', text: '你好', sessionRef: 'sess-9' }, // 整段写，带回执
+    ]);
+  });
+
+  test('续发：user 消息带上已建立的 sessionRef', async () => {
+    const h = makeHarness({
+      scripts: [
+        scripted({ type: 'session', sessionId: 'sess-1' }, { type: 'message', text: '一' }, { type: 'done', exitCode: 0, text: '一', sessionId: 'sess-1' }),
+        scripted({ type: 'message', text: '二' }, { type: 'done', exitCode: 0, text: '二', sessionId: 'sess-1' }),
+      ],
+    });
+    await h.service.send('ch-1', '第一轮');
+    await h.service.send('ch-1', '第二轮');
+
+    expect(h.messages.map((m) => [m.role, m.text, m.sessionRef])).toEqual([
+      ['user', '第一轮', null],
+      ['assistant', '一', 'sess-1'],
+      ['user', '第二轮', 'sess-1'], // 会话已建立：续发的 user 也带回执
+      ['assistant', '二', 'sess-1'],
+    ]);
+  });
+
+  test('错误路径：role=error 落库（回填历史时渲染成错误样式）；中断标注落 assistant', async () => {
+    const h = makeHarness({
+      scripts: [
+        scripted({ type: 'message', text: '半截' }, { type: 'error', message: '等太久', code: 'timeout' }),
+      ],
+    });
+    await h.service.send('ch-1', '在吗');
+    expect(h.messages.at(-1)).toEqual({
+      characterId: 'ch-1',
+      role: 'error',
+      text: chatErrorText('timeout', '等太久'),
+      sessionRef: null,
+    });
+
+    const h2 = makeHarness({ scripts: [abortableScript('思考中')] });
+    const round = h2.service.send('ch-1', '慢慢想');
+    await flush();
+    h2.service.stop('ch-1');
+    await round;
+    expect(h2.messages.at(-1)).toEqual({
+      characterId: 'ch-1',
+      role: 'assistant', // 用户主动中断不是错误：与气泡同口径（无重试钮）
+      text: CHAT_MSG_INTERRUPTED,
+      sessionRef: null,
+    });
+  });
+
+  test('空回复：占位文案随气泡落 assistant；零文本不落空串', async () => {
+    const h = makeHarness({
+      scripts: [scripted({ type: 'tool_use', tool: 'Bash', id: 't1' }, { type: 'done', exitCode: 0, text: '', sessionId: null })],
+    });
+    await h.service.send('ch-1', '列一下文件');
+    expect(h.messages.map((m) => [m.role, m.text])).toEqual([
+      ['user', '列一下文件'],
+      ['assistant', CHAT_MSG_EMPTY_REPLY],
+    ]);
+  });
+
+  test('守门拦截文案不落库（瞬时引导，不是对话内容）；被单飞锁忽略的 send 也不落', async () => {
+    const gate = gated([{ type: 'message', text: '…' }], [{ type: 'done', exitCode: 0, text: '…', sessionId: null }]);
+    const h = makeHarness({ detected: [], scripts: [gate.script] });
+    await h.service.send('ch-1', '未检出也想发'); // 守门拦截：不落
+    expect(h.messages).toEqual([]);
+
+    const h2 = makeHarness({ characters: [{ ...character, agentKind: null }] });
+    await h2.service.send('ch-1', '未绑定'); // 同样不落
+    expect(h2.messages).toEqual([]);
+
+    // 单飞锁：第一轮进行中，第二次 send 被忽略 —— 不落重复的 user
+    const h3 = makeHarness({ scripts: [gate.script] });
+    const round = h3.service.send('ch-1', '第一条');
+    await flush();
+    await h3.service.send('ch-1', '插队');
+    gate.release();
+    await round;
+    expect(h3.messages.filter((m) => m.role === 'user')).toHaveLength(1);
+    expect(h3.messages.find((m) => m.text === '插队')).toBeUndefined();
+  });
+
+  test('retry 不重复落 user（原文已在库/会话里，重试是服务侧动作）；重试成功照常落 assistant', async () => {
+    const h = makeHarness({
+      scripts: [
+        scripted({ type: 'error', message: '失败了', code: 'cli_error' }),
+        scripted({ type: 'message', text: '补上了' }, { type: 'done', exitCode: 0, text: '补上了', sessionId: null }),
+      ],
+    });
+    await h.service.send('ch-1', '重试这条');
+    await h.service.retry('ch-1');
+
+    const users = h.messages.filter((m) => m.role === 'user');
+    expect(users).toEqual([{ characterId: 'ch-1', role: 'user', text: '重试这条', sessionRef: null }]);
+    expect(h.messages.map((m) => m.role)).toEqual(['user', 'error', 'assistant']);
+  });
+
+  test('persistMessage 抛错不炸对话（可用性优先于历史完整性）', async () => {
+    const view = makeView();
+    const state = { characters: [character], detectedAgents: [detectedClaude] } as Pick<WorldState, 'characters' | 'detectedAgents'>;
+    const { factory, calls } = makeFactory([
+      scripted({ type: 'message', text: '照常回' }, { type: 'done', exitCode: 0, text: '照常回', sessionId: null }),
+    ]);
+    const service = createChatService({
+      view: view.view,
+      getState: () => state,
+      createTransport: factory,
+      persistSessionId: () => {},
+      persistMessage: () => { throw new Error('落库口炸了'); },
+    });
+    await expect(service.send('ch-1', '在吗')).resolves.toBeUndefined();
+    expect(calls).toHaveLength(1); // transport 照常跑完
+    expect(view.log.at(-1)).toBe('sending:false'); // 状态复位
+  });
+});

@@ -25,6 +25,10 @@
  *   onSend / onStop / onRetry 三个回调 + 会话 id 回写 worldStore（存档协调器自动落库）；
  *   transport 经 IPC 桥在主进程跑（chat-transport-bridge），本文件只接线。
  *
+ * @since v3.15（task_036）会话历史落库：chat-service 的 persistMessage 注入 IPC 落库回调
+ *   （user 即时 / assistant 收束 / error），抽屉的 loadHistory 注入按角色读最近 50 条 ——
+ *   打开/切角色回填历史，与重建后的新会话同一段消息流连续展示。本文件仍然只接线。
+ *
  * 加载路径：dev 走 vite dev server 的 /src/app/main/index.html；
  *   正式构建走 dist/frontend/src/app/main/index.html（由 vite.config.ts 的 input 产出）。
  *   本页是**唯一**入口：旧 Vue 入口链随 task_017 退役，STRATIX_LEGACY 开关已下线，
@@ -54,6 +58,12 @@ import {
   gameSaveApi,
   type RestoreInjection,
 } from '../services/persistence/game-save-coordinator';
+import {
+  CHAT_HISTORY_LOAD_LIMIT,
+  chatHistoryApi,
+  chatHistoryEntryToDrawerInput,
+  makeChatMessagePersister,
+} from '../services/persistence/chat-history';
 import { createBrowserAppearanceEnvironment } from '../services/appearance-environment';
 import { createPhaserPreviewGame } from '../services/appearance-preview-game';
 import { createAppearancePreviewService } from '../services/appearance-preview-service';
@@ -161,6 +171,8 @@ async function boot(): Promise<void> {
   );
   const characterDrawer = chatHost.querySelector(CHARACTER_CHAT_DRAWER_TAG) as StratCharacterChatDrawerElement | null;
   const cliChat = cliChatIpcApi();
+  // 历史通道与 cliChat 同源（都在 preload 的 electronAPI 上）：非 Electron 环境两者皆无，行为退回 034。
+  const chatHistory = chatHistoryApi();
   if (characterDrawer && cliChat) {
     const chatService = createChatService({
       view: characterDrawer,
@@ -177,8 +189,10 @@ async function boot(): Promise<void> {
           return { ...current, characters };
         });
       },
+      // task_036：消息落库回调（fire-and-forget，失败只警告不阻断对话）。
+      persistMessage: chatHistory ? makeChatMessagePersister(chatHistory) : undefined,
     });
-    // 二次注入 deps：换上带对话回调的完整面（订阅在首次注入时已绑，handleState 是元素方法，不受影响）。
+    // 二次注入 deps：换上带对话回调与历史加载的完整面（订阅在首次注入时已绑，handleState 是元素方法，不受影响）。
     characterDrawer.deps = {
       subscribe: (handler) => adapter.subscribe(handler),
       onSend: (characterId, text) => {
@@ -188,6 +202,14 @@ async function boot(): Promise<void> {
       onRetry: (characterId) => {
         void chatService.retry(characterId);
       },
+      // task_036：按角色读最近 50 条（库行 → 抽屉消息输入的翻译也在这里）；
+      // 读失败降级为空历史（抽屉 requestHistory 只管回填，不重试）。
+      loadHistory: chatHistory
+        ? (characterId) =>
+            chatHistory
+              .loadMessages(characterId, CHAT_HISTORY_LOAD_LIMIT)
+              .then((result) => (result.ok && result.messages ? result.messages.map(chatHistoryEntryToDrawerInput) : []))
+        : undefined,
     };
   }
 

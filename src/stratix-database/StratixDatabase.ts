@@ -9,8 +9,12 @@ const DEFAULT_FILENAME = 'stratix.db';
 /**
  * v2（@since v3.12，task_033）：新增 characters + unit_positions（游戏存档表，角色档案与单位站位）。
  * DDL 与 src/app/services/persistence/game-save-dao.ts 的 ensureGameSaveTables 同构 —— 改一处必须同步另一处。
+ * v3（@since v3.15，task_036）：新增 character_chat_messages（角色对话历史，user/assistant/error 三种角色）。
+ * DDL 与 src/app/services/persistence/chat-history-dao.ts 的 ensureCharacterChatMessagesTable 同构。
+ * why 不叫 messages：messages 表已被项目/频道聊天占用（v1 起就有，schema 完全不同），
+ * 角色对话历史单独建表，命名对齐既有 agent_chat_messages 的先例。
  */
-const TARGET_SCHEMA_VERSION = 2;
+const TARGET_SCHEMA_VERSION = 3;
 
 /** Valid table name characters (alphanumeric + underscore) */
 const VALID_TABLE_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -123,7 +127,31 @@ export class StratixDatabase {
     this.migrateZoneCoordinatorColumns();
     this.migrateNewTables();
     this.migrateGameSaveTables();
+    this.migrateCharacterChatMessages();
     this.migrateSafetyIndexes();
+  }
+
+  /**
+   * 角色对话历史表（@since v3.15，task_036）：chat-service 按回合写入（user 即时 / assistant 收束 / error）。
+   * IF NOT EXISTS 幂等：新库在 createTables 里建过，这里是旧库（schema_version ≤ 2）的升级路径。
+   */
+  private migrateCharacterChatMessages(): void {
+    const tables = this.getTableNames();
+
+    if (!tables.has('character_chat_messages')) {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS character_chat_messages (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          character_id TEXT NOT NULL,
+          role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'error')),
+          content TEXT NOT NULL,
+          session_ref TEXT,
+          created_at INTEGER NOT NULL
+        )
+      `);
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_character_chat_messages_character ON character_chat_messages(character_id, id)');
+      log('info', 'Created character_chat_messages table');
+    }
   }
 
   /**
@@ -811,8 +839,20 @@ export class StratixDatabase {
         updated_at INTEGER NOT NULL
       );
 
+      -- 角色对话历史表（@since v3.15，task_036）：role ∈ user|assistant|error；
+      -- session_ref 是会话 id 的落库回执（审计用，恢复口径见 chat-service 文件头：重启首发重建）
+      CREATE TABLE IF NOT EXISTS character_chat_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        character_id TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'error')),
+        content TEXT NOT NULL,
+        session_ref TEXT,
+        created_at INTEGER NOT NULL
+      );
+
       -- 索引
       CREATE INDEX IF NOT EXISTS idx_characters_kind ON characters(kind);
+      CREATE INDEX IF NOT EXISTS idx_character_chat_messages_character ON character_chat_messages(character_id, id);
     `;
     this.db.exec(sql);
   }

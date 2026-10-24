@@ -31,6 +31,13 @@ import {
   type PersistedCharacterRecord,
   type PersistedUnitPosition,
 } from '../app/services/persistence/game-save-dao';
+import {
+  ensureCharacterChatMessagesTable,
+  insertChatMessage,
+  loadChatMessages,
+  PERSISTED_CHAT_ROLES,
+  type ChatMessageInsert,
+} from '../app/services/persistence/chat-history-dao';
 import { AGENT_KINDS, MAX_EXTERNAL_SESSION_ID_LEN, type AgentKind, type DetectedAgent } from '../core/types';
 import { getDatabase } from '../stratix-database';
 import { dataStoreService } from '../stratix-gateway/dataStoreService';
@@ -266,6 +273,60 @@ function setupIPC() {
       return { ok: true };
     } catch (error: any) {
       console.error('[Electron] game:saveUnitPositions failed:', error);
+      return { ok: false, error: error?.message ?? String(error) };
+    }
+  });
+
+  // ==================== 角色对话历史 IPC（@since v3.15，task_036）====================
+  // 与 game-save 三条同构：主进程 DAO 落 SQLite，渲染层经 preload 的 gameSave 扩展面调用。
+  // 校验从严（IPC 是可信度最低的入口）：坏形状一律拒（拒绝即回 {ok:false}，调用方只警告不阻断对话）。
+  ipcMain.handle('game:saveChatMessage', async (_event, message: ChatMessageInsert) => {
+    try {
+      if (typeof message?.characterId !== 'string' || message.characterId.length === 0 || message.characterId.length > 200) {
+        return { ok: false, error: 'bad characterId' };
+      }
+      if (typeof message?.role !== 'string' || !(PERSISTED_CHAT_ROLES as readonly string[]).includes(message.role)) {
+        return { ok: false, error: `bad role: ${String(message?.role)}` };
+      }
+      if (typeof message?.content !== 'string' || message.content.length === 0 || message.content.length > 200_000) {
+        return { ok: false, error: 'bad content' };
+      }
+      if (
+        message.sessionRef != null &&
+        (typeof message.sessionRef !== 'string' || message.sessionRef.length > MAX_EXTERNAL_SESSION_ID_LEN)
+      ) {
+        return { ok: false, error: 'bad sessionRef' };
+      }
+      if (typeof message?.createdAt !== 'number' || !Number.isFinite(message.createdAt)) {
+        return { ok: false, error: 'bad createdAt' };
+      }
+      if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
+      const db = getDatabase().getDatabase();
+      ensureCharacterChatMessagesTable(db);
+      insertChatMessage(db, message);
+      return { ok: true };
+    } catch (error: any) {
+      console.error('[Electron] game:saveChatMessage failed:', error);
+      return { ok: false, error: error?.message ?? String(error) };
+    }
+  });
+
+  ipcMain.handle('game:loadChatMessages', async (_event, characterId: unknown, limit: unknown) => {
+    try {
+      if (typeof characterId !== 'string' || characterId.length === 0 || characterId.length > 200) {
+        return { ok: false, error: 'bad characterId' };
+      }
+      // 窗口收紧到 [1, 200]：缺省 50（抽屉口径），不信任渲染层传来的任意值。
+      const messageWindow =
+        typeof limit === 'number' && Number.isFinite(limit)
+          ? Math.min(Math.max(Math.floor(limit), 1), 200)
+          : 50;
+      if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
+      const db = getDatabase().getDatabase();
+      ensureCharacterChatMessagesTable(db);
+      return { ok: true, messages: loadChatMessages(db, characterId, messageWindow) };
+    } catch (error: any) {
+      console.error('[Electron] game:loadChatMessages failed:', error);
       return { ok: false, error: error?.message ?? String(error) };
     }
   });

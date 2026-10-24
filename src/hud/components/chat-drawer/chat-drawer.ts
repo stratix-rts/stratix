@@ -2,12 +2,16 @@
  * 文件职责：角色聊天抽屉 Web Component（`<strat-character-chat-drawer>`）—— 右侧滑入滑出抽屉：
  *   头部（当前角色名 + agent kind 徽标 + 关闭钮）/ 消息列表（user 右 / assistant 左气泡，
  *   自动滚动到底）/ 输入框 + 发送钮（Enter 发送、Shift+Enter 换行）。
- *   多角色会话（每角色独立消息数组）与流式缓冲全在 chat-catalog.ts（纯逻辑），本文件只负责
+ *   与 chat-catalog 多角色会话（每角色独立消息数组）与流式缓冲全在 chat-catalog.ts（纯逻辑），本文件只负责
  *   把会话画成 Shadow DOM、把"用户打字 / 点发送 / 点关闭"翻译成回调，并订阅总线做
  *   "点战场单位 → 打开抽屉并切到该角色上下文"。
  *   来源：docs/REFACTOR_PLAN_V3.md §2 hud 层级 + task_034（transport 打桩，纯 UI 任务）。
  *   @since v3.14（task_035 追加）：错误气泡（addMessage 带 error 标记 → 警示配色 + 内嵌「重试」钮）
  *   与发送中「停止」钮 —— 回调 onStop / onRetry 由组合根桥接 chat-service，组件仍不认识 transport。
+ *   @since v3.15（task_036 追加）：历史回填 —— open / setCharacter 时经 loadHistory 回调读最近
+ *   CHAT_HISTORY_LOAD_LIMIT（50）条逐条回填进会话存储（库里的历史与重建后的新会话在 UI 层
+ *   天然同一段消息流 = 连续展示）。**按需向后分页后置**：当前只取尾部窗口，"滚动到顶再翻页"
+ *   的触发器留给后续任务（DAO 的 LIMIT 窗口语义已就位）。
  * 输入：注入的 deps（subscribe：吃 WorldState 快照 —— 选择集驱动开抽屉/切上下文、
  *   characters 档案驱动头部；onSend：发送回调，由组合根桥接 chat-service —— task_035 接线）。
  * 输出：Shadow DOM 抽屉；流式公开方法 appendStream / finalizeStream / addMessage / setSending
@@ -73,6 +77,13 @@ export type CharacterChatDrawerDeps = Pick<HudBusAdapter, 'subscribe'> & {
    * 失败的原文（chat-service.retry；不新增 user 气泡）。缺省 = 无桥接（按钮不产生效果）。
    */
   readonly onRetry?: (characterId: string) => void;
+  /**
+   * 历史加载回调（@since v3.15，task_036）：抽屉打开 / 切角色时请求该角色的历史消息
+   * （最近 N 条、时间正序；N 由桥接方给 —— 生产是 CHAT_HISTORY_LOAD_LIMIT）。缺省 = 无持久化
+   * 桥接（空历史，行为与 034/035 完全一致）。回填规则见 requestHistory：内存会话非空不回填、
+   * 活跃流缓冲挂在目标角色上不回填、每角色每生命周期至多成功回填一次。
+   */
+  readonly loadHistory?: (characterId: string) => Promise<readonly CharacterChatMessageInput[]>;
 };
 
 /** 自定义元素的对外形状（测试与挂载方按它断言；流式接口供 035 组合根桥接）。 */
@@ -141,6 +152,8 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
     private _lastState: WorldState | null = null;
     /** 已处理过的选择 revision：无关广播（同 revision）不得把用户刚关的抽屉再顶开。 */
     private _lastSelectionRevision: number | null = null;
+    /** 已成功回填（或确认无需回填）历史的角色 id（task_036）：每角色每生命周期至多一次。 */
+    private readonly _historyLoaded = new Set<string>();
     private readonly _sessions: CharacterChatSessions = createCharacterChatSessions();
 
     // —— 属性面 ——
@@ -194,6 +207,7 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
       this.syncRail();
       this.renderMessages();
       this.syncComposer();
+      this.requestHistory(this._sessions.viewing); // task_036：打开时补一次历史（已回填过则 no-op）
     }
 
     close(): void {
@@ -207,6 +221,7 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
       this.syncHeader();
       this.renderMessages();
       this.syncComposer();
+      this.requestHistory(characterId); // task_036：切角色即拉该角色历史
     }
 
     addMessage(message: CharacterChatMessageInput): void {
@@ -242,6 +257,45 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
       if (!this._unsubscribe) return;
       this._unsubscribe();
       this._unsubscribe = null;
+    }
+
+    /**
+     * 历史回填（@since v3.15，task_036）：抽屉打开 / 切角色时向桥接方要该角色最近一段历史。
+     * 规则（防重复、防串序、防与流式缓冲打架）：
+     *   1. 已回填过 / 内存会话非空 → 不再要（本轮运行里内存是超集，回填只会重复）；
+     *   2. 异步返回时复查：期间用户已发言（内存非空）→ 丢弃，标记已处理；
+     *   3. 活跃流缓冲挂在目标角色上 → 本次不回填也不标记（下次开抽屉再试 —— 流结束后历史
+     *      与新消息都在内存，届时内存非空，规则 1 直接吸收）；
+     *   4. 加载失败 → 静默放弃（空会话照常可用，重试留给下次打开）。
+     * 回填直接写会话存储（不逐条走组件 addMessage —— 那会每条重渲染一次），最后一次 renderMessages。
+     */
+    private requestHistory(characterId: string | null): void {
+      if (!characterId) return;
+      const loader = this._deps?.loadHistory;
+      if (!loader || this._historyLoaded.has(characterId)) return;
+      if (this._sessions.messages(characterId).length > 0) {
+        this._historyLoaded.add(characterId); // 内存已有内容：本轮不再回填
+        return;
+      }
+      void loader(characterId)
+        .then((entries) => {
+          if (this._historyLoaded.has(characterId)) return;
+          if (this._sessions.messages(characterId).length > 0) {
+            this._historyLoaded.add(characterId); // 竞态：加载期间用户已发言，丢弃本次
+            return;
+          }
+          const stream = this._sessions.stream;
+          if (stream !== null && stream.characterId === characterId) return; // 流式缓冲态不回填
+          this._historyLoaded.add(characterId);
+          for (const entry of entries) {
+            // 归属强制钉死到请求的角色（loader 的返回不该被信任到能决定归属）。
+            this._sessions.addMessage({ ...entry, characterId });
+          }
+          if (this._sessions.viewing === characterId) this.renderMessages();
+        })
+        .catch(() => {
+          // 历史加载失败不致命：空会话照常可用（不标记，下次打开重试）。
+        });
     }
 
     /**

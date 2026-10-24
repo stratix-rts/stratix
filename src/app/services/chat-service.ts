@@ -40,7 +40,17 @@
  * 全局 in-flight 锁：一回合没结束，任何新 send / retry 都直接忽略（抽屉侧 setSending(true) 已禁输入，
  * 这把锁防的是「切角色后旧错误气泡的重试按钮」这类边路）。
  *
- * @since v3.14（task_035）
+ * ============ 消息落库（task_036）============
+ * 写入时机（persistMessage 注入件，fire-and-forget，失败不阻断对话）：
+ *   ① user 消息：send 过了守门与忙碌锁后**即时写**（sessionRef 可空 —— 首发时还没有会话）；
+ *   ② assistant 消息：done 收束时**整段写**（流式 chunk 在内存拼接，不逐条落库）；
+ *   ③ error：transport 失败/超时/异常时以 role=error 写（回填历史时渲染成错误样式）；
+ *   ④ 中断标注（已中断）/空回复占位：随气泡落 assistant（UI 平价：刷新后看到的就是当时看到的）；
+ *   ⑤ 守门拦截文案（未检出/未绑定/无档案）**不落库**：它们是瞬时引导，不是对话内容，重启后无意义；
+ *   ⑥ retry 不重复写 user（原文已在库/会话里，重试是服务侧动作 —— 与不新增 user 气泡同一口径）。
+ * 消息真相仍在抽屉会话存储 + SQLite（本服务只转发，不存第二份）。
+ *
+ * @since v3.14（task_035）；v3.15（task_036）追加消息落库时机。
  */
 
 import type {
@@ -82,6 +92,18 @@ export interface ChatTransportPort {
 
 /** transport 工厂：agent 种类 → transport（生产由 IPC 桥实现；单测注入打桩工厂）。 */
 export type ChatTransportFactory = (kind: AgentKind) => ChatTransportPort;
+
+/**
+ * 落库消息形状（role 词表与 SQLite character_chat_messages.role 对齐）。
+ * sessionRef 是写入时已知的会话 id（首发前为 null）；它是落库回执，不参与恢复决策（见文件头）。
+ * @since v3.15，task_036。
+ */
+export interface ChatPersistedMessage {
+  readonly characterId: string;
+  readonly role: 'user' | 'assistant' | 'error';
+  readonly text: string;
+  readonly sessionRef: string | null;
+}
 
 // ============================================================================
 // 常量与文案（导出供单测断言，别在测试里抄一遍字符串）
@@ -177,6 +199,11 @@ export interface ChatServiceDeps {
   readonly createTransport: ChatTransportFactory;
   /** 会话 id 回写口（组合根接 worldStore —— 存档协调器会顺着档案 diff 自动落库）。 */
   readonly persistSessionId: (characterId: string, sessionId: string) => void;
+  /**
+   * 消息落库口（@since v3.15，task_036；缺省不落库）。同步签名、实现方内部异步 ——
+   * 组合根注入 makeChatMessagePersister(chatHistoryApi())；时机见文件头「消息落库」。
+   */
+  readonly persistMessage?: (message: ChatPersistedMessage) => void;
   /** 单轮超时；缺省 DEFAULT_CHAT_ROUND_TIMEOUT_MS。 */
   readonly timeoutMs?: number;
   /** 日志口；缺省静默。 */
@@ -237,6 +264,16 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
     }
   };
 
+  /** 消息落库（@since v3.15，task_036）：fire-and-forget，抛错只记日志（历史完整性不绑架对话可用性）。 */
+  const persist = (message: ChatPersistedMessage): void => {
+    if (!deps.persistMessage) return;
+    try {
+      deps.persistMessage(message);
+    } catch (error) {
+      logger(`[chat-service] 消息落库回调抛错（${message.characterId}/${message.role}）：${describe(error)}`);
+    }
+  };
+
   const guard = (characterId: string): CharacterView | null => {
     const state = deps.getState();
     const character = state.characters.find((c) => c.id === characterId) ?? null;
@@ -271,6 +308,8 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
     // 首发（还没有会话 id）才拼 persona；续发只发原文（见文件头「persona 怎么传」）。
     const prompt = session.sessionId === null ? buildFirstPrompt(character, text) : text;
     let sawText = false;
+    // 流式文本在内存拼接（task_036）：finalize 时整段落库，不逐 chunk 写 IPC。
+    let assistantText = '';
 
     try {
       const transport = transportFor(kind);
@@ -281,6 +320,7 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
       })) {
         if (event.type === 'message') {
           sawText = true;
+          assistantText += event.text;
           view.appendStream(event.text);
           continue;
         }
@@ -292,6 +332,11 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
           if (event.sessionId) applySession(characterId, session, event.sessionId);
           view.finalizeStream();
           if (!sawText) view.addMessage({ characterId, role: 'assistant', text: CHAT_MSG_EMPTY_REPLY });
+          // 落库与气泡同文同序：有文本写整段，零文本写占位（空串不落库 —— 与气泡丢弃空流同一口径）。
+          const finalText = sawText ? assistantText : CHAT_MSG_EMPTY_REPLY;
+          if (finalText.length > 0) {
+            persist({ characterId, role: 'assistant', text: finalText, sessionRef: session.sessionId });
+          }
           return;
         }
         if (event.type === 'error') {
@@ -299,14 +344,12 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
           view.finalizeStream();
           if (event.code === 'aborted') {
             view.addMessage({ characterId, role: 'assistant', text: CHAT_MSG_INTERRUPTED });
+            persist({ characterId, role: 'assistant', text: CHAT_MSG_INTERRUPTED, sessionRef: session.sessionId });
           } else {
             lastFailed.set(characterId, text);
-            view.addMessage({
-              characterId,
-              role: 'assistant',
-              text: chatErrorText(event.code, event.message),
-              error: true,
-            });
+            const errorText = chatErrorText(event.code, event.message);
+            view.addMessage({ characterId, role: 'assistant', text: errorText, error: true });
+            persist({ characterId, role: 'error', text: errorText, sessionRef: session.sessionId });
           }
           return;
         }
@@ -318,17 +361,34 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
       // runtime 不该抛（内部全转 error 事件）；真抛了也要复位状态 + 给用户一个说法。
       view.finalizeStream();
       lastFailed.set(characterId, text);
-      view.addMessage({
-        characterId,
-        role: 'assistant',
-        text: chatErrorText('cli_error', describe(error)),
-        error: true,
-      });
+      const thrownText = chatErrorText('cli_error', describe(error));
+      view.addMessage({ characterId, role: 'assistant', text: thrownText, error: true });
+      persist({ characterId, role: 'error', text: thrownText, sessionRef: session.sessionId });
     } finally {
       if (activeRun === run) activeRun = null;
       session.busy = false;
       view.setSending(false);
     }
+  };
+
+  /**
+   * 发送与重试共用的派发骨架（task_036 拆出）：同一守门与两把锁；
+   * 差别只在是否落库 user 消息（retry 不重复写，见文件头「消息落库」⑥）。
+   */
+  const dispatch = async (
+    characterId: string,
+    text: string,
+    options: { readonly persistUser: boolean }
+  ): Promise<void> => {
+    const character = guard(characterId);
+    if (!character || !character.agentKind) return;
+    if (activeRun) return; // 全局单飞
+    const session = sessions.get(characterId);
+    if (session?.busy) return; // per-character 锁（与全局锁冗余成对，见文件头）
+    if (options.persistUser) {
+      persist({ characterId, role: 'user', text, sessionRef: session?.sessionId ?? null });
+    }
+    await runRound(character, character.agentKind, text);
   };
 
   return {
@@ -339,20 +399,15 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
     async send(characterId: string, text: string): Promise<void> {
       const trimmed = text.trim();
       if (trimmed.length === 0) return;
-      const character = guard(characterId);
-      if (!character || !character.agentKind) return;
-      if (activeRun) return; // 全局单飞
-      const session = sessions.get(characterId);
-      if (session?.busy) return; // per-character 锁（与全局锁冗余成对，见文件头）
-      await runRound(character, character.agentKind, trimmed);
+      await dispatch(characterId, trimmed, { persistUser: true });
     },
 
     async retry(characterId: string): Promise<void> {
       const text = lastFailed.get(characterId);
       if (!text) return;
       // 与新发送同一守门（角色可能已被删 / agent 状态可能变了），但不新增 user 气泡 ——
-      // 原文就在会话记录里，重试是服务侧动作。
-      await this.send(characterId, text);
+      // 原文就在会话记录里，重试是服务侧动作；落库同理不重复写 user（文件头「消息落库」⑥）。
+      await dispatch(characterId, text, { persistUser: false });
     },
 
     stop(characterId: string): void {

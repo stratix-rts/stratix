@@ -68,6 +68,14 @@ function makeState(partial: Partial<WorldState> = {}): WorldState {
 interface ExtraDeps {
   onStop?: (characterId: string) => void;
   onRetry?: (characterId: string) => void;
+  /** task_036 追加：历史加载回调（记录调用；受控兑现见「历史回填」组）。 */
+  loadHistory?: (characterId: string) => Promise<readonly {
+    characterId?: string;
+    role: 'user' | 'assistant';
+    text: string;
+    error?: boolean;
+    at?: number;
+  }[]>;
 }
 
 interface Harness {
@@ -78,6 +86,8 @@ interface Harness {
   /** onStop / onRetry 收到的 characterId 依次记录（task_035）。 */
   readonly stopped: string[];
   readonly retried: string[];
+  /** loadHistory 被请求的角色 id 依次记录（task_036）。 */
+  readonly historyRequested: string[];
   /** 模拟 core 广播一份新状态（走组件订阅的真实链路）。 */
   emit(state: WorldState): void;
   subscriberCount(): number;
@@ -88,6 +98,7 @@ function mountPanel(onSend?: (characterId: string, text: string) => void, extra:
   const sent: Array<{ characterId: string; text: string }> = [];
   const stopped: string[] = [];
   const retried: string[] = [];
+  const historyRequested: string[] = [];
   const subs = new Set<(state: WorldState) => void>();
   const deps: CharacterChatDrawerDeps = {
     subscribe: (handler) => {
@@ -103,6 +114,12 @@ function mountPanel(onSend?: (characterId: string, text: string) => void, extra:
       retried.push(characterId);
       extra.onRetry?.(characterId);
     },
+    loadHistory: extra.loadHistory
+      ? (characterId) => {
+          historyRequested.push(characterId);
+          return extra.loadHistory!(characterId);
+        }
+      : undefined,
   };
 
   const host = document.createElement('div');
@@ -117,6 +134,7 @@ function mountPanel(onSend?: (characterId: string, text: string) => void, extra:
     sent,
     stopped,
     retried,
+    historyRequested,
     emit: (state) => { subs.forEach((handler) => handler(state)); },
     subscriberCount: () => subs.size,
     unmount: () => { unmountPanel(); host.remove(); },
@@ -696,5 +714,142 @@ describe('组件：错误气泡与停止钮（task_035）', () => {
     expect(store.messages('a')[0]?.error).toBe(true);
     // 普通消息不带标记。
     expect(store.addMessage({ role: 'user', text: '好的' })?.error).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// task_036 追加：历史回填（打开 / 切角色 → loadHistory → 会话存储）
+// ============================================================================
+
+describe('组件：历史回填（task_036）', () => {
+  /** 排空微任务：loadHistory 的 then 要落定后才好断言。 */
+  const flush = async (): Promise<void> => {
+    for (let i = 0; i < 6; i += 1) await Promise.resolve();
+  };
+
+  const history = [
+    { characterId: 'c1', role: 'user' as const, text: '上次问的', at: 1 },
+    { characterId: 'c1', role: 'assistant' as const, text: '上次答的', at: 2 },
+    { characterId: 'c1', role: 'assistant' as const, text: '上次炸的', error: true, at: 3 },
+  ];
+
+  test('open(角色) 拉取并按序回填；error 条目渲染成错误气泡（data-error + 重试钮）', async () => {
+    const h = mountPanel(undefined, { loadHistory: async () => history });
+    h.panel.open('c1');
+    await flush();
+
+    expect(h.historyRequested).toEqual(['c1']);
+    expect(h.panel.visibleMessageIds).toHaveLength(3);
+    const bubbles = bubblesOf(h.panel);
+    expect(bubbles.map((b) => b.getAttribute('data-side'))).toEqual(['user', 'assistant', 'assistant']);
+    expect(bubbles[2].getAttribute('data-error')).toBe('true'); // role=error → 错误样式路径
+    expect(bubbles[2].querySelector('[data-role="retry"]')).toBeTruthy();
+    expect(messagesBoxOf(h.panel).textContent).toContain('上次答的');
+    h.unmount();
+  });
+
+  test('切角色逐角色拉取；重复 open / 切回不重复拉、不重复回填', async () => {
+    const h = mountPanel(undefined, {
+      loadHistory: async (id) => (id === 'c1' ? history : [{ role: 'user', text: 'B 的历史' }]),
+    });
+    h.panel.open('c1');
+    await flush();
+    h.panel.setCharacter('c2');
+    await flush();
+    expect(h.historyRequested).toEqual(['c1', 'c2']);
+    expect(messagesBoxOf(h.panel).textContent).toContain('B 的历史');
+
+    // 切回 c1：历史已在内存，不再发请求，也不重复回填
+    h.panel.setCharacter('c1');
+    await flush();
+    h.panel.close();
+    h.panel.open('c1');
+    await flush();
+    expect(h.historyRequested).toEqual(['c1', 'c2']);
+    expect(h.panel.visibleMessageIds).toHaveLength(3);
+    h.unmount();
+  });
+
+  test('内存会话非空（本轮已有消息）→ 不请求：内存是超集，回填只会重复', async () => {
+    const h = mountPanel(undefined, { loadHistory: async () => history });
+    h.panel.open('c1');
+    await flush(); // 第一次已回填
+    h.panel.addMessage({ characterId: 'c9', role: 'user', text: '本轮说的' });
+
+    h.panel.setCharacter('c9');
+    await flush();
+    expect(h.historyRequested).toEqual(['c1']); // c9 内存非空，不拉
+    expect(messagesBoxOf(h.panel).textContent).toContain('本轮说的');
+    h.unmount();
+  });
+
+  test('流式缓冲态不回填：流结束后（内存非空）后续打开也不叠加 —— 历史被本轮消息吸收', async () => {
+    let resolveHistory!: (entries: readonly {
+      characterId?: string; role: 'user' | 'assistant'; text: string; error?: boolean; at?: number;
+    }[]) => void;
+    const h = mountPanel(undefined, {
+      loadHistory: () => new Promise((resolve) => { resolveHistory = resolve; }),
+    });
+    h.panel.open('c1');
+    h.panel.appendStream('流还在跑'); // 加载期间目标角色起了流
+    await flush();
+    resolveHistory(history);
+    await flush();
+
+    expect(h.panel.visibleMessageIds).toHaveLength(0); // 没回填
+    h.panel.finalizeStream(); // 流收束 → 内存非空
+    h.panel.close();
+    h.panel.open('c1');
+    await flush();
+    expect(h.panel.visibleMessageIds).toHaveLength(1); // 只有收束的那条，历史不再叠加
+    h.unmount();
+  });
+
+  test('加载竞态：期间用户已发言 → 丢弃本次（不把历史叠在新消息后面）', async () => {
+    let resolveHistory!: (entries: readonly {
+      characterId?: string; role: 'user' | 'assistant'; text: string; error?: boolean; at?: number;
+    }[]) => void;
+    const h = mountPanel(undefined, {
+      loadHistory: () => new Promise((resolve) => { resolveHistory = resolve; }),
+    });
+    h.panel.open('c1');
+    h.panel.addMessage({ characterId: 'c1', role: 'user', text: '插进来的新消息' });
+    resolveHistory(history);
+    await flush();
+
+    expect(h.panel.visibleMessageIds).toHaveLength(1); // 只有新消息
+    expect(messagesBoxOf(h.panel).textContent).not.toContain('上次问的');
+    h.unmount();
+  });
+
+  test('加载失败静默放弃：空会话照常可用，下次打开重试', async () => {
+    let fails = true;
+    const h = mountPanel(undefined, {
+      loadHistory: async () => {
+        if (fails) throw new Error('IPC 不通');
+        return history;
+      },
+    });
+    h.panel.open('c1');
+    await flush();
+    expect(h.panel.visibleMessageIds).toHaveLength(0); // 静默降级，不炸
+
+    fails = false;
+    h.panel.close();
+    h.panel.open('c1'); // 未标记：下次打开重试
+    await flush();
+    expect(h.panel.visibleMessageIds).toHaveLength(3);
+    h.unmount();
+  });
+
+  test('回填归属钉死到请求的角色：loader 返回的 characterId 不被信任', async () => {
+    const h = mountPanel(undefined, {
+      loadHistory: async () => [{ characterId: '别的角色', role: 'user', text: '串台的' }],
+    });
+    h.panel.setCharacter('c1');
+    await flush();
+    expect(h.panel.sessionCharacterIds).toEqual(['c1']); // 只落在 c1 名下
+    expect(h.panel.visibleMessageIds).toHaveLength(1);
+    h.unmount();
   });
 });

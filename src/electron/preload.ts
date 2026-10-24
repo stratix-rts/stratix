@@ -10,6 +10,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { DetectedAgent } from '../core/types';
 import type { CliChatEventEnvelope, CliChatIpcApi, CliChatRunRequest } from '../app/services/chat-transport-bridge';
 import type { PersistedCharacterRecord, PersistedUnitPosition } from '../app/services/persistence/game-save-dao';
+import type { ChatMessageInsert, PersistedChatMessage } from '../app/services/persistence/chat-history-dao';
 
 export interface ElectronAPI {
   // 通用服务调用
@@ -107,6 +108,10 @@ export interface ElectronAPI {
     saveCharacters: (records: PersistedCharacterRecord[]) => Promise<{ ok: boolean; error?: string }>;
     /** 批量 upsert 单位站位。 */
     saveUnitPositions: (entries: PersistedUnitPosition[]) => Promise<{ ok: boolean; error?: string }>;
+    /** 写一条角色对话历史（@since v3.15，task_036）。 */
+    saveChatMessage: (message: ChatMessageInsert) => Promise<{ ok: boolean; error?: string }>;
+    /** 读某角色最近 N 条对话历史（默认 50）。 */
+    loadChatMessages: (characterId: string, limit?: number) => Promise<{ ok: boolean; messages?: PersistedChatMessage[]; error?: string }>;
   };
 
   /**
@@ -219,10 +224,13 @@ const electronAPI: ElectronAPI = {
   },
 
   // 游戏存档（@since v3.12，task_033）：透传到主进程的 DAO（game:loadSnapshot / game:save*）。
+  // 对话历史两条（@since v3.15，task_036）同走 game: 前缀：game:saveChatMessage / game:loadChatMessages。
   gameSave: {
     loadSnapshot: () => ipcRenderer.invoke('game:loadSnapshot'),
     saveCharacters: (records: PersistedCharacterRecord[]) => ipcRenderer.invoke('game:saveCharacters', records),
     saveUnitPositions: (entries: PersistedUnitPosition[]) => ipcRenderer.invoke('game:saveUnitPositions', entries),
+    saveChatMessage: (message: ChatMessageInsert) => ipcRenderer.invoke('game:saveChatMessage', message),
+    loadChatMessages: (characterId: string, limit?: number) => ipcRenderer.invoke('game:loadChatMessages', characterId, limit),
   },
 
   /**
