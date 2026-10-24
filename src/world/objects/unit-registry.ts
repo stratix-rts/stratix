@@ -24,9 +24,23 @@ const SPAWN_GAP = 96;
 /** 落位起点相对战场边缘的内缩量。 */
 const SPAWN_MARGIN = 96;
 
+/**
+ * game.registry 里「恢复站位种子」的键（@since v3.12，task_033）。
+ * why 走 registry（Phaser game.registry）而不是场景构造器：场景由 Phaser 实例化，
+ *   构造器拿不到注入 —— 与 UNIT_SPRITE_SOURCE_KEY 同一模式：组合根在 preBoot 里塞，场景 create 时取。
+ * 值形状：ReadonlyMap<unitId, Point>，来自 app 层持久化快照（unit_positions 表）。
+ */
+export const UNIT_POSITION_SEED_KEY = 'stratix:unit-position-seed';
+
 export interface UnitRegistryOptions {
   readonly worldBounds?: Bounds;
   readonly hitRadius?: number;
+  /**
+   * 恢复站位（@since v3.12，task_033）：unitId → 上次会话的世界坐标。
+   * sync() 新增单位时优先用这里的坐标；没记录的沿用网格落位。
+   * 只读：注册表不拥有这份缓存，消费后不删除（同 id 重复加入时重用旧位是合法回退）。
+   */
+  readonly restoredPositions?: ReadonlyMap<string, Point>;
 }
 
 export interface UnitSyncResult {
@@ -45,11 +59,23 @@ export class UnitRegistry {
   private readonly objects = new Map<string, UnitObject>();
   private readonly worldBounds: Bounds;
   private readonly hitRadius: number;
+  private restoredPositions?: ReadonlyMap<string, Point>;
   private spawnCursor = 0;
 
   constructor(options: UnitRegistryOptions = {}) {
     this.worldBounds = options.worldBounds ?? DEFAULT_WORLD_BOUNDS;
     this.hitRadius = options.hitRadius ?? UNIT_HIT_RADIUS;
+    this.restoredPositions = options.restoredPositions;
+  }
+
+  /**
+   * 注入恢复站位（@since v3.12，task_033）。
+   * why 是方法而不只是构造器选项：注册表实例是场景的字段初始化器建的，
+   *   早于 create()（那时还拿不到 game.registry），场景只能在 create 里补注。
+   * 传 undefined 是 no-op（不清空已注入的种子）：dev 页从不注入，不该能抹掉生产侧的注入。
+   */
+  applyRestoredPositions(positions: ReadonlyMap<string, Point> | undefined): void {
+    if (positions) this.restoredPositions = positions;
   }
 
   get size(): number {
@@ -81,8 +107,10 @@ export class UnitRegistry {
         if (existing.sync(view)) updated.push(view.id);
         continue;
       }
-      // 新单位没有坐标可继承（core 不持有位置），由世界层按网格分配落位
-      this.objects.set(view.id, new UnitObject(view, this.nextSpawnPosition()));
+      // 新单位没有坐标可继承（core 不持有位置）：有持久化记录的按记录恢复（@since v3.12，task_033），
+      // 没记录的由世界层按网格分配落位（沿用现有随机落位逻辑，语义不变）
+      const restored = this.restoredPositions?.get(view.id);
+      this.objects.set(view.id, new UnitObject(view, restored ?? this.nextSpawnPosition()));
       added.push(view.id);
     }
 
@@ -125,6 +153,7 @@ export class UnitRegistry {
 
   destroy(): void {
     this.objects.clear();
+    this.restoredPositions = undefined;
     this.spawnCursor = 0;
   }
 

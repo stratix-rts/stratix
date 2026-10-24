@@ -24,13 +24,19 @@ export interface WorldScenePort {
   syncSelection(selection: SelectionState): void;
 }
 
-/** 场景侧的交互出口：场景调这三个方法，桥接层负责转成 WorldEvent 发给 core。 */
+/** 场景侧的交互出口：场景调这四个方法，桥接层负责转成 WorldEvent 发给 core。 */
 export interface WorldEventSink {
   unitClick(unitId: string, mods: ClickMods): void;
   selectionBox(bounds: Bounds): void;
   cameraMoved(center: Point, zoom: number): void;
   /** 补发被合并窗口吞掉的最后一次相机位姿（拖拽结束 / 滚轮停止时调用）。 */
   flushCamera(): void;
+  /**
+   * 上报单位落位 / 移动（@since v3.12，task_033）。
+   * 桥接层只转发不合并：落位是低频事件（对账时新增才会发），
+   * 高频移动的防抖归消费方（app 层持久化订阅者，2-5s 批量落库）。
+   */
+  unitPosition(unitId: string, x: number, y: number): void;
 }
 
 export interface WorldBridge extends WorldEventSink {
@@ -82,6 +88,11 @@ export function createWorldBridge(
     selectionBox(bounds: Bounds): void {
       if (destroyed) return;
       emitWorldEvent({ type: 'selection.box', bounds });
+    },
+
+    unitPosition(unitId: string, x: number, y: number): void {
+      if (destroyed) return;
+      emitWorldEvent({ type: 'unit.position', unitId, x, y });
     },
 
     cameraMoved(center: Point, zoom: number): void {

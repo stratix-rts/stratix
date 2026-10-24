@@ -177,3 +177,55 @@ describe('destroy', () => {
     expect(registry.list()).toEqual([]);
   });
 });
+
+// ============================================================================
+// 恢复站位（@since v3.12，task_033）：unit_positions 表恢复的坐标优先于网格落位
+// ============================================================================
+
+describe('恢复站位（restoredPositions）', () => {
+  test('有记录的单位按记录落位，无记录的沿用网格落位', () => {
+    const registry = createRegistry();
+    registry.applyRestoredPositions(new Map([['u1', { x: 123, y: 456 }]]));
+    const result = registry.sync([unit('u1'), unit('u2')]);
+
+    expect(result.added).toEqual(['u1', 'u2']);
+    expect(registry.get('u1')?.position).toEqual({ x: 123, y: 456 });
+    // u2 没记录 → 网格落位（战场中心起步），且不与恢复位重叠语义冲突
+    const u2 = registry.get('u2')?.position;
+    expect(u2).toBeDefined();
+    expect(u2).not.toEqual({ x: 123, y: 456 });
+  });
+
+  test('构造器选项与 applyRestoredPositions 两条注入路径等效', () => {
+    const viaCtor = new UnitRegistry({ worldBounds: WORLD, restoredPositions: new Map([['u1', { x: 7, y: 8 }]]) });
+    viaCtor.sync([unit('u1')]);
+    expect(viaCtor.get('u1')?.position).toEqual({ x: 7, y: 8 });
+  });
+
+  test('传 undefined 是 no-op：不清空已注入的种子（dev 页不该能抹掉生产侧注入）', () => {
+    const registry = createRegistry();
+    registry.applyRestoredPositions(new Map([['u1', { x: 7, y: 8 }]]));
+    registry.applyRestoredPositions(undefined);
+    registry.sync([unit('u1')]);
+
+    expect(registry.get('u1')?.position).toEqual({ x: 7, y: 8 });
+  });
+
+  test('恢复位可以超出默认网格（持久化坐标是历史事实，不做落位钳制）', () => {
+    const registry = createRegistry();
+    registry.applyRestoredPositions(new Map([['u1', { x: -9999, y: 9999 }]]));
+    registry.sync([unit('u1')]);
+
+    expect(registry.get('u1')?.position).toEqual({ x: -9999, y: 9999 });
+  });
+
+  test('destroy 清掉种子：重启场景后不残留旧坐标', () => {
+    const registry = createRegistry();
+    registry.applyRestoredPositions(new Map([['u1', { x: 7, y: 8 }]]));
+    registry.destroy();
+    registry.sync([unit('u1')]);
+
+    // 种子没了 → 落回战场中心（网格落位的第一个位置）
+    expect(registry.get('u1')?.position).toEqual({ x: WORLD.x + WORLD.width / 2, y: WORLD.y + WORLD.height / 2 });
+  });
+});

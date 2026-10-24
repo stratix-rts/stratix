@@ -245,3 +245,18 @@ describe('生命周期', () => {
     expect(states).toHaveLength(1);
   });
 });
+// ============================================================================
+// unit.position 接地（@since v3.12，task_033）：core 状态机不消费坐标，
+// 但显式接地不进 onUnhandled —— 消费者是 app 层持久化订阅者。
+// ============================================================================
+
+describe('world 事件：unit.position', () => {
+  test('不被当作未处理事件上报', () => {
+    const { unhandled, stop } = harness();
+    cleanups.push(stop);
+
+    emitWorldEvent({ type: 'unit.position', unitId: 'unit_u1', x: 10, y: 20 });
+
+    expect(unhandled).toHaveLength(0);
+  });
+});

@@ -746,4 +746,11 @@ export type HudCommand =
 export type WorldEvent =
   | { type: 'unit.click'; unitId: string; mods: ClickMods }
   | { type: 'selection.box'; bounds: Bounds }
-  | { type: 'camera.moved'; center: Point; zoom: number };
+  | { type: 'camera.moved'; center: Point; zoom: number }
+  /**
+   * @since v3.12 单位落位 / 移动上报（task_033）：世界层是位置的唯一真相（UnitView 不含坐标），
+   *   位置变化（新单位落位、未来的拖拽移动）由此事件发回 core 方向 —— core 状态机不消费它
+   *   （core 仍不持有坐标），由 app 层持久化订阅者落 SQLite（unit_positions 表，防抖写）。
+   * why 走总线而不是 world 直接落库：world 零 IO 是分层铁律，事件是它唯一能发出的东西。
+   */
+  | { type: 'unit.position'; unitId: string; x: number; y: number };

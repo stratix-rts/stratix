@@ -80,5 +80,7 @@ function describe(event: WorldEvent): string {
       return `selection.box   ${Math.round(event.bounds.width)}×${Math.round(event.bounds.height)} @ ${Math.round(event.bounds.x)},${Math.round(event.bounds.y)}`;
     case 'camera.moved':
       return `camera.moved    zoom=${event.zoom.toFixed(2)} @ ${Math.round(event.center.x)},${Math.round(event.center.y)}`;
+    case 'unit.position':
+      return `unit.position   ${event.unitId} @ ${Math.round(event.x)},${Math.round(event.y)}`;
   }
 }

@@ -268,3 +268,33 @@ describe('camera.moved 合并（perf：拖拽/滚轮不能逐帧打爆总线）'
     expect(events).toHaveLength(1);
   });
 });
+
+// ============================================================================
+// unit.position 出口（@since v3.12，task_033）：场景落位 → WorldEvent
+// ============================================================================
+
+describe('场景 → core：unit.position', () => {
+  test('unitPosition 转成 unit.position 事件发回 core', () => {
+    const { port } = createFakePort();
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+    const { events, stop } = collectWorldEvents();
+    stops.push(stop);
+
+    bridge.unitPosition('unit_character_1', 100, -40);
+
+    expect(events).toEqual([{ type: 'unit.position', unitId: 'unit_character_1', x: 100, y: -40 }]);
+  });
+
+  test('destroy 后的迟到上报被丢弃（不为已死场景再发一次）', () => {
+    const { port } = createFakePort();
+    const bridge = createWorldBridge(port, { now: clock });
+    const { events, stop } = collectWorldEvents();
+    stops.push(stop);
+
+    bridge.destroy();
+    bridge.unitPosition('unit_character_1', 1, 2);
+
+    expect(events).toHaveLength(0);
+  });
+});

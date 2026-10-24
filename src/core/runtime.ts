@@ -188,7 +188,11 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         return;
       default:
         // selection.box：core 不持有坐标，算不出命中集合（判定在 world 侧），交给上报方补 id；
-        // camera.moved：WorldState 契约里没有相机字段（core/types.ts 冻结版），暂不做业务处理
+        // camera.moved：WorldState 契约里没有相机字段（core/types.ts 冻结版），暂不做业务处理；
+        // unit.position（@since v3.12，task_033）：位置真相在 world，core 状态机不消费坐标 ——
+        //   本事件的消费者是 app 层持久化订阅者（落 unit_positions 表，防抖写），
+        //   这里显式接地（不进 onUnhandled），否则正常运行时每次落位都会报一次"未处理"噪音。
+        if (event.type === 'unit.position') return;
         reportUnhandled('world', event);
     }
   };

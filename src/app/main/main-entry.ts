@@ -16,6 +16,11 @@
  *   6. 在这里写首启判定 —— 判定与挂载分别住在 onboarding-trigger.ts / onboarding-host.ts，
  *      本文件只负责把两者接进总线（组合根的职责就是接线）。
  *
+ * @since v3.12（task_033）存档接线：boot 改为异步 —— 先读 SQLite 快照（经 IPC 到主进程 DAO）
+ *   恢复角色/单位进 store、把站位种子塞给战场，再创建 Phaser。落库由 GameSaveCoordinator
+ *   订阅 core 广播完成（档案 diff 落库 + 站位防抖落库），本文件只负责接线和时序：
+ *   必须先 restore 注入、再 coordinator.start()，否则注入的那批会被当成新变化回写一遍。
+ *
  * 加载路径：dev 走 vite dev server 的 /src/app/main/index.html；
  *   正式构建走 dist/frontend/src/app/main/index.html（由 vite.config.ts 的 input 产出）。
  *   本页是**唯一**入口：旧 Vue 入口链随 task_017 退役，STRATIX_LEGACY 开关已下线，
@@ -37,7 +42,13 @@ import { defineStratButton } from '../../hud/widgets/strat-button';
 import { CharacterComposer } from '../../world/appearance/character-composer';
 import { PartRegistry } from '../../world/appearance/part-registry';
 import { UNIT_SPRITE_SOURCE_KEY } from '../../world/objects/unit-sprite-source';
+import { UNIT_POSITION_SEED_KEY } from '../../world/objects/unit-registry';
 import { BattlefieldScene } from '../../world/scenes/BattlefieldScene';
+import {
+  createGameSaveCoordinator,
+  gameSaveApi,
+  type RestoreInjection,
+} from '../services/persistence/game-save-coordinator';
 import { createBrowserAppearanceEnvironment } from '../services/appearance-environment';
 import { createPhaserPreviewGame } from '../services/appearance-preview-game';
 import { createAppearancePreviewService } from '../services/appearance-preview-service';
@@ -112,7 +123,7 @@ function reportBootFailure(error: unknown): void {
   }
 }
 
-function boot(): void {
+async function boot(): Promise<void> {
   const hudRoot = must<HTMLElement>('hud-root');
   const battlefieldHost = must<HTMLElement>('battlefield');
   const onboardingHost = must<HTMLElement>('onboarding-host');
@@ -176,6 +187,31 @@ function boot(): void {
     },
   });
 
+  // ===== 启动恢复（@since v3.12，task_033）=====
+  // 读档必须先于 Phaser 创建：站位种子要在 preBoot 前就绪，恢复的单位也要赶在
+  // 首次 state 广播前进 store（否则场景先按网格落位、后到注入，同一单位出现两次落位事件）。
+  // 非 Electron（纯 vite dev）或读档失败 → 空注入，行为与从前完全一致。
+  const saveApi = gameSaveApi();
+  const saveCoordinator = saveApi ? createGameSaveCoordinator({ api: saveApi }) : null;
+  const injection: RestoreInjection = (await saveCoordinator?.restore()) ?? {
+    characters: [],
+    units: [],
+    positionsByUnitId: new Map(),
+  };
+  if (injection.characters.length > 0) {
+    worldStore.setState((current) => {
+      // 单位去重合并：store 里理论上还没有单位（runtime 未启动、无人写过），
+      // 但防御同一 id 重复投影 —— 真变了就是双单位，宁多一次过滤不出血。
+      const existingIds = new Set(current.units.map((unit) => unit.id));
+      const restoredUnits = injection.units.filter((unit) => !existingIds.has(unit.id));
+      return {
+        ...current,
+        characters: [...injection.characters],
+        units: [...current.units, ...restoredUnits],
+      };
+    });
+  }
+
   // ===== world 侧：Phaser 战场（BattlefieldScene 内部自带 world ↔ core 桥接层）=====
   const game = new Phaser.Game({
     type: Phaser.AUTO,
@@ -187,6 +223,8 @@ function boot(): void {
     callbacks: {
       preBoot: (booting) => {
         booting.registry.set(UNIT_SPRITE_SOURCE_KEY, unitSpriteSource);
+        // 恢复站位种子（task_033）：场景 create 时取走；没记录的单位按网格落位。
+        booting.registry.set(UNIT_POSITION_SEED_KEY, injection.positionsByUnitId);
       },
     },
   });
@@ -200,6 +238,10 @@ function boot(): void {
     },
   });
   const stopRuntime = runtime.start();
+
+  // ===== 存档落库（@since v3.12，task_033）=====
+  // 接在 runtime 之后、注入之后：先订阅后注入会把恢复的那批当成新变化回写一遍（见文件头时序说明）。
+  saveCoordinator?.start();
 
   // ===== 本地 CLI agent 检测（@since v3.8）=====
   // 主进程探测 → IPC → 这里并入 core 状态 → runtime 的 store 订阅广播给 hud。
@@ -231,6 +273,8 @@ function boot(): void {
       // 预览实例（Phaser）由向导屏在卸载时销毁；这里再兜一次底（向导没挂过时也不会有事）。
       appearancePreview.destroy();
       stopAgentDetection();
+      // 存档协调器先停（内部会冲刷未落盘的站位缓冲），再拆 runtime。
+      saveCoordinator?.stop();
       stopRuntime();
       unmountAdapter();
       unmountScreen();
@@ -240,13 +284,10 @@ function boot(): void {
   );
 }
 
-/** 装配入口：两条路径（立即执行 / DOMContentLoaded 后）都走同一个 try-catch，否则监听器里抛错会变成静默白屏。 */
+/** 装配入口：两条路径（立即执行 / DOMContentLoaded 后）都走同一个 catch，否则监听器里抛错会变成静默白屏。
+ *  why 用 promise catch 而不是 try-catch：boot 是 async（task_033 起要先读档），同步 throw 也会变成 rejection。 */
 function safeBoot(): void {
-  try {
-    boot();
-  } catch (error) {
-    reportBootFailure(error);
-  }
+  void boot().catch(reportBootFailure);
 }
 
 if (document.readyState === 'loading') {

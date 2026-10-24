@@ -6,7 +6,11 @@ import { Database } from './sqlite-adapter';
 
 const DEFAULT_DATA_DIR = 'stratix-data';
 const DEFAULT_FILENAME = 'stratix.db';
-const TARGET_SCHEMA_VERSION = 1;
+/**
+ * v2（@since v3.12，task_033）：新增 characters + unit_positions（游戏存档表，角色档案与单位站位）。
+ * DDL 与 src/app/services/persistence/game-save-dao.ts 的 ensureGameSaveTables 同构 —— 改一处必须同步另一处。
+ */
+const TARGET_SCHEMA_VERSION = 2;
 
 /** Valid table name characters (alphanumeric + underscore) */
 const VALID_TABLE_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -118,7 +122,49 @@ export class StratixDatabase {
     this.migrateZoneContextColumns();
     this.migrateZoneCoordinatorColumns();
     this.migrateNewTables();
+    this.migrateGameSaveTables();
     this.migrateSafetyIndexes();
+  }
+
+  /**
+   * 游戏存档表（@since v3.12，task_033）：角色档案 + 单位站位。
+   * IF NOT EXISTS 幂等：新库在 createTables 里建过，这里是旧库（schema_version 1）的升级路径。
+   */
+  private migrateGameSaveTables(): void {
+    const tables = this.getTableNames();
+
+    if (!tables.has('characters')) {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS characters (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          kind TEXT,
+          persona TEXT NOT NULL DEFAULT '',
+          level INTEGER NOT NULL DEFAULT 1,
+          exp INTEGER NOT NULL DEFAULT 0,
+          appearance TEXT,
+          body_type TEXT,
+          skin_id TEXT,
+          external_session_id TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )
+      `);
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_characters_kind ON characters(kind)');
+      log('info', 'Created characters table');
+    }
+
+    if (!tables.has('unit_positions')) {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS unit_positions (
+          character_id TEXT PRIMARY KEY,
+          x REAL NOT NULL,
+          y REAL NOT NULL,
+          updated_at INTEGER NOT NULL
+        )
+      `);
+      log('info', 'Created unit_positions table');
+    }
   }
 
   private migrateAgentColumns(): void {
@@ -735,6 +781,38 @@ export class StratixDatabase {
       CREATE INDEX IF NOT EXISTS idx_audit_actor ON zone_audit_log(actor_id);
       CREATE INDEX IF NOT EXISTS idx_audit_type ON zone_audit_log(event_type);
       CREATE INDEX IF NOT EXISTS idx_audit_time ON zone_audit_log(created_at);
+
+      -- ============================================
+      -- GAME SAVE TABLES（@since v3.12，task_033）
+      -- DDL 与 src/app/services/persistence/game-save-dao.ts 的 ensureGameSaveTables 同构。
+      -- ============================================
+
+      -- 角色档案表：core WorldState.characters 的落库形态（appearance 存 JSON）
+      CREATE TABLE IF NOT EXISTS characters (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        kind TEXT,
+        persona TEXT NOT NULL DEFAULT '',
+        level INTEGER NOT NULL DEFAULT 1,
+        exp INTEGER NOT NULL DEFAULT 0,
+        appearance TEXT,
+        body_type TEXT,
+        skin_id TEXT,
+        external_session_id TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      -- 单位站位表：characterId → 战场世界坐标（app 层防抖批量写入）
+      CREATE TABLE IF NOT EXISTS unit_positions (
+        character_id TEXT PRIMARY KEY,
+        x REAL NOT NULL,
+        y REAL NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      -- 索引
+      CREATE INDEX IF NOT EXISTS idx_characters_kind ON characters(kind);
     `;
     this.db.exec(sql);
   }

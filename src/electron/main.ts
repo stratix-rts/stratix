@@ -21,7 +21,16 @@ import {
   verifyAgentRoster,
 } from '../app/services/agent-detector';
 import { createNodeExec } from '../app/services/node-exec';
+import {
+  ensureGameSaveTables,
+  loadGameSnapshot,
+  upsertCharacters,
+  upsertUnitPositions,
+  type PersistedCharacterRecord,
+  type PersistedUnitPosition,
+} from '../app/services/persistence/game-save-dao';
 import type { DetectedAgent } from '../core/types';
+import { getDatabase } from '../stratix-database';
 import { dataStoreService } from '../stratix-gateway/dataStoreService';
 import { WebSocketOpenClawAdapter } from '../stratix-openclaw-adapter/WebSocketOpenClawAdapter';
 import { EmbeddedTailscale } from '../stratix-tailscale/EmbeddedTailscale';
@@ -208,6 +217,50 @@ function setupIPC() {
   // ==================== 本地 CLI agent 检测 IPC ====================
   // 渲染层启动时拉一次快照（补上「订阅之前就检测完」的那部分），之后靠推送更新。
   ipcMain.handle('agent:detected:snapshot', async () => detectedAgents);
+
+  // ==================== 游戏存档 IPC（@since v3.12，task_033）====================
+  // 渲染层没有 Node 能力（sql.js 适配器需要 fs），持久化一律经这三条通道进主进程 DAO。
+  // why 每条都查 isInitialized：setupIPC 虽在 initializeServices 之后，
+  //   但 DAO 独立兜底建表（IF NOT EXISTS），初始化位序变化时也不至于炸出无提示的异常。
+  ipcMain.handle('game:loadSnapshot', async () => {
+    try {
+      if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
+      const db = getDatabase().getDatabase();
+      ensureGameSaveTables(db);
+      return { ok: true, ...loadGameSnapshot(db) };
+    } catch (error: any) {
+      console.error('[Electron] game:loadSnapshot failed:', error);
+      return { ok: false, error: error?.message ?? String(error) };
+    }
+  });
+
+  ipcMain.handle('game:saveCharacters', async (_event, records: PersistedCharacterRecord[]) => {
+    try {
+      if (!Array.isArray(records)) return { ok: false, error: 'records must be an array' };
+      if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
+      const db = getDatabase().getDatabase();
+      ensureGameSaveTables(db);
+      upsertCharacters(db, records);
+      return { ok: true };
+    } catch (error: any) {
+      console.error('[Electron] game:saveCharacters failed:', error);
+      return { ok: false, error: error?.message ?? String(error) };
+    }
+  });
+
+  ipcMain.handle('game:saveUnitPositions', async (_event, entries: PersistedUnitPosition[]) => {
+    try {
+      if (!Array.isArray(entries)) return { ok: false, error: 'entries must be an array' };
+      if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
+      const db = getDatabase().getDatabase();
+      ensureGameSaveTables(db);
+      upsertUnitPositions(db, entries);
+      return { ok: true };
+    } catch (error: any) {
+      console.error('[Electron] game:saveUnitPositions failed:', error);
+      return { ok: false, error: error?.message ?? String(error) };
+    }
+  });
 
   // ==================== Dialog IPC ====================
   ipcMain.handle('dialog:openDirectory', async () => {

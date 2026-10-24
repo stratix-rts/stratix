@@ -8,6 +8,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 import type { DetectedAgent } from '../core/types';
+import type { PersistedCharacterRecord, PersistedUnitPosition } from '../app/services/persistence/game-save-dao';
 
 export interface ElectronAPI {
   // 通用服务调用
@@ -92,6 +93,19 @@ export interface ElectronAPI {
     snapshot: () => Promise<DetectedAgent[]>;
     /** 订阅检测更新（主进程每探测完一项推一次全量快照）；返回退订函数。 */
     onUpdate: (callback: (agents: DetectedAgent[]) => void) => () => void;
+  };
+
+  /**
+   * 游戏存档（@since v3.12，task_033）：角色档案 + 单位站位的持久化通道。
+   * SQLite 只在主进程（sql.js 适配器需要 Node fs），渲染层一律经这里走 IPC。
+   */
+  gameSave: {
+    /** 读完整快照（角色档案 + 全部站位）。 */
+    loadSnapshot: () => Promise<{ ok: boolean; characters?: PersistedCharacterRecord[]; unitPositions?: PersistedUnitPosition[]; error?: string }>;
+    /** 批量 upsert 角色档案。 */
+    saveCharacters: (records: PersistedCharacterRecord[]) => Promise<{ ok: boolean; error?: string }>;
+    /** 批量 upsert 单位站位。 */
+    saveUnitPositions: (entries: PersistedUnitPosition[]) => Promise<{ ok: boolean; error?: string }>;
   };
 
   /**
@@ -195,6 +209,13 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.on('agent:detected:update', handler);
       return () => ipcRenderer.off('agent:detected:update', handler);
     },
+  },
+
+  // 游戏存档（@since v3.12，task_033）：透传到主进程的 DAO（game:loadSnapshot / game:save*）。
+  gameSave: {
+    loadSnapshot: () => ipcRenderer.invoke('game:loadSnapshot'),
+    saveCharacters: (records: PersistedCharacterRecord[]) => ipcRenderer.invoke('game:saveCharacters', records),
+    saveUnitPositions: (entries: PersistedUnitPosition[]) => ipcRenderer.invoke('game:saveUnitPositions', entries),
   },
 
   // 开发期开关透传（@since v3.9，task_026）：只给白名单里的开关。

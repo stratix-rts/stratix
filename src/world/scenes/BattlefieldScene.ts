@@ -26,7 +26,7 @@ import {
 import { CameraController, DEFAULT_WORLD_BOUNDS } from '../camera';
 import { SelectionBox } from '../objects/selection-box';
 import { UnitLayer } from '../objects/unit-layer';
-import { UnitRegistry } from '../objects/unit-registry';
+import { UnitRegistry, UNIT_POSITION_SEED_KEY } from '../objects/unit-registry';
 import { UNIT_SPRITE_SOURCE_KEY, type UnitSpriteSource } from '../objects/unit-sprite-source';
 
 export const BATTLEFIELD_SCENE_KEY = 'battlefield';
@@ -97,6 +97,11 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     const spriteSource = (this.registry.get(UNIT_SPRITE_SOURCE_KEY) as UnitSpriteSource | undefined) ?? null;
     this.unitLayer = new UnitLayer(this, this.units, spriteSource);
 
+    // 恢复站位种子（@since v3.12，task_033）：组合根启动读档后放在 game.registry 里。
+    // 没接上（纯 vite dev / 读档失败）→ undefined，注册表全部按网格落位，行为与从前一致。
+    const restoredPositions = this.registry.get(UNIT_POSITION_SEED_KEY) as ReadonlyMap<string, Point> | undefined;
+    this.units.applyRestoredPositions(restoredPositions);
+
     this.view = new CameraController(this.cameras.main, {
       viewport: () => ({ width: this.scale.width, height: this.scale.height }),
       worldBounds: DEFAULT_WORLD_BOUNDS,
@@ -118,9 +123,15 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   // ==========================================================================
 
   syncUnits(units: readonly UnitView[]): void {
-    this.units.sync(units);
+    const result = this.units.sync(units);
     this.unitLayer.sync();
     this.emptyHint?.setVisible(units.length === 0);
+    // 落位上报（@since v3.12，task_033）：新增单位的坐标（恢复位或网格位）发回 core 方向，
+    // 由 app 层持久化订阅者防抖落库。只对新增单位发：位置真相在本层，后续移动由移动链路上报。
+    for (const id of result.added) {
+      const object = this.units.get(id);
+      if (object) this.bridge.unitPosition(id, object.position.x, object.position.y);
+    }
   }
 
   /** 空战场网格：横纵每 GRID_STEP 世界单位一条低对比线，给镜头运动提供参照。 */
