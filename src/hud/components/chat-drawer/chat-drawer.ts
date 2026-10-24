@@ -6,6 +6,8 @@
  *   把会话画成 Shadow DOM、把"用户打字 / 点发送 / 点关闭"翻译成回调，并订阅总线做
  *   "点战场单位 → 打开抽屉并切到该角色上下文"。
  *   来源：docs/REFACTOR_PLAN_V3.md §2 hud 层级 + task_034（transport 打桩，纯 UI 任务）。
+ *   @since v3.14（task_035 追加）：错误气泡（addMessage 带 error 标记 → 警示配色 + 内嵌「重试」钮）
+ *   与发送中「停止」钮 —— 回调 onStop / onRetry 由组合根桥接 chat-service，组件仍不认识 transport。
  * 输入：注入的 deps（subscribe：吃 WorldState 快照 —— 选择集驱动开抽屉/切上下文、
  *   characters 档案驱动头部；onSend：发送回调，由组合根桥接 chat-service —— task_035 接线）。
  * 输出：Shadow DOM 抽屉；流式公开方法 appendStream / finalizeStream / addMessage / setSending
@@ -61,6 +63,16 @@ export type CharacterChatDrawerDeps = Pick<HudBusAdapter, 'subscribe'> & {
    * 再通过 setSending / appendStream / finalizeStream 把应答喂回来。缺省 = 无桥接（演示接假流）。
    */
   readonly onSend?: (characterId: string, text: string) => void;
+  /**
+   * 停止回调（@since v3.14，task_035）：发送中点「停止」→ 桥接方中断 transport
+   * （AbortSignal → 杀进程树，见 chat-service.stop）。缺省 = 无桥接（按钮不产生效果）。
+   */
+  readonly onStop?: (characterId: string) => void;
+  /**
+   * 重试回调（@since v3.14，task_035）：错误气泡里的「重试」钮 → 桥接方重发该角色最近一次
+   * 失败的原文（chat-service.retry；不新增 user 气泡）。缺省 = 无桥接（按钮不产生效果）。
+   */
+  readonly onRetry?: (characterId: string) => void;
 };
 
 /** 自定义元素的对外形状（测试与挂载方按它断言；流式接口供 035 组合根桥接）。 */
@@ -354,6 +366,22 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
           }
           .bubble[data-side="user"] { align-self: end; border-color: var(--srf-accent, #6ea8ff); }
           .bubble[data-side="assistant"] { align-self: start; }
+          /* 错误气泡（task_035）：警示配色 + 内嵌重试钮，重试路径由 onRetry 桥接 chat-service.retry */
+          .bubble[data-error="true"] { border-color: var(--srf-danger, #e06c75); }
+          .bubble[data-error="true"] .bubble-text { color: var(--srf-danger, #e06c75); }
+          button.retry {
+            display: block;
+            margin-top: var(--srf-spacing-xs, 4px);
+            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-sm, 8px);
+            background: var(--srf-panel-elevated, #20262f);
+            color: var(--srf-danger, #e06c75);
+            border: var(--srf-border-width, 1px) solid var(--srf-danger, #e06c75);
+            border-radius: var(--srf-radius, 6px);
+            font-family: var(--srf-font-ui, sans-serif);
+            font-size: var(--srf-font-size-sm, 12px);
+            cursor: pointer;
+          }
+          button.retry:hover { background: var(--srf-danger, #e06c75); color: var(--srf-bg, #0f1116); }
           .bubble-text {
             font-size: var(--srf-font-size-sm, 12px);
             white-space: pre-wrap;
@@ -393,9 +421,20 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
           }
           textarea:focus { outline: var(--srf-border-width, 1px) solid var(--srf-accent, #6ea8ff); }
           textarea:disabled, button.send:disabled { opacity: 0.6; cursor: not-allowed; }
-          .composer-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--srf-spacing-sm, 8px); }
-          .hint { color: var(--srf-text-muted, #9aa3b2); font-size: var(--srf-font-size-sm, 12px); }
+          .composer-foot { display: flex; align-items: center; justify-content: flex-end; gap: var(--srf-spacing-sm, 8px); }
+          .hint { color: var(--srf-text-muted, #9aa3b2); font-size: var(--srf-font-size-sm, 12px); flex: 1; }
           .hint[data-tone="busy"] { color: var(--srf-warn, #f0c674); }
+          /* 停止钮（task_035）：只在发送中出现 —— 中断当前轮（onStop → chat-service.stop） */
+          button.stop {
+            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-md, 12px);
+            background: var(--srf-panel-elevated, #20262f);
+            color: var(--srf-warn, #f0c674);
+            border: var(--srf-border-width, 1px) solid var(--srf-warn, #f0c674);
+            border-radius: var(--srf-radius, 6px);
+            font-family: var(--srf-font-ui, sans-serif);
+            font-size: var(--srf-font-size-sm, 12px);
+            cursor: pointer;
+          }
           button.send {
             padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-md, 12px);
             background: var(--srf-accent, #6ea8ff);
@@ -424,6 +463,7 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
             <textarea data-role="draft" placeholder="对角色说点什么…（Enter 发送）" disabled></textarea>
             <div class="composer-foot">
               <span class="hint" data-role="send-hint"></span>
+              <button type="button" class="stop" data-role="stop" hidden>停止</button>
               <button type="button" class="send" data-role="send" disabled>发送</button>
             </div>
           </div>
@@ -457,12 +497,23 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
           this.send();
         });
 
-        // 关闭 / 发送：data-role 定位 → 展示态切换 或 发送动作。
+        // 关闭 / 停止 / 发送 / 重试：data-role 定位 → 动作。
         root.addEventListener('click', (ev: Event) => {
           const target = ev.target as HTMLElement | null;
           if (!target) return;
           if (target.closest?.('[data-role="close"]')) this.close();
           else if (target.closest?.('[data-role="send"]')) this.send();
+          else if (target.closest?.('[data-role="stop"]')) {
+            // 只在发送中且有查看对象时回调 —— 停止钮只在发送中可见，这里是双保险。
+            if (this._sending && this._sessions.viewing) {
+              this._deps?.onStop?.(this._sessions.viewing);
+            }
+          } else if (target.closest?.('[data-role="retry"]')) {
+            // 重试钮带所属角色 id（错误气泡可能属于非当前查看的角色）。
+            const button = target.closest<HTMLElement>('[data-role="retry"]');
+            const characterId = button?.dataset.character;
+            if (characterId) this._deps?.onRetry?.(characterId);
+          }
         });
       }
     }
@@ -516,6 +567,14 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
     }
 
     private renderBubble(message: CharacterChatMessage): string {
+      if (message.error) {
+        return `
+          <div class="bubble" data-role="bubble" data-message="${escapeHtml(message.id)}" data-side="assistant" data-error="true">
+            <div class="bubble-text">${escapeHtml(message.text)}</div>
+            <button type="button" class="retry" data-role="retry" data-character="${escapeHtml(message.characterId)}">重试</button>
+          </div>
+        `;
+      }
       return `
         <div class="bubble" data-role="bubble" data-message="${escapeHtml(message.id)}" data-side="${escapeHtml(message.role)}">
           <div class="bubble-text">${escapeHtml(message.text)}</div>
@@ -550,10 +609,13 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
     private syncComposer(): void {
       const box = this.shadowRoot?.querySelector<HTMLTextAreaElement>('[data-role="draft"]');
       const send = this.shadowRoot?.querySelector<HTMLButtonElement>('[data-role="send"]');
+      const stop = this.shadowRoot?.querySelector<HTMLButtonElement>('[data-role="stop"]');
       const hint = this.shadowRoot?.querySelector<HTMLElement>('[data-role="send-hint"]');
       const canType = this._sessions.viewing !== null && !this._sending;
       if (box) box.disabled = !canType;
       if (send) send.disabled = !canType || sendableDraft(this._draft) === null;
+      // 停止钮只在发送中出现（此刻输入与发送都被禁，它是唯一可点的动作）。
+      if (stop) stop.hidden = !this._sending;
       if (hint) {
         if (this._sending) {
           hint.textContent = '发送中…';

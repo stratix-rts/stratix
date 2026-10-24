@@ -8,6 +8,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 import type { DetectedAgent } from '../core/types';
+import type { CliChatEventEnvelope, CliChatIpcApi, CliChatRunRequest } from '../app/services/chat-transport-bridge';
 import type { PersistedCharacterRecord, PersistedUnitPosition } from '../app/services/persistence/game-save-dao';
 
 export interface ElectronAPI {
@@ -107,6 +108,12 @@ export interface ElectronAPI {
     /** 批量 upsert 单位站位。 */
     saveUnitPositions: (entries: PersistedUnitPosition[]) => Promise<{ ok: boolean; error?: string }>;
   };
+
+  /**
+   * 角色对话 CLI transport（@since v3.14，task_035）：子进程只在主进程跑，
+   * 事件经 chat:event 逐条推回，结束补一条 end 信封（形状见 chat-transport-bridge.ts）。
+   */
+  cliChat: CliChatIpcApi;
 
   /**
    * 开发期开关透传（@since v3.9，task_026）。
@@ -216,6 +223,28 @@ const electronAPI: ElectronAPI = {
     loadSnapshot: () => ipcRenderer.invoke('game:loadSnapshot'),
     saveCharacters: (records: PersistedCharacterRecord[]) => ipcRenderer.invoke('game:saveCharacters', records),
     saveUnitPositions: (entries: PersistedUnitPosition[]) => ipcRenderer.invoke('game:saveUnitPositions', entries),
+  },
+
+  /**
+   * 角色对话 CLI transport（task_035）：
+   *   run —— 发起一轮（事件按 runId 过滤后回调；end 信封到达即自摘监听，不泄漏）；
+   *   abort —— 按 runId 中断（主进程 killTree）。
+   */
+  cliChat: {
+    run: (request: CliChatRunRequest, onEvent: (envelope: CliChatEventEnvelope) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, envelope: CliChatEventEnvelope): void => {
+        if (envelope?.runId !== request.runId) return;
+        onEvent(envelope);
+        if (envelope.end) ipcRenderer.off('chat:event', handler);
+      };
+      ipcRenderer.on('chat:event', handler);
+      return ipcRenderer.invoke('chat:run', request).then((result) => {
+        // 被拒（校验失败 / runId 冲突）：不会再有任何事件，立刻摘监听。
+        if (!result?.ok) ipcRenderer.off('chat:event', handler);
+        return result as { ok: boolean; error?: string };
+      });
+    },
+    abort: (runId: string) => ipcRenderer.invoke('chat:abort', runId) as Promise<{ ok: boolean }>,
   },
 
   // 开发期开关透传（@since v3.9，task_026）：只给白名单里的开关。

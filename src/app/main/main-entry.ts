@@ -21,6 +21,10 @@
  *   订阅 core 广播完成（档案 diff 落库 + 站位防抖落库），本文件只负责接线和时序：
  *   必须先 restore 注入、再 coordinator.start()，否则注入的那批会被当成新变化回写一遍。
  *
+ * @since v3.14（task_035）角色对话回路：挂上角色聊天抽屉并桥到 chat-service ——
+ *   onSend / onStop / onRetry 三个回调 + 会话 id 回写 worldStore（存档协调器自动落库）；
+ *   transport 经 IPC 桥在主进程跑（chat-transport-bridge），本文件只接线。
+ *
  * 加载路径：dev 走 vite dev server 的 /src/app/main/index.html；
  *   正式构建走 dist/frontend/src/app/main/index.html（由 vite.config.ts 的 input 产出）。
  *   本页是**唯一**入口：旧 Vue 入口链随 task_017 退役，STRATIX_LEGACY 开关已下线，
@@ -39,6 +43,7 @@ import { createThemeController } from '../../hud/theme/theme-controller';
 import defaultCss from '../../hud/theme/tokens-default.css?inline';
 import pixelCss from '../../hud/theme/tokens-pixel.css?inline';
 import { defineStratButton } from '../../hud/widgets/strat-button';
+import { mountCharacterChatDrawer, CHARACTER_CHAT_DRAWER_TAG, type StratCharacterChatDrawerElement } from '../../hud/components/chat-drawer/chat-drawer';
 import { CharacterComposer } from '../../world/appearance/character-composer';
 import { PartRegistry } from '../../world/appearance/part-registry';
 import { UNIT_SPRITE_SOURCE_KEY } from '../../world/objects/unit-sprite-source';
@@ -52,6 +57,8 @@ import {
 import { createBrowserAppearanceEnvironment } from '../services/appearance-environment';
 import { createPhaserPreviewGame } from '../services/appearance-preview-game';
 import { createAppearancePreviewService } from '../services/appearance-preview-service';
+import { createChatService } from '../services/chat-service';
+import { cliChatIpcApi, createIpcChatTransportFactory } from '../services/chat-transport-bridge';
 import { createUnitSpriteSource } from '../services/unit-sprite-source';
 
 import { isOnboardingForced } from './dev-flags';
@@ -139,6 +146,50 @@ async function boot(): Promise<void> {
   const screen = createMainScreen(adapter);
   const unmountScreen = screen.mount(hudRoot);
   const unmountAdapter = adapter.mount();
+
+  // ===== 角色对话回路（@since v3.14，task_035）=====
+  // 抽屉（hud 组件）↔ chat-service（app）↔ IPC 桥 → 主进程跑 CLI transport（渲染层无 child_process）。
+  // 会话 id 回写 worldStore.characters.externalSessionId —— 存档协调器（task_033）的档案 diff
+  // 订阅会自动把它落 SQLite，这里只改状态，不碰 IO。
+  // 非 Electron（纯 vite dev）：没有 cliChat IPC 面 → 不接服务，发送无桥接（dev 入口的 DEMO 假流
+  // 覆盖那条路径），行为与 034 之前完全一致。
+  const chatHost = document.createElement('div');
+  hudRoot.appendChild(chatHost);
+  const unmountCharacterDrawer = mountCharacterChatDrawer(
+    { subscribe: (handler) => adapter.subscribe(handler) },
+    chatHost
+  );
+  const characterDrawer = chatHost.querySelector(CHARACTER_CHAT_DRAWER_TAG) as StratCharacterChatDrawerElement | null;
+  const cliChat = cliChatIpcApi();
+  if (characterDrawer && cliChat) {
+    const chatService = createChatService({
+      view: characterDrawer,
+      getState: () => worldStore.getState(),
+      createTransport: createIpcChatTransportFactory(cliChat),
+      persistSessionId: (characterId, sessionId) => {
+        worldStore.setState((current) => {
+          const index = current.characters.findIndex((c) => c.id === characterId);
+          if (index < 0) return current;
+          const existing = current.characters[index];
+          if (existing.externalSessionId === sessionId) return current;
+          const characters = [...current.characters];
+          characters[index] = { ...existing, externalSessionId: sessionId };
+          return { ...current, characters };
+        });
+      },
+    });
+    // 二次注入 deps：换上带对话回调的完整面（订阅在首次注入时已绑，handleState 是元素方法，不受影响）。
+    characterDrawer.deps = {
+      subscribe: (handler) => adapter.subscribe(handler),
+      onSend: (characterId, text) => {
+        void chatService.send(characterId, text);
+      },
+      onStop: (characterId) => chatService.stop(characterId),
+      onRetry: (characterId) => {
+        void chatService.retry(characterId);
+      },
+    };
+  }
 
   // ===== 形象预览（@since v3.10，task_028）=====
   // 组合根是唯一能同时认识 hud 与 world 的地方：向导屏要 canvas 预览（hud），
@@ -272,6 +323,8 @@ async function boot(): Promise<void> {
       onboarding.dispose();
       // 预览实例（Phaser）由向导屏在卸载时销毁；这里再兜一次底（向导没挂过时也不会有事）。
       appearancePreview.destroy();
+      // 角色抽屉先卸（退订总线；在跑的对话由主进程超时 / 页面销毁兜底）。
+      unmountCharacterDrawer();
       stopAgentDetection();
       // 存档协调器先停（内部会冲刷未落盘的站位缓冲），再拆 runtime。
       saveCoordinator?.stop();

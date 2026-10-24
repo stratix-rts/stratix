@@ -32,6 +32,12 @@ export interface CharacterChatMessage {
   readonly text: string;
   /** 毫秒时间戳。 */
   readonly at: number;
+  /**
+   * 错误气泡标记（@since v3.14，task_035）：transport 失败 / 超时时 assistant 气泡的错误态 ——
+   * 组件按它渲染警示配色 + 「重试」按钮（重发由组合根桥接的 onRetry 驱动 chat-service）。
+   * 可选增补：老调用点不带它照旧合法。
+   */
+  readonly error?: boolean;
 }
 
 /** addMessage 的入参形状：id / at 缺省由存储生成（测试可显式传入做确定性断言）。 */
@@ -41,6 +47,8 @@ export interface CharacterChatMessageInput {
   readonly text: string;
   readonly id?: string;
   readonly at?: number;
+  /** 错误气泡标记（@since v3.14，task_035；语义见 CharacterChatMessage.error）。 */
+  readonly error?: boolean;
 }
 
 /**
@@ -164,6 +172,7 @@ export function createCharacterChatSessions(options: ChatSessionStoreOptions = {
         role: input.role,
         text,
         at: input.at ?? now(),
+        error: input.error,
       };
       commit(characterId, message);
       return message;

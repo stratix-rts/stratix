@@ -21,6 +21,8 @@ import {
   verifyAgentRoster,
 } from '../app/services/agent-detector';
 import { createNodeExec } from '../app/services/node-exec';
+import { createTransportFor } from '../app/services/cli-transport';
+import type { CliChatEventEnvelope, CliChatRunRequest } from '../app/services/chat-transport-bridge';
 import {
   ensureGameSaveTables,
   loadGameSnapshot,
@@ -29,7 +31,7 @@ import {
   type PersistedCharacterRecord,
   type PersistedUnitPosition,
 } from '../app/services/persistence/game-save-dao';
-import type { DetectedAgent } from '../core/types';
+import { AGENT_KINDS, MAX_EXTERNAL_SESSION_ID_LEN, type AgentKind, type DetectedAgent } from '../core/types';
 import { getDatabase } from '../stratix-database';
 import { dataStoreService } from '../stratix-gateway/dataStoreService';
 import { WebSocketOpenClawAdapter } from '../stratix-openclaw-adapter/WebSocketOpenClawAdapter';
@@ -52,6 +54,12 @@ const BACKEND_PORT = 7524;
 // 检测结果经 IPC 交给渲染层并入 WorldState.detectedAgents（广播出口仍是 core/runtime.ts 的 store 订阅）。
 let detectedAgents: DetectedAgent[] = [];
 let detectionAbort: AbortController | null = null;
+
+// ==================== 角色对话 CLI transport（task_035）====================
+// 状态放主进程：渲染层没有 child_process（nodeIntegration 关闭），子进程在这里拉起；
+// 事件逐条推回渲染层（chat:event 信封，见 chat-transport-bridge.ts 的 CliChatEventEnvelope）。
+// runId 由渲染层生成（全局唯一），abort 也按 runId 路由到对应的 AbortController。
+const chatRuns = new Map<string, AbortController>();
 
 // Helper function for safe JSON parsing
 function safeParseJson<T>(data: string, fallback: T): T {
@@ -260,6 +268,76 @@ function setupIPC() {
       console.error('[Electron] game:saveUnitPositions failed:', error);
       return { ok: false, error: error?.message ?? String(error) };
     }
+  });
+
+  // ==================== 角色对话 CLI transport IPC（task_035）===================
+  // 渲染层的 chat-service 经桥接层（chat-transport-bridge）调这两条通道：
+  //   chat:run   —— 拉起一轮对话，事件经 chat:event 逐条推回，结束后补一条 end 信封；
+  //   chat:abort —— 按 runId 中断（runtime 内部 killTree 杀整棵进程树）。
+  // 参数校验从严：IPC 是渲染层可信度最低的入口，坏形状一律拒发（拒绝即回 {ok:false}，
+  // 桥接层会把它转成 spawn_failed 错误事件，用户在抽屉里看到错误气泡而不是白屏）。
+  ipcMain.handle('chat:run', async (_event, request: CliChatRunRequest) => {
+    if (typeof request?.runId !== 'string' || request.runId.length === 0 || request.runId.length > 64) {
+      return { ok: false, error: 'bad runId' };
+    }
+    if (typeof request?.kind !== 'string' || !(AGENT_KINDS as readonly string[]).includes(request.kind)) {
+      return { ok: false, error: `unknown agent kind: ${String(request?.kind)}` };
+    }
+    if (typeof request?.prompt !== 'string' || request.prompt.length === 0 || request.prompt.length > 200_000) {
+      return { ok: false, error: 'bad prompt' };
+    }
+    if (
+      request.sessionId != null &&
+      (typeof request.sessionId !== 'string' || request.sessionId.length > MAX_EXTERNAL_SESSION_ID_LEN)
+    ) {
+      return { ok: false, error: 'bad sessionId' };
+    }
+    if (chatRuns.has(request.runId)) {
+      return { ok: false, error: 'runId already active' };
+    }
+    // 超时收紧到 [10s, 10min]（渲染层缺省 180s；不信任渲染层传来的任意值）。
+    const timeoutMs =
+      typeof request.timeoutMs === 'number' && Number.isFinite(request.timeoutMs)
+        ? Math.min(Math.max(Math.floor(request.timeoutMs), 10_000), 600_000)
+        : 180_000;
+
+    const runId = request.runId;
+    const kind = request.kind as AgentKind;
+    const controller = new AbortController();
+    chatRuns.set(runId, controller);
+
+    // 异步跑（invoke 立刻返回）；事件推到窗口销毁为止，结束必补 end（渲染层靠它收尾迭代器）。
+    void (async () => {
+      const send = (envelope: CliChatEventEnvelope): void => {
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        mainWindow.webContents.send('chat:event', envelope);
+      };
+      try {
+        const transport = createTransportFor(kind, {}, { logger: (line) => console.log(`[chat:${runId}] ${line}`) });
+        for await (const event of transport.spawn(request.prompt, {
+          sessionId: request.sessionId ?? null,
+          signal: controller.signal,
+          timeoutMs,
+        })) {
+          send({ runId, event });
+        }
+      } catch (error: any) {
+        // runtime 不该抛（内部全转 error 事件），这里兑底：失败也要让渲染层收到 error + end。
+        console.error(`[chat:${runId}] transport 异常:`, error);
+        send({ runId, event: { type: 'error', message: String(error?.message ?? error), code: 'cli_error' } });
+      } finally {
+        chatRuns.delete(runId);
+        send({ runId, end: true });
+      }
+    })();
+
+    return { ok: true };
+  });
+
+  ipcMain.handle('chat:abort', async (_event, runId: unknown) => {
+    if (typeof runId !== 'string') return { ok: false };
+    chatRuns.get(runId)?.abort();
+    return { ok: true };
   });
 
   // ==================== Dialog IPC ====================
@@ -659,6 +737,9 @@ app.on('before-quit', () => {
   detectionAbort?.abort();
   detectionAbort = null;
 
+  // 中断在跑的角色对话（killTree 杀进程树；渲染层随后销毁，end 信封送不送得到都无所谓）
+  for (const controller of chatRuns.values()) controller.abort();
+  chatRuns.clear();
   // 停止 Tailscale
   tailscale?.stop().catch((err) => console.error('[Electron] Tailscale stop failed:', err));
   console.log('[Electron] Tailscale stopped');

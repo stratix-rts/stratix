@@ -1475,13 +1475,13 @@
       "description": "app: 对话回路接线——chat-drawer↔CliTransport 往返+流式回显+错误中断处理-模块",
       "template": "task",
       "priority": "P1",
-      "status": "pending",
+      "status": "completed",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_035.md",
       "created_at": "2026-10-24T10:11:09.059545",
-      "updated_at": "2026-10-24T10:11:09.059563",
+      "updated_at": "2026-10-24T11:53:50.219658",
       "dependencies": [
         "task_034"
       ],
@@ -1491,9 +1491,9 @@
         "iteration": 0,
         "max_iterations": 7,
         "quality_checks": {
-          "tests_passed": false,
-          "lint_passed": false,
-          "acceptance_met": false
+          "tests_passed": true,
+          "lint_passed": true,
+          "acceptance_met": true
         },
         "issues": [],
         "optimization_history": []

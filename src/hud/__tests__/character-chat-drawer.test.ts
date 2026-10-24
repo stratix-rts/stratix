@@ -64,19 +64,30 @@ function makeState(partial: Partial<WorldState> = {}): WorldState {
   };
 }
 
+/** task_035 追加：停止 / 重试回调的记录器（与 sent 同一模式）。 */
+interface ExtraDeps {
+  onStop?: (characterId: string) => void;
+  onRetry?: (characterId: string) => void;
+}
+
 interface Harness {
   readonly panel: StratCharacterChatDrawerElement;
   readonly host: HTMLElement;
   /** onSend 回调收到的 (characterId, text) 依次记录。 */
   readonly sent: Array<{ characterId: string; text: string }>;
+  /** onStop / onRetry 收到的 characterId 依次记录（task_035）。 */
+  readonly stopped: string[];
+  readonly retried: string[];
   /** 模拟 core 广播一份新状态（走组件订阅的真实链路）。 */
   emit(state: WorldState): void;
   subscriberCount(): number;
   unmount(): void;
 }
 
-function mountPanel(onSend?: (characterId: string, text: string) => void): Harness {
+function mountPanel(onSend?: (characterId: string, text: string) => void, extra: ExtraDeps = {}): Harness {
   const sent: Array<{ characterId: string; text: string }> = [];
+  const stopped: string[] = [];
+  const retried: string[] = [];
   const subs = new Set<(state: WorldState) => void>();
   const deps: CharacterChatDrawerDeps = {
     subscribe: (handler) => {
@@ -84,6 +95,14 @@ function mountPanel(onSend?: (characterId: string, text: string) => void): Harne
       return () => { subs.delete(handler); };
     },
     onSend: onSend ?? ((characterId, text) => { sent.push({ characterId, text }); }),
+    onStop: (characterId) => {
+      stopped.push(characterId);
+      extra.onStop?.(characterId);
+    },
+    onRetry: (characterId) => {
+      retried.push(characterId);
+      extra.onRetry?.(characterId);
+    },
   };
 
   const host = document.createElement('div');
@@ -96,6 +115,8 @@ function mountPanel(onSend?: (characterId: string, text: string) => void): Harne
     panel,
     host,
     sent,
+    stopped,
+    retried,
     emit: (state) => { subs.forEach((handler) => handler(state)); },
     subscriberCount: () => subs.size,
     unmount: () => { unmountPanel(); host.remove(); },
@@ -601,5 +622,79 @@ describe('DEMO 假流：定时器驱动的发送 → 流式 → 收束', () => {
     expect(h.panel.shadowRoot?.querySelector<HTMLTextAreaElement>('[data-role="draft"]')?.disabled).toBe(false);
 
     h.unmount();
+  });
+});
+
+// ============================================================================
+// task_035 追加：错误气泡（重试）与发送中「停止」钮 —— 对话回路的 UI 面
+// ============================================================================
+
+describe('组件：错误气泡与停止钮（task_035）', () => {
+  test('error 标记的 assistant 消息 → 警示配色气泡 + 内嵌重试钮；点击回调 onRetry(characterId)', () => {
+    const h = mountPanel();
+    h.emit(makeState({ characters: [character('c1')], units: [unit('u1', 'c1')] }));
+    h.panel.open('c1');
+
+    h.panel.addMessage({ characterId: 'c1', role: 'user', text: '在吗' });
+    h.panel.addMessage({ characterId: 'c1', role: 'assistant', text: '⚠ 调用超时：等太久', error: true });
+
+    const bubbles = bubblesOf(h.panel);
+    expect(bubbles).toHaveLength(2);
+    const errorBubble = bubbles[1];
+    expect(errorBubble.getAttribute('data-error')).toBe('true');
+
+    const retry = errorBubble.querySelector<HTMLButtonElement>('[data-role="retry"]');
+    expect(retry?.textContent).toBe('重试');
+    retry?.click();
+    expect(h.retried).toEqual(['c1']); // 回调带气泡所属角色（不一定是当前查看对象）
+
+    // 重试钮的 data-character 转义过：恶意 id 不逃逸属性域（换个带标记的角色复现）。
+    const evilId = 'ev"><script>alert(1)</script>';
+    h.emit(makeState({ characters: [character(evilId), character('c1')], units: [unit('u1', 'c1')] }));
+    h.panel.open(evilId);
+    h.panel.addMessage({ role: 'assistant', text: '坏 id 的错误', error: true });
+    const evilBubble = bubblesOf(h.panel).at(-1);
+    const evilButton = evilBubble?.querySelector<HTMLElement>('[data-role="retry"]');
+    // 转义的目标是**结构安全**：属性域没被括号炸弹擑开 —— 没有真的 script 元素被建出来；
+    // 而 dataset 读回来是原 id（回调路由需要原文，不能转义两次）。
+    expect(evilBubble?.querySelector('script')).toBeNull();
+    expect(evilButton?.dataset.character).toBe(evilId);
+    evilButton?.click();
+    expect(h.retried.at(-1)).toBe(evilId); // 重试回调路由到原 id
+    h.unmount();
+  });
+
+  test('停止钮只在发送中出现；点击回调 onStop(当前查看角色)；缺省 deps 不炸', () => {
+    const h = mountPanel();
+    h.emit(makeState({ characters: [character('c1')], units: [unit('u1', 'c1')] }));
+    h.panel.open('c1');
+
+    const stop = h.panel.shadowRoot?.querySelector<HTMLButtonElement>('[data-role="stop"]');
+    expect(stop).toBeTruthy();
+    expect(stop?.hidden).toBe(true); // 平时隐藏
+
+    h.panel.setSending(true);
+    const visibleStop = h.panel.shadowRoot?.querySelector<HTMLButtonElement>('[data-role="stop"]');
+    expect(visibleStop?.hidden).toBe(false);
+    visibleStop?.click();
+    expect(h.stopped).toEqual(['c1']);
+
+    h.panel.setSending(false);
+    expect(h.panel.shadowRoot?.querySelector<HTMLButtonElement>('[data-role="stop"]')?.hidden).toBe(true);
+
+    // 未发送时点不到；没接 onStop 的组件（纯 UI 演示路径）也不炸。
+    visibleStop?.click();
+    expect(h.stopped).toEqual(['c1']);
+    h.unmount();
+  });
+
+  test('会话存储：error 标记随消息落库（重渲染不丢）', () => {
+    const store = createCharacterChatSessions({ nextId: () => 'm1', now: () => 1 });
+    store.setViewing('a');
+    const committed = store.addMessage({ role: 'assistant', text: '⚠ 调用超时', error: true });
+    expect(committed?.error).toBe(true);
+    expect(store.messages('a')[0]?.error).toBe(true);
+    // 普通消息不带标记。
+    expect(store.addMessage({ role: 'user', text: '好的' })?.error).toBeUndefined();
   });
 });
