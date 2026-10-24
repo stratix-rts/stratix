@@ -1,0 +1,344 @@
+/**
+ * 文件职责：**角色任务执行服务**（task_037）—— 每角色 FIFO 队列、并发 1，把 core/task 派出的
+ *   queued 任务经 CLI transport 执行完一个回合，并把相位回报给 core（start / complete / fail）。
+ * 输入：core 总线上的 task.* 生命周期事件（task.queued 出队、其余转发落库）；
+ *   WorldState 快照（characters + detectedAgents，守门用）；注入的 transport 工厂。
+ * 输出：core TaskManager 的相位迁移调用（写 WorldState.tasks + 单位忙闲派生 + 再发事件）；
+ *   任务落库回调（tasks 表：状态快照随事件落，**全文输出**随 complete 落 —— 状态里只有摘要）。
+ * 禁止事项：
+ *   1. import child_process / node-process / cli-transport 的**实现**文件 —— 本服务跑在渲染层
+ *      bundle 里，子进程一律在 Electron 主进程（经 IPC 桥），这里只 import transport.ts 的纯类型；
+ *   2. 在这里认识任何一家 CLI 的字段 —— 事件翻译在 adapters，这里只认公共 TransportEvent 词表；
+ *   3. 引入新依赖 —— core 契约 + 注入端口，仅此而已；
+ *   4. 自动重试失败任务 —— 规格⑤明确：failed 即终态，手动重派是 038 的 UI 动作（新任务）。
+ *
+ * ============ 复用 chat IPC 链路（vs 新开 task:* 通道）的选择与理由 ============
+ * 任务执行复用 035 的 chat:run / chat:abort IPC 通道 + chat-transport-bridge 的工厂：
+ *   - 该通道本来就是通用的「kind + prompt + sessionId + timeout → 事件流」单轮执行管道，
+ *     不含任何聊天语义（聊天语义全在 chat-service 里），任务需要的正是同一形状；
+ *   - runId 路由保证并发轮次互不串台，任务与聊天共用通道不会互相污染事件流；
+ *   - 新开 task:* 三条通道（main + preload + 桥）零增益、双倍维护面 —— 主进程侧 transport
+ *     构造逻辑一模一样。选择复用，若将来任务需要 chat 不具备的执行参数（如多轮工具循环），
+ *     再分家不迟（那时再在两侧文件头同步改说明）。
+ *
+ * ============ 任务会话与聊天会话隔离（规格④）============
+ * 任务执行**每次都是独立会话**：spawn 恒传 sessionId=null（一次性会话，跑完即弃），
+ *   - 不读角色的 externalSessionId（那是聊天会话的落库回执）；
+ *   - 不把 CLI 回报的 session id 回写角色档案（回写会污染下一次聊天的续会话判断）；
+ *   - session 事件直接忽略。
+ * 推论：任务没有「续发」，每一轮都是首发 → **persona 每次内嵌**（buildTaskPrompt，
+ *   与 chat-service 的 buildFirstPrompt 同一拼装式样，措辞换成任务语境）。
+ *
+ * ============ 落库口径（独立 tasks 表，与聊天审计分离）============
+ * persistTask 回调随每条 task.* 事件落状态快照（queued / running / failed 的 output 都很短）；
+ * completed 单独走：本服务持有执行**全文输出**（transport 流式拼接），complete 时全文落库 ——
+ * 状态里只存摘要（MAX_TASK_SUMMARY_LEN，见 core/task/machine.summarizeTaskOutput），
+ * 全文只在 SQLite。fire-and-forget：落库失败记日志，不绑架任务执行回路（与 035 同一口径）。
+ *
+ * @since v3.16（task_037）。
+ */
+
+import { onWorldEvent } from '../../core/bus';
+import type {
+  AgentKind,
+  CharacterTask,
+  CharacterView,
+  TaskStatus,
+  WorldEvent,
+  WorldState,
+} from '../../core/types';
+import type { TaskManager } from '../../core/task';
+import type { SpawnOptions, TransportErrorCode, TransportEvent } from './cli-transport/transport';
+
+// ============================================================================
+// 端口与常量
+// ============================================================================
+
+/** transport 端口：能跑一轮对话即可（结构上即 cli-transport 的 CliTransport / chat-service 的口）。 */
+export interface TaskTransportPort {
+  spawn(prompt: string, options?: SpawnOptions): AsyncIterable<TransportEvent>;
+}
+
+/** transport 工厂：agent 种类 → transport（生产复用 chat-transport-bridge 的 IPC 工厂；单测打桩）。 */
+export type TaskTransportFactory = (kind: AgentKind) => TaskTransportPort;
+
+/**
+ * 任务落库记录（与 SQLite tasks 表一行同构）。
+ * completed 的 output 是**全文**（调用方传全文覆盖事件里的摘要）。
+ */
+export interface TaskPersistRecord {
+  readonly id: string;
+  readonly characterId: string;
+  readonly prompt: string;
+  readonly status: TaskStatus;
+  readonly output: string;
+  readonly createdAt: number;
+  readonly startedAt: number | null;
+  readonly endedAt: number | null;
+}
+
+/** 任务单轮执行超时（ms）。CLI 跑任务比聊天长得多，取 035 档主进程上限：10 分钟。 */
+export const DEFAULT_TASK_TIMEOUT_MS = 600_000;
+
+// ---- 守门与占位文案（导出供单测断言，别在测试里抄一遍字符串）----
+
+/** agent 未检出 / 未安装（出队守门拦截 → 任务直接 failed）。 */
+export const TASK_MSG_NOT_INSTALLED = '该 CLI 未安装，任务无法执行';
+
+/** 角色没绑 agent 种类（老档案 / 引导没走完）。 */
+export const TASK_MSG_UNBOUND = '该角色未绑定 CLI agent，任务无法执行';
+
+/** 角色档案不在状态里（刚被删 / 快照未到）。 */
+export const TASK_MSG_NO_PROFILE = '未找到该角色的档案，任务无法执行';
+
+/** 传输层错误码 → 任务失败原因前缀。 */
+const ERROR_LABELS: Readonly<Record<TransportErrorCode, string>> = {
+  spawn_failed: 'CLI 拉起失败',
+  aborted: '已中断',
+  timeout: '执行超时',
+  nonzero_exit: 'CLI 异常退出',
+  cli_error: 'CLI 报错',
+};
+
+// ============================================================================
+// 纯函数（可独立单测）
+// ============================================================================
+
+/**
+ * 出队守门：任务能不能跑。
+ * 与 chat-service 的 guard 同三条（在档 / 已绑 / 已检出），但拦截落点不同：
+ * chat 是错误气泡（对话不入库），task 是任务直接 failed（状态与库里都看得见原因）。
+ */
+export function guardTaskCharacter(
+  state: Pick<WorldState, 'characters' | 'detectedAgents'>,
+  characterId: string
+): { readonly ok: true; readonly character: CharacterView; readonly kind: AgentKind } | { readonly ok: false; readonly reason: string } {
+  const character = state.characters.find((c) => c.id === characterId);
+  if (!character) return { ok: false, reason: TASK_MSG_NO_PROFILE };
+  const kind = character.agentKind;
+  if (!kind) return { ok: false, reason: TASK_MSG_UNBOUND };
+  const detected = state.detectedAgents?.some((agent) => agent.kind === kind && agent.installed);
+  if (!detected) return { ok: false, reason: TASK_MSG_NOT_INSTALLED };
+  return { ok: true, character, kind };
+}
+
+/**
+ * 任务指令拼装：角色设定引导语 + persona + 任务指令。
+ * 任务会话是**一次性**的（每轮独立会话，无续发），所以每次都内嵌 persona ——
+ * 与 chat-service.buildFirstPrompt 的差别只有措辞（任务语境 vs 对话语境），拼装式样刻意一致。
+ */
+export function buildTaskPrompt(character: CharacterView, taskPrompt: string): string {
+  const persona = character.persona.trim();
+  if (persona.length === 0) return taskPrompt;
+  return [
+    `你将扮演「${character.name}」这个角色执行任务，请全程保持角色设定一致。`,
+    `【角色设定】\n${persona}`,
+    `【任务指令】\n${taskPrompt}`,
+  ].join('\n\n');
+}
+
+/** 传输层错误 → 任务失败原因（带码的人话，落 failed.output 与库）。 */
+export function taskErrorText(code: TransportErrorCode, message: string): string {
+  return `${ERROR_LABELS[code]}：${message}`;
+}
+
+/** 事件快照 → 落库记录（completed 之外的相位直接用快照；output 即失败原因/空串）。 */
+export function taskEventToRecord(task: CharacterTask): TaskPersistRecord {
+  return {
+    id: task.id,
+    characterId: task.characterId,
+    prompt: task.prompt,
+    status: task.status,
+    output: task.output,
+    createdAt: task.createdAt,
+    startedAt: task.startedAt,
+    endedAt: task.endedAt,
+  };
+}
+
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+// ============================================================================
+// 服务
+// ============================================================================
+
+export interface TaskServiceDeps {
+  /** 世界快照读取口（组合根传 worldStore.getState；单测传夹具）。 */
+  readonly getState: () => Pick<WorldState, 'characters' | 'detectedAgents'>;
+  /** transport 工厂（生产：复用 chat-transport-bridge 的 IPC 工厂；单测：打桩）。 */
+  readonly createTransport: TaskTransportFactory;
+  /** core 任务域写入面（相位回报：start / complete / fail）。与 runtime 注入同一个实例。 */
+  readonly taskManager: TaskManager;
+  /** 任务落库口（缺省不落库）。同步签名、实现方内部异步 —— fire-and-forget，失败只记日志。 */
+  readonly persistTask?: (record: TaskPersistRecord) => void;
+  /** 单轮执行超时；缺省 DEFAULT_TASK_TIMEOUT_MS（10min，主进程上限同档）。 */
+  readonly timeoutMs?: number;
+  /** 日志口；缺省静默。 */
+  readonly logger?: (line: string) => void;
+}
+
+export interface TaskService {
+  /**
+   * 接上总线（订阅 task.* 生命周期事件）。必须在 runtime.start 之后调：core/task 的
+   * assignTask 在命令处理里同步发 task.queued，晚订阅只会漏掉启动前的派发（无害）。
+   * 返回 stop；重复 start 是 no-op。
+   */
+  start(): () => void;
+  /** 某角色是否有一轮任务在跑（观察口：测试 / 调试）。 */
+  isBusy(characterId: string): boolean;
+  /** 某角色的待执行队列长度（观察口：038 的队列可见性读 WorldState，这里仅供测试）。 */
+  queueLength(characterId: string): number;
+}
+
+export function createTaskService(deps: TaskServiceDeps): TaskService {
+  const logger = deps.logger ?? ((): void => { /* 缺省静默 */ });
+  const timeoutMs = deps.timeoutMs ?? DEFAULT_TASK_TIMEOUT_MS;
+  const manager = deps.taskManager;
+
+  /** characterId → 待执行队列（FIFO；队头即下一个执行）。 */
+  const queues = new Map<string, CharacterTask[]>();
+  /** 正在执行的角色集合（并发 1 的执行纪律；core 侧另有状态机兜底）。 */
+  const busy = new Set<string>();
+  /** kind → transport 缓存（IPC 桥的 transport 无状态可缓存；省一次工厂往返）。 */
+  const transports = new Map<AgentKind, TaskTransportPort>();
+
+  const transportFor = (kind: AgentKind): TaskTransportPort => {
+    const cached = transports.get(kind);
+    if (cached) return cached;
+    const created = deps.createTransport(kind);
+    transports.set(kind, created);
+    return created;
+  };
+
+  /** 落库（fire-and-forget）：抛错只记日志 —— 历史完整性不绑架任务执行回路。 */
+  const persist = (record: TaskPersistRecord): void => {
+    if (!deps.persistTask) return;
+    try {
+      deps.persistTask(record);
+    } catch (error) {
+      logger(`[task-service] 任务落库回调抛错（${record.id}/${record.status}）：${describe(error)}`);
+    }
+  };
+
+  /** 总线事件处理：task.queued → 出队执行；其余相位 → 落状态快照。 */
+  const handleEvent = (event: WorldEvent): void => {
+    switch (event.type) {
+      case 'task.queued':
+        persist(taskEventToRecord(event.task));
+        enqueue(event.task);
+        return;
+      case 'task.started':
+      case 'task.failed':
+        // started / failed 的 output 都很短（空串 / 失败原因），快照直接落库。
+        // completed 不在这里落：全文在 runTask 手里，那边落（见文件头「落库口径」）。
+        persist(taskEventToRecord(event.task));
+        return;
+      case 'task.completed':
+        return;
+      default:
+        return;
+    }
+  };
+
+  const enqueue = (task: CharacterTask): void => {
+    const queue = queues.get(task.characterId) ?? [];
+    queue.push(task);
+    queues.set(task.characterId, queue);
+    pump(task.characterId);
+  };
+
+  /**
+   * 出队泵：每角色并发 1 —— busy 就不动；队列为空就收工。
+   * 守门不通过 → failTask 直达 failed（事件回环会落库），继续泵下一条（队列不被一条死任务堵死）。
+   */
+  const pump = (characterId: string): void => {
+    if (busy.has(characterId)) return;
+    const queue = queues.get(characterId);
+    if (!queue || queue.length === 0) return;
+    const task = queue.shift();
+    if (!task) return;
+
+    const guard = guardTaskCharacter(deps.getState(), characterId);
+    if (!guard.ok) {
+      // 规格⑤：agent 未检出等 → 任务直接 failed 带原因，不进 transport。
+      manager.failTask(task.id, guard.reason);
+      pump(characterId); // 这条堵死了，接着看下一条
+      return;
+    }
+
+    busy.add(characterId);
+    void runTask(task, guard.character, guard.kind).finally(() => {
+      busy.delete(characterId);
+      pump(characterId); // FIFO 继续：上一条收尾（任何相位）后立刻看下一条
+    });
+  };
+
+  /** 一轮任务执行的完整生命周期（守门已过）。 */
+  const runTask = async (
+    task: CharacterTask,
+    character: CharacterView,
+    kind: AgentKind
+  ): Promise<void> => {
+    // queued → running：盖 startedAt、单位忙闲派生、发 task.started（事件回环落 running 快照）。
+    const started = manager.startTask(task.id);
+    if (!started) return; // 状态没走动（任务被收尾/不存在）—— 不执行也不重试，防守即可
+    const prompt = buildTaskPrompt(character, task.prompt); // persona 每次内嵌（会话隔离 → 无续发）
+    let output = '';
+
+    try {
+      const transport = transportFor(kind);
+      // sessionId 恒 null：任务会话一次性，不复用聊天会话也不跨任务续接（见文件头「会话隔离」）。
+      for await (const event of transport.spawn(prompt, { sessionId: null, timeoutMs })) {
+        if (event.type === 'message') {
+          output += event.text;
+          continue;
+        }
+        if (event.type === 'session') continue; // 一次性会话：id 不记录、不回写、不透传
+        if (event.type === 'done') {
+          // 空输出也给一句占位（与 chat 的空回复占位同一口径），失败/成功都有可读的 output。
+          const fullText = output.length > 0 ? output : '（任务完成，无文本输出）';
+          const finished = manager.completeTask(task.id, fullText); // 状态里存摘要
+          persist({
+            ...taskEventToRecord(finished ?? started),
+            status: 'completed',
+            output: fullText, // 库里存全文（状态/事件里只有摘要）
+          });
+          return;
+        }
+        if (event.type === 'error') {
+          // 失败不自动重试（规格⑤）：failed 即终态；事件回环落 failed 快照（output=原因）。
+          manager.failTask(task.id, taskErrorText(event.code, event.message));
+          return;
+        }
+        // tool_use / tool_result：任务结果只收 message 文本，工具回执不进输出。
+      }
+      // 流自然结束却没有 done / error —— runtime 契约上不该发生，防御性失败收尾。
+      manager.failTask(task.id, 'transport 事件流异常结束（无 done 事件）');
+    } catch (error) {
+      // runtime 不该抛（内部全转 error 事件）；真抛了也要给任务一个 failed 收尾，别把它吊死在 running。
+      manager.failTask(task.id, taskErrorText('cli_error', describe(error)));
+    }
+  };
+
+  let stop: (() => void) | null = null;
+
+  return {
+    // 直连 core/bus 单例（与 game-save-coordinator 同一手法：app → core 是合法依赖方向，
+    // 单测隔离靠 resetBus，不必为订阅口多开一层注入）。
+    start: (): (() => void) => {
+      if (stop) return stop;
+      const off = onWorldEvent(handleEvent);
+      stop = () => {
+        off();
+        stop = null;
+      };
+      return stop;
+    },
+
+    isBusy: (characterId: string): boolean => busy.has(characterId),
+
+    queueLength: (characterId: string): number => queues.get(characterId)?.length ?? 0,
+  };
+}

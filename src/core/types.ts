@@ -49,6 +49,25 @@ export const MAX_AGENT_MESSAGES_PER_LINK = 100;
  */
 export const MAX_MISSIONS = 100;
 
+/**
+ * @since v3.16 角色任务（task.assign 派发）条数上限（core/task 强制）。
+ * 与 MAX_MISSIONS 同一理由：tasks 随 WorldState 全量广播，超限时先丢终态
+ * （completed / failed）的旧任务，腾不出位置就拒绝新派（绝不静默挤掉在办任务）。
+ */
+export const MAX_TASKS = 100;
+
+/**
+ * @since v3.16 任务指令长度上限。prompt 会随 WorldState.tasks 全量广播，必须有界；
+ * 20k 码点对一条自由文本任务指令绰绰有余（对齐 chat 侧 IPC 的 prompt 上限档）。
+ */
+export const MAX_TASK_PROMPT_LEN = 20_000;
+
+/**
+ * @since v3.16 任务输出**摘要**长度上限。WorldState 里的 task.output 只存摘要
+ * （全文落 SQLite 的 tasks 表，见 app/services/task-service）；广播体积必须有界。
+ */
+export const MAX_TASK_SUMMARY_LEN = 2_000;
+
 // ============================================================================
 // 基础形状（core 自定义，与渲染引擎解耦）
 // ============================================================================
@@ -174,6 +193,43 @@ export interface MissionView {
 }
 
 export type ConfirmDecision = 'accept' | 'reject';
+
+// ============================================================================
+// 角色任务（@since v3.16 —— core/task 的状态投影，状态机实现在 core/task/）
+// ============================================================================
+
+/**
+ * @since v3.16 角色任务相位。状态机迁移规则实现在 core/task/machine.ts，本文件只冻结取值：
+ *   queued（已排队待执行）→ running（正在经 transport 执行）→ completed / failed（终态）。
+ *   failed 允许从 queued 直达（守门拦截：agent 未检出等 —— 派了但注定跑不起来）。
+ * **失败不自动重试**：重新派发是用户的显式动作（手动重派 UI 归 038 后续）。
+ */
+export type TaskStatus = 'queued' | 'running' | 'completed' | 'failed';
+
+/**
+ * @since v3.16 一条派发给角色的任务（CharacterTask）。
+ *
+ * 与 MissionView 的分工（别当成两套任务）：Mission 是「战场编组任务」（指派给单位集合、
+ * 走确认流）；CharacterTask 是「角色 agent 任务」（一段自由文本指令、经 CLI transport
+ * 执行、产出文本结果）。两者各自独立，互不引用。
+ *
+ * output 语义：completed = 执行结果**摘要**（全文在 SQLite tasks 表）；failed = 失败原因；
+ * queued / running = 空串。单位忙闲由任务派生：有 running 任务 → 单位 status='busy'。
+ */
+export interface CharacterTask {
+  readonly id: string;
+  readonly characterId: string;
+  /** 任务指令原文（trim 后非空，长度 ≤ MAX_TASK_PROMPT_LEN）。 */
+  readonly prompt: string;
+  readonly status: TaskStatus;
+  readonly createdAt: number;
+  /** 开工时间（queued→running 时盖）；未开工为 null。 */
+  readonly startedAt: number | null;
+  /** 收尾时间（终态时盖）；未收尾为 null。 */
+  readonly endedAt: number | null;
+  /** 输出摘要 / 失败原因（见上文字段语义）；长度 ≤ MAX_TASK_SUMMARY_LEN。 */
+  readonly output: string;
+}
 
 // ============================================================================
 // 选择 / 编组
@@ -634,6 +690,13 @@ export interface WorldState {
    * 不存在无限增长（perf：全量广播的数据必须有界）。
    */
   detectedAgents?: DetectedAgent[];
+  /**
+   * @since v3.16 角色任务队列（core/task 写入，上限 MAX_TASKS）。
+   * 刻意可选：与 settings / detectedAgents 同理走可选增补 —— 契约增补不许打破既有
+   * WorldState 构造点的编译；读取方缺省时按空队列处理。
+   * 单位忙闲可由它派生：某角色有 running 任务 → 对应单位 status='busy'（core/task 同步写入）。
+   */
+  tasks?: CharacterTask[];
 }
 
 // ============================================================================
@@ -737,7 +800,16 @@ export type HudCommand =
    *   TODO(v3.Phase2): core/runtime.ts 接线到持久化层 —— 本仓库当前还没有缓存层，
    *   先把命令位占住，避免将来 HUD 与 core 各发明一套"清缓存"语义。
    */
-  | { type: 'cache.clear' };
+  | { type: 'cache.clear' }
+  /**
+   * @since v3.16 角色任务派发（task_037）：把一段自由文本指令派给某个角色，
+   *   由 app 层 task-service 经 CLI transport 执行（每角色 FIFO、并发 1）。
+   * 载荷口径：characterId 必须命中 WorldState.characters；prompt trim 后非空、
+   *   ≤ MAX_TASK_PROMPT_LEN。守门（agent 绑定 / 已检出）在 app 层出队时裁决 ——
+   *   不满足时任务直接落 failed（状态里看得见原因），不是拒绝入队。
+   * UI 入口（派发表单）归 038；本命令在 core 落地后，任何总线调用方都能派任务。
+   */
+  | { type: 'task.assign'; characterId: string; prompt: string };
 
 // ============================================================================
 // ★ 总线契约：world → core 的交互事件（单向，world 不直接改 HUD）
@@ -753,4 +825,18 @@ export type WorldEvent =
    *   （core 仍不持有坐标），由 app 层持久化订阅者落 SQLite（unit_positions 表，防抖写）。
    * why 走总线而不是 world 直接落库：world 零 IO 是分层铁律，事件是它唯一能发出的东西。
    */
-  | { type: 'unit.position'; unitId: string; x: number; y: number };
+  | { type: 'unit.position'; unitId: string; x: number; y: number }
+  /**
+   * @since v3.16 角色任务生命周期事件（task_037，task_037 规格指定走 WorldEvent 通道）。
+   *   发出方是 core/task（状态迁移的真相源），携带迁移后的任务快照（不可变），
+   *   消费者是 app 层订阅者：task-service（出队执行）与任务落库（tasks 表）。
+   *   runtime 的 handleWorldEvent 对它们显式接地（同 unit.position 惯例，不进 onUnhandled）。
+   * why 复用 world 通道而不是新开第四条通道：通道即铁律，新增通道要先改 REFACTOR_PLAN §5；
+   *   事件通道是总线里现成的"域事件广播面"，任务事件挂上去与 unit.position（消费者也在
+   *   app 层）同一先例。方向语义上它们是 core 发出的，与"world → core"字面相反 ——
+   *   这是一个有意的、已在两侧文件头注明的取舍，不是疏忽。
+   */
+  | { type: 'task.queued'; task: CharacterTask }
+  | { type: 'task.started'; task: CharacterTask }
+  | { type: 'task.completed'; task: CharacterTask }
+  | { type: 'task.failed'; task: CharacterTask };

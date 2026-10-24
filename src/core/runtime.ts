@@ -22,12 +22,18 @@
  *   省掉一次订阅与一层归属判定；写库仍走同一个 store，广播仍走本文件的 store 订阅。
  * @since v3.7 角色建档（core/character/profile.ts + manager.createCharacter）接入：
  *   character.create 由本文件直接调用 character manager（与 persona.update 同一口径）。
+ * @since v3.16 角色任务域（core/task，task_037）接入：task.assign 由本文件直接调用
+ *   task manager（与 mission 同一口径：任务域无 IO 无长驻资源，四行 case 换一层归属判定不值）；
+ *   task.queued / started / completed / failed 四条生命周期事件由 manager 发出，本文件在
+ *   handleWorldEvent 里显式接地（同 unit.position 惯例）—— 消费者是 app 层 task-service
+ *   （出队执行）与任务落库订阅者，不进 onUnhandled。
  */
 
 import type { AgentLinkManager } from './agent-link';
 import { emitState, onCommand, onWorldEvent, type Unsubscribe } from './bus';
 import { createCharacterManager, type CharacterManager } from './character';
 import { createMissionManager, type MissionManager } from './mission';
+import { createTaskManager, type TaskManager } from './task';
 import type { CoreStore } from './store';
 import { worldStore } from './store';
 import type { HudCommand, WorldEvent } from './types';
@@ -59,6 +65,13 @@ export interface CoreRuntimeOptions {
    * 默认按本运行时自己的 store 构造；grantExperience 仍只暴露给程序化入口（无 HudCommand 接线）。
    */
   readonly character?: CharacterManager;
+  /**
+   * 角色任务域写入面（@since v3.16，task_037）。
+   * why 注入而非内部 new：组合根（main-entry）要把**同一个** manager 实例交给 app 层
+   * task-service（它负责 transport 执行与相位回报），单测也要能隔离两段接线 ——
+   * 与 mission / character 同一原因，多一条实例共享的硬需求。
+   */
+  readonly task?: TaskManager;
   /**
    * 尚未实现的命令 / 事件出口。
    * why 需要它：契约已冻结（§5），Phase 2 之前留了一些尚未接地的命令（chat.send 等）；
@@ -105,6 +118,9 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
   // @since v3.6 角色域写入面：character.persona.update 的落库管道。
   // 与 mission 同一理由 —— manager 无 IO，纯靠 store 投影；不注入口子会让单测无法隔离接线层。
   const character = options.character ?? createCharacterManager({ store });
+  // @since v3.16 任务域写入面：task.assign 的落库管道（与 mission / character 同一口径）。
+  // 组合根注入同一个实例给 app 层 task-service，保证命令与相位回报写的是同一份状态。
+  const task = options.task ?? createTaskManager({ store });
   const reportUnhandled = options.onUnhandled ?? ((): void => { /* 默认不打扰；dev 入口与单测会注入 */ });
 
   /**
@@ -161,6 +177,12 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
           appearance: command.appearance,
         });
         return;
+      // @since v3.16 角色任务派发（task_037）：落到 task manager（不再走 onUnhandled）。
+      // prompt 合法性与角色在档由 manager 裁决；agent 绑定 / 检出的守门在 app 层 task-service
+      // 出队时做（不满足 → failTask 直达 failed，状态里看得见原因）。
+      case 'task.assign':
+        task.assignTask({ characterId: command.characterId, prompt: command.prompt });
+        return;
       // @since v3.6 屏位路由：
       //   'main' 与 'chat' 都不入 currentScreen：
       //     - 'main' 是"回主屏"语义，与字段为空等价（缺省回落读取方自管）；
@@ -192,7 +214,11 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         // unit.position（@since v3.12，task_033）：位置真相在 world，core 状态机不消费坐标 ——
         //   本事件的消费者是 app 层持久化订阅者（落 unit_positions 表，防抖写），
         //   这里显式接地（不进 onUnhandled），否则正常运行时每次落位都会报一次"未处理"噪音。
+        // task.queued / started / completed / failed（@since v3.16，task_037）：core/task 的
+        //   manager 发出的生命周期事件，消费者是 app 层 task-service（出队执行）与任务落库订阅者，
+        //   core 状态机不消费 —— 同 unit.position 惯例显式接地，不进 onUnhandled。
         if (event.type === 'unit.position') return;
+        if (event.type.startsWith('task.')) return;
         reportUnhandled('world', event);
     }
   };

@@ -11,6 +11,7 @@ import type { DetectedAgent } from '../core/types';
 import type { CliChatEventEnvelope, CliChatIpcApi, CliChatRunRequest } from '../app/services/chat-transport-bridge';
 import type { PersistedCharacterRecord, PersistedUnitPosition } from '../app/services/persistence/game-save-dao';
 import type { ChatMessageInsert, PersistedChatMessage } from '../app/services/persistence/chat-history-dao';
+import type { PersistedTaskRecord } from '../app/services/persistence/task-record-dao';
 
 export interface ElectronAPI {
   // 通用服务调用
@@ -112,6 +113,10 @@ export interface ElectronAPI {
     saveChatMessage: (message: ChatMessageInsert) => Promise<{ ok: boolean; error?: string }>;
     /** 读某角色最近 N 条对话历史（默认 50）。 */
     loadChatMessages: (characterId: string, limit?: number) => Promise<{ ok: boolean; messages?: PersistedChatMessage[]; error?: string }>;
+    /** upsert 一条角色任务记录（@since v3.16，task_037，落 character_tasks 表）。 */
+    saveTask: (record: PersistedTaskRecord) => Promise<{ ok: boolean; error?: string }>;
+    /** 读某角色最近 N 条任务（默认 20；038 队列可见性）。 */
+    loadTasks: (characterId: string, limit?: number) => Promise<{ ok: boolean; tasks?: PersistedTaskRecord[]; error?: string }>;
   };
 
   /**
@@ -224,13 +229,16 @@ const electronAPI: ElectronAPI = {
   },
 
   // 游戏存档（@since v3.12，task_033）：透传到主进程的 DAO（game:loadSnapshot / game:save*）。
-  // 对话历史两条（@since v3.15，task_036）同走 game: 前缀：game:saveChatMessage / game:loadChatMessages。
+  // 对话历史两条（@since v3.15，task_036）同走 game: 前缀：game:saveChatMessage / game:loadChatMessages；
+  // 任务记录两条（@since v3.16，task_037）同前缀：game:saveTask / game:loadTasks。
   gameSave: {
     loadSnapshot: () => ipcRenderer.invoke('game:loadSnapshot'),
     saveCharacters: (records: PersistedCharacterRecord[]) => ipcRenderer.invoke('game:saveCharacters', records),
     saveUnitPositions: (entries: PersistedUnitPosition[]) => ipcRenderer.invoke('game:saveUnitPositions', entries),
     saveChatMessage: (message: ChatMessageInsert) => ipcRenderer.invoke('game:saveChatMessage', message),
     loadChatMessages: (characterId: string, limit?: number) => ipcRenderer.invoke('game:loadChatMessages', characterId, limit),
+    saveTask: (record: PersistedTaskRecord) => ipcRenderer.invoke('game:saveTask', record),
+    loadTasks: (characterId: string, limit?: number) => ipcRenderer.invoke('game:loadTasks', characterId, limit),
   },
 
   /**

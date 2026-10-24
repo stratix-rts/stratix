@@ -13,8 +13,12 @@ const DEFAULT_FILENAME = 'stratix.db';
  * DDL 与 src/app/services/persistence/chat-history-dao.ts 的 ensureCharacterChatMessagesTable 同构。
  * why 不叫 messages：messages 表已被项目/频道聊天占用（v1 起就有，schema 完全不同），
  * 角色对话历史单独建表，命名对齐既有 agent_chat_messages 的先例。
+ * v4（@since v3.16，task_037）：新增 character_tasks（角色任务：派发 → 执行 → 产出，与聊天审计分离）。
+ * DDL 与 src/app/services/persistence/task-record-dao.ts 的 ensureCharacterTasksTable 同构。
+ * why 不叫 tasks：tasks 表已被 agent 平台任务队列占用（v1 起就有，task_id 主键 / zone 形状），
+ * 角色任务表命名对齐 character_chat_messages 的先例（character_ 前缀 = 游戏存档域），零冲突。
  */
-const TARGET_SCHEMA_VERSION = 3;
+const TARGET_SCHEMA_VERSION = 4;
 
 /** Valid table name characters (alphanumeric + underscore) */
 const VALID_TABLE_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -128,7 +132,35 @@ export class StratixDatabase {
     this.migrateNewTables();
     this.migrateGameSaveTables();
     this.migrateCharacterChatMessages();
+    this.migrateTasks();
     this.migrateSafetyIndexes();
+  }
+
+  /**
+   * 角色任务表（@since v3.16，task_037）：task-service 随相位快照 upsert（completed 带全文输出）。
+   * IF NOT EXISTS 幂等：新库在 createTables 里建过，这里是旧库（schema_version ≤ 3）的升级路径。
+   * 表名 character_tasks：v1 的 tasks 表是 agent 平台的任务队列（task_id 主键 / zone 形状），
+   * 与角色任务毫无关系 —— character_ 前缀对齐 character_chat_messages 的游戏存档域命名，零冲突。
+   */
+  private migrateTasks(): void {
+    const tables = this.getTableNames();
+
+    if (tables.has('character_tasks')) return;
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS character_tasks (
+        id TEXT PRIMARY KEY,
+        character_id TEXT NOT NULL,
+        prompt TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed')),
+        output TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL,
+        started_at INTEGER,
+        ended_at INTEGER
+      )
+    `);
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_character_tasks_character ON character_tasks(character_id, created_at)');
+    log('info', 'Created character_tasks table');
   }
 
   /**
@@ -850,9 +882,23 @@ export class StratixDatabase {
         created_at INTEGER NOT NULL
       );
 
+      -- 角色任务表（@since v3.16，task_037）：派发 → 执行 → 产出的审计与全文输出；
+      -- 不叫 tasks：tasks 表是 agent 平台的任务队列（v1 起），character_ 前缀 = 游戏存档域命名先例
+      CREATE TABLE IF NOT EXISTS character_tasks (
+        id TEXT PRIMARY KEY,
+        character_id TEXT NOT NULL,
+        prompt TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed')),
+        output TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL,
+        started_at INTEGER,
+        ended_at INTEGER
+      );
+
       -- 索引
       CREATE INDEX IF NOT EXISTS idx_characters_kind ON characters(kind);
       CREATE INDEX IF NOT EXISTS idx_character_chat_messages_character ON character_chat_messages(character_id, id);
+      CREATE INDEX IF NOT EXISTS idx_character_tasks_character ON character_tasks(character_id, created_at);
     `;
     this.db.exec(sql);
   }

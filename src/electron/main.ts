@@ -38,6 +38,13 @@ import {
   PERSISTED_CHAT_ROLES,
   type ChatMessageInsert,
 } from '../app/services/persistence/chat-history-dao';
+import {
+  ensureCharacterTasksTable,
+  loadRecentTasks,
+  PERSISTED_TASK_STATUSES,
+  upsertTask,
+  type PersistedTaskRecord,
+} from '../app/services/persistence/task-record-dao';
 import { AGENT_KINDS, MAX_EXTERNAL_SESSION_ID_LEN, type AgentKind, type DetectedAgent } from '../core/types';
 import { getDatabase } from '../stratix-database';
 import { dataStoreService } from '../stratix-gateway/dataStoreService';
@@ -327,6 +334,67 @@ function setupIPC() {
       return { ok: true, messages: loadChatMessages(db, characterId, messageWindow) };
     } catch (error: any) {
       console.error('[Electron] game:loadChatMessages failed:', error);
+      return { ok: false, error: error?.message ?? String(error) };
+    }
+  });
+
+  // ==================== 角色任务记录 IPC（@since v3.16，task_037）====================
+  // 与 game:saveChatMessage 同构：主进程 DAO 落 SQLite（character_tasks 表，schema v4），
+  // 渲染层经 preload 的 gameSave 扩展面调用。校验从严（IPC 是可信度最低的入口）：
+  // 坏形状一律拒（拒绝即回 {ok:false}，调用方只警告不阻断任务执行回路）。
+  ipcMain.handle('game:saveTask', async (_event, record: PersistedTaskRecord) => {
+    try {
+      if (typeof record?.id !== 'string' || record.id.length === 0 || record.id.length > 64) {
+        return { ok: false, error: 'bad id' };
+      }
+      if (typeof record?.characterId !== 'string' || record.characterId.length === 0 || record.characterId.length > 200) {
+        return { ok: false, error: 'bad characterId' };
+      }
+      if (typeof record?.prompt !== 'string' || record.prompt.length === 0 || record.prompt.length > 200_000) {
+        return { ok: false, error: 'bad prompt' };
+      }
+      if (typeof record?.status !== 'string' || !(PERSISTED_TASK_STATUSES as readonly string[]).includes(record.status)) {
+        return { ok: false, error: `bad status: ${String(record?.status)}` };
+      }
+      if (typeof record?.output !== 'string' || record.output.length > 200_000) {
+        return { ok: false, error: 'bad output' };
+      }
+      if (typeof record?.createdAt !== 'number' || !Number.isFinite(record.createdAt)) {
+        return { ok: false, error: 'bad createdAt' };
+      }
+      for (const field of ['startedAt', 'endedAt'] as const) {
+        const value = record[field];
+        if (value != null && (typeof value !== 'number' || !Number.isFinite(value))) {
+          return { ok: false, error: `bad ${field}` };
+        }
+      }
+      if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
+      const db = getDatabase().getDatabase();
+      ensureCharacterTasksTable(db);
+      upsertTask(db, record);
+      return { ok: true };
+    } catch (error: any) {
+      console.error('[Electron] game:saveTask failed:', error);
+      return { ok: false, error: error?.message ?? String(error) };
+    }
+  });
+
+  ipcMain.handle('game:loadTasks', async (_event, characterId: unknown, limit: unknown) => {
+    try {
+      if (typeof characterId !== 'string' || characterId.length === 0 || characterId.length > 200) {
+        return { ok: false, error: 'bad characterId' };
+      }
+      // 窗口收紧到 [1, 100]：缺省 20（038 队列可见性口径），不信任渲染层传来的任意值。
+      const taskWindow =
+        typeof limit === 'number' && Number.isFinite(limit)
+          ? Math.min(Math.max(Math.floor(limit), 1), 100)
+          : 20;
+      if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
+      const db = getDatabase().getDatabase();
+      ensureCharacterTasksTable(db);
+      return { ok: true, tasks: loadRecentTasks(db, characterId, taskWindow) };
+    } catch (error: any) {
+      console.error('[Electron] game:loadTasks failed:', error);
       return { ok: false, error: error?.message ?? String(error) };
     }
   });

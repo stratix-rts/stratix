@@ -59,6 +59,7 @@ export function createInitialState(): WorldState {
   const selection: SelectionState = { unitIds: [], previewUnitIds: [], revision: 0 };
   // links / messages（@since v3.1）由 core/agent-link 投影写入，这里只是空数组起点
   // settings（@since v3.5）按契约默认值起步，hud/screens/settings-screen 直接读它即可
+  // tasks（@since v3.16）由 core/task 投影写入（task.assign 派发队列），空数组即「无任务」
   return {
     units: [],
     missions: [],
@@ -70,6 +71,8 @@ export function createInitialState(): WorldState {
     settings: DEFAULT_SETTINGS,
     // detectedAgents（@since v3.8）：本地 CLI agent 检测结果，空数组即「尚未检测」
     detectedAgents: [],
+    // tasks（@since v3.16）：角色任务队列，空数组即「无在办/历史任务」
+    tasks: [],
   };
 }
 

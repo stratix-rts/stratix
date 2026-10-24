@@ -1534,7 +1534,7 @@
       "description": "core: 任务派发命令与队列——unit 状态机 idle/working/done+每单位并发1+走 transport-模块",
       "template": "task",
       "priority": "P1",
-      "status": "pending",
+      "status": "completed",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",

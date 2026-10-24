@@ -29,6 +29,10 @@
  *   （user 即时 / assistant 收束 / error），抽屉的 loadHistory 注入按角色读最近 50 条 ——
  *   打开/切角色回填历史，与重建后的新会话同一段消息流连续展示。本文件仍然只接线。
  *
+ * @since v3.16（task_037）任务派发与执行：core/task（task.assign → queued 状态 + 生命周期事件）
+ *   + task-service（每角色 FIFO、并发 1，经 chat IPC 通道跑 transport，相位回报 core）+
+ *   任务落库（character_tasks 表，schema v4）。UI 入口（派发表单/战场表现）归 038，本任务只接线。
+ *
  * 加载路径：dev 走 vite dev server 的 /src/app/main/index.html；
  *   正式构建走 dist/frontend/src/app/main/index.html（由 vite.config.ts 的 input 产出）。
  *   本页是**唯一**入口：旧 Vue 入口链随 task_017 退役，STRATIX_LEGACY 开关已下线，
@@ -69,6 +73,9 @@ import { createPhaserPreviewGame } from '../services/appearance-preview-game';
 import { createAppearancePreviewService } from '../services/appearance-preview-service';
 import { createChatService } from '../services/chat-service';
 import { cliChatIpcApi, createIpcChatTransportFactory } from '../services/chat-transport-bridge';
+import { createTaskService } from '../services/task-service';
+import { taskRecordApi, makeTaskRecordPersister } from '../services/persistence/task-record';
+import { createTaskManager } from '../../core/task';
 import { createUnitSpriteSource } from '../services/unit-sprite-source';
 
 import { isOnboardingForced } from './dev-flags';
@@ -304,13 +311,36 @@ async function boot(): Promise<void> {
 
   // ===== core 侧：闭环接线（command/world → store → state 广播）=====
   // 未接地的命令 / 事件只落 console：它们是"还没实现"，不是错误，堆错误日志会淹没真故障。
+  // 任务域写入面（@since v3.16，task_037）：组合根持一个实例，注入 runtime（task.assign 落点）
+  // 与 task-service（相位回报口）—— 两处写的是同一份 WorldState.tasks。
+  const taskManager = createTaskManager({ store: worldStore });
   const runtime = createCoreRuntime({
     store: worldStore,
+    task: taskManager,
     onUnhandled: (channel: UnhandledChannel, payload: HudCommand | WorldEvent) => {
       console.warn(`[Stratix] 未处理 ${channel}: ${payload.type}`);
     },
   });
   const stopRuntime = runtime.start();
+
+  // ===== 角色任务执行回路（@since v3.16，task_037）=====
+  // core/task 发的 task.queued 事件 → task-service 出队（每角色 FIFO、并发 1）→ 经
+  // chat IPC 通道跑 transport（复用 035 的链路，理由见 task-service.ts 文件头）→
+  // 相位回报 taskManager（写状态 + 单位忙闲派生 + 发后续事件）。
+  // 非 Electron（纯 vite dev）：没有 cliChat IPC 面 → 不接服务，派发只落 queued（dev 行为可预期）。
+  let stopTaskService: (() => void) | null = null;
+  if (cliChat) {
+    const taskService = createTaskService({
+      getState: () => worldStore.getState(),
+      createTransport: createIpcChatTransportFactory(cliChat),
+      taskManager,
+      persistTask: (() => {
+        const taskApi = taskRecordApi();
+        return taskApi ? makeTaskRecordPersister(taskApi) : undefined;
+      })(),
+    });
+    stopTaskService = taskService.start();
+  }
 
   // ===== 存档落库（@since v3.12，task_033）=====
   // 接在 runtime 之后、注入之后：先订阅后注入会把恢复的那批当成新变化回写一遍（见文件头时序说明）。
@@ -348,8 +378,9 @@ async function boot(): Promise<void> {
       // 角色抽屉先卸（退订总线；在跑的对话由主进程超时 / 页面销毁兜底）。
       unmountCharacterDrawer();
       stopAgentDetection();
-      // 存档协调器先停（内部会冲刷未落盘的站位缓冲），再拆 runtime。
+      // 存档协调器先停（内部会冲刷未落盘的站位缓冲），再拆任务服务与 runtime。
       saveCoordinator?.stop();
+      stopTaskService?.();
       stopRuntime();
       unmountAdapter();
       unmountScreen();
