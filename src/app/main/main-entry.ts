@@ -52,7 +52,7 @@
 
 import Phaser from 'phaser';
 
-import { emitCommand, emitState, onState } from '../../core/bus';
+import { emitCommand, emitState, onState, onWorldEvent } from '../../core/bus';
 import { createCharacterManager } from '../../core/character';
 import { createCoreRuntime, type UnhandledChannel } from '../../core/runtime';
 import { expWeightFor } from '../../core/progression';
@@ -60,6 +60,7 @@ import { worldStore } from '../../core/store';
 import type { DetectedAgent, HudCommand, WorldEvent } from '../../core/types';
 import { createHudBusAdapter } from '../../hud/bridge/bus-adapter';
 import { createMainScreen } from '../../hud/screens/main-screen';
+import { levelUpToastText } from '../../hud/screens/appearance-unlock-catalog';
 import { createThemeController } from '../../hud/theme/theme-controller';
 import defaultCss from '../../hud/theme/tokens-default.css?inline';
 import pixelCss from '../../hud/theme/tokens-pixel.css?inline';
@@ -176,7 +177,30 @@ async function boot(): Promise<void> {
   });
   const adapter = createHudBusAdapter({ onState, emitCommand, themeController });
 
-  const screen = createMainScreen(adapter);
+  // ===== 形象预览（@since v3.10，task_028）=====
+  // 组合根是唯一能同时认识 hud 与 world 的地方：向导屏要 canvas 预览（hud），
+  // 合成器与素材注册表在 world/appearance —— 两侧都不许直接互认，故在这里接线。
+  // 素材元数据在后台加载（失败降级：向导照常能走完，只是没有随机形象可选）。
+  // 注册表与合成器**与战场侧共用同一份**：元数据（1.4MB）只加载一次，位图 LRU 缓存也共用。
+  // @since v3.20（task_041）：同一实例再递给 main-screen —— 角色屏的形象编辑面板用它做
+  // 预览与选择器（向导 / 编辑两屏不会同屏，共享实例零冲突；创建顺序上移只是因为要在建屏前就绪）。
+  const appearanceEnv = createBrowserAppearanceEnvironment();
+  const appearanceRegistry = new PartRegistry({ basePath: appearanceEnv.spritesheetBaseUrl });
+  const appearanceComposer = new CharacterComposer({
+    registry: appearanceRegistry,
+    createCanvas: appearanceEnv.createCanvas,
+    createImage: appearanceEnv.createImage,
+  });
+  const appearancePreview = createAppearancePreviewService({
+    registry: appearanceRegistry,
+    composer: appearanceComposer,
+    createCanvas: appearanceEnv.createCanvas,
+    createImage: appearanceEnv.createImage,
+    createGame: createPhaserPreviewGame,
+  });
+
+  // ===== HUD 侧：真实 main-screen + 主题控制器，走注入的 bus-adapter =====
+  const screen = createMainScreen(adapter, { appearance: appearancePreview });
   const unmountScreen = screen.mount(hudRoot);
   const unmountAdapter = adapter.mount();
 
@@ -244,24 +268,16 @@ async function boot(): Promise<void> {
   // 回调驱动（hud 组件只被驱动、零订阅，与抽屉流式方法同一装配口径）。无 Electron 时挂着也无妨（没人调它）。
   const { element: toastHost, unmount: unmountToastHost } = mountToastHost(hudRoot);
 
-  // ===== 形象预览（@since v3.10，task_028）=====
-  // 组合根是唯一能同时认识 hud 与 world 的地方：向导屏要 canvas 预览（hud），
-  // 合成器与素材注册表在 world/appearance —— 两侧都不许直接互认，故在这里接线。
-  // 素材元数据在后台加载（失败降级：向导照常能走完，只是没有随机形象可选）。
-  // 注册表与合成器**与战场侧共用同一份**：元数据（1.4MB）只加载一次，位图 LRU 缓存也共用。
-  const appearanceEnv = createBrowserAppearanceEnvironment();
-  const appearanceRegistry = new PartRegistry({ basePath: appearanceEnv.spritesheetBaseUrl });
-  const appearanceComposer = new CharacterComposer({
-    registry: appearanceRegistry,
-    createCanvas: appearanceEnv.createCanvas,
-    createImage: appearanceEnv.createImage,
-  });
-  const appearancePreview = createAppearancePreviewService({
-    registry: appearanceRegistry,
-    composer: appearanceComposer,
-    createCanvas: appearanceEnv.createCanvas,
-    createImage: appearanceEnv.createImage,
-    createGame: createPhaserPreviewGame,
+  // ===== 升级轻提示（@since v3.20，task_041）=====
+  // level.up（progression-service 广播，task_040）→ toast「XX 升到 Lv.X！解锁新外观部件」。
+  // 「跨没跨过解锁门槛」的裁决在 appearance-unlock-catalog 的纯函数（门槛数据在 core/progression），
+  // 这里只查角色名 + 拼装（组合根只接线，与 task-report 的 toast 同一装配口径）。
+  // 角色查不到（极端时序：角色已删但事件在飞）→ 跳过（不猜名字）。
+  const stopLevelUpToast = onWorldEvent((event) => {
+    if (event.type !== 'level.up') return;
+    const character = worldStore.getState().characters.find((c) => c.id === event.characterId);
+    if (!character) return;
+    toastHost.show(levelUpToastText(character.name, event.fromLevel, event.toLevel), 'success');
   });
 
   // ===== 战场单位的形象（@since v3.10，task_029）=====
@@ -422,8 +438,10 @@ async function boot(): Promise<void> {
     () => {
       stopOnboardingWatch();
       onboarding.dispose();
-      // 预览实例（Phaser）由向导屏在卸载时销毁；这里再兜一次底（向导没挂过时也不会有事）。
+      // 预览实例（Phaser）由向导屏 / 角色屏在各自卸载时销毁；这里再兜一次底（两个屏都没挂过时也不会有事）。
       appearancePreview.destroy();
+      // 升级 toast 订阅（task_041）：与其它总线订阅同一卸载纪律 —— 页面销毁前退干净。
+      stopLevelUpToast();
       // 角色抽屉先卸（退订总线；在跑的对话由主进程超时 / 页面销毁兜底）。
       unmountCharacterDrawer();
       unmountToastHost();

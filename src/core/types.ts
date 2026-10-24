@@ -743,6 +743,17 @@ export type HudCommand =
    */
   | { type: 'character.persona.update'; characterId: string; prompt: string }
   /**
+   * @since v3.20 改角色形象（task_041 形象编辑面板的落地动作）。
+   * 载荷口径：characterId 命中 WorldState.characters；appearance 按 profile.ts 的
+   *   resolveAppearance 同一口径校验（体型在词表内 / 部位字典合法 / 条数与长度上限），非法 → 拒发。
+   * ★ core **不在这里判解锁**：等级门槛（几级解锁哪些部位类别）是编辑 UI 的引导约束，
+   *   不是数据完整性约束 —— 老档案 / 向导（创建前无等级）产出的形象本就可能包含高等级部位，
+   *   core 若按等级拦截会造成「建档时合法、改一次就非法」的自相矛盾。门槛过滤在 HUD 编辑面板做
+   *   （hud/screens/appearance-unlock-catalog.ts，按角色 level 灰显未解锁类别）。
+   * 接线：core/runtime.ts → character/manager.updateAppearance（写 characters + 同步投影单位外观）。
+   */
+  | { type: 'character.appearance.update'; characterId: string; appearance: CharacterAppearance }
+  /**
    * @since v3.7 新建角色档案（首启引导的落地动作：起名 → 选 agent → 选皮肤 → 写人设）。
    * 载荷口径：
    *   - name：trim 后非空、≤ MAX_CHARACTER_NAME_LEN（24 码点）；

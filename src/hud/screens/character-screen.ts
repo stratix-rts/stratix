@@ -28,17 +28,40 @@
  *   注意 gained / levelUps 是 HUD 侧观测（相邻两次广播之差），不是 core 的内部计数 ——
  *   真实值以 core/character/manager 的 grantExperience 返回为准。
  *
+ * ★ 形象编辑面板（@since v3.20，task_041）：
+ *   本屏原是纯展示屏（除导航外不发任何业务命令）—— 但形象编辑是「创建后」路径的唯一合法入口
+ *   （向导是创建前，不受解锁约束），故在本屏的角色详情位下方加最小编辑面板：
+ *   预览 canvas（appearance-preview-port 注入）+ 部件选择器 + 重随机 + 保存。
+ *   面板职责边界：
+ *     - 等级过滤 / 角标 / 受限重随机 / toast 文案全在 appearance-unlock-catalog（纯函数）；
+ *     - 保存发 HudCommand 'character.appearance.update'（core 不判解锁，见 types.ts 命令注释）；
+ *     - 预览与选择器数据全经 port（hud 不认识 world，铁律不变）；
+ *     - 草稿仅存在元素内存（_editDraft）：未保存的改动不落库、不广播；重渲染（经验变动等）
+ *       不会丢草稿，但切换单位（换编辑对象）会重置。
+ *
  * 挂载接线：TODO(v3.task_019) —— 本屏目前只提供 mountCharacterScreen 工厂，
  *   尚未接进 main-screen / hud-dev-entry（由 task_019 的屏位路由接线任务统一挂载，避免两个任务同时改同一处壳）。
  */
 
-import type { WorldState } from '../../core/types';
+import {
+  appearancePartVariant,
+  type AppearanceBodyType,
+  type WorldState,
+} from '../../core/types';
+import type { CharacterView } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
 import { defineStratButton, escapeHtml, STRAT_BUTTON_TAG } from '../widgets/strat-button';
 
 import {
+  lockedCategoryBadge,
+  mergeUnlockedRoll,
+} from './appearance-unlock-catalog';
+import type { AppearancePreviewPort } from './appearance-preview-port';
+import { cloneAppearance } from './onboarding-catalog';
+import {
   characterSignature,
   resolveCharacterModel,
+  resolveFocusedCharacter,
   type CharacterCardModel,
   type CharacterLinkModel,
   type CharacterScreenModel,
@@ -66,12 +89,22 @@ export interface ExpGainedDetail {
 export interface StratCharacterScreenElement extends HTMLElement {
   /** 注入的适配器；connected 之前或之后设置都生效。 */
   adapter: CharacterScreenDeps | null;
+  /**
+   * 形象预览端口（@since v3.20，task_041）：形象编辑面板的依赖（预览 / 选择器数据 / 随机）。
+   * 缺省 null = 面板降级成一句「形象预览没接上」，屏照常可用（与向导同口径：没接端口不是错误）。
+   */
+  appearancePort: AppearancePreviewPort | null;
   /** 强制重算重渲染。 */
   refresh(): void;
   /** 最近一次派生出的视图模型。 */
   readonly model: CharacterScreenModel;
   /** 最近一次收到的 WorldState。 */
   readonly lastState: WorldState | null;
+  /**
+   * 某角色的形象编辑草稿（测试观察口；未初始化 / 不是当前编辑对象 → null）。
+   * why 暴露：草稿是纯内存态，测试要断言「受限重随机没碰未解锁类别」这类行为只能从这看。
+   */
+  appearanceDraftOf(characterId: string): import('../../core/types').CharacterAppearance | null;
 }
 
 /** 工厂：注册 `<strat-character-screen>`。幂等（与 defineSettingsScreen 同一约定）。 */
@@ -92,11 +125,42 @@ export function defineCharacterScreen(): typeof HTMLElement {
     /** 经验条高亮的清理定时器；同一时刻只有一个（重复增长就重新计时）。 */
     private _pulseTimer: ReturnType<typeof setTimeout> | null = null;
 
+    // —— 形象编辑面板状态（@since v3.20，task_041）——
+    private _appearancePort: AppearancePreviewPort | null = null;
+    /** 当前编辑对象的角色 id（草稿的 key：切换单位 = 重置草稿）。 */
+    private _editCharacterId: string | null = null;
+    /** 编辑草稿（仅内存，未保存不落库）。 */
+    private _editDraft: import('../../core/types').CharacterAppearance | null = null;
+    /** 预览画布宿主：跨重渲染存活（换掉元素 = Phaser 画布被从 DOM 摘走，画面黑掉，同向导口径）。 */
+    private _canvasHost: HTMLDivElement | null = null;
+    /** 最近一次推给 port 的草稿（引用比较：部件逐项变更用不可变替换，避免重渲染重复合成）。 */
+    private _lastPreviewedDraft: import('../../core/types').CharacterAppearance | null = null;
+    /** whenReady 是否已问过（一次挂载只问一次；就绪后强制重画一次拿新变体清单）。 */
+    private _appearanceReadyAsked = false;
+    /** 编辑面板的临时错误文案（随机形象抽不出等；null = 不显示）。 */
+    private _appearanceError: string | null = null;
+
     get adapter(): CharacterScreenDeps | null { return this._adapter; }
     set adapter(value: CharacterScreenDeps | null) {
       this._adapter = value;
       this.bindAdapter();
       this.refresh();
+    }
+
+    get appearancePort(): AppearancePreviewPort | null { return this._appearancePort; }
+    set appearancePort(value: AppearancePreviewPort | null) {
+      // 端口换了（换实例 / 换桩）：预览宿主与草稿随之失效，重置后再重画。
+      this._appearancePort = value;
+      this._editCharacterId = null;
+      this._editDraft = null;
+      this._canvasHost = null;
+      this._lastPreviewedDraft = null;
+      this._appearanceError = null;
+      this.refresh();
+    }
+
+    appearanceDraftOf(characterId: string): import('../../core/types').CharacterAppearance | null {
+      return this._editCharacterId === characterId ? this._editDraft : null;
     }
 
     get lastState(): WorldState | null { return this._state; }
@@ -116,6 +180,15 @@ export function defineCharacterScreen(): typeof HTMLElement {
       this.clearPulseTimer();
       this._lastGrowth.clear();
       this._lastRenderKey = null;
+      // 形象编辑面板（task_041）：镜像向导的卸载口径 —— 销毁预览实例（Phaser 不泄漏；
+      // port 对象 destroy 后仍可 attach 重建，与向导共享同一实例不冲突）+ 清草稿 / 宿主 / 就绪标记。
+      this._appearancePort?.destroy();
+      this._editCharacterId = null;
+      this._editDraft = null;
+      this._canvasHost = null;
+      this._lastPreviewedDraft = null;
+      this._appearanceReadyAsked = false;
+      this._appearanceError = null;
     }
 
     refresh(): void {
@@ -124,6 +197,12 @@ export function defineCharacterScreen(): typeof HTMLElement {
       this._lastRenderKey = key;
       // 经验差值在 renderBody 里就地比对（diffExperience 先算后写观测表），这里只负责重画。
       this.renderBody();
+    }
+
+    /** 清键强制重画（形象编辑面板的草稿变更 / 素材就绪不走签名，需要显式触发）。 */
+    private forceRerender(): void {
+      this._lastRenderKey = null;
+      this.refresh();
     }
 
     // —— 订阅生命周期 ——
@@ -293,6 +372,48 @@ export function defineCharacterScreen(): typeof HTMLElement {
           .link-level { color: var(--srf-accent, #6ea8ff); }
           .empty { color: var(--srf-text-muted, #9aa3b2); font-size: var(--srf-font-size-sm, 12px); }
           .hint { color: var(--srf-warn, #f0c674); font-size: var(--srf-font-size-sm, 12px); }
+          /* —— 形象编辑面板（task_041）：尺寸与视觉全引 --srf-* token —— */
+          .appearance-layout {
+            display: grid;
+            grid-template-columns: 160px minmax(0, 1fr);
+            gap: var(--srf-spacing-md, 12px);
+          }
+          .appearance-canvas-slot { display: flex; justify-content: center; padding: var(--srf-spacing-sm, 8px); }
+          .appearance-canvas {
+            width: 128px;
+            height: 128px;
+            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
+            border-radius: var(--srf-radius, 6px);
+            background: var(--srf-panel-elevated, #20262f);
+            overflow: hidden;
+          }
+          .appearance-controls { display: grid; gap: var(--srf-spacing-sm, 8px); align-content: start; }
+          .appearance-fields {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: var(--srf-spacing-sm, 8px);
+          }
+          .appearance-field { display: grid; gap: var(--srf-spacing-xs, 4px); font-size: var(--srf-font-size-sm, 12px); }
+          .appearance-field-name {
+            display: flex;
+            align-items: baseline;
+            gap: var(--srf-spacing-xs, 4px);
+            color: var(--srf-text-muted, #9aa3b2);
+          }
+          .appearance-field select {
+            font-family: inherit;
+            font-size: var(--srf-font-size-sm, 12px);
+            color: var(--srf-text, #e6e9ef);
+            background: var(--srf-panel, #181c25);
+            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
+            border-radius: var(--srf-radius, 6px);
+            padding: var(--srf-spacing-xs, 4px);
+          }
+          /* 灰显口径（需求①）：未解锁类别不隐藏 —— 降透明度 + 角标说明几级解锁。 */
+          .appearance-field[data-locked="true"] select { opacity: 0.45; cursor: not-allowed; }
+          .lock-badge { color: var(--srf-warn, #f0c674); }
+          .appearance-actions { display: flex; gap: var(--srf-spacing-sm, 8px); flex-wrap: wrap; }
+          .appearance-error { color: var(--srf-danger, #e06c75); font-size: var(--srf-font-size-sm, 12px); }
         </style>
         <div class="screen" part="screen">
           <div class="topbar">
@@ -311,6 +432,8 @@ export function defineCharacterScreen(): typeof HTMLElement {
         // 事件委托绑在外壳上：内容区每次重渲染都重建，绑在内容上会随重渲染反复泄漏（perf 硬约束）。
         root.addEventListener('click', (ev: Event) => this.onClick(ev));
         root.addEventListener('strat-button-click', (ev: Event) => this.onClick(ev));
+        // 形象编辑面板（task_041）的 select 走 change（change 才意味着用户选定了，不响应每次按键）。
+        root.addEventListener('change', (ev: Event) => this.onChange(ev));
       }
     }
 
@@ -322,7 +445,51 @@ export function defineCharacterScreen(): typeof HTMLElement {
         this.backToMain();
         return;
       }
-      if (target.closest('[data-role="chat"]')) this.openChat();
+      if (target.closest('[data-role="chat"]')) {
+        this.openChat();
+        return;
+      }
+      // 形象编辑面板（task_041）：strat-button 的两个动作位。
+      if (target.closest('[data-action="randomize-appearance"]')) {
+        this.randomizeAppearance();
+        return;
+      }
+      if (target.closest('[data-action="save-appearance"]')) this.saveAppearance();
+    }
+
+    /** 形象编辑面板的 select 变更：体型 / 部件（task_041）。 */
+    private onChange(ev: Event): void {
+      const target = ev.target as HTMLSelectElement | null;
+      if (!target || typeof target.value !== 'string') return;
+      const draft = this._editDraft;
+      if (!draft) return;
+
+      if (target.matches('[data-field="body-type"]')) {
+        const bodyType = target.value as AppearanceBodyType;
+        // 不可变替换：草稿引用变了，预览的引用比较才能感知（见 syncAppearanceCanvas）。
+        this._editDraft = { ...draft, bodyType };
+        // 体型换了 → 部件清单可能变（某些部位只支持一种体型），重画编辑区。
+        this.forceRerender();
+        return;
+      }
+
+      if (target.matches('[data-field="appearance-part"]')) {
+        const category = target.getAttribute('data-category');
+        if (!category) return;
+        // 未解锁类别的 select 是 disabled：真有变更进来（理论不可能）也不改 —— 防御而非信任。
+        const level = resolveFocusedCharacter(this._state)?.level ?? 1;
+        if (lockedCategoryBadge(category, level) !== null) return;
+        const parts = { ...draft.parts };
+        if (target.value) parts[category] = target.value;
+        else delete parts[category];
+        this._editDraft = { ...draft, parts };
+        this.refreshEditorError(null);
+        // 不整屏重画（重画会把用户正在操作的下拉换掉）：直接把新草稿推给预览。
+        if (this._appearancePort && this._editDraft) {
+          this._lastPreviewedDraft = this._editDraft;
+          this._appearancePort.preview(this._editDraft);
+        }
+      }
     }
 
     private renderBody(): void {
@@ -332,8 +499,187 @@ export function defineCharacterScreen(): typeof HTMLElement {
 
       const model = this.model;
       const gains = this.diffExperience(model.cards);
-      box.innerHTML = this.renderFocus(model) + this.renderLinks(model) + this.renderCards(model);
+      // 形象编辑面板的预览画布宿主跨重渲染存活（同向导口径）：先摘出，重画后放回。
+      this._canvasHost?.remove();
+      box.innerHTML = this.renderFocus(model) + this.renderAppearanceEditor() + this.renderLinks(model) + this.renderCards(model);
+      this.syncAppearanceCanvas();
       this.applyPulse(gains);
+    }
+
+    // —— 形象编辑面板（@since v3.20，task_041）——
+
+    /** 草稿初始化（切换单位时重置）：有外观拷贝外观，无外观问端口预设（创建前没选过形象的补一个）。 */
+    private ensureEditDraft(focus: CharacterView): import('../../core/types').CharacterAppearance | null {
+      if (this._editCharacterId !== focus.id) {
+        this._editCharacterId = focus.id;
+        // 预设也要深拷贝：端口实现可能缓存同一份对象（品牌预设查表），草稿是可变的 ——
+        // 不拷会把用户未保存的改动漏进端口的缓存。
+        const preset = this._appearancePort?.preset(focus.agentKind ?? '') ?? null;
+        this._editDraft = focus.appearance
+          ? cloneAppearance(focus.appearance)
+          : preset
+            ? cloneAppearance(preset)
+            : null;
+        this._appearanceError = null;
+      }
+      return this._editDraft;
+    }
+
+    /** 素材就绪后强制重画一次（变体清单可能从空变满）；一次挂载只问一次，避免微任务循环。 */
+    private askAppearanceReady(): void {
+      const port = this._appearancePort;
+      if (!port || this._appearanceReadyAsked) return;
+      this._appearanceReadyAsked = true;
+      void port.whenReady().then(() => {
+        if (!this.isConnected) return;
+        const focus = resolveFocusedCharacter(this._state);
+        if (focus && this._editCharacterId === focus.id && this._editDraft === null && !focus.appearance) {
+          const preset = port.preset(focus.agentKind ?? '');
+          this._editDraft = preset ? cloneAppearance(preset) : null;
+        }
+        this.forceRerender();
+      });
+    }
+
+    /** 编辑面板整组（无 focus 角色 / 无端口 / 无草稿各有各的空态文案，不编数据）。 */
+    private renderAppearanceEditor(): string {
+      const focus = resolveFocusedCharacter(this._state);
+      if (!focus) return '';
+      if (!this._appearancePort) {
+        return `
+          <div class="group" data-group="appearance-edit">
+            <div class="group-name">形象编辑</div>
+            <div class="empty" data-role="appearance-unavailable">形象预览没接上：编辑形象需要形象服务</div>
+          </div>
+        `;
+      }
+      this.askAppearanceReady();
+      const draft = this.ensureEditDraft(focus);
+      if (!draft) {
+        return `
+          <div class="group" data-group="appearance-edit">
+            <div class="group-name">形象编辑</div>
+            <div class="empty" data-role="appearance-loading">素材还没加载出来，稍候会自动补上（重进本屏也可）</div>
+          </div>
+        `;
+      }
+      const error = this._appearanceError;
+      return `
+        <div class="group" data-group="appearance-edit">
+          <div class="group-name">形象编辑 · Lv.${focus.level}</div>
+          <div class="appearance-layout">
+            <div class="appearance-canvas-slot" data-role="appearance-canvas-slot"></div>
+            <div class="appearance-controls">
+              <div class="appearance-fields" data-role="appearance-fields">${this.renderAppearanceControls(draft, focus.level)}</div>
+              <div class="appearance-actions">
+                <${STRAT_BUTTON_TAG} label="重随机" variant="default" data-action="randomize-appearance"></${STRAT_BUTTON_TAG}>
+                <${STRAT_BUTTON_TAG} label="保存形象" variant="primary" data-action="save-appearance"></${STRAT_BUTTON_TAG}>
+              </div>
+              <div class="appearance-error" data-role="appearance-error" ${error ? '' : 'hidden'}>${escapeHtml(error ?? '')}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    /** 选择器（体型 + 全量类别，未解锁灰显 + 角标 —— 需求①）。 */
+    private renderAppearanceControls(draft: import('../../core/types').CharacterAppearance, level: number): string {
+      const port = this._appearancePort;
+      if (!port) return '';
+      // 编辑路径用全量类别（listAllCategories，task_041）；端口没实现该可选能力则退回向导五类。
+      const categories = port.listAllCategories?.(draft.bodyType) ?? port.listCategories(draft.bodyType);
+
+      const bodyTypeOptions = port.bodyTypes
+        .map((type) => `<option value="${escapeHtml(type)}"${type === draft.bodyType ? ' selected' : ''}>${escapeHtml(type)}</option>`)
+        .join('');
+      const bodyTypeField = `
+        <label class="appearance-field" data-locked="false">
+          <span class="appearance-field-name">体型</span>
+          <select data-field="body-type" data-role="body-type">${bodyTypeOptions}</select>
+        </label>
+      `;
+
+      const partFields = categories
+        .map((info) => {
+          const badge = lockedCategoryBadge(info.category, level);
+          const locked = badge !== null;
+          const value = appearancePartVariant(draft.parts[info.category] ?? '');
+          const options = [
+            // 草稿里有值但清单里没有（素材未就绪 / 体型不支持）→ 保留当前值可见，不假装它不存在。
+            ...(value && !info.variants.includes(value) ? [value] : []),
+            ...info.variants,
+          ]
+            .map(
+              (variant) =>
+                `<option value="${escapeHtml(variant)}"${variant === value ? ' selected' : ''}>${escapeHtml(variant || '（无）')}</option>`
+            )
+            .join('');
+          return `
+            <label class="appearance-field" data-category="${escapeHtml(info.category)}" data-locked="${locked}">
+              <span class="appearance-field-name">${escapeHtml(info.name)}${badge ? ` <span class="lock-badge" data-role="lock-badge">${escapeHtml(badge)}</span>` : ''}</span>
+              <select data-field="appearance-part" data-category="${escapeHtml(info.category)}"${locked ? ' disabled' : ''}>${options}</select>
+            </label>
+          `;
+        })
+        .join('');
+
+      return bodyTypeField + partFields;
+    }
+
+    /** 画布宿主归位 + 推预览（引用比较：草稿没换不重复合成）。 */
+    private syncAppearanceCanvas(): void {
+      const port = this._appearancePort;
+      const draft = this._editDraft;
+      const slot = this.shadowRoot?.querySelector('[data-role="appearance-canvas-slot"]');
+      if (!port || !draft || !slot) return;
+      if (!this._canvasHost) {
+        this._canvasHost = document.createElement('div');
+        this._canvasHost.className = 'appearance-canvas';
+      }
+      if (this._canvasHost.parentElement !== slot) slot.appendChild(this._canvasHost);
+      // attach 幂等（同一宿主无副作用；宿主被挪回树里也确保实例指着它 —— 同向导口径）。
+      port.attach(this._canvasHost);
+      if (this._lastPreviewedDraft !== draft) {
+        this._lastPreviewedDraft = draft;
+        port.preview(draft);
+      }
+    }
+
+    /** 受限重随机（需求②）：roll 只把已解锁类别并入草稿，未解锁类别保持现值。 */
+    private randomizeAppearance(): void {
+      const port = this._appearancePort;
+      const draft = this._editDraft;
+      const focus = resolveFocusedCharacter(this._state);
+      if (!port || !draft || !focus) return;
+      const roll = port.randomizeNormal();
+      if (!roll) {
+        this.refreshEditorError('素材还没加载出来，随机形象暂不可用');
+        return;
+      }
+      this._appearanceError = null;
+      this._editDraft = mergeUnlockedRoll(draft, roll, focus.level);
+      this.forceRerender();
+    }
+
+    /** 保存形象（需求①的落地动作）：发 HudCommand，落库与否由 core 裁决。 */
+    private saveAppearance(): void {
+      const focus = resolveFocusedCharacter(this._state);
+      const draft = this._editDraft;
+      if (!focus || !draft) return;
+      this._adapter?.dispatch({
+        type: 'character.appearance.update',
+        characterId: focus.id,
+        appearance: draft,
+      });
+    }
+
+    /** 编辑面板的错误提示位（直接改 DOM，不整屏重画）。 */
+    private refreshEditorError(message: string | null): void {
+      this._appearanceError = message;
+      const node = this.shadowRoot?.querySelector<HTMLElement>('[data-role="appearance-error"]');
+      if (!node) return;
+      node.textContent = message ?? '';
+      node.hidden = message === null;
     }
 
     private renderFocus(model: CharacterScreenModel): string {
@@ -492,13 +838,23 @@ export function defineCharacterScreen(): typeof HTMLElement {
 /**
  * 挂载工厂：本仓库屏 / 面板的统一装配口径（与 mountSettingsScreen 一致）——
  *   建元素、注入 adapter、挂进容器，返回 unmount 闭包。
- * TODO(v3.task_019): 由 main-screen / Electron 新入口统一接线挂载。
+ * @since v3.20（task_041）追加 options.appearance：形象预览端口（形象编辑面板用），
+ *   缺省不注入 —— 面板降级成提示语，屏照常可用（既有调用方零改动）。
  */
-export function mountCharacterScreen(deps: CharacterScreenDeps, host: HTMLElement): () => void {
+export interface MountCharacterScreenOptions {
+  readonly appearance?: AppearancePreviewPort;
+}
+
+export function mountCharacterScreen(
+  deps: CharacterScreenDeps,
+  host: HTMLElement,
+  options: MountCharacterScreenOptions = {}
+): () => void {
   defineCharacterScreen();
   const element = document.createElement(CHARACTER_SCREEN_TAG) as StratCharacterScreenElement;
   element.adapter = deps;
+  if (options.appearance) element.appearancePort = options.appearance;
   host.appendChild(element);
-  // 移除元素会触发 disconnectedCallback → 退订 + 清定时器，订阅与计时随之释放。
+  // 移除元素会触发 disconnectedCallback → 退订 + 清定时器 + 销毁预览实例，订阅与计时随之释放。
   return () => { element.remove(); };
 }

@@ -195,7 +195,7 @@ function resolveExternalSessionId(
  *   部位塞垃圾 → 渲染侧静默不画，用户看不出哪里错。宁可建档时拒发并报明确错误码。
  *   注意 core **不校验素材是否存在**（那是渲染侧资源的事，core 不该碰文件系统 / 网络）。
  */
-function resolveAppearance(
+export function resolveAppearance(
   raw: unknown
 ): { appearance: CharacterAppearance | null } | { error: ProfileErrorCode } {
   if (raw === undefined || raw === null) return { appearance: null };
@@ -264,6 +264,33 @@ function resolveAppearance(
  */
 export function isSameCharacterName(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+/**
+ * 两份外观是否**语义相等**（体型相同 + 逐部位值相同，@since v3.20 task_041）。
+ * why 需要它：manager.updateAppearance 的「与原值一致则不写库不广播」约定需要一个判据 ——
+ *   形象编辑面板每次保存都构造新对象，只比引用会把「没实质改动」也当成一次写入广播。
+ * 语义比较而不是引用比较：部位值可能是纯变体串或 { variant, itemId }，两种形态各自比内容；
+ *   部位条数不同（一边多一个空类别）即不相等。
+ */
+export function isSameCharacterAppearance(a: CharacterAppearance, b: CharacterAppearance): boolean {
+  if (a.bodyType !== b.bodyType) return false;
+  const aEntries = Object.entries(a.parts);
+  const bEntries = Object.entries(b.parts);
+  if (aEntries.length !== bEntries.length) return false;
+  const bParts = b.parts as Readonly<Record<string, AppearancePartValue>>;
+  for (const [category, aValue] of aEntries) {
+    const bValue = bParts[category];
+    if (bValue === undefined) return false;
+    if (typeof aValue === 'string' || typeof bValue === 'string') {
+      if (aValue !== bValue) return false;
+      continue;
+    }
+    // 两个都是 { variant, itemId? } 形态：itemId 未定义与不存在同义。
+    if (aValue.variant !== bValue.variant) return false;
+    if ((aValue.itemId ?? undefined) !== (bValue.itemId ?? undefined)) return false;
+  }
+  return true;
 }
 
 /** 状态里是否已有同名角色（manager 的重复判定用，纯函数便于单测）。 */

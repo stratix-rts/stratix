@@ -165,6 +165,13 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
       case 'character.persona.update':
         character.updatePersona(command.characterId, command.prompt);
         return;
+      // @since v3.20 角色形象写入(task_041 形象编辑面板):落到 character manager。
+      // 形状合法性由 core/character/profile.ts 的 resolveAppearance 校验(与建档同一口径);
+      // ★ 解锁门槛不在 core 判(是编辑 UI 的引导约束,见 types.ts 命令注释);
+      // 写入时同步刷新该角色战场单位的外观投影(同一次 setState,战场与档案不漂移)。
+      case 'character.appearance.update':
+        character.updateAppearance(command.characterId, command.appearance);
+        return;
       // @since v3.7 角色建档(首启引导):落到 character manager(不再走 onUnhandled)。
       // 建档合法性由 core/character/profile.ts 的纯函数裁决;同名冲突 / 条数上限由 manager 判;
       // 落库后由本文件的 store 订阅把整份 WorldState(含 characters)全量广播给两侧。

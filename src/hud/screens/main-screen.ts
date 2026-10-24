@@ -38,6 +38,7 @@ import { mountLogDrawer } from '../panels/log-drawer';
 import { defineStratButton, STRAT_BUTTON_TAG } from '../widgets/strat-button';
 
 import { mountCharacterScreen } from './character-screen';
+import type { AppearancePreviewPort } from './appearance-preview-port';
 import { mountSettingsScreen } from './settings-screen';
 import { mountStatusScreen } from './status-screen';
 
@@ -218,8 +219,16 @@ export interface MainScreenHandle {
   readonly currentThemeId: 'default' | 'pixel';
 }
 
+/**
+ * 主屏可选依赖（@since v3.20，task_041）：形象预览端口 —— 由组合根（main-entry）注入，
+ *   供角色屏的形象编辑面板用（与向导屏共享同一实例；缺省不注入，面板降级成提示语）。
+ */
+export interface MainScreenOptions {
+  readonly appearance?: AppearancePreviewPort;
+}
+
 /** 工厂：构造 main-screen 句柄；接受一个已建好的 bus-adapter（依赖注入）。 */
-export function createMainScreen(adapter: HudBusAdapter): MainScreenHandle {
+export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOptions = {}): MainScreenHandle {
   defineStratButton();
   let currentTheme: 'default' | 'pixel' = 'default';
 
@@ -385,7 +394,8 @@ export function createMainScreen(adapter: HudBusAdapter): MainScreenHandle {
       subHost.className = 'hud-sub-screen';
       host.appendChild(subHost);
       // character-screen 自带 topbar + 返回按钮 → ui.navigate(main) 或 ui.navigate(chat) 打开聊天抽屉。
-      unmountSubScreen = mountCharacterScreen(adapter, subHost);
+      // @since v3.20（task_041）：形象编辑面板的预览端口随屏位注入（没给 = 面板降级，屏照常可用）。
+      unmountSubScreen = mountCharacterScreen(adapter, subHost, { appearance: options.appearance });
       currentScreen = 'character';
     };
 

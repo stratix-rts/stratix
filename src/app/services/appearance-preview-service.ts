@@ -26,7 +26,7 @@ import type {
 import { randomizeAppearance } from '../../world/appearance/appearance-randomizer';
 import { BRAND_PRESETS } from '../../world/appearance/brand-presets';
 import { CharacterComposer } from '../../world/appearance/character-composer';
-import { DEFAULT_ANIMATION } from '../../world/appearance/constants';
+import { DEFAULT_ANIMATION, PART_CATEGORIES } from '../../world/appearance/constants';
 import { PartRegistry } from '../../world/appearance/part-registry';
 
 import type { PreviewGameCreator, PreviewGameHandle } from './appearance-preview-game';
@@ -45,6 +45,37 @@ export const PREVIEW_CATEGORY_LABELS: Readonly<Record<string, string>> = Object.
   eyes: '眼睛',
   ears: '耳朵',
   facial: '面部毛发',
+});
+
+/**
+ * 全量类别的显示名（@since v3.20，task_041 形象编辑面板用）。
+ * why 与 PREVIEW_CATEGORY_LABELS 分开：向导五类是产品口径（快速挑长相），
+ * 编辑面板看的是全部 22 类（升级解锁的体验全在这里）；两份词表各自服务一个屏，不共用。
+ * 缺项（PART_CATEGORIES 新增类别而本表没跟上）退回类别 id 原样显示 —— 不编名字，好过空白。
+ */
+export const EDIT_CATEGORY_LABELS: Readonly<Record<string, string>> = Object.freeze({
+  body: '身体（肤色）',
+  head: '头部',
+  eyes: '眼睛',
+  hair: '头发',
+  ears: '耳朵',
+  nose: '鼻子',
+  facial: '面部毛发',
+  torso: '上衣',
+  legs: '裤子',
+  feet: '鞋子',
+  hat: '帽子',
+  backpack: '背包',
+  weapon: '武器',
+  shield: '盾牌',
+  cape: '披风',
+  arms: '手臂',
+  hands: '手部',
+  neck: '颈部',
+  shoulders: '肩部',
+  wrists: '手腕',
+  quiver: '箭袋',
+  shadow: '阴影',
 });
 
 /**
@@ -171,6 +202,16 @@ export function createAppearancePreviewService(
       return PREVIEW_CATEGORIES.map((category) => ({
         category,
         name: PREVIEW_CATEGORY_LABELS[category] ?? category,
+        variants: variantsFor(category, bodyType),
+      }));
+    },
+
+    // @since v3.20（task_041）：形象编辑面板的全量类别清单 —— 解锁门槛按全部 22 类展示。
+    // variantsFor 对任意类别都适用（注册表按类别查），实现与 listCategories 同源，只是词表不同。
+    listAllCategories(bodyType: AppearanceBodyType): readonly AppearanceCategoryInfo[] {
+      return PART_CATEGORIES.map((category) => ({
+        category,
+        name: EDIT_CATEGORY_LABELS[category] ?? category,
         variants: variantsFor(category, bodyType),
       }));
     },

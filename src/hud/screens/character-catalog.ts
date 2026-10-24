@@ -251,6 +251,18 @@ export function resolveCharacterModel(state: WorldState | null): CharacterScreen
 }
 
 /**
+ * 单选单位关联的**完整角色档案**（@since v3.20，task_041 形象编辑面板用）。
+ * why 不走 model.focus：卡片模型不含 appearance / agentKind（展示卡用不到），
+ * 编辑面板要的是全字段真相（外观 / 种类 / 等级），从 state 直接取，不另存一份。
+ * 未单选 / 未关联 / 关联悬空 → null（不拿别的角色顶替，与 model.focus 同口径）。
+ */
+export function resolveFocusedCharacter(state: WorldState | null): CharacterView | null {
+  const source = toSource(state);
+  const focusId = focusedCharacterId(source);
+  return focusId ? source.characters.find((c) => c.id === focusId) ?? null : null;
+}
+
+/**
  * 渲染判重签名（O(角色数 + 单位数)，纯字符串拼接）。
  * 只含影响本屏显示的东西：选择集、单位↔角色关联、角色 id/等级/经验/**提示词**。
  * persona 进签名是因为它渲染在卡上 —— 只签 id/等级的话，改提示词时本屏会拿着旧签名跳过重绘。

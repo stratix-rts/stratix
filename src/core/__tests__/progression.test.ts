@@ -23,7 +23,9 @@ import {
   isMaxLevel,
   levelForExperience,
   levelUpCheck,
+  newlyUnlockedBetween,
   totalExpForLevel,
+  unlockLevelOf,
   unlockedCategoriesAt,
 } from '../progression';
 import type { ExpSource } from '../types';
@@ -292,5 +294,42 @@ describe('unlockedCategoriesAt：累计查询（含该级当档）', () => {
     expect(unlockedCategoriesAt(MAX_LEVEL + 9)).toEqual(unlockedCategoriesAt(MAX_LEVEL));
     expect(unlockedCategoriesAt(Number.NaN)).toEqual(unlockedCategoriesAt(1));
     expect(unlockedCategoriesAt(3.9)).toEqual(unlockedCategoriesAt(3)); // 小数向下取整
+  });
+});
+
+describe('unlockLevelOf / newlyUnlockedBetween：升级反馈查询（@since v3.20，task_041）', () => {
+  test('unlockLevelOf：键 → 解锁门槛（与 UNLOCKS 表一致）', () => {
+    expect(unlockLevelOf('body')).toBe(1);
+    expect(unlockLevelOf('facial')).toBe(1);
+    expect(unlockLevelOf('torso')).toBe(3);
+    expect(unlockLevelOf('hat')).toBe(5);
+    expect(unlockLevelOf('shield')).toBe(8);
+    expect(unlockLevelOf('rare_variants')).toBe(12);
+    // 词表外（防御漂移）：null —— 消费方按「不设门槛」处理，不抛错。
+    expect(unlockLevelOf('tail')).toBeNull();
+  });
+
+  test('newlyUnlockedBetween：跨过门槛才非空（升级 toast 的裁决依据）', () => {
+    // L1→L2：门槛之间，无新类别。
+    expect(newlyUnlockedBetween(1, 2)).toEqual([]);
+    // L2→L3：服装档。
+    expect(newlyUnlockedBetween(2, 3)).toEqual(['torso', 'legs', 'feet']);
+    // 门槛之内（L3→L4）无新解锁。
+    expect(newlyUnlockedBetween(3, 4)).toEqual([]);
+    // 连升跨多档：区间内所有门槛都算上。
+    expect(newlyUnlockedBetween(4, 8)).toEqual(['hat', 'backpack', 'weapon', 'shield', 'cape']);
+    // L11→L12：补全档 + rare_variants 标记位。
+    expect(newlyUnlockedBetween(11, 12)).toEqual([
+      'nose', 'arms', 'hands', 'neck', 'shoulders', 'wrists', 'quiver', 'shadow', 'rare_variants',
+    ]);
+  });
+
+  test('newlyUnlockedBetween：非升级（to ≤ from）与脏输入兜底 —— 不越权追加', () => {
+    expect(newlyUnlockedBetween(5, 5)).toEqual([]);
+    expect(newlyUnlockedBetween(6, 5)).toEqual([]);
+    // NaN 夹到 L1：from = 1（与 unlockedCategoriesAt 同一兜底口径），不是抛错。
+    expect(newlyUnlockedBetween(Number.NaN, 3)).toEqual(['torso', 'legs', 'feet']);
+    expect(newlyUnlockedBetween(2, MAX_LEVEL + 9)).toEqual(newlyUnlockedBetween(2, MAX_LEVEL));
+    expect(newlyUnlockedBetween(2.9, 3.1)).toEqual(['torso', 'legs', 'feet']); // 小数向下取整
   });
 });

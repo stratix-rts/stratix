@@ -96,3 +96,31 @@ export function unlockedCategoriesAt(level: number): readonly UnlockKey[] {
   }
   return unlocked;
 }
+
+/**
+ * 键 → 解锁门槛等级（@since v3.20，task_041）。
+ * why 集中在这里而不是消费方自己扫表：「Lv.X 解锁」角标、解锁预告等多处消费同一张表，
+ * 各自扫一遍迟早漂移（改表时漏一处）。词表内的键必有门槛（无空洞单测保证），
+ * 词表外的键返回 null —— 调用方按「不设门槛」处理（防御词表漂移，而不是抛错打断广播链）。
+ */
+export function unlockLevelOf(key: string): number | null {
+  for (const threshold of UNLOCK_LEVELS) {
+    if ((UNLOCKS[threshold] as readonly string[]).includes(key)) return threshold;
+  }
+  return null;
+}
+
+/**
+ * 查询：from（不含）→ to（含）之间**新**解锁的键（@since v3.20，task_041）。
+ * why 需要它：升级 toast 只有真的解锁了新外观部件才带「解锁新外观部件」后半句 ——
+ * 「哪些等级跨过了解锁门槛」的裁决在这里一次做完，toast 拼文案的那层不重复算数。
+ * 跨多级（to − from > 1）把区间内所有门槛都算上；等级夹取与 unlockedCategoriesAt 同一口径；
+ * to ≤ from（非升级 / 对账脏数据）返回空 —— 升级广播契约恒有 to > from，这里兜底不越权。
+ */
+export function newlyUnlockedBetween(fromLevel: number, toLevel: number): readonly UnlockKey[] {
+  const from = !Number.isFinite(fromLevel) ? 1 : Math.min(MAX_LEVEL, Math.max(1, Math.floor(fromLevel)));
+  const to = !Number.isFinite(toLevel) ? 1 : Math.min(MAX_LEVEL, Math.max(1, Math.floor(toLevel)));
+  if (to <= from) return [];
+  const before = new Set<string>(unlockedCategoriesAt(from));
+  return unlockedCategoriesAt(to).filter((key) => !before.has(key));
+}

@@ -46,9 +46,11 @@ import { updatePersona as applyPersona, type PersonaErrorCode } from './persona'
 import {
   createAgentProfile,
   hasDuplicateCharacterName,
+  isSameCharacterAppearance,
+  resolveAppearance,
   type ProfileErrorCode,
 } from './profile';
-import { toCharacterUnit } from './unit-projection';
+import { toCharacterUnit, CHARACTER_UNIT_ID_PREFIX } from './unit-projection';
 
 /** 写经验 / persona 被拒的机器可读原因（对应纯函数错误码 + "角色不在状态里"）。 */
 export type CharacterRejectionCode = 'not-found' | GrowthErrorCode | PersonaErrorCode;
@@ -107,6 +109,21 @@ export type CharacterPersonaResult =
     }
   | { readonly ok: false; readonly code: CharacterRejectionCode; readonly characterId: string };
 
+/**
+ * 改形象被拒的机器可读原因（@since v3.20，task_041）。
+ * - not-found：状态里没有这个角色；
+ * - invalid-appearance：外观形状非法（profile.ts 的 resolveAppearance 口径 —— 体型不在词表 /
+ *   部位字典非法 / 条数或长度超限），或载荷根本没给外观（改形象必须带一份真外观）。
+ */
+export type CharacterAppearanceResult =
+  | {
+      readonly ok: true;
+      readonly character: CharacterView;
+      /** 写入后生效的外观（已校验 / 规范化，与 store 里那份同引用）。 */
+      readonly appearance: CharacterAppearance;
+    }
+  | { readonly ok: false; readonly code: 'not-found' | 'invalid-appearance'; readonly characterId: string };
+
 export interface CharacterManagerOptions {
   /** 状态持有者；默认 worldStore 单例。单测用 createStore() 隔离。 */
   readonly store?: CoreStore;
@@ -144,6 +161,14 @@ export interface CharacterManager {
    * 提示词合法性（空 / 非字符串 / 超长）由 persona.ts 的纯函数校验，本文件不重复判。
    */
   updatePersona(characterId: string, prompt: unknown): CharacterPersonaResult;
+  /**
+   * 改角色形象（外观写入面的唯一入口，对应 HudCommand 'character.appearance.update'，@since v3.20 task_041）。
+   * 合法性裁决在 profile.ts 的 resolveAppearance（与建档同一口径）；语义相等（isSameCharacterAppearance）
+   * 则不写库不广播。写入时在**同一次 setState** 里同步刷新该角色战场单位的 appearance 投影
+   * （单位的 appearance 是建档时的快照引用，不同步刷新战场就还画旧形象）。
+   * ★ 不判解锁：等级门槛是编辑 UI 的引导约束（见 types.ts 命令注释），写入面只管形状合法。
+   */
+  updateAppearance(characterId: string, appearance: unknown): CharacterAppearanceResult;
 }
 
 /**
@@ -377,5 +402,61 @@ export function createCharacterManager(options: CharacterManagerOptions = {}): C
     return settled;
   };
 
-  return { store, createCharacter, grantExperience, updatePersona };
+  /**
+   * 改写形象（@since v3.20，task_041）—— 与 updatePersona 同一写入口径（一次 setState 内原子化）。
+   * 与其它写入面的两处差异：
+   *   1. 合法性校验直接复用建档的 resolveAppearance（同一份「什么算合法外观」真相，不分叉）；
+   *      外观缺失（null）在这里是拒发而不是「不带」—— 改形象必须给一份真外观；
+   *   2. 写 characters 的同一次 setState 里同步刷新战场单位的 appearance（建档投影是快照引用，
+   *      只改 characters 不改 units 的话，战场继续画旧形象，两侧漂移）。
+   */
+  const updateAppearance = (characterId: string, appearance: unknown): CharacterAppearanceResult => {
+    // 形状校验不需要看状态，前置到 setState 外面（省一次无效的原子化进入/退出）。
+    const resolved = resolveAppearance(appearance);
+    if ('error' in resolved || resolved.appearance === null) {
+      reportFailure(store, `character-appearance-rejected:${characterId}:invalid-appearance`, `外观写入被拒（invalid-appearance）：${characterId}`);
+      return { ok: false, code: 'invalid-appearance', characterId };
+    }
+    const next = resolved.appearance;
+
+    let result: CharacterAppearanceResult | null = null;
+
+    store.setState((current) => {
+      const index = current.characters.findIndex((c) => c.id === characterId);
+      if (index < 0) {
+        result = { ok: false, code: 'not-found', characterId };
+        return current;
+      }
+
+      const existing = current.characters[index] as CharacterView;
+      // 语义相等（体型 + 逐部位值）→ 不写库不广播（与 updatePersona 的「与原值一致」同一约定）。
+      if (existing.appearance && isSameCharacterAppearance(existing.appearance, next)) {
+        result = { ok: true, character: existing, appearance: existing.appearance };
+        return current;
+      }
+
+      const updated: CharacterView = { ...existing, appearance: next };
+      const characters = current.characters.slice();
+      characters[index] = updated;
+      // 同步刷新战场单位的外观投影：单位 id 是稳定的 `unit_<角色id>`（见 unit-projection.ts），
+      // 只刷新它自己的那一项，其余单位（含未关联角色的）不动。
+      const unitId = `${CHARACTER_UNIT_ID_PREFIX}${characterId}`;
+      const units = current.units.map((unit) => (unit.id === unitId ? { ...unit, appearance: next } : unit));
+      result = { ok: true, character: updated, appearance: next };
+      return { ...current, characters, units };
+    });
+
+    if (result === null) return { ok: false, code: 'not-found', characterId };
+    const settled = result as CharacterAppearanceResult;
+    if (!settled.ok) {
+      reportFailure(
+        store,
+        `character-appearance-rejected:${characterId}:${settled.code}`,
+        settled.code === 'not-found' ? `未找到角色：${characterId}` : `外观写入被拒（${settled.code}）：${characterId}`
+      );
+    }
+    return settled;
+  };
+
+  return { store, createCharacter, grantExperience, updatePersona, updateAppearance };
 }

@@ -43,6 +43,7 @@ import { createStore } from '../store';
 import {
   MAX_CHARACTERS,
   MAX_CHARACTER_NAME_LEN,
+  type CharacterAppearance,
   type CharacterView,
   type WorldState,
 } from '../types';
@@ -558,6 +559,105 @@ describe('CharacterManager.updatePersona：persona 写库投影（@since v3.6）
 // 2.b CharacterManager.createCharacter：建档落库 + 同名冲突 + 上限（@since v3.7）
 // ============================================================================
 
+describe('CharacterManager.updateAppearance：形象写库投影（@since v3.20，task_041）', () => {
+  /** 带外观 + 战场单位的最小状态（改形象的两侧同步刷新是本写入面的关键契约）。 */
+  function stateWithUnit(appearance: CharacterView['appearance']): Partial<WorldState> {
+    return {
+      characters: [characterAt({ appearance })],
+      units: [toCharacterUnit({ ...characterAt(), appearance: appearance ?? null })],
+    };
+  }
+
+  test('合法写入：characters 与战场单位的 appearance 同一次广播刷新（两侧不漂移）', () => {
+    const store = createStore(stateWithUnit({ bodyType: 'male', parts: { body: 'light' } }));
+    let broadcasts = 0;
+    store.subscribe(() => { broadcasts += 1; });
+    const manager = createCharacterManager({ store });
+
+    const result = manager.updateAppearance('c-neo', {
+      bodyType: 'female',
+      parts: { body: 'dark', hair: { variant: 'blonde', itemId: 'hair/blonde' } },
+    });
+
+    expect(result.ok).toBe(true);
+    const character = store.getState().characters[0];
+    const unit = store.getState().units[0];
+    expect(character?.appearance).toEqual({
+      bodyType: 'female',
+      parts: { body: 'dark', hair: { variant: 'blonde', itemId: 'hair/blonde' } },
+    });
+    // 同一份引用：单位投影直接指向新外观（不是各拷一份 —— 那是漂移源头）。
+    expect(unit?.appearance).toBe(character?.appearance);
+    expect(broadcasts).toBe(1); // 只广播一次（原子化，不先 characters 后 units 两段拆开）
+  });
+
+  test('只刷新它自己的单位：其余单位（含未关联角色的）不动', () => {
+    const appearance = { bodyType: 'male' as const, parts: { body: 'light' } };
+    const other = { id: 'u-ghost', name: '路人', status: 'idle' as const, missionId: null, power: 1, characterId: null };
+    const store = createStore({
+      characters: [characterAt({ appearance })],
+      units: [toCharacterUnit({ ...characterAt(), appearance }), other],
+    });
+    const manager = createCharacterManager({ store });
+
+    manager.updateAppearance('c-neo', { bodyType: 'male', parts: { body: 'dark' } });
+
+    expect(store.getState().units.find((u) => u.id === other.id)).toEqual(other);
+  });
+
+  test('与原值语义相等（纯串 / 精确选择两形态逐项比内容）→ 不写库不广播', () => {
+    const store = createStore(stateWithUnit({
+      bodyType: 'male',
+      parts: { body: 'light', torso: { variant: 'white_shirt', itemId: 'torso/long/white_shirt' } },
+    }));
+    let broadcasts = 0;
+    store.subscribe(() => { broadcasts += 1; });
+    const manager = createCharacterManager({ store });
+
+    // 内容相等但对象全新：面板每次保存都构造新对象，只比引用会把「没改动」也当成写入。
+    const unchanged = manager.updateAppearance('c-neo', {
+      bodyType: 'male',
+      parts: { torso: { itemId: 'torso/long/white_shirt', variant: 'white_shirt' }, body: 'light' },
+    });
+
+    expect(unchanged.ok).toBe(true);
+    expect(broadcasts).toBe(0);
+    expect(store.getState().notices).toHaveLength(0);
+    // 部位条数不同即不相等：多一个类别也算改动。
+    const grew = manager.updateAppearance('c-neo', {
+      bodyType: 'male',
+      parts: { body: 'light' },
+    });
+    expect(grew.ok).toBe(true);
+    expect(broadcasts).toBe(1);
+  });
+
+  test('角色不存在：拒发 + warn Notice，状态不变', () => {
+    const store = createStore(stateWithUnit(null));
+    const manager = createCharacterManager({ store });
+
+    const result = manager.updateAppearance('c-ghost', { bodyType: 'male', parts: {} });
+
+    expect(result).toEqual({ ok: false, code: 'not-found', characterId: 'c-ghost' });
+    expect(store.getState().notices[0]).toMatchObject({ level: 'warn', source: 'core/character' });
+  });
+
+  test('非法外观（体型词表外 / parts 非对象 / 载荷缺失）：拒发 + Notice，一分不改', () => {
+    const store = createStore(stateWithUnit({ bodyType: 'male', parts: { body: 'light' } }));
+    const manager = createCharacterManager({ store });
+
+    const badBodyType = manager.updateAppearance('c-neo', { bodyType: 'giant', parts: {} });
+    const badParts = manager.updateAppearance('c-neo', { bodyType: 'male', parts: ['light'] as never });
+    const missing = manager.updateAppearance('c-neo', undefined);
+
+    expect(badBodyType).toEqual({ ok: false, code: 'invalid-appearance', characterId: 'c-neo' });
+    expect(badParts).toMatchObject({ ok: false, code: 'invalid-appearance' });
+    expect(missing).toMatchObject({ ok: false, code: 'invalid-appearance' });
+    expect(store.getState().notices).toHaveLength(3);
+    expect(store.getState().characters[0]?.appearance).toEqual({ bodyType: 'male', parts: { body: 'light' } });
+  });
+});
+
 describe('CharacterManager.createCharacter：建档落库', () => {
   const input = {
     name: 'Neo',
@@ -1038,5 +1138,53 @@ describe('经总线集成：core 写库 → state 通道 → HUD 订阅侧', () 
     expect(store.getState().characters).toHaveLength(0);
     expect(store.getState().notices).toHaveLength(1);
     expect(store.getState().notices[0]).toMatchObject({ level: 'warn', source: 'core/character' });
+  });
+
+  test('character.appearance.update：形象写入面经总线闭环（task_041）—— characters 与 units 同步刷新', () => {
+    resetBus();
+    const appearance: CharacterAppearance = { bodyType: 'male', parts: { body: 'light' } };
+    const store = createStore({
+      characters: [characterAt({ appearance })],
+      units: [toCharacterUnit({ ...characterAt(), appearance })],
+    });
+    const runtime = createCoreRuntime({ store });
+    const stop = runtime.start();
+
+    emitCommand({
+      type: 'character.appearance.update',
+      characterId: 'c-neo',
+      appearance: { bodyType: 'female', parts: { body: 'dark' } },
+    });
+    stop();
+
+    const character = store.getState().characters[0];
+    const unit = store.getState().units[0];
+    expect(character?.appearance).toEqual({ bodyType: 'female', parts: { body: 'dark' } });
+    expect(unit?.appearance).toEqual({ bodyType: 'female', parts: { body: 'dark' } });
+  });
+
+  test('character.appearance.update：非解锁门槛所拦（core 不判解锁，写入面只管形状合法）—— 高等级部位照常落库', () => {
+    resetBus();
+    const store = createStore({
+      characters: [characterAt({ appearance: { bodyType: 'male', parts: { body: 'light' } } })],
+      units: [toCharacterUnit({ ...characterAt(), appearance: { bodyType: 'male', parts: { body: 'light' } } })],
+    });
+    const runtime = createCoreRuntime({ store });
+    const stop = runtime.start();
+
+    // L1 角色写 L8 才解锁的 shield：解锁是编辑 UI 的引导约束，不是数据完整性约束
+    //（老档案 / 向导产出的形象本就可能含高等级部位，core 若按等级拦截会自相矛盾）。
+    emitCommand({
+      type: 'character.appearance.update',
+      characterId: 'c-neo',
+      appearance: { bodyType: 'male', parts: { body: 'light', shield: 'round' } },
+    });
+    stop();
+
+    expect(store.getState().characters[0]?.appearance).toEqual({
+      bodyType: 'male',
+      parts: { body: 'light', shield: 'round' },
+    });
+    expect(store.getState().notices).toHaveLength(0);
   });
 });

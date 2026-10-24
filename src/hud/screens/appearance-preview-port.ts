@@ -56,6 +56,13 @@ export interface AppearancePreviewPort {
    * 混着给会让用户选到画不出来的组合。
    */
   listCategories(bodyType: AppearanceBodyType): readonly AppearanceCategoryInfo[];
+  /**
+   * @since v3.20（task_041，**可选能力**）：全量部位类别清单（含选择器数据源）——
+   *   形象**编辑**面板用：解锁门槛按全类别（22 个）展示「Lv.X 解锁」角标，
+   *   而向导的 listCategories 只开放五个基础类别（032 口径，保持不变）。
+   *   未实现（undefined）时编辑面板退回 listCategories —— 向导屏 / 既有桩不受影响。
+   */
+  readonly listAllCategories?: (bodyType: AppearanceBodyType) => readonly AppearanceCategoryInfo[];
   /** 素材元数据就绪后 resolve（**失败也 resolve**：降级成空清单，不卡住向导）。 */
   whenReady(): Promise<void>;
   /**
