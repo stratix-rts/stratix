@@ -12,6 +12,7 @@ import type { CliChatEventEnvelope, CliChatIpcApi, CliChatRunRequest } from '../
 import type { PersistedCharacterRecord, PersistedUnitPosition } from '../app/services/persistence/game-save-dao';
 import type { ChatMessageInsert, PersistedChatMessage } from '../app/services/persistence/chat-history-dao';
 import type { PersistedTaskRecord, PersistedTaskStatRow } from '../app/services/persistence/task-record-dao';
+import type { PersistedPipelineRecord } from '../app/services/persistence/pipeline-record-dao';
 
 export interface ElectronAPI {
   // 通用服务调用
@@ -119,6 +120,8 @@ export interface ElectronAPI {
     loadTasks: (characterId: string, limit?: number) => Promise<{ ok: boolean; tasks?: PersistedTaskRecord[]; error?: string }>;
     /** 全量按角色×状态聚合统计（@since v3.26，task_050，派发推荐的数据源）。 */
     loadTaskStats: () => Promise<{ ok: boolean; rows?: PersistedTaskStatRow[]; error?: string }>;
+    /** upsert 一条流水线编排态（@since v3.27，task_051，落 pipelines 表）。 */
+    savePipeline: (record: PersistedPipelineRecord) => Promise<{ ok: boolean; error?: string }>;
   };
 
   /**
@@ -233,7 +236,9 @@ const electronAPI: ElectronAPI = {
   // 游戏存档（@since v3.12，task_033）：透传到主进程的 DAO（game:loadSnapshot / game:save*）。
   // 对话历史两条（@since v3.15，task_036）同走 game: 前缀：game:saveChatMessage / game:loadChatMessages；
   // 任务记录（@since v3.16，task_037）game:saveTask / game:loadTasks；
-  // 统计聚合（@since v3.26，task_050）：game:taskStats。
+  // 统计聚合（@since v3.26，task_050）：game:taskStats；
+  // 流水线编排态（@since v3.27，task_051）：game:savePipeline（站任务的 pipeline_id 归属
+  // 复用 game:saveTask 多带一列，不另开面）。
   gameSave: {
     loadSnapshot: () => ipcRenderer.invoke('game:loadSnapshot'),
     saveCharacters: (records: PersistedCharacterRecord[]) => ipcRenderer.invoke('game:saveCharacters', records),
@@ -243,6 +248,7 @@ const electronAPI: ElectronAPI = {
     saveTask: (record: PersistedTaskRecord) => ipcRenderer.invoke('game:saveTask', record),
     loadTasks: (characterId: string, limit?: number) => ipcRenderer.invoke('game:loadTasks', characterId, limit),
     loadTaskStats: () => ipcRenderer.invoke('game:taskStats'),
+    savePipeline: (record: PersistedPipelineRecord) => ipcRenderer.invoke('game:savePipeline', record),
   },
 
   /**

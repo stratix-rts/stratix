@@ -9,6 +9,8 @@
  * 迁移后还要能落 awaiting_approval 快照（审批门的挂起行）与 plan 全文（驳回存档），
  * 并被 loadRecentTasks 读回 —— 迁移产物必须与 DAO 期望的形状一致（同 v6 测试的互锁口径）。
  * 另验 DAO 自立路径（ensureCharacterTasksTable 在没有 StratixDatabase 迁移记录时也能就位）。
+ * @since v3.27（task_051）目标 schema 升 v8：版本断言跟随目标（8），v8 专属迁移面
+ * （pipelines 表 + pipeline_id 列）见 task-schema-v8.test.ts。
  */
 
 import * as fs from 'fs';
@@ -118,7 +120,7 @@ describe('StratixDatabase schema v7（六态 + plan 列，task_049）', () => {
     try {
       expect(hasSixStateCheck(db)).toBe(true);
       expect(columnNames(db)).toEqual(expect.arrayContaining(['artifacts', 'plan']));
-      expect(versionOf(db)).toBe(7);
+      expect(versionOf(db)).toBe(8); // v8（task_051）起目标 schema 是 8
       // 六态词表全走一遍：挂起行 + 驳回行都能进（CHECK 不炸就是迁移成功的硬证据）
       upsertTask(db.getDatabase(), record());
       upsertTask(
@@ -150,7 +152,7 @@ describe('StratixDatabase schema v7（六态 + plan 列，task_049）', () => {
     try {
       expect(hasSixStateCheck(db)).toBe(true);
       expect(columnNames(db)).toEqual(expect.arrayContaining(['artifacts', 'plan']));
-      expect(versionOf(db)).toBe(7);
+      expect(versionOf(db)).toBe(8); // v8（task_051）起目标 schema 是 8
       // 老行零丢失：artifacts（v6 加列）随重建搬运，plan 是新列落缺省（读侧 undefined）
       const old = loadRecentTasks(db.getDatabase(), 'ch-1')[0];
       expect(old).toMatchObject({ id: 'task_old', output: '老结果全文', plan: undefined });
@@ -180,7 +182,7 @@ describe('StratixDatabase schema v7（六态 + plan 列，task_049）', () => {
     try {
       expect(hasSixStateCheck(db)).toBe(true);
       expect(columnNames(db)).toEqual(expect.arrayContaining(['artifacts', 'plan']));
-      expect(versionOf(db)).toBe(7);
+      expect(versionOf(db)).toBe(8); // v8（task_051）起目标 schema 是 8
       const old = loadRecentTasks(db.getDatabase(), 'ch-1')[0];
       expect(old).toMatchObject({ id: 'task_old', output: '老结果全文' });
       upsertTask(db.getDatabase(), record());
@@ -204,7 +206,7 @@ describe('StratixDatabase schema v7（六态 + plan 列，task_049）', () => {
     try {
       expect(hasSixStateCheck(db)).toBe(true);
       expect(columnNames(db)).toEqual(expect.arrayContaining(['artifacts', 'plan']));
-      expect(versionOf(db)).toBe(7);
+      expect(versionOf(db)).toBe(8); // v8（task_051）起目标 schema 是 8
       const old = loadRecentTasks(db.getDatabase(), 'ch-1')[0];
       expect(old).toMatchObject({ id: 'task_old', output: '老结果全文' });
       // 五态（cancelled）与六态（awaiting_approval）都可用 —— 全链迁移后的表两代词表都收

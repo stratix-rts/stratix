@@ -236,6 +236,69 @@ export const MAX_TASK_PLAN_LEN = 8_000;
  */
 export const TASK_PLAN_WAIT_MARKER = 'PLAN_WAIT';
 
+// ============================================================================
+// 多 agent 流水线契约（@since v3.27，task_051）—— 形状与冻结常量
+// ============================================================================
+// 架构定位（task_051）：pipeline 是**编排模式**，不是新实体 —— PipelineSpec 只是 HudCommand
+// 的载荷形状（hud → core 单向过路），WorldState 不常驻任何流水线状态；执行期的编排态
+// （站序游标 / 各站相位 / 前序全文）在 app 层 pipeline-service（内存 + SQLite pipelines 表），
+// core 只管单任务（task.* 既有六态）与这里的纯契约。why：core 的状态面已经有 tasks 相位
+// 真相，再进一份流水线状态就是双份真相 —— 编排态是 service 的运行期私产，core 膨胀没有收益。
+
+/**
+ * @since v3.27（task_051）流水线一站的规格：承接人 = 显式 characterId（在档校验在编排器）
+ *   或按 kind 解析（编排器取档案里第一个绑定该 kind 的角色，无则跳站记 skipped）；
+ *   两者至少给一个（validatePipelineSpec 裁决，纯逻辑在 core/task/pipeline.ts ——
+ *   契约文件零 import 铁律，形状与常量在这里，逻辑在那边）。promptTemplate 里可用
+ *   模板变量 {{task}}（原始议题）与 {{prev_output}}（上一站的全文输出，见渲染契约）。
+ */
+export interface PipelineStepSpec {
+  /** 按角色种类解析承接人（与 characterId 二选一；给出则 characterId 缺省被忽略）。 */
+  readonly kind?: AgentKind;
+  /** 显式指定承接人角色 id（与 kind 二选一）。 */
+  readonly characterId?: string;
+  /** 本站指令模板（trim 后非空，长度 ≤ MAX_PIPELINE_TEMPLATE_LEN）。 */
+  readonly promptTemplate: string;
+}
+
+/**
+ * @since v3.27（task_051）一条流水线的规格（HudCommand pipeline.start 的载荷）。
+ *   编排语义：站与站**串行** —— 上一站 completed 才渲染并派发下一站；任一站
+ *   failed / cancelled → 后续全部 skipped、整线终态 failed；全线走完终态 completed。
+ *   模板变量渲染契约（纯函数在 core/task/pipeline.ts）：{{task}} → 原始议题原文；
+ *   {{prev_output}} → 上一 completed 站的输出全文（跳过站不更新它），超 PREV_OUTPUT_MAX
+ *   截尾保头并附注明（防上游超长输出把下一站 prompt 撑爆 MAX_TASK_PROMPT_LEN）。
+ */
+export interface PipelineSpec {
+  /** 流水线名（trim 后非空，长度 ≤ MAX_PIPELINE_NAME_LEN；事件与卡片显示用）。 */
+  readonly name: string;
+  /** 站序列（1..MAX_PIPELINE_STEPS 站，串行执行）。 */
+  readonly steps: readonly PipelineStepSpec[];
+}
+
+/**
+ * @since v3.27（task_051）{{prev_output}} 的截断上限（码点）。截断规则：**保头截尾** ——
+ *   保留前 PREV_OUTPUT_MAX 码点，尾部替换为一行注明（文本在 pipeline.ts，属实现而非契约）。
+ *   why 4000：MAX_TASK_PROMPT_LEN 是 20k，模板 + 议题 + 4k 前序输出后仍有充足裕量。
+ */
+export const PREV_OUTPUT_MAX = 4_000;
+
+/** @since v3.27（task_051）流水线站数上限（广播/落库体积必须有界；预设 2-3 站，自定义两站）。 */
+export const MAX_PIPELINE_STEPS = 6;
+
+/** @since v3.27（task_051）流水线名长度上限（码点）。 */
+export const MAX_PIPELINE_NAME_LEN = 64;
+
+/**
+ * @since v3.27（task_051）单站模板长度上限（码点）。渲染产物 = 模板 + 议题 + 截断后的
+ *   前序输出（≤ PREV_OUTPUT_MAX + 注明行），三段和必须稳在 MAX_TASK_PROMPT_LEN 之内 ——
+ *   8k 模板是留了双倍裕量的硬闸（超限在 validatePipelineSpec 被拒，不静默截断模板）。
+ */
+export const MAX_PIPELINE_TEMPLATE_LEN = 8_000;
+
+/** @since v3.27（task_051）原始议题（{{task}} 的源文本）长度上限（码点）。 */
+export const MAX_PIPELINE_ISSUE_LEN = 2_000;
+
 /**
  * @since v3.16 一条派发给角色的任务（CharacterTask）。
  *
@@ -899,7 +962,17 @@ export type HudCommand =
    * 仅 awaiting_approval 生效。与 cancel 分开两条命令：驳回是「看过计划后说不行」的显式
    * 裁决，不是「排错了队」的取消；语义、终态与 UI 入口都不同。
    */
-  | { type: 'task.reject'; taskId: string };
+  | { type: 'task.reject'; taskId: string }
+  /**
+   * @since v3.27（task_051）多 agent 流水线发起：携一份流水线规格（PipelineSpec）与
+   *   原始议题（模板变量 {{task}} 的源文本）。执行期编排不在 core（零 IO 铁律 +
+   *   编排态不进 WorldState，见 PipelineSpec 的架构定位注）：runtime 把本命令转交给
+   *   注入的编排器端口（PipelineRunnerPort，实现在 app 层 pipeline-service），未注入时按
+   *   未落地处理（onUnhandled —— 与 agent-link 命令同一口径）。规格合法性在编排器侧用
+   *   validatePipelineSpec 裁决（坏形状落一条 failed 流水线，看得见，不静默丢）。
+   * UI 入口：agent-panel 派发表单的「流水线」模式（预设模板 + 自定义两站）。
+   */
+  | { type: 'pipeline.start'; spec: PipelineSpec; issue: string };
 
 /**
  * @since v3.18 经验来源词表（`exp.gained` 事件的 source 字段，task_039）。
@@ -1003,4 +1076,19 @@ export type WorldEvent =
    * core 状态机不消费（等级是 characters 里的既有字段，不另立第二份真相），
    *   runtime 的 handleWorldEvent 显式接地（同 exp.gained 惯例，不进 onUnhandled）。
    */
-  | { type: 'level.up'; characterId: string; fromLevel: number; toLevel: number };
+  | { type: 'level.up'; characterId: string; fromLevel: number; toLevel: number }
+  /**
+   * @since v3.27（task_051）流水线整线完成事件 —— 发出方是 app 层编排器（pipeline-service，
+   *   与 exp.gained / level.up 同一先例：app 发、走 world 通道广播），消费者是 UI 反馈
+   *   （组合根接 toast：见 main-entry）。载荷只携标识与名称（卡片与库里的全量站态在
+   *   pipelines 表与面板注入的实时 feed，事件不雪球）。core 状态机不消费（编排态不进
+   *   WorldState —— PipelineSpec 架构定位注），runtime 的 handleWorldEvent 对 pipeline.*
+   *   显式接地（同 task.* 惯例，不进 onUnhandled）。
+   */
+  | { type: 'pipeline.completed'; pipelineId: string; pipelineName: string }
+  /**
+   * @since v3.27（task_051）流水线整线失败事件：任一站 failed / cancelled（含派发被拒）
+   *   即整线终态 failed，后续未到站全部 skipped。reason 是面向用户的一句话（失败原因 /
+   *   取消提示），不承诺结构化 —— 详细原因在失败站的 character_tasks 行里。
+   */
+  | { type: 'pipeline.failed'; pipelineId: string; pipelineName: string; reason: string };

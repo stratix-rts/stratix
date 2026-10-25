@@ -14,3 +14,6 @@
 
 export * from './machine';
 export * from './manager';
+// @since v3.27（task_051）：多 agent 流水线纯模型（编排执行在 app 层 pipeline-service，
+// core 只出模板渲染 / 承接人解析 / 规格校验与 runtime 端口形状 —— 见 pipeline.ts 文件头）。
+export * from './pipeline';

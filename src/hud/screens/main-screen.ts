@@ -36,6 +36,7 @@ import { mountChatDrawer } from '../panels/chat-drawer';
 import { mountCommandPanel } from '../panels/command-panel';
 import { mountLogDrawer } from '../panels/log-drawer';
 import type { TaskStatsProvider } from '../panels/task-assign-catalog';
+import type { PipelineFeedInput } from '../panels/pipeline-catalog';
 import { defineStratButton, STRAT_BUTTON_TAG } from '../widgets/strat-button';
 
 import { mountCharacterScreen } from './character-screen';
@@ -225,10 +226,14 @@ export interface MainScreenHandle {
  *   供角色屏的形象编辑面板用（与向导屏共享同一实例；缺省不注入，面板降级成提示语）。
  * @since v3.26（task_050）taskStats：派发推荐的历史统计提供口 —— 透传给 agent-panel 的
  *   「交给谁」选择器（表单打开时取一次；缺省不注入 = 无历史中性降级）。
+ * @since v3.27（task_051）pipelines：流水线站态实时读数口 —— 透传给 agent-panel 的
+ *   流水线卡片（app 层 pipeline-service.feed 同构注入；缺省不注入 = 面板不显示卡片，
+ *   表单仍可发起 —— 只是发起后看不到站序读数）。
  */
 export interface MainScreenOptions {
   readonly appearance?: AppearancePreviewPort;
   readonly taskStats?: TaskStatsProvider;
+  readonly pipelines?: PipelineFeedInput;
 }
 
 /** 工厂：构造 main-screen 句柄；接受一个已建好的 bus-adapter（依赖注入）。 */
@@ -335,11 +340,18 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       const unmountPanel = panelHost ? mountCommandPanel(adapter, panelHost) : null;
 
       // Agent 侧栏：选中单位的业务态。与命令面板共用同一个 adapter —— 两条派发通道合成一条；
-      // task_050：可选的历史统计提供口一并注入（派发推荐「交给谁」选择器用）。
+      // task_050：可选的历史统计提供口一并注入（派发推荐「交给谁」选择器用）；
+      // task_051：可选的流水线实时读数口一并注入（发起后的流水线卡片用）。
       const agentHost = host.querySelector<HTMLElement>('[data-role="agent-panel"]');
-      const agentDeps: AgentPanelDeps = options.taskStats
-        ? { dispatch: (command) => adapter.dispatch(command), subscribe: (handler) => adapter.subscribe(handler), taskStats: options.taskStats }
-        : adapter;
+      const agentDeps: AgentPanelDeps =
+        options.taskStats || options.pipelines
+          ? {
+              dispatch: (command) => adapter.dispatch(command),
+              subscribe: (handler) => adapter.subscribe(handler),
+              taskStats: options.taskStats,
+              pipelines: options.pipelines,
+            }
+          : adapter;
       const unmountAgentPanel = agentHost ? mountAgentPanel(agentDeps, agentHost) : null;
 
       // 日志抽屉：纯展示，不发命令 —— 只把同一个 adapter 的 subscribe 能力给它。

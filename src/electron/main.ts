@@ -46,6 +46,14 @@ import {
   upsertTask,
   type PersistedTaskRecord,
 } from '../app/services/persistence/task-record-dao';
+// 流水线表 IPC（@since v3.27，task_051）：DAO 与 game:savePipeline 通道。校验从严
+// （IPC 是可信度最低的入口），坏形状一律拒（拒绝即回 {ok:false}，调用方只警告不阻断编排）。
+import {
+  ensurePipelinesTable,
+  upsertPipeline,
+  PERSISTED_PIPELINE_STATUSES,
+  type PersistedPipelineRecord,
+} from '../app/services/persistence/pipeline-record-dao';
 import { AGENT_KINDS, MAX_EXTERNAL_SESSION_ID_LEN, type AgentKind, type DetectedAgent } from '../core/types';
 import { getDatabase } from '../stratix-database';
 import { dataStoreService } from '../stratix-gateway/dataStoreService';
@@ -386,6 +394,11 @@ function setupIPC() {
       if (record?.plan != null && (typeof record.plan !== 'string' || record.plan.length > 200_000)) {
         return { ok: false, error: 'bad plan' };
       }
+      // 流水线归属（task_051）：可选字符串（'' / 缺省 = 非流水线任务，相位快照都不带）。
+      // 只验类型与体积上限 —— CASE 守卫（DAO 侧）收口写入口径，主进程不重复裁决。
+      if (record?.pipelineId != null && (typeof record.pipelineId !== 'string' || record.pipelineId.length > 200)) {
+        return { ok: false, error: 'bad pipelineId' };
+      }
       if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
       const db = getDatabase().getDatabase();
       ensureCharacterTasksTable(db);
@@ -429,6 +442,58 @@ function setupIPC() {
       return { ok: true, rows: aggregateTaskStatusCounts(db) };
     } catch (error: any) {
       console.error('[Electron] game:taskStats failed:', error);
+      return { ok: false, error: error?.message ?? String(error) };
+    }
+  });
+
+  // ==================== 流水线记录 IPC（@since v3.27，task_051）====================
+  // 与 game:saveTask 同构：主进程 DAO 落 SQLite（pipelines 表，schema v8），渲染层经
+  // preload 的 gameSave 扩展面调用。站任务的 pipeline_id 归属不走这里（复用 game:saveTask
+  // 通道多带一列，见上面 savePipeline 入参校验注释）。校验从严：坏形状一律拒，
+  // 调用方（makePipelinePersister）只警告不阻断编排回路。
+  ipcMain.handle('game:savePipeline', async (_event, record: PersistedPipelineRecord) => {
+    try {
+      if (typeof record?.id !== 'string' || record.id.length === 0 || record.id.length > 64) {
+        return { ok: false, error: 'bad id' };
+      }
+      if (typeof record?.name !== 'string' || record.name.length === 0 || record.name.length > 200) {
+        return { ok: false, error: 'bad name' };
+      }
+      if (typeof record?.issue !== 'string' || record.issue.length > 200_000) {
+        return { ok: false, error: 'bad issue' };
+      }
+      if (
+        typeof record?.status !== 'string' ||
+        !(PERSISTED_PIPELINE_STATUSES as readonly string[]).includes(record.status)
+      ) {
+        return { ok: false, error: `bad status: ${String(record?.status)}` };
+      }
+      // steps：站态 JSON（task_051）。三重校验：类型 / 体积上限 / 真的能 JSON.parse
+      // （列里只存结构化 JSON，语义解读归渲染层，主进程不解析站相位）。
+      if (typeof record?.steps !== 'string' || record.steps.length > 100_000) {
+        return { ok: false, error: 'bad steps' };
+      }
+      try {
+        JSON.parse(record.steps);
+      } catch {
+        return { ok: false, error: 'bad steps (not JSON)' };
+      }
+      if (typeof record?.createdAt !== 'number' || !Number.isFinite(record.createdAt)) {
+        return { ok: false, error: 'bad createdAt' };
+      }
+      if (
+        record?.finishedAt != null &&
+        (typeof record.finishedAt !== 'number' || !Number.isFinite(record.finishedAt))
+      ) {
+        return { ok: false, error: 'bad finishedAt' };
+      }
+      if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
+      const db = getDatabase().getDatabase();
+      ensurePipelinesTable(db);
+      upsertPipeline(db, record);
+      return { ok: true };
+    } catch (error: any) {
+      console.error('[Electron] game:savePipeline failed:', error);
       return { ok: false, error: error?.message ?? String(error) };
     }
   });

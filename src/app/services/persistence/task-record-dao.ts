@@ -45,7 +45,13 @@
  *   v3.25（task_049）status 词表增 awaiting_approval + 重建迁移 + plan 列（计划草稿全文，
  *   '' = 无；随六态重建携带，六态表缺列时 ALTER ADD 兜底）；
  *   v3.26（task_050）增 aggregateTaskStatusCounts（按角色×状态 GROUP BY 聚合，
- *   派发推荐的成功率/平均耗时数据源）。
+ *   派发推荐的成功率/平均耗时数据源）；
+ *   v3.27（task_051）增 pipeline_id 列（多 agent 流水线的站任务归属标记，'' = 非流水线
+ *   任务；ALTER ADD 兑底）。★写入口径：task-service 的相位快照**不带** pipelineId（它不知道
+ *   流水线），只有 app 层 pipeline-service 的 stamp 注入件带 —— upsert 的 CASE 守卫保证
+ *   「空串不覆盖已标记值」（否则相位快照会把标记抹掉）。站任务的完整站态（序号/相位）
+ *   在 pipelines 表的 steps JSON 里，本列只是「这条任务属于哪条线」的最小归属键，
+ *   不冗余存站相位（同一真相只在 pipelines 表）。
  */
 
 import type { SqliteDatabaseLike } from './game-save-dao';
@@ -91,6 +97,11 @@ export interface PersistedTaskRecord {
    * （审批链路存档：驳回的计划、按哪份计划做完的都在）；'' / 缺省 = 无。
    */
   readonly plan?: string;
+  /**
+   * 流水线归属（task_051）：站任务由 pipeline-service 的 stamp 注入件标记（pipelines.id），
+   * '' / 缺省 = 非流水线任务（task-service 的相位快照都不带）。CASE 守卫写入语义见文件头。
+   */
+  readonly pipelineId?: string;
 }
 
 /** 词表导出给 IPC 校验层用（主进程拒绝表外 status，别让脏词进 CHECK 约束炸 IPC）。 */
@@ -116,7 +127,7 @@ export interface PersistedTaskStatRow {
   readonly avgDurationMs: number | null;
 }
 
-/** 建表 DDL（六态 CHECK + artifacts + plan，@since v3.25 task_049）—— 与 StratixDatabase 的 DDL 同构，两处同步改。 */
+/** 建表 DDL（六态 CHECK + artifacts + plan + pipeline_id，@since v3.27 task_051 增列）—— 与 StratixDatabase 的 DDL 同构，两处同步改。 */
 const CHARACTER_TASKS_DDL = `
   CREATE TABLE IF NOT EXISTS ${CHARACTER_TASKS_TABLE} (
     id TEXT PRIMARY KEY,
@@ -128,7 +139,8 @@ const CHARACTER_TASKS_DDL = `
     started_at INTEGER,
     ended_at INTEGER,
     artifacts TEXT NOT NULL DEFAULT '',
-    plan TEXT NOT NULL DEFAULT ''
+    plan TEXT NOT NULL DEFAULT '',
+    pipeline_id TEXT NOT NULL DEFAULT ''
   )`;
 
 /** 五态重建的临时表名（task_047，v4 → v5）。 */
@@ -244,6 +256,18 @@ function ensurePlanColumn(db: SqliteDatabaseLike): void {
 }
 
 /**
+ * pipeline_id 列兑底（task_051，schema v8）：v7 及更早的六态表没有该列 → ALTER ADD。
+ * 加列不涉及 CHECK（与 artifacts / plan 同理，不重建表）。'' = 非流水线任务。
+ */
+function ensurePipelineIdColumn(db: SqliteDatabaseLike): void {
+  const columns = db.prepare(`PRAGMA table_info(${CHARACTER_TASKS_TABLE})`).all() as Array<{
+    name?: string;
+  }>;
+  if (columns.some((column) => column.name === 'pipeline_id')) return;
+  db.exec(`ALTER TABLE ${CHARACTER_TASKS_TABLE} ADD COLUMN pipeline_id TEXT NOT NULL DEFAULT ''`);
+}
+
+/**
  * 建表 + 索引（幂等，旧库新库都能直接调）：
  * 老库全谱就位 —— 四态重建五态（047）→ CREATE IF NOT EXISTS（新库直接建六态全列表）→
  * 补 artifacts 列（048，六态重建的前置）→ 五态重建六态（049）→ 补 plan 列（兑底）。
@@ -261,6 +285,9 @@ export function ensureCharacterTasksTable(db: SqliteDatabaseLike): void {
   ensureArtifactsColumn(db);
   migrateTaskStatusCheckToSix(db);
   ensurePlanColumn(db);
+  // pipeline_id 兑底（task_051，v8）：六态重建的临时表 DDL 冻结在 v7 形状（不带它），
+  // 老库 / 刚重建过的库都在这里补齐 —— 新库（上面的全列 DDL）零成本直过。
+  ensurePipelineIdColumn(db);
 }
 
 /**
@@ -279,19 +306,22 @@ function ensureArtifactsColumn(db: SqliteDatabaseLike): void {
 /**
  * upsert 一条任务（按 id 冲突时全字段覆盖 —— core 的相位推进会多次写同一条任务：
  * queued 落一次、running 落一次、终态落一次（终态带全文输出））。
+ * pipeline_id 是唯一不「全字段覆盖」的列（task_051）：CASE 守卫只允许非空值改写 ——
+ * 相位快照（不带 pipelineId）永远不抹掉 stamp 注入件标记的归属。见文件头写入口径。
  */
 export function upsertTask(db: SqliteDatabaseLike, record: PersistedTaskRecord): void {
   db.prepare(`
     INSERT INTO ${CHARACTER_TASKS_TABLE}
-      (id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts, plan)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts, plan, pipeline_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       status = excluded.status,
       output = excluded.output,
       started_at = excluded.started_at,
       ended_at = excluded.ended_at,
       artifacts = excluded.artifacts,
-      plan = excluded.plan
+      plan = excluded.plan,
+      pipeline_id = CASE WHEN excluded.pipeline_id <> '' THEN excluded.pipeline_id ELSE ${CHARACTER_TASKS_TABLE}.pipeline_id END
   `).run(
     record.id,
     record.characterId,
@@ -302,7 +332,8 @@ export function upsertTask(db: SqliteDatabaseLike, record: PersistedTaskRecord):
     record.startedAt,
     record.endedAt,
     record.artifacts ?? '',
-    record.plan ?? ''
+    record.plan ?? '',
+    record.pipelineId ?? ''
   );
 }
 
@@ -318,7 +349,7 @@ export function loadRecentTasks(
 ): PersistedTaskRecord[] {
   const rows = db
     .prepare(
-      `SELECT id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts, plan
+      `SELECT id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts, plan, pipeline_id
        FROM ${CHARACTER_TASKS_TABLE}
        WHERE character_id = ?
        ORDER BY created_at DESC, id DESC
@@ -341,6 +372,8 @@ export function loadRecentTasks(
       artifacts: typeof row.artifacts === 'string' && row.artifacts.length > 0 ? row.artifacts : undefined,
       // 计划草稿（task_049）：同 artifacts 口径 —— 老库行 / 非审批任务 → undefined。
       plan: typeof row.plan === 'string' && row.plan.length > 0 ? row.plan : undefined,
+      // 流水线归属（task_051）：老库行（v7 及以前）/ 非流水线任务 → undefined。
+      pipelineId: typeof row.pipeline_id === 'string' && row.pipeline_id.length > 0 ? row.pipeline_id : undefined,
     }))
     .reverse();
 }

@@ -102,5 +102,10 @@ function describe(event: WorldEvent): string {
     // 升级事件（@since v3.19，task_040）：progression-service 广播，看一眼升级跨度（养成侧观察）。
     case 'level.up':
       return `${event.type.padEnd(15)} ${event.characterId} Lv.${event.fromLevel}→${event.toLevel}`;
+    // 流水线整线事件（@since v3.27，task_051）：app 编排器广播，面板里看一眼整线终态。
+    case 'pipeline.completed':
+      return `${event.type.padEnd(15)} ${event.pipelineName}`;
+    case 'pipeline.failed':
+      return `${event.type.padEnd(15)} ${event.pipelineName} :: ${event.reason}`;
   }
 }

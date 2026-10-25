@@ -40,6 +40,7 @@ import { createMissionManager, type MissionManager } from './mission';
 import type { CoreStore } from './store';
 import { worldStore } from './store';
 import { createTaskManager, type TaskManager } from './task';
+import type { PipelineRunnerPort } from './task';
 import type { HudCommand, WorldEvent } from './types';
 import { computeFormationSlots } from './unit/formation';
 import type { SelectionAction } from './unit/selection';
@@ -77,6 +78,16 @@ export interface CoreRuntimeOptions {
    * 与 mission / character 同一原因,多一条实例共享的硬需求。
    */
   readonly task?: TaskManager;
+  /**
+   * 多 agent 流水线编排器端口(@since v3.27,task_051)。
+   * why 注入:编排执行有 IO(逐站 task.assign 会发事件、落 pipelines 表),core 零 IO
+   *   铁律不许内部 new;实现方是 app 层 pipeline-service(runtime 只认 PipelineRunnerPort
+   *   形状,不知道它是谁)。未注入时 pipeline.start 按 agent-link 命令同一口径走 onUnhandled。
+   *   ★与 task manager 的区别:manager 是 core 写入面,runtime 直调;这里是**端口** --
+   *   流水线不是 core 实体(编排态不进 WorldState,见 core/task/pipeline.ts 架构注),
+   *   runtime 只做转发,不做翻译。
+   */
+  readonly pipeline?: PipelineRunnerPort;
   /**
    * 尚未实现的命令 / 事件出口。
    * why 需要它:契约已冻结(§5),Phase 2 之前留了一些尚未接地的命令(chat.send 等);
@@ -144,6 +155,8 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
   // @since v3.16 任务域写入面:task.assign 的落库管道(与 mission / character 同一口径)。
   // 组合根注入同一个实例给 app 层 task-service,保证命令与相位回报写的是同一份状态。
   const task = options.task ?? createTaskManager({ store });
+  // @since v3.27(task_051)流水线编排器端口:只持引用不构造(见 options.pipeline 注释)。
+  const pipeline = options.pipeline;
   const reportUnhandled = options.onUnhandled ?? ((): void => { /* 默认不打扰;dev 入口与单测会注入 */ });
 
   /**
@@ -240,6 +253,16 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
       case 'task.reject':
         task.rejectTask(command.taskId);
         return;
+      // @since v3.27(task_051)流水线发起:转交注入的编排器端口(app 层 pipeline-service)。
+      // 与 task.* 不同,这里不直调 manager -- 流水线不是 core 实体(见 RuntimeOptions.pipeline
+      // 注),runtime 只把命令交给端口。未注入时按未落地处理(agent-link 命令同一口径)。
+      case 'pipeline.start':
+        if (pipeline) {
+          pipeline.runPipeline(command.spec, command.issue);
+        } else {
+          reportUnhandled('command', command);
+        }
+        return;
       // @since v3.6 屏位路由:
       //   'main' 与 'chat' 都不入 currentScreen:
       //     - 'main' 是"回主屏"语义,与字段为空等价(缺省回落读取方自管);
@@ -306,6 +329,10 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         if (event.type === 'exp.gained') return;
         if (event.type === 'level.up') return;
         if (event.type.startsWith('task.')) return;
+        // pipeline.completed / pipeline.failed(@since v3.27,task_051):app 层 pipeline-service
+        //   发出的整线终态广播,消费者是组合根接的 toast(UI 反馈)。core 状态机不消费
+        //   (编排态不进 WorldState,见 core/task/pipeline.ts 架构注) -- 同 task.* 惯例显式接地。
+        if (event.type.startsWith('pipeline.')) return;
         reportUnhandled('world', event);
     }
   };

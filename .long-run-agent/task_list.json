@@ -1785,7 +1785,7 @@
     {
       "id": "task_051",
       "title": "多agent流水线",
-      "status": "pending",
+      "status": "completed",
       "depends_on": [
         "task_046",
         "task_050"

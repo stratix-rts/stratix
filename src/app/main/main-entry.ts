@@ -100,6 +100,13 @@ import { createTaskService } from '../services/task-service';
 import { formatTaskArtifactsBlock, parseTaskArtifactsJson } from '../services/task-artifacts';
 import { createTaskReportHandler } from '../services/task-report';
 import { taskRecordApi, makeTaskRecordPersister, makeTaskStatsProvider } from '../services/persistence/task-record';
+// 流水线持久化注入件（@since v3.27，task_051）：pipelines 表专用面 + 站任务 pipeline_id 标记。
+import {
+  pipelineRecordApi,
+  makePipelinePersister,
+  makePipelineStampPersister,
+} from '../services/persistence/pipeline-record';
+import { createPipelineService } from '../services/pipeline-service';
 import { mountToastHost } from '../../hud/components/toast/toast-host';
 import { createTaskManager } from '../../core/task';
 import { createUnitSpriteSource } from '../services/unit-sprite-source';
@@ -208,12 +215,38 @@ async function boot(): Promise<void> {
     createGame: createPhaserPreviewGame,
   });
 
+  // ===== 任务域写入面前置（@since v3.27，task_051）=====
+  // 流水线编排器要在 main-screen 之前建（面板要注入它的实时读数口），而它跑站要
+  // taskManager —— createTaskManager 是纯构造（无 IO 无订阅无副作用），前移零风险；
+  // runtime / task-service 注入的还是**同一个**实例（见下方「core 侧」注释）。
+  const taskManager = createTaskManager({ store: worldStore });
+
+  // ===== 流水线编排器（@since v3.27，task_051）=====
+  // 架构：编排态在 app 层（内存 + pipelines 表），不进 WorldState（见 pipeline-service
+  // 文件头禁止事项 2）；core 只出端口（PipelineRunnerPort，runtime 转发 pipeline.start）。
+  // 跑站 = 逐站 task.assign 指定 targetCharacterId 直达角色 FIFO（与普通任务共用排队）；
+  // 收尾信号主路 = task-service 的 onTaskSettled 回流（下方接线，全文输出去下一站
+  // {{prev_output}}）；兜底路 = 自订阅总线（详见 pipeline-service 文件头「两路收尾信号」）。
+  // 持久化：pipelines 表走专用 IPC 面；站任务 pipeline_id 复用 game:saveTask 多带一列。
+  // 非 Electron：两个 IPC 面都是 null → 注入件缺省（编排照跑，只落内存 —— dev 行为可预期）。
+  const pipelineApi = pipelineRecordApi();
+  const taskApi = pipelineApi ? taskRecordApi() : null;
+  const pipelineService = createPipelineService({
+    getState: () => worldStore.getState(),
+    taskManager,
+    persistPipeline: pipelineApi ? makePipelinePersister(pipelineApi) : undefined,
+    stampTask: pipelineApi && taskApi ? makePipelineStampPersister(taskApi) : undefined,
+  });
+  const stopPipelineBus = pipelineService.start();
+
   // ===== HUD 侧：真实 main-screen + 主题控制器，走注入的 bus-adapter =====
   // task_050：派发推荐的历史统计提供口 —— 从任务记录 IPC 面取聚合（非 Electron = null，
   // hud 侧无历史中性降级，不拆表单）。「缓存」语义在 hud：表单持有上一次快照，打开时刷新一次。
+  // task_051：流水线实时读数口 —— 面板发起后显示流水线卡片（站序/相位实时）。
   const screen = createMainScreen(adapter, {
     appearance: appearancePreview,
     taskStats: makeTaskStatsProvider(taskRecordApi()),
+    pipelines: pipelineService.feed,
   });
   const unmountScreen = screen.mount(hudRoot);
   const unmountAdapter = adapter.mount();
@@ -309,6 +342,20 @@ async function boot(): Promise<void> {
     toastHost.show(`「${character.name}」请求批准任务计划`, 'warn');
   });
 
+  // ===== 流水线整线轻提示（@since v3.27，task_051）=====
+  // pipeline.completed / pipeline.failed（pipeline-service 广播）→ toast：整线跑完或断链的
+  // 那一声（站态细节在 agent-panel 的流水线卡片，这里只报终态 —— 与 level.up 同一装配口径）。
+  // tone：completed = success；failed = error（断链是真故障，与任务失败的 toast 同族）。
+  const stopPipelineToast = onWorldEvent((event) => {
+    if (event.type === 'pipeline.completed') {
+      toastHost.show(`流水线「${event.pipelineName}」已完成`, 'success');
+      return;
+    }
+    if (event.type === 'pipeline.failed') {
+      toastHost.show(`流水线「${event.pipelineName}」中断：${event.reason}`, 'danger');
+    }
+  });
+
   // ===== 战场单位的形象（@since v3.10，task_029）=====
   // 单位带 appearance 时，战场用合成好的 LPC 精灵表当身体（走路动画）。
   // 合成要 DOM（canvas / Image），world 层零 DOM —— 故实现在 app 层，world 只认端口。
@@ -382,7 +429,7 @@ async function boot(): Promise<void> {
   // 未接地的命令 / 事件只落 console：它们是"还没实现"，不是错误，堆错误日志会淹没真故障。
   // 任务域写入面（@since v3.16，task_037）：组合根持一个实例，注入 runtime（task.assign 落点）
   // 与 task-service（相位回报口）—— 两处写的是同一份 WorldState.tasks。
-  const taskManager = createTaskManager({ store: worldStore });
+  // ★实例创建已前移到 main-screen 之前（task_051：流水线编排器要先于面板建），这里只引用。
   // 角色域写入面（@since v3.19，task_040）：与 taskManager 同一模式 —— 组合根持一个实例，
   // 注入 runtime（character.create / persona.update 落点）与 progression-service
   // （exp.gained → 累加落库）—— 两处写的是同一份 WorldState.characters。
@@ -391,6 +438,9 @@ async function boot(): Promise<void> {
     store: worldStore,
     character: characterManager,
     task: taskManager,
+    // task_051：流水线编排器端口 —— runtime 只把 pipeline.start 转发给它（core 不执行编排，
+    // 见 core/task/pipeline.ts 架构注）；未注入时命令按未落地处理（与 agent-link 同口径）。
+    pipeline: pipelineService,
     onUnhandled: (channel: UnhandledChannel, payload: HudCommand | WorldEvent) => {
       console.warn(`[Stratix] 未处理 ${channel}: ${payload.type}`);
     },
@@ -441,6 +491,9 @@ async function boot(): Promise<void> {
       // 📋 报告尾部同一渲染模型，规格④；面板不 import app/ —— 这里算好文案再传字符串），
       // 再走 task_039 的结果回流（reportSettled，见上方声明）。failed 喂空串（无成果物）。
       onTaskSettled: (record) => {
+        // task_051：先回流流水线编排器（主路收尾信号 —— completed 的全文输出去下一站
+        // {{prev_output}}；时序说明见 pipeline-service 文件头「两路收尾信号」）。
+        pipelineService.handleTaskSettled(record);
         taskOutputView?.setTaskArtifacts(
           record.characterId,
           record.status === 'completed' ? formatTaskArtifactsBlock(parseTaskArtifactsJson(record.artifacts)) : ''
@@ -487,6 +540,10 @@ async function boot(): Promise<void> {
       // 升级 toast 订阅（task_041）：与其它总线订阅同一卸载纪律 —— 页面销毁前退干净。
       stopLevelUpToast();
       stopAwaitingToast();
+      stopPipelineToast();
+      // 流水线编排器总线订阅（task_051）：在跑的线随页面一起终止（库里的 running 行是停机
+      // 遗骸，审计可见、不复活 —— 见 pipeline-record-dao 文件头存活语义注）。
+      stopPipelineBus();
       // 角色抽屉先卸（退订总线；在跑的对话由主进程超时 / 页面销毁兜底）。
       unmountCharacterDrawer();
       unmountToastHost();

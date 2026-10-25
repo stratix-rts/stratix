@@ -27,7 +27,14 @@ const DEFAULT_FILENAME = 'stratix.db';
  * 方案（临时表 character_tasks_v7）；plan 列随重建的建表 DDL 一并就位（六态表缺列边角由
  * ALTER ADD 兜底）。前置顺序：artifacts 兜底先行（v7 重建的 INSERT SELECT 要搬运它）。
  */
-const TARGET_SCHEMA_VERSION = 7;
+/**
+ * v8（@since v3.27，task_051）：新增 pipelines 表（多 agent 流水线编排态：站序 JSON +
+ * 整线相位 + 议题原文；DDL 与 pipeline-record-dao.ts 同构）+ character_tasks 增
+ * pipeline_id 列（站任务归属键，'' = 非流水线任务；纯加列 → ALTER ADD，与 v6 同方案）。
+ * 写入语义：相位快照不带 pipelineId、stamp 注入件带 → CASE 守卫只进不抹，详见
+ * task-record-dao.ts 文件头。
+ */
+const TARGET_SCHEMA_VERSION = 8;
 
 /** Valid table name characters (alphanumeric + underscore) */
 const VALID_TABLE_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -142,6 +149,7 @@ export class StratixDatabase {
     this.migrateGameSaveTables();
     this.migrateCharacterChatMessages();
     this.migrateTasks();
+    this.migratePipelines();
     this.migrateSafetyIndexes();
   }
 
@@ -157,8 +165,10 @@ export class StratixDatabase {
     const tables = this.getTableNames();
 
     if (!tables.has('character_tasks')) {
-      // @since v3.25（task_049）：这里建的就是 v7 形状（六态 CHECK + artifacts + plan），
-      // 下面的五态/六态重建与两轮 ALTER 对它全部幂等直过。
+      // @since v3.25（task_049）：这里建的就是六态形状（CHECK + artifacts + plan），
+      // 下面的五态/六态重建与加列兜底对它全部幂等直过。
+      // @since v3.27（task_051）：新建表直接带 v8 形状（+pipeline_id）；v7 及更早的库在
+      // 方法尾部 ALTER ADD 兑底（重建临时表的 DDL 冻结在 v7 形状，历史迁移不动）。
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS character_tasks (
           id TEXT PRIMARY KEY,
@@ -170,7 +180,8 @@ export class StratixDatabase {
           started_at INTEGER,
           ended_at INTEGER,
           artifacts TEXT NOT NULL DEFAULT '',
-          plan TEXT NOT NULL DEFAULT ''
+          plan TEXT NOT NULL DEFAULT '',
+          pipeline_id TEXT NOT NULL DEFAULT ''
         )
       `);
       this.db.exec('CREATE INDEX IF NOT EXISTS idx_character_tasks_character ON character_tasks(character_id, created_at)');
@@ -258,6 +269,37 @@ export class StratixDatabase {
       this.db.exec("ALTER TABLE character_tasks ADD COLUMN plan TEXT NOT NULL DEFAULT ''");
       log('info', 'Added plan column to character_tasks (task_049)');
     }
+
+    // v8（task_051）：补 pipeline_id 列（站任务归属键，'' = 非流水线任务）。纯加列不动
+    // CHECK → ALTER ADD（同 v6 方案）；对重建产物（v7 形状）与原生 v7 表统一兑底，已有列幂等直过。
+    if (!columns7.some((column) => column.name === 'pipeline_id')) {
+      this.db.exec("ALTER TABLE character_tasks ADD COLUMN pipeline_id TEXT NOT NULL DEFAULT ''");
+      log('info', 'Added pipeline_id column to character_tasks (task_051)');
+    }
+  }
+
+  /**
+   * 流水线表（@since v3.27，task_051）：app 层 pipeline-service 随相位迁移 upsert
+   * （发起 running / 每站入列与收尾 / 整线终态）。IF NOT EXISTS 幂等：DAO 自立兑底在
+   * pipeline-record-dao.ts 的 ensurePipelinesTable，DDL 两处同构同步改。
+   * running 行的存活语义（进程内存里有 driver 才是活的，停机遗骸不复活）见 DAO 文件头。
+   */
+  private migratePipelines(): void {
+    const tables = this.getTableNames();
+    if (tables.has('pipelines')) return;
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS pipelines (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        issue TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed')),
+        steps TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        finished_at INTEGER
+      )
+    `);
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_pipelines_created ON pipelines(created_at)');
+    log('info', 'Created pipelines table (task_051)');
   }
 
   /**

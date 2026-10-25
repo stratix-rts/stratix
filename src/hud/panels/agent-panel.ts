@@ -36,7 +36,7 @@
  *   表单角色（038 行为兜底），指定承接人经 targetCharacterId 落 core 校验直达目标队列。
  */
 
-import { MAX_TASK_PROMPT_LEN, type HudCommand, type WorldState } from '../../core/types';
+import { MAX_TASK_PROMPT_LEN, type AgentKind, type CharacterView, type HudCommand, type WorldState } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
 
 import type {
@@ -65,13 +65,28 @@ import {
   type CharacterTaskStatInput,
   type TaskStatsProvider,
 } from './task-assign-catalog';
+// 流水线模式（task_051）：目录纯函数 + 实时 feed 注入口。hud 不 import world/app ——
+// 站态读数只经 deps.pipelines 注入面（架构注见 pipeline-catalog 文件头）。
+import {
+  buildPipelineCard,
+  buildPipelineStartCommand,
+  CUSTOM_PIPELINE_STATIONS,
+  PIPELINE_PRESETS,
+  type PipelineCardModel,
+  type PipelineFeedInput,
+  type PipelineFormInput,
+} from './pipeline-catalog';
+import { agentKindLabel } from '../screens/onboarding-catalog';
 
 export const AGENT_PANEL_TAG = 'strat-agent-panel';
 
 /** 面板需要的最小能力面：只要"发命令"与"订阅状态"，与 command-panel 同一约定。
- * @since v3.26（task_050）可选 taskStats：历史成功率快照提供口（派发推荐用，表单打开时取一次）。 */
+ * @since v3.26（task_050）可选 taskStats：历史成功率快照提供口（派发推荐用，表单打开时取一次）。
+ * @since v3.27（task_051）可选 pipelines：流水线站态实时读数口（发起后的卡片渲染用；
+ *   app 层 pipeline-service.feed 与之同构注入，站态不进 WorldState —— 见 pipeline-catalog）。 */
 export type AgentPanelDeps = Pick<HudBusAdapter, 'dispatch' | 'subscribe'> & {
   readonly taskStats?: TaskStatsProvider;
+  readonly pipelines?: PipelineFeedInput;
 };
 
 /** 自定义元素的对外形状（测试与挂载方按它断言）。 */
@@ -128,6 +143,14 @@ export function defineAgentPanel(): typeof HTMLElement {
     private _statsRefreshing = false;
     /** 承接人列表的判重签名（表单开着时每次广播都会走更新口，签名不变不重建卡片）。 */
     private _lastAssigneeSignature: string | null = null;
+    /** 表单模式（task_051）：single = 单任务（缺省）；pipeline = 流水线（预设/自定义两站）。 */
+    private _formMode: 'single' | 'pipeline' = 'single';
+    /** 流水线预设选择（task_051）：预设 id；'custom' = 自定义两站；null = 还没选。 */
+    private _formPresetId: string | null = null;
+    /** 流水线实时 feed 退订器（task_051，与 _unsubscribe 同生命周期，挂卸不堆订阅）。 */
+    private _pipelineUnsub: (() => void) | null = null;
+    /** 最近一次渲染的流水线卡片模型（task_051；空数组 = 无线，容器隐藏）。 */
+    private _pipelineCards: readonly PipelineCardModel[] = [];
 
     // —— 属性面 ——
     get adapter(): AgentPanelDeps | null { return this._adapter; }
@@ -198,9 +221,20 @@ export function defineAgentPanel(): typeof HTMLElement {
         this._state = state;
         this.refresh();
       });
+      // 流水线实时 feed（task_051）：与状态订阅同生命周期。站态不进 WorldState（架构注见
+      // pipeline-catalog 文件头），卡片的实时更新只走这条注入面；退订在 releaseAdapter 对齐。
+      const pipelines = this._adapter.pipelines;
+      if (pipelines && !this._pipelineUnsub) {
+        this._pipelineUnsub = pipelines.subscribe(() => this.renderPipelines());
+        this.renderPipelines();
+      }
     }
 
     private releaseAdapter(): void {
+      if (this._pipelineUnsub) {
+        this._pipelineUnsub();
+        this._pipelineUnsub = null;
+      }
       if (!this._unsubscribe) return;
       this._unsubscribe();
       this._unsubscribe = null;
@@ -467,6 +501,101 @@ export function defineAgentPanel(): typeof HTMLElement {
           }
           .task-input:focus { outline: none; border-color: var(--srf-accent, #6ea8ff); }
           .task-form-actions { display: flex; gap: var(--srf-spacing-sm, 8px); justify-content: flex-end; }
+          /* 流水线模式与卡片（task_051） */
+          .form-modes { display: flex; gap: var(--srf-spacing-xs, 4px); }
+          .mode-toggle {
+            flex: 1;
+            background: var(--srf-panel, #181c25);
+            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
+            border-radius: var(--srf-radius, 6px);
+            color: var(--srf-text-muted, #9aa3b2);
+            padding: var(--srf-spacing-xs, 4px) 0;
+            font-size: var(--srf-font-size-sm, 12px);
+            cursor: pointer;
+          }
+          .mode-toggle[data-active="true"] {
+            border-color: var(--srf-accent, #6ea8ff);
+            color: var(--srf-text, #e6e9ef);
+          }
+          .pipeline-presets { display: grid; gap: var(--srf-spacing-xs, 4px); }
+          .pipeline-presets[hidden], .pipeline-custom[hidden] { display: none; }
+          .preset {
+            display: grid;
+            gap: 2px;
+            text-align: left;
+            background: var(--srf-panel, #181c25);
+            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
+            border-radius: var(--srf-radius, 6px);
+            color: var(--srf-text, #e6e9ef);
+            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-sm, 8px);
+            cursor: pointer;
+          }
+          .preset:hover { border-color: var(--srf-accent, #6ea8ff); }
+          .preset.selected { border-color: var(--srf-accent, #6ea8ff); }
+          .preset-label { font-weight: 600; }
+          .preset-desc {
+            color: var(--srf-text-muted, #9aa3b2);
+            font-size: var(--srf-font-size-sm, 12px);
+          }
+          .station {
+            display: grid;
+            gap: var(--srf-spacing-xs, 4px);
+            padding: var(--srf-spacing-xs, 4px) 0;
+          }
+          .station-head {
+            color: var(--srf-text-muted, #9aa3b2);
+            font-size: var(--srf-font-size-sm, 12px);
+          }
+          .station-select {
+            background: var(--srf-panel, #181c25);
+            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
+            border-radius: var(--srf-radius, 6px);
+            color: var(--srf-text, #e6e9ef);
+            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-sm, 8px);
+            font-size: var(--srf-font-size-sm, 12px);
+          }
+          .station-input {
+            width: 100%;
+            box-sizing: border-box;
+            resize: vertical;
+            min-height: 2.5em;
+            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-sm, 8px);
+            background: var(--srf-panel, #181c25);
+            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
+            border-radius: var(--srf-radius, 6px);
+            color: var(--srf-text, #e6e9ef);
+            font-family: var(--srf-font-ui, sans-serif);
+            font-size: var(--srf-font-size-sm, 12px);
+            line-height: var(--srf-line-height, 1.4);
+          }
+          .station-input:focus { outline: none; border-color: var(--srf-accent, #6ea8ff); }
+          .pipelines { display: grid; gap: var(--srf-spacing-xs, 4px); padding: var(--srf-spacing-xs, 4px) 0; }
+          .pipelines[hidden] { display: none; }
+          .pipeline-card {
+            display: grid;
+            gap: var(--srf-spacing-xs, 4px);
+            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-sm, 8px);
+            background: var(--srf-panel-elevated, #20262f);
+            border: var(--srf-border-width, 1px) solid var(--srf-border-strong, #3a4252);
+            border-radius: var(--srf-radius, 6px);
+            font-size: var(--srf-font-size-sm, 12px);
+          }
+          .pipeline-head { display: flex; align-items: center; gap: var(--srf-spacing-xs, 4px); }
+          .pipeline-name { font-weight: 600; }
+          .pipeline-status { margin-left: auto; }
+          .pipeline-status[data-tone="ok"] { color: var(--srf-ok, #7ed491); }
+          .pipeline-status[data-tone="bad"] { color: var(--srf-danger, #e0706e); }
+          .pipeline-status[data-tone="active"] { color: var(--srf-accent, #6ea8ff); }
+          .pipeline-status[data-tone="pending"], .pipeline-status[data-tone="skip"] { color: var(--srf-text-muted, #9aa3b2); }
+          .pipeline-stations { display: flex; flex-direction: column; gap: 2px; }
+          .station-row { display: flex; align-items: center; gap: var(--srf-spacing-xs, 4px); }
+          .station-index { color: var(--srf-text-muted, #9aa3b2); }
+          .station-title { color: var(--srf-text, #e6e9ef); }
+          .station-badge { margin-left: auto; }
+          .station-badge[data-tone="ok"] { color: var(--srf-ok, #7ed491); }
+          .station-badge[data-tone="bad"] { color: var(--srf-danger, #e0706e); }
+          .station-badge[data-tone="active"] { color: var(--srf-accent, #6ea8ff); }
+          .station-badge[data-tone="pending"], .station-badge[data-tone="skip"] { color: var(--srf-text-muted, #9aa3b2); }
         </style>
         <div class="panel" part="panel">
           <div class="head">
@@ -474,10 +603,19 @@ export function defineAgentPanel(): typeof HTMLElement {
             <span class="summary" data-role="summary">等待世界状态…</span>
           </div>
           <div class="body" data-role="body"></div>
+          <div class="pipelines" data-role="pipelines" hidden></div>
           <div class="task-form" data-role="task-form" hidden>
             <div class="task-form-title">派任务 · <span data-role="task-form-name"></span></div>
+            <!-- 模式切换（task_051）：单任务（038 缺省）↔ 流水线（预设/自定义两站）。
+                 两套控件的显示互斥在 setFormMode 里收口，这里只是骨架。 -->
+            <div class="form-modes">
+              <button type="button" class="mode-toggle" data-action="form-mode-single">单任务</button>
+              <button type="button" class="mode-toggle" data-action="form-mode-pipeline">流水线</button>
+            </div>
             <div class="assignee-list" data-role="assignee-list"></div>
             <div class="queue-hint" data-role="queue-hint" hidden></div>
+            <div class="pipeline-presets" data-role="pipeline-presets" hidden></div>
+            <div class="pipeline-custom" data-role="pipeline-custom" hidden></div>
             <textarea
               class="task-input"
               data-role="task-input"
@@ -525,11 +663,28 @@ export function defineAgentPanel(): typeof HTMLElement {
               }
               return;
             case 'task-submit':
-              this.submitTaskForm();
+              // 提交按模式分流（task_051）：单任务走 038 路径；流水线走预设/自定义构造。
+              if (this._formMode === 'pipeline') this.submitPipelineForm();
+              else this.submitTaskForm();
               return;
             case 'task-cancel':
               this.closeTaskForm();
               return;
+            case 'form-mode-single':
+              this.setFormMode('single');
+              return;
+            case 'form-mode-pipeline':
+              this.setFormMode('pipeline');
+              return;
+            case 'pipeline-preset': {
+              // 预设选择（task_051）：选中态切换；'custom' = 自定义两站（另一套控件显形）。
+              const presetId = host.getAttribute('data-preset');
+              if (presetId) {
+                this._formPresetId = presetId;
+                this.renderPipelineFormSections();
+              }
+              return;
+            }
             case 'task-queue-cancel': {
               // 排队取消（task_047）：按钮只对 queued 条目渲染；真被拒（相位恰好刚变）时
               // core 发 Notice 提示（running → 「先停止」/ 终态 → 「无需取消」），这里不重复分支。
@@ -598,6 +753,8 @@ export function defineAgentPanel(): typeof HTMLElement {
       if (name) name.textContent = detail.name;
       input.value = '';
       form.hidden = false;
+      // 模式回缺省（task_051）：上次表单的模式/预设选择不跨表单存活（每次派发都是新决策）。
+      this.setFormMode('single');
       // 先画列表（同步：拿着上一份统计快照立即有读数），再异步刷新统计（task_050 ⑤：
       // 打开时刷新即可，不做实时订阅 —— 回来后清签名重画一次，成功率/预计随之更新）。
       this.renderAssignees();
@@ -624,12 +781,141 @@ export function defineAgentPanel(): typeof HTMLElement {
       this._formUnitId = null;
       this._formCharacterId = null;
       this._formTarget = null;
+      this._formMode = 'single';
+      this._formPresetId = null;
       this._lastAssigneeSignature = null; // 下次开表单强制重画（清掉旧列表与提示）
       const root = this.shadowRoot;
       const form = root?.querySelector('[data-role="task-form"]') as HTMLElement | null;
       const input = root?.querySelector('[data-role="task-input"]') as HTMLTextAreaElement | null;
       if (form) form.hidden = true;
       if (input) input.value = '';
+    }
+
+    // —— 流水线模式（task_051）：模式切换 / 控件显隐 / 提交 ——
+
+    /**
+     * 模式切换：单任务（038 的承接人列表）↔ 流水线（预设 + 自定义两站）。控件显隐互斥
+     * 收口在这里，两套控件都常驻外壳（不随 body 重建 —— 草稿与选择不被广播冲掉）。
+     */
+    private setFormMode(mode: 'single' | 'pipeline'): void {
+      if (this._formMode === mode && mode === 'single') return;
+      this._formMode = mode;
+      if (mode === 'single') this._formPresetId = null;
+      if (mode === 'pipeline' && !this._formPresetId) this._formPresetId = PIPELINE_PRESETS[0]?.id ?? null;
+      // 模式切换时议题语义不变（{{task}} 的源文本），textarea 草稿保留。
+      const input = this.shadowRoot?.querySelector('[data-role="task-input"]') as HTMLTextAreaElement | null;
+      if (input) input.placeholder = mode === 'pipeline' ? '流水线议题：一段话描述要解决的问题（{{task}} 的源文本）' : '要它做什么？一段话描述（Ctrl+Enter 派发）';
+      this.renderPipelineFormSections();
+    }
+
+    /** 流水线控件显隐与内容（预设列表 / 自定义两站 / 单任务侧的承接人列表互斥）。 */
+    private renderPipelineFormSections(): void {
+      const root = this.shadowRoot;
+      const assigneeList = root?.querySelector('[data-role="assignee-list"]') as HTMLElement | null;
+      const presets = root?.querySelector('[data-role="pipeline-presets"]') as HTMLElement | null;
+      const custom = root?.querySelector('[data-role="pipeline-custom"]') as HTMLElement | null;
+      if (!presets || !custom) return;
+      const pipelineMode = this._formMode === 'pipeline';
+      if (assigneeList) assigneeList.hidden = pipelineMode;
+      presets.hidden = !pipelineMode;
+      custom.hidden = !(pipelineMode && this._formPresetId === 'custom');
+      if (!pipelineMode) return;
+
+      // 预设列表：3 个预设 + 自定义（常量驱动 —— 改 pipeline-catalog 的 PIPELINE_PRESETS 即生效）。
+      presets.innerHTML = [
+        ...PIPELINE_PRESETS.map(
+          (preset) => `<button type="button" class="preset${this._formPresetId === preset.id ? ' selected' : ''}" data-action="pipeline-preset" data-preset="${preset.id}">
+            <span class="preset-label">${escapeHtml(preset.label)}</span>
+            <span class="preset-desc">${escapeHtml(preset.description)}</span>
+          </button>`
+        ),
+        `<button type="button" class="preset${this._formPresetId === 'custom' ? ' selected' : ''}" data-action="pipeline-preset" data-preset="custom">
+          <span class="preset-label">自定义两站</span>
+          <span class="preset-desc">自选两个角色，各写一段指令模板</span>
+        </button>`,
+      ].join('');
+
+      // 自定义两站：角色下拉（在档且有 agentKind 的角色）× 模板 textarea。打开时构建一次：
+      // 站位选择不随广播重建（打字中的草稿不能被冲掉）；角色档案极少边角变化，取舍见
+      // pipeline-catalog 文件头「不做实时推荐」注。
+      if (custom.hidden) return;
+      const characters = (this._state?.characters ?? []).filter(
+        (character): character is CharacterView & { agentKind: AgentKind } => character.agentKind != null
+      );
+      const options = characters
+        .map((character) => `<option value="${escapeHtml(character.id)}">${escapeHtml(character.name)}（${escapeHtml(agentKindLabel(character.agentKind ?? ''))}）</option>`)
+        .join('');
+      custom.innerHTML = Array.from({ length: CUSTOM_PIPELINE_STATIONS }, (_, index) => `
+        <div class="station">
+          <span class="station-head">第 ${index + 1} 站${index > 0 ? '（可用 {{prev_output}} 引上一站全文）' : ''}</span>
+          <select class="station-select" data-role="pipeline-station-character" data-station="${index}">
+            <option value="">选角色…</option>
+            ${options}
+          </select>
+          <textarea class="station-input" data-role="pipeline-station-template" data-station="${index}" rows="2"
+            placeholder="${index > 0 ? '指令模板，如：请校对：\n{{prev_output}}' : '指令模板，如：请实现：\n{{task}}'}"></textarea>
+        </div>`).join('');
+    }
+
+    /** 流水线提交（task_051）：读表单态 → buildPipelineStartCommand → dispatch。 */
+    private submitPipelineForm(): void {
+      if (!this._adapter) return;
+      const root = this.shadowRoot;
+      const input = root?.querySelector('[data-role="task-input"]') as HTMLTextAreaElement | null;
+      const stations = Array.from(root?.querySelectorAll('[data-role="pipeline-station-character"]') ?? []);
+      const templates = Array.from(root?.querySelectorAll('[data-role="pipeline-station-template"]') ?? []);
+      const custom = Array.from({ length: CUSTOM_PIPELINE_STATIONS }, (_, index) => ({
+        characterId: (stations[index] as HTMLSelectElement | undefined)?.value || null,
+        promptTemplate: (templates[index] as HTMLTextAreaElement | undefined)?.value ?? '',
+      }));
+      const form: PipelineFormInput = {
+        presetId: this._formPresetId,
+        custom,
+        issue: input?.value ?? '',
+      };
+      const command = buildPipelineStartCommand(form);
+      if (!command) return; // 构造不出来不发（表单保持开着：议题空 / 预设没选 / 自定义缺项）
+      this._adapter.dispatch(command);
+      this.closeTaskForm();
+    }
+
+    /**
+     * 流水线卡片渲染（task_051）：feed 通知驱动（不进 refresh 的签名闸 —— 站态不在
+     * WorldState 里，状态广播永远看不到它）。空快照隐藏容器；卡片 = 站序 + 相位徽标。
+     */
+    private renderPipelines(): void {
+      const root = this.shadowRoot;
+      const host = root?.querySelector('[data-role="pipelines"]') as HTMLElement | null;
+      const feed = this._adapter?.pipelines;
+      if (!host) return;
+      const runs = feed?.snapshot() ?? null;
+      if (!runs || runs.length === 0) {
+        this._pipelineCards = [];
+        host.hidden = true;
+        host.innerHTML = '';
+        return;
+      }
+      this._pipelineCards = runs.map((run) => buildPipelineCard(run));
+      host.hidden = false;
+      host.innerHTML = this._pipelineCards
+        .map((card) => `<div class="pipeline-card" data-pipeline="${escapeHtml(card.id)}">
+          <div class="pipeline-head">
+            <span class="pipeline-name">${escapeHtml(card.name)}</span>
+            <span class="pipeline-status" data-tone="${card.statusBadge.tone}">${escapeHtml(card.statusBadge.icon)} ${escapeHtml(card.statusBadge.label)}</span>
+          </div>
+          <div class="pipeline-stations">
+            ${card.steps
+              .map(
+                (step) => `<div class="station-row">
+                  <span class="station-index">${step.index + 1}</span>
+                  <span class="station-title">${escapeHtml(step.title)}</span>
+                  <span class="station-badge" data-tone="${step.badge.tone}">${escapeHtml(step.badge.icon)} ${escapeHtml(step.badge.label)}</span>
+                </div>`
+              )
+              .join('')}
+          </div>
+        </div>`)
+        .join('');
     }
 
     // —— 「交给谁」选择器（task_050）：候选人卡片 + 排队预计提示 ——
