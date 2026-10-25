@@ -250,3 +250,42 @@ describe('桩场景全链路：总线 → 桥 → (registry + board) → 表现'
     bridge.destroy();
   });
 });
+
+
+// ============================================================================
+// 审批门浮标（task_049）：awaiting_approval → 黄色 ?（驻留到裁决）
+// ============================================================================
+
+describe('审批门浮标：setAwaiting 与相位落地（task_049）', () => {
+  test('awaiting_approval → ? 浮标，不自动过期（驻留到裁决，与 failed 的 ! 同语义）', () => {
+    let clockNow = 0;
+    const board = new TaskFxBoard({ now: () => clockNow });
+    expect(board.setAwaiting('u1')).toBe(true);
+    expect(board.markerFor('u1')?.kind).toBe('awaiting');
+    clockNow += 3_600_000; // 挂起不限时：一小时后问号还在
+    expect(board.markerFor('u1')?.kind).toBe('awaiting');
+    expect(board.setAwaiting('u1')).toBe(false); // 同相位重复事件不报变化
+  });
+
+  test('visibleMarker：awaiting 浮标在单位不 busy 时可见（挂起不算忙 —— 头顶 ? 就是它的表现）', () => {
+    const board = new TaskFxBoard({ now: () => 0 });
+    board.setAwaiting('u1');
+    expect(board.visibleMarker('u1', 'idle')).toBe('awaiting');
+    // 单位恰好 busy（同角色另一条任务在跑）→ 环优先（干活的表象优先于等待的表象）
+    expect(board.visibleMarker('u1', 'busy')).toBe('working');
+  });
+
+  test('applyTaskFxEvent 落 awaiting 相位；批准（started 相位）盖回工作环', () => {
+    const board = new TaskFxBoard({ now: () => 0 });
+    const units: TaskFxUnitRef[] = [{ id: 'u-a', characterId: 'ch-a' }];
+    expect(applyTaskFxEvent(board, units, makeTask('ch-a'), 'awaiting_approval')).toEqual(['u-a']);
+    expect(board.markerFor('u-a')?.kind).toBe('awaiting');
+    // 批准 → 桥接层折算 started 相位 → 工作环盖掉问号
+    applyTaskFxEvent(board, units, makeTask('ch-a'), 'started');
+    expect(board.markerFor('u-a')?.kind).toBe('working');
+    // 驳回 → failed 相位 → ! 盖掉问号
+    applyTaskFxEvent(board, units, makeTask('ch-a'), 'awaiting_approval');
+    applyTaskFxEvent(board, units, makeTask('ch-a'), 'failed');
+    expect(board.markerFor('u-a')?.kind).toBe('failed');
+  });
+});

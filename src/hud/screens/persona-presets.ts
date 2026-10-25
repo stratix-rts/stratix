@@ -46,16 +46,26 @@ export interface PersonaPreset {
  * 组装一个预设的完整人设正文：五节手写内容 + RULES 节（core 底线派生，口径唯一）。
  * why 不让每个预设手抄 RULES：底线只允许一个来源（core 的 DEFAULT_PERSONA_TEMPLATE），
  * 手抄 N 份迟早漂移；这里与问卷路径（buildPersona）共用同一个 personaRulesLines。
+ * @since v3.25（task_049）rulesExtra：底线之后的**追加**行（不替换底线）。唯一使用者是
+ * plan-first 预设 —— 审批门识别标记写进 RULES（personaPlanFirst 从正文里认这个短语）。
+ * 只开追加不开整段替换：底线一条不能少，这是「预设不另抄规则」纪律的硬边界。
  */
 function presetPersona(
-  sections: Readonly<Partial<Record<PersonaSectionId, readonly string[]>>>
+  sections: Readonly<Partial<Record<PersonaSectionId, readonly string[]>>> & {
+    readonly rulesExtra?: readonly string[];
+  }
 ): string {
-  return composePersonaSections({ ...sections, rules: personaRulesLines() });
+  const { rulesExtra, ...rest } = sections;
+  return composePersonaSections({
+    ...rest,
+    rules: [...personaRulesLines(), ...(rulesExtra ?? [])],
+  });
 }
 
 /**
- * 预设库（7 个）。
- * 覆盖四类典型诉求：造（架构师 / 全栈 / 原型手）、查（分析师）、守（审阅者 / 值守）、教（教学陪伴）。
+ * 预设库（8 个）。
+ * 覆盖四类典型诉求：造（架构师 / 全栈 / 原型手）、查（分析师）、守（审阅者 / 值守）、
+ * 教（教学陪伴）、谋（计划先行 —— @since v3.25，task_049 审批门的入口预设）。
  */
 export const PERSONA_PRESETS: readonly PersonaPreset[] = Object.freeze([
   {
@@ -247,6 +257,32 @@ export const PERSONA_PRESETS: readonly PersonaPreset[] = Object.freeze([
       delivery: [
         '一次性给出可运行原型 + 已知问题清单；不追求覆盖所有分支。',
       ],
+    }),
+  },
+  {
+    id: 'plan-first',
+    name: '计划先行',
+    description: '先出计划等批准，批准后才动手',
+    suitableKinds: 'any',
+    persona: presetPersona({
+      role: [
+        '计划先行 —— 动手之前先把计划摆上台面的执行者：复杂任务先出执行计划，经批准后再执行。',
+      ],
+      mission: [
+        '让每一个重要改动都经过一次显式裁决：计划里写清做什么、怎么做、分几步，没获批准不碰实现。',
+      ],
+      style: [
+        '计划结构化：目标 → 步骤 → 风险三段式，读的人一分钟内能判断「行不行」。',
+      ],
+      autonomy: [
+        '计划必须先出、批准必须等到；批准后按计划自主推进，不再逐步请示。',
+      ],
+      delivery: [
+        '批准后按计划交付，交付物对照计划逐项核销；偏离计划的地方单独说明原因。',
+      ],
+      // task_049 审批门的识别标记（两路识别的预设路径）：RULES 节含 PERSONA_PLAN_FIRST_MARKER
+      // （core/character/persona.personaPlanFirst 判定），其余预设不带 —— 没声明的不走门。
+      rulesExtra: ['先出计划，经批准后再执行；计划未获批准不动手'],
     }),
   },
 ]);

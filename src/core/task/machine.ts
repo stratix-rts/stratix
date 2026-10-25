@@ -11,21 +11,34 @@
  *
  * 相位机（契约词表见 types.ts 的 TaskStatus）：
  *   queued ──start──▶ running ──complete──▶ completed
- *     │                   │
- *     ├──cancel──▶ cancelled（@since v3.23，task_047：仅 queued 可取消）
- *     └──────fail─────────┴───▶ failed
+ *     │                   │  ▲    │
+ *     │                   │  └approve──────┐（@since v3.25，task_049：审批门回环）
+ *     ├──cancel──▶ cancelled      │  │
+ *     └──────fail───────────────┴──┼─▶ failed
+ *                     └─requestApproval─▶ awaiting_approval
  *   - fail 允许从 queued 与 running 出发：queued 直达 failed 是**守门拦截**的落点
  *     （agent 未检出等 —— 派了但注定跑不起来，直接 failed 带原因，不进队列空转）；
+ *     （@since v3.25）awaiting_approval 也可被 fail（transport 崩溃 / 续发丢失等逃生口，
+ *     语义与 fail 一致：一旦确认走不下去，允许直达终态）；
  *   - cancel 只认 queued（@since v3.23）：running 不强杀（规格：中止在跑任务归「先停止」
- *     另一条路，状态机拒绝并回错误码，由上层转 UI 提示）；
+ *     另一条路，状态机拒绝并回错误码，由上层转 UI 提示）；awaiting 也不可取消 ——
+ *     它的出口是 approve / reject（@since v3.25）；
  *   - completed / failed / cancelled 是终态：任何动作都判非法（重复收尾不改写历史）——
  *     对 cancelled 的重复 cancel 也拒（幂等拒绝，重复点按钮不会造出第二个真相）；
  *   - **失败不自动重试**（task_037 规格）：状态机里没有 retry 动作，重派是调用方的新任务。
+ *   - @since v3.25（task_049）审批门：requestApproval 只认 running（把计划草稿挂到 task.plan，
+ *     任务停等用户裁决，**不限时** —— 时限不是相位语义，驱动方（task-service）另有兑底）；
+ *     approve 只认 awaiting（回 running，盖第二次 start 不存在 —— startedAt 保留首开时刻，
+ *     批准是同一段执行的续段，不是新任务）；reject 只认 awaiting（直达 failed，
+ *     output 写死「计划被驳回」，计划留在 task.plan 存档 —— reason=rejected 的语义在
+ *     状态机里不可配：驳回就是驳回，不携带自由文本）。
  *
- * @since v3.16（task_037）；v3.23（task_047）追加 cancel 动作与 cancelled 终态。
+ * @since v3.16（task_037）；v3.23（task_047）追加 cancel 动作与 cancelled 终态；
+ *   v3.25（task_049）追加 requestApproval / approve / reject 动作与 awaiting_approval 相位。
  */
 
 import {
+  MAX_TASK_PLAN_LEN,
   MAX_TASK_SUMMARY_LEN,
   type CharacterTask,
   type TaskStatus,
@@ -52,7 +65,23 @@ export type TaskAction =
    * queued → cancelled：排队取消（@since v3.23，task_047；盖 endedAt，output=占位文案）。
    * running / 终态一律拒绝 —— 取消在跑任务归「先停止」另一条路，这里不掌生杀。
    */
-  | { type: 'cancel'; at: number };
+  | { type: 'cancel'; at: number }
+  /**
+   * running → awaiting_approval：计划挂起（@since v3.25，task_049）。plan 为已剥离
+   * 标记行的计划草稿（超长由状态机截断到 MAX_TASK_PLAN_LEN —— 广播体积必须有界，
+   * 裁决与其它字段口径一致地收在状态机）。endedAt 不盖：挂起不是收尾。
+   */
+  | { type: 'requestApproval'; at: number; plan: string }
+  /**
+   * awaiting_approval → running：计划批准（@since v3.25，task_049）。startedAt 保留
+   * 首开时刻（批准是同一段执行的续段）；续执行的驱动在 app 层 task-service。
+   */
+  | { type: 'approve'; at: number }
+  /**
+   * awaiting_approval → failed：计划驳回（@since v3.25，task_049；reason=rejected）。
+   * output 写死「计划被驳回」，计划留在 task.plan —— 被驳回的计划也是历史，可回看。
+   */
+  | { type: 'reject'; at: number };
 
 /** 终态：不再接受任何动作（@since v3.23 增 cancelled）。 */
 const TERMINAL_STATUSES: readonly TaskStatus[] = ['completed', 'failed', 'cancelled'];
@@ -124,6 +153,24 @@ export function applyTaskAction(current: CharacterTask, action: TaskAction): Tas
         output: action.reason.length > 0 ? action.reason : '任务失败（未提供原因）',
       });
     }
+    case 'requestApproval': {
+      // 仅 running 可挂起（@since v3.25）：挂起是「跑完计划轮，等裁决」的相位，
+      // queued / awaiting / 终态都拒绝（重复挂起幂等拒绝，不改写历史）。
+      if (current.status !== 'running') return reject(current);
+      return move(current, 'awaiting_approval', { plan: capTaskPlan(action.plan) });
+    }
+    case 'approve': {
+      // 仅 awaiting 可批准（@since v3.25）：回 running 续执行。时间戳不动（startedAt
+      // = 首开时刻；续段没有新的相位时刻要盖，审计靠事件流里的 task.approved）。
+      if (current.status !== 'awaiting_approval') return reject(current);
+      return move(current, 'running');
+    }
+    case 'reject': {
+      // 仅 awaiting 可驳回（@since v3.25）：直达 failed，output 写死（与 cancel 同一
+      // 口径：裁决没有自由文本可传，终态 output 永不为空串），plan 保留存档。
+      if (current.status !== 'awaiting_approval') return reject(current);
+      return move(current, 'failed', { endedAt: action.at, output: '计划被驳回' });
+    }
     case 'cancel': {
       // 仅 queued 可取消（@since v3.23）：running 不强杀，终态不重开 —— 其余相位一律 reject。
       // output 占位文案写死在状态机：取消没有外部原因可传，且终态 output 永不为空串（读的人不猜）。
@@ -146,6 +193,17 @@ export function summarizeTaskOutput(text: string): string {
   if (trimmed.length === 0) return '（任务完成，无文本输出）';
   if (trimmed.length <= MAX_TASK_SUMMARY_LEN) return trimmed;
   return `${trimmed.slice(0, MAX_TASK_SUMMARY_LEN)}…`;
+}
+
+/**
+ * 计划草稿截断（@since v3.25，task_049）：超 MAX_TASK_PLAN_LEN 截尾加省略号 —— 与
+ * summarizeTaskOutput 同一口径（广播体积必须有界），空串不占位：计划空轮由检测方
+ * （task-service）自行兑底（空计划也挂起 —— 用户看到空卡自然会驳回，状态机不越权裁决）。
+ * 导出供单测与 manager 共用。
+ */
+export function capTaskPlan(plan: string): string {
+  if (plan.length <= MAX_TASK_PLAN_LEN) return plan;
+  return `${plan.slice(0, MAX_TASK_PLAN_LEN)}…`;
 }
 
 /**

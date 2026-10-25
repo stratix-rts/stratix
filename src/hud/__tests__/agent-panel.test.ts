@@ -659,3 +659,102 @@ describe('队列可见性：当前任务摘要 + 排队数', () => {
     expect(summary.endsWith('…')).toBe(true);
   });
 });
+
+
+// ============================================================================
+// 审批卡（task_049）：awaiting_approval 任务 → 计划全文 + 批准 / 驳回
+// ============================================================================
+
+describe('审批卡：条件渲染与命令派发（task_049）', () => {
+  const taskOf = (
+    id: string,
+    status: CharacterTask['status'],
+    patch: Partial<CharacterTask> = {}
+  ): CharacterTask => ({
+    id,
+    characterId: 'c-neo',
+    prompt: '重构登录模块',
+    status,
+    createdAt: Number(id.slice(1)),
+    startedAt: null,
+    endedAt: null,
+    output: '',
+    ...patch,
+  });
+
+  const selectedWithTasks = (tasks: readonly CharacterTask[]): WorldState =>
+    makeState({
+      tasks: [...tasks],
+      selection: { unitIds: ['u-neo'], previewUnitIds: [], revision: 1 },
+    });
+
+  const clickTaskAction = (panel: StratAgentPanelElement, action: string, taskId: string): void => {
+    const btn = panel.shadowRoot?.querySelector<HTMLButtonElement>(
+      `button[data-action="${action}"][data-task="${taskId}"]`
+    );
+    if (!btn) throw new Error(`审批按钮未渲染: ${action}/${taskId}`);
+    btn.click();
+  };
+
+  test('awaiting 任务 → 审批卡渲染计划全文与指令摘要；批准 / 驳回按钮在卡上', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    harness.emit(
+      selectedWithTasks([taskOf('t1', 'awaiting_approval', { plan: '一、摸底\n二、动手' })])
+    );
+
+    const card = panel.shadowRoot?.querySelector('[data-role="approval-card"][data-task="t1"]');
+    expect(card).not.toBeNull();
+    expect(card?.querySelector('.approval-plan')?.textContent).toContain('一、摸底\n二、动手');
+    expect(card?.querySelector('.approval-head')?.textContent).toContain('计划待审批');
+    expect(card?.querySelector('.approval-summary')?.textContent).toContain('重构登录模块');
+    // 计划是 pre-wrap 展示（不折叠不截断 —— 逐条核对才是审批）
+    expect(card?.querySelector('.approval-plan')?.getAttribute('class')).toContain('approval-plan');
+    expect(panel.shadowRoot?.querySelector('button[data-action="task-approve"][data-task="t1"]')).not.toBeNull();
+    expect(panel.shadowRoot?.querySelector('button[data-action="task-reject"][data-task="t1"]')).not.toBeNull();
+  });
+
+  test('点批准 → dispatch(task.approve)；点驳回 → dispatch(task.reject)', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    harness.emit(selectedWithTasks([taskOf('t2', 'awaiting_approval', { plan: 'p' })]));
+    clickTaskAction(panel, 'task-approve', 't2');
+    expect(harness.commands.at(-1)).toEqual({ type: 'task.approve', taskId: 't2' });
+
+    clickTaskAction(panel, 'task-reject', 't2');
+    expect(harness.commands.at(-1)).toEqual({ type: 'task.reject', taskId: 't2' });
+  });
+
+  test('相位翻转卡即消失：批准回 running / 驳回成 failed 都不再有审批卡', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    harness.emit(selectedWithTasks([taskOf('t3', 'awaiting_approval', { plan: 'p' })]));
+    expect(panel.shadowRoot?.querySelector('[data-role="approval-card"]')).not.toBeNull();
+
+    harness.emit(selectedWithTasks([taskOf('t3', 'running', { plan: 'p' })]));
+    expect(panel.shadowRoot?.querySelector('[data-role="approval-card"]')).toBeNull();
+
+    // 驳回路径同理：failed 后队列里还有这条（带已失败徽标），但审批卡没了
+    harness.emit(selectedWithTasks([taskOf('t4', 'awaiting_approval', { plan: 'p' })]));
+    harness.emit(selectedWithTasks([taskOf('t4', 'failed', { output: '计划被驳回', plan: 'p' })]));
+    expect(panel.shadowRoot?.querySelector('[data-role="approval-card"]')).toBeNull();
+    expect(panel.shadowRoot?.querySelector('.task-item[data-task="t4"] .task-badge')?.textContent).toContain('已失败');
+  });
+
+  test('无 awaiting 任务（或未选单位）→ 不渲染审批卡；计划里的 HTML 转义后展示', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    harness.emit(selectedWithTasks([taskOf('t5', 'running')]));
+    expect(panel.shadowRoot?.querySelector('[data-role="approval-card"]')).toBeNull();
+
+    // 计划里带标签字符 → 转义进文本节点，不进 DOM（escapeHtml 口径与队列摘要同款）
+    harness.emit(selectedWithTasks([taskOf('t6', 'awaiting_approval', { plan: '<script>evil()</script>' })]));
+    const plan = panel.shadowRoot?.querySelector('[data-role="approval-card"] .approval-plan');
+    expect(plan?.textContent).toContain('<script>evil()</script>');
+    expect(panel.shadowRoot?.querySelector('[data-role="approval-card"] script')).toBeNull();
+  });
+});

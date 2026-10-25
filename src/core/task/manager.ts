@@ -34,7 +34,8 @@
  * 收尾时**只回收 busy**：error / offline 是别处的真相（如 agent-link 的远端状态），不碰；
  * 且该角色还有**其他** running 任务时不回收（并发 1 是 app 层的执行纪律，core 不假设）。
  *
- * @since v3.16（task_037）；v3.23（task_047）追加 cancelTask（排队取消）与 TaskCancelOutcome。
+ * @since v3.16（task_037）；v3.23（task_047）追加 cancelTask（排队取消）与 TaskCancelOutcome；
+ *   v3.25（task_049）追加审批门三口：requestApproval / approveTask / rejectTask。
  */
 
 import { emitWorldEvent } from '../bus';
@@ -109,6 +110,24 @@ export interface TaskManager {
    * 成功后发 task.cancelled（消费者：task-service 剔除队列 + 落库）。
    */
   cancelTask(taskId: string): TaskCancelOutcome;
+  /**
+   * running → awaiting_approval：计划挂起（@since v3.25，task_049，由 task-service 检出
+   * 标记行后调用）。成功后发 task.awaiting_approval（快照 plan 字段携计划全文）并回收
+   * 单位 busy（挂起不算忙 —— 头顶?浮标是它的表现）。返 null = 相位不允许 / 不存在。
+   */
+  requestApproval(taskId: string, plan: string): CharacterTask | null;
+  /**
+   * awaiting_approval → running：计划批准（@since v3.25，task_049，task.approve 命令的
+   * 落点）。成功后发 task.approved（消费者：task-service 接手续执行 —— 同 session 续发）
+   * 并把单位置回 busy。返 null = 相位不允许 / 不存在。
+   */
+  approveTask(taskId: string): CharacterTask | null;
+  /**
+   * awaiting_approval → failed：计划驳回（@since v3.25，task_049，task.reject 命令的
+   * 落点；reason=rejected，output=「计划被驳回」写死在状态机，计划留在 task.plan）。
+   * 成功后发 task.failed（与其它失败同面：落库 + 回流 + exp）。返 null = 相位不允许 / 不存在。
+   */
+  rejectTask(taskId: string): CharacterTask | null;
 }
 
 /**
@@ -263,6 +282,46 @@ class Manager implements TaskManager {
   }
 
   /**
+   * 计划挂起（@since v3.25，task_049）：running → awaiting_approval。忙闲回收与
+   * complete 同一分支（syncWorking=false + stillWorking 复核），但**不发收尾回流**
+   * —— 挂起不是终态，发的是 task.awaiting_approval。Notice 用 info：等批准不是异常。
+   */
+  requestApproval(taskId: string, plan: string): CharacterTask | null {
+    return this.transition(taskId, { type: 'requestApproval', at: this.now(), plan }, {
+      event: 'task.awaiting_approval',
+      syncWorking: false,
+      notice: (task, character) =>
+        this.notify('info', `「${character?.name ?? task.characterId}」已提交执行计划，等待批准`),
+    });
+  }
+
+  /**
+   * 计划批准（@since v3.25，task_049）：awaiting → running（续段执行，startedAt 保留）。
+   * 忙闲置回 busy 与 startTask 同一分支（syncWorking=true）；事件 task.approved 由
+   * task-service 听见后接手续执行。Notice 不发：批准动作本身已有 UI 反馈（toast），
+   * 续段执行的收尾另有事件面。
+   */
+  approveTask(taskId: string): CharacterTask | null {
+    return this.transition(taskId, { type: 'approve', at: this.now() }, {
+      event: 'task.approved',
+      syncWorking: true,
+    });
+  }
+
+  /**
+   * 计划驳回（@since v3.25，task_049）：awaiting → failed（reason=rejected 语义写死在
+   * 状态机）。事件面与其它失败完全一致（task.failed）：落库 / 回流 / exp 都走既有管道。
+   */
+  rejectTask(taskId: string): CharacterTask | null {
+    return this.transition(taskId, { type: 'reject', at: this.now() }, {
+      event: 'task.failed',
+      syncWorking: false,
+      notice: (task, character) =>
+        this.notify('warn', `「${character?.name ?? task.characterId}」的计划被驳回，任务未执行`),
+    });
+  }
+
+  /**
    * 统一的状态迁移管道：一次 setState 里完成「任务相位 + 单位忙闲」两份投影的合并写入
    * （perf：一次用户动作只广播一次），成功后再发事件 + Notice。
    * syncWorking=true：开工 → busy；false：收尾 → 仅当该角色没有其他 running 任务时回收 idle。
@@ -271,7 +330,12 @@ class Manager implements TaskManager {
     taskId: string,
     action: TaskAction,
     plan: {
-      readonly event: 'task.started' | 'task.completed' | 'task.failed';
+      readonly event:
+        | 'task.started'
+        | 'task.completed'
+        | 'task.failed'
+        | 'task.awaiting_approval'
+        | 'task.approved';
       readonly syncWorking: boolean;
       readonly notice?: (task: CharacterTask, character: CharacterView | undefined) => void;
     }

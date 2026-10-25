@@ -29,6 +29,8 @@
  *   (出队执行)与任务落库订阅者,不进 onUnhandled。
  * @since v3.23(task_047)追加 task.cancel 命令(排队取消,同口径直调 manager)与
  *   task.cancelled 事件接地(startsWith('task.') 已覆盖,注释补记)。
+ * @since v3.25(task_049)追加 task.approve / task.reject 命令(审批门)与
+ *   task.awaiting_approval / task.approved 事件接地(同上,startsWith 已覆盖)。
  */
 
 import type { AgentLinkManager } from './agent-link';
@@ -222,6 +224,16 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
       case 'task.cancel':
         task.cancelTask(command.taskId);
         return;
+      // @since v3.25 任务审批门(task_049):批准 / 驳回同口径直调 manager。相位裁决
+      // (仅 awaiting_approval 可批准或驳回)在状态机;批准后的续执行驱动在 app 层
+      // task-service(它听 task.approved 事件接手 —— core 零 IO);驳回走 task.failed
+      // 既有事件面(落库 / 回流 / exp)。UI 的批准 / 驳回按钮只对 awaiting 任务渲染(049)。
+      case 'task.approve':
+        task.approveTask(command.taskId);
+        return;
+      case 'task.reject':
+        task.rejectTask(command.taskId);
+        return;
       // @since v3.6 屏位路由:
       //   'main' 与 'chat' 都不入 currentScreen:
       //     - 'main' 是"回主屏"语义,与字段为空等价(缺省回落读取方自管);
@@ -274,6 +286,9 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         //   core 状态机不消费 -- 同 unit.position 惯例显式接地,不进 onUnhandled。
         // task.cancelled(@since v3.23,task_047):取消事件同面 —— 消费者 task-service 据此从
         //   待执行队列剔除(防「取消与出队同帧」竞态) + 落库订阅者落 cancelled 快照,同接地。
+        // task.awaiting_approval / task.approved(@since v3.25,task_049):审批门生命周期事件,
+        //   消费者 task-service(挂起占位 / 批准接手续执行)与落库订阅者,同 task.* 接地口径
+        //   (startsWith('task.') 已覆盖,这里只补记契约语义)。
         // exp.gained（@since v3.18，task_039）：app 层发射的经验事件，消费者是 app 层
         //   progression-service（task_040）：经 character manager 累加进 WorldState.characters、
         //   升级则广播 level.up。core 状态机不消费（不写 WorldState），同惯例显式接地 ——

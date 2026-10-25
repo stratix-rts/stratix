@@ -276,10 +276,55 @@ describe('resolveTaskOutputDisplay：artifactsBlock 附尾（task_048）', () =>
 });
 
 describe('TASK_PHASE_LABELS：相位词表完整', () => {
-  test('四个相位都有文案', () => {
-    const statuses: TaskStatus[] = ['queued', 'running', 'completed', 'failed'];
+  test('各相位都有文案（六态，含 task_049 的待审批）', () => {
+    const statuses: TaskStatus[] = [
+      'queued',
+      'running',
+      'awaiting_approval',
+      'completed',
+      'failed',
+      'cancelled',
+    ];
     for (const status of statuses) {
       expect(TASK_PHASE_LABELS[status].length).toBeGreaterThan(0);
     }
+    expect(TASK_PHASE_LABELS.awaiting_approval).toBe('待审批');
+  });
+});
+
+// ============================================================================
+// 审批门（task_049）：挂起标记行剥离 + awaiting 相位的计划全文展示
+// ============================================================================
+
+describe('resolveTaskOutputDisplay：挂起标记行剥离（task_049）', () => {
+  test('流文本里的 PLAN_WAIT 协议行不进可见输出（awaiting 相位展示的就是计划全文）', () => {
+    const store = createTaskOutputStore({ now: () => 1 });
+    store.begin('ch-1', 'task-1');
+    store.append('ch-1', '一、摸底。\nPLAN_WAIT\n二、（标记后的残留文本）');
+    const awaiting = task('task-1', { status: 'awaiting_approval', plan: '一、摸底。' });
+    const view = resolveTaskOutputDisplay(store.entry('ch-1'), awaiting);
+    expect(view.phase).toBe('awaiting_approval');
+    expect(view.text).toBe('一、摸底。\n二、（标记后的残留文本）'); // 标记行剥离，其余原样
+    expect(view.text).not.toContain('PLAN_WAIT');
+    expect(view.fromStream).toBe(true);
+  });
+
+  test('容忍前后空白与 CRLF 的标记行；无标记的流文本不受影响（原对象直过）', () => {
+    const store = createTaskOutputStore({ now: () => 1 });
+    store.begin('ch-1', 'task-1');
+    store.append('ch-1', '  PLAN_WAIT  \r\n');
+    const awaiting = task('task-1', { status: 'awaiting_approval', plan: '' });
+    expect(resolveTaskOutputDisplay(store.entry('ch-1'), awaiting).text).toBe('');
+
+    const store2 = createTaskOutputStore({ now: () => 1 });
+    store2.begin('ch-1', 'task-2');
+    store2.append('ch-1', '普通输出');
+    const running = task('task-2', {});
+    expect(resolveTaskOutputDisplay(store2.entry('ch-1'), running).text).toBe('普通输出');
+  });
+
+  test('终态回落 output 不受剥离影响（状态 output 从不含协议行 —— 落库前已剥离）', () => {
+    const failed = task('task-g', { status: 'failed', output: '计划被驳回' });
+    expect(resolveTaskOutputDisplay(null, failed).text).toBe('计划被驳回');
   });
 });

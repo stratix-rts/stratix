@@ -23,7 +23,11 @@ export const TOAST_HOST_TAG = 'strat-toast-host';
 export const TOAST_TTL_MS = 3000;
 
 /** 语气词表：success=完成（绿）/ danger=失败（红）/ info=中性提示（蓝边）。 */
-export type ToastTone = 'info' | 'success' | 'danger';
+/**
+ * 气泡语气色。@since v3.25（task_049）增 warn（srf-warn 黄 —— 审批门「等你裁决」的拉人
+ * 提示，与战场 ? 浮标同一族；danger 保留给「出事了」）。
+ */
+export type ToastTone = 'info' | 'success' | 'warn' | 'danger';
 
 /** 自定义元素的对外形状（组合根与测试按它操作）。 */
 export interface StratToastHostElement extends HTMLElement {
@@ -108,6 +112,7 @@ export function defineToastHost(): typeof HTMLElement {
           .toast[data-tone="success"] { border-color: var(--srf-success, #6fcf97); color: var(--srf-success, #6fcf97); }
           .toast[data-tone="danger"] { border-color: var(--srf-danger, #e06c75); color: var(--srf-danger, #e06c75); }
           .toast[data-tone="info"] { border-color: var(--srf-accent, #6ea8ff); }
+          .toast[data-tone="warn"] { border-color: var(--srf-warn, #f0c674); color: var(--srf-warn, #f0c674); }
         </style>
         <div class="stack" data-role="stack" aria-live="polite"></div>
       `;

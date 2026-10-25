@@ -134,6 +134,17 @@ describe('组件：可见性与默认展开', () => {
     h.unmount();
   });
 
+  test('awaiting_approval 任务（task_049）→ 可见、默认展开（面板就是计划全文的流视角）', () => {
+    const h = mountPanel();
+    h.emit(makeState([task('task-1', { status: 'awaiting_approval', plan: '一、摸底' })]));
+    h.panel.showFor('ch-1');
+    expect(h.panel.visible).toBe(true);
+    expect(h.panel.expanded).toBe(true); // 挂起即展开：等裁决的内容必须看得见
+    expect(h.panel.taskStatus).toBe('awaiting_approval');
+    expect(part(h.panel, 'phase')?.textContent).toBe('待审批');
+    h.unmount();
+  });
+
   test('showFor(null) → 隐藏（清上下文）', () => {
     const h = mountPanel();
     h.emit(makeState([task('task-1')]));

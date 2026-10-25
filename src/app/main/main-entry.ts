@@ -292,6 +292,18 @@ async function boot(): Promise<void> {
     toastHost.show(levelUpToastText(character.name, event.fromLevel, event.toLevel), 'success');
   });
 
+  // ===== 审批门轻提示（@since v3.25，task_049）=====
+  // task.awaiting_approval → toast「XX 请求批准任务计划」：挂起是不限时的被动等待，
+  // 用户可能根本没盯着战场 —— toast 是拉人来的那一声（notice 面板太安静，038 的先例同款取舍）。
+  // 审批入口本体在 agent-panel 的审批卡（049 的 UI 面）；角色查不到（极端时序）→ 跳过（不猜名字）。
+  // tone 用 warn：黄色问号与战场 ? 浮标（srf-warn）同一族 —— 「有事等你裁决」而不是「出事了」。
+  const stopAwaitingToast = onWorldEvent((event) => {
+    if (event.type !== 'task.awaiting_approval') return;
+    const character = worldStore.getState().characters.find((c) => c.id === event.task.characterId);
+    if (!character) return;
+    toastHost.show(`「${character.name}」请求批准任务计划`, 'warn');
+  });
+
   // ===== 战场单位的形象（@since v3.10，task_029）=====
   // 单位带 appearance 时，战场用合成好的 LPC 精灵表当身体（走路动画）。
   // 合成要 DOM（canvas / Image），world 层零 DOM —— 故实现在 app 层，world 只认端口。
@@ -469,6 +481,7 @@ async function boot(): Promise<void> {
       appearancePreview.destroy();
       // 升级 toast 订阅（task_041）：与其它总线订阅同一卸载纪律 —— 页面销毁前退干净。
       stopLevelUpToast();
+      stopAwaitingToast();
       // 角色抽屉先卸（退订总线；在跑的对话由主进程超时 / 页面销毁兜底）。
       unmountCharacterDrawer();
       unmountToastHost();

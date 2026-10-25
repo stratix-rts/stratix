@@ -23,6 +23,15 @@
  * （那边管 schema_version 迁移（v5），这边管 IF NOT EXISTS + 旧 CHECK 重建兜底：DAO 单独在
  * 旧库/测试库上也能就位 —— 四态 CHECK 老表必须先重建，否则 upsert cancelled 会炸约束）。
  *
+ * ============ status CHECK 六态迁移（task_049，沿用 047 重建方案）============
+ * @since v3.25 在五态之上扩 awaiting_approval（任务审批门）。仍走重建（CHECK 不可 ALTER）：
+ *   五态表 → 临时表 character_tasks_v7（六态 CHECK + artifacts + plan 列）→ INSERT SELECT
+ *   搬数据（五态都是六态子集，无冲突行；plan 列新建表缺省 ''）→ DROP → RENAME。
+ *   指纹：建表 DDL 含 'awaiting_approval'；重建前置条件：artifacts 列已兑底
+ *   （ensureArtifactsColumn 先行 —— INSERT SELECT 要引用它）。
+ * 老库全谱：v4 四态 →（047 重建）五态 →（048 ALTER）+artifacts →（049 重建）六态+plan；
+ *   v5 → 先 ALTER artifacts 再重建六态；v6 → 直接重建六态；v7 新库零成本直过。
+ *
  * ============ status CHECK 五态迁移（task_047）============
  * SQLite 的 CHECK 约束不可 ALTER（既不能改也不能删），扩词表只有重建表一条路：
  *   建新表 → INSERT SELECT 搬数据 → DROP 旧表 → RENAME。选**重建时保留 CHECK（五态）**
@@ -32,7 +41,9 @@
  *   含则跳过 —— 幂等，新库（createTables 建的五态表）零成本直过。
  *
  * @since v3.16，task_037；v3.23（task_047）status 词表增 cancelled + 旧表重建迁移；
- *   v3.24（task_048）增 artifacts 列（成果物 JSON，'' = 无；ALTER ADD 可加，无需重建）。
+ *   v3.24（task_048）增 artifacts 列（成果物 JSON，'' = 无；ALTER ADD 可加，无需重建）；
+ *   v3.25（task_049）status 词表增 awaiting_approval + 重建迁移 + plan 列（计划草稿全文，
+ *   '' = 无；随六态重建携带，六态表缺列时 ALTER ADD 兜底）。
  */
 
 import type { SqliteDatabaseLike } from './game-save-dao';
@@ -42,8 +53,14 @@ import type { SqliteDatabaseLike } from './game-save-dao';
  * 角色任务表对齐 character_chat_messages 的先例（character_ 前缀 = 游戏存档域），零冲突。 */
 export const CHARACTER_TASKS_TABLE = 'character_tasks';
 
-/** 任务状态词表（与表 CHECK 约束一致，即 core/types.ts 的 TaskStatus）。 */
-export type PersistedTaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+/** 任务状态词表（与表 CHECK 约束一致，即 core/types.ts 的 TaskStatus；@since v3.25 六态）。 */
+export type PersistedTaskStatus =
+  | 'queued'
+  | 'running'
+  | 'awaiting_approval'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
 
 /** character_tasks 表的一行。id 是 core 侧的任务 id（TEXT 主键 —— core 造 id，库不自增）。 */
 export interface PersistedTaskRecord {
@@ -51,7 +68,10 @@ export interface PersistedTaskRecord {
   readonly characterId: string;
   readonly prompt: string;
   readonly status: PersistedTaskStatus;
-  /** completed=执行结果全文；failed=失败原因；queued/running=空串。 */
+  /**
+   * completed=执行结果全文；failed=失败原因；queued/running=空串；
+   * @since v3.25 awaiting_approval=计划全文（task_049：挂起快照的 output 落全文，便于审计直读）。
+   */
   readonly output: string;
   readonly createdAt: number;
   /** 开工时间；未开工（queued 直达 failed 的守门拦截）为 null。 */
@@ -64,32 +84,43 @@ export interface PersistedTaskRecord {
    * （事件快照路径）与老库行都不携带它，upsert 缺省落 ''。
    */
   readonly artifacts?: string;
+  /**
+   * 计划草稿全文（task_049）：awaiting_approval / 被驳回的 failed / 批准后完成的记录携带
+   * （审批链路存档：驳回的计划、按哪份计划做完的都在）；'' / 缺省 = 无。
+   */
+  readonly plan?: string;
 }
 
 /** 词表导出给 IPC 校验层用（主进程拒绝表外 status，别让脏词进 CHECK 约束炸 IPC）。 */
 export const PERSISTED_TASK_STATUSES: readonly PersistedTaskStatus[] = [
   'queued',
   'running',
+  'awaiting_approval',
   'completed',
   'failed',
   'cancelled',
 ];
 
-/** 建表 DDL（五态 CHECK，@since v3.23）—— 与 StratixDatabase 的 DDL 同构，两处同步改。 */
+/** 建表 DDL（六态 CHECK + artifacts + plan，@since v3.25 task_049）—— 与 StratixDatabase 的 DDL 同构，两处同步改。 */
 const CHARACTER_TASKS_DDL = `
   CREATE TABLE IF NOT EXISTS ${CHARACTER_TASKS_TABLE} (
     id TEXT PRIMARY KEY,
     character_id TEXT NOT NULL,
     prompt TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed', 'cancelled')),
+    status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'awaiting_approval', 'completed', 'failed', 'cancelled')),
     output TEXT NOT NULL DEFAULT '',
     created_at INTEGER NOT NULL,
     started_at INTEGER,
-    ended_at INTEGER
+    ended_at INTEGER,
+    artifacts TEXT NOT NULL DEFAULT '',
+    plan TEXT NOT NULL DEFAULT ''
   )`;
 
-/** 重建用的临时表名（迁移完成后 RENAME 回正名）。 */
+/** 五态重建的临时表名（task_047，v4 → v5）。 */
 const CHARACTER_TASKS_MIGRATION_TABLE = 'character_tasks_v5';
+
+/** 六态重建的临时表名（task_049，五态 → 六态；沿用 047 方案）。 */
+const CHARACTER_TASKS_V7_MIGRATION_TABLE = 'character_tasks_v7';
 
 /**
  * 旧表识别（task_047）：character_tasks 的建表 DDL 里是否已含五态 CHECK。
@@ -138,10 +169,72 @@ function migrateTaskStatusCheckToFive(db: SqliteDatabaseLike): void {
 }
 
 /**
+ * 旧表识别（task_049）：建表 DDL 是否已含六态 CHECK（'awaiting_approval' 指纹）。
+ * 同 hasFiveStatusCheck 的口径：DDL 不存在返回 false，由调用方走 CREATE IF NOT EXISTS。
+ */
+function hasSixStatusCheck(db: SqliteDatabaseLike): boolean {
+  const row = db
+    .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`)
+    .get(CHARACTER_TASKS_TABLE) as { sql?: string } | undefined;
+  return typeof row?.sql === 'string' && row.sql.includes("'awaiting_approval'");
+}
+
+/**
+ * 五态表 → 六态重建迁移（task_049，沿用 047 重建方案）：SQLite 的 CHECK 不可 ALTER，
+ * 扩词表只有重建一条路。**前置条件：artifacts 列已就位**（ensureArtifactsColumn 先行 ——
+ * INSERT SELECT 要搬运它）。幂等：已是六态或表不存在时 no-op。数据零丢失：五态词表是
+ * 六态子集；plan 列是新表才有，老行落缺省 ''。
+ */
+function migrateTaskStatusCheckToSix(db: SqliteDatabaseLike): void {
+  const tables = db
+    .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`)
+    .get(CHARACTER_TASKS_TABLE) as { name?: string } | undefined;
+  if (!tables?.name) return; // 表不存在：交给 ensure 的 CREATE IF NOT EXISTS 建六态新表
+  if (hasSixStatusCheck(db)) return; // 已是六态：幂等直过
+
+  db.exec(`
+    CREATE TABLE ${CHARACTER_TASKS_V7_MIGRATION_TABLE} (
+      id TEXT PRIMARY KEY,
+      character_id TEXT NOT NULL,
+      prompt TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'awaiting_approval', 'completed', 'failed', 'cancelled')),
+      output TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      started_at INTEGER,
+      ended_at INTEGER,
+      artifacts TEXT NOT NULL DEFAULT '',
+      plan TEXT NOT NULL DEFAULT ''
+    );
+    INSERT INTO ${CHARACTER_TASKS_V7_MIGRATION_TABLE}
+      (id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts)
+      SELECT id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts
+      FROM ${CHARACTER_TASKS_TABLE};
+    DROP TABLE ${CHARACTER_TASKS_TABLE};
+    ALTER TABLE ${CHARACTER_TASKS_V7_MIGRATION_TABLE} RENAME TO ${CHARACTER_TASKS_TABLE};
+    CREATE INDEX IF NOT EXISTS idx_tasks_character
+      ON ${CHARACTER_TASKS_TABLE}(character_id, created_at);
+  `);
+}
+
+/**
+ * plan 列兑底（task_049，schema v7）：六态表但缺 plan 列（手改库边角）→ ALTER ADD。
+ * 与 artifacts 同理：加列不涉及 CHECK，不用重建。
+ */
+function ensurePlanColumn(db: SqliteDatabaseLike): void {
+  const columns = db.prepare(`PRAGMA table_info(${CHARACTER_TASKS_TABLE})`).all() as Array<{
+    name?: string;
+  }>;
+  if (columns.some((column) => column.name === 'plan')) return;
+  db.exec(`ALTER TABLE ${CHARACTER_TASKS_TABLE} ADD COLUMN plan TEXT NOT NULL DEFAULT ''`);
+}
+
+/**
  * 建表 + 索引（幂等，旧库新库都能直接调）：
- * 先把四态 CHECK 老表重建到五态（若需要），补 artifacts 列（若缺），再 CREATE IF NOT EXISTS 兑底。
- * 与 StratixDatabase 的 DDL 同构；那边负责 schema_version 迁移记录（v6），这里是 DAO 自立兜底。
- * upsert 语义（core 会按相位推进同一条任务：queued → running → 终态）要求 id 冲突时全字段覆盖。
+ * 老库全谱就位 —— 四态重建五态（047）→ CREATE IF NOT EXISTS（新库直接建六态全列表）→
+ * 补 artifacts 列（048，六态重建的前置）→ 五态重建六态（049）→ 补 plan 列（兑底）。
+ * 与 StratixDatabase 的 DDL 同构；那边负责 schema_version 迁移记录（v7），这里是 DAO 自立兑底。
+ * upsert 语义（core 会按相位推进同一条任务：queued → running → awaiting → 终态）要求
+ * id 冲突时全字段覆盖。
  */
 export function ensureCharacterTasksTable(db: SqliteDatabaseLike): void {
   migrateTaskStatusCheckToFive(db);
@@ -151,6 +244,8 @@ export function ensureCharacterTasksTable(db: SqliteDatabaseLike): void {
       ON ${CHARACTER_TASKS_TABLE}(character_id, created_at);
   `);
   ensureArtifactsColumn(db);
+  migrateTaskStatusCheckToSix(db);
+  ensurePlanColumn(db);
 }
 
 /**
@@ -173,14 +268,15 @@ function ensureArtifactsColumn(db: SqliteDatabaseLike): void {
 export function upsertTask(db: SqliteDatabaseLike, record: PersistedTaskRecord): void {
   db.prepare(`
     INSERT INTO ${CHARACTER_TASKS_TABLE}
-      (id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts, plan)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       status = excluded.status,
       output = excluded.output,
       started_at = excluded.started_at,
       ended_at = excluded.ended_at,
-      artifacts = excluded.artifacts
+      artifacts = excluded.artifacts,
+      plan = excluded.plan
   `).run(
     record.id,
     record.characterId,
@@ -190,7 +286,8 @@ export function upsertTask(db: SqliteDatabaseLike, record: PersistedTaskRecord):
     record.createdAt,
     record.startedAt,
     record.endedAt,
-    record.artifacts ?? ''
+    record.artifacts ?? '',
+    record.plan ?? ''
   );
 }
 
@@ -206,7 +303,7 @@ export function loadRecentTasks(
 ): PersistedTaskRecord[] {
   const rows = db
     .prepare(
-      `SELECT id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts
+      `SELECT id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts, plan
        FROM ${CHARACTER_TASKS_TABLE}
        WHERE character_id = ?
        ORDER BY created_at DESC, id DESC
@@ -227,6 +324,8 @@ export function loadRecentTasks(
       endedAt: row.ended_at === null || row.ended_at === undefined ? null : Number(row.ended_at),
       // 老库行（v5 及以前）没有该列 → undefined（消费方口径：undefined = 无成果物，降级纯文本）。
       artifacts: typeof row.artifacts === 'string' && row.artifacts.length > 0 ? row.artifacts : undefined,
+      // 计划草稿（task_049）：同 artifacts 口径 —— 老库行 / 非审批任务 → undefined。
+      plan: typeof row.plan === 'string' && row.plan.length > 0 ? row.plan : undefined,
     }))
     .reverse();
 }

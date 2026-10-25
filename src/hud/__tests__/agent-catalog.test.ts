@@ -14,11 +14,14 @@ import type { CharacterTask, CharacterView, MissionView, UnitCapabilitiesView, U
 import {
   agentPanelSignature,
   buildAgentCommand,
+  buildTaskApproveCommand,
   buildTaskAssignCommand,
   buildTaskCancelCommand,
+  buildTaskRejectCommand,
   MAX_VISIBLE_GROUP_ROWS,
   resolveAgentPanel,
   resolveCharacterTaskQueue,
+  resolveTaskApproval,
   truncateTaskSummary,
 } from '../panels/agent-catalog';
 
@@ -505,5 +508,100 @@ describe('渲染签名：任务队列变化也算变化（否则队列读了旧�
         ])
       )
     );
+  });
+});
+
+
+// ============================================================================
+// 审批门（task_049）：审批卡读数 + 批准 / 驳回命令
+// ============================================================================
+
+describe('resolveTaskApproval：awaiting_approval → 审批卡读数（task_049）', () => {
+  const task = (id: string, status: CharacterTask['status'], patch: Partial<CharacterTask> = {}): CharacterTask => ({
+    id,
+    characterId: 'c-neo',
+    prompt: '重构登录模块',
+    status,
+    createdAt: 1,
+    startedAt: null,
+    endedAt: null,
+    output: '',
+    ...patch,
+  });
+
+  test('有一条 awaiting 任务 → 模型带计划全文与指令摘要；plan 缺省时空串不炸渲染', () => {
+    const plan = '一、摸底\n二、动手';
+    const approval = resolveTaskApproval(
+      [task('t1', 'awaiting_approval', { plan })],
+      'c-neo'
+    );
+    expect(approval).toEqual({
+      taskId: 't1',
+      characterId: 'c-neo',
+      plan,
+      summary: truncateTaskSummary('重构登录模块'),
+    });
+    // 极端边角：状态里 plan 丢了（老状态 / 手改）→ 空计划也出卡（用户看到空卡自然驳回）
+    expect(resolveTaskApproval([task('t1', 'awaiting_approval')], 'c-neo')?.plan).toBe('');
+  });
+
+  test('没有 awaiting 任务 → null（卡片不渲染）', () => {
+    for (const status of ['queued', 'running', 'completed', 'failed', 'cancelled'] as const) {
+      expect(resolveTaskApproval([task('t1', status)], 'c-neo')).toBeNull();
+    }
+    expect(resolveTaskApproval(undefined, 'c-neo')).toBeNull();
+  });
+
+  test('别人的 awaiting 任务不出卡（单位卡只看自己角色的门）', () => {
+    const plan = '一、摸底';
+    expect(
+      resolveTaskApproval([task('t1', 'awaiting_approval', { plan, characterId: 'c-trinity' })], 'c-neo')
+    ).toBeNull();
+  });
+
+  test('单选详情：detail.approval 随 awaiting 任务出现 / 消失', () => {
+    const state = (tasks: CharacterTask[]): WorldState =>
+      makeState({
+        units: [unit({ id: 'u-neo', characterId: 'c-neo' })],
+        characters: [CHARACTER],
+        tasks,
+        selection: { unitIds: ['u-neo'], previewUnitIds: [], revision: 1 },
+      });
+
+    const withAwaiting = resolveAgentPanel(state([task('t1', 'awaiting_approval', { plan: '计划' })]));
+    expect(withAwaiting.detail?.approval).toMatchObject({ taskId: 't1', plan: '计划' });
+
+    // 批准后（回 running）→ 卡消失
+    const approved = resolveAgentPanel(state([task('t1', 'running', { plan: '计划' })]));
+    expect(approved.detail?.approval).toBeNull();
+  });
+
+  test('awaiting 任务进队列列表：在办、不可取消、不可重派（驳回才是它的出口）', () => {
+    const queue = resolveCharacterTaskQueue([task('t1', 'awaiting_approval', { plan: 'p' })], 'c-neo');
+    expect(queue.items).toHaveLength(1);
+    expect(queue.items[0]).toMatchObject({ id: 't1', statusLabel: '待审批', canCancel: false, canReassign: false });
+  });
+
+  test('渲染签名：awaiting ↔ running ↔ failed 的翻转必须触发重渲染（审批卡的生死线）', () => {
+    const makeTaskState = (taskPatch: Partial<CharacterTask>): WorldState =>
+      makeState({
+        units: [unit({ id: 'u-neo', characterId: 'c-neo' })],
+        characters: [CHARACTER],
+        tasks: [task('t1', 'queued', { ...taskPatch })],
+        selection: { unitIds: ['u-neo'], previewUnitIds: [], revision: 1 },
+      });
+    const awaitingSig = agentPanelSignature(makeTaskState({ status: 'awaiting_approval', plan: 'p' }));
+    expect(awaitingSig).not.toBe(agentPanelSignature(makeTaskState({ status: 'running' })));
+    expect(awaitingSig).not.toBe(agentPanelSignature(makeTaskState({ status: 'failed', output: '计划被驳回', plan: 'p' })));
+  });
+});
+
+describe('buildTaskApproveCommand / buildTaskRejectCommand（task_049）', () => {
+  test('有 taskId → task.approve / task.reject 命令；空值 → null（不发空命令）', () => {
+    expect(buildTaskApproveCommand('task_1')).toEqual({ type: 'task.approve', taskId: 'task_1' });
+    expect(buildTaskRejectCommand('task_1')).toEqual({ type: 'task.reject', taskId: 'task_1' });
+    expect(buildTaskApproveCommand('')).toBeNull();
+    expect(buildTaskApproveCommand(null)).toBeNull();
+    expect(buildTaskRejectCommand(undefined)).toBeNull();
   });
 });

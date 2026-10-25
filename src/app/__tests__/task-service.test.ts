@@ -28,15 +28,21 @@ import type {
 import type { SpawnOptions, TransportEvent } from '../services/cli-transport/transport';
 import { DEFAULT_EXP_WEIGHTS } from '../services/exp-config';
 import {
+  buildResumedTaskPrompt,
   buildTaskPrompt,
   createTaskService,
   DEFAULT_TASK_TIMEOUT_MS,
+  extractPlanDraft,
   guardTaskCharacter,
+  TASK_APPROVAL_RESUME_PROMPT,
   TASK_MSG_NOT_INSTALLED,
   TASK_MSG_NO_PROFILE,
+  TASK_MSG_RESUME_LOST,
   TASK_MSG_UNBOUND,
+  TASK_PLAN_INSTRUCTION,
   taskErrorText,
   type TaskPersistRecord,
+  type TaskService,
   type TaskTransportFactory,
 } from '../services/task-service';
 import { parseTaskArtifactsJson } from '../services/task-artifacts';
@@ -54,6 +60,14 @@ const character: CharacterView = {
   agentKind: 'claude-code',
   skinId: null,
   externalSessionId: 'chat-sess-1', // 故意带聊天会话 id：任务绝不能透传它（会话隔离断言点）
+};
+
+/** plan-first 人设（task_049 路径①：手写标记 —— personaPlanFirst 判定的词）。 */
+const planFirstCharacter: CharacterView = {
+  ...character,
+  id: 'ch-3',
+  name: '参谋长',
+  persona: '严谨的参谋长。\n# 行为规则 RULES\n- 先出计划，经批准后再执行',
 };
 
 const otherCharacter: CharacterView = { ...character, id: 'ch-2', name: '贝塔' };
@@ -956,5 +970,256 @@ describe('成果物解析落列：completed 才携带 artifacts（task_048）', 
     await flush();
     expect(h.persisted.at(-1)!.status).toBe('failed');
     expect(h.persisted.at(-1)!.artifacts).toBeUndefined();
+  });
+});
+
+
+// ============================================================================
+// 审批门（task_049）：plan-first 挂起 / 批准续发 / 驳回落位
+// ============================================================================
+
+describe('buildTaskPrompt：plan-first 追加计划指令', () => {
+  test('plan-first 人设 → 尾部追加【工作方式】节（含标记词与「单独一行」约束）', () => {
+    const prompt = buildTaskPrompt(planFirstCharacter, '重构登录模块');
+    expect(prompt).toContain('【任务指令】');
+    expect(prompt.indexOf('【任务指令】')).toBeLessThan(prompt.indexOf('【工作方式】'));
+    expect(prompt.endsWith(TASK_PLAN_INSTRUCTION)).toBe(true);
+    expect(TASK_PLAN_INSTRUCTION).toContain('PLAN_WAIT');
+    expect(TASK_PLAN_INSTRUCTION).toContain('单独一行');
+  });
+
+  test('普通人设不追加（没声明就不走门 —— 指令是协议义务，不能强加）', () => {
+    const prompt = buildTaskPrompt(character, '干活');
+    expect(prompt).not.toContain('PLAN_WAIT');
+    expect(prompt).not.toContain('【工作方式】');
+  });
+
+  test('persona 空的 plan-first 退化为纯指令（空 persona 无从判定，也不内嵌）', () => {
+    expect(buildTaskPrompt({ ...planFirstCharacter, persona: '   ' }, '干活')).toBe('干活');
+  });
+});
+
+describe('extractPlanDraft：挂起检测与标记剥离（纯函数）', () => {
+  test('独占一行的标记命中（容忍前后空白 / CRLF）；返回剥离后 trim 的计划草稿', () => {
+    const output = '一、摸底\r\n二、动手\r\n  PLAN_WAIT  \r\n';
+    expect(extractPlanDraft(output)).toBe('一、摸底\n二、动手');
+  });
+
+  test('多个标记行全部剥离；标记在中间也命中（后面的文本留在草稿里）', () => {
+    expect(extractPlanDraft('PLAN_WAIT\n计划\nPLAN_WAIT')).toBe('计划');
+    expect(extractPlanDraft('前半\nPLAN_WAIT\n后半')).toBe('前半\n后半');
+  });
+
+  test('空计划也挂起（空串草稿 —— 空卡自然会被驳回，检测不越权裁决）', () => {
+    expect(extractPlanDraft('PLAN_WAIT\n')).toBe('');
+  });
+
+  test('没标记行 → null（普通收尾）；写进句子里的不算（必须是独占一行）', () => {
+    expect(extractPlanDraft('计划如下：先 PLAN_WAIT 再继续')).toBeNull();
+    expect(extractPlanDraft('正常输出，没有标记')).toBeNull();
+    expect(extractPlanDraft('')).toBeNull();
+  });
+});
+
+/** plan-first 标准计划轮脚本：session 事件 + 计划正文 + 标记行 + done（带 sessionId）。 */
+function planRoundScript(): Script {
+  return scripted(
+    { type: 'session', sessionId: 'plan-sess-7' },
+    { type: 'message', text: '一、摸底。\n二、动手。\nPLAN_WAIT\n' },
+    { type: 'done', exitCode: 0, text: '一、摸底。\n二、动手。\nPLAN_WAIT\n', sessionId: 'plan-sess-7' }
+  );
+}
+
+describe('审批门全链（plan-first：挂起 → 批准 → 同 session 续发 → 完成）', () => {
+  test('计划轮结束 → awaiting_approval：plan 剥离标记存档、事件面、占位（队列不前进）', async () => {
+    const h = makeHarness({ characters: [planFirstCharacter], scripts: [planRoundScript()] });
+    const events: string[] = [];
+    const off = onWorldEvent((event) => {
+      if (event.type.startsWith('task.')) events.push(event.type);
+    });
+
+    const task = assign(h, '重构登录模块', 'ch-3');
+    await flush();
+
+    // 状态：awaiting_approval，plan 已剥离标记行
+    const stored = h.store.getState().tasks![0];
+    expect(stored).toMatchObject({ status: 'awaiting_approval' });
+    expect(stored.plan).toBe('一、摸底。\n二、动手。');
+    expect(stored.plan).not.toContain('PLAN_WAIT');
+    expect(stored.output).toBe(''); // 挂起相位无摘要（计划全文在 plan 字段）
+
+    // 事件面：三条生命周期事件齐发，没有 completed / failed（挂起不是终态）。
+    // 顺序不锁：task.queued 的订阅回调里 pump 同步 startTask —— started 可能先于 queued
+    // 落到本订阅者（总线是同步广播，订阅顺序决定次序；锁顺序等于锁实现细节）。
+    expect(events).toEqual(expect.arrayContaining(['task.queued', 'task.started', 'task.awaiting_approval']));
+    expect(events).not.toContain('task.completed');
+    expect(events).not.toContain('task.failed');
+
+    // 落库：queued → running → awaiting（output=计划全文，plan 列同存）
+    expect(h.persisted.map((r) => r.status)).toEqual(['queued', 'running', 'awaiting_approval']);
+    const awaitingRecord = h.persisted.at(-1)!;
+    expect(awaitingRecord.output).toBe('一、摸底。\n二、动手。');
+    expect(awaitingRecord.plan).toBe('一、摸底。\n二、动手。');
+
+    // 不 settle（挂起不是终态：无回流、无 exp）
+    expect(h.settled).toHaveLength(0);
+
+    // 占位：再派一条 → 排队不动（审批门占着执行位，busy 不释放）
+    const second = h.manager.assignTask({ characterId: 'ch-3', prompt: '下一件事' });
+    expect(second).not.toBeNull();
+    await flush();
+    expect(h.calls).toHaveLength(1); // 只有计划轮一次 spawn
+    expect(h.store.getState().tasks!.find((t) => t.id === second!.id)?.status).toBe('queued');
+    off();
+  });
+
+  test('批准 → 同 session 续发短指令（不重嵌 persona）→ 完成收尾 + 队列续泵', async () => {
+    const h = makeHarness({
+      characters: [planFirstCharacter],
+      scripts: [
+        planRoundScript(),
+        scripted(
+          { type: 'session', sessionId: 'plan-sess-7' },
+          { type: 'message', text: '按计划做完了。' },
+          { type: 'done', exitCode: 0, text: '按计划做完了。', sessionId: 'plan-sess-7' }
+        ),
+        scripted({ type: 'done', exitCode: 0, text: '下一件事完成。', sessionId: null }),
+      ],
+    });
+    const task = assign(h, '重构登录模块', 'ch-3');
+    await flush();
+
+    // 批准走命令同款落点（runtime 的 task.approve 就是调 manager.approveTask）
+    h.manager.approveTask(task.id);
+    await flush();
+
+    // 续发：同 session + 短指令（persona / 计划都在会话上下文里，不重述）
+    expect(h.calls).toHaveLength(2);
+    expect(h.calls[1].options?.sessionId).toBe('plan-sess-7');
+    expect(h.calls[1].prompt).toBe(TASK_APPROVAL_RESUME_PROMPT);
+    expect(h.calls[1].prompt).not.toContain('角色设定');
+
+    // 完成：状态摘要 + 全文落库 + plan 溯源存档 + settle 一次
+    const stored = h.store.getState().tasks!.find((t) => t.id === task.id);
+    expect(stored).toMatchObject({ status: 'completed', output: '按计划做完了。' });
+    const finalRecord = h.persisted.filter((r) => r.id === task.id).at(-1)!;
+    expect(finalRecord.status).toBe('completed');
+    expect(finalRecord.output).toBe('按计划做完了。');
+    expect(finalRecord.plan).toBe('一、摸底。\n二、动手。'); // 这单是按哪份计划做完的
+    expect(h.settled).toHaveLength(1);
+    expect(h.settled[0]).toMatchObject({ id: task.id, status: 'completed' });
+
+    // 队列续泵：占位期间排队的下一条已开跑
+    const second = h.manager.assignTask({ characterId: 'ch-3', prompt: '下一件事' });
+    await flush();
+    expect(h.calls).toHaveLength(3);
+    expect(second).not.toBeNull();
+  });
+
+  test('驳回 → failed(rejected)：output 写死、计划存档、占位释放 + 队列续泵', async () => {
+    const h = makeHarness({
+      characters: [planFirstCharacter],
+      scripts: [planRoundScript(), scripted({ type: 'done', exitCode: 0, text: '下一件事完成。', sessionId: null })],
+    });
+    const task = assign(h, '重构登录模块', 'ch-3');
+    await flush();
+    expect(h.store.getState().tasks![0].status).toBe('awaiting_approval');
+
+    const second = h.manager.assignTask({ characterId: 'ch-3', prompt: '下一件事' });
+    h.manager.rejectTask(task.id);
+    await flush();
+
+    // 驳回落位：failed + 计划存档（task.plan 随失败快照留在库里可回看）
+    const stored = h.store.getState().tasks!.find((t) => t.id === task.id)!;
+    expect(stored).toMatchObject({ status: 'failed', output: '计划被驳回' });
+    expect(stored.plan).toBe('一、摸底。\n二、动手。');
+    const failedRecord = h.persisted.filter((r) => r.id === task.id).at(-1)!;
+    expect(failedRecord).toMatchObject({ status: 'failed', output: '计划被驳回' });
+    expect(failedRecord.plan).toBe('一、摸底。\n二、动手。');
+
+    // settle 走 task_failed（计划轮也是跑过的产出，「做过就有收获」）；只看本任务的回流
+    //（驳回释放占位后下一条已接力完成，也各有一条 —— FIFO 不因审批门停摆）
+    const mine = h.settled.filter((r) => r.id === task.id);
+    expect(mine).toHaveLength(1);
+    expect(mine[0]).toMatchObject({ status: 'failed', output: '计划被驳回' });
+
+    // 占位释放：排队的下一条已开跑
+    expect(h.calls).toHaveLength(2);
+    expect(second).not.toBeNull();
+  });
+
+  test('session 丢失（CLI 未回 / 无 session 事件）→ 续发退回首发拼装（persona + 计划全文重述）', async () => {
+    const h = makeHarness({
+      characters: [planFirstCharacter],
+      scripts: [
+        scripted(
+          { type: 'message', text: '计划A\nPLAN_WAIT\n' },
+          { type: 'done', exitCode: 0, text: '计划A\nPLAN_WAIT\n', sessionId: null }
+        ),
+        scripted({ type: 'done', exitCode: 0, text: '干完了。', sessionId: null }),
+      ],
+    });
+    const task = assign(h, '干活', 'ch-3');
+    await flush();
+    expect(h.store.getState().tasks![0].status).toBe('awaiting_approval');
+
+    h.manager.approveTask(task.id);
+    await flush();
+
+    expect(h.calls).toHaveLength(2);
+    expect(h.calls[1].options?.sessionId ?? null).toBeNull(); // 无会话可复用
+    const stored = h.store.getState().tasks![0];
+    // 退回首发语义：persona 内嵌 + 计划全文重述（与 035 会话延续的 fallback 同口径）
+    expect(h.calls[1].prompt).toBe(buildResumedTaskPrompt(planFirstCharacter, stored, '计划A'));
+    expect(h.calls[1].prompt).toContain('参谋长');
+    expect(h.calls[1].prompt).toContain('计划A');
+    expect(h.store.getState().tasks![0].status).toBe('completed');
+  });
+
+  test('普通人设碰巧输出标记行 → 不走门（没指令就没有协议义务），普通完成收尾', async () => {
+    const h = makeHarness({
+      scripts: [
+        scripted(
+          { type: 'message', text: '报告里提到了 PLAN_WAIT\n' },
+          { type: 'done', exitCode: 0, text: '报告里提到了 PLAN_WAIT\n', sessionId: null }
+        ),
+      ],
+    });
+    assign(h, '写报告');
+    await flush();
+    expect(h.store.getState().tasks![0].status).toBe('completed');
+    expect(h.store.getState().tasks![0].plan).toBeUndefined();
+    expect(h.persisted.filter((r) => r.status === 'awaiting_approval')).toHaveLength(0);
+  });
+
+  test('重启丢失挂单（内存态）后被批准 → failed 兑底，不留无人驾驶的 running', async () => {
+    const h = makeHarness({ characters: [planFirstCharacter], scripts: [planRoundScript()] });
+    const task = assign(h, '重构登录模块', 'ch-3');
+    await flush();
+    expect(h.store.getState().tasks![0].status).toBe('awaiting_approval');
+
+    // 模拟重启：停掉服务（挂单表随之消失，挂起快照已在库里），再起一个新服务实例
+    harnessStops.splice(0).forEach((stop) => stop());
+    const factory = makeFactory([scripted()]);
+    const persisted: TaskPersistRecord[] = [];
+    const settled: TaskPersistRecord[] = [];
+    const restarted: TaskService = createTaskService({
+      getState: () => h.store.getState(),
+      createTransport: factory.factory,
+      taskManager: h.manager,
+      persistTask: (record) => persisted.push(record),
+      onTaskSettled: (record) => settled.push(record),
+      timeoutMs: DEFAULT_TASK_TIMEOUT_MS,
+    });
+    harnessStops.push(restarted.start());
+
+    h.manager.approveTask(task.id);
+    await flush();
+
+    // 找不到挂单 → failTask 兑底（诚实报错比挂着假装在跑好）
+    const stored = h.store.getState().tasks!.find((t) => t.id === task.id);
+    expect(stored).toMatchObject({ status: 'failed', output: TASK_MSG_RESUME_LOST });
+    expect(settled).toHaveLength(1);
+    expect(factory.calls).toHaveLength(0); // 没有人真的续发
   });
 });

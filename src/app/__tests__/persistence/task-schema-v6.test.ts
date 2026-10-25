@@ -81,7 +81,7 @@ describe('StratixDatabase schema v6（artifacts 列，task_048）', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  test('全新库：createTables 建表即带 artifacts 列，版本号 6', async () => {
+  test('全新库：createTables 建表即带 artifacts 列（v7 起版本号随目标 schema 走）', async () => {
     const db = await openAndInitialize(dir);
     try {
       expect(columnNames(db)).toContain('artifacts');
@@ -89,7 +89,9 @@ describe('StratixDatabase schema v6（artifacts 列，task_048）', () => {
         .getDatabase()
         .prepare('SELECT MAX(version) AS v FROM schema_version')
         .get() as { v?: number };
-      expect(version.v).toBe(6);
+      // task_049 起目标 schema 已是 v7（六态 + plan 列）—— 本用例的 artifacts 列语义不变，
+      // 版本断言跟随目标（新鲜库就是最新形状，不存在「新库停在 v6」的中间态）。
+      expect(version.v).toBe(7);
       // DAO 直接可用（迁移产物与 DAO 的 DDL 同构）
       ensureCharacterTasksTable(db.getDatabase());
       upsertTask(db.getDatabase(), record());

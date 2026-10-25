@@ -161,9 +161,25 @@ export class TaskFxLayer {
       return;
     }
 
-    // ✓ / ! 共用底衬圆：压住任何底色，浮标在草地/暗板上都可读。
+    // ✓ / ! / ?（task_049）共用底衬圆：压住任何底色，浮标在草地/暗板上都可读。
     graphic.fillStyle(style.marker.backdropColor, style.marker.backdropAlpha);
     graphic.fillCircle(0, 0, style.marker.radius);
+
+    if (kind === 'awaiting') {
+      // 待审批 ?（task_049）：hook 曲线 + 点 —— 问号挂在头顶，「这个角色在等你裁决」。
+      // 曲线三笔（Phaser graphics 没有 text 原生曲率，手绘 hook 比贴字纹理省一张纹理）。
+      const size = style.marker.radius;
+      graphic.lineStyle(2.5, style.awaiting.color, 1);
+      graphic.beginPath();
+      graphic.moveTo(-size * 0.05, -size * 0.5);
+      graphic.lineTo(size * 0.4, -size * 0.5);
+      graphic.lineTo(size * 0.4, -size * 0.1);
+      graphic.lineTo(-size * 0.05, size * 0.15);
+      graphic.strokePath();
+      graphic.fillStyle(style.awaiting.color, 1);
+      graphic.fillCircle(-size * 0.05, size * 0.55, 2);
+      return;
+    }
 
     if (kind === 'done') {
       // 对勾两笔：短撇 + 长捺，勾在底衬圆心附近。

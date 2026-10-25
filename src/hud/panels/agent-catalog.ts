@@ -146,6 +146,7 @@ export const MAX_VISIBLE_SETTLED_TASKS = 3;
 export const TASK_STATUS_LABELS: Readonly<Record<TaskStatus, string>> = {
   queued: '排队中',
   running: '执行中',
+  awaiting_approval: '待审批', // @since v3.25（task_049）：计划挂起，等用户裁决
   completed: '已完成',
   failed: '已失败',
   cancelled: '已取消',
@@ -196,6 +197,27 @@ export interface UnitDetailModel {
   readonly characterId: string | null;
   /** 角色任务队列读数（@since v3.17，task_038）；未关联角色 = 空读数。 */
   readonly taskQueue: CharacterTaskQueueModel;
+  /**
+   * 计划审批卡读数（@since v3.25，task_049）：该角色有 awaiting_approval 任务时非空 ——
+   * 计划全文 + 批准 / 驳回两个动作的载荷。纯读数：按钮的可用性由相位唯一决定
+   *（只有 awaiting 才渲染这张卡），不做本地可点 / 禁用态 —— 裁决在 core 状态机。
+   */
+  readonly approval: TaskApprovalModel | null;
+}
+
+/**
+ * 计划审批卡读数（@since v3.25，task_049）：plan-first 任务的审批入口。
+ * plan = 计划全文（core 已截断到 MAX_TASK_PLAN_LEN；标记行已在 app 层剥离）；
+ * summary = 40 字截断（卡片头的「这条任务要干什么」）。全文展示（白空间换可读性）——
+ * 计划就是要逐条核对的，折叠它就失去了审批的意义。
+ */
+export interface TaskApprovalModel {
+  readonly taskId: string;
+  readonly characterId: string;
+  /** 计划全文（渲染层 pre-wrap，不二次截断）。 */
+  readonly plan: string;
+  /** 任务指令摘要（卡片头：这份计划对应哪条任务）。 */
+  readonly summary: string;
 }
 
 /** 编组形态的一行。字段是详情的子集 —— 行内空间小，只放能一眼扫完的读数。 */
@@ -290,6 +312,7 @@ function toDetail(state: WorldState, unit: UnitView): UnitDetailModel {
     growth: resolveGrowth(state, unit),
     characterId,
     taskQueue: characterId ? resolveCharacterTaskQueue(state.tasks, characterId) : EMPTY_TASK_QUEUE,
+    approval: characterId ? resolveTaskApproval(state.tasks, characterId) : null,
   };
 }
 
@@ -317,9 +340,33 @@ export function truncateTaskSummary(prompt: string, maxLen: number = TASK_SUMMAR
   return trimmed.length <= maxLen ? trimmed : `${trimmed.slice(0, maxLen)}…`;
 }
 
-/** 在办任务（queued / running）。终态（completed / failed / cancelled）不进队列读数 —— 它们是历史，不是排队。 */
+/**
+ * 在办任务（queued / running / @since v3.25 awaiting_approval）。终态（completed / failed /
+ * cancelled）不进队列读数 —— 它们是历史，不是排队。awaiting 算在办：门还开着，任务没走完。
+ */
 function isActiveTask(task: CharacterTask): boolean {
-  return task.status === 'queued' || task.status === 'running';
+  return task.status === 'queued' || task.status === 'running' || task.status === 'awaiting_approval';
+}
+
+/**
+ * 审批卡读数（task_049）：该角色第一条 awaiting_approval 任务。同一角色同一时刻至多一条
+ *（app 层审批门占位 —— 挂起期间 busy 不释放，不会再出下一条跑到这里），find 首条即是全部。
+ * 没有 awaiting 任务 = null（卡片不渲染）。
+ */
+export function resolveTaskApproval(
+  tasks: readonly CharacterTask[] | undefined,
+  characterId: string
+): TaskApprovalModel | null {
+  const awaiting = (tasks ?? []).find(
+    (task) => task.characterId === characterId && task.status === 'awaiting_approval'
+  );
+  if (!awaiting) return null;
+  return {
+    taskId: awaiting.id,
+    characterId,
+    plan: awaiting.plan ?? '',
+    summary: truncateTaskSummary(awaiting.prompt),
+  };
 }
 
 /** CharacterTask → 列表条目（纯投影：词表标签 + 按钮条件 + 摘要截断）。 */
@@ -462,6 +509,22 @@ export function buildTaskAssignCommand(
 export function buildTaskCancelCommand(taskId: string | null | undefined): HudCommand | null {
   if (!taskId) return null;
   return { type: 'task.cancel', taskId };
+}
+
+/**
+ * 计划批准 / 驳回 → task.approve / task.reject 命令（@since v3.25，task_049）。
+ * 返回 null = 不发：空 taskId（渲染层不该产生，兑底不发比发一条空命令安全）。
+ * 相位裁决在 core 状态机（仅 awaiting_approval 生效）；按钮只在审批卡上渲染
+ *（卡本身只对 awaiting 任务出现），真被拒（时序竞争）时 core 发 Notice，UI 无需额外分支。
+ */
+export function buildTaskApproveCommand(taskId: string | null | undefined): HudCommand | null {
+  if (!taskId) return null;
+  return { type: 'task.approve', taskId };
+}
+
+export function buildTaskRejectCommand(taskId: string | null | undefined): HudCommand | null {
+  if (!taskId) return null;
+  return { type: 'task.reject', taskId };
 }
 
 // ============================================================================

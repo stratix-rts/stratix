@@ -15,6 +15,7 @@ import { createCharacterManager } from '../character';
 import { createTaskManager, syncUnitWorkingStatus } from '../task';
 import {
   applyTaskAction,
+  capTaskPlan,
   createQueuedTask,
   dropSettledTasks,
   isActiveTaskStatus,
@@ -25,6 +26,7 @@ import {
 import { createCoreRuntime } from '../runtime';
 import { createStore, type CoreStore } from '../store';
 import {
+  MAX_TASK_PLAN_LEN,
   MAX_TASK_PROMPT_LEN,
   MAX_TASK_SUMMARY_LEN,
   type CharacterTask,
@@ -581,6 +583,213 @@ describe('与角色域协作', () => {
     emitCommand({ type: 'task.assign', characterId: createdId!, prompt: '上任第一件事' });
     expect(store.getState().tasks![0]).toMatchObject({ characterId: createdId!, status: 'queued' });
 
+    stop();
+  });
+});
+
+// ============================================================================
+// 审批门（task_049）：requestApproval / approve / reject 与 awaiting_approval 相位
+// ============================================================================
+
+describe('审批门状态机：running ↔ awaiting_approval → 终态', () => {
+  test('requestApproval：running → awaiting_approval（plan 落档、endedAt 不盖）', () => {
+    const step = apply(taskAt('running'), { type: 'requestApproval', at: 2000, plan: '一、先摸底\n二、再动手' });
+    expect(step.next).toEqual(
+      taskAt('awaiting_approval', { plan: '一、先摸底\n二、再动手' })
+    );
+    expect(step.changed).toBe(true);
+  });
+
+  test('requestApproval 只认 running：queued / awaiting / 终态一律幂等拒绝', () => {
+    for (const status of ['queued', 'awaiting_approval', 'completed', 'failed', 'cancelled'] as const) {
+      const step = apply(taskAt(status), { type: 'requestApproval', at: 2, plan: 'p' });
+      expect(step.changed).toBe(false);
+      expect(step.next.status).toBe(status);
+    }
+  });
+
+  test('approve：awaiting_approval → running（startedAt 保留首开时刻，plan 留档）', () => {
+    const awaiting = taskAt('awaiting_approval', { startedAt: 1500, plan: 'p' });
+    const step = apply(awaiting, { type: 'approve', at: 3000 });
+    expect(step.next).toEqual(taskAt('running', { startedAt: 1500, plan: 'p' }));
+    expect(step.changed).toBe(true);
+  });
+
+  test('approve 只认 awaiting_approval：running / queued / 终态拒绝', () => {
+    for (const status of ['queued', 'running', 'completed', 'failed', 'cancelled'] as const) {
+      const step = apply(taskAt(status), { type: 'approve', at: 2 });
+      expect(step.changed).toBe(false);
+    }
+  });
+
+  test('reject：awaiting_approval → failed（output 写死「计划被驳回」，plan 存档）', () => {
+    const awaiting = taskAt('awaiting_approval', { startedAt: 1500, plan: '计划全文' });
+    const step = apply(awaiting, { type: 'reject', at: 3200 });
+    expect(step.next).toEqual(
+      taskAt('failed', { startedAt: 1500, endedAt: 3200, output: '计划被驳回', plan: '计划全文' })
+    );
+  });
+
+  test('reject 只认 awaiting_approval；awaiting 不可 cancel（驳回才是它的出口）', () => {
+    for (const status of ['queued', 'running', 'completed', 'failed', 'cancelled'] as const) {
+      expect(apply(taskAt(status), { type: 'reject', at: 2 }).changed).toBe(false);
+    }
+    expect(apply(taskAt('awaiting_approval'), { type: 'cancel', at: 2 }).changed).toBe(false);
+  });
+
+  test('全链：running → awaiting → approve → running → completed', () => {
+    let task = apply(TASK, { type: 'start', at: 1 }).next;
+    task = apply(task, { type: 'requestApproval', at: 2, plan: 'p' }).next;
+    expect(task.status).toBe('awaiting_approval');
+    task = apply(task, { type: 'approve', at: 3 }).next;
+    expect(task.status).toBe('running');
+    task = apply(task, { type: 'complete', at: 4, output: 'done' }).next;
+    expect(task).toMatchObject({ status: 'completed', output: 'done', plan: 'p' });
+  });
+
+  test('全链：running → awaiting → reject → failed(rejected 语义)；终态后 approve/reject 都拒', () => {
+    let task = apply(TASK, { type: 'start', at: 1 }).next;
+    task = apply(task, { type: 'requestApproval', at: 2, plan: 'p' }).next;
+    task = apply(task, { type: 'reject', at: 3 }).next;
+    expect(task).toMatchObject({ status: 'failed', output: '计划被驳回' });
+    expect(apply(task, { type: 'approve', at: 4 }).changed).toBe(false);
+    expect(apply(task, { type: 'reject', at: 4 }).changed).toBe(false);
+  });
+
+  test('逃生口：awaiting_approval 可被 fail 直达（挂起期外部收尾走通用失败面）', () => {
+    const step = apply(taskAt('awaiting_approval'), { type: 'fail', at: 5, reason: 'r' });
+    expect(step.next).toMatchObject({ status: 'failed', output: 'r' });
+  });
+
+  test('awaiting_approval 是在办相位（不占终态、不被 dropSettledTasks 淘汰）', () => {
+    expect(isActiveTaskStatus('awaiting_approval')).toBe(true);
+    expect(isTerminalTaskStatus('awaiting_approval')).toBe(false);
+    const kept = dropSettledTasks([taskAt('awaiting_approval', { id: 't1' })], 5);
+    expect(kept).toHaveLength(1);
+  });
+
+  test('capTaskPlan：超 MAX_TASK_PLAN_LEN 截断加省略号，不超原样', () => {
+    const long = '计'.repeat(MAX_TASK_PLAN_LEN + 100);
+    expect(capTaskPlan(long)).toBe(`${'计'.repeat(MAX_TASK_PLAN_LEN)}…`);
+    expect(capTaskPlan('短计划')).toBe('短计划');
+  });
+});
+
+describe('审批门 manager：requestApproval / approveTask / rejectTask', () => {
+  /** 便捷：一步铺到 running。 */
+  function runningTask() {
+    const { manager, store } = makeManager();
+    const task = manager.assignTask({ characterId: 'ch-1', prompt: '干活' });
+    manager.startTask(task!.id);
+    return { manager, store, task: task! };
+  }
+
+  test('requestApproval：awaiting 入状态（plan 全文）+ 单位回收 idle + task.awaiting_approval 事件 + info Notice', () => {
+    resetBus();
+    const { manager, store, task } = runningTask();
+    const events: string[] = [];
+    const off = onWorldEvent((event) => {
+      if (event.type.startsWith('task.')) events.push(event.type);
+    });
+
+    const awaiting = manager.requestApproval(task.id, '一、摸底\n二、动手');
+    expect(awaiting).toMatchObject({ status: 'awaiting_approval', plan: '一、摸底\n二、动手' });
+    expect(store.getState().tasks![0]).toMatchObject({ status: 'awaiting_approval', plan: '一、摸底\n二、动手' });
+    expect(store.getState().units[0].status).toBe('idle'); // 挂起不算忙 —— 头顶 ? 浮标是它的表现
+    expect(events).toEqual(['task.awaiting_approval']);
+    expect(store.getState().notices.length).toBeGreaterThan(0); // info Notice 已落（挂起不是异常）
+    off();
+  });
+
+  test('requestApproval 只认 running；approveTask / rejectTask 只认 awaiting（其余 null）', () => {
+    resetBus();
+    const { manager } = makeManager();
+    const task = manager.assignTask({ characterId: 'ch-1', prompt: '干活' });
+    expect(manager.requestApproval(task!.id, 'p')).toBeNull(); // queued 不可挂起
+    manager.startTask(task!.id);
+    expect(manager.approveTask(task!.id)).toBeNull(); // running 不可批准
+    expect(manager.rejectTask(task!.id)).toBeNull(); // running 不可驳回
+  });
+
+  test('approveTask：回 running + 单位 busy + task.approved 事件；startedAt 保留首开时刻', () => {
+    resetBus();
+    const { manager, store, task } = runningTask();
+    const startedAt = store.getState().tasks![0].startedAt;
+    manager.requestApproval(task.id, 'p');
+    const events: string[] = [];
+    const off = onWorldEvent((event) => {
+      if (event.type.startsWith('task.')) events.push(event.type);
+    });
+
+    const resumed = manager.approveTask(task.id);
+    expect(resumed).toMatchObject({ status: 'running', startedAt });
+    expect(store.getState().units[0].status).toBe('busy');
+    expect(events).toEqual(['task.approved']);
+    expect(manager.approveTask(task.id)).toBeNull(); // 已回 running，二次批准拒绝
+    off();
+  });
+
+  test('rejectTask：failed(rejected) + 单位回收 idle + task.failed 事件；plan 存档可回看', () => {
+    resetBus();
+    const { manager, store, task } = runningTask();
+    manager.requestApproval(task.id, '被驳回的计划全文');
+    const events: string[] = [];
+    const off = onWorldEvent((event) => {
+      if (event.type.startsWith('task.')) events.push(event.type);
+    });
+
+    const rejected = manager.rejectTask(task.id);
+    expect(rejected).toMatchObject({ status: 'failed', output: '计划被驳回', plan: '被驳回的计划全文' });
+    expect(store.getState().units[0].status).toBe('idle');
+    expect(events).toEqual(['task.failed']);
+    off();
+  });
+
+  test('awaiting 不是终态：不被腾位淘汰；挂起期间任务列表保留', () => {
+    resetBus();
+    const { manager, store, task } = runningTask();
+    manager.requestApproval(task.id, 'p');
+    expect(store.getState().tasks![0].status).toBe('awaiting_approval');
+    // 再派一条新任务（守门允许 —— 腾位只在终态发生），挂起的那条还在
+    const other = manager.assignTask({ characterId: 'ch-1', prompt: '另一件事' });
+    expect(other).not.toBeNull();
+    expect(store.getState().tasks!.some((t) => t.id === task.id && t.status === 'awaiting_approval')).toBe(true);
+  });
+});
+
+describe('审批门命令闭环：task.approve / task.reject 经真 runtime 落地', () => {
+  test('emitCommand(task.approve) → awaiting → running；emitCommand(task.reject) → failed', () => {
+    resetBus();
+    const store = createStore();
+    seedStore(store);
+    const runtime = createCoreRuntime({ store });
+    const stop = runtime.start();
+
+    // 经 runtime 派任务 + 手工推进到 awaiting（core 不含 IO，挂起检测在 app 层 ——
+    // 这里直接调 manager 的相位口，等价于 task-service 检出标记行后的调用）；
+    // manager 注入 runtime —— 命令与手工推进必须打在同一份状态上。
+    const task = createTaskManager({ store, createId: (p) => `${p}_loop`, maxTasks: 10 });
+    const runtime2 = createCoreRuntime({ store, task });
+    const stop2 = runtime2.start();
+    const assigned = task.assignTask({ characterId: 'ch-1', prompt: '干活' });
+    task.startTask(assigned!.id);
+    task.requestApproval(assigned!.id, '计划');
+    expect(store.getState().tasks![0].status).toBe('awaiting_approval');
+
+    emitCommand({ type: 'task.approve', taskId: assigned!.id });
+    expect(store.getState().tasks![0].status).toBe('running');
+    expect(store.getState().units[0].status).toBe('busy');
+
+    // 再挂起一次走驳回分支
+    task.requestApproval(assigned!.id, '计划二');
+    emitCommand({ type: 'task.reject', taskId: assigned!.id });
+    expect(store.getState().tasks![0]).toMatchObject({ status: 'failed', output: '计划被驳回' });
+
+    // 相位不符的命令：状态不动（拒绝走 Notice，不改历史）
+    emitCommand({ type: 'task.approve', taskId: assigned!.id });
+    expect(store.getState().tasks![0].status).toBe('failed');
+
+    stop2();
     stop();
   });
 });

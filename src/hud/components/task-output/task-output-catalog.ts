@@ -38,7 +38,7 @@
  * @since v3.22（task_046）；v3.24（task_048）追加成果物摘要块（artifactsBlock 参数 + 清空时机）。
  */
 
-import type { CharacterTask, TaskStatus } from '../../../core/types';
+import { TASK_PLAN_WAIT_MARKER, type CharacterTask, type TaskStatus } from '../../../core/types';
 
 // ============================================================================
 // 常量（导出供单测断言，别在测试里抄一遍数值）
@@ -166,6 +166,7 @@ export function createTaskOutputStore(options: TaskOutputStoreOptions = {}): Tas
 export const TASK_PHASE_LABELS: Readonly<Record<TaskStatus, string>> = {
   queued: '排队中',
   running: '执行中',
+  awaiting_approval: '待审批', // @since v3.25（task_049）：计划挂起 —— 流缓冲里就是计划全文
   completed: '已完成',
   failed: '失败',
   cancelled: '已取消',
@@ -241,6 +242,21 @@ export function resolveTaskOutputDisplay(
   };
 }
 
+/**
+ * 挂起标记行剥离（task_049）：PLAN_WAIT 是 app 层 prompt 指令里的协议词（agent 用它声明
+ * 「计划完毕，等批准」），不是给人看的输出。检测在 app 层（core → app 事件链已把任务转入
+ * awaiting_approval 并剥离存档）；流缓冲里还留着这行（缓冲是原序 tail，不改写历史），所以
+ * **展示时**剥离 —— 缓冲保持只追加的纪律，可见性归渲染。标记词从 core 契约取（同一词的
+ * 第三处消费点，见 types.ts 的 TASK_PLAN_WAIT_MARKER）。
+ */
+function stripPlanWaitLines(text: string): string {
+  const stripped = text
+    .split(/\r?\n/)
+    .filter((line) => line.trim() !== TASK_PLAN_WAIT_MARKER)
+    .join('\n');
+  return stripped === text ? text : stripped;
+}
+
 /** resolveTaskOutputDisplay 的主体（task_046 既有逻辑，原样保留；成果物拼接在外层）。 */
 function resolveTaskOutputBase(
   entry: TaskOutputBuffer | null,
@@ -252,7 +268,9 @@ function resolveTaskOutputBase(
   const terminal =
     latestTask.status === 'completed' || latestTask.status === 'failed' || latestTask.status === 'cancelled';
   if (entry && entry.taskId === latestTask.id) {
-    const text = entry.text.length > 0 ? entry.text : terminal ? latestTask.output : '';
+    // task_049：流文本剥离挂起标记行（协议词不进可见输出；awaiting 相位下这条就是计划全文）。
+    const text =
+      entry.text.length > 0 ? stripPlanWaitLines(entry.text) : terminal ? latestTask.output : '';
     return {
       visible: true,
       phase: latestTask.status,

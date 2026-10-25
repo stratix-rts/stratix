@@ -22,9 +22,15 @@
  *
  * 颜色口径：Phaser 侧没有 CSS token，色值按 16 进制**镜像** hud/theme/tokens-default.css 的
  * 同名 token（done=srf-success #6fcf97、failed=srf-danger #e06c75、环=unit-layer 的 busy 态
- * 0xf5a524），换肤时两处同步改（同 world/theme.ts 的镜像纪律）。
+ * 0xf5a524、awaiting=srf-warn #f0c674），换肤时两处同步改（同 world/theme.ts 的镜像纪律）。
  *
- * @since v3.17（task_038）。
+ * ============ 审批门挂起浮标（@since v3.25，task_049）============
+ * task.awaiting_approval → awaiting（黄色 ?，驻留到下一次状态变化）：plan-first 任务的计划
+ * 轮结束、等用户裁决。与 failed 的 ! 同一驻留语义（不自动过期 —— 门开着就该一直问）；
+ * 批准（task.approved → started 相位）盖回工作环，驳回（task.failed）换成 !。
+ * why 单位此刻不 busy（挂起不算忙）：busy 派生永远画环的裁决不会盖住 ? —— 状态与表现天然对齐。
+ *
+ * @since v3.17（task_038）；v3.25（task_049）追加 awaiting 浮标（审批门）。
  */
 
 import type { CharacterTask, UnitStatus } from '../../core/types';
@@ -65,6 +71,8 @@ export interface TaskFxStyle {
   readonly done: { readonly color: number; readonly ttlMs: number };
   /** ! 浮标：失败色（镜像 srf-danger）。驻留时长不设 —— 由下一次状态变化裁决。 */
   readonly failed: { readonly color: number };
+  /** ? 浮标（@since v3.25，task_049）：待审批色（镜像 srf-warn）。驻留到下一次状态变化。 */
+  readonly awaiting: { readonly color: number };
   readonly marker: TaskFxMarkerStyle;
   /** 动画步进间隔（ms；30fps 足够环旋转与淡出平滑）。 */
   readonly tickMs: number;
@@ -76,6 +84,7 @@ export const TASK_FX_STYLE: TaskFxStyle = {
   ring: { radius: 9, lineWidth: 2.5, color: 0xf5a524, arcDegrees: 270, rotationDegPerSec: 220 },
   done: { color: 0x6fcf97, ttlMs: 1500 },
   failed: { color: 0xe06c75 },
+  awaiting: { color: 0xf0c674 },
   marker: { radius: 11, backdropColor: 0x0f131b, backdropAlpha: 0.6, yAboveUnit: 44 },
   tickMs: 33,
 };
@@ -114,11 +123,15 @@ export const MOVE_RIPPLE_STYLE: MoveRippleStyle = {
 // 状态板
 // ============================================================================
 
-/** 桥接层关注的任务生命周期相位（task.queued 不进战场表现 —— 还没轮到它动）。 */
-export type TaskFxPhase = 'started' | 'completed' | 'failed';
+/**
+ * 桥接层关注的任务生命周期相位（task.queued 不进战场表现 —— 还没轮到它动）。
+ * @since v3.25（task_049）增 awaiting_approval：挂起画 ?（task.approved 由桥接层折算成
+ * started 相位 —— 批准就是同一段执行的续段，表现上回到工作环）。
+ */
+export type TaskFxPhase = 'started' | 'completed' | 'failed' | 'awaiting_approval';
 
 /** 单位头顶的表现种类。 */
-export type TaskMarkerKind = 'working' | 'done' | 'failed';
+export type TaskMarkerKind = 'working' | 'done' | 'failed' | 'awaiting';
 
 /** 一枚浮标的表现态：种类 + 落板时刻（done 用它算淡出进度）。 */
 export interface TaskMarker {
@@ -168,6 +181,14 @@ export class TaskFxBoard {
     return this.set(unitId, 'failed');
   }
 
+  /**
+   * task.awaiting_approval 的落点（task_049）：? 浮标（驻留到下一次 set/clear ——
+   * 与 failed 的 ! 同一驻留语义：裁决没来，问号就不撤）。
+   */
+  setAwaiting(unitId: string): boolean {
+    return this.set(unitId, 'awaiting');
+  }
+
   /** 单位离开战场 / 表现需要收掉时清一枚。 */
   clear(unitId: string): boolean {
     return this.markers.delete(unitId);
@@ -202,7 +223,7 @@ export class TaskFxBoard {
     if (status === 'busy') return 'working';
     const marker = this.markerFor(unitId);
     if (!marker || marker.kind === 'working') return null;
-    return marker.kind;
+    return marker.kind; // done / failed / awaiting（task_049：? 与 !/✓ 同列事件浮标）
   }
 
   /** 同相位重复事件：刷新落板时刻（done 重计淡出窗），但不算实质变化。 */
@@ -241,6 +262,7 @@ export function applyTaskFxEvent(
     hitUnitIds.push(unit.id);
     if (phase === 'started') board.setWorking(unit.id);
     else if (phase === 'completed') board.setDone(unit.id);
+    else if (phase === 'awaiting_approval') board.setAwaiting(unit.id);
     else board.setFailed(unit.id);
   }
   return hitUnitIds;

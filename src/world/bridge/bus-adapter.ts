@@ -7,6 +7,8 @@
  *   - world 通道 → 场景（@since v3.17，task_038）：订阅 world 通道上的 task.started /
  *     completed / failed 生命周期事件（core/task 发出，挂在 world 通道 —— 见 types.ts 的取舍注），
  *     筛出这三条转给可选端口钩子 syncTaskEvent，驱动战场工作表现（objects/task-fx*）；
+ *     @since v3.25（task_049）追加转发 task.awaiting_approval（挂起画 ?）与 task.approved
+ *     （折算 started —— 批准后回工作环）；
  *   - world 通道 → 场景（@since v3.21，task_045）：同一条订阅还转发 unit.position ——
  *     右击移动时 runtime 把编队终值广播出来，场景据此更新 UnitObject（立即）并 tween（表现）。
  * 输出：端口回调（渲染侧）+ bus 的 world 通道（业务侧）。
@@ -131,6 +133,14 @@ export function createWorldBridge(
         break;
       case 'task.failed':
         port.syncTaskEvent?.(event.task, 'failed');
+        break;
+      // 审批门（task_049）：挂起画 ?（黄色问号，驻留到裁决）；批准折算成 started 相位 ——
+      // 批准是同一段执行的续段，表现上回到工作环（场景不需要新的相位词）。
+      case 'task.awaiting_approval':
+        port.syncTaskEvent?.(event.task, 'awaiting_approval');
+        break;
+      case 'task.approved':
+        port.syncTaskEvent?.(event.task, 'started');
         break;
       case 'unit.position':
         // 场景自己上报的落位也会回到这里（同一通道）—— 场景侧幂等，重复应用是 no-op。

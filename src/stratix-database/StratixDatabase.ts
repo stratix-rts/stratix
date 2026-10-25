@@ -22,8 +22,12 @@ const DEFAULT_FILENAME = 'stratix.db';
  * 保留 CHECK 而不是放弃约束的理由见 task-record-dao.ts 文件头（两处同一方案，同构可审）。
  * v6（@since v3.24，task_048）：character_tasks 增 artifacts 列（任务成果物 JSON，'' = 无）。
  * 纯加列不动 CHECK → ALTER ADD COLUMN 即可，无需重建（与 v5 的重建方案对比见 DAO 文件头）。
+ * v7（@since v3.25，task_049）：character_tasks.status CHECK 扩六态（增 awaiting_approval，
+ * 任务审批门的挂起相位）+ 增 plan 列（计划草稿全文，'' = 无）。CHECK 又要动 → 沿用 v5 重建
+ * 方案（临时表 character_tasks_v7）；plan 列随重建的建表 DDL 一并就位（六态表缺列边角由
+ * ALTER ADD 兜底）。前置顺序：artifacts 兜底先行（v7 重建的 INSERT SELECT 要搬运它）。
  */
-const TARGET_SCHEMA_VERSION = 6;
+const TARGET_SCHEMA_VERSION = 7;
 
 /** Valid table name characters (alphanumeric + underscore) */
 const VALID_TABLE_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -153,17 +157,20 @@ export class StratixDatabase {
     const tables = this.getTableNames();
 
     if (!tables.has('character_tasks')) {
+      // @since v3.25（task_049）：这里建的就是 v7 形状（六态 CHECK + artifacts + plan），
+      // 下面的五态/六态重建与两轮 ALTER 对它全部幂等直过。
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS character_tasks (
           id TEXT PRIMARY KEY,
           character_id TEXT NOT NULL,
           prompt TEXT NOT NULL,
-          status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed', 'cancelled')),
+          status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'awaiting_approval', 'completed', 'failed', 'cancelled')),
           output TEXT NOT NULL DEFAULT '',
           created_at INTEGER NOT NULL,
           started_at INTEGER,
           ended_at INTEGER,
-          artifacts TEXT NOT NULL DEFAULT ''
+          artifacts TEXT NOT NULL DEFAULT '',
+          plan TEXT NOT NULL DEFAULT ''
         )
       `);
       this.db.exec('CREATE INDEX IF NOT EXISTS idx_character_tasks_character ON character_tasks(character_id, created_at)');
@@ -211,6 +218,45 @@ export class StratixDatabase {
     if (!columns.some((column) => column.name === 'artifacts')) {
       this.db.exec("ALTER TABLE character_tasks ADD COLUMN artifacts TEXT NOT NULL DEFAULT ''");
       log('info', 'Added artifacts column to character_tasks (task_048)');
+    }
+
+    // v7（task_049）：五态 CHECK → 六态重建（增 awaiting_approval；方案同 v5 —— CHECK 不可
+    // ALTER）。**必须在 artifacts 兜底之后**：INSERT SELECT 搬运 artifacts 列，列不在就炸。
+    // 'awaiting_approval' 指纹只在 CHECK 词表出现（同 'cancelled' 手法）；已是六态幂等直过。
+    // plan 列随重建建表 DDL 就位（老行缺省 ''）；六态表缺 plan 的边角（手改库）ALTER 兜底。
+    const row7 = this.db
+      .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'character_tasks'`)
+      .get() as { sql?: string } | undefined;
+    const needsV7Rebuild = !(typeof row7?.sql === 'string' && row7.sql.includes("'awaiting_approval'"));
+    if (needsV7Rebuild) {
+      this.db.exec(`
+      CREATE TABLE character_tasks_v7 (
+        id TEXT PRIMARY KEY,
+        character_id TEXT NOT NULL,
+        prompt TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'awaiting_approval', 'completed', 'failed', 'cancelled')),
+        output TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL,
+        started_at INTEGER,
+        ended_at INTEGER,
+        artifacts TEXT NOT NULL DEFAULT '',
+        plan TEXT NOT NULL DEFAULT ''
+      );
+      INSERT INTO character_tasks_v7
+        (id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts)
+        SELECT id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts
+        FROM character_tasks;
+      DROP TABLE character_tasks;
+      ALTER TABLE character_tasks_v7 RENAME TO character_tasks;
+      CREATE INDEX IF NOT EXISTS idx_character_tasks_character ON character_tasks(character_id, created_at);
+    `);
+      log('info', 'Migrated character_tasks status CHECK to six statuses (awaiting_approval, task_049)');
+    }
+
+    const columns7 = this.db.prepare('PRAGMA table_info(character_tasks)').all() as Array<{ name?: string }>;
+    if (!columns7.some((column) => column.name === 'plan')) {
+      this.db.exec("ALTER TABLE character_tasks ADD COLUMN plan TEXT NOT NULL DEFAULT ''");
+      log('info', 'Added plan column to character_tasks (task_049)');
     }
   }
 
@@ -933,20 +979,24 @@ export class StratixDatabase {
         created_at INTEGER NOT NULL
       );
 
-      -- 角色任务表（@since v3.16，task_037；@since v3.23 task_047 status 扩五态）：
-      -- 派发 → 执行 → 产出的审计与全文输出；cancelled = 排队取消（没跑过，output 为占位文案）。
+      -- 角色任务表（@since v3.16，task_037；@since v3.23 task_047 status 扩五态；
+      -- @since v3.25 task_049 status 扩六态 + plan 列）：
+      -- 派发 → 执行 → 产出的审计与全文输出；cancelled = 排队取消（没跑过，output 为占位文案）；
+      -- awaiting_approval = 计划挂起等裁决（task_049，output 为计划全文、plan 列同存）。
       -- 不叫 tasks：tasks 表是 agent 平台的任务队列（v1 起），character_ 前缀 = 游戏存档域命名先例
       CREATE TABLE IF NOT EXISTS character_tasks (
         id TEXT PRIMARY KEY,
         character_id TEXT NOT NULL,
         prompt TEXT NOT NULL,
-        status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed', 'cancelled')),
+        status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'awaiting_approval', 'completed', 'failed', 'cancelled')),
         output TEXT NOT NULL DEFAULT '',
         created_at INTEGER NOT NULL,
         started_at INTEGER,
         ended_at INTEGER,
         -- 任务成果物（@since v3.24，task_048）：parseTaskArtifacts 的 JSON（files+summary），'' = 无
-        artifacts TEXT NOT NULL DEFAULT ''
+        artifacts TEXT NOT NULL DEFAULT '',
+        -- 计划草稿全文（@since v3.25，task_049）：审批门挂起时已剥离标记行的计划，'' = 无
+        plan TEXT NOT NULL DEFAULT ''
       );
 
       -- 索引

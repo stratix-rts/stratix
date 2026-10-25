@@ -32,8 +32,24 @@
 import { MAX_TASK_PROMPT_LEN, type HudCommand, type WorldState } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
 
-import type { AgentPanelAction, AgentPanelModel, CapabilityBar, TaskQueueItemModel, UnitDetailModel, UnitRowModel } from './agent-catalog';
-import { agentPanelSignature, buildAgentCommand, buildTaskAssignCommand, buildTaskCancelCommand, resolveAgentPanel } from './agent-catalog';
+import type {
+  AgentPanelAction,
+  AgentPanelModel,
+  CapabilityBar,
+  TaskApprovalModel,
+  TaskQueueItemModel,
+  UnitDetailModel,
+  UnitRowModel,
+} from './agent-catalog';
+import {
+  agentPanelSignature,
+  buildAgentCommand,
+  buildTaskApproveCommand,
+  buildTaskAssignCommand,
+  buildTaskCancelCommand,
+  buildTaskRejectCommand,
+  resolveAgentPanel,
+} from './agent-catalog';
 
 export const AGENT_PANEL_TAG = 'strat-agent-panel';
 
@@ -294,6 +310,7 @@ export function defineAgentPanel(): typeof HTMLElement {
             white-space: nowrap;
           }
           .task-badge[data-task-status="running"] { color: var(--srf-accent, #6ea8ff); border-color: var(--srf-accent, #6ea8ff); }
+          .task-badge[data-task-status="awaiting_approval"] { color: var(--srf-warn, #f0c674); border-color: var(--srf-warn, #f0c674); }
           .task-badge[data-task-status="failed"] { color: var(--srf-danger, #e06c75); border-color: var(--srf-danger, #e06c75); }
           .task-badge[data-task-status="cancelled"] { color: var(--srf-text-disabled, #5a6373); }
           .task-summary {
@@ -303,6 +320,42 @@ export function defineAgentPanel(): typeof HTMLElement {
             white-space: nowrap;
           }
           .task-item-actions { display: flex; gap: var(--srf-spacing-xs, 4px); }
+          /* 审批卡（task_049）：计划全文 + 批准 / 驳回。warn 色边框区分于普通列表 ——
+             它在等用户裁决，不是普通任务状态。plan 限高滚动：计划可能很长，卡片不能无限撑开侧栏 */
+          .approval-card {
+            display: grid;
+            gap: var(--srf-spacing-xs, 4px);
+            margin-top: var(--srf-spacing-xs, 4px);
+            padding: var(--srf-spacing-sm, 8px);
+            border: var(--srf-border-width, 1px) solid var(--srf-warn, #f0c674);
+            border-radius: var(--srf-radius, 6px);
+            background: var(--srf-panel-elevated, #20262f);
+            font-size: var(--srf-font-size-sm, 12px);
+          }
+          .approval-head {
+            color: var(--srf-warn, #f0c674);
+            font-weight: 600;
+          }
+          .approval-summary {
+            margin-left: var(--srf-spacing-xs, 4px);
+            color: var(--srf-text-muted, #9aa3b2);
+            font-weight: 400;
+          }
+          .approval-plan {
+            margin: 0;
+            max-height: 220px;
+            overflow: auto;
+            padding: var(--srf-spacing-xs, 4px);
+            background: var(--srf-panel, #181c25);
+            border-radius: var(--srf-radius, 6px);
+            color: var(--srf-text, #e6e9ef);
+            font-family: var(--srf-font-ui, sans-serif);
+            font-size: var(--srf-font-size-sm, 12px);
+            line-height: var(--srf-line-height, 1.4);
+            white-space: pre-wrap;
+            word-break: break-word;
+          }
+          .approval-actions { display: flex; gap: var(--srf-spacing-sm, 8px); justify-content: flex-end; }
           /* 派任务表单（task_038）：挂在外壳里，不随 body 重建 —— 草稿不被广播冲掉 */
           .task-form {
             display: grid;
@@ -383,6 +436,19 @@ export function defineAgentPanel(): typeof HTMLElement {
               // core 发 Notice 提示（running → 「先停止」/ 终态 → 「无需取消」），这里不重复分支。
               const cancelCommand = buildTaskCancelCommand(host.getAttribute('data-task'));
               if (cancelCommand && this._adapter) this._adapter.dispatch(cancelCommand);
+              return;
+            }
+            case 'task-approve': {
+              // 计划批准（task_049）：同 session 续执行的驱动在 core → app 事件链，
+              // 这里只发命令。相位裁决在状态机（仅 awaiting）；真被拒时 core 发 Notice。
+              const approveCommand = buildTaskApproveCommand(host.getAttribute('data-task'));
+              if (approveCommand && this._adapter) this._adapter.dispatch(approveCommand);
+              return;
+            }
+            case 'task-reject': {
+              // 计划驳回（task_049）：failed(rejected) 收尾，计划留在库里存档。
+              const rejectCommand = buildTaskRejectCommand(host.getAttribute('data-task'));
+              if (rejectCommand && this._adapter) this._adapter.dispatch(rejectCommand);
               return;
             }
             case 'task-reassign': {
@@ -511,6 +577,9 @@ export function defineAgentPanel(): typeof HTMLElement {
             .map((item) => this.renderTaskItem(item))
             .join('')}</div>`
         : '';
+      // 审批卡（task_049）：awaiting_approval 任务才有 —— 计划全文 + 批准 / 驳回。
+      // 放在队列列表之前：审批门占着执行位，它就是此刻关于这个角色最重要的一件事。
+      const approvalCard = detail.approval ? this.renderTaskApproval(detail.approval) : '';
       // 派任务入口（task_038）：只给关联了角色的单位 —— task.assign 的载荷是 characterId。
       const assignButton = detail.characterId
         ? `<button type="button" class="action" data-action="task-open" data-unit="${escapeHtml(detail.id)}" data-character="${escapeHtml(detail.characterId)}">派任务</button>`
@@ -528,6 +597,7 @@ export function defineAgentPanel(): typeof HTMLElement {
             <div class="fact"><dt>成长</dt><dd data-role="growth">${growth}</dd></div>
             ${detail.characterId ? `<div class="fact"><dt>队列</dt><dd data-role="task-queue">${queue}</dd></div>` : ''}
           </dl>
+          ${approvalCard}
           ${detail.characterId ? taskList : ''}
           ${this.renderCapabilities(detail)}
           <div class="actions">
@@ -540,6 +610,24 @@ export function defineAgentPanel(): typeof HTMLElement {
     }
 
     /** 能力区：core 未给 capabilities 时显示「未评估」，绝不用 power 冒充六维。 */
+    /**
+     * 审批卡（task_049）：计划全文（pre-wrap 不截断 —— 逐条核对才是审批）+ 批准 / 驳回。
+     * 模型只在 awaiting 相位产生（resolveTaskApproval），所以这里不需要条件按钮 ——
+     * 卡在 = 可裁决。批准后卡片随相位消失（签名已含队列条目 id:status）。
+     */
+    private renderTaskApproval(approval: TaskApprovalModel): string {
+      return `
+        <div class="approval-card" data-role="approval-card" data-task="${escapeHtml(approval.taskId)}">
+          <div class="approval-head">计划待审批<span class="approval-summary">${escapeHtml(approval.summary)}</span></div>
+          <pre class="approval-plan">${escapeHtml(approval.plan)}</pre>
+          <div class="approval-actions">
+            <button type="button" class="action" data-action="task-approve" data-task="${escapeHtml(approval.taskId)}">批准</button>
+            <button type="button" class="action" data-action="task-reject" data-task="${escapeHtml(approval.taskId)}">驳回</button>
+          </div>
+        </div>
+      `;
+    }
+
     /**
      * 队列列表的一条（task_047）：徽标（相位语义色）+ 摘要（截断）+ 动作按钮。
      * 取消按钮仅 queued（running 不强杀 —— 点不到即提示，core 拒绝时另有 Notice）；

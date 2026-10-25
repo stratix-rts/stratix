@@ -22,12 +22,36 @@
  *     再分家不迟（那时再在两侧文件头同步改说明）。
  *
  * ============ 任务会话与聊天会话隔离（规格④）============
- * 任务执行**每次都是独立会话**：spawn 恒传 sessionId=null（一次性会话，跑完即弃），
+ * 常规任务**每次都是独立会话**：spawn 恒传 sessionId=null（一次性会话，跑完即弃），
  *   - 不读角色的 externalSessionId（那是聊天会话的落库回执）；
  *   - 不把 CLI 回报的 session id 回写角色档案（回写会污染下一次聊天的续会话判断）；
- *   - session 事件直接忽略。
- * 推论：任务没有「续发」，每一轮都是首发 → **persona 每次内嵌**（buildTaskPrompt，
+ *   - session 事件对常规任务直接忽略。
+ * 推论：常规任务没有「续发」，每一轮都是首发 → **persona 每次内嵌**（buildTaskPrompt，
  *   与 chat-service 的 buildFirstPrompt 同一拼装式样，措辞换成任务语境）。
+ * **审批门例外（@since v3.25，task_049）**：plan-first 任务的计划轮**要记 session id**
+ *   （挂单表的sessionId 字段，不回写角色档案）—— 批准后的续发复用 035 的会话延续语义：
+ *   同 sessionId 续发只发短指令「计划已批准，按计划执行」（persona / 计划都在会话上下文里）；
+ *   session 丢失（CLI 未回 / 服务重启）则退回首发拼装（persona + 原指令 + 计划全文重述）。
+ *
+ * ============ 任务审批门（@since v3.25，task_049）============
+ * plan-first 人设（personaPlanFirst 判定，两路：手写「先出计划」/ plan-first 预设）的任务：
+ *   ① 派发拼装时在 prompt 尾部追加「先输出执行计划并以单独一行 PLAN_WAIT 结束」指令；
+ *   ② 计划轮流结束后检测输出含标记行（extractPlanDraft）→ manager.requestApproval 挂起
+ *     （六态机 awaiting_approval，plan 字段存已剥离标记行的草稿，状态机截断到上限）；
+ *   ③ 挂起期间该角色 busy **不释放**（审批门占位：批准前不泵下一条 —— 门的意义就是
+ *     「这个角色先停一停」）；挂起**不限时**：等多久都行，驱动是事件（命令）不是时钟。
+ *     重启后挂单表丢失（内存态），awaiting 快照留在库里做审计 —— 没人再驱动它，
+ *     与其他运行期内存态（队列 / busy）同一取舍；
+ *   ④ 批准（task.approve 命令 → manager.approveTask → task.approved 事件）：本服务听事件
+ *     接手 —— 同 session 续发 TASK_APPROVAL_RESUME_PROMPT；续段完成 → completeTask（output
+ *     = 续段产出全文；计划全文已在 awaiting 快照与 plan 列存档）；续段出错 → failTask；
+ *     找不到挂单（重启后残留的 awaiting 任务被批准）→ failTask(TASK_MSG_RESUME_LOST)
+ *     兑底，状态机不留无人驱动的 running；
+ *   ⑤ 驳回（task.reject 命令 → manager.rejectTask → task.failed 事件）：与其它失败同面
+ *     （落库 + 回流 + exp —— 计划轮也是跑过的产出，「做过就有收获」），同时释放占位的
+ *     busy 并继续泵队列（task.failed 事件处理里查挂单表补释放 —— 服务外驱动的收尾也要放门）；
+ *   ⑥ 非 plan-first 任务即使输出碰巧含 PLAN_WAIT 也不走门（没有指令就没有协议义务 ——
+ *     那只是普通文本，检测只对 plan-first 任务生效）。
  *
  * ============ 取消的队列纪律（task_047）============
  * task.cancelled 事件到达时把该任务从内存队列剔除（emitWorldEvent 是同步广播，取消与出队
@@ -72,10 +96,12 @@
  * 总线同步广播保证了订阅方先见到 running 再见到 chunk，面板的开工对账（清空重开）不会丢流。
  *
  * @since v3.16（task_037）；v3.18（task_039）追加终态副作用；v3.22（task_046）追加流转发端口；
- *   v3.23（task_047）追加取消的队列纪律（事件剔除 + 出队防御）；v3.24（task_048）追加成果物解析落列。
+ *   v3.23（task_047）追加取消的队列纪律（事件剔除 + 出队防御）；v3.24（task_048）追加成果物解析落列；
+ *   v3.25（task_049）追加任务审批门（plan-first 挂起 / 批准续发 / 驳回落位）。
  */
 
 import { emitWorldEvent, onWorldEvent } from '../../core/bus';
+import { personaPlanFirst } from '../../core/character/persona';
 import type {
   AgentKind,
   CharacterTask,
@@ -85,6 +111,7 @@ import type {
   WorldEvent,
   WorldState,
 } from '../../core/types';
+import { TASK_PLAN_WAIT_MARKER } from '../../core/types';
 import type { TaskManager } from '../../core/task';
 import type { SpawnOptions, TransportErrorCode, TransportEvent } from './cli-transport/transport';
 import { parseTaskArtifacts, serializeTaskArtifacts } from './task-artifacts';
@@ -107,6 +134,9 @@ export type TaskTransportFactory = (kind: AgentKind) => TaskTransportPort;
  * completed 的 output 是**全文**（调用方传全文覆盖事件里的摘要）。
  * artifacts（task_048）：completed 才携带 —— parseTaskArtifacts(全文) 的序列化成果物
  * （JSON 字符串）；缺省 = 无（非终态快照 / 解析不出）。
+ * plan（task_049）：awaiting_approval / 被驳回的 failed 快照携带 —— 计划草稿全文
+ * （已剥离标记行）；approved 后 completed 的记录也带（溯源：这单是按哪份计划做完的）。
+ * 缺省 = 无（非 plan-first 任务）。
  */
 export interface TaskPersistRecord {
   readonly id: string;
@@ -119,6 +149,8 @@ export interface TaskPersistRecord {
   readonly endedAt: number | null;
   /** @since v3.24（task_048）；'' 不出现在这里 —— 解析不出就是缺省，不占字段。 */
   readonly artifacts?: string;
+  /** @since v3.25（task_049）：计划草稿全文（见上）；落库层落进 character_tasks.plan 列。 */
+  readonly plan?: string;
 }
 
 /** 任务单轮执行超时（ms）。CLI 跑任务比聊天长得多，取 035 档主进程上限：10 分钟。 */
@@ -170,14 +202,70 @@ export function guardTaskCharacter(
  * 任务指令拼装：角色设定引导语 + persona + 任务指令。
  * 任务会话是**一次性**的（每轮独立会话，无续发），所以每次都内嵌 persona ——
  * 与 chat-service.buildFirstPrompt 的差别只有措辞（任务语境 vs 对话语境），拼装式样刻意一致。
+ * @since v3.25（task_049）：plan-first 人设（personaPlanFirst）追加尾部指令 —— 要求 agent
+ * 先输出执行计划并以单独一行 TASK_PLAN_WAIT_MARKER 结束。标记词从 core 契约取，不另抄一份
+ * （prompt 指令、挂起检测、展示剥离三方必须是同一个词，见 types.ts 的 TASK_PLAN_WAIT_MARKER）。
  */
 export function buildTaskPrompt(character: CharacterView, taskPrompt: string): string {
   const persona = character.persona.trim();
-  if (persona.length === 0) return taskPrompt;
+  const base =
+    persona.length === 0
+      ? taskPrompt
+      : [
+          `你将扮演「${character.name}」这个角色执行任务，请全程保持角色设定一致。`,
+          `【角色设定】\n${persona}`,
+          `【任务指令】\n${taskPrompt}`,
+        ].join('\n\n');
+  return personaPlanFirst(persona) ? `${base}\n\n【工作方式】\n${TASK_PLAN_INSTRUCTION}` : base;
+}
+
+/**
+ * plan-first 尾部指令（@since v3.25，task_049）：挂起检测靠输出里的标记行，所以指令必须
+ * 把「单独一行」说死 —— 否则 agent 把 PLAN_WAIT 写进句子里，检测不到就只能当普通产出收尾。
+ */
+export const TASK_PLAN_INSTRUCTION =
+  '先输出执行计划，并以单独一行 PLAN_WAIT 结束；等待批准后再继续执行，不要自行开工。';
+
+/** 批准后续发的短指令（同 session 续发语义：上下文里已有 persona 与计划全文）。 */
+export const TASK_APPROVAL_RESUME_PROMPT = '计划已批准，按计划执行。';
+
+/** 挂单丢失兑底（重启后残留 awaiting 被批准 → 续发无驱动）：failed 收尾，不留无人驾驶的 running。 */
+export const TASK_MSG_RESUME_LOST = '批准时任务服务已重启，计划续发丢失，任务未继续';
+
+/**
+ * 挂起检测（@since v3.25，task_049）：输出里是否有**独占一行**的挂起标记，并返回剥离标记行
+ * 后的计划草稿。纯函数：
+ *   - 任一行 trim 后 === TASK_PLAN_WAIT_MARKER 即命中（容忍前后空白与 CRLF）；
+ *   - 多个标记行全部剥离；草稿 = 剩余文本 trim（空计划也挂起 —— 空卡自然会被驳回，不越权裁决）；
+ *   - 未命中返回 null（调用方走普通收尾）。
+ */
+export function extractPlanDraft(output: string): string | null {
+  const lines = output.split(/\r?\n/);
+  let found = false;
+  const kept = lines.filter((line) => {
+    if (line.trim() === TASK_PLAN_WAIT_MARKER) {
+      found = true;
+      return false;
+    }
+    return true;
+  });
+  return found ? kept.join('\n').trim() : null;
+}
+
+/**
+ * session 丢失时的续发拼装（首发语义重建：persona + 原指令 + 计划全文重述）。
+ * 与 035 会话延续的 fallback 同一口径：没有 sessionId 就没有上下文可复用，只能重讲一遍。
+ */
+export function buildResumedTaskPrompt(
+  character: CharacterView,
+  task: CharacterTask,
+  plan: string
+): string {
   return [
-    `你将扮演「${character.name}」这个角色执行任务，请全程保持角色设定一致。`,
-    `【角色设定】\n${persona}`,
-    `【任务指令】\n${taskPrompt}`,
+    buildTaskPrompt(character, task.prompt),
+    '【计划审批】\n以下是此前输出的执行计划，已获批准：',
+    plan,
+    '请按上述计划继续执行并给出结果。',
   ].join('\n\n');
 }
 
@@ -197,6 +285,7 @@ export function taskEventToRecord(task: CharacterTask): TaskPersistRecord {
     createdAt: task.createdAt,
     startedAt: task.startedAt,
     endedAt: task.endedAt,
+    ...(task.plan && task.plan.length > 0 ? { plan: task.plan } : {}),
   };
 }
 
@@ -270,6 +359,20 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
   /** kind → transport 缓存（IPC 桥的 transport 无状态可缓存；省一次工厂往返）。 */
   const transports = new Map<AgentKind, TaskTransportPort>();
 
+  /**
+   * 审批门挂单表（task_049）：taskId → 计划轮的驱动上下文（角色 / kind / sessionId / 原指令）。
+   * 内存态：挂起**不限时**，但重启即丢（awaiting 快照已在库里，审计可见；丢后批准走
+   * TASK_MSG_RESUME_LOST 兑底）。只进一张：批准时立刻移除（同一任务不会二次挂起 ——
+   * 批准后的续段里再现 PLAN_WAIT 只当普通文本收尾，见 runContinuation）。
+   */
+  interface AwaitingEntry {
+    readonly task: CharacterTask;
+    readonly character: CharacterView;
+    readonly kind: AgentKind;
+    readonly sessionId: string | null;
+  }
+  const awaitingTasks = new Map<string, AwaitingEntry>();
+
   const transportFor = (kind: AgentKind): TaskTransportPort => {
     const cached = transports.get(kind);
     if (cached) return cached;
@@ -330,7 +433,7 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
     emitExp(record.characterId, source);
   };
 
-  /** 总线事件处理：task.queued → 出队执行；其余相位 → 落状态快照。 */
+  /** 总线事件处理：task.queued → 出队执行；其余相位 → 落状态快照 / 审批门驱动。 */
   const handleEvent = (event: WorldEvent): void => {
     switch (event.type) {
       case 'task.queued':
@@ -340,11 +443,31 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
       case 'task.started':
         persist(taskEventToRecord(event.task));
         return;
+      case 'task.awaiting_approval':
+        // task_049：挂起快照落库 —— output 用**计划全文**（事件里的 task.plan，已剥离标记行；
+        // 状态里 output 是空串，全文只在库与流缓冲），plan 列同存。不 settle、不发 exp：
+        // 挂起不是终态。busy 不在这里动：挂起时 runTask 的返回值已告知 pump 不释放。
+        persist({
+          ...taskEventToRecord(event.task),
+          output: event.task.plan ?? '',
+          plan: event.task.plan ?? '',
+        });
+        return;
+      case 'task.approved':
+        // task_049：批准 —— 落回 running 的快照，然后接手续段执行（同 session 续发）。
+        persist(taskEventToRecord(event.task));
+        resumeApprovedTask(event.task);
+        return;
       case 'task.failed':
         // started / failed 的 output 都很短（空串 / 失败原因），快照直接落库。
         // completed 不在这里落：全文在 runTask 手里，那边落（见文件头「落库口径」）。
         // failed 的终态副作用（回流回调 + exp）挂在这里（task_039）：见文件头「终态收尾」 ——
         //   服务内四条失败路径与外部直发的 task.failed 都恰好流经这里一次。
+        // task_049：若被收尾的是挂起中的任务（驳回 / 挂起期外部 fail），释放它占住的 busy
+        //   并继续泵队列 —— 收尾路径在服务外（命令驱动），不能靠 runTask 的 finally。
+        if (awaitingTasks.has(event.task.id)) {
+          releaseAwaitingHold(event.task);
+        }
         persist(taskEventToRecord(event.task));
         settle(taskEventToRecord(event.task), 'task_failed');
         return;
@@ -360,6 +483,31 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
       default:
         return;
     }
+  };
+
+  /**
+   * 释放挂单占住的执行位（task_049，驳回 / 挂起期外部收尾共用）：删挂单 → 释放 busy → 继续泵。
+   * 挂起任务占位不占队列（它早已出队），这里不需要动 queues。
+   */
+  const releaseAwaitingHold = (task: CharacterTask): void => {
+    awaitingTasks.delete(task.id);
+    busy.delete(task.characterId);
+    pump(task.characterId);
+  };
+
+  /**
+   * 批准接手（task_049，task.approved 事件驱动）：查挂单 → 续段执行。
+   * 查不到（重启后残留 awaiting 被批准 / 竞态外部直驱）→ failTask 兑底：状态机不留
+   * 无人驱动的 running（挂着比诚实报错更糟 —— 用户以为在跑）。
+   */
+  const resumeApprovedTask = (task: CharacterTask): void => {
+    const entry = awaitingTasks.get(task.id);
+    if (!entry) {
+      manager.failTask(task.id, TASK_MSG_RESUME_LOST);
+      return;
+    }
+    awaitingTasks.delete(task.id);
+    void runContinuation(entry);
   };
 
   const enqueue = (task: CharacterTask): void => {
@@ -418,35 +566,68 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
     }
 
     busy.add(characterId);
-    void runTask(task, guard.character, guard.kind).finally(() => {
-      busy.delete(characterId);
-      pump(characterId); // FIFO 继续：上一条收尾（任何相位）后立刻看下一条
-    });
+    // task_049：runTask 返回 'awaiting' = 计划轮挂起 —— busy 不释放、不泵下一条
+    //（审批门占位，见文件头）；其余收尾照旧释放并续泵。runTask 内部不抛（自兑底），
+    // catch 只是防御性兜底（与 047 同款纪律：任何路径都不许把角色吊死在 busy）。
+    void runTask(task, guard.character, guard.kind)
+      .then((outcome) => {
+        if (outcome === 'awaiting') return;
+        busy.delete(characterId);
+        pump(characterId); // FIFO 继续：上一条收尾（任何相位）后立刻看下一条
+      })
+      .catch(() => {
+        busy.delete(characterId);
+        pump(characterId);
+      });
   };
 
-  /** 一轮任务执行的完整生命周期（守门已过）。 */
+  /** 一轮任务执行的完整生命周期（守门已过）；返回 'awaiting' = 挂起占位（task_049）。 */
   const runTask = async (
     task: CharacterTask,
     character: CharacterView,
     kind: AgentKind
-  ): Promise<void> => {
+  ): Promise<'awaiting' | 'settled'> => {
     // queued → running：盖 startedAt、单位忙闲派生、发 task.started（事件回环落 running 快照）。
     const started = manager.startTask(task.id);
-    if (!started) return; // 状态没走动（任务被收尾/不存在）—— 不执行也不重试，防守即可
-    const prompt = buildTaskPrompt(character, task.prompt); // persona 每次内嵌（会话隔离 → 无续发）
+    if (!started) return 'settled'; // 状态没走动（任务被收尾/不存在）—— 不执行也不重试，防守即可
+    const planFirst = personaPlanFirst(character.persona.trim());
+    // persona 每次内嵌（常规任务会话隔离 → 无续发）；plan-first 追加计划指令（见文件头）。
+    const prompt = buildTaskPrompt(character, task.prompt);
     let output = '';
+    // task_049：计划轮要记 session id（批准后同 session 续发）；常规任务恒 null。
+    let sessionId: string | null = null;
 
     try {
       const transport = transportFor(kind);
-      // sessionId 恒 null：任务会话一次性，不复用聊天会话也不跨任务续接（见文件头「会话隔离」）。
+      // sessionId 恒 null：常规任务会话一次性，不复用聊天会话也不跨任务续接（见文件头「会话隔离」）。
       for await (const event of transport.spawn(prompt, { sessionId: null, timeoutMs })) {
         if (event.type === 'message') {
           output += event.text;
           emitChunk(task.characterId, event.text); // 实时 tail 视图（task_046）：原序转发，不拦流
           continue;
         }
-        if (event.type === 'session') continue; // 一次性会话：id 不记录、不回写、不透传
+        if (event.type === 'session') {
+          // task_049：plan-first 记下会话 id（批准续发复用）；常规任务仍然忽略。
+          if (planFirst) sessionId = event.sessionId;
+          continue;
+        }
         if (event.type === 'done') {
+          if (planFirst) sessionId = event.sessionId ?? sessionId;
+          // task_049：挂起检测 —— 只对被指示过「先出计划」的任务生效（没指令就没有协议
+          // 义务，普通任务碰巧输出标记行也只是文本）。命中 → 挂起占位，return 'awaiting'
+          //（不释放 busy、不 settle —— 门等的是用户裁决，不是时钟）。
+          if (planFirst) {
+            const draft = extractPlanDraft(output);
+            if (draft !== null) {
+              const awaiting = manager.requestApproval(task.id, draft);
+              if (awaiting) {
+                awaitingTasks.set(task.id, { task: awaiting, character, kind, sessionId });
+                return 'awaiting';
+              }
+              // 状态机没走动（外部已收尾）—— 落普通收尾路径：completeTask 同样会被拒，
+              // 与既有「终态不改写历史」口径一致。
+            }
+          }
           // 空输出也给一句占位（与 chat 的空回复占位同一口径），失败/成功都有可读的 output。
           const fullText = output.length > 0 ? output : '（任务完成，无文本输出）';
           const finished = manager.completeTask(task.id, fullText); // 状态里存摘要
@@ -464,12 +645,12 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
           // 终态副作用（task_039）：回流回调拿全文 + 发 exp。只在状态机确认收尾时发生
           // （finished 为 null = 状态没走动，不产生副作用；防御性落库照旧，见上面 record 兑底）。
           if (finished) settle(record, 'task_completed');
-          return;
+          return 'settled';
         }
         if (event.type === 'error') {
           // 失败不自动重试（规格⑤）：failed 即终态；事件回环落 failed 快照（output=原因）。
           manager.failTask(task.id, taskErrorText(event.code, event.message));
-          return;
+          return 'settled';
         }
         // tool_use / tool_result：任务结果只收 message 文本，工具回执不进输出。
       }
@@ -478,6 +659,61 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
     } catch (error) {
       // runtime 不该抛（内部全转 error 事件）；真抛了也要给任务一个 failed 收尾，别把它吊死在 running。
       manager.failTask(task.id, taskErrorText('cli_error', describe(error)));
+    }
+    return 'settled';
+  };
+
+  /**
+   * 批准后的续段执行（task_049，task.approved 事件驱动；busy 仍被挂起占着 —— 无需重占）。
+   * 与 runTask 同一收尾式样，但：任务已是 running（不 startTask）；续发优先同 session
+   *（上下文里已有 persona 与计划全文），丢 session 退回首发拼装（buildResumedTaskPrompt）；
+   * 续段输出里的 PLAN_WAIT 只当普通文本（同一任务的门只用一次 —— 批准后不再二次挂起）。
+   * busy 释放放在 finally：任何路径都不许把角色吊死在审批门后。
+   */
+  const runContinuation = async (entry: AwaitingEntry): Promise<void> => {
+    const { task, character, kind, sessionId } = entry;
+    const plan = task.plan ?? '';
+    const prompt =
+      sessionId !== null
+        ? TASK_APPROVAL_RESUME_PROMPT
+        : buildResumedTaskPrompt(character, task, plan);
+    let output = '';
+    try {
+      const transport = transportFor(kind);
+      for await (const event of transport.spawn(prompt, { sessionId, timeoutMs })) {
+        if (event.type === 'message') {
+          output += event.text;
+          emitChunk(task.characterId, event.text);
+          continue;
+        }
+        if (event.type === 'done') {
+          const fullText = output.length > 0 ? output : '（任务完成，无文本输出）';
+          const finished = manager.completeTask(task.id, fullText);
+          const artifactsJson =
+            output.length > 0 ? serializeTaskArtifacts(parseTaskArtifacts(fullText)) : '';
+          const record: TaskPersistRecord = {
+            ...taskEventToRecord(finished ?? task),
+            status: 'completed',
+            output: fullText,
+            ...(artifactsJson.length > 0 ? { artifacts: artifactsJson } : {}),
+            ...(plan.length > 0 ? { plan } : {}), // 溯源：这单是按哪份计划做完的
+          };
+          persist(record);
+          if (finished) settle(record, 'task_completed');
+          return;
+        }
+        if (event.type === 'error') {
+          manager.failTask(task.id, taskErrorText(event.code, event.message));
+          return;
+        }
+        // session / tool_*：同 runTask 口径（session 已在手；任务结果只收 message 文本）。
+      }
+      manager.failTask(task.id, 'transport 事件流异常结束（无 done 事件）');
+    } catch (error) {
+      manager.failTask(task.id, taskErrorText('cli_error', describe(error)));
+    } finally {
+      busy.delete(task.characterId);
+      pump(task.characterId);
     }
   };
 

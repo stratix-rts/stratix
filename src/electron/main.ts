@@ -380,6 +380,11 @@ function setupIPC() {
           return { ok: false, error: 'bad artifacts (not JSON)' };
         }
       }
+      // 计划草稿（task_049）：可选纯文本（'' / 缺省 = 无）。只验类型与体积上限 ——
+      // 内容裁决（标记行剥离 / 截断）在渲染层 task-service / core 状态机，主进程不重复。
+      if (record?.plan != null && (typeof record.plan !== 'string' || record.plan.length > 200_000)) {
+        return { ok: false, error: 'bad plan' };
+      }
       if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
       const db = getDatabase().getDatabase();
       ensureCharacterTasksTable(db);

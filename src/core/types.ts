@@ -205,9 +205,36 @@ export type ConfirmDecision = 'accept' | 'reject';
  *   @since v3.23（task_047）增 cancelled：**仅 queued 可取消**（排队取消；running 不强杀 ——
  *   中止在跑任务是另一个动作的事，取消按钮对 running 不渲染，core 侧拒绝并回码）。
  *   cancelled 与 completed / failed 同为终态：任何动作都判非法（不改写历史）。
+ *   @since v3.25（task_049）增 awaiting_approval（任务审批门）：plan-first 人设的任务在
+ *   running 中产出计划后挂起等待用户裁决，**仅 running 可挂起、仅 awaiting_approval 可
+ *   approve（回 running 续执行）/ reject（直达 failed，reason=rejected）**。awaiting
+ *   不是终态、不限时（挂多久都行，驱动在 app 层 task-service 的内存挂单表）；它也不可
+ *   被 cancel（驳回才是它的出口）。
  * **失败不自动重试**：重新派发是用户的显式动作（038 起的派发表单 / 047 的失败重派按钮）。
  */
-export type TaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type TaskStatus =
+  | 'queued'
+  | 'running'
+  | 'awaiting_approval'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
+
+/**
+ * @since v3.25（task_049）计划草稿长度上限。task.plan 随 WorldState.tasks 全量广播
+ * （审批卡要显示计划全文，不能只存摘要），必须有界；8k 码点对一份执行计划绰绰有余
+ * （超限截断存档，全文仍在任务输出流缓冲与 SQLite 的 output 快照里）。
+ */
+export const MAX_TASK_PLAN_LEN = 8_000;
+
+/**
+ * @since v3.25（task_049）计划挂起标记。plan-first 人设的任务 prompt 尾部指示 agent
+ * 「先输出执行计划并以单独一行 PLAN_WAIT 结束」；app 层 task-service 在流结束后检测
+ * 输出中**独占一行的**该标记（trim 相等）判定挂起，hud 任务输出面板显示时剥离该协议行。
+ * 定义在 core 是刻意的：它是 prompt 指令（app 拼）、挂起检测（app）与展示剥离（hud）
+ * 三方共用的契约词，放任何一侧都会逼着另一侧跨层 import。
+ */
+export const TASK_PLAN_WAIT_MARKER = 'PLAN_WAIT';
 
 /**
  * @since v3.16 一条派发给角色的任务（CharacterTask）。
@@ -219,7 +246,9 @@ export type TaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancel
  * output 语义：completed = 执行结果**摘要**（全文在 SQLite tasks 表）；failed = 失败原因；
  * @since v3.23 cancelled = 占位文案「任务在排队时被取消」（状态机写死 —— 取消没有外部原因可传，
  * 且与 failed 同一口径：终态 output 永不为空串，读的人不猜）；queued / running = 空串。
- * 单位忙闲由任务派生：有 running 任务 → 单位 status='busy'。
+ * @since v3.25 awaiting_approval = 空串（计划全文在 plan 字段，见下）。
+ * 单位忙闲由任务派生：有 running 任务 → 单位 status='busy'（awaiting 不算忙 ——
+ * 它在等用户，不在干活，头顶?浮标是它的表现，见 world/objects/task-fx）。
  */
 export interface CharacterTask {
   readonly id: string;
@@ -234,6 +263,13 @@ export interface CharacterTask {
   readonly endedAt: number | null;
   /** 输出摘要 / 失败原因（见上文字段语义）；长度 ≤ MAX_TASK_SUMMARY_LEN。 */
   readonly output: string;
+  /**
+   * @since v3.25（task_049）计划草稿：plan-first 任务在 awaiting_approval 时由状态机
+   * 写入（已剥离标记行、≤ MAX_TASK_PLAN_LEN）；approve 后继续随任务携带（存档语义，
+   * completed 任务里的 plan = 「这单是按这份计划做完的」溯源），reject 的 failed 任务里
+   * 它就是被驳回的计划存档。非 plan-first 任务恒缺省（不占字段）。
+   */
+  readonly plan?: string;
 }
 
 // ============================================================================
@@ -843,7 +879,22 @@ export type HudCommand =
    * Notice 提示）；completed / failed / cancelled 是终态，重复取消幂等拒绝（不改写历史）。
    * 载荷口径：taskId 必须命中 WorldState.tasks。UI 的取消按钮只对 queued 条目渲染（047）。
    */
-  | { type: 'task.cancel'; taskId: string };
+  | { type: 'task.cancel'; taskId: string }
+  /**
+   * @since v3.25（task_049）计划批准（任务审批门）：把一条 **awaiting_approval** 任务放回
+   * running 并续执行。仅 awaiting_approval 生效；其余相位由状态机拒绝并回 Notice。
+   * 续执行的驱动（同 session 续发「计划已批准，按计划执行」）在 app 层 task-service
+   * （core 零 IO），它听 task.approved 事件接手。UI 的批准按钮只对 awaiting 任务渲染（049）。
+   * 载荷口径：taskId 必须命中 WorldState.tasks。
+   */
+  | { type: 'task.approve'; taskId: string }
+  /**
+   * @since v3.25（task_049）计划驳回：把一条 **awaiting_approval** 任务直达 failed
+   * （reason=rejected，状态机写死 output=「计划被驳回」，计划留在 task.plan 存档）。
+   * 仅 awaiting_approval 生效。与 cancel 分开两条命令：驳回是「看过计划后说不行」的显式
+   * 裁决，不是「排错了队」的取消；语义、终态与 UI 入口都不同。
+   */
+  | { type: 'task.reject'; taskId: string };
 
 /**
  * @since v3.18 经验来源词表（`exp.gained` 事件的 source 字段，task_039）。
@@ -911,6 +962,20 @@ export type WorldEvent =
    * 的口径覆盖不到它，也不触发 onTaskSettled 回流（没有可回的结果）。
    */
   | { type: 'task.cancelled'; task: CharacterTask }
+  /**
+   * @since v3.25（task_049）计划挂起事件（任务审批门）：plan-first 任务在 running 中产出
+   * 计划并检测到标记行后，由 task-service 调 manager.requestApproval 触发。快照里 plan
+   * 字段携带计划全文（已剥离标记行）。消费者：任务落库（awaiting 快照 + 全文 output）；
+   * toast（组合根）+ 战场?浮标（world 桥转发）+ 审批卡（hud 从状态读）。不发 exp、
+   * 不触发 onTaskSettled —— 挂起不是终态，还没到「可回结果」的时点。
+   */
+  | { type: 'task.awaiting_approval'; task: CharacterTask }
+  /**
+   * @since v3.25（task_049）计划批准事件：awaiting → running 迁移后的快照（同任务回 running）。
+   * 消费者：task-service（接手续执行 —— 同 session 续发批准指令）与任务落库（running 快照）。
+   * 世界桥把它按 started 相位转发（单位重新画工作环）。
+   */
+  | { type: 'task.approved'; task: CharacterTask }
   /**
    * @since v3.18 经验获得事件（task_039，规格指定走 WorldEvent 通道 —— 与 task.* 同一先例：
    *   发出方是 app 层服务（task-service / chat-service），消费者是养成模块）。

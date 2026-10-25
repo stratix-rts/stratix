@@ -33,6 +33,27 @@ export const PERSONA_MAX_LEN = 32_000;
 /** persona 写入被拒的机器可读原因。manager 据此决定 Notice 文案，不解析字符串。 */
 export type PersonaErrorCode = 'empty' | 'not-a-string' | 'too-long';
 
+/**
+ * @since v3.25（task_049）plan-first 人设的特征标记。人设正文含该短语 → 该角色的任务走
+ * 「先出计划，批准后执行」的审批门（app 层 task-service 据此在任务 prompt 尾部追加
+ * 计划指令、并在流结束后检测挂起标记）。定义在 core/character：它属于「persona 的语义
+ * 裁决」（与 normalizePersonaPrompt 同一层），两路识别共用这一个词：
+ *   ① 手写路径：用户在自由文本里写下「先出计划」（如 RULES 分节里手补一行）；
+ *   ② 预设路径：persona-presets 的 plan-first 预设把含该标记的一行写进 RULES 节。
+ * 选短语而不是结构标记（如某节标题）：自由文本人设没有可靠结构，字符串包含是唯一
+ * 对两条路径都成立的稳定判定（与 stratix-agent 的标记节思路同源，但降为短语级）。
+ */
+export const PERSONA_PLAN_FIRST_MARKER = '先出计划';
+
+/**
+ * @since v3.25（task_049）纯函数：persona 是否声明了「先计划后执行」的工作方式。
+ * 含 PERSONA_PLAN_FIRST_MARKER 即认定（见上：两路识别共用同一个词）。空串 / 不含 = false。
+ * 导出供单测与 app 层 task-service 复用 —— 判定口径只允许这一处。
+ */
+export function personaPlanFirst(persona: string): boolean {
+  return persona.includes(PERSONA_PLAN_FIRST_MARKER);
+}
+
 export interface PersonaTransition {
   /** 改写后的角色；被拒 / 无变化时是**原引用**（调用方据此判定"没变"，不必自己判 error）。 */
   readonly next: CharacterView;

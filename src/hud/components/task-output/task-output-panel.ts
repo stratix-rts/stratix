@@ -164,7 +164,11 @@ export function defineTaskOutputPanel(): typeof HTMLElement {
       // 例外：切到 running 中的角色 → 默认展开（需求①「默认展开当 running」——
       // 状态先到、上下文后切的时序也走这条；冷开在终态任务上不强展开，回看是用户动作）。
       this._following = true;
-      if (this.display().phase === 'running') this._expanded = true;
+      // task_049：挂起也自动展开 —— 流里是计划全文，面板（046）就是「计划全文」的展示面之一
+      //（审批卡在 agent-panel，这里是流视角）；批准后回 running 仍走上面的展开分支。
+      if (this.display().phase === 'running' || this.display().phase === 'awaiting_approval') {
+        this._expanded = true;
+      }
       this.syncAll();
     }
 

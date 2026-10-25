@@ -25,6 +25,7 @@ import {
   validatePersona,
   PERSONA_QUESTIONS,
 } from '../screens/onboarding-catalog';
+import { personaPlanFirst, PERSONA_PLAN_FIRST_MARKER } from '../../core/character/persona';
 import { PERSONA_PRESETS, presetMatchingKind, presetsForKind } from '../screens/persona-presets';
 import {
   ONBOARDING_COMPLETE_EVENT,
@@ -616,6 +617,19 @@ describe('③ 人设生成 · 预设库（纯数据）', () => {
     }
   });
 
+  test('plan-first 预设（task_049）：存在、带识别标记，且是唯一走审批门的预设', () => {
+    const planFirst = PERSONA_PRESETS.find((preset) => preset.id === 'plan-first');
+    expect(planFirst).toBeTruthy();
+    // 预设路径的识别标记：persona 正文含 PERSONA_PLAN_FIRST_MARKER（两路识别共用一个词）
+    expect(personaPlanFirst(planFirst!.persona)).toBe(true);
+    expect(planFirst!.persona).toContain(PERSONA_PLAN_FIRST_MARKER);
+    // 其余预设都不带 —— 没声明「先计划后执行」的不走门
+    for (const preset of PERSONA_PRESETS) {
+      if (preset.id === 'plan-first') continue;
+      expect(personaPlanFirst(preset.persona)).toBe(false);
+    }
+  });
+
   test('每个预设都是完整结构化文本：六节齐备 + core 底线规则列表', () => {
     for (const preset of PERSONA_PRESETS) {
       const headers = preset.persona.split('\n').filter((line) => line.startsWith('# '));
@@ -627,9 +641,15 @@ describe('③ 人设生成 · 预设库（纯数据）', () => {
         '# 交付习惯 DELIVERY',
         '# 行为规则 RULES',
       ]);
-      // RULES 节与问卷路径同一份底线（core DEFAULT_PERSONA_TEMPLATE 派生，不另抄）
+      // RULES 节与问卷路径同一份底线（core DEFAULT_PERSONA_TEMPLATE 派生，不另抄）；
+      // plan-first（task_049）是唯一例外：底线之后追加一行审批门标记
+      //（「先出计划，经批准后再执行」—— personaPlanFirst 的识别词），底线一条不少。
       const rulesBlock = [`# 行为规则 RULES`, '', ...personaRulesLines()].join('\n');
-      expect(preset.persona.endsWith(rulesBlock)).toBe(true);
+      if (preset.id === 'plan-first') {
+        expect(preset.persona.endsWith(`${rulesBlock}\n先出计划，经批准后再执行；计划未获批准不动手`)).toBe(true);
+      } else {
+        expect(preset.persona.endsWith(rulesBlock)).toBe(true);
+      }
     }
   });
 
