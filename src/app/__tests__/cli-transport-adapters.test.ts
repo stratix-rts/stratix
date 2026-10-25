@@ -62,10 +62,14 @@ describe('adapter.buildArgs：headless 命令形态', () => {
     expect(resumed).toEqual(['run', '--format', 'json', '--session', 'ses-1', '继续']);
   });
 
-  test('kimi：--yolo --prompt；带会话时 --session', () => {
-    expect(createKimiAdapter().buildArgs('回复 pong')).toEqual(['--yolo', '--prompt', '回复 pong']);
-    const resumed = createKimiAdapter().buildArgs('继续', { sessionId: 'k-1' });
-    expect(resumed).toEqual(['--yolo', '--session', 'k-1', '--prompt', '继续']);
+  test('kimi：新会话只传 --prompt，忽略旧 yolo/workDir 配置', () => {
+    const args = createKimiAdapter({ yolo: true, workDir: '/ignored' }).buildArgs('回复 pong');
+    expect(args).toEqual(['--prompt', '回复 pong']);
+  });
+
+  test('kimi：恢复会话时 --session 原样透传', () => {
+    const resumed = createKimiAdapter().buildArgs('继续', { sessionId: 'session_k-1' });
+    expect(resumed).toEqual(['--session', 'session_k-1', '--prompt', '继续']);
   });
 
   test('openclaw：agent --message --json；带会话时 --session-id', () => {
@@ -222,8 +226,11 @@ describe('adapter.parse：各家格式 → 公共事件词汇表', () => {
     expect(parseKimiOutput('')).toEqual([]);
   });
 
-  test('kimi：stderr 收尾提示行 → session 事件；噪声/残行静默跳过（task_055 真机形状）', () => {
-    // 真机实测行（2026-10-25，kimi 1.48.0，成功/失败轮都打）：
+  test('kimi：stderr 兼容 session_ 前缀与裸 uuid；噪声/残行静默跳过', () => {
+    expect(parseKimiStderrLine('To resume this session: kimi -r session_1303b488-0da8-4870-817e-40ed13a45143')).toEqual([
+      { type: 'session', sessionId: 'session_1303b488-0da8-4870-817e-40ed13a45143' },
+    ]);
+    // 1.52 时代真机实测行（2026-10-25，kimi 1.48.0）：
     expect(parseKimiStderrLine('To resume this session: kimi -r 1303b488-0da8-4870-817e-40ed13a45143')).toEqual([
       { type: 'session', sessionId: '1303b488-0da8-4870-817e-40ed13a45143' },
     ]);

@@ -10,7 +10,7 @@
 | Claude Code | `which claude` / `claude --version` | `claude -p "<prompt>" --permission-mode bypassPermissions` | `--resume <session-id>` | `--output-format stream-json`（逐事件 JSONL） | 2026-10-21 全天实战验证；环境变量 `CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT=1` 规避代理模型警告 |
 | Codex CLI | `which codex` | `codex exec "<prompt>"` | `codex exec resume <id>` / `codex resume` | `--json`（JSONL 事件流） | OpenAI 官方，⭐130k；exec 子命令即 headless 模式 |
 | OpenCode | `which opencode` | `opencode run -m <model> "<prompt>"` | session 天然持久（server 管理） | `opencode serve` 本地 HTTP API（最佳路径） | 本机装过 v1.2.6；server 模式免 spawn，REST 天然适配 gateway |
-| Kimi CLI | `which kimi` / `kimi --version` | `kimi --yolo --prompt "<prompt>"` | `--session <id>` / `-C` 继续 | 文本输出（结构化弱）；会话 id 只在 stderr 收尾提示行（task_055） | 本机 v1.48 复验（task_055）：`--print --output-format stream-json` 存在但 id 不进 stdout；每轮 stderr 尾行 `To resume this session: kimi -r <uuid>`（成功/失败都打）；`--session` 回显同 id = 命中 |
+| Kimi CLI | `which kimi` / `kimi --version` | `kimi -p "<prompt>"` | `--session <id>` / `-C` 继续 | 文本输出（结构化弱）；会话 id 只在 stderr 收尾提示行（task_055） | 本机 Kimi Code 2.3.2 复验（task_063）：`-p` 不可与 `--yolo` 同用；每轮 stderr 尾行 `To resume this session: kimi -r session_<uuid>`（1.52 时代为裸 `<uuid>`，两种格式均兼容）；`--session` 回显同 id = 命中 |
 | OpenClaw | `which openclaw` / `openclaw status` | `openclaw agent --message "<p>" --json`（本机 gateway）；`--session-id <id>` 自选会话 id | `--session-id <id>`（自选 id 即建同名会话，续接命中） | JSON（pretty-print，result 包裹信封） | task_055 真机两轮验证：自选 uuid 建 session + 暗号记忆命中；无路由参数时会落 gateway 主会话（副作用，宜带 --session-id）；旧有 `stratix-openclaw-adapter` 协议基础（task_007 参考源） |
 
 ## T2 基础适配（headless 可用，会话/结构化能力有限）

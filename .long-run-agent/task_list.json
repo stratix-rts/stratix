@@ -1893,6 +1893,15 @@
         "task_045"
       ],
       "priority": 2
+    },
+    {
+      "id": "task_063",
+      "title": "kimi adapter 适配 Kimi Code 2.x",
+      "status": "completed",
+      "depends_on": [
+        "task_055"
+      ],
+      "priority": 1
     }
   ]
 }

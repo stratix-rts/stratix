@@ -1,13 +1,19 @@
 /**
- * 文件职责：**Kimi CLI** 的 adapter —— `kimi --yolo --prompt "<prompt>"` 的输出翻译。
- *   契约依据：docs/AGENT-MATRIX.md T1 行（headless: `kimi --yolo --prompt` / 会话恢复 `--session <id>`）。
+ * 文件职责：**Kimi CLI** 的 adapter —— `kimi --prompt "<prompt>"` 的输出翻译。
+ *   契约依据：docs/AGENT-MATRIX.md T1 行（headless: `kimi --prompt` / 会话恢复 `--session <id>`）。
  * 输入：kimi 的 stdout（**纯文本**，runtime 会整段收下）；stderr 的收尾提示行（会话 id，见下）。
  * 输出：TransportEvent[]。
  * 禁止事项：
  *   1. 在这里 spawn 进程 —— 纯函数，进程生命周期归 runtime.ts；
  *   2. 把纯文本硬说成「结构化输出」—— stdout 只吐文本，这里是 text 模式。
  *
- * ============ 会话 id 从哪里拿（task_055 真机调研，2026-10-25，kimi 1.48.0）============
+ * ============ Kimi Code 2.3.2 真机调研（task_063，2026-10-26）============
+ *   - `--yolo` 与 `--prompt` 互斥；prompt 模式自带工具执行，不再传 `--yolo`；
+ *   - `--work-dir` 已废弃；runtime 将 `SpawnOptions.cwd` 传给进程 spawn，无需额外旗标；
+ *   - stderr 尾行仍是 `To resume this session: kimi -r <id>`，id 为 `session_<uuid>`；
+ *   - `--session <id>` resume 正常，id 原样透传。
+ *
+ * ============ 1.52 时代考古：会话 id 从哪里拿（task_055，2026-10-25，kimi 1.48.0）============
  * 调研结论（`kimi --help` + CLI 源码 `cli/__init__.py` + 真机实跑）：
  *   - `--print --output-format stream-json` 旗标存在，但 stream-json 只把**内容/工具调用**
  *     结构化（ui/print/visualize.py 的 JsonPrinter），**会话 id 不进 stdout 事件**；
@@ -72,9 +78,9 @@ export function parseKimiOutput(text: string): readonly TransportEvent[] {
   return events;
 }
 
-/** kimi stderr 收尾提示行的会话 id（task_055 真机实测形状，见文件头「会话 id 从哪里拿」）。 */
+/** kimi stderr 收尾提示行的会话 id（2.x 带 session_ 前缀，1.52 时代为裸 uuid）。 */
 const KIMI_RESUME_HINT_RE =
-  /To resume this session:\s*kimi\s+\S+\s+([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/;
+  /To resume this session:\s*kimi\s+\S+\s+((?:session_)?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/;
 
 /**
  * 解析 kimi 的 stderr 行：只认收尾提示行里的会话 id，其余（日志噪声）静默跳过。
@@ -86,9 +92,9 @@ export function parseKimiStderrLine(line: string): readonly TransportEvent[] {
 }
 
 export interface KimiAdapterOptions {
-  /** 自动放行工具调用（--yolo）；缺省 true（headless 无 TTY，交互确认必然失败）。 */
+  /** 旧配置兼容：2.x prompt 模式不可与 --yolo 同用，adapter 忽略此值。 */
   readonly yolo?: boolean;
-  /** 工作目录（-w）；缺省继承当前进程。 */
+  /** 旧配置兼容：工作目录由 SpawnOptions.cwd 传递，此值不再生成 CLI 参数。 */
   readonly workDir?: string;
   /** 追加的环境变量。 */
   readonly env?: Readonly<Record<string, string>>;
@@ -96,15 +102,12 @@ export interface KimiAdapterOptions {
 
 /** 造 Kimi adapter。 */
 export function createKimiAdapter(options: KimiAdapterOptions = {}): CliAdapter {
-  const yolo = options.yolo ?? true;
   return {
     kind: 'kimi',
     binary: 'kimi',
     outputMode: 'text',
     buildArgs(prompt: string, spawnOptions: SpawnOptions = {}): readonly string[] {
       const args: string[] = [];
-      if (yolo) args.push('--yolo');
-      if (options.workDir) args.push('--work-dir', options.workDir);
       // 会话 id 原样透传：kimi 的语义是「resume 那个 session」。
       const sessionId = spawnOptions.sessionId;
       if (sessionId) args.push('--session', sessionId);
