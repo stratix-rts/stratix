@@ -105,6 +105,58 @@ describe('状态机主路径：queued → running → completed', () => {
   });
 });
 
+// ============================================================================
+// 取消：排队取消专用动作（@since v3.23，task_047）
+// ============================================================================
+
+describe('取消：仅 queued 可取消', () => {
+  test('queued + cancel → cancelled（盖 endedAt，output 占位文案非空）', () => {
+    const step = apply(TASK, { type: 'cancel', at: 1200 });
+    expect(step.changed).toBe(true);
+    expect(step.next).toEqual(taskAt('cancelled', { endedAt: 1200, output: '任务在排队时被取消' }));
+    expect(isTerminalTaskStatus(step.next.status)).toBe(true);
+    expect(isActiveTaskStatus(step.next.status)).toBe(false);
+  });
+
+  test('running + cancel → 拒（不强杀：中止在跑任务归「先停止」另一条路）', () => {
+    const running = taskAt('running', { startedAt: 1000 });
+    const step = apply(running, { type: 'cancel', at: 1200 });
+    expect(step.changed).toBe(false);
+    expect(step.error).toBe('illegal-transition');
+    expect(step.next).toBe(running); // 原引用：任务继续跑，谁也没碰
+  });
+
+  test('终态 + cancel → 幂等拒绝（重复点取消不改写历史）', () => {
+    for (const status of ['completed', 'failed', 'cancelled'] as const) {
+      const current = taskAt(status, { endedAt: 1, output: 'x' });
+      const step = apply(current, { type: 'cancel', at: 2 });
+      expect(step.changed).toBe(false);
+      expect(step.error).toBe('illegal-transition');
+      expect(step.next).toBe(current);
+    }
+  });
+
+  test('cancelled 是终态：任何动作都拒（含 start / complete / fail）', () => {
+    const cancelled = taskAt('cancelled', { endedAt: 1, output: '任务在排队时被取消' });
+    for (const action of [
+      { type: 'start', at: 2 } as TaskAction,
+      { type: 'complete', at: 2, output: 'y' } as TaskAction,
+      { type: 'fail', at: 2, reason: 'z' } as TaskAction,
+      { type: 'cancel', at: 2 } as TaskAction,
+    ]) {
+      expect(apply(cancelled, action).changed).toBe(false);
+    }
+  });
+
+  test('dropSettledTasks 把 cancelled 当终态历史淘汰（取消的排队不占位置）', () => {
+    const tasks: CharacterTask[] = [
+      taskAt('cancelled', { id: 't1' }),
+      taskAt('queued', { id: 't2' }),
+    ];
+    expect(dropSettledTasks(tasks, 1).map((t) => t.id)).toEqual(['t2']);
+  });
+});
+
 describe('旁路：fail 从 queued / running 都可直达终态', () => {
   test('queued + fail → failed（守门拦截的落点：还没开工就注定跑不起来）', () => {
     const step = apply(TASK, { type: 'fail', at: 1500, reason: '该 CLI 未安装，任务无法执行' });
@@ -281,6 +333,58 @@ describe('assignTask：守门 + 投影 + 事件', () => {
   });
 });
 
+describe('cancelTask：排队取消（manager）', () => {
+  test('queued → cancelled：状态入档 + task.cancelled 事件 + info Notice', () => {
+    resetBus();
+    const { manager, store } = makeManager();
+    const task = manager.assignTask({ characterId: 'ch-1', prompt: '干活' });
+    const events: string[] = [];
+    const off = onWorldEvent((event) => {
+      if (event.type.startsWith('task.')) events.push(event.type);
+    });
+
+    const outcome = manager.cancelTask(task!.id);
+
+    expect(outcome).toMatchObject({ ok: true, task: { status: 'cancelled', output: '任务在排队时被取消' } });
+    expect(store.getState().tasks![0]).toMatchObject({ status: 'cancelled' });
+    expect(store.getState().tasks![0].endedAt).toEqual(expect.any(Number));
+    expect(events).toEqual(['task.cancelled']); // 订阅在 assign 之后，queued 不在此窗内（同款口径）
+    expect(store.getState().notices[0]).toMatchObject({ level: 'info', source: 'core/task' });
+    off();
+  });
+
+  test('running → not-queued + status=running + warn Notice（提示「先停止」）', () => {
+    resetBus();
+    const { manager, store } = makeManager();
+    const task = manager.assignTask({ characterId: 'ch-1', prompt: '干活' });
+    manager.startTask(task!.id);
+
+    const outcome = manager.cancelTask(task!.id);
+
+    expect(outcome).toEqual({ ok: false, code: 'not-queued', status: 'running' });
+    expect(store.getState().tasks![0].status).toBe('running'); // 任务继续跑，谁也没碰
+    expect(store.getState().notices[0]).toMatchObject({ level: 'warn', source: 'core/task' });
+    expect(store.getState().notices[0].text).toContain('先停止');
+  });
+
+  test('终态 → not-queued 幂等拒绝（重复取消不改写历史）；not-found 稳定回码', () => {
+    resetBus();
+    const { manager, store } = makeManager();
+    const task = manager.assignTask({ characterId: 'ch-1', prompt: '干活' });
+    manager.cancelTask(task!.id);
+
+    const again = manager.cancelTask(task!.id); // 已 cancelled
+    expect(again).toEqual({ ok: false, code: 'not-queued', status: 'cancelled' });
+
+    manager.startTask(task!.id); // 终态不能再开工（取消不可逆）
+    expect(manager.startTask(task!.id)).toBeNull();
+
+    const ghost = manager.cancelTask('task_ghost');
+    expect(ghost).toEqual({ ok: false, code: 'not-found', status: null });
+    expect(store.getState().tasks![0].status).toBe('cancelled'); // 全程没被动过
+  });
+});
+
 describe('相位推进：start / complete / fail', () => {
   test('start → running + 单位 busy + task.started；complete → 摘要入库 + 单位回收 idle', () => {
     resetBus();
@@ -403,6 +507,10 @@ describe('命令闭环：task.assign 经真 runtime 落地', () => {
     expect(states.length).toBeGreaterThan(0); // store 订阅广播了（runtime 的职责）
     expect(final.units[0].status).toBe('idle'); // queued 不改忙闲，running 才 busy
 
+    // task_047：task.cancel 同口径经 runtime 落地 —— queued → cancelled，无需任何 app 层接线。
+    emitCommand({ type: 'task.cancel', taskId: final.tasks![0].id });
+    expect(store.getState().tasks![0].status).toBe('cancelled');
+
     off();
     stop();
   });
@@ -437,10 +545,11 @@ describe('runtime 接地：task.* 生命周期事件', () => {
 
     const task = createQueuedTask({ id: 'task_x', characterId: 'ch-1', prompt: 'p', createdAt: 1 });
     emitCommand({ type: 'task.assign', characterId: 'ch-1', prompt: 'p' }); // 经 runtime → manager → task.queued
-    // 直接注入一条 task.started / completed / failed（等价于 app 层回报路径的事件面）
+    // 直接注入一条 task.started / completed / failed / cancelled（等价于 app 层回报路径的事件面）
     emitWorldEvent({ type: 'task.started', task });
     emitWorldEvent({ type: 'task.completed', task });
     emitWorldEvent({ type: 'task.failed', task });
+    emitWorldEvent({ type: 'task.cancelled', task });
 
     expect(unhandled).toEqual([]); // 一个都没进未处理
     stop();

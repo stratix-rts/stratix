@@ -433,6 +433,112 @@ describe('FIFO 与并发 1', () => {
   });
 });
 
+// ============================================================================
+// 取消的队列纪律（@since v3.23，task_047）
+// ============================================================================
+
+describe('取消的队列纪律（task_047）', () => {
+  test('排队任务被取消：不进 transport（零 spawn）+ cancelled 快照落库 + 队列继续走下一条', async () => {
+    const gate = gated([{ type: 'message', text: 'A 在跑' }], [
+      { type: 'done', exitCode: 0, text: 'A done', sessionId: null },
+    ]);
+    const h = makeHarness({
+      scripts: [gate.script, scripted({ type: 'done', exitCode: 0, text: 'B done', sessionId: null })],
+    });
+
+    assign(h, '任务 A');
+    assign(h, '任务 B');
+    const tasks = h.store.getState().tasks!;
+    const taskB = tasks[tasks.length - 1];
+    expect(taskB.status).toBe('queued'); // A 占着执行位，B 在排队
+
+    // B 在排队（A 占着执行位）：取消 B → cancelled，队列剔除；release 后直接泵空，B 零 spawn。
+    const outcome = h.manager.cancelTask(taskB.id);
+    expect(outcome.ok).toBe(true);
+    gate.release();
+    await flush();
+
+    expect(h.calls).toHaveLength(1); // 只有 A 进过 transport：cancelled 不进
+    expect(h.calls[0].prompt).toContain('任务 A');
+    const final = h.store.getState().tasks!;
+    expect(final.find((t) => t.id === taskB.id)?.status).toBe('cancelled');
+    expect(h.service.isBusy('ch-1')).toBe(false);
+    expect(h.persisted.some((r) => r.id === taskB.id && r.status === 'cancelled')).toBe(true); // 审计可见
+    expect(h.settled.some((r) => r.id === taskB.id)).toBe(false); // 没跑过：不回流报告
+  });
+
+  test('外部直发的 task.cancelled 事件同样剔除队列（取消相位真相源在总线，同帧竞态面）', async () => {
+    const gate = gated([{ type: 'message', text: 'A' }], [{ type: 'done', exitCode: 0, text: 'A', sessionId: null }]);
+    const h = makeHarness({ scripts: [gate.script] });
+
+    assign(h, '任务 A');
+    const queued = assign(h, '要被取消的任务');
+    await flush();
+    expect(h.service.queueLength('ch-1')).toBe(1);
+
+    // 模拟另一路径（如未来总线直发）发出的取消事件：队列剔除必须生效，不依赖 manager 调用方。
+    const cancelled: CharacterTask = { ...queued, status: 'cancelled', endedAt: 9999, output: '任务在排队时被取消' };
+    emitWorldEvent({ type: 'task.cancelled', task: cancelled });
+    expect(h.service.queueLength('ch-1')).toBe(0);
+
+    gate.release();
+    await flush();
+    expect(h.calls).toHaveLength(1); // 只有 A 被执行
+  });
+
+  test('出队防御：队列里残留的非 queued 任务被跳过（不进 transport），后续任务照常', async () => {
+    const gate = gated([{ type: 'message', text: 'A' }], [{ type: 'done', exitCode: 0, text: 'A', sessionId: null }]);
+    const h = makeHarness({
+      scripts: [gate.script, scripted({ type: 'done', exitCode: 0, text: 'C', sessionId: null })],
+    });
+
+    assign(h, '任务 A');
+    const stale = assign(h, '僵尸任务（已被外部收尾）');
+    assign(h, '任务 C');
+    await flush();
+
+    // 绕开 manager（模拟外部直改状态的同帧竞态）：把队列里那条任务直接改成 completed ——
+    // task.cancelled 事件不会发（不是取消路径），出队防御必须自己拦住。
+    h.store.setState((state) => ({
+      ...state,
+      tasks: (state.tasks ?? []).map((t) => (t.id === stale.id ? { ...t, status: 'completed' as const, endedAt: 1, output: 'x' } : t)),
+    }));
+    gate.release();
+    await flush();
+
+    expect(h.calls).toHaveLength(2); // A + C 各一轮；僵尸任务零 spawn
+    expect(h.calls[0].prompt).toContain('任务 A');
+    expect(h.calls[1].prompt).toContain('任务 C');
+    expect(h.store.getState().tasks!.every((t) => t.status !== 'running')).toBe(true);
+  });
+
+  test('重派：failed 任务的 prompt 派新任务 → 新任务入库并照常执行（新 id，不复用旧任务）', async () => {
+    const h = makeHarness({
+      scripts: [
+        scripted({ type: 'error', message: 'no such file', code: 'spawn_failed' }),
+        scripted(
+          { type: 'message', text: '重派后干完了' },
+          { type: 'done', exitCode: 0, text: '', sessionId: null }
+        ),
+      ],
+    });
+
+    const failed = assign(h, '重派测试任务');
+    await flush();
+    expect(h.store.getState().tasks![0].status).toBe('failed');
+
+    // 重派 = UI 用原 prompt 构造 task.assign（同 buildTaskAssignCommand），新任务进队执行。
+    const fresh = h.manager.assignTask({ characterId: 'ch-1', prompt: failed.prompt });
+    expect(fresh?.id).not.toBe(failed.id); // 新任务：失败不自动重试，重派是显式动作
+    await flush();
+
+    const tasks = h.store.getState().tasks!;
+    expect(tasks.find((t) => t.id === failed.id)?.status).toBe('failed'); // 历史不被改写
+    expect(tasks.find((t) => t.id === fresh!.id)).toMatchObject({ status: 'completed', output: '重派后干完了' });
+    expect(h.calls).toHaveLength(2); // 两轮各一次：失败轮 + 重派轮
+  });
+});
+
 describe('单位忙闲派生（经 service 全链路）', () => {
   test('running → 单位 busy；收尾 → idle；战场零改动即可读到（规格⑦）', async () => {
     const gate = gated([{ type: 'message', text: '干活中' }], [

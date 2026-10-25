@@ -17,8 +17,11 @@ const DEFAULT_FILENAME = 'stratix.db';
  * DDL 与 src/app/services/persistence/task-record-dao.ts 的 ensureCharacterTasksTable 同构。
  * why 不叫 tasks：tasks 表已被 agent 平台任务队列占用（v1 起就有，task_id 主键 / zone 形状），
  * 角色任务表命名对齐 character_chat_messages 的先例（character_ 前缀 = 游戏存档域），零冲突。
+ * v5（@since v3.23，task_047）：character_tasks.status CHECK 扩五态（增 cancelled，排队取消）。
+ * SQLite 的 CHECK 不可 ALTER → **重建表迁移**（建新表 → INSERT SELECT 搬数据 → DROP → RENAME），
+ * 保留 CHECK 而不是放弃约束的理由见 task-record-dao.ts 文件头（两处同一方案，同构可审）。
  */
-const TARGET_SCHEMA_VERSION = 4;
+const TARGET_SCHEMA_VERSION = 5;
 
 /** Valid table name characters (alphanumeric + underscore) */
 const VALID_TABLE_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -141,26 +144,57 @@ export class StratixDatabase {
    * IF NOT EXISTS 幂等：新库在 createTables 里建过，这里是旧库（schema_version ≤ 3）的升级路径。
    * 表名 character_tasks：v1 的 tasks 表是 agent 平台的任务队列（task_id 主键 / zone 形状），
    * 与角色任务毫无关系 —— character_ 前缀对齐 character_chat_messages 的游戏存档域命名，零冲突。
+   * @since v3.23（task_047）追加五态迁移：表已存在但 CHECK 是四态（schema_version = 4 的库）时
+   * 重建表（SQLite CHECK 不可 ALTER，方案见文件头 v5 注）。表不存在（≤ 3）直接建五态版。
    */
   private migrateTasks(): void {
     const tables = this.getTableNames();
 
-    if (tables.has('character_tasks')) return;
+    if (!tables.has('character_tasks')) {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS character_tasks (
+          id TEXT PRIMARY KEY,
+          character_id TEXT NOT NULL,
+          prompt TEXT NOT NULL,
+          status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed', 'cancelled')),
+          output TEXT NOT NULL DEFAULT '',
+          created_at INTEGER NOT NULL,
+          started_at INTEGER,
+          ended_at INTEGER
+        )
+      `);
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_character_tasks_character ON character_tasks(character_id, created_at)');
+      log('info', 'Created character_tasks table');
+      return;
+    }
+
+    // 表已存在：四态 CHECK（schema_version = 4 的库）→ 重建到五态；已是五态（v5 新库）幂等直过。
+    // 'cancelled' 只会出现在 CHECK 词表里，作 DDL 指纹足够（与 task-record-dao 同一手法）。
+    const row = this.db
+      .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'character_tasks'`)
+      .get() as { sql?: string } | undefined;
+    if (typeof row?.sql === 'string' && row.sql.includes("'cancelled'")) return;
 
     this.db.exec(`
-      CREATE TABLE IF NOT EXISTS character_tasks (
+      CREATE TABLE character_tasks_v5 (
         id TEXT PRIMARY KEY,
         character_id TEXT NOT NULL,
         prompt TEXT NOT NULL,
-        status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed')),
+        status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed', 'cancelled')),
         output TEXT NOT NULL DEFAULT '',
         created_at INTEGER NOT NULL,
         started_at INTEGER,
         ended_at INTEGER
-      )
+      );
+      INSERT INTO character_tasks_v5
+        (id, character_id, prompt, status, output, created_at, started_at, ended_at)
+        SELECT id, character_id, prompt, status, output, created_at, started_at, ended_at
+        FROM character_tasks;
+      DROP TABLE character_tasks;
+      ALTER TABLE character_tasks_v5 RENAME TO character_tasks;
+      CREATE INDEX IF NOT EXISTS idx_character_tasks_character ON character_tasks(character_id, created_at);
     `);
-    this.db.exec('CREATE INDEX IF NOT EXISTS idx_character_tasks_character ON character_tasks(character_id, created_at)');
-    log('info', 'Created character_tasks table');
+    log('info', 'Migrated character_tasks status CHECK to five statuses (cancelled)');
   }
 
   /**
@@ -882,13 +916,14 @@ export class StratixDatabase {
         created_at INTEGER NOT NULL
       );
 
-      -- 角色任务表（@since v3.16，task_037）：派发 → 执行 → 产出的审计与全文输出；
+      -- 角色任务表（@since v3.16，task_037；@since v3.23 task_047 status 扩五态）：
+      -- 派发 → 执行 → 产出的审计与全文输出；cancelled = 排队取消（没跑过，output 为占位文案）。
       -- 不叫 tasks：tasks 表是 agent 平台的任务队列（v1 起），character_ 前缀 = 游戏存档域命名先例
       CREATE TABLE IF NOT EXISTS character_tasks (
         id TEXT PRIMARY KEY,
         character_id TEXT NOT NULL,
         prompt TEXT NOT NULL,
-        status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed')),
+        status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed', 'cancelled')),
         output TEXT NOT NULL DEFAULT '',
         created_at INTEGER NOT NULL,
         started_at INTEGER,

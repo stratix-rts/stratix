@@ -152,12 +152,15 @@ export function createTaskOutputStore(options: TaskOutputStoreOptions = {}): Tas
 /**
  * 任务相位 → 面板徽标文案。词表即契约（本组件单一真相源；agent-catalog 的队列读数
  * 是另一套口径，不共用）。
+ * @since v3.23（task_047）补 cancelled：排队取消后最新任务的徽标有处可落（不进流缓冲 ——
+ * 取消的任务没跑过，没有流，text 走状态快照里的占位文案）。
  */
 export const TASK_PHASE_LABELS: Readonly<Record<TaskStatus, string>> = {
   queued: '排队中',
   running: '执行中',
   completed: '已完成',
   failed: '失败',
+  cancelled: '已取消',
 };
 
 /**
@@ -220,7 +223,10 @@ export function resolveTaskOutputDisplay(
   latestTask: CharacterTask | null
 ): TaskOutputDisplay {
   if (!latestTask) return HIDDEN_DISPLAY;
-  const terminal = latestTask.status === 'completed' || latestTask.status === 'failed';
+  // @since v3.23（task_047）cancelled 同为终态：text 回落状态里的占位文案（取消的任务没跑过，
+  // 没有流，缓冲天然没有它 —— 从这里读出「这条被取消了」）。
+  const terminal =
+    latestTask.status === 'completed' || latestTask.status === 'failed' || latestTask.status === 'cancelled';
   if (entry && entry.taskId === latestTask.id) {
     const text = entry.text.length > 0 ? entry.text : terminal ? latestTask.output : '';
     return {

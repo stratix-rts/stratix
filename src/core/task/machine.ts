@@ -12,13 +12,17 @@
  * 相位机（契约词表见 types.ts 的 TaskStatus）：
  *   queued ──start──▶ running ──complete──▶ completed
  *     │                   │
+ *     ├──cancel──▶ cancelled（@since v3.23，task_047：仅 queued 可取消）
  *     └──────fail─────────┴───▶ failed
  *   - fail 允许从 queued 与 running 出发：queued 直达 failed 是**守门拦截**的落点
  *     （agent 未检出等 —— 派了但注定跑不起来，直接 failed 带原因，不进队列空转）；
- *   - completed / failed 是终态：任何动作都判非法（重复收尾不改写历史）；
+ *   - cancel 只认 queued（@since v3.23）：running 不强杀（规格：中止在跑任务归「先停止」
+ *     另一条路，状态机拒绝并回错误码，由上层转 UI 提示）；
+ *   - completed / failed / cancelled 是终态：任何动作都判非法（重复收尾不改写历史）——
+ *     对 cancelled 的重复 cancel 也拒（幂等拒绝，重复点按钮不会造出第二个真相）；
  *   - **失败不自动重试**（task_037 规格）：状态机里没有 retry 动作，重派是调用方的新任务。
  *
- * @since v3.16（task_037）。
+ * @since v3.16（task_037）；v3.23（task_047）追加 cancel 动作与 cancelled 终态。
  */
 
 import {
@@ -43,10 +47,15 @@ export type TaskAction =
   /** running → completed：收尾（盖 endedAt，写输出摘要）。 */
   | { type: 'complete'; at: number; output: string }
   /** queued | running → failed：失败收尾（盖 endedAt，output=失败原因）。 */
-  | { type: 'fail'; at: number; reason: string };
+  | { type: 'fail'; at: number; reason: string }
+  /**
+   * queued → cancelled：排队取消（@since v3.23，task_047；盖 endedAt，output=占位文案）。
+   * running / 终态一律拒绝 —— 取消在跑任务归「先停止」另一条路，这里不掌生杀。
+   */
+  | { type: 'cancel'; at: number };
 
-/** 终态：不再接受任何动作。 */
-const TERMINAL_STATUSES: readonly TaskStatus[] = ['completed', 'failed'];
+/** 终态：不再接受任何动作（@since v3.23 增 cancelled）。 */
+const TERMINAL_STATUSES: readonly TaskStatus[] = ['completed', 'failed', 'cancelled'];
 
 export function isTerminalTaskStatus(status: TaskStatus): boolean {
   return TERMINAL_STATUSES.includes(status);
@@ -115,6 +124,15 @@ export function applyTaskAction(current: CharacterTask, action: TaskAction): Tas
         output: action.reason.length > 0 ? action.reason : '任务失败（未提供原因）',
       });
     }
+    case 'cancel': {
+      // 仅 queued 可取消（@since v3.23）：running 不强杀，终态不重开 —— 其余相位一律 reject。
+      // output 占位文案写死在状态机：取消没有外部原因可传，且终态 output 永不为空串（读的人不猜）。
+      if (current.status !== 'queued') return reject(current);
+      return move(current, 'cancelled', {
+        endedAt: action.at,
+        output: '任务在排队时被取消',
+      });
+    }
   }
 }
 
@@ -131,7 +149,8 @@ export function summarizeTaskOutput(text: string): string {
 }
 
 /**
- * 腾位置：只丢终态的历史，直到能容下 keep 条 —— 与 core/mission 的 dropSettledMissions
+ * 腾位置：只丢终态的历史（completed / failed / **cancelled**，@since v3.23 —— 取消的排队
+ * 是历史不是在办，同样可被淘汰），直到能容下 keep 条 —— 与 core/mission 的 dropSettledMissions
  * 同一口径。**绝不丢在办任务**（queued / running）：让一条在跑的任务静默消失比"拒绝新派"更糟。
  * 腾不出位置时由调用方拒绝新派并回 Notice —— 这是 tasks 有界的保证，不会出现第三条路。
  */

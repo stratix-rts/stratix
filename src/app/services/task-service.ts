@@ -29,6 +29,13 @@
  * 推论：任务没有「续发」，每一轮都是首发 → **persona 每次内嵌**（buildTaskPrompt，
  *   与 chat-service 的 buildFirstPrompt 同一拼装式样，措辞换成任务语境）。
  *
+ * ============ 取消的队列纪律（task_047）============
+ * task.cancelled 事件到达时把该任务从内存队列剔除（emitWorldEvent 是同步广播，取消与出队
+ *   不会真的交错 —— 但剔除发生在下一次 pump 之前，队里从此没有它）；pump 出队时再查一次
+ *   WorldState.tasks 的相位做**双层防御**：只有仍是 queued 的任务才进 transport，其余跳过继续
+ *   泵下一条（防外部直改状态的同帧竞态与未来新路径）。取消的任务：不进 transport、不发 exp、
+ *   不触发 onTaskSettled 回流（没跑过，没有可回的结果）；cancelled 快照照常落库（审计可见）。
+ *
  * ============ 落库口径（独立 tasks 表，与聊天审计分离）============
  * persistTask 回调随每条 task.* 事件落状态快照（queued / running / failed 的 output 都很短）；
  * completed 单独走：本服务持有执行**全文输出**（transport 流式拼接），complete 时全文落库 ——
@@ -56,7 +63,8 @@
  * （任务结果只收 message 文本，与 output 拼接同一口径）。转发在 startTask 之后开始 ——
  * 总线同步广播保证了订阅方先见到 running 再见到 chunk，面板的开工对账（清空重开）不会丢流。
  *
- * @since v3.16（task_037）；v3.18（task_039）追加终态副作用；v3.22（task_046）追加流转发端口。
+ * @since v3.16（task_037）；v3.18（task_039）追加终态副作用；v3.22（task_046）追加流转发端口；
+ *   v3.23（task_047）追加取消的队列纪律（事件剔除 + 出队防御）。
  */
 
 import { emitWorldEvent, onWorldEvent } from '../../core/bus';
@@ -188,8 +196,12 @@ function describe(error: unknown): string {
 // ============================================================================
 
 export interface TaskServiceDeps {
-  /** 世界快照读取口（组合根传 worldStore.getState；单测传夹具）。 */
-  readonly getState: () => Pick<WorldState, 'characters' | 'detectedAgents'>;
+  /**
+   * 世界快照读取口（组合根传 worldStore.getState；单测传夹具）。
+   * @since v3.23（task_047）类型面增 tasks：出队防御要查任务当前相位（仅 queued 才执行）。
+   * 组合根与测试注入的都是完整 getState，零改动兼容。
+   */
+  readonly getState: () => Pick<WorldState, 'characters' | 'detectedAgents' | 'tasks'>;
   /** transport 工厂（生产：复用 chat-transport-bridge 的 IPC 工厂；单测：打桩）。 */
   readonly createTransport: TaskTransportFactory;
   /** core 任务域写入面（相位回报：start / complete / fail）。与 runtime 注入同一个实例。 */
@@ -323,6 +335,13 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
         persist(taskEventToRecord(event.task));
         settle(taskEventToRecord(event.task), 'task_failed');
         return;
+      case 'task.cancelled':
+        // task_047：cancelled 快照照常落库（审计可见），但**不算「跑过」** —— 不发 exp、
+        // 不触发 onTaskSettled 回流（见文件头「取消的队列纪律」）。同时把它从待执行队列
+        // 剔除：取消事件是同步广播，下次 pump 之前队里就没有它了（取消与出队同帧的竞态面）。
+        persist(taskEventToRecord(event.task));
+        dequeue(event.task);
+        return;
       case 'task.completed':
         return;
       default:
@@ -338,8 +357,32 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
   };
 
   /**
+   * 把一条任务从内存队列剔除（task_047，取消路径专用）。剔除后不 pump：能被取消的只有
+   * queued 任务，它不占 busy（busy 是 running 的执行纪律），无位可释放。
+   */
+  const dequeue = (task: CharacterTask): void => {
+    const queue = queues.get(task.characterId);
+    if (!queue) return;
+    const index = queue.findIndex((item) => item.id === task.id);
+    if (index < 0) return;
+    queue.splice(index, 1);
+  };
+
+  /**
+   * 出队防御（task_047）：任务在 WorldState.tasks 里仍是 queued 才执行。
+   * tasks 缺省（老快照/裁剪态）时不拦 —— 交给 startTask 的状态机兑底拒绝（同一裁决的
+   * 第二道闸，防御性检查不该比真相源更严）。
+   */
+  const isStillQueued = (taskId: string): boolean => {
+    const tasks = deps.getState().tasks;
+    if (!tasks) return true;
+    return tasks.some((task) => task.id === taskId && task.status === 'queued');
+  };
+
+  /**
    * 出队泵：每角色并发 1 —— busy 就不动；队列为空就收工。
-   * 守门不通过 → failTask 直达 failed（事件回环会落库），继续泵下一条（队列不被一条死任务堵死）。
+   * 守门不通过 → failTask 直达 failed（事件回环会落库），继续泵下一条（队列不被一条死任务堵死）；
+   * 已被取消/收尾 → 跳过继续泵（task_047：cancelled 绝不进 transport）。
    */
   const pump = (characterId: string): void => {
     if (busy.has(characterId)) return;
@@ -347,6 +390,11 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
     if (!queue || queue.length === 0) return;
     const task = queue.shift();
     if (!task) return;
+
+    if (!isStillQueued(task.id)) {
+      pump(characterId); // 已被取消（或外部收尾）：跳过，接着看下一条
+      return;
+    }
 
     const guard = guardTaskCharacter(deps.getState(), characterId);
     if (!guard.ok) {

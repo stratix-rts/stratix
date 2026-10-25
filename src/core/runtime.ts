@@ -27,6 +27,8 @@
  *   task.queued / started / completed / failed 四条生命周期事件由 manager 发出,本文件在
  *   handleWorldEvent 里显式接地(同 unit.position 惯例)-- 消费者是 app 层 task-service
  *   (出队执行)与任务落库订阅者,不进 onUnhandled。
+ * @since v3.23(task_047)追加 task.cancel 命令(排队取消,同口径直调 manager)与
+ *   task.cancelled 事件接地(startsWith('task.') 已覆盖,注释补记)。
  */
 
 import type { AgentLinkManager } from './agent-link';
@@ -214,6 +216,12 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
       case 'task.assign':
         task.assignTask({ characterId: command.characterId, prompt: command.prompt });
         return;
+      // @since v3.23 排队任务取消(task_047):同口径直调 manager。相位裁决(仅 queued 可取消)
+      // 在状态机,拒绝时 manager 发对应 Notice(running → 提示「先停止」;终态 → 无需取消),
+      // 结构化结果(TaskCancelOutcome)不回传 —— 命令通道是 fire-and-forget,UI 反馈靠 Notice。
+      case 'task.cancel':
+        task.cancelTask(command.taskId);
+        return;
       // @since v3.6 屏位路由:
       //   'main' 与 'chat' 都不入 currentScreen:
       //     - 'main' 是"回主屏"语义,与字段为空等价(缺省回落读取方自管);
@@ -264,6 +272,8 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         // task.queued / started / completed / failed(@since v3.16,task_037):core/task 的
         //   manager 发出的生命周期事件,消费者是 app 层 task-service(出队执行)与任务落库订阅者,
         //   core 状态机不消费 -- 同 unit.position 惯例显式接地,不进 onUnhandled。
+        // task.cancelled(@since v3.23,task_047):取消事件同面 —— 消费者 task-service 据此从
+        //   待执行队列剔除(防「取消与出队同帧」竞态) + 落库订阅者落 cancelled 快照,同接地。
         // exp.gained（@since v3.18，task_039）：app 层发射的经验事件，消费者是 app 层
         //   progression-service（task_040）：经 character manager 累加进 WorldState.characters、
         //   升级则广播 level.up。core 状态机不消费（不写 WorldState），同惯例显式接地 ——

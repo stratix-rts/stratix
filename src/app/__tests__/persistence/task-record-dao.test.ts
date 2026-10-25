@@ -132,4 +132,91 @@ describe('task-record-dao（真实 sql.js 适配器）', () => {
       expect(agentRows).toEqual([{ task_id: 't-agent' }]);
     });
   });
+
+  // ============================================================================
+  // 五态词表与旧表迁移（@since v3.23，task_047）
+  // ============================================================================
+
+  describe('cancelled 相位往返（五态 CHECK）', () => {
+    it('queued → cancelled：占位文案入行，startedAt 保持 null（没跑过）', () => {
+      upsertTask(db, record());
+      upsertTask(
+        db,
+        record({ status: 'cancelled', output: '任务在排队时被取消', endedAt: 1700000000500 })
+      );
+      const row = loadRecentTasks(db, 'ch-1')[0];
+      expect(row.status).toBe('cancelled');
+      expect(row.startedAt).toBeNull();
+      expect(row.endedAt).toBe(1700000000500);
+      expect(row.output).toBe('任务在排队时被取消');
+    });
+  });
+
+  describe('四态老表迁移（SQLite CHECK 不可 ALTER → 重建表）', () => {
+    /** 手工建一张 v4 形状的四态表并插两行老数据。 */
+    function seedLegacyFourStatusTable(target: Database): void {
+      target.exec(`
+        CREATE TABLE character_tasks (
+          id TEXT PRIMARY KEY,
+          character_id TEXT NOT NULL,
+          prompt TEXT NOT NULL,
+          status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed')),
+          output TEXT NOT NULL DEFAULT '',
+          created_at INTEGER NOT NULL,
+          started_at INTEGER,
+          ended_at INTEGER
+        )
+      `);
+      target
+        .prepare(
+          'INSERT INTO character_tasks (id, character_id, prompt, status, output, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+        )
+        .run('task_old_1', 'ch-1', '老任务', 'completed', '老结果', 1700000000000);
+      target
+        .prepare(
+          'INSERT INTO character_tasks (id, character_id, prompt, status, output, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+        )
+        .run('task_old_2', 'ch-1', '排队中的老任务', 'queued', '', 1700000000001);
+    }
+
+    it('老表重建：老数据零丢失、新 cancelled 可写入、临时表不留残骸、幂等可重跑', async () => {
+      // 用独立文件库（当前 db 的表已是五态，重开一个空白库模拟老库）
+      const legacyPath = path.join(path.dirname(dbPath), 'legacy.sqlite');
+      const legacy = new Database(legacyPath);
+      try {
+        await legacy.initialize();
+        seedLegacyFourStatusTable(legacy);
+
+        // DAO 就位 → 迁移自动发生
+        ensureCharacterTasksTable(legacy);
+
+        // 老数据还在（全字段搬运）
+        const rows = loadRecentTasks(legacy, 'ch-1');
+        expect(rows.map((r) => r.id)).toEqual(['task_old_1', 'task_old_2']);
+        expect(rows[0]).toMatchObject({ status: 'completed', output: '老结果' });
+
+        // cancelled 能写入（新 CHECK 五态生效；窗口取最新一条 = createdAt 最大的 task_new）
+        upsertTask(
+          legacy,
+          record({
+            id: 'task_new',
+            status: 'cancelled',
+            output: '任务在排队时被取消',
+            endedAt: 1,
+            createdAt: 1700000009999,
+          })
+        );
+        expect(loadRecentTasks(legacy, 'ch-1', 1)[0]).toMatchObject({ id: 'task_new', status: 'cancelled' });
+
+        // 临时表不留残骸；幂等重跑不再重建（DDL 不变即可，重跑不抛）
+        const tables = legacy.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{
+          name: string;
+        }>;
+        expect(tables.some((t) => t.name === 'character_tasks_v5')).toBe(false);
+        expect(() => ensureCharacterTasksTable(legacy)).not.toThrow();
+      } finally {
+        legacy.close();
+      }
+    });
+  });
 });

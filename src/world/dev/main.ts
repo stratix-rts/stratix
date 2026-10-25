@@ -86,10 +86,12 @@ function describe(event: WorldEvent): string {
     case 'unit.move':
       return `unit.move       ${event.unitIds.length} 单位 @ ${Math.round(event.x)},${Math.round(event.y)}`;
     // 任务生命周期（@since v3.16，task_037）：core/task 发出的域事件，面板里看一眼相位与角色。
+    // task.cancelled（@since v3.23，task_047）：排队取消事件，同面展示。
     case 'task.queued':
     case 'task.started':
     case 'task.completed':
     case 'task.failed':
+    case 'task.cancelled':
       return `${event.type.padEnd(15)} ${event.task.characterId} :: ${event.task.prompt.slice(0, 20)}`;
     // 经验事件（@since v3.18，task_039）：app 层发射，这里看一眼来源与数额（养成侧观察）。
     case 'exp.gained':

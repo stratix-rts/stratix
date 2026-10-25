@@ -22,6 +22,9 @@
  * 的先例）。消费者都在 app 层：
  *   - task-service：靠 task.queued 出队执行（core 不认识 transport，执行必须由 app 层驱动）；
  *   - 任务落库订阅者：tasks 表的写入时机（全文输出由 task-service 落，摘要随事件走）。
+ * @since v3.23（task_047）增 task.cancelled：消费者同上（task-service 据此从待执行队列剔除，
+ * 防「取消与出队同帧」的竞态；落库订阅者落 cancelled 快照）。取消不发 exp、不回流报告 ——
+ * 取消的任务没跑过，没有可回的结果。
  * why 不让 app 层各自轮询 store diff：diff 要比整份数组且说不清"哪条是这次变的"，
  * 事件是现成的、携带迁移后快照的、单向的通知面。
  *
@@ -31,7 +34,7 @@
  * 收尾时**只回收 busy**：error / offline 是别处的真相（如 agent-link 的远端状态），不碰；
  * 且该角色还有**其他** running 任务时不回收（并发 1 是 app 层的执行纪律，core 不假设）。
  *
- * @since v3.16（task_037）。
+ * @since v3.16（task_037）；v3.23（task_047）追加 cancelTask（排队取消）与 TaskCancelOutcome。
  */
 
 import { emitWorldEvent } from '../bus';
@@ -43,6 +46,7 @@ import {
   type CharacterTask,
   type CharacterView,
   type NoticeLevel,
+  type TaskStatus,
   type UnitView,
 } from '../types';
 
@@ -60,6 +64,21 @@ export type TaskRejectionCode =
   | 'prompt-too-long'
   | 'limit-exceeded'
   | 'illegal-transition';
+
+/**
+ * task.cancel 的结构化结果（@since v3.23，task_047）—— 与 start/complete/fail 返回
+ * `CharacterTask | null` 不同，取消要能区分**为什么没取消成**（UI 据 code 提示「先停止」
+ * 或「已收尾」），null 语义装不下三种失败面。
+ */
+export type TaskCancelOutcome =
+  | { readonly ok: true; readonly task: CharacterTask }
+  | {
+      readonly ok: false;
+      /** not-found：任务不在状态里；not-queued：相位不允许（running / 终态）。 */
+      readonly code: 'not-found' | 'not-queued';
+      /** 被拒时的任务当前相位（not-found 时为 null）—— 调用方据此分流提示文案。 */
+      readonly status: TaskStatus | null;
+    };
 
 export interface TaskManagerOptions {
   /** 状态持有者；默认 worldStore 单例。单测用 createStore() 隔离。 */
@@ -84,6 +103,12 @@ export interface TaskManager {
   completeTask(taskId: string, output: string): CharacterTask | null;
   /** queued | running → failed：失败收尾（含守门拦截的直达路径）。**不自动重试**（规格）。 */
   failTask(taskId: string, reason: string): CharacterTask | null;
+  /**
+   * queued → cancelled：排队取消（@since v3.23，task_047）。结构化结果（见 TaskCancelOutcome）：
+   * running 拒（不强杀，Notice 提示「先停止」）；终态拒（幂等拒绝，不改写历史）。
+   * 成功后发 task.cancelled（消费者：task-service 剔除队列 + 落库）。
+   */
+  cancelTask(taskId: string): TaskCancelOutcome;
 }
 
 /**
@@ -194,6 +219,47 @@ class Manager implements TaskManager {
       notice: (task, character) =>
         this.notify('warn', `「${character?.name ?? task.characterId}」任务失败：${firstLine(task.output)}`),
     });
+  }
+
+  /**
+   * 取消不走通用 transition 管道：它的失败面要区分 not-found / running / 终态三种文案
+   * （transition 的 null 装不下），且成功时**不碰单位忙闲**（busy 只由 running 派生，
+   * queued 从未让单位 busy，取消自然无需回收）。裁决与写入在同一次 setState 里完成，
+   * 与 assignTask 同款：事件与 Notice 在写库之后发（订阅者读到的状态必须是新的）。
+   */
+  cancelTask(taskId: string): TaskCancelOutcome {
+    const outcome: { result?: TaskCancelOutcome } = {};
+    this.store.setState((state) => {
+      const tasks = state.tasks ?? [];
+      const index = tasks.findIndex((task) => task.id === taskId);
+      if (index < 0) {
+        outcome.result = { ok: false, code: 'not-found', status: null };
+        return state;
+      }
+      const current = tasks[index];
+      const step = applyTaskAction(current, { type: 'cancel', at: this.now() });
+      if (!step.changed) {
+        outcome.result = { ok: false, code: 'not-queued', status: current.status };
+        return state;
+      }
+      const nextTasks = tasks.slice();
+      nextTasks[index] = step.next;
+      outcome.result = { ok: true, task: step.next };
+      return { ...state, tasks: nextTasks };
+    });
+
+    const result = outcome.result!; // setState 同步执行，updater 必然写入
+    if (result.ok) {
+      emitWorldEvent({ type: 'task.cancelled', task: result.task });
+      this.notify('info', '已取消排队任务');
+    } else if (result.code === 'not-found') {
+      this.notify('warn', '任务不存在，无法取消');
+    } else if (result.status === 'running') {
+      this.notify('warn', '任务正在执行，不能排队取消；如需中止请先停止该任务');
+    } else {
+      this.notify('warn', '任务已收尾，无需取消');
+    }
+    return result;
   }
 
   /**

@@ -23,13 +23,17 @@
  *     会被一次无关广播冲掉；表单开合/草稿是面板本地瞬时态（同 chat-drawer 的 draft 口径），
  *     不是业务真相，不进 core。提交 → buildTaskAssignCommand → adapter.dispatch（命令端口）。
  *   - 队列读数（当前任务摘要 40 字 + 排队数）随详情模型渲染，签名已覆盖任务变化。
+ * @since v3.23（task_047）队列区升级完整列表：读数行下渲染该角色全部在办 + 最近终态任务，
+ *   每条带状态徽标；**取消按钮仅 queued**（running 不强杀 —— 点不到就是提示），**重派按钮
+ *   仅 failed**（buildTaskAssignCommand 同 prompt 派新任务，不复用旧 id）。列表随签名重建，
+ *   与 body 同一生命周期（无输入态，重画无丢失）。
  */
 
 import { MAX_TASK_PROMPT_LEN, type HudCommand, type WorldState } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
 
-import type { AgentPanelAction, AgentPanelModel, CapabilityBar, UnitDetailModel, UnitRowModel } from './agent-catalog';
-import { agentPanelSignature, buildAgentCommand, buildTaskAssignCommand, resolveAgentPanel } from './agent-catalog';
+import type { AgentPanelAction, AgentPanelModel, CapabilityBar, TaskQueueItemModel, UnitDetailModel, UnitRowModel } from './agent-catalog';
+import { agentPanelSignature, buildAgentCommand, buildTaskAssignCommand, buildTaskCancelCommand, resolveAgentPanel } from './agent-catalog';
 
 export const AGENT_PANEL_TAG = 'strat-agent-panel';
 
@@ -264,6 +268,41 @@ export function defineAgentPanel(): typeof HTMLElement {
             font-size: var(--srf-font-size-sm, 12px);
             margin-left: var(--srf-spacing-xs, 4px);
           }
+          /* 队列完整列表（task_047）：读数行下的每条任务（徽标 + 摘要 + 按钮） */
+          .task-list {
+            display: grid;
+            gap: var(--srf-spacing-xs, 4px);
+            margin-top: var(--srf-spacing-xs, 4px);
+          }
+          .task-item {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: var(--srf-spacing-xs, 4px);
+            align-items: center;
+            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-sm, 8px);
+            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
+            border-radius: var(--srf-radius, 6px);
+            background: var(--srf-panel-elevated, #20262f);
+            font-size: var(--srf-font-size-sm, 12px);
+          }
+          .task-badge {
+            padding: 0 var(--srf-spacing-xs, 4px);
+            border-radius: var(--srf-radius, 6px);
+            font-size: var(--srf-font-size-sm, 12px);
+            border: var(--srf-border-width, 1px) solid var(--srf-border-strong, #3a4252);
+            color: var(--srf-text-muted, #9aa3b2);
+            white-space: nowrap;
+          }
+          .task-badge[data-task-status="running"] { color: var(--srf-accent, #6ea8ff); border-color: var(--srf-accent, #6ea8ff); }
+          .task-badge[data-task-status="failed"] { color: var(--srf-danger, #e06c75); border-color: var(--srf-danger, #e06c75); }
+          .task-badge[data-task-status="cancelled"] { color: var(--srf-text-disabled, #5a6373); }
+          .task-summary {
+            color: var(--srf-text, #e6e9ef);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+          .task-item-actions { display: flex; gap: var(--srf-spacing-xs, 4px); }
           /* 派任务表单（task_038）：挂在外壳里，不随 body 重建 —— 草稿不被广播冲掉 */
           .task-form {
             display: grid;
@@ -323,6 +362,7 @@ export function defineAgentPanel(): typeof HTMLElement {
 
         // 行/按钮点击：data-action + data-unit 上的目录坐标 → HudCommand。
         // 表单动作（task-open/submit/cancel）是本地瞬时态，先拦截，不进命令构造。
+        // 队列列表动作（task-queue-cancel / task-reassign，task_047）走命令端口，一并拦截分流。
         root.addEventListener('click', (ev: Event) => {
           const target = ev.target as HTMLElement | null;
           const host = target?.closest?.('[data-action]') as HTMLElement | null;
@@ -338,6 +378,21 @@ export function defineAgentPanel(): typeof HTMLElement {
             case 'task-cancel':
               this.closeTaskForm();
               return;
+            case 'task-queue-cancel': {
+              // 排队取消（task_047）：按钮只对 queued 条目渲染；真被拒（相位恰好刚变）时
+              // core 发 Notice 提示（running → 「先停止」/ 终态 → 「无需取消」），这里不重复分支。
+              const cancelCommand = buildTaskCancelCommand(host.getAttribute('data-task'));
+              if (cancelCommand && this._adapter) this._adapter.dispatch(cancelCommand);
+              return;
+            }
+            case 'task-reassign': {
+              // 失败重派（task_047）：同 prompt 派一条新任务（复用 buildTaskAssignCommand，
+              // 不复用旧 id —— 重派是显式动作的新任务）。prompt 全文从模型取（摘要截断不作载荷）。
+              const item = this.findTaskItem(host.getAttribute('data-task'));
+              const reassignCommand = item ? buildTaskAssignCommand(this._formCharacterId ?? this.currentDetailCharacterId(), item.prompt) : null;
+              if (reassignCommand && this._adapter) this._adapter.dispatch(reassignCommand);
+              return;
+            }
             default:
               break;
           }
@@ -399,6 +454,21 @@ export function defineAgentPanel(): typeof HTMLElement {
       if (input) input.value = '';
     }
 
+    // —— 队列列表（task_047）：条目检索与渲染 ——
+
+    /** 当前单选详情关联的角色 id（重派载荷用；非单选 / 无角色为 null）。 */
+    private currentDetailCharacterId(): string | null {
+      const detail = this._model.mode === 'single' ? this._model.detail : null;
+      return detail?.characterId ?? null;
+    }
+
+    /** 按任务 id 从最近一次渲染的模型里找列表条目（重派要拿 prompt 全文）。 */
+    private findTaskItem(taskId: string | null): TaskQueueItemModel | null {
+      if (!taskId) return null;
+      const detail = this._model.mode === 'single' ? this._model.detail : null;
+      return detail?.taskQueue.items.find((item) => item.id === taskId) ?? null;
+    }
+
     private renderBody(): void {
       const root = this.shadowRoot;
       const box = root?.querySelector('[data-role="body"]');
@@ -434,6 +504,13 @@ export function defineAgentPanel(): typeof HTMLElement {
               : ''
           }`
         : '空闲';
+      // 队列完整列表（task_047）：在办全显 + 最近终态，每条带徽标与动作按钮。只要该角色
+      // 有任务就渲染列表 —— queued 条目必须可见（否则取消按钮不可达），读数行只是速览。
+      const taskList = detail.characterId && detail.taskQueue.items.length > 0
+        ? `<div class="task-list" data-role="task-list">${detail.taskQueue.items
+            .map((item) => this.renderTaskItem(item))
+            .join('')}</div>`
+        : '';
       // 派任务入口（task_038）：只给关联了角色的单位 —— task.assign 的载荷是 characterId。
       const assignButton = detail.characterId
         ? `<button type="button" class="action" data-action="task-open" data-unit="${escapeHtml(detail.id)}" data-character="${escapeHtml(detail.characterId)}">派任务</button>`
@@ -451,12 +528,35 @@ export function defineAgentPanel(): typeof HTMLElement {
             <div class="fact"><dt>成长</dt><dd data-role="growth">${growth}</dd></div>
             ${detail.characterId ? `<div class="fact"><dt>队列</dt><dd data-role="task-queue">${queue}</dd></div>` : ''}
           </dl>
+          ${detail.characterId ? taskList : ''}
           ${this.renderCapabilities(detail)}
           <div class="actions">
             <button type="button" class="action" data-action="focus" data-unit="${escapeHtml(detail.id)}">聚焦</button>
             ${assignButton}
             <button type="button" class="action" data-action="remove" data-unit="${escapeHtml(detail.id)}">移出选择</button>
           </div>
+        </div>
+      `;
+    }
+
+    /** 能力区：core 未给 capabilities 时显示「未评估」，绝不用 power 冒充六维。 */
+    /**
+     * 队列列表的一条（task_047）：徽标（相位语义色）+ 摘要（截断）+ 动作按钮。
+     * 取消按钮仅 queued（running 不强杀 —— 点不到即提示，core 拒绝时另有 Notice）；
+     * 重派按钮仅 failed（completed 已有产出、cancelled 是主动放弃，都无需重派入口）。
+     */
+    private renderTaskItem(item: TaskQueueItemModel): string {
+      const cancel = item.canCancel
+        ? `<button type="button" class="action" data-action="task-queue-cancel" data-task="${escapeHtml(item.id)}">取消</button>`
+        : '';
+      const reassign = item.canReassign
+        ? `<button type="button" class="action" data-action="task-reassign" data-task="${escapeHtml(item.id)}">重派</button>`
+        : '';
+      return `
+        <div class="task-item" data-task="${escapeHtml(item.id)}" data-status="${escapeHtml(item.status)}">
+          <span class="task-badge" data-task-status="${escapeHtml(item.status)}">${escapeHtml(item.statusLabel)}</span>
+          <span class="task-summary" title="${escapeHtml(item.prompt)}">${escapeHtml(item.summary)}</span>
+          <span class="task-item-actions">${cancel}${reassign}</span>
         </div>
       `;
     }

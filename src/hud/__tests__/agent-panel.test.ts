@@ -494,6 +494,127 @@ describe('派任务表单：提交 → 命令端口，取消 → 清理', () => 
   });
 });
 
+// ============================================================================
+// 队列完整列表：取消按钮与重派按钮（@since v3.23，task_047）
+// ============================================================================
+
+describe('队列完整列表：徽标 + 取消/重派按钮的条件渲染与命令派发', () => {
+  const taskOf = (
+    id: string,
+    status: CharacterTask['status'],
+    prompt: string
+  ): CharacterTask => ({
+    id,
+    characterId: 'c-neo',
+    prompt,
+    status,
+    createdAt: Number(id.slice(1)),
+    startedAt: null,
+    endedAt: null,
+    output: '',
+  });
+
+  const selectedWithTasks = (tasks: readonly CharacterTask[]): WorldState =>
+    makeState({
+      tasks: [...tasks],
+      selection: { unitIds: ['u-neo'], previewUnitIds: [], revision: 1 },
+    });
+
+  const clickTaskAction = (panel: StratAgentPanelElement, action: string, taskId: string): void => {
+    const btn = panel.shadowRoot?.querySelector<HTMLButtonElement>(
+      `button[data-action="${action}"][data-task="${taskId}"]`
+    );
+    if (!btn) throw new Error(`队列按钮未渲染: ${action}/${taskId}`);
+    btn.click();
+  };
+
+  test('每条任务带状态徽标；取消按钮仅 queued，重派按钮仅 failed（running 点不到即提示）', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    harness.emit(
+      selectedWithTasks([
+        taskOf('t1', 'queued', '排队的任务'),
+        taskOf('t2', 'running', '正在跑的'),
+        taskOf('t3', 'failed', '失败的任务'),
+        taskOf('t4', 'completed', '完成的'),
+        taskOf('t5', 'cancelled', '取消的'),
+      ])
+    );
+
+    const items = panel.shadowRoot?.querySelectorAll('.task-item') ?? [];
+    expect(Array.from(items).map((el) => el.getAttribute('data-task'))).toEqual([
+      't1', 't2', 't5', 't4', 't3', // 在办 FIFO 序在前，终态按时间倒序在后（新的在前）
+    ]);
+    expect(items[0].querySelector('.task-badge')?.textContent).toContain('排队中');
+    expect(items[1].querySelector('.task-badge')?.textContent).toContain('执行中');
+    // items[2] = t5 cancelled / items[3] = t4 completed / items[4] = t3 failed
+    expect(items[2].querySelector('.task-badge')?.textContent).toContain('已取消');
+    expect(items[4].querySelector('.task-badge')?.textContent).toContain('已失败');
+
+    // 取消按钮只在 queued 条目上；重派按钮只在 failed 条目上
+    expect(panel.shadowRoot?.querySelector('button[data-action="task-queue-cancel"][data-task="t1"]')).not.toBeNull();
+    expect(panel.shadowRoot?.querySelector('button[data-action="task-queue-cancel"][data-task="t2"]')).toBeNull();
+    expect(panel.shadowRoot?.querySelector('button[data-action="task-queue-cancel"][data-task="t3"]')).toBeNull();
+    expect(panel.shadowRoot?.querySelector('button[data-action="task-reassign"][data-task="t3"]')).not.toBeNull();
+    expect(panel.shadowRoot?.querySelector('button[data-action="task-reassign"][data-task="t1"]')).toBeNull();
+    expect(panel.shadowRoot?.querySelector('button[data-action="task-reassign"][data-task="t4"]')).toBeNull();
+    expect(panel.shadowRoot?.querySelector('button[data-action="task-reassign"][data-task="t5"]')).toBeNull();
+  });
+
+  test('点「取消」→ task.cancel 经命令端口发出（载荷是任务 id）', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    harness.emit(selectedWithTasks([taskOf('t1', 'queued', '排队的任务')]));
+    clickTaskAction(panel, 'task-queue-cancel', 't1');
+
+    expect(harness.commands).toEqual([{ type: 'task.cancel', taskId: 't1' }]);
+  });
+
+  test('点「重派」→ task.assign 同 prompt 新任务（复用派发表单的命令构造，prompt 是全文）', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    const longPrompt = '重写这份很长的侦察报告并同步到知识库'.repeat(3);
+    harness.emit(selectedWithTasks([taskOf('t1', 'failed', longPrompt)]));
+    clickTaskAction(panel, 'task-reassign', 't1');
+
+    expect(harness.commands).toEqual([
+      { type: 'task.assign', characterId: 'c-neo', prompt: longPrompt },
+    ]);
+  });
+
+  test('无任务的角色不渲染列表区（读数「空闲」，没有空列表壳）', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    harness.emit(selectedWithTasks([]));
+    expect(text(panel, 'task-queue')).toBe('空闲');
+    expect(panel.shadowRoot?.querySelector('[data-role="task-list"]')).toBeNull();
+  });
+
+  test('取消落地后（相位广播）列表重画：取消按钮消失，徽标变「已取消」（签名覆盖条目变化）', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    harness.emit(selectedWithTasks([taskOf('t1', 'queued', '排队的任务')]));
+    const before = panel.shadowRoot?.querySelector('.task-item');
+    expect(before?.getAttribute('data-status')).toBe('queued');
+
+    harness.emit(
+      selectedWithTasks([
+        { ...taskOf('t1', 'cancelled', '排队的任务'), endedAt: 9, output: '任务在排队时被取消' },
+      ])
+    );
+    const after = panel.shadowRoot?.querySelector('.task-item');
+    expect(after).not.toBe(before);
+    expect(after?.getAttribute('data-status')).toBe('cancelled');
+    expect(after?.querySelector('.task-badge')?.textContent).toContain('已取消');
+    expect(panel.shadowRoot?.querySelector('button[data-action="task-queue-cancel"]')).toBeNull();
+  });
+});
+
 describe('队列可见性：当前任务摘要 + 排队数', () => {
   const taskOf = (id: string, status: 'queued' | 'running', prompt: string): CharacterTask => ({
     id,

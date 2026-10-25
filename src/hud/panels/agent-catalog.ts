@@ -24,6 +24,10 @@
  *
  * @since v3.17（task_038）追加：角色任务队列可见性 —— WorldState.tasks → 当前任务摘要（40 字截断）
  *   + 排队数，以及派发表单的命令构造 buildTaskAssignCommand（表单 UI 在 agent-panel.ts）。
+ * @since v3.23（task_047）队列读数升级**完整列表**：每条任务（在办全显 + 最近终态）带
+ *   状态徽标 / 摘要 / 取消按钮（仅 queued）/ 重派按钮（仅 failed），以及 task.cancel 的
+ *   命令构造 buildTaskCancelCommand。重派 = buildTaskAssignCommand(同 prompt) 派一条新任务，
+ *   不复用旧任务 id（037 起的纪律：失败不自动重试，重派是用户显式动作的新任务）。
  */
 
 import {
@@ -33,6 +37,7 @@ import {
   type HudCommand,
   type MissionPhase,
   type MissionView,
+  type TaskStatus,
   type UnitCapabilitiesView,
   type UnitStatus,
   type UnitView,
@@ -130,13 +135,51 @@ export interface GrowthModel {
 }
 
 /**
+ * 队列列表里最多显示多少条终态历史（@since v3.23，task_047）。
+ * why 限三条：在办任务全量显示（排队纪律可见性是本任务的意义），但终态是历史 ——
+ * 全画会把卡片撑成长列表（上限 MAX_TASKS=100）；三条足够覆盖「看一眼最近结果 /
+ * 找到失败任务点重派」，更早的在 SQLite 审计里。
+ */
+export const MAX_VISIBLE_SETTLED_TASKS = 3;
+
+/** 任务相位 → 列表徽标文案（词表即契约，与 task-output-catalog 的徽标口径同源不同表）。 */
+export const TASK_STATUS_LABELS: Readonly<Record<TaskStatus, string>> = {
+  queued: '排队中',
+  running: '执行中',
+  completed: '已完成',
+  failed: '已失败',
+  cancelled: '已取消',
+};
+
+/**
+ * 队列列表的一条（@since v3.23，task_047）。prompt 保留**全文**（重派载荷 —— 截断后的
+ * 摘要不该成为新任务的指令）；summary 是渲染用截断。
+ */
+export interface TaskQueueItemModel {
+  readonly id: string;
+  /** 渲染用摘要（40 字截断）。 */
+  readonly summary: string;
+  /** 完整指令原文（重派时作为 task.assign 的 payload）。 */
+  readonly prompt: string;
+  readonly status: TaskStatus;
+  readonly statusLabel: string;
+  /** 仅 queued：排队取消（running 不强杀，取消按钮不渲染）。 */
+  readonly canCancel: boolean;
+  /** 仅 failed：重派入口（同 prompt 派新任务）。 */
+  readonly canReassign: boolean;
+}
+
+/**
  * 角色任务队列的卡片读数（@since v3.17，task_038）。
  * summary = 当前任务（running 优先，否则 FIFO 队首的 queued）的指令摘要（40 字截断）；
  * waiting = 除当前任务外在排队的条数（如「+2」）。两者都是**读数**，不是任务真相。
+ * @since v3.23（task_047）追加 items：完整列表（在办在前按 FIFO 序，终态在后按时间倒序
+ * 取最近 MAX_VISIBLE_SETTLED_TASKS 条）—— 取消 / 重派按钮的条件渲染挂在条目上。
  */
 export interface CharacterTaskQueueModel {
   readonly summary: string | null;
   readonly waiting: number;
+  readonly items: readonly TaskQueueItemModel[];
 }
 
 /** 单选形态的详情模型。 */
@@ -274,27 +317,50 @@ export function truncateTaskSummary(prompt: string, maxLen: number = TASK_SUMMAR
   return trimmed.length <= maxLen ? trimmed : `${trimmed.slice(0, maxLen)}…`;
 }
 
-/** 在办任务（queued / running）。终态不进队列读数 —— 它们是历史，不是排队。 */
+/** 在办任务（queued / running）。终态（completed / failed / cancelled）不进队列读数 —— 它们是历史，不是排队。 */
 function isActiveTask(task: CharacterTask): boolean {
   return task.status === 'queued' || task.status === 'running';
 }
 
+/** CharacterTask → 列表条目（纯投影：词表标签 + 按钮条件 + 摘要截断）。 */
+function toTaskItem(task: CharacterTask): TaskQueueItemModel {
+  return {
+    id: task.id,
+    summary: truncateTaskSummary(task.prompt),
+    prompt: task.prompt,
+    status: task.status,
+    statusLabel: TASK_STATUS_LABELS[task.status],
+    canCancel: task.status === 'queued',
+    canReassign: task.status === 'failed',
+  };
+}
+
 /**
- * WorldState.tasks → 某角色的队列读数。纯函数。
+ * WorldState.tasks → 某角色的队列读数 + 完整列表。纯函数。
  * 当前任务取 running（有正在跑的优先），否则取队首 queued（FIFO 语义与 app 层 task-service 一致）；
- * tasks 缺省 / 没有在办任务 → 空读数（卡片显示空闲，不编造）。
+ * items：在办全显（数组序即 FIFO 序），终态按时间倒序取最近 MAX_VISIBLE_SETTLED_TASKS 条
+ *   （新的在前 —— 用户最关心刚收尾的那条：失败要重派、完成看结果）。
+ * tasks 缺省 / 没有任何任务 → 空读数（卡片显示空闲，不编造）。
  */
 export function resolveCharacterTaskQueue(
   tasks: readonly CharacterTask[] | undefined,
   characterId: string
 ): CharacterTaskQueueModel {
-  const active = (tasks ?? []).filter((task) => task.characterId === characterId && isActiveTask(task));
+  const own = (tasks ?? []).filter((task) => task.characterId === characterId);
+  const active = own.filter(isActiveTask);
   const current = active.find((task) => task.status === 'running') ?? active[0];
-  if (!current) return { summary: null, waiting: 0 };
-  return { summary: truncateTaskSummary(current.prompt), waiting: active.length - 1 };
+  const settled = own
+    .filter((task) => !isActiveTask(task))
+    .slice(-MAX_VISIBLE_SETTLED_TASKS)
+    .reverse();
+  return {
+    summary: current ? truncateTaskSummary(current.prompt) : null,
+    waiting: current ? active.length - 1 : 0,
+    items: [...active, ...settled].map(toTaskItem),
+  };
 }
 
-const EMPTY_TASK_QUEUE: CharacterTaskQueueModel = { summary: null, waiting: 0 };
+const EMPTY_TASK_QUEUE: CharacterTaskQueueModel = { summary: null, waiting: 0, items: [] };
 
 // ============================================================================
 // WorldState → 视图模型
@@ -387,6 +453,17 @@ export function buildTaskAssignCommand(
   return { type: 'task.assign', characterId, prompt: trimmed };
 }
 
+/**
+ * 排队取消 → task.cancel 命令（@since v3.23，task_047）。
+ * 返回 null = 不发：空 taskId（渲染层不该产生，兑底不发比发一条空命令安全）。
+ * 相位裁决在 core 状态机（仅 queued 生效）；取消按钮只对 queued 条目渲染，正常路径
+ * 不需要处理拒绝 —— 真被拒（状态恰好刚变）时 core 发 Notice 提示，UI 无需额外分支。
+ */
+export function buildTaskCancelCommand(taskId: string | null | undefined): HudCommand | null {
+  if (!taskId) return null;
+  return { type: 'task.cancel', taskId };
+}
+
 // ============================================================================
 // 渲染签名（perf：WorldState 高频广播，侧栏只渲染真正变了的那次）
 // ============================================================================
@@ -414,8 +491,12 @@ export function agentPanelSignature(state: WorldState | null): string {
     const capSig = caps ? `${caps.overall}/${caps.level}/${CAPABILITY_DIMENSIONS.map((k) => caps.dimensions[k] ?? 0).join('.')}` : '-';
     // @since v3.17（task_038）：队列读数进签名 —— 任务相位变了（排队/开工/收尾）卡片必须重画，
     // 没被选中的单位任务怎么变都与侧栏无关，不进签名（与下方读数同一取舍）。
+    // @since v3.23（task_047）：列表条目（id:status）进签名 —— 取消/重派后的相位变化必须重画
+    // 列表（summary+waiting 可能不变：如队首取消后 waiting-1 但新队首摘要不同；条目才是全集）。
     const queue = unit.characterId ? resolveCharacterTaskQueue(state.tasks, unit.characterId) : null;
-    const queueSig = queue ? `${queue.summary ?? '-'}+${queue.waiting}` : '-';
+    const queueSig = queue
+      ? `${queue.summary ?? '-'}+${queue.waiting}#${queue.items.map((item) => `${item.id}:${item.status}`).join('.')}`
+      : '-';
     parts.push(
       [
         id,

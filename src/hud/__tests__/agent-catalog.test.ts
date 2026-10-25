@@ -15,6 +15,7 @@ import {
   agentPanelSignature,
   buildAgentCommand,
   buildTaskAssignCommand,
+  buildTaskCancelCommand,
   MAX_VISIBLE_GROUP_ROWS,
   resolveAgentPanel,
   resolveCharacterTaskQueue,
@@ -318,10 +319,10 @@ describe('角色任务队列读数：WorldState.tasks → 当前摘要 + 排队�
   });
 
   test('tasks 缺省 / 没有在办任务 → 空读数（不编造）', () => {
-    expect(resolveCharacterTaskQueue(undefined, 'c-neo')).toEqual({ summary: null, waiting: 0 });
+    expect(resolveCharacterTaskQueue(undefined, 'c-neo')).toEqual({ summary: null, waiting: 0, items: [] });
     expect(
       resolveCharacterTaskQueue([task('t1', 'completed', '已收尾')], 'c-neo')
-    ).toEqual({ summary: null, waiting: 0 });
+    ).toEqual({ summary: null, waiting: 0, items: [expect.objectContaining({ id: 't1', status: 'completed' })] });
   });
 
   test('running 优先于 queued：当前任务是正在跑的那条', () => {
@@ -404,7 +405,64 @@ describe('单选详情的队列字段（task_038）', () => {
     });
     const plain = resolveAgentPanel(stateNoCharacter);
     expect(plain.detail?.characterId).toBeNull();
-    expect(plain.detail?.taskQueue).toEqual({ summary: null, waiting: 0 });
+    expect(plain.detail?.taskQueue).toEqual({ summary: null, waiting: 0, items: [] });
+  });
+});
+
+// ============================================================================
+// 队列完整列表 + 取消/重派命令（@since v3.23，task_047）
+// ============================================================================
+
+describe('队列完整列表：items 投影（在办在前，终态最近三条倒序）', () => {
+  const task = (id: string, status: CharacterTask['status'], prompt: string, createdAt = 1): CharacterTask => ({
+    id,
+    characterId: 'c-neo',
+    prompt,
+    status,
+    createdAt,
+    startedAt: null,
+    endedAt: null,
+    output: '',
+  });
+
+  test('在办全显（FIFO 序）+ 终态最近三条倒序；徽标与按钮条件挂在条目上', () => {
+    const queue = resolveCharacterTaskQueue(
+      [
+        task('t0', 'completed', '被挤出的最老历史', 0),
+        task('t1', 'completed', '很老的完成', 1),
+        task('t2', 'failed', '要重派的失败', 2),
+        task('t3', 'cancelled', '刚取消的', 3),
+        task('t4', 'queued', '排队的任务', 4),
+        task('t5', 'running', '正在跑的', 5),
+      ],
+      'c-neo'
+    );
+
+    expect(queue.items.map((i) => i.id)).toEqual(['t4', 't5', 't3', 't2', 't1']);
+    // 在办在前保持 FIFO（数组序），终态取最近三条（t0 被挤出）、新的在前
+    const byId = Object.fromEntries(queue.items.map((i) => [i.id, i]));
+    expect(byId.t4).toMatchObject({ canCancel: true, canReassign: false, statusLabel: '排队中' });
+    expect(byId.t5).toMatchObject({ canCancel: false, canReassign: false, statusLabel: '执行中' }); // running 不可取消
+    expect(byId.t3).toMatchObject({ canCancel: false, canReassign: false, statusLabel: '已取消' });
+    expect(byId.t2).toMatchObject({ canCancel: false, canReassign: true, statusLabel: '已失败' }); // failed 有重派
+    expect(byId.t0).toBeUndefined(); // 超出三条窗口的老历史不进列表
+  });
+
+  test('重派载荷是 prompt 全文不是摘要（截断后的文字不该成为新任务的指令）', () => {
+    const long = '长'.repeat(60);
+    const queue = resolveCharacterTaskQueue([task('t1', 'failed', long)], 'c-neo');
+    const item = queue.items.find((i) => i.id === 't1');
+    expect(item?.summary.length).toBe(41); // 渲染用截断
+    expect(item?.prompt).toBe(long); // 载荷用全文
+  });
+});
+
+describe('buildTaskCancelCommand（task_047）', () => {
+  test('有 taskId → task.cancel 命令；空值 → null（渲染兑底不发空命令）', () => {
+    expect(buildTaskCancelCommand('task_1')).toEqual({ type: 'task.cancel', taskId: 'task_1' });
+    expect(buildTaskCancelCommand('')).toBeNull();
+    expect(buildTaskCancelCommand(null)).toBeNull();
+    expect(buildTaskCancelCommand(undefined)).toBeNull();
   });
 });
 

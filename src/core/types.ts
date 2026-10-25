@@ -202,9 +202,12 @@ export type ConfirmDecision = 'accept' | 'reject';
  * @since v3.16 角色任务相位。状态机迁移规则实现在 core/task/machine.ts，本文件只冻结取值：
  *   queued（已排队待执行）→ running（正在经 transport 执行）→ completed / failed（终态）。
  *   failed 允许从 queued 直达（守门拦截：agent 未检出等 —— 派了但注定跑不起来）。
- * **失败不自动重试**：重新派发是用户的显式动作（手动重派 UI 归 038 后续）。
+ *   @since v3.23（task_047）增 cancelled：**仅 queued 可取消**（排队取消；running 不强杀 ——
+ *   中止在跑任务是另一个动作的事，取消按钮对 running 不渲染，core 侧拒绝并回码）。
+ *   cancelled 与 completed / failed 同为终态：任何动作都判非法（不改写历史）。
+ * **失败不自动重试**：重新派发是用户的显式动作（038 起的派发表单 / 047 的失败重派按钮）。
  */
-export type TaskStatus = 'queued' | 'running' | 'completed' | 'failed';
+export type TaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 /**
  * @since v3.16 一条派发给角色的任务（CharacterTask）。
@@ -214,7 +217,9 @@ export type TaskStatus = 'queued' | 'running' | 'completed' | 'failed';
  * 执行、产出文本结果）。两者各自独立，互不引用。
  *
  * output 语义：completed = 执行结果**摘要**（全文在 SQLite tasks 表）；failed = 失败原因；
- * queued / running = 空串。单位忙闲由任务派生：有 running 任务 → 单位 status='busy'。
+ * @since v3.23 cancelled = 占位文案「任务在排队时被取消」（状态机写死 —— 取消没有外部原因可传，
+ * 且与 failed 同一口径：终态 output 永不为空串，读的人不猜）；queued / running = 空串。
+ * 单位忙闲由任务派生：有 running 任务 → 单位 status='busy'。
  */
 export interface CharacterTask {
   readonly id: string;
@@ -831,7 +836,14 @@ export type HudCommand =
    *   不满足时任务直接落 failed（状态里看得见原因），不是拒绝入队。
    * UI 入口（派发表单）归 038；本命令在 core 落地后，任何总线调用方都能派任务。
    */
-  | { type: 'task.assign'; characterId: string; prompt: string };
+  | { type: 'task.assign'; characterId: string; prompt: string }
+  /**
+   * @since v3.23 排队任务取消（task_047）：把一条 **queued** 任务收尾成 cancelled。
+   * 只对 queued 生效：running 不强杀（取消在跑任务是「先停止」另一件事，core 侧拒绝并回
+   * Notice 提示）；completed / failed / cancelled 是终态，重复取消幂等拒绝（不改写历史）。
+   * 载荷口径：taskId 必须命中 WorldState.tasks。UI 的取消按钮只对 queued 条目渲染（047）。
+   */
+  | { type: 'task.cancel'; taskId: string };
 
 /**
  * @since v3.18 经验来源词表（`exp.gained` 事件的 source 字段，task_039）。
@@ -892,6 +904,13 @@ export type WorldEvent =
   | { type: 'task.started'; task: CharacterTask }
   | { type: 'task.completed'; task: CharacterTask }
   | { type: 'task.failed'; task: CharacterTask }
+  /**
+   * @since v3.23（task_047）排队任务取消事件 —— 与上面四条生命周期事件同一形状（携带迁移后
+   * 快照）。消费者仍是 app 层：task-service（把它从待执行队列剔除，防「取消与出队同帧」竞态）
+   * 与任务落库（cancelled 快照随事件落）。不发 exp.gained：取消的任务没跑过，「做过就有收获」
+   * 的口径覆盖不到它，也不触发 onTaskSettled 回流（没有可回的结果）。
+   */
+  | { type: 'task.cancelled'; task: CharacterTask }
   /**
    * @since v3.18 经验获得事件（task_039，规格指定走 WorldEvent 通道 —— 与 task.* 同一先例：
    *   发出方是 app 层服务（task-service / chat-service），消费者是养成模块）。

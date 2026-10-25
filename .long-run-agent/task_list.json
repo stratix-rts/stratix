@@ -1734,6 +1734,163 @@
       ],
       "priority": 1,
       "updated_at": "2026-10-25T08:15:00.000000Z"
+    },
+    {
+      "id": "task_046",
+      "title": "任务实时输出流",
+      "status": "completed",
+      "depends_on": [
+        "task_037"
+      ],
+      "priority": 2,
+      "updated_at": "2026-10-25T10:38:53.000000Z"
+    },
+    {
+      "id": "task_047",
+      "title": "任务队列管理",
+      "status": "completed",
+      "depends_on": [
+        "task_037"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_048",
+      "title": "任务成果物解析",
+      "status": "pending",
+      "depends_on": [
+        "task_046"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_049",
+      "title": "任务审批门",
+      "status": "pending",
+      "depends_on": [
+        "task_046"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_050",
+      "title": "派发智能推荐",
+      "status": "pending",
+      "depends_on": [
+        "task_037"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_051",
+      "title": "多agent流水线",
+      "status": "pending",
+      "depends_on": [
+        "task_046",
+        "task_050"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_052",
+      "title": "agent互聊",
+      "status": "pending",
+      "depends_on": [
+        "task_035"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_053",
+      "title": "上下文注入中间件",
+      "status": "pending",
+      "depends_on": [
+        "task_035",
+        "task_037"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_054",
+      "title": "agent健康监测",
+      "status": "pending",
+      "depends_on": [
+        "task_035"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_055",
+      "title": "会话续接增强",
+      "status": "pending",
+      "depends_on": [
+        "task_035"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_056",
+      "title": "自定义agent注册",
+      "status": "pending",
+      "depends_on": [
+        "task_023"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_057",
+      "title": "小地图",
+      "status": "pending",
+      "depends_on": [
+        "task_045"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_058",
+      "title": "快捷键系统",
+      "status": "pending",
+      "depends_on": [
+        "task_045"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_059",
+      "title": "角色编辑中心",
+      "status": "pending",
+      "depends_on": [
+        "task_041"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_060",
+      "title": "音效反馈系统",
+      "status": "pending",
+      "depends_on": [
+        "task_039"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_061",
+      "title": "角色成长看板",
+      "status": "pending",
+      "depends_on": [
+        "task_039",
+        "task_040"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_062",
+      "title": "单位表现打磨",
+      "status": "pending",
+      "depends_on": [
+        "task_045"
+      ],
+      "priority": 2
     }
   ]
 }
