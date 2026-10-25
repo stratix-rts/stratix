@@ -88,6 +88,7 @@ import {
 } from './chat-service';
 import type { TransportEvent } from './cli-transport/transport';
 import { defaultExpWeight } from './exp-config';
+import { resolveStratixContextBlock, type StratixContextSource } from './stratix-context';
 
 // ============================================================================
 // 端口（结构类型 —— 不 import hud，与 034 组件的互聊扩展面保持形状一致）
@@ -202,6 +203,12 @@ export interface AgentChatServiceDeps {
   readonly persistMessage?: (message: ChatPersistedMessage) => void;
   /** 经验权重函数（缺省 exp-config 转发层 → core/progression；口径见文件头）。 */
   readonly expWeight?: (source: ExpSource) => number;
+  /**
+   * context-source 注入件（@since v3.29，task_053；缺省不注入）。零 IO（组合根组装）。
+   * 互聊开题 = 发起者的首发 → 同样附 <stratix-context>（各自角色自己的快照；
+   * 双方各自的首次回合都算各自 session 的首发，同 chat 口径只在首发注入）。
+   */
+  readonly provideContext?: StratixContextSource;
   /** 单回合超时；缺省 DEFAULT_PEER_TURN_TIMEOUT_MS。 */
   readonly timeoutMs?: number;
   /** 日志口；缺省静默。 */
@@ -325,8 +332,16 @@ export function createAgentChatService(deps: AgentChatServiceDeps): AgentChatSer
 
     const session: PeerSessionState = sessions.get(character.id) ?? { sessionId: null };
     sessions.set(character.id, session);
-    // 035 语义：首发内嵌 persona，续发只发原文。
-    const prompt = session.sessionId === null ? buildFirstPrompt(character, turnPrompt) : turnPrompt;
+    // 035 语义：首发内嵌 persona，续发只发原文。task_053：首发同时附战场现状块
+    //（上下文一次性注入 —— 会话里有了就不再重拼；块取件异常吞掉不绑架讨论）。
+    const prompt =
+      session.sessionId === null
+        ? buildFirstPrompt(
+            character,
+            turnPrompt,
+            resolveStratixContextBlock(deps.provideContext, character.id, logger) || undefined
+          )
+        : turnPrompt;
 
     const controller = new AbortController();
     discussion.activeTurn = controller;

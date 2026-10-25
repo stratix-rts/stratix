@@ -115,6 +115,9 @@ export function recordToCharacterView(record: PersistedCharacterRecord): Charact
     skinId: record.skinId,
     externalSessionId: record.externalSessionId,
     appearance: parseAppearanceJson(record.appearanceJson),
+    // @since v3.29（task_053）：context_enabled 列镜像；false 才写（true 是缺省语义，
+    // 不写字段让老快照 / 新代码任意组合都等价 —— 缺省即开，两侧归一口径）。
+    ...(record.contextEnabled === false ? { contextEnabled: false } : {}),
   };
 }
 
@@ -131,6 +134,8 @@ export function characterViewToRecord(character: CharacterView, createdAt: numbe
     bodyType: character.appearance?.bodyType ?? null,
     skinId: character.skinId ?? null,
     externalSessionId: character.externalSessionId ?? null,
+    // 缺省（undefined/null）≡ true（@since v3.29，task_053）。
+    contextEnabled: character.contextEnabled ?? true,
     createdAt,
   };
 }

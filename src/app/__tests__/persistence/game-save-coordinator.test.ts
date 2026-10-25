@@ -124,6 +124,7 @@ describe('recordToCharacterView / characterViewToRecord', () => {
       bodyType: 'male',
       skinId: 'skin_forge',
       externalSessionId: null,
+      contextEnabled: true,
       createdAt: 1,
     };
     const view = recordToCharacterView(record);
@@ -135,7 +136,7 @@ describe('recordToCharacterView / characterViewToRecord', () => {
   it('不认识的 agentKind 归为未绑定（null），不编造种类', () => {
     const view = recordToCharacterView({
       id: 'c1', name: 'x', agentKind: 'skynet', persona: '', level: 1, exp: 0,
-      appearanceJson: null, bodyType: null, skinId: null, externalSessionId: null, createdAt: 1,
+      appearanceJson: null, bodyType: null, skinId: null, externalSessionId: null, contextEnabled: true, createdAt: 1,
     });
     expect(view?.agentKind).toBeNull();
   });
@@ -143,11 +144,11 @@ describe('recordToCharacterView / characterViewToRecord', () => {
   it('脏行（id 或 name 为空）→ null', () => {
     expect(recordToCharacterView({
       id: '', name: 'x', agentKind: null, persona: '', level: 1, exp: 0,
-      appearanceJson: null, bodyType: null, skinId: null, externalSessionId: null, createdAt: 1,
+      appearanceJson: null, bodyType: null, skinId: null, externalSessionId: null, contextEnabled: true, createdAt: 1,
     })).toBeNull();
     expect(recordToCharacterView({
       id: 'c1', name: '', agentKind: null, persona: '', level: 1, exp: 0,
-      appearanceJson: null, bodyType: null, skinId: null, externalSessionId: null, createdAt: 1,
+      appearanceJson: null, bodyType: null, skinId: null, externalSessionId: null, contextEnabled: true, createdAt: 1,
     })).toBeNull();
   });
 });
@@ -169,7 +170,7 @@ describe('buildRestoreInjection', () => {
       characters: [
         {
           id: 'character_1', name: '阿锻', agentKind: 'kimi', persona: 'p', level: 1, exp: 0,
-          appearanceJson: null, bodyType: null, skinId: 's', externalSessionId: null, createdAt: 1,
+          appearanceJson: null, bodyType: null, skinId: 's', externalSessionId: null, contextEnabled: true, createdAt: 1,
         },
       ],
       unitPositions: [{ characterId: 'character_1', x: 10, y: 20 }],
@@ -187,11 +188,11 @@ describe('buildRestoreInjection', () => {
       characters: [
         {
           id: '', name: '脏行', agentKind: null, persona: '', level: 1, exp: 0,
-          appearanceJson: null, bodyType: null, skinId: null, externalSessionId: null, createdAt: 1,
+          appearanceJson: null, bodyType: null, skinId: null, externalSessionId: null, contextEnabled: true, createdAt: 1,
         },
         {
           id: 'character_ok', name: '好的', agentKind: null, persona: '', level: 1, exp: 0,
-          appearanceJson: null, bodyType: null, skinId: null, externalSessionId: null, createdAt: 2,
+          appearanceJson: null, bodyType: null, skinId: null, externalSessionId: null, contextEnabled: true, createdAt: 2,
         },
       ],
       unitPositions: [
@@ -207,7 +208,7 @@ describe('buildRestoreInjection', () => {
   it('超过契约上限（MAX_CHARACTERS）的多余档案不恢复', () => {
     const rows = Array.from({ length: 70 }, (_, i) => ({
       id: `c_${i}`, name: `n${i}`, agentKind: null, persona: '', level: 1, exp: 0,
-      appearanceJson: null, bodyType: null, skinId: null, externalSessionId: null, createdAt: i,
+      appearanceJson: null, bodyType: null, skinId: null, externalSessionId: null, contextEnabled: true, createdAt: i,
     }));
     const injection = buildRestoreInjection({ characters: rows, unitPositions: [] });
     expect(injection.characters.length).toBeLessThanOrEqual(64);
@@ -225,7 +226,7 @@ describe('coordinator.restore', () => {
         {
           id: 'character_1', name: '阿锻', agentKind: 'claude-code', persona: 'p', level: 2, exp: 120,
           appearanceJson: '{"bodyType":"male","parts":{}}', bodyType: 'male', skinId: 's',
-          externalSessionId: null, createdAt: 1,
+          externalSessionId: null, contextEnabled: true, createdAt: 1,
         },
       ],
       unitPositions: [{ characterId: 'character_1', x: 5, y: 6 }],

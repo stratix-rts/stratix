@@ -48,6 +48,12 @@ export interface PersistedCharacterRecord {
   readonly skinId: string | null;
   /** 外部会话 id（各家 CLI 原样透传）；未建立会话为 null。 */
   readonly externalSessionId: string | null;
+  /**
+   * 角色级上下文注入开关（@since v3.29，task_053；context_enabled 列镜像）。
+   * true = 对话 / 任务首发附 <stratix-context> 块。缺省 true（开关语义的归一在
+   * game-save-coordinator：CharacterView.contextEnabled 缺省 ≡ true）。
+   */
+  readonly contextEnabled: boolean;
   readonly createdAt: number;
 }
 
@@ -94,6 +100,7 @@ export function ensureGameSaveTables(db: SqliteDatabaseLike): void {
       body_type TEXT,
       skin_id TEXT,
       external_session_id TEXT,
+      context_enabled INTEGER NOT NULL DEFAULT 1,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
@@ -105,6 +112,18 @@ export function ensureGameSaveTables(db: SqliteDatabaseLike): void {
     );
     CREATE INDEX IF NOT EXISTS idx_characters_kind ON ${CHARACTERS_TABLE}(kind);
   `);
+  // v9 兜底（task_053）：旧库（v8 及以前的 characters 表）补 context_enabled。
+  // DEFAULT 1：存量行一律归「开」—— 缺省即开的开关语义，迁移不猜旧档案偏好。
+  ensureContextEnabledColumn(db);
+}
+
+/** 旧 characters 表补 context_enabled 列（存在性探测 → ALTER ADD；幂等）。 */
+function ensureContextEnabledColumn(db: SqliteDatabaseLike): void {
+  const rows = db.prepare(`PRAGMA table_info(${CHARACTERS_TABLE})`).all() as Array<Record<string, unknown>>;
+  const hasColumn = rows.some((row) => String(row.name) === 'context_enabled');
+  if (!hasColumn) {
+    db.exec(`ALTER TABLE ${CHARACTERS_TABLE} ADD COLUMN context_enabled INTEGER NOT NULL DEFAULT 1`);
+  }
 }
 
 /**
@@ -115,8 +134,8 @@ export function ensureGameSaveTables(db: SqliteDatabaseLike): void {
 export function upsertCharacters(db: SqliteDatabaseLike, records: readonly PersistedCharacterRecord[]): void {
   const stmt = db.prepare(`
     INSERT INTO ${CHARACTERS_TABLE}
-      (id, name, kind, persona, level, exp, appearance, body_type, skin_id, external_session_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, name, kind, persona, level, exp, appearance, body_type, skin_id, external_session_id, context_enabled, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       name = excluded.name,
       kind = excluded.kind,
@@ -127,6 +146,7 @@ export function upsertCharacters(db: SqliteDatabaseLike, records: readonly Persi
       body_type = excluded.body_type,
       skin_id = excluded.skin_id,
       external_session_id = excluded.external_session_id,
+      context_enabled = excluded.context_enabled,
       updated_at = excluded.updated_at
   `);
   const now = Date.now();
@@ -142,6 +162,7 @@ export function upsertCharacters(db: SqliteDatabaseLike, records: readonly Persi
       r.bodyType,
       r.skinId,
       r.externalSessionId,
+      r.contextEnabled ? 1 : 0,
       r.createdAt,
       now
     );
@@ -151,7 +172,7 @@ export function upsertCharacters(db: SqliteDatabaseLike, records: readonly Persi
 /** 全量读角色档案（按创建时间升序 —— 恢复后的顺序与建档顺序一致，HUD 列表不跳变）。 */
 export function loadCharacters(db: SqliteDatabaseLike): PersistedCharacterRecord[] {
   const rows = db
-    .prepare(`SELECT id, name, kind, persona, level, exp, appearance, body_type, skin_id, external_session_id, created_at
+    .prepare(`SELECT id, name, kind, persona, level, exp, appearance, body_type, skin_id, external_session_id, context_enabled, created_at
               FROM ${CHARACTERS_TABLE} ORDER BY created_at ASC, id ASC`)
     .all() as Array<Record<string, unknown>>;
   return rows.map((row) => ({
@@ -168,6 +189,8 @@ export function loadCharacters(db: SqliteDatabaseLike): PersistedCharacterRecord
       row.external_session_id === null || row.external_session_id === undefined
         ? null
         : String(row.external_session_id),
+    // 旧行无列（迁移前的竞态窗口）/ 值异常都归 true —— 缺省即开。
+    contextEnabled: Number(row.context_enabled ?? 1) !== 0,
     createdAt: Number(row.created_at ?? 0),
   }));
 }

@@ -34,7 +34,12 @@ const DEFAULT_FILENAME = 'stratix.db';
  * 写入语义：相位快照不带 pipelineId、stamp 注入件带 → CASE 守卫只进不抹，详见
  * task-record-dao.ts 文件头。
  */
-const TARGET_SCHEMA_VERSION = 8;
+/**
+ * v9（@since v3.29，task_053）：characters 增 context_enabled 列（角色级上下文注入开关，
+ * INTEGER NOT NULL DEFAULT 1；0 = 该角色对话 / 任务首发不附 <stratix-context> 块）。
+ * 纯加列 → ALTER ADD 兜底（与 v6 pipeline_id 同方案，见 migrateGameSaveTables）。
+ */
+const TARGET_SCHEMA_VERSION = 9;
 
 /** Valid table name characters (alphanumeric + underscore) */
 const VALID_TABLE_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -345,12 +350,22 @@ export class StratixDatabase {
           body_type TEXT,
           skin_id TEXT,
           external_session_id TEXT,
+          context_enabled INTEGER NOT NULL DEFAULT 1,
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL
         )
       `);
       this.db.exec('CREATE INDEX IF NOT EXISTS idx_characters_kind ON characters(kind)');
       log('info', 'Created characters table');
+    }
+
+    // v9（task_053）：老 characters 表（v8 及以前）补 context_enabled —— ALTER ADD 带
+    // DEFAULT 1：存量行一律归「开」（缺省即开的开关语义，与 CharacterView.contextEnabled
+    // 缺省 true 的归一口径一致，不在迁移里猜旧档案的偏好）。
+    const characterColumns = this.getColumnNames('characters');
+    if (!characterColumns.has('context_enabled')) {
+      this.db.exec('ALTER TABLE characters ADD COLUMN context_enabled INTEGER NOT NULL DEFAULT 1');
+      log('info', 'Added context_enabled column to characters table');
     }
 
     if (!tables.has('unit_positions')) {
@@ -986,7 +1001,8 @@ export class StratixDatabase {
       -- DDL 与 src/app/services/persistence/game-save-dao.ts 的 ensureGameSaveTables 同构。
       -- ============================================
 
-      -- 角色档案表：core WorldState.characters 的落库形态（appearance 存 JSON）
+      -- 角色档案表：core WorldState.characters 的落库形态（appearance 存 JSON）；
+      -- @since v3.29 context_enabled = 角色级上下文注入开关（task_053，缺省开）
       CREATE TABLE IF NOT EXISTS characters (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -998,6 +1014,7 @@ export class StratixDatabase {
         body_type TEXT,
         skin_id TEXT,
         external_session_id TEXT,
+        context_enabled INTEGER NOT NULL DEFAULT 1,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       );

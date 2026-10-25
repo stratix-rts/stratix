@@ -1804,7 +1804,7 @@
     {
       "id": "task_053",
       "title": "上下文注入中间件",
-      "status": "pending",
+      "status": "completed",
       "depends_on": [
         "task_035",
         "task_037"

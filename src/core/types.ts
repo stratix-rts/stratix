@@ -379,6 +379,17 @@ export const DEFAULT_SETTINGS: SettingsView = {
   notificationsEnabled: true,
 };
 
+/**
+ * 上下文注入全局开关的 localStorage 键（@since v3.29，task_053）。
+ * 值 '0' = 关；无键 / 其它值 = 开。why 冻结在 core：写入方（hud/settings-screen 的
+ * 「上下文注入」行）与读取方（app/services/stratix-context 的全局开关裁决）都在
+ * core 之上，公共底座冻结一份键名，两侧不各抄字面量。why 走 localStorage 而不走
+ * SettingsView/BooleanPreferenceKey：偏好词表每加一键都要动 core 存取与广播两端，
+ * 而这个开关只在本机渲染进程内生效（不进 WorldState、不随广播），localStorage
+ * 的轻量落地是刻意的取舍（task_053 规格③）。
+ */
+export const STRATIX_CONTEXT_TOGGLE_KEY = 'stratix.context.enabled';
+
 // ============================================================================
 // 角色
 // ============================================================================
@@ -598,6 +609,13 @@ export interface CharacterView {
    * 可选：老档案无外观 → 缺省。core 不解析素材、不校验部位资源是否存在（那是渲染侧的事）。
    */
   readonly appearance?: CharacterAppearance | null;
+  /**
+   * @since v3.29 上下文注入开关（task_053）：false = 该角色的对话 / 任务首发不附带
+   * <stratix-context> 战场现状块。缺省 / null / true = 开（characters 表 context_enabled
+   * 列的镜像，存档协调器双向映射）。开关是「增强项」而非数据完整性约束 —— 读写都在
+   * core/character/manager.updateContextEnabled（对应 HudCommand character.contextEnabled.update）。
+   */
+  readonly contextEnabled?: boolean | null;
 }
 
 // ============================================================================
@@ -868,6 +886,15 @@ export type HudCommand =
    * 接线：core/runtime.ts → character/manager.updateAppearance（写 characters + 同步投影单位外观）。
    */
   | { type: 'character.appearance.update'; characterId: string; appearance: CharacterAppearance }
+  /**
+   * @since v3.29 角色级上下文注入开关（task_053：agent-panel 角色卡的「上下文」钮）。
+   * 载荷口径：characterId 命中 WorldState.characters；enabled 为目标值（不是翻转量 ——
+   *   HUD 按当前广播值取反，core 幂等落库，同值写入不广播）。
+   * 接线：core/runtime.ts → character/manager.updateContextEnabled（写 characters →
+   * 存档协调器 diff 落库 context_enabled 列）。与全局开关（localStorage，见
+   * STRATIX_CONTEXT_TOGGLE_KEY）是**与**关系，注入裁决在 app 层 provider 内完成。
+   */
+  | { type: 'character.contextEnabled.update'; characterId: string; enabled: boolean }
   /**
    * @since v3.7 新建角色档案（首启引导的落地动作：起名 → 选 agent → 选皮肤 → 写人设）。
    * 载荷口径：

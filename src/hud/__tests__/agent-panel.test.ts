@@ -971,3 +971,61 @@ describe('派发智能推荐：「交给谁」选择器（task_050）', () => {
 function inputOfPanel(panel: StratAgentPanelElement): HTMLTextAreaElement | null {
   return panel.shadowRoot?.querySelector('[data-role="task-input"]') ?? null;
 }
+
+// ============================================================================
+// 上下文注入开关（@since v3.29，task_053）：角色卡开关位 → HudCommand
+// ============================================================================
+
+describe('上下文注入开关（task_053）', () => {
+  /** 按 data-character 点开关钮（开关钮不带 data-unit）。 */
+  const clickContextToggle = (panel: StratAgentPanelElement, characterId: string): void => {
+    const btn = panel.shadowRoot?.querySelector<HTMLButtonElement>(
+      `button[data-action="context-toggle"][data-character="${characterId}"]`
+    );
+    if (!btn) throw new Error('上下文开关钮未渲染');
+    btn.click();
+  };
+
+  const contextToggleOf = (panel: StratAgentPanelElement): HTMLButtonElement | null =>
+    panel.shadowRoot?.querySelector<HTMLButtonElement>('button[data-action="context-toggle"]') ?? null;
+
+  test('关联角色的单位渲染开关钮（读数随广播：开 → 关）；无角色单位不渲染', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    harness.emit(selected('u-neo'));
+    expect(contextToggleOf(panel)).not.toBeNull();
+    expect(contextToggleOf(panel)?.textContent).toContain('上下文：开');
+
+    // 广播关掉的真相 → 签名含 contextEnabled → 按钮读数跟着走（本地不存第二份）
+    const offState = selected('u-neo');
+    offState.characters = [{ ...(offState.characters[0] as NonNullable<WorldState['characters'][number]>), contextEnabled: false }];
+    harness.emit(offState);
+    expect(contextToggleOf(panel)?.textContent).toContain('上下文：关');
+
+    harness.emit(selected('u-trinity')); // 无 characterId → 无开关位
+    expect(contextToggleOf(panel)).toBeNull();
+  });
+
+  test('点击 → character.contextEnabled.update 取反派发（enabled = 目标值）', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    harness.emit(selected('u-neo'));
+    clickContextToggle(panel, 'c-neo');
+    expect(harness.commands).toEqual([
+      { type: 'character.contextEnabled.update', characterId: 'c-neo', enabled: false },
+    ]);
+
+    // 广播回来已是关 → 再点 → 派发开
+    const offState = selected('u-neo');
+    offState.characters = [{ ...(offState.characters[0] as NonNullable<WorldState['characters'][number]>), contextEnabled: false }];
+    harness.emit(offState);
+    clickContextToggle(panel, 'c-neo');
+    expect(harness.commands[1]).toEqual({
+      type: 'character.contextEnabled.update',
+      characterId: 'c-neo',
+      enabled: true,
+    });
+  });
+});

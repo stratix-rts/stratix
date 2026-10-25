@@ -213,6 +213,12 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
       case 'character.appearance.update':
         character.updateAppearance(command.characterId, command.appearance);
         return;
+      // @since v3.29 角色级上下文注入开关（task_053，agent-panel 角色卡的「上下文」钮）：
+      // 落到 character manager（同 persona.update 口径）；被拒（不在档）走 Notice。
+      // 落库由存档协调器顺 characters diff 自动写 context_enabled 列（schema v9）。
+      case 'character.contextEnabled.update':
+        character.updateContextEnabled(command.characterId, command.enabled);
+        return;
       // @since v3.7 角色建档(首启引导):落到 character manager(不再走 onUnhandled)。
       // 建档合法性由 core/character/profile.ts 的纯函数裁决;同名冲突 / 条数上限由 manager 判;
       // 落库后由本文件的 store 订阅把整份 WorldState(含 characters)全量广播给两侧。

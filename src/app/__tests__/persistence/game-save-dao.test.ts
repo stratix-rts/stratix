@@ -35,6 +35,7 @@ function record(patch: Partial<PersistedCharacterRecord> = {}): PersistedCharact
     bodyType: 'male',
     skinId: 'skin_forge',
     externalSessionId: null,
+    contextEnabled: true,
     createdAt: 1700000000000,
     ...patch,
   };

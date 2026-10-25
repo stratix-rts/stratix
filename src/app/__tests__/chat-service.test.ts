@@ -159,6 +159,8 @@ interface HarnessOptions {
   readonly timeoutMs?: number;
   /** 经验权重注入（task_039）；缺省走 exp-config 的临时常量。 */
   readonly expWeight?: (source: ExpSource) => number;
+  /** context-source 注入件（task_053）；缺省不注入。 */
+  readonly provideContext?: (characterId: string) => import('../services/stratix-context').StratixContextInput | null;
 }
 
 interface ServiceHarness {
@@ -194,6 +196,7 @@ function makeHarness(options: HarnessOptions = {}): ServiceHarness {
       messages.push(message);
     },
     expWeight: options.expWeight,
+    provideContext: options.provideContext,
     timeoutMs: options.timeoutMs,
   });
   return {
@@ -715,5 +718,81 @@ describe('exp.gained：每轮成功收束发射 chat_round（task_039）', () =>
     expect(collected.events).toEqual([
       { type: 'exp.gained', characterId: 'ch-1', source: 'chat_round', amount: DEFAULT_EXP_WEIGHTS.chat_round },
     ]);
+  });
+});
+
+// ============================================================================
+// 上下文注入（task_053）
+// ============================================================================
+
+describe('上下文注入（task_053）：首发附带 <stratix-context>，续发不注入', () => {
+  const snapshot = (): import('../services/stratix-context').StratixContextInput => ({
+    characterId: 'ch-1',
+    characterName: '阿尔法',
+    profileSummary: 'Lv.1 · EXP 0 · claude-code',
+    peers: [{ id: 'ch-2', name: '贝塔', kind: 'codex', level: 2 }],
+    recentTasks: [{ summary: '修复登录页', status: 'completed', at: 1_700_000_000_000 }],
+    lastTopic: null,
+  });
+
+  test('首发：persona 之后、用户消息之前插入 <stratix-context> 块', async () => {
+    const h = makeHarness({
+      scripts: [
+        scripted({ type: 'message', text: '收到' }, { type: 'done', exitCode: 0, text: '', sessionId: 's-1' }),
+        scripted({ type: 'message', text: '第二句' }, { type: 'done', exitCode: 0, text: '', sessionId: 's-1' }),
+      ],
+      provideContext: () => snapshot(),
+    });
+    await h.service.send('ch-1', '第一句');
+    const first = h.calls[0]?.prompt ?? '';
+    expect(first).toContain('<stratix-context>');
+    expect(first).toContain('# 同场角色');
+    expect(first).toContain('# 近期任务');
+    // 位置契约：引导语 < 角色设定 < stratix-context < 用户消息
+    expect(first.indexOf('角色设定')).toBeLessThan(first.indexOf('<stratix-context>'));
+    expect(first.indexOf('<stratix-context>')).toBeLessThan(first.indexOf('【用户消息】'));
+
+    // 续发：会话里已含 → 不再注入（一次性）
+    await h.service.send('ch-1', '第二句');
+    expect(h.calls[1]?.prompt).toBe('第二句');
+  });
+
+  test('注入件返回 null / 缺省 → 首发不带块（走原路径）', async () => {
+    const off = makeHarness({
+      scripts: [scripted({ type: 'done', exitCode: 0, text: '', sessionId: null })],
+      provideContext: () => null,
+    });
+    await off.service.send('ch-1', '你好');
+    expect(off.calls[0]?.prompt).not.toContain('<stratix-context>');
+
+    const absent = makeHarness({
+      scripts: [scripted({ type: 'done', exitCode: 0, text: '', sessionId: null })],
+    });
+    await absent.service.send('ch-1', '你好');
+    expect(absent.calls[0]?.prompt).not.toContain('<stratix-context>');
+  });
+
+  test('注入件抛错 → 吞掉不绑架对话（首发照常拼 persona，只是没块）', async () => {
+    const h = makeHarness({
+      scripts: [scripted({ type: 'done', exitCode: 0, text: '', sessionId: null })],
+      provideContext: () => {
+        throw new Error('snapshot boom');
+      },
+    });
+    await h.service.send('ch-1', '你好');
+    const prompt = h.calls[0]?.prompt ?? '';
+    expect(prompt).not.toContain('<stratix-context>');
+    expect(prompt).toContain('冷静的战术分析师');
+    expect(prompt).toContain('【用户消息】');
+  });
+
+  test('buildFirstPrompt 三参：persona 空但块存在 → 保留引导语与【用户消息】结构', () => {
+    const bare: CharacterView = { ...character, persona: '   ' };
+    const prompt = buildFirstPrompt(bare, '在吗', '<stratix-context>块</stratix-context>');
+    expect(prompt).toContain('你将扮演');
+    expect(prompt).toContain('<stratix-context>块</stratix-context>');
+    expect(prompt).toContain('【用户消息】\n在吗');
+    // 传空串（快照全空）→ 与 undefined 等价：persona 空回原路径
+    expect(buildFirstPrompt(bare, '在吗', '')).toBe('在吗');
   });
 });

@@ -71,6 +71,7 @@ import type {
 } from '../../core/types';
 import type { SpawnOptions, TransportErrorCode, TransportEvent } from './cli-transport/transport';
 import { defaultExpWeight } from './exp-config';
+import { resolveStratixContextBlock, type StratixContextSource } from './stratix-context';
 
 // ============================================================================
 // 端口（结构类型 —— 不 import hud，与 034 组件公开方法保持形状一致）
@@ -169,15 +170,25 @@ export function isAgentKindInstalled(
  * 首发指令拼装：角色设定引导语 + persona + 用户消息。
  * persona 为空（理论上不会 —— 建档时空 persona 会套默认模板，这里只是防御）→ 只发原文。
  * 导出供单测直接断言拼装格式。
+ * @since v3.29（task_053）可选第三参 contextBlock：<stratix-context> 战场现状块
+ * （首发才注入，插入位置在 persona 之后、用户消息之前 —— 续发不拼装，见 runRound）。
+ * 传 undefined 走原路径（三参调用方零改动兼容）；persona 空但块存在时也保留引导语与
+ * 【用户消息】结构（块需要角色语境，裸文本拼进去会读不出主语）。
  */
-export function buildFirstPrompt(character: CharacterView, message: string): string {
+export function buildFirstPrompt(
+  character: CharacterView,
+  message: string,
+  contextBlock?: string
+): string {
   const persona = character.persona.trim();
-  if (persona.length === 0) return message;
-  return [
-    `你将扮演「${character.name}」这个角色与用户对话，请全程保持角色设定一致。`,
-    `【角色设定】\n${persona}`,
-    `【用户消息】\n${message}`,
-  ].join('\n\n');
+  const hasContext = contextBlock !== undefined && contextBlock.length > 0;
+  if (persona.length === 0 && !hasContext) return message;
+  const parts: string[] = [];
+  parts.push(`你将扮演「${character.name}」这个角色与用户对话，请全程保持角色设定一致。`);
+  if (persona.length > 0) parts.push(`【角色设定】\n${persona}`);
+  if (hasContext) parts.push(contextBlock as string);
+  parts.push(`【用户消息】\n${message}`);
+  return parts.join('\n\n');
 }
 
 /** 错误码 → 气泡正文。 */
@@ -221,6 +232,12 @@ export interface ChatServiceDeps {
    * （与 task-service 的同形注入是刻意的一对，040 换一次注入两侧都接管）。
    */
   readonly expWeight?: (source: ExpSource) => number;
+  /**
+   * context-source 注入件（@since v3.29，task_053；缺省不注入）。零 IO：组合根用
+   * createStratixContextProvider 组装（读 WorldState / 两级开关裁决都在装配方），
+   * 本服务只在**首发**取一次快照（resolveStratixContextBlock；异常吞掉不绑架对话）。
+   */
+  readonly provideContext?: StratixContextSource;
   /** 单轮超时；缺省 DEFAULT_CHAT_ROUND_TIMEOUT_MS。 */
   readonly timeoutMs?: number;
   /** 日志口；缺省静默。 */
@@ -337,8 +354,16 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
     lastFailed.delete(characterId);
     view.setSending(true);
 
-    // 首发（还没有会话 id）才拼 persona；续发只发原文（见文件头「persona 怎么传」）。
-    const prompt = session.sessionId === null ? buildFirstPrompt(character, text) : text;
+    // 首发（还没有会话 id）才拼 persona（+ 战场现状块，task_053：上下文一次性注入，
+    // 续发不重拼 —— 会话上下文里已经有了）；续发只发原文（见文件头「persona 怎么传」）。
+    const prompt =
+      session.sessionId === null
+        ? buildFirstPrompt(
+            character,
+            text,
+            resolveStratixContextBlock(deps.provideContext, characterId, logger) || undefined
+          )
+        : text;
     let sawText = false;
     // 流式文本在内存拼接（task_036）：finalize 时整段落库，不逐 chunk 写 IPC。
     let assistantText = '';

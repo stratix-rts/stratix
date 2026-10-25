@@ -208,6 +208,8 @@ interface HarnessOptions {
   readonly scripts?: Script[];
   readonly expWeight?: (source: ExpSource) => number;
   readonly timeoutMs?: number;
+  /** context-source 注入件（task_053）；缺省不注入。 */
+  readonly provideContext?: (characterId: string) => import('../services/stratix-context').StratixContextInput | null;
 }
 
 interface ServiceHarness {
@@ -242,6 +244,7 @@ function makeHarness(options: HarnessOptions = {}): ServiceHarness {
       messages.push(message);
     },
     expWeight: options.expWeight,
+    provideContext: options.provideContext,
     timeoutMs: options.timeoutMs,
   });
   const off = onWorldEvent((event) => {
@@ -605,5 +608,73 @@ describe('守门与单飞', () => {
       expect(call.prompt).not.toContain('另一场');
     }
     expect(harness.view.messages.some((m) => m.text.includes('另一场'))).toBe(false);
+  });
+});
+
+// ============================================================================
+// 上下文注入(task_053):互聊开题同样附 <stratix-context>(各自角色自己的快照)
+// ============================================================================
+
+describe('上下文注入(task_053):双方各自首发注入、续回合不注入', () => {
+  test('A 开题回合带 A 的块;B 首回合带 B 的块;后续回合(会话已建)不再注入', async () => {
+    const provideContext = (characterId: string): import('../services/stratix-context').StratixContextInput | null => ({
+      characterId,
+      characterName: characterId === 'ch-a' ? '阿尔法' : '贝塔',
+      profileSummary: `Lv.1 · ${characterId}`,
+      peers: [],
+      recentTasks: [],
+      lastTopic: null,
+    });
+    const harness = makeHarness({
+      scripts: [
+        turn('sess-a', 'A1'),
+        turn('sess-b', 'B1'),
+        turn('sess-a', 'A2'),
+        turn('sess-b', 'B2'),
+      ],
+      provideContext,
+    });
+    await harness.service.start('ch-a', 'ch-b', '议题', 2);
+    await flush();
+
+    const prompts = harness.calls.map((call) => call.prompt);
+    // 回合序:A 开题 → B → A → B(会话事件维持 session 后续回合纯文本)
+    expect(prompts.length).toBe(4);
+    // A 的首发(开题):persona 后插块
+    expect(prompts[0]).toContain('<stratix-context>');
+    expect(prompts[0]).toContain('Lv.1 · ch-a');
+    expect(prompts[0].indexOf('角色设定')).toBeLessThan(prompts[0].indexOf('<stratix-context>'));
+    // B 的首发(自己 session 的首回合):B 自己的快照
+    expect(prompts[1]).toContain('<stratix-context>');
+    expect(prompts[1]).toContain('Lv.1 · ch-b');
+    // 双方各自第二回合:会话已含 → 不再注入(一次性)
+    expect(prompts[2]).not.toContain('<stratix-context>');
+    expect(prompts[3]).not.toContain('<stratix-context>');
+  });
+
+  test('注入件缺省 → 全程无块(互聊照常)', async () => {
+    const harness = makeHarness({
+      scripts: [turn('sess-a', 'A1'), turn('sess-b', 'B1')],
+    });
+    await harness.service.start('ch-a', 'ch-b', '议题', 1);
+    await flush();
+    for (const call of harness.calls) {
+      expect(call.prompt).not.toContain('<stratix-context>');
+    }
+  });
+
+  test('注入件抛错 → 吞掉不绑架讨论', async () => {
+    const harness = makeHarness({
+      scripts: [turn('sess-a', 'A1'), turn('sess-b', 'B1')],
+      provideContext: () => {
+        throw new Error('boom');
+      },
+    });
+    await harness.service.start('ch-a', 'ch-b', '议题', 1);
+    await flush();
+    expect(harness.calls.length).toBe(2);
+    for (const call of harness.calls) {
+      expect(call.prompt).not.toContain('<stratix-context>');
+    }
   });
 });

@@ -337,3 +337,50 @@ describe('生命周期', () => {
     resetBus();
   });
 });
+// ============================================================================
+// 上下文注入全局开关（@since v3.29，task_053）：localStorage 落地（不走总线）
+// ============================================================================
+
+describe('上下文注入全局开关（task_053）', () => {
+  let h: Harness | undefined;
+  beforeEach(() => {
+    localStorage.removeItem('stratix.context.enabled');
+  });
+  afterEach(() => {
+    h?.unmount();
+    h = undefined;
+    localStorage.removeItem('stratix.context.enabled');
+  });
+
+  test('偏好组渲染「上下文注入」行；缺省读作开', () => {
+    h = mountScreen();
+    h.emit(h.store.getState());
+    const row = h.screen.shadowRoot?.querySelector('[data-pref-row="__context__"]');
+    const btn = h.screen.shadowRoot?.querySelector('button[data-context-toggle]');
+    expect(row).not.toBeNull();
+    expect(btn?.textContent).toContain('开');
+    expect(btn?.getAttribute('aria-checked')).toBe('true');
+  });
+
+  test('点击 → 写 localStorage 值 0 并本屏重画为关；再点回 1；全程零命令派发', () => {
+    h = mountScreen();
+    h.emit(h.store.getState());
+    clickInScreen(h.screen, 'button[data-context-toggle]');
+    expect(localStorage.getItem('stratix.context.enabled')).toBe('0');
+    expect(h.screen.shadowRoot?.querySelector('button[data-context-toggle]')?.textContent).toContain('关');
+
+    clickInScreen(h.screen, 'button[data-context-toggle]');
+    expect(localStorage.getItem('stratix.context.enabled')).toBe('1');
+    expect(h.screen.shadowRoot?.querySelector('button[data-context-toggle]')?.textContent).toContain('开');
+
+    // 开关只在本机生效：不发 HudCommand（与 settings.set 的偏好键区分 —— 断言零派发）
+    expect(h.commands).toHaveLength(0);
+  });
+
+  test('预置 0（全局关）→ 挂载即读作关', () => {
+    localStorage.setItem('stratix.context.enabled', '0');
+    h = mountScreen();
+    h.emit(h.store.getState());
+    expect(h.screen.shadowRoot?.querySelector('button[data-context-toggle]')?.textContent).toContain('关');
+  });
+});

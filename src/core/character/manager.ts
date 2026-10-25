@@ -124,6 +124,18 @@ export type CharacterAppearanceResult =
     }
   | { readonly ok: false; readonly code: 'not-found' | 'invalid-appearance'; readonly characterId: string };
 
+/**
+ * 上下文开关切换结果（@since v3.29，task_053）。只有 not-found 一种失败 ——
+ * 布尔载荷没有形状非法可言（HUD 传的也是判过类型的 boolean）。
+ */
+export type CharacterContextToggleResult =
+  | {
+      readonly ok: true;
+      /** 写入后生效的开关值（与 store 里那份同引用来源）。 */
+      readonly enabled: boolean;
+    }
+  | { readonly ok: false; readonly code: 'not-found'; readonly characterId: string };
+
 export interface CharacterManagerOptions {
   /** 状态持有者；默认 worldStore 单例。单测用 createStore() 隔离。 */
   readonly store?: CoreStore;
@@ -169,6 +181,13 @@ export interface CharacterManager {
    * ★ 不判解锁：等级门槛是编辑 UI 的引导约束（见 types.ts 命令注释），写入面只管形状合法。
    */
   updateAppearance(characterId: string, appearance: unknown): CharacterAppearanceResult;
+  /**
+   * 改角色级上下文注入开关（@since v3.29，task_053，对应 HudCommand
+   * 'character.contextEnabled.update'）。与 updatePersona 同一写入口径：同一次 setState 原子化；
+   * 同值写入不广播；被拒（角色不在档）转 Notice。它不是数据完整性约束，是增强项开关 ——
+   * 落库由存档协调器顺着 characters diff 自动写入 context_enabled 列（schema v9）。
+   */
+  updateContextEnabled(characterId: string, enabled: boolean): CharacterContextToggleResult;
 }
 
 /**
@@ -458,5 +477,39 @@ export function createCharacterManager(options: CharacterManagerOptions = {}): C
     return settled;
   };
 
-  return { store, createCharacter, grantExperience, updatePersona, updateAppearance };
+  /**
+   * 改上下文注入开关（@since v3.29，task_053）—— 与 updatePersona 同一写入口径。
+   * 同值（含 undefined/null 归一化后的 true）不写库不广播；被拒走 Notice。
+   */
+  const updateContextEnabled = (characterId: string, enabled: boolean): CharacterContextToggleResult => {
+    let result: CharacterContextToggleResult | null = null;
+
+    store.setState((current) => {
+      const index = current.characters.findIndex((c) => c.id === characterId);
+      if (index < 0) {
+        result = { ok: false, code: 'not-found', characterId };
+        return current;
+      }
+      const existing = current.characters[index] as CharacterView;
+      // 语义归一：缺省（undefined/null）等价 true（DEFAULT 开），同值即短路。
+      if ((existing.contextEnabled ?? true) === enabled) {
+        result = { ok: true, enabled };
+        return current;
+      }
+      const updated: CharacterView = { ...existing, contextEnabled: enabled };
+      const characters = current.characters.slice();
+      characters[index] = updated;
+      result = { ok: true, enabled };
+      return { ...current, characters };
+    });
+
+    if (result === null) return { ok: false, code: 'not-found', characterId };
+    const settled = result as CharacterContextToggleResult;
+    if (!settled.ok) {
+      reportFailure(store, `character-context-toggle-rejected:${characterId}`, `未找到角色：${characterId}`);
+    }
+    return settled;
+  };
+
+  return { store, createCharacter, grantExperience, updatePersona, updateAppearance, updateContextEnabled };
 }

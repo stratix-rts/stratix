@@ -95,6 +95,11 @@ import { createPhaserPreviewGame } from '../services/appearance-preview-game';
 import { createAppearancePreviewService } from '../services/appearance-preview-service';
 import { createAgentChatService } from '../services/agent-chat-service';
 import { createChatService } from '../services/chat-service';
+import {
+  createStratixContextProvider,
+  createTopicCachePersister,
+  isGlobalContextEnabled,
+} from '../services/stratix-context';
 import { cliChatIpcApi, createIpcChatTransportFactory } from '../services/chat-transport-bridge';
 import { createProgressionService } from '../services/progression-service';
 import { createTaskService } from '../services/task-service';
@@ -271,6 +276,22 @@ async function boot(): Promise<void> {
   const cliChat = cliChatIpcApi();
   // 历史通道与 cliChat 同源（都在 preload 的 electronAPI 上）：非 Electron 环境两者皆无，行为退回 034。
   const chatHistory = chatHistoryApi();
+  // ============================================================================
+  // 上下文注入件组装（task_053）：读 WorldState / 开关裁决都在组合根这一层（服务零 IO，
+  // 只消费 provideContextSnapshot 纯输入）。三件套：
+  //   ① 话题缓存：包住聊天落库回调，顺手记每角色最近一条用户消息（「最近对话」数据源）——
+  //      下方三个消费方（chat / 互聊 / 报告回流）共用同一个包过的 persister，缓存才齐全；
+  //   ② 全局开关：localStorage（settings-screen「上下文注入」行写同一键；无存储环境视为开）；
+  //   ③ 世界面：worldStore.getState()（角色档案 / 同场单位 / 任务史全在里面，零额外查询）。
+  // ============================================================================
+  const contextPersister = createTopicCachePersister(
+    chatHistory ? makeChatMessagePersister(chatHistory) : undefined
+  );
+  const stratixContextSource = createStratixContextProvider({
+    getState: () => worldStore.getState(),
+    lastTopicFor: contextPersister.lastTopicFor,
+    isEnabled: () => isGlobalContextEnabled(typeof localStorage === 'undefined' ? null : localStorage),
+  });
   if (characterDrawer && cliChat) {
     const chatService = createChatService({
       view: characterDrawer,
@@ -291,7 +312,9 @@ async function boot(): Promise<void> {
         });
       },
       // task_036：消息落库回调（fire-and-forget，失败只警告不阻断对话）。
-      persistMessage: chatHistory ? makeChatMessagePersister(chatHistory) : undefined,
+      // task_053：换成包过话题缓存的同一个 persister（上方组装说明）。
+      persistMessage: contextPersister.persist,
+      provideContext: stratixContextSource,
     });
     // 二次注入 deps：换上带对话回调与历史加载的完整面（订阅在首次注入时已绑，handleState 是元素方法，不受影响）。
     characterDrawer.deps = {
@@ -331,7 +354,8 @@ async function boot(): Promise<void> {
           return { ...current, characters };
         });
       },
-      persistMessage: chatHistory ? makeChatMessagePersister(chatHistory) : undefined,
+      persistMessage: contextPersister.persist,
+      provideContext: stratixContextSource,
       expWeight: expWeightFor,
     });
     // 三次注入 deps：互聊入口（表单开始 / 停止钮 / 插话框 → agent-chat-service）。
@@ -502,7 +526,7 @@ async function boot(): Promise<void> {
     const reportSettled = createTaskReportHandler({
       view: characterDrawer ?? undefined,
       getState: () => worldStore.getState(),
-      persistMessage: chatHistory ? makeChatMessagePersister(chatHistory) : undefined,
+      persistMessage: contextPersister.persist,
       toast: (text, tone) => {
         toastHost.show(text, tone);
       },
@@ -514,6 +538,7 @@ async function boot(): Promise<void> {
       // task_040：权重数值真相源在 core/progression（旧缺省 exp-config 已降为转发层），
       // 换注入件即接管 —— 本服务零改动（交接注记见 task-service.ts 文件头）。
       expWeight: expWeightFor,
+      provideContext: stratixContextSource,
       persistTask: (() => {
         const taskApi = taskRecordApi();
         return taskApi ? makeTaskRecordPersister(taskApi) : undefined;

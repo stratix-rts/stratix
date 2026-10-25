@@ -1188,3 +1188,70 @@ describe('经总线集成：core 写库 → state 通道 → HUD 订阅侧', () 
     expect(store.getState().notices).toHaveLength(0);
   });
 });
+// ============================================================================
+// 2.d CharacterManager.updateContextEnabled：上下文注入开关写库（@since v3.29，task_053）
+// ============================================================================
+
+describe('CharacterManager.updateContextEnabled：角色级上下文开关（task_053）', () => {
+  test('写入 false：characters.contextEnabled 落库 + 恰好广播一次', () => {
+    const store = createStore({ characters: [characterAt()] });
+    let broadcasts = 0;
+    store.subscribe(() => { broadcasts += 1; });
+    const manager = createCharacterManager({ store });
+
+    const result = manager.updateContextEnabled('c-neo', false);
+
+    expect(result).toEqual({ ok: true, enabled: false });
+    expect(store.getState().characters[0]?.contextEnabled).toBe(false);
+    expect(broadcasts).toBe(1);
+  });
+
+  test('同值幂等（含缺省归一）：不写库不广播（undefined ≡ true）', () => {
+    const store = createStore({ characters: [characterAt()] }); // 缺省 = 开
+    let broadcasts = 0;
+    store.subscribe(() => { broadcasts += 1; });
+    const manager = createCharacterManager({ store });
+
+    expect(manager.updateContextEnabled('c-neo', true)).toEqual({ ok: true, enabled: true });
+    expect(broadcasts).toBe(0);
+
+    // 关掉再关：第二次同值仍幂等
+    manager.updateContextEnabled('c-neo', false);
+    const broadcastsAfterOff = broadcasts;
+    expect(manager.updateContextEnabled('c-neo', false)).toEqual({ ok: true, enabled: false });
+    expect(broadcasts).toBe(broadcastsAfterOff);
+    expect(store.getState().characters[0]?.contextEnabled).toBe(false);
+  });
+
+  test('角色不在档：拒发 + warn Notice，状态不变', () => {
+    const store = createStore({ characters: [characterAt()] });
+    const manager = createCharacterManager({ store });
+
+    const result = manager.updateContextEnabled('c-ghost', false);
+
+    expect(result).toEqual({ ok: false, code: 'not-found', characterId: 'c-ghost' });
+    expect(store.getState().notices[0]?.text).toContain('c-ghost');
+    expect(store.getState().characters[0]?.contextEnabled).toBeUndefined();
+  });
+
+  test('闭环：emitCommand character.contextEnabled.update → 落库广播（runtime 接线）', () => {
+    resetBus();
+    const store = createStore({ characters: [characterAt()] });
+    const manager = createCharacterManager({ store });
+    const runtime = createCoreRuntime({ store, character: manager });
+    const stopRuntime = runtime.start();
+    const seen: Array<boolean | null | undefined> = [];
+    const off = onState((state) => {
+      seen.push(state.characters[0]?.contextEnabled);
+    });
+
+    emitCommand({ type: 'character.contextEnabled.update', characterId: 'c-neo', enabled: false });
+    emitCommand({ type: 'character.contextEnabled.update', characterId: 'c-neo', enabled: true });
+
+    expect(store.getState().characters[0]?.contextEnabled).toBe(true);
+    expect(seen.some((value) => value === false)).toBe(true); // 关的那次也广播过（HUD 开关钮实时反映）
+    stopRuntime();
+    off();
+    resetBus();
+  });
+});

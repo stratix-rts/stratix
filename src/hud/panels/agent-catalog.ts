@@ -132,6 +132,8 @@ export interface GrowthModel {
   readonly name: string;
   readonly level: number;
   readonly experience: number;
+  /** @since v3.29（task_053）：角色级上下文注入开关读数（缺省 true；详情卡「上下文」钮的当前态）。 */
+  readonly contextEnabled: boolean;
 }
 
 /**
@@ -266,6 +268,8 @@ function resolveGrowth(state: WorldState, unit: UnitView): GrowthModel | null {
     name: character.name,
     level: character.level,
     experience: character.experience,
+    // 缺省（undefined/null）≡ true —— 与 core manager / 存档协调器的归一口径一致。
+    contextEnabled: character.contextEnabled !== false,
   };
 }
 
@@ -573,7 +577,7 @@ export function agentPanelSignature(state: WorldState | null): string {
         unit.power,
         mission ? `${mission.id}:${mission.phase}:${mission.title}` : '-',
         capSig,
-        growth ? `${growth.characterId}:${growth.name}:${growth.level}:${growth.experience}` : '-',
+        growth ? `${growth.characterId}:${growth.name}:${growth.level}:${growth.experience}:${growth.contextEnabled}` : '-',
         queueSig,
       ].join(':')
     );

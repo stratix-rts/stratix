@@ -139,6 +139,8 @@ interface HarnessOptions {
   readonly expWeight?: (source: ExpSource) => number;
   /** 流式转发端口注入（task_046）；缺省不接（生产接 hud 任务输出面板）。 */
   readonly onTaskChunk?: (characterId: string, chunk: string) => void;
+  /** context-source 注入件（task_053）；缺省不注入。 */
+  readonly provideContext?: (characterId: string) => import('../services/stratix-context').StratixContextInput | null;
 }
 
 interface Harness {
@@ -182,6 +184,7 @@ function makeHarness(options: HarnessOptions = {}): Harness {
     onTaskSettled: (record) => settled.push(record),
     onTaskChunk: options.onTaskChunk ?? ((characterId, chunk) => chunks.push({ characterId, chunk })),
     expWeight: options.expWeight,
+    provideContext: options.provideContext,
     timeoutMs: options.timeoutMs,
   });
   const stop = service.start();
@@ -1221,5 +1224,80 @@ describe('审批门全链（plan-first：挂起 → 批准 → 同 session 续�
     expect(stored).toMatchObject({ status: 'failed', output: TASK_MSG_RESUME_LOST });
     expect(settled).toHaveLength(1);
     expect(factory.calls).toHaveLength(0); // 没有人真的续发
+  });
+});
+
+// ============================================================================
+// 上下文注入（task_053）
+// ============================================================================
+
+describe('上下文注入（task_053）：每条任务 prompt 附带 <stratix-context>', () => {
+  const snapshot = (): import('../services/stratix-context').StratixContextInput => ({
+    characterId: 'ch-1',
+    characterName: '阿尔法',
+    profileSummary: 'Lv.1 · EXP 0 · claude-code',
+    peers: [{ id: 'ch-2', name: '贝塔', kind: 'codex', level: 2 }],
+    recentTasks: [{ summary: '修复登录页', status: 'completed', at: 1_700_000_000_000 }],
+    lastTopic: { text: '最近聊了部署', at: 1_700_000_000_000 },
+  });
+
+  test('runTask：persona 之后、任务指令之前插入块（任务一次性会话 = 每次都是首发）', async () => {
+    const h = makeHarness({
+      scripts: [scripted({ type: 'message', text: '收到' }, { type: 'done', exitCode: 0, text: '', sessionId: null })],
+      provideContext: () => snapshot(),
+    });
+    h.manager.assignTask({ characterId: 'ch-1', prompt: '侦察北门' });
+    await flush();
+    const prompt = h.calls[0]?.prompt ?? '';
+    expect(prompt).toContain('<stratix-context>');
+    expect(prompt).toContain('# 同场角色');
+    expect(prompt).toContain('# 近期任务');
+    expect(prompt).toContain('# 最近对话');
+    expect(prompt.indexOf('角色设定')).toBeLessThan(prompt.indexOf('<stratix-context>'));
+    expect(prompt.indexOf('<stratix-context>')).toBeLessThan(prompt.indexOf('【任务指令】'));
+    // 会话隔离口径不破：spawn 恒不带 sessionId
+    expect(h.calls[0]?.options?.sessionId ?? null).toBeNull();
+  });
+
+  test('注入件 null / 缺省 / 抛错 → prompt 走原路径，任务照常完成', async () => {
+    for (const provideContext of [
+      undefined,
+      (): null => null,
+      (): import('../services/stratix-context').StratixContextInput => {
+        throw new Error('boom');
+      },
+    ]) {
+      const h = makeHarness({
+        scripts: [scripted({ type: 'done', exitCode: 0, text: '', sessionId: null })],
+        provideContext,
+      });
+      h.manager.assignTask({ characterId: 'ch-1', prompt: '干活' });
+      await flush();
+      expect(h.calls[0]?.prompt).not.toContain('<stratix-context>');
+      expect(h.store.getState().tasks?.[0]).toMatchObject({ status: 'completed' });
+    }
+  });
+
+  test('buildTaskPrompt 纯函数：块与 plan-first 尾部指令共存（【工作方式】恒在最后）', () => {
+    const prompt = buildTaskPrompt(planFirstCharacter, '重构登录模块', '<stratix-context>块</stratix-context>');
+    expect(prompt.indexOf('<stratix-context>')).toBeLessThan(prompt.indexOf('【任务指令】'));
+    expect(prompt.indexOf('【任务指令】')).toBeLessThan(prompt.indexOf('【工作方式】'));
+    // persona 空但块存在 → 保留拼装结构（不裸拼）
+    const bare = buildTaskPrompt({ ...character, persona: '   ' }, '干活', '<stratix-context>块</stratix-context>');
+    expect(bare).toContain('你将扮演');
+    expect(bare).toContain('【任务指令】');
+    expect(buildTaskPrompt({ ...character, persona: '   ' }, '干活', '')).toBe('干活');
+  });
+
+  test('buildResumedTaskPrompt：session 丢失重讲路径同样带块（首发语义重建）', () => {
+    const task: CharacterTask = {
+      id: 'task_1', characterId: 'ch-1', prompt: '原指令', status: 'awaiting_approval',
+      createdAt: 1, startedAt: null, endedAt: null, output: '', plan: '计划全文',
+    };
+    const resumed = buildResumedTaskPrompt(character, task, '计划全文', '<stratix-context>块</stratix-context>');
+    expect(resumed).toContain('<stratix-context>块</stratix-context>');
+    expect(resumed.indexOf('<stratix-context>')).toBeLessThan(resumed.indexOf('【计划审批】'));
+    // 不传块 → 与老行为一致
+    expect(buildResumedTaskPrompt(character, task, '计划全文')).not.toContain('<stratix-context>');
   });
 });

@@ -116,6 +116,7 @@ import type { TaskManager } from '../../core/task';
 import type { SpawnOptions, TransportErrorCode, TransportEvent } from './cli-transport/transport';
 import { parseTaskArtifacts, serializeTaskArtifacts } from './task-artifacts';
 import { defaultExpWeight } from './exp-config';
+import { resolveStratixContextBlock, type StratixContextSource } from './stratix-context';
 
 // ============================================================================
 // 端口与常量
@@ -205,17 +206,21 @@ export function guardTaskCharacter(
  * @since v3.25（task_049）：plan-first 人设（personaPlanFirst）追加尾部指令 —— 要求 agent
  * 先输出执行计划并以单独一行 TASK_PLAN_WAIT_MARKER 结束。标记词从 core 契约取，不另抄一份
  * （prompt 指令、挂起检测、展示剥离三方必须是同一个词，见 types.ts 的 TASK_PLAN_WAIT_MARKER）。
+ * @since v3.29（task_053）可选第三参 contextBlock：<stratix-context> 战场现状块。任务会话
+ * 一次性 → 每次执行都是首发语义，每条任务的 prompt 都注入（插入位置在 persona 之后、
+ * 【任务指令】之前；plan-first 的【工作方式】尾部指令恒在最后）。传 undefined 走原路径。
  */
-export function buildTaskPrompt(character: CharacterView, taskPrompt: string): string {
+export function buildTaskPrompt(character: CharacterView, taskPrompt: string, contextBlock?: string): string {
   const persona = character.persona.trim();
-  const base =
-    persona.length === 0
-      ? taskPrompt
-      : [
-          `你将扮演「${character.name}」这个角色执行任务，请全程保持角色设定一致。`,
-          `【角色设定】\n${persona}`,
-          `【任务指令】\n${taskPrompt}`,
-        ].join('\n\n');
+  const hasContext = contextBlock !== undefined && contextBlock.length > 0;
+  if (persona.length === 0 && !hasContext) return taskPrompt;
+  const parts: string[] = [
+    `你将扮演「${character.name}」这个角色执行任务，请全程保持角色设定一致。`,
+  ];
+  if (persona.length > 0) parts.push(`【角色设定】\n${persona}`);
+  if (hasContext) parts.push(contextBlock as string);
+  parts.push(`【任务指令】\n${taskPrompt}`);
+  const base = parts.join('\n\n');
   return personaPlanFirst(persona) ? `${base}\n\n【工作方式】\n${TASK_PLAN_INSTRUCTION}` : base;
 }
 
@@ -255,14 +260,17 @@ export function extractPlanDraft(output: string): string | null {
 /**
  * session 丢失时的续发拼装（首发语义重建：persona + 原指令 + 计划全文重述）。
  * 与 035 会话延续的 fallback 同一口径：没有 sessionId 就没有上下文可复用，只能重讲一遍。
+ * @since v3.29（task_053）可选第四参 contextBlock：重建首发语义时同样附战场现状块
+ *（调用方只在 sessionId 丢失的重讲路径上传入）。
  */
 export function buildResumedTaskPrompt(
   character: CharacterView,
   task: CharacterTask,
-  plan: string
+  plan: string,
+  contextBlock?: string
 ): string {
   return [
-    buildTaskPrompt(character, task.prompt),
+    buildTaskPrompt(character, task.prompt, contextBlock),
     '【计划审批】\n以下是此前输出的执行计划，已获批准：',
     plan,
     '请按上述计划继续执行并给出结果。',
@@ -327,6 +335,12 @@ export interface TaskServiceDeps {
    * **task_040 交接点**：progression 模块接管数值时换掉这个注入件，本服务零改动。
    */
   readonly expWeight?: (source: ExpSource) => number;
+  /**
+   * context-source 注入件（@since v3.29，task_053；缺省不注入）。零 IO：组合根用
+   * createStratixContextProvider 组装。任务会话一次性（每条任务都是首发）→
+   * 每次执行取一次快照（resolveStratixContextBlock；异常吞掉不绑架任务回路）。
+   */
+  readonly provideContext?: StratixContextSource;
   /** 单轮执行超时；缺省 DEFAULT_TASK_TIMEOUT_MS（10min，主进程上限同档）。 */
   readonly timeoutMs?: number;
   /** 日志口；缺省静默。 */
@@ -591,8 +605,13 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
     const started = manager.startTask(task.id);
     if (!started) return 'settled'; // 状态没走动（任务被收尾/不存在）—— 不执行也不重试，防守即可
     const planFirst = personaPlanFirst(character.persona.trim());
-    // persona 每次内嵌（常规任务会话隔离 → 无续发）；plan-first 追加计划指令（见文件头）。
-    const prompt = buildTaskPrompt(character, task.prompt);
+    // persona 每次内嵌（常规任务会话隔离 → 无续发，每条任务都是首发）；plan-first 追加计划指令
+    //（见文件头）。task_053：首发语义 → 同样附战场现状块（每任务一次；快照取件异常吞掉不绑架任务）。
+    const prompt = buildTaskPrompt(
+      character,
+      task.prompt,
+      resolveStratixContextBlock(deps.provideContext, character.id, logger) || undefined
+    );
     let output = '';
     // task_049：计划轮要记 session id（批准后同 session 续发）；常规任务恒 null。
     let sessionId: string | null = null;
@@ -676,7 +695,13 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
     const prompt =
       sessionId !== null
         ? TASK_APPROVAL_RESUME_PROMPT
-        : buildResumedTaskPrompt(character, task, plan);
+        : buildResumedTaskPrompt(
+            character,
+            task,
+            plan,
+            // 丢 session 的重讲 = 首发语义重建（task_053）：同样附战场现状块。
+            resolveStratixContextBlock(deps.provideContext, character.id, logger) || undefined
+          );
     let output = '';
     try {
       const transport = transportFor(kind);

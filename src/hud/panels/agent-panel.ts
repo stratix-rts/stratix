@@ -713,6 +713,20 @@ export function defineAgentPanel(): typeof HTMLElement {
               if (reassignCommand && this._adapter) this._adapter.dispatch(reassignCommand);
               return;
             }
+            case 'context-toggle': {
+              // 角色级上下文注入开关（task_053）：按钮态 = 当前广播值，点击取反发命令。
+              // 落库 / 广播都在 core（manager.updateContextEnabled），面板等签名回来重画。
+              const characterId = host.getAttribute('data-character');
+              const enabled = host.getAttribute('data-enabled') === '1';
+              if (characterId && this._adapter) {
+                this._adapter.dispatch({
+                  type: 'character.contextEnabled.update',
+                  characterId,
+                  enabled: !enabled,
+                });
+              }
+              return;
+            }
             default:
               break;
           }
@@ -1075,6 +1089,12 @@ export function defineAgentPanel(): typeof HTMLElement {
       const assignButton = detail.characterId
         ? `<button type="button" class="action" data-action="task-open" data-unit="${escapeHtml(detail.id)}" data-character="${escapeHtml(detail.characterId)}">派任务</button>`
         : '';
+      // 上下文注入开关钮（task_053）：只给关联了角色的单位（开关是角色级属性）。
+      // 状态随 growth.contextEnabled（广播真相）；点击发 HudCommand，core 写状态 →
+      // 签名含 contextEnabled → 重画（本地不存第二份真相，与队列按钮同一纪律）。
+      const contextToggle = detail.growth
+        ? `<button type="button" class="action" data-action="context-toggle" data-character="${escapeHtml(detail.growth.characterId)}" data-enabled="${detail.growth.contextEnabled ? '1' : '0'}">上下文：${detail.growth.contextEnabled ? '开' : '关'}</button>`
+        : '';
 
       return `
         <div class="detail" data-role="detail" data-unit="${escapeHtml(detail.id)}">
@@ -1094,6 +1114,7 @@ export function defineAgentPanel(): typeof HTMLElement {
           <div class="actions">
             <button type="button" class="action" data-action="focus" data-unit="${escapeHtml(detail.id)}">聚焦</button>
             ${assignButton}
+            ${contextToggle}
             <button type="button" class="action" data-action="remove" data-unit="${escapeHtml(detail.id)}">移出选择</button>
           </div>
         </div>

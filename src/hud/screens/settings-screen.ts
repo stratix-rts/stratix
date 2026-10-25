@@ -35,6 +35,7 @@
 
 import {
   DEFAULT_SETTINGS,
+  STRATIX_CONTEXT_TOGGLE_KEY,
   type BooleanPreferenceKey,
   type SettingsView,
   type WorldState,
@@ -390,6 +391,16 @@ export function defineSettingsScreen(): typeof HTMLElement {
         return;
       }
 
+      // 上下文注入全局开关（task_053）：localStorage 直写 + 本屏重画（不进总线 ——
+      // app 层 provider 读同一键；为什么不是 settings.set 见 core/types.ts 键常量注释）。
+      const contextToggle = target.closest<HTMLElement>('button[data-context-toggle]');
+      if (contextToggle) {
+        const next = !readContextToggle();
+        writeContextToggle(next);
+        this.renderBody();
+        return;
+      }
+
       const confirm = target.closest<HTMLElement>('button[data-danger-confirm]');
       if (confirm) {
         const id = confirm.getAttribute('data-danger-confirm');
@@ -469,10 +480,28 @@ export function defineSettingsScreen(): typeof HTMLElement {
         `;
       }).join('');
 
+      // 上下文注入全局开关（task_053）：localStorage 落地（不进 WorldState / 广播 ——
+      // 只在本机渲染进程生效的增强项开关，取舍见 core/types.ts 的键常量注释）。
+      // 状态每次从 localStorage 现读（不存第二份真相；无 localStorage 环境视为开）。
+      const contextOn = readContextToggle();
+      const contextRow = `
+        <div class="row" data-pref-row="__context__">
+          <div class="row-text">
+            <span class="row-label">上下文注入</span>
+            <span class="row-hint">对话 / 任务首发附带战场现状（角色级开关在侧栏角色卡）</span>
+          </div>
+          <div class="row-ctl">
+            <button type="button" class="ctl" role="switch" aria-checked="${contextOn}"
+                    data-context-toggle="1">${contextOn ? '开' : '关'}</button>
+          </div>
+        </div>
+      `;
+
       return `
         <div class="group" data-group="preferences">
           <div class="group-name">偏好</div>
           ${rows}
+          ${contextRow}
         </div>
       `;
     }
@@ -514,6 +543,28 @@ export function defineSettingsScreen(): typeof HTMLElement {
 /** 偏好键收窄：DOM 上的 data-pref 是外部输入，必须校验后才当契约键用（不猜、不静默吞）。 */
 function isPreferenceKey(value: string | null): value is BooleanPreferenceKey {
   return PREFERENCE_ROWS.some((row) => row.key === value);
+}
+
+/**
+ * 上下文注入全局开关的 localStorage 读写（task_053）。为什么直接读 localStorage 而不走
+ * settings.set：这个开关只在本机渲染进程内生效（不进 WorldState / 广播），键常量
+ * STRATIX_CONTEXT_TOGGLE_KEY 冻结在 core（写入方 = 本屏，读取方 = app 层 provider）。
+ * 存储 API 异常（隐私模式 / 无 jsdom）→ 读作开、写丢弃（默认开，不绑架可用性）。
+ */
+function readContextToggle(): boolean {
+  try {
+    return localStorage.getItem(STRATIX_CONTEXT_TOGGLE_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+function writeContextToggle(enabled: boolean): void {
+  try {
+    localStorage.setItem(STRATIX_CONTEXT_TOGGLE_KEY, enabled ? '1' : '0');
+  } catch {
+    // 写不进去就算了：下次读仍回落默认开。
+  }
 }
 
 function isDangerActionId(value: string | null): value is DangerActionId {
