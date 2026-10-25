@@ -286,6 +286,21 @@ export function defineAgentPanel(): typeof HTMLElement {
           .badge[data-status="busy"] { color: var(--srf-accent, #6ea8ff); border-color: var(--srf-accent, #6ea8ff); }
           .badge[data-status="error"] { color: var(--srf-danger, #e06c75); border-color: var(--srf-danger, #e06c75); }
           .badge[data-status="offline"] { color: var(--srf-text-disabled, #5a6373); }
+          /*
+           * 离线视觉（@since v3.30，task_054）：灰显 + 「离线」徽标。filter 值走皮肤 token
+           *（--srf-offline-filter，皮肤可换灰度档位），fallback 常量与 world 侧
+           * OFFLINE_STYLE_ALPHA 同档（两侧同源常量，改一处记得同步另一处）。
+           * 只灰名字区不灰动作钮：聚焦 / 移出 / 派任务按钮仍然可点（离线是 CLI 掉线，
+           * 不是 UI 不可用；派任务会被服务层守门拦截并 toast，那是入口裁决不是渲染裁决）。
+           */
+          .panel { --srf-offline-filter: grayscale(1) opacity(0.55); }
+          .detail[data-online="false"] .detail-head { filter: var(--srf-offline-filter, grayscale(1) opacity(0.55)); }
+          .badge-offline {
+            color: var(--srf-danger, #e06c75);
+            border-color: var(--srf-danger, #e06c75);
+            font-weight: 600;
+          }
+          .row[data-online="false"] .row-main { filter: var(--srf-offline-filter, grayscale(1) opacity(0.55)); }
           .facts { display: grid; gap: var(--srf-spacing-xs, 4px); margin: 0; }
           .fact { display: grid; grid-template-columns: 4em 1fr; gap: var(--srf-spacing-sm, 8px); }
           .fact dt { color: var(--srf-text-muted, #9aa3b2); font-size: var(--srf-font-size-sm, 12px); }
@@ -1097,10 +1112,11 @@ export function defineAgentPanel(): typeof HTMLElement {
         : '';
 
       return `
-        <div class="detail" data-role="detail" data-unit="${escapeHtml(detail.id)}">
+        <div class="detail" data-role="detail" data-unit="${escapeHtml(detail.id)}" data-online="${detail.online ? 'true' : 'false'}">
           <div class="detail-head">
             <span class="unit-name" data-role="unit-name">${escapeHtml(detail.name)}</span>
             <span class="badge" data-role="status" data-status="${escapeHtml(detail.statusTone)}">${escapeHtml(detail.statusLabel)}</span>
+            ${detail.online ? '' : '<span class="badge badge-offline" data-role="offline-badge">离线</span>'}
           </div>
           <dl class="facts">
             <div class="fact"><dt>战力</dt><dd data-role="power">${detail.power}</dd></div>
@@ -1201,9 +1217,10 @@ export function defineAgentPanel(): typeof HTMLElement {
     private renderRow(row: UnitRowModel): string {
       const mission = row.missionTitle ? ` · ${escapeHtml(row.missionTitle)}` : '';
       return `
-        <div class="row" data-unit="${escapeHtml(row.id)}">
+        <div class="row" data-unit="${escapeHtml(row.id)}" data-online="${row.online ? 'true' : 'false'}">
           <button type="button" class="row-main" data-action="inspect" data-unit="${escapeHtml(row.id)}" title="查看详情">
             <span class="badge" data-status="${escapeHtml(row.statusTone)}">${escapeHtml(row.statusLabel)}</span>
+            ${row.online ? '' : '<span class="badge badge-offline">离线</span>'}
             <span class="row-name">${escapeHtml(row.name)}</span>
             <span class="row-meta">战力 ${row.power}${mission}</span>
           </button>

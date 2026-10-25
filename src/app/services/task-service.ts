@@ -97,7 +97,8 @@
  *
  * @since v3.16（task_037）；v3.18（task_039）追加终态副作用；v3.22（task_046）追加流转发端口；
  *   v3.23（task_047）追加取消的队列纪律（事件剔除 + 出队防御）；v3.24（task_048）追加成果物解析落列；
- *   v3.25（task_049）追加任务审批门（plan-first 挂起 / 批准续发 / 驳回落位）。
+ *   v3.25（task_049）追加任务审批门（plan-first 挂起 / 批准续发 / 驳回落位）；
+ *   v3.30（task_054）追加离线守门（units.online 位拦截 + toast 去重）与 transport 异常上报口。
  */
 
 import { emitWorldEvent, onWorldEvent } from '../../core/bus';
@@ -168,6 +169,15 @@ export const TASK_MSG_UNBOUND = '该角色未绑定 CLI agent，任务无法执�
 /** 角色档案不在状态里（刚被删 / 快照未到）。 */
 export const TASK_MSG_NO_PROFILE = '未找到该角色的档案，任务无法执行';
 
+/**
+ * 角色绑定的 CLI 已被健康监测判离线（@since v3.30，task_054：035 守门只看「在档 + 已检出」
+ * —— 二进制在盘上但进程级掉线（崩溃 / 探测连续失败）时照样能过田门；这里补上在线位裁决）。
+ * 导出构建器供单测断言，别在测试里抄字符串。
+ */
+export function taskOfflineReason(name: string): string {
+  return `「${name}」当前离线，任务无法执行`;
+}
+
 /** 传输层错误码 → 任务失败原因前缀。 */
 const ERROR_LABELS: Readonly<Record<TransportErrorCode, string>> = {
   spawn_failed: 'CLI 拉起失败',
@@ -183,19 +193,28 @@ const ERROR_LABELS: Readonly<Record<TransportErrorCode, string>> = {
 
 /**
  * 出队守门：任务能不能跑。
- * 与 chat-service 的 guard 同三条（在档 / 已绑 / 已检出），但拦截落点不同：
+ * 与 chat-service 的 guard 同源（在档 / 已绑 / 已检出），外加第四条在线位
+ * （task_054：Units.online === false = CLI 掉线，拦截），但拦截落点不同：
  * chat 是错误气泡（对话不入库），task 是任务直接 failed（状态与库里都看得见原因）。
+ * @since v3.30（task_054）state 面增 units（在线位裁决用）；组合根与测试注入的都是
+ * 完整 getState，零改动兼容。
  */
 export function guardTaskCharacter(
-  state: Pick<WorldState, 'characters' | 'detectedAgents'>,
+  state: Pick<WorldState, 'characters' | 'detectedAgents' | 'units'>,
   characterId: string
-): { readonly ok: true; readonly character: CharacterView; readonly kind: AgentKind } | { readonly ok: false; readonly reason: string } {
+): { readonly ok: true; readonly character: CharacterView; readonly kind: AgentKind } | { readonly ok: false; readonly reason: string; readonly offline?: string } {
   const character = state.characters.find((c) => c.id === characterId);
   if (!character) return { ok: false, reason: TASK_MSG_NO_PROFILE };
   const kind = character.agentKind;
   if (!kind) return { ok: false, reason: TASK_MSG_UNBOUND };
   const detected = state.detectedAgents?.some((agent) => agent.kind === kind && agent.installed);
   if (!detected) return { ok: false, reason: TASK_MSG_NOT_INSTALLED };
+  // task_054：在线位拦截 —— units.online === false 才拦（缺省 / true = 在线，
+  // 老档 / 未探测 / 没接健康监测的单位永远不被误伤，与 UnitView.online 契约注同口径）。
+  // offline 字段把角色名带给泵（toast 文案用），与 reason 同文同源。
+  if (state.units.some((unit) => unit.characterId === characterId && unit.online === false)) {
+    return { ok: false, reason: taskOfflineReason(character.name), offline: character.name };
+  }
   return { ok: true, character, kind };
 }
 
@@ -309,9 +328,10 @@ export interface TaskServiceDeps {
   /**
    * 世界快照读取口（组合根传 worldStore.getState；单测传夹具）。
    * @since v3.23（task_047）类型面增 tasks：出队防御要查任务当前相位（仅 queued 才执行）。
+   * @since v3.30（task_054）类型面增 units：离线守门要查在线位（guardTaskCharacter）。
    * 组合根与测试注入的都是完整 getState，零改动兼容。
    */
-  readonly getState: () => Pick<WorldState, 'characters' | 'detectedAgents' | 'tasks'>;
+  readonly getState: () => Pick<WorldState, 'characters' | 'detectedAgents' | 'tasks' | 'units'>;
   /** transport 工厂（生产：复用 chat-transport-bridge 的 IPC 工厂；单测：打桩）。 */
   readonly createTransport: TaskTransportFactory;
   /** core 任务域写入面（相位回报：start / complete / fail）。与 runtime 注入同一个实例。 */
@@ -345,6 +365,18 @@ export interface TaskServiceDeps {
   readonly timeoutMs?: number;
   /** 日志口；缺省静默。 */
   readonly logger?: (line: string) => void;
+  /**
+   * transport 异常上报口（@since v3.30，task_054；缺省不上报）。执行期 transport error
+   * 事件回调（kind + 错误码；含计划续发段）。组合根接 health-monitor.recordTransportFailure
+   * —— 非 aborted 的 exit 异常各记一条 unhealthy 审计。同步签名、fire-and-forget。
+   */
+  readonly onTransportError?: (kind: AgentKind, code: TransportErrorCode) => void;
+  /**
+   * 入口拦截轻提示口（@since v3.30，task_054；缺省不提示）。离线拦截（guard 的 online
+   * 位裁决）时回调一次文案；服务内按角色去重（离线期间只提示一次，恢复后重置）——
+   * 队列里排着 N 条任务不该炸出 N 条 toast。组合根接 toast-host（warn tone）。
+   */
+  readonly notify?: (text: string) => void;
 }
 
 export interface TaskService {
@@ -386,6 +418,24 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
     readonly sessionId: string | null;
   }
   const awaitingTasks = new Map<string, AwaitingEntry>();
+
+  /**
+   * 离线拦截去重表（task_054）：离线期间每角色只 toast 一次（队列里 N 条任务不炸 N 条）。
+   * 恢复语义：守门通过时清除（下一轮掉线重新计）。
+   */
+  const offlineNotified = new Set<string>();
+
+  /**
+   * transport 异常上报（task_054）：回调抛错只记日志 —— 健康审计是旁路，绝不绑架任务回路。
+   */
+  const reportTransportError = (kind: AgentKind, code: TransportErrorCode): void => {
+    if (!deps.onTransportError) return;
+    try {
+      deps.onTransportError(kind, code);
+    } catch (error) {
+      logger(`[task-service] transport 异常上报抛错（${kind}/${code}）：${describe(error)}`);
+    }
+  };
 
   const transportFor = (kind: AgentKind): TaskTransportPort => {
     const cached = transports.get(kind);
@@ -574,10 +624,26 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
     const guard = guardTaskCharacter(deps.getState(), characterId);
     if (!guard.ok) {
       // 规格⑤：agent 未检出等 → 任务直接 failed 带原因，不进 transport。
+      // task_054：离线拦截补一条轻提示（去重口径见 offlineNotified）。
+      if (guard.offline !== undefined) {
+        if (!offlineNotified.has(characterId)) {
+          offlineNotified.add(characterId);
+          if (deps.notify) {
+            try {
+              deps.notify(`「${guard.offline}」当前离线`);
+            } catch (error) {
+              logger(`[task-service] 离线拦截提示抛错：${describe(error)}`);
+            }
+          }
+        }
+      } else {
+        offlineNotified.delete(characterId); // 其它拦截语义不同，重置去重位
+      }
       manager.failTask(task.id, guard.reason);
       pump(characterId); // 这条堵死了，接着看下一条
       return;
     }
+    offlineNotified.delete(characterId); // 守门通过 = 在线了，去重位重置
 
     busy.add(characterId);
     // task_049：runTask 返回 'awaiting' = 计划轮挂起 —— busy 不释放、不泵下一条
@@ -668,6 +734,8 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
         }
         if (event.type === 'error') {
           // 失败不自动重试（规格⑤）：failed 即终态；事件回环落 failed 快照（output=原因）。
+          // task_054：exit 异常（非用户中断）旁路上报健康监测（审计 unhealthy）。
+          reportTransportError(kind, event.code);
           manager.failTask(task.id, taskErrorText(event.code, event.message));
           return 'settled';
         }
@@ -728,6 +796,8 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
           return;
         }
         if (event.type === 'error') {
+          // task_054：审批续段的 exit 异常同样上报健康审计（与 runTask 同一口径）。
+          reportTransportError(kind, event.code);
           manager.failTask(task.id, taskErrorText(event.code, event.message));
           return;
         }

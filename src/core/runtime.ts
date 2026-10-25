@@ -31,6 +31,8 @@
  *   task.cancelled 事件接地(startsWith('task.') 已覆盖,注释补记)。
  * @since v3.25(task_049)追加 task.approve / task.reject 命令(审批门)与
  *   task.awaiting_approval / task.approved 事件接地(同上,startsWith 已覆盖)。
+ * @since v3.30(task_054)追加 agent.online / agent.offline 事件接地(app 健康监测的
+ *   在线位广播,落点 applyAgentConnectivity 写 units.online)。
  */
 
 import type { AgentLinkManager } from './agent-link';
@@ -41,7 +43,7 @@ import type { CoreStore } from './store';
 import { worldStore } from './store';
 import { createTaskManager, type TaskManager } from './task';
 import type { PipelineRunnerPort } from './task';
-import type { HudCommand, WorldEvent } from './types';
+import type { AgentKind, HudCommand, WorldEvent } from './types';
 import { computeFormationSlots } from './unit/formation';
 import type { SelectionAction } from './unit/selection';
 import { applySelectionAction } from './unit/selection';
@@ -143,6 +145,37 @@ function applyUnitMove(store: CoreStore, unitIds: readonly string[], x: number, 
   for (const slot of computeFormationSlots(ordered, { x, y })) {
     emitWorldEvent({ type: 'unit.position', unitId: slot.unitId, x: slot.x, y: slot.y });
   }
+}
+
+/**
+ * agent 在线位接地（@since v3.30，task_054）。agent.online / agent.offline 事件的落点：
+ * 把**该 kind 名下全部单位**的 online 位写掉（角色 → 单位经 characters.agentKind ↔
+ * units.characterId 对账 —— 同 kind 多角色是一次事件批量置位，事件不携 id 列表）。
+ *
+ * 语义铁律（与 UnitView.online 的契约注一致）：
+ *   - 缺省 / true = 在线 —— 所以「写 true」只对 online === false 的单位生效（幂等不广播），
+ *     老档 / 未探测 / 没接健康监测的单位永远不会被误伤；
+ *   - status（忙闲）不动：掉线时任务忙闲真相保持原值（在跑任务的 failed 收尾归 task 状态机），
+ *     online 与 status 正交，不在这里顺手改写；
+ *   - 该 kind 没有绑定角色 / 没有单位（空战场）→ 零变化零广播（事件照发，状态不端）。
+ */
+function applyAgentConnectivity(store: CoreStore, kind: AgentKind, online: boolean): void {
+  store.setState((state) => {
+    const boundCharacterIds = new Set(
+      state.characters.filter((character) => character.agentKind === kind).map((character) => character.id)
+    );
+    if (boundCharacterIds.size === 0) return state;
+    let changed = false;
+    const units = state.units.map((unit) => {
+      if (!unit.characterId || !boundCharacterIds.has(unit.characterId)) return unit;
+      // 缺省即在线：需要变化的只有「离线位不匹配」的单位（幂等，重发同一事件不广播）。
+      const stale = online ? unit.online === false : unit.online !== false;
+      if (!stale) return unit;
+      changed = true;
+      return { ...unit, online };
+    });
+    return changed ? { ...state, units } : state;
+  });
 }
 
 export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime {
@@ -310,6 +343,15 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
       // @since v3.21 战场右击移动(task_045):世界层入口,与 HudCommand unit.move 共用落位逻辑。
       case 'unit.move':
         applyUnitMove(store, event.unitIds, event.x, event.y);
+        return;
+      // @since v3.30 agent 健康位接地(task_054):app 层 health-monitor 发出的在线/离线广播,
+      //   落点 = 该 kind 名下单位的 online 位(见 applyAgentConnectivity;与 unit.move 同为
+      //   真正写状态的少数事件 —— 多数事件只显式接地不消费)。忙闲 status 不动(正交语义)。
+      case 'agent.online':
+        applyAgentConnectivity(store, event.kind, true);
+        return;
+      case 'agent.offline':
+        applyAgentConnectivity(store, event.kind, false);
         return;
       default:
         // camera.moved:WorldState 契约里没有相机字段(core/types.ts 冻结版),暂不做业务处理;

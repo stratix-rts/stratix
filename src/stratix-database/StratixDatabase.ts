@@ -39,7 +39,13 @@ const DEFAULT_FILENAME = 'stratix.db';
  * INTEGER NOT NULL DEFAULT 1；0 = 该角色对话 / 任务首发不附 <stratix-context> 块）。
  * 纯加列 → ALTER ADD 兜底（与 v6 pipeline_id 同方案，见 migrateGameSaveTables）。
  */
-const TARGET_SCHEMA_VERSION = 9;
+/**
+ * v10（@since v3.30，task_054）：新增 agent_health_events 表（agent 健康事件审计流：
+ * offline / online / unhealthy 三态词表 + (kind, created_at) 索引；DDL 与
+ * agent-health-dao.ts 同构）。why 独立表而非 characters 加列：健康是时间序事件流，
+ * 列只能存「最后一次」，崩溃历史会被覆盖 —— 见 DAO 文件头。
+ */
+const TARGET_SCHEMA_VERSION = 10;
 
 /** Valid table name characters (alphanumeric + underscore) */
 const VALID_TABLE_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -155,6 +161,7 @@ export class StratixDatabase {
     this.migrateCharacterChatMessages();
     this.migrateTasks();
     this.migratePipelines();
+    this.migrateAgentHealthEvents();
     this.migrateSafetyIndexes();
   }
 
@@ -305,6 +312,27 @@ export class StratixDatabase {
     `);
     this.db.exec('CREATE INDEX IF NOT EXISTS idx_pipelines_created ON pipelines(created_at)');
     log('info', 'Created pipelines table (task_051)');
+  }
+
+  /**
+   * agent 健康事件表（@since v3.30，task_054，schema v10）：health-monitor 随判定 / 审计
+   * 逐条插入（offline / online 翻转各一条，transport exit 异常记 unhealthy）。
+   * IF NOT EXISTS 幂等：新库在 migrateIfNeeded（schema_version = 0）也会走到这里；
+   * v9 老库因版本号升到 10 重跑迁移补建。DDL 与 agent-health-dao.ts 同构同步改。
+   */
+  private migrateAgentHealthEvents(): void {
+    const tables = this.getTableNames();
+    if (tables.has('agent_health_events')) return;
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS agent_health_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind TEXT NOT NULL,
+        event TEXT NOT NULL CHECK (event IN ('online', 'offline', 'unhealthy')),
+        created_at INTEGER NOT NULL
+      )
+    `);
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_agent_health_events_kind_time ON agent_health_events(kind, created_at)');
+    log('info', 'Created agent_health_events table (task_054)');
   }
 
   /**

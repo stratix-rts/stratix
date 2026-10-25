@@ -204,6 +204,7 @@ describe('编组列表：行字段与渲染上限', () => {
       statusTone: 'busy',
       power: 5,
       missionTitle: '联调 hello loop',
+      online: true, // task_054：行模型新增在线位（缺省即在线）
     });
     // 悬空 id 仍出行，保证选中数与行数语义一致
     expect(model.rows[1]).toMatchObject({ id: 'u-morpheus', statusLabel: '离线' });
@@ -603,5 +604,50 @@ describe('buildTaskApproveCommand / buildTaskRejectCommand（task_049）', () =>
     expect(buildTaskApproveCommand('')).toBeNull();
     expect(buildTaskApproveCommand(null)).toBeNull();
     expect(buildTaskRejectCommand(undefined)).toBeNull();
+  });
+});
+
+// ============================================================================
+// 在线位读数（@since v3.30，task_054，agent 健康监测）：units.online → 详情 / 行模型
+// 与渲染签名。断言面（规格⑤「灰显」的数据前提）：
+//   1. 缺省（不写入）/ true → online 归一 true（老档 / 未探测不误伤）；
+//   2. online === false → 模型带 false（面板据此灰显 + 「离线」徽标）；
+//   3. 在线位翻转必须改渲染签名（否则灰显停在旧样貌，直到下一次忙闲变化才补画）。
+// ============================================================================
+
+describe('在线位读数：units.online → 模型（task_054）', () => {
+  const selection = { unitIds: ['u-neo'], previewUnitIds: [], revision: 1 };
+
+  test('缺省 / true 归一 online=true；false 原样（详情与行同一口径）', () => {
+    const byOnline = (online: boolean | undefined) =>
+      resolveAgentPanel(
+        makeState({ units: [unit({ id: 'u-neo', ...(online === undefined ? {} : { online }) })], selection })
+      );
+
+    expect(byOnline(undefined).detail?.online).toBe(true); // 老档缺省 = 在线
+    expect(byOnline(true).detail?.online).toBe(true);
+    expect(byOnline(false).detail?.online).toBe(false);
+  });
+
+  test('编组行也带在线位（行内灰显同一数据源）', () => {
+    const model = resolveAgentPanel(
+      makeState({
+        units: [unit({ id: 'u-a', online: false }), unit({ id: 'u-b' })],
+        selection: { unitIds: ['u-a', 'u-b'], previewUnitIds: [], revision: 2 },
+      })
+    );
+    const offline = model.rows.find((r) => r.id === 'u-a');
+    const online = model.rows.find((r) => r.id === 'u-b');
+    expect(offline?.online).toBe(false);
+    expect(online?.online).toBe(true);
+  });
+
+  test('在线位翻转改渲染签名（离线灰显 / 恢复亮起都要重画）', () => {
+    const stateOf = (online: boolean | undefined) =>
+      makeState({ units: [unit({ id: 'u-neo', ...(online === undefined ? {} : { online }) })], selection });
+
+    const plain = agentPanelSignature(stateOf(undefined));
+    expect(agentPanelSignature(stateOf(false))).not.toBe(plain); // 掉线灰显
+    expect(agentPanelSignature(stateOf(true))).not.toBe(agentPanelSignature(stateOf(false))); // 恢复亮起
   });
 });

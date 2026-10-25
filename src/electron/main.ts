@@ -19,6 +19,7 @@ import {
   detectAllAgents,
   mergeDetectedAgents,
   verifyAgentRoster,
+  T1_AGENT_DETECTION_TARGETS,
 } from '../app/services/agent-detector';
 import { createNodeExec } from '../app/services/node-exec';
 import { createTransportFor } from '../app/services/cli-transport';
@@ -54,6 +55,13 @@ import {
   PERSISTED_PIPELINE_STATUSES,
   type PersistedPipelineRecord,
 } from '../app/services/persistence/pipeline-record-dao';
+// agent 健康事件表 IPC（@since v3.30，task_054）：DAO 与 game:saveHealthEvent 通道
+// （写入时机在渲染层 health-monitor，这里只做形状校验 + 落库；insert 内部自带建表兑底）。
+import {
+  insertAgentHealthEvent,
+  PERSISTED_AGENT_HEALTH_EVENTS,
+  type AgentHealthEventInsert,
+} from '../app/services/persistence/agent-health-dao';
 import { AGENT_KINDS, MAX_EXTERNAL_SESSION_ID_LEN, type AgentKind, type DetectedAgent } from '../core/types';
 import { getDatabase } from '../stratix-database';
 import { dataStoreService } from '../stratix-gateway/dataStoreService';
@@ -77,6 +85,13 @@ const BACKEND_PORT = 7524;
 // 检测结果经 IPC 交给渲染层并入 WorldState.detectedAgents（广播出口仍是 core/runtime.ts 的 store 订阅）。
 let detectedAgents: DetectedAgent[] = [];
 let detectionAbort: AbortController | null = null;
+
+/**
+ * 健康周期探测的在飞单例（@since v3.30，task_054）：agent:detected:probe 的串行化 ——
+ * 渲染层 health-monitor 每 60s 调一次，但探测本身可能逐项吃超时（T1 五家最坏 5×10s）；
+ * 同一轮重叠会让两个快照互踩（后归档的旧结果覆盖新结果）。同轮复用同一 promise。
+ */
+let healthProbeInFlight: Promise<DetectedAgent[]> | null = null;
 
 // ==================== 角色对话 CLI transport（task_035）====================
 // 状态放主进程：渲染层没有 child_process（nodeIntegration 关闭），子进程在这里拉起；
@@ -235,6 +250,28 @@ function startAgentDetection(): void {
   });
 }
 
+/**
+ * 跑一轮 T1 健康探测（@since v3.30，task_054）：渲染层 health-monitor 的周期探测后端。
+ * 与启轮全量探测复用同一个 execFn / 快照缓存：逐项结果照样并入 detectedAgents 并推送
+ * onUpdate（UI 的版末信息跟着刷新），resolve 把整轮结果交给渲染层做防抖判定。
+ * 退出语义：不挂 detectionAbort（健康探测是常驻节奏，退出时进程都死了，无需优雅收尾）；
+ * 单项超时由 detectAgent 自己的 10s 兑底，整轮有界。
+ */
+function runHealthProbeRound(): Promise<DetectedAgent[]> {
+  healthProbeInFlight ??= detectAllAgents({
+    execFn: createNodeExec(),
+    targets: T1_AGENT_DETECTION_TARGETS,
+    logger: (line) => console.log(line),
+    onResult: (result) => {
+      detectedAgents = mergeDetectedAgents(detectedAgents, result);
+      broadcastDetectedAgents();
+    },
+  }).finally(() => {
+    healthProbeInFlight = null;
+  });
+  return healthProbeInFlight;
+}
+
 /** 把当前检测快照推给渲染层（渲染层并入 core 状态，由 core 广播 WorldState）。 */
 function broadcastDetectedAgents(): void {
   if (!mainWindow) return;
@@ -248,6 +285,10 @@ function setupIPC() {
   // ==================== 本地 CLI agent 检测 IPC ====================
   // 渲染层启动时拉一次快照（补上「订阅之前就检测完」的那部分），之后靠推送更新。
   ipcMain.handle('agent:detected:snapshot', async () => detectedAgents);
+
+  // 健康周期探测（@since v3.30，task_054）：渲染层 health-monitor 每 60s 按需拉一轮 T1 探测
+  // （串行化在 runHealthProbeRound；结果逐项推送 onUpdate，resolve 给渲染层做防抖判定）。
+  ipcMain.handle('agent:detected:probe', async () => runHealthProbeRound());
 
   // ==================== 游戏存档 IPC（@since v3.12，task_033）====================
   // 渲染层没有 Node 能力（sql.js 适配器需要 fs），持久化一律经这三条通道进主进程 DAO。
@@ -494,6 +535,34 @@ function setupIPC() {
       return { ok: true };
     } catch (error: any) {
       console.error('[Electron] game:savePipeline failed:', error);
+      return { ok: false, error: error?.message ?? String(error) };
+    }
+  });
+
+  // ==================== agent 健康事件 IPC（@since v3.30，task_054）====================
+  // 渲染层 health-monitor 随判定 / 审计逐条插入（offline / online 翻转 + transport exit
+  // 异常 unhealthy）。与 game:savePipeline 同构：校验从严，坏形状一律拒（调用方
+  // makeAgentHealthPersister 只警告不阻断监测回路）。
+  ipcMain.handle('game:saveHealthEvent', async (_event, insert: AgentHealthEventInsert) => {
+    try {
+      if (typeof insert?.kind !== 'string' || !(AGENT_KINDS as readonly string[]).includes(insert.kind)) {
+        return { ok: false, error: `bad kind: ${String(insert?.kind)}` };
+      }
+      if (
+        typeof insert?.event !== 'string' ||
+        !(PERSISTED_AGENT_HEALTH_EVENTS as readonly string[]).includes(insert.event)
+      ) {
+        return { ok: false, error: `bad event: ${String(insert?.event)}` };
+      }
+      if (typeof insert?.createdAt !== 'number' || !Number.isFinite(insert.createdAt)) {
+        return { ok: false, error: 'bad createdAt' };
+      }
+      if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
+      const db = getDatabase().getDatabase();
+      insertAgentHealthEvent(db, insert);
+      return { ok: true };
+    } catch (error: any) {
+      console.error('[Electron] game:saveHealthEvent failed:', error);
       return { ok: false, error: error?.message ?? String(error) };
     }
   });

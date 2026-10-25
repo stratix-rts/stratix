@@ -164,6 +164,17 @@ export interface UnitView {
    * 可选而非必填：契约增补不许打破已有 UnitView 构造点（world 侧适配器、单测夹具）的编译。
    */
   readonly capabilities?: UnitCapabilitiesView | null;
+  /**
+   * @since v3.30 单位在线位（task_054，agent 健康监测）：false = 它绑定的 CLI 进程级离线
+   *   （连续探测失败 / 崩溃掉线），渲染侧灰显 + 「离线」徽标，派任务 / 对话入口拦截。
+   * **缺省 / true = 在线**（向后兼容铁律：不写入即在档在线 —— 老存档、未探测过、
+   *   还没接健康监测的环境都不会被误伤成离线）。它与 status 词表里的 'offline' 是两个正交
+   *   语义：status 描述任务忙闲（idle/busy 由任务状态机派生），online 描述 CLI 健康与否；
+   *   掉线时忙闲真相保持原值（任务侧另有 failed 相位），渲染层只叠加灰显。
+   * 真相源：app 层 health-monitor 经 agent.offline / agent.online 事件 → runtime 接地写入；
+   *   不落库（运行时健康态，重启后按「缺省在线」重新探测）。
+   */
+  readonly online?: boolean;
 }
 
 // ============================================================================
@@ -1118,4 +1129,24 @@ export type WorldEvent =
    *   即整线终态 failed，后续未到站全部 skipped。reason 是面向用户的一句话（失败原因 /
    *   取消提示），不承诺结构化 —— 详细原因在失败站的 character_tasks 行里。
    */
-  | { type: 'pipeline.failed'; pipelineId: string; pipelineName: string; reason: string };
+  | { type: 'pipeline.failed'; pipelineId: string; pipelineName: string; reason: string }
+  /**
+   * @since v3.30（task_054）agent 恢复在线事件 —— 发出方是 app 层 health-monitor（探测防抖
+   *   判定恢复：连续失败计数被一次成功清零），与 exp.gained / level.up 同一先例：app 发、
+   *   走 world 通道广播。载荷只携 kind（AgentKind 词表）；哪些角色 / 单位受影响由订阅方按
+   *   characters.agentKind / units.characterId 自行对账 —— 事件不雪球 id 列表（同 kind 多角色
+   *   是常态，事件面不随角色数膨胀）。
+   * 消费者：runtime 的 handleWorldEvent 显式接地（把该 kind 名下单位的 online 位写回 true，
+   *   见 applyAgentConnectivity）；组合根接 toast（恢复提示，成功 tone）。core 状态机在
+   *   接地之外不另消费 —— 与 unit.position / task.* 同一「显式接地、不进 onUnhandled」惯例。
+   */
+  | { type: 'agent.online'; kind: AgentKind }
+  /**
+   * @since v3.30（task_054）agent 掉线事件 —— 发出方同上（连续 2 轮探测失败才发，防抖
+   *   口径见 health-monitor 的 HEALTH_OFFLINE_FAILURE_THRESHOLD；单次失败是噪音，不广播）。
+   *   runtime 接地后该 kind 名下单位 online=false → 灰显 + 「离线」徽标 + 入口拦截；
+   *   派任务 / 对话的守门在 app 层 service 入口按 WorldState.units 的 online 位裁决（035
+   *   守门只看「在档」，这里升级为「在档且在线」）。掉线不落任务失败 —— 在跑的任务由
+   *   transport 的 exit 异常路径自行收尾（error 事件），健康事件只是旁路审计。
+   */
+  | { type: 'agent.offline'; kind: AgentKind };

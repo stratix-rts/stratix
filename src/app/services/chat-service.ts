@@ -58,7 +58,8 @@
  * **数值表归 task_040 的 progression 模块**（交接注记见 exp-config.ts 文件头，两侧已注明）；
  * 与 task-service（任务侧发射点）是同一注入形状，040 接管时组合根换注入件即可、两侧零改动。
  *
- * @since v3.14（task_035）；v3.15（task_036）追加消息落库时机；v3.18（task_039）追加每轮经验事件。
+ * @since v3.14（task_035）；v3.15（task_036）追加消息落库时机；v3.18（task_039）追加每轮经验事件；
+ *   v3.30（task_054）追加离线守门（在线位拦截 + 轻提示去重）与 transport 异常上报口。
  */
 
 import { emitWorldEvent } from '../../core/bus';
@@ -132,6 +133,15 @@ export const CHAT_MSG_NO_PROFILE = '未找到该角色的档案，无法发起�
 
 /** 角色没绑 agent 种类（老档案 / 引导没走完）。 */
 export const CHAT_MSG_UNBOUND = '该角色未绑定 CLI agent，无法对话';
+
+/**
+ * 角色绑定的 CLI 已被健康监测判离线（@since v3.30，task_054：035 守门只看「在档 + 已检出」
+ * —— 二进制在盘上但进程级掉线时照样能过田门；这里补上在线位裁决，拦截文案落错误气泡）。
+ * 导出构建器供单测断言。
+ */
+export function chatOfflineText(name: string): string {
+  return `「${name}」当前离线，请稍后再试`;
+}
 
 /** 本轮没有任何文本输出（agent 只调了工具 / 空回复）—— 静默比说清更让人困惑。 */
 export const CHAT_MSG_EMPTY_REPLY = '（本轮没有文本回复）';
@@ -215,8 +225,12 @@ export interface ChatSessionState {
 export interface ChatServiceDeps {
   /** 抽屉视图口（组合根传 034 组件元素）。 */
   readonly view: ChatDrawerView;
-  /** 世界快照读取口（组合根传 worldStore.getState；单测传夹具）。 */
-  readonly getState: () => Pick<WorldState, 'characters' | 'detectedAgents'>;
+  /**
+   * 世界快照读取口（组合根传 worldStore.getState；单测传夹具）。
+   * @since v3.30（task_054）类型面增 units：离线守门要查在线位（guard 的第四条）。
+   * 组合根与测试注入的都是完整 getState，零改动兼容。
+   */
+  readonly getState: () => Pick<WorldState, 'characters' | 'detectedAgents' | 'units'>;
   /** transport 工厂（生产：IPC 桥；单测：打桩）。 */
   readonly createTransport: ChatTransportFactory;
   /** 会话 id 回写口（组合根接 worldStore —— 存档协调器会顺着档案 diff 自动落库）。 */
@@ -242,6 +256,18 @@ export interface ChatServiceDeps {
   readonly timeoutMs?: number;
   /** 日志口；缺省静默。 */
   readonly logger?: (line: string) => void;
+  /**
+   * transport 异常上报口（@since v3.30，task_054；缺省不上报）。执行期 error 事件回调
+   * （kind + 错误码；aborted = 用户中断，健康监测那边自己会忽略）。组合根接
+   * health-monitor.recordTransportFailure（非 aborted 记一条 unhealthy 审计）。
+   * 同步签名、fire-and-forget。
+   */
+  readonly onTransportError?: (kind: AgentKind, code: TransportErrorCode) => void;
+  /**
+   * 入口拦截轻提示口（@since v3.30，task_054；缺省不提示）。离线拦截时回调一次文案
+   * （按角色去重：掉线期间只提示一次，守门通过即重置）。组合根接 toast-host（warn tone）。
+   */
+  readonly notify?: (text: string) => void;
 }
 
 /** 对外形状（组合根与单测按它操作）。 */
@@ -278,6 +304,19 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
   const lastFailed = new Map<string, string>();
   /** kind → transport 缓存（IPC 桥的 transport 无状态可缓存；省一次工厂往返）。 */
   const transports = new Map<AgentKind, ChatTransportPort>();
+
+  /** 离线拦截去重表（task_054）：掉线期间每角色只提示一次（防连点轰炸 toast）。 */
+  const offlineNotified = new Set<string>();
+
+  /** transport 异常上报（task_054）：回调抛错只记日志 —— 健康审计是旁路，不绑架对话回路。 */
+  const reportTransportError = (kind: AgentKind, code: TransportErrorCode): void => {
+    if (!deps.onTransportError) return;
+    try {
+      deps.onTransportError(kind, code);
+    } catch (error) {
+      logger(`[chat-service] transport 异常上报抛错（${kind}/${code}）：${describe(error)}`);
+    }
+  };
 
   const transportFor = (kind: AgentKind): ChatTransportPort => {
     const cached = transports.get(kind);
@@ -339,6 +378,24 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
       view.addMessage({ characterId, role: 'assistant', text: CHAT_MSG_NOT_INSTALLED });
       return null;
     }
+    // task_054：在线位拦截（第四条）—— units.online === false 才拦（缺省 / true = 在线；
+    // 与 UnitView.online 契约同口径：老档 / 未探测不误伤）。拦截文案落错误气泡（不入库，
+    // 与⑤其它守门文案同口径）+ 轻提示（去重，防连点轰炸）。
+    if (state.units.some((unit) => unit.characterId === characterId && unit.online === false)) {
+      view.addMessage({ characterId, role: 'assistant', text: chatOfflineText(character.name), error: true });
+      if (!offlineNotified.has(characterId)) {
+        offlineNotified.add(characterId);
+        if (deps.notify) {
+          try {
+            deps.notify(`「${character.name}」当前离线`);
+          } catch (error) {
+            logger(`[chat-service] 离线拦截提示抛错：${describe(error)}`);
+          }
+        }
+      }
+      return null;
+    }
+    offlineNotified.delete(characterId); // 守门通过 = 在线，去重位重置
     return character;
   };
 
@@ -402,6 +459,8 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
         if (event.type === 'error') {
           // 先收束已流出的部分（诚实保留半截回答），再落错误气泡。
           view.finalizeStream();
+          // task_054：exit 异常旁路上报健康监测（aborted 在那边被忽略，统一透传不在此处分支）。
+          reportTransportError(kind, event.code);
           if (event.code === 'aborted') {
             view.addMessage({ characterId, role: 'assistant', text: CHAT_MSG_INTERRUPTED });
             persist({ characterId, role: 'assistant', text: CHAT_MSG_INTERRUPTED, sessionRef: session.sessionId });

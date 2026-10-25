@@ -205,6 +205,12 @@ export interface UnitDetailModel {
    *（只有 awaiting 才渲染这张卡），不做本地可点 / 禁用态 —— 裁决在 core 状态机。
    */
   readonly approval: TaskApprovalModel | null;
+  /**
+   * 在线位（@since v3.30，task_054，agent 健康监测）：false = 绑定的 CLI 掉线 —— 卡片灰显
+   *（CSS filter，皮肤 token 常量）+ 「离线」徽标。缺省 true（UnitView.online 不写入即在档
+   * 在线 —— 老档 / 未探测不误伤，与 core 契约同口径）。
+   */
+  readonly online: boolean;
 }
 
 /**
@@ -230,6 +236,8 @@ export interface UnitRowModel {
   readonly statusTone: 'idle' | 'busy' | 'offline' | 'error';
   readonly power: number;
   readonly missionTitle: string | null;
+  /** 在线位（@since v3.30，task_054）：false = 离线灰显 + 「离线」徽标；缺省 true（同 UnitDetailModel.online）。 */
+  readonly online: boolean;
 }
 
 export interface AgentPanelModel {
@@ -317,6 +325,7 @@ function toDetail(state: WorldState, unit: UnitView): UnitDetailModel {
     characterId,
     taskQueue: characterId ? resolveCharacterTaskQueue(state.tasks, characterId) : EMPTY_TASK_QUEUE,
     approval: characterId ? resolveTaskApproval(state.tasks, characterId) : null,
+    online: unit.online !== false,
   };
 }
 
@@ -328,6 +337,7 @@ function toRow(state: WorldState, unit: UnitView): UnitRowModel {
     statusTone: STATUS_TONES[unit.status],
     power: unit.power,
     missionTitle: findMission(state, unit.missionId)?.title ?? null,
+    online: unit.online !== false,
   };
 }
 
@@ -579,6 +589,9 @@ export function agentPanelSignature(state: WorldState | null): string {
         capSig,
         growth ? `${growth.characterId}:${growth.name}:${growth.level}:${growth.experience}:${growth.contextEnabled}` : '-',
         queueSig,
+        // @since v3.30（task_054）：在线位进签名 —— 离线/恢复翻转必须重画（灰显与徽标），
+        // 否则卡片停在旧样貌直到下一次忙闲变化。
+        unit.online === false ? 'off' : 'on',
       ].join(':')
     );
   }

@@ -107,5 +107,9 @@ function describe(event: WorldEvent): string {
       return `${event.type.padEnd(15)} ${event.pipelineName}`;
     case 'pipeline.failed':
       return `${event.type.padEnd(15)} ${event.pipelineName} :: ${event.reason}`;
+    // agent 健康位（@since v3.30，task_054）：health-monitor 防抖判定广播，看一眼在线翻转。
+    case 'agent.online':
+    case 'agent.offline':
+      return `${event.type.padEnd(15)} ${event.kind}`;
   }
 }

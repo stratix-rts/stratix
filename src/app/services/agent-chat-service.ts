@@ -86,7 +86,7 @@ import {
   type ChatTransportFactory,
   type ChatTransportPort,
 } from './chat-service';
-import type { TransportEvent } from './cli-transport/transport';
+import type { TransportEvent, TransportErrorCode } from './cli-transport/transport';
 import { defaultExpWeight } from './exp-config';
 import { resolveStratixContextBlock, type StratixContextSource } from './stratix-context';
 
@@ -193,8 +193,12 @@ interface ActiveDiscussion {
 export interface AgentChatServiceDeps {
   /** 抽屉视图口（组合根传 034 组件元素）。 */
   readonly view: AgentChatDrawerView;
-  /** 世界快照读取口（组合根传 worldStore.getState；单测传夹具）。 */
-  readonly getState: () => Pick<WorldState, 'characters' | 'detectedAgents'>;
+  /**
+   * 世界快照读取口（组合根传 worldStore.getState；单测传夹具）。
+   * @since v3.30（task_054）类型面增 units：守门第四条（在线位）裁决用。
+   * 组合根与测试注入的都是完整 getState，零改动兼容。
+   */
+  readonly getState: () => Pick<WorldState, 'characters' | 'detectedAgents' | 'units'>;
   /** transport 工厂（生产：与 035 同一个 IPC 桥工厂；单测：打桩）。 */
   readonly createTransport: ChatTransportFactory;
   /** 会话 id 回写口（与 035 共用：档案 externalSessionId 落库回执）。 */
@@ -213,6 +217,11 @@ export interface AgentChatServiceDeps {
   readonly timeoutMs?: number;
   /** 日志口；缺省静默。 */
   readonly logger?: (line: string) => void;
+  /**
+   * transport 异常上报口（@since v3.30，task_054；缺省不上报）。回合 error 事件回调
+   * （kind + 错误码）；组合根接 health-monitor.recordTransportFailure（非 aborted 记 unhealthy）。
+   */
+  readonly onTransportError?: (kind: AgentKind, code: TransportErrorCode) => void;
 }
 
 /** 对外形状（组合根与单测按它操作）。 */
@@ -294,9 +303,9 @@ export function createAgentChatService(deps: AgentChatServiceDeps): AgentChatSer
     }
   };
 
-  /** 守门：单边三条（在档 / 已绑 / 已检出）；不通过返回带名字的文案。 */
+  /** 守门：单边三条（在档 / 已绑 / 已检出）+ 在线位（@since v3.30，task_054）；不通过返回带名字的文案。 */
   const guardOne = (
-    state: Pick<WorldState, 'characters' | 'detectedAgents'>,
+    state: Pick<WorldState, 'characters' | 'detectedAgents' | 'units'>,
     characterId: string
   ): { readonly ok: true; readonly character: CharacterView } | { readonly ok: false; readonly reason: string } => {
     const character = state.characters.find((c) => c.id === characterId);
@@ -305,6 +314,11 @@ export function createAgentChatService(deps: AgentChatServiceDeps): AgentChatSer
     if (!kind) return { ok: false, reason: `「${character.name}」未绑定 CLI agent，无法讨论` };
     if (!isAgentKindInstalled(state.detectedAgents, kind)) {
       return { ok: false, reason: `「${character.name}」的 CLI 未安装，无法讨论` };
+    }
+    // task_054：在线位拦截 —— 双方任一掉线都不开场（同 chat / task 守门第四条，
+    // units.online 缺省即在档在线，老档不误伤）。
+    if (state.units.some((unit) => unit.characterId === characterId && unit.online === false)) {
+      return { ok: false, reason: `「${character.name}」当前离线，无法讨论` };
     }
     return { ok: true, character };
   };
@@ -382,6 +396,14 @@ export function createAgentChatService(deps: AgentChatServiceDeps): AgentChatSer
         }
         if (event.type === 'error') {
           view.finalizePeerStream(); // 先收束半截话（诚实保留），再落中断标注
+          // task_054：exit 异常旁路上报健康监测（aborted 在那边被忽略）。
+          if (deps.onTransportError) {
+            try {
+              deps.onTransportError(character.agentKind as AgentKind, event.code);
+            } catch {
+              // 审计是旁路：回调抛错不绑架互聊回路。
+            }
+          }
           return settleInterrupted(
             event.code === 'aborted'
               ? PEER_MSG_INTERRUPTED

@@ -225,9 +225,11 @@ function makeHarness(options: HarnessOptions = {}): ServiceHarness {
   const view = makeView();
   const detected: readonly DetectedAgent[] | undefined =
     'detected' in options ? options.detected : [detectedClaude, detectedKimi];
-  const state: Pick<WorldState, 'characters' | 'detectedAgents'> = {
+  // task_054：state 面增 units（守门第四条）；夹具缺省空 = 全员在档在线。
+  const state: Pick<WorldState, 'characters' | 'detectedAgents' | 'units'> = {
     characters: [...(options.characters ?? [characterA, characterB])],
     detectedAgents: detected ? [...detected] : undefined,
+    units: [],
   };
   const { factory, calls } = makeFactory(options.scripts ?? []);
   const sessionIds: Array<[string, string]> = [];

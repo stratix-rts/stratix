@@ -85,6 +85,15 @@ export class UnitObject {
     return this.view.characterId ?? null;
   }
 
+  /**
+   * 在线位（@since v3.30，task_054）：false = 绑定的 CLI 掉线 → 渲染层灰显。
+   * 缺省 true（UnitView.online 不写入即在档在线 —— 老档 / 未探测不误伤，core 契约同口径）。
+   * 与 status 正交：忙闲真相归 task 状态机，这里只叠加灰显。
+   */
+  get online(): boolean {
+    return this.view.online !== false;
+  }
+
   /** 移动到新的世界坐标，返回是否真的动了（调用方可据此跳过无变化重绘）。 */
   setPosition(x: number, y: number): boolean {
     if (this.x === x && this.y === y) return false;
@@ -105,7 +114,8 @@ export class UnitObject {
       this.view.power === view.power &&
       this.view.missionId === view.missionId &&
       (this.view.skinId ?? null) === (view.skinId ?? null) &&
-      appearanceKey(this.view.appearance) === appearanceKey(view.appearance)
+      appearanceKey(this.view.appearance) === appearanceKey(view.appearance) &&
+      (this.view.online ?? true) === (view.online ?? true)
     ) {
       return false;
     }

@@ -41,6 +41,7 @@ import {
   TASK_MSG_UNBOUND,
   TASK_PLAN_INSTRUCTION,
   taskErrorText,
+  taskOfflineReason,
   type TaskPersistRecord,
   type TaskService,
   type TaskTransportFactory,
@@ -132,6 +133,8 @@ function makeFactory(scripts: Script[]): { factory: TaskTransportFactory; calls:
 interface HarnessOptions {
   readonly characters?: readonly CharacterView[];
   readonly detected?: readonly DetectedAgent[] | undefined;
+  /** 在线位夹具（@since v3.30，task_054）：离线拦截用；缺省无单位 = 全员在线。 */
+  readonly units?: readonly import('../../core/types').UnitView[];
   readonly scripts?: Script[];
   readonly timeoutMs?: number;
   readonly maxTasks?: number;
@@ -141,6 +144,10 @@ interface HarnessOptions {
   readonly onTaskChunk?: (characterId: string, chunk: string) => void;
   /** context-source 注入件（task_053）；缺省不注入。 */
   readonly provideContext?: (characterId: string) => import('../services/stratix-context').StratixContextInput | null;
+  /** transport 异常上报口（@since v3.30，task_054）。 */
+  readonly onTransportError?: (kind: AgentKind, code: import('../services/cli-transport/transport').TransportErrorCode) => void;
+  /** 入口拦截轻提示口（@since v3.30，task_054）。 */
+  readonly notify?: (text: string) => void;
 }
 
 interface Harness {
@@ -153,7 +160,7 @@ interface Harness {
   readonly settled: TaskPersistRecord[];
   /** onTaskChunk 端口收到的 (characterId, chunk) 依次记录（task_046）。 */
   readonly chunks: Array<{ characterId: string; chunk: string }>;
-  setState(patch: Partial<Pick<WorldState, 'characters' | 'detectedAgents'>>): void;
+  setState(patch: Partial<Pick<WorldState, 'characters' | 'detectedAgents' | 'units'>>): void;
 }
 
 function makeHarness(options: HarnessOptions = {}): Harness {
@@ -165,6 +172,7 @@ function makeHarness(options: HarnessOptions = {}): Harness {
     ...state,
     characters: [...(options.characters ?? [character, otherCharacter])],
     detectedAgents: detected ? [...detected] : undefined,
+    units: [...(options.units ?? [])],
   }));
   const manager = createTaskManager({
     store,
@@ -186,6 +194,8 @@ function makeHarness(options: HarnessOptions = {}): Harness {
     expWeight: options.expWeight,
     provideContext: options.provideContext,
     timeoutMs: options.timeoutMs,
+    onTransportError: options.onTransportError,
+    notify: options.notify,
   });
   const stop = service.start();
   harnessStops.push(stop);
@@ -232,7 +242,7 @@ function assign(h: Harness, prompt: string, characterId = 'ch-1'): CharacterTask
 // ============================================================================
 
 describe('guardTaskCharacter：出队守门', () => {
-  const state = { characters: [character], detectedAgents: [detectedClaude] };
+  const state = { characters: [character], detectedAgents: [detectedClaude], units: [] };
 
   test('三条全过 → ok（返回角色与 kind）', () => {
     const guard = guardTaskCharacter(state, 'ch-1');
@@ -250,7 +260,7 @@ describe('guardTaskCharacter：出队守门', () => {
       ok: false,
       reason: TASK_MSG_NOT_INSTALLED,
     });
-    expect(guardTaskCharacter({ characters: [character], detectedAgents: undefined }, 'ch-1')).toEqual({
+    expect(guardTaskCharacter({ characters: [character], detectedAgents: undefined, units: [] }, 'ch-1')).toEqual({
       ok: false,
       reason: TASK_MSG_NOT_INSTALLED,
     });
@@ -1299,5 +1309,92 @@ describe('上下文注入（task_053）：每条任务 prompt 附带 <stratix-co
     expect(resumed.indexOf('<stratix-context>')).toBeLessThan(resumed.indexOf('【计划审批】'));
     // 不传块 → 与老行为一致
     expect(buildResumedTaskPrompt(character, task, '计划全文')).not.toContain('<stratix-context>');
+  });
+});
+
+// ============================================================================
+// agent 健康监测对接面（@since v3.30，task_054）：离线守门（035 的「在档」守门升级为
+// 「在档且在线」）+ transport exit 异常旁路上报。规格⑤「灰显与拦截」的服务侧断言。
+// ============================================================================
+
+describe('离线守门：units.online === false → 任务直接 failed + 轻提示（task_054）', () => {
+  const offlineUnit = {
+    id: 'unit-1',
+    name: '阿尔法',
+    status: 'idle',
+    missionId: null,
+    power: 3,
+    characterId: 'ch-1',
+    online: false,
+  } as const;
+
+  test('守门第四条：离线角色任务 failed（不进 transport），原因带角色名', async () => {
+    const h = makeHarness({ units: [offlineUnit], scripts: [scripted()] });
+    assign(h, '干活');
+    await flush();
+
+    expect(h.calls).toHaveLength(0); // 拦在入口，没碰 transport
+    const task = h.store.getState().tasks?.find((t) => t.characterId === 'ch-1');
+    expect(task?.status).toBe('failed');
+    expect(task?.output).toBe(taskOfflineReason('阿尔法'));
+  });
+  test('轻提示去重：队列里 N 条任务只提示一次（恢复即重置）', async () => {
+    const toasts: string[] = [];
+    const h = makeHarness({ units: [offlineUnit], scripts: [scripted()], notify: (text) => toasts.push(text) });
+    assign(h, '第一件');
+    assign(h, '第二件');
+    await flush();
+
+    expect(toasts).toEqual(['「阿尔法」当前离线']);
+    expect(h.store.getState().tasks?.filter((t) => t.status === 'failed')).toHaveLength(2); // 任务各自都 failed
+
+    // 恢复在线：下一条任务照常进 transport（去重位随守门通过重置，不再拦截）。
+    h.setState({ units: [{ ...offlineUnit, online: true }] });
+    assign(h, '恢复后');
+    await flush();
+    expect(h.calls).toHaveLength(1);
+    expect(toasts).toHaveLength(1); // 不再有新提示
+  });
+
+  test('守门纯函数：在档 / 已检出但离线 → 拒；单位不带 online（老档）→ 不拦', () => {
+    const onlineUnit: import('../../core/types').UnitView = { ...offlineUnit, online: undefined };
+    const state = { characters: [character], detectedAgents: [detectedClaude], units: [offlineUnit] };
+    expect(guardTaskCharacter(state, 'ch-1')).toEqual({
+      ok: false,
+      reason: taskOfflineReason('阿尔法'),
+      offline: '阿尔法',
+    });
+    // online 缺省 = 在线（UnitView 契约：不写入即在档在线 —— 老档 / 未探测不误伤）。
+    expect(guardTaskCharacter({ ...state, units: [{ ...offlineUnit, online: true }] }, 'ch-1').ok).toBe(true);
+    expect(guardTaskCharacter({ ...state, units: [{ ...onlineUnit }] }, 'ch-1').ok).toBe(true);
+    // 别人的单位掉线不拦 ch-1（characterId 不匹配）。
+    expect(
+      guardTaskCharacter({ ...state, units: [{ ...offlineUnit, characterId: 'ch-2' }] }, 'ch-1').ok
+    ).toBe(true);
+  });
+});
+
+describe('transport 异常上报：error 事件旁路上报健康监测（task_054）', () => {
+  test('error 事件回调 (kind, code)；aborted 也透传（健康监测那边裁决）', async () => {
+    const reported: Array<[AgentKind, string]> = [];
+    const h = makeHarness({
+      scripts: [scripted({ type: 'error', code: 'nonzero_exit', message: 'exit 137' } as TransportEvent)],
+      onTransportError: (kind, code) => reported.push([kind, code]),
+    });
+    assign(h, '干活');
+    await flush();
+
+    expect(reported).toEqual([['claude-code', 'nonzero_exit']]);
+    expect(h.store.getState().tasks?.find((t) => t.characterId === 'ch-1')?.status).toBe('failed'); // 主路照旧
+  });
+
+  test('回调抛错不绑架任务回路（failed 照落）', async () => {
+    const h = makeHarness({
+      scripts: [scripted({ type: 'error', code: 'spawn_failed', message: 'spawn 炸了' } as TransportEvent)],
+      onTransportError: () => { throw new Error('审计口炸了'); },
+    });
+    assign(h, '干活');
+    await flush();
+    expect(h.store.getState().tasks?.find((t) => t.characterId === 'ch-1')?.status).toBe('failed');
   });
 });

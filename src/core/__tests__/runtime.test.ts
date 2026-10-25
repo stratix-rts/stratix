@@ -484,3 +484,89 @@ describe('world 事件：selection.box（带命中 id 的框选闭环）', () =>
     expect(unhandled).toEqual([{ channel: 'world', type: 'selection.box' }]);
   });
 });
+
+// ============================================================================
+// agent.online / agent.offline 接地（@since v3.30，task_054，agent 健康监测）：
+// health-monitor（app 层）防抖判定翻转 → 事件只携 kind → runtime 按角色档案
+// （characters.agentKind ↔ units.characterId）批量置在线位。断言面（规格⑤「事件接地」）：
+//   1. 掉线事件把该 kind 名下单位 online 置 false（其余单位零变化零广播）；
+//   2. 恢复事件置回 true（恢复 1 次即回）；
+//   3. 缺省即在线：老档 / 未写入 online 的单位在恢复事件下不广播（幂等不扰动）；
+//   4. 没绑角色 / 没单位的 kind：事件照收，零状态变化（不进 onUnhandled 也不崩）；
+//   5. 忙闲 status 不被顺手改写（online 与 status 正交，见 UnitView.online 契约注）。
+// ============================================================================
+
+describe('world 事件：agent.online / agent.offline（task_054 接地）', () => {
+  const characters = [
+    { id: 'ch-a', name: '阿尔法', persona: 'x', level: 1, experience: 0, agentKind: 'claude-code' },
+    { id: 'ch-b', name: '贝塔', persona: 'y', level: 1, experience: 0, agentKind: 'claude-code' },
+    { id: 'ch-c', name: '伽马', persona: 'z', level: 1, experience: 0, agentKind: 'kimi' },
+  ] as unknown as import('../types').WorldState['characters'];
+  const units: UnitView[] = [
+    { id: 'u-a', name: '阿尔法', status: 'busy', missionId: null, power: 3, characterId: 'ch-a' },
+    { id: 'u-b', name: '贝塔', status: 'idle', missionId: null, power: 4, characterId: 'ch-b' },
+    { id: 'u-c', name: '伽马', status: 'idle', missionId: null, power: 5, characterId: 'ch-c' },
+    { id: 'u-free', name: '游侠', status: 'idle', missionId: null, power: 2 }, // 未绑角色：永不受健康位影响
+  ];
+
+  function healthHarness() {
+    const store = createStore({ units, characters });
+    const states: WorldState[] = [];
+    const unhandled: { channel: UnhandledChannel; type: string }[] = [];
+    const offState: Unsubscribe = onState((state) => states.push(state));
+    const runtime = createCoreRuntime({
+      store,
+      onUnhandled: (channel, payload) => unhandled.push({ channel, type: payload.type }),
+    });
+    const stop = runtime.start();
+    return { store, states, unhandled, stop: () => { stop(); offState(); } };
+  }
+
+  test('agent.offline → 该 kind 名下单位 online=false；同 kind 多角色一次批量置位；他 kind / 未绑不动', () => {
+    const { store, unhandled, stop } = healthHarness();
+    cleanups.push(stop);
+
+    emitWorldEvent({ type: 'agent.offline', kind: 'claude-code' });
+
+    const state = store.getState();
+    expect(state.units.find((u) => u.id === 'u-a')?.online).toBe(false);
+    expect(state.units.find((u) => u.id === 'u-b')?.online).toBe(false);
+    expect(state.units.find((u) => u.id === 'u-c')?.online).toBeUndefined(); // kimi 不受扰
+    expect(state.units.find((u) => u.id === 'u-free')?.online).toBeUndefined(); // 未绑不受扰
+    expect(unhandled).toHaveLength(0); // 显式接地，不进未处理
+  });
+
+  test('agent.online → 离线单位置回 true（恢复 1 次即回）；缺省单位不广播（幂等不扰动老档）', () => {
+    const { store, states, stop } = healthHarness();
+    cleanups.push(stop);
+
+    emitWorldEvent({ type: 'agent.offline', kind: 'claude-code' });
+    states.length = 0;
+    emitWorldEvent({ type: 'agent.online', kind: 'claude-code' });
+    expect(store.getState().units.find((u) => u.id === 'u-a')?.online).toBe(true);
+
+    // 恢复后再发一次 agent.online：全部单位已在线（缺省即在线）→ 零状态广播。
+    states.length = 0;
+    emitWorldEvent({ type: 'agent.online', kind: 'claude-code' });
+    expect(states).toHaveLength(0);
+  });
+
+  test('事件只携 kind：没绑角色 / 没单位的 kind 照收，零状态变化不崩', () => {
+    const { states, unhandled, stop } = healthHarness();
+    cleanups.push(stop);
+
+    emitWorldEvent({ type: 'agent.offline', kind: 'openclaw' }); // 档案里没有 openclaw 角色
+    expect(states).toHaveLength(0);
+    expect(unhandled).toHaveLength(0);
+  });
+
+  test('忙闲 status 不被顺手改写（online 与 status 正交）', () => {
+    const { store, stop } = healthHarness();
+    cleanups.push(stop);
+
+    emitWorldEvent({ type: 'agent.offline', kind: 'claude-code' });
+    const a = store.getState().units.find((u) => u.id === 'u-a');
+    expect(a?.status).toBe('busy'); // 掉线不谎报忙闲：在跑任务的收尾归 task 状态机
+    expect(a?.online).toBe(false);
+  });
+});

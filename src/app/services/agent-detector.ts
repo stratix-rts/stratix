@@ -70,6 +70,15 @@ export const AGENT_DETECTION_TARGETS: readonly AgentDetectionTarget[] = [
   { kind: 'copilot', tier: 'T3', binary: 'copilot', versionArgs: ['--version'] },
 ];
 
+/**
+ * T1 子名单（@since v3.30，task_054）：健康监测的周期探测面 —— 只有 T1 五家能绑角色 / 跑
+ * transport，掉线判定也只对它们有意义（T2/T3 没有执行链路，探它们是白耗子进程）。
+ * 从主名单过孵而不是另抄一份（名单只在本文件一份的铁律）；主名单增删 T1 项时自动跟随。
+ */
+export const T1_AGENT_DETECTION_TARGETS: readonly AgentDetectionTarget[] = AGENT_DETECTION_TARGETS.filter(
+  (target) => target.tier === 'T1'
+);
+
 /** 单项探测超时（ms）。why 10s：各 CLI 的 --version 正常在 1s 内，卡住说明环境有问题。 */
 export const DEFAULT_DETECTION_TIMEOUT_MS = 10_000;
 

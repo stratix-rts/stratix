@@ -13,6 +13,7 @@ import type { PersistedCharacterRecord, PersistedUnitPosition } from '../app/ser
 import type { ChatMessageInsert, PersistedChatMessage } from '../app/services/persistence/chat-history-dao';
 import type { PersistedTaskRecord, PersistedTaskStatRow } from '../app/services/persistence/task-record-dao';
 import type { PersistedPipelineRecord } from '../app/services/persistence/pipeline-record-dao';
+import type { AgentHealthEventInsert } from '../app/services/persistence/agent-health-dao';
 
 export interface ElectronAPI {
   // 通用服务调用
@@ -97,6 +98,12 @@ export interface ElectronAPI {
     snapshot: () => Promise<DetectedAgent[]>;
     /** 订阅检测更新（主进程每探测完一项推一次全量快照）；返回退订函数。 */
     onUpdate: (callback: (agents: DetectedAgent[]) => void) => () => void;
+    /**
+     * 按需跑一轮 T1 健康探测（@since v3.30，task_054）：主进程直跑 T1 五家的
+     * which + --version，逐项并入快照并推送 onUpdate，resolve 返回整轮结果
+     * （health-monitor 的防抖输入）。串行化在主进程：同轮不重叠。
+     */
+    probe: () => Promise<DetectedAgent[]>;
   };
 
   /**
@@ -122,6 +129,8 @@ export interface ElectronAPI {
     loadTaskStats: () => Promise<{ ok: boolean; rows?: PersistedTaskStatRow[]; error?: string }>;
     /** upsert 一条流水线编排态（@since v3.27，task_051，落 pipelines 表）。 */
     savePipeline: (record: PersistedPipelineRecord) => Promise<{ ok: boolean; error?: string }>;
+    /** 插入一条 agent 健康事件（@since v3.30，task_054，落 agent_health_events 表）。 */
+    saveHealthEvent: (insert: AgentHealthEventInsert) => Promise<{ ok: boolean; error?: string }>;
   };
 
   /**
@@ -223,7 +232,7 @@ const electronAPI: ElectronAPI = {
     delete: (filePath) => ipcRenderer.invoke('texture:delete', filePath),
   },
 
-  // 本地 CLI agent 检测（@since v3.8，task_022）
+  // 本地 CLI agent 检测（@since v3.8，task_022）；健康周期探测（@since v3.30，task_054）。
   agentDetection: {
     snapshot: () => ipcRenderer.invoke('agent:detected:snapshot'),
     onUpdate: (callback) => {
@@ -231,6 +240,7 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.on('agent:detected:update', handler);
       return () => ipcRenderer.off('agent:detected:update', handler);
     },
+    probe: () => ipcRenderer.invoke('agent:detected:probe'),
   },
 
   // 游戏存档（@since v3.12，task_033）：透传到主进程的 DAO（game:loadSnapshot / game:save*）。
@@ -238,7 +248,8 @@ const electronAPI: ElectronAPI = {
   // 任务记录（@since v3.16，task_037）game:saveTask / game:loadTasks；
   // 统计聚合（@since v3.26，task_050）：game:taskStats；
   // 流水线编排态（@since v3.27，task_051）：game:savePipeline（站任务的 pipeline_id 归属
-  // 复用 game:saveTask 多带一列，不另开面）。
+  // 复用 game:saveTask 多带一列，不另开面）；
+  // agent 健康事件（@since v3.30，task_054）：game:saveHealthEvent + 周期探测 agent:detected:probe。
   gameSave: {
     loadSnapshot: () => ipcRenderer.invoke('game:loadSnapshot'),
     saveCharacters: (records: PersistedCharacterRecord[]) => ipcRenderer.invoke('game:saveCharacters', records),
@@ -249,6 +260,7 @@ const electronAPI: ElectronAPI = {
     loadTasks: (characterId: string, limit?: number) => ipcRenderer.invoke('game:loadTasks', characterId, limit),
     loadTaskStats: () => ipcRenderer.invoke('game:taskStats'),
     savePipeline: (record: PersistedPipelineRecord) => ipcRenderer.invoke('game:savePipeline', record),
+    saveHealthEvent: (insert: AgentHealthEventInsert) => ipcRenderer.invoke('game:saveHealthEvent', insert),
   },
 
   /**

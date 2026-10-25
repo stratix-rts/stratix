@@ -229,3 +229,45 @@ describe('恢复站位（restoredPositions）', () => {
     expect(registry.get('u1')?.position).toEqual({ x: WORLD.x + WORLD.width / 2, y: WORLD.y + WORLD.height / 2 });
   });
 });
+
+// ============================================================================
+// 在线位镜像（@since v3.30，task_054，agent 健康监测）：UnitObject.online 缺省 true
+//（老档 / 未探测不误伤），online 翻转算对账变化（灰显样式跟着广播走）。规格⑤「灰显」的
+// world 侧数据前提；Phaser 侧的 alpha / tint 应用在 unit-layer（要真场景，见渲染层）。
+// ============================================================================
+
+describe('online —— 在线位镜像（task_054）', () => {
+  test('缺省在线：不带 online 字段的单位 online=true（老档不误伤）', () => {
+    const registry = createRegistry();
+    registry.sync([unit('u1')]);
+    expect(registry.get('u1')?.online).toBe(true);
+  });
+
+  test('掉线镜像：online=false 透传；恢复 true 透传', () => {
+    const registry = createRegistry();
+    registry.sync([unit('u1', { online: false })]);
+    expect(registry.get('u1')?.online).toBe(false);
+
+    registry.sync([unit('u1', { online: true })]);
+    expect(registry.get('u1')?.online).toBe(true);
+  });
+
+  test('在线位翻转算对账变化（updated），相同快照不算', () => {
+    const registry = createRegistry();
+    registry.sync([unit('u1')]);
+    expect(registry.sync([unit('u1')]).updated).toEqual([]); // 相同 → 不算
+
+    expect(registry.sync([unit('u1', { online: false })]).updated).toEqual(['u1']); // 掉线
+    expect(registry.sync([unit('u1', { online: true })]).updated).toEqual(['u1']); // 恢复
+    expect(registry.sync([unit('u1', { online: true })]).updated).toEqual([]); // 稳定
+  });
+
+  test('掉线不重置位置（同业务态同步纪律：位置真相在世界层）', () => {
+    const registry = createRegistry();
+    registry.sync([unit('u1')]);
+    const before = registry.get('u1')?.position;
+    registry.sync([unit('u1', { online: false })]);
+    const after = registry.get('u1')?.position;
+    expect(after).toEqual(before);
+  });
+});

@@ -88,6 +88,18 @@ const COLOR_BY_STATUS: Record<UnitStatus, number> = {
 
 const DEFAULT_STATUS_COLOR = 0x94a3b8;
 
+/**
+ * 离线视觉常量（@since v3.30，task_054，agent 健康监测）：CLI 掉线时单位灰显 ——
+ * 与 HUD 角色卡的 CSS filter 同档（那边是 grayscale(1) opacity(0.55)；Phaser 没有
+ * CSS filter，用 alpha + 灰 tint 近似同一视觉档位）。**皮肤 token 常量**：改档位只动这里，
+ * 两侧（这里与 hud 的 --srf-offline-filter）同步改。
+ */
+const OFFLINE_STYLE_ALPHA = 0.55;
+/** 离线精灵 tint（灰化形象；白色 = 无 tint 原色）。 */
+const OFFLINE_SPRITE_TINT = 0x8a8f98;
+/** 在线 tint（无染色原色）。 */
+const ONLINE_SPRITE_TINT = 0xffffff;
+
 /** 有形象时，占位圆缩成脚下的小色点（业务态 / 皮肤色仍然可见）。 */
 const SPRITE_DOT_RADIUS = 5;
 
@@ -158,6 +170,10 @@ export class UnitLayer {
       // 状态广播不该把半路上的单位臈移到终点（tween 只是渲染过渡，task_045）。
       if (!this.isMoving(node)) node.container.setPosition(object.position.x, object.position.y);
       node.body.setFillStyle(this.fillColorOf(object));
+      // 离线灰显（task_054）：整容 alpha + 精灵灰 tint（占位圆由 fillColorOf 换离线色）。
+      // 与位置/填充色同一口径：每次对账无条件设置（幂等，不追踪上一帧 —— 广播频率低，无所谓）。
+      node.container.setAlpha(object.online ? 1 : OFFLINE_STYLE_ALPHA);
+      if (node.sprite) node.sprite.setTint(object.online ? ONLINE_SPRITE_TINT : OFFLINE_SPRITE_TINT);
       this.refreshRing(node, object.id);
       this.syncSprite(node, object);
     }
@@ -243,8 +259,11 @@ export class UnitLayer {
    * 单位填充色（@since v3.9）：带皮肤的 agent 单位按**皮肤徽标色**上色（身份标识），
    * 没有皮肤的普通单位按业务态颜色（idle / busy / offline / error）。
    * 换肤只需改 skinId —— 颜色换算集中在 world/theme.ts，本层只取结果。
+   * @since v3.30（task_054）：离线时无视皮肤色统一用离线灰 —— 灰显是健康信号，
+   * 不该被皮肤色盖住（掉线了还在亮皮肤色 = 用户看不出它挂了）。
    */
   private fillColorOf(object: UnitObject): number {
+    if (!object.online) return COLOR_BY_STATUS.offline;
     const statusColor = COLOR_BY_STATUS[object.status] ?? DEFAULT_STATUS_COLOR;
     return resolveUnitColor(object.skinId, statusColor);
   }
@@ -375,7 +394,7 @@ export class UnitLayer {
     }
 
     if (this.scene.textures.exists(key)) {
-      this.attachSprite(node, characterId);
+      this.attachSprite(node, characterId, object.online);
       return;
     }
 
@@ -474,7 +493,11 @@ export class UnitLayer {
   }
 
   /** 贴上精灵（纹理已就绪）。 */
-  private attachSprite(node: UnitNode, characterId: string): void {
+  /**
+   * 把合成好的精灵贴上单位容器（@since v3.30，task_054：online 参数 —— 新精灵要继承
+   * 当前离线位，离线期间纹理才回来时不能亮一帧原色）。
+   */
+  private attachSprite(node: UnitNode, characterId: string, online: boolean): void {
     const key = unitSheetTextureKey(characterId);
     const firstColumn = UNIT_WALK_CYCLE[0] ?? 0;
     // 帧行取 node.direction（task_045：单位转面后换精灵时保持当前朝向）
@@ -486,6 +509,8 @@ export class UnitLayer {
     node.sprite = sprite;
     node.spriteCharacterId = characterId;
     node.frameIndex = 0;
+    // 新贴的精灵要继承当前离线位（task_054）：离线期间纹理才合成回来时，不能亮一帧原色。
+    sprite.setTint(online ? ONLINE_SPRITE_TINT : OFFLINE_SPRITE_TINT);
     // 占位圆缩成脚下的小色点：业务态 / 皮肤色仍然看得见（形象本身不编码业务态）。
     node.body.setRadius(SPRITE_DOT_RADIUS);
     this.touchSheet(characterId);

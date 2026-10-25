@@ -1814,7 +1814,7 @@
     {
       "id": "task_054",
       "title": "agent健康监测",
-      "status": "pending",
+      "status": "completed",
       "depends_on": [
         "task_035"
       ],

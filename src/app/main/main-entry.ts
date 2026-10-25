@@ -106,6 +106,11 @@ import { createTaskService } from '../services/task-service';
 import { formatTaskArtifactsBlock, parseTaskArtifactsJson } from '../services/task-artifacts';
 import { createTaskReportHandler } from '../services/task-report';
 import { taskRecordApi, makeTaskRecordPersister, makeTaskStatsProvider } from '../services/persistence/task-record';
+// agent 健康监测（@since v3.30，task_054）：周期探测防抖判定 + transport exit 审计的单服务。
+import { createHealthMonitor } from '../services/health-monitor';
+import { agentHealthApi, makeAgentHealthPersister } from '../services/persistence/agent-health-record';
+// 恢复 toast 的 kind 显示名（词表单一真相源在 onboarding-catalog，与 agent-panel 同源）。
+import { agentKindLabel } from '../../hud/screens/onboarding-catalog';
 // 流水线持久化注入件（@since v3.27，task_051）：pipelines 表专用面 + 站任务 pipeline_id 标记。
 import {
   pipelineRecordApi,
@@ -134,6 +139,8 @@ function must<T extends HTMLElement>(id: string): T {
 interface AgentDetectionApi {
   readonly snapshot?: () => Promise<DetectedAgent[]>;
   readonly onUpdate?: (callback: (agents: DetectedAgent[]) => void) => () => void;
+  /** 按需跑一轮 T1 健康探测（@since v3.30，task_054；无 Electron 时没有，监测退化为无周期探测）。 */
+  readonly probe?: () => Promise<DetectedAgent[]>;
 }
 
 /** 取 preload 上的检测接口；非 Electron 环境（纯 vite dev）没有它，返回 null。 */
@@ -292,6 +299,31 @@ async function boot(): Promise<void> {
     lastTopicFor: contextPersister.lastTopicFor,
     isEnabled: () => isGlobalContextEnabled(typeof localStorage === 'undefined' ? null : localStorage),
   });
+  // ============================================================================
+  // agent 健康监测（@since v3.30，task_054）
+  // ============================================================================
+  // 单一判定方在这里接线，两路数据源：
+  //   ① 周期探测：probe 口 = IPC 到主进程跑 T1 五家真探测（默认 60s 一轮，常量在
+  //      health-monitor 顶部），防抖（连续 2 轮失败才判离线，一次成功即恢复）在服务内；
+  //   ② transport exit 异常：chat / 互聊 / 任务三路服务的 error 事件回调
+  //      onTransportError（非 aborted 各记一条 unhealthy 审计，不改在线位）。
+  // 判定翻转 → agent.offline / agent.online 事件 → runtime 接地写 units.online →
+  // 战场灰显 + 角色卡徽标 + 入口拦截（守门第四条，见各 service）；恢复 toast 在下方
+  // toast 宿主挂载后订阅。非 Electron：无 probe 口（不周期判定，在线位维持缺省在线），
+  // 落库通道也没有 —— persistEvent 不注入，行为退化可预期。
+  const detectionApi = agentDetectionApi();
+  const healthApi = agentHealthApi();
+  const healthMonitor = createHealthMonitor({
+    probe: detectionApi?.probe ? () => detectionApi.probe!() : undefined,
+    persistEvent: healthApi ? makeAgentHealthPersister(healthApi) : undefined,
+  });
+  const stopHealthMonitor = healthMonitor.start();
+  // toast 宿主在下方才挂载（它前面的装配都不需要 toast）：先用空实现占位，挂载后回填 ——
+  // 上方 chat 服务的离线拦截提示（notify 口）拿的是这个闭包。
+  let showToast: (text: string, tone: 'success' | 'warn' | 'danger') => void = () => undefined;
+  const transportHealthReport = (kind: Parameters<typeof healthMonitor.recordTransportFailure>[0], code: Parameters<typeof healthMonitor.recordTransportFailure>[1]): void => {
+    healthMonitor.recordTransportFailure(kind, code);
+  };
   if (characterDrawer && cliChat) {
     const chatService = createChatService({
       view: characterDrawer,
@@ -315,6 +347,9 @@ async function boot(): Promise<void> {
       // task_053：换成包过话题缓存的同一个 persister（上方组装说明）。
       persistMessage: contextPersister.persist,
       provideContext: stratixContextSource,
+      // task_054：transport exit 异常旁路上报健康监测；离线拦截的轻提示口（warn tone）。
+      onTransportError: transportHealthReport,
+      notify: (text) => showToast(text, 'warn'),
     });
     // 二次注入 deps：换上带对话回调与历史加载的完整面（订阅在首次注入时已绑，handleState 是元素方法，不受影响）。
     characterDrawer.deps = {
@@ -357,6 +392,8 @@ async function boot(): Promise<void> {
       persistMessage: contextPersister.persist,
       provideContext: stratixContextSource,
       expWeight: expWeightFor,
+      // task_054：互聊回合的 exit 异常同样上报健康审计（与 chat / task 同一端口）。
+      onTransportError: transportHealthReport,
     });
     // 三次注入 deps：互聊入口（表单开始 / 停止钮 / 插话框 → agent-chat-service）。
     characterDrawer.deps = {
@@ -377,6 +414,20 @@ async function boot(): Promise<void> {
   // toast 宿主是跨面板的顶层反馈面：fixed 定位不占布局，挂上即可；show 由下方 task-report
   // 回调驱动（hud 组件只被驱动、零订阅，与抽屉流式方法同一装配口径）。无 Electron 时挂着也无妨（没人调它）。
   const { element: toastHost, unmount: unmountToastHost } = mountToastHost(hudRoot);
+  // task_054：回填上方占位的 toast 闭包（chat 离线拦截提示从此生效）。
+  showToast = (text, tone) => {
+    toastHost.show(text, tone);
+  };
+
+  // ===== 恢复在线轻提示（@since v3.30，task_054）=====
+  // agent.online（health-monitor 防抖判定恢复）→ toast「XX 已恢复在线」（成功 tone：
+  // 它又能干活了是好消息，与掉线的灰显冷色相反）。kind 级文案：同 kind 可绑多个角色，
+  // 事件不携角色名单（不雪球），显示名用 CLI 显示名（与引导屏同一词表）。
+  // 掉线不 toast：灰显 + 徽标已是持久可见态（toast 是瞬时面，重复提醒只会脱敏）。
+  const stopHealthToast = onWorldEvent((event) => {
+    if (event.type !== 'agent.online') return;
+    toastHost.show(`「${agentKindLabel(event.kind)}」已恢复在线`, 'success');
+  });
 
   // ===== 升级轻提示（@since v3.20，task_041）=====
   // level.up（progression-service 广播，task_040）→ toast「XX 升到 Lv.X！解锁新外观部件」。
@@ -535,6 +586,9 @@ async function boot(): Promise<void> {
       getState: () => worldStore.getState(),
       createTransport: createIpcChatTransportFactory(cliChat),
       taskManager,
+      // task_054：transport exit 异常旁路上报健康监测；离线拦截的轻提示口（warn tone）。
+      onTransportError: transportHealthReport,
+      notify: (text) => showToast(text, 'warn'),
       // task_040：权重数值真相源在 core/progression（旧缺省 exp-config 已降为转发层），
       // 换注入件即接管 —— 本服务零改动（交接注记见 task-service.ts 文件头）。
       expWeight: expWeightFor,
@@ -602,6 +656,9 @@ async function boot(): Promise<void> {
       stopLevelUpToast();
       stopAwaitingToast();
       stopPipelineToast();
+      // 健康监测（task_054）：停周期探测 + 退恢复 toast 订阅。
+      stopHealthToast();
+      stopHealthMonitor();
       // 流水线编排器总线订阅（task_051）：在跑的线随页面一起终止（库里的 running 行是停机
       // 遗骸，审计可见、不复活 —— 见 pipeline-record-dao 文件头存活语义注）。
       stopPipelineBus();

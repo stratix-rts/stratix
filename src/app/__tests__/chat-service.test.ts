@@ -21,6 +21,7 @@ import {
   CHAT_MSG_NO_PROFILE,
   CHAT_MSG_UNBOUND,
   chatErrorText,
+  chatOfflineText,
   createChatService,
   DEFAULT_CHAT_ROUND_TIMEOUT_MS,
   isAgentKindInstalled,
@@ -157,6 +158,8 @@ interface HarnessOptions {
   readonly detected?: readonly DetectedAgent[] | undefined;
   readonly scripts?: Script[];
   readonly timeoutMs?: number;
+  /** 在线位夹具（@since v3.30，task_054）：离线拦截用；缺省空 = 全员在线。 */
+  readonly units?: readonly import('../../core/types').UnitView[];
   /** 经验权重注入（task_039）；缺省走 exp-config 的临时常量。 */
   readonly expWeight?: (source: ExpSource) => number;
   /** context-source 注入件（task_053）；缺省不注入。 */
@@ -170,7 +173,7 @@ interface ServiceHarness {
   readonly persisted: Array<[string, string]>;
   /** persistMessage 收到的落库消息序列（task_036）。 */
   readonly messages: ChatPersistedMessage[];
-  setState(patch: Partial<Pick<WorldState, 'characters' | 'detectedAgents'>>): void;
+  setState(patch: Partial<Pick<WorldState, 'characters' | 'detectedAgents' | 'units'>>): void;
 }
 
 function makeHarness(options: HarnessOptions = {}): ServiceHarness {
@@ -178,9 +181,11 @@ function makeHarness(options: HarnessOptions = {}): ServiceHarness {
   // 拷贝成可变数组：setState 直改字段（真实 store 里 state 是不可变快照，这里用小改模拟字段演进）。
   const detected: readonly DetectedAgent[] | undefined =
     'detected' in options ? options.detected : [detectedClaude];
-  const state: Pick<WorldState, 'characters' | 'detectedAgents'> = {
+  // task_054：state 面增 units（在线位守门第四条）；夹具给空数组 = 全员在档在线。
+  const state: Pick<WorldState, 'characters' | 'detectedAgents' | 'units'> = {
     characters: [...(options.characters ?? [character])],
     detectedAgents: detected ? [...detected] : undefined,
+    units: [...(options.units ?? [])],
   };
   const { factory, calls } = makeFactory(options.scripts ?? [scripted()]);
   const persisted: Array<[string, string]> = [];
@@ -592,7 +597,7 @@ describe('消息落库：user 即时 / assistant 收束整段 / error 走 role=e
 
   test('persistMessage 抛错不炸对话（可用性优先于历史完整性）', async () => {
     const view = makeView();
-    const state = { characters: [character], detectedAgents: [detectedClaude] } as Pick<WorldState, 'characters' | 'detectedAgents'>;
+    const state = { characters: [character], detectedAgents: [detectedClaude], units: [] } as Pick<WorldState, 'characters' | 'detectedAgents' | 'units'>;
     const { factory, calls } = makeFactory([
       scripted({ type: 'message', text: '照常回' }, { type: 'done', exitCode: 0, text: '照常回', sessionId: null }),
     ]);
@@ -794,5 +799,101 @@ describe('上下文注入（task_053）：首发附带 <stratix-context>，续�
     expect(prompt).toContain('【用户消息】\n在吗');
     // 传空串（快照全空）→ 与 undefined 等价：persona 空回原路径
     expect(buildFirstPrompt(bare, '在吗', '')).toBe('在吗');
+  });
+});
+
+// ============================================================================
+// agent 健康监测对接面（@since v3.30，task_054）：离线守门第四条（035 三条之上加在线位）
+// + transport exit 异常旁路上报。规格⑤「灰显与拦截」的对话侧断言。
+// ============================================================================
+
+describe('离线守门：units.online === false → 错误气泡 + 轻提示（task_054）', () => {
+  const offlineUnit = {
+    id: 'unit-1',
+    name: '阿尔法',
+    status: 'idle' as const,
+    missionId: null,
+    power: 3,
+    characterId: 'ch-1',
+    online: false,
+  };
+
+  /** 手拼带注入口的服务（HarnessOptions 没有 notify / onTransportError 位，这里补齐）。 */
+  function makeService(overrides: {
+    readonly units?: import('../../core/types').UnitView[];
+    readonly scripts?: Script[];
+    readonly notify?: (text: string) => void;
+    readonly onTransportError?: (kind: AgentKind, code: import('../services/cli-transport/transport').TransportErrorCode) => void;
+  }): { view: ViewHarness; calls: SpawnRecord[]; setUnits: (units: import('../../core/types').UnitView[]) => void; service: ReturnType<typeof createChatService> } {
+    const view = makeView();
+    const units: import('../../core/types').UnitView[] = [...(overrides.units ?? [])];
+    const { factory, calls } = makeFactory(overrides.scripts ?? [scripted()]);
+    const state: Pick<WorldState, 'characters' | 'detectedAgents' | 'units'> = {
+      characters: [character],
+      detectedAgents: [detectedClaude],
+      units,
+    };
+    const service = createChatService({
+      view: view.view,
+      getState: () => state,
+      createTransport: factory,
+      persistSessionId: () => {},
+      notify: overrides.notify,
+      onTransportError: overrides.onTransportError,
+    });
+    return { view, calls, setUnits: (next) => { units.length = 0; units.push(...next); }, service };
+  }
+
+  test('离线角色 → 错误气泡「当前离线」；transport 一次都不 spawn', async () => {
+    const h = makeHarness({ units: [offlineUnit] });
+    await h.service.send('ch-1', '在吗');
+    expect(h.view.messages).toEqual([
+      { characterId: 'ch-1', role: 'assistant', text: chatOfflineText('阿尔法'), error: true },
+    ]);
+    expect(h.calls).toHaveLength(0);
+  });
+
+  test('轻提示去重：掉线期间多次发送只提示一次；恢复后照常进 transport', async () => {
+    const toasts: string[] = [];
+    const s = makeService({
+      units: [offlineUnit],
+      scripts: [scripted({ type: 'message', text: '回来了' }, { type: 'done', exitCode: 0, text: '回来了', sessionId: null })],
+      notify: (text) => toasts.push(text),
+    });
+    await s.service.send('ch-1', '第一次');
+    await s.service.send('ch-1', '第二次');
+    expect(toasts).toEqual(['「阿尔法」当前离线']); // 两次拦截只提示一次
+    expect(s.view.messages).toHaveLength(2); // 错误气泡每次都落（诚实反馈）
+    expect(s.calls).toHaveLength(0);
+
+    // 恢复在线 → 守门通过 → 照常进 transport，不再提示。
+    s.setUnits([{ ...offlineUnit, online: true }]);
+    await s.service.send('ch-1', '第三次');
+    expect(s.calls).toHaveLength(1);
+    expect(toasts).toHaveLength(1);
+  });
+});
+
+describe('transport 异常上报：error 事件旁路上报健康监测（task_054）', () => {
+  test('error 事件回调 (kind, code)；aborted 同样透传（裁决在健康监测）', async () => {
+    const reported: Array<[AgentKind, string]> = [];
+    const view = makeView();
+    const state: Pick<WorldState, 'characters' | 'detectedAgents' | 'units'> = {
+      characters: [character],
+      detectedAgents: [detectedClaude],
+      units: [],
+    };
+    const { factory } = makeFactory([scripted({ type: 'error', code: 'cli_error', message: '炸了' })]);
+    const service = createChatService({
+      view: view.view,
+      getState: () => state,
+      createTransport: factory,
+      persistSessionId: () => {},
+      onTransportError: (kind, code) => reported.push([kind, code]),
+    });
+    await service.send('ch-1', '在吗');
+    await flush();
+    expect(reported).toEqual([['claude-code', 'cli_error']]);
+    expect(view.messages.at(-1)?.text).toContain('炸了'); // 主路照旧：错误气泡落地
   });
 });
