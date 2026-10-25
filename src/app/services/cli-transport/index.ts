@@ -22,7 +22,7 @@ export {
 
 export { createClaudeAdapter, parseClaudeLine, type ClaudeAdapterOptions } from './adapters/claude';
 export { createCodexAdapter, parseCodexLine, type CodexAdapterOptions } from './adapters/codex';
-export { createKimiAdapter, parseKimiOutput, type KimiAdapterOptions } from './adapters/kimi';
+export { createKimiAdapter, parseKimiOutput, parseKimiStderrLine, type KimiAdapterOptions } from './adapters/kimi';
 export { createOpenclawAdapter, parseOpenclawOutput, type OpenclawAdapterOptions } from './adapters/openclaw';
 export {
   createOpencodeAdapter,

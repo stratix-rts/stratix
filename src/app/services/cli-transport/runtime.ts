@@ -13,6 +13,9 @@
  *   AbortSignal → 立刻 killTree（**整个进程树**）→ 流以 error{code:'aborted'} 收尾。
  *   超时走同一条路径，只是错误码是 timeout —— 两条路径的清理动作完全一样，不分叉。
  *
+ * stderr 收割（@since v3.31，task_055）：adapter 可选地解析 stderr 行（parseStderrLine），
+ *   session 事件在进程退出、stderr 排干之后统一上送（见下「stderr 收割」注）。
+ *
  * @since v3.8（task_023）
  */
 
@@ -118,13 +121,25 @@ export function createCliTransport(adapter: CliAdapter, deps: CliTransportDeps):
     }
 
     // stderr 单独收着：CLI 把日志写 stderr 是常态，只有在**失败**时才是有用信息。
+    //
+    // —— stderr 收割（@since v3.31，task_055）——
+    // kimi 这类 CLI 只在 stderr 的收尾提示行里给会话 id（stdout 全程没有），
+    // 故泵里顺带喂 adapter.parseStderrLine：产出的 session 事件先进 pending 队列，
+    // 等进程退出、stderr 排干之后统一上送（在收尾 done/error **之前**），
+    // 保证 done.sessionId 已经吸收了 stderr 里的 id。契约上 stderr 只许出 session/error 事件
+    //（adapter 钩子的 JSDoc 已锁死），这里再保险一层：只故 session 事件，其余丢弃。
     const stderrChunks: string[] = [];
     let stderrSize = 0;
+    const stderrSessions: TransportEvent[] = [];
     const stderrPump = (async (): Promise<void> => {
       for await (const line of handle.stderr) {
         if (stderrSize >= 64 * 1024) continue; // stderr 也要有界（perf：数据不许无限增长）
         stderrChunks.push(line);
         stderrSize += line.length + 1;
+        if (!adapter.parseStderrLine) continue;
+        for (const event of safeParse(adapter, line, logger, 'stderr')) {
+          if (event.type === 'session') stderrSessions.push(event);
+        }
       }
     })();
 
@@ -175,6 +190,14 @@ export function createCliTransport(adapter: CliAdapter, deps: CliTransportDeps):
       }
 
       const exitCode = await handle.exit;
+      // 进程退出后排干 stderr（exit 在 stdio 关闭后落地，泵此时必然很快结束）：
+      // 一是为了非 0 退出的错误尾巴更完整，二是让 stderr 收割的 session 事件先于收尾事件上送。
+      await stderrPump.catch(() => { /* stderr 读失败不影响主流程 */ });
+      for (const event of stderrSessions) {
+        if (event.type !== 'session') continue; // 类型双保险（钩子契约已限 session/error）
+        if (!applySession(event.sessionId)) continue; // 与 stdout 重复的同一个 id 不重复上送
+        yield event;
+      }
 
       if (terminateReason) {
         yield {
@@ -220,12 +243,15 @@ export function createCliTransport(adapter: CliAdapter, deps: CliTransportDeps):
 function safeParse(
   adapter: CliAdapter,
   line: string,
-  logger: (line: string) => void
+  logger: (line: string) => void,
+  source: 'stdout' | 'stderr' = 'stdout'
 ): readonly TransportEvent[] {
   try {
-    return adapter.parseLine(line);
+    return source === 'stderr'
+      ? (adapter.parseStderrLine?.(line) ?? [])
+      : adapter.parseLine(line);
   } catch (error) {
-    logger(`[cli-transport] ${adapter.kind} 解析失败：${describe(error)}`);
+    logger(`[cli-transport] ${adapter.kind} ${source} 解析失败：${describe(error)}`);
     return [];
   }
 }

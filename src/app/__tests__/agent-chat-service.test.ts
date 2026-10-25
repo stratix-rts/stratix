@@ -617,6 +617,28 @@ describe('守门与单飞', () => {
 // 上下文注入(task_053):互聊开题同样附 <stratix-context>(各自角色自己的快照)
 // ============================================================================
 
+describe('重启恢复口径(task_055):互聊不种档案回执,重启后首发重建', () => {
+  test('档案 externalSessionId 非空 → 互聊首发仍不带 sessionId、仍拼 persona(回执与聊天共用字段,不共享续接)', async () => {
+    // 场景:重启后 externalSessionId 是聊天会话的回执(或上一场互聊的,无法区分)。
+    const harness = makeHarness({
+      characters: [
+        { ...characterA, externalSessionId: 'chat-receipt-1' },
+        { ...characterB, externalSessionId: 'chat-receipt-2' },
+      ],
+      scripts: [turn('peer-a-1', 'A1'), turn('peer-b-1', 'B1')],
+    });
+    await harness.service.start('ch-a', 'ch-b', '新议题', 1);
+    await flush();
+
+    // 双方首发都不透传回执(sessionId=null),prompt 拼装 persona(首发重建,上下文一次性讲齐)。
+    expect(harness.calls).toHaveLength(2);
+    for (const call of harness.calls) {
+      expect(call.sessionId).toBeNull();
+      expect(call.prompt).toContain('角色设定');
+    }
+  });
+});
+
 describe('上下文注入(task_053):双方各自首发注入、续回合不注入', () => {
   test('A 开题回合带 A 的块;B 首回合带 B 的块;后续回合(会话已建)不再注入', async () => {
     const provideContext = (characterId: string): import('../services/stratix-context').StratixContextInput | null => ({

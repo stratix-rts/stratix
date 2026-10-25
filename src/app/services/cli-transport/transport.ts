@@ -150,7 +150,18 @@ export interface CliAdapter {
   /** 翻译一行 stdout → 事件（可空数组：这一行没有值得上送的内容）。 */
   parseLine(line: string): readonly TransportEvent[];
   /**
-   * spawn 前的一次性准备（如 opencode 探测 serve 端口，决定要不要 --attach）。
+   * 翻译一行 stderr → 事件（可空数组）。缺省不解析 —— stderr 只进错误尾巴缓冲。
+   *
+   * why 需要这个钩子（@since v3.31，task_055）：有的 CLI 把**会话 id 只打在 stderr**
+   *   （kimi 的收尾提示行 `To resume this session: kimi -r <uuid>`），stdout 全程拿不到。
+   *   契约：这里只该产出 session / error 事件 —— stderr 不是对话内容，message 不许从这里出；
+   *   事件在进程退出、stdout 排干之后统一上送（时序见 runtime「stderr 收割」），
+   *   保证收尾 done 事件带的 sessionId 已经吸收了 stderr 里的id。
+   */
+  parseStderrLine?(line: string): readonly TransportEvent[];
+  /**
+   * spawn 前的一次性准备（如 opencode 探测 serve 端口，决定要不要 --attach；
+   * openclaw 首发生成 uuid 会话 id —— task_055）。
    * 缺省 = 不做准备工作。
    */
   prepare?(options: SpawnOptions): Promise<SpawnOptions>;

@@ -1823,7 +1823,7 @@
     {
       "id": "task_055",
       "title": "会话续接增强",
-      "status": "pending",
+      "status": "completed",
       "depends_on": [
         "task_035"
       ],

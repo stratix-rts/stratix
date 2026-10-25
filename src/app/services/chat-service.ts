@@ -19,14 +19,26 @@
  *
  * | kind        | 首发怎么拿到会话 id                | 续发怎么接                          | 差异要点 |
  * |-------------|-----------------------------------|-------------------------------------|----------|
- * | claude-code | stream-json 的 system/init 事件带 session_id（uuid） | `--resume <id>`（真续会话，上下文完整保留） | 五家里最可靠的一条链 |
- * | codex       | thread.started 事件带 thread_id   | `exec resume <id>`                   | 线程续接 |
+ * | claude-code | stream-json 的 system/init 事件带 session_id（uuid） | `--resume <id>`（真续会话，上下文完整保留） | 五家里最可靠的一条链（task_055 真机两轮复验：同 id 命中 + 暗号记忆保留） |
+ * | codex       | thread.started 事件带 thread_id   | `exec resume <id>`                   | 线程续接（本机未装 codex，task_055 无再复验；拼写与文档一致） |
  * | opencode    | 每条事件顶层都可能带 sessionID     | `--session <id>`（serve 模式由 server 持久化会话库；降级 run 是一次性会话，id 续接可能不生效） | 依赖有没有本地 serve 在跑 |
- * | kimi        | **纯文本输出不带回会话 id**（只有吐 JSON 时才有） | 拿到过 id 才 `--session <id>`；拿不到 → 每次都是新会话 | 无会话 id 时每轮重拼 persona（对无状态 CLI 恰好正确） |
- * | openclaw    | 输出信封的 meta / delivery 可能带 sessionId / sessionKey | `--session-id <id>`；没 id 且 adapter 未配 agentId 时 CLI 可能直接报错（错误会走错误气泡路径） | 依赖 gateway 侧会话 |
+ * | kimi        | **stdout 纯文本不带会话 id**；stderr 收尾提示行 `To resume this session: kimi -r <uuid>` 才有（task_055 真机调研） | 拿到过 id 就 `--session <id>`（实测回显同 id = 命中） | id 走 stderr 收割（runtime 的 parseStderrLine 钩子）；失败轮也打提示行，属常态 |
+ * | openclaw    | 首发由 adapter 自生成 uuid 传 `--session-id`（task_055 真机验证：自选 id 即建立同名 session）；信封 result.meta.agentMeta.sessionId 回执 | `--session-id <id>`（真续会话，实测上下文保留） | 自选 id 避免裸命令落到 gateway 主会话 |
  *
  * 统一策略（本服务不区分 adapter）：session 事件 / done.sessionId 里拿到 id 就记进会话状态并回写档案
  * （externalSessionId），下一轮原样透传 —— 「有没有续会话能力」由各家 CLI 自己兑现，本层不猜。
+ *
+ * ============ 重启恢复（task_055 统一口径）============
+ * 内存会话表（sessions）重启即空；角色的 externalSessionId（存档回执，SQLite 档案 diff 自动落盘）
+ * 是唯一能跨重启的会话线索。策略（三服务口径一致，chat 在此兑现）：
+ *   ①externalSessionId **有效**（非空字符串）→ 种入内存会话状态，首发即透传 resume
+ *     （续发语义：只发原文，persona 在会话上下文里，不重拼）；
+ *   ②无效 / 空 → 首发重建（buildFirstPrompt：persona + 053 context 重注入，一次性讲齐）。
+ * 互聊（agent-chat-service）与任务（task-service）的口径见各自文件头：任务审批门挂单表存
+ * sessionId（有效→同 session 续发短指令；丢失→首发重讲，已有单测固化）；互聊短生命周期编排，
+ * 重启后首发重建（externalSessionId 与聊天共用同一档案字段、后写覆盖，无法区分归属，不共享续接）。
+ * 风险注记：回执指向的会话若已被 CLI 侧清理（kimi session 过期等），resume 可能落到空会话 ——
+ * 兑底是下一轮的 session 事件会回新 id 并回写，自动自愈。
  *
  * ============ persona（system 语义）怎么传 ============
  * 五家 adapter（task_023 冻结的 buildArgs）都**没有**独立的 system prompt 参数
@@ -49,6 +61,10 @@
  *   ⑤ 守门拦截文案（未检出/未绑定/无档案）**不落库**：它们是瞬时引导，不是对话内容，重启后无意义；
  *   ⑥ retry 不重复写 user（原文已在库/会话里，重试是服务侧动作 —— 与不新增 user 气泡同一口径）。
  * 消息真相仍在抽屉会话存储 + SQLite（本服务只转发，不存第二份）。
+ * ⚠ 与「消息落库」③的边界（task_055 口径）：error 轮里已收到的 session 事件照常记入内存
+ *   （kimi 失败轮也建立会话，stderr 提示行照打；openclaw uuid 首发同理）—— 失败重试时若
+ *   persona 已随首发指令进入会话上下文，续发原文即正确；若 CLI 侧根本没落上下文，
+ *   下一轮 session 事件回新 id 自动自愈（见「重启恢复」风险注记）。
  *
  * ============ 每轮经验事件（task_039）============
  * done 收束（一轮**成功**对话）后发 exp.gained（source=chat_round，amount 经注入的 expWeight
@@ -59,7 +75,8 @@
  * 与 task-service（任务侧发射点）是同一注入形状，040 接管时组合根换注入件即可、两侧零改动。
  *
  * @since v3.14（task_035）；v3.15（task_036）追加消息落库时机；v3.18（task_039）追加每轮经验事件；
- *   v3.30（task_054）追加离线守门（在线位拦截 + 轻提示去重）与 transport 异常上报口。
+ *   v3.30（task_054）追加离线守门（在线位拦截 + 轻提示去重）与 transport 异常上报口；
+ *   v3.31（task_055）重启恢复（externalSessionId 种入内存会话）+ 差异表校准（kimi stderr / openclaw uuid）。
  */
 
 import { emitWorldEvent } from '../../core/bus';
@@ -108,7 +125,8 @@ export type ChatTransportFactory = (kind: AgentKind) => ChatTransportPort;
 
 /**
  * 落库消息形状（role 词表与 SQLite character_chat_messages.role 对齐）。
- * sessionRef 是写入时已知的会话 id（首发前为 null）；它是落库回执，不参与恢复决策（见文件头）。
+ * sessionRef 是写入时已知的会话 id（首发前为 null）；它是落库回执，**重启恢复时也用作种子**
+ * （task_055 统一口径，见文件头「重启恢复」—— 档案 externalSessionId 字段存的就是它）。
  * @since v3.15，task_036。
  */
 export interface ChatPersistedMessage {
@@ -402,7 +420,17 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
   /** 一轮对话的完整生命周期（守门已过）。 */
   const runRound = async (character: CharacterView, kind: AgentKind, text: string): Promise<void> => {
     const characterId = character.id;
-    const session: ChatSessionState = sessions.get(characterId) ?? { sessionId: null, busy: false };
+    // 重启恢复（task_055）：内存会话表没有该角色时，用档案 externalSessionId（存档回执）作种子 ——
+    // 有效（非空）→ 本轮按续发处理（透传 resume，只发原文，persona 在会话上下文里）；
+    // 无效 / 空 → sessionId=null，首发重建（persona + 053 context 重注入，见下方拼装分支）。
+    // 种子只做一次：内存状态建立后，回执不再是真相源（运行中的 session 事件才是）。
+    const existing = sessions.get(characterId);
+    const session: ChatSessionState = existing ?? {
+      sessionId: typeof character.externalSessionId === 'string' && character.externalSessionId.length > 0
+        ? character.externalSessionId
+        : null,
+      busy: false,
+    };
     sessions.set(characterId, session);
 
     const run: ActiveRun = { characterId, controller: new AbortController() };

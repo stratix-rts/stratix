@@ -291,15 +291,47 @@ describe('会话映射：首发 persona / 续发 sessionId / 回写恰好一次'
     expect(h.persisted).toEqual([['ch-1', 'sess-abc']]); // 没有新 id 不再回写
   });
 
-  test('档案里已有 externalSessionId？会话状态从零开始按首发处理（档案是落库回执，不是内存真相）', async () => {
+  test('重启恢复（task_055）：档案 externalSessionId 有效 → 种入内存会话，首发即透传 resume（不重拼 persona）', async () => {
     const h = makeHarness({
       characters: [{ ...character, externalSessionId: 'sess-old' }],
       scripts: [scripted({ type: 'message', text: 'hi' }, { type: 'done', exitCode: 0, text: 'hi', sessionId: null })],
     });
+    await h.service.send('ch-1', '接着说');
+    // 回执非空 = 统一策略的「有效」分支：sessionId 透传、原文直发（persona 在会话上下文里）。
+    expect(h.calls[0].options?.sessionId ?? null).toBe('sess-old');
+    expect(h.calls[0].prompt).toBe('接着说');
+    expect(h.calls[0].prompt).not.toContain('角色设定');
+    expect(h.persisted).toEqual([]); // 同 id 未变，不回写
+  });
+
+  test('重启恢复（task_055）：档案 externalSessionId 空/缺 → 首发重建（persona 重注入，不透传）', async () => {
+    const h = makeHarness({
+      characters: [{ ...character, externalSessionId: '' }],
+      scripts: [scripted({ type: 'message', text: 'hi' }, { type: 'done', exitCode: 0, text: 'hi', sessionId: null })],
+    });
     await h.service.send('ch-1', '第一条');
-    // 内存会话状态未建立 → 首发拼 persona；externalSessionId 不透传（重启后由首答重建）。
-    expect(h.calls[0].prompt).toContain('角色设定');
+    // 「无效/空」分支：首发拼 persona + 不带 sessionId（buildFirstPrompt 语义不变）。
+    expect(h.calls[0].prompt).toBe(buildFirstPrompt(character, '第一条'));
     expect(h.calls[0].options?.sessionId ?? null).toBeNull();
+  });
+
+  test('重启恢复：种子只种一次 —— 内存会话建立后档案回执不再是真相源（CLI 回新 id 覆盖种子）', async () => {
+    const h = makeHarness({
+      characters: [{ ...character, externalSessionId: 'sess-old' }],
+      scripts: [
+        scripted(
+          { type: 'session', sessionId: 'sess-new' }, // CLI 侧旧会话失效，回了新 id
+          { type: 'message', text: '好的' },
+          { type: 'done', exitCode: 0, text: '好的', sessionId: 'sess-new' }
+        ),
+        scripted({ type: 'done', exitCode: 0, text: '嗯', sessionId: 'sess-new' }),
+      ],
+    });
+    await h.service.send('ch-1', '接着说');
+    expect(h.calls[0].options?.sessionId).toBe('sess-old'); // 种子生效
+    expect(h.persisted).toEqual([['ch-1', 'sess-new']]); // 新 id 回写，自动自愈
+    await h.service.send('ch-1', '再确认');
+    expect(h.calls[1].options?.sessionId).toBe('sess-new'); // 运行中状态接管，不再用旧种子
   });
 });
 

@@ -228,6 +228,39 @@ describe('runtime：样例 stdout 流 → 事件序列', () => {
     expect(events[1]).toEqual({ type: 'message', text: 'pong' });
   });
 
+  test('kimi：stderr 收尾提示行的会话 id → session 事件先于 done，done 带上 id（task_055）', async () => {
+    // 真机形状：stdout 是整段回答文本，stderr 尾行带 resume 提示（成功/失败轮都打）。
+    const fake = createFakeProcessFactory({
+      stdout: ['pong'],
+      stderr: ['To resume this session: kimi -r 1303b488-0da8-4870-817e-40ed13a45143'],
+    });
+    const transport = createCliTransport(createKimiAdapter(), { factory: fake.factory });
+
+    const events = await collect(transport.spawn('回复 pong'));
+
+    expect(events).toEqual([
+      { type: 'message', text: 'pong' },
+      { type: 'session', sessionId: '1303b488-0da8-4870-817e-40ed13a45143' },
+      { type: 'done', exitCode: 0, text: 'pong', sessionId: '1303b488-0da8-4870-817e-40ed13a45143' },
+    ]);
+  });
+
+  test('kimi：非 0 退出但 stderr 带会话 id —— session 事件照常上送（失败轮的会话也建立了）', async () => {
+    const fake = createFakeProcessFactory({
+      stdout: ['Authorization failed.'],
+      stderr: ['', 'To resume this session: kimi -r 79ffbdd1-4e9d-402e-94fb-93c783d6541a'],
+      exitCode: 1,
+    });
+    const transport = createCliTransport(createKimiAdapter(), { factory: fake.factory });
+
+    const events = await collect(transport.spawn('回复 pong'));
+
+    // message（错误文本整段）→ session（stderr 收割，先于 error）→ error（非 0 退出收尾）。
+    expect(events.map((event) => event.type)).toEqual(['message', 'session', 'error']);
+    expect(events[1]).toEqual({ type: 'session', sessionId: '79ffbdd1-4e9d-402e-94fb-93c783d6541a' });
+    expect(events[2]).toMatchObject({ type: 'error', code: 'nonzero_exit' });
+  });
+
   test('非 0 退出：stderr 尾巴进 error 事件（不留空白错误信息）', async () => {
     const fake = createFakeProcessFactory({ stderr: ['boom: 模型不可用'], exitCode: 1 });
     const transport = createCliTransport(createClaudeAdapter(), { factory: fake.factory });

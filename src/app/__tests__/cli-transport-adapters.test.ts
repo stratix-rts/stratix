@@ -16,6 +16,7 @@ import {
   parseClaudeLine,
   parseCodexLine,
   parseKimiOutput,
+  parseKimiStderrLine,
   parseOpenclawOutput,
   parseOpencodeLine,
 } from '../services/cli-transport';
@@ -82,6 +83,51 @@ describe('adapter.buildArgs：headless 命令形态', () => {
     const args = createOpenclawAdapter({ agentId: 'ops' }).buildArgs('回复 pong');
     expect(args).toContain('--agent');
     expect(args[args.indexOf('--agent') + 1]).toBe('ops');
+  });
+
+  test('openclaw：prepare 无 sessionId 且无 agentId → 生成 uuid 种子（首发即自选 id，task_055）', async () => {
+    const adapter = createOpenclawAdapter();
+    const prepared = await adapter.prepare?.({});
+    expect(prepared?.sessionId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/ // uuid v4 形状
+    );
+    // 生成的 id 落进命令行（runtime 用 prepare 后的 options 调 buildArgs）：
+    const args = adapter.buildArgs('你好', prepared ?? {});
+    expect(args).toContain('--session-id');
+    expect(args[args.indexOf('--session-id') + 1]).toBe(prepared?.sessionId);
+    // 每次生成都是新 id（不共享、不缓存）：
+    const again = await adapter.prepare?.({});
+    expect(again?.sessionId).not.toBe(prepared?.sessionId);
+  });
+
+  test('openclaw：prepare 尊重调用方 —— 有 sessionId 不覆盖；有 agentId 不种 uuid（显式路由）', async () => {
+    const adapter = createOpenclawAdapter();
+    const prepared = await adapter.prepare?.({ sessionId: 'oc-existing' });
+    expect(prepared?.sessionId).toBe('oc-existing');
+
+    const routed = createOpenclawAdapter({ agentId: 'ops' });
+    const preparedRouted = await routed.prepare?.({});
+    expect(preparedRouted?.sessionId ?? null).toBeNull(); // 不种 uuid
+    const args = routed.buildArgs('你好', preparedRouted ?? {});
+    expect(args).toContain('--agent');
+    expect(args).not.toContain('--session-id');
+  });
+
+  test('resume 复核点回归（task_055）：三家旗标拼写与参数顺序不动', () => {
+    // claude：--resume <id>（2026-10-25 真机两轮验证：同 session id 命中 + 暗号记忆保留）
+    const claude = createClaudeAdapter().buildArgs('继续', { sessionId: 's-uuid' });
+    expect(claude.slice(0, 2)).toEqual(['-p', '继续']);
+    expect(claude[claude.indexOf('--resume') + 1]).toBe('s-uuid');
+    // codex：exec --json resume <id> <prompt>（本机未装 codex，拼写与 --help 文档一致，不臆改）
+    expect(createCodexAdapter().buildArgs('继续', { sessionId: 'th-1' })).toEqual([
+      'exec', '--json', 'resume', 'th-1', '继续',
+    ]);
+    // opencode：run --format json --session <id> <prompt>（-s, --session 与 --help 一致）
+    expect(
+      createOpencodeAdapter({ probeServe: async () => ({ ok: false, url: null }) }).buildArgs('继续', {
+        sessionId: 'ses-1',
+      })
+    ).toEqual(['run', '--format', 'json', '--session', 'ses-1', '继续']);
   });
 });
 
@@ -168,6 +214,26 @@ describe('adapter.parse：各家格式 → 公共事件词汇表', () => {
     expect(parseKimiOutput(JSON.stringify({ text: 'pong' }))).toEqual([{ type: 'message', text: 'pong' }]);
   });
 
+  test('kimi：JSON 容错 —— malformed / 半行 / 错误信封都不炸、不臆造事件（task_055）', () => {
+    expect(parseKimiOutput('{"session_id":')).toEqual([]); // 半行 JSON：静默交给文本兜底
+    expect(parseKimiOutput('{"result":"pong"}')).toEqual([{ type: 'message', text: 'pong' }]);
+    // 错误文本（真机 401 实测形状是纯文本，不是 JSON）：整段交回文本兜底，不炸。
+    expect(parseKimiOutput('Error code: 401 - {\'error\': ...}')).toEqual([]);
+    expect(parseKimiOutput('')).toEqual([]);
+  });
+
+  test('kimi：stderr 收尾提示行 → session 事件；噪声/残行静默跳过（task_055 真机形状）', () => {
+    // 真机实测行（2026-10-25，kimi 1.48.0，成功/失败轮都打）：
+    expect(parseKimiStderrLine('To resume this session: kimi -r 1303b488-0da8-4870-817e-40ed13a45143')).toEqual([
+      { type: 'session', sessionId: '1303b488-0da8-4870-817e-40ed13a45143' },
+    ]);
+    // 空行（提示行自带 \n 前缀）与日志噪声：
+    expect(parseKimiStderrLine('')).toEqual([]);
+    expect(parseKimiStderrLine('WARNING: something verbose')).toEqual([]);
+    // 残缺 id（非 uuid）：不产出事件，宁缺毋滥。
+    expect(parseKimiStderrLine('To resume this session: kimi -r not-a-uuid')).toEqual([]);
+  });
+
   test('openclaw：信封里的 payloads[].text 落成一条 message', () => {
     const events = parseOpenclawOutput(
       JSON.stringify({ payloads: [{ text: 'pong' }], meta: { sessionId: 'oc-2' } })
@@ -176,6 +242,34 @@ describe('adapter.parse：各家格式 → 公共事件词汇表', () => {
       { type: 'session', sessionId: 'oc-2' },
       { type: 'message', text: 'pong' },
     ]);
+  });
+
+  test('openclaw：gateway 实测信封（result 包裹）也能解出文本与会话 id（task_055 实证修复）', () => {
+    // 2026-10-25 真机形状（openclaw 2026.4.2，openclaw agent --session-id … --json）：
+    const envelope = {
+      runId: 'd35a43c0-7b1b-4f0f-ad48-d2c13accfd00',
+      status: 'ok',
+      summary: 'completed',
+      result: {
+        payloads: [{ text: '蓝鲸号', mediaUrl: null }],
+        meta: {
+          durationMs: 18924,
+          agentMeta: { sessionId: 'stratix-task055-1792943657', provider: 'zai', model: 'glm-5.3' },
+          aborted: false,
+        },
+      },
+    };
+    expect(parseOpenclawOutput(JSON.stringify(envelope))).toEqual([
+      { type: 'session', sessionId: 'stratix-task055-1792943657' },
+      { type: 'message', text: '蓝鲸号' },
+    ]);
+  });
+
+  test('openclaw：result.meta.aborted 同样落成 error（两代信封）', () => {
+    const events = parseOpenclawOutput(
+      JSON.stringify({ status: 'ok', result: { payloads: [], meta: { aborted: true } } })
+    );
+    expect(events).toEqual([{ type: 'error', message: 'openclaw 运行被中止', code: 'cli_error' }]);
   });
 
   test('openclaw：meta.aborted 落成 error 事件', () => {

@@ -20,8 +20,17 @@
  * 双方各自维护**自己的** transport 会话（sessionRef）：首发（该角色还没有 sessionId）内嵌
  *   persona（复用 035 的 buildFirstPrompt），续发只发原文（persona 已在会话上下文里）。
  *   A、B 的会话完全隔离 —— A 拿到的 sessionId 绝不透传给 B 的 spawn（单测钉死）。
- *   会话 id 回写走 persistSessionId（档案 externalSessionId 只是落库回执，不参与恢复决策 ——
- *   与 035 同口径；与普通聊天共用同一回执字段，后写覆盖先写，审计语义不变）。
+ *   会话 id 回写走 persistSessionId（档案 externalSessionId 只是落库回执；
+ *   与普通聊天共用同一回执字段，后写覆盖先写，审计语义不变）。
+ *
+ * ============ 重启恢复口径（task_055 统一策略的互聊分支）============
+ * 互聊不把档案 externalSessionId 种入内存会话（与 chat-service 的聊天分支不同，单测钉死）：
+ *   ①回执字段与聊天**共用**且后写覆盖，无法区分它指向的是聊天会话还是互聊会话 ——
+ *     盲目续接可能把新的互聊接进聊天会话（上下文串台）；
+ *   ②互聊是短生命周期编排（一场讨论几轮即止，且服务重启时编排状态本身已丢），
+ *     重启后首发重建（persona + 053 context 重注入）语义自洽；
+ *   这正是统一策略的「无效/空→首发重建」分支：对互聊而言回执**不构成有效线索**。
+ * 任务（task-service）口径见其文件头：审批门挂单表存 sessionId，有效→续发短指令，丢失→首发重讲。
  *
  * ============ 落库约定（role 三词表不动 + content 前缀标 peer）============
  * 互聊消息进 character_chat_messages（与普通聊天同表同 DAO）：
@@ -69,7 +78,7 @@
  *   4. 把联合会话存成第二份真相 —— 消息真相在抽屉会话存储 + SQLite，本服务只转发；
  *   5. 碰 world 层（战场说话气泡归 task_062 统一做，本任务刻意不动 world/）。
  *
- * @since v3.28（task_052）。
+ * @since v3.28（task_052）；v3.31（task_055）补记重启恢复口径（互聊不种回执，首发重建）。
  */
 
 import { emitWorldEvent } from '../../core/bus';
