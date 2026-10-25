@@ -33,7 +33,7 @@
  */
 
 import { emitWorldEvent } from '../../core/bus';
-import type { AgentKind, DetectedAgent, WorldEvent } from '../../core/types';
+import { isCustomAgentKind, type AgentKind, type DetectedAgent, type WorldEvent } from '../../core/types';
 import { T1_AGENT_DETECTION_TARGETS } from './agent-detector';
 import type { TransportErrorCode } from './cli-transport/transport';
 import type { AgentHealthEventInsert } from './persistence/agent-health-dao';
@@ -48,10 +48,19 @@ export const DEFAULT_HEALTH_PROBE_INTERVAL_MS = 60_000;
 /** 判离线的连续失败轮数（防抖）。why 2：1 次失败是噪音（冷启动 / 机器卡），2 次才是「真掉」。 */
 export const HEALTH_OFFLINE_FAILURE_THRESHOLD = 2;
 
-/** 健康监测关注的 kind 集（= T1 五家；从探测名单过滤而来，不另抄词表）。 */
+/** 内置 T1 五家名单（静态词表；自定义注册是动态集合，另按形态判，见 isHealthMonitoredKind）。 */
 export const HEALTH_MONITORED_KINDS: readonly string[] = T1_AGENT_DETECTION_TARGETS.map(
   (target) => target.kind
 );
+
+/**
+ * 健康监测关注的 kind 集（@since v3.32 task_056 含自定义注册）：内置 T1 五家（静态名单）
+ * ∪ 任何 `custom:<id>` 形态（动态注册 —— 静态词表枚举不了它们，按形态判而非枚举判）。
+ * 自定义注册能绑角色、能跑 transport（tier 恒 T1），监测口径与内置 T1 同座。
+ */
+export function isHealthMonitoredKind(kind: string): boolean {
+  return HEALTH_MONITORED_KINDS.includes(kind) || isCustomAgentKind(kind);
+}
 
 // ============================================================================
 // 纯判定（单测的主战场 —— 不碰服务实例就能把口径钉死）
@@ -184,8 +193,8 @@ export function createHealthMonitor(deps: HealthMonitorDeps = {}): HealthMonitor
 
     ingestProbeRound(agents: readonly DetectedAgent[]): void {
       for (const agent of agents) {
-        if (!HEALTH_MONITORED_KINDS.includes(agent.kind)) continue; // 非 T1：没有执行链路，不判
-        const kind = agent.kind as AgentKind; // T1 ⊆ AgentKind（词表包含关系见 core/types.ts）
+        if (!isHealthMonitoredKind(agent.kind)) continue; // 非 T1 且非自定义注册：没有执行链路，不判
+        const kind = agent.kind as AgentKind; // T1 ∪ custom:<id> ⊆ AgentKind（task_056 扩词表）
         if (probeResultHealthy(agent)) {
           consecutiveFailures.set(kind, 0);
           // 恢复即回：一次成功就翻回在线（恢复不用防抖 —— 晚恢复的代价是少干一拍活，

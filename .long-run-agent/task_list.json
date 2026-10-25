@@ -1832,11 +1832,12 @@
     {
       "id": "task_056",
       "title": "自定义agent注册",
-      "status": "pending",
+      "status": "completed",
       "depends_on": [
         "task_023"
       ],
-      "priority": 2
+      "priority": 2,
+      "updated_at": "2026-10-26T01:05:18+08:00"
     },
     {
       "id": "task_057",

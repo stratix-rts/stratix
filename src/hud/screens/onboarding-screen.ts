@@ -60,6 +60,7 @@
 import { getSkin, randomSkin, resolveAccent, type SkinDefinition, type SkinId } from '../../core/theme/skin-registry';
 import {
   appearancePartVariant,
+  customAgentIdOf,
   type AgentKind,
   type CharacterAppearance,
   type WorldState,
@@ -71,6 +72,16 @@ import type {
   AppearanceCategoryInfo,
   AppearancePreviewPort,
 } from './appearance-preview-port';
+import type { CustomAgentProbeResult, CustomAgentsPort } from './custom-agents-port';
+import {
+  CUSTOM_AGENT_OUTPUT_PARSERS,
+  CUSTOM_AGENT_PROMPT_PLACEHOLDER,
+  isAllowedCustomAgentCmd,
+  validateCustomAgentDraft,
+  MAX_CUSTOM_AGENT_NAME_LEN,
+  type CustomAgentOutputParser,
+  type CustomAgentValidationCode,
+} from '../../core/custom-agent';
 import {
   DETECTION_STATUS_LABELS,
   NAME_ERROR_MESSAGES,
@@ -170,6 +181,11 @@ export interface StratOnboardingScreenElement extends HTMLElement {
    * 注入即生效；断开连接（disconnectedCallback）时屏会 destroy 它 —— Phaser 实例的生命周期归屏。
    */
   appearancePort: AppearancePreviewPort | null;
+  /**
+   * 自定义 agent 注册端口（@since v3.32，task_056）：null = 没有注册面（纯 vite dev /
+   * 旧环境），扫描步不显示「+ 添加自定义 agent」入口。注入即生效（非 Electron 环境降级）。
+   */
+  customAgents: CustomAgentsPort | null;
   /** 强制重算重渲染。 */
   refresh(): void;
   /** 当前步骤。 */
@@ -490,9 +506,24 @@ export function defineOnboardingScreen(): typeof HTMLElement {
     /** 错误提示：key → 文案。 */
     private _errors = new Map<string, string>();
     /** 已提交（防重复发命令）。 */
-    private _submitted = false;
-    /** 上次渲染时的扫描结果签名（避免无关广播反复重画扫描步）。 */
+    private _submitted = false;    /** 上次渲染时的扫描结果签名（避免无关广播反复重画扫描步）。 */
     private _lastScanSignature: string | null = null;
+    // —— 自定义 agent 注册（@since v3.32，task_056）——
+    /** 注册端口注入位；null = 无注册面（扫描步不显示入口）。 */
+    private _customAgents: CustomAgentsPort | null = null;
+    /** 注册表单开合（默认收起，点「+ 添加」展开）。 */
+    private _customFormOpen = false;
+    /** 表单收集值（逐 key 存：广播重画扫描步时从它回填，输入不丢）。 */
+    private _customDraft: { name: string; probeCmd: string; runCmdTemplate: string; outputParser: CustomAgentOutputParser } = {
+      name: '',
+      probeCmd: '',
+      runCmdTemplate: '',
+      outputParser: 'plain',
+    };
+    /** 「测试」按钮的探测结论回显（null = 还没测）。 */
+    private _customProbeResult: CustomAgentProbeResult | null = null;
+    /** 「测试 / 注册」在飞（防双击）。 */
+    private _customBusy = false;
     /**
      * 预览画布的宿主元素（@since v3.10）。
      * why 单独留着：Phaser 的 canvas 是它的子节点，重渲染时若换掉这个元素，
@@ -521,6 +552,14 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       if (previous && previous !== value) previous.destroy();
       this.awaitAppearanceReady();
       this.renderStep();
+    }
+
+    get customAgents(): CustomAgentsPort | null { return this._customAgents; }
+    set customAgents(value: CustomAgentsPort | null) {
+      this._customAgents = value;
+      // 端口没了（降级）：收起表单，别留下一个点了没反应的入口。
+      if (!value) this._customFormOpen = false;
+      if (this.isConnected) this.renderStep();
     }
 
     get step(): OnboardingStep { return this._step; }
@@ -690,13 +729,17 @@ export function defineOnboardingScreen(): typeof HTMLElement {
     private syncIdentities(): void {
       const kinds = resolveBindableKinds(this._state).filter((kind) => this._selectedKinds.has(kind));
       const existing = new Map(this._identities.map((item) => [item.kind, item] as const));
+      // 扫描行的显示名（@since v3.32，task_056）：自定义注册的名字在注册表里，
+      // 随检测行的 label 广播进来 —— 起名默认值用注册名，别拿 slug 糊弄用户。
+      const rowLabels = new Map(resolveScanRows(this._state).map((row) => [row.kind, row.label] as const));
       this._identities = kinds.map((kind) => {
         const previous = existing.get(kind);
         if (previous) return previous;
+        const label = rowLabels.get(kind) ?? agentKindLabel(kind);
         return {
           kind,
-          label: agentKindLabel(kind),
-          name: agentKindLabel(kind),
+          label,
+          name: label,
           skinId: this.pickSkin(),
         };
       });
@@ -1082,6 +1125,28 @@ export function defineOnboardingScreen(): typeof HTMLElement {
         case 'regenerate-persona':
           this.regeneratePersona();
           return;
+        // —— 自定义 agent 注册（@since v3.32，task_056）——
+        case 'custom-toggle-form':
+          this._customFormOpen = !this._customFormOpen;
+          this._customProbeResult = null;
+          this.setError('custom-form', null);
+          this.renderStep();
+          return;
+        case 'custom-test-probe':
+          this.runCustomProbe();
+          return;
+        case 'custom-register':
+          this.submitCustomRegistration();
+          return;
+        case 'custom-cancel':
+          this._customFormOpen = false;
+          this._customProbeResult = null;
+          this.setError('custom-form', null);
+          this.renderStep();
+          return;
+        case 'custom-remove':
+          this.removeCustomRegistration(action.getAttribute('data-id') ?? '');
+          return;
         default:
           return;
       }
@@ -1097,6 +1162,20 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       }
       if (field === 'persona') {
         this.setPersona(target.value);
+        return;
+      }
+      // 自定义注册表单（@since v3.32，task_056）：值只进屏内草稿，不重画（广播重画时从草稿回填）。
+      if (field === 'custom-name') {
+        this._customDraft.name = target.value;
+        return;
+      }
+      if (field === 'custom-probe-cmd') {
+        this._customDraft.probeCmd = target.value;
+        return;
+      }
+      if (field === 'custom-template') {
+        this._customDraft.runCmdTemplate = target.value;
+        return;
       }
     }
 
@@ -1126,6 +1205,12 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       }
       if (field === 'appearance-part') {
         this.setAppearancePart(target.getAttribute('data-category') ?? '', target.value);
+        return;
+      }
+      // 自定义注册表单的解析器下拉（@since v3.32，task_056）。change 才落地（不打断输入节奏）。
+      if (field === 'custom-parser') {
+        this._customDraft.outputParser = target.value === 'json' ? 'json' : 'plain';
+        return;
       }
     }
 
@@ -1250,6 +1335,7 @@ export function defineOnboardingScreen(): typeof HTMLElement {
           ${list}
           <div class="error" data-role="scan-selection-error" data-error-key="scan-selection" ${selectionErrorAttr}>${escapeHtml(selectionError)}</div>
         </div>
+        ${this.renderCustomAgentGroup()}
       `;
     }
 
@@ -1260,6 +1346,12 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       const selector = row.installed && row.bindable
         ? `<label class="scan-select"><input type="checkbox" data-role="scan-select" data-field="scan-select" data-kind="${escapeHtml(row.kind)}"${this._selectedKinds.has(row.kind) ? ' checked' : ''}><span>导入</span></label>`
         : '';
+      // 自定义注册行带「移除注册」（@since v3.32，task_056）：删的是注册行不是角色 ——
+      // 已建角色档案保留（kind 还在，只是不再探测）。注册端口不在（降级）时只能看不能删。
+      const customId = customAgentIdOf(row.kind);
+      const removeButton = customId !== null && this._customAgents
+        ? `<${STRAT_BUTTON_TAG} label="移除注册" variant="default" data-action="custom-remove" data-id="${escapeHtml(customId)}"></${STRAT_BUTTON_TAG}>`
+        : '';
       return `
         <li class="row" data-role="scan-row" data-kind="${escapeHtml(row.kind)}"
             data-installed="${row.installed}" data-bindable="${row.bindable}">
@@ -1269,6 +1361,7 @@ export function defineOnboardingScreen(): typeof HTMLElement {
           <span class="status" data-role="status">${escapeHtml(DETECTION_STATUS_LABELS[row.status])}</span>
           <span class="meta">${escapeHtml(version)}</span>
           ${chip}
+          ${removeButton}
         </li>
       `;
     }
@@ -1297,6 +1390,199 @@ export function defineOnboardingScreen(): typeof HTMLElement {
     private refreshScanSummary(): void {
       const node = this.shadowRoot?.querySelector('[data-role="scan-selected-summary"]');
       if (node) node.textContent = this.scanSelectedSummaryText();
+    }
+
+    // —— 自定义 agent 注册（@since v3.32，task_056）：扫描步内联表单 ——
+    /** 注册表单的错误码 → 内联文案（机器可读码 → 人话，本屏内集中一份）。 */
+    private customFormErrorText(code: CustomAgentValidationCode | 'duplicate' | 'port-error', error?: string): string {
+      switch (code) {
+        case 'empty-name': return '名字不能为空';
+        case 'name-too-long': return `名字超过 ${MAX_CUSTOM_AGENT_NAME_LEN} 个字符`;
+        case 'empty-id': return '名字里至少要有一个字母或数字（注册 id 由名字派生）';
+        case 'empty-probe-cmd': return '探测命令不能为空';
+        case 'cmd-too-long': return '命令超过 200 个字符';
+        case 'cmd-invalid-chars': return '命令含白名单外字符（只许字母数字、空格与 - _ . / : = @ % + ,）';
+        case 'empty-template': return '执行模板不能为空';
+        case 'template-missing-prompt': return `执行模板里必须有 ${CUSTOM_AGENT_PROMPT_PLACEHOLDER} 占位符`;
+        case 'template-duplicate-prompt': return `执行模板里只能有一个 ${CUSTOM_AGENT_PROMPT_PLACEHOLDER} 占位符`;
+        case 'template-no-binary': return '执行模板要以可执行文件名开头';
+        case 'unknown-parser': return '解析器只能是 plain 或 json';
+        case 'duplicate': return error ?? '注册已存在（名字或 id 重复）';
+        default: return error ?? '注册失败，稍后再试';
+      }
+    }
+
+    /** 扫描步的注册入口组：没注入端口 → 整组不渲染（降级而非报错）。 */
+    private renderCustomAgentGroup(): string {
+      if (!this._customAgents) return '';
+      const open = this._customFormOpen;
+      const form = open ? this.renderCustomAgentForm() : '';
+      return `
+        <div class="group" data-group="custom-agent">
+          <div class="group-name">自定义 agent</div>
+          <div class="summary">内置清单外的 CLI 手动注册成战场单位：探测命令 exit 0 = 在装；执行模板用 ${escapeHtml(CUSTOM_AGENT_PROMPT_PLACEHOLDER)} 占位对话输入。已注册的行进上面的扫描列表（可勾选导入，配置流程同内置）。</div>
+          <${STRAT_BUTTON_TAG} label="${open ? '收起表单' : '+ 添加自定义 agent'}" variant="default" data-action="custom-toggle-form"></${STRAT_BUTTON_TAG}>
+          ${form}
+        </div>
+      `;
+    }
+
+    /** 注册表单本体：三输入 + 解析器下拉 + 测试 / 注册 / 取消。值从 _customDraft 回填（广播重画不丢输入）。 */
+    private renderCustomAgentForm(): string {
+      const draft = this._customDraft;
+      const error = this._errors.get('custom-form') ?? '';
+      const errorAttr = error ? '' : 'hidden';
+      const probe = this._customProbeResult;
+      const probeText = probe
+        ? probe.ok
+          ? `${probe.installed ? '✓ 探测通过（exit 0）' : `✗ 探测未过（exit ${String(probe.exitCode)}）`}${probe.stdout ? `：${probe.stdout.trim().slice(0, 120)}` : probe.stderr ? `：${probe.stderr.trim().slice(0, 120)}` : ''}`
+          : `探测失败：${probe.error ?? '未知错误'}`
+        : '';
+      const probeAttr = probeText ? '' : 'hidden';
+      const busy = this._customBusy;
+      const parserOptions = CUSTOM_AGENT_OUTPUT_PARSERS.map((parser) => {
+        const selected = parser === draft.outputParser ? ' selected' : '';
+        const hint = parser === 'plain' ? 'plain（整段输出当回答）' : 'json（提取 text/content/output 字段）';
+        return `<option value="${parser}"${selected}>${hint}</option>`;
+      }).join('');
+      return `
+        <div class="identity" data-role="custom-form">
+          <label class="option" for="custom-name">名字（注册 id 由名字派生）</label>
+          <input class="input" type="text" id="custom-name" data-role="custom-name" data-field="custom-name" value="${escapeHtml(draft.name)}" placeholder="例如 MyAgent">
+          <label class="option" for="custom-probe">探测命令（跑一遍 exit 0 = 在装）</label>
+          <input class="input" type="text" id="custom-probe" data-role="custom-probe-cmd" data-field="custom-probe-cmd" value="${escapeHtml(draft.probeCmd)}" placeholder="例如 myagent --version">
+          <label class="option" for="custom-template">执行模板（${escapeHtml(CUSTOM_AGENT_PROMPT_PLACEHOLDER)} 会被替换成对话输入）</label>
+          <input class="input" type="text" id="custom-template" data-role="custom-template" data-field="custom-template" value="${escapeHtml(draft.runCmdTemplate)}" placeholder="例如 myagent ask ${escapeHtml(CUSTOM_AGENT_PROMPT_PLACEHOLDER)}">
+          <label class="option" for="custom-parser">输出解析器</label>
+          <select class="input" id="custom-parser" data-role="custom-parser" data-field="custom-parser">${parserOptions}</select>
+          <div class="appearance-actions">
+            <${STRAT_BUTTON_TAG} label="${busy ? '测试中…' : '测试'}" variant="default" data-action="custom-test-probe"${busy ? ' disabled' : ''}></${STRAT_BUTTON_TAG}>
+            <${STRAT_BUTTON_TAG} label="${busy ? '注册中…' : '注册'}" variant="primary" data-action="custom-register"${busy ? ' disabled' : ''}></${STRAT_BUTTON_TAG}>
+            <${STRAT_BUTTON_TAG} label="取消" variant="default" data-action="custom-cancel"></${STRAT_BUTTON_TAG}>
+          </div>
+          <div class="hint" data-role="custom-probe-result" ${probeAttr}>${escapeHtml(probeText)}</div>
+          <div class="error" data-role="custom-form-error" data-error-key="custom-form" ${errorAttr}>${escapeHtml(error)}</div>
+        </div>
+      `;
+    }
+
+    /** 轻量刷新测试结论节点（不动表单：焦点在输入里，重画会打断输入）。 */
+    private refreshCustomProbeResult(): void {
+      const node = this.shadowRoot?.querySelector('[data-role="custom-probe-result"]');
+      if (!node) return;
+      const probe = this._customProbeResult;
+      const text = probe
+        ? probe.ok
+          ? `${probe.installed ? '✓ 探测通过（exit 0）' : `✗ 探测未过（exit ${String(probe.exitCode)}）`}${probe.stdout ? `：${probe.stdout.trim().slice(0, 120)}` : probe.stderr ? `：${probe.stderr.trim().slice(0, 120)}` : ''}`
+          : `探测失败：${probe.error ?? '未知错误'}`
+        : '';
+      if (text) {
+        node.removeAttribute('hidden');
+        node.textContent = text;
+      } else {
+        node.setAttribute('hidden', '');
+        node.textContent = '';
+      }
+    }
+
+    /** 跑「测试」：探一遍当前表单里的探测命令，结论回显（不落库）。 */
+    private runCustomProbe(): void {
+      const port = this._customAgents;
+      if (!port || this._customBusy) return;
+      // 「测试」只要求探测命令本身合法（名字 / 模板可以先不填 —— 用户可能只想先验命令）；
+      // 合法性判据与注册面同一份（core 的白名单纯函数，不另抄口径）。
+      const probeCmd = this._customDraft.probeCmd.trim();
+      if (!isAllowedCustomAgentCmd(probeCmd)) {
+        this.setError('custom-form', '探测命令非法：不能为空、不能超过 200 字符，且只许字母数字、空格与 - _ . / : = @ % + ,');
+        this.refreshCustomFormError();
+        return;
+      }
+      this._customBusy = true;
+      this.setError('custom-form', null);
+      port
+        .probe(probeCmd)
+        .then((result) => {
+          this._customProbeResult = result;
+        })
+        .catch((error: unknown) => {
+          this._customProbeResult = { ok: false, error: error instanceof Error ? error.message : String(error) };
+        })
+        .finally(() => {
+          this._customBusy = false;
+          this.refreshCustomProbeResult();
+        });
+    }
+
+    /** 提交注册：本地校验 → 端口落库 → 成功收表单（新行随检测广播自然出现在扫描列表）。 */
+    private submitCustomRegistration(): void {
+      const port = this._customAgents;
+      if (!port || this._customBusy) return;
+      const validation = validateCustomAgentDraft({ ...this._customDraft });
+      if (!validation.ok) {
+        this.setError('custom-form', this.customFormErrorText(validation.code));
+        this.refreshCustomFormError();
+        return;
+      }
+      this._customBusy = true;
+      this.setError('custom-form', null);
+      port
+        .create({ ...validation.draft })
+        .then((result) => {
+          if (result.ok) {
+            // 成功：收表单清草稿；探测行由主进程并入快照广播进来（勾选默认选上，
+            // syncSelectionFromScan 的「新探到的默认勾选」口径对自定义行同样适用）。
+            this._customFormOpen = false;
+            this._customDraft = { name: '', probeCmd: '', runCmdTemplate: '', outputParser: 'plain' };
+            this._customProbeResult = null;
+            this.renderStep();
+          } else if (result.code) {
+            this.setError('custom-form', this.customFormErrorText(result.code, result.error));
+            this.refreshCustomFormError();
+          } else {
+            // 主进程侧的查重 / 上限拒了（人话 error）。
+            this.setError('custom-form', result.error ?? '注册失败，稍后再试');
+            this.refreshCustomFormError();
+          }
+        })
+        .catch((error: unknown) => {
+          this.setError('custom-form', error instanceof Error ? error.message : String(error));
+          this.refreshCustomFormError();
+        })
+        .finally(() => {
+          this._customBusy = false;
+        });
+    }
+
+    /** 移除一条注册：断的是检测行，角色档案保留（task_056 规格⑤；扫描行随广播消失）。 */
+    private removeCustomRegistration(id: string): void {
+      const port = this._customAgents;
+      if (!port) return;
+      void port
+        .remove(id)
+        .then((result) => {
+          if (!result.ok) {
+            this.setError('custom-form', result.error ?? '移除失败');
+            this.refreshCustomFormError();
+          }
+        })
+        .catch((error: unknown) => {
+          this.setError('custom-form', error instanceof Error ? error.message : String(error));
+          this.refreshCustomFormError();
+        });
+    }
+
+    /** 轻量刷新表单错误节点（不打断输入焦点）。 */
+    private refreshCustomFormError(): void {
+      const node = this.shadowRoot?.querySelector('[data-role="custom-form-error"]');
+      if (!node) return;
+      const text = this._errors.get('custom-form') ?? '';
+      if (text) {
+        node.removeAttribute('hidden');
+        node.textContent = text;
+      } else {
+        node.setAttribute('hidden', '');
+        node.textContent = '';
+      }
     }
 
     /** ② 起名 + 皮肤 + 形象（@since v3.14，task_044：逐个配置 —— 切换条 + 当前 agent 的单卡）。 */
@@ -1771,6 +2057,11 @@ export interface OnboardingScreenOptions {
    * 由组合根（app/main/main-entry.ts）注入 —— 屏自己不认识合成器。
    */
   readonly appearance?: AppearancePreviewPort;
+  /**
+   * 自定义 agent 注册端口（@since v3.32，task_056）。
+   * 缺省 = 扫描步不显示「+ 添加自定义 agent」入口（向导照常能走完）。
+   */
+  readonly customAgents?: CustomAgentsPort;
 }
 
 /**
@@ -1787,6 +2078,7 @@ export function mountOnboardingScreen(
   const element = document.createElement(ONBOARDING_SCREEN_TAG) as StratOnboardingScreenElement;
   element.adapter = deps;
   if (options.appearance) element.appearancePort = options.appearance;
+  if (options.customAgents) element.customAgents = options.customAgents;
   host.appendChild(element);
   // 移除元素会触发 disconnectedCallback → 退订 + 销毁预览实例，订阅与 Phaser 随之释放。
   return () => { element.remove(); };

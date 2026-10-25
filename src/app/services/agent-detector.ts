@@ -26,10 +26,12 @@
 
 import {
   DETECTABLE_AGENT_KINDS,
+  buildCustomAgentKind,
   type AgentDetectionTier,
   type DetectableAgentKind,
   type DetectedAgent,
 } from '../../core/types';
+import { isAllowedCustomAgentCmd } from '../../core/custom-agent';
 
 // ============================================================================
 // 名单（与 docs/AGENT-MATRIX.md 一一对应）
@@ -253,6 +255,91 @@ export async function detectAgent(
   // 版本命令非 0 退出不影响"装没装"：路径已确认存在，只是版本读不出来。
   const version = parseVersion(versioned.outcome.stdout) ?? parseVersion(versioned.outcome.stderr);
   return { ...base, installed: true, status: 'installed', version, path };
+}
+
+// ============================================================================
+// 自定义 agent 注册的探测（@since v3.32，task_056）
+// ============================================================================
+
+/** 一条自定义注册（探测视角的最小形状；全量形状见 persistence/custom-agent-dao）。 */
+export interface CustomDetectionTarget {
+  /** 注册 id（拼 kind = `custom:<id>`）。 */
+  readonly id: string;
+  /** 显示名（注册表里的用户命名，进 DetectedAgent.label）。 */
+  readonly name: string;
+  /** 探测命令（白名单内串；exit 0 = 在装 —— 与内置的 which+version 两步不同，这是单步直跑）。 */
+  readonly probeCmd: string;
+}
+
+/** 探测命令 → argv：白名单串按空白切分即忠实 token 化（无引号/反斜杠要还原，见 custom.ts 同一口径）。 */
+function customProbeArgv(probeCmd: string): readonly string[] {
+  return probeCmd.split(/\s+/).filter((token) => token.length > 0);
+}
+
+/** 一次受控探测的退出码 → 探测结论（与内置三态口径对齐，见文件头三态语义）。 */
+function customOutcomeStatus(outcome: ExecOutcome): { installed: boolean; status: 'installed' | 'not-installed' | 'failed' } {
+  if (outcome.code === 0) return { installed: true, status: 'installed' };
+  // 127 = shell「命令不存在」的惯例退出码（node-exec 的 ENOENT 也归它）：这是「确定没装」。
+  if (outcome.code === 127) return { installed: false, status: 'not-installed' };
+  // 其它非 0：命令在但没跑成（坏旗标 / 凭证缺失 / 崩了）—— 探测失败，不算「确定没装」。
+  return { installed: false, status: 'failed' };
+}
+
+/**
+ * 探测单个自定义注册：直跑 probeCmd，exit 0 = 在装（task_056 规格）。
+ * 与内置 detectAgent 的两步（which → version）不同：自定义注册**只有一条命令可探**，
+ * 版本 / 路径一律 null（注册行不承诺这两样语义）；tier 恒 T1（能绑角色、能跑 transport）。
+ * 白名单外的脏命令（库被手改）→ failed，不跑（fail closed，与 adapter 渲染同一口径）。
+ */
+export async function detectCustomAgent(
+  target: CustomDetectionTarget,
+  options: DetectAgentOptions
+): Promise<DetectedAgent> {
+  const base = {
+    kind: buildCustomAgentKind(target.id),
+    tier: 'T1' as const,
+    label: target.name,
+    version: null,
+    path: null,
+  } as const;
+  if (!isAllowedCustomAgentCmd(target.probeCmd)) {
+    return { ...base, installed: false, status: 'failed' };
+  }
+  const argv = customProbeArgv(target.probeCmd);
+  const binary = argv[0];
+  if (!binary) return { ...base, installed: false, status: 'failed' };
+
+  const timeoutMs = options.timeoutMs ?? DEFAULT_DETECTION_TIMEOUT_MS;
+  const guarded = await runGuarded(options.execFn, binary, argv.slice(1), timeoutMs);
+  if (guarded.kind === 'timeout') return { ...base, installed: false, status: 'timeout' };
+  if (guarded.kind === 'failed') return { ...base, installed: false, status: 'failed' };
+  if (guarded.outcome.timedOut) return { ...base, installed: false, status: 'timeout' };
+  return { ...base, ...customOutcomeStatus(guarded.outcome) };
+}
+
+/** 自定义注册整轮探测的选项（与 detectAllAgents 同一节奏：逐条回调、可取消）。 */
+export interface DetectCustomAgentsOptions extends DetectAgentOptions {
+  /** 待探测的注册行；通常由主进程从 custom_agents 表读出。 */
+  readonly targets: readonly CustomDetectionTarget[];
+  /** 逐条回调。 */
+  readonly onResult?: (result: DetectedAgent) => void;
+  /** 日志回调；缺省不打。 */
+  readonly logger?: (line: string) => void;
+  readonly signal?: AbortSignal;
+}
+
+/** 跑完一整轮自定义注册探测（顺序执行、逐条回调 —— 与 detectAllAgents 同一节奏与理由）。 */
+export async function detectCustomAgents(options: DetectCustomAgentsOptions): Promise<DetectedAgent[]> {
+  const logger = options.logger ?? ((): void => undefined);
+  const results: DetectedAgent[] = [];
+  for (const target of options.targets) {
+    if (options.signal?.aborted) break;
+    const result = await detectCustomAgent(target, options);
+    results.push(result);
+    options.onResult?.(result);
+    logger(formatDetectionLog(result));
+  }
+  return results;
 }
 
 // ============================================================================

@@ -25,10 +25,9 @@ import { onState, onWorldEvent, type Unsubscribe } from '../../../core/bus';
 import { CHARACTER_UNIT_ID_PREFIX, toCharacterUnit } from '../../../core/character';
 import { worldStore, type CoreStore } from '../../../core/store';
 import {
-  AGENT_KINDS,
   APPEARANCE_BODY_TYPES,
   MAX_CHARACTERS,
-  type AgentKind,
+  isBindableAgentKind,
   type AppearanceBodyType,
   type CharacterAppearance,
   type CharacterView,
@@ -96,15 +95,16 @@ export function parseAppearanceJson(json: string | null): CharacterAppearance | 
 
 /**
  * 持久化记录 → CharacterView。
- * agentKind 不在词表里 → 归为未绑定（null）：HUD 显示「未绑定」，不渲染一个不认识的种类。
+ * agentKind 不在可建档词表里（内置五家 AGENT_KINDS ∪ 形状合法的 `custom:<id>`，task_056）
+ * → 归为未绑定（null）：HUD 显示「未绑定」，不渲染一个不认识的种类。
+ * why 自定义段也要认：注册删了（角色保留语义）后重启恢复，kind 若被这里抹成 null，
+ * 角色的绑定就丢了 —— 注册在与否是检测层的事，档案层只认形状。
  * id / name 为空的行视为脏数据，返回 null（调用方跳过并警告）。
  */
 export function recordToCharacterView(record: PersistedCharacterRecord): CharacterView | null {
   if (!record.id || !record.name) return null;
   const kind =
-    record.agentKind !== null && (AGENT_KINDS as readonly string[]).includes(record.agentKind)
-      ? (record.agentKind as AgentKind)
-      : null;
+    record.agentKind !== null && isBindableAgentKind(record.agentKind) ? record.agentKind : null;
   return {
     id: record.id,
     name: record.name,

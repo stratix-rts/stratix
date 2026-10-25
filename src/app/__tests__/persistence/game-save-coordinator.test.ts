@@ -141,6 +141,21 @@ describe('recordToCharacterView / characterViewToRecord', () => {
     expect(view?.agentKind).toBeNull();
   });
 
+  it('task_056：自定义段 kind（custom:<id>）恢复时照绑 —— 注册删了也不抹档案（删除只断检测）', () => {
+    // 形状合法的注册段：恢复翻译保留绑定（isBindableAgentKind 同 core 建档校验一份口径）。
+    const view = recordToCharacterView({
+      id: 'c1', name: '自研单位', agentKind: 'custom:myagent', persona: '', level: 1, exp: 0,
+      appearanceJson: null, bodyType: null, skinId: null, externalSessionId: null, contextEnabled: true, createdAt: 1,
+    });
+    expect(view?.agentKind).toBe('custom:myagent');
+    // 形状不合法的（非注册段字符集）仍归未绑定 —— 档案层只认形状，注册在与否是检测层的事。
+    const dirty = recordToCharacterView({
+      id: 'c1', name: 'x', agentKind: 'custom:not/a-slug', persona: '', level: 1, exp: 0,
+      appearanceJson: null, bodyType: null, skinId: null, externalSessionId: null, contextEnabled: true, createdAt: 1,
+    });
+    expect(dirty?.agentKind).toBeNull();
+  });
+
   it('脏行（id 或 name 为空）→ null', () => {
     expect(recordToCharacterView({
       id: '', name: 'x', agentKind: null, persona: '', level: 1, exp: 0,

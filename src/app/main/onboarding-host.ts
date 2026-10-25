@@ -14,6 +14,7 @@
 
 import type { WorldState } from '../../core/types';
 import type { AppearancePreviewPort } from '../../hud/screens/appearance-preview-port';
+import type { CustomAgentsPort } from '../../hud/screens/custom-agents-port';
 import {
   ONBOARDING_COMPLETE_EVENT,
   ONBOARDING_SKIPPED_EVENT,
@@ -34,6 +35,11 @@ export interface OnboardingHostOptions {
    * 缺省 = 不带形象功能（屏自己跑得起来，只是没有预览）。
    */
   readonly appearance?: AppearancePreviewPort;
+  /**
+   * 自定义 agent 注册端口（@since v3.32，task_056）：向导扫描步的「+ 添加自定义 agent」
+   * 表单靠它。缺省 = 不带注册功能（屏自己跑得起来，扫描步没有那个入口）。
+   */
+  readonly customAgents?: CustomAgentsPort | null;
   /** 开发期强制开关（STRATIX_ONBOARDING_FORCE=1）。 */
   readonly force?: boolean;
   /** 引导走完（建档完成）时的回调。 */
@@ -81,6 +87,7 @@ export function createOnboardingHost(options: OnboardingHostOptions): Onboarding
 
     unmount = mountOnboardingScreen(options.deps, options.host, {
       ...(options.appearance ? { appearance: options.appearance } : {}),
+      ...(options.customAgents ? { customAgents: options.customAgents } : {}),
     });
 
     // 完成 / 跳过事件由向导屏派发（冒泡 + composed，故在宿主上收即可）。

@@ -14,6 +14,7 @@ import {
   DEFAULT_HEALTH_PROBE_INTERVAL_MS,
   HEALTH_MONITORED_KINDS,
   HEALTH_OFFLINE_FAILURE_THRESHOLD,
+  isHealthMonitoredKind,
   isUnhealthyTransportExit,
   probeResultHealthy,
 } from '../services/health-monitor';
@@ -248,5 +249,45 @@ describe('start：周期探测回路', () => {
     const stopIdle = idle.monitor.start();
     expect(typeof stopIdle).toBe('function');
     stopIdle(); // 不抛即过
+  });
+});
+
+// ============================================================================
+// task_056：自定义注册同座监测（探测周期含 custom probe，规格④）
+// ============================================================================
+
+describe('task_056 自定义注册的健康监测', () => {
+  test('isHealthMonitoredKind：内置 T1 ∪ custom:<id> 形态；T2/词表外仍不监测', () => {
+    expect(isHealthMonitoredKind('claude-code')).toBe(true);
+    expect(isHealthMonitoredKind('custom:myagent')).toBe(true);
+    expect(isHealthMonitoredKind('custom:another-1')).toBe(true);
+    expect(isHealthMonitoredKind('gemini')).toBe(false); // T2：没有执行链路
+    expect(isHealthMonitoredKind('custom:not/a-slug')).toBe(false); // 形状不合法（斜杠）≠ 注册段
+    expect(isHealthMonitoredKind('custom:')).toBe(false); // 空段不算
+  });
+
+  test('ingestProbeRound：自定义注册行参与离线防抖（阈值轮 timeout → agent.offline）', () => {
+    const h = makeMonitor();
+    for (let i = 0; i < HEALTH_OFFLINE_FAILURE_THRESHOLD; i += 1) {
+      h.monitor.ingestProbeRound([snapshot('custom:myagent' as DetectedAgent['kind'], 'timeout')]);
+    }
+    expect(h.events).toEqual([
+      expect.objectContaining({ type: 'agent.offline', kind: 'custom:myagent' }),
+    ]);
+    expect(h.persisted).toEqual([
+      expect.objectContaining({ kind: 'custom:myagent', event: 'offline' }),
+    ]);
+  });
+
+  test('注册探活恢复（installed）→ agent.online；失败计数同内置清零口径', () => {
+    const h = makeMonitor();
+    for (let i = 0; i < HEALTH_OFFLINE_FAILURE_THRESHOLD; i += 1) {
+      h.monitor.ingestProbeRound([snapshot('custom:myagent' as DetectedAgent['kind'], 'timeout')]);
+    }
+    h.monitor.ingestProbeRound([snapshot('custom:myagent' as DetectedAgent['kind'], 'installed')]);
+    expect(h.events).toEqual([
+      expect.objectContaining({ type: 'agent.offline', kind: 'custom:myagent' }),
+      expect.objectContaining({ type: 'agent.online', kind: 'custom:myagent' }),
+    ]);
   });
 });

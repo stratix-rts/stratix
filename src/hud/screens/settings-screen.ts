@@ -42,7 +42,9 @@ import {
 } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
 import type { ThemeId } from '../theme/theme-controller';
-import { defineStratButton, STRAT_BUTTON_TAG } from '../widgets/strat-button';
+import { defineStratButton, escapeHtml, STRAT_BUTTON_TAG } from '../widgets/strat-button';
+// 自定义 agent 注册端口（@since v3.32，task_056）：类型 only —— hud 不 import electron（铁律）。
+import type { CustomAgentsPort, CustomAgentView } from './custom-agents-port';
 
 export const SETTINGS_SCREEN_TAG = 'strat-settings-screen';
 
@@ -133,6 +135,11 @@ export function settingsSignature(state: WorldState | null): string {
 export interface StratSettingsScreenElement extends HTMLElement {
   /** 注入的适配器；connected 之前或之后设置都生效。 */
   adapter: SettingsScreenDeps | null;
+  /**
+   * 自定义 agent 注册端口（@since v3.32，task_056）：null = 不显示注册管理组。
+   * 注册（新增）入口在向导，这里只提供查看与移除（断检测，角色保留）。
+   */
+  customAgents: CustomAgentsPort | null;
   /** 强制重算重渲染。 */
   refresh(): void;
   /** 最近一次派生出的视图模型（pending 取当前确认态）。 */
@@ -158,12 +165,28 @@ export function defineSettingsScreen(): typeof HTMLElement {
     private _lastRenderKey: string | null = null;
     private _unsubscribe: (() => void) | null = null;
     private _listenersBound = false;
+    // 自定义 agent 注册（@since v3.32，task_056）：端口 + 注册行快照（异步拉，拉到后补画）。
+    private _customAgents: CustomAgentsPort | null = null;
+    private _customRows: readonly CustomAgentView[] = [];
+    private _customRowsLoaded = false;
+    private _customNotice: string | null = null;
 
     get adapter(): SettingsScreenDeps | null { return this._adapter; }
     set adapter(value: SettingsScreenDeps | null) {
       this._adapter = value;
       this.bindAdapter();
       this.refresh();
+    }
+
+    get customAgents(): CustomAgentsPort | null { return this._customAgents; }
+    set customAgents(value: CustomAgentsPort | null) {
+      this._customAgents = value;
+      if (value) this.loadCustomAgents();
+      else {
+        this._customRows = [];
+        this._customRowsLoaded = false;
+      }
+      if (this.isConnected) this.renderBody();
     }
 
     get lastState(): WorldState | null { return this._state; }
@@ -179,6 +202,7 @@ export function defineSettingsScreen(): typeof HTMLElement {
       this._lastRenderKey = null;
       this.bindAdapter();
       this.refresh();
+      if (this._customAgents) this.loadCustomAgents();
     }
 
     disconnectedCallback(): void {
@@ -401,6 +425,13 @@ export function defineSettingsScreen(): typeof HTMLElement {
         return;
       }
 
+      // 自定义 agent 注册移除（@since v3.32，task_056）：一行一按钮，直接移（向导/设置两个入口同语义）。
+      const customRemove = target.closest<HTMLElement>('button[data-custom-remove]');
+      if (customRemove) {
+        this.removeCustomAgent(customRemove.getAttribute('data-custom-remove') ?? '');
+        return;
+      }
+
       const confirm = target.closest<HTMLElement>('button[data-danger-confirm]');
       if (confirm) {
         const id = confirm.getAttribute('data-danger-confirm');
@@ -430,9 +461,82 @@ export function defineSettingsScreen(): typeof HTMLElement {
       const sections: string[] = [
         this.renderAppearance(),
         this.renderPreferences(prefs),
+        // 自定义 agent 注册管理（@since v3.32，task_056）：端口注入了才渲染（非 Electron 降级）。
+        ...(this._customAgents ? [this.renderCustomAgents()] : []),
         this.renderDanger(),
       ];
       box.innerHTML = sections.join('');
+    }
+
+    // —— 自定义 agent 注册管理（@since v3.32，task_056）——
+    /** 拉注册行快照：成功补画（renderBody），失败给只读提示（设置屏不能被注册表卡死）。 */
+    private loadCustomAgents(): void {
+      const port = this._customAgents;
+      if (!port) return;
+      void port
+        .list()
+        .then((result) => {
+          this._customRows = result.ok && result.agents ? result.agents : [];
+          this._customRowsLoaded = true;
+          this._customNotice = result.ok ? null : result.error ?? '注册表读取失败';
+        })
+        .catch((error: unknown) => {
+          this._customRowsLoaded = true;
+          this._customNotice = error instanceof Error ? error.message : String(error);
+        })
+        .finally(() => {
+          if (this.isConnected) this.renderBody();
+        });
+    }
+
+    /** 移除一条注册：断的是检测行（角色档案保留 —— task_056 规格⑤）；成功后重拉列表。 */
+    private removeCustomAgent(id: string): void {
+      const port = this._customAgents;
+      if (!port || id.length === 0) return;
+      this._customNotice = '正在移除注册…';
+      this.renderBody();
+      void port
+        .remove(id)
+        .then((result) => {
+          this._customNotice = result.ok ? null : result.error ?? '移除失败';
+        })
+        .catch((error: unknown) => {
+          this._customNotice = error instanceof Error ? error.message : String(error);
+        })
+        .finally(() => this.loadCustomAgents());
+    }
+
+    private renderCustomAgents(): string {
+      const rows = this._customRows;
+      const list = !this._customRowsLoaded
+        ? '<div class="row-hint">正在读取注册表…</div>'
+        : rows.length === 0
+          ? '<div class="row-hint">还没有自定义 agent 注册（首启向导的扫描步里添加）</div>'
+          : rows
+              .map(
+                (agent) => `
+          <div class="row" data-role="custom-agent-row" data-id="${escapeHtml(agent.id)}">
+            <div class="row-text">
+              <span class="row-label">${escapeHtml(agent.name)}</span>
+              <span class="row-hint">${escapeHtml(agent.probeCmd)} · 解析器 ${agent.outputParser === 'json' ? 'json（提字段）' : 'plain（整段）'}</span>
+            </div>
+            <div class="row-ctl">
+              <button type="button" class="ctl" data-custom-remove="${escapeHtml(agent.id)}">移除注册</button>
+            </div>
+          </div>`
+              )
+              .join('');
+      const notice = this._customNotice
+        ? `<div class="row-hint" data-role="custom-agent-notice">${escapeHtml(this._customNotice)}</div>`
+        : '';
+      return `
+        <div class="group" data-group="custom-agents">
+          <div class="group-name">自定义 agent 注册（task_056）</div>
+          <div class="row-hint">移除注册只断探测与执行接入：已建的角色档案保留（kind 还在档案里，不再参与检测与健康监测）。新增注册入口在首启向导的扫描步。</div>
+          ${notice}
+          ${list}
+        </div>
+      `;
     }
 
     private renderAppearance(): string {
@@ -575,10 +679,15 @@ function isDangerActionId(value: string | null): value is DangerActionId {
  * 挂载工厂：本仓库屏 / 面板的统一装配口径（与 mountMissionConfirm 一致）——
  *   建元素、注入 adapter、挂进容器，返回 unmount 闭包。
  */
-export function mountSettingsScreen(deps: SettingsScreenDeps, host: HTMLElement): () => void {
+export function mountSettingsScreen(
+  deps: SettingsScreenDeps,
+  host: HTMLElement,
+  options: { readonly customAgents?: CustomAgentsPort | null } = {}
+): () => void {
   defineSettingsScreen();
   const element = document.createElement(SETTINGS_SCREEN_TAG) as StratSettingsScreenElement;
   element.adapter = deps;
+  if (options.customAgents) element.customAgents = options.customAgents;
   host.appendChild(element);
   // 移除元素会触发 disconnectedCallback → 退订，订阅随之释放。
   return () => { element.remove(); };

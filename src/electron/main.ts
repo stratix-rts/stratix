@@ -17,12 +17,14 @@ import { ensureDirSync } from 'fs-extra';
 import { entryHtmlPath, isRetiredLegacyFlagSet } from '../app/entry-paths';
 import {
   detectAllAgents,
+  detectCustomAgents,
   mergeDetectedAgents,
   verifyAgentRoster,
   T1_AGENT_DETECTION_TARGETS,
+  type CustomDetectionTarget,
 } from '../app/services/agent-detector';
 import { createNodeExec } from '../app/services/node-exec';
-import { createTransportFor } from '../app/services/cli-transport';
+import { createTransportFor, createTransportForCustomAgent } from '../app/services/cli-transport';
 import type { CliChatEventEnvelope, CliChatRunRequest } from '../app/services/chat-transport-bridge';
 import {
   ensureGameSaveTables,
@@ -62,7 +64,33 @@ import {
   PERSISTED_AGENT_HEALTH_EVENTS,
   type AgentHealthEventInsert,
 } from '../app/services/persistence/agent-health-dao';
-import { AGENT_KINDS, MAX_EXTERNAL_SESSION_ID_LEN, type AgentKind, type DetectedAgent } from '../core/types';
+// 自定义 agent 注册表（@since v3.32，task_056）：custom_agents 表 DAO + 四条 IPC 通道
+//（list / create / delete / probe，见 setupIPC 的 customAgent: 段）。
+import {
+  deleteCustomAgent,
+  ensureCustomAgentsTable,
+  findCustomAgent,
+  insertCustomAgent,
+  loadCustomAgents,
+  type CustomAgentDbLike,
+  type PersistedCustomAgentRecord,
+} from '../app/services/persistence/custom-agent-dao';
+import {
+  canRegisterMoreCustomAgents,
+  isAllowedCustomAgentCmd,
+  validateCustomAgentDraft,
+  MAX_CUSTOM_AGENTS,
+  type CustomAgentOutputParser,
+} from '../core/custom-agent';
+import {
+  AGENT_KINDS,
+  MAX_EXTERNAL_SESSION_ID_LEN,
+  buildCustomAgentKind,
+  customAgentIdOf,
+  isBindableAgentKind,
+  type AgentKind,
+  type DetectedAgent,
+} from '../core/types';
 import { getDatabase } from '../stratix-database';
 import { dataStoreService } from '../stratix-gateway/dataStoreService';
 import { WebSocketOpenClawAdapter } from '../stratix-openclaw-adapter/WebSocketOpenClawAdapter';
@@ -245,9 +273,59 @@ function startAgentDetection(): void {
       detectedAgents = mergeDetectedAgents(detectedAgents, result);
       broadcastDetectedAgents();
     },
-  }).catch((error) => {
-    console.error('[AgentDetector] 探测失败', error);
+  })
+    .catch((error) => {
+      console.error('[AgentDetector] 探测失败', error);
+    })
+    .finally(() => {
+      // task_056：内置轮收尾后追加自定义注册轮（注册表空则零开销直过）。
+      void probeCustomAgentsOnce(execFn, detectionAbort?.signal);
+    });
+}
+
+/** 把 custom_agents 表读成探测目标列表（未初始化 / 读失败降级为空 —— 检测不能被注册表卡死）。 */
+function loadCustomDetectionTargets(): CustomDetectionTarget[] {
+  try {
+    if (!dataStoreService.isInitialized()) return [];
+    const db = getDatabase().getDatabase() as unknown as CustomAgentDbLike;
+    ensureCustomAgentsTable(db);
+    return loadCustomAgents(db).map((record) => ({
+      id: record.id,
+      name: record.name,
+      probeCmd: record.probeCmd,
+    }));
+  } catch (error) {
+    console.error('[CustomAgentDetector] 注册表读取失败，本轮跳过自定义探测', error);
+    return [];
+  }
+}
+
+/**
+ * 跑一轮自定义注册探测（逐条 probeCmd 直跑；exit 0 = 在装，见 agent-detector 的 detectCustomAgent）。
+ * 结果并入 detectedAgents 快照（自定义行 kind = `custom:<id>`）并推送 —— 与内置行同一广播面。
+ * 返回本轮结果（健康探测轮的合成方也用它）。
+ */
+async function probeCustomAgentsOnce(
+  execFn: ReturnType<typeof createNodeExec>,
+  signal?: AbortSignal
+): Promise<DetectedAgent[]> {
+  const targets = loadCustomDetectionTargets();
+  if (targets.length === 0) return [];
+  return detectCustomAgents({
+    execFn,
+    targets,
+    signal,
+    logger: (line) => console.log(line),
+    onResult: (result) => {
+      detectedAgents = mergeDetectedAgents(detectedAgents, result);
+      broadcastDetectedAgents();
+    },
   });
+}
+
+/** 从检测快照里摘掉某个自定义注册的行（删除注册后用 —— 断检测，不动内置行）。 */
+function dropCustomAgentRow(id: string): void {
+  detectedAgents = detectedAgents.filter((agent) => customAgentIdOf(agent.kind) !== id);
 }
 
 /**
@@ -258,15 +336,21 @@ function startAgentDetection(): void {
  * 单项超时由 detectAgent 自己的 10s 兑底，整轮有界。
  */
 function runHealthProbeRound(): Promise<DetectedAgent[]> {
-  healthProbeInFlight ??= detectAllAgents({
-    execFn: createNodeExec(),
-    targets: T1_AGENT_DETECTION_TARGETS,
-    logger: (line) => console.log(line),
-    onResult: (result) => {
-      detectedAgents = mergeDetectedAgents(detectedAgents, result);
-      broadcastDetectedAgents();
-    },
-  }).finally(() => {
+  healthProbeInFlight ??= (async () => {
+    const execFn = createNodeExec();
+    const builtin = await detectAllAgents({
+      execFn,
+      targets: T1_AGENT_DETECTION_TARGETS,
+      logger: (line) => console.log(line),
+      onResult: (result) => {
+        detectedAgents = mergeDetectedAgents(detectedAgents, result);
+        broadcastDetectedAgents();
+      },
+    });
+    // task_056：自定义注册同座健康监测 —— 内置 T1 轮后追加自定义轮，合成一份快照回渲染层。
+    const custom = await probeCustomAgentsOnce(execFn);
+    return [...builtin, ...custom];
+  })().finally(() => {
     healthProbeInFlight = null;
   });
   return healthProbeInFlight;
@@ -577,7 +661,7 @@ function setupIPC() {
     if (typeof request?.runId !== 'string' || request.runId.length === 0 || request.runId.length > 64) {
       return { ok: false, error: 'bad runId' };
     }
-    if (typeof request?.kind !== 'string' || !(AGENT_KINDS as readonly string[]).includes(request.kind)) {
+    if (typeof request?.kind !== 'string' || !isBindableAgentKind(request.kind)) {
       return { ok: false, error: `unknown agent kind: ${String(request?.kind)}` };
     }
     if (typeof request?.prompt !== 'string' || request.prompt.length === 0 || request.prompt.length > 200_000) {
@@ -610,9 +694,33 @@ function setupIPC() {
         mainWindow.webContents.send('chat:event', envelope);
       };
       try {
-        const transport = createTransportFor(kind, {}, { logger: (line) => console.log(`[chat:${runId}] ${line}`) });
+        // task_056：自定义段（custom:<id>）按注册行动态造 transport；注册行不在了 → 拒发（错误
+        // 事件回渲染层）。内置五家照旧查静态注册表。sessionId 对自定义段强制置空：
+        // 注册模板没有会话恢复语义，每轮新会话（渲染层 adapter 同一约定）。
+        const customId = customAgentIdOf(request.kind);
+        const transport =
+          customId !== null
+            ? (() => {
+                const registration = dataStoreService.isInitialized()
+                  ? (() => {
+                      const db = getDatabase().getDatabase() as unknown as CustomAgentDbLike;
+                      ensureCustomAgentsTable(db);
+                      return findCustomAgent(db, customId);
+                    })()
+                  : null;
+                if (!registration) throw new Error(`自定义 agent 注册不存在：${request.kind}`);
+                return createTransportForCustomAgent(
+                  {
+                    id: registration.id,
+                    runCmdTemplate: registration.runCmdTemplate,
+                    outputParser: registration.outputParser,
+                  },
+                  { logger: (line) => console.log(`[chat:${runId}] ${line}`) }
+                );
+              })()
+            : createTransportFor(kind, {}, { logger: (line) => console.log(`[chat:${runId}] ${line}`) });
         for await (const event of transport.spawn(request.prompt, {
-          sessionId: request.sessionId ?? null,
+          sessionId: customId !== null ? null : (request.sessionId ?? null),
           signal: controller.signal,
           timeoutMs,
         })) {
@@ -635,6 +743,95 @@ function setupIPC() {
     if (typeof runId !== 'string') return { ok: false };
     chatRuns.get(runId)?.abort();
     return { ok: true };
+  });
+
+  // ==================== 自定义 agent 注册 IPC（@since v3.32，task_056）====================
+  // 向导扫描步「+ 添加自定义 agent」/ 设置屏的注册管理面。四条通道：
+  //   customAgent:list   —— 全量注册行（扫描列表 / 设置列表的直接数据源）；
+  //   customAgent:create —— 落库一条注册（core 白名单校验 + 查重 + 条数上限）并立刻探一轮；
+  //   customAgent:delete —— 删注册行 + 摘检测行（**角色保留**：kind 还在角色档案里，只断检测）；
+  //   customAgent:probe  —— 跑一条探测命令回结论（向导「测试」按钮：注册前先验命令能不能跑）。
+  // 校验从严（IPC 是可信度最低的入口）：core/custom-agent.ts 的纯校验是唯一口径。
+  ipcMain.handle('customAgent:list', async () => {
+    try {
+      if (!dataStoreService.isInitialized()) return { ok: true, agents: [] as PersistedCustomAgentRecord[] };
+      const db = getDatabase().getDatabase() as unknown as CustomAgentDbLike;
+      ensureCustomAgentsTable(db);
+      return { ok: true, agents: loadCustomAgents(db) };
+    } catch (error: any) {
+      console.error('[Electron] customAgent:list failed:', error);
+      return { ok: false, error: error?.message ?? String(error) };
+    }
+  });
+
+  ipcMain.handle('customAgent:create', async (_event, draft: unknown) => {
+    try {
+      const validation = validateCustomAgentDraft(draft as never);
+      if (!validation.ok) return { ok: false, code: validation.code };
+      const { id, name, probeCmd, runCmdTemplate, outputParser } = validation.draft;
+      if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
+      const db = getDatabase().getDatabase() as unknown as CustomAgentDbLike;
+      ensureCustomAgentsTable(db);
+      const existing = loadCustomAgents(db);
+      if (!canRegisterMoreCustomAgents(existing.length)) {
+        return { ok: false, error: `注册条数已达上限（${MAX_CUSTOM_AGENTS}）` };
+      }
+      // 查重：id（slug）与名字都唯一 —— 扫描列表按 kind 去重，同名会静默覆盖对方。
+      if (existing.some((row) => row.id === id)) return { ok: false, error: `注册 id 重复：${id}` };
+      if (existing.some((row) => row.name === name)) return { ok: false, error: `名字重复：${name}` };
+      insertCustomAgent(db, { id, name, probeCmd, runCmdTemplate, outputParser, createdAt: Date.now() });
+      // 注册即探一轮（扫描列表立刻能看到「已装 / 未装」，不用等下一轮健康周期）。
+      void probeCustomAgentsOnce(createNodeExec()).catch((error: unknown) => {
+        console.error('[CustomAgentDetector] 注册后探测失败', error);
+      });
+      return { ok: true, agent: findCustomAgent(db, id) };
+    } catch (error: any) {
+      console.error('[Electron] customAgent:create failed:', error);
+      return { ok: false, error: error?.message ?? String(error) };
+    }
+  });
+
+  ipcMain.handle('customAgent:delete', async (_event, id: unknown) => {
+    try {
+      if (typeof id !== 'string' || id.length === 0 || id.length > 64 || !/^[a-z0-9-]+$/.test(id)) {
+        return { ok: false, error: 'bad id' };
+      }
+      if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
+      const db = getDatabase().getDatabase() as unknown as CustomAgentDbLike;
+      ensureCustomAgentsTable(db);
+      deleteCustomAgent(db, id);
+      // 删除语义（task_056 规格⑤）：只断检测不删角色 —— 已建角色档案保留（kind 仍指向
+      // custom:<id>，恢复口径见 game-save-coordinator：注册不在也照绑；检测行摘掉后
+      // 该 kind 无检测结论，派任务/对话的守门按「未检出」拦，档案不丢）。
+      dropCustomAgentRow(id);
+      broadcastDetectedAgents();
+      return { ok: true };
+    } catch (error: any) {
+      console.error('[Electron] customAgent:delete failed:', error);
+      return { ok: false, error: error?.message ?? String(error) };
+    }
+  });
+
+  ipcMain.handle('customAgent:probe', async (_event, probeCmd: unknown) => {
+    try {
+      if (typeof probeCmd !== 'string' || !isAllowedCustomAgentCmd(probeCmd)) {
+        return { ok: false, error: '非法探测命令（白名单校验未过）' };
+      }
+      const argv = probeCmd.split(/\s+/).filter((token) => token.length > 0);
+      const outcome = await createNodeExec()(argv[0], argv.slice(1), {
+        timeoutMs: 10_000,
+      });
+      return {
+        ok: true,
+        exitCode: outcome.code,
+        installed: outcome.code === 0,
+        stdout: outcome.stdout.slice(0, 500),
+        stderr: outcome.stderr.slice(0, 500),
+      };
+    } catch (error: any) {
+      console.error('[Electron] customAgent:probe failed:', error);
+      return { ok: false, error: error?.message ?? String(error) };
+    }
   });
 
   // ==================== Dialog IPC ====================

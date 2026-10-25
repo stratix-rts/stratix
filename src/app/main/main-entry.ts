@@ -124,6 +124,9 @@ import { createUnitSpriteSource } from '../services/unit-sprite-source';
 
 import { isOnboardingForced } from './dev-flags';
 import { createOnboardingHost } from './onboarding-host';
+// 自定义 agent 注册端口（@since v3.32，task_056）：向导扫描步的「+ 添加自定义 agent」表单 /
+// 设置屏的注册管理经它进主进程（IPC 面 = preload 的 customAgents）。非 Electron → null，降级。
+import { customAgentsIpcPort } from './custom-agents-bridge';
 
 function must<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
@@ -260,6 +263,8 @@ async function boot(): Promise<void> {
     appearance: appearancePreview,
     taskStats: makeTaskStatsProvider(taskRecordApi()),
     pipelines: pipelineService.feed,
+    // task_056：设置屏的注册管理组（查看 / 移除） —— 端口同向导一份（非 Electron = null 降级）。
+    customAgents: customAgentsIpcPort(),
   });
   const unmountScreen = screen.mount(hudRoot);
   const unmountAdapter = adapter.mount();
@@ -483,6 +488,7 @@ async function boot(): Promise<void> {
     deps: adapter,
     host: onboardingHost,
     appearance: appearancePreview,
+    customAgents: customAgentsIpcPort(),
     force: isOnboardingForced(),
     onComplete: () => {
       // 引导走完落在角色屏：用户第一眼看到自己刚建的角色（而不是空荡荡的主屏）。

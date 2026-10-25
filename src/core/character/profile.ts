@@ -19,7 +19,6 @@
  */
 
 import {
-  AGENT_KINDS,
   APPEARANCE_BODY_TYPES,
   MAX_APPEARANCE_ITEM_ID_LEN,
   MAX_APPEARANCE_PARTS,
@@ -28,6 +27,7 @@ import {
   MAX_EXTERNAL_SESSION_ID_LEN,
   MAX_SKIN_ID_LEN,
   isAppearancePartSelection,
+  isBindableAgentKind,
   type AgentKind,
   type AgentProfile,
   type AppearanceBodyType,
@@ -57,7 +57,7 @@ export type ProfileErrorCode =
   | 'empty-name'
   /** 名字超过 MAX_CHARACTER_NAME_LEN 码点。 */
   | 'name-too-long'
-  /** agentKind 不在 AGENT_KINDS 词表内。 */
+  /** agentKind 不在词表内（内置五家 AGENT_KINDS 或 `custom:<id>` 形态之外，见 task_056）。 */
   | 'unknown-agent-kind'
   /** skinId 不是非空字符串，或超长。 */
   | 'invalid-skin-id'
@@ -92,16 +92,16 @@ function codePointLength(s: string): number {
   return Array.from(s).length;
 }
 
-/** agentKind 合法性：只认契约词表内的种类，不认识的（拼错 / 未来新增但未落地）一律拒发。 */
+/** agentKind 合法性：内置五家词表（AGENT_KINDS）或形状合法的自定义段（`custom:<id>`，task_056）。 */
 function isAgentKind(value: unknown): value is AgentKind {
-  return typeof value === 'string' && (AGENT_KINDS as readonly string[]).includes(value);
+  return typeof value === 'string' && isBindableAgentKind(value);
 }
 
 /**
  * 构造一份 agent 档案（纯函数、可穷举测试）。
  * 语义五条：
  *   1. 名字：trim 后非空、≤ MAX_CHARACTER_NAME_LEN 码点；存档用 trim 后的版本；
- *   2. agentKind：必须在 AGENT_KINDS 词表内；
+ *   2. agentKind：内置五家词表（AGENT_KINDS）或形状合法的自定义段（`custom:<id>`，task_056）；
  *   3. skinId：trim 后的非空资源键（core 不解析资源是否存在 —— 那是渲染侧的事）；
  *   4. persona：缺省 / null / 空串 / 纯空白 → 套 DEFAULT_PERSONA_TEMPLATE；
  *      其余走 persona.ts 的既有校验（类型 / 长度口径与改写 persona 时完全一致）；

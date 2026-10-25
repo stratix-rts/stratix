@@ -18,6 +18,7 @@ import { createStore } from '../../core/store';
 import type { HudCommand, UnitView, WorldState } from '../../core/types';
 import { createHudBusAdapter } from '../bridge/bus-adapter';
 import { createThemeController, STYLE_ID_PREFIX } from '../theme/theme-controller';
+import type { CustomAgentsPort } from '../screens/custom-agents-port';
 
 import {
   DANGER_ACTIONS,
@@ -382,5 +383,121 @@ describe('上下文注入全局开关（task_053）', () => {
     h = mountScreen();
     h.emit(h.store.getState());
     expect(h.screen.shadowRoot?.querySelector('button[data-context-toggle]')?.textContent).toContain('关');
+  });
+});
+
+// ============================================================================
+// task_056：自定义 agent 注册管理组（端口注入才有；移除 = 断检测，角色保留）
+// ============================================================================
+
+describe('task_056 设置屏：自定义 agent 注册组', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  function mountWithPort(
+    script: { rows?: Array<{ id: string; name: string; probeCmd: string; runCmdTemplate: string; outputParser: 'plain' | 'json'; createdAt: number }>; removeResult?: { ok: boolean; error?: string } } = {}
+  ): { screen: StratSettingsScreenElement; calls: string[]; unmount: () => void } {
+    const calls: string[] = [];
+    const port: CustomAgentsPort = {
+      async list() {
+        calls.push('list');
+        return { ok: true, agents: script.rows ?? [] };
+      },
+      // 设置屏不消费 create / probe（新增入口在向导）—— 空实现只满足端口形状。
+      async create() {
+        return { ok: false, error: 'not supported here' };
+      },
+      async remove(id) {
+        calls.push(`remove:${id}`);
+        return script.removeResult ?? { ok: true };
+      },
+      async probe() {
+        return { ok: false, error: 'not supported here' };
+      },
+    };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const commands: HudCommand[] = [];
+    const store = createStore();
+    const themeController = createThemeController({
+      sources: { default: readCss('tokens-default.css'), pixel: readCss('tokens-pixel.css') },
+      initial: 'default',
+    });
+    const adapter = createHudBusAdapter({
+      themeController,
+      onState: (handler) => store.subscribe(handler),
+      emitCommand: (command) => { commands.push(command); },
+    });
+    const unmountAdapter = adapter.mount();
+    const deps: SettingsScreenDeps = {
+      dispatch: (command) => adapter.dispatch(command),
+      subscribe: (handler) => adapter.subscribe(handler),
+    };
+    const unmountScreen = mountSettingsScreen(deps, host, { customAgents: port });
+    const screen = host.querySelector(SETTINGS_SCREEN_TAG) as StratSettingsScreenElement;
+    return {
+      screen,
+      calls,
+      unmount: () => {
+        unmountScreen();
+        unmountAdapter();
+        host.remove();
+      },
+    };
+  }
+
+  test('端口注入 + 注册行：列表渲染（名字 / 探测命令 / 解析器），移除按钮打端口并重拉', async () => {
+    const h = mountWithPort({
+      rows: [{ id: 'myagent', name: 'MyAgent', probeCmd: 'myagent --version', runCmdTemplate: 'myagent ask {prompt}', outputParser: 'json', createdAt: 0 }],
+    });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const row = h.screen.shadowRoot?.querySelector('[data-role="custom-agent-row"][data-id="myagent"]');
+    expect(row).not.toBeNull();
+    expect(row?.textContent).toContain('MyAgent');
+    expect(row?.textContent).toContain('myagent --version');
+    expect(row?.textContent).toContain('json');
+
+    const button = row?.querySelector<HTMLButtonElement>('[data-custom-remove]');
+    button?.click();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(h.calls).toContain('remove:myagent');
+    expect(h.calls.filter((call) => call === 'list').length).toBeGreaterThanOrEqual(2); // 移除后重拉
+    h.unmount();
+  });
+
+  test('端口注入但注册表为空：空态提示（指向向导的新增入口）', async () => {
+    const h = mountWithPort({ rows: [] });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const group = h.screen.shadowRoot?.querySelector('[data-group="custom-agents"]');
+    expect(group).not.toBeNull();
+    expect(group?.textContent).toContain('还没有自定义 agent 注册');
+    expect(group?.textContent).toContain('角色档案保留'); // 删除语义的文案契约：断检测不删角色
+    h.unmount();
+  });
+
+  test('端口未注入：整组不渲染（非 Electron 降级）', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const store = createStore();
+    const themeController = createThemeController({
+      sources: { default: readCss('tokens-default.css'), pixel: readCss('tokens-pixel.css') },
+      initial: 'default',
+    });
+    const adapter = createHudBusAdapter({
+      themeController,
+      onState: (handler) => store.subscribe(handler),
+      emitCommand: () => undefined,
+    });
+    const unmountAdapter = adapter.mount();
+    const unmountScreen = mountSettingsScreen(
+      { dispatch: (command) => adapter.dispatch(command), subscribe: (handler) => adapter.subscribe(handler) },
+      host
+    );
+    const screen = host.querySelector(SETTINGS_SCREEN_TAG) as StratSettingsScreenElement;
+    expect(screen.shadowRoot?.querySelector('[data-group="custom-agents"]')).toBeNull();
+    unmountScreen();
+    unmountAdapter();
+    host.remove();
   });
 });

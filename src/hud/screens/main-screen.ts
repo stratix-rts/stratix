@@ -42,6 +42,7 @@ import { defineStratButton, STRAT_BUTTON_TAG } from '../widgets/strat-button';
 import { mountCharacterScreen } from './character-screen';
 import type { AppearancePreviewPort } from './appearance-preview-port';
 import { mountSettingsScreen } from './settings-screen';
+import type { CustomAgentsPort } from './custom-agents-port';
 import { mountStatusScreen } from './status-screen';
 
 /** currentScreen 缺省回落（与读取 WorldState.currentScreen 的各处共用）。 */
@@ -234,6 +235,11 @@ export interface MainScreenOptions {
   readonly appearance?: AppearancePreviewPort;
   readonly taskStats?: TaskStatsProvider;
   readonly pipelines?: PipelineFeedInput;
+  /**
+   * 自定义 agent 注册端口（@since v3.32，task_056）：设置屏的注册管理组（查看 / 移除，
+   * 新增入口在向导）。缺省 = 不显示该组（非 Electron 降级）。
+   */
+  readonly customAgents?: CustomAgentsPort | null;
 }
 
 /** 工厂：构造 main-screen 句柄；接受一个已建好的 bus-adapter（依赖注入）。 */
@@ -400,7 +406,9 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       subHost.className = 'hud-sub-screen';
       host.appendChild(subHost);
       // settings-screen 自带 topbar + 返回按钮 → ui.navigate(main)。
-      unmountSubScreen = mountSettingsScreen(adapter, subHost);
+      unmountSubScreen = mountSettingsScreen(adapter, subHost, {
+        customAgents: options.customAgents ?? null,
+      });
       currentScreen = 'settings';
     };
 

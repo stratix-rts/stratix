@@ -14,6 +14,27 @@ import type { ChatMessageInsert, PersistedChatMessage } from '../app/services/pe
 import type { PersistedTaskRecord, PersistedTaskStatRow } from '../app/services/persistence/task-record-dao';
 import type { PersistedPipelineRecord } from '../app/services/persistence/pipeline-record-dao';
 import type { AgentHealthEventInsert } from '../app/services/persistence/agent-health-dao';
+import type { PersistedCustomAgentRecord } from '../app/services/persistence/custom-agent-dao';
+
+/**
+ * 自定义 agent 注册的 IPC 形状（@since v3.32，task_056）：主进程四条通道的
+ * 请求 / 响应面。注册草案的合法性由 core/custom-agent.ts 的纯校验裁决（主进程侧再校
+ * 一次 —— IPC 是可信度最低的入口），这里的 draft 用宽松形状收（unknown 脏值在对面拦）。
+ */
+export interface CustomAgentsIpcApi {
+  /** 全量注册行（扫描列表 / 设置列表的直接数据源）。 */
+  list: () => Promise<{ ok: boolean; agents?: PersistedCustomAgentRecord[]; error?: string }>;
+  /** 落库一条注册并立刻探一轮；失败回机器可读错误码（code）或人话（error）。 */
+  create: (
+    draft: { name: unknown; probeCmd: unknown; runCmdTemplate: unknown; outputParser: unknown }
+  ) => Promise<{ ok: boolean; agent?: PersistedCustomAgentRecord; code?: string; error?: string }>;
+  /** 删注册行（断检测，角色保留）；幂等。 */
+  remove: (id: string) => Promise<{ ok: boolean; error?: string }>;
+  /** 跑一条探测命令回结论（向导「测试」按钮）。 */
+  probe: (
+    probeCmd: string
+  ) => Promise<{ ok: boolean; installed?: boolean; exitCode?: number; stdout?: string; stderr?: string; error?: string }>;
+}
 
 export interface ElectronAPI {
   // 通用服务调用
@@ -140,6 +161,12 @@ export interface ElectronAPI {
   cliChat: CliChatIpcApi;
 
   /**
+   * 自定义 agent 注册面（@since v3.32，task_056）：向导扫描步「+ 添加自定义 agent」/
+   * 设置屏注册管理经这四条通道进主进程（校验与探测全在主进程侧）。
+   */
+  customAgents: CustomAgentsIpcApi;
+
+  /**
    * 开发期开关透传（@since v3.9，task_026）。
    * why 只透传白名单里的开关：process.env 整个交给渲染层等于把主进程环境（含凭据）暴露出去。
    */
@@ -241,6 +268,15 @@ const electronAPI: ElectronAPI = {
       return () => ipcRenderer.off('agent:detected:update', handler);
     },
     probe: () => ipcRenderer.invoke('agent:detected:probe'),
+  },
+
+  // 自定义 agent 注册（@since v3.32，task_056）：透传到主进程（customAgent:* 四条通道，
+  // 处理器见 main.ts 的 setupIPC 自定义注册段）。
+  customAgents: {
+    list: () => ipcRenderer.invoke('customAgent:list'),
+    create: (draft) => ipcRenderer.invoke('customAgent:create', draft),
+    remove: (id) => ipcRenderer.invoke('customAgent:delete', id),
+    probe: (probeCmd) => ipcRenderer.invoke('customAgent:probe', probeCmd),
   },
 
   // 游戏存档（@since v3.12，task_033）：透传到主进程的 DAO（game:loadSnapshot / game:save*）。

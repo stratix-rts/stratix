@@ -27,9 +27,10 @@ import { PERSONA_MAX_LEN } from '../../core/character/persona';
 import { DEFAULT_PERSONA_TEMPLATE } from '../../core/character/profile';
 import type { SkinId } from '../../core/theme/skin-registry';
 import {
-  AGENT_KINDS,
   DETECTABLE_AGENT_KINDS,
   MAX_CHARACTER_NAME_LEN,
+  customAgentIdOf,
+  isBindableAgentKind,
   type AgentDetectionStatus,
   type AgentDetectionTier,
   type AgentKind,
@@ -65,8 +66,10 @@ export const STEP_LABELS: Readonly<Record<OnboardingStep, string>> = Object.free
 // 标签文案
 // ============================================================================
 
-/** 可建档的 T1 五家 agent 的显示名。 */
-export const AGENT_KIND_LABELS: Readonly<Record<AgentKind, string>> = Object.freeze({
+/**
+ * 可建档的内置 T1 五家 agent 的显示名（@since v3.32 task_056：只盖内置 —— 自定义注册的
+ * 显示名在注册表里，随 DetectedAgent.label 广播，见 agentKindLabel 的回落链）。 */
+export const AGENT_KIND_LABELS: Readonly<Record<string, string>> = Object.freeze({
   'claude-code': 'Claude Code',
   codex: 'Codex',
   opencode: 'OpenCode',
@@ -74,10 +77,16 @@ export const AGENT_KIND_LABELS: Readonly<Record<AgentKind, string>> = Object.fre
   openclaw: 'OpenClaw',
 });
 
-/** 取 agent 种类的显示名；词表外的（仅探测注册那些）原样返回 id —— 不编造名字。 */
+/**
+ * 取 agent 种类的显示名；词表外的原样返回 id —— 不编造名字。
+ * 自定义注册段（task_056）：优先用检测行自带的 label（注册名，见 resolveScanRows）；
+ * 没有检测行可查的地方（旧档案 / 下拉枚举）退回 slug（剥掉 custom: 前缀 —— 'myagent' 比
+ * 'custom:myagent' 可读，且不会和内置名混淆）。
+ */
 export function agentKindLabel(kind: string): string {
-  const labels = AGENT_KIND_LABELS as Readonly<Record<string, string>>;
-  return labels[kind] ?? kind;
+  const customId = customAgentIdOf(kind);
+  if (customId !== null) return customId;
+  return AGENT_KIND_LABELS[kind] ?? kind;
 }
 
 /** 探测分层的显示名。 */
@@ -115,13 +124,16 @@ export interface OnboardingScanRow {
   readonly version: string | null;
   /** 二进制路径（取不到为 null）。 */
   readonly path: string | null;
-  /** 能否建档：只有 AGENT_KINDS 词表内的种类可以。 */
+  /** 能否建档：内置五家（AGENT_KINDS）或形状合法的自定义注册段（`custom:<id>`，task_056）。 */
   readonly bindable: boolean;
 }
 
 /**
  * 从 WorldState.detectedAgents 派生扫描报告行。
  * why 去重：同一 kind 只留第一条 —— 屏上重复行没有意义（core 侧同名覆盖，但广播顺序不保证）。
+ * @since v3.32（task_056）：显示名优先取检测行自带的 label（自定义注册的用户命名 ——
+ * 注册名字只存在注册表里，检测行是它进入 WorldState 的唯一载体）；bindable 按内置 ∪
+ * 自定义段裁决（isBindableAgentKind，与 core 建档校验同一份口径）。
  */
 export function resolveScanRows(state: WorldState | null): OnboardingScanRow[] {
   const detected = state?.detectedAgents ?? [];
@@ -132,21 +144,23 @@ export function resolveScanRows(state: WorldState | null): OnboardingScanRow[] {
     seen.add(agent.kind);
     rows.push({
       kind: agent.kind,
-      label: agentKindLabel(agent.kind),
+      label: agent.label && agent.label.trim().length > 0 ? agent.label : agentKindLabel(agent.kind),
       tier: agent.tier,
       installed: agent.installed === true,
       status: agent.status,
       version: agent.version,
       path: agent.path,
-      bindable: (AGENT_KINDS as readonly string[]).includes(agent.kind),
+      bindable: isBindableAgentKind(agent.kind),
     });
   }
   return rows;
 }
 
 /**
- * 可建档的 agent 种类（已装 ∩ AGENT_KINDS），按检测顺序。
- * 这份名单决定第二步要为谁起名 —— T2/T3 的那些不进名单（探得到但还没适配）。
+ * 可建档的 agent 种类（已装 ∩ 可建档词表），按检测顺序。
+ * 这份名单决定第二步要为谁起名 —— T2/T3 的那些不进名单（探得到但还没适配）；
+ * 自定义注册段进名单（@since v3.32，task_056）：能探测（probeCmd）就能建档，
+ * 后续逐个配置流程与内置同链路（起名/皮肤/人设，规格③）。
  */
 export function resolveBindableKinds(state: WorldState | null): AgentKind[] {
   return resolveScanRows(state)
@@ -155,22 +169,26 @@ export function resolveBindableKinds(state: WorldState | null): AgentKind[] {
 }
 
 /**
- * 扫描是否跑完（检测器把名单逐个跑完，每个目标都会产出一条结论 —— 装的 / 没装的都算一条）。
- *
- * why 用「名单长度」判定完成（@since v3.9，task_026）：检测是**逐条推送**的，
- *   用户可能在扫到一半时就点了"下一步"，那样只会给已探到的 agent 建档。
- *   屏上据此如实说明"扫描中 / 扫描完成"，不把半张名单说成全部。
- *   判据取自 core 的名单词表（DETECTABLE_AGENT_KINDS）—— 名单变了这里自动跟着变。
+ * 扫描是否跑完：静态名单（DETECTABLE_AGENT_KINDS）全部有结论即完。
+ * @since v3.32（task_056）：自定义注册行**不计入**完成判定 —— 它们是用户注册进来才有的
+ * 动态行（不注册 = 0 行也算扫完），但会被计入 detected.length；分母取
+ * max(静态名单长度, 当前行数) 保持「x/y」文案在注册后仍然单调不倒退。
  */
 export function isDetectionComplete(state: WorldState | null): boolean {
   const detected = state?.detectedAgents ?? [];
-  return detected.length >= DETECTABLE_AGENT_KINDS.length;
+  const total = resolveDetectionTotal(detected.length);
+  return detected.length >= total;
+}
+
+/** 扫描进度文案的分母：静态名单长度，但不少于当前已见行数（注册行加入后文案不倒退）。 */
+export function resolveDetectionTotal(detectedCount: number): number {
+  return Math.max(DETECTABLE_AGENT_KINDS.length, detectedCount);
 }
 
 /** 扫描进度文案（扫描中 / 已完成）。 */
 export function resolveScanStatus(state: WorldState | null): { readonly complete: boolean; readonly text: string } {
   const detected = state?.detectedAgents ?? [];
-  const total = DETECTABLE_AGENT_KINDS.length;
+  const total = resolveDetectionTotal(detected.length);
   if (isDetectionComplete(state)) {
     return { complete: true, text: `扫描完成（${detected.length}/${total} 项已探测）` };
   }

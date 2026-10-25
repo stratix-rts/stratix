@@ -45,7 +45,14 @@ const DEFAULT_FILENAME = 'stratix.db';
  * agent-health-dao.ts 同构）。why 独立表而非 characters 加列：健康是时间序事件流，
  * 列只能存「最后一次」，崩溃历史会被覆盖 —— 见 DAO 文件头。
  */
-const TARGET_SCHEMA_VERSION = 10;
+/**
+ * v11（@since v3.32，task_056）：新增 custom_agents 表（自定义 agent 注册表：id/name/
+ * probe_cmd/run_cmd_template/output_parser('plain'|'json')/created_at；DDL 与
+ * app/services/persistence/custom-agent-dao.ts 同构同步改）。非内置 CLI 手动注册成
+ * 战场单位的唯一真相源：id 拼进 kind（`custom:<id>`）对外广播，命令串入库前已过
+ * core/custom-agent.ts 的白名单校验（注入面在纯校验层封死，见该文件头安全边界注）。
+ */
+const TARGET_SCHEMA_VERSION = 11;
 
 /** Valid table name characters (alphanumeric + underscore) */
 const VALID_TABLE_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -162,6 +169,7 @@ export class StratixDatabase {
     this.migrateTasks();
     this.migratePipelines();
     this.migrateAgentHealthEvents();
+    this.migrateCustomAgents();
     this.migrateSafetyIndexes();
   }
 
@@ -333,6 +341,28 @@ export class StratixDatabase {
     `);
     this.db.exec('CREATE INDEX IF NOT EXISTS idx_agent_health_events_kind_time ON agent_health_events(kind, created_at)');
     log('info', 'Created agent_health_events table (task_054)');
+  }
+
+  /**
+   * 自定义 agent 注册表（@since v3.32，task_056，schema v11）：主进程 IPC 层随注册 CRUD 写入
+   * （向导表单「+ 添加自定义 agent」→ 注册 / 删除；探测命令跑 probe_cmd）。
+   * IF NOT EXISTS 幂等：新库（schema_version = 0）与 v10 老库（版本号升 11 重跑迁移）都走到这里。
+   * DDL 与 custom-agent-dao.ts 的 ensureCustomAgentsTable 同构同步改（铁律同 agent_health_events）。
+   */
+  private migrateCustomAgents(): void {
+    const tables = this.getTableNames();
+    if (tables.has('custom_agents')) return;
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS custom_agents (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        probe_cmd TEXT NOT NULL,
+        run_cmd_template TEXT NOT NULL,
+        output_parser TEXT NOT NULL CHECK (output_parser IN ('plain', 'json')),
+        created_at INTEGER NOT NULL
+      )
+    `);
+    log('info', 'Created custom_agents table (task_056)');
   }
 
   /**

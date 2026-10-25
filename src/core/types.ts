@@ -409,11 +409,59 @@ export const STRATIX_CONTEXT_TOGGLE_KEY = 'stratix.context.enabled';
  * @since v3.7 本地 agent 种类词表。**词表即契约**：core 按它校验 agentKind（不认识的一律拒发），
  *   HUD / 首启引导屏按同一份词表渲染"绑的是哪个 CLI agent"；新增一种 CLI agent 两侧同步改。
  *   取值来源：docs/AGENT-MATRIX.md 的 T1/T2 名单（claude / codex / opencode / kimi / openclaw）。
+ * @since v3.32（task_056）扩自定义段：`custom:<id>` 形态（注册表 id 拼进 kind 字符串）。
+ *   why 把注册身份编进 kind 而不是只存 'custom'：角色档案 / 检测行 / transport 工厂都按 kind
+ *   单键路由，一个 kind 必须唯一定位到"哪一家 CLI"；多家自定义注册共享 'custom' 会让
+ *   角色与执行器对不上号。内置五家 = 静态词表（AGENT_KINDS），自定义 = 动态前缀段
+ *   （isCustomAgentKind / customAgentIdOf / buildCustomAgentKind，见 custom-agent.ts 的校验口径）。
  */
-export type AgentKind = 'claude-code' | 'codex' | 'opencode' | 'kimi' | 'openclaw';
+export type BuiltinAgentKind = 'claude-code' | 'codex' | 'opencode' | 'kimi' | 'openclaw';
 
-/** @since v3.7 agent 种类词表的运行时可枚举一份（core 校验用；HUD 也可 import 同一份渲染标签）。 */
-export const AGENT_KINDS: readonly AgentKind[] = ['claude-code', 'codex', 'opencode', 'kimi', 'openclaw'];
+/** 自定义 agent 的 kind 前缀（`custom:<注册表id>`）。常量冻结在 core：两侧不许各抄字面量。 */
+export const CUSTOM_AGENT_KIND_PREFIX = 'custom:';
+
+/** 自定义 agent 的 kind 形态（模板字面量：前缀 + 注册表 id）。id 的合法性口径见 core/custom-agent.ts。 */
+export type CustomAgentKind = `${typeof CUSTOM_AGENT_KIND_PREFIX}${string}`;
+
+/** @since v3.7 内置五家；@since v3.32（task_056）并上自定义段（`custom:<id>`）。 */
+export type AgentKind = BuiltinAgentKind | CustomAgentKind;
+
+/**
+ * @since v3.7 agent 种类词表的运行时可枚举一份（core 校验用；HUD 也可 import 同一份渲染标签）。
+ * @since v3.32（task_056）语义收窄为**内置**五家的枚举 —— 自定义注册是动态集合（在 custom_agents 表里），
+ *   静态词表枚举不了它；判"这个 kind 能不能绑角色"一律走 isBindableAgentKind（内置 ∪ 合法 custom 段）。
+ */
+export const AGENT_KINDS: readonly BuiltinAgentKind[] = ['claude-code', 'codex', 'opencode', 'kimi', 'openclaw'];
+
+/**
+ * @since v3.32（task_056）kind 是否为自定义注册形态（`custom:` 前缀 + 合法注册 id）。
+ * 纯前缀 + id 字符集判定（不查注册表 —— 注册表在主进程 DB，core 零 IO）："形状合法"与"注册仍在"
+ * 是两件事，后者由 app 层在使用点查库裁决。
+ */
+export function isCustomAgentKind(kind: string): kind is CustomAgentKind {
+  if (!kind.startsWith(CUSTOM_AGENT_KIND_PREFIX)) return false;
+  const id = kind.slice(CUSTOM_AGENT_KIND_PREFIX.length);
+  return id.length > 0 && id.length <= 64 && /^[A-Za-z0-9_-]+$/.test(id);
+}
+
+/** 从 kind 里拆出自定义注册 id；不是自定义形态返回 null。 */
+export function customAgentIdOf(kind: string): string | null {
+  return isCustomAgentKind(kind) ? kind.slice(CUSTOM_AGENT_KIND_PREFIX.length) : null;
+}
+
+/** 注册 id → kind（拼前缀）。id 的合法性由注册面校验（core/custom-agent.ts），这里只拼串。 */
+export function buildCustomAgentKind(id: string): CustomAgentKind {
+  return `${CUSTOM_AGENT_KIND_PREFIX}${id}` as CustomAgentKind;
+}
+
+/**
+ * @since v3.32（task_056）kind 能否绑角色建档：内置五家（AGENT_KINDS）∪ 形状合法的自定义段。
+ * 建档校验（character/profile.ts）、恢复翻译（game-save-coordinator）、向导可建档名单共用这一份裁决，
+ * 不许三处各写一套（否则一处认自定义另一处不认，档案会被静默降级成"未绑定"）。
+ */
+export function isBindableAgentKind(kind: string): kind is AgentKind {
+  return (AGENT_KINDS as readonly string[]).includes(kind) || isCustomAgentKind(kind);
+}
 
 /**
  * @since v3.7 角色名长度上限（按 Unicode 码点计，不是 UTF-16 code unit ——
@@ -684,9 +732,9 @@ export type AgentDetectionStatus = 'installed' | 'not-installed' | 'timeout' | '
  * 由 app/services/agent-detector 产出，随 WorldState.detectedAgents 全量广播。
  */
 export interface DetectedAgent {
-  /** agent 种类（DETECTABLE_AGENT_KINDS 内）。 */
-  readonly kind: DetectableAgentKind;
-  /** 探测分层（T1 / T2 / T3）。 */
+  /** agent 种类（DETECTABLE_AGENT_KINDS 内；@since v3.32 自定义注册为 `custom:<id>` 形态）。 */
+  readonly kind: DetectableAgentKind | CustomAgentKind;
+  /** 探测分层（T1 / T2 / T3；自定义注册恒为 T1 —— 它们能绑角色、能跑 transport）。 */
   readonly tier: AgentDetectionTier;
   /**
    * 是否**确认**已安装。
@@ -698,10 +746,17 @@ export interface DetectedAgent {
   readonly installed: boolean;
   /** 本次探测的结论（见 AgentDetectionStatus）。 */
   readonly status: AgentDetectionStatus;
-  /** 版本号（首个 semver 片段；取不到时为 null）。 */
+  /** 版本号（首个 semver 片段；取不到时为 null；自定义注册恒 null —— probeCmd 不承诺版本语义）。 */
   readonly version: string | null;
-  /** 二进制路径（which 的输出；未确认时为 null）。 */
+  /** 二进制路径（which 的输出；未确认时为 null；自定义注册为 null —— 探测不走 which 定位）。 */
   readonly path: string | null;
+  /**
+   * @since v3.32（task_056）显示名（仅自定义注册行携带：注册表里的用户命名）。
+   * why 加这个字段：内置五家有静态标签表（AGENT_KIND_LABELS），自定义注册的名字只存在
+   * 注册表里 —— 检测行是它进入 WorldState 的唯一载体，不带名字 HUD 就只能显示 `custom:xxx`。
+   * 内置行不带该键（undefined ≡ 无别名，渲染回落 agentKindLabel）。
+   */
+  readonly label?: string;
 }
 
 // ============================================================================
