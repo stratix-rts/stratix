@@ -392,6 +392,55 @@ describe('上下文注入全局开关（task_053）', () => {
 });
 
 // ============================================================================
+// 单位名字行（@since v3.37，task_062）：localStorage 直写（战场头顶名字标签全局开关，
+// 读取方是 world 侧 unit-presence 的 presence tick 现读 —— 不走总线）
+// ============================================================================
+
+describe('单位名字行（task_062）', () => {
+  let h: Harness | undefined;
+  beforeEach(() => {
+    localStorage.removeItem('stratix.unit.nametags');
+  });
+  afterEach(() => {
+    h?.unmount();
+    h = undefined;
+    localStorage.removeItem('stratix.unit.nametags');
+  });
+
+  test('偏好组渲染「单位名字」行；缺省读作开', () => {
+    h = mountScreen();
+    h.emit(h.store.getState());
+    const row = h.screen.shadowRoot?.querySelector('[data-pref-row="__nametags__"]');
+    const btn = h.screen.shadowRoot?.querySelector('button[data-nametag-toggle]');
+    expect(row).not.toBeNull();
+    expect(btn?.textContent).toContain('开');
+    expect(btn?.getAttribute('aria-checked')).toBe('true');
+  });
+
+  test('点击 → 写 localStorage 值 0 并本屏重画为关；再点回 1；全程零命令派发', () => {
+    h = mountScreen();
+    h.emit(h.store.getState());
+    clickInScreen(h.screen, 'button[data-nametag-toggle]');
+    expect(localStorage.getItem('stratix.unit.nametags')).toBe('0');
+    expect(h.screen.shadowRoot?.querySelector('button[data-nametag-toggle]')?.textContent).toContain('关');
+
+    clickInScreen(h.screen, 'button[data-nametag-toggle]');
+    expect(localStorage.getItem('stratix.unit.nametags')).toBe('1');
+    expect(h.screen.shadowRoot?.querySelector('button[data-nametag-toggle]')?.textContent).toContain('开');
+
+    // 表现开关只在本机生效：不发 HudCommand（断言零派发）
+    expect(h.commands).toHaveLength(0);
+  });
+
+  test('预置 0（全局关）→ 挂载即读作关', () => {
+    localStorage.setItem('stratix.unit.nametags', '0');
+    h = mountScreen();
+    h.emit(h.store.getState());
+    expect(h.screen.shadowRoot?.querySelector('button[data-nametag-toggle]')?.textContent).toContain('关');
+  });
+});
+
+// ============================================================================
 // 音效行（@since v3.36，task_060）：localStorage 直写（总开关 + 音量滑条，不走总线）
 // ============================================================================
 

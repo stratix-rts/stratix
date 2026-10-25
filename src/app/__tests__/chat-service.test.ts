@@ -929,3 +929,110 @@ describe('transport 异常上报：error 事件旁路上报健康监测（task_0
     expect(view.messages.at(-1)?.text).toContain('炸了'); // 主路照旧：错误气泡落地
   });
 });
+
+// ============================================================================
+// unit.speaking：说话气泡事件（@since v3.37，task_062）—— runRound 起手发 true、
+// 收束（finally，成功/失败/中断统一）发 false；角色没上战场不发。战场头顶「···」
+// 气泡经 bus-adapter 转发驱动（hud 不直接驱动 world，app 层在这里翻译成世界事件）。
+// ============================================================================
+
+describe('unit.speaking：说话气泡起止（task_062）', () => {
+  const speakingUnit: import('../../core/types').UnitView = {
+    id: 'unit_ch_1',
+    name: '阿尔法',
+    status: 'idle',
+    missionId: null,
+    power: 1,
+    characterId: 'ch-1',
+  };
+
+  function collectSpeaking(): { events: WorldEvent[]; stop: () => void } {
+    const events: WorldEvent[] = [];
+    const off = onWorldEvent((event) => {
+      if (event.type === 'unit.speaking') events.push(event);
+    });
+    return { events, stop: off };
+  }
+
+  let collected: ReturnType<typeof collectSpeaking>;
+
+  beforeEach(() => {
+    resetBus();
+    collected = collectSpeaking();
+  });
+
+  afterEach(() => {
+    collected.stop();
+    resetBus();
+  });
+
+  test('一轮对话：起手 true → 收束 false（恰好一对，顺序先起后止）', async () => {
+    const h = makeHarness({
+      units: [speakingUnit],
+      scripts: [
+        scripted({ type: 'message', text: '在的' }, { type: 'done', exitCode: 0, text: '在的', sessionId: null }),
+      ],
+    });
+    await h.service.send('ch-1', '在吗');
+
+    expect(collected.events).toEqual([
+      { type: 'unit.speaking', unitId: 'unit_ch_1', speaking: true },
+      { type: 'unit.speaking', unitId: 'unit_ch_1', speaking: false },
+    ]);
+  });
+
+  test('错误轮也要收气泡：error 事件路径的 finally 发 false（气泡不留残迹）', async () => {
+    const h = makeHarness({
+      units: [speakingUnit],
+      scripts: [scripted({ type: 'error', message: 'cli 挂了', code: 'cli_error' })],
+    });
+    await h.service.send('ch-1', '在吗');
+
+    expect(collected.events).toEqual([
+      { type: 'unit.speaking', unitId: 'unit_ch_1', speaking: true },
+      { type: 'unit.speaking', unitId: 'unit_ch_1', speaking: false },
+    ]);
+  });
+
+  test('多轮：每轮一对起止（第二轮重发同样成对）', async () => {
+    const h = makeHarness({
+      units: [speakingUnit],
+      scripts: [
+        scripted({ type: 'message', text: '一' }, { type: 'done', exitCode: 0, text: '一', sessionId: null }),
+        scripted({ type: 'message', text: '二' }, { type: 'done', exitCode: 0, text: '二', sessionId: null }),
+      ],
+    });
+    await h.service.send('ch-1', '第一轮');
+    await h.service.send('ch-1', '第二轮');
+
+    expect(collected.events).toEqual([
+      { type: 'unit.speaking', unitId: 'unit_ch_1', speaking: true },
+      { type: 'unit.speaking', unitId: 'unit_ch_1', speaking: false },
+      { type: 'unit.speaking', unitId: 'unit_ch_1', speaking: true },
+      { type: 'unit.speaking', unitId: 'unit_ch_1', speaking: false },
+    ]);
+  });
+
+  test('角色没上战场（units 空 / 无匹配 characterId）→ 不发事件', async () => {
+    const h = makeHarness({
+      scripts: [
+        scripted({ type: 'message', text: '在的' }, { type: 'done', exitCode: 0, text: '在的', sessionId: null }),
+      ],
+    });
+    await h.service.send('ch-1', '在吗');
+
+    expect(collected.events).toHaveLength(0);
+  });
+
+  test('守门拦截（agent 未检出）→ 不发事件（没起过回合就没有起止）', async () => {
+    const h = makeHarness({
+      detected: [],
+      units: [speakingUnit],
+      scripts: [],
+    });
+    await h.service.send('ch-1', '在吗');
+
+    expect(collected.events).toHaveLength(0);
+    expect(h.calls).toHaveLength(0); // 连 transport 都没打（守门在 runRound 之前）
+  });
+});

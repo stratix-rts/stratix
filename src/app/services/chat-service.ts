@@ -7,6 +7,8 @@
  *   注入的 transport 工厂（生产：渲染层经 IPC 到主进程，见 chat-transport-bridge.ts；单测：打桩）。
  * 输出：对抽屉视图口（ChatDrawerView —— 结构上就是 034 组件的公开方法面）的调用序列；
  *   persistSessionId 回调（组合根接 worldStore，存档协调器的档案 diff 会自动落 SQLite）。
+ *   @since v3.37（task_062）：每轮起止还向 world 通道发 unit.speaking（纯标志位，战场头顶
+ *   「···」说话气泡）—— hud 不直接驱动 world（铁律），流式状态只能在这里翻译成世界事件。
  * 禁止事项：
  *   1. import child_process / node-process / cli-transport 的**实现**文件 —— 本服务跑在渲染层 bundle 里，
  *      子进程一律在 Electron 主进程（经 IPC 桥），这里只 import transport.ts 的**纯类型**；
@@ -380,6 +382,22 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
     }
   };
 
+  /**
+   * 说话气泡事件（task_062）：runRound 起手发 true、finally 发 false —— 战场头顶「···」
+   * 气泡的起止信号。角色没上战场（units 里没有它的单位）则不发（消费方找不到节点，
+   * 发了也没人接）；mitt 不该抛，防御性包一层 —— 气泡是旁路表现，不绑架对话回路。
+   * 纯标志位：不雪球流式文本（规格钦点最简语义「正在说话」，见 core/types 的 unit.speaking）。
+   */
+  const emitUnitSpeaking = (characterId: string, speaking: boolean): void => {
+    try {
+      const unit = deps.getState().units.find((u) => u.characterId === characterId);
+      if (!unit) return;
+      emitWorldEvent({ type: 'unit.speaking', unitId: unit.id, speaking });
+    } catch (error) {
+      logger(`[chat-service] unit.speaking 发射失败（${characterId}/${speaking}）：${describe(error)}`);
+    }
+  };
+
   const guard = (characterId: string): CharacterView | null => {
     const state = deps.getState();
     const character = state.characters.find((c) => c.id === characterId) ?? null;
@@ -438,6 +456,9 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
     session.busy = true;
     lastFailed.delete(characterId);
     view.setSending(true);
+    // 说话气泡起（task_062）：流式期间（含工具轮询的等待）头顶「···」常亮脉动 ——
+    // 「正在说话」从 spawn 开始算，到 finally 收束（成功 / 失败 / 中断都收）。
+    emitUnitSpeaking(characterId, true);
 
     // 首发（还没有会话 id）才拼 persona（+ 战场现状块，task_053：上下文一次性注入，
     // 续发不重拼 —— 会话上下文里已经有了）；续发只发原文（见文件头「persona 怎么传」）。
@@ -515,6 +536,9 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
       if (activeRun === run) activeRun = null;
       session.busy = false;
       view.setSending(false);
+      // 说话气泡止（task_062）：成功 / 失败 / 中断 / 异常路径统一在这收 —— 不发的话
+      // 气泡会永远挂在头上（表现泄漏），所以放 finally 而不是各分支各发一遍。
+      emitUnitSpeaking(characterId, false);
     }
   };
 

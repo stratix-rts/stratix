@@ -198,6 +198,14 @@ export interface UnitView {
    *   不落库（运行时健康态，重启后按「缺省在线」重新探测）。
    */
   readonly online?: boolean;
+  /**
+   * @since v3.37 单位名标签（task_062）：角色单位的等级投影（= CharacterView.level），
+   *   战场头顶「Lv 小字」的数据面。缺省 / null = 未关联角色或无等级 → 只显名字，不编造数值。
+   *   与 name 同为建档快照投影（unit-projection.ts）：升级写入（character manager 的
+   *   grantExperience）在**同一次 setState** 里同步刷新 units[].level —— 与 name / appearance
+   *   的「两侧不漂移」惯例同一条纪律（见 core/character/manager.ts）。
+   */
+  readonly level?: number | null;
 }
 
 // ============================================================================
@@ -423,6 +431,16 @@ export const DEFAULT_SETTINGS: SettingsView = {
  * 的轻量落地是刻意的取舍（task_053 规格③）。
  */
 export const STRATIX_CONTEXT_TOGGLE_KEY = 'stratix.context.enabled';
+
+/**
+ * 单位名字标签全局开关的 localStorage 键（@since v3.37，task_062）。
+ * 值 '0' = 关；无键 / 其它值 = 开。why 冻结在 core：写入方（hud/settings-screen 的
+ * 「单位名字」行）与读取方（world/objects 的 unit-presence 可见性裁决）都在 core 之上，
+ * 公共底座冻结一份键名，两侧不各抄字面量。why 走 localStorage 而不进 SettingsView：
+ * 与 STRATIX_CONTEXT_TOGGLE_KEY 同一取舍 —— 只在本机渲染进程生效的表现开关，
+ * 不进 WorldState / 广播（task_062 规格②）。
+ */
+export const STRATIX_NAMETAGS_TOGGLE_KEY = 'stratix.unit.nametags';
 
 // ============================================================================
 // 角色
@@ -1278,4 +1296,18 @@ export type WorldEvent =
    *   守门只看「在档」，这里升级为「在档且在线」）。掉线不落任务失败 —— 在跑的任务由
    *   transport 的 exit 异常路径自行收尾（error 事件），健康事件只是旁路审计。
    */
-  | { type: 'agent.offline'; kind: AgentKind };
+  | { type: 'agent.offline'; kind: AgentKind }
+  /**
+   * @since v3.37 单位说话状态（task_062，战场生命感·说话气泡）：chat 流式期间该单位
+   *   「正在说话」的纯标志位广播。发出方是 app 层 chat-service（035 的流式回路起点/收尾
+   *   各发一次：runRound 起手 speaking=true，finally speaking=false —— 角色没上战场则不发），
+   *   与 exp.gained / task.* 同一先例：app 发、走 world 通道。消费者是世界场景
+   *   （bridge 转发 syncUnitSpeaking → unit-layer 头顶「…」脉动气泡）；core 状态机不消费
+   *   （说话是瞬态表现，不写 WorldState）—— runtime 的 handleWorldEvent 显式接地
+   *   （同 unit.position 惯例，不进 onUnhandled）。
+   * why 不让 hud 直接驱动 world：铁律 hud 不认识 world（两侧只在 core/bus 汇合），
+   *   抽屉的流式状态只能经 app 层翻译成世界事件落地 —— 本事件就是那条翻译通道。
+   * payload 只携单位 id 与布尔位（不雪球文本 —— 气泡只表达「正在说话」语义，task_062
+   *   规格明确选最简：三点脉动，不截流式文本）。
+   */
+  | { type: 'unit.speaking'; unitId: string; speaking: boolean };

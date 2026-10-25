@@ -1888,7 +1888,7 @@
     {
       "id": "task_062",
       "title": "单位表现打磨",
-      "status": "pending",
+      "status": "completed",
       "depends_on": [
         "task_045"
       ],

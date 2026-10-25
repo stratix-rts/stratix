@@ -8,6 +8,8 @@
  *   - core/bus 的 world 通道上的 unit.position（@since v3.21，task_045，转发到 syncUnitPosition）
  *     —— 右击移动时 runtime 把编队终值广播回来，场景立即写进 UnitObject 并 tween 过渡；
  *   - core/bus 的 world 通道上的 camera.center（@since v3.33，task_057，转发到 syncCameraCenter）
+ *   - core/bus 的 world 通道上的 unit.speaking（@since v3.37，task_062，转发到 syncUnitSpeaking，
+ *     单位层头顶「···」说话气泡）
  *     —— 小地图点击/拖拽的跳转指令，场景把相机对中到目标世界点；
  *   - 浏览器指针输入（按下 / 移动 / 松开 / 滚轮）。
  * 输出：把交互转成 WorldEvent（unit.click / selection.box / unit.move / camera.moved），
@@ -137,11 +139,19 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     this.view = new CameraController(this.cameras.main, {
       viewport: () => ({ width: this.scale.width, height: this.scale.height }),
       worldBounds: DEFAULT_WORLD_BOUNDS,
-      onChange: (pose) => this.bridge.cameraMoved(pose.center, pose.zoom),
+      // 姿态变化两路消费：上报总线（camera.moved 合并窗口）+ 喂单位层（task_062：名字
+      // 标签/气泡的低缩放自动隐藏阈值要读 zoom；只存值，可见性裁决在 presence tick）。
+      onChange: (pose) => {
+        this.bridge.cameraMoved(pose.center, pose.zoom);
+        this.unitLayer.setCameraZoom(pose.zoom);
+      },
     });
     // 初始位姿补报（task_057）：相机控制器构造时不回调 onChange，不补这一声的话，
     // 小地图要等到第一次交互才有视口框 —— 桥的合并窗口对首个事件直接放行（lastCameraEmitAt=null）。
     this.bridge.cameraMoved(this.view.current.center, this.view.current.zoom);
+    // 初始 zoom 同样要补喂（task_062）：onChange 不回放初始姿态，不补的话名字标签的
+    // 可见性要等第一次拖拽/滚轮才被纠正。
+    this.unitLayer.setCameraZoom(this.view.current.zoom);
 
     this.input.on('pointerdown', this.onPointerDown, this);
     this.input.on('pointermove', this.onPointerMove, this);
@@ -224,6 +234,15 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   syncUnitPosition(unitId: string, x: number, y: number): void {
     this.unitLayer.applyUnitPosition(unitId, x, y);
     this.taskFxLayer.sync();
+  }
+
+  /**
+   * 单位说话状态（@since v3.37，task_062；由桥接层转发 world 通道的 unit.speaking）。
+   * app 层 chat-service 在流式期间发 true / 收尾发 false —— 场景只转交给单位层
+   * （头顶「···」气泡起止），不持有第二份状态。
+   */
+  syncUnitSpeaking(unitId: string, speaking: boolean): void {
+    this.unitLayer.setSpeaking(unitId, speaking);
   }
 
   /**

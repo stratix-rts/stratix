@@ -36,6 +36,7 @@
 import {
   DEFAULT_SETTINGS,
   STRATIX_CONTEXT_TOGGLE_KEY,
+  STRATIX_NAMETAGS_TOGGLE_KEY,
   type BooleanPreferenceKey,
   type SettingsView,
   type WorldState,
@@ -466,6 +467,16 @@ export function defineSettingsScreen(): typeof HTMLElement {
         return;
       }
 
+      // 单位名字开关（task_062）：localStorage 直写 + 本屏重画（不进总线 —— 战场
+      // unit-layer 的 presence tick 现读同一键，≤60ms 生效；hud 不认识 world，两侧只共享
+      // core 冻结的键常量，取舍同上下文注入行）。
+      const nametagToggle = target.closest<HTMLElement>('button[data-nametag-toggle]');
+      if (nametagToggle) {
+        writeNametagToggle(!readNametagToggle());
+        this.renderBody();
+        return;
+      }
+
       // 自定义 agent 注册移除（@since v3.32，task_056）：一行一按钮，直接移（向导/设置两个入口同语义）。
       const customRemove = target.closest<HTMLElement>('button[data-custom-remove]');
       if (customRemove) {
@@ -664,12 +675,30 @@ export function defineSettingsScreen(): typeof HTMLElement {
         </div>
       `;
 
+      // 单位名字开关（task_062）：localStorage 落地（不进 WorldState / 广播 —— 战场表现
+      // 增强项，只在本机生效；键常量冻结在 core/types，读取方是 world 侧的 unit-presence
+      // presence tick 现读）。拉远到低缩放时战场侧还会自动隐藏（zoom 阈值，与开关是 AND）。
+      const nametagsOn = readNametagToggle();
+      const nametagRow = `
+        <div class="row" data-pref-row="__nametags__">
+          <div class="row-text">
+            <span class="row-label">单位名字</span>
+            <span class="row-hint">战场单位头顶显示名字与等级（拉远时自动隐藏）</span>
+          </div>
+          <div class="row-ctl">
+            <button type="button" class="ctl" role="switch" aria-checked="${nametagsOn}"
+                    data-nametag-toggle="1">${nametagsOn ? '开' : '关'}</button>
+          </div>
+        </div>
+      `;
+
       return `
         <div class="group" data-group="preferences">
           <div class="group-name">偏好</div>
           ${rows}
           ${sfxRow}
           ${contextRow}
+          ${nametagRow}
         </div>
       `;
     }
@@ -730,6 +759,24 @@ function readContextToggle(): boolean {
 function writeContextToggle(enabled: boolean): void {
   try {
     localStorage.setItem(STRATIX_CONTEXT_TOGGLE_KEY, enabled ? '1' : '0');
+  } catch {
+    // 写不进去就算了：下次读仍回落默认开。
+  }
+}
+
+// 单位名字开关的读写（task_062）：与上下文注入行同一落地口径（键常量注释见 core/types.ts）。
+// 读取方在 world 侧（unit-presence 的 readNametagsToggle，读法同源：'0' = 关，其余 = 开）。
+function readNametagToggle(): boolean {
+  try {
+    return localStorage.getItem(STRATIX_NAMETAGS_TOGGLE_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+function writeNametagToggle(enabled: boolean): void {
+  try {
+    localStorage.setItem(STRATIX_NAMETAGS_TOGGLE_KEY, enabled ? '1' : '0');
   } catch {
     // 写不进去就算了：下次读仍回落默认开。
   }

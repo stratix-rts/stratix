@@ -534,3 +534,54 @@ describe('world 通道 → 场景：camera.center 转发（小地图跳转）', 
     expect(calls).toHaveLength(0);
   });
 });
+
+// ============================================================================
+// world 通道 → 场景：unit.speaking 转发（@since v3.37，task_062）
+// chat 流式期间 app 层发出的说话标志位 → syncUnitSpeaking（场景头顶「···」气泡起止）。
+// ============================================================================
+
+describe('world 通道 → 场景：unit.speaking 转发（说话气泡，task_062）', () => {
+  function createSpeakingPort() {
+    const calls: { unitId: string; speaking: boolean }[] = [];
+    const port: WorldScenePort = {
+      syncUnits: () => {},
+      syncSelection: () => {},
+      syncUnitSpeaking: (unitId, speaking) => calls.push({ unitId, speaking }),
+    };
+    return { port, calls };
+  }
+
+  test('app 层广播的 unit.speaking 递给 syncUnitSpeaking（起止各一条）', () => {
+    const { port, calls } = createSpeakingPort();
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+
+    emitWorldEvent({ type: 'unit.speaking', unitId: 'unit_ch_1', speaking: true });
+    emitWorldEvent({ type: 'unit.speaking', unitId: 'unit_ch_1', speaking: false });
+
+    expect(calls).toEqual([
+      { unitId: 'unit_ch_1', speaking: true },
+      { unitId: 'unit_ch_1', speaking: false },
+    ]);
+  });
+
+  test('port 不实现 syncUnitSpeaking（可选钩子）：安静跳过，不炸不报', () => {
+    const { port } = createFakePort(); // 老桩：没有 syncUnitSpeaking
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+
+    expect(() => {
+      emitWorldEvent({ type: 'unit.speaking', unitId: 'u1', speaking: true });
+    }).not.toThrow();
+  });
+
+  test('destroy 之后不再转发（场景已死，不为它挂气泡）', () => {
+    const { port, calls } = createSpeakingPort();
+    const bridge = createWorldBridge(port, { now: clock });
+
+    bridge.destroy();
+    emitWorldEvent({ type: 'unit.speaking', unitId: 'u1', speaking: true });
+
+    expect(calls).toHaveLength(0);
+  });
+});

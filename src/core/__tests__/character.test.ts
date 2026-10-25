@@ -482,6 +482,57 @@ describe('CharacterManager.grantExperience：写库投影', () => {
   });
 });
 
+// ============================================================================
+// 升级 → 战场单位 level 同步（@since v3.37，task_062 名字标签）：升级时同一次 setState
+// 刷新 units[].level（与 updateName/updateAppearance 的「两侧不漂移」纪律同一条）；
+// 纯经验变动不动 units 引用。
+// ============================================================================
+
+describe('CharacterManager.grantExperience：升级 → 战场单位 level 同步（task_062）', () => {
+  /** 夹具：一个带战场单位的角色（units 与 characters 同源，建档投影口径）。 */
+  function unitHarness(experience: number) {
+    const character = characterAt({ experience });
+    const units: UnitView[] = [
+      { id: 'unit_c-neo', name: 'Neo', status: 'idle', missionId: null, power: 1, characterId: 'c-neo', level: character.level },
+      { id: 'unit_c-other', name: '贝塔', status: 'idle', missionId: null, power: 1, characterId: 'c-other', level: 5 },
+    ];
+    const store = createStore({ characters: [character], units });
+    const manager = createCharacterManager({ store });
+    return { store, manager };
+  }
+
+  test('升级：同一次 setState 刷新 units[].level（同广播，两侧不漂移）', () => {
+    const { store, manager } = unitHarness(90); // L1 差 10 exp 升 L2（新曲线到 L2 要 100）
+    const unitsRef = store.getState().units;
+    let broadcasts = 0;
+    let unitBroadcasts = 0;
+    store.subscribe((state) => {
+      broadcasts += 1;
+      if (state.units !== unitsRef) unitBroadcasts += 1;
+    });
+
+    const result = manager.grantExperience('c-neo', 20);
+
+    expect(result.ok).toBe(true);
+    expect(store.getState().units[0]).toMatchObject({ id: 'unit_c-neo', level: 2 });
+    expect(store.getState().units[1]).toMatchObject({ id: 'unit_c-other', level: 5 }); // 只动它自己的单位
+    expect(store.getState().characters[0]?.level).toBe(2);
+    expect(broadcasts).toBe(1); // 一次加经验 = 一次广播（升级投影不额外广播）
+    expect(unitBroadcasts).toBe(1);
+  });
+
+  test('纯经验变动（没升级）：units 引用不变（广播面最小，不碰战场）', () => {
+    const { store, manager } = unitHarness(0);
+    const unitsRef = store.getState().units;
+
+    const result = manager.grantExperience('c-neo', 10);
+
+    expect(result.ok).toBe(true);
+    expect(store.getState().units).toBe(unitsRef); // 同一引用：没动战场单位
+    expect(store.getState().units[0]?.level).toBe(1);
+  });
+});
+
 describe('CharacterManager.updatePersona：persona 写库投影（@since v3.6）', () => {
   test('合法 prompt：投影进 WorldState.characters 并广播一次', () => {
     const store = createStore(stateWith([characterAt({ persona: '稳' })]));
@@ -855,6 +906,8 @@ describe('角色 → 战场单位（建档即入战场）', () => {
       skinId: 'crimson',
       // @since v3.10：没有外观 → null（渲染侧回落到占位形体，不编造长相）。
       appearance: null,
+      // @since v3.37（task_062）：等级投影（战场头顶 Lv 小字的数据面）。
+      level: 1,
     });
   });
 

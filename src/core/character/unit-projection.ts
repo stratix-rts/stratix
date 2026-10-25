@@ -31,7 +31,9 @@ export const CHARACTER_UNIT_ID_PREFIX = 'unit_';
  *   - power：0 —— 能力评估器未落地，不编造数值；
  *   - characterId / skinId：回指角色档案与它的皮肤（渲染侧据此染色）；
  *   - appearance：角色外观（@since v3.10）—— 渲染侧据此合成 LPC 精灵表，
- *     没有外观的单位回落到占位形体。
+ *     没有外观的单位回落到占位形体；
+ *   - level：等级投影（@since v3.37，task_062）—— 战场头顶「Lv 小字」的数据面，
+ *     升级时由 manager.grantExperience 在同一次 setState 里刷新（两侧不漂移）。
  *
  * @param character 已落库的角色档案（id / name / skinId / appearance 取自它）。
  */
@@ -46,5 +48,7 @@ export function toCharacterUnit(character: CharacterView): UnitView {
     skinId: character.skinId ?? null,
     // 老角色没有外观 → null（渲染侧回落到占位形体，不编造长相）。
     appearance: character.appearance ?? null,
+    // 等级投影（task_062 名字标签）：老单位 / 非 character 单位缺省 null → 只显名字。
+    level: character.level,
   };
 }

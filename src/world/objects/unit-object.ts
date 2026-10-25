@@ -94,6 +94,14 @@ export class UnitObject {
     return this.view.online !== false;
   }
 
+  /**
+   * 等级镜像（@since v3.37，task_062 名字标签）：null = 未关联角色 / 无等级（只显名字，
+   * 不编造数值）。与 name 同为快照镜像，升级时 manager 同一次广播刷新进来。
+   */
+  get level(): number | null {
+    return this.view.level ?? null;
+  }
+
   /** 移动到新的世界坐标，返回是否真的动了（调用方可据此跳过无变化重绘）。 */
   setPosition(x: number, y: number): boolean {
     if (this.x === x && this.y === y) return false;
@@ -115,7 +123,9 @@ export class UnitObject {
       this.view.missionId === view.missionId &&
       (this.view.skinId ?? null) === (view.skinId ?? null) &&
       appearanceKey(this.view.appearance) === appearanceKey(view.appearance) &&
-      (this.view.online ?? true) === (view.online ?? true)
+      (this.view.online ?? true) === (view.online ?? true) &&
+      // 等级翻转算变化（task_062）：名字标签的 Lv 小字跟着刷新。
+      (this.view.level ?? null) === (view.level ?? null)
     ) {
       return false;
     }

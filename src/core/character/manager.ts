@@ -397,7 +397,16 @@ export function createCharacterManager(options: CharacterManagerOptions = {}): C
 
       const characters = current.characters.slice();
       characters[index] = transition.next;
-      return { ...current, characters };
+      // 等级投影同步（@since v3.37，task_062 名字标签）：升级时同一次 setState 刷新该角色
+      // 战场单位的 level（与 updateName/updateAppearance 的「两侧不漂移」纪律同一条）；
+      // 纯经验变动（没升级）不动 units —— units 引用不变，广播面最小。
+      let unitsChanged = false;
+      const units = current.units.map((unit) => {
+        if (unit.characterId !== characterId || unit.level === transition.next.level) return unit;
+        unitsChanged = true;
+        return { ...unit, level: transition.next.level };
+      });
+      return unitsChanged ? { ...current, characters, units } : { ...current, characters };
     });
 
     // setState 是同步的，返回时 result 必已赋值；保底兜一层（只可能是编程错误，不是用户路径）。

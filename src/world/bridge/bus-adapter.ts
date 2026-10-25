@@ -12,7 +12,9 @@
  *   - world 通道 → 场景（@since v3.21，task_045）：同一条订阅还转发 unit.position ——
  *     右击移动时 runtime 把编队终值广播出来，场景据此更新 UnitObject（立即）并 tween（表现）；
  *     @since v3.33（task_057）：再转发 camera.center（HudCommand 同名命令经 core 钳制后的
- *     小地图跳转指令）→ syncCameraCenter，场景把相机对中到目标世界点。
+ *     小地图跳转指令）→ syncCameraCenter，场景把相机对中到目标世界点；
+ *     @since v3.37（task_062）：再转发 unit.speaking（app 层 chat-service 流式期间的说话
+ *     标志位广播）→ syncUnitSpeaking，场景驱动头顶「···」气泡起止。
  * 输出：端口回调（渲染侧）+ bus 的 world 通道（业务侧）。
  * 禁止事项：
  *   1. import phaser 或任何 hud / vue / legacy(stratix-rts) 文件 —— 铁律：world 只认识 core/types 与 core/bus；
@@ -64,6 +66,13 @@ export interface WorldScenePort {
    * 视口钳制（比 core 的点钳制多一层视口半宽，双重钳制同源无害）。
    */
   syncCameraCenter?(x: number, y: number): void;
+  /**
+   * 单位说话状态钩子（@since v3.37，task_062）：world 通道上的 unit.speaking
+   * （app 层 chat-service 在流式期间发的标志位广播）转发进场景 —— 头顶「···」气泡起止。
+   * 可选成员：不实现不破编译（同 syncTaskEvent 惯例）。hud 不直接驱动 world（铁律），
+   * 抽屉的流式状态只能经 app 层翻译成世界事件走本通道落地。
+   */
+  syncUnitSpeaking?(unitId: string, speaking: boolean): void;
 }
 
 /** 场景侧的交互出口：场景调这些方法，桥接层负责转成 WorldEvent 发给 core。 */
@@ -158,6 +167,10 @@ export function createWorldBridge(
       // 小地图跳转（task_057）：core 转发来的相机对中指令 → 场景应用并回发 camera.moved。
       case 'camera.center':
         port.syncCameraCenter?.(event.x, event.y);
+        break;
+      // 说话气泡（task_062）：chat 流式期间的标志位广播 → 场景头顶气泡起止。
+      case 'unit.speaking':
+        port.syncUnitSpeaking?.(event.unitId, event.speaking);
         break;
       default:
         break;

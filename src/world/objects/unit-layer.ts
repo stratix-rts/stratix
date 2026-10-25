@@ -24,6 +24,16 @@
  *   v2 的逐帧位移积分换成 Phaser tween，到向朝向保留为 4 行简化版（精灵表只有 4 行）。
  *   ★ 位置立即生效于状态（UnitObject），tween 只是渲染过渡 —— 状态广播不会把半路上的
  *   单位臈移到终点（sync 对活跃 tween 跳过位置贴齐）。
+ *
+ * 战场生命感（@since v3.37，task_062）：呼吸微动画 / 头顶名字标签（名字+Lv 小字，开关
+ *   + zoom 阈值见 unit-presence.ts）/ 说话气泡（unit.speaking 事件驱动）。全部由**一个**
+ *   presence tick（约 60ms/步）驱动，非每单位独立 tween（≤50 单位满帧预算）；规则与常量
+ *   全在 objects/unit-presence.ts（零 Phaser 纯逻辑，单测在那边），本层只兑现渲染：
+ *   - 呼吸写 sprite.scaleY，与 moveTo tween（容器坐标）/ task-fx（独立 Container）属性面
+ *     不相交，叠加不冲突；离线（online=false）呼吸与走路帧都停（静止灰显更「死」）；
+ *   - 名字 / Lv / 气泡 Text 内嵌在单位 Container（随 tween / 离线 alpha / 对账生命周期走，
+ *     不另立节点池）；层序：容器内 body→ring→精灵→名字→Lv→气泡，全局层面任务浮标
+ *     （depth 5）仍压在单位容器（depth 0）之上 —— z 协调注释见 unit-presence.ts 文件头。
  */
 
 import Phaser from 'phaser';
@@ -45,6 +55,19 @@ import {
   unitSheetTextureKey,
   resolveUnitSheetKey,
 } from './unit-sprite-sheet';
+import {
+  BREATH_STYLE,
+  breathPhaseFor,
+  breathScaleY,
+  NAMETAG_STYLE,
+  nametagVisible,
+  overlayVisible,
+  readNametagsToggle,
+  shouldBreathe,
+  SPEAKING_BUBBLE_STYLE,
+  speakingDotAlpha,
+  type NametagStorage,
+} from './unit-presence';
 import type { UnitSpriteSource } from './unit-sprite-source';
 
 const UNIT_RADIUS = UNIT_HIT_RADIUS * 0.8;
@@ -118,6 +141,20 @@ interface UnitNode {
   direction: number;
   /** 进行中的移动 tween（null = 静止）；新目标会顶掉旧的（重下令就改道）。 */
   moveTween: Phaser.Tweens.Tween | null;
+  /**
+   * 头顶名字标签（task_062）：容器内嵌 Text，随 tween / 离线 alpha 一起走。
+   * 名字主行（origin 0.5,1 向上长）与 Lv 小字（origin 0.5,0 向下长）同锚拼两行。
+   */
+  readonly nameTag: Phaser.GameObjects.Text;
+  readonly lvTag: Phaser.GameObjects.Text;
+  /** 说话气泡（task_062）：「···」三点脉动，unit.speaking 事件驱动。 */
+  readonly speakingTag: Phaser.GameObjects.Text;
+  /** 呼吸相位（task_062）：按单位 id 派生，全场相位错开（见 unit-presence.breathPhaseFor）。 */
+  readonly breathPhase: number;
+  /** 上次渲染的标签文本键（name|level）：变了才 setText（文本重渲是纹理级开销，不能每次对账都写）。 */
+  tagKey: string;
+  /** 名字标签是否带 Lv 段（level == null 的单位只显名字，不编造数值）。 */
+  hasLevel: boolean;
 }
 
 /** 一张已缓存的形象精灵表（纹理 key + 最近使用时间）。 */
@@ -145,6 +182,15 @@ export class UnitLayer {
   /** 走路动画的帧步进定时器（全场一个，不给每个单位各开一个）。 */
   private animTimer: Phaser.Time.TimerEvent | null = null;
   /**
+   * presence tick（task_062）：全场唯一驱动呼吸 / 气泡脉动 / 名字标签可见性
+   * （约 60ms/步 —— 非每单位独立 tween，≤50 单位满帧预算；规则见 unit-presence.ts）。
+   */
+  private presenceTimer: Phaser.Time.TimerEvent | null = null;
+  /** 当前相机 zoom（task_062：名字/气泡的低缩放自动隐藏阈值用；场景喂进来）。 */
+  private cameraZoom = 1;
+  /** 正在说话的单位集合（task_062：unit.speaking 事件的本地镜像，对账时随节点清理）。 */
+  private readonly speakingFlags = new Set<string>();
+  /**
    * 本层是否已销毁（场景 shutdown 时置位）。
    * why 需要：形象合成是异步的（要拉几十张精灵图，可能一两秒），
    *   场景在这期间被关掉的话，合成 promise 回来后还会去建纹理 / 重建显示对象 ——
@@ -156,6 +202,9 @@ export class UnitLayer {
     this.scene = scene;
     this.registry = registry;
     this.spriteSource = spriteSource;
+    // presence tick（task_062）：构造即起（名字标签可见性不依赖精灵，得有人在推进）；
+    // 场景 shutdown 由 destroy() 收定时器（同 animTimer / task-fx-layer 口径）。
+    this.ensurePresenceTimer();
   }
 
   /** 对账显示对象：新增建、移除销、位置/状态变化才改属性。 */
@@ -165,7 +214,7 @@ export class UnitLayer {
 
     for (const object of this.registry.list()) {
       live.add(object.id);
-      const node = this.nodes.get(object.id) ?? this.createNode(object.id);
+      const node = this.nodes.get(object.id) ?? this.createNode(object);
       // 移动 tween 活跃时位置真相已在 UnitObject（立即生效），渲染层让 tween 走完 ——
       // 状态广播不该把半路上的单位臈移到终点（tween 只是渲染过渡，task_045）。
       if (!this.isMoving(node)) node.container.setPosition(object.position.x, object.position.y);
@@ -176,6 +225,8 @@ export class UnitLayer {
       if (node.sprite) node.sprite.setTint(object.online ? ONLINE_SPRITE_TINT : OFFLINE_SPRITE_TINT);
       this.refreshRing(node, object.id);
       this.syncSprite(node, object);
+      // 名字标签文本（task_062）：name/level 变了才 setText（纹理级开销，判重见 tagKey）。
+      this.refreshTags(node, object);
     }
 
     for (const id of Array.from(this.nodes.keys())) {
@@ -186,6 +237,7 @@ export class UnitLayer {
         node.container.destroy();
       }
       this.nodes.delete(id);
+      this.speakingFlags.delete(id); // 说话镜像随节点清理（task_062）：单位离场气泡不留残迹
     }
   }
 
@@ -275,6 +327,10 @@ export class UnitLayer {
       this.animTimer.remove(false);
       this.animTimer = null;
     }
+    if (this.presenceTimer) {
+      this.presenceTimer.remove(false);
+      this.presenceTimer = null;
+    }
     for (const node of this.nodes.values()) {
       this.stopMoveTween(node);
       node.container.destroy();
@@ -290,7 +346,8 @@ export class UnitLayer {
     this.pending.clear();
   }
 
-  private createNode(id: string): UnitNode {
+  private createNode(object: UnitObject): UnitNode {
+    const id = object.id;
     const body = this.scene.add.circle(0, 0, UNIT_RADIUS, COLOR_BY_STATUS.idle);
     // 选中/预览圈：脚下椭圆（task_045，v2 血缘见 SELECTION_RING_STYLE 注释）——
     // 透明填充打底、样式只走描边，可见性由 refreshRing 按选择/预览集合裁决。
@@ -304,21 +361,67 @@ export class UnitLayer {
         0
       )
       .setVisible(false);
-    const container = this.scene.add.container(0, 0, [body, ring]);
+    // 头顶覆盖物（task_062）：名字 / Lv 小字 / 说话气泡 —— 全部容器内嵌（见文件头），
+    // 初始隐藏，可见性由 presence tick 统一裁决（开关 + zoom）。样式常量在 unit-presence.ts
+    // （token 镜像纪律：色值与 hud/theme 同步改）。名字 origin(0.5,1) 向上长、Lv origin(0.5,0)
+    // 向下长，两行同锚：名字 [-66-行高, -66]、Lv [-66, 约-54]，刚好让开任务浮标（世界 -44，
+    // 半径 11 → 顶到 -55）；气泡悬在名字上方（-84），位置恒定不随开关跳变。
+    const nameTag = this.scene.add
+      .text(0, NAMETAG_STYLE.yAboveUnit, '', {
+        fontFamily: NAMETAG_STYLE.fontFamily,
+        fontSize: `${NAMETAG_STYLE.nameFontSize}px`,
+        color: NAMETAG_STYLE.nameColor,
+        stroke: NAMETAG_STYLE.strokeColor,
+        strokeThickness: NAMETAG_STYLE.strokeWidth,
+      })
+      .setOrigin(0.5, 1)
+      .setVisible(false);
+    const lvTag = this.scene.add
+      .text(0, NAMETAG_STYLE.yAboveUnit, '', {
+        fontFamily: NAMETAG_STYLE.fontFamily,
+        fontSize: `${NAMETAG_STYLE.lvFontSize}px`,
+        color: NAMETAG_STYLE.lvColor,
+        stroke: NAMETAG_STYLE.strokeColor,
+        strokeThickness: NAMETAG_STYLE.strokeWidth,
+      })
+      .setOrigin(0.5, 0)
+      .setVisible(false);
+    const speakingTag = this.scene.add
+      .text(0, SPEAKING_BUBBLE_STYLE.yAboveUnit, SPEAKING_BUBBLE_STYLE.text, {
+        fontFamily: SPEAKING_BUBBLE_STYLE.fontFamily,
+        fontSize: `${SPEAKING_BUBBLE_STYLE.fontSize}px`,
+        color: SPEAKING_BUBBLE_STYLE.color,
+        stroke: NAMETAG_STYLE.strokeColor,
+        strokeThickness: NAMETAG_STYLE.strokeWidth,
+        backgroundColor: SPEAKING_BUBBLE_STYLE.backgroundColor,
+        padding: { x: 4, y: 1 },
+      })
+      .setOrigin(0.5, 1)
+      .setVisible(false);
+    // 容器内层序（z 协调见文件头）：body → ring → 名字 → Lv → 气泡；精灵 attach 时
+    // moveTo 到 index 2（压住圈、垫在文字下 —— 容器内渲染序 = 添加序，无独立 depth）。
+    const container = this.scene.add.container(0, 0, [body, ring, nameTag, lvTag, speakingTag]);
     container.setName(`unit:${id}`);
 
     const node: UnitNode = {
       container,
       body,
       ring,
+      nameTag,
+      lvTag,
+      speakingTag,
       sprite: null,
       spriteCharacterId: null,
       frameIndex: 0,
       direction: UNIT_WALK_DIRECTION,
       moveTween: null,
+      breathPhase: breathPhaseFor(id),
+      tagKey: '',
+      hasLevel: false,
     };
     this.nodes.set(id, node);
     this.refreshRing(node, id);
+    this.refreshTags(node, object);
     return node;
   }
 
@@ -505,6 +608,9 @@ export class UnitLayer {
     sprite.setOrigin(0.5, 0.75);
     sprite.setScale(UNIT_SPRITE_SCALE);
     node.container.add(sprite);
+    // 垫在文字下（task_062）：容器内渲染序 = 添加序，精灵是后加的会盖住名字/气泡，
+    // moveTo 到 index 2（body、ring 之后，名字/Lv/气泡之前）。
+    node.container.moveTo(sprite, 2);
 
     node.sprite = sprite;
     node.spriteCharacterId = characterId;
@@ -546,11 +652,111 @@ export class UnitLayer {
 
   /** 推进一帧（全体单位同一套节奏，看起来像一支队伍；各行各面，task_045）。 */
   private advanceFrames(): void {
-    for (const node of this.nodes.values()) {
+    for (const [id, node] of this.nodes) {
       if (!node.sprite) continue;
+      // 离线静止（task_062）：掉线单位不再迈步（与呼吸同步停 —— 静止灰显更「死」，
+      // 规格①；在线位是健康信号，不该被走路帧的「活着感」盖住）。
+      if (this.registry.get(id)?.online === false) continue;
       node.frameIndex = (node.frameIndex + 1) % UNIT_WALK_CYCLE.length;
       const column = UNIT_WALK_CYCLE[node.frameIndex] ?? 0;
       node.sprite.setFrame(unitFrameName(node.direction, column));
+    }
+  }
+
+  // ==========================================================================
+  // 战场生命感（@since v3.37，task_062）：呼吸 / 名字标签 / 说话气泡
+  // 规则与常量全在 unit-presence.ts（零 Phaser，单测在那边）；本段只兑现渲染。
+  // ==========================================================================
+
+  /**
+   * 名字标签文本刷新：name / level 变了才 setText（Text 重渲是纹理级开销，
+   * 每次对账盲写会让 50 单位的广播面变成 50 次纹理重绘）。无 Lv（level==null）
+   * 只显名字，不编造数值。
+   */
+  private refreshTags(node: UnitNode, object: UnitObject): void {
+    const level = object.level;
+    const key = `${object.name}|${level === null ? '' : String(level)}`;
+    if (key === node.tagKey) return;
+    node.tagKey = key;
+    node.nameTag.setText(object.name);
+    node.hasLevel = level !== null;
+    if (node.hasLevel) node.lvTag.setText(`Lv.${level as number}`);
+  }
+
+  /**
+   * presence tick：全场唯一驱动（task_062）——
+   *   ① 呼吸：在线且有精灵才呼吸（shouldBreathe）；写 sprite.scaleY，与移动 tween
+   *      （容器坐标）/ 忙碌 fx（独立 Container）属性面不相交，叠加不冲突；离线 / 无精灵
+   *      复位基值（幂等 setScale，静止灰显更「死」）；
+   *   ② 名字标签可见性：开关（localStorage 现读 —— 设置屏直写，≤60ms 内生效）AND zoom 阈值；
+   *   ③ 说话气泡：speaking 标志 + zoom 可读性，alpha 脉动用场景时钟推进。
+   * 成本：每单位每步一次三角函数 + 两次 setVisible —— 50 单位单帧计算量级见
+   * unit-presence.test.ts 的打桩测试（微秒级，远低于 16.6ms 预算）。
+   */
+  private presenceTick(): void {
+    if (this.destroyed) return;
+    const now = this.scene.time.now;
+    const tagsOn = nametagVisible(readNametagsToggle(this.safeStorage()), this.cameraZoom);
+    const bubblesOn = overlayVisible(this.cameraZoom);
+    for (const [id, node] of this.nodes) {
+      const object = this.registry.get(id);
+      if (node.sprite) {
+        if (shouldBreathe(object?.online ?? true, true)) {
+          node.sprite.setScale(UNIT_SPRITE_SCALE, breathScaleY(UNIT_SPRITE_SCALE, node.breathPhase, now));
+        } else {
+          node.sprite.setScale(UNIT_SPRITE_SCALE);
+        }
+      }
+      node.nameTag.setVisible(tagsOn);
+      node.lvTag.setVisible(tagsOn && node.hasLevel);
+      if (this.speakingFlags.has(id) && bubblesOn) {
+        node.speakingTag.setAlpha(speakingDotAlpha(now)).setVisible(true);
+      } else {
+        node.speakingTag.setVisible(false);
+      }
+    }
+  }
+
+  /** presence tick 定时器（构造即起，全场一个；destroy 收 —— 同 animTimer 口径）。 */
+  private ensurePresenceTimer(): void {
+    if (this.presenceTimer) return;
+    this.presenceTimer = this.scene.time.addEvent({
+      delay: BREATH_STYLE.tickMs,
+      loop: true,
+      callback: () => this.presenceTick(),
+    });
+  }
+
+  /**
+   * 相机 zoom 回报（task_062）：场景在相机姿态变化 / 初始创建时喂进来；
+   * 可见性裁决交给 presence tick（≤60ms 生效，不在相机事件路径上做全量遍历）。
+   */
+  setCameraZoom(zoom: number): void {
+    if (this.destroyed || !Number.isFinite(zoom)) return;
+    this.cameraZoom = zoom;
+  }
+
+  /**
+   * 说话气泡起止（task_062）：unit.speaking 事件的落点（bridge 转发，场景转交）。
+   * 事件可能早于首帧对账到达（节点未建）—— 先记标志，节点建好后的 presence tick
+   * 自然补上；单位不在场时标志留存也无害（对账清理随节点销毁）。
+   */
+  setSpeaking(unitId: string, speaking: boolean): void {
+    if (this.destroyed) return;
+    if (speaking) this.speakingFlags.add(unitId);
+    else this.speakingFlags.delete(unitId);
+    const node = this.nodes.get(unitId);
+    if (!node) return;
+    node.speakingTag.setVisible(speaking && overlayVisible(this.cameraZoom));
+    if (speaking) node.speakingTag.setAlpha(1);
+  }
+
+  /** localStorage 的安全读（无 DOM 环境 / 隐私模式抛错 → null → 调用方回落默认开）。 */
+  private safeStorage(): NametagStorage | null {
+    try {
+      return typeof localStorage === 'undefined' ? null : localStorage;
+    } catch {
+      return null;
     }
   }
 }

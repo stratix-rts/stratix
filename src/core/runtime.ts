@@ -32,7 +32,9 @@
  * @since v3.25(task_049)追加 task.approve / task.reject 命令(审批门)与
  *   task.awaiting_approval / task.approved 事件接地(同上,startsWith 已覆盖)。
  * @since v3.30(task_054)追加 agent.online / agent.offline 事件接地(app 健康监测的
- *   在线位广播,落点 applyAgentConnectivity 写 units.online)。
+ *   在线位广播,落点 applyAgentConnectivity 写 units.online);
+ *   v3.37(task_062)追加 unit.speaking 接地(app 层 chat-service 的说话标志位广播,
+ *   消费者是战场场景 -- 纯瞬态表现,不写 WorldState)。
  * @since v3.33(task_057)追加 camera.center 命令接线:钳制(core/camera.ts 纯函数)后转发
  *   同名 WorldEvent 到 world 通道(消费者是场景相机);world 通道回环的 camera.center 显式接地。
  * @since v3.34(task_058)追加 unit.group.assign / unit.group.recall 命令接线:编组槽位表
@@ -516,6 +518,11 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         //   发出的整线终态广播,消费者是组合根接的 toast(UI 反馈)。core 状态机不消费
         //   (编排态不进 WorldState,见 core/task/pipeline.ts 架构注) -- 同 task.* 惯例显式接地。
         if (event.type.startsWith('pipeline.')) return;
+        // unit.speaking(@since v3.37,task_062):app 层 chat-service 发出的「正在说话」标志位广播,
+        //   消费者是战场场景(bridge 转发 syncUnitSpeaking -> unit-layer 头顶气泡)。纯瞬态表现,
+        //   不写 WorldState(core 状态机不消费) -- 同 unit.position 惯例显式接地,不进 onUnhandled
+        //   (否则每轮对话起止都会报一次「未处理」噪音)。
+        if (event.type === 'unit.speaking') return;
         reportUnhandled('world', event);
     }
   };

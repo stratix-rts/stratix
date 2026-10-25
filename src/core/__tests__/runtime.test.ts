@@ -298,6 +298,26 @@ describe('world 事件：level.up（task_040）', () => {
 });
 
 // ============================================================================
+// unit.speaking 接地（@since v3.37，task_062）：app 层 chat-service 在流式期间发的
+// 说话标志位广播，消费者是战场场景（bridge 转发 syncUnitSpeaking → 头顶「···」气泡）。
+// 纯瞬态表现不写 WorldState —— 同 unit.position 惯例显式接地，不进 onUnhandled
+// （否则每轮对话起止都报一次「未处理」噪音）。
+// ============================================================================
+
+describe('world 事件：unit.speaking（task_062）', () => {
+  test('不进 onUnhandled，也不改任何状态（气泡起止归渲染层）', () => {
+    const { unhandled, states, stop } = harness();
+    cleanups.push(stop);
+
+    emitWorldEvent({ type: 'unit.speaking', unitId: 'unit_ch_1', speaking: true });
+    emitWorldEvent({ type: 'unit.speaking', unitId: 'unit_ch_1', speaking: false });
+
+    expect(unhandled).toHaveLength(0);
+    expect(states).toHaveLength(0);
+  });
+});
+
+// ============================================================================
 // unit.move（@since v3.21，task_045）：编队落位 → unit.position 终值广播。
 // 集成链路断言：move 命令 → 过滤已知单位 → core/unit/formation 网格终值 →
 // 逐单位 unit.position 广播（世界层 tween 与 app 层 task_033 防抖落库消费同一条事件，

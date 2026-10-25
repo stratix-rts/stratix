@@ -271,3 +271,31 @@ describe('online —— 在线位镜像（task_054）', () => {
     expect(after).toEqual(before);
   });
 });
+
+// ============================================================================
+// 等级镜像（@since v3.37，task_062，名字标签数据面）：UnitObject.level 缺省 null
+//（老单位 / 非 character 单位不编造数值）；等级翻转算对账变化（名字标签的 Lv 小字
+// 跟着刷新 —— 渲染侧应用在 unit-layer，要真场景，见渲染层）。
+// ============================================================================
+
+describe('level —— 等级镜像（task_062 名字标签数据面）', () => {
+  test('缺省 null：不带 level 字段的单位不编造数值', () => {
+    const registry = createRegistry();
+    registry.sync([unit('u1')]);
+    expect(registry.get('u1')?.level).toBeNull();
+  });
+
+  test('带 level 透传；升级翻转算对账变化，相同快照不算', () => {
+    const registry = createRegistry();
+    registry.sync([unit('u1', { level: 3 })]);
+    expect(registry.get('u1')?.level).toBe(3);
+
+    expect(registry.sync([unit('u1', { level: 3 })]).updated).toEqual([]); // 同级 → 不算
+    expect(registry.sync([unit('u1', { level: 4 })]).updated).toEqual(['u1']); // 升级 → 刷新
+    expect(registry.get('u1')?.level).toBe(4);
+
+    // 有 → 无（角色解绑等异常路径）：翻转也算变化，回落 null 只显名字。
+    expect(registry.sync([unit('u1')]).updated).toEqual(['u1']);
+    expect(registry.get('u1')?.level).toBeNull();
+  });
+});
