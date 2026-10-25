@@ -121,6 +121,13 @@ import { createTaskService } from '../services/task-service';
 import { formatTaskArtifactsBlock, parseTaskArtifactsJson } from '../services/task-artifacts';
 import { createTaskReportHandler } from '../services/task-report';
 import { taskRecordApi, makeTaskRecordPersister, makeTaskStatsProvider } from '../services/persistence/task-record';
+// 经验事件审计流 + 成长看板（@since v3.36，task_061）：exp_events 表的渲染侧端口
+//（persister 注入 progression-service；growth 口注入 hud 角色屏的「成长」tab）。
+import {
+  expEventApi,
+  makeExpEventPersister,
+  makeGrowthStatsPort,
+} from '../services/persistence/exp-record';
 // agent 健康监测（@since v3.30，task_054）：周期探测防抖判定 + transport exit 审计的单服务。
 import { createHealthMonitor } from '../services/health-monitor';
 import { agentHealthApi, makeAgentHealthPersister } from '../services/persistence/agent-health-record';
@@ -284,6 +291,9 @@ async function boot(): Promise<void> {
     pipelines: pipelineService.feed,
     // task_056：设置屏的注册管理组（查看 / 移除） —— 端口同向导一份（非 Electron = null 降级）。
     customAgents: customAgentsIpcPort(),
+    // task_061：成长看板数据口（角色屏「成长」tab + 全场总览排行；非 Electron = 各方法
+    // null 降级 —— 看板区块引导语，不拆屏可用性）。
+    growth: makeGrowthStatsPort(expEventApi(), taskRecordApi()),
   });
   const unmountScreen = screen.mount(hudRoot);
   const unmountAdapter = adapter.mount();
@@ -660,7 +670,13 @@ async function boot(): Promise<void> {
   // exp.gained（task-service / chat-service 发射）→ character manager 累加落库（曲线结算在
   // core/progression）→ 升级广播 level.up（UI 反馈归 041）。不依赖 Electron IPC（纯总线订阅），
   // 无条件起：非 Electron 的 dev 环境里事件不会发，订阅空转零成本。
-  const stopProgressionService = createProgressionService({ characterManager }).start();
+  // task_061：经验事件审计流 —— 每条 exp.gained / 升级结算逐条落 exp_events（非 Electron
+  // = 端口缺席，注入件缺省：养成照常，只不落曲线真相源）。
+  const expApi = expEventApi();
+  const stopProgressionService = createProgressionService({
+    characterManager,
+    persistExpEvent: expApi ? makeExpEventPersister(expApi) : undefined,
+  }).start();
 
   // ===== 角色任务执行回路（@since v3.16，task_037）=====
   // core/task 发的 task.queued 事件 → task-service 出队（每角色 FIFO、并发 1）→ 经

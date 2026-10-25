@@ -1878,7 +1878,7 @@
     {
       "id": "task_061",
       "title": "角色成长看板",
-      "status": "pending",
+      "status": "completed",
       "depends_on": [
         "task_039",
         "task_040"

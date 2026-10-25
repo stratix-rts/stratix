@@ -53,6 +53,13 @@
  *       （toast 的屏内替身：屏不碰组合根的 toast-host，反馈面只在自己 shadow DOM 里）；
  *     - 人设 / 改名草稿与形象草稿同口径：仅内存、换编辑对象（切换单位）即重置。
  *
+ * ★ 成长看板（@since v3.36，task_061）：编辑中心第四 tab「成长」+ 全场总览排行（角色卡区）。
+ *   数据全部经注入的 GrowthStatsPort（app 层 exp-record.ts 的 makeGrowthStatsPort 同构注入，
+ *   hud 不 import app）：overview（全场活跃度 + 六态任务计数）/ expEvents（近 30 天经验事件）/
+ *   recentTasks（终态任务）。时序聚合与排行是 growth-catalog 的纯函数，曲线画布是
+ *   growth-chart 组件（纯 canvas，无依赖，057 minimap 同范式）。空数据准则：每个区块
+ *   无数据一律引导语（「派一个试试」等），不空白、不编造。
+ *
  * 挂载接线：TODO(v3.task_019) —— 本屏目前只提供 mountCharacterScreen 工厂，
  *   尚未接进 main-screen / hud-dev-entry（由 task_019 的屏位路由接线任务统一挂载，避免两个任务同时改同一处壳）。
  */
@@ -86,6 +93,28 @@ import {
   type CharacterLinkModel,
   type CharacterScreenModel,
 } from './character-catalog';
+// 成长看板（@since v3.36，task_061）：纯函数目录 + 视图模型形状（数据经 GrowthStatsPort 注入）。
+import {
+  buildExpSeries,
+  buildGrowthTimeline,
+  buildHeatmap,
+  extractMilestones,
+  formatRelative,
+  GROWTH_RANK_MODES,
+  rankCharacters,
+  successRate,
+  type GrowthExpEvent,
+  type GrowthOverviewRow,
+  type GrowthRankMode,
+  type GrowthStatsPort,
+  type GrowthTaskInput,
+} from './growth-catalog';
+// 成长曲线 canvas 组件（纯展示；时序聚合在上面的 growth-catalog，本屏只喂数据）。
+import {
+  defineStratGrowthChart,
+  GROWTH_CHART_TAG,
+  type StratGrowthChartElement,
+} from '../components/growth-chart/growth-chart';
 
 export const CHARACTER_SCREEN_TAG = 'strat-character-screen';
 
@@ -99,15 +128,17 @@ export const EXP_PULSE_MS = 600;
 export const PERSONA_SAVED_HINT_MS = 4000;
 
 /**
- * 编辑中心的三个 tab（@since v3.35，task_059）：档案（改名）/ 人设（提示词）/ 形象（041 面板）。
+ * 编辑中心的四个 tab（@since v3.35，task_059：档案 / 人设 / 形象；@since v3.36，task_061 增成长）：
+ * 成长 tab = 角色成长看板（exp 曲线 / 任务分布 / 活动热力 / 履历时间线，数据经 growthPort 注入）。
  */
-export type CharacterEditorTab = 'profile' | 'persona' | 'appearance';
+export type CharacterEditorTab = 'profile' | 'persona' | 'appearance' | 'growth';
 
-/** tab 定义（渲染序即声明序：档案 / 人设 / 形象）。 */
+/** tab 定义（渲染序即声明序：档案 / 人设 / 形象 / 成长）。 */
 const EDITOR_TABS: readonly { readonly id: CharacterEditorTab; readonly label: string }[] = [
   { id: 'profile', label: '档案' },
   { id: 'persona', label: '人设' },
   { id: 'appearance', label: '形象' },
+  { id: 'growth', label: '成长' },
 ];
 
 /** 本屏需要的最小能力面：只要"发命令"与"订阅状态"，与 screens / panels 同一约定。 */
@@ -129,6 +160,12 @@ export interface StratCharacterScreenElement extends HTMLElement {
    * 缺省 null = 面板降级成一句「形象预览没接上」，屏照常可用（与向导同口径：没接端口不是错误）。
    */
   appearancePort: AppearancePreviewPort | null;
+  /**
+   * 成长看板数据口（@since v3.36，task_061）：「成长」tab（exp 曲线 / 任务分布 / 热力 /
+   * 时间线）与全场总览排行的数据源。缺省 null = 各区块降级成引导语（与 appearancePort
+   * 同口径：没接端口不是错误，屏照常可用）。
+   */
+  growthPort: GrowthStatsPort | null;
   /** 强制重算重渲染。 */
   refresh(): void;
   /** 最近一次派生出的视图模型。 */
@@ -150,11 +187,24 @@ export interface StratCharacterScreenElement extends HTMLElement {
    * 不是当前编辑对象 / 未初始化 → null。
    */
   personaDraftOf(characterId: string): { readonly text: string; readonly dirty: boolean } | null;
+  /**
+   * 全场总览快照（@since v3.36，task_061；测试观察口）：overview() 最近一次成功取回的行；
+   * 未接端口 / 尚未取回 / 取取失败 → null。
+   */
+  readonly growthOverviewRows: readonly GrowthOverviewRow[] | null;
+  /**
+   * 某角色的成长明细（@since v3.36，task_061；测试观察口）：近窗经验事件 + 近期终态任务。
+   * 未加载过该角色 → null（与缓存缺席同判，空数组的「无事件」语义留给渲染层引导语）。
+   */
+  growthDetailOf(characterId: string): { readonly events: readonly GrowthExpEvent[]; readonly tasks: readonly GrowthTaskInput[] } | null;
+  /** 当前排行模式（@since v3.36，task_061；测试观察口）。 */
+  readonly growthRankMode: GrowthRankMode;
 }
 
 /** 工厂：注册 `<strat-character-screen>`。幂等（与 defineSettingsScreen 同一约定）。 */
 export function defineCharacterScreen(): typeof HTMLElement {
   defineStratButton();
+  defineStratGrowthChart();
   if (customElements.get(CHARACTER_SCREEN_TAG)) {
     return customElements.get(CHARACTER_SCREEN_TAG) as unknown as typeof HTMLElement;
   }
@@ -188,6 +238,26 @@ export function defineCharacterScreen(): typeof HTMLElement {
     // —— 编辑中心状态（@since v3.35，task_059）——
     /** 激活 tab；缺省 'appearance'：041 面板行为不变（老入口直接落形象编辑）。 */
     private _editorTab: CharacterEditorTab = 'appearance';
+
+    // —— 成长看板状态（@since v3.36，task_061）——
+    /** 数据口（注入件；null = 全部区块引导语降级）。 */
+    private _growthPort: GrowthStatsPort | null = null;
+    /** overview() 最近一次成功快照（null = 未取到：未接 / 失败时保留旧值，首取失败为 null）。 */
+    private _growthRows: readonly GrowthOverviewRow[] | null = null;
+    /** overview 是否已判定不可用（端口在但持续取回 null —— 非 Electron / IPC 故障，文案降级用）。 */
+    private _growthUnavailable = false;
+    /** overview 在途标记 + 完成时刻（节流：TTL 内不重取，同 taskStats 的「打开时刷一次」口径）。 */
+    private _overviewLoading = false;
+    private _overviewLoadedAt = 0;
+    /** 单角色明细缓存（key = characterId；tab 激活时重拉，期间复用）。 */
+    private _growthEvents = new Map<string, readonly GrowthExpEvent[]>();
+    private _growthTasks = new Map<string, readonly GrowthTaskInput[]>();
+    /** 明细在途的角色 id（防同角色并发重拉；null = 空闲）。 */
+    private _growthLoadingId: string | null = null;
+    /** 聚合桶的「今天」基准（明细到达时刻定格 —— 重渲染不漂桶，纯函数可复算）。 */
+    private _growthNowMs: number | null = null;
+    /** 全场总览排行键（等级 / 经验 / 完成率 / 活跃度；纯展示态，跨重渲染保留）。 */
+    private _rankMode: GrowthRankMode = 'level';
     /** 人设草稿所属角色 id（换编辑对象即重置，与形象草稿同口径）。 */
     private _personaCharacterId: string | null = null;
     /** 人设草稿全文（null = 未编辑，textarea 显示广播 persona）。仅内存，未保存不落库。 */
@@ -224,6 +294,34 @@ export function defineCharacterScreen(): typeof HTMLElement {
       this._lastPreviewedDraft = null;
       this._appearanceError = null;
       this.refresh();
+    }
+
+    get growthPort(): GrowthStatsPort | null { return this._growthPort; }
+    set growthPort(value: GrowthStatsPort | null) {
+      // 端口换了：快照 / 缓存 / 不可用标记全部重置（旧端口的数据不 Guaranteed 同源），
+      // 下一次渲染重拉（与 appearancePort 同口径：换桩 = 换真相源）。
+      this._growthPort = value;
+      this._growthRows = null;
+      this._growthUnavailable = false;
+      this._overviewLoading = false;
+      this._overviewLoadedAt = 0;
+      this._growthEvents.clear();
+      this._growthTasks.clear();
+      this._growthLoadingId = null;
+      this._growthNowMs = null;
+      this.refresh();
+    }
+
+    get growthOverviewRows(): readonly GrowthOverviewRow[] | null { return this._growthRows; }
+
+    get growthRankMode(): GrowthRankMode { return this._rankMode; }
+
+    growthDetailOf(characterId: string): { readonly events: readonly GrowthExpEvent[]; readonly tasks: readonly GrowthTaskInput[] } | null {
+      if (!this._growthEvents.has(characterId) && !this._growthTasks.has(characterId)) return null;
+      return {
+        events: this._growthEvents.get(characterId) ?? [],
+        tasks: this._growthTasks.get(characterId) ?? [],
+      };
     }
 
     appearanceDraftOf(characterId: string): import('../../core/types').CharacterAppearance | null {
@@ -274,6 +372,11 @@ export function defineCharacterScreen(): typeof HTMLElement {
       this._nameCharacterId = null;
       this._nameDraft = null;
       this._nameError = null;
+      // 成长看板（task_061）：缓存清空（在途回调被 isConnected 守门，卸载后不再重画）。
+      this._growthEvents.clear();
+      this._growthTasks.clear();
+      this._growthLoadingId = null;
+      this._overviewLoading = false;
     }
 
     refresh(): void {
@@ -548,6 +651,76 @@ export function defineCharacterScreen(): typeof HTMLElement {
           }
           .preset-chip.recommended { border-color: var(--srf-accent, #6ea8ff); }
           .saved-hint { color: var(--srf-success, #6fcf97); font-size: var(--srf-font-size-sm, 12px); }
+          /* —— 成长看板（task_061）：分节 / 排行钮 / 六态分布条 / 热力格 / 时间线 —— */
+          .growth-section { display: grid; gap: var(--srf-spacing-xs, 4px); }
+          .growth-section-name {
+            color: var(--srf-text-muted, #9aa3b2);
+            font-size: var(--srf-font-size-sm, 12px);
+            letter-spacing: 0.04em;
+          }
+          .rank-row { display: flex; gap: var(--srf-spacing-xs, 4px); flex-wrap: wrap; }
+          .rank-chip {
+            font-family: inherit; font-size: var(--srf-font-size-sm, 12px);
+            color: var(--srf-text-muted, #9aa3b2);
+            background: var(--srf-panel-elevated, #20262f);
+            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
+            border-radius: var(--srf-radius, 6px);
+            padding: 2px var(--srf-spacing-sm, 8px);
+            cursor: pointer;
+          }
+          .rank-chip[data-active="true"] {
+            color: var(--srf-text, #e6e9ef);
+            border-color: var(--srf-accent, #6ea8ff);
+            background: var(--srf-panel, #181c25);
+          }
+          .card-stats {
+            color: var(--srf-text-muted, #9aa3b2);
+            font-size: var(--srf-font-size-sm, 12px);
+            overflow-wrap: anywhere;
+          }
+          .card-stats.muted { opacity: 0.8; }
+          .task-dist { display: flex; gap: var(--srf-spacing-xs, 4px); flex-wrap: wrap; }
+          .task-seg {
+            font-size: var(--srf-font-size-sm, 12px);
+            padding: 2px var(--srf-spacing-sm, 8px);
+            border-radius: var(--srf-radius, 6px);
+            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
+          }
+          .task-seg[data-seg="queued"] { color: var(--srf-text-muted, #9aa3b2); }
+          .task-seg[data-seg="running"] { color: var(--srf-accent, #6ea8ff); border-color: var(--srf-accent, #6ea8ff); }
+          .task-seg[data-seg="awaiting"] { color: var(--srf-warn, #f0c674); border-color: var(--srf-warn, #f0c674); }
+          .task-seg[data-seg="completed"] { color: var(--srf-success, #6fcf97); border-color: var(--srf-success, #6fcf97); }
+          .task-seg[data-seg="failed"] { color: var(--srf-danger, #e06c75); border-color: var(--srf-danger, #e06c75); }
+          .task-seg[data-seg="cancelled"] { color: var(--srf-text-muted, #9aa3b2); }
+          .heat-row { display: flex; gap: var(--srf-spacing-xs, 4px); }
+          .heat-cell {
+            width: 26px; height: 26px;
+            border-radius: 4px;
+            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
+            background: var(--srf-panel-elevated, #20262f);
+          }
+          /* 热力五档：透明度阶梯叠在 accent 色上（零档已由引导语替代，此处 1-4 全有活动）。
+           * why 不用 style 内联色值：主题色是变量，这档阶梯只调透明度，跟主题自动走。 */
+          .heat-cell[data-heat="1"] { background: color-mix(in srgb, var(--srf-accent, #6ea8ff) 25%, var(--srf-panel-elevated, #20262f)); }
+          .heat-cell[data-heat="2"] { background: color-mix(in srgb, var(--srf-accent, #6ea8ff) 50%, var(--srf-panel-elevated, #20262f)); }
+          .heat-cell[data-heat="3"] { background: color-mix(in srgb, var(--srf-accent, #6ea8ff) 75%, var(--srf-panel-elevated, #20262f)); }
+          .heat-cell[data-heat="4"] { background: var(--srf-accent, #6ea8ff); }
+          .growth-timeline { display: grid; gap: var(--srf-spacing-xs, 4px); }
+          .tl-entry {
+            display: grid;
+            grid-template-columns: 110px minmax(0, 1fr);
+            gap: var(--srf-spacing-sm, 8px);
+            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-sm, 8px);
+            background: var(--srf-panel-elevated, #20262f);
+            border-radius: var(--srf-radius, 6px);
+            border-left: 3px solid var(--srf-border, #2a313d);
+            font-size: var(--srf-font-size-sm, 12px);
+          }
+          .tl-entry[data-kind="created"] { border-left-color: var(--srf-accent, #6ea8ff); }
+          .tl-entry[data-kind="levelUp"] { border-left-color: var(--srf-warn, #f0c674); }
+          .tl-entry[data-kind="task"] { border-left-color: var(--srf-success, #6fcf97); }
+          .tl-when { color: var(--srf-text-muted, #9aa3b2); white-space: nowrap; }
+          .tl-what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
           .name-field { display: grid; gap: var(--srf-spacing-xs, 4px); font-size: var(--srf-font-size-sm, 12px); max-width: 320px; }
           .name-input {
             font-family: inherit; font-size: var(--srf-font-size-sm, 12px);
@@ -598,7 +771,19 @@ export function defineCharacterScreen(): typeof HTMLElement {
       const tabButton = target.closest('[data-role="editor-tab"]');
       if (tabButton) {
         const tab = tabButton.getAttribute('data-tab');
-        if (tab === 'profile' || tab === 'persona' || tab === 'appearance') this.switchEditorTab(tab);
+        if (tab === 'profile' || tab === 'persona' || tab === 'appearance' || tab === 'growth') {
+          this.switchEditorTab(tab);
+        }
+        return;
+      }
+      // 成长看板（task_061）：全场总览排行键切换（纯展示态，切了就重排）。
+      const rankChip = target.closest('[data-action="growth-rank"]');
+      if (rankChip) {
+        const mode = rankChip.getAttribute('data-mode');
+        if ((GROWTH_RANK_MODES as readonly { readonly id: GrowthRankMode }[]).some((m) => m.id === mode)) {
+          this._rankMode = mode as GrowthRankMode;
+          this.forceRerender();
+        }
         return;
       }
       if (target.closest('[data-action="apply-persona-preset"]')) {
@@ -698,6 +883,9 @@ export function defineCharacterScreen(): typeof HTMLElement {
       this._canvasHost?.remove();
       box.innerHTML = this.renderFocus(model) + this.renderEditorCenter() + this.renderLinks(model) + this.renderCards(model);
       this.syncAppearanceCanvas();
+      // 成长看板（task_061）：曲线画布喂数据（元素刚重建，setData 即画）+ 节流拉取数据。
+      this.syncGrowthChart();
+      this.ensureGrowthData();
       this.applyPulse(gains);
     }
 
@@ -736,6 +924,16 @@ export function defineCharacterScreen(): typeof HTMLElement {
         this.forceRerender();
         return;
       }
+      // 成长 tab（task_061）：重进重拉明细（打开看板 = 现取，缓存只在停留期间复用 ——
+      // 与 taskStats 的「打开时刷一次」同口径，期间的新事件下次打开再读）。
+      if (tab === 'growth') {
+        const focus = resolveFocusedCharacter(this._state);
+        if (focus) {
+          this._growthEvents.delete(focus.id);
+          this._growthTasks.delete(focus.id);
+        }
+        this._growthNowMs = null;
+      }
       this._editorTab = tab;
       this._personaWarn = null;
       this._nameError = null;
@@ -756,7 +954,9 @@ export function defineCharacterScreen(): typeof HTMLElement {
           ? this.renderProfileTab(focus)
           : this._editorTab === 'persona'
             ? this.renderPersonaTab(focus)
-            : this.renderAppearanceEditor();
+            : this._editorTab === 'growth'
+              ? this.renderGrowthTab(focus)
+              : this.renderAppearanceEditor();
       return `
         <div class="group" data-group="character-editor">
           <div class="group-name">角色编辑 · ${escapeHtml(focus.name)}</div>
@@ -818,6 +1018,158 @@ export function defineCharacterScreen(): typeof HTMLElement {
             <${STRAT_BUTTON_TAG} label="放弃修改" variant="default" data-action="discard-persona"></${STRAT_BUTTON_TAG}>
           </div>
           <div class="summary">保存后下次对话生效（进行中的对话仍用旧人设）。</div>
+        </div>
+      `;
+    }
+
+    // —— 成长看板（@since v3.36，task_061）——
+
+    /** overview 节流窗口：TTL 内不重取（打开屏 / 切排行时最多一次现取，之后复用快照）。 */
+    private static readonly GROWTH_OVERVIEW_TTL_MS = 60_000;
+
+    /**
+     * 节流拉取：overview（TTL 门控）+ 当前编辑对象的明细（成长 tab 激活且无缓存时）。
+     * fire-and-forget：取回后 forceRerender（growth 数据不在 WorldState 签名里，必须显式触发）；
+     * 卸载后不重画（isConnected 守门）。失败保留旧快照（null 结果只标记不可用，不清已取到的数据）。
+     */
+    private ensureGrowthData(): void {
+      const port = this._growthPort;
+      if (!port) return;
+      const now = Date.now();
+      // 重取门控：成功后 TTL 内不重取；首取失败（持续 null）不再无限重拉 —— 首败即停
+      //（_growthUnavailable 置位，文案降级「未接上」；只有换端口才重新尝试 —— 否则每次
+      // forceRerender 后果 Overview 又是 null → 又重拉 → 死循环）。
+      const overviewStale =
+        this._growthRows === null ? !this._growthUnavailable : now - this._overviewLoadedAt > CharacterScreen.GROWTH_OVERVIEW_TTL_MS;
+      if (!this._overviewLoading && overviewStale) {
+        this._overviewLoading = true;
+        void port
+          .overview()
+          .then((rows) => {
+            this._overviewLoading = false;
+            this._overviewLoadedAt = Date.now();
+            // 首败才置不可用（已有快照时刷新失败 → 保留旧快照继续展示，旧数据比误导性强）。
+            this._growthUnavailable = rows === null && this._growthRows === null;
+            if (rows !== null) this._growthRows = rows;
+            if (this.isConnected) this.forceRerender();
+          })
+          .catch(() => {
+            this._overviewLoading = false;
+            this._growthUnavailable = true;
+          });
+      }
+      if (this._editorTab !== 'growth') return;
+      const focus = resolveFocusedCharacter(this._state);
+      if (!focus || this._growthLoadingId === focus.id || this._growthEvents.has(focus.id)) return;
+      this._growthLoadingId = focus.id;
+      const characterId = focus.id;
+      void Promise.all([port.expEvents(characterId), port.recentTasks(characterId)])
+        .then(([events, tasks]) => {
+          this._growthLoadingId = null;
+          // 桶基准定格在数据到达时刻：重渲染不再漂桶（纯函数复算同一批桶）。
+          this._growthNowMs = Date.now();
+          if (events !== null) this._growthEvents.set(characterId, events);
+          if (tasks !== null) this._growthTasks.set(characterId, tasks);
+          if (this.isConnected) this.forceRerender();
+        })
+        .catch(() => {
+          this._growthLoadingId = null;
+        });
+    }
+
+    /** 折线画布喂数据：元素每次重渲染重建，重建后 setData 即重画（无跨渲染态）。 */
+    private syncGrowthChart(): void {
+      const chart = this.shadowRoot?.querySelector<StratGrowthChartElement>('[data-role="growth-chart"]');
+      if (!chart) return;
+      const focus = resolveFocusedCharacter(this._state);
+      if (!focus) return;
+      const events = this._growthEvents.get(focus.id);
+      if (!events || events.length === 0) return;
+      const nowMs = this._growthNowMs ?? Date.now();
+      chart.setData(buildExpSeries(events, nowMs), extractMilestones(events));
+    }
+
+    /**
+     * 成长 tab：上部 exp 折线（近 30 天 + 升级里程碑标记）/ 中部任务状态分布条（六态色块 + 计数）/
+     * 下部近 7 天活动热力（日粒度）/ 末尾履历时间线（建档 + 升级 + 终态任务）。
+     * 空数据准则：各区块无数据一律引导语，不空白不造假。
+     */
+    private renderGrowthTab(focus: CharacterView): string {
+      const nowMs = this._growthNowMs ?? Date.now();
+      const detail = this.growthDetailOf(focus.id);
+      const events = detail?.events ?? [];
+      const tasks = detail?.tasks ?? [];
+      const row = this._growthRows?.find((r) => r.characterId === focus.id) ?? null;
+      const counts = row?.taskCounts ?? null;
+      const taskTotal = counts
+        ? counts.queued + counts.running + counts.awaiting + counts.completed + counts.failed + counts.cancelled
+        : 0;
+
+      // 上部：经验曲线（空事件 → 引导语；有事件才画 —— 全零折线不算「成长记录」）。
+      const curveSection =
+        events.length === 0
+          ? '<div class="empty" data-role="growth-curve-empty">还没有成长记录：完成任务或对话拿到经验后，这里会长出曲线</div>'
+          : `<${GROWTH_CHART_TAG} data-role="growth-chart"></${GROWTH_CHART_TAG}>`;
+
+      // 中部：任务状态分布条（六态色块 + 计数；零计数态不占位 —— 色块只报实有）。
+      const distSection =
+        !counts || taskTotal === 0
+          ? '<div class="empty" data-role="growth-tasks-empty">还没有任务记录，派一个试试</div>'
+          : `<div class="task-dist" data-role="growth-task-dist">${([
+              ['queued', '排队', counts.queued],
+              ['running', '执行', counts.running],
+              ['awaiting', '待批', counts.awaiting],
+              ['completed', '完成', counts.completed],
+              ['failed', '失败', counts.failed],
+              ['cancelled', '取消', counts.cancelled],
+            ] as const)
+              .filter(([, , n]) => n > 0)
+              .map(([key, label, n]) => `<span class="task-seg" data-seg="${key}">${label} ${n}</span>`)
+              .join('')}</div>`;
+
+      // 下部：近 7 天活动热力（日粒度；强度按当日事件数 / 窗口峰值分五档）。
+      const heat = buildHeatmap(events, nowMs);
+      const heatMax = Math.max(0, ...heat.map((cell) => cell.count));
+      const heatSection =
+        heatMax === 0
+          ? '<div class="empty" data-role="growth-heat-empty">近 7 天暂无活动：派任务或聊一轮就会点亮</div>'
+          : `<div class="heat-row" data-role="growth-heat">${heat
+              .map((cell) => {
+                const level = Math.max(1, Math.ceil((cell.count / heatMax) * 4));
+                return `<span class="heat-cell" data-count="${cell.count}" data-heat="${level}" title="${cell.count} 次活动"></span>`;
+              })
+              .join('')}</div>`;
+
+      // 末尾：履历时间线（建档锚点来自 overview 行的 createdAt；无档案行则从升级 / 任务起笔）。
+      const timeline = buildGrowthTimeline(row?.createdAt ?? null, events, tasks);
+      const timelineSection =
+        timeline.length === 0
+          ? '<div class="empty" data-role="growth-timeline-empty">暂无履历：完成第一个任务，这里会记下每一步</div>'
+          : `<div class="growth-timeline" data-role="growth-timeline">${timeline
+              .map(
+                (entry) =>
+                  `<div class="tl-entry" data-kind="${entry.kind}"><span class="tl-when">${escapeHtml(formatRelative(entry.atMs, nowMs))}</span><span class="tl-what" title="${escapeHtml(entry.label)}">${escapeHtml(entry.label)}</span></div>`
+              )
+              .join('')}</div>`;
+
+      return `
+        <div class="editor-tab-body" data-tab-body="growth">
+          <div class="growth-section">
+            <div class="growth-section-name">经验曲线（近 30 天 · 升级标记）</div>
+            ${curveSection}
+          </div>
+          <div class="growth-section">
+            <div class="growth-section-name">任务状态分布</div>
+            ${distSection}
+          </div>
+          <div class="growth-section">
+            <div class="growth-section-name">近 7 天活动</div>
+            ${heatSection}
+          </div>
+          <div class="growth-section">
+            <div class="growth-section-name">履历时间线</div>
+            ${timelineSection}
+          </div>
         </div>
       `;
     }
@@ -1178,17 +1530,62 @@ export function defineCharacterScreen(): typeof HTMLElement {
         model.cardOverflow > 0
           ? `<div class="empty" data-role="card-overflow">还有 ${model.cardOverflow} 个角色未显示</div>`
           : '';
-      const body =
-        model.cards.length === 0
-          ? `<div class="empty" data-role="cards-empty">尚无角色档案：角色由 core 写入 WorldState.characters 后在此显示</div>`
-          : `<div class="cards">${model.cards.map((card) => this.renderCard(card, false)).join('')}</div>`;
+      // 全场总览（task_061）：排行键切换（等级 / 经验 / 完成率 / 活跃度）+ 按键排序的排行卡。
+      // 无角色时仍是引导语（排行没有候选可排，不画空壳）。统计行降级口径见 renderCardStats。
+      if (model.cards.length === 0) {
+        return `
+          <div class="group" data-group="cards">
+            <div class="group-name">全场总览</div>
+            <div class="empty" data-role="cards-empty">尚无角色档案：角色由 core 写入 WorldState.characters 后在此显示</div>
+          </div>
+        `;
+      }
+      const chips = GROWTH_RANK_MODES.map(
+        ({ id, label }) =>
+          `<button type="button" class="rank-chip" data-action="growth-rank" data-mode="${id}" data-active="${id === this._rankMode}">${label}</button>`
+      ).join('');
+      const rankedCards = this.rankCards(model);
       return `
         <div class="group" data-group="cards">
-          <div class="group-name">角色养成总览</div>
-          ${body}
+          <div class="group-name">全场总览 · 排行</div>
+          <div class="rank-row" data-role="rank-modes">${chips}</div>
+          <div class="cards">${rankedCards.map((card) => this.renderCard(card, false)).join('')}</div>
           ${overflow}
         </div>
       `;
+    }
+
+    /** 按 _rankMode 重排卡片（WorldState.characters 参与排序，卡片模型按 id 对位回填 ——
+     *  排序真相源在 growth-catalog 的 rankCharacters，这里只做模型对位，不另写比较器）。 */
+    private rankCards(model: CharacterScreenModel): readonly CharacterCardModel[] {
+      const characters = this._state?.characters ?? [];
+      const ranked = rankCharacters(characters, this._growthRows, this._rankMode);
+      const byId = new Map(model.cards.map((card) => [card.id, card] as const));
+      const ordered: CharacterCardModel[] = [];
+      for (const entry of ranked) {
+        const card = byId.get(entry.character.id);
+        if (card) ordered.push(card);
+      }
+      return ordered;
+    }
+
+    /** 卡片上的成长统计行（task_061）：对话 / 任务计数 + 完成率 + 最近活跃；降级三档 ——
+     *  未接端口 / 取不可用 → 「未接上」；未取到（在途 / 首取失败）→「读取中」；无终态 → 完成率「—」。 */
+    private renderCardStats(cardId: string): string {
+      if (!this._growthPort || this._growthUnavailable) {
+        return '<span class="card-stats muted" data-role="card-stats">成长统计未接上</span>';
+      }
+      if (this._growthRows === null) {
+        return '<span class="card-stats muted" data-role="card-stats">统计读取中…</span>';
+      }
+      const row = this._growthRows.find((r) => r.characterId === cardId) ?? null;
+      if (!row) {
+        return '<span class="card-stats muted" data-role="card-stats">暂无统计（档案未落库）</span>';
+      }
+      const rate = successRate(row.taskCounts);
+      const rateText = rate === null ? '完成率 —' : `完成率 ${Math.round(rate * 100)}%`;
+      const activeText = row.lastActiveAt === null ? '未见活动' : `活跃 ${formatRelative(row.lastActiveAt, Date.now())}`;
+      return `<span class="card-stats" data-role="card-stats">对话 ${row.chatCount} · 任务 ${row.taskCount} · ${rateText} · ${activeText}</span>`;
     }
 
     private renderCard(card: CharacterCardModel, inFocus: boolean): string {
@@ -1209,6 +1606,7 @@ export function defineCharacterScreen(): typeof HTMLElement {
           <div class="bar" data-role="exp-bar" data-pulse="false">
             <div class="bar-fill" style="width: ${growth.percent}%"></div>
           </div>
+          ${this.renderCardStats(card.id)}
           <div class="persona" data-role="persona">${escapeHtml(card.persona)}</div>
         </div>
       `;
@@ -1270,6 +1668,8 @@ export function defineCharacterScreen(): typeof HTMLElement {
  */
 export interface MountCharacterScreenOptions {
   readonly appearance?: AppearancePreviewPort;
+  /** 成长看板数据口（@since v3.36，task_061）；null/缺省 = 引导语降级。 */
+  readonly growth?: GrowthStatsPort | null;
 }
 
 export function mountCharacterScreen(
@@ -1281,6 +1681,7 @@ export function mountCharacterScreen(
   const element = document.createElement(CHARACTER_SCREEN_TAG) as StratCharacterScreenElement;
   element.adapter = deps;
   if (options.appearance) element.appearancePort = options.appearance;
+  if (options.growth) element.growthPort = options.growth;
   host.appendChild(element);
   // 移除元素会触发 disconnectedCallback → 退订 + 清定时器 + 销毁预览实例，订阅与计时随之释放。
   return () => { element.remove(); };

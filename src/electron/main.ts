@@ -64,6 +64,16 @@ import {
   PERSISTED_AGENT_HEALTH_EVENTS,
   type AgentHealthEventInsert,
 } from '../app/services/persistence/agent-health-dao';
+// 角色经验事件表 IPC（@since v3.36，task_061，schema v12）：exp_events 的写 / 读 / 聚合
+// 三条通道（写入时机在渲染层 progression-service 的 persist 注入件，这里只做形状校验 + 落库）。
+import {
+  aggregateCharacterActivity,
+  ensureExpEventsTable,
+  insertExpEvent,
+  loadExpEventsSince,
+  PERSISTED_EXP_EVENT_REASONS,
+  type ExpEventInsert,
+} from '../app/services/persistence/exp-event-dao';
 // 自定义 agent 注册表（@since v3.32，task_056）：custom_agents 表 DAO + 四条 IPC 通道
 //（list / create / delete / probe，见 setupIPC 的 customAgent: 段）。
 import {
@@ -647,6 +657,76 @@ function setupIPC() {
       return { ok: true };
     } catch (error: any) {
       console.error('[Electron] game:saveHealthEvent failed:', error);
+      return { ok: false, error: error?.message ?? String(error) };
+    }
+  });
+
+  // ==================== 角色经验事件 IPC（@since v3.36，task_061，schema v12）====================
+  // exp_events 表三条通道：saveExpEvent（progression-service 的注入件逐条写，exp.gained 落
+  // 来源行 / 升级落 level_up 里程碑行）/ loadExpEvents（成长曲线按近窗读单角色）/ growthOverview
+  //（全场活跃度聚合：三源 UNION 按 character_id GROUP BY）。校验从严：坏形状一律拒，
+  // 调用方（makeExpEventPersister）只警告不阻断养成回路（曲线少一个点不是错误，养成状态在
+  // WorldState / characters 表另有真相）。
+  ipcMain.handle('game:saveExpEvent', async (_event, insert: ExpEventInsert) => {
+    try {
+      if (typeof insert?.characterId !== 'string' || insert.characterId.length === 0 || insert.characterId.length > 200) {
+        return { ok: false, error: 'bad characterId' };
+      }
+      if (typeof insert?.delta !== 'number' || !Number.isInteger(insert.delta) || insert.delta < 0) {
+        return { ok: false, error: 'bad delta' };
+      }
+      if (
+        typeof insert?.reason !== 'string' ||
+        !(PERSISTED_EXP_EVENT_REASONS as readonly string[]).includes(insert.reason)
+      ) {
+        return { ok: false, error: `bad reason: ${String(insert?.reason)}` };
+      }
+      // level 列只在 level_up 里程碑行有意义：非 level_up 行强制 null（表结构允许但语义收敛在一处）。
+      const isLevelUp = insert.reason === 'level_up';
+      if (isLevelUp && (typeof insert?.level !== 'number' || !Number.isInteger(insert.level) || insert.level < 1)) {
+        return { ok: false, error: 'bad level' };
+      }
+      if (!isLevelUp && insert?.level != null) {
+        return { ok: false, error: 'level only allowed on level_up rows' };
+      }
+      if (typeof insert?.createdAt !== 'number' || !Number.isFinite(insert.createdAt)) {
+        return { ok: false, error: 'bad createdAt' };
+      }
+      if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
+      const db = getDatabase().getDatabase();
+      insertExpEvent(db, isLevelUp ? { ...insert, delta: 0 } : insert);
+      return { ok: true };
+    } catch (error: any) {
+      console.error('[Electron] game:saveExpEvent failed:', error);
+      return { ok: false, error: error?.message ?? String(error) };
+    }
+  });
+
+  ipcMain.handle('game:loadExpEvents', async (_event, characterId: string, sinceMs: number) => {
+    try {
+      if (typeof characterId !== 'string' || characterId.length === 0 || characterId.length > 200) {
+        return { ok: false, error: 'bad characterId' };
+      }
+      if (typeof sinceMs !== 'number' || !Number.isFinite(sinceMs)) {
+        return { ok: false, error: 'bad sinceMs' };
+      }
+      if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
+      const db = getDatabase().getDatabase();
+      ensureExpEventsTable(db);
+      return { ok: true, events: loadExpEventsSince(db, characterId, sinceMs) };
+    } catch (error: any) {
+      console.error('[Electron] game:loadExpEvents failed:', error);
+      return { ok: false, error: error?.message ?? String(error) };
+    }
+  });
+
+  ipcMain.handle('game:growthOverview', async () => {
+    try {
+      if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
+      const db = getDatabase().getDatabase();
+      return { ok: true, rows: aggregateCharacterActivity(db) };
+    } catch (error: any) {
+      console.error('[Electron] game:growthOverview failed:', error);
       return { ok: false, error: error?.message ?? String(error) };
     }
   });

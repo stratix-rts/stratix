@@ -41,6 +41,7 @@ import { defineStratButton, STRAT_BUTTON_TAG } from '../widgets/strat-button';
 
 import { mountCharacterScreen } from './character-screen';
 import type { AppearancePreviewPort } from './appearance-preview-port';
+import type { GrowthStatsPort } from './growth-catalog';
 import { mountSettingsScreen } from './settings-screen';
 import type { CustomAgentsPort } from './custom-agents-port';
 import { mountStatusScreen } from './status-screen';
@@ -236,6 +237,11 @@ export interface MainScreenOptions {
   readonly taskStats?: TaskStatsProvider;
   readonly pipelines?: PipelineFeedInput;
   /**
+   * 成长看板数据口（@since v3.36，task_061）：角色屏「成长」tab 与全场总览排行的数据源。
+   * 缺省 = 引导语降级（非 Electron 场景），不拆屏可用性。
+   */
+  readonly growth?: GrowthStatsPort | null;
+  /**
    * 自定义 agent 注册端口（@since v3.32，task_056）：设置屏的注册管理组（查看 / 移除，
    * 新增入口在向导）。缺省 = 不显示该组（非 Electron 降级）。
    */
@@ -423,7 +429,10 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       host.appendChild(subHost);
       // character-screen 自带 topbar + 返回按钮 → ui.navigate(main) 或 ui.navigate(chat) 打开聊天抽屉。
       // @since v3.20（task_041）：形象编辑面板的预览端口随屏位注入（没给 = 面板降级，屏照常可用）。
-      unmountSubScreen = mountCharacterScreen(adapter, subHost, { appearance: options.appearance });
+      unmountSubScreen = mountCharacterScreen(adapter, subHost, {
+        appearance: options.appearance,
+        growth: options.growth,
+      });
       currentScreen = 'character';
     };
 

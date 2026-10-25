@@ -52,7 +52,13 @@ const DEFAULT_FILENAME = 'stratix.db';
  * 战场单位的唯一真相源：id 拼进 kind（`custom:<id>`）对外广播，命令串入库前已过
  * core/custom-agent.ts 的白名单校验（注入面在纯校验层封死，见该文件头安全边界注）。
  */
-const TARGET_SCHEMA_VERSION = 11;
+/**
+ * v12（@since v3.36，task_061）：新增 exp_events 表（角色经验事件审计流：exp.gained 逐条
+ * 落库 + level_up 里程碑行；DDL 与 app/services/persistence/exp-event-dao.ts 同构）。
+ * why 独立表：exp 变更此前无历史表（characters 只有当前快照），成长曲线 / 活动热力 /
+ * 履历时间线需要时间序真相源 —— 见 DAO 文件头。
+ */
+const TARGET_SCHEMA_VERSION = 12;
 
 /** Valid table name characters (alphanumeric + underscore) */
 const VALID_TABLE_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -170,6 +176,7 @@ export class StratixDatabase {
     this.migratePipelines();
     this.migrateAgentHealthEvents();
     this.migrateCustomAgents();
+    this.migrateExpEvents();
     this.migrateSafetyIndexes();
   }
 
@@ -341,6 +348,29 @@ export class StratixDatabase {
     `);
     this.db.exec('CREATE INDEX IF NOT EXISTS idx_agent_health_events_kind_time ON agent_health_events(kind, created_at)');
     log('info', 'Created agent_health_events table (task_054)');
+  }
+
+  /**
+   * 角色经验事件表（@since v3.36，task_061，schema v12）：progression-service 在
+   * exp.gained / 升级结算时逐条写入（写入面 = app/services/persistence/exp-record.ts 的
+   * persister 注入件）。IF NOT EXISTS 幂等：新库在 createTables 里建过，这里是旧库
+   * （schema_version ≤ 11）的升级路径。DDL 与 exp-event-dao.ts 同构同步改（铁律同上）。
+   */
+  private migrateExpEvents(): void {
+    const tables = this.getTableNames();
+    if (tables.has('exp_events')) return;
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS exp_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        character_id TEXT NOT NULL,
+        delta INTEGER NOT NULL,
+        reason TEXT NOT NULL CHECK (reason IN ('task_completed', 'task_failed', 'chat_round', 'level_up')),
+        level INTEGER,
+        created_at INTEGER NOT NULL
+      )
+    `);
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_exp_events_character_time ON exp_events(character_id, created_at)');
+    log('info', 'Created exp_events table (task_061)');
   }
 
   /**

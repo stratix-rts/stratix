@@ -93,7 +93,7 @@ describe('StratixDatabase schema v6（artifacts 列，task_048）', () => {
       // 版本断言跟随目标（新鲜库就是最新形状，不存在「新库停在 v6」的中间态）。
       // @since v3.27（task_051）目标 schema 是 v8（+pipelines 表 +pipeline_id 列）。
       // @since v3.29（task_053）目标 schema 是 v9（+characters.context_enabled 列）。
-      expect(version.v).toBe(11); // v11（task_056）起目标 schema 是 11（custom_agents）
+      expect(version.v).toBe(12); // v12（task_061）起目标 schema 是 12（exp_events）
       // DAO 直接可用（迁移产物与 DAO 的 DDL 同构）
       ensureCharacterTasksTable(db.getDatabase());
       upsertTask(db.getDatabase(), record());

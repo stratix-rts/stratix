@@ -8,6 +8,9 @@
  *       → 升级（levelUps > 0）则广播 level.up（fromLevel / toLevel 取自 manager 的结算结果）。
  *   落库后 033 的 game-save-coordinator 档案 diff 订阅自动把 level / exp 持久化到 SQLite
  *   （characters 表）—— 本服务不碰任何 IO。
+ *   经验事件审计流（@since v3.36，task_061）：可选 persistExpEvent 注入件把每条 exp.gained
+ *   逐条写进 exp_events 表（升级时补一条 level_up 里程碑行）—— 成长曲线 / 活动热力的时间序
+ *   真相源。注入件自己负责 IO（Electron = IPC 通道，缺省 = 不落库），本服务仍零 IO。
  * 输入：core 总线的 world 事件流 + 注入的 character manager（成长数值写入面的唯一入口）。
  * 输出：WorldState.characters 的更新（经 manager）+ level.up 总线事件。
  * 禁止事项：
@@ -37,6 +40,18 @@ export interface ProgressionServiceDeps {
   readonly characterManager: CharacterManager;
   /** 日志口；缺省静默（与 task-service / chat-service 同一口径）。 */
   readonly logger?: (line: string) => void;
+  /**
+   * 经验事件落库口（@since v3.36，task_061）：每条 exp.gained 落一行来源行；升级再补一条
+   * level_up 里程碑行（delta = 0，level = 升级后等级）。缺省 = 不落库（非 Electron 降级）。
+   * 同步签名 fire-and-forget：注入件内部自己吞 IO 异常（曲线少一个点不是错误，养成状态另有真相）。
+   */
+  readonly persistExpEvent?: (insert: {
+    readonly characterId: string;
+    readonly delta: number;
+    readonly reason: 'task_completed' | 'task_failed' | 'chat_round' | 'level_up';
+    readonly level: number | null;
+    readonly createdAt: number;
+  }) => void;
 }
 
 /** 对外形状（组合根与单测按它操作）。 */
@@ -57,9 +72,25 @@ export function createProgressionService(deps: ProgressionServiceDeps): Progress
       logger(`[progression] exp.gained 写入被拒（${event.characterId}/${event.source}/${result.code}）`);
       return;
     }
+    // 经验事件审计流（task_061）：来源行逐条落 exp_events（先落库后广播，订阅者拿到库里最新序）。
+    deps.persistExpEvent?.({
+      characterId: event.characterId,
+      delta: event.amount,
+      reason: event.source,
+      level: null,
+      createdAt: Date.now(),
+    });
     // 升级广播时机：只有 levelUps > 0 才发（对账降级为负、普通累加为 0 都不算升级）；
     // 跨多级只发**一条**（级差由 toLevel - fromLevel 表达，与 levelUpCheck 一次结算的口径一致）。
     if (result.levelUps <= 0) return;
+    // 里程碑行：升级结算补一条 level_up（delta 恒 0，level = 升级后等级）—— 曲线标记的真相源。
+    deps.persistExpEvent?.({
+      characterId: event.characterId,
+      delta: 0,
+      reason: 'level_up',
+      level: result.character.level,
+      createdAt: Date.now(),
+    });
     emitWorldEvent({
       type: 'level.up',
       characterId: event.characterId,

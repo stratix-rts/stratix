@@ -14,6 +14,11 @@ import type { ChatMessageInsert, PersistedChatMessage } from '../app/services/pe
 import type { PersistedTaskRecord, PersistedTaskStatRow } from '../app/services/persistence/task-record-dao';
 import type { PersistedPipelineRecord } from '../app/services/persistence/pipeline-record-dao';
 import type { AgentHealthEventInsert } from '../app/services/persistence/agent-health-dao';
+import type {
+  ExpEventInsert,
+  PersistedActivityRow,
+  PersistedExpEvent,
+} from '../app/services/persistence/exp-event-dao';
 import type { PersistedCustomAgentRecord } from '../app/services/persistence/custom-agent-dao';
 
 /**
@@ -152,6 +157,12 @@ export interface ElectronAPI {
     savePipeline: (record: PersistedPipelineRecord) => Promise<{ ok: boolean; error?: string }>;
     /** 插入一条 agent 健康事件（@since v3.30，task_054，落 agent_health_events 表）。 */
     saveHealthEvent: (insert: AgentHealthEventInsert) => Promise<{ ok: boolean; error?: string }>;
+    /** 插入一条角色经验事件（@since v3.36，task_061，落 exp_events 表；曲线 / 热力真相源）。 */
+    saveExpEvent: (insert: ExpEventInsert) => Promise<{ ok: boolean; error?: string }>;
+    /** 读某角色自 sinceMs 起的经验事件（created_at 升序）。 */
+    loadExpEvents: (characterId: string, sinceMs: number) => Promise<{ ok: boolean; events?: PersistedExpEvent[]; error?: string }>;
+    /** 全场活跃度聚合（@since v3.36，task_061：三源 UNION 按角色计数 + 建档时间）。 */
+    growthOverview: () => Promise<{ ok: boolean; rows?: PersistedActivityRow[]; error?: string }>;
   };
 
   /**
@@ -285,7 +296,8 @@ const electronAPI: ElectronAPI = {
   // 统计聚合（@since v3.26，task_050）：game:taskStats；
   // 流水线编排态（@since v3.27，task_051）：game:savePipeline（站任务的 pipeline_id 归属
   // 复用 game:saveTask 多带一列，不另开面）；
-  // agent 健康事件（@since v3.30，task_054）：game:saveHealthEvent + 周期探测 agent:detected:probe。
+  // agent 健康事件（@since v3.30，task_054）：game:saveHealthEvent + 周期探测 agent:detected:probe；
+  // 角色经验事件（@since v3.36，task_061）：game:saveExpEvent / game:loadExpEvents / game:growthOverview。
   gameSave: {
     loadSnapshot: () => ipcRenderer.invoke('game:loadSnapshot'),
     saveCharacters: (records: PersistedCharacterRecord[]) => ipcRenderer.invoke('game:saveCharacters', records),
@@ -297,6 +309,9 @@ const electronAPI: ElectronAPI = {
     loadTaskStats: () => ipcRenderer.invoke('game:taskStats'),
     savePipeline: (record: PersistedPipelineRecord) => ipcRenderer.invoke('game:savePipeline', record),
     saveHealthEvent: (insert: AgentHealthEventInsert) => ipcRenderer.invoke('game:saveHealthEvent', insert),
+    saveExpEvent: (insert: ExpEventInsert) => ipcRenderer.invoke('game:saveExpEvent', insert),
+    loadExpEvents: (characterId: string, sinceMs: number) => ipcRenderer.invoke('game:loadExpEvents', characterId, sinceMs),
+    growthOverview: () => ipcRenderer.invoke('game:growthOverview'),
   },
 
   /**
