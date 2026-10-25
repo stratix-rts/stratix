@@ -122,6 +122,8 @@ interface HarnessOptions {
   readonly maxTasks?: number;
   /** 经验权重注入（task_039）；缺省走 exp-config 的临时常量（完成 50 / 失败 10 / 轮 5）。 */
   readonly expWeight?: (source: ExpSource) => number;
+  /** 流式转发端口注入（task_046）；缺省不接（生产接 hud 任务输出面板）。 */
+  readonly onTaskChunk?: (characterId: string, chunk: string) => void;
 }
 
 interface Harness {
@@ -132,6 +134,8 @@ interface Harness {
   readonly persisted: TaskPersistRecord[];
   /** onTaskSettled 回调收到的终态记录（task_039；完成带全文 / 失败带原因）。 */
   readonly settled: TaskPersistRecord[];
+  /** onTaskChunk 端口收到的 (characterId, chunk) 依次记录（task_046）。 */
+  readonly chunks: Array<{ characterId: string; chunk: string }>;
   setState(patch: Partial<Pick<WorldState, 'characters' | 'detectedAgents'>>): void;
 }
 
@@ -154,12 +158,14 @@ function makeHarness(options: HarnessOptions = {}): Harness {
   const { factory, calls } = makeFactory(options.scripts ?? [scripted()]);
   const persisted: TaskPersistRecord[] = [];
   const settled: TaskPersistRecord[] = [];
+  const chunks: Array<{ characterId: string; chunk: string }> = [];
   const service = createTaskService({
     getState: () => store.getState(),
     createTransport: factory,
     taskManager: manager,
     persistTask: (record) => persisted.push(record),
     onTaskSettled: (record) => settled.push(record),
+    onTaskChunk: options.onTaskChunk ?? ((characterId, chunk) => chunks.push({ characterId, chunk })),
     expWeight: options.expWeight,
     timeoutMs: options.timeoutMs,
   });
@@ -172,6 +178,7 @@ function makeHarness(options: HarnessOptions = {}): Harness {
     calls,
     persisted,
     settled,
+    chunks,
     setState: (patch) => store.setState((state) => ({ ...state, ...patch })),
   };
 }
@@ -671,5 +678,108 @@ describe('终态副作用：onTaskSettled 回调 + exp.gained 发射（task_039�
     expect(exp.events).toEqual([
       { type: 'exp.gained', characterId: 'ch-1', source: 'task_failed', amount: DEFAULT_EXP_WEIGHTS.task_failed },
     ]);
+  });
+});
+
+// ============================================================================
+// 流式输出转发端口：onTaskChunk（task_046 —— hud 任务输出面板的实时 tail 视图）
+// ============================================================================
+
+describe('流式转发：onTaskChunk 端口（task_046）', () => {
+  test('message 事件的 chunk 按到达顺序转发（与 output 拼接同一顺序）', async () => {
+    const h = makeHarness({
+      scripts: [
+        scripted(
+          { type: 'session', sessionId: 'one-shot' },
+          { type: 'message', text: '第一段' },
+          { type: 'message', text: '第二段' },
+          { type: 'done', exitCode: 0, text: '第一段第二段', sessionId: null }
+        ),
+      ],
+    });
+    assign(h, '流式任务');
+    await flush();
+
+    expect(h.chunks).toEqual([
+      { characterId: 'ch-1', chunk: '第一段' },
+      { characterId: 'ch-1', chunk: '第二段' },
+    ]);
+    // 终态全文 = 转发 chunk 的拼接（同一份数据，两条出口）
+    expect(h.settled[0]?.output).toBe(h.chunks.map((c) => c.chunk).join(''));
+  });
+
+  test('session / tool_use / tool_result 不转发（任务结果只收 message 文本）', async () => {
+    const h = makeHarness({
+      scripts: [
+        scripted(
+          { type: 'session', sessionId: 'one-shot' },
+          { type: 'tool_use', tool: 'Bash', input: {}, id: 't1' },
+          { type: 'tool_result', tool: 'Bash', text: '工具回执', id: 't1' },
+          { type: 'message', text: '结论' },
+          { type: 'done', exitCode: 0, text: '结论', sessionId: null }
+        ),
+      ],
+    });
+    assign(h, '带工具调用的任务');
+    await flush();
+
+    expect(h.chunks).toEqual([{ characterId: 'ch-1', chunk: '结论' }]);
+  });
+
+  test('多角色并行：chunk 各归各的 characterId（互不串台）', async () => {
+    const h = makeHarness({
+      scripts: [
+        async function* script() {
+          yield { type: 'message', text: '甲的流' } as TransportEvent;
+          await new Promise((r) => setTimeout(r, 5)); // 微压栈，让两条执行交错
+          yield { type: 'done', exitCode: 0, text: '甲的流', sessionId: null } as TransportEvent;
+        },
+        async function* script() {
+          yield { type: 'message', text: '乙的流' } as TransportEvent;
+          yield { type: 'done', exitCode: 0, text: '乙的流', sessionId: null } as TransportEvent;
+        },
+      ],
+    });
+    assign(h, '甲的任务', 'ch-1');
+    assign(h, '乙的任务', 'ch-2');
+    await flush();
+
+    const byCharacter = new Map(h.chunks.map((c) => [c.characterId, c.chunk]));
+    expect(byCharacter.get('ch-1')).toBe('甲的流');
+    expect(byCharacter.get('ch-2')).toBe('乙的流');
+  });
+
+  test('回调抛错不绑架执行回路：任务照常 completed，后续 chunk 照常转发', async () => {
+    const received: string[] = [];
+    let calls = 0;
+    const h = makeHarness({
+      scripts: [
+        scripted(
+          { type: 'message', text: '第一段' },
+          { type: 'message', text: '第二段' },
+          { type: 'done', exitCode: 0, text: '第一段第二段', sessionId: null }
+        ),
+      ],
+      onTaskChunk: (characterId, chunk) => {
+        calls += 1;
+        if (calls === 1) throw new Error('观察口炸了');
+        received.push(chunk);
+      },
+    });
+    assign(h, '抛错也要跑完');
+    await flush();
+
+    expect(calls).toBe(2); // 第一次抛了，第二次照转（fire-and-forget）
+    expect(received).toEqual(['第二段']);
+    expect(h.settled[0]).toMatchObject({ status: 'completed', output: '第一段第二段' });
+  });
+
+  test('守门拦截的任务（从未进 transport）零转发', async () => {
+    const h = makeHarness({ detected: [] }); // agent 未检出 → 出队即 failed
+    assign(h, '注定跑不起来的任务');
+    await flush();
+
+    expect(h.chunks).toEqual([]);
+    expect(h.settled[0]).toMatchObject({ status: 'failed' });
   });
 });

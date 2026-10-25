@@ -49,7 +49,14 @@
  *   amount 由注入的 expWeight 换算，缺省 app/services/exp-config.ts 的临时常量；
  *   **数值表归 task_040 的 progression 模块**（交接注记见 exp-config.ts 文件头，两侧已注明）。
  *
- * @since v3.16（task_037）；v3.18（task_039）追加终态副作用。
+ * ============ 流式输出转发（task_046）============
+ * 执行期每个 message 事件的文本 chunk 经 onTaskChunk 端口原序转发（组合根接 hud 任务输出
+ * 面板的 appendTaskOutput —— running 任务的实时 tail 视图）。fire-and-forget（与 persistTask
+ * 同一纪律）：回调抛错只记日志，绝不绑架执行回路；tool_use / tool_result / session 事件不转发
+ * （任务结果只收 message 文本，与 output 拼接同一口径）。转发在 startTask 之后开始 ——
+ * 总线同步广播保证了订阅方先见到 running 再见到 chunk，面板的开工对账（清空重开）不会丢流。
+ *
+ * @since v3.16（task_037）；v3.18（task_039）追加终态副作用；v3.22（task_046）追加流转发端口。
  */
 
 import { emitWorldEvent, onWorldEvent } from '../../core/bus';
@@ -196,6 +203,12 @@ export interface TaskServiceDeps {
    */
   readonly onTaskSettled?: (record: TaskPersistRecord) => void;
   /**
+   * 流式输出转发端口（@since v3.22，task_046；缺省不转发）。执行期每个 message 事件的
+   * 文本 chunk 按到达顺序转发（characterId, chunk）。同步签名、fire-and-forget：抛错只记
+   * 日志，绝不绑架任务执行回路。组合根接 hud 任务输出面板的 appendTaskOutput（实时 tail 视图）。
+   */
+  readonly onTaskChunk?: (characterId: string, chunk: string) => void;
+  /**
    * 经验权重函数（@since v3.18，task_039；缺省 exp-config 的临时常量表）。
    * **task_040 交接点**：progression 模块接管数值时换掉这个注入件，本服务零改动。
    */
@@ -261,6 +274,19 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
       emitWorldEvent({ type: 'exp.gained', characterId, source, amount });
     } catch (error) {
       logger(`[task-service] exp.gained 发射失败（${characterId}/${source}）：${describe(error)}`);
+    }
+  };
+
+  /**
+   * 流式 chunk 转发（task_046）：fire-and-forget —— 回调抛错只记日志，
+   * 观察口（tail 视图）坏了绝不能绑架任务执行本身。
+   */
+  const emitChunk = (characterId: string, chunk: string): void => {
+    if (!deps.onTaskChunk) return;
+    try {
+      deps.onTaskChunk(characterId, chunk);
+    } catch (error) {
+      logger(`[task-service] 流式输出转发抛错（${characterId}）：${describe(error)}`);
     }
   };
 
@@ -355,6 +381,7 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
       for await (const event of transport.spawn(prompt, { sessionId: null, timeoutMs })) {
         if (event.type === 'message') {
           output += event.text;
+          emitChunk(task.characterId, event.text); // 实时 tail 视图（task_046）：原序转发，不拦流
           continue;
         }
         if (event.type === 'session') continue; // 一次性会话：id 不记录、不回写、不透传

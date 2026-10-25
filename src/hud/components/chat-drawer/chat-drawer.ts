@@ -12,6 +12,10 @@
  *   CHAT_HISTORY_LOAD_LIMIT（50）条逐条回填进会话存储（库里的历史与重建后的新会话在 UI 层
  *   天然同一段消息流 = 连续展示）。**按需向后分页后置**：当前只取尾部窗口，"滚动到顶再翻页"
  *   的触发器留给后续任务（DAO 的 LIMIT 窗口语义已就位）。
+ *   @since v3.22（task_046 追加）：头部与消息区之间嵌挂任务输出面板（`<strat-task-output-panel>`）——
+ *   034 的「点单位 → 抽屉打开」是既有语义，busy 单位的实时 CLI 流顺着同一入口可见（冲突裁决：
+ *   不另开面板抢点击，抽屉头部下挂折叠区）。本文件只做三件事：嵌挂元素、转发 subscribe、
+ *   open / setCharacter 时同步上下文（showFor）；流式文本与跟随/折叠交互全在 task-output-panel.ts。
  * 输入：注入的 deps（subscribe：吃 WorldState 快照 —— 选择集驱动开抽屉/切上下文、
  *   characters 档案驱动头部；onSend：发送回调，由组合根桥接 chat-service —— task_035 接线）。
  * 输出：Shadow DOM 抽屉；流式公开方法 appendStream / finalizeStream / addMessage / setSending
@@ -42,6 +46,11 @@
 
 import type { WorldState } from '../../../core/types';
 import type { HudBusAdapter } from '../../bridge/bus-adapter';
+import {
+  defineTaskOutputPanel,
+  TASK_OUTPUT_PANEL_TAG,
+  type StratTaskOutputPanelElement,
+} from '../task-output/task-output-panel';
 
 import {
   UNBOUND_KIND_LABEL,
@@ -120,6 +129,8 @@ export interface StratCharacterChatDrawerElement extends HTMLElement {
   readonly streaming: Readonly<StreamBuffer> | null;
   /** 最近一次收到的 WorldState。 */
   readonly lastState: WorldState | null;
+  /** 嵌挂的任务输出面板（task_046）；未挂载（chrome 未建）为 null。组合根经它接流转发端口。 */
+  readonly taskOutput: StratTaskOutputPanelElement | null;
 }
 
 /** HTML 文本转义。消息正文与角色名含外部输入，必须转义后才进 innerHTML。 */
@@ -155,6 +166,8 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
     /** 已成功回填（或确认无需回填）历史的角色 id（task_036）：每角色每生命周期至多一次。 */
     private readonly _historyLoaded = new Set<string>();
     private readonly _sessions: CharacterChatSessions = createCharacterChatSessions();
+    /** 嵌挂的任务输出面板（task_046）：renderChrome 时捕获，deps 转发与 showFor 都走它。 */
+    private _taskOutput: StratTaskOutputPanelElement | null = null;
 
     // —— 属性面 ——
     get deps(): CharacterChatDrawerDeps | null { return this._deps; }
@@ -180,6 +193,7 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
     get sessionCharacterIds(): readonly string[] { return this._sessions.characterIds; }
     get streaming(): Readonly<StreamBuffer> | null { return this._sessions.stream; }
     get lastState(): WorldState | null { return this._lastState; }
+    get taskOutput(): StratTaskOutputPanelElement | null { return this._taskOutput; }
 
     connectedCallback(): void {
       // 幂等：hot-reload / 反复挂卸会重复进入，必须能安全重建。
@@ -202,6 +216,7 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
       if (characterId && characterId !== this._sessions.viewing) {
         this._sessions.setViewing(characterId);
         this.syncHeader();
+        this._taskOutput?.showFor(characterId); // task_046：任务输出跟着切上下文
       }
       this._open = true;
       this.syncRail();
@@ -219,6 +234,7 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
       if (this._sessions.viewing === characterId) return;
       this._sessions.setViewing(characterId);
       this.syncHeader();
+      this._taskOutput?.showFor(characterId); // task_046：任务输出跟着切上下文
       this.renderMessages();
       this.syncComposer();
       this.requestHistory(characterId); // task_036：切角色即拉该角色历史
@@ -249,7 +265,14 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
 
     // —— 订阅生命周期 ——
     private bindDeps(): void {
-      if (!this.isConnected || !this._deps || this._unsubscribe) return;
+      if (!this.isConnected || !this._deps) return;
+      // 嵌挂的任务输出面板（task_046）：吃同一份 subscribe（总线状态是公共广播面，
+      // 各自订阅各自退订）；并同步当前上下文（挂载晚于 open 的时序补一次 showFor）。
+      if (this._taskOutput) {
+        this._taskOutput.deps = { subscribe: this._deps.subscribe };
+        this._taskOutput.showFor(this._sessions.viewing);
+      }
+      if (this._unsubscribe) return;
       this._unsubscribe = this._deps.subscribe((state) => this.handleState(state));
     }
 
@@ -339,6 +362,9 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
       const root = this.shadowRoot;
       if (!root) return;
 
+      // 嵌挂组件先注册（幂等）：innerHTML 解析到标签时才能同步 upgrade。
+      defineTaskOutputPanel();
+
       root.innerHTML = `
         <style>
           /* 右侧覆盖抽屉：宿主只占位不拦事件（关着时右侧战场可正常点选），开合交给 .rail 平移 */
@@ -355,7 +381,7 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
           }
           .rail {
             display: grid;
-            grid-template-rows: auto 1fr auto;
+            grid-template-rows: auto auto 1fr auto;
             height: 100%;
             box-sizing: border-box;
             gap: var(--srf-spacing-sm, 8px);
@@ -512,6 +538,7 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
             <span class="spacer"></span>
             <button type="button" class="close" data-role="close">关闭</button>
           </div>
+          <strat-task-output-panel data-role="task-output"></strat-task-output-panel>
           <div class="messages" data-role="messages" aria-live="polite"></div>
           <div class="composer">
             <textarea data-role="draft" placeholder="对角色说点什么…（Enter 发送）" disabled></textarea>
@@ -527,6 +554,11 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
       // 外壳重建后把草稿写回输入框：草稿是面板瞬时态，不随 DOM 重建丢失
       const box = root.querySelector<HTMLTextAreaElement>('[data-role="draft"]');
       if (box) box.value = this._draft;
+
+      // 嵌挂的任务输出面板（task_046）：外壳重建后重新捕获引用（重建后是新元素，
+      // 旧引用的订阅已随 disconnectedCallback 退订，不会泄漏）；deps 与上下文由随后的
+      // bindDeps 补上。
+      this._taskOutput = root.querySelector<StratTaskOutputPanelElement>(TASK_OUTPUT_PANEL_TAG);
 
       if (!this._listenersBound) {
         this._listenersBound = true;

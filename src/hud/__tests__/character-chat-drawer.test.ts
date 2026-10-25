@@ -583,9 +583,35 @@ describe('组件：流式增量渲染', () => {
 describe('组件：卸载退订', () => {
   test('反复挂卸不累积监听器', () => {
     const h = mountPanel();
-    expect(h.subscriberCount()).toBe(1);
+    // task_046 起抽屉嵌挂任务输出面板，它吃同一份 subscribe（各自订阅各自退订）→ 2 条。
+    expect(h.subscriberCount()).toBe(2);
     h.unmount();
     expect(h.subscriberCount()).toBe(0);
+  });
+});
+
+// ============================================================================
+// 嵌挂的任务输出面板（task_046）
+// ============================================================================
+
+describe('组件：嵌挂任务输出面板（task_046）', () => {
+  test('抽屉携带嵌挂面板，open 切上下文时同步 showFor', () => {
+    const h = mountPanel();
+    const taskOutput = h.panel.taskOutput;
+    expect(taskOutput).not.toBeNull();
+    expect(taskOutput?.characterId).toBeNull();
+    h.panel.open('c1');
+    expect(taskOutput?.characterId).toBe('c1');
+    h.panel.setCharacter('c2');
+    expect(taskOutput?.characterId).toBe('c2');
+    // 流式端口随嵌挂可用（组合根经 taskOutput 接 onTaskChunk）
+    h.emit(makeState({ tasks: [{
+      id: 'task-1', characterId: 'c2', prompt: 'p', status: 'running',
+      createdAt: 1, startedAt: 1, endedAt: null, output: '',
+    }] }));
+    taskOutput?.appendTaskOutput('c2', '流');
+    expect(taskOutput?.outputText).toBe('流');
+    h.unmount();
   });
 });
 

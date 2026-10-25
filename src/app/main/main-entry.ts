@@ -44,6 +44,10 @@
  *   character manager 在组合根显式创建，与 runtime / progression-service 共享同一实例
  *     （与 taskManager 同一模式：两处写的是同一份 WorldState）。
  *
+ * @since v3.22（task_046）任务实时输出流：抽屉嵌挂的任务输出面板（characterDrawer.taskOutput）
+ *   接 task-service 的新端口 onTaskChunk —— 执行期 chunk 原序转发进面板缓冲（实时 tail 视图）。
+ *   本文件仍然只接线：面板的开工对账 / 截断 / 跟随全在 hud 组件内，服务只管转发。
+ *
  * 加载路径：dev 走 vite dev server 的 /src/app/main/index.html；
  *   正式构建走 dist/frontend/src/app/main/index.html（由 vite.config.ts 的 input 产出）。
  *   本页是**唯一**入口：旧 Vue 入口链随 task_017 退役，STRATIX_LEGACY 开关已下线，
@@ -217,6 +221,9 @@ async function boot(): Promise<void> {
     chatHost
   );
   const characterDrawer = chatHost.querySelector(CHARACTER_CHAT_DRAWER_TAG) as StratCharacterChatDrawerElement | null;
+  // 任务输出面板（task_046）：嵌挂在抽屉里，经抽屉的公开引用接流转发端口。
+  // 无 Electron（纯 vite dev）时抽屉照挂、面板照嵌 —— 只是没人喏 chunk（行为退回 038 之前）。
+  const taskOutputView = characterDrawer?.taskOutput ?? null;
   const cliChat = cliChatIpcApi();
   // 历史通道与 cliChat 同源（都在 preload 的 electronAPI 上）：非 Electron 环境两者皆无，行为退回 034。
   const chatHistory = chatHistoryApi();
@@ -392,6 +399,11 @@ async function boot(): Promise<void> {
         const taskApi = taskRecordApi();
         return taskApi ? makeTaskRecordPersister(taskApi) : undefined;
       })(),
+      // task_046：执行期 chunk 原序转发进任务输出面板（实时 tail 视图）。面板拿不到
+      // （极端时序：chrome 未建）时端口不接 —— 执行照常，只是没有实时视图。
+      onTaskChunk: taskOutputView
+        ? (characterId, chunk) => taskOutputView.appendTaskOutput(characterId, chunk)
+        : undefined,
       // task_039：终态回调 → 结果回流（报告落库 + 抽屉注入 + toast）。消息落库与聊天共用同一个
       // persister（同表同词表）；toast 借上面挂的宿主。抽屉元素拿不到（非 Electron 边角）时
       // view 传 undefined：只落库 + 轻提示，不注入。
