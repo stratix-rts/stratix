@@ -570,3 +570,56 @@ describe('world 事件：agent.online / agent.offline（task_054 接地）', () 
     expect(a?.online).toBe(false);
   });
 });
+
+// ============================================================================
+// camera.center（@since v3.33，task_057）：小地图跳转 —— HudCommand 钳制后转发同名
+// WorldEvent 到 world 通道（消费者是场景相机）；world 通道回环的事件显式接地。
+// ============================================================================
+
+describe('HudCommand camera.center：命令 → 钳制 → world 通道转发', () => {
+  test('命令越界坐标被钳进 WORLD_BOUNDS 后转发（事件名同名，方向不同）', () => {
+    const { states, stop } = harness();
+    cleanups.push(stop);
+
+    const events: WorldEvent[] = [];
+    const off = onWorldEvent((event) => events.push(event));
+    cleanups.push(off);
+
+    emitCommand({ type: 'camera.center', x: -100, y: 99999 });
+
+    const center = events.find((event) => event.type === 'camera.center');
+    expect(center).toEqual({ type: 'camera.center', x: 0, y: 2400 }); // WORLD_BOUNDS 高 2400
+    // 不改任何状态：坐标真相在世界层，core 只做钳制与转交
+    expect(states).toHaveLength(0);
+  });
+
+  test('命令边界内坐标原样转发；WorldState 不变、不进 onUnhandled', () => {
+    const { states, unhandled, stop } = harness();
+    cleanups.push(stop);
+
+    const events: WorldEvent[] = [];
+    const off = onWorldEvent((event) => events.push(event));
+    cleanups.push(off);
+
+    emitCommand({ type: 'camera.center', x: 1600, y: 1200 });
+
+    expect(events.find((event) => event.type === 'camera.center')).toEqual({
+      type: 'camera.center',
+      x: 1600,
+      y: 1200,
+    });
+    expect(states).toHaveLength(0);
+    expect(unhandled).toHaveLength(0);
+  });
+});
+
+describe('world 事件：camera.center 回环接地（task_057）', () => {
+  test('不被当作未处理事件上报（消费者在世界场景，经桥接层转发）', () => {
+    const { unhandled, stop } = harness();
+    cleanups.push(stop);
+
+    emitWorldEvent({ type: 'camera.center', x: 100, y: 200 });
+
+    expect(unhandled).toHaveLength(0);
+  });
+});

@@ -1842,7 +1842,7 @@
     {
       "id": "task_057",
       "title": "小地图",
-      "status": "pending",
+      "status": "completed",
       "depends_on": [
         "task_045"
       ],

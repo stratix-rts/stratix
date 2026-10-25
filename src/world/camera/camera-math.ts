@@ -16,6 +16,10 @@
  */
 
 import type { Bounds, Point } from '../../core/types';
+// @since v3.33(task_057):边界数值的唯一真相上收到契约层(core/types 的 WORLD_BOUNDS)——
+//   core 的跳转钳制与 hud 小地图映射要用同一份边界,各自抄字面量必然漂移。这里只保留别名
+//   (既有导入方 world 侧仍从本文件取),不再持有数值。
+import { WORLD_BOUNDS } from '../../core/types';
 
 /** 缩放的硬下限：zoom=0 会让半视口变成 Infinity，后续钳制公式整体失效。 */
 const MIN_ZOOM_EPSILON = 1e-3;
@@ -41,8 +45,11 @@ export const DEFAULT_ZOOM_LIMITS: CameraLimits = { minZoom: 0.25, maxZoom: 3 };
 
 export const DEFAULT_ZOOM = 1;
 
-/** 默认战场边界（世界坐标）。v3 暂无地形系统，先给一块固定可用区域，后续由场景配置覆盖。 */
-export const DEFAULT_WORLD_BOUNDS: Bounds = { x: 0, y: 0, width: 3200, height: 2400 };
+/**
+ * 默认战场边界（世界坐标）。v3 暂无地形系统，先给一块固定可用区域，后续由场景配置覆盖。
+ * @since v3.33(task_057) 数值源上收到 core/types 的 WORLD_BOUNDS（三侧共用，见契约注）。
+ */
+export const DEFAULT_WORLD_BOUNDS: Bounds = WORLD_BOUNDS;
 
 /**
  * 修正 limits：非有限值兜底，并保证 0 < minZoom <= maxZoom。

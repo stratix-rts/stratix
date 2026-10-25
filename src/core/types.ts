@@ -68,6 +68,16 @@ export const MAX_TASK_PROMPT_LEN = 20_000;
  */
 export const MAX_TASK_SUMMARY_LEN = 2_000;
 
+/**
+ * @since v3.33（task_057）战场世界边界（世界坐标，左上角 + 宽高）。
+ * why 冻结在契约层：三处消费方 —— world 相机钳制（camera/camera-math 的 DEFAULT_WORLD_BOUNDS
+ * 以它为唯一来源）、core 的 camera.center 命令钳制（core/camera.ts）、hud 小地图的世界↔画布
+ * 映射（hud/components/minimap）—— 谁都不许自抄一份字面量，否则三层边界各长各样、
+ * 跳转与钳制互相打架。数值即此前 camera-math 的 DEFAULT_WORLD_BOUNDS（3200×2400），
+ * v3 暂无地形系统，后续如需可变边界再走契约增补。
+ */
+export const WORLD_BOUNDS: Bounds = Object.freeze({ x: 0, y: 0, width: 3200, height: 2400 });
+
 // ============================================================================
 // 基础形状（core 自定义，与渲染引擎解耦）
 // ============================================================================
@@ -912,6 +922,15 @@ export type HudCommand =
    */
   | { type: 'unit.focus'; unitId: string }
   /**
+   * @since v3.33 小地图跳转（task_057）：把相机对中到某个世界点（世界坐标）。
+   *   是 unit.focus 的**泛化**命令（点是世界点而不是单位 id —— 小地图点的是坐标，不是单位）：
+   *   core 收到后用 core/camera.ts 的纯函数钳进 WORLD_BOUNDS，再以同名 WorldEvent 转发到
+   *   world 通道（消费者是场景相机，同 task.* 「core 发出、world 消费」的先例）；
+   *   世界层最终落位仍过 camera-math 的钳制（双重钳制无害，口径同源）。
+   *   zoom 不变 —— 只跳转不缩放，语义最小。
+   */
+  | { type: 'camera.center'; x: number; y: number }
+  /**
    * @since v3.21 右击移动（task_045）：把选中编队移动到目标点（世界坐标）。
    *   编队落位由 core/unit/formation 的纯函数计算（网格以目标点为中心，间距 FORMATION_SPACING），
    *   终值经 world 通道的 unit.position 逐单位广播 —— ★ 位置立即生效于状态（世界层 UnitObject
@@ -1098,6 +1117,13 @@ export type WorldEvent =
       additive?: boolean;
     }
   | { type: 'camera.moved'; center: Point; zoom: number }
+  /**
+   * @since v3.33 小地图跳转（task_057）：HudCommand camera.center 经 core 钳制后的**转发形态**
+   *   （同名不同向，与 unit.move 同一先例 —— 命令是 hud → core 的意向，这条是 core → world
+   *   的落位指令）。消费者是世界场景（bridge 转发到 syncCameraCenter，把相机对中到该点）；
+   *   core 状态机不消费 —— 坐标真相在世界层，core 只做钳制与转交（runtime 接地）。
+   */
+  | { type: 'camera.center'; x: number; y: number }
   /**
    * @since v3.12 单位落位 / 移动上报（task_033）：世界层是位置的唯一真相（UnitView 不含坐标），
    *   位置变化（新单位落位、未来的拖拽移动）由此事件发回 core 方向 —— core 状态机不消费它

@@ -111,5 +111,8 @@ function describe(event: WorldEvent): string {
     case 'agent.online':
     case 'agent.offline':
       return `${event.type.padEnd(15)} ${event.kind}`;
+    // 小地图跳转（@since v3.33，task_057）：core 钳制后转发来的相机对中指令。
+    case 'camera.center':
+      return `${event.type.padEnd(15)} ${Math.round(event.x)},${Math.round(event.y)}`;
   }
 }

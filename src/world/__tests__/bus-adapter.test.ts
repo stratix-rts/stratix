@@ -486,3 +486,51 @@ describe('world 通道 → 场景：unit.position 转发（右击移动的编队
     expect(calls).toHaveLength(0);
   });
 });
+
+// ============================================================================
+// world 通道 → 场景：camera.center 转发（@since v3.33，task_057）
+// 小地图跳转：HudCommand 同名命令经 core 钳制后转发到 world 通道，桥接层把它递给
+// syncCameraCenter（场景把相机对中到目标世界点）。
+// ============================================================================
+
+describe('world 通道 → 场景：camera.center 转发（小地图跳转）', () => {
+  function createCameraPort() {
+    const calls: { x: number; y: number }[] = [];
+    const port: WorldScenePort = {
+      syncUnits: () => {},
+      syncSelection: () => {},
+      syncCameraCenter: (x, y) => calls.push({ x, y }),
+    };
+    return { port, calls };
+  }
+
+  test('core 转发的 camera.center 递给 syncCameraCenter', () => {
+    const { port, calls } = createCameraPort();
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+
+    emitWorldEvent({ type: 'camera.center', x: 1600, y: 1200 });
+
+    expect(calls).toEqual([{ x: 1600, y: 1200 }]);
+  });
+
+  test('port 不实现 syncCameraCenter（可选钩子）：安静跳过，不炸不报', () => {
+    const { port } = createFakePort(); // 老桩：没有 syncCameraCenter
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+
+    expect(() => {
+      emitWorldEvent({ type: 'camera.center', x: 1, y: 2 });
+    }).not.toThrow();
+  });
+
+  test('destroy 之后不再转发（场景已死，不为它挪相机）', () => {
+    const { port, calls } = createCameraPort();
+    const bridge = createWorldBridge(port, { now: clock });
+
+    bridge.destroy();
+    emitWorldEvent({ type: 'camera.center', x: 1, y: 2 });
+
+    expect(calls).toHaveLength(0);
+  });
+});

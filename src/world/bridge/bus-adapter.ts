@@ -10,7 +10,9 @@
  *     @since v3.25（task_049）追加转发 task.awaiting_approval（挂起画 ?）与 task.approved
  *     （折算 started —— 批准后回工作环）；
  *   - world 通道 → 场景（@since v3.21，task_045）：同一条订阅还转发 unit.position ——
- *     右击移动时 runtime 把编队终值广播出来，场景据此更新 UnitObject（立即）并 tween（表现）。
+ *     右击移动时 runtime 把编队终值广播出来，场景据此更新 UnitObject（立即）并 tween（表现）；
+ *     @since v3.33（task_057）：再转发 camera.center（HudCommand 同名命令经 core 钳制后的
+ *     小地图跳转指令）→ syncCameraCenter，场景把相机对中到目标世界点。
  * 输出：端口回调（渲染侧）+ bus 的 world 通道（业务侧）。
  * 禁止事项：
  *   1. import phaser 或任何 hud / vue / legacy(stratix-rts) 文件 —— 铁律：world 只认识 core/types 与 core/bus；
@@ -55,6 +57,13 @@ export interface WorldScenePort {
    * 回环无害：场景自己上报的落位也会走这条转发回来 —— 场景侧应用是幂等的（位置相同即 no-op）。
    */
   syncUnitPosition?(unitId: string, x: number, y: number): void;
+  /**
+   * 相机跳转钩子（@since v3.33，task_057）：world 通道上的 camera.center（HudCommand 同名
+   * 命令经 core 钳制后的转发形态）转发进场景 —— 小地图点击/拖拽把相机对中到目标世界点。
+   * 可选成员：不实现不破编译（同 syncTaskEvent 惯例）；场景侧落位时仍过 camera-math 的
+   * 视口钳制（比 core 的点钳制多一层视口半宽，双重钳制同源无害）。
+   */
+  syncCameraCenter?(x: number, y: number): void;
 }
 
 /** 场景侧的交互出口：场景调这些方法，桥接层负责转成 WorldEvent 发给 core。 */
@@ -145,6 +154,10 @@ export function createWorldBridge(
       case 'unit.position':
         // 场景自己上报的落位也会回到这里（同一通道）—— 场景侧幂等，重复应用是 no-op。
         port.syncUnitPosition?.(event.unitId, event.x, event.y);
+        break;
+      // 小地图跳转（task_057）：core 转发来的相机对中指令 → 场景应用并回发 camera.moved。
+      case 'camera.center':
+        port.syncCameraCenter?.(event.x, event.y);
         break;
       default:
         break;

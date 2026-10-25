@@ -7,6 +7,8 @@
  *     经同一个桥接层筛出并转发到 syncTaskEvent）——驱动单位头顶的工作表现（objects/task-fx*）；
  *   - core/bus 的 world 通道上的 unit.position（@since v3.21，task_045，转发到 syncUnitPosition）
  *     —— 右击移动时 runtime 把编队终值广播回来，场景立即写进 UnitObject 并 tween 过渡；
+ *   - core/bus 的 world 通道上的 camera.center（@since v3.33，task_057，转发到 syncCameraCenter）
+ *     —— 小地图点击/拖拽的跳转指令，场景把相机对中到目标世界点；
  *   - 浏览器指针输入（按下 / 移动 / 松开 / 滚轮）。
  * 输出：把交互转成 WorldEvent（unit.click / selection.box / unit.move / camera.moved），
  *   经桥接层发回 core。
@@ -137,6 +139,9 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
       worldBounds: DEFAULT_WORLD_BOUNDS,
       onChange: (pose) => this.bridge.cameraMoved(pose.center, pose.zoom),
     });
+    // 初始位姿补报（task_057）：相机控制器构造时不回调 onChange，不补这一声的话，
+    // 小地图要等到第一次交互才有视口框 —— 桥的合并窗口对首个事件直接放行（lastCameraEmitAt=null）。
+    this.bridge.cameraMoved(this.view.current.center, this.view.current.zoom);
 
     this.input.on('pointerdown', this.onPointerDown, this);
     this.input.on('pointermove', this.onPointerMove, this);
@@ -219,6 +224,19 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   syncUnitPosition(unitId: string, x: number, y: number): void {
     this.unitLayer.applyUnitPosition(unitId, x, y);
     this.taskFxLayer.sync();
+  }
+
+  /**
+   * 相机跳转（@since v3.33，task_057；由桥接层转发 world 通道的 camera.center）。
+   * 小地图点击/拖拽的目标点：保持 zoom 只动中心，落位仍过 camera-math 的视口钳制
+   * （apply 内部）；位姿真变了才回调 onChange → cameraMoved（合并窗口照常）。
+   * 拖拽小地图是连续一串 center —— 每次都补排一次 flush：合并窗口吞掉的末位姿
+   * 在停手后 ~CAMERA_EVENT_INTERVAL_MS 内补发（同滚轮的 scheduleCameraFlush 口径），
+   * 小地图视口框才不会停在倒数第二帧。
+   */
+  syncCameraCenter(x: number, y: number): void {
+    this.view.apply({ center: { x, y }, zoom: this.view.current.zoom });
+    this.scheduleCameraFlush();
   }
 
   /**

@@ -52,6 +52,10 @@
  *   （formatTaskArtifactsBlock 在 app 层算好文案再传字符串 —— hud 不 import app/），
  *   再走 039 的结果回流；📋 报告尾部的成果物块在 task-report 内部拼接。本文件仍然只接线。
  *
+ * @since v3.33（task_057）小地图：mountMinimap 接进 hud-root（命令口 = adapter.dispatch）；
+ *   单位 / 视口数据在本文件累积喸入（位置从恢复站位 + unit.position 事件，视口从 camera.moved
+ *   + 容器尺寸换算），组件侧零订阅 —— 仍是只接线，见「小地图」接线段的注释。
+ *
  * 加载路径：dev 走 vite dev server 的 /src/app/main/index.html；
  *   正式构建走 dist/frontend/src/app/main/index.html（由 vite.config.ts 的 input 产出）。
  *   本页是**唯一**入口：旧 Vue 入口链随 task_017 退役，STRATIX_LEGACY 开关已下线，
@@ -65,7 +69,7 @@ import { createCharacterManager } from '../../core/character';
 import { createCoreRuntime, type UnhandledChannel } from '../../core/runtime';
 import { expWeightFor } from '../../core/progression';
 import { worldStore } from '../../core/store';
-import type { DetectedAgent, HudCommand, WorldEvent } from '../../core/types';
+import type { DetectedAgent, HudCommand, Point, WorldEvent } from '../../core/types';
 import { createHudBusAdapter } from '../../hud/bridge/bus-adapter';
 import { createMainScreen } from '../../hud/screens/main-screen';
 import { levelUpToastText } from '../../hud/screens/appearance-unlock-catalog';
@@ -119,6 +123,8 @@ import {
 } from '../services/persistence/pipeline-record';
 import { createPipelineService } from '../services/pipeline-service';
 import { mountToastHost } from '../../hud/components/toast/toast-host';
+// 小地图宿主（@since v3.33，task_057）：右下角战场缩略图（单位点 / 视口框 / 点击跳转）。
+import { mountMinimap } from '../../hud/components/minimap/minimap';
 import { createTaskManager } from '../../core/task';
 import { createUnitSpriteSource } from '../services/unit-sprite-source';
 
@@ -525,6 +531,54 @@ async function boot(): Promise<void> {
     });
   }
 
+  // ===== 小地图（@since v3.33，task_057）=====
+  // 数据流（组件只认注入口，hud 零 import world）：
+  //   单位：位置真相在世界层（core 契约无坐标）—— 从恢复站位起步，吃 unit.position 事件累积；
+  //     皮肤/在线位从 WorldState 现读（onState 触发刷新）。新单位落位时场景会补发 unit.position，
+  //     那一路的刷新把新人补进快照；
+  //   视口：camera.moved（场景相机回调，合并窗口后的上报）+ 战场容器尺寸 → 世界坐标矩形喸入；
+  //   交互：组件发的 unit.select / camera.center 经 adapter.dispatch 走既有命令口。
+  const { element: minimap, unmount: unmountMinimap } = mountMinimap(hudRoot, {
+    dispatch: (command) => adapter.dispatch(command),
+  });
+  const minimapPositions = new Map<string, Point>(injection.positionsByUnitId);
+  const syncMinimapUnits = (): void => {
+    minimap.setUnits(
+      worldStore
+        .getState()
+        .units.filter((unit) => minimapPositions.has(unit.id))
+        .map((unit) => {
+          const at = minimapPositions.get(unit.id);
+          // filter 保证命中；非空断言只在同一次调用内成立，不会悬挂。
+          return { id: unit.id, x: at!.x, y: at!.y, skinId: unit.skinId, online: unit.online };
+        })
+    );
+  };
+  const stopMinimapWorldFeed = onWorldEvent((event) => {
+    if (event.type === 'unit.position') {
+      minimapPositions.set(event.unitId, { x: event.x, y: event.y });
+      syncMinimapUnits();
+      return;
+    }
+    // 视口矩形：center ± 半视口（屏幕尺寸 / zoom = 世界尺寸）。容器尺寸拿不到
+    //（隐藏 / 未布局）→ 本次不喸，等下一次上报 —— 不猜默认值。
+    if (event.type === 'camera.moved') {
+      const width = battlefieldHost.clientWidth;
+      const height = battlefieldHost.clientHeight;
+      if (!(width > 0) || !(height > 0)) return;
+      minimap.setViewport({
+        x: event.center.x - width / (2 * event.zoom),
+        y: event.center.y - height / (2 * event.zoom),
+        width: width / event.zoom,
+        height: height / event.zoom,
+      });
+    }
+  });
+  // 皮肤 / 在线位 / 单位增删都在 WorldState 里：广播触发一次快照重建（位置仍从累积表取）。
+  const stopMinimapStateFeed = onState(() => {
+    syncMinimapUnits();
+  });
+
   // ===== world 侧：Phaser 战场（BattlefieldScene 内部自带 world ↔ core 桥接层）=====
   const game = new Phaser.Game({
     type: Phaser.AUTO,
@@ -662,6 +716,10 @@ async function boot(): Promise<void> {
       stopLevelUpToast();
       stopAwaitingToast();
       stopPipelineToast();
+      // 小地图（task_057）：退总线订阅再卸宿主（与 toast 同一卸载纪律）。
+      stopMinimapStateFeed();
+      stopMinimapWorldFeed();
+      unmountMinimap();
       // 健康监测（task_054）：停周期探测 + 退恢复 toast 订阅。
       stopHealthToast();
       stopHealthMonitor();

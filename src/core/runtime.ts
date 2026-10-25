@@ -33,9 +33,12 @@
  *   task.awaiting_approval / task.approved 事件接地(同上,startsWith 已覆盖)。
  * @since v3.30(task_054)追加 agent.online / agent.offline 事件接地(app 健康监测的
  *   在线位广播,落点 applyAgentConnectivity 写 units.online)。
+ * @since v3.33(task_057)追加 camera.center 命令接线:钳制(core/camera.ts 纯函数)后转发
+ *   同名 WorldEvent 到 world 通道(消费者是场景相机);world 通道回环的 camera.center 显式接地。
  */
 
 import type { AgentLinkManager } from './agent-link';
+import { clampWorldPoint } from './camera';
 import { emitState, emitWorldEvent, onCommand, onWorldEvent, type Unsubscribe } from './bus';
 import { createCharacterManager, type CharacterManager } from './character';
 import { createMissionManager, type MissionManager } from './mission';
@@ -221,6 +224,14 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
       case 'unit.move':
         applyUnitMove(store, command.unitIds, command.x, command.y);
         return;
+      // @since v3.33 小地图跳转(task_057):钳进世界边界后转发到 world 通道(同名事件)。
+      // core 不持有相机状态,不在这里算视口 —— 消费者是场景(bridge 转发 syncCameraCenter,
+      // 场景按视口再钳一次后落位并回发 camera.moved)。同 task.* 「core 发出、world 消费」先例。
+      case 'camera.center': {
+        const clamped = clampWorldPoint({ x: command.x, y: command.y });
+        emitWorldEvent({ type: 'camera.center', x: clamped.x, y: clamped.y });
+        return;
+      }
       // @since v3.3 任务域:命令翻译只在 core/mission 里有一份(manager 负责转状态机动作 + 写库 + 报错)
       case 'mission.create':
         mission.createMission({ title: command.title, unitIds: command.unitIds });
@@ -374,6 +385,10 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         //   UI 反馈（041 的解锁提示 / toast 等）；等级真相在 characters 里且已先行落库，
         //   core 状态机不消费 —— 同惯例显式接地，不进 onUnhandled。
         if (event.type === 'unit.position') return;
+        // camera.center(@since v3.33,task_057):同名 WorldEvent 是 handleCommand 转发出去的
+        //   小地图跳转指令,消费者在世界场景(bridge 转发 syncCameraCenter) -- core 发出后
+        //   又在 world 通道上回到本订阅一次,这里显式接地(同 unit.position 惯例,不进 onUnhandled)。
+        if (event.type === 'camera.center') return;
         if (event.type === 'exp.gained') return;
         if (event.type === 'level.up') return;
         if (event.type.startsWith('task.')) return;
