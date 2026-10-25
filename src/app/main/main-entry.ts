@@ -93,6 +93,7 @@ import {
 import { createBrowserAppearanceEnvironment } from '../services/appearance-environment';
 import { createPhaserPreviewGame } from '../services/appearance-preview-game';
 import { createAppearancePreviewService } from '../services/appearance-preview-service';
+import { createAgentChatService } from '../services/agent-chat-service';
 import { createChatService } from '../services/chat-service';
 import { cliChatIpcApi, createIpcChatTransportFactory } from '../services/chat-transport-bridge';
 import { createProgressionService } from '../services/progression-service';
@@ -310,6 +311,41 @@ async function boot(): Promise<void> {
               .loadMessages(characterId, CHAT_HISTORY_LOAD_LIMIT)
               .then((result) => (result.ok && result.messages ? result.messages.map(chatHistoryEntryToDrawerInput) : []))
         : undefined,
+    };
+
+    // 互聊编排（task_052）：与 035 同一套对接面（transport 工厂 / 落库回调 / 经验权重），
+    // 视图口走组件的互聊扩展面（联合会话 + 流式归属钉死）。会话回执与普通聊天共用
+    // externalSessionId 字段（后写覆盖，都是审计回执 —— 两边文件头已注明口径）。
+    const agentChatService = createAgentChatService({
+      view: characterDrawer,
+      getState: () => worldStore.getState(),
+      createTransport: createIpcChatTransportFactory(cliChat),
+      persistSessionId: (characterId, sessionId) => {
+        worldStore.setState((current) => {
+          const index = current.characters.findIndex((c) => c.id === characterId);
+          if (index < 0) return current;
+          const existing = current.characters[index];
+          if (existing.externalSessionId === sessionId) return current;
+          const characters = [...current.characters];
+          characters[index] = { ...existing, externalSessionId: sessionId };
+          return { ...current, characters };
+        });
+      },
+      persistMessage: chatHistory ? makeChatMessagePersister(chatHistory) : undefined,
+      expWeight: expWeightFor,
+    });
+    // 三次注入 deps：互聊入口（表单开始 / 停止钮 / 插话框 → agent-chat-service）。
+    characterDrawer.deps = {
+      ...characterDrawer.deps,
+      onPeerChatStart: (aId, bId, topic, rounds) => {
+        void agentChatService.start(aId, bId, topic, rounds);
+      },
+      onPeerChatStop: () => {
+        agentChatService.stop();
+      },
+      onPeerInterject: (text) => {
+        agentChatService.interject(text);
+      },
     };
   }
 

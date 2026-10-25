@@ -16,7 +16,15 @@
  *   external_session_id / session_ref 都只是**落库回执**，不透传给 CLI。历史消息与新会话
  *   在 UI 层拼接连续展示即可（抽屉回填 + 本轮追加天然同一段消息流）。
  *
- * @since v3.15，task_036。
+ * ============ peer 前缀翻译（task_052）============
+ * 互聊消息落库时（agent-chat-service）对方副本的 content 带 `[peer:{对方id}] ` 前缀
+ *   （库表 role 三词表不动，见那边文件头「落库约定」）。本层翻译时解析它 →
+ *   HUD 的 role='peer' + peerId + 原文 —— 抽屉把它渲染成对方名字的气泡（「贝塔：……」）。
+ *   解析不到前缀的行原样翻译（普通 assistant 气泡）——前缀是互聊专用约定，
+ *   普通聊天 / 035 遗留行的 content 不受影响；正文恰好以「[peer:」开头的极端碰撞也只会
+ *   退化成一条带前缀展示的 assistant 气泡（无结构风险）。
+ *
+ * @since v3.15（task_036）；v3.28（task_052）追加 peer 前缀解析。
  */
 
 import type {
@@ -71,20 +79,40 @@ export function chatHistoryApi(): ChatHistoryApi | null {
 }
 
 /**
+ * 互聊 peer 副本的 content 前缀：`[peer:{对方id}] `（写入见 agent-chat-service 的
+ * peerMarkedContent；词表约定见那边文件头「落库约定」）。导出给单测断言与未来消费者。
+ */
+export const PEER_CONTENT_PREFIX = /^\[peer:([^\]]+)\] /;
+
+/**
  * 库行 → 抽屉消息输入（结构上即 chat-catalog 的 CharacterChatMessageInput）。
  * role=error → assistant 气泡 + error 标记（警示配色 + 重试钮，渲染细节归组件）；
- * 其余原样。sessionRef 不进 UI（它是审计回执，不是展示内容）。
+ * content 带 [peer:id] 前缀（task_052）→ role='peer' + peerId + 剥前缀后的正文
+ * （组件渲染成对方名字的气泡）；其余原样。sessionRef 不进 UI（它是审计回执，不是展示内容）。
  */
 export function chatHistoryEntryToDrawerInput(
   row: PersistedChatMessage
 ): {
   readonly characterId: string;
-  readonly role: 'user' | 'assistant';
+  readonly role: 'user' | 'assistant' | 'peer';
   readonly text: string;
   readonly error?: boolean;
+  readonly peerId?: string;
   readonly at: number;
 } {
   const isError = row.role === 'error';
+  if (!isError && row.role === 'assistant') {
+    const matched = PEER_CONTENT_PREFIX.exec(row.content);
+    if (matched) {
+      return {
+        characterId: row.characterId,
+        role: 'peer',
+        text: row.content.slice(matched[0].length),
+        peerId: matched[1],
+        at: row.createdAt,
+      };
+    }
+  }
   return {
     characterId: row.characterId,
     role: isError ? 'assistant' : row.role,

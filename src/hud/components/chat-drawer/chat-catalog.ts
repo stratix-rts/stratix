@@ -15,14 +15,28 @@
  *   4. 无上限增长 —— 每角色会话数组按 CHAT_SESSION_MESSAGE_CAP 截尾
  *      （perf 硬约束：数据不许无限增长；历史由 task_036 的 SQLite 负责，HUD 只留尾部）。
  *
- * @since v3.13（task_034）
+ * ============ 互聊会话（task_052）============
+ * role 词表扩 'peer'：**HUD 层**的消息角色 —— 互聊中「对方说的话」（A2A 服务的 B 侧流 /
+ *   单角色历史回填解析出的 [peer:id] 前缀行）。注意它与 SQLite 的 role 词表是两回事：
+ *   库表三词表（user/assistant/error）不动，peer 身份走 content 前缀约定（见 agent-chat-service
+ *   文件头「落库约定」）；本文件的 'peer' 只活在内存会话与渲染层。
+ * peerChatSessionId(a,b)：互聊双方的**联合会话** id（排序拼接，与发起顺序无关）——
+ *   联合视图（同屏双方气泡）就是以它为 key 的一条普通会话；appendStreamAs 支持显式归属+角色
+ *   开流（A2A 服务在用户切走视图时也要把流钉在联合会话上，不串台进个人会话）。
+ *
+ * @since v3.13（task_034）；v3.28（task_052）追加 peer 角色 / peerId / appendStreamAs / 联合会话 id。
  */
 
 import type { CharacterView } from '../../../core/types';
 import { agentKindLabel } from '../../screens/onboarding-catalog';
 
-/** 消息角色词表。user = 本端说的；assistant = 角色 agent 回的（含流式收束后的整段）。 */
-export type CharacterChatRole = 'user' | 'assistant';
+/**
+ * 消息角色词表。user = 本端说的；assistant = 角色 agent 回的（含流式收束后的整段）。
+ * peer = **互聊中对方说的话**（@since v3.28，task_052）—— 联合会话里 B 的气泡（右侧变体）/
+ *   单角色历史里解析出的对方发言（bubble 渲染带对方名字前缀）。它只活在 HUD 内存，不进库
+ *   （库表 role 词表不动，peer 身份走 content 前缀，见 chat-history.ts 的翻译）。
+ */
+export type CharacterChatRole = 'user' | 'assistant' | 'peer';
 
 /** 单条消息（已提交：流式缓冲 finalize 后也落到这个形状）。 */
 export interface CharacterChatMessage {
@@ -38,6 +52,11 @@ export interface CharacterChatMessage {
    * 可选增补：老调用点不带它照旧合法。
    */
   readonly error?: boolean;
+  /**
+   * peer 消息的对方角色 id（@since v3.28，task_052）：role='peer' 时由写入方给出（A2A 服务 /
+   *   历史翻译），渲染层用它解析对方名字（「贝塔：……」）。其余 role 不带。
+   */
+  readonly peerId?: string;
 }
 
 /** addMessage 的入参形状：id / at 缺省由存储生成（测试可显式传入做确定性断言）。 */
@@ -49,6 +68,8 @@ export interface CharacterChatMessageInput {
   readonly at?: number;
   /** 错误气泡标记（@since v3.14，task_035；语义见 CharacterChatMessage.error）。 */
   readonly error?: boolean;
+  /** peer 消息的对方角色 id（@since v3.28，task_052；语义见 CharacterChatMessage.peerId）。 */
+  readonly peerId?: string;
 }
 
 /**
@@ -61,6 +82,11 @@ export interface CharacterChatMessageInput {
 export interface StreamBuffer {
   readonly characterId: string;
   readonly id: string;
+  /**
+   * 流收束后的消息角色（@since v3.28，task_052）：普通聊天流恒 'assistant'（缺省）；
+   *   互聊的 B 侧流开成 'peer'（A 侧仍是 'assistant'）—— finalize 按它落角色，A/B 气泡由此分侧。
+   */
+  readonly role: CharacterChatRole;
   text: string;
 }
 
@@ -84,6 +110,16 @@ export const CHAT_SESSION_MESSAGE_CAP = 100;
 /** kind 未绑定时的徽标文案（词表外回落见 resolveCharacterHeader）。 */
 export const UNBOUND_KIND_LABEL = '未绑定';
 
+/**
+ * 互聊联合会话 id（@since v3.28，task_052）：一对角色的专属会话 key（排序拼接 —— 同一对
+ * 角色无论谁发起都是同一条联合会话，第二次互聊接着上次的气泡流）。前缀 'peer-chat:' 与
+ * 真实 characterId 空间天然不冲突（防御上仍以组件侧 requestHistory 的守卫为准：
+ * 联合 id 不走历史回填）。
+ */
+export function peerChatSessionId(aId: string, bId: string): string {
+  return `peer-chat:${[aId, bId].sort().join('|')}`;
+}
+
 /** 会话存储的可注入能力（测试注入确定性 id / 时间；生产用默认值）。 */
 export interface ChatSessionStoreOptions {
   /** 每角色消息上限；缺省 CHAT_SESSION_MESSAGE_CAP。 */
@@ -100,6 +136,8 @@ export interface CharacterChatSessions {
   readonly viewing: string | null;
   /** 活跃流缓冲；无流为 null。 */
   readonly stream: StreamBuffer | null;
+  /** 登记联合会话的 peer 对方角色 id（task_052；peer 流收束时补 peerId 用）。 */
+  setPeerIdHint(jointId: string, peerId: string): void;
   /** 出现过消息的角色 id（按首次发言顺序）。 */
   readonly characterIds: readonly string[];
   setViewing(characterId: string | null): void;
@@ -115,6 +153,11 @@ export interface CharacterChatSessions {
    * 无流 → 以"当前查看的角色"为归属新建（看不到角色就无处安放 → 返回 null 忽略）。
    */
   appendStream(chunk: string): StreamBuffer | null;
+  /**
+   * 显式归属 + 角色的开流增量（@since v3.28，task_052；语义见实现处注）。互聊服务专用 ——
+   *   普通聊天继续走 appendStream（缺省 assistant 角色、归属跟视图）。
+   */
+  appendStreamAs(owner: string, role: CharacterChatRole, chunk: string): StreamBuffer | null;
   /**
    * 收束活跃流为一条 assistant 消息（id 沿用流的 id）。
    * 正文为空 → 丢弃缓冲不落库（空气泡没有信息量）；无流 → no-op 返回 null。
@@ -138,6 +181,9 @@ export function createCharacterChatSessions(options: ChatSessionStoreOptions = {
   const order: string[] = [];
   let viewing: string | null = null;
   let stream: StreamBuffer | null = null;
+  /** 联合会话 → peer 消息的对方角色 id（task_052）：组件在进入互聊模式时登记，
+   *   finalize peer 流时取来补 peerId（开流参数只有 owner+role，对方 id 从这里来）。 */
+  const peerIdHints = new Map<string, string>();
 
   const commit = (characterId: string, message: CharacterChatMessage): void => {
     const list = sessions.get(characterId) ?? [];
@@ -152,6 +198,10 @@ export function createCharacterChatSessions(options: ChatSessionStoreOptions = {
     get viewing(): string | null { return viewing; },
     get stream(): StreamBuffer | null { return stream; },
     get characterIds(): readonly string[] { return [...order]; },
+    /** 登记联合会话的 peer 对方角色 id（task_052；见 peerIdHints 声明处说明）。 */
+    setPeerIdHint(jointId: string, peerId: string): void {
+      peerIdHints.set(jointId, peerId);
+    },
 
     setViewing(characterId: string | null): void {
       viewing = characterId;
@@ -173,6 +223,7 @@ export function createCharacterChatSessions(options: ChatSessionStoreOptions = {
         text,
         at: input.at ?? now(),
         error: input.error,
+        peerId: input.peerId,
       };
       commit(characterId, message);
       return message;
@@ -185,7 +236,30 @@ export function createCharacterChatSessions(options: ChatSessionStoreOptions = {
         return stream;
       }
       if (!viewing) return null;
-      stream = { characterId: viewing, id: nextId(), text: chunk };
+      stream = { characterId: viewing, id: nextId(), role: 'assistant', text: chunk };
+      return stream;
+    },
+
+    /**
+     * 显式归属 + 角色的开流（@since v3.28，task_052）：互聊服务用 —— 流钉死在联合会话上，
+     * 不依赖「当前查看的角色」（用户旁听时切走视图，流也不能串进个人会话）。
+     * 活跃流与 (owner, role) 一致 → 追加；不一致 → 先收束旧流（半截话不丢，按它自己的
+     * 角色归档）再开新流（互聊回合严格串行，这里只防边路竞态）。
+     */
+    appendStreamAs(owner: string, role: CharacterChatRole, chunk: string): StreamBuffer | null {
+      if (chunk.length === 0) return stream;
+      if (stream && (stream.characterId !== owner || stream.role !== role)) {
+        const stale = stream;
+        stream = null;
+        if (stale.text.length > 0) {
+          commit(stale.characterId, { ...stale, at: now() });
+        }
+      }
+      if (stream) {
+        stream = { ...stream, text: stream.text + chunk };
+        return stream;
+      }
+      stream = { characterId: owner, id: nextId(), role, text: chunk };
       return stream;
     },
 
@@ -197,9 +271,10 @@ export function createCharacterChatSessions(options: ChatSessionStoreOptions = {
       const message: CharacterChatMessage = {
         id: done.id,
         characterId: done.characterId,
-        role: 'assistant',
+        role: done.role,
         text: done.text,
         at: now(),
+        ...(done.role === 'peer' ? { peerId: peerIdHints.get(done.characterId) } : {}),
       };
       commit(done.characterId, message);
       return message;

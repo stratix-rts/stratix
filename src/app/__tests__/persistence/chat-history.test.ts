@@ -108,6 +108,42 @@ describe('makeChatMessagePersister：落库回调工厂', () => {
   });
 });
 
+describe('chatHistoryEntryToDrawerInput：peer 前缀翻译（task_052）', () => {
+  test('content 带 [peer:id] 前缀 → role=peer + peerId + 剥前缀正文', () => {
+    const input = chatHistoryEntryToDrawerInput(
+      row({ role: 'assistant', content: '[peer:ch-b] 我认为应该先侦察。' })
+    );
+    expect(input).toEqual({
+      characterId: 'ch-1',
+      role: 'peer',
+      text: '我认为应该先侦察。',
+      peerId: 'ch-b',
+      at: 1700000000000,
+    });
+  });
+
+  test('普通 assistant 行不受影响；前缀缺尾随空格不匹配（退化为原样 assistant）', () => {
+    expect(chatHistoryEntryToDrawerInput(row({ role: 'assistant', content: '在的' })).role).toBe('assistant');
+    const noSpace = chatHistoryEntryToDrawerInput(
+      row({ role: 'assistant', content: '[peer:ch-b]没有空格' })
+    );
+    expect(noSpace.role).toBe('assistant');
+    expect(noSpace.text).toBe('[peer:ch-b]没有空格');
+  });
+
+  test('error 行不解析 peer 前缀（错误气泡语义优先）', () => {
+    const input = chatHistoryEntryToDrawerInput(
+      row({ role: 'error', content: '[peer:ch-b] 中断了' })
+    );
+    expect(input.role).toBe('assistant');
+    expect(input.error).toBe(true);
+  });
+
+  test('user 行不解析 peer 前缀（插话落库是原文）', () => {
+    expect(chatHistoryEntryToDrawerInput(row({ role: 'user', content: '[peer:x] ' })).role).toBe('user');
+  });
+});
+
 describe('chatHistoryApi：环境探测', () => {
   test('无 electronAPI（node / 纯 vite dev）→ null；窗口常量 50', () => {
     expect(chatHistoryApi()).toBeNull();

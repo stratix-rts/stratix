@@ -1795,7 +1795,7 @@
     {
       "id": "task_052",
       "title": "agent互聊",
-      "status": "pending",
+      "status": "completed",
       "depends_on": [
         "task_035"
       ],

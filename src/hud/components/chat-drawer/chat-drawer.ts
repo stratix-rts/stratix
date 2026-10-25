@@ -16,7 +16,14 @@
  *   034 的「点单位 → 抽屉打开」是既有语义，busy 单位的实时 CLI 流顺着同一入口可见（冲突裁决：
  *   不另开面板抢点击，抽屉头部下挂折叠区）。本文件只做三件事：嵌挂元素、转发 subscribe、
  *   open / setCharacter 时同步上下文（showFor）；流式文本与跟随/折叠交互全在 task-output-panel.ts。
- * 输入：注入的 deps（subscribe：吃 WorldState 快照 —— 选择集驱动开抽屉/切上下文、
+ *   @since v3.28（task_052 追加）：互聊模式 —— 框选恰两个角色单位 → 头部「让它们聊聊」→
+ *   议题输入 + 轮数选择（3/5/8）→ 联合会话视图（A 左 assistant / B 右 peer 色彩变体，
+ *   peer 气泡带对方名字行）；讨论中输入框变插话框（onPeerInterject，本地 user 气泡照旧）；
+ *   头部轮次进度「第 2/3 轮」与停止钮（onPeerChatStop）由 agent-chat-service 驱动
+ *   （setPeerRound / endPeerChat）。互聊进行中单选切走被抑制（联合视图是讨论主舞台）；
+ *   结束 / 取消后恢复。流式走 appendPeerStream / finalizePeerStream —— 归属钉死在
+ *   联合会话（peerChatSessionId），用户切走视图也不串台进个人会话。
+ * 输入：注入的 deps（subscribe：吃 WorldState 快照 —— 选择集驱动开抽屉/切上下文/互聊候选、
  *   characters 档案驱动头部；onSend：发送回调，由组合根桥接 chat-service —— task_035 接线）。
  * 输出：Shadow DOM 抽屉；流式公开方法 appendStream / finalizeStream / addMessage / setSending
  *   （035 的 chat-service 拿元素引用直接调用）。
@@ -55,6 +62,7 @@ import {
 import {
   UNBOUND_KIND_LABEL,
   createCharacterChatSessions,
+  peerChatSessionId,
   resolveCharacterHeader,
   sendableDraft,
   type CharacterChatMessage,
@@ -93,7 +101,28 @@ export type CharacterChatDrawerDeps = Pick<HudBusAdapter, 'subscribe'> & {
    * 活跃流缓冲挂在目标角色上不回填、每角色每生命周期至多成功回填一次。
    */
   readonly loadHistory?: (characterId: string) => Promise<readonly CharacterChatMessageInput[]>;
+  /**
+   * 互聊发起回调（@since v3.28，task_052）：议题表单点「开始讨论」→ 桥接方驱动
+   * agent-chat-service.start（A2A 回合编排）。缺省 = 无桥接（表单可开、讨论不跑）。
+   */
+  readonly onPeerChatStart?: (aId: string, bId: string, topic: string, rounds: number) => void;
+  /**
+   * 互聊停止回调（@since v3.28，task_052）：讨论中点「停止」→ agent-chat-service.stop
+   * （abort 在飞回合 —— 与 035 同一套杀进程树链路）。
+   */
+  readonly onPeerChatStop?: () => void;
+  /**
+   * 插话回调（@since v3.28，task_052）：讨论中发送框变插话框 —— 本地 user 气泡照旧出现，
+   * 桥接方把文本交给 agent-chat-service.interject（进双方下一轮 prompt）。
+   */
+  readonly onPeerInterject?: (text: string) => void;
 };
+
+/** 互聊可选轮数（规格③：3/5/8；服务侧另有钳位上限）。 */
+export const PEER_ROUND_CHOICES: readonly number[] = [3, 5, 8];
+
+/** 互聊模式的相位（setup=议题表单 / running=讨论进行 / ended=已收束待退出）。 */
+export type PeerChatPhase = 'setup' | 'running' | 'ended';
 
 /** 自定义元素的对外形状（测试与挂载方按它断言；流式接口供 035 组合根桥接）。 */
 export interface StratCharacterChatDrawerElement extends HTMLElement {
@@ -131,6 +160,27 @@ export interface StratCharacterChatDrawerElement extends HTMLElement {
   readonly lastState: WorldState | null;
   /** 嵌挂的任务输出面板（task_046）；未挂载（chrome 未建）为 null。组合根经它接流转发端口。 */
   readonly taskOutput: StratTaskOutputPanelElement | null;
+  /**
+   * 框选出的互聊候选（@since v3.28，task_052）：恰两个角色单位时为 [aId, bId]；否则 null。
+   * 头部「让它们聊聊」按钮的可视性由它驱动（见 syncPeerButtons）。
+   */
+  readonly peerCandidates: readonly string[] | null;
+  /** 互聊状态（@since v3.28，task_052）；不在互聊模式为 null。 */
+  readonly peerChat: { readonly aId: string; readonly bId: string; readonly phase: PeerChatPhase } | null;
+  /** 议题草稿（互聊 setup 相位的瞬时态）。 */
+  readonly peerTopicDraft: string;
+  /** 进入互聊 setup：开抽屉 + 切到联合会话视图（头部「让它们聊聊」的动作面）。 */
+  openPeerChat(aId: string, bId: string): void;
+  /** 退出互聊模式（取消表单 / 结束后离开；不影响在跑的讨论 —— 那由停止钮管）。 */
+  exitPeerChat(): void;
+  /** 互聊流式增量（@since v3.28，task_052）：归属钉死在联合会话，role 决定气泡侧。 */
+  appendPeerStream(role: 'assistant' | 'peer', chunk: string): void;
+  /** 收束互聊活跃流（与 finalizeStream 同语义，但仅在互聊模式有效）。 */
+  finalizePeerStream(): void;
+  /** 轮次进度：「第 x/y 轮」；仅 running 相位生效。 */
+  setPeerRound(current: number, total: number): void;
+  /** 整场收束（agent-chat-service 的 endPeerChat 端口）：running → ended。 */
+  endPeerChat(): void;
 }
 
 /** HTML 文本转义。消息正文与角色名含外部输入，必须转义后才进 innerHTML。 */
@@ -168,6 +218,20 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
     private readonly _sessions: CharacterChatSessions = createCharacterChatSessions();
     /** 嵌挂的任务输出面板（task_046）：renderChrome 时捕获，deps 转发与 showFor 都走它。 */
     private _taskOutput: StratTaskOutputPanelElement | null = null;
+    /** 互聊候选（task_052）：框选恰两个角色单位时点亮头部「让它们聊聊」。 */
+    private _peerCandidates: readonly [string, string] | null = null;
+    /** 互聊状态机（task_052）：setup → running → ended；null = 普通单角色模式。 */
+    private _peerChat: {
+      aId: string;
+      bId: string;
+      jointId: string;
+      phase: PeerChatPhase;
+    } | null = null;
+    /** 议题草稿 / 轮数选择（setup 相位瞬时态，外壳重建不丢——同 draft 的口径）。 */
+    private _peerTopicDraft = '';
+    private _peerRoundsDraft = 3;
+    /** 轮次进度（running 相位；「第 x/y 轮」）。 */
+    private _peerRound: { current: number; total: number } | null = null;
 
     // —— 属性面 ——
     get deps(): CharacterChatDrawerDeps | null { return this._deps; }
@@ -194,6 +258,15 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
     get streaming(): Readonly<StreamBuffer> | null { return this._sessions.stream; }
     get lastState(): WorldState | null { return this._lastState; }
     get taskOutput(): StratTaskOutputPanelElement | null { return this._taskOutput; }
+    get peerCandidates(): readonly string[] | null {
+      return this._peerCandidates ? [...this._peerCandidates] : null;
+    }
+    get peerChat(): { aId: string; bId: string; phase: PeerChatPhase } | null {
+      return this._peerChat
+        ? { aId: this._peerChat.aId, bId: this._peerChat.bId, phase: this._peerChat.phase }
+        : null;
+    }
+    get peerTopicDraft(): string { return this._peerTopicDraft; }
 
     connectedCallback(): void {
       // 幂等：hot-reload / 反复挂卸会重复进入，必须能安全重建。
@@ -204,6 +277,8 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
       this.syncHeader();
       this.renderMessages();
       this.syncComposer();
+      this.syncPeerButtons();
+      this.syncPeerRound();
     }
 
     disconnectedCallback(): void {
@@ -241,7 +316,16 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
     }
 
     addMessage(message: CharacterChatMessageInput): void {
-      const committed = this._sessions.addMessage(message);
+      // 互聊模式下不带归属的消息 → 联合会话（agent-chat-service 的视图口调用面）；
+      // peer 消息缺 peerId 时补 B（联合会话里 peer 侧恒为应答者）。
+      let input: CharacterChatMessageInput = message;
+      if (message.characterId === undefined && this._peerChat) {
+        input = { ...message, characterId: this._peerChat.jointId };
+      }
+      if (input.role === 'peer' && input.peerId === undefined && this._peerChat) {
+        input = { ...input, peerId: this._peerChat.bId };
+      }
+      const committed = this._sessions.addMessage(input);
       if (committed && committed.characterId === this._sessions.viewing) this.renderMessages();
     }
 
@@ -255,6 +339,69 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
     finalizeStream(): void {
       const committed = this._sessions.finalizeStream();
       if (committed && committed.characterId === this._sessions.viewing) this.renderMessages();
+    }
+
+    // —— 互聊公开接口（task_052；agent-chat-service 的调用面）——
+
+    openPeerChat(aId: string, bId: string): void {
+      if (aId === bId) return;
+      const jointId = peerChatSessionId(aId, bId);
+      this._peerChat = { aId, bId, jointId, phase: 'setup' };
+      this._peerTopicDraft = '';
+      this._peerRoundsDraft = 3;
+      this._peerRound = null;
+      this._sessions.setViewing(jointId);
+      // peer 侧恒为应答者 B（发起者 A 是 assistant 侧）：peer 流收束时补 peerId 用。
+      this._sessions.setPeerIdHint(jointId, bId);
+      this._open = true;
+      this.syncRail();
+      this.syncHeader();
+      this.renderMessages();
+      this.syncComposer();
+      this.syncPeerButtons();
+      this.syncPeerRound();
+    }
+
+    exitPeerChat(): void {
+      if (!this._peerChat) return;
+      this._peerChat = null;
+      this._peerRound = null;
+      this._sessions.setViewing(null);
+      this.syncHeader();
+      this.renderMessages();
+      this.syncComposer();
+      this.syncPeerButtons();
+      this.syncPeerRound();
+    }
+
+    appendPeerStream(role: 'assistant' | 'peer', chunk: string): void {
+      const jointId = this._peerChat?.jointId;
+      if (!jointId) return; // 不在互聊模式：没有联合会话可归属
+      const stream = this._sessions.appendStreamAs(jointId, role, chunk);
+      if (!stream) return;
+      if (stream.characterId === this._sessions.viewing) this.updateStreamBubble();
+    }
+
+    finalizePeerStream(): void {
+      const committed = this._sessions.finalizeStream();
+      if (committed && committed.characterId === this._sessions.viewing) this.renderMessages();
+    }
+
+    setPeerRound(current: number, total: number): void {
+      if (this._peerChat?.phase !== 'running') return;
+      this._peerRound = { current, total };
+      this.syncPeerRound();
+    }
+
+    endPeerChat(): void {
+      if (!this._peerChat) return;
+      this._peerRound = null;
+      if (this._peerChat.phase === 'running') {
+        this._peerChat = { ...this._peerChat, phase: 'ended' };
+      }
+      this.syncPeerRound();
+      this.syncComposer();
+      this.syncPeerButtons();
     }
 
     setSending(sending: boolean): void {
@@ -294,6 +441,9 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
      */
     private requestHistory(characterId: string | null): void {
       if (!characterId) return;
+      // 互聊联合会话没有库表历史（消息真相在双方各自的 character_chat_messages 行里，
+      // 联合视图是运行时拼合）—— 不走回填。task_052。
+      if (this._peerChat && characterId === this._peerChat.jointId) return;
       const loader = this._deps?.loadHistory;
       if (!loader || this._historyLoaded.has(characterId)) return;
       if (this._sessions.messages(characterId).length > 0) {
@@ -323,9 +473,11 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
 
     /**
      * 总线状态到达：
-     *   1. selection.revision 变化 → 单选且单位关联角色 → 打开抽屉并切到该角色会话
-     *      （多点 / 未关联角色 / 点空地都不动抽屉）；同 revision 的后续广播全部跳过；
-     *   2. characters 档案变化 → 头部（名字 / kind 徽标）跟着刷新。
+     *   1. selection.revision 变化 → ①单选且单位关联角色 → 打开抽屉并切到该角色会话
+     *      （互聊进行中抑制切走 —— 联合视图是讨论主舞台；setup/ended 相位则先退出互聊再切）；
+     *      ②恰选两个单位且都关联角色 → 互聊候选：开抽屉点亮头部「让它们聊聊」（task_052）；
+     *      其余（多点 / 未关联角色 / 点空地）不动抽屉。同 revision 的后续广播全部跳过；
+     *   2. characters 档案变化 → 头部（名字 / kind 徽标 / 互聊标题）跟着刷新。
      */
     private handleState(state: WorldState): void {
       this._lastState = state;
@@ -333,9 +485,34 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
         this._lastSelectionRevision = state.selection.revision;
         const selected = state.selection.unitIds;
         if (selected.length === 1) {
-          const unit = state.units.find((u) => u.id === selected[0]);
-          const characterId = unit?.characterId ?? null;
-          if (characterId) this.open(characterId);
+          if (this._peerChat?.phase === 'running') {
+            // 讨论进行中：联合视图不动（服务往联合会话写，与当前查看对象无关）。
+          } else {
+            const unit = state.units.find((u) => u.id === selected[0]);
+            const characterId = unit?.characterId ?? null;
+            if (characterId) {
+              if (this._peerChat) this.exitPeerChat(); // setup 表单 / 已结束的残留互聊态随单选切走
+              this.open(characterId);
+            }
+          }
+        } else if (selected.length === 2) {
+          // task_052 互聊入口条件：恰两个单位、双方都关联角色且互不相同（讨论需要两个 agent）。
+          const first = state.units.find((u) => u.id === selected[0]);
+          const second = state.units.find((u) => u.id === selected[1]);
+          const c1 = first?.characterId ?? null;
+          const c2 = second?.characterId ?? null;
+          if (c1 && c2 && c1 !== c2) {
+            this._peerCandidates = [c1, c2];
+            this.open(); // 只开抽屉不切上下文：互聊入口在头部按钮
+          } else {
+            this._peerCandidates = null;
+          }
+          this.syncPeerButtons();
+        } else {
+          if (this._peerCandidates !== null) {
+            this._peerCandidates = null;
+            this.syncPeerButtons();
+          }
         }
       }
       this.syncHeader();
@@ -343,10 +520,22 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
 
     // —— 用户操作 ——
     /**
-     * 发送：草稿 trim 后非空、有当前角色、不在发送中，才落一条 user 消息（本地气泡 ——
-     * 见文件头"与外部会话的差异"）、清草稿、回调 onSend 交给桥接方驱动 transport。
+     * 发送：两种形态（task_052）——
+     *   互聊中：草稿变插话（本地 user 气泡照旧 → onPeerInterject，服务注入双方下一轮 prompt）；
+     *   普通：草稿 trim 后非空、有当前角色、不在发送中，才落 user 消息 → onSend 驱动 transport。
      */
     private send(): void {
+      const peer = this._peerChat;
+      if (peer) {
+        if (peer.phase !== 'running') return; // setup/ended：输入区已禁，双保险
+        const peerText = sendableDraft(this._draft);
+        if (!peerText) return;
+        this._sessions.addMessage({ characterId: peer.jointId, role: 'user', text: peerText });
+        this.renderMessages();
+        this.draft = '';
+        this._deps?.onPeerInterject?.(peerText);
+        return;
+      }
       if (this._sending) return;
       const text = sendableDraft(this._draft);
       const characterId = this._sessions.viewing;
@@ -355,6 +544,24 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
       this.renderMessages();
       this.draft = '';
       this._deps?.onSend?.(characterId, text);
+    }
+
+    /**
+     * 互聊开始（task_052）：议题非空才起跑；相位切 running，交 onPeerChatStart 桥接
+     * agent-chat-service（守门/回合编排在那边；守门不通过的提示气泡也由服务写进联合会话）。
+     */
+    private beginPeerChat(): void {
+      const peer = this._peerChat;
+      if (!peer || peer.phase !== 'setup') return;
+      const topic = sendableDraft(this._peerTopicDraft);
+      if (!topic) return;
+      const rounds = this._peerRoundsDraft;
+      this._peerChat = { ...peer, phase: 'running' };
+      this.renderMessages();
+      this.syncComposer();
+      this.syncPeerButtons();
+      this.syncPeerRound();
+      this._deps?.onPeerChatStart?.(peer.aId, peer.bId, topic, rounds);
     }
 
     // —— 渲染 ——
@@ -446,6 +653,13 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
           }
           .bubble[data-side="user"] { align-self: end; border-color: var(--srf-accent, #6ea8ff); }
           .bubble[data-side="assistant"] { align-self: start; }
+          /* 互聊 peer 气泡（task_052）：B 侧靠右但与 user 色彩区分（success 边框），带对方名字行 */
+          .bubble[data-side="peer"] { align-self: end; border-color: var(--srf-success, #6fcf97); }
+          .bubble-name {
+            color: var(--srf-success, #6fcf97);
+            font-size: var(--srf-font-size-sm, 12px);
+            margin-bottom: var(--srf-spacing-xs, 4px);
+          }
           /* 错误气泡（task_035）：警示配色 + 内嵌重试钮，重试路径由 onRetry 桥接 chat-service.retry */
           .bubble[data-error="true"] { border-color: var(--srf-danger, #e06c75); }
           .bubble[data-error="true"] .bubble-text { color: var(--srf-danger, #e06c75); }
@@ -530,12 +744,96 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
             color: var(--srf-text-disabled, #5a6373);
             border-color: var(--srf-border, #2a313d);
           }
+          /* —— 互聊（task_052）—— */
+          .head .peer-round {
+            flex: none;
+            color: var(--srf-warn, #f0c674);
+            font-size: var(--srf-font-size-sm, 12px);
+          }
+          button.peer-open {
+            flex: none;
+            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-sm, 8px);
+            background: var(--srf-panel-elevated, #20262f);
+            color: var(--srf-accent, #6ea8ff);
+            border: var(--srf-border-width, 1px) solid var(--srf-accent, #6ea8ff);
+            border-radius: var(--srf-radius, 6px);
+            font-family: var(--srf-font-ui, sans-serif);
+            font-size: var(--srf-font-size-sm, 12px);
+            cursor: pointer;
+          }
+          button.peer-exit {
+            flex: none;
+            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-sm, 8px);
+            background: var(--srf-panel-elevated, #20262f);
+            color: var(--srf-text-muted, #9aa3b2);
+            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
+            border-radius: var(--srf-radius, 6px);
+            font-family: var(--srf-font-ui, sans-serif);
+            font-size: var(--srf-font-size-sm, 12px);
+            cursor: pointer;
+          }
+          .peer-setup {
+            display: grid;
+            gap: var(--srf-spacing-sm, 8px);
+            align-content: start;
+            padding: var(--srf-spacing-sm, 8px);
+          }
+          .peer-setup-title {
+            font-size: var(--srf-font-size-md, 14px);
+            overflow-wrap: anywhere;
+          }
+          .peer-setup label {
+            display: flex;
+            align-items: center;
+            gap: var(--srf-spacing-sm, 8px);
+            color: var(--srf-text-muted, #9aa3b2);
+            font-size: var(--srf-font-size-sm, 12px);
+          }
+          .peer-setup select {
+            padding: var(--srf-spacing-xs, 4px);
+            background: var(--srf-bg, #0f1116);
+            color: var(--srf-text, #e6e9ef);
+            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
+            border-radius: var(--srf-radius, 6px);
+            font-family: var(--srf-font-ui, sans-serif);
+            font-size: var(--srf-font-size-sm, 12px);
+          }
+          .peer-setup-foot { display: flex; justify-content: flex-end; gap: var(--srf-spacing-sm, 8px); }
+          button.peer-begin {
+            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-md, 12px);
+            background: var(--srf-success, #6fcf97);
+            color: var(--srf-bg, #0f1116);
+            border: var(--srf-border-width, 1px) solid var(--srf-success, #6fcf97);
+            border-radius: var(--srf-radius, 6px);
+            font-family: var(--srf-font-ui, sans-serif);
+            font-size: var(--srf-font-size-sm, 12px);
+            cursor: pointer;
+          }
+          button.peer-begin:disabled {
+            background: var(--srf-panel-elevated, #20262f);
+            color: var(--srf-text-disabled, #5a6373);
+            border-color: var(--srf-border, #2a313d);
+            cursor: not-allowed;
+          }
+          button.peer-cancel {
+            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-md, 12px);
+            background: var(--srf-panel-elevated, #20262f);
+            color: var(--srf-text-muted, #9aa3b2);
+            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
+            border-radius: var(--srf-radius, 6px);
+            font-family: var(--srf-font-ui, sans-serif);
+            font-size: var(--srf-font-size-sm, 12px);
+            cursor: pointer;
+          }
         </style>
         <div class="rail" data-role="rail" data-open="false">
           <div class="head">
             <span class="char-name" data-role="char-name">未选择角色</span>
             <span class="kind-badge" data-role="kind-badge">${escapeHtml(UNBOUND_KIND_LABEL)}</span>
+            <span class="peer-round" data-role="peer-round" hidden></span>
             <span class="spacer"></span>
+            <button type="button" class="peer-open" data-role="peer-open" hidden>让它们聊聊</button>
+            <button type="button" class="peer-exit" data-role="peer-exit" hidden>退出互聊</button>
             <button type="button" class="close" data-role="close">关闭</button>
           </div>
           <strat-task-output-panel data-role="task-output"></strat-task-output-panel>
@@ -564,11 +862,27 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
         this._listenersBound = true;
 
         // 输入事件：只改瞬时态 + 同步发送按钮，不重画消息流（输入时光标不能丢）。
+        // task_052：互聊议题框同享该监听（瞬时态 _peerTopicDraft，同 draft 的口径）。
         root.addEventListener('input', (ev: Event) => {
           const target = ev.target as HTMLTextAreaElement | null;
-          if (!target || target.dataset.role !== 'draft') return;
-          this._draft = target.value;
-          this.syncComposer();
+          if (!target) return;
+          if (target.dataset.role === 'draft') {
+            this._draft = target.value;
+            this.syncComposer();
+            return;
+          }
+          if (target.dataset.role === 'peer-topic') {
+            this._peerTopicDraft = target.value;
+            this.syncPeerSetupForm();
+          }
+        });
+
+        // 互聊轮数选择（task_052）：select 的值变更走 change 事件（input 在部分引擎不触发）。
+        root.addEventListener('change', (ev: Event) => {
+          const target = ev.target as HTMLSelectElement | null;
+          if (!target || target.dataset.role !== 'peer-rounds') return;
+          const parsed = Number.parseInt(target.value, 10);
+          if (PEER_ROUND_CHOICES.includes(parsed)) this._peerRoundsDraft = parsed;
         });
 
         // Enter 发送（Shift+Enter 换行）：语义与 panels/chat-drawer（旧 AgentChatModal）一致。
@@ -583,15 +897,17 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
           this.send();
         });
 
-        // 关闭 / 停止 / 发送 / 重试：data-role 定位 → 动作。
+        // 关闭 / 停止 / 发送 / 重试 / 互聊：data-role 定位 → 动作。
         root.addEventListener('click', (ev: Event) => {
           const target = ev.target as HTMLElement | null;
           if (!target) return;
           if (target.closest?.('[data-role="close"]')) this.close();
           else if (target.closest?.('[data-role="send"]')) this.send();
           else if (target.closest?.('[data-role="stop"]')) {
-            // 只在发送中且有查看对象时回调 —— 停止钮只在发送中可见，这里是双保险。
-            if (this._sending && this._sessions.viewing) {
+            // task_052：互聊进行中停止 = 中断整场讨论（onPeerChatStop）；普通发送中 = onStop。
+            if (this._peerChat?.phase === 'running') {
+              this._deps?.onPeerChatStop?.();
+            } else if (this._sending && this._sessions.viewing) {
               this._deps?.onStop?.(this._sessions.viewing);
             }
           } else if (target.closest?.('[data-role="retry"]')) {
@@ -599,6 +915,16 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
             const button = target.closest<HTMLElement>('[data-role="retry"]');
             const characterId = button?.dataset.character;
             if (characterId) this._deps?.onRetry?.(characterId);
+          } else if (target.closest?.('[data-role="peer-open"]')) {
+            // 「让它们聊聊」只在有候选且未在互聊时可见；这里再验一次（按钮可点 ≠ 状态没变）。
+            const candidates = this._peerCandidates;
+            if (candidates && !this._peerChat) this.openPeerChat(candidates[0], candidates[1]);
+          } else if (target.closest?.('[data-role="peer-exit"]')) {
+            this.exitPeerChat();
+          } else if (target.closest?.('[data-role="peer-begin"]')) {
+            this.beginPeerChat();
+          } else if (target.closest?.('[data-role="peer-cancel"]')) {
+            this.exitPeerChat();
           }
         });
       }
@@ -612,17 +938,81 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
 
     /**
      * 头部同步：名字 / kind 徽标从最近快照的 characters 派生。
+     * 互聊模式（task_052）下头部换成「A × B」+「互聊」徽标 —— 联合视图不指向单个角色。
      * 逐节点比对新值，没变不碰 DOM（档案广播频繁，头部无关变化不值得重写文本节点）。
      */
     private syncHeader(): void {
       const nameNode = this.shadowRoot?.querySelector('[data-role="char-name"]');
       const badgeNode = this.shadowRoot?.querySelector('[data-role="kind-badge"]');
       if (!nameNode || !badgeNode) return;
+      if (this._peerChat) {
+        const peerName = `${this.headerNameOf(this._peerChat.aId)} × ${this.headerNameOf(this._peerChat.bId)}`;
+        if (nameNode.textContent !== peerName) nameNode.textContent = peerName;
+        if (badgeNode.textContent !== '互聊') badgeNode.textContent = '互聊';
+        return;
+      }
       const header = resolveCharacterHeader(this._lastState?.characters ?? [], this._sessions.viewing);
       const nextName = header ? header.name : '未选择角色';
       const nextBadge = header?.kindLabel ?? UNBOUND_KIND_LABEL;
       if (nameNode.textContent !== nextName) nameNode.textContent = nextName;
       if (badgeNode.textContent !== nextBadge) badgeNode.textContent = nextBadge;
+    }
+
+    /** 互聊头部按钮 / 进度徽标可见性（task_052）：候选 → 「让它们聊聊」；互聊态 → 「退出互聊」。 */
+    private syncPeerButtons(): void {
+      const open = this.shadowRoot?.querySelector<HTMLButtonElement>('[data-role="peer-open"]');
+      const exit = this.shadowRoot?.querySelector<HTMLButtonElement>('[data-role="peer-exit"]');
+      if (open) open.hidden = !(this._peerCandidates !== null && this._peerChat === null);
+      if (exit) exit.hidden = this._peerChat === null;
+    }
+
+    /** 轮次进度徽标（task_052）：仅互聊 running 相位显示「第 x/y 轮」。 */
+    private syncPeerRound(): void {
+      const node = this.shadowRoot?.querySelector<HTMLElement>('[data-role="peer-round"]');
+      if (!node) return;
+      const round = this._peerChat?.phase === 'running' ? this._peerRound : null;
+      if (round) {
+        const label = `第 ${round.current}/${round.total} 轮`;
+        if (node.textContent !== label) node.textContent = label;
+        node.hidden = false;
+      } else {
+        node.hidden = true;
+        node.textContent = '';
+      }
+    }
+
+    /** 议题表单的开始按钮可用性（task_052）：议题非空才可开始。 */
+    private syncPeerSetupForm(): void {
+      const begin = this.shadowRoot?.querySelector<HTMLButtonElement>('[data-role="peer-begin"]');
+      if (begin) begin.disabled = sendableDraft(this._peerTopicDraft) === null;
+    }
+
+    /**
+     * 互聊议题表单（task_052）：占据消息区（setup 相位没有对话可显）。名字从最近快照解析
+     * （缺失回落 id，同 headerNameOf 口径）；议题 / 轮数选回填自瞬时态（renderMessages 重建不丢）。
+     */
+    private renderSetupForm(): string {
+      const peer = this._peerChat;
+      if (!peer) return '';
+      const aName = this.headerNameOf(peer.aId);
+      const bName = this.headerNameOf(peer.bId);
+      const options = PEER_ROUND_CHOICES.map(
+        (count) =>
+          `<option value="${count}"${count === this._peerRoundsDraft ? ' selected' : ''}>${count} 轮</option>`
+      ).join('');
+      return `
+        <div class="peer-setup" data-role="peer-setup">
+          <div class="peer-setup-title">让 ${escapeHtml(aName)} 与 ${escapeHtml(bName)} 讨论</div>
+          <textarea data-role="peer-topic" placeholder="议题：想让它们聊什么？"></textarea>
+          <label>轮数
+            <select data-role="peer-rounds">${options}</select>
+          </label>
+          <div class="peer-setup-foot">
+            <button type="button" class="peer-cancel" data-role="peer-cancel">取消</button>
+            <button type="button" class="peer-begin" data-role="peer-begin"${sendableDraft(this._peerTopicDraft) === null ? ' disabled' : ''}>开始讨论</button>
+          </div>
+        </div>
+      `;
     }
 
     /** 消息列表整体重建（结构变化时才走：提交 / 切角色 / 收束；流式增量走 updateStreamBubble）。 */
@@ -634,9 +1024,21 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
         box.innerHTML = `<div class="empty" data-role="empty">点选战场上的角色单位，开始对话</div>`;
         return;
       }
+      const peer = this._peerChat;
+      if (peer && viewing === peer.jointId && peer.phase === 'setup') {
+        box.innerHTML = this.renderSetupForm();
+        // 瞬时态回填（议题框 / 轮数选择）—— renderMessages 重建 DOM 不丢用户输入。
+        const topicBox = box.querySelector<HTMLTextAreaElement>('[data-role="peer-topic"]');
+        if (topicBox) topicBox.value = this._peerTopicDraft;
+        return;
+      }
       const messages = this._sessions.messages(viewing);
       if (messages.length === 0) {
-        box.innerHTML = `<div class="empty" data-role="empty">与 ${escapeHtml(this.headerNameOf(viewing))} 的对话还是空的</div>`;
+        const emptyText =
+          peer && viewing === peer.jointId
+            ? `与 ${escapeHtml(this.headerNameOf(peer.aId))}、${escapeHtml(this.headerNameOf(peer.bId))} 的讨论还是空的`
+            : `与 ${escapeHtml(this.headerNameOf(viewing))} 的对话还是空的`;
+        box.innerHTML = `<div class="empty" data-role="empty">${emptyText}</div>`;
       } else {
         box.innerHTML = messages.map((message) => this.renderBubble(message)).join('');
       }
@@ -658,6 +1060,16 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
           <div class="bubble" data-role="bubble" data-message="${escapeHtml(message.id)}" data-side="assistant" data-error="true">
             <div class="bubble-text">${escapeHtml(message.text)}</div>
             <button type="button" class="retry" data-role="retry" data-character="${escapeHtml(message.characterId)}">重试</button>
+          </div>
+        `;
+      }
+      // peer 气泡（task_052）：对方发言 —— 带对方名字行（档案解析，缺失回落 id）。
+      if (message.role === 'peer') {
+        const peerName = message.peerId ? this.headerNameOf(message.peerId) : null;
+        return `
+          <div class="bubble" data-role="bubble" data-message="${escapeHtml(message.id)}" data-side="peer">
+            ${peerName ? `<div class="bubble-name">${escapeHtml(peerName)}</div>` : ''}
+            <div class="bubble-text">${escapeHtml(message.text)}</div>
           </div>
         `;
       }
@@ -686,26 +1098,54 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
         node.innerHTML = `<div class="bubble-text"></div><span class="caret" aria-hidden="true"></span>`;
         box.appendChild(node);
       }
+      // 流的角色决定气泡侧（task_052：互聊 B 侧流是 peer —— 靠右 + 名字行，随流同步）。
+      node.setAttribute('data-side', stream.role);
+      let nameNode = node.querySelector<HTMLElement>('.bubble-name');
+      if (stream.role === 'peer') {
+        const peerName = this._peerChat ? this.headerNameOf(this._peerChat.bId) : '';
+        if (!nameNode) {
+          nameNode = document.createElement('div');
+          nameNode.className = 'bubble-name';
+          node.prepend(nameNode);
+        }
+        if (nameNode.textContent !== peerName) nameNode.textContent = peerName;
+      } else {
+        nameNode?.remove();
+      }
       const textNode = node.querySelector<HTMLElement>('.bubble-text');
       if (textNode) textNode.textContent = stream.text;
       box.scrollTop = box.scrollHeight;
     }
 
-    /** 输入区状态同步：只动禁用态与提示，不碰消息流。 */
+    /** 输入区状态同步：只动禁用态与提示，不碰消息流。互聊相位（task_052）：running = 插话框
+     *  （可用 + 停止钮替代发送中语义）；setup/ended = 禁用（议题表单 / 讨论已收束）。 */
     private syncComposer(): void {
       const box = this.shadowRoot?.querySelector<HTMLTextAreaElement>('[data-role="draft"]');
       const send = this.shadowRoot?.querySelector<HTMLButtonElement>('[data-role="send"]');
       const stop = this.shadowRoot?.querySelector<HTMLButtonElement>('[data-role="stop"]');
       const hint = this.shadowRoot?.querySelector<HTMLElement>('[data-role="send-hint"]');
-      const canType = this._sessions.viewing !== null && !this._sending;
+      const peerPhase = this._peerChat?.phase ?? null;
+      const canType =
+        this._sessions.viewing !== null &&
+        !this._sending &&
+        (peerPhase === null || peerPhase === 'running');
       if (box) box.disabled = !canType;
       if (send) send.disabled = !canType || sendableDraft(this._draft) === null;
-      // 停止钮只在发送中出现（此刻输入与发送都被禁，它是唯一可点的动作）。
-      if (stop) stop.hidden = !this._sending;
+      // 停止钮在发送中 / 互聊进行中出现（互聊中它是「停止整场讨论」）。
+      if (stop) stop.hidden = !(this._sending || peerPhase === 'running');
       if (hint) {
         if (this._sending) {
           hint.textContent = '发送中…';
           hint.setAttribute('data-tone', 'busy');
+        } else if (peerPhase === 'running') {
+          hint.textContent = '旁听中，输入即可插话';
+          hint.setAttribute('data-tone', 'muted');
+        } else if (peerPhase === 'ended') {
+          hint.textContent = '讨论已结束';
+          hint.setAttribute('data-tone', 'muted');
+        } else if (peerPhase === 'setup') {
+          hint.textContent = '';
+          hint.setAttribute('data-tone', 'muted');
         } else if (this._sessions.viewing === null) {
           hint.textContent = '先选择一个角色';
           hint.setAttribute('data-tone', 'muted');

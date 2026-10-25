@@ -16,6 +16,7 @@ import type { CharacterView, UnitView, WorldState } from '../../core/types';
 import {
   CHAT_SESSION_MESSAGE_CAP,
   createCharacterChatSessions,
+  peerChatSessionId,
   resolveCharacterHeader,
   sendableDraft,
 } from '../components/chat-drawer/chat-catalog';
@@ -68,14 +69,19 @@ function makeState(partial: Partial<WorldState> = {}): WorldState {
 interface ExtraDeps {
   onStop?: (characterId: string) => void;
   onRetry?: (characterId: string) => void;
-  /** task_036 追加：历史加载回调（记录调用；受控兑现见「历史回填」组）。 */
+  /** task_036 追加：历史加载回调（记录调用；受控兑现见「历史回填」组）。role 词表含 peer（task_052）。 */
   loadHistory?: (characterId: string) => Promise<readonly {
     characterId?: string;
-    role: 'user' | 'assistant';
+    role: 'user' | 'assistant' | 'peer';
     text: string;
     error?: boolean;
+    peerId?: string;
     at?: number;
   }[]>;
+  /** task_052 追加：互聊三回调（记录到 harness 同名数组）。 */
+  onPeerChatStart?: (aId: string, bId: string, topic: string, rounds: number) => void;
+  onPeerChatStop?: () => void;
+  onPeerInterject?: (text: string) => void;
 }
 
 interface Harness {
@@ -88,6 +94,10 @@ interface Harness {
   readonly retried: string[];
   /** loadHistory 被请求的角色 id 依次记录（task_036）。 */
   readonly historyRequested: string[];
+  /** 互聊三回调的记录（task_052）。 */
+  readonly peerStarts: Array<{ aId: string; bId: string; topic: string; rounds: number }>;
+  readonly peerStops: number[];
+  readonly peerInterjections: string[];
   /** 模拟 core 广播一份新状态（走组件订阅的真实链路）。 */
   emit(state: WorldState): void;
   subscriberCount(): number;
@@ -99,6 +109,9 @@ function mountPanel(onSend?: (characterId: string, text: string) => void, extra:
   const stopped: string[] = [];
   const retried: string[] = [];
   const historyRequested: string[] = [];
+  const peerStarts: Array<{ aId: string; bId: string; topic: string; rounds: number }> = [];
+  const peerStops: number[] = [];
+  const peerInterjections: string[] = [];
   const subs = new Set<(state: WorldState) => void>();
   const deps: CharacterChatDrawerDeps = {
     subscribe: (handler) => {
@@ -120,6 +133,18 @@ function mountPanel(onSend?: (characterId: string, text: string) => void, extra:
           return extra.loadHistory!(characterId);
         }
       : undefined,
+    onPeerChatStart: (aId, bId, topic, rounds) => {
+      peerStarts.push({ aId, bId, topic, rounds });
+      extra.onPeerChatStart?.(aId, bId, topic, rounds);
+    },
+    onPeerChatStop: () => {
+      peerStops.push(1);
+      extra.onPeerChatStop?.();
+    },
+    onPeerInterject: (text) => {
+      peerInterjections.push(text);
+      extra.onPeerInterject?.(text);
+    },
   };
 
   const host = document.createElement('div');
@@ -135,6 +160,9 @@ function mountPanel(onSend?: (characterId: string, text: string) => void, extra:
     stopped,
     retried,
     historyRequested,
+    peerStarts,
+    peerStops,
+    peerInterjections,
     emit: (state) => { subs.forEach((handler) => handler(state)); },
     subscriberCount: () => subs.size,
     unmount: () => { unmountPanel(); host.remove(); },
@@ -352,11 +380,19 @@ describe('组件：点战场单位 → 打开抽屉并切上下文（selection �
     expect(h.panel.isOpen).toBe(false);
   });
 
-  test('多点 / 点未关联角色的单位 / 点空地：都不动抽屉', () => {
+  test('多点（>2）/ 两选未全关联角色 / 点未关联角色的单位 / 点空地：都不动抽屉（task_052：恰两个角色单位才开）', () => {
     h = mountPanel();
+    // 两选但只有一个带角色 → 不是互聊候选，不开。
+    h.emit(makeState({
+      units: [unit('u1', 'c1'), unit('u3', null)],
+      selection: { unitIds: ['u1', 'u3'], previewUnitIds: [], revision: 2 },
+    }));
+    expect(h.panel.isOpen).toBe(false);
+
+    // 三个及以上：不是互聊候选（也不切上下文）。
     h.emit(makeState({
       units: [unit('u1', 'c1'), unit('u2', 'c2'), unit('u3', null)],
-      selection: { unitIds: ['u1', 'u2'], previewUnitIds: [], revision: 2 },
+      selection: { unitIds: ['u1', 'u2', 'u3'], previewUnitIds: [], revision: 5 },
     }));
     expect(h.panel.isOpen).toBe(false);
 
@@ -876,6 +912,277 @@ describe('组件：历史回填（task_036）', () => {
     await flush();
     expect(h.panel.sessionCharacterIds).toEqual(['c1']); // 只落在 c1 名下
     expect(h.panel.visibleMessageIds).toHaveLength(1);
+    h.unmount();
+  });
+});
+
+// ============================================================================
+// task_052：互聊（纯逻辑 —— catalog 的 peer 角色与显式归属开流）
+// ============================================================================
+
+describe('纯逻辑：互聊会话扩展（task_052）', () => {
+  test('peerChatSessionId：排序拼接、与发起顺序无关（同一对角色同一条联合会话）', () => {
+    expect(peerChatSessionId('c1', 'c2')).toBe(peerChatSessionId('c2', 'c1'));
+    expect(peerChatSessionId('c1', 'c2')).toBe(`peer-chat:c1|c2`);
+    expect(peerChatSessionId('c1', 'c2')).not.toBe(peerChatSessionId('c1', 'c3'));
+  });
+
+  test('appendStreamAs：显式归属 + 角色开流（不依赖 viewing）；同 (owner, role) 追加；finalize 按 role 收束', () => {
+    const sessions = createCharacterChatSessions();
+    sessions.setViewing('c1');
+    // 流钉在联合会话上，不进当前查看的 c1。
+    sessions.appendStreamAs('peer-chat:c1|c2', 'peer', '你');
+    expect(sessions.stream?.characterId).toBe('peer-chat:c1|c2');
+    expect(sessions.stream?.role).toBe('peer');
+    expect(sessions.messages('c1')).toHaveLength(0);
+
+    sessions.appendStreamAs('peer-chat:c1|c2', 'peer', '好');
+    expect(sessions.stream?.text).toBe('你好');
+
+    // peer 流收束：peerId 从登记的 hint 补上。
+    sessions.setPeerIdHint('peer-chat:c1|c2', 'c2');
+    const committed = sessions.finalizeStream();
+    expect(committed?.role).toBe('peer');
+    expect(committed?.peerId).toBe('c2');
+    expect(committed?.text).toBe('你好');
+    expect(sessions.messages('peer-chat:c1|c2')).toHaveLength(1);
+  });
+
+  test('appendStreamAs：归属/角色冲突 → 先收束旧流再开新流（半截话不丢）；普通 appendStream 缺省 assistant', () => {
+    const sessions = createCharacterChatSessions();
+    sessions.setViewing('c1');
+    sessions.appendStream('前半');
+    expect(sessions.stream?.role).toBe('assistant');
+    // 互聊 A 侧流开在同一联合会话：冲突 → 旧流（c1 的半截话）先按 assistant 收束。
+    sessions.appendStreamAs('peer-chat:c1|c2', 'assistant', 'A 观点');
+    expect(sessions.messages('c1')).toHaveLength(1);
+    expect(sessions.messages('c1')[0].text).toBe('前半');
+    expect(sessions.stream?.characterId).toBe('peer-chat:c1|c2');
+
+    // 同 owner 换角色（B 回合接着来）也一样：A 的半段先收束。
+    sessions.appendStreamAs('peer-chat:c1|c2', 'peer', 'B 观点');
+    expect(sessions.messages('peer-chat:c1|c2')).toHaveLength(1);
+    expect(sessions.messages('peer-chat:c1|c2')[0].role).toBe('assistant');
+  });
+});
+
+// ============================================================================
+// task_052：互聊（组件 —— 入口 / 表单 / 联合视图 / 插话 / 进度 / 停止 / 会话隔离）
+// ============================================================================
+
+/** 框选状态构造器：两单位 + 两角色在档。 */
+function boxSelectTwo(revision: number, u1Char: string | null, u2Char: string | null): WorldState {
+  return makeState({
+    units: [unit('u1', u1Char), unit('u2', u2Char)],
+    characters: [character('c1'), character('c2')],
+    selection: { unitIds: ['u1', 'u2'], previewUnitIds: [], revision },
+  });
+}
+
+describe('组件：互聊入口（task_052）', () => {
+  test('框选恰两个角色单位 → 开抽屉 + 头部「让它们聊聊」可见 + peerCandidates 就位', () => {
+    const h = mountPanel();
+    h.emit(boxSelectTwo(1, 'c1', 'c2'));
+    expect(h.panel.isOpen).toBe(true);
+    expect(h.panel.peerCandidates).toEqual(['c1', 'c2']);
+    const open = h.panel.shadowRoot?.querySelector<HTMLElement>('[data-role="peer-open"]');
+    expect(open?.hidden).toBe(false);
+    h.unmount();
+  });
+
+  test('只有一个带角色 / 三个单位 → 不开抽屉、不亮互聊钮（讨论需要两个 agent）', () => {
+    const h = mountPanel();
+    h.emit(boxSelectTwo(1, 'c1', null));
+    expect(h.panel.isOpen).toBe(false);
+    expect(h.panel.peerCandidates).toBeNull();
+
+    h.emit(makeState({
+      units: [unit('u1', 'c1'), unit('u2', 'c2'), unit('u3', null)],
+      characters: [character('c1'), character('c2')],
+      selection: { unitIds: ['u1', 'u2', 'u3'], previewUnitIds: [], revision: 2 },
+    }));
+    expect(h.panel.peerCandidates).toBeNull();
+    h.unmount();
+  });
+
+  test('同一单位双选（两个 id 同角色）不算互聊候选', () => {
+    const h = mountPanel();
+    h.emit(boxSelectTwo(1, 'c1', 'c1'));
+    expect(h.panel.peerCandidates).toBeNull();
+    h.unmount();
+  });
+});
+
+describe('组件：互聊表单与讨论流（task_052）', () => {
+  function enterRunning(h: Harness, rounds = '5'): void {
+    h.emit(boxSelectTwo(1, 'c1', 'c2'));
+    (h.panel.shadowRoot?.querySelector<HTMLElement>('[data-role="peer-open"]') as HTMLElement).click();
+    const topic = h.panel.shadowRoot?.querySelector<HTMLTextAreaElement>('[data-role="peer-topic"]');
+    if (!topic) throw new Error('议题框未渲染');
+    topic.value = '先侦察还是先扩张';
+    topic.dispatchEvent(new Event('input', { bubbles: true }));
+    const select = h.panel.shadowRoot?.querySelector<HTMLSelectElement>('[data-role="peer-rounds"]');
+    if (!select) throw new Error('轮数选择未渲染');
+    select.value = rounds;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    (h.panel.shadowRoot?.querySelector<HTMLElement>('[data-role="peer-begin"]') as HTMLElement).click();
+  }
+
+  test('点「让它们聊聊」→ 议题表单（3/5/8）+ 头部 A × B；议题空时开始钮禁用', () => {
+    const h = mountPanel();
+    h.emit(boxSelectTwo(1, 'c1', 'c2'));
+    (h.panel.shadowRoot?.querySelector<HTMLElement>('[data-role="peer-open"]') as HTMLElement).click();
+
+    expect(h.panel.peerChat?.phase).toBe('setup');
+    expect(headerOf(h.panel)).toEqual({ name: '角色-c1 × 角色-c2', badge: '互聊' });
+    const options = Array.from(
+      h.panel.shadowRoot?.querySelectorAll<HTMLOptionElement>('[data-role="peer-rounds"] option') ?? []
+    ).map((option) => option.value);
+    expect(options).toEqual(['3', '5', '8']);
+    const begin = h.panel.shadowRoot?.querySelector<HTMLButtonElement>('[data-role="peer-begin"]');
+    expect(begin?.disabled).toBe(true); // 议题空 → 不可开始
+
+    const topic = h.panel.shadowRoot?.querySelector<HTMLTextAreaElement>('[data-role="peer-topic"]');
+    topic!.value = '议题';
+    topic!.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(begin?.disabled).toBe(false);
+    h.unmount();
+  });
+
+  test('开始 → onPeerChatStart(a,b,议题,轮数)；running 态表单退场、输入框变插话框', () => {
+    const h = mountPanel();
+    enterRunning(h);
+    expect(h.peerStarts).toEqual([{ aId: 'c1', bId: 'c2', topic: '先侦察还是先扩张', rounds: 5 }]);
+    expect(h.panel.peerChat?.phase).toBe('running');
+    expect(h.panel.shadowRoot?.querySelector('[data-role="peer-setup"]')).toBeNull();
+    const box = h.panel.shadowRoot?.querySelector<HTMLTextAreaElement>('[data-role="draft"]');
+    expect(box?.disabled).toBe(false);
+    const stop = h.panel.shadowRoot?.querySelector<HTMLElement>('[data-role="stop"]');
+    expect(stop?.hidden).toBe(false);
+    h.unmount();
+  });
+
+  test('双方气泡区分：A=assistant 左、B=peer 右带名字行；流式同侧（联合会话）', () => {
+    const h = mountPanel();
+    enterRunning(h);
+    h.panel.addMessage({ role: 'user', text: '开题' });
+    h.panel.appendPeerStream('assistant', 'A 的观点');
+    h.panel.appendPeerStream('peer', 'B 的观点');
+
+    // 流式气泡侧随流角色切换（A 先 B 后：A 半段被冲突收束，只剩 B 的流）。
+    const streamBubble = h.panel.shadowRoot?.querySelector<HTMLElement>('[data-role="stream-bubble"]');
+    expect(streamBubble?.getAttribute('data-side')).toBe('peer');
+    expect(streamBubble?.querySelector('.bubble-name')?.textContent).toBe('角色-c2');
+
+    h.panel.finalizePeerStream();
+    const bubbles = bubblesOf(h.panel);
+    expect(bubbles.map((b) => b.getAttribute('data-side'))).toEqual(['user', 'assistant', 'peer']);
+    expect(bubbles[2].querySelector('.bubble-name')?.textContent).toBe('角色-c2');
+    expect(bubbles[2].querySelector('.bubble-text')?.textContent).toBe('B 的观点');
+    h.unmount();
+  });
+
+  test('轮次进度「第 2/3 轮」；仅 running 相位显示', () => {
+    const h = mountPanel();
+    enterRunning(h, '3');
+    h.panel.setPeerRound(2, 3);
+    const round = h.panel.shadowRoot?.querySelector<HTMLElement>('[data-role="peer-round"]');
+    expect(round?.hidden).toBe(false);
+    expect(round?.textContent).toBe('第 2/3 轮');
+
+    h.panel.endPeerChat();
+    expect(round?.hidden).toBe(true); // 收束后进度退场
+    h.unmount();
+  });
+
+  test('插话：输入框照常（Enter）→ onPeerInterject + 联合会话 user 气泡，不进 onSend', () => {
+    const h = mountPanel();
+    enterRunning(h);
+    typeDraft(h.panel, '记得看资源');
+    pressEnter(h.panel);
+    expect(h.peerInterjections).toEqual(['记得看资源']);
+    expect(h.sent).toHaveLength(0); // 互聊中不走普通发送
+    const bubbles = bubblesOf(h.panel);
+    expect(bubbles.some((b) => b.getAttribute('data-side') === 'user')).toBe(true);
+    h.unmount();
+  });
+
+  test('停止钮 → onPeerChatStop；endPeerChat → 「讨论已结束」+ 输入禁用 + 相位 ended', () => {
+    const h = mountPanel();
+    enterRunning(h);
+    (h.panel.shadowRoot?.querySelector<HTMLElement>('[data-role="stop"]') as HTMLElement).click();
+    expect(h.peerStops).toHaveLength(1);
+    expect(h.stopped).toHaveLength(0); // 不是普通聊天的 onStop
+
+    h.panel.endPeerChat();
+    expect(h.panel.peerChat?.phase).toBe('ended');
+    const box = h.panel.shadowRoot?.querySelector<HTMLTextAreaElement>('[data-role="draft"]');
+    expect(box?.disabled).toBe(true);
+    const hint = h.panel.shadowRoot?.querySelector<HTMLElement>('[data-role="send-hint"]');
+    expect(hint?.textContent).toBe('讨论已结束');
+    h.unmount();
+  });
+
+  test('互聊进行中单选切走被抑制；结束（ended）后单选退出互聊并切上下文', () => {
+    const h = mountPanel();
+    enterRunning(h);
+    h.emit(makeState({
+      units: [unit('u1', 'c1')],
+      characters: [character('c1'), character('c2')],
+      selection: { unitIds: ['u1'], previewUnitIds: [], revision: 2 },
+    }));
+    expect(h.panel.peerChat?.phase).toBe('running'); // 抑制：联合视图仍是主舞台
+    expect(headerOf(h.panel).name).toBe('角色-c1 × 角色-c2');
+
+    h.panel.endPeerChat();
+    h.emit(makeState({
+      units: [unit('u1', 'c1')],
+      characters: [character('c1'), character('c2')],
+      selection: { unitIds: ['u1'], previewUnitIds: [], revision: 3 },
+    }));
+    expect(h.panel.peerChat).toBeNull(); // ended 后单选 → 退出互聊
+    expect(headerOf(h.panel).name).toBe('角色-c1'); // 切到了单角色会话
+    h.unmount();
+  });
+
+  test('联合会话不走历史回填（open 不为联合 id 请求 loadHistory）；退出互聊回到空态', async () => {
+    const h = mountPanel(undefined, {
+      loadHistory: async () => [],
+    });
+    enterRunning(h);
+    h.panel.close();
+    h.panel.open(); // 重开（viewing 仍是联合会话）
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(h.historyRequested).not.toContain('peer-chat:c1|c2');
+
+    h.panel.exitPeerChat();
+    expect(h.panel.peerChat).toBeNull();
+    expect(headerOf(h.panel).name).toBe('未选择角色');
+    expect(messagesBoxOf(h.panel).querySelector('[data-role="empty"]')?.textContent)
+      .toBe('点选战场上的角色单位，开始对话');
+    h.unmount();
+  });
+
+  test('单角色历史回填：peer 消息渲染为对方名字气泡（data-side=peer）', async () => {
+    const h = mountPanel(undefined, {
+      loadHistory: async () => [
+        { characterId: 'c1', role: 'user', text: '与 角色-c2 讨论：议题。' },
+        { characterId: 'c1', role: 'peer', text: '我认为先侦察。', peerId: 'c2' },
+      ],
+    });
+    // 名字解析依赖最近快照（与普通头部同一口径）——先广播一份带两角色的状态。
+    h.emit(makeState({
+      units: [],
+      characters: [character('c1'), character('c2')],
+    }));
+    h.panel.open('c1');
+    await Promise.resolve();
+    await Promise.resolve();
+    const bubbles = bubblesOf(h.panel);
+    expect(bubbles[1].getAttribute('data-side')).toBe('peer');
+    expect(bubbles[1].querySelector('.bubble-name')?.textContent).toBe('角色-c2');
+    expect(bubbles[1].querySelector('.bubble-text')?.textContent).toBe('我认为先侦察。');
     h.unmount();
   });
 });
