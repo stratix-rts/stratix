@@ -39,6 +39,7 @@ import {
   type TaskPersistRecord,
   type TaskTransportFactory,
 } from '../services/task-service';
+import { parseTaskArtifactsJson } from '../services/task-artifacts';
 
 // ============================================================================
 // 夹具
@@ -887,5 +888,73 @@ describe('流式转发：onTaskChunk 端口（task_046）', () => {
 
     expect(h.chunks).toEqual([]);
     expect(h.settled[0]).toMatchObject({ status: 'failed' });
+  });
+});
+
+// ============================================================================
+// 成果物解析落列（task_048）
+// ============================================================================
+
+describe('成果物解析落列：completed 才携带 artifacts（task_048）', () => {
+  const DIFF_OUTPUT = [
+    '我来处理这个任务。',
+    '',
+    'diff --git a/src/a.ts b/src/a.ts',
+    '@@ -1,2 +1,3 @@',
+    '-old line',
+    '+new line',
+    '+extra line',
+    '',
+    '已完成修改，测试通过。',
+  ].join('\n');
+
+  test('done 全文可解析 → completed 落库记录与 settled 回调都带 artifacts JSON', async () => {
+    const h = makeHarness({
+      scripts: [scripted({ type: 'message', text: DIFF_OUTPUT }, { type: 'done', exitCode: 0, text: DIFF_OUTPUT, sessionId: null })],
+    });
+    assign(h, '改两个文件');
+    await flush();
+
+    const final = h.persisted.at(-1)!;
+    expect(final.status).toBe('completed');
+    const artifacts = parseTaskArtifactsJson(final.artifacts);
+    expect(artifacts?.files).toEqual([{ path: 'src/a.ts', added: 2, removed: 1 }]);
+    expect(artifacts?.summary).toBe('已完成修改，测试通过。');
+    // settled 回调携带同一份序列化串（消费方 task-report / 面板各自反序列化）
+    expect(h.settled[0].artifacts).toBe(final.artifacts);
+  });
+
+  test('前置快照（queued / running）不解析不带字段 —— 成果物只在 completed 有意义', async () => {
+    // 挂起脚本：吐一段 message 后卡住（执行停在 running），此刻已落 queued + running 两段快照。
+    const stuck = gated(
+      [{ type: 'message', text: 'working' }],
+      [{ type: 'done', exitCode: 0, text: '干完了', sessionId: null }]
+    );
+    const h = makeHarness({ scripts: [stuck.script] });
+    assign(h, '干活');
+    await flush();
+    const statuses = h.persisted.map((r) => r.status);
+    expect(statuses).toEqual(expect.arrayContaining(['queued', 'running']));
+    for (const record of h.persisted) {
+      if (record.status !== 'completed') expect(record.artifacts).toBeUndefined();
+    }
+  });
+
+  test('纯叙述输出（解析不出文件）→ artifacts 缺省（空串不占字段，报告格式不变）', async () => {
+    const h = makeHarness({
+      scripts: [scripted({ type: 'done', exitCode: 0, text: '北门无敌情，一切正常。', sessionId: null })],
+    });
+    assign(h, '侦察北门');
+    await flush();
+    expect(h.persisted.at(-1)!.status).toBe('completed');
+    expect(h.persisted.at(-1)!.artifacts).toBeUndefined();
+  });
+
+  test('failed 不带 artifacts（没产出，不是产出不明）', async () => {
+    const h = makeHarness({ detected: [], scripts: [scripted()] });
+    assign(h, '干活');
+    await flush();
+    expect(h.persisted.at(-1)!.status).toBe('failed');
+    expect(h.persisted.at(-1)!.artifacts).toBeUndefined();
   });
 });

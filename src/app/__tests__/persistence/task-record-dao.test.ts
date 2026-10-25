@@ -4,6 +4,7 @@
  * 驱动说明：与 chat-history-dao.test.ts 同一策略 —— 用**真实的 sql.js 适配器**（生产同款）
  * 开临时文件库；DAO 的全部职责就是"建表 + 参数绑定 + 行映射"，mock 掉连接等于把它一起 mock 掉了。
  * 重开一次文件验证**落盘持久化**与旧库升级路径（character_tasks 在 agent 平台的 tasks 表旁自立门户）。
+ * @since v3.24（task_048）追加 artifacts 列的往返 / 相位覆盖 / v5 老表（无该列）ALTER ADD 迁移。
  */
 
 import * as fs from 'fs';
@@ -213,6 +214,103 @@ describe('task-record-dao（真实 sql.js 适配器）', () => {
           name: string;
         }>;
         expect(tables.some((t) => t.name === 'character_tasks_v5')).toBe(false);
+        expect(() => ensureCharacterTasksTable(legacy)).not.toThrow();
+      } finally {
+        legacy.close();
+      }
+    });
+  });
+  // ============================================================================
+  // artifacts 列（@since v3.24，task_048）
+  // ============================================================================
+
+  describe('artifacts 列往返与相位覆盖', () => {
+    const artifactsJson = JSON.stringify({
+      files: [{ path: 'src/a.ts', added: 3, removed: 1 }],
+      summary: '已完成修改。',
+    });
+
+    it('completed 带成果物 JSON → 全文往返；queued/running 快照（缺省）落空串不占行', () => {
+      upsertTask(db, record());
+      upsertTask(db, record({ status: 'running', startedAt: 1700000001000 }));
+      upsertTask(
+        db,
+        record({
+          status: 'completed',
+          output: '全文输出',
+          startedAt: 1700000001000,
+          endedAt: 1700000010000,
+          artifacts: artifactsJson,
+        })
+      );
+      const row = loadRecentTasks(db, 'ch-1')[0];
+      expect(row.artifacts).toBe(artifactsJson);
+    });
+
+    it('同 id 相位推进的 upsert 覆盖 artifacts（ON CONFLICT 全字段覆盖语义）', () => {
+      upsertTask(db, record({ status: 'completed', output: 'v1', endedAt: 1, artifacts: artifactsJson }));
+      upsertTask(db, record({ status: 'completed', output: 'v2', endedAt: 2 }));
+      expect(loadRecentTasks(db, 'ch-1')[0]).toMatchObject({ output: 'v2', artifacts: undefined });
+    });
+
+    it('读侧宽容：列里的空串归一为 undefined（消费方口径：undefined = 无成果物）', () => {
+      upsertTask(db, record({ status: 'completed', output: 'x', endedAt: 1 }));
+      expect(loadRecentTasks(db, 'ch-1')[0].artifacts).toBeUndefined();
+    });
+  });
+
+  describe('v5 老表迁移（无 artifacts 列 → ALTER ADD）', () => {
+    /** 手工建一张 v5 形状的五态表（有 cancelled、无 artifacts 列）并插老数据。 */
+    function seedLegacyFiveStatusTable(target: Database): void {
+      target.exec(`
+        CREATE TABLE character_tasks (
+          id TEXT PRIMARY KEY,
+          character_id TEXT NOT NULL,
+          prompt TEXT NOT NULL,
+          status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed', 'cancelled')),
+          output TEXT NOT NULL DEFAULT '',
+          created_at INTEGER NOT NULL,
+          started_at INTEGER,
+          ended_at INTEGER
+        )
+      `);
+      target
+        .prepare(
+          'INSERT INTO character_tasks (id, character_id, prompt, status, output, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+        )
+        .run('task_v5', 'ch-1', '老任务', 'completed', '老结果', 1700000000000);
+    }
+
+    it('v5 老表：ensure 后列补齐、老数据零丢失、老行 artifacts 为 undefined、新行可写', async () => {
+      const legacyPath = path.join(path.dirname(dbPath), 'legacy-v5.sqlite');
+      const legacy = new Database(legacyPath);
+      try {
+        await legacy.initialize();
+        seedLegacyFiveStatusTable(legacy);
+
+        ensureCharacterTasksTable(legacy); // → ALTER ADD artifacts
+
+        // 老数据还在，老行没有成果物（undefined，不是 null 不是空串）
+        const rows = loadRecentTasks(legacy, 'ch-1');
+        expect(rows).toHaveLength(1);
+        expect(rows[0]).toMatchObject({ id: 'task_v5', output: '老结果', artifacts: undefined });
+
+        // 新行可写可读（列已就位）
+        const newArtifacts = JSON.stringify({ files: [{ path: 'n.ts' }], summary: '' });
+        upsertTask(
+          legacy,
+          record({
+            id: 'task_new',
+            status: 'completed',
+            output: '新结果',
+            endedAt: 1,
+            createdAt: 1700000009999,
+            artifacts: newArtifacts,
+          })
+        );
+        expect(loadRecentTasks(legacy, 'ch-1', 1)[0].artifacts).toBe(newArtifacts);
+
+        // 幂等：已有列再 ensure 不抛不重建
         expect(() => ensureCharacterTasksTable(legacy)).not.toThrow();
       } finally {
         legacy.close();

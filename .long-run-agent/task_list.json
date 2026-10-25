@@ -1757,7 +1757,7 @@
     {
       "id": "task_048",
       "title": "任务成果物解析",
-      "status": "pending",
+      "status": "completed",
       "depends_on": [
         "task_046"
       ],

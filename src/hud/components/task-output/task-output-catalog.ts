@@ -27,7 +27,15 @@
  * 与 chat 会话的条数截尾（CHAT_SESSION_MESSAGE_CAP）同一精神，只是粒度是字符不是条数 ——
  * CLI 流式输出没有「条」的自然边界。
  *
- * @since v3.22（task_046）。
+ * ============ 成果物摘要块（task_048）============
+ * 任务完成后，组合根把 formatTaskArtifactsBlock（app 层的渲染模型 —— 同一函数也拼在 📋 报告
+ *   尾部，规格④「复用同一渲染模型」）算好的**文案**经 setTaskArtifacts 喂进面板，附在展示
+ *   文本尾部。为什么传字符串不传对象：hud 铁律禁止 import app/ —— 渲染模型留在 app 层，
+ *   hud 只接收渲染结果（与 034 组件只消费已经拼好的消息文本同一口径）。
+ *   清空时机与流缓冲同一提：同角色下一次派发开工（begin 换 taskId）→ 块随流一起清（新任务
+ *   还没成果物）。
+ *
+ * @since v3.22（task_046）；v3.24（task_048）追加成果物摘要块（artifactsBlock 参数 + 清空时机）。
  */
 
 import type { CharacterTask, TaskStatus } from '../../../core/types';
@@ -217,8 +225,24 @@ const HIDDEN_DISPLAY: TaskOutputDisplay = {
  * 缓冲命中但文本为空（CLI 只回了工具回执没有 message）→ 也回落状态 output：
  * 空流 + 有摘要有内容，取有内容的那个（done 分支的占位文案「（任务完成，无文本输出）」
  * 恰好从这里透出）。
+ * artifactsBlock（task_048）：非空时附在文本尾部（前置换行与文本分隔；空文本时直接作正文
+ *   —— 实际不会发生：成果物只在 completed 后喂入，终态必有 output）。隐藏态不受它影响。
  */
 export function resolveTaskOutputDisplay(
+  entry: TaskOutputBuffer | null,
+  latestTask: CharacterTask | null,
+  artifactsBlock = ''
+): TaskOutputDisplay {
+  const base = resolveTaskOutputBase(entry, latestTask);
+  if (!base.visible || artifactsBlock.length === 0) return base;
+  return {
+    ...base,
+    text: base.text.length > 0 ? `${base.text}\n${artifactsBlock}` : artifactsBlock,
+  };
+}
+
+/** resolveTaskOutputDisplay 的主体（task_046 既有逻辑，原样保留；成果物拼接在外层）。 */
+function resolveTaskOutputBase(
   entry: TaskOutputBuffer | null,
   latestTask: CharacterTask | null
 ): TaskOutputDisplay {

@@ -5,6 +5,9 @@
  *   ② 回流注入：报告消息经抽屉 addMessage 进该角色的会话存储 —— **抽屉未开不弹**（addMessage
  *     不碰开合态），打开即可见；
  *   ③ 轻提示：toast 一条「XX 完成任务 / XX 任务失败」（组合根接 hud 的 toast 宿主，3s 自动消失）。
+ *   ④ 成果物摘要（task_048）：completed 记录携带的 artifacts JSON → 反序列化 → 报告尾部附
+ *     📂 文件清单（≤10 条折叠）+ 📐 摘要（渲染模型与任务输出面板共用，规格④）；坏形状
+ *     宽容降级 —— 反序列化失败 / 解析为空 → 报告格式与 039 完全一致（纯文本兑底，不编造）。
  * 输入：task-service 的终态回调（TaskPersistRecord，completed 带全文 / failed 带原因）；
  *   WorldState.characters 快照（toast 文案要角色名）；注入的视图口 / 落库口 / toast 口。
  * 输出：createTaskReportHandler 产出的回调（组合根注入 task-service 的 onTaskSettled）+
@@ -29,10 +32,12 @@
  *
  * @since v3.18（task_039）。三路副作用的顺序固定为「落库 → 注入 → toast」：库是真相、展示是
  *   投影（回填 / 审计都读库），先落库再展示；toast 最后（用户从抽屉看到详细报告的同时角落轻提示）。
+ *   v3.24（task_048）追加④：完成报告尾部附成果物摘要块（详见上文章件职责）。
  */
 
 import type { CharacterView, TaskStatus, WorldState } from '../../core/types';
 import type { ChatPersistedMessage } from './chat-service';
+import { formatTaskArtifactsBlock, parseTaskArtifactsJson, type TaskArtifacts } from './task-artifacts';
 import type { TaskPersistRecord } from './task-service';
 
 // ============================================================================
@@ -55,6 +60,13 @@ export const TASK_REPORT_OUTPUT_LIMIT = 2000;
 export const TASK_REPORT_TRUNCATION_MARK = '…';
 
 /**
+ * 完成报告尾部的成果物摘要块（task_048）：📂 N 个文件 · +A/-B 行 + ≤TASK_REPORT_FILES_LIMIT
+ * 条折叠清单（超出折成「…及 M 个文件」）+ 📎 摘要（有才出）。files 为空 → 不附（纯文本兑底）。
+ * 渲染逻辑在 task-artifacts.ts 的 formatTaskArtifactsBlock（与任务输出面板共用同一渲染模型，
+ * 规格④）；这里只管拼接到报告尾部。
+ */
+
+/**
  * 任务指令的单行摘要：空白折叠成空格（报告首行不折行）+ 截断到 40 码点。
  * 空指令防御性回落占位（core 侧 prompt 非空是入队契约，这里只是不崩）。
  */
@@ -74,11 +86,18 @@ export function clampTaskReportOutput(output: string): string {
 }
 
 /**
- * 完成报告文案：首行「📋 任务报告：<指令摘要>」，换行后输出全文（或截断）。
+ * 完成报告文案：首行「📋 任务报告：<指令摘要>」，换行后输出全文（或截断），尾部附成果物
+ * 摘要块（task_048，解析得到文件清单/摘要时；解析为空时格式与 039 完全一致 —— 纯文本兑底）。
  * 首行与正文分行：抽屉气泡是 pre-wrap，混在一行会看不出哪里是指令哪里是结果。
  */
-export function buildTaskReportText(prompt: string, output: string): string {
-  return `${TASK_REPORT_PREFIX}${summarizeTaskPrompt(prompt)}\n${clampTaskReportOutput(output)}`;
+export function buildTaskReportText(
+  prompt: string,
+  output: string,
+  artifacts: TaskArtifacts | null = null
+): string {
+  const base = `${TASK_REPORT_PREFIX}${summarizeTaskPrompt(prompt)}\n${clampTaskReportOutput(output)}`;
+  const block = formatTaskArtifactsBlock(artifacts);
+  return block.length > 0 ? `${base}\n${block}` : base;
 }
 
 /** 失败报告文案：「⚠ 任务失败：<原因>」（reason 为空时给占位，不让气泡空白）。 */
@@ -164,8 +183,11 @@ export function createTaskReportHandler(deps: TaskReportDeps): (record: TaskPers
   return (record) => {
     const completed = record.status === 'completed';
     const name = displayNameOf(deps.getState().characters, record.characterId);
+    // 成果物（task_048）：completed 才反序列化（宽容：坏 JSON/坏形状 → null，报告回落纯文本）；
+    // failed 没有成果物可言（没产出，不是产出不明）。
+    const artifacts = completed ? parseTaskArtifactsJson(record.artifacts) : null;
     const text = completed
-      ? buildTaskReportText(record.prompt, record.output)
+      ? buildTaskReportText(record.prompt, record.output, artifacts)
       : buildTaskFailedText(record.output);
 
     // ① 落库先行：库是真相（回填 / 审计都读它），展示路径都只是投影；fire-and-forget。

@@ -20,8 +20,10 @@ const DEFAULT_FILENAME = 'stratix.db';
  * v5（@since v3.23，task_047）：character_tasks.status CHECK 扩五态（增 cancelled，排队取消）。
  * SQLite 的 CHECK 不可 ALTER → **重建表迁移**（建新表 → INSERT SELECT 搬数据 → DROP → RENAME），
  * 保留 CHECK 而不是放弃约束的理由见 task-record-dao.ts 文件头（两处同一方案，同构可审）。
+ * v6（@since v3.24，task_048）：character_tasks 增 artifacts 列（任务成果物 JSON，'' = 无）。
+ * 纯加列不动 CHECK → ALTER ADD COLUMN 即可，无需重建（与 v5 的重建方案对比见 DAO 文件头）。
  */
-const TARGET_SCHEMA_VERSION = 5;
+const TARGET_SCHEMA_VERSION = 6;
 
 /** Valid table name characters (alphanumeric + underscore) */
 const VALID_TABLE_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -160,7 +162,8 @@ export class StratixDatabase {
           output TEXT NOT NULL DEFAULT '',
           created_at INTEGER NOT NULL,
           started_at INTEGER,
-          ended_at INTEGER
+          ended_at INTEGER,
+          artifacts TEXT NOT NULL DEFAULT ''
         )
       `);
       this.db.exec('CREATE INDEX IF NOT EXISTS idx_character_tasks_character ON character_tasks(character_id, created_at)');
@@ -168,14 +171,18 @@ export class StratixDatabase {
       return;
     }
 
-    // 表已存在：四态 CHECK（schema_version = 4 的库）→ 重建到五态；已是五态（v5 新库）幂等直过。
+
+    // 表已存在：四态 CHECK（schema_version = 4 的库）→ 重建到五态；已是五态（v5 新库）跳过重建。
     // 'cancelled' 只会出现在 CHECK 词表里，作 DDL 指纹足够（与 task-record-dao 同一手法）。
+    // why 不在这里 return：下面的 v6 加列对「重建过的 v4 表」和「原生的 v5 表」都要跑
+    // （重建产物不带 artifacts 列；v5 表天然也没有）—— 早退会跳过加列。
     const row = this.db
       .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'character_tasks'`)
       .get() as { sql?: string } | undefined;
-    if (typeof row?.sql === 'string' && row.sql.includes("'cancelled'")) return;
+    const needsRebuild = !(typeof row?.sql === 'string' && row.sql.includes("'cancelled'"));
 
-    this.db.exec(`
+    if (needsRebuild) {
+      this.db.exec(`
       CREATE TABLE character_tasks_v5 (
         id TEXT PRIMARY KEY,
         character_id TEXT NOT NULL,
@@ -194,7 +201,17 @@ export class StratixDatabase {
       ALTER TABLE character_tasks_v5 RENAME TO character_tasks;
       CREATE INDEX IF NOT EXISTS idx_character_tasks_character ON character_tasks(character_id, created_at);
     `);
-    log('info', 'Migrated character_tasks status CHECK to five statuses (cancelled)');
+      log('info', 'Migrated character_tasks status CHECK to five statuses (cancelled)');
+    }
+
+    // v6（task_048）：补 artifacts 列（任务成果物 JSON，'' = 无）。纯加列不动 CHECK →
+    // ALTER ADD 即可，无需重建；放在五态重建**之后**（重建产物没有该列，重建后统一补齐），
+    // 已有该列幂等直过。与 task-record-dao 的 ensureArtifactsColumn 同构（那边是 DAO 自立兑底）。
+    const columns = this.db.prepare('PRAGMA table_info(character_tasks)').all() as Array<{ name?: string }>;
+    if (!columns.some((column) => column.name === 'artifacts')) {
+      this.db.exec("ALTER TABLE character_tasks ADD COLUMN artifacts TEXT NOT NULL DEFAULT ''");
+      log('info', 'Added artifacts column to character_tasks (task_048)');
+    }
   }
 
   /**
@@ -927,7 +944,9 @@ export class StratixDatabase {
         output TEXT NOT NULL DEFAULT '',
         created_at INTEGER NOT NULL,
         started_at INTEGER,
-        ended_at INTEGER
+        ended_at INTEGER,
+        -- 任务成果物（@since v3.24，task_048）：parseTaskArtifacts 的 JSON（files+summary），'' = 无
+        artifacts TEXT NOT NULL DEFAULT ''
       );
 
       -- 索引

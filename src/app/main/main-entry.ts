@@ -48,6 +48,10 @@
  *   接 task-service 的新端口 onTaskChunk —— 执行期 chunk 原序转发进面板缓冲（实时 tail 视图）。
  *   本文件仍然只接线：面板的开工对账 / 截断 / 跟随全在 hud 组件内，服务只管转发。
  *
+ * @since v3.24（task_048）任务成果物：onTaskSettled 终态记录先喂面板的 setTaskArtifacts
+ *   （formatTaskArtifactsBlock 在 app 层算好文案再传字符串 —— hud 不 import app/），
+ *   再走 039 的结果回流；📋 报告尾部的成果物块在 task-report 内部拼接。本文件仍然只接线。
+ *
  * 加载路径：dev 走 vite dev server 的 /src/app/main/index.html；
  *   正式构建走 dist/frontend/src/app/main/index.html（由 vite.config.ts 的 input 产出）。
  *   本页是**唯一**入口：旧 Vue 入口链随 task_017 退役，STRATIX_LEGACY 开关已下线，
@@ -93,6 +97,7 @@ import { createChatService } from '../services/chat-service';
 import { cliChatIpcApi, createIpcChatTransportFactory } from '../services/chat-transport-bridge';
 import { createProgressionService } from '../services/progression-service';
 import { createTaskService } from '../services/task-service';
+import { formatTaskArtifactsBlock, parseTaskArtifactsJson } from '../services/task-artifacts';
 import { createTaskReportHandler } from '../services/task-report';
 import { taskRecordApi, makeTaskRecordPersister } from '../services/persistence/task-record';
 import { mountToastHost } from '../../hud/components/toast/toast-host';
@@ -388,6 +393,17 @@ async function boot(): Promise<void> {
   // 非 Electron（纯 vite dev）：没有 cliChat IPC 面 → 不接服务，派发只落 queued（dev 行为可预期）。
   let stopTaskService: (() => void) | null = null;
   if (cliChat) {
+    // task_039：终态回调 → 结果回流（报告落库 + 抽屉注入 + toast）。消息落库与聊天共用同一个
+    // persister（同表同词表）；toast 借上面挂的宿主。抽屉元素拿不到（非 Electron 边角）时
+    // view 传 undefined：只落库 + 轻提示，不注入。
+    const reportSettled = createTaskReportHandler({
+      view: characterDrawer ?? undefined,
+      getState: () => worldStore.getState(),
+      persistMessage: chatHistory ? makeChatMessagePersister(chatHistory) : undefined,
+      toast: (text, tone) => {
+        toastHost.show(text, tone);
+      },
+    });
     const taskService = createTaskService({
       getState: () => worldStore.getState(),
       createTransport: createIpcChatTransportFactory(cliChat),
@@ -404,17 +420,16 @@ async function boot(): Promise<void> {
       onTaskChunk: taskOutputView
         ? (characterId, chunk) => taskOutputView.appendTaskOutput(characterId, chunk)
         : undefined,
-      // task_039：终态回调 → 结果回流（报告落库 + 抽屉注入 + toast）。消息落库与聊天共用同一个
-      // persister（同表同词表）；toast 借上面挂的宿主。抽屉元素拿不到（非 Electron 边角）时
-      // view 传 undefined：只落库 + 轻提示，不注入。
-      onTaskSettled: createTaskReportHandler({
-        view: characterDrawer ?? undefined,
-        getState: () => worldStore.getState(),
-        persistMessage: chatHistory ? makeChatMessagePersister(chatHistory) : undefined,
-        toast: (text, tone) => {
-          toastHost.show(text, tone);
-        },
-      }),
+      // task_048：终态记录先喂任务输出面板的成果物摘要块（formatTaskArtifactsBlock 与
+      // 📋 报告尾部同一渲染模型，规格④；面板不 import app/ —— 这里算好文案再传字符串），
+      // 再走 task_039 的结果回流（reportSettled，见上方声明）。failed 喂空串（无成果物）。
+      onTaskSettled: (record) => {
+        taskOutputView?.setTaskArtifacts(
+          record.characterId,
+          record.status === 'completed' ? formatTaskArtifactsBlock(parseTaskArtifactsJson(record.artifacts)) : ''
+        );
+        reportSettled(record);
+      },
     });
     stopTaskService = taskService.start();
   }

@@ -6,9 +6,12 @@
  *   3. 跟随：默认跟随滚底；「暂停跟随」期间缓冲照收不丢数据，恢复即追平；
  *   4. 完成态保留：completed 后徽标换代、文本保留可回看；
  *   5. 清空重开：同角色下一次派发开工 → 缓冲清空、跟随复位；
- *   6. 折叠交互与卸载退订。
+ *   6. 折叠交互与卸载退订；
+ *   7. 成果物摘要块（task_048）：setTaskArtifacts 附尾展示（完成态可回看）、XSS 零面、
+ *      新任务开工随流清空、别的角色的块不串台、空串清除。
  * 相位真相走注入的 subscribe（模拟 core 广播），流文本走 appendTaskOutput 端口 ——
- * 与生产装配（chat-drawer 转发 subscribe + main-entry 接 onTaskChunk）同一调用面。
+ * 与生产装配（chat-drawer 转发 subscribe + main-entry 接 onTaskChunk）同一调用面；
+ * 成果物块走 setTaskArtifacts（生产由 main-entry 在 onTaskSettled 时喂入）。
  * @jest-environment jsdom
  */
 
@@ -327,5 +330,54 @@ describe('组件：卸载退订', () => {
     const h2 = mountPanel();
     expect(h2.subscriberCount()).toBe(1);
     h2.unmount();
+  });
+});
+
+// ============================================================================
+// 成果物摘要块（task_048）
+// ============================================================================
+
+describe('组件：成果物摘要块（task_048）', () => {
+  const BLOCK = ['📂 2 个文件 · +42/-8 行', '- src/a.ts（+30/-2）', '- src/b.ts（+12/-6）'].join('\n');
+
+  test('completed 后 setTaskArtifacts → 块附在展示文本尾部（textContent 直写，XSS 零面）', () => {
+    const h = mountPanel();
+    h.emit(makeState([task('task-1')]));
+    h.panel.showFor('ch-1');
+    h.panel.appendTaskOutput('ch-1', '执行的流');
+    h.emit(makeState([task('task-1', { status: 'completed', endedAt: 200, output: '摘要' })]));
+    h.panel.setTaskArtifacts('ch-1', `<img src=x onerror=alert(1)>${BLOCK}`);
+    expect(h.panel.outputText).toBe(`执行的流\n<img src=x onerror=alert(1)>${BLOCK}`);
+    expect(part(h.panel, 'output')?.querySelector('img')).toBeNull();
+    expect(part(h.panel, 'output')?.textContent).toBe(`执行的流\n<img src=x onerror=alert(1)>${BLOCK}`);
+    h.unmount();
+  });
+
+  test('新任务开工（begin 换 taskId）→ 块随流一起清（新任务还没成果物）', () => {
+    const h = mountPanel();
+    h.emit(makeState([task('task-1')]));
+    h.panel.showFor('ch-1');
+    h.panel.appendTaskOutput('ch-1', '旧任务的流');
+    h.panel.setTaskArtifacts('ch-1', BLOCK);
+    expect(h.panel.outputText).toBe(`旧任务的流\n${BLOCK}`);
+
+    h.emit(makeState([task('task-2', { createdAt: 999, status: 'running', startedAt: 999 })]));
+    expect(h.panel.outputText).toBe(''); // 流清了、块也清了
+    h.unmount();
+  });
+
+  test('别的角色的块不进当前视图；切上下文可见；空串 = 清除', () => {
+    const h = mountPanel();
+    h.emit(makeState([task('task-1')]));
+    h.panel.showFor('ch-1');
+    h.panel.appendTaskOutput('ch-1', '甲的流');
+    h.panel.setTaskArtifacts('ch-2', BLOCK);
+    expect(h.panel.outputText).toBe('甲的流'); // 乙的块不串台
+
+    h.panel.setTaskArtifacts('ch-1', BLOCK);
+    expect(h.panel.outputText).toBe(`甲的流\n${BLOCK}`);
+    h.panel.setTaskArtifacts('ch-1', '  '); // 空白串 = 清除
+    expect(h.panel.outputText).toBe('甲的流');
+    h.unmount();
   });
 });

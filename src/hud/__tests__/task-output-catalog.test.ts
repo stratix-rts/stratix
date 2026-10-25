@@ -7,6 +7,8 @@
  *   3. 完成态保留：缓冲在任务收尾后原样保留（不丢单 —— 面板靠它回看）；
  *   4. 清空时机：begin 换 taskId = 清空重开；同 taskId 重复广播不清；占位缓冲被认领不清；
  * 另覆盖视图模型合成（latestTaskFor / resolveTaskOutputDisplay 的回落规则）。
+ * @since v3.24（task_048）追加 artifactsBlock 参数：非空时附在展示文本尾部（面板与 📋 报告
+ *   共用同一渲染模型的产物 —— formatTaskArtifactsBlock 在 app 层算好，hud 只收字符串）。
  */
 
 import type { CharacterTask, TaskStatus } from '../../core/types';
@@ -237,6 +239,39 @@ describe('resolveTaskOutputDisplay：视图模型合成', () => {
     const view = resolveTaskOutputDisplay(store.entry('ch-1'), newer);
     expect(view.taskId).toBe('task-2');
     expect(view.text).toBe('');
+  });
+});
+
+describe('resolveTaskOutputDisplay：artifactsBlock 附尾（task_048）', () => {
+  const BLOCK = ['📂 2 个文件 · +42/-8 行', '- src/a.ts（+30/-2）', '- src/b.ts（+12/-6）'].join('\n');
+
+  test('流式文本在场 → 换行附块（完成态可回看成果物摘要）', () => {
+    const store = createTaskOutputStore({ now: () => 1 });
+    store.begin('ch-1', 'task-1');
+    store.append('ch-1', '流式输出');
+    const done = task('task-1', { status: 'completed', output: '摘要', endedAt: 200 });
+    const view = resolveTaskOutputDisplay(store.entry('ch-1'), done, BLOCK);
+    expect(view.text).toBe(`流式输出\n${BLOCK}`);
+    expect(view.fromStream).toBe(true); // 块不改回落语义
+  });
+
+  test('块在场但文本为空（回落占位被块替换的极端形状）→ 块直接作正文', () => {
+    const failed = task('task-g', { status: 'failed', output: '', startedAt: null, endedAt: 300 });
+    expect(resolveTaskOutputDisplay(null, failed, BLOCK).text).toBe(BLOCK);
+  });
+
+  test('空块（默认参数 / 空串）→ 行为与 task_046 完全一致（格式不变兜底）', () => {
+    const store = createTaskOutputStore({ now: () => 1 });
+    store.begin('ch-1', 'task-1');
+    store.append('ch-1', '流式输出');
+    const done = task('task-1', { status: 'completed', output: '摘要', endedAt: 200 });
+    const view = resolveTaskOutputDisplay(store.entry('ch-1'), done, '');
+    expect(view.text).toBe('流式输出');
+    expect(resolveTaskOutputDisplay(store.entry('ch-1'), done).text).toBe('流式输出');
+  });
+
+  test('隐藏态（无任务）不受块影响', () => {
+    expect(resolveTaskOutputDisplay(null, null, BLOCK).visible).toBe(false);
   });
 });
 

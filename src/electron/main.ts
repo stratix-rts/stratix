@@ -368,6 +368,18 @@ function setupIPC() {
           return { ok: false, error: `bad ${field}` };
         }
       }
+      // 成果物（task_048）：可选 JSON 字符串（'' / 缺省 = 无）。三重校验：类型 / 体积上限 /
+      // 真的能 JSON.parse（列里只存结构化 JSON，读侧 parseTaskArtifactsJson 坏形状降级纯文本）。
+      if (record?.artifacts != null) {
+        if (typeof record.artifacts !== 'string' || record.artifacts.length > 100_000) {
+          return { ok: false, error: 'bad artifacts' };
+        }
+        try {
+          JSON.parse(record.artifacts);
+        } catch {
+          return { ok: false, error: 'bad artifacts (not JSON)' };
+        }
+      }
       if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
       const db = getDatabase().getDatabase();
       ensureCharacterTasksTable(db);

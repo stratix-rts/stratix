@@ -42,6 +42,14 @@
  * 状态里只存摘要（MAX_TASK_SUMMARY_LEN，见 core/task/machine.summarizeTaskOutput），
  * 全文只在 SQLite。fire-and-forget：落库失败记日志，不绑架任务执行回路（与 035 同一口径）。
  *
+ * ============ 成果物解析与落列（task_048）============
+ * complete 时同步多算一步：parseTaskArtifacts(全文) → serializeTaskArtifacts 落进记录的
+ * artifacts 字段（JSON 字符串，缺省 = 解析不出）。解析是纯正则、永不抛（解析器内部兜底
+ * 返回空），它在 done 收尾主路径上 —— 坏了不能拖累任务收尾，兜底语义写在解析器里。
+ * 非终态快照（queued/running/failed/cancelled）不解析不带字段 —— 成果物只在 completed
+ * 有意义（失败任务是没产出，不是产出不明）。onTaskSettled 回调携带同一份序列化串，
+ * 消费方（task-report / 任务输出面板）各自反序列化，坏形状宽容降级（回落纯文本）。
+ *
  * ============ 终态收尾的副作用：结果回流 + exp 事件（task_039）============
  * 任务到终态（completed / failed）时额外做两件事，两者都是 fire-and-forget（抛错只记日志，
  * 绝不倒灌任务执行回路）：
@@ -64,7 +72,7 @@
  * 总线同步广播保证了订阅方先见到 running 再见到 chunk，面板的开工对账（清空重开）不会丢流。
  *
  * @since v3.16（task_037）；v3.18（task_039）追加终态副作用；v3.22（task_046）追加流转发端口；
- *   v3.23（task_047）追加取消的队列纪律（事件剔除 + 出队防御）。
+ *   v3.23（task_047）追加取消的队列纪律（事件剔除 + 出队防御）；v3.24（task_048）追加成果物解析落列。
  */
 
 import { emitWorldEvent, onWorldEvent } from '../../core/bus';
@@ -79,6 +87,7 @@ import type {
 } from '../../core/types';
 import type { TaskManager } from '../../core/task';
 import type { SpawnOptions, TransportErrorCode, TransportEvent } from './cli-transport/transport';
+import { parseTaskArtifacts, serializeTaskArtifacts } from './task-artifacts';
 import { defaultExpWeight } from './exp-config';
 
 // ============================================================================
@@ -96,6 +105,8 @@ export type TaskTransportFactory = (kind: AgentKind) => TaskTransportPort;
 /**
  * 任务落库记录（与 SQLite tasks 表一行同构）。
  * completed 的 output 是**全文**（调用方传全文覆盖事件里的摘要）。
+ * artifacts（task_048）：completed 才携带 —— parseTaskArtifacts(全文) 的序列化成果物
+ * （JSON 字符串）；缺省 = 无（非终态快照 / 解析不出）。
  */
 export interface TaskPersistRecord {
   readonly id: string;
@@ -106,6 +117,8 @@ export interface TaskPersistRecord {
   readonly createdAt: number;
   readonly startedAt: number | null;
   readonly endedAt: number | null;
+  /** @since v3.24（task_048）；'' 不出现在这里 —— 解析不出就是缺省，不占字段。 */
+  readonly artifacts?: string;
 }
 
 /** 任务单轮执行超时（ms）。CLI 跑任务比聊天长得多，取 035 档主进程上限：10 分钟。 */
@@ -437,10 +450,15 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
           // 空输出也给一句占位（与 chat 的空回复占位同一口径），失败/成功都有可读的 output。
           const fullText = output.length > 0 ? output : '（任务完成，无文本输出）';
           const finished = manager.completeTask(task.id, fullText); // 状态里存摘要
+          // 成果物解析（task_048）：同步算、永不抛（解析器内部兜底空）；解析不出 → 缺省字段。
+          // 空输出（占位文案）不解析 —— 占位符不是执行产出，解析它只会造出假 summary。
+          const artifactsJson =
+            output.length > 0 ? serializeTaskArtifacts(parseTaskArtifacts(fullText)) : '';
           const record: TaskPersistRecord = {
             ...taskEventToRecord(finished ?? started),
             status: 'completed',
             output: fullText, // 库里存全文（状态/事件里只有摘要）
+            ...(artifactsJson.length > 0 ? { artifacts: artifactsJson } : {}),
           };
           persist(record);
           // 终态副作用（task_039）：回流回调拿全文 + 发 exp。只在状态机确认收尾时发生

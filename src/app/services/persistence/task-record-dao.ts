@@ -31,7 +31,8 @@
  * 老表识别：查 sqlite_master 的建表 DDL 是否已含 'cancelled'（只有 CHECK 里会出现这个词），
  *   含则跳过 —— 幂等，新库（createTables 建的五态表）零成本直过。
  *
- * @since v3.16，task_037；v3.23（task_047）status 词表增 cancelled + 旧表重建迁移。
+ * @since v3.16，task_037；v3.23（task_047）status 词表增 cancelled + 旧表重建迁移；
+ *   v3.24（task_048）增 artifacts 列（成果物 JSON，'' = 无；ALTER ADD 可加，无需重建）。
  */
 
 import type { SqliteDatabaseLike } from './game-save-dao';
@@ -57,6 +58,12 @@ export interface PersistedTaskRecord {
   readonly startedAt: number | null;
   /** 收尾时间；未收尾为 null。 */
   readonly endedAt: number | null;
+  /**
+   * 任务成果物（task_048）：parseTaskArtifacts 产出的 JSON 字符串（files + summary），
+   * '' / 缺省 = 无（解析不出 / 老记录 / 非终态快照）。可选而非必填：老调用方
+   * （事件快照路径）与老库行都不携带它，upsert 缺省落 ''。
+   */
+  readonly artifacts?: string;
 }
 
 /** 词表导出给 IPC 校验层用（主进程拒绝表外 status，别让脏词进 CHECK 约束炸 IPC）。 */
@@ -132,8 +139,8 @@ function migrateTaskStatusCheckToFive(db: SqliteDatabaseLike): void {
 
 /**
  * 建表 + 索引（幂等，旧库新库都能直接调）：
- * 先把四态 CHECK 老表重建到五态（若需要），再 CREATE IF NOT EXISTS 兑底。
- * 与 StratixDatabase 的 DDL 同构；那边负责 schema_version 迁移记录（v5），这里是 DAO 自立兜底。
+ * 先把四态 CHECK 老表重建到五态（若需要），补 artifacts 列（若缺），再 CREATE IF NOT EXISTS 兑底。
+ * 与 StratixDatabase 的 DDL 同构；那边负责 schema_version 迁移记录（v6），这里是 DAO 自立兜底。
  * upsert 语义（core 会按相位推进同一条任务：queued → running → 终态）要求 id 冲突时全字段覆盖。
  */
 export function ensureCharacterTasksTable(db: SqliteDatabaseLike): void {
@@ -143,6 +150,20 @@ export function ensureCharacterTasksTable(db: SqliteDatabaseLike): void {
     CREATE INDEX IF NOT EXISTS idx_tasks_character
       ON ${CHARACTER_TASKS_TABLE}(character_id, created_at);
   `);
+  ensureArtifactsColumn(db);
+}
+
+/**
+ * artifacts 列兑底（task_048，schema v6）：老表（v5 及更早建的、没有该列）→ ALTER ADD。
+ * 加列不涉及 CHECK 约束（SQLite 的 ALTER ADD COLUMN 足够），不用重建表 —— 与五态迁移
+ * 的重建方案不同（那边是被 CHECK 逼的）。PRAGMA 不支持参数绑定，表名是内部常量非外部输入。
+ */
+function ensureArtifactsColumn(db: SqliteDatabaseLike): void {
+  const columns = db.prepare(`PRAGMA table_info(${CHARACTER_TASKS_TABLE})`).all() as Array<{
+    name?: string;
+  }>;
+  if (columns.some((column) => column.name === 'artifacts')) return;
+  db.exec(`ALTER TABLE ${CHARACTER_TASKS_TABLE} ADD COLUMN artifacts TEXT NOT NULL DEFAULT ''`);
 }
 
 /**
@@ -152,13 +173,14 @@ export function ensureCharacterTasksTable(db: SqliteDatabaseLike): void {
 export function upsertTask(db: SqliteDatabaseLike, record: PersistedTaskRecord): void {
   db.prepare(`
     INSERT INTO ${CHARACTER_TASKS_TABLE}
-      (id, character_id, prompt, status, output, created_at, started_at, ended_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      (id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       status = excluded.status,
       output = excluded.output,
       started_at = excluded.started_at,
-      ended_at = excluded.ended_at
+      ended_at = excluded.ended_at,
+      artifacts = excluded.artifacts
   `).run(
     record.id,
     record.characterId,
@@ -167,7 +189,8 @@ export function upsertTask(db: SqliteDatabaseLike, record: PersistedTaskRecord):
     record.output,
     record.createdAt,
     record.startedAt,
-    record.endedAt
+    record.endedAt,
+    record.artifacts ?? ''
   );
 }
 
@@ -183,7 +206,7 @@ export function loadRecentTasks(
 ): PersistedTaskRecord[] {
   const rows = db
     .prepare(
-      `SELECT id, character_id, prompt, status, output, created_at, started_at, ended_at
+      `SELECT id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts
        FROM ${CHARACTER_TASKS_TABLE}
        WHERE character_id = ?
        ORDER BY created_at DESC, id DESC
@@ -202,6 +225,8 @@ export function loadRecentTasks(
       createdAt: Number(row.created_at ?? 0),
       startedAt: row.started_at === null || row.started_at === undefined ? null : Number(row.started_at),
       endedAt: row.ended_at === null || row.ended_at === undefined ? null : Number(row.ended_at),
+      // 老库行（v5 及以前）没有该列 → undefined（消费方口径：undefined = 无成果物，降级纯文本）。
+      artifacts: typeof row.artifacts === 'string' && row.artifacts.length > 0 ? row.artifacts : undefined,
     }))
     .reverse();
 }

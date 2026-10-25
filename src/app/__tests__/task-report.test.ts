@@ -1,16 +1,19 @@
 /**
  * 集成测试：任务结果回流（app/services/task-report.ts，task_039）。
- * 覆盖四个面：
+ * 覆盖五个面（task_048 增⑤成果物摘要）：
  *   1. 报告文案纯函数：前缀标记 / 指令摘要（空白折叠 + 40 码点截断）/ 输出全文或 2000 截断 /
  *      失败文案 / toast 文案；
  *   2. 注入裁决 shouldInjectReport：正看着（开 + viewing）或内存已是超集（sessionCharacterIds）
  *      才注入，其余只落库 + toast；
  *   3. 终态回调三路副作用：落库（completed → assistant / failed → error）、抽屉注入
  *      （failed 带 error 标记）、toast（文案 + 语气）；角色名缺失回落 id；
- *   4. 副作用互相独立：一路抛错不影响其余两路（fire-and-forget 纪律，只记日志）。
+ *   4. 副作用互相独立：一路抛错不影响其余两路（fire-and-forget 纪律，只记日志）；
+ *   5. 成果物摘要（task_048）：completed 携带 artifacts JSON → 报告尾部附 📂 文件清单块；
+ *      解析为空 / 坏形状 / failed → 报告格式与 039 完全一致（纯文本兜底，规格③）。
  */
 
 import type { CharacterView, WorldState } from '../../core/types';
+import { parseTaskArtifactsJson, serializeTaskArtifacts, type TaskArtifacts } from '../services/task-artifacts';
 import type { TaskPersistRecord } from '../services/task-service';
 import {
   buildTaskFailedText,
@@ -331,5 +334,67 @@ describe('副作用互相独立（一路抛错不绑架其余）', () => {
   test('三路口全缺省（无 view / persist / toast）→ 只要不抛就是合法配置', () => {
     const handle = createTaskReportHandler({ getState: () => ({ characters: [] }) });
     expect(() => handle(makeRecord())).not.toThrow();
+  });
+});
+
+// ============================================================================
+// 成果物摘要（task_048，规格③：报告格式两态）
+// ============================================================================
+
+const ARTIFACTS: TaskArtifacts = {
+  files: [
+    { path: 'src/core/types.ts', added: 30, removed: 2 },
+    { path: 'src/app/foo.ts', added: 12, removed: 6 },
+  ],
+  summary: '已完成全部修改，测试通过。',
+};
+
+describe('buildTaskReportText：成果物两态（task_048）', () => {
+  test('有成果物 → 基础格式不变，尾部换行附 📂 文件清单块（渲染模型与面板共用）', () => {
+    const text = buildTaskReportText('重构类型', '输出正文。', ARTIFACTS);
+    expect(text).toBe(
+      '📋 任务报告：重构类型\n输出正文。\n' +
+        '📎 摘要：已完成全部修改，测试通过。\n' +
+        '📂 2 个文件 · +42/-8 行\n' +
+        '- src/core/types.ts（+30/-2）\n' +
+        '- src/app/foo.ts（+12/-6）'
+    );
+  });
+
+  test('成果物为空 / files 空 → 格式与 039 完全一致（纯文本兜底，不编造）', () => {
+    const bare = buildTaskReportText('侦察北门', '北门无敌情，一切正常。');
+    expect(buildTaskReportText('侦察北门', '北门无敌情，一切正常。', null)).toBe(bare);
+    expect(buildTaskReportText('侦察北门', '北门无敌情，一切正常。', { files: [], summary: '' })).toBe(bare);
+  });
+});
+
+describe('createTaskReportHandler：成果物随终态记录回流（task_048）', () => {
+  test('completed 带 artifacts JSON → 落库与注入的报告尾部都带 📂 块', () => {
+    const h = makeHandler(makeView({ isOpen: true, characterId: 'ch-1' }));
+    h.handle(makeRecord({ artifacts: serializeTaskArtifacts(ARTIFACTS) }));
+
+    const expected = buildTaskReportText('侦察北门', '北门无敌情，一切正常。', ARTIFACTS);
+    expect(h.persisted[0].text).toBe(expected);
+    expect(h.injected[0].text).toBe(expected);
+    expect(h.persisted[0].text).toContain('📂 2 个文件 · +42/-8 行');
+  });
+
+  test('completed 无 artifacts（解析不出 / 老记录）→ 报告格式与 039 一致', () => {
+    const h = makeHandler(makeView({ isOpen: true, characterId: 'ch-1' }));
+    h.handle(makeRecord());
+    expect(h.persisted[0].text).toBe(buildTaskReportText('侦察北门', '北门无敌情，一切正常。'));
+  });
+
+  test('completed 带坏形状 artifacts（脏 JSON）→ 宽容降级纯文本，不抛不修', () => {
+    const h = makeHandler(makeView({ isOpen: true, characterId: 'ch-1' }));
+    expect(() => h.handle(makeRecord({ artifacts: '{oops' }))).not.toThrow();
+    expect(h.persisted[0].text).toBe(buildTaskReportText('侦察北门', '北门无敌情，一切正常。'));
+    expect(parseTaskArtifactsJson('{oops')).toBeNull(); // 降级口径：坏形状 = 无成果物
+  });
+
+  test('failed 不附成果物块（失败是没产出，不是产出不明）', () => {
+    const h = makeHandler(makeView({ isOpen: true, characterId: 'ch-1' }));
+    h.handle(makeRecord({ status: 'failed', output: '执行超时', artifacts: serializeTaskArtifacts(ARTIFACTS) }));
+    expect(h.persisted[0].text).toBe('⚠ 任务失败：执行超时');
   });
 });

@@ -36,6 +36,7 @@
  * 全走属性同步。
  *
  * @since v3.22（task_046）。宿主与嵌挂接线见 chat-drawer.ts（v3.22 注记）与 main-entry.ts。
+ *   v3.24（task_048）追加 setTaskArtifacts（成果物摘要块喂入口）与新任务开工时的清空。
  */
 
 import type { TaskStatus, WorldState } from '../../../core/types';
@@ -64,6 +65,11 @@ export interface StratTaskOutputPanelElement extends HTMLElement {
   readonly characterId: string | null;
   /** 实时流端口（task_046 需求②）：追加 chunk 进该角色的缓冲并刷新视图（不切上下文）。 */
   appendTaskOutput(characterId: string, chunk: string): void;
+  /**
+   * 成果物摘要块喂入口（task_048）：附在该角色展示文本尾部（文案由组合根用 app 层的
+   * formatTaskArtifactsBlock 算好传入 —— hud 不 import app/，铁律）。空串 = 清除。
+   */
+  setTaskArtifacts(characterId: string, block: string): void;
   /** 是否跟随滚底（true = 自动滚底；暂停 = 收而 不滚）。 */
   readonly following: boolean;
   /** 折叠区展开态。 */
@@ -104,6 +110,8 @@ export function defineTaskOutputPanel(): typeof HTMLElement {
     private _scrollSyncs = 0;
     /** 上次写进输出区的文本（没变不碰 DOM —— 流式高频，比对远轻于重写）。 */
     private _renderedText: string | null = null;
+    /** 每角色一份成果物摘要块（task_048；组合根在任务完成时喂入，新任务开工随 begin 清）。 */
+    private readonly _artifactsBlocks = new Map<string, string>();
 
     // —— 属性面 ——
     get deps(): TaskOutputPanelDeps | null { return this._deps; }
@@ -166,6 +174,19 @@ export function defineTaskOutputPanel(): typeof HTMLElement {
       if (characterId === this._characterId) this.syncAll();
     }
 
+    /**
+     * 成果物摘要块喂入口（task_048）：组合根在任务完成（onTaskSettled）时把
+     * formatTaskArtifactsBlock 算好的文案塞进来，附在该角色展示文本尾部（渲染模型与
+     * 📋 报告共用 —— 那边也在尾部拼同一函数的产物，规格④）。空串 = 清除（failed / 防御）。
+     * 新任务开工（begin 换 taskId）随流一起清（见 handleState 的对账循环）。
+     */
+    setTaskArtifacts(characterId: string, block: string): void {
+      const trimmed = block.trim();
+      if (trimmed.length === 0) this._artifactsBlocks.delete(characterId);
+      else this._artifactsBlocks.set(characterId, trimmed);
+      if (characterId === this._characterId) this.syncAll();
+    }
+
     // —— 订阅生命周期 ——
     private bindDeps(): void {
       if (!this.isConnected || !this._deps || this._unsubscribe) return;
@@ -192,6 +213,7 @@ export function defineTaskOutputPanel(): typeof HTMLElement {
         const entry = this._store.entry(task.characterId);
         if (entry && entry.taskId === task.id) continue; // 已对账（重复广播）
         this._store.begin(task.characterId, task.id);
+        this._artifactsBlocks.delete(task.characterId); // 新任务开工：旧成果物随流一起清（task_048）
         if (task.characterId === this._characterId) {
           this._expanded = true; // 新执行默认展开
           this._following = true; // 新流从零看起
@@ -320,7 +342,11 @@ export function defineTaskOutputPanel(): typeof HTMLElement {
     /** 当前展示角色的视图模型（读零成本；渲染与观察口共用同一份合成，不两算）。 */
     private display(): ReturnType<typeof resolveTaskOutputDisplay> {
       const latest = latestTaskFor(this._state?.tasks, this._characterId);
-      return resolveTaskOutputDisplay(this._store.entry(this._characterId ?? ''), latest);
+      return resolveTaskOutputDisplay(
+        this._store.entry(this._characterId ?? ''),
+        latest,
+        this._artifactsBlocks.get(this._characterId ?? '') ?? ''
+      );
     }
 
     private toggleFollow(): void {
