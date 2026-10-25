@@ -1714,6 +1714,16 @@
       ],
       "priority": 1,
       "updated_at": "2026-10-25T06:38:37.000000Z"
+    },
+    {
+      "id": "task_044",
+      "title": "向导逐个配置化：勾选导入+per-agent人设",
+      "status": "completed",
+      "depends_on": [
+        "task_043"
+      ],
+      "priority": 1,
+      "updated_at": "2026-10-25T08:30:00.000000Z"
     }
   ]
 }

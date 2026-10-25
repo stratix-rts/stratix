@@ -282,27 +282,28 @@ describe('向导第②步 · 每 agent 独立形象（草稿初始化）', () =>
 });
 
 describe('向导第②步 · 重随机与重置品牌默认', () => {
-  test('「重随机」按钮（卡片级，带 data-kind）：规则随机 normal 档，只改那一个 agent', () => {
+  test('「重随机」按钮（卡片级，带 data-kind）：规则随机 normal 档，只改那一个 agent【task_044 改断言：先经切换条切到 codex（逐个配置后屏上只有当前 agent 的卡片）】', () => {
     const stub = createStubPort();
     const h = mountScreen(stub);
     h.emit(makeState([CLAUDE, CODEX]));
     one(h.screen, '[data-action="next"]').click();
 
+    // 切换条切到 codex（当前配置 / 预览对象换成 codex）
+    one(h.screen, '[data-action="select-agent"][data-kind="codex"]').click();
+    expect(h.screen.previewKind).toBe('codex');
+
     const previewsBefore = stub.log.previews.length;
-    // 当前预览的是 claude —— 点 codex 卡片上的重随机
     one(h.screen, '[data-action="randomize-appearance"][data-kind="codex"]').click();
 
     expect(stub.log.randomizedNormal).toBe(1);
     expect(h.screen.appearanceOf('codex')).toEqual(NORMAL_RANDOM);
     // 另一个 agent 的草稿不受影响
     expect(h.screen.appearanceOf('claude-code')).toEqual(PRESET_CLAUDE);
-    // codex 不是当前预览对象 → 画布不该被 codex 的新形象刷掉
-    expect(stub.log.previews.length).toBe(previewsBefore);
-
-    // 再点当前预览对象（claude）的重随机 → 草稿换新 + 画布刷新
-    one(h.screen, '[data-action="randomize-appearance"][data-kind="claude-code"]').click();
-    expect(h.screen.appearanceOf('claude-code')).toEqual(NORMAL_RANDOM);
+    // codex 是当前预览对象 → 草稿换新同时画布刷新
     expect(stub.log.previews[stub.log.previews.length - 1]).toEqual(NORMAL_RANDOM);
+    // 切回 claude：它的草稿还是品牌预设（没被 codex 的重随机写穿）
+    one(h.screen, '[data-action="select-agent"][data-kind="claude-code"]').click();
+    expect(h.screen.appearanceOf('claude-code')).toEqual(PRESET_CLAUDE);
     h.unmount();
   });
 
@@ -360,14 +361,14 @@ describe('向导第②步 · 重随机与重置品牌默认', () => {
 });
 
 describe('向导第②步 · 预览与部件选择器', () => {
-  test('多个 agent：点「预览形象」切到另一个，画布跟着换', () => {
+  test('多个 agent：切换条切到另一个，画布跟着换【task_044 改断言：切换条（select-agent）替代原「预览形象」按钮】', () => {
     const stub = createStubPort();
     const h = mountScreen(stub);
     h.emit(makeState([CLAUDE, CODEX]));
     one(h.screen, '[data-action="next"]').click();
 
     expect(h.screen.previewKind).toBe('claude-code');
-    one(h.screen, '[data-action="preview-appearance"][data-kind="codex"]').click();
+    one(h.screen, '[data-action="select-agent"][data-kind="codex"]').click();
 
     expect(h.screen.previewKind).toBe('codex');
     // 切过去就把 codex 的草稿推给预览服务
@@ -377,13 +378,13 @@ describe('向导第②步 · 预览与部件选择器', () => {
     h.unmount();
   });
 
-  test('部件选择器：改变体 → 更新**当前预览对象**的草稿并刷新预览', () => {
+  test('部件选择器：改变体 → 更新**当前预览对象**的草稿并刷新预览【task_044 改断言：切换条切换】', () => {
     const stub = createStubPort();
     const h = mountScreen(stub);
     h.emit(makeState([CLAUDE, CODEX]));
     one(h.screen, '[data-action="next"]').click();
 
-    one(h.screen, '[data-action="preview-appearance"][data-kind="codex"]').click();
+    one(h.screen, '[data-action="select-agent"][data-kind="codex"]').click();
     select(h.screen, '[data-role="appearance-part"][data-category="hair"]', 'black');
 
     expect(h.screen.appearanceOf('codex')?.parts.hair).toBe('black');

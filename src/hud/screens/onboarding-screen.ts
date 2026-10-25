@@ -1,11 +1,18 @@
 /**
  * 文件职责：首启向导屏 Web Component（`<strat-onboarding-screen>`）—— 四步引导：
- *   ① 扫描报告（WorldState.detectedAgents：已装高亮 + tier 标签）
+ *   ① 扫描报告（WorldState.detectedAgents：已装高亮 + tier 标签）+ **勾选导入**（@since v3.14，task_044：
+ *      可导入行默认全选，只有勾选的 agent 进后续步骤与建档）
  *   ② 逐个已装 agent 起名 + 随机皮肤（可换）+ **每 agent 独立形象**（@since v3.12，task_032：
  *      默认品牌预设 + 可单独改部件 + 规则化重随机 + 重置默认；canvas 预览走路动画）
- *   ③ 人设生成（预设快速开始 + 4 题问答拼装结构化 persona，预览可直接改 + 脏保护）
- *   ④ 确认 → 逐个 character.create（各带各的 appearance）→ 完成事件。
- *   来源：.long-run-agent/tasks/task_025.md「hud 首启向导屏」；第②步的形象能力见 task_028。
+ *   ③ 人设生成（预设快速开始 + 4 题问答拼装结构化 persona，预览可直接改 + 脏保护）——
+ *      **per-agent 独立**（@since v3.14，task_044：人设不再全员共用一份，每个 agent 独立
+ *      问卷 / 预设 / 脏保护；预设按 kind 推荐排序，专属预设预填）
+ *   ④ 确认 → 逐个 character.create（各带各的 appearance **与 persona**）→ 完成事件。
+ *   ★ @since v3.14（task_044）逐个配置化：② ③ 两步顶部有共用的 agent 切换条
+ *     （kind 徽标 + 名字 + 已配置✓状态），选中哪个配置哪个 —— 向导从「批量填一份」
+ *     改为「逐个初始化」，同一时刻只配置当前选中的 agent。
+ *   来源：.long-run-agent/tasks/task_025.md「hud 首启向导屏」；形象能力见 task_028 / task_032；
+ *     人设 2.0 见 task_043；逐个配置化见 task_044。
  *   依赖：task_022（detectedAgents）、task_021（character.create 建档口径）、task_024（皮肤库）、
  *   task_027（world/appearance 的 LPC 合成栈，**只经端口消费**）。
  * 输入：注入的 HudBusAdapter（dispatch / subscribe 两个能力，与 screens / panels 同口径）；
@@ -23,14 +30,18 @@
  *   6. 自己改 mount 接线 —— 挂载接线由 app 侧首启逻辑负责（task_026）。
  *
  * ★ 四步的数据流（一眼看清谁在哪儿改的）：
- *   - 扫描结果（core 广播）→ 扫描报告行；
- *   - 可建档名单（已装 ∩ AGENT_KINDS）→ 第二步的起名条目（名字默认取 agent 显示名）；
+ *   - 扫描结果（core 广播）→ 扫描报告行；可导入行带勾选框（@since v3.14，task_044：
+ *     新探到的默认勾上，用户明确取消过的保持取消）；
+ *   - 可建档名单（已装 ∩ AGENT_KINDS ∩ 勾选）→ 第二步的起名条目（名字默认取 agent 显示名）；
  *   - 皮肤由皮肤库抽签器给（可注入 skinSource，测试可确定性复现）；
  *   - 形象草稿是**每 agent 一份**（@since v3.12，task_032）：`Map<kind, AppearanceDraft>`，
  *     初始值 = 注入端口给的默认形象（品牌预设，独立深拷贝）——屏不认识预设库与随机器，
  *     只发意图（preset / randomizeNormal，见 appearance-preview-port.ts）；
+ *   - 人设草稿也是**每 agent 一份**（@since v3.14，task_044）：`Map<kind, PersonaDraft>`
+ *     （问卷答案 + 人设正文 + 脏标记 + 预设 id）—— 初始值：kind 命中专属预设则预填，
+ *     否则留空提示「答问卷或选预设」；预设卡片按当前 agent 的 kind 推荐排序；
  *   - 问卷答案 → 人设模板（core 默认模板打底 + 各题 fragment），预览可改，改过之后不再被答案覆盖；
- *   - 确认页 → 逐条 character.create（各带各的 appearance）→ 完成事件。
+ *   - 确认页 → 逐条 character.create（各带各的 appearance 与 persona）→ 完成事件。
  *
  * ★ 形象预览与"总线隔离"的关系（task_028 的核心约束，task_032 延续）：
  *   hud 不 import world，但第②步要显示真实角色长相。解法是**端口**：
@@ -83,9 +94,8 @@ import {
   type OnboardingIdentity,
   type OnboardingScanRow,
   type OnboardingStep,
-  type PersonaAnswers,
 } from './onboarding-catalog';
-import { PERSONA_PRESETS, type PersonaPreset } from './persona-presets';
+import { PERSONA_PRESETS, presetMatchingKind, presetsForKind, type PersonaPreset } from './persona-presets';
 
 export const ONBOARDING_SCREEN_TAG = 'strat-onboarding-screen';
 
@@ -133,6 +143,22 @@ interface MutableIdentity {
   skinId: SkinId;
 }
 
+/**
+ * 屏内一个 agent 的人设草稿（@since v3.14，task_044）。
+ * why 独立成一份：每个 agent 特长不同，人设不再全员共用 —— 问卷答案 / 预设 / 手改脏保护
+ * 都是 per-agent 的（与 _appearanceDrafts 同一 Map 模式）。
+ */
+interface PersonaDraft {
+  /** 问卷答案（题目 id → 选项 id）。 */
+  answers: Record<string, string>;
+  /** 人设正文（预览区可改）。 */
+  persona: string;
+  /** 手改过吗：改过之后答案变化不再自动覆盖（显式「按问卷重新生成」才覆盖）。 */
+  dirty: boolean;
+  /** 当前生效的预设 id（null = 问卷 / 手写模式）。答问卷任一题即退出预设模式。 */
+  presetId: string | null;
+}
+
 /** 自定义元素的对外形状（测试与挂载方按它断言）。 */
 export interface StratOnboardingScreenElement extends HTMLElement {
   /** 注入的适配器；connected 之前或之后设置都生效。 */
@@ -148,13 +174,17 @@ export interface StratOnboardingScreenElement extends HTMLElement {
   refresh(): void;
   /** 当前步骤。 */
   readonly step: OnboardingStep;
-  /** 当前起名 / 皮肤清单。 */
+  /** 当前起名 / 皮肤清单（= 已装 ∩ 可建档 ∩ 勾选导入，@since v3.14，task_044）。 */
   readonly identities: readonly OnboardingIdentity[];
-  /** 当前人设文本（预览区可改后的值）。 */
+  /** 扫描步勾选导入的 kind 集合（@since v3.14，task_044）。 */
+  readonly selectedKinds: readonly string[];
+  /** 当前 **active agent** 的人设文本（预览区可改后的值；@since v3.14，task_044 起 per-agent）。 */
   readonly persona: string;
-  /** 当前生效的预设 id（null = 没用预设 / 已被问卷或重新生成覆盖）。 */
+  /** 某个 agent 的人设草稿文本（@since v3.14，task_044：人设逐 agent 独立）。 */
+  personaOf(kind: string): string;
+  /** 当前 active agent 生效的预设 id（null = 没用预设 / 已被问卷或重新生成覆盖）。 */
   readonly personaPresetId: string | null;
-  /** 人设预览是否处于手改态（脏：问卷重选不再自动覆写，需显式重新生成）。 */
+  /** 当前 active agent 的人设是否处于手改态（脏：问卷重选不再自动覆写，需显式重新生成）。 */
   readonly personaDirty: boolean;
   /** 当前错误提示（key → 文案）。 */
   readonly errors: Readonly<Record<string, string>>;
@@ -162,7 +192,7 @@ export interface StratOnboardingScreenElement extends HTMLElement {
   readonly scanRows: readonly OnboardingScanRow[];
   /** 某个 agent 选定的形象（没有 → null）。 */
   appearanceOf(kind: string): CharacterAppearance | null;
-  /** 当前在预览区展示的是哪个 agent（null = 没有）。 */
+  /** 当前在预览区展示 / 正在配置的是哪个 agent（null = 没有；@since v3.14，task_044 起即切换条的 active agent）。 */
   readonly previewKind: string | null;
   /** 给当前预览对象抽一套随机形象（规则随机 normal 档；端口没接 / 素材没就绪 → 不动）。 */
   randomizeAppearance(): void;
@@ -264,8 +294,25 @@ const ONBOARDING_STYLE = `
   }
   .identity-head { display: flex; align-items: center; gap: var(--srf-spacing-sm); flex-wrap: wrap; }
   .identity-label { font-weight: 600; }
-  /* 正在预览的那条：画布只有一块，得让人一眼看出在看谁。 */
-  .identity[data-preview="true"] { border-color: var(--srf-accent); }
+  /* agent 切换条（@since v3.14，task_044）：identity / persona 两步共用，选中谁配置谁。 */
+  .switcher { display: flex; gap: var(--srf-spacing-sm); flex-wrap: wrap; }
+  .switcher-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--srf-spacing-xs);
+    padding: var(--srf-spacing-xs) var(--srf-spacing-sm);
+    background: var(--srf-panel-elevated);
+    color: var(--srf-text);
+    border: var(--srf-border-width) solid var(--srf-border);
+    border-radius: var(--srf-radius);
+    font-family: var(--srf-font-ui);
+    font-size: var(--srf-font-size-sm);
+    cursor: pointer;
+  }
+  .switcher-tab[data-active="true"] { border-color: var(--srf-accent); }
+  .switcher-title { font-weight: 600; }
+  .switcher-status { color: var(--srf-text-muted); }
+  .switcher-status[data-done="true"] { color: var(--srf-success); }
   /* 徽标色走 token：皮肤库给的 accent 覆写 --srf-badge-accent，本文件不含色值字面量。 */
   .badge { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: var(--srf-badge-accent); }
   .skin-name { color: var(--srf-text-muted); font-size: var(--srf-font-size-sm); }
@@ -325,6 +372,14 @@ const ONBOARDING_STYLE = `
     color: var(--srf-text-muted);
     font-size: var(--srf-font-size-sm);
   }
+  /* 「推荐」角标（@since v3.14，task_044）：suitableKinds 点名当前 agent 的预设。 */
+  .preset-recommend {
+    color: var(--srf-accent);
+    border: var(--srf-border-width) solid var(--srf-accent);
+    border-radius: var(--srf-radius);
+    padding: 0 var(--srf-spacing-xs);
+    font-size: var(--srf-font-size-sm);
+  }
   .preset-status { color: var(--srf-warn); font-size: var(--srf-font-size-sm); }
   .preset-status[hidden] { display: none; }
   .persona-tools { display: flex; align-items: center; gap: var(--srf-spacing-sm); flex-wrap: wrap; }
@@ -346,6 +401,16 @@ const ONBOARDING_STYLE = `
     font-family: var(--srf-font-ui);
     font-size: var(--srf-font-size-sm);
   }
+  /* 扫描步勾选导入（@since v3.14，task_044） */
+  .scan-select { display: inline-flex; align-items: center; gap: var(--srf-spacing-xs); cursor: pointer; }
+  /* 确认页逐 agent 人设预览（@since v3.14，task_044）：默认折叠，摘要行 = 分节头列表。 */
+  .persona-details {
+    border: var(--srf-border-width) solid var(--srf-border);
+    border-radius: var(--srf-radius);
+    padding: var(--srf-spacing-xs) var(--srf-spacing-sm);
+    font-size: var(--srf-font-size-sm);
+  }
+  .persona-details summary { cursor: pointer; color: var(--srf-text-muted); }
   .footer {
     display: flex;
     justify-content: flex-end;
@@ -406,24 +471,28 @@ export function defineOnboardingScreen(): typeof HTMLElement {
      * 预设是共享常量，直接存引用会让"改 A 的形象"写穿预设、连带别的 agent 一起变。
      */
     private _appearanceDrafts = new Map<string, AppearanceDraft>();
-    private _answers: Record<string, string> = {};
-    /** 人设草稿（预览区可改）。初值 = 没答任何题时的底线形态（只剩行为规则节）。 */
-    private _persona = buildPersona({});
-    /** 用户是否手改过人设：改过之后答案变化不再覆盖它（显式「按问卷重新生成」才覆盖）。 */
-    private _personaDirty = false;
-    /** 当前生效的预设 id（null = 问卷/手写模式）。答问卷任一题即退出预设模式。 */
-    private _activePreset: string | null = null;
+    /**
+     * 每 agent 一份的人设草稿（@since v3.14，task_044）。
+     * key = agent kind —— 人设不再全员共用一份：每个 agent 的问卷答案 / 预设 / 手改脏保护
+     * 都独立（_appearanceDrafts 同模式）。初始值：kind 命中专属预设 → 预填该预设；
+     * 否则留空（渲染时提示「答问卷或选预设」）。
+     */
+    private _personaDrafts = new Map<string, PersonaDraft>();
+    /**
+     * identity / persona 两步共用的当前 agent（@since v3.14，task_044）。
+     * 切换条选中谁就配置谁；identity 步的形象画布也跟着它走（并入原 _previewKind 的职责）。
+     */
+    private _activeAgentKey: string | null = null;
+    /** 扫描步勾选导入的 kind（@since v3.14，task_044）。 */
+    private _selectedKinds = new Set<string>();
+    /** 见过的可导入 kind：区分「新探到的默认勾选」与「用户明确取消过的保持取消」。 */
+    private _knownKinds = new Set<string>();
     /** 错误提示：key → 文案。 */
     private _errors = new Map<string, string>();
     /** 已提交（防重复发命令）。 */
     private _submitted = false;
     /** 上次渲染时的扫描结果签名（避免无关广播反复重画扫描步）。 */
     private _lastScanSignature: string | null = null;
-    /**
-     * 预览区当前展示的是哪个 agent（@since v3.10）。
-     * why 需要它：起名清单可能有多个 agent，但画布只有一块 —— 得有个"正在看谁"的约定。
-     */
-    private _previewKind: string | null = null;
     /**
      * 预览画布的宿主元素（@since v3.10）。
      * why 单独留着：Phaser 的 canvas 是它的子节点，重渲染时若换掉这个元素，
@@ -456,17 +525,22 @@ export function defineOnboardingScreen(): typeof HTMLElement {
 
     get step(): OnboardingStep { return this._step; }
     get identities(): readonly OnboardingIdentity[] { return this._identities; }
-    get persona(): string { return this._persona; }
-    get personaPresetId(): string | null { return this._activePreset; }
-    get personaDirty(): boolean { return this._personaDirty; }
+    get selectedKinds(): readonly string[] { return [...this._selectedKinds]; }
+    get persona(): string { return this.activePersonaDraft()?.persona ?? ''; }
+    get personaPresetId(): string | null { return this.activePersonaDraft()?.presetId ?? null; }
+    get personaDirty(): boolean { return this.activePersonaDraft()?.dirty ?? false; }
     get errors(): Readonly<Record<string, string>> {
       return Object.fromEntries(this._errors.entries());
     }
     get scanRows(): readonly OnboardingScanRow[] { return resolveScanRows(this._state); }
-    get previewKind(): string | null { return this._previewKind; }
+    get previewKind(): string | null { return this._activeAgentKey; }
 
     appearanceOf(kind: string): CharacterAppearance | null {
       return this._appearanceDrafts.get(kind) ?? null;
+    }
+
+    personaOf(kind: string): string {
+      return this._personaDrafts.get(kind)?.persona ?? '';
     }
 
     connectedCallback(): void {
@@ -522,12 +596,21 @@ export function defineOnboardingScreen(): typeof HTMLElement {
     // —— 步骤流转 ——
     next(): void {
       switch (this._step) {
-        case 'scan':
+        case 'scan': {
+          // 勾选同步（新探到的默认勾上）+ 误操作防护：有可导入项却一个没勾 → 拦在原地。
+          this.syncSelectionFromScan();
+          const bindable = resolveBindableKinds(this._state);
+          if (bindable.length > 0 && this._selectedKinds.size === 0) {
+            this.setError('scan-selection', '至少勾选一个要导入的 agent（或点「跳过引导」结束）');
+            return;
+          }
+          this.setError('scan-selection', null);
           this.syncIdentities();
           this._step = 'identity';
           // 进第②步时补一次"素材就绪后回填"：初始化时没取到默认形象的条目等 whenReady 后补上。
           this.awaitAppearanceReady();
           break;
+        }
         case 'identity':
           if (!this.validateIdentities()) return;
           this._step = 'persona';
@@ -567,7 +650,6 @@ export function defineOnboardingScreen(): typeof HTMLElement {
         return;
       }
       this._submitted = true;
-      const persona = this._persona.trim();
       const created = this._identities.map((identity) => ({
         kind: identity.kind,
         name: identity.name,
@@ -578,6 +660,8 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       for (const identity of this._identities) {
         // 各 agent 的形象草稿（没抽到 → 字段缺省，老档案照旧合法）。
         const appearance = this._appearanceDrafts.get(identity.kind);
+        // 各 agent 的人设草稿（@since v3.14，task_044）：从各自草稿取；留空 → core 套默认模板。
+        const persona = (this._personaDrafts.get(identity.kind)?.persona ?? '').trim();
         this._adapter?.dispatch({
           type: 'character.create',
           name: identity.name,
@@ -598,13 +682,13 @@ export function defineOnboardingScreen(): typeof HTMLElement {
 
     // —— 身份（起名 + 皮肤 + 形象）——
     /**
-     * 同步起名清单：按当前可建档名单重建。
+     * 同步起名清单：按「可建档名单 ∩ 勾选导入」重建（@since v3.14，task_044：未勾选的不进名单）。
      * 已存在的条目保留（用户改过的名字不能丢），名单里新增的补默认名与随机皮肤，消失的移除。
      * 形象草稿同步维护（@since v3.12，task_032）：新增的 kind 补默认形象（独立深拷贝），
-     * 消失的 kind 连草稿一起清（不留死数据）。
+     * 消失的 kind 连草稿一起清（不留死数据）；人设草稿同理（@since v3.14，task_044）。
      */
     private syncIdentities(): void {
-      const kinds = resolveBindableKinds(this._state);
+      const kinds = resolveBindableKinds(this._state).filter((kind) => this._selectedKinds.has(kind));
       const existing = new Map(this._identities.map((item) => [item.kind, item] as const));
       this._identities = kinds.map((kind) => {
         const previous = existing.get(kind);
@@ -622,14 +706,21 @@ export function defineOnboardingScreen(): typeof HTMLElement {
         (kind) => this._appearancePort?.preset(kind) ?? null
       );
       for (const [kind, draft] of fresh) this._appearanceDrafts.set(kind, draft);
-      // 名单里消失的 kind：草稿一并清掉。
+      // 人设草稿：每个勾选的 kind 一份（初始值 = 专属预设预填 / 留空待问卷，见 createPersonaDraft）。
+      for (const kind of kinds) {
+        if (!this._personaDrafts.has(kind)) this._personaDrafts.set(kind, this.createPersonaDraft(kind));
+      }
+      // 名单里消失的 kind（被取消勾选 / 卸载）：形象与人设草稿一并清掉（不留死数据）。
       const liveKinds = kinds as readonly string[];
       for (const kind of [...this._appearanceDrafts.keys()]) {
         if (!liveKinds.includes(kind)) this._appearanceDrafts.delete(kind);
       }
-      // 预览对象没了（agent 被移除）→ 预览目标跟着换人。
-      if (!this._identities.some((item) => item.kind === this._previewKind)) {
-        this._previewKind = this._identities[0]?.kind ?? null;
+      for (const kind of [...this._personaDrafts.keys()]) {
+        if (!liveKinds.includes(kind)) this._personaDrafts.delete(kind);
+      }
+      // 切换条的当前 agent 没了（被取消勾选）→ 换到第一个。
+      if (!this._identities.some((item) => item.kind === this._activeAgentKey)) {
+        this._activeAgentKey = this._identities[0]?.kind ?? null;
       }
     }
 
@@ -639,10 +730,10 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       return source().id;
     }
 
-    /** 当前预览区展示的是哪个 agent（没定 → 第一个）。 */
+    /** 当前配置 / 预览的是哪个 agent（没定 → 第一个；@since v3.14，task_044 起即切换条的 active agent）。 */
     private currentPreviewIdentity(): MutableIdentity | null {
       if (this._identities.length === 0) return null;
-      const found = this._identities.find((item) => item.kind === this._previewKind);
+      const found = this._identities.find((item) => item.kind === this._activeAgentKey);
       return found ?? this._identities[0] ?? null;
     }
 
@@ -683,10 +774,13 @@ export function defineOnboardingScreen(): typeof HTMLElement {
     }
 
     // —— 形象（@since v3.10；@since v3.12 改为每 agent 独立草稿）——
-    /** 换预览对象：画布切到另一个 agent 的形象。 */
-    private selectPreview(kind: string): void {
+    /**
+     * 切换条选中某个 agent（@since v3.14，task_044）：identity 步 = 换正在配置 / 预览的形象；
+     * persona 步 = 换正在填写的人设草稿。整步重渲染（表单内容随 active agent 整体切换）。
+     */
+    private selectAgent(kind: string): void {
       if (!this._identities.some((item) => item.kind === kind)) return;
-      this._previewKind = kind;
+      this._activeAgentKey = kind;
       this.renderStep();
     }
 
@@ -774,8 +868,10 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       const target = this._identities.find((item) => item.kind === kind);
       if (!target) return;
       target.name = name;
-      // 名字改了就把这条的错误提示撤掉（别让旧报错挂在已经改好的输入框下面）。
+      // 名字改了就把这条的错误提示撤掉（别让旧报错挂在已经改好的输入框下面），
+      // 并轻量同步切换条上的标题与「已配置」状态（不重画，保住正在输入的焦点）。
       this.setError(`name:${kind}`, null);
+      this.refreshSwitcherTab(kind);
     }
 
     /** 校验全部名字（空 / 超长 / 重复）。 */
@@ -783,97 +879,149 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       const names = this._identities.map((item) => item.name);
       const duplicated = new Set(findDuplicateNames(names));
       let ok = true;
+      let firstFailing: string | null = null;
       for (const identity of this._identities) {
         const result = validateAgentName(identity.name);
         if (result.ok && duplicated.has(result.value)) {
           this.setError(`name:${identity.kind}`, NAME_ERROR_MESSAGES['duplicate-name']);
+          if (firstFailing === null) firstFailing = identity.kind;
           ok = false;
           continue;
         }
         if (!result.ok) {
           this.setError(`name:${identity.kind}`, NAME_ERROR_MESSAGES[result.code ?? 'empty-name']);
+          if (firstFailing === null) firstFailing = identity.kind;
           ok = false;
           continue;
         }
         identity.name = result.value;
         this.setError(`name:${identity.kind}`, null);
       }
+      // 逐个配置后出错的卡片可能不在屏上（@since v3.14，task_044）：切到第一个出错的 agent 让用户看见错误。
+      if (!ok && firstFailing !== null && firstFailing !== this._activeAgentKey) {
+        this._activeAgentKey = firstFailing;
+        this.renderStep();
+      }
       return ok;
     }
 
-    // —— 人设 ——
+    // —— 人设（@since v3.14，task_044：per-agent 独立草稿，全部作用于当前 active agent）——
+    /** 当前 active agent 的人设草稿（没有 → null）。 */
+    private activePersonaDraft(): PersonaDraft | null {
+      return this._activeAgentKey ? this._personaDrafts.get(this._activeAgentKey) ?? null : null;
+    }
+
+    /** 初始化一份人设草稿：kind 命中专属预设 → 预填该预设；否则留空（用户答问卷或选预设）。 */
+    private createPersonaDraft(kind: string): PersonaDraft {
+      const preset = presetMatchingKind(kind);
+      if (preset) {
+        return { answers: {}, persona: preset.persona, dirty: false, presetId: preset.id };
+      }
+      return { answers: {}, persona: '', dirty: false, presetId: null };
+    }
+
     /**
-     * 记录一个答案。
+     * 记录一个答案（作用在 active agent 的草稿上）。
      * 答题即退出预设模式（预设被问卷结果替换是用户可预期的切换：问卷是主路径）；
-     * 用户没手改过人设时同步刷新预览，手改过（脏）则只记答案不覆盖（见「按问卷重新生成」）。
+     * 该 agent 没手改过人设时同步刷新预览，手改过（脏）则只记答案不覆盖（见「按问卷重新生成」）。
      */
     private answer(questionId: string, optionId: string): void {
-      const wasPreset = this._activePreset !== null;
-      this._answers[questionId] = optionId;
-      this._activePreset = null;
-      this.setError(`answer:${questionId}`, null);
+      const kind = this._activeAgentKey;
+      const draft = this.activePersonaDraft();
+      if (!kind || !draft) return;
+      const wasPreset = draft.presetId !== null;
+      draft.answers[questionId] = optionId;
+      draft.presetId = null;
+      this.setError(`answer:${kind}:${questionId}`, null);
       if (wasPreset) this.syncPresetSurfaces();
-      if (!this._personaDirty) {
-        this._persona = buildPersona(this.answersSnapshot());
+      if (!draft.dirty) {
+        draft.persona = buildPersona({ ...draft.answers });
         this.syncPersonaField();
       }
+      this.refreshSwitcherTab(kind);
     }
 
     /** 用户手改人设：记为脏（之后答案变化不再自动覆盖），并点亮「按问卷重新生成」。 */
     private setPersona(text: string): void {
-      this._persona = text;
-      this._personaDirty = true;
-      this.setError('persona', null);
+      const kind = this._activeAgentKey;
+      const draft = this.activePersonaDraft();
+      if (!kind || !draft) return;
+      draft.persona = text;
+      draft.dirty = true;
+      this.setError(`persona:${kind}`, null);
       this.syncPresetSurfaces();
+      this.refreshSwitcherTab(kind);
     }
 
     /**
-     * 选中预设：问卷清空 + 预览填预设全文 + 标记「已用预设」。
+     * 选中预设（作用在 active agent 的草稿上）：问卷清空 + 预览填预设全文 + 标记「已用预设」。
      * 预设选中视为显式覆写（清脏）——手改过的文本会被预设替换，这是用户明确的动作。
      */
     private selectPreset(presetId: string): void {
+      const kind = this._activeAgentKey;
+      const draft = this.activePersonaDraft();
       const preset = PERSONA_PRESETS.find((candidate) => candidate.id === presetId);
-      if (!preset) return;
-      this._answers = {};
-      this._activePreset = preset.id;
-      this._persona = preset.persona;
-      this._personaDirty = false;
-      this.setError('persona', null);
+      if (!kind || !draft || !preset) return;
+      draft.answers = {};
+      draft.presetId = preset.id;
+      draft.persona = preset.persona;
+      draft.dirty = false;
+      this.setError(`persona:${kind}`, null);
       // 预设路径不需要答完问卷：之前因未答被拦的错误一并撒掉。
-      for (const question of PERSONA_QUESTIONS) this.setError(`answer:${question.id}`, null);
+      for (const question of PERSONA_QUESTIONS) this.setError(`answer:${kind}:${question.id}`, null);
       this.renderStep();
     }
 
     /** 「按问卷重新生成」：显式覆写手改文本 = 按当前答卷重算（清脏、退出预设态）。 */
     private regeneratePersona(): void {
-      this._persona = buildPersona(this.answersSnapshot());
-      this._personaDirty = false;
-      this._activePreset = null;
-      this.setError('persona', null);
+      const kind = this._activeAgentKey;
+      const draft = this.activePersonaDraft();
+      if (!kind || !draft) return;
+      draft.persona = buildPersona({ ...draft.answers });
+      draft.dirty = false;
+      draft.presetId = null;
+      this.setError(`persona:${kind}`, null);
       this.syncPersonaField();
       this.syncPresetSurfaces();
+      this.refreshSwitcherTab(kind);
     }
 
-    private answersSnapshot(): PersonaAnswers {
-      return { ...this._answers };
-    }
-
-    /** 校验人设步：问卷路径要答全；预设路径（预设未被问卷覆盖）本身就是完整人设，免答。人设不超长两路都查。 */
+    /** 校验人设步（@since v3.14，task_044：逐 agent 校验）：问卷路径要答全；预设路径免答；长度两路都查。 */
     private validatePersonaStep(): boolean {
       let ok = true;
-      if (this._activePreset === null) {
-        for (const questionId of missingPersonaAnswers(this.answersSnapshot())) {
-          this.setError(`answer:${questionId}`, '这一题还没选');
+      let firstFailing: string | null = null;
+      for (const identity of this._identities) {
+        const draft = this._personaDrafts.get(identity.kind);
+        if (!draft) continue;
+        if (!this.validatePersonaDraft(identity.kind, draft)) {
+          if (firstFailing === null) firstFailing = identity.kind;
           ok = false;
         }
       }
-      const persona = validatePersona(this._persona);
+      // 没配置好的 agent 可能不在屏上：切到第一个未配置的，让用户直接看到错误在哪。
+      if (!ok && firstFailing !== null && firstFailing !== this._activeAgentKey) {
+        this._activeAgentKey = firstFailing;
+        this.renderStep();
+      }
+      return ok;
+    }
+
+    /** 校验单个 agent 的人设草稿（返回值 = 合法）：预设路径免答问卷；问卷路径答全；长度两路都查。 */
+    private validatePersonaDraft(kind: string, draft: PersonaDraft): boolean {
+      let ok = true;
+      if (draft.presetId === null) {
+        for (const questionId of missingPersonaAnswers(draft.answers)) {
+          this.setError(`answer:${kind}:${questionId}`, '这一题还没选');
+          ok = false;
+        }
+      }
+      const persona = validatePersona(draft.persona);
       if (!persona.ok) {
-        this.setError('persona', PERSONA_ERROR_MESSAGES[persona.code ?? 'persona-too-long']);
+        this.setError(`persona:${kind}`, PERSONA_ERROR_MESSAGES[persona.code ?? 'persona-too-long']);
         ok = false;
       } else {
-        this._persona = persona.value;
-        this.setError('persona', null);
+        draft.persona = persona.value;
+        this.setError(`persona:${kind}`, null);
       }
       return ok;
     }
@@ -924,8 +1072,9 @@ export function defineOnboardingScreen(): typeof HTMLElement {
         case 'reset-appearance':
           this.resetAppearance(action.getAttribute('data-kind') ?? '');
           return;
-        case 'preview-appearance':
-          this.selectPreview(action.getAttribute('data-kind') ?? '');
+        case 'select-agent':
+          // 切换条选中某个 agent（@since v3.14，task_044）：identity / persona 两步共用。
+          this.selectAgent(action.getAttribute('data-kind') ?? '');
           return;
         case 'select-preset':
           this.selectPreset(action.getAttribute('data-preset') ?? '');
@@ -957,6 +1106,17 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       const field = target.getAttribute('data-field');
       if (field === 'answer') {
         this.answer(target.getAttribute('data-question') ?? '', target.value);
+        return;
+      }
+      // 扫描步勾选导入（@since v3.14，task_044）：勾选状态存 _selectedKinds，重画时从它取值。
+      if (field === 'scan-select') {
+        const kind = target.getAttribute('data-kind') ?? '';
+        if (kind) {
+          if ((target as HTMLInputElement).checked) this._selectedKinds.add(kind);
+          else this._selectedKinds.delete(kind);
+        }
+        this.setError('scan-selection', null);
+        this.refreshScanSummary();
         return;
       }
       // 形象选择器（@since v3.10）：体型 / 部位变体。
@@ -1059,11 +1219,13 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       }
     }
 
-    /** ① 扫描报告。 */
+    /** ① 扫描报告（@since v3.14，task_044：可导入行带勾选框，只有勾选的进后续步骤）。 */
     private renderScan(): string {
+      // 新探到的可导入 kind 默认勾上（用户明确取消过的保持取消）。
+      this.syncSelectionFromScan();
       const rows = resolveScanRows(this._state);
       const installed = rows.filter((row) => row.installed).length;
-      const bindable = resolveBindableKinds(this._state).length;
+      const bindable = resolveBindableKinds(this._state);
       const status = resolveScanStatus(this._state);
       const list =
         rows.length === 0
@@ -1073,13 +1235,20 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       const pendingHint = status.complete
         ? ''
         : `<div class="hint" data-role="scan-pending">扫描还没结束：现在继续只会为已探到的 agent 建档（可以回到这一步补齐）</div>`;
+      const selectionSummary = bindable.length > 0
+        ? `<div class="summary" data-role="scan-selected-summary">${escapeHtml(this.scanSelectedSummaryText())}</div>`
+        : '';
+      const selectionError = this._errors.get('scan-selection') ?? '';
+      const selectionErrorAttr = selectionError ? '' : 'hidden';
       return `
         <div class="group" data-group="scan">
           <div class="group-name">扫描报告</div>
           <div class="summary" data-role="scan-status" data-complete="${status.complete}">${escapeHtml(status.text)}</div>
-          <div class="summary" data-role="scan-summary">探测到 ${rows.length} 个 agent · 确认已装 ${installed} 个 · 可建档 ${bindable} 个</div>
+          <div class="summary" data-role="scan-summary">探测到 ${rows.length} 个 agent · 确认已装 ${installed} 个 · 可建档 ${bindable.length} 个</div>
+          ${selectionSummary}
           ${pendingHint}
           ${list}
+          <div class="error" data-role="scan-selection-error" data-error-key="scan-selection" ${selectionErrorAttr}>${escapeHtml(selectionError)}</div>
         </div>
       `;
     }
@@ -1087,9 +1256,14 @@ export function defineOnboardingScreen(): typeof HTMLElement {
     private renderScanRow(row: OnboardingScanRow): string {
       const version = row.version ? `v${row.version}` : '版本未知';
       const chip = row.bindable ? '' : '<span class="chip" data-role="only-probe">仅探测</span>';
+      // 勾选框只给「真能导入」的行（已装 ∩ 可建档）；仅探测 / 未确认安装的行没有可勾的东西。
+      const selector = row.installed && row.bindable
+        ? `<label class="scan-select"><input type="checkbox" data-role="scan-select" data-field="scan-select" data-kind="${escapeHtml(row.kind)}"${this._selectedKinds.has(row.kind) ? ' checked' : ''}><span>导入</span></label>`
+        : '';
       return `
         <li class="row" data-role="scan-row" data-kind="${escapeHtml(row.kind)}"
             data-installed="${row.installed}" data-bindable="${row.bindable}">
+          ${selector}
           <span class="row-name">${escapeHtml(row.label)}</span>
           <span class="tier" data-role="tier">${escapeHtml(TIER_LABELS[row.tier])}</span>
           <span class="status" data-role="status">${escapeHtml(DETECTION_STATUS_LABELS[row.status])}</span>
@@ -1099,21 +1273,49 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       `;
     }
 
-    /** ② 起名 + 皮肤 + 形象。 */
+    /**
+     * 勾选同步：把新探到的可导入 kind 默认勾上。
+     * why 记 _knownKinds：区分「第一次见到（默认勾选）」与「用户明确取消过（保持取消）」——
+     * 检测是逐条推送的，扫描中途新出现的 kind 不该把用户刚取消的又勾回来。
+     */
+    private syncSelectionFromScan(): void {
+      for (const kind of resolveBindableKinds(this._state)) {
+        if (this._knownKinds.has(kind)) continue;
+        this._knownKinds.add(kind);
+        this._selectedKinds.add(kind);
+      }
+    }
+
+    /** 扫描步的勾选摘要文案。 */
+    private scanSelectedSummaryText(): string {
+      const bindable = resolveBindableKinds(this._state);
+      const selected = bindable.filter((kind) => this._selectedKinds.has(kind)).length;
+      return `勾选导入 ${selected} / ${bindable.length} 个可建档 agent（后续步骤只配置勾选项）`;
+    }
+
+    /** 勾选变化后轻量刷新摘要行（不重画整步：勾选框自身的 DOM 状态已经是正确的）。 */
+    private refreshScanSummary(): void {
+      const node = this.shadowRoot?.querySelector('[data-role="scan-selected-summary"]');
+      if (node) node.textContent = this.scanSelectedSummaryText();
+    }
+
+    /** ② 起名 + 皮肤 + 形象（@since v3.14，task_044：逐个配置 —— 切换条 + 当前 agent 的单卡）。 */
     private renderIdentity(): string {
       if (this._identities.length === 0) {
         return `
           <div class="group" data-group="identity">
             <div class="group-name">起名与皮肤</div>
-            <div class="empty" data-role="identity-empty">没有可建档的已装 agent：装好一个 T1 agent（Claude Code / Codex / OpenCode / Kimi / OpenClaw）后再回来</div>
+            <div class="empty" data-role="identity-empty">没有勾选导入的已装 agent：回到上一步勾选，或装好一个 T1 agent（Claude Code / Codex / OpenCode / Kimi / OpenClaw）后再回来</div>
           </div>
         `;
       }
-      const rows = this._identities.map((identity) => this.renderIdentityRow(identity)).join('');
+      const active = this.currentPreviewIdentity();
+      if (!active) return '';
       return `
+        ${this.renderAgentSwitcher()}
         <div class="group" data-group="identity">
           <div class="group-name">起名与皮肤</div>
-          ${rows}
+          ${this.renderIdentityRow(active)}
         </div>
         ${this.renderAppearanceGroup()}
       `;
@@ -1123,17 +1325,13 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       const skinLabel = getSkin(identity.skinId)?.label ?? identity.skinId;
       const error = this._errors.get(`name:${identity.kind}`) ?? '';
       const errorAttr = error ? '' : 'hidden';
-      // 预览中的那个 agent 标出来（画布只有一块，得让人知道在看谁）。
-      const previewing = identity.kind === this.currentPreviewIdentity()?.kind;
-      const previewLabel = previewing ? '预览中' : '预览形象';
       return `
-        <div class="identity" data-role="identity" data-kind="${escapeHtml(identity.kind)}" data-preview="${previewing}">
+        <div class="identity" data-role="identity" data-kind="${escapeHtml(identity.kind)}">
           <div class="identity-head">
             <span class="identity-label">${escapeHtml(identity.label)}</span>
             <span class="badge" data-role="skin-badge" style="--srf-badge-accent: ${resolveAccent(identity.skinId)}"></span>
             <span class="skin-name" data-role="skin-label">${escapeHtml(skinLabel)}</span>
             <${STRAT_BUTTON_TAG} label="换一套皮肤" variant="default" data-action="reroll" data-kind="${escapeHtml(identity.kind)}"></${STRAT_BUTTON_TAG}>
-            <${STRAT_BUTTON_TAG} label="${previewLabel}" variant="default" data-action="preview-appearance" data-kind="${escapeHtml(identity.kind)}"></${STRAT_BUTTON_TAG}>
           </div>
           <input class="input" type="text" data-role="name-input" data-field="name" data-kind="${escapeHtml(identity.kind)}"
                  value="${escapeHtml(identity.name)}" placeholder="给这个 agent 起个名字">
@@ -1147,9 +1345,65 @@ export function defineOnboardingScreen(): typeof HTMLElement {
     }
 
     /**
-     * 形象面板（@since v3.10）：预览画布 + **当前预览对象**的部件选择器。
-     * @since v3.12（task_032）：「重随机 / 重置为品牌默认」按钮移到了每个 agent 的卡片上
-     * （作用对象跟着 data-kind 走，不再挂在面板上）。
+     * agent 切换条（@since v3.14，task_044）：identity / persona 两步共用。
+     * kind 徽标（皮肤色点 + 显示名）+ 名字 + 已配置✓状态；选中谁配置谁。
+     * 「已配置」按当前步骤判定（identity = 名字合法；persona = 预设生效或问卷答全）。
+     */
+    private renderAgentSwitcher(): string {
+      const tabs = this._identities.map((identity) => {
+        const active = identity.kind === this._activeAgentKey;
+        const done = this.agentConfigured(identity);
+        return `
+          <button type="button" class="switcher-tab" data-role="agent-tab" data-action="select-agent"
+                  data-kind="${escapeHtml(identity.kind)}" data-active="${active}" data-done="${done}">
+            <span class="badge" style="--srf-badge-accent: ${resolveAccent(identity.skinId)}"></span>
+            <span class="switcher-title" data-role="agent-title">${escapeHtml(this.switcherTitle(identity))}</span>
+            <span class="switcher-status" data-role="agent-status" data-done="${done}">${done ? '✓ 已配置' : '未配置'}</span>
+          </button>
+        `;
+      }).join('');
+      return `<div class="switcher" data-role="agent-switcher">${tabs}</div>`;
+    }
+
+    /** 切换条标题：kind 显示名（用户改过角色名则附在后面，没改就不重复）。 */
+    private switcherTitle(identity: MutableIdentity): string {
+      const name = identity.name.trim();
+      return name && name !== identity.label ? `${identity.label} · ${name}` : identity.label;
+    }
+
+    /** 切换条的「已配置」判定（按当前步骤取口径）。 */
+    private agentConfigured(identity: MutableIdentity): boolean {
+      if (this._step === 'persona') return this.personaConfigured(identity.kind);
+      return validateAgentName(identity.name).ok;
+    }
+
+    /** 人设步的「已配置」判定：预设生效（免问卷）或问卷答全。 */
+    private personaConfigured(kind: string): boolean {
+      const draft = this._personaDrafts.get(kind);
+      if (!draft) return false;
+      if (draft.presetId !== null) return true;
+      return missingPersonaAnswers(draft.answers).length === 0;
+    }
+
+    /** 轻量刷新切换条某个 tab 的标题与配置状态（不重画整步：保住正在输入的焦点）。 */
+    private refreshSwitcherTab(kind: string): void {
+      const tab = this.shadowRoot?.querySelector(`[data-role="agent-tab"][data-kind="${kind}"]`);
+      const identity = this._identities.find((item) => item.kind === kind);
+      if (!tab || !identity) return;
+      const title = tab.querySelector('[data-role="agent-title"]');
+      if (title) title.textContent = this.switcherTitle(identity);
+      const done = this.agentConfigured(identity);
+      tab.setAttribute('data-done', String(done));
+      const status = tab.querySelector('[data-role="agent-status"]');
+      if (status) {
+        status.setAttribute('data-done', String(done));
+        status.textContent = done ? '✓ 已配置' : '未配置';
+      }
+    }
+
+    /**
+     * 形象面板（@since v3.10）：预览画布 + **当前预览对象**（= 切换条的 active agent，task_044）的部件选择器。
+     * @since v3.12（task_032）：「重随机 / 重置为品牌默认」按钮在当前 agent 的卡片上（带 data-kind）。
      * why 画布宿主是**占位**：真正的宿主元素由屏长期持有（_canvasHost），
      * 重渲染时搬来搬去 —— 见 renderStep 的注释。
      */
@@ -1283,13 +1537,27 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       node.textContent = this.appearanceSummary(target);
     }
 
-    /** ③ 人设生成（@since v3.13，task_043：预设快速开始 + 问卷 + 可改预览 + 脏保护）。 */
+    /**
+     * ③ 人设生成（@since v3.13 预设库；@since v3.14，task_044：per-agent 独立草稿 + 切换条 +
+     * 预设按 kind 推荐排序；初始无预设 → 人设留空提示答问卷或选预设）。
+     */
     private renderPersona(): string {
-      const presetCards = this.renderPresetCards();
-      const presetBadge = this.renderPresetBadge();
+      if (this._identities.length === 0) {
+        return `
+          <div class="group" data-group="persona">
+            <div class="group-name">人设生成</div>
+            <div class="empty" data-role="persona-empty">没有勾选导入的 agent：人设步骤为空，可直接下一步完成</div>
+          </div>
+        `;
+      }
+      const active = this.currentPreviewIdentity();
+      const draft = active ? this._personaDrafts.get(active.kind) : undefined;
+      if (!active || !draft) return '';
+      const presetCards = this.renderPresetCards(active.kind, draft);
+      const presetBadge = this.renderPresetBadge(draft);
       const questions = PERSONA_QUESTIONS.map((question) => {
         const options = question.options.map((option) => {
-          const checked = this._answers[question.id] === option.id ? 'checked' : '';
+          const checked = draft.answers[question.id] === option.id ? 'checked' : '';
           return `
             <label class="option">
               <input type="radio" name="persona-${escapeHtml(question.id)}" value="${escapeHtml(option.id)}"
@@ -1298,52 +1566,66 @@ export function defineOnboardingScreen(): typeof HTMLElement {
             </label>
           `;
         }).join('');
-        const error = this._errors.get(`answer:${question.id}`) ?? '';
+        const error = this._errors.get(`answer:${active.kind}:${question.id}`) ?? '';
         const errorAttr = error ? '' : 'hidden';
         return `
           <fieldset class="question" data-role="question" data-question="${escapeHtml(question.id)}">
             <legend class="question-prompt">${escapeHtml(question.prompt)}</legend>
             <div class="options">${options}</div>
-            <div class="error" data-role="answer-error" data-error-key="answer:${escapeHtml(question.id)}" ${errorAttr}>${escapeHtml(error)}</div>
+            <div class="error" data-role="answer-error" data-error-key="answer:${escapeHtml(active.kind)}:${escapeHtml(question.id)}" ${errorAttr}>${escapeHtml(error)}</div>
           </fieldset>
         `;
       }).join('');
 
-      const personaError = this._errors.get('persona') ?? '';
+      const personaError = this._errors.get(`persona:${active.kind}`) ?? '';
       const personaErrorAttr = personaError ? '' : 'hidden';
-      const regenerateHidden = this._personaDirty ? '' : 'hidden';
+      const regenerateHidden = draft.dirty ? '' : 'hidden';
+      // 初始（无预设未答问卷）人设留空：给个提示指路，别让预览区看着像坏了。
+      const emptyHint = draft.persona === ''
+        ? '<div class="hint" data-role="persona-hint">还没有人设：答下面的问卷，或从上面的预设里挑一个（也可以直接在预览区手写）</div>'
+        : '';
       return `
+        ${this.renderAgentSwitcher()}
         <div class="group" data-group="persona">
-          <div class="group-name">人设生成</div>
+          <div class="group-name">人设生成 · ${escapeHtml(active.label)}</div>
           <div class="group-name">快速开始：选一个预设（可再局部修改）</div>
           <div class="preset-row" data-role="preset-row">${presetCards}</div>
           ${presetBadge}
           ${questions}
           <div class="group-name">预览（可以直接改）</div>
-          <textarea class="textarea" rows="8" data-role="persona-input" data-field="persona">${escapeHtml(this._persona)}</textarea>
+          ${emptyHint}
+          <textarea class="textarea" rows="8" data-role="persona-input" data-field="persona">${escapeHtml(draft.persona)}</textarea>
           <div class="persona-tools">
             <button type="button" class="regenerate" data-role="regenerate-persona" data-action="regenerate-persona" ${regenerateHidden}>按问卷重新生成</button>
             <span class="summary">手改后问卷不再自动覆盖；点它按当前答卷重写预览</span>
           </div>
-          <div class="error" data-role="persona-error" data-error-key="persona" ${personaErrorAttr}>${escapeHtml(personaError)}</div>
+          <div class="error" data-role="persona-error" data-error-key="persona:${escapeHtml(active.kind)}" ${personaErrorAttr}>${escapeHtml(personaError)}</div>
         </div>
       `;
     }
 
-    /** 预设卡片行：名称 + 一句话说明 + 适配 kind 徽标（'any' → 通用）。 */
-    private renderPresetCards(): string {
-      return PERSONA_PRESETS.map((preset) => {
-        const selected = this._activePreset === preset.id;
+    /**
+     * 预设卡片行（@since v3.14，task_044：按当前 agent 的 kind 排序 ——
+     * suitableKinds 点名该 kind 的排前 + 「推荐」角标；'any' 通用预设照常列出）。
+     * 名称 + 一句话说明 + 适配 kind 徽标（'any' → 通用）。
+     */
+    private renderPresetCards(kind: string, draft: PersonaDraft): string {
+      return presetsForKind(kind).map(({ preset, recommended }) => {
+        const selected = draft.presetId === preset.id;
+        const recommendBadge = recommended
+          ? '<span class="preset-recommend" data-role="preset-recommend">推荐</span>'
+          : '';
         const kinds =
           preset.suitableKinds === 'any'
             ? '<span class="preset-kind">通用</span>'
             : preset.suitableKinds
-                .map((kind) => `<span class="preset-kind">${escapeHtml(agentKindLabel(kind))}</span>`)
+                .map((suitable) => `<span class="preset-kind">${escapeHtml(agentKindLabel(suitable))}</span>`)
                 .join('');
         return `
           <button type="button" class="preset-card" data-role="preset-card" data-action="select-preset"
                   data-preset="${escapeHtml(preset.id)}" data-selected="${selected}">
             <span class="preset-name">${escapeHtml(preset.name)}</span>
+            ${recommendBadge}
             <span class="preset-desc">${escapeHtml(preset.description)}</span>
             <span class="preset-kinds">${kinds}</span>
           </button>
@@ -1351,29 +1633,35 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       }).join('');
     }
 
-    /** 「已用预设」标记；预设态被手改时附注「已手动修改」。 */
-    private renderPresetBadge(): string {
-      const preset = this.activePreset();
+    /** 「已用预设」标记（active agent 的草稿）；预设态被手改时附注「已手动修改」。 */
+    private renderPresetBadge(draft: PersonaDraft): string {
+      const preset = draft.presetId === null
+        ? null
+        : PERSONA_PRESETS.find((candidate) => candidate.id === draft.presetId) ?? null;
       if (!preset) {
         return '<div class="preset-status" data-role="persona-preset-badge" hidden></div>';
       }
-      const modified = this._personaDirty ? ' · 已手动修改' : '（再答问卷将以问卷结果替换）';
+      const modified = draft.dirty ? ' · 已手动修改' : '（再答问卷将以问卷结果替换）';
       return `<div class="preset-status" data-role="persona-preset-badge">已用预设：${escapeHtml(preset.name)}${modified}</div>`;
     }
 
-    /** 当前生效的预设对象（id 已失效 → null）。 */
+    /** 当前 active agent 生效的预设对象（id 已失效 → null）。 */
     private activePreset(): PersonaPreset | null {
-      if (this._activePreset === null) return null;
-      return PERSONA_PRESETS.find((candidate) => candidate.id === this._activePreset) ?? null;
+      const draft = this.activePersonaDraft();
+      if (!draft || draft.presetId === null) return null;
+      return PERSONA_PRESETS.find((candidate) => candidate.id === draft.presetId) ?? null;
     }
 
-    /** ④ 确认。 */
+    /**
+     * ④ 确认（@since v3.14，task_044：只列勾选导入的 agent；每个 agent 一段可折叠人设预览，
+     * 摘要行 = 分节头列表，展开看全文）。
+     */
     private renderConfirm(): string {
       if (this._identities.length === 0) {
         return `
           <div class="group" data-group="confirm">
             <div class="group-name">确认建档</div>
-            <div class="empty" data-role="confirm-empty">没有可建档的角色：直接完成即可结束向导</div>
+            <div class="empty" data-role="confirm-empty">没有勾选导入的角色：直接完成即可结束向导</div>
           </div>
         `;
       }
@@ -1388,14 +1676,35 @@ export function defineOnboardingScreen(): typeof HTMLElement {
           </li>
         `;
       }).join('');
+      // 逐 agent 的人设预览：默认折叠（分节头列表当摘要），展开看全文 ——
+      // 多个 agent 的人设全文加起来很长，全部展开确认页就不可读了。
+      const personaBlocks = this._identities.map((identity) => {
+        const persona = (this._personaDrafts.get(identity.kind)?.persona ?? '').trim();
+        const body = persona.length > 0 ? escapeHtml(persona) : '（空：建档时套 core 默认模板）';
+        return `
+          <details class="persona-details" data-role="persona-details" data-kind="${escapeHtml(identity.kind)}">
+            <summary data-role="persona-summary">人设 · ${escapeHtml(identity.name)}：${escapeHtml(this.personaSectionSummary(persona))}</summary>
+            <pre class="persona" data-role="persona-preview" data-kind="${escapeHtml(identity.kind)}">${body}</pre>
+          </details>
+        `;
+      }).join('');
       return `
         <div class="group" data-group="confirm">
           <div class="group-name">确认建档</div>
           <ul class="rows">${rows}</ul>
-          <div class="group-name">人设</div>
-          <pre class="persona" data-role="persona-preview">${escapeHtml(this._persona)}</pre>
+          ${personaBlocks}
         </div>
       `;
+    }
+
+    /** 人设摘要：分节头列表（如「角色定位 ROLE · 使命 MISSION · …」）；空人设给占位说明。 */
+    private personaSectionSummary(persona: string): string {
+      const headers = persona
+        .split('\n')
+        .filter((line) => line.startsWith('# '))
+        .map((line) => line.slice(2).trim());
+      if (headers.length === 0) return '（空：建档时套 core 默认模板）';
+      return headers.join(' · ');
     }
 
     private renderFooter(): string {
@@ -1410,39 +1719,41 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       return `${back}${primary}`;
     }
 
-    /** 把组件内的答案重新算成人设并写回预览框（不重画整屏，保住输入焦点）。 */
+    /** 把 active agent 的问卷答案重算成人设并写回预览框（不重画整屏，保住输入焦点）。 */
     private syncPersonaField(): void {
       const field = this.shadowRoot?.querySelector('[data-role="persona-input"]') as HTMLTextAreaElement | null;
-      if (field) field.value = this._persona;
+      const draft = this.activePersonaDraft();
+      if (field && draft) field.value = draft.persona;
     }
 
     /**
-     * 同步人设工具面的轻量 DOM（预设徽标 / 重新生成按钮 / 卡片选中态）。
+     * 同步人设工具面的轻量 DOM（预设徽标 / 重新生成按钮 / 卡片选中态 —— 均为 active agent 的草稿态）。
      * why 不重画整屏：答题和手改都发生在输入交互中，重画会丢焦点（与 setError 同一理由）。
      */
     private syncPresetSurfaces(): void {
       const root = this.shadowRoot;
       if (!root) return;
+      const draft = this.activePersonaDraft();
       const badge = root.querySelector('[data-role="persona-preset-badge"]');
       if (badge) {
         const preset = this.activePreset();
-        if (!preset) {
+        if (!preset || !draft) {
           badge.setAttribute('hidden', '');
           badge.textContent = '';
         } else {
-          const modified = this._personaDirty ? ' · 已手动修改' : '（再答问卷将以问卷结果替换）';
+          const modified = draft.dirty ? ' · 已手动修改' : '（再答问卷将以问卷结果替换）';
           badge.textContent = `已用预设：${preset.name}${modified}`;
           badge.removeAttribute('hidden');
         }
       }
       const regenerate = root.querySelector('[data-role="regenerate-persona"]');
       if (regenerate) {
-        if (this._personaDirty) regenerate.removeAttribute('hidden');
+        if (draft?.dirty) regenerate.removeAttribute('hidden');
         else regenerate.setAttribute('hidden', '');
       }
       const cards = Array.from(root.querySelectorAll('[data-role="preset-card"]'));
       for (const card of cards) {
-        const selected = card.getAttribute('data-preset') === this._activePreset;
+        const selected = card.getAttribute('data-preset') === draft?.presetId;
         card.setAttribute('data-selected', String(selected));
       }
     }

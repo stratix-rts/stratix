@@ -25,7 +25,7 @@ import {
   validatePersona,
   PERSONA_QUESTIONS,
 } from '../screens/onboarding-catalog';
-import { PERSONA_PRESETS } from '../screens/persona-presets';
+import { PERSONA_PRESETS, presetMatchingKind, presetsForKind } from '../screens/persona-presets';
 import {
   ONBOARDING_COMPLETE_EVENT,
   ONBOARDING_SCREEN_TAG,
@@ -49,6 +49,8 @@ function detected(partial: Partial<DetectedAgent> & { kind: DetectedAgent['kind'
 
 const CLAUDE = detected({ kind: 'claude-code', tier: 'T1', installed: true, status: 'installed', version: '1.2.3', path: '/usr/bin/claude' });
 const CODEX = detected({ kind: 'codex', tier: 'T1', installed: true, status: 'installed', version: '0.9.0', path: '/usr/bin/codex' });
+/** openclaw：有专属预设（夜间值守）的 kind —— 测 kind 推荐与预填（task_044）。 */
+const OPENCLAW = detected({ kind: 'openclaw', tier: 'T1', installed: true, status: 'installed', version: '2.1.0' });
 /** T2：探到了，但还没适配 —— 不该出现在起名清单里。 */
 const GEMINI = detected({ kind: 'gemini', tier: 'T2', installed: true, status: 'installed', version: '2.0.0' });
 /** 探测超时且没确认安装 —— 不算"已装"。 */
@@ -149,6 +151,26 @@ function choose(screen: StratOnboardingScreenElement, questionId: string, option
   if (!radio) throw new Error(`选项未渲染: ${questionId}/${optionId}`);
   radio.checked = true;
   radio.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+/** 扫描步勾选 / 取消勾选一个 kind（task_044）。 */
+function toggleImport(screen: StratOnboardingScreenElement, kind: string, checked: boolean): void {
+  const box = one(screen, `[data-role="scan-select"][data-kind="${kind}"]`) as HTMLInputElement;
+  box.checked = checked;
+  box.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+/** 切换条选中某个 agent（task_044）。 */
+function selectAgent(screen: StratOnboardingScreenElement, kind: string): void {
+  click(screen, `[data-action="select-agent"][data-kind="${kind}"]`);
+}
+
+/** 答完四题问卷（当前 active agent）。 */
+function answerAll(screen: StratOnboardingScreenElement): void {
+  choose(screen, 'role', 'builder');
+  choose(screen, 'tone', 'terse');
+  choose(screen, 'autonomy', 'balanced');
+  choose(screen, 'delivery', 'iterative');
 }
 
 afterEach(() => {
@@ -350,20 +372,99 @@ describe('① 扫描报告', () => {
 });
 
 // ============================================================================
+// 1c. 扫描步 · 勾选导入（@since v3.14，task_044：向导逐个配置化）
+// ============================================================================
+
+describe('① 扫描 · 勾选导入（task_044）', () => {
+  test('可导入行（已装 ∩ 可建档）带勾选框且默认全选；仅探测 / 未确认安装的行没有勾选框', () => {
+    const h = mountScreen(makeState([CLAUDE, CODEX, GEMINI, TIMEOUT]));
+    const boxes = all(h.screen, '[data-role="scan-select"]');
+    expect(boxes).toHaveLength(2); // gemini（T2）与 kimi（未确认）没有可勾的东西
+    expect(boxes.every((box) => (box as HTMLInputElement).checked)).toBe(true);
+    expect(boxes.map((box) => box.getAttribute('data-kind'))).toEqual(['claude-code', 'codex']);
+    expect(one(h.screen, '[data-role="scan-selected-summary"]').textContent).toContain('勾选导入 2 / 2');
+    h.unmount();
+  });
+
+  test('取消勾选的 agent 不进后续步骤、不建档；摘要实时更新', () => {
+    const h = mountScreen(makeState([CLAUDE, CODEX]));
+    toggleImport(h.screen, 'codex', false);
+    expect(one(h.screen, '[data-role="scan-selected-summary"]').textContent).toContain('勾选导入 1 / 2');
+    expect(h.screen.selectedKinds).toEqual(['claude-code']);
+
+    click(h.screen, '[data-action="next"]'); // → identity
+    expect(h.screen.identities.map((item) => item.kind)).toEqual(['claude-code']);
+    // 切换条也只有 claude
+    expect(all(h.screen, '[data-role="agent-tab"]')).toHaveLength(1);
+
+    click(h.screen, '[data-action="next"]'); // → persona
+    answerAll(h.screen);
+    click(h.screen, '[data-action="next"]'); // → confirm
+    expect(all(h.screen, '[data-role="summary-row"]')).toHaveLength(1); // 确认页只列勾选的
+    click(h.screen, '[data-action="submit"]');
+
+    const creates = h.commands.filter((c) => c.type === 'character.create');
+    expect(creates).toHaveLength(1);
+    expect(creates[0]).toMatchObject({ agentKind: 'claude-code' });
+    h.unmount();
+  });
+
+  test('一个都不勾（有可导入项时）→ 拦在扫描步给提示；重新勾选后可继续', () => {
+    const h = mountScreen(makeState([CLAUDE, CODEX]));
+    toggleImport(h.screen, 'claude-code', false);
+    toggleImport(h.screen, 'codex', false);
+
+    click(h.screen, '[data-action="next"]');
+    expect(h.screen.step).toBe('scan');
+    expect(h.screen.errors['scan-selection']).toContain('至少勾选一个');
+    expect(one(h.screen, '[data-role="scan-selection-error"]').textContent).toContain('至少勾选一个');
+
+    // 重新勾上 → 能继续，提示撤掉
+    toggleImport(h.screen, 'claude-code', true);
+    click(h.screen, '[data-action="next"]');
+    expect(h.screen.step).toBe('identity');
+    expect(h.screen.errors['scan-selection']).toBeUndefined();
+    h.unmount();
+  });
+
+  test('扫描中途新探到的可导入 kind 默认勾上；用户明确取消过的保持取消', () => {
+    const h = mountScreen(makeState([CLAUDE]));
+    toggleImport(h.screen, 'claude-code', false); // 用户明确不装 claude
+
+    h.emit(makeState([CLAUDE, CODEX])); // 扫描推进：新探到 codex
+    const boxes = all(h.screen, '[data-role="scan-select"]');
+    expect(boxes).toHaveLength(2);
+    expect((boxes[0] as HTMLInputElement).checked).toBe(false); // claude 保持取消
+    expect((boxes[1] as HTMLInputElement).checked).toBe(true); // 新探到的默认勾选
+    expect(h.screen.selectedKinds).toEqual(['codex']);
+
+    click(h.screen, '[data-action="next"]');
+    expect(h.screen.identities.map((item) => item.kind)).toEqual(['codex']);
+    h.unmount();
+  });
+});
+
+// ============================================================================
 // 3. 起名与皮肤（步骤②）
 // ============================================================================
 
 describe('② 起名与皮肤', () => {
-  test('下一步 → 只为可建档的已装 agent 生成起名条目（默认名 = agent 显示名）', () => {
+  test('下一步 → 只为可建档的已装 agent 生成起名条目（默认名 = agent 显示名）【task_044 改断言：逐个配置后屏上只渲染当前 agent 的单卡，其余经 identities / 切换条体现】', () => {
     const h = mountScreen(makeState([CLAUDE, CODEX, GEMINI, TIMEOUT]));
     click(h.screen, '[data-action="next"]');
 
     expect(h.screen.step).toBe('identity');
-    const identities = all(h.screen, '[data-role="identity"]');
-    expect(identities).toHaveLength(2);
-    expect(identities.map((node) => node.getAttribute('data-kind'))).toEqual(['claude-code', 'codex']);
-    expect(identities[0]?.querySelector('[data-role="name-input"]')?.getAttribute('value')).toBe('Claude Code');
-    expect(identities[0]?.querySelector('[data-role="skin-label"]')?.textContent).toBeTruthy();
+    // 清单 = 已装 ∩ 可建档（T2 / 未确认安装的不进）
+    expect(h.screen.identities.map((item) => item.kind)).toEqual(['claude-code', 'codex']);
+    // 屏上只渲染当前 agent 的单卡（默认第一个）；切换条把两个都列出来
+    const cards = all(h.screen, '[data-role="identity"]');
+    expect(cards).toHaveLength(1);
+    expect(cards[0]?.getAttribute('data-kind')).toBe('claude-code');
+    expect((cards[0]?.querySelector('[data-role="name-input"]') as HTMLInputElement).value).toBe('Claude Code');
+    expect(cards[0]?.querySelector('[data-role="skin-label"]')?.textContent).toBeTruthy();
+    const tabs = all(h.screen, '[data-role="agent-tab"]');
+    expect(tabs.map((tab) => tab.getAttribute('data-kind'))).toEqual(['claude-code', 'codex']);
+    expect(tabs[0]?.getAttribute('data-active')).toBe('true');
     h.unmount();
   });
 
@@ -392,16 +493,18 @@ describe('② 起名与皮肤', () => {
     h.unmount();
   });
 
-  test('名字重复 → 拦在原地并给出提示', () => {
+  test('名字重复 → 拦在原地并给出提示【task_044 改断言：先切换到另一个 agent 再输入名字（逐个配置）】', () => {
     const h = mountScreen(makeState([CLAUDE, CODEX]));
     click(h.screen, '[data-action="next"]');
 
     type(h.screen, '[data-kind="claude-code"][data-role="name-input"]', 'Neo');
+    selectAgent(h.screen, 'codex');
     type(h.screen, '[data-kind="codex"][data-role="name-input"]', 'Neo');
     click(h.screen, '[data-action="next"]');
 
     expect(h.screen.step).toBe('identity');
     expect(h.screen.errors['name:claude-code']).toBe('名字重复了，换一个');
+    expect(h.screen.errors['name:codex']).toBe('名字重复了，换一个');
     h.unmount();
   });
 
@@ -449,7 +552,7 @@ describe('② 起名与皮肤', () => {
 // ============================================================================
 
 describe('③ 人设生成', () => {
-  test('题目没答完 → 拦在原地并逐题提示', () => {
+  test('题目没答完 → 拦在原地并逐题提示【task_044 改断言：错误键带上 agent kind（per-agent 问卷）】', () => {
     const h = mountScreen(makeState([CLAUDE]));
     click(h.screen, '[data-action="next"]'); // → identity
     click(h.screen, '[data-action="next"]'); // → persona
@@ -457,8 +560,8 @@ describe('③ 人设生成', () => {
 
     click(h.screen, '[data-action="next"]');
     expect(h.screen.step).toBe('persona');
-    expect(h.screen.errors['answer:role']).toBe('这一题还没选');
-    expect(h.screen.errors['answer:delivery']).toBe('这一题还没选');
+    expect(h.screen.errors['answer:claude-code:role']).toBe('这一题还没选');
+    expect(h.screen.errors['answer:claude-code:delivery']).toBe('这一题还没选');
     h.unmount();
   });
 
@@ -528,6 +631,26 @@ describe('③ 人设生成 · 预设库（纯数据）', () => {
       const rulesBlock = [`# 行为规则 RULES`, '', ...personaRulesLines()].join('\n');
       expect(preset.persona.endsWith(rulesBlock)).toBe(true);
     }
+  });
+
+  test('per-agent 匹配：只有点名 kind 的预设算专属（openclaw → 夜间值守；claude-code → 无）；presetsForKind 推荐排前且不砍选择面【task_044】', () => {
+    // 专属命中：openclaw 点名适配夜间值守
+    expect(presetMatchingKind('openclaw')?.id).toBe('night-watch');
+    // 没被点名的 kind：无专属预设（'any' 通用预设不算「该 agent 的默认」）
+    expect(presetMatchingKind('claude-code')).toBeNull();
+    expect(presetMatchingKind('codex')).toBeNull();
+
+    // openclaw 的卡片序：夜间值守排首且带推荐标记；其余 any 预设照常列出（一个不少）
+    const openclawEntries = presetsForKind('openclaw');
+    expect(openclawEntries[0]?.preset.id).toBe('night-watch');
+    expect(openclawEntries[0]?.recommended).toBe(true);
+    expect(openclawEntries.slice(1).every((entry) => entry.recommended)).toBe(false);
+    expect(openclawEntries).toHaveLength(PERSONA_PRESETS.length);
+
+    // claude-code：无推荐，保持库内原序
+    const claudeEntries = presetsForKind('claude-code');
+    expect(claudeEntries.every((entry) => entry.recommended)).toBe(false);
+    expect(claudeEntries.map((entry) => entry.preset.id)).toEqual(PERSONA_PRESETS.map((preset) => preset.id));
   });
 });
 
@@ -655,8 +778,196 @@ describe('③ 人设生成 · 预设与脏保护（UI）', () => {
 // 5. 确认 → 建档 → 完成（步骤④）
 // ============================================================================
 
+// ============================================================================
+// 3b. 逐个配置：agent 切换条 + per-agent 人设（@since v3.14，task_044）
+// ============================================================================
+
+describe('② 逐个配置 · agent 切换条（task_044）', () => {
+  test('identity 步只渲染当前 agent 的单卡；切换条切换后名字独立，改名实时上切换条标题', () => {
+    const h = mountScreen(makeState([CLAUDE, CODEX]));
+    click(h.screen, '[data-action="next"]');
+
+    expect(all(h.screen, '[data-role="identity"]')).toHaveLength(1);
+    type(h.screen, '[data-kind="claude-code"][data-role="name-input"]', 'Neo');
+    // 改名实时上切换条（轻量刷新，不重画保焦点）
+    expect(one(h.screen, '[data-role="agent-tab"][data-kind="claude-code"] [data-role="agent-title"]').textContent)
+      .toContain('Neo');
+
+    selectAgent(h.screen, 'codex');
+    expect(one(h.screen, '[data-role="identity"]').getAttribute('data-kind')).toBe('codex');
+    expect((one(h.screen, '[data-role="name-input"]') as HTMLInputElement).value).toBe('Codex');
+
+    // 切回 claude：名字没丢
+    selectAgent(h.screen, 'claude-code');
+    expect((one(h.screen, '[data-role="name-input"]') as HTMLInputElement).value).toBe('Neo');
+    h.unmount();
+  });
+
+  test('「已配置」状态：identity 步名字合法即✓；另一个卡片名字出错时点下一步自动切过去', () => {
+    const h = mountScreen(makeState([CLAUDE, CODEX]));
+    click(h.screen, '[data-action="next"]');
+
+    const claudeTab = () => one(h.screen, '[data-role="agent-tab"][data-kind="claude-code"]');
+    const codexTab = () => one(h.screen, '[data-role="agent-tab"][data-kind="codex"]');
+    expect(claudeTab().getAttribute('data-done')).toBe('true'); // 默认名合法
+
+    selectAgent(h.screen, 'codex');
+    type(h.screen, '[data-kind="codex"][data-role="name-input"]', '   '); // 留空 → 未配置
+    expect(codexTab().getAttribute('data-done')).toBe('false');
+
+    selectAgent(h.screen, 'claude-code');
+    click(h.screen, '[data-action="next"]');
+    expect(h.screen.step).toBe('identity'); // 被拦
+    // 出错的是 codex 而屏上看的是 claude → 自动切到 codex，错误直接可见
+    expect(codexTab().getAttribute('data-active')).toBe('true');
+    expect(one(h.screen, '[data-role="name-error"]').textContent).toContain('名字不能为空');
+    h.unmount();
+  });
+});
+
+describe('③ 逐个配置 · per-agent 人设（task_044）', () => {
+  test('问卷独立：A 的答案不影响 B；切换条状态跟着变；预设也独立', () => {
+    const h = mountScreen(makeState([CLAUDE, CODEX]));
+    click(h.screen, '[data-action="next"]');
+    click(h.screen, '[data-action="next"]'); // → persona（active = claude-code）
+    expect(h.screen.step).toBe('persona');
+
+    const claudeTab = () => one(h.screen, '[data-role="agent-tab"][data-kind="claude-code"]');
+    const codexTab = () => one(h.screen, '[data-role="agent-tab"][data-kind="codex"]');
+    expect(claudeTab().getAttribute('data-done')).toBe('false'); // 初始未配置
+
+    answerAll(h.screen); // claude 的问卷
+    expect(claudeTab().getAttribute('data-done')).toBe('true'); // 答完即✓
+    expect(codexTab().getAttribute('data-done')).toBe('false');
+
+    // 切到 codex：空问卷 + 空人设 + 提示；claude 的答卷不受影响
+    selectAgent(h.screen, 'codex');
+    expect(h.screen.personaOf('codex')).toBe('');
+    expect(one(h.screen, '[data-role="persona-hint"]').textContent).toContain('答下面的问卷');
+    expect(h.screen.personaOf('claude-code')).toContain('编码主力'); // claude 的还在
+
+    click(h.screen, '[data-preset="mentor"]'); // codex 走预设
+    expect(h.screen.personaOf('codex')).toContain('教学陪伴');
+    expect(codexTab().getAttribute('data-done')).toBe('true');
+    // claude 的人设没被 codex 的预设写穿
+    expect(h.screen.personaOf('claude-code')).not.toContain('教学陪伴');
+
+    // 两人都配置好 → 直接进确认
+    click(h.screen, '[data-action="next"]');
+    expect(h.screen.step).toBe('confirm');
+    h.unmount();
+  });
+
+  test('脏保护 per-agent：手改 A 不影响 B 的自动生成（答题继续实时刷新 B）', () => {
+    const h = mountScreen(makeState([CLAUDE, CODEX]));
+    click(h.screen, '[data-action="next"]');
+    click(h.screen, '[data-action="next"]'); // → persona（active = claude-code）
+
+    type(h.screen, '[data-role="persona-input"]', '我手改的 claude 人设'); // claude 脏了
+    selectAgent(h.screen, 'codex');
+    choose(h.screen, 'role', 'builder');
+    // codex 没手改 → 预览实时拼装（不受 claude 的脏影响）
+    expect(h.screen.personaOf('codex')).toContain('编码主力');
+
+    // 切回 claude：手改文本还在
+    selectAgent(h.screen, 'claude-code');
+    expect(h.screen.persona).toBe('我手改的 claude 人设');
+    expect(h.screen.personaDirty).toBe(true);
+    // codex 没被标记脏
+    h.unmount();
+  });
+
+  test('校验失败自动切到未配置的 agent（错误直接可见）', () => {
+    const h = mountScreen(makeState([CLAUDE, CODEX]));
+    click(h.screen, '[data-action="next"]');
+    click(h.screen, '[data-action="next"]'); // → persona（active = claude-code）
+
+    answerAll(h.screen); // 只配了 claude，codex 没碰
+    click(h.screen, '[data-action="next"]');
+
+    expect(h.screen.step).toBe('persona'); // 被拦
+    // 自动切到 codex（第一个未配置的），错误直接可见
+    expect(one(h.screen, '[data-role="agent-tab"][data-kind="codex"]').getAttribute('data-active')).toBe('true');
+    expect(h.screen.errors['answer:codex:role']).toBe('这一题还没选');
+    expect(one(h.screen, '[data-role="question"][data-question="role"] [data-role="answer-error"]').textContent)
+      .toContain('这一题还没选');
+    h.unmount();
+  });
+
+  test('kind 推荐预设：openclaw 初始预填夜间值守，卡片排首 + 「推荐」角标，免问卷直接下一步', () => {
+    const h = mountScreen(makeState([OPENCLAW]));
+    click(h.screen, '[data-action="next"]');
+    click(h.screen, '[data-action="next"]'); // → persona
+
+    // 初始即预填（专属预设）：免答问卷，切换条直接✓
+    expect(h.screen.personaPresetId).toBe('night-watch');
+    expect(h.screen.persona).toContain('夜间值守');
+    expect(one(h.screen, '[data-role="agent-tab"][data-kind="openclaw"]').getAttribute('data-done')).toBe('true');
+
+    // 卡片序：夜间值守排首 + 推荐角标；any 预设照常在列
+    const cards = all(h.screen, '[data-role="preset-card"]');
+    expect(cards).toHaveLength(PERSONA_PRESETS.length);
+    expect(cards[0]?.getAttribute('data-preset')).toBe('night-watch');
+    expect(cards[0]?.querySelector('[data-role="preset-recommend"]')?.textContent).toContain('推荐');
+    expect(cards[1]?.querySelector('[data-role="preset-recommend"]')).toBeNull();
+
+    // 预设路径免问卷：直接下一步 → 确认
+    click(h.screen, '[data-action="next"]');
+    expect(h.screen.step).toBe('confirm');
+    h.unmount();
+  });
+
+  test('无专属预设的 kind（如 claude-code）：初始人设留空 + 提示文案（不预填 any 预设）', () => {
+    const h = mountScreen(makeState([CLAUDE]));
+    click(h.screen, '[data-action="next"]');
+    click(h.screen, '[data-action="next"]'); // → persona
+
+    expect(h.screen.persona).toBe('');
+    expect(h.screen.personaPresetId).toBeNull();
+    expect(one(h.screen, '[data-role="persona-hint"]').textContent).toContain('答下面的问卷');
+    // 初始未配置（要答问卷或选预设）
+    expect(one(h.screen, '[data-role="agent-tab"][data-kind="claude-code"]').getAttribute('data-done')).toBe('false');
+    h.unmount();
+  });
+});
+
+describe('④ 确认 · 逐 agent 人设预览（task_044）', () => {
+  test('确认页每个 agent 一段可折叠人设（分节头列表当摘要）；提交各带各的 persona', () => {
+    const h = mountScreen(makeState([CLAUDE, CODEX]));
+    click(h.screen, '[data-action="next"]'); // → identity
+    type(h.screen, '[data-kind="claude-code"][data-role="name-input"]', 'Neo');
+    selectAgent(h.screen, 'codex');
+    type(h.screen, '[data-kind="codex"][data-role="name-input"]', 'Trinity');
+    click(h.screen, '[data-action="next"]'); // → persona（active = codex）
+    click(h.screen, '[data-preset="mentor"]'); // codex 先配：预设
+    selectAgent(h.screen, 'claude-code');
+    answerAll(h.screen); // claude：问卷
+    click(h.screen, '[data-action="next"]'); // → confirm
+
+    expect(h.screen.step).toBe('confirm');
+    // 每个 agent 一段可折叠人设，摘要 = 分节头列表
+    const details = all(h.screen, '[data-role="persona-details"]');
+    expect(details).toHaveLength(2);
+    expect(details[0]?.getAttribute('data-kind')).toBe('claude-code');
+    expect(one(h.screen, '[data-role="persona-summary"]').textContent).toContain('角色定位 ROLE');
+    expect(one(h.screen, '[data-role="persona-summary"]').textContent).toContain('Neo');
+    // 展开看全文（默认折叠，点开拿正文）
+    const codexPreview = one(h.screen, '[data-role="persona-preview"][data-kind="codex"]');
+    expect(codexPreview.textContent).toContain('教学陪伴');
+    const claudePreview = one(h.screen, '[data-role="persona-preview"][data-kind="claude-code"]');
+    expect(claudePreview.textContent).toContain('# 角色定位 ROLE');
+
+    // 提交：各带各的 persona
+    click(h.screen, '[data-action="submit"]');
+    const creates = h.commands.filter((c) => c.type === 'character.create');
+    expect((creates[0] as { persona?: string }).persona).toContain('编码主力');
+    expect((creates[1] as { persona?: string }).persona).toContain('教学陪伴');
+    h.unmount();
+  });
+});
+
 describe('④ 确认与提交', () => {
-  test('提交：逐个 character.create → 完成事件 → 回主屏', () => {
+  test('提交：逐个 character.create → 完成事件 → 回主屏【task_044 改断言：先切换 agent 再输入名字（逐个配置）】', () => {
     const h = mountScreen(makeState([CLAUDE, CODEX]));
     const seen: OnboardingCompleteDetail[] = [];
     h.screen.addEventListener(ONBOARDING_COMPLETE_EVENT, (ev) => {
@@ -665,12 +976,13 @@ describe('④ 确认与提交', () => {
 
     click(h.screen, '[data-action="next"]'); // → identity
     type(h.screen, '[data-kind="claude-code"][data-role="name-input"]', 'Neo');
+    selectAgent(h.screen, 'codex');
     type(h.screen, '[data-kind="codex"][data-role="name-input"]', 'Trinity');
-    click(h.screen, '[data-action="next"]'); // → persona
-    choose(h.screen, 'role', 'builder');
-    choose(h.screen, 'tone', 'terse');
-    choose(h.screen, 'autonomy', 'balanced');
-    choose(h.screen, 'delivery', 'iterative');
+    click(h.screen, '[data-action="next"]'); // → persona（active 延续 identity 步最后选中的 codex）
+    selectAgent(h.screen, 'claude-code');
+    answerAll(h.screen); // claude-code 的问卷
+    selectAgent(h.screen, 'codex');
+    click(h.screen, '[data-preset="mentor"]'); // codex 用预设（每人各走各的路径）
     click(h.screen, '[data-action="next"]'); // → confirm
     click(h.screen, '[data-action="submit"]');
 
@@ -678,8 +990,9 @@ describe('④ 确认与提交', () => {
     expect(creates).toHaveLength(2);
     expect(creates[0]).toMatchObject({ type: 'character.create', name: 'Neo', agentKind: 'claude-code' });
     expect(creates[1]).toMatchObject({ type: 'character.create', name: 'Trinity', agentKind: 'codex' });
-    // 人设随建档一起发（core 的建档口径：persona 可选，缺省套默认模板）
+    // 人设随建档一起发，且各带各的（claude = 问卷结果；codex = mentor 预设）
     expect((creates[0] as { persona?: string }).persona).toContain('# 角色定位 ROLE');
+    expect((creates[1] as { persona?: string }).persona).toContain('教学陪伴');
 
     expect(seen).toHaveLength(1);
     expect(seen[0]?.created.map((c) => c.name)).toEqual(['Neo', 'Trinity']);
@@ -693,10 +1006,7 @@ describe('④ 确认与提交', () => {
     const h = mountScreen(makeState([CLAUDE]));
     click(h.screen, '[data-action="next"]');
     click(h.screen, '[data-action="next"]');
-    choose(h.screen, 'role', 'builder');
-    choose(h.screen, 'tone', 'terse');
-    choose(h.screen, 'autonomy', 'balanced');
-    choose(h.screen, 'delivery', 'iterative');
+    answerAll(h.screen);
     click(h.screen, '[data-action="next"]');
 
     h.screen.submit();

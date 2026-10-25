@@ -10,7 +10,8 @@
  *   hud 不 import stratix-agent（渲染层隔离的铁律），对齐靠本注释声明 + 同一套分节常量
  *   （PERSONA_SECTION_TITLES / composePersonaSections / personaRulesLines，来自 onboarding-catalog）。
  * 输入：无（手写常量）。
- * 输出：PERSONA_PRESETS（6-8 个完整结构化预设；每个标注适配 agent 种类与一句话说明）。
+ * 输出：PERSONA_PRESETS（6-8 个完整结构化预设；每个标注适配 agent 种类与一句话说明）
+ *   + per-agent 匹配口径（presetMatchingKind / presetsForKind，@since v3.14，task_044）。
  * 禁止事项：
  *   1. 碰 DOM —— 本文件是纯数据，渲染是 onboarding-screen.ts 的事；
  *   2. import world/、app/、stratix-agent —— 铁律（core 的类型与词表除外）；
@@ -249,3 +250,43 @@ export const PERSONA_PRESETS: readonly PersonaPreset[] = Object.freeze([
     }),
   },
 ]);
+
+// ============================================================================
+// per-agent 预设匹配（@since v3.14，task_044：向导逐个配置化）
+// ============================================================================
+
+/** 预设是否**专属**适配某个 kind（suitableKinds 是具体数组且包含该 kind；'any' 不算专属）。 */
+function presetMatchesKind(preset: PersonaPreset, kind: string): boolean {
+  return preset.suitableKinds !== 'any' && (preset.suitableKinds as readonly string[]).includes(kind);
+}
+
+/**
+ * 按 kind 找初始预设（第一个专属命中的；null = 无专属预设，初始人设留空走问卷 / any 预设）。
+ * @since v3.14（task_044）：向导为每个 agent 预填人设时的取值口径 ——
+ *   只有 suitableKinds **点名**该 kind 的预设才预填（如 openclaw → 夜间值守）；
+ *   'any' 预设谁都能用但不算「该 agent 的默认」，不预填。
+ */
+export function presetMatchingKind(kind: string): PersonaPreset | null {
+  return PERSONA_PRESETS.find((preset) => presetMatchesKind(preset, kind)) ?? null;
+}
+
+/** 预设卡片的展示条目：预设 + 是否推荐给该 kind。 */
+export interface PresetEntry {
+  readonly preset: PersonaPreset;
+  /** suitableKinds 点名该 kind → 推荐（卡片排前 + 角标）。 */
+  readonly recommended: boolean;
+}
+
+/**
+ * 预设卡片区的展示序（@since v3.14，task_044）：按当前 agent 的 kind 排序 ——
+ * 专属命中的排前（带推荐标记），其余（'any' 通用）按库内原序跟在后面。
+ * why 排序而不是过滤：通用预设对任何 kind 都合法，过滤掉会砍掉用户的选择面；
+ * 排序 + 角标既保住选择面、又让「给这个 agent 挑」的第一眼是对的。
+ */
+export function presetsForKind(kind: string): readonly PresetEntry[] {
+  const entries = PERSONA_PRESETS.map((preset) => ({
+    preset,
+    recommended: presetMatchesKind(preset, kind),
+  }));
+  return [...entries].sort((a, b) => Number(b.recommended) - Number(a.recommended));
+}
