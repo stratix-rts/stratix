@@ -215,8 +215,14 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
       // @since v3.16 角色任务派发(task_037):落到 task manager(不再走 onUnhandled)。
       // prompt 合法性与角色在档由 manager 裁决;agent 绑定 / 检出的守门在 app 层 task-service
       // 出队时做(不满足 → failTask 直达 failed,状态里看得见原因)。
+      // @since v3.26(task_050):可选 targetCharacterId 透传 —— 指定承接人直达其队列,
+      // 在档校验在 manager(不存在 → error Notice);「自动」的择人决策在 HUD 推荐纯函数。
       case 'task.assign':
-        task.assignTask({ characterId: command.characterId, prompt: command.prompt });
+        task.assignTask({
+          characterId: command.characterId,
+          prompt: command.prompt,
+          targetCharacterId: command.targetCharacterId,
+        });
         return;
       // @since v3.23 排队任务取消(task_047):同口径直调 manager。相位裁决(仅 queued 可取消)
       // 在状态机,拒绝时 manager 发对应 Notice(running → 提示「先停止」;终态 → 无需取消),

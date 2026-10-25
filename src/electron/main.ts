@@ -41,6 +41,7 @@ import {
 import {
   ensureCharacterTasksTable,
   loadRecentTasks,
+  aggregateTaskStatusCounts,
   PERSISTED_TASK_STATUSES,
   upsertTask,
   type PersistedTaskRecord,
@@ -412,6 +413,22 @@ function setupIPC() {
       return { ok: true, tasks: loadRecentTasks(db, characterId, taskWindow) };
     } catch (error: any) {
       console.error('[Electron] game:loadTasks failed:', error);
+      return { ok: false, error: error?.message ?? String(error) };
+    }
+  });
+
+  // ==================== 任务统计聚合 IPC（@since v3.26，task_050）====================
+  // 派发智能推荐的数据源：全量按角色×状态 GROUP BY（无入参 —— 没有可校验的外部输入，
+  // 主进程只兑底「库已初始化 + 表已就位」）。行数天然有界（角色数 × 6 态），
+  // 渲染层（task-record 的统计提供口）拿去归约成每角色一行成功率/均值。
+  ipcMain.handle('game:taskStats', async () => {
+    try {
+      if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
+      const db = getDatabase().getDatabase();
+      ensureCharacterTasksTable(db);
+      return { ok: true, rows: aggregateTaskStatusCounts(db) };
+    } catch (error: any) {
+      console.error('[Electron] game:taskStats failed:', error);
       return { ok: false, error: error?.message ?? String(error) };
     }
   });

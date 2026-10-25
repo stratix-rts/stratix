@@ -14,6 +14,7 @@ import * as path from 'path';
 import { Database } from '@/stratix-database/sqlite-adapter';
 
 import {
+  aggregateTaskStatusCounts,
   ensureCharacterTasksTable,
   loadRecentTasks,
   upsertTask,
@@ -315,6 +316,36 @@ describe('task-record-dao（真实 sql.js 适配器）', () => {
       } finally {
         legacy.close();
       }
+    });
+  });
+
+  // ============ task_050：按角色×状态聚合（GROUP BY character_id, status） ============
+
+  describe('aggregateTaskStatusCounts', () => {
+    it('按角色×状态分组计数；AVG(ended−started) 剔除缺时间戳的行；无耗时样本 → null', () => {
+      // ch-1：三条 completed（10s / 30s / 缺 ended 不入均值 → 均值 20s）+ 一条 failed + 一条 queued
+      upsertTask(db, record({ id: 'a1', status: 'completed', startedAt: 1000, endedAt: 11000 }));
+      upsertTask(db, record({ id: 'a2', status: 'completed', startedAt: 2000, endedAt: 32000 }));
+      upsertTask(db, record({ id: 'a3', status: 'completed', startedAt: 5000, endedAt: null }));
+      upsertTask(db, record({ id: 'a4', status: 'failed', startedAt: 9000, endedAt: 14000 }));
+      upsertTask(db, record({ id: 'a5', status: 'queued' }));
+      // ch-2：一条 running（未收尾 → 耗时列 null）
+      upsertTask(db, record({ id: 'b1', characterId: 'ch-2', status: 'running', startedAt: 7000 }));
+
+      const rows = aggregateTaskStatusCounts(db);
+      // 四组：(ch-1,completed)(ch-1,failed)(ch-1,queued)(ch-2,running) —— 分组即真相，顺序不约定
+      expect(rows).toHaveLength(4);
+      const at = (characterId: string, status: string) =>
+        rows.find((row) => row.characterId === characterId && row.status === status)!;
+
+      expect(at('ch-1', 'completed')).toEqual({ characterId: 'ch-1', status: 'completed', count: 3, avgDurationMs: 20000 });
+      expect(at('ch-1', 'failed')).toEqual({ characterId: 'ch-1', status: 'failed', count: 1, avgDurationMs: 5000 });
+      expect(at('ch-1', 'queued')).toEqual({ characterId: 'ch-1', status: 'queued', count: 1, avgDurationMs: null });
+      expect(at('ch-2', 'running')).toEqual({ characterId: 'ch-2', status: 'running', count: 1, avgDurationMs: null });
+    });
+
+    it('空表 → 空数组（调用方按「无历史」处理，不退全 0）', () => {
+      expect(aggregateTaskStatusCounts(db)).toEqual([]);
     });
   });
 });

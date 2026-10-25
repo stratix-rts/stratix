@@ -871,8 +871,13 @@ export type HudCommand =
    *   ≤ MAX_TASK_PROMPT_LEN。守门（agent 绑定 / 已检出）在 app 层出队时裁决 ——
    *   不满足时任务直接落 failed（状态里看得见原因），不是拒绝入队。
    * UI 入口（派发表单）归 038；本命令在 core 落地后，任何总线调用方都能派任务。
+   * @since v3.26（task_050）可选 targetCharacterId：**指定承接人**（派发智能推荐的手动指定
+   *   路径）。给出时任务直达该角色队列（必须命中 WorldState.characters，否则 manager 拒绝
+   *   并回 error Notice）；缺省 = characterId（037 起的现行为）。「自动（推荐）」的择人决策在
+   *   HUD 推荐纯函数（hud/panels/task-assign-catalog），core 只认结果 —— core 不做推荐
+   *   （它不知道历史成功率与预设库，那是 hud/app 的数据面）。
    */
-  | { type: 'task.assign'; characterId: string; prompt: string }
+  | { type: 'task.assign'; characterId: string; prompt: string; targetCharacterId?: string }
   /**
    * @since v3.23 排队任务取消（task_047）：把一条 **queued** 任务收尾成 cancelled。
    * 只对 queued 生效：running 不强杀（取消在跑任务是「先停止」另一件事，core 侧拒绝并回

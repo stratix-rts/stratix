@@ -35,7 +35,9 @@
  * 且该角色还有**其他** running 任务时不回收（并发 1 是 app 层的执行纪律，core 不假设）。
  *
  * @since v3.16（task_037）；v3.23（task_047）追加 cancelTask（排队取消）与 TaskCancelOutcome；
- *   v3.25（task_049）追加审批门三口：requestApproval / approveTask / rejectTask。
+ *   v3.25（task_049）追加审批门三口：requestApproval / approveTask / rejectTask；
+ *   v3.26（task_050）assignTask 增可选 targetCharacterId（指定承接人直达其队列，不在档 →
+ *   error Notice 拒绝）。
  */
 
 import { emitWorldEvent } from '../bus';
@@ -96,8 +98,15 @@ export interface TaskManager {
    * 派发一条任务（task.assign 的落点）：守门（角色在档 / prompt 非空限长）→ 建 queued 任务
    * → 写库 → 发 task.queued。失败返回 null 并上报 Notice（agent 是否检出**不在**这里判 ——
    * 那是 app 层出队守门的事，不满足时走 failTask 直达 failed）。
+   * @since v3.26（task_050）可选 targetCharacterId：指定承接人 —— 给出时校验在档（不在 →
+   *   error Notice 拒绝，不是静默回落：发命令的 UI 已列过名单，指定的人凭空消失是异常态），
+   *   任务建在**目标角色**名下（直达其 FIFO 队列）；缺省 = characterId（037 现行为）。
    */
-  assignTask(input: { readonly characterId: string; readonly prompt: string }): CharacterTask | null;
+  assignTask(input: {
+    readonly characterId: string;
+    readonly prompt: string;
+    readonly targetCharacterId?: string;
+  }): CharacterTask | null;
   /** queued → running：开工（app 层 task-service 出队后调用）。 */
   startTask(taskId: string): CharacterTask | null;
   /** running → completed：收尾，output 收全文、状态里只存摘要（machine.summarizeTaskOutput）。 */
@@ -172,11 +181,24 @@ class Manager implements TaskManager {
     this.maxTasks = options.maxTasks ?? MAX_TASKS;
   }
 
-  assignTask(input: { readonly characterId: string; readonly prompt: string }): CharacterTask | null {
+  assignTask(input: {
+    readonly characterId: string;
+    readonly prompt: string;
+    readonly targetCharacterId?: string;
+  }): CharacterTask | null {
     const prompt = input.prompt.trim();
-    const character = this.store.getState().characters.find((c) => c.id === input.characterId);
+    const state = this.store.getState();
+    const character = state.characters.find((c) => c.id === input.characterId);
     if (!character) {
       this.notify('warn', '未找到该角色的档案，任务未派发');
+      return null;
+    }
+    // @since v3.26（task_050）：指定承接人 —— 与表单角色分开校验。error 级（不是 warn）：
+    // 指定目标不存在是「名单外的输入」，比「档案丢了」亚异常态更硬，拒绝要显眼。
+    const targetId = input.targetCharacterId ?? input.characterId;
+    const target = targetId === input.characterId ? character : state.characters.find((c) => c.id === targetId);
+    if (!target) {
+      this.notify('error', `指定的承接人「${targetId}」不在档案里，任务未派发`);
       return null;
     }
     if (prompt.length === 0) {
@@ -196,7 +218,7 @@ class Manager implements TaskManager {
       if (kept.length >= this.maxTasks) return state;
       const task = createQueuedTask({
         id: this.createId('task'),
-        characterId: input.characterId,
+        characterId: targetId,
         prompt,
         createdAt: this.now(),
       });
@@ -211,7 +233,12 @@ class Manager implements TaskManager {
     }
     // 事件在写库**之后**发：订阅者（task-service）拿到事件去读状态时，状态必须已经是新的。
     emitWorldEvent({ type: 'task.queued', task });
-    this.notify('info', `已给「${character.name}」派发任务，排入队列`);
+    this.notify(
+      'info',
+      target.id === character.id
+        ? `已给「${target.name}」派发任务，排入队列`
+        : `已把任务转派给「${target.name}」，排入其队列`
+    );
     return task;
   }
 

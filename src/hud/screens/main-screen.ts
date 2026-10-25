@@ -31,10 +31,11 @@
 
 import type { WorldState } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
-import { mountAgentPanel } from '../panels/agent-panel';
+import { mountAgentPanel, type AgentPanelDeps } from '../panels/agent-panel';
 import { mountChatDrawer } from '../panels/chat-drawer';
 import { mountCommandPanel } from '../panels/command-panel';
 import { mountLogDrawer } from '../panels/log-drawer';
+import type { TaskStatsProvider } from '../panels/task-assign-catalog';
 import { defineStratButton, STRAT_BUTTON_TAG } from '../widgets/strat-button';
 
 import { mountCharacterScreen } from './character-screen';
@@ -222,9 +223,12 @@ export interface MainScreenHandle {
 /**
  * 主屏可选依赖（@since v3.20，task_041）：形象预览端口 —— 由组合根（main-entry）注入，
  *   供角色屏的形象编辑面板用（与向导屏共享同一实例；缺省不注入，面板降级成提示语）。
+ * @since v3.26（task_050）taskStats：派发推荐的历史统计提供口 —— 透传给 agent-panel 的
+ *   「交给谁」选择器（表单打开时取一次；缺省不注入 = 无历史中性降级）。
  */
 export interface MainScreenOptions {
   readonly appearance?: AppearancePreviewPort;
+  readonly taskStats?: TaskStatsProvider;
 }
 
 /** 工厂：构造 main-screen 句柄；接受一个已建好的 bus-adapter（依赖注入）。 */
@@ -330,9 +334,13 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       const panelHost = host.querySelector<HTMLElement>('[data-role="command-panel"]');
       const unmountPanel = panelHost ? mountCommandPanel(adapter, panelHost) : null;
 
-      // Agent 侧栏：选中单位的业务态。与命令面板共用同一个 adapter —— 两条派发通道合成一条。
+      // Agent 侧栏：选中单位的业务态。与命令面板共用同一个 adapter —— 两条派发通道合成一条；
+      // task_050：可选的历史统计提供口一并注入（派发推荐「交给谁」选择器用）。
       const agentHost = host.querySelector<HTMLElement>('[data-role="agent-panel"]');
-      const unmountAgentPanel = agentHost ? mountAgentPanel(adapter, agentHost) : null;
+      const agentDeps: AgentPanelDeps = options.taskStats
+        ? { dispatch: (command) => adapter.dispatch(command), subscribe: (handler) => adapter.subscribe(handler), taskStats: options.taskStats }
+        : adapter;
+      const unmountAgentPanel = agentHost ? mountAgentPanel(agentDeps, agentHost) : null;
 
       // 日志抽屉：纯展示，不发命令 —— 只把同一个 adapter 的 subscribe 能力给它。
       const drawerHost = host.querySelector<HTMLElement>('[data-role="log-drawer"]');

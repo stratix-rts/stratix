@@ -43,7 +43,9 @@
  * @since v3.16，task_037；v3.23（task_047）status 词表增 cancelled + 旧表重建迁移；
  *   v3.24（task_048）增 artifacts 列（成果物 JSON，'' = 无；ALTER ADD 可加，无需重建）；
  *   v3.25（task_049）status 词表增 awaiting_approval + 重建迁移 + plan 列（计划草稿全文，
- *   '' = 无；随六态重建携带，六态表缺列时 ALTER ADD 兜底）。
+ *   '' = 无；随六态重建携带，六态表缺列时 ALTER ADD 兜底）；
+ *   v3.26（task_050）增 aggregateTaskStatusCounts（按角色×状态 GROUP BY 聚合，
+ *   派发推荐的成功率/平均耗时数据源）。
  */
 
 import type { SqliteDatabaseLike } from './game-save-dao';
@@ -100,6 +102,19 @@ export const PERSISTED_TASK_STATUSES: readonly PersistedTaskStatus[] = [
   'failed',
   'cancelled',
 ];
+
+/**
+ * 按角色×状态聚合的一行（task_050）：派发智能推荐的成功率/平均耗时数据源。
+ * count = 该角色该相位的条数；avgDurationMs = 该相位下（ended−started）的平均值
+ * （started/ended 任一为 NULL 的行被 AVG 自动排除 —— 未开工/未收尾的行没有耗时可言），
+ * 无样本 = null（调用方显示「未知」，不编 0）。
+ */
+export interface PersistedTaskStatRow {
+  readonly characterId: string;
+  readonly status: PersistedTaskStatus;
+  readonly count: number;
+  readonly avgDurationMs: number | null;
+}
 
 /** 建表 DDL（六态 CHECK + artifacts + plan，@since v3.25 task_049）—— 与 StratixDatabase 的 DDL 同构，两处同步改。 */
 const CHARACTER_TASKS_DDL = `
@@ -328,4 +343,30 @@ export function loadRecentTasks(
       plan: typeof row.plan === 'string' && row.plan.length > 0 ? row.plan : undefined,
     }))
     .reverse();
+}
+
+/**
+ * 按角色×状态聚合统计（@since v3.26，task_050）：SQL GROUP BY character_id, status ——
+ * 派发智能推荐的历史成功率（completed/(completed+failed)）与平均完成时长（completed+failed
+ * 的 ended−started 均值）的数据源。一条 SQL 出全量（角色数有限、状态六枚，行数天然有界），
+ * 不在 JS 里拉全表再数 —— 统计口径交给数据库，DAO 只做行映射（与文件头「只做数据搬运」一致）。
+ * 词表外 status（理论不可能，CHECK 兜底）防御性归一为 failed —— 与 loadRecentTasks 同口径不抛。
+ * 空表 / 无终态行 → 空数组（调用方按「无历史」处理，不退全 0）。
+ */
+export function aggregateTaskStatusCounts(db: SqliteDatabaseLike): PersistedTaskStatRow[] {
+  const rows = db
+    .prepare(
+      `SELECT character_id, status, COUNT(*) AS cnt, AVG(ended_at - started_at) AS avg_ms
+       FROM ${CHARACTER_TASKS_TABLE}
+       GROUP BY character_id, status`
+    )
+    .all() as Array<Record<string, unknown>>;
+  return rows.map((row) => ({
+    characterId: String(row.character_id),
+    status: (PERSISTED_TASK_STATUSES as readonly string[]).includes(String(row.status))
+      ? (String(row.status) as PersistedTaskStatRow['status'])
+      : 'failed',
+    count: Number(row.cnt ?? 0),
+    avgDurationMs: row.avg_ms === null || row.avg_ms === undefined ? null : Number(row.avg_ms),
+  }));
 }

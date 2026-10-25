@@ -333,6 +333,52 @@ describe('assignTask：守门 + 投影 + 事件', () => {
     expect(manager.assignTask({ characterId: 'ch-1', prompt: 'E' })).toBeNull();
     expect(store.getState().tasks).toHaveLength(3);
   });
+
+  // —— task_050：指定承接人（targetCharacterId）——
+
+  test('指定承接人 → 任务直达目标角色队列（characterId = 目标），Notice 说「转派」', () => {
+    resetBus();
+    const store = createStore();
+    store.setState((state) => ({
+      ...state,
+      characters: [
+        { id: 'ch-1', name: '阿尔法', persona: '', level: 1, experience: 0, agentKind: 'claude-code' },
+        { id: 'ch-2', name: '贝塔', persona: '', level: 1, experience: 0, agentKind: 'kimi' },
+      ],
+    }));
+    const manager = createTaskManager({ store, createId: (p) => `${p}_${++seq}` });
+
+    const task = manager.assignTask({ characterId: 'ch-1', prompt: '写周报', targetCharacterId: 'ch-2' });
+
+    expect(task?.characterId).toBe('ch-2'); // 直达目标队列：不是表单角色 ch-1
+    expect(store.getState().tasks?.[0]?.characterId).toBe('ch-2');
+    const notice = store.getState().notices[0];
+    expect(notice.level).toBe('info');
+    expect(notice.text).toContain('贝塔');
+    expect(notice.text).toContain('转派');
+  });
+
+  test('指定承接人不存在 → null + error Notice，状态不动（指定≠静默回落）', () => {
+    resetBus();
+    const { manager, store } = makeManager();
+
+    expect(
+      manager.assignTask({ characterId: 'ch-1', prompt: '干活', targetCharacterId: 'ghost' })
+    ).toBeNull();
+    expect(store.getState().tasks ?? []).toHaveLength(0);
+    expect(store.getState().notices[0]).toMatchObject({ level: 'error', source: 'core/task' });
+    expect(store.getState().notices[0].text).toContain('ghost');
+  });
+
+  test('targetCharacterId = 同一人 → 载荷最小化路径也不被拒绝（等价缺省行为）', () => {
+    resetBus();
+    const { manager, store } = makeManager();
+
+    const task = manager.assignTask({ characterId: 'ch-1', prompt: '自己接', targetCharacterId: 'ch-1' });
+
+    expect(task?.characterId).toBe('ch-1');
+    expect(store.getState().tasks).toHaveLength(1);
+  });
 });
 
 describe('cancelTask：排队取消（manager）', () => {
@@ -525,6 +571,35 @@ describe('命令闭环：task.assign 经真 runtime 落地', () => {
 
     emitCommand({ type: 'ui.navigate', screen: 'character' });
     expect(store.getState().currentScreen).toBe('character');
+
+    stop();
+  });
+
+  // —— task_050：指定承接人经真 runtime 落地（透传链路） ——
+
+  test('emitCommand(task.assign 带 targetCharacterId) → 任务直达目标角色队列', () => {
+    resetBus();
+    const store = createStore();
+    seedStore(store);
+    store.setState((state) => ({
+      ...state,
+      characters: [
+        ...state.characters,
+        { id: 'ch-2', name: '贝塔', persona: '', level: 1, experience: 0, agentKind: 'kimi' },
+      ],
+    }));
+    const runtime = createCoreRuntime({ store });
+    const stop = runtime.start();
+
+    emitCommand({ type: 'task.assign', characterId: 'ch-1', prompt: '转给贝塔', targetCharacterId: 'ch-2' });
+
+    expect(store.getState().tasks).toHaveLength(1);
+    expect(store.getState().tasks![0]).toMatchObject({ characterId: 'ch-2', prompt: '转给贝塔' });
+
+    // 不存在 → error Notice 拒绝，状态不动（命令通道 fire-and-forget，反馈靠 Notice）
+    emitCommand({ type: 'task.assign', characterId: 'ch-1', prompt: '发给幽灵', targetCharacterId: 'ghost' });
+    expect(store.getState().tasks).toHaveLength(1);
+    expect(store.getState().notices[0]).toMatchObject({ level: 'error', source: 'core/task' });
 
     stop();
   });

@@ -27,6 +27,13 @@
  *   每条带状态徽标；**取消按钮仅 queued**（running 不强杀 —— 点不到就是提示），**重派按钮
  *   仅 failed**（buildTaskAssignCommand 同 prompt 派新任务，不复用旧 id）。列表随签名重建，
  *   与 body 同一生命周期（无输入态，重画无丢失）。
+ * @since v3.26（task_050）派发表单增「交给谁」选择器：缺省「自动（推荐）」+ 全体已绑定角色的
+ *   候选人卡片（kind 徽标 / 忙闲实时 / 推荐角标在第一位）；推荐排序与理由短语来自
+ *   task-assign-catalog 纯函数（历史成功率快照经 deps.taskStats 注入，打开时刷新一次，
+ *   不做实时订阅）；目标在忙时表单提示排队预计（队列长度 × 历史均值，无历史「未知」）。
+ *   承接人卡片的重画走自己的判重签名（覆盖全体角色的忙闲，比面板签名宽 —— 面板签名只看
+ *   选中单位，别的角色排队变化也该实时反映在卡片上）。提交时手动选择 > 自动推荐解析 >
+ *   表单角色（038 行为兜底），指定承接人经 targetCharacterId 落 core 校验直达目标队列。
  */
 
 import { MAX_TASK_PROMPT_LEN, type HudCommand, type WorldState } from '../../core/types';
@@ -50,11 +57,22 @@ import {
   buildTaskRejectCommand,
   resolveAgentPanel,
 } from './agent-catalog';
+import {
+  buildQueueEstimateHint,
+  recommendAssignees,
+  resolveAutoTarget,
+  type AssigneeModel,
+  type CharacterTaskStatInput,
+  type TaskStatsProvider,
+} from './task-assign-catalog';
 
 export const AGENT_PANEL_TAG = 'strat-agent-panel';
 
-/** 面板需要的最小能力面：只要"发命令"与"订阅状态"，与 command-panel 同一约定。 */
-export type AgentPanelDeps = Pick<HudBusAdapter, 'dispatch' | 'subscribe'>;
+/** 面板需要的最小能力面：只要"发命令"与"订阅状态"，与 command-panel 同一约定。
+ * @since v3.26（task_050）可选 taskStats：历史成功率快照提供口（派发推荐用，表单打开时取一次）。 */
+export type AgentPanelDeps = Pick<HudBusAdapter, 'dispatch' | 'subscribe'> & {
+  readonly taskStats?: TaskStatsProvider;
+};
 
 /** 自定义元素的对外形状（测试与挂载方按它断言）。 */
 export interface StratAgentPanelElement extends HTMLElement {
@@ -102,6 +120,14 @@ export function defineAgentPanel(): typeof HTMLElement {
     /** 派任务表单的本地瞬时态（task_038）：开着时指向哪个单位/角色；关闭时均为 null。 */
     private _formUnitId: string | null = null;
     private _formCharacterId: string | null = null;
+    /** 「交给谁」选择（task_050）：null = 自动（推荐，缺省）；否则为选中的承接人角色 id。 */
+    private _formTarget: string | null = null;
+    /** 历史任务统计快照（task_050，app 层缓存）：表单打开时刷新一次；null = 无（中性降级）。 */
+    private _taskStats: readonly CharacterTaskStatInput[] | null = null;
+    /** 统计刷新去重（打开期间上一次还没回来就不叠加请求）。 */
+    private _statsRefreshing = false;
+    /** 承接人列表的判重签名（表单开着时每次广播都会走更新口，签名不变不重建卡片）。 */
+    private _lastAssigneeSignature: string | null = null;
 
     // —— 属性面 ——
     get adapter(): AgentPanelDeps | null { return this._adapter; }
@@ -139,6 +165,10 @@ export function defineAgentPanel(): typeof HTMLElement {
     }
 
     refresh(): void {
+      // 承接人列表（task_050）：签名比面板宽（覆盖全体角色的忙闲，面板签名只看选中单位）——
+      // 表单开着时先走自己的判重更新，再进面板签名闸，否则「别的角色排队变化」这类广播会被
+      // 面板签名拦下、卡片忙闲读数停在前一帧（违反「忙闲实时」）。
+      if (this._formCharacterId) this.updateAssignees();
       const signature = agentPanelSignature(this._state);
       if (signature === this._lastSignature) return;
       this._lastSignature = signature;
@@ -370,6 +400,57 @@ export function defineAgentPanel(): typeof HTMLElement {
             color: var(--srf-text-muted, #9aa3b2);
             font-size: var(--srf-font-size-sm, 12px);
           }
+          /* 「交给谁」选择器（task_050）：自动卡 + 候选人卡纵列。选中态用 token 边框强调，
+             不用底色填充 —— 卡片已有一层 panel-elevated，再叠填充会吞掉层次 */
+          .assignee-list {
+            display: grid;
+            gap: var(--srf-spacing-xs, 4px);
+          }
+          .assignee {
+            display: grid;
+            gap: var(--srf-spacing-xs, 4px);
+            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-sm, 8px);
+            text-align: left;
+            background: var(--srf-panel, #181c25);
+            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
+            border-radius: var(--srf-radius, 6px);
+            color: var(--srf-text, #e6e9ef);
+            font-family: var(--srf-font-ui, sans-serif);
+            font-size: var(--srf-font-size-sm, 12px);
+            cursor: pointer;
+          }
+          .assignee:hover { border-color: var(--srf-accent, #6ea8ff); }
+          .assignee.selected { border-color: var(--srf-accent, #6ea8ff); }
+          .assignee-head {
+            display: flex;
+            align-items: center;
+            gap: var(--srf-spacing-sm, 8px);
+          }
+          .assignee-name { font-weight: 600; }
+          .assignee-kind {
+            color: var(--srf-text-muted, #9aa3b2);
+            border: var(--srf-border-width, 1px) solid var(--srf-border-strong, #3a4252);
+            border-radius: var(--srf-radius, 6px);
+            padding: 0 var(--srf-spacing-xs, 4px);
+          }
+          .assignee-busy { margin-left: auto; }
+          .assignee-busy[data-busy="idle"] { color: var(--srf-accent, #6ea8ff); }
+          .assignee-busy[data-busy="busy"] { color: var(--srf-warn, #f0c674); }
+          .assignee-reco {
+            color: var(--srf-accent, #6ea8ff);
+            border: var(--srf-border-width, 1px) solid var(--srf-accent, #6ea8ff);
+            border-radius: var(--srf-radius, 6px);
+            padding: 0 var(--srf-spacing-xs, 4px);
+          }
+          .assignee-reason {
+            color: var(--srf-text-muted, #9aa3b2);
+            font-size: var(--srf-font-size-sm, 12px);
+          }
+          .queue-hint {
+            color: var(--srf-warn, #f0c674);
+            font-size: var(--srf-font-size-sm, 12px);
+          }
+          .queue-hint[hidden] { display: none; }
           .task-input {
             width: 100%;
             box-sizing: border-box;
@@ -395,6 +476,8 @@ export function defineAgentPanel(): typeof HTMLElement {
           <div class="body" data-role="body"></div>
           <div class="task-form" data-role="task-form" hidden>
             <div class="task-form-title">派任务 · <span data-role="task-form-name"></span></div>
+            <div class="assignee-list" data-role="assignee-list"></div>
+            <div class="queue-hint" data-role="queue-hint" hidden></div>
             <textarea
               class="task-input"
               data-role="task-input"
@@ -424,6 +507,22 @@ export function defineAgentPanel(): typeof HTMLElement {
           switch (action) {
             case 'task-open':
               this.openTaskForm(host.getAttribute('data-character'));
+              return;
+            case 'task-target': {
+              // 手动指定承接人（task_050）：点候选人卡 → 选中态切换 + 排队预计提示跟着换。
+              const target = host.getAttribute('data-character');
+              if (target && this._formCharacterId) {
+                this._formTarget = target;
+                this.renderAssignees();
+              }
+              return;
+            }
+            case 'task-target-auto':
+              // 切回「自动（推荐）」（task_050）：清掉手动选择，提交时按推荐排序解析。
+              if (this._formCharacterId) {
+                this._formTarget = null;
+                this.renderAssignees();
+              }
               return;
             case 'task-submit':
               this.submitTaskForm();
@@ -488,6 +587,8 @@ export function defineAgentPanel(): typeof HTMLElement {
       if (!detail) return;
       this._formUnitId = detail.id;
       this._formCharacterId = characterId;
+      // 「交给谁」回缺省（自动）：上次表单的手动选择不跨表单存活（每次派发都是新决策）。
+      this._formTarget = null;
 
       const root = this.shadowRoot;
       const form = root?.querySelector('[data-role="task-form"]') as HTMLElement | null;
@@ -497,6 +598,10 @@ export function defineAgentPanel(): typeof HTMLElement {
       if (name) name.textContent = detail.name;
       input.value = '';
       form.hidden = false;
+      // 先画列表（同步：拿着上一份统计快照立即有读数），再异步刷新统计（task_050 ⑤：
+      // 打开时刷新即可，不做实时订阅 —— 回来后清签名重画一次，成功率/预计随之更新）。
+      this.renderAssignees();
+      this.refreshTaskStats();
       input.focus();
     }
 
@@ -504,7 +609,12 @@ export function defineAgentPanel(): typeof HTMLElement {
       const characterId = this._formCharacterId;
       if (!characterId || !this._adapter) return;
       const input = this.shadowRoot?.querySelector('[data-role="task-input"]') as HTMLTextAreaElement | null;
-      const command = buildTaskAssignCommand(characterId, input?.value ?? '');
+      // 承接人解析（task_050）：手动选择优先；自动 = 推荐排序第一位；两者都拿不到（无状态/
+      // 无候选）退回表单角色（038 行为）。提交时重算而非复用上一次渲染的列表 ——
+      // 签名闸可能刚拦掉一次广播，用旧排序会派给「上一帧的推荐人」。
+      const assignees = recommendAssignees(this._state, this._taskStats);
+      const target = this._formTarget ?? resolveAutoTarget(assignees, null) ?? characterId;
+      const command = buildTaskAssignCommand(characterId, input?.value ?? '', target);
       if (!command) return; // 空指令不发（表单保持开着，用户接着写）
       this._adapter.dispatch(command);
       this.closeTaskForm();
@@ -513,11 +623,106 @@ export function defineAgentPanel(): typeof HTMLElement {
     private closeTaskForm(): void {
       this._formUnitId = null;
       this._formCharacterId = null;
+      this._formTarget = null;
+      this._lastAssigneeSignature = null; // 下次开表单强制重画（清掉旧列表与提示）
       const root = this.shadowRoot;
       const form = root?.querySelector('[data-role="task-form"]') as HTMLElement | null;
       const input = root?.querySelector('[data-role="task-input"]') as HTMLTextAreaElement | null;
       if (form) form.hidden = true;
       if (input) input.value = '';
+    }
+
+    // —— 「交给谁」选择器（task_050）：候选人卡片 + 排队预计提示 ——
+
+    /** 广播到达时的更新口（判重）：承接人签名变了才重建卡片，否则零成本直过。 */
+    private updateAssignees(): void {
+      const signature = this.assigneeSignature();
+      if (signature === null || signature === this._lastAssigneeSignature) return;
+      this._lastAssigneeSignature = signature;
+      this.renderAssignees();
+    }
+
+    /** 承接人签名：全体角色的忙闲/档案/单位态（面板签名只看选中单位，这里必须看全体）。 */
+    private assigneeSignature(): string | null {
+      if (!this._state || !this._formCharacterId) return null;
+      const state = this._state;
+      return [
+        state.characters.map((c) => `${c.id}:${c.name}:${c.agentKind ?? ''}`).join('|'),
+        (state.tasks ?? []).map((t) => `${t.characterId}:${t.status}`).join('|'),
+        state.units.map((u) => `${u.characterId ?? ''}:${u.status}`).join('|'),
+      ].join('#');
+    }
+
+    /** 重建候选人卡片与排队提示（不含 textarea —— 那是外壳节点，重建会丢草稿）。 */
+    private renderAssignees(): void {
+      const root = this.shadowRoot;
+      const list = root?.querySelector('[data-role="assignee-list"]') as HTMLElement | null;
+      const hint = root?.querySelector('[data-role="queue-hint"]') as HTMLElement | null;
+      if (!list || !this._state) return;
+      const assignees = recommendAssignees(this._state, this._taskStats);
+      list.innerHTML =
+        assignees.length === 0
+          ? '<div class="assignee-reason">暂无已绑定 agent 的角色，将派给当前角色</div>'
+          : this.renderAssigneeCards(assignees);
+      // 排队预计：目标（手动选中的 / 自动推荐解析出的）在忙才显示 —— 全忙自动模式必然命中；
+      // 手动选中忙人同理（用户该知道这单要排多久）。空闲目标没什么可估，不占空间。
+      const targetId = this.effectiveTargetId(assignees);
+      const targetModel = assignees.find((candidate) => candidate.characterId === targetId) ?? null;
+      const hintText = targetModel ? buildQueueEstimateHint(targetModel, this._taskStats) : null;
+      if (hint) {
+        hint.hidden = hintText === null;
+        hint.textContent = hintText ?? '';
+      }
+      // 本方法被直接调用的三处（开表单 / 手动选择 / 统计到达）都不经过判重闸：
+      // 自己把签名记上，避免下一广播多一次冗余重建。
+      this._lastAssigneeSignature = this.assigneeSignature();
+    }
+
+    /** 当前生效目标：手动选择 ?? 自动推荐 ?? 表单角色（后两者在卡片渲染与提交解析共用）。 */
+    private effectiveTargetId(assignees: readonly AssigneeModel[]): string | null {
+      return this._formTarget ?? resolveAutoTarget(assignees, this._formCharacterId);
+    }
+
+    private renderAssigneeCards(assignees: readonly AssigneeModel[]): string {
+      const auto = assignees[0];
+      const autoCard = `<button type="button" class="assignee${this._formTarget === null ? ' selected' : ''}" data-action="task-target-auto">
+          <span class="assignee-head">
+            <span class="assignee-name">自动（推荐）</span>
+          </span>
+          <span class="assignee-reason">${auto ? `→ ${escapeHtml(auto.name)}：${escapeHtml(auto.reason)}` : '暂无候选，派给当前角色'}</span>
+        </button>`;
+      const cards = assignees.map(
+        (candidate) => `<button type="button" class="assignee${this._formTarget === candidate.characterId ? ' selected' : ''}" data-action="task-target" data-character="${escapeHtml(candidate.characterId)}">
+          <span class="assignee-head">
+            ${candidate.recommended ? '<span class="assignee-reco">推荐</span>' : ''}
+            <span class="assignee-name">${escapeHtml(candidate.name)}</span>
+            <span class="assignee-kind">${escapeHtml(candidate.kindLabel)}</span>
+            <span class="assignee-busy" data-busy="${candidate.idle ? 'idle' : 'busy'}">${candidate.idle ? '空闲' : `排队 ${candidate.activeCount}`}</span>
+          </span>
+          <span class="assignee-reason">${escapeHtml(candidate.reason)}</span>
+        </button>`
+      );
+      return `${autoCard}${cards.join('')}`;
+    }
+
+    /** 历史统计刷新（task_050 ⑤）：打开时取一次；去重防叠加；失败静默降级（中性值/未知）。 */
+    private refreshTaskStats(): void {
+      const provider = this._adapter?.taskStats;
+      if (!provider || this._statsRefreshing) return;
+      this._statsRefreshing = true;
+      void provider()
+        .then((stats) => {
+          this._taskStats = stats;
+          // 统计不在忙闲签名里：清签名强制重画一次（成功率读数 / 排队预计要跟上）。
+          this._lastAssigneeSignature = null;
+          if (this._formCharacterId) this.updateAssignees();
+        })
+        .catch(() => {
+          // 取不到统计不拦表单：旧快照继续用，没有就中性降级。
+        })
+        .finally(() => {
+          this._statsRefreshing = false;
+        });
     }
 
     // —— 队列列表（task_047）：条目检索与渲染 ——

@@ -11,7 +11,8 @@
  *   （PERSONA_SECTION_TITLES / composePersonaSections / personaRulesLines，来自 onboarding-catalog）。
  * 输入：无（手写常量）。
  * 输出：PERSONA_PRESETS（6-8 个完整结构化预设；每个标注适配 agent 种类与一句话说明）
- *   + per-agent 匹配口径（presetMatchingKind / presetsForKind，@since v3.14，task_044）。
+ *   + per-agent 匹配口径（presetMatchingKind / presetsForKind，@since v3.14，task_044）
+ *   + kind 专属度读数（dedicatedPresetCount，@since v3.26，task_050 —— 派发智能推荐的反向利用）。
  * 禁止事项：
  *   1. 碰 DOM —— 本文件是纯数据，渲染是 onboarding-screen.ts 的事；
  *   2. import world/、app/、stratix-agent —— 铁律（core 的类型与词表除外）；
@@ -325,4 +326,15 @@ export function presetsForKind(kind: string): readonly PresetEntry[] {
     recommended: presetMatchesKind(preset, kind),
   }));
   return [...entries].sort((a, b) => Number(b.recommended) - Number(a.recommended));
+}
+
+/**
+ * 某个 agent kind 的**专属预设数**（@since v3.26，task_050）：suitableKinds 点名该 kind 的
+ * 预设个数（'any' 通用预设不算 —— 谁都能用的不算专属）。预设库的反向读数：
+ * presetMatchingKind 问「这个 kind 该预填哪个」，这里问「这个 kind 被预设库照顾得多深」——
+ * 派发智能推荐（hud/panels/task-assign-catalog）拿它当「擅长此类」的代理指标：
+ * 有专属预设的 kind = 预设库作者认为它有明确的用途画像。
+ */
+export function dedicatedPresetCount(kind: string): number {
+  return PERSONA_PRESETS.filter((preset) => presetMatchesKind(preset, kind)).length;
 }

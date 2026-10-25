@@ -60,7 +60,9 @@ interface Harness {
   unmount(): void;
 }
 
-function mountPanel(): { panel: StratAgentPanelElement; host: HTMLElement; harness: Harness } {
+function mountPanel(
+  depsExtra: Partial<AgentPanelDeps> = {}
+): { panel: StratAgentPanelElement; host: HTMLElement; harness: Harness } {
   const commands: HudCommand[] = [];
   const subs = new Set<(state: WorldState) => void>();
   const deps: AgentPanelDeps = {
@@ -69,6 +71,7 @@ function mountPanel(): { panel: StratAgentPanelElement; host: HTMLElement; harne
       subs.add(handler);
       return () => { subs.delete(handler); };
     },
+    ...depsExtra,
   };
 
   const host = document.createElement('div');
@@ -758,3 +761,213 @@ describe('审批卡：条件渲染与命令派发（task_049）', () => {
     expect(panel.shadowRoot?.querySelector('[data-role="approval-card"] script')).toBeNull();
   });
 });
+
+// ============================================================================
+// 「交给谁」选择器（@since v3.26，task_050）
+// ============================================================================
+
+describe('派发智能推荐：「交给谁」选择器（task_050）', () => {
+  /** 两角色档案：c-neo=kimi（表单角色，忙）；c-trin=openclaw（空闲+专属预设 → 推荐）。 */
+  const boundState = (tasks: CharacterTask[]): WorldState =>
+    makeState({
+      characters: [
+        { id: 'c-neo', name: 'Neo', persona: '', level: 3, experience: 120, agentKind: 'kimi' },
+        { id: 'c-trin', name: 'Trinity', persona: '', level: 1, experience: 0, agentKind: 'openclaw' },
+      ],
+      tasks,
+      selection: { unitIds: ['u-neo'], previewUnitIds: [], revision: 1 },
+    });
+
+  const runningOn = (characterId: string): CharacterTask => ({
+    id: `t-${characterId}`,
+    characterId,
+    prompt: '在办的活',
+    status: 'running',
+    createdAt: 1,
+    startedAt: null,
+    endedAt: null,
+    output: '',
+  });
+
+  /** 进 shadow DOM 点候选人卡（data-character 口径，与单位按钮的 data-unit 不同）。 */
+  const clickAssignee = (panel: StratAgentPanelElement, action: string, character?: string): void => {
+    const selector = character
+      ? `button[data-action="${action}"][data-character="${character}"]`
+      : `button[data-action="${action}"]`;
+    const btn = panel.shadowRoot?.querySelector<HTMLButtonElement>(selector);
+    if (!btn) throw new Error(`候选人卡未渲染: ${action}/${character ?? ''}`);
+    btn.click();
+  };
+
+  const assigneeCards = (panel: StratAgentPanelElement): NodeListOf<HTMLElement> | undefined =>
+    panel.shadowRoot?.querySelectorAll('[data-role="assignee-list"] .assignee');
+
+  const hintText = (panel: StratAgentPanelElement): string | null | undefined =>
+    panel.shadowRoot?.querySelector('[data-role="queue-hint"]')?.textContent;
+
+  const hintHidden = (panel: StratAgentPanelElement): boolean | undefined =>
+    panel.shadowRoot?.querySelector<HTMLElement>('[data-role="queue-hint"]')?.hidden;
+
+  test('表单打开：自动卡缺省选中；候选人按推荐排序（推荐角标在第一位）+ kind 徽标 + 忙闲读数', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    // neo 在办 2 条（忙），trin 空闲 → trin 是推荐人（idle 加分压过）
+    harness.emit(boundState([runningOn('c-neo'), { ...runningOn('c-neo'), id: 't-neo-2', status: 'queued' }]));
+    clickAction(panel, 'task-open', 'u-neo');
+
+    const cards = assigneeCards(panel)!;
+    // 自动卡（第一位）缺省选中；其后是按推荐排序的候选卡
+    expect(cards[0]?.querySelector('.assignee-name')?.textContent).toContain('自动（推荐）');
+    expect(cards[0]?.classList.contains('selected')).toBe(true);
+    // trin（推荐）在 neo 前：推荐角标 + kind 徽标 + 空闲读数
+    const reco = cards[1]!;
+    expect(reco.querySelector('.assignee-reco')?.textContent).toBe('推荐');
+    expect(reco.querySelector('.assignee-kind')?.textContent).toBe('OpenClaw');
+    expect(reco.querySelector('.assignee-busy')?.textContent).toBe('空闲');
+    // neo（表单角色）排后：忙闲读数 = 队列长度
+    const busy = cards[2]!;
+    expect(busy.getAttribute('data-character')).toBe('c-neo');
+    expect(busy.querySelector('.assignee-busy')?.textContent).toBe('排队 2');
+  });
+
+  test('自动提交：推荐人 ≠ 表单角色 → 命令带 targetCharacterId 直达推荐人队列', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    harness.emit(boundState([runningOn('c-neo')]));
+    clickAction(panel, 'task-open', 'u-neo');
+    inputOfPanel(panel)!.value = '侦察北门';
+
+    clickFormAction(panel, 'task-submit');
+    expect(harness.commands).toEqual([
+      { type: 'task.assign', characterId: 'c-neo', prompt: '侦察北门', targetCharacterId: 'c-trin' },
+    ]);
+  });
+
+  test('手动指定：点候选人卡切换选中；提交直达所选角色；「自动」卡可切回', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    harness.emit(boundState([])); // 两人都空闲：推荐 = trin（专属加分），自动解析仍走 trin
+    clickAction(panel, 'task-open', 'u-neo');
+
+    // 手动选 neo：自动卡失选，neo 卡选中
+    clickAssignee(panel, 'task-target', 'c-neo');
+    const cards = assigneeCards(panel)!;
+    expect(cards[0]?.classList.contains('selected')).toBe(false);
+    expect(cards[2]?.classList.contains('selected')).toBe(true);
+
+    inputOfPanel(panel)!.value = '手动派给 Neo';
+    clickFormAction(panel, 'task-submit');
+    // 指定 = 表单角色 → 载荷最小化（不带 targetCharacterId，缺省即本人）
+    expect(harness.commands).toEqual([{ type: 'task.assign', characterId: 'c-neo', prompt: '手动派给 Neo' }]);
+
+    // 再开一次：手动选择不跨表单存活（自动回缺省）
+    clickAction(panel, 'task-open', 'u-neo');
+    expect(assigneeCards(panel)![0]?.classList.contains('selected')).toBe(true);
+  });
+
+  test('全忙提示：全员在办 → 队列长度 + 历史均值预计；无历史 → 未知；空闲目标不显示', async () => {
+    // neo 排队 2 条、trin 在办 1 条（全忙）；stats：trin 均值 10 分钟，neo 无行
+    const statsDeferred = { calls: 0 };
+    const { panel, harness } = mountPanel({
+      taskStats: async () => {
+        statsDeferred.calls += 1;
+        return [
+          { characterId: 'c-trin', completed: 9, failed: 1, avgDurationMs: 10 * 60_000 },
+        ];
+      },
+    });
+    mounted.push(harness.unmount);
+
+    harness.emit(
+      boundState([runningOn('c-neo'), { ...runningOn('c-neo'), id: 't-neo-2', status: 'queued' }, runningOn('c-trin')])
+    );
+    clickAction(panel, 'task-open', 'u-neo');
+
+    // 打开即刷新一次统计（task_050 ⑤：打开时刷新，不做实时订阅）
+    await Promise.resolve();
+    expect(statsDeferred.calls).toBe(1);
+
+    // 自动目标 = 推荐第一位（同分全忙 → 在办少的 trin 在前）：提示它的排队预计
+    expect(hintHidden(panel)).toBe(false);
+    expect(hintText(panel)).toContain('Trinity 队列 1 条 · 预计 ~10 分钟');
+
+    // 手动选 neo（无历史）→ 预计「未知」，队列读数跟上
+    clickAssignee(panel, 'task-target', 'c-neo');
+    expect(hintText(panel)).toContain('Neo 队列 2 条 · 预计未知');
+
+    // 手动切回自动卡 → 提示回到推荐人
+    clickAssignee(panel, 'task-target-auto');
+    expect(hintText(panel)).toContain('Trinity 队列 1 条 · 预计 ~10 分钟');
+  });
+
+  test('统计到达后卡片更新（成功率读数）且不打草稿；无 provider 不炸（中性降级）', async () => {
+    // 手写 deferred（不用 let 赋值收 resolve：闭包赋值在控制流分析里不可见，调用点会被窄化成 never）
+    const deferred: {
+      resolve: ((rows: readonly { characterId: string; completed: number; failed: number; avgDurationMs: number | null }[]) => void) | null;
+    } = { resolve: null };
+    const pending = new Promise<readonly { characterId: string; completed: number; failed: number; avgDurationMs: number | null }[] | null>(
+      (resolve) => {
+        deferred.resolve = resolve;
+      }
+    );
+    const { panel, harness } = mountPanel({
+      taskStats: () => pending,
+    });
+    mounted.push(harness.unmount);
+
+    harness.emit(boundState([]));
+    clickAction(panel, 'task-open', 'u-neo');
+    inputOfPanel(panel)!.value = '打了一半';
+
+    // 统计未到达：无成功率段（中性降级不编数）
+    expect(assigneeCards(panel)![1]?.querySelector('.assignee-reason')?.textContent).not.toContain('成功率');
+
+    // 统计到达：推荐卡补上成功率段；textarea 草稿不受影响（统计不在忙闲签名里，强制重画）
+    deferred.resolve?.([{ characterId: 'c-trin', completed: 86, failed: 14, avgDurationMs: null }]);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(assigneeCards(panel)![1]?.querySelector('.assignee-reason')?.textContent).toContain('成功率 86%');
+    expect(inputOfPanel(panel)?.value).toBe('打了一半');
+  });
+
+  test('忙闲实时：表单开着，别的角色任务变化 → 卡片读数跟上（不依赖选中单位的签名）', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    harness.emit(boundState([]));
+    clickAction(panel, 'task-open', 'u-neo');
+    // trin 空闲读数（按 data-character 定位 —— 排序会随忙闲洗牌，下标不是稳定锚点）
+    const busyOf = (characterId: string): string | null | undefined =>
+      panel.shadowRoot
+        ?.querySelector(`.assignee[data-character="${characterId}"] .assignee-busy`)?.textContent;
+    expect(busyOf('c-trin')).toBe('空闲');
+
+    // trin 接了活（选中单位 neo 的读数没变 —— 面板签名不变，但承接人签名变了）：
+    // 卡片实时跟上，且推荐排序换位（neo 空闲升到 trin 前）
+    harness.emit(boundState([runningOn('c-trin')]));
+    expect(busyOf('c-trin')).toBe('排队 1');
+    expect(busyOf('c-neo')).toBe('空闲');
+  });
+
+  test('无已绑定角色：空态提示 + 提交退 038 行为（派给表单角色）', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    // c-neo 未绑定 agentKind（基础 fixture）→ 无候选
+    harness.emit(selected('u-neo'));
+    clickAction(panel, 'task-open', 'u-neo');
+    expect(panel.shadowRoot?.querySelector('[data-role="assignee-list"]')?.textContent).toContain('暂无已绑定');
+
+    inputOfPanel(panel)!.value = '老路径';
+    clickFormAction(panel, 'task-submit');
+    expect(harness.commands).toEqual([{ type: 'task.assign', characterId: 'c-neo', prompt: '老路径' }]);
+  });
+});
+
+/** 测试内小工具：textarea（与本文件上方 describe 的 inputOf 同款，命名避开冲突）。 */
+function inputOfPanel(panel: StratAgentPanelElement): HTMLTextAreaElement | null {
+  return panel.shadowRoot?.querySelector('[data-role="task-input"]') ?? null;
+}

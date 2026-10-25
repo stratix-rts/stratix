@@ -99,7 +99,7 @@ import { createProgressionService } from '../services/progression-service';
 import { createTaskService } from '../services/task-service';
 import { formatTaskArtifactsBlock, parseTaskArtifactsJson } from '../services/task-artifacts';
 import { createTaskReportHandler } from '../services/task-report';
-import { taskRecordApi, makeTaskRecordPersister } from '../services/persistence/task-record';
+import { taskRecordApi, makeTaskRecordPersister, makeTaskStatsProvider } from '../services/persistence/task-record';
 import { mountToastHost } from '../../hud/components/toast/toast-host';
 import { createTaskManager } from '../../core/task';
 import { createUnitSpriteSource } from '../services/unit-sprite-source';
@@ -209,7 +209,12 @@ async function boot(): Promise<void> {
   });
 
   // ===== HUD 侧：真实 main-screen + 主题控制器，走注入的 bus-adapter =====
-  const screen = createMainScreen(adapter, { appearance: appearancePreview });
+  // task_050：派发推荐的历史统计提供口 —— 从任务记录 IPC 面取聚合（非 Electron = null，
+  // hud 侧无历史中性降级，不拆表单）。「缓存」语义在 hud：表单持有上一次快照，打开时刷新一次。
+  const screen = createMainScreen(adapter, {
+    appearance: appearancePreview,
+    taskStats: makeTaskStatsProvider(taskRecordApi()),
+  });
   const unmountScreen = screen.mount(hudRoot);
   const unmountAdapter = adapter.mount();
 

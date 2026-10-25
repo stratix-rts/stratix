@@ -489,15 +489,20 @@ export function buildAgentCommand(action: AgentPanelAction, unitId: string): Hud
  * 返回 null = 不发：没关联角色 / 指令 trim 后为空（core 侧也会拒，但空命令不值得一次广播）。
  * 长度上限由 core 守门（MAX_TASK_PROMPT_LEN）—— 表单的 maxlength 已挡住越界输入，
  * 这里不重复判，免得两侧阈值漂移。
+ * @since v3.26（task_050）可选 target：指定承接人（「交给谁」选择器 / 自动推荐解析结果）。
+ *   与表单角色相同或未给出时不携带 targetCharacterId（载荷最小化，缺省 = 037 现行为）；
+ *   在档校验在 core manager（不存在 → error Notice 拒绝）。
  */
 export function buildTaskAssignCommand(
   characterId: string | null | undefined,
-  prompt: string
+  prompt: string,
+  target?: string | null
 ): HudCommand | null {
   if (!characterId) return null;
   const trimmed = prompt.trim();
   if (trimmed.length === 0) return null;
-  return { type: 'task.assign', characterId, prompt: trimmed };
+  if (!target || target === characterId) return { type: 'task.assign', characterId, prompt: trimmed };
+  return { type: 'task.assign', characterId, prompt: trimmed, targetCharacterId: target };
 }
 
 /**

@@ -1766,7 +1766,7 @@
     {
       "id": "task_049",
       "title": "任务审批门",
-      "status": "pending",
+      "status": "completed",
       "depends_on": [
         "task_046"
       ],
@@ -1775,11 +1775,12 @@
     {
       "id": "task_050",
       "title": "派发智能推荐",
-      "status": "pending",
+      "status": "completed",
       "depends_on": [
         "task_037"
       ],
-      "priority": 2
+      "priority": 2,
+      "updated_at": "2026-10-25T12:50:34.225Z"
     },
     {
       "id": "task_051",

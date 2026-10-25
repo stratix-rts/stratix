@@ -11,7 +11,7 @@ import type { DetectedAgent } from '../core/types';
 import type { CliChatEventEnvelope, CliChatIpcApi, CliChatRunRequest } from '../app/services/chat-transport-bridge';
 import type { PersistedCharacterRecord, PersistedUnitPosition } from '../app/services/persistence/game-save-dao';
 import type { ChatMessageInsert, PersistedChatMessage } from '../app/services/persistence/chat-history-dao';
-import type { PersistedTaskRecord } from '../app/services/persistence/task-record-dao';
+import type { PersistedTaskRecord, PersistedTaskStatRow } from '../app/services/persistence/task-record-dao';
 
 export interface ElectronAPI {
   // 通用服务调用
@@ -117,6 +117,8 @@ export interface ElectronAPI {
     saveTask: (record: PersistedTaskRecord) => Promise<{ ok: boolean; error?: string }>;
     /** 读某角色最近 N 条任务（默认 20；038 队列可见性）。 */
     loadTasks: (characterId: string, limit?: number) => Promise<{ ok: boolean; tasks?: PersistedTaskRecord[]; error?: string }>;
+    /** 全量按角色×状态聚合统计（@since v3.26，task_050，派发推荐的数据源）。 */
+    loadTaskStats: () => Promise<{ ok: boolean; rows?: PersistedTaskStatRow[]; error?: string }>;
   };
 
   /**
@@ -230,7 +232,8 @@ const electronAPI: ElectronAPI = {
 
   // 游戏存档（@since v3.12，task_033）：透传到主进程的 DAO（game:loadSnapshot / game:save*）。
   // 对话历史两条（@since v3.15，task_036）同走 game: 前缀：game:saveChatMessage / game:loadChatMessages；
-  // 任务记录两条（@since v3.16，task_037）同前缀：game:saveTask / game:loadTasks。
+  // 任务记录（@since v3.16，task_037）game:saveTask / game:loadTasks；
+  // 统计聚合（@since v3.26，task_050）：game:taskStats。
   gameSave: {
     loadSnapshot: () => ipcRenderer.invoke('game:loadSnapshot'),
     saveCharacters: (records: PersistedCharacterRecord[]) => ipcRenderer.invoke('game:saveCharacters', records),
@@ -239,6 +242,7 @@ const electronAPI: ElectronAPI = {
     loadChatMessages: (characterId: string, limit?: number) => ipcRenderer.invoke('game:loadChatMessages', characterId, limit),
     saveTask: (record: PersistedTaskRecord) => ipcRenderer.invoke('game:saveTask', record),
     loadTasks: (characterId: string, limit?: number) => ipcRenderer.invoke('game:loadTasks', characterId, limit),
+    loadTaskStats: () => ipcRenderer.invoke('game:taskStats'),
   },
 
   /**
