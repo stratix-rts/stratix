@@ -43,6 +43,15 @@ import {
 import type { HudBusAdapter } from '../bridge/bus-adapter';
 import type { ThemeId } from '../theme/theme-controller';
 import { defineStratButton, escapeHtml, STRAT_BUTTON_TAG } from '../widgets/strat-button';
+// 音效读写口（@since v3.36，task_060）：本屏写「stratix.sfx.enabled / stratix.sfx.volume」，
+// sfx-service 每次播放现读同一键 —— 读写逻辑收在 sfx 模块，两侧不各抄一遍。
+import {
+  DEFAULT_SFX_VOLUME,
+  readSfxEnabled,
+  readSfxVolume,
+  writeSfxEnabled,
+  writeSfxVolume,
+} from '../components/sfx/sfx-service';
 // 自定义 agent 注册端口（@since v3.32，task_056）：类型 only —— hud 不 import electron（铁律）。
 import type { CustomAgentsPort, CustomAgentView } from './custom-agents-port';
 
@@ -61,13 +70,16 @@ export const SKIN_OPTIONS: readonly { id: ThemeId; label: string; hint: string }
   { id: 'pixel', label: '像素', hint: '直角硬边框的像素皮肤' },
 ];
 
-/** 偏好开关的展示元数据。key 与契约 BooleanPreferenceKey 对齐 —— 改词表必须先改 core/types.ts。 */
+/** 偏好开关的展示元数据。key 与契约 BooleanPreferenceKey 对齐 —— 改词表必须先改 core/types.ts。
+ *   why 这里没有 soundEnabled（task_060 起）：「音效」改为 localStorage 直写行（总开关 +
+ *   音量滑条，见 renderPreferences 的 SFX 行 —— 与「上下文注入」行同一落地口径：只在本机
+ *   渲染进程生效、不进 WorldState / 广播）。core 契约键保留（仅无 UI 写入方，不动 core 是
+ *   刻意的最小改动取舍）。 */
 export const PREFERENCE_ROWS: readonly {
   key: BooleanPreferenceKey;
   label: string;
   hint: string;
 }[] = [
-  { key: 'soundEnabled', label: '音效', hint: '操作与事件反馈音' },
   { key: 'notificationsEnabled', label: '通知提示', hint: '新任务、连接状态等横幅提示' },
 ];
 
@@ -124,11 +136,13 @@ export function resolveSettings(state: WorldState | null, themeId: ThemeId): Set
 
 /**
  * 渲染判重签名（O(偏好项数)，纯字符串拼接）。
- * 只含影响本屏显示的东西：两条偏好值。单位 / 任务 / 日志变动一律不触发本屏重绘。
+ * 只含影响本屏显示的东西：在屏偏好值。单位 / 任务 / 日志变动一律不触发本屏重绘。
+ *   音效（task_060 起）与上下文注入两行走 localStorage、不在签名里 —— 它们的变更由
+ *   本屏点击后直接 renderBody（无 core 广播可依赖，同口径）。
  */
 export function settingsSignature(state: WorldState | null): string {
   const prefs = resolvePreferences(state);
-  return `${prefs.soundEnabled}|${prefs.notificationsEnabled}`;
+  return `${prefs.notificationsEnabled}`;
 }
 
 /** 自定义元素的对外形状（测试与挂载方按它断言）。 */
@@ -358,6 +372,12 @@ export function defineSettingsScreen(): typeof HTMLElement {
             color: var(--srf-success, #6fcf97);
             border-color: var(--srf-success, #6fcf97);
           }
+          /* 音量滑条（task_060）：原生 range 控件 + accent-color 挂皮肤 token（jsdom 不渲染样式，无碍） */
+          input.ctl-range {
+            width: 110px;
+            accent-color: var(--srf-accent, #6ea8ff);
+            cursor: pointer;
+          }
           button.ctl[data-danger], button.ctl[data-danger-confirm] {
             color: var(--srf-danger, #e06c75);
             border-color: var(--srf-danger, #e06c75);
@@ -383,10 +403,22 @@ export function defineSettingsScreen(): typeof HTMLElement {
       if (!this._listenersBound) {
         this._listenersBound = true;
         // 事件委托绑在外壳上：内容区是重建的，绑在每行上会随重渲染反复泄漏（perf 硬约束）。
-        // 两类事件都要委托：原生控件发 click，strat-button 发的是 strat-button-click。
+        // 三类事件都要委托：原生控件发 click，strat-button 发的是 strat-button-click，
+        // 音量滑条（task_060）发 input（拖动即写，不等 change —— 松手才生效太迟钝）。
         root.addEventListener('click', (ev: Event) => this.onClick(ev));
         root.addEventListener('strat-button-click', (ev: Event) => this.onClick(ev));
+        root.addEventListener('input', (ev: Event) => this.onInput(ev));
       }
+    }
+
+    /** 滑条输入（task_060）：音量即拖即写 localStorage。sfx-service 下次播放现读 ——
+     *  无需重画本屏（滑条自己显示着值），也不发命令（localStorage 是唯一真相）。 */
+    private onInput(ev: Event): void {
+      const target = ev.target as HTMLElement | null;
+      const slider = target?.closest<HTMLInputElement>('input[data-role="sfx-volume"]');
+      if (!slider) return;
+      const value = parseFloat(slider.value);
+      if (Number.isFinite(value)) writeSfxVolume(value);
     }
 
     /** 一个 click 可能来自多处（皮肤 chip / 开关 / 危险区两步 / 返回），按 data-* 就近解析。 */
@@ -412,6 +444,15 @@ export function defineSettingsScreen(): typeof HTMLElement {
       if (pref) {
         const key = pref.getAttribute('data-pref');
         if (isPreferenceKey(key)) this.togglePreference(key);
+        return;
+      }
+
+      // 音效开关（task_060）：localStorage 直写 + 本屏重画（不进总线 —— sfx-service
+      // 每次播放现读同一键；为什么不是 settings.set：与上下文注入行同一口径，只在本机生效）。
+      const sfxToggle = target.closest<HTMLElement>('button[data-sfx-toggle]');
+      if (sfxToggle) {
+        writeSfxEnabled(!readSfxEnabled());
+        this.renderBody();
         return;
       }
 
@@ -584,6 +625,28 @@ export function defineSettingsScreen(): typeof HTMLElement {
         `;
       }).join('');
 
+      // 音效行（task_060）：总开关 + 音量滑条，localStorage 直写（不进总线 —— 音效只在
+      // 本机渲染进程生效，读写逻辑收在 sfx-service 模块）。状态每次从 localStorage 现读
+      // （不存第二份真相；无 localStorage 环境回落缺省：开 / 音量 DEFAULT_SFX_VOLUME）。
+      const sfxOn = readSfxEnabled();
+      const sfxVolume = readSfxVolume();
+      // 滑条 step=0.1：粗挡位够用（音效是短促提示音，细挡位是伪精度）。
+      const sfxRow = `
+        <div class="row" data-pref-row="__sfx__">
+          <div class="row-text">
+            <span class="row-label">音效</span>
+            <span class="row-hint">关键事件反馈音（任务完成 / 失败 / 升级 / 审批请求 / agent 掉线）</span>
+          </div>
+          <div class="row-ctl">
+            <input type="range" class="ctl-range" min="0" max="1" step="0.1" value="${sfxVolume}"
+                   data-role="sfx-volume" aria-label="音效音量"
+                   title="音量 ${Math.round(sfxVolume * 100)}%">
+            <button type="button" class="ctl" role="switch" aria-checked="${sfxOn}"
+                    data-sfx-toggle="1">${sfxOn ? '开' : '关'}</button>
+          </div>
+        </div>
+      `;
+
       // 上下文注入全局开关（task_053）：localStorage 落地（不进 WorldState / 广播 ——
       // 只在本机渲染进程生效的增强项开关，取舍见 core/types.ts 的键常量注释）。
       // 状态每次从 localStorage 现读（不存第二份真相；无 localStorage 环境视为开）。
@@ -605,6 +668,7 @@ export function defineSettingsScreen(): typeof HTMLElement {
         <div class="group" data-group="preferences">
           <div class="group-name">偏好</div>
           ${rows}
+          ${sfxRow}
           ${contextRow}
         </div>
       `;

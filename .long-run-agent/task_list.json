@@ -1869,7 +1869,7 @@
     {
       "id": "task_060",
       "title": "音效反馈系统",
-      "status": "pending",
+      "status": "completed",
       "depends_on": [
         "task_039"
       ],

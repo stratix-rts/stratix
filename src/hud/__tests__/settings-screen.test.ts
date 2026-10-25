@@ -151,15 +151,20 @@ describe('纯派生函数', () => {
         settings: { soundEnabled: true, notificationsEnabled: true },
       }))
     );
+    // task_060 起音效行走 localStorage，不在签名里（soundEnabled 翻转不再触发重绘）；
+    // 在屏偏好只有通知一项 —— 它翻转才换签名。
+    expect(settingsSignature(base)).toBe(
+      settingsSignature(makeState({ settings: { soundEnabled: false, notificationsEnabled: true } }))
+    );
     expect(settingsSignature(base)).not.toBe(
-      settingsSignature(makeState({
-        settings: { soundEnabled: false, notificationsEnabled: true },
-      }))
+      settingsSignature(makeState({ settings: { soundEnabled: true, notificationsEnabled: false } }))
     );
   });
 
   test('偏好词表与危险动作词表不是空的（防止渲染层漏渲染整组）', () => {
-    expect(PREFERENCE_ROWS.map((r) => r.key)).toEqual(['soundEnabled', 'notificationsEnabled']);
+    // task_060 起音效不走 settings.set 偏好行（localStorage 直写，见 sfx describe）——
+    // 偏好词表只剩通知一项；core 契约键 soundEnabled 保留但无 UI 写入方。
+    expect(PREFERENCE_ROWS.map((r) => r.key)).toEqual(['notificationsEnabled']);
     expect(DANGER_ACTIONS.map((a) => a.id)).toEqual(['selection.reset', 'cache.clear']);
   });
 });
@@ -190,11 +195,11 @@ describe('设置屏：挂载与渲染', () => {
   test('偏好开关按 core 广播的值渲染（开/关）', () => {
     h = mountScreen({ settings: { soundEnabled: false, notificationsEnabled: true } });
     h.emit(h.store.getState());
-    const sound = h.screen.shadowRoot?.querySelector('button[data-pref="soundEnabled"]');
-    expect(sound?.getAttribute('aria-checked')).toBe('false');
-    expect(sound?.textContent).toBe('关');
     const notice = h.screen.shadowRoot?.querySelector('button[data-pref="notificationsEnabled"]');
     expect(notice?.getAttribute('aria-checked')).toBe('true');
+    // task_060 起音效不再走 settings.set 偏好行（换 localStorage 行，见 sfx describe）：
+    // 偏好组里已无 soundEnabled 按钮。
+    expect(h.screen.shadowRoot?.querySelector('button[data-pref="soundEnabled"]')).toBeNull();
   });
 
   test('返回主屏 → ui.navigate(main)（点 strat-button 的真按钮，走完整事件链）', () => {
@@ -254,32 +259,32 @@ describe('偏好开关：HudCommand → core store → WorldState → 本屏', (
   let h: Harness | undefined;
   afterEach(() => { h?.unmount(); h = undefined; });
 
-  test('点音效开关 → settings.set(false) → 落库 → 广播 → 本屏换成「关」', () => {
+  test('点通知开关 → settings.set(false) → 落库 → 广播 → 本屏换成「关」（task_060 起音效行不在此路）', () => {
     h = mountScreen();
     h.emit(h.store.getState());
 
-    clickInScreen(h.screen, 'button[data-pref="soundEnabled"]');
+    clickInScreen(h.screen, 'button[data-pref="notificationsEnabled"]');
 
-    expect(h.commands).toContainEqual({ type: 'settings.set', key: 'soundEnabled', value: false });
-    expect(h.store.getState().settings?.soundEnabled).toBe(false);
-    const node = h.screen.shadowRoot?.querySelector('button[data-pref="soundEnabled"]');
+    expect(h.commands).toContainEqual({ type: 'settings.set', key: 'notificationsEnabled', value: false });
+    expect(h.store.getState().settings?.notificationsEnabled).toBe(false);
+    const node = h.screen.shadowRoot?.querySelector('button[data-pref="notificationsEnabled"]');
     expect(node?.getAttribute('aria-checked')).toBe('false');
     expect(node?.textContent).toBe('关');
   });
 
   test('再点一次回到开（值取自 core 当前值，不是本地自增）', () => {
-    h = mountScreen({ settings: { soundEnabled: false, notificationsEnabled: true } });
+    h = mountScreen({ settings: { soundEnabled: false, notificationsEnabled: false } });
     h.emit(h.store.getState());
 
-    clickInScreen(h.screen, 'button[data-pref="soundEnabled"]');
+    clickInScreen(h.screen, 'button[data-pref="notificationsEnabled"]');
 
-    expect(h.store.getState().settings?.soundEnabled).toBe(true);
+    expect(h.store.getState().settings?.notificationsEnabled).toBe(true);
   });
 
   test('无实质变化时不广播（设置屏不因别的状态变动重绘：DOM 节点身份不变）', () => {
     h = mountScreen();
     h.emit(h.store.getState());
-    const before = h.screen.shadowRoot?.querySelector('[data-pref-row="soundEnabled"]');
+    const before = h.screen.shadowRoot?.querySelector('[data-pref-row="notificationsEnabled"]');
 
     // 与偏好无关的状态变动（多了一个单位）：签名不变 → 不重绘
     h.emit(makeState({
@@ -287,7 +292,7 @@ describe('偏好开关：HudCommand → core store → WorldState → 本屏', (
       settings: h.store.getState().settings,
     }));
 
-    const after = h.screen.shadowRoot?.querySelector('[data-pref-row="soundEnabled"]');
+    const after = h.screen.shadowRoot?.querySelector('[data-pref-row="notificationsEnabled"]');
     expect(after).toBe(before);
   });
 });
@@ -383,6 +388,75 @@ describe('上下文注入全局开关（task_053）', () => {
     h = mountScreen();
     h.emit(h.store.getState());
     expect(h.screen.shadowRoot?.querySelector('button[data-context-toggle]')?.textContent).toContain('关');
+  });
+});
+
+// ============================================================================
+// 音效行（@since v3.36，task_060）：localStorage 直写（总开关 + 音量滑条，不走总线）
+// ============================================================================
+
+describe('音效行（task_060）', () => {
+  let h: Harness | undefined;
+  beforeEach(() => {
+    localStorage.removeItem('stratix.sfx.enabled');
+    localStorage.removeItem('stratix.sfx.volume');
+  });
+  afterEach(() => {
+    h?.unmount();
+    h = undefined;
+    localStorage.removeItem('stratix.sfx.enabled');
+    localStorage.removeItem('stratix.sfx.volume');
+  });
+
+  test('偏好组渲染「音效」行：开关缺省开 + 音量滑条缺省 1（DEFAULT_SFX_VOLUME）', () => {
+    h = mountScreen();
+    h.emit(h.store.getState());
+    const row = h.screen.shadowRoot?.querySelector('[data-pref-row="__sfx__"]');
+    expect(row).not.toBeNull();
+    const toggle = h.screen.shadowRoot?.querySelector('button[data-sfx-toggle]');
+    expect(toggle?.getAttribute('aria-checked')).toBe('true');
+    expect(toggle?.textContent).toContain('开');
+    const slider = h.screen.shadowRoot?.querySelector<HTMLInputElement>('input[data-role="sfx-volume"]');
+    expect(slider).not.toBeNull();
+    expect(slider?.value).toBe('1');
+    expect(slider?.getAttribute('min')).toBe('0');
+    expect(slider?.getAttribute('max')).toBe('1');
+  });
+
+  test('点开关 → 写 localStorage 值 0 并本屏重画为关；再点回 1；全程零命令派发', () => {
+    h = mountScreen();
+    h.emit(h.store.getState());
+    clickInScreen(h.screen, 'button[data-sfx-toggle]');
+    expect(localStorage.getItem('stratix.sfx.enabled')).toBe('0');
+    expect(h.screen.shadowRoot?.querySelector('button[data-sfx-toggle]')?.textContent).toContain('关');
+
+    clickInScreen(h.screen, 'button[data-sfx-toggle]');
+    expect(localStorage.getItem('stratix.sfx.enabled')).toBe('1');
+    expect(h.screen.shadowRoot?.querySelector('button[data-sfx-toggle]')?.textContent).toContain('开');
+
+    // 开关只在本机生效：不发 HudCommand（与上下文注入行同一口径 —— 断言零派发）
+    expect(h.commands).toHaveLength(0);
+  });
+
+  test('预置 0（全局关）→ 挂载即读作关；音量预置 0.4 → 滑条按存储值渲染', () => {
+    localStorage.setItem('stratix.sfx.enabled', '0');
+    localStorage.setItem('stratix.sfx.volume', '0.4');
+    h = mountScreen();
+    h.emit(h.store.getState());
+    expect(h.screen.shadowRoot?.querySelector('button[data-sfx-toggle]')?.getAttribute('aria-checked')).toBe('false');
+    const slider = h.screen.shadowRoot?.querySelector<HTMLInputElement>('input[data-role="sfx-volume"]');
+    expect(slider?.value).toBe('0.4');
+  });
+
+  test('拖动音量滑条 → input 即写 localStorage（不等 change）；不发命令', () => {
+    h = mountScreen();
+    h.emit(h.store.getState());
+    const slider = h.screen.shadowRoot?.querySelector<HTMLInputElement>('input[data-role="sfx-volume"]');
+    if (!slider) throw new Error('音量滑条未渲染');
+    slider.value = '0.3';
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(localStorage.getItem('stratix.sfx.volume')).toBe('0.3');
+    expect(h.commands).toHaveLength(0);
   });
 });
 

@@ -56,6 +56,10 @@
  *   单位 / 视口数据在本文件累积喸入（位置从恢复站位 + unit.position 事件，视口从 camera.moved
  *   + 容器尺寸换算），组件侧零订阅 —— 仍是只接线，见「小地图」接线段的注释。
  *
+ * @since v3.36（task_060）音效反馈：createSfxService 接进总线（task.completed / failed /
+ *   level.up / awaiting_approval / agent.offline → WebAudio 合成短音，映射表在 sfx-service）。
+ *   仍然只接线：开关与音量走 localStorage（设置屏直写），服务每次播放现读。
+ *
  * @since v3.34（task_058）快捷键系统：mountShortcuts（window keydown → 命令口 / 帮助浮层）
  *   接进 hud-root。命令走 adapter.dispatch；居中要的单位坐标复用小地图的同一份位置累积表
  *   （minimapPositions）—— 位置真相在世界层，组合根是唯一能拿到它的地方，仍是只接线。
@@ -82,6 +86,9 @@ import defaultCss from '../../hud/theme/tokens-default.css?inline';
 import pixelCss from '../../hud/theme/tokens-pixel.css?inline';
 import { defineStratButton } from '../../hud/widgets/strat-button';
 import { mountCharacterChatDrawer, CHARACTER_CHAT_DRAWER_TAG, type StratCharacterChatDrawerElement } from '../../hud/components/chat-drawer/chat-drawer';
+// 音效服务（@since v3.36，task_060）：hud 侧服务（懒建 AudioContext + WebAudio 合成），
+// 事件→key 映射在它的纯函数 —— 这里只订阅总线接线（见下方「音效反馈」段）。
+import { createSfxService, sfxKeyForEvent } from '../../hud/components/sfx/sfx-service';
 import { CharacterComposer } from '../../world/appearance/character-composer';
 import { PartRegistry } from '../../world/appearance/part-registry';
 import { UNIT_SPRITE_SOURCE_KEY } from '../../world/objects/unit-sprite-source';
@@ -484,6 +491,18 @@ async function boot(): Promise<void> {
     }
   });
 
+  // ===== 音效反馈（@since v3.36，task_060）=====
+  // 与 toast 同一装配口径：hud 侧服务只暴露 play(key)（开关 / 节流 / 懒建 AudioContext /
+  // 自动播放策略容错全在服务内部），组合根订阅总线接线 —— 事件→key 的映射表是
+  // sfx-service 的纯函数 sfxKeyForEvent（≤5 种，exp.gained 刻意不配音：太频繁）。
+  // 设置屏的「音效」行（总开关 + 音量）直接写 localStorage，服务每次播放现读 ——
+  // 这里无需（也无法）向服务转发设置变更。
+  const sfx = createSfxService();
+  const stopSfxFeed = onWorldEvent((event) => {
+    const key = sfxKeyForEvent(event);
+    if (key !== null) sfx.play(key);
+  });
+
   // ===== 战场单位的形象（@since v3.10，task_029）=====
   // 单位带 appearance 时，战场用合成好的 LPC 精灵表当身体（走路动画）。
   // 合成要 DOM（canvas / Image），world 层零 DOM —— 故实现在 app 层，world 只认端口。
@@ -741,6 +760,9 @@ async function boot(): Promise<void> {
       unmountMinimap();
       // 快捷键（task_058）：退 window keydown 监听 + 关浮层 + 卸宿主（同卸载纪律）。
       unmountShortcuts();
+      // 音效（task_060）：退总线订阅再释放服务（丢 AudioContext 引用，页面即将销毁）。
+      stopSfxFeed();
+      sfx.dispose();
       // 健康监测（task_054）：停周期探测 + 退恢复 toast 订阅。
       stopHealthToast();
       stopHealthMonitor();
