@@ -21,6 +21,10 @@
  *   - 经验（grantExperience）：契约里**没有**对应的 HudCommand 位（per HUD 手动涨经验会变成假养成），
  *     故仍只作为 manager 的程序化入口暴露给 world/agent-link 的回报链路使用。
  *
+ * @since v3.35（task_059）改名写入面：`character.name.update` 接线到 manager.updateName ——
+ *   形状裁决在 profile.ts 的 resolveCharacterName（与建档同一份真相），重名（除自己）判在本文件，
+ *   落库时同步刷新战场单位 name（与 updateAppearance 同构，一次 setState 两侧不漂移）。
+ *
  * @since v3.7 角色建档（character.create）：
  *   新增 createCharacter —— 建档合法性裁决在 profile.ts（纯函数），本文件只做「找冲突 → 落库 → 上报」。
  *   落库后由 core/runtime.ts 的 store 订阅**全量广播** WorldState.characters（广播出口仍只有一处）。
@@ -48,6 +52,7 @@ import {
   hasDuplicateCharacterName,
   isSameCharacterAppearance,
   resolveAppearance,
+  resolveCharacterName,
   type ProfileErrorCode,
 } from './profile';
 import { toCharacterUnit, CHARACTER_UNIT_ID_PREFIX } from './unit-projection';
@@ -136,6 +141,25 @@ export type CharacterContextToggleResult =
     }
   | { readonly ok: false; readonly code: 'not-found'; readonly characterId: string };
 
+/**
+ * 改名被拒的机器可读原因（@since v3.35，task_059）。
+ * - not-found：状态里没有这个角色；
+ * - empty-name / name-too-long：名字形状非法（profile.ts 的 resolveCharacterName 口径，与建档同一份）；
+ * - duplicate-name：与**其它**角色重名（大小写不敏感；与自己当前名字相同不算，见 updateName）。
+ */
+export type CharacterNameResult =
+  | {
+      readonly ok: true;
+      readonly character: CharacterView;
+      /** 写入后生效的名字（trim 后）。 */
+      readonly name: string;
+    }
+  | {
+      readonly ok: false;
+      readonly code: 'not-found' | 'empty-name' | 'name-too-long' | 'duplicate-name';
+      readonly characterId: string;
+    };
+
 export interface CharacterManagerOptions {
   /** 状态持有者；默认 worldStore 单例。单测用 createStore() 隔离。 */
   readonly store?: CoreStore;
@@ -188,6 +212,14 @@ export interface CharacterManager {
    * 落库由存档协调器顺着 characters diff 自动写入 context_enabled 列（schema v9）。
    */
   updateContextEnabled(characterId: string, enabled: boolean): CharacterContextToggleResult;
+  /**
+   * 改角色名（@since v3.35，task_059，对应 HudCommand 'character.name.update'）。
+   * 名字形状合法性在 profile.ts 的 resolveCharacterName（与建档同一份真相）；重名（除自己）判在
+   * 本文件（要看状态，与建档的 duplicate-name 同一口径，error 级 Notice）；写入时在**同一次
+   * setState** 里同步刷新该角色战场单位的 name 投影（单位名是建档时的快照，不同步战场就还叫旧名）。
+   * 与自己当前名字相同（trim / 大小写不敏感）→ 幂等成功，不写库不广播。
+   */
+  updateName(characterId: string, name: unknown): CharacterNameResult;
 }
 
 /**
@@ -511,5 +543,82 @@ export function createCharacterManager(options: CharacterManagerOptions = {}): C
     return settled;
   };
 
-  return { store, createCharacter, grantExperience, updatePersona, updateAppearance, updateContextEnabled };
+  /**
+   * 改名（@since v3.35，task_059）—— 与 updatePersona 同一写入口径（一次 setState 内原子化）。
+   * 三层裁决各就各位：形状在 profile.resolveCharacterName（纯）；重名在 manager（要看状态，
+   * 豁免自己）；落库在**同一次** setState 里同步刷新战场单位的 name（与 updateAppearance 同构：
+   * 单位名是建档快照，只改 characters 不改 units 的话战场上继续叫旧名，两侧漂移）。
+   */
+  const updateName = (characterId: string, name: unknown): CharacterNameResult => {
+    // 形状校验不需要看状态，前置到 setState 外面（与 updateAppearance 同构）。
+    const resolved = resolveCharacterName(name);
+    if ('error' in resolved) {
+      reportFailure(
+        store,
+        `character-name-rejected:${characterId}:${resolved.error}`,
+        createRejectionLabel(resolved.error, maxCharacters)
+      );
+      return { ok: false, code: resolved.error, characterId };
+    }
+    const next = resolved.name;
+
+    let result: CharacterNameResult | null = null;
+
+    store.setState((current) => {
+      const index = current.characters.findIndex((c) => c.id === characterId);
+      if (index < 0) {
+        result = { ok: false, code: 'not-found', characterId };
+        return current;
+      }
+
+      const existing = current.characters[index] as CharacterView;
+      // 与自己当前名字**完全相同**（trim 后）→ 幂等成功，不写库不广播
+      // （与 updatePersona 的「与原值一致」、updateAppearance 的「语义相等」同一约定）。
+      // 注意不是 isSameCharacterName：它是大小写不敏感的比较，会把「Neo → NEO」这种用户明确
+      // 要求的写法变更当没发生 —— 只改大小写也是改名，要写真写广播。
+      if (existing.name === next) {
+        result = { ok: true, character: existing, name: existing.name };
+        return current;
+      }
+      // 与其它角色重名 → 拒发（判在同一次 setState 内：判在前、写在后，与建档同一口径）。
+      if (hasDuplicateCharacterName(current.characters, next, characterId)) {
+        result = { ok: false, code: 'duplicate-name', characterId };
+        return current;
+      }
+
+      const updated: CharacterView = { ...existing, name: next };
+      const characters = current.characters.slice();
+      characters[index] = updated;
+      // 同步刷新战场单位的 name 投影：单位 id 是稳定的 `unit_<角色id>`（见 unit-projection.ts），
+      // 只刷新它自己的那一项，其余单位（含未关联角色的）不动（与 updateAppearance 同构）。
+      const unitId = `${CHARACTER_UNIT_ID_PREFIX}${characterId}`;
+      const units = current.units.map((unit) => (unit.id === unitId ? { ...unit, name: next } : unit));
+      result = { ok: true, character: updated, name: next };
+      return { ...current, characters, units };
+    });
+
+    if (result === null) return { ok: false, code: 'not-found', characterId };
+    const settled = result as CharacterNameResult;
+    if (!settled.ok) {
+      // duplicate-name 是冲突（error 级），not-found / 形状问题是输入问题（warn 级）——
+      // 与建档的 createRejectionLabel 分级口径一致。
+      const level: NoticeLevel = settled.code === 'duplicate-name' ? 'error' : 'warn';
+      const text =
+        settled.code === 'not-found'
+          ? `未找到角色：${characterId}`
+          : createRejectionLabel(settled.code, maxCharacters);
+      reportFailure(store, `character-name-rejected:${characterId}:${settled.code}`, text, level);
+    }
+    return settled;
+  };
+
+  return {
+    store,
+    createCharacter,
+    grantExperience,
+    updatePersona,
+    updateAppearance,
+    updateContextEnabled,
+    updateName,
+  };
 }

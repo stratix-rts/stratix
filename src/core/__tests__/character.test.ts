@@ -45,6 +45,7 @@ import {
   MAX_CHARACTER_NAME_LEN,
   type CharacterAppearance,
   type CharacterView,
+  type UnitView,
   type WorldState,
 } from '../types';
 
@@ -1250,6 +1251,135 @@ describe('CharacterManager.updateContextEnabled：角色级上下文开关（tas
 
     expect(store.getState().characters[0]?.contextEnabled).toBe(true);
     expect(seen.some((value) => value === false)).toBe(true); // 关的那次也广播过（HUD 开关钮实时反映）
+    stopRuntime();
+    off();
+    resetBus();
+  });
+});
+
+// ============================================================================
+// 2.f CharacterManager.updateName：改名写库投影（@since v3.35，task_059 编辑中心）
+// ============================================================================
+
+describe('CharacterManager.updateName：改名写库投影（@since v3.35，task_059）', () => {
+  /** 带战场单位的改名夹具：units 与 characters 同源（建档投影口径）。 */
+  function renameHarness(characters: CharacterView[], units: UnitView[]) {
+    const store = createStore({ characters, units });
+    const manager = createCharacterManager({ store });
+    let broadcasts = 0;
+    store.subscribe(() => { broadcasts += 1; });
+    return { store, manager, broadcasts: () => broadcasts };
+  }
+
+  test('合法改名：characters 与战场单位的 name 同一次广播刷新（两侧不漂移）', () => {
+    const a = characterAt({ id: 'c-a', name: 'Neo' });
+    const b = characterAt({ id: 'c-b', name: '贝塔' });
+    const units: UnitView[] = [
+      { id: 'unit_c-a', name: 'Neo', status: 'idle', missionId: null, power: 1, characterId: 'c-a' },
+      { id: 'unit_c-b', name: '贝塔', status: 'idle', missionId: null, power: 1, characterId: 'c-b' },
+    ];
+    const { store, manager, broadcasts } = renameHarness([a, b], units);
+
+    const result = manager.updateName('c-a', '  崔尼蒂 ');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.name).toBe('崔尼蒂'); // trim 后生效
+      expect(result.character.name).toBe('崔尼蒂');
+    }
+    expect(store.getState().characters[0]?.name).toBe('崔尼蒂');
+    // 战场单位名同一次刷新（需求③：改名 → 战场单位名实时刷新）。
+    expect(store.getState().units[0]?.name).toBe('崔尼蒂');
+    expect(store.getState().units[1]?.name).toBe('贝塔'); // 只动它自己的单位
+    expect(broadcasts()).toBe(1); // 一次 setState = 一次广播
+  });
+
+  test('与自己当前名字相同（trim 后完全一致）→ 幂等成功，不写库不广播', () => {
+    const a = characterAt({ id: 'c-a', name: 'Neo' });
+    const units: UnitView[] = [
+      { id: 'unit_c-a', name: 'Neo', status: 'idle', missionId: null, power: 1, characterId: 'c-a' },
+    ];
+    const { store, manager, broadcasts } = renameHarness([a], units);
+
+    const result = manager.updateName('c-a', '  Neo ');
+
+    expect(result.ok).toBe(true);
+    expect(store.getState().characters[0]?.name).toBe('Neo');
+    expect(broadcasts()).toBe(0);
+  });
+
+  test('与其它角色重名（大小写不敏感）→ 拒发 + error 级 Notice，状态不变', () => {
+    const a = characterAt({ id: 'c-a', name: 'Neo' });
+    const b = characterAt({ id: 'c-b', name: '贝塔' });
+    const { store, manager } = renameHarness([a, b], []);
+
+    const result = manager.updateName('c-a', '  贝塔 ');
+
+    expect(result).toEqual({ ok: false, code: 'duplicate-name', characterId: 'c-a' });
+    expect(store.getState().characters[0]?.name).toBe('Neo');
+    expect(store.getState().notices[0]).toMatchObject({ level: 'error', source: 'core/character' });
+    expect(store.getState().notices[0]?.text).toContain('同名');
+  });
+
+  test('改名豁免自己：Neo → NEO 是合法改名（不是重名）', () => {
+    const a = characterAt({ id: 'c-a', name: 'Neo' });
+    const { store, manager } = renameHarness([a], []);
+
+    const result = manager.updateName('c-a', 'NEO');
+
+    expect(result.ok).toBe(true);
+    expect(store.getState().characters[0]?.name).toBe('NEO');
+  });
+
+  test('空名 / 纯空白 → 拒发 + warn Notice，状态不变', () => {
+    const a = characterAt({ id: 'c-a', name: 'Neo' });
+    const { store, manager } = renameHarness([a], []);
+
+    const result = manager.updateName('c-a', '   ');
+
+    expect(result).toEqual({ ok: false, code: 'empty-name', characterId: 'c-a' });
+    expect(store.getState().characters[0]?.name).toBe('Neo');
+    expect(store.getState().notices[0]).toMatchObject({ level: 'warn', source: 'core/character' });
+  });
+
+  test('名字超长（> 24 码点）→ 拒发 + warn Notice', () => {
+    const a = characterAt({ id: 'c-a', name: 'Neo' });
+    const { store, manager } = renameHarness([a], []);
+
+    const result = manager.updateName('c-a', 'a'.repeat(25));
+
+    expect(result).toEqual({ ok: false, code: 'name-too-long', characterId: 'c-a' });
+    expect(store.getState().characters[0]?.name).toBe('Neo');
+    expect(store.getState().notices[0]?.text).toContain('角色名过长');
+  });
+
+  test('角色不在档 → 拒发 + warn Notice，characters 不变', () => {
+    const { store, manager } = renameHarness([characterAt()], []);
+
+    const result = manager.updateName('c-ghost', '新名字');
+
+    expect(result).toEqual({ ok: false, code: 'not-found', characterId: 'c-ghost' });
+    expect(store.getState().notices[0]?.text).toContain('c-ghost');
+  });
+
+  test('闭环：emitCommand character.name.update → 落库广播（runtime 接线）', () => {
+    resetBus();
+    const a = characterAt({ id: 'c-a', name: 'Neo' });
+    const units: UnitView[] = [
+      { id: 'unit_c-a', name: 'Neo', status: 'idle', missionId: null, power: 1, characterId: 'c-a' },
+    ];
+    const store = createStore({ characters: [a], units });
+    const manager = createCharacterManager({ store });
+    const runtime = createCoreRuntime({ store, character: manager });
+    const stopRuntime = runtime.start();
+    const seen: string[] = [];
+    const off = onState((state) => { seen.push(state.units[0]?.name ?? ''); });
+
+    emitCommand({ type: 'character.name.update', characterId: 'c-a', name: '崔尼蒂' });
+
+    expect(store.getState().characters[0]?.name).toBe('崔尼蒂');
+    expect(store.getState().units[0]?.name).toBe('崔尼蒂');
+    expect(seen.some((name) => name === '崔尼蒂')).toBe(true); // HUD 单位名实时刷新的广播证据
     stopRuntime();
     off();
     resetBus();

@@ -6,7 +6,8 @@
  *   HUD 只渲染、不重算数值裁决（与 types.ts UnitCapabilitiesView 的「由 core 计算、HUD 只渲染」同一铁律）。
  *   来源：docs/REFACTOR_PLAN_V3.md §2 screens/ 层级（main / settings / character）+ D3（技能树砍、成长数值保留）。
  * 输入：WorldState 快照（只读）。
- * 输出：CharacterScreenModel（渲染用模型）与 characterSignature（渲染判重签名）。
+ * 输出：CharacterScreenModel（渲染用模型）与 characterSignature（渲染判重签名）
+ *   + personaSectionSummary（@since v3.35，task_059：人设正文在场的分节概览，纯函数）。
  * 禁止事项：
  *   1. 触碰 DOM —— 本文件必须能在 node 环境单测，渲染是 character-screen.ts 的事；
  *   2. import world/、vue、@/stratix-rts、core/bus —— 铁律，HUD 一律经注入的 adapter 收发；
@@ -36,6 +37,8 @@ import {
   isMaxLevel,
 } from '../../core/progression';
 import type { CharacterView, SelectionState, UnitView, WorldState } from '../../core/types';
+
+import { PERSONA_SECTION_TITLES } from './onboarding-catalog';
 
 // ============================================================================
 // 容量与阈值（perf 硬约束：派生出来的每一份数据都有界）
@@ -263,20 +266,36 @@ export function resolveFocusedCharacter(state: WorldState | null): CharacterView
 }
 
 /**
+ * 人设正文里**在场**的分节中文名（@since v3.35，task_059 人设 tab 的只读分节概览）。
+ * 匹配口径：行首 `# <PERSONA_SECTION_TITLES[id]>`（composePersonaSections 的输出格式，
+ * 043 分节体系）—— 只认词表内的节头，自由文本里随便写个 `# 标题` 不算（不扩语义）。
+ * 没匹配到任何节 → 空数组（屏上显示「自由文本」而不是假装它有结构）。
+ */
+export function personaSectionSummary(persona: string): readonly string[] {
+  if (!persona) return [];
+  const titles = new Set(persona.split('\n').map((line) => line.trim()));
+  return Object.values(PERSONA_SECTION_TITLES)
+    .filter((title) => titles.has(`# ${title}`))
+    .map((title) => title.split(' ')[0] ?? title);
+}
+
+/**
  * 渲染判重签名（O(角色数 + 单位数)，纯字符串拼接）。
- * 只含影响本屏显示的东西：选择集、单位↔角色关联、角色 id/等级/经验/**提示词**。
+ * 只含影响本屏显示的东西：选择集、单位↔角色关联、角色 id/名字/等级/经验/**提示词**。
  * persona 进签名是因为它渲染在卡上 —— 只签 id/等级的话，改提示词时本屏会拿着旧签名跳过重绘。
+ * name 进签名（@since v3.35，task_059）：卡片 / 关联行 / 编辑中心都显示名字 —— 改名广播
+ *   到达时本屏必须重绘（否则输入框与卡上还叫旧名）；单位名同理（links 行的 unitName）。
  * 任务相位变动、通知、总线活跃度等一律不触发本屏重渲染（core 每次广播都是全量的）。
  */
 export function characterSignature(state: WorldState | null): string {
   const source = toSource(state);
   const links = source.units
     .filter((u) => u.characterId)
-    .map((u) => `${u.id}:${u.characterId}`)
+    .map((u) => `${u.id}:${u.characterId}:${u.name}`)
     .join(',');
   const selected = source.selection.unitIds.join(',');
   const chars = source.characters
-    .map((c) => `${c.id}:${c.level}:${c.experience}:${c.persona}`)
+    .map((c) => `${c.id}:${c.name}:${c.level}:${c.experience}:${c.persona}`)
     .join(',');
   return `${selected}|${links}|${chars}`;
 }

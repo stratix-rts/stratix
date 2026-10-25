@@ -1860,7 +1860,7 @@
     {
       "id": "task_059",
       "title": "角色编辑中心",
-      "status": "pending",
+      "status": "completed",
       "depends_on": [
         "task_041"
       ],

@@ -110,12 +110,27 @@ function isAgentKind(value: unknown): value is AgentKind {
  *      给了就按 resolveAppearance 的四条校验逐项判，给了但非法 → 拒发。
  * 被拒一律返回错误码，**不抛异常**（命令总线是同步的）。
  */
+/**
+ * 名字合法性裁决（@since v3.35，task_059）：trim 后非空、≤ MAX_CHARACTER_NAME_LEN 码点。
+ * why 单独抽出来：建档（createAgentProfile）与改名（manager.updateName）必须共用同一份
+ *   「什么算合法名字」真相 —— 两处各判一次必然漂移（一边 24 字放行、一边拒发，
+ *   用户看到的现象就是「建档成功但改名失败」）。与 persona.ts 的 normalizePersonaPrompt 同一思路。
+ */
+export function resolveCharacterName(
+  raw: unknown
+): { name: string } | { error: 'empty-name' | 'name-too-long' } {
+  if (typeof raw !== 'string') return { error: 'empty-name' };
+  const name = raw.trim();
+  if (name.length === 0) return { error: 'empty-name' };
+  if (codePointLength(name) > MAX_CHARACTER_NAME_LEN) return { error: 'name-too-long' };
+  return { name };
+}
+
 export function createAgentProfile(input: AgentProfileInput): ProfileResult {
-  // —— 名字 ——
-  if (typeof input.name !== 'string') return { ok: false, code: 'empty-name' };
-  const name = input.name.trim();
-  if (name.length === 0) return { ok: false, code: 'empty-name' };
-  if (codePointLength(name) > MAX_CHARACTER_NAME_LEN) return { ok: false, code: 'name-too-long' };
+  // —— 名字（合法性裁决在 resolveCharacterName，与改名同一份真相）——
+  const resolvedName = resolveCharacterName(input.name);
+  if ('error' in resolvedName) return { ok: false, code: resolvedName.error };
+  const name = resolvedName.name;
 
   // —— agent 种类 ——
   if (!isAgentKind(input.agentKind)) return { ok: false, code: 'unknown-agent-kind' };
@@ -293,12 +308,19 @@ export function isSameCharacterAppearance(a: CharacterAppearance, b: CharacterAp
   return true;
 }
 
-/** 状态里是否已有同名角色（manager 的重复判定用，纯函数便于单测）。 */
+/**
+ * 状态里是否已有同名角色（manager 的重复判定用，纯函数便于单测）。
+ * @since v3.35（task_059）excludeCharacterId：改名时**豁免自己** —— 改成与当前名字
+ *   大小写不同的写法（Neo → NEO）不是重复，是合法改名；建档路径不传（新角色没有「自己」）。
+ */
 export function hasDuplicateCharacterName(
   characters: readonly CharacterView[],
-  name: string
+  name: string,
+  excludeCharacterId?: string
 ): boolean {
-  return characters.some((character) => isSameCharacterName(character.name, name));
+  return characters.some(
+    (character) => character.id !== excludeCharacterId && isSameCharacterName(character.name, name)
+  );
 }
 
 /**

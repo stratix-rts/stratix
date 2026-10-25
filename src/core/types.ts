@@ -1019,6 +1019,16 @@ export type HudCommand =
    */
   | { type: 'character.contextEnabled.update'; characterId: string; enabled: boolean }
   /**
+   * @since v3.35 角色改名（task_059 角色编辑中心 · 档案 tab 的落地动作）。
+   * 载荷口径：name trim 后非空、≤ MAX_CHARACTER_NAME_LEN（24 码点），裁决与建档同一份
+   *   （profile.ts 的 resolveCharacterName）；与**其它**角色重名（大小写不敏感）→ 拒发 +
+   *   **error 级** Notice（与 character.create 的 duplicate-name 同一口径）；
+   *   与自己当前名字相同（trim / 大小写不敏感）→ 幂等成功、不广播。
+   * 接线：core/runtime.ts → character/manager.updateName（写 characters + **同一次 setState** 内
+   *   同步刷新该角色战场单位的 name 投影 —— 单位名是建档时的快照，不同步战场就还叫旧名）。
+   */
+  | { type: 'character.name.update'; characterId: string; name: string }
+  /**
    * @since v3.7 新建角色档案（首启引导的落地动作：起名 → 选 agent → 选皮肤 → 写人设）。
    * 载荷口径：
    *   - name：trim 后非空、≤ MAX_CHARACTER_NAME_LEN（24 码点）；

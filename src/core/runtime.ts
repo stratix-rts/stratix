@@ -376,6 +376,13 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
       case 'character.contextEnabled.update':
         character.updateContextEnabled(command.characterId, command.enabled);
         return;
+      // @since v3.35 角色改名(task_059 编辑中心·档案 tab):落到 character manager。
+      // 名字形状由 core/character/profile.ts 的 resolveCharacterName 裁决(与建档同一份);
+      // 重名(除自己)由 manager 判(要看状态,error 级 Notice);写入时同步刷新该角色战场
+      // 单位的 name 投影(同一次 setState,战场与档案不漂移)。
+      case 'character.name.update':
+        character.updateName(command.characterId, command.name);
+        return;
       // @since v3.7 角色建档(首启引导):落到 character manager(不再走 onUnhandled)。
       // 建档合法性由 core/character/profile.ts 的纯函数裁决;同名冲突 / 条数上限由 manager 判;
       // 落库后由本文件的 store 订阅把整份 WorldState(含 characters)全量广播给两侧。
