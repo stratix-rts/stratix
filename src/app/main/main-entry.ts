@@ -56,6 +56,10 @@
  *   单位 / 视口数据在本文件累积喸入（位置从恢复站位 + unit.position 事件，视口从 camera.moved
  *   + 容器尺寸换算），组件侧零订阅 —— 仍是只接线，见「小地图」接线段的注释。
  *
+ * @since v3.34（task_058）快捷键系统：mountShortcuts（window keydown → 命令口 / 帮助浮层）
+ *   接进 hud-root。命令走 adapter.dispatch；居中要的单位坐标复用小地图的同一份位置累积表
+ *   （minimapPositions）—— 位置真相在世界层，组合根是唯一能拿到它的地方，仍是只接线。
+ *
  * 加载路径：dev 走 vite dev server 的 /src/app/main/index.html；
  *   正式构建走 dist/frontend/src/app/main/index.html（由 vite.config.ts 的 input 产出）。
  *   本页是**唯一**入口：旧 Vue 入口链随 task_017 退役，STRATIX_LEGACY 开关已下线，
@@ -125,6 +129,8 @@ import { createPipelineService } from '../services/pipeline-service';
 import { mountToastHost } from '../../hud/components/toast/toast-host';
 // 小地图宿主（@since v3.33，task_057）：右下角战场缩略图（单位点 / 视口框 / 点击跳转）。
 import { mountMinimap } from '../../hud/components/minimap/minimap';
+// 快捷键系统（@since v3.34，task_058）：window keydown → 命令 + 帮助浮层（键位表见 hud/shortcuts）。
+import { mountShortcuts } from '../../hud/components/shortcuts/shortcut-manager';
 import { createTaskManager } from '../../core/task';
 import { createUnitSpriteSource } from '../services/unit-sprite-source';
 
@@ -579,6 +585,19 @@ async function boot(): Promise<void> {
     syncMinimapUnits();
   });
 
+  // ===== 快捷键系统（@since v3.34，task_058）=====
+  // 键位表与解析在 hud/components/shortcuts（集中常量，帮助浮层同源渲染）；这里只接三个口：
+  //   命令 → adapter.dispatch（unit.select / unit.group.* / camera.center 全是既有命令面，
+  //     core 侧 runtime 同任务接线）；状态 → worldStore 现读（全选名单 / 居中目标）；
+  //   坐标 → 复用小地图的 minimapPositions 累积表（同一份位置真相，不另建第二份 ——
+  //     空格居中的质心算的就是这些点，两处数据源漂移会让小地图点与居中点对不上）。
+  // 输入框聚焦时快捷键自动让路（isEditableTarget，在 hud 侧判定）；卸载随 pagehide。
+  const { unmount: unmountShortcuts } = mountShortcuts(hudRoot, {
+    dispatch: (command) => adapter.dispatch(command),
+    getState: () => worldStore.getState(),
+    getUnitPosition: (unitId) => minimapPositions.get(unitId) ?? null,
+  });
+
   // ===== world 侧：Phaser 战场（BattlefieldScene 内部自带 world ↔ core 桥接层）=====
   const game = new Phaser.Game({
     type: Phaser.AUTO,
@@ -720,6 +739,8 @@ async function boot(): Promise<void> {
       stopMinimapStateFeed();
       stopMinimapWorldFeed();
       unmountMinimap();
+      // 快捷键（task_058）：退 window keydown 监听 + 关浮层 + 卸宿主（同卸载纪律）。
+      unmountShortcuts();
       // 健康监测（task_054）：停周期探测 + 退恢复 toast 订阅。
       stopHealthToast();
       stopHealthMonitor();

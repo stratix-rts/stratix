@@ -73,6 +73,10 @@ export function createInitialState(): WorldState {
     detectedAgents: [],
     // tasks（@since v3.16）：角色任务队列，空数组即「无在办/历史任务」
     tasks: [],
+    // selectionGroups（@since v3.34，task_058）：编组槽位表，空 Map 即「无编组」。
+    // why 起步就建空表而不是缺省：读方（召回 / HUD）不用每次判 undefined，
+    //   runtime 的槽位写入也永远从一份确定的基础表出发（与 tasks 同一「起步即有形」口径）。
+    selectionGroups: new Map<number, readonly string[]>(),
   };
 }
 

@@ -623,3 +623,167 @@ describe('world 事件：camera.center 回环接地（task_057）', () => {
     expect(unhandled).toHaveLength(0);
   });
 });
+
+// ============================================================================
+// 编组槽位命令（@since v3.34，task_058）—— unit.group.assign / unit.group.recall
+// ============================================================================
+
+describe('HudCommand → 编组槽位（task_058）', () => {
+  test('unit.group.assign：把当前选择集存入槽位，广播一次（含 info Notice）', () => {
+    const { store, states, stop } = harness();
+    cleanups.push(stop);
+
+    emitCommand({ type: 'unit.select', unitIds: ['u1', 'u2'], mode: 'set' });
+    emitCommand({ type: 'unit.group.assign', group: 1 });
+
+    expect(store.getState().selectionGroups?.get(1)).toEqual(['u1', 'u2']);
+    // 一次命令一次广播：槽位写入 + Notice 附在同一次 state 里
+    expect(states).toHaveLength(2);
+    const [selectionState, groupState] = states;
+    expect(selectionState.selection.unitIds).toEqual(['u1', 'u2']);
+    expect(groupState.selectionGroups?.get(1)).toEqual(['u1', 'u2']);
+    expect(groupState.notices[0]?.text).toBe('已存入编组 1（2 单位）');
+    expect(groupState.notices[0]?.level).toBe('info');
+    expect(groupState.notices[0]?.source).toBe('core/unit');
+  });
+
+  test('assign 存的是副本：之后选择变化不影响已存编组', () => {
+    const { store, stop } = harness();
+    cleanups.push(stop);
+
+    emitCommand({ type: 'unit.select', unitIds: ['u1'], mode: 'set' });
+    emitCommand({ type: 'unit.group.assign', group: 2 });
+    emitCommand({ type: 'unit.select', unitIds: ['u3'], mode: 'set' });
+
+    expect(store.getState().selectionGroups?.get(2)).toEqual(['u1']);
+  });
+
+  test('assign 空选择被拒：warn Notice，槽位不被清空', () => {
+    const { store, states, stop } = harness();
+    cleanups.push(stop);
+
+    emitCommand({ type: 'unit.select', unitIds: ['u1'], mode: 'set' });
+    emitCommand({ type: 'unit.group.assign', group: 3 });
+    emitCommand({ type: 'unit.select', unitIds: [], mode: 'set' });
+    emitCommand({ type: 'unit.group.assign', group: 3 });
+
+    expect(store.getState().selectionGroups?.get(3)).toEqual(['u1']);
+    const lastNotice = store.getState().notices[0];
+    expect(lastNotice?.text).toBe('未选中单位，编组 3 未变更');
+    expect(lastNotice?.level).toBe('warn');
+    expect(states.at(-1)?.selectionGroups?.get(3)).toEqual(['u1']);
+  });
+
+  test('assign 同槽同成员幂等：零广播（无实质变化）', () => {
+    const { store, states, stop } = harness();
+    cleanups.push(stop);
+
+    emitCommand({ type: 'unit.select', unitIds: ['u1'], mode: 'set' });
+    emitCommand({ type: 'unit.group.assign', group: 1 });
+    const broadcastsAfterFirst = states.length;
+    emitCommand({ type: 'unit.group.assign', group: 1 });
+
+    expect(store.getState().selectionGroups?.get(1)).toEqual(['u1']);
+    expect(states).toHaveLength(broadcastsAfterFirst);
+  });
+
+  test('assign 越界槽位被拒：warn Notice，不改槽位表', () => {
+    const { store, states, stop } = harness();
+    cleanups.push(stop);
+
+    emitCommand({ type: 'unit.select', unitIds: ['u1'], mode: 'set' });
+    emitCommand({ type: 'unit.group.assign', group: 0 });
+    emitCommand({ type: 'unit.group.assign', group: 10 });
+
+    expect(store.getState().selectionGroups?.size ?? 0).toBe(0);
+    expect(store.getState().notices[0]?.text).toBe('编组槽位必须是 1–9');
+    expect(store.getState().notices[0]?.level).toBe('warn');
+    // unit.select 一次 + 两次越界拒绝各带一次 Notice 广播
+    expect(states).toHaveLength(3);
+  });
+
+  test('unit.group.recall：选中槽位成员（覆盖当前选择）+ info Notice', () => {
+    const { store, stop } = harness();
+    cleanups.push(stop);
+
+    emitCommand({ type: 'unit.select', unitIds: ['u1', 'u2'], mode: 'set' });
+    emitCommand({ type: 'unit.group.assign', group: 5 });
+    emitCommand({ type: 'unit.select', unitIds: ['u3'], mode: 'set' });
+    emitCommand({ type: 'unit.group.recall', group: 5 });
+
+    expect(store.getState().selection.unitIds).toEqual(['u1', 'u2']);
+    const notice = store.getState().notices[0];
+    expect(notice?.text).toBe('召回编组 5（2 单位）');
+    expect(notice?.level).toBe('info');
+  });
+
+  test('recall 剔除已消失单位（对账口径同 unit.select）', () => {
+    const { store, stop } = harness();
+    cleanups.push(stop);
+
+    emitCommand({ type: 'unit.select', unitIds: ['u1', 'u2'], mode: 'set' });
+    emitCommand({ type: 'unit.group.assign', group: 1 });
+    // u2 离场（世界层对账：units 不再有它）—— 用一次会触发 reconcile 的路径移除
+    store.setState((state) => ({
+      ...state,
+      units: state.units.filter((unit) => unit.id !== 'u2'),
+    }));
+    emitCommand({ type: 'unit.group.recall', group: 1 });
+
+    expect(store.getState().selection.unitIds).toEqual(['u1']);
+    expect(store.getState().notices[0]?.text).toBe('召回编组 1（1 单位）');
+  });
+
+  test('recall 空槽：不动选择集，warn Notice', () => {
+    const { store, states, stop } = harness();
+    cleanups.push(stop);
+
+    emitCommand({ type: 'unit.select', unitIds: ['u1'], mode: 'set' });
+    emitCommand({ type: 'unit.group.recall', group: 9 });
+
+    expect(store.getState().selection.unitIds).toEqual(['u1']);
+    expect(store.getState().notices[0]?.text).toBe('编组 9 为空');
+    expect(store.getState().notices[0]?.level).toBe('warn');
+  });
+
+  test('recall 成员全部离场：同空槽口径（warn，不动选择集）', () => {
+    const { store, stop } = harness();
+    cleanups.push(stop);
+
+    emitCommand({ type: 'unit.select', unitIds: ['u1'], mode: 'set' });
+    emitCommand({ type: 'unit.group.assign', group: 2 });
+    store.setState((state) => ({
+      ...state,
+      units: state.units.filter((unit) => unit.id !== 'u1'),
+    }));
+    emitCommand({ type: 'unit.group.recall', group: 2 });
+
+    expect(store.getState().selection.unitIds).toEqual(['u1']); // 选择未被动过
+    expect(store.getState().notices[0]?.text).toBe('编组 2 为空');
+  });
+
+  test('recall 召回同一选择集：选择零变化，但 Notice 仍随一次广播送达', () => {
+    const { store, states, stop } = harness();
+    cleanups.push(stop);
+
+    emitCommand({ type: 'unit.select', unitIds: ['u1'], mode: 'set' });
+    emitCommand({ type: 'unit.group.assign', group: 1 });
+    emitCommand({ type: 'unit.group.recall', group: 1 });
+
+    // 第二次广播只多了 Notice（选择集 revision 未变）
+    const last = states.at(-1);
+    expect(last?.selection.revision).toBe(1);
+    expect(last?.notices[0]?.text).toBe('召回编组 1（1 单位）');
+    expect(store.getState().selection.unitIds).toEqual(['u1']);
+  });
+
+  test('两条命令都不进 onUnhandled（已是落地命令）', () => {
+    const { unhandled, stop } = harness();
+    cleanups.push(stop);
+
+    emitCommand({ type: 'unit.group.assign', group: 1 });
+    emitCommand({ type: 'unit.group.recall', group: 1 });
+
+    expect(unhandled).toHaveLength(0);
+  });
+});

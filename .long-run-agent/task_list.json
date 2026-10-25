@@ -1851,7 +1851,7 @@
     {
       "id": "task_058",
       "title": "快捷键系统",
-      "status": "pending",
+      "status": "completed",
       "depends_on": [
         "task_045"
       ],

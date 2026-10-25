@@ -35,6 +35,9 @@
  *   在线位广播,落点 applyAgentConnectivity 写 units.online)。
  * @since v3.33(task_057)追加 camera.center 命令接线:钳制(core/camera.ts 纯函数)后转发
  *   同名 WorldEvent 到 world 通道(消费者是场景相机);world 通道回环的 camera.center 显式接地。
+ * @since v3.34(task_058)追加 unit.group.assign / unit.group.recall 命令接线:编组槽位表
+ *   (WorldState.selectionGroups)的写入与召回。槽位合法性/幂等/对账语义在 core/unit/group.ts
+ *   纯函数;反馈(已存入/召回 N(x 单位)/被拒原因)同一次 setState 里附 Notice(一次操作一次广播)。
  */
 
 import type { AgentLinkManager } from './agent-link';
@@ -46,8 +49,24 @@ import type { CoreStore } from './store';
 import { worldStore } from './store';
 import { createTaskManager, type TaskManager } from './task';
 import type { PipelineRunnerPort } from './task';
-import type { AgentKind, HudCommand, WorldEvent } from './types';
+import {
+  MAX_CONTROL_GROUP_SLOT,
+  MAX_NOTICES,
+  MIN_CONTROL_GROUP_SLOT,
+  NOTICE_TTL_MS,
+  type AgentKind,
+  type HudCommand,
+  type Notice,
+  type NoticeLevel,
+  type WorldEvent,
+  type WorldState,
+} from './types';
 import { computeFormationSlots } from './unit/formation';
+import {
+  assignControlGroup,
+  isControlGroupSlot,
+  readControlGroupUnitIds,
+} from './unit/group';
 import type { SelectionAction } from './unit/selection';
 import { applySelectionAction } from './unit/selection';
 
@@ -129,6 +148,95 @@ function applySelection(store: CoreStore, action: SelectionAction): void {
       knownUnitIds: state.units.map((unit) => unit.id),
     });
     return { ...state, selection: reconciled.next };
+  });
+}
+
+/** 编组 Notice 的来源标识（hud/log-drawer 的「来源」列按它分组）。 */
+const CONTROL_GROUP_NOTICE_SOURCE = 'core/unit';
+
+/** Notice id 序列（进程内单调；与 mission manager 的 createId 同一「前缀+时间+序号」口径）。 */
+let controlGroupNoticeSeq = 0;
+
+/**
+ * 编组命令的 Notice 附着（@since v3.34，task_058）：把一条 Notice **并进同一次 setState**。
+ * why 不走 store.pushNotice：那是独立一次广播，编组命令「状态变更 + 反馈」会打两次 state
+ *（违反本文件禁止事项 4「一次用户操作一次广播」的精神）；就地拼接 + 到期过滤 + 截断
+ *   与 store.pruneNotices 同一口径（见 store.ts）。
+ */
+function withControlGroupNotice(
+  state: WorldState,
+  level: NoticeLevel,
+  text: string
+): WorldState {
+  const at = Date.now();
+  const notice: Notice = {
+    id: `group-notice_${at}_${++controlGroupNoticeSeq}`,
+    level,
+    text,
+    createdAt: at,
+    expiresAt: at + NOTICE_TTL_MS,
+    source: CONTROL_GROUP_NOTICE_SOURCE,
+  };
+  const alive = state.notices.filter((n) => n.expiresAt > at);
+  return { ...state, notices: [notice, ...alive].slice(0, MAX_NOTICES) };
+}
+
+/**
+ * 编组槽位命令的统一落点（@since v3.34，task_058；unit.group.assign / unit.group.recall）。
+ *
+ * assign：空选择被拒（warn，不清槽位 —— 没人可编就别动它）；同槽同成员幂等（原引用返回，
+ *   零广播）；否则写入 id 副本 + info「已存入编组 N（x 单位）」。
+ * recall：槽位成员先与在场单位对账（同 unit.select 口径：悬空 id 剔除），再 set 进选择集；
+ *   空槽 / 全员离场 → 不动选择集，warn「编组 N 为空」；成功 → info「召回编组 N（x 单位）」
+ *   （x 是对账后的实际入列数，不吞差异）。选择集与 Notice 在**同一次** setState 落地。
+ */
+function applyControlGroupCommand(
+  store: CoreStore,
+  command: Extract<HudCommand, { type: 'unit.group.assign' | 'unit.group.recall' }>
+): void {
+  if (!isControlGroupSlot(command.group)) {
+    // 越界槽位：不猜、不截断，直接拒（键位表在 hud 侧同源冻结，这里只是第二道闸）。
+    store.setState((state) =>
+      withControlGroupNotice(
+        state,
+        'warn',
+        `编组槽位必须是 ${MIN_CONTROL_GROUP_SLOT}–${MAX_CONTROL_GROUP_SLOT}`
+      )
+    );
+    return;
+  }
+  store.setState((state) => {
+    if (command.type === 'unit.group.assign') {
+      const ids = state.selection.unitIds;
+      if (ids.length === 0) {
+        return withControlGroupNotice(state, 'warn', `未选中单位，编组 ${command.group} 未变更`);
+      }
+      const groups = assignControlGroup(state.selectionGroups, command.group, ids);
+      if (groups === state.selectionGroups) return state; // 幂等：零广播（与 store 约定一致）
+      return withControlGroupNotice(
+        { ...state, selectionGroups: groups },
+        'info',
+        `已存入编组 ${command.group}（${ids.length} 单位）`
+      );
+    }
+
+    // recall：对账后覆盖选择集；成员一个都不在场就不动选择集。
+    const known = new Set(state.units.map((unit) => unit.id));
+    const alive = readControlGroupUnitIds(state.selectionGroups, command.group).filter((id) =>
+      known.has(id)
+    );
+    if (alive.length === 0) {
+      return withControlGroupNotice(state, 'warn', `编组 ${command.group} 为空`);
+    }
+    const applied = applySelectionAction(state.selection, { type: 'set', unitIds: alive });
+    const nextSelection = applied.changed
+      ? applySelectionAction(applied.next, { type: 'reconcile', knownUnitIds: [...known] }).next
+      : state.selection;
+    return withControlGroupNotice(
+      { ...state, selection: nextSelection },
+      'info',
+      `召回编组 ${command.group}（${nextSelection.unitIds.length} 单位）`
+    );
   });
 }
 
@@ -223,6 +331,11 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
       // 位置立即生效于状态(世界层 UnitObject),动画只是渲染过渡;落库链路由 unit.position 自动跟随。
       case 'unit.move':
         applyUnitMove(store, command.unitIds, command.x, command.y);
+        return;
+      // @since v3.34 编组槽位(task_058):存入/召回统一落点(Notice 同次广播,见 applyControlGroupCommand)。
+      case 'unit.group.assign':
+      case 'unit.group.recall':
+        applyControlGroupCommand(store, command);
         return;
       // @since v3.33 小地图跳转(task_057):钳进世界边界后转发到 world 通道(同名事件)。
       // core 不持有相机状态,不在这里算视口 —— 消费者是场景(bridge 转发 syncCameraCenter,

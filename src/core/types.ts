@@ -30,6 +30,19 @@ export const MAX_NOTICES = 50;
 export const MAX_SELECTION_SIZE = 256;
 
 /**
+ * @since v3.34（task_058）编组槽位下限（含）。槽位即 Ctrl/⌘+数字 建组、数字键召回的那个 N。
+ * why 冻结在契约层：core 校验（runtime 拒绝越界槽位）、HUD 快捷键表、帮助浮层文案
+ *   三处共用同一份数值 —— 谁都不许自抄一份字面量，否则键位表放行 0 而 core 拒收，两侧行为漂移。
+ */
+export const MIN_CONTROL_GROUP_SLOT = 1;
+
+/**
+ * @since v3.34（task_058）编组槽位上限（含）。9 与 RTS 惯例（Ctrl+1..9）对齐，
+ *   血缘：v2 ShortcutManager 的 select-group-N / create-group-N 循环同样以 1..9 为界。
+ */
+export const MAX_CONTROL_GROUP_SLOT = 9;
+
+/**
  * @since v3.1 外部 agent 会话数上限。core/agent-link 建立会话时硬性拒绝超额请求
  * （对齐 stratix-gateway 的 MAX_PROXIES=100 收紧到本地工作台量级）。
  */
@@ -895,6 +908,15 @@ export interface WorldState {
    * 单位忙闲可由它派生：某角色有 running 任务 → 对应单位 status='busy'（core/task 同步写入）。
    */
   tasks?: CharacterTask[];
+  /**
+   * @since v3.34（task_058）编组槽位表（Ctrl/⌘+1..9 存入、数字键召回）。
+   * why ReadonlyMap：WorldState 只在进程内广播（bus 是 mitt，不 JSON 序列化），Map 引用安全；
+   *   值是存入时刻选择集的 **id 数组副本** —— 之后选择变化不影响已存编组；召回时由 runtime
+   *   对账已消失单位（同 unit.select 的悬空 id 口径）。刻意可选：契约增补不破既有构造点，
+   *   缺省 = 无编组。不落库（会话内有效，跨会话持久化留待后续任务）。
+   * 体积天然有界：槽位键域 1..9（MAX_CONTROL_GROUP_SLOT），值受 MAX_SELECTION_SIZE 截断。
+   */
+  selectionGroups?: ReadonlyMap<number, readonly string[]>;
 }
 
 // ============================================================================
@@ -941,6 +963,22 @@ export type HudCommand =
    *   （面板「移动」按钮 / 小地图指令留给后续任务），runtime 两个入口共用同一套落位逻辑。
    */
   | { type: 'unit.move'; unitIds: string[]; x: number; y: number }
+  /**
+   * @since v3.34（task_058）编组存入：把**当前选择集**快照进槽位 N（1..9）。
+   * 血缘：v2 ShortcutManager 的 create-group-N（Ctrl+N）。载荷口径：group ∈
+   *   [MIN_CONTROL_GROUP_SLOT, MAX_CONTROL_GROUP_SLOT]，越界由 runtime 拒绝（warn Notice）；
+   *   空选择被拒（不清空已有编组 —— RTS 惯例：没人可编就别动槽位）；同槽位同成员幂等
+   *   （不广播，与 store 的「无实质变化不广播」同一约定）。
+   */
+  | { type: 'unit.group.assign'; group: number }
+  /**
+   * @since v3.34（task_058）编组召回：选中槽位 N 的成员（**覆盖**当前选择集）。
+   * 血缘：v2 ShortcutManager 的 select-group-N（裸数字键）。召回即 unit.select(set) 语义 +
+   *   对账：已消失单位剔除；空槽 / 成员全部离场 → 不动选择集，回 warn Notice（绝不猜）。
+   *   反馈（「召回编组 N（x 单位）」）走 Notice，由 HUD 命令面板的 notices 区呈现 ——
+   *   单位卡分组徽标本任务不做（取舍见 task_058），Notice 是轻量替身。
+   */
+  | { type: 'unit.group.recall'; group: number }
   | { type: 'mission.assign'; missionId: string; unitIds: string[] }
   | { type: 'mission.confirm'; missionId: string; decision: ConfirmDecision }
   /**
