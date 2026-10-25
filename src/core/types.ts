@@ -723,6 +723,17 @@ export type HudCommand =
    *   最终由 world 层消费；HUD 绝不直接调 world（铁律）。
    */
   | { type: 'unit.focus'; unitId: string }
+  /**
+   * @since v3.21 右击移动（task_045）：把选中编队移动到目标点（世界坐标）。
+   *   编队落位由 core/unit/formation 的纯函数计算（网格以目标点为中心，间距 FORMATION_SPACING），
+   *   终值经 world 通道的 unit.position 逐单位广播 —— ★ 位置立即生效于状态（世界层 UnitObject
+   *   即刻更新），动画只是渲染过渡（unit-layer 的 tween）。
+   *   unitIds 里不在 WorldState.units 的 id 静默丢弃（对账口径同 unit.select：快照与输入有
+   *   时间差，悬空 id 不产生广播）。
+   *   战场右击走 WorldEvent 的**同名事件**（世界层不发命令，铁律）；本命令是 HUD 侧入口
+   *   （面板「移动」按钮 / 小地图指令留给后续任务），runtime 两个入口共用同一套落位逻辑。
+   */
+  | { type: 'unit.move'; unitIds: string[]; x: number; y: number }
   | { type: 'mission.assign'; missionId: string; unitIds: string[] }
   | { type: 'mission.confirm'; missionId: string; decision: ConfirmDecision }
   /**
@@ -839,7 +850,19 @@ export type ExpSource = 'task_completed' | 'task_failed' | 'chat_round';
 
 export type WorldEvent =
   | { type: 'unit.click'; unitId: string; mods: ClickMods }
-  | { type: 'selection.box'; bounds: Bounds }
+  /**
+   * @since v3.21 框选补全（task_045）：core 不持有坐标，算不出命中集合 —— 命中判定在世界层完成
+   *   （UnitRegistry.queryBounds），上报方把结果 id 补在事件上（runtime 对带 id 的框选落选择集）。
+   *   缺省 = 上报方没算命中（老调用方 / 合成事件），core 维持「未处理」观测口径不硬猜。
+   */
+  | {
+      type: 'selection.box';
+      bounds: Bounds;
+      /** 框选命中（或空数组 = 拖了空框 / 点了空地：明确清空选择）。 */
+      unitIds?: readonly string[];
+      /** true = 并入当前选择集（Shift 加选）；缺省/false = 覆盖。 */
+      additive?: boolean;
+    }
   | { type: 'camera.moved'; center: Point; zoom: number }
   /**
    * @since v3.12 单位落位 / 移动上报（task_033）：世界层是位置的唯一真相（UnitView 不含坐标），
@@ -848,6 +871,13 @@ export type WorldEvent =
    * why 走总线而不是 world 直接落库：world 零 IO 是分层铁律，事件是它唯一能发出的东西。
    */
   | { type: 'unit.position'; unitId: string; x: number; y: number }
+  /**
+   * @since v3.21 战场右击移动（task_045）：世界层发出的移动指令（右键短按，选中编队 + 目标点）。
+   *   与 HudCommand 的 unit.move **同名同载荷** —— 方向不同（这条是世界层上报的指令意向），
+   *   runtime 两个入口共用同一套编队落位与 unit.position 终值广播（见 applyUnitMove）。
+   *   短按/拖拽的阈值判定在世界层（右键拖远仍归 pan，不发本事件）。
+   */
+  | { type: 'unit.move'; unitIds: string[]; x: number; y: number }
   /**
    * @since v3.16 角色任务生命周期事件（task_037，task_037 规格指定走 WorldEvent 通道）。
    *   发出方是 core/task（状态迁移的真相源），携带迁移后的任务快照（不可变），

@@ -16,11 +16,19 @@
  * 形象（@since v3.10，task_029）：单位带 appearance 时，用合成好的 LPC 精灵表当身体，
  *   并播走路动画；没有形象（或合成失败）→ 回落到占位圆。合成在 app 层做
  *   （见 objects/unit-sprite-source.ts 的端口），本层只管贴图与帧步进。
+ *
+ * RTS 操作表现（@since v3.21，task_045）。血缘（v2 考古）：选中圈与移动手感移植自
+ *   master 分支 stratix-rts —— 选中圈 = sprites/AgentSprite.drawSelectionRing（主圈 2.5px，
+ *   颜色 = v2 colors.status.success，镜像 srf-success #6fcf97，与 TASK_FX_STYLE.done 同源；
+ *   v3 压成脚下椭圆）；移动 = systems/MovementSystem 的常速口径（300px/s，ease-out 收尾），
+ *   v2 的逐帧位移积分换成 Phaser tween，到向朝向保留为 4 行简化版（精灵表只有 4 行）。
+ *   ★ 位置立即生效于状态（UnitObject），tween 只是渲染过渡 —— 状态广播不会把半路上的
+ *   单位臈移到终点（sync 对活跃 tween 跳过位置贴齐）。
  */
 
 import Phaser from 'phaser';
 
-import type { UnitStatus } from '../../core/types';
+import type { Bounds, UnitStatus } from '../../core/types';
 import { resolveUnitColor } from '../theme';
 
 import { UNIT_HIT_RADIUS, type UnitObject } from './unit-object';
@@ -40,7 +48,36 @@ import {
 import type { UnitSpriteSource } from './unit-sprite-source';
 
 const UNIT_RADIUS = UNIT_HIT_RADIUS * 0.8;
-const RING_RADIUS = UNIT_RADIUS + 5;
+
+/**
+ * 选中圈样式（task_045）：脚下椭圆，单选/多选统一一套。
+ * 血缘：v2 AgentSprite.drawSelectionRing 的三层同心圈口径（主圈 2.5px）—— v3 压成
+ * 单层椭圆（俯视透视感，rx=2ry）；颜色 = v2 colors.status.success（镜像 srf-success）。
+ * 颜色可调常量：换色只改这里（皮肤 token 镜像纪律，同 TASK_FX_STYLE 先例）。
+ */
+const SELECTION_RING_STYLE = {
+  /** 选中色（srf-success #6fcf97 —— 与 task-fx 的 done ✓ 同族「正反馈」色）。 */
+  color: 0x6fcf97,
+  lineWidth: 2.5,
+  /** 椭圆半轴（世界坐标 px）。 */
+  radiusX: 24,
+  radiusY: 12,
+  /** 椭圆中心相对容器原点的 y 偏移：精灵脚≈+13、占位圆心=0，取中兼顾两种形体。 */
+  offsetY: 6,
+  /** 框选预览（拖拽中）：弱色细圈，松手前不误导「已选中」。 */
+  previewColor: 0x9ca3af,
+  previewLineWidth: 1.5,
+  previewAlpha: 0.8,
+} as const;
+
+/**
+ * 移动动画手感（task_045）。血缘：v2 MovementSystem.DEFAULT_SPEED=300 常速口径 ——
+ * 位移 240px ≈ 800ms（规格「800ms ease-out」即此典型距离）；tween 用 Sine.easeOut 收尾。
+ * v2 的 ARRIVAL_THRESHOLD=5 对应 MOVE_TWEEN_MIN_DELTA（收紧到 2：阈值内直接贴齐）。
+ */
+const MOVE_SPEED_PX_PER_SEC = 300;
+const MOVE_TWEEN_MIN_DELTA = 2;
+const MOVE_TWEEN_MIN_MS = 120;
 
 const COLOR_BY_STATUS: Record<UnitStatus, number> = {
   idle: 0x4f9cf9,
@@ -50,8 +87,6 @@ const COLOR_BY_STATUS: Record<UnitStatus, number> = {
 };
 
 const DEFAULT_STATUS_COLOR = 0x94a3b8;
-const SELECTED_RING = 0xffffff;
-const PREVIEW_RING = 0x9ca3af;
 
 /** 有形象时，占位圆缩成脚下的小色点（业务态 / 皮肤色仍然可见）。 */
 const SPRITE_DOT_RADIUS = 5;
@@ -59,13 +94,18 @@ const SPRITE_DOT_RADIUS = 5;
 interface UnitNode {
   readonly container: Phaser.GameObjects.Container;
   readonly body: Phaser.GameObjects.Arc;
-  readonly ring: Phaser.GameObjects.Arc;
+  /** 选中/预览圈（task_045：脚下椭圆，替代旧圆形环）。 */
+  readonly ring: Phaser.GameObjects.Ellipse;
   /** 形象精灵（合成成功后才有；null = 走占位圆）。 */
   sprite: Phaser.GameObjects.Sprite | null;
   /** 当前精灵对应的角色 id（换角色 → 换精灵）。 */
   spriteCharacterId: string | null;
   /** 走路动画的帧下标（cycle 里的下标，不是精灵表列号）。 */
   frameIndex: number;
+  /** 当前朝向行号（task_045：随移动方向转面；血缘 = v2 getDirection 的 4 行简化版）。 */
+  direction: number;
+  /** 进行中的移动 tween（null = 静止）；新目标会顶掉旧的（重下令就改道）。 */
+  moveTween: Phaser.Tweens.Tween | null;
 }
 
 /** 一张已缓存的形象精灵表（纹理 key + 最近使用时间）。 */
@@ -114,7 +154,9 @@ export class UnitLayer {
     for (const object of this.registry.list()) {
       live.add(object.id);
       const node = this.nodes.get(object.id) ?? this.createNode(object.id);
-      node.container.setPosition(object.position.x, object.position.y);
+      // 移动 tween 活跃时位置真相已在 UnitObject（立即生效），渲染层让 tween 走完 ——
+      // 状态广播不该把半路上的单位臈移到终点（tween 只是渲染过渡，task_045）。
+      if (!this.isMoving(node)) node.container.setPosition(object.position.x, object.position.y);
       node.body.setFillStyle(this.fillColorOf(object));
       this.refreshRing(node, object.id);
       this.syncSprite(node, object);
@@ -122,7 +164,11 @@ export class UnitLayer {
 
     for (const id of Array.from(this.nodes.keys())) {
       if (live.has(id)) continue;
-      this.nodes.get(id)?.container.destroy();
+      const node = this.nodes.get(id);
+      if (node) {
+        this.stopMoveTween(node); // 销毁前先停 tween，不给 tween 管理器留死目标
+        node.container.destroy();
+      }
       this.nodes.delete(id);
     }
   }
@@ -136,9 +182,61 @@ export class UnitLayer {
     }
   }
 
+  /**
+   * 拖拽中的本地框选预览（@since v3.21，task_045）：命中集合直出弱色圈。
+   * why 不走总线：拖拽中 pointermove 高频，命中变化经 core 广播一整份 WorldState 太贵；
+   * 松手才把终值 id 发给 core（框选闭环，见场景 onPointerUp）。
+   */
+  setPreviewHighlights(unitIds: readonly string[]): void {
+    this.preview = new Set(unitIds);
+    for (const [id, node] of this.nodes) {
+      this.refreshRing(node, id);
+    }
+  }
+
   /** 点击命中：判定规则在 UnitRegistry，这里只做转发，保持命中逻辑可单测。 */
   hitTest(x: number, y: number): UnitObject | null {
     return this.registry.hitTest({ x, y });
+  }
+
+  /** 框选命中（@since v3.21，task_045）：判定规则在 UnitRegistry（相交即中），这里只转发。 */
+  queryBounds(bounds: Bounds): string[] {
+    return this.registry.queryBounds(bounds);
+  }
+
+  /**
+   * 应用一条 unit.position 同步（@since v3.21，task_045）：位置真相（UnitObject）立即更新，
+   * 渲染层用 tween 过渡过去（★ 位置立即生效于状态，动画只是渲染过渡）。
+   * 同单位新目标会打断旧 tween（重下令就改道）；位移 ≤ 2px 直接贴齐（不值得起动画）。
+   * 手感参数见 MOVE_SPEED_PX_PER_SEC 注释（v2 血缘：常速 300px/s + ease-out 收尾）。
+   */
+  applyUnitPosition(unitId: string, x: number, y: number): void {
+    if (this.destroyed) return;
+    const object = this.registry.get(unitId);
+    if (!object) return; // 单位不在场：位置丢弃（下次 syncUnits 对账后才有视图）
+    const node = this.nodes.get(unitId);
+    const moved = object.setPosition(x, y);
+    if (!node || !moved) return;
+
+    const dx = x - node.container.x;
+    const dy = y - node.container.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance <= MOVE_TWEEN_MIN_DELTA) {
+      this.stopMoveTween(node);
+      node.container.setPosition(x, y);
+      return;
+    }
+
+    this.faceDirection(node, dx, dy);
+    this.stopMoveTween(node);
+    const duration = Math.max(MOVE_TWEEN_MIN_MS, Math.round((distance / MOVE_SPEED_PX_PER_SEC) * 1000));
+    node.moveTween = this.scene.tweens.add({
+      targets: node.container,
+      x,
+      y,
+      duration,
+      ease: 'Sine.easeOut',
+    });
   }
 
   /**
@@ -159,6 +257,7 @@ export class UnitLayer {
       this.animTimer = null;
     }
     for (const node of this.nodes.values()) {
+      this.stopMoveTween(node);
       node.container.destroy();
     }
     this.nodes.clear();
@@ -174,7 +273,18 @@ export class UnitLayer {
 
   private createNode(id: string): UnitNode {
     const body = this.scene.add.circle(0, 0, UNIT_RADIUS, COLOR_BY_STATUS.idle);
-    const ring = this.scene.add.circle(0, 0, RING_RADIUS, 0x000000, 0).setStrokeStyle(2, SELECTED_RING);
+    // 选中/预览圈：脚下椭圆（task_045，v2 血缘见 SELECTION_RING_STYLE 注释）——
+    // 透明填充打底、样式只走描边，可见性由 refreshRing 按选择/预览集合裁决。
+    const ring = this.scene.add
+      .ellipse(
+        0,
+        SELECTION_RING_STYLE.offsetY,
+        SELECTION_RING_STYLE.radiusX * 2,
+        SELECTION_RING_STYLE.radiusY * 2,
+        0x000000,
+        0
+      )
+      .setVisible(false);
     const container = this.scene.add.container(0, 0, [body, ring]);
     container.setName(`unit:${id}`);
 
@@ -185,6 +295,8 @@ export class UnitLayer {
       sprite: null,
       spriteCharacterId: null,
       frameIndex: 0,
+      direction: UNIT_WALK_DIRECTION,
+      moveTween: null,
     };
     this.nodes.set(id, node);
     this.refreshRing(node, id);
@@ -193,16 +305,47 @@ export class UnitLayer {
 
   private refreshRing(node: UnitNode, id: string): void {
     if (this.selected.has(id)) {
-      node.ring.setStrokeStyle(2, SELECTED_RING, 1).setFillStyle();
-      node.ring.setVisible(true);
+      node.ring
+        .setStrokeStyle(SELECTION_RING_STYLE.lineWidth, SELECTION_RING_STYLE.color, 1)
+        .setVisible(true);
       return;
     }
     if (this.preview.has(id)) {
-      node.ring.setStrokeStyle(1, PREVIEW_RING, 0.8).setFillStyle();
-      node.ring.setVisible(true);
+      node.ring
+        .setStrokeStyle(
+          SELECTION_RING_STYLE.previewLineWidth,
+          SELECTION_RING_STYLE.previewColor,
+          SELECTION_RING_STYLE.previewAlpha
+        )
+        .setVisible(true);
       return;
     }
     node.ring.setVisible(false);
+  }
+
+  /** 移动 tween 是否还在走（位置真相已到终点，画面还在过渡）。 */
+  private isMoving(node: UnitNode): boolean {
+    return node.moveTween !== null && node.moveTween.isActive();
+  }
+
+  private stopMoveTween(node: UnitNode): void {
+    if (!node.moveTween) return;
+    node.moveTween.stop();
+    node.moveTween = null;
+  }
+
+  /**
+   * 朝移动方向转面（血缘：v2 MovementSystem.getDirection 的 4 行简化版 —— 精灵表只有
+   * 上下左右 4 行，斜向就近取轴分量大的那侧；0=上 1=左 2=下 3=右，见 unit-sprite-sheet）。
+   */
+  private faceDirection(node: UnitNode, dx: number, dy: number): void {
+    const direction = Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? 3 : 1) : dy >= 0 ? 2 : 0;
+    if (direction === node.direction) return;
+    node.direction = direction;
+    if (node.sprite) {
+      const column = UNIT_WALK_CYCLE[node.frameIndex] ?? 0;
+      node.sprite.setFrame(unitFrameName(direction, column));
+    }
   }
 
   // ==========================================================================
@@ -334,12 +477,8 @@ export class UnitLayer {
   private attachSprite(node: UnitNode, characterId: string): void {
     const key = unitSheetTextureKey(characterId);
     const firstColumn = UNIT_WALK_CYCLE[0] ?? 0;
-    const sprite = this.scene.add.sprite(
-      0,
-      0,
-      key,
-      unitFrameName(UNIT_WALK_DIRECTION, firstColumn)
-    );
+    // 帧行取 node.direction（task_045：单位转面后换精灵时保持当前朝向）
+    const sprite = this.scene.add.sprite(0, 0, key, unitFrameName(node.direction, firstColumn));
     sprite.setOrigin(0.5, 0.75);
     sprite.setScale(UNIT_SPRITE_SCALE);
     node.container.add(sprite);
@@ -380,13 +519,13 @@ export class UnitLayer {
     });
   }
 
-  /** 推进一帧（全体单位同步走一步 —— 同一套节奏，看起来像一支队伍）。 */
+  /** 推进一帧（全体单位同一套节奏，看起来像一支队伍；各行各面，task_045）。 */
   private advanceFrames(): void {
     for (const node of this.nodes.values()) {
       if (!node.sprite) continue;
       node.frameIndex = (node.frameIndex + 1) % UNIT_WALK_CYCLE.length;
       const column = UNIT_WALK_CYCLE[node.frameIndex] ?? 0;
-      node.sprite.setFrame(unitFrameName(UNIT_WALK_DIRECTION, column));
+      node.sprite.setFrame(unitFrameName(node.direction, column));
     }
   }
 }

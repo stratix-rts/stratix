@@ -81,6 +81,36 @@ export const TASK_FX_STYLE: TaskFxStyle = {
 };
 
 // ============================================================================
+// 右击移动的目标点涟漪样式（@since v3.21，task_045）
+// ============================================================================
+
+/**
+ * 目标点涟漪的可调参数（常量可调，同 TASK_FX_STYLE 先例）。
+ * 血缘（v2 考古）：ParticleEffects.agentArrivalRipple —— 半径 10→50、alpha 0.7→0、
+ * 600ms Power2.easeOut、2px 描边 + 10% 充填；v3 颜色取绿（srf-success 镜像，与 done ✓
+ * 同族「去了/成了」的正反馈色；v2 用的是主题主色，这里按 task_045 规格改绿）。
+ */
+export interface MoveRippleStyle {
+  /** 涟漪色（镜像 srf-success #6fcf97）。 */
+  readonly color: number;
+  readonly radiusFrom: number;
+  readonly radiusTo: number;
+  readonly lineWidth: number;
+  readonly alphaFrom: number;
+  readonly durationMs: number;
+}
+
+/** 默认涟漪样式（v2 口径原样，只换色）。 */
+export const MOVE_RIPPLE_STYLE: MoveRippleStyle = {
+  color: 0x6fcf97,
+  radiusFrom: 10,
+  radiusTo: 50,
+  lineWidth: 2,
+  alphaFrom: 0.7,
+  durationMs: 600,
+};
+
+// ============================================================================
 // 状态板
 // ============================================================================
 

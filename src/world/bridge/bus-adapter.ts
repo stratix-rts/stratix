@@ -6,7 +6,9 @@
  *   - 场景 → core：场景调用本文件返回的 WorldEventSink，桥接层转成 WorldEvent 发回 core；
  *   - world 通道 → 场景（@since v3.17，task_038）：订阅 world 通道上的 task.started /
  *     completed / failed 生命周期事件（core/task 发出，挂在 world 通道 —— 见 types.ts 的取舍注），
- *     筛出这三条转给可选端口钩子 syncTaskEvent，驱动战场工作表现（objects/task-fx*）。
+ *     筛出这三条转给可选端口钩子 syncTaskEvent，驱动战场工作表现（objects/task-fx*）；
+ *   - world 通道 → 场景（@since v3.21，task_045）：同一条订阅还转发 unit.position ——
+ *     右击移动时 runtime 把编队终值广播出来，场景据此更新 UnitObject（立即）并 tween（表现）。
  * 输出：端口回调（渲染侧）+ bus 的 world 通道（业务侧）。
  * 禁止事项：
  *   1. import phaser 或任何 hud / vue / legacy(stratix-rts) 文件 —— 铁律：world 只认识 core/types 与 core/bus；
@@ -26,7 +28,6 @@ import type {
   WorldEvent,
   WorldState,
 } from '../../core/types';
-
 import type { TaskFxPhase } from '../objects/task-fx';
 
 export type { TaskFxPhase } from '../objects/task-fx';
@@ -45,12 +46,24 @@ export interface WorldScenePort {
    * （objects/task-fx.ts 的 applyTaskFxEvent）与表现更新（objects/task-fx-layer.ts）。
    */
   syncTaskEvent?(task: CharacterTask, phase: TaskFxPhase): void;
+  /**
+   * 单位位置同步钩子（@since v3.21，task_045）：world 通道上的 unit.position 转发进场景 ——
+   * 右击移动时 runtime 把编队终值广播出来，场景据此更新 UnitObject（位置真相立即生效）
+   * 并 tween 过渡（纯渲染）。可选成员：不实现不破编译（同 syncTaskEvent 惯例）。
+   * 回环无害：场景自己上报的落位也会走这条转发回来 —— 场景侧应用是幂等的（位置相同即 no-op）。
+   */
+  syncUnitPosition?(unitId: string, x: number, y: number): void;
 }
 
-/** 场景侧的交互出口：场景调这四个方法，桥接层负责转成 WorldEvent 发给 core。 */
+/** 场景侧的交互出口：场景调这些方法，桥接层负责转成 WorldEvent 发给 core。 */
 export interface WorldEventSink {
   unitClick(unitId: string, mods: ClickMods): void;
-  selectionBox(bounds: Bounds): void;
+  /**
+   * 框选上报（@since v3.21，task_045：命中判定补全）。bounds 原样上报；
+   * hitUnitIds 给了就把命中结果一并补在事件上（core 无坐标算不出命中）—— 空数组也是
+   * 有意义的选择（拖空框/点空地 = 清空选择）；additive = Shift 加选。
+   */
+  selectionBox(bounds: Bounds, hitUnitIds?: readonly string[], additive?: boolean): void;
   cameraMoved(center: Point, zoom: number): void;
   /** 补发被合并窗口吞掉的最后一次相机位姿（拖拽结束 / 滚轮停止时调用）。 */
   flushCamera(): void;
@@ -60,6 +73,12 @@ export interface WorldEventSink {
    * 高频移动的防抖归消费方（app 层持久化订阅者，2-5s 批量落库）。
    */
   unitPosition(unitId: string, x: number, y: number): void;
+  /**
+   * 右击移动指令（@since v3.21，task_045）：把选中编队移动到目标点（世界坐标）。
+   * 走 WorldEvent 的 unit.move（铁律：世界层不发 HudCommand）；runtime 与 HudCommand
+   * 的 unit.move 共用同一套编队落位（core/unit/formation）与 unit.position 终值广播。
+   */
+  unitMove(unitIds: readonly string[], x: number, y: number): void;
 }
 
 export interface WorldBridge extends WorldEventSink {
@@ -95,11 +114,13 @@ export function createWorldBridge(
     port.syncSelection(state.selection);
   });
 
-  // task_* 生命周期（@since v3.17，task_038）：core/task 发在 world 通道上的事件筛三条转场景。
+  // world 通道 → 场景（@since v3.17，task_038；@since v3.21，task_045 补 unit.position）：
+  //   task.* 生命周期（core/task 发出）筛三条转 syncTaskEvent；unit.position（runtime 发出的
+  //   右击移动终值，或场景上报的回环）转 syncUnitPosition。
   // why 订阅而不是让场景自己接 bus：world 侧进出 core 只有本桥一个口子（铁律），
   //   场景保持"只被驱动"的端口形态 —— 与 state 同一口径，也方便 destroy 一次退订干净。
   // why 在这里 switch 而不是抽个判定函数：event.task 只有在字面量 case 里才被 TS 收窄。
-  const unsubscribeTasks = onWorldEvent((event: WorldEvent) => {
+  const unsubscribeWorldEvents = onWorldEvent((event: WorldEvent) => {
     if (destroyed) return;
     switch (event.type) {
       case 'task.started':
@@ -110,6 +131,10 @@ export function createWorldBridge(
         break;
       case 'task.failed':
         port.syncTaskEvent?.(event.task, 'failed');
+        break;
+      case 'unit.position':
+        // 场景自己上报的落位也会回到这里（同一通道）—— 场景侧幂等，重复应用是 no-op。
+        port.syncUnitPosition?.(event.unitId, event.x, event.y);
         break;
       default:
         break;
@@ -129,9 +154,19 @@ export function createWorldBridge(
       emitWorldEvent({ type: 'unit.click', unitId, mods });
     },
 
-    selectionBox(bounds: Bounds): void {
+    selectionBox(bounds: Bounds, hitUnitIds?: readonly string[], additive?: boolean): void {
       if (destroyed) return;
-      emitWorldEvent({ type: 'selection.box', bounds });
+      // 带 id 才补字段：不带 id 的调用保持老事件形状（dev 观测 / 单测夹具原样可见）。
+      const event: WorldEvent =
+        hitUnitIds === undefined
+          ? { type: 'selection.box', bounds }
+          : { type: 'selection.box', bounds, unitIds: [...hitUnitIds], additive: additive === true };
+      emitWorldEvent(event);
+    },
+
+    unitMove(unitIds: readonly string[], x: number, y: number): void {
+      if (destroyed) return;
+      emitWorldEvent({ type: 'unit.move', unitIds: [...unitIds], x, y });
     },
 
     unitPosition(unitId: string, x: number, y: number): void {
@@ -160,7 +195,7 @@ export function createWorldBridge(
       destroyed = true;
       pendingCamera = null;
       unsubscribeState();
-      unsubscribeTasks();
+      unsubscribeWorldEvents();
     },
   };
 

@@ -6,10 +6,10 @@
  * mock 掉总线等于把被测行为一起 mock 掉了。隔离靠 resetBus() 与每个用例新建的 createStore()。
  */
 
-import { emitCommand, emitWorldEvent, onState, resetBus, type Unsubscribe } from '../bus';
+import { emitCommand, emitWorldEvent, onState, onWorldEvent, resetBus, type Unsubscribe } from '../bus';
 import { createCoreRuntime, type CoreRuntime, type UnhandledChannel } from '../runtime';
 import { createStore, type CoreStore } from '../store';
-import type { UnitView, WorldState } from '../types';
+import type { UnitView, WorldEvent, WorldState } from '../types';
 
 const NO_MODS = { shift: false, ctrl: false, meta: false, alt: false };
 
@@ -294,5 +294,193 @@ describe('world 事件：level.up（task_040）', () => {
 
     expect(unhandled).toHaveLength(0);
     expect(states).toHaveLength(0);
+  });
+});
+
+// ============================================================================
+// unit.move（@since v3.21，task_045）：编队落位 → unit.position 终值广播。
+// 集成链路断言：move 命令 → 过滤已知单位 → core/unit/formation 网格终值 →
+// 逐单位 unit.position 广播（世界层 tween 与 app 层 task_033 防抖落库消费同一条事件，
+// 落库跟随自动成立 —— 位置立即生效于状态，动画只是渲染过渡）。
+// ============================================================================
+
+describe('HudCommand unit.move：命令 → 编队终值 → unit.position 广播', () => {
+  interface PositionEvent {
+    readonly type: string;
+    readonly unitId: string;
+    readonly x: number;
+    readonly y: number;
+  }
+
+  function collectPositions(): { events: PositionEvent[]; stop: Unsubscribe } {
+    const events: PositionEvent[] = [];
+    const stop = onWorldEvent((event: WorldEvent) => {
+      if (event.type === 'unit.position') events.push(event);
+    });
+    return { events, stop };
+  }
+
+  test('集成：命令 → 逐单位广播终值（网格以目标点为中心）；WorldState 不变', () => {
+    const { store, states, stop } = harness();
+    cleanups.push(stop);
+    const { events, stop: off } = collectPositions();
+    cleanups.push(off);
+
+    emitCommand({ type: 'unit.move', unitIds: ['u1', 'u2', 'u3'], x: 1000, y: 0 });
+
+    // 3 人一行（cols=ceil(√3)=2 → 实际 2 列 2 行，首行 2 格次行 1 格，中心对齐目标点）：
+    // 网格几何的穷举在 formation.test.ts；这里断言「命令 → 事件」链路与终值口径。
+    expect(events).toEqual([
+      { type: 'unit.position', unitId: 'u1', x: 975, y: -25 },
+      { type: 'unit.position', unitId: 'u2', x: 1025, y: -25 },
+      { type: 'unit.position', unitId: 'u3', x: 975, y: 25 },
+    ]);
+    // 位置不进 WorldState（UnitView 无坐标 —— 契约铁律），也不触发 state 广播
+    expect(store.getState().units).toEqual(UNITS);
+    expect(states).toHaveLength(0);
+  });
+
+  test('单个单位 → 目标点本点；空编队 → 零广播零变化', () => {
+    const { states, stop } = harness();
+    cleanups.push(stop);
+    const { events, stop: off } = collectPositions();
+    cleanups.push(off);
+
+    emitCommand({ type: 'unit.move', unitIds: ['u2'], x: -300, y: 400 });
+    expect(events).toEqual([{ type: 'unit.position', unitId: 'u2', x: -300, y: 400 }]);
+
+    events.length = 0;
+    emitCommand({ type: 'unit.move', unitIds: [], x: 0, y: 0 });
+    expect(events).toHaveLength(0);
+    expect(states).toHaveLength(0);
+  });
+
+  test('未知单位静默丢弃（快照与输入有时间差，对账口径同 unit.select）', () => {
+    const { stop } = harness();
+    cleanups.push(stop);
+    const { events, stop: off } = collectPositions();
+    cleanups.push(off);
+
+    emitCommand({ type: 'unit.move', unitIds: ['u1', 'ghost'], x: 0, y: 0 });
+
+    expect(events).toEqual([{ type: 'unit.position', unitId: 'u1', x: 0, y: 0 }]);
+  });
+
+  test('选择集不因移动而变（RTS 惯例：选中跟着队伍走）', () => {
+    const { store, stop } = harness();
+    cleanups.push(stop);
+    emitCommand({ type: 'unit.select', unitIds: ['u1', 'u2'], mode: 'set' });
+    const { stop: off } = collectPositions();
+    cleanups.push(off);
+
+    emitCommand({ type: 'unit.move', unitIds: ['u1', 'u2'], x: 500, y: 500 });
+
+    expect(store.getState().selection.unitIds).toEqual(['u1', 'u2']);
+  });
+});
+
+describe('WorldEvent unit.move：战场右击入口，与 HudCommand 同一套落位', () => {
+  test('同名事件（方向不同）→ 同样的编队终值广播', () => {
+    const { stop } = harness();
+    cleanups.push(stop);
+    const events: WorldEvent[] = [];
+    const off = onWorldEvent((event) => {
+      if (event.type === 'unit.position') events.push(event);
+    });
+    cleanups.push(off);
+
+    emitWorldEvent({ type: 'unit.move', unitIds: ['u1', 'u2', 'u3'], x: 100, y: 100 });
+
+    // 3 人：2 列 2 行，中心对齐目标点，间距 50
+    expect(events).toEqual([
+      { type: 'unit.position', unitId: 'u1', x: 75, y: 75 },
+      { type: 'unit.position', unitId: 'u2', x: 125, y: 75 },
+      { type: 'unit.position', unitId: 'u3', x: 75, y: 125 },
+    ]);
+  });
+});
+
+// ============================================================================
+// selection.box 带命中 id（@since v3.21，task_045）：框选闭环 —— 命中判定在世界侧
+// （core 无坐标），上报方把结果补在事件上，core 才落选择集。
+// ============================================================================
+
+describe('world 事件：selection.box（带命中 id 的框选闭环）', () => {
+  test('带 unitIds → 覆盖选择集并广播一次', () => {
+    const { store, states, stop } = harness();
+    cleanups.push(stop);
+
+    emitWorldEvent({
+      type: 'selection.box',
+      bounds: { x: 0, y: 0, width: 100, height: 100 },
+      unitIds: ['u2', 'u3'],
+    });
+
+    expect(store.getState().selection.unitIds).toEqual(['u2', 'u3']);
+    expect(states).toHaveLength(1);
+  });
+
+  test('additive=true → 并入当前选择集（Shift 加选）', () => {
+    const { store, stop } = harness();
+    cleanups.push(stop);
+
+    emitCommand({ type: 'unit.select', unitIds: ['u1'], mode: 'set' });
+    emitWorldEvent({
+      type: 'selection.box',
+      bounds: { x: 0, y: 0, width: 100, height: 100 },
+      unitIds: ['u3'],
+      additive: true,
+    });
+
+    expect(store.getState().selection.unitIds).toEqual(['u1', 'u3']);
+  });
+
+  test('零命中 → 清空选择（拖空框/点空地 = 明确的取消选择）', () => {
+    const { store, states, stop } = harness();
+    cleanups.push(stop);
+    emitCommand({ type: 'unit.select', unitIds: ['u2'], mode: 'set' });
+
+    emitWorldEvent({ type: 'selection.box', bounds: { x: 0, y: 0, width: 10, height: 10 }, unitIds: [] });
+
+    expect(store.getState().selection.unitIds).toEqual([]);
+    expect(states).toHaveLength(2);
+  });
+
+  test('带悬空 id → 对账丢弃（框选命中来自注册表，与快照可能有时间差）', () => {
+    const { store, stop } = harness();
+    cleanups.push(stop);
+
+    emitWorldEvent({
+      type: 'selection.box',
+      bounds: { x: 0, y: 0, width: 100, height: 100 },
+      unitIds: ['u2', 'ghost'],
+    });
+
+    expect(store.getState().selection.unitIds).toEqual(['u2']);
+  });
+
+  test('Shift 拖空框 → 加空集 = 无操作（不广播）', () => {
+    const { store, states, stop } = harness();
+    cleanups.push(stop);
+    emitCommand({ type: 'unit.select', unitIds: ['u2'], mode: 'set' });
+
+    emitWorldEvent({
+      type: 'selection.box',
+      bounds: { x: 0, y: 0, width: 10, height: 10 },
+      unitIds: [],
+      additive: true,
+    });
+
+    expect(store.getState().selection.unitIds).toEqual(['u2']);
+    expect(states).toHaveLength(1); // 只有 set 那次
+  });
+
+  test('不带 unitIds 的老事件 → 维持「未处理」观测口径（不硬猜）', () => {
+    const { unhandled, stop } = harness();
+    cleanups.push(stop);
+
+    emitWorldEvent({ type: 'selection.box', bounds: { x: 0, y: 0, width: 100, height: 100 } });
+
+    expect(unhandled).toEqual([{ channel: 'world', type: 'selection.box' }]);
   });
 });

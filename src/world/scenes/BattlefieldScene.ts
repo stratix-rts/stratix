@@ -5,13 +5,22 @@
  *   - core/bus 的 state 通道（经 bridge/bus-adapter 转发到本场景的 WorldScenePort 回调）；
  *   - core/bus 的 world 通道上的 task.started/completed/failed（@since v3.17，task_038，
  *     经同一个桥接层筛出并转发到 syncTaskEvent）——驱动单位头顶的工作表现（objects/task-fx*）；
+ *   - core/bus 的 world 通道上的 unit.position（@since v3.21，task_045，转发到 syncUnitPosition）
+ *     —— 右击移动时 runtime 把编队终值广播回来，场景立即写进 UnitObject 并 tween 过渡；
  *   - 浏览器指针输入（按下 / 移动 / 松开 / 滚轮）。
- * 输出：把交互转成 WorldEvent（unit.click / selection.box / camera.moved），经桥接层发回 core。
+ * 输出：把交互转成 WorldEvent（unit.click / selection.box / unit.move / camera.moved），
+ *   经桥接层发回 core。
+ * RTS 操作语义（@since v3.21，task_045。血缘：交互口径移植 v2 StratixRTSGameScene 的
+ *   右击移动惯例，判定参数自 v2 MovementSystem / FormationSystem 考古）：
+ *   - 框选闭环：拖拽中本地预览命中（弱色圈，不经总线），松手把命中 id 补在 selection.box
+ *     事件上（core 无坐标算不出命中）；拖空框 / 点空地 = 清空选择；Shift 拖 = 加选；
+ *   - 右击移动：右键短按（位移 < DRAG_THRESHOLD_PX）= 对选中编队发 unit.move（目标点涟漪反馈），
+ *     右键拖远仍归平移；无选中 = 纯无操作；中键始终纯平移。
  * 禁止事项：
  *   1. import 任何 hud / vue / legacy(stratix-rts) 代码 —— 铁律：world 只认识 core/types 与 core/bus；
  *   2. 持有业务状态 —— 业务真相在 core；本场景只渲染 UnitView，并只把单位 id 回传上去；
- *   3. 在本文件里写钳制 / 命中规则 —— 规则分别住在 camera/camera-math.ts 与 objects/unit-registry.ts，
- *      这里只负责调用与编排；
+ *   3. 在本文件里写钳制 / 命中 / 编队规则 —— 规则分别住在 camera/camera-math.ts、
+ *      objects/unit-registry.ts 与 core/unit/formation.ts，这里只负责调用与编排；
  *   4. 自己缓存 WorldState 再 diff —— 对账由 UnitRegistry 统一负责；
  *   5. 留下未清理的监听 / 显示对象 —— shutdown 时统一销毁（perf：资源必须可清理）。
  */
@@ -43,7 +52,7 @@ const BOUNDS_FILL = 0x161c27;
 const GRID_COLOR = 0x232c3d;
 const GRID_STEP = 200;
 /** 空状态提示文字（世界坐标层，随镜头移动；有单位后自动隐藏）。 */
-const EMPTY_HINT = '空战场 · 0 单位接入（单位来自 gateway 真实数据流）\n拖拽平移 · 滚轮缩放 · 空框选无害';
+const EMPTY_HINT = '空战场 · 0 单位接入（单位来自 gateway 真实数据流）\n左键拖框选 · 右键短按移动选中 · 右/中键拖平移 · 滚轮缩放';
 
 /** 超过该屏幕位移才算"拖拽"，否则按点击处理。 */
 const DRAG_THRESHOLD_PX = 4;
@@ -85,6 +94,15 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   private dragStartWorld: Point = { x: 0, y: 0 };
   private draggedFar = false;
   private cameraFlushScheduled = false;
+  /** 平移起手的键（task_045）：右键短按 = 移动指令候选；中键纯平移。 */
+  private panButton: 'right' | 'middle' | null = null;
+  /** 框选拖拽中的本地预览命中（task_045）：null = 当前没有拖拽。 */
+  private boxPreviewIds: readonly string[] | null = null;
+  /**
+   * 最新选择集镜像（task_045）：右键移动指令的载荷来源。不另立真相 —— 每次 syncSelection
+   * 覆盖，与 core 广播严格一致（拖拽中的预览不算选中）。
+   */
+  private selectedUnitIds: readonly string[] = [];
 
   constructor() {
     super(BATTLEFIELD_SCENE_KEY);
@@ -125,6 +143,9 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     this.input.on('pointerup', this.onPointerUp, this);
     this.input.on('pointerupoutside', this.onPointerUp, this);
     this.input.on('wheel', this.onWheel, this);
+    // 右键语义（task_045）：浏览器默认的右键菜单会吃掉 pointerup，短按判定就废了 ——
+    // 顺手也让右键拖拽平移不再被菜单打断（战场是全屏画布，没有"右键菜单"的正当需求）。
+    this.input.mouse?.disableContextMenu();
 
     this.scale.on('resize', this.onResize, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.onShutdown, this);
@@ -182,7 +203,22 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   }
 
   syncSelection(selection: SelectionState): void {
+    // 选择集镜像（task_045）：右键移动的载荷来源，与广播严格一致。
+    this.selectedUnitIds = selection.unitIds;
     this.unitLayer.setSelection(selection.unitIds, selection.previewUnitIds);
+    // 拖拽中的本地预览优先于状态投影（状态里的 previewUnitIds 恒空 —— 预览不出总线）：
+    // 广播会重置预览集，拖拽未结束时补一次本地预览，弱色圈不至于闪没。
+    if (this.boxPreviewIds) this.unitLayer.setPreviewHighlights(this.boxPreviewIds);
+  }
+
+  /**
+   * 单位位置同步（@since v3.21，task_045；由桥接层转发 world 通道的 unit.position）。
+   * 来源两路：runtime 广播的右击移动编队终值（→ tween 过渡）；场景自己上报的回环
+   * （新单位落位，位置相同即 no-op）。浮标跟人走：位置真相已更新，表现层重对账一次。
+   */
+  syncUnitPosition(unitId: string, x: number, y: number): void {
+    this.unitLayer.applyUnitPosition(unitId, x, y);
+    this.taskFxLayer.sync();
   }
 
   /**
@@ -199,10 +235,13 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   // ==========================================================================
 
   private onPointerDown(pointer: Phaser.Input.Pointer): void {
-    // 右键 / 中键拖拽 = 平移；左键留给框选与点击
+    // 右键 / 中键拖拽 = 平移候选；左键留给框选与点击。
+    // 右键在 pointerup 才分流（task_045）：短按 = 移动指令（对选中编队），拖远 = 平移。
     if (pointer.rightButtonDown() || pointer.middleButtonDown()) {
       this.dragMode = 'pan';
+      this.panButton = pointer.rightButtonDown() ? 'right' : 'middle';
       this.draggedFar = false;
+      this.dragStartScreen = { x: pointer.x, y: pointer.y };
       this.dragLastScreen = { x: pointer.x, y: pointer.y };
       return;
     }
@@ -227,12 +266,17 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
         (this.dragLastScreen.y - pointer.y) / zoom
       );
       this.dragLastScreen = { x: pointer.x, y: pointer.y };
+      // 起手以来的累计位移超阈值才算"拖拽平移"；没超就保持短按候选（pointerup 分流用，task_045）
+      if (this.screenDistance(pointer) > DRAG_THRESHOLD_PX) this.draggedFar = true;
       return;
     }
 
     if (this.screenDistance(pointer) > DRAG_THRESHOLD_PX) this.draggedFar = true;
     if (this.dragMode === 'box' && this.draggedFar) {
-      this.selectionBox.show(this.boxBounds(this.dragStartWorld, this.toWorldPoint(pointer)));
+      const bounds = this.boxBounds(this.dragStartWorld, this.toWorldPoint(pointer));
+      this.selectionBox.show(bounds);
+      // 框选预览（task_045）：命中本地直出弱色圈（高频，不经总线），松手才上报终值 id。
+      this.updateBoxPreview(bounds);
     }
   }
 
@@ -242,14 +286,22 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
 
     if (mode === 'pan') {
       this.bridge.flushCamera();
+      // 右键短按（没拖成平移）= 移动指令：选中编队 → 目标点（task_045）。
+      // 无选中 = 纯无操作（不硬凑聚焦）；中键短按 = 无操作。
+      if (this.panButton === 'right' && !this.draggedFar) this.issueMoveCommand(pointer);
+      this.panButton = null;
       return;
     }
 
     if (mode === 'box') {
       const bounds = this.boxBounds(this.dragStartWorld, this.toWorldPoint(pointer));
       this.selectionBox.hide();
-      // 没拖动就是点在空地上：契约里没有"点击空地"事件，不硬凑一个 selection.box 上去
-      if (this.draggedFar) this.bridge.selectionBox(bounds);
+      this.clearBoxPreview();
+      // 框选闭环（task_045）：命中判定在本层（core 无坐标），终值 id 补在事件上。
+      // 拖空框 = 清空选择（拖了个空框也是一次明确的选择动作）；点空地 = 零面积框选，
+      // 同样清空（RTS 惯例的取消选择；Shift 按住 = 加选语义，命中空自然是 no-op，core 也不广播）。
+      const additive = readModifiers(pointer).shift;
+      this.bridge.selectionBox(bounds, this.draggedFar ? this.unitLayer.queryBounds(bounds) : [], additive);
       return;
     }
 
@@ -257,6 +309,30 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
       const hit = this.unitLayer.hitTest(this.dragStartWorld.x, this.dragStartWorld.y);
       if (hit) this.bridge.unitClick(hit.id, readModifiers(pointer));
     }
+  }
+
+  /** 右键短按 → unit.move（task_045）：目标点涟漪（视觉反馈）+ 指令上报（编队落位在 core 算）。 */
+  private issueMoveCommand(pointer: Phaser.Input.Pointer): void {
+    if (this.selectedUnitIds.length === 0) return;
+    const target = this.toWorldPoint(pointer);
+    this.taskFxLayer.ripple(target.x, target.y);
+    this.bridge.unitMove(this.selectedUnitIds, target.x, target.y);
+  }
+
+  /** 框选拖拽中的预览命中更新（task_045）：命中集没变就不重画（弱化高频重绘）。 */
+  private updateBoxPreview(bounds: Bounds): void {
+    const hits = this.unitLayer.queryBounds(bounds);
+    const nextKey = hits.join('\u0000');
+    const prevKey = this.boxPreviewIds === null ? null : this.boxPreviewIds.join('\u0000');
+    if (nextKey === prevKey) return;
+    this.boxPreviewIds = hits;
+    this.unitLayer.setPreviewHighlights(hits);
+  }
+
+  /** 收掉框选预览（task_045）：松手 / 场景关闭时调用；终值选中由 core 广播回来驱动。 */
+  private clearBoxPreview(): void {
+    this.boxPreviewIds = null;
+    this.unitLayer.setPreviewHighlights([]);
   }
 
   private onWheel(
@@ -281,6 +357,11 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     this.taskFxLayer.destroy();
     this.selectionBox.destroy();
     this.units.destroy();
+    // 交互态复位（task_045）：场景重启（Phaser 复用场景实例）时不携带上一次的拖拽残留。
+    this.dragMode = 'none';
+    this.panButton = null;
+    this.boxPreviewIds = null;
+    this.draggedFar = false;
   }
 
   // ==========================================================================

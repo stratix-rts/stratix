@@ -387,3 +387,102 @@ describe('任务生命周期 → syncTaskEvent 转发', () => {
     expect(calls).toHaveLength(0);
   });
 });
+
+// ============================================================================
+// unit.move 出口 & unit.position 转发（@since v3.21，task_045）
+// ============================================================================
+
+describe('场景 → core：unit.move（右击移动指令）', () => {
+  test('unitMove 转成 unit.move 事件（world → core 铁律：世界层不发 HudCommand）', () => {
+    const { port } = createFakePort();
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+    const { events, stop } = collectWorldEvents();
+    stops.push(stop);
+
+    bridge.unitMove(['u1', 'u2'], 320, -60);
+
+    expect(events).toEqual([{ type: 'unit.move', unitIds: ['u1', 'u2'], x: 320, y: -60 }]);
+  });
+
+  test('destroy 后的迟到指令被丢弃（不为已死场景再发一次）', () => {
+    const { port } = createFakePort();
+    const bridge = createWorldBridge(port, { now: clock });
+    const { events, stop } = collectWorldEvents();
+    stops.push(stop);
+
+    bridge.destroy();
+    bridge.unitMove(['u1'], 0, 0);
+
+    expect(events).toHaveLength(0);
+  });
+
+  test('selectionBox 携带命中 id 与加选标志（框选闭环：判定在 world，id 补在事件上）', () => {
+    const { port } = createFakePort();
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+    const { events, stop } = collectWorldEvents();
+    stops.push(stop);
+
+    const bounds = { x: 10, y: 20, width: 300, height: 400 };
+    bridge.selectionBox(bounds, ['u2', 'u3'], true);
+
+    expect(events).toEqual([
+      { type: 'selection.box', bounds, unitIds: ['u2', 'u3'], additive: true },
+    ]);
+  });
+
+  test('selectionBox 不带命中 id → 保持老事件形状（兼容 dev 观测 / 老调用方）', () => {
+    const { port } = createFakePort();
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+    const { events, stop } = collectWorldEvents();
+    stops.push(stop);
+
+    bridge.selectionBox({ x: 0, y: 0, width: 5, height: 5 });
+
+    expect(events).toEqual([{ type: 'selection.box', bounds: { x: 0, y: 0, width: 5, height: 5 } }]);
+  });
+});
+
+describe('world 通道 → 场景：unit.position 转发（右击移动的编队终值 → 场景 tween）', () => {
+  function createPositionPort() {
+    const calls: { unitId: string; x: number; y: number }[] = [];
+    const port: WorldScenePort = {
+      syncUnits: () => {},
+      syncSelection: () => {},
+      syncUnitPosition: (unitId, x, y) => calls.push({ unitId, x, y }),
+    };
+    return { port, calls };
+  }
+
+  test('runtime 广播的 unit.position 转发给 syncUnitPosition', () => {
+    const { port, calls } = createPositionPort();
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+
+    emitWorldEvent({ type: 'unit.position', unitId: 'unit_ch_1', x: 480, y: -120 });
+
+    expect(calls).toEqual([{ unitId: 'unit_ch_1', x: 480, y: -120 }]);
+  });
+
+  test('port 不实现 syncUnitPosition（可选钩子）：安静跳过，不炸不报', () => {
+    const { port } = createFakePort(); // 老桩：没有 syncUnitPosition
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+
+    expect(() => {
+      emitWorldEvent({ type: 'unit.position', unitId: 'u1', x: 1, y: 2 });
+    }).not.toThrow();
+  });
+
+  test('destroy 之后不再转发（场景已死，不为它驱动 tween）', () => {
+    const { port, calls } = createPositionPort();
+    const bridge = createWorldBridge(port, { now: clock });
+
+    bridge.destroy();
+    emitWorldEvent({ type: 'unit.position', unitId: 'u1', x: 1, y: 2 });
+
+    expect(calls).toHaveLength(0);
+  });
+});

@@ -82,6 +82,9 @@ function describe(event: WorldEvent): string {
       return `camera.moved    zoom=${event.zoom.toFixed(2)} @ ${Math.round(event.center.x)},${Math.round(event.center.y)}`;
     case 'unit.position':
       return `unit.position   ${event.unitId} @ ${Math.round(event.x)},${Math.round(event.y)}`;
+    // 右击移动指令（@since v3.21，task_045）：世界层发出的意向，落位由 core 算好广播回来。
+    case 'unit.move':
+      return `unit.move       ${event.unitIds.length} 单位 @ ${Math.round(event.x)},${Math.round(event.y)}`;
     // 任务生命周期（@since v3.16，task_037）：core/task 发出的域事件，面板里看一眼相位与角色。
     case 'task.queued':
     case 'task.started':

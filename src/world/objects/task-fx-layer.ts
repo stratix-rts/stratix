@@ -19,7 +19,7 @@
 
 import Phaser from 'phaser';
 
-import { TASK_FX_STYLE, type TaskFxBoard, type TaskFxStyle, type TaskMarkerKind } from './task-fx';
+import { MOVE_RIPPLE_STYLE, TASK_FX_STYLE, type MoveRippleStyle, type TaskFxBoard, type TaskFxStyle, type TaskMarkerKind } from './task-fx';
 import type { UnitRegistry } from './unit-registry';
 
 export interface TaskFxLayerOptions {
@@ -94,6 +94,37 @@ export class TaskFxLayer {
       node.container.destroy();
     }
     this.nodes.clear();
+  }
+
+  /**
+   * 右击移动的目标点涟漪（@since v3.21，task_045）：一次性短动画（涨圈 + 淡出后自毁），
+   * 参数血缘 v2 ParticleEffects.agentArrivalRipple（见 MOVE_RIPPLE_STYLE 注释）。
+   * why 不进 nodes 对账：涟漪没有生命周期真相，画完即走 —— 与浮标（跟随单位、有换相
+   *   语义）不同源；场景 shutdown 时 Phaser 会随场景清掉残影 tween 与 graphics。
+   */
+  ripple(x: number, y: number, style: MoveRippleStyle = MOVE_RIPPLE_STYLE): void {
+    if (this.destroyed) return;
+    const graphics = this.scene.add.graphics();
+    graphics.setDepth(4); // 浮标之下、单位之上：目标点在空地，不遮头顶浮标
+    const state = { radius: style.radiusFrom, alpha: style.alphaFrom };
+    this.scene.tweens.add({
+      targets: state,
+      radius: style.radiusTo,
+      alpha: 0,
+      duration: style.durationMs,
+      ease: 'Power2.easeOut',
+      onUpdate: () => {
+        const alpha = Math.max(0, state.alpha);
+        graphics.clear();
+        graphics.lineStyle(style.lineWidth, style.color, alpha);
+        graphics.strokeCircle(x, y, state.radius);
+        graphics.fillStyle(style.color, alpha * 0.1);
+        graphics.fillCircle(x, y, state.radius);
+      },
+      onComplete: () => {
+        graphics.destroy();
+      },
+    });
   }
 
   // ==========================================================================

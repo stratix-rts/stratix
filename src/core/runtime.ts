@@ -30,13 +30,14 @@
  */
 
 import type { AgentLinkManager } from './agent-link';
-import { emitState, onCommand, onWorldEvent, type Unsubscribe } from './bus';
+import { emitState, emitWorldEvent, onCommand, onWorldEvent, type Unsubscribe } from './bus';
 import { createCharacterManager, type CharacterManager } from './character';
 import { createMissionManager, type MissionManager } from './mission';
-import { createTaskManager, type TaskManager } from './task';
 import type { CoreStore } from './store';
 import { worldStore } from './store';
+import { createTaskManager, type TaskManager } from './task';
 import type { HudCommand, WorldEvent } from './types';
+import { computeFormationSlots } from './unit/formation';
 import type { SelectionAction } from './unit/selection';
 import { applySelectionAction } from './unit/selection';
 
@@ -111,6 +112,24 @@ function applySelection(store: CoreStore, action: SelectionAction): void {
   });
 }
 
+/**
+ * 右击移动的落位广播（@since v3.21，task_045）。HudCommand 与 WorldEvent 的 unit.move 共用。
+ * ★ 位置立即生效于状态，动画只是渲染过渡：core 契约里 UnitView 不含坐标（位置真相在世界层
+ *   UnitObject），因此「移动」在 core 侧的表达 = 把编队终值经 unit.position 逐单位广播 ——
+ *   世界层收到后立即写进 UnitObject（状态真相即刻更新）再 tween（纯表现）；app 层持久化
+ *   订阅者（task_033 防抖落库）消费同一条事件，落库链路自动跟随，无需另行接线。
+ * 未知单位静默丢弃（快照与输入有时间差，同 applySelection 的对账口径）；
+ * 全被过滤 / 空编队 → 零广播、零状态变化（没有可动的人就不广播）。WorldState 不变 ——
+ * 位置不进状态广播（契约铁律），选择集也不因移动而变（RTS 惯例：选中跟着队伍走）。
+ */
+function applyUnitMove(store: CoreStore, unitIds: readonly string[], x: number, y: number): void {
+  const known = new Set(store.getState().units.map((unit) => unit.id));
+  const ordered = unitIds.filter((id) => known.has(id));
+  for (const slot of computeFormationSlots(ordered, { x, y })) {
+    emitWorldEvent({ type: 'unit.position', unitId: slot.unitId, x: slot.x, y: slot.y });
+  }
+}
+
 export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime {
   const store = options.store ?? worldStore;
   const agentLink = options.agentLink;
@@ -146,6 +165,11 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
       case 'unit.select':
         // HudCommand 的 mode 只有 set / toggle,与选择状态机的动作同名,直接映射,不做二次翻译
         applySelection(store, { type: command.mode, unitIds: command.unitIds });
+        return;
+      // @since v3.21 右击移动(task_045):HUD 入口。编队终值广播见 applyUnitMove ——
+      // 位置立即生效于状态(世界层 UnitObject),动画只是渲染过渡;落库链路由 unit.position 自动跟随。
+      case 'unit.move':
+        applyUnitMove(store, command.unitIds, command.x, command.y);
         return;
       // @since v3.3 任务域:命令翻译只在 core/mission 里有一份(manager 负责转状态机动作 + 写库 + 报错)
       case 'mission.create':
@@ -215,8 +239,24 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
           unitIds: [event.unitId],
         });
         return;
+      // @since v3.21 框选闭环(task_045):命中判定在世界侧(core 无坐标),上报方把 id 补在事件上 ——
+      // 带 id 才落选择集(空数组 = 拖空框/点空地,明确清空);没 id 维持「未处理」观测口径,
+      // 与老调用方(dev 观测/合成事件)兼容。Shift = 加选(add),否则覆盖(set)。
+      case 'selection.box':
+        if (event.unitIds === undefined) {
+          reportUnhandled('world', event);
+          return;
+        }
+        applySelection(store, {
+          type: event.additive === true ? 'add' : 'set',
+          unitIds: event.unitIds,
+        });
+        return;
+      // @since v3.21 战场右击移动(task_045):世界层入口,与 HudCommand unit.move 共用落位逻辑。
+      case 'unit.move':
+        applyUnitMove(store, event.unitIds, event.x, event.y);
+        return;
       default:
-        // selection.box:core 不持有坐标,算不出命中集合(判定在 world 侧),交给上报方补 id;
         // camera.moved:WorldState 契约里没有相机字段(core/types.ts 冻结版),暂不做业务处理;
         // unit.position(@since v3.12,task_033):位置真相在 world,core 状态机不消费坐标 --
         //   本事件的消费者是 app 层持久化订阅者(落 unit_positions 表,防抖写),

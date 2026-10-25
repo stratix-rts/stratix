@@ -1724,6 +1724,16 @@
       ],
       "priority": 1,
       "updated_at": "2026-10-25T08:30:00.000000Z"
+    },
+    {
+      "id": "task_045",
+      "title": "RTS操作补全：选中圈+右击移动",
+      "status": "completed",
+      "depends_on": [
+        "task_033"
+      ],
+      "priority": 1,
+      "updated_at": "2026-10-25T08:15:00.000000Z"
     }
   ]
 }
