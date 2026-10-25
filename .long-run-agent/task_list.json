@@ -1704,6 +1704,16 @@
         "issues": [],
         "optimization_history": []
       }
+    },
+    {
+      "id": "task_043",
+      "title": "人设生成2.0：结构化拼装+预设库+局部修改",
+      "status": "completed",
+      "depends_on": [
+        "task_026"
+      ],
+      "priority": 1,
+      "updated_at": "2026-10-25T06:38:37.000000Z"
     }
   ]
 }

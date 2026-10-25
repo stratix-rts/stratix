@@ -3,7 +3,7 @@
  *   ① 扫描报告（WorldState.detectedAgents：已装高亮 + tier 标签）
  *   ② 逐个已装 agent 起名 + 随机皮肤（可换）+ **每 agent 独立形象**（@since v3.12，task_032：
  *      默认品牌预设 + 可单独改部件 + 规则化重随机 + 重置默认；canvas 预览走路动画）
- *   ③ 人设生成（4 题问答拼装 persona 模板，预览可直接改）
+ *   ③ 人设生成（预设快速开始 + 4 题问答拼装结构化 persona，预览可直接改 + 脏保护）
  *   ④ 确认 → 逐个 character.create（各带各的 appearance）→ 完成事件。
  *   来源：.long-run-agent/tasks/task_025.md「hud 首启向导屏」；第②步的形象能力见 task_028。
  *   依赖：task_022（detectedAgents）、task_021（character.create 建档口径）、task_024（皮肤库）、
@@ -85,6 +85,7 @@ import {
   type OnboardingStep,
   type PersonaAnswers,
 } from './onboarding-catalog';
+import { PERSONA_PRESETS, type PersonaPreset } from './persona-presets';
 
 export const ONBOARDING_SCREEN_TAG = 'strat-onboarding-screen';
 
@@ -151,6 +152,10 @@ export interface StratOnboardingScreenElement extends HTMLElement {
   readonly identities: readonly OnboardingIdentity[];
   /** 当前人设文本（预览区可改后的值）。 */
   readonly persona: string;
+  /** 当前生效的预设 id（null = 没用预设 / 已被问卷或重新生成覆盖）。 */
+  readonly personaPresetId: string | null;
+  /** 人设预览是否处于手改态（脏：问卷重选不再自动覆写，需显式重新生成）。 */
+  readonly personaDirty: boolean;
   /** 当前错误提示（key → 文案）。 */
   readonly errors: Readonly<Record<string, string>>;
   /** 扫描报告行。 */
@@ -290,6 +295,50 @@ const ONBOARDING_STYLE = `
   .question-prompt { color: var(--srf-text); font-size: var(--srf-font-size-sm); }
   .options { display: flex; gap: var(--srf-spacing-sm); flex-wrap: wrap; }
   .option { display: inline-flex; align-items: center; gap: var(--srf-spacing-xs); font-size: var(--srf-font-size-sm); }
+  /* 预设卡片行（@since v3.13，task_043）：横向排列的快速开始入口 */
+  .preset-row { display: flex; gap: var(--srf-spacing-sm); flex-wrap: wrap; }
+  .preset-card {
+    display: grid;
+    gap: var(--srf-spacing-xs);
+    justify-items: start;
+    text-align: left;
+    flex: 0 1 224px;
+    padding: var(--srf-spacing-sm);
+    background: var(--srf-panel-elevated);
+    color: var(--srf-text);
+    border: var(--srf-border-width) solid var(--srf-border);
+    border-radius: var(--srf-radius);
+    font-family: var(--srf-font-ui);
+    font-size: var(--srf-font-size-sm);
+    line-height: var(--srf-line-height);
+    cursor: pointer;
+  }
+  .preset-card:hover { border-color: var(--srf-accent); }
+  .preset-card[data-selected="true"] { border-color: var(--srf-accent); }
+  .preset-name { font-weight: 600; }
+  .preset-desc { color: var(--srf-text-muted); }
+  .preset-kinds { display: flex; gap: var(--srf-spacing-xs); flex-wrap: wrap; }
+  .preset-kind {
+    border: var(--srf-border-width) solid var(--srf-border);
+    border-radius: var(--srf-radius);
+    padding: 0 var(--srf-spacing-xs);
+    color: var(--srf-text-muted);
+    font-size: var(--srf-font-size-sm);
+  }
+  .preset-status { color: var(--srf-warn); font-size: var(--srf-font-size-sm); }
+  .preset-status[hidden] { display: none; }
+  .persona-tools { display: flex; align-items: center; gap: var(--srf-spacing-sm); flex-wrap: wrap; }
+  .regenerate {
+    background: var(--srf-panel-elevated);
+    color: var(--srf-text);
+    border: var(--srf-border-width) solid var(--srf-border);
+    border-radius: var(--srf-radius);
+    padding: var(--srf-spacing-xs) var(--srf-spacing-sm);
+    font-family: var(--srf-font-ui);
+    font-size: var(--srf-font-size-sm);
+    cursor: pointer;
+  }
+  .regenerate[hidden] { display: none; }
   .persona {
     margin: 0;
     white-space: pre-wrap;
@@ -358,10 +407,12 @@ export function defineOnboardingScreen(): typeof HTMLElement {
      */
     private _appearanceDrafts = new Map<string, AppearanceDraft>();
     private _answers: Record<string, string> = {};
-    /** 人设草稿（预览区可改）。初值 = core 的默认人设模板（没答任何题时的底线）。 */
+    /** 人设草稿（预览区可改）。初值 = 没答任何题时的底线形态（只剩行为规则节）。 */
     private _persona = buildPersona({});
-    /** 用户是否手改过人设：改过之后答案变化不再覆盖它。 */
+    /** 用户是否手改过人设：改过之后答案变化不再覆盖它（显式「按问卷重新生成」才覆盖）。 */
     private _personaDirty = false;
+    /** 当前生效的预设 id（null = 问卷/手写模式）。答问卷任一题即退出预设模式。 */
+    private _activePreset: string | null = null;
     /** 错误提示：key → 文案。 */
     private _errors = new Map<string, string>();
     /** 已提交（防重复发命令）。 */
@@ -406,6 +457,8 @@ export function defineOnboardingScreen(): typeof HTMLElement {
     get step(): OnboardingStep { return this._step; }
     get identities(): readonly OnboardingIdentity[] { return this._identities; }
     get persona(): string { return this._persona; }
+    get personaPresetId(): string | null { return this._activePreset; }
+    get personaDirty(): boolean { return this._personaDirty; }
     get errors(): Readonly<Record<string, string>> {
       return Object.fromEntries(this._errors.entries());
     }
@@ -749,33 +802,70 @@ export function defineOnboardingScreen(): typeof HTMLElement {
     }
 
     // —— 人设 ——
-    /** 记录一个答案；用户没手改过人设时同步刷新预览。 */
+    /**
+     * 记录一个答案。
+     * 答题即退出预设模式（预设被问卷结果替换是用户可预期的切换：问卷是主路径）；
+     * 用户没手改过人设时同步刷新预览，手改过（脏）则只记答案不覆盖（见「按问卷重新生成」）。
+     */
     private answer(questionId: string, optionId: string): void {
+      const wasPreset = this._activePreset !== null;
       this._answers[questionId] = optionId;
+      this._activePreset = null;
       this.setError(`answer:${questionId}`, null);
+      if (wasPreset) this.syncPresetSurfaces();
       if (!this._personaDirty) {
         this._persona = buildPersona(this.answersSnapshot());
         this.syncPersonaField();
       }
     }
 
-    /** 用户手改人设：记为脏，之后答案变化不再覆盖。 */
+    /** 用户手改人设：记为脏（之后答案变化不再自动覆盖），并点亮「按问卷重新生成」。 */
     private setPersona(text: string): void {
       this._persona = text;
       this._personaDirty = true;
       this.setError('persona', null);
+      this.syncPresetSurfaces();
+    }
+
+    /**
+     * 选中预设：问卷清空 + 预览填预设全文 + 标记「已用预设」。
+     * 预设选中视为显式覆写（清脏）——手改过的文本会被预设替换，这是用户明确的动作。
+     */
+    private selectPreset(presetId: string): void {
+      const preset = PERSONA_PRESETS.find((candidate) => candidate.id === presetId);
+      if (!preset) return;
+      this._answers = {};
+      this._activePreset = preset.id;
+      this._persona = preset.persona;
+      this._personaDirty = false;
+      this.setError('persona', null);
+      // 预设路径不需要答完问卷：之前因未答被拦的错误一并撒掉。
+      for (const question of PERSONA_QUESTIONS) this.setError(`answer:${question.id}`, null);
+      this.renderStep();
+    }
+
+    /** 「按问卷重新生成」：显式覆写手改文本 = 按当前答卷重算（清脏、退出预设态）。 */
+    private regeneratePersona(): void {
+      this._persona = buildPersona(this.answersSnapshot());
+      this._personaDirty = false;
+      this._activePreset = null;
+      this.setError('persona', null);
+      this.syncPersonaField();
+      this.syncPresetSurfaces();
     }
 
     private answersSnapshot(): PersonaAnswers {
       return { ...this._answers };
     }
 
-    /** 校验人设步：题目答全 + 人设不超长。 */
+    /** 校验人设步：问卷路径要答全；预设路径（预设未被问卷覆盖）本身就是完整人设，免答。人设不超长两路都查。 */
     private validatePersonaStep(): boolean {
       let ok = true;
-      for (const questionId of missingPersonaAnswers(this.answersSnapshot())) {
-        this.setError(`answer:${questionId}`, '这一题还没选');
-        ok = false;
+      if (this._activePreset === null) {
+        for (const questionId of missingPersonaAnswers(this.answersSnapshot())) {
+          this.setError(`answer:${questionId}`, '这一题还没选');
+          ok = false;
+        }
       }
       const persona = validatePersona(this._persona);
       if (!persona.ok) {
@@ -836,6 +926,12 @@ export function defineOnboardingScreen(): typeof HTMLElement {
           return;
         case 'preview-appearance':
           this.selectPreview(action.getAttribute('data-kind') ?? '');
+          return;
+        case 'select-preset':
+          this.selectPreset(action.getAttribute('data-preset') ?? '');
+          return;
+        case 'regenerate-persona':
+          this.regeneratePersona();
           return;
         default:
           return;
@@ -1187,8 +1283,10 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       node.textContent = this.appearanceSummary(target);
     }
 
-    /** ③ 人设生成。 */
+    /** ③ 人设生成（@since v3.13，task_043：预设快速开始 + 问卷 + 可改预览 + 脏保护）。 */
     private renderPersona(): string {
+      const presetCards = this.renderPresetCards();
+      const presetBadge = this.renderPresetBadge();
       const questions = PERSONA_QUESTIONS.map((question) => {
         const options = question.options.map((option) => {
           const checked = this._answers[question.id] === option.id ? 'checked' : '';
@@ -1213,15 +1311,60 @@ export function defineOnboardingScreen(): typeof HTMLElement {
 
       const personaError = this._errors.get('persona') ?? '';
       const personaErrorAttr = personaError ? '' : 'hidden';
+      const regenerateHidden = this._personaDirty ? '' : 'hidden';
       return `
         <div class="group" data-group="persona">
           <div class="group-name">人设生成</div>
+          <div class="group-name">快速开始：选一个预设（可再局部修改）</div>
+          <div class="preset-row" data-role="preset-row">${presetCards}</div>
+          ${presetBadge}
           ${questions}
           <div class="group-name">预览（可以直接改）</div>
           <textarea class="textarea" rows="8" data-role="persona-input" data-field="persona">${escapeHtml(this._persona)}</textarea>
+          <div class="persona-tools">
+            <button type="button" class="regenerate" data-role="regenerate-persona" data-action="regenerate-persona" ${regenerateHidden}>按问卷重新生成</button>
+            <span class="summary">手改后问卷不再自动覆盖；点它按当前答卷重写预览</span>
+          </div>
           <div class="error" data-role="persona-error" data-error-key="persona" ${personaErrorAttr}>${escapeHtml(personaError)}</div>
         </div>
       `;
+    }
+
+    /** 预设卡片行：名称 + 一句话说明 + 适配 kind 徽标（'any' → 通用）。 */
+    private renderPresetCards(): string {
+      return PERSONA_PRESETS.map((preset) => {
+        const selected = this._activePreset === preset.id;
+        const kinds =
+          preset.suitableKinds === 'any'
+            ? '<span class="preset-kind">通用</span>'
+            : preset.suitableKinds
+                .map((kind) => `<span class="preset-kind">${escapeHtml(agentKindLabel(kind))}</span>`)
+                .join('');
+        return `
+          <button type="button" class="preset-card" data-role="preset-card" data-action="select-preset"
+                  data-preset="${escapeHtml(preset.id)}" data-selected="${selected}">
+            <span class="preset-name">${escapeHtml(preset.name)}</span>
+            <span class="preset-desc">${escapeHtml(preset.description)}</span>
+            <span class="preset-kinds">${kinds}</span>
+          </button>
+        `;
+      }).join('');
+    }
+
+    /** 「已用预设」标记；预设态被手改时附注「已手动修改」。 */
+    private renderPresetBadge(): string {
+      const preset = this.activePreset();
+      if (!preset) {
+        return '<div class="preset-status" data-role="persona-preset-badge" hidden></div>';
+      }
+      const modified = this._personaDirty ? ' · 已手动修改' : '（再答问卷将以问卷结果替换）';
+      return `<div class="preset-status" data-role="persona-preset-badge">已用预设：${escapeHtml(preset.name)}${modified}</div>`;
+    }
+
+    /** 当前生效的预设对象（id 已失效 → null）。 */
+    private activePreset(): PersonaPreset | null {
+      if (this._activePreset === null) return null;
+      return PERSONA_PRESETS.find((candidate) => candidate.id === this._activePreset) ?? null;
     }
 
     /** ④ 确认。 */
@@ -1271,6 +1414,37 @@ export function defineOnboardingScreen(): typeof HTMLElement {
     private syncPersonaField(): void {
       const field = this.shadowRoot?.querySelector('[data-role="persona-input"]') as HTMLTextAreaElement | null;
       if (field) field.value = this._persona;
+    }
+
+    /**
+     * 同步人设工具面的轻量 DOM（预设徽标 / 重新生成按钮 / 卡片选中态）。
+     * why 不重画整屏：答题和手改都发生在输入交互中，重画会丢焦点（与 setError 同一理由）。
+     */
+    private syncPresetSurfaces(): void {
+      const root = this.shadowRoot;
+      if (!root) return;
+      const badge = root.querySelector('[data-role="persona-preset-badge"]');
+      if (badge) {
+        const preset = this.activePreset();
+        if (!preset) {
+          badge.setAttribute('hidden', '');
+          badge.textContent = '';
+        } else {
+          const modified = this._personaDirty ? ' · 已手动修改' : '（再答问卷将以问卷结果替换）';
+          badge.textContent = `已用预设：${preset.name}${modified}`;
+          badge.removeAttribute('hidden');
+        }
+      }
+      const regenerate = root.querySelector('[data-role="regenerate-persona"]');
+      if (regenerate) {
+        if (this._personaDirty) regenerate.removeAttribute('hidden');
+        else regenerate.setAttribute('hidden', '');
+      }
+      const cards = Array.from(root.querySelectorAll('[data-role="preset-card"]'));
+      for (const card of cards) {
+        const selected = card.getAttribute('data-preset') === this._activePreset;
+        card.setAttribute('data-selected', String(selected));
+      }
     }
   }
 

@@ -18,12 +18,14 @@ import {
   createAppearanceDrafts,
   findDuplicateNames,
   missingPersonaAnswers,
+  personaRulesLines,
   resolveBindableKinds,
   resolveScanRows,
   validateAgentName,
   validatePersona,
   PERSONA_QUESTIONS,
 } from '../screens/onboarding-catalog';
+import { PERSONA_PRESETS } from '../screens/persona-presets';
 import {
   ONBOARDING_COMPLETE_EVENT,
   ONBOARDING_SCREEN_TAG,
@@ -194,13 +196,43 @@ describe('向导派生逻辑', () => {
     expect(findDuplicateNames(['Neo', 'Trinity'])).toEqual([]);
   });
 
-  test('人设拼装：core 默认模板打底 + 各题 fragment；没答的题不出现在人设里', () => {
+  test('人设拼装：结构化分节（没答的题整节省略；规则节恒在，core 底线列表化）【task_043 改断言：分节结构替代旧 fragment 前缀串】', () => {
     const persona = buildPersona({ role: 'builder' });
-    expect(persona).toContain('你是一名在 Stratix 工作台里干活的本地 coding agent');
-    expect(persona).toContain('角色定位：编码主力');
-    expect(persona).not.toContain('沟通风格');
+    expect(persona).toContain('# 角色定位 ROLE');
+    expect(persona).toContain('编码主力 —— 把需求落成可运行的代码');
+    // role 题同时供给使命节
+    expect(persona).toContain('# 使命 MISSION');
+    expect(persona).toContain('交付可运行、可验证、可维护的代码');
+    // 没答的题 → 整节省略
+    expect(persona).not.toContain('# 沟通风格 STYLE');
+    expect(persona).not.toContain('# 自主程度 AUTONOMY');
+    expect(persona).not.toContain('# 交付习惯 DELIVERY');
+    // 规则节恒在末尾，core 默认模板四条底线 → 列表行（语义保留，只换排版）
+    expect(persona).toContain('# 行为规则 RULES');
+    expect(persona).toContain('- 你是一名在 Stratix 工作台里干活的本地 coding agent');
+    expect(persona.indexOf('# 行为规则 RULES')).toBeGreaterThan(persona.indexOf('# 角色定位 ROLE'));
+    // 一题都没答 → 只剩底线形态
+    expect(buildPersona({})).toBe(`# 行为规则 RULES\n\n${personaRulesLines().join('\n')}`);
     expect(missingPersonaAnswers({ role: 'builder' })).toEqual(['tone', 'autonomy', 'delivery']);
     expect(missingPersonaAnswers({})).toHaveLength(PERSONA_QUESTIONS.length);
+  });
+
+  test('人设拼装：答全四题 → 六节齐备且分节头格式统一（`# 中文 ENGLISH`）', () => {
+    const persona = buildPersona({ role: 'reviewer', tone: 'structured', autonomy: 'balanced', delivery: 'iterative' });
+    const headers = persona.split('\n').filter((line) => line.startsWith('# '));
+    expect(headers).toEqual([
+      '# 角色定位 ROLE',
+      '# 使命 MISSION',
+      '# 沟通风格 STYLE',
+      '# 自主程度 AUTONOMY',
+      '# 交付习惯 DELIVERY',
+      '# 行为规则 RULES',
+    ]);
+    // 节间空行：分节头前必是空行（首个除外）
+    const lines = persona.split('\n');
+    for (let i = 1; i < lines.length; i += 1) {
+      if (lines[i].startsWith('# ')) expect(lines[i - 1]).toBe('');
+    }
   });
 
   test('人设长度校验：超长被拒，空串不算错（core 会套默认模板）', () => {
@@ -441,8 +473,9 @@ describe('③ 人设生成', () => {
     choose(h.screen, 'delivery', 'iterative');
 
     const preview = one(h.screen, '[data-role="persona-input"]') as HTMLTextAreaElement;
-    expect(preview.value).toContain('角色定位：编码主力');
-    expect(preview.value).toContain('沟通风格：简洁直给');
+    expect(preview.value).toContain('# 角色定位 ROLE');
+    expect(preview.value).toContain('编码主力');
+    expect(preview.value).toContain('# 沟通风格 STYLE');
 
     click(h.screen, '[data-action="next"]');
     expect(h.screen.step).toBe('confirm');
@@ -460,6 +493,160 @@ describe('③ 人设生成', () => {
 
     expect(h.screen.persona).toBe('我的人设');
     expect((one(h.screen, '[data-role="persona-input"]') as HTMLTextAreaElement).value).toBe('我的人设');
+    h.unmount();
+  });
+});
+
+// ============================================================================
+// 4b. 预设库与脏保护（@since v3.13，task_043：人设生成 2.0）
+// ============================================================================
+
+describe('③ 人设生成 · 预设库（纯数据）', () => {
+  test('预设 6-8 个，id 唯一，每个带说明与 kind 标注', () => {
+    expect(PERSONA_PRESETS.length).toBeGreaterThanOrEqual(6);
+    expect(PERSONA_PRESETS.length).toBeLessThanOrEqual(8);
+    expect(new Set(PERSONA_PRESETS.map((preset) => preset.id)).size).toBe(PERSONA_PRESETS.length);
+    for (const preset of PERSONA_PRESETS) {
+      expect(preset.name.length).toBeGreaterThan(0);
+      expect(preset.description.length).toBeGreaterThan(0);
+      expect(preset.suitableKinds === 'any' || preset.suitableKinds.length > 0).toBe(true);
+    }
+  });
+
+  test('每个预设都是完整结构化文本：六节齐备 + core 底线规则列表', () => {
+    for (const preset of PERSONA_PRESETS) {
+      const headers = preset.persona.split('\n').filter((line) => line.startsWith('# '));
+      expect(headers).toEqual([
+        '# 角色定位 ROLE',
+        '# 使命 MISSION',
+        '# 沟通风格 STYLE',
+        '# 自主程度 AUTONOMY',
+        '# 交付习惯 DELIVERY',
+        '# 行为规则 RULES',
+      ]);
+      // RULES 节与问卷路径同一份底线（core DEFAULT_PERSONA_TEMPLATE 派生，不另抄）
+      const rulesBlock = [`# 行为规则 RULES`, '', ...personaRulesLines()].join('\n');
+      expect(preset.persona.endsWith(rulesBlock)).toBe(true);
+    }
+  });
+});
+
+describe('③ 人设生成 · 预设与脏保护（UI）', () => {
+  function toPersonaStep(): Harness {
+    const h = mountScreen(makeState([CLAUDE]));
+    click(h.screen, '[data-action="next"]'); // → identity
+    click(h.screen, '[data-action="next"]'); // → persona
+    return h;
+  }
+
+  test('预设卡片行渲染：名称 + 说明 + kind 徽标（any → 通用）', () => {
+    const h = toPersonaStep();
+    const cards = all(h.screen, '[data-role="preset-card"]');
+    expect(cards).toHaveLength(PERSONA_PRESETS.length);
+    const first = cards[0] as HTMLElement;
+    expect(first.querySelector('.preset-name')?.textContent).toBeTruthy();
+    expect(first.querySelector('.preset-desc')?.textContent).toBeTruthy();
+    // 默认无选中
+    expect(cards.every((card) => card.getAttribute('data-selected') === 'false')).toBe(true);
+    h.unmount();
+  });
+
+  test('点预设 → 问卷清空 + 预览填预设全文 + 标记已用预设；可直接下一步（免答问卷）', () => {
+    const h = toPersonaStep();
+    choose(h.screen, 'role', 'builder');
+    click(h.screen, '[data-preset="architect"]');
+
+    const preset = PERSONA_PRESETS.find((candidate) => candidate.id === 'architect');
+    expect(h.screen.personaPresetId).toBe('architect');
+    expect(h.screen.persona).toBe(preset?.persona);
+    expect((one(h.screen, '[data-role="persona-input"]') as HTMLTextAreaElement).value).toBe(preset?.persona);
+    // 问卷被清空：radio 不再选中
+    const checked = all(h.screen, '[data-role="option"]').filter(
+      (node) => (node as HTMLInputElement).checked
+    );
+    expect(checked).toHaveLength(0);
+    // 标记已用预设
+    const badge = one(h.screen, '[data-role="persona-preset-badge"]');
+    expect(badge.hasAttribute('hidden')).toBe(false);
+    expect(badge.textContent).toContain('已用预设：资深架构师');
+    // 卡片选中态
+    expect(one(h.screen, '[data-preset="architect"]').getAttribute('data-selected')).toBe('true');
+
+    // 预设路径免答问卷：直接下一步 → 确认页展示预设全文
+    click(h.screen, '[data-action="next"]');
+    expect(h.screen.step).toBe('confirm');
+    expect(one(h.screen, '[data-role="persona-preview"]').textContent).toContain('# 角色定位 ROLE');
+    h.unmount();
+  });
+
+  test('预设态答题 → 切回问卷模式：预设标记撒掉，预览换成问卷结果', () => {
+    const h = toPersonaStep();
+    click(h.screen, '[data-preset="architect"]');
+    expect(h.screen.personaPresetId).toBe('architect');
+
+    choose(h.screen, 'role', 'builder');
+    expect(h.screen.personaPresetId).toBeNull();
+    // 徽标隐藏、卡片不再选中
+    expect(one(h.screen, '[data-role="persona-preset-badge"]').hasAttribute('hidden')).toBe(true);
+    expect(one(h.screen, '[data-preset="architect"]').getAttribute('data-selected')).toBe('false');
+    // 预览 = 问卷生成结果（此时只答了一题：只有 ROLE/MISSION/RULES）
+    const value = (one(h.screen, '[data-role="persona-input"]') as HTMLTextAreaElement).value;
+    expect(value).toContain('# 角色定位 ROLE');
+    expect(value).not.toContain('# 沟通风格 STYLE');
+    expect(value).toContain('# 行为规则 RULES');
+    h.unmount();
+  });
+
+  test('脏保护：手改后答题不覆盖预览；「按问卷重新生成」显式覆写并清脏', () => {
+    const h = toPersonaStep();
+    type(h.screen, '[data-role="persona-input"]', '我手改的人设');
+    expect(h.screen.personaDirty).toBe(true);
+    // 手改 → 重新生成按钮出现
+    expect(one(h.screen, '[data-role="regenerate-persona"]').hasAttribute('hidden')).toBe(false);
+
+    choose(h.screen, 'role', 'builder');
+    choose(h.screen, 'tone', 'terse');
+    // 脏：答题不覆盖
+    expect(h.screen.persona).toBe('我手改的人设');
+
+    // 显式重新生成：按当前答卷重写 + 清脏 + 按钮隐藏
+    click(h.screen, '[data-action="regenerate-persona"]');
+    expect(h.screen.personaDirty).toBe(false);
+    expect(one(h.screen, '[data-role="regenerate-persona"]').hasAttribute('hidden')).toBe(true);
+    const value = (one(h.screen, '[data-role="persona-input"]') as HTMLTextAreaElement).value;
+    expect(value).toContain('# 角色定位 ROLE');
+    expect(value).toContain('# 沟通风格 STYLE');
+    expect(value).not.toContain('我手改的人设');
+    h.unmount();
+  });
+
+  test('预设选中视为显式覆写：手改文本被预设替换（清脏）', () => {
+    const h = toPersonaStep();
+    type(h.screen, '[data-role="persona-input"]', '我手改的人设');
+    choose(h.screen, 'role', 'builder');
+    expect(h.screen.persona).toBe('我手改的人设');
+
+    click(h.screen, '[data-preset="mentor"]');
+    expect(h.screen.personaDirty).toBe(false);
+    expect(h.screen.persona).toContain('# 角色定位 ROLE');
+    expect(h.screen.persona).toContain('教学陪伴');
+    h.unmount();
+  });
+
+  test('预设态手改 → 徽标标注已手动修改；答题仍不覆盖（脏优先）', () => {
+    const h = toPersonaStep();
+    click(h.screen, '[data-preset="architect"]');
+    type(h.screen, '[data-role="persona-input"]', '预设 + 我的补充');
+    expect(h.screen.personaDirty).toBe(true);
+    expect(h.screen.personaPresetId).toBe('architect');
+    const badge = one(h.screen, '[data-role="persona-preset-badge"]');
+    expect(badge.textContent).toContain('已手动修改');
+
+    // 脏：答题只记答案不覆盖预览，但仍退出预设模式（徽标隐藏）
+    choose(h.screen, 'role', 'builder');
+    expect(h.screen.persona).toBe('预设 + 我的补充');
+    expect(h.screen.personaPresetId).toBeNull();
+    expect(badge.hasAttribute('hidden')).toBe(true);
     h.unmount();
   });
 });
@@ -492,7 +679,7 @@ describe('④ 确认与提交', () => {
     expect(creates[0]).toMatchObject({ type: 'character.create', name: 'Neo', agentKind: 'claude-code' });
     expect(creates[1]).toMatchObject({ type: 'character.create', name: 'Trinity', agentKind: 'codex' });
     // 人设随建档一起发（core 的建档口径：persona 可选，缺省套默认模板）
-    expect((creates[0] as { persona?: string }).persona).toContain('角色定位：编码主力');
+    expect((creates[0] as { persona?: string }).persona).toContain('# 角色定位 ROLE');
 
     expect(seen).toHaveLength(1);
     expect(seen[0]?.created.map((c) => c.name)).toEqual(['Neo', 'Trinity']);

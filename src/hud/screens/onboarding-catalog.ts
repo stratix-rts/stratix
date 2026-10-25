@@ -281,12 +281,64 @@ export function createAppearanceDrafts(
 // ③ 人设问答
 // ============================================================================
 
+/**
+ * 人设正文的分节 id（顺序即输出顺序；rules 恒在末尾）。
+ * 分节体系与 stratix-agent 的 10 层提示词模板（templates/partials/layers/）同源——
+ * 结构对齐（分节 + 双语标题），语义面向战场角色（这里只保留首启问卷用得上的 6 节）。
+ * hud 不 import stratix-agent（渲染层隔离），对齐靠约定而不是引用。
+ */
+export type PersonaSectionId = 'role' | 'mission' | 'style' | 'autonomy' | 'delivery' | 'rules';
+
+/** 分节头（统一格式：`# 中文名 ENGLISH`）。 */
+export const PERSONA_SECTION_TITLES: Readonly<Record<PersonaSectionId, string>> = Object.freeze({
+  role: '角色定位 ROLE',
+  mission: '使命 MISSION',
+  style: '沟通风格 STYLE',
+  autonomy: '自主程度 AUTONOMY',
+  delivery: '交付习惯 DELIVERY',
+  rules: '行为规则 RULES',
+});
+
+/** 问卷能填充的前五节（rules 恒在，由 core 默认模板派生，见 personaRulesLines）。 */
+const QUESTIONNAIRE_SECTION_ORDER: readonly PersonaSectionId[] = ['role', 'mission', 'style', 'autonomy', 'delivery'];
+
+/**
+ * 行为规则分节的列表行：core 默认人设模板（DEFAULT_PERSONA_TEMPLATE）四条底线 → `-` 列表项。
+ * why 从 core 常量派生而不是另抄一份：底线口径只允许有一个来源，core 改了这里自动跟；
+ * 派生只做排版改写（去句末标点、加列表符），语义一字不动。
+ */
+export function personaRulesLines(): readonly string[] {
+  return DEFAULT_PERSONA_TEMPLATE.split('\n')
+    .filter((line) => line.trim().length > 0)
+    .map((line) => `- ${line.replace(/[：:；;。.，,]+$/u, '')}`);
+}
+
+/**
+ * 把分节内容渲染成统一的人设正文：每节「# 标题 + 空行 + 内容行」，节间空行。
+ * 空节（没给内容行的）整节省略——问卷没答的题对应的节不出现。
+ */
+export function composePersonaSections(
+  sections: Readonly<Partial<Record<PersonaSectionId, readonly string[]>>>
+): string {
+  const parts: string[] = [];
+  for (const id of QUESTIONNAIRE_SECTION_ORDER) {
+    const lines = sections[id];
+    if (!lines || lines.length === 0) continue;
+    parts.push([`# ${PERSONA_SECTION_TITLES[id]}`, '', ...lines].join('\n'));
+  }
+  const rules = sections.rules;
+  if (rules && rules.length > 0) {
+    parts.push([`# ${PERSONA_SECTION_TITLES.rules}`, '', ...rules].join('\n'));
+  }
+  return parts.join('\n\n');
+}
+
 /** 人设问卷的一个选项。 */
 export interface PersonaOption {
   readonly id: string;
   readonly label: string;
-  /** 该选项拼进人设模板的一句话。 */
-  readonly fragment: string;
+  /** 该选项写进人设各分节的内容（分节 id → 正文行；一题可贡献多节，如 role 同时给 ROLE 与 MISSION）。 */
+  readonly sections: Readonly<Partial<Record<PersonaSectionId, string>>>;
 }
 
 /** 人设问卷的一道题。 */
@@ -299,45 +351,74 @@ export interface PersonaQuestion {
 /**
  * 人设问卷（4 题）。
  * why 题量固定 4：少于 3 题拼不出有区分度的模板，多于 4 题首启流程太长（每题都要用户做决定）。
- * 每题每选项都自带 fragment —— 拼装是**纯查表**，不做任何文本推理（HUD 侧不猜人设）。
+ * 每题每选项自带 sections —— 拼装是**纯查表**（查表后按分节排序渲染），不做任何文本推理
+ * （HUD 侧不猜人设）。分节头由 composePersonaSections 统一给，选项内容不带「角色定位：」这类前缀。
  */
 export const PERSONA_QUESTIONS: readonly PersonaQuestion[] = Object.freeze([
   {
     id: 'role',
     prompt: '这个角色主要干什么？',
     options: [
-      { id: 'builder', label: '编码主力', fragment: '角色定位：编码主力 —— 主要负责把需求落成可运行的代码。' },
-      { id: 'analyst', label: '研究分析', fragment: '角色定位：研究分析 —— 主要负责读代码、查资料、给结论。' },
-      { id: 'reviewer', label: '审阅挑错', fragment: '角色定位：审阅挑错 —— 主要负责找问题、把关质量。' },
-      { id: 'generalist', label: '全能管家', fragment: '角色定位：全能管家 —— 需求不明确时的默认承接方。' },
+      {
+        id: 'builder',
+        label: '编码主力',
+        sections: {
+          role: '编码主力 —— 把需求落成可运行的代码是第一职责，产出以代码为中心。',
+          mission: '交付可运行、可验证、可维护的代码，让每个需求都有落地的实现。',
+        },
+      },
+      {
+        id: 'analyst',
+        label: '研究分析',
+        sections: {
+          role: '研究分析 —— 读代码、查资料、做实验，把不确定的问题拆解成结论与依据。',
+          mission: '给出有依据的结论与建议，让决策建立在事实而不是猜测上。',
+        },
+      },
+      {
+        id: 'reviewer',
+        label: '审阅挑错',
+        sections: {
+          role: '审阅挑错 —— 找问题、把关质量，对将要合入的一切改动保持职业怀疑。',
+          mission: '把缺陷拦在合入之前，让交付出去的东西经得起推敲。',
+        },
+      },
+      {
+        id: 'generalist',
+        label: '全能管家',
+        sections: {
+          role: '全能管家 —— 需求不明确时的默认承接方，先接住再分流。',
+          mission: '让每一件事都有人管、有着落，不掉在地板上。',
+        },
+      },
     ],
   },
   {
     id: 'tone',
     prompt: '你希望它怎么跟你说话？',
     options: [
-      { id: 'terse', label: '简洁直给', fragment: '沟通风格：简洁直给 —— 先给结论，必要时再补细节。' },
-      { id: 'detailed', label: '详尽解释', fragment: '沟通风格：详尽解释 —— 把来龙去脉讲清楚再下判断。' },
-      { id: 'structured', label: '结论先行', fragment: '沟通风格：结论先行 —— 结论放最前，推理过程跟在后面。' },
-      { id: 'cautious', label: '谨慎留白', fragment: '沟通风格：谨慎留白 —— 不确定的地方明说，不硬凑答案。' },
+      { id: 'terse', label: '简洁直给', sections: { style: '先给结论，必要时再补细节；不铺垫、不绕弯。' } },
+      { id: 'detailed', label: '详尽解释', sections: { style: '把来龙去脉讲清楚再下判断，关键取舍要说明理由。' } },
+      { id: 'structured', label: '结论先行', sections: { style: '结论放最前，推理过程与依据跟在后面，按层级展开。' } },
+      { id: 'cautious', label: '谨慎留白', sections: { style: '不确定的地方明说不确定在哪，不硬凑答案。' } },
     ],
   },
   {
     id: 'autonomy',
     prompt: '它可以自己决定做到哪一步？',
     options: [
-      { id: 'ask-first', label: '先问再动', fragment: '自主程度：先问再动 —— 动手前先确认方向。' },
-      { id: 'balanced', label: '平衡推进', fragment: '自主程度：平衡推进 —— 常规步骤自己做，方向性问题先问。' },
-      { id: 'full-auto', label: '完全自主', fragment: '自主程度：完全自主 —— 自行推进到可交付，遇阻再上报。' },
+      { id: 'ask-first', label: '先问再动', sections: { autonomy: '动手前先确认方向，得到认可再推进。' } },
+      { id: 'balanced', label: '平衡推进', sections: { autonomy: '常规步骤自行决定，方向性或有风险的改动先问再做。' } },
+      { id: 'full-auto', label: '完全自主', sections: { autonomy: '自行推进到可交付，遇到阻塞或超出口径再上报。' } },
     ],
   },
   {
     id: 'delivery',
     prompt: '交付习惯选哪种？',
     options: [
-      { id: 'iterative', label: '小步快跑', fragment: '交付习惯：小步快跑 —— 拆成小块，每块都可单独验证。' },
-      { id: 'one-shot', label: '一次到位', fragment: '交付习惯：一次到位 —— 尽量把整件事做完再交付。' },
-      { id: 'plan-first', label: '先计划后执行', fragment: '交付习惯：先计划后执行 —— 先给计划，确认后再动手。' },
+      { id: 'iterative', label: '小步快跑', sections: { delivery: '拆成小块交付，每块都可单独验证。' } },
+      { id: 'one-shot', label: '一次到位', sections: { delivery: '尽量把整件事做完再交付，减少来回。' } },
+      { id: 'plan-first', label: '先计划后执行', sections: { delivery: '先给计划，确认后再动手，按计划推进并同步偏差。' } },
     ],
   },
 ]);
@@ -351,21 +432,29 @@ export function missingPersonaAnswers(answers: PersonaAnswers): string[] {
 }
 
 /**
- * 按答卷拼装人设提示词。
- * 结构：core 的默认人设模板（行为底线）+ 各题对应的 fragment（角色画像）。
- * why 以 core 模板打底：默认模板是 core 认定的"合格人设下限"（core/character/profile.ts），
- * HUD 只在它之上追加用户选出来的画像，不另起一份底线（否则两处模板会漂移）。
+ * 按答卷拼装**结构化**人设：分节 markdown（`# 中文名 ENGLISH` 分节头 + 空行 + 内容行，节间空行）。
+ * - 问卷答案 → 前 5 节（没答的题对应的节整节省略）；
+ * - 行为规则节恒在末尾：core 默认模板四条底线（DEFAULT_PERSONA_TEMPLATE 派生，见 personaRulesLines）——
+ *   默认模板是 core 认定的「合格人设下限」（core/character/profile.ts），HUD 只换排版不换语义，
+ *   不另起一份底线（否则两处模板会漂移）。
+ * 一题都没答 → 只剩行为规则节（这就是预览框的初始底线形态）。
  */
 export function buildPersona(answers: PersonaAnswers): string {
-  const fragments: string[] = [];
+  const collected = new Map<PersonaSectionId, string[]>();
   for (const question of PERSONA_QUESTIONS) {
     const optionId = answers[question.id];
     if (!optionId) continue;
     const option = question.options.find((candidate) => candidate.id === optionId);
-    if (option) fragments.push(option.fragment);
+    if (!option) continue;
+    for (const id of QUESTIONNAIRE_SECTION_ORDER) {
+      const line = option.sections[id];
+      if (!line) continue;
+      const bucket = collected.get(id) ?? [];
+      bucket.push(line);
+      collected.set(id, bucket);
+    }
   }
-  if (fragments.length === 0) return DEFAULT_PERSONA_TEMPLATE;
-  return [DEFAULT_PERSONA_TEMPLATE, ...fragments].join('\n');
+  return composePersonaSections({ ...Object.fromEntries(collected), rules: personaRulesLines() });
 }
 
 /** 人设被拒的原因（目前只有超长；空人设不算错 —— core 会套默认模板）。 */
