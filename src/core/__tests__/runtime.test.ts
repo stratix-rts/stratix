@@ -207,11 +207,9 @@ describe('ui.navigate → currentScreen（@since v3.6）', () => {
     cleanups.push(stop);
 
     emitWorldEvent({ type: 'selection.box', bounds: { x: 0, y: 0, width: 100, height: 100 } });
-    emitWorldEvent({ type: 'camera.moved', center: { x: 1, y: 2 }, zoom: 1.5 });
 
     expect(unhandled).toEqual([
       { channel: 'world', type: 'selection.box' },
-      { channel: 'world', type: 'camera.moved' },
     ]);
   });
 });
@@ -641,6 +639,26 @@ describe('world 事件：camera.center 回环接地（task_057）', () => {
     emitWorldEvent({ type: 'camera.center', x: 100, y: 200 });
 
     expect(unhandled).toHaveLength(0);
+  });
+});
+
+// ============================================================================
+// camera.moved 接地（@since v3.33，task_066）：world 场景相机回调发出（桥接层合并窗口后
+// 上报），消费者是 app 层 main-entry 的小地图视口同步订阅（按 center + zoom 换算视口
+// 矩形喂 minimap.setViewport）。WorldState 契约里没有相机字段，core 状态机不消费 ——
+// 同 unit.position 惯例显式接地，不进 onUnhandled（否则每次镜头移动都会报一次噪音）。
+// ============================================================================
+
+describe('world 事件：camera.moved 接地（task_066）', () => {
+  test('不进 onUnhandled，也不改任何状态（视口同步归 app 层小地图订阅）', () => {
+    const { unhandled, states, stop } = harness();
+    cleanups.push(stop);
+
+    emitWorldEvent({ type: 'camera.moved', center: { x: 100, y: 200 }, zoom: 1.5 });
+    emitWorldEvent({ type: 'camera.moved', center: { x: 120, y: 240 }, zoom: 2 });
+
+    expect(unhandled).toHaveLength(0);
+    expect(states).toHaveLength(0);
   });
 });
 

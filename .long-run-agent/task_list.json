@@ -1909,6 +1909,87 @@
       "status": "completed",
       "depends_on": [],
       "priority": 2
+    },
+    {
+      "id": "task_065",
+      "description": "core: camera.moved 事件接地——消除未处理 warn 噪音-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_065.md",
+      "created_at": "2026-10-26T23:40:39.398474",
+      "updated_at": "2026-10-26T23:40:39.398490",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_066",
+      "description": "core: camera.moved 事件接地——消除未处理 warn 噪音-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_066.md",
+      "created_at": "2026-10-26T23:40:46.461313",
+      "updated_at": "2026-10-26T23:44:18.768912",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_067",
+      "description": "dev: HMR 半更新防护——app 代码改动触发整页 reload-模块",
+      "template": "task",
+      "priority": "P2",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_067.md",
+      "created_at": "2026-10-26T23:40:57.559598",
+      "updated_at": "2026-10-26T23:40:57.559605",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
     }
   ]
 }

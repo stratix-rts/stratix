@@ -487,7 +487,11 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         applyAgentConnectivity(store, event.kind, false);
         return;
       default:
-        // camera.moved:WorldState 契约里没有相机字段(core/types.ts 冻结版),暂不做业务处理;
+        // camera.moved:WorldState 契约里没有相机字段(core/types.ts 冻结版),不做业务处理。
+        //   事件由 world 场景相机回调发出(bus-adapter 合并窗口后上报),消费者是 app 层
+        //   main-entry 的小地图视口同步订阅(按 center + zoom 换算视口矩形喂 minimap.setViewport)
+        //   -- core 状态机不消费相机位姿,同 unit.position 惯例显式接地,不进 onUnhandled
+        //   (否则每次镜头移动/钳制都会报一次「未处理」噪音)。
         // unit.position(@since v3.12,task_033):位置真相在 world,core 状态机不消费坐标 --
         //   本事件的消费者是 app 层持久化订阅者(落 unit_positions 表,防抖写),
         //   这里显式接地(不进 onUnhandled),否则正常运行时每次落位都会报一次"未处理"噪音。
@@ -511,6 +515,7 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         //   小地图跳转指令,消费者在世界场景(bridge 转发 syncCameraCenter) -- core 发出后
         //   又在 world 通道上回到本订阅一次,这里显式接地(同 unit.position 惯例,不进 onUnhandled)。
         if (event.type === 'camera.center') return;
+        if (event.type === 'camera.moved') return;
         if (event.type === 'exp.gained') return;
         if (event.type === 'level.up') return;
         if (event.type.startsWith('task.')) return;
