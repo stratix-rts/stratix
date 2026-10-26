@@ -1911,33 +1911,6 @@
       "priority": 2
     },
     {
-      "id": "task_065",
-      "description": "core: camera.moved 事件接地——消除未处理 warn 噪音-模块",
-      "template": "task",
-      "priority": "P1",
-      "status": "pending",
-      "parent_id": null,
-      "output_req": "8k",
-      "context_hint": "8k",
-      "task_file": "tasks/task_065.md",
-      "created_at": "2026-10-26T23:40:39.398474",
-      "updated_at": "2026-10-26T23:40:39.398490",
-      "dependencies": [],
-      "dependency_type": "all",
-      "deadline": null,
-      "ralph": {
-        "iteration": 0,
-        "max_iterations": 7,
-        "quality_checks": {
-          "tests_passed": false,
-          "lint_passed": false,
-          "acceptance_met": false
-        },
-        "issues": [],
-        "optimization_history": []
-      }
-    },
-    {
       "id": "task_066",
       "description": "core: camera.moved 事件接地——消除未处理 warn 噪音-模块",
       "template": "task",
