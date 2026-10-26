@@ -229,72 +229,73 @@ export function defineLogDrawer(): typeof HTMLElement {
           :host { all: initial; display: block; }
           .drawer {
             display: grid;
-            gap: var(--srf-spacing-sm, 8px);
-            padding: var(--srf-spacing-md, 12px);
-            background: var(--srf-panel, #181c25);
-            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            border-radius: var(--srf-radius, 6px);
-            color: var(--srf-text, #e6e9ef);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-md, 14px);
-            line-height: var(--srf-line-height, 1.4);
+            gap: var(--srf-spacing-sm);
+            padding: var(--srf-spacing-md);
+            background: var(--srf-panel);
+            border: var(--srf-border-width) solid var(--srf-border);
+            border-radius: var(--srf-radius);
+            color: var(--srf-text);
+            font-family: var(--srf-font-ui);
+            font-size: var(--srf-font-size-md);
+            line-height: var(--srf-line-height);
           }
-          .head { display: flex; align-items: center; justify-content: space-between; gap: var(--srf-spacing-sm, 8px); }
-          .title-group { display: flex; align-items: baseline; gap: var(--srf-spacing-sm, 8px); min-width: 0; }
-          .title { font-size: var(--srf-font-size-lg, 16px); }
-          .summary { color: var(--srf-text-muted, #9aa3b2); font-size: var(--srf-font-size-sm, 12px); }
-          .head-actions { display: flex; align-items: center; gap: var(--srf-spacing-xs, 4px); }
+          .head { display: flex; align-items: center; justify-content: space-between; gap: var(--srf-spacing-sm); }
+          .title-group, .head-actions { display: flex; align-items: center; gap: var(--srf-spacing-xs); min-width: 0; }
+          .title { font-size: var(--srf-font-size-lg); font-weight: var(--srf-font-weight-semibold); }
+          .summary { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); }
           button.chip {
-            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-sm, 8px);
-            background: var(--srf-panel-elevated, #20262f);
-            color: var(--srf-text-muted, #9aa3b2);
-            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            border-radius: var(--srf-radius, 6px);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-sm, 12px);
+            padding: var(--srf-spacing-xs) var(--srf-spacing-sm);
+            background: var(--srf-panel-elevated);
+            color: var(--srf-text-muted);
+            border: var(--srf-border-width) solid var(--srf-border);
+            border-radius: var(--srf-radius);
+            font-family: var(--srf-font-ui);
+            font-size: var(--srf-font-size-xs);
             cursor: pointer;
+            transition: color var(--srf-transition), background var(--srf-transition), border-color var(--srf-transition);
           }
-          button.chip:hover { color: var(--srf-text, #e6e9ef); border-color: var(--srf-border-strong, #3a4252); }
-          button.chip[aria-pressed="true"] {
-            color: var(--srf-accent, #6ea8ff);
-            border-color: var(--srf-accent, #6ea8ff);
-          }
-          button.chip[data-level="warn"][aria-pressed="true"] { color: var(--srf-warn, #e0af68); border-color: var(--srf-warn, #e0af68); }
-          button.chip[data-level="error"][aria-pressed="true"] { color: var(--srf-danger, #e06c75); border-color: var(--srf-danger, #e06c75); }
-          .body { display: grid; gap: var(--srf-spacing-sm, 8px); }
+          button.chip:hover { color: var(--srf-text); border-color: var(--srf-border-strong); }
+          button.chip:active { background: var(--srf-panel); }
+          button.chip:focus-visible, select.mission-filter:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
+          button.chip[aria-pressed="true"] { color: var(--srf-accent); border-color: var(--srf-accent); }
+          button.chip[data-level="warn"][aria-pressed="true"] { color: var(--srf-warn); border-color: var(--srf-warn); }
+          button.chip[data-level="error"][aria-pressed="true"] { color: var(--srf-danger); border-color: var(--srf-danger); }
+          .body { display: grid; gap: var(--srf-spacing-sm); }
           :host([collapsed]) .body { display: none; }
-          .filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--srf-spacing-xs, 4px); }
+          .filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--srf-spacing-xs); }
           select.mission-filter {
-            background: var(--srf-panel-elevated, #20262f);
-            color: var(--srf-text, #e6e9ef);
-            border: var(--srf-border-width, 1px) solid var(--srf-border-strong, #3a4252);
-            border-radius: var(--srf-radius, 6px);
-            padding: var(--srf-spacing-xs, 4px);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-sm, 12px);
+            background: var(--srf-panel-elevated);
+            color: var(--srf-text);
+            border: var(--srf-border-width) solid var(--srf-border-strong);
+            border-radius: var(--srf-radius);
+            padding: var(--srf-spacing-xs);
+            font-family: var(--srf-font-ui);
+            font-size: var(--srf-font-size-xs);
             max-width: 14em;
           }
-          .rows { display: grid; gap: var(--srf-spacing-xs, 4px); max-height: 18em; overflow: auto; }
+          .rows { display: grid; gap: var(--srf-spacing-xxs); max-height: 18em; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--srf-border-strong) transparent; }
+          .rows::-webkit-scrollbar { width: var(--srf-spacing-sm); }
+          .rows::-webkit-scrollbar-thumb { background: var(--srf-border-strong); border-radius: var(--srf-radius-pill); }
           .row {
             display: grid;
             grid-template-columns: 5.5em 7em 3.5em 1fr;
-            gap: var(--srf-spacing-sm, 8px);
+            gap: var(--srf-spacing-sm);
             align-items: baseline;
-            padding: var(--srf-spacing-xs, 4px);
-            border-radius: var(--srf-radius, 6px);
-            background: var(--srf-panel-elevated, #20262f);
-            font-size: var(--srf-font-size-sm, 12px);
+            padding: var(--srf-spacing-xs);
+            border-radius: var(--srf-radius);
+            background: var(--srf-panel-elevated);
+            font-size: var(--srf-font-size-xs);
           }
-          .time { color: var(--srf-text-disabled, #5a6373); font-variant-numeric: tabular-nums; }
-          .source { color: var(--srf-text-muted, #9aa3b2); overflow-wrap: anywhere; }
-          .level { font-weight: 600; }
-          .row[data-level="info"] .level { color: var(--srf-text, #e6e9ef); }
-          .row[data-level="warn"] .level { color: var(--srf-warn, #e0af68); }
-          .row[data-level="error"] .level { color: var(--srf-danger, #e06c75); }
+          .time, .event-time { color: var(--srf-text-disabled); font-family: var(--srf-font-mono); font-variant-numeric: tabular-nums; }
+          .source { color: var(--srf-text-muted); overflow-wrap: anywhere; }
+          .level { font-weight: var(--srf-font-weight-semibold); }
+          .row[data-level="info"] .level { color: var(--srf-text); }
+          .row[data-level="warn"] .level, .notice-truncated { color: var(--srf-warn); }
+          .row[data-level="error"] .level { color: var(--srf-danger); }
           .body-text { overflow-wrap: anywhere; }
-          .mission-tag { color: var(--srf-accent, #6ea8ff); }
-          .empty { color: var(--srf-text-muted, #9aa3b2); font-size: var(--srf-font-size-sm, 12px); }
-          .notice-truncated { color: var(--srf-warn, #e0af68); font-size: var(--srf-font-size-sm, 12px); }
+          .mission-tag { color: var(--srf-accent); }
+          .empty, .notice-truncated { font-size: var(--srf-font-size-sm); }
+          .empty { color: var(--srf-text-muted); padding: var(--srf-spacing-lg); text-align: center; }
         </style>
         <div class="drawer" part="drawer">
           <div class="head">

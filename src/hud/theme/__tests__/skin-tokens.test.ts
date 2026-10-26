@@ -12,7 +12,7 @@ import { SKINS } from '../../../core/theme/skin-registry';
 import { parseTokenCss, readTokenCss, tokenCssExists } from './css-token-parser';
 
 /**
- * 规范 token 清单：所有皮肤必须提供**这 30 个**变量，不多不少。
+ * 规范 token 清单：所有皮肤必须提供**这 40 个**变量，不多不少。
  * why 写死清单而不是「跟 default 比」：default 也是被检对象之一，写死才能发现「大家一起少一个」。
  */
 const CANONICAL_TOKENS: readonly string[] = [
@@ -35,21 +35,31 @@ const CANONICAL_TOKENS: readonly string[] = [
   '--srf-badge-accent',
   // 字体
   '--srf-font-ui',
+  '--srf-font-mono',
+  '--srf-font-size-xs',
   '--srf-font-size-sm',
   '--srf-font-size-md',
   '--srf-font-size-lg',
+  '--srf-font-weight-semibold',
+  '--srf-font-weight-bold',
   '--srf-line-height',
   // 形状
   '--srf-radius',
+  '--srf-radius-pill',
   '--srf-border-width',
+  '--srf-spacing-xxs',
   '--srf-spacing-xs',
   '--srf-spacing-sm',
   '--srf-spacing-md',
   '--srf-spacing-lg',
+  '--srf-spacing-xl',
   // 渲染 / 装饰
   '--srf-image-rendering',
   '--srf-scanline-opacity',
   '--srf-shadow',
+  '--srf-shadow-lg',
+  '--srf-transition',
+  '--srf-backdrop',
   // 悬浮层
   '--srf-panel-overlay',
   '--srf-panel-elevated-overlay',

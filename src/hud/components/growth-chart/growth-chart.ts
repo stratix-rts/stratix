@@ -176,10 +176,14 @@ export function defineStratGrowthChart(): typeof HTMLElement {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, cssW, cssH);
 
-      const text = getComputedStyle(this).getPropertyValue('--srf-text-muted').trim() || '#9aa3b2';
-      const accent = getComputedStyle(this).getPropertyValue('--srf-accent').trim() || '#6ea8ff';
-      const warn = getComputedStyle(this).getPropertyValue('--srf-warn').trim() || '#f0c674';
-      const gridColor = getComputedStyle(this).getPropertyValue('--srf-border').trim() || '#2a313d';
+      const computed = getComputedStyle(this);
+      const text = computed.getPropertyValue('--srf-text-muted').trim() || '#9aa3b2';
+      const accent = computed.getPropertyValue('--srf-accent').trim() || '#6ea8ff';
+      const warn = computed.getPropertyValue('--srf-warn').trim() || '#f0c674';
+      const gridColor = computed.getPropertyValue('--srf-border').trim() || '#2a313d';
+      const fontFamily = computed.getPropertyValue('--srf-font-mono').trim() || 'sans-serif';
+      const fontSize = computed.getPropertyValue('--srf-font-size-xs').trim() || '10px';
+      const labelSize = computed.getPropertyValue('--srf-font-size-sm').trim() || '11px';
 
       const points = this._points;
       if (points.length === 0) return;
@@ -190,7 +194,7 @@ export function defineStratGrowthChart(): typeof HTMLElement {
       ctx.strokeStyle = gridColor;
       ctx.lineWidth = 1;
       ctx.fillStyle = text;
-      ctx.font = '10px sans-serif';
+      ctx.font = `${fontSize} ${fontFamily}`;
       ctx.textAlign = 'left';
       for (let g = 0; g <= 4; g += 1) {
         const y = PLOT_PADDING.top + (g / 4) * (innerBottom - PLOT_PADDING.top);
@@ -256,7 +260,7 @@ export function defineStratGrowthChart(): typeof HTMLElement {
         ctx.arc(x, y, 4, 0, Math.PI * 2);
         ctx.fill();
         const label = `${fmt(point.dayStart)} +${point.gained}（累计 +${point.cumulative}）`;
-        ctx.font = '11px sans-serif';
+        ctx.font = `${labelSize} ${fontFamily}`;
         ctx.textAlign = x > cssW - 110 ? 'right' : 'left';
         const labelX = x > cssW - 110 ? x - 8 : x + 8;
         ctx.fillText(label, labelX, Math.max(12, y - 10));

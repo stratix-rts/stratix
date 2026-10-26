@@ -33,18 +33,25 @@
 
   /* —— 字体：像素等宽 —— */
   --srf-font-ui: "Courier New", "Lucida Console", Monaco, monospace;
+  --srf-font-mono: "Courier New", "Lucida Console", Monaco, monospace;
+  --srf-font-size-xs: 10px;
   --srf-font-size-sm: 11px;
   --srf-font-size-md: 13px;
   --srf-font-size-lg: 15px;
+  --srf-font-weight-semibold: 600;
+  --srf-font-weight-bold: 700;
   --srf-line-height: 1.4;
 
   /* —— 形状：直角 + 硬边框 —— */
   --srf-radius: 0;
+  --srf-radius-pill: 0;
   --srf-border-width: 2px;
+  --srf-spacing-xxs: 2px;
   --srf-spacing-xs: 4px;
   --srf-spacing-sm: 8px;
   --srf-spacing-md: 12px;
   --srf-spacing-lg: 16px;
+  --srf-spacing-xl: 24px;
 
   /* —— 悬浮层：像素风同样需要半透明底（RTS 覆盖层），不透明面板会盖住战场 —— */
   --srf-panel-overlay: rgba(20, 20, 31, 0.9);
@@ -54,4 +61,7 @@
   --srf-image-rendering: pixelated;
   --srf-scanline-opacity: 0.08;
   --srf-shadow: none;
+  --srf-shadow-lg: none;
+  --srf-transition: 120ms steps(2, end);
+  --srf-backdrop: rgba(10, 10, 20, 0.8);
 }

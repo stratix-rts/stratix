@@ -74,34 +74,37 @@ export function defineStratButton(): typeof HTMLElement {
       root.innerHTML = `
         <style>
           :host { display: inline-block; }
-          :host([disabled]) button { opacity: 0.5; cursor: not-allowed; }
           button {
-            background: var(--srf-panel, #181c25);
-            color: var(--srf-text, #e6e9ef);
-            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            border-radius: var(--srf-radius, 6px);
-            padding: var(--srf-spacing-sm, 8px) var(--srf-spacing-md, 12px);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-md, 14px);
-            line-height: var(--srf-line-height, 1.4);
+            padding: var(--srf-spacing-xs) var(--srf-spacing-md);
+            background: var(--srf-panel);
+            color: var(--srf-text);
+            border: var(--srf-border-width) solid var(--srf-border);
+            border-radius: var(--srf-radius);
+            font-family: var(--srf-font-ui);
+            font-size: var(--srf-font-size-sm);
+            font-weight: var(--srf-font-weight-semibold);
+            line-height: var(--srf-line-height);
             cursor: pointer;
-            box-shadow: var(--srf-shadow, none);
+            box-shadow: var(--srf-shadow);
+            transition: background var(--srf-transition), border-color var(--srf-transition), color var(--srf-transition), box-shadow var(--srf-transition);
           }
           button:hover:not(:disabled) {
-            background: var(--srf-panel-elevated, #20262f);
-            border-color: var(--srf-border-strong, #3a4252);
+            background: var(--srf-panel-elevated);
+            border-color: var(--srf-border-strong);
           }
+          button:active:not(:disabled) { box-shadow: none; }
+          button:focus-visible {
+            outline: var(--srf-border-width) solid var(--srf-accent);
+            outline-offset: var(--srf-spacing-xxs);
+          }
+          button:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
           :host([variant="primary"]) button {
-            background: var(--srf-accent, #6ea8ff);
-            color: var(--srf-bg, #0f1116);
-            border-color: var(--srf-accent, #6ea8ff);
+            background: var(--srf-accent);
+            color: var(--srf-bg);
+            border-color: var(--srf-accent);
           }
-          :host([variant="primary"]) button:hover:not(:disabled) {
-            background: var(--srf-accent-hover, #8fbaff);
-          }
-          :host([variant="danger"]) button {
-            color: var(--srf-danger, #e06c75);
-          }
+          :host([variant="primary"]) button:hover:not(:disabled) { background: var(--srf-accent-hover); }
+          :host([variant="danger"]) button { color: var(--srf-danger); }
         </style>
         <button type="button" ${this._attrs.disabled ? 'disabled' : ''}>${escapeHtml(this._attrs.label)}</button>
       `;

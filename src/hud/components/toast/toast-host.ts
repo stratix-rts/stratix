@@ -93,26 +93,27 @@ export function defineToastHost(): typeof HTMLElement {
             display: flex;
             flex-direction: column;
             align-items: flex-end;
-            gap: var(--srf-spacing-sm, 8px);
-            padding: var(--srf-spacing-md, 12px);
-            font-family: var(--srf-font-ui, sans-serif);
+            gap: var(--srf-spacing-sm);
+            padding: var(--srf-spacing-lg);
+            font-family: var(--srf-font-ui);
           }
           .toast {
             max-width: min(320px, 80vw);
             box-sizing: border-box;
-            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-md, 12px);
-            background: var(--srf-panel-overlay, rgba(24, 28, 37, 0.88));
-            border: var(--srf-border-width, 1px) solid var(--srf-border-strong, #3a4252);
-            border-radius: var(--srf-radius, 6px);
-            color: var(--srf-text, #e6e9ef);
-            font-size: var(--srf-font-size-sm, 12px);
-            line-height: var(--srf-line-height, 1.4);
-            box-shadow: var(--srf-shadow, 0 1px 2px rgba(0, 0, 0, 0.4));
+            padding: var(--srf-spacing-sm) var(--srf-spacing-md);
+            background: var(--srf-panel-overlay);
+            border: var(--srf-border-width) solid var(--srf-border-strong);
+            border-left-width: var(--srf-spacing-xxs);
+            border-radius: var(--srf-radius);
+            color: var(--srf-text);
+            font-size: var(--srf-font-size-sm);
+            line-height: var(--srf-line-height);
+            box-shadow: var(--srf-shadow-lg);
           }
-          .toast[data-tone="success"] { border-color: var(--srf-success, #6fcf97); color: var(--srf-success, #6fcf97); }
-          .toast[data-tone="danger"] { border-color: var(--srf-danger, #e06c75); color: var(--srf-danger, #e06c75); }
-          .toast[data-tone="info"] { border-color: var(--srf-accent, #6ea8ff); }
-          .toast[data-tone="warn"] { border-color: var(--srf-warn, #f0c674); color: var(--srf-warn, #f0c674); }
+          .toast[data-tone="success"] { border-color: var(--srf-success); }
+          .toast[data-tone="danger"] { border-color: var(--srf-danger); }
+          .toast[data-tone="info"] { border-color: var(--srf-accent); }
+          .toast[data-tone="warn"] { border-color: var(--srf-warn); }
         </style>
         <div class="stack" data-role="stack" aria-live="polite"></div>
       `;

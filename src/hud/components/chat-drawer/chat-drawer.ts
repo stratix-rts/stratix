@@ -574,14 +574,12 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
 
       root.innerHTML = `
         <style>
-          /* 右侧覆盖抽屉：宿主只占位不拦事件（关着时右侧战场可正常点选），开合交给 .rail 平移 */
           :host {
             all: initial;
             position: fixed;
             top: 0;
             right: 0;
             bottom: 0;
-            /* 展示宽上限 360px，窄视口（手机 / 分屏）回落 92vw */
             width: min(360px, 92vw);
             z-index: 40;
             pointer-events: none;
@@ -591,240 +589,100 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
             grid-template-rows: auto auto 1fr auto;
             height: 100%;
             box-sizing: border-box;
-            gap: var(--srf-spacing-sm, 8px);
-            padding: var(--srf-spacing-md, 12px);
-            background: var(--srf-panel, #181c25);
-            border-left: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            color: var(--srf-text, #e6e9ef);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-md, 14px);
-            line-height: var(--srf-line-height, 1.4);
-            /* 滑入滑出：只有位移 + 可见性（visibility 随 transition 离散切换，收起动画完整播完才隐藏）；
-               220ms 是动效时长（非颜色/字体 token 范畴，暂不设皮肤变量） */
-            transform: translateX(calc(100% + 12px));
-            transition: transform 220ms ease, visibility 220ms;
+            gap: var(--srf-spacing-sm);
+            padding: var(--srf-spacing-lg);
+            background: var(--srf-panel);
+            border-left: var(--srf-border-width) solid var(--srf-border);
+            box-shadow: var(--srf-shadow-lg);
+            color: var(--srf-text);
+            font-family: var(--srf-font-ui);
+            font-size: var(--srf-font-size-md);
+            line-height: var(--srf-line-height);
+            transform: translateX(calc(100% + var(--srf-spacing-md)));
+            transition: transform var(--srf-transition), visibility var(--srf-transition);
             visibility: hidden;
             pointer-events: none;
           }
           .rail[data-open="true"] { transform: translateX(0); visibility: visible; pointer-events: auto; }
-          .head { display: flex; align-items: center; gap: var(--srf-spacing-sm, 8px); }
-          .char-name {
-            font-size: var(--srf-font-size-lg, 16px);
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-          }
-          .kind-badge {
-            flex: none;
-            padding: 0 var(--srf-spacing-sm, 8px);
-            border: var(--srf-border-width, 1px) solid var(--srf-border-strong, #3a4252);
-            border-radius: var(--srf-radius, 6px);
-            color: var(--srf-badge-accent, var(--srf-accent, #6ea8ff));
-            font-size: var(--srf-font-size-sm, 12px);
-          }
+          .head { display: flex; align-items: center; gap: var(--srf-spacing-sm); padding-bottom: var(--srf-spacing-sm); border-bottom: var(--srf-border-width) solid var(--srf-border); }
+          .char-name { font-size: var(--srf-font-size-lg); font-weight: var(--srf-font-weight-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+          .kind-badge { flex: none; padding: var(--srf-spacing-xxs) var(--srf-spacing-xs); border: var(--srf-border-width) solid var(--srf-border-strong); border-radius: var(--srf-radius-pill); color: var(--srf-badge-accent, var(--srf-accent)); font-size: var(--srf-font-size-xs); }
           .head .spacer { flex: 1; }
-          button.close {
+          button.close, button.retry, button.stop, button.send, button.peer-open, button.peer-exit, button.peer-begin, button.peer-cancel {
             flex: none;
-            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-sm, 8px);
-            background: var(--srf-panel-elevated, #20262f);
-            color: var(--srf-text-muted, #9aa3b2);
-            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            border-radius: var(--srf-radius, 6px);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-sm, 12px);
+            padding: var(--srf-spacing-xs) var(--srf-spacing-sm);
+            background: var(--srf-panel-elevated);
+            color: var(--srf-text-muted);
+            border: var(--srf-border-width) solid var(--srf-border);
+            border-radius: var(--srf-radius);
+            font-family: var(--srf-font-ui);
+            font-size: var(--srf-font-size-sm);
             cursor: pointer;
+            transition: color var(--srf-transition), background var(--srf-transition), border-color var(--srf-transition);
           }
-          button.close:hover { border-color: var(--srf-border-strong, #3a4252); }
+          button.close:hover, button.peer-exit:hover, button.peer-cancel:hover { color: var(--srf-text); border-color: var(--srf-border-strong); }
+          button.close:active, button.retry:active, button.stop:active, button.send:active, button.peer-open:active, button.peer-exit:active, button.peer-begin:active, button.peer-cancel:active { background: var(--srf-panel); }
+          button.close:focus-visible, button.retry:focus-visible, button.stop:focus-visible, button.send:focus-visible, button.peer-open:focus-visible, button.peer-exit:focus-visible, button.peer-begin:focus-visible, button.peer-cancel:focus-visible, textarea:focus-visible, .peer-setup select:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
           .messages {
             display: flex;
             flex-direction: column;
-            gap: var(--srf-spacing-sm, 8px);
+            gap: var(--srf-spacing-sm);
             min-height: 0;
             overflow-y: auto;
-            padding: var(--srf-spacing-xs, 4px);
+            padding: var(--srf-spacing-xs);
+            scrollbar-width: thin;
+            scrollbar-color: var(--srf-border-strong) transparent;
           }
-          .bubble {
-            max-width: 82%;
-            box-sizing: border-box;
-            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-sm, 8px);
-            background: var(--srf-panel-elevated, #20262f);
-            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            border-radius: var(--srf-radius, 6px);
-          }
-          .bubble[data-side="user"] { align-self: end; border-color: var(--srf-accent, #6ea8ff); }
+          .messages::-webkit-scrollbar { width: var(--srf-spacing-sm); }
+          .messages::-webkit-scrollbar-thumb { background: var(--srf-border-strong); border-radius: var(--srf-radius-pill); }
+          .bubble { max-width: 82%; box-sizing: border-box; padding: var(--srf-spacing-sm); background: var(--srf-panel-elevated); border: var(--srf-border-width) solid var(--srf-border); border-radius: var(--srf-radius); }
+          .bubble[data-side="user"] { align-self: end; border-color: var(--srf-accent); }
           .bubble[data-side="assistant"] { align-self: start; }
-          /* 互聊 peer 气泡（task_052）：B 侧靠右但与 user 色彩区分（success 边框），带对方名字行 */
-          .bubble[data-side="peer"] { align-self: end; border-color: var(--srf-success, #6fcf97); }
-          .bubble-name {
-            color: var(--srf-success, #6fcf97);
-            font-size: var(--srf-font-size-sm, 12px);
-            margin-bottom: var(--srf-spacing-xs, 4px);
-          }
-          /* 错误气泡（task_035）：警示配色 + 内嵌重试钮，重试路径由 onRetry 桥接 chat-service.retry */
-          .bubble[data-error="true"] { border-color: var(--srf-danger, #e06c75); }
-          .bubble[data-error="true"] .bubble-text { color: var(--srf-danger, #e06c75); }
-          button.retry {
-            display: block;
-            margin-top: var(--srf-spacing-xs, 4px);
-            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-sm, 8px);
-            background: var(--srf-panel-elevated, #20262f);
-            color: var(--srf-danger, #e06c75);
-            border: var(--srf-border-width, 1px) solid var(--srf-danger, #e06c75);
-            border-radius: var(--srf-radius, 6px);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-sm, 12px);
-            cursor: pointer;
-          }
-          button.retry:hover { background: var(--srf-danger, #e06c75); color: var(--srf-bg, #0f1116); }
-          .bubble-text {
-            font-size: var(--srf-font-size-sm, 12px);
-            white-space: pre-wrap;
-            word-break: break-word;
-          }
-          /* 流式光标：appendStream 进行中的视觉信号（jsdom 不跑动画，静态竖线也成立） */
-          .caret {
-            display: inline-block;
-            width: 2px;
-            height: 1em;
-            margin-left: 2px;
-            vertical-align: text-bottom;
-            background: var(--srf-accent, #6ea8ff);
-            animation: caret-blink 900ms step-end infinite;
-          }
+          .bubble[data-side="peer"] { align-self: end; border-color: var(--srf-success); }
+          .bubble-name { color: var(--srf-success); font-size: var(--srf-font-size-xs); font-weight: var(--srf-font-weight-semibold); margin-bottom: var(--srf-spacing-xs); }
+          .bubble[data-error="true"] { border-color: var(--srf-danger); }
+          .bubble[data-error="true"] .bubble-text { color: var(--srf-danger); }
+          button.retry { display: block; margin-top: var(--srf-spacing-xs); color: var(--srf-danger); border-color: var(--srf-danger); }
+          button.retry:hover { background: var(--srf-danger); color: var(--srf-bg); }
+          .bubble-text { font-size: var(--srf-font-size-sm); white-space: pre-wrap; word-break: break-word; }
+          .caret { display: inline-block; width: var(--srf-spacing-xxs); height: 1em; margin-left: var(--srf-spacing-xxs); vertical-align: text-bottom; background: var(--srf-accent); animation: caret-blink 900ms step-end infinite; }
           @keyframes caret-blink { 50% { opacity: 0; } }
-          .empty {
-            align-self: center;
-            color: var(--srf-text-muted, #9aa3b2);
-            font-size: var(--srf-font-size-sm, 12px);
-            text-align: center;
-            padding: var(--srf-spacing-lg, 16px) var(--srf-spacing-sm, 8px);
-          }
-          .composer { display: grid; gap: var(--srf-spacing-xs, 4px); }
-          textarea {
-            width: 100%;
+          .empty { align-self: center; color: var(--srf-text-muted); font-size: var(--srf-font-size-sm); text-align: center; padding: var(--srf-spacing-xl) var(--srf-spacing-md); }
+          .composer { display: grid; gap: var(--srf-spacing-xs); padding-top: var(--srf-spacing-sm); border-top: var(--srf-border-width) solid var(--srf-border); }
+          textarea, .peer-setup select {
             box-sizing: border-box;
-            min-height: 48px;
-            resize: vertical;
-            padding: var(--srf-spacing-sm, 8px);
-            background: var(--srf-bg, #0f1116);
-            color: var(--srf-text, #e6e9ef);
-            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            border-radius: var(--srf-radius, 6px);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-sm, 12px);
+            padding: var(--srf-spacing-sm);
+            background: var(--srf-bg);
+            color: var(--srf-text);
+            border: var(--srf-border-width) solid var(--srf-border);
+            border-radius: var(--srf-radius);
+            font-family: var(--srf-font-ui);
+            font-size: var(--srf-font-size-sm);
+            transition: border-color var(--srf-transition), box-shadow var(--srf-transition);
           }
-          textarea:focus { outline: var(--srf-border-width, 1px) solid var(--srf-accent, #6ea8ff); }
+          textarea { width: 100%; min-height: 48px; resize: vertical; }
+          textarea:hover, .peer-setup select:hover { border-color: var(--srf-border-strong); }
           textarea:disabled, button.send:disabled { opacity: 0.6; cursor: not-allowed; }
-          .composer-foot { display: flex; align-items: center; justify-content: flex-end; gap: var(--srf-spacing-sm, 8px); }
-          .hint { color: var(--srf-text-muted, #9aa3b2); font-size: var(--srf-font-size-sm, 12px); flex: 1; }
-          .hint[data-tone="busy"] { color: var(--srf-warn, #f0c674); }
-          /* 停止钮（task_035）：只在发送中出现 —— 中断当前轮（onStop → chat-service.stop） */
-          button.stop {
-            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-md, 12px);
-            background: var(--srf-panel-elevated, #20262f);
-            color: var(--srf-warn, #f0c674);
-            border: var(--srf-border-width, 1px) solid var(--srf-warn, #f0c674);
-            border-radius: var(--srf-radius, 6px);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-sm, 12px);
-            cursor: pointer;
-          }
-          button.send {
-            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-md, 12px);
-            background: var(--srf-accent, #6ea8ff);
-            color: var(--srf-bg, #0f1116);
-            border: var(--srf-border-width, 1px) solid var(--srf-accent, #6ea8ff);
-            border-radius: var(--srf-radius, 6px);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-sm, 12px);
-            cursor: pointer;
-          }
-          button.send[disabled] {
-            background: var(--srf-panel-elevated, #20262f);
-            color: var(--srf-text-disabled, #5a6373);
-            border-color: var(--srf-border, #2a313d);
-          }
-          /* —— 互聊（task_052）—— */
-          .head .peer-round {
-            flex: none;
-            color: var(--srf-warn, #f0c674);
-            font-size: var(--srf-font-size-sm, 12px);
-          }
-          button.peer-open {
-            flex: none;
-            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-sm, 8px);
-            background: var(--srf-panel-elevated, #20262f);
-            color: var(--srf-accent, #6ea8ff);
-            border: var(--srf-border-width, 1px) solid var(--srf-accent, #6ea8ff);
-            border-radius: var(--srf-radius, 6px);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-sm, 12px);
-            cursor: pointer;
-          }
-          button.peer-exit {
-            flex: none;
-            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-sm, 8px);
-            background: var(--srf-panel-elevated, #20262f);
-            color: var(--srf-text-muted, #9aa3b2);
-            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            border-radius: var(--srf-radius, 6px);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-sm, 12px);
-            cursor: pointer;
-          }
-          .peer-setup {
-            display: grid;
-            gap: var(--srf-spacing-sm, 8px);
-            align-content: start;
-            padding: var(--srf-spacing-sm, 8px);
-          }
-          .peer-setup-title {
-            font-size: var(--srf-font-size-md, 14px);
-            overflow-wrap: anywhere;
-          }
-          .peer-setup label {
-            display: flex;
-            align-items: center;
-            gap: var(--srf-spacing-sm, 8px);
-            color: var(--srf-text-muted, #9aa3b2);
-            font-size: var(--srf-font-size-sm, 12px);
-          }
-          .peer-setup select {
-            padding: var(--srf-spacing-xs, 4px);
-            background: var(--srf-bg, #0f1116);
-            color: var(--srf-text, #e6e9ef);
-            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            border-radius: var(--srf-radius, 6px);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-sm, 12px);
-          }
-          .peer-setup-foot { display: flex; justify-content: flex-end; gap: var(--srf-spacing-sm, 8px); }
-          button.peer-begin {
-            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-md, 12px);
-            background: var(--srf-success, #6fcf97);
-            color: var(--srf-bg, #0f1116);
-            border: var(--srf-border-width, 1px) solid var(--srf-success, #6fcf97);
-            border-radius: var(--srf-radius, 6px);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-sm, 12px);
-            cursor: pointer;
-          }
-          button.peer-begin:disabled {
-            background: var(--srf-panel-elevated, #20262f);
-            color: var(--srf-text-disabled, #5a6373);
-            border-color: var(--srf-border, #2a313d);
-            cursor: not-allowed;
-          }
-          button.peer-cancel {
-            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-md, 12px);
-            background: var(--srf-panel-elevated, #20262f);
-            color: var(--srf-text-muted, #9aa3b2);
-            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            border-radius: var(--srf-radius, 6px);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-sm, 12px);
-            cursor: pointer;
-          }
+          .composer-foot { display: flex; align-items: center; justify-content: flex-end; gap: var(--srf-spacing-sm); }
+          .hint { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); flex: 1; }
+          .hint[data-tone="busy"] { color: var(--srf-warn); }
+          button.stop { padding-inline: var(--srf-spacing-md); color: var(--srf-warn); border-color: var(--srf-warn); }
+          button.stop:hover { background: var(--srf-warn); color: var(--srf-bg); }
+          button.send { padding-inline: var(--srf-spacing-md); background: var(--srf-accent); color: var(--srf-bg); border-color: var(--srf-accent); font-weight: var(--srf-font-weight-semibold); }
+          button.send:hover:not(:disabled) { background: var(--srf-accent-hover); }
+          button.send:disabled { background: var(--srf-panel-elevated); color: var(--srf-text-disabled); border-color: var(--srf-border); }
+          .head .peer-round { flex: none; color: var(--srf-warn); font-size: var(--srf-font-size-xs); font-variant-numeric: tabular-nums; }
+          button.peer-open { color: var(--srf-accent); border-color: var(--srf-accent); }
+          button.peer-open:hover { color: var(--srf-accent-hover); }
+          .peer-setup { display: grid; gap: var(--srf-spacing-sm); align-content: start; padding: var(--srf-spacing-sm); }
+          .peer-setup-title { font-size: var(--srf-font-size-md); font-weight: var(--srf-font-weight-semibold); overflow-wrap: anywhere; }
+          .peer-setup label { display: flex; align-items: center; gap: var(--srf-spacing-sm); color: var(--srf-text-muted); font-size: var(--srf-font-size-sm); }
+          .peer-setup select { padding: var(--srf-spacing-xs); }
+          .peer-setup select:disabled { color: var(--srf-text-disabled); cursor: not-allowed; opacity: 0.6; }
+          .peer-setup-foot { display: flex; justify-content: flex-end; gap: var(--srf-spacing-sm); }
+          button.peer-begin { padding-inline: var(--srf-spacing-md); background: var(--srf-success); color: var(--srf-bg); border-color: var(--srf-success); font-weight: var(--srf-font-weight-semibold); }
+          button.peer-begin:disabled, button.peer-cancel:disabled, button.peer-exit:disabled, button.peer-open:disabled, button.stop:disabled, button.retry:disabled { background: var(--srf-panel-elevated); color: var(--srf-text-disabled); border-color: var(--srf-border); cursor: not-allowed; opacity: 0.6; }
+          button.peer-cancel { padding-inline: var(--srf-spacing-md); }
         </style>
         <div class="rail" data-role="rail" data-open="false">
           <div class="head">

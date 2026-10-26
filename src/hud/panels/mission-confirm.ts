@@ -238,62 +238,62 @@ export function defineMissionConfirm(): typeof HTMLElement {
           :host { all: initial; }
           .panel {
             display: grid;
-            gap: var(--srf-spacing-sm, 8px);
-            padding: var(--srf-spacing-md, 12px);
-            background: var(--srf-panel, #181c25);
-            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            border-radius: var(--srf-radius, 6px);
-            color: var(--srf-text, #e6e9ef);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-md, 14px);
-            line-height: var(--srf-line-height, 1.4);
+            gap: var(--srf-spacing-md);
+            padding: var(--srf-spacing-md);
+            background: var(--srf-panel);
+            border: var(--srf-border-width) solid var(--srf-border);
+            border-radius: var(--srf-radius);
+            color: var(--srf-text);
+            font-family: var(--srf-font-ui);
+            font-size: var(--srf-font-size-md);
+            line-height: var(--srf-line-height);
           }
-          .head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--srf-spacing-sm, 8px); }
-          .title { font-size: var(--srf-font-size-lg, 16px); }
-          .stats { display: flex; gap: var(--srf-spacing-sm, 8px); color: var(--srf-text-muted, #9aa3b2); font-size: var(--srf-font-size-sm, 12px); }
-          .list { display: grid; gap: var(--srf-spacing-sm, 8px); }
-          .group-name {
-            color: var(--srf-text-muted, #9aa3b2);
-            font-size: var(--srf-font-size-sm, 12px);
-            letter-spacing: 0.04em;
-          }
+          .head, .row-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--srf-spacing-sm); }
+          .title { font-size: var(--srf-font-size-lg); font-weight: var(--srf-font-weight-semibold); }
+          .stats { display: flex; gap: var(--srf-spacing-sm); color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); }
+          .list, .group { display: grid; gap: var(--srf-spacing-sm); }
+          .group-name { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); font-weight: var(--srf-font-weight-semibold); letter-spacing: 0.04em; }
           .row {
             display: grid;
-            gap: var(--srf-spacing-xs, 4px);
-            padding: var(--srf-spacing-sm, 8px);
-            background: var(--srf-panel-elevated, #20262f);
-            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            border-radius: var(--srf-radius, 6px);
+            gap: var(--srf-spacing-xs);
+            padding: var(--srf-spacing-sm);
+            background: var(--srf-panel-elevated);
+            border: var(--srf-border-width) solid var(--srf-border);
+            border-radius: var(--srf-radius);
           }
-          .row-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--srf-spacing-sm, 8px); }
-          .row-title { font-weight: 600; }
+          .row[data-phase="pending"] { border-left: var(--srf-spacing-xxs) solid var(--srf-warn); }
+          .row-title { font-weight: var(--srf-font-weight-semibold); }
           .phase {
-            padding: 0 var(--srf-spacing-sm, 8px);
-            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            border-radius: var(--srf-radius, 6px);
-            color: var(--srf-text-muted, #9aa3b2);
-            font-size: var(--srf-font-size-sm, 12px);
+            padding: var(--srf-spacing-xxs) var(--srf-spacing-xs);
+            border: var(--srf-border-width) solid var(--srf-border);
+            border-radius: var(--srf-radius-pill);
+            color: var(--srf-text-muted);
+            font-size: var(--srf-font-size-xs);
+            white-space: nowrap;
           }
-          .phase[data-phase="pending"] { color: var(--srf-warn, #f0c674); border-color: var(--srf-warn, #f0c674); }
-          .phase[data-phase="running"], .phase[data-phase="confirmed"] { color: var(--srf-accent, #6ea8ff); border-color: var(--srf-accent, #6ea8ff); }
-          .phase[data-phase="done"] { color: var(--srf-success, #6fcf97); border-color: var(--srf-success, #6fcf97); }
-          .phase[data-phase="cancelled"] { color: var(--srf-danger, #e06c75); border-color: var(--srf-danger, #e06c75); }
-          .units { color: var(--srf-text-muted, #9aa3b2); font-size: var(--srf-font-size-sm, 12px); }
-          .actions { display: flex; gap: var(--srf-spacing-sm, 8px); }
+          .phase[data-phase="pending"] { color: var(--srf-warn); border-color: var(--srf-warn); }
+          .phase[data-phase="running"], .phase[data-phase="confirmed"] { color: var(--srf-accent); border-color: var(--srf-accent); }
+          .phase[data-phase="done"] { color: var(--srf-success); border-color: var(--srf-success); }
+          .phase[data-phase="cancelled"] { color: var(--srf-danger); border-color: var(--srf-danger); }
+          .units { color: var(--srf-text-muted); font-size: var(--srf-font-size-sm); }
+          .actions { display: flex; gap: var(--srf-spacing-sm); margin-top: var(--srf-spacing-xs); }
           button.decision {
-            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-md, 12px);
+            padding: var(--srf-spacing-xs) var(--srf-spacing-md);
             background: transparent;
-            color: var(--srf-text, #e6e9ef);
-            border: var(--srf-border-width, 1px) solid var(--srf-border-strong, #3a4252);
-            border-radius: var(--srf-radius, 6px);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-sm, 12px);
+            color: var(--srf-text);
+            border: var(--srf-border-width) solid var(--srf-border-strong);
+            border-radius: var(--srf-radius);
+            font-family: var(--srf-font-ui);
+            font-size: var(--srf-font-size-sm);
             cursor: pointer;
+            transition: color var(--srf-transition), background var(--srf-transition), border-color var(--srf-transition);
           }
-          button.decision:hover { border-color: var(--srf-accent, #6ea8ff); }
-          button.decision[data-decision="accept"] { color: var(--srf-success, #6fcf97); border-color: var(--srf-success, #6fcf97); }
-          button.decision[data-decision="reject"] { color: var(--srf-danger, #e06c75); border-color: var(--srf-danger, #e06c75); }
-          .empty { color: var(--srf-text-muted, #9aa3b2); font-size: var(--srf-font-size-sm, 12px); }
+          button.decision:hover { background: var(--srf-panel); border-color: var(--srf-accent); }
+          button.decision:active { background: var(--srf-panel-elevated); }
+          button.decision:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
+          button.decision[data-decision="accept"] { color: var(--srf-success); border-color: var(--srf-success); }
+          button.decision[data-decision="reject"] { color: var(--srf-danger); border-color: var(--srf-danger); }
+          .empty { color: var(--srf-text-muted); font-size: var(--srf-font-size-sm); padding: var(--srf-spacing-lg); text-align: center; border: var(--srf-border-width) dashed var(--srf-border); border-radius: var(--srf-radius); }
         </style>
         <div class="panel" part="panel">
           <div class="head">

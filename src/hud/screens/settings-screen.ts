@@ -297,100 +297,91 @@ export function defineSettingsScreen(): typeof HTMLElement {
             grid-template-rows: auto 1fr;
             height: 100%;
             min-height: 0;
-            background: var(--srf-bg, #0f1116);
-            color: var(--srf-text, #e6e9ef);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-md, 14px);
-            line-height: var(--srf-line-height, 1.4);
+            background: var(--srf-bg);
+            color: var(--srf-text);
+            font-family: var(--srf-font-ui);
+            font-size: var(--srf-font-size-md);
+            line-height: var(--srf-line-height);
           }
           .topbar {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: var(--srf-spacing-sm, 8px);
-            padding: var(--srf-spacing-sm, 8px) var(--srf-spacing-md, 12px);
-            background: var(--srf-panel, #181c25);
-            border-bottom: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
+            gap: var(--srf-spacing-sm);
+            padding: var(--srf-spacing-sm) var(--srf-spacing-lg);
+            background: var(--srf-panel);
+            border-bottom: var(--srf-border-width) solid var(--srf-border);
           }
-          .title { font-size: var(--srf-font-size-lg, 16px); }
+          .title { font-size: var(--srf-font-size-lg); font-weight: var(--srf-font-weight-semibold); }
           .body {
             display: grid;
-            gap: var(--srf-spacing-md, 12px);
+            gap: var(--srf-spacing-lg);
             align-content: start;
-            /* 单列、限宽居中：设置项是长阅读文本，多列会把标签与控件拉得过散 */
             grid-template-columns: minmax(0, 1fr);
             max-width: 760px;
             width: 100%;
+            box-sizing: border-box;
             margin: 0 auto;
-            padding: var(--srf-spacing-md, 12px);
+            padding: var(--srf-spacing-lg);
             overflow: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--srf-border-strong) transparent;
           }
+          .body::-webkit-scrollbar { width: var(--srf-spacing-sm); }
+          .body::-webkit-scrollbar-thumb { background: var(--srf-border-strong); border-radius: var(--srf-radius-pill); }
           .group {
             display: grid;
-            gap: var(--srf-spacing-sm, 8px);
-            padding: var(--srf-spacing-md, 12px);
-            background: var(--srf-panel, #181c25);
-            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            border-radius: var(--srf-radius, 6px);
+            gap: var(--srf-spacing-sm);
+            padding: var(--srf-spacing-lg);
+            background: var(--srf-panel);
+            border: var(--srf-border-width) solid var(--srf-border);
+            border-radius: var(--srf-radius);
           }
-          .group-name {
-            color: var(--srf-text-muted, #9aa3b2);
-            font-size: var(--srf-font-size-sm, 12px);
-            letter-spacing: 0.04em;
-          }
-          .group[data-group="danger"] { border-color: var(--srf-danger, #e06c75); }
+          .group-name { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); font-weight: var(--srf-font-weight-semibold); letter-spacing: 0.04em; }
+          .group[data-group="danger"] { border-color: var(--srf-danger); }
           .row {
             display: grid;
             grid-template-columns: minmax(0, 1fr) auto;
             align-items: center;
-            gap: var(--srf-spacing-sm, 8px);
-            padding: var(--srf-spacing-sm, 8px);
-            background: var(--srf-panel-elevated, #20262f);
-            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            border-radius: var(--srf-radius, 6px);
+            gap: var(--srf-spacing-md);
+            padding: var(--srf-spacing-md);
+            background: var(--srf-panel-elevated);
+            border: var(--srf-border-width) solid var(--srf-border);
+            border-radius: var(--srf-radius);
           }
-          .row-text { display: grid; gap: var(--srf-spacing-xs, 4px); min-width: 0; }
-          .row-label { font-weight: 600; }
-          .row-hint { color: var(--srf-text-muted, #9aa3b2); font-size: var(--srf-font-size-sm, 12px); }
-          .row-ctl { display: flex; align-items: center; gap: var(--srf-spacing-sm, 8px); }
+          .row-text { display: grid; gap: var(--srf-spacing-xs); min-width: 0; }
+          .row-label { font-weight: var(--srf-font-weight-semibold); }
+          .row-hint { color: var(--srf-text-muted); font-size: var(--srf-font-size-sm); }
+          .row-ctl { display: flex; align-items: center; gap: var(--srf-spacing-sm); }
           button.ctl {
-            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-md, 12px);
+            padding: var(--srf-spacing-xs) var(--srf-spacing-md);
             background: transparent;
-            color: var(--srf-text, #e6e9ef);
-            border: var(--srf-border-width, 1px) solid var(--srf-border-strong, #3a4252);
-            border-radius: var(--srf-radius, 6px);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-sm, 12px);
+            color: var(--srf-text);
+            border: var(--srf-border-width) solid var(--srf-border-strong);
+            border-radius: var(--srf-radius);
+            font-family: var(--srf-font-ui);
+            font-size: var(--srf-font-size-sm);
             cursor: pointer;
+            transition: color var(--srf-transition), background var(--srf-transition), border-color var(--srf-transition);
           }
-          button.ctl:hover { border-color: var(--srf-accent, #6ea8ff); }
-          button.ctl[data-skin][data-active="true"] {
-            color: var(--srf-accent, #6ea8ff);
-            border-color: var(--srf-accent, #6ea8ff);
-          }
-          button.ctl[data-skin][data-active="false"] { color: var(--srf-text-muted, #9aa3b2); }
-          button.ctl[role="switch"][aria-checked="true"] {
-            color: var(--srf-success, #6fcf97);
-            border-color: var(--srf-success, #6fcf97);
-          }
-          /* 音量滑条（task_060）：原生 range 控件 + accent-color 挂皮肤 token（jsdom 不渲染样式，无碍） */
-          input.ctl-range {
-            width: 110px;
-            accent-color: var(--srf-accent, #6ea8ff);
-            cursor: pointer;
-          }
-          button.ctl[data-danger], button.ctl[data-danger-confirm] {
-            color: var(--srf-danger, #e06c75);
-            border-color: var(--srf-danger, #e06c75);
-          }
+          button.ctl:hover { background: var(--srf-panel); border-color: var(--srf-accent); }
+          button.ctl:active { color: var(--srf-accent-hover); }
+          button.ctl:focus-visible, input.ctl-range:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
+          button.ctl:disabled { color: var(--srf-text-disabled); border-color: var(--srf-border); cursor: not-allowed; opacity: 0.65; }
+          button.ctl[data-skin][data-active="true"] { color: var(--srf-accent); border-color: var(--srf-accent); }
+          button.ctl[data-skin][data-active="false"] { color: var(--srf-text-muted); }
+          button.ctl[role="switch"][aria-checked="true"] { color: var(--srf-success); border-color: var(--srf-success); }
+          input.ctl-range { width: 110px; accent-color: var(--srf-accent); cursor: pointer; }
+          input.ctl-range:disabled { cursor: not-allowed; opacity: 0.5; }
+          button.ctl[data-danger], button.ctl[data-danger-confirm] { color: var(--srf-danger); border-color: var(--srf-danger); }
           .readonly {
-            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-md, 12px);
-            color: var(--srf-text-muted, #9aa3b2);
-            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            border-radius: var(--srf-radius, 6px);
-            font-size: var(--srf-font-size-sm, 12px);
+            padding: var(--srf-spacing-xs) var(--srf-spacing-md);
+            color: var(--srf-text-muted);
+            border: var(--srf-border-width) solid var(--srf-border);
+            border-radius: var(--srf-radius);
+            font-size: var(--srf-font-size-sm);
           }
-          .confirm { display: inline-flex; align-items: center; gap: var(--srf-spacing-xs, 4px); }
+          .confirm { display: inline-flex; align-items: center; gap: var(--srf-spacing-xs); }
         </style>
         <div class="screen" part="screen">
           <div class="topbar">

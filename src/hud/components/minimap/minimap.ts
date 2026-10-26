@@ -51,8 +51,6 @@ const HIT_RADIUS_PX = 8;
 /** 无皮肤单位的兜底色（与 world/theme 的 DEFAULT_UNIT_COLOR 同值 —— 两侧同源注记）。 */
 const NEUTRAL_DOT_COLOR = '#94a3b8';
 /** jsdom / 无 token 环境的回落值（与 tokens-default.css 的默认值同源）。 */
-const FALLBACK_BG = '#181c25';
-const FALLBACK_BORDER = '#3a4252';
 const FALLBACK_ACCENT = '#6ea8ff';
 const FALLBACK_DISABLED = '#5a6373';
 
@@ -248,17 +246,17 @@ export function defineStratMinimap(): typeof HTMLElement {
           :host {
             all: initial;
             position: fixed;
-            right: 12px;
-            bottom: 12px;
+            right: var(--srf-spacing-md);
+            bottom: var(--srf-spacing-md);
             z-index: 45; /* 抽屉(40)之上、toast(50)之下：控制件，不遮反馈层 */
             pointer-events: auto; /* hud-root 整层 none，本组件自接交互 */
-            font-family: var(--srf-font-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+            font-family: var(--srf-font-ui);
           }
           .frame {
-            border: var(--srf-border-width, 1px) solid var(--srf-border-strong, ${FALLBACK_BORDER});
-            border-radius: var(--srf-radius, 6px);
-            background: var(--srf-panel, ${FALLBACK_BG});
-            box-shadow: var(--srf-shadow, 0 1px 2px rgba(0, 0, 0, 0.4));
+            border: var(--srf-border-width) solid var(--srf-border-strong);
+            border-radius: var(--srf-radius);
+            background: var(--srf-panel);
+            box-shadow: var(--srf-shadow-lg);
             overflow: hidden;
             line-height: 1;
           }
@@ -266,28 +264,24 @@ export function defineStratMinimap(): typeof HTMLElement {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: var(--srf-spacing-sm, 8px);
-            padding: 4px 6px;
-            border-bottom: 1px solid var(--srf-border, #2a313d);
+            gap: var(--srf-spacing-sm);
+            padding: var(--srf-spacing-xs) var(--srf-spacing-sm);
+            border-bottom: var(--srf-border-width) solid var(--srf-border);
           }
-          .label {
-            font-size: var(--srf-font-size-sm, 12px);
-            color: var(--srf-text-muted, #9aa3b2);
-            user-select: none;
-          }
+          .label { font-size: var(--srf-font-size-xs); color: var(--srf-text-muted); font-weight: var(--srf-font-weight-semibold); user-select: none; }
           button {
             all: unset;
             cursor: pointer;
-            font-size: var(--srf-font-size-sm, 12px);
-            color: var(--srf-text-muted, #9aa3b2);
-            padding: 0 4px;
-            border-radius: var(--srf-radius, 6px);
+            font-size: var(--srf-font-size-sm);
+            color: var(--srf-text-muted);
+            padding: var(--srf-spacing-xxs) var(--srf-spacing-xs);
+            border-radius: var(--srf-radius);
+            transition: color var(--srf-transition), background var(--srf-transition);
           }
-          button:hover { color: var(--srf-text, #e6e9ef); }
-          canvas {
-            display: block;
-            touch-action: none; /* 拖拽跳转不触发浏览器滚动手势 */
-          }
+          button:hover { color: var(--srf-text); background: var(--srf-panel-elevated); }
+          button:active { color: var(--srf-accent); }
+          button:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
+          canvas { display: block; touch-action: none; }
           :host([data-collapsed]) canvas { display: none; }
           :host([data-collapsed]) .head { border-bottom: none; }
         </style>

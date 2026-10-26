@@ -198,77 +198,70 @@ export function defineCommandPanel(): typeof HTMLElement {
           :host { all: initial; }
           .panel {
             display: grid;
-            gap: var(--srf-spacing-sm, 8px);
-            padding: var(--srf-spacing-md, 12px);
-            background: var(--srf-panel, #181c25);
-            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            border-radius: var(--srf-radius, 6px);
-            color: var(--srf-text, #e6e9ef);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-md, 14px);
-            line-height: var(--srf-line-height, 1.4);
+            gap: var(--srf-spacing-sm);
+            padding: var(--srf-spacing-md);
+            background: var(--srf-panel);
+            border: var(--srf-border-width) solid var(--srf-border);
+            border-radius: var(--srf-radius);
+            color: var(--srf-text);
+            font-family: var(--srf-font-ui);
+            font-size: var(--srf-font-size-md);
+            line-height: var(--srf-line-height);
           }
-          .head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--srf-spacing-sm, 8px); }
-          .title { font-size: var(--srf-font-size-lg, 16px); color: var(--srf-text, #e6e9ef); }
-          .selection { color: var(--srf-text-muted, #9aa3b2); font-size: var(--srf-font-size-sm, 12px); }
-          .notices { display: grid; gap: var(--srf-spacing-xs, 4px); }
+          .head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--srf-spacing-sm); }
+          .title { font-size: var(--srf-font-size-lg); font-weight: var(--srf-font-weight-semibold); }
+          .selection, .field-name, .group-name, .empty { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); }
+          .notices, .sections, .group { display: grid; gap: var(--srf-spacing-xs); }
           .notice {
-            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-sm, 8px);
-            border-radius: var(--srf-radius, 6px);
-            background: var(--srf-panel-elevated, #20262f);
-            color: var(--srf-text-muted, #9aa3b2);
-            font-size: var(--srf-font-size-sm, 12px);
+            padding: var(--srf-spacing-xs) var(--srf-spacing-sm);
+            border-left: var(--srf-spacing-xxs) solid var(--srf-border-strong);
+            border-radius: var(--srf-radius);
+            background: var(--srf-panel-elevated);
+            color: var(--srf-text-muted);
+            font-size: var(--srf-font-size-sm);
           }
-          .notice[data-level="warn"] { color: var(--srf-warn, #f0c674); }
-          .notice[data-level="error"] { color: var(--srf-danger, #e06c75); }
-          label.field { display: grid; gap: var(--srf-spacing-xs, 4px); }
-          .field-name { color: var(--srf-text-muted, #9aa3b2); font-size: var(--srf-font-size-sm, 12px); }
+          .notice[data-level="warn"] { color: var(--srf-warn); border-left-color: var(--srf-warn); }
+          .notice[data-level="error"] { color: var(--srf-danger); border-left-color: var(--srf-danger); }
+          label.field { display: grid; gap: var(--srf-spacing-xs); }
           input {
             width: 100%;
             box-sizing: border-box;
-            padding: var(--srf-spacing-sm, 8px);
-            background: var(--srf-bg, #0f1116);
-            color: var(--srf-text, #e6e9ef);
-            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            border-radius: var(--srf-radius, 6px);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-sm, 12px);
+            padding: var(--srf-spacing-sm);
+            background: var(--srf-bg);
+            color: var(--srf-text);
+            border: var(--srf-border-width) solid var(--srf-border);
+            border-radius: var(--srf-radius);
+            font-family: var(--srf-font-ui);
+            font-size: var(--srf-font-size-sm);
+            transition: border-color var(--srf-transition), box-shadow var(--srf-transition);
           }
-          input:focus { outline: var(--srf-border-width, 1px) solid var(--srf-accent, #6ea8ff); }
-          .sections { display: grid; gap: var(--srf-spacing-sm, 8px); }
-          .group { display: grid; gap: var(--srf-spacing-xs, 4px); }
-          .group-name {
-            color: var(--srf-text-muted, #9aa3b2);
-            font-size: var(--srf-font-size-sm, 12px);
-            letter-spacing: 0.04em;
-          }
-          .empty { color: var(--srf-text-muted, #9aa3b2); font-size: var(--srf-font-size-sm, 12px); }
+          input:hover { border-color: var(--srf-border-strong); }
+          input:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
+          .group-name { font-weight: var(--srf-font-weight-semibold); letter-spacing: 0.04em; }
+          .empty { padding: var(--srf-spacing-md); text-align: center; border: var(--srf-border-width) dashed var(--srf-border); border-radius: var(--srf-radius); }
           button.command {
             display: grid;
-            gap: 2px;
+            gap: var(--srf-spacing-xxs);
             width: 100%;
             text-align: left;
-            padding: var(--srf-spacing-sm, 8px);
-            background: var(--srf-panel-elevated, #20262f);
-            color: var(--srf-text, #e6e9ef);
-            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            border-radius: var(--srf-radius, 6px);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-sm, 12px);
+            padding: var(--srf-spacing-sm);
+            background: var(--srf-panel-elevated);
+            color: var(--srf-text);
+            border: var(--srf-border-width) solid var(--srf-border);
+            border-radius: var(--srf-radius);
+            font-family: var(--srf-font-ui);
+            font-size: var(--srf-font-size-sm);
             cursor: pointer;
+            transition: background var(--srf-transition), border-color var(--srf-transition), color var(--srf-transition);
           }
-          button.command:hover:not([disabled]) { border-color: var(--srf-border-strong, #3a4252); }
-          button.command[data-primary="true"]:not([disabled]) {
-            border-color: var(--srf-accent, #6ea8ff);
-            color: var(--srf-accent, #6ea8ff);
-          }
-          button.command[disabled] {
-            color: var(--srf-text-disabled, #5a6373);
-            cursor: not-allowed;
-          }
-          .cmd-label { font-weight: 600; }
-          .cmd-hint { color: var(--srf-text-muted, #9aa3b2); }
-          button.command[disabled] .cmd-hint { color: var(--srf-text-disabled, #5a6373); }
+          button.command:hover:not(:disabled) { border-color: var(--srf-border-strong); background: var(--srf-panel); }
+          button.command:active:not(:disabled) { border-color: var(--srf-accent); }
+          button.command:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
+          button.command[data-primary="true"]:not(:disabled) { border-color: var(--srf-accent); color: var(--srf-accent); }
+          button.command:disabled { color: var(--srf-text-disabled); cursor: not-allowed; opacity: 0.65; }
+          .cmd-label { font-weight: var(--srf-font-weight-semibold); }
+          .cmd-hint { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); }
+          button.command:disabled .cmd-hint { color: var(--srf-text-disabled); }
         </style>
         <div class="panel" part="panel">
           <div class="head">

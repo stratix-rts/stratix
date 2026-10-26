@@ -66,33 +66,28 @@ function resolveCurrentScreen(state: WorldState | null): CurrentScreen {
  */
 const MAIN_SCREEN_STYLE = `
   .hud-root {
-    /* why relative 而不是 absolute：挂载方（#hud-root）负责定位，本屏只在其内部排布浮层 ——
-       正式入口里 HUD 覆盖整个视口，dev 页里 HUD 只覆盖自己那一栏，两种挂法都不用改本文件。 */
     position: relative;
     width: 100%;
     height: 100%;
     overflow: auto;
     pointer-events: none;
-    /* why 容器查询单位（cqh）：浮层尺寸按**容器**高度算，不是视口高度 ——
-       正式入口里容器 = 视口，dev 页里容器 = HUD 那一栏，两者都不会把浮层撑出容器。 */
     container-type: size;
-    /* HUD 边缘布局的尺寸常量：顶栏 / 底栏高度，四个方向的浮层按它对齐。 */
     --hud-topbar-h: 48px;
     --hud-bottom-h: min(34cqh, 300px);
-    --hud-gap: var(--srf-spacing-md, 12px);
-    color: var(--srf-text, #e6e9ef);
-    font-family: var(--srf-font-ui, sans-serif);
-    font-size: var(--srf-font-size-md, 14px);
+    --hud-gap: var(--srf-spacing-md);
+    color: var(--srf-text);
+    font-family: var(--srf-font-ui);
+    font-size: var(--srf-font-size-md);
+    scrollbar-width: thin;
+    scrollbar-color: var(--srf-border-strong) transparent;
   }
-  /* 悬浮面板通用底：把 --srf-panel 指向半透明 overlay token。
-     why 不改面板组件内部：组件一律 var(--srf-panel) 取色，
-     在容器上改写这个变量即整体变半透明（组件零改动，符合"不动面板业务"的约束）。 */
+  .hud-root::-webkit-scrollbar { width: var(--srf-spacing-sm); height: var(--srf-spacing-sm); }
+  .hud-root::-webkit-scrollbar-thumb { background: var(--srf-border-strong); border-radius: var(--srf-radius-pill); }
   .hud-surface {
     --srf-panel: var(--srf-panel-overlay);
     --srf-panel-elevated: var(--srf-panel-elevated-overlay);
     pointer-events: auto;
   }
-  /* 顶栏：态势摘要横条（单位 / 任务 / 会话计数 + 主题切换 + 未读通知角标），贴顶通栏。 */
   .hud-topbar {
     position: absolute;
     top: 0;
@@ -104,33 +99,33 @@ const MAIN_SCREEN_STYLE = `
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: var(--srf-spacing-md, 12px);
-    padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-md, 12px);
+    gap: var(--srf-spacing-md);
+    padding: var(--srf-spacing-xs) var(--srf-spacing-md);
     background: var(--srf-panel-overlay);
-    border-bottom: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
+    border-bottom: var(--srf-border-width) solid var(--srf-border);
+    box-shadow: var(--srf-shadow);
     pointer-events: auto;
   }
-  .hud-brand { font-size: var(--srf-font-size-lg, 16px); white-space: nowrap; }
-  .hud-stats { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--srf-spacing-md, 12px); flex: 1 1 auto; min-width: 0; }
-  .hud-stat { display: flex; align-items: baseline; gap: var(--srf-spacing-xs, 4px); color: var(--srf-text-muted, #9aa3b2); font-size: var(--srf-font-size-sm, 12px); white-space: nowrap; }
-  .hud-stat-value { color: var(--srf-text, #e6e9ef); font-size: var(--srf-font-size-md, 14px); font-variant-numeric: tabular-nums; }
-  .hud-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--srf-spacing-sm, 8px); }
-  /* 未读通知角标：无通知时隐藏（hidden 属性）。 */
+  .hud-brand { font-size: var(--srf-font-size-lg); font-weight: var(--srf-font-weight-bold); letter-spacing: 0.04em; white-space: nowrap; }
+  .hud-stats { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--srf-spacing-lg); flex: 1 1 auto; min-width: 0; }
+  .hud-stat { display: flex; align-items: baseline; gap: var(--srf-spacing-xs); color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); white-space: nowrap; }
+  .hud-stat-value { color: var(--srf-text); font-size: var(--srf-font-size-md); font-weight: var(--srf-font-weight-semibold); font-variant-numeric: tabular-nums; }
+  .hud-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--srf-spacing-sm); }
   .hud-notice-badge {
     min-width: 18px;
     height: 18px;
-    padding: 0 5px;
+    padding: 0 var(--srf-spacing-xs);
     box-sizing: border-box;
-    border-radius: 9px;
-    background: var(--srf-danger, #e06c75);
-    color: var(--srf-bg, #0f1116);
-    font-size: var(--srf-font-size-sm, 12px);
+    border-radius: var(--srf-radius-pill);
+    background: var(--srf-danger);
+    color: var(--srf-bg);
+    font-size: var(--srf-font-size-xs);
+    font-weight: var(--srf-font-weight-semibold);
     line-height: 18px;
     text-align: center;
   }
   .hud-notice-badge[hidden] { display: none; }
-  .hud-theme-tag { color: var(--srf-text-muted, #9aa3b2); font-size: var(--srf-font-size-sm, 12px); white-space: nowrap; }
-  /* 左栏：选中单位详情，浮动竖栏。 */
+  .hud-theme-tag { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); white-space: nowrap; }
   .hud-rail-left {
     position: absolute;
     left: var(--hud-gap);
@@ -140,7 +135,6 @@ const MAIN_SCREEN_STYLE = `
     z-index: 20;
     overflow: auto;
   }
-  /* 右栏：态势总览（上）+ 日志抽屉（下），纵向排布互不重叠。 */
   .hud-rail-right {
     position: absolute;
     right: var(--hud-gap);
@@ -155,7 +149,6 @@ const MAIN_SCREEN_STYLE = `
   }
   .hud-status-slot { flex: 1 1 auto; min-height: 0; overflow: auto; }
   .hud-drawer-slot { flex: 0 0 auto; max-height: 45%; overflow: auto; }
-  /* 底栏：命令横条，贴底居中。 */
   .hud-bottom-bar {
     position: absolute;
     left: 0;
@@ -169,14 +162,11 @@ const MAIN_SCREEN_STYLE = `
     padding: 0 var(--hud-gap) var(--hud-gap);
   }
   .hud-bottom-bar > .hud-surface { width: min(1100px, 100%); height: 100%; overflow: auto; }
-  /* 命令横条：把每个分组里的命令按钮排成横排（面板内部布局不动，靠 part 钩子适配）。
-     why：面板是竖排列表，直接放进底栏只能露出一半命令；横排后底栏一眼看全。 */
   .hud-bottom-bar strat-command-panel::part(group) {
     grid-auto-flow: column;
     grid-auto-columns: minmax(6.5em, 1fr);
     align-items: start;
   }
-  /* 聊天抽屉：最上层覆盖层（默认收起，顶栏「打开聊天」开合）。 */
   .hud-chat-slot {
     position: absolute;
     right: var(--hud-gap);
@@ -187,17 +177,13 @@ const MAIN_SCREEN_STYLE = `
     overflow: auto;
   }
   .hud-chat-slot[hidden] { display: none; }
-  /* 子屏（settings / character）：整屏覆盖层，盖住战场。 */
   .hud-sub-screen {
     position: absolute;
     inset: 0;
     z-index: 50;
     pointer-events: auto;
-    background: var(--srf-bg, #0f1116);
+    background: var(--srf-bg);
   }
-  /* 紧凑容器（dev 页的 HUD 窄栏 / 窄窗口）：浮层改为纵向堆叠。
-     why 容器查询而不是媒体查询：dev 页的 HUD 只占视口的一小栏，视口宽度代表不了它的宽度；
-     窄容器里再按视口尺度铺四边浮层，必然互相压住。 */
   @container (max-width: 700px) {
     .hud-topbar { position: static; }
     .hud-rail-left,

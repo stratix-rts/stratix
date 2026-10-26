@@ -237,81 +237,82 @@ export function defineTaskOutputPanel(): typeof HTMLElement {
           :host { all: initial; display: block; min-height: 0; }
           .section {
             display: grid;
-            gap: var(--srf-spacing-xs, 4px);
-            padding: var(--srf-spacing-xs, 4px);
-            background: var(--srf-panel-elevated, #20262f);
-            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            border-radius: var(--srf-radius, 6px);
-            color: var(--srf-text, #e6e9ef);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-md, 14px);
-            line-height: var(--srf-line-height, 1.4);
+            gap: var(--srf-spacing-xs);
+            padding: var(--srf-spacing-xs);
+            background: var(--srf-panel-elevated);
+            border: var(--srf-border-width) solid var(--srf-border);
+            border-radius: var(--srf-radius);
+            color: var(--srf-text);
+            font-family: var(--srf-font-ui);
+            font-size: var(--srf-font-size-md);
+            line-height: var(--srf-line-height);
           }
           .section[hidden] { display: none; }
           .head {
             display: flex;
             align-items: center;
-            gap: var(--srf-spacing-xs, 4px);
-            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-xs, 4px);
+            gap: var(--srf-spacing-xs);
+            padding: var(--srf-spacing-xs);
+            border-radius: var(--srf-radius);
             cursor: pointer;
             user-select: none;
+            transition: background var(--srf-transition);
           }
-          .chevron { color: var(--srf-text-muted, #9aa3b2); font-size: var(--srf-font-size-sm, 12px); }
-          .title {
-            color: var(--srf-text-muted, #9aa3b2);
-            font-size: var(--srf-font-size-sm, 12px);
-            letter-spacing: 0.04em;
-          }
+          .head:hover { background: var(--srf-panel); }
+          .head:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
+          .chevron, .title { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); }
+          .title { font-weight: var(--srf-font-weight-semibold); letter-spacing: 0.04em; }
           .phase {
-            padding: 0 var(--srf-spacing-xs, 4px);
-            border: var(--srf-border-width, 1px) solid var(--srf-border-strong, #3a4252);
-            border-radius: var(--srf-radius, 6px);
-            font-size: var(--srf-font-size-sm, 12px);
-            color: var(--srf-text-muted, #9aa3b2);
+            padding: var(--srf-spacing-xxs) var(--srf-spacing-xs);
+            border: var(--srf-border-width) solid var(--srf-border-strong);
+            border-radius: var(--srf-radius-pill);
+            font-size: var(--srf-font-size-xs);
+            color: var(--srf-text-muted);
           }
-          .phase[data-status="queued"] { color: var(--srf-text-disabled, #5a6373); }
-          .phase[data-status="running"] { color: var(--srf-accent, #6ea8ff); border-color: var(--srf-accent, #6ea8ff); }
-          .phase[data-status="completed"] { color: var(--srf-success, #6fcf97); border-color: var(--srf-success, #6fcf97); }
-          .phase[data-status="failed"] { color: var(--srf-danger, #e06c75); border-color: var(--srf-danger, #e06c75); }
-          .truncated-hint {
-            color: var(--srf-warn, #f0c674);
-            font-size: var(--srf-font-size-sm, 12px);
-          }
+          .phase[data-status="queued"] { color: var(--srf-text-disabled); }
+          .phase[data-status="running"] { color: var(--srf-accent); border-color: var(--srf-accent); }
+          .phase[data-status="completed"] { color: var(--srf-success); border-color: var(--srf-success); }
+          .phase[data-status="failed"] { color: var(--srf-danger); border-color: var(--srf-danger); }
+          .truncated-hint { color: var(--srf-warn); font-size: var(--srf-font-size-xs); }
           .truncated-hint[hidden] { display: none; }
           .head .spacer { flex: 1; }
           button.follow {
             flex: none;
-            padding: 0 var(--srf-spacing-sm, 8px);
-            background: var(--srf-panel, #181c25);
-            color: var(--srf-text-muted, #9aa3b2);
-            border: var(--srf-border-width, 1px) solid var(--srf-border-strong, #3a4252);
-            border-radius: var(--srf-radius, 6px);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-sm, 12px);
+            padding: var(--srf-spacing-xxs) var(--srf-spacing-xs);
+            background: var(--srf-panel);
+            color: var(--srf-text-muted);
+            border: var(--srf-border-width) solid var(--srf-border-strong);
+            border-radius: var(--srf-radius);
+            font-family: var(--srf-font-ui);
+            font-size: var(--srf-font-size-xs);
             cursor: pointer;
+            transition: color var(--srf-transition), border-color var(--srf-transition);
           }
-          button.follow:hover { border-color: var(--srf-accent, #6ea8ff); color: var(--srf-accent, #6ea8ff); }
-          button.follow[data-following="false"] {
-            color: var(--srf-warn, #f0c674);
-            border-color: var(--srf-warn, #f0c674);
-          }
+          button.follow:hover { border-color: var(--srf-accent); color: var(--srf-accent); }
+          button.follow:active { color: var(--srf-accent-hover); }
+          button.follow:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
+          button.follow[data-following="false"] { color: var(--srf-warn); border-color: var(--srf-warn); }
           .body { display: block; }
           .section[data-expanded="false"] .body { display: none; }
           .output {
             margin: 0;
-            /* 布局常量（非皮肤 token）：tail 视图的窗口高度 —— 抽屉里消息区才是主舞台 */
             max-height: 240px;
             overflow-y: auto;
             box-sizing: border-box;
-            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-sm, 8px);
-            background: var(--srf-bg, #0f1116);
-            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            border-radius: var(--srf-radius, 6px);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-sm, 12px);
+            padding: var(--srf-spacing-sm);
+            background: var(--srf-bg);
+            border: var(--srf-border-width) solid var(--srf-border);
+            border-radius: var(--srf-radius);
+            font-family: var(--srf-font-mono);
+            font-size: var(--srf-font-size-xs);
+            line-height: var(--srf-line-height);
             white-space: pre-wrap;
             word-break: break-word;
+            scrollbar-width: thin;
+            scrollbar-color: var(--srf-border-strong) transparent;
           }
+          .output::-webkit-scrollbar { width: var(--srf-spacing-sm); }
+          .output::-webkit-scrollbar-thumb { background: var(--srf-border-strong); border-radius: var(--srf-radius-pill); }
         </style>
         <section class="section" data-role="root" data-expanded="false" hidden>
           <div class="head" data-role="toggle">

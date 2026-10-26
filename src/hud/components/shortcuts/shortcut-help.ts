@@ -102,12 +102,8 @@ export function defineShortcutHelp(): typeof HTMLElement {
       const root = this.attachShadow({ mode: 'open' });
       root.innerHTML = `
         <style>
-          :host {
-            all: initial;
-          }
-          :host:not([open]) {
-            display: none;
-          }
+          :host { all: initial; }
+          :host:not([open]) { display: none; }
           .backdrop {
             position: fixed;
             inset: 0;
@@ -115,65 +111,68 @@ export function defineShortcutHelp(): typeof HTMLElement {
             display: flex;
             align-items: center;
             justify-content: center;
-            background: rgba(9, 11, 16, 0.55);
-            font-family: var(--srf-font-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+            padding: var(--srf-spacing-xl);
+            box-sizing: border-box;
+            background: var(--srf-backdrop);
+            font-family: var(--srf-font-ui);
           }
           .panel {
             box-sizing: border-box;
             width: min(480px, 90vw);
             max-height: 80vh;
             overflow-y: auto;
-            padding: var(--srf-spacing-lg, 16px);
-            background: var(--srf-panel, #181c25);
-            border: var(--srf-border-width, 1px) solid var(--srf-border-strong, #3a4252);
-            border-radius: var(--srf-radius, 6px);
-            box-shadow: var(--srf-shadow, 0 8px 24px rgba(0, 0, 0, 0.5));
-            color: var(--srf-text, #e6e9ef);
+            scrollbar-width: thin;
+            scrollbar-color: var(--srf-border-strong) transparent;
+            padding: var(--srf-spacing-xl);
+            background: var(--srf-panel);
+            border: var(--srf-border-width) solid var(--srf-border-strong);
+            border-radius: var(--srf-radius);
+            box-shadow: var(--srf-shadow-lg);
+            color: var(--srf-text);
           }
+          .panel::-webkit-scrollbar { width: var(--srf-spacing-sm); }
+          .panel::-webkit-scrollbar-thumb { background: var(--srf-border-strong); border-radius: var(--srf-radius-pill); }
           .head {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: var(--srf-spacing-md, 12px);
+            gap: var(--srf-spacing-md);
+            margin-bottom: var(--srf-spacing-lg);
+            padding-bottom: var(--srf-spacing-md);
+            border-bottom: var(--srf-border-width) solid var(--srf-border);
           }
-          .title {
-            font-size: var(--srf-font-size-md, 14px);
-            font-weight: 600;
-          }
-          .hint {
-            font-size: var(--srf-font-size-xs, 11px);
-            color: var(--srf-text-muted, #9aa3b2);
-            margin-left: var(--srf-spacing-md, 12px);
-          }
+          .title { font-size: var(--srf-font-size-lg); font-weight: var(--srf-font-weight-semibold); }
+          .hint { font-size: var(--srf-font-size-xs); color: var(--srf-text-muted); margin-left: var(--srf-spacing-md); }
           button {
             all: unset;
             cursor: pointer;
-            color: var(--srf-text-muted, #9aa3b2);
-            font-size: var(--srf-font-size-md, 14px);
-            padding: 0 6px;
-            border-radius: var(--srf-radius, 6px);
+            color: var(--srf-text-muted);
+            font-size: var(--srf-font-size-md);
+            padding: var(--srf-spacing-xxs) var(--srf-spacing-xs);
+            border-radius: var(--srf-radius);
+            transition: color var(--srf-transition), background var(--srf-transition);
           }
-          button:hover { color: var(--srf-text, #e6e9ef); }
+          button:hover { color: var(--srf-text); background: var(--srf-panel-elevated); }
+          button:active { color: var(--srf-accent); }
+          button:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
           h3 {
-            margin: var(--srf-spacing-md, 12px) 0 var(--srf-spacing-xs, 4px);
-            font-size: var(--srf-font-size-sm, 12px);
-            color: var(--srf-text-muted, #9aa3b2);
-            font-weight: 600;
+            margin: var(--srf-spacing-lg) 0 var(--srf-spacing-xs);
+            font-size: var(--srf-font-size-xs);
+            color: var(--srf-text-muted);
+            font-weight: var(--srf-font-weight-semibold);
+            letter-spacing: 0.04em;
           }
           .row {
             display: flex;
             justify-content: space-between;
-            gap: var(--srf-spacing-md, 12px);
-            padding: 3px 0;
-            font-size: var(--srf-font-size-sm, 12px);
-            line-height: var(--srf-line-height, 1.4);
+            gap: var(--srf-spacing-md);
+            padding: var(--srf-spacing-xs) 0;
+            font-size: var(--srf-font-size-sm);
+            line-height: var(--srf-line-height);
           }
-          .keys {
-            flex-shrink: 0;
-            color: var(--srf-accent, #6ea8ff);
-            font-family: var(--srf-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-          }
-          .desc { text-align: right; }
+          .row + .row { border-top: var(--srf-border-width) solid var(--srf-border); }
+          .keys { flex-shrink: 0; color: var(--srf-accent); font-family: var(--srf-font-mono); }
+          .desc { text-align: right; color: var(--srf-text-muted); }
         </style>
         <div class="backdrop" data-role="backdrop">
           <div class="panel" data-role="panel">

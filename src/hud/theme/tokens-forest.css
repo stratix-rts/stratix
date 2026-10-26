@@ -34,23 +34,33 @@
 
   /* —— 字体 —— */
   --srf-font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --srf-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --srf-font-size-xs: 11px;
   --srf-font-size-sm: 12px;
   --srf-font-size-md: 14px;
   --srf-font-size-lg: 16px;
+  --srf-font-weight-semibold: 600;
+  --srf-font-weight-bold: 700;
   --srf-line-height: 1.4;
 
-  /* —— 形状 —— */
+  /* —— 形状与节奏 —— */
   --srf-radius: 6px;
+  --srf-radius-pill: 999px;
   --srf-border-width: 1px;
+  --srf-spacing-xxs: 2px;
   --srf-spacing-xs: 4px;
   --srf-spacing-sm: 8px;
   --srf-spacing-md: 12px;
   --srf-spacing-lg: 16px;
+  --srf-spacing-xl: 24px;
 
   /* —— 渲染 / 装饰 —— */
   --srf-image-rendering: auto;
   --srf-scanline-opacity: 0;
   --srf-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --srf-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --srf-transition: 160ms ease-out;
+  --srf-backdrop: rgba(11, 18, 13, 0.72);
 
   /* —— 悬浮层（RTS 覆盖层专用）—— */
   --srf-panel-overlay: rgba(18, 27, 20, 0.88);

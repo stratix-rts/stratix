@@ -1902,6 +1902,13 @@
         "task_055"
       ],
       "priority": 1
+    },
+    {
+      "id": "task_064",
+      "title": "界面视觉打磨（Kimi Code 品味局）",
+      "status": "completed",
+      "depends_on": [],
+      "priority": 2
     }
   ]
 }

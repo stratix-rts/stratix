@@ -214,75 +214,64 @@ export function defineStatusScreen(): typeof HTMLElement {
           :host { all: initial; display: block; }
           .screen {
             display: grid;
-            gap: var(--srf-spacing-md, 12px);
-            padding: var(--srf-spacing-md, 12px);
-            background: var(--srf-panel, #181c25);
-            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            border-radius: var(--srf-radius, 6px);
-            color: var(--srf-text, #e6e9ef);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-md, 14px);
-            line-height: var(--srf-line-height, 1.4);
+            gap: var(--srf-spacing-md);
+            padding: var(--srf-spacing-md);
+            background: var(--srf-panel);
+            border: var(--srf-border-width) solid var(--srf-border);
+            border-radius: var(--srf-radius);
+            color: var(--srf-text);
+            font-family: var(--srf-font-ui);
+            font-size: var(--srf-font-size-md);
+            line-height: var(--srf-line-height);
           }
-          .head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--srf-spacing-sm, 8px); }
-          .title { font-size: var(--srf-font-size-lg, 16px); }
-          .nav { display: flex; gap: var(--srf-spacing-xs, 4px); }
-          .section-name {
-            color: var(--srf-text-muted, #9aa3b2);
-            font-size: var(--srf-font-size-sm, 12px);
-            letter-spacing: 0.04em;
-          }
-          .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(9em, 1fr)); gap: var(--srf-spacing-sm, 8px); }
+          .head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--srf-spacing-sm); }
+          .title { font-size: var(--srf-font-size-lg); font-weight: var(--srf-font-weight-semibold); }
+          .nav { display: flex; gap: var(--srf-spacing-xs); }
+          .section-name { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); font-weight: var(--srf-font-weight-semibold); letter-spacing: 0.04em; }
+          .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(9em, 1fr)); gap: var(--srf-spacing-sm); }
           .metric {
             display: grid;
-            gap: var(--srf-spacing-xs, 4px);
-            padding: var(--srf-spacing-sm, 8px);
-            background: var(--srf-panel-elevated, #20262f);
-            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            border-radius: var(--srf-radius, 6px);
+            gap: var(--srf-spacing-xs);
+            padding: var(--srf-spacing-sm);
+            background: var(--srf-panel-elevated);
+            border: var(--srf-border-width) solid var(--srf-border);
+            border-radius: var(--srf-radius);
           }
-          .metric-label { color: var(--srf-text-muted, #9aa3b2); font-size: var(--srf-font-size-sm, 12px); }
-          .metric-value { font-size: var(--srf-font-size-lg, 16px); font-variant-numeric: tabular-nums; }
-          .metric-hint { color: var(--srf-text-disabled, #5a6373); font-size: var(--srf-font-size-sm, 12px); overflow-wrap: anywhere; }
-          .metric[data-tone="busy"] .metric-value { color: var(--srf-accent, #6ea8ff); }
-          .system { display: grid; gap: var(--srf-spacing-xs, 4px); }
-          .sys-row {
+          .metric-label { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); }
+          .metric-value { font-size: var(--srf-font-size-lg); font-weight: var(--srf-font-weight-semibold); font-variant-numeric: tabular-nums; }
+          .metric-hint { color: var(--srf-text-disabled); font-size: var(--srf-font-size-xs); overflow-wrap: anywhere; }
+          .metric[data-tone="busy"] .metric-value { color: var(--srf-accent); }
+          .system, .events { display: grid; gap: var(--srf-spacing-xxs); }
+          .sys-row, .event {
             display: grid;
-            grid-template-columns: 6em 5em 1fr;
-            gap: var(--srf-spacing-sm, 8px);
+            gap: var(--srf-spacing-sm);
             align-items: baseline;
-            padding: var(--srf-spacing-xs, 4px);
-            background: var(--srf-panel-elevated, #20262f);
-            border-radius: var(--srf-radius, 6px);
-            font-size: var(--srf-font-size-sm, 12px);
+            padding: var(--srf-spacing-xs);
+            background: var(--srf-panel-elevated);
+            border-radius: var(--srf-radius);
+            font-size: var(--srf-font-size-xs);
           }
-          .sys-name { color: var(--srf-text-muted, #9aa3b2); }
-          .sys-value { font-weight: 600; }
-          .sys-detail { color: var(--srf-text-disabled, #5a6373); overflow-wrap: anywhere; }
-          [data-tone="ok"] .sys-value { color: var(--srf-success, #6fcf97); }
-          [data-tone="busy"] .sys-value { color: var(--srf-accent, #6ea8ff); }
-          [data-tone="warn"] .sys-value { color: var(--srf-warn, #f0c674); }
-          [data-tone="error"] .sys-value { color: var(--srf-danger, #e06c75); }
-          [data-tone="idle"] .sys-value { color: var(--srf-text-muted, #9aa3b2); }
-          .events { display: grid; gap: var(--srf-spacing-xs, 4px); max-height: 14em; overflow: auto; }
-          .event {
-            display: grid;
-            grid-template-columns: 5.5em 3em 6em 1fr;
-            gap: var(--srf-spacing-sm, 8px);
-            align-items: baseline;
-            padding: var(--srf-spacing-xs, 4px);
-            background: var(--srf-panel-elevated, #20262f);
-            border-radius: var(--srf-radius, 6px);
-            font-size: var(--srf-font-size-sm, 12px);
-          }
-          .event-time { color: var(--srf-text-disabled, #5a6373); font-variant-numeric: tabular-nums; }
-          .event-level { font-weight: 600; color: var(--srf-text, #e6e9ef); }
-          .event[data-level="warn"] .event-level { color: var(--srf-warn, #f0c674); }
-          .event[data-level="error"] .event-level { color: var(--srf-danger, #e06c75); }
-          .event-source { color: var(--srf-text-muted, #9aa3b2); overflow-wrap: anywhere; }
+          .sys-row { grid-template-columns: 6em 5em 1fr; }
+          .sys-name { color: var(--srf-text-muted); }
+          .sys-value { font-weight: var(--srf-font-weight-semibold); }
+          .sys-detail { color: var(--srf-text-disabled); overflow-wrap: anywhere; }
+          [data-tone="ok"] .sys-value { color: var(--srf-success); }
+          [data-tone="busy"] .sys-value { color: var(--srf-accent); }
+          [data-tone="warn"] .sys-value { color: var(--srf-warn); }
+          [data-tone="error"] .sys-value { color: var(--srf-danger); }
+          [data-tone="idle"] .sys-value { color: var(--srf-text-muted); }
+          .events { max-height: 14em; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--srf-border-strong) transparent; }
+          .events::-webkit-scrollbar { width: var(--srf-spacing-sm); }
+          .events::-webkit-scrollbar-thumb { background: var(--srf-border-strong); border-radius: var(--srf-radius-pill); }
+          .event { grid-template-columns: 5.5em 3em 6em 1fr; }
+          .event-time { color: var(--srf-text-disabled); font-family: var(--srf-font-mono); font-variant-numeric: tabular-nums; }
+          .event-level { font-weight: var(--srf-font-weight-semibold); color: var(--srf-text); }
+          .event[data-level="warn"] .event-level { color: var(--srf-warn); }
+          .event[data-level="error"] .event-level { color: var(--srf-danger); }
+          .event-source { color: var(--srf-text-muted); overflow-wrap: anywhere; }
           .event-text { overflow-wrap: anywhere; }
-          .empty { color: var(--srf-text-muted, #9aa3b2); font-size: var(--srf-font-size-sm, 12px); }
-          .truncated { color: var(--srf-warn, #f0c674); font-size: var(--srf-font-size-sm, 12px); }
+          .empty { color: var(--srf-text-muted); font-size: var(--srf-font-size-sm); padding: var(--srf-spacing-md); text-align: center; }
+          .truncated { color: var(--srf-warn); font-size: var(--srf-font-size-xs); }
         </style>
         <div class="screen" part="screen">
           <div class="head">

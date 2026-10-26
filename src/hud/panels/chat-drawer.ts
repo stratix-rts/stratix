@@ -191,97 +191,99 @@ export function defineChatDrawer(): typeof HTMLElement {
           :host { all: initial; }
           .drawer {
             display: grid;
-            gap: var(--srf-spacing-sm, 8px);
-            padding: var(--srf-spacing-md, 12px);
-            background: var(--srf-panel, #181c25);
-            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            border-radius: var(--srf-radius, 6px);
-            color: var(--srf-text, #e6e9ef);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-md, 14px);
-            line-height: var(--srf-line-height, 1.4);
+            gap: var(--srf-spacing-sm);
+            padding: var(--srf-spacing-md);
+            background: var(--srf-panel);
+            border: var(--srf-border-width) solid var(--srf-border);
+            border-radius: var(--srf-radius);
+            color: var(--srf-text);
+            font-family: var(--srf-font-ui);
+            font-size: var(--srf-font-size-md);
+            line-height: var(--srf-line-height);
           }
-          .head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--srf-spacing-sm, 8px); }
-          .title { font-size: var(--srf-font-size-lg, 16px); }
+          .head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--srf-spacing-sm); }
+          .title { font-size: var(--srf-font-size-lg); font-weight: var(--srf-font-weight-semibold); }
           .status {
-            padding: 0 var(--srf-spacing-sm, 8px);
-            border: var(--srf-border-width, 1px) solid var(--srf-border-strong, #3a4252);
-            border-radius: var(--srf-radius, 6px);
-            color: var(--srf-text-muted, #9aa3b2);
-            font-size: var(--srf-font-size-sm, 12px);
+            padding: var(--srf-spacing-xxs) var(--srf-spacing-xs);
+            border: var(--srf-border-width) solid var(--srf-border-strong);
+            border-radius: var(--srf-radius-pill);
+            color: var(--srf-text-muted);
+            font-size: var(--srf-font-size-xs);
           }
-          .status[data-tone="online"] { color: var(--srf-success, #6fcf97); border-color: var(--srf-success, #6fcf97); }
-          .status[data-tone="pending"] { color: var(--srf-warn, #f0c674); border-color: var(--srf-warn, #f0c674); }
-          .status[data-tone="error"] { color: var(--srf-danger, #e06c75); border-color: var(--srf-danger, #e06c75); }
-          .sessions { display: flex; flex-wrap: wrap; gap: var(--srf-spacing-xs, 4px); }
+          .status[data-tone="online"] { color: var(--srf-success); border-color: var(--srf-success); }
+          .status[data-tone="pending"] { color: var(--srf-warn); border-color: var(--srf-warn); }
+          .status[data-tone="error"] { color: var(--srf-danger); border-color: var(--srf-danger); }
+          .sessions { display: flex; flex-wrap: wrap; gap: var(--srf-spacing-xs); }
+          button.session, button.send {
+            padding: var(--srf-spacing-xs) var(--srf-spacing-sm);
+            border: var(--srf-border-width) solid var(--srf-border);
+            border-radius: var(--srf-radius);
+            font-family: var(--srf-font-ui);
+            font-size: var(--srf-font-size-sm);
+            cursor: pointer;
+            transition: color var(--srf-transition), background var(--srf-transition), border-color var(--srf-transition);
+          }
           button.session {
             display: flex;
             align-items: center;
-            gap: var(--srf-spacing-xs, 4px);
-            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-sm, 8px);
-            background: var(--srf-panel-elevated, #20262f);
-            color: var(--srf-text-muted, #9aa3b2);
-            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            border-radius: var(--srf-radius, 6px);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-sm, 12px);
-            cursor: pointer;
+            gap: var(--srf-spacing-xs);
+            background: var(--srf-panel-elevated);
+            color: var(--srf-text-muted);
           }
-          button.session:hover { border-color: var(--srf-border-strong, #3a4252); }
-          button.session[data-active="true"] { color: var(--srf-accent, #6ea8ff); border-color: var(--srf-accent, #6ea8ff); }
-          .dot { width: 6px; height: 6px; border-radius: var(--srf-radius, 6px); background: var(--srf-text-disabled, #5a6373); }
-          .dot[data-tone="online"] { background: var(--srf-success, #6fcf97); }
-          .dot[data-tone="pending"] { background: var(--srf-warn, #f0c674); }
-          .dot[data-tone="error"] { background: var(--srf-danger, #e06c75); }
+          button.session:hover { color: var(--srf-text); border-color: var(--srf-border-strong); }
+          button.session:active { background: var(--srf-panel); }
+          button.session[data-active="true"] { color: var(--srf-accent); border-color: var(--srf-accent); }
+          button.session:focus-visible, button.send:focus-visible, textarea:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
+          .dot { width: var(--srf-spacing-sm); height: var(--srf-spacing-sm); border-radius: var(--srf-radius-pill); background: var(--srf-text-disabled); }
+          .dot[data-tone="online"] { background: var(--srf-success); }
+          .dot[data-tone="pending"] { background: var(--srf-warn); }
+          .dot[data-tone="error"] { background: var(--srf-danger); }
           .messages {
             display: grid;
-            gap: var(--srf-spacing-sm, 8px);
+            gap: var(--srf-spacing-sm);
             max-height: 320px;
             overflow-y: auto;
-            padding: var(--srf-spacing-xs, 4px);
+            padding: var(--srf-spacing-xs);
+            scrollbar-width: thin;
+            scrollbar-color: var(--srf-border-strong) transparent;
           }
+          .messages::-webkit-scrollbar { width: var(--srf-spacing-sm); }
+          .messages::-webkit-scrollbar-thumb { background: var(--srf-border-strong); border-radius: var(--srf-radius-pill); }
           .msg {
             display: grid;
-            gap: 2px;
+            gap: var(--srf-spacing-xxs);
             max-width: 80%;
-            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-sm, 8px);
-            background: var(--srf-panel-elevated, #20262f);
-            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            border-radius: var(--srf-radius, 6px);
+            padding: var(--srf-spacing-sm);
+            background: var(--srf-panel-elevated);
+            border: var(--srf-border-width) solid var(--srf-border);
+            border-radius: var(--srf-radius);
           }
-          .msg[data-direction="outbound"] { justify-self: end; border-color: var(--srf-accent, #6ea8ff); }
-          .msg-meta { display: flex; gap: var(--srf-spacing-sm, 8px); color: var(--srf-text-muted, #9aa3b2); font-size: var(--srf-font-size-sm, 12px); }
-          .msg-text { font-size: var(--srf-font-size-sm, 12px); white-space: pre-wrap; word-break: break-word; }
-          .composer { display: grid; gap: var(--srf-spacing-xs, 4px); }
+          .msg[data-direction="outbound"] { justify-self: end; border-color: var(--srf-accent); }
+          .msg-meta { display: flex; gap: var(--srf-spacing-sm); color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); }
+          .msg-text { font-size: var(--srf-font-size-sm); white-space: pre-wrap; word-break: break-word; }
+          .composer { display: grid; gap: var(--srf-spacing-xs); }
           textarea {
             width: 100%;
             box-sizing: border-box;
             min-height: 48px;
             resize: vertical;
-            padding: var(--srf-spacing-sm, 8px);
-            background: var(--srf-bg, #0f1116);
-            color: var(--srf-text, #e6e9ef);
-            border: var(--srf-border-width, 1px) solid var(--srf-border, #2a313d);
-            border-radius: var(--srf-radius, 6px);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-sm, 12px);
+            padding: var(--srf-spacing-sm);
+            background: var(--srf-bg);
+            color: var(--srf-text);
+            border: var(--srf-border-width) solid var(--srf-border);
+            border-radius: var(--srf-radius);
+            font-family: var(--srf-font-ui);
+            font-size: var(--srf-font-size-sm);
           }
-          textarea:focus { outline: var(--srf-border-width, 1px) solid var(--srf-accent, #6ea8ff); }
-          .composer-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--srf-spacing-sm, 8px); }
-          .hint { color: var(--srf-text-muted, #9aa3b2); font-size: var(--srf-font-size-sm, 12px); }
-          .hint[data-tone="error"] { color: var(--srf-danger, #e06c75); }
-          button.send {
-            padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-md, 12px);
-            background: var(--srf-accent, #6ea8ff);
-            color: var(--srf-bg, #0f1116);
-            border: var(--srf-border-width, 1px) solid var(--srf-accent, #6ea8ff);
-            border-radius: var(--srf-radius, 6px);
-            font-family: var(--srf-font-ui, sans-serif);
-            font-size: var(--srf-font-size-sm, 12px);
-            cursor: pointer;
-          }
-          button.send[disabled] { background: var(--srf-panel-elevated, #20262f); color: var(--srf-text-disabled, #5a6373); border-color: var(--srf-border, #2a313d); cursor: not-allowed; }
-          .empty { color: var(--srf-text-muted, #9aa3b2); font-size: var(--srf-font-size-sm, 12px); }
+          textarea:hover { border-color: var(--srf-border-strong); }
+          .composer-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--srf-spacing-sm); }
+          .hint { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); }
+          .hint[data-tone="error"] { color: var(--srf-danger); }
+          button.send { padding-inline: var(--srf-spacing-md); background: var(--srf-accent); color: var(--srf-bg); border-color: var(--srf-accent); font-weight: var(--srf-font-weight-semibold); }
+          button.send:hover:not(:disabled) { background: var(--srf-accent-hover); }
+          button.send:active:not(:disabled) { background: var(--srf-accent); }
+          button.send:disabled { background: var(--srf-panel-elevated); color: var(--srf-text-disabled); border-color: var(--srf-border); cursor: not-allowed; }
+          .empty { color: var(--srf-text-muted); font-size: var(--srf-font-size-sm); padding: var(--srf-spacing-lg); text-align: center; }
         </style>
         <div class="drawer" part="drawer">
           <div class="head">
