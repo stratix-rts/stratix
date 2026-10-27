@@ -2017,6 +2017,33 @@
         "issues": [],
         "optimization_history": []
       }
+    },
+    {
+      "id": "task_069",
+      "description": "hud: shortcut-help 修复 :host:not 复合选择器失效——弹窗藏不掉+幽灵遮罩吞点击-模块",
+      "template": "task",
+      "priority": "P0",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_069.md",
+      "created_at": "2026-10-27T22:39:58.350768",
+      "updated_at": "2026-10-27T22:43:53.885732",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
     }
   ]
 }

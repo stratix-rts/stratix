@@ -123,7 +123,19 @@ export function defineShortcutHelp(): typeof HTMLElement {
       root.innerHTML = `
         <style>
           :host { all: initial; }
-          :host:not([open]) { display: none; }
+          /*
+           * 关闭态隐藏宿主 —— 必须用「:host() 参数形式」。
+           *
+           * 原因：':host' 后面直接跟 ':not()' 的复合写法在 Chromium ≥~145 上不匹配
+           * （已在 Chrome 155 与独立 Chromium 145 双重实证：正匹配 ':host([open])' 生效、
+           * 裸 ':host' 生效，唯独那个「:host + :not()」复合写法失效，'!important' 也救不回来）。
+           * ':not()' 必须放进 ':host()' 的参数里，写成 ':host(:not([open]))'。
+           *
+           * 失效后果（task_069 P0 根因）：宿主永远 display:inline → shadow 内
+           * 'position:fixed; inset:0; z-index:60' 的遮罩从页面启动起就铺满全屏并吞掉
+           * 所有鼠标点击（键盘不受影响）——表现为「弹窗关不掉」+ 顶栏/面板/战场全部鼠标失灵。
+           */
+          :host(:not([open])) { display: none; }
           .backdrop {
             position: fixed;
             inset: 0;

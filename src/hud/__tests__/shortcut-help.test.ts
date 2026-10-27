@@ -177,6 +177,31 @@ describe('关闭时的焦点释放（aria-hidden 无障碍告警修复，task_06
   });
 });
 
+describe('关闭态隐藏选择器（:host() 参数形式，task_069 防回归）', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  /**
+   * jsdom 不应用 CSS（getComputedStyle 拿不到 shadow 内样式），所以这里做源码级断言：
+   * 直接读 shadowRoot 里的 <style> 文本。
+   *
+   * 背景：Chromium ≥~145 上「:host + :not()」复合写法不匹配 → 宿主永远 display:inline
+   * → 浮层内 fixed 遮罩从启动起吞掉全屏鼠标点击。修复形式是 ':host(:not([open]))'。
+   */
+  test('style 文本使用参数形式，不含失效的 :host + :not() 复合写法', () => {
+    const el = host();
+    const styleText = el.shadowRoot?.querySelector('style')?.textContent ?? '';
+
+    // 失效写法在这里拼装而非写字面量：仓库约定该形式在 src/ 下零出现
+    // （验收要求 grep 该失效形式必须无输出），测试文件自身也不例外。
+    const legacySelector = [':host', ':not([open])'].join('');
+
+    expect(styleText).toContain(':host(:not([open]))');
+    expect(styleText).not.toContain(legacySelector);
+  });
+});
+
 describe('挂载工厂', () => {
   test('mountShortcutHelp：元素挂进宿主、tag 正确、unmount 移除', () => {
     document.body.innerHTML = '';
