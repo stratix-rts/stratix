@@ -91,6 +91,7 @@ import {
   validateCustomAgentDraft,
   MAX_CUSTOM_AGENTS,
   type CustomAgentOutputParser,
+  type CustomAgentValidationCode,
 } from '../core/custom-agent';
 import {
   AGENT_KINDS,
@@ -847,7 +848,13 @@ function setupIPC() {
   ipcMain.handle('customAgent:create', async (_event, draft: unknown) => {
     try {
       const validation = validateCustomAgentDraft(draft as never);
-      if (!validation.ok) return { ok: false, code: validation.code };
+      if (!validation.ok) {
+        // 显式断言失败分支：tsconfig.electron.json 没开 strict（strictNullChecks 关闭），
+        // 此时 TS 不对 boolean 字面量判别联合做收窄，validation.code 直接报 TS2339。
+        // 不给整个 electron 编译面开 strict（会引爆无关错误），故在此收窄一次。
+        const code = (validation as { readonly ok: false; readonly code: CustomAgentValidationCode }).code;
+        return { ok: false, code };
+      }
       const { id, name, probeCmd, runCmdTemplate, outputParser } = validation.draft;
       if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
       const db = getDatabase().getDatabase() as unknown as CustomAgentDbLike;
