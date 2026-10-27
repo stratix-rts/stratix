@@ -136,6 +136,47 @@ describe('关闭请求（× 钮 / 点遮罩）：composed 事件冒泡到 window
   });
 });
 
+describe('关闭时的焦点释放（aria-hidden 无障碍告警修复，task_068）', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  test('× 钮获焦 → close() → 焦点释放回 body，且 aria-hidden=true', () => {
+    const el = host();
+    el.open();
+
+    const closeBtn = el.shadowRoot?.querySelector<HTMLButtonElement>('[data-role="close"]');
+    expect(closeBtn).toBeTruthy();
+    closeBtn?.focus();
+
+    // 焦点在 Shadow DOM 内：document.activeElement 返回宿主元素，真正的焦点持有者在 shadowRoot。
+    expect(el.shadowRoot?.activeElement).toBe(closeBtn);
+    expect(document.activeElement).toBe(el);
+
+    el.close();
+
+    // 关闭时必须先释放浮层内部焦点，再设 aria-hidden —— 否则浏览器报
+    // 「Blocked aria-hidden on an element because its descendant retained focus」。
+    expect(el.shadowRoot?.activeElement).toBeNull();
+    expect(document.activeElement).toBe(document.body);
+    expect(el.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  test('toggle() 关闭同样释放焦点（syncOpened(false) 是唯一汇合点）', () => {
+    const el = host();
+    el.open();
+
+    const closeBtn = el.shadowRoot?.querySelector<HTMLButtonElement>('[data-role="close"]');
+    closeBtn?.focus();
+    expect(el.shadowRoot?.activeElement).toBe(closeBtn);
+
+    expect(el.toggle()).toBe(false);
+    expect(el.shadowRoot?.activeElement).toBeNull();
+    expect(document.activeElement).toBe(document.body);
+    expect(el.getAttribute('aria-hidden')).toBe('true');
+  });
+});
+
 describe('挂载工厂', () => {
   test('mountShortcutHelp：元素挂进宿主、tag 正确、unmount 移除', () => {
     document.body.innerHTML = '';

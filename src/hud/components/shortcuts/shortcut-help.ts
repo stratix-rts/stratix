@@ -88,6 +88,10 @@ export function defineShortcutHelp(): typeof HTMLElement {
     private syncOpened(opened: boolean): void {
       const changed = this._opened !== opened;
       this._opened = opened;
+      // 关闭态先释放浮层内部焦点（见 releaseInternalFocus 的动机说明）：
+      // 必须在设 aria-hidden=true 之前做，否则浏览器会告警
+      // 「Blocked aria-hidden on an element because its descendant retained focus」。
+      if (!opened) this.releaseInternalFocus();
       if (changed) {
         if (opened) this.setAttribute('open', '');
         else this.removeAttribute('open');
@@ -96,6 +100,22 @@ export function defineShortcutHelp(): typeof HTMLElement {
       // 浮层即对话框（jsdom 不渲染样式，role/aria 是唯一机器可读面）。
       this.setAttribute('role', 'dialog');
       this.setAttribute('aria-hidden', opened ? 'false' : 'true');
+    }
+
+    /**
+     * 释放浮层（Shadow DOM）内部当前持有焦点的元素。
+     *
+     * 动机：macOS 上点击「×」关闭钮会让按钮获得焦点；此时若宿主直接被设成
+     * aria-hidden=true，浏览器会告警「Blocked aria-hidden on an element because its
+     * descendant retained focus」——焦点还在被隐藏的子树里。
+     *
+     * 位置选在 syncOpened(false)：它是所有关闭路径（close / toggle / manager 派发 /
+     * 卸载兜底）的唯一汇合点，在这里统一 blur 一次即可覆盖全部出口。
+     * 只做 blur —— 不加 focus trap、不引 inert、不在打开时自动聚焦。
+     */
+    private releaseInternalFocus(): void {
+      const active = this.shadowRoot?.activeElement as HTMLElement | null;
+      if (active && typeof active.blur === 'function') active.blur();
     }
 
     private buildDom(): void {
