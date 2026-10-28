@@ -2044,6 +2044,33 @@
         "issues": [],
         "optimization_history": []
       }
+    },
+    {
+      "id": "task_071",
+      "description": "app: chatHistoryApi 与 preload 方法名错配——聊天落库/历史读取全断-模块",
+      "template": "task",
+      "priority": "P0",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_070.md",
+      "created_at": "2026-10-29T07:21:20.770434",
+      "updated_at": "2026-10-29T07:24:26.250591",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
     }
   ]
 }

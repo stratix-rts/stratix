@@ -24,7 +24,16 @@
  *   普通聊天 / 035 遗留行的 content 不受影响；正文恰好以「[peer:」开头的极端碰撞也只会
  *   退化成一条带前缀展示的 assistant 气泡（无结构风险）。
  *
- * @since v3.15（task_036）；v3.28（task_052）追加 peer 前缀解析。
+ * ============ preload 面适配（task_071）============
+ * preload 的 gameSave 原始面方法名是 saveChatMessage / loadChatMessages，本层的端口叫
+ *   saveMessage / loadMessages —— **两者不同名**。旧实现把 gameSave 原样当端口透传
+ *   （`as ChatHistoryApi`），调用方拿到的对象上根本没有 saveMessage / loadMessages，
+ *   调用即 TypeError（落库 fire-and-forget 把报错吞了 → 消息永远不落库、历史永远读不到）。
+ * 现在由 chatHistoryApi() 做一次形状适配：原始面在 → 返回委托适配器；原始面不在/不完整
+ *   → 返回 null（维持非 Electron 降级语义）。**端口形状（ChatHistoryApi）不变**，消费方零改动。
+ *
+ * @since v3.15（task_036）；v3.28（task_052）追加 peer 前缀解析；
+ *        v3.x（task_071）追加 preload 面适配层。
  */
 
 import type {
@@ -57,6 +66,10 @@ export interface ChatHistoryLoadResult {
 /**
  * preload 的 gameSave 扩展面（@since task_036 在 033 的三条通道上追加两条：
  * game:saveChatMessage / game:loadChatMessages）。
+ *
+ * 注意：**这是渲染侧端口的名字，不是 preload 暴露的名字** —— preload 那侧叫
+ * saveChatMessage / loadChatMessages（见 ChatHistoryRawFace），两者靠 chatHistoryApi()
+ * 的适配层对接。端口形状是消费方的既有契约（多处在用），不改。
  */
 export interface ChatHistoryApi {
   /** 写一条消息（chat-service 回调触发；失败返回 ok=false，不抛）。 */
@@ -65,17 +78,54 @@ export interface ChatHistoryApi {
   loadMessages(characterId: string, limit?: number): Promise<ChatHistoryLoadResult>;
 }
 
+/**
+ * preload 的 gameSave **原始面**形状（@since task_071 固化）：preload 暴露的两条对话历史
+ * 通道 —— saveChatMessage / loadChatMessages（透传到主进程 game:saveChatMessage /
+ * game:loadChatMessages）。写载荷与主进程 DAO 的 ChatMessageInsert 同构。
+ * 这一层只描述「preload 那边叫什么」，不含业务语义 —— 业务语义归上面的端口。
+ */
+export interface ChatHistoryRawFace {
+  /** 写一条消息（preload 透传到 game:saveChatMessage；失败返回 ok=false，不抛）。 */
+  saveChatMessage(message: ChatMessageInsert): Promise<{ readonly ok: boolean; readonly error?: string }>;
+  /** 读某角色最近 limit 条（preload 透传到 game:loadChatMessages；limit 缺省主进程按 50 兜底）。 */
+  loadChatMessages(characterId: string, limit?: number): Promise<ChatHistoryLoadResult>;
+}
+
 /** 写入载荷（含时间戳 —— 调用方只管业务，时钟在这里盖，user/assistant 先后即调用先后）。 */
 export interface ChatHistoryInsert extends ChatHistorySaveMessage {
   readonly createdAt: number;
 }
 
-/** 从 window.electronAPI 取历史通道；非 Electron 环境（纯 vite dev / node 测试）返回 null。 */
+/**
+ * 从 window.electronAPI 取历史通道；非 Electron 环境（纯 vite dev / node 测试）返回 null。
+ *
+ * 适配层（@since task_071）：preload 的原始面叫 saveChatMessage / loadChatMessages，
+ * 而本层端口叫 saveMessage / loadMessages —— 名字对不上，旧实现直接原样透传，
+ * 调用方拿到的对象上没有端口方法 → TypeError（落库侧 fire-and-forget 吞掉报错，
+ * 表现为「聊天正常但消息一条不落、历史永远读不到」）。这里做形状适配：
+ *   原始面两条通道都在 → 返回委托适配器（端口方法 → 原始面方法一一转发）；
+ *   原始面不在 / 不完整   → 返回 null（维持非 Electron 降级语义：调用方按「无历史通道」处理）。
+ *
+ * 半张脸（只写不读 / 只读不写）也按「无通道」处理：宁可整条降级，也不要某一侧在运行时
+ * 炸 TypeError —— 落库侧是 fire-and-forget，炸了也不外溢，等于静默丢数据。
+ */
 export function chatHistoryApi(): ChatHistoryApi | null {
   // globalThis 探测：node（jest）里 window 未定义，直接读会 ReferenceError（与 cliChatIpcApi 同一手法）。
   const scope: unknown = typeof window !== 'undefined' ? window : globalThis;
-  const api = (scope as { electronAPI?: { gameSave?: ChatHistoryApi } }).electronAPI;
-  return api?.gameSave ?? null;
+  const gameSave = (scope as { electronAPI?: { gameSave?: Partial<ChatHistoryRawFace> } }).electronAPI
+    ?.gameSave;
+  if (!gameSave) return null;
+
+  const { saveChatMessage, loadChatMessages } = gameSave;
+  if (typeof saveChatMessage !== 'function' || typeof loadChatMessages !== 'function') return null;
+
+  // 显式收窄到原始面签名（不用 as / any）：委托时把 this 绑回原始面对象。
+  const rawSave: ChatHistoryRawFace['saveChatMessage'] = saveChatMessage;
+  const rawLoad: ChatHistoryRawFace['loadChatMessages'] = loadChatMessages;
+  return {
+    saveMessage: (message) => rawSave.call(gameSave, message),
+    loadMessages: (characterId, limit) => rawLoad.call(gameSave, characterId, limit),
+  };
 }
 
 /**

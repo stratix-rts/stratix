@@ -1,118 +1,91 @@
 {
-  "task_id": "task_013",
-  "template": "task",
-  "score": 0,
+  "task_id": "task_071",
+  "score": 78,
   "max_score": 100,
-  "checks": [
-    {
-      "type": "documentation",
-      "required": false,
-      "weight": 0.25,
-      "passed": false,
-      "score": 0,
-      "issues": [
-        {
-          "type": "documentation_error",
-          "severity": "high",
-          "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/bauldron'"
-        }
-      ],
-      "suggestions": [],
-      "details": {}
-    },
-    {
-      "type": "complexity",
-      "required": false,
-      "weight": 0.2,
-      "passed": false,
-      "score": 0,
-      "issues": [
-        {
-          "type": "complexity_error",
-          "severity": "high",
-          "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/body/bodies/male'"
-        }
-      ],
-      "suggestions": [],
-      "details": {}
-    },
-    {
-      "type": "naming",
-      "required": false,
-      "weight": 0.2,
-      "passed": false,
-      "score": 0,
-      "issues": [
-        {
-          "type": "naming_error",
-          "severity": "high",
-          "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/cape'"
-        }
-      ],
-      "suggestions": [],
-      "details": {}
-    },
-    {
-      "type": "structure",
-      "required": false,
-      "weight": 0.2,
-      "passed": false,
-      "score": 0,
-      "issues": [
-        {
-          "type": "structure_error",
-          "severity": "high",
-          "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/hair/bangs_bun'"
-        }
-      ],
-      "suggestions": [],
-      "details": {}
-    },
-    {
-      "type": "testing",
-      "required": false,
-      "weight": 0.15,
-      "passed": false,
-      "score": 0,
-      "issues": [
-        {
-          "type": "testing_error",
-          "severity": "high",
-          "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/head'"
-        }
-      ],
-      "suggestions": [],
-      "details": {}
-    }
-  ],
-  "failed_required": [],
   "issues": [
     {
-      "type": "documentation_error",
+      "type": "low_documentation",
       "severity": "high",
-      "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/bauldron'"
+      "message": "文档覆盖率过低 (21.9%)"
     },
     {
-      "type": "complexity_error",
-      "severity": "high",
-      "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/body/bodies/male'"
-    },
-    {
-      "type": "naming_error",
-      "severity": "high",
-      "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/cape'"
-    },
-    {
-      "type": "structure_error",
-      "severity": "high",
-      "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/hair/bangs_bun'"
-    },
-    {
-      "type": "testing_error",
-      "severity": "high",
-      "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/head'"
+      "type": "long_file",
+      "severity": "medium",
+      "file": "tests/stratix-data-store/EnhancedTemplateLibrary.test.ts",
+      "message": "文件过长 (760 行)"
     }
   ],
-  "suggestions": [],
-  "timestamp": "2026-10-21T16:06:21.444252"
+  "suggestions": [
+    "建议为主要函数和类添加文档字符串",
+    "建议拆分超长文件，每个文件保持500行以内"
+  ],
+  "details": {
+    "documentation": {
+      "score": 21,
+      "issues": [
+        {
+          "type": "low_documentation",
+          "severity": "high",
+          "message": "文档覆盖率过低 (21.9%)"
+        }
+      ],
+      "suggestions": [
+        "建议为主要函数和类添加文档字符串"
+      ],
+      "stats": {
+        "total_functions": 32,
+        "documented_functions": 14,
+        "function_coverage": "43.8%",
+        "total_classes": 2,
+        "documented_classes": 0,
+        "class_coverage": "0.0%"
+      }
+    },
+    "complexity": {
+      "score": 90,
+      "issues": [
+        {
+          "type": "long_file",
+          "severity": "medium",
+          "file": "tests/stratix-data-store/EnhancedTemplateLibrary.test.ts",
+          "message": "文件过长 (760 行)"
+        }
+      ],
+      "suggestions": [
+        "建议拆分超长文件，每个文件保持500行以内"
+      ],
+      "stats": {
+        "total_lines": 2915,
+        "files_checked": 10
+      }
+    },
+    "naming": {
+      "score": 100,
+      "issues": [],
+      "suggestions": [],
+      "stats": {}
+    },
+    "structure": {
+      "score": 100,
+      "issues": [],
+      "suggestions": [],
+      "stats": {
+        "has_readme": true,
+        "has_gitignore": true,
+        "has_src": true,
+        "has_tests": true
+      }
+    },
+    "testing": {
+      "score": 100,
+      "issues": [],
+      "suggestions": [],
+      "stats": {
+        "test_files": 175,
+        "code_files": 595,
+        "test_ratio": "29.4%"
+      }
+    }
+  },
+  "timestamp": "2026-10-29T07:27:05.996095"
 }

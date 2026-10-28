@@ -3,7 +3,8 @@
  * 覆盖三面：
  *   1. 翻译：库行 → 抽屉消息输入（role=error → error 标记；sessionRef 不进 UI；at ← createdAt）；
  *   2. 落库回调工厂：text→content 转写 + 时间戳盖章 + fire-and-forget（拒绝/抛错都不外溢）；
- *   3. window 探测：无 electronAPI 的环境（纯 vite dev / node 测试）返回 null。
+ *   3. preload 面适配（task_071）：preload 的原始面叫 saveChatMessage / loadChatMessages，
+ *      端口叫 saveMessage / loadMessages —— 断言委托一一对应；面缺失 → null（非 Electron 降级）。
  * IPC 面本身是 preload 的薄透传，主进程校验/DAO 行为由 dao 单测与集成链路覆盖。
  */
 
@@ -144,22 +145,66 @@ describe('chatHistoryEntryToDrawerInput：peer 前缀翻译（task_052）', () =
   });
 });
 
-describe('chatHistoryApi：环境探测', () => {
+describe('chatHistoryApi：preload 面适配（task_071）', () => {
+  const scope = globalThis as { electronAPI?: unknown };
+
   test('无 electronAPI（node / 纯 vite dev）→ null；窗口常量 50', () => {
     expect(chatHistoryApi()).toBeNull();
     expect(CHAT_HISTORY_LOAD_LIMIT).toBe(50);
   });
 
-  test('有扩展面（gameSave.saveChatMessage）→ 取到同一对象', () => {
-    const gameSave = {
-      saveChatMessage: async () => ({ ok: true }),
-      loadChatMessages: async () => ({ ok: true, messages: [] }),
-    };
-    (globalThis as { electronAPI?: unknown }).electronAPI = { gameSave };
+  test('preload 形状（saveChatMessage / loadChatMessages）→ 端口方法一一委托到原始面', async () => {
+    const saveChatMessage = jest.fn(async () => ({ ok: true }));
+    const loadChatMessages = jest.fn(async () => ({ ok: true, messages: [] }));
+    scope.electronAPI = { gameSave: { saveChatMessage, loadChatMessages } };
     try {
-      expect(chatHistoryApi()).toBe(gameSave);
+      const api = chatHistoryApi();
+      expect(api).not.toBeNull();
+
+      const payload = {
+        characterId: 'ch-1',
+        role: 'user' as const,
+        content: '在吗',
+        sessionRef: null,
+        createdAt: 1700000000000,
+      };
+      const saved = await api!.saveMessage(payload);
+      expect(saved).toEqual({ ok: true });
+      expect(saveChatMessage).toHaveBeenCalledTimes(1);
+      expect(saveChatMessage).toHaveBeenCalledWith(payload);
+
+      const loaded = await api!.loadMessages('ch-1', 20);
+      expect(loaded).toEqual({ ok: true, messages: [] });
+      expect(loadChatMessages).toHaveBeenCalledTimes(1);
+      expect(loadChatMessages).toHaveBeenCalledWith('ch-1', 20);
     } finally {
-      delete (globalThis as { electronAPI?: unknown }).electronAPI;
+      delete scope.electronAPI;
+    }
+  });
+
+  test('loadMessages 不带 limit → 透传 undefined（主进程按缺省 50 兜底）', async () => {
+    const loadChatMessages = jest.fn(async () => ({ ok: true, messages: [] }));
+    scope.electronAPI = { gameSave: { saveChatMessage: async () => ({ ok: true }), loadChatMessages } };
+    try {
+      await chatHistoryApi()!.loadMessages('ch-1');
+      expect(loadChatMessages).toHaveBeenCalledWith('ch-1', undefined);
+    } finally {
+      delete scope.electronAPI;
+    }
+  });
+
+  test('面缺失 → null（非 Electron 降级语义）：无 gameSave / 只有写通道 / 只有读通道', () => {
+    try {
+      scope.electronAPI = {};
+      expect(chatHistoryApi()).toBeNull();
+
+      scope.electronAPI = { gameSave: { saveChatMessage: async () => ({ ok: true }) } };
+      expect(chatHistoryApi()).toBeNull();
+
+      scope.electronAPI = { gameSave: { loadChatMessages: async () => ({ ok: true, messages: [] }) } };
+      expect(chatHistoryApi()).toBeNull();
+    } finally {
+      delete scope.electronAPI;
     }
   });
 });
