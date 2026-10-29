@@ -72,7 +72,7 @@ interface ExtraDeps {
   /** task_036 追加：历史加载回调（记录调用；受控兑现见「历史回填」组）。role 词表含 peer（task_052）。 */
   loadHistory?: (characterId: string) => Promise<readonly {
     characterId?: string;
-    role: 'user' | 'assistant' | 'peer';
+    role: 'user' | 'assistant' | 'peer' | 'system';
     text: string;
     error?: boolean;
     peerId?: string;
@@ -807,6 +807,26 @@ describe('组件：历史回填（task_036）', () => {
     expect(bubbles[2].getAttribute('data-error')).toBe('true'); // role=error → 错误样式路径
     expect(bubbles[2].querySelector('[data-role="retry"]')).toBeTruthy();
     expect(messagesBoxOf(h.panel).textContent).toContain('上次答的');
+    h.unmount();
+  });
+
+  test('system 历史行渲染为居中弱化系统行，不变成 assistant 错误气泡', async () => {
+    const h = mountPanel(undefined, {
+      loadHistory: async () => [
+        { characterId: 'c1', role: 'user', text: '上次问的', at: 1 },
+        { characterId: 'c1', role: 'assistant', text: '半截（输出中断）', at: 2 },
+        { characterId: 'c1', role: 'system', text: '⚠ 调用超时：等太久', at: 3 },
+      ],
+    });
+    h.panel.open('c1');
+    await flush();
+
+    const systemRow = h.panel.shadowRoot?.querySelector<HTMLElement>('[data-role="system-message"]');
+    expect(systemRow?.textContent).toBe('⚠ 调用超时：等太久');
+    expect(systemRow?.getAttribute('data-side')).toBe('system');
+    expect(systemRow?.classList.contains('system-message')).toBe(true);
+    expect(systemRow?.querySelector('[data-role="retry"]')).toBeNull();
+    expect(bubblesOf(h.panel).map((b) => b.getAttribute('data-side'))).toEqual(['user', 'assistant']);
     h.unmount();
   });
 

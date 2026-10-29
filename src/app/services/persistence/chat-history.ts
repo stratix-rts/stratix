@@ -1,14 +1,14 @@
 /**
  * 文件职责：角色对话历史的**渲染侧持久化端口**（task_036）—— 三件事：
  *   ① 声明 IPC 面（ChatHistoryApi，与 preload 的 gameSave 扩展段同构）+ window 探测器；
- *   ② 翻译：库行（PersistedChatMessage）→ 抽屉消息输入（role=error → error 标记的错误气泡）；
+ *   ② 翻译：库行（PersistedChatMessage）→ 抽屉消息输入（system → 系统行；旧 error → 错误气泡）；
  *   ③ 落库回调工厂（makeChatMessagePersister）：chat-service 的 persistMessage 注入件，
  *      fire-and-forget（落库失败只警告，绝不打断对话回路）。
  * 输入：window.electronAPI.gameSave 的扩展面（saveChatMessage / loadChatMessages）。
  * 输出：chat-service / 组合根可直接注入的回调与映射函数。
  * 禁止事项：
  *   1. import electron / 主进程模块 —— 本文件进渲染 bundle，IPC 只经 preload 暴露的面；
- *   2. 在这里定写入时机 —— 时机归 chat-service（user 即时 / assistant 收束 / error）；
+ *   2. 在这里定写入时机 —— 时机归 chat-service（user 即时 / assistant 收束 / system 失败事件）；
  *   3. 认识 hud 类型 —— 翻译产物用本地结构形状（与 CharacterChatMessageInput 结构同构，
  *      结构类型保证可赋值，依赖方向不倒挂：services 不 import hud）。
  *
@@ -144,7 +144,7 @@ export function chatHistoryEntryToDrawerInput(
   row: PersistedChatMessage
 ): {
   readonly characterId: string;
-  readonly role: 'user' | 'assistant' | 'peer';
+  readonly role: 'user' | 'assistant' | 'peer' | 'system';
   readonly text: string;
   readonly error?: boolean;
   readonly peerId?: string;
@@ -178,7 +178,7 @@ export function chatHistoryEntryToDrawerInput(
  */
 export interface ChatPersistInput {
   readonly characterId: string;
-  readonly role: 'user' | 'assistant' | 'error';
+  readonly role: 'user' | 'assistant' | 'system' | 'error';
   readonly text: string;
   readonly sessionRef: string | null;
 }

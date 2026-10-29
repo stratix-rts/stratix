@@ -515,7 +515,7 @@ describe('全局单飞锁（抽屉只有一条活跃流缓冲）', () => {
 // 消息落库（task_036）：时机 / 角色 / sessionRef / retry 不重复写
 // ============================================================================
 
-describe('消息落库：user 即时 / assistant 收束整段 / error 走 role=error', () => {
+describe('消息落库：user 即时 / assistant 收束整段 / 失败事件走 role=system', () => {
   test('完整回合：user 先落（sessionRef 空）→ assistant 整段落（sessionRef 回执）', async () => {
     const h = makeHarness({
       scripts: [
@@ -553,31 +553,56 @@ describe('消息落库：user 即时 / assistant 收束整段 / error 走 role=e
     ]);
   });
 
-  test('错误路径：role=error 落库（回填历史时渲染成错误样式）；中断标注落 assistant', async () => {
+  test('error 轮：部分文本加输出中断标记落 assistant，错误事件随后落 system', async () => {
     const h = makeHarness({
       scripts: [
         scripted({ type: 'message', text: '半截' }, { type: 'error', message: '等太久', code: 'timeout' }),
       ],
     });
     await h.service.send('ch-1', '在吗');
-    expect(h.messages.at(-1)).toEqual({
-      characterId: 'ch-1',
-      role: 'error',
-      text: chatErrorText('timeout', '等太久'),
-      sessionRef: null,
-    });
+    expect(h.messages).toEqual([
+      { characterId: 'ch-1', role: 'user', text: '在吗', sessionRef: null },
+      { characterId: 'ch-1', role: 'assistant', text: '半截（输出中断）', sessionRef: null },
+      { characterId: 'ch-1', role: 'system', text: chatErrorText('timeout', '等太久'), sessionRef: null },
+    ]);
+  });
 
-    const h2 = makeHarness({ scripts: [abortableScript('思考中')] });
-    const round = h2.service.send('ch-1', '慢慢想');
+  test('aborted 轮：部分文本加已中断标记落 assistant，中断事件随后落 system；user 不重复', async () => {
+    const h = makeHarness({ scripts: [abortableScript('思考中')] });
+    const round = h.service.send('ch-1', '慢慢想');
     await flush();
-    h2.service.stop('ch-1');
+    h.service.stop('ch-1');
     await round;
-    expect(h2.messages.at(-1)).toEqual({
-      characterId: 'ch-1',
-      role: 'assistant', // 用户主动中断不是错误：与气泡同口径（无重试钮）
-      text: CHAT_MSG_INTERRUPTED,
-      sessionRef: null,
+    expect(h.messages).toEqual([
+      { characterId: 'ch-1', role: 'user', text: '慢慢想', sessionRef: null },
+      { characterId: 'ch-1', role: 'assistant', text: `思考中${CHAT_MSG_INTERRUPTED}`, sessionRef: null },
+      { characterId: 'ch-1', role: 'system', text: CHAT_MSG_INTERRUPTED, sessionRef: null },
+    ]);
+  });
+
+  test('空文本 error 轮只落 system，不落空 assistant', async () => {
+    const h = makeHarness({
+      scripts: [scripted({ type: 'message', text: '' }, { type: 'error', message: 'ENOENT', code: 'spawn_failed' })],
     });
+    await h.service.send('ch-1', '在吗');
+    expect(h.messages).toEqual([
+      { characterId: 'ch-1', role: 'user', text: '在吗', sessionRef: null },
+      { characterId: 'ch-1', role: 'system', text: chatErrorText('spawn_failed', 'ENOENT'), sessionRef: null },
+    ]);
+  });
+
+  test('transport 抛异常前已有文本：部分输出与 cli_error system 事件都落库', async () => {
+    const h = makeHarness({
+      scripts: [async function* boom(): AsyncGenerator<TransportEvent> {
+        yield { type: 'message', text: '异常前半截' };
+        throw new Error('runtime 炸了');
+      }],
+    });
+    await h.service.send('ch-1', '在吗');
+    expect(h.messages.slice(1)).toEqual([
+      { characterId: 'ch-1', role: 'assistant', text: '异常前半截（输出中断）', sessionRef: null },
+      { characterId: 'ch-1', role: 'system', text: chatErrorText('cli_error', 'runtime 炸了'), sessionRef: null },
+    ]);
   });
 
   test('空回复：占位文案随气泡落 assistant；零文本不落空串', async () => {
@@ -591,15 +616,25 @@ describe('消息落库：user 即时 / assistant 收束整段 / error 走 role=e
     ]);
   });
 
-  test('守门拦截文案不落库（瞬时引导，不是对话内容）；被单飞锁忽略的 send 也不落', async () => {
+  test('NOT_INSTALLED / UNBOUND / NO_PROFILE / offline 守门均不落库；被单飞锁忽略的 send 也不落', async () => {
     const gate = gated([{ type: 'message', text: '…' }], [{ type: 'done', exitCode: 0, text: '…', sessionId: null }]);
     const h = makeHarness({ detected: [], scripts: [gate.script] });
-    await h.service.send('ch-1', '未检出也想发'); // 守门拦截：不落
+    await h.service.send('ch-1', '未检出也想发');
     expect(h.messages).toEqual([]);
 
-    const h2 = makeHarness({ characters: [{ ...character, agentKind: null }] });
-    await h2.service.send('ch-1', '未绑定'); // 同样不落
-    expect(h2.messages).toEqual([]);
+    const unbound = makeHarness({ characters: [{ ...character, agentKind: null }] });
+    await unbound.service.send('ch-1', '未绑定');
+    expect(unbound.messages).toEqual([]);
+
+    const noProfile = makeHarness({ characters: [] });
+    await noProfile.service.send('ghost', '没有档案');
+    expect(noProfile.messages).toEqual([]);
+
+    const offline = makeHarness({
+      units: [{ id: 'unit-1', name: '阿尔法', status: 'idle', missionId: null, power: 3, characterId: 'ch-1', online: false }],
+    });
+    await offline.service.send('ch-1', '离线也想发');
+    expect(offline.messages).toEqual([]);
 
     // 单飞锁：第一轮进行中，第二次 send 被忽略 —— 不落重复的 user
     const h3 = makeHarness({ scripts: [gate.script] });
@@ -624,7 +659,7 @@ describe('消息落库：user 即时 / assistant 收束整段 / error 走 role=e
 
     const users = h.messages.filter((m) => m.role === 'user');
     expect(users).toEqual([{ characterId: 'ch-1', role: 'user', text: '重试这条', sessionRef: null }]);
-    expect(h.messages.map((m) => m.role)).toEqual(['user', 'error', 'assistant']);
+    expect(h.messages.map((m) => m.role)).toEqual(['user', 'system', 'assistant']);
   });
 
   test('persistMessage 抛错不炸对话（可用性优先于历史完整性）', async () => {

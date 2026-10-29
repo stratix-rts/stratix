@@ -18,8 +18,8 @@
  * ============ 互聊会话（task_052）============
  * role 词表扩 'peer'：**HUD 层**的消息角色 —— 互聊中「对方说的话」（A2A 服务的 B 侧流 /
  *   单角色历史回填解析出的 [peer:id] 前缀行）。注意它与 SQLite 的 role 词表是两回事：
- *   库表三词表（user/assistant/error）不动，peer 身份走 content 前缀约定（见 agent-chat-service
- *   文件头「落库约定」）；本文件的 'peer' 只活在内存会话与渲染层。
+ *   库表词表（user/assistant/system/error）不含 peer，peer 身份走 content 前缀约定（见 agent-chat-service
+ *   文件头「落库约定」）；本文件的 'peer' 只活在内存会话与渲染层。system 用于失败事件历史行。
  * peerChatSessionId(a,b)：互聊双方的**联合会话** id（排序拼接，与发起顺序无关）——
  *   联合视图（同屏双方气泡）就是以它为 key 的一条普通会话；appendStreamAs 支持显式归属+角色
  *   开流（A2A 服务在用户切走视图时也要把流钉在联合会话上，不串台进个人会话）。
@@ -32,11 +32,12 @@ import { agentKindLabel } from '../../screens/onboarding-catalog';
 
 /**
  * 消息角色词表。user = 本端说的；assistant = 角色 agent 回的（含流式收束后的整段）。
+ * system = 失败事件历史行（task_073），由抽屉渲染成居中弱化文本。
  * peer = **互聊中对方说的话**（@since v3.28，task_052）—— 联合会话里 B 的气泡（右侧变体）/
  *   单角色历史里解析出的对方发言（bubble 渲染带对方名字前缀）。它只活在 HUD 内存，不进库
- *   （库表 role 词表不动，peer 身份走 content 前缀，见 chat-history.ts 的翻译）。
+ *   （peer 身份走 content 前缀，见 chat-history.ts 的翻译）。
  */
-export type CharacterChatRole = 'user' | 'assistant' | 'peer';
+export type CharacterChatRole = 'user' | 'assistant' | 'peer' | 'system';
 
 /** 单条消息（已提交：流式缓冲 finalize 后也落到这个形状）。 */
 export interface CharacterChatMessage {

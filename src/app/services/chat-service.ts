@@ -58,9 +58,10 @@
  * 写入时机（persistMessage 注入件，fire-and-forget，失败不阻断对话）：
  *   ① user 消息：send 过了守门与忙碌锁后**即时写**（sessionRef 可空 —— 首发时还没有会话）；
  *   ② assistant 消息：done 收束时**整段写**（流式 chunk 在内存拼接，不逐条落库）；
- *   ③ error：transport 失败/超时/异常时以 role=error 写（回填历史时渲染成错误样式）；
- *   ④ 中断标注（已中断）/空回复占位：随气泡落 assistant（UI 平价：刷新后看到的就是当时看到的）；
- *   ⑤ 守门拦截文案（未检出/未绑定/无档案）**不落库**：它们是瞬时引导，不是对话内容，重启后无意义；
+ *   ③ error/abort：已有流式文本先加截断标记落 assistant，错误/中断事件再落 role=system；
+ *      空文本只落 system；回填时 system 渲染为居中弱化历史行（旧 role=error 行仍兼容错误气泡）；
+ *   ④ 空回复占位：随气泡落 assistant（UI 平价：刷新后看到的就是当时看到的）；
+ *   ⑤ 守门拦截文案（未检出/未绑定/无档案/离线）**不落库**：它们是瞬时引导，不是对话内容，重启后无意义；
  *   ⑥ retry 不重复写 user（原文已在库/会话里，重试是服务侧动作 —— 与不新增 user 气泡同一口径）。
  * 消息真相仍在抽屉会话存储 + SQLite（本服务只转发，不存第二份）。
  * ⚠ 与「消息落库」③的边界（task_055 口径）：error 轮里已收到的 session 事件照常记入内存
@@ -133,7 +134,7 @@ export type ChatTransportFactory = (kind: AgentKind) => ChatTransportPort;
  */
 export interface ChatPersistedMessage {
   readonly characterId: string;
-  readonly role: 'user' | 'assistant' | 'error';
+  readonly role: 'user' | 'assistant' | 'system' | 'error';
   readonly text: string;
   readonly sessionRef: string | null;
 }
@@ -510,14 +511,23 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
           view.finalizeStream();
           // task_054：exit 异常旁路上报健康监测（aborted 在那边被忽略，统一透传不在此处分支）。
           reportTransportError(kind, event.code);
-          if (event.code === 'aborted') {
+          const aborted = event.code === 'aborted';
+          if (assistantText.length > 0) {
+            persist({
+              characterId,
+              role: 'assistant',
+              text: `${assistantText}${aborted ? CHAT_MSG_INTERRUPTED : '（输出中断）'}`,
+              sessionRef: session.sessionId,
+            });
+          }
+          if (aborted) {
             view.addMessage({ characterId, role: 'assistant', text: CHAT_MSG_INTERRUPTED });
-            persist({ characterId, role: 'assistant', text: CHAT_MSG_INTERRUPTED, sessionRef: session.sessionId });
+            persist({ characterId, role: 'system', text: CHAT_MSG_INTERRUPTED, sessionRef: session.sessionId });
           } else {
             lastFailed.set(characterId, text);
             const errorText = chatErrorText(event.code, event.message);
             view.addMessage({ characterId, role: 'assistant', text: errorText, error: true });
-            persist({ characterId, role: 'error', text: errorText, sessionRef: session.sessionId });
+            persist({ characterId, role: 'system', text: errorText, sessionRef: session.sessionId });
           }
           return;
         }
@@ -531,7 +541,10 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
       lastFailed.set(characterId, text);
       const thrownText = chatErrorText('cli_error', describe(error));
       view.addMessage({ characterId, role: 'assistant', text: thrownText, error: true });
-      persist({ characterId, role: 'error', text: thrownText, sessionRef: session.sessionId });
+      if (assistantText.length > 0) {
+        persist({ characterId, role: 'assistant', text: `${assistantText}（输出中断）`, sessionRef: session.sessionId });
+      }
+      persist({ characterId, role: 'system', text: thrownText, sessionRef: session.sessionId });
     } finally {
       if (activeRun === run) activeRun = null;
       session.busy = false;

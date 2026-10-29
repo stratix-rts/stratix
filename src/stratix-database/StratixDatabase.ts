@@ -9,7 +9,7 @@ const DEFAULT_FILENAME = 'stratix.db';
 /**
  * v2（@since v3.12，task_033）：新增 characters + unit_positions（游戏存档表，角色档案与单位站位）。
  * DDL 与 src/app/services/persistence/game-save-dao.ts 的 ensureGameSaveTables 同构 —— 改一处必须同步另一处。
- * v3（@since v3.15，task_036）：新增 character_chat_messages（角色对话历史，user/assistant/error 三种角色）。
+ * v3（@since v3.15，task_036）：新增 character_chat_messages（角色对话历史；task_073 扩 system 事件角色）。
  * DDL 与 src/app/services/persistence/chat-history-dao.ts 的 ensureCharacterChatMessagesTable 同构。
  * why 不叫 messages：messages 表已被项目/频道聊天占用（v1 起就有，schema 完全不同），
  * 角色对话历史单独建表，命名对齐既有 agent_chat_messages 的先例。
@@ -118,6 +118,8 @@ export class StratixDatabase {
   public initialize(): void {
     this.createTables();
     this.migrateIfNeeded();
+    const migrateChatRoles = this.db.transaction(() => this.migrateCharacterChatMessages());
+    migrateChatRoles();
     log('info', `Initialized at: ${this.dbPath}`);
   }
 
@@ -396,8 +398,8 @@ export class StratixDatabase {
   }
 
   /**
-   * 角色对话历史表（@since v3.15，task_036）：chat-service 按回合写入（user 即时 / assistant 收束 / error）。
-   * IF NOT EXISTS 幂等：新库在 createTables 里建过，这里是旧库（schema_version ≤ 2）的升级路径。
+   * 角色对话历史表（@since v3.15，task_036）：chat-service 按回合写入（user 即时 / assistant 收束 / system）。
+   * task_073 扩 system 事件角色；SQLite CHECK 不可 ALTER，旧表重建并保留全部旧行（含旧 error 行）。
    */
   private migrateCharacterChatMessages(): void {
     const tables = this.getTableNames();
@@ -407,7 +409,7 @@ export class StratixDatabase {
         CREATE TABLE IF NOT EXISTS character_chat_messages (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           character_id TEXT NOT NULL,
-          role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'error')),
+          role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system', 'error')),
           content TEXT NOT NULL,
           session_ref TEXT,
           created_at INTEGER NOT NULL
@@ -415,7 +417,32 @@ export class StratixDatabase {
       `);
       this.db.exec('CREATE INDEX IF NOT EXISTS idx_character_chat_messages_character ON character_chat_messages(character_id, id)');
       log('info', 'Created character_chat_messages table');
+      return;
     }
+
+    const row = this.db
+      .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'character_chat_messages'`)
+      .get() as { sql?: string } | undefined;
+    if (typeof row?.sql === 'string' && row.sql.includes("'system'")) return;
+
+    this.db.exec(`
+      CREATE TABLE character_chat_messages_system (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        character_id TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system', 'error')),
+        content TEXT NOT NULL,
+        session_ref TEXT,
+        created_at INTEGER NOT NULL
+      );
+      INSERT INTO character_chat_messages_system
+        (id, character_id, role, content, session_ref, created_at)
+        SELECT id, character_id, role, content, session_ref, created_at
+        FROM character_chat_messages;
+      DROP TABLE character_chat_messages;
+      ALTER TABLE character_chat_messages_system RENAME TO character_chat_messages;
+      CREATE INDEX IF NOT EXISTS idx_character_chat_messages_character ON character_chat_messages(character_id, id);
+    `);
+    log('info', 'Migrated character_chat_messages role CHECK to include system (task_073)');
   }
 
   /**
@@ -1115,12 +1142,12 @@ export class StratixDatabase {
         updated_at INTEGER NOT NULL
       );
 
-      -- 角色对话历史表（@since v3.15，task_036）：role ∈ user|assistant|error；
+      -- 角色对话历史表（@since v3.15，task_036）：role ∈ user|assistant|system|error（error 为旧行兼容）；
       -- session_ref 是会话 id 的落库回执（审计用，恢复口径见 chat-service 文件头：重启首发重建）
       CREATE TABLE IF NOT EXISTS character_chat_messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         character_id TEXT NOT NULL,
-        role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'error')),
+        role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system', 'error')),
         content TEXT NOT NULL,
         session_ref TEXT,
         created_at INTEGER NOT NULL

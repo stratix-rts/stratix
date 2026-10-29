@@ -28,9 +28,9 @@ export const CHARACTER_CHAT_MESSAGES_TABLE = 'character_chat_messages';
 /**
  * 消息角色词表（与表 CHECK 约束一致）：
  * user = 本端说的；assistant = 角色 agent 回的（含流式收束后的整段 / 占位与中断标注）；
- * error = transport 失败的错误正文（回填历史时渲染成错误样式，见 chat-history.ts 的翻译）。
+ * system = transport 失败事件；error = 旧版错误行（保留回读兼容）。
  */
-export type PersistedChatMessageRole = 'user' | 'assistant' | 'error';
+export type PersistedChatMessageRole = 'user' | 'assistant' | 'system' | 'error';
 
 /** character_chat_messages 的一行。id 是自增主键（同一角色内天然按 id 升序 = 写入顺序）。 */
 export interface PersistedChatMessage {
@@ -53,18 +53,18 @@ export interface ChatMessageInsert {
 }
 
 /** 词表导出给 IPC 校验层用（主进程拒绝表外 role，别让脏词进 CHECK 约束炸 IPC）。 */
-export const PERSISTED_CHAT_ROLES: readonly PersistedChatMessageRole[] = ['user', 'assistant', 'error'];
+export const PERSISTED_CHAT_ROLES: readonly PersistedChatMessageRole[] = ['user', 'assistant', 'system', 'error'];
 
 /**
  * 建表 + 索引（IF NOT EXISTS：幂等，旧库新库都能直接调）。
- * 与 StratixDatabase 的 DDL 同构；那边负责 schema_version 迁移记录，这里是 DAO 自立兜底。
+ * 与 StratixDatabase 的 DDL 同构；那边负责旧 CHECK 表迁移，这里是 DAO 自立兜底。
  */
 export function ensureCharacterChatMessagesTable(db: SqliteDatabaseLike): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS ${CHARACTER_CHAT_MESSAGES_TABLE} (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       character_id TEXT NOT NULL,
-      role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'error')),
+      role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system', 'error')),
       content TEXT NOT NULL,
       session_ref TEXT,
       created_at INTEGER NOT NULL

@@ -11,6 +11,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 import { Database } from '@/stratix-database/sqlite-adapter';
+import { StratixDatabase } from '@/stratix-database/StratixDatabase';
 
 import {
   ensureCharacterChatMessagesTable,
@@ -47,16 +48,18 @@ describe('chat-history-dao（真实 sql.js 适配器）', () => {
   });
 
   describe('读写往返', () => {
-    it('insert → load 全字段往返一致（user / assistant / error 三种 role + sessionRef 可空）', () => {
+    it('insert → load 全字段往返一致（user / assistant / system / 旧 error role + sessionRef 可空）', () => {
       insertChatMessage(db, message());
       insertChatMessage(db, message({ role: 'assistant', content: '在的', sessionRef: 'sess-abc', createdAt: 1700000000001 }));
-      insertChatMessage(db, message({ role: 'error', content: '⚠ 调用超时', createdAt: 1700000000002 }));
+      insertChatMessage(db, message({ role: 'system', content: '⚠ 调用超时', createdAt: 1700000000002 }));
+      insertChatMessage(db, message({ role: 'error', content: '⚠ 旧错误行', createdAt: 1700000000003 }));
 
       const rows = loadChatMessages(db, 'character_1');
       expect(rows).toEqual([
         { id: expect.any(Number), characterId: 'character_1', role: 'user', content: '在吗', sessionRef: null, createdAt: 1700000000000 },
         { id: expect.any(Number), characterId: 'character_1', role: 'assistant', content: '在的', sessionRef: 'sess-abc', createdAt: 1700000000001 },
-        { id: expect.any(Number), characterId: 'character_1', role: 'error', content: '⚠ 调用超时', sessionRef: null, createdAt: 1700000000002 },
+        { id: expect.any(Number), characterId: 'character_1', role: 'system', content: '⚠ 调用超时', sessionRef: null, createdAt: 1700000000002 },
+        { id: expect.any(Number), characterId: 'character_1', role: 'error', content: '⚠ 旧错误行', sessionRef: null, createdAt: 1700000000003 },
       ]);
     });
 
@@ -122,6 +125,42 @@ describe('chat-history-dao（真实 sql.js 适配器）', () => {
         expect(rows[0]).toMatchObject({ role: 'assistant', content: '重启后还在', sessionRef: 'sess-xyz' });
       } finally {
         reopened.close();
+      }
+    });
+
+    it('v12 老表 CHECK 不含 system：初始化时重建并保留旧行，随后可写 system', async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'stratix-chat-system-'));
+      const filename = path.join(dir, 'game.sqlite');
+      const raw = new Database(filename);
+      await raw.initialize();
+      raw.exec(`
+        CREATE TABLE character_chat_messages (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          character_id TEXT NOT NULL,
+          role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'error')),
+          content TEXT NOT NULL,
+          session_ref TEXT,
+          created_at INTEGER NOT NULL
+        );
+        CREATE TABLE schema_version (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL);
+        INSERT INTO schema_version (version, applied_at) VALUES (12, 1);
+        INSERT INTO character_chat_messages (character_id, role, content, created_at)
+        VALUES ('character_1', 'error', '旧错误仍在', 1);
+      `);
+      raw.close();
+
+      const migrated = new StratixDatabase({ dataDir: dir, filename: 'game' });
+      await migrated.init();
+      try {
+        migrated.initialize();
+        insertChatMessage(migrated.getDatabase(), message({ role: 'system', content: '新系统事件', createdAt: 2 }));
+        expect(loadChatMessages(migrated.getDatabase(), 'character_1').map((row) => [row.role, row.content])).toEqual([
+          ['error', '旧错误仍在'],
+          ['system', '新系统事件'],
+        ]);
+      } finally {
+        migrated.close();
+        fs.rmSync(dir, { recursive: true, force: true });
       }
     });
   });

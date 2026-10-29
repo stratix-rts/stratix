@@ -32,17 +32,17 @@
  *   这正是统一策略的「无效/空→首发重建」分支：对互聊而言回执**不构成有效线索**。
  * 任务（task-service）口径见其文件头：审批门挂单表存 sessionId，有效→续发短指令，丢失→首发重讲。
  *
- * ============ 落库约定（role 三词表不动 + content 前缀标 peer）============
+ * ============ 落库约定（peer 不进库表 role + content 前缀标 peer）============
  * 互聊消息进 character_chat_messages（与普通聊天同表同 DAO）：
  *   ① 开题：双方各落一条 user（「与 {对方名} 讨论：{议题}。」）—— 两边历史都自带议题上下文；
  *   ② 每轮产出落**两份**：发言者自己一行 role=assistant 原文；对方一行 role=assistant 但
- *      content 加前缀 `[peer:{发言者id}] ` —— 库表 CHECK 词表（user/assistant/error）不动、
- *      零迁移；回填时 chat-history 的翻译层解析该前缀 → HUD 的 role='peer' + peerId →
- *      渲染成对方名字的气泡（「贝塔：……」）。前缀只进库不进气泡、不进 CLI prompt；
+ *      content 加前缀 `[peer:{发言者id}] `；回填时 chat-history 的翻译层解析该前缀 →
+ *      HUD 的 role='peer' + peerId → 渲染成对方名字的气泡（「贝塔：……」）。
+ *      前缀只进库不进气泡、不进 CLI prompt；
  *   ③ 插话：双方各落一条 user（原文）；
  *   ④ 中断标注（超时/错误/停止）：同 ② 双份（对方份带前缀）。
- *   why 不扩 role 四词表：SQLite 的 CHECK 约束改不了，重建表要写数据迁移；content 前缀是
- *   纯增量约定（036 的 DAO / IPC 校验零改动），解析失败也只是退化成普通 assistant 气泡。
+ *   why peer 不进库表 role 词表：content 前缀是纯增量约定，解析失败也只是退化成普通
+ *   assistant 气泡；task_073 的 system 是失败事件角色，与 peer 身份无关。
  *
  * ============ 中断与超时 ============
  * 每个回合一次 transport 调用，超时缺省 120s（DEFAULT_PEER_TURN_TIMEOUT_MS，可注入覆盖）。

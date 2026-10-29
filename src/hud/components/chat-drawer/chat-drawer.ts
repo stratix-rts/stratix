@@ -645,6 +645,7 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
           button.retry { display: block; margin-top: var(--srf-spacing-xs); color: var(--srf-danger); border-color: var(--srf-danger); }
           button.retry:hover { background: var(--srf-danger); color: var(--srf-bg); }
           .bubble-text { font-size: var(--srf-font-size-sm); white-space: pre-wrap; word-break: break-word; }
+          .system-message { align-self: center; max-width: 92%; color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); text-align: center; white-space: pre-wrap; word-break: break-word; padding: var(--srf-spacing-xxs) var(--srf-spacing-sm); }
           .caret { display: inline-block; width: var(--srf-spacing-xxs); height: 1em; margin-left: var(--srf-spacing-xxs); vertical-align: text-bottom; background: var(--srf-accent); animation: caret-blink 900ms step-end infinite; }
           @keyframes caret-blink { 50% { opacity: 0; } }
           .empty { align-self: center; color: var(--srf-text-muted); font-size: var(--srf-font-size-sm); text-align: center; padding: var(--srf-spacing-xl) var(--srf-spacing-md); }
@@ -913,6 +914,11 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
     }
 
     private renderBubble(message: CharacterChatMessage): string {
+      if (message.role === 'system') {
+        return `
+          <div class="system-message" data-role="system-message" data-message="${escapeHtml(message.id)}" data-side="system">${escapeHtml(message.text)}</div>
+        `;
+      }
       if (message.error) {
         return `
           <div class="bubble" data-role="bubble" data-message="${escapeHtml(message.id)}" data-side="assistant" data-error="true">

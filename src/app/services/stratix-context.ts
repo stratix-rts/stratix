@@ -311,7 +311,7 @@ export function createStratixContextProvider(
 /** 服务侧落库消息的最小面（与 chat-service 的 ChatPersistedMessage 结构同构，不倒灌依赖）。 */
 interface PersistLike {
   readonly characterId: string;
-  readonly role: 'user' | 'assistant' | 'error';
+  readonly role: 'user' | 'assistant' | 'system' | 'error';
   readonly text: string;
 }
 

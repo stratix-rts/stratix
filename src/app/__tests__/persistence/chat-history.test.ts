@@ -54,6 +54,15 @@ describe('chatHistoryEntryToDrawerInput：库行 → 抽屉消息输入', () => 
     });
   });
 
+  test('role=system 原样映射为 system 历史行，不带错误重试标记', () => {
+    expect(chatHistoryEntryToDrawerInput(row({ role: 'system', content: '⚠ 调用超时：等太久' }))).toEqual({
+      characterId: 'ch-1',
+      role: 'system',
+      text: '⚠ 调用超时：等太久',
+      at: 1700000000000,
+    });
+  });
+
   test('error:false 不出现（普通消息不带 error 键，与组件的 addMessage 口径一致）', () => {
     expect('error' in chatHistoryEntryToDrawerInput(row())).toBe(false);
   });
