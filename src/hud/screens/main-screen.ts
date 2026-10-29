@@ -1,6 +1,6 @@
 /**
  * 文件职责：HUD 主屏壳 —— 一个挂载容器，把核心 HUD 区块组织起来（顶栏态势摘要 / agent 侧栏 /
- *   命令面板 / 态势总览 / 日志抽屉 / 聊天抽屉），通过事件桥把组件交互翻译成 HudCommand。
+ *   命令面板 / 态势总览 / 日志抽屉），通过事件桥把组件交互翻译成 HudCommand。
  *   组件本层不直连 core/bus。
  *   屏位路由（@since v3.6）：依据 WorldState.currentScreen 切换 main / settings / character
  *   三屏之一的渲染；status-screen 不占独立屏位，仍以"主屏浮动区块"形态挂载，
@@ -16,7 +16,7 @@
  *   1. import 任何 src/world/、src/stratix-rts/、vue/react/pinia —— 铁律；
  *   2. 直接 emitCommand —— 全部走注入的 adapter（事件 → adapter.dispatch）；
  *   3. 写死颜色 / 边框 —— 全部引用 --srf-* 变量；
- *   4. 跨屏业务态 —— 本屏不持有业务态，只持有"当前选中皮肤 / 当前屏位 / 聊天抽屉开合"等纯展示态；
+ *   4. 跨屏业务态 —— 本屏不持有业务态，只持有"当前选中皮肤 / 当前屏位"等纯展示态；
  *      当前屏位以 core 广播的 WorldState.currentScreen 为单一口径（status-screen 同源）。
  *
  * 屏位路由约定（@since v3.6，本任务接线）：
@@ -24,7 +24,7 @@
  *   - 'settings' 时：替换内容区为 settings-screen（settings 自带返回按钮 → ui.navigate(main)）；
  *   - 'character' 时：替换内容区为 character-screen（character 自带返回按钮 → ui.navigate(main)）；
  *   - 'chat' 由 core 解释为"打开聊天抽屉"，不入 currentScreen（见 core/types.ts 注释），
- *     故本屏不为此分支 —— 聊天抽屉以覆盖层形态挂在主屏上，由顶栏按钮开合（纯展示态）。
+ *     故本屏不为此分支 —— 顶栏按钮另发 stratix:chat-open，由组合根打开角色抽屉。
  *   why 用 replace 而非 overlay：sub-screen 自身带 topbar + body + 返回按钮，
  *   若仍渲染主屏 topbar/抽屉会出现双 topbar 与抽屉占视野；直接换内容区更稳。
  */
@@ -32,7 +32,6 @@
 import type { WorldState } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
 import { mountAgentPanel, type AgentPanelDeps } from '../panels/agent-panel';
-import { mountChatDrawer } from '../panels/chat-drawer';
 import { mountCommandPanel } from '../panels/command-panel';
 import { mountLogDrawer } from '../panels/log-drawer';
 import type { TaskStatsProvider } from '../panels/task-assign-catalog';
@@ -167,16 +166,6 @@ const MAIN_SCREEN_STYLE = `
     grid-auto-columns: minmax(6.5em, 1fr);
     align-items: start;
   }
-  .hud-chat-slot {
-    position: absolute;
-    right: var(--hud-gap);
-    top: calc(var(--hud-topbar-h) + var(--hud-gap));
-    bottom: calc(var(--hud-bottom-h) + var(--hud-gap));
-    width: min(380px, 32vw);
-    z-index: 40;
-    overflow: auto;
-  }
-  .hud-chat-slot[hidden] { display: none; }
   .hud-sub-screen {
     position: absolute;
     inset: 0;
@@ -188,8 +177,7 @@ const MAIN_SCREEN_STYLE = `
     .hud-topbar { position: static; }
     .hud-rail-left,
     .hud-rail-right,
-    .hud-bottom-bar,
-    .hud-chat-slot {
+    .hud-bottom-bar {
       position: static;
       width: auto;
       height: auto;
@@ -247,8 +235,6 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
     let unmountMain: (() => void) | null = null;
     /** core 订阅闭包（订阅 WorldState.currentScreen 变化）；只在 mount 期间存在。 */
     let unsubscribeState: (() => void) | null = null;
-    /** 聊天抽屉开合（纯展示态；跨主屏重渲保留）。 */
-    let chatOpen = false;
 
     const renderMain = (): void => {
       // 已挂的 sub-screen 必须先卸（进 main 时也要走这一步 —— 同屏重复也算 changed 边界）。
@@ -289,7 +275,6 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         <div class="hud-bottom-bar">
           <div class="hud-surface" data-role="command-panel"></div>
         </div>
-        <div class="hud-chat-slot hud-surface" data-role="chat-drawer" hidden></div>
       </div>
     `;
 
@@ -298,8 +283,6 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       const missionCounter = host.querySelector('[data-role="mission-count"]');
       const linkCounter = host.querySelector('[data-role="link-count"]');
       const noticeBadge = host.querySelector<HTMLElement>('[data-role="notice-badge"]');
-      const chatSlot = host.querySelector<HTMLElement>('[data-role="chat-drawer"]');
-      if (chatSlot) chatSlot.hidden = !chatOpen;
 
       const onThemeClick = (): void => {
         const next = currentTheme === 'default' ? 'pixel' : 'default';
@@ -317,10 +300,13 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       const onChatClick = (): void => {
         // 'chat' 由 core 解释为打开聊天抽屉（见 types.ts ScreenId 注释）；不进 currentScreen。
         adapter.dispatch({ type: 'ui.navigate', screen: 'chat' });
-        // 抽屉开合是本屏的纯展示态（core 不回写 currentScreen='chat'），就地开合覆盖层。
-        chatOpen = !chatOpen;
-        const slot = host.querySelector<HTMLElement>('[data-role="chat-drawer"]');
-        if (slot) slot.hidden = !chatOpen;
+        const state = adapter.latest;
+        const selectedUnitId = state?.selection.unitIds.length === 1 ? state.selection.unitIds[0] : null;
+        const characterId = state?.units.find((unit) => unit.id === selectedUnitId)?.characterId ?? undefined;
+        host.dispatchEvent(new CustomEvent('stratix:chat-open', {
+          bubbles: true,
+          detail: { characterId },
+        }));
       };
 
       const themeHandler = (e: Event): void => {
@@ -361,9 +347,6 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       const statusHost = host.querySelector<HTMLElement>('[data-role="status-screen"]');
       const unmountStatus = statusHost ? mountStatusScreen(adapter, statusHost) : null;
 
-      // 聊天抽屉：覆盖层形态（默认 hidden），开合由顶栏按钮控制。
-      const unmountChat = chatSlot ? mountChatDrawer(adapter, chatSlot) : null;
-
       const unsubscribe = adapter.subscribe((state) => {
         if (unitCounter) unitCounter.textContent = String(state.units.length);
         if (missionCounter) missionCounter.textContent = String(state.missions.length);
@@ -378,7 +361,6 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       // 主屏布局内所有挂载闭包打包到一个闭包里：renderScreen 拆主屏布局时一次性释放。
       unmountMain = () => {
         unsubscribe();
-        unmountChat?.();
         unmountDrawer?.();
         unmountStatus?.();
         unmountAgentPanel?.();

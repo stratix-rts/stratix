@@ -199,11 +199,15 @@ describe('顶栏按钮：派发 ui.navigate，不在本屏内直接改屏位', (
     h.unmount();
   });
 
-  test('「打开聊天」点出 ui.navigate chat（不进 currentScreen，由抽屉自治）', () => {
+  test('「打开聊天」保留 ui.navigate chat，并冒泡角色抽屉打开事件', () => {
     const h = mountHarness(makeState());
+    const onChatOpen = jest.fn();
+    h.host.addEventListener('stratix:chat-open', onChatOpen);
     const chatBtn = h.host.querySelector<HTMLElement>('[data-role="chat"]');
     chatBtn?.dispatchEvent(new CustomEvent('strat-button-click', { bubbles: true }));
     expect(h.commands).toContainEqual({ type: 'ui.navigate', screen: 'chat' });
+    expect(onChatOpen).toHaveBeenCalledTimes(1);
+    expect(onChatOpen.mock.calls[0][0].detail).toEqual({ characterId: undefined });
     h.unmount();
   });
 
@@ -356,18 +360,20 @@ describe('RTS 悬浮布局：HUD 环绕战场而不是分栏', () => {
     h.unmount();
   });
 
-  test('聊天抽屉：默认收起（覆盖层），点顶栏「打开聊天」展开', () => {
-    const h = mountHarness(makeState());
-    const slot = h.host.querySelector<HTMLElement>('[data-role="chat-drawer"]');
-    expect(slot).not.toBeNull();
-    expect(slot?.hidden).toBe(true);
+  test('单选角色单位时，「打开聊天」事件携带角色上下文且不再挂旧抽屉', () => {
+    const h = mountHarness(makeState({
+      units: [{ id: 'u1', name: 'Neo', status: 'idle', missionId: null, power: 3, characterId: 'c-neo' }],
+      selection: { unitIds: ['u1'], previewUnitIds: [], revision: 1 },
+    }));
+    const onChatOpen = jest.fn();
+    h.host.addEventListener('stratix:chat-open', onChatOpen);
+    expect(h.host.querySelector('[data-role="chat-drawer"]')).toBeNull();
 
     h.host.querySelector<HTMLElement>('[data-role="chat"]')
       ?.dispatchEvent(new CustomEvent('strat-button-click', { bubbles: true }));
 
-    expect(h.host.querySelector<HTMLElement>('[data-role="chat-drawer"]')?.hidden).toBe(false);
-    // 命令照旧进总线（core 不回写 currentScreen='chat'，开合是本屏展示态）。
-    expect(h.commands).toContainEqual({ type: 'ui.navigate', screen: 'chat' });
+    expect(onChatOpen).toHaveBeenCalledTimes(1);
+    expect(onChatOpen.mock.calls[0][0].detail).toEqual({ characterId: 'c-neo' });
     h.unmount();
   });
 });

@@ -311,6 +311,10 @@ async function boot(): Promise<void> {
     chatHost
   );
   const characterDrawer = chatHost.querySelector(CHARACTER_CHAT_DRAWER_TAG) as StratCharacterChatDrawerElement | null;
+  const onChatOpen = (event: Event): void => {
+    characterDrawer?.open((event as CustomEvent<{ characterId?: string }>).detail?.characterId);
+  };
+  hudRoot.addEventListener('stratix:chat-open', onChatOpen);
   // 任务输出面板（task_046）：嵌挂在抽屉里，经抽屉的公开引用接流转发端口。
   // 无 Electron（纯 vite dev）时抽屉照挂、面板照嵌 —— 只是没人喏 chunk（行为退回 038 之前）。
   const taskOutputView = characterDrawer?.taskOutput ?? null;
@@ -786,6 +790,7 @@ async function boot(): Promise<void> {
       // 遗骸，审计可见、不复活 —— 见 pipeline-record-dao 文件头存活语义注）。
       stopPipelineBus();
       // 角色抽屉先卸（退订总线；在跑的对话由主进程超时 / 页面销毁兜底）。
+      hudRoot.removeEventListener('stratix:chat-open', onChatOpen);
       unmountCharacterDrawer();
       unmountToastHost();
       stopAgentDetection();
