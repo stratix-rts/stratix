@@ -32,6 +32,7 @@ function row(patch: Partial<PersistedChatMessage> = {}): PersistedChatMessage {
 describe('chatHistoryEntryToDrawerInput：库行 → 抽屉消息输入', () => {
   test('user / assistant 原样翻译；at ← createdAt', () => {
     expect(chatHistoryEntryToDrawerInput(row())).toEqual({
+      id: '7',
       characterId: 'ch-1',
       role: 'user',
       text: '在吗',
@@ -46,6 +47,7 @@ describe('chatHistoryEntryToDrawerInput：库行 → 抽屉消息输入', () => 
   test('role=error → assistant 气泡 + error 标记（渲染层据此走错误样式 + 重试钮）；sessionRef 不进 UI', () => {
     const input = chatHistoryEntryToDrawerInput(row({ role: 'error', content: '⚠ 调用超时' }));
     expect(input).toEqual({
+      id: '7',
       characterId: 'ch-1',
       role: 'assistant',
       text: '⚠ 调用超时',
@@ -56,6 +58,7 @@ describe('chatHistoryEntryToDrawerInput：库行 → 抽屉消息输入', () => 
 
   test('role=system 原样映射为 system 历史行，不带错误重试标记', () => {
     expect(chatHistoryEntryToDrawerInput(row({ role: 'system', content: '⚠ 调用超时：等太久' }))).toEqual({
+      id: '7',
       characterId: 'ch-1',
       role: 'system',
       text: '⚠ 调用超时：等太久',
@@ -124,6 +127,7 @@ describe('chatHistoryEntryToDrawerInput：peer 前缀翻译（task_052）', () =
       row({ role: 'assistant', content: '[peer:ch-b] 我认为应该先侦察。' })
     );
     expect(input).toEqual({
+      id: '7',
       characterId: 'ch-1',
       role: 'peer',
       text: '我认为应该先侦察。',
@@ -162,10 +166,12 @@ describe('chatHistoryApi：preload 面适配（task_071）', () => {
     expect(CHAT_HISTORY_LOAD_LIMIT).toBe(50);
   });
 
-  test('preload 形状（saveChatMessage / loadChatMessages）→ 端口方法一一委托到原始面', async () => {
+  test('preload 三条历史通道一一委托；loadEarlierMessages 透传 beforeId 游标与 limit', async () => {
     const saveChatMessage = jest.fn(async () => ({ ok: true }));
     const loadChatMessages = jest.fn(async () => ({ ok: true, messages: [] }));
-    scope.electronAPI = { gameSave: { saveChatMessage, loadChatMessages } };
+    const earlierResult = { ok: true, messages: [row({ id: 6 })] };
+    const loadEarlierChatMessages = jest.fn(async () => earlierResult);
+    scope.electronAPI = { gameSave: { saveChatMessage, loadChatMessages, loadEarlierChatMessages } };
     try {
       const api = chatHistoryApi();
       expect(api).not.toBeNull();
@@ -186,17 +192,22 @@ describe('chatHistoryApi：preload 面适配（task_071）', () => {
       expect(loaded).toEqual({ ok: true, messages: [] });
       expect(loadChatMessages).toHaveBeenCalledTimes(1);
       expect(loadChatMessages).toHaveBeenCalledWith('ch-1', 20);
+
+      await expect(api!.loadEarlierMessages!('ch-1', 7, 20)).resolves.toBe(earlierResult);
+      expect(loadEarlierChatMessages).toHaveBeenCalledWith('ch-1', 7, 20);
     } finally {
       delete scope.electronAPI;
     }
   });
 
-  test('loadMessages 不带 limit → 透传 undefined（主进程按缺省 50 兜底）', async () => {
+  test('旧 preload 两条通道仍可加载最近历史；limit 缺省透传，分页能力缺省', async () => {
     const loadChatMessages = jest.fn(async () => ({ ok: true, messages: [] }));
     scope.electronAPI = { gameSave: { saveChatMessage: async () => ({ ok: true }), loadChatMessages } };
     try {
-      await chatHistoryApi()!.loadMessages('ch-1');
+      const api = chatHistoryApi();
+      await api!.loadMessages('ch-1');
       expect(loadChatMessages).toHaveBeenCalledWith('ch-1', undefined);
+      expect(api!.loadEarlierMessages).toBeUndefined();
     } finally {
       delete scope.electronAPI;
     }

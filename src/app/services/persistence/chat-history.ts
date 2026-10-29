@@ -30,10 +30,11 @@
  *   （`as ChatHistoryApi`），调用方拿到的对象上根本没有 saveMessage / loadMessages，
  *   调用即 TypeError（落库 fire-and-forget 把报错吞了 → 消息永远不落库、历史永远读不到）。
  * 现在由 chatHistoryApi() 做一次形状适配：原始面在 → 返回委托适配器；原始面不在/不完整
- *   → 返回 null（维持非 Electron 降级语义）。**端口形状（ChatHistoryApi）不变**，消费方零改动。
+ *   → 返回 null（维持非 Electron 降级语义）。task_074 追加可选 loadEarlierMessages 分页口，
+ *   旧 preload 缺少它时保留写入与最近 50 条加载能力。
  *
  * @since v3.15（task_036）；v3.28（task_052）追加 peer 前缀解析；
- *        v3.x（task_071）追加 preload 面适配层。
+ *        v3.x（task_071）追加 preload 面适配层；task_074 追加可选分页口。
  */
 
 import type {
@@ -43,8 +44,8 @@ import type {
 
 /**
  * 抽屉历史加载窗口：每次打开/切角色读最近 N 条（正序回填）。
- * why 50：单屏可视量级 + 一次 IPC 载荷可控；「滚动到顶再向前翻页」的后置增强
- *   （loadChatMessages 已按 LIMIT 窗口语义就位，UI 侧分页触发器后置）。
+ * why 50：单屏可视量级 + 一次 IPC 载荷可控；滚动到顶时以首条持久化消息 id 为游标，
+ *   经 loadEarlierMessages 向前翻页（task_074）。
  */
 export const CHAT_HISTORY_LOAD_LIMIT = 50;
 
@@ -76,12 +77,14 @@ export interface ChatHistoryApi {
   saveMessage(message: ChatHistoryInsert): Promise<{ readonly ok: boolean; readonly error?: string }>;
   /** 读某角色最近 limit 条（缺省 CHAT_HISTORY_LOAD_LIMIT）。 */
   loadMessages(characterId: string, limit?: number): Promise<ChatHistoryLoadResult>;
+  /** 读 beforeId 之前最近 limit 条；旧 preload 没有此可选能力时仅关闭向前翻页。 */
+  loadEarlierMessages?(characterId: string, beforeId: number, limit?: number): Promise<ChatHistoryLoadResult>;
 }
 
 /**
- * preload 的 gameSave **原始面**形状（@since task_071 固化）：preload 暴露的两条对话历史
- * 通道 —— saveChatMessage / loadChatMessages（透传到主进程 game:saveChatMessage /
- * game:loadChatMessages）。写载荷与主进程 DAO 的 ChatMessageInsert 同构。
+ * preload 的 gameSave **原始面**形状（@since task_071 固化）：基础通道为
+ * saveChatMessage / loadChatMessages；task_074 追加可选 loadEarlierChatMessages。
+ * 写载荷与主进程 DAO 的 ChatMessageInsert 同构。
  * 这一层只描述「preload 那边叫什么」，不含业务语义 —— 业务语义归上面的端口。
  */
 export interface ChatHistoryRawFace {
@@ -89,6 +92,8 @@ export interface ChatHistoryRawFace {
   saveChatMessage(message: ChatMessageInsert): Promise<{ readonly ok: boolean; readonly error?: string }>;
   /** 读某角色最近 limit 条（preload 透传到 game:loadChatMessages；limit 缺省主进程按 50 兜底）。 */
   loadChatMessages(characterId: string, limit?: number): Promise<ChatHistoryLoadResult>;
+  /** 读 beforeId 之前最近 limit 条（preload 透传到 game:loadEarlierChatMessages）。 */
+  loadEarlierChatMessages?(characterId: string, beforeId: number, limit?: number): Promise<ChatHistoryLoadResult>;
 }
 
 /** 写入载荷（含时间戳 —— 调用方只管业务，时钟在这里盖，user/assistant 先后即调用先后）。 */
@@ -103,8 +108,8 @@ export interface ChatHistoryInsert extends ChatHistorySaveMessage {
  * 而本层端口叫 saveMessage / loadMessages —— 名字对不上，旧实现直接原样透传，
  * 调用方拿到的对象上没有端口方法 → TypeError（落库侧 fire-and-forget 吞掉报错，
  * 表现为「聊天正常但消息一条不落、历史永远读不到」）。这里做形状适配：
- *   原始面两条通道都在 → 返回委托适配器（端口方法 → 原始面方法一一转发）；
- *   原始面不在 / 不完整   → 返回 null（维持非 Electron 降级语义：调用方按「无历史通道」处理）。
+ *   原始面写入与最近历史通道都在 → 返回委托适配器；有分页通道时也一一转发；
+ *   基础通道不在 / 不完整 → 返回 null（维持非 Electron 降级语义）。
  *
  * 半张脸（只写不读 / 只读不写）也按「无通道」处理：宁可整条降级，也不要某一侧在运行时
  * 炸 TypeError —— 落库侧是 fire-and-forget，炸了也不外溢，等于静默丢数据。
@@ -116,16 +121,21 @@ export function chatHistoryApi(): ChatHistoryApi | null {
     ?.gameSave;
   if (!gameSave) return null;
 
-  const { saveChatMessage, loadChatMessages } = gameSave;
+  const { saveChatMessage, loadChatMessages, loadEarlierChatMessages } = gameSave;
   if (typeof saveChatMessage !== 'function' || typeof loadChatMessages !== 'function') return null;
 
   // 显式收窄到原始面签名（不用 as / any）：委托时把 this 绑回原始面对象。
   const rawSave: ChatHistoryRawFace['saveChatMessage'] = saveChatMessage;
   const rawLoad: ChatHistoryRawFace['loadChatMessages'] = loadChatMessages;
-  return {
+  const api: ChatHistoryApi = {
     saveMessage: (message) => rawSave.call(gameSave, message),
     loadMessages: (characterId, limit) => rawLoad.call(gameSave, characterId, limit),
   };
+  if (typeof loadEarlierChatMessages === 'function') {
+    api.loadEarlierMessages = (characterId, beforeId, limit) =>
+      loadEarlierChatMessages.call(gameSave, characterId, beforeId, limit);
+  }
+  return api;
 }
 
 /**
@@ -143,6 +153,7 @@ export const PEER_CONTENT_PREFIX = /^\[peer:([^\]]+)\] /;
 export function chatHistoryEntryToDrawerInput(
   row: PersistedChatMessage
 ): {
+  readonly id: string;
   readonly characterId: string;
   readonly role: 'user' | 'assistant' | 'peer' | 'system';
   readonly text: string;
@@ -155,6 +166,7 @@ export function chatHistoryEntryToDrawerInput(
     const matched = PEER_CONTENT_PREFIX.exec(row.content);
     if (matched) {
       return {
+        id: String(row.id),
         characterId: row.characterId,
         role: 'peer',
         text: row.content.slice(matched[0].length),
@@ -164,6 +176,7 @@ export function chatHistoryEntryToDrawerInput(
     }
   }
   return {
+    id: String(row.id),
     characterId: row.characterId,
     role: isError ? 'assistant' : row.role,
     text: row.content,

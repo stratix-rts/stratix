@@ -38,6 +38,7 @@ import {
   ensureCharacterChatMessagesTable,
   insertChatMessage,
   loadChatMessages,
+  loadEarlierChatMessages,
   PERSISTED_CHAT_ROLES,
   type ChatMessageInsert,
 } from '../app/services/persistence/chat-history-dao';
@@ -479,6 +480,28 @@ function setupIPC() {
       return { ok: true, messages: loadChatMessages(db, characterId, messageWindow) };
     } catch (error: any) {
       console.error('[Electron] game:loadChatMessages failed:', error);
+      return { ok: false, error: error?.message ?? String(error) };
+    }
+  });
+
+  ipcMain.handle('game:loadEarlierChatMessages', async (_event, characterId: unknown, beforeId: unknown, limit: unknown) => {
+    try {
+      if (typeof characterId !== 'string' || characterId.length === 0 || characterId.length > 200) {
+        return { ok: false, error: 'bad characterId' };
+      }
+      if (typeof beforeId !== 'number' || !Number.isSafeInteger(beforeId) || beforeId <= 0) {
+        return { ok: false, error: 'bad beforeId' };
+      }
+      const messageWindow =
+        typeof limit === 'number' && Number.isFinite(limit)
+          ? Math.min(Math.max(Math.floor(limit), 1), 200)
+          : 50;
+      if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
+      const db = getDatabase().getDatabase();
+      ensureCharacterChatMessagesTable(db);
+      return { ok: true, messages: loadEarlierChatMessages(db, characterId, beforeId, messageWindow) };
+    } catch (error: any) {
+      console.error('[Electron] game:loadEarlierChatMessages failed:', error);
       return { ok: false, error: error?.message ?? String(error) };
     }
   });

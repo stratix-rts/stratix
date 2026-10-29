@@ -84,25 +84,22 @@ export function insertChatMessage(db: SqliteDatabaseLike, message: ChatMessageIn
   `).run(message.characterId, message.role, message.content, message.sessionRef ?? null, message.createdAt);
 }
 
-/**
- * 读某角色最近 limit 条（按 id 自增序 = 写入序），返回**时间正序**（最旧在前）——
- * 回填历史就是按这个顺序逐条 addMessage。limit 缺省 50（抽屉窗口口径，常量在 chat-history.ts）。
- */
-export function loadChatMessages(
+function loadChatMessageWindow(
   db: SqliteDatabaseLike,
   characterId: string,
-  limit = 50
+  limit: number,
+  beforeId?: number
 ): PersistedChatMessage[] {
   const rows = db
     .prepare(
       `SELECT id, character_id, role, content, session_ref, created_at
        FROM ${CHARACTER_CHAT_MESSAGES_TABLE}
-       WHERE character_id = ?
+       WHERE character_id = ?${beforeId === undefined ? '' : ' AND id < ?'}
        ORDER BY id DESC
        LIMIT ?`
     )
-    .all(characterId, limit) as Array<Record<string, unknown>>;
-  // DESC 取最近 N 条后反转为正序：窗口是「尾部 50」，展示是「从旧到新」。
+    .all(...(beforeId === undefined ? [characterId, limit] : [characterId, beforeId, limit])) as Array<Record<string, unknown>>;
+  // DESC 取窗口后反转为正序：查询按写入序切片，展示始终「从旧到新」。
   return rows
     .map((row) => ({
       id: Number(row.id),
@@ -115,4 +112,26 @@ export function loadChatMessages(
       createdAt: Number(row.created_at ?? 0),
     }))
     .reverse();
+}
+
+/**
+ * 读某角色最近 limit 条（按 id 自增序 = 写入序），返回**时间正序**（最旧在前）——
+ * 回填历史就是按这个顺序逐条 addMessage。limit 缺省 50（抽屉窗口口径，常量在 chat-history.ts）。
+ */
+export function loadChatMessages(
+  db: SqliteDatabaseLike,
+  characterId: string,
+  limit = 50
+): PersistedChatMessage[] {
+  return loadChatMessageWindow(db, characterId, limit);
+}
+
+/** 读 beforeId 之前最近 limit 条；与首次加载共用窗口查询，返回时间正序。 */
+export function loadEarlierChatMessages(
+  db: SqliteDatabaseLike,
+  characterId: string,
+  beforeId: number,
+  limit = 50
+): PersistedChatMessage[] {
+  return loadChatMessageWindow(db, characterId, limit, beforeId);
 }

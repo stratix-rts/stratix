@@ -17,6 +17,7 @@ import {
   ensureCharacterChatMessagesTable,
   insertChatMessage,
   loadChatMessages,
+  loadEarlierChatMessages,
   type ChatMessageInsert,
 } from '../../services/persistence/chat-history-dao';
 
@@ -103,6 +104,40 @@ describe('chat-history-dao（真实 sql.js 适配器）', () => {
         Array.from({ length: 10 }, (_, k) => `m${k + 21}`)
       );
       expect(loadChatMessages(db, 'character_1', 100)).toHaveLength(30);
+    });
+  });
+
+  describe('beforeId 游标窗口', () => {
+    beforeEach(() => {
+      for (let i = 1; i <= 12; i += 1) {
+        insertChatMessage(db, message({ content: `m${i}`, createdAt: i }));
+      }
+      insertChatMessage(db, message({ characterId: 'other', content: '别的角色' }));
+    });
+
+    it('游标前不足一页：返回全部更早消息且保持正序', () => {
+      expect(loadEarlierChatMessages(db, 'character_1', 6, 10).map((row) => row.content)).toEqual([
+        'm1', 'm2', 'm3', 'm4', 'm5',
+      ]);
+    });
+
+    it('游标前恰好一页：不额外夹带游标或其他角色消息', () => {
+      const rows = loadEarlierChatMessages(db, 'character_1', 11, 10);
+      expect(rows.map((row) => row.content)).toEqual([
+        'm1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8', 'm9', 'm10',
+      ]);
+      expect(rows.some((row) => row.id === 11 || row.characterId === 'other')).toBe(false);
+    });
+
+    it('跨页连续读取：最近页、上一整页和最后不足页边界不重不漏', () => {
+      const latest = loadChatMessages(db, 'character_1', 5);
+      expect(latest.map((row) => row.content)).toEqual(['m8', 'm9', 'm10', 'm11', 'm12']);
+
+      const previous = loadEarlierChatMessages(db, 'character_1', latest[0].id, 5);
+      expect(previous.map((row) => row.content)).toEqual(['m3', 'm4', 'm5', 'm6', 'm7']);
+      expect(loadEarlierChatMessages(db, 'character_1', previous[0].id, 5).map((row) => row.content)).toEqual([
+        'm1', 'm2',
+      ]);
     });
   });
 

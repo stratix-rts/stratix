@@ -389,6 +389,7 @@ async function boot(): Promise<void> {
       onTransportError: transportHealthReport,
       notify: (text) => showToast(text, 'warn'),
     });
+    const loadEarlierMessages = chatHistory?.loadEarlierMessages?.bind(chatHistory);
     // 二次注入 deps：换上带对话回调与历史加载的完整面（订阅在首次注入时已绑，handleState 是元素方法，不受影响）。
     characterDrawer.deps = {
       subscribe: (handler) => adapter.subscribe(handler),
@@ -406,6 +407,19 @@ async function boot(): Promise<void> {
             chatHistory
               .loadMessages(characterId, CHAT_HISTORY_LOAD_LIMIT)
               .then((result) => (result.ok && result.messages ? result.messages.map(chatHistoryEntryToDrawerInput) : []))
+        : undefined,
+      historyPageSize: CHAT_HISTORY_LOAD_LIMIT,
+      loadEarlierHistory: loadEarlierMessages
+        ? (characterId, beforeId, limit) => {
+            const cursor = Number(beforeId);
+            if (!Number.isSafeInteger(cursor) || cursor <= 0) {
+              return Promise.reject(new Error('bad history cursor'));
+            }
+            return loadEarlierMessages(characterId, cursor, limit).then((result) => {
+              if (!result.ok || !result.messages) throw new Error(result.error ?? 'history load failed');
+              return result.messages.map(chatHistoryEntryToDrawerInput);
+            });
+          }
         : undefined,
     };
 

@@ -10,8 +10,8 @@
  *   与发送中「停止」钮 —— 回调 onStop / onRetry 由组合根桥接 chat-service，组件仍不认识 transport。
  *   @since v3.15（task_036 追加）：历史回填 —— open / setCharacter 时经 loadHistory 回调读最近
  *   CHAT_HISTORY_LOAD_LIMIT（50）条逐条回填进会话存储（库里的历史与重建后的新会话在 UI 层
- *   天然同一段消息流 = 连续展示）。**按需向后分页后置**：当前只取尾部窗口，"滚动到顶再翻页"
- *   的触发器留给后续任务（DAO 的 LIMIT 窗口语义已就位）。
+ *   天然同一段消息流 = 连续展示）。task_074 追加 beforeId 分页：滚动到顶加载更早一页，
+ *   prepend 后锚定原首条消息；不足一页显示顶部到底提示，失败静默且可重试。
  *   @since v3.22（task_046 追加）：头部与消息区之间嵌挂任务输出面板（`<strat-task-output-panel>`）——
  *   034 的「点单位 → 抽屉打开」是既有语义，busy 单位的实时 CLI 流顺着同一入口可见（冲突裁决：
  *   不另开面板抢点击，抽屉头部下挂折叠区）。本文件只做三件事：嵌挂元素、转发 subscribe、
@@ -101,6 +101,14 @@ export type CharacterChatDrawerDeps = Pick<HudBusAdapter, 'subscribe'> & {
    * 活跃流缓冲挂在目标角色上不回填、每角色每生命周期至多成功回填一次。
    */
   readonly loadHistory?: (characterId: string) => Promise<readonly CharacterChatMessageInput[]>;
+  /** 历史页大小；初始加载满页后才允许滚动到顶继续翻页。 */
+  readonly historyPageSize?: number;
+  /** 读取当前首条历史消息之前的一页；失败 reject，抽屉静默并允许重试。 */
+  readonly loadEarlierHistory?: (
+    characterId: string,
+    beforeId: string,
+    limit: number
+  ) => Promise<readonly CharacterChatMessageInput[]>;
   /**
    * 互聊发起回调（@since v3.28，task_052）：议题表单点「开始讨论」→ 桥接方驱动
    * agent-chat-service.start（A2A 回合编排）。缺省 = 无桥接（表单可开、讨论不跑）。
@@ -215,6 +223,9 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
     private _lastSelectionRevision: number | null = null;
     /** 已成功回填（或确认无需回填）历史的角色 id（task_036）：每角色每生命周期至多一次。 */
     private readonly _historyLoaded = new Set<string>();
+    private readonly _historyHasEarlier = new Set<string>();
+    private readonly _historyExhausted = new Set<string>();
+    private readonly _historyLoadingEarlier = new Set<string>();
     private readonly _sessions: CharacterChatSessions = createCharacterChatSessions();
     /** 嵌挂的任务输出面板（task_046）：renderChrome 时捕获，deps 转发与 showFor 都走它。 */
     private _taskOutput: StratTaskOutputPanelElement | null = null;
@@ -460,6 +471,7 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
           const stream = this._sessions.stream;
           if (stream !== null && stream.characterId === characterId) return; // 流式缓冲态不回填
           this._historyLoaded.add(characterId);
+          if (entries.length >= (this._deps?.historyPageSize ?? 50)) this._historyHasEarlier.add(characterId);
           for (const entry of entries) {
             // 归属强制钉死到请求的角色（loader 的返回不该被信任到能决定归属）。
             this._sessions.addMessage({ ...entry, characterId });
@@ -468,6 +480,44 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
         })
         .catch(() => {
           // 历史加载失败不致命：空会话照常可用（不标记，下次打开重试）。
+        });
+    }
+
+    private requestEarlierHistory(characterId: string): void {
+      const loader = this._deps?.loadEarlierHistory;
+      if (
+        !loader ||
+        !this._historyHasEarlier.has(characterId) ||
+        this._historyLoadingEarlier.has(characterId)
+      ) return;
+      const anchorId = this._sessions.messages(characterId)[0]?.id;
+      if (!anchorId) return;
+
+      const limit = this._deps?.historyPageSize ?? 50;
+      this._historyLoadingEarlier.add(characterId);
+      void loader(characterId, anchorId, limit)
+        .then((entries) => {
+          if (entries.length < limit) {
+            this._historyHasEarlier.delete(characterId);
+            this._historyExhausted.add(characterId);
+          }
+          this._sessions.prependMessages(
+            characterId,
+            entries.map((entry) => ({ ...entry, characterId }))
+          );
+          if (this._sessions.viewing !== characterId) return;
+          const box = this.shadowRoot?.querySelector<HTMLElement>('[data-role="messages"]');
+          if (!box) return;
+          this.renderMessages();
+          const anchor = Array.from(box.querySelectorAll<HTMLElement>('[data-message]'))
+            .find((node) => node.getAttribute('data-message') === anchorId);
+          if (anchor) box.scrollTop = anchor.offsetTop;
+        })
+        .catch(() => {
+          // 静默失败：不置到底标记，下一次滚动到顶可重试。
+        })
+        .finally(() => {
+          this._historyLoadingEarlier.delete(characterId);
         });
     }
 
@@ -635,6 +685,7 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
           }
           .messages::-webkit-scrollbar { width: var(--srf-spacing-sm); }
           .messages::-webkit-scrollbar-thumb { background: var(--srf-border-strong); border-radius: var(--srf-radius-pill); }
+          .history-end { align-self: center; color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); padding: var(--srf-spacing-xs); }
           .bubble { max-width: 82%; box-sizing: border-box; padding: var(--srf-spacing-sm); background: var(--srf-panel-elevated); border: var(--srf-border-width) solid var(--srf-border); border-radius: var(--srf-radius); }
           .bubble[data-side="user"] { align-self: end; border-color: var(--srf-accent); }
           .bubble[data-side="assistant"] { align-self: start; }
@@ -735,6 +786,13 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
             this.syncPeerSetupForm();
           }
         });
+
+        root.addEventListener('scroll', (ev: Event) => {
+          const target = ev.target as HTMLElement | null;
+          if (target?.dataset.role !== 'messages' || target.scrollTop !== 0) return;
+          const characterId = this._sessions.viewing;
+          if (characterId && !this._peerChat) this.requestEarlierHistory(characterId);
+        }, true);
 
         // 互聊轮数选择（task_052）：select 的值变更走 change 事件（input 在部分引擎不触发）。
         root.addEventListener('change', (ev: Event) => {
@@ -899,7 +957,10 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
             : `与 ${escapeHtml(this.headerNameOf(viewing))} 的对话还是空的`;
         box.innerHTML = `<div class="empty" data-role="empty">${emptyText}</div>`;
       } else {
-        box.innerHTML = messages.map((message) => this.renderBubble(message)).join('');
+        const historyEnd = !peer && this._historyExhausted.has(viewing)
+          ? '<div class="history-end" data-role="history-end">没有更早的聊天记录了</div>'
+          : '';
+        box.innerHTML = historyEnd + messages.map((message) => this.renderBubble(message)).join('');
       }
       // 流缓冲若属于当前角色，接在末尾（增量更新由 updateStreamBubble 接管）
       this.updateStreamBubble();

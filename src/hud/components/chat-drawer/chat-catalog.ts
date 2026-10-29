@@ -12,8 +12,8 @@
  *   1. 触碰 DOM —— 本文件必须能在 node 环境单测，渲染是 chat-drawer.ts 的事；
  *   2. import world/、phaser、vue、任何 UI 库 —— 铁律；
  *   3. 直接调 core/bus —— 角色档案快照由组件经注入的 subscribe 回填进来，本文件只吃数据；
- *   4. 无上限增长 —— 每角色会话数组按 CHAT_SESSION_MESSAGE_CAP 截尾
- *      （perf 硬约束：数据不许无限增长；历史由 task_036 的 SQLite 负责，HUD 只留尾部）。
+ *   4. 新增消息按 CHAT_SESSION_MESSAGE_CAP 截尾；task_074 用户显式翻页加载的历史
+ *      通过 prependMessages 保留已读页，不被后续新增消息的截尾规则立即截掉。
  *
  * ============ 互聊会话（task_052）============
  * role 词表扩 'peer'：**HUD 层**的消息角色 —— 互聊中「对方说的话」（A2A 服务的 B 侧流 /
@@ -149,6 +149,8 @@ export interface CharacterChatSessions {
    * characterId 缺省取当前查看的角色；无归属（两者皆空）或正文为空 → 返回 null 不落库。
    */
   addMessage(input: CharacterChatMessageInput): CharacterChatMessage | null;
+  /** 将已按时间正序排列的历史页插到会话前端，保留当前消息与流式缓冲。 */
+  prependMessages(characterId: string, inputs: readonly CharacterChatMessageInput[]): void;
   /**
    * 流式增量：已有活跃流 → 追加到该流（不论当前看谁）；
    * 无流 → 以"当前查看的角色"为归属新建（看不到角色就无处安放 → 返回 null 忽略）。
@@ -228,6 +230,24 @@ export function createCharacterChatSessions(options: ChatSessionStoreOptions = {
       };
       commit(characterId, message);
       return message;
+    },
+
+    prependMessages(characterId: string, inputs: readonly CharacterChatMessageInput[]): void {
+      const existing = sessions.get(characterId) ?? [];
+      if (!sessions.has(characterId) && inputs.length > 0) order.push(characterId);
+      const earlier = inputs.flatMap((input) => {
+        if (input.text.length === 0) return [];
+        return [{
+          id: input.id ?? nextId(),
+          characterId,
+          role: input.role,
+          text: input.text,
+          at: input.at ?? now(),
+          error: input.error,
+          peerId: input.peerId,
+        }];
+      });
+      sessions.set(characterId, [...earlier, ...existing]);
     },
 
     appendStream(chunk: string): StreamBuffer | null {

@@ -71,6 +71,7 @@ interface ExtraDeps {
   onRetry?: (characterId: string) => void;
   /** task_036 追加：历史加载回调（记录调用；受控兑现见「历史回填」组）。role 词表含 peer（task_052）。 */
   loadHistory?: (characterId: string) => Promise<readonly {
+    id?: string;
     characterId?: string;
     role: 'user' | 'assistant' | 'peer' | 'system';
     text: string;
@@ -78,6 +79,8 @@ interface ExtraDeps {
     peerId?: string;
     at?: number;
   }[]>;
+  loadEarlierHistory?: CharacterChatDrawerDeps['loadEarlierHistory'];
+  historyPageSize?: number;
   /** task_052 追加：互聊三回调（记录到 harness 同名数组）。 */
   onPeerChatStart?: (aId: string, bId: string, topic: string, rounds: number) => void;
   onPeerChatStop?: () => void;
@@ -94,6 +97,7 @@ interface Harness {
   readonly retried: string[];
   /** loadHistory 被请求的角色 id 依次记录（task_036）。 */
   readonly historyRequested: string[];
+  readonly earlierHistoryRequested: Array<{ characterId: string; beforeId: string; limit: number }>;
   /** 互聊三回调的记录（task_052）。 */
   readonly peerStarts: Array<{ aId: string; bId: string; topic: string; rounds: number }>;
   readonly peerStops: number[];
@@ -109,6 +113,7 @@ function mountPanel(onSend?: (characterId: string, text: string) => void, extra:
   const stopped: string[] = [];
   const retried: string[] = [];
   const historyRequested: string[] = [];
+  const earlierHistoryRequested: Array<{ characterId: string; beforeId: string; limit: number }> = [];
   const peerStarts: Array<{ aId: string; bId: string; topic: string; rounds: number }> = [];
   const peerStops: number[] = [];
   const peerInterjections: string[] = [];
@@ -131,6 +136,13 @@ function mountPanel(onSend?: (characterId: string, text: string) => void, extra:
       ? (characterId) => {
           historyRequested.push(characterId);
           return extra.loadHistory!(characterId);
+        }
+      : undefined,
+    historyPageSize: extra.historyPageSize,
+    loadEarlierHistory: extra.loadEarlierHistory
+      ? (characterId, beforeId, limit) => {
+          earlierHistoryRequested.push({ characterId, beforeId, limit });
+          return extra.loadEarlierHistory!(characterId, beforeId, limit);
         }
       : undefined,
     onPeerChatStart: (aId, bId, topic, rounds) => {
@@ -160,6 +172,7 @@ function mountPanel(onSend?: (characterId: string, text: string) => void, extra:
     stopped,
     retried,
     historyRequested,
+    earlierHistoryRequested,
     peerStarts,
     peerStops,
     peerInterjections,
@@ -932,6 +945,125 @@ describe('组件：历史回填（task_036）', () => {
     await flush();
     expect(h.panel.sessionCharacterIds).toEqual(['c1']); // 只落在 c1 名下
     expect(h.panel.visibleMessageIds).toHaveLength(1);
+    h.unmount();
+  });
+});
+
+// ============================================================================
+// task_074：滚动到顶加载更早历史（beforeId / prepend / 锚定 / 到底 / 重试）
+// ============================================================================
+
+describe('组件：聊天历史向前分页（task_074）', () => {
+  const flush = async (): Promise<void> => {
+    for (let i = 0; i < 6; i += 1) await Promise.resolve();
+  };
+
+  const scrollToTop = (h: Harness): void => {
+    const box = messagesBoxOf(h.panel);
+    box.scrollTop = 0;
+    box.dispatchEvent(new Event('scroll', { bubbles: true }));
+  };
+
+  test('初始满页后到顶：以原首条 id 请求，正序 prepend 并锚定原首条；system 行保持原角色', async () => {
+    const h = mountPanel(undefined, {
+      historyPageSize: 2,
+      loadHistory: async () => [
+        { id: '3', role: 'user', text: '最近一', at: 3 },
+        { id: '4', role: 'assistant', text: '最近二', at: 4 },
+      ],
+      loadEarlierHistory: async () => [
+        { id: '1', role: 'user', text: '更早一', at: 1 },
+        { id: '2', role: 'system', text: '更早系统行', at: 2 },
+      ],
+    });
+    const originalOffsetTop = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetTop')!;
+    Object.defineProperty(HTMLElement.prototype, 'offsetTop', {
+      configurable: true,
+      get(this: HTMLElement) { return this.getAttribute('data-message') === '3' ? 320 : 0; },
+    });
+    try {
+      h.panel.open('c1');
+      await flush();
+      expect(h.panel.visibleMessageIds).toEqual(['3', '4']);
+      expect(h.earlierHistoryRequested).toEqual([]);
+
+      scrollToTop(h);
+      await flush();
+
+      expect(h.earlierHistoryRequested).toEqual([{ characterId: 'c1', beforeId: '3', limit: 2 }]);
+      expect(h.panel.visibleMessageIds).toEqual(['1', '2', '3', '4']);
+      expect(messagesBoxOf(h.panel).scrollTop).toBe(320);
+      expect(messagesBoxOf(h.panel).querySelector('[data-message="2"]')?.getAttribute('data-side')).toBe('system');
+      expect(messagesBoxOf(h.panel).querySelector('[data-role="history-end"]')).toBeNull();
+    } finally {
+      Object.defineProperty(HTMLElement.prototype, 'offsetTop', originalOffsetTop);
+      h.unmount();
+    }
+  });
+
+  test('初始不足一页不发分页请求；分页不足一页置顶部提示且不再请求', async () => {
+    const partial = mountPanel(undefined, {
+      historyPageSize: 2,
+      loadHistory: async () => [{ id: '2', role: 'user', text: '仅一条' }],
+      loadEarlierHistory: async () => [],
+    });
+    partial.panel.open('c1');
+    await flush();
+    scrollToTop(partial);
+    await flush();
+    expect(partial.earlierHistoryRequested).toEqual([]);
+    partial.unmount();
+
+    const h = mountPanel(undefined, {
+      historyPageSize: 2,
+      loadHistory: async () => [
+        { id: '3', role: 'user', text: '最近一' },
+        { id: '4', role: 'assistant', text: '最近二' },
+      ],
+      loadEarlierHistory: async () => [{ id: '2', role: 'user', text: '最早一条' }],
+    });
+    h.panel.open('c1');
+    await flush();
+    scrollToTop(h);
+    await flush();
+
+    expect(h.panel.visibleMessageIds).toEqual(['2', '3', '4']);
+    expect(messagesBoxOf(h.panel).querySelector('[data-role="history-end"]')?.textContent)
+      .toBe('没有更早的聊天记录了');
+    scrollToTop(h);
+    await flush();
+    expect(h.earlierHistoryRequested).toHaveLength(1);
+    h.unmount();
+  });
+
+  test('连续到顶只发一个 in-flight；失败静默且不误置到底，再次到顶可重试', async () => {
+    let rejectEarlier!: (reason?: unknown) => void;
+    const loadEarlierHistory = jest.fn()
+      .mockImplementationOnce(() => new Promise<never>((_, reject) => { rejectEarlier = reject; }))
+      .mockResolvedValueOnce([{ id: '1', role: 'user' as const, text: '重试成功' }]);
+    const h = mountPanel(undefined, {
+      historyPageSize: 2,
+      loadHistory: async () => [
+        { id: '2', role: 'user', text: '最近一' },
+        { id: '3', role: 'assistant', text: '最近二' },
+      ],
+      loadEarlierHistory,
+    });
+    h.panel.open('c1');
+    await flush();
+
+    scrollToTop(h);
+    scrollToTop(h);
+    expect(loadEarlierHistory).toHaveBeenCalledTimes(1);
+    rejectEarlier(new Error('IPC 不通'));
+    await flush();
+    expect(h.panel.visibleMessageIds).toEqual(['2', '3']);
+    expect(messagesBoxOf(h.panel).querySelector('[data-role="history-end"]')).toBeNull();
+
+    scrollToTop(h);
+    await flush();
+    expect(loadEarlierHistory).toHaveBeenCalledTimes(2);
+    expect(h.panel.visibleMessageIds).toEqual(['1', '2', '3']);
     h.unmount();
   });
 });

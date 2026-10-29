@@ -147,6 +147,8 @@ export interface ElectronAPI {
     saveChatMessage: (message: ChatMessageInsert) => Promise<{ ok: boolean; error?: string }>;
     /** 读某角色最近 N 条对话历史（默认 50）。 */
     loadChatMessages: (characterId: string, limit?: number) => Promise<{ ok: boolean; messages?: PersistedChatMessage[]; error?: string }>;
+    /** 读 beforeId 之前最近 N 条对话历史（默认 50，时间正序）。 */
+    loadEarlierChatMessages: (characterId: string, beforeId: number, limit?: number) => Promise<{ ok: boolean; messages?: PersistedChatMessage[]; error?: string }>;
     /** upsert 一条角色任务记录（@since v3.16，task_037，落 character_tasks 表）。 */
     saveTask: (record: PersistedTaskRecord) => Promise<{ ok: boolean; error?: string }>;
     /** 读某角色最近 N 条任务（默认 20；038 队列可见性）。 */
@@ -304,6 +306,7 @@ const electronAPI: ElectronAPI = {
     saveUnitPositions: (entries: PersistedUnitPosition[]) => ipcRenderer.invoke('game:saveUnitPositions', entries),
     saveChatMessage: (message: ChatMessageInsert) => ipcRenderer.invoke('game:saveChatMessage', message),
     loadChatMessages: (characterId: string, limit?: number) => ipcRenderer.invoke('game:loadChatMessages', characterId, limit),
+    loadEarlierChatMessages: (characterId: string, beforeId: number, limit?: number) => ipcRenderer.invoke('game:loadEarlierChatMessages', characterId, beforeId, limit),
     saveTask: (record: PersistedTaskRecord) => ipcRenderer.invoke('game:saveTask', record),
     loadTasks: (characterId: string, limit?: number) => ipcRenderer.invoke('game:loadTasks', characterId, limit),
     loadTaskStats: () => ipcRenderer.invoke('game:taskStats'),
