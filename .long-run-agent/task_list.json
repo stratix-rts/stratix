@@ -2071,6 +2071,89 @@
         "issues": [],
         "optimization_history": []
       }
+    },
+    {
+      "id": "task_072",
+      "description": "hud: 拆除旧 agent-link 聊天抽屉死代码——聊天入口统一到角色抽屉-模块",
+      "template": "task",
+      "priority": "P2",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_071.md",
+      "created_at": "2026-10-29T08:32:08.764248",
+      "updated_at": "2026-10-29T09:28:22.018167",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_073",
+      "description": "app: 中断轮部分输出落库（emitEvent 语义）——error/timeout/abort 轮的半截流式文本与错误事件持久化进 character_chat_messages-模块",
+      "template": "task",
+      "priority": "P0",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "task_073.md",
+      "created_at": "2026-10-29T09:01:32.704592",
+      "updated_at": "2026-10-29T09:37:51.566068",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_074",
+      "description": "app: 聊天历史分页加载（getEvents 切片语义）——抽屉滚动到顶加载更早历史-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "task_074.md",
+      "created_at": "2026-10-29T09:03:59.140849",
+      "updated_at": "2026-10-29T10:44:13.680273",
+      "dependencies": [
+        "task_072"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
     }
   ]
 }
