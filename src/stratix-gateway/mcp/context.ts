@@ -1,0 +1,71 @@
+/**
+ * 文件职责：数据面端口的生产实现 —— 把 MCP 接到 **core 总线 + core store + SQLite 投影**上。
+ * 输入：McpHost 的三个方法调用（读世界态 / 投递 HudCommand / 读任务全文输出）。
+ * 输出：core 的 WorldState 快照；core 总线上的命令；SQLite tasks 表里的输出全文。
+ * 禁止事项：
+ *   1. 在这里自己记状态（自己记一张表做分页 / 缓存）—— 一旦如此，MCP 的视图会和战场漂移，
+ *      而 MCP 是没有人看的那一侧，漂移不会有人发现（docs/MCP-SPEC.md §3.1）；
+ *   2. 绕过 core 总线直接改 store —— 写操作必须走 HudCommand，由 core 状态机裁决；
+ *   3. 把任务全文回灌进 WorldState —— 全文只从 SQLite 读，状态里只有摘要；
+ *   4. 依赖具体传输 —— 本文件与 stdio / HTTP 无关（两种模式共享同一份 handler）。
+ */
+
+import { emitCommand } from '../../core/bus';
+import { worldStore, type CoreStore } from '../../core/store';
+import type { HudCommand } from '../../core/types';
+import { getDatabase } from '../../stratix-database';
+
+import type { McpHost } from './types';
+
+export interface CoreMcpHostOptions {
+  /** 状态持有者；缺省 = core/store 的 worldStore 单例（与 hud / world 两侧同一份世界态）。 */
+  readonly store?: CoreStore;
+  /** 命令投递口；缺省 = core/bus 的 emitCommand（core runtime 消费后落状态机）。 */
+  readonly dispatch?: (command: HudCommand) => void;
+  /** 任务全文输出读取口；缺省 = SQLite 的 character_tasks 表。 */
+  readonly readTaskOutput?: (taskId: string) => Promise<string | null>;
+}
+
+/**
+ * 读任务输出全文（SQLite 投影）。
+ *
+ * why 从库里读而不是从状态里读：core 的 CharacterTask.output **只存摘要**
+ * （上限 MAX_TASK_SUMMARY_LEN = 2000），全文由 app 层 task-service 在收尾时落库
+ * （docs/MCP-SPEC.md §2.3）。库里没有这一条（任务刚建、尚未落库、或库未初始化）时返回 null，
+ * 由工具回退到摘要 —— 绝不编造。
+ */
+export function readTaskOutputFromDatabase(taskId: string): string | null {
+  try {
+    const db = getDatabase().getDatabase();
+    const row = db
+      .prepare('SELECT output FROM character_tasks WHERE id = ?')
+      .get(taskId) as { output?: string } | undefined;
+    const output = row?.output;
+    return typeof output === 'string' && output.length > 0 ? output : null;
+  } catch {
+    // 库未初始化 / 表不存在 / 查询失败 —— 一律按「没有全文」处理，不让读失败打断工具调用。
+    return null;
+  }
+}
+
+/**
+ * 构造生产用的 McpHost。
+ *
+ * ★ 拓扑前提（接线时必须知道的一件事）：core 的运行时（core/runtime.ts）跑在**持有世界态的进程**里，
+ * 本 host 只提供「读状态 + 投命令」两个入口 —— 该进程是否挂着 core runtime，决定了 MCP 工具
+ * 能不能看见战场、派单能不能落地。派单后本 host 会回读状态核对结果：命令没人接管时
+ * 工具返回 internal_error（明说"没落地"），绝不假装成功。
+ */
+export function createCoreMcpHost(options: CoreMcpHostOptions = {}): McpHost {
+  const store = options.store ?? worldStore;
+  const dispatch = options.dispatch ?? emitCommand;
+  const readOutput = options.readTaskOutput ?? readTaskOutputFromDatabase;
+
+  return {
+    getWorldState: () => store.getState(),
+    dispatchCommand: (command: HudCommand) => {
+      dispatch(command);
+    },
+    readTaskOutput: async (taskId: string) => readOutput(taskId),
+  };
+}

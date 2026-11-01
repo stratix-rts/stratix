@@ -31,6 +31,9 @@ import templateRoutes from './api/routes/template';
 import textureRoutes from './api/routes/texture';
 import { StatusSyncService } from './api/websocket/StatusSync';
 import { dataStoreService } from './dataStoreService';
+import { createCoreMcpHost } from './mcp/context';
+import { createDefaultMcpServer } from './mcp/server';
+import { createMcpHttpRouter } from './mcp/transport/http';
 import { openClawProxyManager } from './openclaw/OpenClawProxyManager';
 
 
@@ -138,6 +141,9 @@ export async function startGatewayService(
   app.use('/api/lra', lraRoutes);
   app.use('/api/agents/orchestration', agentOrchestrationRoutes);
   app.use('/api/skills', skillRoutes);
+  // MCP server（docs/MCP-SPEC.md §4.4）：HTTP 端点挂在 /mcp，与 stdio 入口共享同一份注册表与 handler。
+  // 数据面复用 core 的 worldStore + core 总线（不新开状态通道）。
+  app.use('/mcp', createMcpHttpRouter(createDefaultMcpServer(createCoreMcpHost())));
   // 健康检查
   app.get('/health', (req, res) => {
     res.json({
