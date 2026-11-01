@@ -42,6 +42,23 @@
  * 风险注记：回执指向的会话若已被 CLI 侧清理（kimi session 过期等），resume 可能落到空会话 ——
  * 兑底是下一轮的 session 事件会回新 id 并回写，自动自愈。
  *
+ * ============ 会话状态系统行（task_075）============
+ * 上面两种边沿事件对用户是**不可见**的：重启后第一句话接的是旧会话，还是新开的会话？
+ * 用户看不出来。于是插一条 role='system' 的抽屉行（渲染复用 073 的居中弱化样式）把状态说出来：
+ *   ①「已恢复会话（session xxxxxxxx）」—— runRound 起手**种子命中**时（内存无该角色会话 +
+ *     档案 externalSessionId 非空 + 本轮按续发处理）：本轮接的是重启前的旧会话；
+ *   ②「会话已重建（session xxxxxxxx）」—— 运行中 session 事件 / done 回的 id 与原值**不同**时
+ *     （CLI 侧旧会话已被清理，resume 落到了空会话 / 换了新会话 —— task_055 风险注记里的自愈）：
+ *     旧会话接不上了，本轮起是新会话。
+ *   正常续聊（内存会话在、id 没变）**不插行** —— 那是常态，无需打扰。
+ *
+ * ⚠ **本条不入库**（与 073 的落库 system 行有口径差异，勿混）：
+ *   073 的 system 行是**对话内容**（失败事件 / 中断标注）—— 它属于历史，重启回读时应当重现；
+ *   本条是**会话状态的时序提示**（"刚才发生了什么"），落库会在重启回读历史时凭空多出一行，
+ *   而且那一行描述的是**当时**的会话状态、跟今天的历史对不上号（甚至会盖在别天的消息上面）。
+ *   故只走 view.addMessage（内存会话行），**不走 persist** —— 重启即消失，符合"瞬时提示"语义。
+ *   渲染面复用同一条 system 样式（chat-drawer 的 .system-message），不新增样式、不新增依赖。
+ *
  * ============ persona（system 语义）怎么传 ============
  * 五家 adapter（task_023 冻结的 buildArgs）都**没有**独立的 system prompt 参数
  * （claude CLI 实际有 --append-system-prompt，但 adapter 契约未暴露，不为一家破坏统一面）。
@@ -109,7 +126,7 @@ import { resolveStratixContextBlock, type StratixContextSource } from './stratix
 export interface ChatDrawerView {
   addMessage(message: {
     readonly characterId?: string;
-    readonly role: 'user' | 'assistant';
+    readonly role: 'user' | 'assistant' | 'system';
     readonly text: string;
     readonly error?: boolean;
   }): unknown;
@@ -169,6 +186,16 @@ export const CHAT_MSG_EMPTY_REPLY = '（本轮没有文本回复）';
 
 /** 用户主动中断后的标注气泡。 */
 export const CHAT_MSG_INTERRUPTED = '（已中断）';
+
+/** 重启后命中档案会话种子的瞬时提示（只上抽屉，不落库）。 */
+export function chatSessionRestoredText(sessionId: string): string {
+  return `已恢复会话（session ${sessionId.slice(0, 8)}）`;
+}
+
+/** 旧会话被 CLI 侧替换为新 id 的瞬时提示（只上抽屉，不落库）。 */
+export function chatSessionRebuiltText(sessionId: string): string {
+  return `会话已重建（session ${sessionId.slice(0, 8)}）`;
+}
 
 /** 错误码 → 气泡文案前缀。 */
 const ERROR_LABELS: Readonly<Record<TransportErrorCode, string>> = {
@@ -349,8 +376,12 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
 
   /** 记 / 回写会话 id：同一个 id 不重复回写（runtime 已对 session 事件去重，这里兜 done.sessionId 的路）。 */
   const applySession = (characterId: string, session: ChatSessionState, sessionId: string): void => {
-    if (session.sessionId === sessionId) return;
+    const previousSessionId = session.sessionId;
+    if (previousSessionId === sessionId) return;
     session.sessionId = sessionId;
+    if (previousSessionId !== null) {
+      view.addMessage({ characterId, role: 'system', text: chatSessionRebuiltText(sessionId) });
+    }
     try {
       deps.persistSessionId(characterId, sessionId);
     } catch (error) {
@@ -451,6 +482,9 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
       busy: false,
     };
     sessions.set(characterId, session);
+    if (!existing && session.sessionId !== null) {
+      view.addMessage({ characterId, role: 'system', text: chatSessionRestoredText(session.sessionId) });
+    }
 
     const run: ActiveRun = { characterId, controller: new AbortController() };
     activeRun = run;

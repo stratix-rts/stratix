@@ -22,6 +22,8 @@ import {
   CHAT_MSG_UNBOUND,
   chatErrorText,
   chatOfflineText,
+  chatSessionRebuiltText,
+  chatSessionRestoredText,
   createChatService,
   DEFAULT_CHAT_ROUND_TIMEOUT_MS,
   isAgentKindInstalled,
@@ -259,12 +261,19 @@ describe('buildFirstPrompt：persona 内嵌拼装', () => {
   });
 });
 
+describe('会话状态提示文案（task_075）', () => {
+  test('恢复与重建提示都只展示 session 前 8 位', () => {
+    expect(chatSessionRestoredText('abcdefgh-rest')).toBe('已恢复会话（session abcdefgh）');
+    expect(chatSessionRebuiltText('12345678-rest')).toBe('会话已重建（session 12345678）');
+  });
+});
+
 // ============================================================================
 // 回合编排
 // ============================================================================
 
-describe('会话映射：首发 persona / 续发 sessionId / 回写恰好一次', () => {
-  test('首发拼 persona 且不带 sessionId；session 事件回写后续发只发原文', async () => {
+describe('会话映射：首发 persona / 续发 sessionId / 回写恰好一次 / 状态行', () => {
+  test('首发拼 persona 且不带 sessionId；session 事件回写后续发只发原文，正常续聊不插状态行', async () => {
     const h = makeHarness({
       scripts: [
         scripted(
@@ -289,9 +298,10 @@ describe('会话映射：首发 persona / 续发 sessionId / 回写恰好一次'
     expect(h.calls[1].prompt).toBe('好的'); // 续发不重拼 persona（上下文里已有）
     expect(h.calls[1].options?.sessionId).toBe('sess-abc');
     expect(h.persisted).toEqual([['ch-1', 'sess-abc']]); // 没有新 id 不再回写
+    expect(h.view.messages).toEqual([]); // 首发建档与正常续聊都不是恢复 / 重建
   });
 
-  test('重启恢复（task_055）：档案 externalSessionId 有效 → 种入内存会话，首发即透传 resume（不重拼 persona）', async () => {
+  test('重启恢复（task_055/075）：种子命中按续发处理，插恢复 system 行但该行不走 persistMessage', async () => {
     const h = makeHarness({
       characters: [{ ...character, externalSessionId: 'sess-old' }],
       scripts: [scripted({ type: 'message', text: 'hi' }, { type: 'done', exitCode: 0, text: 'hi', sessionId: null })],
@@ -302,6 +312,13 @@ describe('会话映射：首发 persona / 续发 sessionId / 回写恰好一次'
     expect(h.calls[0].prompt).toBe('接着说');
     expect(h.calls[0].prompt).not.toContain('角色设定');
     expect(h.persisted).toEqual([]); // 同 id 未变，不回写
+    expect(h.view.messages).toEqual([
+      { characterId: 'ch-1', role: 'system', text: chatSessionRestoredText('sess-old') },
+    ]);
+    expect(h.messages).toEqual([
+      { characterId: 'ch-1', role: 'user', text: '接着说', sessionRef: null },
+      { characterId: 'ch-1', role: 'assistant', text: 'hi', sessionRef: 'sess-old' },
+    ]); // 只有常规 user / assistant 落库，状态提示不落库
   });
 
   test('重启恢复（task_055）：档案 externalSessionId 空/缺 → 首发重建（persona 重注入，不透传）', async () => {
@@ -315,7 +332,7 @@ describe('会话映射：首发 persona / 续发 sessionId / 回写恰好一次'
     expect(h.calls[0].options?.sessionId ?? null).toBeNull();
   });
 
-  test('重启恢复：种子只种一次 —— 内存会话建立后档案回执不再是真相源（CLI 回新 id 覆盖种子）', async () => {
+  test('重启恢复（task_075）：CLI 回新 id 覆盖种子时插重建 system 行，且提示不落库', async () => {
     const h = makeHarness({
       characters: [{ ...character, externalSessionId: 'sess-old' }],
       scripts: [
@@ -330,8 +347,17 @@ describe('会话映射：首发 persona / 续发 sessionId / 回写恰好一次'
     await h.service.send('ch-1', '接着说');
     expect(h.calls[0].options?.sessionId).toBe('sess-old'); // 种子生效
     expect(h.persisted).toEqual([['ch-1', 'sess-new']]); // 新 id 回写，自动自愈
+    expect(h.view.messages).toEqual([
+      { characterId: 'ch-1', role: 'system', text: chatSessionRestoredText('sess-old') },
+      { characterId: 'ch-1', role: 'system', text: chatSessionRebuiltText('sess-new') },
+    ]);
+    expect(h.messages).toEqual([
+      { characterId: 'ch-1', role: 'user', text: '接着说', sessionRef: null },
+      { characterId: 'ch-1', role: 'assistant', text: '好的', sessionRef: 'sess-new' },
+    ]);
     await h.service.send('ch-1', '再确认');
     expect(h.calls[1].options?.sessionId).toBe('sess-new'); // 运行中状态接管，不再用旧种子
+    expect(h.view.messages.filter((message) => message.role === 'system')).toHaveLength(2); // 后续正常续聊不重复插行
   });
 });
 
