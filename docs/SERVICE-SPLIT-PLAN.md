@@ -115,3 +115,78 @@
 - 不做 snapshot 增量 patch 协议（预留 delta 字段，不实现）
 - 不删 Electron main 任何代码（只标记）
 - 不动 v2 遗留模块（stratix-orchestration / agent-platform 等，另行处置）
+
+---
+
+## 8. 收尾节（迁移期双模式）
+
+> 本节是 C2（task_085）的收尾产物：**新旧拓扑并存期的操作手册** —— 怎么开远程模式、怎么开本地回退、
+> 什么场景用哪个、什么场景**必须禁**本地直连。
+> 真相源：本节 + [WORLD-SYNC.md](WORLD-SYNC.md)（视图侧协议）＋ [MCP-SPEC.md](MCP-SPEC.md) §0.5（MCP 侧拓扑）。
+
+### 8.1 两个模式是什么
+
+| | **远程模式（正式拓扑）** | **本地直连模式（dev 回退）** |
+|---|---|---|
+| 大脑住哪 | service 进程（gateway 常驻） | 渲染进程（Electron） |
+| 状态从哪来 | WS `world-sync` 全量快照（本地整体覆盖） | 进程内直连 core store |
+| 写走哪 | `command.forward` → service 的 core 裁决 | 本地 `emitCommand` → 本地 core 裁决 |
+| CLI 谁 spawn | service 进程 | Electron main（经 `chat:run` IPC） |
+| 谁写 SQLite | service 独占写 | 渲染进程经 IPC → Electron main DAO |
+| MCP 能见战场 | ✅ 同进程真态 | ✅（同一个进程的同一份 store） |
+| 关掉 Electron | 只丢视图，agent 照跑 | **agent 一起停机** |
+
+### 8.2 开关名与开法
+
+两个模式由**同一个开关**控制，开关名 `STRATIX_REMOTE`（严格等于 `'1'` 才算开）。
+读法有两处来源（构建期 vite define + 运行时环境变量，见 `src/app/main/dev-flags.ts`）：
+
+| 模式 | 开关 | 怎么开 |
+|------|------|--------|
+| **远程模式**（正式拓扑） | `STRATIX_REMOTE=1` | `STRATIX_REMOTE=1 npm run dev`（或 `STRATIX_REMOTE=1 npm run electron:dev`）；端点非默认时再加 `STRATIX_WORLD_SYNC_URL=ws://127.0.0.1:<port>/ws/world-sync`（缺省 `ws://127.0.0.1:7524/ws/world-sync`，与 gateway 同机） |
+| **本地直连**（dev 回退） | 不设 `STRATIX_REMOTE` | **不设**（或设为非 `'1'` 的任意值）即走本地直连 —— 这是缺省口径，无需额外动作 |
+
+配套：远程模式要求 **service 已在跑**（`npm run dev:backend` 起 gateway，它启动即 boot service）。
+service 没起来时，壳连不上 WS，视图如实显示「未连接」而不是假装正常（铁律 4）。
+
+C1 e2e 剧本（`e2e-tests/service-resident.e2e.mjs`）的实操姿势可作参照：起 service → `STRATIX_REMOTE=1` +
+`STRATIX_WORLD_SYNC_URL=ws://127.0.0.1:<service 端口>/ws/world-sync` 起 Electron → 杀 Electron → 状态无损。
+
+### 8.3 适用场景
+
+**用远程模式（默认选择）：**
+
+- 日常开发与联调 —— agent 要真干活（派单、跑任务、落库），service 必须在场。
+- 多客户端 —— 外部 MCP client（Claude Code 等）+ REST 脚本 + Electron 壳同时看同一份真相。
+- Electron 壳可能被随时关掉 / 重启的场景（用户习惯随手关窗口），且**不能**因此中断 agent。
+- 任何需要「真相唯一」的判定：本地再裁决一遍就会造出第二份真相（铁律 1）。
+
+**用本地直连模式（仅限 dev 回退）：**
+
+- **纯前端开发**：只调 hud / world 的界面与交互，不碰 agent 执行环 —— 不想每次都起 service。
+- 单进程起不来的应急联调：service 起不来时的临时自救。
+- 旧路径回归：改动了本地直连那条链时，确认「旧路径仍然可用」（铁律 7 要求旧路径全程可用）。
+
+### 8.4 何时禁（本地直连必须关掉的场景）
+
+| 场景 | 为什么必须禁 |
+|------|-------------|
+| **生产 / 交付环境** | 本地直连 = 大脑在渲染进程：关窗口 agent 就死，与「service 常驻」的产品定义直接冲突 |
+| **agent 需要长期值守**（跑长任务、无人盯屏） | 壳一关，执行环跟着停 —— 活干不完 |
+| **多客户端同时接**（MCP + 脚本 + 多个壳） | 每多一个本地直连实例就多一份真相副本（铁律 1 破），且 SQLite 多进程共写（铁律 6 破） |
+| **要验证「不开 Electron agent 照常干活」** | 本地直连下壳关了 agent 就停 —— 恰好验不出这条验收项（C1 §6-3） |
+| **落库要可信** | 本地直连下渲染进程经 IPC 写库，service 侧不参与 —— 两套写入口并存 |
+
+### 8.5 退役路线
+
+本地直连模式的代码**全部保留**，只在三处打了 `@deprecated` 标记（只注不删，铁律 7）：
+
+| 位置 | 标记内容 |
+|------|---------|
+| `src/electron/main.ts` | Electron main 的 **CLI spawn 职责段**（`chatRuns` 表 + `chat:run` / `chat:abort` 两条 IPC 通道） |
+| `src/app/main/main-entry.ts` | 渲染进程的**本地直连装配 / 开关段**（数据源选择 + 本地 runtime / 本地落库 / 本地探测各 guard） |
+| `src/stratix-gateway/mcp/context.ts` | **已过时的跨进程拓扑说明段**（现在是同进程真态） |
+
+每处标记都写了迁移指引（指向新路径）。退役顺序（不在本期）：本地直连停用 → Electron main 的 spawn 段与
+`chat-transport-bridge` 删除 → 渲染侧本地装配删除 → 只留 remote store 一条路。删除动作必须在本地直连
+确认无人使用之后单独开单，不在本期范围。

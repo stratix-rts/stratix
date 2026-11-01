@@ -108,6 +108,80 @@ Stratix 星策是一个**游戏化**的多 Agent 管理平台。
 
 ---
 
+## 🏗️ 架构拓扑（前后端分离 · OpenClaw 式）
+
+> **真相源**：[docs/SERVICE-SPLIT-PLAN.md](docs/SERVICE-SPLIT-PLAN.md)（目标拓扑 + 迁移期双模式）
+> ｜[docs/WORLD-SYNC.md](docs/WORLD-SYNC.md)（视图侧 WS 协议）
+> ｜[docs/MCP-SPEC.md](docs/MCP-SPEC.md)（工具面规范）
+
+一句话：**service 常驻持有大脑，Electron 退化为可关可换的视图壳。**
+关掉 Electron，agent 照常干活；关掉 service，什么都停。
+
+### 新拓扑（现行）
+
+```
+                    ┌────────────────────────────────────────┐
+                    │  Service（gateway 进程，常驻 daemon）    │
+                    │  core runtime ── mission/task 状态机    │
+                    │  task-service（执行环，直接 spawn CLI）   │
+                    │       │                                 │
+                    │       ▼                                 │
+                    │  cli-transport ──► claude / kimi 子进程 │
+                    │  SQLite（独占写）                        │
+                    │  ┌──────────┬──────────┬──────────┐     │
+                    │  │ MCP      │ REST API │ WS       │     │
+                    └──┴────▲─────┴────▲─────┴────▲─────┴─────┘
+                           │stdio      │HTTP      │WS (world-sync)
+        ┌──────────────────┘           │          └───────────────┐
+        ▼                              ▼                          ▼
+  外部 MCP client               浏览器/API client          Electron 壳（可选）
+  （Claude Code 等）                                        hud/world 纯视图
+```
+
+- **三外面**：MCP（stdio + HTTP）给 agent 派单与探查；REST API 给脚本 / 外部 client 读写；WS（world-sync）给视图壳订阅状态、发命令。
+- **Electron 是可选的**：它只订阅全量快照 + 发 `HudCommand`，不含真相、不 spawn CLI、不写库。
+- **真相唯一**：WorldState 的唯一真相源是 service 进程的 core store（`src/stratix-gateway/service/`）。
+
+### 旧拓扑（改造前 · 已退役）
+
+```
+┌──────────────────────── Electron 进程 ────────────────────────┐
+│  ┌──────────────────────────────┐                             │
+│  │  渲染进程 = 组合根            │                             │
+│  │  core runtime（世界态住在渲染里）│                             │
+│  │  task-service                 │                             │
+│  └───────────┬──────────────────┘                             │
+│              │ IPC（chat:run / chat:abort）                   │
+│  ┌───────────▼──────────────────┐                             │
+│  │  Electron main               │                             │
+│  │  CLI spawn（唯一 spawn 点）    │                             │
+│  │  SQLite 写（多进程开同一文件） │                             │
+│  └──────────────────────────────┘                             │
+└───────────────────────────────────────────────────────────────┘
+        ▲ 关掉窗口 = 大脑停机（agent 一起死）
+        │
+   gateway /mcp（挂在空 store 上 → units 恒为 0，看不见战场）
+```
+
+旧路径的四处要害：大脑住在渲染进程、spawn 点在 Electron main、SQLite 多进程共写、MCP 与战场不同进程。
+
+### 前后对比
+
+| 维度 | 旧拓扑 | 新拓扑 |
+|------|--------|--------|
+| 大脑（core runtime） | 渲染进程 | **service 常驻进程** |
+| 关掉 Electron | agent 一起停机 | **只丢视图，agent 照跑** |
+| CLI spawn 点 | Electron main（经 IPC 中转） | **service 直接 spawn** |
+| 存储 | 多进程开同一个 SQLite | **service 独占写，其余经 API 读** |
+| MCP 能否见战场 | 看不见（units 恒为 0） | **同进程真态** |
+| 视图数据源 | 进程内直连 core store | **WS world-sync 全量快照** |
+| 客户端数量 | 一个 Electron | **多客户端（MCP / REST / WS / 多个壳）** |
+
+迁移期开关（远程模式 `STRATIX_REMOTE=1` / 本地回退不设）与「何时禁」见
+[docs/SERVICE-SPLIT-PLAN.md §8](docs/SERVICE-SPLIT-PLAN.md#8-收尾节迁移期双模式)。
+
+---
+
 ## 🚀 快速开始
 
 ### 方式一：Docker（推荐）

@@ -134,6 +134,20 @@ let healthProbeInFlight: Promise<DetectedAgent[]> | null = null;
 // 状态放主进程：渲染层没有 child_process（nodeIntegration 关闭），子进程在这里拉起；
 // 事件逐条推回渲染层（chat:event 信封，见 chat-transport-bridge.ts 的 CliChatEventEnvelope）。
 // runId 由渲染层生成（全局唯一），abort 也按 runId 路由到对应的 AbortController。
+//
+// ★ @deprecated（前后端分离 C2 / task_085）—— **Electron main 不再是 CLI spawn 的归宿**。
+//   新归属：service 进程（gateway 常驻 daemon）**直接** spawn CLI agent
+//     （src/stratix-gateway/service/task-execution.ts，走 cli-transport 的 node-process 工厂，
+//      不经任何 IPC 中转）。service 关掉 = agent 停机；Electron 关掉 = 只是视图没了。
+//   本段（chat:run / chat:abort 两条 IPC 通道 + chatRuns 表）**只保留不删**（铁律 7 渐进迁移）：
+//     它仍是「本地直连 dev 回退模式」的执行路径 —— 渲染进程不接 service 时，角色对话与任务执行
+//     靠这两条通道把子进程拉到 Electron main 里跑。
+//   迁移指引：
+//     ① 生产 / 联调一律走 service（起 gateway 即带 service，`npm run dev:backend`）；
+//        渲染侧改用远程模式开关 `STRATIX_REMOTE=1`（见 src/app/main/dev-flags.ts）。
+//     ② 远程模式下这两条通道**不会被调用**（service 侧自己 spawn）—— Electron main 退化为纯视图壳。
+//     ③ 待「本地直连模式」正式退役后，本段与 chat-transport-bridge 一起删除（不在本期）。
+//   拓扑真相源：docs/SERVICE-SPLIT-PLAN.md §2（目标拓扑）+ §8（迁移期双模式）。
 const chatRuns = new Map<string, AbortController>();
 
 // Helper function for safe JSON parsing
@@ -646,6 +660,9 @@ function setupIPC() {
   });
 
   // ==================== 角色对话 CLI transport IPC（task_035）===================
+  // ★ @deprecated（前后端分离 C2 / task_085）—— CLI spawn 的职责已迁 service 进程。
+  //   新归属：src/stratix-gateway/service/task-execution.ts（service 直接 spawn，不经 IPC）。
+  //   本段只保留给「本地直连 dev 回退模式」，迁移指引见上方 chatRuns 处的说明。
   // 渲染层的 chat-service 经桥接层（chat-transport-bridge）调这两条通道：
   //   chat:run   —— 拉起一轮对话，事件经 chat:event 逐条推回，结束后补一条 end 信封；
   //   chat:abort —— 按 runId 中断（runtime 内部 killTree 杀整棵进程树）。

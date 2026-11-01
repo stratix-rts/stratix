@@ -69,6 +69,18 @@ export function readTaskOutputFromDatabase(taskId: string): string | null {
  * 本 host 只提供「读状态 + 投命令」两个入口 —— 该进程是否挂着 core runtime，决定了 MCP 工具
  * 能不能看见战场、派单能不能落地。派单后本 host 会回读状态核对结果：命令没人接管时
  * 工具返回 internal_error（明说"没落地"），绝不假装成功。
+ *
+ * ★ @deprecated（前后端分离 C2 / task_085）—— 上段的**跨进程拓扑说明已过时**。
+ *   旧口径（本段原文）：MCP host 挂在一个「可能没挂 core runtime」的进程里，能不能见战场
+ *     取决于那个进程是否装配了 core runtime —— 那是改造前 `/mcp` 挂在空 store（units 恒为 0）时的处境。
+ *   新口径（现行拓扑）：gateway 进程**就是** service 进程（MCP 与 service 同进程同实例）。
+ *     启动顺序由 gateway 保证：先 boot service（A4 / task_080）再挂 `/mcp` 路由 ——
+ *     故 MCP 看到的永远是 service 持有的**真状态**（非空、非 units 0）。
+ *     真相源：docs/SERVICE-SPLIT-PLAN.md §2（目标拓扑）/ §3.1（存储边界）；
+ *     数据面实现见 src/stratix-gateway/index.ts 的 `createCoreMcpHost({ store: service.store })`。
+ *   迁移指引：新增/改动 MCP 工具时，按「同进程真态」假设写 —— 不要为了「可能没挂 runtime」再加
+ *     降级分支；状态面未附着这一层的如实报错由 world-sync 协议侧负责（docs/WORLD-SYNC.md §1.3）。
+ *   本文件**只注不删**（铁律 7）：上面的「★ 拓扑前提」段保留为历史记录，待退役时连同本标记一起删。
  */
 export function createCoreMcpHost(options: CoreMcpHostOptions = {}): McpHost {
   const store = options.store ?? worldStore;

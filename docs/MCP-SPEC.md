@@ -1,6 +1,6 @@
 # Stratix MCP 接口设计规范（第一期工具面 + 扩展规范）
 
-> **状态**：第一期冻结（Spec v1.1）　**性质**：规范文档（不含实现代码）
+> **状态**：第一期冻结（Spec v1.2）　**性质**：规范文档（不含实现代码）
 > **适用范围**：Stratix 对外提供的 MCP server 及其工具面（tool surface）
 > **取代**：`docs/MCP_SERVER_DESIGN.md`（v2 Zone 时代草案 —— Zone 已按 `docs/REFACTOR_PLAN_V3.md` D5 决策砍掉，其中 `stratix.list_zones` 等工具面不再成立）
 > **维护责任**：见 [§5.4](#54-规范文档的维护责任)
@@ -10,7 +10,7 @@
 
 ## 目录
 
-- [0. 设计前提](#0-设计前提)：[0.1 消费者与心智模型](#01-消费者与心智模型)｜[0.2 权威依据](#02-权威依据)｜[0.3 范围与非目标](#03-范围与非目标)｜[0.4 术语](#04-术语)
+- [0. 设计前提](#0-设计前提)：[0.1 消费者与心智模型](#01-消费者与心智模型)｜[0.2 权威依据](#02-权威依据)｜[0.3 范围与非目标](#03-范围与非目标)｜[0.4 术语](#04-术语)｜[0.5 拓扑定位](#05-拓扑定位新旧拓扑对比)
 - [1. 工具设计五原则](#1-工具设计五原则)：[1.1 动词 + 资源命名，单动作工具](#11-原则一动词--资源命名单动作工具)｜[1.2 合并发生在工具内部](#12-原则二合并发生在工具内部)｜[1.3 返回 meaningful context](#13-原则三返回-meaningful-context)｜[1.4 token 效率](#14-原则四token-效率)｜[1.5 描述工程](#15-原则五描述工程)
 - [2. 第一期工具面](#2-第一期工具面)：[2.0 通用约定](#20-通用约定)｜[2.1 world_snapshot](#21-stratix_world_snapshot)｜[2.2 task_assign](#22-stratix_task_assign)｜[2.3 task_status](#23-stratix_task_status)｜[2.4 task_cancel](#24-stratix_task_cancel)｜[2.5 mission_create](#25-stratix_mission_create)｜[2.6 mission_status](#26-stratix_mission_status)｜[2.7 chat_send](#27-stratix_chat_send)｜[2.8 registry](#28-stratix_registry)｜[2.9 mission_checkpoint](#29-stratix_mission_checkpoint)
 - [3. 一致性铁律](#3-一致性铁律)：[3.1 投影而非新功能层](#31-投影而非新功能层)｜[3.2 状态机约束](#32-状态机约束对-mcp-同样生效)｜[3.3 不暴露的能力](#33-mcp-不暴露的能力)｜[3.4 只读与写的分界](#34-只读面与写面的分界)
@@ -37,6 +37,7 @@ Stratix 是本地 agent 团队指挥台：角色绑定 CLI agent（Claude Code /
 | MCP 官方规范（server/tools）+ 官方 server 实现惯例 | 工具以 `name` / `description` / `inputSchema` 描述，`inputSchema` 是 JSON Schema；工具执行错误用结果里的 `isError` 表达，协议/参数错误走 JSON-RPC error；分页列表结果顺序必须稳定（游标语义），否则客户端无法缓存；工具名用 `snake_case`（官方 filesystem server 的 `read_file` / `list_directory` / `move_file` 是既成事实） |
 | Anthropic《Writing effective tools for agents》 | 工具粒度贴合 agent 的真实决策点；描述写清"何时用 / 何时不用"；返回给 agent 下一步所需的信息，且省 token |
 | Stratix 仓库既有铁律 | 工具是 `core` 总线契约（`HudCommand` / `WorldState`）的投影，不是新功能层（§3） |
+| [SERVICE-SPLIT-PLAN.md](SERVICE-SPLIT-PLAN.md) §2 / §5 铁律 1·2·6 | 真相唯一（MCP 与 service 同进程同实例，见 [§0.5](#05-拓扑定位新旧拓扑对比)）；裁决在 core（写走 `emitCommand`）；存储独占（写在本进程，其余经 API 读） |
 
 > 本文档不逐条引用规范原文。涉及"规范要求"的表述以强度标注：**须** = 违反即打回；**宜** = 默认做法，偏离须在评审记录里说明理由。
 
@@ -51,6 +52,74 @@ Stratix 是本地 agent 团队指挥台：角色绑定 CLI agent（Claude Code /
 **域（domain）** = 命名空间与工具名前缀（`world` / `task` / `mission` / `chat` / `registry`，未来的 `zone` / `pipeline` …）；**动作（verb）** = 工具做的那个动作（取自受控词表 `list` / `get` / `create` / `assign` / `send` / `cancel` / `snapshot` …）；**资源（resource）** = 动作作用的实体（`task` / `mission` / `character` / `world`）；**受理回执** = 写操作成功后返回的"状态句"（标识 + 状态 + 下一步查法）；**通道（channel）** = 调用进来的通路（`ui` / `mcp` / `script` / `agent`，进审计用）。
 
 **依赖解锁（dependency unlock）** = 某条编组任务的**前置任务全部进入终态**（`done` / `cancelled`）后，这条任务**变为可被确认**。解锁**不是新相位** —— 真相在相位上，判定现算即得（`isMissionUnlocked`）；"解锁"只是"允许确认"的结论，且**不自动确认**（谁来确认仍需显式动作）。**brief（任务正文契约）** = 挂在编组任务上的结构化正文（需求 / 验收标准 / 交付物 / 约束），是关于"这件事要做成什么样"的长期事实，与「派单 prompt」（派给执行者的一句话指令）分开。**检查点（checkpoint）** = 编组任务上的一条 **append-only 记账行**（这一刻发生了什么），**不改相位**，终态任务不再接受记账。
+
+### 0.5 拓扑定位（新旧拓扑对比）
+
+> **真相源**：[SERVICE-SPLIT-PLAN.md](SERVICE-SPLIT-PLAN.md)（目标拓扑 §2 + 迁移期双模式 §8）｜[WORLD-SYNC.md](WORLD-SYNC.md)（视图侧 WS 协议）
+
+本规范说的是**工具面**（MCP tools）。工具面挂在哪儿、真相在谁身上，是拓扑问题 —— 说清楚它，工具的返回值才有确定口径。
+
+#### 新拓扑（现行）：MCP 与 service 同进程，见真状态
+
+```
+                    ┌────────────────────────────────────────┐
+                    │  Service（gateway 进程，常驻 daemon）    │
+                    │  core runtime ── mission/task 状态机    │
+                    │  task-service（执行环，直接 spawn CLI）   │
+                    │       │                                 │
+                    │       ▼                                 │
+                    │  cli-transport ──► claude / kimi 子进程 │
+                    │  SQLite（独占写）                        │
+                    │  ┌──────────┬──────────┬──────────┐     │
+                    │  │ MCP      │ REST API │ WS       │     │
+                    └──┴────▲─────┴────▲─────┴────▲─────┴─────┘
+                           │stdio      │HTTP      │WS (world-sync)
+        ┌──────────────────┘           │          └───────────────┐
+        ▼                              ▼                          ▼
+  外部 MCP client               浏览器/API client          Electron 壳（可选）
+  （Claude Code 等）                                        hud/world 纯视图
+```
+
+对 MCP 这一侧的三个要点：
+
+1. **同进程同实例**：gateway 启动时**先 boot service 再挂 `/mcp` 路由**（`src/stratix-gateway/index.ts`），故 `createCoreMcpHost({ store: service.store })` 拿到的是 service 持有的那份 core store —— **工具看见的是真战场**（改造前是空 store，`units` 恒为 0）。
+2. **写只有一条路**：工具的写操作一律 `emitCommand` 投给 core 状态机裁决（§3.2），MCP 不自己改 store。派单后回读状态核对结果，命令没人接管时报 `internal_error`（明说"没落地"），**绝不假装成功**。
+3. **大件走 REST 不走广播**：任务全文只从 SQLite 读（§2.3），跨进程读走 `GET /api/storage/tasks/:id/output`；world-sync 的 `snapshot` 只带摘要 —— 与 §3.1「投影而非新功能层」同口径。
+
+#### 旧拓扑（改造前 · 已退役）：MCP 与战场不同进程，看不见战场
+
+```
+┌──────────────────────── Electron 进程 ────────────────────────┐
+│  ┌──────────────────────────────┐                             │
+│  │  渲染进程 = 组合根            │                             │
+│  │  core runtime（世界态住在渲染里）│                             │
+│  │  task-service                 │                             │
+│  └───────────┬──────────────────┘                             │
+│              │ IPC（chat:run / chat:abort）                   │
+│  ┌───────────▼──────────────────┐                             │
+│  │  Electron main               │                             │
+│  │  CLI spawn（唯一 spawn 点）    │                             │
+│  │  SQLite 写（多进程开同一文件） │                             │
+│  └──────────────────────────────┘                             │
+└───────────────────────────────────────────────────────────────┘
+        ▲ 关掉窗口 = 大脑停机（agent 一起死）
+        │
+   gateway /mcp（挂在空 store 上 → units 恒为 0，看不见战场）
+```
+
+旧拓扑的四处要害 —— 与新拓扑逐条对照：
+
+| 维度 | 旧拓扑 | 新拓扑 |
+|------|--------|--------|
+| 大脑（core runtime） | 渲染进程 | **service 常驻进程** |
+| 关掉 Electron | agent 一起停机 | **只丢视图，agent 照跑** |
+| CLI spawn 点 | Electron main（经 IPC 中转） | **service 直接 spawn** |
+| 存储 | 多进程开同一个 SQLite | **service 独占写，其余经 API 读** |
+| MCP 能否见战场 | 看不见（units 恒为 0） | **同进程真态** |
+| 视图数据源 | 进程内直连 core store | **WS world-sync 全量快照** |
+| 客户端数量 | 一个 Electron | **多客户端（MCP / REST / WS / 多个壳）** |
+
+> **旧路径的退役标记**（只注不删，铁律 7）：`src/electron/main.ts` 的 CLI spawn 职责段、`src/app/main/main-entry.ts` 的本地直连装配/开关段、`src/stratix-gateway/mcp/context.ts` 里已过时的跨进程拓扑说明段 —— 三处均已打 `@deprecated` 并写明迁移指引。迁移期双模式（远程 `STRATIX_REMOTE=1` / 本地回退不设）见 [SERVICE-SPLIT-PLAN.md §8](SERVICE-SPLIT-PLAN.md#8-收尾节迁移期双模式)。
 
 ---
 
@@ -665,6 +734,8 @@ src/stratix-gateway/mcp/
 
 **位置**：MCP server 作为 **gateway 内的一个模块**（`src/stratix-gateway/mcp/`），与业务网关同进程，复用 core 的总线与 store，不新开状态通道。
 
+> 前后端分离后，这句「同进程」的准确含义见 [§0.5 拓扑定位](#05-拓扑定位新旧拓扑对比)：gateway 进程**就是** service 进程（先 boot service 再挂 `/mcp`），故 MCP 与 service 同进程同实例、MCP 看见的是真战场。
+
 **为什么放 gateway 而不是 core**：core 是"引擎无关、零 IO、纯逻辑"（`src/core/README.md` 的 Allowed / Forbidden 铁律），而 MCP server 要开 socket、处理协议帧、管会话 —— 放进 core 会直接破掉 core 的分层铁律；且 MCP 工具要读写 core 的状态，需要一个**在 core 之上**的应用层，gateway 正是那个位置（`docs/REFACTOR_PLAN_V3.md` §2 里 gateway 是"业务网关与外部 agent 连接"的所在）。
 
 | 模式 | 端点 | 用途 | 要点 |
@@ -715,6 +786,7 @@ src/stratix-gateway/mcp/
 
 | 版本 | 日期 | 变更 | 兼容性 |
 |------|------|------|--------|
+| v1.2 | 2026-11-02 | **新增章节** §0.5「拓扑定位（新旧拓扑对比）」—— 写清 MCP 在前后端分离后的位置：gateway 进程即 service 进程，先 boot service 再挂 `/mcp`，故工具见真状态（附新旧拓扑 ASCII 对比图与逐维度对照表）；§0.2 权威依据增列 SERVICE-SPLIT-PLAN；§4.4 增注指回 §0.5 | ✅ 纯文档：工具面**零变更** —— 工具名 / 参数 / 返回 / 错误码 / `tools/list` 顺序全部未动 |
 | v1.1 | 2026-11-01 | **新增工具** `stratix_mission_checkpoint`（§2.9，记一条 append-only 检查点）；**新增可选参数** `stratix_mission_create` 的 `brief`（四段结构化正文）与 `depends_on`（前置任务链，§2.5）；**新增错误码** `mission_terminal`（附录 A）；**新增术语** 依赖解锁 / brief / 检查点（§0.4）；`tools/list` 顺序改为按**排序位**（§2.0），新工具插在 `mission_status` 之后、`registry` 之前（既有工具之间的相对次序不变） | ✅ 纯增量：既有 8 件工具的名字、参数、语义与缺省行为**均未变**（`brief` / `depends_on` 缺省即"裸任务"，与 v1.0 逐字节一致）；`auto_confirm_applied` 的口径在**新增的依赖未满足分支**上才出现差异（`false` = auto_confirm 没能生效），v1.0 的三条既有路径取值不变 |
 
 ---
