@@ -2,7 +2,7 @@
  * 单测：**品牌 agent 默认形象库**（src/world/appearance/brand-presets.ts）。
  *
  * 覆盖四件事：
- *   1. 全量性 —— DETECTABLE_AGENT_KINDS 的 11 种 kind 每个都有预设（漏一个 = 有 agent 掉兜底）；
+ *   1. 全量性 —— DETECTABLE_AGENT_KINDS 的 12 种 kind 每个都有预设（漏一个 = 有 agent 掉兜底）；
  *   2. 有效性 —— 每个预设引用的 itemId + variant **逐一**存在于真实素材元数据
  *      （加载 dist/frontend/spritesheets/item-metadata.json，1.4MB 直接加载可接受，
  *      见 task_031 需求 4；素材改名会被测出来）；
@@ -47,8 +47,8 @@ describe('品牌预设库 · 全量性', () => {
     expect(Object.keys(BRAND_PRESETS).sort()).toEqual([...DETECTABLE_AGENT_KINDS].sort());
   });
 
-  test('T1 五种（claude-code/codex/opencode/kimi/openclaw）各有独立预设且互不相同', () => {
-    const t1 = ['claude-code', 'codex', 'opencode', 'kimi', 'openclaw'] as const;
+  test('T1 各家（claude-code/codex/opencode/kimi/openclaw/dsh）各有独立预设且互不相同', () => {
+    const t1 = ['claude-code', 'codex', 'opencode', 'kimi', 'openclaw', 'dsh'] as const;
     const seen = new Set<string>();
     for (const kind of t1) {
       const preset = BRAND_PRESETS[kind];

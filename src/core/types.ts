@@ -521,14 +521,22 @@ export const STRATIX_NAMETAGS_TOGGLE_KEY = 'stratix.unit.nametags';
 /**
  * @since v3.7 本地 agent 种类词表。**词表即契约**：core 按它校验 agentKind（不认识的一律拒发），
  *   HUD / 首启引导屏按同一份词表渲染"绑的是哪个 CLI agent"；新增一种 CLI agent 两侧同步改。
- *   取值来源：docs/AGENT-MATRIX.md 的 T1/T2 名单（claude / codex / opencode / kimi / openclaw）。
+ *   取值来源：docs/AGENT-MATRIX.md 的 T1/T2 名单（claude / codex / opencode / kimi / openclaw / dsh）。
  * @since v3.32（task_056）扩自定义段：`custom:<id>` 形态（注册表 id 拼进 kind 字符串）。
  *   why 把注册身份编进 kind 而不是只存 'custom'：角色档案 / 检测行 / transport 工厂都按 kind
  *   单键路由，一个 kind 必须唯一定位到"哪一家 CLI"；多家自定义注册共享 'custom' 会让
- *   角色与执行器对不上号。内置五家 = 静态词表（AGENT_KINDS），自定义 = 动态前缀段
+ *   角色与执行器对不上号。内置 = 静态词表（AGENT_KINDS），自定义 = 动态前缀段
  *   （isCustomAgentKind / customAgentIdOf / buildCustomAgentKind，见 custom-agent.ts 的校验口径）。
+ * @since v3.33（task_088）并入 dsh（DeepSeek Harness）：第四种 CLI worker 形态，
+ *   与 claude/kimi 平级（agent 同为 CLI worker，只是执行器不同 —— dsh 走 `npx -y @deepseek-ai/dsh`）。
  */
-export type BuiltinAgentKind = 'claude-code' | 'codex' | 'opencode' | 'kimi' | 'openclaw';
+export type BuiltinAgentKind =
+  | 'claude-code'
+  | 'codex'
+  | 'opencode'
+  | 'kimi'
+  | 'openclaw'
+  | 'dsh';
 
 /** 自定义 agent 的 kind 前缀（`custom:<注册表id>`）。常量冻结在 core：两侧不许各抄字面量。 */
 export const CUSTOM_AGENT_KIND_PREFIX = 'custom:';
@@ -536,15 +544,23 @@ export const CUSTOM_AGENT_KIND_PREFIX = 'custom:';
 /** 自定义 agent 的 kind 形态（模板字面量：前缀 + 注册表 id）。id 的合法性口径见 core/custom-agent.ts。 */
 export type CustomAgentKind = `${typeof CUSTOM_AGENT_KIND_PREFIX}${string}`;
 
-/** @since v3.7 内置五家；@since v3.32（task_056）并上自定义段（`custom:<id>`）。 */
+/** @since v3.7 内置五家（@since v3.33 task_088 起为六家，含 dsh）；@since v3.32（task_056）并上自定义段（`custom:<id>`）。 */
 export type AgentKind = BuiltinAgentKind | CustomAgentKind;
 
 /**
  * @since v3.7 agent 种类词表的运行时可枚举一份（core 校验用；HUD 也可 import 同一份渲染标签）。
- * @since v3.32（task_056）语义收窄为**内置**五家的枚举 —— 自定义注册是动态集合（在 custom_agents 表里），
+ * @since v3.32（task_056）语义收窄为**内置**的枚举 —— 自定义注册是动态集合（在 custom_agents 表里），
  *   静态词表枚举不了它；判"这个 kind 能不能绑角色"一律走 isBindableAgentKind（内置 ∪ 合法 custom 段）。
+ * @since v3.33（task_088）并入 dsh。
  */
-export const AGENT_KINDS: readonly BuiltinAgentKind[] = ['claude-code', 'codex', 'opencode', 'kimi', 'openclaw'];
+export const AGENT_KINDS: readonly BuiltinAgentKind[] = [
+  'claude-code',
+  'codex',
+  'opencode',
+  'kimi',
+  'openclaw',
+  'dsh',
+];
 
 /**
  * @since v3.32（task_056）kind 是否为自定义注册形态（`custom:` 前缀 + 合法注册 id）。
@@ -568,7 +584,7 @@ export function buildCustomAgentKind(id: string): CustomAgentKind {
 }
 
 /**
- * @since v3.32（task_056）kind 能否绑角色建档：内置五家（AGENT_KINDS）∪ 形状合法的自定义段。
+ * @since v3.32（task_056）kind 能否绑角色建档：内置六家（AGENT_KINDS）∪ 形状合法的自定义段。
  * 建档校验（character/profile.ts）、恢复翻译（game-save-coordinator）、向导可建档名单共用这一份裁决，
  * 不许三处各写一套（否则一处认自定义另一处不认，档案会被静默降级成"未绑定"）。
  */
@@ -804,12 +820,13 @@ export interface CharacterView {
 export type AgentDetectionTier = 'T1' | 'T2' | 'T3';
 
 /**
- * @since v3.8 **可检测**的本地 CLI agent 词表（T1-T3 全量 11 种）。
+ * @since v3.8 **可检测**的本地 CLI agent 词表（T1-T3 全量 12 种）。
  * why 与 AgentKind 分开成两份词表：AgentKind 是「角色**已绑定**的 agent 种类」
- *   （目前只有 T1 的 5 种，见 core/character/profile.ts 的建档校验），
+ *   （目前只有 T1 的 6 种，见 core/character/profile.ts 的建档校验），
  *   而检测词表覆盖 T1-T3 全量 —— 「探测到但还不能绑定」的 agent（T2/T3）得有地方安放，
  *   硬塞进 AgentKind 会让建档校验放行一批尚无适配实现的种类。
  * 两份词表是**包含关系**（AgentKind ⊂ DetectableAgentKind），不是同一份清单。
+ * @since v3.33（task_088）并入 dsh（T1 —— 有 headless one-shot + NDJSON 事件流 + 会话 id）。
  */
 export const DETECTABLE_AGENT_KINDS = [
   // T1 —— 深度适配
@@ -818,6 +835,7 @@ export const DETECTABLE_AGENT_KINDS = [
   'opencode',
   'kimi',
   'openclaw',
+  'dsh',
   // T2 —— 基础适配
   'gemini',
   'qwen',
@@ -865,7 +883,7 @@ export interface DetectedAgent {
   readonly path: string | null;
   /**
    * @since v3.32（task_056）显示名（仅自定义注册行携带：注册表里的用户命名）。
-   * why 加这个字段：内置五家有静态标签表（AGENT_KIND_LABELS），自定义注册的名字只存在
+   * why 加这个字段：内置六家有静态标签表（AGENT_KIND_LABELS），自定义注册的名字只存在
    * 注册表里 —— 检测行是它进入 WorldState 的唯一载体，不带名字 HUD 就只能显示 `custom:xxx`。
    * 内置行不带该键（undefined ≡ 无别名，渲染回落 agentKindLabel）。
    */
@@ -987,7 +1005,7 @@ export interface WorldState {
    * @since v3.8 本地 CLI agent 检测结果（app/services/agent-detector 写入）。
    * 刻意可选：与 settings / currentScreen 同理走可选增补 —— 契约增补不许打破既有
    * WorldState 构造点（core / hud 单测夹具）的编译；读取方缺省时按「尚未检测」处理。
-   * 体积天然有界：名单是固定 11 项（DETECTABLE_AGENT_KINDS），逐条到达也只是覆盖同名项，
+   * 体积天然有界：名单是固定 12 项（DETECTABLE_AGENT_KINDS），逐条到达也只是覆盖同名项，
    * 不存在无限增长（perf：全量广播的数据必须有界）。
    */
   detectedAgents?: DetectedAgent[];

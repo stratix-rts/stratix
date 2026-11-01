@@ -22,6 +22,7 @@ import {
 } from '../screens/onboarding-catalog';
 import type { CustomAgentProbeResult, CustomAgentsPort } from '../screens/custom-agents-port';
 import type { CustomAgentValidationCode } from '../../core/custom-agent';
+import { DETECTABLE_AGENT_KINDS } from '../../core/types';
 import type { HudCommand, WorldState, DetectedAgent } from '../../core/types';
 
 function detected(partial: Partial<DetectedAgent> & { kind: DetectedAgent['kind'] }): DetectedAgent {
@@ -177,19 +178,22 @@ describe('task_056 onboarding-catalog：自定义注册行的派生口径', () =
     ]);
   });
 
-  it('完成度文案：注册行加入后分母随行数走，不出现 12/11 倒挂', () => {
-    const eleven = makeState(Array.from({ length: 11 }, (_, index) =>
+  it('完成度文案：注册行加入后分母随行数走，不出现倒挂', () => {
+    // why 用词表长度而不是写死数字：静态名单会随新 agent 种类增长（task_088 加了 dsh），
+    // 写死的数字会在每次扩名单时变成一个假失败 —— 测的是「不倒挂」这条不变量。
+    const staticCount = DETECTABLE_AGENT_KINDS.length;
+    const full = makeState(Array.from({ length: staticCount }, (_, index) =>
       detected({ kind: `agent${index}` as DetectedAgent['kind'], status: 'failed', tier: 'T2' })
     ));
-    expect(isDetectionComplete(eleven)).toBe(true);
-    const twelve = makeState([
-      ...Array.from({ length: 11 }, (_, index) =>
+    expect(isDetectionComplete(full)).toBe(true);
+    const withCustom = makeState([
+      ...Array.from({ length: staticCount }, (_, index) =>
         detected({ kind: `agent${index}` as DetectedAgent['kind'], status: 'failed', tier: 'T2' })
       ),
       MYAGENT,
     ]);
-    expect(isDetectionComplete(twelve)).toBe(true);
-    expect(resolveScanStatus(twelve).text).toContain('12/12');
+    expect(isDetectionComplete(withCustom)).toBe(true);
+    expect(resolveScanStatus(withCustom).text).toContain(`${staticCount + 1}/${staticCount + 1}`);
   });
 });
 

@@ -2,7 +2,7 @@
  * 单测：CLI 传输层运行时（app/services/cli-transport/runtime.ts，@since v3.8 / task_023）。
  *
  * 覆盖四块：
- *   1. 抽象契约 —— 五家 adapter 齐备、事件词汇表固定；
+ *   1. 抽象契约 —— 内置 adapter 齐备、事件词汇表固定；
  *   2. 运行时 —— 喂样例 stdout 流，断言事件序列（message / tool_use / session / done）；
  *   3. 取消与超时 —— AbortSignal → killTree（**整个进程树**）→ error 事件；
  *   4. 真机杀树 —— 用真实 child_process 起一个带孙进程的 shell，取消后孙进程必须死。
@@ -18,6 +18,7 @@ import { AGENT_KINDS } from '../../core/types';
 import {
   createClaudeAdapter,
   createCodexAdapter,
+  createDshAdapter,
   createKimiAdapter,
   createNodeProcessFactory,
   createOpenclawAdapter,
@@ -34,11 +35,11 @@ import { collect, createFakeProcessFactory } from './helpers/fake-process';
 // ============================================================================
 
 describe('CliTransport 抽象', () => {
-  test('五家 adapter 齐备，且与 core 的 AGENT_KINDS 一一对应', () => {
+  test('内置 adapter 齐备，且与 core 的 AGENT_KINDS 一一对应', () => {
     const { ok, missing } = verifyAdapterRoster();
     expect(missing).toEqual([]);
     expect(ok).toBe(true);
-    expect(AGENT_KINDS).toHaveLength(5);
+    expect(AGENT_KINDS).toHaveLength(6);
   });
 
   test('每家 adapter 都声明了自己的 kind / binary / 输出形态', () => {
@@ -48,6 +49,7 @@ describe('CliTransport 抽象', () => {
       [createOpencodeAdapter({ probeServe: async () => ({ ok: false, url: null }) }), 'opencode', 'opencode'],
       [createKimiAdapter(), 'kimi', 'kimi'],
       [createOpenclawAdapter(), 'openclaw', 'openclaw'],
+      [createDshAdapter(), 'dsh', 'npx'],
     ];
     for (const [adapter, kind, binary] of cases) {
       expect(adapter.kind).toBe(kind);

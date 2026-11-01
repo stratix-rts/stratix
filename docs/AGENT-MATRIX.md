@@ -12,6 +12,7 @@
 | OpenCode | `which opencode` | `opencode run -m <model> "<prompt>"` | session 天然持久（server 管理） | `opencode serve` 本地 HTTP API（最佳路径） | 本机装过 v1.2.6；server 模式免 spawn，REST 天然适配 gateway |
 | Kimi CLI | `which kimi` / `kimi --version` | `kimi -p "<prompt>"` | `--session <id>` / `-C` 继续 | 文本输出（结构化弱）；会话 id 只在 stderr 收尾提示行（task_055） | 本机 Kimi Code 2.3.2 复验（task_063）：`-p` 不可与 `--yolo` 同用；每轮 stderr 尾行 `To resume this session: kimi -r session_<uuid>`（1.52 时代为裸 `<uuid>`，两种格式均兼容）；`--session` 回显同 id = 命中 |
 | OpenClaw | `which openclaw` / `openclaw status` | `openclaw agent --message "<p>" --json`（本机 gateway）；`--session-id <id>` 自选会话 id | `--session-id <id>`（自选 id 即建同名会话，续接命中） | JSON（pretty-print，result 包裹信封） | task_055 真机两轮验证：自选 uuid 建 session + 暗号记忆命中；无路由参数时会落 gateway 主会话（副作用，宜带 --session-id）；旧有 `stratix-openclaw-adapter` 协议基础（task_007 参考源） |
+| DeepSeek Harness (dsh) | `which npx` / `npx --version`（**无本地安装**：按需 `npx -y @deepseek-ai/dsh` 拉取） | `npx -y @deepseek-ai/dsh --profile headless --json "<task>"` | `--session-id <id>`（认领已持久化 Session；未知 id 报错） | NDJSON 运行事件（session / text / thinking / tool_call / tool_result / status / final / error） | task_088 真机实测（@deepseek-ai/dsh 0.2.1-rc.5）：headless profile 首次运行自动铺设；`--json` 吐事件流；无 `--json` 时 stdout 只有最终答案；失败 exit 1 且 stderr 一行 `dsh: <CODE>: <原因>` |
 
 ## T2 基础适配（headless 可用，会话/结构化能力有限）
 

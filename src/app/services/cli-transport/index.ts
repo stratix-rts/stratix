@@ -31,6 +31,14 @@ export {
   type RenderedCustomRun,
 } from './adapters/custom';
 export { createCodexAdapter, parseCodexLine, type CodexAdapterOptions } from './adapters/codex';
+export {
+  createDshAdapter,
+  parseDshLine,
+  DSH_HEADLESS_PROFILE,
+  DSH_PACKAGE_NAME,
+  DSH_RUNNER_BINARY,
+  type DshAdapterOptions,
+} from './adapters/dsh';
 export { createKimiAdapter, parseKimiOutput, parseKimiStderrLine, type KimiAdapterOptions } from './adapters/kimi';
 export { createOpenclawAdapter, parseOpenclawOutput, type OpenclawAdapterOptions } from './adapters/openclaw';
 export {
@@ -79,7 +87,7 @@ import type { CliTransport, ProcessFactory } from './transport';
 
 /**
  * 一站式造一个 transport（生产用）。
- * @param kind agent 种类（内置五家；自定义段走 createTransportForCustomAgent —— 那要注册行）
+ * @param kind agent 种类（内置六家；自定义段走 createTransportForCustomAgent —— 那要注册行）
  * @param options adapter 参数（各家可选参数）
  * @param deps 子进程工厂（缺省用真实的 child_process 工厂；单测注入假工厂）
  */

@@ -6,7 +6,7 @@
  * 输入：无（纯静态数据 + 纯查表函数）。素材事实来源：dist/frontend/spritesheets/item-metadata.json
  *   —— 本文件里每个 itemId + variant 都是**从元数据里实挑的**（单测逐一断言存在，
  *   见 __tests__/brand-presets.test.ts；素材改名会被测出来，不许手滑编造）。
- * 输出：BRAND_PRESETS（11 种 kind 全量预设）/ COMMONER_FALLBACK_PRESET（未知 kind 的中性
+ * 输出：BRAND_PRESETS（12 种 kind 全量预设）/ COMMONER_FALLBACK_PRESET（未知 kind 的中性
  *   平民兜底）/ getBrandPreset(kind)（查表 + 兜底，**确定性** —— 同一 kind 永远同一份）。
  * 禁止事项：
  *   1. 在 getBrandPreset 里调随机 —— 品牌预设的存在意义就是"确定性"，兜底也用静态
@@ -26,6 +26,7 @@
  *     + 尖尖的精灵耳 + 皮革甲表达利落感）；
  *   - codex（OpenAI）：冷绿/白/灰极简（灰色板寸 + 绿瞳 + 白衬衫 + 灰西裤）；
  *   - gemini：蓝色系（蓝刘海 + 蓝瞳 + 蓝衣）；
+ *   - dsh（DeepSeek Harness）：深蓝/银白（蓝色短狼尾 + 蓝开衫 + 银靴）；
  *   - T2/T3 其余：中性色平民兜底（共用一套选配，仅发色按 kind 微调以便战场上区分）。
  */
 
@@ -36,7 +37,7 @@ import type {
 } from '../../core/types';
 
 // ============================================================================
-// 预设构造辅助（纯缩写，避免 11 份重复字面量）
+// 预设构造辅助（纯缩写，避免 12 份重复字面量）
 // ============================================================================
 
 /** 精确选择的缩写（品牌预设一律带 itemId —— 不带就退化回"第一个命中项"）。 */
@@ -132,6 +133,22 @@ const CODEX_PRESET: CharacterAppearance = {
   },
 };
 
+/**
+ * dsh（DeepSeek Harness，@since v3.33 task_088）：蓝色短狼尾 + 蓝色开衫 + 银靴 —— 深蓝/银白。
+ * why 蓝色：DeepSeek 的品牌色是深蓝（#4D6BFE 一系）；与 gemini（亮蓝刘海）靠**发型型与鞋**
+ *   区分（dsh 短狼尾 + 银靴），避免两个蓝系在战场上撞脸。
+ */
+const DSH_PRESET: CharacterAppearance = {
+  bodyType: 'male',
+  parts: {
+    ...humanoidBase('light', 'blue'),
+    hair: sel('blue', 'hair_shorthawk'),
+    torso: sel('blue', 'torso_clothes_longsleeve2_cardigan'),
+    legs: sel('navy', 'legs_pants'),
+    feet: sel('silver', 'feet_boots_basic'),
+  },
+};
+
 // ============================================================================
 // T2 品牌预设（gemini 有明确配色方向；其余 T2/T3 共用平民选配、仅发色区分）
 // ============================================================================
@@ -166,7 +183,7 @@ function commoner(hairVariant: string): CharacterAppearance {
 }
 
 // ============================================================================
-// 预设库（11 种 kind 全量）
+// 预设库（12 种 kind 全量）
 // ============================================================================
 
 /**
@@ -181,6 +198,7 @@ export const BRAND_PRESETS: Readonly<Record<DetectableAgentKind, CharacterAppear
   opencode: OPENCODE_PRESET,
   kimi: KIMI_PRESET,
   openclaw: OPENCLAW_PRESET,
+  dsh: DSH_PRESET,
   // —— T2 ——
   gemini: GEMINI_PRESET,
   qwen: commoner('black'),
