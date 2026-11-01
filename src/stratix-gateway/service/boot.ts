@@ -22,6 +22,7 @@
  */
 
 import type { SqliteDatabaseLike } from '../../app/services/persistence/game-save-dao';
+import type { TaskTransportFactory } from '../../app/services/task-service';
 import type { CoreStore } from '../../core/store';
 
 import { startAgentDetection, type ServiceAgentDetection } from './agent-detection';
@@ -39,6 +40,16 @@ export interface ServiceBootOptions {
   readonly store?: CoreStore;
   /** 是否起本地 CLI agent 探测（缺省 = 起；执行环的出队守门依赖它）。 */
   readonly detectAgents?: boolean;
+  /**
+   * 任务执行的 transport 工厂（可选注入口）。
+   *
+   * 缺省 = 直接 spawn 真实 CLI（cli-transport 的 node-process 工厂）—— 生产口径。
+   * 给出即用它跑任务 —— e2e 剧本据此注入 fake adapter（确定性，不调真 CLI、不花 token）。
+   *
+   * why 是注入口而不是环境变量开关：service 进程内不该藏「按环境变量换执行器」的行为分支
+   *   （生产路径与测试路径必须一眼分得开）；谁造 service 谁决定用哪个执行器。
+   */
+  readonly createTransport?: TaskTransportFactory;
   /** 日志口（缺省 = console.log）。 */
   readonly logger?: (line: string) => void;
 }
@@ -69,8 +80,9 @@ export function bootStratixService(options: ServiceBootOptions = {}): BootedStra
     ...(options.store ? { store: options.store } : {}),
     ...(options.storage ? { storage: options.storage } : {}),
     // 执行环：给出即在本进程跑（直接 spawn CLI，不经渲染进程 / IPC）。
-    // transport 工厂用缺省（cli-transport 的 node-process 工厂）—— 真实 CLI，不是假适配器。
-    taskExecution: {},
+    // transport 工厂缺省 = cli-transport 的 node-process 工厂（真实 CLI）；
+    // 给了 createTransport 就用它（e2e 剧本注入 fake adapter，见 ServiceBootOptions）。
+    taskExecution: options.createTransport ? { createTransport: options.createTransport } : {},
     logger,
   });
 

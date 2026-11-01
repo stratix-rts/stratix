@@ -213,6 +213,18 @@ export function createStratixService(options: StratixServiceOptions = {}): Strat
       // 任务全文的落库口（A3）：显式给了就用显式的；没给而存储件在 → 落 service 侧库
       // （铁律 6：SQLite 由 service 进程独占写）。
       persistTask: options.taskExecution.persistTask ?? options.storage?.persistTask,
+      // 编组任务收尾（task_076 语义，与渲染侧组合根 main-entry.ts 同一口径）：
+      //   任务 completed → mission done；任务 failed → mission cancelled（中止语义）。
+      // why 组合根兜底接线（而不是留给调用方）：service 进程持有 core runtime（真相唯一），
+      //   没人接线的话 —— 任务在 service 里跑完了，mission 却永远停在 running。
+      //   那正是「壳关了 agent 照常干活」这条主张要消解的场景（C1 剧本的验收点）。
+      onMissionSettled:
+        options.taskExecution.onMissionSettled ??
+        ((record) => {
+          if (!record.missionId) return;
+          if (record.status === 'completed') mission.completeMission(record.missionId);
+          else if (record.status === 'failed') mission.cancelMission(record.missionId);
+        }),
       store,
       taskManager: task,
     });

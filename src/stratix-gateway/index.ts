@@ -21,6 +21,7 @@ import express from 'express';
 import { ensureDirSync } from 'fs-extra';
 
 import type { SqliteDatabaseLike } from '../app/services/persistence/game-save-dao';
+import type { TaskTransportFactory } from '../app/services/task-service';
 import { emitCommand } from '../core/bus';
 import { OpenClawConnectionStore } from '../stratix-data-store/OpenClawConnectionStore';
 import { initializeDatabase } from '../stratix-database';
@@ -68,6 +69,16 @@ export interface GatewayServiceOptions {
   dataDir?: string;
   /** 运行模式 */
   mode?: 'standalone' | 'embedded';
+  /**
+   * 任务执行的 transport 工厂（可选注入口，透传给 service 启动接线）。
+   *
+   * 缺省 = 直接 spawn 真实 CLI（生产口径）。
+   * 给出即用它跑任务 —— e2e 剧本据此注入 fake adapter（确定性执行，不调真 CLI）。
+   *
+   * why 走注入口而不是环境变量：gateway 的装配选项本就是显式入参，
+   *   「按环境变量换执行器」会让生产路径与测试路径在代码里分叉（看不清谁在跑什么）。
+   */
+  serviceTransport?: TaskTransportFactory;
 }
 
 /**
@@ -166,6 +177,7 @@ export async function startGatewayService(
       return bootStratixService({
         storage: serviceStorage,
         db: db.getDatabase() as unknown as SqliteDatabaseLike,
+        ...(options.serviceTransport ? { createTransport: options.serviceTransport } : {}),
       });
     } catch (error) {
       console.error('[service] boot failed:', error);

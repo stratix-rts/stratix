@@ -226,6 +226,25 @@ function createWindow() {
   const loadDevUrl = async () => {
     const win = mainWindow;
     if (!win) return false;
+    // 显式指定的 dev server（环境变量）优先于端口扫描。
+    // why 需要它：端口扫描是「谁先占着 7523 就连谁」—— 实测场景（e2e 剧本）里别人的
+    //   dev 实例正占着 7523，壳连过去就等于跑到别人的服务上去了。显式指址才可控。
+    //   扫描失败（没响应）时回退到端口扫描，不让这一个开关成为单点故障。
+    const explicitUrl = process.env.STRATIX_DEV_SERVER_URL;
+    if (explicitUrl) {
+      try {
+        const response = await fetch(explicitUrl, { method: 'HEAD' });
+        if (response.ok) {
+          console.log('[Electron] Loading from Vite dev server (env):', explicitUrl);
+          await win.loadURL(explicitUrl);
+          // 不开 devtools：显式指址的场合（实测 / 远程壳）要的是安静的画面，不是调试面板。
+          return true;
+        }
+        console.warn(`[Electron] STRATIX_DEV_SERVER_URL 无响应（HTTP ${response.status}），回退端口扫描`);
+      } catch (err) {
+        console.warn('[Electron] STRATIX_DEV_SERVER_URL 连不上，回退端口扫描:', err);
+      }
+    }
     for (const port of DEV_PORTS) {
       try {
         // why 带入口路径而不是只探端口根：单入口后 dev server 的端口根没有 index.html，
