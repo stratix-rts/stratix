@@ -210,7 +210,8 @@ export class StratixDatabase {
           ended_at INTEGER,
           artifacts TEXT NOT NULL DEFAULT '',
           plan TEXT NOT NULL DEFAULT '',
-          pipeline_id TEXT NOT NULL DEFAULT ''
+          pipeline_id TEXT NOT NULL DEFAULT '',
+          mission_id TEXT
         )
       `);
       this.db.exec('CREATE INDEX IF NOT EXISTS idx_character_tasks_character ON character_tasks(character_id, created_at)');
@@ -304,6 +305,12 @@ export class StratixDatabase {
     if (!columns7.some((column) => column.name === 'pipeline_id')) {
       this.db.exec("ALTER TABLE character_tasks ADD COLUMN pipeline_id TEXT NOT NULL DEFAULT ''");
       log('info', 'Added pipeline_id column to character_tasks (task_051)');
+    }
+
+    // task_076：可空 mission_id 关联键；与 DAO 的 ensureMissionIdColumn 同构（旧库主要由 DAO 读写前补列）。
+    if (!columns7.some((column) => column.name === 'mission_id')) {
+      this.db.exec('ALTER TABLE character_tasks ADD COLUMN mission_id TEXT');
+      log('info', 'Added mission_id column to character_tasks (task_076)');
     }
   }
 
@@ -1170,7 +1177,9 @@ export class StratixDatabase {
         -- 任务成果物（@since v3.24，task_048）：parseTaskArtifacts 的 JSON（files+summary），'' = 无
         artifacts TEXT NOT NULL DEFAULT '',
         -- 计划草稿全文（@since v3.25，task_049）：审批门挂起时已剥离标记行的计划，'' = 无
-        plan TEXT NOT NULL DEFAULT ''
+        plan TEXT NOT NULL DEFAULT '',
+        -- 关联 mission（task_076）：角色任务终态回报的关联键，NULL = 普通任务
+        mission_id TEXT
       );
 
       -- 索引

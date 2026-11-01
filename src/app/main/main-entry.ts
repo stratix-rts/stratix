@@ -74,6 +74,7 @@ import Phaser from 'phaser';
 
 import { emitCommand, emitState, onState, onWorldEvent } from '../../core/bus';
 import { createCharacterManager } from '../../core/character';
+import { createMissionManager } from '../../core/mission';
 import { createCoreRuntime, type UnhandledChannel } from '../../core/runtime';
 import { expWeightFor } from '../../core/progression';
 import { worldStore } from '../../core/store';
@@ -671,9 +672,12 @@ async function boot(): Promise<void> {
   // 注入 runtime（character.create / persona.update 落点）与 progression-service
   // （exp.gained → 累加落库）—— 两处写的是同一份 WorldState.characters。
   const characterManager = createCharacterManager({ store: worldStore });
+  // task_076：runtime 的 mission 命令与 task-service 的终态回报共享同一写入面。
+  const missionManager = createMissionManager({ store: worldStore });
   const runtime = createCoreRuntime({
     store: worldStore,
     character: characterManager,
+    mission: missionManager,
     task: taskManager,
     // task_051：流水线编排器端口 —— runtime 只把 pipeline.start 转发给它（core 不执行编排，
     // 见 core/task/pipeline.ts 架构注）；未注入时命令按未落地处理（与 agent-link 同口径）。
@@ -729,6 +733,13 @@ async function boot(): Promise<void> {
         const taskApi = taskRecordApi();
         return taskApi ? makeTaskRecordPersister(taskApi) : undefined;
       })(),
+      // task_076：completed → done；failed 无独立相位，走既有 cancel → cancelled（中止语义）。
+      onMissionSettled: (record) => {
+        if (!record.missionId) return;
+        if (record.status === 'completed') missionManager.completeMission(record.missionId);
+        else if (record.status === 'failed') missionManager.cancelMission(record.missionId);
+      },
+      pushNotice: (notice) => worldStore.pushNotice(notice),
       // task_046：执行期 chunk 原序转发进任务输出面板（实时 tail 视图）。面板拿不到
       // （极端时序：chrome 未建）时端口不接 —— 执行照常，只是没有实时视图。
       onTaskChunk: taskOutputView

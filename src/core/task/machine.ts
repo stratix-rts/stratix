@@ -114,6 +114,7 @@ export function createQueuedTask(input: {
   readonly characterId: string;
   readonly prompt: string;
   readonly createdAt: number;
+  readonly missionId?: string | null;
 }): CharacterTask {
   return {
     id: input.id,
@@ -124,6 +125,7 @@ export function createQueuedTask(input: {
     startedAt: null,
     endedAt: null,
     output: '',
+    ...(input.missionId !== undefined ? { missionId: input.missionId } : {}),
   };
 }
 

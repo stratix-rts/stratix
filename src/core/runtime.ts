@@ -402,11 +402,13 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
       // 出队时做(不满足 → failTask 直达 failed,状态里看得见原因)。
       // @since v3.26(task_050):可选 targetCharacterId 透传 —— 指定承接人直达其队列,
       // 在档校验在 manager(不存在 → error Notice);「自动」的择人决策在 HUD 推荐纯函数。
+      // @since v3.36(task_076):可选 missionId 原样透传,终态回报由 app 层 task-service 完成。
       case 'task.assign':
         task.assignTask({
           characterId: command.characterId,
           prompt: command.prompt,
           targetCharacterId: command.targetCharacterId,
+          missionId: command.missionId,
         });
         return;
       // @since v3.23 排队任务取消(task_047):同口径直调 manager。相位裁决(仅 queued 可取消)

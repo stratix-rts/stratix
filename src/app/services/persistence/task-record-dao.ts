@@ -52,6 +52,7 @@
  *   「空串不覆盖已标记值」（否则相位快照会把标记抹掉）。站任务的完整站态（序号/相位）
  *   在 pipelines 表的 steps JSON 里，本列只是「这条任务属于哪条线」的最小归属键，
  *   不冗余存站相位（同一真相只在 pipelines 表）。
+ *   v3.36（task_076）增可空 mission_id 列（不增 schema_version），随每次任务快照 upsert / 读回。
  */
 
 import type { SqliteDatabaseLike } from './game-save-dao';
@@ -102,6 +103,8 @@ export interface PersistedTaskRecord {
    * '' / 缺省 = 非流水线任务（task-service 的相位快照都不带）。CASE 守卫写入语义见文件头。
    */
   readonly pipelineId?: string;
+  /** 关联 mission（task_076）；null / 缺省 = 普通任务。 */
+  readonly missionId?: string | null;
 }
 
 /** 词表导出给 IPC 校验层用（主进程拒绝表外 status，别让脏词进 CHECK 约束炸 IPC）。 */
@@ -127,7 +130,7 @@ export interface PersistedTaskStatRow {
   readonly avgDurationMs: number | null;
 }
 
-/** 建表 DDL（六态 CHECK + artifacts + plan + pipeline_id，@since v3.27 task_051 增列）—— 与 StratixDatabase 的 DDL 同构，两处同步改。 */
+/** 建表 DDL（六态 CHECK + artifacts + plan + pipeline_id + mission_id）—— 与 StratixDatabase 的 DDL 同构，两处同步改。 */
 const CHARACTER_TASKS_DDL = `
   CREATE TABLE IF NOT EXISTS ${CHARACTER_TASKS_TABLE} (
     id TEXT PRIMARY KEY,
@@ -140,7 +143,8 @@ const CHARACTER_TASKS_DDL = `
     ended_at INTEGER,
     artifacts TEXT NOT NULL DEFAULT '',
     plan TEXT NOT NULL DEFAULT '',
-    pipeline_id TEXT NOT NULL DEFAULT ''
+    pipeline_id TEXT NOT NULL DEFAULT '',
+    mission_id TEXT
   )`;
 
 /** 五态重建的临时表名（task_047，v4 → v5）。 */
@@ -267,6 +271,15 @@ function ensurePipelineIdColumn(db: SqliteDatabaseLike): void {
   db.exec(`ALTER TABLE ${CHARACTER_TASKS_TABLE} ADD COLUMN pipeline_id TEXT NOT NULL DEFAULT ''`);
 }
 
+/** mission_id 列兑底（task_076，不增 schema_version）：可空关联键，纯加列无需重建。 */
+function ensureMissionIdColumn(db: SqliteDatabaseLike): void {
+  const columns = db.prepare(`PRAGMA table_info(${CHARACTER_TASKS_TABLE})`).all() as Array<{
+    name?: string;
+  }>;
+  if (columns.some((column) => column.name === 'mission_id')) return;
+  db.exec(`ALTER TABLE ${CHARACTER_TASKS_TABLE} ADD COLUMN mission_id TEXT`);
+}
+
 /**
  * 建表 + 索引（幂等，旧库新库都能直接调）：
  * 老库全谱就位 —— 四态重建五态（047）→ CREATE IF NOT EXISTS（新库直接建六态全列表）→
@@ -288,6 +301,7 @@ export function ensureCharacterTasksTable(db: SqliteDatabaseLike): void {
   // pipeline_id 兑底（task_051，v8）：六态重建的临时表 DDL 冻结在 v7 形状（不带它），
   // 老库 / 刚重建过的库都在这里补齐 —— 新库（上面的全列 DDL）零成本直过。
   ensurePipelineIdColumn(db);
+  ensureMissionIdColumn(db);
 }
 
 /**
@@ -312,8 +326,8 @@ function ensureArtifactsColumn(db: SqliteDatabaseLike): void {
 export function upsertTask(db: SqliteDatabaseLike, record: PersistedTaskRecord): void {
   db.prepare(`
     INSERT INTO ${CHARACTER_TASKS_TABLE}
-      (id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts, plan, pipeline_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts, plan, pipeline_id, mission_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       status = excluded.status,
       output = excluded.output,
@@ -321,7 +335,8 @@ export function upsertTask(db: SqliteDatabaseLike, record: PersistedTaskRecord):
       ended_at = excluded.ended_at,
       artifacts = excluded.artifacts,
       plan = excluded.plan,
-      pipeline_id = CASE WHEN excluded.pipeline_id <> '' THEN excluded.pipeline_id ELSE ${CHARACTER_TASKS_TABLE}.pipeline_id END
+      pipeline_id = CASE WHEN excluded.pipeline_id <> '' THEN excluded.pipeline_id ELSE ${CHARACTER_TASKS_TABLE}.pipeline_id END,
+      mission_id = excluded.mission_id
   `).run(
     record.id,
     record.characterId,
@@ -333,7 +348,8 @@ export function upsertTask(db: SqliteDatabaseLike, record: PersistedTaskRecord):
     record.endedAt,
     record.artifacts ?? '',
     record.plan ?? '',
-    record.pipelineId ?? ''
+    record.pipelineId ?? '',
+    record.missionId ?? null
   );
 }
 
@@ -349,7 +365,7 @@ export function loadRecentTasks(
 ): PersistedTaskRecord[] {
   const rows = db
     .prepare(
-      `SELECT id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts, plan, pipeline_id
+      `SELECT id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts, plan, pipeline_id, mission_id
        FROM ${CHARACTER_TASKS_TABLE}
        WHERE character_id = ?
        ORDER BY created_at DESC, id DESC
@@ -374,6 +390,7 @@ export function loadRecentTasks(
       plan: typeof row.plan === 'string' && row.plan.length > 0 ? row.plan : undefined,
       // 流水线归属（task_051）：老库行（v7 及以前）/ 非流水线任务 → undefined。
       pipelineId: typeof row.pipeline_id === 'string' && row.pipeline_id.length > 0 ? row.pipeline_id : undefined,
+      missionId: typeof row.mission_id === 'string' && row.mission_id.length > 0 ? row.mission_id : undefined,
     }))
     .reverse();
 }

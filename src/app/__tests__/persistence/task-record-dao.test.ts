@@ -62,6 +62,7 @@ describe('task-record-dao（真实 sql.js 适配器）', () => {
           output: '北门无敌情，一切正常。',
           startedAt: 1700000001000,
           endedAt: 1700000010000,
+          missionId: 'mission-1',
         })
       );
 
@@ -75,6 +76,7 @@ describe('task-record-dao（真实 sql.js 适配器）', () => {
           createdAt: 1700000000000,
           startedAt: 1700000001000,
           endedAt: 1700000010000,
+          missionId: 'mission-1',
         },
       ]);
     });

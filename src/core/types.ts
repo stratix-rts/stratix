@@ -375,6 +375,15 @@ export interface CharacterTask {
    * 它就是被驳回的计划存档。非 plan-first 任务恒缺省（不占字段）。
    */
   readonly plan?: string;
+  /**
+   * @since v3.36（task_076）关联的战场任务（mission）id：**这条角色任务是为哪条 mission 跑的**。
+   * 缺省 / null = 与 mission 无关的普通派发（老行为，零影响）。
+   * 它是回报链的钥匙：任务到终态时由 app 层 task-service 据此把终态回报给 mission
+   * （completed → mission 收尾；failed → mission 按中止收尾）。
+   * 走可选增补（与 Notice.missionId / Notice.source 同款惯例）：契约增补不许破既有构造点
+   * （core / hud 单测夹具、老快照都不带它）。
+   */
+  readonly missionId?: string | null;
 }
 
 // ============================================================================
@@ -1117,8 +1126,17 @@ export type HudCommand =
    *   并回 error Notice）；缺省 = characterId（037 起的现行为）。「自动（推荐）」的择人决策在
    *   HUD 推荐纯函数（hud/panels/task-assign-catalog），core 只认结果 —— core 不做推荐
    *   （它不知道历史成功率与预设库，那是 hud/app 的数据面）。
+   * @since v3.36（task_076）可选 missionId：**这条任务替哪条战场任务（mission）跑**。
+   *   给出时随任务一路带到终态，app 层 task-service 据此把终态回报给那条 mission
+   *   （回报链的钥匙）；缺省 = 与 mission 无关的普通派发（老行为，零影响）。
    */
-  | { type: 'task.assign'; characterId: string; prompt: string; targetCharacterId?: string }
+  | {
+      type: 'task.assign';
+      characterId: string;
+      prompt: string;
+      targetCharacterId?: string;
+      missionId?: string | null;
+    }
   /**
    * @since v3.23 排队任务取消（task_047）：把一条 **queued** 任务收尾成 cancelled。
    * 只对 queued 生效：running 不强杀（取消在跑任务是「先停止」另一件事，core 侧拒绝并回

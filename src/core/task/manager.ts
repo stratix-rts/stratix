@@ -101,11 +101,13 @@ export interface TaskManager {
    * @since v3.26（task_050）可选 targetCharacterId：指定承接人 —— 给出时校验在档（不在 →
    *   error Notice 拒绝，不是静默回落：发命令的 UI 已列过名单，指定的人凭空消失是异常态），
    *   任务建在**目标角色**名下（直达其 FIFO 队列）；缺省 = characterId（037 现行为）。
+   * @since v3.36（task_076）可选 missionId 随任务快照保留，供 app 层终态回报；core 不裁决关联关系。
    */
   assignTask(input: {
     readonly characterId: string;
     readonly prompt: string;
     readonly targetCharacterId?: string;
+    readonly missionId?: string | null;
   }): CharacterTask | null;
   /** queued → running：开工（app 层 task-service 出队后调用）。 */
   startTask(taskId: string): CharacterTask | null;
@@ -185,6 +187,7 @@ class Manager implements TaskManager {
     readonly characterId: string;
     readonly prompt: string;
     readonly targetCharacterId?: string;
+    readonly missionId?: string | null;
   }): CharacterTask | null {
     const prompt = input.prompt.trim();
     const state = this.store.getState();
@@ -221,6 +224,7 @@ class Manager implements TaskManager {
         characterId: targetId,
         prompt,
         createdAt: this.now(),
+        missionId: input.missionId,
       });
       outcome.task = task;
       return { ...state, tasks: [...kept, task] };

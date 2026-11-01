@@ -76,8 +76,8 @@
  * 有意义（失败任务是没产出，不是产出不明）。onTaskSettled 回调携带同一份序列化串，
  * 消费方（task-report / 任务输出面板）各自反序列化，坏形状宽容降级（回落纯文本）。
  *
- * ============ 终态收尾的副作用：结果回流 + exp 事件（task_039）============
- * 任务到终态（completed / failed）时额外做两件事，两者都是 fire-and-forget（抛错只记日志，
+ * ============ 终态收尾的副作用：结果回流 + mission 回报 + exp 事件 ============
+ * 任务到终态（completed / failed）时的副作用都是 fire-and-forget（抛错只记日志，
  * 绝不倒灌任务执行回路）：
  *   ① onTaskSettled 回调：把带**全文输出**的终态记录交给注入方（组合根接 task-report，
  *     组装「任务报告」消息注入角色会话 + 落 character_chat_messages + hud 轻提示）；
@@ -89,6 +89,9 @@
  *         task.failed 事件都恰好流经这里一次，不会双发也不会漏发。
  *   amount 由注入的 expWeight 换算，缺省 app/services/exp-config.ts 的临时常量；
  *   **数值表归 task_040 的 progression 模块**（交接注记见 exp-config.ts 文件头，两侧已注明）。
+ *   ③ task_076：有 missionId 时调 onMissionSettled（组合根 completed→completeMission、
+ *     failed→cancelMission，失败按既有「中止」语义落 cancelled），并发 source=app/task-service、
+ *     带 missionId 的 Notice；普通任务不进入这条旁路。
  *
  * ============ 流式输出转发（task_046）============
  * 执行期每个 message 事件的文本 chunk 经 onTaskChunk 端口原序转发（组合根接 hud 任务输出
@@ -110,11 +113,12 @@ import type {
   CharacterTask,
   CharacterView,
   ExpSource,
+  Notice,
   TaskStatus,
   WorldEvent,
   WorldState,
 } from '../../core/types';
-import { TASK_PLAN_WAIT_MARKER } from '../../core/types';
+import { NOTICE_TTL_MS, TASK_PLAN_WAIT_MARKER } from '../../core/types';
 import type { TaskManager } from '../../core/task';
 import type { SpawnOptions, TransportErrorCode, TransportEvent } from './cli-transport/transport';
 import { parseTaskArtifacts, serializeTaskArtifacts } from './task-artifacts';
@@ -155,6 +159,8 @@ export interface TaskPersistRecord {
   readonly artifacts?: string;
   /** @since v3.25（task_049）：计划草稿全文（见上）；落库层落进 character_tasks.plan 列。 */
   readonly plan?: string;
+  /** @since v3.36（task_076）：关联 mission；缺省 / null = 普通任务，不触发 mission 回报。 */
+  readonly missionId?: string | null;
 }
 
 /** 任务单轮执行超时（ms）。CLI 跑任务比聊天长得多，取 035 档主进程上限：10 分钟。 */
@@ -315,6 +321,7 @@ export function taskEventToRecord(task: CharacterTask): TaskPersistRecord {
     startedAt: task.startedAt,
     endedAt: task.endedAt,
     ...(task.plan && task.plan.length > 0 ? { plan: task.plan } : {}),
+    ...(task.missionId !== undefined ? { missionId: task.missionId } : {}),
   };
 }
 
@@ -346,6 +353,13 @@ export interface TaskServiceDeps {
    * 抛错只记日志，绝不绑架任务执行回路。组合根接 task-report（报告消息 + 轻提示）。
    */
   readonly onTaskSettled?: (record: TaskPersistRecord) => void;
+  /**
+   * 关联 mission 的终态回报（@since v3.36，task_076；缺省不回报）。仅 completed / failed
+   * 且 record.missionId 非空时调用；组合根分别接 completeMission / cancelMission。
+   */
+  readonly onMissionSettled?: (record: TaskPersistRecord) => void;
+  /** mission 回报 Notice 写入口（source / missionId 由本服务补齐）；缺省不发 Notice。 */
+  readonly pushNotice?: (notice: Notice) => void;
   /**
    * 流式输出转发端口（@since v3.22，task_046；缺省不转发）。执行期每个 message 事件的
    * 文本 chunk 按到达顺序转发（characterId, chunk）。同步签名、fire-and-forget：抛错只记
@@ -494,6 +508,34 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
         deps.onTaskSettled(record);
       } catch (error) {
         logger(`[task-service] 任务收尾回调抛错（${record.id}/${record.status}）：${describe(error)}`);
+      }
+    }
+    if (record.missionId) {
+      const missionId = record.missionId;
+      if (deps.onMissionSettled) {
+        try {
+          deps.onMissionSettled(record);
+        } catch (error) {
+          logger(`[task-service] mission 回报抛错（${record.id}/${missionId}）：${describe(error)}`);
+        }
+      }
+      if (deps.pushNotice) {
+        try {
+          const at = Date.now();
+          deps.pushNotice({
+            id: `notice_mission_${record.id}`,
+            level: record.status === 'completed' ? 'info' : 'warn',
+            text: record.status === 'completed'
+              ? '角色任务已完成，已回报关联 mission'
+              : '角色任务失败，关联 mission 按中止收尾',
+            createdAt: at,
+            expiresAt: at + NOTICE_TTL_MS,
+            source: 'app/task-service',
+            missionId,
+          });
+        } catch (error) {
+          logger(`[task-service] mission 回报 Notice 抛错（${record.id}/${missionId}）：${describe(error)}`);
+        }
       }
     }
     emitExp(record.characterId, source);

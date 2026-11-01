@@ -13,6 +13,7 @@
  */
 
 import { emitWorldEvent, onWorldEvent, resetBus } from '../../core/bus';
+import { createMissionManager } from '../../core/mission';
 import { createTaskManager } from '../../core/task';
 import type { CoreStore } from '../../core/store';
 import { createStore } from '../../core/store';
@@ -153,6 +154,7 @@ interface HarnessOptions {
 interface Harness {
   readonly service: ReturnType<typeof createTaskService>;
   readonly manager: ReturnType<typeof createTaskManager>;
+  readonly missionManager: ReturnType<typeof createMissionManager>;
   readonly store: CoreStore;
   readonly calls: SpawnRecord[];
   readonly persisted: TaskPersistRecord[];
@@ -160,7 +162,7 @@ interface Harness {
   readonly settled: TaskPersistRecord[];
   /** onTaskChunk 端口收到的 (characterId, chunk) 依次记录（task_046）。 */
   readonly chunks: Array<{ characterId: string; chunk: string }>;
-  setState(patch: Partial<Pick<WorldState, 'characters' | 'detectedAgents' | 'units'>>): void;
+  setState(patch: Partial<Pick<WorldState, 'characters' | 'detectedAgents' | 'units' | 'missions'>>): void;
 }
 
 function makeHarness(options: HarnessOptions = {}): Harness {
@@ -180,6 +182,11 @@ function makeHarness(options: HarnessOptions = {}): Harness {
     createId: (prefix) => `${prefix}_${++idSeq}`,
     maxTasks: options.maxTasks,
   });
+  const missionManager = createMissionManager({
+    store,
+    now: () => 1234,
+    createId: (prefix) => `${prefix}_${++idSeq}`,
+  });
   const { factory, calls } = makeFactory(options.scripts ?? [scripted()]);
   const persisted: TaskPersistRecord[] = [];
   const settled: TaskPersistRecord[] = [];
@@ -190,6 +197,12 @@ function makeHarness(options: HarnessOptions = {}): Harness {
     taskManager: manager,
     persistTask: (record) => persisted.push(record),
     onTaskSettled: (record) => settled.push(record),
+    onMissionSettled: (record) => {
+      if (!record.missionId) return;
+      if (record.status === 'completed') missionManager.completeMission(record.missionId);
+      else if (record.status === 'failed') missionManager.cancelMission(record.missionId);
+    },
+    pushNotice: (notice) => store.pushNotice(notice),
     onTaskChunk: options.onTaskChunk ?? ((characterId, chunk) => chunks.push({ characterId, chunk })),
     expWeight: options.expWeight,
     provideContext: options.provideContext,
@@ -202,6 +215,7 @@ function makeHarness(options: HarnessOptions = {}): Harness {
   return {
     service,
     manager,
+    missionManager,
     store,
     calls,
     persisted,
@@ -344,6 +358,57 @@ describe('单任务执行：相位回报 + 全文落库 + 超时透传', () => {
     await flush();
     expect(h.store.getState().tasks![0].output).toBe('（任务完成，无文本输出）');
     expect(h.service.isBusy('ch-1')).toBe(false);
+  });
+});
+
+describe('mission 终态回报（task_076）', () => {
+  test('completed → completeMission；missionId 随每份快照落库；Notice 带来源与关联 id', async () => {
+    const h = makeHarness({
+      scripts: [scripted({ type: 'message', text: '完成' }, { type: 'done', exitCode: 0, text: '完成', sessionId: null })],
+    });
+    h.setState({
+      missions: [{ id: 'mission-1', title: '收复北门', phase: 'running', unitIds: [], createdAt: 1 }],
+    });
+
+    h.manager.assignTask({ characterId: 'ch-1', prompt: '侦察北门', missionId: 'mission-1' });
+    await flush();
+
+    expect(h.store.getState().missions[0].phase).toBe('done');
+    expect(h.persisted.map((record) => record.status)).toEqual(['queued', 'running', 'completed']);
+    expect(h.persisted.every((record) => record.missionId === 'mission-1')).toBe(true);
+    expect(h.store.getState().notices).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source: 'app/task-service', missionId: 'mission-1', level: 'info' }),
+    ]));
+  });
+
+  test('failed → 既有 cancel 转移（cancelled，中止语义），Notice 同样关联 mission', async () => {
+    const h = makeHarness({
+      scripts: [scripted({ type: 'error', message: '超时', code: 'timeout' })],
+    });
+    h.setState({
+      missions: [{ id: 'mission-2', title: '守住西门', phase: 'running', unitIds: [], createdAt: 1 }],
+    });
+
+    h.manager.assignTask({ characterId: 'ch-1', prompt: '增援西门', missionId: 'mission-2' });
+    await flush();
+
+    expect(h.store.getState().tasks![0].status).toBe('failed');
+    expect(h.store.getState().missions[0].phase).toBe('cancelled');
+    expect(h.store.getState().notices).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source: 'app/task-service', missionId: 'mission-2', level: 'warn' }),
+    ]));
+  });
+
+  test('无 missionId 的普通任务保持原行为：快照无关联键，不发 mission Notice', async () => {
+    const h = makeHarness({
+      scripts: [scripted({ type: 'done', exitCode: 0, text: '完成', sessionId: null })],
+    });
+    assign(h, '普通任务');
+    await flush();
+
+    expect(h.store.getState().tasks![0].status).toBe('completed');
+    expect(h.persisted.every((record) => record.missionId === undefined)).toBe(true);
+    expect(h.store.getState().notices.some((notice) => notice.source === 'app/task-service')).toBe(false);
   });
 });
 

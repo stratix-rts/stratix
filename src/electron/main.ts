@@ -558,6 +558,9 @@ function setupIPC() {
       if (record?.pipelineId != null && (typeof record.pipelineId !== 'string' || record.pipelineId.length > 200)) {
         return { ok: false, error: 'bad pipelineId' };
       }
+      if (record?.missionId != null && (typeof record.missionId !== 'string' || record.missionId.length > 200)) {
+        return { ok: false, error: 'bad missionId' };
+      }
       if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
       const db = getDatabase().getDatabase();
       ensureCharacterTasksTable(db);

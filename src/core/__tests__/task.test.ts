@@ -547,11 +547,11 @@ describe('命令闭环：task.assign 经真 runtime 落地', () => {
     const states: WorldState[] = [];
     const off: Unsubscribe = onState((state) => states.push(state));
 
-    emitCommand({ type: 'task.assign', characterId: 'ch-1', prompt: '侦察北门' });
+    emitCommand({ type: 'task.assign', characterId: 'ch-1', prompt: '侦察北门', missionId: 'mission-1' });
 
     const final = store.getState();
     expect(final.tasks).toHaveLength(1);
-    expect(final.tasks![0]).toMatchObject({ characterId: 'ch-1', prompt: '侦察北门', status: 'queued' });
+    expect(final.tasks![0]).toMatchObject({ characterId: 'ch-1', prompt: '侦察北门', status: 'queued', missionId: 'mission-1' });
     expect(states.length).toBeGreaterThan(0); // store 订阅广播了（runtime 的职责）
     expect(final.units[0].status).toBe('idle'); // queued 不改忙闲，running 才 busy
 
