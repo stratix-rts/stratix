@@ -95,6 +95,11 @@ export const MCP_ERROR_CATALOG: Readonly<Record<McpErrorCode, Omit<McpErrorPaylo
     retryable: true,
     hint: '等在办编组任务收尾后重试',
   },
+  mission_terminal: {
+    message: '编组任务已收尾，不再接受该操作',
+    retryable: false,
+    hint: '用 stratix_mission_status 看当前相位；终态任务不改写历史，需要重开就新建一条',
+  },
   illegal_transition: {
     message: '状态机拒绝该迁移',
     retryable: false,

@@ -47,13 +47,13 @@ describe('MCP 工具注册表', () => {
     expect(first).toEqual(second);
   });
 
-  it('第一期八件工具的返回顺序与注册顺序一致', () => {
+  it('工具面返回顺序与注册顺序一致（顺序写在工具自己的 order 字段里）', () => {
     const registry = buildToolRegistry(DEFAULT_MCP_TOOLS);
     const registered = DEFAULT_MCP_TOOLS.map((tool) => tool.name);
     expect(registry.listTools().map((tool) => tool.name)).toEqual(registered);
   });
 
-  it('第一期工具面按规范 §2 的条目号返回（八件，顺序固定）', () => {
+  it('工具面按清单位次返回（九件，顺序固定）', () => {
     const registry = buildToolRegistry(DEFAULT_MCP_TOOLS);
     expect(registry.listTools().map((tool) => tool.name)).toEqual([
       'stratix_world_snapshot', // §2.1
@@ -62,9 +62,21 @@ describe('MCP 工具注册表', () => {
       'stratix_task_cancel', //    §2.4
       'stratix_mission_create', // §2.5
       'stratix_mission_status', // §2.6
+      'stratix_mission_checkpoint', // §2.9（位次插在 mission 域内）
       'stratix_chat_send', //      §2.7
       'stratix_registry', //      §2.8
     ]);
+  });
+
+  it('新工具插在 mission_status 之后、registry 之前（mission 域聚拢，既有工具相对次序不变）', () => {
+    const registry = buildToolRegistry(DEFAULT_MCP_TOOLS);
+    const names = registry.listTools().map((tool) => tool.name);
+    expect(names.indexOf('stratix_mission_checkpoint')).toBe(
+      names.indexOf('stratix_mission_status') + 1
+    );
+    expect(names.indexOf('stratix_mission_checkpoint')).toBeLessThan(
+      names.indexOf('stratix_registry')
+    );
   });
 
   it('没有显式排序位的工具排在有排序位的之后，仍按 name 码位序（兜底口径）', () => {

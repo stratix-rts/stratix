@@ -1,9 +1,10 @@
 # Stratix MCP 接口设计规范（第一期工具面 + 扩展规范）
 
-> **状态**：第一期冻结（Spec v1.0）　**性质**：规范文档（不含实现代码）
+> **状态**：第一期冻结（Spec v1.1）　**性质**：规范文档（不含实现代码）
 > **适用范围**：Stratix 对外提供的 MCP server 及其工具面（tool surface）
 > **取代**：`docs/MCP_SERVER_DESIGN.md`（v2 Zone 时代草案 —— Zone 已按 `docs/REFACTOR_PLAN_V3.md` D5 决策砍掉，其中 `stratix.list_zones` 等工具面不再成立）
 > **维护责任**：见 [§5.4](#54-规范文档的维护责任)
+> **版本演进**：见 [§5.5](#55-版本演进记录只加不删)（只加不删 —— 每一行变更都追加，旧行不改不删）
 
 ---
 
@@ -11,10 +12,10 @@
 
 - [0. 设计前提](#0-设计前提)：[0.1 消费者与心智模型](#01-消费者与心智模型)｜[0.2 权威依据](#02-权威依据)｜[0.3 范围与非目标](#03-范围与非目标)｜[0.4 术语](#04-术语)
 - [1. 工具设计五原则](#1-工具设计五原则)：[1.1 动词 + 资源命名，单动作工具](#11-原则一动词--资源命名单动作工具)｜[1.2 合并发生在工具内部](#12-原则二合并发生在工具内部)｜[1.3 返回 meaningful context](#13-原则三返回-meaningful-context)｜[1.4 token 效率](#14-原则四token-效率)｜[1.5 描述工程](#15-原则五描述工程)
-- [2. 第一期工具面](#2-第一期工具面)：[2.0 通用约定](#20-通用约定)｜[2.1 world_snapshot](#21-stratix_world_snapshot)｜[2.2 task_assign](#22-stratix_task_assign)｜[2.3 task_status](#23-stratix_task_status)｜[2.4 task_cancel](#24-stratix_task_cancel)｜[2.5 mission_create](#25-stratix_mission_create)｜[2.6 mission_status](#26-stratix_mission_status)｜[2.7 chat_send](#27-stratix_chat_send)｜[2.8 registry](#28-stratix_registry)
+- [2. 第一期工具面](#2-第一期工具面)：[2.0 通用约定](#20-通用约定)｜[2.1 world_snapshot](#21-stratix_world_snapshot)｜[2.2 task_assign](#22-stratix_task_assign)｜[2.3 task_status](#23-stratix_task_status)｜[2.4 task_cancel](#24-stratix_task_cancel)｜[2.5 mission_create](#25-stratix_mission_create)｜[2.6 mission_status](#26-stratix_mission_status)｜[2.7 chat_send](#27-stratix_chat_send)｜[2.8 registry](#28-stratix_registry)｜[2.9 mission_checkpoint](#29-stratix_mission_checkpoint)
 - [3. 一致性铁律](#3-一致性铁律)：[3.1 投影而非新功能层](#31-投影而非新功能层)｜[3.2 状态机约束](#32-状态机约束对-mcp-同样生效)｜[3.3 不暴露的能力](#33-mcp-不暴露的能力)｜[3.4 只读与写的分界](#34-只读面与写面的分界)
 - [4. 扩展规范](#4-扩展规范)：[4.1 工具注册表架构](#41-工具注册表架构)｜[4.2 域前缀与命名位](#42-域前缀与命名位)｜[4.3 新工具上线流程](#43-新工具提案到上线的流程)｜[4.4 MCP server 接入方式](#44-mcp-server-的接入方式)
-- [5. 版本与演进](#5-版本与演进)：[5.1 变更原则](#51-工具面变更原则)｜[5.2 重命名与废弃](#52-重命名与废弃)｜[5.3 变更分类](#53-变更分类与流程)｜[5.4 维护责任](#54-规范文档的维护责任)
+- [5. 版本与演进](#5-版本与演进)：[5.1 变更原则](#51-工具面变更原则)｜[5.2 重命名与废弃](#52-重命名与废弃)｜[5.3 变更分类](#53-变更分类与流程)｜[5.4 维护责任](#54-规范文档的维护责任)｜[5.5 演进记录](#55-版本演进记录只加不删)
 - [附录](#附录-a返回信封与错误码总表)：[A 信封与错误码](#附录-a返回信封与错误码总表)｜[B description 模板](#附录-bdescription-写作模板)｜[C 评审清单](#附录-c新工具评审清单)
 
 ---
@@ -48,6 +49,8 @@ Stratix 是本地 agent 团队指挥台：角色绑定 CLI agent（Claude Code /
 ### 0.4 术语
 
 **域（domain）** = 命名空间与工具名前缀（`world` / `task` / `mission` / `chat` / `registry`，未来的 `zone` / `pipeline` …）；**动作（verb）** = 工具做的那个动作（取自受控词表 `list` / `get` / `create` / `assign` / `send` / `cancel` / `snapshot` …）；**资源（resource）** = 动作作用的实体（`task` / `mission` / `character` / `world`）；**受理回执** = 写操作成功后返回的"状态句"（标识 + 状态 + 下一步查法）；**通道（channel）** = 调用进来的通路（`ui` / `mcp` / `script` / `agent`，进审计用）。
+
+**依赖解锁（dependency unlock）** = 某条编组任务的**前置任务全部进入终态**（`done` / `cancelled`）后，这条任务**变为可被确认**。解锁**不是新相位** —— 真相在相位上，判定现算即得（`isMissionUnlocked`）；"解锁"只是"允许确认"的结论，且**不自动确认**（谁来确认仍需显式动作）。**brief（任务正文契约）** = 挂在编组任务上的结构化正文（需求 / 验收标准 / 交付物 / 约束），是关于"这件事要做成什么样"的长期事实，与「派单 prompt」（派给执行者的一句话指令）分开。**检查点（checkpoint）** = 编组任务上的一条 **append-only 记账行**（这一刻发生了什么），**不改相位**，终态任务不再接受记账。
 
 ---
 
@@ -121,7 +124,9 @@ Stratix 是本地 agent 团队指挥台：角色绑定 CLI agent（Claude Code /
 
 **命名**：全部 `stratix_` 前缀 + `snake_case`，禁止 `stratix.` 点号分隔（点号不是合法标识符字符，且 MCP 生态惯例是下划线）。
 
-**工具清单的确定性顺序**：`tools/list` 按工具名**字典序**稳定返回。不排序或按注册顺序排会让客户端提示词缓存随服务重启抖动 —— 顺序稳定是缓存友好的前提，也是 MCP 分页游标语义的前提。
+**工具清单的确定性顺序**：`tools/list` 按每件工具自己的**排序位**（`ToolSpec.order` = 工具在清单里的位次）稳定返回；同位再按工具名**码位序**兜底（不用 `localeCompare` —— locale 相关排序跨环境不稳定）。不排序或按注册顺序排会让客户端提示词缓存随服务重启抖动 —— 顺序稳定是缓存友好的前提，也是 MCP 分页游标语义的前提。
+
+**排序位 ≠ 本文档的条目号**：两者**不再逐一对应**，是两套编号。条目号按「只加不删」递增（新条目永远追加在末尾，如 §2.9）；排序位按**域聚拢**（`mission` 域的工具挨在一起）。新增工具时：条目号取当前最大条目号 +1，排序位插进自己域的位置 —— 既有工具之间的相对次序不变。
 
 **返回信封**：统一信封，成功 `ok=true`；失败 `ok=false` 且 MCP 结果带 `isError=true`（业务失败），**协议级/参数级失败**走 JSON-RPC error（不设 `isError`）。完整定义见[附录 A](#附录-a返回信封与错误码总表)。
 
@@ -141,6 +146,7 @@ Stratix 是本地 agent 团队指挥台：角色绑定 CLI agent（Claude Code /
 | `MissionRejectionCode.empty-title` / `TaskRejectionCode.empty-prompt` / `prompt-too-long` | `invalid_arguments` |
 | `MissionRejectionCode.limit-exceeded` / `TaskRejectionCode.limit-exceeded` | `mission_capacity_exceeded` / `task_capacity_exceeded` |
 | `MissionRejectionCode.illegal-transition` / `MissionErrorCode.illegal-transition` | `illegal_transition` |
+| 终态拒绝（`appendMissionCheckpoint` 的终态分支，`src/core/mission/machine.ts`） | `mission_terminal` |
 | `TaskRejectionCode.not-found` | `task_not_found` |
 | `TaskRejectionCode.illegal-transition` / `TaskCancelOutcome.code='not-queued'` | `task_not_cancellable` |
 | `guardTaskCharacter` → `TASK_MSG_NO_PROFILE`（`src/app/services/task-service.ts`） | `unknown_character` |
@@ -317,7 +323,8 @@ Stratix 是本地 agent 团队指挥台：角色绑定 CLI agent（Claude Code /
 > **何时用**：需要多个角色协同完成一件事（一个写代码、一个审阅、一个出文档）。
 > **何时不用**：只派一个人 —— 用 `stratix_task_assign`；只想查现有编组任务 —— 用 `stratix_mission_status`。
 > **边界**：`units` 是战场单位 id 列表（可空；空 = 草稿任务，不会自己开工）。单位 id 不存在时**静默剔除**并在 `dropped_units` 里报数（不猜、不报错）。`auto_confirm=false` 时任务停在 `pending` 待确认 —— 第一期 MCP 不提供确认工具，确认留给 UI 面板裁决（core 口径：`confirm` 只认 `pending`）。编组任务上限 100 条，超限拒绝新建。
-> **错误**：`invalid_arguments`（title 为空或超长）/ `mission_capacity_exceeded`（可重试）/ `illegal_transition`。
+> **正文与依赖**：`brief` 是这条任务的结构化正文契约（`requirements` 需求 / `acceptance` 验收标准 / `deliverables` 交付物 / `constraints` 约束），四段皆可选，**只记不校验**（不会自动写进派单 prompt）。`depends_on` 是前置编组任务 id 列表（上限 32）：**带依赖的编组会在依赖满足前拒绝 `confirm`** —— 任务停在 `pending`，回执的 `blocked_by_dependencies` 报出还差哪几个前置（这是**正常结果**，不是失败：任务已建成，只是还不能开工）。
+> **错误**：`invalid_arguments`（title 为空或超长 / brief 段名非法或超长 / `depends_on` 超 32 条）/ `mission_capacity_exceeded`（可重试）/ `illegal_transition`。
 
 **inputSchema**
 
@@ -327,12 +334,26 @@ Stratix 是本地 agent 团队指挥台：角色绑定 CLI agent（Claude Code /
   "properties": {
     "title": { "type": "string", "minLength": 1, "maxLength": 200, "description": "任务标题。core 只校验非空，200 码点上限是 MCP 侧自设（防超长标题进状态广播）。" },
     "units": { "type": "array", "items": { "type": "string" }, "maxItems": 256, "description": "指派的战场单位 id 列表。上限 256（MAX_SELECTION_SIZE）。" },
-    "auto_confirm": { "type": "boolean", "default": true, "description": "true = 内部完成建任务→指派→接单开工（落到 running）；false = 停在 pending 待 UI 确认。" }
+    "auto_confirm": { "type": "boolean", "default": true, "description": "true = 内部完成建任务→指派→接单开工（落到 running）；false = 停在 pending 待 UI 确认。" },
+    "brief": {
+      "type": "object",
+      "properties": {
+        "requirements": { "type": "string", "maxLength": 500, "description": "需求：要做什么（做什么算满足需求）。" },
+        "acceptance": { "type": "string", "maxLength": 500, "description": "验收标准：怎样算做完 —— 这条任务\"算不算做完\"的判据。" },
+        "deliverables": { "type": "string", "maxLength": 500, "description": "交付物：交什么出来（文件 / 报告 / 结论）。" },
+        "constraints": { "type": "string", "maxLength": 500, "description": "约束：不能碰什么 / 必须怎么做。" }
+      },
+      "additionalProperties": false,
+      "description": "任务本身的结构化正文契约（四段皆可选；只记不校验，不会自动写进派单 prompt）。"
+    },
+    "depends_on": { "type": "array", "items": { "type": "string" }, "maxItems": 32, "description": "前置编组任务 id 列表（上限 32）。前置未收尾时本任务不被允许确认（core 守门）。" }
   },
   "required": ["title"],
   "additionalProperties": false
 }
 ```
+
+> brief 四段各 500 码点上限是 **MCP 侧自设**（与 title 的 200 码点同理）：正文随 `MissionView` 进状态全量广播，而编组任务上限 100 条 —— 四段无界的正文能把一次广播撑爆。
 
 **返回（成功）**
 
@@ -341,9 +362,28 @@ Stratix 是本地 agent 团队指挥台：角色绑定 CLI agent（Claude Code /
   "mission_id": "mission_1753..._1", "title": "重构路由层", "phase": "running", "auto_confirm_applied": true,
   "units": [ { "id": "unit_kimi", "name": "Kimi" }, { "id": "unit_codex", "name": "Codex" } ],
   "dropped_units": 0, "created_at": 1754000000000,
+  "brief_fields": [ "requirements", "acceptance" ],
+  "depends_on": [ "mission_1752..._1" ],
   "next": { "tool": "stratix_task_assign", "args": { "mission_id": "mission_1753..._1" }, "hint": "派具体任务时带上 mission_id，任务终态会自动回报到这条编组任务" },
   "poll": { "tool": "stratix_mission_status", "args": { "mission_id": "mission_1753..._1" } } } }
 ```
+
+**返回（成功 · 依赖未满足，`confirm` 被 core 拒绝）**
+
+```json
+{ "ok": true, "data": {
+  "mission_id": "mission_1753..._2", "title": "进攻北门", "phase": "pending", "auto_confirm_applied": false,
+  "units": [ { "id": "unit_codex", "name": "Codex" } ],
+  "dropped_units": 0, "created_at": 1754000000000,
+  "depends_on": [ "mission_1752..._1" ],
+  "blocked_by_dependencies": [ "mission_1752..._1" ],
+  "next": { "tool": "stratix_mission_status", "args": { "mission_id": "mission_1753..._2" }, "hint": "前置任务收尾后这条才能被确认（第一期 MCP 不提供确认工具，确认留给 UI 面板）" },
+  "poll": { "tool": "stratix_mission_status", "args": { "mission_id": "mission_1753..._2" } } } }
+```
+
+- `auto_confirm_applied` 的口径是"**auto_confirm 真的生效了吗**"（落到 `running` 才算生效）—— 依赖未满足时它是 `false`，不糊报"已自动开工"。
+- `brief_fields` 只报**记了哪几段**（段名列表）：正文是调用方刚发来的，原样回灌是浪费上下文（§1.4）。
+- `depends_on` 回**core 实际记下的**那一份（归一后：去重 / 丢自依赖 / 截断到 32）。
 
 **映射**（一次调用内部串起三步，见 §1.2）：
 
@@ -352,7 +392,7 @@ mission.create ──▶ mission.assign ──▶ mission.confirm(accept)
                                          └─ core 内部合并 decide + start → running
 ```
 
-对应 `HudCommand` 的 `mission.create` / `mission.assign` / `mission.confirm`（`src/core/types.ts` 第 1009–1016 行）。
+对应 `HudCommand` 的 `mission.create` / `mission.assign` / `mission.confirm`（`src/core/types.ts` 第 1009–1016 行）。`brief` / `depends_on` 随 `mission.create` 命令透传给 core（`mission.create` 的载荷字段 `brief` / `dependsOn`），归一（trim / 丢空段 / 去重 / 丢自依赖）在 core 的 `machine.ts` 里做 —— MCP 不另写一份规则。
 
 ### 2.6 `stratix_mission_status`
 
@@ -460,6 +500,47 @@ mission.create ──▶ mission.assign ──▶ mission.confirm(accept)
 
 **映射**：只读 `WorldState.detectedAgents` / `WorldState.characters` / `WorldState.units`（`src/core/types.ts`）。
 
+### 2.9 `stratix_mission_checkpoint`
+
+> **排序位**：第 7 位（插在 `mission_status` 之后、`registry` 之前 —— `mission` 域的工具聚在一起；条目号 §2.9 按「只加不删」追加在末尾）。
+
+**description**
+
+> 往一条编组任务上记一条检查点 —— append-only 的一行记账（这一刻发生了什么）。
+> **何时用**：长任务推进过程中留下可追溯的痕迹 —— 派了谁、卡在哪一步、阶段性结论是什么。
+> **何时不用**：想写任务本身的契约（需求 / 验收标准 / 交付物）—— 那是 `brief`（`stratix_mission_create` 的 `brief` 段），不是记账；只想看任务当前相位 —— 用 `stratix_mission_status`。
+> **边界**：记账**不改相位**（`draft` / `pending` / `confirmed` / `running` 都能记）；终态（`done` / `cancelled`）拒绝，回 `mission_terminal`（终态不改写历史，与 core 的终态铁律同口径）。`note` 上限 500 码点（MCP 侧自设，防超长文本进状态广播）；每条任务最多留 64 条（core 的 `MAX_MISSION_CHECKPOINTS`，超限丢最旧）。记账是**静默**的（成功与否都不发通知 —— 记账是高频后台动作，逐条通知会冲垮通知队列）。
+> **错误**：`mission_not_found`（任务不存在）/ `mission_terminal`（任务已收尾）/ `invalid_arguments`（`note` 为空或超长）。
+
+**inputSchema**
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "mission_id": { "type": "string", "minLength": 1, "description": "编组任务 id（见 stratix_mission_status）。" },
+    "note": { "type": "string", "minLength": 1, "maxLength": 500, "description": "这一刻发生了什么（一行记账）。上限 500 码点（MCP 侧自设）。" }
+  },
+  "required": ["mission_id", "note"],
+  "additionalProperties": false
+}
+```
+
+**返回（成功）**
+
+```json
+{ "ok": true, "data": {
+  "mission_id": "mission_1753..._1", "title": "重构路由层", "phase": "running",
+  "note": "派两人出门，先探北门", "at": 1754000000000,
+  "checkpoint_count": 1, "checkpoint_limit": 64,
+  "next": { "tool": "stratix_task_assign", "args": { "mission_id": "mission_1753..._1" }, "hint": "派具体任务时带上 mission_id，任务终态会自动回报到这条编组任务" },
+  "poll": { "tool": "stratix_mission_status", "args": { "mission_id": "mission_1753..._1" } } } }
+```
+
+**映射**：`HudCommand` 的 `mission.checkpoint`（`src/core/types.ts`）→ core 的 `mission.checkpointMission`（追加一条 `{ at, note }`，不改相位，终态由 core 拒绝）。**回执自己核实**：core 的记账是**静默**的（成功与否都不发通知），所以工具在命令之后**回读状态**核对这条记账真的落上了 —— 没落上就如实报 `internal_error`，绝不假装成功（与 `stratix_mission_create` 的"回读核对"同一口径）。
+
+**已知缺口（读侧）**：只读面暂未暴露 `checkpoints` 全量 —— 模型能拿到**计数**（本工具回执）与**相位**，但读不到历史条目全文。补齐它要动 `stratix_mission_status` 的返回形状（§5.1 的"加参数优于改语义"允许加字段，但那是既有工具的契约变更，留待与其它读面需求一并评审）。
+
 ---
 
 ## 3. 一致性铁律
@@ -484,8 +565,9 @@ mission.create ──▶ mission.assign ──▶ mission.confirm(accept)
 |------|---------|-----------|
 | 任务取消只认 `queued`，且不杀在跑的任务 | `core/task/machine.ts` 的 `cancel` 分支 | `task_not_cancellable` + 回当前相位 |
 | 编组任务确认只认 `pending` | `core/mission/machine.ts` 的 `decide` 分支 | `illegal_transition` |
+| 带依赖的编组任务在**依赖满足前不被允许确认** | `core/mission/machine.ts` 的 `findMissingDependencies` + `core/mission/manager.ts` 的 confirm 守门 | `stratix_mission_create` 的 `confirm` 被拒 → 任务停在 `pending`，回执 `blocked_by_dependencies` 报出还差哪几个（**不是失败**：任务已建成） |
 | **编组任务只有 `running` 才能被回报完成** | `core/mission/machine.ts` 的 `complete` 分支（仅认 `running`） | 不存在"直接置完成"的 MCP 工具；完成只能由 `running → done` 到达 |
-| 终态不改写历史 | 两个 machine 的终态守卫 | 重复取消 / 重复回报一律拒绝 |
+| 终态不改写历史 | 两个 machine 的终态守卫 | 重复取消 / 重复回报一律拒绝；终态任务不接受检查点记账 → `mission_terminal` |
 | 失败不自动重试 | `core/task/machine.ts`（无 retry 动作） | 重派 = 新的一次 `stratix_task_assign` |
 | 队列/历史上限 | `MAX_TASKS=100` / `MAX_MISSIONS=100` / `MAX_CHARACTERS=64` | 满则拒绝并回 `*_capacity_exceeded`，绝不静默挤掉在办条目 |
 
@@ -504,7 +586,7 @@ mission.create ──▶ mission.assign ──▶ mission.confirm(accept)
 ### 3.4 只读面与写面的分界
 
 - **只读工具**（`stratix_world_snapshot` / `stratix_task_status` / `stratix_mission_status` / `stratix_registry`）：读投影，无副作用，可随时调用、可并发调用。
-- **写工具**（`stratix_task_assign` / `stratix_task_cancel` / `stratix_mission_create` / `stratix_chat_send`）：产生状态迁移，须遵守 §3.2 的状态机约束。
+- **写工具**（`stratix_task_assign` / `stratix_task_cancel` / `stratix_mission_create` / `stratix_mission_checkpoint` / `stratix_chat_send`）：产生状态迁移（或记账写入），须遵守 §3.2 的状态机约束。
 
 **幂等要求**：同一个写调用重复发出，第二次应被状态机以明确错误码拒绝（`illegal_transition` / `task_not_cancellable`），**不得产生第二个实体**。MCP 不提供"幂等键"机制 —— 重复调用产生重复实体的风险，由"模型用回执里的 id 去查、去取消"来消解，而不是靠服务端猜。
 
@@ -537,11 +619,11 @@ src/stratix-gateway/mcp/
 └── tools/         # world.ts · task.ts · mission.ts · chat.ts · registry.ts（按域一文件）
 ```
 
-**注册表的确定性**：`tools/list` 按 `name` 字典序返回（不是注册顺序、不是文件顺序）。顺序稳定 = 客户端提示词缓存稳定。
+**注册表的确定性**：`tools/list` 按每件工具自己的**排序位**（`ToolSpec.order`）返回（不是注册顺序、不是文件顺序）；同位再按 `name` 码位序兜底。顺序稳定 = 客户端提示词缓存稳定。排序位与本文档条目号是两套编号（见 §2.0）。
 
 ### 4.2 域前缀与命名位
 
-**已占用域**（第一期）：`world`（`stratix_world_snapshot`）、`task`（`_assign` / `_status` / `_cancel`）、`mission`（`_create` / `_status`）、`chat`（`_send`）、无域（`stratix_registry`）。
+**已占用域**（第一期）：`world`（`stratix_world_snapshot`）、`task`（`_assign` / `_status` / `_cancel`）、`mission`（`_create` / `_status` / `_checkpoint`）、`chat`（`_send`）、无域（`stratix_registry`）。
 
 **预留命名位**：
 
@@ -553,6 +635,8 @@ src/stratix-gateway/mcp/
 | `mission`（扩展位） | `stratix_mission_confirm` | 人工确认编组任务（第一期确认权留给 UI） |
 
 **动作词受控表**：新增工具优先取自 `list` / `get` / `create` / `update` / `assign` / `send` / `cancel` / `start` / `status` / `snapshot` / `search`。确需新动词时先在本节登记再用 —— 动词词表膨胀会让"同类工具"失去可预测性。
+
+**已登记的扩展动词**：`checkpoint`（`stratix_mission_checkpoint`，§2.9）—— 在一条编组任务上追加一条 append-only 记账行（不改相位）。登记理由：它是"写一条记账"这一个动作，与 `create`（立任务）、`assign`（派活）都不是同一件事；不登记就得用 `update` 硬套，而 `update` 的语义是"改字段"，会把"只追加不改写"的记账语义说糊。
 
 ### 4.3 新工具提案到上线的流程
 
@@ -625,6 +709,14 @@ src/stratix-gateway/mcp/
 | 版本号 | 本文档头部 Spec 版本；工具面发生**破坏性**变更时主版本 +1（破坏性变更按 §5.2 走过渡期，实际很少发生） |
 | 冲突裁决 | 文档与实现不一致时以**代码**为准并**立刻修文档** —— 文档撒谎比文档缺失更贵 |
 
+### 5.5 版本演进记录（只加不删）
+
+本表**只追加**：每次工具面变更**新增一行**，旧行不改、不删、不重写（§5.1「只加不删」在文档层的自证 —— 演进史本身也是一段只增不改的历史）。本表从 v1.1 起建立；v1.0 之前的工具面变更（第一期八件工具的实现）没有逐条记录，其历史以 git commit 为准（`f43d005` 规范初稿 / `3baf559` 骨架 / `bf9a78b` 八工具齐备）。
+
+| 版本 | 日期 | 变更 | 兼容性 |
+|------|------|------|--------|
+| v1.1 | 2026-11-01 | **新增工具** `stratix_mission_checkpoint`（§2.9，记一条 append-only 检查点）；**新增可选参数** `stratix_mission_create` 的 `brief`（四段结构化正文）与 `depends_on`（前置任务链，§2.5）；**新增错误码** `mission_terminal`（附录 A）；**新增术语** 依赖解锁 / brief / 检查点（§0.4）；`tools/list` 顺序改为按**排序位**（§2.0），新工具插在 `mission_status` 之后、`registry` 之前（既有工具之间的相对次序不变） | ✅ 纯增量：既有 8 件工具的名字、参数、语义与缺省行为**均未变**（`brief` / `depends_on` 缺省即"裸任务"，与 v1.0 逐字节一致）；`auto_confirm_applied` 的口径在**新增的依赖未满足分支**上才出现差异（`false` = auto_confirm 没能生效），v1.0 的三条既有路径取值不变 |
+
 ---
 
 ## 附录 A：返回信封与错误码总表
@@ -656,6 +748,7 @@ src/stratix-gateway/mcp/
 | `task_capacity_exceeded` | 任务队列已满（100） | ✅ | `TaskRejectionCode.limit-exceeded` |
 | `mission_not_found` | 编组任务 id 不存在 | ❌ | `MissionRejectionCode.not-found` |
 | `mission_capacity_exceeded` | 编组任务数已满（100） | ✅ | `MissionRejectionCode.limit-exceeded` |
+| `mission_terminal` | 编组任务已收尾（done / cancelled），不再接受该操作 | ❌ | 终态拒绝（`appendMissionCheckpoint` 的终态分支） |
 | `illegal_transition` | 状态机拒绝该迁移 | ❌ | `MissionErrorCode.illegal-transition` |
 | `internal_error` | 内部异常 | ✅ | 未归类的异常 |
 

@@ -13,7 +13,7 @@
 import { McpToolError, fail, toToolResult } from './envelope';
 import { buildToolRegistry, type ToolRegistry } from './registry';
 import { chatSendTool } from './tools/chat';
-import { missionCreateTool, missionStatusTool } from './tools/mission';
+import { missionCreateTool, missionCheckpointTool, missionStatusTool } from './tools/mission';
 import { registryTool } from './tools/registry';
 import { taskAssignTool, taskCancelTool, taskStatusTool } from './tools/task';
 import { worldSnapshotTool } from './tools/world';
@@ -42,7 +42,7 @@ export const JSON_RPC_ERRORS = {
 export interface McpServerOptions {
   /** 数据面端口（读世界态 / 投命令 / 读全文输出 / 跑一轮对话）。 */
   readonly host: McpHost;
-  /** 工具注册表；缺省 = 第一期八件工具（按规范 §2 条目号注册）。 */
+  /** 工具注册表；缺省 = 全套九件工具（按清单位次注册）。 */
   readonly registry?: ToolRegistry;
   /** serverInfo（握手应答里回给 client）。 */
   readonly serverInfo?: { readonly name: string; readonly version: string };
@@ -56,21 +56,25 @@ export interface McpServer {
 }
 
 /**
- * 第一期工具面（八件，按**规范 §2 的条目号**注册 —— tools/list 的返回序与之一致）。
+ * 工具面（九件，按**清单位次**注册 —— tools/list 的返回序与之一致）。
  *
- * why 注册序 = 规范序：tools/list 的顺序是**客户端提示词缓存**的一部分，抖动会让缓存失效。
- * 顺序写在每件工具自己的 `order` 字段里（= 规范条目号），注册表按它排序；
+ * why 注册序 = 清单序：tools/list 的顺序是**客户端提示词缓存**的一部分，抖动会让缓存失效。
+ * 顺序写在每件工具自己的 `order` 字段里（= 工具在清单里的位次），注册表按它排序；
  * 这样顺序是工具的**数据**，而不是「谁在哪个文件里先写的」这种随时会被人挪动的偶然。
+ *
+ * 位次按**域聚拢**（mission 域的工具挨在一起）；它与规范文档的条目号（§2.x）不再逐一对应 ——
+ * 文档条目号按「只加不删」递增（新条目永远追加在末尾），清单位次按域聚拢，两者是两套编号。
  */
 export const DEFAULT_MCP_TOOLS: readonly ToolSpec[] = [
-  worldSnapshotTool, //  §2.1
-  taskAssignTool, //     §2.2
-  taskStatusTool, //     §2.3
-  taskCancelTool, //     §2.4
-  missionCreateTool, //  §2.5
-  missionStatusTool, //  §2.6
-  chatSendTool, //       §2.7
-  registryTool, //       §2.8
+  worldSnapshotTool, //    §2.1
+  taskAssignTool, //       §2.2
+  taskStatusTool, //       §2.3
+  taskCancelTool, //       §2.4
+  missionCreateTool, //    §2.5
+  missionStatusTool, //    §2.6
+  missionCheckpointTool, // §2.9（位次插在 mission 域内）
+  chatSendTool, //         §2.7
+  registryTool, //         §2.8
 ];
 
 function success(id: JsonRpcId, result: unknown): JsonRpcResponse {
@@ -213,7 +217,7 @@ export function createMcpServer(options: McpServerOptions): McpServer {
 }
 
 /**
- * 装配默认 server（八件工具 + 调用方给的数据面端口）。
+ * 装配默认 server（九件工具 + 调用方给的数据面端口）。
  * host 由组合根注入（生产 = context.ts 的 createCoreMcpHost；单测 = 隔离的 store / dispatcher）。
  */
 export function createDefaultMcpServer(host: McpHost): McpServer {

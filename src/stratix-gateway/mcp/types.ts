@@ -114,11 +114,14 @@ export interface ToolSpec {
   /** 是否只读（只读工具可被客户端缓存、可并发调用）。 */
   readonly readOnly: boolean;
   /**
-   * 工具清单里的排序位（= 规范 §2 的条目号，如 world_snapshot = 1、registry = 8）。
+   * 工具清单里的排序位（= 工具在 tools/list 里的位次，如 world_snapshot = 1、registry = 9）。
    *
    * why 显式数据而不是「按注册顺序」：注册顺序是**作者视角**（谁在哪个文件里先写的），
    * 一旦有人调整 import 次序，客户端提示词缓存就会跟着抖 —— 而抖动对客户端是隐形的故障。
    * 把顺序写成工具自己的字段，它就与代码结构解耦了。
+   *
+   * 位次按**域聚拢**（mission 域的工具挨在一起）。它与规范文档的条目号（§2.x）**不逐一对应**：
+   * 文档条目号按「只加不删」递增（新条目永远追加在末尾），清单位次按域聚拢 —— 两套编号各有各的职责。
    *
    * 缺省（不写）= 按 name 码位序排在有排序位的工具之后（registry.ts 的兜底口径），
    * 这样「只注册了几件工具」的场景（单测、第三方装配）依然拿到稳定顺序。
@@ -139,6 +142,13 @@ export type McpErrorCode =
   | 'task_capacity_exceeded'
   | 'mission_not_found'
   | 'mission_capacity_exceeded'
+  /**
+   * 编组任务已进终态（done / cancelled），该操作被拒。
+   * why 单列一码而不并进 illegal_transition：两类拒绝要给人不同的说法 ——
+   * 非法迁移是"这一步本来就不该做"，终态是"这件事已经收尾了"（core 的终态铁律：
+   * 终态不改写历史）。合并成一个码，模型分不清该重试还是该换条任务。
+   */
+  | 'mission_terminal'
   | 'illegal_transition'
   | 'internal_error';
 

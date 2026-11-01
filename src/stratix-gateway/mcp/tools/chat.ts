@@ -32,7 +32,9 @@ export const chatSendTool: ToolSpec = {
   name: 'stratix_chat_send',
   domain: 'chat',
   verb: 'send',
-  order: 7,
+  // 清单位次（§2 的条目号只作文档锚点，见 docs/MCP-SPEC.md §2.0）：
+  // mission 域新工具插进来后，chat 域整体后移一位 —— 既有工具之间的相对次序不变。
+  order: 8,
   description: [
     '给指定角色发一轮对话，等这一轮回复回来。',
     '何时用：提问、讨论、澄清需求 —— 需要来回对话而不是一次性交付。',
