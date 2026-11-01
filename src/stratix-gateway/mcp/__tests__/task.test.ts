@@ -1,6 +1,6 @@
 /**
- * 文件职责：`stratix_task_assign` / `stratix_task_status` 的单测 —— 受理回执、origin 标注、
- *   守门前置、include_output 两档。
+ * 文件职责：`stratix_task_assign` / `stratix_task_status` / `stratix_task_cancel` 的单测 ——
+ *   受理回执、origin 标注、守门前置、include_output 两档、排队取消的相位限制。
  * 输入：真实 core 运行时（createCoreRuntime + createStore）+ core 总线（emitCommand）。
  * 输出：jest 断言。
  * 禁止事项：
@@ -15,7 +15,7 @@ import { createTaskManager } from '../../../core/task';
 import type { WorldState } from '../../../core/types';
 import { createCoreMcpHost, type CoreMcpHostOptions } from '../context';
 import { McpToolError } from '../envelope';
-import { taskAssignTool, taskStatusTool } from '../tools/task';
+import { taskAssignTool, taskCancelTool, taskStatusTool } from '../tools/task';
 import type { McpHost } from '../types';
 
 function makeStore(overrides: Partial<WorldState> = {}): CoreStore {
@@ -81,6 +81,14 @@ interface StatusData {
   poll: { tool: string; args: { task_id: string } };
 }
 
+interface CancelData {
+  task_id: string;
+  status: string;
+  previous_status: string;
+  output: string;
+  poll: { tool: string; args: { task_id: string } };
+}
+
 async function callAssign(
   host: McpHost,
   args: Record<string, unknown>
@@ -97,6 +105,16 @@ async function callStatus(
 ): Promise<StatusData> {
   const result = await taskStatusTool.handler(args, host);
   const envelope = result.structuredContent as { ok: boolean; data: StatusData };
+  expect(envelope.ok).toBe(true);
+  return envelope.data;
+}
+
+async function callCancel(
+  host: McpHost,
+  args: Record<string, unknown>
+): Promise<CancelData> {
+  const result = await taskCancelTool.handler(args, host);
+  const envelope = result.structuredContent as { ok: boolean; data: CancelData };
   expect(envelope.ok).toBe(true);
   return envelope.data;
 }
@@ -308,5 +326,106 @@ describe('stratix_task_assign / stratix_task_status', () => {
     await expect(
       callAssign(host, { character: 'ch_kimi', prompt: 'x'.repeat(20001) })
     ).rejects.toBeInstanceOf(McpToolError);
+  });
+});
+
+describe('stratix_task_cancel', () => {
+  let store: CoreStore;
+  let stopRuntime: () => void;
+
+  beforeEach(() => {
+    store = makeStore();
+    const runtime = createCoreRuntime({ store });
+    stopRuntime = runtime.start();
+  });
+
+  afterEach(() => {
+    stopRuntime();
+  });
+
+  const makeHost = (overrides: Partial<CoreMcpHostOptions> = {}): McpHost =>
+    createCoreMcpHost({ store, dispatch: emitCommand, ...overrides });
+
+  it('queued 相位可取消：回执带落点、前相位与查法', async () => {
+    const host = makeHost();
+    const assigned = await callAssign(host, { character: 'ch_kimi', prompt: '派错了的单' });
+
+    const data = await callCancel(host, { task_id: assigned.task_id });
+    expect(data.task_id).toBe(assigned.task_id);
+    expect(data.status).toBe('cancelled');
+    expect(data.previous_status).toBe('queued');
+    expect(data.output).toBe('任务在排队时被取消');
+    expect(data.poll).toEqual({
+      tool: 'stratix_task_status',
+      args: { task_id: assigned.task_id },
+    });
+
+    // 真的取消了：core 世界态里的相位是 cancelled。
+    expect(store.getState().tasks?.find((task) => task.id === assigned.task_id)?.status).toBe(
+      'cancelled'
+    );
+  });
+
+  it('running 相位不可取消 → task_not_cancellable（不强杀在跑的任务）', async () => {
+    const host = makeHost();
+    const assigned = await callAssign(host, { character: 'ch_kimi', prompt: '在跑的单' });
+
+    // 走 core 状态机把任务推到 running（queued → running）。
+    const manager = createTaskManager({ store });
+    manager.startTask(assigned.task_id);
+
+    try {
+      await callCancel(host, { task_id: assigned.task_id });
+      throw new Error('应当抛错');
+    } catch (error) {
+      expect((error as McpToolError).code).toBe('task_not_cancellable');
+      expect((error as McpToolError).retryable).toBe(false);
+    }
+    // 状态没被改写。
+    expect(store.getState().tasks?.find((task) => task.id === assigned.task_id)?.status).toBe(
+      'running'
+    );
+  });
+
+  it('终态不可取消：重复取消被状态机拒绝（幂等要求）', async () => {
+    const host = makeHost();
+    const assigned = await callAssign(host, { character: 'ch_kimi', prompt: '取消两次的单' });
+    await callCancel(host, { task_id: assigned.task_id });
+
+    try {
+      await callCancel(host, { task_id: assigned.task_id });
+      throw new Error('应当抛错');
+    } catch (error) {
+      expect((error as McpToolError).code).toBe('task_not_cancellable');
+    }
+    // 不会造出第二个实体。
+    expect(store.getState().tasks).toHaveLength(1);
+  });
+
+  it('任务不存在 → task_not_found', async () => {
+    const host = makeHost();
+    try {
+      await callCancel(host, { task_id: 'task_ghost' });
+      throw new Error('应当抛错');
+    } catch (error) {
+      expect((error as McpToolError).code).toBe('task_not_found');
+    }
+  });
+
+  it('命令没人接管时如实报 internal_error（不假装取消成功）', async () => {
+    // 先用正常通道派一条单（真的落进状态），再换一条没人消费的通道去取消。
+    const assigned = await callAssign(makeHost(), { character: 'ch_kimi', prompt: '没人接的单' });
+
+    const deadHost = makeHost({ dispatch: () => { /* 无人消费 */ } });
+    try {
+      await callCancel(deadHost, { task_id: assigned.task_id });
+      throw new Error('应当抛错');
+    } catch (error) {
+      expect((error as McpToolError).code).toBe('internal_error');
+    }
+    // 任务仍在排队（没被"假装"取消）。
+    expect(store.getState().tasks?.find((task) => task.id === assigned.task_id)?.status).toBe(
+      'queued'
+    );
   });
 });

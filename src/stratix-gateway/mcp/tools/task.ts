@@ -1,13 +1,16 @@
 /**
- * 文件职责：`stratix_task_assign`（派单）与 `stratix_task_status`（查单）—— 角色任务域的两个工具。
- * 输入：assign = character / prompt / mission_id / timeout_ms / origin；status = task_id / include_output。
+ * 文件职责：`stratix_task_assign`（派单）/ `stratix_task_status`（查单）/ `stratix_task_cancel`（取消）
+ *   —— 角色任务域的三个工具。
+ * 输入：assign = character / prompt / mission_id / timeout_ms / origin；status = task_id / include_output；
+ *      cancel = task_id。
  * 输出：受理回执（标识 + 状态 + 查法 poll）或任务状态与结果摘要 / 全文。
  * 禁止事项：
  *   1. 绕过 core 总线直接写状态 —— 派单只发 HudCommand.task.assign，由 core 状态机裁决落库；
- *   2. 自己判"能不能派" —— 前置守门照抄 app 层 guardTaskCharacter 的同一份判定口径
- *      （角色在档 / 绑了 agent / CLI 已检出 / 不离线），**不改变 app 层出队时的裁决权**；
+ *   2. 自己判"能不能派" —— 前置守门走 common.ts 的 guardCharacter（与 app 层 guardTaskCharacter
+ *      同一份判定口径），**不改变 app 层出队时的裁决权**；
  *   3. 回显角色人设全文 —— 人设不进回执（那是角色自己的设定，不是这次派单的结果）；
- *   4. 把 origin 当鉴权凭据 —— origin 是审计留痕（调用方自称），不构成任何信任。
+ *   4. 把 origin 当鉴权凭据 —— origin 是审计留痕（调用方自称），不构成任何信任；
+ *   5. 在工具侧另写一套相位判定 —— 取消能不能成由 core 状态机裁决，工具只读回结果。
  */
 
 import { MAX_TASKS, MAX_TASK_PROMPT_LEN, MAX_TASK_SUMMARY_LEN } from '../../../core/types';
@@ -21,6 +24,8 @@ import {
 } from '../args';
 import { McpToolError, toToolResult } from '../envelope';
 import type { ToolSpec } from '../types';
+
+import { guardCharacter } from './common';
 
 /**
  * 执行期超时的生效值（毫秒）。
@@ -41,6 +46,7 @@ export const taskAssignTool: ToolSpec = {
   name: 'stratix_task_assign',
   domain: 'task',
   verb: 'assign',
+  order: 2,
   description: [
     '派一条角色任务：把一段自由文本指令交给指定角色，由该角色绑定的 CLI agent 执行，产出文本结果。',
     '何时用：需要某个角色干一件具体的事（写代码、查资料、审阅）。',
@@ -133,32 +139,7 @@ export const taskAssignTool: ToolSpec = {
     const state = host.getWorldState();
 
     // ── 前置守门（与 app 层 guardTaskCharacter 同一份判定口径；app 层出队时仍会再守一次）──
-    const character = state.characters.find((c) => c.id === characterId);
-    if (!character) {
-      throw new McpToolError('unknown_character', `未找到角色「${characterId}」的档案`, {
-        hint: '用 stratix_registry 查可用的角色 id',
-      });
-    }
-    if (!character.agentKind) {
-      throw new McpToolError('character_unbound', `角色「${character.name}」未绑定 CLI agent`, {
-        hint: '先在角色档案里绑定 agent，再派单',
-      });
-    }
-    const detected = (state.detectedAgents ?? []).some(
-      (agent) => agent.kind === character.agentKind && agent.installed
-    );
-    if (!detected) {
-      throw new McpToolError(
-        'agent_not_installed',
-        `角色「${character.name}」绑定的 CLI（${character.agentKind}）未被检出`,
-        { hint: '安装该 CLI 或换一个已装好的角色' }
-      );
-    }
-    if (state.units.some((unit) => unit.characterId === characterId && unit.online === false)) {
-      throw new McpToolError('character_offline', `角色「${character.name}」当前离线`, {
-        hint: '等 CLI 恢复在线后重新派单，或换一位在线角色',
-      });
-    }
+    const character = guardCharacter(state, characterId, 'assign');
     if ((state.tasks ?? []).length >= MAX_TASKS) {
       throw new McpToolError('task_capacity_exceeded', `任务队列已满（上限 ${MAX_TASKS}）`, {
         hint: '等在办任务收尾后重试',
@@ -213,6 +194,7 @@ export const taskStatusTool: ToolSpec = {
   name: 'stratix_task_status',
   domain: 'task',
   verb: 'status',
+  order: 3,
   description: [
     '读取一条角色任务的当前状态与结果摘要。',
     '何时用：派单后查进展；任务回报完成时取结果。',
@@ -290,5 +272,83 @@ export const taskStatusTool: ToolSpec = {
         },
       },
     });
+  },
+};
+
+export const taskCancelTool: ToolSpec = {
+  name: 'stratix_task_cancel',
+  domain: 'task',
+  verb: 'cancel',
+  order: 4,
+  description: [
+    '取消一条**排队中**的角色任务。',
+    '何时用：派错了单、任务不再需要，在它开跑之前叫停。',
+    '何时不用：任务已经在跑 —— 取消**不杀在跑的任务**，此时会返回 task_not_cancellable（在跑的任务只能等它跑完或失败）；',
+    '任务已终态 —— 同上，历史不改写。',
+    '边界：只有 queued 相位可取消；running / awaiting_approval / 终态一律拒绝并回当前相位。',
+    '取消不产生结果输出（output 恒为固定占位文案「任务在排队时被取消」）。',
+    '错误：task_not_found / task_not_cancellable。',
+  ].join('\n'),
+  inputSchema: {
+    type: 'object',
+    properties: {
+      task_id: { type: 'string', description: '任务 id（派单回执里给的那个）。' },
+    },
+    required: ['task_id'],
+    additionalProperties: false,
+  },
+  errors: ['task_not_found', 'task_not_cancellable', 'invalid_arguments'],
+  readOnly: false,
+  handler: (args, host) => {
+    const taskId = requireString(args, 'task_id');
+
+    // 存在性是**查**出来的（不是判出来的）：不在状态里就是 not-found。
+    const before = (host.getWorldState().tasks ?? []).find((task) => task.id === taskId);
+    if (!before) {
+      throw new McpToolError('task_not_found', `任务「${taskId}」不存在`, {
+        hint: '用 stratix_world_snapshot 确认任务 id',
+      });
+    }
+    const previousStatus = before.status;
+
+    // 相位裁决交给 core 状态机（core/task/machine.ts 的 cancel 分支：只认 queued）——
+    // 工具侧不另写一套判定，否则两套规则必然漂移。命令是同步的，投完就能读回结果。
+    host.dispatchCommand({ type: 'task.cancel', taskId });
+
+    const after = (host.getWorldState().tasks ?? []).find((task) => task.id === taskId);
+    if (!after) {
+      throw new McpToolError('internal_error', '取消后任务从状态里消失了（不应发生）', {
+        hint: '查服务端日志确认 core 运行时是否异常',
+      });
+    }
+    if (before.status === 'queued' && after.status === 'cancelled') {
+      return toToolResult({
+        ok: true,
+        data: {
+          task_id: after.id,
+          status: after.status,
+          previous_status: previousStatus,
+          output: after.output,
+          poll: {
+            tool: 'stratix_task_status',
+            args: { task_id: after.id },
+          },
+        },
+      });
+    }
+    if (after.status !== 'queued') {
+      // 状态机拒了（running / awaiting_approval / 终态）—— 如实回当前相位。
+      throw new McpToolError(
+        'task_not_cancellable',
+        `任务「${taskId}」当前是 ${after.status} 相位，只有排队中的任务可取消`,
+        { hint: '先查 stratix_task_status 看当前相位；在跑的任务只能等它跑完或失败' }
+      );
+    }
+    // 仍是 queued —— 排队中的任务被取消后必然变 cancelled，所以"没变"只可能是命令没人接管。
+    throw new McpToolError(
+      'internal_error',
+      '取消未落地：本进程没有 core 运行时接管这条命令',
+      { hint: '确认 Stratix 运行时在本进程已启动后再取消' }
+    );
   },
 };

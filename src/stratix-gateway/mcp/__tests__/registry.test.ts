@@ -47,10 +47,38 @@ describe('MCP 工具注册表', () => {
     expect(first).toEqual(second);
   });
 
-  it('第一期三件工具的返回顺序与注册顺序一致', () => {
+  it('第一期八件工具的返回顺序与注册顺序一致', () => {
     const registry = buildToolRegistry(DEFAULT_MCP_TOOLS);
     const registered = DEFAULT_MCP_TOOLS.map((tool) => tool.name);
     expect(registry.listTools().map((tool) => tool.name)).toEqual(registered);
+  });
+
+  it('第一期工具面按规范 §2 的条目号返回（八件，顺序固定）', () => {
+    const registry = buildToolRegistry(DEFAULT_MCP_TOOLS);
+    expect(registry.listTools().map((tool) => tool.name)).toEqual([
+      'stratix_world_snapshot', // §2.1
+      'stratix_task_assign', //    §2.2
+      'stratix_task_status', //    §2.3
+      'stratix_task_cancel', //    §2.4
+      'stratix_mission_create', // §2.5
+      'stratix_mission_status', // §2.6
+      'stratix_chat_send', //      §2.7
+      'stratix_registry', //      §2.8
+    ]);
+  });
+
+  it('没有显式排序位的工具排在有排序位的之后，仍按 name 码位序（兜底口径）', () => {
+    const registry = buildToolRegistry([
+      { ...stubTool('stratix_zzz_late') },
+      { ...stubTool('stratix_aaa_late') },
+      { ...stubTool('stratix_task_status'), order: 3 },
+    ]);
+
+    expect(registry.listTools().map((tool) => tool.name)).toEqual([
+      'stratix_task_status',
+      'stratix_aaa_late',
+      'stratix_zzz_late',
+    ]);
   });
 
   it('同名重复注册直接报错（工具名歧义必须当场暴露）', () => {

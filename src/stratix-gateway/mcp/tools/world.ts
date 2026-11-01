@@ -25,6 +25,8 @@ import {
 import { McpToolError, toToolResult } from '../envelope';
 import type { ToolSpec } from '../types';
 
+import { characterOnline } from './common';
+
 /** 快照可返回的四段（与 spec §2.1 的 filters.domains 词表一致）。 */
 const DOMAINS = ['units', 'missions', 'tasks', 'characters'] as const;
 type Domain = (typeof DOMAINS)[number];
@@ -175,16 +177,12 @@ function matchesCharacter(
 }
 
 /** 角色的在线位：看它的战场单位（缺省即在线；没有单位则 null —— 不编造）。 */
-function characterOnline(state: WorldState, characterId: string): boolean | null {
-  const unit = state.units.find((u) => u.characterId === characterId);
-  if (!unit) return null;
-  return unit.online !== false;
-}
 
 export const worldSnapshotTool: ToolSpec = {
   name: 'stratix_world_snapshot',
   domain: 'world',
   verb: 'snapshot',
+  order: 1,
   description: [
     '读取战场现状快照：当前在场的单位（agent）、在办与历史任务、角色名册。',
     '何时用：派单前确认"谁现在空闲"、判断某任务的进展、汇报当前战况。',
