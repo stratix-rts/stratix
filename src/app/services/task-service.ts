@@ -6,8 +6,10 @@
  * 输出：core TaskManager 的相位迁移调用（写 WorldState.tasks + 单位忙闲派生 + 再发事件）；
  *   任务落库回调（tasks 表：状态快照随事件落，**全文输出**随 complete 落 —— 状态里只有摘要）。
  * 禁止事项：
- *   1. import child_process / node-process / cli-transport 的**实现**文件 —— 本服务跑在渲染层
- *      bundle 里，子进程一律在 Electron 主进程（经 IPC 桥），这里只 import transport.ts 的纯类型；
+ *   1. import child_process / node-process / cli-transport 的**实现**文件 —— 本模块**不碰子进程**：
+ *      两种宿主（渲染进程：子进程在 Electron 主进程经 IPC 桥跑；service 进程：子进程在本进程跑，
+ *      见 service-split A2 / task_078）都由调用方注入 transport 工厂，本模块只 import
+ *      transport.ts 的纯类型；
  *   2. 在这里认识任何一家 CLI 的字段 —— 事件翻译在 adapters，这里只认公共 TransportEvent 词表；
  *   3. 引入新依赖 —— core 契约 + 注入端口，仅此而已；
  *   4. 自动重试失败任务 —— 规格⑤明确：failed 即终态，手动重派是 038 的 UI 动作（新任务）。
@@ -103,7 +105,10 @@
  * @since v3.16（task_037）；v3.18（task_039）追加终态副作用；v3.22（task_046）追加流转发端口；
  *   v3.23（task_047）追加取消的队列纪律（事件剔除 + 出队防御）；v3.24（task_048）追加成果物解析落列；
  *   v3.25（task_049）追加任务审批门（plan-first 挂起 / 批准续发 / 驳回落位）；
- *   v3.30（task_054）追加离线守门（units.online 位拦截 + toast 去重）与 transport 异常上报口。
+ *   v3.30（task_054）追加离线守门（units.online 位拦截 + toast 去重）与 transport 异常上报口；
+ *   v3.41（task_078 / service-split A2）本模块成为**两种宿主共用**的执行环实现 ——
+ *   渲染进程（transport 经 IPC 桥）与 service 进程（transport 直接 spawn 子进程）共用同一份
+ *   FIFO / 并发 1 / 守门 / 相位回报逻辑，两边只是 transport 工厂的来源不同。
  */
 
 import { emitWorldEvent, onWorldEvent } from '../../core/bus';
