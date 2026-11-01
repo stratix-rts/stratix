@@ -19,6 +19,9 @@
  *
  * 广播次数（perf）：一次命令通常只写一次 store（状态迁移 + 单位占用同步合并成同一次 setState），
  * 另加 store.pushNotice 自带的一次广播（与 agent-link 同一口径；通知队列本身受 MAX_NOTICES 约束）。
+ *
+ * @since v3.38（task_077）检查点（checkpoint）命令是**唯一的例外**：它**不发 Notice**
+ * （成功与失败都不发）—— 记账是高频后台动作，逐条通知会冲垮通知队列并盖掉该让人看见的消息。
  */
 
 import { worldStore, type CoreStore } from '../store';
@@ -27,12 +30,14 @@ import {
   MAX_SELECTION_SIZE,
   NOTICE_TTL_MS,
   type ConfirmDecision,
+  type MissionBrief,
   type MissionView,
   type NoticeLevel,
   type UnitView,
 } from '../types';
 
 import {
+  appendMissionCheckpoint,
   applyMissionAction,
   createMission as createMissionView,
   dropSettledMissions,
@@ -58,8 +63,16 @@ export interface MissionManagerOptions {
 
 export interface MissionManager {
   readonly store: CoreStore;
-  /** 立一条任务（指派名单非空即直接进入 pending 待确认）。失败返回 null 并上报 Notice。 */
-  createMission(input: { readonly title: string; readonly unitIds: readonly string[] }): MissionView | null;
+  /**
+   * 立一条任务（指派名单非空即直接进入 pending 待确认）。失败返回 null 并上报 Notice。
+   * @since v3.38（task_077）brief（结构化正文）与 dependsOn（前置任务 id）为可选透传。
+   */
+  createMission(input: {
+    readonly title: string;
+    readonly unitIds: readonly string[];
+    readonly brief?: MissionBrief;
+    readonly dependsOn?: readonly string[];
+  }): MissionView | null;
   /** 编组指派 / 改指派（unitIds 为空 = 收回指派，退回 draft）。 */
   assignMission(missionId: string, unitIds: readonly string[]): MissionView | null;
   /** 接收决策：accept 接单、reject 拒单（= cancelled）。 */
@@ -73,6 +86,13 @@ export interface MissionManager {
    * 免得回报落地时再回头改状态机 —— 迁移规则早写在 machine.ts 并有单测兜着。
    */
   completeMission(missionId: string): MissionView | null;
+  /**
+   * 追加一条检查点（@since v3.38，task_077）—— 静默记账：**不发 Notice**（成功与失败都不发）。
+   * why 静默：记账是高频后台动作，逐条通知会把通知队列冲垮、盖掉真正该让人看见的消息。
+   * 代价：调用方拿不到"记上了没有"的即时回执 —— 读方看 mission.checkpoints 即可。
+   * 返回 null = 没记上（任务不存在 / 已终态 / note 为空）。
+   */
+  checkpointMission(missionId: string, note: string): MissionView | null;
 }
 
 /**
@@ -143,7 +163,12 @@ class Manager implements MissionManager {
     this.maxMissions = options.maxMissions ?? MAX_MISSIONS;
   }
 
-  createMission(input: { readonly title: string; readonly unitIds: readonly string[] }): MissionView | null {
+  createMission(input: {
+    readonly title: string;
+    readonly unitIds: readonly string[];
+    readonly brief?: MissionBrief;
+    readonly dependsOn?: readonly string[];
+  }): MissionView | null {
     const title = input.title.trim();
     if (title.length === 0) {
       this.notify('warn', rejectionText('empty-title', this.maxMissions));
@@ -165,6 +190,9 @@ class Manager implements MissionManager {
         title,
         unitIds: assigned,
         createdAt: this.now(),
+        // @since v3.38（task_077）：结构化正文与依赖链原样透传（归一在 machine.ts 里做）。
+        brief: input.brief,
+        dependsOn: input.dependsOn,
       });
       outcome.mission = mission;
       outcome.droppedUnits = countUnique(input.unitIds) - assigned.length;
@@ -206,6 +234,34 @@ class Manager implements MissionManager {
 
   completeMission(missionId: string): MissionView | null {
     return this.finish(this.commit(missionId, [{ type: 'complete' }]));
+  }
+
+  /**
+   * 追加一条检查点（@since v3.38，task_077）—— 与其它命令不同：**全程静默**（不发 Notice）。
+   *
+   * 为什么不走 commit(actions)：checkpoint 不改相位（既不是迁移也不是回退），
+   * 硬塞成一种 MissionAction 会把"记账"混进"相位机"里、把终态拒绝与相位拒绝搅成一锅。
+   * 这里单独一条写入路径：找任务 → 交给 machine.ts 的 appendMissionCheckpoint 裁决
+   * （终态拒绝在那里判，这一条只管写库）。
+   *
+   * 只改 missions，不碰 units：相位没变 → 单位占用关系不变（syncUnitMissions 无事可做）。
+   */
+  checkpointMission(missionId: string, note: string): MissionView | null {
+    const trimmed = note.trim();
+    if (trimmed.length === 0) return null; // 空 note 不记账（静默丢弃）
+
+    const outcome: { mission?: MissionView } = {};
+    this.store.setState((state) => {
+      const index = state.missions.findIndex((mission) => mission.id === missionId);
+      if (index < 0) return state; // 任务不存在：静默（不打扰）
+      const step = appendMissionCheckpoint(state.missions[index], trimmed, this.now());
+      if (step.error || !step.changed) return state; // 终态：静默拒绝
+      const missions = state.missions.slice();
+      missions[index] = step.next;
+      outcome.mission = step.next;
+      return { ...state, missions };
+    });
+    return outcome.mission ?? null;
   }
 
   /**

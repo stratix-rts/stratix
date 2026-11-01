@@ -17,9 +17,23 @@
  *   - assign 允许重复执行（pending → pending = 改指派对象，仍待确认；assign(空) 从 pending 退回 draft = 收回指派）。
  *   - done / cancelled 是终态：任何动作都判非法，重复取消也不会二次改写历史。
  *   - decide 只能从 pending 出发：没指派不能确认（draft），已确认的不能重复确认（confirmed/running）。
+ *
+ * @since v3.38（task_077）新增三块**数据能力**（不动既有相位与转移）：
+ *   - 结构化正文（brief）：createMission 透传，落进 MissionView.brief；
+ *   - 检查点历史（checkpoints）：appendMissionCheckpoint 追加（终态拒绝），纯函数不碰 store；
+ *   - 依赖链（dependsOn）：createMission 透传 + isMissionUnlocked 判定（**只判定，不调度** ——
+ *     自动解锁是下一单的事，这一单只把"依赖"这件事变成可判定的纯函数）。
  */
 
-import { MAX_SELECTION_SIZE, type ConfirmDecision, type MissionPhase, type MissionView } from '../types';
+import {
+  MAX_MISSION_CHECKPOINTS,
+  MAX_MISSION_DEPENDENCIES,
+  MAX_SELECTION_SIZE,
+  type ConfirmDecision,
+  type MissionBrief,
+  type MissionPhase,
+  type MissionView,
+} from '../types';
 
 /** 迁移被拒的机器可读原因。HUD/单测据此分流，不解析错误字符串。 */
 export type MissionErrorCode =
@@ -83,23 +97,76 @@ function move(current: MissionView, phase: MissionPhase, patch: Partial<MissionV
   return { next: { ...current, ...patch, phase }, changed: true };
 }
 
+/** brief 的四段（契约词表见 types.ts 的 MissionBrief）。顺序即展示顺序。 */
+const BRIEF_FIELDS = ['requirements', 'acceptance', 'deliverables', 'constraints'] as const;
+
+/**
+ * 结构化正文归一：逐段 trim，丢掉空段；**全空则整体不落**（brief = undefined）。
+ * why 要归一：brief 是可选字段，调用方（HUD / MCP / 命令载荷）很可能传 `{ acceptance: '  ' }`
+ * 这种"看似有值其实是空"的壳。留着空串等于给状态塞噪声，还让"这条任务有没有验收标准"
+ * 这个判定变得含糊（空串既不是 undefined 也没有内容）。
+ */
+export function normalizeBrief(brief: MissionBrief | undefined): MissionBrief | undefined {
+  if (!brief) return undefined;
+  // 四段全是可选 → 局部用可变副本拼装（readonly 只约束"外部不能改"，拼装过程要能写）。
+  const next: { -readonly [K in keyof MissionBrief]?: string } = {};
+  for (const field of BRIEF_FIELDS) {
+    const raw = brief[field];
+    if (raw === undefined) continue;
+    const value = raw.trim();
+    if (value.length > 0) next[field] = value;
+  }
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
+/**
+ * 依赖链归一：去重 + 丢弃空 id + **丢弃自依赖** + 截断到 MAX_MISSION_DEPENDENCIES。
+ * why 丢自依赖：自己等自己 = 永远解不了锁的死结（isMissionUnlocked 对自依赖判 false，
+ * 那这条任务就永远出不来）。这种输入是调用方的错，不该由 core 默默收下变成一条死任务。
+ * why 要截断：依赖列表随状态全量广播，且判定时要逐条查表（见 isMissionUnlocked）。
+ */
+export function normalizeDependsOn(
+  dependsOn: readonly string[] | undefined,
+  selfId: string
+): string[] | undefined {
+  if (!dependsOn || dependsOn.length === 0) return undefined;
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const id of dependsOn) {
+    if (id.length === 0 || id === selfId || seen.has(id)) continue;
+    if (out.length >= MAX_MISSION_DEPENDENCIES) break;
+    seen.add(id);
+    out.push(id);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 /**
  * 新建任务。指派名单非空直接进入 pending（待确认）——「发起任务」与「新建任务」两条命令
  * （command-panel 的 selection 组 / global 组）因此共用这一个工厂，不需要调用方自己判相位。
+ *
+ * @since v3.38（task_077）brief / dependsOn 为**可选**透传：缺省时这两个键**不出现**在
+ *  MissionView 里（不是 undefined 值），裸任务的状态形状与过去完全一致。
  */
 export function createMission(input: {
   readonly id: string;
   readonly title: string;
   readonly unitIds: readonly string[];
   readonly createdAt: number;
+  readonly brief?: MissionBrief;
+  readonly dependsOn?: readonly string[];
 }): MissionView {
   const unitIds = normalizeUnitIds(input.unitIds);
+  const brief = normalizeBrief(input.brief);
+  const dependsOn = normalizeDependsOn(input.dependsOn, input.id);
   return {
     id: input.id,
     title: input.title,
     unitIds,
     createdAt: input.createdAt,
     phase: unitIds.length > 0 ? 'pending' : 'draft',
+    ...(brief ? { brief } : {}),
+    ...(dependsOn ? { dependsOn } : {}),
   };
 }
 
@@ -146,6 +213,66 @@ export function applyMissionAction(current: MissionView, action: MissionAction):
       return move(current, 'cancelled');
     }
   }
+}
+
+/**
+ * 追加一条检查点（@since v3.38，task_077）—— append-only 记账，**不改相位**。
+ *
+ * 规则：
+ *   - 任意非终态相位都可记（draft / pending / confirmed / running）；
+ *   - 终态（done / cancelled）拒绝：收尾后的任务不再改写历史（同 applyMissionAction 的终态铁律 ——
+ *     否则事件重放会造出第二份真相）。
+ *   - 超出 MAX_MISSION_CHECKPOINTS 时丢**最旧**的：最近的记账才有排查价值，
+ *     而检查点随 WorldState 全量广播，条数必须有界。
+ *
+ * 相位裁决放在本文件而不是 manager：manager.ts 有一条铁律"不在写入面判相位合法性"，
+ * 两处判定必然漂移。这里是纯函数，不碰 store / 时钟（at 由调用方给）。
+ */
+export function appendMissionCheckpoint(
+  current: MissionView,
+  note: string,
+  at: number
+): MissionTransition {
+  if (isTerminalPhase(current.phase)) return reject(current);
+  const checkpoints = [...(current.checkpoints ?? []), { at, note }];
+  const trimmed =
+    checkpoints.length > MAX_MISSION_CHECKPOINTS
+      ? checkpoints.slice(checkpoints.length - MAX_MISSION_CHECKPOINTS)
+      : checkpoints;
+  return { next: { ...current, checkpoints: trimmed }, changed: true };
+}
+
+/**
+ * 依赖判定（@since v3.38，task_077）：这条任务的前置条件是否都已满足。
+ *
+ * 规则：
+ *   - 无依赖 → 已解锁（true）；
+ *   - 依赖全部处于终态（done 或 **cancelled**）→ 已解锁。
+ *     why cancelled 也算解锁：被叫停的前置任务同样"不会再来拖住这条"，
+ *     若把 cancelled 算未解锁，前置一旦作废整条链就锁死（死锁）。
+ *   - 存在**在办**（非终态）的依赖 → 未解锁（false）；
+ *   - 自依赖 → 恒为 false（自己等自己永远等不到）；
+ *   - 依赖 id 在 allMissions 里**查不到** → 视为已满足（不算阻塞）。
+ *     why：missions 有上限（MAX_MISSIONS），超限时先丢终态历史（见 dropSettledMissions）——
+ *     被丢掉的必然是终态的（本来就满足）。若把"查不到"判成阻塞，一条依赖了已收尾
+ *     任务的链会在历史被裁掉后永久锁死。查不到的 id 也不会"以后才出现"（id 不会复用）。
+ *
+ * **本函数只判定，不调度** —— 什么时候把任务放出去（自动解锁）是下一单的事。
+ */
+export function isMissionUnlocked(
+  mission: MissionView,
+  allMissions: readonly MissionView[]
+): boolean {
+  const dependsOn = mission.dependsOn ?? [];
+  if (dependsOn.length === 0) return true;
+  if (dependsOn.includes(mission.id)) return false; // 自依赖：死结，恒不解锁
+  const byId = new Map(allMissions.map((m) => [m.id, m]));
+  for (const depId of dependsOn) {
+    const dep = byId.get(depId);
+    if (!dep) continue; // 查不到 = 已满足（见上方注释：避免历史裁剪造成死锁）
+    if (!isTerminalPhase(dep.phase)) return false; // 在办的前置 → 还没解锁
+  }
+  return true;
 }
 
 /**

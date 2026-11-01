@@ -63,6 +63,21 @@ export const MAX_AGENT_MESSAGES_PER_LINK = 100;
 export const MAX_MISSIONS = 100;
 
 /**
+ * @since v3.38（task_077）单条任务的**检查点**条数上限（core/mission 强制）。
+ * why 需要它：checkpoints 随 WorldState.missions 全量广播，而检查点是 append-only 的 ——
+ * 不设上限，一条被反复记账的任务会把广播体积顶起来（perf 硬约束：广播体积必须有界）。
+ * 超限时丢**最旧**的：最近发生的事才有排查价值。
+ */
+export const MAX_MISSION_CHECKPOINTS = 64;
+
+/**
+ * @since v3.38（task_077）单条任务的**依赖**条数上限（core/mission 强制）。
+ * why 需要它：dependsOn 同样是随状态全量广播的数组，且依赖越多，isMissionUnlocked 的判定越贵
+ * （逐条查表）。32 条对"一条任务等几件前置事"足够宽松。
+ */
+export const MAX_MISSION_DEPENDENCIES = 32;
+
+/**
  * @since v3.16 角色任务（task.assign 派发）条数上限（core/task 强制）。
  * 与 MAX_MISSIONS 同一理由：tasks 随 WorldState 全量广播，超限时先丢终态
  * （completed / failed）的旧任务，腾不出位置就拒绝新派（绝不静默挤掉在办任务）。
@@ -225,6 +240,38 @@ export interface UnitView {
  */
 export type MissionPhase = 'draft' | 'pending' | 'confirmed' | 'running' | 'done' | 'cancelled';
 
+/**
+ * @since v3.38（task_077）任务正文契约（结构化 brief）—— 四段自由文本。
+ *
+ * why 与「派单 prompt」分开：**prompt 是派给执行者的一句话指令**（task.assign 那条链），
+ * brief 是**任务本身的契约**（这台工作台自己持有的、关于"这件事要做成什么样"的记录）。
+ * 派单 prompt 会随角色任务流走、每次派发可能重写；而 brief 挂在 mission 上，是这条任务的
+ * 长期事实 —— 需求、验收标准、交付物、约束。机器可读的**验收标准**是这块的核心诉求：
+ * 有了 acceptance，"这条任务算不算做完"才有判据（否则只剩一句人话标题）。
+ *
+ * 四段都是**可选**的：缺省段 = 该段无内容（不是空串）。全空时 brief 整体不落到状态里
+ * （见 core/mission/machine.ts 的 normalizeBrief），免得给裸任务塞一个空壳对象。
+ */
+export interface MissionBrief {
+  /** 需求：要做什么（做什么算满足需求）。 */
+  readonly requirements?: string;
+  /** 验收标准：怎样算做完（**机器可读的核心诉求**）。 */
+  readonly acceptance?: string;
+  /** 交付物：交什么出来（文件 / 报告 / 结论）。 */
+  readonly deliverables?: string;
+  /** 约束：不能碰什么 / 必须怎么做。 */
+  readonly constraints?: string;
+}
+
+/**
+ * @since v3.38（task_077）任务检查点（checkpoint）—— 一条 append-only 的记账行。
+ * at = 记账时刻（epoch ms，由写入方给，本层不读时钟）；note = 这一刻发生了什么。
+ */
+export interface MissionCheckpoint {
+  readonly at: number;
+  readonly note: string;
+}
+
 export interface MissionView {
   readonly id: string;
   readonly title: string;
@@ -232,6 +279,22 @@ export interface MissionView {
   /** 指派对象：多选集合（编组）展开的单位 id 列表。 */
   readonly unitIds: readonly string[];
   readonly createdAt: number;
+  /**
+   * @since v3.38（task_077）结构化正文。**可选**：缺省 = 裸任务（只有标题）。
+   * why 可选而不是必填：旧构造点（MCP / HUD / 单测里的字面量）一律零改动即可编译 ——
+   * 新字段必须是"加不加都行"，否则每处构造点都得改一遍，收益与风险不成比例。
+   */
+  readonly brief?: MissionBrief;
+  /**
+   * @since v3.38（task_077）检查点历史（append-only）。**可选**：缺省 = 还没记过账。
+   * 上限 MAX_MISSION_CHECKPOINTS（超限丢最旧）。
+   */
+  readonly checkpoints?: readonly MissionCheckpoint[];
+  /**
+   * @since v3.38（task_077）依赖的任务 id 列表（前置任务）。**可选**：缺省 = 无依赖。
+   * 判定函数 isMissionUnlocked 见 core/mission/machine.ts。
+   */
+  readonly dependsOn?: readonly string[];
 }
 
 export type ConfirmDecision = 'accept' | 'reject';
@@ -1012,13 +1075,31 @@ export type HudCommand =
    * @since v3.1 任务创建。why 补这条：mission.assign 只认**已存在**的 missionId，
    *   而「发起任务」是 HUD 的首要动作，必须能从 HUD 直接开出一条新任务。
    *   unitIds 为空表示"待指派"的草稿任务（先立任务、后选人），非空表示直接指派给这些单位。
+   * @since v3.38（task_077）可选 brief（结构化正文）与 dependsOn（前置任务 id 列表）透传：
+   *   两者都**可选**，缺省即"裸任务"——既有构造点零改动即可编译。
    */
-  | { type: 'mission.create'; title: string; unitIds: string[] }
+  | {
+      type: 'mission.create';
+      title: string;
+      unitIds: string[];
+      brief?: MissionBrief;
+      dependsOn?: string[];
+    }
   /**
    * @since v3.1 任务取消。契约里 MissionPhase 早已冻结了 'cancelled' 相位，
    *   却没有任何命令能到达它（旧 UI 的「停止」语义落在这条上），这里把缺口补齐。
    */
   | { type: 'mission.cancel'; missionId: string }
+  /**
+   * @since v3.38（task_077）任务检查点记账：往任务上追加一条 { at, note }。
+   * 语义：
+   *   - 任意**非终态**相位都可记（draft / pending / confirmed / running）；
+   *   - 终态（done / cancelled）拒绝 —— 收尾后的任务不再改写历史（同 machine.ts 的终态铁律）；
+   *   - **静默记账**：这条命令不发 Notice（成功与否都不发）。why：记账是高频后台动作，
+   *     每记一次就弹一条通知会把通知队列冲垮、也会盖掉真正该让人看见的消息。
+   *     代价是"记上了吗"没有即时回执 —— 读方看 mission.checkpoints 即可（状态里有）。
+   */
+  | { type: 'mission.checkpoint'; missionId: string; note: string }
   /**
    * @since v3.6 已接线：core/runtime.ts 在收到本命令时调 core/character/manager.updatePersona，
    *   落库 + 失败转 Notice（source = 'core/character'）。合法性与 trim 由 persona.ts 校验。

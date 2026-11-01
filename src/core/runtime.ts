@@ -348,8 +348,14 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         return;
       }
       // @since v3.3 任务域:命令翻译只在 core/mission 里有一份(manager 负责转状态机动作 + 写库 + 报错)
+      // @since v3.38(task_077):可选 brief / dependsOn 透传 —— 缺省即裸任务,既有构造点零改动。
       case 'mission.create':
-        mission.createMission({ title: command.title, unitIds: command.unitIds });
+        mission.createMission({
+          title: command.title,
+          unitIds: command.unitIds,
+          brief: command.brief,
+          dependsOn: command.dependsOn,
+        });
         return;
       case 'mission.assign':
         mission.assignMission(command.missionId, command.unitIds);
@@ -359,6 +365,10 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         return;
       case 'mission.cancel':
         mission.cancelMission(command.missionId);
+        return;
+      // @since v3.38(task_077):检查点记账 —— 静默(不发 Notice),终态由 core/mission 裁决并静默拒绝。
+      case 'mission.checkpoint':
+        mission.checkpointMission(command.missionId, command.note);
         return;
       // @since v3.6 角色提示词写入:落到 character manager(不再走 onUnhandled)。
       // 合法性与 trim 由 core/character/persona.ts 校验;被拒走 Notice(manager 内部完成)。
