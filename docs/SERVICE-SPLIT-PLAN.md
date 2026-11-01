@@ -52,6 +52,23 @@
 | WS 状态面 | 无（StatusSync 是 v2 编排事件面，不复用） | world-sync 新协议 | B1/B2 |
 | hud/world 数据源 | 进程内直连 core store/bus | 远程实现同接口 | B3 |
 
+### 3.1 存储边界：dataStoreService（JSON）vs stratix-database（SQLite）— A3 落地
+
+两套存储**互不相干**，不要混谈，也不要互相替代（A3 只动 SQLite 这一侧）：
+
+| | `src/stratix-gateway/dataStoreService.ts` | `src/stratix-database`（SQLite） |
+|---|---|---|
+| 存什么 | 世界存档/角色/剧情的 **JSON 文档**（`stratix-data/*.json`） | 三张表：`character_tasks`（任务全文）/ `character_chat_messages`（对话历史）/ `exp_events`（经验事件） |
+| 谁写 | gateway 进程内的 service 调用 | **只由 service 进程写**（A3 起：`src/stratix-gateway/service/storage.ts` 是唯一 owner） |
+| 谁读 | 同进程内调用 | 同进程直读（MCP host 与 service 同进程）；跨进程走 `GET /api/storage/tasks/:id/output`、`GET /api/storage/chat/:characterId` |
+| 库文件位置 | `stratix-data/`（仓库内） | gateway/service 进程：仓库 `stratix-data/stratix.db.sqlite`；Electron main：`~/Library/Application Support/Stratix/data/stratix.db.sqlite` |
+
+**边界规则**：
+1. **dataStoreService 不动**（本期冻结）——它不是 SQLite，不受铁律 6 约束；JSON 与 SQLite 是两套事实源，不得互相 import 或做双向同步。
+2. **SQLite 写独占**：A3 起三落库点（任务全文 / chat persister / exp_events）的写入口全部收在 service 进程的存储件里；Electron main 的三条 `ipcMain.handle` 写通道**已退役**（`game:saveChatMessage` / `game:saveTask` / `game:saveExpEvent`）。
+3. **读侧过渡**：Electron main 的读通道（`game:loadChatMessages` 等）**暂时保留**（渲染层读历史的兼容路径），读切 API 是 B 轨（Electron remote store）的收尾项。
+4. **过渡缺口（如实记录）**：A3 只完成「写侧归位 + 读 API 就位」，**尚未做 A4 gateway 接线**，所以此时 Electron 壳内的写动作还没接到 service 的存储件上 —— A4 接线后由 service 侧落库补齐。两个物理库文件并存也是同一过渡期的现象，A4/B 轨收口时统一到 service 进程。
+
 现状关键事实：
 - `core/` 零渲染、传输无关，managers 全注入式——搬家友好
 - `cli-transport` 依赖注入 ProcessFactory，本身无 Electron 耦合（只是调度在 Electron main）

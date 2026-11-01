@@ -38,7 +38,16 @@
  *   - 轻提示（toast）：属 UI 反馈面，本模块零引用；
  *   - 进程内 IPC 面（对话 / 任务传输）：service 侧直接 spawn，**不经 IPC**（本模块零引用）。
  *
- * @since v3.40（task_077 / service-split A1）；v3.41（task_078 / service-split A2）追加执行环接线。
+ * ============ A3：存储归一（task_079）============
+ * 三个落库点（任务全文 / chat / exp_events）原先散在渲染进程，经 IPC 落到 Electron main 的 DAO
+ *   —— 于是「谁开库」变成多进程开同一个文件。A3 起 SQLite 由 service 进程独占写
+ *   （storage.ts 是 service 侧的唯一 owner），其余进程经 API 读（铁律 6）。
+ * 本模块只做接线：storage 端口给出即接管两个落库口（任务全文 / 经验事件）；
+ *   chat 的落库口由调用方拿 storage.persistChatMessage 自行包一层（话题缓存语义见
+ *   app/services/stratix-context.ts 的 createTopicCachePersister）。
+ *
+ * @since v3.40（task_077 / service-split A1）；v3.41（task_078 / service-split A2）追加执行环接线；
+ *        v3.42（task_079 / service-split A3）追加存储端口接线。
  */
 
 import { createProgressionService } from '../../app/services/progression-service';
@@ -52,6 +61,7 @@ import { createTaskManager, type PipelineRunnerPort, type TaskManager } from '..
 import type { HudCommand, WorldEvent } from '../../core/types';
 
 import { createServiceTaskExecution, type ServiceTaskExecutionPorts } from './task-execution';
+import type { ServiceStorage } from './storage';
 
 /**
  * 经验事件落库口（可选）—— 形状与 app/services/progression-service 的 persistExpEvent 一致。
@@ -98,6 +108,15 @@ export interface StratixServiceOptions {
    * 经验事件落库口（可选）—— 见 StratixPersistExpEventPort。缺省 = 不落库。
    */
   readonly persistExpEvent?: StratixPersistExpEventPort;
+  /**
+   * 存储（可选，A3 / task_079）—— service 进程内的 SQLite owner（service/storage.ts）。
+   * 给出即：两个落库口（任务全文 / 经验事件）默认改由 service 侧存储件落
+   * （显式传入的 persistExpEvent / taskExecution.persistTask 优先 —— 显式覆盖缺省）。
+   *
+   * why 缺省是「不落库」而不是「自己开库」：组合根不碰 SQLite 连接（开库归存储件的工厂），
+   *   单测与缺省场景不想落库时，端口缺席即不落（养成照常，只少一条审计流）。
+   */
+  readonly storage?: ServiceStorage;
   /**
    * 任务执行环接线（可选，A2）—— 给出即在**本进程**跑执行环（直接 spawn CLI，不再经
    * 渲染进程 / Electron main 的 IPC 链）。缺省 = 不接：任务只落 queued，没人执行
@@ -180,7 +199,7 @@ export function createStratixService(options: StratixServiceOptions = {}): Strat
   const stopProgression = createProgressionService({
     characterManager: character,
     logger: options.logger,
-    persistExpEvent: options.persistExpEvent,
+    persistExpEvent: options.persistExpEvent ?? options.storage?.persistExpEvent,
   }).start();
 
   // ===== ④ 任务执行环（A2，可选接入）=====
@@ -191,6 +210,9 @@ export function createStratixService(options: StratixServiceOptions = {}): Strat
   if (options.taskExecution) {
     taskService = createServiceTaskExecution({
       ...options.taskExecution,
+      // 任务全文的落库口（A3）：显式给了就用显式的；没给而存储件在 → 落 service 侧库
+      // （铁律 6：SQLite 由 service 进程独占写）。
+      persistTask: options.taskExecution.persistTask ?? options.storage?.persistTask,
       store,
       taskManager: task,
     });

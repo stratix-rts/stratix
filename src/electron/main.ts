@@ -34,21 +34,20 @@ import {
   type PersistedCharacterRecord,
   type PersistedUnitPosition,
 } from '../app/services/persistence/game-save-dao';
+// 角色对话历史表 IPC（@since v3.15，task_036）：**读侧**两条通道（loadChatMessages /
+// loadEarlierChatMessages）。写侧（saveChatMessage）已迁 service（A3 / task_079）—— 消息落库
+// 由 service 进程的存储件独占写（service/storage.ts，铁律 6）。
 import {
   ensureCharacterChatMessagesTable,
-  insertChatMessage,
   loadChatMessages,
   loadEarlierChatMessages,
-  PERSISTED_CHAT_ROLES,
-  type ChatMessageInsert,
 } from '../app/services/persistence/chat-history-dao';
+// 角色任务表 IPC（@since v3.16，task_037）：**读侧**两条通道（loadTasks / taskStats）。
+// 写侧（saveTask）已迁 service（A3 / task_079）—— 任务全文由 service 侧存储件独占写。
 import {
   ensureCharacterTasksTable,
   loadRecentTasks,
   aggregateTaskStatusCounts,
-  PERSISTED_TASK_STATUSES,
-  upsertTask,
-  type PersistedTaskRecord,
 } from '../app/services/persistence/task-record-dao';
 // 流水线表 IPC（@since v3.27，task_051）：DAO 与 game:savePipeline 通道。校验从严
 // （IPC 是可信度最低的入口），坏形状一律拒（拒绝即回 {ok:false}，调用方只警告不阻断编排）。
@@ -65,15 +64,13 @@ import {
   PERSISTED_AGENT_HEALTH_EVENTS,
   type AgentHealthEventInsert,
 } from '../app/services/persistence/agent-health-dao';
-// 角色经验事件表 IPC（@since v3.36，task_061，schema v12）：exp_events 的写 / 读 / 聚合
-// 三条通道（写入时机在渲染层 progression-service 的 persist 注入件，这里只做形状校验 + 落库）。
+// 角色经验事件表 IPC（@since v3.36，task_061，schema v12）：exp_events 的**读侧**两条通道
+// （loadExpEvents 按近窗读 / growthOverview 全场聚合）。写侧（saveExpEvent）已迁 service
+// （A3 / task_079）—— 曲线真相源由 service 进程的存储件独占写（service/storage.ts，铁律 6）。
 import {
   aggregateCharacterActivity,
   ensureExpEventsTable,
-  insertExpEvent,
   loadExpEventsSince,
-  PERSISTED_EXP_EVENT_REASONS,
-  type ExpEventInsert,
 } from '../app/services/persistence/exp-event-dao';
 // 自定义 agent 注册表（@since v3.32，task_056）：custom_agents 表 DAO + 四条 IPC 通道
 //（list / create / delete / probe，见 setupIPC 的 customAgent: 段）。
@@ -431,39 +428,9 @@ function setupIPC() {
   });
 
   // ==================== 角色对话历史 IPC（@since v3.15，task_036）====================
-  // 与 game-save 三条同构：主进程 DAO 落 SQLite，渲染层经 preload 的 gameSave 扩展面调用。
-  // 校验从严（IPC 是可信度最低的入口）：坏形状一律拒（拒绝即回 {ok:false}，调用方只警告不阻断对话）。
-  ipcMain.handle('game:saveChatMessage', async (_event, message: ChatMessageInsert) => {
-    try {
-      if (typeof message?.characterId !== 'string' || message.characterId.length === 0 || message.characterId.length > 200) {
-        return { ok: false, error: 'bad characterId' };
-      }
-      if (typeof message?.role !== 'string' || !(PERSISTED_CHAT_ROLES as readonly string[]).includes(message.role)) {
-        return { ok: false, error: `bad role: ${String(message?.role)}` };
-      }
-      if (typeof message?.content !== 'string' || message.content.length === 0 || message.content.length > 200_000) {
-        return { ok: false, error: 'bad content' };
-      }
-      if (
-        message.sessionRef != null &&
-        (typeof message.sessionRef !== 'string' || message.sessionRef.length > MAX_EXTERNAL_SESSION_ID_LEN)
-      ) {
-        return { ok: false, error: 'bad sessionRef' };
-      }
-      if (typeof message?.createdAt !== 'number' || !Number.isFinite(message.createdAt)) {
-        return { ok: false, error: 'bad createdAt' };
-      }
-      if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
-      const db = getDatabase().getDatabase();
-      ensureCharacterChatMessagesTable(db);
-      insertChatMessage(db, message);
-      return { ok: true };
-    } catch (error: any) {
-      console.error('[Electron] game:saveChatMessage failed:', error);
-      return { ok: false, error: error?.message ?? String(error) };
-    }
-  });
-
+  // 写侧已迁 service（A3 / task_079）：game:saveChatMessage 通道**退役** —— 消息落库由
+  // service 进程的存储件独占写（src/stratix-gateway/service/storage.ts，铁律 6）。
+  // 读侧保留：渲染层的历史回填仍经 preload 的 gameSave 面读本进程库（B 轨切读 API 后收尾）。
   ipcMain.handle('game:loadChatMessages', async (_event, characterId: unknown, limit: unknown) => {
     try {
       if (typeof characterId !== 'string' || characterId.length === 0 || characterId.length > 200) {
@@ -507,71 +474,9 @@ function setupIPC() {
   });
 
   // ==================== 角色任务记录 IPC（@since v3.16，task_037）====================
-  // 与 game:saveChatMessage 同构：主进程 DAO 落 SQLite（character_tasks 表，schema v4），
-  // 渲染层经 preload 的 gameSave 扩展面调用。校验从严（IPC 是可信度最低的入口）：
-  // 坏形状一律拒（拒绝即回 {ok:false}，调用方只警告不阻断任务执行回路）。
-  ipcMain.handle('game:saveTask', async (_event, record: PersistedTaskRecord) => {
-    try {
-      if (typeof record?.id !== 'string' || record.id.length === 0 || record.id.length > 64) {
-        return { ok: false, error: 'bad id' };
-      }
-      if (typeof record?.characterId !== 'string' || record.characterId.length === 0 || record.characterId.length > 200) {
-        return { ok: false, error: 'bad characterId' };
-      }
-      if (typeof record?.prompt !== 'string' || record.prompt.length === 0 || record.prompt.length > 200_000) {
-        return { ok: false, error: 'bad prompt' };
-      }
-      if (typeof record?.status !== 'string' || !(PERSISTED_TASK_STATUSES as readonly string[]).includes(record.status)) {
-        return { ok: false, error: `bad status: ${String(record?.status)}` };
-      }
-      if (typeof record?.output !== 'string' || record.output.length > 200_000) {
-        return { ok: false, error: 'bad output' };
-      }
-      if (typeof record?.createdAt !== 'number' || !Number.isFinite(record.createdAt)) {
-        return { ok: false, error: 'bad createdAt' };
-      }
-      for (const field of ['startedAt', 'endedAt'] as const) {
-        const value = record[field];
-        if (value != null && (typeof value !== 'number' || !Number.isFinite(value))) {
-          return { ok: false, error: `bad ${field}` };
-        }
-      }
-      // 成果物（task_048）：可选 JSON 字符串（'' / 缺省 = 无）。三重校验：类型 / 体积上限 /
-      // 真的能 JSON.parse（列里只存结构化 JSON，读侧 parseTaskArtifactsJson 坏形状降级纯文本）。
-      if (record?.artifacts != null) {
-        if (typeof record.artifacts !== 'string' || record.artifacts.length > 100_000) {
-          return { ok: false, error: 'bad artifacts' };
-        }
-        try {
-          JSON.parse(record.artifacts);
-        } catch {
-          return { ok: false, error: 'bad artifacts (not JSON)' };
-        }
-      }
-      // 计划草稿（task_049）：可选纯文本（'' / 缺省 = 无）。只验类型与体积上限 ——
-      // 内容裁决（标记行剥离 / 截断）在渲染层 task-service / core 状态机，主进程不重复。
-      if (record?.plan != null && (typeof record.plan !== 'string' || record.plan.length > 200_000)) {
-        return { ok: false, error: 'bad plan' };
-      }
-      // 流水线归属（task_051）：可选字符串（'' / 缺省 = 非流水线任务，相位快照都不带）。
-      // 只验类型与体积上限 —— CASE 守卫（DAO 侧）收口写入口径，主进程不重复裁决。
-      if (record?.pipelineId != null && (typeof record.pipelineId !== 'string' || record.pipelineId.length > 200)) {
-        return { ok: false, error: 'bad pipelineId' };
-      }
-      if (record?.missionId != null && (typeof record.missionId !== 'string' || record.missionId.length > 200)) {
-        return { ok: false, error: 'bad missionId' };
-      }
-      if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
-      const db = getDatabase().getDatabase();
-      ensureCharacterTasksTable(db);
-      upsertTask(db, record);
-      return { ok: true };
-    } catch (error: any) {
-      console.error('[Electron] game:saveTask failed:', error);
-      return { ok: false, error: error?.message ?? String(error) };
-    }
-  });
-
+  // 写侧已迁 service（A3 / task_079）：game:saveTask 通道**退役** —— 任务全文（含 completed 的
+  // 输出全文）由 service 进程的存储件独占写（src/stratix-gateway/service/storage.ts，铁律 6）。
+  // 读侧保留：渲染层的历史列表仍经 preload 的 gameSave 面读本进程库（B 轨切读 API 后收尾）。
   ipcMain.handle('game:loadTasks', async (_event, characterId: unknown, limit: unknown) => {
     try {
       if (typeof characterId !== 'string' || characterId.length === 0 || characterId.length > 200) {
@@ -689,46 +594,9 @@ function setupIPC() {
   });
 
   // ==================== 角色经验事件 IPC（@since v3.36，task_061，schema v12）====================
-  // exp_events 表三条通道：saveExpEvent（progression-service 的注入件逐条写，exp.gained 落
-  // 来源行 / 升级落 level_up 里程碑行）/ loadExpEvents（成长曲线按近窗读单角色）/ growthOverview
-  //（全场活跃度聚合：三源 UNION 按 character_id GROUP BY）。校验从严：坏形状一律拒，
-  // 调用方（makeExpEventPersister）只警告不阻断养成回路（曲线少一个点不是错误，养成状态在
-  // WorldState / characters 表另有真相）。
-  ipcMain.handle('game:saveExpEvent', async (_event, insert: ExpEventInsert) => {
-    try {
-      if (typeof insert?.characterId !== 'string' || insert.characterId.length === 0 || insert.characterId.length > 200) {
-        return { ok: false, error: 'bad characterId' };
-      }
-      if (typeof insert?.delta !== 'number' || !Number.isInteger(insert.delta) || insert.delta < 0) {
-        return { ok: false, error: 'bad delta' };
-      }
-      if (
-        typeof insert?.reason !== 'string' ||
-        !(PERSISTED_EXP_EVENT_REASONS as readonly string[]).includes(insert.reason)
-      ) {
-        return { ok: false, error: `bad reason: ${String(insert?.reason)}` };
-      }
-      // level 列只在 level_up 里程碑行有意义：非 level_up 行强制 null（表结构允许但语义收敛在一处）。
-      const isLevelUp = insert.reason === 'level_up';
-      if (isLevelUp && (typeof insert?.level !== 'number' || !Number.isInteger(insert.level) || insert.level < 1)) {
-        return { ok: false, error: 'bad level' };
-      }
-      if (!isLevelUp && insert?.level != null) {
-        return { ok: false, error: 'level only allowed on level_up rows' };
-      }
-      if (typeof insert?.createdAt !== 'number' || !Number.isFinite(insert.createdAt)) {
-        return { ok: false, error: 'bad createdAt' };
-      }
-      if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
-      const db = getDatabase().getDatabase();
-      insertExpEvent(db, isLevelUp ? { ...insert, delta: 0 } : insert);
-      return { ok: true };
-    } catch (error: any) {
-      console.error('[Electron] game:saveExpEvent failed:', error);
-      return { ok: false, error: error?.message ?? String(error) };
-    }
-  });
-
+  // 写侧已迁 service（A3 / task_079）：game:saveExpEvent 通道**退役** —— exp_events（曲线真相源）
+  // 由 service 进程的存储件独占写（src/stratix-gateway/service/storage.ts，铁律 6）。
+  // 读侧保留两条：loadExpEvents（成长曲线按近窗读单角色）/ growthOverview（全场活跃度聚合）。
   ipcMain.handle('game:loadExpEvents', async (_event, characterId: string, sinceMs: number) => {
     try {
       if (typeof characterId !== 'string' || characterId.length === 0 || characterId.length > 200) {

@@ -27,6 +27,7 @@ import commandRoutes, { setStatusSyncService as setCommandStatusSyncService } fr
 import lraRoutes from './api/routes/lra';
 import openclawRoutes, { initWebSocketServer, initConnectionStore, destroyOpenClawWebSockets } from './api/routes/openclaw';
 import skillRoutes from './api/routes/skill';
+import { createStorageRoutes } from './api/routes/storage';
 import templateRoutes from './api/routes/template';
 import textureRoutes from './api/routes/texture';
 import { StatusSyncService } from './api/websocket/StatusSync';
@@ -35,6 +36,7 @@ import { createCoreMcpHost } from './mcp/context';
 import { createDefaultMcpServer } from './mcp/server';
 import { createMcpHttpRouter } from './mcp/transport/http';
 import { openClawProxyManager } from './openclaw/OpenClawProxyManager';
+import { createServiceStorage } from './service/storage';
 
 
 
@@ -129,7 +131,17 @@ export async function startGatewayService(
   
   // 静态文件服务
   app.use('/textures', express.static(TEXTURES_DIR));
-  
+
+  // ===== 初始化 SQLite 数据库 + 存储归一（A3 / task_079）=====
+  // 本进程是 SQLite 的**唯一写者**（铁律 6）：三个落库点（任务全文 / chat / exp_events）
+  //   经 service/storage.ts 写；其余进程（Electron 壳 / 外部 client）经下面的读 API 读。
+  console.log('Initializing SQLite database...');
+  const db = await initializeDatabase({ dataDir });
+  console.log('SQLite database initialized:', db.getPath());
+  // 存储件 = service 侧 SQLite 的 owner（写口 + 读口；建表兜底在这一步跑）。
+  // 开库是进程内单例（stratix-database），这里传同一个 dataDir —— 不会开第二个连接。
+  const serviceStorage = await createServiceStorage({ dataDir });
+
   // 注册路由
   app.use('/api/stratix/agent', agentRoutes);
   app.use('/api/stratix/config/agent', agentRoutes);
@@ -141,6 +153,8 @@ export async function startGatewayService(
   app.use('/api/lra', lraRoutes);
   app.use('/api/agents/orchestration', agentOrchestrationRoutes);
   app.use('/api/skills', skillRoutes);
+  // 读 API（A3 / task_079）：SQLite 的只读门面 —— 写在本进程独占，读经这里。
+  app.use('/api/storage', createStorageRoutes(serviceStorage));
   // MCP server（docs/MCP-SPEC.md §4.4）：HTTP 端点挂在 /mcp，与 stdio 入口共享同一份注册表与 handler。
   // 数据面复用 core 的 worldStore + core 总线（不新开状态通道）。
   app.use('/mcp', createMcpHttpRouter(createDefaultMcpServer(createCoreMcpHost())));
@@ -170,11 +184,6 @@ export async function startGatewayService(
     });
   });
   
-  // 初始化SQLite数据库
-  console.log('Initializing SQLite database...');
-  const db = await initializeDatabase({ dataDir });
-  console.log('SQLite database initialized:', db.getPath());
-
   // 初始化 NocoDB 服务 (可选)
   const nocoEnabled = process.env.NOCO_ENABLED === 'true';
   if (nocoEnabled) {

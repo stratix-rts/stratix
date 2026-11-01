@@ -10,10 +10,12 @@
  *   4. 依赖具体传输 —— 本文件与 stdio / HTTP 无关（两种模式共享同一份 handler）。
  */
 
+import type { SqliteDatabaseLike } from '../../app/services/persistence/game-save-dao';
 import { emitCommand } from '../../core/bus';
 import { worldStore, type CoreStore } from '../../core/store';
 import type { HudCommand } from '../../core/types';
 import { getDatabase } from '../../stratix-database';
+import { readTaskOutputFromDb } from '../service/storage';
 
 import type { ChatRoundOutcome, McpHost } from './types';
 
@@ -38,18 +40,22 @@ export interface CoreMcpHostOptions {
  * 读任务输出全文（SQLite 投影）。
  *
  * why 从库里读而不是从状态里读：core 的 CharacterTask.output **只存摘要**
- * （上限 MAX_TASK_SUMMARY_LEN = 2000），全文由 app 层 task-service 在收尾时落库
+ * （上限 MAX_TASK_SUMMARY_LEN = 2000），全文由 task-service 在收尾时落库
  * （docs/MCP-SPEC.md §2.3）。库里没有这一条（任务刚建、尚未落库、或库未初始化）时返回 null，
  * 由工具回退到摘要 —— 绝不编造。
+ *
+ * ============ 拓扑（A3 / task_079 之后）：这里的直读为什么合法 ============
+ * 铁律 6：SQLite 只由 **service 进程**打开写；其余进程经 API 读。
+ *   MCP host 挂在 gateway 进程里，而 gateway 进程**就是** service 进程（同一份存储件、
+ *   同一个连接）—— 这里的直读是**同进程读**（读自己进程开的库），不是「第二个进程开同一个库」，
+ *   因此合法。跨进程读（例如浏览器 / 外部 client）走 service 侧的只读 API
+ *   （GET /api/storage/tasks/:id/output，见 api/routes/storage.ts）。
+ *   库句柄与读口由 service/storage.ts 统一持有（同一句 SQL 两处共用，不各写一份）。
  */
 export function readTaskOutputFromDatabase(taskId: string): string | null {
   try {
     const db = getDatabase().getDatabase();
-    const row = db
-      .prepare('SELECT output FROM character_tasks WHERE id = ?')
-      .get(taskId) as { output?: string } | undefined;
-    const output = row?.output;
-    return typeof output === 'string' && output.length > 0 ? output : null;
+    return readTaskOutputFromDb(db as unknown as SqliteDatabaseLike, taskId);
   } catch {
     // 库未初始化 / 表不存在 / 查询失败 —— 一律按「没有全文」处理，不让读失败打断工具调用。
     return null;

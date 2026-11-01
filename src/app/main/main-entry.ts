@@ -330,6 +330,13 @@ async function boot(): Promise<void> {
   //   ② 全局开关：localStorage（settings-screen「上下文注入」行写同一键；无存储环境视为开）；
   //   ③ 世界面：worldStore.getState()（角色档案 / 同场单位 / 任务史全在里面，零额外查询）。
   // ============================================================================
+  // ============ 落库写侧已迁 service（A3 / task_079）============
+  // 渲染进程不再直写 SQLite（铁律 6）：Electron main 的 `game:saveChatMessage` 通道已退役，
+  //   写入口收在 service 进程的存储件（src/stratix-gateway/service/storage.ts）。
+  // 这里的渲染侧 persister 是**过渡期的旧接线**：写调用会因通道退役而失败（fire-and-forget
+  //   吞掉并记一行警告，不打断对话回路），A4 gateway 接线后由 service 侧落库补齐。
+  //   读侧（loadChatMessages / loadEarlierChatMessages）**暂时保留** —— 渲染层读历史的兼容
+  //   路径，读切 API 是 B 轨（Electron remote store）的收尾项。
   const contextPersister = createTopicCachePersister(
     chatHistory ? makeChatMessagePersister(chatHistory) : undefined
   );
@@ -695,6 +702,9 @@ async function boot(): Promise<void> {
   // task_061：经验事件审计流 —— 每条 exp.gained / 升级结算逐条落 exp_events（非 Electron
   // = 端口缺席，注入件缺省：养成照常，只不落曲线真相源）。
   const expApi = expEventApi();
+  // A3 / task_079：写侧已迁 service —— `game:saveExpEvent` 通道退役，这条渲染侧接线在 A4
+  //   接线前不再真正落库（失败被 fire-and-forget 吞成一行警告，不打断养成回路）；
+  //   读侧（loadExpEvents / growthOverview）保留，读切 API 归 B 轨。
   const stopProgressionService = createProgressionService({
     characterManager,
     persistExpEvent: expApi ? makeExpEventPersister(expApi) : undefined,
@@ -729,6 +739,9 @@ async function boot(): Promise<void> {
       // 换注入件即接管 —— 本服务零改动（交接注记见 task-service.ts 文件头）。
       expWeight: expWeightFor,
       provideContext: stratixContextSource,
+      // A3 / task_079：写侧已迁 service —— `game:saveTask` 通道退役，任务全文的落库入口收在
+      //   service 进程的存储件；这条渲染侧接线在 A4 接线前不再真正落库（失败被吞成警告，
+      //   不打断执行环）。读侧（loadTasks / taskStats）保留，读切 API 归 B 轨。
       persistTask: (() => {
         const taskApi = taskRecordApi();
         return taskApi ? makeTaskRecordPersister(taskApi) : undefined;
