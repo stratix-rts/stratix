@@ -37,6 +37,7 @@
     "smoke:agent-link": "tsx scripts/smoke-agent-link.ts",
     "smoke:cli-transport": "tsx scripts/smoke-cli-transport.ts",
     "smoke:chat-service": "tsx scripts/smoke-chat-service.ts",
+    "smoke:service": "tsx scripts/smoke-service.ts",
     "detect:agents": "tsx scripts/detect-agents.ts",
     "nocodb:build": "cd vendor/nocodb && pnpm install && pnpm -r build --filter=nocodb",
     "nocodb:start": "node vendor/nocodb/packages/nocodb/dist/bundle.js",
