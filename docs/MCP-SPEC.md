@@ -1,6 +1,6 @@
 # Stratix MCP 接口设计规范（第一期工具面 + 扩展规范）
 
-> **状态**：第一期冻结（Spec v1.2）　**性质**：规范文档（不含实现代码）
+> **状态**：第一期工具面冻结（Spec v1.3）＋ §6 v2 设计章（**未实现**，见 §6 抬头）　**性质**：规范文档（不含实现代码）
 > **适用范围**：Stratix 对外提供的 MCP server 及其工具面（tool surface）
 > **取代**：`docs/MCP_SERVER_DESIGN.md`（v2 Zone 时代草案 —— Zone 已按 `docs/REFACTOR_PLAN_V3.md` D5 决策砍掉，其中 `stratix.list_zones` 等工具面不再成立）
 > **维护责任**：见 [§5.4](#54-规范文档的维护责任)
@@ -16,6 +16,7 @@
 - [3. 一致性铁律](#3-一致性铁律)：[3.1 投影而非新功能层](#31-投影而非新功能层)｜[3.2 状态机约束](#32-状态机约束对-mcp-同样生效)｜[3.3 不暴露的能力](#33-mcp-不暴露的能力)｜[3.4 只读与写的分界](#34-只读面与写面的分界)
 - [4. 扩展规范](#4-扩展规范)：[4.1 工具注册表架构](#41-工具注册表架构)｜[4.2 域前缀与命名位](#42-域前缀与命名位)｜[4.3 新工具上线流程](#43-新工具提案到上线的流程)｜[4.4 MCP server 接入方式](#44-mcp-server-的接入方式)
 - [5. 版本与演进](#5-版本与演进)：[5.1 变更原则](#51-工具面变更原则)｜[5.2 重命名与废弃](#52-重命名与废弃)｜[5.3 变更分类](#53-变更分类与流程)｜[5.4 维护责任](#54-规范文档的维护责任)｜[5.5 演进记录](#55-版本演进记录只加不删)
+- [6. v2 设计章](#6-v2-设计章四条工程模式草案--未实现)（**未实现**）：[6.0 四模式总览](#60-四模式总览)｜[6.1 waterfall 工具管线](#61-waterfall-工具管线)｜[6.2 capability seam 三件套](#62-capability-seam-三件套)｜[6.3 事件日志 + 投影](#63-事件日志--投影)｜[6.4 可逆注册](#64-可逆注册)｜[6.5 交叉约束与落地顺序](#65-四模式的交叉约束与落地顺序)
 - [附录](#附录-a返回信封与错误码总表)：[A 信封与错误码](#附录-a返回信封与错误码总表)｜[B description 模板](#附录-bdescription-写作模板)｜[C 评审清单](#附录-c新工具评审清单)
 
 ---
@@ -786,8 +787,441 @@ src/stratix-gateway/mcp/
 
 | 版本 | 日期 | 变更 | 兼容性 |
 |------|------|------|--------|
+| v1.3 | 2026-11-02 | **新增章节** §6「v2 设计章：四条工程模式（草案 · 未实现）」—— 借 DeepSeek Harness 的四条工程模式（工具管线 waterfall / capability seam 三件套 / 事件日志 + 投影 / 可逆注册），逐条给出「现状对照 → 目标语义 → 迁移草案」；含 9 件工具的 waterfall 映射表 | ✅ 纯文档：**运行时代码零改动** —— 工具名 / 参数 / 返回 / 错误码 / `tools/list` 顺序全部未动；§6 全部内容是**未实现的设计**，与 §1–§5 冲突时以 §1–§5 为准 |
 | v1.2 | 2026-11-02 | **新增章节** §0.5「拓扑定位（新旧拓扑对比）」—— 写清 MCP 在前后端分离后的位置：gateway 进程即 service 进程，先 boot service 再挂 `/mcp`，故工具见真状态（附新旧拓扑 ASCII 对比图与逐维度对照表）；§0.2 权威依据增列 SERVICE-SPLIT-PLAN；§4.4 增注指回 §0.5 | ✅ 纯文档：工具面**零变更** —— 工具名 / 参数 / 返回 / 错误码 / `tools/list` 顺序全部未动 |
 | v1.1 | 2026-11-01 | **新增工具** `stratix_mission_checkpoint`（§2.9，记一条 append-only 检查点）；**新增可选参数** `stratix_mission_create` 的 `brief`（四段结构化正文）与 `depends_on`（前置任务链，§2.5）；**新增错误码** `mission_terminal`（附录 A）；**新增术语** 依赖解锁 / brief / 检查点（§0.4）；`tools/list` 顺序改为按**排序位**（§2.0），新工具插在 `mission_status` 之后、`registry` 之前（既有工具之间的相对次序不变） | ✅ 纯增量：既有 8 件工具的名字、参数、语义与缺省行为**均未变**（`brief` / `depends_on` 缺省即"裸任务"，与 v1.0 逐字节一致）；`auto_confirm_applied` 的口径在**新增的依赖未满足分支**上才出现差异（`false` = auto_confirm 没能生效），v1.0 的三条既有路径取值不变 |
+
+
+---
+
+## 6. v2 设计章：四条工程模式（草案 · 未实现）
+
+> **性质**：**设计章 —— 只描述目标语义，不含实现**。本章任何一条都**未**进入运行时代码（`src/` 零改动）。
+> **来源**：借 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（dsh）的四条工程模式 —— ① 工具管线 waterfall（`pre-execute → execute → post-execute`）；② capability seams（Definition / Provider / Consumer）；③ session log（append-only 事件流 + 投影，"model-visible means logged"）；④ Cordis effect（可逆注册：挂载必带卸载）。
+> **借的是模式，不是代码**：不引入任何 npm 依赖；dsh 的 session log **不取代** Stratix 的 WorldState 真相源（[SERVICE-SPLIT-PLAN.md](SERVICE-SPLIT-PLAN.md) 铁律 1）。本章的来源与边界见 [DSH-INTEGRATION-PLAN.md §3](DSH-INTEGRATION-PLAN.md#3-借逻辑mcp-spec-v2-章节task_087)。
+> **与 §1–§5 的关系**：§1–§5 是**已冻结的第一期工具面**（规范与实现一致）；本章是**下一期设计**。两者冲突时**以 §1–§5 为准**，直到本章逐条评审并实现为止。
+> **为什么写在本文档里而不是另起 `docs/MCP-SPEC-V2.md`**：四条模式与第一期工具面是**同一批工具的两种切面**（§2 讲"工具是什么"，§6 讲"工具怎么被调用、被挂载、被溯源"）。拆成两份文档，"工具 ↔ 段位"的对应关系就会跨文件漂移 —— 而漂移正是本文档 §5.4 明令禁止的（"文档撒谎比文档缺失更贵"）。若后续 §6 的篇幅压过主文档承载力，再拆不迟。
+
+### 6.0 四模式总览
+
+| 模式 | 一句话 | 我们的现状（一句话） | 本章要收敛成的 |
+|------|--------|----------------------|----------------|
+| waterfall 工具管线 | 一次调用固定走三段守卫 | 三段散在九个 handler 里，各写各的 | 三段语义写死 + 挂点入表 |
+| capability seam 三件套 | 定义 / 提供 / 消费三方各守其位 | 端口已注入，但"能力清单"没声明 | Provider 自陈能力，Consumer 按声明消费 |
+| 事件日志 + 投影 | 事件是真相，state 是投影 | 只有物化 state，无事件流；seq 是版本号 | seq 的口径写死；工具返回逐字段可溯源 |
+| 可逆注册 | 注册必带 disposer，卸载不留残 | runtime / 组合根有 stop 链，MCP 注册表**没有卸载** | 统一 disposer 契约 + 顺序规范 |
+
+四模式的分工是**正交**的：§6.1 管**一次调用内部**的纵向流程；§6.2 管**工具与宿主之间**的横向契约；§6.3 管**状态的真相当层**（工具返回的每个字段从哪来）；§6.4 管**能力的挂载与卸载**。合起来回答同一个问题：**一个 agent 驱动的工具面，怎样做到可审计、可替换、可溯源、可拆。**
+
+### 6.1 waterfall 工具管线
+
+#### 6.1.1 现状对照
+
+**现状：没有"管线"这个概念，只有每件工具各写各的三段。** 三段的语义事实上存在，但只写在各 handler 的注释里，规范里一处也没有：
+
+| 段 | 事实位置 | 现状做法 |
+|----|---------|---------|
+| **pre-execute** | 九个 handler 各自开头 | ① 入参形状与上限校验（`args.ts` 的 `requireString` / `optionalInteger(min,max)` / `optionalStringArray` + `countCodePoints` —— 运行期**没有** schema 校验器，`tools/mission.ts` 的 `readBrief` 注释写明了这一点）；② 资源准入（`task_assign` 查 `MAX_TASKS`、`mission_create` 查 `MAX_MISSIONS`）；③ 角色守门（`tools/common.ts` 的 `guardCharacter` 四条：在档 / 绑了 agent / CLI 已检出 / 不离线，`assign` 与 `chat` 共用一份）；④ 存在性与终态校验（`task_cancel` 查任务在不在、`mission_checkpoint` 查编组在不在 + `isTerminalPhase`）；⑤ 审计标注（`origin` 值域校验 —— **只有 `task_assign` 认 `origin`**） |
+| **execute** | `host.dispatchCommand(cmd)` | 统一是 fire-and-forget：core runtime **不回传命令结果**（`src/core/runtime.ts` 的 `handleCommand` 消费后落状态机，没有 ack 通道；world-sync 的 `command.ack` 是给 WS 命令面用的，MCP 不走那条路） |
+| **post-execute** | 各 handler 的命令之后 | 回读核对，**匹配策略各不相同**：`task_assign` 差分任务集合并匹配 `characterId` + `prompt` 相等的新任务；`task_cancel` 比对 before/after 相位；`mission_create` 回读相位并以 `phase==='running'` 判 `auto_confirm` 是否生效；`mission_checkpoint` 回读最后一条 checkpoint 的 note 是否与入参相等（core 记账是静默的） |
+
+**四处具体缺口**（都是当前事实，不是猜测）：
+
+1. **段边界只存在于注释里**。规范里没有任何一处写明"pre 段不得改状态 / post 段不得改状态 / execute 是唯一写点"。工具作者只能靠读别人的 handler 推断该把新代码放哪 —— 于是 `task_assign` 的 pre 段里混着容量判定，`mission_create` 的 post 段里同时做了"落地核对"与"依赖是否满足"两件事，段位靠**注释**而非结构区分。
+2. **回读核对的匹配策略脆弱**。`task_assign` 用"同角色 + 同 prompt + 新 id"做差分匹配并取 `.pop()` —— 同一角色**并发**派两条相同 prompt 的单时，两条都匹配，回执可能认错那条单。（并发派单当前被角色串行执行（并发 1）挡着大部分，但 `task.assign` 入队即返回，故"两条同 prompt 的单先后入队"是可达路径。）
+3. **审计位落在 execute 段之外，且无处落地**。这一处有**两层**欠缺：
+   - **覆盖欠缺**：§2.0 写的是"**所有**写类工具接受可选 `origin`"，而实现上**只有 `stratix_task_assign` 认 `origin`** —— `task_cancel` / `mission_create` / `mission_checkpoint` / `chat_send` 四件写工具的 schema 里都没有这个字段（§5.4 的口径是"文档与实现不一致时以代码为准并立刻修文档"；本章只**记录**该差异，不在第一期改 §2.0 的措辞 —— 那属于第一期契约变更，要走 §5.3）。
+   - **落地欠缺**：即便在 `task_assign` 上，`origin` 也只在 MCP 侧被校验并**回显在回执里** —— `HudCommand.task.assign`（`src/core/types.ts`）**没有** origin 字段，`src/app` 与 `src/core` 全库检索 `origin` **零命中**。也就是说 §2.0 写的"origin 审计字段"目前**不落库、不可追责**：模型看到 `origin: "agent"`，但事后没有任何一行记录能佐证这条单真是 agent 派的。
+4. **多步执行没有形状**。`mission_create` 一次调用发三条命令（create → assign → confirm），这在 §1.2 原则二下是合法的"合并发生在工具内部"，但 waterfall 的三段是**按调用**划的 —— "execute 段里串三步、post 段统一核对一次"这件事没有规范口径。
+
+**只读工具的退化形态**：四件只读工具（`world_snapshot` / `task_status` / `mission_status` / `registry`）没有 execute 段，pre 段只做过滤器校验，post 段不存在 —— 它们是"读一次投影，投影本身就是结论"。
+
+#### 6.1.2 目标语义
+
+**一次工具调用 = 一次 waterfall，三段固定**：
+
+| 段 | 职责 | 允许做什么 | 禁止做什么 | 失败语义 |
+|----|------|-----------|-----------|---------|
+| **pre-execute**（准入段） | ① 入参形状与上限；② 资源准入（容量 / 角色守门 / 存在性 / 终态）；③ 审计标注（origin / 通道） | 只读检查 | **不得**改任何状态；**不得**发命令 | 无副作用拒绝（信封 `ok=false` + 附录 A 的错误码），绝不"先执行再报错" |
+| **execute**（执行段） | 把一次调用翻译成既有命令并投递 | `dispatchCommand` | **不得**做业务判定（它不知道"这条命令合不合法"，那是状态机的事）；**不得**直接改 store | 命令被状态机拒 = 由 post 段读出并转译成对应的错误码 |
+| **post-execute**（核对段） | 回答一句"刚才那条命令**到底落地了没有**" | 只读核对 | **不得**改状态；**不得**重发命令 | 未落地 = `internal_error`（明说"没落地"），**绝不假装成功**（§2.9 记账回执的既有口径） |
+
+**四条不变式**：
+
+- **I1**：pre 段与 post 段**零副作用** —— 两段都只读。
+- **I2**：execute 段是**唯一**写点，且只经 `dispatchCommand` 发 core 命令（§3.1：MCP 不自己改状态）。
+- **I3**：post 段的判据只能是**状态事实**（WorldState / SQLite 投影），**不能**是"我刚发过命令"这件事本身。发过 ≠ 落地。
+- **I4**：每件工具的三段挂点写在本章的映射表里；**改挂点 = 改契约**，走 §5.3 的变更流程。
+
+**多步执行的形状**（`mission_create` 这类）：execute 段内部可串多步，**每一步各自被状态机独立裁决**（任一步被拒则整条作废，core 的 `commit` 已是原子口径），post 段**统一核对一次最终落点**（`phase` 与 `auto_confirm_applied`）。多步不产生多个 post 段。
+
+**何时用**：写工具走三段齐全；只读工具走"pre（过滤器校验）+ 无 execute + 无 post"。**何时不用**：不要把 post 段做成"重试段" —— 核对失败是**报告**未落地，不是"再发一次命令"（重试会制造重复实体，违反 §3.4 的幂等要求；重复调用本来就该由状态机以明确错误码拒绝）。
+
+**正例**（目标形态 · 伪代码，仅示意段位，不含实现）：
+
+```ts
+// pre：只读，零副作用
+const admitted = admitTaskAssign(args, host.getWorldState()); // 形状 / 容量 / 守门 / origin
+// execute：唯一写点，只发命令
+host.dispatchCommand({ type: 'task.assign', characterId: admitted.characterId, prompt: admitted.prompt });
+// post：只读核对，判据是状态事实
+const landed = findLandedTask(host.getWorldState(), admitted); // 落地判据要能抗同 prompt 并发（见迁移草案 P2）
+if (!landed) throw new McpToolError('internal_error', '派单未落地：…');
+```
+
+**反例**（两种违反段位的常见错解）：
+
+```ts
+// ❌ 反例一：把"重试"塞进 post 段 —— 发过命令不等于落地，重发会造出第二个任务
+host.dispatchCommand(cmd);
+if (!landed) { host.dispatchCommand(cmd); /* 重复实体 */ }
+
+// ❌ 反例二：pre 段里发命令 —— 准入检查与执行混在一段，失败时"拒绝"其实已经产生副作用
+if (!guard.ok) throw ...;      // 前半段：只读
+host.dispatchCommand(cmd);     // 后半段：执行
+if (!landed) throw ...;        // 失败时状态已被改动，pre 的"无副作用拒绝"落空
+```
+
+#### 6.1.3 迁移草案
+
+**分三步，每步都标清是否动运行时**（本节只出草案，实施另开任务）：
+
+| 步 | 内容 | 动运行时？ | 风险 |
+|----|------|-----------|------|
+| **P0** | 把三段语义与不变式写进本章（纯文档），并在每个 handler 的文件头把现有代码标注为 pre / execute / post 三段（注释标注，不改逻辑） | ❌ 否 | 零 |
+| **P1** | 抽取**公共 pre 段**的只读判定（容量、角色守门、词表校验）到 `tools/common.ts` 的公共函数 —— **只做提取，不改判定口径**（`guardCharacter` 已是"两个消费者共用一份判定"的收敛点，照此扩到容量与词表） | ✅ 是（纯提取） | 低：判定口径逐字不动，用现有单测兜住 |
+| **P2** | 引入**公共 post 段**核对助手，并把 `task_assign` 的匹配判据从"同角色 + 同 prompt 差分"换成**不依赖内容相等**的落地判据（见 §6.3 的变更计数，或"本进程命令回执"通道） | ✅ 是 | 中：改的是"回执认谁"的判据，需补并发用例 |
+
+**P2 的备选判据（两条路，评审时二选一）**：
+
+- **路 A · 变更计数**：core 在每次状态变更时递增一个单调计数，post 段比对"命令前后计数是否变化 + 新实体是否出现"。代价：要在 `WorldState` 之外暴露一个计数位 —— 属 core 契约变更，须走 §5.3 的 ⚠️ 流程。
+- **路 B · 命令回执通道**：让 `dispatchCommand` 能拿到 core 的裁决结果（成功 / 拒绝码）。代价：动 core 总线的命令契约（`src/core/bus.ts` 与 runtime），比路 A 重，但它同时解决 §6.3 的"回读核对脆弱"与"命令没人接管只能靠差分猜"两个问题。
+
+> **本节不做的事**：不把"三段"做成运行时的中间件框架（那会引入一层新的间接，与 core「零 IO、纯逻辑」与 gateway「不加无谓层次」的取向相悖）。三段是**规范里的概念**，落地形态是**函数内的三段**或**三个小函数**，不是一条管线对象。
+
+#### 6.1.4 waterfall 映射表（9 件工具，完整）
+
+> **注 · 工具件数**：第一期是**八件**工具（§2.1–§2.8），v1.1 又增了第九件 `stratix_mission_checkpoint`（§2.9）—— 本表覆盖**当前注册的全部九件**（`src/stratix-gateway/mcp/server.ts` 的 `DEFAULT_MCP_TOOLS`），故写作"9 件"。
+
+> **表 6.1-1 现状：三段挂在哪（写今天的事实）**
+
+| # | 工具 | pre-execute（现状） | execute（现状） | post-execute（现状） | 缺口 |
+|---|------|--------------------|----------------|-------------------|------|
+| 1 | `stratix_world_snapshot` | 过滤器词表校验（`domains` / `unit_status` / `mission_phase` / `task_status`）+ `limit` 上下界 | 无（只读） | 无 | 段位未标注；过滤器校验与词表定义同文件两份（`world.ts` 的 `DOMAINS` 与 spec §2.1 各一份） |
+| 2 | `stratix_task_assign` | `origin` 值域校验 + `prompt` 非空/上限 + `guardCharacter('assign')` + 队列容量（`MAX_TASKS`） | `dispatchCommand(task.assign)` | 差分任务集合 + 匹配 `characterId` + `prompt` 相等的新任务 | `mission_id` **存在性未校验**（指向不存在的编组时任务照派，终态回报链找不到收尾对象，错误只落日志，调用方看不见）；`origin` 不落库；差分匹配抗不了同 prompt 并发 |
+| 3 | `stratix_task_status` | `task_id` 形状校验 | 无（只读） | 无 | `include_output=true` 时全文来自 SQLite（跨投影面），回落摘要时用 `output_truncated=true` 表达（见 §6.3） |
+| 4 | `stratix_task_cancel` | `task_id` 形状校验 + **存在性**（查状态，不判状态） | `dispatchCommand(task.cancel)` | before/after 相位比对：`queued → cancelled` 才算成功；状态机拒了 → `task_not_cancellable`；没变 → `internal_error`（命令没人接管） | 段位未标注；「仍 queued」与「没人接管」靠推断区分（当前靠"排队中的任务被取消后必然变 cancelled"这一不变量） |
+| 5 | `stratix_mission_create` | `title` 非空/上限 + `units` 条数上限 + `brief` 四段形状与长度 + `depends_on` 条数上限 + 容量（`MAX_MISSIONS`） | **三步**：`mission.create` → `mission.assign` →（`auto_confirm` 时）`mission.confirm(accept)` | 回读最终相位；以 `phase==='running'` 判 `auto_confirm_applied`；依赖未满足时用 core 的 `findMissingDependencies` 判定（**不另写一份依赖规则**） | post 段里混着"落地核对"与"依赖是否满足"两件事；多步执行的段位无规范口径 |
+| 6 | `stratix_mission_status` | `mission_id` 形状 + `limit` 上下界 | 无（只读） | 无 | 列模式截断标记齐全（`returned`/`total`/`truncated`），无缺口 |
+| 7 | `stratix_mission_checkpoint` | `mission_id` / `note` 形状 + `note` 上限（500 码点）+ **存在性** + **终态**（`isTerminalPhase`） | `dispatchCommand(mission.checkpoint)` | 回读最后一条 checkpoint 的 note 是否与入参相等（core 记账是静默的） | 记账是 domain 里**唯一的 append-only 事件行**，但没有统一的"事件已记录"契约（见 §6.3） |
+| 8 | `stratix_chat_send` | `character` / `message` 形状 + `message` 上限（8000）+ `guardCharacter('chat')` + **端口存在性**（`host.sendChatRound` 未接 → `internal_error`） | 委托 `host.sendChatRound`（一轮对话，**同步等回复**） | 无（对话结果本身就是执行结果） | 端口未接是**运行期才发现**（见 §6.2）；本轮回复**不进 WorldState**（只在落库的对话表里），返回字段无状态侧对照物（见 §6.3） |
+| 9 | `stratix_registry` | 无入参（schema 为空对象） | 无（只读） | 无 | 三段全空 —— 是"无管线"的合法形态，但**没有任何地方写明它合法** |
+
+> **表 6.1-2 目标：收敛后的三段挂点**
+
+| # | 工具 | pre（统一口径） | execute | post（统一口径） | 收敛动作 |
+|---|------|-----------------|---------|-----------------|---------|
+| 1 | `stratix_world_snapshot` | 过滤器词表校验（词表单一来源） | 无 | 无（读工具不核对） | P1：词表与 spec 同源 |
+| 2 | `stratix_task_assign` | 形状 + 上限 + `origin` 值域 + **origin 落库位** + 角色守门 + 队列容量 + **`mission_id` 存在性** | `task.assign` | 落地判据（P2：变更计数 / 命令回执，抗同 prompt 并发） | P1 + P2 |
+| 3 | `stratix_task_status` | 形状 | 无 | 无（**加** `output_source` 字段标来源，见 §6.3） | P0（文档）+ 后续加字段（§5.1 允许加参数/加字段） |
+| 4 | `stratix_task_cancel` | 形状 + 存在性 | `task.cancel` | 相位比对不变（已是状态事实判据） | P0（标注段位） |
+| 5 | `stratix_mission_create` | 形状 + 上限 + 容量 + **`brief` / `depends_on` 归一仍交 core** | 三步串起（每步独立裁决） | 一次核对最终落点 | P0（口径写死） |
+| 6 | `stratix_mission_status` | 形状 + `limit` | 无 | 无 | P0 |
+| 7 | `stratix_mission_checkpoint` | 形状 + 上限 + 存在性 + 终态 | `mission.checkpoint` | 核对最后一条（不变） | P0 |
+| 8 | `stratix_chat_send` | 形状 + 上限 + 角色守门 + **端口能力声明**（§6.2） | `sendChatRound` 一轮 | 无（结果即执行结果） | P1（端口能力化） |
+| 9 | `stratix_registry` | 无 | 无 | 无 | P0（明确"无管线"是合法形态） |
+
+**何时用 / 何时不用这张表**：新增工具时**必须**在表 6.1-2 里加一行（P0 步骤：规范与实现同一个 PR，§4.3 Step 6）；修改既有工具的段位时**必须**走 §5.3 的变更流程。**不要**把表当实现细节 —— 它是契约的一部分：模型侧不读它，但它约束"工具作者往哪段放代码"，而这正是本模式要解决的问题。
+
+### 6.2 capability seam 三件套
+
+#### 6.2.1 现状对照
+
+**现状：三件套其实已经在了，只是没被这样命名，也没被完整地守。**
+
+| 件 | 我们的对应物 | 事实位置 | 守住了什么 | 没守住什么 |
+|----|-------------|---------|-----------|-----------|
+| **Definition**（定义） | `ToolSpec`（`src/stratix-gateway/mcp/types.ts`）+ 注册表（`registry.ts`） | `name` / `description` / `inputSchema` / `handler` / `errors` / `readOnly` / `order` | 工具**是什么**：名字、契约、排序位；重名当场抛错；返回顺序确定（`(order, name)`，码位序兜底） | `ToolSpec` 里 **定义与实现混在一处** —— `handler` 是实现，却是 Definition 的字段；Definition **不声明"我需要什么能力"** |
+| **Provider**（提供） | `createCoreMcpHost`（`src/stratix-gateway/mcp/context.ts`）→ 产出 `McpHost` | 四个注入端口：`store`（→`getWorldState`）、`dispatch`（→`dispatchCommand`）、`readTaskOutput`（→`readTaskOutput`）、`sendChatRound`（→`sendChatRound`） | 工具**不直接 import** core / SQLite：工具语义与"状态从哪来、命令往哪投"解耦，单测可注入隔离实现 | Provider **不自陈能力**：能力集是"这次装配传了什么"，靠**逐个端口是否在场**隐式表达；**可选端口未接这件事，消费者只能在运行期发现** |
+| **Consumer**（消费） | 九个 handler（`src/stratix-gateway/mcp/tools/*.ts`） | 只经 `host` 端口消费 | 工具**只依赖端口**，不认具体实现、不认进程拓扑 | Consumer **不声明"我消费什么"**：需求是**运行期**才暴露的（见下） |
+
+**最典型的一处代价 —— 可选端口的"运行期才发现"**：`McpHost.sendChatRound` 是**可选**端口（`types.ts` 的 `readonly sendChatRound?:`）。生产装配处（`src/stratix-gateway/index.ts` 的 `createCoreMcpHost({ store: service.store })`）**没有接它** —— 于是 `stratix_chat_send` 在真实环境里跑，会在 pre 段命中"端口没接"并回 `internal_error`「本进程没有可用的角色对话通路」。
+
+- ✅ **对的一面**：工具**没有编造回复**（§3.3 的诚实性），也没有在 gateway 里另造一套对话实现（那会造出第二份会话真相、破掉"同一角色同时只允许一轮在跑"）。这是 seam 存在的价值 —— 缺能力时**如实降级**。
+- ❌ **欠的一面**：`tools/list` 仍然把 `stratix_chat_send` 报给客户端（它确实注册了），客户端**看不出**"这台机器上这个工具不可用"。工具的**能力需求**（Definition）与宿主的**能力供给**（Provider）之间**没有可对照的清单** —— 唯一能对齐的地方是代码里的"可选端口 + 缺省不接"这条约定，而它没有出现在任何规范文本里。
+
+**另两处未守住的边界**：
+
+- **Definition 与实现混住**：`ToolSpec.handler` 让"这份工具的契约"和"这份工具的代码"住在同一个对象里，于是"description 写了四要素"与"handler 真按四要素做了"没有结构性关联 —— 只能靠评审盯（§4.3 Step 4 与 §4.3 Step 6 是人工关口）。
+- **Provider 的实现是单例化的默认值**：`createCoreMcpHost()` 缺省取 `worldStore` 单例与 `emitCommand`（`context.ts`）—— 单测靠显式传参隔离。**默认值即耦合**：不传参就默认连上真战场。
+
+#### 6.2.2 目标语义
+
+**三件套的职责边界**（写死，改动需走 §5.3）：
+
+| 件 | 定义 | **允许** | **禁止** |
+|----|------|---------|---------|
+| **Definition** | 工具**是什么**：名字、描述、schema、错误码集、只读标记、排序位，以及**它消费哪些能力** | 描述能力**需求**（如 `requires: ['readWorldState', 'dispatchCommand']`） | 夹带实现细节（不得 import core / 不得读文件 / 不得持有可变状态） |
+| **Provider** | 能力**从哪来**：把宿主能力适配成端口形状，并**自陈能力集** | 实现端口；声明"我这条链路提供哪些能力" | 替 Consumer 做业务判定（不在 Provider 里判相位、不在 Provider 里判容量） |
+| **Consumer** | 能力**怎么用**：把一次调用翻译成既有命令 / 既有服务调用 | 只经端口消费；按 Definition 声明的 `requires` 断言可用性 | 越过端口直连 core / SQLite / DOM；自己造一份真相 |
+
+**三条不变式**：
+
+- **S1（需求可见）**：每件工具的 Definition 声明它**需要**哪些能力端口；Provider 声明它**提供**哪些能力端口。两者可对照 —— 缺的那个在装配时就该被看见，而不是在调用时才炸。
+- **S2（能力缺失即降级，不即幻觉）**：端口缺失时，工具**如实报错**（现有行为正确，保留），且**报错口径要能说清是"这台机器没有这个能力"而不是"你这个参数不对"**。目标态：`internal_error` 的 message 里点出缺哪个端口（现状已点出"未接 sendChatRound 端口"，口径正确，保留）。
+- **S3（Definition 不夹带实现）**：Definition 是**数据**，实现是**行为**。目标态：`ToolSpec` 保留 `handler` 字段（第一期形态，§5.1「只加不删」），但**契约面**（name / description / schema / errors / readOnly / order / requires）与**实现面**（handler）在评审与文档上分开看待：契约面进 §2 与附录，handler 进 `tools/<域>.ts`。
+
+**何时用 / 何时不用**：**何时用** —— 任何"工具需要宿主提供某种能力"的地方（读状态、投命令、读全文、跑对话，以及将来的写库、发通知、访问网络）。**何时不用** —— 不要把 seam 做成"万能能力接口"（一个 `invoke(capability, payload)` 把四种能力糊成一个字符串路由，那等于没有类型，也没有 seam）。也不要为了"看起来分层"把 Provider 拆成多个工厂函数 —— 三件套的价值在**职责边界**，不在文件数量。
+
+**正例**（目标形态 · 伪代码）：
+
+```ts
+// Definition：说清"我要什么"（新增字段，不改既有字段）
+const chatSendTool: ToolSpec = {
+  name: 'stratix_chat_send',
+  requires: ['readWorldState', 'sendChatRound'],   // 声明需求
+  handler: async (args, host) => { /* 只经 host 消费 */ },
+};
+
+// Provider：说清"我给什么"
+const capabilities = { readWorldState: true, dispatchCommand: true, readTaskOutput: true, sendChatRound: false };
+// 装配期就能算出"哪些工具这次不可用"，不必等调用
+```
+
+**反例**：
+
+```ts
+// ❌ 反例一：Definition 里夹实现 —— 契约与行为混住，无法"只审契约"
+const chatSendTool: ToolSpec = { name: '…', handler: async (args) => { /* 直接 import 了 chat-service */ } };
+
+// ❌ 反例二：Provider 替 Consumer 做判定 —— 裁决权从状态机挪到了装配层
+const dispatch = (cmd) => { if (!allowed(cmd)) throw new Error('not allowed'); emitCommand(cmd); };
+```
+
+#### 6.2.3 迁移草案
+
+| 步 | 内容 | 动运行时？ | 说明 |
+|----|------|-----------|------|
+| **P0** | 把三件套的职责边界与不变式写进本章（纯文档）；在 §4.1 的 `ToolSpec` 字段表里补一行 `requires`（**声明位**，尚未实现） | ❌ 否 | 零风险 |
+| **P1** | 在 `ToolSpec` 上**加** `requires`（可选字段，缺省 = 不声明）；在 `createCoreMcpHost` 上**加** `capabilities()`（自陈能力集） | ✅ 是（纯增量，缺省行为不变） | 满足 §5.1「加参数优于改语义」 |
+| **P2** | 装配期用 `requires` × `capabilities()` 算出一份"本机可用工具集"，供 `tools/list` 之外的诊断面使用（**不改 `tools/list` 的返回** —— 工具清单是客户端契约，删工具会破 §5.1） | ✅ 是 | 诊断面新增，不动既有契约 |
+
+**端口 ↔ 三件套对照表**（现状 → 目标）：
+
+| 端口（`McpHost`） | 提供方（Provider） | 消费者（Consumer） | 目标态能力名 | 现状缺口 |
+|------------------|-------------------|-------------------|------------|---------|
+| `getWorldState()` | `store`（缺省 `worldStore` 单例） | 四件只读工具 + 五件写工具（守门 / 存在性 / 容量判定） | `readWorldState` | 缺省值即耦合（不传参连真战场） |
+| `dispatchCommand(cmd)` | `dispatch`（缺省 `emitCommand`） | 四件写工具 | `dispatchCommand` | 无回执（§6.1 的 post 段靠差分） |
+| `readTaskOutput(taskId)` | `readTaskOutput`（缺省 SQLite 直读） | `task_status`（`include_output=true`） | `readTaskOutput` | 跨投影面（§6.3） |
+| `sendChatRound(cid, text)` | `sendChatRound`（**可选**，生产未接） | `chat_send` | `sendChatRound` | **运行期才发现缺失**（S1 待落地） |
+
+> **命名规范（本节定死）**：`Definition` = `ToolSpec`；`Provider` = 实现 `McpHost` 的那侧（生产 = `createCoreMcpHost`）；`Consumer` = `tools/*.ts` 里的 handler。端口方法名保持现状（`getWorldState` / `dispatchCommand` / `readTaskOutput` / `sendChatRound`）—— **不为了对齐 dsh 而改名**（改名会波及全部 handler，属 §5.3 的 ⚠️ 类变更，且收益为零）。
+
+### 6.3 事件日志 + 投影
+
+#### 6.3.1 现状对照
+
+**现状：Stratix 是"纯投影"架构 —— 真相在别处，WorldState 是投影；但我们没有事件流。**
+
+| 事实 | 位置 | 说明 |
+|------|------|------|
+| WorldState 是**物化状态**，不是事件流 | `src/core/store.ts` | store 持一份当前态，`setState` 覆盖；**没有**变更历史、**没有**事件追加 |
+| WorldEvent 是**瞬态**的 | `src/core/bus.ts` 的 `onWorldEvent` | `unit.position` / `unit.speaking` / `exp.gained` / `level.up` 等事件**不进** WorldState（runtime 显式接地、不写状态），只做通知 |
+| 唯一的 append-only 记账行 | `mission.checkpoint` → `MissionView.checkpoints` | domain 里**唯一**的事件式记录：只追加、不改写、终态拒记、上限 64 条**丢最旧**（`MAX_MISSION_CHECKPOINTS`） |
+| 任务派发 / 取消**不留事件行** | `HudCommand.task.assign` / `.cancel` | 状态机落状态即完事；**没有**"谁在什么时候派了这条单"的行 |
+| `origin` 不落库 | 全库检索 `src/app` / `src/core` 零命中 | §2.0 描述的审计来源目前只是回执里的一个字段 |
+| `seq` 是**状态版本号** | `docs/WORLD-SYNC.md` §3 | service 侧统一发号、全 service 单调递增、不按连接计数；首个 snapshot 的 seq = 1；**快照即版本**（seq 代表"这份快照 = 版本 N 的完整状态"，快照永远是完整的）；ack 的 seq 是"核对后的状态版本"（可能小于或大于客户端最近收到的 snapshot 的 seq）；**seq 只用于诊断与对账，不用于增量合并**；跨连接不可比（service 重启从 1 重新计数，客户端不得跨连接比较 seq，也不得据此决定要不要更新）；**seq ≠ 业务时间**（两个 snapshot 的 seq 差值不代表中间发生了多少次变更 —— 状态变更可能被合并广播） |
+
+**"seq = 事件序"这个说法今天是不成立的** —— 我们没有事件流，只有**合并广播后的投影版本号**。一次用户操作可能只产生一次 `setState`（runtime 的"一次用户操作一次广播"铁律），所以"投影版本数"与"业务事件数"**不是一回事**。把它叫"事件序"会造出一个我们并不具备的能力承诺。
+
+**"重放 = 重投影"今天也不成立** —— 没有事件流，就没有"重放"；我们能做的只有"重新读一遍真相源、重算一遍投影"（即再读一次 WorldState / SQLite），这**不是**重放，而是**重投影**。
+
+**"model-visible means logged"（凡是模型看得见的，都必须被记下来）对我们意味着什么** —— 逐条推论（这是本节的核心）：
+
+- **推论 A · 每个返回字段都要能指到投影来源**。今天九件工具的返回字段来源**没有一处写在规范里** —— 规范只写了"返回什么"，没写"这个值从哪来"。模型拿到 `stratix_task_status` 的 `output`，分不清它是状态里的摘要（≤2000 码点）还是 SQLite 里的全文（可能很长）—— 只靠 `output_truncated` 这个布尔量去猜。
+- **推论 B · 跨投影面是常态，必须显式标注**。至少三个来源面：**① WorldState**（战场投影）、**② SQLite**（`tasks` 表的输出全文、对话落库表）、**③ app 服务返回值**（`chat_send` 的一轮回复 —— 它**不进 WorldState**，只能靠落库表对账）。今天这三面在返回里**混在一起**，没有字段级的来源标注。
+- **推论 C · "看得见的动作"必须留痕**。模型能让世界发生的事：派单、取消、建编组、记账、发对话。今天只有**记账**（mission checkpoints）留痕，**派单 / 取消 / 建编组都不留事件行**，`origin` 也不落库 —— 也就是说 §2.0 承诺的"审计来源"在事实上是空的：**模型看得见自己做了什么，但那件事没有一行记录**。这是"model-visible means logged"在我们这里最尖锐的一处欠账。
+- **推论 D · 留痕 ≠ 事件日志**。我们要的是**审计行**（谁、何时、做了什么、结果如何），不是**可重放的事件流**。前者是 append-only 的**事实行**，后者要能重建状态 —— 后者的成本（core 零 IO 铁律、全量广播体积、合并广播语义）与收益不成比例，**不做**。
+
+#### 6.3.2 目标语义
+
+**四条**（T1–T4）：
+
+- **T1 · state 是投影，投影必须可溯源**：工具返回的**每个字段**都要能指到来源面（state / sqlite / service）。指不到 = 违规。落地形态：规范里为每件工具写一张**字段来源表**（本章 6.3.4），以及返回里给跨面字段加**来源标注**（加字段，不改语义 —— §5.1 允许）。
+- **T2 · seq 是投影版本序，不是事件序**：`seq` 标识"这份投影是第几版"，**不是**事件条数、**不是**时间戳、**不是**增量游标。这条与 [WORLD-SYNC.md §3](WORLD-SYNC.md#3-状态版本-seq-规则) 现有口径**完全一致**，本章只是把它明确写成"版本序"并明确**否定**"事件序"这一读法 —— 因为我们没有事件流，承诺事件序就是承诺一个不存在的能力。
+- **T3 · 重放 = 重投影**：要重建一份状态，走"重读真相源 + 重算投影"，**不是**"重放副作用"。我们**不提供**"重放某条命令"的能力，也不提供"重放到某个版本"的能力（没有事件流就做不到）。要撤销，走状态机提供的显式迁移（取消、终态拒改写）。
+- **T4 · model-visible means logged**：凡是**模型看得见的动作**，都要留一条**审计行**；凡是**模型看得见的字段**，都要能指到投影来源。审计行是 append-only 的事实行（不是事件流），且**它本身不构成第二份真相** —— 它记的是"发生过什么"，真相仍在状态机。
+
+**何时用 / 何时不用**：**何时用** —— 新增工具时同步补字段来源表与审计口径；给工具加跨面字段时同步加来源标注。**何时不用** —— 不要把审计行做成**第二份状态**（审计行不可被查询成"当前状态"，那是状态机与 WorldState 的活）；不要为了"可重放"去造事件流（成本与收益不成比例，且会破 core 零 IO 铁律）。
+
+**正例**（目标形态 · 伪代码）：
+
+```ts
+// ✅ 字段级来源标注：模型知道这个值从哪来，也知道截断意味着什么
+return toToolResult({ ok: true, data: {
+  task_id: task.id,
+  output,                       // 来自 state（摘要）或 sqlite（全文）
+  output_source: includeOutput && full !== null ? 'sqlite' : 'state',  // ← v2 新增字段
+  output_truncated: outputTruncated,
+}});
+```
+
+**反例**：
+
+```ts
+// ❌ 反例一：模型看得见的动作不留痕 —— 事后无法回答"这条单是谁派的"
+host.dispatchCommand({ type: 'task.assign', characterId, prompt });  // 没有任何一行记录
+
+// ❌ 反例二：把 seq 当事件序用 —— 我们没有事件流
+if (snapshot.seq > lastSeq) { /* 以为漏了中间的事件，重放或补拉 —— 做不到 */ }
+
+// ❌ 反例三：审计行变成第二份状态
+auditRows[cmdId] = { status: 'running' };  // ← 这是在自造状态机
+```
+
+#### 6.3.3 迁移草案
+
+| 步 | 内容 | 动运行时？ | 备注 |
+|----|------|-----------|------|
+| **P0** | 在本章写出**九件工具的字段来源表**（纯文档）；规范 §2 各工具补一句"返回字段来源" | ❌ 否 | 零风险，也是后面两步的对照底本 |
+| **P1** | 落一张 **MCP 工具调用审计表**（SQLite，append-only）：`tool_name` / `参数摘要` / `origin` / `通道` / `时间戳` / `结果码` / `落地与否`。**只记不读** —— 先把事实行攒起来，读面另议 | ✅ 是（新增一张表 + 一处写入） | 写面在 gateway（唯一 MCP 装配点）；**不新增状态字段、不改 core 契约**（§3.1 不破） |
+| **P2** | 给跨面字段加**来源标注**（`output_source` 等）：**加字段、不改语义**，缺省行为不变（§5.1 / §5.3「新增可选字段 ✅」） | ✅ 是（纯增量） | 与 §6.1 的 post 段配套：post 段核对时也知道自己核对的是哪一面 |
+| **P3（可选，评审后定）** | 引入**单调变更计数**（core 侧），供 §6.1 的 post 段做"确实变过"的判据 | ✅ 是（**core 契约变更**） | 须走 §5.3 的 ⚠️ 流程；与 §6.1 P2 的路 A 是同一件事，**做一次不做两次** |
+
+**明确不做（本节）**：
+
+- ❌ **不做全量事件日志** —— core 零 IO 铁律、全量广播体积、既有"一次用户操作一次广播"的合并语义，三者都与它相悖；且 §3.1 规定 MCP 不新增持久化表以外的状态源。
+- ❌ **不做增量合并** —— world-sync §7.2 已把增量列为"预留、本期不实现"，本章不改这一条。
+- ❌ **不做"重放命令"能力** —— 没有事件流就做不到；撤销走状态机的显式迁移（§3.2）。
+- ❌ **不用审计行重建状态** —— 审计行是"发生过什么"，不是"现在是什么"。
+
+#### 6.3.4 字段来源表（九件工具 · P0 产出）
+
+| 工具 | 返回字段的来源面 | 跨面？ | 说明 |
+|------|----------------|--------|------|
+| `stratix_world_snapshot` | **state**（units / missions / tasks / characters 四段） | 否 | 全部来自一次 `getWorldState()`；`taken_at` 是工具自取的墙钟（不是状态字段） |
+| `stratix_task_assign` | **state**（新任务的 id / status / mission_id / created_at） | 否 | 回执里的 `character` 来自 state 的角色投影；`origin` 是**请求侧标注**（无落库位，见 §6.3.1 推论 C）；`timeout_ms` 是**生效常量**（不是状态字段） |
+| `stratix_task_status` | **state**（状态与摘要）+ **sqlite**（`include_output=true` 时的输出全文） | ✅ | 全文不可得时回落摘要并标 `output_truncated=true`；v2 加 `output_source` |
+| `stratix_task_cancel` | **state**（取消后的相位、占位 output） | 否 | `previous_status` 是**回读前**的观察值 |
+| `stratix_mission_create` | **state**（新编组的 id / phase / unitIds / brief / dependsOn / checkpoints） | 否 | `dropped_units` 是**差分算出的**（请求去重名单 − core 采纳名单）；`auto_confirm_applied` 由相位推得；`blocked_by_dependencies` 用 core 的 `findMissingDependencies` 现算 |
+| `stratix_mission_status` | **state**（编组投影 + 名下任务摘要） | 否 | 列表按创建时间倒序，排序在工具侧现算 |
+| `stratix_mission_checkpoint` | **state**（最后一条 checkpoint 的 note / at + 计数） | 否 | core 的记账是**静默**的，故回执靠 post 段回读核对 |
+| `stratix_chat_send` | **service**（app 层 chat-service 的一轮结果）+ **sqlite**（对话落库表，历史不在返回里） | ✅ | `reply` **不进 WorldState** —— 只靠落库表对账；`session_id` / `message_id` 由宿主给（拿不到为 null，不编造） |
+| `stratix_registry` | **state**（detectedAgents / characters / units） | 否 | 探测结果由 app 层写进 state，本工具**不重跑探测** |
+
+### 6.4 可逆注册
+
+#### 6.4.1 现状对照
+
+**现状：可逆注册在"进程级"已经做到了，在"能力级"没有做到。**
+
+**已经做到的（进程与子系统级）**：
+
+| 事实 | 位置 | 口径 |
+|------|------|------|
+| core runtime 的 `start()` 返回 **stop 闭包** | `src/core/runtime.ts` | 重复 start 是 **no-op**（返回同一个 stop，不叠加订阅）；stop 撤销三处订阅（`store.subscribe` / `onCommand` / `onWorldEvent`）**并停掉 agentLink**（"连接是外部资源，运行时停了就必须关"） |
+| core bus 的订阅返回 `Unsubscribe` | `src/core/bus.ts` | 退订是订阅的对偶动作 |
+| app 层服务各有 stop | `task-service` / `progression-service` / `pipeline-service` / `health-monitor` | 口径一致（都返回 stop 闭包）；`progression-service` 的注释把这层要求写成了明文：「返回 stop 闭包（**资源必须可清理**，页面卸载时调用）」 |
+| 组合根有**顺序化的关闭链** | `src/stratix-gateway/index.ts` 的 `shutdown()` | `runStep(name, fn)` 逐步执行、**收集错误而不中断**、最后按错误数给退出码；顺序是"先停大脑（`booted.stop()`），再停周边子系统"，`worldSyncEndpoint.close()` 在 HTTP server 关闭之前 |
+
+**没有做到的（能力与注册级）**：
+
+| 缺口 | 事实位置 | 后果 |
+|------|---------|------|
+| **MCP 工具注册表没有卸载** | `src/stratix-gateway/mcp/registry.ts` | `registerTool` 重名抛错，但**没有 `unregisterTool`**；工具集是静态数组 `DEFAULT_MCP_TOOLS`（`server.ts`），装配即生效，**没有任何卸载路径** |
+| **`/mcp` 路由挂上后没有 unmount** | `src/stratix-gateway/index.ts` 的 `app.use('/mcp', ...)` | 目前靠 HTTP server 整体关闭兜住（进程退出场景没问题），但**热重载 / 换装配 / 多实例**场景没有干净的拆法 |
+| **MCP server 没有 dispose** | `createMcpServer` / `createDefaultMcpServer` | server 实例不持有需要释放的资源（stdio / HTTP 的连接由传输层管），但**接口上没有"这件事结束了"的表达** |
+| **runtime 的 stop 闭包有一处重放风险** | `src/core/runtime.ts` 的 `start()` | stop 闭包把 `stop` 变量置空后，**再次 start 会新建订阅**；此时**重放旧的 stop 闭包**不会误退新订阅（mitt 的 `off` 本身幂等），但会把 `stop` 句柄一并置空 —— 于是 `runtime.running` 报 false，而新那次的订阅**再也拆不掉**（句柄已丢）。典型的"卸载不干净"形态 |
+
+**当前的实际影响有限**（诚实说明）：Stratix 是**单进程常驻**应用，进程退出即一切结束，MCP 工具集是静态的 —— 所以上面几处缺口今天**没有变成线上故障**。它们会在**桥 B（Stratix-as-dsh-plugin，`DSH-INTEGRATION-PLAN.md` §2）**这类"在同一进程里挂载 / 卸载一块能力"的场景里变成真问题 —— 那正是可逆注册模式要解决的场景。
+
+#### 6.4.2 目标语义
+
+**可逆注册（reversible registration）**：**每一次注册都必须配一个 disposer；调用 disposer 之后，系统必须回到注册之前的状态。**
+
+**四条不变式**：
+
+- **R1（注册必带 disposer）**：注册一个东西（工具、订阅、定时器、路由、连接）**必须**同时产出一个 `() => void`。没有 disposer 的注册**不允许**存在 —— "注册了但拆不掉"的东西会随时间累积，且累积在**没人看的那一侧**（MCP 侧正是如此，§3.1）。
+- **R2（disposer 幂等）**：同一个 disposer **重复调用**必须安全：第二次是 no-op，不报错、不二次释放、不影响**注册之后**建立的新资源。
+- **R3（卸载恢复原状）**：disposer 执行后，被注册对象**从可见面上消失**（`tools/list` 里没有它、路由不再命中、订阅不再回调），且**不留下**它的任何残留（未清的定时器、未关的连接、未退的订阅）。
+- **R4（顺序 = 依赖倒序）**：多个 disposer 按**注册的逆序**执行（后注册先拆），且**单个 disposer 抛错不阻断其余 disposer** —— 拆卸失败要**记账并继续**，不能因为一个挂了就让其余全留着。
+
+**何时用 / 何时不用**：**何时用** —— 任何"挂上去的东西将来要摘下来"的场景：MCP 工具注册、传输层路由、总线订阅、定时器、子进程连接、插件装配。**何时不用** —— 进程级常量（`worldStore` 单例、`emitCommand`）**不登记 disposer**：它们与进程同生共死，给它们造 disposer 是虚假的安全感。
+
+**正例**（目标形态 · 伪代码）：
+
+```ts
+// ✅ 注册即带 disposer，且 disposer 幂等 + 不误伤后来的注册
+const registry = createToolRegistry();
+const off = registry.registerTool(myTool);       // ← registerTool 返回 disposer（现状：返回 spec，要改）
+off();                                            // 幂等：再调一次是 no-op
+```
+
+**反例**：
+
+```ts
+// ❌ 反例一：注册了但没有拆法 —— 卸载后工具还在清单里
+registry.registerTool(myTool);          // 返回 spec，不是 disposer；没人能把它摘掉
+
+// ❌ 反例二：disposer 不幂等 —— 拆两次就崩
+const off = () => { subscription.off(); subscription.off(); };  // 第二次抛错或误伤
+
+// ❌ 反例三：拆卸顺序错了 —— 先拆了提供者，后拆消费者，消费者还在回调
+offProvider();   // 先
+offConsumer();   // 后  ❌ 应当逆序：offConsumer(); offProvider();
+```
+
+#### 6.4.3 迁移草案
+
+**统一 disposer 契约**（本节定死）：
+
+| 项 | 约定 |
+|----|------|
+| 形状 | `() => void`（同步）；需要异步清理的包一层并由调用方 await |
+| 幂等 | 重复调用安全；内部用"已拆卸"标志位保证只拆一次 |
+| 错误 | 抛错由**调用方**处理（拆卸链收集错误并继续，R4）；disposer 本身**不吞**错误 |
+| 作用域 | 只拆**自己注册的那一份** —— 绝不影响注册之后建立的新资源（R2 的关键） |
+
+**分层落地**（每层的现状 → 目标）：
+
+| 层 | 现状 | 目标 | 动运行时？ |
+|----|------|------|-----------|
+| **core runtime** | `start()` 返回 stop 闭包（重复 start 是 no-op）；**旧闭包重放会误清新句柄** | stop 闭包改为"**每次 start 一个独立句柄**，各自幂等"；旧句柄重放只拆自己那一次 | ✅ 是（小改，纯 runtime 内部） |
+| **core bus** | `subscribe` 返回 `Unsubscribe` | 已符合契约，不动 | ❌ |
+| **app 层服务** | 各有 stop 闭包，口径一致 | 统一到 disposer 契约（幂等 + 逆序）；由组合根的关闭链统一驱动 | ✅ 是（小改） |
+| **MCP 工具注册表** | `registerTool` 返回 spec；**无 unregister** | `registerTool` 返回 **disposer**（同时仍可拿到 spec —— 兼容现有调用）；新增 `unregisterTool(name)`；注册表支持"一次装配一批 → 一个 disposer 全撤" | ✅ 是（**加不改**：现有 `buildToolRegistry` 的调用方零改动） |
+| **MCP 路由 / server** | `app.use('/mcp', ...)` 无 unmount；server 无 dispose | server 暴露 `dispose()`（释放传输层资源）；路由 unmount 与 server dispose 合成一个 disposer，挂进组合根关闭链 | ✅ 是 |
+| **组合根关闭链** | 已有 `runStep` 顺序化关闭 + 收集错误 | **保持不变**，只把新 disposer 接进去（先拆消费者、后拆提供者） | ✅ 是（接线） |
+
+**关闭链的目标顺序（依赖倒序）**：
+
+```
+① 停止"产生新工作"的源头      （abandoned task requeuer 的定时器）
+② 停"消费工作"的子系统        （service runtime / agent runtimes / 编排同步）
+③ 拆"对外暴露的能力"          （MCP server dispose → /mcp 路由 unmount → world-sync endpoint close）
+④ 关"承载能力的通道"          （HTTP server close）
+```
+
+> 现状的关闭链已经是这个顺序（`booted.stop()` → `AgentRuntimeService.stopAll()` → `worldSyncEndpoint.close()` → HTTP server close），目标只是**把 MCP 那两件（server dispose / 路由 unmount）插进第 ③ 步**，其余不动。
+
+**本节不做的事**：不引入 Cordis 或任何插件运行时进 gateway / core（`DSH-INTEGRATION-PLAN.md` §4 明确禁止）—— 借的是"可逆注册"的**语义**，不是它的运行时。
+
+### 6.5 四模式的交叉约束与落地顺序
+
+**交叉约束**（四条模式之间的接口，改一条要看另外三条）：
+
+| 约束 | 说明 |
+|------|------|
+| **X1 · waterfall 的 post 段依赖 §6.3 的溯源** | post 段要判"落地了没有"，判据必须是**状态事实**（T1）。今天有两处让这条判据打折：① `task_assign` 的落地判据是"同角色 + 同 prompt 差分"，本质是**猜**而不是**对账**（§6.1 缺口 2）；② `origin` 这类审计标注根本不在任何投影面上，post 段无从核对（§6.3 推论 C）。**这两处是同一条链上的** —— post 段想变可靠，得先有 §6.3 的溯源与审计行。 |
+| **X2 · seam 的 Provider 能力集依赖 §6.1 的段位** | 端口缺失要在**装配期**可见（S1），前提是"哪些工具需要哪些端口"已经被声明 —— 也就是 §6.1 的 pre 段已经统一（否则"需要的端口"本身就散在各处说不清）。 |
+| **X3 · 可逆注册依赖 seam 的 Provider 可替换** | Provider 若写死单例（`worldStore` / `emitCommand` 缺省值），卸载就无从谈起 —— 换一套 Provider 再拆旧的那套，才是"可逆"的完整形态。故 §6.4 的目标形态是"**Provider 可替换 + 注册可拆**"的组合。 |
+| **X4 · §6.3 的审计行不得成为第二份真相** | 审计行记"发生过什么"，状态机记"现在是什么"；两者混在一起就是 §3.1 破规（§3.1 原文：MCP 侧自己记一张表，视图就会和战场漂移，而 MCP 是没有人看的那一侧）。审计行**只追加、不查询成状态**。 |
+
+**落地顺序（建议）**：**§6.2 P0/P1（seam 声明位）→ §6.3 P0（字段来源表）→ §6.3 P1（审计行）→ §6.1 P1（pre 段提取）→ §6.1 P2 + §6.3 P3（落地判据 / 变更计数，一起做）→ §6.4（可逆注册）**。
+
+理由：前两步是纯增量与纯文档，把"能力需求"与"字段来源"这两张底表立起来；审计行（P1）是 X1 的上游（没有溯源就没有可靠的 post 段）；pre 段提取（P1）是纯提取、风险最低；post 段改造与变更计数一起做，避免两次动 core；可逆注册放最后 —— 它在当前单进程常驻拓扑下没有真实压力，等桥 B 真的要热挂载时再做，且那时 §6.2 的 Provider 可替换已经就位（X3）。
+
+**这一章的自我约束**：本章**不引入**任何依赖、**不改动**任何运行时代码、**不新增**工具或错误码。§1–§5 的第一期工具面**一字未动** —— 本章的所有内容在评审通过并逐项实施之前，一律视为**提案**。
 
 ---
 
