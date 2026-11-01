@@ -21,6 +21,7 @@ import express from 'express';
 import { ensureDirSync } from 'fs-extra';
 
 import type { SqliteDatabaseLike } from '../app/services/persistence/game-save-dao';
+import { emitCommand } from '../core/bus';
 import { OpenClawConnectionStore } from '../stratix-data-store/OpenClawConnectionStore';
 import { initializeDatabase } from '../stratix-database';
 import { createNocoDBService, type NocoDBServiceOptions } from '../stratix-nocodb';
@@ -38,6 +39,8 @@ import { createStorageRoutes } from './api/routes/storage';
 import templateRoutes from './api/routes/template';
 import textureRoutes from './api/routes/texture';
 import { StatusSyncService } from './api/websocket/StatusSync';
+import { attachWorldSyncEndpoint, type WorldSyncEndpoint } from './api/websocket/world-sync/endpoint';
+import { WORLD_SYNC_PATH } from './api/websocket/world-sync/protocol';
 import { dataStoreService } from './dataStoreService';
 import { createCoreMcpHost } from './mcp/context';
 import { createDefaultMcpServer } from './mcp/server';
@@ -74,6 +77,8 @@ export interface GatewayServiceInstance {
   app: express.Application;
   server: http.Server;
   statusSyncService: StatusSyncService;
+  /** world-sync 端点（视图壳的状态面 / 命令面；前后端分离 B2）。 */
+  worldSyncEndpoint: WorldSyncEndpoint;
   close: () => Promise<void>;
 }
 
@@ -259,6 +264,17 @@ export async function startGatewayService(
   // 初始化 WebSocket 服务器
   initWebSocketServer(server);
 
+  // world-sync 端点（前后端分离 B2 / task_082）：视图壳（Electron / 浏览器）连上即得世界态、
+  // 发命令即落地。路径 /ws/world-sync —— 与 openclaw 的 WS 路由**共存不冲突**
+  // （各自只认自己的路径，互不处理对方的 upgrade 请求）。
+  // 数据面直接指向**本进程** service 的那份 core store + core 总线
+  //   （与 MCP 同源同实例 —— 客户端看到的就是 service 持有的真相）。
+  const worldSyncEndpoint = attachWorldSyncEndpoint(server, {
+    store: service.store,
+    dispatch: emitCommand,
+  });
+  console.log(`[world-sync] endpoint ready on ${WORLD_SYNC_PATH}`);
+
   // 绑定端口（独立和嵌入模式都需要）
   await new Promise<void>((resolve) => {
     server.listen(port, bindAddress, () => {
@@ -352,6 +368,10 @@ export async function startGatewayService(
       destroyOpenClawWebSockets();
     });
 
+    await runStep('Close world-sync endpoint', () => {
+      worldSyncEndpoint.close();
+    });
+
     if (nocoDBServiceInstance) {
       await runStep('Stop NocoDB service', async () => {
         await nocoDBServiceInstance!.stop();
@@ -439,6 +459,7 @@ export async function startGatewayService(
     app,
     server,
     statusSyncService,
+    worldSyncEndpoint,
     close: async () => {
       const exitCode = await shutdown();
       if (exitCode !== 0) {
