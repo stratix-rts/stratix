@@ -22,6 +22,12 @@
  *
  * @since v3.38（task_077）检查点（checkpoint）命令是**唯一的例外**：它**不发 Notice**
  * （成功与失败都不发）—— 记账是高频后台动作，逐条通知会冲垮通知队列并盖掉该让人看见的消息。
+ * @since v3.39（task_078）**依赖解锁调度**：本文件多管两件事（都不新增相位、不改状态机）：
+ *   1. 终态迁移（done / cancelled）时算一遍"刚刚解锁"的下游任务（collectNewlyUnlocked），
+ *      并通过**既有** store 投影 + Notice 出口报出去 —— 解锁状态是**派生状态**（真相在相位上），
+ *      因此"广播"就是那一次状态广播本身（不另开广播口，避免一次变更广播两遍，见本文件铁律 1）；
+ *   2. confirm 守门：依赖未满足的任务**拒绝确认**，并报出还差哪几个（findMissingDependencies）。
+ *      ★ 只守 accept：**拒绝 / 叫停永远允许** —— 前置没满足时用户最需要的就是能把任务撤掉。
  */
 
 import { worldStore, type CoreStore } from '../store';
@@ -39,18 +45,42 @@ import {
 import {
   appendMissionCheckpoint,
   applyMissionAction,
+  collectNewlyUnlocked,
   createMission as createMissionView,
   dropSettledMissions,
+  findMissingDependencies,
   isTerminalPhase,
+  shortMissionId,
   type MissionAction,
 } from './machine';
 
 /** 命令/调用被拒的机器可读原因。 */
-export type MissionRejectionCode = 'not-found' | 'empty-title' | 'limit-exceeded' | 'illegal-transition';
+export type MissionRejectionCode =
+  | 'not-found'
+  | 'empty-title'
+  | 'limit-exceeded'
+  | 'illegal-transition'
+  /**
+   * @since v3.39（task_078）依赖未满足：这条任务的前置还没收尾，**不允许确认**。
+   * 与 illegal-transition 分开的原因：两类拒绝要给人不同的说法 —— 非法迁移是"这一步本来就不该做"，
+   * 依赖未满足是"再等一下就能做"，后者还得报出**还差哪几个**（缺了信息用户就只能干瞪眼）。
+   */
+  | 'dependencies-unmet';
 
 type CommitResult =
-  | { readonly ok: true; readonly mission: MissionView; readonly droppedUnits: number }
-  | { readonly ok: false; readonly code: MissionRejectionCode };
+  | {
+      readonly ok: true;
+      readonly mission: MissionView;
+      readonly droppedUnits: number;
+      /** @since v3.39（task_078）本次终态迁移顺带解锁的下游任务（可能为空）。 */
+      readonly unlocked: readonly MissionView[];
+    }
+  | {
+      readonly ok: false;
+      readonly code: MissionRejectionCode;
+      /** @since v3.39（task_078）依赖未满足时，缺哪几个依赖 id（仅 dependencies-unmet 非空）。 */
+      readonly missing?: readonly string[];
+    };
 
 export interface MissionManagerOptions {
   /** 状态持有者；默认 worldStore 单例。单测用 createStore() 隔离。 */
@@ -267,9 +297,20 @@ class Manager implements MissionManager {
   /**
    * 一次写入跑完整串动作：**原子**——中途任一动作非法就整条作废，不留半截状态被广播出去。
    * assign 动作先对账未知单位；实质未变（引用相同）时返回原 state，store 自然跳过广播。
+   *
+   * @since v3.39（task_078）两处扩展：
+   *   - **confirm 守门**：动作串里含 accept 时，先查依赖是否满足（findMissingDependencies）；
+   *     不满足则整条作废（不改相位、不写库、不广播），并把"还差哪几个"带出去给 Notice 用。
+   *   - **解锁调度**：动作把任务推进终态时，算一遍"刚刚解锁"的下游任务（collectNewlyUnlocked）。
    */
   private commit(missionId: string, actions: readonly MissionAction[]): CommitResult {
-    const outcome: { mission?: MissionView; code?: MissionRejectionCode; droppedUnits?: number } = {};
+    const outcome: {
+      mission?: MissionView;
+      code?: MissionRejectionCode;
+      droppedUnits?: number;
+      missing?: string[];
+      unlocked?: MissionView[];
+    } = {};
 
     this.store.setState((state) => {
       const index = state.missions.findIndex((mission) => mission.id === missionId);
@@ -296,17 +337,44 @@ class Manager implements MissionManager {
         next = step.next;
       }
 
+      // 依赖守门：只在 accept 上守（reject / cancel 永远允许 —— 前置没满足时用户最需要的是能撤掉）。
+      // 放在相位裁决**之后**：相位都不合法时说"这一步不可执行"更贴切，
+      // 只有"这一步本来能做、但前置还没收尾"才说依赖未满足（两句话各说各的更让人困惑）。
+      if (actions.some((action) => action.type === 'decide' && action.decision === 'accept')) {
+        const missing = findMissingDependencies(next, state.missions);
+        if (missing.length > 0) {
+          outcome.code = 'dependencies-unmet';
+          outcome.missing = missing;
+          return state;
+        }
+      }
+
       if (next === state.missions[index]) return state;
 
       const missions = state.missions.slice();
       missions[index] = next;
       outcome.mission = next;
       outcome.droppedUnits = droppedUnits;
+      // 解锁调度：只在"刚刚进终态"这一次迁移上算（重复取消等无实质变更的路径不重复算）。
+      if (isTerminalPhase(next.phase) && !isTerminalPhase(state.missions[index].phase)) {
+        outcome.unlocked = collectNewlyUnlocked(state.missions, missions, missionId);
+      }
       return { ...state, missions, units: syncUnitMissions(state.units, next) };
     });
 
-    if (!outcome.mission) return { ok: false, code: outcome.code ?? 'illegal-transition' };
-    return { ok: true, mission: outcome.mission, droppedUnits: outcome.droppedUnits ?? 0 };
+    if (!outcome.mission) {
+      return {
+        ok: false,
+        code: outcome.code ?? 'illegal-transition',
+        ...(outcome.missing ? { missing: outcome.missing } : {}),
+      };
+    }
+    return {
+      ok: true,
+      mission: outcome.mission,
+      droppedUnits: outcome.droppedUnits ?? 0,
+      unlocked: outcome.unlocked ?? [],
+    };
   }
 
   /**
@@ -315,6 +383,10 @@ class Manager implements MissionManager {
    */
   private finish(result: CommitResult, decision?: ConfirmDecision): MissionView | null {
     if (!result.ok) {
+      if (result.code === 'dependencies-unmet') {
+        this.notify('warn', `依赖未满足：还差 ${this.describeMissing(result.missing ?? [])}`);
+        return null;
+      }
       this.notify('warn', rejectionText(result.code, this.maxMissions));
       return null;
     }
@@ -322,7 +394,45 @@ class Manager implements MissionManager {
     if (decision === 'accept') this.notify('info', `已接单「${mission.title}」，开始执行`);
     else if (decision === 'reject') this.notify('warn', `已拒绝任务「${mission.title}」`);
     this.reportDroppedUnits(result.droppedUnits);
+    this.reportUnlocked(result.unlocked);
     return mission;
+  }
+
+  /**
+   * 报出"还差哪几个依赖"（@since v3.39，task_078）—— 标题 + 短码。
+   * why 要标题：依赖 id 是机器串，用户看得懂的是"还差加固城墙"；短码兜底对齐。
+   */
+  private describeMissing(missing: readonly string[]): string {
+    if (missing.length === 0) return '前置任务';
+    const byId = new Map(this.store.getState().missions.map((m) => [m.id, m]));
+    return missing
+      .map((id) => {
+        const title = byId.get(id)?.title;
+        const short = shortMissionId(id);
+        return title ? `${title}（${short}）` : short;
+      })
+      .join('、');
+  }
+
+  /**
+   * 解锁播报（@since v3.39，task_078）—— 前置收尾后告诉用户"这条现在可以确认了"。
+   *
+   * 为什么只播报 **pending** 的下游任务：解锁 = 允许确认，而只有 pending 的任务正等着被确认
+   * （draft 还没指派人，播报它等于噪音）。**不自动确认** —— 解锁只是"允许"，
+   * 人 / agent 仍需显式推进（自动确认会让"谁点的确认"这件事失去意义）。
+   *
+   * 多条一起解锁时合成**一条** Notice：一次广播里刷 N 条通知会盖掉别的消息（通知队列有上限）。
+   */
+  private reportUnlocked(unlocked: readonly MissionView[]): void {
+    const actionable = unlocked.filter((mission) => mission.phase === 'pending');
+    if (actionable.length === 0) return;
+    const names = actionable.map((mission) => `「${mission.title}」`).join('、');
+    this.notify(
+      'info',
+      actionable.length === 1
+        ? `任务${names}的前置已满足，可确认`
+        : `${actionable.length} 条任务的前置已满足：${names}`,
+    );
   }
 
   private reportDroppedUnits(dropped: number): void {
@@ -357,6 +467,9 @@ function rejectionText(code: MissionRejectionCode, maxMissions: number): string 
       return `任务数已达上限（${maxMissions}），请先收尾再发起新任务`;
     case 'illegal-transition':
       return '当前状态下这一步不可执行（可能已经确认过或已经收尾）';
+    case 'dependencies-unmet':
+      // 具体缺哪几个由 finish() 单独播报（要带标题 + 短码），这里只兜底。
+      return '依赖未满足：前置任务还没收尾';
   }
 }
 

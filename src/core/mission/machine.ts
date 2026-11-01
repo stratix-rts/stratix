@@ -23,6 +23,13 @@
  *   - 检查点历史（checkpoints）：appendMissionCheckpoint 追加（终态拒绝），纯函数不碰 store；
  *   - 依赖链（dependsOn）：createMission 透传 + isMissionUnlocked 判定（**只判定，不调度** ——
  *     自动解锁是下一单的事，这一单只把"依赖"这件事变成可判定的纯函数）。
+ * @since v3.39（task_078）依赖链补上**调度口径**（仍在本文件，纯函数）：
+ *   - resolveMissionDependencies / findMissingDependencies：逐条依赖的满足状态与"还差哪几个"，
+ *     **core 守门（confirm）与 HUD 展示共用同一份判定**（各说一套是最难查的一类 bug）；
+ *   - collectNewlyUnlocked：某条任务进终态后"刚刚解锁"的下游任务（解锁调度的算子）；
+ *   - shortMissionId：任务 id 短码（Notice 文案与 HUD 依赖行共用一份口径）。
+ *   ★解锁状态**不落 MissionView**：真相在相位上（isMissionUnlocked 现算），
+ *     物化成字段会与"历史裁剪后查不到依赖 = 已满足"的口径漂移（详见 isMissionUnlocked 注释）。
  */
 
 import {
@@ -257,22 +264,126 @@ export function appendMissionCheckpoint(
  *     被丢掉的必然是终态的（本来就满足）。若把"查不到"判成阻塞，一条依赖了已收尾
  *     任务的链会在历史被裁掉后永久锁死。查不到的 id 也不会"以后才出现"（id 不会复用）。
  *
- * **本函数只判定，不调度** —— 什么时候把任务放出去（自动解锁）是下一单的事。
+ * @since v3.39（task_078）：实现改为委托 findMissingDependencies —— 判定口径**只有一份**。
+ * why 要收口：core 的 confirm 守门要回答"还差哪几个"，HUD 的依赖行要回答"哪条没满足"，
+ * 两处各写一份判定迟早漂移（core 说能确认、界面说还差依赖 = 用户无从下手）。
+ *
+ * **本函数只判定，不调度** —— 什么时候把任务放出去（自动解锁）由 manager 侧的调度完成
+ * （见 collectNewlyUnlocked 与 core/mission/manager.ts 的终态广播路径）。
  */
 export function isMissionUnlocked(
   mission: MissionView,
   allMissions: readonly MissionView[]
 ): boolean {
+  return findMissingDependencies(mission, allMissions).length === 0;
+}
+
+/**
+ * 依赖明细（@since v3.39，task_078）：一条任务的每条依赖当前是什么状态。
+ * **core 与 HUD 共用这一份形状**：守门要的是"哪几条没满足"，界面要的是"每条什么相位"。
+ */
+export interface MissionDependencyStatus {
+  /** 依赖的任务 id（完整值，用于派发命令 / 定位）。 */
+  readonly id: string;
+  /** id 短码（见 shortMissionId）—— 念给用户听的形式。 */
+  readonly shortId: string;
+  /** 依赖任务的标题；查不到（历史被裁 / id 悬空）时为 null。 */
+  readonly title: string | null;
+  /** 依赖任务的相位；查不到时为 null。 */
+  readonly phase: MissionPhase | null;
+  /** 是否已满足：依赖处于终态（done / cancelled）或查不到 = 已满足；自依赖恒为未满足。 */
+  readonly satisfied: boolean;
+}
+
+/**
+ * 依赖明细（@since v3.39，task_078）：逐条解析依赖的满足状态。
+ *
+ * why 单独一个函数而不是让调用方各查各的：满足口径是**业务规则**（终态即满足、
+ * 查不到即满足、自依赖永不满足），规则散在两处就会漂移。HUD 只做展示，
+ * 但展示的必须是 core 认的那份满足 —— 所以两边都调这一个函数。
+ */
+export function resolveMissionDependencies(
+  mission: MissionView,
+  allMissions: readonly MissionView[]
+): MissionDependencyStatus[] {
   const dependsOn = mission.dependsOn ?? [];
-  if (dependsOn.length === 0) return true;
-  if (dependsOn.includes(mission.id)) return false; // 自依赖：死结，恒不解锁
+  if (dependsOn.length === 0) return [];
   const byId = new Map(allMissions.map((m) => [m.id, m]));
-  for (const depId of dependsOn) {
+  return dependsOn.map((depId) => {
     const dep = byId.get(depId);
-    if (!dep) continue; // 查不到 = 已满足（见上方注释：避免历史裁剪造成死锁）
-    if (!isTerminalPhase(dep.phase)) return false; // 在办的前置 → 还没解锁
+    // 自依赖 = 死结：无论相位如何都算"没满足"（与 isMissionUnlocked 的自依赖口径一致）。
+    const satisfied = depId === mission.id ? false : dep ? isTerminalPhase(dep.phase) : true;
+    return {
+      id: depId,
+      shortId: shortMissionId(depId),
+      title: dep?.title ?? null,
+      phase: dep?.phase ?? null,
+      satisfied,
+    };
+  });
+}
+
+/**
+ * 未满足的依赖 id 列表（@since v3.39，task_078）—— core 的 confirm 守门用它给出
+ * "还差哪几个"，HUD 的依赖行用同一份判定标警示色。
+ * 空数组 ⟺ isMissionUnlocked 为 true（两者恒等，见 isMissionUnlocked 的收口说明）。
+ */
+export function findMissingDependencies(
+  mission: MissionView,
+  allMissions: readonly MissionView[]
+): string[] {
+  return resolveMissionDependencies(mission, allMissions)
+    .filter((dep) => !dep.satisfied)
+    .map((dep) => dep.id);
+}
+
+/**
+ * 任务 id 的短码（@since v3.39，task_078）—— Notice 文案与 HUD 依赖行共用一份口径。
+ *
+ * why 要短码：任务 id 是 `前缀_时间戳_序号` 的长串（mission_1762300000000_3），
+ * 直接印在界面上一行放不下、念出来也没法听。但只留序号会跨会话撞车，
+ * 所以取「前缀_末段」：mission_1762300000000_3 → mission_3。
+ * 短码只用于**展示与提示**，任何派发 / 查表一律用完整 id（短码不唯一是允许的）。
+ */
+export function shortMissionId(id: string): string {
+  const trimmed = id.trim();
+  const parts = trimmed.split('_');
+  if (parts.length < 2) return trimmed;
+  const head = parts[0];
+  const tail = parts[parts.length - 1];
+  if (!head || !tail) return trimmed;
+  return `${head}_${tail}`;
+}
+
+/**
+ * 解锁调度算子（@since v3.39，task_078）：某条任务进终态后，**刚刚解锁**的下游任务。
+ *
+ * 输入是**前后两份任务列表**（before = 变更前，after = 变更后），输出是满足
+ * 「依赖它」且「变更前未解锁、变更后已解锁」的任务。
+ *
+ * why 要前后两份：解锁是**差分**概念，只看 after 说不清"是不是刚解锁"——
+ * 早就解锁的任务（依赖链上游早就收尾）不该被反复报成"新解锁"。
+ * 只比对一次差分的代价：O(任务数 × 依赖数)，上限 100 × 32，可接受（只在终态迁移时算）。
+ *
+ * 注意：本函数**只算不写**。解锁不是新相位（不动状态机），而是"允许确认"的判定结果；
+ * 落到用户可见面的动作在 manager（发 Notice）与 HUD（依赖行标就绪）。
+ */
+export function collectNewlyUnlocked(
+  before: readonly MissionView[],
+  after: readonly MissionView[],
+  finishedId: string
+): MissionView[] {
+  const beforeById = new Map(before.map((m) => [m.id, m]));
+  const unlocked: MissionView[] = [];
+  for (const mission of after) {
+    if (mission.id === finishedId) continue;
+    if (!(mission.dependsOn ?? []).includes(finishedId)) continue;
+    const previous = beforeById.get(mission.id);
+    const wasUnlocked = previous ? isMissionUnlocked(previous, before) : false;
+    if (wasUnlocked) continue;
+    if (isMissionUnlocked(mission, after)) unlocked.push(mission);
   }
-  return true;
+  return unlocked;
 }
 
 /**

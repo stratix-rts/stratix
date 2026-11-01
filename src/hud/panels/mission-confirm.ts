@@ -15,16 +15,42 @@
  *
  * 渲染策略（perf，与 command-panel / agent-panel 同一口径）：core 每次状态变更都全量广播，
  *   面板用 missionConfirmSignature 判重，签名不变就跳过重渲染；外壳只在挂载时建一次。
- *   签名只由「任务相位 + 名单 + 相关单位名」构成：无关单位改名不触发本面板重绘。
+ *   签名只由「任务相位 + 名单 + 相关单位名 + 正文/检查点/依赖相位」构成：
+ *   无关单位改名不触发本面板重绘。
+ *
+ * @since v3.39（task_078）任务详情展示（本面板仍是现役的任务面板）：
+ *   - 正文四段（需求 / 验收标准 / 交付物 / 约束）：**有则显示、无则隐藏**（连空段也不占位）；
+ *   - 检查点历史：原生 <details> 折叠列表，倒序（最新在最上）；
+ *   - 依赖状态行：每个依赖显示「短码 · 相位」，未满足用警示色、全部满足标就绪。
+ *   ★ 依赖的"满足与否"**不在 HUD 判定**：直接用 core 的 resolveMissionDependencies
+ *     （与 confirm 守门同一份口径）；面板只显示，不自己决定能不能确认（见禁止事项 4）。
  */
 
-import type { ConfirmDecision, MissionPhase, UnitView, WorldState } from '../../core/types';
+import type { MissionDependencyStatus } from '../../core/mission';
+import { resolveMissionDependencies } from '../../core/mission';
+import type {
+  ConfirmDecision,
+  MissionBrief,
+  MissionCheckpoint,
+  MissionPhase,
+  UnitView,
+  WorldState,
+} from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
 
 export const MISSION_CONFIRM_TAG = 'strat-mission-confirm';
 
 /** 面板需要的最小能力面：只要"发命令"与"订阅状态"，与 command-panel 同一约定。 */
 export type MissionConfirmDeps = Pick<HudBusAdapter, 'dispatch' | 'subscribe'>;
+
+/**
+ * brief 的一段（@since v3.39，task_078）—— 结构化正文的展示单元。
+ * 只有**有内容**的段才出现（空段直接不渲染，不占位）。
+ */
+export interface MissionBriefSection {
+  readonly label: string;
+  readonly text: string;
+}
 
 /** 单条任务的行模型。unitNames 已解析成人类可读名字（找不到单位时回落 id，不留空位）。 */
 export interface MissionRow {
@@ -37,6 +63,24 @@ export interface MissionRow {
   readonly unitCount: number;
   /** 是否可确认：仅 phase='pending'（待确认）可确认/拒绝，判定权在 core，这里只按契约相位过滤。 */
   readonly decidable: boolean;
+  /**
+   * @since v3.39（task_078）结构化正文分段（顺序即展示顺序）。空数组 = 这条任务没有正文。
+   * why 不直接透传 MissionBrief：面板要的是"有序 + 有标题 + 无空段"的展示形状，
+   * 归一在 HUD 侧做一次，渲染层就只管按数组画。
+   */
+  readonly briefSections: readonly MissionBriefSection[];
+  /**
+   * @since v3.39（task_078）检查点历史，**已倒序**（最新在最前）。
+   * 倒序在模型里做而不是渲染时排：模型是唯一给测试与其它读方的口径。
+   */
+  readonly checkpoints: readonly MissionCheckpoint[];
+  /**
+   * @since v3.39（task_078）依赖明细 —— 直接用 core 的判定形状（resolveMissionDependencies）。
+   * why 不在 HUD 另判一份"满足"：core 的 confirm 守门认的是 core 那份，两边各判各的必然漂移。
+   */
+  readonly dependencies: readonly MissionDependencyStatus[];
+  /** @since v3.39（task_078）依赖是否已全部满足（true = 可确认）。 */
+  readonly unlocked: boolean;
 }
 
 export interface MissionConfirmModel {
@@ -66,6 +110,54 @@ export const PHASE_LABELS: Readonly<Record<MissionPhase, string>> = {
 /** 名单里最多直接念出的单位名，超出用「等 N 个」收口（面板不做长列表，行高才稳定）。 */
 export const MAX_ROW_UNIT_NAMES = 3;
 
+/**
+ * brief 四段的展示标签（@since v3.39，task_078）。顺序即展示顺序。
+ * why 固定四段：契约（types.ts 的 MissionBrief）就这四段，面板不自由发挥字段名，
+ * 免得"同一条任务在不同界面显示成不同的段落名"。
+ */
+const BRIEF_SECTION_LABELS: Readonly<Record<string, string>> = {
+  requirements: '需求',
+  acceptance: '验收标准',
+  deliverables: '交付物',
+  constraints: '约束',
+};
+
+/** brief 字段顺序（与契约 MissionBrief 一致）。 */
+const BRIEF_FIELDS = ['requirements', 'acceptance', 'deliverables', 'constraints'] as const;
+
+/**
+ * brief → 有序的展示分段（@since v3.39，task_078）。
+ * 空段直接丢掉：契约允许某段是空串，面板不该画出一个空标题占位置。
+ */
+export function buildBriefSections(
+  brief: MissionBrief | undefined
+): MissionBriefSection[] {
+  if (!brief) return [];
+  const sections: MissionBriefSection[] = [];
+  for (const field of BRIEF_FIELDS) {
+    const raw = brief[field];
+    if (!raw) continue;
+    const text = raw.trim();
+    if (text.length === 0) continue;
+    sections.push({ label: BRIEF_SECTION_LABELS[field] ?? field, text });
+  }
+  return sections;
+}
+
+/**
+ * 检查点倒序（@since v3.39，task_078）—— 最新的在最上。
+ * why 倒序：用户回看一条任务，问的是"最近发生了什么"，不是"最早发生了什么"。
+ * 同一毫秒记的两条按**写入顺序**倒排（后写的在前）—— 那才是真实的新旧关系。
+ */
+export function sortCheckpointsDesc(
+  checkpoints: readonly MissionCheckpoint[]
+): MissionCheckpoint[] {
+  return checkpoints
+    .map((checkpoint, index) => ({ checkpoint, index }))
+    .sort((a, b) => b.checkpoint.at - a.checkpoint.at || b.index - a.index)
+    .map((entry) => entry.checkpoint);
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({
     '&': '&amp;',
@@ -81,6 +173,84 @@ function unitNameOf(units: readonly UnitView[], id: string): string {
 }
 
 /**
+ * 依赖的相位标签（@since v3.39，task_078）：查不到依赖（历史被裁）时按"已收尾"念 ——
+ * core 口径里"查不到 = 已满足"（见 core/mission 的 resolveMissionDependencies）。
+ */
+function depPhaseLabel(dep: MissionDependencyStatus): string {
+  return dep.phase ? PHASE_LABELS[dep.phase] : '已收尾';
+}
+
+/**
+ * 检查点时间格式化（@since v3.39，task_078）：`MM-DD HH:MM`。
+ * why 不用 toLocaleString：输出随环境 locale 变，界面文案与测试断言都不该跟着机器变。
+ */
+export function formatCheckpointTime(at: number): string {
+  const date = new Date(at);
+  const pad = (value: number): string => String(value).padStart(2, '0');
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/** 正文区块（@since v3.39，task_078）：有内容才画，没内容连容器都不出现。 */
+function renderBrief(sections: readonly MissionBriefSection[]): string {
+  if (sections.length === 0) return '';
+  const items = sections
+    .map(
+      (section) => `
+        <div class="brief-item" data-brief="${escapeHtml(section.label)}">
+          <span class="brief-label">${escapeHtml(section.label)}</span>
+          <span class="brief-text">${escapeHtml(section.text)}</span>
+        </div>`,
+    )
+    .join('');
+  return `<div class="brief" data-role="brief">${items}</div>`;
+}
+
+/**
+ * 依赖状态行（@since v3.39，task_078）：每个依赖显示「短码 · 相位」，
+ * 未满足用警示色、全部满足标就绪。
+ * why 不在这里判断"能不能确认"：那是 core 的裁决（面板禁止事项 4）——
+ * 这里只把 core 判出来的依赖状态**如实显示**，点确认被 core 拒绝时由 Notice 说清还差哪几个。
+ */
+function renderDependencies(row: MissionRow): string {
+  if (row.dependencies.length === 0) return '';
+  const deps = row.dependencies
+    .map(
+      (dep) =>
+        `<span class="dep" data-dep="${escapeHtml(dep.id)}" data-satisfied="${dep.satisfied}">${escapeHtml(dep.shortId)} · ${escapeHtml(depPhaseLabel(dep))}</span>`,
+    )
+    .join('');
+  const summary = row.unlocked ? '已就绪' : '未满足';
+  return `
+    <div class="deps" data-role="deps" data-state="${row.unlocked ? 'ready' : 'warn'}">
+      <span class="deps-label">依赖</span>
+      ${deps}
+      <span class="deps-summary">${escapeHtml(summary)}</span>
+    </div>`;
+}
+
+/**
+ * 检查点历史（@since v3.39，task_078）：原生 <details> 折叠（零 JS、零监听器泄漏风险），
+ * 列表已倒序（最新在最上）。
+ */
+function renderCheckpoints(checkpoints: readonly MissionCheckpoint[]): string {
+  if (checkpoints.length === 0) return '';
+  const items = checkpoints
+    .map(
+      (checkpoint) => `
+        <li class="checkpoint" data-at="${checkpoint.at}">
+          <span class="checkpoint-time">${escapeHtml(formatCheckpointTime(checkpoint.at))}</span>
+          <span class="checkpoint-note">${escapeHtml(checkpoint.note)}</span>
+        </li>`,
+    )
+    .join('');
+  return `
+    <details class="checkpoints" data-role="checkpoints">
+      <summary>检查点（${checkpoints.length}）</summary>
+      <ol class="checkpoint-list">${items}</ol>
+    </details>`;
+}
+
+/**
  * WorldState → 行模型（纯函数，可脱离 DOM 单测）。
  * why 分组而不是按相位列一堆小节：用户在这个面板里只做一个决定 —— 「这条要不要接」，
  * 所以待确认的排在最上面且带按钮，其余（待指派 / 在办 / 已收尾）退成只读概览。
@@ -89,14 +259,22 @@ export function resolveMissionConfirm(state: WorldState | null): MissionConfirmM
   const units = state?.units ?? [];
   const missions = state?.missions ?? [];
 
-  const rows: MissionRow[] = missions.map((mission) => ({
-    id: mission.id,
-    title: mission.title,
-    phase: mission.phase,
-    unitNames: mission.unitIds.map((id) => unitNameOf(units, id)),
-    unitCount: mission.unitIds.length,
-    decidable: mission.phase === 'pending',
-  }));
+  const rows: MissionRow[] = missions.map((mission) => {
+    // 依赖明细用 core 的判定（resolveMissionDependencies）—— 与 confirm 守门同一份口径。
+    const dependencies = resolveMissionDependencies(mission, missions);
+    return {
+      id: mission.id,
+      title: mission.title,
+      phase: mission.phase,
+      unitNames: mission.unitIds.map((id) => unitNameOf(units, id)),
+      unitCount: mission.unitIds.length,
+      decidable: mission.phase === 'pending',
+      briefSections: buildBriefSections(mission.brief),
+      checkpoints: sortCheckpointsDesc(mission.checkpoints ?? []),
+      dependencies,
+      unlocked: dependencies.every((dep) => dep.satisfied),
+    };
+  });
 
   const pending = rows.filter((row) => row.decidable);
   const active = rows.filter((row) => row.phase === 'confirmed' || row.phase === 'running');
@@ -116,15 +294,36 @@ export function resolveMissionConfirm(state: WorldState | null): MissionConfirmM
 }
 
 /**
- * 渲染判重签名（O(任务 + 名单单位)，纯字符串拼接）。
- * 只包含影响本面板显示的东西：任务 id/相位/名单 + 这些单位的**显示名**。
- * 名单之外的单位改名不重绘（避免全局单位列表变动把本面板一起刷一遍）。
+ * 渲染判重签名（O(任务 + 名单单位 + 依赖)，纯字符串拼接）。
+ * 只包含影响本面板显示的东西：任务 id/相位/名单 + 这些单位的**显示名**，
+ * 以及（@since v3.39，task_078）正文 / 检查点 / **依赖的相位**。
+ *
+ * why 依赖相位要进签名：依赖行上写的是"前置还在进行中"，前置一收尾这行就得改颜色 ——
+ * 若不进签名，面板会留着过期的警示色（用户看到的是假的阻塞状态）。
  */
 export function missionConfirmSignature(state: WorldState | null): string {
   if (!state) return '';
   const names = new Map(state.units.map((unit) => [unit.id, unit.name]));
+  const phases = new Map(state.missions.map((mission) => [mission.id, mission.phase]));
   return state.missions
-    .map((mission) => `${mission.id}:${mission.phase}:${mission.unitIds.join(',')}`)
+    .map((mission) => {
+      const brief = mission.brief
+        ? BRIEF_FIELDS.map((field) => `${field}=${mission.brief?.[field] ?? ''}`).join(';')
+        : '';
+      const checkpoints = mission.checkpoints ?? [];
+      const last = checkpoints[checkpoints.length - 1];
+      const deps = (mission.dependsOn ?? [])
+        .map((depId) => `${depId}@${phases.get(depId) ?? '-'}`)
+        .join(',');
+      return [
+        mission.id,
+        mission.phase,
+        mission.unitIds.join(','),
+        brief,
+        `${checkpoints.length}:${last?.at ?? ''}:${last?.note ?? ''}`,
+        deps,
+      ].join(':');
+    })
     .concat(
       Array.from(
         new Set(
@@ -276,6 +475,28 @@ export function defineMissionConfirm(): typeof HTMLElement {
           .phase[data-phase="done"] { color: var(--srf-success); border-color: var(--srf-success); }
           .phase[data-phase="cancelled"] { color: var(--srf-danger); border-color: var(--srf-danger); }
           .units { color: var(--srf-text-muted); font-size: var(--srf-font-size-sm); }
+          /* —— 正文 / 依赖 / 检查点（@since v3.39，task_078）：信息密度优先，克制不加动画 —— */
+          .brief { display: grid; gap: var(--srf-spacing-xxs); }
+          .brief-item { display: grid; grid-template-columns: 4.5em 1fr; gap: var(--srf-spacing-xs); font-size: var(--srf-font-size-sm); }
+          .brief-label { color: var(--srf-text-muted); }
+          .brief-text { color: var(--srf-text); white-space: pre-wrap; overflow-wrap: anywhere; }
+          .deps { display: flex; flex-wrap: wrap; align-items: center; gap: var(--srf-spacing-xs); font-size: var(--srf-font-size-sm); }
+          .deps[data-state="warn"] { color: var(--srf-warn); }
+          .deps[data-state="ready"] { color: var(--srf-success); }
+          .deps-label { color: var(--srf-text-muted); }
+          .dep {
+            padding: 0 var(--srf-spacing-xs);
+            border: var(--srf-border-width) solid var(--srf-border);
+            border-radius: var(--srf-radius-pill);
+            white-space: nowrap;
+          }
+          .dep[data-satisfied="false"] { border-color: var(--srf-warn); }
+          .checkpoints { font-size: var(--srf-font-size-sm); color: var(--srf-text-muted); }
+          .checkpoints > summary { cursor: pointer; }
+          .checkpoint-list { display: grid; gap: var(--srf-spacing-xxs); margin: var(--srf-spacing-xs) 0 0; padding-left: 1.2em; }
+          .checkpoint { display: grid; grid-template-columns: 7em 1fr; gap: var(--srf-spacing-xs); }
+          .checkpoint-time { font-family: var(--srf-font-mono); font-size: var(--srf-font-size-xs); }
+          .checkpoint-note { color: var(--srf-text); white-space: pre-wrap; overflow-wrap: anywhere; }
           .actions { display: flex; gap: var(--srf-spacing-sm); margin-top: var(--srf-spacing-xs); }
           button.decision {
             padding: var(--srf-spacing-xs) var(--srf-spacing-md);
@@ -368,12 +589,15 @@ export function defineMissionConfirm(): typeof HTMLElement {
           </div>`
         : '';
       return `
-        <div class="row" data-mission-row="${escapeHtml(row.id)}" data-phase="${escapeHtml(row.phase)}">
+        <div class="row" data-mission-row="${escapeHtml(row.id)}" data-phase="${escapeHtml(row.phase)}" data-locked="${row.unlocked ? 'false' : 'true'}">
           <div class="row-head">
             <span class="row-title">${escapeHtml(row.title)}</span>
             <span class="phase" data-phase="${escapeHtml(row.phase)}">${escapeHtml(PHASE_LABELS[row.phase])}</span>
           </div>
           <div class="units">${escapeHtml(units)}</div>
+          ${renderBrief(row.briefSections)}
+          ${renderDependencies(row)}
+          ${renderCheckpoints(row.checkpoints)}
           ${actions}
         </div>
       `;
