@@ -186,6 +186,13 @@ export interface ElectronAPI {
   env: {
     /** 首启向导强制触发（'1' = 每次启动都触发）。 */
     STRATIX_ONBOARDING_FORCE: string | null;
+    /**
+     * 远程模式开关（@since v3.43，task_083，前后端分离 B3）。
+     * '1' = Electron 壳退化为纯视图客户端（状态走 world-sync 快照，写走 command.forward）。
+     */
+    STRATIX_REMOTE: string | null;
+    /** world-sync 端点地址（远程模式的数据源；null = 用缺省地址）。 */
+    STRATIX_WORLD_SYNC_URL: string | null;
   };
 
 }
@@ -342,6 +349,9 @@ const electronAPI: ElectronAPI = {
   // 开发期开关透传（@since v3.9，task_026）：只给白名单里的开关。
   env: {
     STRATIX_ONBOARDING_FORCE: process.env.STRATIX_ONBOARDING_FORCE ?? null,
+    // 远程模式开关与端点地址（@since v3.43，task_083）：已打包的 Electron 也要能按环境变量开远程模式。
+    STRATIX_REMOTE: process.env.STRATIX_REMOTE ?? null,
+    STRATIX_WORLD_SYNC_URL: process.env.STRATIX_WORLD_SYNC_URL ?? null,
   },
 
 };

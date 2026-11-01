@@ -152,6 +152,15 @@ export default defineConfig(async () => {
        * 取值口径：'1' = 开，其余（含未设置）= 关。见 src/app/main/dev-flags.ts。
        */
       __STRATIX_ONBOARDING_FORCE__: JSON.stringify(process.env.STRATIX_ONBOARDING_FORCE ?? ''),
+      /**
+       * 远程模式开关（@since v3.43，task_083，前后端分离 B3）。
+       * '1' = Electron 壳退化为纯视图客户端（数据源 = world-sync 远程 store）。
+       * why 也走 define（不 import.meta.env）：本仓库的 tsc 构建走 CommonJS，import.meta 编译不过。
+       * 取值口径见 src/app/main/dev-flags.ts。
+       */
+      __STRATIX_REMOTE__: JSON.stringify(process.env.STRATIX_REMOTE ?? ''),
+      /** world-sync 端点地址（远程模式的数据源；空串 = 用缺省地址）。 */
+      __STRATIX_WORLD_SYNC_URL__: JSON.stringify(process.env.STRATIX_WORLD_SYNC_URL ?? ''),
     },
   };
 });

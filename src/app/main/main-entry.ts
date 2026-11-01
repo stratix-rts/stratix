@@ -148,8 +148,11 @@ import { mountMinimap } from '../../hud/components/minimap/minimap';
 import { mountShortcuts } from '../../hud/components/shortcuts/shortcut-manager';
 import { createTaskManager } from '../../core/task';
 import { createUnitSpriteSource } from '../services/unit-sprite-source';
+// 远程 store（@since v3.43，task_083，前后端分离 B3）：Electron 壳的**远程数据源** ——
+//   CoreStore 的远程实现（world-sync 全量快照 → 本地整体覆盖；hud 命令 → command.forward）。
+import { DEFAULT_WORLD_SYNC_URL, createRemoteStore, type RemoteStore } from '../services/remote-store';
 
-import { isOnboardingForced } from './dev-flags';
+import { isOnboardingForced, isRemoteModeEnabled, remoteWorldSyncUrl } from './dev-flags';
 import { createOnboardingHost } from './onboarding-host';
 // 自定义 agent 注册端口（@since v3.32，task_056）：向导扫描步的「+ 添加自定义 agent」表单 /
 // 设置屏的注册管理经它进主进程（IPC 面 = preload 的 customAgents）。非 Electron → null，降级。
@@ -228,13 +231,40 @@ async function boot(): Promise<void> {
   const battlefieldHost = must<HTMLElement>('battlefield');
   const onboardingHost = must<HTMLElement>('onboarding-host');
 
+  // ============================================================================
+  // 装配开关（@since v3.43，task_083，前后端分离 B3）：数据源 = 本地直连（默认）/ 远程 world-sync
+  // ============================================================================
+  // why 默认关：本地直连是 dev 回退模式（铁律 7 —— 旧路径全程可用，远程模式由 C1 剧本显式开）。
+  // 远程模式语义：Electron 壳退化为**纯视图客户端** ——
+  //   状态 = service 推的全量快照（本地整体覆盖，不做增量合并：协议 §1.2）；
+  //   写   = hud 命令转 `command.forward` 回 service 的 core 裁决（铁律 2）；
+  //   本地 core runtime **不启动**（真相唯一，铁律 1 —— 本地再裁决一遍就是第二份真相）。
+  const remote: RemoteStore | null = isRemoteModeEnabled()
+    ? createRemoteStore(remoteWorldSyncUrl(DEFAULT_WORLD_SYNC_URL))
+    : null;
+
+  // 快照即状态源：全量覆盖本地投影 + 广播给 hud / world。
+  // why 也写进 worldStore：远程模式下 worldStore 退化为**投影缓存**（本文件各处现读它），
+  //   写侧只有这一处 —— 本地不再有任何写入（见下方各 guard）。
+  // why 覆盖而不是合并：协议 §1.2「重连 = 全量 snapshot 覆盖，不做增量合并」。
+  const stopRemoteFeed = remote?.subscribe((state) => {
+    worldStore.setState(() => state);
+    emitState(state);
+  });
+
   // ===== HUD 侧：真实 main-screen + 主题控制器，走注入的 bus-adapter =====
   defineStratButton();
   const themeController = createThemeController({
     sources: { default: defaultCss, pixel: pixelCss },
     initial: 'default',
   });
-  const adapter = createHudBusAdapter({ onState, emitCommand, themeController });
+  const adapter = createHudBusAdapter({
+    onState,
+    // 远程模式：命令**不经本地总线**，直接转成 command.forward 发给 service（协议 §2.1）。
+    // 本地模式：照旧走 core/bus.emitCommand（既有路径零改动）。
+    emitCommand: remote ? (command) => { remote.emitCommand(command); } : emitCommand,
+    themeController,
+  });
 
   // ===== 形象预览（@since v3.10，task_028）=====
   // 组合根是唯一能同时认识 hud 与 world 的地方：向导屏要 canvas 预览（hud），
@@ -578,7 +608,11 @@ async function boot(): Promise<void> {
     units: [],
     positionsByUnitId: new Map(),
   };
-  if (injection.characters.length > 0) {
+  if (injection.characters.length > 0 && !remote) {
+    // ★ 远程模式（task_083）跳过读档**写入**：角色 / 单位由 service 的快照给出（本地 restore 只是
+    //   Electron 自己那份 SQLite 的副本 —— 写进投影只会被下一份快照覆盖）。
+    //   读档本身仍读：站位种子（positionsByUnitId）不在 WorldState 里（坐标不进状态面），
+    //   战场落位只能靠它 —— 坐标同步是协议缺口，见 task_083.md 的契约缺口记录。
     worldStore.setState((current) => {
       // 单位去重合并：store 里理论上还没有单位（runtime 未启动、无人写过），
       // 但防御同一 id 重复投影 —— 真变了就是双单位，宁多一次过滤不出血。
@@ -693,7 +727,11 @@ async function boot(): Promise<void> {
       console.warn(`[Stratix] 未处理 ${channel}: ${payload.type}`);
     },
   });
-  const stopRuntime = runtime.start();
+  const stopRuntime = remote ? () => undefined : runtime.start();
+  // ★ 远程模式（task_083）**不启动**本地 core runtime：真相在 service 的 core store（铁律 1「真相唯一」）。
+  //   why 不启动而不是「启动但不发广播」：本地 runtime 一旦裁决命令就会写 worldStore（投影）——
+  //   那会造出第二份真相；而远程模式的命令走 command.forward，根本不经本地总线，本地 runtime 裁决不到
+  //   任何东西（纯空转 + 污染投影）。故整个本地状态机在远程模式下让位给 service。
 
   // ===== 养成回路（@since v3.19，task_040）=====
   // exp.gained（task-service / chat-service 发射）→ character manager 累加落库（曲线结算在
@@ -777,11 +815,15 @@ async function boot(): Promise<void> {
 
   // ===== 存档落库（@since v3.12，task_033）=====
   // 接在 runtime 之后、注入之后：先订阅后注入会把恢复的那批当成新变化回写一遍（见文件头时序说明）。
-  saveCoordinator?.start();
+  // ★ 远程模式（task_083）不落库：SQLite 由 service 进程独占写（铁律 6）—— 渲染进程往库里写
+  //   service 的投影 = 第二个写入方。读档仍读（站位种子要，见上）。
+  if (!remote) saveCoordinator?.start();
 
   // ===== 本地 CLI agent 检测（@since v3.8）=====
   // 主进程探测 → IPC → 这里并入 core 状态 → runtime 的 store 订阅广播给 hud。
-  const stopAgentDetection = subscribeDetectedAgents();
+  // ★ 远程模式（task_083）跳过本地探测：service 侧自己探测并写进它的 store（agent-detection.ts），
+  //   detectedAgents 随快照过来；本地再探一遍只会往投影里塞一份会被覆盖的副本。
+  const stopAgentDetection = remote ? () => undefined : subscribeDetectedAgents();
 
   // ===== 首启判定：跟着 core 广播走（角色为空 + 探到已装 agent → 挂向导）=====
   // 订阅放在 runtime 启动之后：广播是 runtime 的 store 订阅发出的，晚订阅会漏掉首次快照。
@@ -797,6 +839,9 @@ async function boot(): Promise<void> {
    * 不补这一次，HUD 与战场都要等下一次真实变更才拿到初始状态（与 world/dev/main.ts 同一推理）。
    */
   game.events.once(Phaser.Core.Events.POST_RENDER, () => {
+    // ★ 远程模式（task_083）不发这一帧：此刻 worldStore 还是空世界（快照没到）——
+    //   发出去等于告诉 hud「战场真的空了」（未连接 ≠ 空，铁律 4）。远程模式等第一份快照。
+    if (remote) return;
     emitState(worldStore.getState());
   });
 
@@ -832,6 +877,9 @@ async function boot(): Promise<void> {
       unmountCharacterDrawer();
       unmountToastHost();
       stopAgentDetection();
+      // 远程 store（task_083）：退订快照广播 + 关连接 + 停重连定时器（资源必须可清理）。
+      stopRemoteFeed?.();
+      remote?.dispose();
       // 存档协调器先停（内部会冲刷未落盘的站位缓冲），再拆养成服务、任务服务与 runtime。
       saveCoordinator?.stop();
       stopProgressionService();
