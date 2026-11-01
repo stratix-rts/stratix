@@ -4,9 +4,9 @@ export { singleAgentPreset } from './single-agent';
 export { multiAgentChatPreset } from './multi-agent-chat';
 export { codeReviewPreset } from './code-review';
 
-import { singleAgentPreset } from './single-agent';
-import { multiAgentChatPreset } from './multi-agent-chat';
 import { codeReviewPreset } from './code-review';
+import { multiAgentChatPreset } from './multi-agent-chat';
+import { singleAgentPreset } from './single-agent';
 
 export const allPresets: WorkflowPreset[] = [
   singleAgentPreset,

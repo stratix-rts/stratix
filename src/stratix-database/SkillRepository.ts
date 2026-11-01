@@ -3,11 +3,11 @@
  * 处理 shared_skills、shared_skill_installs、agent_learned_skills 表的 CRUD 操作
  */
 
-import type { Database, Statement } from './sqlite-adapter';
 
 import type { SkillCategory, SkillProvider } from '../stratix-agent/types';
 
 import { getDatabase } from './StratixDatabase';
+import type { Database, Statement } from './sqlite-adapter';
 
 const XP_PER_LEVEL = 100;
 const MAX_LEVEL = 5;

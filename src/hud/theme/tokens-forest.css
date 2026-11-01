@@ -1,0 +1,68 @@
+/**
+ * 文件职责：HUD「森林」皮肤 —— 一整套独立的 token 变体。
+ *   来源：.long-run-agent/tasks/task_024.md「hud 皮肤库扩展」。
+ * 输入：无（纯 CSS 自定义属性）。
+ * 输出：`:root` 上挂的全部 `--srf-*` token —— 键集合与 tokens-default.css 完全一致（见 skin-tokens 单测）。
+ * 禁止事项：
+ *   1. 少定义或多名一个 token —— 皮肤之间的键集合必须严格一致，否则组件会拿到空值；
+ *   2. 选择器超过一层或写具体组件样式 —— 本文件只发 token；
+ *   3. 引入字体文件 / 远程资源 —— 字体栈走通用 family。
+ */
+
+:root {
+  /* —— 颜色：表面 —— */
+  --srf-bg: #0b120d;
+  --srf-panel: #121b14;
+  --srf-panel-elevated: #19241b;
+  --srf-border: #26352a;
+  --srf-border-strong: #37503c;
+
+  /* —— 颜色：文本 —— */
+  --srf-text: #e6f0e7;
+  --srf-text-muted: #9db3a3;
+  --srf-text-disabled: #6b8072;
+
+  /* —— 颜色：语义/强调 —— */
+  --srf-accent: #6fcf97;
+  --srf-accent-hover: #93e0b2;
+  --srf-success: #9be37a;
+  --srf-warn: #e8d06a;
+  --srf-danger: #e06c75;
+
+  /* —— 徽标色：角色头像 / 单位染色（与 skin-registry 的 accent 同值）—— */
+  --srf-badge-accent: #4ade80;
+
+  /* —— 字体 —— */
+  --srf-font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --srf-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --srf-font-size-xs: 11px;
+  --srf-font-size-sm: 12px;
+  --srf-font-size-md: 14px;
+  --srf-font-size-lg: 16px;
+  --srf-font-weight-semibold: 600;
+  --srf-font-weight-bold: 700;
+  --srf-line-height: 1.4;
+
+  /* —— 形状与节奏 —— */
+  --srf-radius: 6px;
+  --srf-radius-pill: 999px;
+  --srf-border-width: 1px;
+  --srf-spacing-xxs: 2px;
+  --srf-spacing-xs: 4px;
+  --srf-spacing-sm: 8px;
+  --srf-spacing-md: 12px;
+  --srf-spacing-lg: 16px;
+  --srf-spacing-xl: 24px;
+
+  /* —— 渲染 / 装饰 —— */
+  --srf-image-rendering: auto;
+  --srf-scanline-opacity: 0;
+  --srf-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --srf-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --srf-transition: 160ms ease-out;
+  --srf-backdrop: rgba(11, 18, 13, 0.72);
+
+  /* —— 悬浮层（RTS 覆盖层专用）—— */
+  --srf-panel-overlay: rgba(18, 27, 20, 0.88);
+  --srf-panel-elevated-overlay: rgba(25, 36, 27, 0.92);
+}

@@ -1,9 +1,10 @@
+import { budgetController } from '@stratix-core/budget/BudgetController';
+import type { TokenUsage } from '@stratix-core/budget/types';
+
 import { StratixAgentConfig } from '../../../stratix-core';
 import { LRAClient } from '../../../stratix-lra-bridge/LRAClient';
 import type { LraTask } from '../../../stratix-lra-bridge/types';
 import { createOpenClawAdapter, OpenClawAdapterInterface } from '../../../stratix-openclaw-adapter';
-import { budgetController } from '@stratix-core/budget/BudgetController';
-import type { TokenUsage } from '@stratix-core/budget/types';
 import { TaskQueueService } from '../../../stratix-orchestration/task-queue/TaskQueueService';
 
 import { AgentInterface, AgentState } from './types';

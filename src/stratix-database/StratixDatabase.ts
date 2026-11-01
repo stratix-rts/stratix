@@ -1,11 +1,64 @@
 import path from 'path';
 
-import { Database } from './sqlite-adapter';
 import * as fs from 'fs-extra';
+
+import { Database } from './sqlite-adapter';
 
 const DEFAULT_DATA_DIR = 'stratix-data';
 const DEFAULT_FILENAME = 'stratix.db';
-const TARGET_SCHEMA_VERSION = 1;
+/**
+ * v2（@since v3.12，task_033）：新增 characters + unit_positions（游戏存档表，角色档案与单位站位）。
+ * DDL 与 src/app/services/persistence/game-save-dao.ts 的 ensureGameSaveTables 同构 —— 改一处必须同步另一处。
+ * v3（@since v3.15，task_036）：新增 character_chat_messages（角色对话历史；task_073 扩 system 事件角色）。
+ * DDL 与 src/app/services/persistence/chat-history-dao.ts 的 ensureCharacterChatMessagesTable 同构。
+ * why 不叫 messages：messages 表已被项目/频道聊天占用（v1 起就有，schema 完全不同），
+ * 角色对话历史单独建表，命名对齐既有 agent_chat_messages 的先例。
+ * v4（@since v3.16，task_037）：新增 character_tasks（角色任务：派发 → 执行 → 产出，与聊天审计分离）。
+ * DDL 与 src/app/services/persistence/task-record-dao.ts 的 ensureCharacterTasksTable 同构。
+ * why 不叫 tasks：tasks 表已被 agent 平台任务队列占用（v1 起就有，task_id 主键 / zone 形状），
+ * 角色任务表命名对齐 character_chat_messages 的先例（character_ 前缀 = 游戏存档域），零冲突。
+ * v5（@since v3.23，task_047）：character_tasks.status CHECK 扩五态（增 cancelled，排队取消）。
+ * SQLite 的 CHECK 不可 ALTER → **重建表迁移**（建新表 → INSERT SELECT 搬数据 → DROP → RENAME），
+ * 保留 CHECK 而不是放弃约束的理由见 task-record-dao.ts 文件头（两处同一方案，同构可审）。
+ * v6（@since v3.24，task_048）：character_tasks 增 artifacts 列（任务成果物 JSON，'' = 无）。
+ * 纯加列不动 CHECK → ALTER ADD COLUMN 即可，无需重建（与 v5 的重建方案对比见 DAO 文件头）。
+ * v7（@since v3.25，task_049）：character_tasks.status CHECK 扩六态（增 awaiting_approval，
+ * 任务审批门的挂起相位）+ 增 plan 列（计划草稿全文，'' = 无）。CHECK 又要动 → 沿用 v5 重建
+ * 方案（临时表 character_tasks_v7）；plan 列随重建的建表 DDL 一并就位（六态表缺列边角由
+ * ALTER ADD 兜底）。前置顺序：artifacts 兜底先行（v7 重建的 INSERT SELECT 要搬运它）。
+ */
+/**
+ * v8（@since v3.27，task_051）：新增 pipelines 表（多 agent 流水线编排态：站序 JSON +
+ * 整线相位 + 议题原文；DDL 与 pipeline-record-dao.ts 同构）+ character_tasks 增
+ * pipeline_id 列（站任务归属键，'' = 非流水线任务；纯加列 → ALTER ADD，与 v6 同方案）。
+ * 写入语义：相位快照不带 pipelineId、stamp 注入件带 → CASE 守卫只进不抹，详见
+ * task-record-dao.ts 文件头。
+ */
+/**
+ * v9（@since v3.29，task_053）：characters 增 context_enabled 列（角色级上下文注入开关，
+ * INTEGER NOT NULL DEFAULT 1；0 = 该角色对话 / 任务首发不附 <stratix-context> 块）。
+ * 纯加列 → ALTER ADD 兜底（与 v6 pipeline_id 同方案，见 migrateGameSaveTables）。
+ */
+/**
+ * v10（@since v3.30，task_054）：新增 agent_health_events 表（agent 健康事件审计流：
+ * offline / online / unhealthy 三态词表 + (kind, created_at) 索引；DDL 与
+ * agent-health-dao.ts 同构）。why 独立表而非 characters 加列：健康是时间序事件流，
+ * 列只能存「最后一次」，崩溃历史会被覆盖 —— 见 DAO 文件头。
+ */
+/**
+ * v11（@since v3.32，task_056）：新增 custom_agents 表（自定义 agent 注册表：id/name/
+ * probe_cmd/run_cmd_template/output_parser('plain'|'json')/created_at；DDL 与
+ * app/services/persistence/custom-agent-dao.ts 同构同步改）。非内置 CLI 手动注册成
+ * 战场单位的唯一真相源：id 拼进 kind（`custom:<id>`）对外广播，命令串入库前已过
+ * core/custom-agent.ts 的白名单校验（注入面在纯校验层封死，见该文件头安全边界注）。
+ */
+/**
+ * v12（@since v3.36，task_061）：新增 exp_events 表（角色经验事件审计流：exp.gained 逐条
+ * 落库 + level_up 里程碑行；DDL 与 app/services/persistence/exp-event-dao.ts 同构）。
+ * why 独立表：exp 变更此前无历史表（characters 只有当前快照），成长曲线 / 活动热力 /
+ * 履历时间线需要时间序真相源 —— 见 DAO 文件头。
+ */
+const TARGET_SCHEMA_VERSION = 12;
 
 /** Valid table name characters (alphanumeric + underscore) */
 const VALID_TABLE_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -65,6 +118,8 @@ export class StratixDatabase {
   public initialize(): void {
     this.createTables();
     this.migrateIfNeeded();
+    const migrateChatRoles = this.db.transaction(() => this.migrateCharacterChatMessages());
+    migrateChatRoles();
     log('info', `Initialized at: ${this.dbPath}`);
   }
 
@@ -117,7 +172,335 @@ export class StratixDatabase {
     this.migrateZoneContextColumns();
     this.migrateZoneCoordinatorColumns();
     this.migrateNewTables();
+    this.migrateGameSaveTables();
+    this.migrateCharacterChatMessages();
+    this.migrateTasks();
+    this.migratePipelines();
+    this.migrateAgentHealthEvents();
+    this.migrateCustomAgents();
+    this.migrateExpEvents();
     this.migrateSafetyIndexes();
+  }
+
+  /**
+   * 角色任务表（@since v3.16，task_037）：task-service 随相位快照 upsert（completed 带全文输出）。
+   * IF NOT EXISTS 幂等：新库在 createTables 里建过，这里是旧库（schema_version ≤ 3）的升级路径。
+   * 表名 character_tasks：v1 的 tasks 表是 agent 平台的任务队列（task_id 主键 / zone 形状），
+   * 与角色任务毫无关系 —— character_ 前缀对齐 character_chat_messages 的游戏存档域命名，零冲突。
+   * @since v3.23（task_047）追加五态迁移：表已存在但 CHECK 是四态（schema_version = 4 的库）时
+   * 重建表（SQLite CHECK 不可 ALTER，方案见文件头 v5 注）。表不存在（≤ 3）直接建五态版。
+   */
+  private migrateTasks(): void {
+    const tables = this.getTableNames();
+
+    if (!tables.has('character_tasks')) {
+      // @since v3.25（task_049）：这里建的就是六态形状（CHECK + artifacts + plan），
+      // 下面的五态/六态重建与加列兜底对它全部幂等直过。
+      // @since v3.27（task_051）：新建表直接带 v8 形状（+pipeline_id）；v7 及更早的库在
+      // 方法尾部 ALTER ADD 兑底（重建临时表的 DDL 冻结在 v7 形状，历史迁移不动）。
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS character_tasks (
+          id TEXT PRIMARY KEY,
+          character_id TEXT NOT NULL,
+          prompt TEXT NOT NULL,
+          status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'awaiting_approval', 'completed', 'failed', 'cancelled')),
+          output TEXT NOT NULL DEFAULT '',
+          created_at INTEGER NOT NULL,
+          started_at INTEGER,
+          ended_at INTEGER,
+          artifacts TEXT NOT NULL DEFAULT '',
+          plan TEXT NOT NULL DEFAULT '',
+          pipeline_id TEXT NOT NULL DEFAULT '',
+          mission_id TEXT
+        )
+      `);
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_character_tasks_character ON character_tasks(character_id, created_at)');
+      log('info', 'Created character_tasks table');
+      return;
+    }
+
+
+    // 表已存在：四态 CHECK（schema_version = 4 的库）→ 重建到五态；已是五态（v5 新库）跳过重建。
+    // 'cancelled' 只会出现在 CHECK 词表里，作 DDL 指纹足够（与 task-record-dao 同一手法）。
+    // why 不在这里 return：下面的 v6 加列对「重建过的 v4 表」和「原生的 v5 表」都要跑
+    // （重建产物不带 artifacts 列；v5 表天然也没有）—— 早退会跳过加列。
+    const row = this.db
+      .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'character_tasks'`)
+      .get() as { sql?: string } | undefined;
+    const needsRebuild = !(typeof row?.sql === 'string' && row.sql.includes("'cancelled'"));
+
+    if (needsRebuild) {
+      this.db.exec(`
+      CREATE TABLE character_tasks_v5 (
+        id TEXT PRIMARY KEY,
+        character_id TEXT NOT NULL,
+        prompt TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'completed', 'failed', 'cancelled')),
+        output TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL,
+        started_at INTEGER,
+        ended_at INTEGER
+      );
+      INSERT INTO character_tasks_v5
+        (id, character_id, prompt, status, output, created_at, started_at, ended_at)
+        SELECT id, character_id, prompt, status, output, created_at, started_at, ended_at
+        FROM character_tasks;
+      DROP TABLE character_tasks;
+      ALTER TABLE character_tasks_v5 RENAME TO character_tasks;
+      CREATE INDEX IF NOT EXISTS idx_character_tasks_character ON character_tasks(character_id, created_at);
+    `);
+      log('info', 'Migrated character_tasks status CHECK to five statuses (cancelled)');
+    }
+
+    // v6（task_048）：补 artifacts 列（任务成果物 JSON，'' = 无）。纯加列不动 CHECK →
+    // ALTER ADD 即可，无需重建；放在五态重建**之后**（重建产物没有该列，重建后统一补齐），
+    // 已有该列幂等直过。与 task-record-dao 的 ensureArtifactsColumn 同构（那边是 DAO 自立兑底）。
+    const columns = this.db.prepare('PRAGMA table_info(character_tasks)').all() as Array<{ name?: string }>;
+    if (!columns.some((column) => column.name === 'artifacts')) {
+      this.db.exec("ALTER TABLE character_tasks ADD COLUMN artifacts TEXT NOT NULL DEFAULT ''");
+      log('info', 'Added artifacts column to character_tasks (task_048)');
+    }
+
+    // v7（task_049）：五态 CHECK → 六态重建（增 awaiting_approval；方案同 v5 —— CHECK 不可
+    // ALTER）。**必须在 artifacts 兜底之后**：INSERT SELECT 搬运 artifacts 列，列不在就炸。
+    // 'awaiting_approval' 指纹只在 CHECK 词表出现（同 'cancelled' 手法）；已是六态幂等直过。
+    // plan 列随重建建表 DDL 就位（老行缺省 ''）；六态表缺 plan 的边角（手改库）ALTER 兜底。
+    const row7 = this.db
+      .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'character_tasks'`)
+      .get() as { sql?: string } | undefined;
+    const needsV7Rebuild = !(typeof row7?.sql === 'string' && row7.sql.includes("'awaiting_approval'"));
+    if (needsV7Rebuild) {
+      this.db.exec(`
+      CREATE TABLE character_tasks_v7 (
+        id TEXT PRIMARY KEY,
+        character_id TEXT NOT NULL,
+        prompt TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'awaiting_approval', 'completed', 'failed', 'cancelled')),
+        output TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL,
+        started_at INTEGER,
+        ended_at INTEGER,
+        artifacts TEXT NOT NULL DEFAULT '',
+        plan TEXT NOT NULL DEFAULT ''
+      );
+      INSERT INTO character_tasks_v7
+        (id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts)
+        SELECT id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts
+        FROM character_tasks;
+      DROP TABLE character_tasks;
+      ALTER TABLE character_tasks_v7 RENAME TO character_tasks;
+      CREATE INDEX IF NOT EXISTS idx_character_tasks_character ON character_tasks(character_id, created_at);
+    `);
+      log('info', 'Migrated character_tasks status CHECK to six statuses (awaiting_approval, task_049)');
+    }
+
+    const columns7 = this.db.prepare('PRAGMA table_info(character_tasks)').all() as Array<{ name?: string }>;
+    if (!columns7.some((column) => column.name === 'plan')) {
+      this.db.exec("ALTER TABLE character_tasks ADD COLUMN plan TEXT NOT NULL DEFAULT ''");
+      log('info', 'Added plan column to character_tasks (task_049)');
+    }
+
+    // v8（task_051）：补 pipeline_id 列（站任务归属键，'' = 非流水线任务）。纯加列不动
+    // CHECK → ALTER ADD（同 v6 方案）；对重建产物（v7 形状）与原生 v7 表统一兑底，已有列幂等直过。
+    if (!columns7.some((column) => column.name === 'pipeline_id')) {
+      this.db.exec("ALTER TABLE character_tasks ADD COLUMN pipeline_id TEXT NOT NULL DEFAULT ''");
+      log('info', 'Added pipeline_id column to character_tasks (task_051)');
+    }
+
+    // task_076：可空 mission_id 关联键；与 DAO 的 ensureMissionIdColumn 同构（旧库主要由 DAO 读写前补列）。
+    if (!columns7.some((column) => column.name === 'mission_id')) {
+      this.db.exec('ALTER TABLE character_tasks ADD COLUMN mission_id TEXT');
+      log('info', 'Added mission_id column to character_tasks (task_076)');
+    }
+  }
+
+  /**
+   * 流水线表（@since v3.27，task_051）：app 层 pipeline-service 随相位迁移 upsert
+   * （发起 running / 每站入列与收尾 / 整线终态）。IF NOT EXISTS 幂等：DAO 自立兑底在
+   * pipeline-record-dao.ts 的 ensurePipelinesTable，DDL 两处同构同步改。
+   * running 行的存活语义（进程内存里有 driver 才是活的，停机遗骸不复活）见 DAO 文件头。
+   */
+  private migratePipelines(): void {
+    const tables = this.getTableNames();
+    if (tables.has('pipelines')) return;
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS pipelines (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        issue TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed')),
+        steps TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        finished_at INTEGER
+      )
+    `);
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_pipelines_created ON pipelines(created_at)');
+    log('info', 'Created pipelines table (task_051)');
+  }
+
+  /**
+   * agent 健康事件表（@since v3.30，task_054，schema v10）：health-monitor 随判定 / 审计
+   * 逐条插入（offline / online 翻转各一条，transport exit 异常记 unhealthy）。
+   * IF NOT EXISTS 幂等：新库在 migrateIfNeeded（schema_version = 0）也会走到这里；
+   * v9 老库因版本号升到 10 重跑迁移补建。DDL 与 agent-health-dao.ts 同构同步改。
+   */
+  private migrateAgentHealthEvents(): void {
+    const tables = this.getTableNames();
+    if (tables.has('agent_health_events')) return;
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS agent_health_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind TEXT NOT NULL,
+        event TEXT NOT NULL CHECK (event IN ('online', 'offline', 'unhealthy')),
+        created_at INTEGER NOT NULL
+      )
+    `);
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_agent_health_events_kind_time ON agent_health_events(kind, created_at)');
+    log('info', 'Created agent_health_events table (task_054)');
+  }
+
+  /**
+   * 角色经验事件表（@since v3.36，task_061，schema v12）：progression-service 在
+   * exp.gained / 升级结算时逐条写入（写入面 = app/services/persistence/exp-record.ts 的
+   * persister 注入件）。IF NOT EXISTS 幂等：新库在 createTables 里建过，这里是旧库
+   * （schema_version ≤ 11）的升级路径。DDL 与 exp-event-dao.ts 同构同步改（铁律同上）。
+   */
+  private migrateExpEvents(): void {
+    const tables = this.getTableNames();
+    if (tables.has('exp_events')) return;
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS exp_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        character_id TEXT NOT NULL,
+        delta INTEGER NOT NULL,
+        reason TEXT NOT NULL CHECK (reason IN ('task_completed', 'task_failed', 'chat_round', 'level_up')),
+        level INTEGER,
+        created_at INTEGER NOT NULL
+      )
+    `);
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_exp_events_character_time ON exp_events(character_id, created_at)');
+    log('info', 'Created exp_events table (task_061)');
+  }
+
+  /**
+   * 自定义 agent 注册表（@since v3.32，task_056，schema v11）：主进程 IPC 层随注册 CRUD 写入
+   * （向导表单「+ 添加自定义 agent」→ 注册 / 删除；探测命令跑 probe_cmd）。
+   * IF NOT EXISTS 幂等：新库（schema_version = 0）与 v10 老库（版本号升 11 重跑迁移）都走到这里。
+   * DDL 与 custom-agent-dao.ts 的 ensureCustomAgentsTable 同构同步改（铁律同 agent_health_events）。
+   */
+  private migrateCustomAgents(): void {
+    const tables = this.getTableNames();
+    if (tables.has('custom_agents')) return;
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS custom_agents (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        probe_cmd TEXT NOT NULL,
+        run_cmd_template TEXT NOT NULL,
+        output_parser TEXT NOT NULL CHECK (output_parser IN ('plain', 'json')),
+        created_at INTEGER NOT NULL
+      )
+    `);
+    log('info', 'Created custom_agents table (task_056)');
+  }
+
+  /**
+   * 角色对话历史表（@since v3.15，task_036）：chat-service 按回合写入（user 即时 / assistant 收束 / system）。
+   * task_073 扩 system 事件角色；SQLite CHECK 不可 ALTER，旧表重建并保留全部旧行（含旧 error 行）。
+   */
+  private migrateCharacterChatMessages(): void {
+    const tables = this.getTableNames();
+
+    if (!tables.has('character_chat_messages')) {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS character_chat_messages (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          character_id TEXT NOT NULL,
+          role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system', 'error')),
+          content TEXT NOT NULL,
+          session_ref TEXT,
+          created_at INTEGER NOT NULL
+        )
+      `);
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_character_chat_messages_character ON character_chat_messages(character_id, id)');
+      log('info', 'Created character_chat_messages table');
+      return;
+    }
+
+    const row = this.db
+      .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'character_chat_messages'`)
+      .get() as { sql?: string } | undefined;
+    if (typeof row?.sql === 'string' && row.sql.includes("'system'")) return;
+
+    this.db.exec(`
+      CREATE TABLE character_chat_messages_system (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        character_id TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system', 'error')),
+        content TEXT NOT NULL,
+        session_ref TEXT,
+        created_at INTEGER NOT NULL
+      );
+      INSERT INTO character_chat_messages_system
+        (id, character_id, role, content, session_ref, created_at)
+        SELECT id, character_id, role, content, session_ref, created_at
+        FROM character_chat_messages;
+      DROP TABLE character_chat_messages;
+      ALTER TABLE character_chat_messages_system RENAME TO character_chat_messages;
+      CREATE INDEX IF NOT EXISTS idx_character_chat_messages_character ON character_chat_messages(character_id, id);
+    `);
+    log('info', 'Migrated character_chat_messages role CHECK to include system (task_073)');
+  }
+
+  /**
+   * 游戏存档表（@since v3.12，task_033）：角色档案 + 单位站位。
+   * IF NOT EXISTS 幂等：新库在 createTables 里建过，这里是旧库（schema_version 1）的升级路径。
+   */
+  private migrateGameSaveTables(): void {
+    const tables = this.getTableNames();
+
+    if (!tables.has('characters')) {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS characters (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          kind TEXT,
+          persona TEXT NOT NULL DEFAULT '',
+          level INTEGER NOT NULL DEFAULT 1,
+          exp INTEGER NOT NULL DEFAULT 0,
+          appearance TEXT,
+          body_type TEXT,
+          skin_id TEXT,
+          external_session_id TEXT,
+          context_enabled INTEGER NOT NULL DEFAULT 1,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )
+      `);
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_characters_kind ON characters(kind)');
+      log('info', 'Created characters table');
+    }
+
+    // v9（task_053）：老 characters 表（v8 及以前）补 context_enabled —— ALTER ADD 带
+    // DEFAULT 1：存量行一律归「开」（缺省即开的开关语义，与 CharacterView.contextEnabled
+    // 缺省 true 的归一口径一致，不在迁移里猜旧档案的偏好）。
+    const characterColumns = this.getColumnNames('characters');
+    if (!characterColumns.has('context_enabled')) {
+      this.db.exec('ALTER TABLE characters ADD COLUMN context_enabled INTEGER NOT NULL DEFAULT 1');
+      log('info', 'Added context_enabled column to characters table');
+    }
+
+    if (!tables.has('unit_positions')) {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS unit_positions (
+          character_id TEXT PRIMARY KEY,
+          x REAL NOT NULL,
+          y REAL NOT NULL,
+          updated_at INTEGER NOT NULL
+        )
+      `);
+      log('info', 'Created unit_positions table');
+    }
   }
 
   private migrateAgentColumns(): void {
@@ -734,6 +1117,75 @@ export class StratixDatabase {
       CREATE INDEX IF NOT EXISTS idx_audit_actor ON zone_audit_log(actor_id);
       CREATE INDEX IF NOT EXISTS idx_audit_type ON zone_audit_log(event_type);
       CREATE INDEX IF NOT EXISTS idx_audit_time ON zone_audit_log(created_at);
+
+      -- ============================================
+      -- GAME SAVE TABLES（@since v3.12，task_033）
+      -- DDL 与 src/app/services/persistence/game-save-dao.ts 的 ensureGameSaveTables 同构。
+      -- ============================================
+
+      -- 角色档案表：core WorldState.characters 的落库形态（appearance 存 JSON）；
+      -- @since v3.29 context_enabled = 角色级上下文注入开关（task_053，缺省开）
+      CREATE TABLE IF NOT EXISTS characters (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        kind TEXT,
+        persona TEXT NOT NULL DEFAULT '',
+        level INTEGER NOT NULL DEFAULT 1,
+        exp INTEGER NOT NULL DEFAULT 0,
+        appearance TEXT,
+        body_type TEXT,
+        skin_id TEXT,
+        external_session_id TEXT,
+        context_enabled INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      -- 单位站位表：characterId → 战场世界坐标（app 层防抖批量写入）
+      CREATE TABLE IF NOT EXISTS unit_positions (
+        character_id TEXT PRIMARY KEY,
+        x REAL NOT NULL,
+        y REAL NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      -- 角色对话历史表（@since v3.15，task_036）：role ∈ user|assistant|system|error（error 为旧行兼容）；
+      -- session_ref 是会话 id 的落库回执（审计用，恢复口径见 chat-service 文件头：重启首发重建）
+      CREATE TABLE IF NOT EXISTS character_chat_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        character_id TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system', 'error')),
+        content TEXT NOT NULL,
+        session_ref TEXT,
+        created_at INTEGER NOT NULL
+      );
+
+      -- 角色任务表（@since v3.16，task_037；@since v3.23 task_047 status 扩五态；
+      -- @since v3.25 task_049 status 扩六态 + plan 列）：
+      -- 派发 → 执行 → 产出的审计与全文输出；cancelled = 排队取消（没跑过，output 为占位文案）；
+      -- awaiting_approval = 计划挂起等裁决（task_049，output 为计划全文、plan 列同存）。
+      -- 不叫 tasks：tasks 表是 agent 平台的任务队列（v1 起），character_ 前缀 = 游戏存档域命名先例
+      CREATE TABLE IF NOT EXISTS character_tasks (
+        id TEXT PRIMARY KEY,
+        character_id TEXT NOT NULL,
+        prompt TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'awaiting_approval', 'completed', 'failed', 'cancelled')),
+        output TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL,
+        started_at INTEGER,
+        ended_at INTEGER,
+        -- 任务成果物（@since v3.24，task_048）：parseTaskArtifacts 的 JSON（files+summary），'' = 无
+        artifacts TEXT NOT NULL DEFAULT '',
+        -- 计划草稿全文（@since v3.25，task_049）：审批门挂起时已剥离标记行的计划，'' = 无
+        plan TEXT NOT NULL DEFAULT '',
+        -- 关联 mission（task_076）：角色任务终态回报的关联键，NULL = 普通任务
+        mission_id TEXT
+      );
+
+      -- 索引
+      CREATE INDEX IF NOT EXISTS idx_characters_kind ON characters(kind);
+      CREATE INDEX IF NOT EXISTS idx_character_chat_messages_character ON character_chat_messages(character_id, id);
+      CREATE INDEX IF NOT EXISTS idx_character_tasks_character ON character_tasks(character_id, created_at);
     `;
     this.db.exec(sql);
   }

@@ -5,7 +5,7 @@ export class DefaultSkillExecutor implements SkillExecutor {
     skill: SkillDefinition,
     params: Record<string, unknown>,
     _context: ExecutionContext
-  ): Promise<unknown> {
+  ): Promise<any> {
     return {
       skillId: skill.skillId,
       params,

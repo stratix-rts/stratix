@@ -10,12 +10,12 @@ import { MetricsCollector } from './core/MetricsCollector';
 import { PromptBuilder } from './core/PromptBuilder';
 import { RateLimiter } from './core/RateLimiter';
 import { SessionManager } from './core/SessionManager';
-import { createExecutor } from './core/executors';
 import { SkillRegistry } from './core/SkillRegistry';
 import { SkillTrigger } from './core/SkillTrigger';
 import { StorageManager } from './core/StorageManager';
 import { TokenManager } from './core/TokenManager';
 import { ToolUseLoop } from './core/ToolUseLoop';
+import { createExecutor } from './core/executors';
 import { AgentConfig, SoulConfig, AgentResponse, SkillResult, ChatMessage, GenerateResult, Session, HealthStatus, MetricsData } from './types';
 
 // ============================================

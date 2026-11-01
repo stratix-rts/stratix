@@ -248,18 +248,14 @@ describe('ConnectionPool', () => {
     });
 
     it('should count error connections', async () => {
-      MockLocalOpenClawAdapter.mockImplementationOnce((config) => ({
-        ...createMockAdapter(),
-        connect: jest.fn().mockRejectedValue(new Error('Connection failed')),
-        getStatus: jest.fn().mockResolvedValue({ ...mockStatus, connected: false }),
-      }) as unknown as LocalOpenClawAdapter);
+      const adapter = await pool.getAdapter(mockConfig) as jest.Mocked<OpenClawAdapterInterface>;
+      const key = `${mockConfig.endpoint}:${mockConfig.accountId}`;
 
-      try {
-        await pool.getAdapter(mockConfig);
-      } catch {
-        // Expected to fail
-      }
+      // Simulate reconnect failure so the connection is marked as error
+      adapter.connect.mockRejectedValue(new Error('Connection failed'));
+      const result = await pool.attemptReconnect(key);
 
+      expect(result).toBe(false);
       const stats = pool.getPoolStats();
       expect(stats.errorConnections).toBe(1);
     });

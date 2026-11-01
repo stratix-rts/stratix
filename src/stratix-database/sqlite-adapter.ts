@@ -16,10 +16,11 @@
  *   db.close()
  */
 
+import * as path from 'path';
+
+import fs from 'fs-extra';
 import initSqlJs from 'sql.js';
 import type { Database as SqlJsDatabase } from 'sql.js';
-import * as fs from 'fs-extra';
-import * as path from 'path';
 
 // Load the WASM file from sql.js package
 const SQL_JS_WASM_PATH = require.resolve('sql.js/dist/sql-wasm.wasm');
@@ -238,6 +239,7 @@ export class Database {
    * Wraps the function to run inside BEGIN/COMMIT with ROLLBACK on error.
    */
   transaction<T extends (...args: any[]) => any>(fn: T): T {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
     return function (this: any, ...args: any[]) {
       self.assertReady();

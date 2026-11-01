@@ -1,4 +1,5 @@
 import { writeFile } from 'fs/promises';
+
 import { SkillDefinition, SkillExecutor, ExecutionContext } from '../../types';
 import { SafetyValidator } from '../SafetyValidator';
 
@@ -21,7 +22,7 @@ export class HttpSkillExecutor implements SkillExecutor {
     skill: SkillDefinition,
     params: Record<string, unknown>,
     context: ExecutionContext
-  ): Promise<unknown> {
+  ): Promise<any> {
     // Handle web_search specially - uses DuckDuckGo API
     if (skill.skillId === 'web_search') {
       const query = typeof params.query === 'string' ? params.query : '';

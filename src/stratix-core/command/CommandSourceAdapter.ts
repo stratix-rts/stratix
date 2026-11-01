@@ -1,7 +1,8 @@
-import type { Command, CommandContext, CommandResult } from './types';
-import { CommandOrchestrator } from './CommandOrchestrator';
 import { CommandTransformer } from '../../stratix-gateway/command-transformer/CommandTransformer';
 import type { StratixAgentConfig } from '../stratix-protocol';
+
+import { CommandOrchestrator } from './CommandOrchestrator';
+import type { Command, CommandContext, CommandResult } from './types';
 
 /**
  * Adapter that bridges CommandTransformer (protocol-level) to CommandOrchestrator (unified command registry).

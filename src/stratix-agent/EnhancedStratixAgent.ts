@@ -8,14 +8,14 @@
  * - EvolutionManager      Agent 进化（soul/template 迭代）
  */
 
-import { TaskQueueService } from '../stratix-orchestration/task-queue/TaskQueueService';
 import type { TaskItem } from '../stratix-orchestration/task-queue/TaskItem';
+import { TaskQueueService } from '../stratix-orchestration/task-queue/TaskQueueService';
 
 import { StratixAgent } from './StratixAgent';
 import { EnhancedPromptBuilder } from './core/EnhancedPromptBuilder';
-import { WorkflowExecutor, type EnhancedAgentResponse } from './core/WorkflowExecutor';
-import { ReflectionManager } from './core/ReflectionManager';
 import { EvolutionManager } from './core/EvolutionManager';
+import { ReflectionManager } from './core/ReflectionManager';
+import { WorkflowExecutor, type EnhancedAgentResponse } from './core/WorkflowExecutor';
 import { MixinComposer } from './mixins/MixinComposer';
 import { SessionRuntime } from './runtime/SessionRuntime';
 import type { SessionContext, TokenUsage, ChatMessage as RuntimeChatMessage } from './runtime/types';

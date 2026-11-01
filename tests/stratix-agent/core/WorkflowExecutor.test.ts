@@ -301,7 +301,7 @@ describe('WorkflowExecutor', () => {
 
       const result = await executor.executeWorkflow(workflow, 'hello');
 
-      expect(result.response).toContain('[ERROR in Step 1]: Error: LLM failure');
+      expect(result.response).toContain('[ERROR in Step 1]: LLM failure');
       expect(result.response).toContain('recovery result');
     });
 

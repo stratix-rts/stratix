@@ -1,4 +1,3 @@
-import { ZoneManager } from '../zone/ZoneManager';
 
 import { AgentMessageStore } from './AgentMessageStore';
 import { ConversationConstraints } from './ConversationConstraints';
@@ -30,13 +29,11 @@ export class AgentMessageRouter {
 
   private messageStore: AgentMessageStore;
   private constraints: ConversationConstraints;
-  private zoneManager: ZoneManager;
   private eventListeners: Map<string, MessageEventCallback[]> = new Map();
 
   private constructor() {
     this.messageStore = AgentMessageStore.getInstance();
     this.constraints = ConversationConstraints.getInstance();
-    this.zoneManager = ZoneManager.getInstance();
   }
 
   static getInstance(): AgentMessageRouter {
@@ -65,10 +62,8 @@ export class AgentMessageRouter {
           return this.handleDirectMessage(senderId, options.recipientId, content, options);
 
         case 'broadcast':
-          if (!options.zoneId) {
-            return { success: false, error: 'Zone ID required for broadcasts' };
-          }
-          return this.handleBroadcast(senderId, options.zoneId, content, options);
+          // D5：Zone 整体砍掉后没有广播范围（无 zone 成员表），广播路径下线
+          return { success: false, error: 'Broadcast is no longer supported: zones were removed in v3' };
 
         case 'mention':
           if (!options.recipientId) {
@@ -83,8 +78,9 @@ export class AgentMessageRouter {
           return this.handleTaskRequest(senderId, options.recipientId, content, options);
 
         case 'context_share':
-          if (!options.recipientId && !options.zoneId) {
-            return { success: false, error: 'Recipient or zone ID required for context sharing' };
+          if (!options.recipientId) {
+            // D5：Zone 砍掉后没有"分享给整区"的分支，只能定向分享
+            return { success: false, error: 'Recipient ID required for context sharing (zone-wide sharing removed in v3)' };
           }
           return this.handleContextShare(senderId, content, options);
 
@@ -130,46 +126,6 @@ export class AgentMessageRouter {
     });
 
     return { success: true, messageId: message.messageId };
-  }
-
-  private async handleBroadcast(
-    senderId: string,
-    zoneId: string,
-    content: string,
-    options: RouteOptions
-  ): Promise<RouteResult> {
-    // Check policy - for broadcast, the sender broadcasts to the zone (recipientId is not applicable for zone-wide)
-    const check = await this.constraints.canSend(senderId, '*', 'broadcast', { zoneId });
-    if (!check.allowed) {
-      return { success: false, error: check.reason };
-    }
-
-    // Get all agents in zone
-    const agentsInZone = await this.zoneManager.getAgentsInZone(zoneId);
-    const targets = agentsInZone.filter(id => id !== senderId);
-
-    if (targets.length === 0) {
-      return { success: true, messageId: undefined };
-    }
-
-    // Send messages in parallel for better performance
-    const sendPromises = targets.map(async recipientId => {
-      const conversation = await this.messageStore.getOrCreateDMConversation(senderId, recipientId);
-      const message = await this.messageStore.sendMessage(senderId, content, {
-        conversationId: conversation.conversationId,
-        messageType: 'broadcast',
-        references: options.references,
-        zoneId,
-      });
-      return message.messageId;
-    });
-
-    const sentMessages = await Promise.all(sendPromises);
-
-    return {
-      success: true,
-      messageId: sentMessages[0], // Return first message ID
-    };
   }
 
   private async handleMention(
@@ -269,38 +225,9 @@ export class AgentMessageRouter {
       });
 
       return { success: true, messageId: message.messageId };
-    } else {
-      // Share with all agents in zone
-      const agentsInZone = await this.zoneManager.getAgentsInZone(options.zoneId!);
-      const targets = agentsInZone.filter(id => id !== senderId);
-
-      if (targets.length === 0) {
-        return { success: false, error: 'No agents available in zone for context sharing' };
-      }
-
-      // Check permissions and send in parallel
-      const sendPromises = targets.map(async rid => {
-        const check = await this.constraints.canShare(senderId, rid, 'context', { zoneId: options.zoneId });
-        if (!check.allowed) return null;
-
-        const conversation = await this.messageStore.getOrCreateDMConversation(senderId, rid);
-        const message = await this.messageStore.sendMessage(senderId, content, {
-          conversationId: conversation.conversationId,
-          messageType: 'context_share',
-          references,
-        });
-        return message.messageId;
-      });
-
-      const results = await Promise.all(sendPromises);
-      const sentMessages = results.filter((id): id is string => id !== null);
-
-      if (sentMessages.length === 0) {
-        return { success: false, error: 'Context sharing blocked by policy for all agents' };
-      }
-
-      return { success: true, messageId: sentMessages[0] };
     }
+    // D5 补记：调用方在 route() 入口已强制 recipientId，这里不可达；保留断言防止后续重构绕过校验
+    return { success: false, error: 'Recipient ID required for context sharing' };
   }
 
   // ==================== Event System ====================

@@ -2,7 +2,6 @@ import { StratixAgentConfig } from '../../../stratix-core';
 import { LRAClient } from '../../../stratix-lra-bridge/LRAClient';
 import type { LraTask } from '../../../stratix-lra-bridge/types';
 import { createOpenClawAdapter, OpenClawAdapterInterface } from '../../../stratix-openclaw-adapter';
-import { gatewayEventBus, AgentMentionEvent } from '../../GatewayEventBus';
 import { budgetController } from '@stratix-core/budget/BudgetController';
 import type { TokenUsage } from '@stratix-core/budget/types';
 
@@ -21,7 +20,6 @@ export class OpenClawAgent implements AgentInterface {
   private currentTaskId: string | null = null;
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private startedAt?: Date;
-  private unsubscribeMention: (() => void) | null = null;
   private totalTokenUsage: TokenUsage = { totalTokens: 0, promptTokens: 0, completionTokens: 0 };
   
   constructor(
@@ -74,7 +72,6 @@ export class OpenClawAgent implements AgentInterface {
     this.startedAt = new Date();
     
     // 订阅 channel 提及消息
-    this.subscribeToMentions();
     
     while (!this.shouldStop) {
       try {
@@ -121,26 +118,6 @@ export class OpenClawAgent implements AgentInterface {
     }
     
     console.log(`[OpenClawAgent] ${this.agentConfig.name} stopped`);
-  }
-  
-  private subscribeToMentions(): void {
-    console.log(`[OpenClawAgent] ${this.agentConfig.name} (${this.agentConfig.agentId}) subscribing to mentions...`);
-    
-    // 监听针对当前 agent 的提及消息
-    this.unsubscribeMention = gatewayEventBus.onAgentMention(
-      this.agentConfig.agentId,
-      (event: AgentMentionEvent) => {
-        console.log(`[OpenClawAgent] ${this.agentConfig.name} received mention in channel ${event.channelId}`);
-        this.handleMessage(event.message).catch(err => {
-          console.error(`[OpenClawAgent] Failed to handle message:`, err);
-        });
-      }
-    );
-    
-    // 测试监听是否成功
-    const eventName = `agent_mention:${this.agentConfig.agentId}`;
-    const listenerCount = gatewayEventBus.listenerCount(eventName);
-    console.log(`[OpenClawAgent] ${this.agentConfig.name} subscribed to ${eventName}, total listeners: ${listenerCount}`);
   }
   
   private async processTask(task: LraTask): Promise<void> {
@@ -207,10 +184,6 @@ export class OpenClawAgent implements AgentInterface {
     this.stopHeartbeat();
     
     // 取消订阅提及消息
-    if (this.unsubscribeMention) {
-      this.unsubscribeMention();
-      this.unsubscribeMention = null;
-    }
     
     if (this.currentTaskId) {
       await this.lraClient.setTaskStatus(this.effectiveProjectPath, this.currentTaskId, 'pending');

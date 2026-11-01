@@ -4,14 +4,16 @@
  * isolation strategy, and background flag.
  */
 
+import * as os from "os";
+import * as path from "path";
+
+import * as fs from "fs-extra";
+
 import type {
   AgentTask,
   TaskHandle,
   TaskStatus,
 } from "./types";
-import * as fs from "fs-extra";
-import * as path from "path";
-import * as os from "os";
 
 /**
  * Execution context for a dispatched task

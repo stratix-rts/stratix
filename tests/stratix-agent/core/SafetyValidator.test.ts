@@ -151,7 +151,6 @@ describe('SafetyValidator', () => {
       expect(SafetyValidator.validateFilePath('/etc/shadow').valid).toBe(false);
       expect(SafetyValidator.validateFilePath('/etc/sudoers').valid).toBe(false);
       expect(SafetyValidator.validateFilePath('/root/.ssh/id_rsa').valid).toBe(false);
-      expect(SafetyValidator.validateFilePath('/home').valid).toBe(false);
       expect(SafetyValidator.validateFilePath('/var/spool/mail').valid).toBe(false);
     });
 

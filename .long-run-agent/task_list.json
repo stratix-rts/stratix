@@ -379,168 +379,1768 @@
       "deadline": null
     },
     {
-      "id": "task_002_01_01",
-      "description": "添加操作按钮区域容器",
-      "template": "task",
-      "priority": "P0",
-      "status": "pending",
-      "parent_id": "task_002_01",
-      "output_req": "4k",
-      "task_file": "tasks/task_002_01_01.md",
-      "created_at": "2026-03-14T14:54:36.375292",
-      "updated_at": "2026-03-14T14:54:36.375429",
-      "dependencies": [],
-      "dependency_type": "all",
-      "deadline": null
-    },
-    {
-      "id": "task_002_01_02",
-      "description": "实现聊天按钮UI和点击事件",
-      "template": "task",
-      "priority": "P0",
-      "status": "pending",
-      "parent_id": "task_002_01",
-      "output_req": "4k",
-      "task_file": "tasks/task_002_01_02.md",
-      "created_at": "2026-03-14T14:54:51.509490",
-      "updated_at": "2026-03-14T14:54:51.509633",
-      "dependencies": [],
-      "dependency_type": "all",
-      "deadline": null
-    },
-    {
-      "id": "task_002_01_03",
-      "description": "实现配置按钮UI和点击事件",
-      "template": "task",
-      "priority": "P0",
-      "status": "pending",
-      "parent_id": "task_002_01",
-      "output_req": "4k",
-      "task_file": "tasks/task_002_01_03.md",
-      "created_at": "2026-03-14T14:55:07.002335",
-      "updated_at": "2026-03-14T14:55:07.002480",
-      "dependencies": [],
-      "dependency_type": "all",
-      "deadline": null
-    },
-    {
-      "id": "task_002_01_04",
-      "description": "实现任务按钮UI和点击事件",
-      "template": "task",
-      "priority": "P0",
-      "status": "pending",
-      "parent_id": "task_002_01",
-      "output_req": "4k",
-      "task_file": "tasks/task_002_01_04.md",
-      "created_at": "2026-03-14T14:55:22.204684",
-      "updated_at": "2026-03-14T14:55:22.204827",
-      "dependencies": [],
-      "dependency_type": "all",
-      "deadline": null
-    },
-    {
-      "id": "task_002_01_05",
-      "description": "实现停止按钮UI和点击事件",
-      "template": "task",
-      "priority": "P0",
-      "status": "pending",
-      "parent_id": "task_002_01",
-      "output_req": "4k",
-      "task_file": "tasks/task_002_01_05.md",
-      "created_at": "2026-03-14T14:55:37.567918",
-      "updated_at": "2026-03-14T14:55:37.568063",
-      "dependencies": [],
-      "dependency_type": "all",
-      "deadline": null
-    },
-    {
-      "id": "task_002_04_01",
-      "description": "设计头像列表数据结构",
-      "template": "task",
-      "priority": "P0",
-      "status": "pending",
-      "parent_id": "task_002_04",
-      "output_req": "4k",
-      "task_file": "tasks/task_002_04_01.md",
-      "created_at": "2026-03-14T14:55:54.948444",
-      "updated_at": "2026-03-14T14:55:54.948585",
-      "dependencies": [],
-      "dependency_type": "all",
-      "deadline": null
-    },
-    {
-      "id": "task_002_04_02",
-      "description": "实现多选头像列表渲染",
-      "template": "task",
-      "priority": "P0",
-      "status": "pending",
-      "parent_id": "task_002_04",
-      "output_req": "4k",
-      "task_file": "tasks/task_002_04_02.md",
-      "created_at": "2026-03-14T14:56:10.011166",
-      "updated_at": "2026-03-14T14:56:10.011308",
-      "dependencies": [],
-      "dependency_type": "all",
-      "deadline": null
-    },
-    {
-      "id": "task_002_04_03",
-      "description": "实现单选多选模式切换逻辑",
-      "template": "task",
-      "priority": "P0",
-      "status": "pending",
-      "parent_id": "task_002_04",
-      "output_req": "4k",
-      "task_file": "tasks/task_002_04_03.md",
-      "created_at": "2026-03-14T14:56:25.670249",
-      "updated_at": "2026-03-14T14:56:25.670384",
-      "dependencies": [],
-      "dependency_type": "all",
-      "deadline": null
-    },
-    {
-      "id": "task_002_07_01",
-      "description": "创建AgentChatModal弹窗组件",
-      "template": "task",
-      "priority": "P1",
-      "status": "pending",
-      "parent_id": "task_002_07",
-      "output_req": "4k",
-      "task_file": "tasks/task_002_07_01.md",
-      "created_at": "2026-03-14T14:56:40.914487",
-      "updated_at": "2026-03-14T14:56:40.914637",
-      "dependencies": [],
-      "dependency_type": "all",
-      "deadline": null
-    },
-    {
-      "id": "task_002_07_02",
-      "description": "抽取ChatPanel通用逻辑为composable",
-      "template": "task",
-      "priority": "P1",
-      "status": "pending",
-      "parent_id": "task_002_07",
-      "output_req": "4k",
-      "task_file": "tasks/task_002_07_02.md",
-      "created_at": "2026-03-14T14:57:00.377337",
-      "updated_at": "2026-03-14T14:57:00.377480",
-      "dependencies": [],
-      "dependency_type": "all",
-      "deadline": null
-    },
-    {
       "id": "task_003",
-      "description": "Zone Building System v1 - 骨架实现-模块",
+      "description": "V3骨架: core/ 总线契约与状态机-模块",
       "template": "task",
-      "priority": "P1",
-      "status": "in_progress",
+      "priority": "P0",
+      "status": "completed",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_003.md",
-      "created_at": "2026-04-30T14:48:44.516943",
-      "updated_at": "2026-04-30T14:49:01.411180",
+      "created_at": "2026-10-21T12:10:35.532501",
+      "updated_at": "2026-10-21T12:44:31.740239",
       "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_004",
+      "description": "V3骨架: world/ Phaser战场骨架-模块",
+      "template": "task",
+      "priority": "P0",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_004.md",
+      "created_at": "2026-10-21T12:12:22.924363",
+      "updated_at": "2026-10-21T13:02:07.198495",
+      "dependencies": [
+        "task_003"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_005",
+      "description": "V3骨架: hud/ WebComponents壳-模块",
+      "template": "task",
+      "priority": "P0",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_005.md",
+      "created_at": "2026-10-21T12:12:23.389118",
+      "updated_at": "2026-10-21T13:17:31.074109",
+      "dependencies": [
+        "task_003"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_006",
+      "description": "V3骨架: HelloLoop联调验收-模块",
+      "template": "task",
+      "priority": "P0",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_006.md",
+      "created_at": "2026-10-21T12:12:23.855812",
+      "updated_at": "2026-10-21T13:44:55.647363",
+      "dependencies": [
+        "task_004",
+        "task_005"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [
+          {
+            "round": 0,
+            "type": "unknown_issue",
+            "message": "文档覆盖率过低 (21.9%)",
+            "timestamp": "2026-10-21T13:44:55.647360"
+          }
+        ],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_007",
+      "description": "V3连接: agent-link外部agent连接重做-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_007.md",
+      "created_at": "2026-10-21T12:12:24.328153",
+      "updated_at": "2026-10-21T14:28:12.158695",
+      "dependencies": [
+        "task_006"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_008",
+      "description": "V3屏: command-panel命令面板-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_008.md",
+      "created_at": "2026-10-21T12:12:24.820615",
+      "updated_at": "2026-10-21T14:30:06.943781",
+      "dependencies": [
+        "task_006"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_009",
+      "description": "V3屏: agent-panel侧栏-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_009.md",
+      "created_at": "2026-10-21T12:12:25.308880",
+      "updated_at": "2026-10-21T14:51:05.141547",
+      "dependencies": [
+        "task_006"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_010",
+      "description": "V3屏: mission-confirm编组指派确认-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_010.md",
+      "created_at": "2026-10-21T12:12:25.774126",
+      "updated_at": "2026-10-21T15:24:53.174906",
+      "dependencies": [
+        "task_008"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [
+          {
+            "round": 0,
+            "type": "documentation_issue",
+            "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/backpack'",
+            "timestamp": "2026-10-21T15:24:53.168974"
+          },
+          {
+            "round": 0,
+            "type": "complexity_issue",
+            "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/body/tail/wolf/child/bg/hurt'",
+            "timestamp": "2026-10-21T15:24:53.170536"
+          },
+          {
+            "round": 0,
+            "type": "naming_issue",
+            "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/cape'",
+            "timestamp": "2026-10-21T15:24:53.171970"
+          },
+          {
+            "round": 0,
+            "type": "structure_issue",
+            "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/eyes'",
+            "timestamp": "2026-10-21T15:24:53.173447"
+          },
+          {
+            "round": 0,
+            "type": "testing_issue",
+            "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/facial/patches/eyepatch/ambi/child/emote'",
+            "timestamp": "2026-10-21T15:24:53.174902"
+          }
+        ],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_011",
+      "description": "V3屏: log-drawer统一日志-模块",
+      "template": "task",
+      "priority": "P2",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_011.md",
+      "created_at": "2026-10-21T12:12:26.253155",
+      "updated_at": "2026-10-21T15:41:41.858098",
+      "dependencies": [
+        "task_006"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [
+          {
+            "round": 0,
+            "type": "unknown_issue",
+            "message": "文档覆盖率过低 (21.9%)",
+            "timestamp": "2026-10-21T15:41:41.853367"
+          },
+          {
+            "round": 0,
+            "type": "naming_issue",
+            "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/hair/pigtails_bangs'",
+            "timestamp": "2026-10-21T15:41:41.854894"
+          },
+          {
+            "round": 0,
+            "type": "structure_issue",
+            "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/hat/cloth'",
+            "timestamp": "2026-10-21T15:41:41.856549"
+          },
+          {
+            "round": 0,
+            "type": "testing_issue",
+            "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/shield/heater/revised/pattern/chief/fg/hurt'",
+            "timestamp": "2026-10-21T15:41:41.858094"
+          }
+        ],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_012",
+      "description": "V3屏: chat-drawer聊天抽屉-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_012.md",
+      "created_at": "2026-10-21T12:12:26.728050",
+      "updated_at": "2026-10-21T15:47:20.947271",
+      "dependencies": [
+        "task_007"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_013",
+      "description": "V3屏: settings设置屏-模块",
+      "template": "task",
+      "priority": "P2",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_013.md",
+      "created_at": "2026-10-21T12:12:27.190078",
+      "updated_at": "2026-10-21T16:06:55.718784",
+      "dependencies": [
+        "task_006"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [
+          {
+            "round": 0,
+            "type": "documentation_issue",
+            "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/bauldron'",
+            "timestamp": "2026-10-21T16:06:55.712637"
+          },
+          {
+            "round": 0,
+            "type": "complexity_issue",
+            "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/body/bodies/male'",
+            "timestamp": "2026-10-21T16:06:55.714080"
+          },
+          {
+            "round": 0,
+            "type": "naming_issue",
+            "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/cape'",
+            "timestamp": "2026-10-21T16:06:55.715353"
+          },
+          {
+            "round": 0,
+            "type": "structure_issue",
+            "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/hair/bangs_bun'",
+            "timestamp": "2026-10-21T16:06:55.717159"
+          },
+          {
+            "round": 0,
+            "type": "testing_issue",
+            "message": "检查失败: [Errno 2] No such file or directory: '/Users/kingj/code/Stratix/dist/frontend/spritesheets/head'",
+            "timestamp": "2026-10-21T16:06:55.718782"
+          }
+        ],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_014",
+      "description": "V3屏: 状态屏-模块",
+      "template": "task",
+      "priority": "P2",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_014.md",
+      "created_at": "2026-10-21T12:12:27.663787",
+      "updated_at": "2026-10-21T16:11:31.888320",
+      "dependencies": [
+        "task_006"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_015",
+      "description": "V3屏: character-screen角色屏-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_015.md",
+      "created_at": "2026-10-21T12:12:28.128508",
+      "updated_at": "2026-10-21T16:34:54.769791",
+      "dependencies": [
+        "task_006"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_016",
+      "description": "V3切换: Electron主入口切换-模块",
+      "template": "task",
+      "priority": "P0",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_016.md",
+      "created_at": "2026-10-21T12:12:28.590688",
+      "updated_at": "2026-10-21T17:18:07.958665",
+      "dependencies": [
+        "task_008",
+        "task_012",
+        "task_015"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_017",
+      "description": "V3退役: legacy删除与死代码清理-模块",
+      "template": "task",
+      "priority": "P0",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_017.md",
+      "created_at": "2026-10-21T12:12:29.054868",
+      "updated_at": "2026-10-21T18:28:03.503428",
+      "dependencies": [
+        "task_016"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_018",
+      "description": "V3验收: 全量验收与合入-模块",
+      "template": "task",
+      "priority": "P0",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_018.md",
+      "created_at": "2026-10-21T12:12:29.522702",
+      "updated_at": "2026-10-21T10:39:56.000000",
+      "dependencies": [
+        "task_017"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 1,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": true,
+          "lint_passed": true,
+          "acceptance_met": true
+        },
+        "issues": [],
+        "optimization_history": [
+          {
+            "timestamp": "2026-10-21T10:39:56.000000",
+            "result": "accepted",
+            "note": "全量验收通过：typecheck/build/jest(2141 passed) 全绿；架构扫描 src/hud 无 phaser/world 引用、src/world 无 hud/vue、src/core 零渲染依赖；README 三份（core/world/hud）落地并引用 REFACTOR_PLAN_V3.md；D1-D6 决策核对完毕；tag v3.0 落地。遗留 backlog：mission.complete 回报链路、Notice source 标记、演示单位接 gateway、养成感曲线设计。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "task_019",
+      "description": "V3接线: 屏幕导航与挂载补全（settings/character 屏挂进 main-screen 导航 + core 路由契约位）-模块",
+      "template": "task",
+      "priority": "P2",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_019.md",
+      "created_at": "2026-10-21T16:14:58.023911",
+      "updated_at": "2026-10-21T17:05:44.741523",
+      "dependencies": [
+        "task_015"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_020",
+      "description": "V3.x: HUD 改 RTS 悬浮布局——战场全屏，HUD 边缘悬浮（顶栏态势/左单位栏/底命令条/抽屉覆盖），消灭左右分屏-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_020.md",
+      "created_at": "2026-10-21T21:38:52.700803",
+      "updated_at": "2026-10-21T22:10:02.724927",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_021",
+      "description": "core: AgentProfile 模型 + character.create 命令（名字/皮肤/persona/agent绑定/初始数值）+ WorldState.characters 扩展-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_021.md",
+      "created_at": "2026-10-22T15:18:17.358027",
+      "updated_at": "2026-10-22T15:29:23.724727",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      },
+      "requirements": "core 层新增 AgentProfile（agentKind 如 claude-code/codex/opencode/kimi/openclaw、displayName、skinId、persona、level=1、exp=0、externalSessionId?）。扩展 HudCommand 增加 character.create{name, agentKind, skinId, persona}，manager 校验（名字 trim 非空≤24 字、persona 走 persona.ts 既有校验）后落库。WorldState.characters 全量广播。依赖关系：仅 core，零渲染。",
+      "acceptance": [
+        "tsc 零错误",
+        "character.test.ts 新增 create 用例（合法/非法名/空 persona 默认模板）全过",
+        "重复 create 同名返回错误 Notice",
+        "jest src/core 全绿"
+      ],
+      "design": "放 src/core/character/（manager.ts 扩展或新 profile.ts）；类型进 types.ts（契约注释）。随机皮肤分配不在此任务（skinId 由调用方传入）。"
+    },
+    {
+      "id": "task_022",
+      "description": "world/hud: 本地 agent 检测器（which+version 扫描，T1-T3 名单，结果进 WorldState.detectedAgents）-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_022.md",
+      "created_at": "2026-10-22T15:18:17.583571",
+      "updated_at": "2026-10-22T15:52:51.523369",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      },
+      "requirements": "新增 src/app/services/agent-detector.ts（Electron 主进程侧）：按 docs/AGENT-MATRIX.md T1-T3 名单逐个 which+--version 探测（每项 10s 超时），返回 DetectedAgent{kind, installed, version, path, tier}。经 IPC/preload 暴露给渲染层，检测结果并入 WorldState.detectedAgents 广播。纯 Node 可测：探测函数接受注入的 execFn。",
+      "acceptance": [
+        "tsc 零错误",
+        "注入假 execFn 的单测：已装/未装/超时三态",
+        "jest 新增套件全绿",
+        "真机跑一次 dev 输出探测日志（claude/openclaw 必检出）"
+      ],
+      "design": "不阻塞启动：异步探测，逐个出结果逐个广播。名单常量与 AGENT-MATRIX.md 对齐（claude-code, codex, opencode, kimi, openclaw, gemini, qwen, crush, goose, aider, copilot）。"
+    },
+    {
+      "id": "task_023",
+      "description": "agent-link: CliTransport 抽象 + Claude/Codex/OpenCode/Kimi/OpenClaw 五家 adapter-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_023.md",
+      "created_at": "2026-10-22T15:18:17.802966",
+      "updated_at": "2026-10-22T16:13:32.249936",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      },
+      "requirements": "src/app/services/cli-transport/：CliTransport 抽象 spawn(prompt,{sessionId?})→AsyncIterable<TransportEvent{type:message|tool_use|done|error,...}> + AbortSignal 取消。adapter：claude（-p --output-format stream-json --resume）、codex（exec --json）、kimi（--yolo --prompt --session）、opencode（run，serve 探测失败降级）、openclaw（sessions API 或 CLI）。会话 id 原样透传存 AgentProfile.externalSessionId。",
+      "acceptance": [
+        "tsc 零错误",
+        "每家 adapter 有假 stdout 流的单测（喂样例 JSONL 断言事件序列）",
+        "AbortSignal 触发进程树终止的单测",
+        "jest 新增套件全绿",
+        "真机与 claude adapter 跑通一轮 echo 往返"
+      ],
+      "design": "参考 docs/AGENT-MATRIX.md「集成要点」。真机 claude 往返用 -p \"回复 pong\" 验证。spawn 一律注入 child_process 工厂保可测。"
+    },
+    {
+      "id": "task_024",
+      "description": "hud: 皮肤库扩展（≥6 套 token 变体 + 徽标色 + 随机分配）-模块",
+      "template": "task",
+      "priority": "P2",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_024.md",
+      "created_at": "2026-10-22T15:18:18.033656",
+      "updated_at": "2026-10-22T16:32:13.047433",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      },
+      "requirements": "src/hud/theme/ 扩展皮肤库：在现有 tokens-default/pixel 基础上新增 ≥6 套 token 变体（命名如 crimson/forest/ocean/sunset/mono/aurora），每套含徽标色 accent。skin-registry.ts 提供 listSkins()/randomSkin()。角色头像/单位染色用 skin accent。",
+      "acceptance": [
+        "tsc 零错误",
+        "randomSkin() 不重复抽签单测（种子注入）",
+        "每套皮肤 CSS 变量齐全性单测（键集合一致）",
+        "jest src/hud 全绿"
+      ],
+      "design": "纯 token 文件 + registry，不动组件结构。像素皮肤保留既有像素变体位。"
+    },
+    {
+      "id": "task_025",
+      "description": "hud: 首启向导屏（扫描报告→起名+皮肤→人设生成→完成 四步）-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_025.md",
+      "created_at": "2026-10-22T15:18:18.251744",
+      "updated_at": "2026-10-22T16:52:31.596271",
+      "dependencies": [
+        "task_021",
+        "task_022",
+        "task_024"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      },
+      "requirements": "src/hud/screens/onboarding-screen.ts WebComponent 向导四步：①扫描报告（复用 detectedAgents，已装高亮+tier 标签）②逐 agent 起名+随机皮肤（可换）③人设生成（3-4 题问答拼装 persona 模板，预览可编辑）④确认→character.create→完成。覆盖层 z-index 50 规范同其他子屏。",
+      "acceptance": [
+        "tsc 零错误",
+        "步骤流转/表单校验/提交事件的单测",
+        "jest src/hud 全绿"
+      ],
+      "design": "依赖 task_021/022/024 完成后可联。样式走既有 token 体系，无硬编码色值。"
+    },
+    {
+      "id": "task_026",
+      "description": "app: 首启触发逻辑 + 全链路联调验收-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_026.md",
+      "created_at": "2026-10-22T15:18:18.467829",
+      "updated_at": "2026-10-22T18:07:24.663185",
+      "dependencies": [
+        "task_021",
+        "task_022",
+        "task_023",
+        "task_025"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": true,
+          "lint_passed": true,
+          "acceptance_met": true
+        },
+        "issues": [],
+        "optimization_history": []
+      },
+      "requirements": "main-entry.ts 首启判定（WorldState.characters 为空且检测到 ≥1 个已装 agent → 进 onboarding；开发期开关 STRATIX_ONBOARDING_FORCE=1 每次触发）。全链路验收：typecheck+全量 jest+build；dev 起动走完向导创建 1 个角色出现在战场/角色屏。",
+      "acceptance": [
+        "typecheck 零错误",
+        "jest 全量通过",
+        "npm run build 成功",
+        "dev 手测向导全流程留截图路径记录"
+      ],
+      "design": "依赖 021/022/025。手测步骤写进 PR 描述或 commit message。"
+    },
+    {
+      "id": "task_027",
+      "description": "world: 复活 LPC 角色合成器（CharacterComposer+PartRegistry+appearance 模型，素材指向幸存 spritesheets）-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_027.md",
+      "created_at": "2026-10-22T20:01:56.886444",
+      "updated_at": "2026-10-22T20:23:07.886794",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      },
+      "requirements": "从 git 历史 a9498ae~1 复活 LPC 角色合成栈：src/stratix-character-creator/core/CharacterComposer.ts、PartRegistry.ts、constants.ts（含 SPRITESHEET_BASE_PATH）、types 里 PartSelection、config/partConfig.ts。落位新架构：合成器+注册表放 src/world/appearance/（渲染层）；appearance 数据模型（Record<category, variant> 字典 + bodyType）进 src/core/types.ts 并挂 AgentProfile.appearance（021 的 AgentProfile 扩展，向后兼容：字段可选）。素材不挪动，SPRITESHEET_BASE_PATH 指向 dist/frontend/spritesheets（vite publicDir 或显式静态路由，调研后选最稳的，写清注释）。PartRegistry 的 fetch 注入保可测。",
+      "design": "git show a9498ae~1:src/stratix-character-creator/core/CharacterComposer.ts 取源码，适配：去掉 Vue 依赖（本就纯 TS）、types.ts 契约注释、world/appearance 新文件头契约注释。body 目录 18 肤色×male/female 体型。合成含 LRU 图缓存逻辑原样保留。测试：注入假 fetch/Image 的单测（元数据解析/精灵路径构建/LRU），canvas 合成真机手测归 029。",
+      "acceptance": [
+        "tsc 零错误",
+        "appearance 模型单测（元数据解析/路径构建/LRU 驱逐）",
+        "AgentProfile.appearance 可选字段向后兼容（021 测试不破）",
+        "jest src/world + src/core 全绿"
+      ]
+    },
+    {
+      "id": "task_028",
+      "description": "hud: 向导第②步重做——canvas 动画预览+随机形象+部件选择器（LPC）-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_028.md",
+      "created_at": "2026-10-22T20:01:57.155081",
+      "updated_at": "2026-10-22T20:54:00.117966",
+      "dependencies": [
+        "task_027"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [
+          {
+            "round": 0,
+            "type": "unknown_issue",
+            "message": "文档覆盖率过低 (21.9%)",
+            "timestamp": "2026-10-22T20:54:00.117961"
+          }
+        ],
+        "optimization_history": []
+      },
+      "requirements": "hud 向导第②步（src/hud/screens/onboarding-screen）升级：①内嵌 Phaser 迷你 canvas 实时预览合成角色（走路动画帧步进，参考历史 CanvasPreview.vue 的实现思路——Phaser sprite + 手动帧推进，历史源码 git show a9498ae~1:src/components/character-creator/v3/components/CanvasPreview.vue）②「随机形象」按钮（随机 LPC 部件组合，body/hair/eyes/ears/facial 五类精选）③分类部件选择器 UI（每类列 variant，元数据来自 PartRegistry 注入）④character.create 提交带 appearance 字段。UI 主题色随机（024 皮肤库）保留。WebComponent 内嵌 Phaser 实例注意销毁清理（向导关闭即 destroy）。",
+      "design": "hud 组件不直接 import world 合成器？——总线铁律是 hud/world 互不引用。方案：main-entry 组合根创建 appearance 预览服务（持 Phaser 迷实例与合成器）注入向导屏；向导屏只发「部件变更/随机/预览」事件给服务。向导屏单测不碰真 canvas（注入桩预览服务），真 canvas 手测归 029。",
+      "acceptance": [
+        "tsc 零错误",
+        "步骤流转/随机形象/选择器事件/提交带 appearance 单测（预览服务注入桩）",
+        "Phaser 实例生命周期（destroy）单测",
+        "jest src/hud 全绿"
+      ]
+    },
+    {
+      "id": "task_029",
+      "description": "world: 战场单位渲染用 AgentProfile.appearance 合成形象 + 全链路验收-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_029.md",
+      "created_at": "2026-10-22T20:01:57.415956",
+      "updated_at": "2026-10-22T21:48:10.130310",
+      "dependencies": [
+        "task_027",
+        "task_028"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      },
+      "requirements": "①战场单位渲染换合成形象：BattlefieldScene/unit-layer 按 AgentProfile.appearance 用 CharacterComposer 合成精灵表加载（缓存纹理 key=characterId），走路动画；无 appearance 的角色回退现有 placeholder。②全链路验收：typecheck+jest 全量+build+dev 手测（向导：随机形象→canvas 预览动画→创建→战场单位=合成形象走路）。③素材路径真机可达验证。",
+      "design": "依赖 027/028。手测记录写任务文件。联调含 dev 手测，节奏：断点续传+机械锁定+单缺口卡 5 分钟记未尽继续。",
+      "acceptance": [
+        "typecheck 零错误",
+        "jest 全量通过",
+        "npm run build 成功",
+        "dev 手测向导全流程（含 canvas 动画预览、战场合成形象）记录在案"
+      ]
+    },
+    {
+      "id": "task_030",
+      "description": "world: 恢复规则化随机形象生成器——移植旧三档随机逻辑(minimal/normal/full)并扩展 appearance 模型支持可选 itemId 精度-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_030.md",
+      "created_at": "2026-10-24T09:32:34.373820",
+      "updated_at": "2026-10-24T09:56:00.000000",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": true,
+          "lint_passed": true,
+          "acceptance_met": true
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_031",
+      "description": "world: 品牌 agent 默认形象库——按各 CLI 品牌(claude/kimi/opencode/openclaw/codex等)标志色与风格从素材元数据搭配固定预设-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_031.md",
+      "created_at": "2026-10-24T09:32:34.637040",
+      "updated_at": "2026-10-24T02:14:53.320612+00:00",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": true,
+          "lint_passed": true,
+          "acceptance_met": true
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_032",
+      "description": "hud: 向导交互重做——每个 agent 独立形象(默认品牌预设+可修改+规则化重随机按钮)-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_032.md",
+      "created_at": "2026-10-24T09:32:34.904448",
+      "updated_at": "2026-10-24T02:33:33.194734+00:00",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": true,
+          "lint_passed": true,
+          "acceptance_met": true
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_033",
+      "description": "app: 角色档案持久化——characters+appearance+单位站位落 SQLite，启动恢复-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_033.md",
+      "created_at": "2026-10-24T10:11:08.556472",
+      "updated_at": "2026-10-24T03:03:20.481104+00:00",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_034",
+      "description": "hud: chat-drawer 右侧抽屉 UI——消息列表/点单位切上下文/流式渲染接口(transport 打桩)-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_034.md",
+      "created_at": "2026-10-24T10:11:08.811677",
+      "updated_at": "2026-10-24T11:40:00+08:00",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": true,
+          "lint_passed": true,
+          "acceptance_met": true
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_035",
+      "description": "app: 对话回路接线——chat-drawer↔CliTransport 往返+流式回显+错误中断处理-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_035.md",
+      "created_at": "2026-10-24T10:11:09.059545",
+      "updated_at": "2026-10-24T11:53:50.219658",
+      "dependencies": [
+        "task_034"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": true,
+          "lint_passed": true,
+          "acceptance_met": true
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_036",
+      "description": "app: 会话历史落库——messages 表持久化+抽屉打开加载历史-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_036.md",
+      "created_at": "2026-10-24T10:11:09.309690",
+      "updated_at": "2026-10-24T12:10:00.000000",
+      "dependencies": [
+        "task_033",
+        "task_035"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": true,
+          "lint_passed": true,
+          "acceptance_met": true
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_037",
+      "description": "core: 任务派发命令与队列——unit 状态机 idle/working/done+每单位并发1+走 transport-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_037.md",
+      "created_at": "2026-10-24T10:11:09.564731",
+      "updated_at": "2026-10-24T10:11:09.564746",
+      "dependencies": [
+        "task_035"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_038",
+      "description": "world: 战场工作状态表现——working 动画/进度指示/完成提示-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_038.md",
+      "created_at": "2026-10-24T10:11:09.822577",
+      "updated_at": "2026-10-24T05:08:57.227Z",
+      "dependencies": [
+        "task_037"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_039",
+      "description": "app: 任务结果回流——完成通知+结果摘要进对话流+exp 事件发射-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_039.md",
+      "created_at": "2026-10-24T10:11:10.079082",
+      "updated_at": "2026-10-24T13:40:00.000000",
+      "dependencies": [
+        "task_037",
+        "task_038"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": true,
+          "lint_passed": true,
+          "acceptance_met": true
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_040",
+      "description": "core: 养成曲线——exp 权重表/等级曲线/外观解锁门槛数据，挂真实事件-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_040.md",
+      "created_at": "2026-10-24T10:11:10.333212",
+      "updated_at": "2026-10-24T06:10:36.122Z",
+      "dependencies": [
+        "task_039"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_041",
+      "description": "hud: 外观解锁接线——部件选择器按角色等级过滤未解锁部件-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_041.md",
+      "created_at": "2026-10-24T10:11:10.593334",
+      "updated_at": "2026-10-24T14:30:00.000000",
+      "dependencies": [
+        "task_040",
+        "task_032"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": true,
+          "lint_passed": true,
+          "acceptance_met": true
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_042",
+      "description": "release: 合 master+tag v3.1——全链路验收+合并(保留历史)-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_042.md",
+      "created_at": "2026-10-24T10:11:10.850157",
+      "updated_at": "2026-10-24T10:11:10.850172",
+      "dependencies": [
+        "task_041"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_043",
+      "title": "人设生成2.0：结构化拼装+预设库+局部修改",
+      "status": "completed",
+      "depends_on": [
+        "task_026"
+      ],
+      "priority": 1,
+      "updated_at": "2026-10-25T06:38:37.000000Z"
+    },
+    {
+      "id": "task_044",
+      "title": "向导逐个配置化：勾选导入+per-agent人设",
+      "status": "completed",
+      "depends_on": [
+        "task_043"
+      ],
+      "priority": 1,
+      "updated_at": "2026-10-25T08:30:00.000000Z"
+    },
+    {
+      "id": "task_045",
+      "title": "RTS操作补全：选中圈+右击移动",
+      "status": "completed",
+      "depends_on": [
+        "task_033"
+      ],
+      "priority": 1,
+      "updated_at": "2026-10-25T08:15:00.000000Z"
+    },
+    {
+      "id": "task_046",
+      "title": "任务实时输出流",
+      "status": "completed",
+      "depends_on": [
+        "task_037"
+      ],
+      "priority": 2,
+      "updated_at": "2026-10-25T10:38:53.000000Z"
+    },
+    {
+      "id": "task_047",
+      "title": "任务队列管理",
+      "status": "completed",
+      "depends_on": [
+        "task_037"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_048",
+      "title": "任务成果物解析",
+      "status": "completed",
+      "depends_on": [
+        "task_046"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_049",
+      "title": "任务审批门",
+      "status": "completed",
+      "depends_on": [
+        "task_046"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_050",
+      "title": "派发智能推荐",
+      "status": "completed",
+      "depends_on": [
+        "task_037"
+      ],
+      "priority": 2,
+      "updated_at": "2026-10-25T12:50:34.225Z"
+    },
+    {
+      "id": "task_051",
+      "title": "多agent流水线",
+      "status": "completed",
+      "depends_on": [
+        "task_046",
+        "task_050"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_052",
+      "title": "agent互聊",
+      "status": "completed",
+      "depends_on": [
+        "task_035"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_053",
+      "title": "上下文注入中间件",
+      "status": "completed",
+      "depends_on": [
+        "task_035",
+        "task_037"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_054",
+      "title": "agent健康监测",
+      "status": "completed",
+      "depends_on": [
+        "task_035"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_055",
+      "title": "会话续接增强",
+      "status": "completed",
+      "depends_on": [
+        "task_035"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_056",
+      "title": "自定义agent注册",
+      "status": "completed",
+      "depends_on": [
+        "task_023"
+      ],
+      "priority": 2,
+      "updated_at": "2026-10-26T01:05:18+08:00"
+    },
+    {
+      "id": "task_057",
+      "title": "小地图",
+      "status": "completed",
+      "depends_on": [
+        "task_045"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_058",
+      "title": "快捷键系统",
+      "status": "completed",
+      "depends_on": [
+        "task_045"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_059",
+      "title": "角色编辑中心",
+      "status": "completed",
+      "depends_on": [
+        "task_041"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_060",
+      "title": "音效反馈系统",
+      "status": "completed",
+      "depends_on": [
+        "task_039"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_061",
+      "title": "角色成长看板",
+      "status": "completed",
+      "depends_on": [
+        "task_039",
+        "task_040"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_062",
+      "title": "单位表现打磨",
+      "status": "completed",
+      "depends_on": [
+        "task_045"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "task_063",
+      "title": "kimi adapter 适配 Kimi Code 2.x",
+      "status": "completed",
+      "depends_on": [
+        "task_055"
+      ],
+      "priority": 1
+    },
+    {
+      "id": "task_064",
+      "title": "界面视觉打磨（Kimi Code 品味局）",
+      "status": "completed",
+      "depends_on": [],
+      "priority": 2
+    },
+    {
+      "id": "task_066",
+      "description": "core: camera.moved 事件接地——消除未处理 warn 噪音-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_066.md",
+      "created_at": "2026-10-26T23:40:46.461313",
+      "updated_at": "2026-10-26T23:44:18.768912",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_067",
+      "description": "dev: HMR 半更新防护——app 代码改动触发整页 reload-模块",
+      "template": "task",
+      "priority": "P2",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_067.md",
+      "created_at": "2026-10-26T23:40:57.559598",
+      "updated_at": "2026-10-26T23:51:10.059321",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_068",
+      "description": "hud: shortcut-help 关闭时释放焦点——修复 aria-hidden 告警-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_068.md",
+      "created_at": "2026-10-27T22:20:23.330838",
+      "updated_at": "2026-10-27T22:22:09.433432",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_069",
+      "description": "hud: shortcut-help 修复 :host:not 复合选择器失效——弹窗藏不掉+幽灵遮罩吞点击-模块",
+      "template": "task",
+      "priority": "P0",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_069.md",
+      "created_at": "2026-10-27T22:39:58.350768",
+      "updated_at": "2026-10-27T22:43:53.885732",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_070",
+      "description": "electron: customAgent:create 判别联合在宽松 tsconfig 下收窄失败——修复构建断裂+补齐 5 任务 IPC 面-模块",
+      "template": "task",
+      "priority": "P0",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_070.md",
+      "created_at": "2026-10-27T22:54:12.419004",
+      "updated_at": "2026-10-27T22:57:23.708305",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_071",
+      "description": "app: chatHistoryApi 与 preload 方法名错配——聊天落库/历史读取全断-模块",
+      "template": "task",
+      "priority": "P0",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_070.md",
+      "created_at": "2026-10-29T07:21:20.770434",
+      "updated_at": "2026-10-29T07:24:26.250591",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_072",
+      "description": "hud: 拆除旧 agent-link 聊天抽屉死代码——聊天入口统一到角色抽屉-模块",
+      "template": "task",
+      "priority": "P2",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_071.md",
+      "created_at": "2026-10-29T08:32:08.764248",
+      "updated_at": "2026-10-29T09:28:22.018167",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_073",
+      "description": "app: 中断轮部分输出落库（emitEvent 语义）——error/timeout/abort 轮的半截流式文本与错误事件持久化进 character_chat_messages-模块",
+      "template": "task",
+      "priority": "P0",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "task_073.md",
+      "created_at": "2026-10-29T09:01:32.704592",
+      "updated_at": "2026-10-29T09:37:51.566068",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_074",
+      "description": "app: 聊天历史分页加载（getEvents 切片语义）——抽屉滚动到顶加载更早历史-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "completed",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "task_074.md",
+      "created_at": "2026-10-29T09:03:59.140849",
+      "updated_at": "2026-10-29T10:44:13.680273",
+      "dependencies": [
+        "task_072"
+      ],
       "dependency_type": "all",
       "deadline": null,
       "ralph": {

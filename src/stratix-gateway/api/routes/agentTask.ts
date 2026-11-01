@@ -6,10 +6,10 @@
  */
 
 import { Router, Request, Response } from 'express';
+
+import { StratixRequestHelper } from '../../../stratix-core/utils';
 import { TaskQueueService } from '../../../stratix-orchestration/task-queue/TaskQueueService';
 import ZoneCoordinatorEventEmitter from '../../../stratix-orchestration/zone/ZoneCoordinatorEvents';
-import { gatewayEventBus } from '../../GatewayEventBus';
-import { StratixRequestHelper } from '../../../stratix-core/utils';
 
 const router = Router();
 const requestHelper = StratixRequestHelper.getInstance();
@@ -90,10 +90,13 @@ router.post('/:agentId/tasks/claim', async (req: Request, res: Response) => {
       return;
     }
 
-    // Publish task claimed event (zone:task_claimed is a valid event type)
-    gatewayEventBus.publishZoneEvent('zone:task_claimed', task.zoneId, {
+    // 任务认领事件：走编排事件总线（D5 砍 Zone 后，Zone 事件总线已下线，任务事件改由任务总线承载）
+    ZoneCoordinatorEventEmitter.getInstance().emit({
+      type: 'task_claimed',
+      zoneId: task.zoneId,
       taskId: task.taskId,
       agentId,
+      timestamp: Date.now(),
     });
 
     res.json(requestHelper.success({
@@ -190,11 +193,16 @@ router.post('/:agentId/tasks/:taskId/complete', async (req: Request, res: Respon
       });
     }
 
-    // Publish task completed event
-    gatewayEventBus.publishZoneEvent('zone:task_updated', task?.zoneId || '', {
-      taskId: task?.taskId,
-      status: 'completed',
-    });
+    // 任务完成事件
+    if (task) {
+      ZoneCoordinatorEventEmitter.getInstance().emit({
+        type: 'task_completed',
+        zoneId: task.zoneId,
+        taskId: task.taskId,
+        agentId: task.assignedAgentId,
+        timestamp: Date.now(),
+      });
+    }
 
     res.json(requestHelper.success({ taskId: task?.taskId, status: task?.status }));
   } catch (error) {

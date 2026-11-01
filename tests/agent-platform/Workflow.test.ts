@@ -46,7 +46,7 @@ describe('Workflow Types', () => {
         systemPrompt: 'You are a helpful assistant.',
         userPrompt: 'Hello, how are you?',
         tools: ['search', 'calculator'],
-        condition: 'input.contains("test")',
+        expression: 'input.contains("test")',
         maxIterations: 5,
         timeout: 30000,
         role: 'assistant',

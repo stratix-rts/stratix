@@ -4,10 +4,12 @@
  */
 
 import type { SessionRuntime } from '../runtime/SessionRuntime';
+import type { ChatMessage as AgentChatMessage, SkillResult } from '../types';
+import type { AgentTemplate, WorkflowDefinition, WorkflowStep } from '../types/template';
+
 import type { LLMConnector } from './LLMConnector';
 import type { SkillRegistry } from './SkillRegistry';
-import type { AgentTemplate, WorkflowDefinition, WorkflowStep } from '../types/template';
-import type { ChatMessage as AgentChatMessage, SkillResult } from '../types';
+
 
 function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
   console[level](`[WorkflowExecutor] ${message}`, ctx || '');

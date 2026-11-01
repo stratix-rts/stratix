@@ -1,88 +1,91 @@
 {
-  "task_id": "task_012",
-  "template": "code-module",
-  "score": 39,
+  "task_id": "task_071",
+  "score": 78,
   "max_score": 100,
-  "checks": [
-    {
-      "type": "test",
-      "required": true,
-      "weight": 0.4,
-      "passed": false,
-      "score": 0,
-      "issues": [
-        {
-          "type": "test_not_found",
-          "severity": "high",
-          "message": "未找到测试文件或测试配置错误"
-        }
-      ],
-      "suggestions": [
-        "建议添加测试文件到 tests/ 目录"
-      ],
-      "details": {}
-    },
-    {
-      "type": "lint",
-      "required": false,
-      "weight": 0.2,
-      "passed": false,
-      "score": 5,
-      "issues": [
-        {
-          "type": "lint_issues",
-          "severity": "medium",
-          "message": "发现 19 个 lint 问题"
-        }
-      ],
-      "suggestions": [
-        "建议运行 'ruff check --fix' 自动修复"
-      ],
-      "details": {}
-    },
-    {
-      "type": "acceptance",
-      "required": true,
-      "weight": 0.3,
-      "passed": true,
-      "score": 60,
-      "issues": [],
-      "suggestions": [],
-      "details": {
-        "criteria_matched": 3
-      }
-    },
-    {
-      "type": "performance",
-      "required": false,
-      "weight": 0.1,
-      "passed": true,
-      "score": 100,
-      "issues": [],
-      "suggestions": [],
-      "details": {
-        "note": "性能检查需要具体实现"
-      }
-    }
-  ],
-  "failed_required": [
-    "test"
-  ],
   "issues": [
     {
-      "type": "test_not_found",
+      "type": "low_documentation",
       "severity": "high",
-      "message": "未找到测试文件或测试配置错误"
+      "message": "文档覆盖率过低 (21.9%)"
     },
     {
-      "type": "lint_issues",
+      "type": "long_file",
       "severity": "medium",
-      "message": "发现 19 个 lint 问题"
+      "file": "tests/stratix-data-store/EnhancedTemplateLibrary.test.ts",
+      "message": "文件过长 (760 行)"
     }
   ],
   "suggestions": [
-    "建议添加测试文件到 tests/ 目录",
-    "建议运行 'ruff check --fix' 自动修复"
+    "建议为主要函数和类添加文档字符串",
+    "建议拆分超长文件，每个文件保持500行以内"
   ],
-  "timestamp": "2026-04-28T21:33:46.033493"
+  "details": {
+    "documentation": {
+      "score": 21,
+      "issues": [
+        {
+          "type": "low_documentation",
+          "severity": "high",
+          "message": "文档覆盖率过低 (21.9%)"
+        }
+      ],
+      "suggestions": [
+        "建议为主要函数和类添加文档字符串"
+      ],
+      "stats": {
+        "total_functions": 32,
+        "documented_functions": 14,
+        "function_coverage": "43.8%",
+        "total_classes": 2,
+        "documented_classes": 0,
+        "class_coverage": "0.0%"
+      }
+    },
+    "complexity": {
+      "score": 90,
+      "issues": [
+        {
+          "type": "long_file",
+          "severity": "medium",
+          "file": "tests/stratix-data-store/EnhancedTemplateLibrary.test.ts",
+          "message": "文件过长 (760 行)"
+        }
+      ],
+      "suggestions": [
+        "建议拆分超长文件，每个文件保持500行以内"
+      ],
+      "stats": {
+        "total_lines": 2915,
+        "files_checked": 10
+      }
+    },
+    "naming": {
+      "score": 100,
+      "issues": [],
+      "suggestions": [],
+      "stats": {}
+    },
+    "structure": {
+      "score": 100,
+      "issues": [],
+      "suggestions": [],
+      "stats": {
+        "has_readme": true,
+        "has_gitignore": true,
+        "has_src": true,
+        "has_tests": true
+      }
+    },
+    "testing": {
+      "score": 100,
+      "issues": [],
+      "suggestions": [],
+      "stats": {
+        "test_files": 175,
+        "code_files": 595,
+        "test_ratio": "29.4%"
+      }
+    }
+  },
+  "timestamp": "2026-10-29T07:27:05.996095"
 }

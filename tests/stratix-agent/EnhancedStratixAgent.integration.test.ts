@@ -14,13 +14,6 @@ import { AgentTemplate } from '@/stratix-agent/types/template';
 // Mock TranscriptStore
 jest.mock('@/stratix-agent/runtime/TranscriptStore');
 
-// Mock ZoneContextManager
-jest.mock('@/stratix-character-creator/core/ZoneContextManager', () => ({
-  zoneContextManager: {
-    getZonePromptContext: jest.fn().mockResolvedValue(''),
-  },
-}));
-
 // Mock LLMConnector
 jest.mock('@/stratix-agent/core/LLMConnector', () => {
   return {

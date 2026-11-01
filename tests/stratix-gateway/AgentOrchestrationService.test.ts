@@ -95,7 +95,7 @@ function createAgentConfig(agentId: string, overrides: Partial<StratixAgentConfi
 }
 
 // Helper: create a mock agent that implements AgentInterface
-function createMockAgent(agentId: string, projectId: string): AgentInterface {
+function createMockAgent(agentId: string, zoneId: string): AgentInterface {
   let shouldStop = false;
   let isPaused = false;
 
@@ -104,7 +104,7 @@ function createMockAgent(agentId: string, projectId: string): AgentInterface {
       return {
         agentId,
         name: `Agent ${agentId}`,
-        projectId,
+        zoneId,
         status: shouldStop ? 'stopping' : isPaused ? 'paused' : 'working',
       };
     },
@@ -436,7 +436,7 @@ describe('AgentOrchestrationService', () => {
     it('getProjectAgents should filter agents by projectId', () => {
       const project1Agents = service.getProjectAgents('project-1');
       expect(project1Agents).toHaveLength(2);
-      expect(project1Agents.every(a => a.projectId === 'project-1')).toBe(true);
+      expect(project1Agents.every(a => a.zoneId === 'project-1')).toBe(true);
 
       const project2Agents = service.getProjectAgents('project-2');
       expect(project2Agents).toHaveLength(1);

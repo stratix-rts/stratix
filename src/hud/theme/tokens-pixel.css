@@ -1,0 +1,67 @@
+/**
+ * 文件职责：HUD 像素风皮肤 —— 一整套独立的 token 变体，组件零改动即可整体切换。
+ *   来源：docs/REFACTOR_PLAN_V3.md §3「HUD 主题与像素风」—— 直角边框、硬边框、pixelated 渲染。
+ *   task_024 起与 default / 新增六套皮肤对齐：**自足 token 集**（不再依赖 tokens-default.css 先挂载）。
+ * 输入：无（纯 CSS 自定义属性）。
+ * 输出：`:root` 上挂的全部 `--srf-*` token；键集合与其它皮肤完全一致（见 skin-tokens 单测）。
+ * 禁止事项：
+ *   1. 少定义或多名一个 token —— 皮肤之间的键集合必须严格一致，否则组件会拿到空值；
+ *   2. 写组件级选择器 —— 本文件仍只发 token；
+ *   3. 引入网络字体文件 —— 字体栈改走 "像素字体优先 + 等宽回退"。
+ */
+
+:root {
+  /* —— 颜色：像素风偏冷 / 高对比 —— */
+  --srf-bg: #0a0a14;
+  --srf-panel: #14141f;
+  --srf-panel-elevated: #1c1c2a;
+  --srf-border: #2a2a3a;
+  --srf-border-strong: #4a4a6a;
+
+  --srf-text: #f0f0ff;
+  --srf-text-muted: #b0b0c8;
+  --srf-text-disabled: #707088;
+
+  --srf-accent: #ffb86c;
+  --srf-accent-hover: #ffd09c;
+  --srf-success: #50fa7b;
+  --srf-warn: #f1fa8c;
+  --srf-danger: #ff5555;
+
+  /* —— 徽标色：角色头像 / 单位染色（与 skin-registry 的 accent 同值）—— */
+  --srf-badge-accent: #ffc98f;
+
+  /* —— 字体：像素等宽 —— */
+  --srf-font-ui: "Courier New", "Lucida Console", Monaco, monospace;
+  --srf-font-mono: "Courier New", "Lucida Console", Monaco, monospace;
+  --srf-font-size-xs: 10px;
+  --srf-font-size-sm: 11px;
+  --srf-font-size-md: 13px;
+  --srf-font-size-lg: 15px;
+  --srf-font-weight-semibold: 600;
+  --srf-font-weight-bold: 700;
+  --srf-line-height: 1.4;
+
+  /* —— 形状：直角 + 硬边框 —— */
+  --srf-radius: 0;
+  --srf-radius-pill: 0;
+  --srf-border-width: 2px;
+  --srf-spacing-xxs: 2px;
+  --srf-spacing-xs: 4px;
+  --srf-spacing-sm: 8px;
+  --srf-spacing-md: 12px;
+  --srf-spacing-lg: 16px;
+  --srf-spacing-xl: 24px;
+
+  /* —— 悬浮层：像素风同样需要半透明底（RTS 覆盖层），不透明面板会盖住战场 —— */
+  --srf-panel-overlay: rgba(20, 20, 31, 0.9);
+  --srf-panel-elevated-overlay: rgba(28, 28, 42, 0.94);
+
+  /* —— 渲染：像素化（图像 + canvas 都生效） —— */
+  --srf-image-rendering: pixelated;
+  --srf-scanline-opacity: 0.08;
+  --srf-shadow: none;
+  --srf-shadow-lg: none;
+  --srf-transition: 120ms steps(2, end);
+  --srf-backdrop: rgba(10, 10, 20, 0.8);
+}

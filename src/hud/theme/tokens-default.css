@@ -1,0 +1,74 @@
+/**
+ * 文件职责：HUD 默认皮肤（现代风）的全部视觉 token。
+ *   来源：docs/REFACTOR_PLAN_V3.md §3「HUD 主题与像素风」—— 严格走 CSS 变量体系。
+ * 输入：无（纯 CSS 自定义属性）。
+ * 输出：`:root` 上挂的全部 `--srf-*` token，组件按变量名取色/字号/边框/圆角/渲染模式。
+ * 禁止事项：
+ *   1. 引入任何颜色关键字或硬编码色值（除 token 自身初始化外）；
+ *   2. 选择器超过一层或写具体组件样式 —— 本文件只发 token，组件样式归属于各 Web Component；
+ *   3. 引用字体文件 / 远程资源 —— 字体栈走通用 family，pixel 风另起 tokens-pixel.css 覆盖。
+ *
+ * 命名约定：所有视觉属性以 `--srf-`（stratix-render-framework）前缀避免与上游泄漏碰撞。
+ */
+
+:root {
+  /* —— 颜色：表面 —— */
+  --srf-bg: #0f1116;
+  --srf-panel: #181c25;
+  --srf-panel-elevated: #20262f;
+  --srf-border: #2a313d;
+  --srf-border-strong: #3a4252;
+
+  /* —— 颜色：文本 —— */
+  --srf-text: #e6e9ef;
+  --srf-text-muted: #9aa3b2;
+  --srf-text-disabled: #5a6373;
+
+  /* —— 颜色：语义/强调 —— */
+  --srf-accent: #6ea8ff;
+  --srf-accent-hover: #8fbaff;
+  --srf-success: #6fcf97;
+  --srf-warn: #f0c674;
+  --srf-danger: #e06c75;
+
+  /* —— 徽标色：角色头像 / 单位染色（与 skin-registry 的 accent 同值）—— */
+  --srf-badge-accent: #7fb3ff;
+
+  /* —— 字体 —— */
+  --srf-font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --srf-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --srf-font-size-xs: 11px;
+  --srf-font-size-sm: 12px;
+  --srf-font-size-md: 14px;
+  --srf-font-size-lg: 16px;
+  --srf-font-weight-semibold: 600;
+  --srf-font-weight-bold: 700;
+  --srf-line-height: 1.4;
+
+  /* —— 形状与节奏 —— */
+  --srf-radius: 6px;
+  --srf-radius-pill: 999px;
+  --srf-border-width: 1px;
+  --srf-spacing-xxs: 2px;
+  --srf-spacing-xs: 4px;
+  --srf-spacing-sm: 8px;
+  --srf-spacing-md: 12px;
+  --srf-spacing-lg: 16px;
+  --srf-spacing-xl: 24px;
+
+  /* —— 渲染 / 装饰 —— */
+  --srf-image-rendering: auto;
+  --srf-scanline-opacity: 0;
+  --srf-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --srf-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --srf-transition: 160ms ease-out;
+  --srf-backdrop: rgba(9, 11, 16, 0.72);
+
+  /* —— 悬浮层（RTS 覆盖层专用）——
+     战场全屏后 HUD 面板改为半透明悬浮：这里派生一层带 alpha 的底色，
+     组件内部一律取 var(--srf-panel)（由悬浮容器改写指向本 token），
+     组件零改动即得「半透明深色底 + 细边框」。
+     why 需要 alpha 时扩展 token 而不是写死颜色：两套皮肤各给一份，切换皮肤即整体换色。 */
+  --srf-panel-overlay: rgba(24, 28, 37, 0.88);
+  --srf-panel-elevated-overlay: rgba(32, 38, 47, 0.92);
+}

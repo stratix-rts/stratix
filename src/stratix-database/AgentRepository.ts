@@ -1,8 +1,8 @@
-import type { Database, Statement } from './sqlite-adapter';
 
 import { StratixAgentConfig, AgentBackendType, AgentConfigStatus } from '../stratix-core/stratix-protocol';
 
 import { getDatabase } from './StratixDatabase';
+import type { Database, Statement } from './sqlite-adapter';
 
 // Database row type for agents table
 interface AgentRow {

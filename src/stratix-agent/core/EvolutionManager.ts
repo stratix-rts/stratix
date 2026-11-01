@@ -3,9 +3,10 @@
  * 从 EnhancedStratixAgent 拆分出来的独立职责类
  */
 
-import type { LLMConnector } from './LLMConnector';
-import type { EnhancedSoulConfig, ReflectionEntry } from '../types/soul';
 import type { EvolutionResult, EvolutionProposal } from '../types';
+import type { EnhancedSoulConfig, ReflectionEntry } from '../types/soul';
+
+import type { LLMConnector } from './LLMConnector';
 
 function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
   console[level](`[EvolutionManager] ${message}`, ctx || '');

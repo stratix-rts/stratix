@@ -1,13 +1,6 @@
 export { StratixDatabase, initializeDatabase, getDatabase, destroyDatabase } from './StratixDatabase';
 export type { DatabaseConfig } from './StratixDatabase';
-// ProjectRepository merged into ZoneRepository — re-export from ZoneRepository for backward compat
-export { zoneRepository as projectRepository, ZoneRepository as ProjectRepository } from './ZoneRepository';
 export { agentRepository, AgentRepository } from './AgentRepository';
-export { zoneRepository, ZoneRepository } from './ZoneRepository';
-export { zoneMemberRepository, ZoneMemberRepository } from './ZoneMemberRepository';
-export type { ZoneMember, ZoneMemberRole } from './ZoneMemberRepository';
-export { zoneCoordinatorConfigRepository, ZoneCoordinatorConfigRepository } from './ZoneCoordinatorConfigRepository';
-export type { ZoneCoordinatorConfig, ZoneCoordinatorConfigRecord, AssignStrategy, CycleConfig } from './ZoneCoordinatorConfigRepository';
 export { skillRepository, SkillRepository } from './SkillRepository';
 export type { SharedSkill, SharedSkillInstall, AgentLearnedSkill } from './SkillRepository';
 export { agentCapabilityRepository, AgentCapabilityRepository } from './AgentCapabilityRepository';

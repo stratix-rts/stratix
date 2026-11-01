@@ -13,6 +13,12 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
+    // strict 与主 tsconfig 对齐（@since task_084）：不开 strict 时 strictNullChecks 缺省为 false，
+    //   判别联合（discriminated union）无法按 ok 字段收窄 —— core 的 manager 层一律编译不过，
+    //   `npm run build:electron` 直接失败（Electron 壳根本构建不出来）。
+    "strict": true,
+    // 与主 tsconfig 同口径：strictPropertyInitialization 关掉（LLMAgent 等类的字段在构造器里赋值）。
+    "strictPropertyInitialization": false,
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
@@ -20,6 +26,6 @@
     },
     "noEmitOnError": false
   },
-  "include": ["src/electron/**/*", "src/agent-platform/**/*", "src/stratix-core/**/*", "src/stratix-gateway/**/*", "src/stratix-data-store/**/*", "src/stratix-database/**/*", "src/stratix-openclaw-adapter/**/*", "src/stratix-tailscale/**/*", "src/stratix-agent/**/*", "src/stratix-project/**/*", "src/stratix-lra-bridge/**/*", "src/stratix-nocodb/**/*"],
+  "include": ["src/electron/**/*", "src/app/entry-paths.ts", "src/agent-platform/**/*", "src/stratix-core/**/*", "src/stratix-gateway/**/*", "src/stratix-data-store/**/*", "src/stratix-database/**/*", "src/stratix-openclaw-adapter/**/*", "src/stratix-tailscale/**/*", "src/stratix-agent/**/*", "src/stratix-lra-bridge/**/*", "src/stratix-nocodb/**/*"],
   "exclude": ["node_modules", "dist", "**/__tests__/**", "**/__mocks__/**"]
 }

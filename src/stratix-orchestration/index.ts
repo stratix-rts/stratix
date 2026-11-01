@@ -1,7 +1,3 @@
-// Zone Management
-export { ZoneManager } from './zone/ZoneManager';
-export { ZoneState, ZoneConfig, ZoneEvent, DEFAULT_ZONE_CONFIG, ZONE_STATUSES, isZoneActive } from './zone/ZoneState';
-
 // Task Queue
 export { TaskQueueService } from './task-queue/TaskQueueService';
 export { TaskItem, TaskContext, TaskResult, TaskEvent, TaskEventCallback, isTerminalStatus, isValidStatusTransition, TASK_STATUSES, TASK_TYPES } from './task-queue/TaskItem';

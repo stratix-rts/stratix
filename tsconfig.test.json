@@ -10,6 +10,9 @@
   ],
   "exclude": [
     "node_modules",
-    "dist"
+    "dist",
+    // playwright 侧资产（spec / page-object / 进程管理），由 tsc -p tsconfig.electron.json 与 playwright 自己编译/运行
+    "tests/e2e",
+    "tests/utils"
   ]
 }

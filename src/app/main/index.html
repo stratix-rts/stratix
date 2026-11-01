@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stratix v3</title>
+    <style>
+      /*
+        页面骨架 = **全屏战场 + 悬浮 HUD 覆盖层**（RTS 形态，不再是左右分屏）：
+        - #battlefield 铺满视口，Phaser 以 Scale.RESIZE 跟随父容器尺寸；
+        - #hud-side 整层绝对定位覆盖在战场之上，但 pointer-events:none ——
+          只有 HUD 的实体面板（顶栏 / 侧栏 / 底栏 / 抽屉）自行开 pointer-events:auto，
+          其余空白区域的事件穿透到下方 Phaser 画布，拖拽平移 / 框选 / 滚轮缩放不受遮挡。
+        z-index 分层：战场 0 < HUD 面板 20–30 < 子屏（settings / character）覆盖层 50。
+      */
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #0f1116;
+        color: #e6e9ef;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
+      #app {
+        position: relative;
+        width: 100%;
+        height: 100%;
+      }
+      /* 战场：全屏铺满（DOM 顺序在前 + z-index 0，保证不被 HUD 覆盖层压住）。 */
+      #battlefield {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        min-height: 0;
+        min-width: 0;
+      }
+      #battlefield canvas {
+        display: block;
+      }
+      /* HUD 覆盖层：整层不拦事件 —— 空白处穿透到战场。 */
+      #hud-side {
+        position: absolute;
+        inset: 0;
+        z-index: 10;
+        pointer-events: none;
+        min-height: 0;
+        min-width: 0;
+      }
+      #hud-root {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+      /* 首启向导覆盖层宿主（task_026）：空容器常驻，向导屏以绝对定位覆盖它。
+         pointer-events:none —— 空宿主不挡战场；向导屏自身（all:initial）把事件接回来。 */
+      #onboarding-host {
+        position: absolute;
+        inset: 0;
+        z-index: 60;
+        pointer-events: none;
+        min-height: 0;
+        min-width: 0;
+      }
+      /* 装配失败时的兜底提示：宁可报错也不要静默白屏（诊断入口在 renderer console）。 */
+      #boot-error {
+        position: fixed;
+        inset: auto 12px 12px 12px;
+        margin: 0;
+        padding: 10px 12px;
+        border: 1px solid #7d3b3b;
+        background: rgba(38, 16, 18, 0.94);
+        color: #f0b4b4;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        z-index: 100;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <!-- world 层容器：Phaser.Game 挂这里，BattlefieldScene 只读 core 广播的 WorldState -->
+      <div id="battlefield"></div>
+
+      <!-- HUD 层容器：main-screen（命令面板 / agent 侧栏 / 态势屏 / 抽屉）挂这里 -->
+      <div id="hud-side">
+        <div id="hud-root"></div>
+      </div>
+
+      <!-- 首启向导覆盖层宿主（task_026）：向导屏挂这里（层级在 HUD 子屏之上） -->
+      <div id="onboarding-host"></div>
+    </div>
+
+    <pre id="boot-error" hidden></pre>
+
+    <script type="module" src="./main-entry.ts"></script>
+  </body>
+</html>

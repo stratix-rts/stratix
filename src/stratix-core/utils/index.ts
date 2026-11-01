@@ -2,6 +2,7 @@
  * Stratix Core Utils - 工具类统一导出
  */
 
+export { generateId } from './id';
 export { StratixIdGenerator } from './StratixIdGenerator';
 export { StratixEventBuilder } from './StratixEventBuilder';
 export { StratixConfigValidator } from './StratixConfigValidator';

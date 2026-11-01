@@ -1,12 +1,11 @@
-import { access } from 'fs/promises';
-import { readFile, writeFile, mkdir } from 'fs/promises';
+import { access , readFile, writeFile, mkdir } from 'fs/promises';
+import { join as pathJoin } from 'path';
+
+import { AgentConfig, SoulConfig } from '../types';
 
 function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {
   console[level](`[StorageManager] ${message}`, ctx || '');
 }
-import { join as pathJoin } from 'path';
-
-import { AgentConfig, SoulConfig } from '../types';
 
 export class StorageManager {
   private basePath: string;
