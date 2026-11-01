@@ -7,7 +7,8 @@
  * 输出：注入用的 RestoreInjection；两条 IPC 写通道的调用。
  * 禁止事项：
  *   1. import fs / sqlite / electron 主进程模块 —— 渲染层没有 Node 能力，持久化一律经 IPC；
- *   2. 自己解释存档以外的业务（等级、命名）—— 那是 core/character 的职责，这里只做「记录 ↔ CharacterView」翻译；
+ *   2. 自己解释存档以外的业务（等级、命名）—— 那是 core/character 的职责；
+ *      「记录 ↔ CharacterView」的纯翻译已独立成 character-record.ts（两侧共用同一份）；
  *   3. 高频刷库 —— 位置事件必须防抖合并（拖拽/移动每帧都在发，2-5s 批量落一次）；
  *   4. 读档失败时阻塞启动 —— 存档坏了应该降级成"空世界 + 警告"，绝不能让游戏起不来。
  *
@@ -18,23 +19,20 @@
  *   core 不知道存储的存在（依赖方向：app → core，不能反过来）；
  *   「状态变了 → 持久化」本来就是组合根侧的关注点（与 agentDetection 快照并入 store 同一模式）。
  *
- * @since v3.12，task_033。
+ * @since v3.12，task_033；v3.43（task_080 / service-split A4）把纯翻译拆到 character-record.ts，
+ *        本文件保留再导出（向后兼容）。
  */
 
 import { onState, onWorldEvent, type Unsubscribe } from '../../../core/bus';
-import { CHARACTER_UNIT_ID_PREFIX, toCharacterUnit } from '../../../core/character';
 import { worldStore, type CoreStore } from '../../../core/store';
-import {
-  APPEARANCE_BODY_TYPES,
-  MAX_CHARACTERS,
-  isBindableAgentKind,
-  type AppearanceBodyType,
-  type CharacterAppearance,
-  type CharacterView,
-  type Point,
-  type UnitView,
-} from '../../../core/types';
+import { type CharacterView } from '../../../core/types';
 
+import {
+  buildRestoreInjection,
+  characterIdFromUnitId,
+  characterViewToRecord,
+  type RestoreInjection,
+} from './character-record';
 import type { GameSaveSnapshot, PersistedCharacterRecord, PersistedUnitPosition } from './game-save-dao';
 
 // ============================================================================
@@ -73,126 +71,19 @@ export function gameSaveApi(): GameSaveApi | null {
 // ============================================================================
 
 /**
- * 解析外观 JSON → CharacterAppearance；形状不合法（坏 JSON / 体型不在词表 / parts 不是对象）
- * 一律降级为 null（老档案无外观照旧合法，core 不替它编造长相）。
+ * 翻译层已独立成模块（@since v3.43，task_080 / service-split A4）：
+ *   「记录 ↔ CharacterView」的映射与「快照 → 恢复注入」的组装是**纯函数**，
+ *   渲染侧的协调器与 service 进程（gateway 恢复世界态）共用同一份。
+ *   本文件仍按原路径再导出（向后兼容既有调用方），新代码请直接引 character-record。
  */
-export function parseAppearanceJson(json: string | null): CharacterAppearance | null {
-  if (!json) return null;
-  let raw: unknown;
-  try {
-    raw = JSON.parse(json);
-  } catch {
-    return null;
-  }
-  if (typeof raw !== 'object' || raw === null) return null;
-  const { bodyType, parts } = raw as { bodyType?: unknown; parts?: unknown };
-  if (typeof bodyType !== 'string' || !(APPEARANCE_BODY_TYPES as readonly string[]).includes(bodyType)) {
-    return null;
-  }
-  if (typeof parts !== 'object' || parts === null) return null;
-  return { bodyType: bodyType as AppearanceBodyType, parts: parts as CharacterAppearance['parts'] };
-}
-
-/**
- * 持久化记录 → CharacterView。
- * agentKind 不在可建档词表里（内置五家 AGENT_KINDS ∪ 形状合法的 `custom:<id>`，task_056）
- * → 归为未绑定（null）：HUD 显示「未绑定」，不渲染一个不认识的种类。
- * why 自定义段也要认：注册删了（角色保留语义）后重启恢复，kind 若被这里抹成 null，
- * 角色的绑定就丢了 —— 注册在与否是检测层的事，档案层只认形状。
- * id / name 为空的行视为脏数据，返回 null（调用方跳过并警告）。
- */
-export function recordToCharacterView(record: PersistedCharacterRecord): CharacterView | null {
-  if (!record.id || !record.name) return null;
-  const kind =
-    record.agentKind !== null && isBindableAgentKind(record.agentKind) ? record.agentKind : null;
-  return {
-    id: record.id,
-    name: record.name,
-    persona: record.persona,
-    level: record.level,
-    experience: record.exp,
-    agentKind: kind,
-    skinId: record.skinId,
-    externalSessionId: record.externalSessionId,
-    appearance: parseAppearanceJson(record.appearanceJson),
-    // @since v3.29（task_053）：context_enabled 列镜像；false 才写（true 是缺省语义，
-    // 不写字段让老快照 / 新代码任意组合都等价 —— 缺省即开，两侧归一口径）。
-    ...(record.contextEnabled === false ? { contextEnabled: false } : {}),
-  };
-}
-
-/** CharacterView → 持久化记录。createdAt 由调用方给（首次入库时间；upsert 冲突时库侧保留原值）。 */
-export function characterViewToRecord(character: CharacterView, createdAt: number): PersistedCharacterRecord {
-  return {
-    id: character.id,
-    name: character.name,
-    agentKind: character.agentKind ?? null,
-    persona: character.persona,
-    level: character.level,
-    exp: character.experience,
-    appearanceJson: character.appearance ? JSON.stringify(character.appearance) : null,
-    bodyType: character.appearance?.bodyType ?? null,
-    skinId: character.skinId ?? null,
-    externalSessionId: character.externalSessionId ?? null,
-    // 缺省（undefined/null）≡ true（@since v3.29，task_053）。
-    contextEnabled: character.contextEnabled ?? true,
-    createdAt,
-  };
-}
-
-// ============================================================================
-// 恢复注入（纯函数，可独立单测）
-// ============================================================================
-
-/** 恢复注入包：组合根一次性写入 store / 交给战场的三件套。 */
-export interface RestoreInjection {
-  /** 恢复后的角色档案（写入 WorldState.characters）。 */
-  readonly characters: readonly CharacterView[];
-  /** 恢复后的单位投影（写入 WorldState.units，与建档时同一投影函数）。 */
-  readonly units: readonly UnitView[];
-  /** 站位种子：unitId → 上次世界坐标（交给 BattlefieldScene 的注册表）。 */
-  readonly positionsByUnitId: ReadonlyMap<string, Point>;
-}
-
-/**
- * 快照 → 恢复注入（纯函数）。
- * 规则：
- *   - 脏行（id/name 为空）跳过并计数（警告由调用方按 skipped 脏行数打）；
- *   - 超过 MAX_CHARACTERS 的多余档案**不恢复**（契约上限是硬约束，宁可少恢复也不撑爆广播）；
- *   - 站位只收「本次真的恢复了的角色」的记录 —— 没有档案的孤儿站位不注入（恢复它没意义）；
- *   - 无站位记录的角色不进种子：注册表自然走网格落位（无记录随机落位的语义不变）。
- */
-export function buildRestoreInjection(snapshot: GameSaveSnapshot): RestoreInjection {
-  const characters: CharacterView[] = [];
-  for (const record of snapshot.characters) {
-    if (characters.length >= MAX_CHARACTERS) break;
-    const view = recordToCharacterView(record);
-    if (view) characters.push(view);
-  }
-
-  const restoredIds = new Set(characters.map((c) => c.id));
-  const positionsByUnitId = new Map<string, Point>();
-  for (const position of snapshot.unitPositions) {
-    if (!restoredIds.has(position.characterId)) continue;
-    positionsByUnitId.set(`${CHARACTER_UNIT_ID_PREFIX}${position.characterId}`, {
-      x: position.x,
-      y: position.y,
-    });
-  }
-
-  return {
-    characters,
-    units: characters.map(toCharacterUnit),
-    positionsByUnitId,
-  };
-}
-
-/** 从战场单位 id 反解角色 id；不是角色单位（无前缀）返回 null。 */
-export function characterIdFromUnitId(unitId: string): string | null {
-  return unitId.startsWith(CHARACTER_UNIT_ID_PREFIX)
-    ? unitId.slice(CHARACTER_UNIT_ID_PREFIX.length)
-    : null;
-}
+export {
+  buildRestoreInjection,
+  characterIdFromUnitId,
+  characterViewToRecord,
+  parseAppearanceJson,
+  recordToCharacterView,
+  type RestoreInjection,
+} from './character-record';
 
 // ============================================================================
 // 协调器

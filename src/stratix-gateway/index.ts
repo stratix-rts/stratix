@@ -1,9 +1,15 @@
 /**
  * Stratix Gateway 服务
- * 
+ *
  * 支持独立运行和嵌入式运行两种模式：
  * - 独立模式：作为 HTTP 服务运行，监听指定端口
  * - 嵌入式模式：在 Electron 内部运行，仅本地访问
+ *
+ * 启动序列（前后端分离 A4 / task_080）：**先 boot service，再挂路由**——
+ *   ① SQLite 初始化 + 存储件（A3）；
+ *   ② boot service（A1 组合根 + A2 执行环 + A3 存储 + 世界态恢复 + agent 探测）；
+ *   ③ 挂路由（含 /mcp —— 其数据面指向**本进程** service 的那份 core store）。
+ *   boot 失败即进程退出：半启动的 gateway（路由已挂但大脑没醒）比不启动更糟。
  */
 
 import http from 'http';
@@ -14,6 +20,7 @@ import dotenv from 'dotenv';
 import express from 'express';
 import { ensureDirSync } from 'fs-extra';
 
+import type { SqliteDatabaseLike } from '../app/services/persistence/game-save-dao';
 import { OpenClawConnectionStore } from '../stratix-data-store/OpenClawConnectionStore';
 import { initializeDatabase } from '../stratix-database';
 import { createNocoDBService, type NocoDBServiceOptions } from '../stratix-nocodb';
@@ -36,6 +43,7 @@ import { createCoreMcpHost } from './mcp/context';
 import { createDefaultMcpServer } from './mcp/server';
 import { createMcpHttpRouter } from './mcp/transport/http';
 import { openClawProxyManager } from './openclaw/OpenClawProxyManager';
+import { bootStratixService, type BootedStratixService } from './service/boot';
 import { createServiceStorage } from './service/storage';
 
 
@@ -142,6 +150,32 @@ export async function startGatewayService(
   // 开库是进程内单例（stratix-database），这里传同一个 dataDir —— 不会开第二个连接。
   const serviceStorage = await createServiceStorage({ dataDir });
 
+  // ===== 启动 service（A4 / task_080）——**先 boot，后挂路由** =====
+  // 顺序是本单的核心：路由挂上去的那一刻，MCP 的数据面就已经指向**本进程**的
+  // core 运行时（A1 组合根 + A2 执行环 + A3 存储），此后 MCP 与 service 同进程见真状态
+  //   （改造前 /mcp 挂在一个没人写过的 store 上 —— units 恒为 0）。
+  // boot 失败即退出：半启动的 gateway（路由已挂但大脑没醒）比不启动更糟。
+  console.log('[service] boot start...');
+  const booted = ((): BootedStratixService => {
+    try {
+      return bootStratixService({
+        storage: serviceStorage,
+        db: db.getDatabase() as unknown as SqliteDatabaseLike,
+      });
+    } catch (error) {
+      console.error('[service] boot failed:', error);
+      if (mode === 'standalone') {
+        process.exit(1);
+      }
+      throw error;
+    }
+  })();
+  const service = booted.service;
+  console.log(
+    `[service] boot ok（characters=${booted.restore.characters} units=${booted.restore.units} ` +
+      `records=${booted.restore.records} runtime=${service.runtime.running ? 'running' : 'stopped'}）`
+  );
+
   // 注册路由
   app.use('/api/stratix/agent', agentRoutes);
   app.use('/api/stratix/config/agent', agentRoutes);
@@ -156,8 +190,9 @@ export async function startGatewayService(
   // 读 API（A3 / task_079）：SQLite 的只读门面 —— 写在本进程独占，读经这里。
   app.use('/api/storage', createStorageRoutes(serviceStorage));
   // MCP server（docs/MCP-SPEC.md §4.4）：HTTP 端点挂在 /mcp，与 stdio 入口共享同一份注册表与 handler。
-  // 数据面复用 core 的 worldStore + core 总线（不新开状态通道）。
-  app.use('/mcp', createMcpHttpRouter(createDefaultMcpServer(createCoreMcpHost())));
+  // 数据面复用 **service 的那份** core store + core 总线（不新开状态通道）——
+  //   A4 起两者同进程同实例：MCP 看到的就是 service 持有的世界态（不再 units 0）。
+  app.use('/mcp', createMcpHttpRouter(createDefaultMcpServer(createCoreMcpHost({ store: service.store }))));
   // 健康检查
   app.get('/health', (req, res) => {
     res.json({
@@ -294,6 +329,11 @@ export async function startGatewayService(
       if (abandonedTaskInterval) {
         clearInterval(abandonedTaskInterval);
       }
+    });
+
+    // service（A4 / task_080）：先停大脑（退执行环 / 养成回路 / runtime 订阅），再停周边子系统。
+    await runStep('Stop Stratix service', () => {
+      booted.stop();
     });
 
     await runStep('Stop agent runtimes', async () => {
