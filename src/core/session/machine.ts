@@ -40,6 +40,7 @@ import {
   MAX_SESSION_AUTHOR_LEN,
   MAX_SESSION_OUTPUT_TAIL_LEN,
   MAX_SESSION_PARTICIPANTS,
+  MAX_SESSION_REFERENCE_ID_LEN,
   MAX_SESSION_STEP_LABEL_LEN,
   MAX_SESSION_TASK_ID_LEN,
   MAX_SESSION_TASK_SUMMARY_LEN,
@@ -312,6 +313,17 @@ export function normalizeSessionEventDraft(draft: SessionEventDraft): SessionEve
       return {
         type: 'failed',
         payload: { reason: capText(draft.payload.reason, MAX_SESSION_TASK_SUMMARY_LEN) },
+        createdAt: draft.createdAt,
+      };
+    // ---- @会话引用（@since v3.49，task_107 / v3.2b-B8）----
+    // 载荷只有一个被引用的会话 id：它是**结构化事实**（不是自由文本）——
+    // 只夹长度，不改内容（改了追不回源会话，与 'forked' 的 sourceSessionId 同一纪律）。
+    case 'reference':
+      return {
+        type: 'reference',
+        payload: {
+          targetSessionId: capText(draft.payload.targetSessionId, MAX_SESSION_REFERENCE_ID_LEN),
+        },
         createdAt: draft.createdAt,
       };
   }

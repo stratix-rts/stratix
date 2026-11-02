@@ -12,10 +12,12 @@
  * @since v3.40（task_091）v3.2a S1。
  * @since v3.46（task_100 / v3.2b-B1）追加 context-replay（事件流派生：上下文快照 / 分叉复制）。
  * @since v3.47（task_104 / v3.2b-B5）追加 title-provider（标题端口的默认实现：规则版起名）。
+ * @since v3.49（task_107 / v3.2b-B8）追加 reference（@会话引用：语法解析 + 注入块拼装）。
  */
 
 export * from './types';
 export * from './machine';
 export * from './title-provider';
 export * from './context-replay';
+export * from './reference';
 export * from './manager';

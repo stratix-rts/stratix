@@ -118,6 +118,7 @@ import { createPhaserPreviewGame } from '../services/appearance-preview-game';
 import { createAppearancePreviewService } from '../services/appearance-preview-service';
 import { createAgentChatService, resolvePeerTurnTimeoutMs, type AgentChatService } from '../services/agent-chat-service';
 import { createSessionTitleServiceFromEnv } from '../services/session-title';
+import { createSessionReferenceService } from '../services/session-reference';
 import { createChatService } from '../services/chat-service';
 import {
   createStratixContextProvider,
@@ -471,6 +472,20 @@ async function boot(): Promise<void> {
         env: titleLlmEnv(),
         logger: (line) => console.warn(`[Stratix] ${line}`),
       });
+  // ===== @会话引用（@since v3.49，task_107 / v3.2b-B8）=====
+  //   互聊议题 / 任务指令里的 `@session_<id>` → 校验会话存在 → 读它的近期事件 → 拼注入块。
+  //   读口与 manager 同源：会话摘要在 worldStore（会话域自己写的那份），
+  //   事件在进程内事件日志（渲染侧的会话事件不落 SQLite —— 那两张表由 service 进程独占写，铁律 6）。
+  //   远程模式不接（真相在 service 进程 —— 本地解析出来的会话是另一份，引用它等于引用错对象）。
+  const sessionReferenceService = remote
+    ? undefined
+    : createSessionReferenceService({
+        readSession: (sessionId) =>
+          worldStore.getState().sessions?.find((item) => item.id === sessionId) ?? null,
+        readSessionEvents: (sessionId, options) =>
+          sessionEventLog.read.readSessionEvents(sessionId, options),
+        logger: (line) => console.warn(`[Stratix] ${line}`),
+      });
   if (characterDrawer && cliChat) {
     const chatService = createChatService({
       view: characterDrawer,
@@ -567,6 +582,8 @@ async function boot(): Promise<void> {
       sessions: remote ? undefined : sessionManager,
       // task_104：自动起名（异步旁路）—— 开场后按素材起名，写回走会话域的 manager.updateTitle。
       ...(sessionTitleService ? { titles: sessionTitleService } : {}),
+      // task_107：@会话引用解析器 —— 议题里的 `@session_<id>` → 校验 + 读事件 + 拼注入块。
+      ...(sessionReferenceService ? { references: sessionReferenceService } : {}),
     });
     // task_101：登记到引用位（`session.resume` 命令的落点，见上方声明处的说明）。
     peerChatService = agentChatService;
@@ -893,6 +910,8 @@ async function boot(): Promise<void> {
       sessions: remote ? undefined : sessionManager,
       // task_104：自动起名（异步旁路）—— task_run 建会话后起名，写回走 manager.updateTitle。
       ...(sessionTitleService ? { titles: sessionTitleService } : {}),
+      // task_107：@会话引用解析器 —— 任务指令里的 `@session_<id>` → 校验 + 读事件 + 拼注入块。
+      ...(sessionReferenceService ? { references: sessionReferenceService } : {}),
       // task_046：执行期 chunk 原序转发进任务输出面板（实时 tail 视图）。面板拿不到
       // （极端时序：chrome 未建）时端口不接 —— 执行照常，只是没有实时视图。
       onTaskChunk: taskOutputView

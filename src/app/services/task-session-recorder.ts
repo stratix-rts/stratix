@@ -15,6 +15,7 @@
  * ============ 事件序列（LITE→FULL 渐进：只对新执行落事件，旧数据不迁移）============
  *   created（core 建会话时自带，seq=1）
  *     └ task_started  { taskId, 描述摘要 }     —— 任务开工（执行路径起点）
+ *        ├ reference   { targetSessionId }      —— @会话引用（task_107：这条任务引用了别的会话）
  *        ├ step        { label, detail? }      —— 关键节点，一步一条
  *        ├ output_tail { text, truncated }      —— 输出尾部（尾 500 字，超出截断并标记）
  *        └ completed   { summary? }             —— 成功收尾
@@ -68,6 +69,15 @@ export interface TaskSessionRecorder {
   step(taskId: string, label: string, detail?: string): void;
   /** 记输出尾部（空输出不记 —— 没有输出就没有尾部可留）。 */
   outputTail(taskId: string, output: string): void;
+  /**
+   * 记一条 **@会话引用**（@since v3.49，task_107 / v3.2b-B8）——
+   *   本任务引用了另一条会话（targetSessionId = 被引用的会话 id）。
+   *
+   * why 不受事件数上限（eventCap）约束：引用是**一次性**的事实（引用了几场会话），
+   *   条数有界（≤ 一次输入里的引用个数），且它解释了"agent 为什么知道那件事"——
+   *   属于"会话存在的理由"那一类（与 completed / failed 同级：不能被中途停记）。
+   */
+  reference(taskId: string, targetSessionId: string): void;
   /** 终态：记 completed / failed 并收尾会话（收尾后不再记任何事件）。 */
   finish(input: TaskSessionFinishInput): void;
 }
@@ -257,6 +267,14 @@ export function createTaskSessionRecorder(
       if (state.recorded >= cap) return;
       if (output.trim().length === 0) return; // 没有输出就没有尾部可留
       append(state, { type: 'output_tail', payload: { text: output } });
+    },
+
+    reference(taskId: string, targetSessionId: string): void {
+      const state = tracked.get(taskId);
+      if (!state || state.finished || !state.sessionId) return;
+      if (targetSessionId.trim().length === 0) return; // 没有目标就没有引用
+      // 不看 eventCap：引用是一次性事实（条数有界），且属于"会话存在的理由"那一类。
+      append(state, { type: 'reference', payload: { targetSessionId } });
     },
 
     finish(input: TaskSessionFinishInput): void {

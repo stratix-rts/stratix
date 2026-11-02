@@ -65,6 +65,13 @@ export const MAX_SESSION_TASK_SUMMARY_LEN = 200;
 export const MAX_SESSION_STEP_LABEL_LEN = 64;
 
 /**
+ * @会话引用事件里**被引用会话 id**的长度上限（码点）（@since v3.49，task_107）。
+ * why 128：core 的会话 id 形如 `session_peer_chat_1762156800000_3`（约 33 字）——
+ *   它是**标识**不是正文，给它正文级的上限（4000）是浪费，给它 64 又太紧（外部 id 可能更长）。
+ */
+export const MAX_SESSION_REFERENCE_ID_LEN = 128;
+
+/**
  * task_run 事件里**输出尾部**的长度上限（码点）—— 尾 500 字。
  * why 尾截而不是头截：任务产出里结论通常在末尾（报告的最后一段），
  * 截头会把结论切掉，留下的全是铺垫 —— 那才是无用信息。
@@ -114,6 +121,17 @@ export interface SessionEventPayloadMap {
   completed: { readonly summary?: string };
   /** task_run：任务失败收尾（含**错误摘要**）。 */
   failed: { readonly reason: string };
+  /**
+   * **@会话引用**（@since v3.49，task_107 / v3.2b-B8）—— 本会话引用了**另一条**会话。
+   *
+   * payload 记**被引用的会话 id**（结构化事实：原样保留 —— 改了就追不回源会话）。
+   * why 留痕：引用是一次「把别的会话接进来」的动作，它发生过就该在事件流里看得见
+   *   （否则事后无法解释"agent 为什么知道那件事"）。
+   */
+  reference: {
+    /** 被引用的会话 id。 */
+    readonly targetSessionId: string;
+  };
 }
 
 /** 会话事件类型（载荷表的键）。 */

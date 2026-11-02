@@ -78,6 +78,18 @@
  *   ④ 恢复后 status=active（manager.resume 的原子提交），并追加一条「（续聊恢复）」事件 ——
  *      续跑的发言继续记在**同一条会话**下面（历史不断线）。
  *
+ * ============ @会话引用（@since v3.49，task_107 / v3.2b-B8）============
+ * 议题里可以写 `@session_<会话 id>` —— 把**另一场会话**的近期内容接进这场讨论：
+ *   ① 解析（core/session/reference.ts 的语法口径）：议题里有几个引用就取几个（0 个 = 老路径）；
+ *   ② 校验存在性 → 读被引用会话的近期事件 → 拼成注入块（【引用会话 <title>(<id>) 摘要/时间线】…）；
+ *   ③ 注入**首轮**指令的头部（每个 agent 只在第一次发言时拿到一次 —— 它自己的 CLI 会话里
+ *      已经有了，之后每轮再塞一遍就是白烧 token）；
+ *   ④ **留痕**：本场会话追加一条 type=reference 事件（payload = 被引用的会话 id）——
+ *      事后能解释"agent 为什么知道那件事"。
+ *
+ * 引用不存在 / 写法不合法 → **如实报错并中止开场**（不进 transport）：讨论的前提就是那份上下文，
+ *   缺了它还照跑 = 答非所问（与守门拦截同一处置：提示 + 收束）。
+ *
  * ============ 会话域接线（@since v3.45，task_094 / v3.2a S4）============
  * 互聊接入会话域（kind=peer_chat），口径见 docs/SESSION-PLAN.md §2 接线表「peer_chat」行与 §5：
  *   ① **每场互聊一条会话** —— 开场建（participants=双方，标题走域内规则版自动起名：议题为主体）；
@@ -143,6 +155,10 @@ import {
 } from './chat-service';
 import type { TransportEvent, TransportErrorCode } from './cli-transport/transport';
 import { defaultExpWeight } from './exp-config';
+import {
+  resolveSessionReferences,
+  type SessionReferenceService,
+} from './session-reference';
 import { resolveStratixContextBlock, type StratixContextSource } from './stratix-context';
 
 // ============================================================================
@@ -350,6 +366,11 @@ interface ActiveDiscussion {
    * 非 null = 从被中断的会话续跑：注入上文 + 从指定的一方起手。
    */
   readonly resume: ResumeContext | null;
+  /**
+   * @会话引用的**注入块**（@since v3.49，task_107）—— 空串 = 议题里没有引用。
+   * 只在**首轮**注入（每个 agent 的第一次发言）：此后它自己的 CLI 会话里已经有了。
+   */
+  readonly referenceBlock: string;
 }
 
 /**
@@ -423,6 +444,12 @@ export interface AgentChatServiceDeps {
    *   起完由会话域的 manager.updateTitle 写回并投影到 WorldState。
    */
   readonly titles?: SessionTitleService;
+  /**
+   * @会话引用解析服务（可选，@since v3.49，task_107 / v3.2b-B8）—— 解析议题里的
+   * `@session_<id>`，把被引用会话的近期内容拼成上下文块注入首轮指令。
+   * 缺省 = 议题里的 `@session_…` **无法解析**（此时会如实报错中止开场 —— 见文件头「@会话引用」）。
+   */
+  readonly references?: SessionReferenceService;
 }
 
 /**
@@ -771,7 +798,12 @@ export function createAgentChatService(deps: AgentChatServiceDeps): AgentChatSer
               : buildRelayPrompt((other === 'a' ? a : b).name, lastText, topic);
         // 上文注入（@since v3.47，task_101）：续跑时把回灌块拼在指令前 ——
         //   每一方都带（各自的 CLI 会话可能已经不在了，上文只能靠这段块补回来）。
-        const prompt = resumeCtx?.contextBlock ? `${resumeCtx.contextBlock}\n\n${base}` : base;
+        // 引用注入（@since v3.49，task_107）：**只在首轮**给（每个 agent 的第一次发言）——
+        //   此后它自己的 CLI 会话里已经有了，每轮再塞一遍就是白烧 token。
+        const head = [round === 1 ? discussion.referenceBlock : '', resumeCtx?.contextBlock ?? '']
+          .filter((part) => part.length > 0)
+          .join('\n\n');
+        const prompt = head.length > 0 ? `${head}\n\n${base}` : base;
         const outcome = await runTurn(discussion, side, prompt);
         if (!outcome.ok) {
           interruptReason = outcome.reason;
@@ -823,6 +855,15 @@ export function createAgentChatService(deps: AgentChatServiceDeps): AgentChatSer
       }
 
       const clampedRounds = Math.min(Math.max(Math.round(rounds), 1), PEER_MAX_ROUNDS);
+      // @会话引用（@since v3.49，task_107）：议题里的 `@session_<id>` → 解析 → 注入块。
+      //   引用不存在 / 写法不合法 → **如实报错并中止开场**（不进 transport）：
+      //   讨论的前提就是那份上下文，缺了它还照跑 = 答非所问（与守门拦截同一处置）。
+      const references = resolveSessionReferences(trimmedTopic, deps.references);
+      if (!references.ok) {
+        view.addMessage({ role: 'assistant', text: references.reason ?? '引用的会话无法解析' });
+        view.endPeerChat();
+        return;
+      }
       // 会话首（@since v3.45，task_094）：开场建会话（peer_chat：每场互聊一条，双方为参与者）。
       //   标题走域内规则版自动起名（议题为主体）；建会话失败（达上限等）不阻断互聊 ——
       //   会话是旁路，没有它这场讨论照样跑完（只是少一段历史）。
@@ -837,6 +878,20 @@ export function createAgentChatService(deps: AgentChatServiceDeps): AgentChatSer
           sessionId = record?.id ?? null;
         } catch (error) {
           logger(`[agent-chat] 建会话失败：${describe(error)}`);
+        }
+      }
+      // 引用留痕（@since v3.49，task_107）：本场会话各记一条 'reference' 事件
+      //   （payload = 被引用的会话 id）—— 事后能解释"agent 为什么知道那件事"。
+      if (sessionId && deps.sessions) {
+        for (const targetSessionId of references.targetIds) {
+          try {
+            deps.sessions.appendEvent(sessionId, {
+              type: 'reference',
+              payload: { targetSessionId },
+            });
+          } catch (error) {
+            logger(`[agent-chat] 引用留痕抛错（${sessionId}/${targetSessionId}）：${describe(error)}`);
+          }
         }
       }
       // 自动起名（@since v3.47，task_104 / v3.2b-B5）：**异步旁路** —— 不阻塞互聊开场。
@@ -860,6 +915,7 @@ export function createAgentChatService(deps: AgentChatServiceDeps): AgentChatSer
         activeTurn: null,
         sessionId,
         resume: null,
+        referenceBlock: references.block,
       };
       active = discussion;
       try {
@@ -991,6 +1047,8 @@ export function createAgentChatService(deps: AgentChatServiceDeps): AgentChatSer
           lastText,
           hasHistory,
         },
+        // 续跑没有新议题 → 没有新的引用（引用是**发起时**的输入）。
+        referenceBlock: '',
       };
       active = discussion;
       try {

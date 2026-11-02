@@ -139,8 +139,12 @@ import type {
 import { NOTICE_TTL_MS, TASK_PLAN_WAIT_MARKER } from '../../core/types';
 import type { TaskManager } from '../../core/task';
 import type { SpawnOptions, TransportErrorCode, TransportEvent } from './cli-transport/transport';
-import { parseTaskArtifacts, serializeTaskArtifacts } from './task-artifacts';
 import { defaultExpWeight } from './exp-config';
+import {
+  resolveSessionReferences,
+  type SessionReferenceService,
+} from './session-reference';
+import { parseTaskArtifacts, serializeTaskArtifacts } from './task-artifacts';
 import { createTaskSessionRecorder } from './task-session-recorder';
 import { resolveStratixContextBlock, type StratixContextSource } from './stratix-context';
 
@@ -255,15 +259,25 @@ export function guardTaskCharacter(
  * @since v3.29（task_053）可选第三参 contextBlock：<stratix-context> 战场现状块。任务会话
  * 一次性 → 每次执行都是首发语义，每条任务的 prompt 都注入（插入位置在 persona 之后、
  * 【任务指令】之前；plan-first 的【工作方式】尾部指令恒在最后）。传 undefined 走原路径。
+ * @since v3.49（task_107）可选第四参 referenceBlock：@会话引用的注入块
+ * （【引用会话 <title>(<id>) 摘要/时间线】…）。插在 persona 之后、战场现状块之前 ——
+ * 引用是"这次任务要接着的那段历史"，属于**上下文**（不是指令），位置与战场现状块同层。
  */
-export function buildTaskPrompt(character: CharacterView, taskPrompt: string, contextBlock?: string): string {
+export function buildTaskPrompt(
+  character: CharacterView,
+  taskPrompt: string,
+  contextBlock?: string,
+  referenceBlock?: string
+): string {
   const persona = character.persona.trim();
   const hasContext = contextBlock !== undefined && contextBlock.length > 0;
-  if (persona.length === 0 && !hasContext) return taskPrompt;
+  const hasReference = referenceBlock !== undefined && referenceBlock.length > 0;
+  if (persona.length === 0 && !hasContext && !hasReference) return taskPrompt;
   const parts: string[] = [
     `你将扮演「${character.name}」这个角色执行任务，请全程保持角色设定一致。`,
   ];
   if (persona.length > 0) parts.push(`【角色设定】\n${persona}`);
+  if (hasReference) parts.push(referenceBlock as string);
   if (hasContext) parts.push(contextBlock as string);
   parts.push(`【任务指令】\n${taskPrompt}`);
   const base = parts.join('\n\n');
@@ -308,15 +322,18 @@ export function extractPlanDraft(output: string): string | null {
  * 与 035 会话延续的 fallback 同一口径：没有 sessionId 就没有上下文可复用，只能重讲一遍。
  * @since v3.29（task_053）可选第四参 contextBlock：重建首发语义时同样附战场现状块
  *（调用方只在 sessionId 丢失的重讲路径上传入）。
+ * @since v3.49（task_107）可选第五参 referenceBlock：重建首发语义时同样附 @会话引用块
+ *（引用是任务指令的一部分 —— 丢了它，重讲出来的任务就不是用户交代的那件事了）。
  */
 export function buildResumedTaskPrompt(
   character: CharacterView,
   task: CharacterTask,
   plan: string,
-  contextBlock?: string
+  contextBlock?: string,
+  referenceBlock?: string
 ): string {
   return [
-    buildTaskPrompt(character, task.prompt, contextBlock),
+    buildTaskPrompt(character, task.prompt, contextBlock, referenceBlock),
     '【计划审批】\n以下是此前输出的执行计划，已获批准：',
     plan,
     '请按上述计划继续执行并给出结果。',
@@ -435,6 +452,12 @@ export interface TaskServiceDeps {
    * 缺省 = 不起名（标题就是建会话时那条规则版标题）。
    */
   readonly titles?: SessionTitleService;
+  /**
+   * @会话引用解析服务（可选，@since v3.49，task_107 / v3.2b-B8）—— 解析**任务指令**里的
+   * `@session_<id>`，把被引用会话的近期内容拼成上下文块注入任务 prompt 的上下文头部。
+   * 缺省 = 指令里的 `@session_…` **无法解析**（此时任务如实失败并给出原因）。
+   */
+  readonly references?: SessionReferenceService;
 }
 
 export interface TaskService {
@@ -474,6 +497,11 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
     readonly character: CharacterView;
     readonly kind: AgentKind;
     readonly sessionId: string | null;
+    /**
+     * @会话引用的注入块（@since v3.49，task_107）—— 续段"重讲"（丢 session）时要重新带上，
+     * 否则重讲出来的就不是用户交代的那件事了（同 session 续发时上下文里已经有了）。
+     */
+    readonly referenceBlock: string;
   }
   const awaitingTasks = new Map<string, AwaitingEntry>();
 
@@ -831,13 +859,29 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
     // 会话埋点（@since v3.46，task_105）：任务开工 —— 建 task_run 会话 + 记 task_started。
     // 放在 startTask 之后：状态没走动就没有"这单跑过"可言，不建会话。
     recorder.begin({ taskId: task.id, characterId: task.characterId, prompt: task.prompt });
+    // @会话引用（@since v3.49，task_107）：任务指令里的 `@session_<id>` → 解析 → 注入块。
+    //   引用不存在 / 写法不合法 → **如实报错、任务失败**（不进 transport）：
+    //   用户交代的是"接着那场会话做"，拿不到那份上下文还照跑 = 答非所问。
+    const references = resolveSessionReferences(task.prompt, deps.references);
+    if (!references.ok) {
+      // 失败收尾走既有路径（failTask → task.failed 事件 → settle → 会话记 failed 事件），
+      // 与守门拦截同一处置：不自己另写一条收尾（那样会与事件路径记两遍）。
+      manager.failTask(task.id, references.reason ?? '引用的会话无法解析');
+      return 'settled';
+    }
+    // 引用留痕（@since v3.49，task_107）：本任务的 task_run 会话各记一条 'reference' 事件。
+    for (const targetSessionId of references.targetIds) {
+      recorder.reference(task.id, targetSessionId);
+    }
     const planFirst = personaPlanFirst(character.persona.trim());
     // persona 每次内嵌（常规任务会话隔离 → 无续发，每条任务都是首发）；plan-first 追加计划指令
     //（见文件头）。task_053：首发语义 → 同样附战场现状块（每任务一次；快照取件异常吞掉不绑架任务）。
+    // task_107：@会话引用块插在 persona 之后、战场现状块之前（上下文头部）。
     const prompt = buildTaskPrompt(
       character,
       task.prompt,
-      resolveStratixContextBlock(deps.provideContext, character.id, logger) || undefined
+      resolveStratixContextBlock(deps.provideContext, character.id, logger) || undefined,
+      references.block.length > 0 ? references.block : undefined
     );
     let output = '';
     // task_049：计划轮要记 session id（批准后同 session 续发）；常规任务恒 null。
@@ -869,7 +913,13 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
             if (draft !== null) {
               const awaiting = manager.requestApproval(task.id, draft);
               if (awaiting) {
-                awaitingTasks.set(task.id, { task: awaiting, character, kind, sessionId });
+                awaitingTasks.set(task.id, {
+                  task: awaiting,
+                  character,
+                  kind,
+                  sessionId,
+                  referenceBlock: references.block,
+                });
                 // 会话埋点（@since v3.46，task_105）：关键节点二 —— 计划待批准（门在等人裁决）。
                 recorder.step(task.id, '计划待批准', draft);
                 return 'awaiting';
@@ -940,7 +990,9 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
             task,
             plan,
             // 丢 session 的重讲 = 首发语义重建（task_053）：同样附战场现状块。
-            resolveStratixContextBlock(deps.provideContext, character.id, logger) || undefined
+            resolveStratixContextBlock(deps.provideContext, character.id, logger) || undefined,
+            // 同样附 @会话引用块（task_107）：重讲也得是用户交代的那件事。
+            entry.referenceBlock.length > 0 ? entry.referenceBlock : undefined
           );
     let output = '';
     try {
