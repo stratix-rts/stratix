@@ -1,7 +1,9 @@
 /**
- * 文件职责：**静默 CLI adapter**（会话域验收 / v3.2a S7）—— 互聊回合的「超时制造机」。
+ * 文件职责：**互聊回合的 CLI 替身**（会话域验收 / v3.2a S7 + v3.2b-B9）——
+ *   两支：① **静默** adapter（互聊回合的「超时制造机」）；② **可切换** adapter（静默 ⇄ 回显，
+ *   供 task_108 的六能力剧本在「超时中断」与「恢复后续聊」之间切换）。
  * 输入：一段任务 prompt（core 侧拼好的完整指令）。
- * 输出：一个**什么都不说**的 CLI 适配器（+ 工厂），供 service 进程注入互聊执行环。
+ * 输出：一个 CLI 适配器（+ 工厂），供 service 进程注入互聊执行环。
  *
  * why 有它：会话域要验的是「**超时不再是静默丢失**」——
  *   回合超时 → 会话显式转 'interrupted' + 落一条 'interrupt' 事件。
@@ -23,6 +25,8 @@ import { createCliTransport } from '../../src/app/services/cli-transport/runtime
 import { createNodeProcessFactory } from '../../src/app/services/cli-transport/node-process';
 import type { CliAdapter } from '../../src/app/services/cli-transport/transport';
 import type { ChatTransportFactory } from '../../src/app/services/chat-service';
+
+import { FAKE_CLI_MARKER } from '../service-resident/fake-cli';
 
 /**
  * 子进程「静默」多久（毫秒）—— 远大于回合超时（10s），保证**永远是看门狗先动手**。
@@ -64,5 +68,51 @@ export function createSilentCliAdapter(): CliAdapter {
  */
 export function createSilentTransportFactory(): ChatTransportFactory {
   const adapter = createSilentCliAdapter();
+  return () => createCliTransport(adapter, { factory: createNodeProcessFactory() });
+}
+
+/**
+ * 互聊替身的两种模式（@since v3.2b-B9 / task_108）。
+ *
+ * - `silent`：子进程真跑、但一个字不说 → 回合被看门狗判超时（验「超时即中断」那条链）；
+ * - `echo`  ：子进程把 prompt 原样回显 → 回合正常收束（验「续聊产出新事件」「引用注入可见」）。
+ *
+ * why 需要两种：同一场互聊既要能**超时**，又要能在**恢复之后继续说话** ——
+ *   而互聊服务按 agent 种类**缓存** transport（同一个 transport 实例会被复用），
+ *   故模式不能靠「换工厂」切换，只能让**适配器在 spawn 的那一刻**读当前模式
+ *   （buildArgs 每次 spawn 都会被调用）。
+ */
+export type PeerCliMode = 'silent' | 'echo';
+
+/**
+ * 可切换模式的 CLI 适配器（测试替身）。
+ *
+ * ★ 被替掉的仍然只是「CLI 二进制」：超时判定 / 杀进程树 / 错误码 / 会话记账 / 状态迁移全是真链路。
+ *   模式只决定子进程「说不说话」—— 而这正是两条验收链各自需要的前提。
+ */
+export function createSwitchableCliAdapter(getMode: () => PeerCliMode): CliAdapter {
+  return {
+    kind: 'claude-code',
+    binary: process.execPath,
+    outputMode: 'text',
+    buildArgs: (prompt: string) =>
+      getMode() === 'echo'
+        ? // 回显模式：把 prompt 原样写回 stdout —— 于是「注入块有没有真的进到 agent 的输入里」
+          // 可以从落库的发言原文里直接看见（不用猜）。
+          ['-e', `process.stdout.write(${JSON.stringify(`${FAKE_CLI_MARKER}:${prompt}`)})`]
+        : // 静默模式：一个字不说 → 看门狗先动手（回合只能以超时收场）。
+          ['-e', `/* ${SILENT_CLI_MARKER} */ setTimeout(() => {}, ${SILENT_HOLD_MS});`],
+    // text 形态：runtime 会把整段 stdout 当成一条 message 事件 —— 这里没有逐行可解析的东西。
+    parseLine: () => [],
+  };
+}
+
+/**
+ * 造可切换模式的 transport 工厂（注入互聊服务的执行环用）。
+ *
+ * 形状同 createSilentTransportFactory（ChatTransportFactory）；模式由 getMode 在**每次 spawn** 时读。
+ */
+export function createSwitchableTransportFactory(getMode: () => PeerCliMode): ChatTransportFactory {
+  const adapter = createSwitchableCliAdapter(getMode);
   return () => createCliTransport(adapter, { factory: createNodeProcessFactory() });
 }
