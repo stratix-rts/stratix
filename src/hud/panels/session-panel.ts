@@ -3,6 +3,8 @@
  *   ① kind 筛选筹码（全部 / 聊天 / 互聊 / 任务 / 编队 / 连接）；
  *   ② 会话列表（core 自动起名的标题 + 状态徽标 + 最近活动时间 + 事件数）；
  *   ③ 进行中会话行内的「中断」钮 → 发 `session.interrupt` 命令（core 状态机裁决）；
+ *      被中断的**互聊**会话行内的「恢复」钮 → 发 `session.resume` 命令
+ *      （@since v3.47，task_101；续跑由互聊引擎接手，裁决在 core/session + 引擎）；
  *   ④ 点击会话行展开**历史抽屉**：按 kind 路由到对应读取器
  *      （character_chat → 角色对话历史 / peer_chat·task_run → 会话事件流 /
  *        mission_run → 任务单详情引用 / shell_link → 命令行消息投影），滚动到顶加载更早一页。
@@ -32,6 +34,7 @@ import {
   SESSION_KIND_FILTERS,
   activeCount,
   canInterrupt,
+  canResume,
   formatRelativeTime,
   isResumableHint,
   kindLabel,
@@ -376,6 +379,19 @@ export function defineSessionPanel(): typeof HTMLElement {
       adapter.dispatch(command);
     }
 
+    /**
+     * 恢复一条被中断的互聊会话：发 session.resume 命令（@since v3.47，task_101）。
+     * why 与「中断」同一模式：面板只**发命令**，不自己裁决能不能恢复 ——
+     *   准入（kind / 状态 / 角色是否还在场）由 core/session 的状态机与互聊引擎裁决，
+     *   面板若自己判断就会与真相分叉（"按钮能点但点了必被拒"是最伤的一种体验）。
+     */
+    private resume(sessionId: string): void {
+      const adapter = this._deps?.adapter;
+      if (!adapter) return;
+      const command: HudCommand = { type: 'session.resume', sessionId };
+      adapter.dispatch(command);
+    }
+
     // —— 渲染 ——
     /** 渲染签名：会话摘要 + 筛选档 + 折叠态 + 展开项 + 抽屉状态。 */
     private renderSignature(): string {
@@ -385,7 +401,7 @@ export function defineSessionPanel(): typeof HTMLElement {
         ? `${history.sessionId}:${history.status}:${history.entries.length}:${history.cursor ?? ''}:${history.hasEarlier}`
         : '-';
       return `${sessions
-        .map((r) => `${r.id}:${r.status}:${r.title}:${r.lastEventAt}:${r.eventCount}`)
+        .map((r) => `${r.id}:${r.kind}:${r.status}:${r.title}:${r.lastEventAt}:${r.eventCount}`)
         .join('|')}#${this._kindFilter}#${this._collapsed ? 'c' : 'e'}#${this._expandedId ?? '-'}#${historyPart}`;
     }
 
@@ -487,6 +503,19 @@ export function defineSessionPanel(): typeof HTMLElement {
           }
           button.interrupt:hover { background: var(--srf-danger); color: var(--srf-bg); }
           button.interrupt:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
+          button.resume {
+            grid-column: 2;
+            padding: var(--srf-spacing-xxs) var(--srf-spacing-xs);
+            background: var(--srf-panel-elevated);
+            color: var(--srf-success);
+            border: var(--srf-border-width) solid var(--srf-success);
+            border-radius: var(--srf-radius);
+            font-family: var(--srf-font-ui);
+            font-size: var(--srf-font-size-xs);
+            cursor: pointer;
+          }
+          button.resume:hover { background: var(--srf-success); color: var(--srf-bg); }
+          button.resume:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
           .empty { color: var(--srf-text-muted); font-size: var(--srf-font-size-sm); text-align: center; padding: var(--srf-spacing-lg) var(--srf-spacing-sm); border: var(--srf-border-width) dashed var(--srf-border); border-radius: var(--srf-radius); }
           .drawer {
             display: grid;
@@ -537,6 +566,7 @@ export function defineSessionPanel(): typeof HTMLElement {
             if (kind) this.setKindFilter(kind);
           } else if (action === 'expand') this.expandSession(sessionId);
           else if (action === 'interrupt') this.interrupt(sessionId);
+          else if (action === 'resume') this.resume(sessionId);
           else if (action === 'close-drawer') this.expandSession(null);
           else if (action === 'load-earlier') this.loadEarlier();
           else if (action === 'retry') {
@@ -613,10 +643,15 @@ export function defineSessionPanel(): typeof HTMLElement {
       const title = truncateTitle(record.title);
       const meta = `${formatRelativeTime(record.lastEventAt, now)} · ${record.eventCount} 事件`;
       const hint = isResumableHint(record)
-        ? '<span class="row-hint" data-role="resumable-hint">已中断 · 恢复续聊待上线</span>'
+        ? `<span class="row-hint" data-role="resumable-hint">${canResume(record) ? '已中断 · 可恢复续聊' : '已中断'}</span>`
         : '';
       const interrupt = canInterrupt(record)
         ? `<button type="button" class="interrupt" data-action="interrupt" data-session="${escapeHtml(record.id)}">中断</button>`
+        : '';
+      // 恢复钮（@since v3.47，task_101）：只给「被中断的互聊会话」（canResume 的判定在 catalog）。
+      //   与「中断」钮互斥 —— 一行最多一个动作钮（两个都占 grid-column 2）。
+      const resume = canResume(record)
+        ? `<button type="button" class="resume" data-action="resume" data-session="${escapeHtml(record.id)}">恢复</button>`
         : '';
       return `
         <div class="row" data-role="row" data-session="${escapeHtml(record.id)}" data-kind="${escapeHtml(record.kind)}" data-status="${escapeHtml(record.status)}" data-expanded="${expanded}">
@@ -628,6 +663,7 @@ export function defineSessionPanel(): typeof HTMLElement {
           </button>
           ${hint}
           ${interrupt}
+          ${resume}
         </div>
       `;
     }

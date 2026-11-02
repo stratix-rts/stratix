@@ -101,6 +101,7 @@ import {
   gameSaveApi,
   type RestoreInjection,
 } from '../services/persistence/game-save-coordinator';
+import { createSessionEventLog } from '../services/session-event-log';
 import {
   createSessionHistoryPort,
   DEFAULT_SESSION_HISTORY_BASE_URL,
@@ -115,7 +116,7 @@ import {
 import { createBrowserAppearanceEnvironment } from '../services/appearance-environment';
 import { createPhaserPreviewGame } from '../services/appearance-preview-game';
 import { createAppearancePreviewService } from '../services/appearance-preview-service';
-import { createAgentChatService, resolvePeerTurnTimeoutMs } from '../services/agent-chat-service';
+import { createAgentChatService, resolvePeerTurnTimeoutMs, type AgentChatService } from '../services/agent-chat-service';
 import { createChatService } from '../services/chat-service';
 import {
   createStratixContextProvider,
@@ -434,7 +435,22 @@ async function boot(): Promise<void> {
   // 纯构造（无 IO 无订阅无副作用），故可提前到此处建（chat-service 在下方就要用它）。
   // ★ 远程模式（task_083）不接：真相在 service 的 core store（铁律 1「真相唯一」），
   //   本地再记一份会话 = 第二份真相（投影会被整帧覆盖，白记）。
-  const sessionManager = createSessionManager({ store: worldStore });
+  // 事件源（task_101）：渲染侧没有会话落库通道 → 会话事件在渲染侧是"写出来就没了"，
+  //   而续聊的回灌正需要事件流。故渲染侧配一个**进程内**事件源（写口 + 读口同一份内存）。
+  const sessionEventLog = createSessionEventLog();
+  // 互聊服务引用（@since v3.47，task_101）：`session.resume` 命令的落点 ——
+  //   续跑要由**互聊引擎**接手（回灌上文 + 重启轮转），core 不跑互聊（与 pipeline.start 同一纪律）。
+  //   它在下面的「角色抽屉 + CLI」分支里建，故这里先留一个引用位（null = 引擎不在本进程）。
+  let peerChatService: AgentChatService | null = null;
+  const sessionManager = createSessionManager({
+    store: worldStore,
+    // ★ 事件源（@since v3.47，task_101）：渲染侧没有会话落库通道（会话两张表由 service 独占写，
+    //   铁律 6），此前事件写出来就**丢了** —— 而 resume 的回灌（core/session/context-replay.ts）
+    //   没有事件源就**如实拒绝**（「事件源未附着」）。这里补一个**进程内**事件源
+    //   （app/services/session-event-log.ts：写口与读口同一份内存，条数与会话数都有上限）。
+    //   远程模式不接：真相在 service 进程（铁律 1「真相唯一」），本地再记一份 = 第二份真相。
+    ...(remote ? {} : { persist: sessionEventLog.persist, read: sessionEventLog.read }),
+  });
   if (characterDrawer && cliChat) {
     const chatService = createChatService({
       view: characterDrawer,
@@ -530,6 +546,8 @@ async function boot(): Promise<void> {
       //   中断显式化（修「超时即丢」）。远程模式不接（见上方 sessionManager 注释）。
       sessions: remote ? undefined : sessionManager,
     });
+    // task_101：登记到引用位（`session.resume` 命令的落点，见上方声明处的说明）。
+    peerChatService = agentChatService;
     // 三次注入 deps：互聊入口（表单开始 / 停止钮 / 插话框 → agent-chat-service）。
     characterDrawer.deps = {
       ...characterDrawer.deps,
@@ -767,6 +785,16 @@ async function boot(): Promise<void> {
     task: taskManager,
     // task_093：会话域写入面 —— `session.interrupt` 命令的落点（与上面三个 manager 同一实例）。
     session: sessionManager,
+    // task_101：`session.resume` 命令的落点 —— 续跑由**互聊引擎**接手
+    //   （回灌上文 + 重启轮转）；core 不跑互聊，只做转发（与 pipeline.start 同一纪律）。
+    //   引擎不在本进程（无抽屉 / 无 CLI）时不注入 —— 命令按未落地处理，不假装恢复成功。
+    ...(peerChatService
+      ? {
+          sessionResume: (sessionId: string): void => {
+            void peerChatService?.resume(sessionId);
+          },
+        }
+      : {}),
     // task_051：流水线编排器端口 —— runtime 只把 pipeline.start 转发给它（core 不执行编排，
     // 见 core/task/pipeline.ts 架构注）；未注入时命令按未落地处理（与 agent-link 同口径）。
     pipeline: pipelineService,

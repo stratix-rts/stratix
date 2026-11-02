@@ -1343,9 +1343,19 @@ export type HudCommand =
    *   这是 S4「互聊接入会话域」要修的根因；本单（v3.2a S1）只交付纯逻辑，接线在 S3。
    * 状态机裁决：终态（closed）拒绝并回 Notice（重复收尾不改写历史）；
    *   已中断的会话再中断同样拒绝（重复标记不改写历史）。
-   * session.resume（恢复续聊、上下文回灌）属 2b，本单不做。
+   * session.resume（恢复续聊、上下文回灌）属 2b，见下一条。
    */
-  | { type: 'session.interrupt'; sessionId: string };
+  | { type: 'session.interrupt'; sessionId: string }
+  /**
+   * @since v3.47（task_101 / v3.2b-B2）恢复会话：把一条**被中断**的互聊会话接回进行中，
+   *   并把回灌的上文重新喂给参与者（续跑）。
+   * 载荷口径：sessionId 命中 WorldState.sessions。
+   * 准入（core/session 的状态机裁决）：kind=peer_chat（第一期口径，方案 §8）+ status=interrupted。
+   * 落点：runtime 把命令交给注入的**恢复端口**（续跑方在 app 层 —— 互聊引擎负责把回灌的
+   *   上文喂回参与者并重启轮转；core 自己不跑互聊，只做转发，与 pipeline.start 同一纪律）。
+   *   端口缺席 = 命令按未落地处理（不假装恢复成功）。
+   */
+  | { type: 'session.resume'; sessionId: string };
 
 /**
  * @since v3.18 经验来源词表（`exp.gained` 事件的 source 字段，task_039）。

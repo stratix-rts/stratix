@@ -13,7 +13,7 @@
  *   面板只负责"把模型画成 Shadow DOM"，所有**可单测的判断**（能不能中断、筛出哪几条、
  *   标题怎么截、时间怎么写）都在这里 —— 单测不必起 DOM。
  *
- * @since v3.43（task_095 / v3.2a S5）。
+ * @since v3.43（task_095 / v3.2a S5）；v3.47（task_101）补 canResume（可恢复续聊的判定）。
  */
 
 import type {
@@ -87,10 +87,21 @@ export function canInterrupt(record: SessionRecord): boolean {
 /**
  * 会话是否处于"可恢复提示"档（interrupted）。
  * why 单独一档：interrupted 的会话**不该**再给「中断」钮（重复中断必被拒），
- *   但该告诉用户"它断了、以后能续上" —— 恢复本身属 2b（session.resume），本单只给提示。
+ *   但该告诉用户"它断了、以后能续上"。
+ * @since v3.47（task_101）：恢复按钮已上线（见 canResume），本档降级为**纯提示**。
  */
 export function isResumableHint(record: SessionRecord): boolean {
   return record.status === 'interrupted';
+}
+
+/**
+ * 这条会话现在能不能「恢复续聊」（行内「恢复」钮的可见性）。
+ * why 两个条件都要：kind=peer_chat（第一期只做互聊 —— 方案 docs/SESSION-PLAN.md §8）
+ *   + status=interrupted（只有断了的会话才谈得上续；active 的会话本来就在跑，
+ *   给「恢复」钮等于让用户点出一个重复启动）。
+ */
+export function canResume(record: SessionRecord): boolean {
+  return record.kind === 'peer_chat' && record.status === 'interrupted';
 }
 
 /**

@@ -62,6 +62,7 @@
  */
 
 import { createSessionPersister } from '../../app/services/persistence/session-persister';
+import { toSessionEventView } from '../../app/services/persistence/session-reader';
 import { createProgressionService } from '../../app/services/progression-service';
 import type { TaskService, TaskTransportFactory } from '../../app/services/task-service';
 import { onWorldEvent } from '../../core/bus';
@@ -209,13 +210,15 @@ export function createStratixService(options: StratixServiceOptions = {}): Strat
   // 会话域写入面（@since v3.43，task_093）：纯构造、无 IO、无订阅 —— 与前三个同口径。
   // 持久化口缺省口径（与 exp_events 同一范式）：显式给了用显式的；没给而存储件在 → 用存储件接管；
   // 两者都缺 = 不落库（会话只活在 WorldState 里，不假装落库成功）。
+  // 存储件（事件读口的来源；抽出局部量好让下面的闭包不用再判空）。
+  const storage = options.storage;
   const sessionPersister: SessionPersistPort | null =
     options.persistSession ??
-    (options.storage
+    (storage
       ? createSessionPersister(
           {
-            upsertSession: options.storage.persistSession,
-            appendSessionEvent: options.storage.persistSessionEvent,
+            upsertSession: storage.persistSession,
+            appendSessionEvent: storage.persistSessionEvent,
           },
           options.logger
         )
@@ -223,6 +226,26 @@ export function createStratixService(options: StratixServiceOptions = {}): Strat
   const session = createSessionManager({
     store,
     ...(sessionPersister ? { persist: sessionPersister } : {}),
+    // 事件读口（@since v3.47，task_101）：resume 的回灌要有事件源 ——
+    //   存储件在 → 用它读（库里 sessions / session_events 两张表就是事件流，
+    //   口径与 app 侧 session-reader.ts 同一份 DAO）；存储件不在 → 不接
+    //   （回灌不出上文，core 会**如实拒绝**，绝不空转成"已恢复"）。
+    ...(storage
+      ? {
+          read: {
+            readSessionEvents: (
+              sessionId: string,
+              query: { readonly beforeSeq?: number; readonly limit: number }
+            ) =>
+              storage
+                .readSessionEvents(sessionId, {
+                  ...(query.beforeSeq === undefined ? {} : { beforeSeq: query.beforeSeq }),
+                  limit: query.limit,
+                })
+                .map(toSessionEventView),
+          },
+        }
+      : {}),
   });
 
   // ===== ② core runtime（命令 → 状态机 → store → 广播）=====
@@ -234,6 +257,15 @@ export function createStratixService(options: StratixServiceOptions = {}): Strat
     // 会话域写入面（@since v3.43，task_093）：`session.interrupt` 命令的落点 ——
     // 与上面三个 manager 同一个实例（命令落点与业务侧记账写的是同一份 WorldState.sessions）。
     session,
+    // task_101：`session.resume` 命令的落点 —— **core 级**恢复（翻状态位 interrupted → active
+    //   + 记一条 resumed 事件 + 建回灌快照；core/session 的 manager.resume 裁决）。
+    //   why 这里只做 core 级：互聊**引擎**（回灌上文后重启轮转）住在渲染进程，
+    //   service 进程不跑互聊 —— 它能改的是"本进程的状态与事件流"这一层真相。
+    //   准入不满足（会话不在 / 非互聊 / 不是被中断的 / 没有事件源）时 manager 如实拒绝，
+    //   状态纹丝不动 —— MCP 侧据此如实报错，不假装恢复成功。
+    sessionResume: (sessionId: string): void => {
+      session.resume(sessionId);
+    },
     // 流水线编排器端口：未注入时 pipeline.start 走 onUnhandled（未落地口径，不假装成功）。
     pipeline: options.pipeline,
     onUnhandled:

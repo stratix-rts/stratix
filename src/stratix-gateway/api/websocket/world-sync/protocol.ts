@@ -296,6 +296,8 @@ const HUD_COMMAND_TYPE_FLAGS: Readonly<Record<HudCommand['type'], true>> = {
   // @since v3.40（task_091）会话中断（core/types.ts 新增）。本表由类型驱动，
   // core 加命令类型时必须在此补键 —— 缺键即编译报错（见上方注释「不会静默漂移」）。
   'session.interrupt': true,
+  // @since v3.47（task_101 / v3.2b-B2）会话恢复（续聊）：与 session.interrupt 同一模式入册。
+  'session.resume': true,
 };
 
 /**

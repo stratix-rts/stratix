@@ -79,6 +79,15 @@ import { applySelectionAction } from './unit/selection';
 /** 未落地的消息来自哪一侧(dev 观测面板与单测据此区分来源)。 */
 export type UnhandledChannel = 'command' | 'world';
 
+/**
+ * 会话恢复端口（@since v3.47，task_101 / v3.2b-B2）—— 续跑方的形状。
+ *
+ * why 只有一个 sessionId：恢复这件事的**全部**判断都在端口实现方（app 层互聊引擎）：
+ *   kind 准入 / 参与者是否还在场 / 上文回灌 / 重启轮转 —— core 一概不认（core 零 IO、
+ *   不认识角色档案与 transport）。core 只保证"这条命令有人接"。
+ */
+export type SessionResumePort = (sessionId: string) => void;
+
 export interface CoreRuntimeOptions {
   /** 状态持有者;默认用 store.ts 的 worldStore 单例(两侧共用同一份世界态)。 */
   readonly store?: CoreStore;
@@ -125,6 +134,14 @@ export interface CoreRuntimeOptions {
    *   runtime 只做转发,不做翻译。
    */
   readonly pipeline?: PipelineRunnerPort;
+  /**
+   * 会话恢复端口（@since v3.47，task_101 / v3.2b-B2）。
+   * why 是**端口**而不是 core 直调 manager：恢复不只是翻状态位 —— 还要把回灌的上文
+   *   重新喂给参与者并重启互聊轮转，那件事在 app 层（互聊引擎，持有 transport 与角色档案）。
+   *   core 只做转发（同 pipeline.start 的纪律：core 不认识"互聊怎么跑"）。
+   * 未注入时命令按未落地处理（onUnhandled）—— **不假装恢复成功**。
+   */
+  readonly sessionResume?: SessionResumePort;
   /**
    * 尚未实现的命令 / 事件出口。
    * why 需要它:契约已冻结(§5),Phase 2 之前留了一些尚未接地的命令(chat.send 等);
@@ -317,6 +334,8 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
   const session = options.session ?? createSessionManager({ store });
   // @since v3.27(task_051)流水线编排器端口:只持引用不构造(见 options.pipeline 注释)。
   const pipeline = options.pipeline;
+  // @since v3.47(task_101 / v3.2b-B2)会话恢复端口:只持引用不构造(见 options.sessionResume 注释)。
+  const sessionResume = options.sessionResume;
   const reportUnhandled = options.onUnhandled ?? ((): void => { /* 默认不打扰;dev 入口与单测会注入 */ });
 
   /**
@@ -456,6 +475,16 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
       //   why 需要它:互聊超时此前是"静默丢弃"(会话没了、历史也没了)—— 中断标记让会话可见、可查。
       case 'session.interrupt':
         session.interruptSession(command.sessionId);
+        return;
+      // @since v3.47(task_101 / v3.2b-B2)会话恢复:转发给注入的**恢复端口**(app 层互聊引擎 ——
+      //   它把回灌的上文喂回参与者并重启轮转;core 不跑互聊,只做转发,同 pipeline.start 纪律)。
+      //   端口缺席 = 命令没人接管 → 按未落地处理(不假装恢复成功)。
+      case 'session.resume':
+        if (sessionResume) {
+          sessionResume(command.sessionId);
+        } else {
+          reportUnhandled('command', command);
+        }
         return;
       // @since v3.27(task_051)流水线发起:转交注入的编排器端口(app 层 pipeline-service)。
       // 与 task.* 不同,这里不直调 manager -- 流水线不是 core 实体(见 RuntimeOptions.pipeline

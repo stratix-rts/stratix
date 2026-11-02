@@ -1,18 +1,19 @@
 /**
  * 文件职责：`stratix_session_list`（列会话）、`stratix_session_get`（读一条会话 + 事件流）、
- *   `stratix_session_interrupt`（中断一条在办会话）—— 会话域的工具组：外部 agent 由此看见会话，
- *   并能叫停一场正在进行的对话（2b 的会话写面第一件，docs/SESSION-PLAN.md §8 B4）。
+ *   `stratix_session_interrupt`（中断一条在办会话）、`stratix_session_resume`（恢复一条被中断的
+ *   互聊会话 = 续跑接线）—— 会话域的工具组：外部 agent 由此看见会话，
+ *   并能叫停 / 恢复一场对话（docs/SESSION-PLAN.md §8 B4 与 2b 第一期）。
  * 输入：list = kind? / status? / limit? / offset?；get = session_id / before_seq? / limit?；
- *      interrupt = session_id。
+ *      interrupt = session_id；resume = session_id。
  * 输出：会话摘要列表（带 returned / total / truncated）或单条会话摘要 + 事件流的一段，
- *      或一次中断的受理回执（id / 状态 / 查法 poll）。
+ *      或一次中断 / 恢复的受理回执（id / 状态 / 查法 poll）。
  * 禁止事项：
  *   1. 在 MCP 侧自己维护一份会话 —— 会话真相在 core（WorldState.sessions）+ 库（sessions /
  *      session_events 两张表）；读面只**读**（读口是 core 的 SessionReadPort），
  *      写面只**发命令**（落点由 core runtime 裁决）；
  *   2. 回灌事件全文之外的东西 —— 事件按类型原样返回（payload 是事件本体），
  *      不做二次加工、不替模型总结（总结是模型自己的活）；
- *   3. 写面里的其它动作 —— 恢复 / 收尾会话一律不做（session_resume 属 2b 的后续单）；
+ *   3. 写面里的其它动作 —— **收尾**会话一律不做（close 是会话域内部的事，不对外开放）；
  *   4. 另造一份事件分页口径 —— before_seq 游标语义与 service 侧读 API
  *      （GET /api/storage/sessions/:id/events）同一口径，不各写一份；
  *   5. 在工具侧另写一套相位判定 —— 中断能不能成由 core 状态机裁决（core/session/machine.ts
@@ -372,6 +373,127 @@ export const sessionInterruptTool: ToolSpec = {
       'illegal_transition',
       `会话「${sessionId}」当前是 ${after.status}，只有进行中 / 空闲的会话可中断`,
       { hint: '用 stratix_session_get 看这条会话发生了什么；已中断 / 已收尾的会话不可重复中断' }
+    );
+  },
+};
+
+/**
+ * 可恢复的会话种类（第一期只认**互聊**一种）。
+ *
+ * why 与 INTERRUPTIBLE_SESSION_KINDS 同一口径（方案 docs/SESSION-PLAN.md §8：
+ *   「resume 第一期只做 peer_chat」）：续跑的前提是"背后有一场能接着跑的对局"——
+ *   互聊是唯一一种会话记录与"正在跑的那场对话"一一对应的 kind。
+ * 其余四类恢复不了，也不该给模型"已恢复"的错觉：
+ *   - `character_chat`：每角色一条长生命周期记录，背后没有"一场对局"可续；
+ *   - `task_run` / `mission_run`：会话是任务实体的生命周期镜像，续跑 = 重跑任务（那是任务域的事）；
+ *   - `shell_link`：会话是 agent-link 连接的投影，续跑 = 重连（那是 link 命令的事）。
+ */
+const RESUMABLE_SESSION_KINDS: readonly SessionKind[] = ['peer_chat'];
+
+export const sessionResumeTool: ToolSpec = {
+  name: 'stratix_session_resume',
+  domain: 'session',
+  verb: 'resume',
+  order: 13,
+  description: [
+    '恢复一条被中断的互聊会话：把它转回 active，并把回灌的上文重新喂给参与者（续跑）。',
+    '何时用：一场互聊超时 / 被中断了，想让它从断的地方接着聊；想确认这条被中断的会话还能不能续上。',
+    '何时不用：只是想知道有哪些会话、发生过什么 —— 用 stratix_session_list / stratix_session_get；',
+    '要重新开始一场**新**讨论 —— 恢复是接着原来的聊（带上下文），新开一场不是；',
+    '要取消一条排队中的角色任务 —— 用 stratix_task_cancel（恢复会话停不住任务）。',
+    '边界：只认**互聊**会话（peer_chat）—— 其余四类一律 unsupported_kind：character_chat 是每角色一条长生命周期记录（背后没有对局可续），',
+    'task_run / mission_run 是任务实体的生命周期镜像（续跑 = 重跑任务），shell_link 是 agent-link 连接的投影（续跑 = 重连）；',
+    '只有 interrupted 可恢复（active / idle / closed 一律拒绝，历史不改写）；',
+    '恢复只改会话状态、回灌上文并重启轮转 —— 不回滚已经产生的消息，也不凭空补写没发生过的发言。',
+    '错误：session_not_found（会话 id 不在本进程的状态里）/ unsupported_kind（该类会话不支持恢复）/',
+    'illegal_transition（会话不是被中断的）/ invalid_arguments（session_id 为空）/ internal_error（命令没人接管）。',
+  ].join('\n'),
+  inputSchema: {
+    type: 'object',
+    properties: {
+      session_id: {
+        type: 'string',
+        minLength: 1,
+        description: '会话 id（见 stratix_session_list）。',
+      },
+    },
+    required: ['session_id'],
+    additionalProperties: false,
+  },
+  errors: [
+    'session_not_found',
+    'unsupported_kind',
+    'illegal_transition',
+    'invalid_arguments',
+    'internal_error',
+  ],
+  readOnly: false,
+  handler: (args, host) => {
+    const sessionId = requireString(args, 'session_id');
+
+    // 存在性与当前相位取**本进程的状态**（WorldState.sessions）—— 恢复的裁决与落点都在那里；
+    // 库里那条会话本进程未必还在跑（服务重启后不在内存、已收尾被 FIFO 淘汰）。
+    const before = (host.getWorldState().sessions ?? []).find((item) => item.id === sessionId);
+    if (!before) {
+      throw new McpToolError('session_not_found', `会话「${sessionId}」不在本进程的状态里`, {
+        hint: '用 stratix_session_list 重列一遍会话，取一条被中断的会话 id',
+      });
+    }
+    if (!RESUMABLE_SESSION_KINDS.includes(before.kind)) {
+      throw new McpToolError(
+        'unsupported_kind',
+        `会话「${sessionId}」是 ${before.kind} 类，不支持恢复`,
+        { hint: '只有互聊会话（peer_chat）可恢复；任务与连接请用各自的工具' }
+      );
+    }
+
+    const previousStatus = before.status;
+    // interrupted 才可能恢复 —— 但**不在工具侧判**：判据归 core 状态机（下面读回结果时说）。
+    const wasResumable = previousStatus === 'interrupted';
+
+    // 相位裁决交给 core（core/session 的 manager.resume：只认 peer_chat + interrupted，
+    //   且要求事件源已附着 —— 没有上文可回灌就**如实拒绝**，不空转成"已恢复"）。
+    host.dispatchCommand({ type: 'session.resume', sessionId });
+
+    const after = (host.getWorldState().sessions ?? []).find((item) => item.id === sessionId);
+    if (!after) {
+      throw new McpToolError('internal_error', '恢复后会话从状态里消失了（不应发生）', {
+        hint: '查服务端日志确认 core 运行时是否异常',
+      });
+    }
+    if (wasResumable && after.status === 'active') {
+      return toToolResult({
+        ok: true,
+        data: {
+          session_id: after.id,
+          kind: after.kind,
+          title: after.title,
+          status: after.status,
+          previous_status: previousStatus,
+          event_count: after.eventCount,
+          last_event_at: after.lastEventAt,
+          // 查法：恢复标记是事件流的最后一条 —— 用 session_get 看它的原文与时间。
+          poll: {
+            tool: 'stratix_session_get',
+            args: { session_id: after.id },
+          },
+        },
+      });
+    }
+    if (wasResumable && after.status === previousStatus) {
+      // 可恢复却纹丝未动 —— 两种可能：本进程没有 core 运行时接管这条命令；
+      //   或会话历史未接入、**回灌不出上文**（core 如实拒绝，不空转）。
+      throw new McpToolError(
+        'internal_error',
+        '恢复未落地：本进程没有 core 运行时接管这条命令，或会话历史未接入、无法回灌上文',
+        { hint: '确认 Stratix 运行时在本进程已启动，且这条会话的历史（事件流）已接入' }
+      );
+    }
+    // 状态机拒了（不是 interrupted）—— 如实回当前相位，历史不改写。
+    throw new McpToolError(
+      'illegal_transition',
+      `会话「${sessionId}」当前是 ${after.status}，只有被中断的会话可恢复`,
+      { hint: '用 stratix_session_get 看这条会话发生了什么；进行中 / 已收尾的会话不可恢复' }
     );
   },
 };

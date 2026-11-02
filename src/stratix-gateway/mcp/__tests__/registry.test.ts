@@ -53,7 +53,7 @@ describe('MCP 工具注册表', () => {
     expect(registry.listTools().map((tool) => tool.name)).toEqual(registered);
   });
 
-  it('工具面按清单位次返回（十二件，顺序固定）', () => {
+  it('工具面按清单位次返回（十三件，顺序固定）', () => {
     const registry = buildToolRegistry(DEFAULT_MCP_TOOLS);
     expect(registry.listTools().map((tool) => tool.name)).toEqual([
       'stratix_world_snapshot', // §2.1
@@ -68,16 +68,20 @@ describe('MCP 工具注册表', () => {
       'stratix_session_list', //   §2.10（session 域新开）
       'stratix_session_get', //    §2.11
       'stratix_session_interrupt', // §2.12（session 域写面）
+      'stratix_session_resume', //    §2.13（session 域写面：恢复续聊）
     ]);
   });
 
-  it('session 域的三件工具排在既有九件之后（既有工具相对次序不变）', () => {
+  it('session 域的四件工具排在既有九件之后（既有工具相对次序不变）', () => {
     const registry = buildToolRegistry(DEFAULT_MCP_TOOLS);
     const names = registry.listTools().map((tool) => tool.name);
     expect(names.indexOf('stratix_session_list')).toBe(names.indexOf('stratix_registry') + 1);
     expect(names.indexOf('stratix_session_get')).toBe(names.indexOf('stratix_session_list') + 1);
     expect(names.indexOf('stratix_session_interrupt')).toBe(
       names.indexOf('stratix_session_get') + 1
+    );
+    expect(names.indexOf('stratix_session_resume')).toBe(
+      names.indexOf('stratix_session_interrupt') + 1
     );
   });
 

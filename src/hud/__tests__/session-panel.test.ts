@@ -327,6 +327,63 @@ describe('状态徽标与中断按钮', () => {
   });
 });
 
+/**
+ * 恢复按钮（@since v3.47，task_101）：被中断的**互聊**会话行给「恢复」钮 →
+ * 发 `session.resume` 命令（裁决在 core/session 的状态机与互聊引擎，面板自己不判）。
+ */
+describe('恢复按钮（session.resume）', () => {
+  test('被中断的互聊会话 → 行内有「恢复」钮', () => {
+    const harness = mountPanel();
+    mounted.push(harness.unmount);
+    expand(harness.panel);
+
+    harness.emit(makeState({
+      sessions: [
+        session({ id: 's-peer', kind: 'peer_chat', status: 'interrupted' }),
+        session({ id: 's-chat', kind: 'character_chat', status: 'interrupted' }),
+        session({ id: 's-active', kind: 'peer_chat', status: 'active' }),
+      ],
+    }));
+
+    const peerRow = harness.panel.shadowRoot?.querySelector('[data-session="s-peer"]');
+    expect(peerRow?.querySelector('[data-action="resume"]')).not.toBeNull();
+    // 第一期只做互聊：别的 kind 不给恢复钮（不给"点了必被拒"的按钮）。
+    const chatRow = harness.panel.shadowRoot?.querySelector('[data-session="s-chat"]');
+    expect(chatRow?.querySelector('[data-action="resume"]')).toBeNull();
+    // 进行中的会话不需要恢复（本来就在跑）。
+    const activeRow = harness.panel.shadowRoot?.querySelector('[data-session="s-active"]');
+    expect(activeRow?.querySelector('[data-action="resume"]')).toBeNull();
+  });
+
+  test('点「恢复」→ 发出 session.resume 命令（带 sessionId）', () => {
+    const harness = mountPanel();
+    mounted.push(harness.unmount);
+    expand(harness.panel);
+
+    harness.emit(makeState({
+      sessions: [session({ id: 's-peer', kind: 'peer_chat', status: 'interrupted' })],
+    }));
+    expect(harness.commands).toHaveLength(0);
+
+    click(harness.panel, '[data-session="s-peer"] [data-action="resume"]');
+
+    expect(harness.commands).toEqual([{ type: 'session.resume', sessionId: 's-peer' }]);
+  });
+
+  test('点「恢复」不会顺手展开历史（两个动作互不串台）', () => {
+    const harness = mountPanel();
+    mounted.push(harness.unmount);
+    expand(harness.panel);
+
+    harness.emit(makeState({
+      sessions: [session({ id: 's-peer', kind: 'peer_chat', status: 'interrupted' })],
+    }));
+    click(harness.panel, '[data-session="s-peer"] [data-action="resume"]');
+
+    expect(harness.panel.expandedSessionId).toBeNull();
+  });
+});
+
 describe('空态三档', () => {
   test('一条会话都没有 → 引导文案', () => {
     const harness = mountPanel();

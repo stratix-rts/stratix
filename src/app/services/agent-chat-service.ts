@@ -67,6 +67,17 @@
  *   → 回合耗到 120s 被看门狗杀。有了这条指引，网络不可用时它直接给已知答案，讨论能走完。
  *   why 转述指令也要带：B 的首轮拿到的是转述指令、拿不到开场指令，没有它 B 会撞同一个黑洞。
  *
+ * ============ 续聊恢复（@since v3.47，task_101 / v3.2b-B2）============
+ * resume 的口径（方案 docs/SESSION-PLAN.md §8「resume 第一期只做 peer_chat」）：
+ *   ① **回灌**：会话被中断后，core/session 的 manager.resume 读事件流、构建上下文快照
+ *      （core/session/context-replay.ts 的回灌消息列表），本服务把它拼成**系统注入历史**
+ *      喂进续跑的第一条指令（参与者由此"记得"刚才聊到哪）；
+ *   ② **重启轮转**：从"上一位发言者的对方"起手继续转（不是从头开题 —— 议题已在上文里）；
+ *   ③ **不降级**：参与者不在场（角色被删）/ 未绑 CLI / 离线 / 会话不是互聊 / 不是被中断的
+ *      —— 一律**如实报错**并停下，绝不"另起一场新讨论"冒充续跑；
+ *   ④ 恢复后 status=active（manager.resume 的原子提交），并追加一条「（续聊恢复）」事件 ——
+ *      续跑的发言继续记在**同一条会话**下面（历史不断线）。
+ *
  * ============ 会话域接线（@since v3.45，task_094 / v3.2a S4）============
  * 互聊接入会话域（kind=peer_chat），口径见 docs/SESSION-PLAN.md §2 接线表「peer_chat」行与 §5：
  *   ① **每场互聊一条会话** —— 开场建（participants=双方，标题走域内规则版自动起名：议题为主体）；
@@ -110,11 +121,16 @@
  */
 
 import { emitWorldEvent } from '../../core/bus';
-import type { SessionEventInput, SessionManager } from '../../core/session';
+import type {
+  SessionEventInput,
+  SessionManager,
+  SessionReplayMessage,
+} from '../../core/session';
 import type {
   AgentKind,
   CharacterView,
   ExpSource,
+  SessionRecord,
   WorldState,
 } from '../../core/types';
 import {
@@ -194,6 +210,27 @@ export const PEER_MSG_INTERRUPTED = '（已中断）';
  */
 export const PEER_SESSION_USER_AUTHOR = '用户';
 
+/**
+ * 会话事件里「系统」这一方的署名（@since v3.47，task_101）。
+ * why 单独一个署名：恢复标记是**系统**记的（不是谁说的话），回灌时它不该被当成
+ *   某一方的话塞进上下文（引擎侧按这个署名跳过 —— 见 buildResumeContextBlock）。
+ */
+export const PEER_SESSION_SYSTEM_AUTHOR = '系统';
+
+/**
+ * 续聊恢复的标记（@since v3.47，task_101）—— 与「（互聊中断：原因）」同一措辞口径。
+ * 它同时是：抽屉里给用户看的一句话 + 会话事件流里的一条留痕（事件文本即本串）。
+ */
+export const PEER_MSG_RESUMED = '（续聊恢复）';
+
+/**
+ * 注入模型的上文条数上限（@since v3.47，task_101）。
+ * why 要有上限：回灌块整体进 prompt，无界 = 无界 token 账单 + 无界延迟。
+ * why 默认 40：够接上最近几轮的话题；core 的回灌快照本身已经封顶 200 条（那层管"读多少"，
+ *   这层管"喂多少"—— 两层各管一段，缺一层就会有一处无界）。
+ */
+export const PEER_RESUME_CONTEXT_MAX_MESSAGES = 40;
+
 /** 落库内容加 peer 前缀（约定见文件头「落库约定」②；解析归 chat-history 的翻译层）。 */
 export function peerMarkedContent(speakerId: string, text: string): string {
   return `[peer:${speakerId}] ${text}`;
@@ -246,6 +283,34 @@ export function applyInterjections(base: string, interjections: readonly string[
   return [...interjections.map((text) => `用户补充：${text}`), base].join('\n');
 }
 
+/**
+ * 回灌消息 → 注入模型的**系统历史块**（@since v3.47，task_101）。
+ *
+ * why 是"系统注入历史"而不是把上文当成新一轮对话：上文是**已经发生过的**内容，
+ *   混进"这一轮该说什么"里会让模型把它当成新输入重复回应。
+ * why 按作者署名逐行写：回灌消息的 role 是相对续跑方定的（自己=assistant / 对方=user），
+ *   但**两个人都在场**，写成"我说/你说"会有一半是反的 —— 按署名（阿尔法：…）最不容易出错。
+ * why 跳过「系统」署名的行：那是恢复标记（系统记的，不是谁说的话），
+ *   塞进上下文只会让模型以为用户说了句「（续聊恢复）」。
+ * why 截断只留最近的：续跑关心的是"刚才聊到哪"；被丢掉多少明写在块尾（截断是显式的）。
+ *
+ * @returns 注入块；无可注入内容时返回空串（调用方据此不拼前缀）。
+ */
+export function buildResumeContextBlock(
+  messages: readonly SessionReplayMessage[],
+  maxMessages: number = PEER_RESUME_CONTEXT_MAX_MESSAGES
+): string {
+  const limit = Math.max(1, Math.floor(maxMessages));
+  const kept = messages.filter((message) => message.author !== PEER_SESSION_SYSTEM_AUTHOR);
+  if (kept.length === 0) return '';
+  const recent = kept.slice(Math.max(0, kept.length - limit));
+  const dropped = kept.length - recent.length;
+  const lines = recent.map((message) => `${message.author}：${message.content}`);
+  const header = `【本次续聊的上文（回灌 ${kept.length} 条）】`;
+  const tail = dropped > 0 ? `（更早的 ${dropped} 条上文未注入）` : '';
+  return [header, ...lines, tail].filter((line) => line.length > 0).join('\n');
+}
+
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -279,6 +344,28 @@ interface ActiveDiscussion {
    * null = 未接入会话域（端口缺席）或建会话失败 —— 会话是旁路，不记也一样聊。
    */
   sessionId: string | null;
+  /**
+   * 续跑上下文（@since v3.47，task_101）—— null = 这是一场**新**讨论（走开题流程）。
+   * 非 null = 从被中断的会话续跑：注入上文 + 从指定的一方起手。
+   */
+  readonly resume: ResumeContext | null;
+}
+
+/**
+ * 续跑上下文（@since v3.47，task_101）。
+ *
+ * why 要记"先说话的一方"：链式对谈里下一位是**上一位的对方**（否则角色会自问自答）。
+ *   上文由回灌消息还原（最后一条发言是谁说的 → 下一位就是另一位）。
+ */
+interface ResumeContext {
+  /** 注入模型的上文块（buildResumeContextBlock 的产物；空串 = 没有可注入的内容）。 */
+  readonly contextBlock: string;
+  /** 先说话的一方（上一位发言者的对方）。 */
+  readonly nextSide: 'a' | 'b';
+  /** 上一位的发言原文（转述指令的输入）。 */
+  readonly lastText: string;
+  /** 是否已有对话内容（false = 中断前一句没说，等于重新开题）。 */
+  readonly hasHistory: boolean;
 }
 
 export interface AgentChatServiceDeps {
@@ -329,6 +416,33 @@ export interface AgentChatServiceDeps {
   readonly sessions?: SessionManager;
 }
 
+/**
+ * 续聊恢复的回执（@since v3.47，task_101）。
+ *
+ * why 要有 code：调用方（HUD / 命令路由 / MCP）需要**机器可判**的失败原因，
+ *   人话文案（reason）给人看，code 给程序看 —— 两份都要，不能只有一份。
+ */
+export interface AgentChatResumeOutcome {
+  /** 是否恢复成功（成功 = 已重启轮转；失败 = 如实报错，没恢复）。 */
+  readonly ok: boolean;
+  /** 失败原因码（成功时缺省）。 */
+  readonly code?:
+    | 'no-session-port'
+    | 'busy'
+    | 'not-found'
+    | 'unsupported-kind'
+    | 'illegal-transition'
+    | 'character-missing'
+    | 'guard-rejected'
+    | 'resume-rejected';
+  /** 人话说明（失败时必有；成功时也有一句摘要）。 */
+  readonly reason: string;
+  /** 恢复的会话 id（成功时）。 */
+  readonly sessionId?: string;
+  /** 回灌了多少条上文（成功时；用于回执与观测）。 */
+  readonly replayedMessages?: number;
+}
+
 /** 对外形状（组合根与单测按它操作）。 */
 export interface AgentChatService {
   /**
@@ -336,6 +450,12 @@ export interface AgentChatService {
    * resolve 于整场收束（轮数走完 / 中断 / 停止 / 守门拦截）。已在跑时静默忽略。
    */
   start(initiatorId: string, peerId: string, topic: string, rounds?: number): Promise<void>;
+  /**
+   * 续跑一条被中断的互聊会话（@since v3.47，task_101）：回灌上文 + 重启轮转。
+   * resolve 于整场续聊收束（轮数走完 / 中断 / 停止）。
+   * 失败一律**如实报错**（见 AgentChatResumeOutcome 的 code 词表），绝不降级成"另起一场"。
+   */
+  resume(sessionId: string): Promise<AgentChatResumeOutcome>;
   /** 旁听插话：进双方下一轮 prompt（约定见文件头「插话」）；不在跑时忽略。 */
   interject(text: string): void;
   /** 停止当前讨论：中断在飞回合（abort 语义见文件头「中断与超时」）；不在跑时 no-op。 */
@@ -374,6 +494,18 @@ export function createAgentChatService(deps: AgentChatServiceDeps): AgentChatSer
     } catch (error) {
       logger(`[agent-chat] 会话 id 回写失败（${characterId}）：${describe(error)}`);
     }
+  };
+
+  /**
+   * 找一条会话摘要（@since v3.47，task_101）。
+   * why 从会话域自己的 store 找，而不是从 deps.getState()：会话摘要的真相在
+   *   core/session 的 manager 写的那份 WorldState.sessions（会话域自带的 store），
+   *   角色档案才从 deps.getState() 取（世界态）。两处真相各归其主，不混。
+   */
+  const findSessionRecord = (sessionId: string): SessionRecord | null => {
+    if (!deps.sessions) return null;
+    const sessions = deps.sessions.store.getState().sessions ?? [];
+    return sessions.find((item) => item.id === sessionId) ?? null;
   };
 
   /** 落库（fire-and-forget）：抛错只记日志 —— 历史完整性不绑架讨论回路。 */
@@ -585,30 +717,53 @@ export function createAgentChatService(deps: AgentChatServiceDeps): AgentChatSer
   /** 整场讨论的回合编排（守门已过）：每轮 A、B 各一回；任何一回失败即收束。 */
   const runDiscussion = async (discussion: ActiveDiscussion): Promise<void> => {
     const { a, b, topic, rounds } = discussion;
-    // 开题气泡 + 双方历史各落一条 user（两边都自带议题上下文，文件头「落库约定」①）。
-    const openingForA = buildOpeningPrompt(b.name, topic);
-    view.addMessage({ role: 'user', text: openingForA });
-    persist(a.id, 'user', openingForA, null);
-    persist(b.id, 'user', buildOpeningPrompt(a.name, topic), null);
-    // 会话事件（@since v3.45，task_094）：议题是用户说的话，落一条 message 事件
-    //   （会话标题里也有议题，但那是摘要；这里记的是历史本体）。
-    recordMessage(discussion, PEER_SESSION_USER_AUTHOR, topic);
+    const resumeCtx = discussion.resume;
 
-    let lastText = openingForA; // 上一位发言者的产出（开题轮 A 的输入即议题；后续回合转述它）
+    let lastText: string; // 上一位发言者的产出（开题轮 A 的输入即议题；后续回合转述它）
+    /** 先说话的一方（新讨论 = A 首发；续跑 = 上一位发言者的对方）。 */
+    let firstSide: 'a' | 'b';
+
+    if (resumeCtx) {
+      // 续跑（@since v3.47，task_101）：**不开题**（议题已在上文里，重复开题等于让模型重头再来），
+      //   也不重复记议题事件（那一条已经在事件流里）。
+      lastText = resumeCtx.lastText;
+      firstSide = resumeCtx.nextSide;
+      view.addMessage({ role: 'user', text: `${PEER_MSG_RESUMED}继续讨论：${topic}` });
+    } else {
+      // 开题气泡 + 双方历史各落一条 user（两边都自带议题上下文，文件头「落库约定」①）。
+      const openingForA = buildOpeningPrompt(b.name, topic);
+      view.addMessage({ role: 'user', text: openingForA });
+      persist(a.id, 'user', openingForA, null);
+      persist(b.id, 'user', buildOpeningPrompt(a.name, topic), null);
+      // 会话事件（@since v3.45，task_094）：议题是用户说的话，落一条 message 事件
+      //   （会话标题里也有议题，但那是摘要；这里记的是历史本体）。
+      recordMessage(discussion, PEER_SESSION_USER_AUTHOR, topic);
+      lastText = openingForA;
+      firstSide = 'a';
+    }
+
     /** 中断原因（非空 = 这场是被打断的，不是走完的）。 */
     let interruptReason: string | null = null;
 
     discussionLoop: for (let round = 1; round <= rounds; round += 1) {
       view.setPeerRound(round, rounds);
-      for (const side of ['a', 'b'] as const) {
+      // 发言次序：新一轮 A 先说；续跑时由"上一位的对方"先说（否则角色会自问自答）。
+      const sideOrder: readonly ('a' | 'b')[] = firstSide === 'a' ? ['a', 'b'] : ['b', 'a'];
+      for (const side of sideOrder) {
         if (discussion.stopRequested) break discussionLoop;
         const other: 'a' | 'b' = side === 'a' ? 'b' : 'a';
         // A 的第一回合 = 议题首发；其余回合 = 转述对方上一轮输出（交替发言 → 对方恒是上一位）。
+        // 续跑时（hasHistory）一律转述：上一位是谁就转述谁，谁先说都一样。
         const base =
-          side === 'a' && round === 1
-            ? buildOpeningPrompt(b.name, topic)
-            : buildRelayPrompt((other === 'a' ? a : b).name, lastText, topic);
-        const outcome = await runTurn(discussion, side, base);
+          resumeCtx && resumeCtx.hasHistory
+            ? buildRelayPrompt((other === 'a' ? a : b).name, lastText, topic)
+            : side === 'a' && round === 1
+              ? buildOpeningPrompt(b.name, topic)
+              : buildRelayPrompt((other === 'a' ? a : b).name, lastText, topic);
+        // 上文注入（@since v3.47，task_101）：续跑时把回灌块拼在指令前 ——
+        //   每一方都带（各自的 CLI 会话可能已经不在了，上文只能靠这段块补回来）。
+        const prompt = resumeCtx?.contextBlock ? `${resumeCtx.contextBlock}\n\n${base}` : base;
+        const outcome = await runTurn(discussion, side, prompt);
         if (!outcome.ok) {
           interruptReason = outcome.reason;
           break discussionLoop;
@@ -685,6 +840,7 @@ export function createAgentChatService(deps: AgentChatServiceDeps): AgentChatSer
         stopRequested: false,
         activeTurn: null,
         sessionId,
+        resume: null,
       };
       active = discussion;
       try {
@@ -692,6 +848,143 @@ export function createAgentChatService(deps: AgentChatServiceDeps): AgentChatSer
       } finally {
         active = null;
       }
+    },
+
+    /**
+     * 续跑一条被中断的互聊会话（@since v3.47，task_101）。
+     *
+     * 顺序（**先判后写**，与文件头「续聊恢复」的口径一致）：
+     *   1. 端口在不在 / 有没有别的讨论在跑；
+     *   2. 会话存在吗、是不是互聊、是不是被中断的（准入）；
+     *   3. 参与者**仍在场**吗（角色被删 = 如实报错，不降级）；守门（绑定 / 检出 / 在线）；
+     *   4. 交给 core/session 的 manager.resume：翻状态位（interrupted → active）+ 建回灌快照；
+     *   5. 追加「（续聊恢复）」事件 → 重启轮转（发言继续记在同一条会话下）。
+     *
+     * why 第 4 步在第 3 步之后：状态翻了却起不来（角色没了）就是"恢复了个寂寞" ——
+     *   先把能不能跑判断清楚，再动状态。
+     */
+    async resume(sessionId: string): Promise<AgentChatResumeOutcome> {
+      const fail = (
+        code: NonNullable<AgentChatResumeOutcome['code']>,
+        reason: string
+      ): AgentChatResumeOutcome => {
+        view.addMessage({ role: 'assistant', text: reason });
+        view.endPeerChat();
+        return { ok: false, code, reason };
+      };
+
+      if (!deps.sessions) {
+        return fail('no-session-port', '会话域未接入，无法恢复续聊');
+      }
+      if (active) {
+        return fail('busy', '已有一场讨论在进行，先停掉它再恢复');
+      }
+      const record = findSessionRecord(sessionId);
+      if (!record) {
+        return fail('not-found', `会话「${sessionId}」不存在`);
+      }
+      if (record.kind !== 'peer_chat') {
+        return fail(
+          'unsupported-kind',
+          `会话「${record.title}」是 ${record.kind} 类，第一期只支持互聊会话恢复续聊`
+        );
+      }
+      if (record.status !== 'interrupted') {
+        return fail(
+          'illegal-transition',
+          `会话「${record.title}」当前是 ${record.status}，只有被中断的会话可恢复`
+        );
+      }
+
+      const state = deps.getState();
+      const found = record.participants.map((id) => state.characters.find((c) => c.id === id) ?? null);
+      const missing = record.participants.filter((_, index) => found[index] === null);
+      if (missing.length > 0) {
+        // 不降级：角色不在场就**如实报错**，绝不"另起一场新讨论"冒充续跑。
+        return fail(
+          'character-missing',
+          `参与者 ${missing.join('、')} 已不在当前世界状态里，无法续聊`
+        );
+      }
+      if (found.length !== 2) {
+        return fail(
+          'unsupported-kind',
+          `会话「${record.title}」的参与者不是两位角色，无法续跑`
+        );
+      }
+      const characterA = found[0]!;
+      const characterB = found[1]!;
+      // 守门与开场同口径：没绑 CLI / CLI 没检出 / 离线 → 不能续跑（如实报错）。
+      for (const character of [characterA, characterB]) {
+        const guard = guardOne(state, character.id);
+        if (!guard.ok) {
+          return fail('guard-rejected', guard.reason);
+        }
+      }
+
+      // 状态翻位 + 回灌快照（core/session 的 manager：原子提交，顺带记一条 'resumed' 事件）。
+      //   失败 = 状态不允许，或**没有事件源**（回灌不出上文）—— 都不编造，直接如实报错。
+      const outcome = deps.sessions.resume(sessionId, { selfParticipantId: characterA.name });
+      if (!outcome) {
+        return fail(
+          'resume-rejected',
+          `会话「${record.title}」恢复失败（状态不允许，或会话历史未接入、无法回灌上文）`
+        );
+      }
+
+      const messages = outcome.snapshot.messages;
+      // 「（续聊恢复）」留痕：事件流里一条（抽屉里看得见"这儿续上了"）。
+      deps.sessions.appendEvent(sessionId, {
+        type: 'message',
+        payload: { author: PEER_SESSION_SYSTEM_AUTHOR, text: PEER_MSG_RESUMED },
+      });
+
+      // 议题：从上文里取用户说的第一条（取不到就用会话标题 —— 标题本身就是议题的摘要）。
+      const topic =
+        messages.find((message) => message.author === PEER_SESSION_USER_AUTHOR)?.content.trim() ||
+        record.title;
+      // 上一位发言者 → 下一位是**对方**（链式对谈不能自问自答）。
+      const lastTurn = [...messages]
+        .reverse()
+        .find(
+          (message) =>
+            message.kind === 'message' &&
+            (message.author === characterA.name || message.author === characterB.name)
+        );
+      const hasHistory = Boolean(lastTurn);
+      const nextSide: 'a' | 'b' = lastTurn && lastTurn.author === characterA.name ? 'b' : 'a';
+      const lastText = lastTurn ? lastTurn.content : buildOpeningPrompt(characterB.name, topic);
+
+      const discussion: ActiveDiscussion = {
+        a: characterA,
+        b: characterB,
+        topic,
+        // 续跑的轮数用缺省（3）：原场次跑了几轮没有留痕 —— 宁可少跑几轮，也不假装知道。
+        rounds: DEFAULT_PEER_ROUNDS,
+        pendingForA: [],
+        pendingForB: [],
+        stopRequested: false,
+        activeTurn: null,
+        sessionId,
+        resume: {
+          contextBlock: buildResumeContextBlock(messages),
+          nextSide,
+          lastText,
+          hasHistory,
+        },
+      };
+      active = discussion;
+      try {
+        await runDiscussion(discussion);
+      } finally {
+        active = null;
+      }
+      return {
+        ok: true,
+        reason: `已恢复会话「${record.title}」并续聊`,
+        sessionId,
+        replayedMessages: messages.length,
+      };
     },
 
     interject(text: string): void {
