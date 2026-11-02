@@ -38,6 +38,8 @@
 
 import {
   MAX_SESSION_AUTHOR_LEN,
+  MAX_SESSION_COMPRESS_KEY_EVENTS,
+  MAX_SESSION_COMPRESS_SUMMARY_LEN,
   MAX_SESSION_OUTPUT_TAIL_LEN,
   MAX_SESSION_PARTICIPANTS,
   MAX_SESSION_REFERENCE_ID_LEN,
@@ -313,6 +315,27 @@ export function normalizeSessionEventDraft(draft: SessionEventDraft): SessionEve
       return {
         type: 'failed',
         payload: { reason: capText(draft.payload.reason, MAX_SESSION_TASK_SUMMARY_LEN) },
+        createdAt: draft.createdAt,
+      };
+    // ---- 压缩摘要（@since v3.48，task_106 / v3.2b-B7）----
+    // 摘要载荷是**结构化事实 + 短文本**：序号 / 轮次 / 条数原样保留（它们是折叠区间的凭据，
+    // 改了就追不回"这段折的是哪几行"），只有自由文本（首末摘要 / 结论行）走截断。
+    case 'compressed':
+      return {
+        type: 'compressed',
+        payload: {
+          fromSeq: draft.payload.fromSeq,
+          toSeq: draft.payload.toSeq,
+          rounds: Math.max(0, Math.floor(draft.payload.rounds)),
+          participants: draft.payload.participants.slice(0, MAX_SESSION_PARTICIPANTS),
+          firstSummary: capText(draft.payload.firstSummary, MAX_SESSION_COMPRESS_SUMMARY_LEN),
+          lastSummary: capText(draft.payload.lastSummary, MAX_SESSION_COMPRESS_SUMMARY_LEN),
+          // 结论行只留**最后**若干条（越靠后越接近当下；前面的结论早被后续进展覆盖）。
+          keyEvents: draft.payload.keyEvents
+            .slice(-MAX_SESSION_COMPRESS_KEY_EVENTS)
+            .map((line) => capText(line, MAX_SESSION_COMPRESS_SUMMARY_LEN)),
+          foldedCount: Math.max(0, Math.floor(draft.payload.foldedCount)),
+        },
         createdAt: draft.createdAt,
       };
     // ---- @会话引用（@since v3.49，task_107 / v3.2b-B8）----

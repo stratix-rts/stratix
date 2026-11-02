@@ -179,7 +179,7 @@ describe('会话读 API（/api/storage/sessions*）', () => {
     }
   });
 
-  it('GET /sessions/:id/events：返回事件流；beforeSeq 游标透传给读口', async () => {
+  it('GET /sessions/:id/events：返回事件流；读口按窗口口径读（游标缺省 = 最新一段）', async () => {
     const { port, calls } = fakePort([], [fakeEvent()]);
     const served = await serveWith(port);
     try {
@@ -192,8 +192,91 @@ describe('会话读 API（/api/storage/sessions*）', () => {
       expect(body.success).toBe(true);
       expect(body.data?.sessionId).toBe('session_peer_chat_1');
       expect(body.data?.events).toHaveLength(1);
+      // 读取路由（@since v3.48，task_106）从**最新**往回翻页扫摘要区间，
+      //   故第一页是「最新 limit 条」（不带游标）；beforeSeq 在路由层过滤。
       expect(calls.readSessionEvents).toEqual([
-        { sessionId: 'session_peer_chat_1', beforeSeq: 5, limit: 10 },
+        { sessionId: 'session_peer_chat_1', beforeSeq: undefined, limit: 200 },
+      ]);
+    } finally {
+      await served.close();
+    }
+  });
+
+  it('GET /sessions/:id/events：includeRaw=1 → 展开原段，游标与条数透传给读口', async () => {
+    const { port, calls } = fakePort([], [fakeEvent()]);
+    const served = await serveWith(port);
+    try {
+      const response = await fetch(
+        `${served.baseUrl}/sessions/session_peer_chat_1/events?includeRaw=1&beforeSeq=5&limit=10`
+      );
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        success?: boolean;
+        data?: { events?: PersistedSessionEvent[]; includeRaw?: boolean };
+      };
+      expect(body.data?.includeRaw).toBe(true);
+      expect(body.data?.events).toHaveLength(1);
+      // 展开原段 = 全部事件都可见 → 直接用读口的窗口口径（游标 + 条数照传）。
+      expect(calls.readSessionEvents).toContainEqual({
+        sessionId: 'session_peer_chat_1',
+        beforeSeq: 5,
+        limit: 10,
+      });
+    } finally {
+      await served.close();
+    }
+  });
+
+  it('GET /sessions/:id/events：压缩过的会话 —— 默认给「摘要 + 近期原文」，includeRaw 给全量', async () => {
+    // 造一条压缩过的会话：12 条事件（1..8 被摘要盖住，摘要本身是第 12 条）。
+    const events: PersistedSessionEvent[] = [];
+    for (let seq = 1; seq <= 11; seq += 1) {
+      events.push(fakeEvent({ seq, type: 'message', payload: { author: 'a', text: `m${seq}` } }));
+    }
+    events.push(
+      fakeEvent({
+        seq: 12,
+        type: 'compressed',
+        payload: {
+          fromSeq: 1,
+          toSeq: 8,
+          rounds: 0,
+          participants: ['a'],
+          firstSummary: 'm1',
+          lastSummary: 'm8',
+          keyEvents: [],
+          foldedCount: 8,
+        },
+      })
+    );
+    // 窗口口径的读口（最后 limit 条 / beforeSeq 之前的那一段）。
+    const port: SessionReadPort = {
+      readSessions: () => [],
+      readSessionEvents: (_sessionId, options) => {
+        const hit = events
+          .filter((event) => options.beforeSeq === undefined || event.seq < options.beforeSeq)
+          .sort((a, b) => a.seq - b.seq);
+        return hit.slice(Math.max(0, hit.length - options.limit));
+      },
+    };
+    const served = await serveWith(port);
+    try {
+      const plain = (await (
+        await fetch(`${served.baseUrl}/sessions/session_peer_chat_1/events?limit=50`)
+      ).json()) as {
+        data?: { events?: PersistedSessionEvent[]; compressed?: boolean; compressedRanges?: unknown[] };
+      };
+      // 默认视图：被盖住的 1..8 不露，保留窗里的原文 + 那条摘要。
+      expect(plain.data?.events?.map((event) => event.seq)).toEqual([9, 10, 11, 12]);
+      expect(plain.data?.compressed).toBe(true);
+      expect(plain.data?.compressedRanges).toEqual([{ fromSeq: 1, toSeq: 8 }]);
+
+      const raw = (await (
+        await fetch(`${served.baseUrl}/sessions/session_peer_chat_1/events?limit=50&includeRaw=1`)
+      ).json()) as { data?: { events?: PersistedSessionEvent[] } };
+      // 展开原段：原文一条不少。
+      expect(raw.data?.events?.map((event) => event.seq)).toEqual([
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
       ]);
     } finally {
       await served.close();
@@ -206,19 +289,20 @@ describe('会话读 API（/api/storage/sessions*）', () => {
     try {
       await fetch(`${served.baseUrl}/sessions/session_peer_chat_1/events`);
       expect(calls.readSessionEvents).toEqual([
-        { sessionId: 'session_peer_chat_1', beforeSeq: undefined, limit: 50 },
+        { sessionId: 'session_peer_chat_1', beforeSeq: undefined, limit: 200 },
       ]);
     } finally {
       await served.close();
     }
   });
 
-  it('坏输入：坏游标 / 超长会话 id 一律 400', async () => {
+  it('坏输入：坏游标 / 坏 includeRaw / 超长会话 id 一律 400', async () => {
     const { port, calls } = fakePort([], []);
     const served = await serveWith(port);
     try {
       expect((await fetch(`${served.baseUrl}/sessions/session_peer_chat_1/events?beforeSeq=0`)).status).toBe(400);
       expect((await fetch(`${served.baseUrl}/sessions/session_peer_chat_1/events?beforeSeq=abc`)).status).toBe(400);
+      expect((await fetch(`${served.baseUrl}/sessions/session_peer_chat_1/events?includeRaw=maybe`)).status).toBe(400);
       expect((await fetch(`${served.baseUrl}/sessions/${'x'.repeat(201)}/events`)).status).toBe(400);
       expect(calls.readSessionEvents).toHaveLength(0);
     } finally {

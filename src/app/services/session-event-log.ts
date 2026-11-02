@@ -96,6 +96,19 @@ export function createSessionEventLog(options: SessionEventLogOptions = {}): Ses
         beforeSeq === undefined ? list : list.filter((event) => event.seq < beforeSeq);
       return filtered.slice(Math.max(0, filtered.length - query.limit)).map(toView);
     },
+    // 向前读（@since v3.48 / task_106）：取 seq 大于 afterSeq 的**最早** limit 条。
+    //   长会话压缩取"要折的那一段"用 —— 窗口口径得从最新往回翻页穿过整段历史（读放大）。
+    readSessionEventsAfter: (sessionId, afterSeq, limit) => {
+      const list = bySession.get(sessionId) ?? [];
+      const out: SessionEventView[] = [];
+      // list 按写入序 = seq 序（seq 会话内单调）→ 顺序扫到 afterSeq 之后即可停。
+      for (const event of list) {
+        if (event.seq <= afterSeq) continue;
+        out.push(toView(event));
+        if (out.length >= limit) break;
+      }
+      return out;
+    },
   };
 
   return {

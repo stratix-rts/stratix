@@ -68,6 +68,12 @@ interface GetData {
     before_seq: number | null;
     has_more: boolean;
     items: EventItem[];
+    /** 折叠后**可见**的事件条数（摘要 + 近期原文）；total 是全量条数。 */
+    visible_total?: number;
+    include_raw?: boolean;
+    /** 这条会话是否折叠过（@since v3.48，task_106）。 */
+    compressed?: boolean;
+    compressed_ranges?: { from_seq: number; to_seq: number }[];
   };
   poll: { tool: string; args: Record<string, unknown> };
 }
@@ -375,6 +381,118 @@ describe('stratix_session_list / stratix_session_get（真实 sql.js 适配器�
       expect(await errorCode(callGet(makeHost(false), { session_id: 'session_peer_chat_1' }))).toBe(
         'internal_error'
       );
+    });
+  });
+
+  /**
+   * 长会话压缩（@since v3.48，task_106 / v3.2b-B7）——
+   *   老段被折叠成**一条** 'compressed' 摘要事件后，MCP 读面默认给「摘要 + 近期原文」，
+   *   include_raw=true 才展开原段。
+   */
+  describe('长会话压缩（task_106 / v3.2b-B7）', () => {
+    /**
+     * 造一条压缩过的会话：1..8 被摘要盖住（原文仍在库里 —— append-only 不删行），
+     *   摘要本身是第 12 条事件。
+     */
+    function seedCompressed(): void {
+      upsertSessionRecord(
+        db as unknown as Parameters<typeof upsertSessionRecord>[0],
+        session({ id: 'session_peer_chat_long', createdAt: 1_000, eventCount: 12 })
+      );
+      const append = (
+        seq: number,
+        type: string,
+        payload: unknown,
+        createdAt: number
+      ): void => {
+        appendSessionEvent(db as unknown as Parameters<typeof appendSessionEvent>[0], {
+          sessionId: 'session_peer_chat_long',
+          seq,
+          type,
+          payload,
+          createdAt,
+        });
+      };
+      for (let seq = 1; seq <= 11; seq += 1) {
+        append(seq, 'message', { author: 'agent-a', text: `m${seq}` }, 1_000 + seq);
+      }
+      append(
+        12,
+        'compressed',
+        {
+          fromSeq: 1,
+          toSeq: 8,
+          rounds: 0,
+          participants: ['agent-a'],
+          firstSummary: 'm1',
+          lastSummary: 'm8',
+          keyEvents: [],
+          foldedCount: 8,
+        },
+        1_012
+      );
+    }
+
+    it('默认视图：被盖住的老原文不露，compressed / compressed_ranges 如实报', async () => {
+      seedCompressed();
+      const data = await callGet(makeHost(), { session_id: 'session_peer_chat_long' });
+
+      // 可见 = 保留窗里的原文（9..11）+ 那条摘要（12）。
+      expect(data.events.items.map((item) => item.seq)).toEqual([9, 10, 11, 12]);
+      expect(data.events.visible_total).toBe(4);
+      // total 是全量条数（含被折叠的老段）—— 与 visible_total 区分开。
+      expect(data.events.total).toBe(12);
+      expect(data.events.compressed).toBe(true);
+      expect(data.events.compressed_ranges).toEqual([{ from_seq: 1, to_seq: 8 }]);
+      expect(data.events.include_raw).toBe(false);
+    });
+
+    it('include_raw=true：展开原段，原文一条不少（append-only：不删行）', async () => {
+      seedCompressed();
+      const data = await callGet(makeHost(), {
+        session_id: 'session_peer_chat_long',
+        include_raw: true,
+      });
+
+      expect(data.events.items.map((item) => item.seq)).toEqual([
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+      ]);
+      expect(data.events.include_raw).toBe(true);
+      // 折叠过这件事照样如实报（客户端据此提示"这里可以展开"）。
+      expect(data.events.compressed).toBe(true);
+      expect(data.events.compressed_ranges).toEqual([{ from_seq: 1, to_seq: 8 }]);
+    });
+
+    it('分页：按**可见**事件切；展开原段时能翻到被折叠的老原文', async () => {
+      seedCompressed();
+      const host = makeHost();
+
+      // 默认视图翻页：游标之前那段（可见事件里更早的）。
+      const older = await callGet(host, {
+        session_id: 'session_peer_chat_long',
+        before_seq: 11,
+        limit: 2,
+      });
+      expect(older.events.items.map((item) => item.seq)).toEqual([9, 10]);
+      expect(older.events.has_more).toBe(false);
+
+      // 展开原段翻页：能翻到被折叠的老原文（默认视图翻不到 —— 它们已被摘要盖住）。
+      const rawOlder = await callGet(host, {
+        session_id: 'session_peer_chat_long',
+        before_seq: 5,
+        limit: 3,
+        include_raw: true,
+      });
+      expect(rawOlder.events.items.map((item) => item.seq)).toEqual([2, 3, 4]);
+    });
+
+    it('include_raw 非布尔 → invalid_arguments', async () => {
+      seedCompressed();
+      expect(
+        await errorCode(
+          callGet(makeHost(), { session_id: 'session_peer_chat_long', include_raw: 'yes' })
+        )
+      ).toBe('invalid_arguments');
     });
   });
 });

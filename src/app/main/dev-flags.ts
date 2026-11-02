@@ -53,6 +53,13 @@ declare const __STRATIX_TITLE_LLM_URL__: string | undefined;
 declare const __STRATIX_TITLE_LLM_KEY__: string | undefined;
 declare const __STRATIX_TITLE_LLM_MODEL__: string | undefined;
 
+/**
+ * 构建期注入的长会话压缩阈值（@since v3.48，task_106 / v3.2b-B7；空串 = 未设置 → 用缺省 200）。
+ * why 也要构建期这一路：纯浏览器 dev（npm run dev，不起 Electron）没有 preload 通道，
+ *   只有 vite define 能把 shell 里的环境变量带进渲染层。
+ */
+declare const __STRATIX_SESSION_COMPRESS_THRESHOLD__: string | undefined;
+
 /** preload 透传的环境变量形状（与 src/electron/preload.ts 的 ElectronAPI.env 对应）。 */
 interface RuntimeEnvHost {
   readonly electronAPI?: {
@@ -64,6 +71,7 @@ interface RuntimeEnvHost {
       readonly SX_TITLE_LLM_URL?: string | null;
       readonly SX_TITLE_LLM_KEY?: string | null;
       readonly SX_TITLE_LLM_MODEL?: string | null;
+      readonly SX_SESSION_COMPRESS_THRESHOLD?: string | null;
     };
   };
 }
@@ -76,7 +84,8 @@ type RuntimeEnvName =
   | 'STRATIX_PEER_TURN_TIMEOUT_MS'
   | 'SX_TITLE_LLM_URL'
   | 'SX_TITLE_LLM_KEY'
-  | 'SX_TITLE_LLM_MODEL';
+  | 'SX_TITLE_LLM_MODEL'
+  | 'SX_SESSION_COMPRESS_THRESHOLD';
 
 /** 读运行时环境变量（Electron）；非浏览器 / 无 preload 时返回 null。 */
 function readRuntimeEnv(name: RuntimeEnvName): string | null {
@@ -172,4 +181,24 @@ export function titleLlmEnv(): Record<string, string | undefined> {
       typeof __STRATIX_TITLE_LLM_MODEL__ === 'string' ? __STRATIX_TITLE_LLM_MODEL__ : undefined
     ),
   };
+}
+
+/**
+ * **长会话压缩阈值**的原始环境值（@since v3.48，task_106 / v3.2b-B7）——
+ *   env `SX_SESSION_COMPRESS_THRESHOLD`（事件条数；不设置 = 用缺省 200）。
+ *
+ * 优先级：运行时环境变量（Electron preload 透传）> 构建期常量（vite define）。
+ * why 运行时优先：同一个构建产物要能按启动时的环境变量调压缩阈值（长任务会话更早折叠）。
+ *
+ * 返回**原始串**（不解析、不钳位）：解析口径归 app/services/session-compress-config.ts
+ *   的 resolveSessionCompressThreshold（纯函数、可单测）。
+ */
+export function sessionCompressThresholdRaw(): string | null {
+  const runtime = readRuntimeEnv('SX_SESSION_COMPRESS_THRESHOLD');
+  if (runtime) return runtime;
+  const buildTime =
+    typeof __STRATIX_SESSION_COMPRESS_THRESHOLD__ === 'string'
+      ? __STRATIX_SESSION_COMPRESS_THRESHOLD__
+      : '';
+  return buildTime !== '' ? buildTime : null;
 }

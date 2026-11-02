@@ -137,6 +137,37 @@ export function listSessionEvents(
   return rows.map(mapEventRow).reverse();
 }
 
+/**
+ * **向前读**某会话的一段事件（seq **大于** afterSeq 的**最早** limit 条，seq 正序）。
+ *
+ * why 需要这一路（@since v3.48 / task_106）：长会话压缩每追加一条事件就要折一次老段，
+ *   而"要折的那一段"就在**覆盖边界之后的最前面** —— 只有向前读能直接取到它（O(条数)）；
+ *   用 listSessionEvents 的窗口口径（取最后 limit 条）得从最新往回翻页穿过整段历史，
+ *   而那段历史里堆着历次折叠的摘要事件（每次折叠追加一条）→ 读量随会话长度增长。
+ *
+ * why 走主键索引：主键是 (session_id, seq) → `session_id = ? AND seq > ?` 是**前缀 + 范围**扫描，
+ *   命中同一棵索引树（不扫表、不排序）。
+ */
+export function listSessionEventsFrom(
+  db: SqliteDatabaseLike,
+  sessionId: string,
+  afterSeq: number,
+  limit: number
+): PersistedSessionEvent[] {
+  ensureSessionEventsTable(db);
+  const bounded = clampLimit(limit);
+  const rows = db
+    .prepare(
+      `SELECT session_id, seq, type, payload, created_at
+       FROM ${SESSION_EVENTS_TABLE}
+       WHERE session_id = ? AND seq > ?
+       ORDER BY seq ASC
+       LIMIT ?`
+    )
+    .all(sessionId, Math.floor(afterSeq), bounded) as Array<Record<string, unknown>>;
+  return rows.map(mapEventRow);
+}
+
 /** limit 收紧到 [1, 200]；非数字回落缺省 50（外部输入不可信）。 */
 function clampLimit(value: number | undefined): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return 50;

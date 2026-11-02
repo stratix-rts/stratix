@@ -36,6 +36,7 @@ import {
   type PersistedSessionRecord,
 } from '../../../app/services/persistence/session-dao';
 import type { PersistedSessionEvent } from '../../../app/services/persistence/session-event-dao';
+import { readRoutedSessionEvents } from '../../../core/session';
 import type { SessionKind, SessionStatus } from '../../../core/types';
 
 /**
@@ -106,6 +107,18 @@ function parsePositiveInt(value: unknown): number | null {
 }
 
 /**
+ * 严格解析布尔查询值：'1' / 'true' = 真；'0' / 'false' = 假；缺省 = null（= 没给）。
+ * 其它值 → null（= 坏值，路由据此 400 —— 不猜客户端的意图）。
+ */
+function parseBoolean(value: unknown): boolean | null {
+  if (value === undefined || value === null || value === '') return null;
+  const raw = String(value).trim().toLowerCase();
+  if (raw === '1' || raw === 'true') return true;
+  if (raw === '0' || raw === 'false') return false;
+  return null;
+}
+
+/**
  * 造会话读路由。
  *
  * @param port 读取口；null = 存储未附着（路由会如实报 503，不返回空态假装正常）。
@@ -160,11 +173,14 @@ export function createSessionStorageRoutes(port: SessionReadPort | null): Router
   });
 
   /**
-   * GET /sessions/:id/events —— 某会话的事件流（分页）。
+   * GET /sessions/:id/events —— 某会话的事件流（分页 + **压缩读取路由**）。
    *
    * 查询参数：
    *   limit     —— 条数（缺省 50，收紧到 [1, 200]）；
-   *   beforeSeq —— 游标（取该 seq **之前**的一段；给了才翻页；坏值 → 400）。
+   *   beforeSeq —— 游标（取该 seq **之前**的一段；给了才翻页；坏值 → 400）；
+   *   includeRaw —— 是否**展开被折叠的原段**（@since v3.48，task_106 / v3.2b-B7）。
+   *     缺省 = 否 → 只给「压缩摘要 + 近期原文」（长会话的老段已被折叠成一条摘要）；
+   *     给 1 / true → 展开原段（原文一条不少）；坏值 → 400。
    */
   router.get('/sessions/:id/events', (req: Request, res: Response): void => {
     if (!port) {
@@ -183,12 +199,36 @@ export function createSessionStorageRoutes(port: SessionReadPort | null): Router
       res.status(400).json({ success: false, error: 'bad beforeSeq' });
       return;
     }
+    const rawIncludeRaw = req.query.includeRaw;
+    const includeRaw = parseBoolean(rawIncludeRaw);
+    if (rawIncludeRaw !== undefined && rawIncludeRaw !== '' && includeRaw === null) {
+      res.status(400).json({ success: false, error: 'bad includeRaw' });
+      return;
+    }
     try {
-      const events = port.readSessionEvents(sessionId, {
-        ...(beforeSeq === null ? {} : { beforeSeq }),
+      // 读取路由（@since v3.48，task_106）：默认给「压缩摘要 + 近期原文」，
+      //   includeRaw=1 时展开被折叠的原段（原文一条不少）。
+      const route = readRoutedSessionEvents(port, sessionId, {
         limit,
+        ...(beforeSeq === null ? {} : { beforeSeq }),
+        ...(includeRaw === true ? { includeRaw: true } : {}),
       });
-      res.json({ success: true, data: { sessionId, events, limit, beforeSeq } });
+      res.json({
+        success: true,
+        data: {
+          sessionId,
+          events: route.items,
+          limit,
+          beforeSeq,
+          includeRaw: includeRaw === true,
+          // 该会话是否发生过压缩 + 被折叠的区间（客户端据此提示"这里可以展开原段"）。
+          compressed: route.compressed,
+          compressedRanges: route.ranges.map((range) => ({
+            fromSeq: range.fromSeq,
+            toSeq: range.toSeq,
+          })),
+        },
+      });
     } catch (error: unknown) {
       res.status(500).json({
         success: false,

@@ -72,6 +72,33 @@ export const MAX_SESSION_STEP_LABEL_LEN = 64;
 export const MAX_SESSION_REFERENCE_ID_LEN = 128;
 
 /**
+ * 压缩触发阈值的缺省值（事件条数）—— eventCount 超过它就折叠老段（@since v3.48，task_106）。
+ * why 200：一场长互聊 / 一条长任务会话到几百条事件才需要摘要；
+ *   再早就折叠等于"刚说完就只剩摘要"，读者失去原文。
+ * 可用 env `SX_SESSION_COMPRESS_THRESHOLD` 调（解析在 app/services/session-compress-config.ts）。
+ */
+export const DEFAULT_SESSION_COMPRESS_THRESHOLD = 200;
+
+/**
+ * 折叠后**保留的近期原文**条数（@since v3.48，task_106）。
+ * why 50：够读完"刚才在聊什么"的上下文，又不至于把会话读面撑爆。
+ */
+export const SESSION_COMPRESS_KEEP_RECENT = 50;
+
+/**
+ * 压缩摘要里单条文本（首末摘要 / 结论行）的长度上限（码点）。
+ * why 200：与 task_run 的摘要同量级 —— 摘要要的是骨架，不是正文。
+ */
+export const MAX_SESSION_COMPRESS_SUMMARY_LEN = 200;
+
+/**
+ * 压缩摘要里**结论行**的条数上限（@since v3.48，task_106）。
+ * why 10：中断 / 收尾这类事件在一个长段里不会太多；超了只留**最后**若干条
+ * （结论越靠后越接近当下 —— 前面的结论早被后续进展覆盖了）。
+ */
+export const MAX_SESSION_COMPRESS_KEY_EVENTS = 10;
+
+/**
  * task_run 事件里**输出尾部**的长度上限（码点）—— 尾 500 字。
  * why 尾截而不是头截：任务产出里结论通常在末尾（报告的最后一段），
  * 截头会把结论切掉，留下的全是铺垫 —— 那才是无用信息。
@@ -122,6 +149,34 @@ export interface SessionEventPayloadMap {
   /** task_run：任务失败收尾（含**错误摘要**）。 */
   failed: { readonly reason: string };
   /**
+   * **压缩摘要**（@since v3.48，task_106 / v3.2b-B7）—— 老事件段折叠成的**一条**摘要事件。
+   *
+   * why 摘要也是一条事件（而不是会话摘要上的一个字段）：事件流是「发生过什么」的审计真相，
+   *   折叠这件事本身发生过 → 它该留痕；而会话摘要（WorldState.sessions）随广播全量下发，
+   *   往里塞摘要 = 广播体积随会话增长（性能铁律：有界）。
+   *
+   * 口径：fromSeq..toSeq 是**被折叠的原文区间**（含端点）——
+   *   读路由据此跳过该区间的原文（append-only：不删行，靠这条摘要"盖"住）。
+   */
+  compressed: {
+    /** 被折叠的原文起始 seq（含）。 */
+    readonly fromSeq: number;
+    /** 被折叠的原文结束 seq（含）。 */
+    readonly toSeq: number;
+    /** 这一段里的**轮次数**（'round' 事件的条数）。 */
+    readonly rounds: number;
+    /** 这一段的**参与者**（消息署名，去重后）。 */
+    readonly participants: readonly string[];
+    /** 首条消息摘要（没有消息时退化为首条事件的摘要）。 */
+    readonly firstSummary: string;
+    /** 末条消息摘要（没有消息时退化为末条事件的摘要）。 */
+    readonly lastSummary: string;
+    /** **中断 / 结论**事件列表（人话一行一条，如「中断：超时」）。 */
+    readonly keyEvents: readonly string[];
+    /** 被折叠的原文条数。 */
+    readonly foldedCount: number;
+  };
+  /**
    * **@会话引用**（@since v3.49，task_107 / v3.2b-B8）—— 本会话引用了**另一条**会话。
    *
    * payload 记**被引用的会话 id**（结构化事实：原样保留 —— 改了就追不回源会话）。
@@ -132,6 +187,38 @@ export interface SessionEventPayloadMap {
     /** 被引用的会话 id。 */
     readonly targetSessionId: string;
   };
+}
+
+/** 压缩摘要事件的载荷（= SessionEventPayloadMap 里的 'compressed'）。 */
+export type SessionCompressPayload = SessionEventPayloadMap['compressed'];
+
+/**
+ * 压缩摘要的**入参**（@since v3.48，task_106 / v3.2b-B7）—— 摘要实现据此生成载荷。
+ */
+export interface SessionCompressInput {
+  /** 被折叠的那条会话（摘要的上下文：kind / 参与者 / 标题）。 */
+  readonly session: SessionRecord;
+  /** 被折叠的原文事件（seq 正序；只有这一段，不含保留窗里的近期原文）。 */
+  readonly events: readonly SessionEventView[];
+}
+
+/**
+ * 压缩摘要的**端口**（@since v3.48，task_106 / v3.2b-B7）——
+ *   core 只认这个**纯契约**，不认摘要实现（core 零 IO 铁律：LLM 摘要要发网络请求，属 app 层）。
+ *
+ * ★ 本期**只有规则版实现**（core/session/compress.ts 的 buildRuleSummary）：结构化、无 IO、确定性、可单测。
+ *   LLM 版**留接口不实现**（方案 §8「LLM 摘要留端口不实现」）——
+ *   真要接 LLM，实现方须注意：① 摘要失败必须回退规则版（不能让会话丢摘要）；
+ *   ② 载荷形状不变（读路由与折叠区间的口径不能因实现而漂移）。
+ *
+ * why 同步返回：折叠发生在 append 的**旁路**上（append 不能被网络请求拖住）；
+ *   LLM 版接入时应把折叠改成异步补写（fire-and-forget），而不是把 append 变成异步。
+ */
+export interface SessionCompressSummarizer {
+  /** 实现标识（'rules' / 未来的 'llm'）—— 便于日志与诊断（不参与业务判定）。 */
+  readonly id: string;
+  /** 生成摘要载荷；实现不得抛异常（失败由调用方回退规则版）。 */
+  summarize(input: SessionCompressInput): SessionCompressPayload;
 }
 
 /** 会话事件类型（载荷表的键）。 */
@@ -248,6 +335,24 @@ export interface SessionEventReadPort {
   readonly readSessionEvents: (
     sessionId: string,
     options: SessionEventQuery
+  ) => readonly SessionEventView[];
+  /**
+   * **向前读**（可选，@since v3.48 / task_106 / v3.2b-B7）——
+   *   取 seq **大于** afterSeq 的**最早** limit 条（seq 正序）。
+   *
+   * why 需要它（性能铁律：长会话不许 O(n) per append）：
+   *   长会话压缩每追加一条事件就要折一次老段，而"要折的那一段"就在**覆盖边界之后的最前面**。
+   *   只有"向前读"能直接取到它（O(要折的条数)）；
+   *   只靠 readSessionEvents 的**窗口**口径（取最后 limit 条）就得从最新往回翻页穿过整段历史 ——
+   *   而那段历史里堆着历次折叠留下的摘要事件（每次折叠追加一条），于是读量随会话长度增长（O(n) per append）。
+   *
+   * why 是**可选**方法：实现方不支持时 core 回退到「窗口 + 向前翻页」的慢路径 ——
+   *   读面仍然**正确**（同一段原文，只是读得多），不因缺这个优化而失真。
+   */
+  readonly readSessionEventsAfter?: (
+    sessionId: string,
+    afterSeq: number,
+    limit: number
   ) => readonly SessionEventView[];
 }
 

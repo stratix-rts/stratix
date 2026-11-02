@@ -34,7 +34,11 @@ import {
   listSessionRecords,
   type PersistedSessionRecord,
 } from './session-dao';
-import { listSessionEvents, type PersistedSessionEvent } from './session-event-dao';
+import {
+  listSessionEvents,
+  listSessionEventsFrom,
+  type PersistedSessionEvent,
+} from './session-event-dao';
 
 /**
  * 造一个会话读口（包两张表的读动作）。
@@ -70,6 +74,14 @@ export function createSessionReader(db: SqliteDatabaseLike): SessionReadPort {
         ...(options.beforeSeq === undefined ? {} : { beforeSeq: options.beforeSeq }),
         limit: options.limit,
       }).map(toSessionEventView),
+    // 向前读（@since v3.48 / task_106）：长会话压缩取"要折的那一段"用 ——
+    //   窗口口径得从最新往回翻页穿过整段历史（读量随会话长度增长），向前读是 O(条数)。
+    readSessionEventsAfter: (
+      sessionId: string,
+      afterSeq: number,
+      limit: number
+    ): readonly SessionEventView[] =>
+      listSessionEventsFrom(db, sessionId, afterSeq, limit).map(toSessionEventView),
   };
 }
 

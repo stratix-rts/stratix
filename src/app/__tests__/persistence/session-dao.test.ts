@@ -26,6 +26,7 @@ import {
   appendSessionEvent,
   ensureSessionEventsTable,
   listSessionEvents,
+  listSessionEventsFrom,
   type SessionEventInsert,
 } from '../../services/persistence/session-event-dao';
 
@@ -208,6 +209,32 @@ describe('session-dao + session-event-dao（真实 sql.js 适配器）', () => {
 
     it('同一会话重复 seq 撞主键 → 抛错（append-only 不许改写历史）', () => {
       expect(() => appendSessionEvent(db, event({ seq: 2 }))).toThrow();
+    });
+  });
+
+  describe('listSessionEventsFrom（向前读：取 seq 大于游标的一段）', () => {
+    beforeEach(() => {
+      appendSessionEvent(db, event({ seq: 1, type: 'created', createdAt: 1_000 }));
+      appendSessionEvent(db, event({ seq: 2, type: 'message', payload: { author: 'a', text: '在吗' }, createdAt: 2_000 }));
+      appendSessionEvent(db, event({ seq: 3, type: 'message', payload: { author: 'b', text: '在' }, createdAt: 3_000 }));
+      appendSessionEvent(db, event({ seq: 4, type: 'compressed', payload: { fromSeq: 1, toSeq: 2 }, createdAt: 4_000 }));
+    });
+
+    it('取 seq 大于游标的**最早** limit 条，正序返回', () => {
+      const rows = listSessionEventsFrom(db, 'session_peer_chat_1', 2, 10);
+      expect(rows.map((r) => r.seq)).toEqual([3, 4]);
+      expect(rows[0]?.type).toBe('message');
+      expect(rows[1]?.type).toBe('compressed');
+    });
+
+    it('limit 取的是**头部**那一批（不是尾部 —— 与窗口口径相反）', () => {
+      const rows = listSessionEventsFrom(db, 'session_peer_chat_1', 0, 2);
+      expect(rows.map((r) => r.seq)).toEqual([1, 2]);
+    });
+
+    it('游标在末尾 → 空数组；会话隔离：别的会话读不到本会话的事件', () => {
+      expect(listSessionEventsFrom(db, 'session_peer_chat_1', 4, 10)).toEqual([]);
+      expect(listSessionEventsFrom(db, 'session_other', 0, 10)).toEqual([]);
     });
   });
 

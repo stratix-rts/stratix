@@ -4,7 +4,7 @@
  *   互聊会话 = 续跑接线）、`stratix_session_fork`（从某条事件处分叉出一条新会话）
  *   —— 会话域的工具组：外部 agent 由此看见会话，
  *   并能叫停 / 恢复 / 分叉一场对话（docs/SESSION-PLAN.md §8 B4 与 2b 第一期）。
- * 输入：list = kind? / status? / limit? / offset?；get = session_id / before_seq? / limit?；
+ * 输入：list = kind? / status? / limit? / offset?；get = session_id / before_seq? / limit? / include_raw?；
  *      interrupt = session_id；resume = session_id；fork = session_id / at_seq?。
  * 输出：会话摘要列表（带 returned / total / truncated）或单条会话摘要 + 事件流的一段，
  *      或一次中断 / 恢复 / 分叉的受理回执（id / 状态 / 查法 poll）。
@@ -28,15 +28,21 @@
  * why 写面反而看 WorldState：中断的**裁决与落点**在本进程的状态里（core/session 的 manager
  *   写的正是这份 WorldState.sessions）—— 库里那条会话本进程未必还在跑（服务重启后不在内存、
  *   已收尾被 FIFO 淘汰），对一条不在跑的会话发命令没有意义。
+ *
+ * ★ 长会话压缩（@since v3.48，task_106 / v3.2b-B7）：事件条数超阈值后，老段会被折叠成**一条**
+ *   'compressed' 摘要事件 → 读面默认给「压缩摘要 + 近期原文」（被折叠的老原文默认不出现）；
+ *   include_raw=true 时展开原段（原文一条不少）。口径与 service 侧读 API（?includeRaw=1）
+ *   共用 core/session 的 readRoutedSessionEvents（一份路由 = 两处不漂移）。
  */
 
 import {
   PERSISTED_SESSION_KINDS,
   PERSISTED_SESSION_STATUSES,
 } from '../../../app/services/persistence/session-dao';
+import { readRoutedSessionEvents } from '../../../core/session';
 import type { SessionEventView } from '../../../core/session/types';
 import type { SessionKind } from '../../../core/types';
-import { optionalEnum, optionalInteger, requireString } from '../args';
+import { optionalBoolean, optionalEnum, optionalInteger, requireString } from '../args';
 import { McpToolError, toToolResult } from '../envelope';
 import type { McpHost, ToolSpec } from '../types';
 
@@ -171,8 +177,12 @@ export const sessionGetTool: ToolSpec = {
     'limit 默认 50、上限 200；before_seq 是**游标**（取该序号**之前**的一段，用于往前翻页 ——',
     '把返回的最早一条的 seq 再传回来即可继续往前翻）；会话里更早还有事件时 has_more=true。',
     '事件正文按事件类型原样返回（message 事件带 author / text，interrupt 事件带 reason），MCP 不做总结。',
+    '长会话（@since v3.48）：事件条数超阈值后，老段会被折叠成**一条 compressed 摘要事件** ——',
+    '默认读到的是「压缩摘要 + 近期原文」（被折叠的老原文默认不出现）；',
+    'compressed=true 表示这条会话折叠过，compressed_ranges 给出被折叠的 seq 区间；',
+    '要看原段就带 include_raw=true（原文一条不少，按同样的 before_seq / limit 分页）。',
     '错误：session_not_found（会话 id 不存在）/ invalid_arguments（session_id 为空 / before_seq 非正整数 /',
-    'limit 越界）/ internal_error。',
+    'limit 越界 / include_raw 非布尔）/ internal_error。',
   ].join('\n'),
   inputSchema: {
     type: 'object',
@@ -194,6 +204,12 @@ export const sessionGetTool: ToolSpec = {
         default: DEFAULT_EVENT_LIMIT,
         description: '本页最多返回几条事件（默认 50，上限 200）。',
       },
+      include_raw: {
+        type: 'boolean',
+        default: false,
+        description:
+          '展开被折叠的原段（默认 false = 只给「压缩摘要 + 近期原文」；true = 原文一条不少）。',
+      },
     },
     required: ['session_id'],
     additionalProperties: false,
@@ -204,6 +220,7 @@ export const sessionGetTool: ToolSpec = {
     const sessionId = requireString(args, 'session_id');
     const beforeSeq = optionalInteger(args, 'before_seq', { min: 1 });
     const limit = optionalInteger(args, 'limit', { min: 1, max: MAX_EVENT_LIMIT }) ?? DEFAULT_EVENT_LIMIT;
+    const includeRaw = optionalBoolean(args, 'include_raw', false);
 
     const reader = requireSessionReader(host);
     const record = reader.readSession(sessionId);
@@ -213,10 +230,14 @@ export const sessionGetTool: ToolSpec = {
       });
     }
 
-    const events = reader.readSessionEvents(sessionId, {
-      ...(beforeSeq === undefined ? {} : { beforeSeq }),
+    // 读取路由（@since v3.48，task_106 / v3.2b-B7）：默认给「压缩摘要 + 近期原文」，
+    //   include_raw=true 时展开被折叠的原段（口径与 REST 的 ?includeRaw=1 同一份路由）。
+    const route = readRoutedSessionEvents(reader, sessionId, {
       limit,
+      ...(beforeSeq === undefined ? {} : { beforeSeq }),
+      ...(includeRaw ? { includeRaw: true } : {}),
     });
+    const events = route.items;
 
     return toToolResult({
       ok: true,
@@ -237,10 +258,19 @@ export const sessionGetTool: ToolSpec = {
           returned: events.length,
           // 总数取摘要计数（会话域的权威计数）；本页条数是实际取回的那一段。
           total: record.eventCount,
+          // 折叠后**可见**的事件条数（摘要 + 近期原文）；total 是全量条数（含被折叠的老段）。
+          visible_total: route.total,
           limit,
           before_seq: beforeSeq ?? null,
-          // 更早还有事件 = 本页最早一条的 seq 不是 1（seq 会话内单调且连续）。
-          has_more: events.length > 0 && events[0].seq > 1,
+          include_raw: includeRaw,
+          // 这条会话是否折叠过（折叠过 = 老段已被摘要取代，default 视图看不到）。
+          compressed: route.compressed,
+          compressed_ranges: route.ranges.map((range) => ({
+            from_seq: range.fromSeq,
+            to_seq: range.toSeq,
+          })),
+          // 更早还有**可见**事件 = 本页不是可见事件的第一段。
+          has_more: route.hasMore,
           items: events.map(presentEvent),
         },
         // 会话在推进时，再调一次就能看到新事件（读面的"查法"）。

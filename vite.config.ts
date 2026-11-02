@@ -175,6 +175,14 @@ export default defineConfig(async () => {
       __STRATIX_TITLE_LLM_URL__: JSON.stringify(process.env.SX_TITLE_LLM_URL ?? ''),
       __STRATIX_TITLE_LLM_KEY__: JSON.stringify(process.env.SX_TITLE_LLM_KEY ?? ''),
       __STRATIX_TITLE_LLM_MODEL__: JSON.stringify(process.env.SX_TITLE_LLM_MODEL ?? ''),
+      /**
+       * 长会话压缩阈值（事件条数；@since v3.48，task_106 / v3.2b-B7；空串 = 用缺省 200）。
+       * why 也要构建期这一路：纯浏览器 dev（不起 Electron）没有 preload 通道，
+       *   只有 vite define 能把 shell 里的环境变量带进渲染层。
+       */
+      __STRATIX_SESSION_COMPRESS_THRESHOLD__: JSON.stringify(
+        process.env.SX_SESSION_COMPRESS_THRESHOLD ?? '',
+      ),
     },
   };
 });

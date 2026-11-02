@@ -101,6 +101,7 @@ import {
   gameSaveApi,
   type RestoreInjection,
 } from '../services/persistence/game-save-coordinator';
+import { resolveSessionCompressThreshold } from '../services/session-compress-config';
 import { createSessionEventLog } from '../services/session-event-log';
 import {
   createSessionHistoryPort,
@@ -166,6 +167,7 @@ import {
   isRemoteModeEnabled,
   peerTurnTimeoutRaw,
   remoteWorldSyncUrl,
+  sessionCompressThresholdRaw,
   titleLlmEnv,
 } from './dev-flags';
 import { createOnboardingHost } from './onboarding-host';
@@ -458,6 +460,9 @@ async function boot(): Promise<void> {
     //   （app/services/session-event-log.ts：写口与读口同一份内存，条数与会话数都有上限）。
     //   远程模式不接：真相在 service 进程（铁律 1「真相唯一」），本地再记一份 = 第二份真相。
     ...(remote ? {} : { persist: sessionEventLog.persist, read: sessionEventLog.read }),
+    // 长会话压缩（@since v3.48，task_106 / v3.2b-B7）：事件条数超过阈值 → 老段折叠成一条摘要。
+    //   阈值来自 env `SX_SESSION_COMPRESS_THRESHOLD`（缺省 200，解析见 app/services/session-compress-config.ts）。
+    compressThreshold: resolveSessionCompressThreshold(sessionCompressThresholdRaw()),
   });
   // ===== 自动起名（@since v3.47，task_104 / v3.2b-B5）=====
   //   起名实现按 env 三件套选：齐全 → LLM 版（OpenAI 兼容 chat completions，失败静默回退规则版）；

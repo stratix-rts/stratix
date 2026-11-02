@@ -39,6 +39,16 @@ import { worldStore, type CoreStore } from '../store';
 import { MAX_SESSIONS, NOTICE_TTL_MS, type NoticeLevel } from '../types';
 
 import {
+  collectCompressedRanges,
+  latestSummaryPayload,
+  mergeCompressedRanges,
+  mergeCompressPayload,
+  planFoldOldest,
+  readAllSessionEvents,
+  readOldestRawsAfter,
+  ruleCompressSummarizer,
+} from './compress';
+import {
   buildContextSnapshot,
   copyEventsForFork,
   resolveForkCutoff,
@@ -56,14 +66,18 @@ import {
   type SessionAction,
 } from './machine';
 import { deriveSessionTitle } from './title-provider';
-import type {
-  CreateSessionInput,
-  SessionEvent,
-  SessionEventInput,
-  SessionEventReadPort,
-  SessionEventView,
-  SessionPersistPort,
-  SessionRecord,
+import {
+  DEFAULT_SESSION_COMPRESS_THRESHOLD,
+  SESSION_COMPRESS_KEEP_RECENT,
+  type CreateSessionInput,
+  type SessionCompressPayload,
+  type SessionCompressSummarizer,
+  type SessionEvent,
+  type SessionEventInput,
+  type SessionEventReadPort,
+  type SessionEventView,
+  type SessionPersistPort,
+  type SessionRecord,
 } from './types';
 
 /**
@@ -120,6 +134,48 @@ export interface SessionManagerOptions {
    *   与其拿一个空上下文把模型骗了，不如明说"事件源未附着"）。
    */
   readonly read?: SessionEventReadPort;
+  /**
+   * **压缩阈值**（可选，@since v3.48 / task_106 / v3.2b-B7）—— 事件条数超过它就折叠老段。
+   * 缺省 = DEFAULT_SESSION_COMPRESS_THRESHOLD（200）。
+   * 可用 env `SX_SESSION_COMPRESS_THRESHOLD` 调（解析在 app/services/session-compress-config.ts）。
+   *
+   * why 阈值挂在 manager 而不是全局常量：阈值是**部署口径**（不同的机器 / 不同的会话规模），
+   *   组合根按 env 注入；core 只认契约，不读 env（core 零 IO 铁律）。
+   */
+  readonly compressThreshold?: number;
+  /**
+   * **保留窗**（可选，@since v3.48 / task_106）—— 折叠后保留的近期原文条数。
+   * 缺省 = SESSION_COMPRESS_KEEP_RECENT（50）。
+   */
+  readonly compressKeepRecent?: number;
+  /**
+   * **摘要实现**（可选，@since v3.48 / task_106）—— 缺省 = 规则版（core/session/compress.ts）。
+   * LLM 版**留端口不实现**（方案 §8）—— 真接 LLM 时注入这里即可，manager 一行不用改。
+   */
+  readonly compressSummarizer?: SessionCompressSummarizer;
+}
+
+/**
+ * 每会话的**压缩状态**（@since v3.48 / task_106）—— 记住"折到哪了"，避免每次 append 都重扫全量事件流。
+ *
+ * why 需要它：会话事件流可能有上千条（长互聊 / 长任务会话）；
+ *   每次 append 都全量读一遍再判"要不要折叠"是 O(n) per append —— 会把会话回路拖垮（性能铁律）。
+ *   增量维护这两个数就能 O(1) 判"还有没有可折叠的原文"。
+ */
+interface SessionCompressState {
+  /** 已折叠到的 seq（含）—— 该 seq 之前的原文都已被摘要盖住。 */
+  coveredToSeq: number;
+  /** coveredToSeq 之后**未折叠**的原文条数（摘要事件不计）。 */
+  rawAfterCovered: number;
+  /** 已知的最大 seq（用来判断这份状态还新不新鲜）。 */
+  lastSeq: number;
+  /**
+   * 上一条摘要的载荷（累积摘要的底稿；没有 = 还没折过）。
+   *
+   * why 缓存它：累积摘要每次要把上一条合并进来，而"上一条在哪"若每次都去事件流里翻，
+   *   就是又一次 O(n) 读（会话越长越贵）—— 缓存住，折叠时零读。
+   */
+  lastSummary: SessionCompressPayload | null;
 }
 
 /**
@@ -242,6 +298,14 @@ class Manager implements SessionManager {
   private readonly persist: SessionPersistPort | null;
   /** 事件流读取口（缺省 = null = 没有事件源）。见 SessionManagerOptions.read。 */
   private readonly read: SessionEventReadPort | null;
+  /** 压缩阈值（eventCount 超过它才折叠）。见 SessionManagerOptions.compressThreshold。 */
+  private readonly compressThreshold: number;
+  /** 折叠后保留的近期原文条数。见 SessionManagerOptions.compressKeepRecent。 */
+  private readonly compressKeepRecent: number;
+  /** 摘要实现（缺省 = 规则版）。见 SessionManagerOptions.compressSummarizer。 */
+  private readonly compressSummarizer: SessionCompressSummarizer;
+  /** 每会话的压缩状态（增量维护；懒建 —— 见 compressStateOf）。 */
+  private readonly compressStates = new Map<string, SessionCompressState>();
   private seq = 0;
 
   constructor(options: SessionManagerOptions = {}) {
@@ -252,6 +316,15 @@ class Manager implements SessionManager {
     this.maxSessions = options.maxSessions ?? MAX_SESSIONS;
     this.persist = options.persist ?? null;
     this.read = options.read ?? null;
+    this.compressThreshold = Math.max(
+      0,
+      Math.floor(options.compressThreshold ?? DEFAULT_SESSION_COMPRESS_THRESHOLD)
+    );
+    this.compressKeepRecent = Math.max(
+      0,
+      Math.floor(options.compressKeepRecent ?? SESSION_COMPRESS_KEEP_RECENT)
+    );
+    this.compressSummarizer = options.compressSummarizer ?? ruleCompressSummarizer;
   }
 
   createSession(input: CreateSessionInput): SessionRecord | null {
@@ -306,11 +379,30 @@ class Manager implements SessionManager {
     // 落库（可选口）：摘要快照 + 建会话事件 —— 事件本体只在库里有，广播里没有（性能铁律）。
     this.persistRecord(session);
     this.persistEvent(outcome.event ?? null);
+    // 被淘汰的会话（超上限时丢掉的已关闭会话）连同它们的压缩状态一起清掉（见 pruneCompressStates）。
+    this.pruneCompressStates();
     this.notify('info', `已开启会话「${session.title}」`);
     return session;
   }
 
   appendEvent(sessionId: string, input: SessionEventInput): SessionEvent | null {
+    const event = this.appendInternal(sessionId, input);
+    // 压缩是**旁路**（@since v3.48 / task_106）：折叠失败只吞掉 ——
+    //   事件流是 append-only 的，折叠只**追加**一条摘要，原文一个字都不改
+    //   （"折叠失败不改原事件"天然成立：失败即什么都没发生）。
+    if (event) this.maybeCompress(sessionId);
+    // 静默记账：不发 Notice（成功与失败都不发）—— 见接口注释。
+    return event;
+  }
+
+  /**
+   * 追加一条事件（append-only 记账，**不改状态**）—— 写面的**内部**实现。
+   *
+   * why 与 appendEvent 分开：压缩自己要追加一条「摘要事件」，
+   *   若走 appendEvent 就会**递归**触发压缩（摘要事件本身又会去判"要不要折叠"）。
+   *   内部这一层不触发压缩，压缩路径显式调用它。
+   */
+  private appendInternal(sessionId: string, input: SessionEventInput): SessionEvent | null {
     const outcome: { event?: SessionEvent; record?: SessionRecord; code?: SessionRejectionCode } = {};
     this.store.setState((state) => {
       const sessions = state.sessions ?? [];
@@ -333,8 +425,132 @@ class Manager implements SessionManager {
     // 落库（可选口）：事件本体 + 摘要快照（计数 / lastEventAt 变了）。
     this.persistEvent(outcome.event ?? null);
     this.persistRecord(outcome.record ?? null);
-    // 静默记账：不发 Notice（成功与失败都不发）—— 见接口注释。
+    // 压缩状态增量维护（append 之后"折到哪了"变了）。
+    if (outcome.event) this.noteAppend(sessionId, outcome.event);
     return outcome.event ?? null;
+  }
+
+  /**
+   * **压缩触发**（@since v3.48 / task_106 / v3.2b-B7）—— 事件条数超阈值就折叠最老的一段。
+   *
+   * 口径：
+   *   - 触发：session.eventCount > 阈值（缺省 200；env `SX_SESSION_COMPRESS_THRESHOLD`）；
+   *   - 保留窗：最近 keepRecent 条原文**留着**（缺省 50），更老的折成**一条**摘要事件；
+   *   - 幂等：已折叠的段不会再折第二次（折叠区间记在摘要事件里，追加时增量维护）；
+   *   - 没有事件源（未接读口）→ **不折叠**（折不出摘要就别折：没有摘要的折叠等于丢历史）。
+   *
+   * why 不发 Notice：压缩是后台整理（用户没点任何东西）——
+   *   通知队列该留给"人该知道的事"，压缩不属于。
+   */
+  private maybeCompress(sessionId: string): void {
+    const session = this.findSession(sessionId);
+    if (!session) return;
+    if (session.eventCount <= this.compressThreshold) return;
+    if (!this.read) return;
+    try {
+      this.compressSession(session);
+    } catch {
+      /* 压缩失败不改原事件（append-only：折叠只追加摘要；失败即什么都没发生）。 */
+    }
+  }
+
+  /**
+   * 折叠一次（把最老的一段原文折成一条摘要事件）。
+   *
+   * 顺序（**先算后写**）：
+   *   1. 取压缩状态（缓存 / 冷启动时从事件流推导）；
+   *   2. 无可折叠（未折叠原文还够保留窗）→ 不动（幂等）；
+   *   3. 算出**要折几条**（待折原文数 - 保留窗），只把**要折的那几条**取回来
+   *      （向前读：O(要折的条数)，不随会话长度增长）；
+   *   4. 生成摘要 → **追加**一条 'compressed' 事件（原文一个字都不改）。
+   */
+  private compressSession(session: SessionRecord): void {
+    const state = this.compressStateOf(session);
+    if (!state) return;
+    const port = this.read;
+    if (!port) return;
+    // 要折几条 = 待折原文数 - 保留窗（保留窗永远留着：最近的对话最值得看）。
+    const foldCount = state.rawAfterCovered - this.compressKeepRecent;
+    if (foldCount <= 0) return;
+    // 只取"要折的那几条"（向前读；读口没实现向前读时回退到翻页读整段 —— 结果一样，只是读得多）。
+    const candidates = readOldestRawsAfter(port, session.id, state.coveredToSeq, foldCount);
+    const plan = planFoldOldest(candidates, foldCount);
+    if (!plan || plan.folded.length === 0) return;
+    const segment = this.compressSummarizer.summarize({ session, events: plan.folded });
+    // 累积摘要：把上一条摘要合并进来（内容描述的是"至今被折叠掉的全部历史"）。
+    const payload = mergeCompressPayload(state.lastSummary, segment);
+    const event = this.appendInternal(session.id, { type: 'compressed', payload });
+    if (!event) return;
+    // 折完了：区间推进到本段末尾，待折原文条数相应减少（保留窗里的原文一条没动）。
+    state.coveredToSeq = plan.toSeq;
+    state.rawAfterCovered = Math.max(0, state.rawAfterCovered - plan.folded.length);
+    state.lastSummary = payload;
+  }
+
+  /**
+   * 清掉**已不在 store 里**的会话的压缩状态（@since v3.48 / task_106）。
+   *
+   * why 必须清：compressStates 是**按会话 id 记**的 Map，而会话会被 store 的
+   *   「超上限先丢已关闭的最旧会话」规则淘汰 —— 被淘汰会话的状态若留着，
+   *   这个 Map 就**只增不减**（进程活多久涨多久）→ 内存无限增长
+   *   （性能铁律：数据结构要有上限 + 淘汰策略）。
+   *
+   * 口径：以 store 里现存的会话 id 为准（**真相在 store**，压缩状态只是它的派生缓存）。
+   */
+  private pruneCompressStates(): void {
+    if (this.compressStates.size === 0) return;
+    const alive = new Set((this.store.getState().sessions ?? []).map((session) => session.id));
+    for (const id of [...this.compressStates.keys()]) {
+      if (!alive.has(id)) this.compressStates.delete(id);
+    }
+  }
+
+  /**
+   * 取某会话的压缩状态（懒建：没有缓存就从事件流推导一次）。
+   *
+   * why 推导得出同样的答案：折叠区间写在摘要事件里（fromSeq..toSeq），
+   *   冷启动（进程重启 / 新建 manager）时重扫一遍事件流就能还原"折到哪了"——
+   *   于是**重启后不会把同一段再折一次**（幂等不靠内存，靠事件流本身）。
+   */
+  private compressStateOf(session: SessionRecord): SessionCompressState | null {
+    const cached = this.compressStates.get(session.id);
+    if (cached) return cached;
+    const events = this.readAllEvents(session.id);
+    if (!events) return null;
+    const ranges = mergeCompressedRanges(collectCompressedRanges(events));
+    const coveredToSeq = ranges.length > 0 ? ranges[ranges.length - 1]!.toSeq : 0;
+    const rawAfterCovered = events.filter(
+      (event) => event.type !== 'compressed' && event.seq > coveredToSeq
+    ).length;
+    const lastSeq = events.length > 0 ? events[events.length - 1]!.seq : 0;
+    const state: SessionCompressState = {
+      coveredToSeq,
+      rawAfterCovered,
+      lastSeq,
+      // 上一条摘要（累积摘要的底稿）：冷启动时从事件流里捞回来 ——
+      //   有了它，折叠时不必再去事件流里翻"最后一条摘要"（那也是一次 O(n) 读）。
+      lastSummary: latestSummaryPayload(events),
+    };
+    this.compressStates.set(session.id, state);
+    return state;
+  }
+
+  /**
+   * 追加事件后**增量**更新压缩状态（O(1)，不重扫事件流）。
+   *
+   * why 状态不新鲜就丢弃：出现"seq 跳号"说明这份缓存已经对不上事件流
+   *   （例如事件由别的进程补写、或缓存来自旧状态）—— 与其猜，不如丢掉让下次重新推导。
+   */
+  private noteAppend(sessionId: string, event: SessionEvent): void {
+    const state = this.compressStates.get(sessionId);
+    if (!state) return; // 还没建过状态 → 下次压缩时从事件流推导
+    if (state.lastSeq !== event.seq - 1) {
+      this.compressStates.delete(sessionId);
+      return;
+    }
+    state.lastSeq = event.seq;
+    // 摘要事件不是"原文"（它是盖住原文的那条摘要）→ 不计入未折叠原文条数。
+    if (event.type !== 'compressed') state.rawAfterCovered += 1;
   }
 
   interruptSession(sessionId: string, reason?: string): SessionRecord | null {
@@ -499,6 +715,8 @@ class Manager implements SessionManager {
     this.persistEvent(createdEvent);
     for (const event of copied) this.persistEvent(event);
     this.persistEvent(forkedEvent);
+    // 被淘汰的会话（超上限时丢掉的已关闭会话）连同它们的压缩状态一起清掉（见 pruneCompressStates）。
+    this.pruneCompressStates();
     this.notify('info', `已分叉会话「${title}」`);
     return {
       session: record,
@@ -569,26 +787,12 @@ class Manager implements SessionManager {
    * @returns 事件流（正序）；**null = 没有事件源**（读口未附着）—— 调用方据此拒绝，
    *   不拿空列表冒充"这段会话没有历史"。
    */
-  private readAllEvents(sessionId: string): SessionEventView[] | null {
+  private readAllEvents(sessionId: string): readonly SessionEventView[] | null {
     const port = this.read;
     if (!port) return null;
-    const out: SessionEventView[] = [];
-    let beforeSeq: number | undefined;
-    for (;;) {
-      const page = port.readSessionEvents(
-        sessionId,
-        beforeSeq === undefined ? { limit: EVENT_PAGE_LIMIT } : { beforeSeq, limit: EVENT_PAGE_LIMIT }
-      );
-      if (page.length === 0) break;
-      const first = page[0]!.seq;
-      // 无进展护栏：这一页的头一条不小于上次的游标 = 读口没往前走（死循环风险），停。
-      if (beforeSeq !== undefined && first >= beforeSeq) break;
-      out.unshift(...page);
-      // 这一页没读满 = 后面没有了。
-      if (page.length < EVENT_PAGE_LIMIT) break;
-      beforeSeq = first;
-    }
-    return out;
+    // 翻页口径（beforeSeq 游标向前翻 + 无进展护栏）住在 core/session/compress.ts 的
+    //   readAllSessionEvents —— 与读路由共用一份（两处各写一份必然漂移）。
+    return readAllSessionEvents(port, sessionId, EVENT_PAGE_LIMIT);
   }
 
   /**

@@ -63,6 +63,7 @@
 
 import { createSessionPersister } from '../../app/services/persistence/session-persister';
 import { toSessionEventView } from '../../app/services/persistence/session-reader';
+import { sessionCompressThresholdFromEnv } from '../../app/services/session-compress-config';
 import { createProgressionService } from '../../app/services/progression-service';
 import type { TaskService, TaskTransportFactory } from '../../app/services/task-service';
 import { onWorldEvent } from '../../core/bus';
@@ -226,6 +227,9 @@ export function createStratixService(options: StratixServiceOptions = {}): Strat
   const session = createSessionManager({
     store,
     ...(sessionPersister ? { persist: sessionPersister } : {}),
+    // 长会话压缩阈值（@since v3.48 / task_106 / v3.2b-B7）：事件条数超过它就折叠老段。
+    //   缺省 200，可用 env `SX_SESSION_COMPRESS_THRESHOLD` 调（解析见 app/services/session-compress-config.ts）。
+    compressThreshold: sessionCompressThresholdFromEnv(),
     // 事件读口（@since v3.47，task_101）：resume 的回灌要有事件源 ——
     //   存储件在 → 用它读（库里 sessions / session_events 两张表就是事件流，
     //   口径与 app 侧 session-reader.ts 同一份 DAO）；存储件不在 → 不接
@@ -243,6 +247,13 @@ export function createStratixService(options: StratixServiceOptions = {}): Strat
                   limit: query.limit,
                 })
                 .map(toSessionEventView),
+            // 向前读（@since v3.48 / task_106）：长会话压缩取"要折的那一段"用 ——
+            //   窗口口径得从最新往回翻页穿过整段历史（读量随会话长度增长）。
+            readSessionEventsAfter: (
+              sessionId: string,
+              afterSeq: number,
+              limit: number
+            ) => storage.readSessionEventsAfter(sessionId, afterSeq, limit).map(toSessionEventView),
           },
         }
       : {}),

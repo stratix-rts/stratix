@@ -68,6 +68,7 @@ import {
 import {
   ensureSessionEventsTable,
   listSessionEvents,
+  listSessionEventsFrom,
   appendSessionEvent,
   type PersistedSessionEvent,
   type SessionEventInsert,
@@ -127,6 +128,15 @@ export interface ServiceStorage {
   readonly readSessionEvents: (
     sessionId: string,
     options: SessionEventPageOptions
+  ) => PersistedSessionEvent[];
+  /**
+   * **向前读**某会话的事件流（seq 大于 afterSeq 的最早 limit 条；seq 正序）。
+   * @since v3.48，task_106 —— 长会话压缩取"要折的那一段"用（窗口口径读放大）。
+   */
+  readonly readSessionEventsAfter: (
+    sessionId: string,
+    afterSeq: number,
+    limit: number
   ) => PersistedSessionEvent[];
   /**
    * 落一条会话摘要快照（sessions 表；upsert 语义）。
@@ -420,6 +430,23 @@ export async function createServiceStorage(options: ServiceStorageOptions = {}):
     }
   };
 
+  // 向前读（@since v3.48 / task_106）：长会话压缩取"要折的那一段"用 ——
+  //   窗口口径（取最后 limit 条）得从最新往回翻页穿过整段历史（读量随会话长度增长）。
+  const readSessionEventsAfter = (
+    sessionId: string,
+    afterSeq: number,
+    limit: number
+  ): PersistedSessionEvent[] => {
+    try {
+      return listSessionEventsFrom(db, sessionId, afterSeq, limit);
+    } catch (error: unknown) {
+      logger(
+        `[ServiceStorage] 会话事件向前读取失败（${sessionId}）：${error instanceof Error ? error.message : String(error)}`
+      );
+      return [];
+    }
+  };
+
   // 会话写口（task_093）：摘要 upsert + 事件 append。失败只记一行警告
   // （会话域的可用性优先于历史完整性 —— 与其余三个写口同一口径）。
   const persistSession = (record: PersistedSessionRecord): void => {
@@ -453,6 +480,7 @@ export async function createServiceStorage(options: ServiceStorageOptions = {}):
     loadEarlierChatMessages: readEarlierChatMessages,
     readSessions: readSessions,
     readSessionEvents: readSessionEvents,
+    readSessionEventsAfter: readSessionEventsAfter,
     persistSession,
     persistSessionEvent,
   };

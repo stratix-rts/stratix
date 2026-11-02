@@ -74,4 +74,18 @@ describe('进程内会话事件日志', () => {
     expect(log.count('s2')).toBe(1);
     expect(log.count('s3')).toBe(1);
   });
+
+  test('向前读：取 seq 大于游标的**最早** limit 条（长会话压缩取料用）', () => {
+    const log = createSessionEventLog();
+    for (let seq = 1; seq <= 5; seq += 1) log.persist.persistEvent(event('s1', seq));
+
+    const after = log.read.readSessionEventsAfter;
+    expect(after).toBeDefined();
+    // 游标之后的最早两条（不是尾部 —— 与窗口口径相反）。
+    expect(after?.('s1', 2, 2).map((item) => item.seq)).toEqual([3, 4]);
+    // 游标在末尾 → 空。
+    expect(after?.('s1', 5, 10)).toEqual([]);
+    // 会话隔离。
+    expect(after?.('s2', 0, 10)).toEqual([]);
+  });
 });

@@ -168,6 +168,15 @@ export function sessionEventToEntry(
       return { ...base, author: '完成', text: text('summary') || '任务完成', tone: 'normal' };
     case 'failed':
       return { ...base, author: '失败', text: text('reason') || '任务失败', tone: 'error' };
+    // ---- 长会话压缩（@since v3.48，task_106 / v3.2b-B7）----
+    // 折叠摘要事件：老段原文已被它盖住（原文仍在库里，可展开）—— 抽屉里显示成一行人话摘要。
+    case 'compressed':
+      return {
+        ...base,
+        author: '压缩',
+        text: compressSummaryText(payload),
+        tone: 'normal',
+      };
     default:
       // 词表外的事件类型：如实显示类型名 + 原始载荷（不猜它的含义）。
       return {
@@ -186,6 +195,41 @@ function safeStringify(payload: unknown): string {
   } catch {
     return '[无法展示的载荷]';
   }
+}
+
+/**
+ * 压缩摘要事件 → 一行人话（@since v3.48，task_106 / v3.2b-B7）。
+ *
+ * why 自己拼而不是直接透传载荷：抽屉是给人看的 —— 载荷是给程序读的
+ *   （fromSeq / toSeq / keyEvents…）。这里把"折了多少、几轮、谁在聊、首末说了什么、
+ *   结论是什么"讲清楚，读者一眼知道"这里有一段被折叠的历史"。
+ */
+function compressSummaryText(payload: Record<string, unknown>): string {
+  const num = (key: string): number => {
+    const value = payload[key];
+    return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+  };
+  const str = (key: string): string => {
+    const value = payload[key];
+    return typeof value === 'string' ? value : '';
+  };
+  const participants = Array.isArray(payload.participants)
+    ? payload.participants.filter((item): item is string => typeof item === 'string')
+    : [];
+  const keyEvents = Array.isArray(payload.keyEvents)
+    ? payload.keyEvents.filter((item): item is string => typeof item === 'string')
+    : [];
+  const parts: string[] = [
+    `已折叠 ${num('foldedCount')} 条原文（#${num('fromSeq')}–#${num('toSeq')}）`,
+    `${num('rounds')} 轮`,
+  ];
+  if (participants.length > 0) parts.push(participants.join('、'));
+  const first = str('firstSummary');
+  const last = str('lastSummary');
+  if (first) parts.push(`首：${first}`);
+  if (last) parts.push(`末：${last}`);
+  if (keyEvents.length > 0) parts.push(keyEvents.join('；'));
+  return parts.join(' · ');
 }
 
 /**
