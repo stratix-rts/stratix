@@ -512,6 +512,9 @@ async function boot(): Promise<void> {
       timeoutMs: resolvePeerTurnTimeoutMs(peerTurnTimeoutRaw()),
       // task_054：互聊回合的 exit 异常同样上报健康审计（与 chat / task 同一端口）。
       onTransportError: transportHealthReport,
+      // task_094：互聊接入会话域（kind=peer_chat）—— 开场建会话 + 全量事件落库 +
+      //   中断显式化（修「超时即丢」）。远程模式不接（见上方 sessionManager 注释）。
+      sessions: remote ? undefined : sessionManager,
     });
     // 三次注入 deps：互聊入口（表单开始 / 停止钮 / 插话框 → agent-chat-service）。
     characterDrawer.deps = {

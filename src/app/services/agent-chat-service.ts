@@ -67,6 +67,23 @@
  *   → 回合耗到 120s 被看门狗杀。有了这条指引，网络不可用时它直接给已知答案，讨论能走完。
  *   why 转述指令也要带：B 的首轮拿到的是转述指令、拿不到开场指令，没有它 B 会撞同一个黑洞。
  *
+ * ============ 会话域接线（@since v3.45，task_094 / v3.2a S4）============
+ * 互聊接入会话域（kind=peer_chat），口径见 docs/SESSION-PLAN.md §2 接线表「peer_chat」行与 §5：
+ *   ① **每场互聊一条会话** —— 开场建（participants=双方，标题走域内规则版自动起名：议题为主体）；
+ *   ② **全量事件落库**（互聊没有别的历史去处，session_events 就是它的历史）：
+ *      议题（用户的话）/ 每轮发言（发言者 + 原文）/ 插话（用户的话）各记一条 'message'；
+ *   ③ **中断不再静默**：超时 / 取消 / 异常 → 会话状态显式转 'interrupted' + 落一条 'interrupt'
+ *      事件（带原因）—— 修的就是「超时即丢」：以前中断只留一枚气泡，进程一退就没了；
+ *   ④ 正常走完轮数 → 收尾 'closed'（终态，可被 FIFO 淘汰）。
+ * 会话写入面是**旁路**（deps.sessions，缺省 = 不记会话）：端口缺席或建会话失败都不阻断互聊
+ *   （可用性优先 —— 讨论是主角，会话记录是史官）。
+ *
+ * why 中断只调 interruptSession 不再单独 appendEvent('interrupt')：manager 的 interruptSession
+ *   已经**原子地**做「记一条 interrupt 事件 + 迁移到 interrupted」（core/session/manager.ts 的
+ *   commit：先判合法性 → 再记事件 → 最后迁移）。再补一次 appendEvent 就是同一件事记两遍
+ *   （事件流里出现两条一模一样的中断标记），而且顺序反了还会撞「已中断的会话不能再中断」的
+ *   非法迁移（凭空多一条警告）。
+ *
  * ============ 经验口径（与 039/040 对齐，不双计）============
  * 每个回合成功收束（done）→ 该发言者发一条 exp.gained（source=chat_round，经注入的
  *   expWeight 换算，缺省 exp-config 转发层 → core/progression）。A 发 A 的、B 发 B 的，
@@ -88,10 +105,12 @@
  *   5. 碰 world 层（战场说话气泡归 task_062 统一做，本任务刻意不动 world/）。
  *
  * @since v3.28（task_052）；v3.31（task_055）补记重启恢复口径（互聊不种回执，首发重建）；
- *   v3.44（task_090）补网络兜底指引（prompt 尾部一条）与回合超时的可配链（环境变量覆盖）。
+ *   v3.44（task_090）补网络兜底指引（prompt 尾部一条）与回合超时的可配链（环境变量覆盖）；
+ *   v3.45（task_094 / v3.2a S4）追加会话域接线（peer_chat：开场建会话 + 全量事件 + 中断显式化）。
  */
 
 import { emitWorldEvent } from '../../core/bus';
+import type { SessionEventInput, SessionManager } from '../../core/session';
 import type {
   AgentKind,
   CharacterView,
@@ -167,6 +186,13 @@ export const PEER_MSG_EMPTY_REPLY = '（本轮没有文本回复）';
 
 /** 用户停止后的标注气泡（与 035 同文案）。 */
 export const PEER_MSG_INTERRUPTED = '（已中断）';
+
+/**
+ * 会话事件里「用户」这一方的署名（@since v3.45，task_094）。
+ * why 固定成这个而不是记发起者的角色名：会话事件的 author 是**谁在说**，
+ * 议题与插话都是用户说的（发起者只是替用户把议题递给了对方）。
+ */
+export const PEER_SESSION_USER_AUTHOR = '用户';
 
 /** 落库内容加 peer 前缀（约定见文件头「落库约定」②；解析归 chat-history 的翻译层）。 */
 export function peerMarkedContent(speakerId: string, text: string): string {
@@ -248,6 +274,11 @@ interface ActiveDiscussion {
   readonly pendingForB: string[];
   stopRequested: boolean;
   activeTurn: AbortController | null;
+  /**
+   * 会话域的会话 id（@since v3.45，task_094；peer_chat：每场互聊一条）。
+   * null = 未接入会话域（端口缺席）或建会话失败 —— 会话是旁路，不记也一样聊。
+   */
+  sessionId: string | null;
 }
 
 export interface AgentChatServiceDeps {
@@ -285,6 +316,17 @@ export interface AgentChatServiceDeps {
    * （kind + 错误码）；组合根接 health-monitor.recordTransportFailure（非 aborted 记 unhealthy）。
    */
   readonly onTransportError?: (kind: AgentKind, code: TransportErrorCode) => void;
+  /**
+   * 会话域写入面（可选，@since v3.45，task_094 / v3.2a S4）—— 互聊的会话记录
+   * （kind=peer_chat）。**缺省 = 不记会话**（互聊照常，只少一条历史）。
+   *
+   * 口径（方案 docs/SESSION-PLAN.md §2 接线表「peer_chat」行 + §5）：
+   *   - 每场互聊**一条**会话（开场建，双方为参与者）；
+   *   - **全量事件**（互聊没有别的历史去处）：议题 / 每轮发言 / 插话各一条 'message'；
+   *   - 超时 / 取消 / 异常 → 状态显式转 'interrupted' + 落一条 'interrupt' 事件（修「超时即丢」）；
+   *   - 正常走完 → 收尾 'closed'。
+   */
+  readonly sessions?: SessionManager;
 }
 
 /** 对外形状（组合根与单测按它操作）。 */
@@ -355,6 +397,51 @@ export function createAgentChatService(deps: AgentChatServiceDeps): AgentChatSer
     persist(otherId, 'assistant', peerMarkedContent(speakerId, text), null);
   };
 
+  /**
+   * 会话事件记账（@since v3.45，task_094；口径见文件头「会话域接线」）。
+   * 旁路纪律：端口缺席 / 抛错都只记日志 —— 会话是史官，讨论才是主角。
+   */
+  const recordEvent = (discussion: ActiveDiscussion, input: SessionEventInput): void => {
+    const sessionId = discussion.sessionId;
+    if (!deps.sessions || !sessionId) return;
+    try {
+      deps.sessions.appendEvent(sessionId, input);
+    } catch (error) {
+      logger(`[agent-chat] 会话记账抛错（${sessionId}/${input.type}）：${describe(error)}`);
+    }
+  };
+
+  /** 记一条消息事件（发言者 + 原文）。互聊的历史本体就在这些事件里。 */
+  const recordMessage = (discussion: ActiveDiscussion, author: string, text: string): void => {
+    recordEvent(discussion, { type: 'message', payload: { author, text } });
+  };
+
+  /**
+   * 中断落账（@since v3.45，task_094）：状态显式转 'interrupted' + 落一条 'interrupt' 事件。
+   * why 只调 interruptSession 不再单独 appendEvent：manager 的 interruptSession 已原子地
+   *   「记事件 + 迁移状态」，再补一次就是同一条中断标记记两遍（见文件头同节注记）。
+   */
+  const recordInterrupt = (discussion: ActiveDiscussion, reason: string): void => {
+    const sessionId = discussion.sessionId;
+    if (!deps.sessions || !sessionId) return;
+    try {
+      deps.sessions.interruptSession(sessionId, reason);
+    } catch (error) {
+      logger(`[agent-chat] 会话中断记账抛错（${sessionId}）：${describe(error)}`);
+    }
+  };
+
+  /** 正常收场落账：收尾（closed，终态）。 */
+  const recordClose = (discussion: ActiveDiscussion, reason: string): void => {
+    const sessionId = discussion.sessionId;
+    if (!deps.sessions || !sessionId) return;
+    try {
+      deps.sessions.closeSession(sessionId, reason);
+    } catch (error) {
+      logger(`[agent-chat] 会话收尾记账抛错（${sessionId}）：${describe(error)}`);
+    }
+  };
+
   /** exp.gained（口径见文件头「经验口径」：每回合一发，只给发言者）。 */
   const emitChatRoundExp = (characterId: string): void => {
     const amount = expWeight('chat_round');
@@ -390,18 +477,23 @@ export function createAgentChatService(deps: AgentChatServiceDeps): AgentChatSer
    * 一个回合（守门已过）：拼 prompt（插话前缀 + 议题/转述，首发再包 persona）→ 跑 transport →
    * 流式转发进联合会话 → done 收束 / error 中断。产出与中断标注（气泡 + 双份落库）都在这里
    * 完成；ok=false 表示讨论到此为止（调用方跳出循环）。
+   *
+   * 中断时**带出原因**（reason）：调用方据此给会话落一条 'interrupt' 事件 + 转 interrupted
+   *   状态（@since v3.45，task_094）—— 中断的原因只有这里知道（错误码 / 异常信息）。
    */
   const runTurn = async (
     discussion: ActiveDiscussion,
     side: 'a' | 'b',
     basePrompt: string
-  ): Promise<{ readonly ok: true; readonly text: string } | { readonly ok: false }> => {
+  ): Promise<
+    { readonly ok: true; readonly text: string } | { readonly ok: false; readonly reason: string }
+  > => {
     const character = side === 'a' ? discussion.a : discussion.b;
     const other = side === 'a' ? discussion.b : discussion.a;
     const pending = side === 'a' ? discussion.pendingForA : discussion.pendingForB;
     const role: 'assistant' | 'peer' = side === 'a' ? 'assistant' : 'peer';
     const kind = character.agentKind;
-    if (!kind) return { ok: false }; // 守门已挡；类型收窄的防御性兜底
+    if (!kind) return { ok: false, reason: '角色未绑定 CLI agent' }; // 守门已挡；类型收窄的防御性兜底
 
     // 插话注入（每方各消费一次 —— 队列在拼 prompt 时清空，见文件头「插话」）。
     const turnPrompt = applyInterjections(basePrompt, pending);
@@ -425,10 +517,10 @@ export function createAgentChatService(deps: AgentChatServiceDeps): AgentChatSer
     let sawText = false;
     let text = '';
 
-    const settleInterrupted = (marker: string): { readonly ok: false } => {
+    const settleInterrupted = (marker: string, reason: string): { readonly ok: false; readonly reason: string } => {
       view.addMessage({ role, text: marker });
       persistTurnBothSides(character.id, other.id, session.sessionId, marker);
-      return { ok: false };
+      return { ok: false, reason };
     };
 
     try {
@@ -455,6 +547,8 @@ export function createAgentChatService(deps: AgentChatServiceDeps): AgentChatSer
           if (!sawText) view.addMessage({ role, text: PEER_MSG_EMPTY_REPLY });
           persistTurnBothSides(character.id, other.id, session.sessionId, finalText);
           emitChatRoundExp(character.id); // 每回合一发、只给发言者（不双计）
+          // 会话事件（@since v3.45，task_094）：本轮发言落一条 message 事件（互聊的历史本体）。
+          recordMessage(discussion, character.name, finalText);
           return { ok: true, text: finalText };
         }
         if (event.type === 'error') {
@@ -470,17 +564,19 @@ export function createAgentChatService(deps: AgentChatServiceDeps): AgentChatSer
           return settleInterrupted(
             event.code === 'aborted'
               ? PEER_MSG_INTERRUPTED
-              : peerInterruptText(event.code, event.message)
+              : peerInterruptText(event.code, event.message),
+            // 中断原因（进会话事件）：错误码 + 原文；aborted 是用户叫停，也如实记。
+            `${event.code}：${event.message}`
           );
         }
         // tool_use / tool_result：互聊只关心 agent 说的话（与 035 同口径）。
       }
       // 流自然结束却没有 done / error —— runtime 契约上不该发生，防御性按中断收束。
       view.finalizePeerStream();
-      return settleInterrupted('（互聊中断：transport 事件流异常结束）');
+      return settleInterrupted('（互聊中断：transport 事件流异常结束）', 'transport 事件流异常结束');
     } catch (error) {
       view.finalizePeerStream();
-      return settleInterrupted(peerInterruptText('cli_error', describe(error)));
+      return settleInterrupted(peerInterruptText('cli_error', describe(error)), `cli_error：${describe(error)}`);
     } finally {
       discussion.activeTurn = null;
     }
@@ -494,8 +590,13 @@ export function createAgentChatService(deps: AgentChatServiceDeps): AgentChatSer
     view.addMessage({ role: 'user', text: openingForA });
     persist(a.id, 'user', openingForA, null);
     persist(b.id, 'user', buildOpeningPrompt(a.name, topic), null);
+    // 会话事件（@since v3.45，task_094）：议题是用户说的话，落一条 message 事件
+    //   （会话标题里也有议题，但那是摘要；这里记的是历史本体）。
+    recordMessage(discussion, PEER_SESSION_USER_AUTHOR, topic);
 
     let lastText = openingForA; // 上一位发言者的产出（开题轮 A 的输入即议题；后续回合转述它）
+    /** 中断原因（非空 = 这场是被打断的，不是走完的）。 */
+    let interruptReason: string | null = null;
 
     discussionLoop: for (let round = 1; round <= rounds; round += 1) {
       view.setPeerRound(round, rounds);
@@ -508,9 +609,24 @@ export function createAgentChatService(deps: AgentChatServiceDeps): AgentChatSer
             ? buildOpeningPrompt(b.name, topic)
             : buildRelayPrompt((other === 'a' ? a : b).name, lastText, topic);
         const outcome = await runTurn(discussion, side, base);
-        if (!outcome.ok) break discussionLoop;
+        if (!outcome.ok) {
+          interruptReason = outcome.reason;
+          break discussionLoop;
+        }
         lastText = outcome.text;
       }
+    }
+
+    // 收场落账（@since v3.45，task_094）：
+    //   打断的（回合出错 / 用户叫停）→ 显式 interrupted + interrupt 事件（不再是静默丢失）；
+    //   走完轮数的 → 收尾 closed。
+    if (interruptReason !== null) {
+      recordInterrupt(discussion, interruptReason);
+    } else if (discussion.stopRequested) {
+      // 回合之间叫停（当时没有在飞回合可断）—— 同样是打断，不是正常收场。
+      recordInterrupt(discussion, '用户停止互聊');
+    } else {
+      recordClose(discussion, '讨论完成');
     }
 
     view.endPeerChat();
@@ -543,6 +659,22 @@ export function createAgentChatService(deps: AgentChatServiceDeps): AgentChatSer
       }
 
       const clampedRounds = Math.min(Math.max(Math.round(rounds), 1), PEER_MAX_ROUNDS);
+      // 会话首（@since v3.45，task_094）：开场建会话（peer_chat：每场互聊一条，双方为参与者）。
+      //   标题走域内规则版自动起名（议题为主体）；建会话失败（达上限等）不阻断互聊 ——
+      //   会话是旁路，没有它这场讨论照样跑完（只是少一段历史）。
+      let sessionId: string | null = null;
+      if (deps.sessions) {
+        try {
+          const record = deps.sessions.createSession({
+            kind: 'peer_chat',
+            participants: [guardA.character.id, guardB.character.id],
+            firstMessage: trimmedTopic,
+          });
+          sessionId = record?.id ?? null;
+        } catch (error) {
+          logger(`[agent-chat] 建会话失败：${describe(error)}`);
+        }
+      }
       const discussion: ActiveDiscussion = {
         a: guardA.character,
         b: guardB.character,
@@ -552,6 +684,7 @@ export function createAgentChatService(deps: AgentChatServiceDeps): AgentChatSer
         pendingForB: [],
         stopRequested: false,
         activeTurn: null,
+        sessionId,
       };
       active = discussion;
       try {
@@ -571,6 +704,8 @@ export function createAgentChatService(deps: AgentChatServiceDeps): AgentChatSer
       view.addMessage({ role: 'user', text: trimmed });
       persist(discussion.a.id, 'user', trimmed, null);
       persist(discussion.b.id, 'user', trimmed, null);
+      // 会话事件（@since v3.45，task_094）：插话是用户说的话，落一条 message 事件。
+      recordMessage(discussion, PEER_SESSION_USER_AUTHOR, trimmed);
     },
 
     stop(): void {
