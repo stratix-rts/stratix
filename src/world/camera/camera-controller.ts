@@ -8,9 +8,14 @@
  *   2. 在这里重写一遍钳制规则 —— 规则只在 ./camera-math，重复实现必然两边打架；
  *   3. 直接 import core/bus 发事件 —— 上报是 bridge/bus-adapter 的职责，本文件只给回调；
  *   4. 缓存视口尺寸 —— 窗口会变，视口必须每次从相机现读，否则 resize 后边界钳制用的是旧尺寸。
+ *
+ * ★ 橡皮筋越界（@since v3.3，task_079）：位姿本身**永远**在边界内（钳制不变），
+ *   拖拽拉出边界时另有一份「外显偏移」叠加到 scroll 上（setOvershoot）——
+ *   位姿是真相（上报 / 小地图框都按它算），偏移只是视觉上的「拉得动但到不了」，
+ *   松手回弹时归零。两者分开，就不会出现「相机跑到世界外还要再拉回来」的乱账。
  */
 
-import type { Bounds } from '../../core/types';
+import type { Bounds, Point } from '../../core/types';
 
 import {
   DEFAULT_WORLD_BOUNDS,
@@ -60,6 +65,8 @@ export class CameraController {
   private readonly limits: CameraLimits;
   private readonly worldBounds: Bounds;
   private pose: CameraPose;
+  /** 橡皮筋外显偏移（世界坐标）：拖拽拉出边界时叠加到 scroll 上，松手回弹归零。 */
+  private overshoot: Point = { x: 0, y: 0 };
 
   constructor(camera: CameraTarget, options: CameraControllerOptions) {
     this.camera = camera;
@@ -82,9 +89,34 @@ export class CameraController {
     this.writeToCamera(this.pose);
   }
 
-  /** 当前位姿（世界坐标口径的视口中心 + 缩放）。 */
+  /** 当前位姿（世界坐标口径的视口中心 + 缩放）。位姿**永远**在边界内。 */
   get current(): CameraPose {
     return this.pose;
+  }
+
+  /** 当前**视觉**中心 = 钳制位姿 + 橡皮筋偏移（拖拽越界时两者不同）。 */
+  get visualCenter(): Point {
+    return { x: this.pose.center.x + this.overshoot.x, y: this.pose.center.y + this.overshoot.y };
+  }
+
+  /**
+   * 设置橡皮筋外显偏移（世界坐标；task_079 的「边界回弹」）。
+   *
+   * why 不改位姿：位姿是上报 / 小地图视野框的真相，必须始终在边界内；
+   *   偏移只是「拉过头时相机多走的那一点」，松手回弹时归零即可。
+   * 不触发 onChange —— 位姿没变，上报的语义也就没变（perf：不制造无意义的上报）。
+   */
+  setOvershoot(offset: Point): void {
+    const x = Number.isFinite(offset.x) ? offset.x : 0;
+    const y = Number.isFinite(offset.y) ? offset.y : 0;
+    if (x === this.overshoot.x && y === this.overshoot.y) return;
+    this.overshoot = { x, y };
+    this.writeToCamera(this.pose);
+  }
+
+  /** 橡皮筋偏移归零（回弹结束 / 开始新的一次拖拽）。 */
+  clearOvershoot(): void {
+    this.setOvershoot({ x: 0, y: 0 });
   }
 
   /** 应用一个外部给定位姿（会被钳制）。 */
@@ -137,10 +169,12 @@ export class CameraController {
    * 世界中心 → Phaser scroll 的换算。
    * why 是 scrollX = center.x - width/2：Phaser 内部定义 midPoint = scrollX + width/2，
    * 且 midPoint 与 zoom 无关（缩放只影响 worldView 的尺寸），所以这里不需要乘除 zoom。
+   * 橡皮筋偏移（overshoot）直接叠加在中心上：它是世界坐标的额外位移，
+   *   与 zoom 无关（缩放时越界量随之放大是自然的 —— 拉得更远 = 越界更多）。
    */
   private writeToCamera(pose: CameraPose): void {
     this.camera.zoom = pose.zoom;
-    this.camera.scrollX = pose.center.x - this.camera.width / 2;
-    this.camera.scrollY = pose.center.y - this.camera.height / 2;
+    this.camera.scrollX = pose.center.x + this.overshoot.x - this.camera.width / 2;
+    this.camera.scrollY = pose.center.y + this.overshoot.y - this.camera.height / 2;
   }
 }

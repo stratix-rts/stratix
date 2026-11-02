@@ -19,8 +19,9 @@ import Phaser from 'phaser';
 
 import type { Bounds } from '../../core/types';
 import { DEFAULT_WORLD_BOUNDS } from '../camera/camera-math';
-import { WORLD_PALETTE } from '../theme';
+import { AMBIENCE_METRICS, WORLD_PALETTE } from '../theme';
 
+import { warmColor } from './ambience-layout';
 import {
   CORNER_TICK_SIZE,
   GROUND_GRID_STEP,
@@ -99,6 +100,10 @@ export class GroundLayer {
   private readonly objects: Phaser.GameObjects.GameObject[] = [];
   private bandTween: Phaser.Tweens.Tween | null = null;
   private destroyed = false;
+  /** 格网图形（入夜变暖时重画它 —— 见 setWarmth）。 */
+  private gridGraphics: Phaser.GameObjects.Graphics | null = null;
+  /** 暖度（0 = 常态，1 = 入夜变暖；@since v3.3，task_079 的氛围彩蛋）。 */
+  private warmth = 0;
 
   constructor(scene: Phaser.Scene, options: GroundLayerOptions = {}) {
     this.scene = scene;
@@ -112,6 +117,21 @@ export class GroundLayer {
     this.drawVignette();
   }
 
+  /**
+   * 设置格网暖度（@since v3.3，task_079 的氛围彩蛋：真实时间 19-24 点背景网格微微变暖）。
+   *
+   * why 只改格网：规格只说「背景网格微微变暖」—— 底板 / 渐晕 / 光带保持原样，
+   *   暖意只出现在最该出现的地方（网格线），且只重画这一层（perf：不重画整层地面）。
+   *
+   * @param level 0 = 常态；1 = 完全变暖（中间值按比例混合，可做渐变）。
+   */
+  setWarmth(level: number): void {
+    const next = Number.isFinite(level) ? Math.min(1, Math.max(0, level)) : 0;
+    if (next === this.warmth) return;
+    this.warmth = next;
+    this.paintGrid();
+  }
+
   /** 释放显示对象与 tween（场景 shutdown 时调用；perf：资源必须可清理）。 */
   destroy(): void {
     if (this.destroyed) return;
@@ -120,6 +140,7 @@ export class GroundLayer {
     this.bandTween = null;
     for (const object of this.objects) object.destroy();
     this.objects.length = 0;
+    this.gridGraphics = null;
   }
 
   // ==========================================================================
@@ -148,11 +169,33 @@ export class GroundLayer {
   private drawGrid(): void {
     const graphics = this.scene.add.graphics();
     graphics.setDepth(GROUND_DEPTH.grid);
-    graphics.lineStyle(this.style.gridLineWidth, this.style.gridColor, 1);
+    this.gridGraphics = graphics;
+    this.objects.push(graphics);
+    this.paintGrid();
+  }
+
+  /**
+   * 重画格网（按当前暖度着色）。
+   * why 单独抽出来：暖度变化时只需重画这一层，不必重建整个地面层（perf）。
+   */
+  private paintGrid(): void {
+    const graphics = this.gridGraphics;
+    if (!graphics) return;
+    graphics.clear();
+    graphics.lineStyle(this.style.gridLineWidth, this.currentGridColor(), 1);
     for (const segment of gridSegments(this.bounds, GROUND_GRID_STEP)) {
       graphics.lineBetween(segment.x1, segment.y1, segment.x2, segment.y2);
     }
-    this.objects.push(graphics);
+  }
+
+  /** 当前格网色：入夜（暖度 > 0）时基色向暖色混合 —— 见 ambience-layout 的 warmColor。 */
+  private currentGridColor(): number {
+    return warmColor(
+      this.style.gridColor,
+      WORLD_PALETTE.progress,
+      this.warmth,
+      AMBIENCE_METRICS.warmMix
+    );
   }
 
   /**

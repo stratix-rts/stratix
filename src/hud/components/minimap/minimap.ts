@@ -1,7 +1,9 @@
 /**
- * 文件职责：**小地图** Web Component（`<strat-minimap>`，task_057）—— 战场缩略图：
- *   世界边界 → 画布等比缩放映射；单位点（皮肤徽标色，离线灰显 —— 与 054 战场灰显同语义）；
- *   视口矩形（半透明框，相机事件驱动刷新）；点击单位点 = 选中该单位（unit.select），
+ * 文件职责：**小地图** Web Component（`<strat-minimap>`，task_057；v3.3 视觉升级 task_079）——
+ *   战场缩略图（右下角 200×120）：
+ *   岛屿轮廓（纯代码绘制的多边形，「项目 = 岛屿」隐喻）+ 单位状态光点（按状态着色）
+ *   + 当前视野白框 + 外框描边 + 「MAP」角标；
+ *   视口矩形（相机事件驱动刷新）；点击单位点 = 选中该单位（unit.select），
  *   点击 / 拖拽任意处 = 相机对中该世界点（camera.center 命令，core 钳制后转发 world 落位）。
  *   可折叠（localStorage 记忆：stratix.minimap.collapsed）。
  * 输入：注入的 ports.dispatch（命令出口 —— 组合根喂 adapter.dispatch，组件零 import core/bus）；
@@ -19,40 +21,72 @@
  *
  * ============ 坐标口径 ============
  * 世界 → 画布：WORLD_BOUNDS（core/types 契约常量，与 world 相机钳制同一份）等比缩放进
- * 200×150 画布（letterbox 居中 —— 宽高比不一致时留边，不拉伸）；逆映射同理。
+ * 200×120 画布（letterbox 居中 —— 宽高比不一致时留边，不拉伸）；逆映射同理。
  * 点击坐标由 clientX/Y − 画布 rect 换算（jsdom 不实现 offsetX，这条路两边都能跑）。
  *
  * ============ 数据流（组件只认注入口）============
- * 单位：组合根喂 {id, x, y, skinId, online} 快照 —— 位置真相在世界（core 契约无坐标），
+ * 单位：组合根喂 {id, x, y, skinId, online, status} 快照 —— 位置真相在世界（core 契约无坐标），
  *   组合根从 unit.position 事件 + 恢复站位累积，见 main-entry 的接线注；
  * 视口：组合根从 camera.moved（center + zoom）+ 战场容器尺寸换算出世界坐标矩形喂入。
  *
- * @since v3.33（task_057）。
+ * @since v3.33（task_057）；@since v3.3（task_079：尺寸 200×120 / 岛屿轮廓 / 状态光点 /
+ *   视野白框 / 外框描边 / MAP 角标）。
  */
 
 import { resolveAccent } from '../../../core/theme/skin-registry';
+import { MINIMAP_METRICS, VISUAL_PALETTE } from '../../../core/theme/visual-spec';
 import { WORLD_BOUNDS } from '../../../core/types';
-import type { Bounds, HudCommand, Point } from '../../../core/types';
+import type { Bounds, HudCommand, Point, UnitStatus } from '../../../core/types';
 
 export const MINIMAP_TAG = 'strat-minimap';
 
 /** 折叠记忆键（task_057 规格④；与 settings 屏 context 开关同一 localStorage 直写口径）。 */
 export const MINIMAP_COLLAPSED_KEY = 'stratix.minimap.collapsed';
 
-/** 画布逻辑尺寸（CSS px = canvas px；世界 3200×2400 恰好 4:3，默认无边条）。 */
-export const MINIMAP_WIDTH_PX = 200;
-export const MINIMAP_HEIGHT_PX = 150;
+/** 画布逻辑尺寸（CSS px = canvas px；数值取自唯一事实源 core/theme/visual-spec 的 MINIMAP_METRICS）。 */
+export const MINIMAP_WIDTH_PX = MINIMAP_METRICS.widthPx;
+export const MINIMAP_HEIGHT_PX = MINIMAP_METRICS.heightPx;
 
 /** 单位点半径（画布 px）。 */
-const DOT_RADIUS_PX = 3;
+const DOT_RADIUS_PX = MINIMAP_METRICS.dotRadiusPx;
 /** 点击命中半径（画布 px）：比点本身大一圈 —— 缩略图上按像素级命中的体验不可用。 */
-const HIT_RADIUS_PX = 8;
+const HIT_RADIUS_PX = MINIMAP_METRICS.hitRadiusPx;
+
+/**
+ * 视野白框的描边色（纯白）。
+ * why 不在调色板里取：调色板七色都是**语义色**（单位 / 进度 / 完成 / 报错 / 装饰），
+ *   「当前视野」是中性参照物（不是状态），规格钦定白框 —— 故此处是唯一的一处中性白，
+ *   不另立语义色（不污染唯一事实源的语义色表）。
+ */
+const VIEWPORT_STROKE_COLOR = '#ffffff';
 
 /** 无皮肤单位的兜底色（与 world/theme 的 DEFAULT_UNIT_COLOR 同值 —— 两侧同源注记）。 */
 const NEUTRAL_DOT_COLOR = '#94a3b8';
 /** jsdom / 无 token 环境的回落值（与 tokens-default.css 的默认值同源）。 */
-const FALLBACK_ACCENT = '#6ea8ff';
 const FALLBACK_DISABLED = '#5a6373';
+
+/**
+ * 岛屿轮廓的归一化点列（0-1，绕行一周）—— 「项目 = 岛屿」隐喻的缩略图轮廓。
+ * why 固定点列而不是随机生成：缩略图每次重绘都得是同一座岛（随机会让岛每次都在变形）。
+ */
+const ISLAND_OUTLINE: readonly Point[] = Object.freeze([
+  { x: 0.06, y: 0.30 },
+  { x: 0.12, y: 0.14 },
+  { x: 0.30, y: 0.06 },
+  { x: 0.50, y: 0.10 },
+  { x: 0.70, y: 0.08 },
+  { x: 0.88, y: 0.18 },
+  { x: 0.96, y: 0.36 },
+  { x: 0.92, y: 0.56 },
+  { x: 0.97, y: 0.74 },
+  { x: 0.82, y: 0.92 },
+  { x: 0.60, y: 0.96 },
+  { x: 0.40, y: 0.92 },
+  { x: 0.22, y: 0.94 },
+  { x: 0.08, y: 0.80 },
+  { x: 0.03, y: 0.58 },
+  { x: 0.09, y: 0.44 },
+]);
 
 /** 小地图会发出的命令面（Extract 保持与契约同步 —— 新增字段不改这里）。 */
 export type MinimapDispatchCommand = Extract<HudCommand, { type: 'unit.select' | 'camera.center' }>;
@@ -64,7 +98,8 @@ export interface MinimapPorts {
 
 /**
  * 单位点快照（组合根喂入）。位置是世界坐标（真相经组合根从 unit.position 事件累积）；
- * skinId / online 的语义与 UnitView 契约一致（缺省 online = 在线）。
+ * skinId / online / status 的语义与 UnitView 契约一致（缺省 online = 在线）。
+ * status 用于**按状态着色**的光点（v3.3 / task_079）；缺省时退回皮肤徽标色。
  */
 export interface MinimapUnit {
   readonly id: string;
@@ -72,6 +107,8 @@ export interface MinimapUnit {
   readonly y: number;
   readonly skinId?: string | null;
   readonly online?: boolean;
+  /** 单位忙闲（idle / busy / offline / error）—— 缺省 = 未知，按皮肤色画。 */
+  readonly status?: UnitStatus;
 }
 
 /** 画布尺寸（纯函数入参，测试可注入任意值）。 */
@@ -388,34 +425,109 @@ export function defineStratMinimap(): typeof HTMLElement {
 
       const size = this.canvasSize();
       ctx.clearRect(0, 0, size.width, size.height);
+      // 层次：岛屿（底）→ 视野白框（中）→ 单位光点（顶）→ 外框与角标（最上层装饰）。
+      this.drawIsland(ctx, size);
       this.drawViewport(ctx, size);
       this.drawUnits(ctx, size);
+      this.drawFrame(ctx, size);
+      this.drawBadge(ctx);
     }
 
-    /** 视口矩形（世界坐标）：半透明填充 + 边框 —— 相机在哪、看多大，一眼可读。 */
+    /** 世界矩形在画布上的位置（letterbox 后的实际占位）—— 岛屿轮廓贴着它画。 */
+    private worldRect(size: MinimapSize): Bounds {
+      const { scale, offsetX, offsetY } = fitParams(size);
+      return {
+        x: offsetX,
+        y: offsetY,
+        width: WORLD_BOUNDS.width * scale,
+        height: WORLD_BOUNDS.height * scale,
+      };
+    }
+
+    /**
+     * 岛屿轮廓：一条闭合多边形（淡填充 + 描边）—— 「项目 = 岛屿」在缩略图上的样子。
+     * why 画在世界矩形的**内缩**里：轮廓是岛，矩形是画布，两者不该完全重合（重合就成了边框）。
+     */
+    private drawIsland(ctx: CanvasRenderingContext2D, size: MinimapSize): void {
+      const rect = this.worldRect(size);
+      const insetX = rect.width * 0.04;
+      const insetY = rect.height * 0.08;
+      const accent = this.token('--srf-visual-accent', VISUAL_PALETTE.accent);
+
+      ctx.beginPath();
+      ISLAND_OUTLINE.forEach((point, index) => {
+        const x = rect.x + insetX + point.x * (rect.width - insetX * 2);
+        const y = rect.y + insetY + point.y * (rect.height - insetY * 2);
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.closePath();
+      ctx.fillStyle = hexToRgba(accent, MINIMAP_METRICS.islandFillAlpha);
+      ctx.fill();
+      ctx.strokeStyle = hexToRgba(accent, MINIMAP_METRICS.islandStrokeAlpha);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    /** 视口矩形（世界坐标）：半透明填充 + **白框** —— 相机在哪、看多大，一眼可读。 */
     private drawViewport(ctx: CanvasRenderingContext2D, size: MinimapSize): void {
       const rect = this._viewport;
       if (!rect) return;
       const { scale } = fitParams(size);
       const at = worldToMinimap({ x: rect.x, y: rect.y }, size);
-      const accent = this.token('--srf-accent', FALLBACK_ACCENT);
-      ctx.fillStyle = hexToRgba(accent, 0.15);
+      ctx.fillStyle = hexToRgba(VIEWPORT_STROKE_COLOR, MINIMAP_METRICS.viewportFillAlpha);
       ctx.fillRect(at.x, at.y, rect.width * scale, rect.height * scale);
-      ctx.strokeStyle = accent;
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = VIEWPORT_STROKE_COLOR;
+      ctx.lineWidth = MINIMAP_METRICS.viewportStrokeWidthPx;
       ctx.strokeRect(at.x, at.y, rect.width * scale, rect.height * scale);
     }
 
-    /** 单位点：皮肤徽标色（core/theme 登记表 —— 与战场染色同源）；离线灰显（054 同语义）。 */
+    /**
+     * 单位光点：**按状态着色**（v3.3 / task_079）—— 忙 / 错 / 离线一眼可辨；
+     * 离线灰显（054 同语义）；状态未知时退回皮肤徽标色（core/theme 登记表）。
+     */
     private drawUnits(ctx: CanvasRenderingContext2D, size: MinimapSize): void {
-      const offlineColor = this.token('--srf-text-disabled', FALLBACK_DISABLED);
       for (const unit of this._units) {
         const at = worldToMinimap(unit, size);
         ctx.beginPath();
         ctx.arc(at.x, at.y, DOT_RADIUS_PX, 0, Math.PI * 2);
-        ctx.fillStyle = unit.online === false ? offlineColor : unit.skinId ? resolveAccent(unit.skinId) : NEUTRAL_DOT_COLOR;
+        ctx.fillStyle = this.dotColor(unit);
         ctx.fill();
       }
+    }
+
+    /** 单位光点颜色：离线 > 状态 > 皮肤 > 中性灰（优先级从上到下）。 */
+    private dotColor(unit: MinimapUnit): string {
+      if (unit.online === false) return this.token('--srf-text-disabled', FALLBACK_DISABLED);
+      switch (unit.status) {
+        case 'busy':
+          return this.token('--srf-visual-progress', VISUAL_PALETTE.progress);
+        case 'error':
+          return this.token('--srf-visual-danger', VISUAL_PALETTE.danger);
+        case 'offline':
+          return this.token('--srf-text-disabled', FALLBACK_DISABLED);
+        case 'idle':
+          return this.token('--srf-visual-unit', VISUAL_PALETTE.unit);
+        default:
+          return unit.skinId ? resolveAccent(unit.skinId) : NEUTRAL_DOT_COLOR;
+      }
+    }
+
+    /** 外框描边：小地图自己的画框（与 HUD 面板的边框叠在一起更清楚）。 */
+    private drawFrame(ctx: CanvasRenderingContext2D, size: MinimapSize): void {
+      const inset = MINIMAP_METRICS.frameInsetPx;
+      ctx.strokeStyle = this.token('--srf-visual-accent', VISUAL_PALETTE.accent);
+      ctx.lineWidth = MINIMAP_METRICS.frameStrokeWidthPx;
+      ctx.strokeRect(inset, inset, size.width - inset * 2, size.height - inset * 2);
+    }
+
+    /** 「MAP」角标：左上角的小字，标明这是小地图（规格钦定）。 */
+    private drawBadge(ctx: CanvasRenderingContext2D): void {
+      const inset = MINIMAP_METRICS.frameInsetPx;
+      ctx.font = `${MINIMAP_METRICS.badgeFontPx}px monospace`;
+      ctx.textBaseline = 'top';
+      ctx.fillStyle = this.token('--srf-visual-accent', VISUAL_PALETTE.accent);
+      ctx.fillText(MINIMAP_METRICS.badgeText, inset + 4, inset + 3);
     }
   }
 

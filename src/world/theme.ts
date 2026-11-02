@@ -49,7 +49,10 @@ export function resolveUnitColor(skinId: string | null | undefined, fallback: nu
  *   改色只改事实源一处，world 各文件只认这个门面。
  */
 export {
+  AMBIENCE_METRICS,
+  CAMERA_METRICS,
   INTERACTION_FX_METRICS,
+  MINIMAP_METRICS,
   VISUAL_METRICS,
   VISUAL_PALETTE,
   WORLD_PALETTE,

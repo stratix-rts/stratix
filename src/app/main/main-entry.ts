@@ -832,7 +832,15 @@ async function boot(): Promise<void> {
         .map((unit) => {
           const at = minimapPositions.get(unit.id);
           // filter 保证命中；非空断言只在同一次调用内成立，不会悬挂。
-          return { id: unit.id, x: at!.x, y: at!.y, skinId: unit.skinId, online: unit.online };
+          // status 一并喂入：v3.3（task_079）的小地图光点**按状态着色**（忙/错/离线一眼可辨）。
+          return {
+            id: unit.id,
+            x: at!.x,
+            y: at!.y,
+            skinId: unit.skinId,
+            online: unit.online,
+            status: unit.status,
+          };
         })
     );
   };

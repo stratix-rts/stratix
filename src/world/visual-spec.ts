@@ -4,7 +4,9 @@
  *   来源：docs/DEMO-PLAN.md §1；事实源在 src/core/theme/visual-spec.ts（唯一事实源）。
  * 输入：无（纯常量派生）。
  * 输出：WORLD_PALETTE（0xRRGGBB 数字色）/ VISUAL_METRICS（尺寸·时长·easing）/ VISUAL_PALETTE（十六进制）
- *      / UNIT_ANIMATION_METRICS（单位动画八态的尺寸·时长）。
+ *      / UNIT_ANIMATION_METRICS（单位动画八态的尺寸·时长）
+ *      / CAMERA_METRICS（缩放区间·橡皮筋·双击窗口）/ MINIMAP_METRICS（小地图尺寸）
+ *      / AMBIENCE_METRICS（云的间隔·速度·入夜时段）。
  * 禁止事项：
  *   1. import hud —— 铁律：world 只认识 core 与 core/bus；
  *   2. 在本文件里另抄一份色值 —— 色值只在 core/theme/visual-spec.ts 一处，这里只做换算；
@@ -19,7 +21,10 @@
 import { VISUAL_PALETTE, hexToNumber } from '../core/theme/visual-spec';
 
 export {
+  AMBIENCE_METRICS,
+  CAMERA_METRICS,
   INTERACTION_FX_METRICS,
+  MINIMAP_METRICS,
   VISUAL_METRICS,
   VISUAL_PALETTE,
   UNIT_ANIMATION_METRICS,

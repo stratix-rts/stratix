@@ -19,9 +19,12 @@
  *     转发到 syncTaskSpeech）—— 单位头顶冒离线模板气泡（派活 / 开工 / 完成 / 报错）；
  *   - core/bus 的 world 通道上的 unit.bubble（@since v3.3，task_076，转发到 syncUnitBubble）
  *     —— world 层当场指挥的原话气泡（「收到」「来了来了」），按原话冒泡；
- *   - 浏览器指针输入（按下 / 移动 / 松开 / 滚轮）。
+ *   - 浏览器指针输入（按下 / 移动 / 松开 / 滚轮）+ 键盘 ESC（@since v3.3，task_079：回全景）。
  * 输出：把交互转成 WorldEvent（unit.click / selection.box / unit.move / camera.moved），
  *   经桥接层发回 core。
+ * 镜头编排（@since v3.3，task_079）：拖拽平移带**橡皮筋回弹**（拉出边界 → 松手弹回）；
+ *   滚轮缩放夹在 0.6-1.6x；双击单位 = 跟随镜头（再双击解除）；ESC = 回全景；
+ *   氛围彩蛋：每 30-60s 飘过一朵小云 + 真实时间 19-24 点背景格网微微变暖（都不发总线事件）。
  * RTS 操作语义（@since v3.21，task_045。血缘：交互口径移植 v2 StratixRTSGameScene 的
  *   右击移动惯例，判定参数自 v2 MovementSystem / FormationSystem 考古）：
  *   - 框选闭环：拖拽中本地预览命中（弱色圈，不经总线），松手把命中 id 补在 selection.box
@@ -55,8 +58,21 @@ import {
   type WorldBridge,
   type WorldScenePort,
 } from '../bridge/bus-adapter';
-import { CameraController, DEFAULT_WORLD_BOUNDS } from '../camera';
+import {
+  CameraController,
+  DEFAULT_WORLD_BOUNDS,
+  clampCameraCenter,
+  isDoubleClick,
+  overviewPose,
+  rubberBandDisplay,
+  rubberBandOffset,
+  zoomWithUserLimits,
+  type CameraPose,
+  type ClickStamp,
+} from '../camera';
+import { isWarmHour } from '../objects/ambience-layout';
 import { BuildingLayer } from '../objects/building-layer';
+import { CloudLayer } from '../objects/cloud-layer';
 import { GroundLayer, GROUND_DEPTH } from '../objects/ground-layer';
 import { SelectionBox } from '../objects/selection-box';
 import { SpeechBubbleBoard } from '../objects/speech-bubble';
@@ -68,7 +84,7 @@ import { UnitLayer } from '../objects/unit-layer';
 import { UnitRegistry, UNIT_POSITION_SEED_KEY } from '../objects/unit-registry';
 import { UNIT_SPRITE_SOURCE_KEY, type UnitSpriteSource } from '../objects/unit-sprite-source';
 import type { SpeechKind } from '../speech-templates';
-import { WORLD_PALETTE } from '../theme';
+import { CAMERA_METRICS, WORLD_PALETTE } from '../theme';
 
 export const BATTLEFIELD_SCENE_KEY = 'battlefield';
 
@@ -88,13 +104,10 @@ const BOUNDS_COLOR = WORLD_PALETTE.accent;
  */
 const BOUNDS_FILL = WORLD_PALETTE.background;
 /** 空状态提示文字（世界坐标层，随镜头移动；有单位后自动隐藏）。 */
-const EMPTY_HINT = '空战场 · 0 单位接入（单位来自 gateway 真实数据流）\n左键拖框选 · 右键短按移动选中 · 右/中键拖平移 · 滚轮缩放';
+const EMPTY_HINT = '空战场 · 0 单位接入（单位来自 gateway 真实数据流）\n左键拖框选 · 右键短按移动选中 · 右/中键拖平移 · 滚轮缩放 · 双击单位跟随 · ESC 回全景';
 
 /** 超过该屏幕位移才算"拖拽"，否则按点击处理。 */
 const DRAG_THRESHOLD_PX = 4;
-
-/** 滚轮一格的缩放倍率。 */
-const ZOOM_STEP = 1.12;
 
 /** 拖拽模式：pan = 平移镜头，box = 框选，click = 候选点击（尚未松手）。 */
 type DragMode = 'none' | 'pan' | 'box' | 'click';
@@ -136,6 +149,28 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   private speechBoard!: SpeechBubbleBoard;
   /** 气泡渲染层（@since v3.3，task_076）：单位头顶的圆角气泡。 */
   private speechLayer!: SpeechBubbleLayer;
+  /**
+   * 小云层（@since v3.3，task_079）：每 30-60s 从地图边缘飘过一朵慢速小云（氛围彩蛋）。
+   * why 是装饰层：它不发总线事件（彩蛋不改变任何业务状态）。
+   */
+  private cloudLayer!: CloudLayer;
+  /**
+   * 拖拽平移的目标中心（世界坐标，**未钳制**）—— 橡皮筋的真相。
+   * why 单独记一份：钳制后的中心丢了「用户想拉到哪」的信息，越界量就无从算起。
+   */
+  private panDesired: Point | null = null;
+  /** 当前橡皮筋外显偏移（世界坐标；松手回弹时归零）。 */
+  private rubberOffset: Point = { x: 0, y: 0 };
+  /** 跟随镜头的目标单位 id（双击单位 = 跟随；再双击解除）。 */
+  private followUnitId: string | null = null;
+  /** 上一次点击单位的时间戳与位置（双击判定用）。 */
+  private lastClick: ClickStamp | null = null;
+  /** 镜头移动补间（回全景 / 进入跟随）：同一时刻只留一个。 */
+  private cameraTween: Phaser.Tweens.Tween | null = null;
+  /** 橡皮筋回弹补间（松手后越界位移归零）。 */
+  private rubberTween: Phaser.Tweens.Tween | null = null;
+  /** 入夜变暖的巡检定时器（每分钟看一眼真实时间）。 */
+  private warmthTimer: Phaser.Time.TimerEvent | null = null;
 
   private dragMode: DragMode = 'none';
   private dragStartScreen: Point = { x: 0, y: 0 };
@@ -188,6 +223,16 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     // 数据源是 core 广播的 missions/tasks（经桥接层 syncTasks 转发），场景只被驱动。
     this.buildingLayer = new BuildingLayer(this);
 
+    // 氛围彩蛋（@since v3.3，task_079）：小云层 + 入夜变暖的格网。
+    // 纯装饰：不发总线事件（彩蛋不改变任何业务状态）。
+    this.cloudLayer = new CloudLayer(this);
+    this.applyAmbientWarmth();
+    this.warmthTimer = this.time.addEvent({
+      delay: 60_000,
+      loop: true,
+      callback: () => this.applyAmbientWarmth(),
+    });
+
     // 恢复站位种子（@since v3.12，task_033）：组合根启动读档后放在 game.registry 里。
     // 没接上（纯 vite dev / 读档失败）→ undefined，注册表全部按网格落位，行为与从前一致。
     const restoredPositions = this.registry.get(UNIT_POSITION_SEED_KEY) as ReadonlyMap<string, Point> | undefined;
@@ -215,6 +260,8 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     this.input.on('pointerup', this.onPointerUp, this);
     this.input.on('pointerupoutside', this.onPointerUp, this);
     this.input.on('wheel', this.onWheel, this);
+    // ESC 回全景（@since v3.3，task_079）：镜头编排的「归位」键。
+    this.input.keyboard?.on('keydown-ESC', this.onEscape, this);
     // 右键语义（task_045）：浏览器默认的右键菜单会吃掉 pointerup，短按判定就废了 ——
     // 顺手也让右键拖拽平移不再被菜单打断（战场是全屏画布，没有"右键菜单"的正当需求）。
     this.input.mouse?.disableContextMenu();
@@ -401,6 +448,15 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
       this.draggedFar = false;
       this.dragStartScreen = { x: pointer.x, y: pointer.y };
       this.dragLastScreen = { x: pointer.x, y: pointer.y };
+      // 橡皮筋起手（@since v3.3，task_079）：记住「用户想拉到哪」（未钳制的中心），
+      // 并把上一次回弹残留的越界量清零 —— 新的拖拽从当前真实位置开始。
+      this.panDesired = { ...this.view.current.center };
+      this.rubberOffset = { x: 0, y: 0 };
+      this.rubberTween?.remove();
+      this.rubberTween = null;
+      this.view.clearOvershoot();
+      // 手动平移 = 交还镜头控制权（跟随镜头让位）。
+      this.releaseFollow();
       return;
     }
 
@@ -426,7 +482,7 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     if (this.dragMode === 'pan') {
       // 屏幕空间增量拖拽：相机反向跟随指针（内容跟手），每步只看屏幕位移，与相机当前位姿无关。
       const zoom = this.view.current.zoom;
-      this.view.panBy(
+      this.applyPanDelta(
         (this.dragLastScreen.x - pointer.x) / zoom,
         (this.dragLastScreen.y - pointer.y) / zoom
       );
@@ -451,6 +507,8 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
 
     if (mode === 'pan') {
       this.bridge.flushCamera();
+      // 橡皮筋回弹（@since v3.3，task_079）：松手后越界位移弹回边界内。
+      this.releaseRubberBand();
       // 右键短按（没拖成平移）= 移动指令：选中编队 → 目标点（task_045）。
       // 无选中 = 纯无操作（不硬凑聚焦）；中键短按 = 无操作。
       if (this.panButton === 'right' && !this.draggedFar) this.issueMoveCommand(pointer);
@@ -483,6 +541,22 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
         // 点击涟漪 + squash（@since v3.3，task_075）：白圈 200ms 扩散淡出。
         this.unitLayer.pulseClick(hit.id);
         this.bridge.unitClick(hit.id, readModifiers(pointer));
+        // 双击单位 = 跟随镜头（@since v3.3，task_079；跟随中再双击解除）。
+        const stamp: ClickStamp = {
+          unitId: hit.id,
+          timeMs: this.time.now,
+          x: pointer.x,
+          y: pointer.y,
+        };
+        if (isDoubleClick(this.lastClick, stamp)) {
+          this.lastClick = null;
+          this.toggleFollow(hit.id);
+        } else {
+          this.lastClick = stamp;
+        }
+      } else {
+        // 点空地 = 没有下一次双击的对象（避免隔空双击把镜头带走）。
+        this.lastClick = null;
       }
     }
   }
@@ -541,12 +615,159 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   ): void {
     // Phaser 的 wheel 事件只给增量，没有"滚轮停止"信号；用一次延时补发收尾
     void pointer;
-    this.view.zoomBy(deltaY > 0 ? 1 / ZOOM_STEP : ZOOM_STEP);
+    // 缩放区间 0.6-1.6x（@since v3.3，task_079）：越界即夹住（缩放没有回弹 ——
+    // 滚轮是离散的，硬夹住比弹回来更利落）。
+    const factor = deltaY > 0 ? 1 / CAMERA_METRICS.zoomStep : CAMERA_METRICS.zoomStep;
+    const zoom = zoomWithUserLimits(this.view.current, factor);
+    // 手动缩放 = 交还镜头控制权（跟随镜头让位）。
+    this.releaseFollow();
+    this.view.apply({ center: this.view.current.center, zoom });
     this.scheduleCameraFlush();
   }
 
   private onResize(): void {
     this.view.syncViewport();
+  }
+
+  // ==========================================================================
+  // 摄像机编排（@since v3.3，task_079）：橡皮筋回弹 / 跟随镜头 / 回全景
+  // ==========================================================================
+
+  /** 视口尺寸（世界坐标换算的基准；与相机控制器读同一份）。 */
+  private viewport(): { width: number; height: number } {
+    return { width: this.scale.width, height: this.scale.height };
+  }
+
+  /**
+   * 拖拽平移的一步（橡皮筋）。
+   *
+   * 口径：目标中心（**未钳制**）累加位移 → 钳制后的中心落进相机 → 越界量按阻力外显。
+   * why 分两份：钳制后的中心丢了「用户想拉到哪」，越界量就无从算起；
+   *   而相机位姿必须始终在边界内（上报 / 小地图视野框都按它算）。
+   */
+  private applyPanDelta(dx: number, dy: number): void {
+    const desired = this.panDesired ?? { ...this.view.current.center };
+    this.panDesired = { x: desired.x + dx, y: desired.y + dy };
+    const zoom = this.view.current.zoom;
+    const clamped = clampCameraCenter(this.panDesired, zoom, this.viewport(), DEFAULT_WORLD_BOUNDS);
+    const display = rubberBandDisplay(rubberBandOffset(this.panDesired, clamped));
+    this.rubberOffset = display;
+    this.view.apply({ center: clamped, zoom });
+    this.view.setOvershoot(display);
+  }
+
+  /**
+   * 松手：越界位移弹回边界内（橡皮筋回弹）。
+   * why 用补间而不是瞬移：瞬移是「啪一下」跳回去，回弹才是「被弹回来」的手感。
+   */
+  private releaseRubberBand(): void {
+    this.panDesired = null;
+    if (this.rubberOffset.x === 0 && this.rubberOffset.y === 0) return;
+    const from = { ...this.rubberOffset };
+    this.rubberTween?.remove();
+    this.rubberTween = this.tweens.addCounter({
+      from: 1,
+      to: 0,
+      duration: CAMERA_METRICS.rubberBandReturnMs,
+      ease: 'Cubic.Out',
+      onUpdate: (tween: Phaser.Tweens.Tween) => {
+        const k = tween.getValue() ?? 0;
+        this.rubberOffset = { x: from.x * k, y: from.y * k };
+        this.view.setOvershoot(this.rubberOffset);
+      },
+      onComplete: () => {
+        this.rubberOffset = { x: 0, y: 0 };
+        this.view.clearOvershoot();
+        this.rubberTween = null;
+      },
+    });
+  }
+
+  /** 双击单位 = 跟随镜头；跟随中再双击**同一个**单位 = 解除跟随。 */
+  private toggleFollow(unitId: string): void {
+    if (this.followUnitId === unitId) {
+      this.releaseFollow();
+      return;
+    }
+    const unit = this.units.get(unitId);
+    if (!unit) return;
+    this.followUnitId = unitId;
+    this.tweenCameraTo({
+      center: { x: unit.position.x, y: unit.position.y },
+      zoom: this.view.current.zoom,
+    });
+  }
+
+  /** 解除跟随：镜头停在原处，控制权交还手动。 */
+  private releaseFollow(): void {
+    this.followUnitId = null;
+  }
+
+  /**
+   * 镜头补间到目标位姿（回全景 / 进入跟随）：600ms Cubic.easeInOut（通用摄像机移动口径）。
+   * why 自己插值而不直接补间相机属性：相机位姿要过一遍钳制（camera-math），
+   *   中间帧也得落在边界内 —— 补间相机 scroll 会绕过钳制。
+   */
+  private tweenCameraTo(target: CameraPose, durationMs: number = CAMERA_METRICS.moveDurationMs): void {
+    this.cameraTween?.remove();
+    const from = this.view.current;
+    const lerp = (a: number, b: number, k: number): number => a + (b - a) * k;
+    this.cameraTween = this.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: durationMs,
+      ease: 'Cubic.easeInOut',
+      onUpdate: (tween: Phaser.Tweens.Tween) => {
+        const k = tween.getValue() ?? 0;
+        this.view.apply({
+          center: {
+            x: lerp(from.center.x, target.center.x, k),
+            y: lerp(from.center.y, target.center.y, k),
+          },
+          zoom: lerp(from.zoom, target.zoom, k),
+        });
+      },
+      onComplete: () => {
+        this.cameraTween = null;
+      },
+    });
+  }
+
+  /** ESC = 回全景：整个战场装进视口（同时解除跟随）。 */
+  private onEscape(): void {
+    this.releaseFollow();
+    this.view.clearOvershoot();
+    this.rubberOffset = { x: 0, y: 0 };
+    this.tweenCameraTo(overviewPose(this.viewport(), DEFAULT_WORLD_BOUNDS));
+  }
+
+  /**
+   * 入夜变暖（氛围彩蛋）：真实本地时间 19-24 点，背景格网微微变暖。
+   * why 用真实时间：这是「直播时段的隐藏彩蛋」—— 观众在晚上看直播时才撞见。
+   */
+  private applyAmbientWarmth(): void {
+    const hour = new Date().getHours();
+    this.groundLayer.setWarmth(isWarmHour(hour) ? 1 : 0);
+  }
+
+  /**
+   * 跟随镜头：每帧把镜头对到目标单位。
+   * why 补间进行中不抢：进入跟随时有一段 600ms 的移动补间，补间与跟随同时写相机
+   *   会互相拉扯（画面抖）。补间结束后由跟随接管。
+   */
+  update(): void {
+    if (!this.followUnitId) return;
+    if (this.cameraTween?.isPlaying()) return;
+    const unit = this.units.get(this.followUnitId);
+    if (!unit) {
+      // 目标单位离场：跟随自动解除（镜头停在原处）。
+      this.followUnitId = null;
+      return;
+    }
+    this.view.apply({
+      center: { x: unit.position.x, y: unit.position.y },
+      zoom: this.view.current.zoom,
+    });
   }
 
   private onShutdown(): void {
@@ -559,12 +780,26 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     // 地面层与建筑层的显示对象 / tween / 定时器一并回收（perf：资源必须可清理）。
     this.buildingLayer.destroy();
     this.groundLayer.destroy();
+    // 氛围彩蛋层（task_079）：小云的 tween / 定时器 + 入夜巡检定时器一并回收。
+    this.cloudLayer.destroy();
+    this.warmthTimer?.remove(false);
+    this.warmthTimer = null;
+    this.cameraTween?.remove();
+    this.cameraTween = null;
+    this.rubberTween?.remove();
+    this.rubberTween = null;
+    this.input.keyboard?.off('keydown-ESC', this.onEscape, this);
     this.units.destroy();
     // 交互态复位（task_045）：场景重启（Phaser 复用场景实例）时不携带上一次的拖拽残留。
     this.dragMode = 'none';
     this.panButton = null;
     this.boxPreviewIds = null;
     this.draggedFar = false;
+    // 镜头编排态复位（task_079）：跟随 / 橡皮筋 / 双击痕迹都不带入下一次启动。
+    this.followUnitId = null;
+    this.panDesired = null;
+    this.rubberOffset = { x: 0, y: 0 };
+    this.lastClick = null;
   }
 
   // ==========================================================================

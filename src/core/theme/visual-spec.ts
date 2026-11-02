@@ -269,6 +269,95 @@ export const INTERACTION_FX_METRICS = Object.freeze({
 });
 
 /**
+ * 摄像机 + 小地图 + 氛围彩蛋的度量（DEMO-PLAN §5 后半：任务 v3.3-06）。
+ *
+ * why 也落在唯一事实源：缩放区间 / 橡皮筋阻力 / 回弹时长 / 小地图尺寸 / 云的间隔与速度
+ *   是**规格数字** —— 战场侧（world/camera、world/objects 的云层与地面层）与 HUD 侧
+ *   （小地图组件）必须读同一份，否则「小地图 200×120」与战场里画的框对不上、
+ *   「滚轮 0.6-1.6」与实际钳制区间会各说各话。
+ * 数值逐条对应 DEMO-PLAN §5 的规格原文（未写明的量按同规格最贴近的一档取值并注明）。
+ */
+export const CAMERA_METRICS = Object.freeze({
+  /** 用户滚轮可达的缩放下限（规格钦定 0.6x）。 */
+  zoomMin: 0.6,
+  /** 用户滚轮可达的缩放上限（规格钦定 1.6x）。 */
+  zoomMax: 1.6,
+  /** 滚轮一格的倍率（1.12 ≈ 每格 +12%）。 */
+  zoomStep: 1.12,
+  /**
+   * 橡皮筋阻力：越界位移按此比例外显（0.28 = 拉出 100px，相机只多走 28px）。
+   * why 不是 1：全量外显等于「能拖出世界外」，边界感就没了。
+   */
+  rubberBandResistance: 0.28,
+  /** 橡皮筋外显位移的上限（世界 px）—— 拉得再远，相机最多也只越界这么多。 */
+  rubberBandMaxPx: 120,
+  /** 松手回弹时长（ms）—— 越界位移归零的弹性回收时间。 */
+  rubberBandReturnMs: 260,
+  /** 双击判定窗口（ms）：两次点击间隔在此之内算双击（双击单位 = 跟随镜头）。 */
+  doubleClickWindowMs: 320,
+  /** 双击判定允许的两次点击位移（屏幕 px）—— 手抖不算双击。 */
+  doubleClickSlopPx: 8,
+  /** 全景 / 跟随镜头的移动时长（ms）= 通用摄像机移动口径（ease Cubic.easeInOut）。 */
+  moveDurationMs: VISUAL_METRICS.camera.durationMs,
+});
+
+/**
+ * 小地图的度量（DEMO-PLAN §5「小地图（06）」）。
+ *
+ * why 尺寸也进唯一事实源：小地图画在 HUD 侧（DOM canvas），战场侧的「当前视野白框」
+ *   若按另一份尺寸算，框与图就对不上 —— 两侧读同一份数字。
+ */
+export const MINIMAP_METRICS = Object.freeze({
+  /** 小地图画布宽（px；规格钦定 200）。 */
+  widthPx: 200,
+  /** 小地图画布高（px；规格钦定 120）。 */
+  heightPx: 120,
+  /** 单位光点半径（画布 px）。 */
+  dotRadiusPx: 3,
+  /** 点命中半径（画布 px）—— 比点本身大一圈，缩略图上按像素级命中的体验不可用。 */
+  hitRadiusPx: 8,
+  /** 视野白框的描边粗细（画布 px）。 */
+  viewportStrokeWidthPx: 1.5,
+  /** 视野白框的填充透明度。 */
+  viewportFillAlpha: 0.12,
+  /** 小地图外框描边粗细（画布 px）。 */
+  frameStrokeWidthPx: 2,
+  /** 外框与视野框的留边（画布 px）。 */
+  frameInsetPx: 1,
+  /** 岛屿轮廓的填充透明度。 */
+  islandFillAlpha: 0.07,
+  /** 岛屿轮廓的描边透明度。 */
+  islandStrokeAlpha: 0.9,
+  /** 「MAP」角标的字号（画布 px）。 */
+  badgeFontPx: 11,
+  /** 「MAP」角标的文案（规格钦定的英文角标）。 */
+  badgeText: 'MAP',
+});
+
+/**
+ * 氛围彩蛋的度量（DEMO-PLAN §5「氛围彩蛋（06）」）。
+ *
+ * why 落在唯一事实源：云的间隔 / 速度 / 尺寸与「几点算入夜」都是规格数字，
+ *   战场侧（云层 + 地面层）读同一份，单测也能按同一份数字断言。
+ */
+export const AMBIENCE_METRICS = Object.freeze({
+  /** 小云：两次出现之间的间隔区间（ms；规格钦定每 30-60s 一朵）。 */
+  cloudIntervalMs: Object.freeze({ min: 30_000, max: 60_000 }),
+  /** 小云的宽 / 高（世界 px）—— 一朵「小」云。 */
+  cloudSizePx: Object.freeze({ width: 140, height: 42 }),
+  /** 小云的漂移速度（世界 px/s）—— 慢速（跨过全场约一分钟）。 */
+  cloudSpeedPxPerSec: 55,
+  /** 小云的透明度（微乎即可，别抢戏）。 */
+  cloudAlpha: 0.16,
+  /** 小云出现的纵向位置区间（占战场高度的比例）—— 贴着地图上/下边缘漂。 */
+  cloudBandRatio: Object.freeze({ top: 0.18, bottom: 0.78 }),
+  /** 入夜时段（真实本地时间，小时）—— 19 点到 24 点背景网格微微变暖。 */
+  warmHours: Object.freeze({ start: 19, end: 24 }),
+  /** 变暖程度：格网色向暖色混合的比例（「微微」= 小比例）。 */
+  warmMix: 0.28,
+});
+
+/**
  * 演示模式参数（DEMO-PLAN §8）。
  * 字号放大倍率 1.3 = 「字号 +30%」；storageKey 是开关记忆的 localStorage 键。
  */

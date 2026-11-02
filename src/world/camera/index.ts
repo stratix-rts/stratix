@@ -7,3 +7,4 @@
 
 export * from './camera-math';
 export * from './camera-controller';
+export * from './camera-nav';
