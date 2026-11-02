@@ -48,6 +48,30 @@ export const MAX_SESSION_TEXT_LEN = 4_000;
 export const MAX_SESSION_AUTHOR_LEN = 64;
 
 /**
+ * task_run 事件里 taskId 的长度上限（码点）。
+ * why 单独一份：taskId 是标识不是正文，64 足够（core 的 id 形如 `task_12_1700000000000`），
+ * 给它正文级的上限是浪费；给它 64 就够，超长即异常数据。
+ */
+export const MAX_SESSION_TASK_ID_LEN = 64;
+
+/**
+ * task_run 事件里**描述摘要 / 步骤明细 / 收尾摘要**的长度上限（码点）。
+ * why 200：够放下「侦察北门并回报敌情」这类一句摘要 + 少量上下文；
+ * 再长就是正文了 —— 正文归 character_tasks 表，会话事件只留"发生了什么"的骨架。
+ */
+export const MAX_SESSION_TASK_SUMMARY_LEN = 200;
+
+/** task_run 事件里**步骤名**的长度上限（码点）。步骤名是短语（"计划待批准"），64 绰绰有余。 */
+export const MAX_SESSION_STEP_LABEL_LEN = 64;
+
+/**
+ * task_run 事件里**输出尾部**的长度上限（码点）—— 尾 500 字。
+ * why 尾截而不是头截：任务产出里结论通常在末尾（报告的最后一段），
+ * 截头会把结论切掉，留下的全是铺垫 —— 那才是无用信息。
+ */
+export const MAX_SESSION_OUTPUT_TAIL_LEN = 500;
+
+/**
  * 会话事件载荷表：事件类型 → 载荷形状。
  * why 用映射而不是一个大 union：调用方写 `appendEvent(id, { type: 'message', payload: … })` 时，
  * 载荷类型随事件类型自动收窄，漏字段/多字段在编译期就被挡住。
@@ -61,10 +85,35 @@ export interface SessionEventPayloadMap {
   round: { readonly summary?: string };
   /** 中断标记（超时 / 取消 / 进程死）。 */
   interrupt: { readonly reason: string };
-  /** 恢复标记（interrupted → active；上下文续接属 2b，本单只记标记不接上下文）。 */
+  /** 恢复标记（interrupted → active；note 可记回灌了多少条上下文）。 */
   resumed: { readonly note?: string };
   /** 收尾（closed）。 */
   closed: { readonly reason?: string };
+  /**
+   * 分叉标记（@since v3.46，task_100 / v3.2b-B1）—— 新会话由源会话分叉而来。
+   * payload 记录**来源**：源会话 id + 实际生效的复制截止 seq + 复制的对话事件条数。
+   */
+  forked: {
+    readonly sourceSessionId: string;
+    readonly atSeq: number;
+    readonly copiedCount: number;
+  };
+  /**
+   * task_run：任务开工（@since v3.46，task_105 / v3.2b-B6）。
+   * payload 含 taskId 与**描述摘要**（任务指令的前若干字）—— 面板上一眼认得出是哪单。
+   */
+  task_started: { readonly taskId: string; readonly summary: string };
+  /** task_run：执行中的一个**关键节点**（一步一条；detail 可缺省）。 */
+  step: { readonly label: string; readonly detail?: string };
+  /**
+   * task_run：输出**尾部**（@since v3.46，task_105）。
+   * 只留尾部（结论通常在末尾）；超出上限截断并标 truncated。
+   */
+  output_tail: { readonly text: string; readonly truncated?: boolean };
+  /** task_run：任务成功收尾（summary 可缺省）。 */
+  completed: { readonly summary?: string };
+  /** task_run：任务失败收尾（含**错误摘要**）。 */
+  failed: { readonly reason: string };
 }
 
 /** 会话事件类型（载荷表的键）。 */
@@ -167,6 +216,24 @@ export interface SessionEventQuery {
 }
 
 /**
+ * 会话**事件流**的读取口（@since v3.46，task_100 / v3.2b-B1）——
+ *   resume / fork 要读事件流（回灌上下文 / 复制时间线），core 只认这个**纯回调契约**。
+ *
+ * why 从 SessionReadPort 里拆出这个窄口：resume / fork 只需要"读事件流"这一件事，
+ *   逼它们认整份 SessionReadPort（读列表 / 读单条）会逼实现方多实现两个用不上的动作；
+ *   而 SessionReadPort 继承它（MCP 那侧仍要读列表 / 读单条），两边各取所需、**一份契约**。
+ *
+ * 口径与 SessionReadPort.readSessionEvents 完全一致（seq 正序；beforeSeq 游标切片）。
+ */
+export interface SessionEventReadPort {
+  /** 读某会话的事件流（seq 正序；beforeSeq 游标切片）。 */
+  readonly readSessionEvents: (
+    sessionId: string,
+    options: SessionEventQuery
+  ) => readonly SessionEventView[];
+}
+
+/**
  * 会话域的**读取口**（@since v3.43，task_096 / v3.2a S6）——
  *   core 只认这个**纯回调契约**，不认存储实现（与 SessionPersistPort 同一纪律：
  *   core 零 IO，从不 import DAO / SQLite）。
@@ -179,16 +246,11 @@ export interface SessionEventQuery {
  * 实现方在 app 层（service 侧 SQLite 的 sessions / session_events 两张表）——
  *   组合根直接把它注入 MCP 的数据面端口（McpHost.readSessions），无需适配器（接口即契约）。
  */
-export interface SessionReadPort {
+export interface SessionReadPort extends SessionEventReadPort {
   /** 读会话摘要列表（kind / status 过滤 + limit / offset 分页；创建时间倒序）。 */
   readonly readSessions: (query: SessionListQuery) => SessionPage;
   /** 读单条会话摘要；库里没有返回 null（**不编造**）。 */
   readonly readSession: (sessionId: string) => SessionRecord | null;
-  /** 读某会话的事件流（seq 正序；beforeSeq 游标切片）。 */
-  readonly readSessionEvents: (
-    sessionId: string,
-    options: SessionEventQuery
-  ) => readonly SessionEventView[];
 }
 
 /**

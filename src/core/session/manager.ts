@@ -24,18 +24,32 @@
  *   时调本模块）是 S3 的事，本单只交付纯逻辑模块 + 单测。
  *   v3.43（task_093 / v3.2a S3）追加**持久化口**（SessionPersistPort，缺省 = 不落库）：
  *   组合根把它注入进来，会话摘要与事件便随写随落库（事件本体只进库，不进广播）。
+ *   v3.46（task_100 / v3.2b-B1）追加 **resume（回灌上下文）/ fork（分叉）** 与**事件读口**
+ *   （SessionEventReadPort，缺省 = 没有事件源）：
+ *   - resume = interrupted → active **并**读事件流构建上下文快照（只认 peer_chat，第一期口径）；
+ *   - fork = 新会话 + 复制源会话事件到 atSeq（换 sessionId + seq 重排）+ 'forked' 来源标记；
+ *   - 两者都要读事件流 → 故需要一个**读口**（与持久化口同一纪律：core 只认回调契约，不认存储）。
+ *   本单是 **core 层**改动：service / hud / mcp 一律不碰（接线在 B2 / B3）。
  */
 
 import { worldStore, type CoreStore } from '../store';
 import { MAX_SESSIONS, NOTICE_TTL_MS, type NoticeLevel } from '../types';
 
 import {
+  buildContextSnapshot,
+  copyEventsForFork,
+  resolveForkCutoff,
+  type SessionContextSnapshot,
+} from './context-replay';
+import {
   appendSessionEvent,
   applySessionAction,
   canApplySessionAction,
+  canResumeSession,
   capSessionTitle,
   deriveSessionTitle,
   dropClosedSessions,
+  forkSessionTitle,
   normalizeSessionParticipants,
   type SessionAction,
 } from './machine';
@@ -43,16 +57,29 @@ import type {
   CreateSessionInput,
   SessionEvent,
   SessionEventInput,
+  SessionEventReadPort,
+  SessionEventView,
   SessionPersistPort,
   SessionRecord,
 } from './types';
+
+/**
+ * 读事件流时的**单页条数**（翻页用）。
+ * why 200：与存储层 DAO 的 limit 上限（[1,200]）同值 —— 一次要满，省得反复翻页；
+ *   同时它也是"一次最多读这么多条"的内存护栏（core 不做无界读）。
+ */
+const EVENT_PAGE_LIMIT = 200;
 
 /** 命令/调用被拒的机器可读原因。 */
 export type SessionRejectionCode =
   | 'not-found'
   | 'limit-exceeded'
   | 'illegal-transition'
-  | 'session-closed';
+  | 'session-closed'
+  /** 该 kind 第一期不支持 resume（目前只有 peer_chat 支持 —— 方案 §8）。 */
+  | 'unsupported-kind'
+  /** 事件读口未附着：读不到事件流就不做（**不编造**上下文）。 */
+  | 'no-event-source';
 
 type CommitResult =
   | {
@@ -80,6 +107,54 @@ export interface SessionManagerOptions {
    * 落库失败只吞掉（不打断会话回路）—— 可用性优先于历史完整性，与注入件同一纪律。
    */
   readonly persist?: SessionPersistPort;
+  /**
+   * 事件流读取口（可选，@since v3.46 / task_100 / v3.2b-B1）—— 缺省 = 没有事件源。
+   *
+   * why 需要它：resume（回灌上下文）与 fork（复制时间线）都要**读事件流**，
+   *   而事件本体在 session_events 表里（不在 WorldState —— 广播体积必须有界的性能铁律）。
+   *   core 零 IO，不认存储实现，故只认这个纯回调契约（与 SessionPersistPort 同一纪律）。
+   * 缺省 = resume / fork 直接被拒（**不编造**上下文：没有事件源就恢复不出上文，
+   *   与其拿一个空上下文把模型骗了，不如明说"事件源未附着"）。
+   */
+  readonly read?: SessionEventReadPort;
+}
+
+/**
+ * resume 的可选参数（@since v3.46 / task_100）。
+ */
+export interface SessionResumeOptions {
+  /**
+   * 续跑方（self）的参与者 id —— 决定回灌消息里谁的话算 'assistant'（自己说的）、
+   * 谁的话算 'user'（对方说的）。peer_chat 是两个角色互聊，角色必须**相对续跑方**来定。
+   * 缺省 = 按参与者顺序（第一个算 user，其余算 assistant）。
+   */
+  readonly selfParticipantId?: string;
+}
+
+/**
+ * resume 的产物（@since v3.46 / task_100）—— 互聊引擎据此续跑。
+ */
+export interface SessionResumeOutcome {
+  /** 恢复后的会话（status='active'）。 */
+  readonly session: SessionRecord;
+  /** 上下文快照（回灌消息列表）。 */
+  readonly snapshot: SessionContextSnapshot;
+  /** 'resumed' 事件（已落库）；理论上非 null（commit 成功必有事件）。 */
+  readonly event: SessionEvent | null;
+}
+
+/**
+ * fork 的产物（@since v3.46 / task_100）。
+ */
+export interface SessionForkOutcome {
+  /** 新建的会话（status='active'）。 */
+  readonly session: SessionRecord;
+  /** 来源会话 id。 */
+  readonly sourceSessionId: string;
+  /** 实际生效的复制截止 seq（缺省 = 源会话最大 seq；越界会夹紧）。 */
+  readonly atSeq: number;
+  /** 复制的**对话事件**条数（不含新会话自己的 created / forked）。 */
+  readonly copiedCount: number;
 }
 
 export interface SessionManager {
@@ -105,6 +180,31 @@ export interface SessionManager {
   closeSession(sessionId: string, reason?: string): SessionRecord | null;
   /** 恢复一条被中断的会话（interrupted → active），并记一条 'resumed' 事件。 */
   resumeSession(sessionId: string): SessionRecord | null;
+  /**
+   * **恢复并回灌上下文**（@since v3.46 / task_100 / v3.2b-B1）—— 2b 的 resume。
+   *
+   * 与 resumeSession（2a）的差别：
+   *   - resumeSession 只翻状态位（任何 kind 都行 —— 它是"这一步可不可执行"）；
+   *   - resume 是"能不能续跑"：**只认 peer_chat**（方案 §8 第一期口径），
+   *     且会**读事件流构建上下文快照**一并返回 —— 引擎据此把上文喂回模型。
+   *
+   * 前置条件：kind=peer_chat + status=interrupted + 事件读口已附着。
+   * 失败返回 null 并上报 Notice（读不到事件流就**不编造**上下文）。
+   */
+  resume(sessionId: string, options?: SessionResumeOptions): SessionResumeOutcome | null;
+  /**
+   * **分叉**（@since v3.46 / task_100 / v3.2b-B1）—— 新会话 + 复制源会话事件到 atSeq。
+   *
+   * 口径（方案 §8「fork = 新会话 + 事件复制到 atSeq」）：
+   *   - 新会话：id 新起、participants 继承、title = 源标题 + 分叉标记、status='active'；
+   *   - 复制：源会话 seq ≤ atSeq 的**对话事件**换新 sessionId + seq 重排后落库
+   *     （不复制 SQLite 原行 —— append-only 自然分叉）；
+   *   - 追加一条 'forked' 事件记录来源（payload 含 sourceSessionId / atSeq）。
+   *
+   * atSeq 缺省 = 全量；越界会被夹到合法区间（见 resolveForkCutoff）。
+   * 失败返回 null 并上报 Notice。
+   */
+  fork(sessionId: string, atSeq?: number): SessionForkOutcome | null;
   /** 静默期结束又开口（idle → active）。不记事件（只是状态位变化）。 */
   activateSession(sessionId: string): SessionRecord | null;
   /** 转入空闲（active → idle）。不记事件（静默阈值命中，不是一件事）。 */
@@ -119,6 +219,8 @@ class Manager implements SessionManager {
   private readonly maxSessions: number;
   /** 持久化口（缺省 = null = 不落库）。见 SessionManagerOptions.persist。 */
   private readonly persist: SessionPersistPort | null;
+  /** 事件流读取口（缺省 = null = 没有事件源）。见 SessionManagerOptions.read。 */
+  private readonly read: SessionEventReadPort | null;
   private seq = 0;
 
   constructor(options: SessionManagerOptions = {}) {
@@ -128,6 +230,7 @@ class Manager implements SessionManager {
       options.createId ?? ((prefix: string): string => `${prefix}_${this.now()}_${++this.seq}`);
     this.maxSessions = options.maxSessions ?? MAX_SESSIONS;
     this.persist = options.persist ?? null;
+    this.read = options.read ?? null;
   }
 
   createSession(input: CreateSessionInput): SessionRecord | null {
@@ -241,6 +344,149 @@ class Manager implements SessionManager {
     return this.finish(result, '已恢复会话');
   }
 
+  /**
+   * 恢复并回灌上下文（2b 的 resume）。
+   *
+   * 顺序（**先读后写**）：
+   *   1. 找会话（不存在 → 拒）；
+   *   2. 判准入：kind=peer_chat（第一期口径）+ status=interrupted（canResumeSession 纯查表）；
+   *   3. 读事件流全量 → 构建上下文快照（回灌消息列表）；
+   *   4. 原子提交：记 'resumed' 事件 + 迁移 interrupted → active；
+   *   5. 返回 { session, snapshot, event } —— 引擎拿 snapshot 续跑。
+   *
+   * why 第 3 步在第 4 步**之前**：快照必须是"恢复前"的上下文（含中断标记），
+   *   恢复事件本身是"恢复之后"发生的事，不属于上文。
+   * why 读不到事件流就拒（'no-event-source'）：拿空上下文续跑 = 骗模型
+   *   （它会以为自己从没聊过）——宁可明说"没有历史可回灌"。
+   */
+  resume(sessionId: string, options: SessionResumeOptions = {}): SessionResumeOutcome | null {
+    const current = this.findSession(sessionId);
+    if (!current) {
+      this.notify('warn', rejectionText('not-found', this.maxSessions));
+      return null;
+    }
+    if (!canResumeSession(current.kind, current.status)) {
+      // 两种拒因要分开说：kind 不支持 vs 状态不对（用户要的处置完全不同）。
+      const code: SessionRejectionCode =
+        current.kind === 'peer_chat' ? 'illegal-transition' : 'unsupported-kind';
+      this.notify('warn', rejectionText(code, this.maxSessions));
+      return null;
+    }
+    const events = this.readAllEvents(sessionId);
+    if (!events) {
+      this.notify('warn', rejectionText('no-event-source', this.maxSessions));
+      return null;
+    }
+    const snapshot = buildContextSnapshot({
+      session: current,
+      events,
+      ...(options.selfParticipantId === undefined
+        ? {}
+        : { selfParticipantId: options.selfParticipantId }),
+    });
+    const at = this.now();
+    const result = this.commit(
+      sessionId,
+      { type: 'resume' },
+      at,
+      { type: 'resumed', payload: { note: `上下文回灌 ${snapshot.messages.length} 条` } }
+    );
+    if (!result.ok) {
+      this.notify('warn', rejectionText(result.code, this.maxSessions));
+      return null;
+    }
+    this.notify('info', '已恢复会话');
+    return { session: result.session, snapshot, event: result.event };
+  }
+
+  /**
+   * 分叉（2b 的 fork）：新会话 + 复制源会话事件到 atSeq。
+   *
+   * 顺序：**先读源事件 → 再建新会话 → 最后落库**（源会话全程只读，一个字都不改）。
+   * 事件落库口径：新会话自己的 'created'（seq=1，描述**它自己**）+ 复制来的对话事件（seq 重排）
+   *   + 'forked'（seq 最后，记录来源）。
+   *
+   * why 复制时**不继承**源会话的 'created'：分叉出来的是一条**新会话**，
+   *   它的历史抽屉要显示自己的标题（历史抽屉按 created 事件的 title 渲染）——
+   *   继承源的 created 会让分叉会话显示成源会话的标题。详见 context-replay.ts 的口径注释。
+   */
+  fork(sessionId: string, atSeq?: number): SessionForkOutcome | null {
+    const source = this.findSession(sessionId);
+    if (!source) {
+      this.notify('warn', rejectionText('not-found', this.maxSessions));
+      return null;
+    }
+    const events = this.readAllEvents(sessionId);
+    if (!events) {
+      this.notify('warn', rejectionText('no-event-source', this.maxSessions));
+      return null;
+    }
+    const cutoff = resolveForkCutoff(atSeq, events);
+    const at = this.now();
+    const newId = this.createId(`session_${source.kind}`);
+    const title = forkSessionTitle(source.title);
+    const participants = [...source.participants];
+    // 复制来的对话事件：换新 sessionId + seq 重排（新会话的 created 占 seq=1，故从 2 起）。
+    const copied = copyEventsForFork(events, { sessionId: newId, atSeq: cutoff, startSeq: 2 });
+    const createdEvent: SessionEvent = {
+      sessionId: newId,
+      seq: 1,
+      type: 'created',
+      payload: { title, participants },
+      createdAt: at,
+    };
+    const forkedEvent: SessionEvent = {
+      sessionId: newId,
+      seq: copied.length + 2,
+      type: 'forked',
+      payload: { sourceSessionId: source.id, atSeq: cutoff, copiedCount: copied.length },
+      createdAt: at,
+    };
+    const record: SessionRecord = {
+      id: newId,
+      kind: source.kind,
+      title,
+      participants,
+      status: 'active',
+      // refId 继承：分叉出去的仍是同一件事（task_run → 同一个 taskId）。
+      ...(source.refId ? { refId: source.refId } : {}),
+      createdAt: at,
+      lastEventAt: at,
+      closedAt: null,
+      eventCount: copied.length + 2,
+    };
+
+    // 入 store（**一次写入 = 一次广播**；满了就拒，绝不静默挤掉别人）。
+    const outcome: { ok: boolean; code?: SessionRejectionCode } = { ok: true };
+    this.store.setState((state) => {
+      const sessions = state.sessions ?? [];
+      const kept = dropClosedSessions(sessions, this.maxSessions - 1);
+      if (kept.length >= this.maxSessions) {
+        outcome.ok = false;
+        outcome.code = 'limit-exceeded';
+        return state;
+      }
+      return { ...state, sessions: [...kept, record] };
+    });
+    if (!outcome.ok) {
+      this.notify('warn', rejectionText(outcome.code ?? 'limit-exceeded', this.maxSessions));
+      return null;
+    }
+
+    // 落库：摘要快照 + 新会话自己的 created + 复制来的事件 + forked（顺序即 seq 顺序）。
+    this.persistRecord(record);
+    this.persistEvent(createdEvent);
+    for (const event of copied) this.persistEvent(event);
+    this.persistEvent(forkedEvent);
+    this.notify('info', `已分叉会话「${title}」`);
+    return {
+      session: record,
+      sourceSessionId: source.id,
+      atSeq: cutoff,
+      copiedCount: copied.length,
+    };
+  }
+
   activateSession(sessionId: string): SessionRecord | null {
     // 不记事件：idle → active 只是"又开始说话了"，不是一件值得落库的事。
     return this.finish(this.commit(sessionId, { type: 'activate' }, this.now()), null);
@@ -249,6 +495,47 @@ class Manager implements SessionManager {
   idleSession(sessionId: string): SessionRecord | null {
     // 不记事件：静默阈值命中同样不是一件事（否则高频静默会把事件表写满）。
     return this.finish(this.commit(sessionId, { type: 'idle' }, this.now()), null);
+  }
+
+  /**
+   * 找一条会话（store 里没有就是没有 —— **不编造**）。
+   */
+  private findSession(sessionId: string): SessionRecord | null {
+    const sessions = this.store.getState().sessions ?? [];
+    return sessions.find((session) => session.id === sessionId) ?? null;
+  }
+
+  /**
+   * 读某会话的**全量**事件流（seq 正序）。
+   *
+   * why 要翻页：读口的契约是"一段"（limit + beforeSeq 游标），
+   *   一次读只拿到尾部一段 —— 少于一段时继续向前翻，直到取完（beforeSeq 游标向前走）。
+   * why 有"无进展就停"的护栏：读口实现若忽略游标，会永远返回同一段 ——
+   *   护栏保证最坏情况是"读到的比全量少"，而不是**死循环**（挂死比少读更糟）。
+   *
+   * @returns 事件流（正序）；**null = 没有事件源**（读口未附着）—— 调用方据此拒绝，
+   *   不拿空列表冒充"这段会话没有历史"。
+   */
+  private readAllEvents(sessionId: string): SessionEventView[] | null {
+    const port = this.read;
+    if (!port) return null;
+    const out: SessionEventView[] = [];
+    let beforeSeq: number | undefined;
+    for (;;) {
+      const page = port.readSessionEvents(
+        sessionId,
+        beforeSeq === undefined ? { limit: EVENT_PAGE_LIMIT } : { beforeSeq, limit: EVENT_PAGE_LIMIT }
+      );
+      if (page.length === 0) break;
+      const first = page[0]!.seq;
+      // 无进展护栏：这一页的头一条不小于上次的游标 = 读口没往前走（死循环风险），停。
+      if (beforeSeq !== undefined && first >= beforeSeq) break;
+      out.unshift(...page);
+      // 这一页没读满 = 后面没有了。
+      if (page.length < EVENT_PAGE_LIMIT) break;
+      beforeSeq = first;
+    }
+    return out;
   }
 
   /**
@@ -386,6 +673,10 @@ function rejectionText(code: SessionRejectionCode, maxSessions: number): string 
       return '当前状态下这一步不可执行（可能已中断、已恢复过或已经收尾）';
     case 'session-closed':
       return '会话已收尾，不能再记录事件';
+    case 'unsupported-kind':
+      return '这类会话暂不支持恢复续聊（目前只有互聊支持）';
+    case 'no-event-source':
+      return '会话历史未接入，无法回灌上下文（事件源未附着）';
   }
 }
 

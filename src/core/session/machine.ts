@@ -23,7 +23,8 @@
  *   - interrupt 只认 active / idle：已经中断的会话再中断是重复标记（拒绝，不改写历史）；
  *   - idle 只认 active：已是 idle 的会话再置 idle 同理（重复标记）；
  *   - activate 只认 idle、resume 只认 interrupted —— 两个动作落点都是 active，但来源不同：
- *     resume 语义是"恢复续聊"（2b 才接上下文回灌），activate 语义是"静默期结束又开始说话"。
+ *     resume 语义是"恢复续聊"（2b 起由 manager.resume 接上下文回灌，机器层只管状态迁移），
+ *     activate 语义是"静默期结束又开始说话"。
  *     混成一个动作会让"恢复"与"静默后继续"在审计上分不开（事件流里两种语义长得一样）。
  *
  * @since v3.40（task_091）v3.2a S1：会话域地基（types + 状态机 + manager 纯逻辑）。
@@ -33,7 +34,11 @@
 
 import {
   MAX_SESSION_AUTHOR_LEN,
+  MAX_SESSION_OUTPUT_TAIL_LEN,
   MAX_SESSION_PARTICIPANTS,
+  MAX_SESSION_STEP_LABEL_LEN,
+  MAX_SESSION_TASK_ID_LEN,
+  MAX_SESSION_TASK_SUMMARY_LEN,
   MAX_SESSION_TEXT_LEN,
   MAX_SESSION_TITLE_LEN,
   MIN_SESSION_TITLE_LEN,
@@ -69,7 +74,7 @@ export interface SessionEventTransition {
 export type SessionAction =
   /** idle → active：静默期结束，又开始说话了。 */
   | { type: 'activate' }
-  /** interrupted → active：恢复续聊（2b 才接上下文回灌，本单只翻状态）。 */
+  /** interrupted → active：恢复续聊（上下文回灌由 manager.resume 负责，机器层只管状态迁移）。 */
   | { type: 'resume' }
   /** active → idle：静默阈值命中 / 显式置空闲。 */
   | { type: 'idle' }
@@ -113,6 +118,31 @@ export function isOpenSessionStatus(status: SessionRecord['status']): boolean {
   return !isTerminalSessionStatus(status);
 }
 
+/**
+ * **可恢复的会话种类**（@since v3.46，task_100 / v3.2b-B1）—— 第一期只做 peer_chat。
+ *
+ * why 只做 peer_chat（方案 docs/SESSION-PLAN.md §8「v3.2b 关键决策」）：
+ *   互聊是「超时即丢」痛点的本体 —— session_events 就是消息流，回灌即重放；
+ *   character_chat 的历史在 chat_messages 表（不搬），恢复 = 打开面板继续聊，本来就有；
+ *   task_run / mission_run / shell_link 是 LITE（只记 create/close），没有可回灌的对话内容。
+ *   把种类收在这一张表里，新增种类时只改这里（判定散开必然漂移）。
+ */
+export const RESUMABLE_SESSION_KINDS: readonly SessionKind[] = ['peer_chat'];
+
+/**
+ * 这条会话现在**能不能恢复**（kind + 状态双重裁决，纯查表）。
+ *
+ * why 单独一个纯函数：resume 的准入是「能不能续跑」的业务裁决，
+ *   与状态机的「这一步可不可执行」是两件事（前者管 kind，后者管 status）——
+ *   合成一个判据，两处判定会各写各的（一边说能恢复、一边说不可执行）。
+ */
+export function canResumeSession(
+  kind: SessionKind,
+  status: SessionRecord['status']
+): boolean {
+  return RESUMABLE_SESSION_KINDS.includes(kind) && canApplySessionAction(status, 'resume');
+}
+
 /** 非法迁移：原样返回当前引用 + changed=false，调用方不需要判断"是否变了"。 */
 function reject(current: SessionRecord): SessionTransition {
   return { next: current, changed: false, error: 'illegal-transition' };
@@ -152,6 +182,16 @@ export function applySessionAction(current: SessionRecord, action: SessionAction
 function capText(text: string, max: number): string {
   if (text.length <= max) return text;
   return `${text.slice(0, max - 1)}…`;
+}
+
+/**
+ * 尾部截断（保留**末** max 个字符，超出则标 truncated）。
+ * why 与 capText 分开：输出尾部要的是"最后发生了什么"，从头截会把结论切掉
+ * （一份结论在末尾的报告，截头只剩铺垫 —— 留下的恰恰是无用的那部分）。
+ */
+function capTail(text: string, max: number): { readonly text: string; readonly truncated: boolean } {
+  if (text.length <= max) return { text, truncated: false };
+  return { text: text.slice(text.length - max), truncated: true };
 }
 
 /**
@@ -205,6 +245,70 @@ export function normalizeSessionEventDraft(draft: SessionEventDraft): SessionEve
         type: 'closed',
         payload:
           draft.payload.reason === undefined ? {} : { reason: capText(draft.payload.reason, MAX_SESSION_TEXT_LEN) },
+        createdAt: draft.createdAt,
+      };
+    // ---- 分叉标记（@since v3.46，task_100 / v3.2b-B1）----
+    // 载荷里的 id / 数字都是**结构化事实**（不是自由文本）：只夹长度，不改内容
+    // （sourceSessionId 必须是原样 —— 改了就追不回源会话）。
+    case 'forked':
+      return {
+        type: 'forked',
+        payload: {
+          sourceSessionId: capText(draft.payload.sourceSessionId, MAX_SESSION_AUTHOR_LEN),
+          atSeq: draft.payload.atSeq,
+          copiedCount: draft.payload.copiedCount,
+        },
+        createdAt: draft.createdAt,
+      };
+    // ---- task_run 全量事件化（@since v3.46，task_105 / v3.2b-B6）----
+    // 任务执行路径的埋点事件：开工 / 步骤 / 输出尾部 / 收尾。
+    // 归一口径与上面几类一致：**自由文本一律在 core 收口**（载荷是调用方给的，
+    // 事件本体落 session_events 表 —— 不收口就是无界行）。
+    case 'task_started':
+      return {
+        type: 'task_started',
+        payload: {
+          taskId: capText(draft.payload.taskId, MAX_SESSION_TASK_ID_LEN),
+          summary: capText(draft.payload.summary, MAX_SESSION_TASK_SUMMARY_LEN),
+        },
+        createdAt: draft.createdAt,
+      };
+    case 'step':
+      return {
+        type: 'step',
+        payload: {
+          label: capText(draft.payload.label, MAX_SESSION_STEP_LABEL_LEN),
+          ...(draft.payload.detail === undefined
+            ? {}
+            : { detail: capText(draft.payload.detail, MAX_SESSION_TASK_SUMMARY_LEN) }),
+        },
+        createdAt: draft.createdAt,
+      };
+    case 'output_tail': {
+      // 尾部截断（保留结论）；调用方已标 truncated 时**或**上 —— 两侧任一知道被截过都要留痕。
+      const capped = capTail(draft.payload.text, MAX_SESSION_OUTPUT_TAIL_LEN);
+      return {
+        type: 'output_tail',
+        payload: {
+          text: capped.text,
+          truncated: capped.truncated || draft.payload.truncated === true,
+        },
+        createdAt: draft.createdAt,
+      };
+    }
+    case 'completed':
+      return {
+        type: 'completed',
+        payload:
+          draft.payload.summary === undefined
+            ? {}
+            : { summary: capText(draft.payload.summary, MAX_SESSION_TASK_SUMMARY_LEN) },
+        createdAt: draft.createdAt,
+      };
+    case 'failed':
+      return {
+        type: 'failed',
+        payload: { reason: capText(draft.payload.reason, MAX_SESSION_TASK_SUMMARY_LEN) },
         createdAt: draft.createdAt,
       };
   }
@@ -266,6 +370,26 @@ export function dropClosedSessions(
 export function capSessionTitle(title: string): string {
   if (title.length <= MAX_SESSION_TITLE_LEN) return title;
   return `${title.slice(0, MAX_SESSION_TITLE_LEN - 1)}…`;
+}
+
+/**
+ * 分叉会话的标题后缀（@since v3.46，task_100 / v3.2b-B1）。
+ * why 带标记：分叉出来的会话与源会话**长得一样**的话，面板上分不清哪条是原聊、哪条是分叉。
+ */
+export const SESSION_FORK_TITLE_SUFFIX = '·分叉';
+
+/**
+ * 分叉会话的标题（原标题 + 分叉标记）。
+ *
+ * why 先给标记**留位**再截原标题：标题有上限（随广播全量下发，必须有界），
+ *   若先截原标题再拼标记，标记会被上限截掉 —— 分叉会话就又跟源会话长得一样了
+ *   （标记丢失 = 用户看不出这是分叉）。
+ */
+export function forkSessionTitle(title: string): string {
+  const room = Math.max(1, MAX_SESSION_TITLE_LEN - SESSION_FORK_TITLE_SUFFIX.length);
+  const base = title.trim();
+  const head = base.length <= room ? base : `${base.slice(0, room - 1)}…`;
+  return `${head}${SESSION_FORK_TITLE_SUFFIX}`;
 }
 
 /** 标题的 kind 前缀（决定会话是"角色对话"还是"互聊"——用户一眼要能分清）。 */
