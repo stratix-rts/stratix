@@ -87,3 +87,27 @@ agent-chat-service 每轮/每消息/中断标记 → SessionManager.append；超
 ## 7. 明确不做（2b 及以后，触发时另立项）
 
 resume/fork 上下文续接（dsh 深水区）、长会话压缩、MCP session_interrupt、LLM auto-title、session-reference 跨会话引用、task_run 全量事件化
+
+## 8. v3.2b 拆分（2026-11-02 13:05 用户触发立项，开发+验证）
+
+> §7 六项全部纳入本期。关键决策：
+> - **resume 第一期只做 peer_chat**（互聊是「超时即丢」痛点本体，session_events 即消息流可直接回灌重放；character_chat 历史在 chat_messages 表，恢复=打开面板继续聊，已有，不动）
+> - **fork = 新会话 + 事件复制到 atSeq**（append-only 自然分叉，事件以新 sessionId 落库，不复制 SQLite 原行；参与者继承）
+> - **title provider 端口注入**：core/session 定义 TitleProvider 端口（generate(events)→title），service 注入实现；默认规则实现（现截断逻辑迁入），LLM 实现（OpenAI 兼容，env：SX_TITLE_LLM_URL/SX_TITLE_LLM_KEY/SX_TITLE_LLM_MODEL，任一缺失回退规则版）——不引入硬依赖
+> - **task_run 事件全量但每步限长**：task_started/step/output_tail(尾 500 字)/completed/failed；LITE→FULL 渐进，不搬旧数据
+> - **压缩规则版先行**：eventCount>阈值（默认 200，env SX_SESSION_COMPRESS_THRESHOLD）触发，老事件段折叠为 type=compressed 的 summary 事件（payload 含 range/轮次/参与者/结论行）；get_events 读取路由返回「摘要+近期原文」；LLM 摘要留端口不实现
+> - **@会话引用**：互聊创建/任务拆分输入支持 `@session_<id>` → service 解析 → 目标会话近期事件（压缩后摘要）注入 agent 上下文头部（标记「引用会话 X」），事件留痕
+
+| ID | 任务 | 依赖 |
+|---|---|---|
+| B1 task_100 | core/session resume+fork 基础：状态机扩展（interrupted→active）+ manager.resume/fork + 上下文快照构建器（session_events→回灌消息列表）+ 单测 | — |
+| B2 task_101 | resume 全栈：agent-chat-service 续跑接线（回灌上下文重启互聊循环）+ HUD session.resume 命令与面板按钮 + MCP session_resume 工具 + SPEC 增补 | B1 |
+| B3 task_102 | fork 全栈：HUD session.fork 命令与历史抽屉「从这里分叉」入口 + MCP session_fork + SPEC；fork 后新会话可走 resume 续聊 | B1 |
+| B4 task_103 | MCP session_interrupt 写面工具 + SPEC 增补（manager.interrupt 已存在，只补 MCP 面） | — |
+| B5 task_104 | LLM auto-title：TitleProvider 端口 + 规则默认实现 + LLM 可选实现（env 配置缺省回退）+ peer_chat 首轮/task_run 创建时异步起名接线 | — |
+| B6 task_105 | task_run 全量事件化：task 执行路径埋点（started/step/output_tail/completed/failed，每步限长）| — |
+| B7 task_106 | 长会话压缩：阈值触发 + 规则摘要折叠 + get_events 读取路由 + env 配置 | B6 |
+| B8 task_107 | session-reference @引用：输入解析 + 上下文注入 + 事件留痕（互聊创建与任务拆分两入口） | B1 |
+| B9 task_108 | 回归+验收剧本：session-domain e2e 扩展——中断→resume 续聊继续产出 / fork 时间线 / task_run 事件完整 / 压缩触发读取正常 / @引用注入可见 / title 生效 | B2,B3,B4,B5,B6,B7,B8 |
+
+链：B1→{B2,B3,B8}；{B4,B5} 独立即启；B6→B7；B9 收口。
