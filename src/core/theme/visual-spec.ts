@@ -184,6 +184,91 @@ export const UNIT_ANIMATION_METRICS = Object.freeze({
 });
 
 /**
+ * 点击与指令特效的度量（DEMO-PLAN §4「点击与指令特效」）。
+ *
+ * why 也落在唯一事实源：框选 / 指令 / 翻卡 / 插旗 / 集火的**时长与尺寸**是规格数字
+ *   （「800ms 后淡出」「每 40ms 一个」「旗杆升起 0.5s」），战场侧
+ *   （world/objects/selection-box.ts、objects/task-fx*.ts）与 dev 逐项验收页都从这里取，
+ *   免得两处各抄一份再各改各的。色值不在这里 —— 色值只有 VISUAL_PALETTE 一处。
+ */
+export const INTERACTION_FX_METRICS = Object.freeze({
+  /** 框选：青色半透明填充 + 2px 霓虹边框 + 四角亮块；松手边框收缩闪烁一次后消失。 */
+  selectionBox: Object.freeze({
+    /** 填充透明度（青色半透明）。 */
+    fillAlpha: 0.16,
+    /** 霓虹边框粗细（px）。 */
+    strokeWidthPx: 2,
+    /** 四角亮块边长（px）。 */
+    cornerSizePx: 9,
+    /** 四角亮块透明度。 */
+    cornerAlpha: 0.95,
+    /** 松手收缩到的比例（1 = 不收缩）。 */
+    releaseShrinkRatio: 0.86,
+    /** 收缩（期间边框霓虹闪一下）时长（ms）。 */
+    releaseFlashMs: 90,
+    /** 收缩后淡出时长（ms）。 */
+    releaseFadeMs: 160,
+  }),
+  /** 命中单位波浪式弹选择环：每 40ms 一个（DEMO-PLAN §4）。 */
+  selectionWave: Object.freeze({
+    /** 相邻两个单位弹环的间隔（ms）。 */
+    intervalMs: 40,
+    /** 单次弹环动画时长（ms）。 */
+    ringDurationMs: 280,
+    /** 环的起始半径倍率（相对选中环半径）。 */
+    ringFromScale: 0.45,
+    /** 环的终止半径倍率。 */
+    ringToScale: 1.35,
+  }),
+  /** 下达指令：流动虚线（青→目标色渐变）+ 目标双重涟漪。 */
+  command: Object.freeze({
+    /** 流线总时长（ms；规格钦定 800ms 后淡出）。 */
+    flowDurationMs: 800,
+    /** 淡出段时长（ms；总时长尾部才开始淡）。 */
+    flowFadeMs: 200,
+    /** 虚线段长（世界坐标 px）。 */
+    dashLengthPx: 10,
+    /** 虚线段间隔（世界坐标 px）。 */
+    dashGapPx: 8,
+    /** 虚线流动速度（px/s）。 */
+    flowSpeedPxPerSec: 130,
+    /** 双重涟漪：两圈先后展开的间隔（ms；规格钦定 300ms）。 */
+    rippleGapMs: 300,
+    /** 单圈涟漪时长（ms）。 */
+    rippleDurationMs: 600,
+  }),
+  /** 任务认领 3D 翻卡：背面灰 → 正面亮色 + 图标。 */
+  cardFlip: Object.freeze({
+    /** 翻转时长（ms）。 */
+    durationMs: 420,
+    /** 翻完停留时长（ms；停留结束淡出）。 */
+    holdMs: 900,
+  }),
+  /** 任务完成插旗：旗杆升起 0.5s + 旗面 Back.Out 弹性展开。 */
+  flag: Object.freeze({
+    /** 旗杆升起时长（ms；规格钦定 0.5s）。 */
+    poleDurationMs: 500,
+    /** 旗面弹性展开时长（ms）。 */
+    clothDurationMs: 420,
+    /** 旗杆高度（世界坐标 px）。 */
+    poleHeightPx: 46,
+    /** 旗面宽（世界坐标 px）。 */
+    clothWidthPx: 26,
+    /** 旗面高（世界坐标 px）。 */
+    clothHeightPx: 16,
+  }),
+  /** 集火支援：选中群脚下位移脉冲一次。 */
+  focusFire: Object.freeze({
+    /** 脉冲时长（ms）。 */
+    pulseDurationMs: 320,
+    /** 脉冲环起始半径（px）。 */
+    pulseFromPx: 8,
+    /** 脉冲环终止半径（px）。 */
+    pulseToPx: 30,
+  }),
+});
+
+/**
  * 演示模式参数（DEMO-PLAN §8）。
  * 字号放大倍率 1.3 = 「字号 +30%」；storageKey 是开关记忆的 localStorage 键。
  */

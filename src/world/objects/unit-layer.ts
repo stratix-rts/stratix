@@ -55,6 +55,10 @@
  *   - **选中圈换成新规格**：DEMO-PLAN §2 钦定「脚下青色旋转虚线环（直径 64px，2s/圈）」，
  *     与 task_045 的实线椭圆不再是同一件东西 —— 实线椭圆退位为**框选预览**的弱提示，
  *     正式选中一律走虚线环（颜色 = 调色板 unit 青）。
+ *
+ * 框选波浪（@since v3.3，task_077 / DEMO-PLAN §4）：框选松手后命中的单位**每 40ms 弹一个**
+ *   选择环（popSelectionWave）—— 弹环是**一次性**演出（与常驻的选中环分开，
+ *   节点里另有一枚 popRing），驱动走一条链（唯一循环定时器），弹完即撤。
  */
 
 import Phaser from 'phaser';
@@ -64,8 +68,9 @@ import {
   type UnitAnimationContext,
   type UnitAnimationState,
 } from '../appearance/unit-animation';
-import { resolveUnitColor, UNIT_ANIMATION_METRICS, WORLD_PALETTE } from '../theme';
+import { resolveUnitColor, INTERACTION_FX_METRICS, UNIT_ANIMATION_METRICS, WORLD_PALETTE } from '../theme';
 
+import { selectionWaveSchedule } from './task-fx';
 import { UNIT_HIT_RADIUS, type UnitObject } from './unit-object';
 import type { UnitRegistry } from './unit-registry';
 import {
@@ -216,6 +221,12 @@ interface UnitNode {
   readonly zzzIcons: readonly Phaser.GameObjects.Text[];
   /** 脚下旋转虚线选择环（直径 64px，2s/圈）。 */
   readonly selectionRing: Phaser.GameObjects.Graphics;
+  /**
+   * 波浪式弹选择环（task_077）：框选松手时脚下一次性亮圈（每 40ms 弹一个）。
+   * why 独立于 selectionRing：选中环是**常驻**的慢转虚线（跟着选中态），
+   *   弹环是**一次性**的仪式感演出（跟着框选动作），两者生命周期不同。
+   */
+  readonly popRing: Phaser.GameObjects.Graphics;
   /** 点击涟漪（白圈，200ms）。 */
   readonly ripple: Phaser.GameObjects.Graphics;
   /** 落地星尘粒子（8-12 个小三角）。 */
@@ -283,6 +294,14 @@ export class UnitLayer {
   private cameraZoom = 1;
   /** 正在说话的单位集合（task_062：unit.speaking 事件的本地镜像，对账时随节点清理）。 */
   private readonly speakingFlags = new Set<string>();
+  /**
+   * 波浪式弹环的驱动（task_077）：待弹的单位队列 + 下一个位次 + **唯一一个**循环定时器。
+   * why 单独三个字段而不是一个对象：位次与队列是纯数据，定时器是资源 —— 分开看得清
+   *   「什么时候该撤」（撤定时器 + 清队列）。
+   */
+  private waveQueue: string[] = [];
+  private waveIndex = 0;
+  private waveTimer: Phaser.Time.TimerEvent | null = null;
   /**
    * 本层是否已销毁（场景 shutdown 时置位）。
    * why 需要：形象合成是异步的（要拉几十张精灵图，可能一两秒），
@@ -417,6 +436,87 @@ export class UnitLayer {
   }
 
   /**
+   * 框选命中的波浪式弹环（@since v3.3，task_077 / DEMO-PLAN §4）：松手后命中的单位
+   * **每 40ms 弹一个**选择环，像点亮一排灯。
+   *
+   * why 走一条链而不是每个单位各开一个定时器：perf 纪律（全场一个驱动）——
+   *   链上永远只有一个挂起的循环定时器，弹完即撤。
+   */
+  popSelectionWave(unitIds: readonly string[]): void {
+    if (this.destroyed) return;
+    this.cancelSelectionWave();
+    const schedule = selectionWaveSchedule(unitIds);
+    if (schedule.length === 0) return;
+    this.waveQueue = schedule.map((slot) => slot.unitId);
+    this.waveIndex = 0;
+    // 第一个立刻弹（不等第一个间隔），其余按 40ms 依次弹 —— 波浪从框选边缘往里跑。
+    this.popSelectionRing(this.waveQueue[0]);
+    this.waveIndex = 1;
+    if (this.waveQueue.length > 1) {
+      this.waveTimer = this.scene.time.addEvent({
+        delay: INTERACTION_FX_METRICS.selectionWave.intervalMs,
+        loop: true,
+        callback: () => this.advanceSelectionWave(),
+      });
+    }
+  }
+
+  /** 波浪推进一格（每 40ms 一次）。 */
+  private advanceSelectionWave(): void {
+    if (this.destroyed || this.waveIndex >= this.waveQueue.length) {
+      this.cancelSelectionWave();
+      return;
+    }
+    this.popSelectionRing(this.waveQueue[this.waveIndex]);
+    this.waveIndex += 1;
+  }
+
+  /** 撤掉波浪链（新一轮框选 / 场景 shutdown 时调用）。 */
+  private cancelSelectionWave(): void {
+    if (this.waveTimer) {
+      this.waveTimer.remove(false);
+      this.waveTimer = null;
+    }
+    this.waveQueue = [];
+    this.waveIndex = 0;
+  }
+
+  /**
+   * 单个单位脚下弹一次选择环（task_077）：从内侧半径长到外侧并淡出。
+   * why 自己画而不是缩放常驻的虚线环：常驻环是慢转的虚线图案，缩放它会让虚线
+   *   跟着变形（虚线宽窄不一）；重画一枚实心亮圈，弹起来干净。
+   */
+  private popSelectionRing(unitId: string): void {
+    const node = this.nodes.get(unitId);
+    if (!node) return;
+    const wave = INTERACTION_FX_METRICS.selectionWave;
+    const baseRadius = UNIT_ANIMATION_METRICS.selection.ringDiameterPx / 2;
+    const graphic = node.popRing;
+    const state = { progress: 0 };
+    graphic.setVisible(true).clear();
+
+    this.scene.tweens.add({
+      targets: state,
+      progress: 1,
+      duration: wave.ringDurationMs,
+      ease: 'Cubic.easeOut',
+      onUpdate: () => {
+        const radius =
+          baseRadius * (wave.ringFromScale + (wave.ringToScale - wave.ringFromScale) * state.progress);
+        const alpha = 1 - state.progress;
+        graphic.clear();
+        graphic.lineStyle(2.5, WORLD_PALETTE.unit, alpha);
+        graphic.strokeCircle(0, 0, radius);
+        graphic.fillStyle(WORLD_PALETTE.unit, alpha * 0.14);
+        graphic.fillCircle(0, 0, radius);
+      },
+      onComplete: () => {
+        graphic.clear().setVisible(false);
+      },
+    });
+  }
+
+  /**
    * 强制某个单位的动画状态（@since v3.3，task_075）：**dev 逐态验收用**。
    * 传 null 回到业务态自动派生。生产路径不调这个方法。
    */
@@ -486,6 +586,8 @@ export class UnitLayer {
       this.presenceTimer.remove(false);
       this.presenceTimer = null;
     }
+    // 波浪弹环链（task_077）：定时器必须撤，不留悬空回调。
+    this.cancelSelectionWave();
     for (const node of this.nodes.values()) {
       this.stopMoveTween(node);
       node.container.destroy();
@@ -587,6 +689,8 @@ export class UnitLayer {
     );
     // 点击涟漪（白圈，200ms）与落地星尘（8-12 个小三角）：两者都按 tick 重画，故常驻但默认隐藏。
     const ripple = this.scene.add.graphics().setVisible(false);
+    // 波浪式弹选择环（task_077）：一次性演出，默认隐藏。
+    const popRing = this.scene.add.graphics().setPosition(0, ANIM_STYLE.ring.y).setVisible(false);
     const dust = this.scene.add.graphics().setPosition(0, ANIM_STYLE.ring.y).setVisible(false);
     // 头顶覆盖物（task_062）：名字 / Lv 小字 / 说话气泡 —— 全部容器内嵌（见文件头），
     // 初始隐藏，可见性由 presence tick 统一裁决（开关 + zoom）。样式常量在 unit-presence.ts
@@ -625,11 +729,12 @@ export class UnitLayer {
       })
       .setOrigin(0.5, 1)
       .setVisible(false);
-    // 容器内层序（z 协调见文件头）：rig → 选中环 → 涟漪 → 星尘 → 名字 → Lv → 气泡。
+    // 容器内层序（z 协调见文件头）：rig → 选中环 → 弹环 → 涟漪 → 星尘 → 名字 → Lv → 气泡。
     // 名字/气泡永远在最上（要能压住头顶覆盖物）；选中环垫在身下（读作「地面的圈」）。
     const container = this.scene.add.container(0, 0, [
       rig,
       selectionRing,
+      popRing,
       ripple,
       dust,
       nameTag,
@@ -652,6 +757,7 @@ export class UnitLayer {
       alertIcon,
       zzzIcons,
       selectionRing,
+      popRing,
       ripple,
       dust,
       nameTag,

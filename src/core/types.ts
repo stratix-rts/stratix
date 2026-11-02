@@ -1388,6 +1388,15 @@ export type HudCommand =
  */
 export type ExpSource = 'task_completed' | 'task_failed' | 'chat_round';
 
+/**
+ * 战场音效 cue 词表（@since v3.3，task_077 预留 / 声音包 v3.3-10 消费）。
+ *
+ * 闭集：战场在关键动作上发 cue，声音包按词表实现播放器 —— 加新词要同时改两侧。
+ * 选这几个词的理由：对应 DEMO-PLAN §10 的四音（选中 ack / 派活 / 完成 / 报错），
+ * 外加两个演示专用（认领翻卡、集火支援）。
+ */
+export type SoundCue = 'select' | 'command' | 'claim' | 'complete' | 'focus';
+
 // ============================================================================
 // ★ 总线契约：world → core 的交互事件（单向，world 不直接改 HUD）
 // ============================================================================
@@ -1543,4 +1552,22 @@ export type WorldEvent =
    * payload 只携单位 id 与布尔位（不雪球文本 —— 气泡只表达「正在说话」语义，task_062
    *   规格明确选最简：三点脉动，不截流式文本）。
    */
-  | { type: 'unit.speaking'; unitId: string; speaking: boolean };
+  | { type: 'unit.speaking'; unitId: string; speaking: boolean }
+  /**
+   * @since v3.3（task_077）单位气泡事件：战场侧要求某个单位冒一句话。
+   *   发出方是 world 层（下达指令 / 集火支援时，DEMO-PLAN §4「单位统一冒『收到』类气泡」）。
+   *   消费者是**气泡系统**（task_076，world/speech-templates.ts 的句库 + 渲染层）——
+   *   气泡系统尚未合入，故本任务只发事件不自己画（接线位见 world/objects/task-fx-layer.ts）。
+   *   core 状态机不消费（气泡是瞬态表现，不写 WorldState）—— runtime 的 handleWorldEvent
+   *   显式接地（同 unit.speaking 惯例，不进 onUnhandled）。
+   *   payload 只携单位 id 与一句短文本（不雪球句库 id —— 句库归气泡系统所有）。
+   */
+  | { type: 'unit.bubble'; unitId: string; text: string }
+  /**
+   * @since v3.3（task_077）音效钩子事件（**预留**）：战场在关键动作上发一声 cue，
+   *   声音包（v3.3-10 / DEMO-PLAN §10「Web Audio 代码合成」）据此发声。
+   *   本任务**只发事件、不做音频**（零音频资产是 DEMO-PLAN §0 的硬约束）。
+   *   core 状态机不消费（音效不进 WorldState）—— runtime 的 handleWorldEvent 显式接地。
+   *   cue 词表是**闭集**：声音包按词表实现播放器，加新词要同时改两侧。
+   */
+  | { type: 'fx.sound'; cue: SoundCue };

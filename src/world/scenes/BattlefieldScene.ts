@@ -55,8 +55,8 @@ import { CameraController, DEFAULT_WORLD_BOUNDS } from '../camera';
 import { BuildingLayer } from '../objects/building-layer';
 import { GroundLayer, GROUND_DEPTH } from '../objects/ground-layer';
 import { SelectionBox } from '../objects/selection-box';
-import { MapBoard } from '../objects/task-building';
-import { TaskFxBoard, applyTaskFxEvent } from '../objects/task-fx';
+import { MapBoard, BUILDING_SIZE, type MapSyncResult } from '../objects/task-building';
+import { INTERACTION_BUBBLE_TEXT, TaskFxBoard, applyTaskFxEvent } from '../objects/task-fx';
 import { TaskFxLayer } from '../objects/task-fx-layer';
 import { UnitLayer } from '../objects/unit-layer';
 import { UnitRegistry, UNIT_POSITION_SEED_KEY } from '../objects/unit-registry';
@@ -230,7 +230,37 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
    * 场景只负责把结果画出来（objects/task-building 的纯映射 + objects/building-layer 的绘制）。
    */
   syncTasks(missions: readonly MissionView[], tasks: readonly CharacterTask[]): void {
-    this.buildingLayer.sync(this.mapBoard.sync(missions, tasks));
+    const result = this.mapBoard.sync(missions, tasks);
+    this.buildingLayer.sync(result);
+    this.playTaskPointFx(result);
+  }
+
+  /**
+   * 任务点的演出（@since v3.3，task_077 / DEMO-PLAN §4）：
+   *   - 任务被**认领**（地基 → 施工）→ 3D 翻卡（背面灰 → 正面亮色 + 图标）；
+   *   - 任务**完成**（→ 完工）→ 插旗（旗杆升起 + 旗面 Back.Out 弹性展开，旗子驻留）。
+   * why 挂在状态同步上：认领 / 完成都是**状态跳变**，而跳变正是 MapBoard 的产物
+   *   （它记着上次的相位）—— 场景不自己比对状态，只把跳变翻译成演出。
+   */
+  private playTaskPointFx(result: MapSyncResult): void {
+    if (result.claimedBuildingIds.length === 0 && result.completedBuildingIds.length === 0) return;
+    const byId = new Map(result.buildings.map((building) => [building.id, building]));
+
+    for (const id of result.claimedBuildingIds) {
+      const building = byId.get(id);
+      if (!building) continue;
+      // 卡片浮在建筑上方（卡片比楼小，叠在楼上会糊在一起）。
+      this.taskFxLayer.flipCard(building.x, building.y - BUILDING_SIZE);
+      this.bridge.soundCue('claim');
+    }
+
+    for (const id of result.completedBuildingIds) {
+      const building = byId.get(id);
+      if (!building) continue;
+      // 旗子插在建筑脚下（旗杆从地面升起）。
+      this.taskFxLayer.raiseFlag(id, building.x, building.y + BUILDING_SIZE / 2);
+      this.bridge.soundCue('complete');
+    }
   }
 
   /** 空状态提示：居中置于世界中心，首单位接入即隐藏（零假数据，不是种子单位）。 */
@@ -387,13 +417,20 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
 
     if (mode === 'box') {
       const bounds = this.boxBounds(this.dragStartWorld, this.toWorldPoint(pointer));
-      this.selectionBox.hide();
+      const hits = this.draggedFar ? this.unitLayer.queryBounds(bounds) : [];
+      // 松手收尾（task_077）：边框收缩 + 霓虹闪一下后消失（不是直接抹掉 —— 收尾本身是演出）。
+      this.selectionBox.release();
       this.clearBoxPreview();
       // 框选闭环（task_045）：命中判定在本层（core 无坐标），终值 id 补在事件上。
       // 拖空框 = 清空选择（拖了个空框也是一次明确的选择动作）；点空地 = 零面积框选，
       // 同样清空（RTS 惯例的取消选择；Shift 按住 = 加选语义，命中空自然是 no-op，core 也不广播）。
       const additive = readModifiers(pointer).shift;
-      this.bridge.selectionBox(bounds, this.draggedFar ? this.unitLayer.queryBounds(bounds) : [], additive);
+      this.bridge.selectionBox(bounds, hits, additive);
+      // 波浪式弹选择环（task_077 / DEMO-PLAN §4）：命中的单位每 40ms 弹一个。
+      if (hits.length > 0) {
+        this.unitLayer.popSelectionWave(hits);
+        this.bridge.soundCue('select');
+      }
       return;
     }
 
@@ -407,11 +444,33 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     }
   }
 
-  /** 右键短按 → unit.move（task_045）：目标点涟漪（视觉反馈）+ 指令上报（编队落位在 core 算）。 */
+  /**
+   * 右键短按 → unit.move（task_045）+ 下达指令的特效（task_077 / DEMO-PLAN §4）：
+   *   ① 每个选中单位脚下到目标点拉**流动虚线**（青→目标色渐变，800ms 后淡出）；
+   *   ② 目标点**双重涟漪**（两圈先后 300ms 扩散）；
+   *   ③ 单位头顶统一冒「收到」类气泡（气泡系统 task_076 未合入 → 这里只发事件）；
+   *   ④ 右键落在**卡住**的单位上 = 集火支援：气泡换成「来了来了」+ 脚下位移脉冲一次。
+   * 指令上报（编队落位在 core 算）与特效同一次动作发出 —— 画面与逻辑同帧，不分先后。
+   */
   private issueMoveCommand(pointer: Phaser.Input.Pointer): void {
     if (this.selectedUnitIds.length === 0) return;
     const target = this.toWorldPoint(pointer);
-    this.taskFxLayer.ripple(target.x, target.y);
+
+    // 集火判定：右键命中一个**卡住**（error）的单位 = 支援它（不是单纯移动）。
+    const hit = this.unitLayer.hitTest(target.x, target.y);
+    const focusFire = hit !== null && hit.status === 'error';
+    const bubbleText = focusFire ? INTERACTION_BUBBLE_TEXT.focus : INTERACTION_BUBBLE_TEXT.command;
+
+    for (const unitId of this.selectedUnitIds) {
+      const unit = this.units.get(unitId);
+      if (!unit) continue;
+      this.taskFxLayer.commandFlow(unit.position, target);
+      this.bridge.unitBubble(unitId, bubbleText);
+      if (focusFire) this.taskFxLayer.footPulse(unit.position.x, unit.position.y);
+    }
+
+    this.taskFxLayer.doubleRipple(target.x, target.y);
+    this.bridge.soundCue(focusFire ? 'focus' : 'command');
     this.bridge.unitMove(this.selectedUnitIds, target.x, target.y);
   }
 

@@ -34,17 +34,19 @@
  * @since v3.30(task_054)追加 agent.online / agent.offline 事件接地(app 健康监测的
  *   在线位广播,落点 applyAgentConnectivity 写 units.online);
  *   v3.37(task_062)追加 unit.speaking 接地(app 层 chat-service 的说话标志位广播,
- *   消费者是战场场景 -- 纯瞬态表现,不写 WorldState)。
+ *   消费者是战场场景 -- 纯瞬态表现,不写 WorldState);
+ *   v3.3(task_077)追加 unit.bubble(战场要求单位冒一句话,气泡系统 task_076 消费)与
+ *   fx.sound(音效钩子,声音包 v3.3-10 消费)接地 -- 两者都是纯瞬态表现,不写 WorldState。
  * @since v3.33(task_057)追加 camera.center 命令接线:钳制(core/camera.ts 纯函数)后转发
  *   同名 WorldEvent 到 world 通道(消费者是场景相机);world 通道回环的 camera.center 显式接地。
  * @since v3.34(task_058)追加 unit.group.assign / unit.group.recall 命令接线:编组槽位表
  *   (WorldState.selectionGroups)的写入与召回。槽位合法性/幂等/对账语义在 core/unit/group.ts
  *   纯函数;反馈(已存入/召回 N(x 单位)/被拒原因)同一次 setState 里附 Notice(一次操作一次广播)。
+ * @since v3.3(task_080)追加 camera.shake 命令接线:钳制(core/camera.ts 的 clampShake)后转发
+ *   同名 WorldEvent 到 world 通道(消费者是场景相机);world 通道回环的 camera.shake 显式接地。
  * @since v3.43(task_093)追加 session.interrupt 命令接线:落到 session manager
  *   (core/session,同 mission / task 口径直调);会话域的持久化口由组合根注入
  *   (命令落点与业务侧记账共用同一个 manager 实例)。
- * @since v3.3(task_080)追加 camera.shake 命令接线:钳制(core/camera.ts 的 clampShake)后转发
- *   同名 WorldEvent 到 world 通道(消费者是场景相机);world 通道回环的 camera.shake 显式接地。
  */
 
 import type { AgentLinkManager } from './agent-link';
@@ -611,6 +613,13 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         //   不写 WorldState(core 状态机不消费) -- 同 unit.position 惯例显式接地,不进 onUnhandled
         //   (否则每轮对话起止都会报一次「未处理」噪音)。
         if (event.type === 'unit.speaking') return;
+        // unit.bubble(@since v3.3,task_077):world 层要求某个单位冒一句话(气泡系统 task_076 消费),
+        //   纯瞬态表现,不写 WorldState -- 同 unit.speaking 惯例显式接地,不进 onUnhandled
+        //   (否则每次下达指令都会报一次「未处理」噪音)。
+        if (event.type === 'unit.bubble') return;
+        // fx.sound(@since v3.3,task_077):音效钩子(声音包 v3.3-10 消费),战场只发事件不做音频 --
+        //   同上,显式接地。
+        if (event.type === 'fx.sound') return;
         reportUnhandled('world', event);
     }
   };

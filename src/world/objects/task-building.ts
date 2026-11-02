@@ -102,6 +102,8 @@ export interface MapSyncResult {
   readonly buildings: readonly MapBuilding[];
   /** 本次同步中「刚变成完工」的建筑 id（渲染层据此逐窗点亮）。 */
   readonly completedBuildingIds: readonly string[];
+  /** 本次同步中「刚被认领」的建筑 id（task_077：渲染层据此 3D 翻卡）。 */
+  readonly claimedBuildingIds: readonly string[];
   /** 本次同步中「刚点亮」的区域 id（渲染层据此做一次性过渡）。 */
   readonly clearedRegionIds: readonly string[];
 }
@@ -260,13 +262,24 @@ export class MapBoard {
       });
     }
 
-    // 跳变识别：建筑刚完工 / 区域刚点亮。
+    // 跳变识别：建筑刚完工 / 刚被认领 / 区域刚点亮。
     const completedBuildingIds: string[] = [];
+    const claimedBuildingIds: string[] = [];
     const liveIds = new Set<string>();
     for (const building of buildings) {
       liveIds.add(building.id);
       const previous = this.lastStates.get(building.id);
       if (building.state === 'done' && previous !== 'done') completedBuildingIds.push(building.id);
+      // 认领（task_077）：从「地基」跳到「施工」= 有人接单了 → 翻卡演出。
+      // why 要求 previous 存在：首次对账看到的就是施工中的任务（早于本次会话开工），
+      //   那不是"刚刚被认领"，不该翻卡（否则每次进场满屏翻卡）。
+      if (
+        building.state === 'building' &&
+        previous !== undefined &&
+        previous !== 'building'
+      ) {
+        claimedBuildingIds.push(building.id);
+      }
       this.lastStates.set(building.id, building.state);
     }
     for (const id of Array.from(this.lastStates.keys())) {
@@ -280,7 +293,7 @@ export class MapBoard {
       else this.clearedRegions.delete(region.id);
     }
 
-    return { regions, buildings, completedBuildingIds, clearedRegionIds };
+    return { regions, buildings, completedBuildingIds, claimedBuildingIds, clearedRegionIds };
   }
 
   /** 区域占格：已占过的沿用旧格（位置不漂移），新区域取下一个空位。 */

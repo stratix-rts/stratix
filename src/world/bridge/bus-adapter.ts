@@ -35,6 +35,7 @@ import type {
   MissionView,
   Point,
   SelectionState,
+  SoundCue,
   UnitView,
   WorldEvent,
   WorldState,
@@ -120,6 +121,17 @@ export interface WorldEventSink {
    * 的 unit.move 共用同一套编队落位（core/unit/formation）与 unit.position 终值广播。
    */
   unitMove(unitIds: readonly string[], x: number, y: number): void;
+  /**
+   * 单位气泡（@since v3.3，task_077）：要求某个单位冒一句话。
+   * 走 WorldEvent 的 unit.bubble —— 消费者是气泡系统（task_076）；本任务只发事件，
+   * 不自己渲染（接线位见 objects/task-fx-layer.ts 的气泡钩子注释）。
+   */
+  unitBubble(unitId: string, text: string): void;
+  /**
+   * 音效钩子（@since v3.3，task_077）：只发事件、**不做音频**（声音包 v3.3-10 消费）。
+   * 走 WorldEvent 的 fx.sound。
+   */
+  soundCue(cue: SoundCue): void;
 }
 
 export interface WorldBridge extends WorldEventSink {
@@ -231,6 +243,16 @@ export function createWorldBridge(
     unitMove(unitIds: readonly string[], x: number, y: number): void {
       if (destroyed) return;
       emitWorldEvent({ type: 'unit.move', unitIds: [...unitIds], x, y });
+    },
+
+    unitBubble(unitId: string, text: string): void {
+      if (destroyed) return;
+      emitWorldEvent({ type: 'unit.bubble', unitId, text });
+    },
+
+    soundCue(cue: SoundCue): void {
+      if (destroyed) return;
+      emitWorldEvent({ type: 'fx.sound', cue });
     },
 
     unitPosition(unitId: string, x: number, y: number): void {

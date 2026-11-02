@@ -19,6 +19,7 @@
 import { VISUAL_PALETTE, hexToNumber } from '../core/theme/visual-spec';
 
 export {
+  INTERACTION_FX_METRICS,
   VISUAL_METRICS,
   VISUAL_PALETTE,
   UNIT_ANIMATION_METRICS,

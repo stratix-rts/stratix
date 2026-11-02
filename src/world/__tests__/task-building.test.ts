@@ -190,3 +190,31 @@ describe('MapBoard：跳变事件（点亮是一次性过渡）', () => {
     expect(clearedAgain.clearedRegionIds).toEqual(['m1']);
   });
 });
+
+describe('MapBoard：任务被认领的跳变（task_077 翻卡）', () => {
+  test('地基 → 施工 = 刚被认领（只报一次）', () => {
+    const board = new MapBoard();
+    board.sync([makeMission('m1')], [makeTask('t1', 'queued', 'm1')]);
+
+    const claimed = board.sync([makeMission('m1')], [makeTask('t1', 'running', 'm1')]);
+    expect(claimed.claimedBuildingIds).toEqual(['t1']);
+
+    // 再同步一次同样的状态：不重复报（否则翻卡动画会重放）。
+    const again = board.sync([makeMission('m1')], [makeTask('t1', 'running', 'm1')]);
+    expect(again.claimedBuildingIds).toEqual([]);
+  });
+
+  test('首次对账看到的就是施工中 → 不算「刚被认领」（进场不翻卡）', () => {
+    const board = new MapBoard();
+    const first = board.sync([makeMission('m1')], [makeTask('t1', 'running', 'm1')]);
+    expect(first.claimedBuildingIds).toEqual([]);
+  });
+
+  test('施工 → 完工不报认领（那是完成跳变，插旗不翻卡）', () => {
+    const board = new MapBoard();
+    board.sync([makeMission('m1')], [makeTask('t1', 'running', 'm1')]);
+    const done = board.sync([makeMission('m1')], [makeTask('t1', 'completed', 'm1')]);
+    expect(done.claimedBuildingIds).toEqual([]);
+    expect(done.completedBuildingIds).toEqual(['t1']);
+  });
+});

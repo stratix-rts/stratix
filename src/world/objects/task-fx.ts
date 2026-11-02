@@ -31,11 +31,12 @@
  * 批准（task.approved → started 相位）盖回工作环，驳回（task.failed）换成 !。
  * why 单位此刻不 busy（挂起不算忙）：busy 派生永远画环的裁决不会盖住 ? —— 状态与表现天然对齐。
  *
- * @since v3.17（task_038）；v3.25（task_049）追加 awaiting 浮标（审批门）。
+ * @since v3.17（task_038）；v3.25（task_049）追加 awaiting 浮标（审批门）；
+ * v3.3（task_077）追加「交互特效的纯裁决」段（框选波浪 / 指令流线 / 翻卡 / 插旗 / 集火）。
  */
 
-import type { CharacterTask, UnitStatus } from '../../core/types';
-import { WORLD_PALETTE } from '../theme';
+import type { CharacterTask, Point, UnitStatus } from '../../core/types';
+import { INTERACTION_FX_METRICS, WORLD_PALETTE } from '../theme';
 
 // ============================================================================
 // 样式常量（变体钩子：全部可调参数集中一处）
@@ -268,4 +269,214 @@ export function applyTaskFxEvent(
     else board.setFailed(unit.id);
   }
   return hitUnitIds;
+}
+
+// ============================================================================
+// 交互特效的纯裁决（@since v3.3，task_077 / DEMO-PLAN §4「点击与指令特效」）
+// ============================================================================
+// 框选 / 指令 / 翻卡 / 插旗 / 集火五件事的**纯算术**都在这一段：波浪位次、虚线几何、
+// 渐变色、翻卡变换、旗面弹性、脉冲半径。绘制在 objects/task-fx-layer.ts。
+// why 纯逻辑单独一段而不塞进绘制器：这些是"算出来的规格"（每 40ms 一个、800ms 淡出、
+//   Back.Out 弹性），node 单测能穷举断言；绘制器只负责把算出来的值画到屏幕上。
+
+/**
+ * 交互特效的样式（颜色口径 = 调色板门面；尺寸口径 = 唯一事实源）。
+ * why 单独一张样式表：交互特效散在五处（框选 / 流线 / 翻卡 / 插旗 / 集火），
+ *   改观感只动这里 —— 与 TASK_FX_STYLE 同一纪律。
+ */
+export interface InteractionFxStyle {
+  /** 流线起点色（青 = 我方单位主色）。 */
+  readonly flowStartColor: number;
+  /** 流线终点色（目标色；缺省 = 装饰紫）。 */
+  readonly flowEndColor: number;
+  /** 流线描边粗细（px）。 */
+  readonly flowLineWidthPx: number;
+  /** 翻卡背面色（中性灰 —— 灰不是语义色，故不进调色板）。 */
+  readonly cardBackColor: number;
+  /** 翻卡正面色（亮 = 被认领；用我方主色）。 */
+  readonly cardFrontColor: number;
+  /** 翻卡正面图标色（深色，压在亮面上）。 */
+  readonly cardIconColor: number;
+  /** 卡片宽 / 高（世界坐标 px）。 */
+  readonly cardWidthPx: number;
+  readonly cardHeightPx: number;
+  /** 旗杆色（中性灰）/ 旗面色（完成 = 翠绿）。 */
+  readonly flagPoleColor: number;
+  readonly flagClothColor: number;
+  /** 集火脉冲色（卡住 = 绯红）。 */
+  readonly focusPulseColor: number;
+}
+
+/** 默认交互特效样式。 */
+export const INTERACTION_FX_STYLE: InteractionFxStyle = Object.freeze({
+  flowStartColor: WORLD_PALETTE.unit,
+  flowEndColor: WORLD_PALETTE.accent,
+  flowLineWidthPx: 2,
+  cardBackColor: 0x5c6470,
+  cardFrontColor: WORLD_PALETTE.unit,
+  cardIconColor: WORLD_PALETTE.background,
+  cardWidthPx: 46,
+  cardHeightPx: 58,
+  flagPoleColor: 0x9ca3af,
+  flagClothColor: WORLD_PALETTE.success,
+  focusPulseColor: WORLD_PALETTE.danger,
+});
+
+/**
+ * 指令 / 集火时冒的气泡文案。
+ * why 现在就写死：气泡系统（task_076，world/speech-templates.ts）尚未合入，
+ *   本任务按规格只**发事件**（unit.bubble）不自己渲染气泡 —— 文案暂放这里，
+ *   task_076 合入后由句库接管（接线注释见 objects/task-fx-layer.ts 的 bubble 钩子）。
+ */
+export const INTERACTION_BUBBLE_TEXT = Object.freeze({
+  /** 普通指令：单位统一回一句「收到」。 */
+  command: '收到',
+  /** 集火支援：选中群同时冒「来了来了」。 */
+  focus: '来了来了',
+});
+
+/** 波浪式弹选择环的一个位次。 */
+export interface SelectionWaveSlot {
+  readonly unitId: string;
+  /** 相对起拍的延迟（ms）。 */
+  readonly delayMs: number;
+}
+
+/**
+ * 命中单位的波浪位次：每 intervalMs 一个（DEMO-PLAN §4「每 40ms 一个」）。
+ * why 返回"位次 + 延迟"而不是直接给回调：绘制层要按延迟逐个起拍，
+ *   而"哪几个单位、隔多久"这件事是纯算术 —— 单测直接断言这张表。
+ */
+export function selectionWaveSchedule(
+  unitIds: readonly string[],
+  intervalMs: number = INTERACTION_FX_METRICS.selectionWave.intervalMs
+): readonly SelectionWaveSlot[] {
+  const slots: SelectionWaveSlot[] = [];
+  unitIds.forEach((unitId, index) => {
+    slots.push({ unitId, delayMs: index * intervalMs });
+  });
+  return slots;
+}
+
+/** 流动虚线的一段（世界坐标）。 */
+export interface FlowDashSegment {
+  readonly x1: number;
+  readonly y1: number;
+  readonly x2: number;
+  readonly y2: number;
+  /** 该段中点在整条线上的位置（0..1）—— 取渐变色用。 */
+  readonly t: number;
+}
+
+/**
+ * 把一条直线切成流动虚线：offsetPx 越大，虚线越朝目标方向推进（"流动"的算术）。
+ * why 在纯函数里切段：渐变要**逐段**取色（青→目标色），段的位置与顺序是规格的一部分，
+ *   单测能断言"第 k 段落在哪、颜色参数 t 是多少"。
+ */
+export function flowDashSegments(
+  from: Point,
+  to: Point,
+  offsetPx: number,
+  dashLengthPx: number = INTERACTION_FX_METRICS.command.dashLengthPx,
+  gapPx: number = INTERACTION_FX_METRICS.command.dashGapPx
+): readonly FlowDashSegment[] {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.hypot(dx, dy);
+  if (length < 1 || dashLengthPx <= 0) return [];
+  const ux = dx / length;
+  const uy = dy / length;
+  const period = dashLengthPx + Math.max(gapPx, 0);
+  if (period <= 0) return [];
+
+  const segments: FlowDashSegment[] = [];
+  // 首段起点随 offset 前移（offset 增大 = 虚线朝目标方向流动）。
+  let start = -(((offsetPx % period) + period) % period);
+  while (start < length) {
+    const segStart = Math.max(start, 0);
+    const segEnd = Math.min(start + dashLengthPx, length);
+    if (segEnd - segStart > 0.5) {
+      const mid = (segStart + segEnd) / 2;
+      segments.push({
+        x1: from.x + ux * segStart,
+        y1: from.y + uy * segStart,
+        x2: from.x + ux * segEnd,
+        y2: from.y + uy * segEnd,
+        t: mid / length,
+      });
+    }
+    start += period;
+  }
+  return segments;
+}
+
+/** 两色线性混合（t=0 取 a，t=1 取 b）—— 流线渐变取色。 */
+export function mixColorT(a: number, b: number, t: number): number {
+  const k = Math.min(1, Math.max(0, t));
+  const channel = (shift: number): number => {
+    const ca = (a >> shift) & 0xff;
+    const cb = (b >> shift) & 0xff;
+    return Math.round(ca + (cb - ca) * k);
+  };
+  return (channel(16) << 16) | (channel(8) << 8) | channel(0);
+}
+
+/**
+ * 3D 翻卡的横向缩放：|cos(π·p)| —— 1 → 0（侧棱）→ 1。
+ * why 取绝对值不做镜像：镜像会把正面图标也翻过来（图标变成反的），2D 假 3D 不做镜像，
+ *   只靠"侧棱 → 换面"读出翻卡动作。
+ */
+export function cardFlipScaleX(progress: number): number {
+  const p = Math.min(1, Math.max(0, progress));
+  return Math.abs(Math.cos(Math.PI * p));
+}
+
+/** 翻卡过半后露正面（背面灰 → 正面亮色 + 图标）。 */
+export function cardFlipShowsFront(progress: number): boolean {
+  return Math.min(1, Math.max(0, progress)) >= 0.5;
+}
+
+/** Back.Out 缓动（入场弹性：先冲过头再回落）。 */
+export function easeBackOut(u: number): number {
+  const x = Math.min(1, Math.max(0, u));
+  // 两端取精确值：公式在 x=0 处会因浮点误差返回 -2.2e-16（旗面起手会有一帧负缩放）。
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  const c1 = 1.70158;
+  const c3 = c1 + 1;
+  return 1 + c3 * (x - 1) ** 3 + c1 * (x - 1) ** 2;
+}
+
+/** 旗面展开比例（Back.Out 弹性展开）。 */
+export function flagClothScale(progress: number): number {
+  return easeBackOut(progress);
+}
+
+/** 旗杆升起比例（平滑上升，不回弹 —— 杆是硬的，弹的是旗面）。 */
+export function flagPoleProgress(progress: number): number {
+  const x = Math.min(1, Math.max(0, progress));
+  return 1 - (1 - x) ** 3;
+}
+
+/** 集火脉冲环半径（进度 0→1）。 */
+export function footPulseRadius(progress: number, fromPx: number, toPx: number): number {
+  const x = Math.min(1, Math.max(0, progress));
+  return fromPx + (toPx - fromPx) * x;
+}
+
+/** 集火脉冲环透明度（线性淡出）。 */
+export function footPulseAlpha(progress: number): number {
+  const x = Math.min(1, Math.max(0, progress));
+  return 1 - x;
+}
+
+/**
+ * 流线整体透明度：前段保持不透明，尾段（fadeRatio）线性淡出。
+ * why 不是从头就淡：规格是「800ms 后淡出」—— 先让虚线跑完，最后一段才化掉。
+ */
+export function flowFadeAlpha(progress: number, fadeRatio: number): number {
+  const x = Math.min(1, Math.max(0, progress));
+  const start = 1 - Math.min(1, Math.max(0, fadeRatio));
+  if (x <= start) return 1;
+  return 1 - (x - start) / Math.max(1e-6, 1 - start);
 }

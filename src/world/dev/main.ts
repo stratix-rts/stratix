@@ -120,5 +120,11 @@ function describe(event: WorldEvent): string {
     // 说话状态（@since v3.37，task_062）：chat 流式期间的战场气泡标志位，看一眼起止。
     case 'unit.speaking':
       return `${event.type.padEnd(15)} ${event.unitId} speaking=${event.speaking}`;
+    // 单位气泡（@since v3.3，task_077）：战场要求某个单位冒一句话（气泡系统 task_076 消费）。
+    case 'unit.bubble':
+      return `${event.type.padEnd(15)} ${event.unitId} 「${event.text}」`;
+    // 音效钩子（@since v3.3，task_077）：只发事件不做音频（声音包 v3.3-10 消费）。
+    case 'fx.sound':
+      return `${event.type.padEnd(15)} ${event.cue}`;
   }
 }
