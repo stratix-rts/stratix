@@ -51,6 +51,7 @@ export function resolveUnitColor(skinId: string | null | undefined, fallback: nu
 export {
   AMBIENCE_METRICS,
   CAMERA_METRICS,
+  DIRECTOR_METRICS,
   INTERACTION_FX_METRICS,
   MINIMAP_METRICS,
   VISUAL_METRICS,

@@ -70,9 +70,12 @@ import {
   type CameraPose,
   type ClickStamp,
 } from '../camera';
+import { DirectorController, type DirectorHost } from '../camera/director';
+import type { DirectorEventKind } from '../camera/director-policy';
 import { isWarmHour } from '../objects/ambience-layout';
 import { BuildingLayer } from '../objects/building-layer';
 import { CloudLayer } from '../objects/cloud-layer';
+import { DirectorVignette } from '../objects/director-vignette';
 import { GroundLayer, GROUND_DEPTH } from '../objects/ground-layer';
 import { SelectionBox } from '../objects/selection-box';
 import { SpeechBubbleBoard } from '../objects/speech-bubble';
@@ -155,6 +158,16 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
    */
   private cloudLayer!: CloudLayer;
   /**
+   * 导演控制器（@since v3.3，task_081）：任务事件 → 镜头编排（缓动到事件点 → 停留 → 回全景，
+   * 静默则缓慢巡视）。开启 / 关闭由 core 经 camera.director 事件驱动（hud 顶栏「🎬 导演」按钮）。
+   */
+  private director!: DirectorController;
+  /**
+   * 报错红色渐晕层（@since v3.3，task_081）：报错事件时屏幕边缘红光呼吸 2 次。
+   * why 是屏幕坐标：它提示的是「屏幕这边出事了」，不随镜头跑。
+   */
+  private directorVignette!: DirectorVignette;
+  /**
    * 拖拽平移的目标中心（世界坐标，**未钳制**）—— 橡皮筋的真相。
    * why 单独记一份：钳制后的中心丢了「用户想拉到哪」的信息，越界量就无从算起。
    */
@@ -201,8 +214,18 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     this.groundLayer = new GroundLayer(this, { bounds: DEFAULT_WORLD_BOUNDS });
     this.drawEmptyHint();
 
+    // 报错红色渐晕层（@since v3.3，task_081）：屏幕坐标的边缘红光，报错事件时呼吸 2 次。
+    // 纯装饰层：不发总线事件（它只是「出错」的视觉提示，不改变任何业务状态）。
+    // why 建在桥接层之前：桥接层一建就开始收总线事件，报错事件可能在任何时刻到达 ——
+    //   渐晕层必须先在场（否则第一个报错就撞上未初始化的字段）。
+    this.directorVignette = new DirectorVignette(this);
     // 桥接层先建：相机控制器的 onChange 会立刻回调它上报初始位姿
     this.bridge = createWorldBridge(this);
+    // 导演控制器（@since v3.3，task_081）：默认关闭，由 core 经 camera.director 事件开启。
+    // 宿主把 Phaser 能力（补间 / 场景时钟 / 延时）注入 —— 编排逻辑本身零渲染依赖（可单测）。
+    // why 建在桥接层之后、相机控制器之前：导演被开启后第一个动作就是动镜头，
+    //   但那一定发生在 create() 走完之后（事件是异步到达的），此刻建它最稳。
+    this.director = new DirectorController(this.directorHost());
 
     this.selectionBox = new SelectionBox(this);
     // 形象精灵源由组合根放在 game.registry 里（场景由 Phaser 实例化，构造器拿不到注入）。
@@ -434,6 +457,28 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   syncUnitBubble(unitId: string, text: string): void {
     this.speechLayer.speakText(unitId, text);
   }
+  /**
+   * 导演镜头事件（@since v3.3，task_081；由桥接层转发 task.started / completed / failed）。
+   *
+   * 事件点 = **干活的那个单位**所在的位置（任务按 characterId 落到人身上，
+   *   战场认单位的方式与气泡系统同口径）。找不到对应单位 → 没有点可看，
+   *   传 null（导演据此不动镜头；报错仍会闪一次红光）。
+   */
+  syncDirectorEvent(task: CharacterTask, kind: DirectorEventKind): void {
+    const unit = this.units.list().find((item) => item.characterId === task.characterId);
+    const target = unit ? { x: unit.position.x, y: unit.position.y } : null;
+    this.director.receive(kind, target);
+  }
+
+  /**
+   * 导演模式开关（@since v3.3，task_081；由桥接层转发 core → world 的 camera.director 事件）。
+   * 开启 = 镜头交给导演；关闭 = 完全交还手动（导演停手，在飞的补间一并撤掉）。
+   */
+  syncDirectorMode(enabled: boolean): void {
+    // 导演接管镜头 → 跟随镜头让位（两者不能同时写镜头）。
+    if (enabled) this.releaseFollow();
+    this.director.setEnabled(enabled);
+  }
 
   // ==========================================================================
   // 输入处理：场景交互 → WorldEvent（经桥接层发回 core）
@@ -457,6 +502,8 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
       this.view.clearOvershoot();
       // 手动平移 = 交还镜头控制权（跟随镜头让位）。
       this.releaseFollow();
+      // 手动优先（task_081）：用户一碰镜头，导演模式立刻退出（本次切换）。
+      this.releaseDirector();
       return;
     }
 
@@ -621,12 +668,16 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     const zoom = zoomWithUserLimits(this.view.current, factor);
     // 手动缩放 = 交还镜头控制权（跟随镜头让位）。
     this.releaseFollow();
+    // 手动优先（task_081）：导演让位，本次切换退出。
+    this.releaseDirector();
     this.view.apply({ center: this.view.current.center, zoom });
     this.scheduleCameraFlush();
   }
 
   private onResize(): void {
     this.view.syncViewport();
+    // 红色渐晕是屏幕坐标的图形，窗口尺寸变了要重画（task_081）。
+    this.directorVignette.resize();
   }
 
   // ==========================================================================
@@ -685,6 +736,8 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
 
   /** 双击单位 = 跟随镜头；跟随中再双击**同一个**单位 = 解除跟随。 */
   private toggleFollow(unitId: string): void {
+    // 手动优先（task_081）：双击跟随也是手动操作 —— 导演让位。
+    this.releaseDirector();
     if (this.followUnitId === unitId) {
       this.releaseFollow();
       return;
@@ -701,6 +754,42 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   /** 解除跟随：镜头停在原处，控制权交还手动。 */
   private releaseFollow(): void {
     this.followUnitId = null;
+  }
+  /**
+   * 手动优先（@since v3.3，task_081）：用户碰了镜头（拖拽 / 滚轮 / 双击 / ESC）→ 导演让位。
+   * why 由 world 主动退出而不是「等 core 下一条命令」：导演模式的价值在于
+   *   「主播只解说，不碰镜头」—— 一旦碰了，就必须立刻把手感还回去，不能有半秒的抢镜头。
+   * 退出后导演会发一次 camera.director=false（经宿主回调）→ core 写回状态 → HUD 开关熄灭。
+   */
+  private releaseDirector(): void {
+    this.director.releaseByManual();
+  }
+
+  /**
+   * 导演宿主（@since v3.3，task_081）：把场景的镜头能力注入导演控制器。
+   * why 注入而不是让导演直接拿相机：导演的编排逻辑（优先级 / 静默 / 巡视）由此可脱离
+   *   Phaser 单测 —— 换渲染引擎时导演一行不用改。
+   */
+  private directorHost(): DirectorHost {
+    return {
+      viewport: () => this.viewport(),
+      bounds: DEFAULT_WORLD_BOUNDS,
+      now: () => this.time.now,
+      tweenTo: (pose, durationMs) => this.tweenCameraTo(pose, durationMs),
+      place: (pose) => {
+        this.view.apply(pose);
+      },
+      schedule: (ms, fn) => {
+        const timer = this.time.delayedCall(ms, fn);
+        return () => timer.remove(false);
+      },
+      cancelTween: () => {
+        this.cameraTween?.remove();
+        this.cameraTween = null;
+      },
+      pulseError: () => this.directorVignette.pulse(),
+      onManualRelease: () => this.bridge.directorMode(false),
+    };
   }
 
   /**
@@ -736,6 +825,8 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   /** ESC = 回全景：整个战场装进视口（同时解除跟随）。 */
   private onEscape(): void {
     this.releaseFollow();
+    // 手动优先（task_081）：ESC 回全景也是手动操作 —— 导演让位。
+    this.releaseDirector();
     this.view.clearOvershoot();
     this.rubberOffset = { x: 0, y: 0 };
     this.tweenCameraTo(overviewPose(this.viewport(), DEFAULT_WORLD_BOUNDS));
@@ -756,6 +847,9 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
    *   会互相拉扯（画面抖）。补间结束后由跟随接管。
    */
   update(): void {
+    // 导演巡视（@since v3.3，task_081）：静默超过 8s 时镜头缓慢漂移（漂移 pan）。
+    // why 先于跟随判定：导演开启时跟随已让位（见 syncDirectorMode），两者不会同时写镜头。
+    this.director.update();
     if (!this.followUnitId) return;
     if (this.cameraTween?.isPlaying()) return;
     const unit = this.units.get(this.followUnitId);
@@ -782,6 +876,9 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     this.groundLayer.destroy();
     // 氛围彩蛋层（task_079）：小云的 tween / 定时器 + 入夜巡检定时器一并回收。
     this.cloudLayer.destroy();
+    // 导演控制器与红色渐晕层（task_081）：延时回调 / 补间 / 显示对象一并回收（资源必须可清理）。
+    this.director.destroy();
+    this.directorVignette.destroy();
     this.warmthTimer?.remove(false);
     this.warmthTimer = null;
     this.cameraTween?.remove();

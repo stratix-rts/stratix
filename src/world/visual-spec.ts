@@ -23,6 +23,7 @@ import { VISUAL_PALETTE, hexToNumber } from '../core/theme/visual-spec';
 export {
   AMBIENCE_METRICS,
   CAMERA_METRICS,
+  DIRECTOR_METRICS,
   INTERACTION_FX_METRICS,
   MINIMAP_METRICS,
   VISUAL_METRICS,

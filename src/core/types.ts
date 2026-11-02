@@ -1093,6 +1093,15 @@ export interface WorldState {
    * ★ 入态的只有**摘要**（SessionRecord）；事件本体落 session_events 表，不进广播。
    */
   sessions?: SessionRecord[];
+  /**
+   * @since v3.3（task_081）导演模式开关（DEMO-PLAN §7「导演模式」）。
+   * 真相在 core：HUD 顶栏「🎬 导演」按钮发 `camera.director` 命令 → core 写这里 →
+   *   广播回 HUD（按钮状态）与 world（导演控制器）。world 侧的手动介入会让它自己退回 false
+   *   （world 发同名事件 → core 写回）—— 手动优先是硬规则（见 types.ts 的 WorldEvent 注）。
+   * 刻意可选：与 settings / currentScreen 同理走可选增补 —— 契约增补不破既有构造点，
+   *   缺省 = 导演模式关闭。
+   */
+  directorEnabled?: boolean;
 }
 
 // ============================================================================
@@ -1137,6 +1146,16 @@ export type HudCommand =
    *   why 值得单开一条：震动是**瞬态表现**，不进 WorldState（没有「相机在震」这种状态）。
    */
   | { type: 'camera.shake'; durationMs: number; intensity: number }
+  /**
+   * @since v3.3（task_081）导演模式开关（DEMO-PLAN §7「导演模式」）。
+   *   发出方是 HUD 顶栏的「🎬 导演」按钮；core 收到后写 WorldState.directorEnabled
+   *   （按钮回显的唯一真相）并以**同名 WorldEvent** 转发到 world 通道
+   *   （消费者是世界场景的导演控制器 —— 它自动订阅任务事件、编排镜头）。
+   *   HUD 绝不直接调 world（铁律）—— 与 camera.center / camera.shake 同一两段式。
+   *   反向也用这一条：world 侧检测到**手动介入**时发同名 WorldEvent（enabled=false），
+   *   core 据此把开关写回 false 并广播 —— 手动优先，导演让位（DEMO-PLAN §7）。
+   */
+  | { type: 'camera.director'; enabled: boolean }
   /**
    * @since v3.21 右击移动（task_045）：把选中编队移动到目标点（世界坐标）。
    *   编队落位由 core/unit/formation 的纯函数计算（网格以目标点为中心，间距 FORMATION_SPACING），
@@ -1432,6 +1451,16 @@ export type WorldEvent =
    *   显式接地（同 camera.center 惯例，不进 onUnhandled）。
    */
   | { type: 'camera.shake'; durationMs: number; intensity: number }
+  /**
+   * @since v3.3（task_081）导演模式开关（DEMO-PLAN §7）。
+   *   发出方是 HUD 顶栏的「🎬 导演」按钮；core 收到后写 WorldState.directorEnabled
+   *   （HUD 按钮据此回显）并以**同名 WorldEvent** 转发到 world 通道
+   *   （消费者是世界场景的导演控制器 —— 它自动订阅任务事件、编排镜头）。
+   *   HUD 绝不直接调 world（铁律）—— 与 camera.center / camera.shake 同一两段式。
+   *   反向也用这一条：world 侧检测到**手动介入**时发本事件（enabled=false），
+   *   core 据此把开关写回 false 并广播 —— 手动优先，导演让位（DEMO-PLAN §7「手动优先」）。
+   */
+  | { type: 'camera.director'; enabled: boolean }
   /**
    * @since v3.12 单位落位 / 移动上报（task_033）：世界层是位置的唯一真相（UnitView 不含坐标），
    *   位置变化（新单位落位、未来的拖拽移动）由此事件发回 core 方向 —— core 状态机不消费它

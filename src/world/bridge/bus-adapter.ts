@@ -42,6 +42,7 @@ import type {
 } from '../../core/types';
 import type { TaskFxPhase } from '../objects/task-fx';
 import type { SpeechKind } from '../speech-templates';
+import type { DirectorEventKind } from '../camera/director-policy';
 
 export type { TaskFxPhase } from '../objects/task-fx';
 
@@ -110,6 +111,21 @@ export interface WorldScenePort {
    * 可选成员：不实现不破编译（同上惯例）。
    */
   syncUnitBubble?(unitId: string, text: string): void;
+  /**
+   * 导演模式事件钩子（@since v3.3，task_081）：world 通道上的 task.started / completed / failed
+   * 转发进场景 —— 导演控制器据此编排镜头（缓动到事件点 → 停留 → 回全景）。
+   * 可选成员：不实现不破编译（同上惯例）。
+   * why 复用 task.* 事件而不是新开一条通道：导演关心的正是这三条生命周期事件
+   *   （开工 / 完成 / 报错），core/task 本来就在 world 通道上发它们 —— 导演只是这些事件的
+   *   **表现投影**（world 只消费不生产，总线铁律）。
+   */
+  syncDirectorEvent?(task: CharacterTask, kind: DirectorEventKind): void;
+  /**
+   * 导演模式开关钩子（@since v3.3，task_081）：world 通道上的 camera.director
+   * （hud 顶栏「🎬 导演」按钮经 core 转发的落位指令）转发进场景 —— 导演控制器接管 / 交还镜头。
+   * 可选成员：不实现不破编译（同上惯例）。
+   */
+  syncDirectorMode?(enabled: boolean): void;
 }
 
 /** 场景侧的交互出口：场景调这些方法，桥接层负责转成 WorldEvent 发给 core。 */
@@ -147,6 +163,13 @@ export interface WorldEventSink {
    * 走 WorldEvent 的 fx.sound。
    */
   soundCue(cue: SoundCue): void;
+  /**
+   * 导演模式开关回报（@since v3.3，task_081）：world 检测到**手动介入**时调本方法
+   *   （enabled=false）—— core 据此把 WorldState.directorEnabled 写回 false 并广播，
+   *   HUD 顶栏的「🎬 导演」开关随之熄灭（手动优先，导演让位）。
+   * why 走 WorldEvent：world 不能改 core 的状态（铁律），只能发事件 —— 与 camera.moved 同一口径。
+   */
+  directorMode(enabled: boolean): void;
 }
 
 export interface WorldBridge extends WorldEventSink {
@@ -198,16 +221,22 @@ export function createWorldBridge(
         port.syncTaskEvent?.(event.task, 'started');
         // 开工气泡（task_076）：任务落到谁头上，谁说一句开工话。
         port.syncTaskSpeech?.(event.task, 'start');
+        // 导演镜头（task_081）：开工事件 → 镜头去看事件点。
+        port.syncDirectorEvent?.(event.task, 'started');
         break;
       case 'task.completed':
         port.syncTaskEvent?.(event.task, 'completed');
         // 完成气泡（task_076）。
         port.syncTaskSpeech?.(event.task, 'complete');
+        // 导演镜头（task_081）。
+        port.syncDirectorEvent?.(event.task, 'completed');
         break;
       case 'task.failed':
         port.syncTaskEvent?.(event.task, 'failed');
         // 报错气泡（task_076）。
         port.syncTaskSpeech?.(event.task, 'error');
+        // 导演镜头（task_081）：报错还附带红色渐晕脉冲（在导演控制器里触发）。
+        port.syncDirectorEvent?.(event.task, 'failed');
         break;
       // 派活气泡（task_076）：任务入队 = 派到人手上 → 「收到新任务」。
       // why task.queued 不进 syncTaskEvent：它还不是「在干活」，不该挂工作环。
@@ -241,6 +270,11 @@ export function createWorldBridge(
       // 指定文案气泡（task_076）：world 层当场指挥的原话（「收到」「来了来了」）→ 按原话冒泡。
       case 'unit.bubble':
         port.syncUnitBubble?.(event.unitId, event.text);
+        break;
+      // 导演模式开关（task_081）：core → world 的落位指令（hud 顶栏「🎬 导演」按钮经 core 转发）。
+      //   反向也走这一条：world 检测到手动介入时发 enabled=false，core 据此把开关写回并广播。
+      case 'camera.director':
+        port.syncDirectorMode?.(event.enabled);
         break;
       default:
         break;
@@ -283,6 +317,10 @@ export function createWorldBridge(
     soundCue(cue: SoundCue): void {
       if (destroyed) return;
       emitWorldEvent({ type: 'fx.sound', cue });
+    },
+    directorMode(enabled: boolean): void {
+      if (destroyed) return;
+      emitWorldEvent({ type: 'camera.director', enabled });
     },
 
     unitPosition(unitId: string, x: number, y: number): void {

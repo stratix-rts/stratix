@@ -641,3 +641,97 @@ describe('world 通道 → 场景：unit.speaking 转发（说话气泡，task_0
     expect(calls).toHaveLength(0);
   });
 });
+
+// ============================================================================
+// 导演模式接线（@since v3.3，task_081）：任务事件 → 导演镜头；导演开关 → 场景
+// ============================================================================
+
+describe('导演模式接线（task_081）', () => {
+  const task = (id: string, status: 'queued' | 'running' | 'completed' | 'failed') => ({
+    id,
+    characterId: 'ch-a',
+    prompt: '干活',
+    status,
+    createdAt: 1,
+    startedAt: null,
+    endedAt: null,
+    output: '',
+  });
+
+  test('开工 / 完成 / 报错三条转发给 syncDirectorEvent（导演据此编排镜头）', () => {
+    const calls: { kind: string; taskId: string }[] = [];
+    const port: WorldScenePort = {
+      syncUnits: () => {},
+      syncSelection: () => {},
+      syncDirectorEvent: (t, kind) => calls.push({ kind, taskId: t.id }),
+    };
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+
+    emitWorldEvent({ type: 'task.started', task: task('t1', 'running') });
+    emitWorldEvent({ type: 'task.completed', task: task('t2', 'completed') });
+    emitWorldEvent({ type: 'task.failed', task: task('t3', 'failed') });
+
+    expect(calls).toEqual([
+      { kind: 'started', taskId: 't1' },
+      { kind: 'completed', taskId: 't2' },
+      { kind: 'failed', taskId: 't3' },
+    ]);
+  });
+
+  test('派活（task.queued）不惊动导演（还没落到人身上，没有镜头可对）', () => {
+    const calls: string[] = [];
+    const port: WorldScenePort = {
+      syncUnits: () => {},
+      syncSelection: () => {},
+      syncDirectorEvent: (_t, kind) => calls.push(kind),
+    };
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+
+    emitWorldEvent({ type: 'task.queued', task: task('t0', 'queued') });
+
+    expect(calls).toHaveLength(0);
+  });
+
+  test('camera.director 事件转发给 syncDirectorMode（core → world 的落位指令）', () => {
+    const calls: boolean[] = [];
+    const port: WorldScenePort = {
+      syncUnits: () => {},
+      syncSelection: () => {},
+      syncDirectorMode: (enabled) => calls.push(enabled),
+    };
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+
+    emitWorldEvent({ type: 'camera.director', enabled: true });
+    emitWorldEvent({ type: 'camera.director', enabled: false });
+
+    expect(calls).toEqual([true, false]);
+  });
+
+  test('场景手动介入时 directorMode(false) 发出 camera.director 事件（world → core）', () => {
+    const { port } = createFakePort();
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+    const { events, stop } = collectWorldEvents();
+    stops.push(stop);
+
+    bridge.directorMode(false);
+
+    expect(events.filter((event) => event.type === 'camera.director')).toEqual([
+      { type: 'camera.director', enabled: false },
+    ]);
+  });
+
+  test('port 不实现导演钩子（可选成员）：安静跳过，不炸不报', () => {
+    const { port } = createFakePort(); // 老桩：没有导演钩子
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+
+    expect(() => {
+      emitWorldEvent({ type: 'task.started', task: task('t1', 'running') });
+      emitWorldEvent({ type: 'camera.director', enabled: true });
+    }).not.toThrow();
+  });
+});

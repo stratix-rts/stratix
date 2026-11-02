@@ -277,12 +277,14 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
             <span class="hud-notice-badge" data-role="notice-badge" hidden title="待处理通知">0</span>
             <${STRAT_BUTTON_TAG} label="切换像素风" variant="default" data-role="theme"></${STRAT_BUTTON_TAG}>
             <${STRAT_BUTTON_TAG} label="演示" variant="default" data-role="demo"></${STRAT_BUTTON_TAG}>
+            <${STRAT_BUTTON_TAG} label="🎬 导演" variant="default" data-role="director"></${STRAT_BUTTON_TAG}>
             <${STRAT_BUTTON_TAG} label="打开聊天" variant="default" data-role="chat"></${STRAT_BUTTON_TAG}>
             <${STRAT_BUTTON_TAG} label="会话面板" variant="default" data-role="sessions"></${STRAT_BUTTON_TAG}>
             <${STRAT_BUTTON_TAG} label="看角色" variant="default" data-role="character"></${STRAT_BUTTON_TAG}>
             <${STRAT_BUTTON_TAG} label="去设置" variant="primary" data-role="settings"></${STRAT_BUTTON_TAG}>
             <span class="hud-theme-tag" data-role="theme-tag">default</span>
             <span class="hud-theme-tag" data-role="demo-tag">off</span>
+            <span class="hud-theme-tag" data-role="director-tag">off</span>
           </div>
         </header>
         <div class="hud-rail-left hud-surface" data-role="agent-panel"></div>
@@ -305,6 +307,13 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
 
       const demoTag = host.querySelector('[data-role="demo-tag"]');
       if (demoTag) demoTag.textContent = demoMode.enabled ? 'on' : 'off';
+      // 导演开关（@since v3.3，task_081）：按钮与状态标签都读 core 广播的同一份真相
+      //   （WorldState.directorEnabled）—— HUD 不自己存一份「导演开着吗」。
+      const directorTag = host.querySelector('[data-role="director-tag"]');
+      const directorButton = host.querySelector('[data-role="director"]');
+      const directorEnabled = adapter.latest?.directorEnabled === true;
+      if (directorTag) directorTag.textContent = directorEnabled ? 'on' : 'off';
+      if (directorButton) directorButton.setAttribute('variant', directorEnabled ? 'primary' : 'default');
 
       const onThemeClick = (): void => {
         const next = currentTheme === 'default' ? 'pixel' : 'default';
@@ -317,6 +326,15 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         // 演示模式是纯本地展示态：不发 HudCommand、不进总线（见 demo-mode.ts 文件头）。
         // 状态变化由 demo-mode 的订阅回调统一触发重渲（工程件显隐 + 顶栏标签）。
         demoMode.toggle();
+      };
+      const onDirectorClick = (): void => {
+        // 导演模式（@since v3.3，task_081）：HUD 只发**开关命令**，绝不直接操控 world（铁律）。
+        // 当前态取自 core 广播的 WorldState.directorEnabled（core 是唯一真相）：
+        //   用户开 → core 写 true → 广播 → 按钮点亮；
+        //   用户在战场上手动碰了镜头 → world 发 camera.director=false → core 写回 false
+        //   → 广播 → 按钮熄灭（手动优先，导演让位）。
+        const enabled = adapter.latest?.directorEnabled === true;
+        adapter.dispatch({ type: 'camera.director', enabled: !enabled });
       };
       const onSettingsClick = (): void => {
         adapter.dispatch({ type: 'ui.navigate', screen: 'settings' });
@@ -347,6 +365,7 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         const target = e.target as HTMLElement | null;
         if (target?.closest('[data-role="theme"]')) onThemeClick();
         else if (target?.closest('[data-role="demo"]')) onDemoClick();
+      else if (target?.closest('[data-role="director"]')) onDirectorClick();
         else if (target?.closest('[data-role="chat"]')) onChatClick();
         else if (target?.closest('[data-role="sessions"]')) onSessionsClick();
         else if (target?.closest('[data-role="character"]')) onCharacterClick();
@@ -412,6 +431,11 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
           const pending = state.notices.length;
           noticeBadge.textContent = String(pending);
           noticeBadge.hidden = pending === 0;
+        }
+        // 导演开关回显（task_081）：按钮点亮 / 标签 on-off 都跟 core 广播的同一份真相走。
+        if (directorTag) directorTag.textContent = state.directorEnabled ? 'on' : 'off';
+        if (directorButton) {
+          directorButton.setAttribute('variant', state.directorEnabled ? 'primary' : 'default');
         }
       });
 

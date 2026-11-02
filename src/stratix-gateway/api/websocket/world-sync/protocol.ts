@@ -266,6 +266,7 @@ const HUD_COMMAND_TYPE_FLAGS: Readonly<Record<HudCommand['type'], true>> = {
   'unit.focus': true,
   'camera.center': true,
   'camera.shake': true,
+  'camera.director': true,
   'unit.move': true,
   'unit.group.assign': true,
   'unit.group.recall': true,

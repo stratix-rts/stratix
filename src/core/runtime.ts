@@ -393,6 +393,15 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         emitWorldEvent({ type: 'camera.shake', durationMs: shake.durationMs, intensity: shake.intensity });
         return;
       }
+      // @since v3.3(task_081)导演模式开关:HUD 顶栏「🎬 导演」按钮 → core 写状态
+      //   (WorldState.directorEnabled —— 按钮回显的唯一真相) + 以同名 WorldEvent 转发到
+      //   world 通道(消费者是战场侧的导演控制器,由它自动订阅任务事件编排镜头)。
+      //   core 不持有镜头,只做「记状态 + 转交」(同 camera.center / camera.shake 口径)。
+      case 'camera.director': {
+        store.setDirectorEnabled(command.enabled);
+        emitWorldEvent({ type: 'camera.director', enabled: command.enabled });
+        return;
+      }
       // @since v3.3 任务域:命令翻译只在 core/mission 里有一份(manager 负责转状态机动作 + 写库 + 报错)
       // @since v3.38(task_077):可选 brief / dependsOn 透传 —— 缺省即裸任务,既有构造点零改动。
       case 'mission.create':
@@ -557,6 +566,13 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
       // @since v3.21 战场右击移动(task_045):世界层入口,与 HudCommand unit.move 共用落位逻辑。
       case 'unit.move':
         applyUnitMove(store, event.unitIds, event.x, event.y);
+        return;
+      // @since v3.3(task_081)导演模式开关(反向通道):world 检测到**手动介入**时发本事件
+      //   (enabled=false)→ core 把开关写回 false 并广播(HUD 顶栏按钮随之熄灭)。
+      //   手动优先是硬规则(DEMO-PLAN §7):导演模式下主播一碰镜头,导演立刻让位。
+      //   HUD 发起的同一条事件也会回到这里 —— 幂等(store 值没变即不广播),不构成回路。
+      case 'camera.director':
+        store.setDirectorEnabled(event.enabled);
         return;
       // @since v3.30 agent 健康位接地(task_054):app 层 health-monitor 发出的在线/离线广播,
       //   落点 = 该 kind 名下单位的 online 位(见 applyAgentConnectivity;与 unit.move 同为

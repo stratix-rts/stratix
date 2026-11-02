@@ -356,6 +356,39 @@ export const AMBIENCE_METRICS = Object.freeze({
   /** 变暖程度：格网色向暖色混合的比例（「微微」= 小比例）。 */
   warmMix: 0.28,
 });
+/**
+ * 导演模式的度量（DEMO-PLAN §7「导演模式」）。
+ *
+ * why 也落在唯一事实源：停留时长 / 聚焦倍率 / 静默阈值 / 巡视速度 / 红色渐晕的呼吸参数
+ *   是**两侧共用的规格数字** —— HUD 侧（顶栏「🎬 导演」开关）与战场侧（world/camera 的
+ *   导演控制器、objects 的红色渐晕层）必须读同一份，否则「HUD 说开了、战场没动」
+ *   或「渐晕呼吸 2 次、实际闪 3 次」这类漂移没人拦得住。
+ * 数值逐条对应 DEMO-PLAN §7 的规格原文（未写明的量按同规格最贴近的一档取值并注明）。
+ */
+export const DIRECTOR_METRICS = Object.freeze({
+  /** 缓动到事件点的时长（ms；规格钦定 600ms，与通用摄像机口径同值）。 */
+  moveDurationMs: VISUAL_METRICS.camera.durationMs,
+  /** 到达事件点后的停留时长（ms；规格钦定 3s）。 */
+  holdMs: 3000,
+  /** 聚焦事件点时的缩放倍率（规格钦定 1.2x）。 */
+  focusZoom: 1.2,
+  /** 事件静默超过该时长（ms；规格钦定 8s）开始缓慢巡视。 */
+  silenceMs: 8000,
+  /** 巡视漂移速度（世界 px/s）—— 慢到「像没动」，但画面确实在走。 */
+  patrolSpeedPxPerSec: 26,
+  /** 巡视漂移的纵向摆幅（世界 px）—— 缓慢正弦摆动，避免纯横移太机械。 */
+  patrolAmplitudePx: 90,
+  /** 巡视时的缩放倍率（比聚焦小：巡视是「看全图」，聚焦是「看细节」）。 */
+  patrolZoom: 0.9,
+  /** 报错红色渐晕的呼吸次数（规格钦定 2 次）。 */
+  vignettePulses: 2,
+  /** 一次呼吸（亮起 + 熄灭）的时长（ms）。 */
+  vignettePulseMs: 650,
+  /** 红色渐晕的最高透明度（边缘最浓处）。 */
+  vignetteAlpha: 0.55,
+  /** 红色渐晕自屏幕边缘向内的厚度（屏幕 px）。 */
+  vignetteDepthPx: 120,
+});
 
 /**
  * 演示模式参数（DEMO-PLAN §8）。

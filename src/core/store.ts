@@ -44,6 +44,13 @@ export interface CoreStore {
    */
   setCurrentScreen(screen: ScreenId | null): WorldState;
   /**
+   * @since v3.3（task_081）写导演模式开关（WorldState.directorEnabled 的落库入口）。
+   * why 放 store 而不放 runtime：导演开关是**一个布尔字段**（与 currentScreen 同级 ——
+   *   不经状态机、只是「换字段」），由 store 统一承担「值没变就不广播」。
+   * 广播是必须的：HUD 顶栏按钮要靠它回显，且 world 侧手动介入会把开关写回 false。
+   */
+  setDirectorEnabled(enabled: boolean): WorldState;
+  /**
    * @since v3.8 写本地 CLI agent 检测结果（WorldState.detectedAgents 的落库入口）。
    * 语义：**整份替换**（调用方给的是当前快照，不是增量补丁）——
    *   检测是「逐条到达」的，但状态里只留一份当前快照，读取方不必自己拼（拼两份就成两份真相）。
@@ -112,6 +119,21 @@ export function applyCurrentScreen(
 ): ScreenId | undefined {
   const nextValue = next ?? undefined;
   if (current === nextValue) return current;
+  return nextValue;
+}
+
+/**
+ * 导演模式开关写入（纯函数，@since v3.3，task_081）—— 与 applyCurrentScreen 同一口径：
+ *   值没变就**原样返回同一引用** → store 的「引用未变即不广播」约定自动生效。
+ * 缺省（undefined）按「关闭」处理 —— 导演模式默认关，与 DEMO-PLAN §7 的开关语义一致。
+ */
+export function applyDirectorEnabled(
+  current: boolean | undefined,
+  next: boolean
+): boolean | undefined {
+  const nextValue = next === true;
+  // 值没变就**原样返回当前引用**（含 undefined）—— 让 store 的「引用未变即不广播」约定生效。
+  if ((current ?? false) === nextValue) return current;
   return nextValue;
 }
 
@@ -189,6 +211,13 @@ export function createStore(initial?: Partial<WorldState>): CoreStore {
       const next = applyCurrentScreen(state.currentScreen, screen);
       if (next === state.currentScreen) return state;
       return notify({ ...state, currentScreen: next });
+    },
+
+    // @since v3.3（task_081）导演模式开关：同 setCurrentScreen 口径 —— 值没变不广播。
+    setDirectorEnabled: (enabled) => {
+      const next = applyDirectorEnabled(state.directorEnabled, enabled);
+      if (next === state.directorEnabled) return state;
+      return notify({ ...state, directorEnabled: next });
     },
 
     // @since v3.8 本地 CLI agent 检测结果：整份替换；内容没变就不广播（同上口径）。
