@@ -114,6 +114,9 @@ function describe(event: WorldEvent): string {
     // 小地图跳转（@since v3.33，task_057）：core 钳制后转发来的相机对中指令。
     case 'camera.center':
       return `${event.type.padEnd(15)} ${Math.round(event.x)},${Math.round(event.y)}`;
+    // 镜头震动（@since v3.3，task_080）：里程碑大字的那记小震，看一眼时长与强度。
+    case 'camera.shake':
+      return `${event.type.padEnd(15)} ${event.durationMs}ms ×${event.intensity}`;
     // 说话状态（@since v3.37，task_062）：chat 流式期间的战场气泡标志位，看一眼起止。
     case 'unit.speaking':
       return `${event.type.padEnd(15)} ${event.unitId} speaking=${event.speaking}`;

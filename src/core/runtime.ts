@@ -43,10 +43,12 @@
  * @since v3.43(task_093)追加 session.interrupt 命令接线:落到 session manager
  *   (core/session,同 mission / task 口径直调);会话域的持久化口由组合根注入
  *   (命令落点与业务侧记账共用同一个 manager 实例)。
+ * @since v3.3(task_080)追加 camera.shake 命令接线:钳制(core/camera.ts 的 clampShake)后转发
+ *   同名 WorldEvent 到 world 通道(消费者是场景相机);world 通道回环的 camera.shake 显式接地。
  */
 
 import type { AgentLinkManager } from './agent-link';
-import { clampWorldPoint } from './camera';
+import { clampShake, clampWorldPoint } from './camera';
 import { emitState, emitWorldEvent, onCommand, onWorldEvent, type Unsubscribe } from './bus';
 import { createCharacterManager, type CharacterManager } from './character';
 import { createMissionManager, type MissionManager } from './mission';
@@ -380,6 +382,15 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         emitWorldEvent({ type: 'camera.center', x: clamped.x, y: clamped.y });
         return;
       }
+      // @since v3.3 镜头震动(task_080):里程碑大字的那记小震。钳制(core/camera.ts 的 clampShake:
+      //   时长 ≤ 500ms、强度 ≤ 2% 视口)后以同名 WorldEvent 转发到 world 通道 ——
+      //   消费者是场景相机(bridge 转发 syncCameraShake)。core 不持有相机状态,只做钳制与转交
+      //   (同 camera.center 的两段式:命令是 hud → core 的意向,事件是 core → world 的落位指令)。
+      case 'camera.shake': {
+        const shake = clampShake(command.durationMs, command.intensity);
+        emitWorldEvent({ type: 'camera.shake', durationMs: shake.durationMs, intensity: shake.intensity });
+        return;
+      }
       // @since v3.3 任务域:命令翻译只在 core/mission 里有一份(manager 负责转状态机动作 + 写库 + 报错)
       // @since v3.38(task_077):可选 brief / dependsOn 透传 —— 缺省即裸任务,既有构造点零改动。
       case 'mission.create':
@@ -583,6 +594,10 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         //   小地图跳转指令,消费者在世界场景(bridge 转发 syncCameraCenter) -- core 发出后
         //   又在 world 通道上回到本订阅一次,这里显式接地(同 unit.position 惯例,不进 onUnhandled)。
         if (event.type === 'camera.center') return;
+        // camera.shake(@since v3.3,task_080):同名 WorldEvent 是 handleCommand 转发出去的
+        //   里程碑震动指令,消费者在世界场景(bridge 转发 syncCameraShake) -- core 发出后
+        //   又在 world 通道上回到本订阅一次,这里显式接地(同 camera.center 惯例,不进 onUnhandled)。
+        if (event.type === 'camera.shake') return;
         if (event.type === 'camera.moved') return;
         if (event.type === 'exp.gained') return;
         if (event.type === 'level.up') return;

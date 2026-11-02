@@ -1129,6 +1129,15 @@ export type HudCommand =
    */
   | { type: 'camera.center'; x: number; y: number }
   /**
+   * @since v3.3 镜头震动（task_080）：里程碑大字落下时的一记小震。
+   *   发出方是 HUD 的里程碑 overlay（它判定「每 10 个任务完成」那一刻），core 只做钳制
+   *   （core/camera.ts 的 clampShake：时长 ≤ 500ms、强度 ≤ 2% 视口）与转发：以同名
+   *   WorldEvent 发到 world 通道，消费者是世界场景（bridge 转发 syncCameraShake →
+   *   Phaser 相机的 shake）。HUD 绝不直接调 world（铁律）—— 与 camera.center 同一两段式。
+   *   why 值得单开一条：震动是**瞬态表现**，不进 WorldState（没有「相机在震」这种状态）。
+   */
+  | { type: 'camera.shake'; durationMs: number; intensity: number }
+  /**
    * @since v3.21 右击移动（task_045）：把选中编队移动到目标点（世界坐标）。
    *   编队落位由 core/unit/formation 的纯函数计算（网格以目标点为中心，间距 FORMATION_SPACING），
    *   终值经 world 通道的 unit.position 逐单位广播 —— ★ 位置立即生效于状态（世界层 UnitObject
@@ -1406,6 +1415,14 @@ export type WorldEvent =
    *   core 状态机不消费 —— 坐标真相在世界层，core 只做钳制与转交（runtime 接地）。
    */
   | { type: 'camera.center'; x: number; y: number }
+  /**
+   * @since v3.3 镜头震动（task_080）：HudCommand camera.shake 经 core 钳制后的**转发形态**
+   *   （同名不同向，与 camera.center 同一先例 —— 命令是 hud → core 的意向，这条是 core → world
+   *   的落位指令）。消费者是世界场景（bridge 转发 syncCameraShake → Phaser 相机 shake）。
+   *   core 状态机不消费 —— 震动是瞬态表现，不写 WorldState；runtime 的 handleWorldEvent
+   *   显式接地（同 camera.center 惯例，不进 onUnhandled）。
+   */
+  | { type: 'camera.shake'; durationMs: number; intensity: number }
   /**
    * @since v3.12 单位落位 / 移动上报（task_033）：世界层是位置的唯一真相（UnitView 不含坐标），
    *   位置变化（新单位落位、未来的拖拽移动）由此事件发回 core 方向 —— core 状态机不消费它

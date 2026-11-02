@@ -825,3 +825,57 @@ describe('HudCommand → 编组槽位（task_058）', () => {
     expect(unhandled).toHaveLength(0);
   });
 });
+
+// ============================================================================
+// camera.shake（@since v3.3，task_080）：里程碑大字的那记小震 —— HudCommand 钳制后转发同名
+// WorldEvent 到 world 通道（消费者是场景相机）；world 通道回环的事件显式接地。
+// ============================================================================
+
+describe('HudCommand camera.shake：命令 → 钳制 → world 通道转发', () => {
+  test('参数超上限时被钳进安全区间后转发（WorldState 不变）', () => {
+    const { states, stop } = harness();
+    cleanups.push(stop);
+
+    const events: WorldEvent[] = [];
+    const off = onWorldEvent((event) => events.push(event));
+    cleanups.push(off);
+
+    emitCommand({ type: 'camera.shake', durationMs: 99_999, intensity: 0.9 });
+
+    expect(events.find((event) => event.type === 'camera.shake')).toEqual({
+      type: 'camera.shake',
+      durationMs: 500,
+      intensity: 0.02,
+    });
+    expect(states).toHaveLength(0);
+  });
+
+  test('区间内的参数原样转发；不进 onUnhandled', () => {
+    const { unhandled, stop } = harness();
+    cleanups.push(stop);
+
+    const events: WorldEvent[] = [];
+    const off = onWorldEvent((event) => events.push(event));
+    cleanups.push(off);
+
+    emitCommand({ type: 'camera.shake', durationMs: 100, intensity: 0.005 });
+
+    expect(events.find((event) => event.type === 'camera.shake')).toEqual({
+      type: 'camera.shake',
+      durationMs: 100,
+      intensity: 0.005,
+    });
+    expect(unhandled).toHaveLength(0);
+  });
+});
+
+describe('world 事件：camera.shake 回环接地（task_080）', () => {
+  test('不被当作未处理事件上报（消费者在世界场景，经桥接层转发）', () => {
+    const { unhandled, stop } = harness();
+    cleanups.push(stop);
+
+    emitWorldEvent({ type: 'camera.shake', durationMs: 100, intensity: 0.005 });
+
+    expect(unhandled).toHaveLength(0);
+  });
+});

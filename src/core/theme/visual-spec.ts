@@ -107,6 +107,31 @@ export const VISUAL_METRICS = Object.freeze({
 });
 
 /**
+ * 事件跑马灯 + 里程碑大字的度量（DEMO-PLAN §6）。
+ *
+ * why 也落在唯一事实源：条数上限 / 滑入时长 / 淡出时长 / 里程碑间隔 / 大字停留 / 震动参数
+ *   是**两侧共用的规格数字** —— HUD 侧（跑马灯组件、里程碑 overlay）与战场侧（Phaser 相机震动）
+ *   必须读同一份，否则「大字出现时震 100ms」与 HUD 里写的 100ms 会各说各话。
+ * 滑入 / 淡出时长不另抄：直接引用 VISUAL_METRICS 的入场 / 退场口径（250ms / 300ms）。
+ */
+export const MARQUEE_METRICS = Object.freeze({
+  /** 跑马灯同时最多显示几条（超出时最旧一条淡出）。 */
+  maxEntries: 5,
+  /** 新消息左侧滑入时长（ms）= 通用入场时长。 */
+  enterDurationMs: VISUAL_METRICS.enter.durationMs,
+  /** 最旧一条淡出时长（ms）= 通用退场时长。 */
+  exitDurationMs: VISUAL_METRICS.exit.durationMs,
+  /** 每完成多少个任务触发一次里程碑大字。 */
+  milestoneEvery: 10,
+  /** 里程碑大字停留时长（ms）。 */
+  milestoneDurationMs: 1500,
+  /** 里程碑伴随的镜头震动时长（ms）。 */
+  shakeDurationMs: 100,
+  /** 镜头震动强度（Phaser 口径：视口宽高的比例；小幅取 0.005）。 */
+  shakeIntensity: 0.005,
+});
+
+/**
  * 单位动画八态的度量（DEMO-PLAN §2「单位动画八态」）。
  *
  * why 也落在唯一事实源：动画的尺寸/时长与调色板同属「视觉规范」——

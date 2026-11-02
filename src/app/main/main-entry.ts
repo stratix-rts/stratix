@@ -60,6 +60,12 @@
  *   level.up / awaiting_approval / agent.offline → WebAudio 合成短音，映射表在 sfx-service）。
  *   仍然只接线：开关与音量走 localStorage（设置屏直写），服务每次播放现读。
  *
+ * @since v3.3（task_080）事件跑马灯 + 里程碑大字：mountMarquee（左下最近 5 条：图标 + 短句 +
+ *   相对时间，分级配色）与 mountMilestone（每 10 个完成任务一次的中央金色大字 + 一记小震）。
+ *   事件源是 core 总线的 world 通道（task.queued / task.completed / task.failed）——
+ *   HUD 只消费不生产；震动走 HudCommand camera.shake（core 钳制 → world 通道 → 场景相机）。
+ *   演示模式强制开启（demoMode.subscribe → setForced）。
+ *
  * @since v3.34（task_058）快捷键系统：mountShortcuts（window keydown → 命令口 / 帮助浮层）
  *   接进 hud-root。命令走 adapter.dispatch；居中要的单位坐标复用小地图的同一份位置累积表
  *   （minimapPositions）—— 位置真相在世界层，组合根是唯一能拿到它的地方，仍是只接线。
@@ -84,6 +90,7 @@ import { createHudBusAdapter } from '../../hud/bridge/bus-adapter';
 import { createMainScreen } from '../../hud/screens/main-screen';
 import { levelUpToastText } from '../../hud/screens/appearance-unlock-catalog';
 import { createThemeController } from '../../hud/theme/theme-controller';
+import { demoMode } from '../../hud/theme/demo-mode';
 import defaultCss from '../../hud/theme/tokens-default.css?inline';
 import pixelCss from '../../hud/theme/tokens-pixel.css?inline';
 import { installVisualTokens } from '../../hud/theme/visual-tokens';
@@ -155,6 +162,17 @@ import { createPipelineService } from '../services/pipeline-service';
 import { mountToastHost } from '../../hud/components/toast/toast-host';
 // 小地图宿主（@since v3.33，task_057）：右下角战场缩略图（单位点 / 视口框 / 点击跳转）。
 import { mountMinimap } from '../../hud/components/minimap/minimap';
+// 事件跑马灯 + 里程碑大字（@since v3.3，task_080）：左下角最近 5 条事件流 + 每 10 个完成任务
+// 一次的中央金色大字（文案模板与分级配色在 marquee-catalog，纯逻辑）。
+import { mountMarquee } from '../../hud/components/marquee/marquee';
+import { mountMilestone } from '../../hud/components/marquee/milestone';
+import {
+  MARQUEE_ICONS,
+  marqueeEntryForEvent,
+  milestoneEntryText,
+  resolveTaskTitle,
+  type MarqueeEventContext,
+} from '../../hud/components/marquee/marquee-catalog';
 // 快捷键系统（@since v3.34，task_058）：window keydown → 命令 + 帮助浮层（键位表见 hud/shortcuts）。
 import { mountShortcuts } from '../../hud/components/shortcuts/shortcut-manager';
 import { createTaskManager } from '../../core/task';
@@ -680,6 +698,64 @@ async function boot(): Promise<void> {
     if (key !== null) sfx.play(key);
   });
 
+  // ===== 事件跑马灯 + 里程碑大字（@since v3.3，task_080）=====
+  // 左下角最近 5 条事件流（图标 + 短句 + 相对时间，分级配色）+ 每 10 个完成任务一次的
+  // 屏幕中央金色大字 + 一记小震（DEMO-PLAN §6）。
+  // 数据流（组件只认注入口，hud 零 import world）：core 总线的 world 通道
+  //   （task.queued 派活 / task.completed 完成 / task.failed 报错）→ 组合根查 WorldState
+  //   拿角色名与任务短标题 → 翻译成条目喂 marquee.push；文案模板与分级配色在
+  //   marquee-catalog（纯逻辑，单测直打）。
+  // 里程碑的镜头震动走 HudCommand camera.shake（core 钳制 → world 通道 → 场景相机）——
+  //   HUD 绝不直接调 world（铁律），与 camera.center 同一两段式。
+  const { element: marquee, unmount: unmountMarquee } = mountMarquee(hudRoot);
+  const { element: milestone, unmount: unmountMilestone } = mountMilestone(hudRoot, {
+    dispatch: (command) => adapter.dispatch(command),
+  });
+  // 演示模式强制开启（§8）：演示模式一开，跑马灯与里程碑大字无条件可见 —— 本地记忆口径被覆盖。
+  const syncMarqueeDemoMode = (): void => {
+    const forced = demoMode.enabled;
+    marquee.setForced(forced);
+    milestone.setForced(forced);
+  };
+  syncMarqueeDemoMode();
+  const stopMarqueeDemoMode = demoMode.subscribe(syncMarqueeDemoMode);
+  /** 事件 → 跑马灯上下文（角色名 + 任务短标题）；非任务事件返回 null。 */
+  const marqueeContextFor = (event: WorldEvent): MarqueeEventContext | null => {
+    if (
+      event.type !== 'task.queued' &&
+      event.type !== 'task.completed' &&
+      event.type !== 'task.failed'
+    ) {
+      return null;
+    }
+    const state = worldStore.getState();
+    const character = state.characters.find((c) => c.id === event.task.characterId);
+    return {
+      // 角色查不到（极端时序：角色已删但事件在飞）→ 留空，模板走兜底句式（不猜名字）。
+      characterName: character?.name ?? null,
+      taskTitle: resolveTaskTitle(event.task, state.missions ?? []),
+    };
+  };
+  const stopMarqueeFeed = onWorldEvent((event) => {
+    const context = marqueeContextFor(event);
+    if (context) {
+      const entry = marqueeEntryForEvent(event, context, Date.now());
+      if (entry) marquee.push(entry);
+    }
+    if (event.type === 'task.completed') {
+      // 里程碑判定在组件内（它自己计数）：到 10 的整数倍就甩大字 + 震一下。
+      const hit = milestone.noteCompleted();
+      if (hit !== null) {
+        marquee.push({
+          kind: 'milestone',
+          icon: MARQUEE_ICONS.milestone,
+          text: milestoneEntryText(hit),
+          at: Date.now(),
+        });
+      }
+    }
+  });
+
   // ===== 战场单位的形象（@since v3.10，task_029）=====
   // 单位带 appearance 时，战场用合成好的 LPC 精灵表当身体（走路动画）。
   // 合成要 DOM（canvas / Image），world 层零 DOM —— 故实现在 app 层，world 只认端口。
@@ -996,6 +1072,12 @@ async function boot(): Promise<void> {
       // 音效（task_060）：退总线订阅再释放服务（丢 AudioContext 引用，页面即将销毁）。
       stopSfxFeed();
       sfx.dispose();
+      // 跑马灯 + 里程碑大字（task_080）：退演示模式订阅 + 退总线订阅 + 卸宿主（同卸载纪律；
+      // 卸宿主触发 disconnectedCallback → 组件内的计时器清光）。
+      stopMarqueeDemoMode();
+      stopMarqueeFeed();
+      unmountMarquee();
+      unmountMilestone();
       // 健康监测（task_054）：停周期探测 + 退恢复 toast 订阅。
       stopHealthToast();
       stopHealthMonitor();
