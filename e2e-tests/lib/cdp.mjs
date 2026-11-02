@@ -30,6 +30,13 @@ export const AGENT_PANEL_SELECTOR = 'strat-agent-panel';
 /** 目标页标题匹配（Electron 主窗口标题为 'Stratix'，dev 下带版本号 'Stratix v3'）。 */
 export const PAGE_TITLE_PATTERN = /stratix/i;
 
+/**
+ * 单条 CDP 命令 / 握手的超时（ms）。
+ * why 要有：CDP 自己不带超时 —— 页面崩了或 target 没了时，裸 await 会把走查脚本挂死，
+ *   而挂死是最坏的失败形态（走查脚本的价值在于失败得响亮）。可用环境变量压。
+ */
+export const CDP_COMMAND_TIMEOUT_MS = Number(process.env.SX_CDP_TIMEOUT_MS || 30000);
+
 /** CDP / 走查期错误（连接失败、页面侧抛异常……）。带 cause 以便上层看原始原因。 */
 export class CdpError extends Error {
   constructor(message, cause) {
@@ -96,8 +103,49 @@ export function openSession(page) {
     ws.onerror = () => reject(new CdpError('CDP WebSocket 连接失败'));
   });
 
+  /**
+   * 给「等不到就永远挂着」的 promise 兜一层超时。
+   * why 必须有：CDP 的握手与回包都没有自带超时 —— 页面崩了 / target 没了的时候，
+   *   裸 await 会把走查脚本挂到天荒地老（而不是报错退出）。走查脚本的价值在于
+   *   「失败得响亮」，挂死是最坏的失败形态。
+   */
+  const withTimeout = (promise, label, timeoutMs = CDP_COMMAND_TIMEOUT_MS) =>
+    new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new CdpError(`CDP ${label} 超时（${timeoutMs}ms）`)),
+        timeoutMs
+      );
+      promise.then(
+        (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (error) => {
+          clearTimeout(timer);
+          reject(error);
+        }
+      );
+    });
+
+  /**
+   * 发一条 CDP 命令（Runtime 之外的域也能用 —— 例如 Input.dispatchMouseEvent 驱动画布交互）。
+   * @param {string} method CDP 方法名
+   * @param {object} [params] 方法参数
+   */
+  const send = async (method, params = {}) => {
+    await withTimeout(opened, '连接');
+    const id = ++seq;
+    const reply = new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+    ws.send(JSON.stringify({ id, method, params }));
+    const result = await withTimeout(reply, method);
+    if (result?.error) {
+      throw new CdpError(`CDP ${method} 失败：${result.error.message}`);
+    }
+    return result?.result;
+  };
+
   const evaluate = async (expression) => {
-    await opened;
+    await withTimeout(opened, '连接');
     const id = ++seq;
     const reply = new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
     ws.send(
@@ -113,7 +161,7 @@ export function openSession(page) {
         },
       })
     );
-    const result = await reply;
+    const result = await withTimeout(reply, 'Runtime.evaluate');
     if (result.exceptionDetails) {
       const desc =
         result.exceptionDetails.exception?.description ??
@@ -127,6 +175,7 @@ export function openSession(page) {
   return {
     page,
     evaluate,
+    send,
     close() {
       try {
         ws.close();

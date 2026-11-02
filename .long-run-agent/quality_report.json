@@ -1,5 +1,5 @@
 {
-  "task_id": "task_110",
+  "task_id": "task_084",
   "template": "task",
   "score": 75,
   "max_score": 100,
@@ -27,20 +27,11 @@
       "passed": false
     },
     {
-      "score": 90,
-      "issues": [
-        {
-          "type": "long_file",
-          "severity": "medium",
-          "file": "tools/texture-generator/generate-textures.js",
-          "message": "文件过长 (800 行)"
-        }
-      ],
-      "suggestions": [
-        "建议拆分超长文件，每个文件保持500行以内"
-      ],
+      "score": 100,
+      "issues": [],
+      "suggestions": [],
       "stats": {
-        "total_lines": 1753,
+        "total_lines": 1795,
         "files_checked": 10
       },
       "passed": true
@@ -69,9 +60,9 @@
       "issues": [],
       "suggestions": [],
       "stats": {
-        "test_files": 231,
-        "code_files": 717,
-        "test_ratio": "32.2%"
+        "test_files": 250,
+        "code_files": 766,
+        "test_ratio": "32.6%"
       },
       "passed": true
     }
@@ -82,17 +73,10 @@
       "type": "low_documentation",
       "severity": "high",
       "message": "文档覆盖率过低 (21.9%)"
-    },
-    {
-      "type": "long_file",
-      "severity": "medium",
-      "file": "tools/texture-generator/generate-textures.js",
-      "message": "文件过长 (800 行)"
     }
   ],
   "suggestions": [
-    "建议为主要函数和类添加文档字符串",
-    "建议拆分超长文件，每个文件保持500行以内"
+    "建议为主要函数和类添加文档字符串"
   ],
-  "timestamp": "2026-11-02T20:25:48.253728"
+  "timestamp": "2026-11-03T01:39:28.449997"
 }

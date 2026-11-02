@@ -280,6 +280,7 @@ function reportBootFailure(error: unknown): void {
 
 async function boot(): Promise<void> {
   const hudRoot = must<HTMLElement>('hud-root');
+  const hudSide = must<HTMLElement>('hud-side');
   const battlefieldHost = must<HTMLElement>('battlefield');
   const onboardingHost = must<HTMLElement>('onboarding-host');
 
@@ -388,7 +389,10 @@ async function boot(): Promise<void> {
   // 读取口：service 的只读 REST（与会话面板「历史抽屉」同一台 service，同一基址口径）——
   //   渲染层只读，落库由 service 独占写（铁律 6）；读不到就是空态，不造数据（禁 mock）。
   // 时间戳角标（fixed 左上）：回放时显示历史时刻，非回放时整个隐藏（不占画面）。
-  const { element: replayClock, unmount: unmountReplayClock } = mountReplayClock(hudRoot);
+  // why 挂 #hud-side 而不是 #hud-root（@since task_084 的 e2e 逮到的缺陷）：主屏每次重绘都
+  //   `host.innerHTML = ...` 重写 #hud-root —— 挂在里面的角标当场被抹掉，时间戳角标从来没出现过。
+  //   #hud-side 是覆盖层容器（pointer-events:none，JS 永不重写它），角标 fixed 定位不受影响。
+  const { element: replayClock, unmount: unmountReplayClock } = mountReplayClock(hudSide);
   // 跑马灯引用位（回放重演的事件也要进跑马灯 —— 跑马灯本体在下方挂载，这里先留引用）。
   let marqueeEl: StratMarqueeElement | null = null;
   // 单位位置累积表（单位 id → 世界坐标）：小地图与快捷键居中共用同一份 ——
