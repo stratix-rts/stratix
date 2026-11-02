@@ -2154,6 +2154,335 @@
         "issues": [],
         "optimization_history": []
       }
+    },
+    {
+      "id": "task_110",
+      "description": "视觉基建：world/visual-spec.ts 设计常量唯一事实源（palette/尺寸/时长/easing）+ world theme.ts 与 hud 双 token 皮肤同步扩展 + demo-mode 开关骨架（顶栏开关、localStorage 记忆、工程面板隐藏、字号+30%）-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_110.md",
+      "created_at": "2026-11-02T20:07:55.156458",
+      "updated_at": "2026-11-02T20:07:55.156468",
+      "dependencies": [],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_075",
+      "description": "单位动画八态：待机三件套（悬浮bob/眨眼/天线摆）+工作态（前倾微颤+环形进度弧+squash-stretch）+卡住态（灰度+❗弹跳）+完成态（跳跃+星尘粒子）+摸鱼态（zZ冒字）+选中旋转虚线环+hover放大+点击涟漪squash；动画相位随机错开-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_075.md",
+      "created_at": "2026-11-02T20:07:55.359897",
+      "updated_at": "2026-11-02T20:07:55.359905",
+      "dependencies": [
+        "task_110"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_076",
+      "description": "气泡说话系统：speech-templates.ts 离线模板句库（开工/完成/报错/被派活/支援/性格彩蛋池）+气泡视觉（圆角黑底85%白字+尾巴）+出入场动效+同屏≤3个+同单位5s不重复+4s自动收；由 core 总线事件驱动-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_076.md",
+      "created_at": "2026-11-02T20:07:55.563972",
+      "updated_at": "2026-11-02T20:07:55.563981",
+      "dependencies": [
+        "task_110",
+        "task_075"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_077",
+      "description": "点击与指令特效：框选升级（霓虹边框+四角亮块+松手收缩闪烁+命中单位40ms间隔波浪式弹选择环）+下达指令（单位到目标点流动虚线渐变+目标双重涟漪+统一收到气泡）+任务认领3D翻卡+任务完成插旗（旗杆升起+旗面弹性展开）+集火支援表现-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_077.md",
+      "created_at": "2026-11-02T20:07:55.767113",
+      "updated_at": "2026-11-02T20:07:55.767124",
+      "dependencies": [
+        "task_075"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_078",
+      "description": "地图地面与建筑：深色格网+横向扫描光带（12s周期）+四角坐标刻度+边缘渐晕；任务建筑三态（地基灰框→施工脚手架+吊臂摆动→完成实心小塔+窗户逐个点亮）；区域全部完成→底色5%→12%渐变+区域名浮字-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_078.md",
+      "created_at": "2026-11-02T20:07:56.008019",
+      "updated_at": "2026-11-02T20:07:56.008028",
+      "dependencies": [
+        "task_110"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_079",
+      "description": "摄像机与小地图：拖拽平移+滚轮缩放0.6-1.6x+边界回弹+双击单位跟随（再双击解除）+ESC回全景；小地图右下200x120（岛屿轮廓+单位状态光点+视野白框+点击跳转）；氛围彩蛋（30-60s随机漂云；真实时间19-24点网格微暖）-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_079.md",
+      "created_at": "2026-11-02T20:07:56.219529",
+      "updated_at": "2026-11-02T20:07:56.219538",
+      "dependencies": [
+        "task_078"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_080",
+      "description": "事件跑马灯+里程碑大字：hud 左下最近5条滚动（图标+短句+相对时间，分级配色绿红蓝金，滑入/下移/淡出）；每完成10个任务触发中央金色大字1.5s+小幅camera shake；文案模板中文过humanizer-zh（无三段式无装饰破折号）-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_080.md",
+      "created_at": "2026-11-02T20:07:56.424868",
+      "updated_at": "2026-11-02T20:07:56.424880",
+      "dependencies": [
+        "task_110"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_081",
+      "description": "导演模式：hud 顶栏🎬开关；开启后镜头自动订阅总线事件缓动切换（开工/完成→600ms到点zoom1.2x停3s回全景；报错最高优先+红色vignette呼吸2次；同级取最新；静默>8s缓慢巡视漂移）；关闭完全恢复手动-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_081.md",
+      "created_at": "2026-11-02T20:07:56.624480",
+      "updated_at": "2026-11-02T20:07:56.624490",
+      "dependencies": [
+        "task_079",
+        "task_080"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_082",
+      "description": "当日回放：底部时间轴scrubber（缩略热力条=单位密度）拖动重现全天task_run事件（单位出现/干活/插旗/跑马灯重演，气泡频率减半）；『▶60秒看完今天』自动倍速+自动导演镜头+左上时间戳角标快进跳字-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_082.md",
+      "created_at": "2026-11-02T20:07:56.836116",
+      "updated_at": "2026-11-02T20:07:56.836124",
+      "dependencies": [
+        "task_075",
+        "task_078",
+        "task_080"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_083",
+      "description": "声音包：hud/sound-engine.ts WebAudio代码合成零音频文件——选中ack(880Hz哔80ms)/派活(240Hz方波哒60ms)/完成(C5→E5双音)/报错(180Hz低鸣300ms失谐)/里程碑琶音三音；总开关（demo默认开）+音量0-100；AudioContext首次手势resume-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_083.md",
+      "created_at": "2026-11-02T20:07:57.050676",
+      "updated_at": "2026-11-02T20:07:57.050691",
+      "dependencies": [
+        "task_110"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
+    },
+    {
+      "id": "task_084",
+      "description": "e2e 演示收口：fake 模式全流程演示脚本（派活→框选→指令特效→干活动画→卡住→集火→完成插旗→区域点亮→里程碑→回放60s）+新增演示断言；既有38断言不回归；DEMO-PLAN.md 更新实施状态表-模块",
+      "template": "task",
+      "priority": "P1",
+      "status": "pending",
+      "parent_id": null,
+      "output_req": "8k",
+      "context_hint": "8k",
+      "task_file": "tasks/task_084.md",
+      "created_at": "2026-11-02T20:07:57.261792",
+      "updated_at": "2026-11-02T20:07:57.261806",
+      "dependencies": [
+        "task_075",
+        "task_076",
+        "task_077",
+        "task_078",
+        "task_079",
+        "task_080",
+        "task_081",
+        "task_082",
+        "task_083"
+      ],
+      "dependency_type": "all",
+      "deadline": null,
+      "ralph": {
+        "iteration": 0,
+        "max_iterations": 7,
+        "quality_checks": {
+          "tests_passed": false,
+          "lint_passed": false,
+          "acceptance_met": false
+        },
+        "issues": [],
+        "optimization_history": []
+      }
     }
   ]
 }
