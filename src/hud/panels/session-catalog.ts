@@ -13,7 +13,8 @@
  *   面板只负责"把模型画成 Shadow DOM"，所有**可单测的判断**（能不能中断、筛出哪几条、
  *   标题怎么截、时间怎么写）都在这里 —— 单测不必起 DOM。
  *
- * @since v3.43（task_095 / v3.2a S5）；v3.47（task_101）补 canResume（可恢复续聊的判定）。
+ * @since v3.43（task_095 / v3.2a S5）；v3.47（task_101）补 canResume（可恢复续聊的判定）；
+ *   v3.48（task_102）补 canFork（可分叉的判定）与历史条目的 seq（分叉入口要用的 atSeq）。
  */
 
 import type {
@@ -105,6 +106,20 @@ export function canResume(record: SessionRecord): boolean {
 }
 
 /**
+ * 这条会话能不能「分叉」（历史抽屉里每条事件旁的「从这里分叉」入口的可见性）。
+ *
+ * why 第一期只认 peer_chat：分叉复制的是**对话事实**（消息 / 轮次 / 中断标记 ——
+ *   core/session/context-replay.ts 的复制口径），而只有互聊会话的事件流里有这些。
+ *   其余四类复制过去的是空：character_chat 的消息本体在 chat_messages 表（不在会话事件流里），
+ *   task_run / mission_run 是任务实体的生命周期镜像（复制过去等于新建一条空会话），
+ *   shell_link 是 agent-link 连接的投影（分叉连接没有意义）。
+ *   给一个"点了必得到空壳"的按钮，比不给按钮更伤 —— 用户以为历史带过去了，其实没有。
+ */
+export function canFork(record: SessionRecord): boolean {
+  return record.kind === 'peer_chat';
+}
+
+/**
  * 筛出可见会话（按筛选档过滤 + 最近活动的在前）。
  * why 排序按 lastEventAt 而不是 createdAt：会话是"正在进行的事"，用户找的是**刚动过的**那条。
  */
@@ -185,6 +200,13 @@ export interface SessionHistoryEntry {
   readonly text: string;
   /** 语气（普通 / 警示 / 错误）—— 决定行内配色。 */
   readonly tone: 'normal' | 'warn' | 'error';
+  /**
+   * 来源事件在会话内的序号（seq）—— 缺省 = 这条不是会话事件（角色对话消息没有 seq）。
+   * why 需要它：抽屉里的「从这里分叉」入口要把 **atSeq = 该事件的 seq** 交给命令
+   *   （分叉 = 复制到某条事件为止）。游标（cursor）不能拿来当 seq 用 ——
+   *   角色对话那路的游标是消息 id，两种游标语义不同（见上面的 cursor 注）。
+   */
+  readonly seq?: number;
 }
 
 /**

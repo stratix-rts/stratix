@@ -15,7 +15,7 @@ import { buildToolRegistry, type ToolRegistry } from './registry';
 import { chatSendTool } from './tools/chat';
 import { missionCreateTool, missionCheckpointTool, missionStatusTool } from './tools/mission';
 import { registryTool } from './tools/registry';
-import { sessionGetTool, sessionInterruptTool, sessionListTool, sessionResumeTool } from './tools/session';
+import { sessionGetTool, sessionInterruptTool, sessionListTool, sessionResumeTool, sessionForkTool } from './tools/session';
 import { taskAssignTool, taskCancelTool, taskStatusTool } from './tools/task';
 import { worldSnapshotTool } from './tools/world';
 import type {
@@ -80,6 +80,7 @@ export const DEFAULT_MCP_TOOLS: readonly ToolSpec[] = [
   sessionGetTool, //       §2.11
   sessionInterruptTool, //  §2.12（session 域写面：中断一条在办会话）
   sessionResumeTool, //     §2.13（session 域写面：恢复一条被中断的互聊会话 = 续跑）
+  sessionForkTool, //       §2.14（session 域写面：从某条事件处分叉出一条新会话）
 ];
 
 function success(id: JsonRpcId, result: unknown): JsonRpcResponse {

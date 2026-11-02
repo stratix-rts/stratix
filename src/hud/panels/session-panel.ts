@@ -7,7 +7,9 @@
  *      （@since v3.47，task_101；续跑由互聊引擎接手，裁决在 core/session + 引擎）；
  *   ④ 点击会话行展开**历史抽屉**：按 kind 路由到对应读取器
  *      （character_chat → 角色对话历史 / peer_chat·task_run → 会话事件流 /
- *        mission_run → 任务单详情引用 / shell_link → 命令行消息投影），滚动到顶加载更早一页。
+ *        mission_run → 任务单详情引用 / shell_link → 命令行消息投影），滚动到顶加载更早一页；
+ *      抽屉里每条**会话事件**旁有「从这里分叉」钮（@since v3.48，task_102）→
+ *      发 `session.fork` 命令（atSeq = 该事件的 seq，裁决在 core/session 的 manager.fork）。
  *   数据源：WorldState.sessions 订阅（core 广播即刷新，**零轮询**）。
  *   派生逻辑（筛选 / 徽标 / 截断 / 时间 / 两路投影）全在 session-catalog.ts（纯逻辑，可单测）。
  * 来源：docs/SESSION-PLAN.md §4「HUD 会话面板」+ task_095（v3.2a S5）。
@@ -33,6 +35,7 @@ import type { HudBusAdapter } from '../bridge/bus-adapter';
 import {
   SESSION_KIND_FILTERS,
   activeCount,
+  canFork,
   canInterrupt,
   canResume,
   formatRelativeTime,
@@ -392,6 +395,20 @@ export function defineSessionPanel(): typeof HTMLElement {
       adapter.dispatch(command);
     }
 
+    /**
+     * 从某条事件分叉：发 session.fork 命令（@since v3.48，task_102 / v3.2b-B3）。
+     *
+     * atSeq = 那条事件的 seq（**含**该序号）—— 面板只负责把"从哪儿分叉"说清楚，
+     *   能不能分叉、复制多少、标题怎么继承全由 core/session 的 manager.fork 裁决
+     *   （面板自己判就会与真相分叉：给出"点了必被拒"的按钮是最伤的一种体验）。
+     */
+    private fork(sessionId: string, atSeq: number): void {
+      const adapter = this._deps?.adapter;
+      if (!adapter) return;
+      const command: HudCommand = { type: 'session.fork', sessionId, atSeq };
+      adapter.dispatch(command);
+    }
+
     // —— 渲染 ——
     /** 渲染签名：会话摘要 + 筛选档 + 折叠态 + 展开项 + 抽屉状态。 */
     private renderSignature(): string {
@@ -443,6 +460,15 @@ export function defineSessionPanel(): typeof HTMLElement {
           button.chip:active { background: var(--srf-panel); }
           button.chip:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
           button.chip[aria-pressed="true"] { color: var(--srf-accent); border-color: var(--srf-accent); }
+          /* 分叉钮（@since v3.48，task_102）：行内小钮，靠右贴边（entry-head 是 flex 行）。 */
+          button.chip.fork {
+            margin-left: auto;
+            align-self: center;
+            padding: var(--srf-spacing-xxs) var(--srf-spacing-xs);
+            font-size: var(--srf-font-size-xs);
+            color: var(--srf-accent);
+            border-color: var(--srf-accent);
+          }
           .body { display: grid; gap: var(--srf-spacing-sm); min-height: 0; }
           :host([collapsed]) .body { display: none; }
           .filters { display: flex; flex-wrap: wrap; gap: var(--srf-spacing-xs); }
@@ -567,6 +593,11 @@ export function defineSessionPanel(): typeof HTMLElement {
           } else if (action === 'expand') this.expandSession(sessionId);
           else if (action === 'interrupt') this.interrupt(sessionId);
           else if (action === 'resume') this.resume(sessionId);
+          else if (action === 'fork') {
+            // atSeq 从按钮上读（每条事件一个钮，值 = 该事件的 seq）。
+            const atSeq = Number.parseInt(holder.getAttribute('data-at-seq') ?? '', 10);
+            if (Number.isFinite(atSeq)) this.fork(sessionId, atSeq);
+          }
           else if (action === 'close-drawer') this.expandSession(null);
           else if (action === 'load-earlier') this.loadEarlier();
           else if (action === 'retry') {
@@ -690,18 +721,27 @@ export function defineSessionPanel(): typeof HTMLElement {
       } else if (history.entries.length === 0) {
         bodyHtml = '<div class="drawer-note" data-role="drawer-note">没有可读的历史记录</div>';
       } else {
+        // 分叉入口（@since v3.48，task_102）：每条**会话事件**旁一个「从这里分叉」钮，
+        //   atSeq = 该事件的 seq。按钮只在"这条会话可分叉 + 这条条目带 seq"时出现 ——
+        //   角色对话那路的条目没有 seq（它的历史不在会话事件流里，分叉复制不到东西）。
+        const forkable = canFork(session);
         const entries = history.entries
-          .map(
-            (entry) => `
+          .map((entry) => {
+            const forkBtn =
+              forkable && entry.seq !== undefined
+                ? `<button type="button" class="chip fork" data-action="fork" data-session="${escapeHtml(session.id)}" data-at-seq="${escapeHtml(String(entry.seq))}" title="以这条事件为终点另起一条会话">从这里分叉</button>`
+                : '';
+            return `
               <div class="entry" data-role="entry" data-entry="${escapeHtml(entry.id)}" data-tone="${escapeHtml(entry.tone)}">
                 <div class="entry-head">
                   <span class="entry-author" data-role="entry-author">${escapeHtml(entry.author)}</span>
                   <span class="entry-time" data-role="entry-time">${escapeHtml(formatRelativeTime(entry.at, Date.now()))}</span>
+                  ${forkBtn}
                 </div>
                 <div class="entry-text" data-role="entry-text">${escapeHtml(entry.text)}</div>
               </div>
-            `
-          )
+            `;
+          })
           .join('');
         const more = history.hasEarlier
           ? '<div class="drawer-foot"><button type="button" class="chip" data-action="load-earlier">加载更早</button></div>'

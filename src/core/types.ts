@@ -1355,7 +1355,18 @@ export type HudCommand =
    *   上文喂回参与者并重启轮转；core 自己不跑互聊，只做转发，与 pipeline.start 同一纪律）。
    *   端口缺席 = 命令按未落地处理（不假装恢复成功）。
    */
-  | { type: 'session.resume'; sessionId: string };
+  | { type: 'session.resume'; sessionId: string }
+  /**
+   * @since v3.48（task_102 / v3.2b-B3）分叉会话：从一条会话的某个时间点**派生出一条新会话**
+   *   （方案 docs/SESSION-PLAN.md §8「fork = 新会话 + 事件复制到 atSeq」）。
+   * 载荷口径：sessionId 命中 WorldState.sessions；atSeq = 复制截止的事件序号（**含**该序号）。
+   * why 需要它：一条会话聊岔了想"从头再来一次"时，**接着聊**（resume）不对 ——
+   *   resume 只能续上被中断的那场；分叉才是"把聊到这儿为止的那段历史另起一条会话接着走"。
+   * 落点：runtime 直调 core/session 的 manager.fork（纯逻辑 —— 读事件流、复制、重排、落库，
+   *   与 session.interrupt 同一纪律；core 不需要 app 层引擎参与）。
+   * atSeq 缺省 = 全量复制；越界由 core 夹到合法区间（越界不是错误 —— "分叉到末尾"就是全量）。
+   */
+  | { type: 'session.fork'; sessionId: string; atSeq?: number };
 
 /**
  * @since v3.18 经验来源词表（`exp.gained` 事件的 source 字段，task_039）。

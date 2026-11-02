@@ -1,12 +1,13 @@
 /**
  * 文件职责：`stratix_session_list`（列会话）、`stratix_session_get`（读一条会话 + 事件流）、
  *   `stratix_session_interrupt`（中断一条在办会话）、`stratix_session_resume`（恢复一条被中断的
- *   互聊会话 = 续跑接线）—— 会话域的工具组：外部 agent 由此看见会话，
- *   并能叫停 / 恢复一场对话（docs/SESSION-PLAN.md §8 B4 与 2b 第一期）。
+ *   互聊会话 = 续跑接线）、`stratix_session_fork`（从某条事件处分叉出一条新会话）
+ *   —— 会话域的工具组：外部 agent 由此看见会话，
+ *   并能叫停 / 恢复 / 分叉一场对话（docs/SESSION-PLAN.md §8 B4 与 2b 第一期）。
  * 输入：list = kind? / status? / limit? / offset?；get = session_id / before_seq? / limit?；
- *      interrupt = session_id；resume = session_id。
+ *      interrupt = session_id；resume = session_id；fork = session_id / at_seq?。
  * 输出：会话摘要列表（带 returned / total / truncated）或单条会话摘要 + 事件流的一段，
- *      或一次中断 / 恢复的受理回执（id / 状态 / 查法 poll）。
+ *      或一次中断 / 恢复 / 分叉的受理回执（id / 状态 / 查法 poll）。
  * 禁止事项：
  *   1. 在 MCP 侧自己维护一份会话 —— 会话真相在 core（WorldState.sessions）+ 库（sessions /
  *      session_events 两张表）；读面只**读**（读口是 core 的 SessionReadPort），
@@ -497,6 +498,158 @@ export const sessionResumeTool: ToolSpec = {
     );
   },
 };
+
+/**
+ * 可分叉的会话种类（第一期只认**互聊**一种）。
+ *
+ * why 与 INTERRUPTIBLE / RESUMABLE 同一口径（方案 docs/SESSION-PLAN.md §8 第一期只做 peer_chat）：
+ *   分叉复制的是**对话事实**（消息 / 轮次 / 中断标记 —— core/session/context-replay.ts 的复制口径），
+ *   而只有互聊会话的事件流里有这些。其余四类复制过去的是空壳：
+ *   - `character_chat`：消息本体在 chat_messages 表（不在会话事件流里）→ 复制 0 条；
+ *   - `task_run` / `mission_run`：任务实体的生命周期镜像（事件是埋点，不是对话）→ 复制 0 条；
+ *   - `shell_link`：agent-link 连接的投影 → 分叉连接没有意义。
+ *   回一个"分叉成功但历史是空的"回执，比明说"这类会话不支持分叉"更伤 ——
+ *   模型会以为上下文带过去了，其实没有。
+ */
+const FORKABLE_SESSION_KINDS: readonly SessionKind[] = ['peer_chat'];
+
+export const sessionForkTool: ToolSpec = {
+  name: 'stratix_session_fork',
+  domain: 'session',
+  verb: 'fork',
+  order: 14,
+  description: [
+    '分叉一条会话：从它的某个事件处派生出一条**新会话**（复制到该处为止的对话历史，参与者继承）。',
+    '何时用：一段对话聊岔了 / 想换个方向重来 —— 从某条消息之后另起一条会话接着走；',
+    '想在不改动原会话的前提下留一条"另一种可能"的分支。',
+    '何时不用：只是想知道有哪些会话、发生过什么 —— 用 stratix_session_list / stratix_session_get；',
+    '要接着**被中断**的那场聊 —— 用 stratix_session_resume（恢复是接着原来的会话，分叉是另起一条）；',
+    '要取消一条排队中的角色任务 —— 用 stratix_task_cancel（分叉会话停不住任务）。',
+    '边界：只认**互聊**会话（peer_chat）—— 其余四类一律 unsupported_kind（分叉复制的是对话事实，',
+    '只有互聊的事件流里有；别类复制过来的是空壳）。at_seq 是**截止的事件序号（含）**，缺省 = 全量复制；',
+    '越界不是错误 —— 超过末尾按末尾算（= 全量）；0 = 起点之前（复制 0 条，只建一条不带历史的新会话）；',
+    '新会话的标题 = 原标题加「（分叉）」标记、参与者继承、状态 active，源会话**一个字都不改**；',
+    '分叉只新建会话 —— 不接着聊（对话轮转由持有互聊引擎的那一侧负责）、不回滚原会话的任何消息。',
+    '错误：session_not_found（会话 id 不在本进程的状态里）/ unsupported_kind（该类会话不支持分叉）/',
+    'invalid_arguments（session_id 为空 / at_seq 不是正整数）/ internal_error（命令没人接管，或会话历史未接入、复制不到内容）。',
+  ].join('\n'),
+  inputSchema: {
+    type: 'object',
+    properties: {
+      session_id: {
+        type: 'string',
+        minLength: 1,
+        description: '源会话 id（见 stratix_session_list）。',
+      },
+      at_seq: {
+        type: 'integer',
+        minimum: 0,
+        description: '复制截止的事件序号（含）；缺省 = 全量复制。',
+      },
+    },
+    required: ['session_id'],
+    additionalProperties: false,
+  },
+  errors: [
+    'session_not_found',
+    'unsupported_kind',
+    'invalid_arguments',
+    'internal_error',
+  ],
+  readOnly: false,
+  handler: (args, host) => {
+    const sessionId = requireString(args, 'session_id');
+    const atSeq = optionalInteger(args, 'at_seq', { min: 0 });
+
+    // 存在性与当前相位取**本进程的状态**（WorldState.sessions）—— 分叉的裁决与落点都在那里；
+    // 库里那条会话本进程未必还在跑（服务重启后不在内存、已收尾被 FIFO 淘汰）。
+    const before = (host.getWorldState().sessions ?? []).find((item) => item.id === sessionId);
+    if (!before) {
+      throw new McpToolError('session_not_found', `会话「${sessionId}」不在本进程的状态里`, {
+        hint: '用 stratix_session_list 重列一遍会话，取一条真实的会话 id',
+      });
+    }
+    if (!FORKABLE_SESSION_KINDS.includes(before.kind)) {
+      throw new McpToolError(
+        'unsupported_kind',
+        `会话「${sessionId}」是 ${before.kind} 类，不支持分叉`,
+        { hint: '只有互聊会话（peer_chat）可分叉；分叉复制的是对话事实，别的类别复制过来是空壳' }
+      );
+    }
+
+    // 分叉会**新建**一条会话 —— 记下投命令前的 id 集合，投完靠"多了哪条"认出分叉产物
+    //   （新会话的 id 由 core 生成，MCP 侧无从预知；靠差集认，不靠猜）。
+    const beforeIds = new Set((host.getWorldState().sessions ?? []).map((item) => item.id));
+
+    // 裁决交给 core（core/session 的 manager.fork：读事件流 → 复制到 atSeq → 建新会话）。
+    //   读不到事件流时 core **如实拒绝**（不造一条空壳分叉）。
+    host.dispatchCommand({ type: 'session.fork', sessionId, ...(atSeq === undefined ? {} : { atSeq }) });
+
+    const after = host.getWorldState().sessions ?? [];
+    const created = after.find((item) => !beforeIds.has(item.id));
+    if (!created) {
+      throw new McpToolError(
+        'internal_error',
+        '分叉未落地：本进程没有 core 运行时接管这条命令，或会话历史未接入、复制不到内容',
+        { hint: '确认 Stratix 运行时在本进程已启动，且这条会话的历史（事件流）已接入' }
+      );
+    }
+
+    // 分叉标记事件里有**实际生效**的截止 seq 与复制条数（core 夹过的值）—— 如实回给模型，
+    //   免得它以为 at_seq=999 就真的复制了 999 条。
+    const forked = findForkedEvent(host, created.id);
+
+    return toToolResult({
+      ok: true,
+      data: {
+        session_id: created.id,
+        kind: created.kind,
+        title: created.title,
+        status: created.status,
+        participants: [...created.participants],
+        source_session_id: sessionId,
+        at_seq: forked?.atSeq ?? atSeq ?? null,
+        copied_count: forked?.copiedCount ?? null,
+        event_count: created.eventCount,
+        created_at: created.createdAt,
+        // 查法：分叉出来的是一条**新会话** —— 用 session_get 读它的事件流
+        //   （前几条就是复制过来的历史，末尾一条是 forked 标记）。
+        poll: {
+          tool: 'stratix_session_get',
+          args: { session_id: created.id },
+        },
+      },
+    });
+  },
+};
+
+/**
+ * 找新会话的「forked」标记事件（源会话 id / 实际截止 seq / 复制条数）。
+ *
+ * why 要读回它：core 会把 atSeq **夹到合法区间**（越界按末尾算），
+ *   MCP 侧只知道自己请求了什么 —— 不读回实际值就等于把"我请求的"当成"生效的"回给模型。
+ * 读口缺席 / 读不到这条事件 → 返回 null（据实说"不知道"，不编）。
+ */
+function findForkedEvent(
+  host: McpHost,
+  sessionId: string
+): { atSeq: number; copiedCount: number } | null {
+  const reader = host.readSessions;
+  if (!reader) return null;
+  let events;
+  try {
+    events = reader.readSessionEvents(sessionId, { limit: 200 });
+  } catch {
+    return null;
+  }
+  const forked = events.find((event) => event.type === 'forked');
+  if (!forked) return null;
+  const payload = (forked.payload ?? {}) as Record<string, unknown>;
+  const atSeq = typeof payload.atSeq === 'number' ? payload.atSeq : null;
+  const copiedCount = typeof payload.copiedCount === 'number' ? payload.copiedCount : null;
+  if (atSeq === null || copiedCount === null) return null;
+  return { atSeq, copiedCount };
+}
 
 /**
  * 会话读口（core 的 SessionReadPort）—— 端口缺席就是"本进程读不到会话"。

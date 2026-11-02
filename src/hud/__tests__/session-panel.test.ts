@@ -384,6 +384,89 @@ describe('恢复按钮（session.resume）', () => {
   });
 });
 
+/**
+ * 分叉入口（@since v3.48，task_102）：历史抽屉里每条**会话事件**旁的「从这里分叉」钮 →
+ * 发 `session.fork` 命令（atSeq = 该事件的 seq；裁决在 core/session 的 manager.fork）。
+ */
+describe('分叉入口（session.fork）', () => {
+  test('互聊会话的事件条目旁有「从这里分叉」钮（值 = 该事件的 seq）', async () => {
+    const history: SessionHistoryPort = {
+      loadSessionEvents: async () => [
+        entry({ id: 'e-1', seq: 2, author: '甲', text: '先侦察' }),
+        entry({ id: 'e-2', seq: 5, author: '乙', text: '我守北门' }),
+      ],
+    };
+    const harness = mountPanel(history);
+    mounted.push(harness.unmount);
+    expand(harness.panel);
+    harness.emit(makeState({ sessions: [session({ id: 's-peer', kind: 'peer_chat' })] }));
+
+    harness.panel.expandSession('s-peer');
+    await flush();
+
+    const buttons = Array.from(
+      harness.panel.shadowRoot?.querySelectorAll('[data-action="fork"]') ?? []
+    );
+    expect(buttons).toHaveLength(2);
+    expect(buttons.map((b) => b.getAttribute('data-at-seq'))).toEqual(['2', '5']);
+    expect(buttons.map((b) => b.getAttribute('data-session'))).toEqual(['s-peer', 's-peer']);
+  });
+
+  test('点「从这里分叉」→ 发出 session.fork 命令（带 sessionId 与 atSeq）', async () => {
+    const history: SessionHistoryPort = {
+      loadSessionEvents: async () => [
+        entry({ id: 'e-1', seq: 2, author: '甲', text: '先侦察' }),
+        entry({ id: 'e-2', seq: 5, author: '乙', text: '我守北门' }),
+      ],
+    };
+    const harness = mountPanel(history);
+    mounted.push(harness.unmount);
+    expand(harness.panel);
+    harness.emit(makeState({ sessions: [session({ id: 's-peer', kind: 'peer_chat' })] }));
+    harness.panel.expandSession('s-peer');
+    await flush();
+    expect(harness.commands).toHaveLength(0);
+
+    click(harness.panel, '[data-action="fork"][data-at-seq="5"]');
+
+    expect(harness.commands).toEqual([
+      { type: 'session.fork', sessionId: 's-peer', atSeq: 5 },
+    ]);
+  });
+
+  test('条目没有 seq（角色对话历史）→ 不给分叉钮（点了复制不到东西）', async () => {
+    const history: SessionHistoryPort = {
+      loadCharacterChat: async () => [entry({ id: 'm-1', author: '我', text: '在的' })],
+    };
+    const harness = mountPanel(history);
+    mounted.push(harness.unmount);
+    expand(harness.panel);
+    harness.emit(makeState({
+      sessions: [session({ id: 's-chat', kind: 'character_chat', participants: ['char-9'] })],
+    }));
+
+    harness.panel.expandSession('s-chat');
+    await flush();
+
+    expect(harness.panel.shadowRoot?.querySelector('[data-action="fork"]')).toBeNull();
+  });
+
+  test('非互聊会话（task_run）→ 不给分叉钮（第一期只认 peer_chat）', async () => {
+    const history: SessionHistoryPort = {
+      loadSessionEvents: async () => [entry({ id: 'e-1', seq: 1, author: '开工', text: '任务开始' })],
+    };
+    const harness = mountPanel(history);
+    mounted.push(harness.unmount);
+    expand(harness.panel);
+    harness.emit(makeState({ sessions: [session({ id: 's-task', kind: 'task_run' })] }));
+
+    harness.panel.expandSession('s-task');
+    await flush();
+
+    expect(harness.panel.shadowRoot?.querySelector('[data-action="fork"]')).toBeNull();
+  });
+});
+
 describe('空态三档', () => {
   test('一条会话都没有 → 引导文案', () => {
     const harness = mountPanel();

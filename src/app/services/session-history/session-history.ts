@@ -17,7 +17,7 @@
  *   （渐进迁移铁律：旧表不搬）。会话域只为互聊（peer_chat）补了全量事件流，
  *   角色对话的事件本体仍在 chat_messages 表 —— 面板按 kind 路由到各自那张表。
  *
- * @since v3.43（task_095 / v3.2a S5）。
+ * @since v3.43（task_095 / v3.2a S5）；v3.48（task_102）条目补 seq（分叉入口要用的 atSeq）。
  */
 
 import { chatHistoryApi, chatHistoryEntryToDrawerInput, type ChatHistoryApi } from '../persistence/chat-history';
@@ -41,6 +41,13 @@ export interface SessionHistoryEntry {
   readonly text: string;
   /** 语气（普通 / 警示 / 错误）。 */
   readonly tone: 'normal' | 'warn' | 'error';
+  /**
+   * 来源事件在会话内的序号（seq）；缺省 = 这条不是会话事件（角色对话消息没有 seq）。
+   * why 需要它（@since v3.48，task_102）：抽屉里的「从这里分叉」入口要把 atSeq 交给
+   *   `session.fork` 命令 —— 分叉的截止点就是这条事件的 seq。角色对话那路不带 seq
+   *   （它的游标是消息 id，与会话事件的 seq 语义不同，不可混用）。
+   */
+  readonly seq?: number;
 }
 
 /**
@@ -114,7 +121,13 @@ export function sessionEventToEntry(
     const value = payload[key];
     return typeof value === 'string' ? value : '';
   };
-  const base = { id: `${event.sessionId}#${event.seq}`, cursor: String(event.seq), at: event.createdAt };
+  const base = {
+    id: `${event.sessionId}#${event.seq}`,
+    cursor: String(event.seq),
+    at: event.createdAt,
+    // seq 随行带出：抽屉的「从这里分叉」入口要拿它当 atSeq（@since v3.48，task_102）。
+    seq: event.seq,
+  };
   switch (event.type) {
     case 'created':
       return { ...base, author: '建立', text: `会话「${text('title')}」建立`, tone: 'normal' };

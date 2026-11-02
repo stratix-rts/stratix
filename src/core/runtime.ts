@@ -486,6 +486,13 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
           reportUnhandled('command', command);
         }
         return;
+      // @since v3.48(task_102 / v3.2b-B3)会话分叉:直调 session manager(与 session.interrupt 同一口径)——
+      //   分叉是**纯 core 逻辑**(读事件流 → 复制到 atSeq → 建新会话),不需要 app 层引擎接手,
+      //   所以这里没有注入端口(与 resume 不同:resume 要把上文喂回模型、重启轮转,那件事在 app 层)。
+      //   源会话全程只读;读不到事件流时 manager 如实拒绝并回 Notice(不编造一条空分叉)。
+      case 'session.fork':
+        session.fork(command.sessionId, command.atSeq);
+        return;
       // @since v3.27(task_051)流水线发起:转交注入的编排器端口(app 层 pipeline-service)。
       // 与 task.* 不同,这里不直调 manager -- 流水线不是 core 实体(见 RuntimeOptions.pipeline
       // 注),runtime 只把命令交给端口。未注入时按未落地处理(agent-link 命令同一口径)。

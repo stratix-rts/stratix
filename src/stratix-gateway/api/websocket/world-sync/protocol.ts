@@ -298,6 +298,8 @@ const HUD_COMMAND_TYPE_FLAGS: Readonly<Record<HudCommand['type'], true>> = {
   'session.interrupt': true,
   // @since v3.47（task_101 / v3.2b-B2）会话恢复（续聊）：与 session.interrupt 同一模式入册。
   'session.resume': true,
+  // @since v3.48（task_102 / v3.2b-B3）会话分叉（从某条事件另起一条会话）：同一模式入册。
+  'session.fork': true,
 };
 
 /**
