@@ -46,14 +46,22 @@ import { TaskFxLayer } from '../objects/task-fx-layer';
 import { UnitLayer } from '../objects/unit-layer';
 import { UnitRegistry, UNIT_POSITION_SEED_KEY } from '../objects/unit-registry';
 import { UNIT_SPRITE_SOURCE_KEY, type UnitSpriteSource } from '../objects/unit-sprite-source';
+import { WORLD_PALETTE } from '../theme';
 
 export const BATTLEFIELD_SCENE_KEY = 'battlefield';
 
-const BACKGROUND_COLOR = 0x0f131b;
-const BOUNDS_COLOR = 0x3a4557;
-const BOUNDS_FILL = 0x161c27;
+/**
+ * 战场底色 / 网格 / 边界（@since v3.3，task_110）—— 全部取自唯一事实源
+ *   core/theme/visual-spec.ts（world 门面 = ../theme 的 WORLD_PALETTE）。
+ * why 不写色值字面量：调色板改一处即可，world 各文件不再各抄一份。
+ */
+const BACKGROUND_COLOR = WORLD_PALETTE.background;
+/** 战场外框描边 = 装饰色（紫）。 */
+const BOUNDS_COLOR = WORLD_PALETTE.accent;
+/** 战场外框底衬 = 网格色（比底色亮一档的区块底）。 */
+const BOUNDS_FILL = WORLD_PALETTE.grid;
 /** 空状态网格线：让零单位时的战场不再是“纯色虚空”，也为拖拽/缩放提供参照物。 */
-const GRID_COLOR = 0x232c3d;
+const GRID_COLOR = WORLD_PALETTE.grid;
 const GRID_STEP = 200;
 /** 空状态提示文字（世界坐标层，随镜头移动；有单位后自动隐藏）。 */
 const EMPTY_HINT = '空战场 · 0 单位接入（单位来自 gateway 真实数据流）\n左键拖框选 · 右键短按移动选中 · 右/中键拖平移 · 滚轮缩放';

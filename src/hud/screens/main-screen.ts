@@ -42,6 +42,7 @@ import {
 import type { SessionHistoryPort } from '../panels/session-catalog';
 import type { TaskStatsProvider } from '../panels/task-assign-catalog';
 import type { PipelineFeedInput } from '../panels/pipeline-catalog';
+import { demoMode } from '../theme/demo-mode';
 import { defineStratButton, STRAT_BUTTON_TAG } from '../widgets/strat-button';
 
 import { mountCharacterScreen } from './character-screen';
@@ -245,6 +246,8 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
     let unmountSubScreen: (() => void) | null = null;
     /** 主屏布局内各组件的挂载闭包（拆解 / 重建主布局时同步生命周期）。 */
     let unmountMain: (() => void) | null = null;
+    /** 演示模式订阅的退订闭包（演示开关变化 → 主屏布局重渲）。 */
+    let unsubscribeDemo: (() => void) | null = null;
     /** core 订阅闭包（订阅 WorldState.currentScreen 变化）；只在 mount 期间存在。 */
     let unsubscribeState: (() => void) | null = null;
 
@@ -273,18 +276,20 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
           <div class="hud-actions">
             <span class="hud-notice-badge" data-role="notice-badge" hidden title="待处理通知">0</span>
             <${STRAT_BUTTON_TAG} label="切换像素风" variant="default" data-role="theme"></${STRAT_BUTTON_TAG}>
+            <${STRAT_BUTTON_TAG} label="演示" variant="default" data-role="demo"></${STRAT_BUTTON_TAG}>
             <${STRAT_BUTTON_TAG} label="打开聊天" variant="default" data-role="chat"></${STRAT_BUTTON_TAG}>
             <${STRAT_BUTTON_TAG} label="会话面板" variant="default" data-role="sessions"></${STRAT_BUTTON_TAG}>
             <${STRAT_BUTTON_TAG} label="看角色" variant="default" data-role="character"></${STRAT_BUTTON_TAG}>
             <${STRAT_BUTTON_TAG} label="去设置" variant="primary" data-role="settings"></${STRAT_BUTTON_TAG}>
             <span class="hud-theme-tag" data-role="theme-tag">default</span>
+            <span class="hud-theme-tag" data-role="demo-tag">off</span>
           </div>
         </header>
         <div class="hud-rail-left hud-surface" data-role="agent-panel"></div>
         <div class="hud-rail-right">
           <div class="hud-status-slot hud-surface" data-role="status-screen"></div>
           <div class="hud-session-slot hud-surface" data-role="session-panel"></div>
-          <div class="hud-drawer-slot hud-surface" data-role="log-drawer"></div>
+          <div class="hud-drawer-slot hud-surface" data-role="log-drawer" data-engineering="true"></div>
         </div>
         <div class="hud-bottom-bar">
           <div class="hud-surface" data-role="command-panel"></div>
@@ -298,12 +303,20 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       const linkCounter = host.querySelector('[data-role="link-count"]');
       const noticeBadge = host.querySelector<HTMLElement>('[data-role="notice-badge"]');
 
+      const demoTag = host.querySelector('[data-role="demo-tag"]');
+      if (demoTag) demoTag.textContent = demoMode.enabled ? 'on' : 'off';
+
       const onThemeClick = (): void => {
         const next = currentTheme === 'default' ? 'pixel' : 'default';
         currentTheme = next;
         adapter.dispatch({ type: 'theme.set', themeId: next });
         const tag = host.querySelector('[data-role="theme-tag"]');
         if (tag) tag.textContent = next;
+      };
+      const onDemoClick = (): void => {
+        // 演示模式是纯本地展示态：不发 HudCommand、不进总线（见 demo-mode.ts 文件头）。
+        // 状态变化由 demo-mode 的订阅回调统一触发重渲（工程件显隐 + 顶栏标签）。
+        demoMode.toggle();
       };
       const onSettingsClick = (): void => {
         adapter.dispatch({ type: 'ui.navigate', screen: 'settings' });
@@ -333,6 +346,7 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       const themeHandler = (e: Event): void => {
         const target = e.target as HTMLElement | null;
         if (target?.closest('[data-role="theme"]')) onThemeClick();
+        else if (target?.closest('[data-role="demo"]')) onDemoClick();
         else if (target?.closest('[data-role="chat"]')) onChatClick();
         else if (target?.closest('[data-role="sessions"]')) onSessionsClick();
         else if (target?.closest('[data-role="character"]')) onCharacterClick();
@@ -361,8 +375,10 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       const unmountAgentPanel = agentHost ? mountAgentPanel(agentDeps, agentHost) : null;
 
       // 日志抽屉：纯展示，不发命令 —— 只把同一个 adapter 的 subscribe 能力给它。
+      // 演示模式（@since v3.3，task_110）：日志抽屉是工程件（时间戳 / 来源 / 级别四列），
+      //   演示时不挂载 —— 既不占画面也不订阅总线（省一份无谓的订阅）。
       const drawerHost = host.querySelector<HTMLElement>('[data-role="log-drawer"]');
-      const unmountDrawer = drawerHost ? mountLogDrawer(adapter, drawerHost) : null;
+      const unmountDrawer = drawerHost && !demoMode.enabled ? mountLogDrawer(adapter, drawerHost) : null;
 
       // 会话面板（@since v3.43，task_095）：多会话管理的入口 —— 列表 / kind 筛选 / 状态徽标 /
       //   中断钮（发 session.interrupt）+ 历史抽屉。历史读取口可选（缺省 = 面板说"未附着"）。
@@ -383,6 +399,11 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       const statusHost = host.querySelector<HTMLElement>('[data-role="status-screen"]');
       const unmountStatus = statusHost ? mountStatusScreen(adapter, statusHost) : null;
 
+      // 演示模式开关 → 主屏布局重渲（工程件显隐 + 顶栏标签同步）。
+      // why 重渲而不是局部改：工程件可能出现在任何面板里，重渲一次最不容易漏。
+      unsubscribeDemo?.();
+      unsubscribeDemo = demoMode.subscribe(() => renderMain());
+
       const unsubscribe = adapter.subscribe((state) => {
         if (unitCounter) unitCounter.textContent = String(state.units.length);
         if (missionCounter) missionCounter.textContent = String(state.missions.length);
@@ -394,9 +415,15 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         }
       });
 
+      // 工程件过滤（骨架机制）：标了 data-engineering 的节点在演示模式下隐藏。
+      // 各面板后续只需给自己的工程件标这个属性即可接入（无需改本屏）。
+      demoMode.filterEngineering(host);
+
       // 主屏布局内所有挂载闭包打包到一个闭包里：renderScreen 拆主屏布局时一次性释放。
       unmountMain = () => {
         unsubscribe();
+        unsubscribeDemo?.();
+        unsubscribeDemo = null;
         unmountSession?.();
         unmountDrawer?.();
         unmountStatus?.();

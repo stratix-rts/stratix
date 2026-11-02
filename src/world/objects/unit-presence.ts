@@ -41,6 +41,7 @@
  */
 
 import { STRATIX_NAMETAGS_TOGGLE_KEY } from '../../core/types';
+import { VISUAL_PALETTE, hexToRgba } from '../theme';
 
 // ============================================================================
 // 呼吸微动画
@@ -151,9 +152,9 @@ export function readNametagsToggle(storage: NametagStorage | null | undefined): 
 }
 
 /**
- * 名字标签样式（镜像 hud/theme token 色值 —— Phaser 无 CSS token，换肤两处同步改，
- * 同 task-fx.ts 的镜像纪律）：name 主色 = srf-text #e6e9ef；Lv 小字 = srf-text-muted
- * #9aa3b2；描边 = 战场底色 #0f131b（压住任意底色可读，同浮标底衬色）。
+ * 名字标签样式：name 主色 / Lv 小字沿用 hud 文本 token 口径（#e6e9ef / #9aa3b2 —— 属文字层，
+ *   不在场景调色板七色之内，故不并入唯一事实源）；描边 = 调色板背景色（压住任意底色可读，
+ *   同浮标底衬色）。@since v3.3（task_110）：描边色改从唯一事实源取。
  */
 export const NAMETAG_STYLE = {
   fontFamily: 'monospace',
@@ -161,19 +162,19 @@ export const NAMETAG_STYLE = {
   lvFontSize: 10,
   nameColor: '#e6e9ef',
   lvColor: '#9aa3b2',
-  strokeColor: '#0f131b',
+  strokeColor: VISUAL_PALETTE.background,
   strokeWidth: 2,
   /** 名字锚点 y（容器本地坐标，负 = 头顶方向；origin (0.5,1) 文字向上长）。 */
   yAboveUnit: -66,
 } as const;
 
-/** 说话气泡样式：「···」三点 + 半透明底衬（同 token 镜像口径）。 */
+/** 说话气泡样式：「···」三点 + 半透明底衬（底衬色 = 调色板背景色 + 0.8 alpha）。 */
 export const SPEAKING_BUBBLE_STYLE = {
   text: '···',
   fontFamily: 'monospace',
   fontSize: 12,
   color: '#e6e9ef',
-  backgroundColor: 'rgba(15,19,27,0.8)',
+  backgroundColor: hexToRgba(VISUAL_PALETTE.background, 0.8),
   /** 气泡锚点 y（origin (0.5,1)：悬在名字上方，位置恒定不随开关跳变）。 */
   yAboveUnit: -84,
 } as const;

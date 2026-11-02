@@ -40,3 +40,12 @@ export function resolveUnitColor(skinId: string | null | undefined, fallback: nu
   if (!skinId) return fallback;
   return parseHexColor(resolveAccent(skinId)) ?? fallback;
 }
+
+/**
+ * 场景调色板与视觉规范（@since v3.3，task_110）—— **从本文件取色**的 world 侧唯一入口。
+ *   事实源：src/core/theme/visual-spec.ts（唯一事实源，含七色 / 尺寸 / 时长 / easing）；
+ *   world 门面：src/world/visual-spec.ts（把十六进制色换算成 Phaser 数字色）。
+ * why 走 theme.ts 而不是各自 import visual-spec：world 侧的取色入口收敛在一处，
+ *   改色只改事实源一处，world 各文件只认这个门面。
+ */
+export { VISUAL_METRICS, VISUAL_PALETTE, WORLD_PALETTE, hexToRgba } from './visual-spec';

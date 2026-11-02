@@ -16,8 +16,10 @@ import type { HudCommand, ScreenId, UnitView, WorldState } from '../../core/type
 import { createHudBusAdapter, type HudBusAdapter } from '../bridge/bus-adapter';
 import type { ThemeController, ThemeId } from '../theme/theme-controller';
 
+import { LOG_DRAWER_TAG } from '../panels/log-drawer';
 import { CHARACTER_SCREEN_TAG } from '../screens/character-screen';
 import { createMainScreen } from '../screens/main-screen';
+import { demoMode } from '../theme/demo-mode';
 import { SETTINGS_SCREEN_TAG } from '../screens/settings-screen';
 import { STATUS_SCREEN_TAG } from '../screens/status-screen';
 
@@ -374,6 +376,56 @@ describe('RTS 悬浮布局：HUD 环绕战场而不是分栏', () => {
 
     expect(onChatOpen).toHaveBeenCalledTimes(1);
     expect(onChatOpen.mock.calls[0][0].detail).toEqual({ characterId: 'c-neo' });
+    h.unmount();
+  });
+});
+
+// ============================================================================
+// 7. 演示模式开关（@since v3.3，task_110）：顶栏开关 → 工程面板隐藏 + 记忆
+// ============================================================================
+
+describe('演示模式：顶栏开关', () => {
+  afterEach(() => {
+    window.localStorage.clear();
+    demoMode.set(false);
+  });
+
+  test('默认关：日志抽屉（工程件）在位，顶栏标签是 off', () => {
+    const h = mountHarness(makeState());
+    expect(h.host.querySelector(LOG_DRAWER_TAG)).not.toBeNull();
+    expect(h.host.querySelector('[data-role="demo-tag"]')?.textContent).toBe('off');
+    h.unmount();
+  });
+
+  test('点开演示：日志抽屉隐藏、顶栏标签转 on、html 上打标记', () => {
+    const h = mountHarness(makeState());
+    h.host.querySelector<HTMLElement>('[data-role="demo"]')
+      ?.dispatchEvent(new CustomEvent('strat-button-click', { bubbles: true }));
+
+    expect(h.host.querySelector(LOG_DRAWER_TAG)).toBeNull();
+    expect(h.host.querySelector('[data-role="demo-tag"]')?.textContent).toBe('on');
+    expect(document.documentElement.getAttribute('data-demo-mode')).toBe('on');
+    h.unmount();
+  });
+
+  test('开关状态写进 localStorage（下次进来还记得）', () => {
+    const h = mountHarness(makeState());
+    h.host.querySelector<HTMLElement>('[data-role="demo"]')
+      ?.dispatchEvent(new CustomEvent('strat-button-click', { bubbles: true }));
+    expect(window.localStorage.getItem('stratix.demo-mode')).toBe('on');
+    h.unmount();
+  });
+
+  test('再点一次关掉：工程件回到画面上', () => {
+    const h = mountHarness(makeState());
+    const demoBtn = (): void => {
+      h.host.querySelector<HTMLElement>('[data-role="demo"]')
+        ?.dispatchEvent(new CustomEvent('strat-button-click', { bubbles: true }));
+    };
+    demoBtn();
+    demoBtn();
+    expect(h.host.querySelector(LOG_DRAWER_TAG)).not.toBeNull();
+    expect(h.host.querySelector('[data-role="demo-tag"]')?.textContent).toBe('off');
     h.unmount();
   });
 });

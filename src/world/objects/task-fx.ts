@@ -20,9 +20,10 @@
  * 后续换「工具气泡 + 身体动画加速」变体时：扩 TaskFxStyle.variant 词表 + 在 task-fx-layer.ts
  * 增一个绘制分支，本文件的状态板与裁决逻辑零改动。
  *
- * 颜色口径：Phaser 侧没有 CSS token，色值按 16 进制**镜像** hud/theme/tokens-default.css 的
- * 同名 token（done=srf-success #6fcf97、failed=srf-danger #e06c75、环=unit-layer 的 busy 态
- * 0xf5a524、awaiting=srf-warn #f0c674），换肤时两处同步改（同 world/theme.ts 的镜像纪律）。
+ * 颜色口径（@since v3.3，task_110）：色值改为取自**唯一事实源** core/theme/visual-spec.ts
+ *   （world 门面 = ../theme 的 WORLD_PALETTE）—— 不再镜像 hud 的同名 token：
+ *   done=success、failed=danger、环=progress、awaiting=progress（调色板无独立「待审批」色，
+ *   归入进度琥珀；与 unit-layer 的 busy 态同源，两处不再各抄一份）。
  *
  * ============ 审批门挂起浮标（@since v3.25，task_049）============
  * task.awaiting_approval → awaiting（黄色 ?，驻留到下一次状态变化）：plan-first 任务的计划
@@ -34,6 +35,7 @@
  */
 
 import type { CharacterTask, UnitStatus } from '../../core/types';
+import { WORLD_PALETTE } from '../theme';
 
 // ============================================================================
 // 样式常量（变体钩子：全部可调参数集中一处）
@@ -44,7 +46,7 @@ export interface TaskFxRingStyle {
   /** 环半径（世界坐标 px）。 */
   readonly radius: number;
   readonly lineWidth: number;
-  /** 环的颜色（busy 态色，镜像 unit-layer 的 COLOR_BY_STATUS.busy）。 */
+  /** 环的颜色（busy 态色，与 unit-layer 的 COLOR_BY_STATUS.busy 同源 = 调色板 progress）。 */
   readonly color: number;
   /** 弧的跨度（度）：<360 就是"旋转缺口环"，=360 是整环。 */
   readonly arcDegrees: number;
@@ -67,11 +69,11 @@ export interface TaskFxStyle {
   /** 当前变体名。'ring' = 头顶进度环（默认）；'bubble'（工具气泡）是预留位，未实现。 */
   readonly variant: 'ring';
   readonly ring: TaskFxRingStyle;
-  /** ✓ 浮标：完成色（镜像 srf-success）+ 存活时长（淡出总时长）。 */
+  /** ✓ 浮标：完成色（调色板 success）+ 存活时长（淡出总时长）。 */
   readonly done: { readonly color: number; readonly ttlMs: number };
-  /** ! 浮标：失败色（镜像 srf-danger）。驻留时长不设 —— 由下一次状态变化裁决。 */
+  /** ! 浮标：失败色（调色板 danger）。驻留时长不设 —— 由下一次状态变化裁决。 */
   readonly failed: { readonly color: number };
-  /** ? 浮标（@since v3.25，task_049）：待审批色（镜像 srf-warn）。驻留到下一次状态变化。 */
+  /** ? 浮标（@since v3.25，task_049）：待审批色（调色板 progress）。驻留到下一次状态变化。 */
   readonly awaiting: { readonly color: number };
   readonly marker: TaskFxMarkerStyle;
   /** 动画步进间隔（ms；30fps 足够环旋转与淡出平滑）。 */
@@ -81,11 +83,11 @@ export interface TaskFxStyle {
 /** 默认样式（ring 变体）。改观感只动这里，不动绘制器。 */
 export const TASK_FX_STYLE: TaskFxStyle = {
   variant: 'ring',
-  ring: { radius: 9, lineWidth: 2.5, color: 0xf5a524, arcDegrees: 270, rotationDegPerSec: 220 },
-  done: { color: 0x6fcf97, ttlMs: 1500 },
-  failed: { color: 0xe06c75 },
-  awaiting: { color: 0xf0c674 },
-  marker: { radius: 11, backdropColor: 0x0f131b, backdropAlpha: 0.6, yAboveUnit: 44 },
+  ring: { radius: 9, lineWidth: 2.5, color: WORLD_PALETTE.progress, arcDegrees: 270, rotationDegPerSec: 220 },
+  done: { color: WORLD_PALETTE.success, ttlMs: 1500 },
+  failed: { color: WORLD_PALETTE.danger },
+  awaiting: { color: WORLD_PALETTE.progress },
+  marker: { radius: 11, backdropColor: WORLD_PALETTE.background, backdropAlpha: 0.6, yAboveUnit: 44 },
   tickMs: 33,
 };
 
@@ -96,11 +98,11 @@ export const TASK_FX_STYLE: TaskFxStyle = {
 /**
  * 目标点涟漪的可调参数（常量可调，同 TASK_FX_STYLE 先例）。
  * 血缘（v2 考古）：ParticleEffects.agentArrivalRipple —— 半径 10→50、alpha 0.7→0、
- * 600ms Power2.easeOut、2px 描边 + 10% 充填；v3 颜色取绿（srf-success 镜像，与 done ✓
+ * 600ms Power2.easeOut、2px 描边 + 10% 充填；v3 颜色取绿（调色板 success，与 done ✓
  * 同族「去了/成了」的正反馈色；v2 用的是主题主色，这里按 task_045 规格改绿）。
  */
 export interface MoveRippleStyle {
-  /** 涟漪色（镜像 srf-success #6fcf97）。 */
+  /** 涟漪色（调色板 success）。 */
   readonly color: number;
   readonly radiusFrom: number;
   readonly radiusTo: number;
@@ -111,7 +113,7 @@ export interface MoveRippleStyle {
 
 /** 默认涟漪样式（v2 口径原样，只换色）。 */
 export const MOVE_RIPPLE_STYLE: MoveRippleStyle = {
-  color: 0x6fcf97,
+  color: WORLD_PALETTE.success,
   radiusFrom: 10,
   radiusTo: 50,
   lineWidth: 2,

@@ -19,7 +19,7 @@
  *
  * RTS 操作表现（@since v3.21，task_045）。血缘（v2 考古）：选中圈与移动手感移植自
  *   master 分支 stratix-rts —— 选中圈 = sprites/AgentSprite.drawSelectionRing（主圈 2.5px，
- *   颜色 = v2 colors.status.success，镜像 srf-success #6fcf97，与 TASK_FX_STYLE.done 同源；
+ *   颜色 = v2 colors.status.success，@since v3.3（task_110）起取自唯一事实源的「完成/成功」色，与 TASK_FX_STYLE.done 同源；
  *   v3 压成脚下椭圆）；移动 = systems/MovementSystem 的常速口径（300px/s，ease-out 收尾），
  *   v2 的逐帧位移积分换成 Phaser tween，到向朝向保留为 4 行简化版（精灵表只有 4 行）。
  *   ★ 位置立即生效于状态（UnitObject），tween 只是渲染过渡 —— 状态广播不会把半路上的
@@ -39,7 +39,7 @@
 import Phaser from 'phaser';
 
 import type { Bounds, UnitStatus } from '../../core/types';
-import { resolveUnitColor } from '../theme';
+import { resolveUnitColor, WORLD_PALETTE } from '../theme';
 
 import { UNIT_HIT_RADIUS, type UnitObject } from './unit-object';
 import type { UnitRegistry } from './unit-registry';
@@ -75,12 +75,12 @@ const UNIT_RADIUS = UNIT_HIT_RADIUS * 0.8;
 /**
  * 选中圈样式（task_045）：脚下椭圆，单选/多选统一一套。
  * 血缘：v2 AgentSprite.drawSelectionRing 的三层同心圈口径（主圈 2.5px）—— v3 压成
- * 单层椭圆（俯视透视感，rx=2ry）；颜色 = v2 colors.status.success（镜像 srf-success）。
- * 颜色可调常量：换色只改这里（皮肤 token 镜像纪律，同 TASK_FX_STYLE 先例）。
+ * 单层椭圆（俯视透视感，rx=2ry）；颜色 = 唯一事实源的「完成/成功」色（task_110 起不再镜像 hud token）。
+ * 颜色可调常量：换色只改唯一事实源（core/theme/visual-spec.ts）。
  */
 const SELECTION_RING_STYLE = {
-  /** 选中色（srf-success #6fcf97 —— 与 task-fx 的 done ✓ 同族「正反馈」色）。 */
-  color: 0x6fcf97,
+  /** 选中色（调色板 success —— 与 task-fx 的 done ✓ 同族「正反馈」色）。 */
+  color: WORLD_PALETTE.success,
   lineWidth: 2.5,
   /** 椭圆半轴（世界坐标 px）。 */
   radiusX: 24,
@@ -102,11 +102,16 @@ const MOVE_SPEED_PX_PER_SEC = 300;
 const MOVE_TWEEN_MIN_DELTA = 2;
 const MOVE_TWEEN_MIN_MS = 120;
 
+/**
+ * 业务态配色（@since v3.3，task_110：改从唯一事实源取色 —— 调色板 = core/theme/visual-spec.ts）。
+ * why offline 不走调色板：离线是**非语义**的中性灰（调色板七色都是语义色），
+ *   硬塞一个语义色会让「离线 = 报错色」这类误读成立 —— 中性灰留在本文件本地常量。
+ */
 const COLOR_BY_STATUS: Record<UnitStatus, number> = {
-  idle: 0x4f9cf9,
-  busy: 0xf5a524,
+  idle: WORLD_PALETTE.unit,
+  busy: WORLD_PALETTE.progress,
   offline: 0x5c6470,
-  error: 0xef4444,
+  error: WORLD_PALETTE.danger,
 };
 
 const DEFAULT_STATUS_COLOR = 0x94a3b8;
@@ -363,7 +368,7 @@ export class UnitLayer {
       .setVisible(false);
     // 头顶覆盖物（task_062）：名字 / Lv 小字 / 说话气泡 —— 全部容器内嵌（见文件头），
     // 初始隐藏，可见性由 presence tick 统一裁决（开关 + zoom）。样式常量在 unit-presence.ts
-    // （token 镜像纪律：色值与 hud/theme 同步改）。名字 origin(0.5,1) 向上长、Lv origin(0.5,0)
+    // （描边色取自唯一事实源的背景色，保证任何底色上都压得住）。名字 origin(0.5,1) 向上长、Lv origin(0.5,0)
     // 向下长，两行同锚：名字 [-66-行高, -66]、Lv [-66, 约-54]，刚好让开任务浮标（世界 -44，
     // 半径 11 → 顶到 -55）；气泡悬在名字上方（-84），位置恒定不随开关跳变。
     const nameTag = this.scene.add

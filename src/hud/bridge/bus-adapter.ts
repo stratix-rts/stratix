@@ -20,6 +20,7 @@
 import type { Unsubscribe } from '../../core/bus';
 import { emitCommand, onState } from '../../core/bus';
 import type { HudCommand, WorldState } from '../../core/types';
+import { demoMode } from '../theme/demo-mode';
 import type { ThemeController, ThemeId } from '../theme/theme-controller';
 
 /** 适配器依赖注入接口：把 core/bus 的 mitt 订阅函数抽出来，便于单测纯逻辑。 */
@@ -74,7 +75,12 @@ export function createHudBusAdapter(
   const dispatch = (command: HudCommand): void => {
     // 本地落皮肤：避免 'theme.set' 走完 core 又被 hud 监听回来的回路，
     // 直接在 adapter 入口消费即可；同时仍 emit 给 core 让它记账（后续任务可能用到）。
-    if (command.type === 'theme.set') deps.applyTheme(command.themeId);
+    if (command.type === 'theme.set') {
+      deps.applyTheme(command.themeId);
+      // 换皮肤后重算演示模式的字号覆盖（@since v3.3，task_110）：各皮肤的基准字号不同，
+      // 「+30%」是相对放大 —— 基准换了，覆盖必须跟着重算，否则字号会停在旧皮肤的口径上。
+      demoMode.refreshTypography();
+    }
     deps.emitCommand(command);
   };
 

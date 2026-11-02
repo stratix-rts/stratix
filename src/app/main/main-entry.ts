@@ -86,6 +86,7 @@ import { levelUpToastText } from '../../hud/screens/appearance-unlock-catalog';
 import { createThemeController } from '../../hud/theme/theme-controller';
 import defaultCss from '../../hud/theme/tokens-default.css?inline';
 import pixelCss from '../../hud/theme/tokens-pixel.css?inline';
+import { installVisualTokens } from '../../hud/theme/visual-tokens';
 import { defineStratButton } from '../../hud/widgets/strat-button';
 import { mountCharacterChatDrawer, CHARACTER_CHAT_DRAWER_TAG, type StratCharacterChatDrawerElement } from '../../hud/components/chat-drawer/chat-drawer';
 // 音效服务（@since v3.36，task_060）：hud 侧服务（懒建 AudioContext + WebAudio 合成），
@@ -283,6 +284,9 @@ async function boot(): Promise<void> {
 
   // ===== HUD 侧：真实 main-screen + 主题控制器，走注入的 bus-adapter =====
   defineStratButton();
+  // 视觉调色板 token（@since v3.3，task_110）：把唯一事实源（core/theme/visual-spec.ts）的
+  // 七色语义色注入成 CSS 变量（--srf-visual-*）—— HUD 与战场读同一份色值。
+  installVisualTokens();
   const themeController = createThemeController({
     sources: { default: defaultCss, pixel: pixelCss },
     initial: 'default',
