@@ -78,7 +78,7 @@
 
 import Phaser from 'phaser';
 
-import { emitCommand, emitState, onState, onWorldEvent } from '../../core/bus';
+import { emitCommand, emitState, emitWorldEvent, onState, onWorldEvent } from '../../core/bus';
 import { createCharacterManager } from '../../core/character';
 import { createMissionManager } from '../../core/mission';
 import { createCoreRuntime, type UnhandledChannel } from '../../core/runtime';
@@ -87,6 +87,15 @@ import { expWeightFor } from '../../core/progression';
 import { worldStore } from '../../core/store';
 import type { DetectedAgent, HudCommand, Point, WorldEvent } from '../../core/types';
 import { createHudBusAdapter } from '../../hud/bridge/bus-adapter';
+// 当日回放（@since v3.3，task_082）：底栏时间轴 scrubber + 左上角时间戳角标 + 战场重演。
+//   数据流：读取口（app/services/day-replay.ts 读 service 的只读 REST）→ 回放控制器
+//   （hud/components/replay/replay-controller.ts，编排 seek / 60 秒倍速）→
+//   ① 节拍经 world 通道的 replay.beat 发回 core → 桥接层转发 → 战场重演；
+//   ② 自动导演镜头由 world 侧随节拍自己跟（化身落位只有 world 知道 —— hud 反推不准）；
+//   ③ 角标与跑马灯是 hud 侧直喂（组件只被驱动）。
+import { replayEntryText } from '../../hud/components/replay/replay-catalog';
+import { mountReplayClock } from '../../hud/components/replay/replay-clock';
+import { createReplayController } from '../../hud/components/replay/replay-controller';
 import { createMainScreen } from '../../hud/screens/main-screen';
 import { levelUpToastText } from '../../hud/screens/appearance-unlock-catalog';
 import { createThemeController } from '../../hud/theme/theme-controller';
@@ -104,6 +113,8 @@ import { PartRegistry } from '../../world/appearance/part-registry';
 import { UNIT_SPRITE_SOURCE_KEY } from '../../world/objects/unit-sprite-source';
 import { UNIT_POSITION_SEED_KEY } from '../../world/objects/unit-registry';
 import { BattlefieldScene } from '../../world/scenes/BattlefieldScene';
+// 当日回放读取口（@since v3.3，task_082）：读 service 的只读 REST（当天 task_run 事件流）。
+import { createDayReplayPort } from '../services/day-replay';
 import {
   createGameSaveCoordinator,
   gameSaveApi,
@@ -164,7 +175,7 @@ import { mountToastHost } from '../../hud/components/toast/toast-host';
 import { mountMinimap } from '../../hud/components/minimap/minimap';
 // 事件跑马灯 + 里程碑大字（@since v3.3，task_080）：左下角最近 5 条事件流 + 每 10 个完成任务
 // 一次的中央金色大字（文案模板与分级配色在 marquee-catalog，纯逻辑）。
-import { mountMarquee } from '../../hud/components/marquee/marquee';
+import { mountMarquee, type StratMarqueeElement } from '../../hud/components/marquee/marquee';
 import { mountMilestone } from '../../hud/components/marquee/milestone';
 import {
   MARQUEE_ICONS,
@@ -367,6 +378,48 @@ async function boot(): Promise<void> {
   // task_050：派发推荐的历史统计提供口 —— 从任务记录 IPC 面取聚合（非 Electron = null，
   // hud 侧无历史中性降级，不拆表单）。「缓存」语义在 hud：表单持有上一次快照，打开时刷新一次。
   // task_051：流水线实时读数口 —— 面板发起后显示流水线卡片（站序/相位实时）。
+  // ===== 当日回放（@since v3.3，task_082）=====
+  // 底栏时间轴 scrubber + 左上角大号时间戳角标 + 战场重演（节拍经 world 通道回 core）。
+  // 读取口：service 的只读 REST（与会话面板「历史抽屉」同一台 service，同一基址口径）——
+  //   渲染层只读，落库由 service 独占写（铁律 6）；读不到就是空态，不造数据（禁 mock）。
+  // 时间戳角标（fixed 左上）：回放时显示历史时刻，非回放时整个隐藏（不占画面）。
+  const { element: replayClock, unmount: unmountReplayClock } = mountReplayClock(hudRoot);
+  // 跑马灯引用位（回放重演的事件也要进跑马灯 —— 跑马灯本体在下方挂载，这里先留引用）。
+  let marqueeEl: StratMarqueeElement | null = null;
+  // 单位位置累积表（单位 id → 世界坐标）：小地图与快捷键居中共用同一份 ——
+  //   位置真相在世界层，组合根是唯一能拿到它的地方（与 task_058 快捷键居中同一口径）。
+  const minimapPositions = new Map<string, Point>();
+  const replayController = createReplayController({
+    port: createDayReplayPort({
+      baseUrl: remote
+        ? httpBaseFromWorldSyncUrl(remoteWorldSyncUrl(DEFAULT_WORLD_SYNC_URL))
+        : DEFAULT_SESSION_HISTORY_BASE_URL,
+    }),
+    // 节拍出口：world 通道的 replay.beat（core runtime 接地忽略 → 桥接层转发给战场）。
+    // why 不复用 task.* 事件：那条通道上有任务执行与落库的订阅者，重演会把今天的活儿再跑一遍。
+    emitBeat: (beat) => {
+      emitWorldEvent({ type: 'replay.beat', beat });
+    },
+    // 时间戳角标：回放时刻（null = 收角标）。
+    setClock: (at) => replayClock.setTime(at),
+    // 跑马灯：回放重演的事件也走跑马灯（与实时事件同一入口，观众看得出"这是回放"）。
+    onEntry: (entry) => {
+      const name = worldStore
+        .getState()
+        .characters.find((item) => item.id === entry.characterId)?.name ?? null;
+      marqueeEl?.push({
+        kind: entry.kind === 'done' ? 'complete' : entry.kind === 'error' ? 'error' : 'dispatch',
+        icon: entry.kind === 'done' ? MARQUEE_ICONS.complete : entry.kind === 'error' ? MARQUEE_ICONS.error : MARQUEE_ICONS.dispatch,
+        text: replayEntryText(entry, name),
+        at: entry.at,
+      });
+    },
+  });
+
+  // 读一次当天快照（一次性动作 —— 用户点「看完今天」或拖时间轴时才重演）。
+  // 读不到就是空态（控制器内部如实呈现，不编数据）。
+  void replayController.load();
+
   const screen = createMainScreen(adapter, {
     appearance: appearancePreview,
     taskStats: makeTaskStatsProvider(taskRecordApi()),
@@ -385,6 +438,8 @@ async function boot(): Promise<void> {
         ? httpBaseFromWorldSyncUrl(remoteWorldSyncUrl(DEFAULT_WORLD_SYNC_URL))
         : DEFAULT_SESSION_HISTORY_BASE_URL,
     }),
+    // task_082：当日回放条（底栏时间轴 scrubber）—— 控制器在组合根建（它要读取口）。
+    replay: { controller: replayController },
   });
   const unmountScreen = screen.mount(hudRoot);
   const unmountAdapter = adapter.mount();
@@ -708,6 +763,8 @@ async function boot(): Promise<void> {
   // 里程碑的镜头震动走 HudCommand camera.shake（core 钳制 → world 通道 → 场景相机）——
   //   HUD 绝不直接调 world（铁律），与 camera.center 同一两段式。
   const { element: marquee, unmount: unmountMarquee } = mountMarquee(hudRoot);
+  // 跑马灯引用位回填（task_082）：回放重演的事件要进同一条跑马灯。
+  marqueeEl = marquee;
   const { element: milestone, unmount: unmountMilestone } = mountMilestone(hudRoot, {
     dispatch: (command) => adapter.dispatch(command),
   });
@@ -823,7 +880,8 @@ async function boot(): Promise<void> {
   const { element: minimap, unmount: unmountMinimap } = mountMinimap(hudRoot, {
     dispatch: (command) => adapter.dispatch(command),
   });
-  const minimapPositions = new Map<string, Point>(injection.positionsByUnitId);
+  // 站位种子灌进位置累积表（表本身在上方建 —— 小地图 / 快捷键居中都用它）。
+  for (const [unitId, point] of injection.positionsByUnitId) minimapPositions.set(unitId, point);
   const syncMinimapUnits = (): void => {
     minimap.setUnits(
       worldStore
@@ -1086,6 +1144,9 @@ async function boot(): Promise<void> {
       stopMarqueeFeed();
       unmountMarquee();
       unmountMilestone();
+      // 当日回放（task_082）：停掉未触发的节拍定时器 + 收角标 + 卸角标宿主。
+      replayController.dispose();
+      unmountReplayClock();
       // 健康监测（task_054）：停周期探测 + 退恢复 toast 订阅。
       stopHealthToast();
       stopHealthMonitor();

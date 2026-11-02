@@ -324,6 +324,22 @@ export class TaskFxLayer {
   }
 
   /**
+   * 收掉某类旗子（@since v3.3，task_082：当日回放清场用）。
+   *
+   * why 需要它：回放拖回早的时刻时，「后来插下的旗子」必须跟着收掉 ——
+   *   画面要回到**那一刻**的样子（不是那一刻 + 后来）。旗子默认驻留（task_077 的口径），
+   *   所以清场得显式点名收（按 key 前缀 —— 回放的旗 key 都带 `replay:` 前缀）。
+   */
+  clearFlagsWithPrefix(prefix: string): void {
+    if (this.destroyed) return;
+    for (const [key, flag] of [...this.flags]) {
+      if (!key.startsWith(prefix)) continue;
+      flag.container.destroy();
+      this.flags.delete(key);
+    }
+  }
+
+  /**
    * 画一面旗（task_077）：杆 + 展开的旗面 + 轻微飘动。
    * why 飘动在这里现算而不是逐帧回调：旗子**驻留**（不像翻卡那样一次性），
    *   驻留物要一直有生气 —— 复用本层已有的全场 tick 重画，不给每面旗各开一个定时器。

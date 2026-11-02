@@ -34,6 +34,7 @@ import type {
   ClickMods,
   MissionView,
   Point,
+  ReplayBeat,
   SelectionState,
   SoundCue,
   UnitView,
@@ -111,6 +112,15 @@ export interface WorldScenePort {
    * 可选成员：不实现不破编译（同上惯例）。
    */
   syncUnitBubble?(unitId: string, text: string): void;
+  /**
+   * 回放节拍钩子（@since v3.3，task_082）：world 通道上的 replay.beat
+   * （hud 侧回放控制器发的重演指令）转发进场景 —— 战场按节拍重演当天的事件
+   * （化身出现 / 干活 / 插旗 / 冒泡）。
+   * 可选成员：不实现不破编译（同上惯例）。
+   * why 走 world 通道而不是 state 通道：回放是**瞬态指令**（不进 WorldState，
+   *   也不该留在状态快照里 —— 它是"把今天再演一遍"，不是"今天是什么"）。
+   */
+  syncReplayBeat?(beat: ReplayBeat): void;
   /**
    * 导演模式事件钩子（@since v3.3，task_081）：world 通道上的 task.started / completed / failed
    * 转发进场景 —— 导演控制器据此编排镜头（缓动到事件点 → 停留 → 回全景）。
@@ -271,6 +281,10 @@ export function createWorldBridge(
       case 'unit.bubble':
         port.syncUnitBubble?.(event.unitId, event.text);
         break;
+      // 回放节拍（task_082）：hud 侧回放控制器发的重演指令 → 战场按节拍重演。
+      case 'replay.beat':
+        port.syncReplayBeat?.(event.beat);
+        break;
       // 导演模式开关（task_081）：core → world 的落位指令（hud 顶栏「🎬 导演」按钮经 core 转发）。
       //   反向也走这一条：world 检测到手动介入时发 enabled=false，core 据此把开关写回并广播。
       case 'camera.director':
@@ -318,6 +332,7 @@ export function createWorldBridge(
       if (destroyed) return;
       emitWorldEvent({ type: 'fx.sound', cue });
     },
+
     directorMode(enabled: boolean): void {
       if (destroyed) return;
       emitWorldEvent({ type: 'camera.director', enabled });

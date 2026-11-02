@@ -1420,6 +1420,39 @@ export type SoundCue = 'select' | 'command' | 'claim' | 'complete' | 'focus';
 // ★ 总线契约：world → core 的交互事件（单向，world 不直接改 HUD）
 // ============================================================================
 
+/**
+ * @since v3.3（task_082）当日回放的**节拍种类**（DEMO-PLAN §9「当日回放」）。
+ *   回放器把「当天的 task_run 事件」翻译成战场可消费的一拍一拍：
+ *     spawn —— 单位出现（任务开工那一刻）；
+ *     work  —— 干活中（任务推进的关键节点）；
+ *     done  —— 完成（插旗）；
+ *     error —— 报错（卡住）；
+ *     reset —— 清场（拖动时间轴时先归零再重演 —— 回放不叠在上一帧的残留上）。
+ * why 独立成词表而不是复用 task.* 生命周期事件：回放是**历史重演**，
+ *   它绝不能走 task.* 那条真链路（那边有 task-service 出队执行、有落库订阅者 ——
+ *   重放一遍等于把当天的活又跑一遍）。所以另立一条 replay.* 通道，形状自洽、互不串味。
+ */
+export type ReplayBeatKind = 'reset' | 'spawn' | 'work' | 'done' | 'error';
+
+/**
+ * @since v3.3（task_082）当日回放的一拍（契约层形状）。
+ *   发出方是 HUD 侧的回放控制器（它读当天的 task_run 事件流，按时间轴重演）；
+ *   消费者是世界场景（bridge 转发 syncReplayBeat → objects/replay-layer 画回放化身）。
+ *   载荷只携「谁 / 做了什么 / 什么时候」—— 不雪球整条任务全文（回放要的是节奏，不是档案）。
+ */
+export interface ReplayBeat {
+  /** 这一拍对应的**真实时刻**（ms）—— 时间轴角标与热力条都按它定位。 */
+  readonly at: number;
+  /** 这一拍是什么（见 ReplayBeatKind）。 */
+  readonly kind: ReplayBeatKind;
+  /** 执行角色 id（reset 之外都有）。 */
+  readonly characterId?: string;
+  /** 关联任务 id（reset 之外都有）。 */
+  readonly taskId?: string;
+  /** 短句（步骤标签 / 任务摘要截断）—— 供跑马灯与气泡取用。 */
+  readonly label?: string;
+}
+
 export type WorldEvent =
   | { type: 'unit.click'; unitId: string; mods: ClickMods }
   /**
@@ -1599,4 +1632,16 @@ export type WorldEvent =
    *   core 状态机不消费（音效不进 WorldState）—— runtime 的 handleWorldEvent 显式接地。
    *   cue 词表是**闭集**：声音包按词表实现播放器，加新词要同时改两侧。
    */
-  | { type: 'fx.sound'; cue: SoundCue };
+  | { type: 'fx.sound'; cue: SoundCue }
+  /**
+   * @since v3.3（task_082）当日回放节拍（DEMO-PLAN §9）。
+   *   发出方是 HUD 侧的回放控制器（读当天的 task_run 事件流 → 按时间轴重演）；
+   *   消费者是世界场景（bridge 转发 syncReplayBeat → objects/replay-layer 画回放化身：
+   *   单位出现 / 干活 / 插旗）。
+   *   core 状态机不消费（回放是**历史重演**，既不写 WorldState 也不触发任何业务 ——
+   *   绝不能走 task.* 那条真链路：那边有 task-service 出队执行与落库订阅者）——
+   *   runtime 的 handleWorldEvent 显式接地（同 unit.bubble 惯例，不进 onUnhandled）。
+   *   why 走 world 通道而不是新开第四条通道：通道即铁律，事件通道是现成的域事件广播面，
+   *   与 unit.bubble（同样是纯表现事件）同一先例。
+   */
+  | { type: 'replay.beat'; beat: ReplayBeat };

@@ -636,6 +636,11 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         // fx.sound(@since v3.3,task_077):音效钩子(声音包 v3.3-10 消费),战场只发事件不做音频 --
         //   同上,显式接地。
         if (event.type === 'fx.sound') return;
+        // replay.beat(@since v3.3,task_082):当日回放的节拍广播,消费者是世界场景
+        //   (bridge 转发 syncReplayBeat -> objects/replay-layer 画回放化身)。纯瞬态表现,
+        //   不写 WorldState -- 同 unit.bubble 惯例显式接地,不进 onUnhandled
+        //   (否则拖一次时间轴就会报一串「未处理」噪音)。
+        if (event.type === 'replay.beat') return;
         reportUnhandled('world', event);
     }
   };

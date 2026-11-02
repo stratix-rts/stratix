@@ -23,6 +23,7 @@
 
 import Phaser from 'phaser';
 
+import type { Point } from '../../core/types';
 import { SPEECH_BUBBLE_SPEC } from '../speech-spec';
 import type { SpeechKind } from '../speech-templates';
 import { hexToNumber } from '../visual-spec';
@@ -59,6 +60,13 @@ export class SpeechBubbleLayer {
   private readonly registry: UnitRegistry;
   private readonly board: SpeechBubbleBoard;
   private readonly nodes = new Map<number, SpeechBubbleNode>();
+  /**
+   * 锚点覆盖表（@since v3.3，task_082）：说话方**没有真实单位**时的落位坐标。
+   * why 需要它：当日回放演的是**历史**角色 —— 那个人今天可能已经不在战场上了，
+   *   而气泡必须挂在说话方头上（凭空造单位 = 骗观众）。所以回放化身用
+   *   `replay:<characterId>` 当说话方 id，位置由回放化身自己给（锚点覆盖）。
+   */
+  private readonly anchors = new Map<string, Point>();
   /** 隐藏量尺：量一段文字有多宽（排版按字断行要用）。 */
   private readonly measurer: Phaser.GameObjects.Text;
   private timer: Phaser.Time.TimerEvent | null = null;
@@ -107,6 +115,20 @@ export class SpeechBubbleLayer {
     this.reconcile();
   }
 
+  /**
+   * 锚点覆盖（@since v3.3，task_082）：给「没有真实单位」的说话方一个坐标。
+   * 谁在用：当日回放 —— 历史角色不在战场上，气泡挂在**回放化身**头上。
+   */
+  setAnchor(unitId: string, position: Point): void {
+    if (this.destroyed) return;
+    this.anchors.set(unitId, { x: position.x, y: position.y });
+  }
+
+  /** 收回锚点覆盖（角色离场 / 清场 —— 别让气泡悬在空处）。 */
+  clearAnchor(unitId: string): void {
+    this.anchors.delete(unitId);
+  }
+
   /** 场景 shutdown：定时器与全部显示对象一并回收（perf：资源必须可清理）。 */
   destroy(): void {
     if (this.destroyed) return;
@@ -115,6 +137,7 @@ export class SpeechBubbleLayer {
     this.timer = null;
     for (const node of this.nodes.values()) node.container.destroy();
     this.nodes.clear();
+    this.anchors.clear();
     this.measurer.destroy();
   }
 
@@ -205,7 +228,9 @@ export class SpeechBubbleLayer {
       if (!node) continue;
       const unit = this.registry.get(entry.unitId);
       // 单位已经不在战场上了（离场清理由场景负责）：这一帧先不画，等对账时销掉。
-      if (!unit) continue;
+      // 锚点覆盖优先于「查无此单位」—— 回放化身没有真实单位，但气泡仍要挂在它头上。
+      const position = unit ? unit.position : this.anchors.get(entry.unitId);
+      if (!position) continue;
       const elapsed =
         entry.phase === 'exiting' ? now - (entry.exitAtMs ?? now) : now - entry.shownAtMs;
       const frame = bubbleAnimationAt(entry.phase, elapsed, {
@@ -213,7 +238,6 @@ export class SpeechBubbleLayer {
         exitDurationMs: this.board.exitDurationMs,
         exitRisePx: spec.exitRisePx,
       });
-      const position = unit.position;
       node.container.setPosition(position.x, position.y + spec.anchorOffsetY + frame.riseY);
       node.container.setScale(frame.scale);
       node.container.setAlpha(frame.alpha);

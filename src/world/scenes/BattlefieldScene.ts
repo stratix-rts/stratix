@@ -19,6 +19,8 @@
  *     转发到 syncTaskSpeech）—— 单位头顶冒离线模板气泡（派活 / 开工 / 完成 / 报错）；
  *   - core/bus 的 world 通道上的 unit.bubble（@since v3.3，task_076，转发到 syncUnitBubble）
  *     —— world 层当场指挥的原话气泡（「收到」「来了来了」），按原话冒泡；
+ *   - core/bus 的 world 通道上的 replay.beat（@since v3.3，task_082，转发到 syncReplayBeat）
+ *     —— 当日回放的重演指令：化身出现 / 干活 / 插旗 / 半频冒泡；
  *   - 浏览器指针输入（按下 / 移动 / 松开 / 滚轮）+ 键盘 ESC（@since v3.3，task_079：回全景）。
  * 输出：把交互转成 WorldEvent（unit.click / selection.box / unit.move / camera.moved），
  *   经桥接层发回 core。
@@ -48,6 +50,7 @@ import type {
   ClickMods,
   MissionView,
   Point,
+  ReplayBeat,
   SelectionState,
   UnitView,
 } from '../../core/types';
@@ -77,6 +80,8 @@ import { BuildingLayer } from '../objects/building-layer';
 import { CloudLayer } from '../objects/cloud-layer';
 import { DirectorVignette } from '../objects/director-vignette';
 import { GroundLayer, GROUND_DEPTH } from '../objects/ground-layer';
+import { ReplayBoard, replayAnchorId, replayAvatarPosition } from '../objects/replay-board';
+import { ReplayLayer } from '../objects/replay-layer';
 import { SelectionBox } from '../objects/selection-box';
 import { SpeechBubbleBoard } from '../objects/speech-bubble';
 import { SpeechBubbleLayer } from '../objects/speech-bubble-layer';
@@ -87,7 +92,7 @@ import { UnitLayer } from '../objects/unit-layer';
 import { UnitRegistry, UNIT_POSITION_SEED_KEY } from '../objects/unit-registry';
 import { UNIT_SPRITE_SOURCE_KEY, type UnitSpriteSource } from '../objects/unit-sprite-source';
 import type { SpeechKind } from '../speech-templates';
-import { CAMERA_METRICS, WORLD_PALETTE } from '../theme';
+import { CAMERA_METRICS, REPLAY_METRICS, WORLD_PALETTE } from '../theme';
 
 export const BATTLEFIELD_SCENE_KEY = 'battlefield';
 
@@ -168,6 +173,20 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
    */
   private directorVignette!: DirectorVignette;
   /**
+   * 回放表现态板（@since v3.3，task_082）：回放节拍 → 每个角色的相位（裁决真相在板子里）。
+   */
+  private readonly replayBoard = new ReplayBoard();
+  /** 回放化身层（@since v3.3，task_082）：把相位画成战场上的化身。 */
+  private replayLayer!: ReplayLayer;
+  /** 回放气泡节流计数（@since v3.3，task_082）：气泡按 REPLAY_METRICS.bubbleEveryN 半频触发。 */
+  private replayBubbleTick = 0;
+  /**
+   * 回放镜头待落位点（@since v3.3，task_082）：一帧内多拍只落最后一次（perf 硬约束）。
+   */
+  private replayFocusTarget: Point | null = null;
+  /** 回放镜头落位是否已排期（一帧只排一次）。 */
+  private replayFocusScheduled = false;
+  /**
    * 拖拽平移的目标中心（世界坐标，**未钳制**）—— 橡皮筋的真相。
    * why 单独记一份：钳制后的中心丢了「用户想拉到哪」的信息，越界量就无从算起。
    */
@@ -219,8 +238,10 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     // why 建在桥接层之前：桥接层一建就开始收总线事件，报错事件可能在任何时刻到达 ——
     //   渐晕层必须先在场（否则第一个报错就撞上未初始化的字段）。
     this.directorVignette = new DirectorVignette(this);
+
     // 桥接层先建：相机控制器的 onChange 会立刻回调它上报初始位姿
     this.bridge = createWorldBridge(this);
+
     // 导演控制器（@since v3.3，task_081）：默认关闭，由 core 经 camera.director 事件开启。
     // 宿主把 Phaser 能力（补间 / 场景时钟 / 延时）注入 —— 编排逻辑本身零渲染依赖（可单测）。
     // why 建在桥接层之后、相机控制器之前：导演被开启后第一个动作就是动镜头，
@@ -245,6 +266,10 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     // 任务建筑层（@since v3.3，task_078）：地图上的任务建筑三态 + 区域点亮。
     // 数据源是 core 广播的 missions/tasks（经桥接层 syncTasks 转发），场景只被驱动。
     this.buildingLayer = new BuildingLayer(this);
+
+    // 回放化身层（@since v3.3，task_082）：回放节拍（经桥接层 syncReplayBeat 转发）驱动的
+    // 战场重演。相位裁决在 ReplayBoard，本层只画。
+    this.replayLayer = new ReplayLayer(this);
 
     // 氛围彩蛋（@since v3.3，task_079）：小云层 + 入夜变暖的格网。
     // 纯装饰：不发总线事件（彩蛋不改变任何业务状态）。
@@ -451,13 +476,6 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   }
 
   /**
-   * 指定文案气泡（@since v3.3，task_076；由桥接层转发 world 通道的 unit.bubble）。
-   * 原话已经定好（例如「收到」「来了来了」）—— 按原话冒泡，不抽句库。
-   */
-  syncUnitBubble(unitId: string, text: string): void {
-    this.speechLayer.speakText(unitId, text);
-  }
-  /**
    * 导演镜头事件（@since v3.3，task_081；由桥接层转发 task.started / completed / failed）。
    *
    * 事件点 = **干活的那个单位**所在的位置（任务按 characterId 落到人身上，
@@ -478,6 +496,100 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     // 导演接管镜头 → 跟随镜头让位（两者不能同时写镜头）。
     if (enabled) this.releaseFollow();
     this.director.setEnabled(enabled);
+  }
+
+  /**
+   * 指定文案气泡（@since v3.3，task_076；由桥接层转发 world 通道的 unit.bubble）。
+   * 原话已经定好（例如「收到」「来了来了」）—— 按原话冒泡，不抽句库。
+   */
+  syncUnitBubble(unitId: string, text: string): void {
+    this.speechLayer.speakText(unitId, text);
+  }
+
+  /**
+   * 回放节拍（@since v3.3，task_082；由桥接层转发 world 通道的 replay.beat）。
+   *
+   * 战场怎么演这一拍：
+   *   ① reset → 清场（化身收掉，拖回早的时刻不能叠着后来的画面）；
+   *   ② 落化身 → 优先站在**真实单位**的位置（角色还在场上就站在他那儿），
+   *      角色不在场 → 走稳定槽位（同一角色每次回放落在同一格）；
+   *   ③ 完成 → 插旗（复用 task_077 的旗子；key 带时刻 → 每次重演都插得出来）；
+   *   ④ 镜头 → 跟到这一拍的角色身上（**自动导演镜头**；化身铺在网格上，
+   *      镜头不跟就等于什么也没演）；
+   *   ⑤ 气泡 → **半频**（REPLAY_METRICS.bubbleEveryN = 每 2 拍才冒一次），
+   *      走既有气泡系统（离线模板句库 + 同屏上限 + 同单位冷却）。
+   *
+   * why 气泡挂在「回放锚点」而不是真实单位上：回放演的是**历史**角色 ——
+   *   他今天多半已经不在战场上了。气泡必须挂在说话方头上（凭空造单位 = 骗观众），
+   *   所以用 `replay:<characterId>` 当说话方 id，位置由回放化身给（锚点覆盖）。
+   */
+  syncReplayBeat(beat: ReplayBeat): void {
+    if (beat.kind === 'reset') {
+      for (const avatar of this.replayBoard.list()) {
+        const anchorId = replayAnchorId(avatar.characterId);
+        this.speechLayer.clearUnit(anchorId);
+        this.speechLayer.clearAnchor(anchorId);
+      }
+      this.replayBoard.reset();
+      this.replayLayer.clear();
+      this.replayBubbleTick = 0;
+      // 回放插的旗子跟着收（画面要回到那一刻的样子，不是那一刻 + 后来）。
+      this.taskFxLayer.clearFlagsWithPrefix('replay:');
+      return;
+    }
+    const avatar = this.replayBoard.apply(beat);
+    if (!avatar) return;
+
+    const unit = this.units.list().find((item) => item.characterId === avatar.characterId);
+    const position = replayAvatarPosition(
+      avatar,
+      unit ? unit.position : null,
+      DEFAULT_WORLD_BOUNDS
+    );
+    this.replayLayer.upsert(avatar, position);
+
+    // 自动导演镜头：镜头跟到这一拍的角色身上（合并到帧末落位 —— 见 focusReplay）。
+    this.focusReplay(position);
+
+    // 气泡锚点：角色不在场上时，气泡挂在回放化身头顶。
+    const anchorId = replayAnchorId(avatar.characterId);
+    this.speechLayer.setAnchor(anchorId, position);
+
+    if (avatar.phase === 'done') {
+      // 插旗（复用 task_077 的旗子：驻留式成就陈列）。
+      this.taskFxLayer.raiseFlag(`replay:${avatar.characterId}:${avatar.at}`, position.x, position.y + 10);
+    }
+
+    // 半频气泡：每 N 拍才冒一次（规格钦定 2）。计数在 reset 时归零（一次回放一套节奏）。
+    this.replayBubbleTick += 1;
+    if (this.replayBubbleTick % REPLAY_METRICS.bubbleEveryN !== 0) return;
+    if (avatar.phase === 'spawn') this.speechLayer.speak(anchorId, 'start');
+    else if (avatar.phase === 'done') this.speechLayer.speak(anchorId, 'complete');
+    else if (avatar.phase === 'error') this.speechLayer.speak(anchorId, 'error');
+    else if (avatar.label) this.speechLayer.speakText(anchorId, avatar.label);
+  }
+
+  /**
+   * 回放镜头跟到某个点（@since v3.3，task_082：「60 秒看完今天」的自动导演镜头）。
+   *
+   * why 归 world 而不是 hud：化身的确切落位只有 world 知道（真实单位位置 / 稳定槽位），
+   *   让 hud 隔着总线反推位置只会得到「大概在哪」——镜头追不准就是没导演。
+   * why 合并到帧末：拖动 scrubber 时一帧内会灌进几十拍 —— 每拍都补间一次纯属浪费
+   *   （perf 硬约束）；合并后一帧只补间一次，落到最后一拍的位置。
+   */
+  private focusReplay(position: Point): void {
+    this.replayFocusTarget = position;
+    if (this.replayFocusScheduled) return;
+    this.replayFocusScheduled = true;
+    this.time.delayedCall(0, () => {
+      this.replayFocusScheduled = false;
+      const target = this.replayFocusTarget;
+      this.replayFocusTarget = null;
+      if (!target) return;
+      // 跟随镜头让位（两处镜头控制不能同时开 —— 同手动优先的口径）。
+      this.releaseFollow();
+      this.tweenCameraTo({ center: { x: target.x, y: target.y }, zoom: this.view.current.zoom });
+    });
   }
 
   // ==========================================================================
@@ -755,6 +867,7 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   private releaseFollow(): void {
     this.followUnitId = null;
   }
+
   /**
    * 手动优先（@since v3.3，task_081）：用户碰了镜头（拖拽 / 滚轮 / 双击 / ESC）→ 导演让位。
    * why 由 world 主动退出而不是「等 core 下一条命令」：导演模式的价值在于
@@ -818,6 +931,9 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
       },
       onComplete: () => {
         this.cameraTween = null;
+        // 补间途中的位姿被桥接层的合并窗口吞掉了最后一个 —— 收尾补发一次
+        // （小地图视野框要落在最终位姿上，不然它会停在半路）。
+        this.scheduleCameraFlush();
       },
     });
   }
@@ -879,6 +995,12 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     // 导演控制器与红色渐晕层（task_081）：延时回调 / 补间 / 显示对象一并回收（资源必须可清理）。
     this.director.destroy();
     this.directorVignette.destroy();
+    // 回放化身层（task_082）：tick 定时器 + 化身显示对象一并回收（资源必须可清理）。
+    this.replayLayer.destroy();
+    for (const avatar of this.replayBoard.list()) {
+      this.speechLayer.clearAnchor(replayAnchorId(avatar.characterId));
+    }
+    this.replayBoard.reset();
     this.warmthTimer?.remove(false);
     this.warmthTimer = null;
     this.cameraTween?.remove();

@@ -391,6 +391,36 @@ export const DIRECTOR_METRICS = Object.freeze({
 });
 
 /**
+ * 当日回放的度量（DEMO-PLAN §9「当日回放」）。
+ *
+ * why 也落在唯一事实源：时间轴的桶数 / 60 秒模式的压缩区间 / 气泡减半的节流比 /
+ *   角标字号是**两侧共用的规格数字** —— HUD 侧（底部 scrubber 组件、角标）与战场侧
+ *   （回放化身层）必须读同一份，否则「HUD 说 60 秒、战场演了 90 秒」这类漂移没人拦得住。
+ * 数值逐条对应 DEMO-PLAN §9 的规格原文（未写明的量按同规格最贴近的一档取值并注明）。
+ */
+export const REPLAY_METRICS = Object.freeze({
+  /** 时间轴热力条把「有事件的时段」切成几桶（单位密度按桶统计）。 */
+  heatBuckets: 96,
+  /** 底部 scrubber 条的高度（px）。 */
+  stripHeightPx: 56,
+  /** 「▶ 60 秒看完今天」的目标时长（ms）。 */
+  sixtySecondTargetMs: 60_000,
+  /** 60 秒模式里相邻事件的间隔下限 / 上限（ms）—— 规格钦定 0.5-2s/事件。 */
+  minEventGapMs: 500,
+  maxEventGapMs: 2000,
+  /** 回放气泡的节流：每 N 个可冒泡事件冒一次（N=2 = 频率减半）。 */
+  bubbleEveryN: 2,
+  /** 左上角大号时间戳角标的字号（px）。 */
+  clockFontPx: 44,
+  /** 角标距左上角的留边（px）。 */
+  clockInsetPx: 24,
+  /** 回放时间轴最多保留多少条事件（超出丢最旧的 —— 数据不许无限增长）。 */
+  maxEntries: 600,
+  /** 回放化身的世界槽位网格（列 × 行）—— 角色不在战场上时的落位。 */
+  slotGrid: Object.freeze({ columns: 8, rows: 6 }),
+});
+
+/**
  * 演示模式参数（DEMO-PLAN §8）。
  * 字号放大倍率 1.3 = 「字号 +30%」；storageKey 是开关记忆的 localStorage 键。
  */

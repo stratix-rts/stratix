@@ -31,6 +31,9 @@
 
 import type { WorldState } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
+// 当日回放（@since v3.3，task_082）：底栏时间轴 scrubber（组件 + 控制器口径）。
+import { mountDayReplay } from '../components/replay/day-replay';
+import type { ReplayController } from '../components/replay/replay-controller';
 import { mountAgentPanel, type AgentPanelDeps } from '../panels/agent-panel';
 import { mountCommandPanel } from '../panels/command-panel';
 import { mountLogDrawer } from '../panels/log-drawer';
@@ -165,10 +168,24 @@ const MAIN_SCREEN_STYLE = `
     z-index: 25;
     box-sizing: border-box;
     display: flex;
-    justify-content: center;
+    /* 回放条（task_082）在上、命令面板在下：底栏改成竖排（列方向 flex）。
+       why 挤进底栏而不是另开浮层：命令面板已经占了底部中央，回放条得贴着它才像"同一条时间轴"。 */
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--srf-spacing-xs);
     padding: 0 var(--hud-gap) var(--hud-gap);
   }
-  .hud-bottom-bar > .hud-surface { width: min(1100px, 100%); height: 100%; overflow: auto; }
+  .hud-bottom-bar > .hud-surface { width: min(1100px, 100%); flex: 1 1 auto; min-height: 0; overflow: auto; }
+  /* 回放条槽位（task_082）：自己接指针事件（底栏其余部分让位给画布）。 */
+  .hud-replay-slot {
+    width: min(1100px, 100%);
+    flex: 0 0 auto;
+    pointer-events: auto;
+    border-radius: var(--srf-radius, 8px);
+    background: var(--srf-panel-overlay);
+    border: var(--srf-border-width) solid var(--srf-border);
+  }
   .hud-bottom-bar strat-command-panel::part(group) {
     grid-auto-flow: column;
     grid-auto-columns: minmax(6.5em, 1fr);
@@ -197,6 +214,14 @@ const MAIN_SCREEN_STYLE = `
 `;
 
 export const MAIN_SCREEN_TAG = 'strat-main-screen';
+
+/**
+ * 回放条槽位（@since v3.3，task_082）—— 本屏只认「一个控制器」，不认数据源。
+ * controller = null → 挂空条（显示「今天还没有任务记录」，不显示假时间轴）。
+ */
+export interface ReplaySlotOptions {
+  readonly controller: ReplayController | null;
+}
 
 export interface MainScreenHandle {
   /** 把渲染出口挂到指定 DOM 节点；返回 unmount 闭包。 */
@@ -233,6 +258,12 @@ export interface MainScreenOptions {
    *   （角色对话历史 / 会话事件流）。缺省 = 历史读取器未附着（面板如实说明，不显示假数据）。
    */
   readonly sessionHistory?: SessionHistoryPort;
+  /**
+   * 当日回放（@since v3.3，task_082）—— 底栏时间轴 scrubber 的控制器。
+   * 控制器在组合根建（它要 app 层的读取口）；缺省 / controller=null → 回放条显示**空态**
+   * （「今天还没有任务记录」—— 观众看得见这条时间轴在哪儿，而不是组件凭空消失）。
+   */
+  readonly replay?: ReplaySlotOptions | null;
 }
 
 /** 工厂：构造 main-screen 句柄；接受一个已建好的 bus-adapter（依赖注入）。 */
@@ -294,6 +325,7 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
           <div class="hud-drawer-slot hud-surface" data-role="log-drawer" data-engineering="true"></div>
         </div>
         <div class="hud-bottom-bar">
+          <div class="hud-replay-slot" data-role="replay"></div>
           <div class="hud-surface" data-role="command-panel"></div>
         </div>
       </div>
@@ -378,6 +410,13 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       const panelHost = host.querySelector<HTMLElement>('[data-role="command-panel"]');
       const unmountPanel = panelHost ? mountCommandPanel(adapter, panelHost) : null;
 
+      // 当日回放条（@since v3.3，task_082）：底栏上沿的时间轴 scrubber。
+      // 组件只被控制器驱动（它自己不读数据）；控制器由组合根注入（它才有读取口）。
+      const replayHost = host.querySelector<HTMLElement>('[data-role="replay"]');
+      const unmountReplay = replayHost
+        ? mountDayReplay(replayHost, { controller: options.replay?.controller ?? null })
+        : null;
+
       // Agent 侧栏：选中单位的业务态。与命令面板共用同一个 adapter —— 两条派发通道合成一条；
       // task_050：可选的历史统计提供口一并注入（派发推荐「交给谁」选择器用）；
       // task_051：可选的流水线实时读数口一并注入（发起后的流水线卡片用）。
@@ -453,6 +492,7 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         unmountStatus?.();
         unmountAgentPanel?.();
         unmountPanel?.();
+        unmountReplay?.unmount();
         host.removeEventListener('strat-button-click', themeHandler);
         // 这里不置空 host.innerHTML —— renderMain 自身会立刻重写。
       };

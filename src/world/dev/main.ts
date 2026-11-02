@@ -129,5 +129,8 @@ function describe(event: WorldEvent): string {
     // 音效钩子（@since v3.3，task_077）：只发事件不做音频（声音包 v3.3-10 消费）。
     case 'fx.sound':
       return `${event.type.padEnd(15)} ${event.cue}`;
+    // 回放节拍（@since v3.3，task_082）：当日回放的重演指令，看一眼节拍类型与角色。
+    case 'replay.beat':
+      return `${event.type.padEnd(15)} ${event.beat.kind} ${event.beat.characterId ?? ''}`;
   }
 }
