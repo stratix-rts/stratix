@@ -1,22 +1,31 @@
 /**
- * 文件职责：`stratix_session_list`（列会话）、`stratix_session_get`（读一条会话 + 事件流）
- *   —— 会话域的**只读**工具组：外部 agent 由此看见会话。
- * 输入：list = kind? / status? / limit? / offset?；get = session_id / before_seq? / limit?。
- * 输出：会话摘要列表（带 returned / total / truncated）或单条会话摘要 + 事件流的一段。
+ * 文件职责：`stratix_session_list`（列会话）、`stratix_session_get`（读一条会话 + 事件流）、
+ *   `stratix_session_interrupt`（中断一条在办会话）—— 会话域的工具组：外部 agent 由此看见会话，
+ *   并能叫停一场正在进行的对话（2b 的会话写面第一件，docs/SESSION-PLAN.md §8 B4）。
+ * 输入：list = kind? / status? / limit? / offset?；get = session_id / before_seq? / limit?；
+ *      interrupt = session_id。
+ * 输出：会话摘要列表（带 returned / total / truncated）或单条会话摘要 + 事件流的一段，
+ *      或一次中断的受理回执（id / 状态 / 查法 poll）。
  * 禁止事项：
  *   1. 在 MCP 侧自己维护一份会话 —— 会话真相在 core（WorldState.sessions）+ 库（sessions /
- *      session_events 两张表）；这里只**读**，读口是 core 的 SessionReadPort；
+ *      session_events 两张表）；读面只**读**（读口是 core 的 SessionReadPort），
+ *      写面只**发命令**（落点由 core runtime 裁决）；
  *   2. 回灌事件全文之外的东西 —— 事件按类型原样返回（payload 是事件本体），
  *      不做二次加工、不替模型总结（总结是模型自己的活）；
- *   3. 写面 —— 中断 / 恢复 / 收尾会话一律不做（session_interrupt 属 2b，
- *      见 docs/SESSION-PLAN.md §4 与 §7）；
+ *   3. 写面里的其它动作 —— 恢复 / 收尾会话一律不做（session_resume 属 2b 的后续单）；
  *   4. 另造一份事件分页口径 —— before_seq 游标语义与 service 侧读 API
- *      （GET /api/storage/sessions/:id/events）同一口径，不各写一份。
+ *      （GET /api/storage/sessions/:id/events）同一口径，不各写一份；
+ *   5. 在工具侧另写一套相位判定 —— 中断能不能成由 core 状态机裁决（core/session/machine.ts
+ *      的 interrupt 分支），工具只读回结果（与 task_cancel 同一纪律）。
  *
  * why 读口走库而不走 WorldState：WorldState.sessions 只带**在办会话的摘要**
  *   （上限 MAX_SESSIONS = 200，且会裁掉已关闭的最旧会话），而事件本体**根本不入广播**
  *   （性能铁律：广播体积必须有界）。外部 agent 要看的是「发生过什么」，故读面以库为准
  *   （MCP 与 service 同进程 → 同进程直读，合法：见 mcp/context.ts 的 readSessionsFromDatabase）。
+ *
+ * why 写面反而看 WorldState：中断的**裁决与落点**在本进程的状态里（core/session 的 manager
+ *   写的正是这份 WorldState.sessions）—— 库里那条会话本进程未必还在跑（服务重启后不在内存、
+ *   已收尾被 FIFO 淘汰），对一条不在跑的会话发命令没有意义。
  */
 
 import {
@@ -24,6 +33,7 @@ import {
   PERSISTED_SESSION_STATUSES,
 } from '../../../app/services/persistence/session-dao';
 import type { SessionEventView } from '../../../core/session/types';
+import type { SessionKind } from '../../../core/types';
 import { optionalEnum, optionalInteger, requireString } from '../args';
 import { McpToolError, toToolResult } from '../envelope';
 import type { McpHost, ToolSpec } from '../types';
@@ -238,6 +248,131 @@ export const sessionGetTool: ToolSpec = {
         },
       },
     });
+  },
+};
+
+/**
+ * 可中断的会话种类（第一期只认**互聊**一种）。
+ *
+ * why 只认 `peer_chat`：中断的含义是"叫停一场正在进行的对话"，而互聊是唯一一种
+ *   **会话记录与"正在跑的那场对话"一一对应**的 kind（agent-chat-service 开场建会话、
+ *   超时 / 取消时把它转 interrupted —— 这正是"超时即丢"的解药）。
+ * 其余四类不是"一场在跑的对话"，中断它们停不下任何东西，只会给出误导性的"已中断"：
+ *   - `character_chat`：每角色一条**长生命周期**记录（历史在 chat_messages 表），
+ *     它背后没有"一条正在跑的对局"可停；
+ *   - `task_run` / `mission_run`：会话是任务 / 任务单**实体的生命周期镜像**（随实体终态自动收尾），
+ *     中断它停不住任务（停任务是 stratix_task_cancel / mission 域的事）；
+ *   - `shell_link`：会话是 agent-link **连接的投影**，中断它不会断开连接（那是 link 命令的事）。
+ *
+ * why 与 core 的 resume 口径一致（方案 §8 第一期只做 peer_chat）：会话写面第一期只覆盖互聊。
+ * 放宽是**纯增量**（只加不删），将来别的 kind 真有"在跑的东西"时再放开即可。
+ */
+const INTERRUPTIBLE_SESSION_KINDS: readonly SessionKind[] = ['peer_chat'];
+
+export const sessionInterruptTool: ToolSpec = {
+  name: 'stratix_session_interrupt',
+  domain: 'session',
+  verb: 'interrupt',
+  order: 12,
+  description: [
+    '中断一条会话：把进行中 / 空闲的会话显式转成 interrupted，并落一条中断标记事件（会话不再"悄悄没了"）。',
+    '何时用：一场互聊卡住或超时了，想让它停下来并留下可见、可查的痕迹；想确认某条会话还活着、要不要叫停。',
+    '何时不用：只是想知道有哪些会话、发生过什么 —— 用 stratix_session_list / stratix_session_get；',
+    '要取消一条排队中的角色任务 —— 用 stratix_task_cancel（中断会话停不住任务）；',
+    '要断开一条 agent 连接 —— 连接由 agent-link 命令管，MCP 不提供。',
+    '边界：只认**互聊**会话（peer_chat）—— 其余四类一律 unsupported_kind：character_chat 是每角色一条长生命周期记录（背后没有在跑的对局可停），',
+    'task_run / mission_run 是任务 / 任务单实体的生命周期镜像（随实体终态自动收尾，中断它停不住任务），shell_link 是 agent-link 连接的投影（中断它不断开连接）；',
+    '只有 active / idle 可中断（已中断 / 已收尾的会话重复中断一律拒绝，历史不改写）；',
+    '中断只改会话状态并记一条 interrupt 事件 —— 不杀进程、不回滚已经产生的消息；中断不等于恢复（续聊是另一件事，本工具不做）。',
+    '错误：session_not_found（会话 id 不在本进程的状态里）/ unsupported_kind（该类会话不支持中断）/',
+    'illegal_transition（会话已中断或已收尾）/ invalid_arguments（session_id 为空）/ internal_error（命令没人接管）。',
+  ].join('\n'),
+  inputSchema: {
+    type: 'object',
+    properties: {
+      session_id: {
+        type: 'string',
+        minLength: 1,
+        description: '会话 id（见 stratix_session_list）。',
+      },
+    },
+    required: ['session_id'],
+    additionalProperties: false,
+  },
+  errors: [
+    'session_not_found',
+    'unsupported_kind',
+    'illegal_transition',
+    'invalid_arguments',
+    'internal_error',
+  ],
+  readOnly: false,
+  handler: (args, host) => {
+    const sessionId = requireString(args, 'session_id');
+
+    // 存在性与当前相位取**本进程的状态**（WorldState.sessions）—— 中断的裁决与落点都在那里；
+    // 库里那条会话本进程未必还在跑（服务重启后不在内存、已收尾被 FIFO 淘汰）。
+    const before = (host.getWorldState().sessions ?? []).find((item) => item.id === sessionId);
+    if (!before) {
+      throw new McpToolError('session_not_found', `会话「${sessionId}」不在本进程的状态里`, {
+        hint: '用 stratix_session_list 重列一遍会话，取一条正在跑的会话 id',
+      });
+    }
+    if (!INTERRUPTIBLE_SESSION_KINDS.includes(before.kind)) {
+      throw new McpToolError(
+        'unsupported_kind',
+        `会话「${sessionId}」是 ${before.kind} 类，不支持中断`,
+        { hint: '只有互聊会话（peer_chat）可中断；任务与连接请用各自的工具' }
+      );
+    }
+
+    const previousStatus = before.status;
+    // active / idle 才可能中断 —— 但**不在工具侧判**：判据归 core 状态机（下面读回结果时说）。
+    const wasInterruptible = previousStatus === 'active' || previousStatus === 'idle';
+
+    // 相位裁决交给 core 状态机（core/session/machine.ts 的 interrupt 分支：只认 active / idle）——
+    // 工具侧不另写一套判定，否则两套规则必然漂移。命令是同步的，投完就能读回结果。
+    host.dispatchCommand({ type: 'session.interrupt', sessionId });
+
+    const after = (host.getWorldState().sessions ?? []).find((item) => item.id === sessionId);
+    if (!after) {
+      throw new McpToolError('internal_error', '中断后会话从状态里消失了（不应发生）', {
+        hint: '查服务端日志确认 core 运行时是否异常',
+      });
+    }
+    if (wasInterruptible && after.status === 'interrupted') {
+      return toToolResult({
+        ok: true,
+        data: {
+          session_id: after.id,
+          kind: after.kind,
+          title: after.title,
+          status: after.status,
+          previous_status: previousStatus,
+          event_count: after.eventCount,
+          last_event_at: after.lastEventAt,
+          // 查法：中断标记是事件流的最后一条 —— 用 session_get 看它的原文与时间。
+          poll: {
+            tool: 'stratix_session_get',
+            args: { session_id: after.id },
+          },
+        },
+      });
+    }
+    if (wasInterruptible && after.status === previousStatus) {
+      // 可中断却纹丝未动 —— 只可能是命令没人接管（runtime 不在本进程）。
+      throw new McpToolError(
+        'internal_error',
+        '中断未落地：本进程没有 core 运行时接管这条命令',
+        { hint: '确认 Stratix 运行时在本进程已启动后再中断' }
+      );
+    }
+    // 状态机拒了（已中断 / 已收尾）—— 如实回当前相位，历史不改写。
+    throw new McpToolError(
+      'illegal_transition',
+      `会话「${sessionId}」当前是 ${after.status}，只有进行中 / 空闲的会话可中断`,
+      { hint: '用 stratix_session_get 看这条会话发生了什么；已中断 / 已收尾的会话不可重复中断' }
+    );
   },
 };
 

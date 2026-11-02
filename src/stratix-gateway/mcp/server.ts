@@ -15,7 +15,7 @@ import { buildToolRegistry, type ToolRegistry } from './registry';
 import { chatSendTool } from './tools/chat';
 import { missionCreateTool, missionCheckpointTool, missionStatusTool } from './tools/mission';
 import { registryTool } from './tools/registry';
-import { sessionGetTool, sessionListTool } from './tools/session';
+import { sessionGetTool, sessionInterruptTool, sessionListTool } from './tools/session';
 import { taskAssignTool, taskCancelTool, taskStatusTool } from './tools/task';
 import { worldSnapshotTool } from './tools/world';
 import type {
@@ -43,7 +43,7 @@ export const JSON_RPC_ERRORS = {
 export interface McpServerOptions {
   /** 数据面端口（读世界态 / 投命令 / 读全文输出 / 读会话 / 跑一轮对话）。 */
   readonly host: McpHost;
-  /** 工具注册表；缺省 = 全套十一件工具（按清单位次注册）。 */
+  /** 工具注册表；缺省 = 全套十二件工具（按清单位次注册）。 */
   readonly registry?: ToolRegistry;
   /** serverInfo（握手应答里回给 client）。 */
   readonly serverInfo?: { readonly name: string; readonly version: string };
@@ -57,7 +57,7 @@ export interface McpServer {
 }
 
 /**
- * 工具面（十一件，按**清单位次**注册 —— tools/list 的返回序与之一致）。
+ * 工具面（十二件，按**清单位次**注册 —— tools/list 的返回序与之一致）。
  *
  * why 注册序 = 清单序：tools/list 的顺序是**客户端提示词缓存**的一部分，抖动会让缓存失效。
  * 顺序写在每件工具自己的 `order` 字段里（= 工具在清单里的位次），注册表按它排序；
@@ -78,6 +78,7 @@ export const DEFAULT_MCP_TOOLS: readonly ToolSpec[] = [
   registryTool, //         §2.8
   sessionListTool, //      §2.10（session 域新开，排在既有九件之后）
   sessionGetTool, //       §2.11
+  sessionInterruptTool, //  §2.12（session 域写面：中断一条在办会话）
 ];
 
 function success(id: JsonRpcId, result: unknown): JsonRpcResponse {
@@ -220,7 +221,7 @@ export function createMcpServer(options: McpServerOptions): McpServer {
 }
 
 /**
- * 装配默认 server（十一件工具 + 调用方给的数据面端口）。
+ * 装配默认 server（十二件工具 + 调用方给的数据面端口）。
  * host 由组合根注入（生产 = context.ts 的 createCoreMcpHost；单测 = 隔离的 store / dispatcher）。
  */
 export function createDefaultMcpServer(host: McpHost): McpServer {

@@ -157,6 +157,13 @@ export type McpErrorCode =
    *   载物不同 —— 模型据此去换一条会话（调 stratix_session_list 重列），而不是重试同一个 id。
    */
   | 'session_not_found'
+  /**
+   * 会话**种类**不支持该写操作（会话写面只认对话类会话 —— 见 tools/session.ts 的
+   * INTERRUPTIBLE_SESSION_KINDS 与 docs/MCP-SPEC.md §2.12）。
+   * why 与 session_not_found 分开：会话**存在**但这一类会话不能这么操作 ——
+   * 模型据此去换一条可操作的会话（挑一条对话类会话），而不是以为会话没了再重列一遍。
+   */
+  | 'unsupported_kind'
   | 'internal_error';
 
 /**
