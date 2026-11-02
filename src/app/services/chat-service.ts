@@ -86,6 +86,15 @@
  *   persona 已随首发指令进入会话上下文，续发原文即正确；若 CLI 侧根本没落上下文，
  *   下一轮 session 事件回新 id 自动自愈（见「重启恢复」风险注记）。
  *
+ * ============ 会话域接线（@since v3.43，task_093 / v3.2a S3）============
+ * 角色对话接入会话域（kind=character_chat），口径见 docs/SESSION-PLAN.md §2 接线表：
+ *   ① **每角色一条长生命周期会话** —— 首轮发起时建，之后复用同一条；
+ *   ② 每轮**收尾**记一条空的 'round' 事件 —— 只推进 lastEventAt / 事件计数；
+ *   ③ **消息本体不双写** —— 消息真相仍在 chat_messages 表（抄一份进 session_events
+ *      就是两份真相；会话域只回答"这段对话什么时候发生过"，不回答"聊了什么"）。
+ * 会话记录是**旁路**：会话口缺席（端口未注入）或建会话失败都不阻断对话（可用性优先）。
+ * 互聊（peer_chat）是另一回事 —— 它的会话要**全量事件**落库（修"超时即丢"），归 S4，不在本单。
+ *
  * ============ 每轮经验事件（task_039）============
  * done 收束（一轮**成功**对话）后发 exp.gained（source=chat_round，amount 经注入的 expWeight
  * 换算，缺省 app/services/exp-config.ts 的临时常量）。不计发的轮次：error 事件（含用户中断
@@ -96,10 +105,12 @@
  *
  * @since v3.14（task_035）；v3.15（task_036）追加消息落库时机；v3.18（task_039）追加每轮经验事件；
  *   v3.30（task_054）追加离线守门（在线位拦截 + 轻提示去重）与 transport 异常上报口；
- *   v3.31（task_055）重启恢复（externalSessionId 种入内存会话）+ 差异表校准（kimi stderr / openclaw uuid）。
+ *   v3.31（task_055）重启恢复（externalSessionId 种入内存会话）+ 差异表校准（kimi stderr / openclaw uuid）；
+ *   v3.43（task_093 / v3.2a S3）追加会话域接线（character_chat：首轮建会话 + 每轮收尾推进 lastEventAt）。
  */
 
 import { emitWorldEvent } from '../../core/bus';
+import type { SessionManager } from '../../core/session';
 import type {
   AgentKind,
   CharacterView,
@@ -316,6 +327,16 @@ export interface ChatServiceDeps {
    * （按角色去重：掉线期间只提示一次，守门通过即重置）。组合根接 toast-host（warn tone）。
    */
   readonly notify?: (text: string) => void;
+  /**
+   * 会话域写入面（可选，@since v3.43，task_093 / v3.2a S3）—— 角色对话的会话记录
+   * （kind=character_chat）。**缺省 = 不记会话**（对话照常，只少一条会话轨迹）。
+   *
+   * 口径（方案 docs/SESSION-PLAN.md §2 接线表「character_chat」行）：
+   *   - 每角色**一条长生命周期会话**（首轮建，之后复用同一条）；
+   *   - 每轮收尾只**推进 lastEventAt / 事件计数**（记一条空的 'round' 事件）；
+   *   - **消息本体不双写** —— 消息真相仍在 chat_messages 表（双写即两份真相）。
+   */
+  readonly sessions?: SessionManager;
 }
 
 /** 对外形状（组合根与单测按它操作）。 */
@@ -346,6 +367,13 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
 
   /** characterId → 会话状态。懒建：首次对话的角色才进表。 */
   const sessions = new Map<string, ChatSessionState>();
+  /**
+   * characterId → 会话域的会话 id（character_chat：每角色一条长生命周期会话）。
+   * why 单独一张表而不塞进 ChatSessionState：那张表记的是**CLI 侧的外部会话句柄**
+   *   （各家 agent 的 session id / busy 锁），这里是**本域的会话记录** —— 两回事，
+   *   混在一张表里迟早把"外部会话"和"域会话"当同一个东西。
+   */
+  const chatSessionIds = new Map<string, string>();
   /** 全局单飞（见文件头「单飞约束」）。 */
   let activeRun: ActiveRun | null = null;
   /** characterId → 最近一次失败的原文（重试路径的弹药；新一轮 send 会清掉）。 */
@@ -387,6 +415,42 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
     } catch (error) {
       // 回写失败不致命：会话在内存里还续得上，只是重启后要重新开局。
       logger(`[chat-service] 会话 id 回写失败（${characterId}）：${describe(error)}`);
+    }
+  };
+
+  /**
+   * 会话首（发起，@since v3.43，task_093）：每角色一条 character_chat 会话 —— 首轮建，之后复用。
+   * why 建在「发起」而不是「收尾」：会话要覆盖**整段对话**（从第一句话到最近一轮），
+   *   建在收尾就只剩最后一轮的残影。
+   * 建会话失败（达上限等）不阻断对话 —— 会话记录是旁路，不是对话的前提。
+   */
+  const ensureChatSession = (characterId: string, characterName: string): string | null => {
+    if (!deps.sessions) return null;
+    const existing = chatSessionIds.get(characterId);
+    if (existing) return existing;
+    const record = deps.sessions.createSession({
+      kind: 'character_chat',
+      participants: [characterId],
+      title: `角色对话：${characterName}`,
+    });
+    if (!record) return null;
+    chatSessionIds.set(characterId, record.id);
+    return record.id;
+  };
+
+  /**
+   * 会话尾（收尾，@since v3.43，task_093）：记一条**空的** 'round' 事件 ——
+   * 只推进 lastEventAt / 事件计数，**不落消息本体**（消息真相在 chat_messages 表；
+   * 把消息再抄一份进 session_events 就是两份真相，见方案 §2 接线表 character_chat 行）。
+   */
+  const touchChatSession = (characterId: string): void => {
+    if (!deps.sessions) return;
+    const sessionId = chatSessionIds.get(characterId);
+    if (!sessionId) return;
+    try {
+      deps.sessions.appendEvent(sessionId, { type: 'round', payload: {} });
+    } catch (error) {
+      logger(`[chat-service] 会话记账抛错（${characterId}）：${describe(error)}`);
     }
   };
 
@@ -586,6 +650,8 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
       // 说话气泡止（task_062）：成功 / 失败 / 中断 / 异常路径统一在这收 —— 不发的话
       // 气泡会永远挂在头上（表现泄漏），所以放 finally 而不是各分支各发一遍。
       emitUnitSpeaking(characterId, false);
+      // 会话尾（@since v3.43，task_093）：本轮结束 → 推进会话的 lastEventAt（只记计数，不落消息本体）。
+      touchChatSession(characterId);
     }
   };
 
@@ -606,6 +672,8 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
     if (options.persistUser) {
       persist({ characterId, role: 'user', text, sessionRef: session?.sessionId ?? null });
     }
+    // 会话首（@since v3.43，task_093）：本轮要跑了 → 先把角色会话建起来（首轮建，之后复用）。
+    ensureChatSession(characterId, character.name);
     await runRound(character, character.agentKind, text);
   };
 

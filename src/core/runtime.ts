@@ -40,6 +40,9 @@
  * @since v3.34(task_058)追加 unit.group.assign / unit.group.recall 命令接线:编组槽位表
  *   (WorldState.selectionGroups)的写入与召回。槽位合法性/幂等/对账语义在 core/unit/group.ts
  *   纯函数;反馈(已存入/召回 N(x 单位)/被拒原因)同一次 setState 里附 Notice(一次操作一次广播)。
+ * @since v3.43(task_093)追加 session.interrupt 命令接线:落到 session manager
+ *   (core/session,同 mission / task 口径直调);会话域的持久化口由组合根注入
+ *   (命令落点与业务侧记账共用同一个 manager 实例)。
  */
 
 import type { AgentLinkManager } from './agent-link';
@@ -47,6 +50,7 @@ import { clampWorldPoint } from './camera';
 import { emitState, emitWorldEvent, onCommand, onWorldEvent, type Unsubscribe } from './bus';
 import { createCharacterManager, type CharacterManager } from './character';
 import { createMissionManager, type MissionManager } from './mission';
+import { createSessionManager, type SessionManager } from './session';
 import type { CoreStore } from './store';
 import { worldStore } from './store';
 import { createTaskManager, type TaskManager } from './task';
@@ -74,6 +78,15 @@ import { applySelectionAction } from './unit/selection';
 
 /** 未落地的消息来自哪一侧(dev 观测面板与单测据此区分来源)。 */
 export type UnhandledChannel = 'command' | 'world';
+
+/**
+ * 会话恢复端口（@since v3.47，task_101 / v3.2b-B2）—— 续跑方的形状。
+ *
+ * why 只有一个 sessionId：恢复这件事的**全部**判断都在端口实现方（app 层互聊引擎）：
+ *   kind 准入 / 参与者是否还在场 / 上文回灌 / 重启轮转 —— core 一概不认（core 零 IO、
+ *   不认识角色档案与 transport）。core 只保证"这条命令有人接"。
+ */
+export type SessionResumePort = (sessionId: string) => void;
 
 export interface CoreRuntimeOptions {
   /** 状态持有者;默认用 store.ts 的 worldStore 单例(两侧共用同一份世界态)。 */
@@ -105,6 +118,13 @@ export interface CoreRuntimeOptions {
    */
   readonly task?: TaskManager;
   /**
+   * 会话域写入面(@since v3.43，task_093 / v3.2a S3)。
+   * why 可注入:组合根要把它**同一个实例**交给 app 层各服务(chat / task / agent-link),
+   *   让"命令落点"与"业务侧记账"写的是同一份 WorldState.sessions —— 与 mission / task 同一原因。
+   * 默认按本运行时自己的 store 构造,保证 session.interrupt 落到**本运行时**的状态里。
+   */
+  readonly session?: SessionManager;
+  /**
    * 多 agent 流水线编排器端口(@since v3.27,task_051)。
    * why 注入:编排执行有 IO(逐站 task.assign 会发事件、落 pipelines 表),core 零 IO
    *   铁律不许内部 new;实现方是 app 层 pipeline-service(runtime 只认 PipelineRunnerPort
@@ -114,6 +134,14 @@ export interface CoreRuntimeOptions {
    *   runtime 只做转发,不做翻译。
    */
   readonly pipeline?: PipelineRunnerPort;
+  /**
+   * 会话恢复端口（@since v3.47，task_101 / v3.2b-B2）。
+   * why 是**端口**而不是 core 直调 manager：恢复不只是翻状态位 —— 还要把回灌的上文
+   *   重新喂给参与者并重启互聊轮转，那件事在 app 层（互聊引擎，持有 transport 与角色档案）。
+   *   core 只做转发（同 pipeline.start 的纪律：core 不认识"互聊怎么跑"）。
+   * 未注入时命令按未落地处理（onUnhandled）—— **不假装恢复成功**。
+   */
+  readonly sessionResume?: SessionResumePort;
   /**
    * 尚未实现的命令 / 事件出口。
    * why 需要它:契约已冻结(§5),Phase 2 之前留了一些尚未接地的命令(chat.send 等);
@@ -301,8 +329,13 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
   // @since v3.16 任务域写入面:task.assign 的落库管道(与 mission / character 同一口径)。
   // 组合根注入同一个实例给 app 层 task-service,保证命令与相位回报写的是同一份状态。
   const task = options.task ?? createTaskManager({ store });
+  // @since v3.43(task_093):会话域写入面 —— session.interrupt 的落库管道。
+  // 与 mission / task 同一口径:manager 无 IO 无资源,构造它只为了绑一个 store。
+  const session = options.session ?? createSessionManager({ store });
   // @since v3.27(task_051)流水线编排器端口:只持引用不构造(见 options.pipeline 注释)。
   const pipeline = options.pipeline;
+  // @since v3.47(task_101 / v3.2b-B2)会话恢复端口:只持引用不构造(见 options.sessionResume 注释)。
+  const sessionResume = options.sessionResume;
   const reportUnhandled = options.onUnhandled ?? ((): void => { /* 默认不打扰;dev 入口与单测会注入 */ });
 
   /**
@@ -436,6 +469,29 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         return;
       case 'task.reject':
         task.rejectTask(command.taskId);
+        return;
+      // @since v3.43(task_093 / v3.2a S3)会话中断:落到 session manager(与 mission / task 同一口径:
+      //   命令直接调 manager,状态裁决在 core/session 的状态机里 —— 已收尾 / 已中断的会话被拒并回 Notice)。
+      //   why 需要它:互聊超时此前是"静默丢弃"(会话没了、历史也没了)—— 中断标记让会话可见、可查。
+      case 'session.interrupt':
+        session.interruptSession(command.sessionId);
+        return;
+      // @since v3.47(task_101 / v3.2b-B2)会话恢复:转发给注入的**恢复端口**(app 层互聊引擎 ——
+      //   它把回灌的上文喂回参与者并重启轮转;core 不跑互聊,只做转发,同 pipeline.start 纪律)。
+      //   端口缺席 = 命令没人接管 → 按未落地处理(不假装恢复成功)。
+      case 'session.resume':
+        if (sessionResume) {
+          sessionResume(command.sessionId);
+        } else {
+          reportUnhandled('command', command);
+        }
+        return;
+      // @since v3.48(task_102 / v3.2b-B3)会话分叉:直调 session manager(与 session.interrupt 同一口径)——
+      //   分叉是**纯 core 逻辑**(读事件流 → 复制到 atSeq → 建新会话),不需要 app 层引擎接手,
+      //   所以这里没有注入端口(与 resume 不同:resume 要把上文喂回模型、重启轮转,那件事在 app 层)。
+      //   源会话全程只读;读不到事件流时 manager 如实拒绝并回 Notice(不编造一条空分叉)。
+      case 'session.fork':
+        session.fork(command.sessionId, command.atSeq);
         return;
       // @since v3.27(task_051)流水线发起:转交注入的编排器端口(app 层 pipeline-service)。
       // 与 task.* 不同,这里不直调 manager -- 流水线不是 core 实体(见 RuntimeOptions.pipeline

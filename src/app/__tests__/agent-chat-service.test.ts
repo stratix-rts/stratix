@@ -13,6 +13,9 @@
 
 import type { AgentKind, CharacterView, DetectedAgent, ExpSource, WorldEvent, WorldState } from '../../core/types';
 import { onWorldEvent, resetBus } from '../../core/bus';
+import { createSessionManager } from '../../core/session';
+import type { SessionEvent, SessionRecord } from '../../core/session/types';
+import { createStore } from '../../core/store';
 import type { SpawnOptions, TransportEvent } from '../services/cli-transport/transport';
 import {
   applyInterjections,
@@ -20,9 +23,13 @@ import {
   buildRelayPrompt,
   createAgentChatService,
   DEFAULT_PEER_ROUNDS,
+  DEFAULT_PEER_TURN_TIMEOUT_MS,
   PEER_MSG_EMPTY_REPLY,
   PEER_MSG_INTERRUPTED,
+  PEER_NETWORK_FALLBACK_HINT,
+  PEER_SESSION_USER_AUTHOR,
   peerMarkedContent,
+  resolvePeerTurnTimeoutMs,
   type AgentChatDrawerView,
 } from '../services/agent-chat-service';
 import { buildFirstPrompt, type ChatPersistedMessage, type ChatTransportFactory } from '../services/chat-service';
@@ -130,6 +137,8 @@ interface SpawnRecord {
   readonly prompt: string;
   readonly sessionId: string | null;
   readonly signal: AbortSignal | undefined;
+  /** 回合超时（task_090：缺省 120s，可注入覆盖）。 */
+  readonly timeoutMs: number | undefined;
 }
 
 /** 受控脚本:拿到调用记录后产出事件流。 */
@@ -187,7 +196,12 @@ function makeFactory(scripts: Script[]): { factory: ChatTransportFactory; calls:
   let index = 0;
   const factory: ChatTransportFactory = (kind: AgentKind) => ({
     spawn: (prompt: string, options?: SpawnOptions): AsyncIterable<TransportEvent> => {
-      const record: SpawnRecord = { prompt, sessionId: options?.sessionId ?? null, signal: options?.signal };
+      const record: SpawnRecord = {
+        prompt,
+        sessionId: options?.sessionId ?? null,
+        signal: options?.signal,
+        timeoutMs: options?.timeoutMs,
+      };
       calls.push(record);
       const script = scripts[index];
       index += 1;
@@ -210,6 +224,11 @@ interface HarnessOptions {
   readonly timeoutMs?: number;
   /** context-source 注入件（task_053）；缺省不注入。 */
   readonly provideContext?: (characterId: string) => import('../services/stratix-context').StratixContextInput | null;
+  /**
+   * 不注入会话写入面（@since v3.45，task_094）—— 测「会话是旁路」那条路径：
+   * 端口缺席时互聊照常，只是没有会话记录。
+   */
+  readonly withoutSessions?: boolean;
 }
 
 interface ServiceHarness {
@@ -219,6 +238,10 @@ interface ServiceHarness {
   readonly sessionIds: Array<[string, string]>;
   readonly messages: ChatPersistedMessage[];
   readonly events: WorldEvent[];
+  /** 会话域摘要（peer_chat，@since v3.45，task_094）：WorldState.sessions 里的会话记录。 */
+  readonly sessionRecords: () => SessionRecord[];
+  /** 会话域事件流（session_events 的本体，@since v3.45，task_094）。 */
+  readonly sessionEvents: () => SessionEvent[];
 }
 
 function makeHarness(options: HarnessOptions = {}): ServiceHarness {
@@ -235,6 +258,18 @@ function makeHarness(options: HarnessOptions = {}): ServiceHarness {
   const sessionIds: Array<[string, string]> = [];
   const messages: ChatPersistedMessage[] = [];
   const events: WorldEvent[] = [];
+  // 会话域（@since v3.45，task_094）：真 store + 真 manager（事件信封截下来，不碰 SQLite）。
+  const store = createStore();
+  const sessionEvents: SessionEvent[] = [];
+  const sessionManager = createSessionManager({
+    store,
+    persist: {
+      persistSession: () => undefined,
+      persistEvent: (event) => {
+        sessionEvents.push(event);
+      },
+    },
+  });
   const service = createAgentChatService({
     view: view.view,
     getState: () => state,
@@ -248,12 +283,22 @@ function makeHarness(options: HarnessOptions = {}): ServiceHarness {
     expWeight: options.expWeight,
     provideContext: options.provideContext,
     timeoutMs: options.timeoutMs,
+    ...(options.withoutSessions ? {} : { sessions: sessionManager }),
   });
   const off = onWorldEvent((event) => {
     events.push(event);
   });
   void off; // 总线监听随 afterEach 的 resetBus 一并清掉(与 chat-service 测试同口径)
-  return { service, view, calls, sessionIds, messages, events };
+  return {
+    service,
+    view,
+    calls,
+    sessionIds,
+    messages,
+    events,
+    sessionRecords: (): SessionRecord[] => store.getState().sessions ?? [],
+    sessionEvents: (): SessionEvent[] => [...sessionEvents],
+  };
 }
 
 const flush = async (): Promise<void> => {
@@ -273,10 +318,23 @@ afterEach(() => {
 // ============================================================================
 
 describe('prompt 拼装(纯函数)', () => {
-  test('开题指令:与对方讨论议题,直接给观点', () => {
+  test('开题指令:与对方讨论议题,直接给观点 + 网络兜底指引', () => {
     expect(buildOpeningPrompt('贝塔', '先侦察还是先扩张')).toBe(
-      '与 贝塔 讨论：先侦察还是先扩张。请直接给出你的观点。'
+      `与 贝塔 讨论：先侦察还是先扩张。请直接给出你的观点。\n${PEER_NETWORK_FALLBACK_HINT}`
     );
+  });
+
+  test('网络兜底指引:开题与转述都带「不可用就凭已知作答 + 注明知识截止」', () => {
+    // task_090：CLI 子进程没有代理 env 时，agent 会空转重试网络直到回合超时。
+    for (const prompt of [
+      buildOpeningPrompt('贝塔', '议题'),
+      buildRelayPrompt('阿尔法', '我认为应该先侦察。', '议题'),
+    ]) {
+      expect(prompt).toContain('若网络检索不可用或超时');
+      expect(prompt).toContain('凭你已有的知识作答');
+      expect(prompt).toContain('注明知识截止时间');
+      expect(prompt).toContain('不要反复重试网络');
+    }
   });
 
   test('转述指令:对方观点 + 请回应同一议题', () => {
@@ -433,6 +491,40 @@ describe('回合编排:正常 3 轮', () => {
 // ============================================================================
 
 describe('中断与超时', () => {
+  test('回合超时缺省 120s:进 spawn 选项(可注入覆盖)', async () => {
+    // task_090：缺省值回归 —— 覆盖链的最后一环是 spawn 选项里的 timeoutMs。
+    expect(DEFAULT_PEER_TURN_TIMEOUT_MS).toBe(120_000);
+
+    const defaultHarness = makeHarness({ scripts: [turn('sa', 'A1'), turn('sb', 'B1')] });
+    await defaultHarness.service.start('ch-a', 'ch-b', '议题', 1);
+    await flush();
+    expect(defaultHarness.calls[0].timeoutMs).toBe(DEFAULT_PEER_TURN_TIMEOUT_MS);
+
+    const overrideHarness = makeHarness({
+      scripts: [turn('sa', 'A1'), turn('sb', 'B1')],
+      timeoutMs: 300_000,
+    });
+    await overrideHarness.service.start('ch-a', 'ch-b', '议题', 1);
+    await flush();
+    expect(overrideHarness.calls[0].timeoutMs).toBe(300_000);
+  });
+
+  test('超时覆盖链的解析口径:缺省 120s / 非法回缺省 / 超界钳到 [10s,10min]', () => {
+    expect(resolvePeerTurnTimeoutMs(null)).toBe(DEFAULT_PEER_TURN_TIMEOUT_MS);
+    expect(resolvePeerTurnTimeoutMs(undefined)).toBe(DEFAULT_PEER_TURN_TIMEOUT_MS);
+    expect(resolvePeerTurnTimeoutMs('')).toBe(DEFAULT_PEER_TURN_TIMEOUT_MS);
+    expect(resolvePeerTurnTimeoutMs('  ')).toBe(DEFAULT_PEER_TURN_TIMEOUT_MS);
+    expect(resolvePeerTurnTimeoutMs('不是数字')).toBe(DEFAULT_PEER_TURN_TIMEOUT_MS);
+    expect(resolvePeerTurnTimeoutMs('0')).toBe(DEFAULT_PEER_TURN_TIMEOUT_MS);
+    expect(resolvePeerTurnTimeoutMs('-5')).toBe(DEFAULT_PEER_TURN_TIMEOUT_MS);
+    // 正常值：环境变量是字符串 → 解析成毫秒数。
+    expect(resolvePeerTurnTimeoutMs('300000')).toBe(300_000);
+    expect(resolvePeerTurnTimeoutMs(300_000)).toBe(300_000);
+    // 超界钳位（与主进程 chat:run 的钳位一致）。
+    expect(resolvePeerTurnTimeoutMs('1000')).toBe(10_000);
+    expect(resolvePeerTurnTimeoutMs('1800000')).toBe(600_000);
+  });
+
   test('回合超时 → 「(互聊中断:...)」标注 + 双份落库 + 整场收束(链条断掉不硬撑)', async () => {
     const harness = makeHarness({
       scripts: [
@@ -454,6 +546,14 @@ describe('中断与超时', () => {
     expect(texts).toContain(`ch-b|${marker?.text}`);
     expect(texts).toContain(`ch-a|[peer:ch-b] ${marker?.text}`);
     expect(harness.view.ended).toHaveLength(1);
+
+    // task_094（会话域）：超时不再只是气泡 —— 会话显式 interrupted + 落 interrupt 事件。
+    const record = harness.sessionRecords()[0];
+    expect(record?.status).toBe('interrupted');
+    expect(record?.closedAt).toBeNull(); // 中断不是收尾(终态)，历史还能查
+    const interrupts = harness.sessionEvents().filter((e) => e.type === 'interrupt');
+    expect(interrupts).toHaveLength(1);
+    expect(interrupts[0]?.payload.reason).toContain('timeout');
   });
 
   test('停止:stop() → AbortSignal → aborted → 「(已中断)」+ 部分文本保留 + 收束', async () => {
@@ -497,6 +597,158 @@ describe('中断与超时', () => {
     expect(harness.calls).toHaveLength(1); // B 的回合不再发起
     expect(harness.view.messages.some((m) => m.text === PEER_MSG_INTERRUPTED)).toBe(false); // 没有在飞回合可断
     expect(harness.view.ended).toHaveLength(1); // 但整场照常收束
+  });
+});
+
+// ============================================================================
+// 会话域接线（@since v3.45，task_094 / v3.2a S4）：互聊接入 peer_chat 会话
+// ============================================================================
+
+/** message 事件（载荷收窄用；TS 5.3 没有 filter 的类型谓词推断，手写谓词）。 */
+type MessageEvent = Extract<SessionEvent, { type: 'message' }>;
+/** interrupt 事件（载荷收窄用）。 */
+type InterruptEvent = Extract<SessionEvent, { type: 'interrupt' }>;
+
+describe('会话域(peer_chat):开场/轮次/中断/收场', () => {
+  test('正常走完:开场建会话 + 议题与每轮发言落 message 事件 + 收尾 closed', async () => {
+    const harness = makeHarness({ scripts: [turn('sa', 'A1'), turn('sb', 'B1')] });
+    await harness.service.start('ch-a', 'ch-b', '先侦察还是先扩张', 1);
+    await flush();
+
+    // 会话摘要：一条 peer_chat 会话、双方为参与者、正常收尾。
+    const records = harness.sessionRecords();
+    expect(records).toHaveLength(1);
+    const record = records[0];
+    expect(record?.kind).toBe('peer_chat');
+    expect(record?.participants).toEqual(['ch-a', 'ch-b']);
+    expect(record?.status).toBe('closed');
+    expect(record?.closedAt).not.toBeNull();
+    // 标题走域内规则版自动起名（议题为主体）。
+    expect(record?.title).toContain('先侦察还是先扩张');
+
+    // 事件流：created → message(议题) → message(A1) → message(B1) → closed。
+    expect(harness.sessionEvents().map((e) => e.type)).toEqual([
+      'created',
+      'message',
+      'message',
+      'message',
+      'closed',
+    ]);
+    const messages = harness.sessionEvents().filter((e): e is MessageEvent => e.type === 'message');
+    expect(messages.map((e) => e.payload.author)).toEqual([
+      PEER_SESSION_USER_AUTHOR,
+      '阿尔法',
+      '贝塔',
+    ]);
+    expect(messages.map((e) => e.payload.text)).toEqual(['先侦察还是先扩张', 'A1', 'B1']);
+    // seq 会话内单调（历史要能按序读回来）。
+    expect(harness.sessionEvents().map((e) => e.seq)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  test('回合超时:会话显式 interrupted + 落 interrupt 事件(修「超时即丢」)', async () => {
+    const harness = makeHarness({
+      scripts: [
+        turn('sa', 'A1'),
+        scripted({ type: 'error', code: 'timeout', message: '调用超时:120000ms 无输出' }),
+      ],
+    });
+    await harness.service.start('ch-a', 'ch-b', '议题', 3);
+    await flush();
+
+    const record = harness.sessionRecords()[0];
+    expect(record?.status).toBe('interrupted');
+    expect(record?.closedAt).toBeNull();
+
+    const events = harness.sessionEvents();
+    expect(events.map((e) => e.type)).toEqual(['created', 'message', 'message', 'interrupt']);
+    const interrupts = events.filter((e): e is InterruptEvent => e.type === 'interrupt');
+    expect(interrupts).toHaveLength(1);
+    expect(interrupts[0]?.payload.reason).toContain('timeout');
+    expect(interrupts[0]?.payload.reason).toContain('调用超时:120000ms 无输出');
+  });
+
+  test('用户停止(回合在飞):会话 interrupted,原因如实记 aborted', async () => {
+    const harness = makeHarness({ scripts: [abortableScript('A1 前半')] });
+    const running = harness.service.start('ch-a', 'ch-b', '议题', 3);
+    await flush();
+    harness.service.stop();
+    await running;
+    await flush();
+
+    const record = harness.sessionRecords()[0];
+    expect(record?.status).toBe('interrupted');
+    const interrupts = harness.sessionEvents().filter((e): e is InterruptEvent => e.type === 'interrupt');
+    expect(interrupts).toHaveLength(1);
+    expect(interrupts[0]?.payload.reason).toContain('aborted');
+  });
+
+  test('用户停止(回合之间):没有在飞回合可断,但会话照样是 interrupted', async () => {
+    const first = gated(
+      [{ type: 'session', sessionId: 'sa' }, { type: 'message', text: 'A1' }],
+      [{ type: 'done', exitCode: 0, text: null, sessionId: 'sa' }]
+    );
+    const harness = makeHarness({ scripts: [first.script, turn('sb', 'B1')] });
+    const running = harness.service.start('ch-a', 'ch-b', '议题', 2);
+    await flush();
+    harness.service.stop();
+    first.release();
+    await running;
+    await flush();
+
+    const record = harness.sessionRecords()[0];
+    expect(record?.status).toBe('interrupted');
+    const interrupts = harness.sessionEvents().filter((e): e is InterruptEvent => e.type === 'interrupt');
+    expect(interrupts).toHaveLength(1);
+    expect(interrupts[0]?.payload.reason).toContain('用户停止互聊');
+  });
+
+  test('插话:用户的话也落一条 message 事件', async () => {
+    const first = gated(
+      [{ type: 'session', sessionId: 'sa' }, { type: 'message', text: 'A1' }],
+      [{ type: 'done', exitCode: 0, text: null, sessionId: 'sa' }]
+    );
+    const harness = makeHarness({ scripts: [first.script, turn('sb', 'B1')] });
+    const running = harness.service.start('ch-a', 'ch-b', '议题', 1);
+    await flush();
+    harness.service.interject('先说侦察');
+    first.release();
+    await running;
+    await flush();
+
+    const messages = harness.sessionEvents().filter((e): e is MessageEvent => e.type === 'message');
+    // 顺序 = 说话的真实时序：插话发生在 A 的回合还在飞的时候（A1 尚未收束）。
+    expect(messages.map((e) => `${e.payload.author}|${e.payload.text}`)).toEqual([
+      `${PEER_SESSION_USER_AUTHOR}|议题`,
+      `${PEER_SESSION_USER_AUTHOR}|先说侦察`,
+      '阿尔法|A1',
+      '贝塔|B1',
+    ]);
+  });
+
+  test('守门拦截:不建会话(没开场就没有会话)', async () => {
+    const harness = makeHarness({
+      characters: [characterA], // 贝塔不在档 → 守门拦下
+      scripts: [],
+    });
+    await harness.service.start('ch-a', 'ch-b', '议题', 1);
+    await flush();
+
+    expect(harness.sessionRecords()).toHaveLength(0);
+    expect(harness.sessionEvents()).toHaveLength(0);
+    expect(harness.view.ended).toHaveLength(1);
+  });
+
+  test('未注入会话写入面:互聊照常(会话是旁路,不是讨论的前提)', async () => {
+    const harness = makeHarness({
+      scripts: [turn('sa', 'A1'), turn('sb', 'B1')],
+      withoutSessions: true,
+    });
+    await harness.service.start('ch-a', 'ch-b', '议题', 1);
+    await flush();
+
+    expect(harness.sessionRecords()).toHaveLength(0);
+    expect(harness.calls).toHaveLength(2);
+    expect(harness.view.ended).toHaveLength(1);
   });
 });
 

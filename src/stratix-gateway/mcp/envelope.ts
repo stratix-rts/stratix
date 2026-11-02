@@ -105,6 +105,16 @@ export const MCP_ERROR_CATALOG: Readonly<Record<McpErrorCode, Omit<McpErrorPaylo
     retryable: false,
     hint: '先查当前相位，再决定下一步动作',
   },
+  session_not_found: {
+    message: '会话不存在',
+    retryable: false,
+    hint: '用 stratix_session_list 重新列一遍会话，取一个真实的会话 id',
+  },
+  unsupported_kind: {
+    message: '该类会话不支持此操作',
+    retryable: false,
+    hint: '换一条支持该操作的会话（如对话类会话）再试',
+  },
   internal_error: {
     message: '内部异常',
     retryable: true,

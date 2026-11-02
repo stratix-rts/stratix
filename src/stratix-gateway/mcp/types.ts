@@ -10,6 +10,7 @@
  *   4. 在这里复制 core 的状态形状 —— 世界态只有 core/types.ts 一份真相，本文件只引用它。
  */
 
+import type { SessionReadPort } from '../../core/session/types';
 import type { HudCommand, WorldState } from '../../core/types';
 
 /** JSON-RPC 2.0 的请求 id。缺省（无 id）= 通知，按协议不回响应。 */
@@ -150,6 +151,19 @@ export type McpErrorCode =
    */
   | 'mission_terminal'
   | 'illegal_transition'
+  /**
+   * 会话 id 不存在（读会话面时给了一个库里没有的 id）。
+   * why 单列一码：会话面是**读面**，它的"不存在"与任务 / 编组任务的"不存在"语义相同但
+   *   载物不同 —— 模型据此去换一条会话（调 stratix_session_list 重列），而不是重试同一个 id。
+   */
+  | 'session_not_found'
+  /**
+   * 会话**种类**不支持该写操作（会话写面只认对话类会话 —— 见 tools/session.ts 的
+   * INTERRUPTIBLE_SESSION_KINDS 与 docs/MCP-SPEC.md §2.12）。
+   * why 与 session_not_found 分开：会话**存在**但这一类会话不能这么操作 ——
+   * 模型据此去换一条可操作的会话（挑一条对话类会话），而不是以为会话没了再重列一遍。
+   */
+  | 'unsupported_kind'
   | 'internal_error';
 
 /**
@@ -193,6 +207,15 @@ export interface McpHost {
   readonly dispatchCommand: (command: HudCommand) => void;
   /** 只读：取任务输出**全文**（SQLite 投影）；取不到返回 null（此时回摘要）。 */
   readonly readTaskOutput?: (taskId: string) => Promise<string | null>;
+  /**
+   * 只读：会话读口（core/session 的 SessionReadPort —— 会话摘要列表 / 单条 / 事件流）。
+   *
+   * why 是端口而不是直接 import DAO：MCP 只认 core 的会话契约，**会话历史本体不进广播**
+   * （事件落 session_events 表 —— WorldState 只带摘要，否则广播体积随消息数无限膨胀）。
+   * 生产实现见 context.ts（service 侧 SQLite 的同进程直读）；缺省 = 本进程没有会话读口，
+   * 工具据此如实报 internal_error（绝不回一个空列表假装"没有会话"）。
+   */
+  readonly readSessions?: SessionReadPort;
   /**
    * 写：跑一轮角色对话，等这一轮回复回来（app 层 chat-service 的角色会话，不是 link 会话）。
    *

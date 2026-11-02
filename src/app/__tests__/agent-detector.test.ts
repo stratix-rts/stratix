@@ -87,11 +87,11 @@ describe('检测名单（与 docs/AGENT-MATRIX.md 对齐）', () => {
     expect(ok).toBe(true);
   });
 
-  test('T1-T3 全量 11 项，分层分布 5 / 4 / 2', () => {
-    expect(AGENT_DETECTION_TARGETS).toHaveLength(11);
+  test('T1-T3 全量 12 项，分层分布 6 / 4 / 2', () => {
+    expect(AGENT_DETECTION_TARGETS).toHaveLength(12);
     const byTier = (tier: string): number =>
       AGENT_DETECTION_TARGETS.filter((target) => target.tier === tier).length;
-    expect(byTier('T1')).toBe(5);
+    expect(byTier('T1')).toBe(6);
     expect(byTier('T2')).toBe(4);
     expect(byTier('T3')).toBe(2);
   });

@@ -14,12 +14,16 @@
 ```
 e2e-tests/
 ├── lib/cdp.mjs   # 公共封装：连页面 + Runtime.evaluate helper（三脚本共用）
+├── lib/service-harness.mjs     # 公共封装：起服务 / 断言 / 回收 pid / MCP 调用 / world-sync 观察
 ├── probe.mjs     # 连接探测 + 世界状态快照（角色 / 单位 / 任务 / 使命）
 ├── assign.mjs    # 向指定角色派单，轮询至任务终态
 ├── mission.mjs   # mission 全链：create → confirm accept → 带 missionId 派单 → 轮询到收尾
 ├── service-resident.e2e.mjs           # **自起自收**的总验收剧本（服务常驻 / Electron 可选）
 ├── service-resident/fake-cli.ts        # fake CLI adapter（执行替身；--real 可切真 claude）
 ├── service-resident/service-process.ts # service 进程启动器（tsx 直跑）
+├── session-domain.e2e.mjs             # **会话域验收剧本**（互聊超时 → 可见可查）
+├── session-domain/peer-cli.ts          # 静默 CLI adapter（互聊超时制造机）
+├── session-domain/service-process.ts   # service 进程启动器 + 互聊夹具（tsx 直跑）
 └── README.md
 ```
 
@@ -106,6 +110,54 @@ node e2e-tests/service-resident.e2e.mjs --keep   # 保留临时目录（排查�
 **唯一替身**：fake CLI adapter（`service-resident/fake-cli.ts`）只替掉**最末端那一跳**
 （把真 claude 换成「node 回显 prompt」）—— core 的裁决、队列、相位、mission 回报全是真链路。
 
+## 剧本：session-domain.e2e.mjs（会话域验收）
+
+v3.2a 会话域（S1~S6）的**收口验收**：一条命令跑完「互聊开场 → 回合超时 →
+会话显式 interrupted → 事件历史可查 → 面板数据源含 sessions」全链。
+
+```bash
+node e2e-tests/session-domain.e2e.mjs          # 替身模式（确定性，不花 token）
+node e2e-tests/session-domain.e2e.mjs --keep   # 保留临时目录（排查用）
+```
+
+**它做了什么**（断言逐条打印在末尾的「验收摘要」里，20 条）：
+
+1. 起 **service**（gateway 单进程：执行环 + 存储 + HTTP/MCP + world-sync 端点）；
+2. 建两个角色（真命令 `character.create` 落地），等本地 CLI 探测出可用 agent；
+3. 开一场互聊 → **MCP `stratix_session_list`** 看得见 `peer_chat` 且 `active`；
+4. 制造**回合超时**（静默 CLI 替身：子进程真跑、真的不吭声）→ 会话显式转 **`interrupted`**，
+   并落一条带原因的 `interrupt` 事件（`timeout：调用超时，已终止进程`）；
+5. **MCP `stratix_session_get`** 读事件流：`created → message（议题）→ interrupt` 齐全；
+6. **REST `GET /api/storage/sessions/:id/events`** 分页读同一段历史：全量页中断前后齐全、
+   窗口页取到最新两条、游标页（`beforeSeq`）翻到更早的 `created`；
+7. 派一单跑完 → **`task_run` 会话随终态 `closed`**（LITE 口径：只记 `created` + `closed`）；
+8. **world-sync 快照含 `sessions`**（HUD 会话面板的数据源 —— 快照断言即面板输入面，**不开 Electron**）；
+9. 收干净：静默子进程已被看门狗收掉、只杀**自己拉起的 pid**，退出后不留孤儿。
+
+**唯一替身**：两个 CLI adapter，都只替掉**最末端那一跳**（CLI 二进制）——
+① `service-resident/fake-cli.ts`（echo 型，派单用）；
+② `session-domain/peer-cli.ts`（**静默型**，互聊用：子进程跑着但不输出任何字节）。
+超时判定 / 杀进程树 / 错误码（`timeout`）/ 中断记账 / 会话状态迁移**全是真链路**
+（`session-domain/peer-cli.ts` 只制造「一直不输出」这个前提，不自己判超时）。
+
+**互聊夹具**：互聊编排服务住在渲染进程（抽屉 DOM 在那儿），headless 的 service 进程里没有它 ——
+`session-domain/service-process.ts` 按**生产口径**把它装起来（视图口给记录型空实现，
+执行环给静默 adapter，会话写入面绑**同一份 store + 同一个库连接**），
+并挂一条**测试专用**路由 `POST /e2e/peer-chat` 供剧本触发互聊。
+其余一切（MCP / REST / world-sync）都走产品口径。
+
+**端口与进程纪律**（与 `service-resident.e2e.mjs` 同一套公用封装 `lib/service-harness.mjs`）：
+
+| 角色 | 端口 | 说明 |
+|------|------|------|
+| service（HTTP / MCP / world-sync） | `7817` | `SX_SERVICE_PORT` 可改 |
+| service 状态同步 WS | `7818` | `SX_WS_PORT` 可改 |
+
+- **不碰** 7523 / 7524 / 9222（用户的 dev 实例占着）；
+- **不按进程名扫杀**：收尾只按**剧本自己记下的 pid** 精确回收，连同其后代树；
+- 数据目录是临时目录（每次跑都是干净世界 → 可重复执行）；
+- 端口占用先查再用，撞上用户端口直接拒绝开跑。
+
 ## 环境变量
 
 | 变量 | 默认 | 说明 |
@@ -113,10 +165,11 @@ node e2e-tests/service-resident.e2e.mjs --keep   # 保留临时目录（排查�
 | `CDP_BASE` | `127.0.0.1:9222` | CDP 调试端口（换端口 / 换机器时用） |
 | `SX_POLL_INTERVAL_MS` | `3000` | 轮询间隔 |
 | `SX_TIMEOUT_MS` | `300000` | 轮询超时（5 分钟） |
-| `SX_SERVICE_PORT` | `7797` | 剧本自己的 service 端口 |
-| `SX_WS_PORT` | `7798` | 剧本自己的状态同步 WS 端口 |
+| `SX_SERVICE_PORT` | `7797`（`service-resident`）/ `7817`（`session-domain`） | 剧本自己的 service 端口 |
+| `SX_WS_PORT` | `7798`（`service-resident`）/ `7818`（`session-domain`） | 剧本自己的状态同步 WS 端口 |
 | `SX_CDP_PORT` | `7799` | 剧本自己的 Electron 调试端口 |
 | `SX_VITE_PORT` | `7601` | 剧本自己的 vite dev server 端口 |
+| `STRATIX_PEER_TURN_TIMEOUT_MS` | `10000` | 互聊回合超时（会话域剧本用；下界 10s，产品口径的覆盖链） |
 
 ## 脚本口径（与 core 契约一致，不是猜的）
 
@@ -137,6 +190,9 @@ node e2e-tests/service-resident.e2e.mjs --keep   # 保留临时目录（排查�
   `src/**` 与 `tests/**`，**不含 `e2e-tests/`** —— 纯 JS 不进 `tsc`，也不进 `jest`（`jest.config.js` 的 roots 亦不含它）。
 - **走查脚本**（`probe` / `assign` / `mission`）**不 import 任何 `src/**` 模块**：脚本跑在 node 侧，
   通过 CDP 操作页面，与仓库实现解耦 —— core 契约变了，改脚本里的口径注释即可，不需要引入构建链。
-- **验收剧本**（`service-resident.e2e.mjs` + `service-resident/*.ts`）是例外：它要**拉起真实 service**
-  （注入执行器替身、读真实 MCP / world-sync），所以那两个 `.ts` helper 会 import `src/**`。
+- **验收剧本**（`service-resident.e2e.mjs` + `service-resident/*.ts`、`session-domain.e2e.mjs` +
+  `session-domain/*.ts`）是例外：它要**拉起真实 service**（注入执行器替身、读真实 MCP / world-sync），
+  所以那些 `.ts` helper 会 import `src/**`。
   它们同样不进 `tsc` / `jest`（不在 include / roots 里），由 `tsx` 直跑（见 `service-resident/service-process.ts` 的文件头）。
+- `lib/service-harness.mjs` 是两个验收剧本共用的**夹具层**（起服务 / 断言 / 回收 pid / MCP / world-sync）：
+  端口与进程纪律集中在一处，改一处全体生效。

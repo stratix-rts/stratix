@@ -1,0 +1,37 @@
+# dsh 覆盖层示例：把 LLM 路由指到一个 **OpenAI 兼容网关**（本机自测用 MiniMax）。
+#
+# 用法：
+#   export LLM_API_KEY=...            # 凭据按环境变量名解析，不落盘
+#   dsh --profile stratix-spike \
+#        --patch ./plugins/dsh-bridge/bridge.patch.yml \
+#        --patch ./plugins/dsh-bridge/llm-example.patch.yml \
+#        "列出战场上的所有单位"
+#
+# why 需要这份文件：dsh 出厂把默认模型钉在 `deepseek-official:deepseek-flash`（官方 DeepSeek
+# 账号），没有 DeepSeek 凭据就直接 MISSING_CREDENTIAL 退出。`dsh-llm-pi-ai` 的 provider 路由
+# 可以声明成一个 pi-ai 不认识的「自声明路由」：自己给 api（wire 协议）/ baseURL / models，
+# 凭据走 apiKeyEnv。
+#
+# 路由名（providers 的键）= 后面 agent-default-model 里 provider 字段要写的值。
+- id: llm-pi-ai
+  config:
+    providers:
+      openai-gateway:
+        displayName: 'OpenAI-compatible gateway'
+        apiKeyEnv: LLM_API_KEY
+        api: openai-completions
+        baseURL: 'https://api.minimaxi.com/v1'
+        compat:
+          maxTokensField: max_tokens
+        models:
+          - id: MiniMax-M2.7-highspeed
+            name: 'MiniMax M2.7 highspeed'
+            contextWindow: 200000
+            maxTokens: 32000
+            reasoningEfforts: false
+
+# 默认模型从官方路由切到上面声明的路由。
+- id: agent-default-model
+  config:
+    provider: openai-gateway
+    model: MiniMax-M2.7-highspeed

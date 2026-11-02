@@ -65,7 +65,7 @@ describe('StratixDatabase schema v11（custom_agents，task_056）', () => {
     const dir = tempDir();
     try {
       const db = await openAndInitialize(dir);
-      expect(versionOf(db)).toBe(12);
+      expect(versionOf(db)).toBe(13);
       const tables = (
         db.getDatabase().prepare(`SELECT name FROM sqlite_master WHERE type = 'table'`).all() as Array<{
           name: string;
@@ -98,7 +98,7 @@ describe('StratixDatabase schema v11（custom_agents，task_056）', () => {
       raw.close();
 
       const db = await openAndInitialize(dir);
-      expect(versionOf(db)).toBe(12);
+      expect(versionOf(db)).toBe(13);
       const names = (
         db.getDatabase().prepare(`SELECT name FROM sqlite_master WHERE type = 'table'`).all() as Array<{
           name: string;

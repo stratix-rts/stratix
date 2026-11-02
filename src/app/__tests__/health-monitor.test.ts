@@ -58,10 +58,17 @@ function makeMonitor(overrides: Partial<Parameters<typeof createHealthMonitor>[0
 // ============================================================================
 
 describe('常量（规格：常量集中）', () => {
-  test('探测周期缺省 60s；防抖阈值 2；监测面 = T1 五家', () => {
+  test('探测周期缺省 60s；防抖阈值 2；监测面 = T1 那几家', () => {
     expect(DEFAULT_HEALTH_PROBE_INTERVAL_MS).toBe(60_000);
     expect(HEALTH_OFFLINE_FAILURE_THRESHOLD).toBe(2);
-    expect(HEALTH_MONITORED_KINDS).toEqual(['claude-code', 'codex', 'opencode', 'kimi', 'openclaw']);
+    expect(HEALTH_MONITORED_KINDS).toEqual([
+      'claude-code',
+      'codex',
+      'opencode',
+      'kimi',
+      'openclaw',
+      'dsh',
+    ]);
   });
 });
 

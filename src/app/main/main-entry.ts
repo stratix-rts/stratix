@@ -76,6 +76,7 @@ import { emitCommand, emitState, onState, onWorldEvent } from '../../core/bus';
 import { createCharacterManager } from '../../core/character';
 import { createMissionManager } from '../../core/mission';
 import { createCoreRuntime, type UnhandledChannel } from '../../core/runtime';
+import { createSessionManager } from '../../core/session';
 import { expWeightFor } from '../../core/progression';
 import { worldStore } from '../../core/store';
 import type { DetectedAgent, HudCommand, Point, WorldEvent } from '../../core/types';
@@ -100,6 +101,13 @@ import {
   gameSaveApi,
   type RestoreInjection,
 } from '../services/persistence/game-save-coordinator';
+import { resolveSessionCompressThreshold } from '../services/session-compress-config';
+import { createSessionEventLog } from '../services/session-event-log';
+import {
+  createSessionHistoryPort,
+  DEFAULT_SESSION_HISTORY_BASE_URL,
+  httpBaseFromWorldSyncUrl,
+} from '../services/session-history/session-history';
 import {
   CHAT_HISTORY_LOAD_LIMIT,
   chatHistoryApi,
@@ -109,7 +117,9 @@ import {
 import { createBrowserAppearanceEnvironment } from '../services/appearance-environment';
 import { createPhaserPreviewGame } from '../services/appearance-preview-game';
 import { createAppearancePreviewService } from '../services/appearance-preview-service';
-import { createAgentChatService } from '../services/agent-chat-service';
+import { createAgentChatService, resolvePeerTurnTimeoutMs, type AgentChatService } from '../services/agent-chat-service';
+import { createSessionTitleServiceFromEnv } from '../services/session-title';
+import { createSessionReferenceService } from '../services/session-reference';
 import { createChatService } from '../services/chat-service';
 import {
   createStratixContextProvider,
@@ -152,7 +162,14 @@ import { createUnitSpriteSource } from '../services/unit-sprite-source';
 //   CoreStore 的远程实现（world-sync 全量快照 → 本地整体覆盖；hud 命令 → command.forward）。
 import { DEFAULT_WORLD_SYNC_URL, createRemoteStore, type RemoteStore } from '../services/remote-store';
 
-import { isOnboardingForced, isRemoteModeEnabled, remoteWorldSyncUrl } from './dev-flags';
+import {
+  isOnboardingForced,
+  isRemoteModeEnabled,
+  peerTurnTimeoutRaw,
+  remoteWorldSyncUrl,
+  sessionCompressThresholdRaw,
+  titleLlmEnv,
+} from './dev-flags';
 import { createOnboardingHost } from './onboarding-host';
 // 自定义 agent 注册端口（@since v3.32，task_056）：向导扫描步的「+ 添加自定义 agent」表单 /
 // 设置屏的注册管理经它进主进程（IPC 面 = preload 的 customAgents）。非 Electron → null，降级。
@@ -337,6 +354,15 @@ async function boot(): Promise<void> {
     // task_061：成长看板数据口（角色屏「成长」tab + 全场总览排行；非 Electron = 各方法
     // null 降级 —— 看板区块引导语，不拆屏可用性）。
     growth: makeGrowthStatsPort(expEventApi(), taskRecordApi()),
+    // task_095：会话历史的读取口 —— 会话面板「历史抽屉」的两路真 IO
+    //   （角色对话历史走 preload 通道；会话事件流走 service 的只读 REST）。
+    //   service 基址：远程模式从 world-sync 端点换协议得出（同一台 service）；
+    //   本地回退模式用缺省的本机 gateway。读取口缺席时面板如实说"未附着"。
+    sessionHistory: createSessionHistoryPort({
+      baseUrl: remote
+        ? httpBaseFromWorldSyncUrl(remoteWorldSyncUrl(DEFAULT_WORLD_SYNC_URL))
+        : DEFAULT_SESSION_HISTORY_BASE_URL,
+    }),
   });
   const unmountScreen = screen.mount(hudRoot);
   const unmountAdapter = adapter.mount();
@@ -412,6 +438,59 @@ async function boot(): Promise<void> {
   const transportHealthReport = (kind: Parameters<typeof healthMonitor.recordTransportFailure>[0], code: Parameters<typeof healthMonitor.recordTransportFailure>[1]): void => {
     healthMonitor.recordTransportFailure(kind, code);
   };
+  // ===== 会话域写入面（@since v3.43，task_093 / v3.2a S3）=====
+  // 与 characterManager / taskManager 同一模式：组合根持**一个**实例，注入
+  //   runtime（session.interrupt 落点）与业务侧（chat / task 的 LITE 记账）——
+  //   两处写的是同一份 WorldState.sessions。
+  // 纯构造（无 IO 无订阅无副作用），故可提前到此处建（chat-service 在下方就要用它）。
+  // ★ 远程模式（task_083）不接：真相在 service 的 core store（铁律 1「真相唯一」），
+  //   本地再记一份会话 = 第二份真相（投影会被整帧覆盖，白记）。
+  // 事件源（task_101）：渲染侧没有会话落库通道 → 会话事件在渲染侧是"写出来就没了"，
+  //   而续聊的回灌正需要事件流。故渲染侧配一个**进程内**事件源（写口 + 读口同一份内存）。
+  const sessionEventLog = createSessionEventLog();
+  // 互聊服务引用（@since v3.47，task_101）：`session.resume` 命令的落点 ——
+  //   续跑要由**互聊引擎**接手（回灌上文 + 重启轮转），core 不跑互聊（与 pipeline.start 同一纪律）。
+  //   它在下面的「角色抽屉 + CLI」分支里建，故这里先留一个引用位（null = 引擎不在本进程）。
+  let peerChatService: AgentChatService | null = null;
+  const sessionManager = createSessionManager({
+    store: worldStore,
+    // ★ 事件源（@since v3.47，task_101）：渲染侧没有会话落库通道（会话两张表由 service 独占写，
+    //   铁律 6），此前事件写出来就**丢了** —— 而 resume 的回灌（core/session/context-replay.ts）
+    //   没有事件源就**如实拒绝**（「事件源未附着」）。这里补一个**进程内**事件源
+    //   （app/services/session-event-log.ts：写口与读口同一份内存，条数与会话数都有上限）。
+    //   远程模式不接：真相在 service 进程（铁律 1「真相唯一」），本地再记一份 = 第二份真相。
+    ...(remote ? {} : { persist: sessionEventLog.persist, read: sessionEventLog.read }),
+    // 长会话压缩（@since v3.48，task_106 / v3.2b-B7）：事件条数超过阈值 → 老段折叠成一条摘要。
+    //   阈值来自 env `SX_SESSION_COMPRESS_THRESHOLD`（缺省 200，解析见 app/services/session-compress-config.ts）。
+    compressThreshold: resolveSessionCompressThreshold(sessionCompressThresholdRaw()),
+  });
+  // ===== 自动起名（@since v3.47，task_104 / v3.2b-B5）=====
+  //   起名实现按 env 三件套选：齐全 → LLM 版（OpenAI 兼容 chat completions，失败静默回退规则版）；
+  //   缺任一 → 规则版（**行为与 2a 逐字一致** —— 建会话时算出的标题不变，写回时同名不改）。
+  //   env 读法见 dev-flags.ts（运行时 preload 透传 > 构建期 vite define）。
+  //   起名是**旁路**：异步、不阻塞互聊开场 / 任务开工；写回走会话域的 manager.updateTitle。
+  //   远程模式不接（真相在 service 进程，本地再记一份 = 第二份真相）。
+  const sessionTitleService = remote
+    ? undefined
+    : createSessionTitleServiceFromEnv({
+        sessions: sessionManager,
+        env: titleLlmEnv(),
+        logger: (line) => console.warn(`[Stratix] ${line}`),
+      });
+  // ===== @会话引用（@since v3.49，task_107 / v3.2b-B8）=====
+  //   互聊议题 / 任务指令里的 `@session_<id>` → 校验会话存在 → 读它的近期事件 → 拼注入块。
+  //   读口与 manager 同源：会话摘要在 worldStore（会话域自己写的那份），
+  //   事件在进程内事件日志（渲染侧的会话事件不落 SQLite —— 那两张表由 service 进程独占写，铁律 6）。
+  //   远程模式不接（真相在 service 进程 —— 本地解析出来的会话是另一份，引用它等于引用错对象）。
+  const sessionReferenceService = remote
+    ? undefined
+    : createSessionReferenceService({
+        readSession: (sessionId) =>
+          worldStore.getState().sessions?.find((item) => item.id === sessionId) ?? null,
+        readSessionEvents: (sessionId, options) =>
+          sessionEventLog.read.readSessionEvents(sessionId, options),
+        logger: (line) => console.warn(`[Stratix] ${line}`),
+      });
   if (characterDrawer && cliChat) {
     const chatService = createChatService({
       view: characterDrawer,
@@ -435,6 +514,10 @@ async function boot(): Promise<void> {
       // task_053：换成包过话题缓存的同一个 persister（上方组装说明）。
       persistMessage: contextPersister.persist,
       provideContext: stratixContextSource,
+      // task_093：会话域 LITE 接线（character_chat）—— 首轮建会话、每轮末追加一条空 round 事件
+      //   （只更新 lastEventAt / counters，消息本体仍在 chat_messages 表里，不重复落库）。
+      //   远程模式不接（见上方 sessionManager 注释：本地不能再造一份真相）。
+      sessions: remote ? undefined : sessionManager,
       // task_054：transport exit 异常旁路上报健康监测；离线拦截的轻提示口（warn tone）。
       onTransportError: transportHealthReport,
       notify: (text) => showToast(text, 'warn'),
@@ -494,9 +577,21 @@ async function boot(): Promise<void> {
       persistMessage: contextPersister.persist,
       provideContext: stratixContextSource,
       expWeight: expWeightFor,
+      // task_090：互聊回合超时可配 —— 环境变量 STRATIX_PEER_TURN_TIMEOUT_MS 覆盖缺省 120s
+      //（原始串读法见 dev-flags.ts，解析 + 钳位见 agent-chat-service 的 resolvePeerTurnTimeoutMs）。
+      timeoutMs: resolvePeerTurnTimeoutMs(peerTurnTimeoutRaw()),
       // task_054：互聊回合的 exit 异常同样上报健康审计（与 chat / task 同一端口）。
       onTransportError: transportHealthReport,
+      // task_094：互聊接入会话域（kind=peer_chat）—— 开场建会话 + 全量事件落库 +
+      //   中断显式化（修「超时即丢」）。远程模式不接（见上方 sessionManager 注释）。
+      sessions: remote ? undefined : sessionManager,
+      // task_104：自动起名（异步旁路）—— 开场后按素材起名，写回走会话域的 manager.updateTitle。
+      ...(sessionTitleService ? { titles: sessionTitleService } : {}),
+      // task_107：@会话引用解析器 —— 议题里的 `@session_<id>` → 校验 + 读事件 + 拼注入块。
+      ...(sessionReferenceService ? { references: sessionReferenceService } : {}),
     });
+    // task_101：登记到引用位（`session.resume` 命令的落点，见上方声明处的说明）。
+    peerChatService = agentChatService;
     // 三次注入 deps：互聊入口（表单开始 / 停止钮 / 插话框 → agent-chat-service）。
     characterDrawer.deps = {
       ...characterDrawer.deps,
@@ -732,6 +827,18 @@ async function boot(): Promise<void> {
     character: characterManager,
     mission: missionManager,
     task: taskManager,
+    // task_093：会话域写入面 —— `session.interrupt` 命令的落点（与上面三个 manager 同一实例）。
+    session: sessionManager,
+    // task_101：`session.resume` 命令的落点 —— 续跑由**互聊引擎**接手
+    //   （回灌上文 + 重启轮转）；core 不跑互聊，只做转发（与 pipeline.start 同一纪律）。
+    //   引擎不在本进程（无抽屉 / 无 CLI）时不注入 —— 命令按未落地处理，不假装恢复成功。
+    ...(peerChatService
+      ? {
+          sessionResume: (sessionId: string): void => {
+            void peerChatService?.resume(sessionId);
+          },
+        }
+      : {}),
     // task_051：流水线编排器端口 —— runtime 只把 pipeline.start 转发给它（core 不执行编排，
     // 见 core/task/pipeline.ts 架构注）；未注入时命令按未落地处理（与 agent-link 同口径）。
     pipeline: pipelineService,
@@ -803,6 +910,13 @@ async function boot(): Promise<void> {
         else if (record.status === 'failed') missionManager.cancelMission(record.missionId);
       },
       pushNotice: (notice) => worldStore.pushNotice(notice),
+      // task_093：会话域 LITE 接线（task_run / mission_run）—— 任务收尾时建会话并收尾（两事件）。
+      //   远程模式不接（见上方 sessionManager 注释：本地不能再造一份真相）。
+      sessions: remote ? undefined : sessionManager,
+      // task_104：自动起名（异步旁路）—— task_run 建会话后起名，写回走 manager.updateTitle。
+      ...(sessionTitleService ? { titles: sessionTitleService } : {}),
+      // task_107：@会话引用解析器 —— 任务指令里的 `@session_<id>` → 校验 + 读事件 + 拼注入块。
+      ...(sessionReferenceService ? { references: sessionReferenceService } : {}),
       // task_046：执行期 chunk 原序转发进任务输出面板（实时 tail 视图）。面板拿不到
       // （极端时序：chrome 未建）时端口不接 —— 执行照常，只是没有实时视图。
       onTaskChunk: taskOutputView

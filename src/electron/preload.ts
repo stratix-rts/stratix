@@ -180,7 +180,7 @@ export interface ElectronAPI {
   customAgents: CustomAgentsIpcApi;
 
   /**
-   * 开发期开关透传（@since v3.9，task_026）。
+   * 开发期开关 / 调参透传（@since v3.9，task_026）。
    * why 只透传白名单里的开关：process.env 整个交给渲染层等于把主进程环境（含凭据）暴露出去。
    */
   env: {
@@ -193,6 +193,30 @@ export interface ElectronAPI {
     STRATIX_REMOTE: string | null;
     /** world-sync 端点地址（远程模式的数据源；null = 用缺省地址）。 */
     STRATIX_WORLD_SYNC_URL: string | null;
+    /**
+     * 互聊单回合超时（ms，字符串；@since v3.44，task_090）。
+     * why 也要透传：互聊编排跑在渲染层，读不到主进程的 process.env；
+     *   渲染层只能经 preload 这条白名单通道拿到「主进程启动时带着的环境变量」。
+     * null = 未设置 → 用缺省 120s（解析与钳位在 app/services/agent-chat-service.ts）。
+     */
+    STRATIX_PEER_TURN_TIMEOUT_MS: string | null;
+    /**
+     * LLM 自动起名的 chat completions 端点（@since v3.47，task_104；null = 未设置 → 规则版起名）。
+     * why 也要透传：自动起名跑在渲染层，读不到主进程的 process.env；
+     *   渲染层只能经 preload 这条白名单通道拿到「主进程启动时带着的环境变量」。
+     */
+    SX_TITLE_LLM_URL: string | null;
+    /** LLM 自动起名的凭据（Bearer）。null = 未设置 → 规则版起名。 */
+    SX_TITLE_LLM_KEY: string | null;
+    /** LLM 自动起名的模型名。null = 未设置 → 规则版起名。 */
+    SX_TITLE_LLM_MODEL: string | null;
+    /**
+     * 长会话压缩阈值（事件条数；@since v3.48，task_106 / v3.2b-B7）。
+     * null = 未设置 → 用缺省 200（解析见 app/services/session-compress-config.ts）。
+     * why 也要透传：会话编排跑在渲染层，读不到主进程的 process.env；
+     *   渲染层只能经 preload 这条白名单通道拿到「主进程启动时带着的环境变量」。
+     */
+    SX_SESSION_COMPRESS_THRESHOLD: string | null;
   };
 
 }
@@ -352,6 +376,15 @@ const electronAPI: ElectronAPI = {
     // 远程模式开关与端点地址（@since v3.43，task_083）：已打包的 Electron 也要能按环境变量开远程模式。
     STRATIX_REMOTE: process.env.STRATIX_REMOTE ?? null,
     STRATIX_WORLD_SYNC_URL: process.env.STRATIX_WORLD_SYNC_URL ?? null,
+    // 互聊回合超时（@since v3.44，task_090）：渲染层要靠它拿到「主进程启动时带着的」超时值。
+    STRATIX_PEER_TURN_TIMEOUT_MS: process.env.STRATIX_PEER_TURN_TIMEOUT_MS ?? null,
+    // LLM 自动起名配置（@since v3.47，task_104）：渲染层靠它拿到「主进程启动时带着的」起名后端。
+    // 三件套缺任一 → 规则版起名（见 app/services/llm-title-provider.ts）。
+    SX_TITLE_LLM_URL: process.env.SX_TITLE_LLM_URL ?? null,
+    SX_TITLE_LLM_KEY: process.env.SX_TITLE_LLM_KEY ?? null,
+    SX_TITLE_LLM_MODEL: process.env.SX_TITLE_LLM_MODEL ?? null,
+    // 长会话压缩阈值（@since v3.48，task_106）：渲染层靠它拿到「主进程启动时带着的」压缩阈值。
+    SX_SESSION_COMPRESS_THRESHOLD: process.env.SX_SESSION_COMPRESS_THRESHOLD ?? null,
   },
 
 };

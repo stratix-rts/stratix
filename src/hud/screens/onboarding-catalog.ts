@@ -67,14 +67,16 @@ export const STEP_LABELS: Readonly<Record<OnboardingStep, string>> = Object.free
 // ============================================================================
 
 /**
- * 可建档的内置 T1 五家 agent 的显示名（@since v3.32 task_056：只盖内置 —— 自定义注册的
- * 显示名在注册表里，随 DetectedAgent.label 广播，见 agentKindLabel 的回落链）。 */
+ * 可建档的内置 T1 六家 agent 的显示名（@since v3.32 task_056：只盖内置 —— 自定义注册的
+ * 显示名在注册表里，随 DetectedAgent.label 广播，见 agentKindLabel 的回落链）。
+ * @since v3.33（task_088）并入 dsh（DeepSeek Harness）。 */
 export const AGENT_KIND_LABELS: Readonly<Record<string, string>> = Object.freeze({
   'claude-code': 'Claude Code',
   codex: 'Codex',
   opencode: 'OpenCode',
   kimi: 'Kimi',
   openclaw: 'OpenClaw',
+  dsh: 'DeepSeek Harness',
 });
 
 /**

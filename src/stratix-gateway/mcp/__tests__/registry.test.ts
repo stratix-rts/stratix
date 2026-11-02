@@ -53,7 +53,7 @@ describe('MCP 工具注册表', () => {
     expect(registry.listTools().map((tool) => tool.name)).toEqual(registered);
   });
 
-  it('工具面按清单位次返回（九件，顺序固定）', () => {
+  it('工具面按清单位次返回（十四件，顺序固定）', () => {
     const registry = buildToolRegistry(DEFAULT_MCP_TOOLS);
     expect(registry.listTools().map((tool) => tool.name)).toEqual([
       'stratix_world_snapshot', // §2.1
@@ -65,7 +65,26 @@ describe('MCP 工具注册表', () => {
       'stratix_mission_checkpoint', // §2.9（位次插在 mission 域内）
       'stratix_chat_send', //      §2.7
       'stratix_registry', //      §2.8
+      'stratix_session_list', //   §2.10（session 域新开）
+      'stratix_session_get', //    §2.11
+      'stratix_session_interrupt', // §2.12（session 域写面）
+      'stratix_session_resume', //    §2.13（session 域写面：恢复续聊）
+      'stratix_session_fork', //     §2.14（session 域写面：事件点分叉）
     ]);
+  });
+
+  it('session 域的五件工具排在既有九件之后（既有工具相对次序不变）', () => {
+    const registry = buildToolRegistry(DEFAULT_MCP_TOOLS);
+    const names = registry.listTools().map((tool) => tool.name);
+    expect(names.indexOf('stratix_session_list')).toBe(names.indexOf('stratix_registry') + 1);
+    expect(names.indexOf('stratix_session_get')).toBe(names.indexOf('stratix_session_list') + 1);
+    expect(names.indexOf('stratix_session_interrupt')).toBe(
+      names.indexOf('stratix_session_get') + 1
+    );
+    expect(names.indexOf('stratix_session_resume')).toBe(
+      names.indexOf('stratix_session_interrupt') + 1
+    );
+    expect(names.indexOf('stratix_session_fork')).toBe(names.indexOf('stratix_session_resume') + 1);
   });
 
   it('新工具插在 mission_status 之后、registry 之前（mission 域聚拢，既有工具相对次序不变）', () => {

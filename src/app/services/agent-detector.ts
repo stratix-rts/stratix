@@ -9,7 +9,7 @@
  *   1. 在本文件里直接 spawn 子进程 —— 命令执行一律走注入的 execFn
  *      （真实实现见同目录 node-exec.ts；单测注入假 execFn 覆盖已装 / 未装 / 超时三态）；
  *   2. 阻塞式探测（等全部结果再返回）—— 必须逐条出结果逐条回调：
- *      名单 11 项、每项 10s 超量，全等完再出结果等于首启白屏几十秒；
+ *      名单 12 项、每项 10s 超量，全等完再出结果等于首启白屏几十秒；
  *   3. 把名单抄到别处 —— 名单只在本文件一份（AGENT_DETECTION_TARGETS），其余地方引用它；
  *   4. 碰 hud / world 渲染层 —— 检测结果只进 WorldState，怎么渲染归 hud；
  *   5. 引入新依赖 —— 只用 Node 内置能力 + 既有 core 契约。
@@ -50,7 +50,7 @@ export interface AgentDetectionTarget {
 }
 
 /**
- * 待探测名单（T1-T3 全量 11 项）。
+ * 待探测名单（T1-T3 全量 12 项）。
  * why 名单在这里而不是散落各处：AGENT-MATRIX.md 是文档（会被人改），
  * 代码里需要一份**可测**的对照物 —— 单测据此断言"代码里的名单与文档口径一致"
  * （项数、分层分布、二进制名唯一），文档改了而代码没改会被测出来。
@@ -62,6 +62,14 @@ export const AGENT_DETECTION_TARGETS: readonly AgentDetectionTarget[] = [
   { kind: 'opencode', tier: 'T1', binary: 'opencode', versionArgs: ['--version'] },
   { kind: 'kimi', tier: 'T1', binary: 'kimi', versionArgs: ['--version'] },
   { kind: 'openclaw', tier: 'T1', binary: 'openclaw', versionArgs: ['--version'] },
+  // dsh（DeepSeek Harness，@since v3.33 task_088）：**没有本地安装** —— 它按需经
+  // `npx -y @deepseek-ai/dsh` 拉取运行（见 cli-transport/adapters/dsh.ts）。
+  // 故探测口径 = 「运行器 npx 在不在」：which npx 找运行器，`npx --version` 取版本。
+  // why 不探 `dsh` 本身：绝大多数机器没装全局 dsh，探它会永远报"未安装"，
+  //   健康监测两轮后判离线 → 派任务/对话被拦，功能等于没有（比"版本列不准"严重得多）。
+  // why 版本列报的是 npx/npm 的版本：探 dsh 包要真下载（冷缓存几十秒，会被 10s 超时打断
+  //   并把「拉包」拖成永久失败）。dsh 自身的版本由它在运行时自报（`dsh --version`）。
+  { kind: 'dsh', tier: 'T1', binary: 'npx', versionArgs: ['--version'] },
   // —— T2：基础适配（headless 可用，会话 / 结构化能力有限）——
   { kind: 'gemini', tier: 'T2', binary: 'gemini', versionArgs: ['--version'] },
   { kind: 'qwen', tier: 'T2', binary: 'qwen', versionArgs: ['--version'] },
@@ -73,7 +81,7 @@ export const AGENT_DETECTION_TARGETS: readonly AgentDetectionTarget[] = [
 ];
 
 /**
- * T1 子名单（@since v3.30，task_054）：健康监测的周期探测面 —— 只有 T1 五家能绑角色 / 跑
+ * T1 子名单（@since v3.30，task_054）：健康监测的周期探测面 —— 只有 T1 那几家能绑角色 / 跑
  * transport，掉线判定也只对它们有意义（T2/T3 没有执行链路，探它们是白耗子进程）。
  * 从主名单过孵而不是另抄一份（名单只在本文件一份的铁律）；主名单增删 T1 项时自动跟随。
  */
@@ -166,7 +174,7 @@ async function runGuarded(
     if (error instanceof DetectionTimeoutError) return { kind: 'timeout' };
     return { kind: 'failed' };
   } finally {
-    // 计时器必须清理：探测 11 项就会挂 11 个定时器，不清会拖住 Node 进程退出（资源必须可清理）。
+    // 计时器必须清理：探测 12 项就会挂 12 个定时器，不清会拖住 Node 进程退出（资源必须可清理）。
     if (timer !== undefined) clearTimeout(timer);
   }
 }

@@ -58,7 +58,17 @@ const DEFAULT_FILENAME = 'stratix.db';
  * why 独立表：exp 变更此前无历史表（characters 只有当前快照），成长曲线 / 活动热力 /
  * 履历时间线需要时间序真相源 —— 见 DAO 文件头。
  */
-const TARGET_SCHEMA_VERSION = 12;
+/**
+ * v13（@since v3.43，task_092）：新增 sessions + session_events 两张表（会话域存储）。
+ * sessions = 会话**摘要快照**（id/kind/title/participants JSON/status/ref_id/created_at/
+ * last_event_at/closed_at/event_count；id 主键；kind+status 索引 + created_at 索引）；
+ * session_events = 会话**事件流**（session_id/seq/type/payload JSON/created_at；
+ * 主键 (session_id, seq)；created_at 索引）。
+ * DDL 与 src/app/services/persistence/session-dao.ts / session-event-dao.ts 的 ensure* 同构。
+ * why 两张表：摘要可 upsert（状态一直在动），事件只 append（历史即证据）—— 写语义不同，不能挤一张表。
+ * why 只加不删：新表不影响既有表结构，老库数据零迁移（与 v11 / v12 同方案）。
+ */
+const TARGET_SCHEMA_VERSION = 13;
 
 /** Valid table name characters (alphanumeric + underscore) */
 const VALID_TABLE_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -179,6 +189,7 @@ export class StratixDatabase {
     this.migrateAgentHealthEvents();
     this.migrateCustomAgents();
     this.migrateExpEvents();
+    this.migrateSessions();
     this.migrateSafetyIndexes();
   }
 
@@ -402,6 +413,49 @@ export class StratixDatabase {
       )
     `);
     log('info', 'Created custom_agents table (task_056)');
+  }
+
+  /**
+   * 会话域两张表（@since v3.43，task_092，schema v13）：会话摘要快照 + 会话事件流。
+   * IF NOT EXISTS 幂等：新库（schema_version = 0）与 v12 老库（版本号升 13 重跑迁移）都走到这里；
+   * 老库里已有同名表时直接跳过（表结构只加不改，重跑不重建）。
+   * DDL 与 app/services/persistence/session-dao.ts / session-event-dao.ts 的 ensure* 同构同步改。
+   */
+  private migrateSessions(): void {
+    const tables = this.getTableNames();
+    if (!tables.has('sessions')) {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS sessions (
+          id TEXT PRIMARY KEY,
+          kind TEXT NOT NULL,
+          title TEXT NOT NULL,
+          participants TEXT NOT NULL DEFAULT '[]',
+          status TEXT NOT NULL,
+          ref_id TEXT,
+          created_at INTEGER NOT NULL,
+          last_event_at INTEGER NOT NULL,
+          closed_at INTEGER,
+          event_count INTEGER NOT NULL DEFAULT 0
+        )
+      `);
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_kind_status ON sessions(kind, status)');
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at)');
+      log('info', 'Created sessions table (task_092)');
+    }
+    if (!tables.has('session_events')) {
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS session_events (
+          session_id TEXT NOT NULL,
+          seq INTEGER NOT NULL,
+          type TEXT NOT NULL,
+          payload TEXT NOT NULL DEFAULT '{}',
+          created_at INTEGER NOT NULL,
+          PRIMARY KEY (session_id, seq)
+        )
+      `);
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_session_events_created_at ON session_events(created_at)');
+      log('info', 'Created session_events table (task_092)');
+    }
   }
 
   /**

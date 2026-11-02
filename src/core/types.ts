@@ -97,6 +97,14 @@ export const MAX_TASK_PROMPT_LEN = 20_000;
 export const MAX_TASK_SUMMARY_LEN = 2_000;
 
 /**
+ * @since v3.40（task_091）会话记录条数上限（core/session 强制）。
+ * 与 MAX_MISSIONS / MAX_TASKS 同一理由：sessions 随 WorldState 全量广播，必须有界。
+ * 超限时先丢**已关闭（closed）**的最旧会话（FIFO）；全是活会话时腾不出位置就拒绝新建
+ * —— 绝不静默挤掉在办会话（让一条正在进行的会话消失，比"拒绝新建"更糟）。
+ */
+export const MAX_SESSIONS = 200;
+
+/**
  * @since v3.33（task_057）战场世界边界（世界坐标，左上角 + 宽高）。
  * why 冻结在契约层：三处消费方 —— world 相机钳制（camera/camera-math 的 DEFAULT_WORLD_BOUNDS
  * 以它为唯一来源）、core 的 camera.center 命令钳制（core/camera.ts）、hud 小地图的世界↔画布
@@ -521,14 +529,22 @@ export const STRATIX_NAMETAGS_TOGGLE_KEY = 'stratix.unit.nametags';
 /**
  * @since v3.7 本地 agent 种类词表。**词表即契约**：core 按它校验 agentKind（不认识的一律拒发），
  *   HUD / 首启引导屏按同一份词表渲染"绑的是哪个 CLI agent"；新增一种 CLI agent 两侧同步改。
- *   取值来源：docs/AGENT-MATRIX.md 的 T1/T2 名单（claude / codex / opencode / kimi / openclaw）。
+ *   取值来源：docs/AGENT-MATRIX.md 的 T1/T2 名单（claude / codex / opencode / kimi / openclaw / dsh）。
  * @since v3.32（task_056）扩自定义段：`custom:<id>` 形态（注册表 id 拼进 kind 字符串）。
  *   why 把注册身份编进 kind 而不是只存 'custom'：角色档案 / 检测行 / transport 工厂都按 kind
  *   单键路由，一个 kind 必须唯一定位到"哪一家 CLI"；多家自定义注册共享 'custom' 会让
- *   角色与执行器对不上号。内置五家 = 静态词表（AGENT_KINDS），自定义 = 动态前缀段
+ *   角色与执行器对不上号。内置 = 静态词表（AGENT_KINDS），自定义 = 动态前缀段
  *   （isCustomAgentKind / customAgentIdOf / buildCustomAgentKind，见 custom-agent.ts 的校验口径）。
+ * @since v3.33（task_088）并入 dsh（DeepSeek Harness）：第四种 CLI worker 形态，
+ *   与 claude/kimi 平级（agent 同为 CLI worker，只是执行器不同 —— dsh 走 `npx -y @deepseek-ai/dsh`）。
  */
-export type BuiltinAgentKind = 'claude-code' | 'codex' | 'opencode' | 'kimi' | 'openclaw';
+export type BuiltinAgentKind =
+  | 'claude-code'
+  | 'codex'
+  | 'opencode'
+  | 'kimi'
+  | 'openclaw'
+  | 'dsh';
 
 /** 自定义 agent 的 kind 前缀（`custom:<注册表id>`）。常量冻结在 core：两侧不许各抄字面量。 */
 export const CUSTOM_AGENT_KIND_PREFIX = 'custom:';
@@ -536,15 +552,23 @@ export const CUSTOM_AGENT_KIND_PREFIX = 'custom:';
 /** 自定义 agent 的 kind 形态（模板字面量：前缀 + 注册表 id）。id 的合法性口径见 core/custom-agent.ts。 */
 export type CustomAgentKind = `${typeof CUSTOM_AGENT_KIND_PREFIX}${string}`;
 
-/** @since v3.7 内置五家；@since v3.32（task_056）并上自定义段（`custom:<id>`）。 */
+/** @since v3.7 内置五家（@since v3.33 task_088 起为六家，含 dsh）；@since v3.32（task_056）并上自定义段（`custom:<id>`）。 */
 export type AgentKind = BuiltinAgentKind | CustomAgentKind;
 
 /**
  * @since v3.7 agent 种类词表的运行时可枚举一份（core 校验用；HUD 也可 import 同一份渲染标签）。
- * @since v3.32（task_056）语义收窄为**内置**五家的枚举 —— 自定义注册是动态集合（在 custom_agents 表里），
+ * @since v3.32（task_056）语义收窄为**内置**的枚举 —— 自定义注册是动态集合（在 custom_agents 表里），
  *   静态词表枚举不了它；判"这个 kind 能不能绑角色"一律走 isBindableAgentKind（内置 ∪ 合法 custom 段）。
+ * @since v3.33（task_088）并入 dsh。
  */
-export const AGENT_KINDS: readonly BuiltinAgentKind[] = ['claude-code', 'codex', 'opencode', 'kimi', 'openclaw'];
+export const AGENT_KINDS: readonly BuiltinAgentKind[] = [
+  'claude-code',
+  'codex',
+  'opencode',
+  'kimi',
+  'openclaw',
+  'dsh',
+];
 
 /**
  * @since v3.32（task_056）kind 是否为自定义注册形态（`custom:` 前缀 + 合法注册 id）。
@@ -568,7 +592,7 @@ export function buildCustomAgentKind(id: string): CustomAgentKind {
 }
 
 /**
- * @since v3.32（task_056）kind 能否绑角色建档：内置五家（AGENT_KINDS）∪ 形状合法的自定义段。
+ * @since v3.32（task_056）kind 能否绑角色建档：内置六家（AGENT_KINDS）∪ 形状合法的自定义段。
  * 建档校验（character/profile.ts）、恢复翻译（game-save-coordinator）、向导可建档名单共用这一份裁决，
  * 不许三处各写一套（否则一处认自定义另一处不认，档案会被静默降级成"未绑定"）。
  */
@@ -804,12 +828,13 @@ export interface CharacterView {
 export type AgentDetectionTier = 'T1' | 'T2' | 'T3';
 
 /**
- * @since v3.8 **可检测**的本地 CLI agent 词表（T1-T3 全量 11 种）。
+ * @since v3.8 **可检测**的本地 CLI agent 词表（T1-T3 全量 12 种）。
  * why 与 AgentKind 分开成两份词表：AgentKind 是「角色**已绑定**的 agent 种类」
- *   （目前只有 T1 的 5 种，见 core/character/profile.ts 的建档校验），
+ *   （目前只有 T1 的 6 种，见 core/character/profile.ts 的建档校验），
  *   而检测词表覆盖 T1-T3 全量 —— 「探测到但还不能绑定」的 agent（T2/T3）得有地方安放，
  *   硬塞进 AgentKind 会让建档校验放行一批尚无适配实现的种类。
  * 两份词表是**包含关系**（AgentKind ⊂ DetectableAgentKind），不是同一份清单。
+ * @since v3.33（task_088）并入 dsh（T1 —— 有 headless one-shot + NDJSON 事件流 + 会话 id）。
  */
 export const DETECTABLE_AGENT_KINDS = [
   // T1 —— 深度适配
@@ -818,6 +843,7 @@ export const DETECTABLE_AGENT_KINDS = [
   'opencode',
   'kimi',
   'openclaw',
+  'dsh',
   // T2 —— 基础适配
   'gemini',
   'qwen',
@@ -865,7 +891,7 @@ export interface DetectedAgent {
   readonly path: string | null;
   /**
    * @since v3.32（task_056）显示名（仅自定义注册行携带：注册表里的用户命名）。
-   * why 加这个字段：内置五家有静态标签表（AGENT_KIND_LABELS），自定义注册的名字只存在
+   * why 加这个字段：内置六家有静态标签表（AGENT_KIND_LABELS），自定义注册的名字只存在
    * 注册表里 —— 检测行是它进入 WorldState 的唯一载体，不带名字 HUD 就只能显示 `custom:xxx`。
    * 内置行不带该键（undefined ≡ 无别名，渲染回落 agentKindLabel）。
    */
@@ -951,6 +977,58 @@ export interface AgentMessageView {
 }
 
 // ============================================================================
+// ★ 会话域契约（@since v3.40，task_091；实现见 core/session/）
+// ============================================================================
+
+/**
+ * @since v3.40（task_091）会话种类。来源：docs/SESSION-PLAN.md §2「各 kind 的接线策略」。
+ * 粒度约定（**渐进：新写走新模型，旧表不迁移**）：
+ *   - character_chat：每角色一条长生命周期会话（历史读现有 chat-history-dao，不搬）；
+ *   - peer_chat：每场互聊一条（事件全量落库 —— 修「超时即丢」）；
+ *   - task_run：每条 task 执行一条（@since v3.46 / task_105 起**全量事件化**：
+ *     执行路径埋点 task_started / step / output_tail / completed / failed）；
+ *   - mission_run：每条 mission 一条（LITE，只记 create / close）；
+ *   - shell_link：每条 agent-link 连接一条（LITE，只记 create / close）。
+ */
+export type SessionKind =
+  | 'character_chat'
+  | 'peer_chat'
+  | 'task_run'
+  | 'mission_run'
+  | 'shell_link';
+
+/**
+ * @since v3.40（task_091）会话状态。状态机见 core/session/machine.ts。
+ *   active：有活动 / 在说话；idle：静默期；interrupted：被中断（超时 / 取消 / 进程死）；
+ *   closed：终态（不再收事件）。
+ */
+export type SessionStatus = 'active' | 'idle' | 'interrupted' | 'closed';
+
+/**
+ * @since v3.40（task_091）会话**摘要**（入 WorldState）。
+ * ★ 只有摘要入态：事件本体（消息 / 轮次 / 中断标记）落 session_events 表，不进广播 ——
+ *   否则 WorldState 会随消息数无限膨胀（广播体积必须有界的性能铁律）。
+ * 参与者视 kind 分别是 characterId / agentId / clientId。
+ */
+export interface SessionRecord {
+  readonly id: string;
+  readonly kind: SessionKind;
+  /** 自动起名（规则版截断，2b 才上 LLM）。 */
+  readonly title: string;
+  readonly participants: readonly string[];
+  readonly status: SessionStatus;
+  /** 关联实体 id（task_run → taskId、mission_run → missionId…）；无关联时不出现该键。 */
+  readonly refId?: string;
+  readonly createdAt: number;
+  /** 最后一条事件的时刻（与 status 无关）。 */
+  readonly lastEventAt: number;
+  /** 收尾时刻；未收尾为 null。 */
+  readonly closedAt: number | null;
+  /** 事件计数（摘要计数；事件本体在 session_events 表）。 */
+  readonly eventCount: number;
+}
+
+// ============================================================================
 // ★ 总线契约：core → 两层广播的完整世界快照
 // ============================================================================
 
@@ -987,7 +1065,7 @@ export interface WorldState {
    * @since v3.8 本地 CLI agent 检测结果（app/services/agent-detector 写入）。
    * 刻意可选：与 settings / currentScreen 同理走可选增补 —— 契约增补不许打破既有
    * WorldState 构造点（core / hud 单测夹具）的编译；读取方缺省时按「尚未检测」处理。
-   * 体积天然有界：名单是固定 11 项（DETECTABLE_AGENT_KINDS），逐条到达也只是覆盖同名项，
+   * 体积天然有界：名单是固定 12 项（DETECTABLE_AGENT_KINDS），逐条到达也只是覆盖同名项，
    * 不存在无限增长（perf：全量广播的数据必须有界）。
    */
   detectedAgents?: DetectedAgent[];
@@ -1007,6 +1085,14 @@ export interface WorldState {
    * 体积天然有界：槽位键域 1..9（MAX_CONTROL_GROUP_SLOT），值受 MAX_SELECTION_SIZE 截断。
    */
   selectionGroups?: ReadonlyMap<number, readonly string[]>;
+  /**
+   * @since v3.40（task_091）会话摘要列表（core/session 写入，上限 MAX_SESSIONS）。
+   * 刻意可选：与 settings / detectedAgents / tasks / selectionGroups 同理走可选增补 ——
+   * 契约增补不许打破既有 WorldState 构造点（core / hud 单测夹具）的编译；
+   * 读取方缺省时按空列表处理。
+   * ★ 入态的只有**摘要**（SessionRecord）；事件本体落 session_events 表，不进广播。
+   */
+  sessions?: SessionRecord[];
 }
 
 // ============================================================================
@@ -1249,7 +1335,38 @@ export type HudCommand =
    *   validatePipelineSpec 裁决（坏形状落一条 failed 流水线，看得见，不静默丢）。
    * UI 入口：agent-panel 派发表单的「流水线」模式（预设模板 + 自定义两站）。
    */
-  | { type: 'pipeline.start'; spec: PipelineSpec; issue: string };
+  | { type: 'pipeline.start'; spec: PipelineSpec; issue: string }
+  /**
+   * @since v3.40（task_091）中断会话：把一条**在办**会话（active / idle）置为 interrupted。
+   * 载荷口径：sessionId 命中 WorldState.sessions。
+   * why 需要它：互聊超时此前是"静默丢弃"（会话没了、历史也没了）—— 中断标记让会话可见、可查，
+   *   这是 S4「互聊接入会话域」要修的根因；本单（v3.2a S1）只交付纯逻辑，接线在 S3。
+   * 状态机裁决：终态（closed）拒绝并回 Notice（重复收尾不改写历史）；
+   *   已中断的会话再中断同样拒绝（重复标记不改写历史）。
+   * session.resume（恢复续聊、上下文回灌）属 2b，见下一条。
+   */
+  | { type: 'session.interrupt'; sessionId: string }
+  /**
+   * @since v3.47（task_101 / v3.2b-B2）恢复会话：把一条**被中断**的互聊会话接回进行中，
+   *   并把回灌的上文重新喂给参与者（续跑）。
+   * 载荷口径：sessionId 命中 WorldState.sessions。
+   * 准入（core/session 的状态机裁决）：kind=peer_chat（第一期口径，方案 §8）+ status=interrupted。
+   * 落点：runtime 把命令交给注入的**恢复端口**（续跑方在 app 层 —— 互聊引擎负责把回灌的
+   *   上文喂回参与者并重启轮转；core 自己不跑互聊，只做转发，与 pipeline.start 同一纪律）。
+   *   端口缺席 = 命令按未落地处理（不假装恢复成功）。
+   */
+  | { type: 'session.resume'; sessionId: string }
+  /**
+   * @since v3.48（task_102 / v3.2b-B3）分叉会话：从一条会话的某个时间点**派生出一条新会话**
+   *   （方案 docs/SESSION-PLAN.md §8「fork = 新会话 + 事件复制到 atSeq」）。
+   * 载荷口径：sessionId 命中 WorldState.sessions；atSeq = 复制截止的事件序号（**含**该序号）。
+   * why 需要它：一条会话聊岔了想"从头再来一次"时，**接着聊**（resume）不对 ——
+   *   resume 只能续上被中断的那场；分叉才是"把聊到这儿为止的那段历史另起一条会话接着走"。
+   * 落点：runtime 直调 core/session 的 manager.fork（纯逻辑 —— 读事件流、复制、重排、落库，
+   *   与 session.interrupt 同一纪律；core 不需要 app 层引擎参与）。
+   * atSeq 缺省 = 全量复制；越界由 core 夹到合法区间（越界不是错误 —— "分叉到末尾"就是全量）。
+   */
+  | { type: 'session.fork'; sessionId: string; atSeq?: number };
 
 /**
  * @since v3.18 经验来源词表（`exp.gained` 事件的 source 字段，task_039）。

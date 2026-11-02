@@ -1,0 +1,14 @@
+# dsh 装载行：把 Stratix 桥挂进 profile 的工具注册表。
+#
+# 用法（dsh 的 launcher 覆盖层）：
+#   dsh --profile headless --patch ./plugins/dsh-bridge/bridge.patch.yml "..."
+#
+# why 相对路径：dsh 会把 insert 行里的相对路径按**本 patch 文件所在目录**锚定成绝对
+# file URL（app-boot 的 anchorInsertedPluginNames），因此这份 patch 可以原地跟着仓库走，
+# 不需要把插件发布到 npm、也不需要往 profile 里装包。
+- insert:
+    - id: stratix-dsh-bridge
+      name: './dist/index.js'
+      config:
+        url: 'ws://127.0.0.1:7797/ws/world-sync'
+        clientId: 'dsh-stratix-bridge'

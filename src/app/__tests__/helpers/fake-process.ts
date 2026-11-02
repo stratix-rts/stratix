@@ -82,6 +82,16 @@ export interface FakeProcessFactory {
   readonly factory: ProcessFactory;
   /** 每次拉起进程的记录（命令 + 参数）。 */
   readonly calls: FakeProcessCall[];
+  /**
+   * 每次拉起进程时传给工厂的 spawn 选项（cwd / env），与 calls **同序**。
+   * why 单独一个数组：task_090 的 env 组装断言要看「子进程实际拿到什么环境变量」
+   *   （注入值 = env，真实工厂再与 process.env 合并）；
+   *   单独放而不塞进 calls —— calls 的形状被既有断言钉死（命令 + 参数）。
+   */
+  readonly spawnOptions: Array<{
+    readonly cwd?: string;
+    readonly env?: Readonly<Record<string, string>>;
+  }>;
   /** killTree 被调用的记录（信号）。 */
   readonly kills: Array<NodeJS.Signals | undefined>;
   /** 推一行 stdout。 */
@@ -97,6 +107,7 @@ export function createFakeProcessFactory(
   options: FakeProcessFactoryOptions = {}
 ): FakeProcessFactory {
   const calls: FakeProcessCall[] = [];
+  const spawnOptions: Array<{ cwd?: string; env?: Readonly<Record<string, string>> }> = [];
   const kills: Array<NodeJS.Signals | undefined> = [];
   const stdout = createPushableStream();
   const stderr = createPushableStream();
@@ -112,8 +123,12 @@ export function createFakeProcessFactory(
     resolveExit(code);
   };
 
-  const factory: ProcessFactory = (command, args) => {
+  const factory: ProcessFactory = (command, args, spawnOpts) => {
     calls.push({ command, args: [...args] });
+    spawnOptions.push({
+      cwd: spawnOpts?.cwd,
+      env: spawnOpts?.env ? { ...spawnOpts.env } : undefined,
+    });
 
     const handle: CliProcessHandle = {
       stdout: stdout.stream,
@@ -142,6 +157,7 @@ export function createFakeProcessFactory(
   return {
     factory,
     calls,
+    spawnOptions,
     kills,
     pushStdout: (line: string): void => stdout.push(line),
     pushStderr: (line: string): void => stderr.push(line),

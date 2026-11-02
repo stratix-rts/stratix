@@ -4,7 +4,8 @@
  *   exp_events）的写入 + 读 API 用的读取口。
  * 输入：一个可选的 dataDir（缺省 = 沿用进程内已初始化的库单例，不重复开库）+ 日志口。
  * 输出：ServiceStorage —— { persistTask, persistChatMessage, persistExpEvent,
- *        readTaskOutput, loadChatMessages, loadEarlierChatMessages }。
+ *        readTaskOutput, loadChatMessages, loadEarlierChatMessages,
+ *        readSessions, readSessionEvents, persistSession, persistSessionEvent }。
  * 禁止事项：
  *   1. 在这里做业务判断（相位裁决 / 等级曲线 / 消息词表合法性）—— 那些真相在 core 与既有
  *      DAO；本模块只负责「把已经裁决好的东西写进库 / 从库里取出来」；
@@ -13,7 +14,11 @@
  *   3. 在 Electron / 渲染进程里 import 本模块 —— 本模块住在 service 侧（铁律 6：
  *      SQLite 只由 service 进程打开写，其余进程经 API 读）；
  *   4. 改表结构 / 加列 —— 三张表（character_tasks / character_chat_messages / exp_events）
- *      结构不变（零数据迁移）；表归既有 DAO，本模块只调 DAO；
+ *      结构不变（零数据迁移）；会话两张表（sessions / session_events）是**新表**（task_092），
+ *      结构归既有 DAO，本模块只调 DAO；
+ *   4b. 认 core 的会话写入面 —— 本模块只认**持久化行**（PersistedSessionRecord /
+ *      SessionEventInsert）；core 的会话摘要 / 事件信封 → 行的翻译归 session-persister.ts
+ *      （core 是纯逻辑层，翻译不该发生在存储件里）；
  *   5. 在这里缓存历史行做分页 —— 分页口径归 DAO（窗口查询）；缓存会与库漂移。
  *
  * why 单独成模块（而不是让各服务各自 import DAO）：
@@ -35,6 +40,7 @@
  *   连接，只把单例的句柄包成写口 / 读口；进程退出时连接随进程释放（无需在此 close）。
  *
  * @since v3.42（task_079 / service-split A3）。
+ *   v3.43（task_093 / v3.2a S3）追加会话两张表的写口（persistSession / persistSessionEvent）。
  */
 
 import type { ChatPersistInput } from '../../app/services/persistence/chat-history';
@@ -52,6 +58,22 @@ import {
   PERSISTED_EXP_EVENT_REASONS,
 } from '../../app/services/persistence/exp-event-dao';
 import type { SqliteDatabaseLike } from '../../app/services/persistence/game-save-dao';
+import {
+  ensureSessionsTable,
+  listSessionRecords,
+  upsertSessionRecord,
+  type PersistedSessionRecord,
+  type SessionListFilter,
+} from '../../app/services/persistence/session-dao';
+import {
+  ensureSessionEventsTable,
+  listSessionEvents,
+  listSessionEventsFrom,
+  appendSessionEvent,
+  type PersistedSessionEvent,
+  type SessionEventInsert,
+  type SessionEventPageOptions,
+} from '../../app/services/persistence/session-event-dao';
 import {
   ensureCharacterTasksTable,
   upsertTask,
@@ -100,6 +122,30 @@ export interface ServiceStorage {
     beforeId: number,
     limit?: number
   ) => PersistedChatMessage[];
+  /** 读会话摘要列表（kind / status 过滤 + 分页；创建时间倒序）。 */
+  readonly readSessions: (filter: SessionListFilter) => PersistedSessionRecord[];
+  /** 读某会话的事件流（seq 正序；beforeSeq 游标切片）。 */
+  readonly readSessionEvents: (
+    sessionId: string,
+    options: SessionEventPageOptions
+  ) => PersistedSessionEvent[];
+  /**
+   * **向前读**某会话的事件流（seq 大于 afterSeq 的最早 limit 条；seq 正序）。
+   * @since v3.48，task_106 —— 长会话压缩取"要折的那一段"用（窗口口径读放大）。
+   */
+  readonly readSessionEventsAfter: (
+    sessionId: string,
+    afterSeq: number,
+    limit: number
+  ) => PersistedSessionEvent[];
+  /**
+   * 落一条会话摘要快照（sessions 表；upsert 语义）。
+   * @since v3.43，task_093 —— 组合根把它包成 core/session 的持久化口注入 SessionManager
+   *   （事件信封由 core 生成，"往哪写"归本模块 —— 见 session-persister.ts）。
+   */
+  readonly persistSession: (record: PersistedSessionRecord) => void;
+  /** 落一条会话事件（session_events 表；append-only）。@since v3.43，task_093。 */
+  readonly persistSessionEvent: (event: SessionEventInsert) => void;
 }
 
 /** 存储件的创建参数。 */
@@ -262,6 +308,9 @@ export async function createServiceStorage(options: ServiceStorageOptions = {}):
   ensureCharacterTasksTable(db);
   ensureCharacterChatMessagesTable(db);
   ensureExpEventsTable(db);
+  // 会话两张表就位（幂等，task_092）：sessions（摘要快照）/ session_events（事件流）。
+  ensureSessionsTable(db);
+  ensureSessionEventsTable(db);
 
   const persistTask = (record: PersistedTaskRecord): void => {
     try {
@@ -352,6 +401,76 @@ export async function createServiceStorage(options: ServiceStorageOptions = {}):
     }
   };
 
+  // 会话读口（task_092）：摘要列表 + 事件流；失败按「空」处理（读失败不打断 client，
+  // 与既有读口同一口径 —— 路由层拿不到数据时如实返回空列表，不编造内容）。
+  const readSessions = (filter: SessionListFilter): PersistedSessionRecord[] => {
+    try {
+      return listSessionRecords(db, filter);
+    } catch (error: unknown) {
+      logger(
+        `[ServiceStorage] 会话列表读取失败（${filter?.kind ?? 'all'}/${filter?.status ?? 'all'}）：${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return [];
+    }
+  };
+
+  const readSessionEvents = (
+    sessionId: string,
+    options: SessionEventPageOptions
+  ): PersistedSessionEvent[] => {
+    try {
+      return listSessionEvents(db, sessionId, options);
+    } catch (error: unknown) {
+      logger(
+        `[ServiceStorage] 会话事件读取失败（${sessionId}）：${error instanceof Error ? error.message : String(error)}`
+      );
+      return [];
+    }
+  };
+
+  // 向前读（@since v3.48 / task_106）：长会话压缩取"要折的那一段"用 ——
+  //   窗口口径（取最后 limit 条）得从最新往回翻页穿过整段历史（读量随会话长度增长）。
+  const readSessionEventsAfter = (
+    sessionId: string,
+    afterSeq: number,
+    limit: number
+  ): PersistedSessionEvent[] => {
+    try {
+      return listSessionEventsFrom(db, sessionId, afterSeq, limit);
+    } catch (error: unknown) {
+      logger(
+        `[ServiceStorage] 会话事件向前读取失败（${sessionId}）：${error instanceof Error ? error.message : String(error)}`
+      );
+      return [];
+    }
+  };
+
+  // 会话写口（task_093）：摘要 upsert + 事件 append。失败只记一行警告
+  // （会话域的可用性优先于历史完整性 —— 与其余三个写口同一口径）。
+  const persistSession = (record: PersistedSessionRecord): void => {
+    try {
+      upsertSessionRecord(db, record);
+    } catch (error: unknown) {
+      logger(
+        `[ServiceStorage] 会话摘要落库失败（${record?.id ?? 'unknown'}）：${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  };
+
+  const persistSessionEvent = (event: SessionEventInsert): void => {
+    try {
+      appendSessionEvent(db, event);
+    } catch (error: unknown) {
+      logger(
+        `[ServiceStorage] 会话事件落库失败（${event?.sessionId ?? 'unknown'}/${event?.seq ?? '?'}）：${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  };
+
   return {
     persistTask,
     persistChatMessage,
@@ -359,5 +478,10 @@ export async function createServiceStorage(options: ServiceStorageOptions = {}):
     readTaskOutput,
     loadChatMessages: readChatMessages,
     loadEarlierChatMessages: readEarlierChatMessages,
+    readSessions: readSessions,
+    readSessionEvents: readSessionEvents,
+    readSessionEventsAfter: readSessionEventsAfter,
+    persistSession,
+    persistSessionEvent,
   };
 }
