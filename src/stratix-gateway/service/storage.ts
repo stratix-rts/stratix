@@ -4,7 +4,8 @@
  *   exp_events）的写入 + 读 API 用的读取口。
  * 输入：一个可选的 dataDir（缺省 = 沿用进程内已初始化的库单例，不重复开库）+ 日志口。
  * 输出：ServiceStorage —— { persistTask, persistChatMessage, persistExpEvent,
- *        readTaskOutput, loadChatMessages, loadEarlierChatMessages }。
+ *        readTaskOutput, loadChatMessages, loadEarlierChatMessages,
+ *        readSessions, readSessionEvents }。
  * 禁止事项：
  *   1. 在这里做业务判断（相位裁决 / 等级曲线 / 消息词表合法性）—— 那些真相在 core 与既有
  *      DAO；本模块只负责「把已经裁决好的东西写进库 / 从库里取出来」；
@@ -13,7 +14,8 @@
  *   3. 在 Electron / 渲染进程里 import 本模块 —— 本模块住在 service 侧（铁律 6：
  *      SQLite 只由 service 进程打开写，其余进程经 API 读）；
  *   4. 改表结构 / 加列 —— 三张表（character_tasks / character_chat_messages / exp_events）
- *      结构不变（零数据迁移）；表归既有 DAO，本模块只调 DAO；
+ *      结构不变（零数据迁移）；会话两张表（sessions / session_events）是**新表**（task_092），
+ *      结构归既有 DAO，本模块只调 DAO；
  *   5. 在这里缓存历史行做分页 —— 分页口径归 DAO（窗口查询）；缓存会与库漂移。
  *
  * why 单独成模块（而不是让各服务各自 import DAO）：
@@ -52,6 +54,18 @@ import {
   PERSISTED_EXP_EVENT_REASONS,
 } from '../../app/services/persistence/exp-event-dao';
 import type { SqliteDatabaseLike } from '../../app/services/persistence/game-save-dao';
+import {
+  ensureSessionsTable,
+  listSessionRecords,
+  type PersistedSessionRecord,
+  type SessionListFilter,
+} from '../../app/services/persistence/session-dao';
+import {
+  ensureSessionEventsTable,
+  listSessionEvents,
+  type PersistedSessionEvent,
+  type SessionEventPageOptions,
+} from '../../app/services/persistence/session-event-dao';
 import {
   ensureCharacterTasksTable,
   upsertTask,
@@ -100,6 +114,13 @@ export interface ServiceStorage {
     beforeId: number,
     limit?: number
   ) => PersistedChatMessage[];
+  /** 读会话摘要列表（kind / status 过滤 + 分页；创建时间倒序）。 */
+  readonly readSessions: (filter: SessionListFilter) => PersistedSessionRecord[];
+  /** 读某会话的事件流（seq 正序；beforeSeq 游标切片）。 */
+  readonly readSessionEvents: (
+    sessionId: string,
+    options: SessionEventPageOptions
+  ) => PersistedSessionEvent[];
 }
 
 /** 存储件的创建参数。 */
@@ -262,6 +283,9 @@ export async function createServiceStorage(options: ServiceStorageOptions = {}):
   ensureCharacterTasksTable(db);
   ensureCharacterChatMessagesTable(db);
   ensureExpEventsTable(db);
+  // 会话两张表就位（幂等，task_092）：sessions（摘要快照）/ session_events（事件流）。
+  ensureSessionsTable(db);
+  ensureSessionEventsTable(db);
 
   const persistTask = (record: PersistedTaskRecord): void => {
     try {
@@ -352,6 +376,35 @@ export async function createServiceStorage(options: ServiceStorageOptions = {}):
     }
   };
 
+  // 会话读口（task_092）：摘要列表 + 事件流；失败按「空」处理（读失败不打断 client，
+  // 与既有读口同一口径 —— 路由层拿不到数据时如实返回空列表，不编造内容）。
+  const readSessions = (filter: SessionListFilter): PersistedSessionRecord[] => {
+    try {
+      return listSessionRecords(db, filter);
+    } catch (error: unknown) {
+      logger(
+        `[ServiceStorage] 会话列表读取失败（${filter?.kind ?? 'all'}/${filter?.status ?? 'all'}）：${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return [];
+    }
+  };
+
+  const readSessionEvents = (
+    sessionId: string,
+    options: SessionEventPageOptions
+  ): PersistedSessionEvent[] => {
+    try {
+      return listSessionEvents(db, sessionId, options);
+    } catch (error: unknown) {
+      logger(
+        `[ServiceStorage] 会话事件读取失败（${sessionId}）：${error instanceof Error ? error.message : String(error)}`
+      );
+      return [];
+    }
+  };
+
   return {
     persistTask,
     persistChatMessage,
@@ -359,5 +412,7 @@ export async function createServiceStorage(options: ServiceStorageOptions = {}):
     readTaskOutput,
     loadChatMessages: readChatMessages,
     loadEarlierChatMessages: readEarlierChatMessages,
+    readSessions: readSessions,
+    readSessionEvents: readSessionEvents,
   };
 }

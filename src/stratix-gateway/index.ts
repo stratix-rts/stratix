@@ -35,6 +35,7 @@ import agentTaskRoutes from './api/routes/agentTask';
 import commandRoutes, { setStatusSyncService as setCommandStatusSyncService } from './api/routes/command';
 import lraRoutes from './api/routes/lra';
 import openclawRoutes, { initWebSocketServer, initConnectionStore, destroyOpenClawWebSockets } from './api/routes/openclaw';
+import { createSessionStorageRoutes } from './api/routes/session-storage';
 import skillRoutes from './api/routes/skill';
 import { createStorageRoutes } from './api/routes/storage';
 import templateRoutes from './api/routes/template';
@@ -206,6 +207,8 @@ export async function startGatewayService(
   app.use('/api/skills', skillRoutes);
   // 读 API（A3 / task_079）：SQLite 的只读门面 —— 写在本进程独占，读经这里。
   app.use('/api/storage', createStorageRoutes(serviceStorage));
+  // 会话读 API（task_092）：同一前缀下的会话那半边（摘要列表 + 事件流；同样只读）。
+  app.use('/api/storage', createSessionStorageRoutes(serviceStorage));
   // MCP server（docs/MCP-SPEC.md §4.4）：HTTP 端点挂在 /mcp，与 stdio 入口共享同一份注册表与 handler。
   // 数据面复用 **service 的那份** core store + core 总线（不新开状态通道）——
   //   A4 起两者同进程同实例：MCP 看到的就是 service 持有的世界态（不再 units 0）。
