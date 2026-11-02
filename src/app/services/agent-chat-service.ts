@@ -125,6 +125,7 @@ import type {
   SessionEventInput,
   SessionManager,
   SessionReplayMessage,
+  SessionTitleService,
 } from '../../core/session';
 import type {
   AgentKind,
@@ -414,6 +415,14 @@ export interface AgentChatServiceDeps {
    *   - 正常走完 → 收尾 'closed'。
    */
   readonly sessions?: SessionManager;
+  /**
+   * 自动起名服务（可选，@since v3.47，task_104 / v3.2b-B5）—— 开场后**异步**起名。
+   * 缺省 = 不起名（标题就是建会话时那条规则版标题）。
+   *
+   * 口径：起名是**旁路** —— 不阻塞互聊开场（调用方 `void` 掉即可），
+   *   起完由会话域的 manager.updateTitle 写回并投影到 WorldState。
+   */
+  readonly titles?: SessionTitleService;
 }
 
 /**
@@ -829,6 +838,16 @@ export function createAgentChatService(deps: AgentChatServiceDeps): AgentChatSer
         } catch (error) {
           logger(`[agent-chat] 建会话失败：${describe(error)}`);
         }
+      }
+      // 自动起名（@since v3.47，task_104 / v3.2b-B5）：**异步旁路** —— 不阻塞互聊开场。
+      //   无 env 配置时起名实现就是规则版，算出的标题与建会话时那条一字不差 → 写回时同名不改
+      //   （既不广播也不落库，行为与 2a 完全一致）。
+      if (sessionId && deps.titles) {
+        void deps.titles.retitle(sessionId, {
+          kind: 'peer_chat',
+          participants: [guardA.character.id, guardB.character.id],
+          firstUserMessage: trimmedTopic,
+        });
       }
       const discussion: ActiveDiscussion = {
         a: guardA.character,

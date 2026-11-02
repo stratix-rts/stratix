@@ -31,9 +31,10 @@
  *     不另设一套计数器（两份计数必然漂移）。
  *
  * @since v3.46，task_105（v3.2b-B6）。
+ *   v3.47（task_104 / v3.2b-B5）追加**自动起名接线**：建会话后异步起名（旁路，不阻塞任务开工）。
  */
 
-import type { SessionEventInput, SessionManager } from '../../core/session';
+import type { SessionEventInput, SessionManager, SessionTitleService } from '../../core/session';
 
 /** 同一 task 的会话事件数上限（env 缺省值）。 */
 export const DEFAULT_TASK_EVENT_CAP = 50;
@@ -74,6 +75,11 @@ export interface TaskSessionRecorder {
 export interface TaskSessionRecorderOptions {
   /** 会话写入面；缺省 = 不记会话（埋点是旁路，没有它任务照跑）。 */
   readonly sessions?: SessionManager;
+  /**
+   * 自动起名服务（可选，@since v3.47，task_104 / v3.2b-B5）—— 建会话后**异步**起名。
+   * 缺省 = 不起名（标题就是建会话时那条规则版标题）。
+   */
+  readonly titles?: SessionTitleService;
   /** 同一 task 的事件数上限；缺省读 env，再缺省 DEFAULT_TASK_EVENT_CAP。 */
   readonly eventCap?: number;
   /** env 来源（单测注入）；缺省读进程 env。 */
@@ -140,6 +146,7 @@ export function createTaskSessionRecorder(
 ): TaskSessionRecorder {
   const logger = options.logger ?? ((): void => { /* 缺省静默 */ });
   const sessions = options.sessions;
+  const titles = options.titles;
   const cap = options.eventCap ?? resolveTaskEventCap(options.env ?? safeEnv());
   /** taskId → 会话状态（内存态；收尾后**留着**做终态幂等，靠硬顶淘汰 —— 见 makeRoom）。 */
   const tracked = new Map<string, TrackedSession>();
@@ -200,7 +207,18 @@ export function createTaskSessionRecorder(
         // 首条消息只用于**自动起名**（不进事件流）：拿任务指令当标题主体，面板上一眼认得出是哪单。
         firstMessage: input.prompt,
       });
-      return session?.id ?? null;
+      const sessionId = session?.id ?? null;
+      // 自动起名（@since v3.47，task_104 / v3.2b-B5）：**异步旁路** —— 不阻塞任务开工。
+      //   素材用 taskTitle（任务指令）—— 与建会话时那条规则版标题同源，
+      //   无 env 配置时算出的标题一字不差 → 写回时同名不改（行为与 2a 完全一致）。
+      if (sessionId && titles) {
+        void titles.retitle(sessionId, {
+          kind: 'task_run',
+          participants: [input.characterId],
+          taskTitle: input.prompt,
+        });
+      }
+      return sessionId;
     } catch (error) {
       logger(`[task-session] 建会话抛错（${input.taskId}）：${describe(error)}`);
       return null;

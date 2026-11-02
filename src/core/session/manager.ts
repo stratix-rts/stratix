@@ -30,6 +30,9 @@
  *   - fork = 新会话 + 复制源会话事件到 atSeq（换 sessionId + seq 重排）+ 'forked' 来源标记；
  *   - 两者都要读事件流 → 故需要一个**读口**（与持久化口同一纪律：core 只认回调契约，不认存储）。
  *   本单是 **core 层**改动：service / hud / mcp 一律不碰（接线在 B2 / B3）。
+ *   v3.47（task_104 / v3.2b-B5）追加**改标题的显式写面**（updateTitle）：
+ *   自动起名（LLM 版）是异步的，起名结果回到 service 侧后由本方法落进 WorldState.sessions
+ *   —— service 侧不碰 store（写面只在会话域），同名不改（无 env 配置时白广播一轮）。
  */
 
 import { worldStore, type CoreStore } from '../store';
@@ -47,12 +50,12 @@ import {
   canApplySessionAction,
   canResumeSession,
   capSessionTitle,
-  deriveSessionTitle,
   dropClosedSessions,
   forkSessionTitle,
   normalizeSessionParticipants,
   type SessionAction,
 } from './machine';
+import { deriveSessionTitle } from './title-provider';
 import type {
   CreateSessionInput,
   SessionEvent,
@@ -209,6 +212,24 @@ export interface SessionManager {
   activateSession(sessionId: string): SessionRecord | null;
   /** 转入空闲（active → idle）。不记事件（静默阈值命中，不是一件事）。 */
   idleSession(sessionId: string): SessionRecord | null;
+  /**
+   * **改标题**（@since v3.47，task_104 / v3.2b-B5）—— 会话摘要字段的**唯一写面**。
+   *
+   * why 要显式方法：自动起名（LLM 版）是**异步**的 —— 起名结果从 service 侧回来时，
+   *   只有会话域自己知道该怎么改 WorldState.sessions 里的那条记录。
+   *   service 侧直接写 store 就成了第二份写面（service 独占写铁律：写面只在 core/session）。
+   *
+   * 口径：
+   *   - 标题为空 → 不改（返回 null）：把标题改成空串等于抹掉用户能看见的信息；
+   *   - 超长 → 截到上限（capSessionTitle，与显式标题/自动标题同一口径）；
+   *   - **同名 → 不写、不广播**（幂等）：无 env 配置时规则版算出的标题与建会话时一字不差，
+   *     若照写一遍就是白广播一轮（性能铁律：无意义的广播不做）；
+   *   - **不记事件**、**不发 Notice**：标题不是"发生了什么"（那是事件流的事），
+   *     自动改名是后台动作，不该用通知打断用户；
+   *   - 会话已收尾也允许改（标题是摘要字段，与终态无关）。
+   * 会话不存在返回 null（**不编造**）。
+   */
+  updateTitle(sessionId: string, title: string): SessionRecord | null;
 }
 
 class Manager implements SessionManager {
@@ -495,6 +516,38 @@ class Manager implements SessionManager {
   idleSession(sessionId: string): SessionRecord | null {
     // 不记事件：静默阈值命中同样不是一件事（否则高频静默会把事件表写满）。
     return this.finish(this.commit(sessionId, { type: 'idle' }, this.now()), null);
+  }
+
+  /**
+   * 改标题（@since v3.47，task_104 / v3.2b-B5）—— 见 SessionManager.updateTitle 的口径说明。
+   *
+   * 写入与其它会话动作走**同一份 store**（一次 setState 写完整条记录），
+   *   因此标题一改，WorldState.sessions 里的那条摘要随之更新 → 下一帧广播即投影到 HUD。
+   */
+  updateTitle(sessionId: string, title: string): SessionRecord | null {
+    const trimmed = title.trim();
+    if (trimmed.length === 0) return null; // 不把标题抹空
+    const capped = capSessionTitle(trimmed);
+
+    const outcome: { session?: SessionRecord; changed: boolean } = { changed: false };
+    this.store.setState((state) => {
+      const sessions = state.sessions ?? [];
+      const index = sessions.findIndex((session) => session.id === sessionId);
+      if (index < 0) return state;
+      const current = sessions[index];
+      outcome.session = current;
+      if (current.title === capped) return state; // 同名 = 无事发生（不广播、不落库）
+      const next = sessions.slice();
+      next[index] = { ...current, title: capped };
+      outcome.session = next[index];
+      outcome.changed = true;
+      return { ...state, sessions: next };
+    });
+
+    const session = outcome.session;
+    if (!session) return null;
+    if (outcome.changed) this.persistRecord(session); // 摘要快照同步落库（库里的标题也跟着变）
+    return session;
   }
 
   /**

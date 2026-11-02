@@ -44,6 +44,15 @@ declare const __STRATIX_WORLD_SYNC_URL__: string | undefined;
  */
 declare const __STRATIX_PEER_TURN_TIMEOUT_MS__: string | undefined;
 
+/**
+ * 构建期注入的 LLM 自动起名配置（task_104；空串 = 未设置 → 规则版起名）。
+ * why 也要构建期这一路：纯浏览器 dev（npm run dev，不起 Electron）没有 preload 通道，
+ *   只有 vite define 能把 shell 里的环境变量带进渲染层。
+ */
+declare const __STRATIX_TITLE_LLM_URL__: string | undefined;
+declare const __STRATIX_TITLE_LLM_KEY__: string | undefined;
+declare const __STRATIX_TITLE_LLM_MODEL__: string | undefined;
+
 /** preload 透传的环境变量形状（与 src/electron/preload.ts 的 ElectronAPI.env 对应）。 */
 interface RuntimeEnvHost {
   readonly electronAPI?: {
@@ -52,18 +61,25 @@ interface RuntimeEnvHost {
       readonly STRATIX_REMOTE?: string | null;
       readonly STRATIX_WORLD_SYNC_URL?: string | null;
       readonly STRATIX_PEER_TURN_TIMEOUT_MS?: string | null;
+      readonly SX_TITLE_LLM_URL?: string | null;
+      readonly SX_TITLE_LLM_KEY?: string | null;
+      readonly SX_TITLE_LLM_MODEL?: string | null;
     };
   };
 }
 
+/** preload 透传的环境变量名（运行时那一路的键名集合）。 */
+type RuntimeEnvName =
+  | 'STRATIX_ONBOARDING_FORCE'
+  | 'STRATIX_REMOTE'
+  | 'STRATIX_WORLD_SYNC_URL'
+  | 'STRATIX_PEER_TURN_TIMEOUT_MS'
+  | 'SX_TITLE_LLM_URL'
+  | 'SX_TITLE_LLM_KEY'
+  | 'SX_TITLE_LLM_MODEL';
+
 /** 读运行时环境变量（Electron）；非浏览器 / 无 preload 时返回 null。 */
-function readRuntimeEnv(
-  name:
-    | 'STRATIX_ONBOARDING_FORCE'
-    | 'STRATIX_REMOTE'
-    | 'STRATIX_WORLD_SYNC_URL'
-    | 'STRATIX_PEER_TURN_TIMEOUT_MS'
-): string | null {
+function readRuntimeEnv(name: RuntimeEnvName): string | null {
   if (typeof window === 'undefined') return null;
   const host = window as unknown as RuntimeEnvHost;
   return host.electronAPI?.env?.[name] ?? null;
@@ -123,4 +139,37 @@ export function peerTurnTimeoutRaw(): string | null {
   const buildTime =
     typeof __STRATIX_PEER_TURN_TIMEOUT_MS__ === 'string' ? __STRATIX_PEER_TURN_TIMEOUT_MS__ : '';
   return buildTime !== '' ? buildTime : null;
+}
+
+/**
+ * LLM 自动起名的 env（@since v3.47，task_104）——
+ *   三个键：SX_TITLE_LLM_URL / SX_TITLE_LLM_KEY / SX_TITLE_LLM_MODEL。
+ *
+ * 优先级：运行时环境变量（Electron preload 透传）> 构建期常量（vite define）。
+ * why 运行时优先：同一个构建产物要能按启动时的环境变量换起名后端（本地配一次即可）。
+ *
+ * 返回**原始串**（不解析、不校验完整性）：三件套齐不齐由
+ *   app/services/llm-title-provider.ts 的 resolveTitleLlmConfig 判定（缺任一 → 规则版）。
+ * 缺省的键不出现（undefined）—— 调用方按"没配"处理。
+ */
+export function titleLlmEnv(): Record<string, string | undefined> {
+  const pick = (runtime: string | null, buildTime: string | undefined): string | undefined => {
+    if (runtime !== null && runtime.trim() !== '') return runtime;
+    if (typeof buildTime === 'string' && buildTime.trim() !== '') return buildTime;
+    return undefined;
+  };
+  return {
+    SX_TITLE_LLM_URL: pick(
+      readRuntimeEnv('SX_TITLE_LLM_URL'),
+      typeof __STRATIX_TITLE_LLM_URL__ === 'string' ? __STRATIX_TITLE_LLM_URL__ : undefined
+    ),
+    SX_TITLE_LLM_KEY: pick(
+      readRuntimeEnv('SX_TITLE_LLM_KEY'),
+      typeof __STRATIX_TITLE_LLM_KEY__ === 'string' ? __STRATIX_TITLE_LLM_KEY__ : undefined
+    ),
+    SX_TITLE_LLM_MODEL: pick(
+      readRuntimeEnv('SX_TITLE_LLM_MODEL'),
+      typeof __STRATIX_TITLE_LLM_MODEL__ === 'string' ? __STRATIX_TITLE_LLM_MODEL__ : undefined
+    ),
+  };
 }

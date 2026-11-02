@@ -1,13 +1,15 @@
 /**
- * 单测：自动起名（core/session/machine.ts 的 deriveSessionTitle）—— 纯函数、确定性、无 LLM。
+ * 单测：自动起名（core/session/title-provider.ts 的 deriveSessionTitle）—— 纯函数、确定性、无 LLM。
  *
  * 覆盖口径（验收要求）：**五种 kind 各 ≥2 个用例**，另加跨 kind 的不变式：
  *   - 标题长度恒落在 [12, 20] 码点（太长广播撑爆、太短界面没辨识度）；
  *   - 同一输入两次调用结果一致（确定性 —— 事件重放要能复现同一条标题）；
  *   - 首条消息优先于参与者（消息才是这轮会话在聊什么）。
+ *
+ * @since v3.47（task_104）起名规则从 machine.ts 迁到 title-provider.ts（规则一字未改）。
  */
 
-import { deriveSessionTitle } from '../session/machine';
+import { deriveSessionTitle } from '../session/title-provider';
 import { MAX_SESSION_TITLE_LEN, MIN_SESSION_TITLE_LEN, type SessionKind } from '../session/types';
 
 const KINDS: readonly SessionKind[] = [

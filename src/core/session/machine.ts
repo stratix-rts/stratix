@@ -1,17 +1,21 @@
 /**
  * 文件职责：**会话域（core/session）的纯逻辑层** —— 会话状态机（什么动作能走到哪个状态）、
- *   事件信封封装（seq 会话内单调）、自动起名（规则版）、以及历史淘汰（只丢已关闭的最旧会话）。
+ *   事件信封封装（seq 会话内单调）、以及历史淘汰（只丢已关闭的最旧会话）。
  *   方案来源：docs/SESSION-PLAN.md §2「域模型 / 状态机」。
- * 输入：当前 SessionRecord + 一个 SessionAction（或事件草稿 / 起名入参）。
- * 输出：新的 SessionRecord、事件信封、起好的标题、淘汰后的会话列表。
+ * 输入：当前 SessionRecord + 一个 SessionAction（或事件草稿）。
+ * 输出：新的 SessionRecord、事件信封、淘汰后的会话列表。
  * 禁止事项：
  *   1. 碰 store / bus / DOM / 时钟 —— 本文件只算状态，不持有也不写入任何东西（写库在 manager.ts）；
  *   2. 直接修改传入的 record —— 会话态是 immutable，返回新对象；
  *   3. 静默接受非法迁移 —— 非法动作原样返回并带 error，让上层据此上报 Notice（用户点了没反应最伤）；
- *   4. 引入 LLM / 随机数 —— 起名是**规则版**（2a），必须确定性可单测（LLM 起名是 2b 的事）；
+ *   4. 引入 LLM / 随机数 —— 起名是**规则版**（2a），必须确定性可单测
+ *      （LLM 起名是 2b 的可选实现，见 title-provider.ts / app/services/llm-title-provider.ts）；
  *   5. 在这里做**业务**入参守门（标题是否为空、kind 是否被允许）—— 那是 manager 的职责，
  *      两处判定必然漂移；纯归一（参与者去重/截断、文本截断）与状态裁决同在本文件，
  *      免得同一份截断逻辑在两个文件里各写一遍。
+ *
+ * ★ 自动起名（deriveSessionTitle）**不在本文件**（@since v3.47，task_104）：
+ *   它已迁进 title-provider.ts（标题端口的默认实现）—— 规则一字未改，只是住址变了。
  *
  * 相位机（契约词表见 core/types.ts 的 SessionStatus）：
  *   active ──idle────▶ idle ──activate──▶ active
@@ -41,7 +45,6 @@ import {
   MAX_SESSION_TASK_SUMMARY_LEN,
   MAX_SESSION_TEXT_LEN,
   MAX_SESSION_TITLE_LEN,
-  MIN_SESSION_TITLE_LEN,
   type SessionEvent,
   type SessionEventDraft,
   type SessionKind,
@@ -390,63 +393,6 @@ export function forkSessionTitle(title: string): string {
   const base = title.trim();
   const head = base.length <= room ? base : `${base.slice(0, room - 1)}…`;
   return `${head}${SESSION_FORK_TITLE_SUFFIX}`;
-}
-
-/** 标题的 kind 前缀（决定会话是"角色对话"还是"互聊"——用户一眼要能分清）。 */
-const KIND_LABEL: Record<SessionKind, string> = {
-  character_chat: '角色对话',
-  peer_chat: '互聊',
-  task_run: '任务执行',
-  mission_run: '任务单',
-  shell_link: '命令行',
-};
-
-/**
- * kind 的默认短语：首条消息太短、或压根没有消息时兜底（保证标题落在 [12,20] 区间，
- * 且每种 kind 的兜底文案都自解释）。
- */
-const KIND_DEFAULT_BODY: Record<SessionKind, string> = {
-  character_chat: '与未命名角色的会话',
-  peer_chat: '与未命名对象的会话',
-  task_run: '未命名任务的执行记录',
-  mission_run: '未命名任务单的运行记录',
-  shell_link: '未命名连接的会话记录',
-};
-
-/** 压掉换行与连续空白：标题是单行文本，多行会把面板撑开。 */
-function collapseWhitespace(text: string): string {
-  return text.replace(/\s+/g, ' ').trim();
-}
-
-/**
- * 自动起名（2a 规则版）—— **纯函数、确定性、无 LLM**。
- *
- * 规则：`kind 前缀 + '：' + 主体`，整体截到 [12,20] 码点。
- *   主体优先取**首条消息**（首行、压空白）；没有首条消息时取参与者（用 '、' 连接）。
- *   两者都没有（或拼出来太短）→ 补 kind 的默认短语。
- *
- * why 要有下限 12：面板上一行放不下太短的标题，而"互聊：hi"这种标题用户看不出是什么会话；
- * why 要有上限 20：标题随 WorldState 全量广播，必须有界。
- * why 不用 LLM：2a 是规则版 —— 起名要可单测、可复现（同一个会话两次算出同一个标题），
- *   LLM 起名放 2b（那时才谈质量与成本）。
- */
-export function deriveSessionTitle(input: {
-  readonly kind: SessionKind;
-  readonly participants?: readonly string[];
-  readonly firstMessage?: string;
-}): string {
-  const label = KIND_LABEL[input.kind];
-  const fallback = KIND_DEFAULT_BODY[input.kind];
-  const message = input.firstMessage ? collapseWhitespace(input.firstMessage) : '';
-  const participants = (input.participants ?? []).filter((p) => p.length > 0).join('、');
-  const body = message.length > 0 ? message : participants;
-
-  let title = body.length > 0 ? `${label}：${body}` : `${label}：${fallback}`;
-  // 主体太短 → 补默认短语（信息量不足的标题在界面上没有辨识度）。
-  if (title.length < MIN_SESSION_TITLE_LEN) {
-    title = `${label}：${body} · ${fallback}`;
-  }
-  return capSessionTitle(title);
 }
 
 /**

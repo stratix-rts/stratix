@@ -272,3 +272,57 @@ export interface CreateSessionInput {
    */
   readonly firstMessage?: string;
 }
+
+/**
+ * 自动起名的**种子**（@since v3.47，task_104 / v3.2b-B5）——
+ *   建会话那一刻能拿到的"起名素材"，起名方（规则版 / LLM 版）据此起名。
+ *
+ * why 是"种子"而不是"完整素材"：起名方只拿到会话**摘要级**的信息
+ *   （谁在、聊了什么），拿不到全量事件流 —— 标题是给列表看的，一行放得下就够。
+ */
+export interface TitleSeed {
+  /** 会话种类（前缀与兜底文案的依据）。 */
+  readonly kind: SessionKind;
+  /** 参与者（characterId / agentId / clientId 视 kind）。 */
+  readonly participants?: readonly string[];
+  /** 会话里的第一条**用户消息**（互聊议题 / 首句提问）。 */
+  readonly firstUserMessage?: string;
+  /** 任务标题（task_run 用：任务指令本身就是最好的标题素材）。 */
+  readonly taskTitle?: string;
+}
+
+/**
+ * 自动起名端口（@since v3.47，task_104 / v3.2b-B5）——
+ *   core 只认这个**纯契约**，不认起名实现（core 零 IO 铁律：LLM 起名要发网络请求，
+ *   那属于 app 层；core 这边只有规则版）。
+ *
+ * why 返回 `string | Promise<string>`：规则版是**同步纯函数**（无 IO，确定性），
+ *   LLM 版必然是异步。写成联合类型而不是强行统一成 Promise，是为了让"规则版"
+ *   在建会话那一刻就能同步拿到标题（会话一建出来就有标题，不闪空白）；
+ *   调用方一律 `await` —— 两种实现都吃。
+ */
+export interface TitleProvider {
+  /** 实现标识（'rules' / 'llm'）—— 便于日志与诊断（不参与业务判定）。 */
+  readonly id: string;
+  /** 起一个标题；实现不得抛异常（起名失败由实现自己回退规则版）。 */
+  generate(seed: TitleSeed): string | Promise<string>;
+}
+
+/**
+ * 自动起名的**服务口**（@since v3.47，task_104 / v3.2b-B5）——
+ *   互聊 / 任务侧要的其实不是"起名实现"，而是"起完把标题写回去"这件事。
+ *
+ * why 单独一个口（而不是直接注入 TitleProvider）：
+ *   - 写面只有一处（core/session 的 manager.updateTitle）—— 业务侧不碰 store
+ *     （service 独占写铁律），所以它们拿到的必须是**已经封装好写回**的口；
+ *   - "不阻塞主流程"是这条口的一部分契约（起名是旁路：互聊开场 / 任务开工不等它）。
+ *
+ * 实现方在 app 层（app/services/session-title.ts）—— 组合根直接注入，无需适配器。
+ */
+export interface SessionTitleService {
+  /**
+   * 异步起名并写回标题（fire-and-forget；返回的 promise 只供单测等待）。
+   * 起名失败只记日志，**不抛**（起名是旁路，不是主角）。
+   */
+  retitle(sessionId: string, seed: TitleSeed): Promise<void>;
+}

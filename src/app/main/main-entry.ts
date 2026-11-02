@@ -117,6 +117,7 @@ import { createBrowserAppearanceEnvironment } from '../services/appearance-envir
 import { createPhaserPreviewGame } from '../services/appearance-preview-game';
 import { createAppearancePreviewService } from '../services/appearance-preview-service';
 import { createAgentChatService, resolvePeerTurnTimeoutMs, type AgentChatService } from '../services/agent-chat-service';
+import { createSessionTitleServiceFromEnv } from '../services/session-title';
 import { createChatService } from '../services/chat-service';
 import {
   createStratixContextProvider,
@@ -159,7 +160,13 @@ import { createUnitSpriteSource } from '../services/unit-sprite-source';
 //   CoreStore 的远程实现（world-sync 全量快照 → 本地整体覆盖；hud 命令 → command.forward）。
 import { DEFAULT_WORLD_SYNC_URL, createRemoteStore, type RemoteStore } from '../services/remote-store';
 
-import { isOnboardingForced, isRemoteModeEnabled, peerTurnTimeoutRaw, remoteWorldSyncUrl } from './dev-flags';
+import {
+  isOnboardingForced,
+  isRemoteModeEnabled,
+  peerTurnTimeoutRaw,
+  remoteWorldSyncUrl,
+  titleLlmEnv,
+} from './dev-flags';
 import { createOnboardingHost } from './onboarding-host';
 // 自定义 agent 注册端口（@since v3.32，task_056）：向导扫描步的「+ 添加自定义 agent」表单 /
 // 设置屏的注册管理经它进主进程（IPC 面 = preload 的 customAgents）。非 Electron → null，降级。
@@ -451,6 +458,19 @@ async function boot(): Promise<void> {
     //   远程模式不接：真相在 service 进程（铁律 1「真相唯一」），本地再记一份 = 第二份真相。
     ...(remote ? {} : { persist: sessionEventLog.persist, read: sessionEventLog.read }),
   });
+  // ===== 自动起名（@since v3.47，task_104 / v3.2b-B5）=====
+  //   起名实现按 env 三件套选：齐全 → LLM 版（OpenAI 兼容 chat completions，失败静默回退规则版）；
+  //   缺任一 → 规则版（**行为与 2a 逐字一致** —— 建会话时算出的标题不变，写回时同名不改）。
+  //   env 读法见 dev-flags.ts（运行时 preload 透传 > 构建期 vite define）。
+  //   起名是**旁路**：异步、不阻塞互聊开场 / 任务开工；写回走会话域的 manager.updateTitle。
+  //   远程模式不接（真相在 service 进程，本地再记一份 = 第二份真相）。
+  const sessionTitleService = remote
+    ? undefined
+    : createSessionTitleServiceFromEnv({
+        sessions: sessionManager,
+        env: titleLlmEnv(),
+        logger: (line) => console.warn(`[Stratix] ${line}`),
+      });
   if (characterDrawer && cliChat) {
     const chatService = createChatService({
       view: characterDrawer,
@@ -545,6 +565,8 @@ async function boot(): Promise<void> {
       // task_094：互聊接入会话域（kind=peer_chat）—— 开场建会话 + 全量事件落库 +
       //   中断显式化（修「超时即丢」）。远程模式不接（见上方 sessionManager 注释）。
       sessions: remote ? undefined : sessionManager,
+      // task_104：自动起名（异步旁路）—— 开场后按素材起名，写回走会话域的 manager.updateTitle。
+      ...(sessionTitleService ? { titles: sessionTitleService } : {}),
     });
     // task_101：登记到引用位（`session.resume` 命令的落点，见上方声明处的说明）。
     peerChatService = agentChatService;
@@ -869,6 +891,8 @@ async function boot(): Promise<void> {
       // task_093：会话域 LITE 接线（task_run / mission_run）—— 任务收尾时建会话并收尾（两事件）。
       //   远程模式不接（见上方 sessionManager 注释：本地不能再造一份真相）。
       sessions: remote ? undefined : sessionManager,
+      // task_104：自动起名（异步旁路）—— task_run 建会话后起名，写回走 manager.updateTitle。
+      ...(sessionTitleService ? { titles: sessionTitleService } : {}),
       // task_046：执行期 chunk 原序转发进任务输出面板（实时 tail 视图）。面板拿不到
       // （极端时序：chrome 未建）时端口不接 —— 执行照常，只是没有实时视图。
       onTaskChunk: taskOutputView

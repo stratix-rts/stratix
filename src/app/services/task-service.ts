@@ -125,7 +125,7 @@
 
 import { emitWorldEvent, onWorldEvent } from '../../core/bus';
 import { personaPlanFirst } from '../../core/character/persona';
-import type { SessionManager } from '../../core/session';
+import type { SessionManager, SessionTitleService } from '../../core/session';
 import type {
   AgentKind,
   CharacterTask,
@@ -430,6 +430,11 @@ export interface TaskServiceDeps {
    * 超限后只记 completed / failed —— 中间事件停记（事件频率必须节制）。
    */
   readonly taskEventCap?: number;
+  /**
+   * 自动起名服务（可选，@since v3.47，task_104 / v3.2b-B5）—— task_run 建会话后**异步**起名。
+   * 缺省 = 不起名（标题就是建会话时那条规则版标题）。
+   */
+  readonly titles?: SessionTitleService;
 }
 
 export interface TaskService {
@@ -542,6 +547,7 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
    */
   const recorder = createTaskSessionRecorder({
     sessions: deps.sessions,
+    ...(deps.titles ? { titles: deps.titles } : {}),
     eventCap: deps.taskEventCap,
     logger,
   });

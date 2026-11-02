@@ -200,6 +200,16 @@ export interface ElectronAPI {
      * null = 未设置 → 用缺省 120s（解析与钳位在 app/services/agent-chat-service.ts）。
      */
     STRATIX_PEER_TURN_TIMEOUT_MS: string | null;
+    /**
+     * LLM 自动起名的 chat completions 端点（@since v3.47，task_104；null = 未设置 → 规则版起名）。
+     * why 也要透传：自动起名跑在渲染层，读不到主进程的 process.env；
+     *   渲染层只能经 preload 这条白名单通道拿到「主进程启动时带着的环境变量」。
+     */
+    SX_TITLE_LLM_URL: string | null;
+    /** LLM 自动起名的凭据（Bearer）。null = 未设置 → 规则版起名。 */
+    SX_TITLE_LLM_KEY: string | null;
+    /** LLM 自动起名的模型名。null = 未设置 → 规则版起名。 */
+    SX_TITLE_LLM_MODEL: string | null;
   };
 
 }
@@ -361,6 +371,11 @@ const electronAPI: ElectronAPI = {
     STRATIX_WORLD_SYNC_URL: process.env.STRATIX_WORLD_SYNC_URL ?? null,
     // 互聊回合超时（@since v3.44，task_090）：渲染层要靠它拿到「主进程启动时带着的」超时值。
     STRATIX_PEER_TURN_TIMEOUT_MS: process.env.STRATIX_PEER_TURN_TIMEOUT_MS ?? null,
+    // LLM 自动起名配置（@since v3.47，task_104）：渲染层靠它拿到「主进程启动时带着的」起名后端。
+    // 三件套缺任一 → 规则版起名（见 app/services/llm-title-provider.ts）。
+    SX_TITLE_LLM_URL: process.env.SX_TITLE_LLM_URL ?? null,
+    SX_TITLE_LLM_KEY: process.env.SX_TITLE_LLM_KEY ?? null,
+    SX_TITLE_LLM_MODEL: process.env.SX_TITLE_LLM_MODEL ?? null,
   },
 
 };

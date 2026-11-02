@@ -167,6 +167,14 @@ export default defineConfig(async () => {
        *   只有 vite define 能把 shell 里的环境变量带进渲染层。
        */
       __STRATIX_PEER_TURN_TIMEOUT_MS__: JSON.stringify(process.env.STRATIX_PEER_TURN_TIMEOUT_MS ?? ''),
+      /**
+       * LLM 自动起名配置（@since v3.47，task_104）：URL / Key / 模型；三者任一为空 → 规则版起名。
+       * why 也要构建期这一路：纯浏览器 dev（不起 Electron）没有 preload 通道，
+       *   只有 vite define 能把 shell 里的环境变量带进渲染层。
+       */
+      __STRATIX_TITLE_LLM_URL__: JSON.stringify(process.env.SX_TITLE_LLM_URL ?? ''),
+      __STRATIX_TITLE_LLM_KEY__: JSON.stringify(process.env.SX_TITLE_LLM_KEY ?? ''),
+      __STRATIX_TITLE_LLM_MODEL__: JSON.stringify(process.env.SX_TITLE_LLM_MODEL ?? ''),
     },
   };
 });
