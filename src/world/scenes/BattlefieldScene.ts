@@ -15,6 +15,10 @@
  *     —— 小地图点击/拖拽的跳转指令，场景把相机对中到目标世界点；
  *   - core/bus 的 state 通道上的 missions + tasks（@since v3.3，task_078，转发到 syncTasks，
  *     地图上的任务建筑三态与区域点亮 —— 区域 = 编组任务，建筑 = 角色任务）；
+ *   - core/bus 的 world 通道上的 task.queued / started / completed / failed（@since v3.3，task_076，
+ *     转发到 syncTaskSpeech）—— 单位头顶冒离线模板气泡（派活 / 开工 / 完成 / 报错）；
+ *   - core/bus 的 world 通道上的 unit.bubble（@since v3.3，task_076，转发到 syncUnitBubble）
+ *     —— world 层当场指挥的原话气泡（「收到」「来了来了」），按原话冒泡；
  *   - 浏览器指针输入（按下 / 移动 / 松开 / 滚轮）。
  * 输出：把交互转成 WorldEvent（unit.click / selection.box / unit.move / camera.moved），
  *   经桥接层发回 core。
@@ -55,12 +59,15 @@ import { CameraController, DEFAULT_WORLD_BOUNDS } from '../camera';
 import { BuildingLayer } from '../objects/building-layer';
 import { GroundLayer, GROUND_DEPTH } from '../objects/ground-layer';
 import { SelectionBox } from '../objects/selection-box';
+import { SpeechBubbleBoard } from '../objects/speech-bubble';
+import { SpeechBubbleLayer } from '../objects/speech-bubble-layer';
 import { MapBoard, BUILDING_SIZE, type MapSyncResult } from '../objects/task-building';
 import { INTERACTION_BUBBLE_TEXT, TaskFxBoard, applyTaskFxEvent } from '../objects/task-fx';
 import { TaskFxLayer } from '../objects/task-fx-layer';
 import { UnitLayer } from '../objects/unit-layer';
 import { UnitRegistry, UNIT_POSITION_SEED_KEY } from '../objects/unit-registry';
 import { UNIT_SPRITE_SOURCE_KEY, type UnitSpriteSource } from '../objects/unit-sprite-source';
+import type { SpeechKind } from '../speech-templates';
 import { WORLD_PALETTE } from '../theme';
 
 export const BATTLEFIELD_SCENE_KEY = 'battlefield';
@@ -121,6 +128,14 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   private readonly mapBoard = new MapBoard({ bounds: DEFAULT_WORLD_BOUNDS });
   /** 建筑层（@since v3.3，task_078）：任务建筑三态 + 区域点亮。 */
   private buildingLayer!: BuildingLayer;
+  /**
+   * 气泡板（@since v3.3，task_076）：同屏 ≤3 / 同单位 5s 冷却 / 存活 4s 的频率规则真相。
+   * why 在 create() 里建（而不是字段初始化器）：时钟取场景时钟（this.time.now），
+   *   构造期拿不到场景实例。
+   */
+  private speechBoard!: SpeechBubbleBoard;
+  /** 气泡渲染层（@since v3.3，task_076）：单位头顶的圆角气泡。 */
+  private speechLayer!: SpeechBubbleLayer;
 
   private dragMode: DragMode = 'none';
   private dragStartScreen: Point = { x: 0, y: 0 };
@@ -163,6 +178,11 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     // 任务表现层（@since v3.17，task_038）：单位头顶的 working 环 / ✓ / ! 浮标。
     // 订阅在桥接层（bridge/bus-adapter 的 syncTaskEvent 转发），场景只被驱动。
     this.taskFxLayer = new TaskFxLayer(this, this.units, this.taskFx);
+
+    // 气泡层（@since v3.3，task_076）：单位头顶的说话气泡（离线模板句库）。
+    // 板子用场景时钟（this.time.now）—— 与渲染层的 tick 同一把钟，不混用墙钟。
+    this.speechBoard = new SpeechBubbleBoard({ now: () => this.time.now });
+    this.speechLayer = new SpeechBubbleLayer(this, this.units, this.speechBoard);
 
     // 任务建筑层（@since v3.3，task_078）：地图上的任务建筑三态 + 区域点亮。
     // 数据源是 core 广播的 missions/tasks（经桥接层 syncTasks 转发），场景只被驱动。
@@ -213,6 +233,8 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     // 单位离场，浮标一并收掉：表现不许悬在已不存在的单位头顶（task_038）。
     for (const id of result.removed) {
       this.taskFx.clear(id);
+      // 气泡同理（task_076）：单位没了，它的话也该收掉。
+      this.speechLayer.clearUnit(id);
     }
     this.taskFxLayer.sync();
     this.emptyHint?.setVisible(units.length === 0);
@@ -343,6 +365,27 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
       for (const unitId of hitUnitIds) this.unitLayer.triggerCompleted(unitId);
     }
     this.taskFxLayer.sync();
+  }
+
+  /**
+   * 任务生命周期 → 说话气泡（@since v3.3，task_076；由桥接层转发 task.queued / started /
+   * completed / failed）。事件带的是 characterId，战场认单位 —— 按 characterId 反查，
+   * 命中的单位各自冒一句（句库见 world/speech-templates.ts）。
+   * 频率规则（同屏 ≤3 / 同单位 5s 冷却）由气泡板裁决，本层只管「谁说」。
+   */
+  syncTaskSpeech(task: CharacterTask, kind: SpeechKind): void {
+    for (const unit of this.units.list()) {
+      if (unit.characterId !== task.characterId) continue;
+      this.speechLayer.speak(unit.id, kind);
+    }
+  }
+
+  /**
+   * 指定文案气泡（@since v3.3，task_076；由桥接层转发 world 通道的 unit.bubble）。
+   * 原话已经定好（例如「收到」「来了来了」）—— 按原话冒泡，不抽句库。
+   */
+  syncUnitBubble(unitId: string, text: string): void {
+    this.speechLayer.speakText(unitId, text);
   }
 
   // ==========================================================================
@@ -510,6 +553,8 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     this.bridge.destroy();
     this.unitLayer.destroy();
     this.taskFxLayer.destroy();
+    // 气泡层（task_076）：定时器与显示对象一并回收（perf：资源必须可清理）。
+    this.speechLayer.destroy();
     this.selectionBox.destroy();
     // 地面层与建筑层的显示对象 / tween / 定时器一并回收（perf：资源必须可清理）。
     this.buildingLayer.destroy();

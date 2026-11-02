@@ -41,6 +41,7 @@ import type {
   WorldState,
 } from '../../core/types';
 import type { TaskFxPhase } from '../objects/task-fx';
+import type { SpeechKind } from '../speech-templates';
 
 export type { TaskFxPhase } from '../objects/task-fx';
 
@@ -95,6 +96,20 @@ export interface WorldScenePort {
    * 事件流只给增量、还得自己拼状态 —— 快照口径与 units / selection 一致，少一份真相。
    */
   syncTasks?(missions: readonly MissionView[], tasks: readonly CharacterTask[]): void;
+  /**
+   * 任务气泡钩子（@since v3.3，task_076）：world 通道上的 task.queued / started / completed / failed
+   * 转发进场景 —— 单位头顶冒离线模板气泡（句库见 world/speech-templates.ts）。
+   * 可选成员：不实现不破编译（同 syncTaskEvent 惯例）。
+   * why 走 world 通道：任务生命周期事件本来就在这条通道上（core/task 发出），
+   *   气泡只是这些事件的**表现投影** —— world 只消费不生产（总线铁律）。
+   */
+  syncTaskSpeech?(task: CharacterTask, kind: SpeechKind): void;
+  /**
+   * 指定文案气泡钩子（@since v3.3，task_076）：world 通道上的 unit.bubble
+   * （world 层当场指挥，原话已定 —— 例如「收到」）转发进场景，按原话冒泡。
+   * 可选成员：不实现不破编译（同上惯例）。
+   */
+  syncUnitBubble?(unitId: string, text: string): void;
 }
 
 /** 场景侧的交互出口：场景调这些方法，桥接层负责转成 WorldEvent 发给 core。 */
@@ -181,12 +196,23 @@ export function createWorldBridge(
     switch (event.type) {
       case 'task.started':
         port.syncTaskEvent?.(event.task, 'started');
+        // 开工气泡（task_076）：任务落到谁头上，谁说一句开工话。
+        port.syncTaskSpeech?.(event.task, 'start');
         break;
       case 'task.completed':
         port.syncTaskEvent?.(event.task, 'completed');
+        // 完成气泡（task_076）。
+        port.syncTaskSpeech?.(event.task, 'complete');
         break;
       case 'task.failed':
         port.syncTaskEvent?.(event.task, 'failed');
+        // 报错气泡（task_076）。
+        port.syncTaskSpeech?.(event.task, 'error');
+        break;
+      // 派活气泡（task_076）：任务入队 = 派到人手上 → 「收到新任务」。
+      // why task.queued 不进 syncTaskEvent：它还不是「在干活」，不该挂工作环。
+      case 'task.queued':
+        port.syncTaskSpeech?.(event.task, 'assigned');
         break;
       // 审批门（task_049）：挂起画 ?（黄色问号，驻留到裁决）；批准折算成 started 相位 ——
       // 批准是同一段执行的续段，表现上回到工作环（场景不需要新的相位词）。
@@ -211,6 +237,10 @@ export function createWorldBridge(
       // 说话气泡（task_062）：chat 流式期间的标志位广播 → 场景头顶气泡起止。
       case 'unit.speaking':
         port.syncUnitSpeaking?.(event.unitId, event.speaking);
+        break;
+      // 指定文案气泡（task_076）：world 层当场指挥的原话（「收到」「来了来了」）→ 按原话冒泡。
+      case 'unit.bubble':
+        port.syncUnitBubble?.(event.unitId, event.text);
         break;
       default:
         break;

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stratix 气泡说话 dev（task_076）</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #0d1126;
+        color: #cbd5e1;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+      }
+      #battlefield {
+        position: absolute;
+        inset: 0;
+      }
+      #controls {
+        position: absolute;
+        left: 12px;
+        top: 12px;
+        right: 12px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+        padding: 8px 10px;
+        background: rgba(13, 17, 38, 0.86);
+        border: 1px solid #1a2140;
+        line-height: 1.6;
+      }
+      #controls .title {
+        color: #8a6bff;
+        margin-right: 6px;
+      }
+      #controls button {
+        background: #16203c;
+        color: #cbd5e1;
+        border: 1px solid #2b3a63;
+        border-radius: 4px;
+        padding: 3px 10px;
+        font: inherit;
+        cursor: pointer;
+      }
+      #controls button:hover {
+        background: #22305a;
+        border-color: #4fc3f7;
+      }
+      #status {
+        margin-left: 8px;
+        color: #f0a020;
+      }
+      #legend {
+        position: absolute;
+        left: 12px;
+        bottom: 12px;
+        padding: 8px 10px;
+        background: rgba(13, 17, 38, 0.86);
+        border: 1px solid #1a2140;
+        line-height: 1.7;
+        white-space: pre;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- 战场容器：SpeechDevScene 的 Phaser.Game 挂在这里 -->
+    <div id="battlefield"></div>
+
+    <!--
+      以下是 **dev 验收面板**（不属于 world 层）。
+      每次点击换一个样例单位冒泡（绕开同单位 5s 冷却）；
+      「事件风暴」让五个单位同时开口 —— 人眼验收「同屏 ≤3 + 新的排队 + 旧的优先收」。
+    -->
+    <div id="controls">
+      <span class="title">气泡说话 · DEMO-PLAN §3</span>
+      <button data-action="start">开工</button>
+      <button data-action="complete">完成</button>
+      <button data-action="error">报错</button>
+      <button data-action="assigned">被派活</button>
+      <button data-action="support">支援响应</button>
+      <button data-action="text">原话气泡</button>
+      <button data-action="burst">事件风暴（5 个同时）</button>
+      <button data-action="clear">清屏</button>
+      <span id="status">同屏 0 / 排队 0</span>
+    </div>
+
+    <div id="legend">气泡 = 圆角黑底 85% + 白字 13px + 指向单位的小尾巴
+最大宽 160px、最多 2 行、超出用「…」省略
+入场 = 从尾巴那点长出来（scale 0→1 · Back.Out · 250ms）
+出场 = 上浮 10px + 淡出（Cubic.In · 300ms）
+存活 4s 自动收起；同屏 ≤ 3 个；同单位 5s 内不重复
+性格彩蛋（咖啡呢？/ 996 也是要充电的 / 又是元气满满的一天）有 20% 概率替换当次台词</div>
+
+    <script type="module" src="./speech-main.ts"></script>
+  </body>
+</html>
