@@ -17,6 +17,7 @@
 import Phaser from 'phaser';
 
 import type { UnitAnimationState } from '../appearance/unit-animation';
+import { WORLD_PALETTE } from '../theme';
 
 import {
   ANIMATION_DEV_SCENE_KEY,
@@ -27,7 +28,8 @@ import {
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'battlefield',
-  backgroundColor: '#0d1126',
+  // 色值走调色板门面（唯一事实源）—— 不在本文件另抄一份字面量。
+  backgroundColor: WORLD_PALETTE.background,
   scale: { mode: Phaser.Scale.RESIZE },
   scene: [AnimationDevScene],
 });

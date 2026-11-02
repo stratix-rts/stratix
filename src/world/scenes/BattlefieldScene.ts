@@ -8,9 +8,13 @@
  *   - core/bus 的 world 通道上的 unit.position（@since v3.21，task_045，转发到 syncUnitPosition）
  *     —— 右击移动时 runtime 把编队终值广播回来，场景立即写进 UnitObject 并 tween 过渡；
  *   - core/bus 的 world 通道上的 camera.center（@since v3.33，task_057，转发到 syncCameraCenter）
+ *   - core/bus 的 world 通道上的 camera.shake（@since v3.3，task_080，转发到 syncCameraShake，
+ *     里程碑大字落下时的一记小震）
  *   - core/bus 的 world 通道上的 unit.speaking（@since v3.37，task_062，转发到 syncUnitSpeaking，
  *     单位层头顶「···」说话气泡）
  *     —— 小地图点击/拖拽的跳转指令，场景把相机对中到目标世界点；
+ *   - core/bus 的 state 通道上的 missions + tasks（@since v3.3，task_078，转发到 syncTasks，
+ *     地图上的任务建筑三态与区域点亮 —— 区域 = 编组任务，建筑 = 角色任务）；
  *   - 浏览器指针输入（按下 / 移动 / 松开 / 滚轮）。
  * 输出：把交互转成 WorldEvent（unit.click / selection.box / unit.move / camera.moved），
  *   经桥接层发回 core。
@@ -31,7 +35,15 @@
 
 import Phaser from 'phaser';
 
-import type { Bounds, CharacterTask, ClickMods, Point, SelectionState, UnitView } from '../../core/types';
+import type {
+  Bounds,
+  CharacterTask,
+  ClickMods,
+  MissionView,
+  Point,
+  SelectionState,
+  UnitView,
+} from '../../core/types';
 import {
   CAMERA_EVENT_INTERVAL_MS,
   createWorldBridge,
@@ -40,7 +52,10 @@ import {
   type WorldScenePort,
 } from '../bridge/bus-adapter';
 import { CameraController, DEFAULT_WORLD_BOUNDS } from '../camera';
+import { BuildingLayer } from '../objects/building-layer';
+import { GroundLayer, GROUND_DEPTH } from '../objects/ground-layer';
 import { SelectionBox } from '../objects/selection-box';
+import { MapBoard } from '../objects/task-building';
 import { TaskFxBoard, applyTaskFxEvent } from '../objects/task-fx';
 import { TaskFxLayer } from '../objects/task-fx-layer';
 import { UnitLayer } from '../objects/unit-layer';
@@ -51,18 +66,20 @@ import { WORLD_PALETTE } from '../theme';
 export const BATTLEFIELD_SCENE_KEY = 'battlefield';
 
 /**
- * 战场底色 / 网格 / 边界（@since v3.3，task_110）—— 全部取自唯一事实源
+ * 战场底色 / 边界（@since v3.3，task_110）—— 全部取自唯一事实源
  *   core/theme/visual-spec.ts（world 门面 = ../theme 的 WORLD_PALETTE）。
  * why 不写色值字面量：调色板改一处即可，world 各文件不再各抄一份。
+ * 网格线（格距 64px）与扫描光带、四角刻度、边缘渐晕已由 objects/ground-layer.ts 接手（task_078）。
  */
 const BACKGROUND_COLOR = WORLD_PALETTE.background;
 /** 战场外框描边 = 装饰色（紫）。 */
 const BOUNDS_COLOR = WORLD_PALETTE.accent;
-/** 战场外框底衬 = 网格色（比底色亮一档的区块底）。 */
-const BOUNDS_FILL = WORLD_PALETTE.grid;
-/** 空状态网格线：让零单位时的战场不再是“纯色虚空”，也为拖拽/缩放提供参照物。 */
-const GRID_COLOR = WORLD_PALETTE.grid;
-const GRID_STEP = 200;
+/**
+ * 战场底板底衬 = 背景基底色（@since v3.3，task_078 改）。
+ * why 不再是网格色：格网线的色值就是网格色 —— 底板若也用它，格网线会与底板同色而彻底看不见。
+ *   调色板的语义本就是「背景基底 = 地面 / 网格线 = 低亮度网格」（§1 表），改回基底色即回到该语义。
+ */
+const BOUNDS_FILL = WORLD_PALETTE.background;
 /** 空状态提示文字（世界坐标层，随镜头移动；有单位后自动隐藏）。 */
 const EMPTY_HINT = '空战场 · 0 单位接入（单位来自 gateway 真实数据流）\n左键拖框选 · 右键短按移动选中 · 右/中键拖平移 · 滚轮缩放';
 
@@ -98,6 +115,12 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   private taskFxLayer!: TaskFxLayer;
   private emptyHint?: Phaser.GameObjects.Text;
   private selectionBox!: SelectionBox;
+  /** 地面层（@since v3.3，task_078）：格网 + 扫描光带 + 四角刻度 + 边缘渐晕。 */
+  private groundLayer!: GroundLayer;
+  /** 地图对账板（@since v3.3，task_078）：core 任务状态 → 建筑/区域布局与跳变事件。 */
+  private readonly mapBoard = new MapBoard({ bounds: DEFAULT_WORLD_BOUNDS });
+  /** 建筑层（@since v3.3，task_078）：任务建筑三态 + 区域点亮。 */
+  private buildingLayer!: BuildingLayer;
 
   private dragMode: DragMode = 'none';
   private dragStartScreen: Point = { x: 0, y: 0 };
@@ -123,7 +146,9 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   create(): void {
     this.cameras.main.setBackgroundColor(BACKGROUND_COLOR);
     this.drawWorldBounds();
-    this.drawGrid();
+    // 地面层（@since v3.3，task_078）：格网 / 扫描光带 / 四角刻度 / 边缘渐晕。
+    // 必须在底板之后建（渲染次序靠 depth 与添加序双保险）。
+    this.groundLayer = new GroundLayer(this, { bounds: DEFAULT_WORLD_BOUNDS });
     this.drawEmptyHint();
 
     // 桥接层先建：相机控制器的 onChange 会立刻回调它上报初始位姿
@@ -138,6 +163,10 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     // 任务表现层（@since v3.17，task_038）：单位头顶的 working 环 / ✓ / ! 浮标。
     // 订阅在桥接层（bridge/bus-adapter 的 syncTaskEvent 转发），场景只被驱动。
     this.taskFxLayer = new TaskFxLayer(this, this.units, this.taskFx);
+
+    // 任务建筑层（@since v3.3，task_078）：地图上的任务建筑三态 + 区域点亮。
+    // 数据源是 core 广播的 missions/tasks（经桥接层 syncTasks 转发），场景只被驱动。
+    this.buildingLayer = new BuildingLayer(this);
 
     // 恢复站位种子（@since v3.12，task_033）：组合根启动读档后放在 game.registry 里。
     // 没接上（纯 vite dev / 读档失败）→ undefined，注册表全部按网格落位，行为与从前一致。
@@ -195,16 +224,13 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     }
   }
 
-  /** 空战场网格：横纵每 GRID_STEP 世界单位一条低对比线，给镜头运动提供参照。 */
-  private drawGrid(): void {
-    const g = this.add.graphics();
-    g.lineStyle(1, GRID_COLOR, 1);
-    for (let x = DEFAULT_WORLD_BOUNDS.x; x <= DEFAULT_WORLD_BOUNDS.x + DEFAULT_WORLD_BOUNDS.width; x += GRID_STEP) {
-      g.lineBetween(x, DEFAULT_WORLD_BOUNDS.y, x, DEFAULT_WORLD_BOUNDS.y + DEFAULT_WORLD_BOUNDS.height);
-    }
-    for (let y = DEFAULT_WORLD_BOUNDS.y; y <= DEFAULT_WORLD_BOUNDS.y + DEFAULT_WORLD_BOUNDS.height; y += GRID_STEP) {
-      g.lineBetween(DEFAULT_WORLD_BOUNDS.x, y, DEFAULT_WORLD_BOUNDS.x + DEFAULT_WORLD_BOUNDS.width, y);
-    }
+  /**
+   * 任务全景同步（@since v3.3，task_078；由桥接层转发 state 通道的 missions + tasks）。
+   * 区域 = 编组任务（mission），建筑 = 角色任务（task）：三态与点亮全部由 core 的相位派生，
+   * 场景只负责把结果画出来（objects/task-building 的纯映射 + objects/building-layer 的绘制）。
+   */
+  syncTasks(missions: readonly MissionView[], tasks: readonly CharacterTask[]): void {
+    this.buildingLayer.sync(this.mapBoard.sync(missions, tasks));
   }
 
   /** 空状态提示：居中置于世界中心，首单位接入即隐藏（零假数据，不是种子单位）。 */
@@ -264,6 +290,16 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   syncCameraCenter(x: number, y: number): void {
     this.view.apply({ center: { x, y }, zoom: this.view.current.zoom });
     this.scheduleCameraFlush();
+  }
+
+  /**
+   * 镜头震动（@since v3.3，task_080；由桥接层转发 world 通道的 camera.shake）。
+   * 里程碑大字落下时的一记小震：走 Phaser 相机的 shake 效果 —— 它在渲染期给相机矩阵加偏移，
+   * 不动 scroll，故与 CameraController 的位姿写入互不干扰（相机停哪儿，震的就是哪儿）。
+   * 参数已由 core 的 clampShake 钳过（时长 ≤ 500ms、强度 ≤ 2% 视口），这里不再二次判断。
+   */
+  syncCameraShake(durationMs: number, intensity: number): void {
+    this.cameras.main.shake(durationMs, intensity);
   }
 
   /**
@@ -416,6 +452,9 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     this.unitLayer.destroy();
     this.taskFxLayer.destroy();
     this.selectionBox.destroy();
+    // 地面层与建筑层的显示对象 / tween / 定时器一并回收（perf：资源必须可清理）。
+    this.buildingLayer.destroy();
+    this.groundLayer.destroy();
     this.units.destroy();
     // 交互态复位（task_045）：场景重启（Phaser 复用场景实例）时不携带上一次的拖拽残留。
     this.dragMode = 'none';
@@ -467,7 +506,9 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
         DEFAULT_WORLD_BOUNDS.height,
         BOUNDS_FILL
       )
-      .setStrokeStyle(2, BOUNDS_COLOR);
+      .setStrokeStyle(2, BOUNDS_COLOR)
+      // 地面各层压在底板之下（task_078 的深度口径）。
+      .setDepth(GROUND_DEPTH.bounds);
   }
 }
 

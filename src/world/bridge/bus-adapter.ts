@@ -7,12 +7,16 @@
  *   - world 通道 → 场景（@since v3.17，task_038）：订阅 world 通道上的 task.started /
  *     completed / failed 生命周期事件（core/task 发出，挂在 world 通道 —— 见 types.ts 的取舍注），
  *     筛出这三条转给可选端口钩子 syncTaskEvent，驱动战场工作表现（objects/task-fx*）；
+ *   - state 通道 → 场景（@since v3.3，task_078）：missions + tasks 一并转发 syncTasks，
+ *     驱动地图上的任务建筑三态与区域点亮（objects/task-building*）；
  *     @since v3.25（task_049）追加转发 task.awaiting_approval（挂起画 ?）与 task.approved
  *     （折算 started —— 批准后回工作环）；
  *   - world 通道 → 场景（@since v3.21，task_045）：同一条订阅还转发 unit.position ——
  *     右击移动时 runtime 把编队终值广播出来，场景据此更新 UnitObject（立即）并 tween（表现）；
  *     @since v3.33（task_057）：再转发 camera.center（HudCommand 同名命令经 core 钳制后的
  *     小地图跳转指令）→ syncCameraCenter，场景把相机对中到目标世界点；
+ *     @since v3.3（task_080）：再转发 camera.shake（HudCommand 同名命令经 core 钳制后的
+ *     里程碑震动指令）→ syncCameraShake，场景给相机一记小震；
  *     @since v3.37（task_062）：再转发 unit.speaking（app 层 chat-service 流式期间的说话
  *     标志位广播）→ syncUnitSpeaking，场景驱动头顶「···」气泡起止。
  * 输出：端口回调（渲染侧）+ bus 的 world 通道（业务侧）。
@@ -28,6 +32,7 @@ import type {
   Bounds,
   CharacterTask,
   ClickMods,
+  MissionView,
   Point,
   SelectionState,
   UnitView,
@@ -67,12 +72,28 @@ export interface WorldScenePort {
    */
   syncCameraCenter?(x: number, y: number): void;
   /**
+   * 镜头震动钩子（@since v3.3，task_080）：world 通道上的 camera.shake（HudCommand 同名命令
+   *   经 core 钳制后的转发形态）转发进场景 —— 里程碑大字落下时的一记小震（Phaser 相机 shake）。
+   *   可选成员：不实现不破编译（同 syncCameraCenter 惯例）。
+   *   why 走 world 通道：震动是**瞬态表现**，既不进 WorldState 也不该由 hud 直接调 world
+   *   （铁律）—— 与 camera.center 同一两段式（命令 hud → core，事件 core → world）。
+   */
+  syncCameraShake?(durationMs: number, intensity: number): void;
+  /**
    * 单位说话状态钩子（@since v3.37，task_062）：world 通道上的 unit.speaking
    * （app 层 chat-service 在流式期间发的标志位广播）转发进场景 —— 头顶「···」气泡起止。
    * 可选成员：不实现不破编译（同 syncTaskEvent 惯例）。hud 不直接驱动 world（铁律），
    * 抽屉的流式状态只能经 app 层翻译成世界事件走本通道落地。
    */
   syncUnitSpeaking?(unitId: string, speaking: boolean): void;
+  /**
+   * 任务全景钩子（@since v3.3，task_078）：state 通道上的 missions + tasks 转发进场景 ——
+   * 战场的「任务建筑三态 / 区域点亮」由 core 的任务状态驱动（区域 = 编组任务，建筑 = 角色任务）。
+   * 可选成员：不实现不破编译（同上惯例）。
+   * why 走 state 通道而不是 world 事件：建筑三态要的是**当前快照**（每条任务的相位），
+   * 事件流只给增量、还得自己拼状态 —— 快照口径与 units / selection 一致，少一份真相。
+   */
+  syncTasks?(missions: readonly MissionView[], tasks: readonly CharacterTask[]): void;
 }
 
 /** 场景侧的交互出口：场景调这些方法，桥接层负责转成 WorldEvent 发给 core。 */
@@ -132,6 +153,9 @@ export function createWorldBridge(
     if (destroyed) return;
     port.syncUnits(state.units);
     port.syncSelection(state.selection);
+    // 任务全景（task_078）：建筑三态与区域点亮要的是**当前快照**（每条任务的相位），
+    // 故随 state 一起转发，而不是等 world 通道的事件增量自己拼状态。
+    port.syncTasks?.(state.missions ?? [], state.tasks ?? []);
   });
 
   // world 通道 → 场景（@since v3.17，task_038；@since v3.21，task_045 补 unit.position）：
@@ -167,6 +191,10 @@ export function createWorldBridge(
       // 小地图跳转（task_057）：core 转发来的相机对中指令 → 场景应用并回发 camera.moved。
       case 'camera.center':
         port.syncCameraCenter?.(event.x, event.y);
+        break;
+      // 镜头震动（task_080）：里程碑大字的那记小震 → 场景相机 shake（不改 scroll）。
+      case 'camera.shake':
+        port.syncCameraShake?.(event.durationMs, event.intensity);
         break;
       // 说话气泡（task_062）：chat 流式期间的标志位广播 → 场景头顶气泡起止。
       case 'unit.speaking':

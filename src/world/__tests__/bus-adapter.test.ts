@@ -131,6 +131,62 @@ describe('state → 场景同步', () => {
     expect(selectionSyncs).toEqual(['u9']);
     expect(unitSyncs).toHaveLength(1);
   });
+
+  test('missions + tasks 一并转发（task_078：任务建筑三态与区域点亮的数据源）', () => {
+    const taskSyncs: { missions: string[]; tasks: string[] }[] = [];
+    const port: WorldScenePort = {
+      syncUnits: () => {},
+      syncSelection: () => {},
+      syncTasks: (missions, tasks) =>
+        void taskSyncs.push({
+          missions: missions.map((mission) => mission.id),
+          tasks: tasks.map((task) => `${task.id}:${task.status}`),
+        }),
+    };
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+
+    emitState(
+      stateWith({
+        missions: [
+          { id: 'm1', title: '做地图', phase: 'running', unitIds: [], createdAt: 1 },
+        ],
+        tasks: [
+          {
+            id: 't1',
+            characterId: 'c1',
+            prompt: '铺路',
+            status: 'completed',
+            createdAt: 1,
+            startedAt: null,
+            endedAt: null,
+            output: '',
+            missionId: 'm1',
+          },
+        ],
+      })
+    );
+
+    expect(taskSyncs).toHaveLength(1);
+    expect(taskSyncs[0].missions).toEqual(['m1']);
+    expect(taskSyncs[0].tasks).toEqual(['t1:completed']);
+  });
+
+  test('没有 missions / tasks 的旧快照也能同步（缺省按空数组转发）', () => {
+    const taskSyncs: number[] = [];
+    const port: WorldScenePort = {
+      syncUnits: () => {},
+      syncSelection: () => {},
+      syncTasks: (missions, tasks) => void taskSyncs.push(missions.length + tasks.length),
+    };
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+
+    const state = stateWith({});
+    emitState({ ...state, missions: undefined as never, tasks: undefined as never });
+
+    expect(taskSyncs).toEqual([0]);
+  });
 });
 
 describe('场景交互 → WorldEvent', () => {
