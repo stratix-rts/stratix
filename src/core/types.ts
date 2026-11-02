@@ -985,7 +985,8 @@ export interface AgentMessageView {
  * 粒度约定（**渐进：新写走新模型，旧表不迁移**）：
  *   - character_chat：每角色一条长生命周期会话（历史读现有 chat-history-dao，不搬）；
  *   - peer_chat：每场互聊一条（事件全量落库 —— 修「超时即丢」）；
- *   - task_run：每条 task 执行一条（LITE，只记 create / close）；
+ *   - task_run：每条 task 执行一条（@since v3.46 / task_105 起**全量事件化**：
+ *     执行路径埋点 task_started / step / output_tail / completed / failed）；
  *   - mission_run：每条 mission 一条（LITE，只记 create / close）；
  *   - shell_link：每条 agent-link 连接一条（LITE，只记 create / close）。
  */

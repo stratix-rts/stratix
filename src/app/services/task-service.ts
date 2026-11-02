@@ -97,11 +97,14 @@
  *
  * ============ 会话域接线（@since v3.43，task_093 / v3.2a S3）============
  * 任务侧接入会话域，两种 kind，口径见 docs/SESSION-PLAN.md §2 接线表：
- *   - task_run：每条任务执行一条会话 —— 任务**收尾**时建会话并立刻收尾（LITE 两事件）；
- *   - mission_run：任务带单跑完、任务单随之到终态时，同口径记一条。
+ *   - task_run：**全量事件化**（@since v3.46，task_105 / v3.2b-B6）—— 任务**执行路径**埋点，
+ *     事件序列 task_started → step（关键节点）→ output_tail（尾 500 字）→ completed / failed，
+ *     同一 task 的事件数上限 env `SX_TASK_EVENT_CAP`（默认 50，超限只记终态）；
+ *   - mission_run：任务带单跑完、任务单随之到终态时，记一条（LITE：建 + 收尾两事件）。
  *   任务执行细节（全文 / 计划 / 成果物）仍在 character_tasks 表，**不搬** ——
- *   会话域只回答"这单跑过没有、什么时候跑的"，不回答"干了什么"。
+ *   会话域只回答"这单跑过没有、跑到哪一步了"，不回答"全文写了什么"。
  * 会话记录是**旁路**：会话口缺席或记账失败都不打断任务收尾（可用性优先于历史完整性）。
+ * 埋点实现见 services/task-session-recorder.ts（单独成模块：埋点不许改执行行为）。
  *
  * ============ 流式输出转发（task_046）============
  * 执行期每个 message 事件的文本 chunk 经 onTaskChunk 端口原序转发（组合根接 hud 任务输出
@@ -138,6 +141,7 @@ import type { TaskManager } from '../../core/task';
 import type { SpawnOptions, TransportErrorCode, TransportEvent } from './cli-transport/transport';
 import { parseTaskArtifacts, serializeTaskArtifacts } from './task-artifacts';
 import { defaultExpWeight } from './exp-config';
+import { createTaskSessionRecorder } from './task-session-recorder';
 import { resolveStratixContextBlock, type StratixContextSource } from './stratix-context';
 
 // ============================================================================
@@ -412,11 +416,20 @@ export interface TaskServiceDeps {
    * 会话域写入面（可选，@since v3.43，task_093 / v3.2a S3）—— 任务执行（kind=task_run）
    * 与关联任务单（kind=mission_run）的会话记录。**缺省 = 不记会话**。
    *
-   * 口径（方案 docs/SESSION-PLAN.md §2 接线表「task_run / mission_run」行）：**LITE 两事件**
-   *   —— 任务收尾时建会话并立刻收尾，只留 create / close 两事件；
-   *   任务执行细节仍在 character_tasks 表（不搬），会话域只回答"这单跑过没有"。
+   * 口径（方案 docs/SESSION-PLAN.md §2 接线表「task_run / mission_run」行）：
+   *   - mission_run：**LITE 两事件** —— 任务收尾时建会话并立刻收尾；
+   *   - task_run：**全量事件化**（@since v3.46，task_105 / v3.2b-B6）—— 任务**执行路径**埋点
+   *     （task_started / step / output_tail / completed / failed），见 task-session-recorder.ts。
+   *   任务执行细节（全文 / 计划 / 成果物）仍在 character_tasks 表（不搬）——
+   *   会话域只回答"这单跑过没有、跑到哪一步了"。
    */
   readonly sessions?: SessionManager;
+  /**
+   * 同一 task 的会话事件数上限（@since v3.46，task_105 / v3.2b-B6）。
+   * 缺省读 env `SX_TASK_EVENT_CAP`（默认 50，见 task-session-recorder.ts）。
+   * 超限后只记 completed / failed —— 中间事件停记（事件频率必须节制）。
+   */
+  readonly taskEventCap?: number;
 }
 
 export interface TaskService {
@@ -523,30 +536,45 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
   };
 
   /**
-   * 会话域记账（@since v3.43，task_093 / v3.2a S3）—— **LITE 两事件**（方案 §2 接线表）：
-   *   任务收尾时建一条 task_run 会话并**立刻收尾**（create / close 两条事件）。
-   * why 建完就收：LITE 口径不搬任务执行细节（全文仍在 character_tasks 表），
-   *   会话域在这里只回答"这单跑过没有、什么时候跑的" —— 一条已收尾的会话正好是这件事的答案。
-   * 记账失败不打断收尾（会话记录是旁路，任务结果另有真相）。
+   * task_run 会话事件埋点器（@since v3.46，task_105 / v3.2b-B6）——
+   *   任务**执行路径**的全量事件化（task_started / step / output_tail / completed / failed）。
+   * 埋点是旁路：端口缺席（无会话域）或记账失败都只记日志，绝不打断任务执行回路。
+   */
+  const recorder = createTaskSessionRecorder({
+    sessions: deps.sessions,
+    eventCap: deps.taskEventCap,
+    logger,
+  });
+
+  /**
+   * 任务在状态里的产出摘要（成功收尾时给 completed 事件用）。
+   * why 从状态里取而不是从 record.output 取：record.output 在成功路径上是**全文**
+   *   （落库口径），事件载荷要的是摘要（core 侧按 MAX_SESSION_TASK_SUMMARY_LEN 收口）。
+   */
+  const stateTaskSummary = (taskId: string): string | null => {
+    const tasks = deps.getState().tasks;
+    if (!tasks) return null;
+    const found = tasks.find((task) => task.id === taskId);
+    return found ? found.output : null;
+  };
+
+  /**
+   * 会话域记账（@since v3.43，task_093 / v3.2a S3；v3.46 / task_105 改为**全量事件化**）——
+   *   任务收尾时给 task_run 会话记上终态事件（completed / failed）并收尾会话。
+   * why 终态收在这里而不是执行路径里：服务内**所有**终态路径（守门拦截 / transport 报错 /
+   *   防御性收尾 / 外部直发的 task.failed）都恰好流经 settle 一次 —— 在这里收，不会漏也不会重。
+   * 成功时的摘要在**状态**里（core/task 的 summarizeTaskOutput 已把全文压成摘要），
+   * 失败时的摘要是失败原因（事件里的 task.output）—— 都不搬全文（全文仍在 character_tasks 表）。
    */
   const recordTaskSession = (record: TaskPersistRecord): void => {
-    if (!deps.sessions) return;
-    try {
-      const session = deps.sessions.createSession({
-        kind: 'task_run',
-        participants: [record.characterId],
-        refId: record.id,
-        // 首条消息只用于**自动起名**（不进事件流）：拿任务指令当标题主体，面板上一眼认得出是哪单。
-        firstMessage: record.prompt,
-      });
-      if (!session) return;
-      deps.sessions.closeSession(
-        session.id,
-        record.status === 'completed' ? '任务完成' : '任务失败'
-      );
-    } catch (error) {
-      logger(`[task-service] 会话记账抛错（${record.id}）：${describe(error)}`);
-    }
+    const completed = record.status === 'completed';
+    recorder.finish({
+      taskId: record.id,
+      characterId: record.characterId,
+      prompt: record.prompt,
+      outcome: completed ? 'completed' : 'failed',
+      summary: completed ? (stateTaskSummary(record.id) ?? '') : record.output,
+    });
   };
 
   /**
@@ -794,6 +822,9 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
     // queued → running：盖 startedAt、单位忙闲派生、发 task.started（事件回环落 running 快照）。
     const started = manager.startTask(task.id);
     if (!started) return 'settled'; // 状态没走动（任务被收尾/不存在）—— 不执行也不重试，防守即可
+    // 会话埋点（@since v3.46，task_105）：任务开工 —— 建 task_run 会话 + 记 task_started。
+    // 放在 startTask 之后：状态没走动就没有"这单跑过"可言，不建会话。
+    recorder.begin({ taskId: task.id, characterId: task.characterId, prompt: task.prompt });
     const planFirst = personaPlanFirst(character.persona.trim());
     // persona 每次内嵌（常规任务会话隔离 → 无续发，每条任务都是首发）；plan-first 追加计划指令
     //（见文件头）。task_053：首发语义 → 同样附战场现状块（每任务一次；快照取件异常吞掉不绑架任务）。
@@ -808,6 +839,8 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
 
     try {
       const transport = transportFor(kind);
+      // 会话埋点（@since v3.46，task_105）：关键节点一 —— 执行启动（transport 已就位）。
+      recorder.step(task.id, '执行开始', `agent=${kind}`);
       // sessionId 恒 null：常规任务会话一次性，不复用聊天会话也不跨任务续接（见文件头「会话隔离」）。
       for await (const event of transport.spawn(prompt, { sessionId: null, timeoutMs })) {
         if (event.type === 'message') {
@@ -831,6 +864,8 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
               const awaiting = manager.requestApproval(task.id, draft);
               if (awaiting) {
                 awaitingTasks.set(task.id, { task: awaiting, character, kind, sessionId });
+                // 会话埋点（@since v3.46，task_105）：关键节点二 —— 计划待批准（门在等人裁决）。
+                recorder.step(task.id, '计划待批准', draft);
                 return 'awaiting';
               }
               // 状态机没走动（外部已收尾）—— 落普通收尾路径：completeTask 同样会被拒，
@@ -839,6 +874,9 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
           }
           // 空输出也给一句占位（与 chat 的空回复占位同一口径），失败/成功都有可读的 output。
           const fullText = output.length > 0 ? output : '（任务完成，无文本输出）';
+          // 会话埋点（@since v3.46，task_105）：输出尾部（尾 500 字，core 侧收口）。
+          // 记在 completeTask **之前**：收尾事件（completed）之后会话即终态，终态拒收事件。
+          recorder.outputTail(task.id, output);
           const finished = manager.completeTask(task.id, fullText); // 状态里存摘要
           // 成果物解析（task_048）：同步算、永不抛（解析器内部兜底空）；解析不出 → 缺省字段。
           // 空输出（占位文案）不解析 —— 占位符不是执行产出，解析它只会造出假 summary。
@@ -860,15 +898,19 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
           // 失败不自动重试（规格⑤）：failed 即终态；事件回环落 failed 快照（output=原因）。
           // task_054：exit 异常（非用户中断）旁路上报健康监测（审计 unhealthy）。
           reportTransportError(kind, event.code);
+          // 会话埋点（@since v3.46，task_105）：失败前已产出的部分输出留个尾巴（失败也有产出）。
+          recorder.outputTail(task.id, output);
           manager.failTask(task.id, taskErrorText(event.code, event.message));
           return 'settled';
         }
         // tool_use / tool_result：任务结果只收 message 文本，工具回执不进输出。
       }
       // 流自然结束却没有 done / error —— runtime 契约上不该发生，防御性失败收尾。
+      recorder.outputTail(task.id, output);
       manager.failTask(task.id, 'transport 事件流异常结束（无 done 事件）');
     } catch (error) {
       // runtime 不该抛（内部全转 error 事件）；真抛了也要给任务一个 failed 收尾，别把它吊死在 running。
+      recorder.outputTail(task.id, output);
       manager.failTask(task.id, taskErrorText('cli_error', describe(error)));
     }
     return 'settled';
@@ -897,6 +939,8 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
     let output = '';
     try {
       const transport = transportFor(kind);
+      // 会话埋点（@since v3.46，task_105）：关键节点三 —— 计划已批准，续段执行。
+      recorder.step(task.id, '计划已批准', '续段执行');
       for await (const event of transport.spawn(prompt, { sessionId, timeoutMs })) {
         if (event.type === 'message') {
           output += event.text;
@@ -905,6 +949,8 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
         }
         if (event.type === 'done') {
           const fullText = output.length > 0 ? output : '（任务完成，无文本输出）';
+          // 会话埋点（@since v3.46，task_105）：输出尾部（尾 500 字）—— 记在收尾之前。
+          recorder.outputTail(task.id, output);
           const finished = manager.completeTask(task.id, fullText);
           const artifactsJson =
             output.length > 0 ? serializeTaskArtifacts(parseTaskArtifacts(fullText)) : '';
@@ -922,13 +968,17 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
         if (event.type === 'error') {
           // task_054：审批续段的 exit 异常同样上报健康审计（与 runTask 同一口径）。
           reportTransportError(kind, event.code);
+          // 会话埋点（@since v3.46，task_105）：失败前的部分输出留个尾巴。
+          recorder.outputTail(task.id, output);
           manager.failTask(task.id, taskErrorText(event.code, event.message));
           return;
         }
         // session / tool_*：同 runTask 口径（session 已在手；任务结果只收 message 文本）。
       }
+      recorder.outputTail(task.id, output);
       manager.failTask(task.id, 'transport 事件流异常结束（无 done 事件）');
     } catch (error) {
+      recorder.outputTail(task.id, output);
       manager.failTask(task.id, taskErrorText('cli_error', describe(error)));
     } finally {
       busy.delete(task.characterId);

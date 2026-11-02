@@ -70,6 +70,47 @@ describe('sessionEventToEntry：事件信封 → 历史条目', () => {
     expect(entry.text).toBe('会话已结束');
   });
 
+  // task_run 全量事件化（@since v3.46，task_105）：任务执行事件在抽屉里有人话，不是原始 JSON。
+  test('task_started 事件 → 开工 + 描述摘要', () => {
+    const entry = sessionEventToEntry({
+      ...base,
+      type: 'task_started',
+      payload: { taskId: 'task-1', summary: '侦察北门' },
+    });
+    expect(entry.author).toBe('开工');
+    expect(entry.text).toBe('侦察北门');
+  });
+
+  test('step 事件 → 步骤名（带明细时拼在后面）', () => {
+    const entry = sessionEventToEntry({
+      ...base,
+      type: 'step',
+      payload: { label: '计划待批准', detail: '先侦察再回报' },
+    });
+    expect(entry.author).toBe('步骤');
+    expect(entry.text).toBe('计划待批准：先侦察再回报');
+  });
+
+  test('output_tail 事件 → 输出尾部', () => {
+    const entry = sessionEventToEntry({
+      ...base,
+      type: 'output_tail',
+      payload: { text: '结论在最末尾', truncated: true },
+    });
+    expect(entry.author).toBe('输出');
+    expect(entry.text).toBe('结论在最末尾');
+  });
+
+  test('completed / failed 事件 → 完成 / 失败（失败是错误语气）', () => {
+    const done = sessionEventToEntry({ ...base, type: 'completed', payload: { summary: '做完了' } });
+    expect(done.author).toBe('完成');
+    expect(done.text).toBe('做完了');
+    const failed = sessionEventToEntry({ ...base, type: 'failed', payload: { reason: '执行超时' } });
+    expect(failed.author).toBe('失败');
+    expect(failed.text).toBe('执行超时');
+    expect(failed.tone).toBe('error');
+  });
+
   test('词表外的事件类型 → 如实显示类型与载荷（不猜含义）', () => {
     const entry = sessionEventToEntry({ ...base, type: 'weird', payload: { a: 1 } });
     expect(entry.author).toBe('weird');

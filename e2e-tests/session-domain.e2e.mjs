@@ -5,7 +5,8 @@
  *     ① 起 service（gateway 单进程：执行环 + 存储 + HTTP/MCP + world-sync 端点）；
  *     ② 互聊开场 → 外部 agent 经 MCP 看见 peer_chat 会话（active）；
  *     ③ 制造回合超时（静默 CLI 替身）→ 会话显式转 interrupted + 落一条 interrupt 事件；
- *     ④ 派单跑完 → task_run 会话随终态 closed（LITE 口径）；
+ *     ④ 派单跑完 → task_run 会话随终态 closed（全量事件化口径：task_105 起
+ *        事件流含 task_started / step / output_tail / completed）；
  *     ⑤ 事件历史经 REST 分页可查（中断前后齐全）；world-sync 快照含 sessions（面板数据源）；
  *     ⑥ 收干净：只杀自己拉起的 pid，退出后不留孤儿。
  *
@@ -342,7 +343,7 @@ async function main() {
       `cursor=${restCursor.events.map((e) => `${e.seq}:${e.type}`).join(',')}`
     );
 
-    // ══ 步骤 9：派单跑完 → task_run 会话随终态 closed（LITE）══
+    // ══ 步骤 9：派单跑完 → task_run 会话随终态 closed（全量事件化）══
     const assigned = await mcpCall(
       'stratix_task_assign',
       { character: roster.a.id, prompt: '请原样回复：会话域验收通过。' },
@@ -377,7 +378,7 @@ async function main() {
     );
     const taskSession = pickSession(taskSessions, { kind: 'task_run' });
     must(
-      'task_run 会话随终态 closed（LITE 口径）',
+      'task_run 会话随终态 closed',
       taskSession.status === 'closed' && taskSession.ref_id === assigned.task_id,
       `session=${taskSession.id} status=${taskSession.status} ref=${taskSession.ref_id}`
     );
@@ -388,8 +389,10 @@ async function main() {
     );
     const taskTypes = taskDetail.events.items.map((event) => event.type);
     must(
-      'task_run 会话事件：created + closed 两条（LITE 不搬执行细节）',
-      taskTypes.includes('created') && taskTypes.includes('closed'),
+      'task_run 会话事件：执行路径埋点齐全（created → task_started → step → output_tail → completed → closed）',
+      ['created', 'task_started', 'step', 'output_tail', 'completed', 'closed'].every((type) =>
+        taskTypes.includes(type)
+      ),
       `events=${taskTypes.join(',')}`
     );
 

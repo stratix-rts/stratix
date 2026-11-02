@@ -6,7 +6,8 @@
  *        两者皆缺 → **不落库**（会话只活在 WorldState 里，不假装落库成功）；
  *     ② 双侧可见：内存态（WorldState.sessions）与 SQLite（sessions / session_events 两张表）
  *        看到的是同一条会话、同一串事件；
- *     ③ LITE 接线：task_run / mission_run 两条（建 + 收尾两事件）由 task-service 的终态收尾触发；
+ *     ③ 接线：task_run（自 task_105 起为**全量事件化**：执行路径埋点）与 mission_run（LITE 两事件）
+ *        两条由 task-service 的终态收尾触发；
  *     ④ world-sync 快照含 sessions 键（会话随快照走 —— 协议不用改）。
  * 输入：无（自足单测；真 SQLite 文件库建在临时目录里，跑完删掉）。
  * 输出：断言失败即红。
@@ -146,7 +147,7 @@ describe('service 组合根的会话域接线（task_093）', () => {
   // ② 双侧可见 + ③ LITE 接线
   // --------------------------------------------------------------------------
 
-  it('LITE 接线：任务收尾记 task_run / mission_run 两条会话（各两事件），双侧可见', async () => {
+  it('接线：任务收尾记 task_run（全量事件）/ mission_run（LITE 两事件）两条会话，双侧可见', async () => {
     const service = boot({
       storage,
       taskExecution: {
@@ -185,19 +186,20 @@ describe('service 组合根的会话域接线（task_093）', () => {
       '任务跑完'
     );
 
-    // 内存态：task_run 与 mission_run 各一条，且都已收尾（LITE 两事件）。
+    // 内存态：task_run 与 mission_run 各一条，且都已收尾。
+    // task_run 自 task_105 起是**全量事件化**（执行路径埋点）；mission_run 仍是 LITE 两事件。
     const taskRun = sessionsOf(service).filter((item) => item.kind === 'task_run');
     const missionRun = sessionsOf(service).filter((item) => item.kind === 'mission_run');
     expect(taskRun).toHaveLength(1);
     expect(missionRun).toHaveLength(1);
     expect(taskRun[0]?.status).toBe('closed');
     expect(missionRun[0]?.status).toBe('closed');
-    expect(taskRun[0]?.eventCount).toBe(2);
+    expect(taskRun[0]?.eventCount).toBe(6);
     expect(missionRun[0]?.eventCount).toBe(2);
     expect(taskRun[0]?.refId).toBe(task!.id);
     expect(missionRun[0]?.refId).toBe('mission-1');
 
-    // SQLite 侧：同样的两条会话、同样两事件（双侧可见）。
+    // SQLite 侧：同样的两条会话、同样的事件序列（双侧可见）。
     const dbTaskRun = storage.readSessions({ kind: 'task_run' });
     const dbMissionRun = storage.readSessions({ kind: 'mission_run' });
     expect(dbTaskRun.map((item) => item.id)).toContain(taskRun[0]!.id);
@@ -205,6 +207,10 @@ describe('service 组合根的会话域接线（task_093）', () => {
     expect(dbTaskRun.find((item) => item.id === taskRun[0]!.id)?.status).toBe('closed');
     expect(storage.readSessionEvents(taskRun[0]!.id, {}).map((event) => event.type)).toEqual([
       'created',
+      'task_started',
+      'step',
+      'output_tail',
+      'completed',
       'closed',
     ]);
     expect(storage.readSessionEvents(missionRun[0]!.id, {}).map((event) => event.type)).toEqual([

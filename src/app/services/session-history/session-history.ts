@@ -128,6 +128,33 @@ export function sessionEventToEntry(
       return { ...base, author: '恢复', text: text('note') || '会话已恢复', tone: 'normal' };
     case 'closed':
       return { ...base, author: '收尾', text: text('reason') || '会话已结束', tone: 'normal' };
+    // ---- task_run 全量事件化（@since v3.46，task_105 / v3.2b-B6）----
+    // 任务执行的埋点事件：抽屉里按"发生了什么"翻译成人话（不丢事件、不猜含义）。
+    case 'task_started':
+      return {
+        ...base,
+        author: '开工',
+        text: text('summary') || `任务 ${text('taskId')} 开始执行`,
+        tone: 'normal',
+      };
+    case 'step':
+      return {
+        ...base,
+        author: '步骤',
+        text: text('detail') ? `${text('label')}：${text('detail')}` : text('label') || '关键节点',
+        tone: 'normal',
+      };
+    case 'output_tail':
+      return {
+        ...base,
+        author: '输出',
+        text: text('text') || '（无输出）',
+        tone: 'normal',
+      };
+    case 'completed':
+      return { ...base, author: '完成', text: text('summary') || '任务完成', tone: 'normal' };
+    case 'failed':
+      return { ...base, author: '失败', text: text('reason') || '任务失败', tone: 'error' };
     default:
       // 词表外的事件类型：如实显示类型名 + 原始载荷（不猜它的含义）。
       return {
