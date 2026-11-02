@@ -45,6 +45,14 @@ import {
 import type { SessionHistoryPort } from '../panels/session-catalog';
 import type { TaskStatsProvider } from '../panels/task-assign-catalog';
 import type { PipelineFeedInput } from '../panels/pipeline-catalog';
+// 声音包（@since v3.3，task_083）：顶栏的总开关 + 音量滑条 —— 读写 localStorage
+//   （真源在 hud/sound-engine.ts，引擎每次播放现读，这里只做读写与回显）。
+import {
+  readSoundEnabled,
+  readSoundVolume,
+  writeSoundEnabled,
+  writeSoundVolume,
+} from '../sound-engine';
 import { demoMode } from '../theme/demo-mode';
 import { defineStratButton, STRAT_BUTTON_TAG } from '../widgets/strat-button';
 
@@ -135,6 +143,13 @@ const MAIN_SCREEN_STYLE = `
   }
   .hud-notice-badge[hidden] { display: none; }
   .hud-theme-tag { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); white-space: nowrap; }
+  /* 音量滑条（@since v3.3，task_083）：顶栏里的声音包音量（0-100）—— 直播时一眼能调。 */
+  .hud-volume {
+    width: 84px;
+    accent-color: var(--srf-accent);
+    cursor: pointer;
+  }
+  .hud-volume:disabled { opacity: 0.4; cursor: not-allowed; }
   .hud-rail-left {
     position: absolute;
     left: var(--hud-gap);
@@ -294,6 +309,9 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         unmountMain();
         unmountMain = null;
       }
+      // 声音包开关与音量（@since v3.3，task_083）：状态真源是 localStorage
+      //   （hud/sound-engine.ts 每次播放现读）—— 顶栏只做读写与回显，不存第二份真相。
+      const soundVolume = readSoundVolume();
       host.innerHTML = `
       <style>${MAIN_SCREEN_STYLE}</style>
       <div class="hud-root" part="root">
@@ -309,6 +327,10 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
             <${STRAT_BUTTON_TAG} label="切换像素风" variant="default" data-role="theme"></${STRAT_BUTTON_TAG}>
             <${STRAT_BUTTON_TAG} label="演示" variant="default" data-role="demo"></${STRAT_BUTTON_TAG}>
             <${STRAT_BUTTON_TAG} label="🎬 导演" variant="default" data-role="director"></${STRAT_BUTTON_TAG}>
+            <${STRAT_BUTTON_TAG} label="🔊 声音" variant="default" data-role="sound"></${STRAT_BUTTON_TAG}>
+            <input class="hud-volume" type="range" min="0" max="100" step="5"
+                   value="${soundVolume}" data-role="sound-volume"
+                   aria-label="音效音量" title="音量 ${soundVolume}%">
             <${STRAT_BUTTON_TAG} label="打开聊天" variant="default" data-role="chat"></${STRAT_BUTTON_TAG}>
             <${STRAT_BUTTON_TAG} label="会话面板" variant="default" data-role="sessions"></${STRAT_BUTTON_TAG}>
             <${STRAT_BUTTON_TAG} label="看角色" variant="default" data-role="character"></${STRAT_BUTTON_TAG}>
@@ -347,6 +369,19 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       if (directorTag) directorTag.textContent = directorEnabled ? 'on' : 'off';
       if (directorButton) directorButton.setAttribute('variant', directorEnabled ? 'primary' : 'default');
 
+      // 声音包开关与音量（@since v3.3，task_083）：纯本地展示态 —— 不发 HudCommand、
+      //   不进总线（与演示模式同一口径：音效不进 WorldState）。真源是 localStorage，
+      //   声音引擎每次播放现读 → 这里改完立即生效，不留第二份真相。
+      const soundButton = host.querySelector('[data-role="sound"]');
+      const volumeInput = host.querySelector<HTMLInputElement>('[data-role="sound-volume"]');
+      /** 把当前开关 / 音量状态回显到顶栏（按钮点亮 + 滑条可用性）。 */
+      const applySoundState = (): void => {
+        const enabled = readSoundEnabled();
+        if (soundButton) soundButton.setAttribute('variant', enabled ? 'primary' : 'default');
+        if (volumeInput) volumeInput.disabled = !enabled;
+      };
+      applySoundState();
+
       const onThemeClick = (): void => {
         const next = currentTheme === 'default' ? 'pixel' : 'default';
         currentTheme = next;
@@ -368,6 +403,21 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         const enabled = adapter.latest?.directorEnabled === true;
         adapter.dispatch({ type: 'camera.director', enabled: !enabled });
       };
+      const onSoundClick = (): void => {
+        // 声音包总开关（@since v3.3，task_083）：直写 localStorage（引擎每次播放现读）——
+        //   纯本地展示态，不发 HudCommand、不进总线。缺省开（演示模式默认有声）。
+        writeSoundEnabled(!readSoundEnabled());
+        applySoundState();
+      };
+      const onVolumeInput = (): void => {
+        // 音量滑条（0-100）：即拖即写 —— 引擎下次播放现读，立即生效。
+        if (!volumeInput) return;
+        const value = Number.parseInt(volumeInput.value, 10);
+        if (!Number.isFinite(value)) return;
+        writeSoundVolume(value);
+        volumeInput.title = `音量 ${value}%`;
+      };
+      volumeInput?.addEventListener('input', onVolumeInput);
       const onSettingsClick = (): void => {
         adapter.dispatch({ type: 'ui.navigate', screen: 'settings' });
       };
@@ -397,7 +447,8 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         const target = e.target as HTMLElement | null;
         if (target?.closest('[data-role="theme"]')) onThemeClick();
         else if (target?.closest('[data-role="demo"]')) onDemoClick();
-      else if (target?.closest('[data-role="director"]')) onDirectorClick();
+        else if (target?.closest('[data-role="director"]')) onDirectorClick();
+        else if (target?.closest('[data-role="sound"]')) onSoundClick();
         else if (target?.closest('[data-role="chat"]')) onChatClick();
         else if (target?.closest('[data-role="sessions"]')) onSessionsClick();
         else if (target?.closest('[data-role="character"]')) onCharacterClick();
@@ -493,6 +544,9 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         unmountAgentPanel?.();
         unmountPanel?.();
         unmountReplay?.unmount();
+        // 音量滑条的 input 监听（task_083）：随本屏布局一起拆（滑条节点本也会被丢弃，
+        //   但显式摘掉更符合本文件的卸载纪律）。
+        volumeInput?.removeEventListener('input', onVolumeInput);
         host.removeEventListener('strat-button-click', themeHandler);
         // 这里不置空 host.innerHTML —— renderMain 自身会立刻重写。
       };

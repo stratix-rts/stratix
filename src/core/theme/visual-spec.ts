@@ -356,6 +356,7 @@ export const AMBIENCE_METRICS = Object.freeze({
   /** 变暖程度：格网色向暖色混合的比例（「微微」= 小比例）。 */
   warmMix: 0.28,
 });
+
 /**
  * 导演模式的度量（DEMO-PLAN §7「导演模式」）。
  *
@@ -429,4 +430,148 @@ export const DEMO_MODE = Object.freeze({
   storageKey: 'stratix.demo-mode',
   /** 字号放大倍率（1.3 = +30%）。 */
   fontScale: 1.3,
+});
+
+/**
+ * 演示声音包的键（DEMO-PLAN §10「四音 + 里程碑」）。
+ *   select —— 选中 ack（短哔）；command —— 派活（哒）；complete —— 完成（上行双音）；
+ *   error —— 报错（低鸣）；milestone —— 里程碑（完成音 + 上行琶音）。
+ * why 与 SoundCue（战场的 cue 词表）分开：SoundCue 是**战场动作**的闭集，
+ *   这里是**声音**的闭集 —— 一个 cue 可以映射到同一声音（如 command / claim / focus 都是「哒」）。
+ */
+export type SoundId = 'select' | 'command' | 'complete' | 'error' | 'milestone';
+
+/**
+ * 单音符的合成参数（WebAudio 振荡器 + 包络 —— 零音频文件）。
+ * 频率 / 时长 / 波形逐条对应 DEMO-PLAN §10 的规格原文。
+ */
+export interface SoundNoteSpec {
+  /** 基频（Hz）。 */
+  readonly frequency: number;
+  /** 音长（ms）：从起播到收零。 */
+  readonly durationMs: number;
+  /** 相对响度（0-1）：播放时再乘全局音量（0-1）。 */
+  readonly gain: number;
+  /** 组内延迟（ms）：音组内串行排布靠它，不靠相邻音长凑。 */
+  readonly delayMs?: number;
+  /** 波形：正弦（柔和）/ 方波（硬、短促）/ 三角（介于两者）。 */
+  readonly waveform?: 'sine' | 'square' | 'triangle';
+  /** 起音时长（ms）：0 → peak 的线性爬升；缺省取 SOUND_METRICS.attackMs。 */
+  readonly attackMs?: number;
+  /**
+   * 峰值保持比例（0-1）：0 = 起音后立刻线性衰减（短促的「叮」）；
+   * >0 = 保持峰值到该比例处再收（低鸣的「嗡」）。
+   */
+  readonly holdRatio?: number;
+  /** 失谐（音分 cents）：>0 时叠一个偏移后的振荡器，制造「低鸣」的拍频。 */
+  readonly detuneCents?: number;
+}
+
+/**
+ * 声音包的度量（DEMO-PLAN §10）。
+ *
+ * why 也落在唯一事实源：频率 / 时长 / 波形是**规格数字** —— HUD 侧的声音引擎
+ *   （src/hud/sound-engine.ts）按本表合成，单测也按本表断言 —— 免得引擎里再抄一份
+ *   「880Hz / 80ms」然后两处各改各的。音量刻度（0-100）与节流窗口同理。
+ */
+export const SOUND_METRICS: Readonly<{
+  readonly volumeMax: number;
+  readonly defaultVolume: number;
+  readonly throttleMs: number;
+  readonly attackMs: number;
+  readonly milestoneEvery: number;
+  readonly duplicateSuppressMs: number;
+  readonly sounds: Readonly<Record<SoundId, readonly SoundNoteSpec[]>>;
+}> = Object.freeze({
+  /** 音量刻度上限（HUD 滑条 0-100；播放时换算成 0-1 乘到峰值上）。 */
+  volumeMax: 100,
+  /** 缺省音量（0-100）：无记忆值 / 值非法时回落。 */
+  defaultVolume: 70,
+  /** 同一声音的最小间隔（ms）：成串事件不机关枪（不同声音互不影响）。 */
+  throttleMs: 800,
+  /** 包络起音（ms）：太短有咔哒声，太长音头发闷。 */
+  attackMs: 6,
+  /** 里程碑间隔（每完成 N 个触发一次）—— 与 HUD 里程碑大字同一口径（MARQUEE_METRICS）。 */
+  milestoneEvery: MARQUEE_METRICS.milestoneEvery,
+  /** 同一动作两条通道的重复抑制窗口（ms）：完成音只响一声。 */
+  duplicateSuppressMs: 600,
+  /** 五音的合成参数表（键 = SoundId）。 */
+  sounds: Object.freeze({
+    /**
+     * 选中 ack：880Hz 短哔 80ms（规格原文「880Hz 哔 80ms」）。
+     */
+    select: Object.freeze([
+      Object.freeze({ frequency: 880, durationMs: 80, gain: 0.4, waveform: 'sine' as const }),
+    ]),
+    /**
+     * 派活：240Hz 方波 60ms（规格原文「哒，240Hz 60ms 方波」）——
+     *   方波偏硬，响度压低一档，免得抢过后续的完成音。
+     */
+    command: Object.freeze([
+      Object.freeze({ frequency: 240, durationMs: 60, gain: 0.26, waveform: 'square' as const }),
+    ]),
+    /**
+     * 完成：C5 → E5 上行双音各 120ms（规格原文）。
+     */
+    complete: Object.freeze([
+      Object.freeze({ frequency: 523.25, durationMs: 120, gain: 0.38, waveform: 'sine' as const }),
+      Object.freeze({
+        frequency: 659.25,
+        durationMs: 120,
+        gain: 0.38,
+        waveform: 'sine' as const,
+        delayMs: 120,
+      }),
+    ]),
+    /**
+     * 报错：180Hz 低鸣 300ms + 轻微失谐（规格原文「180Hz 低鸣 300ms + 轻微失谐」）——
+     *   失谐 25 音分 ≈ 182.6Hz，与 180Hz 拍出约 0.4s 一次的「呜」，就是「低鸣」的手感。
+     */
+    error: Object.freeze([
+      Object.freeze({
+        frequency: 180,
+        durationMs: 300,
+        gain: 0.42,
+        waveform: 'sine' as const,
+        attackMs: 30,
+        holdRatio: 0.6,
+        detuneCents: 25,
+      }),
+    ]),
+    /**
+     * 里程碑：完成音 + 上行琶音（三音）（规格原文「里程碑：完成音 + 上行琶音（三音）」）——
+     *   前两音是完成音本体，后三音是 C5 → E5 → G5 的上行琶音（尾音长半拍收稳）。
+     */
+    milestone: Object.freeze([
+      Object.freeze({ frequency: 523.25, durationMs: 120, gain: 0.38, waveform: 'sine' as const }),
+      Object.freeze({
+        frequency: 659.25,
+        durationMs: 120,
+        gain: 0.38,
+        waveform: 'sine' as const,
+        delayMs: 120,
+      }),
+      Object.freeze({
+        frequency: 523.25,
+        durationMs: 90,
+        gain: 0.3,
+        waveform: 'sine' as const,
+        delayMs: 320,
+      }),
+      Object.freeze({
+        frequency: 659.25,
+        durationMs: 90,
+        gain: 0.3,
+        waveform: 'sine' as const,
+        delayMs: 410,
+      }),
+      Object.freeze({
+        frequency: 783.99,
+        durationMs: 170,
+        gain: 0.32,
+        waveform: 'sine' as const,
+        delayMs: 500,
+      }),
+    ]),
+  }),
 });

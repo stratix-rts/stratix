@@ -430,6 +430,48 @@ describe('演示模式：顶栏开关', () => {
   });
 });
 
+// ============================================================================
+// 8. 声音包开关与音量（@since v3.3，task_083）：顶栏 🔊 钮 + 音量滑条
+// ============================================================================
+
+describe('声音包：顶栏总开关与音量', () => {
+  afterEach(() => {
+    window.localStorage.clear();
+  });
+
+  test('默认开（演示模式默认有声）：按钮点亮、滑条可用', () => {
+    const h = mountHarness(makeState());
+    const button = h.host.querySelector('[data-role="sound"]');
+    const slider = h.host.querySelector<HTMLInputElement>('[data-role="sound-volume"]');
+    expect(button?.getAttribute('variant')).toBe('primary');
+    expect(slider?.disabled).toBe(false);
+    expect(slider?.getAttribute('max')).toBe('100');
+    h.unmount();
+  });
+
+  test('点一下关掉：写 localStorage、按钮熄灭、滑条禁用', () => {
+    const h = mountHarness(makeState());
+    h.host.querySelector<HTMLElement>('[data-role="sound"]')
+      ?.dispatchEvent(new CustomEvent('strat-button-click', { bubbles: true }));
+
+    expect(window.localStorage.getItem('stratix.sound.enabled')).toBe('0');
+    expect(h.host.querySelector('[data-role="sound"]')?.getAttribute('variant')).toBe('default');
+    expect(h.host.querySelector<HTMLInputElement>('[data-role="sound-volume"]')?.disabled).toBe(true);
+    h.unmount();
+  });
+
+  test('拖音量滑条：即拖即写（0-100）', () => {
+    const h = mountHarness(makeState());
+    const slider = h.host.querySelector<HTMLInputElement>('[data-role="sound-volume"]');
+    expect(slider).not.toBeNull();
+    if (!slider) return;
+    slider.value = '35';
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(window.localStorage.getItem('stratix.sound.volume')).toBe('35');
+    h.unmount();
+  });
+});
+
 // 进一层断言：mountSettingsScreen / mountCharacterScreen 的 tidiness 与主屏一致 —— 这里直接复用
 // 已有 settings-screen / character-screen / status-screen 测试用例（每个屏均独立验证过
 // disconnectedCallback 释放订阅与定时器）。本文件专注壳层路由。

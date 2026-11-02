@@ -98,6 +98,11 @@ import { mountReplayClock } from '../../hud/components/replay/replay-clock';
 import { createReplayController } from '../../hud/components/replay/replay-controller';
 import { createMainScreen } from '../../hud/screens/main-screen';
 import { levelUpToastText } from '../../hud/screens/appearance-unlock-catalog';
+// 演示声音包（@since v3.3，task_083）：五音（选中 ack / 派活哒 / 完成 / 报错低鸣 / 里程碑琶音）
+//   由 WebAudio **代码合成** —— 零音频文件（DEMO-PLAN §10 的硬约束）。
+//   合成参数在唯一事实源 core/theme/visual-spec.ts 的 SOUND_METRICS；引擎在 hud 侧，
+//   组合根只订阅总线接线（hud 组件零总线依赖 —— 与 toast-host / sfx-service 同一口径）。
+import { createSoundEngine } from '../../hud/sound-engine';
 import { createThemeController } from '../../hud/theme/theme-controller';
 import { demoMode } from '../../hud/theme/demo-mode';
 import defaultCss from '../../hud/theme/tokens-default.css?inline';
@@ -749,8 +754,23 @@ async function boot(): Promise<void> {
   // 这里无需（也无法）向服务转发设置变更。
   const sfx = createSfxService();
   const stopSfxFeed = onWorldEvent((event) => {
+    // task.completed / task.failed 的播报权移交 task_083 的演示声音包（DEMO-PLAN §10 的
+    // 完成音与报错音）—— 同一动作只响一声，两处都播会叠成噪音。
+    if (event.type === 'task.completed' || event.type === 'task.failed') return;
     const key = sfxKeyForEvent(event);
     if (key !== null) sfx.play(key);
+  });
+
+  // ===== 演示声音包（@since v3.3，task_083）=====
+  // 五音（选中 ack / 派活哒 / 完成 C5→E5 / 报错低鸣 / 里程碑琶音）由 WebAudio 代码合成 ——
+  //   零音频文件（DEMO-PLAN §0 的硬约束）。合成参数在唯一事实源 SOUND_METRICS。
+  // 事件来源三条：world 的 fx.sound cue（task_077 预留的钩子：选中 / 派活）、
+  //   core 的 task.completed（完成音 + 每满 N 个换里程碑复合音，计数口径与 HUD 里程碑大字同源）、
+  //   core 的 task.failed（报错低鸣）。
+  // 组合根接线：引擎只暴露 handleEvent（hud 侧零总线依赖），订阅与释放都归这里。
+  const soundEngine = createSoundEngine();
+  const stopSoundFeed = onWorldEvent((event) => {
+    soundEngine.handleEvent(event);
   });
 
   // ===== 事件跑马灯 + 里程碑大字（@since v3.3，task_080）=====
@@ -1138,6 +1158,9 @@ async function boot(): Promise<void> {
       // 音效（task_060）：退总线订阅再释放服务（丢 AudioContext 引用，页面即将销毁）。
       stopSfxFeed();
       sfx.dispose();
+      // 演示声音包（task_083）：退总线订阅 + 释放引擎（摘手势监听、丢 AudioContext 引用）。
+      stopSoundFeed();
+      soundEngine.dispose();
       // 跑马灯 + 里程碑大字（task_080）：退演示模式订阅 + 退总线订阅 + 卸宿主（同卸载纪律；
       // 卸宿主触发 disconnectedCallback → 组件内的计时器清光）。
       stopMarqueeDemoMode();
