@@ -11,9 +11,15 @@
  *   5. 命令里抛异常 —— 命令总线是同步的，异步失败一律转成 Notice + onError。
  *
  * 事件回传链路：远端帧 → session 事件 → 本文件投影 → store → core/runtime → state 通道 → hud/world。
+ *
+ * ============ 会话域接线（@since v3.43，task_093 / v3.2a S3）============
+ * 每条外部 agent 连接在会话域里有一条 shell_link 会话（LITE：建链建、断开收尾，
+ * 只留 create / close 两事件；消息流仍在 WorldState.messages 投影，不搬 ——
+ * 见 docs/SESSION-PLAN.md §2 接线表「shell_link」行）。会话口缺席 = 不记会话。
  */
 
 import { onCommand, type Unsubscribe } from '../bus';
+import type { SessionManager } from '../session';
 import { worldStore, type CoreStore } from '../store';
 import {
   MAX_AGENT_LINKS,
@@ -73,6 +79,14 @@ export interface AgentLinkManagerOptions {
   readonly credentialFor?: (snapshot: AgentLinkSnapshot) => string | undefined;
   /** 命令通道上的异步失败出口（HUD 订阅它做 toast）。 */
   readonly onError?: (error: AgentLinkError) => void;
+  /**
+   * 会话域写入面（可选，@since v3.43，task_093 / v3.2a S3）—— 外部 agent 连接的命令行会话
+   * （kind=shell_link）。**缺省 = 不记会话**。
+   *
+   * 口径（方案 docs/SESSION-PLAN.md §2 接线表「shell_link」行）：**LITE 两事件** ——
+   *   建链成功时建会话、断开时收尾；消息流仍在 WorldState.messages 投影（不搬）。
+   */
+  readonly sessions?: SessionManager;
 }
 
 export interface RestoreResult {
@@ -121,10 +135,14 @@ class Manager implements AgentLinkManager {
   private readonly timing: AgentLinkManagerOptions['timing'];
   private readonly credentialFor: (snapshot: AgentLinkSnapshot) => string | undefined;
   private readonly reportError: (error: AgentLinkError) => void;
+  /** 会话域写入面（缺省 = null = 不记会话）。@since v3.43，task_093。 */
+  private readonly sessionManager: SessionManager | null;
 
   private readonly sessions = new Map<string, AgentLinkSession>();
   private readonly views = new Map<string, AgentLinkView>();
   private readonly offs = new Map<string, () => void>();
+  /** linkId → 会话域的会话 id（shell_link：每条连接一条）。@since v3.43，task_093。 */
+  private readonly shellSessionIds = new Map<string, string>();
   private linkSeq = 0;
   private stopFn: (() => void) | null = null;
 
@@ -139,6 +157,7 @@ class Manager implements AgentLinkManager {
     this.timing = options.timing;
     this.credentialFor = options.credentialFor ?? ((): undefined => undefined);
     this.reportError = options.onError ?? ((): void => { /* 默认安静；HUD 入口与单测注入 */ });
+    this.sessionManager = options.sessions ?? null;
   }
 
   get running(): boolean {
@@ -247,7 +266,10 @@ class Manager implements AgentLinkManager {
     } catch (error) {
       throw new AgentLinkError('open-failed', `open ${linkId} failed: ${messageOf(error)}`);
     }
-    return this.requireView(linkId);
+    // 会话域（@since v3.43，task_093）：建链成功才建会话 —— 建链失败没有"会话"可言。
+    const view = this.requireView(linkId);
+    this.openShellSession(linkId, view.displayName);
+    return view;
   }
 
   async resume(linkId: string): Promise<AgentLinkView> {
@@ -265,6 +287,8 @@ class Manager implements AgentLinkManager {
   async close(linkId: string): Promise<void> {
     const session = this.requireSession(linkId);
     await session.close();
+    // 会话域（@since v3.43，task_093）：连接断了 → 这条会话收尾（LITE：create / close 两事件）。
+    this.closeShellSession(linkId);
   }
 
   sendMessage(linkId: string, text: string): Promise<string> {
@@ -336,6 +360,11 @@ class Manager implements AgentLinkManager {
     this.offs.forEach((off) => off());
     this.offs.clear();
     await Promise.all(sessions.map((session) => session.dispose()));
+    // 会话域（@since v3.43，task_093）：整体收场 → 在办连接的命令行会话一并收尾
+    // （资源必须可清理：会话留在 active 态会让人以为那条连接还开着）。
+    for (const linkId of [...this.shellSessionIds.keys()]) {
+      this.closeShellSession(linkId);
+    }
     this.setState((state) => ({ ...state, links: [], messages: [] }));
     this.views.clear();
   }
@@ -359,6 +388,40 @@ class Manager implements AgentLinkManager {
       session.subscribe((event) => this.project(linkId, event))
     );
     return session;
+  }
+
+  /**
+   * 会话域：建链成功 → 建一条 shell_link 会话（@since v3.43，task_093）。
+   * LITE 口径：只记 create / close 两事件，消息流仍在 WorldState.messages 投影（不搬）。
+   * 记账失败不阻断建链（会话记录是旁路，连接本身才是正事）。
+   */
+  private openShellSession(linkId: string, displayName: string): void {
+    const manager = this.sessionManager;
+    if (!manager) return;
+    try {
+      const record = manager.createSession({
+        kind: 'shell_link',
+        participants: [linkId],
+        refId: linkId,
+        title: `命令行：${displayName}`,
+      });
+      if (record) this.shellSessionIds.set(linkId, record.id);
+    } catch {
+      /* 会话记账失败不打断建链（可用性优先于历史完整性）。 */
+    }
+  }
+
+  /** 会话域：连接断开 → 收尾那条 shell_link 会话（@since v3.43，task_093）。 */
+  private closeShellSession(linkId: string): void {
+    const manager = this.sessionManager;
+    const sessionId = this.shellSessionIds.get(linkId);
+    if (!manager || !sessionId) return;
+    this.shellSessionIds.delete(linkId);
+    try {
+      manager.closeSession(sessionId, '连接已断开');
+    } catch {
+      /* 同上：收尾失败不打断关闭流程。 */
+    }
   }
 
   /** 单次会话事件 → 状态投影。每个事件一次 setState：合并会让 HUD 少看到中间态（相位要看得见）。 */

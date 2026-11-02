@@ -76,6 +76,7 @@ import { emitCommand, emitState, onState, onWorldEvent } from '../../core/bus';
 import { createCharacterManager } from '../../core/character';
 import { createMissionManager } from '../../core/mission';
 import { createCoreRuntime, type UnhandledChannel } from '../../core/runtime';
+import { createSessionManager } from '../../core/session';
 import { expWeightFor } from '../../core/progression';
 import { worldStore } from '../../core/store';
 import type { DetectedAgent, HudCommand, Point, WorldEvent } from '../../core/types';
@@ -412,6 +413,14 @@ async function boot(): Promise<void> {
   const transportHealthReport = (kind: Parameters<typeof healthMonitor.recordTransportFailure>[0], code: Parameters<typeof healthMonitor.recordTransportFailure>[1]): void => {
     healthMonitor.recordTransportFailure(kind, code);
   };
+  // ===== 会话域写入面（@since v3.43，task_093 / v3.2a S3）=====
+  // 与 characterManager / taskManager 同一模式：组合根持**一个**实例，注入
+  //   runtime（session.interrupt 落点）与业务侧（chat / task 的 LITE 记账）——
+  //   两处写的是同一份 WorldState.sessions。
+  // 纯构造（无 IO 无订阅无副作用），故可提前到此处建（chat-service 在下方就要用它）。
+  // ★ 远程模式（task_083）不接：真相在 service 的 core store（铁律 1「真相唯一」），
+  //   本地再记一份会话 = 第二份真相（投影会被整帧覆盖，白记）。
+  const sessionManager = createSessionManager({ store: worldStore });
   if (characterDrawer && cliChat) {
     const chatService = createChatService({
       view: characterDrawer,
@@ -435,6 +444,10 @@ async function boot(): Promise<void> {
       // task_053：换成包过话题缓存的同一个 persister（上方组装说明）。
       persistMessage: contextPersister.persist,
       provideContext: stratixContextSource,
+      // task_093：会话域 LITE 接线（character_chat）—— 首轮建会话、每轮末追加一条空 round 事件
+      //   （只更新 lastEventAt / counters，消息本体仍在 chat_messages 表里，不重复落库）。
+      //   远程模式不接（见上方 sessionManager 注释：本地不能再造一份真相）。
+      sessions: remote ? undefined : sessionManager,
       // task_054：transport exit 异常旁路上报健康监测；离线拦截的轻提示口（warn tone）。
       onTransportError: transportHealthReport,
       notify: (text) => showToast(text, 'warn'),
@@ -735,6 +748,8 @@ async function boot(): Promise<void> {
     character: characterManager,
     mission: missionManager,
     task: taskManager,
+    // task_093：会话域写入面 —— `session.interrupt` 命令的落点（与上面三个 manager 同一实例）。
+    session: sessionManager,
     // task_051：流水线编排器端口 —— runtime 只把 pipeline.start 转发给它（core 不执行编排，
     // 见 core/task/pipeline.ts 架构注）；未注入时命令按未落地处理（与 agent-link 同口径）。
     pipeline: pipelineService,
@@ -806,6 +821,9 @@ async function boot(): Promise<void> {
         else if (record.status === 'failed') missionManager.cancelMission(record.missionId);
       },
       pushNotice: (notice) => worldStore.pushNotice(notice),
+      // task_093：会话域 LITE 接线（task_run / mission_run）—— 任务收尾时建会话并收尾（两事件）。
+      //   远程模式不接（见上方 sessionManager 注释：本地不能再造一份真相）。
+      sessions: remote ? undefined : sessionManager,
       // task_046：执行期 chunk 原序转发进任务输出面板（实时 tail 视图）。面板拿不到
       // （极端时序：chrome 未建）时端口不接 —— 执行照常，只是没有实时视图。
       onTaskChunk: taskOutputView

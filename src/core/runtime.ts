@@ -40,6 +40,9 @@
  * @since v3.34(task_058)追加 unit.group.assign / unit.group.recall 命令接线:编组槽位表
  *   (WorldState.selectionGroups)的写入与召回。槽位合法性/幂等/对账语义在 core/unit/group.ts
  *   纯函数;反馈(已存入/召回 N(x 单位)/被拒原因)同一次 setState 里附 Notice(一次操作一次广播)。
+ * @since v3.43(task_093)追加 session.interrupt 命令接线:落到 session manager
+ *   (core/session,同 mission / task 口径直调);会话域的持久化口由组合根注入
+ *   (命令落点与业务侧记账共用同一个 manager 实例)。
  */
 
 import type { AgentLinkManager } from './agent-link';
@@ -47,6 +50,7 @@ import { clampWorldPoint } from './camera';
 import { emitState, emitWorldEvent, onCommand, onWorldEvent, type Unsubscribe } from './bus';
 import { createCharacterManager, type CharacterManager } from './character';
 import { createMissionManager, type MissionManager } from './mission';
+import { createSessionManager, type SessionManager } from './session';
 import type { CoreStore } from './store';
 import { worldStore } from './store';
 import { createTaskManager, type TaskManager } from './task';
@@ -104,6 +108,13 @@ export interface CoreRuntimeOptions {
    * 与 mission / character 同一原因,多一条实例共享的硬需求。
    */
   readonly task?: TaskManager;
+  /**
+   * 会话域写入面(@since v3.43，task_093 / v3.2a S3)。
+   * why 可注入:组合根要把它**同一个实例**交给 app 层各服务(chat / task / agent-link),
+   *   让"命令落点"与"业务侧记账"写的是同一份 WorldState.sessions —— 与 mission / task 同一原因。
+   * 默认按本运行时自己的 store 构造,保证 session.interrupt 落到**本运行时**的状态里。
+   */
+  readonly session?: SessionManager;
   /**
    * 多 agent 流水线编排器端口(@since v3.27,task_051)。
    * why 注入:编排执行有 IO(逐站 task.assign 会发事件、落 pipelines 表),core 零 IO
@@ -301,6 +312,9 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
   // @since v3.16 任务域写入面:task.assign 的落库管道(与 mission / character 同一口径)。
   // 组合根注入同一个实例给 app 层 task-service,保证命令与相位回报写的是同一份状态。
   const task = options.task ?? createTaskManager({ store });
+  // @since v3.43(task_093):会话域写入面 —— session.interrupt 的落库管道。
+  // 与 mission / task 同一口径:manager 无 IO 无资源,构造它只为了绑一个 store。
+  const session = options.session ?? createSessionManager({ store });
   // @since v3.27(task_051)流水线编排器端口:只持引用不构造(见 options.pipeline 注释)。
   const pipeline = options.pipeline;
   const reportUnhandled = options.onUnhandled ?? ((): void => { /* 默认不打扰;dev 入口与单测会注入 */ });
@@ -436,6 +450,12 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         return;
       case 'task.reject':
         task.rejectTask(command.taskId);
+        return;
+      // @since v3.43(task_093 / v3.2a S3)会话中断:落到 session manager(与 mission / task 同一口径:
+      //   命令直接调 manager,状态裁决在 core/session 的状态机里 —— 已收尾 / 已中断的会话被拒并回 Notice)。
+      //   why 需要它:互聊超时此前是"静默丢弃"(会话没了、历史也没了)—— 中断标记让会话可见、可查。
+      case 'session.interrupt':
+        session.interruptSession(command.sessionId);
         return;
       // @since v3.27(task_051)流水线发起:转交注入的编排器端口(app 层 pipeline-service)。
       // 与 task.* 不同,这里不直调 manager -- 流水线不是 core 实体(见 RuntimeOptions.pipeline

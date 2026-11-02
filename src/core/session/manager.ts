@@ -13,13 +13,17 @@
  *   4. 让 sessions 无限增长 —— 超过 MAX_SESSIONS 先丢**已关闭的最旧**会话（见 dropClosedSessions），
  *      全是在办会话时拒绝新建（绝不静默挤掉谁）；
  *   5. 碰存储 / SQLite / REST —— 落库是 S2（sessions / session_events 表 + DAO）的事，
- *      本单只交付纯逻辑（core 零 IO 铁律）。
+ *      本模块只交付纯逻辑（core 零 IO 铁律）；唯一的例外是**持久化口**（见下）——
+ *      那是一个纯回调契约（SessionPersistPort），core 只负责"写什么"（事件信封在这里生成），
+ *      "往哪写"由 app 层的注入件负责（core 从不 import DAO / SQLite）。
  *
  * 广播次数（perf）：一次命令只写一次 store（状态迁移 + 事件追加合并成同一次 setState），
  *   另加 store.pushNotice 自带的一次广播（通知队列本身受 MAX_NOTICES 约束）。
  *
  * @since v3.40（task_091）v3.2a S1。会话域的**组合根接线**（runtime 收到 session.interrupt
  *   时调本模块）是 S3 的事，本单只交付纯逻辑模块 + 单测。
+ *   v3.43（task_093 / v3.2a S3）追加**持久化口**（SessionPersistPort，缺省 = 不落库）：
+ *   组合根把它注入进来，会话摘要与事件便随写随落库（事件本体只进库，不进广播）。
  */
 
 import { worldStore, type CoreStore } from '../store';
@@ -39,6 +43,7 @@ import type {
   CreateSessionInput,
   SessionEvent,
   SessionEventInput,
+  SessionPersistPort,
   SessionRecord,
 } from './types';
 
@@ -67,6 +72,14 @@ export interface SessionManagerOptions {
   readonly createId?: (prefix: string) => string;
   /** 会话条数上限；默认契约常量 MAX_SESSIONS。 */
   readonly maxSessions?: number;
+  /**
+   * 持久化口（可选，@since v3.43 / task_093）—— 缺省 = 不落库。
+   * why 在 core 留这个口：事件信封由本模块产生（seq / payload / 时间戳都在这里定），
+   *   让上层"猜"事件长什么样必然漂移；core 只认**回调契约**，不认存储实现（零 IO 铁律：
+   *   本模块从不 import DAO / SQLite，只把已经裁好的信封交出去）。
+   * 落库失败只吞掉（不打断会话回路）—— 可用性优先于历史完整性，与注入件同一纪律。
+   */
+  readonly persist?: SessionPersistPort;
 }
 
 export interface SessionManager {
@@ -104,6 +117,8 @@ class Manager implements SessionManager {
   private readonly now: () => number;
   private readonly createId: (prefix: string) => string;
   private readonly maxSessions: number;
+  /** 持久化口（缺省 = null = 不落库）。见 SessionManagerOptions.persist。 */
+  private readonly persist: SessionPersistPort | null;
   private seq = 0;
 
   constructor(options: SessionManagerOptions = {}) {
@@ -112,6 +127,7 @@ class Manager implements SessionManager {
     this.createId =
       options.createId ?? ((prefix: string): string => `${prefix}_${this.now()}_${++this.seq}`);
     this.maxSessions = options.maxSessions ?? MAX_SESSIONS;
+    this.persist = options.persist ?? null;
   }
 
   createSession(input: CreateSessionInput): SessionRecord | null {
@@ -124,7 +140,7 @@ class Manager implements SessionManager {
         : deriveSessionTitle({ kind: input.kind, participants, firstMessage: input.firstMessage });
     const at = this.now();
 
-    const outcome: { session?: SessionRecord; code?: SessionRejectionCode } = {};
+    const outcome: { session?: SessionRecord; event?: SessionEvent | null; code?: SessionRejectionCode } = {};
     this.store.setState((state) => {
       const sessions = state.sessions ?? [];
       // 先腾位子：新会话要占 1 格，所以裁到 max-1，且**只丢已关闭的最旧会话**；
@@ -154,6 +170,7 @@ class Manager implements SessionManager {
       });
       const session = created.next;
       outcome.session = session;
+      outcome.event = created.event;
       return { ...state, sessions: [...kept, session] };
     });
 
@@ -162,12 +179,15 @@ class Manager implements SessionManager {
       this.notify('warn', rejectionText(outcome.code ?? 'limit-exceeded', this.maxSessions));
       return null;
     }
+    // 落库（可选口）：摘要快照 + 建会话事件 —— 事件本体只在库里有，广播里没有（性能铁律）。
+    this.persistRecord(session);
+    this.persistEvent(outcome.event ?? null);
     this.notify('info', `已开启会话「${session.title}」`);
     return session;
   }
 
   appendEvent(sessionId: string, input: SessionEventInput): SessionEvent | null {
-    const outcome: { event?: SessionEvent; code?: SessionRejectionCode } = {};
+    const outcome: { event?: SessionEvent; record?: SessionRecord; code?: SessionRejectionCode } = {};
     this.store.setState((state) => {
       const sessions = state.sessions ?? [];
       const index = sessions.findIndex((session) => session.id === sessionId);
@@ -183,8 +203,12 @@ class Manager implements SessionManager {
       const next = sessions.slice();
       next[index] = appended.next;
       outcome.event = appended.event;
+      outcome.record = appended.next;
       return { ...state, sessions: next };
     });
+    // 落库（可选口）：事件本体 + 摘要快照（计数 / lastEventAt 变了）。
+    this.persistEvent(outcome.event ?? null);
+    this.persistRecord(outcome.record ?? null);
     // 静默记账：不发 Notice（成功与失败都不发）—— 见接口注释。
     return outcome.event ?? null;
   }
@@ -295,6 +319,9 @@ class Manager implements SessionManager {
     if (!outcome.session) {
       return { ok: false, code: outcome.code ?? 'illegal-transition' };
     }
+    // 落库（可选口）：状态迁移后写快照；本步记的事件（interrupt / closed / resumed）一并落库。
+    this.persistRecord(outcome.session);
+    this.persistEvent(outcome.event ?? null);
     return { ok: true, session: outcome.session, event: outcome.event ?? null };
   }
 
@@ -321,6 +348,30 @@ class Manager implements SessionManager {
       createdAt: at,
       expiresAt: at + NOTICE_TTL_MS,
     });
+  }
+
+  /**
+   * 落一条会话摘要快照（可选口；端口缺席 = 不落库）。
+   * why 吞掉异常：命令总线是同步的，落库抛错会打断整轮广播 —— 会话域的可用性
+   * 优先于历史完整性（WorldState 里还有一份摘要，缺一段历史不致命）。
+   */
+  private persistRecord(record: SessionRecord | null): void {
+    if (!this.persist || !record) return;
+    try {
+      this.persist.persistSession(record);
+    } catch {
+      /* 落库失败不打断会话回路（注入件自己记日志）。 */
+    }
+  }
+
+  /** 落一条会话事件（可选口；端口缺席 = 不落库）。异常处理同 persistRecord。 */
+  private persistEvent(event: SessionEvent | null): void {
+    if (!this.persist || !event) return;
+    try {
+      this.persist.persistEvent(event);
+    } catch {
+      /* 同上：落库失败不打断会话回路。 */
+    }
   }
 }
 

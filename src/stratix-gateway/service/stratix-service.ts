@@ -3,13 +3,14 @@
  *   在**没有渲染进程**的进程里装配 core runtime（命令 → 状态机 → store → 广播），
  *   让 service 进程自己持有世界态；A2 起还可以在**本进程**跑任务执行环（直接 spawn CLI）。
  *   装配内容照抄渲染侧组合根（src/app/main/main-entry.ts 的 core 段），顺序也照抄：
- *     ① 三个写入面（character / mission / task manager）—— 同一份 store；
+ *     ① 四个写入面（character / mission / task / session manager）—— 同一份 store；
  *     ② core runtime —— 命令分发的唯一裁决点（runtime 后起）；
  *     ③ 养成回路（progression-service）—— exp.gained → 角色成长 + 升级广播；
  *     ④ 任务执行环（A2，可选接入）—— task.queued → FIFO 出队 → 并发 1 → spawn CLI → 相位回报。
- * 输入：可选注入端口（store / pipeline / persistExpEvent / taskExecution / onUnhandled / logger）
- *   —— 缺省即缺省范式。
- * 输出：一个可独立 boot 的 StratixService：{ store, runtime, character, mission, task, taskService, stop }。
+ * 输入：可选注入端口（store / pipeline / persistExpEvent / persistSession / taskExecution /
+ *   onUnhandled / logger）—— 缺省即缺省范式。
+ * 输出：一个可独立 boot 的 StratixService：
+ *   { store, runtime, character, mission, task, session, taskService, stop }。
  * 禁止事项：
  *   1. import 渲染层 / 宿主层的东西（DOM、ipc、preload、浏览器全局）—— 本模块必须能在纯 node 里跑；
  *   2. 直接改 store —— 写操作一律走 HudCommand，由 core 状态机裁决（铁律：裁决在 core）；
@@ -46,16 +47,28 @@
  *   chat 的落库口由调用方拿 storage.persistChatMessage 自行包一层（话题缓存语义见
  *   app/services/stratix-context.ts 的 createTopicCachePersister）。
  *
+ * ============ v3.2a S3：会话域接线（task_093）============
+ * 组合根多挂一个写入面：**会话域 manager**（core/session）—— 与前三个 manager 同一口径
+ *   （纯构造、绑同一份 store、无 IO、无订阅）。它有两个去处，必须是**同一个实例**：
+ *   ① core runtime 的 `session.interrupt` 命令落点（runtime 直调 manager，同 mission / task 口径）；
+ *   ② 业务侧记账（task-service 的 LITE 接线）—— 两处写的是同一份 WorldState.sessions。
+ * 持久化口（SessionPersistPort）缺省口径与 exp_events 同范式：**存储件在 → 自动接管**
+ *   （会话摘要与事件随写随落 sessions / session_events 两张表）；显式给了以显式为准；
+ *   两者都缺 = 不落库（会话只活在 WorldState 里 —— 不假装落库成功）。
+ *
  * @since v3.40（task_077 / service-split A1）；v3.41（task_078 / service-split A2）追加执行环接线；
- *        v3.42（task_079 / service-split A3）追加存储端口接线。
+ *        v3.42（task_079 / service-split A3）追加存储端口接线；
+ *        v3.43（task_093 / v3.2a S3）追加会话域写入面 + 持久化口接线。
  */
 
+import { createSessionPersister } from '../../app/services/persistence/session-persister';
 import { createProgressionService } from '../../app/services/progression-service';
 import type { TaskService, TaskTransportFactory } from '../../app/services/task-service';
 import { onWorldEvent } from '../../core/bus';
 import { createCharacterManager, type CharacterManager } from '../../core/character';
 import { createMissionManager, type MissionManager } from '../../core/mission';
 import { createCoreRuntime, type CoreRuntime, type UnhandledChannel } from '../../core/runtime';
+import { createSessionManager, type SessionManager, type SessionPersistPort } from '../../core/session';
 import { worldStore, type CoreStore } from '../../core/store';
 import { createTaskManager, type PipelineRunnerPort, type TaskManager } from '../../core/task';
 import type { HudCommand, WorldEvent } from '../../core/types';
@@ -128,6 +141,16 @@ export interface StratixServiceOptions {
    */
   readonly onUnhandled?: (channel: UnhandledChannel, payload: HudCommand | WorldEvent) => void;
   /**
+   * 会话持久化口（可选，@since v3.43，task_093 / v3.2a S3）—— 形状 = core/session 的
+   * SessionPersistPort（app 层 session-persister 的 SessionPersister 与之**结构同形**，
+   * 可直接注入，无需适配器）。
+   *
+   * 缺省口径（与 exp_events 同一范式）：**存储件在 → 组合根自动接管**（会话摘要与事件
+   * 随写随落 sessions / session_events 两张表）；显式给了就以显式为准；
+   * 两者都缺 = **不落库**（会话只活在 WorldState 里 —— 缺省即缺省，不假装落库成功）。
+   */
+  readonly persistSession?: SessionPersistPort;
+  /**
    * 日志口（可选）。缺省 = console.warn —— 只用于「未接任务执行环」那条提示
    * （其余端口缺席即静默，与 app 层各服务的缺省口径一致）。
    */
@@ -146,6 +169,12 @@ export interface StratixService {
   readonly mission: MissionManager;
   /** 角色任务写入面（task.assign / cancel / approve / reject）。 */
   readonly task: TaskManager;
+  /**
+   * 会话域写入面（@since v3.43，task_093 / v3.2a S3）—— 建会话 / 追加事件 / 中断 / 收尾。
+   * 同一实例既接 runtime 的 `session.interrupt` 命令落点，也接业务侧的记账
+   * （chat / task / agent-link 的 LITE 接线）—— 两处写的是同一份 WorldState.sessions。
+   */
+  readonly session: SessionManager;
   /**
    * 任务执行环（A2；未接执行环时为 null）。观察口：isBusy / queueLength。
    * 存在即代表**本进程**会跑任务（直接 spawn CLI，不经渲染进程 / IPC）。
@@ -173,10 +202,28 @@ export function createStratixService(options: StratixServiceOptions = {}): Strat
   /** 缺省提示出口（只用于「未接执行环」那条警告；其余缺省范式 = 静默）。 */
   const warn = options.logger ?? ((line: string): void => console.warn(line));
 
-  // ===== ① 三个写入面（同一份 store；两处写的是同一件事）=====
+  // ===== ① 四个写入面（同一份 store；两处写的是同一件事）=====
   const character = createCharacterManager({ store });
   const mission = createMissionManager({ store });
   const task = createTaskManager({ store });
+  // 会话域写入面（@since v3.43，task_093）：纯构造、无 IO、无订阅 —— 与前三个同口径。
+  // 持久化口缺省口径（与 exp_events 同一范式）：显式给了用显式的；没给而存储件在 → 用存储件接管；
+  // 两者都缺 = 不落库（会话只活在 WorldState 里，不假装落库成功）。
+  const sessionPersister: SessionPersistPort | null =
+    options.persistSession ??
+    (options.storage
+      ? createSessionPersister(
+          {
+            upsertSession: options.storage.persistSession,
+            appendSessionEvent: options.storage.persistSessionEvent,
+          },
+          options.logger
+        )
+      : null);
+  const session = createSessionManager({
+    store,
+    ...(sessionPersister ? { persist: sessionPersister } : {}),
+  });
 
   // ===== ② core runtime（命令 → 状态机 → store → 广播）=====
   const runtime = createCoreRuntime({
@@ -184,6 +231,9 @@ export function createStratixService(options: StratixServiceOptions = {}): Strat
     character,
     mission,
     task,
+    // 会话域写入面（@since v3.43，task_093）：`session.interrupt` 命令的落点 ——
+    // 与上面三个 manager 同一个实例（命令落点与业务侧记账写的是同一份 WorldState.sessions）。
+    session,
     // 流水线编排器端口：未注入时 pipeline.start 走 onUnhandled（未落地口径，不假装成功）。
     pipeline: options.pipeline,
     onUnhandled:
@@ -227,6 +277,9 @@ export function createStratixService(options: StratixServiceOptions = {}): Strat
         }),
       store,
       taskManager: task,
+      // 会话域写入面（@since v3.43，task_093）：任务收尾时记 task_run / mission_run 会话
+      // （LITE 两事件，见 app/services/task-service.ts 文件头）。
+      sessions: session,
     });
     stopTaskExecution = taskService.start();
   } else {
@@ -246,5 +299,5 @@ export function createStratixService(options: StratixServiceOptions = {}): Strat
     stopRuntime();
   };
 
-  return { store, runtime, character, mission, task, taskService, stop };
+  return { store, runtime, character, mission, task, session, taskService, stop };
 }

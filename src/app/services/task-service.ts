@@ -95,6 +95,14 @@
  *     failed→cancelMission，失败按既有「中止」语义落 cancelled），并发 source=app/task-service、
  *     带 missionId 的 Notice；普通任务不进入这条旁路。
  *
+ * ============ 会话域接线（@since v3.43，task_093 / v3.2a S3）============
+ * 任务侧接入会话域，两种 kind，口径见 docs/SESSION-PLAN.md §2 接线表：
+ *   - task_run：每条任务执行一条会话 —— 任务**收尾**时建会话并立刻收尾（LITE 两事件）；
+ *   - mission_run：任务带单跑完、任务单随之到终态时，同口径记一条。
+ *   任务执行细节（全文 / 计划 / 成果物）仍在 character_tasks 表，**不搬** ——
+ *   会话域只回答"这单跑过没有、什么时候跑的"，不回答"干了什么"。
+ * 会话记录是**旁路**：会话口缺席或记账失败都不打断任务收尾（可用性优先于历史完整性）。
+ *
  * ============ 流式输出转发（task_046）============
  * 执行期每个 message 事件的文本 chunk 经 onTaskChunk 端口原序转发（组合根接 hud 任务输出
  * 面板的 appendTaskOutput —— running 任务的实时 tail 视图）。fire-and-forget（与 persistTask
@@ -108,11 +116,13 @@
  *   v3.30（task_054）追加离线守门（units.online 位拦截 + toast 去重）与 transport 异常上报口；
  *   v3.41（task_078 / service-split A2）本模块成为**两种宿主共用**的执行环实现 ——
  *   渲染进程（transport 经 IPC 桥）与 service 进程（transport 直接 spawn 子进程）共用同一份
- *   FIFO / 并发 1 / 守门 / 相位回报逻辑，两边只是 transport 工厂的来源不同。
+ *   FIFO / 并发 1 / 守门 / 相位回报逻辑，两边只是 transport 工厂的来源不同；
+ *   v3.43（task_093 / v3.2a S3）追加会话域接线（task_run / mission_run：LITE 建 + 收尾两事件）。
  */
 
 import { emitWorldEvent, onWorldEvent } from '../../core/bus';
 import { personaPlanFirst } from '../../core/character/persona';
+import type { SessionManager } from '../../core/session';
 import type {
   AgentKind,
   CharacterTask,
@@ -398,6 +408,15 @@ export interface TaskServiceDeps {
    * 队列里排着 N 条任务不该炸出 N 条 toast。组合根接 toast-host（warn tone）。
    */
   readonly notify?: (text: string) => void;
+  /**
+   * 会话域写入面（可选，@since v3.43，task_093 / v3.2a S3）—— 任务执行（kind=task_run）
+   * 与关联任务单（kind=mission_run）的会话记录。**缺省 = 不记会话**。
+   *
+   * 口径（方案 docs/SESSION-PLAN.md §2 接线表「task_run / mission_run」行）：**LITE 两事件**
+   *   —— 任务收尾时建会话并立刻收尾，只留 create / close 两事件；
+   *   任务执行细节仍在 character_tasks 表（不搬），会话域只回答"这单跑过没有"。
+   */
+  readonly sessions?: SessionManager;
 }
 
 export interface TaskService {
@@ -504,10 +523,66 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
   };
 
   /**
+   * 会话域记账（@since v3.43，task_093 / v3.2a S3）—— **LITE 两事件**（方案 §2 接线表）：
+   *   任务收尾时建一条 task_run 会话并**立刻收尾**（create / close 两条事件）。
+   * why 建完就收：LITE 口径不搬任务执行细节（全文仍在 character_tasks 表），
+   *   会话域在这里只回答"这单跑过没有、什么时候跑的" —— 一条已收尾的会话正好是这件事的答案。
+   * 记账失败不打断收尾（会话记录是旁路，任务结果另有真相）。
+   */
+  const recordTaskSession = (record: TaskPersistRecord): void => {
+    if (!deps.sessions) return;
+    try {
+      const session = deps.sessions.createSession({
+        kind: 'task_run',
+        participants: [record.characterId],
+        refId: record.id,
+        // 首条消息只用于**自动起名**（不进事件流）：拿任务指令当标题主体，面板上一眼认得出是哪单。
+        firstMessage: record.prompt,
+      });
+      if (!session) return;
+      deps.sessions.closeSession(
+        session.id,
+        record.status === 'completed' ? '任务完成' : '任务失败'
+      );
+    } catch (error) {
+      logger(`[task-service] 会话记账抛错（${record.id}）：${describe(error)}`);
+    }
+  };
+
+  /**
+   * 关联任务单的会话（mission_run，@since v3.43，task_093）—— 与 task_run 同一 LITE 口径：
+   *   任务收尾带动任务单收尾，此刻建一条 mission_run 会话并收尾。
+   * why 记在任务侧而不是任务单侧：任务单也可能不经任务直接收尾，那是另一条路径（不在本单口径内）；
+   *   本单只覆盖"任务带单跑完"这条主路（missionId 非空时）。
+   */
+  const recordMissionSession = (record: TaskPersistRecord): void => {
+    if (!deps.sessions || !record.missionId) return;
+    const missionId = record.missionId;
+    try {
+      const session = deps.sessions.createSession({
+        kind: 'mission_run',
+        participants: [record.characterId],
+        refId: missionId,
+        title: `任务单：${missionId}`,
+      });
+      if (!session) return;
+      deps.sessions.closeSession(
+        session.id,
+        record.status === 'completed' ? '任务单完成' : '任务单中止'
+      );
+    } catch (error) {
+      logger(`[task-service] 任务单会话记账抛错（${missionId}）：${describe(error)}`);
+    }
+  };
+
+  /**
    * 终态收尾副作用（task_039）：回流回调 + exp 事件。回调抛错只记日志（fire-and-forget）。
    * 只在状态机相位迁移成功时调（迁移没走动就不算终态，不发生副作用）。
    */
   const settle = (record: TaskPersistRecord, source: ExpSource): void => {
+    // 会话域记账（@since v3.43，task_093）：任务到终态 → task_run 会话；有带单则连带 mission_run。
+    recordTaskSession(record);
+    if (record.missionId) recordMissionSession(record);
     if (deps.onTaskSettled) {
       try {
         deps.onTaskSettled(record);

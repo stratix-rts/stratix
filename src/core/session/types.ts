@@ -108,6 +108,25 @@ export type SessionEventInput = {
 }[SessionEventType];
 
 /**
+ * 会话域的**持久化口**（@since v3.43，task_093 / v3.2a S3）——
+ *   core 只认这个**纯回调契约**，不认存储实现（core 零 IO 铁律：core 不 import DAO / SQLite）。
+ *
+ * why 这个口住在 core（而不是 app）：**事件信封由 core/session 的 manager 产生**
+ *   （seq 会话内单调、payload 形状、createdAt 都在那里定）。让上层"猜"事件长什么样必然漂移 ——
+ *   两份真相的经典形态。上层只负责"往哪写"（DAO / 表结构），core 只负责"写什么"。
+ *
+ * 实现方在 app 层（app/services/persistence/session-persister.ts 的 SessionPersister
+ *   与本口**结构同形**）—— 组合根直接把它注入 manager，无需适配器（接口即契约）。
+ * 缺省 = 不落库（端口缺席 → 会话只活在 WorldState 里，历史不进库；缺省即缺省范式）。
+ */
+export interface SessionPersistPort {
+  /** 落一条会话摘要快照（状态一动就 upsert 一次）。 */
+  readonly persistSession: (record: SessionRecord) => void;
+  /** 落一条会话事件（append-only；事件本体不广播，只进库）。 */
+  readonly persistEvent: (event: SessionEvent) => void;
+}
+
+/**
  * 建会话入参。
  * kind 决定粒度与接线方式（方案 §2 的接线策略表）；participants 视 kind 分别是
  * characterId / agentId / clientId。

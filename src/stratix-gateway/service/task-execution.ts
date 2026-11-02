@@ -136,6 +136,8 @@ export function createServiceTaskExecution(deps: ServiceTaskExecutionDeps): Task
     taskManager: deps.taskManager,
     createTransport: deps.createTransport ?? createNodeCliTransportFactory({ logger: deps.logger }),
     persistTask: deps.persistTask,
+    // 会话域写入面（@since v3.43，task_093）：任务收尾时记 task_run / mission_run 会话（LITE 两事件）。
+    sessions: deps.sessions,
     onTaskSettled: deps.onTaskSettled,
     onMissionSettled: deps.onMissionSettled,
     pushNotice: deps.pushNotice,
