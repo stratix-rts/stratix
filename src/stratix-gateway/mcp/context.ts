@@ -11,7 +11,9 @@
  */
 
 import type { SqliteDatabaseLike } from '../../app/services/persistence/game-save-dao';
+import { createSessionReader } from '../../app/services/persistence/session-reader';
 import { emitCommand } from '../../core/bus';
+import type { SessionReadPort } from '../../core/session/types';
 import { worldStore, type CoreStore } from '../../core/store';
 import type { HudCommand } from '../../core/types';
 import { getDatabase } from '../../stratix-database';
@@ -34,6 +36,10 @@ export interface CoreMcpHostOptions {
    * 这条约束，也会造出第二份会话真相。要接就把渲染侧那一轮的入口注入进来。
    */
   readonly sendChatRound?: (characterId: string, text: string) => Promise<ChatRoundOutcome>;
+  /**
+   * 会话读口（会话摘要列表 / 单条 / 事件流）；缺省 = 同进程直读 SQLite（见 readSessionsFromDatabase）。
+   */
+  readonly readSessions?: SessionReadPort;
 }
 
 /**
@@ -63,6 +69,44 @@ export function readTaskOutputFromDatabase(taskId: string): string | null {
 }
 
 /**
+ * 读会话摘要 / 事件流（service 侧 SQLite 的同进程直读）。
+ *
+ * ============ 拓扑（A3 / task_079 之后）：这里的直读为什么合法 ============
+ * 铁律 6：SQLite 只由 **service 进程**打开写；其余进程经 API 读。
+ *   MCP host 挂在 gateway 进程里，而 gateway 进程**就是** service 进程（同一份存储件、
+ *   同一个连接）—— 这里的直读是**同进程读**（读自己进程开的库），不是「第二个进程开同一个库」，
+ *   因此合法（与上面 readTaskOutputFromDatabase 同一口径、同一条铁律）。
+ *   跨进程读（例如浏览器 / 外部 client）走 service 侧的只读 API
+ *   （GET /api/storage/sessions、GET /api/storage/sessions/:id/events，见 api/routes/session-storage.ts）。
+ *
+ * why 会话**摘要**也走库而不走 WorldState：WorldState.sessions 只带**在办会话的摘要**
+ *   （上限 MAX_SESSIONS = 200，且会被裁掉已关闭的最旧会话），而会话历史在库里
+ *   （sessions 表持久保存）。外部 agent 要看的是「发生过什么」，故读面以库为准。
+ *
+ * why 失败不吞：库未初始化 / 查询失败时**抛错**（由 MCP server 层转成 internal_error）——
+ *   吞掉并回一个空列表等于谎称"没有会话"，模型会据此断言"这里什么都没发生"。
+ */
+export function readSessionsFromDatabase(): SessionReadPort {
+  // 连接**懒取**：库是懒初始化的（单例在 service boot 时才开），
+  // 构造期取一次会把「还没开库」冻结成永久失败 —— 故这里传一个懒代理：
+  // 每次 prepare / exec 时才解出真实连接。
+  const resolveDb = (): SqliteDatabaseLike => {
+    try {
+      return getDatabase().getDatabase() as unknown as SqliteDatabaseLike;
+    } catch {
+      // 库未初始化 = 本进程不是持有 service 的那个进程（stdio 独立入口就是这种）。
+      // 如实说清"读不到会话"，别让调用方拿到一句英文的初始化异常。
+      throw new Error('会话读口不可用：本进程没有初始化 SQLite 库（会话面要求 MCP 与 service 同进程）');
+    }
+  };
+  const lazyDb: SqliteDatabaseLike = {
+    prepare: (sql) => resolveDb().prepare(sql),
+    exec: (sql) => resolveDb().exec(sql),
+  };
+  return createSessionReader(lazyDb);
+}
+
+/**
  * 构造生产用的 McpHost。
  *
  * ★ 拓扑前提（接线时必须知道的一件事）：core 的运行时（core/runtime.ts）跑在**持有世界态的进程**里，
@@ -87,6 +131,7 @@ export function createCoreMcpHost(options: CoreMcpHostOptions = {}): McpHost {
   const dispatch = options.dispatch ?? emitCommand;
   const readOutput = options.readTaskOutput ?? readTaskOutputFromDatabase;
   const sendChatRound = options.sendChatRound;
+  const readSessions = options.readSessions ?? readSessionsFromDatabase();
 
   const host: McpHost = {
     getWorldState: () => store.getState(),
@@ -94,6 +139,8 @@ export function createCoreMcpHost(options: CoreMcpHostOptions = {}): McpHost {
       dispatch(command);
     },
     readTaskOutput: async (taskId: string) => readOutput(taskId),
+    // 会话读口：默认同进程直读 SQLite（会话历史本体不进广播 —— 见 readSessionsFromDatabase）。
+    readSessions,
   };
 
   // 对话端口是可选的：没接就不挂这个键（工具据此如实报"本进程没有可用的角色对话通路"）。

@@ -127,6 +127,71 @@ export interface SessionPersistPort {
 }
 
 /**
+ * 会话事件的**读面视图**（@since v3.43，task_096 / v3.2a S6）—— 读路径拿到的通用形状。
+ *
+ * why 与写面的 SessionEvent 分开：写面（SessionEvent）是**判别联合**（载荷按 type 收窄，
+ *   落库前形状被 core 校验过）；读面是"库里存什么就回什么"—— 历史表里可能有旧版本写下的行，
+ *   读路径**不替库做判断**（不因一条脏行炸掉整页读取）。故 payload 是 unknown。
+ */
+export interface SessionEventView {
+  readonly sessionId: string;
+  /** 会话内单调序号（从 1 起）。 */
+  readonly seq: number;
+  /** 事件类型（created / message / round / interrupt / resumed / closed…）。 */
+  readonly type: string;
+  /** 事件载荷（按 type 变化；读面不校验形状）。 */
+  readonly payload: unknown;
+  readonly createdAt: number;
+}
+
+/** 会话列表的查询条件（kind / status 可选 = 不过滤；limit / offset 分页）。 */
+export interface SessionListQuery {
+  readonly kind?: SessionKind;
+  readonly status?: SessionStatus;
+  /** 条数上限（调用方给，已收紧）。 */
+  readonly limit: number;
+  /** 偏移（调用方给，已收紧）。 */
+  readonly offset: number;
+}
+
+/** 会话列表的一页（items = 本页条目；total = 命中过滤条件的总条数）。 */
+export interface SessionPage {
+  readonly items: readonly SessionRecord[];
+  readonly total: number;
+}
+
+/** 会话事件的分页参数（beforeSeq 是游标：取该序号**之前**的一段）。 */
+export interface SessionEventQuery {
+  readonly beforeSeq?: number;
+  readonly limit: number;
+}
+
+/**
+ * 会话域的**读取口**（@since v3.43，task_096 / v3.2a S6）——
+ *   core 只认这个**纯回调契约**，不认存储实现（与 SessionPersistPort 同一纪律：
+ *   core 零 IO，从不 import DAO / SQLite）。
+ *
+ * why 与 SessionPersistPort 成对出现：会话域的**写**面由 core 生成信封（seq / payload / 时间戳
+ *   都在 core 定），**读**面则由存储侧翻译成 core 的形状（行 ↔ 会话摘要的映射在 app 层，
+ *   见 app/services/persistence/session-reader.ts）。两端各有一份真相是最经典的漂移源，
+ *   故端口两头都用 core 的类型。
+ *
+ * 实现方在 app 层（service 侧 SQLite 的 sessions / session_events 两张表）——
+ *   组合根直接把它注入 MCP 的数据面端口（McpHost.readSessions），无需适配器（接口即契约）。
+ */
+export interface SessionReadPort {
+  /** 读会话摘要列表（kind / status 过滤 + limit / offset 分页；创建时间倒序）。 */
+  readonly readSessions: (query: SessionListQuery) => SessionPage;
+  /** 读单条会话摘要；库里没有返回 null（**不编造**）。 */
+  readonly readSession: (sessionId: string) => SessionRecord | null;
+  /** 读某会话的事件流（seq 正序；beforeSeq 游标切片）。 */
+  readonly readSessionEvents: (
+    sessionId: string,
+    options: SessionEventQuery
+  ) => readonly SessionEventView[];
+}
+
+/**
  * 建会话入参。
  * kind 决定粒度与接线方式（方案 §2 的接线策略表）；participants 视 kind 分别是
  * characterId / agentId / clientId。

@@ -1,6 +1,6 @@
 # Stratix MCP 接口设计规范（第一期工具面 + 扩展规范）
 
-> **状态**：第一期工具面冻结（Spec v1.3）＋ §6 v2 设计章（**未实现**，见 §6 抬头）　**性质**：规范文档（不含实现代码）
+> **状态**：第一期工具面冻结（Spec v1.4）＋ §6 v2 设计章（**未实现**，见 §6 抬头）　**性质**：规范文档（不含实现代码）
 > **适用范围**：Stratix 对外提供的 MCP server 及其工具面（tool surface）
 > **取代**：`docs/MCP_SERVER_DESIGN.md`（v2 Zone 时代草案 —— Zone 已按 `docs/REFACTOR_PLAN_V3.md` D5 决策砍掉，其中 `stratix.list_zones` 等工具面不再成立）
 > **维护责任**：见 [§5.4](#54-规范文档的维护责任)
@@ -12,7 +12,7 @@
 
 - [0. 设计前提](#0-设计前提)：[0.1 消费者与心智模型](#01-消费者与心智模型)｜[0.2 权威依据](#02-权威依据)｜[0.3 范围与非目标](#03-范围与非目标)｜[0.4 术语](#04-术语)｜[0.5 拓扑定位](#05-拓扑定位新旧拓扑对比)
 - [1. 工具设计五原则](#1-工具设计五原则)：[1.1 动词 + 资源命名，单动作工具](#11-原则一动词--资源命名单动作工具)｜[1.2 合并发生在工具内部](#12-原则二合并发生在工具内部)｜[1.3 返回 meaningful context](#13-原则三返回-meaningful-context)｜[1.4 token 效率](#14-原则四token-效率)｜[1.5 描述工程](#15-原则五描述工程)
-- [2. 第一期工具面](#2-第一期工具面)：[2.0 通用约定](#20-通用约定)｜[2.1 world_snapshot](#21-stratix_world_snapshot)｜[2.2 task_assign](#22-stratix_task_assign)｜[2.3 task_status](#23-stratix_task_status)｜[2.4 task_cancel](#24-stratix_task_cancel)｜[2.5 mission_create](#25-stratix_mission_create)｜[2.6 mission_status](#26-stratix_mission_status)｜[2.7 chat_send](#27-stratix_chat_send)｜[2.8 registry](#28-stratix_registry)｜[2.9 mission_checkpoint](#29-stratix_mission_checkpoint)
+- [2. 第一期工具面](#2-第一期工具面)：[2.0 通用约定](#20-通用约定)｜[2.1 world_snapshot](#21-stratix_world_snapshot)｜[2.2 task_assign](#22-stratix_task_assign)｜[2.3 task_status](#23-stratix_task_status)｜[2.4 task_cancel](#24-stratix_task_cancel)｜[2.5 mission_create](#25-stratix_mission_create)｜[2.6 mission_status](#26-stratix_mission_status)｜[2.7 chat_send](#27-stratix_chat_send)｜[2.8 registry](#28-stratix_registry)｜[2.9 mission_checkpoint](#29-stratix_mission_checkpoint)｜[2.10 session_list](#210-stratix_session_list)｜[2.11 session_get](#211-stratix_session_get)
 - [3. 一致性铁律](#3-一致性铁律)：[3.1 投影而非新功能层](#31-投影而非新功能层)｜[3.2 状态机约束](#32-状态机约束对-mcp-同样生效)｜[3.3 不暴露的能力](#33-mcp-不暴露的能力)｜[3.4 只读与写的分界](#34-只读面与写面的分界)
 - [4. 扩展规范](#4-扩展规范)：[4.1 工具注册表架构](#41-工具注册表架构)｜[4.2 域前缀与命名位](#42-域前缀与命名位)｜[4.3 新工具上线流程](#43-新工具提案到上线的流程)｜[4.4 MCP server 接入方式](#44-mcp-server-的接入方式)
 - [5. 版本与演进](#5-版本与演进)：[5.1 变更原则](#51-工具面变更原则)｜[5.2 重命名与废弃](#52-重命名与废弃)｜[5.3 变更分类](#53-变更分类与流程)｜[5.4 维护责任](#54-规范文档的维护责任)｜[5.5 演进记录](#55-版本演进记录只加不删)
@@ -221,6 +221,7 @@ Stratix 是本地 agent 团队指挥台：角色绑定 CLI agent（Claude Code /
 | `TaskRejectionCode.illegal-transition` / `TaskCancelOutcome.code='not-queued'` | `task_not_cancellable` |
 | `guardTaskCharacter` → `TASK_MSG_NO_PROFILE`（`src/app/services/task-service.ts`） | `unknown_character` |
 | `guardTaskCharacter` → `TASK_MSG_UNBOUND` / `TASK_MSG_NOT_INSTALLED` / `taskOfflineReason(...)` | `character_unbound` / `agent_not_installed` / `character_offline` |
+| 会话读口查到 id 不存在（`SessionReadPort.readSession` 回 null，`src/app/services/persistence/session-reader.ts:44`） | `session_not_found` |
 
 **origin 审计字段**：所有写类工具接受可选 `origin`，取值 `ui` | `mcp` | `script` | `agent`。
 
@@ -613,6 +614,113 @@ mission.create ──▶ mission.assign ──▶ mission.confirm(accept)
 
 ---
 
+### 2.10 `stratix_session_list`
+
+> **排序位**：第 10 位（`session` 域新开 —— 排在既有九件之后，既有工具之间的相对次序不变；条目号 §2.10 按「只加不删」追加在末尾）。
+
+**description**
+
+> 列出工作台上的会话（会话域摘要）—— 按种类 / 状态过滤，分页取一段。
+> **何时用**：想看"最近发生过哪些会话" —— 哪场互聊卡住了、哪条会话被中断了、哪条任务会话跑完了；想拿到一个会话 id 再去拉它的明细。
+> **何时不用**：查任务本身的进展与产出 —— 用 `stratix_task_status`；查编组任务 —— 用 `stratix_mission_status`；拉某条会话的事件明细 —— 用 `stratix_session_get`。
+> **边界**：只读，不改变任何状态。kind 五选一（`character_chat` 聊天 / `peer_chat` 互聊 / `task_run` 任务 / `mission_run` 编队 / `shell_link` 连接）、status 四选一（`active` / `idle` / `interrupted` / `closed`）；都不给 = 不过滤。按创建时间倒序（最新的在前）；limit 默认 20、上限 100；offset 是**位置**（0 起），给了负数按 `invalid_arguments` 报错而不是悄悄夹成 0。这里只给摘要 —— 事件正文（消息 / 轮次 / 中断原因）不在列表里，要明细用 `stratix_session_get`。
+> **错误**：`invalid_arguments`（kind / status 词表外 / limit 越界 / offset 为负）/ `internal_error`（本进程没有会话读口 —— 不回空列表冒充"没有会话"）。
+
+**inputSchema**
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "kind": { "type": "string", "enum": ["character_chat", "peer_chat", "task_run", "mission_run", "shell_link"], "description": "只看这一类会话；缺省 = 全部五类。" },
+    "status": { "type": "string", "enum": ["active", "idle", "interrupted", "closed"], "description": "只看这一种状态的会话；缺省 = 不按状态过滤。" },
+    "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20, "description": "本页最多返回几条（默认 20，上限 100）。" },
+    "offset": { "type": "integer", "minimum": 0, "default": 0, "description": "从第几条开始（0 起；是位置，不是窗口 —— 负数报错）。" }
+  },
+  "additionalProperties": false
+}
+```
+
+**返回（成功）**
+
+```json
+{ "ok": true, "data": {
+  "sessions": { "returned": 2, "total": 5, "truncated": true,
+    "items": [
+      { "id": "session_peer_chat_1753..._1", "kind": "peer_chat", "title": "互聊：侦察北门",
+        "status": "active", "participants": ["agent-a", "agent-b"], "ref_id": null,
+        "event_count": 12, "created_at": 1754000000000, "last_event_at": 1754000010000 }
+    ] },
+  "limit": 20, "offset": 0,
+  "next": { "tool": "stratix_session_get", "args": { "session_id": "session_peer_chat_1753..._1" },
+            "hint": "拉这条会话的详情与事件流；要另一条就把 session_id 换成列表里的 id" } } }
+```
+
+**分页口径**：`returned` = 本页条数；`total` = 命中过滤条件的总条数；`truncated` = **本页之后还有**别的会话（`total > offset + returned`）—— 只看"本页条数 < 总数"会把翻到最后一页也说成"还有更多"（骗模型的翻页判断）。
+
+**查法链**：`stratix_session_list` → `next` 指向 `stratix_session_get`（拉明细）→ `stratix_session_get` → `poll` 指向它自己（会话推进时再调一次就能看到新事件）。
+
+**映射**：读口 = core 的 `SessionReadPort`（`src/core/session/types.ts:182`）—— **纯回调契约，core 不认存储实现**（零 IO 铁律，与 `SessionPersistPort` 同一纪律）。生产实现 = service 侧 SQLite 的**同进程直读**（`src/stratix-gateway/mcp/context.ts:89` → `src/app/services/persistence/session-reader.ts:44`），数据与 service 侧只读 API `GET /api/storage/sessions` 是同一份。
+
+> **为什么读库而不读 WorldState**：WorldState.sessions 只带**在办会话的摘要**（上限 `MAX_SESSIONS = 200`，且裁掉已关闭的最旧会话），而**事件本体根本不入广播**（性能铁律：广播体积必须有界）。外部 agent 要看的是「发生过什么」，故读面以库为准。
+>
+> **拓扑合法性**：MCP 与 service 同进程（§0.5）→ 同进程读自己开的库，**不是**第二个进程开同一个库，故不违反铁律 6（SQLite 只由 service 进程打开写）。跨进程读（浏览器 / 外部 client）走 service 侧只读 API。
+>
+> **stdio 独立入口的例外**：`stratix-mcp --transport stdio` 拉起的是**另一个进程**（没有 service，也没有库）—— 那里的会话工具报 `internal_error`（库未初始化），会话面请在 HTTP 入口（gateway 的 `/mcp`，与 service 同进程）使用。
+
+---
+
+### 2.11 `stratix_session_get`
+
+> **排序位**：第 11 位（`session` 域第二件，紧跟 `session_list`）。
+
+**description**
+
+> 读一条会话：会话摘要 + 事件流的一段（按 seq 正序，从旧到新）。
+> **何时用**：想看某场互聊 / 某条会话"到底发生了什么"；查它被中断的原因；往前翻更早的事件。
+> **何时不用**：只想知道有哪些会话 —— 用 `stratix_session_list`；查任务的产出全文 —— 用 `stratix_task_status`；查角色档案 —— 用 `stratix_registry`。
+> **边界**：只读，不改变任何状态。事件按 seq 正序返回（seq 会话内单调，从 1 起）；limit 默认 50、上限 200；`before_seq` 是**游标**（取该序号**之前**的一段，用于往前翻页 —— 把返回的最早一条的 seq 再传回来即可继续往前翻）；会话里更早还有事件时 `has_more=true`。事件正文按事件类型原样返回（`message` 事件带 author / text，`interrupt` 事件带 reason），MCP 不做总结。
+> **错误**：`session_not_found`（会话 id 不存在）/ `invalid_arguments`（`session_id` 为空 / `before_seq` 非正整数 / limit 越界）/ `internal_error`（本进程没有会话读口）。
+
+**inputSchema**
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "session_id": { "type": "string", "minLength": 1, "description": "会话 id（见 stratix_session_list）。" },
+    "before_seq": { "type": "integer", "minimum": 1, "description": "游标：只取 seq 小于它的那些事件；缺省 = 取最新的一段。" },
+    "limit": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50, "description": "本页最多返回几条事件（默认 50，上限 200）。" }
+  },
+  "required": ["session_id"],
+  "additionalProperties": false
+}
+```
+
+**返回（成功）**
+
+```json
+{ "ok": true, "data": {
+  "session": { "id": "session_peer_chat_1753..._1", "kind": "peer_chat", "title": "互聊：侦察北门",
+               "status": "active", "participants": ["agent-a", "agent-b"], "ref_id": null,
+               "event_count": 12, "created_at": 1754000000000, "last_event_at": 1754000010000,
+               "closed_at": null },
+  "events": { "returned": 2, "total": 12, "limit": 50, "before_seq": null, "has_more": true,
+              "items": [
+                { "seq": 1, "type": "created", "payload": { "title": "互聊：侦察北门", "participants": ["agent-a"] }, "at": 1754000000000 },
+                { "seq": 2, "type": "message", "payload": { "author": "agent-a", "text": "北门有人" }, "at": 1754000000500 }
+              ] },
+  "poll": { "tool": "stratix_session_get", "args": { "session_id": "session_peer_chat_1753..._1" } } } }
+```
+
+**事件分页口径**：事件流按 `seq` **正序**返回（从旧到新）；`total` 取会话摘要的事件计数（会话域的权威计数），`has_more` = 本页最早一条的 seq 不为 1（更早还有事件，可把该 seq 作为下一次调用的 `before_seq` 继续往前翻）。
+
+**映射**：同 §2.10 —— 读口 = core 的 `SessionReadPort`（`src/core/session/types.ts:182`），生产实现 = 同进程直读 SQLite（`src/stratix-gateway/mcp/context.ts:89` → `src/app/services/persistence/session-reader.ts:44`）；事件读面用 `SessionEventView`（`src/core/session/types.ts:136` —— 载荷是 `unknown`：读路径不替库校验形状，脏行不该炸掉整页读取）。
+
+**写面缺席（有意）**：本工具**只读**。中断 / 恢复 / 收尾会话（`session.interrupt` / `session.resume`）属 2b（见 [SESSION-PLAN.md](SESSION-PLAN.md) §4 与 §7），本批不做 —— 只读面与写面的分界见 §3.4。
+
+---
+
 ## 3. 一致性铁律
 
 ### 3.1 投影而非新功能层
@@ -655,7 +763,7 @@ mission.create ──▶ mission.assign ──▶ mission.confirm(accept)
 
 ### 3.4 只读面与写面的分界
 
-- **只读工具**（`stratix_world_snapshot` / `stratix_task_status` / `stratix_mission_status` / `stratix_registry`）：读投影，无副作用，可随时调用、可并发调用。
+- **只读工具**（`stratix_world_snapshot` / `stratix_task_status` / `stratix_mission_status` / `stratix_registry` / `stratix_session_list` / `stratix_session_get`）：读投影，无副作用，可随时调用、可并发调用。
 - **写工具**（`stratix_task_assign` / `stratix_task_cancel` / `stratix_mission_create` / `stratix_mission_checkpoint` / `stratix_chat_send`）：产生状态迁移（或记账写入），须遵守 §3.2 的状态机约束。
 
 **幂等要求**：同一个写调用重复发出，第二次应被状态机以明确错误码拒绝（`illegal_transition` / `task_not_cancellable`），**不得产生第二个实体**。MCP 不提供"幂等键"机制 —— 重复调用产生重复实体的风险，由"模型用回执里的 id 去查、去取消"来消解，而不是靠服务端猜。
@@ -693,7 +801,7 @@ src/stratix-gateway/mcp/
 
 ### 4.2 域前缀与命名位
 
-**已占用域**（第一期）：`world`（`stratix_world_snapshot`）、`task`（`_assign` / `_status` / `_cancel`）、`mission`（`_create` / `_status` / `_checkpoint`）、`chat`（`_send`）、无域（`stratix_registry`）。
+**已占用域**（第一期）：`world`（`stratix_world_snapshot`）、`task`（`_assign` / `_status` / `_cancel`）、`mission`（`_create` / `_status` / `_checkpoint`）、`chat`（`_send`）、`session`（`_list` / `_get`，§2.10 / §2.11 —— 会话域只读面）、无域（`stratix_registry`）。
 
 **预留命名位**：
 
@@ -703,6 +811,7 @@ src/stratix-gateway/mcp/
 | `pipeline` | `stratix_pipeline_start` / `_status` | 多 agent 流水线（core 已有 `PipelineSpec` 与 `pipeline.start` 命令，`src/core/types.ts` 第 1171 行）—— 第二期候选，第一期不实现 |
 | `chat`（扩展位） | `stratix_chat_history` | 拉取某角色的历史消息（游标分页） |
 | `mission`（扩展位） | `stratix_mission_confirm` | 人工确认编组任务（第一期确认权留给 UI） |
+| `session`（扩展位） | `stratix_session_interrupt` / `stratix_session_resume` | 会话写面 —— 中断 / 恢复一条会话（`session.interrupt` / `session.resume` 命令）。**2b 才做**（见 [SESSION-PLAN.md](SESSION-PLAN.md) §4 与 §7）；第一期只暴露只读面（`_list` / `_get`） |
 
 **动作词受控表**：新增工具优先取自 `list` / `get` / `create` / `update` / `assign` / `send` / `cancel` / `start` / `status` / `snapshot` / `search`。确需新动词时先在本节登记再用 —— 动词词表膨胀会让"同类工具"失去可预测性。
 
@@ -787,6 +896,7 @@ src/stratix-gateway/mcp/
 
 | 版本 | 日期 | 变更 | 兼容性 |
 |------|------|------|--------|
+| v1.4 | 2026-11-02 | **新增工具** `stratix_session_list`（§2.10）与 `stratix_session_get`（§2.11）—— 会话域的**只读面**（外部 agent 由此看见会话）；**新增错误码** `session_not_found`（附录 A）；**新增域** `session`（§4.2 域表）；`tools/list` 新增两件（九件 → 十一件），排在既有九件之后（既有工具之间的相对次序不变） | ✅ 纯增量：既有九件工具的名字、参数、语义与缺省行为**均未变**；`tools/list` 的既有九件次序逐字未动；新增两件**只读**（不新增任何状态通道 / 持久化表 / 状态机） |
 | v1.3 | 2026-11-02 | **新增章节** §6「v2 设计章：四条工程模式（草案 · 未实现）」—— 借 DeepSeek Harness 的四条工程模式（工具管线 waterfall / capability seam 三件套 / 事件日志 + 投影 / 可逆注册），逐条给出「现状对照 → 目标语义 → 迁移草案」；含 9 件工具的 waterfall 映射表 | ✅ 纯文档：**运行时代码零改动** —— 工具名 / 参数 / 返回 / 错误码 / `tools/list` 顺序全部未动；§6 全部内容是**未实现的设计**，与 §1–§5 冲突时以 §1–§5 为准 |
 | v1.2 | 2026-11-02 | **新增章节** §0.5「拓扑定位（新旧拓扑对比）」—— 写清 MCP 在前后端分离后的位置：gateway 进程即 service 进程，先 boot service 再挂 `/mcp`，故工具见真状态（附新旧拓扑 ASCII 对比图与逐维度对照表）；§0.2 权威依据增列 SERVICE-SPLIT-PLAN；§4.4 增注指回 §0.5 | ✅ 纯文档：工具面**零变更** —— 工具名 / 参数 / 返回 / 错误码 / `tools/list` 顺序全部未动 |
 | v1.1 | 2026-11-01 | **新增工具** `stratix_mission_checkpoint`（§2.9，记一条 append-only 检查点）；**新增可选参数** `stratix_mission_create` 的 `brief`（四段结构化正文）与 `depends_on`（前置任务链，§2.5）；**新增错误码** `mission_terminal`（附录 A）；**新增术语** 依赖解锁 / brief / 检查点（§0.4）；`tools/list` 顺序改为按**排序位**（§2.0），新工具插在 `mission_status` 之后、`registry` 之前（既有工具之间的相对次序不变） | ✅ 纯增量：既有 8 件工具的名字、参数、语义与缺省行为**均未变**（`brief` / `depends_on` 缺省即"裸任务"，与 v1.0 逐字节一致）；`auto_confirm_applied` 的口径在**新增的依赖未满足分支**上才出现差异（`false` = auto_confirm 没能生效），v1.0 的三条既有路径取值不变 |
@@ -803,6 +913,8 @@ src/stratix-gateway/mcp/
 > **为什么写在本文档里而不是另起 `docs/MCP-SPEC-V2.md`**：四条模式与第一期工具面是**同一批工具的两种切面**（§2 讲"工具是什么"，§6 讲"工具怎么被调用、被挂载、被溯源"）。拆成两份文档，"工具 ↔ 段位"的对应关系就会跨文件漂移 —— 而漂移正是本文档 §5.4 明令禁止的（"文档撒谎比文档缺失更贵"）。若后续 §6 的篇幅压过主文档承载力，再拆不迟。
 
 ### 6.0 四模式总览
+
+> **口径说明（v1.4 起）**：本章的"现状对照"与映射表写于**九件工具**时代（v1.1）。此后新增的两件只读工具（`stratix_session_list` / `stratix_session_get`，§2.10 / §2.11）**未纳入本章的映射表** —— 本章是**未实现的设计章**，不改写；两件新工具按 §1–§5 的现行约定实现（读投影、四要素 description、附录 A 错误码）。
 
 | 模式 | 一句话 | 我们的现状（一句话） | 本章要收敛成的 |
 |------|--------|----------------------|----------------|
@@ -901,7 +1013,7 @@ if (!landed) throw ...;        // 失败时状态已被改动，pre 的"无副�
 
 #### 6.1.4 waterfall 映射表（9 件工具，完整）
 
-> **注 · 工具件数**：第一期是**八件**工具（§2.1–§2.8），v1.1 又增了第九件 `stratix_mission_checkpoint`（§2.9）—— 本表覆盖**当前注册的全部九件**（`src/stratix-gateway/mcp/server.ts` 的 `DEFAULT_MCP_TOOLS`），故写作"9 件"。
+> **注 · 工具件数**：第一期是**八件**工具（§2.1–§2.8），v1.1 又增了第九件 `stratix_mission_checkpoint`（§2.9），v1.4 再增两件会话只读工具（§2.10 / §2.11）—— 本表覆盖**v1.1 时的九件**（写作"9 件"）；后加的两件会话工具不在本表内（本章是未实现的设计章，见 §6.0 的口径说明）。
 
 > **表 6.1-1 现状：三段挂在哪（写今天的事实）**
 
@@ -1256,6 +1368,7 @@ offConsumer();   // 后  ❌ 应当逆序：offConsumer(); offProvider();
 | `mission_capacity_exceeded` | 编组任务数已满（100） | ✅ | `MissionRejectionCode.limit-exceeded` |
 | `mission_terminal` | 编组任务已收尾（done / cancelled），不再接受该操作 | ❌ | 终态拒绝（`appendMissionCheckpoint` 的终态分支） |
 | `illegal_transition` | 状态机拒绝该迁移 | ❌ | `MissionErrorCode.illegal-transition` |
+| `session_not_found` | 会话 id 不存在 | ❌ | `SessionReadPort.readSession` 回 null（`src/app/services/persistence/session-reader.ts:44`） |
 | `internal_error` | 内部异常 | ✅ | 未归类的异常 |
 
 **错误语义约定**：`message` 是**面向人的一句话**（可直接转述给用户），不是堆栈；`hint` 是**面向模型的下一步**（该调什么、该改什么、该等什么）；`retryable` 只表达"同样的输入重试是否可能成功"（如离线恢复后重试），不表达"该不该重试"（该不该由模型按场景判断）。

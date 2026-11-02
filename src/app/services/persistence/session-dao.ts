@@ -215,6 +215,34 @@ export function listSessionRecords(
   return rows.map(mapSessionRow);
 }
 
+/**
+ * 数一数命中过滤条件的会话总数（**不带分页**）。
+ *
+ * why 需要它：列表接口要报 `total`（命中总数）与 `truncated`（本页是否截断）——
+ *   只取一页的行数分不清"总共就这么多"与"还有更多在下一页"。计数与取页是两句 SQL，
+ *   但过滤条件共用同一套（kind / status），口径不会漂。
+ *
+ * @since v3.43，task_096（会话读口 / MCP session_list）。
+ */
+export function countSessionRecords(db: SqliteDatabaseLike, filter: SessionListFilter = {}): number {
+  ensureSessionsTable(db);
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  if (filter.kind) {
+    conditions.push('kind = ?');
+    params.push(filter.kind);
+  }
+  if (filter.status) {
+    conditions.push('status = ?');
+    params.push(filter.status);
+  }
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const row = db
+    .prepare(`SELECT COUNT(*) AS n FROM ${SESSIONS_TABLE} ${where}`)
+    .get(...params) as Record<string, unknown> | undefined;
+  return Number(row?.n ?? 0);
+}
+
 /** limit 收紧到 [1, 200]；非数字回落缺省 50（外部输入不可信 —— 与读 API 同一纪律）。 */
 function clampLimit(value: number | undefined): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return 50;
