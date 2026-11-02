@@ -180,7 +180,7 @@ export interface ElectronAPI {
   customAgents: CustomAgentsIpcApi;
 
   /**
-   * 开发期开关透传（@since v3.9，task_026）。
+   * 开发期开关 / 调参透传（@since v3.9，task_026）。
    * why 只透传白名单里的开关：process.env 整个交给渲染层等于把主进程环境（含凭据）暴露出去。
    */
   env: {
@@ -193,6 +193,13 @@ export interface ElectronAPI {
     STRATIX_REMOTE: string | null;
     /** world-sync 端点地址（远程模式的数据源；null = 用缺省地址）。 */
     STRATIX_WORLD_SYNC_URL: string | null;
+    /**
+     * 互聊单回合超时（ms，字符串；@since v3.44，task_090）。
+     * why 也要透传：互聊编排跑在渲染层，读不到主进程的 process.env；
+     *   渲染层只能经 preload 这条白名单通道拿到「主进程启动时带着的环境变量」。
+     * null = 未设置 → 用缺省 120s（解析与钳位在 app/services/agent-chat-service.ts）。
+     */
+    STRATIX_PEER_TURN_TIMEOUT_MS: string | null;
   };
 
 }
@@ -352,6 +359,8 @@ const electronAPI: ElectronAPI = {
     // 远程模式开关与端点地址（@since v3.43，task_083）：已打包的 Electron 也要能按环境变量开远程模式。
     STRATIX_REMOTE: process.env.STRATIX_REMOTE ?? null,
     STRATIX_WORLD_SYNC_URL: process.env.STRATIX_WORLD_SYNC_URL ?? null,
+    // 互聊回合超时（@since v3.44，task_090）：渲染层要靠它拿到「主进程启动时带着的」超时值。
+    STRATIX_PEER_TURN_TIMEOUT_MS: process.env.STRATIX_PEER_TURN_TIMEOUT_MS ?? null,
   },
 
 };

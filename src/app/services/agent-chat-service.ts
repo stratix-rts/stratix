@@ -46,6 +46,8 @@
  *
  * ============ 中断与超时 ============
  * 每个回合一次 transport 调用，超时缺省 120s（DEFAULT_PEER_TURN_TIMEOUT_MS，可注入覆盖）。
+ *   覆盖链：环境变量 STRATIX_PEER_TURN_TIMEOUT_MS（组合根接线，见 dev-flags.ts）
+ *     → resolvePeerTurnTimeoutMs（解析 + 钳位 [10s, 10min]）→ deps.timeoutMs → spawn 选项。
  *   回合出错（timeout / cli_error / spawn_failed / nonzero_exit / aborted）→ 该轮标记
  *   「（互聊中断：原因）」/「（已中断）」气泡 + 整场讨论收束 —— 链式对谈里下一位没有
  *   上一位的输出可回应，链条在此断掉是唯一诚实的选择。停止按钮复用 035 的 abort 语义
@@ -57,6 +59,13 @@
  *   「待注入」队列，下一位发言者的 prompt 以「用户补充：{msg}」行前缀注入（每方各见一次，
  *   不重复）。若插话发生在最后一个回合之后（没有下一轮了），注入自然落空 —— 气泡与历史
  *   仍在，只是没人回应（诚实于时序）。
+ *
+ * ============ 网络兜底指引（@since v3.44，task_090）============
+ * 开场指令与转述指令的尾部都带一条「网络不可用就凭已知作答 + 注明知识截止」的指引
+ *   （PEER_NETWORK_FALLBACK_HINT）。why：互聊常聊检索型议题，而 CLI 子进程有时拿不到
+ *   代理 env（注入口径见 cli-transport/spawn-env.ts）→ 外网黑洞 → agent 空转重试零输出
+ *   → 回合耗到 120s 被看门狗杀。有了这条指引，网络不可用时它直接给已知答案，讨论能走完。
+ *   why 转述指令也要带：B 的首轮拿到的是转述指令、拿不到开场指令，没有它 B 会撞同一个黑洞。
  *
  * ============ 经验口径（与 039/040 对齐，不双计）============
  * 每个回合成功收束（done）→ 该发言者发一条 exp.gained（source=chat_round，经注入的
@@ -78,7 +87,8 @@
  *   4. 把联合会话存成第二份真相 —— 消息真相在抽屉会话存储 + SQLite，本服务只转发；
  *   5. 碰 world 层（战场说话气泡归 task_062 统一做，本任务刻意不动 world/）。
  *
- * @since v3.28（task_052）；v3.31（task_055）补记重启恢复口径（互聊不种回执，首发重建）。
+ * @since v3.28（task_052）；v3.31（task_055）补记重启恢复口径（互聊不种回执，首发重建）；
+ *   v3.44（task_090）补网络兜底指引（prompt 尾部一条）与回合超时的可配链（环境变量覆盖）。
  */
 
 import { emitWorldEvent } from '../../core/bus';
@@ -135,6 +145,23 @@ export const PEER_MAX_ROUNDS = 8;
 /** 单回合超时（ms）。互聊回合与聊天同量级，120s。 */
 export const DEFAULT_PEER_TURN_TIMEOUT_MS = 120_000;
 
+/**
+ * 回合超时的取值区间（ms）。
+ * why 与 Electron 主进程 chat:run 的钳位一致（[10s, 10min]）—— 渲染层放行、主进程再钳一次，
+ *   两端口径一致才不会出现「配了 30 分钟但主进程按 10 分钟杀」的哑巴亏。
+ */
+export const PEER_TURN_TIMEOUT_MIN_MS = 10_000;
+export const PEER_TURN_TIMEOUT_MAX_MS = 600_000;
+
+/**
+ * 网络兜底指引（@since v3.44，task_090）。
+ * why 需要它：互聊常聊「哪个模型更强」这类需要检索的题目，而 CLI 子进程有时没有代理 env
+ *   → WebFetch / curl 撞外网黑洞 → agent 空转重试零输出 → 120s 看门狗杀进程。
+ *   这条指引让 agent 在网络不可用时**凭已知作答**（并注明知识截止），而不是把回合耗死。
+ */
+export const PEER_NETWORK_FALLBACK_HINT =
+  '若网络检索不可用或超时，直接凭你已有的知识作答并注明知识截止时间，不要反复重试网络。';
+
 /** 回合没有任何文本输出时的占位（与 035 的空回复占位同一口径）。 */
 export const PEER_MSG_EMPTY_REPLY = '（本轮没有文本回复）';
 
@@ -150,14 +177,38 @@ export function peerMarkedContent(speakerId: string, text: string): string {
 // 纯函数（prompt 拼装，导出供单测直接断言）
 // ============================================================================
 
-/** A 的首发议题指令（035 语义：首发还会被 buildFirstPrompt 再包一层 persona）。 */
+/**
+ * A 的首发议题指令（035 语义：首发还会被 buildFirstPrompt 再包一层 persona）。
+ * 尾部带网络兜底指引（task_090）：检索型议题遇外网黑洞时，agent 应凭已知作答而不是空转。
+ */
 export function buildOpeningPrompt(peerName: string, topic: string): string {
-  return `与 ${peerName} 讨论：${topic}。请直接给出你的观点。`;
+  return `与 ${peerName} 讨论：${topic}。请直接给出你的观点。\n${PEER_NETWORK_FALLBACK_HINT}`;
 }
 
-/** 回应指令：把对方上一轮的输出转述给本方（插话前缀由服务另行拼接）。 */
+/**
+ * 回应指令：把对方上一轮的输出转述给本方（插话前缀由服务另行拼接）。
+ * 同样带网络兜底指引（task_090）：B 的**首轮**拿到的是转述指令、拿不到开场指令，
+ *   没有这条指引，B 会在自己的首轮上撞同一个外网黑洞。
+ */
 export function buildRelayPrompt(speakerName: string, speakerText: string, topic: string): string {
-  return `${speakerName} 说：\n${speakerText}\n\n请回应，与 ${speakerName} 讨论议题：${topic}`;
+  return `${speakerName} 说：\n${speakerText}\n\n请回应，与 ${speakerName} 讨论议题：${topic}\n${PEER_NETWORK_FALLBACK_HINT}`;
+}
+
+/**
+ * 把外部给来的回合超时（环境变量串 / 注入值）解析成一个可用的值。
+ * 缺省 120s；非法（空 / 非数字 / ≤0）→ 缺省；超界 → 钳到 [10s, 10min]。
+ * why 单独一个纯函数：环境变量的解析口径要能被单测钉死（组合根只接线，不做解析）。
+ */
+export function resolvePeerTurnTimeoutMs(raw: string | number | null | undefined): number {
+  if (raw === null || raw === undefined) return DEFAULT_PEER_TURN_TIMEOUT_MS;
+  const trimmed = typeof raw === 'string' ? raw.trim() : raw;
+  if (trimmed === '') return DEFAULT_PEER_TURN_TIMEOUT_MS;
+  const value = typeof trimmed === 'number' ? trimmed : Number(trimmed);
+  if (!Number.isFinite(value) || value <= 0) return DEFAULT_PEER_TURN_TIMEOUT_MS;
+  return Math.min(
+    Math.max(Math.floor(value), PEER_TURN_TIMEOUT_MIN_MS),
+    PEER_TURN_TIMEOUT_MAX_MS
+  );
 }
 
 /**
@@ -222,7 +273,10 @@ export interface AgentChatServiceDeps {
    * 双方各自的首次回合都算各自 session 的首发，同 chat 口径只在首发注入）。
    */
   readonly provideContext?: StratixContextSource;
-  /** 单回合超时；缺省 DEFAULT_PEER_TURN_TIMEOUT_MS。 */
+  /**
+   * 单回合超时（ms）；缺省 DEFAULT_PEER_TURN_TIMEOUT_MS（120s）。
+   * 组合根用环境变量 STRATIX_PEER_TURN_TIMEOUT_MS 覆盖（经 resolvePeerTurnTimeoutMs 解析 + 钳位）。
+   */
   readonly timeoutMs?: number;
   /** 日志口；缺省静默。 */
   readonly logger?: (line: string) => void;

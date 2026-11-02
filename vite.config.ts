@@ -161,6 +161,12 @@ export default defineConfig(async () => {
       __STRATIX_REMOTE__: JSON.stringify(process.env.STRATIX_REMOTE ?? ''),
       /** world-sync 端点地址（远程模式的数据源；空串 = 用缺省地址）。 */
       __STRATIX_WORLD_SYNC_URL__: JSON.stringify(process.env.STRATIX_WORLD_SYNC_URL ?? ''),
+      /**
+       * 互聊单回合超时（ms，@since v3.44，task_090；空串 = 用缺省 120s）。
+       * why 也要构建期这一路：纯浏览器 dev（不起 Electron）没有 preload 通道，
+       *   只有 vite define 能把 shell 里的环境变量带进渲染层。
+       */
+      __STRATIX_PEER_TURN_TIMEOUT_MS__: JSON.stringify(process.env.STRATIX_PEER_TURN_TIMEOUT_MS ?? ''),
     },
   };
 });

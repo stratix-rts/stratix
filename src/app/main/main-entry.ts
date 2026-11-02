@@ -109,7 +109,7 @@ import {
 import { createBrowserAppearanceEnvironment } from '../services/appearance-environment';
 import { createPhaserPreviewGame } from '../services/appearance-preview-game';
 import { createAppearancePreviewService } from '../services/appearance-preview-service';
-import { createAgentChatService } from '../services/agent-chat-service';
+import { createAgentChatService, resolvePeerTurnTimeoutMs } from '../services/agent-chat-service';
 import { createChatService } from '../services/chat-service';
 import {
   createStratixContextProvider,
@@ -152,7 +152,7 @@ import { createUnitSpriteSource } from '../services/unit-sprite-source';
 //   CoreStore 的远程实现（world-sync 全量快照 → 本地整体覆盖；hud 命令 → command.forward）。
 import { DEFAULT_WORLD_SYNC_URL, createRemoteStore, type RemoteStore } from '../services/remote-store';
 
-import { isOnboardingForced, isRemoteModeEnabled, remoteWorldSyncUrl } from './dev-flags';
+import { isOnboardingForced, isRemoteModeEnabled, peerTurnTimeoutRaw, remoteWorldSyncUrl } from './dev-flags';
 import { createOnboardingHost } from './onboarding-host';
 // 自定义 agent 注册端口（@since v3.32，task_056）：向导扫描步的「+ 添加自定义 agent」表单 /
 // 设置屏的注册管理经它进主进程（IPC 面 = preload 的 customAgents）。非 Electron → null，降级。
@@ -494,6 +494,9 @@ async function boot(): Promise<void> {
       persistMessage: contextPersister.persist,
       provideContext: stratixContextSource,
       expWeight: expWeightFor,
+      // task_090：互聊回合超时可配 —— 环境变量 STRATIX_PEER_TURN_TIMEOUT_MS 覆盖缺省 120s
+      //（原始串读法见 dev-flags.ts，解析 + 钳位见 agent-chat-service 的 resolvePeerTurnTimeoutMs）。
+      timeoutMs: resolvePeerTurnTimeoutMs(peerTurnTimeoutRaw()),
       // task_054：互聊回合的 exit 异常同样上报健康审计（与 chat / task 同一端口）。
       onTransportError: transportHealthReport,
     });

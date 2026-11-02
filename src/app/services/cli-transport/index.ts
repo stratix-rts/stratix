@@ -3,6 +3,7 @@
  *   模块分层（自底向上）：
  *     transport.ts   词汇表与端口（CliAdapter / CliTransport / ProcessFactory）—— 纯类型 + 纯函数
  *     runtime.ts     进程生命周期（spawn / 读行 / 取消 / 杀树）—— 依赖注入的 ProcessFactory
+ *     spawn-env.ts   spawn env 组装（STRATIX_CLI_ENV > 代理类透传）—— 纯函数（task_090）
  *     node-process.ts真实 child_process 工厂（生产用）+ 进程树 kill
  *     adapters/*     各家 CLI 的纯适配器（拼参数 + 解析一行）
  * 输入 / 输出：见各文件。
@@ -58,6 +59,15 @@ export {
 } from './node-process';
 
 export { createCliTransport, type CliTransportDeps } from './runtime';
+
+export {
+  assembleSpawnEnv,
+  resolveSpawnEnv,
+  CLI_ENV_JSON_VAR,
+  PROXY_ENV_KEYS,
+  type SpawnEnvAssembly,
+  type SpawnEnvSources,
+} from './spawn-env';
 
 export {
   asArray,

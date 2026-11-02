@@ -16,9 +16,14 @@
  * stderr 收割（@since v3.31，task_055）：adapter 可选地解析 stderr 行（parseStderrLine），
  *   session 事件在进程退出、stderr 排干之后统一上送（见下「stderr 收割」注）。
  *
+ * env 组装（@since v3.44，task_090）：spawn options 的 env 字段在这里**统一拼一次**
+ *   （spawn-env.ts）—— STRATIX_CLI_ENV > 主进程代理类变量透传 > 调用方逐次 env。
+ *   why 在这层：这是唯一「所有 CLI 都会经过」的 spawn 口，各 adapter 零改动。
+ *
  * @since v3.8（task_023）
  */
 
+import { resolveSpawnEnv } from './spawn-env';
 import {
   stderrTail,
   type CliAdapter,
@@ -62,10 +67,16 @@ export function createCliTransport(adapter: CliAdapter, deps: CliTransportDeps):
 
     // —— 拉起子进程 ——
     let handle: ReturnType<ProcessFactory>;
+    // env 组装（@since v3.44，task_090）：CLI 进程要拿到代理 env，
+    // 否则它的 WebFetch / curl 撞外网黑洞 → 空转重试零输出 → 120s 看门狗杀进程。
+    // 口径（STRATIX_CLI_ENV > 主进程代理透传 > 调用方显式）见 spawn-env.ts 文件头；
+    // 各 adapter 零改动 —— 注入点就在这层 spawn options 组装处。
+    const envAssembly = resolveSpawnEnv(effective.env);
+    for (const warning of envAssembly.warnings) logger(`[cli-transport] ${warning}`);
     try {
       handle = deps.factory(adapter.binary, adapter.buildArgs(prompt, effective), {
         cwd: effective.cwd,
-        env: effective.env,
+        env: envAssembly.env,
       });
     } catch (error) {
       yield { type: 'error', message: `拉起 ${adapter.binary} 失败：${describe(error)}`, code: 'spawn_failed' };

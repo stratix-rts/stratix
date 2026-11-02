@@ -1,14 +1,18 @@
 /**
- * 文件职责：渲染进程侧的**开关**读取 —— 首启向导强制开关 + 远程模式开关（B3 / task_083）。
+ * 文件职责：渲染进程侧的**开关 / 调参**读取 —— 首启向导强制开关 + 远程模式开关（B3 / task_083）
+ *   + 互聊回合超时（task_090）。
  *   来源：.long-run-agent/tasks/task_026.md「开发期开关 STRATIX_ONBOARDING_FORCE=1 每次启动触发向导」；
- *   远程模式来源：.long-run-agent/tasks/task_083.md「装配开关：本地直连 dev 模式保留 / 远程模式新增，默认关」。
+ *   远程模式来源：.long-run-agent/tasks/task_083.md「装配开关：本地直连 dev 模式保留 / 远程模式新增，默认关」；
+ *   互聊超时来源：.long-run-agent/tasks/task_090.md「互聊回合超时可配（STRATIX_PEER_TURN_TIMEOUT_MS）」。
  * 输入：构建期注入的常量（vite define）+ 运行时环境变量（Electron preload 透传 process.env）。
- * 输出：布尔值（开关是否打开）+ 远程模式的数据源地址。
+ * 输出：布尔值（开关是否打开）+ 远程模式的数据源地址 + 互聊回合超时的原始串。
  * 禁止事项：
  *   1. import electron —— 渲染层 bundle 里不能有 electron 模块（preload 的形状在这里重新声明一份）；
  *   2. import *.css / 任何 UI 依赖 —— 本模块只读开关；
  *   3. 直接用 import.meta.env —— 本仓库的 tsc 构建走 CommonJS（tsconfig.json），
- *      import.meta 在那里编译不过（TS1343），故改用 vite define 注入的常量。
+ *      import.meta 在那里编译不过（TS1343），故改用 vite define 注入的常量；
+ *   4. 在这里做数值解析 / 钳位 —— 本模块只搬运**原始串**，解析口径归
+ *      app/services/agent-chat-service.ts 的 resolvePeerTurnTimeoutMs（纯函数、可单测）。
  *
  * ★ 为什么两处来源都读：
  *   - **构建期常量**（vite define）：dev server 启动时与 vite 进程同环境，
@@ -33,6 +37,13 @@ declare const __STRATIX_REMOTE__: string | undefined;
 /** 构建期注入的 world-sync 端点地址（B3 / task_083；空串 = 用缺省地址）。 */
 declare const __STRATIX_WORLD_SYNC_URL__: string | undefined;
 
+/**
+ * 构建期注入的互聊回合超时（task_090；空串 = 未设置 → 用缺省 120s）。
+ * why 也要构建期这一路：纯浏览器 dev（npm run dev，不起 Electron）没有 preload 通道，
+ *   只有 vite define 能把 shell 里的环境变量带进渲染层。
+ */
+declare const __STRATIX_PEER_TURN_TIMEOUT_MS__: string | undefined;
+
 /** preload 透传的环境变量形状（与 src/electron/preload.ts 的 ElectronAPI.env 对应）。 */
 interface RuntimeEnvHost {
   readonly electronAPI?: {
@@ -40,12 +51,19 @@ interface RuntimeEnvHost {
       readonly STRATIX_ONBOARDING_FORCE?: string | null;
       readonly STRATIX_REMOTE?: string | null;
       readonly STRATIX_WORLD_SYNC_URL?: string | null;
+      readonly STRATIX_PEER_TURN_TIMEOUT_MS?: string | null;
     };
   };
 }
 
 /** 读运行时环境变量（Electron）；非浏览器 / 无 preload 时返回 null。 */
-function readRuntimeEnv(name: 'STRATIX_ONBOARDING_FORCE' | 'STRATIX_REMOTE' | 'STRATIX_WORLD_SYNC_URL'): string | null {
+function readRuntimeEnv(
+  name:
+    | 'STRATIX_ONBOARDING_FORCE'
+    | 'STRATIX_REMOTE'
+    | 'STRATIX_WORLD_SYNC_URL'
+    | 'STRATIX_PEER_TURN_TIMEOUT_MS'
+): string | null {
   if (typeof window === 'undefined') return null;
   const host = window as unknown as RuntimeEnvHost;
   return host.electronAPI?.env?.[name] ?? null;
@@ -88,4 +106,21 @@ export function remoteWorldSyncUrl(fallbackUrl: string): string {
   const buildTime = typeof __STRATIX_WORLD_SYNC_URL__ === 'string' ? __STRATIX_WORLD_SYNC_URL__ : '';
   if (buildTime !== '') return buildTime;
   return fallbackUrl;
+}
+
+/**
+ * **互聊单回合超时**的原始环境值（task_090）。
+ *
+ * 优先级：运行时环境变量（Electron preload 透传）> 构建期常量（vite define）。
+ * why 运行时优先：同一个构建产物要能按启动时的环境变量调超时（长研究型议题要更久）。
+ *
+ * 返回 null = 未设置 → 调用方用缺省 120s（DEFAULT_PEER_TURN_TIMEOUT_MS）。
+ * why 只返回原始串：本模块不解析数值（解析 + 钳位归 resolvePeerTurnTimeoutMs，纯函数可单测）。
+ */
+export function peerTurnTimeoutRaw(): string | null {
+  const runtime = readRuntimeEnv('STRATIX_PEER_TURN_TIMEOUT_MS');
+  if (runtime) return runtime;
+  const buildTime =
+    typeof __STRATIX_PEER_TURN_TIMEOUT_MS__ === 'string' ? __STRATIX_PEER_TURN_TIMEOUT_MS__ : '';
+  return buildTime !== '' ? buildTime : null;
 }
