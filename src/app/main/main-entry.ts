@@ -66,6 +66,11 @@
  *   HUD 只消费不生产；震动走 HudCommand camera.shake（core 钳制 → world 通道 → 场景相机）。
  *   演示模式强制开启（demoMode.subscribe → setForced）。
  *
+ * @since v3.3（task_086）屏幕空间特效：横向扫描光带（mountScanBand）+ 报错红光晕
+ *   （mountErrorGlow）—— 这两个效果**从战场可缩放层迁到 HUD 屏幕空间**（fixed 定位，
+ *   镜头缩放 / 平移时不变形）。红光晕由 core 总线的 task.failed 驱动，且只在导演模式
+ *   开启时呼吸 2 次（判定口径在 screen-fx-catalog）。仍然只接线：组件零总线依赖。
+ *
  * @since v3.34（task_058）快捷键系统：mountShortcuts（window keydown → 命令口 / 帮助浮层）
  *   接进 hud-root。命令走 adapter.dispatch；居中要的单位坐标复用小地图的同一份位置累积表
  *   （minimapPositions）—— 位置真相在世界层，组合根是唯一能拿到它的地方，仍是只接线。
@@ -96,6 +101,12 @@ import { createHudBusAdapter } from '../../hud/bridge/bus-adapter';
 import { replayEntryText } from '../../hud/components/replay/replay-catalog';
 import { mountReplayClock } from '../../hud/components/replay/replay-clock';
 import { createReplayController } from '../../hud/components/replay/replay-controller';
+// 屏幕空间特效（@since v3.3，task_086）：横向扫描光带 + 报错红光晕 —— 从战场可缩放层迁到
+//   HUD 屏幕空间（fixed 定位，不随镜头缩放平移变形）。组件只被驱动，事件订阅与导演模式
+//   的判定都在本文件（组合根），与跑马灯同一装配口径。
+import { mountErrorGlow } from '../../hud/components/screen-fx/error-glow';
+import { mountScanBand } from '../../hud/components/screen-fx/scan-band';
+import { errorGlowTrigger } from '../../hud/components/screen-fx/screen-fx-catalog';
 import { createMainScreen } from '../../hud/screens/main-screen';
 import { levelUpToastText } from '../../hud/screens/appearance-unlock-catalog';
 // 演示声音包（@since v3.3，task_083 建 / task_087 升级）：五音（选中 ack / 派活哒 / 完成 /
@@ -844,6 +855,22 @@ async function boot(): Promise<void> {
     }
   });
 
+  // ===== 屏幕空间特效（@since v3.3，task_086）=====
+  // 横向扫描光带 + 报错红光晕：这两个效果**从战场可缩放层迁到 HUD 屏幕空间** ——
+  //   迁前它们画在 world 画布里，镜头一缩放就跟着变形（用户验收意见）。
+  //   迁后是 fixed 定位的整屏覆盖层：缩放 / 平移镜头时纹丝不动。
+  // 挂 #hud-side 而不是 #hud-root（与 task_084 逮到的坑同一口径）：主屏每次重绘都
+  //   `host.innerHTML = ...` 重写 #hud-root —— 挂里面的覆盖层当场被抹掉。
+  // 数据流（组件只被驱动，hud 零 import world）：core 总线的 world 通道 task.failed →
+  //   组合根现读 WorldState.directorEnabled（导演模式开没开，core 是唯一真相）→
+  //   判定口径在 screen-fx-catalog 的 errorGlowTrigger（纯逻辑，单测直打）→ errorGlow.pulse()。
+  const { unmount: unmountScanBand } = mountScanBand(hudSide);
+  const { element: errorGlow, unmount: unmountErrorGlow } = mountErrorGlow(hudSide);
+  const stopErrorGlowFeed = onWorldEvent((event) => {
+    const directorEnabled = worldStore.getState().directorEnabled === true;
+    if (errorGlowTrigger(event, directorEnabled)) errorGlow.pulse();
+  });
+
   // ===== 战场单位的形象（@since v3.10，task_029）=====
   // 单位带 appearance 时，战场用合成好的 LPC 精灵表当身体（走路动画）。
   // 合成要 DOM（canvas / Image），world 层零 DOM —— 故实现在 app 层，world 只认端口。
@@ -1181,6 +1208,11 @@ async function boot(): Promise<void> {
       // 当日回放（task_082）：停掉未触发的节拍定时器 + 收角标 + 卸角标宿主。
       replayController.dispose();
       unmountReplayClock();
+      // 屏幕空间特效（task_086）：退总线订阅 + 卸两个覆盖层宿主（同卸载纪律；
+      // 卸宿主触发 disconnectedCallback → 光晕的 animationend 监听随之摘掉）。
+      stopErrorGlowFeed();
+      unmountScanBand();
+      unmountErrorGlow();
       // 健康监测（task_054）：停周期探测 + 退恢复 toast 订阅。
       stopHealthToast();
       stopHealthMonitor();

@@ -78,7 +78,6 @@ import type { DirectorEventKind } from '../camera/director-policy';
 import { isWarmHour } from '../objects/ambience-layout';
 import { BuildingLayer } from '../objects/building-layer';
 import { CloudLayer } from '../objects/cloud-layer';
-import { DirectorVignette } from '../objects/director-vignette';
 import { GroundLayer, GROUND_DEPTH } from '../objects/ground-layer';
 import { ReplayBoard, replayAnchorId, replayAvatarPosition } from '../objects/replay-board';
 import { ReplayLayer } from '../objects/replay-layer';
@@ -143,7 +142,7 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   private taskFxLayer!: TaskFxLayer;
   private emptyHint?: Phaser.GameObjects.Text;
   private selectionBox!: SelectionBox;
-  /** 地面层（@since v3.3，task_078）：格网 + 扫描光带 + 四角刻度 + 边缘渐晕。 */
+  /** 地面层（@since v3.3，task_078）：格网 + 四角刻度 + 边缘渐晕（扫描光带已于 task_086 迁到 HUD）。 */
   private groundLayer!: GroundLayer;
   /** 地图对账板（@since v3.3，task_078）：core 任务状态 → 建筑/区域布局与跳变事件。 */
   private readonly mapBoard = new MapBoard({ bounds: DEFAULT_WORLD_BOUNDS });
@@ -167,11 +166,6 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
    * 静默则缓慢巡视）。开启 / 关闭由 core 经 camera.director 事件驱动（hud 顶栏「🎬 导演」按钮）。
    */
   private director!: DirectorController;
-  /**
-   * 报错红色渐晕层（@since v3.3，task_081）：报错事件时屏幕边缘红光呼吸 2 次。
-   * why 是屏幕坐标：它提示的是「屏幕这边出事了」，不随镜头跑。
-   */
-  private directorVignette!: DirectorVignette;
   /**
    * 回放表现态板（@since v3.3，task_082）：回放节拍 → 每个角色的相位（裁决真相在板子里）。
    */
@@ -228,16 +222,10 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   create(): void {
     this.cameras.main.setBackgroundColor(BACKGROUND_COLOR);
     this.drawWorldBounds();
-    // 地面层（@since v3.3，task_078）：格网 / 扫描光带 / 四角刻度 / 边缘渐晕。
+    // 地面层（@since v3.3，task_078）：格网 / 四角刻度 / 边缘渐晕。
     // 必须在底板之后建（渲染次序靠 depth 与添加序双保险）。
     this.groundLayer = new GroundLayer(this, { bounds: DEFAULT_WORLD_BOUNDS });
     this.drawEmptyHint();
-
-    // 报错红色渐晕层（@since v3.3，task_081）：屏幕坐标的边缘红光，报错事件时呼吸 2 次。
-    // 纯装饰层：不发总线事件（它只是「出错」的视觉提示，不改变任何业务状态）。
-    // why 建在桥接层之前：桥接层一建就开始收总线事件，报错事件可能在任何时刻到达 ——
-    //   渐晕层必须先在场（否则第一个报错就撞上未初始化的字段）。
-    this.directorVignette = new DirectorVignette(this);
 
     // 桥接层先建：相机控制器的 onChange 会立刻回调它上报初始位姿
     this.bridge = createWorldBridge(this);
@@ -788,8 +776,6 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
 
   private onResize(): void {
     this.view.syncViewport();
-    // 红色渐晕是屏幕坐标的图形，窗口尺寸变了要重画（task_081）。
-    this.directorVignette.resize();
   }
 
   // ==========================================================================
@@ -900,7 +886,6 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
         this.cameraTween?.remove();
         this.cameraTween = null;
       },
-      pulseError: () => this.directorVignette.pulse(),
       onManualRelease: () => this.bridge.directorMode(false),
     };
   }
@@ -992,9 +977,9 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     this.groundLayer.destroy();
     // 氛围彩蛋层（task_079）：小云的 tween / 定时器 + 入夜巡检定时器一并回收。
     this.cloudLayer.destroy();
-    // 导演控制器与红色渐晕层（task_081）：延时回调 / 补间 / 显示对象一并回收（资源必须可清理）。
+    // 导演控制器（task_081）：延时回调 / 补间一并回收（资源必须可清理）。
+    // 注：报错红光晕已于 task_086 迁到 HUD 屏幕空间，战场侧不再持有该层。
     this.director.destroy();
-    this.directorVignette.destroy();
     // 回放化身层（task_082）：tick 定时器 + 化身显示对象一并回收（资源必须可清理）。
     this.replayLayer.destroy();
     for (const avatar of this.replayBoard.list()) {

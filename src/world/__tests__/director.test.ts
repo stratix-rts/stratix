@@ -3,7 +3,6 @@
  * 覆盖验收标准中的「三优先级镜头切换」「静默 8s 后巡视漂移」「手动介入自动退出」：
  *   - 开工 / 完成 / 报错 → 600ms 缓动到事件点、zoom 1.2x、停留 3s 后回全景；
  *   - 优先级：报错 > 完成 > 开工；同级取最新（低优先级事件不抢镜头）；
- *   - 报错附加红色渐晕脉冲；
  *   - 事件静默 > 8s → 缓慢巡视漂移 pan；
  *   - 手动介入 → 导演退出（并撤销在飞的补间），关闭后完全恢复手动。
  *
@@ -39,7 +38,6 @@ class FakeHost implements DirectorHost {
   readonly tweens: { pose: CameraPose; durationMs: number }[] = [];
   readonly placed: CameraPose[] = [];
   readonly timers: ScheduledTimer[] = [];
-  pulses = 0;
   releases = 0;
   tweenCancels = 0;
 
@@ -65,10 +63,6 @@ class FakeHost implements DirectorHost {
 
   cancelTween(): void {
     this.tweenCancels += 1;
-  }
-
-  pulseError(): void {
-    this.pulses += 1;
   }
 
   onManualRelease(): void {
@@ -105,21 +99,12 @@ describe('导演模式 · 事件 → 镜头', () => {
     expect(host.tweens[0].durationMs).toBe(600);
   });
 
-  test('报错事件：镜头就位 + 红色渐晕脉冲一次（呼吸 2 次由渐晕层负责）', () => {
+  test('报错事件：镜头就位（红色提示已迁到 HUD 屏幕空间，见 task_086）', () => {
     const { host, director } = setup();
     director.setEnabled(true);
 
     expect(director.receive('failed', { x: 100, y: 200 })).toBe(true);
-    expect(host.pulses).toBe(1);
     expect(host.tweens).toHaveLength(1);
-  });
-
-  test('开工 / 完成不触发渐晕（只有报错有）', () => {
-    const { host, director } = setup();
-    director.setEnabled(true);
-    director.receive('started', { x: 10, y: 10 });
-    director.receive('completed', { x: 20, y: 20 });
-    expect(host.pulses).toBe(0);
   });
 
   test('停留 3s 后回全景（回全景也是一次 600ms 缓动）', () => {
@@ -167,7 +152,6 @@ describe('导演模式 · 三优先级（报错 > 完成 > 开工；同级取最
     expect(director.receive('failed', { x: 900, y: 900 })).toBe(true);
     expect(host.tweens).toHaveLength(2);
     expect(host.tweens[1].pose.center).toEqual({ x: 900, y: 900 });
-    expect(host.pulses).toBe(1);
     expect(director.currentFocus?.kind).toBe('failed');
   });
 
@@ -302,6 +286,5 @@ describe('导演模式 · 手动优先与关闭', () => {
     const { host, director } = setup();
     expect(director.receive('failed', { x: 1, y: 1 })).toBe(false);
     expect(host.tweens).toHaveLength(0);
-    expect(host.pulses).toBe(0);
   });
 });

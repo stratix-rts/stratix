@@ -3,7 +3,7 @@
  *   （缓动到事件点 → 停留 → 回全景），静默太久则缓慢巡视（漂移 pan）。
  *   方案来源：docs/DEMO-PLAN.md §7「导演模式（08）」。
  * 输入：导演宿主（DirectorHost：视口 / 边界 / 时钟 / 镜头动作）+ 任务事件（开工 / 完成 / 报错）。
- * 输出：对宿主的镜头动作调用（tweenTo / place / schedule / pulseError）与一次手动让位回调。
+ * 输出：对宿主的镜头动作调用（tweenTo / place / schedule）与一次手动让位回调。
  * 禁止事项：
  *   1. import phaser —— 本文件刻意零渲染依赖：宿主把 Phaser 能力（补间 / 延时）注入进来，
  *      于是整套编排在 node 环境下可单测（与 camera/camera-controller 同一条纪律）；
@@ -64,8 +64,6 @@ export interface DirectorHost {
   schedule(ms: number, fn: () => void): () => void;
   /** 撤销在飞的镜头补间（手动介入时必须撤 —— 否则补间会和手动操作抢镜头）。 */
   cancelTween(): void;
-  /** 报错红色渐晕脉冲（呼吸 2 次）。 */
-  pulseError(): void;
   /** 手动介入 → 通知外部（world 发 camera.director=false 事件，core 据此熄灭 HUD 开关）。 */
   onManualRelease(): void;
 }
@@ -134,7 +132,7 @@ export class DirectorController {
    *
    * @param kind 事件种类（决定优先级）。
    * @param target 事件点（世界坐标）；null = 找不到对应单位 —— 没有点可看就不动镜头
-   *   （但报错仍会闪一次红色渐晕：出错这件事本身就该被看见）。
+   *   （报错的红色提示由 HUD 屏幕空间的红光晕承担，见 task_086）。
    * @returns 本次事件是否抢下了镜头（false = 被更高优先级的事件压住 / 没开导演）。
    */
   receive(kind: DirectorEventKind, target: Point | null): boolean {
@@ -144,7 +142,6 @@ export class DirectorController {
     this.patrolStartedAt = null;
 
     if (target === null) {
-      if (kind === 'failed') this.host.pulseError();
       return false;
     }
 
@@ -205,9 +202,8 @@ export class DirectorController {
 
     const moveMs = DIRECTOR_METRICS.moveDurationMs;
     this.host.tweenTo({ center: slot.target, zoom: DIRECTOR_METRICS.focusZoom }, moveMs);
-    // 报错附加红色渐晕脉冲（呼吸 2 次）—— 呼吸在「抢下镜头」的那一刻开始，
-    // 与缓动同步，观众看到的是「镜头拉过去的同时边缘泛红」。
-    if (slot.kind === 'failed') this.host.pulseError();
+    // 报错的红色提示**不在战场侧**画了（@since v3.3，task_086）：红光晕迁到 HUD 屏幕空间，
+    //   由组合根订阅 core 总线的 task.failed 后驱动（并受「导演模式开启」约束）。
 
     this.cancelPending = this.host.schedule(moveMs + DIRECTOR_METRICS.holdMs, () => {
       this.cancelPending = null;

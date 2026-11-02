@@ -1,37 +1,24 @@
 /**
- * 文件职责：**地面层的纯几何/时序口径**（task_078）—— 格网步距、扫描光带轨迹、四角刻度线段。
+ * 文件职责：**地面层的纯几何口径**（task_078）—— 格网步距、四角刻度线段。
  *   方案来源：docs/DEMO-PLAN.md §5「地面（05）」：深色格网（调色板 grid 色，格距 64px）+
- *   缓慢移动的横向扫描光带（每 12s 扫过一次，宽度 120px，8% 透明白）+ 四角坐标刻度装饰。
+ *   四角坐标刻度装饰。
  * 输入：core/types 的 Bounds（战场世界边界）。
- * 输出：常量（格距 / 光带宽度·周期·透明度 / 渐晕深度）+ 纯函数
- *   （gridSegments / scanBandX / scanBandVisible / cornerTickSegments）。
+ * 输出：常量（格距 / 渐晕深度）+ 纯函数（gridSegments / cornerTickSegments / cornerLabels）。
  * 禁止事项：
  *   1. import phaser —— 本文件是纯几何，画出来是 objects/ground-layer.ts 的事（node 单测直接引本文件）；
  *   2. import hud / app / vue / legacy —— 铁律：world 只认识 core/types；
- *   3. 读时钟 / 用随机数 —— 扫描光带的位置是「 elapsed 时刻在哪」的纯函数（单测可穷举），
- *      随机相位只属于单位动画（§2），地面不许有；
- *   4. 在这里写色值 —— 色值走 ../theme 的 WORLD_PALETTE（事实源 core/theme/visual-spec.ts）。
+ *   3. 在这里写色值 —— 色值走 ../theme 的 WORLD_PALETTE（事实源 core/theme/visual-spec.ts）。
  *
- * ★ 为什么扫描光带走「纯函数 + elapsed」而不是 tween 插值：
- *   tween 的 repeat 会在周期末把值瞬间拉回起点，视觉上是一次跳变；这里用
- *   「相位 = elapsed % 周期」把位置定义成时间的连续函数，再把行程的两端都放到
- *   **地图之外**（左侧出界 / 右侧出界），循环点的光带不在画面里 —— 于是既连续又无跳变，
- *   而且「无跳变」这件事可以被单测直接断言（见 __tests__/ground-layout.test.ts）。
+ * @since v3.3（task_086）**扫描光带的轨迹口径迁出本文件** —— 光带已迁到 HUD 屏幕空间
+ *   （固定屏幕坐标，不随镜头缩放平移），它的周期 / 宽度 / 透明度改由
+ *   core/theme/visual-spec 的 SCREEN_FX_METRICS 独家供给（事实源唯一），
+ *   屏幕空间的画法在 hud/components/screen-fx/scan-band.ts。
  */
 
 import type { Bounds, Point } from '../../core/types';
 
 /** 格网步距（世界坐标 px）。DEMO-PLAN §5：格距 64px。 */
 export const GROUND_GRID_STEP = 64;
-
-/** 扫描光带宽度（世界坐标 px）。 */
-export const SCAN_BAND_WIDTH = 120;
-
-/** 扫描光带透明度（白，8%）。 */
-export const SCAN_BAND_ALPHA = 0.08;
-
-/** 扫描光带周期（ms）：每 12s 扫过一次。 */
-export const SCAN_BAND_PERIOD_MS = 12_000;
 
 /** 边缘渐晕的纵深（世界坐标 px）：自地图边缘向内的渐暗带宽度。 */
 export const VIGNETTE_DEPTH = 180;
@@ -62,36 +49,6 @@ export function gridSegments(bounds: Bounds, step: number = GROUND_GRID_STEP): r
     segments.push({ x1: bounds.x, y1: y, x2: bounds.x + bounds.width, y2: y });
   }
   return segments;
-}
-
-/**
- * 扫描光带在 elapsedMs 时刻的左边缘 x（世界坐标）。
- *
- * 行程：从「地图左边界外侧一个带宽」扫到「地图右边界外侧两个带宽」——
- * 行程比地图宽出一个带宽，光带在周期末**完全出界**后才回绕，
- * 于是相位回绕发生在画面之外（无跳变）。
- * 相位取模保证 elapsed 为负或超周期时依然落在同一段行程里（tween 驱动时 elapsed 单调递增）。
- */
-export function scanBandX(
-  elapsedMs: number,
-  bounds: Bounds,
-  bandWidth: number = SCAN_BAND_WIDTH,
-  periodMs: number = SCAN_BAND_PERIOD_MS
-): number {
-  const safePeriod = periodMs > 0 ? periodMs : SCAN_BAND_PERIOD_MS;
-  const safeWidth = bandWidth >= 0 ? bandWidth : SCAN_BAND_WIDTH;
-  const phase = (((elapsedMs % safePeriod) + safePeriod) % safePeriod) / safePeriod;
-  const travel = bounds.width + safeWidth * 2;
-  return bounds.x - safeWidth + phase * travel;
-}
-
-/** 光带此刻是否压在地图范围内（出界即视为不可见 —— 循环点的无跳变依据）。 */
-export function scanBandVisible(
-  bandX: number,
-  bounds: Bounds,
-  bandWidth: number = SCAN_BAND_WIDTH
-): boolean {
-  return bandX < bounds.x + bounds.width && bandX + bandWidth > bounds.x;
 }
 
 /**
