@@ -34,6 +34,12 @@ import type { HudBusAdapter } from '../bridge/bus-adapter';
 import { mountAgentPanel, type AgentPanelDeps } from '../panels/agent-panel';
 import { mountCommandPanel } from '../panels/command-panel';
 import { mountLogDrawer } from '../panels/log-drawer';
+import {
+  mountSessionPanel,
+  SESSION_PANEL_TAG,
+  type StratSessionPanelElement,
+} from '../panels/session-panel';
+import type { SessionHistoryPort } from '../panels/session-catalog';
 import type { TaskStatsProvider } from '../panels/task-assign-catalog';
 import type { PipelineFeedInput } from '../panels/pipeline-catalog';
 import { defineStratButton, STRAT_BUTTON_TAG } from '../widgets/strat-button';
@@ -148,6 +154,7 @@ const MAIN_SCREEN_STYLE = `
   }
   .hud-status-slot { flex: 1 1 auto; min-height: 0; overflow: auto; }
   .hud-drawer-slot { flex: 0 0 auto; max-height: 45%; overflow: auto; }
+  .hud-session-slot { flex: 0 0 auto; max-height: 45%; overflow: auto; }
   .hud-bottom-bar {
     position: absolute;
     left: 0;
@@ -220,6 +227,11 @@ export interface MainScreenOptions {
    * 新增入口在向导）。缺省 = 不显示该组（非 Electron 降级）。
    */
   readonly customAgents?: CustomAgentsPort | null;
+  /**
+   * 会话历史的读取口（@since v3.43，task_095）—— 会话面板「历史抽屉」的两路真 IO
+   *   （角色对话历史 / 会话事件流）。缺省 = 历史读取器未附着（面板如实说明，不显示假数据）。
+   */
+  readonly sessionHistory?: SessionHistoryPort;
 }
 
 /** 工厂：构造 main-screen 句柄；接受一个已建好的 bus-adapter（依赖注入）。 */
@@ -262,6 +274,7 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
             <span class="hud-notice-badge" data-role="notice-badge" hidden title="待处理通知">0</span>
             <${STRAT_BUTTON_TAG} label="切换像素风" variant="default" data-role="theme"></${STRAT_BUTTON_TAG}>
             <${STRAT_BUTTON_TAG} label="打开聊天" variant="default" data-role="chat"></${STRAT_BUTTON_TAG}>
+            <${STRAT_BUTTON_TAG} label="会话面板" variant="default" data-role="sessions"></${STRAT_BUTTON_TAG}>
             <${STRAT_BUTTON_TAG} label="看角色" variant="default" data-role="character"></${STRAT_BUTTON_TAG}>
             <${STRAT_BUTTON_TAG} label="去设置" variant="primary" data-role="settings"></${STRAT_BUTTON_TAG}>
             <span class="hud-theme-tag" data-role="theme-tag">default</span>
@@ -270,6 +283,7 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         <div class="hud-rail-left hud-surface" data-role="agent-panel"></div>
         <div class="hud-rail-right">
           <div class="hud-status-slot hud-surface" data-role="status-screen"></div>
+          <div class="hud-session-slot hud-surface" data-role="session-panel"></div>
           <div class="hud-drawer-slot hud-surface" data-role="log-drawer"></div>
         </div>
         <div class="hud-bottom-bar">
@@ -309,10 +323,18 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         }));
       };
 
+      // 会话面板的元素引用（顶栏「会话面板」钮要能展开/收起它 —— 入口常驻可见）。
+      let sessionPanelEl: StratSessionPanelElement | null = null;
+
+      const onSessionsClick = (): void => {
+        sessionPanelEl?.toggleCollapsed();
+      };
+
       const themeHandler = (e: Event): void => {
         const target = e.target as HTMLElement | null;
         if (target?.closest('[data-role="theme"]')) onThemeClick();
         else if (target?.closest('[data-role="chat"]')) onChatClick();
+        else if (target?.closest('[data-role="sessions"]')) onSessionsClick();
         else if (target?.closest('[data-role="character"]')) onCharacterClick();
         else if (target?.closest('[data-role="settings"]')) onSettingsClick();
       };
@@ -342,6 +364,20 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       const drawerHost = host.querySelector<HTMLElement>('[data-role="log-drawer"]');
       const unmountDrawer = drawerHost ? mountLogDrawer(adapter, drawerHost) : null;
 
+      // 会话面板（@since v3.43，task_095）：多会话管理的入口 —— 列表 / kind 筛选 / 状态徽标 /
+      //   中断钮（发 session.interrupt）+ 历史抽屉。历史读取口可选（缺省 = 面板说"未附着"）。
+      const sessionHost = host.querySelector<HTMLElement>('[data-role="session-panel"]');
+      const unmountSession = sessionHost
+        ? mountSessionPanel(
+            {
+              adapter,
+              ...(options.sessionHistory ? { history: options.sessionHistory } : {}),
+            },
+            sessionHost
+          )
+        : null;
+      sessionPanelEl = sessionHost?.querySelector(SESSION_PANEL_TAG) as StratSessionPanelElement | null;
+
       // 态势屏：同为纯展示区块（指标卡 / 系统状态 / 最近事件全由 WorldState 派生），
       // 复用同一个 adapter —— 它唯一的出口是导航 ui.navigate，不发任何业务命令。
       const statusHost = host.querySelector<HTMLElement>('[data-role="status-screen"]');
@@ -361,6 +397,7 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       // 主屏布局内所有挂载闭包打包到一个闭包里：renderScreen 拆主屏布局时一次性释放。
       unmountMain = () => {
         unsubscribe();
+        unmountSession?.();
         unmountDrawer?.();
         unmountStatus?.();
         unmountAgentPanel?.();

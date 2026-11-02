@@ -102,6 +102,11 @@ import {
   type RestoreInjection,
 } from '../services/persistence/game-save-coordinator';
 import {
+  createSessionHistoryPort,
+  DEFAULT_SESSION_HISTORY_BASE_URL,
+  httpBaseFromWorldSyncUrl,
+} from '../services/session-history/session-history';
+import {
   CHAT_HISTORY_LOAD_LIMIT,
   chatHistoryApi,
   chatHistoryEntryToDrawerInput,
@@ -338,6 +343,15 @@ async function boot(): Promise<void> {
     // task_061：成长看板数据口（角色屏「成长」tab + 全场总览排行；非 Electron = 各方法
     // null 降级 —— 看板区块引导语，不拆屏可用性）。
     growth: makeGrowthStatsPort(expEventApi(), taskRecordApi()),
+    // task_095：会话历史的读取口 —— 会话面板「历史抽屉」的两路真 IO
+    //   （角色对话历史走 preload 通道；会话事件流走 service 的只读 REST）。
+    //   service 基址：远程模式从 world-sync 端点换协议得出（同一台 service）；
+    //   本地回退模式用缺省的本机 gateway。读取口缺席时面板如实说"未附着"。
+    sessionHistory: createSessionHistoryPort({
+      baseUrl: remote
+        ? httpBaseFromWorldSyncUrl(remoteWorldSyncUrl(DEFAULT_WORLD_SYNC_URL))
+        : DEFAULT_SESSION_HISTORY_BASE_URL,
+    }),
   });
   const unmountScreen = screen.mount(hudRoot);
   const unmountAdapter = adapter.mount();
