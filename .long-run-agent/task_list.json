@@ -1681,13 +1681,13 @@
       "description": "release: 合 master+tag v3.1——全链路验收+合并(保留历史)-模块",
       "template": "task",
       "priority": "P1",
-      "status": "pending",
+      "status": "completed",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_042.md",
       "created_at": "2026-10-24T10:11:10.850157",
-      "updated_at": "2026-10-24T10:11:10.850172",
+      "updated_at": "2026-11-02T20:30:00",
       "dependencies": [
         "task_041"
       ],
@@ -2160,13 +2160,13 @@
       "description": "视觉基建：world/visual-spec.ts 设计常量唯一事实源（palette/尺寸/时长/easing）+ world theme.ts 与 hud 双 token 皮肤同步扩展 + demo-mode 开关骨架（顶栏开关、localStorage 记忆、工程面板隐藏、字号+30%）-模块",
       "template": "task",
       "priority": "P1",
-      "status": "pending",
+      "status": "completed",
       "parent_id": null,
       "output_req": "8k",
       "context_hint": "8k",
       "task_file": "tasks/task_110.md",
       "created_at": "2026-11-02T20:07:55.156458",
-      "updated_at": "2026-11-02T20:07:55.156468",
+      "updated_at": "2026-11-02T20:26:04.424475",
       "dependencies": [],
       "dependency_type": "all",
       "deadline": null,
@@ -2178,7 +2178,14 @@
           "lint_passed": false,
           "acceptance_met": false
         },
-        "issues": [],
+        "issues": [
+          {
+            "round": 0,
+            "type": "unknown_issue",
+            "message": "文档覆盖率过低 (21.9%)",
+            "timestamp": "2026-11-02T20:26:04.424472"
+          }
+        ],
         "optimization_history": []
       }
     },

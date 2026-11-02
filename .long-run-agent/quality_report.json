@@ -1,26 +1,10 @@
 {
-  "task_id": "task_071",
-  "score": 78,
+  "task_id": "task_110",
+  "template": "task",
+  "score": 75,
   "max_score": 100,
-  "issues": [
+  "checks": [
     {
-      "type": "low_documentation",
-      "severity": "high",
-      "message": "文档覆盖率过低 (21.9%)"
-    },
-    {
-      "type": "long_file",
-      "severity": "medium",
-      "file": "tests/stratix-data-store/EnhancedTemplateLibrary.test.ts",
-      "message": "文件过长 (760 行)"
-    }
-  ],
-  "suggestions": [
-    "建议为主要函数和类添加文档字符串",
-    "建议拆分超长文件，每个文件保持500行以内"
-  ],
-  "details": {
-    "documentation": {
       "score": 21,
       "issues": [
         {
@@ -39,33 +23,36 @@
         "total_classes": 2,
         "documented_classes": 0,
         "class_coverage": "0.0%"
-      }
+      },
+      "passed": false
     },
-    "complexity": {
+    {
       "score": 90,
       "issues": [
         {
           "type": "long_file",
           "severity": "medium",
-          "file": "tests/stratix-data-store/EnhancedTemplateLibrary.test.ts",
-          "message": "文件过长 (760 行)"
+          "file": "tools/texture-generator/generate-textures.js",
+          "message": "文件过长 (800 行)"
         }
       ],
       "suggestions": [
         "建议拆分超长文件，每个文件保持500行以内"
       ],
       "stats": {
-        "total_lines": 2915,
+        "total_lines": 1753,
         "files_checked": 10
-      }
+      },
+      "passed": true
     },
-    "naming": {
+    {
       "score": 100,
       "issues": [],
       "suggestions": [],
-      "stats": {}
+      "stats": {},
+      "passed": true
     },
-    "structure": {
+    {
       "score": 100,
       "issues": [],
       "suggestions": [],
@@ -74,18 +61,38 @@
         "has_gitignore": true,
         "has_src": true,
         "has_tests": true
-      }
+      },
+      "passed": true
     },
-    "testing": {
+    {
       "score": 100,
       "issues": [],
       "suggestions": [],
       "stats": {
-        "test_files": 175,
-        "code_files": 595,
-        "test_ratio": "29.4%"
-      }
+        "test_files": 231,
+        "code_files": 717,
+        "test_ratio": "32.2%"
+      },
+      "passed": true
     }
-  },
-  "timestamp": "2026-10-29T07:27:05.996095"
+  ],
+  "failed_required": [],
+  "issues": [
+    {
+      "type": "low_documentation",
+      "severity": "high",
+      "message": "文档覆盖率过低 (21.9%)"
+    },
+    {
+      "type": "long_file",
+      "severity": "medium",
+      "file": "tools/texture-generator/generate-textures.js",
+      "message": "文件过长 (800 行)"
+    }
+  ],
+  "suggestions": [
+    "建议为主要函数和类添加文档字符串",
+    "建议拆分超长文件，每个文件保持500行以内"
+  ],
+  "timestamp": "2026-11-02T20:25:48.253728"
 }
