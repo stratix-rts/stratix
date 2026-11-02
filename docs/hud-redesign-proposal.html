@@ -1,0 +1,1218 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Stratix HUD 布局与交互视觉重构论证（v3.4 前置）</title>
+<style>
+:root{
+  /* —— 七色霓虹体系（唯一事实源：src/core/theme/visual-spec.ts VISUAL_PALETTE） —— */
+  --bg:#0d1126;          /* 背景基底 */
+  --grid:#1a2140;        /* 网格线 */
+  --unit:#4fc3f7;        /* 我方单位主色 · 青蓝 */
+  --progress:#f0a020;    /* 进度 / 施工 · 琥珀 */
+  --success:#2ecc71;     /* 完成 / 成功 · 翠绿 */
+  --danger:#ff5470;      /* 报错 / 卡住 · 绯红 */
+  --accent:#8a6bff;      /* 事件流 / 装饰 · 紫 */
+  --text:#e8ecf4;
+  --muted:#93a0b5;
+  --panel:rgba(13,17,38,.86);
+  --panel-2:rgba(26,33,64,.72);
+  --border:rgba(255,255,255,.08);
+  --border-2:rgba(138,107,255,.28);
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  font-size:15px;line-height:1.75;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+.wrap.wide{max-width:1620px}
+
+/* ============ 文档头 ============ */
+.doc-head{
+  border-bottom:1px solid var(--border-2);
+  background:linear-gradient(180deg,rgba(138,107,255,.10),rgba(13,17,38,0));
+  padding:44px 0 28px;margin-bottom:8px;
+}
+.doc-head h1{margin:0 0 6px;font-size:30px;line-height:1.3;font-weight:800;letter-spacing:.01em}
+.doc-head h1 .accent{color:var(--accent)}
+.doc-head .sub{color:var(--muted);font-size:14px;margin:0}
+.meta-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.chip{
+  font-size:12px;padding:3px 10px;border-radius:999px;
+  border:1px solid var(--border-2);color:var(--muted);background:rgba(138,107,255,.06);
+  font-family:var(--mono);
+}
+.chip b{color:var(--text);font-weight:600}
+
+/* ============ 目录 ============ */
+.toc{
+  border:1px solid var(--border);border-radius:10px;padding:18px 22px;margin:26px 0 40px;
+  background:rgba(26,33,64,.35);
+}
+.toc h2{margin:0 0 10px;font-size:13px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase;font-family:var(--mono);font-weight:600}
+.toc ol{margin:0;padding-left:20px;columns:2;column-gap:36px;font-size:14px}
+.toc > ol > li{margin:2px 0;break-inside:avoid}
+.toc ol ol{padding-left:18px;color:var(--muted);font-size:13px;columns:1}
+.toc a{color:var(--text);text-decoration:none;border-bottom:1px solid transparent}
+.toc a:hover{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* ============ 章节 ============ */
+section{margin:56px 0 0;scroll-margin-top:20px}
+h2.sec{
+  font-size:22px;font-weight:700;margin:0 0 4px;padding-bottom:8px;
+  border-bottom:1px solid var(--border-2);letter-spacing:.01em;
+}
+h2.sec .num{color:var(--accent);font-family:var(--mono);font-size:16px;margin-right:10px}
+h3{font-size:16px;font-weight:700;margin:30px 0 8px;color:#dbe3f2}
+h3 .n{color:var(--muted);font-family:var(--mono);font-size:13px;margin-right:8px}
+h4{font-size:14px;font-weight:600;margin:18px 0 6px;color:var(--muted)}
+p{margin:10px 0}
+ul,ol{margin:10px 0;padding-left:22px}
+li{margin:5px 0}
+code{
+  font-family:var(--mono);font-size:.88em;background:rgba(138,107,255,.12);
+  padding:1px 5px;border-radius:4px;color:#c9b8ff;
+}
+a{color:var(--accent)}
+strong{color:#fff}
+hr{border:0;border-top:1px solid var(--border);margin:32px 0}
+
+/* ============ 通用块 ============ */
+.panel{border:1px solid var(--border);border-radius:10px;padding:16px 20px;background:rgba(26,33,64,.28);margin:16px 0}
+.panel.tight{padding:12px 16px}
+.note{border-left:3px solid var(--accent);background:rgba(138,107,255,.08);padding:12px 16px;border-radius:0 8px 8px 0;margin:16px 0;font-size:14px}
+.note.warn{border-left-color:var(--danger);background:rgba(255,84,112,.08)}
+.note.ok{border-left-color:var(--success);background:rgba(46,204,113,.07)}
+.note.tip{border-left-color:var(--progress);background:rgba(240,160,32,.07)}
+.kicker{font-family:var(--mono);font-size:12px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
+.lead{font-size:16px;color:#cbd5e6}
+
+/* ============ 表格 ============ */
+table{border-collapse:collapse;width:100%;margin:14px 0;font-size:13.5px}
+th,td{border:1px solid var(--border);padding:8px 10px;text-align:left;vertical-align:top}
+th{background:rgba(138,107,255,.14);font-weight:600;color:#e6e1ff;position:sticky;top:0;z-index:2}
+td code{font-size:.85em}
+tbody tr:nth-child(even){background:rgba(255,255,255,.017)}
+.table-scroll{max-height:640px;overflow:auto;border:1px solid var(--border);border-radius:10px}
+.table-scroll table{margin:0}
+td.num{font-family:var(--mono);white-space:nowrap;text-align:right}
+.tag{
+  display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;
+  border:1px solid currentColor;line-height:1.7;white-space:nowrap;
+}
+.t-same{color:var(--muted)}
+.t-move{color:var(--unit)}
+.t-fold{color:var(--accent)}
+.t-add{color:var(--success)}
+.t-fix{color:var(--danger)}
+
+/* ============ 痛点 ============ */
+.pain{border:1px solid var(--border);border-left:3px solid var(--danger);border-radius:0 8px 8px 0;padding:12px 16px;margin:10px 0;background:rgba(255,84,112,.045)}
+.pain .pid{font-family:var(--mono);font-size:12px;color:var(--danger);margin-right:8px}
+.pain b{display:block;margin-bottom:2px}
+.pain .ev{font-size:13px;color:var(--muted)}
+.fix{border:1px solid var(--border);border-left:3px solid var(--success);border-radius:0 8px 8px 0;padding:12px 16px;margin:10px 0;background:rgba(46,204,113,.045)}
+.fix .pid{font-family:var(--mono);font-size:12px;color:var(--success);margin-right:8px}
+.fix b{display:block;margin-bottom:2px}
+
+/* ============ 布局示意图（静态） ============ */
+.diagram{
+  border:1px solid var(--border-2);border-radius:10px;padding:16px;background:rgba(13,17,38,.6);
+  font-family:var(--mono);font-size:12.5px;line-height:1.5;overflow-x:auto;
+}
+.dgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.dbox{border:1px dashed rgba(138,107,255,.45);border-radius:8px;padding:10px 12px;position:relative}
+.dbox .dl{position:absolute;top:-9px;left:10px;background:var(--bg);padding:0 6px;font-size:11px;color:var(--accent)}
+.dbox .db{font-size:12.5px;color:#d8e0f0}
+.dcol{display:flex;flex-direction:column;gap:10px}
+.drow{display:flex;gap:10px}
+.dbar{background:rgba(138,107,255,.16);border:1px solid rgba(138,107,255,.4);border-radius:6px;padding:6px 10px;text-align:center}
+.dbar.hot{border-color:var(--danger);background:rgba(255,84,112,.16)}
+.dbar.cool{border-color:var(--unit);background:rgba(79,195,247,.14)}
+.dbar.dim{opacity:.45}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+
+/* ============ Mockup 舞台 ============ */
+.mock-bar{
+  display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:16px 0 12px;
+  padding:10px 14px;border:1px solid var(--border);border-radius:10px;background:rgba(26,33,64,.4);
+}
+.mock-bar .lbl{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
+.seg{display:inline-flex;border:1px solid var(--border-2);border-radius:8px;overflow:hidden}
+.seg button{
+  font:inherit;font-size:12.5px;padding:5px 13px;border:0;background:transparent;color:var(--muted);cursor:pointer;
+  font-family:var(--mono);
+}
+.seg button + button{border-left:1px solid var(--border-2)}
+.seg button[aria-pressed="true"]{background:rgba(138,107,255,.24);color:#fff}
+.seg button:hover{color:#fff}
+.tbtn{
+  font:inherit;font-size:12.5px;padding:5px 12px;border-radius:8px;cursor:pointer;
+  border:1px solid var(--border-2);background:rgba(138,107,255,.08);color:var(--text);
+}
+.tbtn:hover{background:rgba(138,107,255,.2)}
+.tbtn[aria-pressed="true"]{background:rgba(46,204,113,.2);border-color:var(--success)}
+
+.stages{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.stage-card{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:rgba(13,17,38,.5)}
+.stage-card > .cap{
+  display:flex;align-items:baseline;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border);
+  background:rgba(138,107,255,.10);font-size:13px;
+}
+.stage-card > .cap b{font-size:14px}
+.stage-card > .cap .t{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.stage-card.new > .cap{background:rgba(46,204,113,.12)}
+.stage{
+  position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;
+  background:
+    radial-gradient(circle at 30% 40%,rgba(26,33,64,.9),transparent 60%),
+    repeating-linear-gradient(0deg,rgba(26,33,64,.85) 0 1px,transparent 1px 26px),
+    repeating-linear-gradient(90deg,rgba(26,33,64,.85) 0 1px,transparent 1px 26px),
+    var(--bg);
+  font-size:11px;
+}
+.stage-note{padding:10px 14px;font-size:12.5px;color:var(--muted);border-top:1px solid var(--border);min-height:74px}
+.stage-note b{color:#dbe3f2}
+
+/* 舞台内通用 */
+.s-topbar{position:absolute;left:0;right:0;top:0;height:6.7%;background:rgba(13,17,38,.9);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;padding:0 8px;z-index:6}
+.s-brand{font-weight:800;font-size:11px;letter-spacing:.04em}
+.s-stats{display:flex;gap:6px;font-size:9.5px;color:var(--muted);font-family:var(--mono)}
+.s-stats b{color:var(--text)}
+.s-actions{margin-left:auto;display:flex;align-items:center;gap:3px;flex-wrap:nowrap}
+.s-chip{font-size:9px;padding:2px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.16);color:var(--muted);background:rgba(255,255,255,.04);white-space:nowrap;font-family:var(--mono)}
+.s-chip.on{border-color:var(--success);color:#d6ffe6;background:rgba(46,204,113,.2)}
+.s-chip.dir.on{border-color:var(--progress);color:#ffe6bd;background:rgba(240,160,32,.2)}
+.s-chip.demo.on{border-color:var(--accent);color:#ded4ff;background:rgba(138,107,255,.22)}
+.s-chip.tiny{font-size:8px;opacity:.75}
+.s-slider{width:32px;height:3px;border-radius:2px;background:linear-gradient(90deg,var(--unit) 70%,rgba(255,255,255,.12) 70%);border:0}
+.s-slider.off{background:rgba(255,255,255,.1);opacity:.45}
+
+.s-unit{position:absolute;width:13px;height:13px;margin:-6px 0 0 -6px;border-radius:3px;z-index:3;transition:transform .18s ease}
+.s-unit.work{background:var(--unit);box-shadow:0 0 7px rgba(79,195,247,.65)}
+.s-unit.done{background:var(--success);box-shadow:0 0 7px rgba(46,204,113,.55)}
+.s-unit.stuck{background:var(--danger);box-shadow:0 0 8px rgba(255,84,112,.7);animation:blink 1s steps(1) infinite}
+.s-unit.idle{background:rgba(26,33,64,.9);border:1px solid rgba(255,255,255,.2)}
+.s-unit.hot{outline:2px solid var(--accent);outline-offset:2px;box-shadow:0 0 12px rgba(138,107,255,.9)}
+@keyframes blink{0%,60%{opacity:1}61%,100%{opacity:.35}}
+.s-bubble{
+  position:absolute;max-width:96px;background:rgba(0,0,0,.85);color:#fff;font-size:9px;line-height:1.35;
+  padding:3px 6px;border-radius:5px;transform:translate(-50%,-100%);z-index:4;white-space:nowrap;
+}
+.s-bubble::after{content:"";position:absolute;left:50%;bottom:-4px;margin-left:-3px;border:3px solid transparent;border-top-color:rgba(0,0,0,.85);border-bottom:0}
+
+.s-marquee{position:absolute;left:1.25%;bottom:2.2%;width:19.5%;z-index:3}
+.s-mq-row{display:flex;align-items:center;gap:4px;height:15px;padding:0 5px;margin-bottom:2px;border-radius:3px;background:rgba(13,17,38,.82);border-left:2px solid var(--entry,#fff);font-size:9px;white-space:nowrap;overflow:hidden;cursor:default}
+.s-mq-row .tx{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis}
+.s-mq-row .tm{flex:none;color:var(--muted);font-size:8px}
+.s-mq-row:hover{background:rgba(26,33,64,.95)}
+.s-mq-detail{display:none;font-size:8.5px;color:#c8d3e6;background:rgba(138,107,255,.16);border:1px solid var(--border-2);border-radius:4px;padding:3px 5px;margin-bottom:3px;line-height:1.4}
+.s-mq-row.hot + .s-mq-detail{display:block}
+.s-rail{position:absolute;left:1.25%;bottom:2.2%;width:20.3%;z-index:3}
+.s-rail .s-mq-row{cursor:pointer}
+.s-rail .s-mq-row.hot{background:rgba(138,107,255,.3)}
+
+.s-map{position:absolute;right:1%;bottom:1.7%;width:15.6%;height:16.7%;border:2px solid rgba(138,107,255,.5);border-radius:4px;background:rgba(13,17,38,.7);z-index:3;overflow:hidden}
+.s-map .island{position:absolute;inset:14% 8%;border:1px solid rgba(79,195,247,.45);border-radius:48% 55% 40% 60%/58% 42% 60% 40%;background:rgba(79,195,247,.06)}
+.s-map .vp{position:absolute;border:1.5px solid rgba(255,255,255,.75);background:rgba(255,255,255,.12);border-radius:2px;transition:.25s}
+.s-map .dot{position:absolute;width:3px;height:3px;border-radius:50%;margin:-1.5px 0 0 -1.5px}
+.s-map .badge{position:absolute;right:2px;bottom:1px;font-size:7px;color:var(--muted);font-family:var(--mono)}
+
+.s-bottom{position:absolute;left:0;right:0;bottom:0;height:34%;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;padding:0 1% 1%}
+.s-cmd{width:85.9%;background:rgba(13,17,38,.88);border:1px solid var(--border);border-radius:5px;padding:4px;display:flex;gap:3px;justify-content:center;flex-wrap:wrap}
+.s-cmd span{font-size:8px;padding:2px 5px;border-radius:3px;border:1px solid rgba(255,255,255,.12);color:var(--muted);font-family:var(--mono)}
+.s-cmd span.p{border-color:rgba(138,107,255,.55);color:#dcd2ff;background:rgba(138,107,255,.14)}
+.s-replay{width:85.9%;background:rgba(13,17,38,.88);border:1px solid var(--border);border-radius:5px;padding:3px 5px;display:flex;align-items:center;gap:5px}
+.s-replay .lbl{font-size:8px;color:var(--muted)}
+.s-replay .clk{font-size:9px;color:var(--accent);font-family:var(--mono)}
+.s-strip{position:relative;flex:1 1 auto;height:16px;border-radius:3px;background:rgba(26,33,64,.6);border:1px solid rgba(255,255,255,.08);cursor:ew-resize;overflow:hidden}
+.s-heat{position:absolute;inset:0;display:flex;align-items:flex-end;gap:1px}
+.s-heat i{flex:1 1 0;background:var(--unit);border-radius:1px 1px 0 0}
+.s-handle{position:absolute;top:0;bottom:0;width:2px;background:var(--accent);box-shadow:0 0 5px var(--accent);transform:translateX(-1px);pointer-events:none}
+.s-play{font-size:8px;padding:2px 6px;border-radius:999px;border:1px solid var(--accent);color:var(--accent);white-space:nowrap;font-family:var(--mono)}
+
+.s-island{position:absolute;left:0;right:0;bottom:0;height:12.8%;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;padding:0 1% 1%}
+.s-island .s-cmd{width:56%}
+.s-island .s-replay{width:56%}
+
+/* 新版：右下工程列（现状） */
+.s-engcol{position:absolute;right:1%;top:8%;width:19%;display:flex;flex-direction:column;gap:4px;z-index:2}
+.s-engcol div{border:1px solid var(--border);border-radius:4px;padding:4px 6px;font-size:8px;color:var(--muted);background:rgba(13,17,38,.7)}
+.s-engcol div.hidden{display:none}
+
+/* 碰撞高亮 */
+.s-collide{position:absolute;border:1px dashed var(--danger);background:repeating-linear-gradient(45deg,rgba(255,84,112,.22) 0 6px,rgba(255,84,112,.07) 6px 12px);z-index:8;pointer-events:none;border-radius:2px}
+.s-collide span{position:absolute;left:2px;top:2px;font-size:7.5px;color:#ffd7de;font-family:var(--mono);white-space:nowrap;background:rgba(255,84,112,.35);padding:0 3px;border-radius:2px}
+.s-clear{position:absolute;border:1px dashed rgba(46,204,113,.7);background:rgba(46,204,113,.08);z-index:8;pointer-events:none;border-radius:2px}
+.s-clear span{position:absolute;left:2px;top:2px;font-size:7.5px;color:#c9ffe0;font-family:var(--mono);white-space:nowrap;background:rgba(46,204,113,.28);padding:0 3px;border-radius:2px}
+
+/* 导演取景框 */
+.s-director{position:absolute;border:2px solid var(--progress);border-radius:3px;z-index:5;pointer-events:none;box-shadow:0 0 12px rgba(240,160,32,.45)}
+.s-director::after{content:"🎬 导演";position:absolute;left:-2px;top:-15px;font-size:8px;color:#ffd89b;font-family:var(--mono);background:rgba(240,160,32,.25);padding:0 4px;border-radius:2px}
+.s-vignette{position:absolute;inset:0;z-index:5;pointer-events:none;box-shadow:inset 0 0 60px 18px rgba(255,84,112,.5);animation:vig 1.3s ease-in-out infinite}
+@keyframes vig{0%,100%{opacity:.15}50%{opacity:.85}}
+
+/* 回放角标 */
+.s-clock{position:absolute;left:2%;top:2%;z-index:9;background:rgba(13,17,38,.9);border:1px solid var(--accent);border-radius:5px;padding:4px 8px}
+.s-clock .t{font-size:17px;font-weight:800;color:var(--accent);font-family:var(--mono);line-height:1}
+.s-clock .m{font-size:8px;color:var(--muted);font-family:var(--mono)}
+.s-clock.low{top:12.5%}
+
+/* 此刻事件卡 */
+.s-nowcard{position:absolute;left:24%;top:14%;z-index:7;background:rgba(13,17,38,.92);border:1px solid var(--accent);border-radius:6px;padding:5px 8px;min-width:150px}
+.s-nowcard .h{font-size:8.5px;color:var(--accent);font-family:var(--mono);margin-bottom:2px}
+.s-nowcard .r{font-size:8.5px;color:#d5dded;display:flex;gap:5px;line-height:1.6}
+.s-nowcard .r i{font-style:normal;color:var(--muted);font-family:var(--mono)}
+
+/* 引导弧线（左下 → 中屏） */
+.s-link{position:absolute;height:2px;transform-origin:0 50%;z-index:6;pointer-events:none;
+  background:linear-gradient(90deg,rgba(138,107,255,.9),rgba(138,107,255,.1));border-radius:2px}
+.s-link::after{content:"";position:absolute;right:-1px;top:-2.5px;border:4px solid transparent;border-left-color:var(--accent)}
+.s-pulse{position:absolute;z-index:6;width:16px;height:16px;margin:-8px 0 0 -8px;border:2px solid var(--accent);border-radius:50%;pointer-events:none;animation:pulse 1.2s ease-out infinite}
+@keyframes pulse{0%{transform:scale(.4);opacity:1}100%{transform:scale(1.5);opacity:0}}
+
+/* 层级降对比 */
+.s-stage[data-layer="ambient"] .l1{opacity:1}
+.s-stage[data-layer="event"] .l1{opacity:.45}
+.s-stage[data-layer="immersive"] .l1{opacity:.18}
+.l2{transition:opacity .25s}
+.s-stage[data-layer="ambient"] .l2{opacity:.6}
+.s-stage[data-layer="event"] .l2{opacity:1}
+.s-stage[data-layer="immersive"] .l2{opacity:0}
+.s-stage[data-layer="immersive"] .l3{opacity:1}
+.l3{opacity:0;transition:opacity .3s}
+.s-l3big{position:absolute;left:0;right:0;top:42%;text-align:center;font-size:22px;font-weight:800;color:var(--progress);text-shadow:0 0 18px rgba(240,160,32,.65);z-index:9}
+
+.s-legend{font-family:var(--mono);font-size:11px;color:var(--muted);padding:8px 14px;border-top:1px solid var(--border);background:rgba(0,0,0,.2)}
+
+/* 交互索引 */
+.ix{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin:14px 0}
+.ix div{border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;background:rgba(26,33,64,.3)}
+.ix b{color:var(--accent);font-family:var(--mono);font-size:12px;display:block;margin-bottom:2px}
+</style>
+</head>
+<body>
+
+<header class="doc-head">
+  <div class="wrap">
+    <h1>Stratix HUD 布局与交互视觉重构<span class="accent">论证</span></h1>
+    <p class="sub">v3.4 前置论证 · 功能不变 · 零删减重构方案 · 供决策后决定是否实施</p>
+    <div class="meta-row">
+      <span class="chip">任务 <b>task_088</b></span>
+      <span class="chip">分支 <b>demo/v3.3</b></span>
+      <span class="chip">基准 <b>DEMO-PLAN v3.3（设计冻结版）</b></span>
+      <span class="chip">产物 <b>docs/hud-redesign-proposal.html</b></span>
+      <span class="chip">改动范围 <b>只读源码 + 一个自包含 HTML</b></span>
+      <span class="chip">外部依赖 <b>0</b></span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+<nav class="toc">
+  <h2>目录</h2>
+  <ol>
+    <li><a href="#s0">结论先行</a>
+      <ol><li><a href="#s0-1">现状三句话</a></li><li><a href="#s0-2">新版三句话</a></li><li><a href="#s0-3">承诺与边界</a></li></ol>
+    </li>
+    <li><a href="#s1">第一部分 · 现状论证</a>
+      <ol>
+        <li><a href="#s1-0">元素总表（40 项：HUD 侧 32 + 战场侧 8）</a></li>
+        <li><a href="#s1-1">顶栏</a></li>
+        <li><a href="#s1-2">左下事件轨（跑马灯）</a></li>
+        <li><a href="#s1-3">右下小地图</a></li>
+        <li><a href="#s1-4">底栏回放条</a></li>
+        <li><a href="#s1-5">单位气泡</a></li>
+        <li><a href="#s1-6">工程面板与演示模式</a></li>
+        <li><a href="#s1-7">其余常驻件</a></li>
+        <li><a href="#s1-8">实测：布局碰撞</a></li>
+        <li><a href="#s1-9">痛点归纳 P1–P13</a></li>
+      </ol>
+    </li>
+    <li><a href="#s2">第二部分 · 新版布局论证</a>
+      <ol>
+        <li><a href="#s2-1">依据一：直播画面构图</a></li>
+        <li><a href="#s2-2">依据二：视线动线</a></li>
+        <li><a href="#s2-3">依据三：信息三层级</a></li>
+        <li><a href="#s2-4">新版布局图</a></li>
+        <li><a href="#s2-5">分区规格表</a></li>
+      </ol>
+    </li>
+    <li><a href="#s3">现状 vs 新版 · 并排可交互 mockup</a>
+      <ol>
+        <li><a href="#s3-1">可交互点索引（5 处）</a></li>
+        <li><a href="#s3-2">并排舞台</a></li>
+        <li><a href="#s3-3">交互逐条说明</a></li>
+      </ol>
+    </li>
+    <li><a href="#s4">功能对照表（40/40，零删减）</a></li>
+    <li><a href="#s5">实施代价与风险</a></li>
+    <li><a href="#s6">待决问题（需拍板）</a></li>
+    <li><a href="#s7">未尽事项与测量方法</a></li>
+  </ol>
+</nav>
+</div>
+
+<!-- ==================== §0 ==================== -->
+<section id="s0" class="wrap">
+  <h2 class="sec"><span class="num">§0</span>结论先行</h2>
+
+  <h3 id="s0-1"><span class="n">0.1</span>现状三句话</h3>
+  <ul>
+    <li><strong>信息密度分配反了。</strong>顶栏塞了 19 个后代元素（8 个按钮 + 1 个音量滑条 + 3 个 on/off 文本 + 徽标 + 品牌 + 3 个计数），1280 宽下动作区独占视口宽 58.8%；而底栏因为写死 <code>--hud-bottom-h: min(34cqh,300px)</code>，在 1920×1080 下吃掉 300px（27.8% 视口高）。<em>主播要操作的控件占了两头，观众要看的画面被挤到中间 65%。</em></li>
+    <li><strong>四角有真实碰撞，不是审美问题。</strong>按 <code>src/hud/screens/main-screen.ts</code> 的实际 CSS 值复刻并用无头浏览器实测：1280×720 下，跑马灯与命令面板重叠 <b>26,250 px²</b>、小地图与命令面板重叠 <b>14,640 px²</b>；回放时间戳角标与顶栏在任何分辨率下都重叠 <b>5,160 px²</b>（遮住品牌 "Stratix" 360 px²）。</li>
+    <li><strong>没有信息层级这个概念。</strong>6 类 HUD 信息（态势 / 操作 / 事件 / 演出 / 气泡 / toast）全部同时常亮、同一对比度。「▶ 60 秒看完今天」这种打断式演出进行时，HUD 一个都不让位；「🎬 导演」打开后，画面中央没有任何东西说明"镜头被接管了"。</li>
+  </ul>
+
+  <h3 id="s0-2"><span class="n">0.2</span>新版三句话</h3>
+  <ul>
+    <li><strong>中轴归地图。</strong>底栏从"34% 视口高 + 1100px 通栏"改成"内容自适应 + 控制岛（宽 56% 屏宽、约 92px）"，中轴可用高度从 59% 提到 <b>80%+</b>；左右两角（事件轨 ≤260px / 小地图 200×120）与控制岛零重叠。</li>
+    <li><strong>视线动线左下→中屏。</strong>事件条目从"纯展示文本"变成"可展开详情的入口"：hover 展开详情、点击锁定单位，中屏对应单位描边高亮，并画一条引导弧线把左下条目指向中屏单位——把 DEMO-PLAN §7「镜头自动订阅总线事件」从世界层的隐式行为，补成 HUD 层的显式连线。</li>
+    <li><strong>三层级 + 顶栏瘦身。</strong>常驻（L1）/ 事件（L2）/ 沉浸（L3）三档，L3 激活时 L1 自动降到 18% 对比；顶栏从 19 个元素降到 7 个（品牌 + 态势胶囊 + 徽标 + 🔊 / 🎬 / ▶ + ⋯），三个 on/off 文本标签删除，音量滑条收进 🔊 弹出层。</li>
+  </ul>
+
+  <h3 id="s0-3"><span class="n">0.3</span>承诺与边界</h3>
+  <div class="note ok">
+    <strong>零删减承诺</strong>：现有 40 项 HUD 功能全部保留、全部可触达，只是换位置、换形态（常驻 → 收纳 / 折叠 / 弹出）。<a href="#s4">功能对照表</a>逐项列出"现在在哪 → 新的在哪 → 变化类型"，无一项标记为"删除"。
+  </div>
+  <div class="note warn">
+    <strong>本文件不改任何现有代码。</strong>所有 src/ 文件均为只读引用。涉及实施代价与需要改动源码的位置，集中写在 <a href="#s5">§5</a>；其中 5 个需要拍板的取舍写在 <a href="#s6">§6</a>。
+  </div>
+</section>
+
+<!-- ==================== §1 ==================== -->
+<section id="s1" class="wrap">
+  <h2 class="sec"><span class="num">§1</span>第一部分 · 现状论证</h2>
+  <p class="lead">逐元素盘点：这个 HUD 件是什么、它解决什么问题、当初为什么放在那个位置、现在疼在哪里。</p>
+
+  <h3 id="s1-0"><span class="n">1.1</span>元素总表（40 项：HUD 侧 32 + 战场侧 8）</h3>
+  <p>"挂接点"列给出源码位置（<code>src/hud/</code> 下的相对路径），"规格来源"列指向 <code>docs/DEMO-PLAN.md</code> 的节号或 <code>src/core/theme/visual-spec.ts</code> 的常量表——这两者是设计初衷的唯一出处。</p>
+  <div class="table-scroll">
+  <table>
+    <thead><tr>
+      <th style="width:4%">#</th><th style="width:15%">元素</th><th style="width:11%">位置 / 形态</th><th style="width:21%">挂接点（源码）</th><th style="width:12%">规格来源</th><th>解决的问题</th>
+    </tr></thead>
+    <tbody>
+      <tr><td class="num">A1</td><td>品牌标识 Stratix</td><td>顶栏左</td><td><code>main-screen.ts:319</code></td><td>—</td><td>画面身份；观众知道自己在看什么</td></tr>
+      <tr><td class="num">A2</td><td>态势摘要（单位 / 任务 / 会话）</td><td>顶栏中左</td><td><code>main-screen.ts:320-324</code>，读 <code>WorldState</code></td><td>§0 总纲</td><td>规模感——"今天干了多少活"是直播叙事的骨架</td></tr>
+      <tr><td class="num">A3</td><td>通知徽标</td><td>顶栏右</td><td><code>main-screen.ts:326</code>，读 <code>state.notices</code></td><td>—</td><td>待批准之类需要"人"介入的信号</td></tr>
+      <tr><td class="num">A4</td><td>切换像素风</td><td>顶栏右按钮</td><td><code>main-screen.ts:327</code> → <code>theme.set</code></td><td>—</td><td>换皮肤</td></tr>
+      <tr><td class="num">A5</td><td>演示模式开关</td><td>顶栏右按钮</td><td><code>main-screen.ts:328</code> → <code>demo-mode.ts</code></td><td>§8</td><td>演示的脸 vs 干活的脸分离（工程件隐藏 / 字号 +30%）</td></tr>
+      <tr><td class="num">A6</td><td>🎬 导演开关</td><td>顶栏右按钮</td><td><code>main-screen.ts:329</code> → <code>camera.director</code></td><td>§7</td><td>"演示时主播只解说，不碰镜头"</td></tr>
+      <tr><td class="num">A7</td><td>🔊 声音总开关</td><td>顶栏右按钮</td><td><code>main-screen.ts:330</code> → <code>sound-engine.ts</code></td><td>§10</td><td>静音（直播环境常有杂音）</td></tr>
+      <tr><td class="num">A8</td><td>音量 0–100</td><td>顶栏 range 滑条（84px）</td><td><code>main-screen.ts:331-333,412-419</code></td><td>§10</td><td>现场调音量</td></tr>
+      <tr><td class="num">A9</td><td>打开聊天</td><td>顶栏右按钮</td><td><code>main-screen.ts:334,427-437</code></td><td>—</td><td>与选中角色对话</td></tr>
+      <tr><td class="num">A10</td><td>会话面板</td><td>顶栏右按钮</td><td><code>main-screen.ts:335,442-444</code></td><td>—</td><td>多会话管理 / 中断 / 历史</td></tr>
+      <tr><td class="num">A11</td><td>看角色</td><td>顶栏右按钮</td><td><code>main-screen.ts:336</code> → <code>ui.navigate</code></td><td>—</td><td>形象编辑 / 成长看板</td></tr>
+      <tr><td class="num">A12</td><td>去设置</td><td>顶栏右按钮（primary）</td><td><code>main-screen.ts:337</code></td><td>—</td><td>全局设置 / 自定义 agent 注册</td></tr>
+      <tr><td class="num">A13</td><td>状态文本标签 ×3<br><span style="font-size:12px;color:var(--muted)">theme-tag / demo-tag / director-tag</span></td><td>顶栏最右</td><td><code>main-screen.ts:338-340,362-370</code></td><td>—</td><td>把开关状态用文字再写一遍</td></tr>
+      <tr><td class="num">B1</td><td>事件跑马灯（最近 5 条）</td><td>左下 <code>fixed</code></td><td><code>components/marquee/marquee.ts</code>；挂载 <code>main-entry.ts:796</code></td><td>§6 / <code>MARQUEE_METRICS</code></td><td>事件流——观众不看日志抽屉，需要一条"正在发生什么"的窄带</td></tr>
+      <tr><td class="num">B2</td><td>相对时间刷新（刚刚 / N 分钟前）</td><td>跑马灯条目内</td><td><code>marquee.ts:311-320</code>，5s 一跳</td><td>§6</td><td>让"刚刚发生"和"八分钟前"有量级差</td></tr>
+      <tr><td class="num">B3</td><td>里程碑大字</td><td>屏幕中央 <code>fixed</code></td><td><code>components/marquee/milestone.ts</code></td><td>§6 / <code>MILESTONE_EVERY=10</code></td><td>AREA CLEARED 式爽感（每 10 个任务）</td></tr>
+      <tr><td class="num">C1</td><td>小地图（岛轮廓 / 光点 / 视野白框 / MAP 角标）</td><td>右下 <code>fixed</code>，200×120</td><td><code>components/minimap/minimap.ts</code>；挂载 <code>main-entry.ts:911</code></td><td>§5 / <code>MINIMAP_METRICS</code></td><td>全局态势 + 镜头导航</td></tr>
+      <tr><td class="num">C2</td><td>小地图点击跳转</td><td>小地图画布</td><td><code>minimap.ts</code>（命中半径 8px）</td><td>§5</td><td>点哪儿看哪儿</td></tr>
+      <tr><td class="num">D1</td><td>今日回放热力条（96 桶单位密度）</td><td>底栏上沿</td><td><code>components/replay/day-replay.ts</code>；挂载 <code>main-screen.ts:466</code></td><td>§9 / <code>REPLAY_METRICS</code></td><td>"一天 102 commit"故事的画面化</td></tr>
+      <tr><td class="num">D2</td><td>回放 scrubber（拖动重演全天）</td><td>热力条上</td><td><code>day-replay.ts:320-351</code></td><td>§9</td><td>时间轴定位；拖动 = 全天事件按时间重现</td></tr>
+      <tr><td class="num">D3</td><td>回放时钟 / 条数</td><td>回放条左</td><td><code>day-replay.ts:117-124,240-246</code></td><td>§9</td><td>当前时刻定位</td></tr>
+      <tr><td class="num">D4</td><td>▶ 60 秒看完今天</td><td>回放条右</td><td><code>day-replay.ts:305-310</code></td><td>§9</td><td>直播零风险保底素材</td></tr>
+      <tr><td class="num">D5</td><td>回放空态（今天还没有任务记录）</td><td>回放条内</td><td><code>day-replay.ts:234-239</code></td><td>§9</td><td>如实呈现"没有"，不装成空数据</td></tr>
+      <tr><td class="num">D6</td><td>回放时间戳角标（44px）</td><td>左上 <code>fixed</code>，inset 24px</td><td><code>components/replay/replay-clock.ts</code>；挂载 <code>main-entry.ts:399</code></td><td>§9 / <code>clockFontPx:44</code></td><td>大号日期时间快进跳字</td></tr>
+      <tr><td class="num">E1</td><td>命令面板（12 条命令）</td><td>底栏通栏</td><td><code>panels/command-panel.ts</code>；挂载 <code>main-screen.ts:461</code></td><td>§0 交互三动词</td><td>唯一命令入口（发起 / 确认 / 停止任务、聊天、配置、取消选择、设置、换肤）</td></tr>
+      <tr><td class="num">E2</td><td>Agent 侧栏</td><td>左列（宽 28vw）</td><td><code>main-screen.ts:474-484</code></td><td>—</td><td>选中单位的业务态 / 派活表单 / 流水线读数</td></tr>
+      <tr><td class="num">E3</td><td>态势总览 status-screen</td><td>右列</td><td><code>main-screen.ts:508-509</code></td><td>—</td><td>指标卡 / 系统状态 / 最近事件（WorldState 派生）</td></tr>
+      <tr><td class="num">E4</td><td>会话面板内容</td><td>右列</td><td><code>main-screen.ts:494-504</code></td><td>—</td><td>多会话列表 / kind 筛选 / 中断 / 历史抽屉</td></tr>
+      <tr><td class="num">E5</td><td>日志抽屉（工程件）</td><td>右列</td><td><code>main-screen.ts:347</code>，唯一标了 <code>data-engineering</code> 的节点</td><td>§8</td><td>调试日志（时间戳 / 来源 / 级别）</td></tr>
+      <tr><td class="num">F1</td><td>单位气泡说话</td><td>战场上（world 层，非 HUD）</td><td><code>src/world/objects/speech-bubble.ts</code></td><td>§3 / <code>SPEECH_BUBBLE_SPEC</code></td><td>角色感——让单位不只是图标</td></tr>
+      <tr><td class="num">F2</td><td>toast 轻提示</td><td>右上 <code>fixed</code>，z-50</td><td><code>components/toast/toast-host.ts</code>；挂载 <code>main-entry.ts:703</code></td><td>—</td><td>瞬时反馈（上线恢复 / 升级 / 请求批准 / 流水线结果）</td></tr>
+      <tr><td class="num">F3</td><td>声音引擎（五音）</td><td>无 UI</td><td><code>hud/sound-engine.ts</code>，真源 <code>public/sfx/</code> + 合成兜底</td><td>§10 / <code>SOUND_METRICS</code></td><td>事件听觉化（选中 / 派活 / 完成 / 报错 / 里程碑）</td></tr>
+      <tr><td class="num">G1</td><td>导演镜头三优先级</td><td>世界层</td><td><code>world/camera</code> 导演控制器</td><td>§7 / <code>DIRECTOR_METRICS</code></td><td>报错 &gt; 完成 &gt; 开工，同级取最新</td></tr>
+      <tr><td class="num">G2</td><td>报错红色 vignette 呼吸 ×2</td><td>世界层屏幕边缘</td><td><code>world/objects</code> 渐晕层</td><td>§7</td><td>把"出错了"推到画面边缘</td></tr>
+      <tr><td class="num">G3</td><td>静默 8s 后缓慢巡视</td><td>世界层</td><td><code>world/camera</code> 巡视</td><td>§7</td><td>没事件时画面不能死</td></tr>
+      <tr><td class="num">G4</td><td>回放气泡节流减半</td><td>世界层</td><td><code>REPLAY_METRICS.bubbleEveryN = 2</code></td><td>§9</td><td>重演时不刷屏</td></tr>
+      <tr><td class="num">G5</td><td>框选 / 指令 / 翻卡 / 插旗特效</td><td>世界层</td><td><code>world/objects/selection-box.ts</code> 等</td><td>§4 / <code>INTERACTION_FX_METRICS</code></td><td>点击与下达指令的仪式感</td></tr>
+      <tr><td class="num">G6</td><td>单位动画八态</td><td>世界层</td><td><code>UNIT_ANIMATION_METRICS</code></td><td>§2</td><td>待机 / 工作 / 卡住 / 完成 / 摸鱼 / 选中 / hover / 点击</td></tr>
+      <tr><td class="num">G7</td><td>氛围彩蛋（漂云 / 入夜暖格）</td><td>世界层</td><td><code>AMBIENCE_METRICS</code></td><td>§5</td><td>直播时段的隐藏细节</td></tr>
+      <tr><td class="num">G8</td><td>主入口按钮组（↗ 回放 / ⟳ 重置）</td><td>main-entry 组合根</td><td><code>main-entry.ts</code></td><td>§11</td><td>开发 / 演示时的一键入口</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="kicker">注</p>
+  <p style="font-size:13px;color:var(--muted)">A/B/C/D/E/F 为 HUD 层（DOM）；G 为世界层（Phaser），本文件只在"信息层级"讨论中引用，不在重构范围内。</p>
+
+  <h3 id="s1-1"><span class="n">1.2</span>顶栏：一个 19 元素的横条</h3>
+  <p>顶栏由 <code>main-screen.ts:318-342</code> 的 <code>header.hud-topbar</code> 渲染。它同时承担了三件互不相干的事：<strong>品牌</strong>（A1）、<strong>态势</strong>（A2）、<strong>操作</strong>（A4–A12）。</p>
+  <ul>
+    <li><strong>它解决什么。</strong>主屏是"一切操作的入口"——没有更上层的菜单栏（§0 的交互三动词里，"点"这个动词的全部出口都在这条）。</li>
+    <li><strong>当初的取舍。</strong>DEMO-PLAN §8 明确"顶栏开关「演示」"、§7 明确"开关「🎬 导演」进 hud 顶栏"、§10 明确"总开关 + 音量 0-100"。也就是说，<strong>开关放顶栏是规格钦定的</strong>，不是随手放的。重构不能删开关，只能改形态。</li>
+    <li><strong>痛点。</strong>（a）19 个后代元素，1280 宽下动作区独占 58.8% 视口宽；（b）观众视角，8 个按钮里有 6 个是主播专属（换肤、聊天、会话、角色、设置、像素风），对观众零解释成本、纯噪声；（c）A13 三个 on/off 文本标签是 A4/A5/A6 状态的<strong>第二份表达</strong>——按钮点亮（<code>variant=primary</code>）已经表达了，再写一遍 "off" 是冗余；更糟的是它们没标 <code>data-engineering</code>，<strong>演示模式下依然显示</strong>（见 1.6）；（d）A8 音量滑条 84px 恒定占位，声音关掉时只是 <code>disabled</code>（<code>main-screen.ts:381</code>），仍在场。</li>
+  </ul>
+  <div class="note tip">
+    <strong>取舍的合理内核要保留</strong>：顶栏是"唯一常驻的操作入口"，所以它必须一直可达。新版不拆散顶栏，只做<strong>收纳</strong>：把低频导航（聊天 / 会话 / 角色 / 设置 / 像素风）收进一个 ⋯ 溢出菜单，把音量滑条收进 🔊 的弹出层，保留 3 个开关一排直达。
+  </div>
+
+  <h3 id="s1-2"><span class="n">1.3</span>左下事件轨（跑马灯）</h3>
+  <p><code>components/marquee/marquee.ts</code>，<code>position:fixed; left:16px; bottom:16px; z-index:21</code>，定高 5 行（<code>MARQUEE_METRICS.maxEntries = 5</code>），每条 = 图标 + 短句 + 相对时间，左侧 3px 色条按分级取色（完成绿 / 报错红 / 派活蓝 / 里程碑金，色源 <code>marqueeToneColor</code> → 唯一事实源）。</p>
+  <ul>
+    <li><strong>它解决什么。</strong>DEMO-PLAN §6："最近 5 条"。这是一条"窄带"——观众不需要日志抽屉，但需要知道"刚刚发生了什么"。它比 <code>data-engineering</code> 的日志抽屉更接近直播语言。</li>
+    <li><strong>当初的取舍。</strong>左下角是"第二眼区"——比正中央弱的注意力区，但比右上角的 toast 更持久（5 条常驻 vs toast 瞬时）。条数上限 5 是硬约束（<code>MARQUEE_METRICS.maxEntries</code>），也是性能约束（每条一个 DOM 节点 + 一个淡出计时器）。</li>
+    <li><strong>痛点。</strong>（a）<strong>与命令面板实撞</strong>：底栏通栏 1100px 在 1280 宽下左缘在 x=90，跑马灯右缘在 x≈265，重叠 26,250 px²；z-index 上跑马灯 21 &lt; 底栏 25，所以是<strong>底栏压住跑马灯</strong>，两个半透明面板叠字。（b）<strong>条目是纯展示</strong>：<code>push()</code> 只渲染 icon / text / time，没有详情、没有"这条说的是哪个单位"，hover 也没有任何反馈（CSS 里 <code>.entry</code> 只有 transition 没有 hover 态）。（c）<strong>左下角同时是"高密度变动区"</strong>：跑马灯（5 条高频变动）+ 回放角标未来也在左附近 + 底栏贴底，三股东西在同一条底边抢。</li>
+  </ul>
+  <div class="note warn"><strong>可验证</strong>：<code>marquee.ts:166-189</code> 的 <code>.entry</code> 样式表中没有 <code>:hover</code> 规则；<code>push()</code>（223-247 行）只创建三个 <code>span</code>。条目上没有任何可交互语义。</div>
+
+  <h3 id="s1-3"><span class="n">1.4</span>右下小地图</h3>
+  <p><code>components/minimap/minimap.ts</code>，<code>fixed; right:12px; bottom:12px; z-index:45</code>，画布 <strong>200×120</strong>（<code>MINIMAP_METRICS</code>，DEMO-PLAN §5 钦定"右下角 200×120px，岛屿轮廓 + 单位光点 + 当前视野白框"，装饰"外框描边 + 「MAP」角标"）。点击 = 镜头跳转（命中半径 8px，比点本身大一圈）。</p>
+  <ul>
+    <li><strong>它解决什么。</strong>两个不同的问题塞在一个件里：<em>给观众</em>——"全景在哪、谁在哪"；<em>给主播</em>——"我要跳到哪儿"。</li>
+    <li><strong>当初的取舍。</strong>右下角 = 观众视线终点（看累了往右下收），且不与左下事件轨打架；200×120 是"能看出轮廓但不吃画面"的比例。</li>
+    <li><strong>痛点。</strong>（a）<strong>与命令面板实撞</strong>：小地图 x ∈ [1068,1268]，底栏命令面板 x ∈ [90,1190]，1280 宽下重叠 14,640 px²；且小地图 z-index 45 &gt; 底栏 25，<strong>是小地图压住命令面板</strong>——最右一列命令按钮被盖。（b）右下角同时是"导航件"和"操作件"，两种用途挤在同一角。（c）200×120 是给主播的尺寸，观众其实只需要"有地图 + 一个白框"。</li>
+  </ul>
+
+  <h3 id="s1-4"><span class="n">1.5</span>底栏回放条</h3>
+  <p><code>components/replay/day-replay.ts</code>，挂在 <code>main-screen.ts:350</code> 的 <code>.hud-replay-slot</code>，位于底栏<strong>上沿</strong>、命令面板<strong>下方</strong>（底栏是 <code>flex-direction: column</code>，注释写明"挤进底栏而不是另开浮层：命令面板已经占了底部中央，回放条得贴着它才像同一条时间轴"）。内容：标题「今日回放」+ 时钟 + 条数 + 96 桶热力条 + 游标 + 「▶ 60 秒看完今天」。</p>
+  <ul>
+    <li><strong>它解决什么。</strong>DEMO-PLAN §9："这是『一天 102 commit』故事的画面化，直播零风险保底素材"。回放条是<strong>保底叙事</strong>，不是实时信息。</li>
+    <li><strong>当初的取舍。</strong>热力条 = 单位密度；拖动 = 全天事件按时间重现（<code>replay-controller.seek()</code>：先发 reset 清场，再按序重放该时刻之前的 beat）；热力条只在数据指纹变化时重建（96 根柱子不逐帧重画）。</li>
+    <li><strong>痛点。</strong>（a）底栏容器高写死 <code>min(34cqh,300px)</code>——1920×1080 下 300px，1080 高的画面只剩 780px 给地图；1280×720 下 245px，剩 475px（<strong>66%</strong>）。（b）回放条与命令面板共用 1100px 通栏宽度，两个语义完全不同的控件（时间轴 vs 操作）被绑死在同一个宽度上，任何一方想变宽都会挤另一方。（c）回放时间戳角标（<code>replay-clock.ts</code>，<code>fixed; top:24px; left:24px; z-index:40</code>）与顶栏（z-index 30）<strong>重叠 5,160 px²</strong>，把品牌字遮掉 360 px²。</li>
+  </ul>
+
+  <h3 id="s1-5"><span class="n">1.6</span>单位气泡</h3>
+  <p><code>src/world/objects/speech-bubble.ts</code>，属于世界层（不是 HUD DOM）。规格 <code>SPEECH_BUBBLE_SPEC</code>：最大宽 160px、字号 13px、圆角 10px、最多 2 行、存活 4s、同屏 ≤3 个、同单位 5s 冷却；文案来自离线句库 <code>world/speech-templates.ts</code>（"这个我来！""搞定！""这有点不对…"）+ 20% 性格彩蛋。</p>
+  <ul>
+    <li><strong>它解决什么。</strong>DEMO-PLAN §3：让单位"会说话"，给纯图形加人格。这是观众建立情感连接的唯一通道。</li>
+    <li><strong>当初的取舍。</strong>频率限制（同屏 ≤3、同单位 5s）是防刷屏的硬约束，不是可选优化。</li>
+    <li><strong>痛点。</strong>气泡在世界坐标里，HUD 事件在屏幕坐标里，两者<strong>没有任何连接</strong>。观众看到一条红色事件（"「小刚」卡住"）和世界里一个红色叹号单位，得自己认字认形把它们对上。这就是"视线动线断裂"的根源（详见 1.9 的 P9）。</li>
+  </ul>
+
+  <h3 id="s1-6"><span class="n">1.7</span>工程面板与演示模式</h3>
+  <p>DEMO-PLAN §8 的设想是"演示的脸和干活的脸分离"：开启演示后隐藏全部工程件（raw json、task id 长串、时间戳列、日志 tab）、字号 +30%、信息密度下调。落地机制是 <code>demo-mode.filterEngineering(host)</code>：扫描 <code>[data-engineering]</code> 标记的节点并隐藏。</p>
+  <div class="note warn">
+    <strong>实测：全仓只有 1 个节点标了 <code>data-engineering</code></strong> —— <code>main-screen.ts:347</code> 的日志抽屉。Agent 侧栏（E2）、态势总览（E3）、会话面板（E4）、以及顶栏的三个 on/off 文本标签（A13）都<strong>不在</strong>过滤范围内。也就是说 DEMO-PLAN §8 承诺的"工程面板隐藏"，当前落地率约 1/4。
+  </div>
+  <ul>
+    <li><strong>它解决什么。</strong>直播观众看到 "task id: 3f2a-…" 和四列时间戳日志，画面立刻从"哇它自己在干活"掉回"这是一个开发工具"。</li>
+    <li><strong>当初的取舍。</strong>用 <code>data-engineering</code> 属性做统一骨架，而不是每个面板各自判断——机制正确，覆盖不全。</li>
+    <li><strong>痛点。</strong>（a）过滤覆盖面不足（见上）；（b）过滤是<strong>整块隐藏</strong>，没有"降级"档——工程师想一边演示一边看日志做不到；（c）字体放大（<code>DEMO_MODE.fontScale = 1.3</code>）是全局 token 覆盖，会把顶栏那 19 个元素一起放大，<strong>放大的是最不需要被看的东西</strong>。</li>
+  </ul>
+
+  <h3 id="s1-7"><span class="n">1.8</span>其余常驻件</h3>
+  <ul>
+    <li><strong>toast 宿主（F2）</strong>：<code>fixed; top:0; right:0; z-index:50</code>，右上角瞬时提示。位置合理（与顶栏同侧、瞬时、不占地图），是现有件里<strong>层级感最清楚</strong>的一个：它自己会消失。问题只有一个——它和顶栏右端的按钮区共享右上角空间。</li>
+    <li><strong>里程碑大字（B3）</strong>：<code>fixed</code>，屏幕中央，44–64px 金色大字 + 镜头震动 100ms。这是典型的 L3 沉浸演出，但目前<strong>没有任何 HUD 元素给它让位</strong>——大字压在地图正中央时，顶栏、跑马灯、小地图、回放条全部照常全亮。</li>
+    <li><strong>命令面板（E1）</strong>：12 条命令（6 条 selection scope + 6 条 global scope），<code>grid-auto-flow: column</code>、<code>grid-auto-columns: minmax(6.5em, 1fr)</code>，所以默认排成<strong>一行 12 列 ≈ 1100px</strong>。注意：面板按 scope 只显示其中 6 条（<code>command-catalog.ts</code> 里 selection 与 global 是两组），<strong>实际一行只有 6 个</strong>，1100px 是按 12 个算出来的预留宽度——这是一块富余的空白。</li>
+  </ul>
+
+  <h3 id="s1-8"><span class="n">1.9</span>实测：布局碰撞</h3>
+  <p>下面三组数字不是估算，是把 <code>main-screen.ts</code> 的 <code>MAIN_SCREEN_STYLE</code>、<code>marquee.ts</code> 的 <code>:host</code>、<code>minimap.ts</code> 的 <code>:host</code>、<code>replay-clock.ts</code> 的 <code>:host</code> 里的实际 CSS 数值搬进一个等价页面，用无头 Chromium（Playwright 1.58.2）量 <code>getBoundingClientRect()</code> 的结果。测量方法见 <a href="#s7">§7 附录</a>。</p>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th style="width:26%">碰撞对</th><th style="width:12%">分辨率</th><th style="width:14%">重叠面积</th><th style="width:16%">谁盖谁</th><th>后果</th></tr></thead>
+    <tbody>
+      <tr><td>跑马灯 × 命令面板</td><td class="num">1280×720</td><td class="num">26,250 px²</td><td>底栏盖跑马灯<br><span style="font-size:11px;color:var(--muted)">z 25 &gt; 21</span></td><td>跑马灯右下部分条目与命令面板文字叠印，可读性下降</td></tr>
+      <tr><td>跑马灯 × 命令面板</td><td class="num">1600×900</td><td class="num">2,250 px²</td><td>同上</td><td>刚好擦边，仍有压字</td></tr>
+      <tr><td>小地图 × 命令面板</td><td class="num">1280×720</td><td class="num">14,640 px²</td><td>小地图盖命令面板<br><span style="font-size:11px;color:var(--muted)">z 45 &gt; 25</span></td><td>命令面板最右一列按钮被小地图压住不可点</td></tr>
+      <tr><td>回放角标 × 顶栏</td><td class="num">全部</td><td class="num">5,160 px²</td><td>角标盖顶栏<br><span style="font-size:11px;color:var(--muted)">z 40 &gt; 30</span></td><td>品牌 "Stratix" 被遮 360 px²；角标 96px 高伸进画面 48px</td></tr>
+      <tr><td>底栏占视口高</td><td class="num">1280×720</td><td class="num">245 px / 34%</td><td>—</td><td>地图只剩 475px</td></tr>
+      <tr><td>底栏占视口高</td><td class="num">1920×1080</td><td class="num">300 px / 27.8%</td><td>—</td><td>地图只剩 780px</td></tr>
+      <tr><td>顶栏动作区占视口宽</td><td class="num">1280×720</td><td class="num">753 px / 58.8%</td><td>—</td><td>19 个后代元素中大半是主播操作控件</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="note">
+    <strong>怎么读这组数字。</strong>720p 是直播推流与会议室投影的常见分辨率，也正是 <code>min(34cqh,300px)</code> 取到百分比分支的区间——即碰撞最严重的区间。1440p 及以上跑马灯与小地图不再压住命令面板，但"底栏吃掉 20.8% 视口高"与"顶栏 19 元素"依然存在。
+  </div>
+
+  <h3 id="s1-9"><span class="n">1.10</span>痛点归纳</h3>
+  <p>13 条，每条都带证据锚点。新版方案逐条对应（对应关系见 <a href="#s4">§4</a>）。</p>
+
+  <div class="pain"><span class="pid">P1</span><b>底栏吃掉 34% 视口高，地图被压成"夹心饼"</b><span class="ev">证据：<code>main-screen.ts:93</code> <code>--hud-bottom-h: min(34cqh,300px)</code>。1280×720 → 245px（34%），1920×1080 → 300px（27.8%）。"战场占满视口"的注释与实际布局不符。</span></div>
+  <div class="pain"><span class="pid">P2</span><b>跑马灯与命令面板实撞（720p 下 26,250 px²）</b><span class="ev">证据：<a href="#s1-8">§1.9 实测</a>。z-index 底栏 25 &gt; 跑马灯 21，命令面板压住事件条。</span></div>
+  <div class="pain"><span class="pid">P3</span><b>小地图压住命令面板最右一列（720p 下 14,640 px²）</b><span class="ev">证据：<a href="#s1-8">§1.9 实测</a>。z-index 小地图 45 &gt; 底栏 25，被盖的是按钮而非装饰。</span></div>
+  <div class="pain"><span class="pid">P4</span><b>回放角标与顶栏在任何分辨率下都重叠（5,160 px²）</b><span class="ev">证据：<code>replay-clock.ts:59-61</code> inset 24px vs <code>main-screen.ts:108-125</code> 顶栏 top:0 height:48px。</span></div>
+  <div class="pain"><span class="pid">P5</span><b>顶栏 19 个元素 / 动作区占 58.8% 视口宽</b><span class="ev">证据：<a href="#s1-8">§1.9 实测</a>。其中 8 个按钮 + 1 个滑条对观众零解释价值。</span></div>
+  <div class="pain"><span class="pid">P6</span><b>开关状态双份表达，且第二份（文本标签）不进演示过滤</b><span class="ev">证据：<code>main-screen.ts:338-340</code> 的三个 tag 没有 <code>data-engineering</code>；而 <code>demo-mode.filterEngineering</code> 只处理带标记的节点。全仓仅 1 处标记（<code>main-screen.ts:347</code>）。</span></div>
+  <div class="pain"><span class="pid">P7</span><b>音量滑条 84px 恒定占位，关闭时只是 disabled</b><span class="ev">证据：<code>main-screen.ts:381</code> <code>volumeInput.disabled = !enabled</code>；元素仍在 DOM 里占宽度。</span></div>
+  <div class="pain"><span class="pid">P8</span><b>事件条目零交互：没有详情，没有"这条说的是谁"</b><span class="ev">证据：<code>marquee.ts:223-247</code> 只渲染三个 span；<code>.entry</code> 无 hover 规则。</span></div>
+  <div class="pain"><span class="pid">P9</span><b>事件与它的解释不在同一视觉锚点</b><span class="ev">报错时：世界层红色 vignette（画面边缘）＋ HUD 层红色文字（左下）。观众要跨屏把两者拼起来；单位气泡也在世界坐标里，与 HUD 事件无连线。</span></div>
+  <div class="pain"><span class="pid">P10</span><b>没有信息层级：6 类信息同权常亮</b><span class="ev">L1 态势 / L1 操作 / L2 事件 / L3 演出 / 世界气泡 / 瞬时 toast 并存。里程碑大字演出时，HUD 一点不让位。</span></div>
+  <div class="pain"><span class="pid">P11</span><b>演示模式工程件过滤只落地 1/4</b><span class="ev">证据：见 <a href="#s1-6">§1.7</a>。Agent 侧栏 / 态势总览 / 会话面板 / 三个状态标签在演示下仍在屏。</span></div>
+  <div class="pain"><span class="pid">P12</span><b>回放条与命令面板被绑死在同一个 1100px 通栏宽度上</b><span class="ev">证据：<code>main-screen.ts:194,200</code> 两处都是 <code>min(1100px, 100%)</code>；而命令面板实际一行只显示 6 条命令（scope 分组），1100px 是为 12 条预留的。</span></div>
+  <div class="pain"><span class="pid">P13</span><b>右下角同时承担"导航件"与"操作件"两种用途</b><span class="ev">小地图（导航）与命令面板最右列（操作）在 720p 下物理重叠；观众只需要"有地图"，主播才需要"能跳能点"。</span></div>
+</section>
+
+<!-- ==================== §2 ==================== -->
+<section id="s2" class="wrap">
+  <h2 class="sec"><span class="num">§2</span>第二部分 · 新版布局论证</h2>
+  <p class="lead">新版的每一条设计都挂在三条依据上。依据不成立，方案就不成立。</p>
+
+  <h3 id="s2-1"><span class="n">2.1</span>依据一：直播画面构图（16:9 · 四角密度 · 中轴留白）</h3>
+  <ul>
+    <li><strong>16:9 的重心在中央偏下。</strong>观众看直播时，视线落在画面中央 60% 宽 × 中央 70% 高的区域；四角是"环境区"，用来放"不需要被找到"的东西。任何常驻在中央的高频变动元素，都会和叙事主体抢注意力。</li>
+    <li><strong>直播软件会叠东西。</strong>OBS / 直播伴侣常在画面上叠加评论流、摄像头小窗、字幕条。中央与底边中央是最容易被覆盖的位置。</li>
+    <li><strong>四角应该"低密度"。strong>现状把两个<strong>高频变动</strong>件放在底边两角（跑马灯 5 条 + 小地图光点），而底边中央又是控件区——底边整条都在动。</li>
+    <li><strong>结论。</strong>新版把底边中央的控制岛<strong>压扁</strong>（内容自适应，92px 而不是 245px），把高频变动的跑马灯从"5 条常驻"降为"2 条常驻 + 按需展开"，小地图保持右下但缩小存在感（观众态），底边整体静默度提升 3 倍以上。</li>
+  </ul>
+
+  <h3 id="s2-2"><span class="n">2.2</span>依据二：视线动线（重要事件：左下 → 中屏）</h3>
+  <p>直播里"发生了一件事"和"这件事影响了谁"必须在<strong>同一次注视</strong>里被读到。现状的路径是：左下红字 → （自己找） → 中屏红叹号单位，跨屏且无引导。导演模式（§7）已经做了"镜头自己找事件"，但那是<strong>世界层的隐式行为</strong>，HUD 侧没有对应表达。</p>
+  <div class="diagram" style="margin-top:12px">
+<div class="dgrid">
+  <div class="dbox"><span class="dl">现状动线（断）</span>
+    <div class="db">
+      左下红字事件条 ──<span style="color:var(--danger)">✗ 无连线</span>──▶ 中屏红色单位<br>
+      <span style="color:var(--muted)">观众要跨屏自己认字认形；hover 条目毫无反馈</span>
+    </div>
+  </div>
+  <div class="dbox"><span class="dl">新版动线（连）</span>
+    <div class="db">
+      左下事件条目 ──hover/点击──▶ 展开详情 + <span style="color:var(--accent)">引导弧线</span> ──▶ 中屏单位描边高亮<br>
+      <span style="color:var(--muted)">观众一次注视读完「谁 → 做了什么 → 在哪」</span>
+    </div>
+  </div>
+</div>
+  </div>
+  <ul>
+    <li><strong>弧线的意义。</strong>它不是装饰，是<strong>信息</strong>：把"这条事件说的是哪个单位"这条信息从观众脑子里搬到屏幕上。</li>
+    <li><strong>不违反铁律。</strong>事件条目 → 单位高亮走的是 core 已有的 <code>WorldState.selection</code> / 单位状态，HUD 只读状态并据此画高亮，不新增总线事件、不直接操控 world。</li>
+  </ul>
+
+  <h3 id="s2-3"><span class="n">2.3</span>依据三：信息三层级（常驻 / 事件 / 沉浸）</h3>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th style="width:10%">层</th><th style="width:16%">定义</th><th style="width:34%">成员</th><th style="width:20%">视觉规则</th><th>退场规则</th></tr></thead>
+    <tbody>
+      <tr><td><span class="tag t-same">L1 常驻</span></td><td>解释画面的基准信息</td><td>顶栏态势胶囊 / 品牌 / 通知徽标 / 小地图 / 事件轨静默态 / 控制岛</td><td>低饱和、细边框、无辉光；L3 激活时降到 <b>18%</b> 对比</td><td>始终在屏（除非被 L3 暂时让位）</td></tr>
+      <tr><td><span class="tag t-add">L2 事件</span></td><td>随总线事件出现</td><td>跑马灯条目 / toast / 报错 vignette / 单位气泡 / 导演取景框</td><td>高饱和 + 辉光 + 250ms 入场</td><td>按各自规则（5 条上限 / 瞬时 / 4s）</td></tr>
+      <tr><td><span class="tag t-fold">L3 沉浸</span></td><td>打断式演出，独占注意力</td><td>里程碑大字 / ▶ 60 秒重演 / 回放时间戳角标</td><td>全屏级；激活时 L1 让位、L2 收起</td><td>演出结束立即让位</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="note">
+    <strong>现状没有这个概念</strong>，所有件都是"一个优先级"。L3 的价值不在于它多炫，而在于它<strong>能把 L1 关掉</strong>——「▶ 60 秒看完今天」开始播放时，画面上应该只剩重演本身；现在 HUD 一个都不让位。
+  </div>
+  <div class="note tip">
+    <strong>层级状态放哪。</strong>建议放 HUD 本地态（不进 <code>WorldState</code>）——它是"显示密度"而不是"业务态"。但 L3 的激活条件是<strong>业务态</strong>（<code>directorEnabled</code> / 回放播放中 / 里程碑触发），HUD 可以从 core 已广播的状态<strong>派生</strong>出来，不必新增契约。
+  </div>
+
+  <h3 id="s2-4"><span class="n">2.4</span>新版布局图</h3>
+  <p>示意图（比例按 1280×720 折算，非像素还原）：</p>
+  <div class="diagram">
+<div class="dgrid" style="grid-template-columns:1.35fr 1fr">
+  <div class="dbox" style="border-style:solid"><span class="dl">新版 · 主画面 16:9</span>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div class="dbar" style="border-color:var(--accent)">
+        ▣ Stratix　│　⚡12 任务 · 8 单位 · 3 会话　│　<span style="float:right">🔊　🎬　▶演示　⋯</span>
+        <span style="display:block;font-size:11px;color:var(--muted);text-align:left;margin-top:3px">Z1 顶栏 40px · L1 · 7 个元素（现状 19 个）</span>
+      </div>
+      <div class="drow" style="flex:1 1 auto;min-height:150px">
+        <div class="dbar dim" style="width:22%;align-self:flex-end;text-align:left;padding:6px">
+          事件轨<br><span style="font-size:11px">✓ 小明 完成<br>✕ 小刚 卡住</span><br>
+          <span style="font-size:11px;color:var(--accent)">▸ 展开 3 条</span>
+          <span style="display:block;font-size:11px;color:var(--muted);margin-top:4px">Z2 左下 ≤260px · L2</span>
+        </div>
+        <div class="dbar" style="flex:1 1 auto;background:rgba(13,17,38,.4);border-style:dashed;display:flex;align-items:center;justify-content:center;color:var(--muted)">
+          战 场 中 轴（无任何常驻装饰）
+          <span style="display:block;font-size:11px">16:9 中央 60% 宽 × 中央 70% 高</span>
+        </div>
+        <div class="dbar dim" style="width:18%;align-self:flex-end">小地图 200×120<span style="display:block;font-size:11px;color:var(--muted)">Z3 右下 · L1</span></div>
+      </div>
+      <div class="dbar cool" style="width:56%;margin:0 auto">
+        命令面板（1 行 6 条）　│　今日回放 ▮▮▮▯▯ ▶60秒
+        <span style="display:block;font-size:11px;color:var(--muted)">Z4 控制岛 · 贴底居中 · 高约 92px（现状 245px / 34%）</span>
+      </div>
+    </div>
+  </div>
+  <div class="dbox"><span class="dl">配套变化</span>
+    <div class="db">
+      <b style="color:var(--accent)">回放角标</b>：inset 24px → 56px（顶栏之下），L3 时顶栏降到 18% 对比<br><br>
+      <b style="color:var(--accent)">声音</b>：音量滑条 84px 从顶栏移入 🔊 弹出层，顶栏恒定 7 元素<br><br>
+      <b style="color:var(--accent)">状态标签</b>：theme/demo/director 三个 on-off 文本删除，按钮点亮即状态<br><br>
+      <b style="color:var(--accent)">溢出菜单 ⋯</b>：聊天 / 会话 / 角色 / 设置 / 像素风 五项收纳，功能一项不减
+    </div>
+  </div>
+</div>
+  </div>
+  <div class="legend">
+    <span><i style="background:var(--accent)"></i>L1 / 结构件</span>
+    <span><i style="background:var(--unit)"></i>操作区</span>
+    <span><i style="background:var(--danger)"></i>事件 / 报错</span>
+    <span><i style="background:var(--success)"></i>完成</span>
+    <span><i style="background:var(--progress)"></i>沉浸演出</span>
+  </div>
+
+  <h3 id="s2-5"><span class="n">2.5</span>分区规格表</h3>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th style="width:8%">区</th><th style="width:14%">位置 / 尺寸</th><th style="width:9%">层级</th><th style="width:26%">内容</th><th style="width:19%">关键规则</th><th>解决的痛点</th></tr></thead>
+    <tbody>
+      <tr><td><b>Z1</b> 顶栏</td><td>顶 0，全宽，高 40px</td><td>L1</td><td>品牌 + 态势胶囊（单位/任务/会话合一）+ 通知徽标 ｜ 🔊 / 🎬 / ▶演示 / ⋯</td><td>7 元素封顶；开关点亮即状态，无第二份文本；⋯ 收纳 5 项</td><td>P5 P6 P7</td></tr>
+      <tr><td><b>Z2</b> 事件轨</td><td>左下 fixed，宽 ≤260px</td><td>L2</td><td>跑马灯 5 条（默认显示 2 条 + "展开 N 条"）</td><td>hover 展开详情；点击锁定单位 + 中屏高亮 + 引导弧线</td><td>P2 P8 P9</td></tr>
+      <tr><td><b>Z3</b> 小地图</td><td>右下 fixed，200×120（规格不变）</td><td>L1</td><td>岛轮廓 / 状态光点 / 视野白框 / MAP 角标 / 点击跳转</td><td>与 Z4 水平间距 ≥40px；hover 提升亮度</td><td>P3 P13</td></tr>
+      <tr><td><b>Z4</b> 控制岛</td><td>贴底居中，宽 56% 屏宽，高 ≈92px</td><td>L1</td><td>命令面板（1 行 6 条）+ 今日回放条（热力条 / 游标 / 时钟 / ▶60秒）</td><td>高度内容自适应（不再 34cqh）；与 Z2 / Z3 零重叠</td><td>P1 P2 P3 P12</td></tr>
+      <tr><td><b>Z5</b> 时间戳角标</td><td>左上 fixed，inset top 56px</td><td>L3</td><td>回放大号时间戳 + 日期 + "⏩ 回放中"</td><td>仅回放激活时出现；L3 期间顶栏降对比</td><td>P4</td></tr>
+      <tr><td><b>Z6</b> 沉浸层</td><td>全屏叠加</td><td>L3</td><td>里程碑大字 / ▶60 秒重演 / 导演取景框</td><td>激活时 L1 → 18% 对比、L2 收起</td><td>P10</td></tr>
+      <tr><td><b>Z7</b> 世界层气泡</td><td>战场（世界坐标）</td><td>L2</td><td>单位气泡（规格不变）</td><td>事件条目 ↔ 单位的对应关系由 HUD 侧弧线承担，气泡本身不动</td><td>P9</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="note ok">
+    <strong>中轴收益量化。</strong>现状：720p 下地图可用高 475px（66%），1920×1080 下 780px（72%）。新版控制岛 ≈92px 后，720p 下地图可用高 ≈628px（<b>87%</b>），1080p 下 ≈988px（<b>91%</b>）。
+  </div>
+</section>
+
+<!-- ==================== §3 ==================== -->
+<section id="s3" class="wrap wide">
+  <h2 class="sec"><span class="num">§3</span>现状 vs 新版 · 并排可交互 mockup</h2>
+  <p class="lead">两侧共享同一份状态：同一批单位、同一批事件、同一条时间轴。差异只在 HUD 怎么组织。示意图（非像素还原），碰撞区域按 §1.9 实测值标注。</p>
+
+  <h3 id="s3-1"><span class="n">3.1</span>可交互点索引</h3>
+  <div class="ix">
+    <div><b>① 悬停事件条目</b>两侧事件轨各 5 条。现状：仅提亮，无详情、无联动。新版：展开详情行 + 中屏对应单位描边高亮 + 引导弧线（左下→中屏）。</div>
+    <div><b>② 点击顶栏开关</b>🔊 / 🎬 / ▶演示 三枚芯片。现状：按钮变色，中屏无反应；▶ 开后 "default off off" 标签仍在屏。新版：开关态胶囊化，🎬 开启后中屏出现取景框，▶ 开启后工程列收起、状态标签消失。</div>
+    <div><b>③ 拖动回放 scrubber</b>拖动热力条游标。两侧都重演单位、时钟同步。新版额外浮出「此刻事件卡」并高亮事件轨对应条目；现状只有数字在变。</div>
+    <div><b>④ 点击小地图</b>点缩略图任意位置。现状：仅视野白框移动。新版：白框移动 + 中屏单位随之平移 + 顶栏提示「已跳转」。</div>
+    <div><b>⑤ 切换信息层级</b>常驻 / 事件 / 沉浸 三档（仅新版有层级概念）。沉浸档下 L1 降到 18%、L2 收起、L3 接管。现状无对应能力。</div>
+  </div>
+
+  <h3 id="s3-2"><span class="n">3.2</span>控制台</h3>
+  <div class="mock-bar">
+    <span class="lbl">全局状态</span>
+    <button class="tbtn" id="btn-director" type="button">🎬 导演</button>
+    <button class="tbtn" id="btn-sound" type="button">🔊 声音</button>
+    <button class="tbtn" id="btn-demo" type="button">▶ 演示模式</button>
+    <button class="tbtn" id="btn-reset" type="button">⟳ 重置</button>
+    <span style="flex:1 1 auto"></span>
+    <span class="lbl">信息层级（新版专有）</span>
+    <span class="seg" id="seg-layer">
+      <button type="button" data-layer="ambient" aria-pressed="true">常驻</button>
+      <button type="button" data-layer="event" aria-pressed="false">事件</button>
+      <button type="button" data-layer="immersive" aria-pressed="false">沉浸</button>
+    </span>
+    <button class="tbtn" id="btn-collide" type="button" aria-pressed="true">▨ 显示碰撞区</button>
+  </div>
+
+  <h3 id="s3-3"><span class="n">3.3</span>并排舞台</h3>
+  <div class="stages">
+    <div class="stage-card">
+      <div class="cap"><b>现状</b><span class="t">1280×720 布局折算 · 19 元素顶栏 · 34% 底栏 · 固定层无让位</span></div>
+      <div class="stage s-stage" id="stage-cur" data-layer="ambient"></div>
+      <div class="stage-note" id="note-cur"></div>
+    </div>
+    <div class="stage-card new">
+      <div class="cap"><b>新版</b><span class="t">7 元素顶栏 · 92px 控制岛 · 三层级 · 事件→单位连线</span></div>
+      <div class="stage s-stage" id="stage-new" data-layer="ambient"></div>
+      <div class="stage-note" id="note-new"></div>
+    </div>
+  </div>
+  <div class="s-legend">示意图：标签文字按比例缩小；碰撞区（虚线红框）取自 §1.9 实测值（1280×720）。<span id="legend-note"></span></div>
+
+  <h4>逐条交互说明</h4>
+  <ul>
+    <li><strong>① 悬停事件条目</strong> —— 现状侧：条目只加个底色，没有别的。左侧事件带与底部命令面板<strong>压在一起</strong>（红框区）。新版侧：条目向上展开一行详情（角色 / 任务 / 耗时 / 队列位），中屏对应单位被紫色描边圈住，并有一条弧线从条目指向它——这就是"左下→中屏"动线的字面实现。展开详情不新增总线事件：条目本身已带 <code>characterId / taskId</code>，由 <code>marquee-catalog</code> 的模板一并带出即可。</li>
+    <li><strong>② 点击顶栏开关</strong> —— 现状侧：🎬 变亮后，<strong>画面里没有任何东西</strong>提示镜头被接管；▶ 演示打开后，顶栏依然挂着 "default off off" 三个工程文本标签（P6），右列工程面板（态势总览 / 会话面板）原样在屏（P11）。新版侧：开关变为选中态胶囊；🎬 开启后中屏出现琥珀色取景框并标注「🎬 导演」；▶ 开启后三个文本标签消失、工程列收起、字号整体放大（demo +30%）。</li>
+    <li><strong>③ 拖动 scrubber</strong> —— 两侧都会重演单位、时钟同步跳动（这是现有功能，不改）。差别在：现状的 scrubber 埋在 34% 高的通栏底栏里，<strong>游标手柄常年和命令面板、和右下小地图在同一片区域</strong>；新版控制岛只 92px 高，且拖动时浮出「此刻事件卡」（该时刻前后的事件），并同步高亮左侧事件轨里对应的那一条——"时间"和"语义"两条通道并行。</li>
+    <li><strong>④ 点击小地图</strong> —— 现状侧：白框跳了，除此之外画面完全没动（世界层镜头跳转在真实产品里生效，这里用单位位移示意）。新版侧：白框移动 + 中屏单位随之平移 + 顶栏出现「已跳转」的一次性提示，给主播一个可确认的反馈。</li>
+    <li><strong>⑤ 信息层级切换</strong> —— 只对新版有效。现状没有层级这个概念，所有件恒亮。切到「沉浸」：L1（顶栏 / 小地图 / 控制岛）降到 18% 对比，L2（事件轨）收起，L3（里程碑大字 + 回放条）接管——这是「▶ 60 秒看完今天」应有的画面：<strong>观众只看见重演本身</strong>。</li>
+  </ul>
+</section>
+
+<!-- ==================== §4 ==================== -->
+<section id="s4" class="wrap">
+  <h2 class="sec"><span class="num">§4</span>功能对照表（40/40，零删减）</h2>
+  <p class="lead">每一项现有功能，在新版中的明确去处。变化类型：<span class="tag t-same">原样</span> 位置与形态不变 · <span class="tag t-move">移位</span> 换位置 · <span class="tag t-fold">收纳</span> 进菜单/弹出层/折叠 · <span class="tag t-add">增强</span> 多一层反馈 · <span class="tag t-fix">修复</span> 顺带修掉碰撞。</p>
+  <div class="table-scroll">
+  <table>
+    <thead><tr>
+      <th style="width:4%">#</th><th style="width:19%">功能</th><th style="width:19%">现状位置</th><th style="width:21%">新版位置</th><th style="width:9%">变化</th><th>说明</th>
+    </tr></thead>
+    <tbody>
+      <tr><td class="num">A1</td><td>品牌标识</td><td>顶栏左</td><td>顶栏左（Z1）</td><td><span class="tag t-same">原样</span></td><td>—</td></tr>
+      <tr><td class="num">A2</td><td>单位 / 任务 / 会话计数</td><td>顶栏三个独立 span</td><td>顶栏一枚「态势胶囊」（三值合一）</td><td><span class="tag t-fold">收纳</span></td><td>数值与来源不变（仍读 <code>WorldState</code>）；胶囊只是排版合并</td></tr>
+      <tr><td class="num">A3</td><td>通知徽标</td><td>顶栏右</td><td>态势胶囊右侧</td><td><span class="tag t-move">移位</span></td><td>与数字绑在一起更容易被注意到</td></tr>
+      <tr><td class="num">A4</td><td>切换像素风</td><td>顶栏独立按钮</td><td>⋯ 溢出菜单第 5 项</td><td><span class="tag t-fold">收纳</span></td><td>低频操作；观众不需要知道有皮肤</td></tr>
+      <tr><td class="num">A5</td><td>演示模式开关</td><td>顶栏按钮「演示」</td><td>顶栏 ▶ 图标开关（与 🔊 / 🎬 并排）</td><td><span class="tag t-move">移位</span></td><td>开关本身升级为图标 + 选中态胶囊</td></tr>
+      <tr><td class="num">A6</td><td>🎬 导演开关</td><td>顶栏按钮「🎬 导演」</td><td>顶栏 🎬 图标开关</td><td><span class="tag t-move">移位</span></td><td>同上；开启后中屏出现取景框作为状态回显</td></tr>
+      <tr><td class="num">A7</td><td>🔊 声音总开关</td><td>顶栏按钮「🔊 声音」</td><td>顶栏 🔊 图标开关</td><td><span class="tag t-move">移位</span></td><td>点击开关 = 静音；点击旁边的音量区 = 弹出音量层</td></tr>
+      <tr><td class="num">A8</td><td>音量 0–100</td><td>顶栏常驻 range（84px）</td><td>🔊 弹出层内的滑条</td><td><span class="tag t-fold">收纳</span></td><td>关闭时不再占顶栏宽度（P7）；值与写入口径不变（<code>localStorage</code>）</td></tr>
+      <tr><td class="num">A9</td><td>打开聊天</td><td>顶栏按钮</td><td>⋯ 溢出菜单</td><td><span class="tag t-fold">收纳</span></td><td>行为不变（<code>ui.navigate chat</code> + <code>stratix:chat-open</code>）</td></tr>
+      <tr><td class="num">A10</td><td>会话面板（展开 / 收起）</td><td>顶栏按钮</td><td>⋯ 溢出菜单 + 右侧列面板本体</td><td><span class="tag t-fold">收纳</span></td><td>面板本体仍在右列，只是入口收进菜单</td></tr>
+      <tr><td class="num">A11</td><td>看角色（形象 / 成长）</td><td>顶栏按钮</td><td>⋯ 溢出菜单</td><td><span class="tag t-fold">收纳</span></td><td>行为不变（<code>ui.navigate character</code>）</td></tr>
+      <tr><td class="num">A12</td><td>去设置</td><td>顶栏 primary 按钮</td><td>⋯ 溢出菜单</td><td><span class="tag t-fold">收纳</span></td><td>唯一 primary 按钮消失是好事：主屏不该有第二个"主行动"</td></tr>
+      <tr><td class="num">A13</td><td>theme / demo / director 状态文本</td><td>顶栏最右三个 tag</td><td>由三个开关按钮的「选中态」承担</td><td><span class="tag t-fix">修复</span></td><td>文字形态消失，<b>状态信息不丢</b>（按钮点亮即状态）；顺带解决它是演示下泄漏的工程件（P6 / P11）</td></tr>
+      <tr><td class="num">B1</td><td>事件跑马灯 5 条</td><td>左下 fixed</td><td>左下「事件轨」（Z2），宽 ≤260px，默认显示 2 条 + 「展开 N 条」</td><td><span class="tag t-move">移位</span></td><td>条数上限 <b>5 不变</b>（<code>MARQUEE_METRICS.maxEntries</code>）；变的是默认可见数与宽度</td></tr>
+      <tr><td class="num">B2</td><td>相对时间刷新</td><td>跑马灯条目内</td><td>事件轨条目内</td><td><span class="tag t-same">原样</span></td><td>5s 一跳不变</td></tr>
+      <tr><td class="num">B3</td><td>里程碑大字</td><td>屏幕中央 fixed</td><td>屏幕中央（L3 沉浸层）</td><td><span class="tag t-add">增强</span></td><td>位置与规格不变；新增"L3 激活时 L1 让位"的层级规则</td></tr>
+      <tr><td class="num">C1</td><td>小地图 200×120</td><td>右下 fixed</td><td>右下（Z3），尺寸不变</td><td><span class="tag t-same">原样</span></td><td>200×120 是 <code>MINIMAP_METRICS</code> 钦定值，不动</td></tr>
+      <tr><td class="num">C2</td><td>小地图点击跳转</td><td>小地图画布</td><td>小地图画布</td><td><span class="tag t-add">增强</span></td><td>跳转行为不变；新增顶栏「已跳转」一次性确认</td></tr>
+      <tr><td class="num">D1</td><td>今日回放热力条（96 桶）</td><td>底栏上沿</td><td>控制岛内（Z4）</td><td><span class="tag t-move">移位</span></td><td>桶数与重建指纹策略不变</td></tr>
+      <tr><td class="num">D2</td><td>回放 scrubber 拖动</td><td>热力条上</td><td>控制岛内 + 「此刻事件卡」浮层</td><td><span class="tag t-add">增强</span></td><td>seek 逻辑不变；新增此刻事件卡与事件轨同步高亮</td></tr>
+      <tr><td class="num">D3</td><td>回放时钟 / 条数</td><td>回放条左</td><td>控制岛内</td><td><span class="tag t-same">原样</span></td><td>—</td></tr>
+      <tr><td class="num">D4</td><td>▶ 60 秒看完今天</td><td>回放条右</td><td>控制岛内</td><td><span class="tag t-add">增强</span></td><td>按钮与倍速逻辑不变；播放期间进入 L3 沉浸档</td></tr>
+      <tr><td class="num">D5</td><td>回放空态</td><td>回放条内</td><td>控制岛内</td><td><span class="tag t-same">原样</span></td><td>「今天还没有任务记录」如实呈现</td></tr>
+      <tr><td class="num">D6</td><td>回放时间戳角标（44px）</td><td>左上 inset 24px</td><td>左上 inset top 56px（Z5）</td><td><span class="tag t-fix">修复</span></td><td>仅改 inset 避让顶栏；字号 / 配色 / 显隐规则不变</td></tr>
+      <tr><td class="num">E1</td><td>命令面板 12 条命令</td><td>底栏通栏 1100px</td><td>控制岛内，宽 56% 屏宽，1 行 6 条</td><td><span class="tag t-move">移位</span></td><td>12 条命令一条不减；只改宽度与栅格（scope 分组本来就是 6 条一行）</td></tr>
+      <tr><td class="num">E2</td><td>Agent 侧栏</td><td>左列 28vw</td><td>左列（不变）</td><td><span class="tag t-same">原样</span></td><td>演示模式下的可见性另见 §5</td></tr>
+      <tr><td class="num">E3</td><td>态势总览 status-screen</td><td>右列</td><td>右列（不变）</td><td><span class="tag t-same">原样</span></td><td>演示模式下的可见性另见 §5</td></tr>
+      <tr><td class="num">E4</td><td>会话面板内容</td><td>右列</td><td>右列（不变）</td><td><span class="tag t-same">原样</span></td><td>演示模式下的可见性另见 §5</td></tr>
+      <tr><td class="num">E5</td><td>日志抽屉</td><td>右列（唯一工程件）</td><td>右列（不变）</td><td><span class="tag t-same">原样</span></td><td>演示下仍隐藏</td></tr>
+      <tr><td class="num">F1</td><td>单位气泡</td><td>世界层</td><td>世界层（不变）</td><td><span class="tag t-same">原样</span></td><td>规格、同屏 ≤3、5s 冷却全不变</td></tr>
+      <tr><td class="num">F2</td><td>toast 轻提示</td><td>右上 fixed</td><td>右上 fixed（不变）</td><td><span class="tag t-same">原样</span></td><td>—</td></tr>
+      <tr><td class="num">F3</td><td>声音引擎（五音）</td><td>无 UI</td><td>无 UI（不变）</td><td><span class="tag t-same">原样</span></td><td>—</td></tr>
+      <tr><td class="num">G1</td><td>导演镜头三优先级</td><td>世界层</td><td>世界层（不变）</td><td><span class="tag t-add">增强</span></td><td>行为不变；HUD 侧新增取景框作为状态回显</td></tr>
+      <tr><td class="num">G2</td><td>报错红色 vignette</td><td>世界层边缘</td><td>世界层边缘（不变）</td><td><span class="tag t-add">增强</span></td><td>呼吸参数不变；事件轨红色条目与之同拍</td></tr>
+      <tr><td class="num">G3</td><td>静默 8s 巡视</td><td>世界层</td><td>世界层（不变）</td><td><span class="tag t-same">原样</span></td><td>—</td></tr>
+      <tr><td class="num">G4</td><td>回放气泡减半</td><td>世界层</td><td>世界层（不变）</td><td><span class="tag t-same">原样</span></td><td>—</td></tr>
+      <tr><td class="num">G5</td><td>框选 / 指令 / 翻卡 / 插旗</td><td>世界层</td><td>世界层（不变）</td><td><span class="tag t-same">原样</span></td><td>—</td></tr>
+      <tr><td class="num">G6</td><td>单位动画八态</td><td>世界层</td><td>世界层（不变）</td><td><span class="tag t-same">原样</span></td><td>—</td></tr>
+      <tr><td class="num">G7</td><td>氛围彩蛋</td><td>世界层</td><td>世界层（不变）</td><td><span class="tag t-same">原样</span></td><td>—</td></tr>
+      <tr><td class="num">G8</td><td>主入口按钮组</td><td>组合根</td><td>组合根（不变）</td><td><span class="tag t-same">原样</span></td><td>—</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="note ok">
+    <strong>统计：40 项中，</strong>「原样」18 项 · 「移位」7 项 · 「收纳」7 项 · 「增强」6 项 · 「修复」2 项（A13 的重复表达、D6 的 inset 避让）。<b>无一项被删除。</b>唯一的"减少"是重复表达与无效占位，不是能力。
+  </div>
+
+</section>
+
+<section id="s5" class="wrap">
+  <h2 class="sec"><span class="num">§5</span>实施代价与风险</h2>
+  <p>本节只做估算与定位，<b>不改动任何源码</b>。按改动面分三档。</p>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th style="width:16%">档位</th><th style="width:30%">涉及改动</th><th style="width:30%">落点文件</th><th>说明 / 风险</th></tr></thead>
+    <tbody>
+      <tr><td><b>① 纯样式</b></td><td>底栏高度改内容自适应、底栏宽度 1100→56%、事件轨宽度与 hover 样式、角标 inset、顶栏布局</td><td><code>hud/screens/main-screen.ts</code> 的 <code>MAIN_SCREEN_STYLE</code>；<code>marquee.ts</code> / <code>day-replay.ts</code> / <code>replay-clock.ts</code> 的 shadow CSS</td><td>不碰 core 契约、不碰总线。风险：底栏高度自适应会改变左右侧栏的锚点（<code>--hud-bottom-h</code> 同时被 <code>.hud-rail-left/right</code> 的 <code>bottom</code> 引用），需一并改成 <code>auto</code> + 固定安全边</td></tr>
+      <tr><td><b>② 组件内部 DOM</b></td><td>顶栏收纳（⋯ 菜单 + 🔊 弹出层）、事件详情展开、命令面板栅格列数、演示过滤覆盖面</td><td><code>main-screen.ts</code> 顶栏模板；<code>marquee.ts</code> <code>push()</code>；<code>command-panel.ts</code> 栅格；<code>demo-mode.ts</code> 的 <code>data-engineering</code> 标记</td><td>最大的一块。风险：顶栏结构变化会波及 <code>strat-button-click</code> 事件委托（<code>main-screen.ts:446-456</code>）；命令面板栅格变化会波及 e2e 断言（<code>e2e-tests/demo-flow.e2e.mjs</code> 的 44 条演示断言需回归）</td></tr>
+      <tr><td><b>③ 需新增状态</b></td><td>信息层级（L1/L2/L3）判定</td><td>HUD 本地态，优先从 core 已广播的状态派生：<code>WorldState.directorEnabled</code> + 回放 <code>playing</code> + 里程碑触发</td><td><b>不需要新增 <code>core/types.ts</code> 契约</b>（除非要求"层级"能被外部观测）。这是本方案刻意守住的一条——core 契约只加不改是 DEMO-PLAN §12 的硬要求</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <h4>性能约束（对齐 <code>docs/PERFORMANCE_GUIDELINES.md</code>）</h4>
+  <ul>
+    <li>事件详情展开：<b>按需创建</b>，不预建 5 份隐藏 DOM；折叠时节点移除（与跑马灯现有的"淡出后移除"口径一致）。</li>
+    <li>层级降对比：只改一个 CSS 自定义属性 / <code>opacity</code>，不触发逐帧重排。</li>
+    <li>引导弧线：一条绝对定位的 div，用 <code>transform</code> 定位（不触发布局）；只在 hover / 点击态存在，<b>不引入 rAF 循环</b>。</li>
+    <li>控制岛收窄后，回放热力条仍是 96 根柱子，且沿用现有"指纹不变不重建"策略（<code>day-replay.ts:262-287</code>）。</li>
+    <li>所有新增计时器（若实现"展开 N 条"的展开动画计时）必须在 <code>disconnectedCallback</code> 清光——照抄 <code>marquee.ts:211-221</code> 的现有纪律。</li>
+  </ul>
+  <div class="note warn">
+    <strong>最大的落地风险不是布局，是 e2e。</strong><code>e2e-tests/demo-flow.e2e.mjs</code> 的 A/B/C 三段 44 条断言大量依赖顶栏按钮文本（如"演示""🎬 导演"）与命令面板按钮位置。顶栏收纳一旦落地，<b>这些断言需要同步改写</b>。这是本方案最贵的一处代价，必须在动手前先确认取舍（见 <a href="#s6">§6 Q1</a>）。
+  </div>
+
+</section>
+
+<section id="s6" class="wrap">
+  <h2 class="sec"><span class="num">§6</span>待决问题（需拍板）</h2>
+  <p>六个取舍，每个都有明确的推荐项。拍板后再进入实施。</p>
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th style="width:5%">#</th><th style="width:22%">问题</th><th style="width:32%">选项</th><th style="width:18%">推荐</th><th>代价</th></tr></thead>
+    <tbody>
+      <tr><td class="num">Q1</td><td>命令面板是否收进 ⋯ 菜单 / 是否折叠</td><td>(a) 留在顶栏全宽；(b) 留在顶栏但换行；(c) 收进 ⋯ 菜单</td><td>(c)</td><td>主播多一步点击；e2e 断言需重写</td></tr>
+      <tr><td class="num">Q2</td><td>事件轨默认显示几条</td><td>(a) 保持 5 条；(b) 2 条 + 展开</td><td>(b)</td><td>(b) 需新增"展开"交互，但换来底边静默度</td></tr>
+      <tr><td class="num">Q3</td><td>三个开关是否图标化</td><td>(a) 保留文字；(b) 纯图标 + tooltip</td><td>(b)</td><td>图标语义不如文字直白；建议保留图标 + hover 说明</td></tr>
+      <tr><td class="num">Q4</td><td>三个 on/off 文本标签</td><td>(a) 删除；(b) 收进 ⋯ 菜单</td><td>(a)</td><td>删除会丢失开发期的可观测性；(b) 更保守</td></tr>
+      <tr><td class="num">Q5</td><td>信息层级是否要进 core</td><td>(a) HUD 本地态派生；(b) 新增 core 事件</td><td>(a)</td><td>(b) 要动 <code>core/types.ts</code>，与 §12"只加不改"相悖</td></tr>
+      <tr><td class="num">Q6</td><td>演示模式下工程面板是"隐藏"还是"降级"</td><td>(a) 继续隐藏；(b) 降为半透明只读</td><td>(b)</td><td>(b) 需要给 <code>filterEngineering</code> 加第三态，工作量翻倍</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="note tip">
+    <strong>如果只做一件事。</strong>建议先做 <b>Q4 + D6 inset + 底栏宽度与高度</b> 三项——它们不需要改任何组件内部 DOM、不需要重写 e2e 断言，却能一次消掉 P1 / P3 / P4 / P6 / P12 五个痛点。作为低风险试水，能先验证"新布局在真实画面里到底好不好看"。
+  </div>
+
+</section>
+
+<section id="s7" class="wrap">
+  <h2 class="sec"><span class="num">§7</span>未尽事项与测量方法</h2>
+  <h4>未尽事项</h4>
+  <ul>
+    <li><strong>未做像素级还原。</strong>mockup 是布局示意图。真实实施时底栏自适应高度、命令面板 6 列栅格的实际行高、事件详情展开的行高，都需要在真实 DOM 里再量一轮。</li>
+    <li><strong>未验证真实分辨率下的观感。</strong>§1.9 的碰撞数据来自等价 CSS 复刻页，不是运行中的产品页；<b>真实 <code>strat-button</code> 的实际宽度未知</b>，顶栏动作区的 753px 是用等宽近似按钮测得的，真值可能略高。</li>
+    <li><strong>未做主播视角验证。</strong>"底栏收窄后鼠标移速是否变差""事件轨 hover 在 1080p 投影上是否看得清"，需要真人试一轮。</li>
+    <li><strong>未评估 OBS 叠加兼容。</strong>底边中央是主播爱放字幕的位置，控制岛占 92px 高是否与常见字幕条打架，需按目标直播软件实测。</li>
+    <li><strong>未评估小地图 200×120 在 4K 下的观感。</strong>规格钦定值，是否随分辨率放大是另一个独立议题，本次不动。</li>
+    <li><strong>未做可访问性审查。</strong>本次只考虑视觉与直播观感；键盘可达性、焦点顺序、读屏标签需另跑一轮（<code>aria-live</code> 在跑马灯里有，但顶栏收纳后要重新确认）。</li>
+  </ul>
+  <h4>附录 · 碰撞测量方法</h4>
+  <p>把下列 CSS 数值原样搬进一个等价页面，用 Playwright 1.58.2 的无头 Chromium 读取 <code>getBoundingClientRect()</code>：</p>
+  <ul>
+    <li><code>main-screen.ts:92-93</code> — <code>--hud-topbar-h: 48px; --hud-bottom-h: min(34cqh, 300px); --hud-gap: 12px</code></li>
+    <li><code>main-screen.ts:177-203</code> — <code>.hud-bottom-bar</code> 与 <code>.hud-replay-slot</code>（宽 <code>min(1100px,100%)</code>）</li>
+    <li><code>marquee.ts:146-157</code> — <code>:host { position:fixed; left:16px; bottom:16px; z-index:21 }</code>，条目 <code>white-space:nowrap</code>，行高 26px + 4px 间距 × 5</li>
+    <li><code>minimap.ts:285-288</code> — <code>:host { position:fixed; right:12px; bottom:12px; z-index:45 }</code>，画布 200×120</li>
+    <li><code>replay-clock.ts:59-61</code> — <code>:host { position:fixed; top:24px; left:24px; z-index:40 }</code>，字号 44px</li>
+    <li>条目文案取一条典型长度（「「小明」完成任务：登录模块重构」），实测宽 249px</li>
+  </ul>
+  <p>测量脚本放在 <code>/tmp/hudmeasure/probe*.mjs</code>（临时目录，未进仓库）。</p>
+  <hr>
+  <p style="color:var(--muted);font-size:13px">
+    产物：<code>docs/hud-redesign-proposal.html</code> · 自包含（内联 CSS/JS，零外部依赖、零图片、零 npm 包）· 浏览器双击可开 ·
+    色彩体系取自 <code>src/core/theme/visual-spec.ts</code> 的 <code>VISUAL_PALETTE</code>（七色霓虹唯一事实源）·
+    本文件为 v3.4 重构的前置论证，<b>未改动任何 src/ 代码</b>。
+  </p>
+</section>
+
+<style>
+.s-stage[data-layer="immersive"] .s-island .s-replay{opacity:1}
+.s-stage[data-layer="immersive"] .s-island .s-cmd{opacity:.45}
+.s-stage[data-layer="immersive"] .s-map{opacity:.18}
+.s-railbox{position:absolute;border:1px dashed rgba(255,255,255,.13);border-radius:4px;font-size:8px;color:rgba(147,160,181,.75);padding:3px 5px;z-index:1}
+.s-nowcard.hide{display:none}
+.s-exp{font-size:8.5px;color:var(--accent);background:rgba(138,107,255,.14);border:1px solid var(--border-2);border-radius:3px;padding:2px 5px;cursor:pointer;display:inline-block;margin-bottom:3px}
+</style>
+
+<script>
+(function(){
+'use strict';
+var TONE={success:'#2ecc71',unit:'#4fc3f7',danger:'#ff5470',accent:'#8a6bff'};
+var EVENTS=[
+ {icon:'✓',tone:'success',text:'「小明」完成任务：登录模块重构',time:'刚刚',unit:'u1',pos:0.90,detail:'角色 小明 · 任务 登录模块重构 · 耗时 12 分钟 · 2 次提交'},
+ {icon:'⚡',tone:'unit',text:'派活：「小红」→ API 网关',time:'2 分钟前',unit:'u2',pos:0.76,detail:'角色 小红 · 任务 API 网关 · 队列第 2 位 · 预计 8 分钟'},
+ {icon:'✕',tone:'danger',text:'「小刚」卡住：数据库迁移',time:'3 分钟前',unit:'u3',pos:0.60,detail:'角色 小刚 · 任务 数据库迁移 · 已阻塞 3 分钟 · 需人工介入'},
+ {icon:'✓',tone:'success',text:'「阿强」完成任务：支付回调',time:'5 分钟前',unit:'u4',pos:0.45,detail:'角色 阿强 · 任务 支付回调 · 耗时 8 分钟 · 1 次提交'},
+ {icon:'★',tone:'accent',text:'第 10 个任务完成！',time:'8 分钟前',unit:null,pos:0.28,detail:'里程碑 · 每 10 个完成任务触发 · 镜头震动 100ms · 停留 1.5s'}
+];
+var UNITS=[
+ {id:'u1',x:24,y:38,t0:0.90,state:'done'},
+ {id:'u2',x:46,y:28,t0:0.76,state:'work'},
+ {id:'u3',x:63,y:52,t0:0.60,state:'stuck'},
+ {id:'u4',x:36,y:63,t0:0.45,state:'work'},
+ {id:'u5',x:77,y:32,t0:0.28,state:'done'},
+ {id:'u6',x:53,y:70,t0:0.10,state:'idle'}
+];
+var S={director:false,sound:true,demo:false,t:0.62,scrubbed:false,hover:null,lock:null,
+       layer:'ambient',mapFocus:null,playing:false,showCollide:true,expanded:false};
+var stageCur=document.getElementById('stage-cur');
+var stageNew=document.getElementById('stage-new');
+var noteCur=document.getElementById('note-cur');
+var noteNew=document.getElementById('note-new');
+
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function tone(c){return TONE[c]||'#fff';}
+function clockStr(){
+  var total=9*3600+S.t*12*3600;
+  var h=Math.floor(total/3600)%24,m=Math.floor(total/60)%60,sec=Math.floor(total)%60;
+  return (h<10?'0':'')+h+':'+(m<10?'0':'')+m+':'+(sec<10?'0':'')+sec;
+}
+function heatHtml(){
+  var h='';
+  for(var i=0;i<96;i++){
+    var v=Math.abs(Math.sin(i*0.37)*0.6+Math.sin(i*1.13)*0.4);
+    h+='<i style="height:'+Math.max(8,Math.round(v*100))+'%;opacity:'+(0.28+v*0.62).toFixed(2)+'"></i>';
+  }
+  return h;
+}
+function unitsHtml(isNew){
+  var out='';
+  for(var i=0;i<UNITS.length;i++){
+    var u=UNITS[i];
+    if(S.scrubbed&&S.t<u.t0) continue;
+    var x=u.x,y=u.y;
+    if(S.scrubbed) x=u.x+((S.t*100)%22)-11;
+    if(isNew&&S.mapFocus){ x+=(S.mapFocus.x-0.5)*18; y+=(S.mapFocus.y-0.5)*12; }
+    var hot=(S.hover!==null&&EVENTS[S.hover].unit===u.id)||S.lock===u.id;
+    out+='<div class="s-unit '+u.state+(hot?' hot':'')+'" data-unit="'+u.id+'" style="left:'+x.toFixed(2)+'%;top:'+y.toFixed(2)+'%"></div>';
+    if(u.id==='u2') out+='<div class="s-bubble" style="left:'+x.toFixed(2)+'%;top:'+(y-4).toFixed(2)+'%">收到，开挖</div>';
+  }
+  return out;
+}
+function rowsHtml(isNew){
+  var list=EVENTS, shown=EVENTS;
+  var out='';
+  if(isNew&&!S.expanded){ shown=EVENTS.slice(0,2); }
+  for(var i=0;i<shown.length;i++){
+    var e=shown[i];
+    out+='<div class="s-mq-row'+(S.hover===i?' hot':'')+'" data-ev="'+i+'" style="--entry:'+tone(e.tone)+'">'
+        +'<span>'+e.icon+'</span><span class="tx">'+esc(e.text)+'</span><span class="tm">'+e.time+'</span></div>';
+    if(isNew) out+='<div class="s-mq-detail">'+esc(e.detail)+'</div>';
+  }
+  if(isNew&&!S.expanded) out+='<span class="s-exp" data-role="expand">▸ 展开 '+(EVENTS.length-2)+' 条</span>';
+  return out;
+}
+function mapHtml(isNew){
+  var f=S.mapFocus||{x:0.5,y:0.5};
+  var vw=30,vh=38;
+  var vx=Math.max(0,Math.min(100-vw,f.x*100-vw/2));
+  var vy=Math.max(0,Math.min(100-vh,f.y*100-vh/2));
+  var dots='';
+  for(var i=0;i<UNITS.length;i++){
+    var u=UNITS[i];
+    var c=u.state==='stuck'?'#ff5470':(u.state==='done'?'#2ecc71':(u.state==='work'?'#4fc3f7':'#93a0b5'));
+    dots+='<span class="dot" style="left:'+u.x+'%;top:'+u.y+'%;background:'+c+'"></span>';
+  }
+  return '<div class="island"></div>'+dots
+    +'<div class="vp" style="left:'+vx.toFixed(1)+'%;top:'+vy.toFixed(1)+'%;width:'+vw+'%;height:'+vh+'%"></div>'
+    +'<span class="badge">MAP</span>';
+}
+function cmdHtml(){
+  var cmds=['发起任务','确认任务','停止任务','聊天','配置','取消选择'];
+  var h='';
+  for(var i=0;i<6;i++) h+='<span class="'+(i<3?'p':'')+'">'+cmds[i]+'</span>';
+  return h;
+}
+function replayHtml(isNew){
+  var lbl=S.playing?'⏸ 停下':'▶ 60 秒看完今天';
+  return '<span class="lbl">今日回放</span><span class="clk">'+clockStr()+'</span>'
+    +'<span class="lbl">'+EVENTS.length+' 条</span>'
+    +'<div class="s-strip" data-role="strip"><div class="s-heat">'+heatHtml()+'</div>'
+    +'<div class="s-handle" style="left:'+(S.t*100).toFixed(2)+'%"></div></div>'
+    +'<span class="s-play" data-act="play">'+lbl+'</span>';
+}
+function collideHtml(){
+  if(!S.showCollide) return '';
+  return ''
+   +'<div class="s-collide" style="left:7.03%;top:76.94%;width:13.67%;height:20.83%"><span style="top:-12px">跑马灯 × 命令面板 26,250px²</span></div>'
+   +'<div class="s-collide" style="left:83.44%;top:81.67%;width:9.53%;height:16.67%"><span style="top:-12px">小地图 × 命令面板 14,640px²</span></div>'
+   +'<div class="s-collide" style="left:1.88%;top:3.33%;width:16.80%;height:3.33%"><span style="left:calc(100% + 5px);top:-2px">角标 × 顶栏 5,160px²</span></div>';
+}
+function clearHtml(){
+  if(!S.showCollide) return '';
+  // 新版：整条底边带（事件轨 · 控制岛 · 小地图）互不重叠；角标避开顶栏
+  return ''
+   +'<div class="s-clear" style="left:1.25%;top:73%;width:97.6%;height:25.5%"><span style="left:2px;top:-11px">✓ 事件轨 · 控制岛 · 小地图 三段互不重叠（底边带整体净空）</span></div>'
+   +'<div class="s-clear" style="left:1.88%;top:7.4%;width:16.80%;height:1.6%"><span style="left:calc(100% + 5px);top:-3px">✓ 角标避开顶栏</span></div>';
+}
+function curHtml(){
+  var tags='<span class="s-chip tiny">default</span><span class="s-chip tiny">'+(S.demo?'on':'off')+'</span><span class="s-chip tiny">'+(S.director?'on':'off')+'</span>';
+  return ''
+  +'<div class="s-topbar">'
+  +' <span class="s-brand">Stratix</span>'
+  +' <span class="s-stats">单位 <b>8</b> · 任务 <b>12</b> · 会话 <b>3</b></span>'
+  +' <span class="s-actions">'
+  +'   <span class="s-chip" data-act="theme">像素风</span>'
+  +'   <span class="s-chip demo'+(S.demo?' on':'')+'" data-act="demo">演示</span>'
+  +'   <span class="s-chip dir'+(S.director?' on':'')+'" data-act="director">🎬 导演</span>'
+  +'   <span class="s-chip'+(S.sound?' on':'')+'" data-act="sound">🔊 声音</span>'
+  +'   <span class="s-slider'+(S.sound?'':' off')+'"></span>'
+  +'   <span class="s-chip">聊天</span><span class="s-chip">会话</span><span class="s-chip">角色</span><span class="s-chip">设置</span>'
+  +'   '+tags
+  +' </span></div>'
+  +'<div class="s-railbox" style="left:0.94%;top:8.3%;width:25%;height:56%">Agent 侧栏（选中单位业务态）</div>'
+  +'<div class="s-engcol">'
+  +'  <div'+(S.demo?'':'')+'>态势总览 status-screen</div>'
+  +'  <div>会话面板 session-panel</div>'
+  +'  <div'+(S.demo?' class="hidden"':'')+'>日志抽屉（演示下隐藏）</div>'
+  +'</div>'
+  +'<div class="s-units">'+unitsHtml(false)+'</div>'
+  +'<div class="s-marquee">'+rowsHtml(false)+'</div>'
+  +'<div class="s-map" data-role="map">'+mapHtml(false)+'</div>'
+  +'<div class="s-bottom">'
+  +'  <div class="s-replay">'+replayHtml(false)+'</div>'
+  +'  <div class="s-cmd">'+cmdHtml()+'</div>'
+  +'</div>'
+  +(S.playing||S.scrubbed?'<div class="s-clock"><div class="t">'+clockStr()+'</div><div class="m">2026-11-03 · ⏩ 回放中</div></div>':'')
+  +collideHtml();
+}
+function newHtml(){
+  var nowCard='';
+  if(S.scrubbed||S.playing){
+    var past=EVENTS.filter(function(e){return e.pos<=S.t;}).sort(function(a,b){return a.pos-b.pos;});
+    var recent=past.slice(-3);
+    var rows='';
+    for(var i=0;i<recent.length;i++){ var e=recent[i];
+      rows+='<div class="r"><i>'+clockAt(e.pos)+'</i>'+e.icon+' '+esc(e.text)+'</div>'; }
+    nowCard='<div class="s-nowcard"><div class="h">此刻 '+clockStr()+'</div>'+rows+'</div>';
+  }
+  return ''
+  +'<div class="s-topbar l1">'
+  +' <span class="s-brand">Stratix</span>'
+  +' <span class="s-stats">⚡12 任务 · 8 单位 · 3 会话</span>'
+  +' <span class="s-actions">'
+  +'   <span class="s-chip'+(S.sound?' on':'')+'" data-act="sound">🔊</span>'
+  +'   <span class="s-chip dir'+(S.director?' on':'')+'" data-act="director">🎬</span>'
+  +'   <span class="s-chip demo'+(S.demo?' on':'')+'" data-act="demo">▶</span>'
+  +'   <span class="s-chip" data-act="more">⋯</span>'
+  +' </span></div>'
+  +'<div class="s-railbox l1" style="right:0.94%;top:8.3%;width:19%;height:62%">态势总览 / 会话面板</div>'
+  +'<div class="s-units">'+unitsHtml(true)+'</div>'
+  +'<div class="s-rail l2" style="left:1.25%;bottom:2.2%;width:20.3%">'+rowsHtml(true)+'</div>'
+  +'<div class="s-map l1" data-role="map">'+mapHtml(true)+'</div>'
+  +'<div class="s-island">'
+  +'  <div class="s-cmd l1">'+cmdHtml()+'</div>'
+  +'  <div class="s-replay">'+replayHtml(true)+'</div>'
+  +'</div>'
+  +nowCard
+  +(S.playing||S.scrubbed?'<div class="s-clock low"><div class="t">'+clockStr()+'</div><div class="m">2026-11-03 · ⏩ 回放中</div></div>':'')
+  +(S.director?'<div class="s-director" style="left:'+(S.mapFocus?36:32)+'%;top:26%;width:26%;height:30%"></div>':'')
+  +(S.director?'<div class="s-vignette"></div>':'')
+  +(S.layer==='immersive'?'<div class="s-l3big l3">第 10 个任务完成！</div>':'')
+  +clearHtml();
+}
+function clockAt(pos){
+  var total=9*3600+pos*12*3600;
+  var h=Math.floor(total/3600)%24,m=Math.floor(total/60)%60;
+  return (h<10?'0':'')+h+':'+(m<10?'0':'')+m;
+}
+function render(){
+  stageCur.innerHTML=curHtml();
+  stageNew.innerHTML=newHtml();
+  stageNew.setAttribute('data-layer',S.layer);
+  updateHover();
+  renderNotes();
+}
+function renderNotes(){
+  var c='',n='';
+  c+='<b>现状：</b>';
+  if(S.director) c+='顶栏「🎬 导演」按钮变亮，但<b>画面里没有任何东西</b>说明镜头已被接管（事件与解释分居两屏）。';
+  else c+='顶栏 19 个元素，动作区独占 58.8% 视口宽；其中 8 个按钮对观众零解释价值。';
+  if(S.demo) c+=' 演示模式下顶栏仍挂着 "default / '+(S.demo?'on':'off')+' / '+(S.director?'on':'off')+'" 三个工程文本标签（未进 <code>data-engineering</code> 过滤）。';
+  if(S.sound===false) c+=' 声音关闭后，音量滑条仍以 disabled 状态占着 84px 顶栏宽度。';
+  c+=' 底栏固定 34% 视口高（720p 下 245px），左下事件轨与右下小地图都压在命令面板上（红框区）。';
+  if(S.scrubbed||S.playing) c+=' 左上角回放角标与顶栏重叠 5,160px²，遮住品牌字。';
+  if(S.mapFocus) c+=' 小地图点击后只有白框移动，画面无任何确认。';
+
+  n+='<b>新版：</b>';
+  if(S.director) n+='中屏出现琥珀色取景框并标注「🎬 导演」——开关状态<b>在画面里有回显</b>。';
+  else n+='顶栏 7 个元素（品牌 + 态势胶囊 + 🔊/🎬/▶ + ⋯），动作区从 58.8% 降到约 18%。';
+  if(S.demo) n+=' 演示开启后：三个状态文本标签消失、右列工程面板收起、字号整体放大（demo +30%）。';
+  if(S.sound===false) n+=' 声音关闭后音量滑条不再占顶栏宽度（收进 🔊 弹出层）。';
+  n+=' 控制岛贴底居中、仅 56% 宽、约 92px 高（现状 245px / 34%），地图可用高度从 66% 提到 87%。';
+  if(S.hover!==null&&EVENTS[S.hover]) n+=' 悬停「'+esc(EVENTS[S.hover].text)+'」→ 展开详情 + 中屏单位描边高亮 + 左下→中屏引导弧线。';
+  if(S.lock) n+=' 已锁定该事件对应单位（事件→单位连线常驻）。';
+  if(S.scrubbed||S.playing) n+=' 拖动时间轴时浮出「此刻事件卡」，时间与语义两条通道并行。';
+  if(S.layer!=='ambient') n+=' 当前层级：<b>'+({ambient:'常驻 L1',event:'事件 L2',immersive:'沉浸 L3'})[S.layer]+'</b>——L1 降对比、L2 收起、L3 接管。';
+  noteCur.innerHTML=c;
+  noteNew.innerHTML=n;
+}
+function updateHover(){
+  var stages=[stageCur,stageNew];
+  for(var i=0;i<stages.length;i++){
+    var stage=stages[i];
+    var rows=stage.querySelectorAll('.s-mq-row');
+    for(var j=0;j<rows.length;j++) rows[j].classList.remove('hot');
+    var old=stage.querySelectorAll('.s-link,.s-pulse');
+    for(var k=0;k<old.length;k++) old[k].parentNode.removeChild(old[k]);
+    var units=stage.querySelectorAll('.s-unit');
+    for(var m=0;m<units.length;m++) units[m].classList.remove('hot');
+    if(S.hover===null) continue;
+    var ev=EVENTS[S.hover]; if(!ev||!ev.unit) continue;
+    var row=stage.querySelector('.s-mq-row[data-ev="'+S.hover+'"]');
+    var unit=stage.querySelector('.s-unit[data-unit="'+ev.unit+'"]');
+    if(!row||!unit) continue;
+    row.classList.add('hot'); unit.classList.add('hot');
+    if(stage!==stageNew) continue;
+    var sr=stage.getBoundingClientRect();
+    var rr=row.getBoundingClientRect(), ur=unit.getBoundingClientRect();
+    var x1=rr.left-sr.left+rr.width*0.6, y1=rr.top-sr.top+rr.height*0.5;
+    var x2=ur.left-sr.left+ur.width*0.5, y2=ur.top-sr.top+ur.height*0.5;
+    var len=Math.sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1));
+    var ang=Math.atan2(y2-y1,x2-x1)*180/Math.PI;
+    var line=document.createElement('div');
+    line.className='s-link';
+    line.style.left=x1+'px'; line.style.top=y1+'px';
+    line.style.width=len+'px'; line.style.transform='rotate('+ang+'deg)';
+    stage.appendChild(line);
+    var pulse=document.createElement('div');
+    pulse.className='s-pulse';
+    pulse.style.left=x2+'px'; pulse.style.top=y2+'px';
+    stage.appendChild(pulse);
+  }
+}
+
+/* ---------- 交互绑定 ---------- */
+function onAct(act){
+  if(act==='director') S.director=!S.director;
+  else if(act==='sound') S.sound=!S.sound;
+  else if(act==='demo') S.demo=!S.demo;
+  else if(act==='play') S.playing=!S.playing;
+  else if(act==='theme'||act==='more') return;
+  render();
+}
+document.addEventListener('click',function(e){
+  var t=e.target.closest?e.target.closest('[data-act]'):null;
+  if(t){ onAct(t.getAttribute('data-act')); return; }
+  var ex=e.target.closest?e.target.closest('[data-role="expand"]'):null;
+  if(ex){ S.expanded=!S.expanded; render(); return; }
+  var row=e.target.closest?e.target.closest('.s-mq-row'):null;
+  if(row){
+    var i=parseInt(row.getAttribute('data-ev'),10);
+    if(row.closest('#stage-new')){ S.lock=EVENTS[i].unit||null; S.hover=i; render(); }
+    else { S.hover=i; renderNotes(); updateHover(); }
+    return;
+  }
+  var map=e.target.closest?e.target.closest('.s-map'):null;
+  if(map){
+    var r=map.getBoundingClientRect();
+    S.mapFocus={x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height};
+    render(); return;
+  }
+});
+document.addEventListener('mouseover',function(e){
+  var row=e.target.closest?e.target.closest('.s-mq-row'):null;
+  if(!row) return;
+  var i=parseInt(row.getAttribute('data-ev'),10);
+  if(i!==S.hover){ S.hover=i; updateHover(); renderNotes(); }
+});
+document.addEventListener('mouseleave',function(e){
+  if(!e.target.classList||!e.target.classList.contains('s-mq-row')) return;
+  if(S.hover===null) return;
+  // 移到展开的详情行上时不算离开（否则详情一出现就被收起，鼠标悬停会闪烁）
+  var rt=e.relatedTarget;
+  if(rt&&rt.closest&&(rt.closest('.s-mq-detail')||rt.closest('.s-mq-row'))) return;
+  S.hover=null; updateHover(); renderNotes();
+},true);
+
+/* scrubber 拖动 */
+var drag=null;
+document.addEventListener('pointerdown',function(e){
+  var strip=e.target.closest?e.target.closest('[data-role="strip"]'):null;
+  if(!strip) return;
+  drag={rect:strip.getBoundingClientRect()};
+  strip.setPointerCapture&&strip.setPointerCapture(e.pointerId);
+  S.scrubbed=true;
+  moveDrag(e);
+});
+document.addEventListener('pointermove',function(e){
+  if(!drag) return;
+  moveDrag(e);
+});
+document.addEventListener('pointerup',function(){ drag=null; });
+document.addEventListener('pointercancel',function(){ drag=null; });
+function moveDrag(e){
+  if(!drag) return;
+  var r=drag.rect; if(r.width<=0) return;
+  var ratio=(e.clientX-r.left)/r.width;
+  ratio=Math.max(0,Math.min(1,ratio));
+  S.t=ratio; S.scrubbed=true; S.playing=false;
+  render();
+}
+
+/* 控制台按钮 */
+document.getElementById('btn-director').addEventListener('click',function(){ S.director=!S.director; render(); });
+document.getElementById('btn-sound').addEventListener('click',function(){ S.sound=!S.sound; render(); });
+document.getElementById('btn-demo').addEventListener('click',function(){ S.demo=!S.demo; render(); });
+document.getElementById('btn-reset').addEventListener('click',function(){
+  S.director=false;S.sound=true;S.demo=false;S.t=0.62;S.scrubbed=false;S.hover=null;S.lock=null;
+  S.layer='ambient';S.mapFocus=null;S.playing=false;S.expanded=false;
+  syncSeg(); render();
+});
+var bc=document.getElementById('btn-collide');
+bc.addEventListener('click',function(){ S.showCollide=!S.showCollide; bc.setAttribute('aria-pressed',String(S.showCollide)); render(); });
+function syncSeg(){
+  var segs=document.querySelectorAll('#seg-layer button');
+  for(var i=0;i<segs.length;i++){
+    segs[i].setAttribute('aria-pressed',String(segs[i].getAttribute('data-layer')===S.layer));
+  }
+}
+document.getElementById('seg-layer').addEventListener('click',function(e){
+  var b=e.target.closest?e.target.closest('button[data-layer]'):null;
+  if(!b) return;
+  S.layer=b.getAttribute('data-layer');
+  if(S.layer==='immersive'){ S.playing=true; S.scrubbed=true; }
+  syncSeg(); render();
+});
+
+render();
+})();
+</script>
+</body>
+</html>
