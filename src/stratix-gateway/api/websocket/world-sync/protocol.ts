@@ -293,6 +293,9 @@ const HUD_COMMAND_TYPE_FLAGS: Readonly<Record<HudCommand['type'], true>> = {
   'task.approve': true,
   'task.reject': true,
   'pipeline.start': true,
+  // @since v3.40（task_091）会话中断（core/types.ts 新增）。本表由类型驱动，
+  // core 加命令类型时必须在此补键 —— 缺键即编译报错（见上方注释「不会静默漂移」）。
+  'session.interrupt': true,
 };
 
 /**

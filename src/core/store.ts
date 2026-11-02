@@ -77,6 +77,9 @@ export function createInitialState(): WorldState {
     // why 起步就建空表而不是缺省：读方（召回 / HUD）不用每次判 undefined，
     //   runtime 的槽位写入也永远从一份确定的基础表出发（与 tasks 同一「起步即有形」口径）。
     selectionGroups: new Map<number, readonly string[]>(),
+    // sessions（@since v3.40，task_091）：会话摘要列表，空数组即「无会话」。
+    // 与 links / messages / tasks 同一口径：起步即有形，读方不用每次判 undefined。
+    sessions: [],
   };
 }
 

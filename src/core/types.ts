@@ -97,6 +97,14 @@ export const MAX_TASK_PROMPT_LEN = 20_000;
 export const MAX_TASK_SUMMARY_LEN = 2_000;
 
 /**
+ * @since v3.40（task_091）会话记录条数上限（core/session 强制）。
+ * 与 MAX_MISSIONS / MAX_TASKS 同一理由：sessions 随 WorldState 全量广播，必须有界。
+ * 超限时先丢**已关闭（closed）**的最旧会话（FIFO）；全是活会话时腾不出位置就拒绝新建
+ * —— 绝不静默挤掉在办会话（让一条正在进行的会话消失，比"拒绝新建"更糟）。
+ */
+export const MAX_SESSIONS = 200;
+
+/**
  * @since v3.33（task_057）战场世界边界（世界坐标，左上角 + 宽高）。
  * why 冻结在契约层：三处消费方 —— world 相机钳制（camera/camera-math 的 DEFAULT_WORLD_BOUNDS
  * 以它为唯一来源）、core 的 camera.center 命令钳制（core/camera.ts）、hud 小地图的世界↔画布
@@ -969,6 +977,57 @@ export interface AgentMessageView {
 }
 
 // ============================================================================
+// ★ 会话域契约（@since v3.40，task_091；实现见 core/session/）
+// ============================================================================
+
+/**
+ * @since v3.40（task_091）会话种类。来源：docs/SESSION-PLAN.md §2「各 kind 的接线策略」。
+ * 粒度约定（**渐进：新写走新模型，旧表不迁移**）：
+ *   - character_chat：每角色一条长生命周期会话（历史读现有 chat-history-dao，不搬）；
+ *   - peer_chat：每场互聊一条（事件全量落库 —— 修「超时即丢」）；
+ *   - task_run：每条 task 执行一条（LITE，只记 create / close）；
+ *   - mission_run：每条 mission 一条（LITE，只记 create / close）；
+ *   - shell_link：每条 agent-link 连接一条（LITE，只记 create / close）。
+ */
+export type SessionKind =
+  | 'character_chat'
+  | 'peer_chat'
+  | 'task_run'
+  | 'mission_run'
+  | 'shell_link';
+
+/**
+ * @since v3.40（task_091）会话状态。状态机见 core/session/machine.ts。
+ *   active：有活动 / 在说话；idle：静默期；interrupted：被中断（超时 / 取消 / 进程死）；
+ *   closed：终态（不再收事件）。
+ */
+export type SessionStatus = 'active' | 'idle' | 'interrupted' | 'closed';
+
+/**
+ * @since v3.40（task_091）会话**摘要**（入 WorldState）。
+ * ★ 只有摘要入态：事件本体（消息 / 轮次 / 中断标记）落 session_events 表，不进广播 ——
+ *   否则 WorldState 会随消息数无限膨胀（广播体积必须有界的性能铁律）。
+ * 参与者视 kind 分别是 characterId / agentId / clientId。
+ */
+export interface SessionRecord {
+  readonly id: string;
+  readonly kind: SessionKind;
+  /** 自动起名（规则版截断，2b 才上 LLM）。 */
+  readonly title: string;
+  readonly participants: readonly string[];
+  readonly status: SessionStatus;
+  /** 关联实体 id（task_run → taskId、mission_run → missionId…）；无关联时不出现该键。 */
+  readonly refId?: string;
+  readonly createdAt: number;
+  /** 最后一条事件的时刻（与 status 无关）。 */
+  readonly lastEventAt: number;
+  /** 收尾时刻；未收尾为 null。 */
+  readonly closedAt: number | null;
+  /** 事件计数（摘要计数；事件本体在 session_events 表）。 */
+  readonly eventCount: number;
+}
+
+// ============================================================================
 // ★ 总线契约：core → 两层广播的完整世界快照
 // ============================================================================
 
@@ -1025,6 +1084,14 @@ export interface WorldState {
    * 体积天然有界：槽位键域 1..9（MAX_CONTROL_GROUP_SLOT），值受 MAX_SELECTION_SIZE 截断。
    */
   selectionGroups?: ReadonlyMap<number, readonly string[]>;
+  /**
+   * @since v3.40（task_091）会话摘要列表（core/session 写入，上限 MAX_SESSIONS）。
+   * 刻意可选：与 settings / detectedAgents / tasks / selectionGroups 同理走可选增补 ——
+   * 契约增补不许打破既有 WorldState 构造点（core / hud 单测夹具）的编译；
+   * 读取方缺省时按空列表处理。
+   * ★ 入态的只有**摘要**（SessionRecord）；事件本体落 session_events 表，不进广播。
+   */
+  sessions?: SessionRecord[];
 }
 
 // ============================================================================
@@ -1267,7 +1334,17 @@ export type HudCommand =
    *   validatePipelineSpec 裁决（坏形状落一条 failed 流水线，看得见，不静默丢）。
    * UI 入口：agent-panel 派发表单的「流水线」模式（预设模板 + 自定义两站）。
    */
-  | { type: 'pipeline.start'; spec: PipelineSpec; issue: string };
+  | { type: 'pipeline.start'; spec: PipelineSpec; issue: string }
+  /**
+   * @since v3.40（task_091）中断会话：把一条**在办**会话（active / idle）置为 interrupted。
+   * 载荷口径：sessionId 命中 WorldState.sessions。
+   * why 需要它：互聊超时此前是"静默丢弃"（会话没了、历史也没了）—— 中断标记让会话可见、可查，
+   *   这是 S4「互聊接入会话域」要修的根因；本单（v3.2a S1）只交付纯逻辑，接线在 S3。
+   * 状态机裁决：终态（closed）拒绝并回 Notice（重复收尾不改写历史）；
+   *   已中断的会话再中断同样拒绝（重复标记不改写历史）。
+   * session.resume（恢复续聊、上下文回灌）属 2b，本单不做。
+   */
+  | { type: 'session.interrupt'; sessionId: string };
 
 /**
  * @since v3.18 经验来源词表（`exp.gained` 事件的 source 字段，task_039）。
