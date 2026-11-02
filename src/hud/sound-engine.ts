@@ -1,23 +1,41 @@
 /**
- * 文件职责：**演示声音包**（task_083）—— 用 WebAudio **代码合成**五个声音，零音频文件。
+ * 文件职责：**演示声音包**（task_083 建 / task_087 升级）—— 优先回放**真实音源**
+ *   （public/sfx/*.mp3，Freesound CC0）；文件缺失 / 加载失败时**回退**到 WebAudio 代码合成，
+ *   保证「任何环境下都有声」。
  *   规格：docs/DEMO-PLAN.md §10「声音包」。
- *   ① 选中 ack：880Hz 短哔 80ms；
- *   ② 派活：哒 —— 240Hz 方波 60ms；
- *   ③ 完成：C5 → E5 上行双音各 120ms；
- *   ④ 报错：180Hz 低鸣 300ms + 轻微失谐；
- *   ⑤ 里程碑：完成音 + 上行琶音（三音）。
+ *   ① 选中 ack：public/sfx/select.mp3；
+ *   ② 派活：public/sfx/dispatch.mp3；
+ *   ③ 完成：public/sfx/complete.mp3；
+ *   ④ 报错：public/sfx/error.mp3；
+ *   ⑤ 里程碑：public/sfx/milestone.mp3（回退合成 = 完成音 + 上行琶音）。
  * 输入：core 总线的 world 通道事件（组合根喂 handleEvent —— hud 组件零总线依赖，
  *   与 toast-host / sfx-service 同一装配口径）；localStorage（总开关 + 音量 0-100）；
- *   浏览器用户手势（首次点击解锁 AudioContext）。
- * 输出：WebAudio 振荡器 + 增益包络（AudioContext → destination）；无返回值副作用。
+ *   浏览器用户手势（首次点击解锁 AudioContext）；public/sfx/ 下的真实音源文件。
+ * 输出：AudioBufferSource（真实音源）或 WebAudio 振荡器 + 增益包络（回退合成）→ destination。
  * 禁止事项：
  *   1. import 任何 src/world/、phaser、app/ —— 铁律（声音是 HUD 侧的纯表现层）；
  *   2. import core/bus —— 订阅归组合根（main-entry 接线段），本模块只暴露 handleEvent；
- *   3. 音频文件 / 音频库 —— DEMO-PLAN §0 的硬约束：全部由振荡器 + 包络合成；
+ *   3. 引入音频库 / npm 依赖 —— 只用浏览器原生 WebAudio；
  *   4. 在本模块里另抄一份频率 / 时长 —— 合成参数一律读唯一事实源
  *   （core/theme/visual-spec.ts 的 SOUND_METRICS）；
  *   5. 把开关 / 音量缓存成字段 —— 每次播放现读 localStorage（顶栏改完立即生效）；
- *   6. 未解锁时硬等 resume —— 静默丢弃（见下方「手势激活」）。
+ *   6. 未解锁时硬等 resume —— 静默丢弃（见下方「手势激活」）；
+ *   7. 在音频文件缺失时抛错 / 打 console.error —— 静默回退合成器（见下方「回退合成」）。
+ *
+ * ================================ Attribution ================================
+ * 五个真实音源全部来自 **Freesound**（https://freesound.org），许可 **CC0 1.0**
+ * （公共领域贡献，可商用、可改编、无需署名 —— 仍保留出处以示尊重）。
+ * 文件放在 public/sfx/（站点根下的 /sfx/），渲染层按 '../../../sfx' 相对基址取
+ * （规则同 src/world/appearance/spritesheet-path.ts 的素材基址）。
+ *
+ *   select.mp3     ← fs:320181  "hint"          Freesound · CC0  （选中 ack）
+ *   dispatch.mp3   ← fs:54405   "Button Click"  Freesound · CC0  （派活）
+ *   complete.mp3   ← fs:243701  "correct"       Freesound · CC0  （完成）
+ *   error.mp3      ← fs:242503  "Failure / wrong action" Freesound · CC0（报错）
+ *   milestone.mp3  ← fs:442943  "Level Up"      Freesound · CC0  （里程碑）
+ *
+ * 备选（未入库，留在 docs/sfx-staging/）：fs:253177（短版里程碑 0.39s）、fs:702806（水滴点击）。
+ * =========================================================================
  *
  * ============ 事件 → 声音的接线（组合根只管把事件递进来）============
  *   - world 的 fx.sound cue（task_077 预留的钩子）：
@@ -32,6 +50,14 @@
  *   （战场插旗时发出的 cue）。两条都播会叠成噪音 —— 故 task.completed 通道为准，
  *   战场的 complete cue 落在 SOUND_METRICS.duplicateSuppressMs 窗口内时被抑制；
  *   若战场的状态跳变没有对应的 task.completed（回放重演等旁路），cue 仍能兜底发声。
+ *
+ * ============ 真实音源优先 + 回退合成 ============
+ *   播放请求的顺序：① 已有解码缓存 → 直接播；② 正在加载 → **攒下这一次请求**，
+ *   加载完成后补响（不吞掉用户的第一次点击；同一音效至多补一声，不叠音）；
+ *   ③ 未加载 → 后台 fetch + decodeAudioData，成功则缓存，失败则**永久回退**到合成器
+ *   （同一个音效只试一次，缺文件不该每次触发都发一次 404）。
+ *   手势解锁后预热全部五个文件（演示现场的第一次响动不该等网络）。
+ *   回退合成时仍走同一套门（开关 / 音量 / 节流），只是音源从文件换成振荡器。
  *
  * ============ 手势激活（浏览器自动播放策略）============
  *   AudioContext 在用户首次交互前是 suspended 态，且在无手势时创建会触发浏览器的
@@ -51,6 +77,75 @@ export const SOUND_ENABLED_KEY = 'stratix.sound.enabled';
 
 /** 音量的 localStorage 键（0-100 的整数字符串）。 */
 export const SOUND_VOLUME_KEY = 'stratix.sound.volume';
+
+// ============================================================================
+// 真实音源：文件清单 + 基址解析
+// ============================================================================
+
+/** 一个真实音源文件的描述。 */
+export interface SfxFileSpec {
+  /** 文件名（相对音频根目录，如 'select.mp3'）。 */
+  readonly file: string;
+  /** 出处与许可（Attribution 摘要；详见本文件顶部的 Attribution 注释块）。 */
+  readonly attribution: string;
+}
+
+/**
+ * 五个声音 → 真实音源文件（键 = SoundId）。
+ * why 键是 SoundId 而不是 cue —— cue 是「战场动作」，SoundId 是「声音」，
+ *   一个 cue 可映射到同一声音（command / claim / focus 共用 dispatch.mp3）。
+ */
+export const SFX_FILES: Readonly<Record<SoundId, SfxFileSpec>> = Object.freeze({
+  /** 选中 ack —— fs:320181 · Freesound · CC0。 */
+  select: Object.freeze({ file: 'select.mp3', attribution: 'fs:320181 · Freesound · CC0' }),
+  /** 派活 —— fs:54405 · Freesound · CC0。 */
+  command: Object.freeze({ file: 'dispatch.mp3', attribution: 'fs:54405 · Freesound · CC0' }),
+  /** 完成 —— fs:243701 · Freesound · CC0。 */
+  complete: Object.freeze({ file: 'complete.mp3', attribution: 'fs:243701 · Freesound · CC0' }),
+  /** 报错 —— fs:242503 · Freesound · CC0。 */
+  error: Object.freeze({ file: 'error.mp3', attribution: 'fs:242503 · Freesound · CC0' }),
+  /** 里程碑 —— fs:442943 · Freesound · CC0。 */
+  milestone: Object.freeze({ file: 'milestone.mp3', attribution: 'fs:442943 · Freesound · CC0' }),
+});
+
+/** 音频目录名（相对站点根）：public/sfx/ → 站点根下的 /sfx/。 */
+export const SFX_DIR_NAME = 'sfx';
+
+/**
+ * 入口 HTML 相对站点根的目录层数（缺省 3 = src/app/main/）。
+ * 事实源是 src/app/entry-paths.ts 的 ENTRY_PATH_DEPTH —— 组合根（main-entry）会显式传进来，
+ * 这里的缺省值只是「按默认入口布局」的兜底（同 src/world/appearance/spritesheet-path.ts 的做法：
+ * 事实源在 app 层，纯函数层留一个缺省值 + 单测断言两处一致）。
+ */
+export const DEFAULT_SFX_DEPTH = 3;
+
+/** 按入口深度算出音频根的**相对** URL 片段（不带前导斜杠），如 '../../../sfx'。 */
+export function sfxRelativeBase(depth: number = DEFAULT_SFX_DEPTH): string {
+  const levels = Math.max(0, Math.floor(depth));
+  return `${'../'.repeat(levels)}${SFX_DIR_NAME}`;
+}
+
+/**
+ * 把 base URI 解析成音频根的绝对 URL（末尾无斜杠）。
+ *
+ * @param baseUri 页面基址（通常是 document.baseURI）。
+ * @param depth 入口 HTML 相对站点根的目录层数。
+ * @returns 音频根 URL，如 'http://127.0.0.1:7523/sfx' / 'file://…/dist/frontend/sfx'。
+ *
+ * why 用相对规则而不是"http 就用绝对路径、file:// 才特殊"：
+ *   两条分支要维护两个真相（还得判断协议），而相对规则在 http 与 file:// 下是同一条 ——
+ *   URL 解析会把 '../' 归一化，dev 的 '/src/app/main/xxx.html' 与 prod 的
+ *   '/dist/frontend/src/app/main/xxx.html' 都能落回各自的站点根（file:// 下绝对路径
+ *   '/sfx' 会被解析到文件系统根，正式包必须走相对基址）。
+ */
+export function sfxBaseUrl(baseUri: string, depth: number = DEFAULT_SFX_DEPTH): string {
+  return new URL(sfxRelativeBase(depth), baseUri).href.replace(/\/+$/, '');
+}
+
+/** 拼出某个音效文件的绝对 URL。 */
+export function sfxFileUrl(baseUrl: string, fileName: string): string {
+  return `${baseUrl.replace(/\/+$/, '')}/${fileName}`;
+}
 
 // ============================================================================
 // localStorage 读写（顶栏开关 / 音量滑条与本引擎共用同一份逻辑，不各抄一遍）
@@ -232,6 +327,21 @@ interface SoundGain {
   connect(destination: unknown): void;
 }
 
+/** 解码后的音频缓冲最小面（真实 AudioBuffer 经 unknown 断言接入）。 */
+export interface SoundAudioBuffer {
+  /** 缓冲时长（秒）。 */
+  readonly duration: number;
+}
+
+/** 缓冲源节点最小面（真实 AudioBufferSourceNode 经 unknown 断言接入）。 */
+export interface SoundBufferSource {
+  /** 待播缓冲（回放真实音源时挂上）。 */
+  buffer: SoundAudioBuffer | null;
+  connect(node: SoundGain): void;
+  start(when: number): void;
+  stop(when: number): void;
+}
+
 /** AudioContext 最小面（本模块只用这几个口）。 */
 export interface SoundAudioContext {
   readonly currentTime: number;
@@ -239,6 +349,10 @@ export interface SoundAudioContext {
   resume(): unknown;
   createOscillator(): SoundOscillator;
   createGain(): SoundGain;
+  /** 建缓冲源（回放真实音源）。 */
+  createBufferSource(): SoundBufferSource;
+  /** 解码音频字节（真实音源）。 */
+  decodeAudioData(data: ArrayBuffer): Promise<SoundAudioBuffer>;
   readonly destination: unknown;
 }
 
@@ -268,6 +382,20 @@ function defaultDocument(): SoundDocument | null {
   }
 }
 
+/**
+ * 缺省音频根 URL：按当前页面基址 + 默认入口深度推导。
+ * why 不是硬编码 '/sfx'：electron 正式包走 file://，绝对路径会被解析到文件系统根；
+ *   组合根（main-entry）会显式传入口深度进来，这里只是没传时的兜底。
+ */
+function defaultSfxBaseUrl(): string {
+  try {
+    const baseUri = (globalThis as { document?: { baseURI?: string } }).document?.baseURI;
+    return baseUri ? sfxBaseUrl(baseUri) : `/${SFX_DIR_NAME}`;
+  } catch {
+    return `/${SFX_DIR_NAME}`;
+  }
+}
+
 /** 解锁尝试：resume 同步抛 / 异步 reject 都吞掉（音效不冒错给调用方）。 */
 function tryUnlock(context: SoundAudioContext): void {
   try {
@@ -278,6 +406,22 @@ function tryUnlock(context: SoundAudioContext): void {
   } catch {
     // 极端环境（ctx 已被关闭等）：吞掉 —— 下一次播放还会再试。
   }
+}
+
+/**
+ * 音频文件加载器：URL → 可播放缓冲；返回 null = 取不到（调用方回退合成器）。
+ * 缺省实现 = fetch 取字节 + AudioContext.decodeAudioData 解码。
+ */
+export type SoundFileLoader = (url: string, context: SoundAudioContext) => Promise<SoundAudioBuffer | null>;
+
+/** 缺省加载器：fetch → arrayBuffer → decodeAudioData；任何一步失败都归为「取不到」。 */
+async function defaultLoadAudioFile(url: string, context: SoundAudioContext): Promise<SoundAudioBuffer | null> {
+  const fetchFn = (globalThis as { fetch?: typeof fetch }).fetch;
+  if (typeof fetchFn !== 'function') return null;
+  const response = await fetchFn(url);
+  if (!response.ok) return null;
+  const bytes = await response.arrayBuffer();
+  return await context.decodeAudioData(bytes);
 }
 
 // ============================================================================
@@ -294,6 +438,10 @@ export interface SoundEnginePorts {
   readonly storage?: () => SoundStorage | null;
   /** document 取法（手势监听用；缺省走浏览器全局）。 */
   readonly document?: () => SoundDocument | null;
+  /** 音频根 URL（如 'http://127.0.0.1:7523/sfx'）；缺省按页面基址推导。 */
+  readonly sfxBaseUrl?: string;
+  /** 音频文件加载器（缺省 = fetch + decodeAudioData；测试注入）。 */
+  readonly loadAudioFile?: SoundFileLoader;
 }
 
 /** 引擎对外形状（组合根与测试按它操作）。 */
@@ -310,6 +458,10 @@ export interface SoundEngine {
   readonly gestureSeen: boolean;
   /** 已计到的任务完成数（观察口：里程碑计数）。 */
   readonly completedCount: number;
+  /** 已解码的真实音源数量（观察口：file 回放命中数）。 */
+  readonly loadedFileCount: number;
+  /** 已确认取不到文件、回退合成器的音效数量（观察口）。 */
+  readonly fallbackCount: number;
 }
 
 /** 手势事件名（pointerdown 覆盖鼠标 / 触摸；keydown 覆盖键盘操作）。 */
@@ -324,6 +476,8 @@ export function createSoundEngine(ports: SoundEnginePorts = {}): SoundEngine {
   const now = ports.now ?? Date.now;
   const resolveStorage = ports.storage ?? defaultStorage;
   const resolveDocument = ports.document ?? defaultDocument;
+  const loadAudioFile = ports.loadAudioFile ?? defaultLoadAudioFile;
+  const baseUrl = ports.sfxBaseUrl ?? defaultSfxBaseUrl();
 
   let context: SoundAudioContext | null = null;
   let gestureSeen = false;
@@ -334,6 +488,14 @@ export function createSoundEngine(ports: SoundEnginePorts = {}): SoundEngine {
   const lastPlayedAtMs = new Map<SoundId, number>();
   /** 最近一次「完成音」的时刻（毫秒）：战场的 complete cue 在窗口内被抑制。 */
   let lastCompletionSoundAtMs = Number.NEGATIVE_INFINITY;
+  /** 已解码的真实音源（键 = SoundId）：命中即播，不碰网络。 */
+  const bufferCache = new Map<SoundId, SoundAudioBuffer>();
+  /** 已确认取不到文件的音效 → 永久回退合成器（缺文件不该每次触发都发一次 404）。 */
+  const synthFallbackIds = new Set<SoundId>();
+  /** 正在加载中的音效（并发去重：同一文件只发一次请求）。 */
+  const loadingIds = new Set<SoundId>();
+  /** 加载期间攒下的播放请求（至多一条 / 音效）：加载完成后再响 —— 不吞掉用户的第一次点击。 */
+  const pendingPlayIds = new Set<SoundId>();
 
   // ===== 手势监听（首次 pointerdown / keydown 命中即建 ctx + resume）=====
   const gestureListener = (): void => {
@@ -362,14 +524,6 @@ export function createSoundEngine(ports: SoundEnginePorts = {}): SoundEngine {
     }
   };
 
-  /** 手势命中：建 ctx（仅此之后才建）并解锁。 */
-  const activate = (): void => {
-    gestureSeen = true;
-    removeGestureListeners();
-    const ctx = ensureContext();
-    if (ctx !== null && ctx.state !== 'running') tryUnlock(ctx);
-  };
-
   /** 取（必要时建）AudioContext —— 没有手势前一律返回 null（不建 ctx，不触发浏览器告警）。 */
   const ensureContext = (): SoundAudioContext | null => {
     if (context !== null) return context;
@@ -382,7 +536,7 @@ export function createSoundEngine(ports: SoundEnginePorts = {}): SoundEngine {
     return context;
   };
 
-  /** 调度单个音符：规划（纯函数）→ 灌进 WebAudio 时间轴。 */
+  /** 调度单个音符：规划（纯函数）→ 灌进 WebAudio 时间轴（回退合成路径）。 */
   const scheduleNote = (ctx: SoundAudioContext, note: SoundNoteSpec, masterVolume: number): void => {
     const planned = planNote(note, masterVolume, ctx.currentTime);
     const envelope = ctx.createGain();
@@ -404,7 +558,88 @@ export function createSoundEngine(ports: SoundEnginePorts = {}): SoundEngine {
     envelope.connect(ctx.destination);
   };
 
-  /** 播一个声音：总开关 → 音量 → 节流 → AudioContext → 解锁门 → 调度。 */
+  /** 回退合成：按 SOUND_METRICS 的音符表铺一串振荡器（真实音源取不到时的兜底）。 */
+  const playSynth = (ctx: SoundAudioContext, id: SoundId, masterVolume: number): void => {
+    for (const note of SOUND_METRICS.sounds[id]) {
+      scheduleNote(ctx, note, masterVolume);
+    }
+  };
+
+  /** 真实音源回放：缓冲源 + 增益包络（10ms 起音、尾部 20ms 收零，避免咔哒）。 */
+  const playBuffer = (ctx: SoundAudioContext, buffer: SoundAudioBuffer, masterVolume: number): void => {
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    const gain = ctx.createGain();
+    const startAt = ctx.currentTime;
+    const duration = Math.max(0.01, buffer.duration);
+    const stopAt = startAt + duration;
+    gain.gain.setValueAtTime(0, startAt);
+    gain.gain.linearRampToValueAtTime(masterVolume, startAt + 0.01);
+    gain.gain.setValueAtTime(masterVolume, stopAt);
+    gain.gain.linearRampToValueAtTime(0, stopAt + 0.02);
+    source.connect(gain);
+    gain.connect(ctx.destination);
+    source.start(startAt);
+    source.stop(stopAt + 0.03);
+  };
+
+  /** 现读一次音量（异步加载完成后重读 —— 加载期间用户可能改了音量）。 */
+  const currentMasterVolume = (): number => {
+    const volume = readSoundVolume(resolveStorage());
+    return volume <= 0 ? 0 : volume / SOUND_METRICS.volumeMax;
+  };
+
+  /** 加载一个音效文件：成功 → 缓存；失败 → 永久回退合成器。 */
+  const startLoad = (id: SoundId, ctx: SoundAudioContext): void => {
+    loadingIds.add(id);
+    const url = sfxFileUrl(baseUrl, SFX_FILES[id].file);
+    const onSettled = (buffer: SoundAudioBuffer | null): void => {
+      loadingIds.delete(id);
+      if (disposed) return;
+      if (buffer) {
+        bufferCache.set(id, buffer);
+      } else {
+        // 取不到文件 → 标记回退合成（只试一次，缺文件不该每次触发都发一次 404）。
+        synthFallbackIds.add(id);
+      }
+      // 加载期间攒下的播放请求在这里兑现（至多一声）。
+      if (!pendingPlayIds.delete(id)) return;
+      const masterVolume = currentMasterVolume();
+      if (masterVolume <= 0 || !readSoundEnabled(resolveStorage())) return;
+      const cached = bufferCache.get(id);
+      if (cached) {
+        playBuffer(ctx, cached, masterVolume);
+      } else {
+        playSynth(ctx, id, masterVolume);
+      }
+    };
+    try {
+      loadAudioFile(url, ctx).then(onSettled, () => onSettled(null));
+    } catch {
+      onSettled(null);
+    }
+  };
+
+  /** 预热全部真实音源（手势解锁后触发）：演示现场第一次响动不该等网络。 */
+  const preloadAll = (ctx: SoundAudioContext): void => {
+    if (!readSoundEnabled(resolveStorage())) return;
+    for (const id of Object.keys(SFX_FILES) as SoundId[]) {
+      if (bufferCache.has(id) || synthFallbackIds.has(id) || loadingIds.has(id)) continue;
+      startLoad(id, ctx);
+    }
+  };
+
+  /** 手势命中：建 ctx（仅此之后才建）并解锁。 */
+  const activate = (): void => {
+    gestureSeen = true;
+    removeGestureListeners();
+    const ctx = ensureContext();
+    if (ctx === null) return;
+    if (ctx.state !== 'running') tryUnlock(ctx);
+    preloadAll(ctx);
+  };
+
+  /** 播一个声音：总开关 → 音量 → 节流 → AudioContext → 解锁门 → 音源（文件 / 回退合成）。 */
   const play = (id: SoundId): void => {
     // 门零：已释放（页面销毁）→ 不发声。
     if (disposed) return;
@@ -429,9 +664,19 @@ export function createSoundEngine(ports: SoundEnginePorts = {}): SoundEngine {
     // 四门全过才算「真正发声」：此刻才记节流时间戳。
     lastPlayedAtMs.set(id, atMs);
     const masterVolume = volume / SOUND_METRICS.volumeMax;
-    for (const note of SOUND_METRICS.sounds[id]) {
-      scheduleNote(ctx, note, masterVolume);
+    // 音源裁决：已解码 → 直接播；正在加载 → 攒下请求（加载完成再响，不吞掉这次点击）；
+    //   已确认取不到 → 回退合成器。
+    const buffered = bufferCache.get(id);
+    if (buffered) {
+      playBuffer(ctx, buffered, masterVolume);
+      return;
     }
+    if (synthFallbackIds.has(id)) {
+      playSynth(ctx, id, masterVolume);
+      return;
+    }
+    pendingPlayIds.add(id);
+    if (!loadingIds.has(id)) startLoad(id, ctx);
   };
 
   /** 完成音（里程碑时用复合音）：同时记下时刻，供战场的 complete cue 抑制用。 */
@@ -469,6 +714,10 @@ export function createSoundEngine(ports: SoundEnginePorts = {}): SoundEngine {
       removeGestureListeners();
       context = null;
       lastPlayedAtMs.clear();
+      bufferCache.clear();
+      synthFallbackIds.clear();
+      loadingIds.clear();
+      pendingPlayIds.clear();
     },
     get contextCreated() {
       return context !== null;
@@ -478,6 +727,12 @@ export function createSoundEngine(ports: SoundEnginePorts = {}): SoundEngine {
     },
     get completedCount() {
       return completedCount;
+    },
+    get loadedFileCount() {
+      return bufferCache.size;
+    },
+    get fallbackCount() {
+      return synthFallbackIds.size;
     },
   };
 }

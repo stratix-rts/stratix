@@ -1,6 +1,7 @@
 import { defineConfig, type Plugin } from 'vite';
 import vue from '@vitejs/plugin-vue';
-import { resolve, relative, isAbsolute, sep } from 'path';
+import { resolve, relative, isAbsolute, sep, basename } from 'path';
+import { existsSync, readFileSync, readdirSync, statSync, createReadStream } from 'fs';
 import { NEW_ENTRY_HTML } from './src/app/entry-paths';
 
 const ANALYZE = process.env.ANALYZE === 'true';
@@ -53,8 +54,54 @@ function hmrFullReloadGuard(root: string): Plugin {
   };
 }
 
+/**
+ * 真实音源供给（task_087）：public/sfx/ 下的 mp3 要能在 dev server 与构建产物里
+ * 以**站点根下的 /sfx/*** 取到（渲染层按 '../../../sfx' 相对基址拼 URL，
+ * 见 src/hud/sound-engine.ts 的 sfxBaseUrl）。
+ *
+ * why 不用 vite 的 publicDir —— 它已被 'assets' 占用：LPC 素材（1.3G，真源
+ *   assets/spritesheets/）靠 publicDir 挂在站点根，改掉会打断素材服务
+ *   （见 src/world/appearance/spritesheet-path.ts 的说明）。
+ * why 不走「public/ → assets/ 拷贝脚本」的路子（rts-textures 的做法）——
+ *   音效是演示的听觉主线索：音效取不到会**静默**回退到合成器，直播现场几乎听不出
+ *   差别 —— 那等于白做。少一次 setup，就少一类「现场没声」的排查。
+ *
+ * how dev 用中间件直接读盘（配置在 vite 内部中间件之前，命中即返回）；
+ *   build 用 emitFile 把文件打进产物根（= 站点根，dev 与 prod 的相对规则一致）。
+ */
+function sfxAssetsPlugin(root: string): Plugin {
+  const sfxDir = resolve(root, 'public/sfx');
+  const sfxDirPrefix = sfxDir + sep;
+  return {
+    name: 'stratix:sfx-assets',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const url = (req.url ?? '').split('?')[0];
+        if (!url.startsWith('/sfx/')) return next();
+        // basename 去掉任何目录段 —— 只放行 sfx 目录下的直系文件（防目录穿越）。
+        const file = resolve(sfxDir, basename(url));
+        if (!file.startsWith(sfxDirPrefix) || !existsSync(file)) return next();
+        res.setHeader('Content-Type', 'audio/mpeg');
+        res.setHeader('Content-Length', statSync(file).size);
+        createReadStream(file).pipe(res);
+      });
+    },
+    generateBundle() {
+      if (!existsSync(sfxDir)) return;
+      for (const name of readdirSync(sfxDir)) {
+        if (!name.endsWith('.mp3')) continue;
+        this.emitFile({
+          type: 'asset',
+          fileName: `sfx/${name}`,
+          source: readFileSync(resolve(sfxDir, name)),
+        });
+      }
+    },
+  };
+}
+
 export default defineConfig(async () => {
-  const plugins = [vue(), hmrFullReloadGuard(__dirname)];
+  const plugins = [vue(), hmrFullReloadGuard(__dirname), sfxAssetsPlugin(__dirname)];
 
   if (ANALYZE) {
     // why 用变量形式的 specifier：rollup-plugin-visualizer 是可选的按需依赖（ANALYZE=true 才需要），

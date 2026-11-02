@@ -1,10 +1,11 @@
 /**
- * 单元测试：演示声音包（hud/sound-engine.ts，task_083）。
+ * 单元测试：演示声音包（hud/sound-engine.ts，task_083 建 / task_087 升级）。
  * 覆盖：① 五音的合成参数（频率 / 时长 / 波形 —— 对着 DEMO-PLAN §10 逐条断言）；
  *      ② 包络形状（起音 → 峰值 → 收零）与峰值响度（= 相对响度 × 音量）；
  *      ③ 事件接线（世界 cue / task.completed / task.failed）与里程碑计数；
  *      ④ 总开关、音量 0-100、节流；
- *      ⑤ 手势激活（首次 pointerdown 建 ctx + resume，且控制台零报错）。
+ *      ⑤ 手势激活（首次 pointerdown 建 ctx + resume，且控制台零报错）；
+ *      ⑥ **真实音源优先**（task_087）：文件回放命中 → 不合成；文件缺失 → 回退合成器。
  * jsdom 没有 AudioContext —— 用注入的 mock ctx（结构最小面 SoundAudioContext）驱动。
  * @jest-environment jsdom
  */
@@ -14,20 +15,25 @@ import type { WorldEvent } from '../../core/types';
 import {
   SOUND_ENABLED_KEY,
   SOUND_VOLUME_KEY,
+  SFX_FILES,
   createSoundEngine,
   planNote,
   readSoundEnabled,
   readSoundVolume,
+  sfxBaseUrl,
+  sfxFileUrl,
+  sfxRelativeBase,
   soundIdForCue,
   soundIdForEvent,
   writeSoundEnabled,
   writeSoundVolume,
+  type SoundAudioBuffer,
   type SoundAudioContext,
   type SoundStorage,
 } from '../sound-engine';
 
 // ============================================================================
-// mock AudioContext：录制每个振荡器的调度参数与包络调用
+// mock AudioContext：录制每个振荡器的调度参数与包络调用 + 每个缓冲源的回放
 // ============================================================================
 
 interface EnvelopeCall {
@@ -44,14 +50,25 @@ interface RecordedNote {
   readonly envelope: readonly EnvelopeCall[];
 }
 
+interface RecordedBuffer {
+  readonly duration: number;
+  readonly startAt: number;
+  readonly stopAt: number;
+  readonly peakGain: number;
+}
+
 interface MockContext {
   readonly ctx: SoundAudioContext;
+  /** 合成路径（振荡器）录到的音符。 */
   readonly played: RecordedNote[];
+  /** 真实音源路径（缓冲源）录到的回放。 */
+  readonly bufferPlayed: RecordedBuffer[];
   readonly resumeCalls: () => number;
 }
 
 function createMockContext(options: { state?: string; currentTime?: number; resumeChangesState?: boolean } = {}): MockContext {
   const played: RecordedNote[] = [];
+  const bufferPlayed: RecordedBuffer[] = [];
   let resumeCalls = 0;
   // 真实浏览器里新建的 AudioContext 一律是 suspended（等用户手势解锁）—— mock 照此建模。
   let state = options.state ?? 'suspended';
@@ -98,17 +115,43 @@ function createMockContext(options: { state?: string; currentTime?: number; resu
           setValueAtTime: (value: number, at: number) => {
             node.calls.push({ kind: 'set', value, at });
           },
-          linearRampToValueAtTime: (value: number, at: number) => {
-            node.calls.push({ kind: 'ramp', value, at });
+          linearRampToValueAtTime: (value: number, endTime: number) => {
+            node.calls.push({ kind: 'ramp', value, at: endTime });
           },
         },
         connect: (_destination: unknown) => undefined,
       };
       return node;
     },
+    createBufferSource: () => {
+      const source = {
+        buffer: null as SoundAudioBuffer | null,
+        gain: null as EnvelopeCall[] | null,
+        startAt: -1,
+        stopAt: -1,
+        connect: (node: unknown) => {
+          source.gain = (node as { calls: EnvelopeCall[] }).calls;
+        },
+        start: (when: number) => {
+          source.startAt = when;
+        },
+        stop: (when: number) => {
+          source.stopAt = when;
+          const peak = source.gain?.find((c) => c.kind === 'ramp');
+          bufferPlayed.push({
+            duration: source.buffer?.duration ?? 0,
+            startAt: source.startAt,
+            stopAt: source.stopAt,
+            peakGain: peak?.value ?? 0,
+          });
+        },
+      };
+      return source;
+    },
+    decodeAudioData: (_data: ArrayBuffer) => Promise.resolve({ duration: 0.5 } as SoundAudioBuffer),
     destination: { __mockDestination: true },
   };
-  return { ctx, played, resumeCalls: () => resumeCalls };
+  return { ctx, played, bufferPlayed, resumeCalls: () => resumeCalls };
 }
 
 /** 内存 localStorage（缺省 = 空 → 总开关开、音量取缺省）。 */
@@ -123,18 +166,27 @@ function createStorage(initial: Record<string, string> = {}): SoundStorage & { d
   };
 }
 
-/** 造一个引擎：mock ctx + 内存存储 + 可控时钟。 */
+/**
+ * 造一个引擎：mock ctx + 内存存储 + 可控时钟。
+ *
+ * `files` 决定真实音源是否到位（task_087 的两条路径）：
+ *   - 'file'：加载成功 → 走缓冲源回放（真实音源）；
+ *   - 'missing'：加载不到 → 永久回退合成器（振荡器）。
+ */
 function makeEngine(options: {
   storage?: SoundStorage;
   now?: () => number;
   state?: string;
   resumeChangesState?: boolean;
+  files?: 'file' | 'missing';
 } = {}) {
   const mock = createMockContext({
     state: options.state,
     resumeChangesState: options.resumeChangesState,
   });
   const storage = options.storage ?? createStorage();
+  const files = options.files ?? 'file';
+  const requestedUrls: string[] = [];
   let created = 0;
   let clock = 1000;
   const engine = createSoundEngine({
@@ -144,10 +196,16 @@ function makeEngine(options: {
     },
     now: options.now ?? (() => clock),
     storage: () => storage,
+    sfxBaseUrl: 'http://127.0.0.1:7523/sfx',
+    loadAudioFile: (url: string) => {
+      requestedUrls.push(url);
+      return Promise.resolve(files === 'file' ? ({ duration: 0.5 } as SoundAudioBuffer) : null);
+    },
   });
   return {
     engine,
     mock,
+    requestedUrls,
     created: () => created,
     advance: (ms: number) => {
       clock += ms;
@@ -158,6 +216,22 @@ function makeEngine(options: {
 /** 触发一次用户手势（引擎监听 pointerdown → 建 ctx + resume）。 */
 function gesture(): void {
   document.dispatchEvent(new Event('pointerdown'));
+}
+
+/** 冲刷 Promise 链（加载 → 回放）+ 一次宏任务。 */
+async function flush(): Promise<void> {
+  await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await Promise.resolve();
+}
+
+/** 手动兑现的 promise（测「加载期间触发不丢」）。 */
+function createDeferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
 }
 
 beforeEach(() => {
@@ -257,28 +331,31 @@ describe('声音包：事件接线', () => {
     expect(soundIdForEvent({ type: 'exp.gained' } as unknown as WorldEvent)).toBeNull();
   });
 
-  test('选中 cue 真的发声（880Hz）', () => {
-    const { engine, mock } = makeEngine();
+  test('选中 cue 真的发声（回退合成时是 880Hz）', async () => {
+    const { engine, mock } = makeEngine({ files: 'missing' });
     gesture();
     engine.handleEvent({ type: 'fx.sound', cue: 'select' } as WorldEvent);
+    await flush();
     expect(mock.played).toHaveLength(1);
     expect(mock.played[0].frequency).toBe(880);
     engine.dispose();
   });
 
-  test('派活 cue 真的发声（240Hz 方波）', () => {
-    const { engine, mock } = makeEngine();
+  test('派活 cue 真的发声（回退合成时是 240Hz 方波）', async () => {
+    const { engine, mock } = makeEngine({ files: 'missing' });
     gesture();
     engine.handleEvent({ type: 'fx.sound', cue: 'command' } as WorldEvent);
+    await flush();
     expect(mock.played[0].frequency).toBe(240);
     expect(mock.played[0].type).toBe('square');
     engine.dispose();
   });
 
-  test('task.failed 真的发声（180Hz 低鸣）', () => {
-    const { engine, mock } = makeEngine();
+  test('task.failed 真的发声（回退合成时是 180Hz 低鸣）', async () => {
+    const { engine, mock } = makeEngine({ files: 'missing' });
     gesture();
     engine.handleEvent({ type: 'task.failed', task: { id: 't1' } } as unknown as WorldEvent);
+    await flush();
     expect(mock.played.length).toBeGreaterThanOrEqual(1);
     expect(mock.played[0].frequency).toBe(180);
     engine.dispose();
@@ -286,11 +363,12 @@ describe('声音包：事件接线', () => {
 });
 
 describe('声音包：完成与里程碑', () => {
-  test('前 9 次完成走完成音，第 10 次换成里程碑复合音', () => {
-    const { engine, mock, advance } = makeEngine();
+  test('前 9 次完成走完成音，第 10 次换成里程碑复合音', async () => {
+    const { engine, mock, advance } = makeEngine({ files: 'missing' });
     gesture();
     for (let i = 0; i < 9; i += 1) {
       engine.handleEvent({ type: 'task.completed', task: { id: `t${i}` } } as unknown as WorldEvent);
+      await flush();
       advance(SOUND_METRICS.throttleMs + 1); // 越过节流窗口
     }
     // 完成音 = C5 → E5 两个振荡器。
@@ -299,6 +377,7 @@ describe('声音包：完成与里程碑', () => {
     expect(engine.completedCount).toBe(9);
 
     engine.handleEvent({ type: 'task.completed', task: { id: 't9' } } as unknown as WorldEvent);
+    await flush();
     expect(engine.completedCount).toBe(10);
     // 里程碑 = 完成音 + 琶音三音 → 五个振荡器。
     const last = mock.played.slice(-5);
@@ -306,32 +385,37 @@ describe('声音包：完成与里程碑', () => {
     engine.dispose();
   });
 
-  test('同一动作只响一声：task.completed 之后紧接的战场 complete cue 被抑制', () => {
-    const { engine, mock } = makeEngine();
+  test('同一动作只响一声：task.completed 之后紧接的战场 complete cue 被抑制', async () => {
+    const { engine, mock } = makeEngine({ files: 'missing' });
     gesture();
     engine.handleEvent({ type: 'task.completed', task: { id: 't1' } } as unknown as WorldEvent);
+    await flush();
     expect(mock.played).toHaveLength(2); // 完成音 C5 → E5
     engine.handleEvent({ type: 'fx.sound', cue: 'complete' } as WorldEvent);
+    await flush();
     expect(mock.played).toHaveLength(2); // 没有第二声
     engine.dispose();
   });
 
-  test('没有对应 task.completed 时，战场的 complete cue 兜底发声', () => {
-    const { engine, mock } = makeEngine();
+  test('没有对应 task.completed 时，战场的 complete cue 兜底发声', async () => {
+    const { engine, mock } = makeEngine({ files: 'missing' });
     gesture();
     engine.handleEvent({ type: 'fx.sound', cue: 'complete' } as WorldEvent);
+    await flush();
     expect(mock.played).toHaveLength(2);
     engine.dispose();
   });
 });
 
 describe('声音包：总开关 / 音量 / 节流', () => {
-  test('总开关关掉后一声不响', () => {
+  test('总开关关掉后一声不响', async () => {
     const storage = createStorage({ [SOUND_ENABLED_KEY]: '0' });
     const { engine, mock } = makeEngine({ storage });
     gesture();
     engine.handleEvent({ type: 'fx.sound', cue: 'select' } as WorldEvent);
+    await flush();
     expect(mock.played).toHaveLength(0);
+    expect(mock.bufferPlayed).toHaveLength(0);
     engine.dispose();
   });
 
@@ -339,16 +423,18 @@ describe('声音包：总开关 / 音量 / 节流', () => {
     expect(readSoundEnabled(createStorage())).toBe(true);
   });
 
-  test('音量 0 → 不排音符；音量 100 → 峰值 = 相对响度', () => {
-    const muted = makeEngine({ storage: createStorage({ [SOUND_VOLUME_KEY]: '0' }) });
+  test('音量 0 → 不排音符；音量 100 → 峰值 = 相对响度', async () => {
+    const muted = makeEngine({ storage: createStorage({ [SOUND_VOLUME_KEY]: '0' }), files: 'missing' });
     gesture();
     muted.engine.handleEvent({ type: 'fx.sound', cue: 'select' } as WorldEvent);
+    await flush();
     expect(muted.mock.played).toHaveLength(0);
     muted.engine.dispose();
 
-    const loud = makeEngine({ storage: createStorage({ [SOUND_VOLUME_KEY]: '100' }) });
+    const loud = makeEngine({ storage: createStorage({ [SOUND_VOLUME_KEY]: '100' }), files: 'missing' });
     gesture();
     loud.engine.handleEvent({ type: 'fx.sound', cue: 'select' } as WorldEvent);
+    await flush();
     const peak = loud.mock.played[0].envelope.find((c) => c.kind === 'ramp');
     expect(peak?.value).toBeCloseTo(SOUND_METRICS.sounds.select[0].gain, 6);
     loud.engine.dispose();
@@ -372,18 +458,21 @@ describe('声音包：总开关 / 音量 / 节流', () => {
     expect(readSoundEnabled(storage)).toBe(true);
   });
 
-  test('同一声音在节流窗口内不重播', () => {
+  test('同一声音在节流窗口内不重播', async () => {
     let clock = 1000;
     const { engine, mock } = makeEngine({ now: () => clock });
     gesture();
     engine.handleEvent({ type: 'fx.sound', cue: 'select' } as WorldEvent);
-    expect(mock.played).toHaveLength(1);
+    await flush();
+    expect(mock.bufferPlayed).toHaveLength(1);
     clock += SOUND_METRICS.throttleMs - 10;
     engine.handleEvent({ type: 'fx.sound', cue: 'select' } as WorldEvent);
-    expect(mock.played).toHaveLength(1); // 窗口内：被节流
+    await flush();
+    expect(mock.bufferPlayed).toHaveLength(1); // 窗口内：被节流
     clock += 20;
     engine.handleEvent({ type: 'fx.sound', cue: 'select' } as WorldEvent);
-    expect(mock.played).toHaveLength(2); // 窗口外：再响一声
+    await flush();
+    expect(mock.bufferPlayed).toHaveLength(2); // 窗口外：再响一声
     engine.dispose();
   });
 });
@@ -398,7 +487,7 @@ describe('声音包：手势激活', () => {
     engine.dispose();
   });
 
-  test('首次点击建 ctx 并解锁，控制台零报错', () => {
+  test('首次点击建 ctx 并解锁，控制台零报错', async () => {
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     const { engine, mock, created } = makeEngine();
     gesture();
@@ -407,29 +496,138 @@ describe('声音包：手势激活', () => {
     expect(engine.gestureSeen).toBe(true);
     // 解锁后立刻能发声。
     engine.handleEvent({ type: 'fx.sound', cue: 'select' } as WorldEvent);
-    expect(mock.played).toHaveLength(1);
+    await flush();
+    expect(mock.bufferPlayed).toHaveLength(1);
     expect(errorSpy).not.toHaveBeenCalled();
     errorSpy.mockRestore();
     engine.dispose();
   });
 
-  test('ctx 处于 suspended 时静默丢弃（不排队、不报错）', () => {
+  test('ctx 处于 suspended 时静默丢弃（不排队、不报错）', async () => {
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     // resume 不改状态：模拟「点了但浏览器没解锁」的极端情形。
     const { engine, mock } = makeEngine({ state: 'suspended', resumeChangesState: false });
     gesture();
     engine.handleEvent({ type: 'fx.sound', cue: 'select' } as WorldEvent);
+    await flush();
     expect(mock.played).toHaveLength(0);
+    expect(mock.bufferPlayed).toHaveLength(0);
     expect(errorSpy).not.toHaveBeenCalled();
     errorSpy.mockRestore();
     engine.dispose();
   });
 
-  test('dispose 之后不再发声（资源释放）', () => {
+  test('dispose 之后不再发声（资源释放）', async () => {
     const { engine, mock } = makeEngine();
     gesture();
     engine.dispose();
     engine.handleEvent({ type: 'fx.sound', cue: 'select' } as WorldEvent);
+    await flush();
     expect(mock.played).toHaveLength(0);
+    expect(mock.bufferPlayed).toHaveLength(0);
+  });
+});
+
+describe('声音包：真实音源优先（task_087）', () => {
+  test('五个声音各自对应一个语义文件名的真实音源', () => {
+    expect(SFX_FILES.select.file).toBe('select.mp3');
+    expect(SFX_FILES.command.file).toBe('dispatch.mp3');
+    expect(SFX_FILES.complete.file).toBe('complete.mp3');
+    expect(SFX_FILES.error.file).toBe('error.mp3');
+    expect(SFX_FILES.milestone.file).toBe('milestone.mp3');
+    // 每个文件都带出处与许可（Attribution）。
+    for (const spec of Object.values(SFX_FILES)) {
+      expect(spec.attribution).toContain('Freesound');
+      expect(spec.attribution).toContain('CC0');
+    }
+  });
+
+  test('音频根 URL 按入口深度算相对基址（http 与 file:// 同一条规则）', () => {
+    expect(sfxRelativeBase(3)).toBe('../../../sfx');
+    expect(sfxBaseUrl('http://127.0.0.1:7523/src/app/main/index.html', 3)).toBe(
+      'http://127.0.0.1:7523/sfx',
+    );
+    // electron 正式包走 file://：相对规则落回 dist/frontend 下的 sfx/。
+    expect(sfxBaseUrl('file:///app/dist/frontend/src/app/main/index.html', 3)).toBe(
+      'file:///app/dist/frontend/sfx',
+    );
+    expect(sfxFileUrl('http://127.0.0.1:7523/sfx', 'select.mp3')).toBe(
+      'http://127.0.0.1:7523/sfx/select.mp3',
+    );
+  });
+
+  test('文件到位 → 走缓冲源回放（不合成）', async () => {
+    const { engine, mock, requestedUrls } = makeEngine({ files: 'file' });
+    gesture();
+    engine.handleEvent({ type: 'fx.sound', cue: 'select' } as WorldEvent);
+    await flush();
+    expect(mock.bufferPlayed).toHaveLength(1);
+    expect(mock.played).toHaveLength(0); // 没有振荡器 —— 真实音源
+    expect(requestedUrls).toContain('http://127.0.0.1:7523/sfx/select.mp3');
+    expect(engine.loadedFileCount).toBeGreaterThan(0);
+    expect(engine.fallbackCount).toBe(0);
+    engine.dispose();
+  });
+
+  test('文件缺失 → 回退合成器（且只试一次，不反复 404）', async () => {
+    const { engine, mock, requestedUrls } = makeEngine({ files: 'missing' });
+    gesture();
+    engine.handleEvent({ type: 'fx.sound', cue: 'select' } as WorldEvent);
+    await flush();
+    expect(mock.bufferPlayed).toHaveLength(0);
+    expect(mock.played.length).toBeGreaterThanOrEqual(1); // 回退合成
+    expect(engine.fallbackCount).toBeGreaterThanOrEqual(1);
+    const selectRequests = requestedUrls.filter((u) => u.endsWith('select.mp3'));
+    expect(selectRequests).toHaveLength(1); // 只试一次
+    engine.dispose();
+  });
+
+  test('文件缺失时控制台零报错（静默回退）', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { engine } = makeEngine({ files: 'missing' });
+    gesture();
+    engine.handleEvent({ type: 'fx.sound', cue: 'select' } as WorldEvent);
+    await flush();
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+    engine.dispose();
+  });
+
+  test('加载失败（抛错）也回退合成器', async () => {
+    const mock = createMockContext();
+    const storage = createStorage();
+    const engine = createSoundEngine({
+      createAudioContext: () => mock.ctx,
+      storage: () => storage,
+      sfxBaseUrl: 'http://127.0.0.1:7523/sfx',
+      loadAudioFile: () => Promise.reject(new Error('network down')),
+    });
+    gesture();
+    engine.handleEvent({ type: 'fx.sound', cue: 'select' } as WorldEvent);
+    await flush();
+    expect(mock.bufferPlayed).toHaveLength(0);
+    expect(mock.played.length).toBeGreaterThanOrEqual(1);
+    expect(engine.fallbackCount).toBeGreaterThan(0);
+    engine.dispose();
+  });
+
+  test('加载期间的触发不丢：加载完成后补响一声', async () => {
+    const mock = createMockContext();
+    const storage = createStorage();
+    const deferred = createDeferred<SoundAudioBuffer | null>();
+    const engine = createSoundEngine({
+      createAudioContext: () => mock.ctx,
+      storage: () => storage,
+      sfxBaseUrl: 'http://127.0.0.1:7523/sfx',
+      loadAudioFile: () => deferred.promise,
+    });
+    gesture();
+    engine.handleEvent({ type: 'fx.sound', cue: 'select' } as WorldEvent);
+    await flush();
+    expect(mock.bufferPlayed).toHaveLength(0); // 还没加载完
+    deferred.resolve({ duration: 0.5 } as SoundAudioBuffer);
+    await flush();
+    expect(mock.bufferPlayed).toHaveLength(1); // 补响一声
+    engine.dispose();
   });
 });

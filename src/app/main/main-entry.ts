@@ -98,11 +98,13 @@ import { mountReplayClock } from '../../hud/components/replay/replay-clock';
 import { createReplayController } from '../../hud/components/replay/replay-controller';
 import { createMainScreen } from '../../hud/screens/main-screen';
 import { levelUpToastText } from '../../hud/screens/appearance-unlock-catalog';
-// 演示声音包（@since v3.3，task_083）：五音（选中 ack / 派活哒 / 完成 / 报错低鸣 / 里程碑琶音）
-//   由 WebAudio **代码合成** —— 零音频文件（DEMO-PLAN §10 的硬约束）。
+// 演示声音包（@since v3.3，task_083 建 / task_087 升级）：五音（选中 ack / 派活哒 / 完成 /
+//   报错低鸣 / 里程碑琶音）优先回放 **public/sfx/ 下的真实音源**（Freesound CC0），
+//   文件缺失 / 加载失败时回退到 WebAudio 代码合成（保证任何环境都有声）。
 //   合成参数在唯一事实源 core/theme/visual-spec.ts 的 SOUND_METRICS；引擎在 hud 侧，
 //   组合根只订阅总线接线（hud 组件零总线依赖 —— 与 toast-host / sfx-service 同一口径）。
-import { createSoundEngine } from '../../hud/sound-engine';
+//   音频根 URL 由组合根算（入口深度的事实源在 app 层：entry-paths 的 ENTRY_PATH_DEPTH）。
+import { createSoundEngine, sfxBaseUrl } from '../../hud/sound-engine';
 import { createThemeController } from '../../hud/theme/theme-controller';
 import { demoMode } from '../../hud/theme/demo-mode';
 import defaultCss from '../../hud/theme/tokens-default.css?inline';
@@ -118,6 +120,8 @@ import { PartRegistry } from '../../world/appearance/part-registry';
 import { UNIT_SPRITE_SOURCE_KEY } from '../../world/objects/unit-sprite-source';
 import { UNIT_POSITION_SEED_KEY } from '../../world/objects/unit-registry';
 import { BattlefieldScene } from '../../world/scenes/BattlefieldScene';
+// 入口 HTML 相对站点根的目录层数（音频基址等相对 URL 的事实源，见 app/entry-paths.ts）。
+import { ENTRY_PATH_DEPTH } from '../entry-paths';
 // 当日回放读取口（@since v3.3，task_082）：读 service 的只读 REST（当天 task_run 事件流）。
 import { createDayReplayPort } from '../services/day-replay';
 import {
@@ -765,14 +769,17 @@ async function boot(): Promise<void> {
     if (key !== null) sfx.play(key);
   });
 
-  // ===== 演示声音包（@since v3.3，task_083）=====
-  // 五音（选中 ack / 派活哒 / 完成 C5→E5 / 报错低鸣 / 里程碑琶音）由 WebAudio 代码合成 ——
-  //   零音频文件（DEMO-PLAN §0 的硬约束）。合成参数在唯一事实源 SOUND_METRICS。
+  // ===== 演示声音包（@since v3.3，task_083 建 / task_087 升级）=====
+  // 五音（选中 ack / 派活哒 / 完成 / 报错低鸣 / 里程碑琶音）优先回放 public/sfx/ 的真实音源，
+  //   取不到则回退 WebAudio 合成（DEMO-PLAN §10）。合成参数在唯一事实源 SOUND_METRICS。
   // 事件来源三条：world 的 fx.sound cue（task_077 预留的钩子：选中 / 派活）、
   //   core 的 task.completed（完成音 + 每满 N 个换里程碑复合音，计数口径与 HUD 里程碑大字同源）、
   //   core 的 task.failed（报错低鸣）。
   // 组合根接线：引擎只暴露 handleEvent（hud 侧零总线依赖），订阅与释放都归这里。
-  const soundEngine = createSoundEngine();
+  // 音频根 URL：相对入口深度算出（file:// 正式包下绝对路径 '/sfx' 会落到文件系统根）。
+  const soundEngine = createSoundEngine({
+    sfxBaseUrl: sfxBaseUrl(document.baseURI, ENTRY_PATH_DEPTH),
+  });
   const stopSoundFeed = onWorldEvent((event) => {
     soundEngine.handleEvent(event);
   });
