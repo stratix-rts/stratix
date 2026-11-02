@@ -1,14 +1,17 @@
 /**
- * 文件职责：战场上单个 Agent 单位的最简渲染对象 —— 位置（世界层自治）+ 业务态镜像。
+ * 文件职责：战场上单个 Agent 单位的最简渲染对象 —— 位置（世界层自治）+ 业务态镜像 + 动画控制器。
  *   方案来源：docs/REFACTOR_PLAN_V3.md §2「world/objects 单位」+ §1 组织模型（编组 = 多选集合，D5）。
+ *   动画八态（@since v3.3，task_075）：单位各挂**一个** AnimationController（相位 / 瞬态起拍），
+ *   控制器是纯逻辑（appearance/unit-animation.ts），画出来是 objects/unit-layer.ts 的事。
  * 输入：core 广播的 UnitView（只读业务态）+ 世界坐标。
- * 输出：只读单位属性 + 位置读写 + 与最新 UnitView 的对账结果。
+ * 输出：只读单位属性 + 位置读写 + 与最新 UnitView 的对账结果 + 本单位的动画控制器。
  * 禁止事项：
  *   1. import phaser —— 本文件是纯数据对象，画出来是 objects/unit-layer.ts 的事；
  *   2. import hud / vue / legacy(stratix-rts) —— 铁律：world 只认识 core/types；
  *   3. 让 sync() 改动位置 —— core 的 UnitView 根本不含坐标（见 core/types.ts 的说明），
  *      位置真相只在本文件，一旦被业务态同步覆盖，单位就会每来一次状态广播就瞬移回出生点；
- *   4. 塞业务规则（能否被指派任务等）—— 那是 core/unit 的状态机职责。
+ *   4. 塞业务规则（能否被指派任务等）—— 那是 core/unit 的状态机职责；
+ *   5. 在这里算动画 —— 本文件只**持有**控制器，姿态计算在 appearance/unit-animation.ts。
  */
 
 import {
@@ -19,6 +22,7 @@ import {
   type UnitStatus,
   type UnitView,
 } from '../../core/types';
+import { UnitAnimationController } from '../appearance/unit-animation';
 
 /** 点击 / 框选共用的命中半径（世界坐标像素）。 */
 export const UNIT_HIT_RADIUS = 20;
@@ -30,6 +34,13 @@ export const UNIT_HIT_RADIUS = 20;
 export class UnitObject {
   readonly id: string;
 
+  /**
+   * 本单位的动画控制器（@since v3.3，task_075）：**每单位一个**。
+   * why 挂在单位上而不是全局：点击涟漪 / 完成跳跃这类瞬态演出是「谁触发的」，
+   *   放进全局单例就分不清是谁点的；而相位又是按单位 id 派生的 —— 两者都要求控制器与单位同生共死。
+   */
+  readonly animation: UnitAnimationController;
+
   private x: number;
   private y: number;
   private view: UnitView;
@@ -39,6 +50,7 @@ export class UnitObject {
     this.x = position.x;
     this.y = position.y;
     this.view = view;
+    this.animation = new UnitAnimationController(view.id);
   }
 
   get position(): Point {

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stratix 动画八态 dev（task_075）</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #0d1126;
+        color: #cbd5e1;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+      }
+      #battlefield {
+        position: absolute;
+        inset: 0;
+      }
+      #controls {
+        position: absolute;
+        left: 12px;
+        top: 12px;
+        right: 12px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+        padding: 8px 10px;
+        background: rgba(13, 17, 38, 0.86);
+        border: 1px solid #1a2140;
+        line-height: 1.6;
+      }
+      #controls .title {
+        color: #8a6bff;
+        margin-right: 6px;
+      }
+      #controls button {
+        background: #16203c;
+        color: #cbd5e1;
+        border: 1px solid #2b3a63;
+        border-radius: 4px;
+        padding: 3px 10px;
+        font: inherit;
+        cursor: pointer;
+      }
+      #controls button:hover {
+        background: #22305a;
+        border-color: #4fc3f7;
+      }
+      #status {
+        margin-left: 8px;
+        color: #f0a020;
+      }
+      #legend {
+        position: absolute;
+        left: 12px;
+        bottom: 12px;
+        padding: 8px 10px;
+        background: rgba(13, 17, 38, 0.86);
+        border: 1px solid #1a2140;
+        line-height: 1.7;
+        white-space: pre;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- 战场容器：AnimationDevScene 的 Phaser.Game 挂在这里 -->
+    <div id="battlefield"></div>
+
+    <!--
+      以下是 **dev 验收面板**（不属于 world 层）。
+      八态逐个可点：每次点击把全部样例单位强制成该状态；
+      「同屏八态」则让第 i 个单位各演第 i 种状态。
+    -->
+    <div id="controls">
+      <span class="title">单位动画八态 · DEMO-PLAN §2</span>
+      <button data-state="idle">待机</button>
+      <button data-state="working">工作</button>
+      <button data-state="stuck">卡住</button>
+      <button data-state="completed">完成</button>
+      <button data-state="slacking">摸鱼</button>
+      <button data-state="selected">选中</button>
+      <button data-state="hover">hover</button>
+      <button data-state="clicked">点击</button>
+      <button data-state="showcase">同屏八态</button>
+      <button data-state="auto">回到自动</button>
+      <span id="status">同屏八态（第 i 个单位 = 第 i 种状态）</span>
+    </div>
+
+    <div id="legend">待机 = 悬浮 bob ±4px/2s + 眨眼 3-6s + 天线 ±5°
+工作 = 前倾 8° + 微颤 ±1px + 头顶琥珀进度弧 + 每 1.5s squash-stretch
+卡住 = 灰度 50% + 头顶红 ❗ 每 2s 弹跳 + 身体同步抖
+完成 = squash → 原地跳 20px → 落地星尘小三角四散淡出
+摸鱼 = 头顶 z→Z→Z 依次上升淡出
+选中 = 脚下青色旋转虚线环（直径 64px，2s/圈）
+hover = 放大 1.1x + 指针光标 + 底盘喷口微光
+点击 = 白圈涟漪 200ms 扩散淡出 + squash 一下
+
+各单位的动画相位按 id 哈希派生 → 刻意错开，不会全屏整齐划一。</div>
+
+    <script type="module" src="./animation-main.ts"></script>
+  </body>
+</html>

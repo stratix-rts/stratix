@@ -271,7 +271,11 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
    * 事件带 characterId，战场认单位：applyTaskFxEvent 反查 + 落板，表现层对账重画。
    */
   syncTaskEvent(task: CharacterTask, phase: TaskFxPhase): void {
-    applyTaskFxEvent(this.taskFx, this.units.list(), task, phase);
+    const hitUnitIds = applyTaskFxEvent(this.taskFx, this.units.list(), task, phase);
+    // 完成演出（@since v3.3，task_075）：任务落到谁头上，谁就 squash → 跳 20px → 落地星尘。
+    if (phase === 'completed') {
+      for (const unitId of hitUnitIds) this.unitLayer.triggerCompleted(unitId);
+    }
     this.taskFxLayer.sync();
   }
 
@@ -301,7 +305,14 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   }
 
   private onPointerMove(pointer: Phaser.Input.Pointer): void {
-    if (this.dragMode === 'none') return;
+    // hover 态（@since v3.3，task_075）：指针悬停在单位上 → 放大 1.1x + pointer 光标 + 喷口微光。
+    // why 拖拽中不判 hover：拖拽是在操作（框选 / 平移），不是悬停 —— 边拖边放大很吵。
+    if (this.dragMode === 'none') {
+      const hoverWorld = this.toWorldPoint(pointer);
+      const hovered = this.unitLayer.hitTest(hoverWorld.x, hoverWorld.y);
+      this.unitLayer.setHovered(hovered ? hovered.id : null);
+      return;
+    }
 
     if (this.dragMode === 'pan') {
       // 屏幕空间增量拖拽：相机反向跟随指针（内容跟手），每步只看屏幕位移，与相机当前位姿无关。
@@ -352,7 +363,11 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
 
     if (mode === 'click' && !this.draggedFar) {
       const hit = this.unitLayer.hitTest(this.dragStartWorld.x, this.dragStartWorld.y);
-      if (hit) this.bridge.unitClick(hit.id, readModifiers(pointer));
+      if (hit) {
+        // 点击涟漪 + squash（@since v3.3，task_075）：白圈 200ms 扩散淡出。
+        this.unitLayer.pulseClick(hit.id);
+        this.bridge.unitClick(hit.id, readModifiers(pointer));
+      }
     }
   }
 

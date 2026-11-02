@@ -48,4 +48,4 @@ export function resolveUnitColor(skinId: string | null | undefined, fallback: nu
  * why 走 theme.ts 而不是各自 import visual-spec：world 侧的取色入口收敛在一处，
  *   改色只改事实源一处，world 各文件只认这个门面。
  */
-export { VISUAL_METRICS, VISUAL_PALETTE, WORLD_PALETTE, hexToRgba } from './visual-spec';
+export { VISUAL_METRICS, VISUAL_PALETTE, WORLD_PALETTE, UNIT_ANIMATION_METRICS, hexToRgba } from './visual-spec';

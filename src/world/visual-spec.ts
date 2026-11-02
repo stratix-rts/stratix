@@ -3,7 +3,8 @@
  *   （Phaser 数字色 + 尺寸/时长/easing 常量）。
  *   来源：docs/DEMO-PLAN.md §1；事实源在 src/core/theme/visual-spec.ts（唯一事实源）。
  * 输入：无（纯常量派生）。
- * 输出：WORLD_PALETTE（0xRRGGBB 数字色）/ VISUAL_METRICS（尺寸·时长·easing）/ VISUAL_PALETTE（十六进制）。
+ * 输出：WORLD_PALETTE（0xRRGGBB 数字色）/ VISUAL_METRICS（尺寸·时长·easing）/ VISUAL_PALETTE（十六进制）
+ *      / UNIT_ANIMATION_METRICS（单位动画八态的尺寸·时长）。
  * 禁止事项：
  *   1. import hud —— 铁律：world 只认识 core 与 core/bus；
  *   2. 在本文件里另抄一份色值 —— 色值只在 core/theme/visual-spec.ts 一处，这里只做换算；
@@ -17,7 +18,13 @@
 
 import { VISUAL_PALETTE, hexToNumber } from '../core/theme/visual-spec';
 
-export { VISUAL_METRICS, VISUAL_PALETTE, hexToNumber, hexToRgba } from '../core/theme/visual-spec';
+export {
+  VISUAL_METRICS,
+  VISUAL_PALETTE,
+  UNIT_ANIMATION_METRICS,
+  hexToNumber,
+  hexToRgba,
+} from '../core/theme/visual-spec';
 
 /** 战场调色板（Phaser 数字色）。色值由唯一事实源换算而来，不另立一份表。 */
 export const WORLD_PALETTE = Object.freeze({
