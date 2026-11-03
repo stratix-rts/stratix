@@ -441,6 +441,11 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
       case 'mission.cancel':
         mission.cancelMission(command.missionId);
         return;
+      // @since v3.6(task_120):撤掉一条从未开工的编组任务(draft / pending)—— 不是相位迁移,
+      // 是从世界态里移除(不留终态墓碑)。判据在 core/mission/machine.ts 的 canRemoveMission。
+      case 'mission.remove':
+        mission.removeMission(command.missionId);
+        return;
       // @since v3.38(task_077):检查点记账 —— 静默(不发 Notice),终态由 core/mission 裁决并静默拒绝。
       case 'mission.checkpoint':
         mission.checkpointMission(command.missionId, command.note);

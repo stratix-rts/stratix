@@ -53,7 +53,7 @@ describe('MCP 工具注册表', () => {
     expect(registry.listTools().map((tool) => tool.name)).toEqual(registered);
   });
 
-  it('工具面按清单位次返回（十四件，顺序固定）', () => {
+  it('工具面按清单位次返回（十六件，顺序固定）', () => {
     const registry = buildToolRegistry(DEFAULT_MCP_TOOLS);
     expect(registry.listTools().map((tool) => tool.name)).toEqual([
       'stratix_world_snapshot', // §2.1
@@ -63,6 +63,8 @@ describe('MCP 工具注册表', () => {
       'stratix_mission_create', // §2.5
       'stratix_mission_status', // §2.6
       'stratix_mission_checkpoint', // §2.9（位次插在 mission 域内）
+      'stratix_mission_confirm', //  §2.14（mission 域写面：放行待确认的编组任务）
+      'stratix_mission_cancel', //   §2.15（mission 域写面：撤掉没开工的编组任务）
       'stratix_chat_send', //      §2.7
       'stratix_registry', //      §2.8
       'stratix_session_list', //   §2.10（session 域新开）

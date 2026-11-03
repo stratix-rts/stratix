@@ -1,8 +1,10 @@
 /**
- * 文件职责：`stratix_mission_create`（建编组任务）、`stratix_mission_status`（查编组任务）
- *   与 `stratix_mission_checkpoint`（记检查点）—— 战场编组域的三个工具。
+ * 文件职责：`stratix_mission_create`（建编组任务）、`stratix_mission_status`（查编组任务）、
+ *   `stratix_mission_checkpoint`（记检查点）、`stratix_mission_confirm`（确认并开工）、
+ *   `stratix_mission_cancel`（撤掉没开工的编组任务）—— 战场编组域的五个工具。
  * 输入：create = title / units / auto_confirm / brief / depends_on；
- *      status = mission_id（缺省即列表）/ limit；checkpoint = mission_id / note。
+ *      status = mission_id（缺省即列表）/ limit；checkpoint = mission_id / note；
+ *      confirm = mission_id；cancel = mission_id。
  * 输出：受理回执（标识 + 相位 + 查法 poll）或编组任务与其名下角色任务的摘要。
  * 禁止事项：
  *   1. 绕过 core 总线直接写状态 —— 建任务只发 HudCommand.mission.*，由 core 状态机裁决；
@@ -11,6 +13,10 @@
  *   3. 在工具里"直接置完成" —— 编组任务只能由 running 走到 done，MCP 不提供这种后门
  *      （docs/MCP-SPEC.md §3.2）；想收尾就派一条带 mission_id 的角色任务；
  *   4. 回灌任务输出全文 —— 只回状态与摘要。
+ * @since v3.6（task_120）补上编组任务的**生命周期收尾**（确认 / 撤掉）：
+ *   此前 auto_confirm=false 造出的 pending / draft 编组任务在 MCP 内是**死路** ——
+ *   没有确认工具（创建工具的描述自认「第一期不提供确认工具」），也没有撤掉工具，
+ *   外部 agent 造出来的悬空任务永久挂起、无法清理（评估报告 §4-2 / 困惑点 #6）。
  */
 
 import { findMissingDependencies, isTerminalPhase } from '../../../core/mission/machine';
@@ -20,6 +26,7 @@ import {
   MAX_MISSION_DEPENDENCIES,
   MAX_SELECTION_SIZE,
   type MissionBrief,
+  type MissionPhase,
   type WorldState,
 } from '../../../core/types';
 import {
@@ -72,10 +79,12 @@ export const missionCreateTool: ToolSpec = {
   description: [
     '新建一条编组任务（mission）并指派给一组战场单位；默认一次性完成"建任务 → 指派 → 接单开工"，直接进入 running。',
     '何时用：需要多个角色协同完成一件事（一个写代码、一个审阅、一个出文档）。',
-    '何时不用：只派一个人 —— 用 stratix_task_assign；只想查现有编组任务 —— 用 stratix_mission_status。',
+    '何时不用：只派一个人 —— 用 stratix_task_assign；只想查现有编组任务 —— 用 stratix_mission_status；',
+    '任务已经建好、只是卡在待确认 —— 用 stratix_mission_confirm 放行；建错了要撤掉 —— 用 stratix_mission_cancel。',
     '边界：units 是战场单位 id 列表（可空；空 = 草稿任务，不会自己开工）。单位 id 不存在时**静默剔除**并在',
-    'dropped_units 里报数（不猜、不报错）。auto_confirm=false 时任务停在 pending 待确认 —— 第一期 MCP 不提供确认工具，',
-    '确认留给 UI 面板裁决（core 口径：confirm 只认 pending）。auto_confirm=true 时若有效名单为空（单位 id 全不存在），',
+    'dropped_units 里报数（不猜、不报错）。auto_confirm=false 时任务停在 pending 待确认 —— 用',
+    'stratix_mission_confirm 放行开工、用 stratix_mission_cancel 撤掉（core 口径：confirm 只认 pending）。',
+    'auto_confirm=true 时若有效名单为空（单位 id 全不存在），',
     '任务无法进入 running，返回 illegal_transition。编组任务上限 100 条，超限拒绝新建。',
     'brief 是这条任务的结构化正文契约：requirements 需求 / acceptance 验收标准 / deliverables 交付物 / constraints 约束，',
     '四段都可省，只记不校验。depends_on 是前置编组任务 id 列表（上限 32）：**带依赖的编组会在依赖满足前拒绝 confirm** ——',
@@ -102,7 +111,7 @@ export const missionCreateTool: ToolSpec = {
         type: 'boolean',
         default: true,
         description:
-          'true = 内部完成建任务→指派→接单开工（落到 running）；false = 停在 pending 待 UI 确认。',
+          'true = 内部完成建任务→指派→接单开工（落到 running）；false = 停在 pending 待确认（用 stratix_mission_confirm 放行）。',
       },
       brief: {
         type: 'object',
@@ -270,7 +279,7 @@ export const missionCreateTool: ToolSpec = {
             ? {
                 tool: 'stratix_mission_status',
                 args: { mission_id: mission.id },
-                hint: '前置任务收尾后这条才能被确认（第一期 MCP 不提供确认工具，确认留给 UI 面板）',
+                hint: '前置任务收尾后用 stratix_mission_confirm 放行这条（依赖未满足时确认会被 core 拒绝）',
               }
             : {
                 tool: 'stratix_task_assign',
@@ -518,6 +527,278 @@ export const missionCheckpointTool: ToolSpec = {
     });
   },
 };
+
+/**
+ * `stratix_mission_confirm` —— 确认一条待确认的编组任务（pending）并让它开工。
+ *
+ * why 独立成工具（@since v3.6，task_120）：此前 auto_confirm=false 造出的 pending 编组任务在 MCP 内是**死路** ——
+ * 创建工具的描述自认「第一期 MCP 不提供确认工具」，确认权只在 UI 面板（docs/MCP-SPEC.md §4.2 的预留位）。
+ * 外部 agent 造出 pending 任务后既不能放行、也不能撤 —— 评估报告 §4-2 / 困惑点 #6 记的就是这个缺口。
+ *
+ * 走**既有确认链**：只发 HudCommand.mission.confirm，accepted 由 core 状态机裁决
+ * （decide + start 在 core 内部合并 → running；依赖未满足时守门拒绝，任务停在 pending）。
+ * 工具侧不另写一套"能不能确认"的规则（§3.2：MCP 没有更宽松的通道）。
+ */
+export const missionConfirmTool: ToolSpec = {
+  name: 'stratix_mission_confirm',
+  domain: 'mission',
+  verb: 'confirm',
+  order: 8,
+  description: [
+    '确认一条待确认的编组任务（mission，pending 相位）并让它开工 —— 直接落到 running。',
+    '何时用：stratix_mission_create 用了 auto_confirm=false（或前置依赖当时没满足）造出停在 pending 的编组任务，',
+    '现在条件具备了，放它开工。',
+    '何时不用：任务还没指派任何人（draft 相位）—— 没有可确认的编组，调用会被拒并说明；',
+    '任务已经确认过或在跑 —— 重复确认会被拒（回 illegal_transition）；',
+    '任务已收尾（done / cancelled）—— 回 mission_terminal；',
+    '想放行一条**角色任务** —— 用 stratix_task_assign。',
+    '边界：只认 pending 相位（core 的 decide 口径，工具不另写一套）；确认 = 接单并开工（core 内部合并 decide + start），',
+    '不产生终态墓碑。前置依赖未满足时 core 拒绝确认 —— 这**不是失败**：任务还在 pending，回执的',
+    'blocked_by_dependencies 报出还差哪几个前置，等前置收尾后再确认一次即可。',
+    '确认不派活：确认只是让编组任务开工，具体做什么仍要派带 mission_id 的角色任务。',
+    '错误：mission_not_found（任务不存在）/ illegal_transition（相位不对：draft 无编组可确认 / 已确认过）/',
+    'mission_terminal（任务已收尾）/ invalid_arguments（mission_id 为空）。',
+  ].join('\n'),
+  inputSchema: {
+    type: 'object',
+    properties: {
+      mission_id: {
+        type: 'string',
+        minLength: 1,
+        description: '编组任务 id（见 stratix_mission_status）。',
+      },
+    },
+    required: ['mission_id'],
+    additionalProperties: false,
+  },
+  errors: [
+    'mission_not_found',
+    'illegal_transition',
+    'mission_terminal',
+    'invalid_arguments',
+    'internal_error',
+  ],
+  readOnly: false,
+  handler: (args, host) => {
+    const missionId = requireString(args, 'mission_id');
+
+    // 存在性是**查**出来的（不是判出来的）：不在状态里就是 not-found。
+    const before = (host.getWorldState().missions ?? []).find((item) => item.id === missionId);
+    if (!before) {
+      throw new McpToolError('mission_not_found', `编组任务「${missionId}」不存在`, {
+        hint: '用 stratix_mission_status 列出编组任务，确认 id',
+      });
+    }
+    // 终态拒绝：历史不改写（core 的终态铁律）。
+    if (isTerminalPhase(before.phase)) {
+      throw new McpToolError(
+        'mission_terminal',
+        `编组任务「${before.title}」已收尾（${before.phase} 相位），不能再确认`,
+        { hint: '终态任务不改写历史；要继续就新建一条编组任务' }
+      );
+    }
+
+    // 确认 —— 只发命令，落相位由 core 裁决（decide + start 在 core 内部合并 → running；
+    // 前置依赖未满足时守门拒绝，任务留在 pending）。
+    host.dispatchCommand({ type: 'mission.confirm', missionId, decision: 'accept' });
+
+    const state = host.getWorldState();
+    const after = (state.missions ?? []).find((item) => item.id === missionId);
+    if (!after) {
+      throw new McpToolError('internal_error', '编组任务在确认过程中消失了（不应发生）', {
+        hint: '查服务端日志确认 core 运行时是否异常',
+      });
+    }
+
+    // 确认生效 = 相位**从 pending 走到了 running**（比对前后两份状态，不靠猜）：
+    // 若确认前后都是 running（任务本来就在跑），core 拒绝了这次 decide —— 那不是成功。
+    if (before.phase === 'pending' && after.phase === 'running') {
+      return toToolResult({
+        ok: true,
+        data: {
+          mission_id: after.id,
+          title: after.title,
+          phase: after.phase,
+          confirmed: true,
+          units: after.unitIds.map((unitId) => ({
+            id: unitId,
+            name: unitName(state, unitId),
+          })),
+          next: {
+            tool: 'stratix_task_assign',
+            args: { mission_id: after.id },
+            hint: '派具体任务时带上 mission_id，任务终态会自动回报到这条编组任务',
+          },
+          poll: {
+            tool: 'stratix_mission_status',
+            args: { mission_id: after.id },
+          },
+        },
+      });
+    }
+
+    // 没到 running：两种可能 —— ① 前置依赖未满足，core 守门拒绝（任务还在 pending，**不是失败**）；
+    // ② 相位本来就不对（draft 没编组可确认 / 已确认过）。
+    if (after.phase === 'pending') {
+      const missing = findMissingDependencies(after, state.missions ?? []);
+      if (missing.length > 0) {
+        return toToolResult({
+          ok: true,
+          data: {
+            mission_id: after.id,
+            title: after.title,
+            phase: after.phase,
+            confirmed: false,
+            blocked_by_dependencies: missing,
+            next: {
+              tool: 'stratix_mission_status',
+              args: { mission_id: after.id },
+              hint: '前置任务收尾后再调一次 stratix_mission_confirm（依赖未满足时确认会被 core 拒绝）',
+            },
+            poll: {
+              tool: 'stratix_mission_status',
+              args: { mission_id: after.id },
+            },
+          },
+        });
+      }
+    }
+
+    throw new McpToolError(
+      'illegal_transition',
+      `编组任务「${after.title}」当前是 ${after.phase} 相位，只有待确认（pending）的编组任务能确认开工`,
+      { hint: confirmRejectionHint(after.phase) }
+    );
+  },
+};
+
+/**
+ * `stratix_mission_cancel` —— 撤掉一条**还没开工**的编组任务（draft / pending）。
+ *
+ * why 与 core 的 mission.cancel 分开（@since v3.6，task_120）：cancel 是「叫停」（任意非终态 →
+ * cancelled，留终态墓碑，UI 的「停止任务」走这条）；本工具是「**撤掉**」—— 一条还没确认、还没开工的
+ * 编组任务什么都没发生，世界态里不必留墓碑，外部 agent 清理自己造的悬空 / 探针任务走这条
+ * （评估报告 §4-2：探针任务在 MCP 内「无法清理」）。
+ *
+ * 守卫在 core（machine.ts 的 canRemoveMission）：已确认 / 在跑 / 终态一律拒绝 —— 撤任务不等于撤活儿
+ * （角色任务还在跑），终态则是历史不改写。工具侧只把"为什么没撤成"说出来，不另写一套相位规则。
+ */
+export const missionCancelTool: ToolSpec = {
+  name: 'stratix_mission_cancel',
+  domain: 'mission',
+  verb: 'cancel',
+  order: 9,
+  description: [
+    '撤掉一条**还没开工**的编组任务（mission，draft / pending 相位）—— 它从战场移除，world_snapshot 里不再出现。',
+    '何时用：自己建的任务不要了 —— 建错了、只是探针、前置依赖永远等不到的悬空任务；清理掉，别让它挂在战场上。',
+    '何时不用：任务已经开工（confirmed / running）—— 撤任务不等于撤活儿（角色任务还在跑），调用会被拒并说明；',
+    '任务已收尾（done / cancelled）—— 终态不改写历史（回 mission_terminal）；',
+    '想放行一条待确认的任务 —— 用 stratix_mission_confirm；只想查 —— 用 stratix_mission_status。',
+    '边界：只认**从未开工**的相位（draft / pending，core 的 canRemoveMission 守门，工具不另写一套）；',
+    '撤掉的是任务本身 —— 它占用的单位一并释放，它身上的检查点记账也随任务一起消失',
+    '（需要留痕就派一条带 mission_id 的角色任务，别指望编组任务的记账行当历史）。',
+    '错误：mission_not_found（任务不存在）/ illegal_transition（已开工，撤不掉）/ mission_terminal（任务已收尾）/',
+    'invalid_arguments（mission_id 为空）。',
+  ].join('\n'),
+  inputSchema: {
+    type: 'object',
+    properties: {
+      mission_id: {
+        type: 'string',
+        minLength: 1,
+        description: '编组任务 id（见 stratix_mission_status）。',
+      },
+    },
+    required: ['mission_id'],
+    additionalProperties: false,
+  },
+  errors: [
+    'mission_not_found',
+    'illegal_transition',
+    'mission_terminal',
+    'invalid_arguments',
+    'internal_error',
+  ],
+  readOnly: false,
+  handler: (args, host) => {
+    const missionId = requireString(args, 'mission_id');
+
+    // 存在性是**查**出来的（不是判出来的）：不在状态里就是 not-found。
+    const before = (host.getWorldState().missions ?? []).find((item) => item.id === missionId);
+    if (!before) {
+      throw new McpToolError('mission_not_found', `编组任务「${missionId}」不存在`, {
+        hint: '用 stratix_mission_status 列出编组任务，确认 id',
+      });
+    }
+    // 终态拒绝：历史不改写（core 的终态铁律）。
+    if (isTerminalPhase(before.phase)) {
+      throw new McpToolError(
+        'mission_terminal',
+        `编组任务「${before.title}」已收尾（${before.phase} 相位），不能再撤`,
+        { hint: '终态任务不改写历史；要继续就新建一条编组任务' }
+      );
+    }
+
+    // 撤掉 —— 只发命令，能不能撤由 core 裁决（canRemoveMission）。
+    host.dispatchCommand({ type: 'mission.remove', missionId });
+
+    const after = (host.getWorldState().missions ?? []).find((item) => item.id === missionId);
+    if (!after) {
+      // 撤掉了：任务已从世界态移除（world_snapshot 里不再出现），占用的单位一并释放。
+      return toToolResult({
+        ok: true,
+        data: {
+          mission_id: before.id,
+          title: before.title,
+          previous_phase: before.phase,
+          removed: true,
+          units_released: before.unitIds.length,
+          note: '这条编组任务已从战场移除（world_snapshot 里不再出现），它占用的单位已释放。',
+          poll: {
+            tool: 'stratix_world_snapshot',
+            args: { filters: { domains: ['missions'] } },
+          },
+        },
+      });
+    }
+
+    // 没撤成：core 拒绝了（已确认 / 在跑）。如实回当前相位并说清为什么。
+    throw new McpToolError(
+      'illegal_transition',
+      `编组任务「${after.title}」当前是 ${after.phase} 相位，只有还没开工的任务（draft / pending）能撤掉`,
+      { hint: cancelRejectionHint(after.phase) }
+    );
+  },
+};
+
+/**
+ * 确认被拒时的下一步建议（按当前相位说人话）。
+ * why 分相位说：draft 是"没编组可确认"、running 是"已经确认过" —— 一句"相位不对"等于没说。
+ */
+function confirmRejectionHint(phase: MissionPhase): string {
+  switch (phase) {
+    case 'draft':
+      return '这条编组任务还没指派任何单位（draft 相位），没有可确认的编组 —— 用 stratix_registry 查战场单位 id，重新建一条并带上 units';
+    case 'confirmed':
+    case 'running':
+      return '已经确认过了（core 的确认只认 pending）—— 直接派活：stratix_task_assign 带上 mission_id';
+    default:
+      return '用 stratix_mission_status 看当前相位';
+  }
+}
+
+/**
+ * 撤掉被拒时的下一步建议（按当前相位说人话）。
+ */
+function cancelRejectionHint(phase: MissionPhase): string {
+  switch (phase) {
+    case 'confirmed':
+    case 'running':
+      return '已开工的任务撤不掉（撤任务不等于撤活儿）—— 等它跑完，或先把它自己收尾';
+    default:
+      return '用 stratix_mission_status 看当前相位';
+  }
+}
 
 /**
  * 读 brief 入参 —— 形状与长度校验在此，归一（trim / 丢空段）在 core 的 normalizeBrief 里。

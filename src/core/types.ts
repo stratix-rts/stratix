@@ -1291,6 +1291,18 @@ export type HudCommand =
    */
   | { type: 'mission.cancel'; missionId: string }
   /**
+   * @since v3.6（task_120）**撤掉**一条从未开工的编组任务 —— 从世界态里移除，不留终态墓碑。
+   *
+   * 与 mission.cancel 的分工（两个动作不是一回事，别混用）：
+   *   - mission.cancel = **叫停**：任意非终态 → 'cancelled'，留下终态历史（UI 的「停止任务」走这条）；
+   *   - mission.remove = **撤掉**：只认**从未开工**的任务（draft / pending）—— 它还没确认、没开工，
+   *     什么都没发生，世界态里不必留一条墓碑（外部 agent 清理自己造的悬空 / 探针任务走这条）。
+   *
+   * 守卫在 core（core/mission/machine.ts 的 canRemoveMission）：已确认 / 在跑 / 终态一律拒绝 ——
+   * 前两者背后有活儿在跑（撤任务不等于撤活儿），终态则是历史不改写。
+   */
+  | { type: 'mission.remove'; missionId: string }
+  /**
    * @since v3.38（task_077）任务检查点记账：往任务上追加一条 { at, note }。
    * 语义：
    *   - 任意**非终态**相位都可记（draft / pending / confirmed / running）；

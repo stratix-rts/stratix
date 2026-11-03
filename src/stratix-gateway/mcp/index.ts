@@ -16,7 +16,13 @@ export * from './transport/stdio';
 export * from './transport/http';
 export { worldSnapshotTool } from './tools/world';
 export { taskAssignTool, taskStatusTool, taskCancelTool } from './tools/task';
-export { missionCreateTool, missionStatusTool, missionCheckpointTool } from './tools/mission';
+export {
+  missionCreateTool,
+  missionStatusTool,
+  missionCheckpointTool,
+  missionConfirmTool,
+  missionCancelTool,
+} from './tools/mission';
 export { chatSendTool } from './tools/chat';
 export { registryTool } from './tools/registry';
 export { sessionListTool, sessionGetTool, sessionInterruptTool, sessionResumeTool, sessionForkTool } from './tools/session';

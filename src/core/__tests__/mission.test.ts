@@ -334,6 +334,41 @@ describe('manager：命令 → 状态机 → store', () => {
     expect(manager.cancelMission('mission-1')).toBeNull();
   });
 
+  test('removeMission 撤掉一条没开工的任务：任务消失，单位占用释放（@since v3.6 task_120）', () => {
+    const { store, manager } = setup();
+    manager.createMission({ title: '探针任务', unitIds: ['u1'] });
+    expect(store.getState().missions[0].phase).toBe('pending');
+    expect(store.getState().units[0].missionId).toBe('mission-1');
+
+    const removed = manager.removeMission('mission-1');
+
+    expect(removed?.id).toBe('mission-1');
+    // 撤掉 = 从状态里消失（不留终态墓碑）
+    expect(store.getState().missions).toHaveLength(0);
+    // 占用的单位一并释放（否则 WorldState 内部自相矛盾）
+    expect(store.getState().units.map((u) => u.missionId)).toEqual([null, null, null]);
+  });
+
+  test('removeMission 只认没开工的任务：在跑的撤不掉（撤任务不等于撤活儿）', () => {
+    const { store, manager } = setup();
+    manager.createMission({ title: '侦察北门', unitIds: ['u1'] });
+    manager.decideMission('mission-1', 'accept');
+
+    expect(manager.removeMission('mission-1')).toBeNull();
+    expect(store.getState().missions[0].phase).toBe('running');
+    expect(store.getState().units[0].missionId).toBe('mission-1');
+    expect(store.getState().notices.some((n) => n.text.includes('不能撤掉'))).toBe(true);
+  });
+
+  test('removeMission 对终态任务拒绝（历史不改写）', () => {
+    const { store, manager } = setup();
+    manager.createMission({ title: '侦察北门', unitIds: ['u1'] });
+    manager.cancelMission('mission-1');
+
+    expect(manager.removeMission('mission-1')).toBeNull();
+    expect(store.getState().missions[0].phase).toBe('cancelled');
+  });
+
   test('未知 missionId → not-found：不写库，回 warn 通知', () => {
     const { store, manager } = setup();
     expect(manager.assignMission('nope', ['u1'])).toBeNull();

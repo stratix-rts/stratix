@@ -276,6 +276,8 @@ const HUD_COMMAND_TYPE_FLAGS: Readonly<Record<HudCommand['type'], true>> = {
   'mission.confirm': true,
   'mission.create': true,
   'mission.cancel': true,
+  // @since v3.6(task_120):撤掉一条从未开工的编组任务(core/mission/machine.ts 的 canRemoveMission 守门)。
+  'mission.remove': true,
   'mission.checkpoint': true,
   'character.persona.update': true,
   'character.appearance.update': true,

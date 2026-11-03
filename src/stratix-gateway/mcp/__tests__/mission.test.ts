@@ -16,8 +16,15 @@ import { createStore, type CoreStore } from '../../../core/store';
 import { MAX_MISSIONS, type HudCommand, type WorldState } from '../../../core/types';
 import { createCoreMcpHost, type CoreMcpHostOptions } from '../context';
 import { McpToolError } from '../envelope';
-import { missionCheckpointTool, missionCreateTool, missionStatusTool } from '../tools/mission';
-import type { McpHost } from '../types';
+import {
+  missionCancelTool,
+  missionCheckpointTool,
+  missionConfirmTool,
+  missionCreateTool,
+  missionStatusTool,
+} from '../tools/mission';
+import { worldSnapshotTool } from '../tools/world';
+import type { McpHost, ToolSpec } from '../types';
 
 function makeStore(overrides: Partial<WorldState> = {}): CoreStore {
   return createStore({
@@ -674,6 +681,229 @@ describe('mission_status 读回面：brief / checkpoints', () => {
     expect(data.mission?.brief).toEqual(mission?.brief);
     expect(data.mission?.checkpoints).toEqual(
       mission?.checkpoints?.map((checkpoint) => ({ at: checkpoint.at, note: checkpoint.note }))
+    );
+  });
+});
+
+/**
+ * 生命周期收尾（v3.6 · task_120）：`stratix_mission_confirm` / `stratix_mission_cancel`。
+ *
+ * 独立 describe：这两件工具改的是**相位迁移与任务存废**，与建任务 / 记账的用例互不干扰，
+ * 混在一起会让"这条任务是谁造的"分不清（撤掉之后 id 就查不到了）。
+ */
+describe('stratix_mission_confirm / stratix_mission_cancel', () => {
+  let store: CoreStore;
+  let stopRuntime: () => void;
+
+  beforeEach(() => {
+    store = makeStore();
+    const runtime = createCoreRuntime({ store });
+    stopRuntime = runtime.start();
+  });
+
+  afterEach(() => {
+    stopRuntime();
+  });
+
+  const makeHost = (overrides: Partial<CoreMcpHostOptions> = {}): McpHost =>
+    createCoreMcpHost({ store, dispatch: emitCommand, ...overrides });
+
+  /** 调工具并拆出信封数据（成功路径）。 */
+  async function callTool(
+    tool: ToolSpec,
+    host: McpHost,
+    args: Record<string, unknown>
+  ): Promise<Record<string, unknown>> {
+    const result = await tool.handler(args, host);
+    const envelope = result.structuredContent as { ok: boolean; data: Record<string, unknown> };
+    expect(envelope.ok).toBe(true);
+    return envelope.data;
+  }
+
+  /** 调工具并断言它以某个错误码失败。 */
+  async function expectToolError(
+    tool: ToolSpec,
+    host: McpHost,
+    args: Record<string, unknown>,
+    code: string
+  ): Promise<McpToolError> {
+    try {
+      await tool.handler(args, host);
+      throw new Error('应当抛错');
+    } catch (error) {
+      expect((error as McpToolError).code).toBe(code);
+      return error as McpToolError;
+    }
+  }
+
+  it('confirm：pending → running（走既有确认链，任务真的开工了）', async () => {
+    const host = makeHost();
+    const created = await callCreate(host, {
+      title: '待确认的编组',
+      units: ['unit_kimi'],
+      auto_confirm: false,
+    });
+    expect(created.phase).toBe('pending');
+
+    const data = await callTool(missionConfirmTool, host, { mission_id: created.mission_id });
+
+    expect(data.phase).toBe('running');
+    expect(data.confirmed).toBe(true);
+    expect(data.units).toEqual([{ id: 'unit_kimi', name: 'Kimi' }]);
+    expect(data.next).toMatchObject({ tool: 'stratix_task_assign', args: { mission_id: created.mission_id } });
+    expect(data.poll).toEqual({
+      tool: 'stratix_mission_status',
+      args: { mission_id: created.mission_id },
+    });
+
+    // 状态里的相位真的变成 running（不是回执自说自话）。
+    const mission = store.getState().missions.find((item) => item.id === created.mission_id);
+    expect(mission?.phase).toBe('running');
+  });
+
+  it('confirm：draft 相位拒绝并说明（没编组可确认）', async () => {
+    const host = makeHost();
+    const created = await callCreate(host, { title: '草稿编组', units: [], auto_confirm: false });
+    expect(created.phase).toBe('draft');
+
+    const error = await expectToolError(
+      missionConfirmTool,
+      host,
+      { mission_id: created.mission_id },
+      'illegal_transition'
+    );
+    expect(error.message).toContain('draft');
+    expect(error.hint).toContain('stratix_registry');
+
+    // 拒绝不改变状态（还在 draft）。
+    const mission = store.getState().missions.find((item) => item.id === created.mission_id);
+    expect(mission?.phase).toBe('draft');
+  });
+
+  it('confirm：已确认过（在跑）→ illegal_transition（不重复确认）', async () => {
+    const host = makeHost();
+    const created = await callCreate(host, { title: '已经在跑', units: ['unit_kimi'] });
+
+    await expectToolError(
+      missionConfirmTool,
+      host,
+      { mission_id: created.mission_id },
+      'illegal_transition'
+    );
+    const mission = store.getState().missions.find((item) => item.id === created.mission_id);
+    expect(mission?.phase).toBe('running');
+  });
+
+  it('confirm：任务不存在 → mission_not_found；终态 → mission_terminal', async () => {
+    const host = makeHost();
+    await expectToolError(
+      missionConfirmTool,
+      host,
+      { mission_id: 'mission_ghost' },
+      'mission_not_found'
+    );
+
+    const created = await callCreate(host, { title: '终态任务', units: ['unit_kimi'] });
+    host.dispatchCommand({ type: 'mission.cancel', missionId: created.mission_id });
+    await expectToolError(
+      missionConfirmTool,
+      host,
+      { mission_id: created.mission_id },
+      'mission_terminal'
+    );
+  });
+
+  it('confirm：前置依赖未满足 → 不是失败，回执报出还差哪几个（任务停在 pending）', async () => {
+    const host = makeHost();
+    const first = await callCreate(host, { title: '前置：加固城墙', units: ['unit_kimi'] });
+    const second = await callCreate(host, {
+      title: '后置：进攻北门',
+      units: ['unit_codex'],
+      auto_confirm: false,
+      depends_on: [first.mission_id],
+    });
+
+    const data = await callTool(missionConfirmTool, host, { mission_id: second.mission_id });
+    expect(data.phase).toBe('pending');
+    expect(data.confirmed).toBe(false);
+    expect(data.blocked_by_dependencies).toEqual([first.mission_id]);
+  });
+
+  it('cancel：撤掉一条 draft 编组任务（world_snapshot 里不再出现）', async () => {
+    const host = makeHost();
+    const created = await callCreate(host, { title: '探针任务', units: [], auto_confirm: false });
+    await callCheckpoint(host, { mission_id: created.mission_id, note: '探针记账' });
+    expect(store.getState().missions).toHaveLength(1);
+
+    const data = await callTool(missionCancelTool, host, { mission_id: created.mission_id });
+    expect(data.removed).toBe(true);
+    expect(data.previous_phase).toBe('draft');
+    expect(data.mission_id).toBe(created.mission_id);
+
+    // 真的从世界态里消失了（快照里不再有这条）。
+    expect(store.getState().missions).toHaveLength(0);
+    const snapshot = await worldSnapshotTool.handler(
+      { filters: { domains: ['missions'] } },
+      host
+    );
+    const snapshotData = (snapshot.structuredContent as { data: { missions: { total: number } } }).data;
+    expect(snapshotData.missions.total).toBe(0);
+  });
+
+  it('cancel：撤掉一条 pending 编组任务，并把占用的单位释放掉', async () => {
+    const host = makeHost();
+    const created = await callCreate(host, {
+      title: '待确认的编组',
+      units: ['unit_kimi'],
+      auto_confirm: false,
+    });
+    expect(store.getState().units.find((unit) => unit.id === 'unit_kimi')?.missionId).toBe(
+      created.mission_id
+    );
+
+    const data = await callTool(missionCancelTool, host, { mission_id: created.mission_id });
+    expect(data.removed).toBe(true);
+    expect(data.previous_phase).toBe('pending');
+    expect(data.units_released).toBe(1);
+
+    expect(store.getState().missions).toHaveLength(0);
+    expect(store.getState().units.find((unit) => unit.id === 'unit_kimi')?.missionId).toBeNull();
+  });
+
+  it('cancel：已在跑的任务拒绝并说明（撤任务不等于撤活儿）', async () => {
+    const host = makeHost();
+    const created = await callCreate(host, { title: '在跑的编组', units: ['unit_kimi'] });
+
+    const error = await expectToolError(
+      missionCancelTool,
+      host,
+      { mission_id: created.mission_id },
+      'illegal_transition'
+    );
+    expect(error.message).toContain('running');
+    expect(error.hint).toContain('撤任务不等于撤活儿');
+
+    // 拒绝不改变状态（还在跑）。
+    const mission = store.getState().missions.find((item) => item.id === created.mission_id);
+    expect(mission?.phase).toBe('running');
+  });
+
+  it('cancel：任务不存在 → mission_not_found；终态 → mission_terminal', async () => {
+    const host = makeHost();
+    await expectToolError(
+      missionCancelTool,
+      host,
+      { mission_id: 'mission_ghost' },
+      'mission_not_found'
+    );
+
+    const created = await callCreate(host, { title: '终态任务', units: ['unit_kimi'] });
+    host.dispatchCommand({ type: 'mission.cancel', missionId: created.mission_id });
+    await expectToolError(
+      missionCancelTool,
+      host,
+      { mission_id: created.mission_id },
+      'mission_terminal'
     );
   });
 });

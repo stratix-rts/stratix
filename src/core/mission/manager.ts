@@ -9,6 +9,7 @@
  *   1. 自己订阅总线 / 自己 emitState —— 状态广播的唯一出口是 core/runtime.ts 的 store 订阅
  *      （与 agent-link 同一铁律，否则一次变更广播两遍，两侧白重渲染一次）；
  *   2. 在这里判定相位合法性 —— 那是 machine.ts 的职责，两处判定必然漂移；
+ *      （@since v3.6 task_120「撤掉未开工的任务」也一样：判据在 machine.ts 的 canRemoveMission）
  *   3. 在命令里抛异常 —— 命令总线是同步的，抛异常会打断整轮广播；一切失败都转成 Notice；
  *   4. 让 missions 无限增长 —— 超过 MAX_MISSIONS 先丢终态历史（见 pruneMissions）；
  *   5. 改单位忙闲（UnitView.status）—— 那份真相由 world / agent-link 投影，本模块只碰 missionId。
@@ -45,6 +46,7 @@ import {
 import {
   appendMissionCheckpoint,
   applyMissionAction,
+  canRemoveMission,
   collectNewlyUnlocked,
   createMission as createMissionView,
   dropSettledMissions,
@@ -109,6 +111,16 @@ export interface MissionManager {
   decideMission(missionId: string, decision: ConfirmDecision): MissionView | null;
   /** 叫停在办任务。 */
   cancelMission(missionId: string): MissionView | null;
+  /**
+   * 撤掉一条**从未开工**的编组任务（draft / pending）—— 从世界态里移除，不留终态墓碑。
+   * @since v3.6（task_120）
+   *
+   * why 与 cancelMission 分开：cancel 是「叫停」（留终态历史，UI 的停止任务走这条），
+   *   remove 是「撤掉」—— 还没确认、还没开工的任务什么都没发生，不必在世界态里留墓碑
+   *   （外部 agent 用它清理自己造的悬空 / 探针任务）。
+   * 返回 null = 没撤掉（任务不存在 / 已确认 / 在跑 / 终态 —— 判据见 machine.ts 的 canRemoveMission）。
+   */
+  removeMission(missionId: string): MissionView | null;
   /**
    * running → done：任务回报完成。
    * **当前没有 HudCommand 能到达它**（契约里没有 mission.complete）：world 侧上报完成事件时调用，
@@ -260,6 +272,46 @@ class Manager implements MissionManager {
 
   cancelMission(missionId: string): MissionView | null {
     return this.finish(this.commit(missionId, [{ type: 'cancel' }]));
+  }
+
+  /**
+   * 撤掉一条从未开工的编组任务（@since v3.6，task_120）—— **不走 commit(actions)**：
+   * 撤掉不是相位迁移（不进 'cancelled'，而是从状态里消失），硬塞成一种 MissionAction
+   * 会把「叫停」与「撤掉」两个动作搅成一锅（判据也各说各的）。
+   *
+   * 单独一条写入路径：找任务 → 交给 machine.ts 的 canRemoveMission 裁决（只有 draft / pending 可撤）
+   * → 移除 + 释放单位占用。
+   *
+   * 单位占用必须一起释放：被撤掉的任务不再占用任何单位（units[].missionId 归零）——
+   * 只删 missions 不动 units，WorldState 内部就自相矛盾了（agent-panel 会显示"有任务"）。
+   */
+  removeMission(missionId: string): MissionView | null {
+    const outcome: { mission?: MissionView } = {};
+    this.store.setState((state) => {
+      const index = state.missions.findIndex((mission) => mission.id === missionId);
+      if (index < 0) return state; // 任务不存在：静默（不打扰）
+      const mission = state.missions[index];
+      if (!canRemoveMission(mission)) return state; // 已开工 / 终态：静默拒绝
+      const missions = state.missions.slice();
+      missions.splice(index, 1);
+      outcome.mission = mission;
+      const units = state.units.map((unit) =>
+        unit.missionId === missionId ? { ...unit, missionId: null } : unit
+      );
+      return { ...state, missions, units };
+    });
+
+    const mission = outcome.mission;
+    if (!mission) {
+      // 没撤掉：不存在的任务不打扰（调用方自己查），已开工 / 终态的说清楚为什么。
+      const current = this.store.getState().missions.find((item) => item.id === missionId);
+      if (current) {
+        this.notify('warn', `任务「${current.title}」已开工或已收尾，不能撤掉`);
+      }
+      return null;
+    }
+    this.notify('info', `已撤掉任务「${mission.title}」（从未开工，不留记录）`);
+    return mission;
   }
 
   completeMission(missionId: string): MissionView | null {

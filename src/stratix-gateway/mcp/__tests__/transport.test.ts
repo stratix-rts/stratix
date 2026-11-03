@@ -78,7 +78,7 @@ describe('MCP 传输层', () => {
     });
 
     const body = (await response.json()) as { result: { tools: Array<{ name: string }> } };
-    // 十四件工具，按清单位次（顺序写在工具自己的 order 字段里，与注册顺序无关）。
+    // 十六件工具，按清单位次（顺序写在工具自己的 order 字段里，与注册顺序无关）。
     expect(body.result.tools.map((tool) => tool.name)).toEqual([
       'stratix_world_snapshot',
       'stratix_task_assign',
@@ -87,6 +87,8 @@ describe('MCP 传输层', () => {
       'stratix_mission_create',
       'stratix_mission_status',
       'stratix_mission_checkpoint',
+      'stratix_mission_confirm',
+      'stratix_mission_cancel',
       'stratix_chat_send',
       'stratix_registry',
       'stratix_session_list',

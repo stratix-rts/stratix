@@ -61,7 +61,7 @@ export const sessionListTool: ToolSpec = {
   verb: 'list',
   // 清单位次（§2 的条目号只作文档锚点，见 docs/MCP-SPEC.md §2.0）：
   // session 域是新域 —— 两件工具排在既有九件之后（既有工具之间的相对次序不变）。
-  order: 10,
+  order: 12,
   description: [
     '列出工作台上的会话（会话域摘要）—— 按种类 / 状态过滤，分页取一段。',
     '何时用：想看"最近发生过哪些会话" —— 哪场互聊卡住了、哪条会话被中断了、哪条任务会话跑完了；',
@@ -167,7 +167,7 @@ export const sessionGetTool: ToolSpec = {
   name: 'stratix_session_get',
   domain: 'session',
   verb: 'get',
-  order: 11,
+  order: 13,
   description: [
     '读一条会话：会话摘要 + 事件流的一段（按 seq 正序，从旧到新）。',
     '何时用：想看某场互聊 / 某条会话"到底发生了什么"；查它被中断的原因；往前翻更早的事件。',
@@ -305,7 +305,7 @@ export const sessionInterruptTool: ToolSpec = {
   name: 'stratix_session_interrupt',
   domain: 'session',
   verb: 'interrupt',
-  order: 12,
+  order: 14,
   description: [
     '中断一条会话：把进行中 / 空闲的会话显式转成 interrupted，并落一条中断标记事件（会话不再"悄悄没了"）。',
     '何时用：一场互聊卡住或超时了，想让它停下来并留下可见、可查的痕迹；想确认某条会话还活着、要不要叫停。',
@@ -425,7 +425,7 @@ export const sessionResumeTool: ToolSpec = {
   name: 'stratix_session_resume',
   domain: 'session',
   verb: 'resume',
-  order: 13,
+  order: 15,
   description: [
     '恢复一条被中断的互聊会话：把它转回 active，并把回灌的上文重新喂给参与者（续跑）。',
     '何时用：一场互聊超时 / 被中断了，想让它从断的地方接着聊；想确认这条被中断的会话还能不能续上。',
@@ -547,7 +547,7 @@ export const sessionForkTool: ToolSpec = {
   name: 'stratix_session_fork',
   domain: 'session',
   verb: 'fork',
-  order: 14,
+  order: 16,
   description: [
     '分叉一条会话：从它的某个事件处派生出一条**新会话**（复制到该处为止的对话历史，参与者继承）。',
     '何时用：一段对话聊岔了 / 想换个方向重来 —— 从某条消息之后另起一条会话接着走；',

@@ -1,6 +1,6 @@
 # Stratix MCP 接口设计规范（第一期工具面 + 扩展规范）
 
-> **状态**：第一期工具面冻结（Spec v1.7）＋ §6 v2 设计章（**未实现**，见 §6 抬头）　**性质**：规范文档（不含实现代码）
+> **状态**：第一期工具面冻结（Spec v1.9）＋ §6 v2 设计章（**未实现**，见 §6 抬头）　**性质**：规范文档（不含实现代码）
 > **适用范围**：Stratix 对外提供的 MCP server 及其工具面（tool surface）
 > **取代**：`docs/MCP_SERVER_DESIGN.md`（v2 Zone 时代草案 —— Zone 已按 `docs/REFACTOR_PLAN_V3.md` D5 决策砍掉，其中 `stratix.list_zones` 等工具面不再成立）
 > **维护责任**：见 [§5.4](#54-规范文档的维护责任)
@@ -12,7 +12,7 @@
 
 - [0. 设计前提](#0-设计前提)：[0.1 消费者与心智模型](#01-消费者与心智模型)｜[0.2 权威依据](#02-权威依据)｜[0.3 范围与非目标](#03-范围与非目标)｜[0.4 术语](#04-术语)｜[0.5 拓扑定位](#05-拓扑定位新旧拓扑对比)
 - [1. 工具设计五原则](#1-工具设计五原则)：[1.1 动词 + 资源命名，单动作工具](#11-原则一动词--资源命名单动作工具)｜[1.2 合并发生在工具内部](#12-原则二合并发生在工具内部)｜[1.3 返回 meaningful context](#13-原则三返回-meaningful-context)｜[1.4 token 效率](#14-原则四token-效率)｜[1.5 描述工程](#15-原则五描述工程)
-- [2. 第一期工具面](#2-第一期工具面)：[2.0 通用约定](#20-通用约定)｜[2.1 world_snapshot](#21-stratix_world_snapshot)｜[2.2 task_assign](#22-stratix_task_assign)｜[2.3 task_status](#23-stratix_task_status)｜[2.4 task_cancel](#24-stratix_task_cancel)｜[2.5 mission_create](#25-stratix_mission_create)｜[2.6 mission_status](#26-stratix_mission_status)｜[2.7 chat_send](#27-stratix_chat_send)｜[2.8 registry](#28-stratix_registry)｜[2.9 mission_checkpoint](#29-stratix_mission_checkpoint)｜[2.10 session_list](#210-stratix_session_list)｜[2.11 session_get](#211-stratix_session_get)｜[2.12 session_interrupt](#212-stratix_session_interrupt)｜[2.13 session_resume](#213-stratix_session_resume)
+- [2. 第一期工具面](#2-第一期工具面)：[2.0 通用约定](#20-通用约定)｜[2.1 world_snapshot](#21-stratix_world_snapshot)｜[2.2 task_assign](#22-stratix_task_assign)｜[2.3 task_status](#23-stratix_task_status)｜[2.4 task_cancel](#24-stratix_task_cancel)｜[2.5 mission_create](#25-stratix_mission_create)｜[2.6 mission_status](#26-stratix_mission_status)｜[2.7 chat_send](#27-stratix_chat_send)｜[2.8 registry](#28-stratix_registry)｜[2.9 mission_checkpoint](#29-stratix_mission_checkpoint)｜[2.10 session_list](#210-stratix_session_list)｜[2.11 session_get](#211-stratix_session_get)｜[2.12 session_interrupt](#212-stratix_session_interrupt)｜[2.13 session_resume](#213-stratix_session_resume)｜[2.14 mission_confirm](#214-stratix_mission_confirm)｜[2.15 mission_cancel](#215-stratix_mission_cancel)
 - [3. 一致性铁律](#3-一致性铁律)：[3.1 投影而非新功能层](#31-投影而非新功能层)｜[3.2 状态机约束](#32-状态机约束对-mcp-同样生效)｜[3.3 不暴露的能力](#33-mcp-不暴露的能力)｜[3.4 只读与写的分界](#34-只读面与写面的分界)
 - [4. 扩展规范](#4-扩展规范)：[4.1 工具注册表架构](#41-工具注册表架构)｜[4.2 域前缀与命名位](#42-域前缀与命名位)｜[4.3 新工具上线流程](#43-新工具提案到上线的流程)｜[4.4 MCP server 接入方式](#44-mcp-server-的接入方式)
 - [5. 版本与演进](#5-版本与演进)：[5.1 变更原则](#51-工具面变更原则)｜[5.2 重命名与废弃](#52-重命名与废弃)｜[5.3 变更分类](#53-变更分类与流程)｜[5.4 维护责任](#54-规范文档的维护责任)｜[5.5 演进记录](#55-版本演进记录只加不删)
@@ -53,6 +53,8 @@ Stratix 是本地 agent 团队指挥台：角色绑定 CLI agent（Claude Code /
 **域（domain）** = 命名空间与工具名前缀（`world` / `task` / `mission` / `chat` / `registry`，未来的 `zone` / `pipeline` …）；**动作（verb）** = 工具做的那个动作（取自受控词表 `list` / `get` / `create` / `assign` / `send` / `cancel` / `snapshot` …）；**资源（resource）** = 动作作用的实体（`task` / `mission` / `character` / `world`）；**受理回执** = 写操作成功后返回的"状态句"（标识 + 状态 + 下一步查法）；**通道（channel）** = 调用进来的通路（`ui` / `mcp` / `script` / `agent`，进审计用）。
 
 **依赖解锁（dependency unlock）** = 某条编组任务的**前置任务全部进入终态**（`done` / `cancelled`）后，这条任务**变为可被确认**。解锁**不是新相位** —— 真相在相位上，判定现算即得（`isMissionUnlocked`）；"解锁"只是"允许确认"的结论，且**不自动确认**（谁来确认仍需显式动作）。**brief（任务正文契约）** = 挂在编组任务上的结构化正文（需求 / 验收标准 / 交付物 / 约束），是关于"这件事要做成什么样"的长期事实，与「派单 prompt」（派给执行者的一句话指令）分开。**检查点（checkpoint）** = 编组任务上的一条 **append-only 记账行**（这一刻发生了什么），**不改相位**，终态任务不再接受记账。
+
+**撤掉（remove）** vs **叫停（cancel）** = 同一件事的两种收尾：**撤掉**针对**从未开工**的编组任务（`draft` / `pending`）—— 它什么都还没发生，世界态里不必留墓碑，撤掉即从战场消失（占用的单位一并释放）；**叫停**针对**已经开跑**的编组任务 —— 得有个"被叫停了"的交代，故留一条 `cancelled` 终态墓碑（历史不改写）。判据只有一份（core 的 `canRemoveMission`，§2.15）。
 
 ### 0.5 拓扑定位（新旧拓扑对比）
 
@@ -395,8 +397,8 @@ Stratix 是本地 agent 团队指挥台：角色绑定 CLI agent（Claude Code /
 
 > 新建一条编组任务（mission）并指派给一组战场单位；默认一次性完成"建任务 → 指派 → 接单开工"，直接进入 `running`。
 > **何时用**：需要多个角色协同完成一件事（一个写代码、一个审阅、一个出文档）。
-> **何时不用**：只派一个人 —— 用 `stratix_task_assign`；只想查现有编组任务 —— 用 `stratix_mission_status`。
-> **边界**：`units` 是战场单位 id 列表（可空；空 = 草稿任务，不会自己开工）。单位 id 不存在时**静默剔除**并在 `dropped_units` 里报数（不猜、不报错）。`auto_confirm=false` 时任务停在 `pending` 待确认 —— 第一期 MCP 不提供确认工具，确认留给 UI 面板裁决（core 口径：`confirm` 只认 `pending`）。编组任务上限 100 条，超限拒绝新建。
+> **何时不用**：只派一个人 —— 用 `stratix_task_assign`；只想查现有编组任务 —— 用 `stratix_mission_status`；任务已经建好、只是卡在待确认 —— 用 `stratix_mission_confirm` 放行；建错了要撤掉 —— 用 `stratix_mission_cancel`。
+> **边界**：`units` 是战场单位 id 列表（可空；空 = 草稿任务，不会自己开工）。单位 id 不存在时**静默剔除**并在 `dropped_units` 里报数（不猜、不报错）。`auto_confirm=false` 时任务停在 `pending` 待确认 —— 用 `stratix_mission_confirm` 放行开工、用 `stratix_mission_cancel` 撤掉（core 口径：`confirm` 只认 `pending`）。`auto_confirm=true` 时若有效名单为空（单位 id 全不存在），任务无法进入 `running`，回 `illegal_transition`。编组任务上限 100 条，超限拒绝新建。
 > **正文与依赖**：`brief` 是这条任务的结构化正文契约（`requirements` 需求 / `acceptance` 验收标准 / `deliverables` 交付物 / `constraints` 约束），四段皆可选，**只记不校验**（不会自动写进派单 prompt）。`depends_on` 是前置编组任务 id 列表（上限 32）：**带依赖的编组会在依赖满足前拒绝 `confirm`** —— 任务停在 `pending`，回执的 `blocked_by_dependencies` 报出还差哪几个前置（这是**正常结果**，不是失败：任务已建成，只是还不能开工）。
 > **错误**：`invalid_arguments`（title 为空或超长 / brief 段名非法或超长 / `depends_on` 超 32 条）/ `mission_capacity_exceeded`（可重试）/ `illegal_transition`。
 
@@ -408,7 +410,7 @@ Stratix 是本地 agent 团队指挥台：角色绑定 CLI agent（Claude Code /
   "properties": {
     "title": { "type": "string", "minLength": 1, "maxLength": 200, "description": "任务标题。core 只校验非空，200 码点上限是 MCP 侧自设（防超长标题进状态广播）。" },
     "units": { "type": "array", "items": { "type": "string" }, "maxItems": 256, "description": "指派的战场单位 id 列表。上限 256（MAX_SELECTION_SIZE）。" },
-    "auto_confirm": { "type": "boolean", "default": true, "description": "true = 内部完成建任务→指派→接单开工（落到 running）；false = 停在 pending 待 UI 确认。" },
+    "auto_confirm": { "type": "boolean", "default": true, "description": "true = 内部完成建任务→指派→接单开工（落到 running）；false = 停在 pending 待确认（用 stratix_mission_confirm 放行）。" },
     "brief": {
       "type": "object",
       "properties": {
@@ -451,7 +453,7 @@ Stratix 是本地 agent 团队指挥台：角色绑定 CLI agent（Claude Code /
   "dropped_units": 0, "created_at": 1754000000000,
   "depends_on": [ "mission_1752..._1" ],
   "blocked_by_dependencies": [ "mission_1752..._1" ],
-  "next": { "tool": "stratix_mission_status", "args": { "mission_id": "mission_1753..._2" }, "hint": "前置任务收尾后这条才能被确认（第一期 MCP 不提供确认工具，确认留给 UI 面板）" },
+  "next": { "tool": "stratix_mission_status", "args": { "mission_id": "mission_1753..._2" }, "hint": "前置任务收尾后用 stratix_mission_confirm 放行这条（依赖未满足时确认会被 core 拒绝）" },
   "poll": { "tool": "stratix_mission_status", "args": { "mission_id": "mission_1753..._2" } } } }
 ```
 
@@ -467,6 +469,8 @@ mission.create ──▶ mission.assign ──▶ mission.confirm(accept)
 ```
 
 对应 `HudCommand` 的 `mission.create` / `mission.assign` / `mission.confirm`（`src/core/types.ts` 第 1009–1016 行）。`brief` / `depends_on` 随 `mission.create` 命令透传给 core（`mission.create` 的载荷字段 `brief` / `dependsOn`），归一（trim / 丢空段 / 去重 / 丢自依赖）在 core 的 `machine.ts` 里做 —— MCP 不另写一份规则。
+
+**`auto_confirm=false` 时这条链只走到 `mission.assign`**（任务停在 `pending`）：放行由 `stratix_mission_confirm`（§2.14）接手 —— 走的是**同一条** `mission.confirm` 命令、同一套 core 守门；建错了要撤掉则由 `stratix_mission_cancel`（§2.15）接手。
 
 ### 2.6 `stratix_mission_status`
 
@@ -823,6 +827,109 @@ mission.create ──▶ mission.assign ──▶ mission.confirm(accept)
 
 ---
 
+### 2.14 `stratix_mission_confirm`
+
+> **排序位**：第 8 位（插在 `mission_checkpoint` 之后 —— `mission` 域的工具聚在一起；条目号 §2.14 按「只加不删」追加在末尾）。
+> **v1.9 新增**：`mission` 域的**确认面**（此前确认权只在 UI 面板，外部 agent 造出的 `pending` 编组任务是死路）。
+
+**description**
+
+> 确认一条待确认的编组任务（mission，`pending` 相位）并让它开工 —— 直接落到 `running`。
+> **何时用**：`stratix_mission_create` 用了 `auto_confirm=false`（或前置依赖当时没满足）造出停在 `pending` 的编组任务，现在条件具备了，放它开工。
+> **何时不用**：任务还没指派任何人（`draft` 相位）—— 没有可确认的编组，调用会被拒并说明；任务已经确认过或在跑 —— 重复确认会被拒（回 `illegal_transition`）；任务已收尾（`done` / `cancelled`）—— 回 `mission_terminal`；想放行一条**角色任务** —— 用 `stratix_task_assign`。
+> **边界**：只认 `pending` 相位（core 的 `decide` 口径，工具不另写一套）；确认 = 接单并开工（core 内部合并 `decide` + `start`），不产生终态墓碑。前置依赖未满足时 core 拒绝确认 —— 这**不是失败**：任务还在 `pending`，回执的 `blocked_by_dependencies` 报出还差哪几个前置，等前置收尾后再确认一次即可。确认不派活：确认只是让编组任务开工，具体做什么仍要派带 `mission_id` 的角色任务。
+> **错误**：`mission_not_found`（任务不存在）/ `illegal_transition`（相位不对：`draft` 无编组可确认 / 已确认过）/ `mission_terminal`（任务已收尾）/ `invalid_arguments`（`mission_id` 为空）。
+
+**inputSchema**
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "mission_id": { "type": "string", "minLength": 1, "description": "编组任务 id（见 stratix_mission_status）。" }
+  },
+  "required": ["mission_id"],
+  "additionalProperties": false
+}
+```
+
+**返回（成功 · 已开工）**
+
+```json
+{ "ok": true, "data": {
+  "mission_id": "mission_1753..._1", "title": "重构路由层", "phase": "running", "confirmed": true,
+  "units": [ { "id": "unit_kimi", "name": "Kimi" }, { "id": "unit_codex", "name": "Codex" } ],
+  "next": { "tool": "stratix_task_assign", "args": { "mission_id": "mission_1753..._1" }, "hint": "派具体任务时带上 mission_id，任务终态会自动回报到这条编组任务" },
+  "poll": { "tool": "stratix_mission_status", "args": { "mission_id": "mission_1753..._1" } } } }
+```
+
+**返回（成功 · 前置依赖未满足，`confirm` 被 core 拒绝）**
+
+```json
+{ "ok": true, "data": {
+  "mission_id": "mission_1753..._2", "title": "进攻北门", "phase": "pending", "confirmed": false,
+  "blocked_by_dependencies": [ "mission_1752..._1" ],
+  "next": { "tool": "stratix_mission_status", "args": { "mission_id": "mission_1753..._2" }, "hint": "前置任务收尾后再调一次 stratix_mission_confirm（依赖未满足时确认会被 core 拒绝）" },
+  "poll": { "tool": "stratix_mission_status", "args": { "mission_id": "mission_1753..._2" } } } }
+```
+
+- `confirmed` 的口径是"**确认真的生效了吗**"（相位从 `pending` 走到了 `running` 才算生效）—— 依赖未满足时它是 `false`，不糊报"已开工"。
+
+**映射**：`HudCommand.mission.confirm`（`decision: 'accept'`）→ core 的 `mission.confirmMission`（`decide` + `start` 内部合并 → `running`）。**回执自己核实**：工具在命令之后**回读状态**，比对确认前后的相位 —— 只有"`pending` → `running`"才报成功；相位没动说明这次确认**没生效**（core 拒绝了），按"依赖未满足"或"相位不对"分别如实回报，**绝不假装成功**（与 `stratix_mission_create` / `stratix_mission_checkpoint` 的"回读核对"同一纪律）。
+
+**依赖判定不另写一份**：回执里 `blocked_by_dependencies` 报的是 core 的 `findMissingDependencies`（`core/mission/machine.ts`）算出来的结果 —— MCP 不自己判断"前置满没满"。
+
+---
+
+### 2.15 `stratix_mission_cancel`
+
+> **排序位**：第 9 位（紧跟 `stratix_mission_confirm`；条目号 §2.15 按「只加不删」追加在末尾）。
+> **v1.9 新增**：`mission` 域的**撤掉面**（此前外部 agent 造出来的悬空 / 探针编组任务在 MCP 内**无法清理**）。
+
+**description**
+
+> 撤掉一条**还没开工**的编组任务（mission，`draft` / `pending` 相位）—— 它从战场移除，`world_snapshot` 里不再出现。
+> **何时用**：自己建的任务不要了 —— 建错了、只是探针、前置依赖永远等不到的悬空任务；清理掉，别让它挂在战场上。
+> **何时不用**：任务已经开工（`confirmed` / `running`）—— 撤任务不等于撤活儿（角色任务还在跑），调用会被拒并说明；任务已收尾（`done` / `cancelled`）—— 终态不改写历史（回 `mission_terminal`）；想放行一条待确认的任务 —— 用 `stratix_mission_confirm`；只想查 —— 用 `stratix_mission_status`。
+> **边界**：只认**从未开工**的相位（`draft` / `pending`，core 的 `canRemoveMission` 守门，工具不另写一套）；撤掉的是任务本身 —— 它占用的单位一并释放，它身上的检查点记账也随任务一起消失（需要留痕就派一条带 `mission_id` 的角色任务，别指望编组任务的记账行当历史）。
+> **错误**：`mission_not_found`（任务不存在）/ `illegal_transition`（已开工，撤不掉）/ `mission_terminal`（任务已收尾）/ `invalid_arguments`（`mission_id` 为空）。
+
+**inputSchema**
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "mission_id": { "type": "string", "minLength": 1, "description": "编组任务 id（见 stratix_mission_status）。" }
+  },
+  "required": ["mission_id"],
+  "additionalProperties": false
+}
+```
+
+**返回（成功）**
+
+```json
+{ "ok": true, "data": {
+  "mission_id": "mission_1753..._3", "title": "v3.6 读回验证探针", "previous_phase": "pending",
+  "removed": true, "units_released": 0,
+  "note": "这条编组任务已从战场移除（world_snapshot 里不再出现），它占用的单位已释放。",
+  "poll": { "tool": "stratix_world_snapshot", "args": { "filters": { "domains": ["missions"] } } } } }
+```
+
+**映射**：`HudCommand.mission.remove`（v3.6 新增）→ core 的 `mission.removeMission`（守门 `canRemoveMission`：只认 `draft` / `pending`）。**回执自己核实**：工具在命令之后**回读状态** —— 这条编组任务不见了才算撤成功；还在 = core 拒绝了，按当前相位如实回报 `illegal_transition`，绝不假装撤掉。
+
+**与 core 的 `mission.cancel` 的分工（两个动作不是一回事，别混用）**：
+
+| 动作 | 语义 | 相位 | 留下什么 |
+|------|------|------|---------|
+| `mission.remove`（本工具） | **撤掉** —— 这条任务从没开工，什么都没发生，世界态里不必留墓碑 | 只认 `draft` / `pending` | **不留痕**（任务从世界态消失，占用的单位释放） |
+| `mission.cancel`（core 内部，UI 的「停止任务」走这条） | **叫停** —— 任务已经开跑过，得有个"被叫停了"的交代 | 任意非终态 → `cancelled` | 留一条终态墓碑（历史不改写） |
+
+why 拆成两个动作：**撤任务不等于撤活儿** —— 已开工的任务背后有角色任务在跑，`remove` 一律拒绝（`illegal_transition`）；而终态是历史，改写不得。MCP 只暴露"撤掉从未开工的任务"这一件 —— 外部 agent 的清理需求（清理自己造的悬空 / 探针任务）到此为止，"叫停在跑的编组"是 UI 面板的活儿（§3.3：渲染层操作不通过 MCP 暴露）。
+
+---
+
 ## 3. 一致性铁律
 
 ### 3.1 投影而非新功能层
@@ -834,10 +941,15 @@ mission.create ──▶ mission.assign ──▶ mission.confirm(accept)
 | `stratix_task_assign` | `HudCommand.task.assign` | app 层 `task-service` 出队执行 |
 | `stratix_task_cancel` | `HudCommand.task.cancel` | core 状态机裁决相位 |
 | `stratix_mission_create` | `HudCommand.mission.create` + `.assign` + `.confirm` | 内部串起，见 §1.2 |
+| `stratix_mission_checkpoint` | `HudCommand.mission.checkpoint` | core 追加一条 append-only 记账（不改相位） |
+| `stratix_mission_confirm` | `HudCommand.mission.confirm` | core 状态机裁决（只认 `pending`）；回读核对是否真的落到 `running` |
+| `stratix_mission_cancel` | `HudCommand.mission.remove` | core 守门（只认没开工的 `draft` / `pending`）；撤掉后这条任务从世界态消失 |
 | `stratix_chat_send` | app 层 `chat-service.send` | 角色会话（非 link 会话） |
 | `stratix_session_interrupt` | `HudCommand.session.interrupt` | core 状态机裁决相位（只认 active / idle） |
 | `stratix_session_resume` | `HudCommand.session.resume` | core 会话域裁决准入（只认 peer_chat + interrupted）+ 回灌上下文快照 |
 | 其余六件 | 无（只读） | 读 `WorldState` 投影 / 会话库投影 |
+
+> （`stratix_session_fork` 已上线、规范条目待补 —— 它同样落在既有 `HudCommand.session.*` 面上，不改变本表的投影口径。）
 
 ### 3.2 状态机约束对 MCP 同样生效
 
@@ -846,8 +958,9 @@ mission.create ──▶ mission.assign ──▶ mission.confirm(accept)
 | 约束 | 事实位置 | MCP 侧表现 |
 |------|---------|-----------|
 | 任务取消只认 `queued`，且不杀在跑的任务 | `core/task/machine.ts` 的 `cancel` 分支 | `task_not_cancellable` + 回当前相位 |
-| 编组任务确认只认 `pending` | `core/mission/machine.ts` 的 `decide` 分支 | `illegal_transition` |
-| 带依赖的编组任务在**依赖满足前不被允许确认** | `core/mission/machine.ts` 的 `findMissingDependencies` + `core/mission/manager.ts` 的 confirm 守门 | `stratix_mission_create` 的 `confirm` 被拒 → 任务停在 `pending`，回执 `blocked_by_dependencies` 报出还差哪几个（**不是失败**：任务已建成） |
+| 编组任务确认只认 `pending` | `core/mission/machine.ts` 的 `decide` 分支 | `illegal_transition`（`stratix_mission_confirm` 对 `draft`（没编组可确认）与已确认过 / 在跑的任务一律拒绝） |
+| 编组任务的「撤掉」只认**从未开工**（`draft` / `pending`） | `core/mission/machine.ts` 的 `canRemoveMission` + `core/mission/manager.ts` 的 `removeMission` | `stratix_mission_cancel` 对已确认 / 在跑的任务拒绝（`illegal_transition`），对终态拒绝（`mission_terminal`）—— 撤任务不等于撤活儿 |
+| 带依赖的编组任务在**依赖满足前不被允许确认** | `core/mission/machine.ts` 的 `findMissingDependencies` + `core/mission/manager.ts` 的 confirm 守门 | `stratix_mission_create` / `stratix_mission_confirm` 的 `confirm` 被拒 → 任务停在 `pending`，回执 `blocked_by_dependencies` 报出还差哪几个（**不是失败**：任务已建成） |
 | **编组任务只有 `running` 才能被回报完成** | `core/mission/machine.ts` 的 `complete` 分支（仅认 `running`） | 不存在"直接置完成"的 MCP 工具；完成只能由 `running → done` 到达 |
 | 终态不改写历史 | 两个 machine 的终态守卫 | 重复取消 / 重复回报一律拒绝；终态任务不接受检查点记账 → `mission_terminal` |
 | 失败不自动重试 | `core/task/machine.ts`（无 retry 动作） | 重派 = 新的一次 `stratix_task_assign` |
@@ -868,9 +981,9 @@ mission.create ──▶ mission.assign ──▶ mission.confirm(accept)
 ### 3.4 只读面与写面的分界
 
 - **只读工具**（`stratix_world_snapshot` / `stratix_task_status` / `stratix_mission_status` / `stratix_registry` / `stratix_session_list` / `stratix_session_get`）：读投影，无副作用，可随时调用、可并发调用。
-- **写工具**（`stratix_task_assign` / `stratix_task_cancel` / `stratix_mission_create` / `stratix_mission_checkpoint` / `stratix_chat_send` / `stratix_session_interrupt` / `stratix_session_resume`）：产生状态迁移（或记账写入），须遵守 §3.2 的状态机约束。
+- **写工具**（`stratix_task_assign` / `stratix_task_cancel` / `stratix_mission_create` / `stratix_mission_checkpoint` / `stratix_mission_confirm` / `stratix_mission_cancel` / `stratix_chat_send` / `stratix_session_interrupt` / `stratix_session_resume`）：产生状态迁移（或记账写入），须遵守 §3.2 的状态机约束。
 
-**幂等要求**：同一个写调用重复发出，第二次应被状态机以明确错误码拒绝（`illegal_transition` / `task_not_cancellable`），**不得产生第二个实体**。MCP 不提供"幂等键"机制 —— 重复调用产生重复实体的风险，由"模型用回执里的 id 去查、去取消"来消解，而不是靠服务端猜。
+**幂等要求**：同一个写调用重复发出，第二次应被状态机以明确错误码拒绝（`illegal_transition` / `task_not_cancellable` / `mission_not_found`），**不得产生第二个实体**。MCP 不提供"幂等键"机制 —— 重复调用产生重复实体的风险，由"模型用回执里的 id 去查、去取消"来消解，而不是靠服务端猜。
 
 ---
 
@@ -905,7 +1018,7 @@ src/stratix-gateway/mcp/
 
 ### 4.2 域前缀与命名位
 
-**已占用域**（第一期）：`world`（`stratix_world_snapshot`）、`task`（`_assign` / `_status` / `_cancel`）、`mission`（`_create` / `_status` / `_checkpoint`）、`chat`（`_send`）、`session`（`_list` / `_get` / `_interrupt` / `_resume`，§2.10 / §2.11 / §2.12 / §2.13 —— 会话域的读面 + 写面）、无域（`stratix_registry`）。
+**已占用域**（第一期）：`world`（`stratix_world_snapshot`）、`task`（`_assign` / `_status` / `_cancel`）、`mission`（`_create` / `_status` / `_checkpoint` / `_confirm` / `_cancel`，§2.5 / §2.6 / §2.9 / §2.14 / §2.15 —— 编组域的建 / 查 / 记账 + **生命周期收尾**：确认开工、撤掉没开工的）、`chat`（`_send`）、`session`（`_list` / `_get` / `_interrupt` / `_resume`，§2.10 / §2.11 / §2.12 / §2.13 —— 会话域的读面 + 写面）、无域（`stratix_registry`）。
 
 **预留命名位**：
 
@@ -914,7 +1027,8 @@ src/stratix-gateway/mcp/
 | `zone` | `stratix_zone_list` / `_create` / `_enter` / `_status` | **工作区域**。Zone 概念在 v3 已按 D5 砍掉，但"把若干角色圈进一个上下文/工位"是未来明确会有的能力，命名位先留出来，避免将来占用 `stratix_work_*` 或 `stratix_ctx_*` 之类与其它域撞车。**预留 ≠ 已实现**：`stratix_zone_*` 出现即表示该能力已上线，未上线前不得出现同名工具 |
 | `pipeline` | `stratix_pipeline_start` / `_status` | 多 agent 流水线（core 已有 `PipelineSpec` 与 `pipeline.start` 命令，`src/core/types.ts` 第 1171 行）—— 第二期候选，第一期不实现 |
 | `chat`（扩展位） | `stratix_chat_history` | 拉取某角色的历史消息（游标分页） |
-| `mission`（扩展位） | `stratix_mission_confirm` | 人工确认编组任务（第一期确认权留给 UI） |
+
+> **已转正（原预留位）**：`stratix_mission_confirm` —— 原为 `mission` 域的预留命名位（"人工确认编组任务（第一期确认权留给 UI）"）；**v1.9 起已实现**（§2.14），预留位转正，命名位按 §4.2 的"预留 ≠ 已实现"规矩撤销占用。
 
 **动作词受控表**：新增工具优先取自 `list` / `get` / `create` / `update` / `assign` / `send` / `cancel` / `start` / `status` / `snapshot` / `search`。确需新动词时先在本节登记再用 —— 动词词表膨胀会让"同类工具"失去可预测性。
 
@@ -923,6 +1037,10 @@ src/stratix-gateway/mcp/
 `interrupt`（`stratix_session_interrupt`，§2.12）—— 把一条在办会话显式转成"已中断"（并落一条中断标记事件）。登记理由：它与 `cancel`（取消一条排队中的任务）**不是同一件事** —— `cancel` 撤的是一条还没开跑的任务，`interrupt` 叫停的是一场**正在跑**的对话；用 `cancel` 硬套会把"取消排队"与"打断进行中"混成一个动词，模型分不清该在什么时候用哪个。
 
 `resume`（`stratix_session_resume`，§2.13）—— 把一条被中断的会话接回进行中（回灌上文 + 重启轮转）。登记理由：它与 `start`（开一场新讨论）**不是同一件事** —— `start` 是"从头开始"，`resume` 是"从断的地方接着"，后者必须带上文；用 `start` 硬套会让模型以为可以丢掉上下文重开，而那正是"恢复"要避免的事。
+
+`confirm`（`stratix_mission_confirm`，§2.14）—— 把一条**待确认**的编组任务放行开工（`pending → running`）。登记理由：它与 `assign`（派活给具体执行者）**不是同一件事** —— `assign` 派的是"谁去干什么"，`confirm` 放行的是"这条编组本身准不准开工"（core 侧合并了 `decide` + `start`）；也不该用 `start` 硬套 —— `start` 意味着"从头开一件事"，而 `confirm` 是对**已经建好、已经编组、已经挂起等裁决**的那条任务盖章放行，它的前提条件（`pending` 相位）是 core 守门的，模型不必自己判断。
+
+**`cancel` 已在受控词表内**，但两处用它的工具语义各自收窄、互不重叠：`stratix_task_cancel` 撤的是一条**排队中**的角色任务（§2.4），`stratix_mission_cancel` 撤的是一条**从未开工**的编组任务（§2.15，撤掉后任务从世界态消失）—— 两者都只认"还没开跑的那一个"，都不动已经在跑的东西。
 
 ### 4.3 新工具提案到上线的流程
 
@@ -1022,6 +1140,7 @@ src/stratix-gateway/mcp/
 
 | 版本 | 日期 | 变更 | 兼容性 |
 |------|------|------|--------|
+| v1.9 | 2026-11-04 | **新增工具** `stratix_mission_confirm`（§2.14，把一条 `pending` 的编组任务放行开工）与 `stratix_mission_cancel`（§2.15，撤掉一条**从未开工**的编组任务 —— 撤掉后 `world_snapshot` 里不再出现）；**新增动词** `confirm` 登记（§4.2，`mission` 域的预留命名位 `stratix_mission_confirm` 转正）；**core 契约增补** —— `HudCommand` 新增 `mission.remove`（§3.1 / §3.2 / §2.15），守门在 core 的 `canRemoveMission`（只认 `draft` / `pending`；与 core 既有的 `mission.cancel`「叫停、留终态墓碑」分工明确）；**悬空引用修正** —— `stratix_mission_create`（§2.5）的描述不再自认"第一期 MCP 不提供确认工具"，改为指向 `stratix_mission_confirm` / `stratix_mission_cancel`；`tools/list` 新增两件（十四件 → 十六件），排在 `mission_checkpoint` 之后（既有工具之间的相对次序不变） | ✅ 纯增量：既有十四件工具的名字、参数、语义与缺省行为**均未变**；`tools/list` 的既有次序逐字未动；**不新增任何错误码**（复用 `mission_not_found` / `illegal_transition` / `mission_terminal` / `invalid_arguments` / `internal_error`）；core 侧只**增**一个动作（`mission.remove`），既有 `mission.cancel` 的语义与行为逐字未变（UI 的「停止任务」照旧留墓碑） |
 | v1.8 | 2026-11-03 | **只写不读补读回** —— `stratix_mission_status`（§2.6）单条模式新增 `brief`（结构化正文全文）与 `checkpoints`（append-only 记账行全量，上限 64）两段读回面，附 `checkpoint_count` / `checkpoint_limit`（§2.9 的读侧缺口结清）；**悬空引用修正** —— `stratix_chat_send`（§2.7）描述不再指向尚未实现的 `stratix_chat_history`（也不改指 `stratix_session_get`：角色对话的消息本体在 `chat_messages` 表里，会话事件流里只有一条空的 `round` 记账事件）；**schema 自洽修正** —— `stratix_task_assign`（§2.2）的 `origin` 取值域补 `mcp`（`default: "mcp"` 原先不在自己的 `enum` 内，严格模式的校验器会拒收那张 schema），`ui` 仍拒绝 | ⚠️ **既有工具的返回形状变宽**：`mission_status` 单条模式的 `data.mission` 多出 `brief` / `checkpoints` / `checkpoint_count` / `checkpoint_limit` 四个字段（**加字段，不改语义**，既有字段逐字未动、列模式未动）；`origin` 显式取值集由 `{agent, script}` 扩为 `{mcp, agent, script}`（`mcp` 与缺省同义，`ui` 的拒绝口径未变）；工具名 / 参数名 / 错误码 / `tools/list` 顺序全部未动 |
 | v1.7 | 2026-11-03 | **传输层错误信封收敛**（§4.4 新增「传输层错误信封」小节 + 附录 A 新增协议层错误表）—— 畸形 JSON 不再漏宿主框架的裸 `{"code":500}`，改回 JSON-RPC `-32700`（id=null）；工具抛未捕获异常不再冒充业务失败信封，改回 `-32603`；`/mcp` 的挂载位次固化为硬约束（必须排在全局 body 解析器之前）；`invalid_arguments` 的 message 区分为「参数缺失」与「类型不对」（`requireString` 少数字段文案） | ✅ 协议层修正，工具面**零变更** —— 十四件工具的名字、参数、语义、返回形状、`tools/list` 顺序全部未动；成功路径逐字未变；业务失败仍走失败信封 + `isError`（错误码总表除 `internal_error` 的「典型触发」描述澄清外未动）；仅未捕获异常的形状从 `internal_error` 信封改为 `-32603` JSON-RPC error |
 | v1.6 | 2026-11-02 | **新增工具** `stratix_session_resume`（§2.13）—— 会话域写面的**第二件**（把一条被中断的互聊会话接回进行中：回灌上文 + 重启轮转，落点 = 既有的 `HudCommand.session.resume`）；**新增动词** `resume` 登记（§4.2）；`tools/list` 新增一件（十二件 → 十三件），排在 `session_interrupt` 之后（既有工具之间的相对次序不变） | ✅ 纯增量：既有十二件工具的名字、参数、语义与缺省行为**均未变**；`tools/list` 的既有十二件次序逐字未动；不新增任何状态通道 / 持久化表 / 状态机（写面走既有 `session.resume` 命令与既有会话状态机；§2.13 的 kind 边界与 §2.12 同一口径） |
@@ -1496,8 +1615,8 @@ offConsumer();   // 后  ❌ 应当逆序：offConsumer(); offProvider();
 | `task_capacity_exceeded` | 任务队列已满（100） | ✅ | `TaskRejectionCode.limit-exceeded` |
 | `mission_not_found` | 编组任务 id 不存在 | ❌ | `MissionRejectionCode.not-found` |
 | `mission_capacity_exceeded` | 编组任务数已满（100） | ✅ | `MissionRejectionCode.limit-exceeded` |
-| `mission_terminal` | 编组任务已收尾（done / cancelled），不再接受该操作 | ❌ | 终态拒绝（`appendMissionCheckpoint` 的终态分支） |
-| `illegal_transition` | 状态机拒绝该迁移 | ❌ | `MissionErrorCode.illegal-transition` |
+| `mission_terminal` | 编组任务已收尾（done / cancelled），不再接受该操作 | ❌ | 终态拒绝（`appendMissionCheckpoint` 的终态分支；`stratix_mission_confirm` / `stratix_mission_cancel` 对终态任务同样拒绝，§2.14 / §2.15） |
+| `illegal_transition` | 状态机拒绝该迁移 | ❌ | `MissionErrorCode.illegal-transition` / 编组任务相位不对（确认只认 `pending`、撤掉只认没开工，§2.14 / §2.15） |
 | `session_not_found` | 会话 id 不存在 | ❌ | `SessionReadPort.readSession` 回 null（`src/app/services/persistence/session-reader.ts:44`）/ `SessionRejectionCode.not-found` |
 | `unsupported_kind` | 该类会话不支持此操作 | ❌ | 会话 kind 不在工具面允许的集合内（`stratix_session_interrupt` / `stratix_session_resume` 只认 `peer_chat`，见 §2.12 / §2.13） |
 | `internal_error` | 内部异常 | ✅ | 工具**主动判定**的内部失败：数据面端口未接（`sendChatRound` / `readSessions`）、命令没人接管、状态在操作中消失 |

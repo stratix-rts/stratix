@@ -23,8 +23,8 @@ export const registryTool: ToolSpec = {
   domain: 'registry',
   verb: 'list',
   // 清单位次（§2 的条目号只作文档锚点，见 docs/MCP-SPEC.md §2.0）：
-  // mission 域新工具插进来后，registry 整体后移一位 —— 既有工具之间的相对次序不变。
-  order: 9,
+  // mission 域新工具插进来后，registry 整体后移两位 —— 既有工具之间的相对次序不变。
+  order: 11,
   description: [
     '列出工作台上"可操作的对象"：可用的 CLI agent、角色名册、战场单位名册。',
     '何时用：第一次派单前查"有哪些角色、分别绑的是哪个 CLI、谁在线"；拿到 unknown_character 错误后查该用哪个 id。',

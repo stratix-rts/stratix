@@ -17,6 +17,8 @@
  *   - assign 允许重复执行（pending → pending = 改指派对象，仍待确认；assign(空) 从 pending 退回 draft = 收回指派）。
  *   - done / cancelled 是终态：任何动作都判非法，重复取消也不会二次改写历史。
  *   - decide 只能从 pending 出发：没指派不能确认（draft），已确认的不能重复确认（confirmed/running）。
+ *   - @since v3.6（task_120）**remove 不是相位迁移**：撤掉一条从未开工的任务（draft / pending）——
+ *     它不进 'cancelled'，而是从世界态里**消失**（见 canRemoveMission：判据只有这一份）。
  *
  * @since v3.38（task_077）新增三块**数据能力**（不动既有相位与转移）：
  *   - 结构化正文（brief）：createMission 透传，落进 MissionView.brief；
@@ -71,6 +73,23 @@ const TERMINAL_PHASES: readonly MissionPhase[] = ['done', 'cancelled'];
 
 export function isTerminalPhase(phase: MissionPhase): boolean {
   return TERMINAL_PHASES.includes(phase);
+}
+
+/**
+ * 可**撤掉**的相位（@since v3.6，task_120）：只有**从未开工**的编组任务（draft / pending）。
+ *
+ * why 与 cancel 分开（两个动作不是一回事）：
+ *   - cancel = **叫停**：任意非终态 → 'cancelled'，留一条终态墓碑（UI 的「停止任务」走这条）；
+ *   - remove = **撤掉**：这条任务还没确认、还没开工 —— 什么都没发生，世界态里不必留墓碑
+ *     （外部 agent 用它清理自己造的悬空 / 探针任务）。
+ *
+ * why 只认这两个相位：已确认 / 在跑的任务背后有活儿在跑（撤任务不等于撤活儿 —— 角色任务还在跑，
+ * 撤掉编组只会让状态自相矛盾）；终态是历史，改写/抹掉历史违反 core 的终态铁律。
+ *
+ * 口径只有这一份：core 的 manager 守门、MCP 工具的拒绝文案、HUD 的提示都调它（各写一份必然漂移）。
+ */
+export function canRemoveMission(mission: MissionView): boolean {
+  return mission.phase === 'draft' || mission.phase === 'pending';
 }
 
 /** 在办（未收尾）：HUD 的"进行中"分组与单位 missionId 的占用判定都用它。 */
