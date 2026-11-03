@@ -30,7 +30,9 @@
  * 视口：组合根从 camera.moved（center + zoom）+ 战场容器尺寸换算出世界坐标矩形喂入。
  *
  * @since v3.33（task_057）；@since v3.3（task_079：尺寸 200×120 / 岛屿轮廓 / 状态光点 /
- *   视野白框 / 外框描边 / MAP 角标）。
+ *   视野白框 / 外框描边 / MAP 角标）；@since v3.4（task_093：hover 提升亮度 + 过渡，
+ *   贴边留边提为常量 MINIMAP_METRICS.cornerMarginPx —— 与事件轨同一口径，
+ *   Z3 与 Z4 的「≥40px 间距」才推得出来）。
  */
 
 import { resolveAccent } from '../../../core/theme/skin-registry';
@@ -283,8 +285,8 @@ export function defineStratMinimap(): typeof HTMLElement {
           :host {
             all: initial;
             position: fixed;
-            right: var(--srf-spacing-md);
-            bottom: var(--srf-spacing-md);
+            right: ${MINIMAP_METRICS.cornerMarginPx}px;
+            bottom: ${MINIMAP_METRICS.cornerMarginPx}px;
             z-index: 45; /* 抽屉(40)之上、toast(50)之下：控制件，不遮反馈层 */
             pointer-events: auto; /* hud-root 整层 none，本组件自接交互 */
             font-family: var(--srf-font-ui);
@@ -296,7 +298,11 @@ export function defineStratMinimap(): typeof HTMLElement {
             box-shadow: var(--srf-shadow-lg);
             overflow: hidden;
             line-height: 1;
+            /* hover 提亮要有过渡（Z3 规格「hover 提升亮度」）——
+               只动 filter（合成层属性），不触发布局重排（性能铁律）。 */
+            transition: filter ${MINIMAP_METRICS.hoverTransitionMs}ms ease;
           }
+          :host(:hover) .frame { filter: brightness(${MINIMAP_METRICS.hoverBrightness}); }
           .head {
             display: flex;
             align-items: center;

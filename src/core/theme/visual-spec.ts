@@ -533,6 +533,20 @@ export const MINIMAP_METRICS = Object.freeze({
   badgeFontPx: 11,
   /** 「MAP」角标的文案（规格钦定的英文角标）。 */
   badgeText: 'MAP',
+  /**
+   * 小地图贴视口右 / 下边的留边（px）—— 与事件轨（left:16px）同一口径（@since v3.4，task_093）。
+   * why 提为常量：Z3 与 Z4 的「≥40px 间距」是**两条边同时成立**的规则，留边一旦各写各的
+   *   （事件轨 16 / 小地图 12），间距推导就对不上唯一事实源 —— 版面计算要能算出来。
+   */
+  cornerMarginPx: 16,
+  /** 小地图标题栏（「小地图」+ 折叠按钮）的高度（px）。 */
+  headHeightPx: 20,
+  /** 外框描边宽度（px）—— 外框总宽 = 画布宽 + 2 × 此值。 */
+  frameBorderPx: 1,
+  /** hover 提升亮度的倍数（>1 = 变亮）—— Z3 规格「hover 提升亮度」（@since v3.4，task_093）。 */
+  hoverBrightness: 1.12,
+  /** hover 提亮的过渡时长（ms）—— 提亮不许「啪」地一下变亮，要有过渡。 */
+  hoverTransitionMs: 180,
 });
 
 /**
@@ -561,9 +575,15 @@ export const CONTROL_ISLAND_METRICS = Object.freeze({
   cornerMarginPx: 16,
   /**
    * 右下角件（小地图）从视口底边起占的总高（px）—— 右竖栏的下边界要按它让开。
-   * 拆解：画布 120（MINIMAP_METRICS.heightPx）+ 标题栏 20 + 外框描边 2 + 贴边留边 12 = 154。
+   * 拆解：画布 120（MINIMAP_METRICS.heightPx）+ 标题栏 20 + 外框描边 2 + 贴边留边 16 = 158。
+   * why 跟着 MINIMAP_METRICS 走：小地图的留边 / 标题栏高度变了，右竖栏的下边界必须跟着变 ——
+   *   写死 154 就会在小地图变高时让右竖栏压上去。
    */
-  cornerStackHeightPx: 154,
+  cornerStackHeightPx:
+    MINIMAP_METRICS.heightPx +
+    MINIMAP_METRICS.headHeightPx +
+    MINIMAP_METRICS.frameBorderPx * 2 +
+    MINIMAP_METRICS.cornerMarginPx,
 });
 
 /**
@@ -684,13 +704,29 @@ export const REPLAY_METRICS = Object.freeze({
   bubbleEveryN: 2,
   /** 左上角大号时间戳角标的字号（px）。 */
   clockFontPx: 44,
-  /** 角标距左上角的留边（px）。 */
+  /** 角标距左边界的留边（px）。 */
   clockInsetPx: 24,
+  /**
+   * 角标顶部与顶栏下缘的垂直间距（px）—— @since v3.4，task_093。
+   * why 需要它：角标原为 inset top 24px，而顶栏是 40px 高的固定条 —— 角标直接压在顶栏上。
+   *   Z5 规格「左上 inset top 56px」= 顶栏 40 + 间距 16。
+   */
+  clockTopbarClearancePx: 16,
   /** 回放时间轴最多保留多少条事件（超出丢最旧的 —— 数据不许无限增长）。 */
   maxEntries: 600,
   /** 回放化身的世界槽位网格（列 × 行）—— 角色不在战场上时的落位。 */
   slotGrid: Object.freeze({ columns: 8, rows: 6 }),
 });
+
+/**
+ * 时间戳角标（Z5）的顶部 inset（px）= 顶栏高度 + 与顶栏的间距（40 + 16 = 56）。
+ *
+ * why 派生而不是写死 56：顶栏高度是变量（TOPBAR_METRICS.heightPx），顶栏一改，
+ *   角标的落点必须跟着挪 —— 否则「角标与顶栏不相交」这条规则会悄悄失效。
+ *   Z5 规格：左上 fixed，inset top 56px（docs/hud-redesign-proposal.html §2.5）。
+ */
+export const REPLAY_CLOCK_TOP_INSET_PX =
+  TOPBAR_METRICS.heightPx + REPLAY_METRICS.clockTopbarClearancePx;
 
 /**
  * 演示模式参数（DEMO-PLAN §8）。

@@ -1,25 +1,28 @@
 #!/usr/bin/env node
 /**
- * 最小碰撞断言脚本（@since v3.4，task_090）：HUD 控制岛（Z4）与两个下角件的版面关系。
+ * 最小碰撞断言脚本（@since v3.4，task_090；@since v3.4，task_093 加 Z3 hover / Z5 角标两条）：
+ * HUD 控制岛（Z4）与两个下角件、以及左上角标（Z5）与顶栏（Z1）的版面关系。
  *
- * 断言口径（与 task_090 的验收标准逐条对应）：
+ * 断言口径（与 task_090 / task_093 的验收标准逐条对应）：
  *   ① 控制岛高度 ≤ CONTROL_ISLAND_METRICS.maxHeightPx（100px），且**内容自适应**（不是写死的 34cqh）；
  *   ② 控制岛 ∩ 左下事件轨 = ∅，水平间距 ≥ 40px；
  *   ③ 控制岛 ∩ 右下小地图 = ∅，水平间距 ≥ 40px；
- *   ④ 720p 下中轴可用高度（视口高 − 顶栏高 − 控制岛高）≥ 视口高的 85%。
+ *   ④ 720p 下中轴可用高度（视口高 − 顶栏高 − 控制岛高）≥ 视口高的 85%；
+ *   ⑤ 小地图 hover 提亮（computed filter 的 brightness > 1）且声明了 filter 过渡；
+ *   ⑥ 时间戳角标 ∩ 顶栏 = ∅（角标顶部 inset 56px > 顶栏 40px）。
  *
  * why 跑真浏览器而不是 jsdom：jsdom 没有排版引擎，bounding box 全是 0 —— 碰撞与间距
  *   这类断言只能在真排版里量（本仓库的 e2e 也是这个口径）。
  *
  * 用法：
  *   node scripts/check-hud-island-layout.mjs [url]
- *   URL 默认取环境变量 HUD_URL，否则 http://127.0.0.1:7525/src/app/main/index.html
- *   （7525 是本仓 vite dev 的兜底端口；实际端口以 vite 启动日志为准）。
+ *   URL 默认取环境变量 HUD_URL，否则 http://127.0.0.1:7523/src/app/main/index.html
+ *   （7523 是本仓 vite dev 的端口，见 vite.config.ts 的 server.port；实际端口以启动日志为准）。
  */
 
 import { chromium } from '@playwright/test';
 
-const URL = process.argv[2] ?? process.env.HUD_URL ?? 'http://127.0.0.1:7525/src/app/main/index.html';
+const URL = process.argv[2] ?? process.env.HUD_URL ?? 'http://127.0.0.1:7523/src/app/main/index.html';
 
 /** 断言阈值（与 core/theme/visual-spec.ts 的 CONTROL_ISLAND_METRICS 同一口径）。 */
 const MAX_ISLAND_HEIGHT_PX = 100;
@@ -105,8 +108,37 @@ async function measure(page) {
         const s = document.querySelector('strat-command-panel')?.shadowRoot?.querySelector('.sections');
         return s ? s.scrollWidth > s.clientWidth + 0.5 : false;
       })(),
+      /** 小地图外框的 computed filter（hover 提亮用）+ 过渡声明。 */
+      minimapFilter: (() => {
+        const frame = document.querySelector('strat-minimap')?.shadowRoot?.querySelector('.frame');
+        if (!frame) return null;
+        const cs = getComputedStyle(frame);
+        return { filter: cs.filter, transitionProperty: cs.transitionProperty, transitionDuration: cs.transitionDuration };
+      })(),
+      /**
+       * 时间戳角标（Z5）与顶栏（Z1）的盒子。
+       * why 要「强制显示」：角标只在回放激活时可见（display:none → 量不到盒子），
+       *   但「它出现时会压住顶栏吗」是版面问题 —— 强制点亮再量，才是这条规则的真面目。
+       */
+      clock: (() => {
+        const badge = document.querySelector('strat-replay-clock')?.shadowRoot?.querySelector('[data-role="badge"]');
+        if (!badge) return null;
+        badge.dataset.on = '1';
+        const r = badge.getBoundingClientRect();
+        const t = document.querySelector('.hud-topbar')?.getBoundingClientRect();
+        return {
+          badge: { top: r.top, bottom: r.bottom, left: r.left, right: r.right, width: r.width, height: r.height },
+          topbar: t ? { top: t.top, bottom: t.bottom, left: t.left, right: t.right } : null,
+        };
+      })(),
     };
   });
+}
+
+/** 从 computed filter 里读出 brightness 倍数（没写就是 1）。 */
+function brightnessOf(filter) {
+  const m = /brightness\(([\d.]+)\)/.exec(filter ?? '');
+  return m ? Number.parseFloat(m[1]) : 1;
 }
 
 const failures = [];
@@ -183,6 +215,37 @@ for (const vp of VIEWPORTS) {
     }
   }
 
+  // ⑦ 小地图 hover 提亮（@since v3.4，task_093）：静止时亮度 1，hover 后 > 1，且声明了 filter 过渡。
+  const readFilter = () =>
+    page.evaluate(() => {
+      const frame = document.querySelector('strat-minimap')?.shadowRoot?.querySelector('.frame');
+      if (!frame) return null;
+      const cs = getComputedStyle(frame);
+      return { filter: cs.filter, transitionProperty: cs.transitionProperty, transitionDuration: cs.transitionDuration };
+    });
+  const restFilter = await readFilter();
+  check(!!restFilter, '小地图外框没量到（hover 断言无从谈起）');
+  if (restFilter) {
+    check(String(restFilter.transitionProperty).includes('filter'),
+      `小地图没声明 filter 过渡（transition-property=${restFilter.transitionProperty}）`);
+    check(brightnessOf(restFilter.filter) === 1,
+      `静止态小地图不该是提亮的（filter=${restFilter.filter}）`);
+    await page.hover('strat-minimap .frame');
+    await page.waitForTimeout(400); // 等过渡走完（180ms 过渡 + 余量）
+    const hoverFilter = await readFilter();
+    check(brightnessOf(hoverFilter?.filter) > 1,
+      `hover 小地图没提亮（filter=${hoverFilter?.filter}）`);
+    await page.mouse.move(0, 0); // 移开鼠标，回到静止态
+  }
+  // ⑧ 时间戳角标（Z5）不压顶栏（Z1）：角标盒子的上沿要在顶栏下沿之下。
+  check(!!m.clock?.badge && !!m.clock?.topbar, '回放角标 / 顶栏没量到（角标断言无从谈起）');
+  if (m.clock?.badge && m.clock?.topbar) {
+    const clockArea = overlaps(m.clock.badge, m.clock.topbar);
+    check(clockArea === 0, `角标与顶栏重叠 ${clockArea.toFixed(0)}px²`);
+    check(m.clock.badge.top >= m.clock.topbar.bottom,
+      `角标上沿 ${m.clock.badge.top.toFixed(1)}px 压在顶栏下沿 ${m.clock.topbar.bottom.toFixed(1)}px 之上`);
+  }
+
   rows.push(
     [
       vp.label,
@@ -193,6 +256,7 @@ for (const vp of VIEWPORTS) {
       `中轴 ${axis.toFixed(0)}px (${(ratio * 100).toFixed(1)}%)`,
       `回放层 ${m.layers.replay ? m.layers.replay.height.toFixed(0) : '?'} / 命令层 ${m.layers.command ? m.layers.command.height.toFixed(0) : '?'}`,
       `可见命令 ${m.visibleCommands} 条`,
+      `角标 top ${m.clock?.badge ? m.clock.badge.top.toFixed(0) : '?'} / 顶栏底 ${m.clock?.topbar ? m.clock.topbar.bottom.toFixed(0) : '?'}`,
     ].join(' | ')
   );
   await context.close();
@@ -208,4 +272,4 @@ if (failures.length > 0) {
   for (const f of failures) console.error(`  - ${f}`);
   process.exit(1);
 }
-console.log(`✓ 碰撞断言全过：岛高 ≤${MAX_ISLAND_HEIGHT_PX}px、事件轨 / 小地图零重叠且间距 ≥${MIN_CORNER_CLEARANCE_PX}px、中轴可用高度 ≥${MIN_AXIS_RATIO * 100}%`);
+console.log(`✓ 碰撞断言全过：岛高 ≤${MAX_ISLAND_HEIGHT_PX}px、事件轨 / 小地图零重叠且间距 ≥${MIN_CORNER_CLEARANCE_PX}px、中轴可用高度 ≥${MIN_AXIS_RATIO * 100}%、小地图 hover 提亮有过滤渡、角标不压顶栏`);

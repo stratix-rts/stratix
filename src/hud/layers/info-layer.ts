@@ -19,7 +19,8 @@
  *      「哪些元素属于哪一层」映射到这些变量。切档 = 改四个变量的值 —— 不重建 DOM、
  *      不逐元素改样式、opacity / visibility 不触发布局重排（性能铁律）。
  *   ② **分区 → 层级的映射集中在一张表**（HUD_LAYER_REGIONS）：顶栏 / 控制岛 / 小地图 = L1，
- *      事件轨（跑马灯）/ toast = L2。★ 这张表是**机制层**的知识，不是各组件自己的事 ——
+ *      事件轨（跑马灯）/ toast = L2，回放时间戳角标 = L3（@since v3.4，task_093）。
+ *      ★ 这张表是**机制层**的知识，不是各组件自己的事 ——
  *      故顶栏 / 事件轨的代码**一行未改**（本任务不动它们），层级语义集中在这里。
  *   ③ **通用属性口径**（`[data-srf-layer="L1"|"L2"]`）：给后续任务一个「谁想入层就自己标」的入口
  *      —— 新增 L3 元素或新的 L2 件时，标一个属性即可，不必改这张表。
@@ -72,7 +73,7 @@ export const INFO_LAYER_CSS_VARS = Object.freeze({
  * why 用**选择器**而不是给每个组件打标记：打标记要改各组件的代码（顶栏 / 事件轨本任务不动），
  *   而选择器把「分区 → 层级」这张表收在机制层一处 —— 组件零改动，语义一处可查。
  */
-export const HUD_LAYER_REGIONS: Readonly<Record<'L1' | 'L2', readonly string[]>> = Object.freeze({
+export const HUD_LAYER_REGIONS: Readonly<Record<'L1' | 'L2' | 'L3', readonly string[]>> = Object.freeze({
   L1: Object.freeze([
     '.hud-topbar',
     '.hud-rail-left',
@@ -81,6 +82,9 @@ export const HUD_LAYER_REGIONS: Readonly<Record<'L1' | 'L2', readonly string[]>>
     'strat-minimap',
   ]),
   L2: Object.freeze(['strat-marquee', 'strat-toast-host']),
+  // L3 沉浸（@since v3.4，task_093）：回放时间戳角标 —— L3 激活时它满对比，
+  // L1 降对比、L2 收起，给「沉浸」让出画面。
+  L3: Object.freeze(['strat-replay-clock']),
 });
 
 /** 层级 → 中文显示名（演示开关 / 调试面板共用；名字只有这一处）。 */
@@ -112,6 +116,7 @@ export function infoLayerVars(layer: InfoLayer): Record<string, string> {
 export function buildInfoLayerCss(): string {
   const l1 = [...HUD_LAYER_REGIONS.L1, '[data-srf-layer="L1"]'].join(',\n');
   const l2 = [...HUD_LAYER_REGIONS.L2, '[data-srf-layer="L2"]'].join(',\n');
+  const l3 = [...HUD_LAYER_REGIONS.L3, '[data-srf-layer="L3"]'].join(',\n');
   const transition = `var(${INFO_LAYER_CSS_VARS.transitionMs}, ${HUD_LAYER_METRICS.transitionMs}ms)`;
   return `:root {
   ${INFO_LAYER_CSS_VARS.l1Opacity}: 1;
@@ -127,6 +132,12 @@ ${l2} {
   opacity: var(${INFO_LAYER_CSS_VARS.l2Opacity}, 1);
   visibility: var(${INFO_LAYER_CSS_VARS.l2Visibility}, visible);
   transition: opacity ${transition} ease, visibility ${transition} ease;
+}
+/* L3 沉浸层元素（@since v3.4，task_093）：始终满对比 —— L3 期间 L1 降对比、L2 收起，
+   沉浸的那几件（回放时间戳角标）必须是画面里最清楚的东西。 */
+${l3} {
+  opacity: 1;
+  transition: opacity ${transition} ease;
 }
 `;
 }

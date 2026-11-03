@@ -1,114 +1,57 @@
-# task_093 service: 组合根挂 SessionManager+persister 注入
+# task_093 HUD v3.4 · Z3/Z5 边角件
 
 ## 描述
 
-v3.2a S3：把会话域接进 service。方案 docs/SESSION-PLAN.md。依赖 S2（task_092）。
+小地图 hover 提升亮度 + 与控制岛间距 ≥40px 规则化；回放时间戳角标从与顶栏重叠位置迁到左上 inset top 56px，仅回放激活时显示（L3 层），含日期与 ⏩ 回放中标识。
 
 ## Requirements
 
-1. `createStratixService()`（src/stratix-gateway/service/）增补：SessionManager 实例（S1）+ persister 注入（S2），装配顺序对齐既有 manager 模式（manager 先建、runtime 后起）。
-2. runtime 的 `session.interrupt` 命令分发：emitCommand → manager.interruptSession（回读核对落点，语义对齐 mission/task 命令）。
-3. 五 kind 的 session 记录创建接线（LITE 模式，方案第 2 节表格）：
-   - character_chat：chat-service 发起/收尾时 create/更新 lastEventAt（事件本体不双写，chat_messages 表保持原状）
-   - task_run / mission_run：task-service settle 与 mission 终态时 create/close（LITE 两事件）
-   - shell_link：agent-link 会话 open/close 时 create/close
-   - peer_chat 由 S4 接，本单不碰 agent-chat-service
-4. smoke：`scripts/smoke-service.ts` 增段落——session create→append→interrupt→close 后 WorldState.sessions 与 SQLite 双侧可见。
-5. world-sync 无需改动（sessions 在 WorldState 自动随快照）——在任务 md 记录验证结论（快照 JSON 含 sessions 键）。
+依据 docs/hud-redesign-proposal.html §2.5 Z3/Z5；tsc 零错；测试全绿；最小改动。
 
 ## Acceptance
 
-- [x] smoke 双侧可见（内存态+SQLite）输出贴 md
-- [x] session.interrupt 命令经 bus 往返落点核对单测绿
-- [x] world-sync 快照含 sessions 验证记录贴 md
-- [x] npx tsc --noEmit 0 错 + npx jest 全绿
-
-## 验证记录（2026-11-02）
-
-### ① smoke 双侧可见（内存态 + SQLite）
-
-命令：`npx tsx scripts/smoke-service.ts`
-
-```
-[smoke-service] boot ok（missions=0）
-[smoke-service] mission.create 落地 ok（id=mission_1793588239833_1）
-[smoke-service] 执行环 ok（task=task_1793588239834_1 → completed）
-[smoke-service] 会话双侧可见 ok（session=session_character_chat_1793588239880_4；内存 2 条 / 库 2 条；事件 4 条）
-[smoke-service] world-sync 快照含 sessions ok（2 条）
-[smoke-service] stop ok（命令不再落地）
-[smoke-service] OK
-```
-
-对照说明：
-- 「内存 2 条」= ① 执行环收尾自动记的 `task_run`（LITE 建+收尾）+ ② 手工建的 `character_chat`；
-  「库 2 条」= `sessions` 表同样两行（同一批会话的 SQLite 侧）。
-- 「事件 4 条」= 手工那条会话的 `session_events` 四行：`created,round,interrupt,closed`（seq 1..4）。
-- 中断那一跳是**经总线往返**的：`emitCommand({ type: 'session.interrupt', sessionId })`
-  → core runtime 裁决 → 会话状态机（active → interrupted）。
-
-### ② session.interrupt 经 bus 往返落点核对（单测）
-
-文件：`src/core/__tests__/session-runtime.test.ts`（打真总线 + 真 store，不 mock 总线）
-
-```
-PASS src/core/__tests__/session-runtime.test.ts
-  session.interrupt：HUD 命令 → runtime 裁决 → 会话状态
-    ✓ 命令经总线落到会话状态机（active → interrupted），并记一条 interrupt 事件
-    ✓ 命令落点与业务侧记账写的是同一份状态（同一 manager 实例 / 同一 store）
-    ✓ 会话不存在：命令被拒但不抛（不打断整轮广播），也不凭空造出会话
-    ✓ 已收尾的会话再中断：状态不变（终态拒收，历史不改写）
-```
-
-语义对齐说明：落点与 `mission.*` / `task.*` 命令同一口径 —— runtime 直接调 manager，
-状态合法性裁决在 core/session 的状态机里（已收尾 / 已中断的会话被拒并回 Notice，不抛异常打断整轮广播）。
-
-### ③ world-sync 快照含 sessions（无需改协议）
-
-`toWireState` 只摊平 `selectionGroups`，其余字段整体透传 → `sessions` 随快照走。
-smoke 段（`createSnapshotMessage(1, state)`）与单测
-（`src/stratix-gateway/service/__tests__/session-wiring.test.ts`）均已核对：
-
-```
-[smoke-service] world-sync 快照含 sessions ok（2 条）
-```
-
-单测断言：`Array.isArray(snapshot.state.sessions) === true`，且快照里的会话 id 与内存态一致。
-**world-sync 代码零改动**（含 `HUD_COMMAND_TYPE_FLAGS` 里既有的 `'session.interrupt': true`）。
-
-### ④ tsc + jest 全绿
-
-命令：`npx tsx scripts/smoke-service.ts && npx tsc --noEmit && npx jest --silent`
-
-```
-Test Suites: 200 passed, 200 total
-Tests:       6 skipped, 4040 passed, 4046 total
-Snapshots:   0 total
-Time:        21.883 s, estimated 22 s
-```
-
-`npx tsc --noEmit` 无输出（0 错）。
-
-### 新增 / 改动单测一览
-
-- `src/core/__tests__/session-runtime.test.ts`（新）：session.interrupt 总线往返落点（4 例）
-- `src/stratix-gateway/service/__tests__/session-wiring.test.ts`（新）：持久化口缺省范式三态
-  （存储件在→接管 / 显式覆盖缺省 / 两者皆缺→不落库）+ task_run / mission_run LITE 双侧可见 + 快照含 sessions（5 例）
-- `src/core/agent-link/__tests__/session-link.test.ts`（新）：shell_link LITE（建链成功建会话 /
-  断开收尾 / 建链失败不建会话 / dispose 收尾）（4 例）
-- `src/app/__tests__/chat-session.test.ts`（新）：character_chat LITE（首建 / 复用 / 空 round 事件
-  不含消息本体 / 失败路径也记）（4 例）
-
-## 未尽事项（本单范围外）
-
-- `peer_chat` 全量事件落库属 S4（agent-chat-service 本单未碰）。
-- HUD 展示 / MCP 工具属 S5 / S6。
-- `agent-link` 的 manager 目前**没有生产实例**（只在单测与 `scripts/smoke-agent-link.ts` 里被创建），
-  故 shell_link 的会话接线在生产链路上尚未真正生效 —— 待 agent-link 接线单落地时，把同一个
-  SessionManager 实例注入进去即可（接线面已就绪，本单已用单测覆盖）。
-- 渲染侧组合根（`src/app/main/main-entry.ts`）在**远程模式**下刻意不接会话写入面
-  （真相唯一：本地不能再造一份会话投影）。
+- [x] 小地图 hover 提亮
+- [x] 时间戳角标不再与顶栏重叠（实测）
+- [x] 非回放态角标隐藏
 
 ## deliverables
 
-- service 组合根增补 + runtime 分发 + 三处 LITE 接线 + smoke 段落
+小地图交互微调 + 时间戳角标迁移（依赖 task_090 控制岛定型）
 
+## 验证记录（2026-11-03）
+
+### ① 浏览器碰撞断言（scripts/check-hud-island-layout.mjs，Playwright + Chromium）
+
+三档分辨率（1280×720 / 1920×1080 / 1024×768）全过：
+
+```
+1280×720 (720p) | 岛 648×60 | 顶栏 40 | 事件轨 x[16,276] 间距 40.0 | 小地图 x[1062,1264] 间距 98.0 | 角标 top 56 / 顶栏底 40
+1920×1080 (1080p) | 岛 1075×60 | 顶栏 40 | 事件轨 x[16,276] 间距 146.4 | 小地图 x[1702,1904] 间距 204.4 | 角标 top 56 / 顶栏底 40
+1024×768 (窄屏) | 岛 392×60 | 顶栏 40 | 事件轨 x[16,276] 间距 40.0 | 小地图 x[806,1008] 间距 98.0 | 角标 top 56 / 顶栏底 40
+
+✓ 碰撞断言全过：岛高 ≤100px、事件轨 / 小地图零重叠且间距 ≥40px、中轴可用高度 ≥85%、小地图 hover 提亮有过滤渡、角标不压顶栏
+```
+
+- 角标与顶栏**包围盒不相交**（角标 top 56px > 顶栏底 40px）—— 本任务修的正是原来 24px inset 压顶栏的问题；
+- 小地图 hover：静止 computed filter 无 brightness，悬停后 brightness > 1，且声明了 `transition: filter`；
+- 小地图与控制岛水平间距 98 / 204.4 / 98px，均 ≥40px。
+
+### ② 类型 / 测试 / lint
+
+- `npx tsc --noEmit` → 零错；`npx tsc -p tsconfig.test.json --noEmit` → 零错
+- `npx jest src/hud --maxWorkers=2 --silent` → 51 套件 / 1012 用例全绿
+- `npx jest src/core --maxWorkers=2 --silent` → 38 套件 / 807 用例全绿
+- `npx eslint --cache --max-warnings 200 <改动文件>` → 零错
+
+### ③ 关键实现点
+
+- hover 提亮只动 `filter`（合成层属性，不触发布局重排）：`.frame { transition: filter 180ms ease }` +
+  `:host(:hover) .frame { filter: brightness(1.12) }`，数值在 `MINIMAP_METRICS`；
+- 小地图贴边留边 12px → 16px（与事件轨同口径，`MINIMAP_METRICS.cornerMarginPx`），
+  `cornerStackHeightPx` 改为按小地图度量**派生**（154 → 158）；
+- 角标顶部 inset **派生**：`REPLAY_CLOCK_TOP_INSET_PX = TOPBAR_METRICS.heightPx + 16 = 56`，
+  顶栏高度一改角标落点自动跟着挪；水平 inset 仍是 24px（规格只改垂直位置）；
+- 角标挂 L3：`HUD_LAYER_REGIONS.L3 = ['strat-replay-clock']` + 组件自标 `data-srf-layer="L3"`；
+- 新增 `src/hud/layout/hud-layout.ts`：把「≥40px 间距」「角标不压顶栏」写成纯函数，jsdom 里也能断言。
+
+详见 `docs/rubric/agent_task_093_corner_pieces.md`。

@@ -23,7 +23,11 @@ import {
   type MinimapUnit,
   type StratMinimapElement,
 } from '../components/minimap/minimap';
-import { VISUAL_PALETTE } from '../../core/theme/visual-spec';
+import {
+  CONTROL_ISLAND_METRICS,
+  MINIMAP_METRICS,
+  VISUAL_PALETTE,
+} from '../../core/theme/visual-spec';
 import { WORLD_BOUNDS } from '../../core/types';
 
 /** 默认尺寸（200×120）下世界 3200×2400 等比铺进画布（scale=1/20，左右各留 20px）。 */
@@ -387,6 +391,49 @@ describe('组件：折叠与记忆', () => {
     fire(el, 'pointermove', 20, 20); // 已离场：拖拽态已复位，无新命令
     document.body.appendChild(el);
     expect(commands).toHaveLength(1);
+  });
+});
+
+// ============================================================================
+// hover 提亮 + 贴边留边（@since v3.4，task_093）
+// ============================================================================
+
+describe('Z3 小地图：hover 提升亮度（有过渡）', () => {
+  test('hover 时外框提亮，且亮度倍数来自唯一事实源', () => {
+    const { el } = host();
+    const css = el.shadowRoot?.querySelector('style')?.textContent ?? '';
+    expect(css).toContain(':host(:hover)');
+    expect(css).toContain(`brightness(${MINIMAP_METRICS.hoverBrightness})`);
+    // 提亮必须是「变亮」而不是变暗 / 不动。
+    expect(MINIMAP_METRICS.hoverBrightness).toBeGreaterThan(1);
+  });
+
+  test('提亮有过渡（不许啪地一下变亮）', () => {
+    const { el } = host();
+    const css = el.shadowRoot?.querySelector('style')?.textContent ?? '';
+    expect(css).toMatch(/\.frame\s*\{[^}]*transition:\s*filter/);
+    expect(css).toContain(`${MINIMAP_METRICS.hoverTransitionMs}ms`);
+    expect(MINIMAP_METRICS.hoverTransitionMs).toBeGreaterThan(0);
+  });
+
+  test('只动 filter（合成层属性）—— 不触发布局重排', () => {
+    const { el } = host();
+    const css = el.shadowRoot?.querySelector('style')?.textContent ?? '';
+    // 只取 hover 那一条规则（到第一个右花括号为止），别把后面的规则也扫进来。
+    const hoverRule = css.match(/:host\(:hover\)\s*\.frame\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(hoverRule).toContain('filter');
+    expect(hoverRule).not.toMatch(/width|height|margin|padding|top|left/);
+  });
+});
+
+describe('Z3 小地图：贴边留边与控制岛留边同一口径', () => {
+  test('小地图的 right / bottom 留边 = MINIMAP_METRICS.cornerMarginPx（16px）', () => {
+    const { el } = host();
+    const css = el.shadowRoot?.querySelector('style')?.textContent ?? '';
+    expect(css).toContain(`right: ${MINIMAP_METRICS.cornerMarginPx}px`);
+    expect(css).toContain(`bottom: ${MINIMAP_METRICS.cornerMarginPx}px`);
+    // 与事件轨（CONTROL_ISLAND_METRICS.cornerMarginPx）同值 → 两角件的间距推得出来。
+    expect(MINIMAP_METRICS.cornerMarginPx).toBe(CONTROL_ISLAND_METRICS.cornerMarginPx);
   });
 });
 

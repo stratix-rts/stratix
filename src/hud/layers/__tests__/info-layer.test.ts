@@ -80,9 +80,12 @@ describe('hud/layers/info-layer：CSS 变量驱动的层级切换', () => {
     const style = document.getElementById(INFO_LAYER_STYLE_ID);
     expect(style).not.toBeNull();
     const css = style?.textContent ?? '';
-    // 分区 → 层级：顶栏 / 控制岛 / 小地图 = L1；事件轨 / toast = L2。
+    // 分区 → 层级：顶栏 / 控制岛 / 小地图 = L1；事件轨 / toast = L2；回放角标 = L3。
     for (const selector of HUD_LAYER_REGIONS.L1) expect(css).toContain(selector);
     for (const selector of HUD_LAYER_REGIONS.L2) expect(css).toContain(selector);
+    for (const selector of HUD_LAYER_REGIONS.L3) expect(css).toContain(selector);
+    // L3 元素满对比（L3 期间 L1 降对比、L2 收起，沉浸的那几件必须最清楚）。
+    expect(css).toContain('[data-srf-layer="L3"]');
     // 规则只读变量 —— 切档 = 改变量，不逐元素改样式。
     expect(css).toContain(`var(${INFO_LAYER_CSS_VARS.l1Opacity}`);
     expect(css).toContain(`var(${INFO_LAYER_CSS_VARS.l2Visibility}`);

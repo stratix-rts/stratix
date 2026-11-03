@@ -10,10 +10,15 @@
  *   4. 硬编码色值 —— 走 --srf-visual-* token（唯一事实源注入）；
  *   5. 常驻占位 —— 没有回放时刻就整个隐藏（不占左上角，也不误导观众）。
  *
- * @since v3.3（task_082）。
+ * @since v3.3（task_082）；@since v3.4（task_093：顶部 inset 迁到 56px 避让顶栏 +
+ *   挂 L3 层级 —— 角标是沉浸层元素，L3 激活时才在屏）。
  */
 
-import { REPLAY_METRICS, VISUAL_PALETTE } from '../../../core/theme/visual-spec';
+import {
+  REPLAY_CLOCK_TOP_INSET_PX,
+  REPLAY_METRICS,
+  VISUAL_PALETTE,
+} from '../../../core/theme/visual-spec';
 
 import { formatReplayClock, formatReplayDate } from './replay-catalog';
 
@@ -57,8 +62,10 @@ export function defineStratReplayClock(): typeof HTMLElement {
           :host {
             all: initial;
             position: fixed;
-            top: var(--replay-clock-inset, 24px);
-            left: var(--replay-clock-inset, 24px);
+            /* 顶部 inset 56px = 顶栏高 40 + 间距 16（Z5 规格）——
+               原来的 24px 会让角标直接压在顶栏上（task_093 修的正是这一处）。 */
+            top: var(--replay-clock-inset-top, ${REPLAY_CLOCK_TOP_INSET_PX}px);
+            left: var(--replay-clock-inset-left, ${REPLAY_METRICS.clockInsetPx}px);
             z-index: 40;
             pointer-events: none;
             font-family: var(--srf-font-ui, system-ui, -apple-system, sans-serif);
@@ -103,8 +110,13 @@ export function defineStratReplayClock(): typeof HTMLElement {
       this._root = root.querySelector('[data-role="badge"]');
       this._time = root.querySelector('[data-role="time"]');
       this._date = root.querySelector('[data-role="date"]');
-      this.style.setProperty('--replay-clock-inset', `${REPLAY_METRICS.clockInsetPx}px`);
+      this.style.setProperty('--replay-clock-inset-top', `${REPLAY_CLOCK_TOP_INSET_PX}px`);
+      this.style.setProperty('--replay-clock-inset-left', `${REPLAY_METRICS.clockInsetPx}px`);
       this.style.setProperty('--replay-clock-font', `${REPLAY_METRICS.clockFontPx}px`);
+      // 入层：角标属 L3（沉浸层）——「通用属性口径」标记（hud/layers/info-layer.ts 的
+      // [data-srf-layer="L3"] 规则）。why 自己标而不是只等机制层来认：
+      //   角标是沉浸层元素，L3 期间顶栏降对比、它自己必须满对比 —— 谁入层谁自证。
+      this.setAttribute('data-srf-layer', 'L3');
       this.apply();
     }
 
