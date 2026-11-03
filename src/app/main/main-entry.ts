@@ -539,6 +539,9 @@ async function boot(): Promise<void> {
 
   const screen = createMainScreen(adapter, {
     appearance: appearancePreview,
+    // 网关连通性端口（@since v3.7，task_127）：态势屏「网关连接」那一行与顶栏下方的
+    //   全局横幅读**同一份**三级态（在线 / 降级 / 离线）—— 两处不许各判各的。
+    gateway: gatewayLink,
     taskStats: makeTaskStatsProvider(taskRecordApi()),
     pipelines: pipelineService.feed,
     // task_056：设置屏的注册管理组（查看 / 移除） —— 端口同向导一份（非 Electron = null 降级）。

@@ -29,6 +29,10 @@
  */
 
 import type { AgentLinkPhase, MissionPhase, NoticeLevel, UnitStatus, WorldState } from '../../core/types';
+import {
+  GATEWAY_STATE_TEXT,
+  type GatewayConnectionState,
+} from '../bridge/gateway-link-port';
 import { formatLogTime, levelLabel, sourceLabel } from '../panels/log-catalog';
 
 // ============================================================================
@@ -73,15 +77,21 @@ export interface StatusMetric {
 /** 四张卡，按 STATUS_METRIC_IDS 的 key 命名 —— 取值处不写 [0]/[1] 下标。 */
 export type StatusMetrics = Record<StatusMetricId, StatusMetric>;
 
-/** gateway 连接态：只认 agent-link 投影的相位，不做连接健康度的"推测"。 */
+/**
+ * gateway 连接态（@since v3.7，task_127 改为**三级**，与全局横幅同一真相源）。
+ *
+ * why 不再读 agent-link 相位：那一行原先读的是「智能体会话相位」，
+ *   没有会话时恒显「未连接」—— 可网关 HTTP 全通、回放照放真数据，界面自相矛盾。
+ *   现在这一行只说网关的连通性（online / degraded / offline），与会话相位无关；
+ *   会话相位的构成仍在「进行中会话」那张指标卡的副行里（不丢信息）。
+ */
 export interface ConnectionStatus {
   readonly tone: StatusTone;
   readonly label: string;
-  /** 相位构成明细，如「已连接 2 · 连接中 1」。 */
+  /** 人话说明：说清「现在能不能用」。横幅与这一行共用同一句（GATEWAY_STATE_TEXT）。 */
   readonly detail: string;
-  /** 各相位计数（键集合固定为 AgentLinkPhase 全集，缺失相位显式补 0，方便测试直接断言）。 */
-  readonly counts: Readonly<Record<AgentLinkPhase, number>>;
-  readonly total: number;
+  /** 三级态本身（null = 没有接入连通性探测，如实说「未探测」，不谎报在线）。 */
+  readonly state: GatewayConnectionState | null;
 }
 
 export interface BusStatus {
@@ -215,67 +225,19 @@ export function resolveMetrics(state: WorldState | null): StatusMetrics {
 // ============================================================================
 
 /**
- * gateway 连接态：把 links 的相位压成一个总态。
- * 优先级自上而下（异常 > 连接中 > 已连接 > 非活动），why 这么排：
- *   有一条 error 就该让人先看见它，而不是被别的会话"已连接"盖住；
- *   连接中/重连是过渡态，压过已连接是对的（正卡在握手上正是用户要知道的）；
- *   全都 idle / closed / closing 时如实说"没有活动会话"，不美化也不报错。
+ * gateway 连接态：把三级连通性映射成这一行的取值。
+ * @since v3.7，task_127：三态（在线 / 降级 / 离线），文案与全局横幅共用同一份
+ *   （GATEWAY_STATE_TEXT）—— 两处不许各写一套，否则迟早漂移成两个矛盾的答案。
+ * @param gatewayState 三级态；null = 没有接入连通性探测（如实说「未探测」，不谎报在线）。
  */
-export function resolveConnection(state: WorldState | null): ConnectionStatus {
-  const links = state?.links ?? [];
-  const counts: Record<AgentLinkPhase, number> = {
-    idle: 0,
-    connecting: 0,
-    connected: 0,
-    reconnecting: 0,
-    closing: 0,
-    closed: 0,
-    error: 0,
-  };
-  for (const link of links) counts[link.phase] += 1;
-
-  const detailParts: string[] = [];
-  if (counts.connected > 0) detailParts.push(`已连接 ${counts.connected}`);
-  if (counts.connecting > 0) detailParts.push(`连接中 ${counts.connecting}`);
-  if (counts.reconnecting > 0) detailParts.push(`重连中 ${counts.reconnecting}`);
-  if (counts.error > 0) detailParts.push(`异常 ${counts.error}`);
-  if (counts.closing > 0) detailParts.push(`关闭中 ${counts.closing}`);
-  if (counts.closed > 0) detailParts.push(`已关闭 ${counts.closed}`);
-  if (counts.idle > 0) detailParts.push(`空闲 ${counts.idle}`);
-
-  const tone: StatusTone = !state
-    ? 'idle'
-    : links.length === 0
-      ? 'idle'
-      : counts.error > 0
-        ? 'error'
-        : counts.connecting + counts.reconnecting > 0
-          ? 'busy'
-          : counts.connected > 0
-            ? 'ok'
-            : 'idle';
-
-  const label = !state
-    ? '等待世界状态'
-    : links.length === 0
-      ? '未连接'
-      : counts.error > 0
-        ? '连接异常'
-        : counts.connecting + counts.reconnecting > 0
-          ? '连接中'
-          : counts.connected > 0
-            ? '已连接'
-            : counts.closing > 0
-              ? '关闭中'
-              : '未连接';
-
-  return {
-    tone,
-    label,
-    detail: detailParts.length > 0 ? detailParts.join(' · ') : '暂无会话',
-    counts,
-    total: links.length,
-  };
+export function resolveConnection(gatewayState: GatewayConnectionState | null): ConnectionStatus {
+  if (gatewayState === null) {
+    return { tone: 'idle', label: '未探测', detail: '未接入连通性探测', state: null };
+  }
+  const text = GATEWAY_STATE_TEXT[gatewayState];
+  const tone: StatusTone =
+    gatewayState === 'online' ? 'ok' : gatewayState === 'degraded' ? 'warn' : 'error';
+  return { tone, label: text.label, detail: text.detail, state: gatewayState };
 }
 
 /** 追加一个广播时刻样本，返回新的样本数组（环形封顶，见 MAX_BUS_SAMPLES）。纯函数，便于单测。 */
@@ -372,10 +334,11 @@ export function resolveStatusModel(
   now: number,
   busSamples: readonly number[] = [],
   observedSince: number | null = null,
+  gatewayState: GatewayConnectionState | null = null,
 ): StatusModel {
   return {
     metrics: resolveMetrics(state),
-    connection: resolveConnection(state),
+    connection: resolveConnection(gatewayState),
     bus: summarizeBus(busSamples, now),
     uptime: resolveUptime(observedSince, now),
     events: resolveStatusEvents(state),

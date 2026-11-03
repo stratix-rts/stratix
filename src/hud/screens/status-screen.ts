@@ -29,6 +29,7 @@
 
 import type { ScreenId, WorldState } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
+import type { GatewayConnectionState, GatewayLinkPort } from '../bridge/gateway-link-port';
 import { defineStratButton, STRAT_BUTTON_TAG } from '../widgets/strat-button';
 
 import type { StatusMetricId, StatusModel, StatusTone } from './status-catalog';
@@ -38,13 +39,19 @@ import {
   STATUS_METRIC_IDS,
   formatEventTime,
   pushBusSample,
+  resolveConnection,
   resolveStatusModel,
   statusSignature,
 } from './status-catalog';
 
 export const STATUS_SCREEN_TAG = 'strat-status-screen';
 
-/** 本屏需要的最小能力面：subscribe 看态势、dispatch 只用于导航（见文件头禁止事项 3）。 */
+/**
+ * 本屏需要的最小能力面：subscribe 看态势、dispatch 只用于导航（见文件头禁止事项 3）。
+ * @since v3.7，task_127：网关连通性端口是**独立**的一个入参（见 mountStatusScreen）——
+ *   「网关连接」那一行与全局横幅读同一个真相源（同一份三级态），不再各判各的。
+ *   缺省 = 没接探测端口（那一行如实说「未探测」，不谎报在线）。
+ */
 export type StatusScreenDeps = Pick<HudBusAdapter, 'dispatch' | 'subscribe'>;
 
 /** 导航出口：data-nav → ui.navigate.screen。词表即契约的 ScreenId 子集，不自造屏位。 */
@@ -60,6 +67,8 @@ export const STATUS_NAV_ITEMS: readonly { target: StatusNavTarget; label: string
 export interface StratStatusScreenElement extends HTMLElement {
   /** 注入的适配器；在 connected 之前或之后设置都生效。 */
   adapter: StatusScreenDeps | null;
+  /** 注入的网关连通性端口（与全局横幅同一份真相源）；null = 未接入探测。 */
+  gateway: GatewayLinkPort | null;
   /** 强制重算重渲染（改了观测时刻或手工注入新 state 后可调用）。 */
   refresh(): void;
   /** 最近一次派生出的渲染模型。 */
@@ -102,6 +111,12 @@ export function defineStatusScreen(): typeof HTMLElement {
     private static readonly TICK_MS = 1000;
 
     private _adapter: StatusScreenDeps | null = null;
+    /** 网关连通性端口（@since v3.7，task_127）。 */
+    private _gateway: GatewayLinkPort | null = null;
+    /** 当前三级连通态（null = 未接入探测）。 */
+    private _gatewayState: GatewayConnectionState | null = null;
+    /** 连通性端口的退订闭包（换端口 / 卸载时必退 —— perf 硬约束）。 */
+    private _unsubscribeGateway: (() => void) | null = null;
     private _state: WorldState | null = null;
     private _now = 0;
     private _busSamples: readonly number[] = [];
@@ -118,6 +133,7 @@ export function defineStatusScreen(): typeof HTMLElement {
     set adapter(value: StatusScreenDeps | null) {
       this._adapter = value;
       this.bindAdapter();
+      this.bindGateway();
       this.startTimer();
       this.refresh();
     }
@@ -125,12 +141,19 @@ export function defineStatusScreen(): typeof HTMLElement {
     get model(): StatusModel { return this._model; }
     get lastState(): WorldState | null { return this._state; }
 
+    get gateway(): GatewayLinkPort | null { return this._gateway; }
+    set gateway(value: GatewayLinkPort | null) {
+      this._gateway = value;
+      this.bindGateway();
+    }
+
     connectedCallback(): void {
       if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
       this.renderChrome();
       // 清签名强制首绘：挂载前 adapter setter 那次 refresh 已记下签名，而那时还没有 DOM 可画
       this._lastSignature = null;
       this.bindAdapter();
+      this.bindGateway();
       this.startTimer();
       this.refresh();
     }
@@ -138,13 +161,20 @@ export function defineStatusScreen(): typeof HTMLElement {
     disconnectedCallback(): void {
       // 资源必须可清理：不退订 / 不停 tick 的话，反复挂卸会把订阅与定时器堆成 O(n)。
       this.releaseAdapter();
+      this.releaseGateway();
       this.stopTimer();
       this._lastSignature = null;
     }
 
     refresh(): void {
       this._now = Date.now();
-      this._model = resolveStatusModel(this._state, this._now, this._busSamples, this._observedSince);
+      this._model = resolveStatusModel(
+        this._state,
+        this._now,
+        this._busSamples,
+        this._observedSince,
+        this._gatewayState,
+      );
       const signature = statusSignature(this._state);
       if (signature !== this._lastSignature) {
         this._lastSignature = signature;
@@ -171,6 +201,35 @@ export function defineStatusScreen(): typeof HTMLElement {
     }
 
     /**
+     * 绑定连通性端口（@since v3.7，task_127）。
+     * why 单独一条通道：连通性变化与总线广播是**两路**信号 ——
+     *   连通性变了不该触发整屏重绘（perf 纪律），只重画「网关连接」那一行。
+     */
+    private bindGateway(): void {
+      this.releaseGateway();
+      const gateway = this._gateway;
+      if (!gateway) {
+        this._gatewayState = null;
+        this.refresh();
+        return;
+      }
+      this._unsubscribeGateway = gateway.subscribe((state) => this.onGatewayState(state));
+    }
+
+    private releaseGateway(): void {
+      if (!this._unsubscribeGateway) return;
+      this._unsubscribeGateway();
+      this._unsubscribeGateway = null;
+    }
+
+    /** 三级态变了 → 只重算连接行（横幅与这一行读的是同一份真相源）。 */
+    private onGatewayState(state: GatewayConnectionState): void {
+      this._gatewayState = state;
+      this._model = { ...this._model, connection: resolveConnection(state) };
+      this.renderConnection();
+    }
+
+    /**
      * 一次广播：记一个投递时刻（心跳活跃度的真实观测量）+ 首帧锚定观测起点，然后照常走签名判重。
      */
     private onState(state: WorldState): void {
@@ -192,6 +251,7 @@ export function defineStatusScreen(): typeof HTMLElement {
           this._now,
           this._busSamples,
           this._observedSince,
+          this._gatewayState,
         );
         this.logBusDetail();
         this.renderTickables();
@@ -426,11 +486,16 @@ export function defineStatusScreen(): typeof HTMLElement {
  * 挂载工厂：本仓库屏/面板的统一装配口径（与 main-screen / log-drawer 一致）——
  *   注册自定义元素、建元素、注入 adapter、挂进容器，返回 unmount 闭包。
  */
-export function mountStatusScreen(deps: StatusScreenDeps, host: HTMLElement): () => void {
+export function mountStatusScreen(
+  deps: StatusScreenDeps,
+  host: HTMLElement,
+  gateway: GatewayLinkPort | null = null,
+): () => void {
   defineStatusScreen();
   defineStratButton();
   const element = document.createElement(STATUS_SCREEN_TAG) as StratStatusScreenElement;
   element.adapter = deps;
+  element.gateway = gateway;
   host.appendChild(element);
   // 移除元素会触发 disconnectedCallback → 退订 + 停 tick，资源随之释放。
   return () => { element.remove(); };

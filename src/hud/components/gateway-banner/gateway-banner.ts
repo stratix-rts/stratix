@@ -5,6 +5,9 @@
  *   为什么要有：断连这件事原先只埋在右栏态势总览的第 12 行（status-screen 的「网关连接」行），
  *   首次用户根本看不到 —— 于是「界面空着」被误读成「今天没活儿」，而不是「网关没连上」。
  *   横幅是**唯一**的全局断连提示位（态势屏那一行保留，作为细节口径）。
+ * @since v3.7，task_127：横幅改为**三级**（在线 / 降级 / 离线）——
+ *   半连接（HTTP 通、实时通道断）时亮出「连接降级 · 数据可用，实时通道断开」，
+ *   不再谎报「未连接」（那与「回放照样能放」自相矛盾）。
  * 输入：注入的 GatewayLinkPort（连通性真相由 app 层持有 —— HUD 不自己探活）。
  * 输出：Shadow DOM 横幅（断连时显示、连通即消失）+「重试」按钮（点一下立刻探一次）。
  * 禁止事项：
@@ -23,27 +26,29 @@
  */
 
 import { TOPBAR_METRICS } from '../../../core/theme/visual-spec';
+import {
+  GATEWAY_STATE_TEXT,
+  type GatewayConnectionState,
+  type GatewayLinkPort,
+} from '../../bridge/gateway-link-port';
 
 export const GATEWAY_BANNER_TAG = 'strat-gateway-banner';
 
 /**
- * 网关连通性端口（HUD 侧的**契约**；app 层实现它）。
- * why 契约放 HUD：横幅是 HUD 组件，它需要什么形状由它自己说了算；
- *   app 层照形状实现（与 appearance-preview-port / session-catalog 的端口同一纪律）。
+ * 网关连通性端口（契约与三态文案都在 hud/bridge/gateway-link-port.ts —— 横幅与态势屏共用）。
+ * @since v3.7，task_127：端口从二值（`online: boolean`）升级为三级态
+ *   （online / degraded / offline），半连接态（HTTP 通、WS 断）不再被谎报成「未连接」。
  */
-export interface GatewayLinkPort {
-  /** 同步读当前连通性（true = 在线）。初始按「在线」处理 —— 别在首帧闪一条横幅。 */
-  readonly online: boolean;
-  /** 订阅连通性变化（注册后立刻推一次当前值）；返回退订闭包。 */
-  subscribe(handler: (online: boolean) => void): () => void;
-  /** 立刻探一次（重试按钮用）；返回探测后的在线态。 */
-  refresh(): Promise<boolean>;
-}
 
-/** 横幅文案（人话：说清「连不上」+「会有什么影响」+「怎么办」）。 */
-export const GATEWAY_BANNER_TITLE = '网关未连接';
-export const GATEWAY_BANNER_DETAIL = '多数功能暂时没有数据';
+/** 横幅文案（人话：说清「连不上 / 降级」+「会有什么影响」+「怎么办」）。 */
+export const GATEWAY_BANNER_TITLE = GATEWAY_STATE_TEXT.offline.bannerTitle;
+export const GATEWAY_BANNER_DETAIL = GATEWAY_STATE_TEXT.offline.detail;
+/** 降级态（HTTP 可用、实时通道断开）的横幅文案 —— 不出现「未连接」却功能可用的矛盾。 */
+export const GATEWAY_BANNER_DEGRADED_TITLE = GATEWAY_STATE_TEXT.degraded.bannerTitle;
+export const GATEWAY_BANNER_DEGRADED_DETAIL = GATEWAY_STATE_TEXT.degraded.detail;
 export const GATEWAY_BANNER_RETRY_LABEL = '重试';
+
+export type { GatewayConnectionState, GatewayLinkPort };
 
 /** 组件对外形状（测试与装配方按它断言）。 */
 export interface StratGatewayBannerElement extends HTMLElement {
@@ -51,6 +56,8 @@ export interface StratGatewayBannerElement extends HTMLElement {
   link?: GatewayLinkPort | null;
   /** 当前横幅是否可见（观察口）。 */
   readonly visible: boolean;
+  /** 当前三级连通态（观察口；横幅按它决定标题与配色）。 */
+  readonly state: GatewayConnectionState;
 }
 
 export function defineStratGatewayBanner(): typeof HTMLElement {
@@ -62,7 +69,8 @@ export function defineStratGatewayBanner(): typeof HTMLElement {
     private _link: GatewayLinkPort | null = null;
     private _unsubscribe: (() => void) | null = null;
     private _root: HTMLElement | null = null;
-    private _online = true;
+    /** 当前三级连通态（初始「在线」—— 首帧不闪横幅）。 */
+    private _state: GatewayConnectionState = 'online';
     /** 重试进行中（按钮禁用来避免连点打出一串探测）。 */
     private _retrying = false;
 
@@ -76,7 +84,11 @@ export function defineStratGatewayBanner(): typeof HTMLElement {
     }
 
     get visible(): boolean {
-      return !this._online;
+      return this._state !== 'online';
+    }
+
+    get state(): GatewayConnectionState {
+      return this._state;
     }
 
     connectedCallback(): void {
@@ -106,6 +118,9 @@ export function defineStratGatewayBanner(): typeof HTMLElement {
             padding: var(--srf-spacing-xs, 4px) var(--srf-spacing-sm, 8px);
             border: 1px solid var(--srf-danger, #d04a4a);
             border-radius: var(--srf-radius, 6px);
+            /* 降级态（HTTP 可用、实时通道断开）用警示色，不用危险色 ——
+               「还能用」和「完全不通」在视觉上必须分得开（task_127）。 */
+            border-color: var(--srf-banner-accent, var(--srf-danger, #d04a4a));
             background: var(--srf-panel-elevated-overlay, rgba(20, 12, 16, 0.94));
             color: var(--srf-text, #e6e9ef);
             font-size: var(--srf-font-size-xs, 11px);
@@ -114,12 +129,18 @@ export function defineStratGatewayBanner(): typeof HTMLElement {
             pointer-events: auto;
           }
           .banner[hidden] { display: none; }
+          .banner[data-state="degraded"] {
+            --srf-banner-accent: var(--srf-warn, #d8a13a);
+          }
+          .banner[data-state="offline"] {
+            --srf-banner-accent: var(--srf-danger, #d04a4a);
+          }
           .dot {
             flex: none;
             width: 8px;
             height: 8px;
             border-radius: var(--srf-radius-pill, 999px);
-            background: var(--srf-danger, #d04a4a);
+            background: var(--srf-banner-accent, var(--srf-danger, #d04a4a));
           }
           .title { font-weight: var(--srf-font-weight-semibold, 600); white-space: nowrap; }
           .detail { color: var(--srf-text-muted, #9aa3b2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -129,13 +150,13 @@ export function defineStratGatewayBanner(): typeof HTMLElement {
             font-size: var(--srf-font-size-xs, 11px);
             padding: 2px 10px;
             border-radius: var(--srf-radius-pill, 999px);
-            border: 1px solid var(--srf-danger, #d04a4a);
+            border: 1px solid var(--srf-banner-accent, var(--srf-danger, #d04a4a));
             background: transparent;
-            color: var(--srf-danger, #d04a4a);
+            color: var(--srf-banner-accent, var(--srf-danger, #d04a4a));
             cursor: pointer;
             white-space: nowrap;
           }
-          .retry:hover:not([disabled]) { background: color-mix(in srgb, var(--srf-danger, #d04a4a) 18%, transparent); }
+          .retry:hover:not([disabled]) { background: color-mix(in srgb, var(--srf-banner-accent, var(--srf-danger, #d04a4a)) 18%, transparent); }
           .retry[disabled] { opacity: 0.55; cursor: progress; }
         </style>
         <div class="banner" data-role="gateway-banner" role="status" aria-live="polite" hidden>
@@ -163,18 +184,29 @@ export function defineStratGatewayBanner(): typeof HTMLElement {
       this._unsubscribe = null;
       const link = this._link;
       if (!link) {
-        this.render(true);
+        this.render('online');
         return;
       }
-      this._online = link.online;
-      this._unsubscribe = link.subscribe((online) => this.render(online));
-      this.render(link.online);
+      this._unsubscribe = link.subscribe((state) => this.render(state));
+      this.render(link.state);
     }
 
-    /** 呈现（连通 → 收起；断连 → 亮出横幅）。 */
-    private render(online: boolean): void {
-      this._online = online;
-      if (this._root) this._root.hidden = online;
+    /**
+     * 呈现（在线 → 收起；降级 / 离线 → 亮出横幅，文案与配色按三级态取）。
+     * why 降级也要亮横幅（task_127）：半连接时用户照样得知道「实时通道断了」，
+     *   但文案必须说清「数据可用」—— 不能一边喊「未连接」一边让回放照放。
+     */
+    private render(state: GatewayConnectionState): void {
+      this._state = state;
+      const root = this._root;
+      if (!root) return;
+      const text = GATEWAY_STATE_TEXT[state];
+      root.hidden = state === 'online';
+      root.setAttribute('data-state', state);
+      const title = root.querySelector('[data-role="title"]');
+      const detail = root.querySelector('[data-role="detail"]');
+      if (title) title.textContent = text.bannerTitle;
+      if (detail) detail.textContent = text.detail;
     }
 
     /** 点「重试」：立刻探一次（判定在 app 层，这里只转交）。 */
@@ -185,7 +217,7 @@ export function defineStratGatewayBanner(): typeof HTMLElement {
       this.setRetryDisabled(true);
       void link
         .refresh()
-        .catch(() => false)
+        .catch(() => 'offline' as GatewayConnectionState)
         .then(() => {
           this._retrying = false;
           this.setRetryDisabled(false);

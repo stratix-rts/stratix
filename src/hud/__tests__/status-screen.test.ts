@@ -37,6 +37,10 @@ import {
   type StatusScreenDeps,
   type StratStatusScreenElement,
 } from '../screens/status-screen';
+import type {
+  GatewayConnectionState,
+  GatewayLinkPort,
+} from '../bridge/gateway-link-port';
 
 import { createMainScreen } from '../screens/main-screen';
 
@@ -115,7 +119,36 @@ interface Harness {
   unmount(): void;
 }
 
-function mountScreen(): Harness {
+/** 造一个可手动翻转的网关连通性端口替身（@since v3.7，task_127）。 */
+function fakeGateway(initial: GatewayConnectionState): {
+  port: GatewayLinkPort;
+  set: (next: GatewayConnectionState) => void;
+} {
+  let handler: ((state: GatewayConnectionState) => void) | null = null;
+  let state = initial;
+  const port: GatewayLinkPort = {
+    get state() {
+      return state;
+    },
+    subscribe(next) {
+      handler = next;
+      next(state);
+      return () => {
+        if (handler === next) handler = null;
+      };
+    },
+    refresh: async () => state,
+  };
+  return {
+    port,
+    set: (next: GatewayConnectionState) => {
+      state = next;
+      handler?.(next);
+    },
+  };
+}
+
+function mountScreen(gateway: GatewayLinkPort | null = null): Harness {
   const commands: HudCommand[] = [];
   const subs = new Set<(state: WorldState) => void>();
   const deps: StatusScreenDeps = {
@@ -128,7 +161,7 @@ function mountScreen(): Harness {
 
   const host = document.createElement('div');
   document.body.appendChild(host);
-  const unmountScreen = mountStatusScreen(deps, host);
+  const unmountScreen = mountStatusScreen(deps, host, gateway);
   const screen = host.querySelector(STATUS_SCREEN_TAG) as StratStatusScreenElement;
   if (!screen?.shadowRoot) throw new Error('状态屏未 upgrade（shadowRoot 为空）');
 
@@ -203,39 +236,37 @@ describe('指标卡：与 WorldState 派生一致', () => {
   });
 });
 
-describe('系统状态：gateway 连接态读 agent-link 相位', () => {
-  test('全部 connected → 已连接（ok），并列出相位构成', () => {
-    const conn = resolveConnection(makeState({ links: [link('a', 'connected'), link('b', 'connected')] }));
+describe('系统状态：gateway 连接态三级（@since v3.7，task_127）', () => {
+  test('在线 → 已连接（ok），说明「数据与实时通道均可用」', () => {
+    const conn = resolveConnection('online');
     expect(conn.tone).toBe('ok');
     expect(conn.label).toBe('已连接');
-    expect(conn.detail).toBe('已连接 2');
-    expect(conn.counts.connected).toBe(2);
+    expect(conn.detail).toBe('数据与实时通道均可用');
+    expect(conn.state).toBe('online');
   });
 
-  test('error 压过 connected：一条异常就报连接异常（不被别的会话盖住）', () => {
-    const conn = resolveConnection(
-      makeState({ links: [link('a', 'connected'), link('b', 'error')] }),
-    );
+  test('降级 → 连接降级（warn），说明「数据可用，实时通道断开」—— 不出现「未连接」', () => {
+    const conn = resolveConnection('degraded');
+    expect(conn.tone).toBe('warn');
+    expect(conn.label).toBe('连接降级');
+    expect(conn.detail).toBe('数据可用，实时通道断开');
+    expect(conn.label).not.toContain('未连接');
+  });
+
+  test('离线 → 未连接（error），说明「多数功能暂时没有数据」', () => {
+    const conn = resolveConnection('offline');
     expect(conn.tone).toBe('error');
-    expect(conn.label).toBe('连接异常');
-    expect(conn.detail).toBe('已连接 1 · 异常 1');
+    expect(conn.label).toBe('未连接');
+    expect(conn.detail).toBe('多数功能暂时没有数据');
   });
 
-  test('connecting / reconnecting 是过渡态：压过已连接显示连接中', () => {
-    expect(resolveConnection(makeState({ links: [link('a', 'connected'), link('b', 'connecting')] })).label)
-      .toBe('连接中');
-    expect(resolveConnection(makeState({ links: [link('a', 'reconnecting')] })).label).toBe('连接中');
+  test('没有会话 ≠ 网关没连（回归 task_127 的病根）：会话为空但网关在线 → 已连接', () => {
+    // 会话相位已从这一行移出（它说的是网关连通性，不是会话数）。
+    expect(resolveConnection('online').label).toBe('已连接');
   });
 
-  test('没有会话 / 全是 idle、closed → 未连接（idle），不美化也不报错', () => {
-    expect(resolveConnection(makeState()).label).toBe('未连接');
-    const idleConn = resolveConnection(makeState({ links: [link('a', 'idle'), link('b', 'closed')] }));
-    expect(idleConn.tone).toBe('idle');
-    expect(idleConn.detail).toBe('已关闭 1 · 空闲 1');
-  });
-
-  test('还没收到状态 → 等待世界状态', () => {
-    expect(resolveConnection(null)).toMatchObject({ tone: 'idle', label: '等待世界状态', total: 0 });
+  test('未接入连通性探测 → 如实说「未探测」，不谎报在线', () => {
+    expect(resolveConnection(null)).toMatchObject({ tone: 'idle', label: '未探测', state: null });
   });
 });
 
@@ -349,10 +380,11 @@ describe('渲染签名：与显示无关的广播不重绘', () => {
 describe('resolveStatusModel：组装', () => {
   test('把 state + 观测量拼成一份模型', () => {
     const now = 10_000_000;
-    const model = resolveStatusModel(busyState(), now, [now - 1_000], now - 65_000);
+    const model = resolveStatusModel(busyState(), now, [now - 1_000], now - 65_000, 'online');
 
     expect(model.metrics.missions.value).toBe(3);
-    expect(model.connection.label).toBe('连接中');
+    expect(model.connection.label).toBe('已连接');
+    expect(model.connection.state).toBe('online');
     expect(model.bus.detail).toBe('最近 60 秒更新 1 次');
     expect(model.uptime.value).toBe('1 分 05 秒');
     expect(model.events.total).toBe(2);
@@ -397,14 +429,35 @@ describe('状态屏：Shadow DOM 渲染', () => {
       .toBe('忙碌 1');
   });
 
-  test('系统状态区渲染连接态：标签 + 相位构成', () => {
-    h = mountScreen();
-    h.emit(makeState({ links: [link('a', 'connected'), link('b', 'connecting')] }));
+  test('系统状态区渲染网关连接态：三级态的标签 + 说明（@since v3.7，task_127）', () => {
+    const gateway = fakeGateway('online');
+    h = mountScreen(gateway.port);
+    h.emit(makeState());
 
-    expect(sysValue(h.screen, 'connection')).toBe('连接中');
-    expect(sysRow(h.screen, 'connection')?.getAttribute('data-tone')).toBe('busy');
+    expect(sysValue(h.screen, 'connection')).toBe('已连接');
+    expect(sysRow(h.screen, 'connection')?.getAttribute('data-tone')).toBe('ok');
     expect(sysRow(h.screen, 'connection')?.querySelector('[data-role="sys-detail"]')?.textContent)
-      .toBe('已连接 1 · 连接中 1');
+      .toBe('数据与实时通道均可用');
+  });
+
+  test('连通性变降级 → 只重画连接行（横幅与这一行同一真相源）', () => {
+    const gateway = fakeGateway('online');
+    h = mountScreen(gateway.port);
+    h.emit(makeState());
+    gateway.set('degraded');
+
+    expect(sysValue(h.screen, 'connection')).toBe('连接降级');
+    expect(sysRow(h.screen, 'connection')?.getAttribute('data-tone')).toBe('warn');
+    expect(sysRow(h.screen, 'connection')?.querySelector('[data-role="sys-detail"]')?.textContent)
+      .toBe('数据可用，实时通道断开');
+  });
+
+  test('没有会话但网关在线 → 不再显示「未连接」（task_127 的病根）', () => {
+    const gateway = fakeGateway('online');
+    h = mountScreen(gateway.port);
+    h.emit(makeState({ links: [] }));
+
+    expect(sysValue(h.screen, 'connection')).toBe('已连接');
   });
 
   test('系统状态区有系统心跳与运行时长两项（task_122：文案不出现架构词）', () => {
@@ -546,14 +599,18 @@ describe('装配进 main-screen', () => {
 
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const unmount = createMainScreen(adapter).mount(host);
+    // 连通性端口经主屏注入（与全局横幅同一份真相源 —— task_127）。
+    const gateway = fakeGateway('online');
+    const unmount = createMainScreen(adapter, { gateway: gateway.port }).mount(host);
 
     const screen = host.querySelector(STATUS_SCREEN_TAG) as StratStatusScreenElement;
     if (!screen?.shadowRoot) throw new Error('主屏未挂上状态屏');
 
     subs.forEach((handler) => handler(busyState()));
     expect(metricValue(screen, 'units')).toBe('4');
-    expect(sysValue(screen, 'connection')).toBe('连接中');
+    expect(sysValue(screen, 'connection')).toBe('已连接');
+    gateway.set('offline');
+    expect(sysValue(screen, 'connection')).toBe('未连接');
 
     unmount();
     host.remove();

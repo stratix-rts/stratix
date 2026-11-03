@@ -56,6 +56,7 @@ import {
 } from '../../core/theme/visual-spec';
 import type { WorldState } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
+import type { GatewayLinkPort } from '../bridge/gateway-link-port';
 // 当日回放（@since v3.3，task_082）：底栏时间轴 scrubber（组件 + 控制器口径）。
 import { mountDayReplay } from '../components/replay/day-replay';
 import type { ReplayController } from '../components/replay/replay-controller';
@@ -454,6 +455,12 @@ export interface MainScreenOptions {
    * 缺省 = 只接双关闭途径（ESC + 遮罩），不做四角降对比（单屏单测用的最小形态）。
    */
   readonly occlusion?: OcclusionController | null;
+  /**
+   * 网关连通性端口（@since v3.7，task_127）—— 态势屏「网关连接」那一行的真相源，
+   *   与顶栏下方的全局横幅读**同一份**三级态（在线 / 降级 / 离线）。
+   *   缺省 = 未接入探测（那一行如实说「未探测」，不谎报在线）。
+   */
+  readonly gateway?: GatewayLinkPort | null;
 }
 
 /** 工厂：构造 main-screen 句柄；接受一个已建好的 bus-adapter（依赖注入）。 */
@@ -798,7 +805,7 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       // 态势屏：同为纯展示区块（指标卡 / 系统状态 / 最近事件全由 WorldState 派生），
       // 复用同一个 adapter —— 它唯一的出口是导航 ui.navigate，不发任何业务命令。
       const statusHost = rootEl.querySelector<HTMLElement>('[data-role="status-screen"]');
-      const unmountStatus = statusHost ? mountStatusScreen(adapter, statusHost) : null;
+      const unmountStatus = statusHost ? mountStatusScreen(adapter, statusHost, options.gateway ?? null) : null;
 
       // 演示模式开关 → 主屏布局重渲（工程件显隐 + 顶栏标签同步）。
       // why 重渲而不是局部改：工程件可能出现在任何面板里，重渲一次最不容易漏。
