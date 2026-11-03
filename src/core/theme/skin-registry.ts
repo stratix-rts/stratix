@@ -109,6 +109,16 @@ export const SKINS: readonly SkinDefinition[] = Object.freeze([
   },
 ]);
 
+/**
+ * 皮肤偏好的 localStorage 键名（@since v3.6，task_115）。
+ * 值 = 皮肤 id（见 SkinId）；无键 / 非法值 = 用默认皮肤。
+ * why 冻结在 core：键名是**契约级事实** —— 写入方（HUD 皮肤控制器切皮肤时）与读取方
+ *   （下次启动恢复皮肤）必须认同一个键；抄两份字面量迟早对不上（同 DEMO_MODE.storageKey 的纪律）。
+ * why 不进 SettingsView：皮肤是**每客户端本地**的展示偏好（不进 WorldState、不广播），
+ *   见 core/types.ts 的 SettingsView 注 —— 另立字段只会造出第二个真相源。
+ */
+export const SKIN_STORAGE_KEY = 'stratix.skin';
+
 /** id → 定义的索引（内部构建，外部只读）。 */
 const SKIN_BY_ID: ReadonlyMap<SkinId, SkinDefinition> = new Map(SKINS.map((s) => [s.id, s]));
 

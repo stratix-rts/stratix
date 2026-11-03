@@ -8,6 +8,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { SKIN_STORAGE_KEY } from '../../../core/theme/skin-registry';
 import {
   createThemeController,
   type StyleInjector,
@@ -142,5 +143,81 @@ describe('createThemeController：多皮肤', () => {
     expect(getNode('srf-theme-default').disabled).toBe(true);
     expect(getNode('srf-theme-pixel').disabled).toBe(true);
     expect(ctrl.current).toBeNull();
+  });
+});
+
+/**
+ * @since task_115：记忆（localStorage）与订阅 —— 「切了皮肤刷新后还在」的两块基石。
+ */
+describe('createThemeController：记忆与订阅', () => {
+  /** 内存版 localStorage（单测不碰真浏览器存储）。 */
+  function makeStorage(seed?: Record<string, string>): {
+    store: Map<string, string>;
+    getItem: (key: string) => string | null;
+    setItem: (key: string, value: string) => void;
+  } {
+    const store = new Map<string, string>(Object.entries(seed ?? {}));
+    return {
+      store,
+      getItem: (key) => store.get(key) ?? null,
+      setItem: (key, value) => { store.set(key, value); },
+    };
+  }
+
+  test('apply 时把皮肤写进记忆口', () => {
+    const { inject } = makeRecorder();
+    const storage = makeStorage();
+    const ctrl = createThemeController<ThemeId>({ inject, sources: SOURCES, storage });
+
+    ctrl.apply('pixel');
+
+    expect(storage.store.get(SKIN_STORAGE_KEY)).toBe('pixel');
+  });
+
+  test('构造时读回记忆：记忆优先于 initial（刷新后还是上次那套）', () => {
+    const { inject, getNode } = makeRecorder();
+    const storage = makeStorage({ [SKIN_STORAGE_KEY]: 'pixel' });
+    const ctrl = createThemeController<ThemeId>({ inject, sources: SOURCES, initial: 'default', storage });
+
+    expect(ctrl.current).toBe('pixel');
+    expect(getNode('srf-theme-pixel').disabled).toBe(false);
+    expect(getNode('srf-theme-default').disabled).toBe(true);
+  });
+
+  test('记忆值不是已知皮肤 → 回落 initial（不切到不存在的皮）', () => {
+    const { inject } = makeRecorder();
+    const storage = makeStorage({ [SKIN_STORAGE_KEY]: 'no-such-skin' });
+    const ctrl = createThemeController<ThemeId>({ inject, sources: SOURCES, initial: 'default', storage });
+
+    expect(ctrl.current).toBe('default');
+  });
+
+  test('记忆口不可写（抛错）→ 皮肤照常切，不把异常抛给调用方', () => {
+    const { inject } = makeRecorder();
+    const ctrl = createThemeController<ThemeId>({
+      inject,
+      sources: SOURCES,
+      storage: {
+        getItem: () => null,
+        setItem: () => { throw new Error('quota exceeded'); },
+      },
+    });
+
+    expect(() => ctrl.apply('pixel')).not.toThrow();
+    expect(ctrl.current).toBe('pixel');
+  });
+
+  test('订阅者只在皮肤真变时被通知；退订后不再通知', () => {
+    const { inject } = makeRecorder();
+    const ctrl = createThemeController<ThemeId>({ inject, sources: SOURCES, initial: 'default' });
+    const seen: string[] = [];
+    const off = ctrl.subscribe((id) => { seen.push(id); });
+
+    ctrl.apply('pixel');
+    ctrl.apply('pixel'); // 同皮肤重复切 = no-op，不通知
+    off();
+    ctrl.apply('default');
+
+    expect(seen).toEqual(['pixel']);
   });
 });

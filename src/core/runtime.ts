@@ -562,6 +562,16 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
       case 'hud.layer.set':
         store.setInfoLayer(normalizeInfoLayer(command.layer));
         return;
+      // @since v3.6（task_115）皮肤切换接地:
+      //   theme.set 的**效果**由 HUD 本地消费 —— token 样式表切换 + localStorage 记忆,
+      //   落点在 hud/bridge/bus-adapter 与 hud/theme/theme-controller（皮肤是**每客户端本地**的
+      //   展示偏好,token 也在本机 DOM 上,core 无从插手)。
+      //   core 这里只做「接地」:显式吞掉这条命令,不再掉进 default 分支报「未处理 command」
+      //   （此前每切一次皮肤 console 就多一条警告 —— 死功能排查时的噪音源）。
+      //   why 不写进 WorldState:皮肤不进状态机(不进任何 core 逻辑),另立字段 = 第二个真相源
+      //   (见 core/types.ts 的 SettingsView 注 —— 契约已冻结这条纪律)。
+      case 'theme.set':
+        return;
       // @since v3.4（task_094）演出占用 / 释放（Z6 沉浸层接线）:
       //   演出本体（里程碑大字组件 / 回放控制器）发这条命令 → core 记 WorldState.layerHolds
       //   → 重算有效档（有占用 = L3）→ 广播回两侧。

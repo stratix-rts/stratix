@@ -1368,6 +1368,14 @@ export type HudCommand =
    *   之前 Phase 2 留 TODO（handler 未接），HUD 端能派发但走 onUnhandled。
    */
   | { type: 'ui.navigate'; screen: ScreenId }
+  /**
+   * @since v3.6（task_115）**已接线**：HUD 侧三处皮肤入口（设置页皮肤区 / ⋯ 菜单「像素风」/
+   *   底栏命令「切换到像素风」）都发这条命令。
+   *   效果**由 HUD 本地消费**：hud/bridge/bus-adapter 在 dispatch 入口先落 token
+   *   （hud/theme/theme-controller：切样式表 + localStorage 记忆，见 core/theme/skin-registry
+   *   的 SKIN_STORAGE_KEY），再把命令发给 core；core 侧**只接地不落地**（core/runtime.ts
+   *   的 case 'theme.set'）—— 皮肤是每客户端本地的展示偏好，不进 WorldState、不广播。
+   */
   | { type: 'theme.set'; themeId: 'default' | 'pixel' }
   /**
    * @since v3.4（task_096）切 HUD 信息层级（三档：L1 常驻 / L2 事件 / L3 沉浸）。

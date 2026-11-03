@@ -16,9 +16,9 @@
  *
  * 三组设置各自的真相源（why 这么分，混在一起就会出现"两个真相"）：
  *   - 外观：皮肤**只经 theme.set**，由 hud/bridge/bus-adapter 本地落 token（见 theme-controller）。
- *     契约里没有回读通道（core 侧 theme.set 目前只记账，见 core/runtime.ts TODO），
- *     所以本屏保留一份**纯展示态** themeId 供高亮当前项 —— 与 main-screen 同一口径，
- *     绝不用它当真相（真相同在 DOM 上的 token 上，单测直接断言 token 切换）。
+ *     @since v3.6（task_115）：**皮肤有回读通道了** —— 真相源是主题控制器（token + localStorage
+ *     记忆），adapter 暴露 themeId / subscribeTheme；本屏的高亮直接读它，不再自存一份
+ *     （自存那份在「刷新后恢复皮肤」时会和真相对不上 —— 高亮指向旧皮肤，肉眼看着像没切成功）。
  *   - 偏好：唯一真相是 core 的 WorldState.settings（契约可选字段，缺省回落 DEFAULT_SETTINGS）。
  *   - 危险区：破坏性动作，一律两步确认（先点按钮、再点确认）才发命令。
  *
@@ -58,8 +58,13 @@ import type { CustomAgentsPort, CustomAgentView } from './custom-agents-port';
 
 export const SETTINGS_SCREEN_TAG = 'strat-settings-screen';
 
-/** 本屏需要的最小能力面：只要"发命令"与"订阅状态"，与 panels 同一约定。 */
-export type SettingsScreenDeps = Pick<HudBusAdapter, 'dispatch' | 'subscribe'>;
+/**
+ * 本屏需要的最小能力面：只要"发命令"与"订阅状态"，与 panels 同一约定；
+ * 外加皮肤的两件事（@since v3.6，task_115）：读当前皮肤（高亮当前项）+ 订阅皮肤变化
+ *   （设置屏开着时用户可能从顶栏 ⋯ 菜单切皮肤，高亮要跟上）。
+ */
+export type SettingsScreenDeps = Pick<HudBusAdapter, 'dispatch' | 'subscribe'> &
+  Pick<HudBusAdapter, 'themeId' | 'subscribeTheme'>;
 
 // ============================================================================
 // 词表（静态标签集中一处：渲染与单测共用同一份，不各写一套中文）
@@ -118,7 +123,7 @@ export const LANGUAGE_LABEL = '简体中文';
 export type PendingDanger = DangerActionId | null;
 
 export interface SettingsScreenModel {
-  /** 当前皮肤（纯展示态，真相同 DOM token —— 见文件头说明）。 */
+  /** 当前皮肤（@since v3.6，task_115：真相同主题控制器 —— 见文件头「三组设置各自的真相源」）。 */
   readonly themeId: ThemeId;
   /** 偏好当前值：WorldState.settings 缺省时回落契约默认值。 */
   readonly preferences: SettingsView;
@@ -175,10 +180,11 @@ export function defineSettingsScreen(): typeof HTMLElement {
   class SettingsScreen extends HTMLElement implements StratSettingsScreenElement {
     private _adapter: SettingsScreenDeps | null = null;
     private _state: WorldState | null = null;
-    private _themeId: ThemeId = 'default';
     private _pending: PendingDanger = null;
     private _lastRenderKey: string | null = null;
     private _unsubscribe: (() => void) | null = null;
+    /** 皮肤订阅的退订闭包（@since v3.6，task_115）：皮肤从别处变了 → 高亮跟上。 */
+    private _unsubscribeTheme: (() => void) | null = null;
     private _listenersBound = false;
     // 自定义 agent 注册（@since v3.32，task_056）：端口 + 注册行快照（异步拉，拉到后补画）。
     private _customAgents: CustomAgentsPort | null = null;
@@ -205,9 +211,14 @@ export function defineSettingsScreen(): typeof HTMLElement {
     }
 
     get lastState(): WorldState | null { return this._state; }
-    get currentThemeId(): ThemeId { return this._themeId; }
+    /**
+     * 当前皮肤（@since v3.6，task_115）：真相源是主题控制器（经 adapter 读）——
+     *   本屏不再自存一份（自存那份在「刷新后恢复皮肤」时会对不上）。
+     *   还没接上 adapter 时按默认皮肤展示（退化路径，不假装知道）。
+     */
+    get currentThemeId(): ThemeId { return this._adapter?.themeId ?? 'default'; }
     get model(): SettingsScreenModel {
-      return { themeId: this._themeId, preferences: resolvePreferences(this._state), pending: this._pending };
+      return { themeId: this.currentThemeId, preferences: resolvePreferences(this._state), pending: this._pending };
     }
 
     connectedCallback(): void {
@@ -226,7 +237,7 @@ export function defineSettingsScreen(): typeof HTMLElement {
     }
 
     refresh(): void {
-      const key = `${settingsSignature(this._state)}|${this._themeId}|${this._pending ?? ''}`;
+      const key = `${settingsSignature(this._state)}|${this.currentThemeId}|${this._pending ?? ''}`;
       if (key === this._lastRenderKey) return;
       this._lastRenderKey = key;
       this.renderBody();
@@ -239,19 +250,27 @@ export function defineSettingsScreen(): typeof HTMLElement {
         this._state = state;
         this.refresh();
       });
+      // 皮肤订阅（@since v3.6，task_115）：设置屏开着时用户可能从顶栏 ⋯ 菜单切皮肤 ——
+      //   高亮必须跟上，否则看着像「切了没生效」。
+      this._unsubscribeTheme = this._adapter.subscribeTheme(() => this.refresh());
     }
 
     private releaseAdapter(): void {
+      this._unsubscribeTheme?.();
+      this._unsubscribeTheme = null;
       if (!this._unsubscribe) return;
       this._unsubscribe();
       this._unsubscribe = null;
     }
 
     // —— 交互 → HudCommand ——
-    /** 皮肤：只发 theme.set，落 token 由 hud/bridge/bus-adapter 在入口处完成（不经 core 绕一圈）。 */
+    /**
+     * 皮肤：只发 theme.set，落 token 由 hud/bridge/bus-adapter 在入口处完成（不经 core 绕一圈）。
+     * @since v3.6（task_115）：本屏**不再自存一份 themeId** —— dispatch 之后主题控制器已是新皮肤，
+     *   高亮直接读 adapter.themeId（刷新后恢复的皮肤也自动对得上）。
+     */
     private selectTheme(themeId: ThemeId): void {
-      if (themeId === this._themeId) return;
-      this._themeId = themeId;
+      if (themeId === this.currentThemeId) return;
       this._adapter?.dispatch({ type: 'theme.set', themeId });
       this.refresh();
     }
@@ -585,7 +604,7 @@ export function defineSettingsScreen(): typeof HTMLElement {
     private renderAppearance(): string {
       const skins = SKIN_OPTIONS.map(
         (skin) => `
-          <button type="button" class="ctl" data-skin="${skin.id}" data-active="${skin.id === this._themeId}"
+          <button type="button" class="ctl" data-skin="${skin.id}" data-active="${skin.id === this.currentThemeId}"
                   title="${skin.hint}">${skin.label}</button>`
       ).join('');
 

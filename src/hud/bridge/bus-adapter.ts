@@ -1,7 +1,8 @@
 /**
  * 文件职责：HUD ↔ core 的唯一通信网关。订阅 core 广播的 WorldState（驱动渲染）；
  *   把 HUD 用户操作打包成 HudCommand 发回 core；同时在本地拦截 `theme.set` 直接落皮肤（避免
- *   走过 core 再回到 hud 的回路）。
+ *   走过 core 再回到 hud 的回路），并对外暴露**当前皮肤**与皮肤订阅（@since v3.6，task_115：
+ *   顶栏菜单文案 / 设置屏高亮都问它，不再各存一份 currentTheme）。
  *   来源：docs/REFACTOR_PLAN_V3.md §1 通信铁律 + §3 主题 token 体系。
  * 输入：core/bus 的三个通道 —— onState / emitCommand；以及 theme-controller 的 apply。
  * 输出：浏览器 DOM 渲染（通过订阅者）；core 总线出 command 与 state 事件。
@@ -39,6 +40,17 @@ export interface HudBusAdapter {
   dispatch(command: HudCommand): void;
   /** 订阅最新 WorldState；mount 前后都可调用，未 mount 的回调会在 mount 后立即拿到缓存快照。 */
   subscribe(handler: (state: WorldState) => void): Unsubscribe;
+  /**
+   * 当前皮肤（@since task_115）—— **唯一真相**：真相源是主题控制器（token + localStorage 记忆）。
+   * why HUD 各处不再各存一份 currentTheme：顶栏菜单文案 / 设置屏高亮各存一份迟早走样
+   *   （切了皮肤、菜单还写着旧名）。
+   */
+  readonly themeId: ThemeId;
+  /**
+   * 订阅皮肤变化（@since task_115）：皮肤真变时回调当前皮肤 id；返回退订函数。
+   * why 需要：设置屏开着的时候，用户可能从顶栏 ⋯ 菜单切皮肤 —— 高亮要跟上。
+   */
+  subscribeTheme(listener: (themeId: ThemeId) => void): Unsubscribe;
   /** 启动 state 订阅；重复调用是 no-op；返回 unmount 闭包。 */
   mount(): () => void;
   /** 读取最近一次收到的 state；用于组件初始化渲染与 mount 后回放。 */
@@ -105,6 +117,13 @@ export function createHudBusAdapter(
   return {
     dispatch,
     subscribe,
+    subscribeTheme: (listener: (themeId: ThemeId) => void) =>
+      // 控制器是泛型 id（词表可放开），这里收敛回契约里的窄口径（default/pixel）。
+      partial.themeController.subscribe((id) => { listener(id === 'pixel' ? 'pixel' : 'default'); }),
+    get themeId(): ThemeId {
+      // 控制器尚未激活任何一套（current=null）时按默认皮肤对外 —— 读取方不必处理 null。
+      return partial.themeController.current === 'pixel' ? 'pixel' : 'default';
+    },
     mount,
     get latest() { return latest; },
   };
