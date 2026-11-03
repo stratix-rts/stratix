@@ -88,7 +88,7 @@ export function defineStratGatewayBanner(): typeof HTMLElement {
           :host {
             all: initial;
             position: absolute;
-            /* 模式状态条（@since v3.6，task_117）亮出时让位一条 ——
+            /* 模式状态条（@since v3.6）亮出时让位一条 ——
                否则断连横幅会压在状态条上（两者都在顶栏正下方）。 */
             top: calc(var(--srf-mode-strip-h, 0px) + ${TOPBAR_METRICS.heightPx + 8}px);
             left: 50%;

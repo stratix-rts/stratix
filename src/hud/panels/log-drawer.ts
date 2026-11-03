@@ -263,7 +263,7 @@ export function defineLogDrawer(): typeof HTMLElement {
           .body {
             display: grid;
             gap: var(--srf-spacing-sm);
-            /* 出入场过渡（@since v3.6，task_121）：展开 / 收起各有 140ms 淡入淡出。
+            /* 出入场过渡（@since v3.6）：展开 / 收起各有 140ms 淡入淡出。
                why 用 allow-discrete + @starting-style：display:none 会掐断过渡，
                改成离散过渡后收起能播完淡出、展开能播淡入（纯 CSS，无 JS 计时器）。 */
             opacity: 1;

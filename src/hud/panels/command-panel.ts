@@ -541,7 +541,7 @@ export function defineCommandPanel(): typeof HTMLElement {
           input:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
           .group-name { font-weight: var(--srf-font-weight-semibold); letter-spacing: 0.04em; }
           .empty { padding: var(--srf-spacing-md); text-align: center; border: var(--srf-border-width) dashed var(--srf-border); border-radius: var(--srf-radius); }
-          /* 命令行回执区（@since v3.6，task_113）：贴着输入框的一行"终端输出"。
+          /* 命令行回执区（@since v3.6）：贴着输入框的一行"终端输出"。
              why 不进 toast：命令就在眼前，回执也得在眼前。 */
           .output {
             padding: var(--srf-spacing-xs);

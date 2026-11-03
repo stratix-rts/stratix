@@ -218,7 +218,7 @@ const MAIN_SCREEN_STYLE = `
     background: var(--srf-panel-elevated);
     box-shadow: var(--srf-shadow);
     pointer-events: auto;
-    /* 出入场过渡（@since v3.6，task_121）：140ms 淡入淡出 + 轻微上浮。
+    /* 出入场过渡（@since v3.6）：140ms 淡入淡出 + 轻微上浮。
        why 用 allow-discrete + @starting-style：hidden 属性的 display:none 会**掐断**过渡，
        改成"display 离散过渡"后收起时能播完淡出、展开时能播淡入（纯 CSS，无 JS 计时器）。 */
     opacity: 1;
@@ -255,7 +255,7 @@ const MAIN_SCREEN_STYLE = `
   .hud-rail-left {
     position: absolute;
     left: var(--hud-gap);
-    /* 模式状态条（@since v3.6，task_117）：细条亮出时下方版面整体下移一条 ——
+    /* 模式状态条（@since v3.6）：细条亮出时下方版面整体下移一条 ——
        让位量由 mode-strip 组件写在 <html> 上的 --srf-mode-strip-h 给（没亮 = 0）。 */
     top: calc(var(--hud-topbar-h) + var(--srf-mode-strip-h, 0px) + var(--hud-gap));
     /* 下边界避开两件：控制岛（居中，与左栏只有一条窄带重叠）与左下事件轨。

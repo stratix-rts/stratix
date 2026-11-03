@@ -460,7 +460,7 @@ export function defineSessionPanel(): typeof HTMLElement {
           button.chip:active { background: var(--srf-panel); }
           button.chip:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
           button.chip[aria-pressed="true"] { color: var(--srf-accent); border-color: var(--srf-accent); }
-          /* 分叉钮（@since v3.48，task_102）：行内小钮，靠右贴边（entry-head 是 flex 行）。 */
+          /* 分叉钮（@since v3.48）：行内小钮，靠右贴边（entry-head 是 flex 行）。 */
           button.chip.fork {
             margin-left: auto;
             align-self: center;
@@ -473,7 +473,7 @@ export function defineSessionPanel(): typeof HTMLElement {
             display: grid;
             gap: var(--srf-spacing-sm);
             min-height: 0;
-            /* 出入场过渡（@since v3.6，task_121）：展开 / 收起各有 140ms 淡入淡出。
+            /* 出入场过渡（@since v3.6）：展开 / 收起各有 140ms 淡入淡出。
                why 用 allow-discrete + @starting-style：display:none 会掐断过渡，
                改成离散过渡后收起能播完淡出、展开能播淡入（纯 CSS，无 JS 计时器）。 */
             opacity: 1;

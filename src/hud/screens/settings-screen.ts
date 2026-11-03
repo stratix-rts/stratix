@@ -599,7 +599,7 @@ export function defineSettingsScreen(): typeof HTMLElement {
             border-radius: var(--srf-radius);
             font-size: var(--srf-font-size-sm);
           }
-          /* 危险区确认框（@since v3.6，task_116）：全屏遮罩 + 居中面板 —— 与 task_112
+          /* 危险区确认框（@since v3.6）：全屏遮罩 + 居中面板 —— 与 
              新建任务对话框同一模式（R1 模态 + R4 双关闭途径）。
              why 放影子树里而不是宿主外：本屏就是模态，确认框是它的下一层，宿主外会脱离层级。 */
           .confirm-layer {

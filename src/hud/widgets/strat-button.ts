@@ -124,7 +124,7 @@ export function defineStratButton(): typeof HTMLElement {
             color: var(--srf-text);
             transition: color var(--srf-transition);
           }
-          /* 微交互（@since v3.6，task_121）：hover = 变主色（图标随之变色）+ 上浮 1px。
+          /* 微交互（@since v3.6）：hover = 变主色（图标随之变色）+ 上浮 1px。
              why 挂在 :host 上而不是 button 上：图标按钮没有可见文字，
              「变色」必须落在图标自己身上才看得见；按钮底色变化只是配角。 */
           :host(:hover:not([disabled])) { color: var(--srf-accent); }

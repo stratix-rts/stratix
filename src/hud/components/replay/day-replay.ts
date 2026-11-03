@@ -186,7 +186,7 @@ export function defineStratDayReplay(): typeof HTMLElement {
           }
           .play[disabled] { opacity: 0.4; cursor: not-allowed; }
           .play:hover:not([disabled]) { background: color-mix(in srgb, var(--srf-visual-accent, ${VISUAL_PALETTE.accent}) 15%, transparent); }
-          /* 重试按钮（@since v3.6，task_114）：读失败时给一个可执行动作 —— 只说「读不到」没用。 */
+          /* 重试按钮（@since v3.6）：读失败时给一个可执行动作 —— 只说「读不到」没用。 */
           .retry {
             flex: none;
             font: inherit;
