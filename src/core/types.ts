@@ -132,6 +132,27 @@ export interface Bounds {
   readonly height: number;
 }
 
+/**
+ * 相机状态（@since v3.4，task_092）—— 世界坐标的视口中心 + 缩放。
+ *
+ * why 冻结在契约层：世界 → 屏幕的换算是**两侧都要用**的公式（world 侧画屏幕空间的
+ *   引导弧线要它，hud 侧将来要把世界坐标落到 DOM 上也要它）。真相是相机的位姿，
+ *   换算公式归 core/camera.ts 的 worldToScreen（纯函数）—— 谁都不许在自己那份里
+ *   重写一遍「乘 zoom 再减半视口」，抄一份必然漂移。
+ * 口径与 world/camera/camera-math 的 CameraPose 同源：center 是**屏幕中心所对应的
+ *   世界坐标**（Phaser 的 midPoint 口径，不随 zoom 变），zoom 是缩放倍率。
+ */
+export interface CameraState {
+  readonly center: Point;
+  readonly zoom: number;
+}
+
+/** 视口尺寸（屏幕像素）。世界 → 屏幕换算的基准，与相机控制器读同一份。 */
+export interface ViewportSize {
+  readonly width: number;
+  readonly height: number;
+}
+
 /** 点击修饰键。world → core 上报点击时携带，core 据此决定 set/toggle 语义。 */
 export interface ClickMods {
   readonly shift: boolean;

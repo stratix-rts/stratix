@@ -68,23 +68,17 @@ import {
   type UnitAnimationContext,
   type UnitAnimationState,
 } from '../appearance/unit-animation';
-import { resolveUnitColor, INTERACTION_FX_METRICS, UNIT_ANIMATION_METRICS, WORLD_PALETTE } from '../theme';
+import {
+  resolveUnitColor,
+  FOCUS_LINK_METRICS,
+  INTERACTION_FX_METRICS,
+  UNIT_ANIMATION_METRICS,
+  WORLD_PALETTE,
+} from '../theme';
 
+import { focusOutlineAlpha } from './focus-link';
 import { selectionWaveSchedule } from './task-fx';
 import { UNIT_HIT_RADIUS, type UnitObject } from './unit-object';
-import type { UnitRegistry } from './unit-registry';
-import {
-  MAX_UNIT_SHEET_TEXTURES,
-  UNIT_FRAME_SIZE,
-  UNIT_SHEET_ROWS,
-  UNIT_SPRITE_SCALE,
-  UNIT_WALK_CYCLE,
-  UNIT_WALK_DIRECTION,
-  UNIT_WALK_FPS,
-  unitFrameName,
-  unitSheetTextureKey,
-  resolveUnitSheetKey,
-} from './unit-sprite-sheet';
 import {
   BREATH_STYLE,
   breathPhaseFor,
@@ -98,6 +92,19 @@ import {
   speakingDotAlpha,
   type NametagStorage,
 } from './unit-presence';
+import type { UnitRegistry } from './unit-registry';
+import {
+  MAX_UNIT_SHEET_TEXTURES,
+  UNIT_FRAME_SIZE,
+  UNIT_SHEET_ROWS,
+  UNIT_SPRITE_SCALE,
+  UNIT_WALK_CYCLE,
+  UNIT_WALK_DIRECTION,
+  UNIT_WALK_FPS,
+  unitFrameName,
+  unitSheetTextureKey,
+  resolveUnitSheetKey,
+} from './unit-sprite-sheet';
 import type { UnitSpriteSource } from './unit-sprite-source';
 
 const UNIT_RADIUS = UNIT_HIT_RADIUS * 0.8;
@@ -231,6 +238,12 @@ interface UnitNode {
   readonly ripple: Phaser.GameObjects.Graphics;
   /** 落地星尘粒子（8-12 个小三角）。 */
   readonly dust: Phaser.GameObjects.Graphics;
+  /**
+   * 焦点描边（@since v3.4，task_092）：事件轨点选该单位时套上的**霓虹描边**（外发光 + 亮线）。
+   * why 单独一枚 Graphics：描边要盖在身体之上（是「套上去的圈」），且每 tick 按呼吸重画 ——
+   *   与脚下三枚 Graphics（选中环 / 弹环 / 涟漪）的属性面互不相干。
+   */
+  readonly focusOutline: Phaser.GameObjects.Graphics;
   /** 形象精灵（合成成功后才有；null = 走占位圆）。 */
   sprite: Phaser.GameObjects.Sprite | null;
   /** 当前精灵对应的角色 id（换角色 → 换精灵）。 */
@@ -278,6 +291,13 @@ export class UnitLayer {
   private preview = new Set<string>();
   /** 当前被 hover 的单位（task_075）：hover 态（放大 1.1x + 指针光标 + 喷口微光）的裁决源。 */
   private hovered = new Set<string>();
+  /**
+   * 当前被「联动锁定」的单位 id（@since v3.4，task_092）：HUD 事件轨点选后，
+   * 该单位套上霓虹描边（呼吸）。null = 无锁定。
+   * why 本层只存一个 id：锁定至多一个单位（事件轨一次只对一条）—— 规则在
+   * objects/focus-link.ts 的 FocusLinkBoard，本层只是它的渲染兑现。
+   */
+  private focusedUnitId: string | null = null;
 
   /** 已缓存的形象精灵表（key = 角色 id）。封顶见 MAX_UNIT_SHEET_TEXTURES。 */
   private readonly sheets = new Map<string, SheetEntry>();
@@ -327,6 +347,9 @@ export class UnitLayer {
     for (const object of this.registry.list()) {
       live.add(object.id);
       const node = this.nodes.get(object.id) ?? this.createNode(object);
+      // 被锁定的单位刚入场（节点是本次对账新建的）：补上描边 ——
+      // setFocused 可能早于节点存在（点选指令先到、单位后进场的次序）。
+      if (object.id === this.focusedUnitId) node.focusOutline.setVisible(true);
       // 移动 tween 活跃时位置真相已在 UnitObject（立即生效），渲染层让 tween 走完 ——
       // 状态广播不该把半路上的单位臈移到终点（tween 只是渲染过渡，task_045）。
       if (!this.isMoving(node)) node.container.setPosition(object.position.x, object.position.y);
@@ -410,6 +433,27 @@ export class UnitLayer {
     // 光标：悬停在单位上用 pointer，其余用默认箭头。
     this.scene.input.setDefaultCursor(unitId ? 'pointer' : 'default');
     if (!changed) return;
+  }
+
+  /**
+   * 联动锁定（@since v3.4，task_092）：HUD 事件轨点选某单位 → 该单位套上霓虹描边（呼吸）。
+   *
+   * why 描边画在**单位层**而不是引导弧线层：描边是「这个单位被点了」的本体提示，
+   *   要跟着单位走（单位移动 / 转向 / 缩放都带着它）；弧线是屏幕空间的连线，两者职责不同。
+   * 传 null = 解除锁定（失焦 / 再次点击）—— 描边褪掉。
+   */
+  setFocused(unitId: string | null): void {
+    if (this.destroyed) return;
+    if (this.focusedUnitId === unitId) return;
+    this.focusedUnitId = unitId;
+    for (const [id, node] of this.nodes) {
+      const focused = id === unitId;
+      if (focused) {
+        node.focusOutline.setVisible(true);
+      } else if (node.focusOutline.visible) {
+        node.focusOutline.clear().setVisible(false);
+      }
+    }
   }
 
   /**
@@ -692,6 +736,8 @@ export class UnitLayer {
     // 波浪式弹选择环（task_077）：一次性演出，默认隐藏。
     const popRing = this.scene.add.graphics().setPosition(0, ANIM_STYLE.ring.y).setVisible(false);
     const dust = this.scene.add.graphics().setPosition(0, ANIM_STYLE.ring.y).setVisible(false);
+    // 焦点描边（@since v3.4，task_092）：霓虹外发光 + 亮线，默认隐藏（由 setFocused 裁决）。
+    const focusOutline = this.scene.add.graphics().setVisible(false);
     // 头顶覆盖物（task_062）：名字 / Lv 小字 / 说话气泡 —— 全部容器内嵌（见文件头），
     // 初始隐藏，可见性由 presence tick 统一裁决（开关 + zoom）。样式常量在 unit-presence.ts
     // （描边色取自唯一事实源的背景色，保证任何底色上都压得住）。名字 origin(0.5,1) 向上长、Lv origin(0.5,0)
@@ -733,6 +779,8 @@ export class UnitLayer {
     // 名字/气泡永远在最上（要能压住头顶覆盖物）；选中环垫在身下（读作「地面的圈」）。
     const container = this.scene.add.container(0, 0, [
       rig,
+      // 焦点描边压在 rig 之上（它是「套在单位身上的圈」，要盖住身体边缘才读得出高亮）。
+      focusOutline,
       selectionRing,
       popRing,
       ripple,
@@ -760,6 +808,7 @@ export class UnitLayer {
       popRing,
       ripple,
       dust,
+      focusOutline,
       nameTag,
       lvTag,
       speakingTag,
@@ -1075,7 +1124,30 @@ export class UnitLayer {
         node.speakingTag.setVisible(false);
       }
       if (object) this.applyAnimationPose(node, object, now);
+      // 焦点描边呼吸（@since v3.4，task_092）：只有被锁定的那个单位要重画（至多一枚）。
+      if (id === this.focusedUnitId) this.drawFocusOutline(node, now);
     }
+  }
+
+  /**
+   * 画焦点单位的霓虹描边（@since v3.4，task_092）：**外发光 + 亮线**两圈，透明度随呼吸起伏。
+   *
+   * why 两圈而不是一圈粗线：粗线只有一种亮度，读作「粗边框」；外圈半透明的辉光 +
+   *   内圈实亮线才读作「霓虹」（glow 是亮的余晖，不是主体 —— 故辉光透明度按
+   *   outlineGlowAlphaRatio 打折）。
+   * why 几何随形态而变：占位体是圆，形象精灵是椭圆（框住 64×64 缩放后的角色）。
+   */
+  private drawFocusOutline(node: UnitNode, now: number): void {
+    const alpha = focusOutlineAlpha(now, node.breathPhase);
+    const { outlineGlowPx, outlineStrokePx, outlineGlowAlphaRatio } = FOCUS_LINK_METRICS;
+    const { radiusX, radiusY, centerY } = focusOutlineGeometry(node.sprite !== null);
+    node.focusOutline.clear();
+    // 外发光（宽、半透明）：垫在亮线下面 → 读作「辉光漫开」。
+    node.focusOutline.lineStyle(outlineGlowPx, WORLD_PALETTE.accent, alpha * outlineGlowAlphaRatio);
+    node.focusOutline.strokeEllipse(0, centerY, radiusX * 2, radiusY * 2);
+    // 亮线（细、实）：主体。
+    node.focusOutline.lineStyle(outlineStrokePx, WORLD_PALETTE.accent, alpha);
+    node.focusOutline.strokeEllipse(0, centerY, radiusX * 2, radiusY * 2);
   }
 
   /**
@@ -1232,6 +1304,22 @@ export class UnitLayer {
 // 动画八态的绘制助手（@since v3.3，task_075）
 // 纯代码绘制（Graphics），零位图资产 —— DEMO-PLAN §0「全部视觉由代码绘制」。
 // ============================================================================
+
+/**
+ * 焦点描边的几何（@since v3.4，task_092）：按单位的形态给出一圈描边的半径与中心。
+ *
+ * why 两种形态：占位体是**圆心在原点**的圆；有形象的是精灵（origin 0.5, 0.75 →
+ *   画框中心落在脚上方半格处），用同一个圆去框会框不住人。
+ * why 半径要加留白（outlinePaddingPx）：圈要套在**身体外**，不能压住角色。
+ */
+function focusOutlineGeometry(hasSprite: boolean): { radiusX: number; radiusY: number; centerY: number } {
+  const padding = FOCUS_LINK_METRICS.outlinePaddingPx;
+  if (!hasSprite) {
+    return { radiusX: UNIT_RADIUS + padding, radiusY: UNIT_RADIUS + padding, centerY: 0 };
+  }
+  const half = (UNIT_FRAME_SIZE * UNIT_SPRITE_SCALE) / 2;
+  return { radiusX: half + padding, radiusY: half + padding, centerY: -half / 2 };
+}
 
 /**
  * 画一圈虚线（脚下选择环）。

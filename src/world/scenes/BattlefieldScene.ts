@@ -8,11 +8,15 @@
  *   - core/bus 的 world 通道上的 unit.position（@since v3.21，task_045，转发到 syncUnitPosition）
  *     —— 右击移动时 runtime 把编队终值广播回来，场景立即写进 UnitObject 并 tween 过渡；
  *   - core/bus 的 world 通道上的 camera.center（@since v3.33，task_057，转发到 syncCameraCenter）
+ *     —— 小地图点击/拖拽的跳转指令，场景把相机对中到目标世界点；
  *   - core/bus 的 world 通道上的 camera.shake（@since v3.3，task_080，转发到 syncCameraShake，
  *     里程碑大字落下时的一记小震）
  *   - core/bus 的 world 通道上的 unit.speaking（@since v3.37，task_062，转发到 syncUnitSpeaking，
  *     单位层头顶「···」说话气泡）
- *     —— 小地图点击/拖拽的跳转指令，场景把相机对中到目标世界点；
+ *   - core/bus 的 world 通道上的 focus.unit（@since v3.4，task_092，转发到 syncFocusUnit）
+ *     —— HUD 事件轨条目点选 → 被点单位描边高亮（霓虹 + 呼吸）+ 左下事件轨到中屏的引导弧线；
+ *   - core/bus 的 world 通道上的 camera.director（@since v3.3，task_081，转发到 syncDirectorMode）
+ *     —— 导演模式开合：镜头接管 + 中屏取景框标识（task_092 的 L3 提示）；
  *   - core/bus 的 state 通道上的 missions + tasks（@since v3.3，task_078，转发到 syncTasks，
  *     地图上的任务建筑三态与区域点亮 —— 区域 = 编组任务，建筑 = 角色任务）；
  *   - core/bus 的 world 通道上的 task.queued / started / completed / failed（@since v3.3，task_076，
@@ -78,6 +82,8 @@ import type { DirectorEventKind } from '../camera/director-policy';
 import { isWarmHour } from '../objects/ambience-layout';
 import { BuildingLayer } from '../objects/building-layer';
 import { CloudLayer } from '../objects/cloud-layer';
+import { DirectorFrameLayer } from '../objects/director-frame-layer';
+import { FocusLinkLayer } from '../objects/focus-link-layer';
 import { GroundLayer, GROUND_DEPTH } from '../objects/ground-layer';
 import { ReplayBoard, replayAnchorId, replayAvatarPosition } from '../objects/replay-board';
 import { ReplayLayer } from '../objects/replay-layer';
@@ -137,6 +143,16 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   private bridge!: WorldBridge;
   private readonly units = new UnitRegistry({ worldBounds: DEFAULT_WORLD_BOUNDS });
   private unitLayer!: UnitLayer;
+  /**
+   * 引导弧线层（@since v3.4，task_092）：HUD 事件轨条目 → 中屏单位的屏幕空间连线。
+   * 弧线的起终点换算与焦点裁决都在层内（objects/focus-link*），场景只喂相机与单位位置。
+   */
+  private focusLink!: FocusLinkLayer;
+  /**
+   * 导演取景框层（@since v3.4，task_092）：导演模式开启时中屏四角出现取景框标识（L3 层，
+   * 提示镜头已被接管）。开合由 camera.director 事件驱动（同导演控制器同一信号源）。
+   */
+  private directorFrame!: DirectorFrameLayer;
   /** 任务表现状态板（task_038）：瞬态浮标（✓/!）的唯一真相，环由 busy 派生裁决。 */
   private readonly taskFx = new TaskFxBoard();
   private taskFxLayer!: TaskFxLayer;
@@ -226,6 +242,13 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     // 必须在底板之后建（渲染次序靠 depth 与添加序双保险）。
     this.groundLayer = new GroundLayer(this, { bounds: DEFAULT_WORLD_BOUNDS });
     this.drawEmptyHint();
+
+    // 单位联动层（@since v3.4，task_092）：引导弧线（屏幕空间）+ 焦点裁决的渲染兑现。
+    // 导演取景框层（task_092）：导演模式开启时中屏四角的取景框。
+    // why 建在桥接层**之前**：桥一订阅总线，事件随时可能到达 —— 层必须先在场，
+    //   否则第一条 focus.unit / camera.director 就会打空引用。
+    this.focusLink = new FocusLinkLayer(this);
+    this.directorFrame = new DirectorFrameLayer(this);
 
     // 桥接层先建：相机控制器的 onChange 会立刻回调它上报初始位姿
     this.bridge = createWorldBridge(this);
@@ -321,6 +344,13 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     }
     this.taskFxLayer.sync();
     this.emptyHint?.setVisible(units.length === 0);
+    // 失焦（@since v3.4，task_092）：被锁定的单位离场 → 弧线与描边一并收掉
+    // （表现不许指着一个已经不存在的单位）。
+    const focusedId = this.focusLink.unitId;
+    if (focusedId !== null && result.removed.includes(focusedId)) {
+      this.focusLink.clear();
+      this.unitLayer.setFocused(null);
+    }
     // 落位上报（@since v3.12，task_033）：新增单位的坐标（恢复位或网格位）发回 core 方向，
     // 由 app 层持久化订阅者防抖落库。只对新增单位发：位置真相在本层，后续移动由移动链路上报。
     for (const id of result.added) {
@@ -484,6 +514,25 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     // 导演接管镜头 → 跟随镜头让位（两者不能同时写镜头）。
     if (enabled) this.releaseFollow();
     this.director.setEnabled(enabled);
+    // 取景框（@since v3.4，task_092）：导演接管镜头时，中屏四角出现取景框标识 ——
+    // 画面回显「镜头已经不是你的了」（L3 层提示）。关掉导演 → 取景框收掉。
+    this.directorFrame.setEnabled(enabled);
+    this.directorFrame.sync(this.viewport());
+  }
+
+  /**
+   * 单位联动（@since v3.4，task_092；由桥接层转发 world 通道的 focus.unit）。
+   *
+   * HUD 事件轨条目点击 → 被点单位**描边高亮**（霓虹描边 + 呼吸）+ 左下事件轨到中屏单位的
+   * **引导弧线**（800ms 淡入，镜头移动实时跟随）。
+   * 再次点击同一条 = 取消锁定（弧线收掉、描边褪掉 —— 规格「持续到失焦/再次点击」）；
+   * 被锁定的单位离场 = 失焦（同样收掉，见 syncUnits）。
+   */
+  syncFocusUnit(unitId: string): void {
+    const outcome = this.focusLink.focus(unitId);
+    if (!outcome.changed) return;
+    // 描边高亮跟着焦点走（outcome.unitId 为 null = 已取消 → 描边褪掉）。
+    this.unitLayer.setFocused(outcome.unitId);
   }
 
   /**
@@ -776,6 +825,34 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
 
   private onResize(): void {
     this.view.syncViewport();
+    // 取景框几何跟着视口走（@since v3.4，task_092）：中屏变了，框的位置也要变。
+    this.directorFrame.sync(this.viewport());
+  }
+
+  /**
+   * 引导弧线的每帧同步（@since v3.4，task_092）：把被锁定单位的**世界坐标**按当前相机
+   * 换算成屏幕坐标，交给弧线层重画。
+   *
+   * why 用 visualCenter 而不是 current.center：橡皮筋回弹时相机**视觉上**已经越界，
+   *   位姿（current.center）还钳在边界内 —— 用它算弧线末端，线会跟画面差那一点。
+   * why 每帧都算：镜头在动、单位也在动（移动补间），两者都会改末端位置。
+   */
+  private syncFocusLink(): void {
+    const unitId = this.focusLink.unitId;
+    if (unitId === null) return;
+    const unit = this.units.get(unitId);
+    if (!unit) {
+      // 目标单位不在场（还没接入 / 已离场）：失焦 —— 弧线与描边一并收掉
+      //（表现不许指着一个不存在的单位）。
+      this.focusLink.clear();
+      this.unitLayer.setFocused(null);
+      return;
+    }
+    this.focusLink.sync(
+      { center: this.view.visualCenter, zoom: this.view.current.zoom },
+      this.viewport(),
+      unit.position
+    );
   }
 
   // ==========================================================================
@@ -951,6 +1028,8 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     // 导演巡视（@since v3.3，task_081）：静默超过 8s 时镜头缓慢漂移（漂移 pan）。
     // why 先于跟随判定：导演开启时跟随已让位（见 syncDirectorMode），两者不会同时写镜头。
     this.director.update();
+    // 引导弧线跟随镜头（@since v3.4，task_092）：每帧按当前相机把单位的世界坐标换算成屏幕坐标。
+    this.syncFocusLink();
     if (!this.followUnitId) return;
     if (this.cameraTween?.isPlaying()) return;
     const unit = this.units.get(this.followUnitId);
@@ -968,6 +1047,9 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   private onShutdown(): void {
     this.bridge.destroy();
     this.unitLayer.destroy();
+    // 单位联动层（task_092）：弧线的 Graphics + 补间、取景框的 Graphics + 标注 + 补间一并回收。
+    this.focusLink.destroy();
+    this.directorFrame.destroy();
     this.taskFxLayer.destroy();
     // 气泡层（task_076）：定时器与显示对象一并回收（perf：资源必须可清理）。
     this.speechLayer.destroy();

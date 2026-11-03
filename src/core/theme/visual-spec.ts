@@ -226,6 +226,113 @@ export const MARQUEE_METRICS = Object.freeze({
 });
 
 /**
+ * 单位联动（@since v3.4，task_092；docs/hud-redesign-proposal.html §2.2「视线动线」/ §2.5 Z2）的度量。
+ *
+ * why 也落在唯一事实源：描边高亮的粗细 / 呼吸周期与引导弧线的淡入时长 / 贝塞尔形状
+ *   是**两侧共用的规格数字** —— 战场侧（world/objects 的焦点层）按它渲染，单测按它断言；
+ *   弧线起点锚在 HUD 事件轨（Z2）上，两侧对「事件轨在哪」的认知必须来自同一份数字。
+ * 形状约定（规格原文）：
+ *   - 描边高亮：**霓虹描边 + 呼吸**，持续到失焦 / 再次点击（不是一次性闪光）；
+ *   - 引导弧线：**屏幕坐标绘制**的贝塞尔曲线，800ms 淡入，镜头移动实时跟随。
+ */
+export const FOCUS_LINK_METRICS = Object.freeze({
+  /** 描边高亮：霓虹**外发光**圈的粗细（世界 px）—— 亮线的外圈，负责「霓虹」的辉光感。 */
+  outlineGlowPx: 6,
+  /** 描边高亮：霓虹**亮线**的粗细（世界 px）。 */
+  outlineStrokePx: 2,
+  /** 描边高亮：亮线相对单位本体的外扩（世界 px）—— 圈在身体外，不压住角色。 */
+  outlinePaddingPx: 4,
+  /** 描边高亮：呼吸周期（ms）—— 一轮「亮起 → 暗下」的时间。 */
+  breathPeriodMs: 1600,
+  /** 描边高亮：呼吸谷值透明度（不是全灭 —— 全灭看着像「取消选中」）。 */
+  outlineMinAlpha: 0.45,
+  /** 描边高亮：呼吸峰值透明度。 */
+  outlineMaxAlpha: 1,
+  /** 描边高亮：外发光相对亮线的透明度系数（辉光是亮的余晖，不是主体）。 */
+  outlineGlowAlphaRatio: 0.35,
+  /** 引导弧线：淡入时长（ms；规格钦定 800ms 淡入）。 */
+  arcFadeInMs: 800,
+  /** 引导弧线：贝塞尔采样段数（24 段足够顺滑，且每帧重画的代价可忽略）。 */
+  arcSegments: 24,
+  /** 引导弧线：线宽（屏幕 px）—— 屏幕空间绘制，不随镜头缩放变粗变细。 */
+  arcStrokePx: 2,
+  /** 引导弧线：控制点的外扩比例（相对起终点竖直距离；0 = 直线）。 */
+  arcBendRatio: 0.35,
+  /** 引导弧线：外扩的最小高度（屏幕 px）—— 起终点几乎水平时也保得住弧度。 */
+  arcMinBendPx: 60,
+  /**
+   * 引导弧线：**起点锚点**（屏幕空间）—— HUD 事件轨（Z2）的右缘。
+   * why 锚在事件轨而不是屏幕角：弧线要回答的是「这条事件说的是哪个单位」，
+   *   从条目所在的那条轨出发，指向才是「从左下到中屏」（proposal §2.2 的动线）。
+   * 数值与 HUD 事件轨的 fixed 定位同口径（left: 16px / bottom: 16px / 行高 26px）。
+   */
+  origin: Object.freeze({
+    /** 事件轨左边距（px）。 */
+    trackLeftPx: 16,
+    /** 事件轨宽度（px）—— 取 MARQUEE_METRICS.maxWidthPx（唯一事实源，勿另抄）。 */
+    trackWidthPx: MARQUEE_METRICS.maxWidthPx,
+    /** 事件轨下边距（px）。 */
+    trackBottomPx: 16,
+    /** 事件轨单行高（px）—— 起点落在首行中部。 */
+    trackRowPx: 26,
+  }),
+});
+
+/**
+ * 导演取景框的度量（@since v3.4，task_092；docs/hud-redesign-proposal.html §2.5 A6 / G1）。
+ *
+ * why 落在唯一事实源：取景框的括号尺寸 / 线宽 / 呼吸周期是**验收数字** ——
+ *   「🎬 导演开启后中屏出现琥珀色取景框并标注『🎬 导演』」（proposal §2.5），
+ *   战场侧按它渲染、单测按它断言，两边读同一份才不会各画各的。
+ */
+export const DIRECTOR_FRAME_METRICS = Object.freeze({
+  /** 取景框：单角括号的两条边长（屏幕 px）。 */
+  cornerSizePx: 26,
+  /** 取景框：括号线宽（屏幕 px）。 */
+  strokeWidthPx: 2,
+  /** 取景框：括号峰值透明度。 */
+  maxAlpha: 0.9,
+  /** 取景框：括号谷值透明度（呼吸谷底 —— 提示「它一直亮着」，不是闪一下）。 */
+  minAlpha: 0.4,
+  /** 取景框：一次呼吸（亮 → 暗）的时长（ms）—— 半个周期。 */
+  breathHalfPeriodMs: 900,
+  /** 取景框：标注文案（proposal 钦定「🎬 导演」）。 */
+  label: '🎬 导演',
+  /** 取景框：标注字号（屏幕 px）。 */
+  labelFontPx: 13,
+  /** 取景框：标注距取景框上缘的留边（屏幕 px）。 */
+  labelInsetPx: 10,
+});
+
+/**
+ * 中屏可视区（战场画面区）的布局留白（@since v3.4，task_092）。
+ *
+ * why 需要它：导演取景框要框在**中屏**（HUD 分区之间的战场画面区），
+ *   而 HUD 的分区尺寸写在 HUD 侧的 CSS 里（顶栏 / 左右栏 / 底栏）——
+ *   world 侧不能 import hud（铁律），只能按同一组口径在 core 里复算一次。
+ * ★ 耦合声明：下面六个数字与 HUD 侧 main-screen 的布局表达式**同源**
+ *   （.hud-rail-left = min(320px, 28vw)、.hud-rail-right = min(360px, 30vw)、
+ *   --hud-bottom-h = min(34cqh, 300px)）。改 HUD 分区尺寸时这里要同步改 ——
+ *   两处各写一份是已知的漂移点，故在此显式记下，别让后来人以为它能自动跟随。
+ */
+export const STAGE_METRICS = Object.freeze({
+  /** 分区之间的留白（px）—— 与 HUD 的 --hud-gap 同量级。 */
+  gapPx: 16,
+  /** 底栏高度占屏高的比例（对应 --hud-bottom-h 的 34cqh）。 */
+  bottomBarRatio: 0.34,
+  /** 底栏高度上限（px）（对应 --hud-bottom-h 的 300px 上限）。 */
+  bottomBarMaxPx: 300,
+  /** 左栏宽度上限（px）（对应 .hud-rail-left 的 320px）。 */
+  leftRailMaxPx: 320,
+  /** 左栏宽度占屏宽的比例（对应 .hud-rail-left 的 28vw）。 */
+  leftRailRatio: 0.28,
+  /** 右栏宽度上限（px）（对应 .hud-rail-right 的 360px）。 */
+  rightRailMaxPx: 360,
+  /** 右栏宽度占屏宽的比例（对应 .hud-rail-right 的 30vw）。 */
+  rightRailRatio: 0.3,
+});
+
+/**
  * 单位动画八态的度量（DEMO-PLAN §2「单位动画八态」）。
  *
  * why 也落在唯一事实源：动画的尺寸/时长与调色板同属「视觉规范」——

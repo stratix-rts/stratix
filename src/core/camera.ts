@@ -1,6 +1,8 @@
 /**
  * 文件职责：core 侧的相机纯函数 —— 把 hud 给的世界点钳进战场边界（task_057 小地图跳转），
- *   以及把 hud 给的镜头震动参数钳进安全区间（task_080 里程碑大字的那记小震）。
+ *   把 hud 给的镜头震动参数钳进安全区间（task_080 里程碑大字的那记小震），
+ *   以及**世界坐标 → 屏幕坐标的换算**（@since v3.4，task_092：单位联动的引导弧线
+ *   画在屏幕空间，需要一个两侧共用的换算公式）。
  *   来源：core/types.ts 的 HudCommand `camera.center` / `camera.shake` 契约注
  *   （「core 纯函数钳制」）。
  * 输入：任意世界坐标点（小地图点击换算出的目标点，可能带浮点噪声 / 越界分量）；
@@ -20,7 +22,7 @@
  */
 
 import { WORLD_BOUNDS } from './types';
-import type { Point } from './types';
+import type { CameraState, Point, ViewportSize } from './types';
 
 /**
  * 把世界点钳进 WORLD_BOUNDS。
@@ -49,6 +51,42 @@ export const MAX_SHAKE_INTENSITY = 0.02;
 export interface ShakeParams {
   readonly durationMs: number;
   readonly intensity: number;
+}
+
+/**
+ * 世界坐标 → 屏幕坐标（@since v3.4，task_092：单位联动的引导弧线要画在**屏幕空间**）。
+ *
+ * 口径（与 world/camera/camera-controller 的写回同源，勿另抄）：
+ *   屏幕坐标 = 视口 / 2 + (世界坐标 - 相机中心) × zoom。
+ *   why 是这个式子：相机写回 scroll = center - 视口/2，Phaser 的 midPoint = scroll + 视口/2
+ *   且与 zoom 无关（= center）；可见世界区间是 center ± 视口/(2·zoom)（worldView 的算法），
+ *   这段区间被铺满整个视口 → 相机中心永远落在屏幕正中，缩放只改「一个世界单位占几个屏幕像素」。
+ *   ★ 别写成 (世界坐标 - scroll) × zoom：那个式子在 zoom = 1 时碰巧对，zoom ≠ 1 时
+ *   相机中心会跑到 (视口/2) × zoom 处 —— 弧线端点会随缩放漂走（这是本函数存在的理由）。
+ *
+ * why 落在 core：世界侧（画弧线）与 HUD 侧（把世界坐标落到 DOM）都要用同一个换算，
+ *   抄成两份必然对不上（弧线端点与单位错位这类问题最难查）。
+ *
+ * 非有限输入一律兜底（zoom → 1 / 视口 → 0 / 坐标 → 0）：NaN 顺着渲染链走会让
+ * 整条弧线消失，而不是「这一帧画歪一点」。
+ */
+export function worldToScreen(
+  point: Point,
+  camera: CameraState,
+  viewport: ViewportSize
+): Point {
+  const zoom = Number.isFinite(camera.zoom) && camera.zoom > 0 ? camera.zoom : 1;
+  const width = Number.isFinite(viewport.width) ? viewport.width : 0;
+  const height = Number.isFinite(viewport.height) ? viewport.height : 0;
+  const centerX = Number.isFinite(camera.center.x) ? camera.center.x : 0;
+  const centerY = Number.isFinite(camera.center.y) ? camera.center.y : 0;
+  const worldX = Number.isFinite(point.x) ? point.x : 0;
+  const worldY = Number.isFinite(point.y) ? point.y : 0;
+
+  return {
+    x: width / 2 + (worldX - centerX) * zoom,
+    y: height / 2 + (worldY - centerY) * zoom,
+  };
 }
 
 /**

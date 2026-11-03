@@ -18,7 +18,9 @@
  *     @since v3.3（task_080）：再转发 camera.shake（HudCommand 同名命令经 core 钳制后的
  *     里程碑震动指令）→ syncCameraShake，场景给相机一记小震；
  *     @since v3.37（task_062）：再转发 unit.speaking（app 层 chat-service 流式期间的说话
- *     标志位广播）→ syncUnitSpeaking，场景驱动头顶「···」气泡起止。
+ *     标志位广播）→ syncUnitSpeaking，场景驱动头顶「···」气泡起止；
+ *     @since v3.4（task_092）：再转发 focus.unit（HUD 事件轨条目点击经 core 转发的同名事件）
+ *     → syncFocusUnit，场景驱动被点单位的描边高亮与引导弧线。
  * 输出：端口回调（渲染侧）+ bus 的 world 通道（业务侧）。
  * 禁止事项：
  *   1. import phaser 或任何 hud / vue / legacy(stratix-rts) 文件 —— 铁律：world 只认识 core/types 与 core/bus；
@@ -41,9 +43,9 @@ import type {
   WorldEvent,
   WorldState,
 } from '../../core/types';
+import type { DirectorEventKind } from '../camera/director-policy';
 import type { TaskFxPhase } from '../objects/task-fx';
 import type { SpeechKind } from '../speech-templates';
-import type { DirectorEventKind } from '../camera/director-policy';
 
 export type { TaskFxPhase } from '../objects/task-fx';
 
@@ -136,6 +138,16 @@ export interface WorldScenePort {
    * 可选成员：不实现不破编译（同上惯例）。
    */
   syncDirectorMode?(enabled: boolean): void;
+  /**
+   * 单位联动钩子（@since v3.4，task_092）：world 通道上的 focus.unit
+   * （HUD 事件轨条目点击 → core 转发的同名事件）转发进场景 —— 被点单位描边高亮
+   * （霓虹描边 + 呼吸）+ 左下事件轨到中屏单位的引导弧线。
+   * 可选成员：不实现不破编译（同 syncDirectorMode 惯例）。
+   * why 走 world 通道：联动是**瞬态表现**（不进 WorldState，与 camera.shake 同口径）——
+   *   两段式：命令 hud → core，事件 core → world（总线铁律）。
+   * payload 只携单位 id（弧线的屏幕坐标由 world 按自己的相机状态换算）。
+   */
+  syncFocusUnit?(unitId: string): void;
 }
 
 /** 场景侧的交互出口：场景调这些方法，桥接层负责转成 WorldEvent 发给 core。 */
@@ -289,6 +301,10 @@ export function createWorldBridge(
       //   反向也走这一条：world 检测到手动介入时发 enabled=false，core 据此把开关写回并广播。
       case 'camera.director':
         port.syncDirectorMode?.(event.enabled);
+        break;
+      // 单位联动（task_092）：HUD 事件轨条目点击 → core 转发 → 战场描边 + 引导弧线。
+      case 'focus.unit':
+        port.syncFocusUnit?.(event.unitId);
         break;
       default:
         break;
