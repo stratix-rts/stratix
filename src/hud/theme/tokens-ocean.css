@@ -1,6 +1,6 @@
 /**
  * 文件职责：HUD「海洋」皮肤 —— 一整套独立的 token 变体。
- *   来源：.long-run-agent/tasks/task_024.md「hud 皮肤库扩展」。
+ *   来源：「hud 皮肤库扩展」。
  * 输入：无（纯 CSS 自定义属性）。
  * 输出：`:root` 上挂的全部 `--srf-*` token —— 键集合与 tokens-default.css 完全一致（见 skin-tokens 单测）。
  * 禁止事项：

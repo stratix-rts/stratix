@@ -1,7 +1,7 @@
 /**
  * 文件职责：HUD 像素风皮肤 —— 一整套独立的 token 变体，组件零改动即可整体切换。
  *   来源：docs/REFACTOR_PLAN_V3.md §3「HUD 主题与像素风」—— 直角边框、硬边框、pixelated 渲染。
- *   task_024 起与 default / 新增六套皮肤对齐：**自足 token 集**（不再依赖 tokens-default.css 先挂载）。
+ *   自 v3.4 起与 default / 新增六套皮肤对齐：**自足 token 集**（不再依赖 tokens-default.css 先挂载）。
  * 输入：无（纯 CSS 自定义属性）。
  * 输出：`:root` 上挂的全部 `--srf-*` token；键集合与其它皮肤完全一致（见 skin-tokens 单测）。
  * 禁止事项：
