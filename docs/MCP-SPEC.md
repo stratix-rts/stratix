@@ -1,6 +1,6 @@
 # Stratix MCP 接口设计规范（第一期工具面 + 扩展规范）
 
-> **状态**：第一期工具面冻结（Spec v1.9）＋ §6 v2 设计章（**未实现**，见 §6 抬头）　**性质**：规范文档（不含实现代码）
+> **状态**：第一期工具面冻结（Spec v1.10）＋ §6 v2 设计章（**未实现**，见 §6 抬头）　**性质**：规范文档（不含实现代码）
 > **适用范围**：Stratix 对外提供的 MCP server 及其工具面（tool surface）
 > **取代**：`docs/MCP_SERVER_DESIGN.md`（v2 Zone 时代草案 —— Zone 已按 `docs/REFACTOR_PLAN_V3.md` D5 决策砍掉，其中 `stratix.list_zones` 等工具面不再成立）
 > **维护责任**：见 [§5.4](#54-规范文档的维护责任)
@@ -12,7 +12,7 @@
 
 - [0. 设计前提](#0-设计前提)：[0.1 消费者与心智模型](#01-消费者与心智模型)｜[0.2 权威依据](#02-权威依据)｜[0.3 范围与非目标](#03-范围与非目标)｜[0.4 术语](#04-术语)｜[0.5 拓扑定位](#05-拓扑定位新旧拓扑对比)
 - [1. 工具设计五原则](#1-工具设计五原则)：[1.1 动词 + 资源命名，单动作工具](#11-原则一动词--资源命名单动作工具)｜[1.2 合并发生在工具内部](#12-原则二合并发生在工具内部)｜[1.3 返回 meaningful context](#13-原则三返回-meaningful-context)｜[1.4 token 效率](#14-原则四token-效率)｜[1.5 描述工程](#15-原则五描述工程)
-- [2. 第一期工具面](#2-第一期工具面)：[2.0 通用约定](#20-通用约定)｜[2.1 world_snapshot](#21-stratix_world_snapshot)｜[2.2 task_assign](#22-stratix_task_assign)｜[2.3 task_status](#23-stratix_task_status)｜[2.4 task_cancel](#24-stratix_task_cancel)｜[2.5 mission_create](#25-stratix_mission_create)｜[2.6 mission_status](#26-stratix_mission_status)｜[2.7 chat_send](#27-stratix_chat_send)｜[2.8 registry](#28-stratix_registry)｜[2.9 mission_checkpoint](#29-stratix_mission_checkpoint)｜[2.10 session_list](#210-stratix_session_list)｜[2.11 session_get](#211-stratix_session_get)｜[2.12 session_interrupt](#212-stratix_session_interrupt)｜[2.13 session_resume](#213-stratix_session_resume)｜[2.14 mission_confirm](#214-stratix_mission_confirm)｜[2.15 mission_cancel](#215-stratix_mission_cancel)
+- [2. 第一期工具面](#2-第一期工具面)：[2.0 通用约定](#20-通用约定)｜[2.1 world_snapshot](#21-stratix_world_snapshot)｜[2.2 task_assign](#22-stratix_task_assign)｜[2.3 task_status](#23-stratix_task_status)｜[2.4 task_cancel](#24-stratix_task_cancel)｜[2.5 mission_create](#25-stratix_mission_create)｜[2.6 mission_status](#26-stratix_mission_status)｜[2.7 chat_send](#27-stratix_chat_send)｜[2.8 registry](#28-stratix_registry)｜[2.9 mission_checkpoint](#29-stratix_mission_checkpoint)｜[2.10 session_list](#210-stratix_session_list)｜[2.11 session_get](#211-stratix_session_get)｜[2.12 session_interrupt](#212-stratix_session_interrupt)｜[2.13 session_resume](#213-stratix_session_resume)｜[2.14 mission_confirm](#214-stratix_mission_confirm)｜[2.15 mission_cancel](#215-stratix_mission_cancel)｜[2.16 character_create](#216-stratix_character_create)
 - [3. 一致性铁律](#3-一致性铁律)：[3.1 投影而非新功能层](#31-投影而非新功能层)｜[3.2 状态机约束](#32-状态机约束对-mcp-同样生效)｜[3.3 不暴露的能力](#33-mcp-不暴露的能力)｜[3.4 只读与写的分界](#34-只读面与写面的分界)
 - [4. 扩展规范](#4-扩展规范)：[4.1 工具注册表架构](#41-工具注册表架构)｜[4.2 域前缀与命名位](#42-域前缀与命名位)｜[4.3 新工具上线流程](#43-新工具提案到上线的流程)｜[4.4 MCP server 接入方式](#44-mcp-server-的接入方式)
 - [5. 版本与演进](#5-版本与演进)：[5.1 变更原则](#51-工具面变更原则)｜[5.2 重命名与废弃](#52-重命名与废弃)｜[5.3 变更分类](#53-变更分类与流程)｜[5.4 维护责任](#54-规范文档的维护责任)｜[5.5 演进记录](#55-版本演进记录只加不删)
@@ -930,6 +930,59 @@ why 拆成两个动作：**撤任务不等于撤活儿** —— 已开工的任�
 
 ---
 
+### 2.16 `stratix_character_create`
+
+> **排序位**：第 17 位（排在 `stratix_session_fork` 之后 —— `character` 域目前只有这一件；条目号 §2.16 按「只加不删」追加在末尾）。
+> **v1.10 新增**：**名册供给面**（此前 MCP 只能读名册不能建名册 —— 空实例上 agent 连派单都发不出去：`task_assign` 必然 `unknown_character`，`mission_create` 只能造永不开工的 `draft`）。
+
+**description**
+
+> 新建一个 agent 角色档案：起名、绑定一种本地 CLI agent（原型）、给一份人设提示词，角色随即出现在名册与战场上。
+> **何时用**：名册是空的（或缺人手）时要开工 —— 先建角色，再派单 / 建编组；这是 MCP 侧唯一的名册供给入口。
+> **何时不用**：只想看现有名册 —— 用 `stratix_registry`；只想看战场忙闲 —— 用 `stratix_world_snapshot`；角色已经在了、只是要改人设或改名 —— 本工具只建档，不改档（改档走界面）。
+> **边界**：`name` 必填（trim 后非空，≤ 24 码点；与现有名册重名按大小写不敏感判定，**重名直接拒绝**）。`archetype` 缺省 `claude-code`（= 绑定的 CLI agent 种类，也就是名册里的 `agent_kind`）；`skin_id` 缺省 `default`；`persona` 缺省套 core 的默认人设模板（≤ 2000 码点，MCP 侧自设）。初始等级恒为 1、经验恒为 0（core 建档口径，MCP 不另设参数）。建档即上场：角色落库的同时在战场上多一个单位（`unit_id` 一并回给你），可直接拿去指派。
+> **错误**：`invalid_arguments`（名字缺失 / 超长 / 重名 / 人设超长 / 原型或皮肤取值非法 / 名册已满）/ `internal_error`。
+
+**inputSchema**
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "name": { "type": "string", "minLength": 1, "maxLength": 24, "description": "角色名（必填）。trim 后非空、≤ 24 码点；与现有名册重名（大小写不敏感）会被拒绝。" },
+    "archetype": { "type": "string", "enum": ["claude-code", "codex", "opencode", "kimi", "openclaw", "dsh"], "default": "claude-code", "description": "角色原型 = 绑定哪种本地 CLI agent（= 名册里的 agent_kind）。缺省 claude-code。绑定未安装的 CLI 时派单会被拒。" },
+    "persona": { "type": "string", "maxLength": 2000, "description": "人设提示词（选填）。缺省 / 空串 → 套 core 的默认人设模板；≤ 2000 码点（MCP 侧自设）。" },
+    "skin_id": { "type": "string", "enum": ["default", "pixel", "crimson", "forest", "ocean", "sunset", "mono", "aurora"], "default": "default", "description": "皮肤资源键（渲染侧染色用）。缺省 default。" }
+  },
+  "required": ["name"],
+  "additionalProperties": false
+}
+```
+
+**返回（成功）**
+
+```json
+{ "ok": true, "data": {
+  "character_id": "character_1753..._1", "unit_id": "unit_character_1753..._1",
+  "character": { "id": "character_1753..._1", "name": "Neo", "persona": "你是一名在 Stratix 工作台里干活的本地 coding agent：…",
+                 "level": 1, "experience": 0, "agent_kind": "claude-code", "skin_id": "default",
+                 "external_session_id": null, "appearance": null, "context_enabled": null },
+  "next": { "tool": "stratix_mission_create", "args": { "units": ["unit_character_1753..._1"] }, "hint": "给它起个任务标题就能开工（units 传这个角色的战场单位 id）" },
+  "poll": { "tool": "stratix_registry", "args": {} } } }
+```
+
+**映射**：`HudCommand.character.create` → core 的 `character/manager.ts` 的 `createCharacter`（建档合法性在 `character/profile.ts` 的纯函数）。**回执自己核实**：工具在命令之后**回读状态** —— 名册里多出新角色才算建成功；没多出来（命令没人接管）按 `internal_error` 如实回报，绝不假装建成功。
+
+**"建档即上场"是 core 的既有语义，不是 MCP 加的**：角色落库的**同一次** `setState` 里，core 把角色投影成战场单位（`character/unit-projection.ts`，单位 id = `unit_<角色 id>`）—— 一次广播两侧同时看到「角色 + 单位」。因此本工具**不需要**另配一件 `stratix_unit_create`：战场单位是角色的投影，不是独立的可建实体。
+
+**准入判定只有一份**：重名与名册上限的**权威裁决**在 core 的 `createCharacter`（同一次 `setState` 内判，防并发抢名）；工具只在发命令**前**做一次快筛（口径直接复用 core 的 `hasDuplicateCharacterName`），好让调用方立刻拿到可读的拒绝理由，而不是"建了但没建成"。
+
+**错误码不新增**：名册已满（`MAX_CHARACTERS = 64`）没有对应的专用错误码（附录 A 只有 `mission_capacity_exceeded` / `task_capacity_exceeded`），故按附录 A 的"不新增码"纪律复用 `invalid_arguments`，并在 `hint` 里说清下一步（先移除不需要的角色再试）—— 复用码的代价是这一档不叫"容量已满"，靠 message / hint 把它说清楚。
+
+**持久化边界**：角色档案的落库由 core 的存档协调器（`app/services/persistence/game-save-coordinator.ts`）按名册 diff 写回 SQLite —— 那条链路挂在**渲染进程**一侧。纯 headless 的 gateway 进程里，MCP 建的角色只存在于内存世界态（进程重启即失），这是 §0.5 拓扑的既有分界，**不是**本工具引入的偏差。
+
+---
+
 ## 3. 一致性铁律
 
 ### 3.1 投影而非新功能层
@@ -947,6 +1000,7 @@ why 拆成两个动作：**撤任务不等于撤活儿** —— 已开工的任�
 | `stratix_chat_send` | app 层 `chat-service.send` | 角色会话（非 link 会话） |
 | `stratix_session_interrupt` | `HudCommand.session.interrupt` | core 状态机裁决相位（只认 active / idle） |
 | `stratix_session_resume` | `HudCommand.session.resume` | core 会话域裁决准入（只认 peer_chat + interrupted）+ 回灌上下文快照 |
+| `stratix_character_create` | `HudCommand.character.create` | core 的 character manager 裁决（同名 / 上限 / 合法性）+ 建档即上场（投影战场单位） |
 | 其余六件 | 无（只读） | 读 `WorldState` 投影 / 会话库投影 |
 
 > （`stratix_session_fork` 已上线、规范条目待补 —— 它同样落在既有 `HudCommand.session.*` 面上，不改变本表的投影口径。）
@@ -964,7 +1018,7 @@ why 拆成两个动作：**撤任务不等于撤活儿** —— 已开工的任�
 | **编组任务只有 `running` 才能被回报完成** | `core/mission/machine.ts` 的 `complete` 分支（仅认 `running`） | 不存在"直接置完成"的 MCP 工具；完成只能由 `running → done` 到达 |
 | 终态不改写历史 | 两个 machine 的终态守卫 | 重复取消 / 重复回报一律拒绝；终态任务不接受检查点记账 → `mission_terminal` |
 | 失败不自动重试 | `core/task/machine.ts`（无 retry 动作） | 重派 = 新的一次 `stratix_task_assign` |
-| 队列/历史上限 | `MAX_TASKS=100` / `MAX_MISSIONS=100` / `MAX_CHARACTERS=64` | 满则拒绝并回 `*_capacity_exceeded`，绝不静默挤掉在办条目 |
+| 队列/历史上限 | `MAX_TASKS=100` / `MAX_MISSIONS=100` / `MAX_CHARACTERS=64` | 满则拒绝并回 `*_capacity_exceeded`，绝不静默挤掉在办条目（角色名册满 → `invalid_arguments` + hint 先移除不需要的角色，§2.16） |
 
 **"非 running 不能被回报完成"要特别说清**：第一期**不提供**任何"把 mission 置为完成"的工具。编组任务的收尾只有一条路径 —— 挂在它下面的角色任务到达终态，由 app 层 `task-service` 的终态回报链（`task_076` 引入的 `missionId` 关联）驱动 `completeMission` / `cancelMission`。MCP 想让一条 mission 收尾，正确做法是派一条带 `mission_id` 的任务，而不是找一个"直接完成"的工具 —— 后者若存在，就等于给 MCP 开了一条绕过状态机的后门。
 
@@ -981,7 +1035,7 @@ why 拆成两个动作：**撤任务不等于撤活儿** —— 已开工的任�
 ### 3.4 只读面与写面的分界
 
 - **只读工具**（`stratix_world_snapshot` / `stratix_task_status` / `stratix_mission_status` / `stratix_registry` / `stratix_session_list` / `stratix_session_get`）：读投影，无副作用，可随时调用、可并发调用。
-- **写工具**（`stratix_task_assign` / `stratix_task_cancel` / `stratix_mission_create` / `stratix_mission_checkpoint` / `stratix_mission_confirm` / `stratix_mission_cancel` / `stratix_chat_send` / `stratix_session_interrupt` / `stratix_session_resume`）：产生状态迁移（或记账写入），须遵守 §3.2 的状态机约束。
+- **写工具**（`stratix_task_assign` / `stratix_task_cancel` / `stratix_mission_create` / `stratix_mission_checkpoint` / `stratix_mission_confirm` / `stratix_mission_cancel` / `stratix_chat_send` / `stratix_session_interrupt` / `stratix_session_resume` / `stratix_character_create`）：产生状态迁移（或记账写入），须遵守 §3.2 的状态机约束。
 
 **幂等要求**：同一个写调用重复发出，第二次应被状态机以明确错误码拒绝（`illegal_transition` / `task_not_cancellable` / `mission_not_found`），**不得产生第二个实体**。MCP 不提供"幂等键"机制 —— 重复调用产生重复实体的风险，由"模型用回执里的 id 去查、去取消"来消解，而不是靠服务端猜。
 
@@ -1018,7 +1072,7 @@ src/stratix-gateway/mcp/
 
 ### 4.2 域前缀与命名位
 
-**已占用域**（第一期）：`world`（`stratix_world_snapshot`）、`task`（`_assign` / `_status` / `_cancel`）、`mission`（`_create` / `_status` / `_checkpoint` / `_confirm` / `_cancel`，§2.5 / §2.6 / §2.9 / §2.14 / §2.15 —— 编组域的建 / 查 / 记账 + **生命周期收尾**：确认开工、撤掉没开工的）、`chat`（`_send`）、`session`（`_list` / `_get` / `_interrupt` / `_resume`，§2.10 / §2.11 / §2.12 / §2.13 —— 会话域的读面 + 写面）、无域（`stratix_registry`）。
+**已占用域**（第一期）：`world`（`stratix_world_snapshot`）、`task`（`_assign` / `_status` / `_cancel`）、`mission`（`_create` / `_status` / `_checkpoint` / `_confirm` / `_cancel`，§2.5 / §2.6 / §2.9 / §2.14 / §2.15 —— 编组域的建 / 查 / 记账 + **生命周期收尾**：确认开工、撤掉没开工的）、`chat`（`_send`）、`session`（`_list` / `_get` / `_interrupt` / `_resume`，§2.10 / §2.11 / §2.12 / §2.13 —— 会话域的读面 + 写面）、`character`（`_create`，§2.16 —— **名册供给**：建一个 agent 角色档案，建档即上场）、无域（`stratix_registry`）。
 
 **预留命名位**：
 
@@ -1140,6 +1194,7 @@ src/stratix-gateway/mcp/
 
 | 版本 | 日期 | 变更 | 兼容性 |
 |------|------|------|--------|
+| v1.10 | 2026-11-04 | **新增工具** `stratix_character_create`（§2.16，**名册供给面**：新建一个 agent 角色档案 —— 落点 = 既有的 `HudCommand.character.create`，建档即上场（core 同一次 `setState` 里投影战场单位），回执带 `character_id` + 完整角色对象 + `unit_id`）；**新增域** `character`（§4.2 域表）；`tools/list` 新增一件（十六件 → 十七件），排在 `session_fork` 之后（既有工具之间的相对次序不变） | ✅ 纯增量：既有十六件工具的名字、参数、语义与缺省行为**均未变**；`tools/list` 的既有次序逐字未动；**不新增任何错误码**（复用 `invalid_arguments` / `internal_error`）；不新增状态通道 / 持久化表 / 状态机（写面走既有 `character.create` 命令与既有 character manager）；重名与名册上限的裁决**只有一份**（core 的 `createCharacter`，工具只做发命令前的快筛） |
 | v1.9 | 2026-11-04 | **新增工具** `stratix_mission_confirm`（§2.14，把一条 `pending` 的编组任务放行开工）与 `stratix_mission_cancel`（§2.15，撤掉一条**从未开工**的编组任务 —— 撤掉后 `world_snapshot` 里不再出现）；**新增动词** `confirm` 登记（§4.2，`mission` 域的预留命名位 `stratix_mission_confirm` 转正）；**core 契约增补** —— `HudCommand` 新增 `mission.remove`（§3.1 / §3.2 / §2.15），守门在 core 的 `canRemoveMission`（只认 `draft` / `pending`；与 core 既有的 `mission.cancel`「叫停、留终态墓碑」分工明确）；**悬空引用修正** —— `stratix_mission_create`（§2.5）的描述不再自认"第一期 MCP 不提供确认工具"，改为指向 `stratix_mission_confirm` / `stratix_mission_cancel`；`tools/list` 新增两件（十四件 → 十六件），排在 `mission_checkpoint` 之后（既有工具之间的相对次序不变） | ✅ 纯增量：既有十四件工具的名字、参数、语义与缺省行为**均未变**；`tools/list` 的既有次序逐字未动；**不新增任何错误码**（复用 `mission_not_found` / `illegal_transition` / `mission_terminal` / `invalid_arguments` / `internal_error`）；core 侧只**增**一个动作（`mission.remove`），既有 `mission.cancel` 的语义与行为逐字未变（UI 的「停止任务」照旧留墓碑） |
 | v1.8 | 2026-11-03 | **只写不读补读回** —— `stratix_mission_status`（§2.6）单条模式新增 `brief`（结构化正文全文）与 `checkpoints`（append-only 记账行全量，上限 64）两段读回面，附 `checkpoint_count` / `checkpoint_limit`（§2.9 的读侧缺口结清）；**悬空引用修正** —— `stratix_chat_send`（§2.7）描述不再指向尚未实现的 `stratix_chat_history`（也不改指 `stratix_session_get`：角色对话的消息本体在 `chat_messages` 表里，会话事件流里只有一条空的 `round` 记账事件）；**schema 自洽修正** —— `stratix_task_assign`（§2.2）的 `origin` 取值域补 `mcp`（`default: "mcp"` 原先不在自己的 `enum` 内，严格模式的校验器会拒收那张 schema），`ui` 仍拒绝 | ⚠️ **既有工具的返回形状变宽**：`mission_status` 单条模式的 `data.mission` 多出 `brief` / `checkpoints` / `checkpoint_count` / `checkpoint_limit` 四个字段（**加字段，不改语义**，既有字段逐字未动、列模式未动）；`origin` 显式取值集由 `{agent, script}` 扩为 `{mcp, agent, script}`（`mcp` 与缺省同义，`ui` 的拒绝口径未变）；工具名 / 参数名 / 错误码 / `tools/list` 顺序全部未动 |
 | v1.7 | 2026-11-03 | **传输层错误信封收敛**（§4.4 新增「传输层错误信封」小节 + 附录 A 新增协议层错误表）—— 畸形 JSON 不再漏宿主框架的裸 `{"code":500}`，改回 JSON-RPC `-32700`（id=null）；工具抛未捕获异常不再冒充业务失败信封，改回 `-32603`；`/mcp` 的挂载位次固化为硬约束（必须排在全局 body 解析器之前）；`invalid_arguments` 的 message 区分为「参数缺失」与「类型不对」（`requireString` 少数字段文案） | ✅ 协议层修正，工具面**零变更** —— 十四件工具的名字、参数、语义、返回形状、`tools/list` 顺序全部未动；成功路径逐字未变；业务失败仍走失败信封 + `isError`（错误码总表除 `internal_error` 的「典型触发」描述澄清外未动）；仅未捕获异常的形状从 `internal_error` 信封改为 `-32603` JSON-RPC error |

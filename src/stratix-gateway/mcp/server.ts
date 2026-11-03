@@ -14,6 +14,7 @@
 
 import { McpToolError, toToolResult } from './envelope';
 import { buildToolRegistry, type ToolRegistry } from './registry';
+import { characterCreateTool } from './tools/character';
 import { chatSendTool } from './tools/chat';
 import { missionCreateTool, missionCancelTool, missionCheckpointTool, missionConfirmTool, missionStatusTool } from './tools/mission';
 import { registryTool } from './tools/registry';
@@ -45,7 +46,7 @@ export const JSON_RPC_ERRORS = {
 export interface McpServerOptions {
   /** 数据面端口（读世界态 / 投命令 / 读全文输出 / 读会话 / 跑一轮对话）。 */
   readonly host: McpHost;
-  /** 工具注册表；缺省 = 全套十六件工具（按清单位次注册）。 */
+  /** 工具注册表；缺省 = 全套十七件工具（按清单位次注册）。 */
   readonly registry?: ToolRegistry;
   /** serverInfo（握手应答里回给 client）。 */
   readonly serverInfo?: { readonly name: string; readonly version: string };
@@ -59,7 +60,7 @@ export interface McpServer {
 }
 
 /**
- * 工具面（十六件，按**清单位次**注册 —— tools/list 的返回序与之一致）。
+ * 工具面（十七件，按**清单位次**注册 —— tools/list 的返回序与之一致）。
  *
  * why 注册序 = 清单序：tools/list 的顺序是**客户端提示词缓存**的一部分，抖动会让缓存失效。
  * 顺序写在每件工具自己的 `order` 字段里（= 工具在清单里的位次），注册表按它排序；
@@ -85,6 +86,7 @@ export const DEFAULT_MCP_TOOLS: readonly ToolSpec[] = [
   sessionInterruptTool, //  §2.12（session 域写面：中断一条在办会话）
   sessionResumeTool, //     §2.13（session 域写面：恢复一条被中断的互聊会话 = 续跑）
   sessionForkTool, //       （session 域写面：从某条事件处分叉出一条新会话 —— 实现已上线，规范条目待补）
+  characterCreateTool, //  §2.16（character 域新开：名册供给 —— 建档即上场）
 ];
 
 function success(id: JsonRpcId, result: unknown): JsonRpcResponse {
@@ -239,7 +241,7 @@ export function createMcpServer(options: McpServerOptions): McpServer {
 }
 
 /**
- * 装配默认 server（十六件工具 + 调用方给的数据面端口）。
+ * 装配默认 server（十七件工具 + 调用方给的数据面端口）。
  * host 由组合根注入（生产 = context.ts 的 createCoreMcpHost；单测 = 隔离的 store / dispatcher）。
  */
 export function createDefaultMcpServer(host: McpHost): McpServer {
