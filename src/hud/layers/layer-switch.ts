@@ -21,8 +21,10 @@
  *   的分区映射表），它们的代码一行未改。
  */
 
-import type { HudCommand, InfoLayer } from '../../core/types';
 import { INFO_LAYERS } from '../../core/info-layer';
+import { CONTROL_ISLAND_METRICS } from '../../core/theme/visual-spec';
+import type { HudCommand, InfoLayer } from '../../core/types';
+
 import { INFO_LAYER_LABELS, type InfoLayerController } from './info-layer';
 
 /** 开关里按钮的稳定角色（测试 / 调试按它定位）。 */
@@ -49,9 +51,10 @@ export interface LayerSwitchHandle {
 
 /**
  * 开关的样式（模块级常量，随浮层一起挂 —— 浮层是独立于主屏的覆盖物，不吃主屏样式表）。
- * 位置：左侧、**底栏之上**的一条空带里（bottom = 底栏高度 + 8px；底栏高度口径与主屏
- *   的 `--hud-bottom-h`（min(34cqh, 300px)）一致，此处按视口高度取 min(34vh, 300px) ——
- *   开关挂在 #hud-side，不在 .hud-root 的容器查询上下文里，用不了 cqh）。
+ * 位置：左侧、**控制岛之上**的一条空带里（bottom = 控制岛高度上限 + 8px；
+ *   口径取自唯一事实源 CONTROL_ISLAND_METRICS.maxHeightPx —— @since v3.4 task_090，
+ *   底栏改成贴底居中的控制岛后，旧口径 min(34vh, 300px) 会把开关甩到半空里）。
+ *   开关挂在 #hud-side，不在 .hud-root 的容器查询上下文里，用不了 cqh —— 直接用常量。
  * why 不用右下角：小地图在那儿（200×120 + 标题栏）；为什么不在左下角贴边：事件轨
  *   （跑马灯）占左下角 16px 起的一条带，两者会重叠。
  */
@@ -59,7 +62,7 @@ const LAYER_SWITCH_STYLE = `
 .hud-layer-switch {
   position: fixed;
   left: 16px;
-  bottom: calc(min(34vh, 300px) + 8px);
+  bottom: calc(${CONTROL_ISLAND_METRICS.maxHeightPx}px + 8px);
   z-index: 28;
   pointer-events: auto;
   box-sizing: border-box;

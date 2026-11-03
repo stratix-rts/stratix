@@ -1,0 +1,211 @@
+#!/usr/bin/env node
+/**
+ * 最小碰撞断言脚本（@since v3.4，task_090）：HUD 控制岛（Z4）与两个下角件的版面关系。
+ *
+ * 断言口径（与 task_090 的验收标准逐条对应）：
+ *   ① 控制岛高度 ≤ CONTROL_ISLAND_METRICS.maxHeightPx（100px），且**内容自适应**（不是写死的 34cqh）；
+ *   ② 控制岛 ∩ 左下事件轨 = ∅，水平间距 ≥ 40px；
+ *   ③ 控制岛 ∩ 右下小地图 = ∅，水平间距 ≥ 40px；
+ *   ④ 720p 下中轴可用高度（视口高 − 顶栏高 − 控制岛高）≥ 视口高的 85%。
+ *
+ * why 跑真浏览器而不是 jsdom：jsdom 没有排版引擎，bounding box 全是 0 —— 碰撞与间距
+ *   这类断言只能在真排版里量（本仓库的 e2e 也是这个口径）。
+ *
+ * 用法：
+ *   node scripts/check-hud-island-layout.mjs [url]
+ *   URL 默认取环境变量 HUD_URL，否则 http://127.0.0.1:7525/src/app/main/index.html
+ *   （7525 是本仓 vite dev 的兜底端口；实际端口以 vite 启动日志为准）。
+ */
+
+import { chromium } from '@playwright/test';
+
+const URL = process.argv[2] ?? process.env.HUD_URL ?? 'http://127.0.0.1:7525/src/app/main/index.html';
+
+/** 断言阈值（与 core/theme/visual-spec.ts 的 CONTROL_ISLAND_METRICS 同一口径）。 */
+const MAX_ISLAND_HEIGHT_PX = 100;
+const MIN_CORNER_CLEARANCE_PX = 40;
+const MIN_AXIS_RATIO = 0.85;
+
+/** 参与测量的分辨率 —— 720p 是验收基准，1080p 是投影常见档，1024p 是窄屏下界。 */
+const VIEWPORTS = [
+  { width: 1280, height: 720, label: '1280×720 (720p)' },
+  { width: 1920, height: 1080, label: '1920×1080 (1080p)' },
+  { width: 1024, height: 768, label: '1024×768 (窄屏)' },
+];
+
+/** 两个盒子在水平方向上的间距（不重叠时为正数；重叠为负）。 */
+function horizontalGap(a, b) {
+  if (a.right <= b.left) return b.left - a.right;
+  if (b.right <= a.left) return a.left - b.right;
+  return -Math.min(a.right, b.right) + Math.max(a.left, b.left);
+}
+
+/** 两个盒子是否相交（面积 > 0 才算撞 —— 边缘擦过不算）。 */
+function overlaps(a, b) {
+  const w = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+  const h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+  return w > 0 && h > 0 ? w * h : 0;
+}
+
+async function measure(page) {
+  return page.evaluate(() => {
+    const rect = (el) => {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+    };
+    const box = (selector) => rect(document.querySelector(selector));
+    /** 事件轨的实际占位 = 阴影里的条目栈 + 折叠按钮的并集（宿主本身是 inline 盒子，量不准）。 */
+    const union = (nodes) => {
+      const list = nodes.filter(Boolean).map(rect);
+      if (list.length === 0) return null;
+      return {
+        left: Math.min(...list.map((b) => b.left)),
+        top: Math.min(...list.map((b) => b.top)),
+        right: Math.max(...list.map((b) => b.right)),
+        bottom: Math.max(...list.map((b) => b.bottom)),
+        width: 0,
+        height: 0,
+      };
+    };
+    const marqueeEl = document.querySelector('strat-marquee');
+    const marqueeShadow = marqueeEl?.shadowRoot;
+    const minimapEl = document.querySelector('strat-minimap');
+    const minimapShadow = minimapEl?.shadowRoot;
+    return {
+      island: box('.hud-bottom-bar'),
+      topbar: box('.hud-topbar'),
+      marquee: union([
+        marqueeShadow?.querySelector('.stack'),
+        marqueeShadow?.querySelector('.toggle'),
+      ]) ?? rect(marqueeEl),
+      minimap: rect(minimapShadow?.querySelector('.frame')) ?? rect(minimapEl),
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+      /** 岛内两层的实际高度（回放条 / 命令条）—— 验证「内容自适应」而不是写死。 */
+      layers: {
+        replay: box('.hud-replay-slot'),
+        command: box('.hud-bottom-bar > .hud-surface'),
+      },
+      /** 回放条确实在岛里（不是还在老底栏上）且组件已挂载。 */
+      replayInIsland: !!document.querySelector('.hud-bottom-bar strat-day-replay'),
+      replayMounted: !!document.querySelector('strat-day-replay')?.shadowRoot?.querySelector('[data-role="play"]'),
+      /** 命令条里一屏能看到的命令数（Z4 规格「1 行 6 条」）。 */
+      visibleCommands: [...(document.querySelector('strat-command-panel')?.shadowRoot?.querySelectorAll('button.command') ?? [])]
+        .filter((b) => {
+          const r = b.getBoundingClientRect();
+          const s = document.querySelector('strat-command-panel')?.shadowRoot?.querySelector('.sections');
+          if (!s) return false;
+          const sr = s.getBoundingClientRect();
+          return r.left >= sr.left - 0.5 && r.right <= sr.right + 0.5;
+        }).length,
+      /** 命令总数（一条不减：6 全局 + 6 选中组 = 12；有选中时才是 12）。 */
+      totalCommands: document.querySelector('strat-command-panel')?.shadowRoot?.querySelectorAll('button.command').length ?? 0,
+      /** 命令行是否可横向滚动（其余命令的收纳方式）。 */
+      commandScrollable: (() => {
+        const s = document.querySelector('strat-command-panel')?.shadowRoot?.querySelector('.sections');
+        return s ? s.scrollWidth > s.clientWidth + 0.5 : false;
+      })(),
+    };
+  });
+}
+
+const failures = [];
+const rows = [];
+
+const browser = await chromium.launch();
+for (const vp of VIEWPORTS) {
+  const context = await browser.newContext({ viewport: { width: vp.width, height: vp.height } });
+  const page = await context.newPage();
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto(URL, { waitUntil: 'load' });
+  // 等 HUD 三件套就位（主屏 + 事件轨 + 小地图都是异步挂的）。
+  await page.waitForSelector('.hud-bottom-bar', { timeout: 15000 });
+  // 事件轨 / 小地图：只等「已挂载」（attached）—— 空轨道没有高度，等 visible 会超时。
+  await page.waitForSelector('strat-marquee', { state: 'attached', timeout: 15000 });
+  await page.waitForSelector('strat-minimap', { state: 'attached', timeout: 15000 });
+  // 给事件轨灌 5 条：空轨道没有高度，碰撞断言会测到「一个不存在的盒子」。
+  // （只喂布局用的假条目 —— 本脚本只量版面，不碰业务态。）
+  await page.evaluate(() => {
+    const marquee = document.querySelector('strat-marquee');
+    const at = Date.now();
+    for (let i = 0; i < 5; i += 1) {
+      marquee?.push({ kind: 'dispatch', icon: '📋', text: `布局碰撞实测条目 ${i + 1}`, at: at - i * 1000 });
+    }
+  });
+  await page.waitForTimeout(600); // 让字体 / 布局稳定一帧
+
+  const m = await measure(page);
+  const check = (ok, msg) => {
+    if (!ok) failures.push(`[${vp.label}] ${msg}`);
+    return ok;
+  };
+
+  check(!!m.island && !!m.topbar && !!m.marquee && !!m.minimap, 'HUD 三件套（岛 / 顶栏 / 事件轨 / 小地图）没量到');
+  if (!m.island || !m.topbar || !m.marquee || !m.minimap) {
+    await context.close();
+    continue;
+  }
+
+  // ① 岛高 ≤ 100px（内容自适应）
+  check(m.island.height <= MAX_ISLAND_HEIGHT_PX + 0.5, `岛高 ${m.island.height.toFixed(1)}px > ${MAX_ISLAND_HEIGHT_PX}px`);
+  // ② 与事件轨零重叠 + ≥40px
+  const marqueeArea = overlaps(m.island, m.marquee);
+  const marqueeGap = horizontalGap(m.island, m.marquee);
+  check(marqueeArea === 0, `岛与事件轨重叠 ${marqueeArea.toFixed(0)}px²`);
+  check(marqueeGap >= MIN_CORNER_CLEARANCE_PX, `岛与事件轨水平间距 ${marqueeGap.toFixed(1)}px < ${MIN_CORNER_CLEARANCE_PX}px`);
+  // ③ 与小地图零重叠 + ≥40px
+  const minimapArea = overlaps(m.island, m.minimap);
+  const minimapGap = horizontalGap(m.island, m.minimap);
+  check(minimapArea === 0, `岛与小地图重叠 ${minimapArea.toFixed(0)}px²`);
+  check(minimapGap >= MIN_CORNER_CLEARANCE_PX, `岛与小地图水平间距 ${minimapGap.toFixed(1)}px < ${MIN_CORNER_CLEARANCE_PX}px`);
+  // ④ 中轴可用高度 ≥ 85%
+  const axis = m.viewport.height - m.topbar.height - m.island.height;
+  const ratio = axis / m.viewport.height;
+  check(ratio >= MIN_AXIS_RATIO, `中轴可用高度 ${axis.toFixed(1)}px（${(ratio * 100).toFixed(1)}%）< ${MIN_AXIS_RATIO * 100}%`);
+  check(errors.length === 0, `页面报错：${errors.join(' | ')}`);
+  // ⑤ 命令条：一条不减（无选中时 6 条全局命令），且命令流可横向滚动收纳其余命令。
+  check(m.totalCommands >= 6, `命令条里只有 ${m.totalCommands} 条命令（至少要有 6 条全局命令）`);
+  // ⑥ 回放条与命令条同岛：回放组件挂在控制岛里，且已 upgrade（功能不因改版而脱落）。
+  check(m.replayInIsland, '回放条不在控制岛内（应与命令条同岛、上下分层）');
+  check(m.replayMounted, '回放组件未挂载（▶ 60 秒看完今天 按钮缺失）');
+  // 「1 行 6 条」只在岛拿到 56% 屏宽时成立 —— 窄屏下岛宽被「与角件 ≥40px 间距」钳到
+  // 392px，一屏放不下 6 条是**预期**（其余靠横向滚动，不删命令）。
+  const islandAtFullWidth = m.island.width >= m.viewport.width * 0.56 - 1;
+  if (islandAtFullWidth) {
+    check(m.visibleCommands === 6, `命令条一屏可见 ${m.visibleCommands} 条 ≠ 6 条`);
+  } else {
+    // 岛宽被「与角件 ≥40px 间距」钳窄时，一屏放不下 6 条是预期的 ——
+    // 但放不下的那些必须**横向滚动可达**（不许消失）。
+    check(m.visibleCommands <= 6, `命令条一屏可见 ${m.visibleCommands} 条 > 6 条`);
+    if (m.totalCommands > m.visibleCommands) {
+      check(m.commandScrollable, `岛宽被钳到 ${m.island.width.toFixed(0)}px，命令行却不可横向滚动`);
+    }
+  }
+
+  rows.push(
+    [
+      vp.label,
+      `岛 ${m.island.width.toFixed(0)}×${m.island.height.toFixed(0)}`,
+      `顶栏 ${m.topbar.height.toFixed(0)}`,
+      `事件轨 x[${m.marquee.left.toFixed(0)},${m.marquee.right.toFixed(0)}] 间距 ${marqueeGap.toFixed(1)}`,
+      `小地图 x[${m.minimap.left.toFixed(0)},${m.minimap.right.toFixed(0)}] 间距 ${minimapGap.toFixed(1)}`,
+      `中轴 ${axis.toFixed(0)}px (${(ratio * 100).toFixed(1)}%)`,
+      `回放层 ${m.layers.replay ? m.layers.replay.height.toFixed(0) : '?'} / 命令层 ${m.layers.command ? m.layers.command.height.toFixed(0) : '?'}`,
+      `可见命令 ${m.visibleCommands} 条`,
+    ].join(' | ')
+  );
+  await context.close();
+}
+await browser.close();
+
+console.log(`URL: ${URL}`);
+console.log('分辨率 | 控制岛 | 顶栏 | 左下事件轨 | 右下小地图 | 中轴可用高度 | 岛内分层 | 命令条');
+for (const r of rows) console.log(r);
+console.log('');
+if (failures.length > 0) {
+  console.error(`✗ 碰撞断言失败（${failures.length} 条）：`);
+  for (const f of failures) console.error(`  - ${f}`);
+  process.exit(1);
+}
+console.log(`✓ 碰撞断言全过：岛高 ≤${MAX_ISLAND_HEIGHT_PX}px、事件轨 / 小地图零重叠且间距 ≥${MIN_CORNER_CLEARANCE_PX}px、中轴可用高度 ≥${MIN_AXIS_RATIO * 100}%`);

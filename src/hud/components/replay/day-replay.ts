@@ -12,6 +12,8 @@
  *   5. 拖动时逐帧全量重画 —— 拖动只改游标位置与一段文本（perf：热力条只在数据变化时重建）。
  *
  * @since v3.3（task_082）。
+ * @since v3.4（task_090）：高度与内边距改为可被宿主覆盖（--replay-strip-h / --replay-pad-y / --replay-pad-x）——
+ *   控制岛（Z4）有 100px 高度预算，热力条得让位给命令行；组件只提供默认折算值。
  */
 
 import { REPLAY_METRICS, VISUAL_PALETTE } from '../../../core/theme/visual-spec';
@@ -30,6 +32,14 @@ import {
 import type { ReplayController, ReplayState } from './replay-controller';
 
 export const DAY_REPLAY_TAG = 'strat-day-replay';
+
+/**
+ * 热力条默认高度（px）= REPLAY_METRICS.stripHeightPx 的折算值。
+ *
+ * why 是常量而不是散在 CSS 里：宿主（@since v3.4 task_090 的控制岛）要用同一个数字
+ *   算岛的高度预算 —— 默认值与覆盖值必须是同一个口径。
+ */
+const DEFAULT_STRIP_HEIGHT_PX = Math.round(REPLAY_METRICS.stripHeightPx * 0.55);
 
 /** 组件对外形状（组合根与测试按它操作）。 */
 export interface StratDayReplayElement extends HTMLElement {
@@ -108,7 +118,10 @@ export function defineStratDayReplay(): typeof HTMLElement {
             all: initial;
             display: block;
             box-sizing: border-box;
-            padding: 6px 10px;
+            /* 内边距与热力条高度都可被宿主覆盖（@since v3.4，task_090 控制岛）：
+               岛有 100px 高度预算，热力条得让位给命令行 —— 高度口径由宿主给，
+               组件只提供默认值（REPLAY_METRICS 的折算值）。 */
+            padding: var(--replay-pad-y, 6px) var(--replay-pad-x, 10px);
             font-family: var(--srf-font-ui, system-ui, -apple-system, sans-serif);
             color: var(--srf-text);
           }
@@ -126,7 +139,7 @@ export function defineStratDayReplay(): typeof HTMLElement {
           .strip {
             position: relative;
             flex: 1 1 auto;
-            height: var(--replay-strip-h, 30px);
+            height: var(--replay-strip-h, ${DEFAULT_STRIP_HEIGHT_PX}px);
             min-width: 120px;
             border-radius: var(--srf-radius, 6px);
             background: var(--srf-panel, rgba(13, 17, 38, 0.8));
@@ -190,7 +203,9 @@ export function defineStratDayReplay(): typeof HTMLElement {
       this._button = root.querySelector('[data-role="play"]');
       this._strip = root.querySelector('[data-role="strip"]');
 
-      this.style.setProperty('--replay-strip-h', `${Math.round(REPLAY_METRICS.stripHeightPx * 0.55)}px`);
+      // 热力条高度不再由本组件写死（@since v3.4，task_090）：默认值走 CSS 兜底
+      // （--replay-strip-h 未定义时用 DEFAULT_STRIP_HEIGHT_PX），宿主可覆盖 ——
+      // 控制岛有 100px 高度预算，热力条得按岛的排版收窄。
 
       this._button?.addEventListener('click', this.onPlayClick);
       this._strip?.addEventListener('pointerdown', this.onPointerDown);

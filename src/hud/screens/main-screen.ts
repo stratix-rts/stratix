@@ -35,7 +35,12 @@
  */
 
 // 顶栏度量（@since v3.4，task_089）：Z1 的高度与「7 元素封顶」口径 —— 数字取自唯一事实源。
-import { TOPBAR_METRICS } from '../../core/theme/visual-spec';
+// 控制岛度量（@since v3.4，task_090）：Z4 的宽 / 高上限 / 与角件的间距口径 —— 同样只此一份。
+import {
+  CONTROL_ISLAND_METRICS,
+  CONTROL_ISLAND_SIDE_INSET_PX,
+  TOPBAR_METRICS,
+} from '../../core/theme/visual-spec';
 import type { WorldState } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
 // 当日回放（@since v3.3，task_082）：底栏时间轴 scrubber（组件 + 控制器口径）。
@@ -97,8 +102,18 @@ const MAIN_SCREEN_STYLE = `
     pointer-events: none;
     container-type: size;
     --hud-topbar-h: ${TOPBAR_METRICS.heightPx}px;
-    --hud-bottom-h: min(34cqh, 300px);
     --hud-gap: var(--srf-spacing-md);
+    /* 控制岛（Z4）度量 —— 唯一事实源在 core/theme/visual-spec.ts（CONTROL_ISLAND_METRICS）。
+       why 不再是 --hud-bottom-h: min(34cqh, 300px)：那是写死视口比例的底栏，
+       720p 下吃掉 34% 视口高，中轴只剩 66%（proposal §1.9 P1）。
+       岛改成贴底居中、内容自适应、高度封顶 --hud-island-max-h。 */
+    --hud-island-w: ${Math.round(CONTROL_ISLAND_METRICS.widthRatio * 100)}%;
+    --hud-island-max-h: ${CONTROL_ISLAND_METRICS.maxHeightPx}px;
+    /* 单侧留边 = 角件留边 + 角件宽 + 最小间距（事件轨侧更宽，取它为约束方）。
+       岛宽超过「屏宽 − 两侧留边」就会压到左下事件轨上 —— 这一条是宽度公式的上限。 */
+    --hud-island-inset: ${CONTROL_ISLAND_SIDE_INSET_PX}px;
+    /* 右下角件（小地图）占高 —— 右竖栏的下边界按它让开。 */
+    --hud-corner-stack-h: ${CONTROL_ISLAND_METRICS.cornerStackHeightPx}px;
     color: var(--srf-text);
     font-family: var(--srf-font-ui);
     font-size: var(--srf-font-size-md);
@@ -216,7 +231,10 @@ const MAIN_SCREEN_STYLE = `
     position: absolute;
     left: var(--hud-gap);
     top: calc(var(--hud-topbar-h) + var(--hud-gap));
-    bottom: calc(var(--hud-bottom-h) + var(--hud-gap));
+    /* 下边界避开两件：控制岛（居中，与左栏只有一条窄带重叠）与左下事件轨。
+       why 用「岛的高度上限」而不是实测高度：岛高随内容变，栏的下边界得按上限留 —— 宁可空一截，
+       也不能让栏压到岛或事件轨上。 */
+    bottom: calc(var(--hud-island-max-h) + var(--hud-gap));
     width: min(320px, 28vw);
     z-index: 20;
     overflow: auto;
@@ -225,7 +243,8 @@ const MAIN_SCREEN_STYLE = `
     position: absolute;
     right: var(--hud-gap);
     top: calc(var(--hud-topbar-h) + var(--hud-gap));
-    bottom: calc(var(--hud-bottom-h) + var(--hud-gap));
+    /* 右下角是小地图（200×120 + 标题栏）—— 右栏的下边界按它的高度让开。 */
+    bottom: calc(var(--hud-corner-stack-h) + var(--hud-gap));
     width: min(360px, 30vw);
     z-index: 20;
     display: flex;
@@ -236,37 +255,50 @@ const MAIN_SCREEN_STYLE = `
   .hud-status-slot { flex: 1 1 auto; min-height: 0; overflow: auto; }
   .hud-drawer-slot { flex: 0 0 auto; max-height: 45%; overflow: auto; }
   .hud-session-slot { flex: 0 0 auto; max-height: 45%; overflow: auto; }
+  /* 控制岛（Z4；@since v3.4，task_090）：贴底居中一块，内容自适应、高度封顶。
+     why 不再是「通栏底栏」：通栏底栏在 720p 下高 245px（34% 视口高），中轴只剩 66%；
+     岛收成 56% 屏宽、约 60-90px 高之后，中轴在 720p 下回到 85% 以上。 */
   .hud-bottom-bar {
     position: absolute;
-    left: 0;
-    right: 0;
+    left: 50%;
     bottom: 0;
-    height: var(--hud-bottom-h);
+    /* 贴底居中：用 translate 而不是 left/right 各半 —— 宽度是 min() 的结果，两侧留白自动均分。 */
+    transform: translateX(-50%);
+    /* 宽度 = 56% 屏宽，但不得越过「屏宽 − 两侧角件留边」——
+       留边 = 角件留边 + 角件宽 + ≥40px 间距（CONTROL_ISLAND_SIDE_INSET_PX）。 */
+    width: min(var(--hud-island-w), calc(100% - 2 * var(--hud-island-inset)));
+    max-height: var(--hud-island-max-h);
     z-index: 25;
     box-sizing: border-box;
     display: flex;
-    /* 回放条（task_082）在上、命令面板在下：底栏改成竖排（列方向 flex）。
-       why 挤进底栏而不是另开浮层：命令面板已经占了底部中央，回放条得贴着它才像"同一条时间轴"。 */
+    /* 回放条（task_082）在上、命令面板在下：岛内竖排（列方向 flex）—— 同岛上下分层。 */
     flex-direction: column;
-    align-items: center;
+    align-items: stretch;
     justify-content: flex-end;
-    gap: var(--srf-spacing-xs);
-    padding: 0 var(--hud-gap) var(--hud-gap);
-  }
-  .hud-bottom-bar > .hud-surface { width: min(1100px, 100%); flex: 1 1 auto; min-height: 0; overflow: auto; }
-  /* 回放条槽位（task_082）：自己接指针事件（底栏其余部分让位给画布）。 */
-  .hud-replay-slot {
-    width: min(1100px, 100%);
-    flex: 0 0 auto;
-    pointer-events: auto;
-    border-radius: var(--srf-radius, 8px);
+    gap: 3px;
+    padding: 4px 6px;
     background: var(--srf-panel-overlay);
     border: var(--srf-border-width) solid var(--srf-border);
+    border-radius: var(--srf-radius);
+    box-shadow: var(--srf-shadow);
+    pointer-events: auto;
   }
-  .hud-bottom-bar strat-command-panel::part(group) {
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(6.5em, 1fr);
-    align-items: start;
+  /* 命令面板槽位：整行铺满岛的宽度（面板本体在 strip 形态里自己排成 1 行）。 */
+  .hud-bottom-bar > .hud-surface { width: 100%; flex: 0 0 auto; min-height: 0; }
+  /* 回放条槽位（task_082）：自己接指针事件（岛内其余部分让位给画布）。
+     底色 / 边框由岛统一提供 —— 槽位只管排版。
+     why 热力条变矮：岛的高度预算是 100px（硬验收），且 720p 下中轴可用高度要 ≥85% ——
+       留 14px 给热力条（96 根柱子仍是缩略图口径），剩下的留给命令行。 */
+  .hud-replay-slot {
+    width: 100%;
+    flex: 0 0 auto;
+    pointer-events: auto;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    --replay-strip-h: 14px;
+    --replay-pad-y: 1px;
+    --replay-pad-x: 0px;
   }
   .hud-sub-screen {
     position: absolute;
@@ -285,7 +317,8 @@ const MAIN_SCREEN_STYLE = `
       height: auto;
       max-height: none;
     }
-    .hud-bottom-bar { display: block; padding: var(--hud-gap); }
+    /* 窄屏（容器宽 ≤700px）：岛退化成文档流里的一块（不再居中浮起，也不再 translate）。 */
+    .hud-bottom-bar { display: block; padding: var(--hud-gap); transform: none; }
     .hud-bottom-bar > .hud-surface { width: auto; height: auto; overflow: visible; }
   }
 `;
@@ -642,8 +675,10 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
 
       // 命令面板：唯一命令入口。注入同一个 adapter —— 与顶栏按钮共用一条派发通道，
       // 不给面板另开总线口子。必须在 host.innerHTML 之后挂（容器节点得先存在）。
+      // variant='strip'（@since v3.4，task_090）：控制岛形态 —— 1 行命令条，
+      //   两个 scope 分组的按钮摊平成一条横向滚动行（其余命令滚动可达，一条不减）。
       const panelHost = host.querySelector<HTMLElement>('[data-role="command-panel"]');
-      const unmountPanel = panelHost ? mountCommandPanel(adapter, panelHost) : null;
+      const unmountPanel = panelHost ? mountCommandPanel(adapter, panelHost, { variant: 'strip' }) : null;
 
       // 当日回放条（@since v3.3，task_082）：底栏上沿的时间轴 scrubber。
       // 组件只被控制器驱动（它自己不读数据）；控制器由组合根注入（它才有读取口）。

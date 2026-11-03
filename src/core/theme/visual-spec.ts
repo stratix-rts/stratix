@@ -4,7 +4,7 @@
  * 输入：无（纯静态常量；零 IO、零 DOM、零 import）。
  * 输出：VISUAL_PALETTE（色值）/ VISUAL_METRICS（尺寸·时长·easing）/ UNIT_ANIMATION_METRICS（单位动画八态度量）
  *      / DEMO_MODE（演示模式参数）/ HUD_LAYER_METRICS（信息三层级的对比口径）
- *      / TOPBAR_METRICS（顶栏 Z1 的高度与元素封顶口径）
+ *      / TOPBAR_METRICS（顶栏 Z1 的高度与元素封顶口径）/ CONTROL_ISLAND_METRICS（控制岛 Z4 的宽高与间距口径）
  *      / PALETTE_CSS_VARS（语义色 → CSS 变量名的映射）/ hexToNumber（色值换算）
  *      / blendOver（前景按 alpha 叠背景）/ contrastRatio（WCAG 对比度）。
  * 禁止事项：
@@ -427,6 +427,48 @@ export const MINIMAP_METRICS = Object.freeze({
   /** 「MAP」角标的文案（规格钦定的英文角标）。 */
   badgeText: 'MAP',
 });
+
+/**
+ * 控制岛（Z4）的度量（@since v3.4，task_090；docs/hud-redesign-proposal.html §2.5 分区规格表 Z4 行）。
+ *
+ * why 落在唯一事实源：Z4 的四个数字（宽 56% 屏宽 / 高上限 100px / 与左右下角件 ≥40px 间距 /
+ *   一行 6 条）是**验收数字** —— HUD 侧按它写样式，碰撞脚本与单测按它断言；
+ *   抄成两份必然对不上（与顶栏 TOPBAR_METRICS 同一纪律）。
+ *
+ * why 单侧留边由「角件」算出来而不是写死：控制岛贴底居中，左右下角各有一个常驻件
+ *   （左：事件轨 MARQUEE_METRICS.maxWidthPx；右：小地图 MINIMAP_METRICS.widthPx）。
+ *   岛宽一旦超过「屏宽 − 两侧留边」，岛就会压到角件上 —— 这正是 §1.9 实测的两处碰撞。
+ */
+export const CONTROL_ISLAND_METRICS = Object.freeze({
+  /** 控制岛宽度占屏宽的比例（0.56 = 56% 屏宽）—— Z4 规格「宽 56% 屏宽」。 */
+  widthRatio: 0.56,
+  /** 控制岛高度上限（px）—— 硬验收「高度 ≤100px」。实际高度按内容自适应。 */
+  maxHeightPx: 100,
+  /** 设计目标高度（px）—— proposal §2.5 的「≈92px」；只作参照，实际高度由内容决定。 */
+  targetHeightPx: 92,
+  /** 与左右下角件（事件轨 / 小地图）的最小水平间距（px）—— 硬验收「≥40px」。 */
+  cornerClearancePx: 40,
+  /** 一行里同时可见的命令条数（个）—— Z4 规格「1 行 6 条」；其余命令横向滚动收纳。 */
+  visibleCommandCount: 6,
+  /** 角件贴边留边（px）—— 事件轨 left:16px / 小地图 right:16px（两个组件 shadow CSS 的同一口径）。 */
+  cornerMarginPx: 16,
+  /**
+   * 右下角件（小地图）从视口底边起占的总高（px）—— 右竖栏的下边界要按它让开。
+   * 拆解：画布 120（MINIMAP_METRICS.heightPx）+ 标题栏 20 + 外框描边 2 + 贴边留边 12 = 154。
+   */
+  cornerStackHeightPx: 154,
+});
+
+/**
+ * 控制岛单侧的最小留边（px）= 角件留边 + 角件宽 + 最小间距。
+ *
+ * why 取两个角件里更宽的那个（事件轨 260 > 小地图 200）：控制岛是**居中**的，
+ *   两侧留边必须同时成立才不撞 —— 约束方永远是更宽的那一侧。
+ */
+export const CONTROL_ISLAND_SIDE_INSET_PX =
+  CONTROL_ISLAND_METRICS.cornerMarginPx +
+  MARQUEE_METRICS.maxWidthPx +
+  CONTROL_ISLAND_METRICS.cornerClearancePx;
 
 /**
  * 氛围彩蛋的度量（DEMO-PLAN §5「氛围彩蛋（06）」）。

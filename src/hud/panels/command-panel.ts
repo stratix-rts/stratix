@@ -22,6 +22,14 @@
  *   供 hud/screens/main-screen.ts 把分组内的命令按钮排成横排（底栏"命令横条"用）。
  *   why 用 part 而不是改内部样式：面板内部布局不动（见文件头禁止事项），
  *   挂载方按 part 适配即可；本组件不因外部样式改变行为。
+ *
+ * 紧凑条形态（@since v3.4，task_090）：`variant="strip"` —— 控制岛（Z4）里的 1 行命令条。
+ *   形态差异只有**排版**：抬头 / 通知列表 / 两个输入框压成行内窄控件，命令按钮去掉副标题
+ *   （副标题改为按钮的 title 悬停提示），两个 scope 分组的按钮汇进同一条横向滚动行。
+ *   why 归本组件而不是外部样式：`::part()` 只能改样式、不能改 DOM 顺序，
+ *   而「1 行 6 条 + 其余横向滚动」要求把两个分组摊平成一条流 —— 那是结构，不是皮肤。
+ *   ★ 命令一条不减：12 条命令仍在（滚动可达），搜索框与任务标题草稿框仍在（压成行内窄控件）。
+ *   ★ 行为零差异：判定 / 构造 / 派发全走同一份 command-catalog，本形态只改排版。
  */
 
 import type { HudCommand, WorldState } from '../../core/types';
@@ -262,6 +270,66 @@ export function defineCommandPanel(): typeof HTMLElement {
           .cmd-label { font-weight: var(--srf-font-weight-semibold); }
           .cmd-hint { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); }
           button.command:disabled .cmd-hint { color: var(--srf-text-disabled); }
+          /* —— 紧凑条形态（@since v3.4，task_090）：控制岛内的 1 行命令条 ——
+             排版差异全部收在这里；命令清单、可用性判定与派发与完整形态完全一致。
+             why 抬头与通知列表在紧凑形态下沉：控制岛的高度预算是 100px（硬验收），
+             抬头 / 通知 / 两个输入框一行摆不下 —— 通知的「计数」仍由顶栏徽标承担。 */
+          :host([variant="strip"]) .panel {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: var(--srf-spacing-xs);
+            padding: 0;
+            background: transparent;
+            border: none;
+            border-radius: 0;
+            overflow: visible;
+          }
+          :host([variant="strip"]) .head,
+          :host([variant="strip"]) .notices { display: none; }
+          /* 两个输入框压成行内窄控件（搜索 + 任务标题草稿都还在，一项功能不减）。 */
+          :host([variant="strip"]) label.field {
+            display: flex;
+            align-items: center;
+            gap: var(--srf-spacing-xxs);
+            flex: 0 0 auto;
+            min-width: 0;
+          }
+          :host([variant="strip"]) .field-name { display: none; }
+          :host([variant="strip"]) input {
+            width: var(--command-strip-input-w, 96px);
+            height: 22px;
+            padding: 0 var(--srf-spacing-xs);
+            font-size: var(--srf-font-size-xs);
+          }
+          /* 命令流：两个 scope 分组的按钮摊平成一条横排（group-name 在紧凑形态下沉）。 */
+          :host([variant="strip"]) .sections {
+            display: flex;
+            flex: 1 1 auto;
+            align-items: center;
+            gap: var(--srf-spacing-xs);
+            min-width: 0;
+            overflow-x: auto;
+            overflow-y: hidden;
+            scrollbar-width: thin;
+          }
+          :host([variant="strip"]) .group { display: contents; }
+          :host([variant="strip"]) .group-name { display: none; }
+          :host([variant="strip"]) button.command {
+            display: inline-flex;
+            align-items: center;
+            width: auto;
+            flex: 0 0 auto;
+            padding: 2px var(--srf-spacing-sm);
+            font-size: var(--srf-font-size-xs);
+            white-space: nowrap;
+          }
+          /* 副标题（作用对象 / 禁用原因）改挂按钮 title —— 悬停可见，不占行高。 */
+          :host([variant="strip"]) .cmd-hint { display: none; }
+          :host([variant="strip"]) .empty {
+            padding: var(--srf-spacing-xs);
+            font-size: var(--srf-font-size-xs);
+          }
         </style>
         <div class="panel" part="panel">
           <div class="head">
@@ -369,6 +437,7 @@ export function defineCommandPanel(): typeof HTMLElement {
           data-scope="${escapeHtml(c.spec.scope)}"
           data-primary="${primary}"
           data-enabled="${c.enabled ? 'true' : 'false'}"
+          title="${escapeHtml(detail)}"
           ${c.enabled ? '' : 'disabled'}
         >
           <span class="cmd-label">${escapeHtml(c.spec.label)}</span>
@@ -387,10 +456,18 @@ export function defineCommandPanel(): typeof HTMLElement {
  *   建元素、注入 adapter、挂进容器，返回 unmount 闭包。
  * 选它而不是让调用方自己 createElement，是为了把"注册 + 注入 + 退订"三件事收在一处，
  *   调用方不必知道 custom element 的存在细节。
+ *
+ * @since v3.4（task_090）新增 options.variant：'strip' = 控制岛内的 1 行命令条（见文件头）。
  */
-export function mountCommandPanel(deps: CommandPanelDeps, host: HTMLElement): () => void {
+export function mountCommandPanel(
+  deps: CommandPanelDeps,
+  host: HTMLElement,
+  options: { readonly variant?: 'default' | 'strip' } = {}
+): () => void {
   defineCommandPanel();
   const element = document.createElement(COMMAND_PANEL_TAG) as StratCommandPanelElement;
+  // 形态属性必须在入 DOM 前落定 —— connectedCallback 里的首绘要按形态建外壳。
+  element.setAttribute('variant', options.variant ?? 'default');
   element.adapter = deps;
   host.appendChild(element);
   // 移除元素会触发 disconnectedCallback → 退订，订阅随之释放。
