@@ -21,7 +21,8 @@ const APP_URL = '/src/app/main/index.html';
 /** 四个偏好行（id = DOM 上的 data-pref；key = 本机持久层的键）。 */
 const PREF_ROWS: ReadonlyArray<{ id: string; key: string }> = [
   { id: 'notificationsEnabled', key: 'stratix.notifications.enabled' },
-  { id: 'sfx', key: 'stratix.sfx.enabled' },
+  // ★ @since v3.7（task_130）：音效行收敛到声音引擎那一个键（老键 stratix.sfx.enabled 只作迁移来源）。
+  { id: 'sfx', key: 'stratix.sound.enabled' },
   { id: 'context', key: 'stratix.context.enabled' },
   { id: 'nametags', key: 'stratix.unit.nametags' },
 ];
@@ -108,6 +109,31 @@ test.describe('偏好开关：点击翻转 + 落盘 + 刷新保持', () => {
   });
 });
 
+test.describe('音效开关：唯一键 + 声音引擎读的是同一个值（task_130 收敛）', () => {
+  test('切音效开关 → 只写 stratix.sound.enabled；老键零写入；声音引擎即时读到新值', async ({ page }) => {
+    await boot(page);
+    await openSettings(page);
+
+    const toggle = page.locator('strat-settings-screen').locator('button[data-pref="sfx"]');
+    await expect(toggle).toHaveText('开');
+
+    await toggle.click();
+    await expect(toggle).toHaveText('关');
+    // 唯一活跃键：声音引擎（演示声音包）与音效服务读的都是它
+    expect(await readKey(page, 'stratix.sound.enabled')).toBe('0');
+    // 老键（task_060 时代）不再被写 —— 收敛后只剩一个活跃键
+    expect(await readKey(page, 'stratix.sfx.enabled')).toBeNull();
+
+    // 声音引擎的读侧读到的是同一个值（总开关关 → 播放会被总开关拦下）
+    const engineSeesOff = await page.evaluate(() => window.localStorage.getItem('stratix.sound.enabled'));
+    expect(engineSeesOff).toBe('0');
+
+    await toggle.click();
+    await expect(toggle).toHaveText('开');
+    expect(await readKey(page, 'stratix.sound.enabled')).toBe('1');
+  });
+});
+
 test.describe('音量计：点击循环档位 + 标题同步', () => {
   test('点音量计 → 切到下一档（70 → 100 → 静音 → 30）+ title 跟着变', async ({ page }) => {
     await boot(page);
@@ -179,8 +205,8 @@ test.describe('设置页音量：档位按钮 + 滑条 → 实时落到声音引
     });
 
     expect(await readKey(page, 'stratix.sound.volume')).toBe('45');
-    // 音效服务那条路同步（0-1 口径）—— 两条声音通路音量一致
-    expect(await readKey(page, 'stratix.sfx.volume')).toBe('0.45');
+    // ★ 收敛（task_130）：音效服务读的是**同一个**键 —— 老键不再被写（只剩一个活跃键）
+    expect(await readKey(page, 'stratix.sfx.volume')).toBeNull();
     await expect(page.locator('strat-settings-screen').locator('button[data-role="sfx-volume-preset"]'))
       .toHaveText('45%');
   });

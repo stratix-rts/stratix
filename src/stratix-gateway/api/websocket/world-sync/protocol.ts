@@ -293,7 +293,8 @@ const HUD_COMMAND_TYPE_FLAGS: Readonly<Record<HudCommand['type'], true>> = {
   'link.resume': true,
   'link.reconnect': true,
   'link.close': true,
-  'settings.set': true,
+  // @since v3.7(task_130):'settings.set' 已从契约移除（偏好视图是没人消费的死字段，已删）——
+  //   偏好现在由 HUD 直写本机持久层（localStorage），不再有总线命令。
   'selection.reset': true,
   'cache.clear': true,
   'task.assign': true,

@@ -6,8 +6,9 @@
  *   合成参数（频率 / 时长 / 音量）集中在本表常量，不引任何音频库。
  *   与 toast-host 同一装配口径：服务只暴露 play(key)，事件订阅在组合根接线
  *   （onWorldEvent → sfxKeyForEvent → play，hud 零总线依赖 —— 见 main-entry 接线段）。
- * 输入：play(key)（组合根喂）；设置屏直写的 localStorage（'stratix.sfx.enabled' 总开关 /
- *   'stratix.sfx.volume' 全局音量，每次播放现读 —— 设置屏改完立即生效，不留第二份真相）。
+ * 输入：play(key)（组合根喂）；设置屏直写的 localStorage（**声音引擎那一对键**
+ *   'stratix.sound.enabled' 总开关 / 'stratix.sound.volume' 全局音量，每次播放现读 —— 设置屏改完
+ *   立即生效，不留第二份真相）。
  * 输出：WebAudio 音符调度（AudioContext → destination）；无副作用返回值。
  * ============ AudioContext 懒初始化与自动播放策略 ============
  *   ① 懒初始化：首个 play 才创建 AudioContext（无事件不建 ctx —— 页面加载零音频开销）；
@@ -29,22 +30,18 @@
  */
 
 import type { WorldEvent } from '../../../core/types';
+// 声音引擎那一对键（@since v3.7，task_130 收敛）：本服务与演示声音包**共用**同一道闸。
+//   why 不再各写一份键：task_060 时代本服务用 'stratix.sfx.*'，声音引擎用 'stratix.sound.*' ——
+//   双键并存时"读侧用哪个全凭缘分"，关一边总有一半声音关不掉。收敛后只有一个活跃键
+//   （老键值的迁移在 hud/sound-engine.ts 的 migrateLegacySoundPreferences 里做）。
+import { readSoundEnabled, readSoundVolumeRatio } from '../../sound-engine';
 
 // ============================================================================
 // 常量表（合成参数单一真相源）
 // ============================================================================
 
-/** 总开关的 localStorage 键（写入方 = settings-screen 的「音效」行；读取方 = 本服务）。 */
-export const SFX_ENABLED_KEY = 'stratix.sfx.enabled';
-
-/** 全局音量的 localStorage 键（0-1；写入方 = settings-screen 的音量滑条）。 */
-export const SFX_VOLUME_KEY = 'stratix.sfx.volume';
-
 /** 同 key 重播节流窗口（ms）：1s 内同一事件音只响一次（常量，规格③）。 */
 export const SFX_THROTTLE_MS = 1000;
-
-/** 音量缺省（0-1）：无存储值 / 值非法时回落（与设置屏滑条缺省位一致）。 */
-export const DEFAULT_SFX_VOLUME = 1;
 
 /** 包络起音时长（ms）：0 → peak 的线性爬升。太短（<5ms）有咔哒声，太长音头发闷。 */
 export const SFX_ATTACK_MS = 12;
@@ -155,46 +152,12 @@ export function planNote(note: SfxNote, masterVolume: number, contextTime: numbe
 }
 
 // ============================================================================
-// localStorage 读写（设置屏「音效」行与本服务共用同一份逻辑，不各抄一遍）
+// localStorage：与声音引擎共用同一对键（@since v3.7，task_130 收敛）
 // ============================================================================
-
-/** 读总开关：值 '0' = 关；无键 / 其它值 / 存储 API 异常 = 开（缺省开，不绑架可用性）。 */
-export function readSfxEnabled(): boolean {
-  try {
-    return localStorage.getItem(SFX_ENABLED_KEY) !== '0';
-  } catch {
-    return true;
-  }
-}
-
-/** 写总开关（设置屏 toggle 用）；写丢弃不抛（隐私模式下次读回落默认）。 */
-export function writeSfxEnabled(enabled: boolean): void {
-  try {
-    localStorage.setItem(SFX_ENABLED_KEY, enabled ? '1' : '0');
-  } catch {
-    // 写不进去就算了：音效缺省开，可用性不受影响。
-  }
-}
-
-/** 读全局音量（0-1）：非法值 / 缺键 / 异常回落 DEFAULT_SFX_VOLUME；越界钳回 [0,1]。 */
-export function readSfxVolume(): number {
-  try {
-    const raw = parseFloat(localStorage.getItem(SFX_VOLUME_KEY) ?? '');
-    if (!Number.isFinite(raw)) return DEFAULT_SFX_VOLUME;
-    return Math.min(1, Math.max(0, raw));
-  } catch {
-    return DEFAULT_SFX_VOLUME;
-  }
-}
-
-/** 写全局音量（设置屏滑条用）；写入前钳回 [0,1]（滑条失步的防御）。 */
-export function writeSfxVolume(volume: number): void {
-  try {
-    localStorage.setItem(SFX_VOLUME_KEY, String(Math.min(1, Math.max(0, volume))));
-  } catch {
-    // 同 writeSfxEnabled：写丢弃。
-  }
-}
+// 本服务**不再**自建一套开关 / 音量的读写口：总开关与音量都读 hud/sound-engine.ts 的
+//   readSoundEnabled / readSoundVolumeRatio（同一份键、同一份迁移、同一份缺省）。
+//   why：老服务读 'stratix.sfx.enabled'、声音引擎读 'stratix.sound.enabled' —— 双键并存时
+//   「关掉音效」只关掉一半通路，另一半照样响。老键值的迁移在 sound-engine 里做（见其迁移函数）。
 
 // ============================================================================
 // WebAudio 最小结构面（懒初始化 + 测试 mock 注入的共同契约）
@@ -305,8 +268,8 @@ export function createSfxService(ports: SfxServicePorts = {}): SfxService {
   const lastPlayedAtMs = new Map<SfxKey, number>();
 
   const play = (key: SfxKey): void => {
-    // 门一：总开关（每次现读 localStorage —— 设置屏直写后立即生效）。
-    if (!readSfxEnabled()) return;
+    // 门一：总开关（每次现读 localStorage —— 设置屏直写后立即生效；键与声音引擎同一把）。
+    if (!readSoundEnabled()) return;
     // 门二：节流（同 key 1s 内不重播；不同 key 各自计时，互不影响）。
     const atMs = now();
     const last = lastPlayedAtMs.get(key);
@@ -322,7 +285,7 @@ export function createSfxService(ports: SfxServicePorts = {}): SfxService {
     }
     // 三门全过才算「真正发声」：此刻才记节流时间戳。
     lastPlayedAtMs.set(key, atMs);
-    const masterVolume = readSfxVolume();
+    const masterVolume = readSoundVolumeRatio();
     for (const note of SFX_TABLE[key]) {
       scheduleNote(context, note, masterVolume);
     }

@@ -494,40 +494,34 @@ export interface SelectionState {
 }
 
 // ============================================================================
-// 用户偏好（@since v3.5 —— hud/screens/settings-screen 的持久化落点）
+// 用户偏好（@since v3.7，task_130 —— 契约里的偏好视图已删，偏好全部走 localStorage）
 // ============================================================================
-
-/** 布尔型偏好键。词表即契约：core 按键落库、HUD 按键渲染，两侧不许各写一份。 */
-export type BooleanPreferenceKey = 'soundEnabled' | 'notificationsEnabled';
-
-/**
- * 用户偏好视图（@since v3.5）。
- * why 只收布尔开关：偏好没有领域语义（不进任何状态机），因此它归 core 存一份、
- * 随 WorldState 全量广播，HUD 只渲染 + 发 `settings.set` 改 —— HUD 侧不留第二份真相。
- * **皮肤不在这里**：theme.set 由 hud bridge 本地消费 token 完成切换（core 侧只记账，
- * 见 core/runtime.ts 的 TODO），契约里没有回读通道，另立一个字段只会造出第二个真相源。
- */
-export interface SettingsView {
-  readonly soundEnabled: boolean;
-  readonly notificationsEnabled: boolean;
-}
-
-/**
- * 偏好默认值（契约级冻结常量）。
- * why 要这一份：WorldState.settings 是可选字段（见下），读取方必须回落到**同一个**默认值，
- * 否则 core / HUD 各编一套默认，用户会看到"没设过的偏好"两边不一样。
- */
-export const DEFAULT_SETTINGS: SettingsView = {
-  soundEnabled: true,
-  notificationsEnabled: true,
-};
+//
+// ★ 为什么契约里不再有「偏好视图」（@since v3.7，task_130 —— 真删，不是搬家）：
+//   v3.5 曾在契约里留过 SettingsView { soundEnabled, notificationsEnabled } +
+//   BooleanPreferenceKey + WorldState.settings + `settings.set` 命令，约定是
+//   「core 存一份、随 WorldState 广播、HUD 只渲染 + 发命令改」。
+//   **grep 实证（task_130 交付时）**：这四个字段**一个消费方都没有** ——
+//    ① core/runtime.ts 从未接线 `settings.set`（命令分发那一段一直是 TODO），
+//       HUD 派发出去只会换来一条「未处理 command」；
+//    ② WorldState 是**进程内**状态 —— 刷新即回默认值，偏好要「刷新后仍保持」，
+//       真相必须落在本机持久层（localStorage）；
+//    ③ HUD 侧没有任何一处读 WorldState.settings（设置屏直接读 localStorage）。
+//   ⇒ 契约里留着它们只会误导后来者「以为偏好走总线」—— 死字段比没有字段更坏。
+//   ⇒ 处置：**删**（SettingsView / BooleanPreferenceKey / DEFAULT_SETTINGS /
+//     WorldState.settings / `settings.set` 命令一并移除）。
+//   偏好的唯一真相源现在在**本机持久层**（localStorage），键名冻结在各处的常量里：
+//     通知提示 / 上下文注入 / 单位名字 → 本文件下方的三个 KEY 常量；
+//     音效总开关 / 音量 → hud/sound-engine.ts（两个读侧都在 HUD 侧）。
+//   ★ 皮肤（theme.set）同样不在契约里：它是每客户端本地的展示偏好，由 hud bridge
+//     本地消费 token 完成切换，core 侧没有回读通道 —— 另立字段只会造出第二个真相源。
 
 /**
  * 上下文注入全局开关的 localStorage 键（@since v3.29，task_053）。
  * 值 '0' = 关；无键 / 其它值 = 开。why 冻结在 core：写入方（hud/settings-screen 的
  * 「上下文注入」行）与读取方（app/services/stratix-context 的全局开关裁决）都在
- * core 之上，公共底座冻结一份键名，两侧不各抄字面量。why 走 localStorage 而不走
- * SettingsView/BooleanPreferenceKey：偏好词表每加一键都要动 core 存取与广播两端，
+ * core 之上，公共底座冻结一份键名，两侧不各抄字面量。why 走 localStorage 而不进契约的
+ * 偏好视图（task_130 已把那个死字段删掉，见上方「用户偏好」段）：偏好要「刷新后仍保持」，
  * 而这个开关只在本机渲染进程内生效（不进 WorldState、不随广播），localStorage
  * 的轻量落地是刻意的取舍（task_053 规格③）。
  */
@@ -537,8 +531,8 @@ export const STRATIX_CONTEXT_TOGGLE_KEY = 'stratix.context.enabled';
  * 单位名字标签全局开关的 localStorage 键（@since v3.37，task_062）。
  * 值 '0' = 关；无键 / 其它值 = 开。why 冻结在 core：写入方（hud/settings-screen 的
  * 「单位名字」行）与读取方（world/objects 的 unit-presence 可见性裁决）都在 core 之上，
- * 公共底座冻结一份键名，两侧不各抄字面量。why 走 localStorage 而不进 SettingsView：
- * 与 STRATIX_CONTEXT_TOGGLE_KEY 同一取舍 —— 只在本机渲染进程生效的表现开关，
+ * 公共底座冻结一份键名，两侧不各抄字面量。why 走 localStorage 而不进契约的偏好视图
+ * （task_130 已删）：与 STRATIX_CONTEXT_TOGGLE_KEY 同一取舍 —— 只在本机渲染进程生效的表现开关，
  * 不进 WorldState / 广播（task_062 规格②）。
  */
 export const STRATIX_NAMETAGS_TOGGLE_KEY = 'stratix.unit.nametags';
@@ -549,16 +543,18 @@ export const STRATIX_NAMETAGS_TOGGLE_KEY = 'stratix.unit.nametags';
  * 「通知提示」行）与读取方（hud/components/toast 的 toast-host）都在 core 之上，
  * 公共底座冻结一份键名，两侧不各抄字面量（与上面两个键同一取舍）。
  *
- * ★ 为什么它**不**走 SettingsView / BooleanPreferenceKey（task_116 的取舍，重要）：
+ * ★ 为什么偏好**不**走契约（task_116 的取舍 / task_130 的收尾，重要）：
  *   ① WorldState 是**进程内**状态 —— 刷新即回默认值。偏好要「刷新后仍保持」，
- *      真相必须落在本机持久层（localStorage），这是三个偏好行统一口径的根本原因；
+ *      真相必须落在本机持久层（localStorage），这是四个偏好行统一口径的根本原因；
  *   ② core/runtime.ts 从未接线 settings.set（store.setPreference 是 v3.5 就有的落库入口，
  *      但命令分发那一段一直是 TODO）—— HUD 派发出去只会让 core 报一条「未处理 command」，
  *      界面等不到广播回来，看着就像"点不动"（死功能报告 #4）。
  *   ⇒ 偏好四行（通知 / 音效 / 上下文注入 / 单位名字）统一走 localStorage 直写，
  *     读写口径一致（'0' = 关，其余 = 开；读失败回落开）。
- *   未尽事项（需要动 core 存取 + app 层落库，另开任务）：让 SettingsView 重新有意义
- *     —— 契约里的 soundEnabled / notificationsEnabled 目前**没有消费方**（音效一行早已如此）。
+ *   ★ task_130：契约里那两个没人读的字段（soundEnabled / notificationsEnabled）
+ *     已**删除**（含 SettingsView / BooleanPreferenceKey / DEFAULT_SETTINGS /
+ *     WorldState.settings / `settings.set` 命令）—— 死字段比没有字段更坏。
+ *     偏好的唯一真相源在本机持久层；键名见上（音效那一对在 hud/sound-engine.ts）。
  */
 export const STRATIX_NOTIFICATIONS_TOGGLE_KEY = 'stratix.notifications.enabled';
 
@@ -1110,13 +1106,6 @@ export interface WorldState {
   /** @since v3.1 会话消息流（供 hud/panels/chat-drawer），上限 MAX_AGENT_MESSAGES。 */
   messages: AgentMessageView[];
   /**
-   * @since v3.5 用户偏好（供 hud/screens/settings-screen）。
-   * **刻意可选**：与 Notice.source / Notice.missionId 同理走可选增补 ——
-   * 契约增补不许打破既有 WorldState 构造点（core 单测夹具、hud 测试夹具）的编译。
-   * 读取方缺省时回落到 DEFAULT_SETTINGS。
-   */
-  settings?: SettingsView;
-  /**
    * @since v3.6 当前激活屏（ScreenId 的当前投影，由 ui.navigate 写入）。
    * why 走可选：与 settings 同理 ——
    * 契约增补不许打破既有 WorldState 构造点（core 单测夹具、hud 测试夹具）的编译。
@@ -1444,14 +1433,6 @@ export type HudCommand =
   | { type: 'link.resume'; linkId: string }
   | { type: 'link.reconnect'; linkId: string }
   | { type: 'link.close'; linkId: string }
-  /**
-   * @since v3.5 偏好开关写入。why 单开一条：偏好既不是领域动作（mission.*）也不是导航
-   *   （ui.navigate），塞进现有任何一条都会逼 core 侧多一个"这一支其实是偏好"的判断分支。
-   *   落到 core/store.ts 的 setPreference（纯函数 applyPreference），HUD 一律经 adapter.dispatch。
-   *   TODO(v3.Phase2): core/runtime.ts 接线 —— 本任务按分工不动 runtime.ts，命令暂走
-   *   onUnhandled（未落地）通道；接线后 core 侧即成为偏好的唯一写入方。
-   */
-  | { type: 'settings.set'; key: BooleanPreferenceKey; value: boolean }
   /**
    * @since v3.5 危险区：重置编组（清空当前选择集）。
    *   为什么不复用 unit.select 配空数组：重置编组是一次显式的破坏性动作，

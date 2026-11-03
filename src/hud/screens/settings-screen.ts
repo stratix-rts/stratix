@@ -29,14 +29,19 @@
  *   ⇒ 偏好四行（通知提示 / 音效 / 上下文注入 / 单位名字）**统一走 localStorage 直写**：
  *      值现读现写（'0' = 关，其余 = 开），写完立刻重画 → 文字在「开 / 关」之间翻转，
  *      刷新后仍是上次那个值。本屏**不再**发 settings.set（发出去也没有消费方）。
- *      键名冻结在 core/types.ts（跨层共用的底座不各抄字面量），读取方见各键注释。
+ *      键名冻结在 core/types.ts（通知 / 上下文注入 / 单位名字三键）与 hud/sound-engine.ts
+ *      （音效总开关与音量 —— 两个读侧都在 HUD 侧，键归声音引擎管），两侧不各抄字面量。
  *
- * ★ 音量为什么接声音引擎（@since v3.6，task_116 —— 死功能 #5 的根因与修法）：
+ * ★ 音量为什么接声音引擎（@since v3.6，task_116 —— 死功能 #5 的根因与修法；
+ *   @since v3.7，task_130 —— 双键收敛）：
  *   设置页原来的滑条只写 sfx-service 的键（stratix.sfx.volume），
  *   而**演示声音包**（task_083，hud/sound-engine.ts）读的是另一个键（stratix.sound.volume）
  *   —— 拖了滑条，任务完成音还是老音量，看着就像"音量控件是死的"。
- *   ⇒ 音量写声音引擎的键（引擎每次播放现读，写完即生效），并同步写 sfx-service 的键
- *     （0-1 口径 = 百分比 / 100）：两条声音通路听同一道音量闸，不留"一半跟着变"的半截。
+ *   ⇒ 音量写声音引擎的键（引擎每次播放现读，写完即生效）。
+ *   ★ task_130 收敛：音效服务（task_060）也改读**同一对键**（stratix.sound.enabled /
+ *     stratix.sound.volume）—— 收敛前本屏总开关写两把闸、音量写两把闸，读侧用哪个全凭缘分，
+ *     迟早两边不一致。老键（stratix.sfx.*）的值由声音引擎的 migrateLegacySoundPreferences
+ *     迁到新键，老用户不丢设置。
  *   交互：档位按钮（静音 / 30 / 70 / 100，点击循环）+ 滑条（细调），两者同源同口径，
  *     档位文字与 title 实时同步（悬停即知当前音量）。
  *
@@ -65,25 +70,21 @@ import {
 } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
 import type { OcclusionController } from '../layers/occlusion';
-import type { ThemeId } from '../theme/theme-controller';
-import { defineStratButton, escapeHtml, STRAT_BUTTON_TAG } from '../widgets/strat-button';
-// 音效读写口（@since v3.36，task_060）：本屏写「stratix.sfx.enabled / stratix.sfx.volume」，
-// sfx-service 每次播放现读同一键 —— 读写逻辑收在 sfx 模块，两侧不各抄一遍。
+// 声音引擎（@since v3.6，task_116 建 / @since v3.7，task_130 收敛）：音量与总开关的**唯一**真源
+//   在 hud/sound-engine.ts（键 stratix.sound.volume / stratix.sound.enabled，引擎每次播放现读 ——
+//   写完即生效）。音效服务（task_060）与声音引擎（task_083）读的是同一对键 —— 收敛前双键并存，
+//   「关掉音效」只关掉一半通路；老键（stratix.sfx.*）值的迁移由 migrateLegacySoundPreferences 负责。
 import {
-  SFX_ENABLED_KEY,
-  writeSfxVolume,
-} from '../components/sfx/sfx-service';
-// 声音引擎（@since v3.6，task_116）：音量与总开关的真源在 hud/sound-engine.ts
-//   （键 stratix.sound.volume / stratix.sound.enabled，引擎每次播放现读 —— 写完即生效）。
-//   why 音量必须落在这里：死功能 #5 的根因是设置页那个滑条只写 sfx-service 的键，
-//   演示声音包（task_083）那条路完全不受控 —— 拖了滑条，任务完成音还是老音量。
-import {
+  SOUND_ENABLED_KEY,
+  migrateLegacySoundPreferences,
   nextVolumePreset,
   readSoundVolume,
   volumeLabel,
-  writeSoundEnabled,
   writeSoundVolume,
 } from '../sound-engine';
+import type { ThemeId } from '../theme/theme-controller';
+import { defineStratButton, escapeHtml, STRAT_BUTTON_TAG } from '../widgets/strat-button';
+
 // 自定义 agent 注册端口（@since v3.32，task_056）：类型 only —— hud 不 import electron（铁律）。
 import type { CustomAgentsPort, CustomAgentView } from './custom-agents-port';
 
@@ -118,18 +119,11 @@ export interface PreferenceRowSpec {
   readonly id: PreferenceId;
   readonly label: string;
   readonly hint: string;
-  /** localStorage 键（冻结在 core/types.ts 或 sfx-service —— 键的归属方就是它的主人）。 */
+  /** localStorage 键（冻结在 core/types.ts 或 hud/sound-engine.ts —— 键的归属方就是它的主人）。 */
   readonly storageKey: string;
   /** 旧版行内属性（data-sfx-toggle / data-context-toggle / data-nametag-toggle）—— 保留兼容，
    *   新代码一律用 data-pref。 */
   readonly legacyAttr?: string;
-  /**
-   * 这一行是否同时门控**声音引擎的总开关**（@since v3.6，task_116）。
-   *   why 音效行要连着写两把闸：演示声音包（task_083，走 stratix.sound.enabled）与
-   *   音效服务（task_060，走 stratix.sfx.enabled）各响各的 —— 只关一边的话，
-   *   「关掉音效」之后任务完成音照样响，用户只会看到"这个开关又没反应"。
-   */
-  readonly gatesSoundEngine?: boolean;
 }
 
 export const PREFERENCE_ROWS: readonly PreferenceRowSpec[] = [
@@ -143,9 +137,8 @@ export const PREFERENCE_ROWS: readonly PreferenceRowSpec[] = [
     id: 'sfx',
     label: '音效',
     hint: '关键事件反馈音（任务完成 / 失败 / 升级 / 审批请求 / agent 掉线）',
-    storageKey: SFX_ENABLED_KEY,
+    storageKey: SOUND_ENABLED_KEY,
     legacyAttr: 'data-sfx-toggle',
-    gatesSoundEngine: true,
   },
   {
     id: 'context',
@@ -220,7 +213,7 @@ export interface SettingsScreenModel {
 
 /** 读一个偏好开关：'0' = 关；无键 / 其它值 / 存储异常 = 开。
  *   why 缺省开：偏好是增强项，缺省关会让"怎么没反应"的排查成本远高于收益
- *   （与 sfx-service 的 readSfxEnabled 同一口径 —— 四个键的语义一致，读写都收在这里）。 */
+ *   （与声音引擎的 readSoundEnabled 同一口径 —— 四个键的语义一致，读写都收在这里）。 */
 export function readPreference(storageKey: string): boolean {
   try {
     return localStorage.getItem(storageKey) !== '0';
@@ -240,6 +233,9 @@ export function writePreference(storageKey: string, enabled: boolean): void {
 
 /** 读全部偏好开关的当前值（四个键各读一次 —— 渲染前调一次，不在渲染里反复读）。 */
 export function resolvePreferences(): Readonly<Record<PreferenceId, boolean>> {
+  // 老键迁移（@since v3.7，task_130）：音效行读的是收敛后的唯一键，老用户机器上的
+  //   老键值必须先搬过来，否则这一行会显示"开"而实际是老键里的"关"。
+  migrateLegacySoundPreferences();
   const values = {} as Record<PreferenceId, boolean>;
   for (const row of PREFERENCE_ROWS) {
     values[row.id] = readPreference(row.storageKey);
@@ -258,6 +254,7 @@ export function resolveSettings(themeId: ThemeId): SettingsScreenModel {
  *   why 含 localStorage 值：本屏之外的写入方（未来的设置同步）改了值也要跟上 —— 一行字符串的代价。
  */
 export function settingsSignature(): string {
+  migrateLegacySoundPreferences();
   return PREFERENCE_ROWS.map((row) => (readPreference(row.storageKey) ? '1' : '0')).join('');
 }
 
@@ -414,22 +411,19 @@ export function defineSettingsScreen(): typeof HTMLElement {
     private togglePreference(row: PreferenceRowSpec): void {
       const next = !readPreference(row.storageKey);
       writePreference(row.storageKey, next);
-      // 音效行同时扳动声音引擎的总开关（@since v3.6，task_116）：
-      //   演示声音包（task_083）与音效服务（task_060）听同一道闸 —— 只关一半会剩下"点了没反应"。
-      if (row.gatesSoundEngine) writeSoundEnabled(next);
       this.renderBody();
     }
 
     /**
-     * 音量落地（@since v3.6，task_116）：**两个引擎的音量键一起写**。
-     *   why 两个：声音引擎用 0-100 的 stratix.sound.volume，音效服务用 0-1 的 stratix.sfx.volume
-     *   —— 两把闸管两条声音通路，只写一把就会留下"有的声音跟着变、有的不变"的半截体验。
+     * 音量落地（@since v3.6，task_116 建 / @since v3.7，task_130 收敛）：**只写一把闸**。
+     *   why 一把：声音引擎（task_083）与音效服务（task_060）现在读**同一个**键
+     *   （stratix.sound.volume，0-100 口径）—— 收敛前是两个键（0-100 / 0-1 各一份），
+     *   拖滑条只跟着一半变，留下一条"音量控件半截生效"的错觉。
      *   why 写完不重画：滑条正在被拖，重建 DOM 会把这次拖拽掐断（改为就地更新标题与档位文字）。
      */
     private applyVolume(percent: number): number {
       const clamped = Math.min(100, Math.max(0, Math.round(percent)));
       writeSoundVolume(clamped);
-      writeSfxVolume(clamped / 100);
       return clamped;
     }
 

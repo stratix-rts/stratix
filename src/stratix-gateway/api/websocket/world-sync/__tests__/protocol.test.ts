@@ -198,8 +198,9 @@ describe('isCommandForwardMessage', () => {
   });
 
   it('isHudCommand：只认在册的命令类型名', () => {
-    expect(isHudCommand({ type: 'settings.set', key: 'soundEnabled', value: true })).toBe(true);
-    expect(isHudCommand({ type: 'settings.set' })).toBe(true);
+    expect(isHudCommand({ type: 'ui.navigate', screen: 'settings' })).toBe(true);
+    // @since v3.7(task_130)：'settings.set' 已随契约里的死偏好字段一并移除 —— 偏好走本机持久层。
+    expect(isHudCommand({ type: 'settings.set', key: 'soundEnabled', value: true })).toBe(false);
     expect(isHudCommand({ type: 'nope' })).toBe(false);
     expect(isHudCommand('unit.select')).toBe(false);
   });

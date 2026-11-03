@@ -25,7 +25,7 @@
  *
  * ★ 持久化口径（task_115）：
  *   皮肤是**每客户端本地**的展示偏好（token 样式表就在本机 DOM 上），故记忆落在 localStorage
- *   而非 WorldState（见 core/types.ts 的 SettingsView 注 —— 进状态机 = 第二个真相源）。
+ *   而非 WorldState（见 core/types.ts 的「用户偏好」段 —— 进状态机 = 第二个真相源）。
  *   键名冻结在 core（core/theme/skin-registry.ts 的 SKIN_STORAGE_KEY），本文件只管读写，
  *   不自己写键名字面量（同 DEMO_MODE.storageKey 的纪律）。
  */

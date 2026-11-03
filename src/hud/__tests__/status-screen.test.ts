@@ -354,7 +354,6 @@ describe('渲染签名：与显示无关的广播不重绘', () => {
       selection: { unitIds: ['u1'], previewUnitIds: [], revision: 9 },
       characters: [{ id: 'c1', name: 'A', persona: 'p', level: 2, experience: 10 }],
       messages: [{ id: 'm', linkId: 'l1', direction: 'inbound', author: 'a', text: 't', at: 1 }],
-      settings: { soundEnabled: false, notificationsEnabled: true },
     });
     expect(statusSignature(base)).toBe(statusSignature(noise));
   });

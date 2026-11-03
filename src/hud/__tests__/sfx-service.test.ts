@@ -9,23 +9,26 @@
 
 import type { WorldEvent } from '../../core/types';
 import {
-  DEFAULT_SFX_VOLUME,
   SFX_ATTACK_MS,
-  SFX_ENABLED_KEY,
   SFX_TABLE,
   SFX_THROTTLE_MS,
-  SFX_VOLUME_KEY,
   createSfxService,
   planNote,
-  readSfxEnabled,
-  readSfxVolume,
   sfxKeyForEvent,
-  writeSfxEnabled,
-  writeSfxVolume,
   type SfxAudioContext,
   type SfxKey,
   type SfxNote,
 } from '../components/sfx/sfx-service';
+// ★ @since v3.7（task_130）音效服务与声音引擎**共用**同一对键（收敛前各用一套）。
+//   本服务的开关 / 音量读侧全在 hud/sound-engine.ts —— 这里直接用它的读写口断言。
+import {
+  SOUND_ENABLED_KEY,
+  SOUND_VOLUME_KEY,
+  readSoundEnabled,
+  readSoundVolume,
+  writeSoundEnabled,
+  writeSoundVolume,
+} from '../sound-engine';
 
 // ============================================================================
 // mock AudioContext：录制每个音符的调度参数（频率 / 时间轴 / 包络调用）
@@ -228,38 +231,38 @@ describe('planNote：时间轴与包络参数', () => {
 // localStorage 读写：开关与音量持久化（规格④）
 // ============================================================================
 
-describe('开关与音量的 localStorage 持久化', () => {
+describe('开关与音量的 localStorage 持久化（与声音引擎同一对键）', () => {
   beforeEach(() => {
     localStorage.clear();
   });
 
   test('开关缺省开；写 0 读关、写 1 读开', () => {
-    expect(readSfxEnabled()).toBe(true);
-    writeSfxEnabled(false);
-    expect(localStorage.getItem(SFX_ENABLED_KEY)).toBe('0');
-    expect(readSfxEnabled()).toBe(false);
-    writeSfxEnabled(true);
-    expect(readSfxEnabled()).toBe(true);
+    expect(readSoundEnabled()).toBe(true);
+    writeSoundEnabled(false);
+    expect(localStorage.getItem(SOUND_ENABLED_KEY)).toBe('0');
+    expect(readSoundEnabled()).toBe(false);
+    writeSoundEnabled(true);
+    expect(readSoundEnabled()).toBe(true);
   });
 
-  test('音量缺省 1；写 0.3 读 0.3；写入前钳回 [0,1]', () => {
-    expect(readSfxVolume()).toBe(DEFAULT_SFX_VOLUME);
-    writeSfxVolume(0.3);
-    expect(localStorage.getItem(SFX_VOLUME_KEY)).toBe('0.3');
-    expect(readSfxVolume()).toBe(0.3);
-    writeSfxVolume(2);
-    expect(readSfxVolume()).toBe(1);
-    writeSfxVolume(-1);
-    expect(readSfxVolume()).toBe(0);
+  test('音量缺省 70（声音引擎缺省）；写入前钳回 [0,100]', () => {
+    expect(readSoundVolume()).toBe(70);
+    writeSoundVolume(30);
+    expect(localStorage.getItem(SOUND_VOLUME_KEY)).toBe('30');
+    expect(readSoundVolume()).toBe(30);
+    writeSoundVolume(200);
+    expect(readSoundVolume()).toBe(100);
+    writeSoundVolume(-1);
+    expect(readSoundVolume()).toBe(0);
   });
 
-  test('音量读侧容错：垃圾值 / 越界值回落（NaN→默认，2→钳 1，-0.5→钳 0）', () => {
-    localStorage.setItem(SFX_VOLUME_KEY, 'not-a-number');
-    expect(readSfxVolume()).toBe(DEFAULT_SFX_VOLUME);
-    localStorage.setItem(SFX_VOLUME_KEY, '2');
-    expect(readSfxVolume()).toBe(1);
-    localStorage.setItem(SFX_VOLUME_KEY, '-0.5');
-    expect(readSfxVolume()).toBe(0);
+  test('音量读侧容错：垃圾值 / 越界值回落（NaN→默认，200→钳 100，-50→钳 0）', () => {
+    localStorage.setItem(SOUND_VOLUME_KEY, 'not-a-number');
+    expect(readSoundVolume()).toBe(70);
+    localStorage.setItem(SOUND_VOLUME_KEY, '200');
+    expect(readSoundVolume()).toBe(100);
+    localStorage.setItem(SOUND_VOLUME_KEY, '-50');
+    expect(readSoundVolume()).toBe(0);
   });
 });
 
@@ -340,7 +343,7 @@ describe('createSfxService：总开关与音量（localStorage 现读）', () =>
   beforeEach(() => localStorage.clear());
 
   test('开关关（0）：play 全拦，且不建 ctx（开关门在懒初始化之前）', () => {
-    localStorage.setItem(SFX_ENABLED_KEY, '0');
+    localStorage.setItem(SOUND_ENABLED_KEY, '0');
     const { service, created } = makeService({});
     service.play('task.completed');
     expect(created()).toBe(0);
@@ -352,16 +355,16 @@ describe('createSfxService：总开关与音量（localStorage 现读）', () =>
     const { service, mock } = makeService({ now: () => now });
     service.play('task.completed');
     expect(mock.played).toHaveLength(2);
-    writeSfxEnabled(false);
+    writeSoundEnabled(false);
     now = 5000;
     service.play('task.completed');
     expect(mock.played).toHaveLength(2); // 关了：不再有声音
   });
 
   test('音量参与包络：peak = note.gain × 全局音量', () => {
-    localStorage.setItem(SFX_VOLUME_KEY, '0.5');
+    localStorage.setItem(SOUND_VOLUME_KEY, '50'); // 0-100 口径（收敛后与声音引擎同一个键）
     const { service, mock } = makeService({});
-    service.play('task.failed'); // 单音 gain 0.5 → peak 0.25
+    service.play('task.failed'); // 单音 gain 0.5 × 音量 0.5 → peak 0.25
     const note = mock.played[0];
     expect(note.frequency).toBe(196);
     // 包络：set(0) → ramp(peak) → ramp(0)

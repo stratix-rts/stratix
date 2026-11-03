@@ -140,7 +140,7 @@ export interface NametagStorage {
 
 /**
  * 读名字标签全局开关：值 '0' = 关；无键 / 其它值 / 无 storage / 读取抛错 → 开。
- * why 默认开：表现增强项不绑架可用性（同 sfx-service 的 readSfxEnabled 口径）。
+ * why 默认开：表现增强项不绑架可用性（同声音引擎的 readSoundEnabled 口径）。
  */
 export function readNametagsToggle(storage: NametagStorage | null | undefined): boolean {
   if (!storage) return true;

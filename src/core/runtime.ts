@@ -607,7 +607,7 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
       //   core 这里只做「接地」:显式吞掉这条命令,不再掉进 default 分支报「未处理 command」
       //   （此前每切一次皮肤 console 就多一条警告 —— 死功能排查时的噪音源）。
       //   why 不写进 WorldState:皮肤不进状态机(不进任何 core 逻辑),另立字段 = 第二个真相源
-      //   (见 core/types.ts 的 SettingsView 注 —— 契约已冻结这条纪律)。
+      //   (见 core/types.ts 的「用户偏好」段 —— 契约已冻结这条纪律)。
       case 'theme.set':
         return;
       // @since v3.4（task_094）演出占用 / 释放（Z6 沉浸层接线）:

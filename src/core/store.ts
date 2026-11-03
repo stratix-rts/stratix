@@ -11,16 +11,13 @@
 
 import { resolveInfoLayer } from './info-layer';
 import {
-  DEFAULT_SETTINGS,
   MAX_NOTICES,
-  type BooleanPreferenceKey,
   type DetectedAgent,
   type InfoLayer,
   type LayerTrigger,
   type Notice,
   type ScreenId,
   type SelectionState,
-  type SettingsView,
   type WorldState,
 } from './types';
 
@@ -34,16 +31,10 @@ export interface CoreStore {
   subscribe(listener: StateListener): () => void;
   pushNotice(notice: Notice): WorldState;
   /**
-   * @since v3.5 写一条布尔偏好（settings.set 的落库入口）。
-   * why 放 store 而不放 runtime：偏好没有领域语义、不经状态机，落库动作就是"换个字段"，
-   * 放在 store 里才能被两侧独立单测（runtime 接线是薄薄一层，见 core/runtime.ts TODO）。
-   */
-  setPreference(key: BooleanPreferenceKey, value: boolean): WorldState;
-  /**
    * @since v3.6 写当前屏（ui.navigate 的落库入口；'chat' 不入 currentScreen，
    *   由抽屈自治 —— 见 types.ts WorldState.currentScreen 注释）。
    * why 放 store 而不放 runtime：currentScreen 也不经状态机，落库动作等同替换一个可选字段，
-   * 与 setPreference 同一口径 —— 都是"换一个字段"，由 store 统一承担"是否广播"。
+   * 与 setCurrentScreen 同一口径 —— 都是"换一个字段"，由 store 统一承担"是否广播"。
    */
   setCurrentScreen(screen: ScreenId | null): WorldState;
   /**
@@ -75,7 +66,7 @@ export interface CoreStore {
    * 语义：**整份替换**（调用方给的是当前快照，不是增量补丁）——
    *   检测是「逐条到达」的，但状态里只留一份当前快照，读取方不必自己拼（拼两份就成两份真相）。
    * 写入方：app/services/agent-detector 的结果经 IPC 到达渲染层后，由 app/main/main-entry.ts 调用。
-   * 无实质变化就**原样返回同一引用** → 不广播（与 setPreference / setCurrentScreen 同一口径：
+   * 无实质变化就**原样返回同一引用** → 不广播（与 setCurrentScreen 同一口径：
    *   重复扫描出同样结果时不该把两侧无谓地重渲染一遍）。
    */
   setDetectedAgents(agents: readonly DetectedAgent[]): WorldState;
@@ -85,7 +76,6 @@ export interface CoreStore {
 export function createInitialState(): WorldState {
   const selection: SelectionState = { unitIds: [], previewUnitIds: [], revision: 0 };
   // links / messages（@since v3.1）由 core/agent-link 投影写入，这里只是空数组起点
-  // settings（@since v3.5）按契约默认值起步，hud/screens/settings-screen 直接读它即可
   // tasks（@since v3.16）由 core/task 投影写入（task.assign 派发队列），空数组即「无任务」
   return {
     units: [],
@@ -95,7 +85,6 @@ export function createInitialState(): WorldState {
     notices: [],
     links: [],
     messages: [],
-    settings: DEFAULT_SETTINGS,
     // detectedAgents（@since v3.8）：本地 CLI agent 检测结果，空数组即「尚未检测」
     detectedAgents: [],
     // tasks（@since v3.16）：角色任务队列，空数组即「无在办/历史任务」
@@ -111,20 +100,7 @@ export function createInitialState(): WorldState {
 }
 
 /**
- * 写一条布尔偏好（纯函数，@since v3.5）。抽成纯函数是为了能脱离 store 单测"写完是否变引用"。
- * 值没变就**原样返回同一引用**：与 setState 的约定一致 —— 无实质变化的广播会把两侧无谓地重绘一遍。
- */
-export function applyPreference(
-  settings: SettingsView | undefined,
-  key: BooleanPreferenceKey,
-  value: boolean
-): SettingsView {
-  const base = settings ?? DEFAULT_SETTINGS;
-  return base[key] === value ? base : { ...base, [key]: value };
-}
-
-/**
- * 当前屏写入（纯函数，@since v3.6）—— 与 applyPreference 同口径：值没变就**原样返回同一引用**，
+ * 当前屏写入（纯函数，@since v3.6）—— 值没变就**原样返回同一引用**，
  *   让 store 「引用未变即不广播」约定自动生效。
  *
  * 输入约定：
@@ -221,7 +197,7 @@ function pruneNotices(notices: readonly Notice[], now: number): Notice[] {
 /**
  * 检测结果逐项比较（@since v3.8）—— 判断「这次扫描的结果与上次是否实质相同」。
  * why 要内容比较而不是引用比较：IPC 每次推送的都是新数组（引用必不同），
- * 若按引用判会每次重扫都广播一遍，两侧白白重渲染（与 setPreference 的「引用未变即不广播」同一目的，
+ * 若按引用判会每次重扫都广播一遍，两侧白白重渲染（与 setCurrentScreen 的「引用未变即不广播」同一目的，
  * 只是这里的数组是**新引用但同内容**）。
  */
 function sameDetectedAgents(a: readonly DetectedAgent[], b: readonly DetectedAgent[]): boolean {
@@ -280,11 +256,6 @@ export function createStore(initial?: Partial<WorldState>): CoreStore {
       notify({ ...state, notices: pruneNotices([notice, ...state.notices], now()) }),
 
     // @since v3.5 偏好写入：同 setState 的约定 —— 值没实质变化就不广播。
-    setPreference: (key, value) => {
-      const next = applyPreference(state.settings, key, value);
-      if (next === state.settings) return state;
-      return notify({ ...state, settings: next });
-    },
 
     // @since v3.6 当前屏写入：同上 —— 同一屏不广播（main-screen 渲染判重会跳过重绘），
     // 不同屏则整屏重渲染（屏壳切换）。

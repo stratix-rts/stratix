@@ -182,6 +182,8 @@ export function sfxFileUrl(baseUrl: string, fileName: string): string {
 export interface SoundStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+  /** 删除键（迁移老键用）。可选：注入的老式内存实现没这口时迁移退化为"只搬不删"。 */
+  removeItem?(key: string): void;
 }
 
 /** 缺省存储：浏览器全局 localStorage；没有（node / 隐私模式）时返回 null。 */
@@ -195,12 +197,59 @@ function defaultStorage(): SoundStorage | null {
 }
 
 /**
+ * 老键（@since v3.7，task_130 收敛用）：音效服务（task_060，hud/components/sfx/sfx-service.ts）
+ *   曾经用的是另一对键 —— 与声音引擎的键语义重叠、双键并存，读侧用哪个全凭缘分。
+ *   ⇒ 收敛到本文件的 SOUND_ENABLED_KEY / SOUND_VOLUME_KEY 一对，老键只作**迁移来源**。
+ * why 键名还留着：老用户机器上还有这些键的数据 —— 读到就搬到新键（见 migrateLegacySoundPreferences），
+ *   搬完删掉老键。收敛后**只有**新的一对是活跃键（老键字符串全仓只剩这一处）。
+ */
+export const LEGACY_SFX_ENABLED_KEY = 'stratix.sfx.enabled';
+
+/** 老键（音量）：task_060 时代是 0-1 口径，与新键（0-100）不同 —— 迁移时换算。 */
+export const LEGACY_SFX_VOLUME_KEY = 'stratix.sfx.volume';
+
+/**
+ * 老键迁移（@since v3.7，task_130）：把 task_060 时代的老键值搬到新键，搬完删老键。
+ * 规则：新键已有值 → **以新键为准**（老键只是历史残留，清掉即可，免得两边值漂移）；
+ *   新键缺省 → 取老键值（总开关 '0'/'1' 原样搬；音量 0-1 口径 ×100 换成 0-100）。
+ * why 幂等且无状态：每次读先扫一遍老键（两个 getItem；播放路径上开销可忽略），
+ *   老键清掉后自然零写入 —— 不留"迁移标记"那种会跟真实存储脱节的状态。
+ */
+export function migrateLegacySoundPreferences(storage: SoundStorage | null = defaultStorage()): void {
+  if (!storage) return;
+  try {
+    const legacyEnabled = storage.getItem(LEGACY_SFX_ENABLED_KEY);
+    if (legacyEnabled !== null) {
+      if (storage.getItem(SOUND_ENABLED_KEY) === null) {
+        storage.setItem(SOUND_ENABLED_KEY, legacyEnabled === '0' ? '0' : '1');
+      }
+      storage.removeItem?.(LEGACY_SFX_ENABLED_KEY);
+    }
+    const legacyVolume = storage.getItem(LEGACY_SFX_VOLUME_KEY);
+    if (legacyVolume !== null) {
+      if (storage.getItem(SOUND_VOLUME_KEY) === null) {
+        const raw = Number.parseFloat(legacyVolume);
+        if (Number.isFinite(raw)) {
+          const percent = Math.round(Math.min(1, Math.max(0, raw)) * SOUND_METRICS.volumeMax);
+          storage.setItem(SOUND_VOLUME_KEY, String(percent));
+        }
+      }
+      storage.removeItem?.(LEGACY_SFX_VOLUME_KEY);
+    }
+  } catch {
+    // 读不到 / 写不进就算了：缺省开 + 缺省音量，可用性不受影响。
+  }
+}
+
+/**
  * 读总开关：值 '0' = 关；无键 / 其它值 / 存储异常 = 开。
  * why 缺省开：演示模式默认开（DEMO-PLAN §10「总开关（demo 模式默认开）」），
  *   且音效是锦上添花 —— 缺省关会让直播现场「怎么没声」的排查成本远高于收益。
+ * why 先迁移：老键用户（task_130 收敛前）的老值必须先搬到新键，否则会读到"缺省开"而误判为开。
  */
 export function readSoundEnabled(storage: SoundStorage | null = defaultStorage()): boolean {
   try {
+    migrateLegacySoundPreferences(storage);
     return storage?.getItem(SOUND_ENABLED_KEY) !== '0';
   } catch {
     return true;
@@ -219,12 +268,21 @@ export function writeSoundEnabled(enabled: boolean, storage: SoundStorage | null
 /** 读音量（0-100）：非法值 / 缺键 / 异常回落缺省音量；越界钳回 [0, volumeMax]。 */
 export function readSoundVolume(storage: SoundStorage | null = defaultStorage()): number {
   try {
+    migrateLegacySoundPreferences(storage);
     const raw = Number.parseInt(storage?.getItem(SOUND_VOLUME_KEY) ?? '', 10);
     if (!Number.isFinite(raw)) return SOUND_METRICS.defaultVolume;
     return Math.min(SOUND_METRICS.volumeMax, Math.max(0, raw));
   } catch {
     return SOUND_METRICS.defaultVolume;
   }
+}
+
+/**
+ * 读音量（0-1 比例口径）：给"音量直接乘到峰值上"的调用方用（音效服务 task_060）。
+ * why 换算收在这里：0-100 → 0-1 的口径换算只有这一处，两个读侧不会各抄一遍除法。
+ */
+export function readSoundVolumeRatio(storage: SoundStorage | null = defaultStorage()): number {
+  return readSoundVolume(storage) / SOUND_METRICS.volumeMax;
 }
 
 /** 写音量（顶栏滑条用）；写入前钳回 [0, volumeMax]（滑条失步的防御）。 */

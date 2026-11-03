@@ -13,10 +13,13 @@
 import { SOUND_METRICS } from '../../core/theme/visual-spec';
 import type { WorldEvent } from '../../core/types';
 import {
+  LEGACY_SFX_ENABLED_KEY,
+  LEGACY_SFX_VOLUME_KEY,
   SOUND_ENABLED_KEY,
   SOUND_VOLUME_KEY,
   SFX_FILES,
   createSoundEngine,
+  migrateLegacySoundPreferences,
   planNote,
   readSoundEnabled,
   readSoundVolume,
@@ -162,6 +165,9 @@ function createStorage(initial: Record<string, string> = {}): SoundStorage & { d
     getItem: (key: string) => (key in data ? data[key] : null),
     setItem: (key: string, value: string) => {
       data[key] = value;
+    },
+    removeItem: (key: string) => {
+      delete data[key];
     },
   };
 }
@@ -630,5 +636,45 @@ describe('声音包：真实音源优先（task_087）', () => {
     await flush();
     expect(mock.bufferPlayed).toHaveLength(1); // 补响一声
     engine.dispose();
+  });
+});
+
+
+// ============================================================================
+// 老键迁移（@since v3.7，task_130）：stratix.sfx.* → stratix.sound.*（唯一活跃键）
+// ============================================================================
+
+describe('声音包：老键迁移（task_130 收敛）', () => {
+  test('老总开关值搬进新键，老键清掉（读一次即生效）', () => {
+    const storage = createStorage({ [LEGACY_SFX_ENABLED_KEY]: '0' });
+    expect(readSoundEnabled(storage)).toBe(false);
+    expect(storage.data[SOUND_ENABLED_KEY]).toBe('0');
+    expect(storage.data[LEGACY_SFX_ENABLED_KEY]).toBeUndefined();
+  });
+
+  test('老音量值按 0-1 → 0-100 换算搬进新键', () => {
+    const storage = createStorage({ [LEGACY_SFX_VOLUME_KEY]: '0.3' });
+    expect(readSoundVolume(storage)).toBe(30);
+    expect(storage.data[SOUND_VOLUME_KEY]).toBe('30');
+    expect(storage.data[LEGACY_SFX_VOLUME_KEY]).toBeUndefined();
+  });
+
+  test('新键已有值时以新键为准（老键只是历史残留，直接清掉）', () => {
+    const storage = createStorage({
+      [SOUND_ENABLED_KEY]: '1',
+      [SOUND_VOLUME_KEY]: '80',
+      [LEGACY_SFX_ENABLED_KEY]: '0',
+      [LEGACY_SFX_VOLUME_KEY]: '0.1',
+    });
+    expect(readSoundEnabled(storage)).toBe(true);
+    expect(readSoundVolume(storage)).toBe(80);
+    expect(storage.data[LEGACY_SFX_ENABLED_KEY]).toBeUndefined();
+    expect(storage.data[LEGACY_SFX_VOLUME_KEY]).toBeUndefined();
+  });
+
+  test('没有老键时零写入（迁移是幂等的空操作）', () => {
+    const storage = createStorage();
+    migrateLegacySoundPreferences(storage);
+    expect(Object.keys(storage.data)).toEqual([]);
   });
 });

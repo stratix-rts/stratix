@@ -60,8 +60,9 @@ const readCss = (name: string): string =>
   fs.readFileSync(path.join(__dirname, '..', 'theme', name), 'utf-8');
 
 /**
- * 测试夹具：真 store + 真 adapter；emitCommand 里把 settings.set 交给 store.setPreference
- * （就是 core/runtime.ts 待接线的那一段），其余命令只记账，便于断言"屏发了什么"。
+ * 测试夹具：真 store + 真 adapter；emitCommand 只记账（便于断言"屏发了什么"）。
+ * ★ @since v3.7（task_130）：偏好不再有 settings.set 命令 —— 契约里那两个偏好字段已删
+ *   （没人消费的死字段），偏好统一由本屏直写本机持久层（localStorage）。
  * 屏拿到的是包了一层的 deps：只多包一个订阅计数器，用来断言卸载确实退订。
  */
 interface Harness {
@@ -90,7 +91,6 @@ function mountScreen(partialState: Partial<WorldState> = {}): Harness {
     onState: (handler) => store.subscribe(handler),
     emitCommand: (command) => {
       commands.push(command);
-      if (command.type === 'settings.set') store.setPreference(command.key, command.value);
     },
   });
   const unmountAdapter = adapter.mount();
@@ -158,7 +158,7 @@ describe('纯派生函数', () => {
   });
 
   test('preference 值为 0 → 读作关（键值口径：\'0\' = 关，其余 = 开）', () => {
-    localStorage.setItem('stratix.sfx.enabled', '0');
+    localStorage.setItem('stratix.sound.enabled', '0');
     localStorage.setItem('stratix.context.enabled', '0');
     const values = resolvePreferences();
     expect(values.sfx).toBe(false);
@@ -296,7 +296,7 @@ describe('偏好开关：localStorage 直写 → 文字翻转 → 刷新保持',
   /** 四行偏好各自的存储键（与词表一致，写在用例里避免"用实现验证实现"）。 */
   const ROWS: ReadonlyArray<{ id: string; key: string; selector: string }> = [
     { id: 'notificationsEnabled', key: 'stratix.notifications.enabled', selector: 'button[data-pref="notificationsEnabled"]' },
-    { id: 'sfx', key: 'stratix.sfx.enabled', selector: 'button[data-pref="sfx"]' },
+    { id: 'sfx', key: 'stratix.sound.enabled', selector: 'button[data-pref="sfx"]' },
     { id: 'context', key: 'stratix.context.enabled', selector: 'button[data-pref="context"]' },
     { id: 'nametags', key: 'stratix.unit.nametags', selector: 'button[data-pref="nametags"]' },
   ];
@@ -717,28 +717,45 @@ describe('音效行（task_060）', () => {
     h = mountScreen();
     h.emit(h.store.getState());
     clickInScreen(h.screen, 'button[data-sfx-toggle]');
-    expect(localStorage.getItem('stratix.sfx.enabled')).toBe('0');
+    expect(localStorage.getItem('stratix.sound.enabled')).toBe('0');
     expect(h.screen.shadowRoot?.querySelector('button[data-sfx-toggle]')?.textContent).toContain('关');
 
     clickInScreen(h.screen, 'button[data-sfx-toggle]');
-    expect(localStorage.getItem('stratix.sfx.enabled')).toBe('1');
+    expect(localStorage.getItem('stratix.sound.enabled')).toBe('1');
     expect(h.screen.shadowRoot?.querySelector('button[data-sfx-toggle]')?.textContent).toContain('开');
 
     // 开关只在本机生效：不发 HudCommand（与上下文注入行同一口径 —— 断言零派发）
     expect(h.commands).toHaveLength(0);
   });
 
-  test('音效开关同时门控声音引擎总开关（两条声音通路听同一道闸）', () => {
+  test('音效开关只写一个键（收敛：两条声音通路听同一道闸，老键不再被写）', () => {
     h = mountScreen();
     h.emit(h.store.getState());
     clickInScreen(h.screen, 'button[data-sfx-toggle]');
     expect(localStorage.getItem('stratix.sound.enabled')).toBe('0');
     clickInScreen(h.screen, 'button[data-sfx-toggle]');
     expect(localStorage.getItem('stratix.sound.enabled')).toBe('1');
+    // 老键（stratix.sfx.enabled）不再是活跃键：切换过程中一个字节都不写
+    expect(localStorage.getItem('stratix.sfx.enabled')).toBeNull();
+  });
+
+  test('老键迁移（task_130）：老机器上的 stratix.sfx.* 值被搬进新键，老键清掉', () => {
+    localStorage.setItem('stratix.sfx.enabled', '0');
+    localStorage.setItem('stratix.sfx.volume', '0.3');
+    h = mountScreen();
+    h.emit(h.store.getState());
+    // 老值落到新键（音量 0-1 口径 → 0-100）
+    expect(localStorage.getItem('stratix.sound.enabled')).toBe('0');
+    expect(localStorage.getItem('stratix.sound.volume')).toBe('30');
+    // 老键清掉：收敛后只剩一个活跃键
+    expect(localStorage.getItem('stratix.sfx.enabled')).toBeNull();
+    expect(localStorage.getItem('stratix.sfx.volume')).toBeNull();
+    // 界面显示的是迁移后的值（音效行读作关）
+    expect(h.screen.shadowRoot?.querySelector('button[data-sfx-toggle]')?.textContent).toContain('关');
   });
 
   test('预置 0（全局关）→ 挂载即读作关；音量预置 40 → 档位按钮与滑条都按存储值渲染', () => {
-    localStorage.setItem('stratix.sfx.enabled', '0');
+    localStorage.setItem('stratix.sound.enabled', '0');
     localStorage.setItem('stratix.sound.volume', '40');
     h = mountScreen();
     h.emit(h.store.getState());
@@ -758,8 +775,8 @@ describe('音效行（task_060）', () => {
     // 引擎每次播放现读这个键 → 拖完即生效（死功能 #5 的正解）
     expect(localStorage.getItem('stratix.sound.volume')).toBe('30');
     expect(readSoundVolume()).toBe(30);
-    // 音效服务（0-1 口径）同步 —— 两条声音通路音量一致
-    expect(localStorage.getItem('stratix.sfx.volume')).toBe('0.3');
+    // 收敛（task_130）：音效服务读的是**同一个**键（0-100 口径），老键不再被写
+    expect(localStorage.getItem('stratix.sfx.volume')).toBeNull();
     expect(h.commands).toHaveLength(0);
   });
 

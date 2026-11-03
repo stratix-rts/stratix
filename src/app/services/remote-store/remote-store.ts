@@ -13,7 +13,7 @@
  *   5. 引入新依赖 —— 只用浏览器原生 WebSocket（可注入替换 → 单测用内存替身）。
  *
  * ============ 为什么不是完整的 CoreStore ============
- * `CoreStore` 的写方法（`setState` / `patch` / `pushNotice` / `setPreference` / …）语义是
+ * `CoreStore` 的写方法（`setState` / `patch` / `pushNotice` / …）语义是
  *   「就地改本地真相」；远程模式下本地**没有**真相，照搬这些方法会造出第二份真相（铁律 1）。
  *   故本实现只提供 `CoreStore` 的读侧（`Pick<CoreStore, 'getState' | 'subscribe'>`，类型上同形），
  *   写一律经 `emitCommand` → `command.forward` → service 的 core 状态机裁决。
