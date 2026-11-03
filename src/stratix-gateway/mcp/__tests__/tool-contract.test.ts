@@ -42,6 +42,15 @@ describe('工具面契约自洽', () => {
     expect(chatSend?.description).not.toContain('stratix_chat_history');
   });
 
+  it('chat_send 的描述如实说明本部署不可用，并指向可用的替代路径（task_125）', () => {
+    const chatSend = registry.getTool('stratix_chat_send');
+    const description = chatSend?.description ?? '';
+    expect(description).toContain('本部署暂不可用');
+    expect(description).toContain('not_available');
+    expect(description).toContain('stratix_task_assign');
+    expect(description).toContain('stratix_session_list');
+  });
+
   it('所有带 default 的枚举参数：default 必须在自己的 enum 内', () => {
     const offenders: string[] = [];
     for (const tool of registry.listTools()) {

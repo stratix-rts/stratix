@@ -233,7 +233,7 @@ describe('stratix_chat_send', () => {
     expect(data.reply).toContain('超时');
   });
 
-  it('宿主没接对话端口 → internal_error（不编造回复）', async () => {
+  it('宿主没接对话端口 → internal_error + retryable:false（缺端口不会自愈），且给出替代路径', async () => {
     const store = makeStore();
     const host = makeHost(store);
 
@@ -241,7 +241,29 @@ describe('stratix_chat_send', () => {
       await callChat(host, { character: 'ch_kimi', message: '在吗' });
       throw new Error('应当抛错');
     } catch (error) {
-      expect((error as McpToolError).code).toBe('internal_error');
+      const toolError = error as McpToolError;
+      expect(toolError.code).toBe('internal_error');
+      // task_125 / N1：旧实现落 internal_error 的**缺省** retryable:true —— 那是架构缺口，
+      // 重试不会自愈，标成可重试会诱导外部 agent 无效重试。
+      expect(toolError.retryable).toBe(false);
+      expect(toolError.message).toContain('not_available');
+      // hint 必须指向真正能用的替代路径。
+      expect(toolError.hint).toContain('stratix_task_assign');
+      expect(toolError.hint).toContain('stratix_session_list');
+    }
+  });
+
+  it('端口未接时先报不可用（不落到角色守门）—— 换个角色 id 也不会「碰巧成功」', async () => {
+    const store = makeStore();
+    const host = makeHost(store);
+
+    try {
+      await callChat(host, { character: 'ch_ghost', message: '在吗' });
+      throw new Error('应当抛错');
+    } catch (error) {
+      const toolError = error as McpToolError;
+      expect(toolError.code).toBe('internal_error');
+      expect(toolError.retryable).toBe(false);
     }
   });
 
