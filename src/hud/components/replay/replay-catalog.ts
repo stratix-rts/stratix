@@ -54,8 +54,12 @@ export interface DayReplayPort {
 /** 空态提示（无数据日显示它 —— 「今天没有活儿」也是一句实话）。 */
 export const REPLAY_EMPTY_TEXT = '今天还没有任务记录 · 跑一条任务就有回放了';
 
-/** 读取失败时的提示（读不到与没有是两回事，要说清楚）。 */
-export const REPLAY_ERROR_TEXT = '回放数据读不到（存储面未附着）· 今天先手动看';
+/**
+ * 读取失败时的提示（读不到与没有是两回事，要说清楚）。
+ * why 人话（@since v3.6，task_114）：原先的「回放数据读不到（存储面未附着）」是内部术语
+ *   ——「存储面未附着」用户看不懂，也不知道该干嘛。改成一句人话 + 一个可执行动作（重试按钮）。
+ */
+export const REPLAY_ERROR_TEXT = '回放服务未连接，稍后重试';
 
 /** 分级 → 图标（零资产：字形，不引图标库、不加图片文件）。 */
 export const REPLAY_ICONS: Readonly<Record<DayReplayKind, string>> = Object.freeze({

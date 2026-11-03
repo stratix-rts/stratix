@@ -78,6 +78,10 @@ export function defineStratDayReplay(): typeof HTMLElement {
     private _heat: HTMLElement | null = null;
     private _handle: HTMLElement | null = null;
     private _empty: HTMLElement | null = null;
+    /** 重试按钮（读失败时才出现 —— 给用户一个可执行动作，@since v3.6 task_114）。 */
+    private _retry: HTMLButtonElement | null = null;
+    /** 重试中的读请求（用来禁按钮，避免连点打出一串请求）。 */
+    private _loading = false;
     private _clock: HTMLElement | null = null;
     private _count: HTMLElement | null = null;
     private _button: HTMLButtonElement | null = null;
@@ -182,6 +186,21 @@ export function defineStratDayReplay(): typeof HTMLElement {
           }
           .play[disabled] { opacity: 0.4; cursor: not-allowed; }
           .play:hover:not([disabled]) { background: color-mix(in srgb, var(--srf-visual-accent, ${VISUAL_PALETTE.accent}) 15%, transparent); }
+          /* 重试按钮（@since v3.6，task_114）：读失败时给一个可执行动作 —— 只说「读不到」没用。 */
+          .retry {
+            flex: none;
+            font: inherit;
+            font-size: var(--srf-font-size-xs, 11px);
+            padding: 3px 10px;
+            border-radius: var(--srf-radius-pill, 999px);
+            border: 1px solid var(--srf-visual-accent, ${VISUAL_PALETTE.accent});
+            background: transparent;
+            color: var(--srf-visual-accent, ${VISUAL_PALETTE.accent});
+            cursor: pointer;
+            white-space: nowrap;
+          }
+          .retry[disabled] { opacity: 0.4; cursor: progress; }
+          .retry:hover:not([disabled]) { background: color-mix(in srgb, var(--srf-visual-accent, ${VISUAL_PALETTE.accent}) 15%, transparent); }
         </style>
         <div class="row">
           <span class="title">今日回放</span>
@@ -192,12 +211,14 @@ export function defineStratDayReplay(): typeof HTMLElement {
             <div class="handle" data-role="handle" style="left: 0"></div>
           </div>
           <span class="empty" data-role="empty" hidden></span>
+          <button class="retry" type="button" data-role="retry" hidden>重试</button>
           <button class="play" type="button" data-role="play" disabled>▶ 60 秒看完今天</button>
         </div>
       `;
       this._heat = root.querySelector('[data-role="heat"]');
       this._handle = root.querySelector('[data-role="handle"]');
       this._empty = root.querySelector('[data-role="empty"]');
+      this._retry = root.querySelector('[data-role="retry"]');
       this._clock = root.querySelector('[data-role="clock"]');
       this._count = root.querySelector('[data-role="count"]');
       this._button = root.querySelector('[data-role="play"]');
@@ -208,6 +229,7 @@ export function defineStratDayReplay(): typeof HTMLElement {
       // 控制岛有 100px 高度预算，热力条得按岛的排版收窄。
 
       this._button?.addEventListener('click', this.onPlayClick);
+      this._retry?.addEventListener('click', this.onRetryClick);
       this._strip?.addEventListener('pointerdown', this.onPointerDown);
       this._strip?.addEventListener('pointermove', this.onPointerMove);
       this._strip?.addEventListener('pointerup', this.onPointerUp);
@@ -221,6 +243,7 @@ export function defineStratDayReplay(): typeof HTMLElement {
       this._unsubscribe?.();
       this._unsubscribe = null;
       this._button?.removeEventListener('click', this.onPlayClick);
+      this._retry?.removeEventListener('click', this.onRetryClick);
       this._strip?.removeEventListener('pointerdown', this.onPointerDown);
       this._strip?.removeEventListener('pointermove', this.onPointerMove);
       this._strip?.removeEventListener('pointerup', this.onPointerUp);
@@ -250,6 +273,12 @@ export function defineStratDayReplay(): typeof HTMLElement {
         this._empty.hidden = hasData;
         // 读不到与今天没活儿是两回事 —— 说清楚，别装成空数据。
         this._empty.textContent = state.failed ? REPLAY_ERROR_TEXT : REPLAY_EMPTY_TEXT;
+      }
+      // 重试按钮（@since v3.6，task_114）：只在「读失败」时出现 —— 有数据 / 今天没活儿都不需要它。
+      if (this._retry) {
+        this._retry.hidden = !state.failed;
+        this._retry.disabled = this._loading;
+        this._retry.textContent = this._loading ? '读取中…' : '重试';
       }
       if (this._strip) this._strip.style.display = hasData ? '' : 'none';
       if (this._count) {
@@ -322,6 +351,31 @@ export function defineStratDayReplay(): typeof HTMLElement {
       if (!controller) return;
       if (this._playing) controller.stop();
       else controller.play();
+    };
+
+    /**
+     * 点「重试」：重新读一次当天数据（@since v3.6，task_114）。
+     * why 组件自己不发请求：读走控制器（它持有读取口）—— 组件只是把用户意图转过去。
+     *   读失败时控制器把 failed 置真、成功时置假，文案随之切换（同一处真相）。
+     */
+    private onRetryClick = (): void => {
+      const controller = this._controller;
+      if (!controller || this._loading) return;
+      this._loading = true;
+      if (this._retry) {
+        this._retry.disabled = true;
+        this._retry.textContent = '读取中…';
+      }
+      void controller.load().then(
+        () => {
+          this._loading = false;
+          this.render(controller.state);
+        },
+        () => {
+          this._loading = false;
+          this.render(controller.state);
+        },
+      );
     };
 
     /**

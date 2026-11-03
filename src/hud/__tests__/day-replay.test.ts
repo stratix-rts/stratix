@@ -312,6 +312,52 @@ describe('底部时间轴组件', () => {
     host.remove();
   });
 
+  test('读失败 → 文案是人话（不含内部术语），且给出可点的「重试」', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    let attempts = 0;
+    const controller = createReplayController({
+      port: {
+        loadDay: async () => {
+          attempts += 1;
+          if (attempts === 1) throw new Error('读取当日回放失败');
+          return [];
+        },
+      },
+      emitBeat: () => undefined,
+      setClock: () => undefined,
+    });
+    const mounted = mountDayReplay(host, { controller });
+    await controller.load();
+    const empty = mounted.element.shadowRoot?.querySelector('[data-role="empty"]') as HTMLElement;
+    const retry = mounted.element.shadowRoot?.querySelector('[data-role="retry"]') as HTMLButtonElement;
+    // 人话：不带「存储面未附着」这类内部术语
+    expect(empty.textContent).toBe('回放服务未连接，稍后重试');
+    expect(empty.textContent).not.toContain('存储面');
+    // 失败态才给重试按钮
+    expect(retry.hidden).toBe(false);
+    retry.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(attempts).toBe(2);
+    host.remove();
+  });
+
+  test('读成功 → 不出现「重试」按钮', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const controller = createReplayController({
+      port: { loadDay: async () => [] },
+      emitBeat: () => undefined,
+      setClock: () => undefined,
+    });
+    const mounted = mountDayReplay(host, { controller });
+    await controller.load();
+    const retry = mounted.element.shadowRoot?.querySelector('[data-role="retry"]') as HTMLButtonElement;
+    expect(retry.hidden).toBe(true);
+    host.remove();
+  });
+
   test('有数据 → 画热力条，按钮可点', async () => {
     const { host, mounted, controller } = mountWith([
       entry({ at: 1000, characterId: 'a' }),

@@ -118,6 +118,8 @@ import { createOcclusionController } from '../../hud/layers/occlusion';
 import { replayEntryText } from '../../hud/components/replay/replay-catalog';
 import { mountReplayClock } from '../../hud/components/replay/replay-clock';
 import { createReplayController } from '../../hud/components/replay/replay-controller';
+// 网关连通性横幅（@since v3.6，task_114）：断连时顶栏下方挂一条全局横幅（首屏第一眼可见）。
+import { mountGatewayBanner } from '../../hud/components/gateway-banner/gateway-banner';
 // 屏幕空间特效（@since v3.3，task_086）：横向扫描光带 + 报错红光晕 —— 从战场可缩放层迁到
 //   HUD 屏幕空间（fixed 定位，不随镜头缩放平移变形）。组件只被驱动，事件订阅与导演模式
 //   的判定都在本文件（组合根），与跑马灯同一装配口径。
@@ -197,6 +199,8 @@ import {
 } from '../services/persistence/exp-record';
 // agent 健康监测（@since v3.30，task_054）：周期探测防抖判定 + transport exit 审计的单服务。
 import { createHealthMonitor } from '../services/health-monitor';
+// 网关连通性监测（@since v3.6，task_114）：探 /health 判定 service 生死 —— 全局断连横幅的唯一判定方。
+import { createGatewayLinkMonitor } from '../services/gateway-link';
 import { agentHealthApi, makeAgentHealthPersister } from '../services/persistence/agent-health-record';
 // 恢复 toast 的 kind 显示名（词表单一真相源在 onboarding-catalog，与 agent-panel 同源）。
 import { agentKindLabel } from '../../hud/screens/onboarding-catalog';
@@ -433,6 +437,19 @@ async function boot(): Promise<void> {
   //   `host.innerHTML = ...` 重写 #hud-root —— 挂在里面的角标当场被抹掉，时间戳角标从来没出现过。
   //   #hud-side 是覆盖层容器（pointer-events:none，JS 永不重写它），角标 fixed 定位不受影响。
   const { element: replayClock, unmount: unmountReplayClock } = mountReplayClock(hudSide);
+
+  // ===== 网关连通性横幅（@since v3.6，task_114）=====
+  // 断连横幅：网关（service / 7524）没连上时，顶栏正下方挂一条全局提示 +「重试」。
+  // why 判定在 app 层（app/services/gateway-link.ts 探 /health）：本地直连模式下浏览器页与网关
+  //   之间没有常驻连接，总线上没有「网关死了」的事件 —— 只有探活能判（详见该服务文件头）。
+  // why 挂 #hud-side（同回放角标的理由）：#hud-root 每次重绘都被 innerHTML 重写，挂里面会被抹掉。
+  const gatewayLink = createGatewayLinkMonitor({
+    baseUrl: remote
+      ? httpBaseFromWorldSyncUrl(remoteWorldSyncUrl(DEFAULT_WORLD_SYNC_URL))
+      : DEFAULT_SESSION_HISTORY_BASE_URL,
+  });
+  const { unmount: unmountGatewayBanner } = mountGatewayBanner(hudSide, { link: gatewayLink });
+  const stopGatewayLink = gatewayLink.start();
   // 跑马灯引用位（回放重演的事件也要进跑马灯 —— 跑马灯本体在下方挂载，这里先留引用）。
   let marqueeEl: StratMarqueeElement | null = null;
   // 单位位置累积表（单位 id → 世界坐标）：小地图与快捷键居中共用同一份 ——
@@ -1313,6 +1330,9 @@ async function boot(): Promise<void> {
       // 当日回放（task_082）：停掉未触发的节拍定时器 + 收角标 + 卸角标宿主。
       replayController.dispose();
       unmountReplayClock();
+      // 网关连通性横幅（task_114）：停周期探测（清定时器）+ 卸横幅宿主（退订）。
+      stopGatewayLink();
+      unmountGatewayBanner();
       // 屏幕空间特效（task_086）：退总线订阅 + 卸两个覆盖层宿主（同卸载纪律；
       // 卸宿主触发 disconnectedCallback → 光晕的 animationend 监听随之摘掉）。
       stopErrorGlowFeed();
