@@ -4,6 +4,7 @@
 > 分支：`demo/v3.3`（worktree `/Users/kingj/code/Stratix-demo`，基于 master 28a4854）
 > 验收人：枫余（切分支看视觉效果，OK 的保留，不 OK 回滚——所以**每个任务独立 commit，禁止跨任务合并 commit**）
 > 目标：一场面向非技术社区（观猹）的直播演示，画面自己会讲故事，主播只动嘴不动手。
+> ⚠️ v3.4 的 HUD 重构（task_088 ~ task_095）另见 [§13](#13-v34-hud-重构task_088--task_095) —— §1–§12 是 v3.3 的冻结内容，未被 v3.4 改动。
 
 ---
 
@@ -166,3 +167,56 @@
 - 不改 HEARTBEAT.md / lra 配置 / 总线契约（core/types.ts 只加不改——加事件类型允许）
 - 不动 `/Users/kingj/code/Stratix` 主工作区（那是运行中的 dev 实例）——一切在本 worktree
 - 每任务独立 commit（`v3.3(<n>): <摘要>`），验收人要按 commit 回滚
+
+---
+
+## 13. v3.4 HUD 重构（task_088 ~ task_095）
+
+依据：[`docs/hud-redesign-proposal.html`](hud-redesign-proposal.html)（task_088 的论证文档）—— 顶栏瘦身 / 控制岛浮起 / 事件轨收窄 / 信息三层级（Z1–Z7 分区）。**功能零删减：§4 对照表 40/40 项一件不少。**
+
+分支同 v3.3（`demo/v3.3`，worktree `/Users/kingj/code/Stratix-demo`），提交号前缀 `v3.4(<n>):`。
+
+### 13.1 交付清单（commit 对照）
+
+| # | 任务 | 交付物 | 核心验收 | commit |
+|---|------|--------|---------|--------|
+| 088 | HUD 重构设计论证 | `docs/hud-redesign-proposal.html`（现状功能清单 + §4 40 项对照表 + 代价与风险） | 逐项写明「现在在哪 → 新的在哪 → 变化类型」，无一项标删除 | `eca435a` |
+| 096 | 地基：信息三层级 | `core/info-layer.ts` + `core/types.ts` 契约 + `hud/layers/info-layer.ts` + `hud/layers/layer-switch.ts` + 演示三档开关 | core 契约**只加不改**；L1/L2/L3 判定可单测 | `c2ee5c4` |
+| 089 | 顶栏瘦身 | 19 元素降 7（品牌 + 态势胶囊 + 通知徽标 + 🔊/🎬/▶ + ⋯）；状态文本三 tag 删除 | ⋯ 溢出菜单收纳 5 项（聊天 / 会话 / 角色 / 设置 / 换肤）；音量移进 🔊 弹出层 | `2f09650`（收尾 `93697a5`） |
+| 091 | Z2 事件轨 | 宽 ≤260px + 默认 2 条「展开 N 条」+ hover 详情（不跳布局）+ 点击发 `focus.unit` | `MARQUEE_METRICS` 为唯一事实源；5 条上限不变 | `e5acf33` |
+| 090 | Z4 控制岛 | 底栏 → 贴底居中浮岛（高 60px 封顶 100px、宽 min(56%, 屏宽−2×316px)）；回放条与命令条同岛上下分层；命令条 1 行 6 条、其余横向滚动 | 与事件轨 / 小地图零重叠且间距 ≥40px；`scripts/check-hud-island-layout.mjs` 在真浏览器量 bbox | `140949e` |
+| 092 | Z2b 单位联动 | 被点单位霓虹描边呼吸高亮 + 事件轨→中屏屏幕空间引导弧线（800ms）+ 导演模式中屏四角取景框 | world 侧只经总线收 HUD 指令；HUD↔world 零互引 | `e42451c` |
+| 093 | Z3/Z5 边角件 | 小地图 hover 提亮（filter 过渡）+ 间距规则化；回放时间戳角标迁左上 inset top 56px（仅回放态） | 角标不压顶栏；小地图 hover 亮度 >1 且有过滤渡 | `7e89799` |
+| 094 | Z6 沉浸层接线 | 三类演出自动接管 L3：里程碑大字 / ▶60 秒重演 / 导演取景框；播放期 L1 降对比、L2 收起 | 演出结束自动归还层级（`hud.layer.hold`） | `24f1817` |
+| 095 | 收口 | 40 项功能对照逐项断言（32 HUD + 7 世界 + 1 组合根）；四角碰撞复验（成对零重叠矩阵）；proposal §4 增「实施状态」列；本节 | tsc + jest 全绿 / e2e fake 不回归 / build 绿 | 本次提交 |
+
+> ⚠️ **commit 号口径**：任务书里 090 记作 `32a3289`，但那是**没有落进本分支**的一次提交（内含 090+092 两件事）—— 本分支上的实际提交是 `140949e`（只含 090）。本文与 `hud-redesign-proposal.html` §4 的「实施状态」列一律以 `git log` 实测为准。
+
+### 13.2 验收资产（v3.4 收口）
+
+| 资产 | 覆盖 |
+|------|------|
+| `src/hud/__tests__/v34-feature-matrix.test.ts` | §4 的 HUD 侧 32 项（A1–A13 / B1–B3 / C1–C2 / D1–D6 / E1–E5 / F2 / F3）—— jsdom 逐项断言「可达」 |
+| `src/world/__tests__/v34-feature-matrix.test.ts` | 世界侧 7 项（F1 / G1 / G3 / G4 / G5 / G6 / G7）—— 纯模块决策层断言 |
+| `src/app/__tests__/v34-main-entry-buttons.test.ts` | 组合根 G8 —— 一键入口的真实落点（▶ 60 秒看完今天 / 重置编组） |
+| `scripts/check-hud-island-layout.mjs` | 四角碰撞复验：岛高 / 间距 / 中轴可用高度 / 小地图 hover / 角标避让 + **五个盒子成对零重叠矩阵**（1280×720、1920×1080、1024×768 三档真排版） |
+| `scripts/check-hud-feature-matrix-status.mjs` | §4「实施状态」列一致性：40 行都有状态、commit 号真在本分支历史里、40 项都有断言用例、部分落地项都在 §13.3 登记 |
+
+跑法（e2e 走 fake 模式与备用端口，不碰用户实例的 7523 / 7524 / 9222）：
+
+```
+npx tsc --noEmit
+npx jest src/hud/__tests__/v34-feature-matrix.test.ts src/world/__tests__/v34-feature-matrix.test.ts src/app/__tests__/v34-main-entry-buttons.test.ts --maxWorkers=2
+node e2e-tests/demo-flow.e2e.mjs          # 44 条演示断言（fake CLI）
+node scripts/check-hud-island-layout.mjs   # 四角碰撞（量本仓 vite dev 的 7523，只读页面不改状态）
+node scripts/check-hud-feature-matrix-status.mjs  # §4 实施状态列 ↔ git 历史 ↔ 断言用例 三方一致
+npm run build
+```
+
+### 13.3 未尽事项（v3.4 收口登记 —— 不在本链顺手修）
+
+| 项 | 状态 | 说明 |
+|----|------|------|
+| C2 顶栏「已跳转」一次性确认 | **未落地** | 小地图点击跳转本身原样可用；proposal 承诺的一次性确认提示未实现（全仓 `src/` 无「已跳转」字样） |
+| D2 「此刻事件卡」浮层 + 事件轨同步高亮 | **未落地** | scrubber 拖动与 seek 逻辑原样可用；浮层未实现（全仓无该组件） |
+| G8「↗ 回放 / ⟳ 重置」字形对 | **从未存在** | 全仓与全部 git 历史零命中 —— 是 proposal 行文里的示意图；真实的一键入口是「▶ 60 秒看完今天」与设置屏「重置编组」，断言按真实落点写 |

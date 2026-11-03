@@ -1,96 +1,89 @@
-# task_095 hud: 会话面板——列表/筛选/状态徽标/中断按钮/历史抽屉
+# task_095 HUD v3.4 收口
 
 ## 描述
 
-v3.2a S5：会话管理的 UI 入口（用户点名的「看不到多会话管理」）。方案 docs/SESSION-PLAN.md 第 4 节 HUD 段。依赖 S3（task_093）。
+功能对照表 40 项逐项验证脚本化（e2e 断言每项可达）+ 四角碰撞复验（零重叠断言）+ hud-redesign-proposal.html 增补实施状态列 + DEMO-PLAN.md 补 v3.4 节。
 
 ## Requirements
 
-1. 新面板 `src/hud/panels/session-panel.ts`（严格遵循 hud/panels 既有模式——先读 mission 面板与 chat-drawer 的结构惯例；WebComponents+双 token 皮肤）：
-   - 会话列表：kind 筛选 chips（全部/聊天/互聊/任务/编队/连接）+ 状态徽标（active 绿/idle 灰/interrupted 橙红/closed 暗淡）
-   - 数据源：WorldState.sessions 订阅（实时刷新零轮询）；title 显示自动起名
-   - 进行中（active/interrupted→可恢复提示）会话行内「中断」按钮 → emitCommand session.interrupt
-   - 历史抽屉：点击会话行展开，kind 路由到对应读取器——character_chat 走 chat-history API、peer_chat/task_run 走 session-events API（S2 REST）、mission_run 显示 mission 详情引用、shell_link 显示 messages 投影；分页（滚动到顶加载更早）
-2. 总线铁律：hud 只依赖 core/types 契约 + app 服务层；不 import world/gateway 内部。
-3. 空态/边界：无会话（引导文案）、事件缺失（未附着语义，绝不显示假空数据）、长 title 截断。
-4. 入口：HUD 侧栏按钮（照现有面板入口模式，常驻可见——这就是「多会话管理」的入口）。
+e2e 遵循既有 fake/real 约定；38+44 基线断言不回归；tsc 零错；build 绿。
 
 ## Acceptance
 
-- [x] 面板组件单测：列表渲染/筛选/徽标/中断命令发出/空态
-- [x] 历史抽屉 kind 路由单测（mock 数据源）
-- [x] git diff src/world 为空（总线铁律）
-- [x] npx tsc --noEmit 0 错 + npx jest 全绿
+- [x] 40 项功能断言全绿
+- [x] 碰撞断言通过
+- [x] 基线断言不回归
+- [x] tsc+build 绿
+- [x] 两文档更新
 
 ## deliverables
 
-- src/hud/panels/session-panel.ts（+样式走双 token）+ 入口接线 + 单测
+e2e 断言 + 碰撞复验脚本 + 文档状态（依赖 089-094 全部）
 
----
+## 验证记录（2026-11-03）
 
-## 实现记录（2026-11-02）
+### (a) 40 项逐项断言 —— 按「哪层能确定地断言」分三处
 
-### ① 交付物
+40 项不是一套测试能盖住的（有的画在 Phaser 画布上、有的在组合根），按可断言的位置分三处，
+三处加起来正好 40 项、互不重叠：
 
-| 文件 | 职责 |
-|---|---|
-| `src/hud/panels/session-catalog.ts` | 面板的**纯逻辑层**：kind 筛选档表 / 中文标签 / 能不能中断 / 可恢复提示 / 可见会话（筛选 + 排序）/ 标题截断 / 相对时间 / 历史条目形状 / 任务单引用投影 / 命令行消息投影（无 IO 无 DOM，可单测） |
-| `src/hud/panels/session-panel.ts` | 面板组件 `<strat-session-panel>`：列表 / kind 筹码 / 状态徽标 / 行内「中断」钮（发 `session.interrupt`）/ 历史抽屉（kind 路由 + 分页 + 竞态守卫） |
-| `src/app/services/session-history/session-history.ts` | **app 层读面**：会话历史的两路真 IO（角色对话历史经 preload 通道 / 会话事件流经 service 只读 REST）+ 与 hud 侧结构同形的 `SessionHistoryPort` |
-| `src/hud/screens/main-screen.ts` | 入口接线：右栏挂会话面板槽位 + 顶栏「会话面板」按钮（toggle）+ `MainScreenOptions.sessionHistory` 可选注入口 |
-| `src/app/main/main-entry.ts` | 组合根接线：`createSessionHistoryPort({ baseUrl: 远程 ? world-sync 端点换协议 : 本机 7524 })` 注入主屏 |
-| `src/hud/__tests__/session-panel.test.ts` | 面板单测 29 例（列表渲染 / 筛选 / 徽标 / 中断命令 / 空态三档 / 历史抽屉四路 kind 路由 / 未附着 / 读取失败 / 分页 / 竞态 / 卸载退订 / 主屏装配） |
-| `src/app/__tests__/session-history.test.ts` | 读面单测 20 例（事件信封→条目 / 库行→条目 / ws→http 换算 / 两路 IO 的调用形状与失败口径） |
+| 位置 | 项数 | 文件 | 口径 |
+|------|------|------|------|
+| HUD 侧（jsdom） | 32 | `src/hud/__tests__/v34-feature-matrix.test.ts` | A1–A13 / B1–B3 / C1–C2 / D1–D6 / E1–E5 / F2 / F3 |
+| 世界侧（node，纯模块） | 7 | `src/world/__tests__/v34-feature-matrix.test.ts` | F1 / G1 / G3 / G4 / G5 / G6 / G7 |
+| 组合根（源码装配契约） | 1 | `src/app/__tests__/v34-main-entry-buttons.test.ts` | G8 |
 
-### ② 关键设计决策
+why 世界侧断言在纯模块而不是浏览器：jsdom 没有 canvas 渲染，像素级「画没画出来」量不出来；
+但每项功能的**决策**都在纯模块里（谁先冒泡、镜头给谁、气泡几拍一次、八态怎么推导）——
+断言决策比断言像素更早暴露回归，画布那一层由 fake 模式的演示剧本兜底。
 
-1. **纯逻辑抽 catalog、组件只画画**：筛选 / 徽标 / 截断 / 相对时间 / 两路投影全在 `session-catalog.ts`
-   （无 IO 无 DOM）——与 command-catalog / log-catalog 同一惯例；组件文件只剩「模型 → Shadow DOM」。
-2. **历史读取口用「结构同形」的注入法**（仓库既有做法，如 core/session 的 `SessionPersistPort`）：
-   hud 侧声明 `SessionHistoryPort`，app 侧另写一份**形状相同**的接口，组合根接线时由类型系统对齐。
-   app 层不 import hud、hud 层不 import app（依赖方向不倒挂）。
-3. **四路 kind 路由按「真相在哪」分流**：character_chat 的历史在 `chat_messages` 表（preload 通道）、
-   peer_chat/task_run 的历史在 `session_events` 表（service 只读 REST）—— 两张表是既成的，
-   面板按 kind 路由到各自那张表；mission_run / shell_link 的真相**就在 WorldState 里**
-   （任务单视图 / messages 投影），再走一遍 IO 就是多一份可能过期的真相 → 直接投影，不发请求。
-4. **空态四档，互不混同**：无会话（引导文案）/ 该筛选下没有（是筛选结果）/ 读取器未附着（说"未附着"）/
-   读取失败（说失败 + 给重试）/ 读到空（说"没有可读的历史记录"）。**绝不拿假数据充数**。
-5. **中断钮只给 active/idle**：interrupted / closed 都是不可再来一次的相位（状态机会拒绝重复中断并回 Notice），
-   按钮点不动的事实不该由用户点一次才知道；interrupted 改成给"已中断 · 恢复续聊待上线"的提示（恢复属 2b）。
-6. **抽屉竞态守卫**：切会话时旧请求的结果必须丢弃（否则会把上一条会话的历史画到新会话下）；
-   前插更早一页后把滚动视口锚回原处（否则新内容一进来就把用户顶走）。
-7. **面板常驻右栏 + 顶栏按钮双入口**：面板折叠时只留标题栏（省布局），顶栏「会话面板」按钮与面板自身的
-   「展开/收起」chip 都能切换 —— 入口常驻可见（这正是用户要的「多会话管理」的入口）。
-8. **零轮询**：面板只订阅 `WorldState.sessions` 广播；历史只在用户点开抽屉时读一次（分页另算）。
+G4（回放气泡减半）没有纯 seam，用「常量 + 读源码钉住闸门 + 显式验半频语义」三段代替：
+`REPLAY_METRICS.bubbleEveryN === 2` + `BattlefieldScene.ts` 里的 `this.replayBubbleTick % REPLAY_METRICS.bubbleEveryN !== 0` + [2,4,6] 的放行拍序。
 
-### ③ 验证记录
+G8 的口径澄清：proposal §1.1 写的「主入口按钮组（↗ 回放 / ⟳ 重置）」里，那两个字形
+**在产品代码与全部 git 历史里零命中**——是 proposal 行文里的示意图，从未落地。
+断言按产品里真实存在的两个一键入口写：「▶ 60 秒看完今天」（控制岛内）与设置屏「重置编组」
+（主屏 ⋯ → 去设置 → 可点）。字形对本身的缺位记在「未尽事项」。
 
-命令（任务书指定）：`npx tsc --noEmit && npx jest src/hud --silent`
+### (b) 四角碰撞复验 —— 复用 090 的脚本，加一条「成对零重叠矩阵」
 
-```
-Test Suites: 37 passed, 37 total
-Tests:       791 passed, 791 total
-Snapshots:   0 total
-Time:        4.872 s
-```
+`scripts/check-hud-island-layout.mjs`（090 建、093 扩）本任务再扩一条 ⑨：
+顶栏 / 事件轨 / 小地图 / 控制岛 / 时间戳角标**五个盒子两两之间包围盒交集面积恒为 0**。
+why 做成矩阵而不是逐条写死：以后新增一个边角件，它与已有件的碰撞**自动**进网，
+不用记得补一条断言（漏一条 = 漏一个碰撞位）。
 
-`npx tsc --noEmit` → 无输出（0 错）。
+### (c)(d) 两文档更新
 
-本任务新增套件：`npx jest src/hud/__tests__/session-panel.test.ts --silent` → 29 passed；
-`npx jest src/app/__tests__/session-history.test.ts --silent` → 20 passed。
+- `docs/hud-redesign-proposal.html` §4 表增「实施状态」列（逐项标 commit 号）+ 列口径说明；
+- `docs/DEMO-PLAN.md` 增 §13（v3.4 交付清单 + commit 对照 + 验收资产 + 未尽事项）。
 
-全量：`npx jest --silent` → `Test Suites: 202 passed, 202 total / Tests: 6 skipped, 4096 passed, 4102 total`。
+commit 号口径：任务书里 090 记作 `32a3289`，但那是**没有落进本分支**的一次提交（内含 090+092）——
+本分支上的实际提交是 `140949e`（只含 090）。文档一律以 `git log` 实测为准。
 
-总线铁律：`git diff src/world` → 空（无输出）。
+### 验证输出
 
-### ④ 未尽事项
+`npx tsc --noEmit` → 0 错（无输出）
 
-- **本地直连模式下会话事件不在渲染侧库里**（组合根的 sessionManager 没有 persist 口，两张表的写口在
-  service 进程的 storage.ts）→ 本地模式下抽屉对 peer_chat/task_run 会如实显示"没有可读的历史记录"
-  （不是假数据）；补齐需 IPC 落库通道，属 S7。
-- **远程模式**：会话事件读 service 的只读 REST（`GET /api/storage/sessions/:id/events`，S2 落地的），
-  基址由 world-sync 端点换协议得出（ws→http / wss→https）。
-- **恢复续聊（interrupted → active + 上下文回灌）**按方案放 2b；本单只落提示与徽标。
-- **MCP 工具（S6）**未做；面板的中断命令目前只到 HUD→core 方向（core 侧裁决）。
-- **任务单详情引用**目前只给「标题 · 相位」一行（WorldState.missions 里没有更多可展示的字段）；
-  若将来任务单正文进广播，投影可再丰富。
+`npx jest src/hud/__tests__/v34-feature-matrix.test.ts src/world/__tests__/v34-feature-matrix.test.ts src/app/__tests__/v34-main-entry-buttons.test.ts --maxWorkers=2`
+→ `Test Suites: 3 passed, 3 total / Tests: 44 passed, 44 total`（44 个用例覆盖 40 个功能项）
+
+`npx jest --maxWorkers=2`（全量）→ `Test Suites: 261 passed, 261 total / Tests: 6 skipped, 4851 passed, 4857 total`
+
+`node e2e-tests/demo-flow.e2e.mjs`（fake 模式）→ `断言：45/45 通过`（44 条演示断言 + 1 条进程回收纪律）
+
+`node e2e-tests/session-capabilities.e2e.mjs`（fake 模式）→ `断言：38/38 通过`（会话域基线不回归）
+
+`npm run build` → `✓ built in 3.83s`（backend tsc+tsc-alias 绿，frontend 180 modules transformed）
+
+`node scripts/check-hud-island-layout.mjs` → `✓ 碰撞断言全过：……五个盒子成对零重叠`（1280×720 / 1920×1080 / 1024×768 三档，10 对全 ∅）
+
+`node scripts/check-hud-feature-matrix-status.mjs`（本任务新增）
+→ `✓ 状态列一致性全过：40 行各有实施状态、commit 号真实存在、40 项都有断言用例、部分落地项均已登记未尽事项`
+
+### 未尽事项（不在本链顺手修）
+
+| 项 | 状态 | 说明 |
+|----|------|------|
+| C2 顶栏「已跳转」一次性确认 | 未落地 | 小地图点击跳转本身原样可用；全仓 `src/` 无「已跳转」字样 |
+| D2 「此刻事件卡」浮层 + 事件轨同步高亮 | 未落地 | scrubber 拖动与 seek 原样可用；全仓无该组件 |
+| G8「↗ 回放 / ⟳ 重置」字形对 | 从未存在 | 全仓与全部 git 历史零命中，是 proposal 行文里的示意图 |

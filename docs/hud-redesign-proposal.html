@@ -730,54 +730,67 @@ td.num{font-family:var(--mono);white-space:nowrap;text-align:right}
   <div class="table-scroll">
   <table>
     <thead><tr>
-      <th style="width:4%">#</th><th style="width:19%">功能</th><th style="width:19%">现状位置</th><th style="width:21%">新版位置</th><th style="width:9%">变化</th><th>说明</th>
+      <th style="width:4%">#</th><th style="width:15%">功能</th><th style="width:15%">现状位置</th><th style="width:18%">新版位置</th><th style="width:7%">变化</th><th style="width:18%">实施状态</th><th>说明</th>
     </tr></thead>
     <tbody>
-      <tr><td class="num">A1</td><td>品牌标识</td><td>顶栏左</td><td>顶栏左（Z1）</td><td><span class="tag t-same">原样</span></td><td>—</td></tr>
-      <tr><td class="num">A2</td><td>单位 / 任务 / 会话计数</td><td>顶栏三个独立 span</td><td>顶栏一枚「态势胶囊」（三值合一）</td><td><span class="tag t-fold">收纳</span></td><td>数值与来源不变（仍读 <code>WorldState</code>）；胶囊只是排版合并</td></tr>
-      <tr><td class="num">A3</td><td>通知徽标</td><td>顶栏右</td><td>态势胶囊右侧</td><td><span class="tag t-move">移位</span></td><td>与数字绑在一起更容易被注意到</td></tr>
-      <tr><td class="num">A4</td><td>切换像素风</td><td>顶栏独立按钮</td><td>⋯ 溢出菜单第 5 项</td><td><span class="tag t-fold">收纳</span></td><td>低频操作；观众不需要知道有皮肤</td></tr>
-      <tr><td class="num">A5</td><td>演示模式开关</td><td>顶栏按钮「演示」</td><td>顶栏 ▶ 图标开关（与 🔊 / 🎬 并排）</td><td><span class="tag t-move">移位</span></td><td>开关本身升级为图标 + 选中态胶囊</td></tr>
-      <tr><td class="num">A6</td><td>🎬 导演开关</td><td>顶栏按钮「🎬 导演」</td><td>顶栏 🎬 图标开关</td><td><span class="tag t-move">移位</span></td><td>同上；开启后中屏出现取景框作为状态回显</td></tr>
-      <tr><td class="num">A7</td><td>🔊 声音总开关</td><td>顶栏按钮「🔊 声音」</td><td>顶栏 🔊 图标开关</td><td><span class="tag t-move">移位</span></td><td>点击开关 = 静音；点击旁边的音量区 = 弹出音量层</td></tr>
-      <tr><td class="num">A8</td><td>音量 0–100</td><td>顶栏常驻 range（84px）</td><td>🔊 弹出层内的滑条</td><td><span class="tag t-fold">收纳</span></td><td>关闭时不再占顶栏宽度（P7）；值与写入口径不变（<code>localStorage</code>）</td></tr>
-      <tr><td class="num">A9</td><td>打开聊天</td><td>顶栏按钮</td><td>⋯ 溢出菜单</td><td><span class="tag t-fold">收纳</span></td><td>行为不变（<code>ui.navigate chat</code> + <code>stratix:chat-open</code>）</td></tr>
-      <tr><td class="num">A10</td><td>会话面板（展开 / 收起）</td><td>顶栏按钮</td><td>⋯ 溢出菜单 + 右侧列面板本体</td><td><span class="tag t-fold">收纳</span></td><td>面板本体仍在右列，只是入口收进菜单</td></tr>
-      <tr><td class="num">A11</td><td>看角色（形象 / 成长）</td><td>顶栏按钮</td><td>⋯ 溢出菜单</td><td><span class="tag t-fold">收纳</span></td><td>行为不变（<code>ui.navigate character</code>）</td></tr>
-      <tr><td class="num">A12</td><td>去设置</td><td>顶栏 primary 按钮</td><td>⋯ 溢出菜单</td><td><span class="tag t-fold">收纳</span></td><td>唯一 primary 按钮消失是好事：主屏不该有第二个"主行动"</td></tr>
-      <tr><td class="num">A13</td><td>theme / demo / director 状态文本</td><td>顶栏最右三个 tag</td><td>由三个开关按钮的「选中态」承担</td><td><span class="tag t-fix">修复</span></td><td>文字形态消失，<b>状态信息不丢</b>（按钮点亮即状态）；顺带解决它是演示下泄漏的工程件（P6 / P11）</td></tr>
-      <tr><td class="num">B1</td><td>事件跑马灯 5 条</td><td>左下 fixed</td><td>左下「事件轨」（Z2），宽 ≤260px，默认显示 2 条 + 「展开 N 条」</td><td><span class="tag t-move">移位</span></td><td>条数上限 <b>5 不变</b>（<code>MARQUEE_METRICS.maxEntries</code>）；变的是默认可见数与宽度</td></tr>
-      <tr><td class="num">B2</td><td>相对时间刷新</td><td>跑马灯条目内</td><td>事件轨条目内</td><td><span class="tag t-same">原样</span></td><td>5s 一跳不变</td></tr>
-      <tr><td class="num">B3</td><td>里程碑大字</td><td>屏幕中央 fixed</td><td>屏幕中央（L3 沉浸层）</td><td><span class="tag t-add">增强</span></td><td>位置与规格不变；新增"L3 激活时 L1 让位"的层级规则</td></tr>
-      <tr><td class="num">C1</td><td>小地图 200×120</td><td>右下 fixed</td><td>右下（Z3），尺寸不变</td><td><span class="tag t-same">原样</span></td><td>200×120 是 <code>MINIMAP_METRICS</code> 钦定值，不动</td></tr>
-      <tr><td class="num">C2</td><td>小地图点击跳转</td><td>小地图画布</td><td>小地图画布</td><td><span class="tag t-add">增强</span></td><td>跳转行为不变；新增顶栏「已跳转」一次性确认</td></tr>
-      <tr><td class="num">D1</td><td>今日回放热力条（96 桶）</td><td>底栏上沿</td><td>控制岛内（Z4）</td><td><span class="tag t-move">移位</span></td><td>桶数与重建指纹策略不变</td></tr>
-      <tr><td class="num">D2</td><td>回放 scrubber 拖动</td><td>热力条上</td><td>控制岛内 + 「此刻事件卡」浮层</td><td><span class="tag t-add">增强</span></td><td>seek 逻辑不变；新增此刻事件卡与事件轨同步高亮</td></tr>
-      <tr><td class="num">D3</td><td>回放时钟 / 条数</td><td>回放条左</td><td>控制岛内</td><td><span class="tag t-same">原样</span></td><td>—</td></tr>
-      <tr><td class="num">D4</td><td>▶ 60 秒看完今天</td><td>回放条右</td><td>控制岛内</td><td><span class="tag t-add">增强</span></td><td>按钮与倍速逻辑不变；播放期间进入 L3 沉浸档</td></tr>
-      <tr><td class="num">D5</td><td>回放空态</td><td>回放条内</td><td>控制岛内</td><td><span class="tag t-same">原样</span></td><td>「今天还没有任务记录」如实呈现</td></tr>
-      <tr><td class="num">D6</td><td>回放时间戳角标（44px）</td><td>左上 inset 24px</td><td>左上 inset top 56px（Z5）</td><td><span class="tag t-fix">修复</span></td><td>仅改 inset 避让顶栏；字号 / 配色 / 显隐规则不变</td></tr>
-      <tr><td class="num">E1</td><td>命令面板 12 条命令</td><td>底栏通栏 1100px</td><td>控制岛内，宽 56% 屏宽，1 行 6 条</td><td><span class="tag t-move">移位</span></td><td>12 条命令一条不减；只改宽度与栅格（scope 分组本来就是 6 条一行）</td></tr>
-      <tr><td class="num">E2</td><td>Agent 侧栏</td><td>左列 28vw</td><td>左列（不变）</td><td><span class="tag t-same">原样</span></td><td>演示模式下的可见性另见 §5</td></tr>
-      <tr><td class="num">E3</td><td>态势总览 status-screen</td><td>右列</td><td>右列（不变）</td><td><span class="tag t-same">原样</span></td><td>演示模式下的可见性另见 §5</td></tr>
-      <tr><td class="num">E4</td><td>会话面板内容</td><td>右列</td><td>右列（不变）</td><td><span class="tag t-same">原样</span></td><td>演示模式下的可见性另见 §5</td></tr>
-      <tr><td class="num">E5</td><td>日志抽屉</td><td>右列（唯一工程件）</td><td>右列（不变）</td><td><span class="tag t-same">原样</span></td><td>演示下仍隐藏</td></tr>
-      <tr><td class="num">F1</td><td>单位气泡</td><td>世界层</td><td>世界层（不变）</td><td><span class="tag t-same">原样</span></td><td>规格、同屏 ≤3、5s 冷却全不变</td></tr>
-      <tr><td class="num">F2</td><td>toast 轻提示</td><td>右上 fixed</td><td>右上 fixed（不变）</td><td><span class="tag t-same">原样</span></td><td>—</td></tr>
-      <tr><td class="num">F3</td><td>声音引擎（五音）</td><td>无 UI</td><td>无 UI（不变）</td><td><span class="tag t-same">原样</span></td><td>—</td></tr>
-      <tr><td class="num">G1</td><td>导演镜头三优先级</td><td>世界层</td><td>世界层（不变）</td><td><span class="tag t-add">增强</span></td><td>行为不变；HUD 侧新增取景框作为状态回显</td></tr>
-      <tr><td class="num">G2</td><td>报错红色 vignette</td><td>世界层边缘</td><td>世界层边缘（不变）</td><td><span class="tag t-add">增强</span></td><td>呼吸参数不变；事件轨红色条目与之同拍</td></tr>
-      <tr><td class="num">G3</td><td>静默 8s 巡视</td><td>世界层</td><td>世界层（不变）</td><td><span class="tag t-same">原样</span></td><td>—</td></tr>
-      <tr><td class="num">G4</td><td>回放气泡减半</td><td>世界层</td><td>世界层（不变）</td><td><span class="tag t-same">原样</span></td><td>—</td></tr>
-      <tr><td class="num">G5</td><td>框选 / 指令 / 翻卡 / 插旗</td><td>世界层</td><td>世界层（不变）</td><td><span class="tag t-same">原样</span></td><td>—</td></tr>
-      <tr><td class="num">G6</td><td>单位动画八态</td><td>世界层</td><td>世界层（不变）</td><td><span class="tag t-same">原样</span></td><td>—</td></tr>
-      <tr><td class="num">G7</td><td>氛围彩蛋</td><td>世界层</td><td>世界层（不变）</td><td><span class="tag t-same">原样</span></td><td>—</td></tr>
-      <tr><td class="num">G8</td><td>主入口按钮组</td><td>组合根</td><td>组合根（不变）</td><td><span class="tag t-same">原样</span></td><td>—</td></tr>
+      <tr><td class="num">A1</td><td>品牌标识</td><td>顶栏左</td><td>顶栏左（Z1）</td><td><span class="tag t-same">原样</span></td><td>—</td><td>✅ <code>2f09650</code></td></tr>
+      <tr><td class="num">A2</td><td>单位 / 任务 / 会话计数</td><td>顶栏三个独立 span</td><td>顶栏一枚「态势胶囊」（三值合一）</td><td><span class="tag t-fold">收纳</span></td><td>数值与来源不变（仍读 <code>WorldState</code>）；胶囊只是排版合并</td><td>✅ <code>2f09650</code></td></tr>
+      <tr><td class="num">A3</td><td>通知徽标</td><td>顶栏右</td><td>态势胶囊右侧</td><td><span class="tag t-move">移位</span></td><td>与数字绑在一起更容易被注意到</td><td>✅ <code>2f09650</code></td></tr>
+      <tr><td class="num">A4</td><td>切换像素风</td><td>顶栏独立按钮</td><td>⋯ 溢出菜单第 5 项</td><td><span class="tag t-fold">收纳</span></td><td>低频操作；观众不需要知道有皮肤</td><td>✅ <code>2f09650</code></td></tr>
+      <tr><td class="num">A5</td><td>演示模式开关</td><td>顶栏按钮「演示」</td><td>顶栏 ▶ 图标开关（与 🔊 / 🎬 并排）</td><td><span class="tag t-move">移位</span></td><td>开关本身升级为图标 + 选中态胶囊</td><td>✅ <code>2f09650</code></td></tr>
+      <tr><td class="num">A6</td><td>🎬 导演开关</td><td>顶栏按钮「🎬 导演」</td><td>顶栏 🎬 图标开关</td><td><span class="tag t-move">移位</span></td><td>同上；开启后中屏出现取景框作为状态回显</td><td>✅ <code>2f09650</code> · 取景框回显 <code>e42451c</code>／<code>24f1817</code></td></tr>
+      <tr><td class="num">A7</td><td>🔊 声音总开关</td><td>顶栏按钮「🔊 声音」</td><td>顶栏 🔊 图标开关</td><td><span class="tag t-move">移位</span></td><td>点击开关 = 静音；点击旁边的音量区 = 弹出音量层</td><td>✅ <code>2f09650</code></td></tr>
+      <tr><td class="num">A8</td><td>音量 0–100</td><td>顶栏常驻 range（84px）</td><td>🔊 弹出层内的滑条</td><td><span class="tag t-fold">收纳</span></td><td>关闭时不再占顶栏宽度（P7）；值与写入口径不变（<code>localStorage</code>）</td><td>✅ <code>2f09650</code></td></tr>
+      <tr><td class="num">A9</td><td>打开聊天</td><td>顶栏按钮</td><td>⋯ 溢出菜单</td><td><span class="tag t-fold">收纳</span></td><td>行为不变（<code>ui.navigate chat</code> + <code>stratix:chat-open</code>）</td><td>✅ <code>2f09650</code></td></tr>
+      <tr><td class="num">A10</td><td>会话面板（展开 / 收起）</td><td>顶栏按钮</td><td>⋯ 溢出菜单 + 右侧列面板本体</td><td><span class="tag t-fold">收纳</span></td><td>面板本体仍在右列，只是入口收进菜单</td><td>✅ <code>2f09650</code> · 面板本体 <code>de97686</code></td></tr>
+      <tr><td class="num">A11</td><td>看角色（形象 / 成长）</td><td>顶栏按钮</td><td>⋯ 溢出菜单</td><td><span class="tag t-fold">收纳</span></td><td>行为不变（<code>ui.navigate character</code>）</td><td>✅ <code>2f09650</code></td></tr>
+      <tr><td class="num">A12</td><td>去设置</td><td>顶栏 primary 按钮</td><td>⋯ 溢出菜单</td><td><span class="tag t-fold">收纳</span></td><td>唯一 primary 按钮消失是好事：主屏不该有第二个"主行动"</td><td>✅ <code>2f09650</code></td></tr>
+      <tr><td class="num">A13</td><td>theme / demo / director 状态文本</td><td>顶栏最右三个 tag</td><td>由三个开关按钮的「选中态」承担</td><td><span class="tag t-fix">修复</span></td><td>文字形态消失，<b>状态信息不丢</b>（按钮点亮即状态）；顺带解决它是演示下泄漏的工程件（P6 / P11）</td><td>✅ <code>2f09650</code>（收尾 <code>93697a5</code>）</td></tr>
+      <tr><td class="num">B1</td><td>事件跑马灯 5 条</td><td>左下 fixed</td><td>左下「事件轨」（Z2），宽 ≤260px，默认显示 2 条 + 「展开 N 条」</td><td><span class="tag t-move">移位</span></td><td>条数上限 <b>5 不变</b>（<code>MARQUEE_METRICS.maxEntries</code>）；变的是默认可见数与宽度</td><td>✅ <code>e5acf33</code></td></tr>
+      <tr><td class="num">B2</td><td>相对时间刷新</td><td>跑马灯条目内</td><td>事件轨条目内</td><td><span class="tag t-same">原样</span></td><td>5s 一跳不变</td><td>✅ <code>e5acf33</code></td></tr>
+      <tr><td class="num">B3</td><td>里程碑大字</td><td>屏幕中央 fixed</td><td>屏幕中央（L3 沉浸层）</td><td><span class="tag t-add">增强</span></td><td>位置与规格不变；新增"L3 激活时 L1 让位"的层级规则</td><td>✅ <code>24f1817</code> · 层级契约 <code>c2ee5c4</code></td></tr>
+      <tr><td class="num">C1</td><td>小地图 200×120</td><td>右下 fixed</td><td>右下（Z3），尺寸不变</td><td><span class="tag t-same">原样</span></td><td>200×120 是 <code>MINIMAP_METRICS</code> 钦定值，不动</td><td>✅ <code>7e89799</code></td></tr>
+      <tr><td class="num">C2</td><td>小地图点击跳转</td><td>小地图画布</td><td>小地图画布</td><td><span class="tag t-add">增强</span></td><td>跳转行为不变；新增顶栏「已跳转」一次性确认</td><td>🟡 <code>7e89799</code> · 跳转不变；顶栏「已跳转」一次性确认<strong>未落地</strong></td></tr>
+      <tr><td class="num">D1</td><td>今日回放热力条（96 桶）</td><td>底栏上沿</td><td>控制岛内（Z4）</td><td><span class="tag t-move">移位</span></td><td>桶数与重建指纹策略不变</td><td>✅ <code>140949e</code></td></tr>
+      <tr><td class="num">D2</td><td>回放 scrubber 拖动</td><td>热力条上</td><td>控制岛内 + 「此刻事件卡」浮层</td><td><span class="tag t-add">增强</span></td><td>seek 逻辑不变；新增此刻事件卡与事件轨同步高亮</td><td>🟡 <code>140949e</code> · 迁岛完成；「此刻事件卡」浮层<strong>未落地</strong></td></tr>
+      <tr><td class="num">D3</td><td>回放时钟 / 条数</td><td>回放条左</td><td>控制岛内</td><td><span class="tag t-same">原样</span></td><td>—</td><td>✅ <code>140949e</code></td></tr>
+      <tr><td class="num">D4</td><td>▶ 60 秒看完今天</td><td>回放条右</td><td>控制岛内</td><td><span class="tag t-add">增强</span></td><td>按钮与倍速逻辑不变；播放期间进入 L3 沉浸档</td><td>✅ <code>140949e</code> · 沉浸接管 <code>24f1817</code></td></tr>
+      <tr><td class="num">D5</td><td>回放空态</td><td>回放条内</td><td>控制岛内</td><td><span class="tag t-same">原样</span></td><td>「今天还没有任务记录」如实呈现</td><td>✅ <code>140949e</code></td></tr>
+      <tr><td class="num">D6</td><td>回放时间戳角标（44px）</td><td>左上 inset 24px</td><td>左上 inset top 56px（Z5）</td><td><span class="tag t-fix">修复</span></td><td>仅改 inset 避让顶栏；字号 / 配色 / 显隐规则不变</td><td>✅ <code>7e89799</code></td></tr>
+      <tr><td class="num">E1</td><td>命令面板 12 条命令</td><td>底栏通栏 1100px</td><td>控制岛内，宽 56% 屏宽，1 行 6 条</td><td><span class="tag t-move">移位</span></td><td>12 条命令一条不减；只改宽度与栅格（scope 分组本来就是 6 条一行）</td><td>✅ <code>140949e</code></td></tr>
+      <tr><td class="num">E2</td><td>Agent 侧栏</td><td>左列 28vw</td><td>左列（不变）</td><td><span class="tag t-same">原样</span></td><td>演示模式下的可见性另见 §5</td><td>✅ 原样保留 · <code>d767fe3</code></td></tr>
+      <tr><td class="num">E3</td><td>态势总览 status-screen</td><td>右列</td><td>右列（不变）</td><td><span class="tag t-same">原样</span></td><td>演示模式下的可见性另见 §5</td><td>✅ 原样保留 · <code>6b635d5</code></td></tr>
+      <tr><td class="num">E4</td><td>会话面板内容</td><td>右列</td><td>右列（不变）</td><td><span class="tag t-same">原样</span></td><td>演示模式下的可见性另见 §5</td><td>✅ 原样保留 · <code>de97686</code></td></tr>
+      <tr><td class="num">E5</td><td>日志抽屉</td><td>右列（唯一工程件）</td><td>右列（不变）</td><td><span class="tag t-same">原样</span></td><td>演示下仍隐藏</td><td>✅ 原样保留 · <code>5c92087</code></td></tr>
+      <tr><td class="num">F1</td><td>单位气泡</td><td>世界层</td><td>世界层（不变）</td><td><span class="tag t-same">原样</span></td><td>规格、同屏 ≤3、5s 冷却全不变</td><td>✅ 原样保留 · <code>093cdc2</code></td></tr>
+      <tr><td class="num">F2</td><td>toast 轻提示</td><td>右上 fixed</td><td>右上 fixed（不变）</td><td><span class="tag t-same">原样</span></td><td>—</td><td>✅ 原样保留 · <code>cb0398d</code></td></tr>
+      <tr><td class="num">F3</td><td>声音引擎（五音）</td><td>无 UI</td><td>无 UI（不变）</td><td><span class="tag t-same">原样</span></td><td>—</td><td>✅ 原样保留 · <code>f6ed379</code>（真实音源 <code>0b4f1e0</code>）</td></tr>
+      <tr><td class="num">G1</td><td>导演镜头三优先级</td><td>世界层</td><td>世界层（不变）</td><td><span class="tag t-add">增强</span></td><td>行为不变；HUD 侧新增取景框作为状态回显</td><td>✅ 增强 <code>e42451c</code>（L3 接管 <code>24f1817</code>）</td></tr>
+      <tr><td class="num">G2</td><td>报错红色 vignette</td><td>世界层边缘</td><td>世界层边缘（不变）</td><td><span class="tag t-add">增强</span></td><td>呼吸参数不变；事件轨红色条目与之同拍</td><td>✅ 原样保留 · <code>4209506</code>（红光晕迁 HUD 屏空间 <code>b336ae0</code>）</td></tr>
+      <tr><td class="num">G3</td><td>静默 8s 巡视</td><td>世界层</td><td>世界层（不变）</td><td><span class="tag t-same">原样</span></td><td>—</td><td>✅ 原样保留 · <code>4209506</code></td></tr>
+      <tr><td class="num">G4</td><td>回放气泡减半</td><td>世界层</td><td>世界层（不变）</td><td><span class="tag t-same">原样</span></td><td>—</td><td>✅ 原样保留 · <code>07994d0</code></td></tr>
+      <tr><td class="num">G5</td><td>框选 / 指令 / 翻卡 / 插旗</td><td>世界层</td><td>世界层（不变）</td><td><span class="tag t-same">原样</span></td><td>—</td><td>✅ 原样保留 · <code>978bd8f</code></td></tr>
+      <tr><td class="num">G6</td><td>单位动画八态</td><td>世界层</td><td>世界层（不变）</td><td><span class="tag t-same">原样</span></td><td>—</td><td>✅ 原样保留 · <code>08d1388</code></td></tr>
+      <tr><td class="num">G7</td><td>氛围彩蛋</td><td>世界层</td><td>世界层（不变）</td><td><span class="tag t-same">原样</span></td><td>—</td><td>✅ 原样保留 · <code>4fa18d9</code></td></tr>
+      <tr><td class="num">G8</td><td>主入口按钮组</td><td>组合根</td><td>组合根（不变）</td><td><span class="tag t-same">原样</span></td><td>—</td><td>✅ 原样保留 · <code>7f74188</code></td></tr>
     </tbody>
   </table>
   </div>
   <div class="note ok">
     <strong>统计：40 项中，</strong>「原样」18 项 · 「移位」7 项 · 「收纳」7 项 · 「增强」6 项 · 「修复」2 项（A13 的重复表达、D6 的 inset 避让）。<b>无一项被删除。</b>唯一的"减少"是重复表达与无效占位，不是能力。
+  </div>
+  <div class="note">
+    <strong>「实施状态」列口径</strong>（@since v3.4，task_095 补录）：
+    <b>✅ + commit 号</b> = 该项已按本表落地，commit 即落地它的那次提交；
+    <b>✅ 原样保留 + commit 号</b> = v3.4 未改这件（v3.4 链不碰它的版面），commit 号是它<strong>最初实现</strong>的那次提交 —— 不是 v3.4 的，别按 v3.4 的号去查它的改动；
+    <b>🟡</b> = 位置／形态已按本表改完，但「变化」栏里承诺的<strong>新增反馈件尚未落地</strong>（C2 的顶栏「已跳转」确认、D2 的「此刻事件卡」浮层）—— 记在 task_095 的「未尽事项」里，不在本表凑数。
+    <br>
+    40 项的可达性断言落在三处（fake 模式，逐项可跑）：
+    <code>src/hud/__tests__/v34-feature-matrix.test.ts</code>（HUD 侧 32 项）·
+    <code>src/world/__tests__/v34-feature-matrix.test.ts</code>（世界侧 7 项）·
+    <code>src/app/__tests__/v34-main-entry-buttons.test.ts</code>（组合根 G8）。
+    四角碰撞复验见 <code>scripts/check-hud-island-layout.mjs</code>（含「五个盒子成对零重叠矩阵」）；
+    本列与 git 历史、与断言用例的三方一致性由 <code>scripts/check-hud-feature-matrix-status.mjs</code> 把关。
   </div>
 
 </section>

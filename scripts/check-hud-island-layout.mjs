@@ -1,15 +1,18 @@
 #!/usr/bin/env node
 /**
- * 最小碰撞断言脚本（@since v3.4，task_090；@since v3.4，task_093 加 Z3 hover / Z5 角标两条）：
+ * 最小碰撞断言脚本（@since v3.4，task_090；@since v3.4，task_093 加 Z3 hover / Z5 角标两条；
+ *   @since v3.4，task_095 加「四角件成对零重叠矩阵」）：
  * HUD 控制岛（Z4）与两个下角件、以及左上角标（Z5）与顶栏（Z1）的版面关系。
  *
- * 断言口径（与 task_090 / task_093 的验收标准逐条对应）：
+ * 断言口径（与 task_090 / task_093 / task_095 的验收标准逐条对应）：
  *   ① 控制岛高度 ≤ CONTROL_ISLAND_METRICS.maxHeightPx（100px），且**内容自适应**（不是写死的 34cqh）；
  *   ② 控制岛 ∩ 左下事件轨 = ∅，水平间距 ≥ 40px；
  *   ③ 控制岛 ∩ 右下小地图 = ∅，水平间距 ≥ 40px；
  *   ④ 720p 下中轴可用高度（视口高 − 顶栏高 − 控制岛高）≥ 视口高的 85%；
  *   ⑤ 小地图 hover 提亮（computed filter 的 brightness > 1）且声明了 filter 过渡；
- *   ⑥ 时间戳角标 ∩ 顶栏 = ∅（角标顶部 inset 56px > 顶栏 40px）。
+ *   ⑥ 时间戳角标 ∩ 顶栏 = ∅（角标顶部 inset 56px > 顶栏 40px）；
+ *   ⑦ **成对零重叠矩阵**（task_095）：顶栏 / 事件轨 / 小地图 / 控制岛 / 时间戳角标
+ *      五个盒子两两之间包围盒交集面积恒为 0 —— 「四角碰撞复验」的总口径。
  *
  * why 跑真浏览器而不是 jsdom：jsdom 没有排版引擎，bounding box 全是 0 —— 碰撞与间距
  *   这类断言只能在真排版里量（本仓库的 e2e 也是这个口径）。
@@ -143,6 +146,8 @@ function brightnessOf(filter) {
 
 const failures = [];
 const rows = [];
+/** 成对零重叠矩阵的逐分辨率记录（打印用）。 */
+const matrixRows = [];
 
 const browser = await chromium.launch();
 for (const vp of VIEWPORTS) {
@@ -246,6 +251,29 @@ for (const vp of VIEWPORTS) {
       `角标上沿 ${m.clock.badge.top.toFixed(1)}px 压在顶栏下沿 ${m.clock.topbar.bottom.toFixed(1)}px 之上`);
   }
 
+  // ⑨ 成对零重叠矩阵（@since v3.4，task_095）：顶栏 / 事件轨 / 小地图 / 控制岛 / 角标
+  //   五个盒子两两之间包围盒交集面积必须恒为 0 —— 「四角碰撞复验」的总口径。
+  //   why 做成矩阵而不是逐条写死：新增一个边角件时，它与已有件的碰撞**自动**进网，
+  //   不用记得补一条断言（漏一条 = 漏一个碰撞位）。
+  const boxes = [
+    ['顶栏', m.topbar],
+    ['事件轨', m.marquee],
+    ['小地图', m.minimap],
+    ['控制岛', m.island],
+    ['角标', m.clock?.badge ?? null],
+  ].filter((entry) => Boolean(entry[1]));
+  const matrix = [];
+  for (let i = 0; i < boxes.length; i += 1) {
+    for (let j = i + 1; j < boxes.length; j += 1) {
+      const [nameA, boxA] = boxes[i];
+      const [nameB, boxB] = boxes[j];
+      const area = overlaps(boxA, boxB);
+      check(area === 0, `${nameA} ∩ ${nameB} 重叠 ${area.toFixed(0)}px²（成对零重叠要求）`);
+      matrix.push(`${nameA}×${nameB}=${area === 0 ? '∅' : `${area.toFixed(0)}px²`}`);
+    }
+  }
+  matrixRows.push(`[${vp.label}] ${matrix.join(' ')}`);
+
   rows.push(
     [
       vp.label,
@@ -267,9 +295,13 @@ console.log(`URL: ${URL}`);
 console.log('分辨率 | 控制岛 | 顶栏 | 左下事件轨 | 右下小地图 | 中轴可用高度 | 岛内分层 | 命令条');
 for (const r of rows) console.log(r);
 console.log('');
+console.log('成对零重叠矩阵（顶栏 / 事件轨 / 小地图 / 控制岛 / 角标）：');
+for (const r of matrixRows) console.log(r);
+console.log('');
 if (failures.length > 0) {
   console.error(`✗ 碰撞断言失败（${failures.length} 条）：`);
   for (const f of failures) console.error(`  - ${f}`);
   process.exit(1);
 }
-console.log(`✓ 碰撞断言全过：岛高 ≤${MAX_ISLAND_HEIGHT_PX}px、事件轨 / 小地图零重叠且间距 ≥${MIN_CORNER_CLEARANCE_PX}px、中轴可用高度 ≥${MIN_AXIS_RATIO * 100}%、小地图 hover 提亮有过滤渡、角标不压顶栏`);
+console.log(`✓ 碰撞断言全过：岛高 ≤${MAX_ISLAND_HEIGHT_PX}px、事件轨 / 小地图零重叠且间距 ≥${MIN_CORNER_CLEARANCE_PX}px、中轴可用高度 ≥${MIN_AXIS_RATIO * 100}%、小地图 hover 提亮有过滤渡、角标不压顶栏、五个盒子成对零重叠`);
+
