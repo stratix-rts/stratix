@@ -191,7 +191,7 @@ export const DANGER_ACTIONS: readonly DangerActionSpec[] = [
     id: 'cache.clear',
     label: '清理缓存',
     buttonLabel: '清理缓存（未实现）',
-    hint: '缓存层尚未落地 —— 该命令在 core 侧是空处理，故不提供可点按钮。',
+    hint: '缓存层尚未落地 —— 该命令目前没有实际处理，故不提供可点按钮。',
     implemented: false,
   },
 ];
@@ -944,7 +944,7 @@ export function defineSettingsScreen(): typeof HTMLElement {
         const ctl = action.implemented
           ? `<button type="button" class="ctl" data-danger="${action.id}">${action.buttonLabel}</button>`
           : `<button type="button" class="ctl" disabled
-               title="该命令尚未落地（core 侧为空处理）">${action.buttonLabel}</button>`;
+               title="该命令尚未落地（目前没有实际处理）">${action.buttonLabel}</button>`;
         return `
           <div class="row" data-danger-row="${action.id}">
             <div class="row-text">

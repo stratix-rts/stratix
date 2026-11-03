@@ -224,6 +224,6 @@ export function cliUnknownText(input: string): string {
 
 /** 用法提示（参数缺失时）：用法串 + 一个能直接抄的例子。 */
 export function cliUsageHint(spec: CliCommandSpec): string {
-  const example = spec.id === 'mission' ? 'mission 重构总线' : spec.usage;
+  const example = spec.id === 'mission' ? 'mission 整理战场' : spec.usage;
   return `用法：${spec.usage} —— 例如 ${example}`;
 }
