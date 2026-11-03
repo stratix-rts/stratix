@@ -1,6 +1,6 @@
 # Stratix MCP 接口设计规范（第一期工具面 + 扩展规范）
 
-> **状态**：第一期工具面冻结（Spec v1.12）＋ §6 v2 设计章（**未实现**，见 §6 抬头）　**性质**：规范文档（不含实现代码）
+> **状态**：第一期工具面冻结（Spec v1.13）＋ §6 v2 设计章（**未实现**，见 §6 抬头）　**性质**：规范文档（不含实现代码）
 > **适用范围**：Stratix 对外提供的 MCP server 及其工具面（tool surface）
 > **取代**：`docs/MCP_SERVER_DESIGN.md`（v2 Zone 时代草案 —— Zone 已按 `docs/REFACTOR_PLAN_V3.md` D5 决策砍掉，其中 `stratix.list_zones` 等工具面不再成立）
 > **维护责任**：见 [§5.4](#54-规范文档的维护责任)
@@ -1249,12 +1249,24 @@ src/stratix-gateway/mcp/
 | 失败点 | 响应形状 | 错误码 |
 |--------|----------|--------|
 | 请求体不是合法 JSON（截断 / 畸形） | JSON-RPC error 帧，`id: null` | `-32700` Parse error |
+| 请求体顶层是裸标量（`123` / `"x"`）—— **是合法 JSON**，只是顶层不是对象/数组 | JSON-RPC error 帧，`id: null` | `-32700` Parse error（strict 口径） |
+| 请求体为空（没有可解析的帧） | JSON-RPC error 帧，`id: null` | `-32600` Invalid Request |
+| `Content-Type` 缺 / 不是 `application/json` | JSON-RPC error 帧，`id: null` | `-32600` Invalid Request |
+| `Accept` 未包含 `application/json`（本端点只回 JSON 帧，不推 SSE） | JSON-RPC error 帧，`id: null` | `-32600` Invalid Request |
 | 请求体超上限（MCP 侧 1mb） | JSON-RPC error 帧，`id: null` | `-32600` Invalid Request |
-| 帧不是合法 JSON-RPC 2.0 请求 | JSON-RPC error 帧，`id: null` | `-32600` Invalid Request |
+| 帧不是合法 JSON-RPC 2.0 请求（缺 `jsonrpc` / 缺 `method` / `id` 类型不对 / 顶层是数组） | JSON-RPC error 帧，`id: null` | `-32600` Invalid Request |
 | 未知方法 | JSON-RPC error 帧 | `-32601` Method not found |
 | `tools/call` 缺工具名 / 未知工具 | JSON-RPC error 帧 | `-32602` Invalid params |
 | 工具抛**未捕获异常**（不是 `McpToolError`） | JSON-RPC error 帧 | `-32603` Internal error |
 | 工具**主动**抛 `McpToolError`（含 `internal_error`） | 失败信封 + `isError: true` | 附录 A 的业务码 |
+
+**文案必须与真实触发条件一一对应（task_132 / N3）**：协议层拒绝一个请求时，`message` 说清**真实原因**，
+`data.hint` 说清**怎么改**，`data.received` / `data.reason` 给出机器可读的细节。反例（已修）：
+`Content-Type: text/plain` 的**合法** JSON-RPC 帧被拒时，文案写的是「请求帧不是合法的 JSON-RPC 2.0 请求」——
+帧其实是合法的，真实原因是 Content-Type，agent 照着这个文案会去查帧格式（方向错）。
+同理：空 body 不能报成 `received:"object"`（那是空）、JSON 数组不能报成 `received:"object"`（那是 array）、
+裸标量不能说成「不是合法 JSON」（它**是**合法 JSON，只是顶层形状不对）。
+
 
 三条硬约束：
 
@@ -1302,6 +1314,7 @@ src/stratix-gateway/mcp/
 
 | 版本 | 日期 | 变更 | 兼容性 |
 |------|------|------|--------|
+| v1.13 | 2026-11-04 | **传输层错误文案与事实对齐**（§4.4「传输层错误信封」表扩充 + 新增文案纪律）—— `Content-Type` 不是 `application/json` 的请求不再被说成「请求帧不是合法的 JSON-RPC 2.0 请求」（帧其实合法），改说 Content-Type 并给出 `expected_content_type` / `received_content_type`；空 body 报 `received:"empty"`、JSON 数组报 `received:"array"`、裸标量（**是**合法 JSON、只是顶层不是对象/数组）单列一条文案；帧不合法时点名是 `jsonrpc` / `method` / `id` 哪个字段不对；未知方法 / 未知工具 / 缺工具名 / GET 405 / body 超限 / 未捕获异常补 `data.hint`（面向模型的下一步）；`Accept` 显式点名非 `application/json` 时按 `-32600` 拒（缺 `Accept` 不拦 —— 简单客户端常省这个头） | ✅ 协议层**文案**修正，**错误码分型一字未动**（`-32700` / `-32600` / `-32601` / `-32602` / `-32603` 的触发点与 task_118 逐条一致）；工具面**零变更**（十九件工具的名字 / 参数 / 语义 / 返回形状 / `tools/list` 顺序全部未动）；成功路径逐字未变；HTTP 状态码恒 200、通知类 202 的纪律未变 |
 | v1.12 | 2026-11-04 | **新增工具** `stratix_character_edit`（§2.18，**名册维护面**：改一个已有角色档案的名字 / 人设 / 上下文开关 —— 落点 = **既有**的 `HudCommand.character.name.update` / `character.persona.update` / `character.contextEnabled.update`，core 契约零增补，回执带 `changed` / `unchanged` 两段）；**新增动词** `edit` 登记（§4.2）；**受保护字段**（皮肤 / 绑定 CLI / 等级 / 经验 / 形象）拒绝并说明原因；`tools/list` 新增一件（十八件 → 十九件），排在 `character_delete` 之后（既有工具之间的相对次序不变） | ✅ 纯增量：既有十八件工具的名字、参数、语义与缺省行为**均未变**；`tools/list` 的既有次序逐字未动；**不新增任何错误码**（复用 `invalid_arguments` / `unknown_character` / `internal_error`）；不新增状态通道 / 持久化表 / 状态机；§2.16 的 description 里「改档走界面」改为指向本工具 |
 | v1.11 | 2026-11-04 | **新增工具** `stratix_character_delete`（§2.17，**名册清理面**：删除一个 agent 角色档案 —— 落点 = 新增的 `HudCommand.character.delete`，core 同一次 `setState` 里撤下角色与它的战场单位，回执带 `character_id` + `name` + `removed_unit_id`）；**core 契约增补** —— `HudCommand` 新增 `character.delete`，占用裁决在 core（`character/manager.ts` 的 `deleteCharacter` + `character/delete-guard.ts` 的纯函数：① 在任务中（未收尾任务 / 单位仍挂在编组任务上）② 在线（该角色有在办会话））；`tools/list` 新增一件（十七件 → 十八件），排在 `character_create` 之后（既有工具之间的相对次序不变） | ✅ 纯增量：既有十七件工具的名字、参数、语义与缺省行为**均未变**；`tools/list` 的既有次序逐字未动；**不新增任何错误码**（复用 `unknown_character` / `illegal_transition` / `chat_busy` / `invalid_arguments` / `internal_error`）；不新增状态通道 / 持久化表 / 状态机（写面走既有 character manager 与既有 `WorldState` 字段）；占用判定**只有一份**（core 的 `findCharacterDeleteBlock`，工具只做发命令前的快筛） |
 | v1.10 | 2026-11-04 | **新增工具** `stratix_character_create`（§2.16，**名册供给面**：新建一个 agent 角色档案 —— 落点 = 既有的 `HudCommand.character.create`，建档即上场（core 同一次 `setState` 里投影战场单位），回执带 `character_id` + 完整角色对象 + `unit_id`）；**新增域** `character`（§4.2 域表）；`tools/list` 新增一件（十六件 → 十七件），排在 `session_fork` 之后（既有工具之间的相对次序不变） | ✅ 纯增量：既有十六件工具的名字、参数、语义与缺省行为**均未变**；`tools/list` 的既有次序逐字未动；**不新增任何错误码**（复用 `invalid_arguments` / `internal_error`）；不新增状态通道 / 持久化表 / 状态机（写面走既有 `character.create` 命令与既有 character manager）；重名与名册上限的裁决**只有一份**（core 的 `createCharacter`，工具只做发命令前的快筛） |
@@ -1790,8 +1803,8 @@ offConsumer();   // 后  ❌ 应当逆序：offConsumer(); offProvider();
 
 | JSON-RPC code | 含义 | 典型触发 |
 |---------------|------|---------|
-| `-32700` | Parse error | 请求体不是合法 JSON |
-| `-32600` | Invalid Request | 帧不是合法 JSON-RPC 2.0 请求 / body 超限 / `GET /mcp` |
+| `-32700` | Parse error | 请求体不是合法 JSON / 顶层是裸标量（合法 JSON，但顶层不是对象/数组） |
+| `-32600` | Invalid Request | 帧不是合法 JSON-RPC 2.0 请求 / body 为空 / body 超限 / `Content-Type` 不是 `application/json` / `Accept` 未包含 `application/json` / `GET /mcp` |
 | `-32601` | Method not found | 未知方法 |
 | `-32602` | Invalid params | `tools/call` 缺工具名 / 未知工具 |
 | `-32603` | Internal error | 工具抛未捕获异常 / 传输层兜底 |

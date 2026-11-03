@@ -113,17 +113,128 @@ export function jsonRpcError(
   };
 }
 
-/** 判断一帧是不是合法的 JSON-RPC 请求。 */
-function isRequest(payload: unknown): payload is JsonRpcRequest {
-  if (typeof payload !== 'object' || payload === null) return false;
+/**
+ * 畸形 JSON 的错误帧 —— stdio 与 HTTP 共用同一份语义（code 一致、data 形状一致）。
+ * why message 按来源分两种说法：stdio 收到的是"一行"，HTTP 收到的是"一个请求体" ——
+ * 说清"是哪段文本不合法"比统一一句"解析失败"更有用（task_132 / N3）。
+ */
+export function jsonRpcParseError(source: 'body' | 'line', detail: string): JsonRpcResponse {
+  return jsonRpcError(
+    null,
+    JSON_RPC_ERRORS.parseError,
+    source === 'body' ? '请求体不是合法 JSON（解析失败）' : '输入行不是合法 JSON（解析失败）',
+    {
+      detail,
+      hint:
+        source === 'body'
+          ? '把完整的一帧 JSON-RPC 发过来（请求体可能被截断，或引号/逗号多了一个）'
+          : 'stdin 一行一帧：每行必须是完整的一帧 JSON',
+    }
+  );
+}
+
+/** 收到的 JSON 值的类型名（给 agent 看的白话词表）。 */
+function describeJsonType(value: unknown): string {
+  if (value === null) return 'null';
+  if (Array.isArray(value)) return 'array';
+  return typeof value;
+}
+
+/** 非法帧的判读结果：为什么这不是一帧合法的 JSON-RPC 2.0 请求。 */
+interface InvalidFrame {
+  /** 面向人的一句话：什么错了 + 为什么。 */
+  readonly message: string;
+  /** 机器可读的细节：收到的是什么 / 错在哪 / 怎么改。 */
+  readonly data: {
+    readonly received: string;
+    readonly reason: string;
+    readonly hint: string;
+  };
+}
+
+/**
+ * 判读一帧到底哪里不合法（task_132 / N3）。
+ *
+ * why 不再只回一句"帧不是合法的 JSON-RPC 2.0 请求"：
+ *   - 空 body 与"JSON 数组"都被压成 received:"object"，agent 拿到的信息是**假的**
+ *     （它会以为收到的是一个对象帧），排障方向直接被带偏；
+ *   - 分型不变（仍走 -32600 Invalid Request），只把"为什么"说准。
+ *
+ * 返回 null = 这是一帧合法请求。
+ */
+function describeInvalidRequest(payload: unknown): InvalidFrame | null {
+  if (payload === undefined || payload === null) {
+    return {
+      message: '请求体是空的，不是 JSON-RPC 2.0 请求帧',
+      data: {
+        received: payload === null ? 'null' : 'empty',
+        reason: '没有请求体',
+        hint: 'POST 一帧完整的 JSON-RPC 2.0 请求（jsonrpc / method / id）',
+      },
+    };
+  }
+  if (Array.isArray(payload)) {
+    return {
+      message: '请求体是一个 JSON 数组，不是 JSON-RPC 2.0 请求帧',
+      data: {
+        received: 'array',
+        reason: '一帧 = 一个 JSON 对象；本端点不接批量请求（JSON-RPC 2.0 的批量形态）',
+        hint: '把数组里的那一帧单独发出来（一次一帧）',
+      },
+    };
+  }
+  if (typeof payload !== 'object') {
+    return {
+      message: `请求体不是 JSON-RPC 2.0 请求帧（收到 ${describeJsonType(payload)}）`,
+      data: {
+        received: describeJsonType(payload),
+        reason: '请求帧必须是 JSON 对象',
+        hint: '一帧的形状：{"jsonrpc":"2.0","method":"...","id":1}',
+      },
+    };
+  }
+
   const candidate = payload as Partial<JsonRpcRequest>;
-  if (candidate.jsonrpc !== '2.0') return false;
-  if (typeof candidate.method !== 'string') return false;
+  if (candidate.jsonrpc !== '2.0') {
+    const missing = candidate.jsonrpc === undefined;
+    return {
+      message: missing
+        ? '请求帧缺 jsonrpc 字段（JSON-RPC 2.0 要求 "jsonrpc": "2.0"）'
+        : `请求帧的 jsonrpc 字段必须是 "2.0"（本次收到 ${JSON.stringify(candidate.jsonrpc)}）`,
+      data: {
+        received: 'object',
+        reason: missing ? '缺 jsonrpc 字段' : 'jsonrpc 字段不是 "2.0"',
+        hint: '把 jsonrpc 改成 "2.0"（协议版本号固定是这个字符串）',
+      },
+    };
+  }
+  if (typeof candidate.method !== 'string') {
+    const missing = candidate.method === undefined;
+    return {
+      message: missing
+        ? '请求帧缺 method 字段（JSON-RPC 2.0 要求 method 是方法名字符串）'
+        : `请求帧的 method 字段必须是方法名字符串（本次收到 ${describeJsonType(candidate.method)}）`,
+      data: {
+        received: 'object',
+        reason: missing ? '缺 method 字段' : 'method 字段不是字符串',
+        hint: '填一个方法名：initialize / ping / tools/list / tools/call',
+      },
+    };
+  }
   if (candidate.id !== undefined && candidate.id !== null) {
     const idType = typeof candidate.id;
-    if (idType !== 'string' && idType !== 'number') return false;
+    if (idType !== 'string' && idType !== 'number') {
+      return {
+        message: `请求帧的 id 字段类型非法（只允许 string / number / null，本次收到 ${describeJsonType(candidate.id)}）`,
+        data: {
+          received: 'object',
+          reason: 'id 字段类型非法',
+          hint: 'id 用字符串或数字；通知类请求（不期待回包）不带 id',
+        },
+      };
+    }
   }
-  return true;
+  return null;
 }
 
 /**
@@ -170,14 +281,18 @@ export function createMcpServer(options: McpServerOptions): McpServer {
         if (typeof params.name !== 'string' || params.name.length === 0) {
           return isNotification
             ? null
-            : jsonRpcError(id, JSON_RPC_ERRORS.invalidParams, 'tools/call 缺少工具名');
+            : jsonRpcError(id, JSON_RPC_ERRORS.invalidParams, 'tools/call 缺少工具名', {
+                hint: 'params.name 传工具名字符串；用 tools/list 查当前可用的工具名',
+              });
         }
         const tool = registry.getTool(params.name);
         if (!tool) {
           // 工具名不存在 = 参数级错误 → JSON-RPC error（不进 isError 信封）。
           return isNotification
             ? null
-            : jsonRpcError(id, JSON_RPC_ERRORS.invalidParams, `未知工具「${params.name}」`);
+            : jsonRpcError(id, JSON_RPC_ERRORS.invalidParams, `未知工具「${params.name}」`, {
+                hint: `用 tools/list 查当前可用的工具名（注册表 ${registry.size} 件）`,
+              });
         }
         const toolArgs =
           typeof params.arguments === 'object' &&
@@ -201,26 +316,25 @@ export function createMcpServer(options: McpServerOptions): McpServer {
           const message = error instanceof Error ? error.message : String(error);
           return jsonRpcError(id, JSON_RPC_ERRORS.internalError, 'Internal error', {
             detail: message,
+            hint: '这是服务端崩溃（不是业务拒绝）：查 gateway 进程日志确认原因，别改参数重试',
           });
         }
       }
       default:
         return isNotification
           ? null
-          : jsonRpcError(id, JSON_RPC_ERRORS.methodNotFound, `未知方法「${request.method}」`);
+          : jsonRpcError(id, JSON_RPC_ERRORS.methodNotFound, `未知方法「${request.method}」`, {
+              hint: '本端点支持的方法：initialize / ping / tools/list / tools/call（通知类：notifications/initialized / notifications/cancelled）',
+            });
     }
   };
 
   const handlePayload = async (payload: unknown): Promise<JsonRpcResponse | null> => {
-    if (!isRequest(payload)) {
-      return jsonRpcError(
-        null,
-        JSON_RPC_ERRORS.invalidRequest,
-        '请求帧不是合法的 JSON-RPC 2.0 请求',
-        { received: typeof payload }
-      );
+    const invalid = describeInvalidRequest(payload);
+    if (invalid) {
+      return jsonRpcError(null, JSON_RPC_ERRORS.invalidRequest, invalid.message, invalid.data);
     }
-    return handleRequest(payload);
+    return handleRequest(payload as JsonRpcRequest);
   };
 
   return {
@@ -231,9 +345,10 @@ export function createMcpServer(options: McpServerOptions): McpServer {
         parsed = JSON.parse(line);
       } catch (error) {
         return JSON.stringify(
-          jsonRpcError(null, JSON_RPC_ERRORS.parseError, 'Parse error', {
-            detail: error instanceof Error ? error.message : String(error),
-          })
+          jsonRpcParseError(
+            'line',
+            `JSON 解析失败：${error instanceof Error ? error.message : String(error)}`
+          )
         );
       }
       const response = await handlePayload(parsed);
