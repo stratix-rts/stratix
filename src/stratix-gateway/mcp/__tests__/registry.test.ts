@@ -53,7 +53,7 @@ describe('MCP 工具注册表', () => {
     expect(registry.listTools().map((tool) => tool.name)).toEqual(registered);
   });
 
-  it('工具面按清单位次返回（十八件，顺序固定）', () => {
+  it('工具面按清单位次返回（十九件，顺序固定）', () => {
     const registry = buildToolRegistry(DEFAULT_MCP_TOOLS);
     expect(registry.listTools().map((tool) => tool.name)).toEqual([
       'stratix_world_snapshot', // §2.1
@@ -74,6 +74,7 @@ describe('MCP 工具注册表', () => {
       'stratix_session_fork', //     §2.14（session 域写面：事件点分叉）
       'stratix_character_create', // §2.16（character 域新开：名册供给）
       'stratix_character_delete', // §2.17（character 域写面：名册清理）
+      'stratix_character_edit', //   §2.18（character 域写面：名册维护 —— 改档）
     ]);
   });
 

@@ -1,6 +1,6 @@
 # Stratix MCP 接口设计规范（第一期工具面 + 扩展规范）
 
-> **状态**：第一期工具面冻结（Spec v1.10）＋ §6 v2 设计章（**未实现**，见 §6 抬头）　**性质**：规范文档（不含实现代码）
+> **状态**：第一期工具面冻结（Spec v1.12）＋ §6 v2 设计章（**未实现**，见 §6 抬头）　**性质**：规范文档（不含实现代码）
 > **适用范围**：Stratix 对外提供的 MCP server 及其工具面（tool surface）
 > **取代**：`docs/MCP_SERVER_DESIGN.md`（v2 Zone 时代草案 —— Zone 已按 `docs/REFACTOR_PLAN_V3.md` D5 决策砍掉，其中 `stratix.list_zones` 等工具面不再成立）
 > **维护责任**：见 [§5.4](#54-规范文档的维护责任)
@@ -12,7 +12,7 @@
 
 - [0. 设计前提](#0-设计前提)：[0.1 消费者与心智模型](#01-消费者与心智模型)｜[0.2 权威依据](#02-权威依据)｜[0.3 范围与非目标](#03-范围与非目标)｜[0.4 术语](#04-术语)｜[0.5 拓扑定位](#05-拓扑定位新旧拓扑对比)
 - [1. 工具设计五原则](#1-工具设计五原则)：[1.1 动词 + 资源命名，单动作工具](#11-原则一动词--资源命名单动作工具)｜[1.2 合并发生在工具内部](#12-原则二合并发生在工具内部)｜[1.3 返回 meaningful context](#13-原则三返回-meaningful-context)｜[1.4 token 效率](#14-原则四token-效率)｜[1.5 描述工程](#15-原则五描述工程)
-- [2. 第一期工具面](#2-第一期工具面)：[2.0 通用约定](#20-通用约定)｜[2.1 world_snapshot](#21-stratix_world_snapshot)｜[2.2 task_assign](#22-stratix_task_assign)｜[2.3 task_status](#23-stratix_task_status)｜[2.4 task_cancel](#24-stratix_task_cancel)｜[2.5 mission_create](#25-stratix_mission_create)｜[2.6 mission_status](#26-stratix_mission_status)｜[2.7 chat_send](#27-stratix_chat_send)｜[2.8 registry](#28-stratix_registry)｜[2.9 mission_checkpoint](#29-stratix_mission_checkpoint)｜[2.10 session_list](#210-stratix_session_list)｜[2.11 session_get](#211-stratix_session_get)｜[2.12 session_interrupt](#212-stratix_session_interrupt)｜[2.13 session_resume](#213-stratix_session_resume)｜[2.14 mission_confirm](#214-stratix_mission_confirm)｜[2.15 mission_cancel](#215-stratix_mission_cancel)｜[2.16 character_create](#216-stratix_character_create)｜[2.17 character_delete](#217-stratix_character_delete)
+- [2. 第一期工具面](#2-第一期工具面)：[2.0 通用约定](#20-通用约定)｜[2.1 world_snapshot](#21-stratix_world_snapshot)｜[2.2 task_assign](#22-stratix_task_assign)｜[2.3 task_status](#23-stratix_task_status)｜[2.4 task_cancel](#24-stratix_task_cancel)｜[2.5 mission_create](#25-stratix_mission_create)｜[2.6 mission_status](#26-stratix_mission_status)｜[2.7 chat_send](#27-stratix_chat_send)｜[2.8 registry](#28-stratix_registry)｜[2.9 mission_checkpoint](#29-stratix_mission_checkpoint)｜[2.10 session_list](#210-stratix_session_list)｜[2.11 session_get](#211-stratix_session_get)｜[2.12 session_interrupt](#212-stratix_session_interrupt)｜[2.13 session_resume](#213-stratix_session_resume)｜[2.14 mission_confirm](#214-stratix_mission_confirm)｜[2.15 mission_cancel](#215-stratix_mission_cancel)｜[2.16 character_create](#216-stratix_character_create)｜[2.17 character_delete](#217-stratix_character_delete)｜[2.18 character_edit](#218-stratix_character_edit)
 - [3. 一致性铁律](#3-一致性铁律)：[3.1 投影而非新功能层](#31-投影而非新功能层)｜[3.2 状态机约束](#32-状态机约束对-mcp-同样生效)｜[3.3 不暴露的能力](#33-mcp-不暴露的能力)｜[3.4 只读与写的分界](#34-只读面与写面的分界)
 - [4. 扩展规范](#4-扩展规范)：[4.1 工具注册表架构](#41-工具注册表架构)｜[4.2 域前缀与命名位](#42-域前缀与命名位)｜[4.3 新工具上线流程](#43-新工具提案到上线的流程)｜[4.4 MCP server 接入方式](#44-mcp-server-的接入方式)
 - [5. 版本与演进](#5-版本与演进)：[5.1 变更原则](#51-工具面变更原则)｜[5.2 重命名与废弃](#52-重命名与废弃)｜[5.3 变更分类](#53-变更分类与流程)｜[5.4 维护责任](#54-规范文档的维护责任)｜[5.5 演进记录](#55-版本演进记录只加不删)
@@ -1032,6 +1032,58 @@ why 拆成两个动作：**撤任务不等于撤活儿** —— 已开工的任�
 
 **持久化边界**：与 §2.16 同一条分界 —— 角色档案的落库在**渲染进程**一侧的存档协调器（按名册 diff 写回 SQLite），纯 headless 的 gateway 进程里角色只存在于内存世界态（进程重启即失）。本工具删的是**世界态里的角色**；渲染进程一侧的名册同步走既有 diff 链路。
 
+### 2.18 `stratix_character_edit`
+
+> **排序位**：第 19 位（排在 `stratix_character_delete` 之后 —— character 域三件写面挨在一起；条目号 §2.18 按「只加不删」追加在末尾）。
+> **v1.12 新增**：**名册维护面**（`stratix_character_create` 的改档侧 —— 此前改档只能走界面，外部 agent 建完档就再也无法自主维护自己的档；§2.16 补了建档、§2.17 补了删档，改档面始终是缺口）。
+
+**description**
+
+> 改一个已有 agent 角色档案：改名、换人设提示词、开关角色的上下文注入。改完立即生效。
+> **何时用**：角色建好了但档案要维护 —— 名字起错了要改、人设要按新任务调、上下文块要关掉；外部 agent 建完档后要自主维护自己的档（此前改档只能走界面，MCP 侧无从下手）。
+> **何时不用**：只想看现有名册 —— 用 `stratix_registry`；只想看战场忙闲 —— 用 `stratix_world_snapshot`；角色还不存在 —— 先用 `stratix_character_create` 建档；要删角色 —— 用 `stratix_character_delete`（删档不是改档）。
+> **边界**：`character_id` 必填；`name` / `persona` / `context_enabled` 至少给一个（都给就是一次改多项）。`name`：trim 后非空、≤ 24 码点；与**其它**角色重名（大小写不敏感）直接拒绝；与自己当前名字相同 → 幂等成功、不写库不广播（只改大小写算真改名）；战场单位名同步刷新。`persona`：整份替换（不是追加）；trim 后非空、≤ 2000 码点（MCP 侧上限，与 §2.16 建档同一口径）；与现有人设相同 → 幂等成功。`context_enabled`：true = 对话 / 任务首发附带战场现状块，false = 不带；与当前值相同 → 幂等成功。**任务中 / 在线的角色同样可改**（与界面口径一致）：改名立刻生效，人设与上下文开关下一轮对话生效，不打断在跑的那一轮。**受保护字段**（`skin_id` / `archetype` / `agent_kind` / `level` / `experience` / `appearance`）一律拒绝并说明原因：皮肤与绑定 CLI 建档后不可改，等级 / 经验由成长曲线裁决，形象按等级解锁（走界面改）。逐项下发并逐项回读核对：某个字段没改进去会如实报错（不假装改成功），后面的字段也不再下发。
+> **错误**：`invalid_arguments`（character_id 缺失 / 没有要改的字段 / 字段值非法 / 未知或受保护字段）/ `unknown_character`（名册里没有这个 id）/ `internal_error`（命令没人接管）。
+
+**inputSchema**
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "character_id": { "type": "string", "minLength": 1, "description": "要改的角色 id（必填）。用 stratix_registry 查名册里的真实 id。" },
+    "name": { "type": "string", "maxLength": 24, "description": "新名字（选填）。trim 后非空、≤ 24 码点；与其它角色重名会被拒绝；与自己当前名字相同 → 幂等成功。" },
+    "persona": { "type": "string", "maxLength": 2000, "description": "新人设提示词（选填，整份替换）。trim 后非空、≤ 2000 码点；与现有人设相同 → 幂等成功。" },
+    "context_enabled": { "type": "boolean", "description": "角色级上下文注入开关（选填）：true = 附带战场现状块，false = 不带。" }
+  },
+  "required": ["character_id"],
+  "additionalProperties": false
+}
+```
+
+**返回（成功）**
+
+```json
+{ "ok": true, "data": {
+  "character_id": "character_1753..._1",
+  "changed": ["name", "persona"], "unchanged": [],
+  "character": { "id": "character_1753..._1", "name": "Neo改", "persona": "你是负责重构的老手", "persona_truncated": false, "level": 1, "experience": 0, "agent_kind": "claude-code", "skin_id": "default", "external_session_id": null, "appearance": null, "context_enabled": true },
+  "next": { "tool": "stratix_registry", "args": {}, "hint": "名册已更新（改完即生效）—— 用 stratix_registry 复核" },
+  "poll": { "tool": "stratix_registry", "args": {} } } }
+```
+
+**映射**：`HudCommand.character.name.update` / `character.persona.update` / `character.contextEnabled.update` → core 的 `character/manager.ts` 的 `updateName` / `updatePersona` / `updateContextEnabled`（**既有命令**，core 契约零增补）。**回执自己核实**：每个字段下发后**回读状态**核对 —— 状态里的值与期望值一致才算改成功；不一致则如实报错（名字那条还区分「被别人抢了同名」与「命令没人接管」两种原因），绝不假装改成功。
+
+**可编辑字段以 UI 侧为准**：本工具开放的字段 = 界面角色编辑中心（`hud/screens/character-screen.ts`）实际开放的字段 —— 「档案」tab 的改名、「人设」tab 的全文编辑，外加 agent-panel 角色卡上的上下文开关（task_053）。**形象（appearance）不在其中**：它的部位按角色等级解锁（`hud/screens/appearance-unlock-catalog.ts`），解锁门槛是界面约束、core 明确不判（见 `core/types.ts` 的 `character.appearance.update` 注释）—— MCP 侧开放原样写入等于给外部 agent 开了绕过门槛的后门，故不开放，改为说清去哪改。
+
+**运行期不加锁**：改档**没有**「在任务中 / 在线就锁住」的保护（与 §2.17 的删档占用闸门不同）—— 界面上的改名与人设编辑对在跑的任务 / 在跑的对话都不设限（人设本来就"下次对话生效"），MCP 侧另加一把锁就是凭空发明一条 UI 没有的策略。
+
+**幂等口径**：同值不写库不广播（core 的"引用未变即不广播"约定），回执用 `changed` / `unchanged` 两段说清"哪些真改了、哪些本来就一样"。注意**只改大小写算真改名**（`Neo → NEO`），与 core 的 `updateName` 同一口径。
+
+**错误码不新增**（附录 A 的"不新增码"纪律）：角色不存在 → 复用 `unknown_character`；参数问题（缺字段 / 未知字段 / 受保护字段 / 值非法）→ 复用 `invalid_arguments`（message 里说清"为什么不能改"）；命令没人接管 → 复用 `internal_error`。
+
+**持久化边界**：与 §2.16 / §2.17 同一条分界 —— 角色档案的落库在**渲染进程**一侧的存档协调器（按名册 diff 写回 SQLite），纯 headless 的 gateway 进程里角色只存在于内存世界态（进程重启即失）。本工具改的是**世界态里的角色**；渲染进程一侧的名册同步走既有 diff 链路。
+
 ---
 
 ## 3. 一致性铁律
@@ -1124,7 +1176,7 @@ src/stratix-gateway/mcp/
 
 ### 4.2 域前缀与命名位
 
-**已占用域**（第一期）：`world`（`stratix_world_snapshot`）、`task`（`_assign` / `_status` / `_cancel`）、`mission`（`_create` / `_status` / `_checkpoint` / `_confirm` / `_cancel`，§2.5 / §2.6 / §2.9 / §2.14 / §2.15 —— 编组域的建 / 查 / 记账 + **生命周期收尾**：确认开工、撤掉没开工的）、`chat`（`_send`）、`session`（`_list` / `_get` / `_interrupt` / `_resume`，§2.10 / §2.11 / §2.12 / §2.13 —— 会话域的读面 + 写面）、`character`（`_create`，§2.16 —— **名册供给**：建一个 agent 角色档案，建档即上场；`_delete`，§2.17 —— **名册清理**：删掉一个角色档案，角色与它的战场单位一并撤下）、无域（`stratix_registry`）。
+**已占用域**（第一期）：`world`（`stratix_world_snapshot`）、`task`（`_assign` / `_status` / `_cancel`）、`mission`（`_create` / `_status` / `_checkpoint` / `_confirm` / `_cancel`，§2.5 / §2.6 / §2.9 / §2.14 / §2.15 —— 编组域的建 / 查 / 记账 + **生命周期收尾**：确认开工、撤掉没开工的）、`chat`（`_send`）、`session`（`_list` / `_get` / `_interrupt` / `_resume`，§2.10 / §2.11 / §2.12 / §2.13 —— 会话域的读面 + 写面）、`character`（`_create`，§2.16 —— **名册供给**：建一个 agent 角色档案，建档即上场；`_delete`，§2.17 —— **名册清理**：删掉一个角色档案，角色与它的战场单位一并撤下；`_edit`，§2.18 —— **名册维护**：改一个已有角色档案的名字 / 人设 / 上下文开关）、无域（`stratix_registry`）。
 
 **预留命名位**：
 
@@ -1139,6 +1191,8 @@ src/stratix-gateway/mcp/
 **动作词受控表**：新增工具优先取自 `list` / `get` / `create` / `update` / `assign` / `send` / `cancel` / `start` / `status` / `snapshot` / `search`。确需新动词时先在本节登记再用 —— 动词词表膨胀会让"同类工具"失去可预测性。
 
 **已登记的扩展动词**：`checkpoint`（`stratix_mission_checkpoint`，§2.9）—— 在一条编组任务上追加一条 append-only 记账行（不改相位）。登记理由：它是"写一条记账"这一个动作，与 `create`（立任务）、`assign`（派活）都不是同一件事；不登记就得用 `update` 硬套，而 `update` 的语义是"改字段"，会把"只追加不改写"的记账语义说糊。
+
+`edit`（`stratix_character_edit`，§2.18）—— 改一个**已存在**的角色档案的若干字段（名字 / 人设 / 上下文开关）。登记理由：它与 `update` **不是同一件事** —— `update` 的语义是"改字段"（改一条任务的状态、改一条会话的标题），而 `edit` 的语义是"改档"：一次动作里可以同时改多个字段（名字 + 人设 + 开关），改的是**角色这份档案**本身而不是某个对象的某条属性；用 `update` 硬套会把"改一份档案"与"改一条记录"混成一个动词，模型分不清该不该一次性带上多个字段。
 
 `interrupt`（`stratix_session_interrupt`，§2.12）—— 把一条在办会话显式转成"已中断"（并落一条中断标记事件）。登记理由：它与 `cancel`（取消一条排队中的任务）**不是同一件事** —— `cancel` 撤的是一条还没开跑的任务，`interrupt` 叫停的是一场**正在跑**的对话；用 `cancel` 硬套会把"取消排队"与"打断进行中"混成一个动词，模型分不清该在什么时候用哪个。
 
@@ -1248,6 +1302,7 @@ src/stratix-gateway/mcp/
 
 | 版本 | 日期 | 变更 | 兼容性 |
 |------|------|------|--------|
+| v1.12 | 2026-11-04 | **新增工具** `stratix_character_edit`（§2.18，**名册维护面**：改一个已有角色档案的名字 / 人设 / 上下文开关 —— 落点 = **既有**的 `HudCommand.character.name.update` / `character.persona.update` / `character.contextEnabled.update`，core 契约零增补，回执带 `changed` / `unchanged` 两段）；**新增动词** `edit` 登记（§4.2）；**受保护字段**（皮肤 / 绑定 CLI / 等级 / 经验 / 形象）拒绝并说明原因；`tools/list` 新增一件（十八件 → 十九件），排在 `character_delete` 之后（既有工具之间的相对次序不变） | ✅ 纯增量：既有十八件工具的名字、参数、语义与缺省行为**均未变**；`tools/list` 的既有次序逐字未动；**不新增任何错误码**（复用 `invalid_arguments` / `unknown_character` / `internal_error`）；不新增状态通道 / 持久化表 / 状态机；§2.16 的 description 里「改档走界面」改为指向本工具 |
 | v1.11 | 2026-11-04 | **新增工具** `stratix_character_delete`（§2.17，**名册清理面**：删除一个 agent 角色档案 —— 落点 = 新增的 `HudCommand.character.delete`，core 同一次 `setState` 里撤下角色与它的战场单位，回执带 `character_id` + `name` + `removed_unit_id`）；**core 契约增补** —— `HudCommand` 新增 `character.delete`，占用裁决在 core（`character/manager.ts` 的 `deleteCharacter` + `character/delete-guard.ts` 的纯函数：① 在任务中（未收尾任务 / 单位仍挂在编组任务上）② 在线（该角色有在办会话））；`tools/list` 新增一件（十七件 → 十八件），排在 `character_create` 之后（既有工具之间的相对次序不变） | ✅ 纯增量：既有十七件工具的名字、参数、语义与缺省行为**均未变**；`tools/list` 的既有次序逐字未动；**不新增任何错误码**（复用 `unknown_character` / `illegal_transition` / `chat_busy` / `invalid_arguments` / `internal_error`）；不新增状态通道 / 持久化表 / 状态机（写面走既有 character manager 与既有 `WorldState` 字段）；占用判定**只有一份**（core 的 `findCharacterDeleteBlock`，工具只做发命令前的快筛） |
 | v1.10 | 2026-11-04 | **新增工具** `stratix_character_create`（§2.16，**名册供给面**：新建一个 agent 角色档案 —— 落点 = 既有的 `HudCommand.character.create`，建档即上场（core 同一次 `setState` 里投影战场单位），回执带 `character_id` + 完整角色对象 + `unit_id`）；**新增域** `character`（§4.2 域表）；`tools/list` 新增一件（十六件 → 十七件），排在 `session_fork` 之后（既有工具之间的相对次序不变） | ✅ 纯增量：既有十六件工具的名字、参数、语义与缺省行为**均未变**；`tools/list` 的既有次序逐字未动；**不新增任何错误码**（复用 `invalid_arguments` / `internal_error`）；不新增状态通道 / 持久化表 / 状态机（写面走既有 `character.create` 命令与既有 character manager）；重名与名册上限的裁决**只有一份**（core 的 `createCharacter`，工具只做发命令前的快筛） |
 | v1.9 | 2026-11-04 | **新增工具** `stratix_mission_confirm`（§2.14，把一条 `pending` 的编组任务放行开工）与 `stratix_mission_cancel`（§2.15，撤掉一条**从未开工**的编组任务 —— 撤掉后 `world_snapshot` 里不再出现）；**新增动词** `confirm` 登记（§4.2，`mission` 域的预留命名位 `stratix_mission_confirm` 转正）；**core 契约增补** —— `HudCommand` 新增 `mission.remove`（§3.1 / §3.2 / §2.15），守门在 core 的 `canRemoveMission`（只认 `draft` / `pending`；与 core 既有的 `mission.cancel`「叫停、留终态墓碑」分工明确）；**悬空引用修正** —— `stratix_mission_create`（§2.5）的描述不再自认"第一期 MCP 不提供确认工具"，改为指向 `stratix_mission_confirm` / `stratix_mission_cancel`；`tools/list` 新增两件（十四件 → 十六件），排在 `mission_checkpoint` 之后（既有工具之间的相对次序不变） | ✅ 纯增量：既有十四件工具的名字、参数、语义与缺省行为**均未变**；`tools/list` 的既有次序逐字未动；**不新增任何错误码**（复用 `mission_not_found` / `illegal_transition` / `mission_terminal` / `invalid_arguments` / `internal_error`）；core 侧只**增**一个动作（`mission.remove`），既有 `mission.cancel` 的语义与行为逐字未变（UI 的「停止任务」照旧留墓碑） |
