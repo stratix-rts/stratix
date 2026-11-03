@@ -243,7 +243,9 @@ const MAIN_SCREEN_STYLE = `
   .hud-rail-left {
     position: absolute;
     left: var(--hud-gap);
-    top: calc(var(--hud-topbar-h) + var(--hud-gap));
+    /* 模式状态条（@since v3.6，task_117）：细条亮出时下方版面整体下移一条 ——
+       让位量由 mode-strip 组件写在 <html> 上的 --srf-mode-strip-h 给（没亮 = 0）。 */
+    top: calc(var(--hud-topbar-h) + var(--srf-mode-strip-h, 0px) + var(--hud-gap));
     /* 下边界避开两件：控制岛（居中，与左栏只有一条窄带重叠）与左下事件轨。
        why 用「岛的高度上限」而不是实测高度：岛高随内容变，栏的下边界得按上限留 —— 宁可空一截，
        也不能让栏压到岛或事件轨上。 */
@@ -255,7 +257,8 @@ const MAIN_SCREEN_STYLE = `
   .hud-rail-right {
     position: absolute;
     right: var(--hud-gap);
-    top: calc(var(--hud-topbar-h) + var(--hud-gap));
+    /* 同 .hud-rail-left：模式状态条亮出时让位一条（--srf-mode-strip-h）。 */
+    top: calc(var(--hud-topbar-h) + var(--srf-mode-strip-h, 0px) + var(--hud-gap));
     /* 右下角是小地图（200×120 + 标题栏）—— 右栏的下边界按它的高度让开。 */
     bottom: calc(var(--hud-corner-stack-h) + var(--hud-gap));
     width: min(360px, 30vw);
@@ -723,8 +726,15 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       // 不给面板另开总线口子。必须在 rootEl.innerHTML 之后挂（容器节点得先存在）。
       // variant='strip'（@since v3.4，task_090）：控制岛形态 —— 1 行命令条，
       //   两个 scope 分组的按钮摊平成一条横向滚动行（其余命令滚动可达，一条不减）。
+      // replay（@since v3.6，task_113）：当日回放控制器 —— 命令行 `replay` 的落地面；
+      //   与回放条（mountDayReplay）共用**同一个**控制器实例（两处读数必须是同一份）。
       const panelHost = rootEl.querySelector<HTMLElement>('[data-role="command-panel"]');
-      const unmountPanel = panelHost ? mountCommandPanel(adapter, panelHost, { variant: 'strip' }) : null;
+      const unmountPanel = panelHost
+        ? mountCommandPanel(adapter, panelHost, {
+            variant: 'strip',
+            replay: options.replay?.controller ?? null,
+          })
+        : null;
 
       // 当日回放条（@since v3.3，task_082）：底栏上沿的时间轴 scrubber。
       // 组件只被控制器驱动（它自己不读数据）；控制器由组合根注入（它才有读取口）。

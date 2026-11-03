@@ -39,6 +39,22 @@
  *   （对话框拿同一份构造器用），判定口径一字未改。
  *   副产物：对话框建完任务会派发 NEW_TASK_SUBMITTED_EVENT → 本面板清掉标题草稿
  *   （否则再点一次「新建任务」会用同一句话再建一条）。
+ *
+ * 命令行注册表（@since v3.6，task_113）：搜索框**同时是命令行** —— 回车即执行。
+ *   此前它是死的：输入框只做模糊搜索、Enter 毫无反应，提示词承诺的
+ *   「mission / 主题 / 设置」全都不认（死功能报告第 2 条）。
+ *   why 词表独立在 command-registry.ts（纯逻辑）：命令清单只有一份，
+ *     「help 列出来的」与「真能敲的」必然同源（两份清单迟早对不上 = 又一个假入口）。
+ *   why 回执落在面板自己的输出区（data-role="output"）而不是 toast：
+ *     命令行就在眼前，回执贴着输入框才像终端；toast 是跨面板的顶层反馈面，
+ *     用在这里反而把结果甩到屏幕角落。
+ *   why mission 复用 NEW_TASK_OPEN_EVENT（task_112 的通路）而不是自己派单：
+ *     发起方式有四种，对话框才是选方式的地方；命令行只负责"把标题带过去"。
+ *   why theme 的降级判定看**皮肤有没有真的换掉**：命令只管发 theme.set，
+ *     皮肤没换（handler 没接上）就说「皮肤系统接入中，请到设置页操作」——
+ *     不假装切成功，也不空口说"接入中"。
+ *   why replay 走注入的控制器：回放控制器在组合根建（它要 app 层的读取口），
+ *     面板只认一个控制器接口；网关不可用时给的是**人话 + 重试指引**，不是错误码。
  */
 
 import type { HudCommand, WorldState } from '../../core/types';
@@ -47,6 +63,7 @@ import {
   NEW_TASK_OPEN_EVENT,
   NEW_TASK_SUBMITTED_EVENT,
 } from '../components/new-task-dialog/new-task-dialog';
+import type { ReplayController } from '../components/replay/replay-controller';
 
 import type {
   CommandContext,
@@ -64,6 +81,14 @@ import {
   renderSignature,
   resolveCommands,
 } from './command-catalog';
+import type { CliCommandSpec } from './command-registry';
+import {
+  cliHelpText,
+  cliUnknownText,
+  cliUsageHint,
+  cliUsageList,
+  parseCliInput,
+} from './command-registry';
 
 export const COMMAND_PANEL_TAG = 'strat-command-panel';
 
@@ -74,10 +99,17 @@ export type CommandPanelDeps = Pick<HudBusAdapter, 'dispatch' | 'subscribe'>;
 export interface StratCommandPanelElement extends HTMLElement {
   /** 注入的适配器；在 connected 之前或之后设置都生效。 */
   adapter: CommandPanelDeps | null;
+  /**
+   * 当日回放控制器（@since v3.6，task_113）—— 命令行 `replay` 的落地面。
+   * 缺省 = null → 该命令如实说"没接线"，不假装能放。
+   */
+  replay: ReplayController | null;
   /** 搜索词（面板瞬时态）。 */
   query: string;
   /** 「发起任务」的标题草稿（面板瞬时态，不是业务状态）。 */
   draftTitle: string;
+  /** 命令行回执（最后一次执行的结果 / 引导文案；空串 = 没话要说）。 */
+  readonly output: string;
   /** 强制重算重渲染（改了瞬时态或注入新 state 后可手动调用）。 */
   refresh(): void;
   /** 当前可见的命令 id（按渲染顺序），供测试断言"该显示的显示了"。 */
@@ -103,6 +135,31 @@ function escapeHtml(s: string): string {
 }
 
 /**
+ * 读当前激活的皮肤 id（'default' | 'pixel' | null = 读不到）。
+ * why 从 DOM 读而不是从适配器读：皮肤的真源是主题控制器（token 样式表 + localStorage 记忆），
+ *   而控制器住在组合根手里、面板这一层拿不到；DOM 上「哪张 token 样式表没被 disable」
+ *   就是控制器 current 的镜像（theme-controller 的 apply 就是这么切的，见 hud/theme/theme-controller.ts）。
+ * 读不到（没注入 token —— 单测 / 极简装配）→ null，调用方据此**不判定降级**
+ *   （没皮肤系统 ≠ 皮肤系统坏了，两回事）。
+ *
+ * why 读 `disabled` **属性**而不是 CSS 选择器 `style[data-srf-theme]:not([disabled])`：
+ *   theme-controller 切皮肤走的是 `node.disabled = true`（IDL 属性），
+ *   而在 Chromium 上这个赋值**不反射成同名 content attribute**（实测 hasAttribute('disabled') 仍为 false）——
+ *   于是 `:not([disabled])` 会把两张表都算成"启用"，永远读到第一张（切了也像没切）。
+ *   读 IDL 属性才是控制器真正写的那一位。
+ *   why 用 `!node.disabled` 而不是 `node.disabled === false`：jsdom 根本没实现
+ *   HTMLStyleElement.disabled（读出来是 undefined），严格比较会把"启用"误判成"没有可读的表"。
+ */
+function readActiveThemeId(): 'default' | 'pixel' | null {
+  const nodes = Array.from(document.querySelectorAll<HTMLStyleElement>('style[data-srf-theme]'));
+  const active = nodes.find((node) => !node.disabled);
+  const id = active?.getAttribute('data-srf-theme');
+  if (id === 'pixel') return 'pixel';
+  if (id === 'default') return 'default';
+  return null;
+}
+
+/**
  * 工厂：注册 `<strat-command-panel>`。
  * 幂等（与 defineStratButton 同约定）：重复 register 返回已注册构造器，不抛错。
  */
@@ -113,8 +170,11 @@ export function defineCommandPanel(): typeof HTMLElement {
 
   class CommandPanel extends HTMLElement implements StratCommandPanelElement {
     private _adapter: CommandPanelDeps | null = null;
+    private _replay: ReplayController | null = null;
     private _query = '';
     private _draftTitle = '';
+    /** 命令行回执（最后一次执行的结果 / 引导文案）。 */
+    private _output = '';
     private _state: WorldState | null = null;
     private _lastSignature: string | null = null;
     private _unsubscribe: (() => void) | null = null;
@@ -127,6 +187,11 @@ export function defineCommandPanel(): typeof HTMLElement {
       this.bindAdapter();
       this.refresh();
     }
+
+    get replay(): ReplayController | null { return this._replay; }
+    set replay(value: ReplayController | null) { this._replay = value; }
+
+    get output(): string { return this._output; }
 
     get query(): string { return this._query; }
     set query(value: string) {
@@ -172,6 +237,7 @@ export function defineCommandPanel(): typeof HTMLElement {
       if (signature === this._lastSignature) return;
       this._lastSignature = signature;
       this.renderSections();
+      this.renderOutput();
     }
 
     // —— 订阅生命周期 ——
@@ -196,6 +262,22 @@ export function defineCommandPanel(): typeof HTMLElement {
 
     private contextualCommands(): ResolvedCommand[] {
       return filterCommands(resolveCommands(this.context()), this._query);
+    }
+
+    /**
+     * 过滤空时的提示语（@since v3.6，task_113）。
+     * 输入像一条命令 → 告诉用户回车就能执行；不像 → 老实说没匹配上（清单由 empty-hint 补）。
+     */
+    private emptyHintText(): string {
+      const parsed = parseCliInput(this._query);
+      if (parsed.kind === 'matched' && parsed.spec) {
+        const arg = parsed.arg.length > 0 ? ` ${parsed.arg}` : '';
+        return `回车执行：${parsed.spec.name}${arg}`;
+      }
+      if (parsed.kind === 'missing-arg' && parsed.spec) {
+        return `回车执行前请补全参数：${parsed.spec.usage}`;
+      }
+      return '没有匹配的命令';
     }
 
     /**
@@ -224,9 +306,12 @@ export function defineCommandPanel(): typeof HTMLElement {
      * 请求打开新建任务对话框（@since v3.6，task_112）。
      * 事件带标题（组合根据此预填对话框）；标题为空时什么都不做
      * —— 按钮此刻是禁用态，走不到这里；这里再挡一道是防「事件被外部伪造」。
+     *
+     * @since v3.6（task_113）显式标题：命令行 `mission <标题>` 把标题带过来，
+     *   不经过草稿框（草稿框是"点按钮"那条路的入口，命令行不必先填它）。
      */
-    private requestNewTaskDialog(): void {
-      const title = this._draftTitle.trim();
+    private requestNewTaskDialog(explicitTitle?: string): void {
+      const title = (explicitTitle ?? this._draftTitle).trim();
       if (title.length === 0) return;
       this.dispatchEvent(
         new CustomEvent(NEW_TASK_OPEN_EVENT, {
@@ -235,6 +320,160 @@ export function defineCommandPanel(): typeof HTMLElement {
           detail: { title },
         })
       );
+    }
+
+    // —— 命令行（@since v3.6，task_113）——
+
+    /**
+     * 回车执行一行命令行。
+     * 分支口径与注册表一致：命中 → 执行；参数缺失 / 非法 → 给用法提示；未命中 → 给可用命令清单。
+     * why 未命中要给清单而不是一句拒绝：死功能报告里最刺眼的正是「没有匹配的命令」——
+     *   用户照着提示词敲了一串，得到的只有一堵墙。给得出清单，才叫引导。
+     */
+    private async runCli(raw: string): Promise<void> {
+      const parsed = parseCliInput(raw);
+      switch (parsed.kind) {
+        case 'empty':
+          this.setOutput(`请输入命令。\n可用命令：${cliUsageList()}`);
+          return;
+        case 'unknown':
+          this.setOutput(cliUnknownText(parsed.input));
+          return;
+        case 'missing-arg':
+          this.setOutput(cliUsageHint(parsed.spec));
+          return;
+        case 'invalid-arg':
+          this.setOutput(
+            `「${parsed.arg}」不是 ${parsed.spec.name} 的合法参数。可选：${(parsed.spec.allowedArgs ?? []).join(' / ')}`
+          );
+          return;
+        case 'matched':
+          await this.executeCli(parsed.spec, parsed.arg);
+      }
+    }
+
+    /** 执行一条命中的命令。每条命令都必须**当场看得见效果**（看得见才算接上）。 */
+    private async executeCli(spec: CliCommandSpec, arg: string): Promise<void> {
+      switch (spec.id) {
+        case 'mission': {
+          const title = arg.trim();
+          if (title.length === 0) {
+            this.setOutput(cliUsageHint(spec));
+            return;
+          }
+          // 草稿框同步成同一句：之后点「发起任务」也是这个标题（面板内不出现两份真相）。
+          this.setDraftTitle(title);
+          // 复用 task_112 的通路：派 DOM 事件，由组合根打开对话框（不重复实现派单逻辑）。
+          this.requestNewTaskDialog(title);
+          this.setOutput(`已打开新建任务对话框，标题已预填「${title}」`);
+          this.clearQuery();
+          return;
+        }
+        case 'theme': {
+          this.runThemeCommand(arg);
+          return;
+        }
+        case 'settings': {
+          if (!this._adapter) return;
+          this._adapter.dispatch({ type: 'ui.navigate', screen: 'settings' });
+          this.setOutput('已打开设置页');
+          this.clearQuery();
+          return;
+        }
+        case 'replay': {
+          await this.runReplayCommand();
+          return;
+        }
+        case 'help': {
+          this.setOutput(cliHelpText());
+          this.clearQuery();
+          return;
+        }
+      }
+    }
+
+    /**
+     * `theme`：发 theme.set，切皮肤。
+     * 降级判定看**皮肤有没有真的换掉**：命令只管发命令，皮肤没换就是 handler 没接上，
+     * 那就说「皮肤系统接入中，请到设置页操作」—— 不假装切成功。
+     */
+    private runThemeCommand(arg: string): void {
+      if (!this._adapter) return;
+      const before = readActiveThemeId();
+      // 不带参数 = 在两套之间切（当前是像素风就切回现代风，否则切像素风）。
+      // 白名单只有 default/pixel（注册表已校验过参数），这里再收一次窄口径给契约。
+      const target: 'default' | 'pixel' =
+        arg.length > 0
+          ? arg === 'pixel'
+            ? 'pixel'
+            : 'default'
+          : before === 'pixel'
+            ? 'default'
+            : 'pixel';
+      this._adapter.dispatch({ type: 'theme.set', themeId: target });
+      const after = readActiveThemeId();
+      if (before !== null && after !== target) {
+        this.setOutput('皮肤系统接入中，请到设置页操作');
+        return;
+      }
+      this.setOutput(
+        `已切换到${target === 'pixel' ? '像素风' : '现代风'}（再敲一次 theme 切回去）`
+      );
+      this.clearQuery();
+    }
+
+    /**
+     * `replay`：放今天的回放。
+     * 网关不可用 / 今天没活儿 / 控制器没接上 —— 三种情况都给人话 + 重试指引，
+     * 不给错误码也不给空白（回放读不到就是读不到，不编数据）。
+     */
+    private async runReplayCommand(): Promise<void> {
+      const controller = this._replay;
+      if (!controller) {
+        this.setOutput('回放没接线：当前没有回放控制器（底栏回放条没挂上）。');
+        return;
+      }
+      let state = controller.state;
+      if (!state.loaded) {
+        this.setOutput('正在读取今天的记录…');
+        await controller.load();
+        state = controller.state;
+      }
+      if (state.failed) {
+        this.setOutput(
+          '回放失败：回放服务（网关）没连上 —— 确认它已启动（npm run dev），再敲一次「replay」重试。'
+        );
+        return;
+      }
+      if (state.entries.length === 0) {
+        this.setOutput('今天还没有任务记录 · 跑一条任务就有回放了（再敲一次「replay」重试）。');
+        return;
+      }
+      controller.play();
+      this.setOutput(`正在回放今天（${state.entries.length} 条记录）`);
+      this.clearQuery();
+    }
+
+    /** 写回执（面板瞬时态；不进渲染签名 —— 它自己触发重绘）。 */
+    private setOutput(text: string): void {
+      this._output = text;
+      this.renderOutput();
+    }
+
+    /** 命令执行成功后清空输入框：命令行跑完就该回到"待输入"状态（回执留在输出区）。 */
+    private clearQuery(): void {
+      this._query = '';
+      const input = this.shadowRoot?.querySelector('[data-role="query"]') as HTMLInputElement | null;
+      if (input) input.value = '';
+      this.refresh();
+    }
+
+    /** 标题草稿同步（草稿框 + 面板瞬时态是同一份，不留两份真相）。 */
+    private setDraftTitle(title: string): void {
+      this._draftTitle = title;
+      const input = this.shadowRoot?.querySelector('[data-role="draft"]') as HTMLInputElement | null;
+      if (input) input.value = title;
+      this.refresh();
     }
 
     /**
@@ -302,6 +541,16 @@ export function defineCommandPanel(): typeof HTMLElement {
           input:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
           .group-name { font-weight: var(--srf-font-weight-semibold); letter-spacing: 0.04em; }
           .empty { padding: var(--srf-spacing-md); text-align: center; border: var(--srf-border-width) dashed var(--srf-border); border-radius: var(--srf-radius); }
+          /* 命令行回执区（@since v3.6，task_113）：贴着输入框的一行"终端输出"。
+             why 不进 toast：命令就在眼前，回执也得在眼前。 */
+          .output {
+            padding: var(--srf-spacing-xs);
+            color: var(--srf-text-muted);
+            font-size: var(--srf-font-size-xs);
+            border-left: var(--srf-spacing-xxs) solid var(--srf-border-strong);
+            white-space: pre-wrap;
+          }
+          .empty-hint { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); }
           button.command {
             display: grid;
             gap: var(--srf-spacing-xxs);
@@ -385,6 +634,18 @@ export function defineCommandPanel(): typeof HTMLElement {
             padding: var(--srf-spacing-xs);
             font-size: var(--srf-font-size-xs);
           }
+          /* 回执区在紧凑形态下压成行内窄条（不撑高控制岛：1 行 + 横向滚动）。
+             why 不换行：控制岛的高度预算是 100px（硬验收），回执再高就把时间轴挤没了。 */
+          :host([variant="strip"]) .output {
+            flex: 0 1 auto;
+            max-width: 55%;
+            padding: 0 var(--srf-spacing-xs);
+            border-left: none;
+            white-space: nowrap;
+            overflow-x: auto;
+            overflow-y: hidden;
+          }
+          :host([variant="strip"]) .empty-hint { white-space: nowrap; }
         </style>
         <div class="panel" part="panel">
           <div class="head">
@@ -397,10 +658,11 @@ export function defineCommandPanel(): typeof HTMLElement {
             <input type="text" data-role="draft" placeholder="输入后「发起任务」才可用" />
           </label>
           <label class="field">
-            <span class="field-name">搜索命令</span>
-            <input type="search" data-role="query" placeholder="如 mission / 主题 / 设置" />
+            <span class="field-name">命令</span>
+            <input type="search" data-role="query" placeholder="mission / 主题 / 设置 / 回放 / help（回车执行）" />
           </label>
           <div class="sections" data-role="sections"></div>
+          <div class="output" data-role="output" hidden></div>
         </div>
       `;
 
@@ -426,6 +688,20 @@ export function defineCommandPanel(): typeof HTMLElement {
           if (!id || !scope) return;
           this.runCommand(id as PanelCommandId, scope as CommandScope);
         });
+
+        // 命令行回车（@since v3.6，task_113）：搜索框同时是命令行 —— 回车即执行。
+        // why 读 target.value 而不是 this._query：输入事件与回车之间可能夹着粘贴等路径，
+        //   以输入框当下的值为准，别拿可能滞后的镜像。
+        root.addEventListener('keydown', (ev: Event) => {
+          const key = ev as KeyboardEvent;
+          if (key.key !== 'Enter') return;
+          const target = key.target as HTMLInputElement | null;
+          if (target?.dataset.role !== 'query') return;
+          key.preventDefault();
+          const raw = target.value;
+          this._query = raw;
+          void this.runCli(raw);
+        });
       }
 
       this.renderNotices();
@@ -443,6 +719,14 @@ export function defineCommandPanel(): typeof HTMLElement {
         .join('');
     }
 
+    /** 回执区（@since v3.6，task_113）：textContent 写入 —— 回执含用户输入，不走 innerHTML。 */
+    private renderOutput(): void {
+      const box = this.shadowRoot?.querySelector<HTMLElement>('[data-role="output"]');
+      if (!box) return;
+      box.textContent = this._output;
+      box.hidden = this._output.length === 0;
+    }
+
     private renderSections(): void {
       const root = this.shadowRoot;
       const box = root?.querySelector('[data-role="sections"]');
@@ -455,8 +739,13 @@ export function defineCommandPanel(): typeof HTMLElement {
       const { selection, global } = groupByScope(this.contextualCommands());
 
       // 搜索把两个分组都过滤空了：只给一条"没匹配上"，不逐组重复报空。
+      // @since v3.6（task_113）：命令行接通后，这块同时是**引导位**——
+      //   输入像一条命令就提示"回车执行"，不像就顺带把能敲的命令列出来
+      //   （死功能报告里的「没有匹配的命令」从此不再是死路一条）。
       if (selection.length === 0 && global.length === 0) {
-        box.innerHTML = `<div class="empty" data-role="empty">没有匹配的命令</div>`;
+        box.innerHTML =
+          `<div class="empty" data-role="empty">${escapeHtml(this.emptyHintText())}</div>` +
+          `<div class="empty-hint" data-role="empty-hint">可用命令：${escapeHtml(cliUsageList())}</div>`;
         return;
       }
 
@@ -513,16 +802,22 @@ export function defineCommandPanel(): typeof HTMLElement {
  *   调用方不必知道 custom element 的存在细节。
  *
  * @since v3.4（task_090）新增 options.variant：'strip' = 控制岛内的 1 行命令条（见文件头）。
+ * @since v3.6（task_113）新增 options.replay：当日回放控制器 —— 命令行 `replay` 的落地面。
+ *   缺省 = null → 该命令如实说"没接线"（不假装能放）。
  */
 export function mountCommandPanel(
   deps: CommandPanelDeps,
   host: HTMLElement,
-  options: { readonly variant?: 'default' | 'strip' } = {}
+  options: {
+    readonly variant?: 'default' | 'strip';
+    readonly replay?: ReplayController | null;
+  } = {}
 ): () => void {
   defineCommandPanel();
   const element = document.createElement(COMMAND_PANEL_TAG) as StratCommandPanelElement;
   // 形态属性必须在入 DOM 前落定 —— connectedCallback 里的首绘要按形态建外壳。
   element.setAttribute('variant', options.variant ?? 'default');
+  element.replay = options.replay ?? null;
   element.adapter = deps;
   host.appendChild(element);
   // 移除元素会触发 disconnectedCallback → 退订，订阅随之释放。
