@@ -32,6 +32,11 @@
  *     故本屏不为此分支 —— 顶栏按钮另发 stratix:chat-open，由组合根打开角色抽屉。
  *   why 用 replace 而非 overlay：sub-screen 自身带 topbar + body + 返回按钮，
  *   若仍渲染主屏 topbar/抽屉会出现双 topbar 与抽屉占视野；直接换内容区更稳。
+ *
+ * ★ 宿主归属铁律（@since v3.4，task_097）：本屏**只写自己的子树**（style + .hud-root），
+ *   绝不重写宿主（host.innerHTML）。组合根把覆盖层（小地图 / 事件轨 / toast / 聊天抽屉 /
+ *   里程碑 / 快捷键帮助）挂在同一个宿主下 —— 宿主被重写 = 那些覆盖层当场消失且永不重挂，
+ *   真机表现是「点一下演示开关，之后小地图、事件轨、聊天入口全部没反应」。
  */
 
 // 顶栏度量（@since v3.4，task_089）：Z1 的高度与「7 元素封顶」口径 —— 数字取自唯一事实源。
@@ -89,7 +94,7 @@ function resolveCurrentScreen(state: WorldState | null): CurrentScreen {
 
 /**
  * 主屏 / 子屏共用的样式表（模块级常量）。
- * why 独立成常量：屏位切换会重写 host.innerHTML，样式必须能跟着一起重挂，否则子屏会裸奔。
+ * why 独立成常量：屏位切换会重写主屏布局的 DOM，样式必须能一直跟着，否则子屏会裸奔。
  * why 类名带 hud- 前缀：本表是文档级样式表（style 元素不进 shadow DOM），类名不加前缀会与
  * 页面里其它同名词撞车（settings / character 屏在 shadow DOM 内，不受影响，但主屏布局在文档流里）。
  */
@@ -434,12 +439,39 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
     /** core 订阅闭包（订阅 WorldState.currentScreen 变化）；只在 mount 期间存在。 */
     let unsubscribeState: (() => void) | null = null;
 
+    /**
+     * 本屏**自有子树**（样式表 + .hud-root 根节点）—— 挂在宿主下，但**不接管宿主本身**。
+     *
+     * ★ @since v3.4（task_097）：本屏曾用 `host.innerHTML = ...` 重写整个宿主。
+     *   组合根把**覆盖层**（小地图 / 事件轨 / toast / 聊天抽屉 / 里程碑 / 快捷键帮助）
+     *   也挂在同一个宿主下 —— 宿主一旦被重写，这些覆盖层当场从 DOM 里消失且**永不重挂**：
+     *   真机表现是「点一下顶栏的演示开关，小地图和事件轨就没了；之后点小地图、点事件轨条目、
+     *   点『打开聊天』全部没反应」。task_097 的点击体检把这个坑逮了出来。
+     *   改法：本屏只写自己的 rootEl —— 别人的节点一根手指都不碰。
+     */
+    const styleEl = document.createElement('style');
+    styleEl.textContent = MAIN_SCREEN_STYLE;
+    const rootEl = document.createElement('div');
+    rootEl.className = 'hud-root';
+    rootEl.setAttribute('part', 'root');
+    host.append(styleEl, rootEl);
+
+    /** 子屏宿主（settings / character）—— 与主屏布局同级，挂在宿主下（absolute 定位口径不变）。 */
+    let subHostEl: HTMLElement | null = null;
+
+    /** 卸掉子屏宿主（进主屏 / 卸载时调用）。 */
+    const dropSubHost = (): void => {
+      subHostEl?.remove();
+      subHostEl = null;
+    };
+
     const renderMain = (): void => {
       // 已挂的 sub-screen 必须先卸（进 main 时也要走这一步 —— 同屏重复也算 changed 边界）。
       if (unmountSubScreen) {
         unmountSubScreen();
         unmountSubScreen = null;
       }
+      dropSubHost();
       if (unmountMain) {
         // 已经是 main 时仍走这里（renderMain 自身幂等）：先拆再装，节点身份会变（屏内容全换）。
         // 主屏布局是壳 + 子组件的集合，拆掉才能清干净。
@@ -452,9 +484,7 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       // 皮肤开关的显示名（@since v3.4，task_089）：像素风收进 ⋯ 菜单后，菜单项自带当前皮肤名 ——
       //   不再另挂一个 theme-tag 文本（§4 A13：状态不写第二遍）。
       const themeLabel = currentTheme === 'pixel' ? '像素' : '默认';
-      host.innerHTML = `
-      <style>${MAIN_SCREEN_STYLE}</style>
-      <div class="hud-root" part="root">
+      rootEl.innerHTML = `
         <header class="hud-topbar" data-role="topbar">
           <span class="hud-brand" data-topbar-item="brand">Stratix</span>
           <div class="hud-capsule" data-topbar-item="capsule" data-role="status-capsule" title="单位 / 任务 / 会话">
@@ -499,14 +529,13 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
           <div class="hud-replay-slot" data-role="replay"></div>
           <div class="hud-surface" data-role="command-panel"></div>
         </div>
-      </div>
     `;
 
       // 计数元素缓存一次：core 每次状态变更都全量广播，逐帧 querySelector 是纯浪费。
-      const unitCounter = host.querySelector('[data-role="unit-count"]');
-      const missionCounter = host.querySelector('[data-role="mission-count"]');
-      const linkCounter = host.querySelector('[data-role="link-count"]');
-      const noticeBadge = host.querySelector<HTMLElement>('[data-role="notice-badge"]');
+      const unitCounter = rootEl.querySelector('[data-role="unit-count"]');
+      const missionCounter = rootEl.querySelector('[data-role="mission-count"]');
+      const linkCounter = rootEl.querySelector('[data-role="link-count"]');
+      const noticeBadge = rootEl.querySelector<HTMLElement>('[data-role="notice-badge"]');
 
       /**
        * 开关态回显（@since v3.4，task_089）：**点亮即状态** —— 顶栏不再挂 on/off 文本标签
@@ -521,21 +550,21 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
 
       // 导演开关（@since v3.3，task_081）：按钮读 core 广播的同一份真相
       //   （WorldState.directorEnabled）—— HUD 不自己存一份「导演开着吗」。
-      const directorButton = host.querySelector<HTMLElement>('[data-role="director"]');
+      const directorButton = rootEl.querySelector<HTMLElement>('[data-role="director"]');
       applySwitchState(directorButton, adapter.latest?.directorEnabled === true);
 
       // 演示开关（@since v3.3，task_110）：本地展示态（demo-mode 是唯一真相源）。
-      const demoButton = host.querySelector<HTMLElement>('[data-role="demo"]');
+      const demoButton = rootEl.querySelector<HTMLElement>('[data-role="demo"]');
       applySwitchState(demoButton, demoMode.enabled);
 
       // 声音包开关与音量（@since v3.3，task_083）：纯本地展示态 —— 不发 HudCommand、
       //   不进总线（与演示模式同一口径：音效不进 WorldState）。真源是 localStorage，
       //   声音引擎每次播放现读 → 这里改完立即生效，不留第二份真相。
-      const soundButton = host.querySelector<HTMLElement>('[data-role="sound"]');
-      const volumeInput = host.querySelector<HTMLInputElement>('[data-role="sound-volume"]');
-      const volumeValue = host.querySelector<HTMLElement>('[data-role="sound-volume-value"]');
-      const levelFill = host.querySelector<HTMLElement>('[data-role="sound-level-fill"]');
-      const soundPopover = host.querySelector<HTMLElement>('[data-role="sound-popover"]');
+      const soundButton = rootEl.querySelector<HTMLElement>('[data-role="sound"]');
+      const volumeInput = rootEl.querySelector<HTMLInputElement>('[data-role="sound-volume"]');
+      const volumeValue = rootEl.querySelector<HTMLElement>('[data-role="sound-volume-value"]');
+      const levelFill = rootEl.querySelector<HTMLElement>('[data-role="sound-level-fill"]');
+      const soundPopover = rootEl.querySelector<HTMLElement>('[data-role="sound-popover"]');
       /** 把当前开关 / 音量状态回显到顶栏（按钮点亮 + 滑条可用性 + 音量计 + 数值）。 */
       const applySoundState = (): void => {
         const enabled = readSoundEnabled();
@@ -550,7 +579,7 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       // ── 弹出层开合（@since v3.4，task_089）────────────────────────────────
       //   两个弹层：🔊 音量层（§4 A8）与 ⋯ 溢出菜单（§4 A4/A9/A10/A11/A12）。
       //   why 不用 <details>：弹层要能被「点外面关掉 / Esc 关掉」，且开合态要在 DOM 上可断言。
-      const overflowMenu = host.querySelector<HTMLElement>('[data-role="overflow-menu"]');
+      const overflowMenu = rootEl.querySelector<HTMLElement>('[data-role="overflow-menu"]');
       const setPopover = (el: HTMLElement | null, open: boolean): void => {
         if (!el) return;
         el.hidden = !open;
@@ -574,7 +603,7 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       document.addEventListener('keydown', onDocumentKeydown);
 
       // 音量层的入口 = 声音件里的音量计（§4 A7：「点击旁边的音量区 = 弹出音量层」）。
-      const volumeOpenButton = host.querySelector<HTMLElement>('[data-role="sound-volume-open"]');
+      const volumeOpenButton = rootEl.querySelector<HTMLElement>('[data-role="sound-volume-open"]');
       const onVolumeOpenClick = (): void => {
         setPopover(soundPopover, true);
       };
@@ -585,7 +614,7 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         currentTheme = next;
         adapter.dispatch({ type: 'theme.set', themeId: next });
         // 菜单项自带当前皮肤名（@since v3.4，task_089）—— 不再另挂 theme-tag 文本。
-        const themeButton = host.querySelector<HTMLElement>('[data-role="theme"]');
+        const themeButton = rootEl.querySelector<HTMLElement>('[data-role="theme"]');
         if (themeButton) {
           themeButton.setAttribute('label', `像素风 · ${next === 'pixel' ? '像素' : '默认'}`);
           themeButton.setAttribute('aria-pressed', next === 'pixel' ? 'true' : 'false');
@@ -674,15 +703,15 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       host.addEventListener('strat-button-click', themeHandler);
 
       // 命令面板：唯一命令入口。注入同一个 adapter —— 与顶栏按钮共用一条派发通道，
-      // 不给面板另开总线口子。必须在 host.innerHTML 之后挂（容器节点得先存在）。
+      // 不给面板另开总线口子。必须在 rootEl.innerHTML 之后挂（容器节点得先存在）。
       // variant='strip'（@since v3.4，task_090）：控制岛形态 —— 1 行命令条，
       //   两个 scope 分组的按钮摊平成一条横向滚动行（其余命令滚动可达，一条不减）。
-      const panelHost = host.querySelector<HTMLElement>('[data-role="command-panel"]');
+      const panelHost = rootEl.querySelector<HTMLElement>('[data-role="command-panel"]');
       const unmountPanel = panelHost ? mountCommandPanel(adapter, panelHost, { variant: 'strip' }) : null;
 
       // 当日回放条（@since v3.3，task_082）：底栏上沿的时间轴 scrubber。
       // 组件只被控制器驱动（它自己不读数据）；控制器由组合根注入（它才有读取口）。
-      const replayHost = host.querySelector<HTMLElement>('[data-role="replay"]');
+      const replayHost = rootEl.querySelector<HTMLElement>('[data-role="replay"]');
       const unmountReplay = replayHost
         ? mountDayReplay(replayHost, { controller: options.replay?.controller ?? null })
         : null;
@@ -690,7 +719,7 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       // Agent 侧栏：选中单位的业务态。与命令面板共用同一个 adapter —— 两条派发通道合成一条；
       // task_050：可选的历史统计提供口一并注入（派发推荐「交给谁」选择器用）；
       // task_051：可选的流水线实时读数口一并注入（发起后的流水线卡片用）。
-      const agentHost = host.querySelector<HTMLElement>('[data-role="agent-panel"]');
+      const agentHost = rootEl.querySelector<HTMLElement>('[data-role="agent-panel"]');
       const agentDeps: AgentPanelDeps =
         options.taskStats || options.pipelines
           ? {
@@ -705,12 +734,12 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       // 日志抽屉：纯展示，不发命令 —— 只把同一个 adapter 的 subscribe 能力给它。
       // 演示模式（@since v3.3，task_110）：日志抽屉是工程件（时间戳 / 来源 / 级别四列），
       //   演示时不挂载 —— 既不占画面也不订阅总线（省一份无谓的订阅）。
-      const drawerHost = host.querySelector<HTMLElement>('[data-role="log-drawer"]');
+      const drawerHost = rootEl.querySelector<HTMLElement>('[data-role="log-drawer"]');
       const unmountDrawer = drawerHost && !demoMode.enabled ? mountLogDrawer(adapter, drawerHost) : null;
 
       // 会话面板（@since v3.43，task_095）：多会话管理的入口 —— 列表 / kind 筛选 / 状态徽标 /
       //   中断钮（发 session.interrupt）+ 历史抽屉。历史读取口可选（缺省 = 面板说"未附着"）。
-      const sessionHost = host.querySelector<HTMLElement>('[data-role="session-panel"]');
+      const sessionHost = rootEl.querySelector<HTMLElement>('[data-role="session-panel"]');
       const unmountSession = sessionHost
         ? mountSessionPanel(
             {
@@ -724,7 +753,7 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
 
       // 态势屏：同为纯展示区块（指标卡 / 系统状态 / 最近事件全由 WorldState 派生），
       // 复用同一个 adapter —— 它唯一的出口是导航 ui.navigate，不发任何业务命令。
-      const statusHost = host.querySelector<HTMLElement>('[data-role="status-screen"]');
+      const statusHost = rootEl.querySelector<HTMLElement>('[data-role="status-screen"]');
       const unmountStatus = statusHost ? mountStatusScreen(adapter, statusHost) : null;
 
       // 演示模式开关 → 主屏布局重渲（工程件显隐 + 顶栏标签同步）。
@@ -748,7 +777,9 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
 
       // 工程件过滤（骨架机制）：标了 data-engineering 的节点在演示模式下隐藏。
       // 各面板后续只需给自己的工程件标这个属性即可接入（无需改本屏）。
-      demoMode.filterEngineering(host);
+      // 作用域是 rootEl（**本屏自有子树**）—— 不扫宿主：宿主里还有组合根挂的覆盖层，
+      //   那些节点不归本屏管（宿主归属铁律，task_097）。
+      demoMode.filterEngineering(rootEl);
 
       // 主屏布局内所有挂载闭包打包到一个闭包里：renderScreen 拆主屏布局时一次性释放。
       unmountMain = () => {
@@ -770,7 +801,7 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         document.removeEventListener('click', onDocumentClick);
         document.removeEventListener('keydown', onDocumentKeydown);
         host.removeEventListener('strat-button-click', themeHandler);
-        // 这里不置空 host.innerHTML —— renderMain 自身会立刻重写。
+        // 这里不置空 rootEl —— renderMain 自身会立刻重写（rootEl 是本屏自有的那块）。
       };
     };
 
@@ -779,10 +810,13 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         unmountMain();
         unmountMain = null;
       }
-      host.innerHTML = `<style>${MAIN_SCREEN_STYLE}</style>`;
+      // 只清**本屏自有**的主屏布局 —— 宿主里组合根挂的覆盖层（小地图 / 事件轨 / toast…）一根都不碰。
+      rootEl.innerHTML = '';
+      dropSubHost();
       const subHost = document.createElement('div');
       subHost.className = 'hud-sub-screen';
       host.appendChild(subHost);
+      subHostEl = subHost;
       // settings-screen 自带 topbar + 返回按钮 → ui.navigate(main)。
       unmountSubScreen = mountSettingsScreen(adapter, subHost, {
         customAgents: options.customAgents ?? null,
@@ -795,10 +829,12 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         unmountMain();
         unmountMain = null;
       }
-      host.innerHTML = `<style>${MAIN_SCREEN_STYLE}</style>`;
+      rootEl.innerHTML = '';
+      dropSubHost();
       const subHost = document.createElement('div');
       subHost.className = 'hud-sub-screen';
       host.appendChild(subHost);
+      subHostEl = subHost;
       // character-screen 自带 topbar + 返回按钮 → ui.navigate(main) 或 ui.navigate(chat) 打开聊天抽屉。
       // @since v3.20（task_041）：形象编辑面板的预览端口随屏位注入（没给 = 面板降级，屏照常可用）。
       unmountSubScreen = mountCharacterScreen(adapter, subHost, {
@@ -832,7 +868,12 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       unmountMain = null;
       unmountSubScreen?.();
       unmountSubScreen = null;
-      host.innerHTML = '';
+      dropSubHost();
+      // ★ 只卸本屏自己的两个节点 —— **不清 host.innerHTML**：
+      //   宿主里还有组合根挂的覆盖层（小地图 / 事件轨 / toast / 聊天抽屉 / 快捷键帮助），
+      //   一刀切会把它们连同本屏一起抹掉（task_097 逮到的真机缺陷的另一半）。
+      rootEl.remove();
+      styleEl.remove();
     };
   };
 
