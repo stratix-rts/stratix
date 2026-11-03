@@ -23,6 +23,8 @@
  *   stop()   —— 停：清掉未触发的定时器（资源必须可清理）。
  *
  * @since v3.3（task_082）。
+ * @since v3.4（task_094）Z6 沉浸层接线：播放期间通过注入口 setImmersive 占用沉浸层
+ *   （L1 降对比、L2 收起）；播完 / 停掉 / 释放时归还 —— 层级回手动档。
  */
 
 import type { ReplayBeat } from '../../../core/types';
@@ -65,6 +67,13 @@ export interface ReplayControllerDeps {
   readonly setClock: (at: number | null) => void;
   /** 每拍的事件反馈（跑马灯等；组合根翻译成 HUD 侧条目）。 */
   readonly onEntry?: (entry: DayReplayEntry) => void;
+  /**
+   * 沉浸层占用出口（@since v3.4，task_094）——「▶60 秒重演」是 Z6 沉浸层的一类演出：
+   *   播放期间 L1 降对比、L2 收起；播完 / 停掉 / 释放时层级回手动档。
+   * 缺省 = 不接（控制器照常演，层级不变 —— 单测直打控制器时不必接线）。
+   * why 是注入口而不是控制器自己发命令：控制器零总线依赖（见文件头禁止事项 2）。
+   */
+  readonly setImmersive?: (active: boolean) => void;
   /** 定时器口（缺省全局 setTimeout）。 */
   readonly timers?: ReplayTimers;
 }
@@ -156,6 +165,8 @@ export function createReplayController(deps: ReplayControllerDeps): ReplayContro
     clearPending();
     if (playing) {
       playing = false;
+      // 演出结束 → 释放沉浸占用（Z6，@since v3.4，task_094）：层级回手动档。
+      deps.setImmersive?.(false);
       notify();
     }
   };
@@ -204,6 +215,8 @@ export function createReplayController(deps: ReplayControllerDeps): ReplayContro
       }
       emit({ at: entries[0].at, kind: 'reset' });
       playing = true;
+      // 演出开始 → 占用沉浸层（L1 降对比、L2 收起；Z6，@since v3.4，task_094）。
+      deps.setImmersive?.(true);
       const gap = replayGapMs(entries.length);
       let index = 0;
       const step = (): void => {
@@ -212,6 +225,8 @@ export function createReplayController(deps: ReplayControllerDeps): ReplayContro
         if (!entry) {
           playing = false;
           pendingTimer = null;
+          // 演完了 → 释放沉浸占用（层级回手动档）。
+          deps.setImmersive?.(false);
           deps.setClock(null);
           notify();
           return;

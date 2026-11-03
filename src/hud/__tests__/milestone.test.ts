@@ -2,6 +2,8 @@
  * 集成测试：里程碑大字 overlay（hud/components/marquee/milestone.ts，task_080）。
  * 覆盖：每 10 个完成任务触发一次大字 + 一记 camera shake 命令、大字 1.5s 后自动收、
  *       演示模式强制开启（关闭时只计数不出字）。
+ * ★ task_094：大字在屏期间还要**占用沉浸层**（L3）—— 多发一条 `hud.layer.hold` 命令，
+ *   大字收起时再发一条释放命令（层级接线见 hud/__tests__/immersive-layer.test.ts）。
  * @jest-environment jsdom
  */
 
@@ -12,6 +14,10 @@ import {
   mountMilestone,
   type StratMilestoneElement,
 } from '../components/marquee/milestone';
+
+/** 占用沉浸层的命令（Z6 接线，task_094）。 */
+const HOLD_ON: HudCommand = { type: 'hud.layer.hold', trigger: 'milestone', active: true };
+const HOLD_OFF: HudCommand = { type: 'hud.layer.hold', trigger: 'milestone', active: false };
 
 let host: HTMLElement;
 let element: StratMilestoneElement;
@@ -67,6 +73,8 @@ describe('里程碑大字：触发条件', () => {
     expect(element.showing).toBe(true);
     expect(element.text).toBe('第 10 个任务完成！');
     expect(commands).toEqual([
+      // 先占沉浸层（Z6，task_094），再甩震动 —— 大字在屏时 L1 要让位。
+      HOLD_ON,
       {
         type: 'camera.shake',
         durationMs: MARQUEE_METRICS.shakeDurationMs,
@@ -83,7 +91,8 @@ describe('里程碑大字：触发条件', () => {
       if (result !== null) hit = result;
     }
     expect(hit).toBe(20);
-    expect(commands).toHaveLength(2);
+    // 两次演出 = 两条占用命令 + 两条震动命令。
+    expect(commands).toHaveLength(4);
   });
 });
 
@@ -123,7 +132,7 @@ describe('里程碑大字：演示模式强制开启', () => {
     for (let i = 0; i < 10; i += 1) element.noteCompleted();
 
     expect(element.showing).toBe(true);
-    expect(commands).toHaveLength(1);
+    expect(commands).toHaveLength(2);
   });
 
   test('默认（无记忆）开启', () => {
@@ -142,5 +151,28 @@ describe('里程碑大字：卸载清理', () => {
       jest.advanceTimersByTime(MARQUEE_METRICS.milestoneDurationMs * 2);
     }).not.toThrow();
     expect(element.isConnected).toBe(false);
+  });
+});
+
+describe('里程碑大字：沉浸层占用（Z6，@since v3.4，task_094）', () => {
+  test('大字在屏时占用沉浸层，收起时释放', () => {
+    mount();
+    for (let i = 0; i < 10; i += 1) element.noteCompleted();
+
+    expect(commands).toContainEqual(HOLD_ON);
+
+    jest.advanceTimersByTime(MARQUEE_METRICS.milestoneDurationMs);
+
+    expect(commands).toContainEqual(HOLD_OFF);
+  });
+
+  test('演出中途元素被摘掉也要释放占用（异常路径：层级不卡死在 L3）', () => {
+    mount();
+    for (let i = 0; i < 10; i += 1) element.noteCompleted();
+    expect(commands).toContainEqual(HOLD_ON);
+
+    unmount();
+
+    expect(commands).toContainEqual(HOLD_OFF);
   });
 });

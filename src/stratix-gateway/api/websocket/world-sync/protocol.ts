@@ -307,6 +307,10 @@ const HUD_COMMAND_TYPE_FLAGS: Readonly<Record<HudCommand['type'], true>> = {
   // @since v3.4（task_096）HUD 信息层级三档：远程模式下渲染进程不起 core runtime，
   //   真相在 service 侧的 core —— 故这条命令必须入册（否则远程切档发不出去）。
   'hud.layer.set': true,
+  // @since v3.4（task_094）Z6 沉浸层的演出占用（里程碑大字 / ▶60 秒重演 / 导演取景框）：
+  //   远程模式下渲染进程不起 core runtime，占用与释放都得经 service 侧的 core 落账 ——
+  //   故这条命令同样必须入册（否则远程端的演出不会让 L1 让位）。
+  'hud.layer.hold': true,
 };
 
 /**

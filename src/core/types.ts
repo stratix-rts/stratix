@@ -1063,6 +1063,19 @@ export interface SessionRecord {
  */
 export type InfoLayer = 'L1' | 'L2' | 'L3';
 
+/**
+ * 演出占用源（@since v3.4，task_094）—— Z6 沉浸层的三个触发源。
+ *   milestone 里程碑大字：中央金色大字（task_080 交付，本任务只做层级接线）。
+ *   replay    ▶60 秒重演：当日回放自动倍速播放中（task_082 交付，本任务只做层级接线）。
+ *   director  导演取景框：导演模式开着（task_081/092 交付，本任务把它挂进 L3 状态）。
+ * 来源：docs/hud-redesign-proposal.html §2.5 Z6 行（「全屏叠加 / L3 / 里程碑大字 · ▶60 秒重演 ·
+ *   导演取景框 / 激活时 L1 → 18% 对比、L2 收起」）。
+ * why 是词表而不是布尔字段：三个演出可以**同时**在演（里程碑撞上回放），谁先结束谁先放手，
+ *   但只要还有一个在演，L3 就得继续 —— 占用计数用一组词表表达最直接。
+ * 体积天然有界：三个词（不是数组里的自由值），不存在增长问题（perf：广播数据必须有界）。
+ */
+export type LayerTrigger = 'milestone' | 'replay' | 'director';
+
 // ============================================================================
 // ★ 总线契约：core → 两层广播的完整世界快照
 // ============================================================================
@@ -1144,8 +1157,26 @@ export interface WorldState {
    * 刻意可选：与 settings / currentScreen / directorEnabled 同理走可选增补 ——
    *   契约增补不破既有 WorldState 构造点；读取方缺省时按 'L1' 处理。
    * 体积天然有界：单词表三值（不是数组），不存在增长问题（perf：广播数据必须有界）。
+   *
+   * ★ task_094 追加：**这个字段是「有效层级」**（= 手动档 layerBase 与演出占用 layerHolds
+   *   裁决后的结果），呈现层与 world 侧都只读它 —— 「现在处在哪一档」只有一个答案。
    */
   infoLayer?: InfoLayer;
+  /**
+   * @since v3.4（task_094）HUD 信息层级的**手动档**（演示开关选的档）。
+   * 真相在 core：`hud.layer.set` 命令写这里。
+   * why 与 infoLayer 分开：演出占用（里程碑大字 / 60 秒重演 / 导演取景框）期间有效档被
+   *   强推成 L3，演出结束后要**回到手动档** —— 手动档得有人记着，不然一出演出就回不去 L1/L2。
+   * 缺省 = L1（常驻档）；读取方缺省时按 'L1' 处理。
+   */
+  layerBase?: InfoLayer;
+  /**
+   * @since v3.4（task_094）当前占用的**演出源**（里程碑 / 重演 / 导演）。
+   * 真相在 core：`hud.layer.hold` 命令写这里；导演模式开关（camera.director）也写这里。
+   * 语义：非空 = 有演出在演 = 有效档锁 L3（L1 让位、L2 收起）；空了 = 回到手动档。
+   * 体积天然有界：最多三个词（perf：广播数据必须有界）。
+   */
+  layerHolds?: readonly LayerTrigger[];
 }
 
 // ============================================================================
@@ -1348,6 +1379,16 @@ export type HudCommand =
    *   （总线铁律）—— 唯一合法通道是 core 的 state 广播。
    */
   | { type: 'hud.layer.set'; layer: InfoLayer }
+  /**
+   * @since v3.4（task_094）**占用 / 释放**一个演出（Z6 沉浸层的触发源）。
+   * 发出方：HUD 侧的演出本体（里程碑大字组件 / 回放控制器；组合根注入命令出口）。
+   * 接线：core/runtime.ts 收到本命令 → 写 WorldState.layerHolds → 重算有效档
+   *   （有占用 = L3）→ 广播回两侧。HUD 侧据此降 L1 对比 / 收起 L2；world 侧据此让位。
+   * why 不是直接 set 层级：三个演出可能同时在演，**谁先结束谁先放手**，但只要还有一个在演，
+   *   L3 就得继续 —— 所以是「占用 / 释放」语义（core 侧计数裁决），不是「切到某档」语义。
+   * 与 hud.layer.set 的分工：set 改**手动档**（演出结束后回到的那一档），hold 管**占用**。
+   */
+  | { type: 'hud.layer.hold'; trigger: LayerTrigger; active: boolean }
   // @since v3.1 外部 agent 会话生命周期（core/agent-link 消费，见 §2 目录职责）
   | { type: 'link.open'; kind: AgentLinkKind; endpoint: string; displayName?: string; apiKey?: string }
   | { type: 'link.resume'; linkId: string }

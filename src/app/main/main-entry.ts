@@ -77,9 +77,14 @@
  *
  * @since v3.4（task_096）信息三层级：createInfoLayerController（hud/layers/info-layer）+
  *   mountLayerSwitch（三档演示开关）接进 #hud-side。core 广播 WorldState.infoLayer →
- *   控制器写根上的 CSS 变量 → 样式表把 L1 分区降对比 / L2 分区收起；开关发
+ *   控制器写根上的 CSS 变量 → 样式表把 L1 分区降对比 / L2 收起；开关发
  *   HudCommand `hud.layer.set` → core 写状态 → 广播回来。仍然只接线：层级语义在
  *   core/info-layer.ts，视觉呈现全在 hud 侧。
+ *
+ * @since v3.4（task_094）Z6 沉浸层接线：三类演出（里程碑大字 / ▶60 秒重演 / 导演取景框）
+ *   在演时占用沉浸层 → core 把有效档锁成 L3 → L1 降到 18% 对比、L2 收起；演完自动恢复。
+ *   里程碑组件与回放控制器各发一条 HudCommand `hud.layer.hold`（组合根只接线），
+ *   导演开关那条由 core 的 setDirectorEnabled 自动同步占用（两条入口同一落点）。
  *
  * 加载路径：dev 走 vite dev server 的 /src/app/main/index.html；
  *   正式构建走 dist/frontend/src/app/main/index.html（由 vite.config.ts 的 input 产出）。
@@ -449,6 +454,12 @@ async function boot(): Promise<void> {
         text: replayEntryText(entry, name),
         at: entry.at,
       });
+    },
+    // Z6 沉浸层（@since v3.4，task_094）：「▶60 秒重演」期间占用沉浸层 —— L1 降到 18% 对比、
+    //   L2 事件轨收起（层级真相在 core：命令 → core 记占用 → 广播 → HUD 侧切 CSS 变量）。
+    //   播完 / 停掉时归还占用，层级回手动档。走 HudCommand（铁律：HUD 不直接碰 core/bus）。
+    setImmersive: (active) => {
+      adapter.dispatch({ type: 'hud.layer.hold', trigger: 'replay', active });
     },
   });
 
@@ -1027,6 +1038,8 @@ async function boot(): Promise<void> {
   // 为什么层级状态要进 core：world 侧将来也要订阅它（导演取景框等 L3 元素据此让位），
   //   而 HUD ↔ world 零直接调用（铁律）—— 唯一合法通道就是 core 的 state 广播。
   // 挂 #hud-side 而不是 #hud-root（与 task_086 同一口径）：主屏每次重绘都重写 #hud-root。
+  // ★ task_094：state.infoLayer 现在是**有效档**（= 手动档 + 演出占用裁决）——
+  //   演出（里程碑大字 / ▶60 秒重演 / 导演取景框）在演时它锁 L3，演完回手动档。
   const layerController = createInfoLayerController();
   const stopLayerState = adapter.subscribe((state) => {
     layerController.apply(state.infoLayer ?? 'L1');

@@ -4,7 +4,8 @@
  *   依据：docs/hud-redesign-proposal.html §2.3（信息三层级：L1 常驻 / L2 事件 / L3 沉浸）。
  * 输入：InfoLayer（core/types.ts 的契约类型）或任意未知值（判合法性用）。
  * 输出：INFO_LAYERS（有序词表）/ isInfoLayer / normalizeInfoLayer /
- *      layerL1Opacity / layerL2Opacity / layerL2Collapsed。
+ *      layerL1Opacity / layerL2Opacity / layerL2Collapsed /
+ *      LAYER_TRIGGERS（演出占用词表）/ isLayerTrigger / resolveInfoLayer（有效档裁决）。
  * 禁止事项：
  *   1. import world / hud / phaser / DOM —— 纯逻辑模块，两侧都能引（core 是依赖图底层）；
  *   2. 在本文件里写死 0.18 / 200ms 这类数字 —— 数字的唯一事实源在
@@ -18,7 +19,7 @@
  */
 
 import { HUD_LAYER_METRICS } from './theme/visual-spec';
-import type { InfoLayer } from './types';
+import type { InfoLayer, LayerTrigger } from './types';
 
 /**
  * 层级词表（有序：L1 → L2 → L3）。
@@ -64,4 +65,33 @@ export function layerL2Opacity(layer: InfoLayer): number {
  */
 export function layerL2Collapsed(layer: InfoLayer): boolean {
   return layer === 'L3';
+}
+
+/**
+ * 演出占用源的词表（@since v3.4，task_094）—— Z6 沉浸层的三个触发源。
+ * why 显式列出：占用列表要**有界**（广播数据不许无限增长），词表就是那道闸。
+ */
+export const LAYER_TRIGGERS: readonly LayerTrigger[] = Object.freeze([
+  'milestone',
+  'replay',
+  'director',
+]);
+
+/** 占用源合法性判定（运行时用：命令载荷可能来自远端 / JS 调用方，类型系统拦不住）。 */
+export function isLayerTrigger(value: unknown): value is LayerTrigger {
+  return value === 'milestone' || value === 'replay' || value === 'director';
+}
+
+/**
+ * 有效层级裁决（@since v3.4，task_094）—— **纯函数**。
+ * 规则：只要还有演出在演（有占用）→ L3（L1 让位、L2 收起）；没人演了 → 回到手动档。
+ * why 是「占用优先」而不是「谁最后说话谁赢」：三个演出可能撞在一起（里程碑撞上 60 秒重演），
+ *   先结束的那个放手时不该把另一个的沉浸态一起撤掉。
+ */
+export function resolveInfoLayer(
+  base: InfoLayer | undefined,
+  holds: readonly LayerTrigger[] | undefined
+): InfoLayer {
+  if (holds && holds.length > 0) return 'L3';
+  return base ?? DEFAULT_INFO_LAYER;
 }

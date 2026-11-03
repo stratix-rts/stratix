@@ -15,6 +15,8 @@
  *   5. 泄漏计时器 —— 大字自动收的计时器必须在 disconnectedCallback 清光（perf 硬约束）。
  *
  * @since v3.3（task_080）。
+ * @since v3.4（task_094）Z6 沉浸层接线：大字在屏期间**占用**沉浸层（发 `hud.layer.hold`）——
+ *   L1 降到 18% 对比、L2 收起（task_096 地基）；大字收起 / 元素离场时释放占用，层级回手动档。
  */
 
 import { MARQUEE_METRICS, VISUAL_PALETTE, hexToRgba } from '../../../core/theme/visual-spec';
@@ -111,6 +113,10 @@ export function defineStratMilestone(): typeof HTMLElement {
       if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
       const root = this.shadowRoot;
       if (!root) return;
+      // Z6 沉浸层（@since v3.4，task_094）：里程碑大字是 L3 元素 —— L3 期间 L1 降对比、
+      //   L2 收起，而大字必须满对比（它是这一刻画面里最清楚的东西）。
+      //   通用属性口径（hud/layers/info-layer.ts）：标一个属性即入层，不必改那张分区表。
+      this.setAttribute('data-srf-layer', 'L3');
       root.innerHTML = `
         <style>
           /* 屏幕中央的大字：fixed 覆盖整屏、不占布局、不拦事件（观众看的是画面）。 */
@@ -161,6 +167,9 @@ export function defineStratMilestone(): typeof HTMLElement {
         clearTimeout(this._timer);
         this._timer = null;
       }
+      // 异常路径（@since v3.4，task_094）：元素在演出中被摘掉（主屏重绘会重写 #hud-root）——
+      //   大字已经不在屏上了，沉浸占用必须一起释放，否则层级会**卡在 L3**（L1 一直降着对比）。
+      this.holdImmersive(false);
       this._big = null;
     }
 
@@ -192,11 +201,32 @@ export function defineStratMilestone(): typeof HTMLElement {
       void big.offsetWidth;
       big.classList.add('show');
       if (this._timer !== null) clearTimeout(this._timer);
+      // 收起计时器先挂上（**先保底再演出**）：演出结束一定会走到释放那一步。
       this._timer = setTimeout(() => {
         this._timer = null;
         big.classList.remove('show');
         big.textContent = '';
+        // 演出结束 → 释放沉浸占用（Z6，@since v3.4，task_094）：层级回到手动档。
+        this.holdImmersive(false);
       }, MARQUEE_METRICS.milestoneDurationMs);
+      // 演出开始 → 占用沉浸层：L1 降到 18% 对比、L2 收起（task_096 的地基，本任务只做接线）。
+      this.holdImmersive(true);
+    }
+
+    /**
+     * 占用 / 释放沉浸演出（Z6，@since v3.4，task_094）。
+     * 发 HudCommand `hud.layer.hold` → core 记占用 → 有效档锁 L3 → 广播回两侧。
+     * why 走命令而不是自己改样式：层级状态是**两边共用的真相**（world 侧也要据此让位），
+     *   HUD 自己存一份就成两份真相（与顶栏「🎬 导演」按钮同一纪律）。
+     * why 吞掉异常：层级命令发不出去（总线异常）不该把大字本体带崩 —— 演出照常演，
+     *   层级退回常驻档即可（core 侧状态先落库再广播，异常不会留下「占着不放」的脏状态）。
+     */
+    private holdImmersive(active: boolean): void {
+      try {
+        this.deps.dispatch({ type: 'hud.layer.hold', trigger: 'milestone', active });
+      } catch {
+        // 命令发不出去：吞掉（见上）。不吞的话异常会顺着 noteCompleted 冒到总线订阅者身上。
+      }
     }
 
     /** 读本地记忆（缺省开启；读不到 = 开启）。 */

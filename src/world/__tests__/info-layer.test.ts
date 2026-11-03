@@ -9,7 +9,7 @@
  * 替身说明：打的是真实 core/bus 单例 + 真实 store + 真实 runtime（不 mock 总线）。
  */
 
-import { emitCommand, onState, resetBus, type Unsubscribe } from '../../core/bus';
+import { emitCommand, emitWorldEvent, onState, resetBus, type Unsubscribe } from '../../core/bus';
 import { createCoreRuntime, type CoreRuntime } from '../../core/runtime';
 import { createStore, type CoreStore } from '../../core/store';
 import type { InfoLayer, WorldState } from '../../core/types';
@@ -92,5 +92,43 @@ describe('world 侧：订阅 HUD 信息层级（经 core 契约）', () => {
     emitCommand({ type: 'hud.layer.set', layer: 'L1' });
 
     expect(seen).toEqual(['L3']);
+  });
+});
+
+/**
+ * Z6 沉浸层的 world 侧用例（@since v3.4，task_094）—— 导演取景框挂进 L3 状态。
+ *
+ * why 在 world 目录下：取景框是**战场画面区**的 L3 元素（world/objects/director-frame.ts），
+ *   「导演期间中屏保留取景框角标」这条验收标准落在 world 侧 ——
+ *   导演模式开着 = 有演出在演 = 有效档 L3（L1 让位、L2 收起，取景框是画面里最清楚的东西）；
+ *   导演关掉（手动介入或点开关）→ 层级回 L1，取景框随之退场。
+ */
+describe('world 侧：导演取景框挂进 L3 状态（task_094）', () => {
+  test('导演模式开启 → world 侧收到 L3；关闭 → 回到 L1', () => {
+    const { runtime, stop } = harness();
+    cleanups.push(stop);
+
+    const { seen, off } = subscribeLayer(() => undefined);
+    cleanups.push(off);
+
+    emitCommand({ type: 'camera.director', enabled: true });
+    expect(seen).toEqual(['L3']);
+
+    emitCommand({ type: 'camera.director', enabled: false });
+    expect(seen).toEqual(['L3', 'L1']);
+  });
+
+  test('world 侧手动介入（回写 false）同样让层级退出 L3', () => {
+    const { runtime, stop } = harness();
+    cleanups.push(stop);
+
+    const { seen, off } = subscribeLayer(() => undefined);
+    cleanups.push(off);
+
+    emitCommand({ type: 'camera.director', enabled: true });
+    // 主播碰了镜头 → world 发同名事件 → core 写回 false（手动优先是硬规则）。
+    emitWorldEvent({ type: 'camera.director', enabled: false });
+
+    expect(seen).toEqual(['L3', 'L1']);
   });
 });

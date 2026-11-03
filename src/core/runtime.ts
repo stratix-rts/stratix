@@ -50,6 +50,10 @@
  * @since v3.4(task_096)追加 hud.layer.set 命令接线:写 WorldState.infoLayer
  *   (HUD 信息三层级 L1 常驻 / L2 事件 / L3 沉浸)→ state 广播给 HUD 与 world;
  *   层级语义在 core/info-layer.ts 的纯函数里,视觉呈现全在 hud 侧(core 零 DOM)。
+ * @since v3.4(task_094)追加 hud.layer.hold 命令接线:写 WorldState.layerHolds
+ *   (Z6 沉浸层的演出占用:里程碑大字 / ▶60 秒重演 / 导演取景框)→ store 计数裁决出
+ *   有效档(有占用 = L3)→ state 广播给 HUD 与 world;手动档 hud.layer.set 与占用
+ *   hud.layer.hold 分开:演出结束后回到手动档。
  * @since v3.4(task_091)追加 focus.unit 命令接线:HUD 事件轨(Z2)条目点击 → 同名 WorldEvent
  *   转发到 world 通道(消费者是世界层:单位描边高亮 + 引导弧线);core 只转发不写 WorldState
  *   (联动是瞬态表现,同 camera.shake 口径);world 通道回环的 focus.unit 显式接地。
@@ -59,7 +63,7 @@ import type { AgentLinkManager } from './agent-link';
 import { clampShake, clampWorldPoint } from './camera';
 import { emitState, emitWorldEvent, onCommand, onWorldEvent, type Unsubscribe } from './bus';
 import { createCharacterManager, type CharacterManager } from './character';
-import { normalizeInfoLayer } from './info-layer';
+import { normalizeInfoLayer, isLayerTrigger } from './info-layer';
 import { createMissionManager, type MissionManager } from './mission';
 import { createSessionManager, type SessionManager } from './session';
 import type { CoreStore } from './store';
@@ -557,6 +561,16 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
       //   视觉呈现全在 hud 侧；core 不认识 DOM（铁律：core 零 IO）。
       case 'hud.layer.set':
         store.setInfoLayer(normalizeInfoLayer(command.layer));
+        return;
+      // @since v3.4（task_094）演出占用 / 释放（Z6 沉浸层接线）:
+      //   演出本体（里程碑大字组件 / 回放控制器）发这条命令 → core 记 WorldState.layerHolds
+      //   → 重算有效档（有占用 = L3）→ 广播回两侧。
+      //   HUD 侧据此降 L1 对比 / 收起 L2；world 侧据此让位（L3 元素订阅这条广播）。
+      //   占用语义在 store（计数裁决：三个演出可同时在演，谁先结束谁先放手）。
+      //   非法占用源直接忽略（显示密度不该让命令失败 —— 与 normalizeInfoLayer 同一态度）。
+      case 'hud.layer.hold':
+        if (!isLayerTrigger(command.trigger)) return;
+        store.setLayerHold(command.trigger, command.active === true);
         return;
       default:
         if (isAgentLinkCommand(command)) return; // agent-link 已订阅处理

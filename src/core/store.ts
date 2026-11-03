@@ -9,12 +9,14 @@
  *   4. 让 notices / selection 无限增长 —— 超过契约上限必须截断（见 types.ts 常量）。
  */
 
+import { resolveInfoLayer } from './info-layer';
 import {
   DEFAULT_SETTINGS,
   MAX_NOTICES,
   type BooleanPreferenceKey,
   type DetectedAgent,
   type InfoLayer,
+  type LayerTrigger,
   type Notice,
   type ScreenId,
   type SelectionState,
@@ -52,12 +54,22 @@ export interface CoreStore {
    */
   setDirectorEnabled(enabled: boolean): WorldState;
   /**
-   * @since v3.4（task_096）写 HUD 信息层级（WorldState.infoLayer 的落库入口）。
+   * @since v3.4（task_096）写 HUD 信息层级的**手动档**（WorldState.layerBase 的落库入口）。
    * why 放 store 而不放 runtime：层级**不经状态机**、只是「换一个字段」（与 currentScreen /
    *   directorEnabled 同一口径），由 store 统一承担「值没变就不广播」。
    * 广播是必须的：HUD 侧据此降 L1 对比 / 收起 L2，world 侧据此让位（L3 元素）。
+   *
+   * ★ task_094：本方法写的是**手动档**（layerBase），不是有效档 —— 有效档由
+   *   「手动档 + 演出占用」裁决得出（见 resolveInfoLayer），存在 WorldState.infoLayer。
    */
   setInfoLayer(layer: InfoLayer): WorldState;
+  /**
+   * @since v3.4（task_094）占用 / 释放一个演出（WorldState.layerHolds 的落库入口）。
+   * 语义：非空占用 = 有效档锁 L3（L1 降到 18% 对比、L2 收起）；占用清空 = 回到手动档。
+   * why 独立成一个入口：三个演出可同时在演，占用是**计数**语义（谁先结束谁先放手），
+   *   不能用「切到某档」表达（那样先结束的那个会把另一个的沉浸态一起撤掉）。
+   */
+  setLayerHold(trigger: LayerTrigger, active: boolean): WorldState;
   /**
    * @since v3.8 写本地 CLI agent 检测结果（WorldState.detectedAgents 的落库入口）。
    * 语义：**整份替换**（调用方给的是当前快照，不是增量补丁）——
@@ -149,6 +161,9 @@ export function applyDirectorEnabled(
  * HUD 信息层级写入（纯函数，@since v3.4，task_096）—— 与 applyDirectorEnabled 同一口径：
  *   值没变就**原样返回同一引用** → store 的「引用未变即不广播」约定自动生效。
  * 缺省（undefined）按 L1（常驻档）处理 —— 层级默认无特殊状态。
+ *
+ * ★ task_094：这个函数现在管的是**手动档**（layerBase）；有效档（infoLayer）是
+ *   「手动档 + 演出占用」裁决出来的结果（resolveInfoLayer）。
  */
 export function applyInfoLayer(
   current: InfoLayer | undefined,
@@ -157,6 +172,45 @@ export function applyInfoLayer(
   // 值没变就**原样返回当前引用**（含 undefined）—— 让 store 的「引用未变即不广播」生效。
   if ((current ?? 'L1') === next) return current;
   return next;
+}
+
+/**
+ * 有效档 → 落库值（纯函数，@since v3.4，task_094）。
+ * L1（常驻档）回落 undefined —— 与其它可选字段同一口径（缺省即 L1，少一个字段要判）。
+ * why 不是「有占用就 L3、没占用就原样」：有效档必须是**算出来的**（手动档 + 占用），
+ *   否则「演出结束后回手动档」这条规则就没有落点。
+ */
+export function effectiveInfoLayerValue(
+  base: InfoLayer | undefined,
+  holds: readonly LayerTrigger[] | undefined
+): InfoLayer | undefined {
+  const resolved = resolveInfoLayer(base, holds);
+  return resolved === 'L1' ? undefined : resolved;
+}
+
+/**
+ * 演出占用写入（纯函数，@since v3.4，task_094）—— 与 applyInfoLayer 同一口径：
+ *   值没变就**原样返回同一引用** → store 的「引用未变即不广播」约定自动生效。
+ * 语义：active=true 占一个位（追加到占用列表）；active=false 释放（从列表里摘掉）。
+ * why 占用列表用「词表」而不是计数：三个演出可同时在演，计数分不清是谁没放手；
+ *   词表还能回答「现在是谁在演」（调试观察口）。
+ * 体积天然有界：最多三个词（LAYER_TRIGGERS）—— 不会无限增长（perf）。
+ */
+export function applyLayerHold(
+  current: readonly LayerTrigger[] | undefined,
+  trigger: LayerTrigger,
+  active: boolean
+): readonly LayerTrigger[] | undefined {
+  const list = current ?? [];
+  const held = list.includes(trigger);
+  // 已经是这个状态 → 原样返回当前引用（不广播）。
+  if (held === active) return current;
+  if (!active) {
+    const next = list.filter((item) => item !== trigger);
+    // 空列表回落 undefined（缺省 = 无占用）—— 少一个字段要判。
+    return next.length === 0 ? undefined : next;
+  }
+  return [...list, trigger];
 }
 
 /** 剔除已过期通知，并按时间倒序截断到 MAX_NOTICES（每次写入都做，队列长度天然有界）。 */
@@ -188,6 +242,11 @@ function sameDetectedAgents(a: readonly DetectedAgent[], b: readonly DetectedAge
 
 export function createStore(initial?: Partial<WorldState>): CoreStore {
   let state: WorldState = { ...createInitialState(), ...initial };
+  // 手动档缺省取有效档（夹具只给了 infoLayer 时两者的语义必须对齐 ——
+  //   否则「有效档 = 手动档 + 占用」这条裁决在起手就自相矛盾）。
+  if (state.infoLayer !== undefined && state.layerBase === undefined) {
+    state = { ...state, layerBase: state.infoLayer };
+  }
   const listeners = new Set<StateListener>();
   const now = (): number => Date.now();
 
@@ -236,17 +295,34 @@ export function createStore(initial?: Partial<WorldState>): CoreStore {
     },
 
     // @since v3.3（task_081）导演模式开关：同 setCurrentScreen 口径 —— 值没变不广播。
+    // ★ task_094 追加：导演模式开着 = **沉浸演出在演**（Z6：导演取景框）→ 同步占一个
+    //   'director' 占用位，有效档随之锁 L3（L1 降对比、L2 收起），导演期间中屏只留取景框。
+    //   why 落在这里而不是 runtime：开关有两条入口（HUD 的 camera.director 命令 + world 的
+    //   手动介入回写），都汇到这一个方法 —— 占用与开关永远同步，不会出现「框在但层级没进 L3」。
     setDirectorEnabled: (enabled) => {
       const next = applyDirectorEnabled(state.directorEnabled, enabled);
-      if (next === state.directorEnabled) return state;
-      return notify({ ...state, directorEnabled: next });
+      const nextHolds = applyLayerHold(state.layerHolds, 'director', next === true);
+      if (next === state.directorEnabled && nextHolds === state.layerHolds) return state;
+      const nextInfo = effectiveInfoLayerValue(state.layerBase, nextHolds);
+      return notify({ ...state, directorEnabled: next, layerHolds: nextHolds, infoLayer: nextInfo });
     },
 
-    // @since v3.4（task_096）HUD 信息层级：同 setCurrentScreen 口径 —— 值没变不广播。
+    // @since v3.4（task_096/task_094）HUD 信息层级：写的是**手动档**（layerBase），
+    //   有效档（infoLayer）按「手动档 + 演出占用」重算 —— 演出期间锁 L3，结束后回手动档。
     setInfoLayer: (layer) => {
-      const next = applyInfoLayer(state.infoLayer, layer);
-      if (next === state.infoLayer) return state;
-      return notify({ ...state, infoLayer: next });
+      const nextBase = applyInfoLayer(state.layerBase, layer);
+      if (nextBase === state.layerBase) return state;
+      const nextInfo = effectiveInfoLayerValue(nextBase, state.layerHolds);
+      return notify({ ...state, layerBase: nextBase, infoLayer: nextInfo });
+    },
+
+    // @since v3.4（task_094）演出占用：占一个位 → 有效档锁 L3；释放 → 回到手动档。
+    //   三个演出可同时在演：谁先结束谁先放手，只要还有一个在演就仍是 L3。
+    setLayerHold: (trigger, active) => {
+      const nextHolds = applyLayerHold(state.layerHolds, trigger, active);
+      if (nextHolds === state.layerHolds) return state;
+      const nextInfo = effectiveInfoLayerValue(state.layerBase, nextHolds);
+      return notify({ ...state, layerHolds: nextHolds, infoLayer: nextInfo });
     },
 
     // @since v3.8 本地 CLI agent 检测结果：整份替换；内容没变就不广播（同上口径）。
