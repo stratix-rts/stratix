@@ -12,6 +12,8 @@
  *   1. import world/、app/、core/bus —— 命令一律走注入的 dispatch（组件零总线依赖）；
  *   2. 在这里写业务态 —— 全选名单、编组成员、选择真相全在 core，这里只「读快照、发命令」；
  *   3. 劫持输入焦点里的键 —— isEditableTarget 命中一律放行（任务标题框里打字不受干扰）；
+ *      判定对象是**真正被键击的元素**（穿 shadow DOM 重定向，见 resolveEventTarget），
+ *      不是被重定向后的宿主 —— 否则命令行输入框里敲空格会被吃掉（字符丢失）。
  *   4. 泄漏监听 —— attach 的 keydown、浮层关闭请求监听都挂在返回的卸载闭包上。
  *
  * @since v3.34（task_058）。
@@ -98,12 +100,43 @@ export function computeCenterPoint(
   return { x: sumX / count, y: sumY / count };
 }
 
+/**
+ * 键击真正落在哪个元素上（穿透 shadow DOM 的事件重定向）。
+ * why 必须穿透：键盘事件冒泡出 shadow tree 时，`event.target` 被**重定向**成宿主元素
+ *   （命令面板的 `<strat-command-panel>`），而不是用户真正在打字的 `<input>`。
+ *   于是 isEditableTarget 判它"不是输入框" → 快捷键照样劫持 →
+ *   在命令行输入框里敲空格被 preventDefault 吃掉（字符丢失），敲数字会召回编组。
+ *   `composedPath()[0]` 才是真正被键击的元素（浏览器在派发期间一直给得到）。
+ * 何时不用它：事件直接派发在 window / document 上时（单测替身口径）路径首项就是 window，
+ *   那不是"被键击的元素" → 退回 event.target（派发之外拿到的事件同理：没有路径）。
+ */
+function resolveEventTarget(event: {
+  readonly target?: EventTarget | null;
+  readonly composedPath?: () => EventTarget[];
+}): EventTarget | null {
+  const path = event.composedPath?.();
+  const first = path && path.length > 0 ? path[0] : null;
+  if (first && isElementTarget(first)) return first;
+  return event.target ?? null;
+}
+
+/** 目标是不是元素（window / document 不是）。typeof 守卫与 isEditableTarget 同口径。 */
+function isElementTarget(target: EventTarget | null): boolean {
+  if (typeof HTMLElement === 'undefined' || !(target instanceof HTMLElement)) return false;
+  return true;
+}
+
 /** 管理器对外形状（组合根与测试按它操作）。 */
 export interface ShortcutManager {
   /** 接通 window keydown + 浮层关闭请求监听；返回卸载闭包（幂等：重复 attach 返回同一卸载）。 */
   attach(): () => void;
   /** 处理一次键击（解析 → 派发；返回动作或 null —— 测试与 attach 内部共用同一条路）。 */
-  handleKeydown(event: KeyboardEventLike & { target?: EventTarget | null }): ShortcutAction | null;
+  handleKeydown(
+    event: KeyboardEventLike & {
+      target?: EventTarget | null;
+      composedPath?: () => EventTarget[];
+    }
+  ): ShortcutAction | null;
   /** 帮助浮层是否打开（真相位在管理器，浮层元素只是渲染镜像）。 */
   readonly helpOpen: boolean;
 }
@@ -173,14 +206,19 @@ export function createShortcutManager(
   };
 
   const handleKeydown = (
-    event: KeyboardEventLike & { target?: EventTarget | null }
+    event: KeyboardEventLike & {
+      target?: EventTarget | null;
+      composedPath?: () => EventTarget[];
+    }
   ): ShortcutAction | null => {
-    // 输入框聚焦让路（任务标题 / 聊天框 / contenteditable 打字不触发全局键）。
-    if (isEditableTarget(event.target ?? null)) return null;
+    // 判定对象 = 真正被键击的元素（穿 shadow DOM 重定向 —— 见 resolveEventTarget）。
+    const target = resolveEventTarget(event);
+    // 输入框聚焦让路（任务标题 / 聊天框 / 命令行 / contenteditable 打字不触发全局键）。
+    if (isEditableTarget(target)) return null;
     const action = resolveShortcutAction(event, helpOpen);
     if (action === null) return null;
     // Space 的原生语义让路：焦点在按钮/链接上时空格 = 激活它（HUD 按钮点完焦点会留在钮上）。
-    if (action.type === 'centerSelection' && isActivatableTarget(event.target ?? null)) return null;
+    if (action.type === 'centerSelection' && isActivatableTarget(target)) return null;
     execute(action);
     return action;
   };

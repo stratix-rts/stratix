@@ -140,6 +140,38 @@ describe('豁免规则（焦点在输入控件里不触发）', () => {
     expect(sent).toEqual([]);
   });
 
+  test('shadow DOM 里的输入框：空格不被吃掉（回归：命令行的空格曾被全局键劫持）', () => {
+    mount();
+    // 真结构：宿主 + shadow root + 里面的输入框（命令面板 `<strat-command-panel>` 就是这个形状）。
+    const host = document.createElement('div');
+    const shadow = host.attachShadow({ mode: 'open' });
+    const input = document.createElement('input');
+    shadow.appendChild(input);
+    document.body.appendChild(host);
+
+    const event = new KeyboardEvent('keydown', {
+      key: ' ',
+      bubbles: true,
+      composed: true,
+      cancelable: true,
+    });
+    // composedPath 只在派发期间有效（派发完就清空）—— 派发中探一下真正被键击的元素。
+    let innermost: EventTarget | null = null;
+    const probe = (e: Event): void => {
+      innermost = e.composedPath()[0];
+    };
+    window.addEventListener('keydown', probe, true);
+    input.dispatchEvent(event);
+    window.removeEventListener('keydown', probe, true);
+
+    // 事件冒泡出 shadow tree 时 target 被**重定向**成宿主 —— 拿它判"是不是输入框"就会
+    // 判错，于是 preventDefault 吃掉空格（字符丢失，只有粘贴能带空格）。
+    expect(event.target).toBe(host);
+    expect(innermost).toBe(input);
+    expect(sent).toEqual([]);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
   test('textarea / contenteditable 同口径', () => {
     mount();
     const textarea = document.createElement('textarea');

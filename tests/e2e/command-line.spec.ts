@@ -119,4 +119,48 @@ test.describe('命令行命令注册表', () => {
     expect(text).toContain('mission <标题>');
     expect(text).toContain('replay');
   });
+
+  test('键盘逐字输入含空格的命令：空格保留、命令命中（回归：空格曾被全局键吞掉）', async ({ page }) => {
+    await boot(page);
+
+    const input = page.locator('strat-command-panel').locator('input[data-role="query"]');
+    await input.click();
+    // 逐字敲（不是 fill / insertText）—— 只有真键盘事件才暴露"空格被吞"这个回归。
+    await input.pressSequentially('mission 整理战场', { delay: 20 });
+    await expect(input).toHaveValue('mission 整理战场');
+
+    await input.press('Enter');
+
+    // 命令解析命中：标题（空格之后那截）被带进对话框并预填。
+    const dialog = page.locator(DIALOG);
+    await expect(dialog).toBeVisible({ timeout: 1000 });
+    await expect(dialog).toContainText('整理战场');
+  });
+
+  test('help → 五命令清单（含中文别名），且完整可见（复测 P2：help 零反馈）', async ({ page }) => {
+    await boot(page);
+
+    await runCommand(page, 'help');
+    const text = await outputText(page);
+    // 五条命令的用法都在。
+    for (const usage of ['mission <标题>', 'theme [default|pixel]', 'settings', 'replay', 'help']) {
+      expect(text).toContain(usage);
+    }
+    // 中文别名也在（别名同样是能敲的形态）。
+    for (const alias of [
+      '别名：任务 / 新建任务',
+      '别名：主题 / 皮肤',
+      '别名：设置',
+      '别名：回放',
+      '别名：帮助 / ?',
+    ]) {
+      expect(text).toContain(alias);
+    }
+    // 完整可见：清单没被裁成一行（裁掉 = 用户眼前没有反馈 = 等于没输出）。
+    const clipped = await page
+      .locator('strat-command-panel')
+      .locator('[data-role="output"]')
+      .evaluate((el) => el.scrollHeight > el.clientHeight + 1);
+    expect(clipped).toBe(false);
+  });
 });

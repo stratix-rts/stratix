@@ -171,6 +171,15 @@ describe('注册表：命令名 / 别名 / 参数', () => {
     expect(text).toContain('replay');
   });
 
+  test('help 文案带中文别名（别名也是能敲的形态，必须一起列出来）', () => {
+    const text = cliHelpText();
+    expect(text).toContain('别名：任务 / 新建任务');
+    expect(text).toContain('别名：主题 / 皮肤');
+    expect(text).toContain('别名：设置');
+    expect(text).toContain('别名：回放');
+    expect(text).toContain('别名：帮助 / ?');
+  });
+
   test('未匹配文案给清单，不是干巴巴一句拒绝', () => {
     const text = cliUnknownText('瞎敲的');
     expect(text).toContain('没有匹配的命令');
@@ -304,6 +313,19 @@ describe('命令面板：回车即执行', () => {
     for (const spec of CLI_COMMANDS) {
       expect(text).toContain(spec.usage);
     }
+  });
+
+  test('多行回执打上 data-multiline 标记（紧凑形态据此浮出；被裁掉就等于没反馈）', async () => {
+    const harness = mountPanel();
+    mounted.push(harness.unmount);
+
+    const output = harness.panel.shadowRoot?.querySelector('[data-role="output"]');
+
+    await harness.run('help');
+    expect(output?.getAttribute('data-multiline')).toBe('true');
+
+    await harness.run('theme');
+    expect(output?.getAttribute('data-multiline')).toBe('false');
   });
 
   test('未匹配输入 → 回执给可用命令清单（不是干巴巴拒绝）', async () => {

@@ -205,9 +205,17 @@ export function cliUsageList(): string {
   return CLI_COMMANDS.map((c) => c.usage).join(' · ');
 }
 
-/** help 的正文：一行用法 + 每条命令一句说明。 */
+/**
+ * help 的正文：紧凑清单一行 + 每条命令一行（用法 + 别名 + 说明）。
+ * why 带别名：中文别名是底栏提示词承诺过的老入口（主题 / 设置 / 回放），
+ *   help 只列规范名的话，用户敲「设置」才发现它也认 —— **列出来的必须是能敲的全部形态**，
+ *   否则 help 又成了半个假入口（这是复测发现的 P2：help 静默 + 清单不完整）。
+ */
 export function cliHelpText(): string {
-  const lines = CLI_COMMANDS.map((c) => `${c.usage} —— ${c.summary}`);
+  const lines = CLI_COMMANDS.map((c) => {
+    const alias = c.aliases && c.aliases.length > 0 ? `（别名：${c.aliases.join(' / ')}）` : '';
+    return `${c.usage}${alias} —— ${c.summary}`;
+  });
   return [`可用命令：${cliUsageList()}`, ...lines].join('\n');
 }
 

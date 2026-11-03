@@ -588,6 +588,8 @@ export function defineCommandPanel(): typeof HTMLElement {
             border: none;
             border-radius: 0;
             overflow: visible;
+            /* 定位上下文：多行回执浮在命令条上方时要相对本面板定位（不依赖宿主）。 */
+            position: relative;
           }
           :host([variant="strip"]) .head,
           :host([variant="strip"]) .notices { display: none; }
@@ -644,6 +646,27 @@ export function defineCommandPanel(): typeof HTMLElement {
             white-space: nowrap;
             overflow-x: auto;
             overflow-y: hidden;
+          }
+          /* 多行回执（help 清单 / 未匹配清单）：浮到命令条上方、完整可读。
+             why 浮层而不是就地换行：就地换行会把控制岛撑高（岛高 100px 是硬验收），
+               剩下的行照样被裁成一行 —— 裁掉等于没反馈（复测 P2「help 零反馈」的真正成因：
+               清单在 DOM 里，但用户眼前只有第一行的一截）。
+             why 只对多行回执浮层：单行回执（已切换到像素风…）仍是行内窄条，观感不动。 */
+          :host([variant="strip"]) .output[data-multiline="true"] {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: calc(100% + 4px);
+            max-width: none;
+            max-height: 160px;
+            padding: var(--srf-spacing-xs);
+            white-space: pre-wrap;
+            overflow-x: hidden;
+            overflow-y: auto;
+            background: var(--srf-panel);
+            border: var(--srf-border-width) solid var(--srf-border);
+            border-radius: var(--srf-radius);
+            z-index: 2;
           }
           :host([variant="strip"]) .empty-hint { white-space: nowrap; }
         </style>
@@ -725,6 +748,9 @@ export function defineCommandPanel(): typeof HTMLElement {
       if (!box) return;
       box.textContent = this._output;
       box.hidden = this._output.length === 0;
+      // 多行回执（help 清单 / 未匹配清单）打个标记：紧凑形态据此把回执浮到命令条上方，
+      // 而不是压成一行被裁掉 —— 裁掉 = 用户看不见 = 等于没反馈（复测 P2：help 静默）。
+      box.setAttribute('data-multiline', this._output.includes('\n') ? 'true' : 'false');
     }
 
     private renderSections(): void {
