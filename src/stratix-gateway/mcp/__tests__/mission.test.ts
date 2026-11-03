@@ -242,6 +242,53 @@ describe('stratix_mission_create / stratix_mission_status', () => {
     }
   });
 
+  // @since v3.7（task_126）失败路径**零副作用**：失败不留孤儿 draft（评估报告 N2）。
+  it('创建失败不留孤儿：有效名单为空 + auto_confirm=true → 名册里一条都不多', async () => {
+    const host = makeHost();
+    const before = store.getState().missions.length;
+
+    for (let i = 0; i < 3; i += 1) {
+      await expect(
+        callCreate(host, { title: `幽灵编组 ${i}`, units: ['unit_ghost'] })
+      ).rejects.toBeInstanceOf(McpToolError);
+      // 每次失败后名册计数恒定 —— 失败不建档（先验后建），不留下没人认领的 draft。
+      expect(store.getState().missions.length).toBe(before);
+    }
+    expect(store.getState().missions).toEqual([]);
+  });
+
+  it('创建失败不留孤儿：units 为空 + auto_confirm=true → 同样零副作用', async () => {
+    const host = makeHost();
+
+    await expect(callCreate(host, { title: '没指派任何人' })).rejects.toBeInstanceOf(McpToolError);
+    expect(store.getState().missions).toEqual([]);
+  });
+
+  it('失败响应说明"为什么没建成"（不留孤儿的前提下也要说清原因）', async () => {
+    const host = makeHost();
+
+    try {
+      await callCreate(host, { title: '全是不存在的单位', units: ['unit_ghost'] });
+      throw new Error('应当抛错');
+    } catch (error) {
+      const toolError = error as McpToolError;
+      expect(toolError.code).toBe('illegal_transition');
+      // 说清了两件事：为什么没建成 + 名册里没有留下东西。
+      expect(toolError.message).toContain('没能建成');
+      expect(toolError.message).toContain('没有建出任何编组任务');
+      expect(toolError.hint).toContain('stratix_registry');
+    }
+  });
+
+  it('正常路径不回退：auto_confirm=false + 空名单 → 照常建出 draft（可撤）', async () => {
+    const host = makeHost();
+    const data = await callCreate(host, { title: '先立一条草稿', auto_confirm: false });
+
+    expect(data.phase).toBe('draft');
+    expect(data.mission_id).toMatch(/^mission_/);
+    expect(store.getState().missions.map((mission) => mission.id)).toEqual([data.mission_id]);
+  });
+
   it('title 为空 / 超长 → invalid_arguments', async () => {
     const host = makeHost();
     await expect(callCreate(host, { title: '   ' })).rejects.toBeInstanceOf(McpToolError);
@@ -284,6 +331,29 @@ describe('stratix_mission_create / stratix_mission_status', () => {
     } catch (error) {
       expect((error as McpToolError).code).toBe('internal_error');
     }
+  });
+
+  // @since v3.7（task_126）建档**之后**才暴露的失败 → 回滚撤下，不留孤儿，且错误里带 mission_id。
+  it('建档后才暴露的失败 → 回滚撤下这条任务（错误里带 mission_id 供调用方收尾）', async () => {
+    // 模拟"确认命令没被 core 接管"（任务停在 pending，没能开工）。
+    const host = makeHost({
+      dispatch: (command) => {
+        if (command.type !== 'mission.confirm') emitCommand(command);
+      },
+    });
+
+    try {
+      await callCreate(host, { title: '确认没被接管', units: ['unit_kimi'] });
+      throw new Error('应当抛错');
+    } catch (error) {
+      const toolError = error as McpToolError;
+      expect(toolError.code).toBe('illegal_transition');
+      expect(toolError.message).toContain('已回滚撤下这条任务');
+      expect(toolError.message).toMatch(/mission_id=mission_/);
+    }
+
+    // 撤掉了：名册里一条都不多（不留没人认领的孤儿）。
+    expect(store.getState().missions).toEqual([]);
   });
 
   it('mission_status 单条模式：带回编组任务与其名下角色任务', async () => {

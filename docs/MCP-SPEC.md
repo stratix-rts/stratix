@@ -398,7 +398,7 @@ Stratix 是本地 agent 团队指挥台：角色绑定 CLI agent（Claude Code /
 > 新建一条编组任务（mission）并指派给一组战场单位；默认一次性完成"建任务 → 指派 → 接单开工"，直接进入 `running`。
 > **何时用**：需要多个角色协同完成一件事（一个写代码、一个审阅、一个出文档）。
 > **何时不用**：只派一个人 —— 用 `stratix_task_assign`；只想查现有编组任务 —— 用 `stratix_mission_status`；任务已经建好、只是卡在待确认 —— 用 `stratix_mission_confirm` 放行；建错了要撤掉 —— 用 `stratix_mission_cancel`。
-> **边界**：`units` 是战场单位 id 列表（可空；空 = 草稿任务，不会自己开工）。单位 id 不存在时**静默剔除**并在 `dropped_units` 里报数（不猜、不报错）。`auto_confirm=false` 时任务停在 `pending` 待确认 —— 用 `stratix_mission_confirm` 放行开工、用 `stratix_mission_cancel` 撤掉（core 口径：`confirm` 只认 `pending`）。`auto_confirm=true` 时若有效名单为空（单位 id 全不存在），任务无法进入 `running`，回 `illegal_transition`。编组任务上限 100 条，超限拒绝新建。
+> **边界**：`units` 是战场单位 id 列表（可空；空 = 草稿任务，不会自己开工）。单位 id 不存在时**静默剔除**并在 `dropped_units` 里报数（不猜、不报错）。`auto_confirm=false` 时任务停在 `pending` 待确认 —— 用 `stratix_mission_confirm` 放行开工、用 `stratix_mission_cancel` 撤掉（core 口径：`confirm` 只认 `pending`）。`auto_confirm=true` 时若有效名单为空（`units` 为空或单位 id 全不存在），任务接不了单 —— **不建档**（零副作用：名册里不留孤儿草稿），回 `illegal_transition` 并说明为什么没建成；建档后才暴露的失败一律回滚撤下，错误里带 `mission_id` 供调用方收尾。编组任务上限 100 条，超限拒绝新建。
 > **正文与依赖**：`brief` 是这条任务的结构化正文契约（`requirements` 需求 / `acceptance` 验收标准 / `deliverables` 交付物 / `constraints` 约束），四段皆可选，**只记不校验**（不会自动写进派单 prompt）。`depends_on` 是前置编组任务 id 列表（上限 32）：**带依赖的编组会在依赖满足前拒绝 `confirm`** —— 任务停在 `pending`，回执的 `blocked_by_dependencies` 报出还差哪几个前置（这是**正常结果**，不是失败：任务已建成，只是还不能开工）。
 > **错误**：`invalid_arguments`（title 为空或超长 / brief 段名非法或超长 / `depends_on` 超 32 条）/ `mission_capacity_exceeded`（可重试）/ `illegal_transition`。
 

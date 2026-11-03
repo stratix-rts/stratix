@@ -17,9 +17,21 @@
  *   此前 auto_confirm=false 造出的 pending / draft 编组任务在 MCP 内是**死路** ——
  *   没有确认工具（创建工具的描述自认「第一期不提供确认工具」），也没有撤掉工具，
  *   外部 agent 造出来的悬空任务永久挂起、无法清理（评估报告 §4-2 / 困惑点 #6）。
+ * @since v3.7（task_126）**创建失败零副作用**：mission_create 的失败路径原先会**先建档再失败** ——
+ *   auto_confirm=true 但有效名单为空（units 为空 / 单位 id 全不存在）时，core 拒绝确认，
+ *   已建好的 draft 却留在名册里（孤儿），而错误回执不带 mission_id —— 调用方既不知道自己留下了什么，
+ *   更谈不上清理（评估报告 N2）。现在改成**先验后建**：这类失败在建档**之前**就判掉，
+ *   零副作用（名册里一条都不多）；万一还有建档后才暴露的失败，一律**回滚撤下**并把 mission_id 报出来。
  */
 
-import { findMissingDependencies, isTerminalPhase } from '../../../core/mission/machine';
+// ★ 从 core/mission 的**统一出口**取（core/mission/index.ts 的铁律：上层只认出口，不跨层 import 子文件）。
+//   reconcileAssignedUnits 是 core 建档时的**名单对账口径**（去重、剔未知单位、截断）——
+//   先验后建要用**同一份**口径判"有效名单是不是空的"，另写一份必然漂移。
+import {
+  findMissingDependencies,
+  isTerminalPhase,
+  reconcileAssignedUnits,
+} from '../../../core/mission';
 import {
   MAX_MISSIONS,
   MAX_MISSION_CHECKPOINTS,
@@ -39,7 +51,7 @@ import {
   requireString,
 } from '../args';
 import { McpToolError, toToolResult } from '../envelope';
-import type { ToolSpec } from '../types';
+import type { McpHost, ToolSpec } from '../types';
 
 import { characterName } from './common';
 
@@ -84,8 +96,9 @@ export const missionCreateTool: ToolSpec = {
     '边界：units 是战场单位 id 列表（可空；空 = 草稿任务，不会自己开工）。单位 id 不存在时**静默剔除**并在',
     'dropped_units 里报数（不猜、不报错）。auto_confirm=false 时任务停在 pending 待确认 —— 用',
     'stratix_mission_confirm 放行开工、用 stratix_mission_cancel 撤掉（core 口径：confirm 只认 pending）。',
-    'auto_confirm=true 时若有效名单为空（单位 id 全不存在），',
-    '任务无法进入 running，返回 illegal_transition。编组任务上限 100 条，超限拒绝新建。',
+    'auto_confirm=true 时若有效名单为空（units 为空或单位 id 全不存在），任务接不了单 —— **不建档**（零副作用：',
+    '名册里不会留下孤儿草稿），返回 illegal_transition 并说明为什么没建成；只想立一条待指派的草稿就传',
+    'auto_confirm=false。编组任务上限 100 条，超限拒绝新建。',
     'brief 是这条任务的结构化正文契约：requirements 需求 / acceptance 验收标准 / deliverables 交付物 / constraints 约束，',
     '四段都可省，只记不校验。depends_on 是前置编组任务 id 列表（上限 32）：**带依赖的编组会在依赖满足前拒绝 confirm** ——',
     '任务停在 pending，回执的 blocked_by_dependencies 报出还差哪几个前置。',
@@ -181,6 +194,30 @@ export const missionCreateTool: ToolSpec = {
       });
     }
 
+    // ⓪ 先验后建（@since v3.7，task_126）：能判失败的判定全部前置到**建档之前** ——
+    //    "auto_confirm=true 但有效名单为空"在建档前就能判：core 建档时会剔掉不存在的单位 id
+    //    （reconcileAssignedUnits），名单被剔空 → 任务只会停在 draft → 确认必被 core 拒绝。
+    //    此前这条失败发生在建档**之后**：draft 已经落在名册里（孤儿），而错误回执又不带
+    //    mission_id —— 调用方既不知道自己留下了什么，更谈不上清理（评估报告 N2）。
+    //    前置到建档前 → 失败**零副作用**：名册里一条都不多。
+    if (autoConfirm) {
+      const effectiveUnits = reconcileAssignedUnits(
+        requestedUnits,
+        state.units.map((unit) => unit.id)
+      );
+      if (effectiveUnits.length === 0) {
+        throw new McpToolError(
+          'illegal_transition',
+          `编组任务「${title}」没能建成：${describeEmptyRoster(requestedUnits)} —— ` +
+            `建了也接不了单（本次调用没有建出任何编组任务）`,
+          {
+            hint:
+              '用 stratix_registry 查战场单位 id 后重试；只想先立一条待指派的草稿就传 auto_confirm=false',
+          }
+        );
+      }
+    }
+
     // ① 建任务 —— 只发命令，落库与相位由 core 裁决（core 会自行对账名单：去重、剔未知单位）。
     //    brief / dependsOn 原样透传：归一（trim / 丢空段 / 去重 / 丢自依赖）在 core 的 machine.ts 里做，
     //    MCP 不另写一份规则。
@@ -238,10 +275,16 @@ export const missionCreateTool: ToolSpec = {
         : [];
 
     if (autoConfirm && mission.phase !== 'running' && missingDependencies.length === 0) {
-      // confirm 只认 pending 相位：名单为空（草稿）时确认不了，任务停在 draft。
+      // 建档之后才发现没能开工 —— **回滚**（@since v3.7，task_126）：把刚建的这条撤下，
+      //   不在名册里留孤儿（评估报告 N2）。撤不掉（已开工 / 终态）时把 mission_id 报出去 ——
+      //   调用方据此自己收尾，不用猜自己留下了什么。
+      const rolledBack = rollbackMission(host, mission.id);
       throw new McpToolError(
         'illegal_transition',
-        `编组任务「${title}」没能进入 running（当前 ${mission.phase} 相位）`,
+        `编组任务「${title}」没能进入 running（当前 ${mission.phase} 相位）；` +
+          (rolledBack
+            ? `已回滚撤下这条任务（mission_id=${mission.id}），名册里不留孤儿`
+            : `这条任务仍在名册里（mission_id=${mission.id}），请用 stratix_mission_cancel 撤掉`),
         {
           hint:
             '有效名单为空（单位 id 不存在）时无法接单开工 —— 用 stratix_registry 查战场单位 id 后重试，' +
@@ -860,6 +903,32 @@ function readDependsOn(args: Readonly<Record<string, unknown>>): string[] | unde
 /** 去重后的名单长度（core 的 dropped 口径：按去重后的入参个数算）。 */
 function countUnique(unitIds: readonly string[]): number {
   return new Set(unitIds.filter((id) => id.length > 0)).size;
+}
+
+/**
+ * "有效名单为空"的成因（说人话：到底是没传，还是传了但战场上一个都没有）。
+ * why 要分两种说法：调用方看到"没指派任何人"会以为是自己漏传了 units，
+ * 看到"id 都不存在"才会去查战场单位 id —— 两者的下一步完全不同。
+ */
+function describeEmptyRoster(requestedUnits: readonly string[]): string {
+  if (requestedUnits.length === 0) return 'units 为空，没有可指派的单位';
+  return `units 里的 ${requestedUnits.length} 个单位 id 在战场上一个都不存在`;
+}
+
+/**
+ * 回滚：把刚建出来、却没能开工的编组任务撤下（@since v3.7，task_126）。
+ *
+ * why 需要它：先验后建能挡掉**已知**的失败，但"建档之后才发现失败"这条路一旦发生，
+ * 留在名册里的就是一条**没人认领的孤儿**（draft / pending）—— 调用方拿到的错误里若没有
+ * mission_id，它连自己留下了什么都无从得知（评估报告 N2）。
+ * 撤得掉（core 的 canRemoveMission：draft / pending 都可撤）就撤，撤不掉就如实把
+ * mission_id 报出去，交给调用方用 stratix_mission_cancel 收尾。
+ *
+ * @returns 是否撤掉了（true = 名册里已经没这条了）。
+ */
+function rollbackMission(host: McpHost, missionId: string): boolean {
+  host.dispatchCommand({ type: 'mission.remove', missionId });
+  return !(host.getWorldState().missions ?? []).some((item) => item.id === missionId);
 }
 
 /** 战场单位名（查不到就是 null —— 不编造）。 */
