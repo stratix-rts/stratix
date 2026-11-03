@@ -50,6 +50,9 @@
  * @since v3.4(task_096)追加 hud.layer.set 命令接线:写 WorldState.infoLayer
  *   (HUD 信息三层级 L1 常驻 / L2 事件 / L3 沉浸)→ state 广播给 HUD 与 world;
  *   层级语义在 core/info-layer.ts 的纯函数里,视觉呈现全在 hud 侧(core 零 DOM)。
+ * @since v3.4(task_091)追加 focus.unit 命令接线:HUD 事件轨(Z2)条目点击 → 同名 WorldEvent
+ *   转发到 world 通道(消费者是世界层:单位描边高亮 + 引导弧线);core 只转发不写 WorldState
+ *   (联动是瞬态表现,同 camera.shake 口径);world 通道回环的 focus.unit 显式接地。
  */
 
 import type { AgentLinkManager } from './agent-link';
@@ -406,6 +409,15 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         emitWorldEvent({ type: 'camera.director', enabled: command.enabled });
         return;
       }
+      // @since v3.4(task_091)事件轨点选单位(HUD v3.4 · Z2 事件轨):条目点击 → focus.unit。
+      //   core 只做转发(不写 WorldState —— 联动是瞬态表现,同 camera.shake 口径):
+      //   以同名 WorldEvent 发到 world 通道,消费者是世界层(task_092:单位描边高亮 +
+      //   左下条目到中屏单位的引导弧线)。HUD 绝不直接调 world(铁律)—— 与 camera.center
+      //   同一两段式:命令是 hud → core 的意向,事件是 core → world 的落位指令。
+      case 'focus.unit': {
+        emitWorldEvent({ type: 'focus.unit', unitId: command.unitId });
+        return;
+      }
       // @since v3.3 任务域:命令翻译只在 core/mission 里有一份(manager 负责转状态机动作 + 写库 + 报错)
       // @since v3.38(task_077):可选 brief / dependsOn 透传 —— 缺省即裸任务,既有构造点零改动。
       case 'mission.create':
@@ -628,6 +640,10 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         //   里程碑震动指令,消费者在世界场景(bridge 转发 syncCameraShake) -- core 发出后
         //   又在 world 通道上回到本订阅一次,这里显式接地(同 camera.center 惯例,不进 onUnhandled)。
         if (event.type === 'camera.shake') return;
+        // focus.unit(@since v3.4,task_091):同名 WorldEvent 是 handleCommand 转发出去的
+        //   单位联动指令,消费者是世界层(task_092) -- core 发出后又在 world 通道上回到
+        //   本订阅一次,这里显式接地(同 camera.shake 惯例,不进 onUnhandled)。
+        if (event.type === 'focus.unit') return;
         if (event.type === 'camera.moved') return;
         if (event.type === 'exp.gained') return;
         if (event.type === 'level.up') return;

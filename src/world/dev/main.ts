@@ -126,6 +126,9 @@ function describe(event: WorldEvent): string {
     // 单位气泡（@since v3.3，task_077）：战场要求某个单位冒一句话（气泡系统 task_076 消费）。
     case 'unit.bubble':
       return `${event.type.padEnd(15)} ${event.unitId} 「${event.text}」`;
+    // 单位联动（@since v3.4，task_091）：HUD 事件轨条目点击 → core 转发给 world，看一眼点的是谁。
+    case 'focus.unit':
+      return `${event.type.padEnd(15)} ${event.unitId}`;
     // 音效钩子（@since v3.3，task_077）：只发事件不做音频（声音包 v3.3-10 消费）。
     case 'fx.sound':
       return `${event.type.padEnd(15)} ${event.cue}`;

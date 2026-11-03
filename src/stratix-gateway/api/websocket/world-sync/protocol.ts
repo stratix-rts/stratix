@@ -264,6 +264,8 @@ function isPositiveInt(value: unknown): value is number {
 const HUD_COMMAND_TYPE_FLAGS: Readonly<Record<HudCommand['type'], true>> = {
   'unit.select': true,
   'unit.focus': true,
+  // @since v3.4（task_091）事件轨点选单位（HUD Z2 事件轨条目点击 → core → world 通道）。
+  'focus.unit': true,
   'camera.center': true,
   'camera.shake': true,
   'camera.director': true,

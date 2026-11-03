@@ -199,6 +199,18 @@ export const VISUAL_METRICS = Object.freeze({
 export const MARQUEE_METRICS = Object.freeze({
   /** 跑马灯同时最多显示几条（超出时最旧一条淡出）。 */
   maxEntries: 5,
+  /**
+   * @since v3.4（task_091）事件轨最大宽度（px）—— proposal §2.5 Z2：「左下 fixed，宽 ≤260px」。
+   *   why 落唯一事实源：宽度是「与控制岛（Z4，56% 屏宽贴底居中）零重叠」这条验收的输入 ——
+   *   轨道右缘 = 左边距 + 本宽度，控制岛左缘 = 22% 屏宽，两者要在 1280 宽下不相撞。
+   */
+  maxWidthPx: 260,
+  /**
+   * @since v3.4（task_091）折叠态默认显示几条 —— proposal §2.5 Z2：「默认显示 2 条 + 展开 N 条」。
+   *   why 折叠：底边是「高密度变动区」，常驻 5 条会把观众的注意力钉在左下角；
+   *   折叠成 2 条 + 一个「展开 N 条」入口，底边静默度才回来（proposal §1.3 痛点 c）。
+   */
+  collapsedVisible: 2,
   /** 新消息左侧滑入时长（ms）= 通用入场时长。 */
   enterDurationMs: VISUAL_METRICS.enter.durationMs,
   /** 最旧一条淡出时长（ms）= 通用退场时长。 */

@@ -1152,6 +1152,17 @@ export type HudCommand =
    */
   | { type: 'unit.focus'; unitId: string }
   /**
+   * @since v3.4（task_091）事件轨点选单位（HUD v3.4 · Z2 事件轨）。
+   *   发出方是左下事件轨的**条目点击**（点哪条 → 锁定哪个单位，见 proposal §2.5 Z2 的
+   *   「hover 展开详情；点击锁定单位 + 中屏高亮 + 引导弧线」）。
+   *   与 unit.focus 的分工：unit.focus 是**相机动作**（把镜头对到某单位，v3.2 起）；
+   *   本条是**单位联动**的诉求（world 侧给该单位描边高亮 + 画左下→中屏的引导弧线，
+   *   消费者是 task_092）。两者语义正交、可并存 —— 所以**另开一条**，不并进 unit.focus：
+   *   并进去就得给 unit.focus 加「要不要联动」的开关位，契约会变浑。
+   *   core 只做转发（不写 WorldState —— 联动是瞬态表现，同 camera.shake 口径）。
+   */
+  | { type: 'focus.unit'; unitId: string }
+  /**
    * @since v3.33 小地图跳转（task_057）：把相机对中到某个世界点（世界坐标）。
    *   是 unit.focus 的**泛化**命令（点是世界点而不是单位 id —— 小地图点的是坐标，不是单位）：
    *   core 收到后用 core/camera.ts 的纯函数钳进 WORLD_BOUNDS，再以同名 WorldEvent 转发到
@@ -1658,6 +1669,17 @@ export type WorldEvent =
    *   payload 只携单位 id 与一句短文本（不雪球句库 id —— 句库归气泡系统所有）。
    */
   | { type: 'unit.bubble'; unitId: string; text: string }
+  /**
+   * @since v3.4（task_091）单位联动事件 —— HudCommand `focus.unit` 经 core 转发的**同名事件**
+   *   （与 camera.center / camera.shake / camera.director 的两段式同一口径：命令是 hud → core
+   *   的意向，事件是 core → world 的落位指令；同名不同向）。
+   *   消费者是**世界层**（task_092：被点单位描边高亮 + 左下条目到中屏单位的引导弧线）。
+   *   core 状态机不消费（不写 WorldState —— 联动是瞬态表现，与 camera.shake 同口径）——
+   *   runtime 的 handleWorldEvent 显式接地（同 unit.bubble 惯例，不进 onUnhandled）。
+   *   payload 只携单位 id（不雪球坐标 —— 弧线由 world 侧按自己的相机状态换算，
+   *   core / hud 都不知道屏幕坐标）。
+   */
+  | { type: 'focus.unit'; unitId: string }
   /**
    * @since v3.3（task_077）音效钩子事件（**预留**）：战场在关键动作上发一声 cue，
    *   声音包（v3.3-10 / DEMO-PLAN §10「Web Audio 代码合成」）据此发声。

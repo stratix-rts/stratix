@@ -1,7 +1,9 @@
 /**
- * 集成测试：事件跑马灯（hud/components/marquee/marquee.ts + marquee-catalog.ts，task_080）。
+ * 集成测试：事件轨（hud/components/marquee/marquee.ts + marquee-catalog.ts，task_080 建；
+ * @since v3.4 task_091 升级为 Z2 事件轨）。
  * 覆盖：文案模板 / 相对时间 / 分级配色（纯函数直打）+ 条目栈行为（最多 5 条、最旧一条淡出、
- * 新消息在最上、时间刷新、演示模式强制开启）。
+ * 新消息在最上、时间刷新、演示模式强制开启）+ Z2 规格（折叠 2 条 / 展开 N 条、hover 详情不跳动、
+ * 点击发 focus.unit 总线事件、与控制岛零重叠）。
  * @jest-environment jsdom
  */
 
@@ -9,17 +11,26 @@ import {
   formatRelativeTime,
   isMilestoneCount,
   MARQUEE_ICONS,
+  marqueeDetailFor,
   marqueeEntryForEvent,
   marqueeTextFor,
   marqueeToneColor,
   milestoneEntryText,
   milestoneText,
   resolveTaskTitle,
+  resolveTaskTitleFull,
+  resolveUnitIdForTask,
   shortenText,
 } from '../components/marquee/marquee-catalog';
-import { MARQUEE_ENABLED_KEY, mountMarquee, type StratMarqueeElement } from '../components/marquee/marquee';
+import {
+  MARQUEE_ENABLED_KEY,
+  mountMarquee,
+  type MarqueeDeps,
+  type StratMarqueeElement,
+} from '../components/marquee/marquee';
 import { MARQUEE_METRICS, VISUAL_PALETTE } from '../../core/theme/visual-spec';
-import type { CharacterTask, MissionView, WorldEvent } from '../../core/types';
+import { emitCommand, onCommand, resetBus } from '../../core/bus';
+import type { CharacterTask, HudCommand, MissionView, UnitView, WorldEvent } from '../../core/types';
 
 // ============================================================================
 // 纯函数层
@@ -187,12 +198,13 @@ let host: HTMLElement;
 let element: StratMarqueeElement;
 let unmount: () => void;
 
-function mount(remembered: Record<string, string> = {}): void {
+function mount(remembered: Record<string, string> = {}, deps: Partial<MarqueeDeps> = {}): void {
   host = document.createElement('div');
   document.body.appendChild(host);
   const mounted = mountMarquee(host, {
     now: () => clockNow,
     storage: () => memoryStorage(remembered).storage,
+    ...deps,
   });
   element = mounted.element;
   unmount = mounted.unmount;
@@ -202,6 +214,16 @@ function mount(remembered: Record<string, string> = {}): void {
 function entryNodes(): HTMLElement[] {
   const stack = element.shadowRoot?.querySelector('[data-role="stack"]');
   return stack ? Array.from(stack.querySelectorAll('.entry')) : [];
+}
+
+/** 当前**出场**的条目（Z2 折叠态：只露 collapsedVisible 条，其余留在 DOM 里但 display:none）。 */
+function visibleEntryNodes(): HTMLElement[] {
+  return entryNodes().filter((node) => !node.classList.contains('is-hidden'));
+}
+
+/** 折叠 / 展开按钮（Z2）。 */
+function toggleButton(): HTMLButtonElement | null {
+  return (element.shadowRoot?.querySelector('[data-role="toggle"]') as HTMLButtonElement | null) ?? null;
 }
 
 function pushEntry(kind: 'dispatch' | 'complete' | 'error' | 'milestone', text: string, at = clockNow): void {
@@ -309,5 +331,257 @@ describe('跑马灯组件：演示模式强制开启', () => {
   test('默认（无记忆）可见', () => {
     mount();
     expect(element.visible).toBe(true);
+  });
+});
+
+// ============================================================================
+// Z2 事件轨（@since v3.4，task_091）—— 依据 docs/hud-redesign-proposal.html §2.5 Z2 行
+// ============================================================================
+
+describe('事件轨（Z2）：折叠 / 展开', () => {
+  test('默认折叠：只露 collapsedVisible 条，其余条目留在 DOM 里但不出场', () => {
+    mount();
+    for (let i = 1; i <= MARQUEE_METRICS.maxEntries; i += 1) pushEntry('dispatch', `第 ${i} 条`);
+
+    expect(entryNodes()).toHaveLength(MARQUEE_METRICS.maxEntries);
+    expect(visibleEntryNodes()).toHaveLength(MARQUEE_METRICS.collapsedVisible);
+    expect(element.expanded).toBe(false);
+    expect(element.hiddenCount).toBe(MARQUEE_METRICS.maxEntries - MARQUEE_METRICS.collapsedVisible);
+  });
+
+  test('「展开 N 条」按钮：N = 被藏条数；点开露全部，再点收起', () => {
+    mount();
+    for (let i = 1; i <= MARQUEE_METRICS.maxEntries; i += 1) pushEntry('dispatch', `第 ${i} 条`);
+
+    const toggle = toggleButton();
+    expect(toggle).not.toBeNull();
+    expect(toggle?.hidden).toBe(false);
+    expect(toggle?.textContent).toBe('展开 3 条');
+
+    toggle?.click();
+    expect(element.expanded).toBe(true);
+    expect(visibleEntryNodes()).toHaveLength(MARQUEE_METRICS.maxEntries);
+    expect(toggle?.textContent).toBe('收起');
+    expect(element.hiddenCount).toBe(0);
+
+    toggle?.click();
+    expect(element.expanded).toBe(false);
+    expect(visibleEntryNodes()).toHaveLength(MARQUEE_METRICS.collapsedVisible);
+    expect(toggle?.textContent).toBe('展开 3 条');
+  });
+
+  test('条目不超过折叠可见数时不显示展开按钮（底边静默）', () => {
+    mount();
+    pushEntry('complete', '一条');
+    expect(toggleButton()?.hidden).toBe(true);
+
+    pushEntry('complete', '两条');
+    expect(toggleButton()?.hidden).toBe(true);
+
+    pushEntry('complete', '三条');
+    expect(toggleButton()?.hidden).toBe(false);
+    expect(toggleButton()?.textContent).toBe('展开 1 条');
+  });
+
+  test('新条目进来后折叠态仍只露 2 条（被挤下去的藏起来，不撑高轨道）', () => {
+    mount();
+    pushEntry('complete', '第一条');
+    pushEntry('complete', '第二条');
+    pushEntry('complete', '第三条');
+
+    expect(visibleEntryNodes()).toHaveLength(MARQUEE_METRICS.collapsedVisible);
+    expect(visibleEntryNodes()[0].querySelector('.text')?.textContent).toBe('第三条');
+    expect(element.hiddenCount).toBe(1);
+  });
+});
+
+describe('事件轨（Z2）：hover 详情行', () => {
+  const detailEntry = () => ({
+    kind: 'complete' as const,
+    icon: MARQUEE_ICONS.complete,
+    text: '小王 完成了「登录页改版」',
+    detail: '小王 完成了「把登录页改成两栏布局并兼容移动端」',
+    unitId: 'u-1',
+    at: clockNow,
+  });
+
+  test('悬停出现详情行（完整文案 + 相对时间）；移出收起', () => {
+    mount();
+    element.push(detailEntry());
+    const node = entryNodes()[0];
+    const detail = node.querySelector('[data-role="detail"]');
+    expect(detail).not.toBeNull();
+    expect(detail?.querySelector('.detail-text')?.textContent).toBe(
+      '小王 完成了「把登录页改成两栏布局并兼容移动端」',
+    );
+    expect(detail?.querySelector('.detail-time')?.textContent).toBe('刚刚');
+
+    expect(node.hasAttribute('data-hover')).toBe(false);
+    node.dispatchEvent(new MouseEvent('mouseenter'));
+    expect(node.getAttribute('data-hover')).toBe('true');
+    node.dispatchEvent(new MouseEvent('mouseleave'));
+    expect(node.hasAttribute('data-hover')).toBe(false);
+  });
+
+  test('详情行随时间刷新相对时间', () => {
+    mount();
+    element.push(detailEntry());
+    const node = entryNodes()[0];
+
+    clockNow += 3 * 60_000;
+    jest.advanceTimersByTime(5000);
+
+    expect(node.querySelector('.detail-time')?.textContent).toBe('3 分钟前');
+  });
+
+  test('hover 不挪动任何条目（详情板脱流：绝对定位 + 不增删节点）', () => {
+    mount();
+    pushEntry('complete', '第一条');
+    pushEntry('complete', '第二条');
+    const stack = element.shadowRoot?.querySelector('[data-role="stack"]');
+    const before = entryNodes().map((node) => node.style.cssText);
+    const childCountBefore = stack?.childNodes.length;
+
+    entryNodes()[0].dispatchEvent(new MouseEvent('mouseenter'));
+
+    expect(entryNodes().map((node) => node.style.cssText)).toEqual(before);
+    expect(stack?.childNodes.length).toBe(childCountBefore);
+    // 详情板绝对定位（脱流）—— 组件样式表里的出处
+    const css = element.shadowRoot?.querySelector('style')?.textContent ?? '';
+    expect(css).toMatch(/\.detail\s*\{[^}]*position:\s*absolute/);
+  });
+});
+
+describe('事件轨（Z2）：点击发 focus.unit', () => {
+  const clickable = () => ({
+    kind: 'complete' as const,
+    icon: MARQUEE_ICONS.complete,
+    text: '小王 完成了「登录页改版」',
+    unitId: 'u-1',
+    at: clockNow,
+  });
+
+  test('点击条目 → 命令出口收到 focus.unit（带单位 id）', () => {
+    const dispatch = jest.fn();
+    mount({}, { dispatch });
+    element.push(clickable());
+
+    entryNodes()[0].click();
+
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledWith({ type: 'focus.unit', unitId: 'u-1' });
+  });
+
+  test('总线级：focus.unit 命令真的发到了 core/bus 的 command 通道', () => {
+    resetBus();
+    const seen: HudCommand[] = [];
+    const off = onCommand((command) => seen.push(command));
+    mount({}, { dispatch: (command) => emitCommand(command) });
+    element.push(clickable());
+
+    entryNodes()[0].click();
+
+    expect(seen).toEqual([{ type: 'focus.unit', unitId: 'u-1' }]);
+    off();
+    resetBus();
+  });
+
+  test('没有关联单位的条目点了不动作（里程碑那条不指向任何单位）', () => {
+    const dispatch = jest.fn();
+    mount({}, { dispatch });
+    element.push({ kind: 'milestone', icon: MARQUEE_ICONS.milestone, text: '第 10 个任务完成', at: clockNow });
+
+    entryNodes()[0].click();
+
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  test('键盘可达：条目可聚焦，回车同样发 focus.unit', () => {
+    const dispatch = jest.fn();
+    mount({}, { dispatch });
+    element.push(clickable());
+    const node = entryNodes()[0];
+    expect(node.getAttribute('role')).toBe('button');
+    expect(node.getAttribute('tabindex')).toBe('0');
+
+    node.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+
+    expect(dispatch).toHaveBeenCalledWith({ type: 'focus.unit', unitId: 'u-1' });
+  });
+});
+
+describe('事件轨（Z2）：几何（与控制岛零重叠）', () => {
+  test('轨道宽度 ≤260px；1280 / 1920 宽下与控制岛（56% 屏宽贴底居中）不相撞', () => {
+    mount();
+    // 宽度上限来自唯一事实源（proposal §2.5 Z2：宽 ≤260px）
+    expect(MARQUEE_METRICS.maxWidthPx).toBeLessThanOrEqual(260);
+    expect(element.style.getPropertyValue('--marquee-width')).toBe(`${MARQUEE_METRICS.maxWidthPx}px`);
+
+    // 轨道右缘 = 左边距 16 + 轨道宽；控制岛左缘 = (1 - 56% 屏宽) / 2（贴底居中）
+    const trackRight = 16 + MARQUEE_METRICS.maxWidthPx;
+    for (const viewport of [1280, 1920]) {
+      const islandLeft = ((1 - 0.56) / 2) * viewport;
+      expect(trackRight).toBeLessThanOrEqual(islandLeft);
+    }
+  });
+});
+
+describe('事件轨（Z2）：纯逻辑层新增', () => {
+  const task: CharacterTask = {
+    id: 't1',
+    characterId: 'ch-1',
+    prompt: '把登录页改成两栏布局并兼容移动端',
+    status: 'running',
+    createdAt: 0,
+    startedAt: 0,
+    endedAt: null,
+    output: '',
+    missionId: 'm1',
+  };
+
+  test('完整标题不截断（详情行用）；短标题照旧截断', () => {
+    const missions: MissionView[] = [
+      { id: 'm1', title: '登录页改版', phase: 'running', unitIds: ['u1'], createdAt: 0 },
+    ];
+    expect(resolveTaskTitleFull(task, missions)).toBe('登录页改版');
+    expect(resolveTaskTitle(task, missions)).toBe('登录页改版');
+
+    const noMission = { ...task, missionId: null };
+    expect(resolveTaskTitleFull(noMission, [])).toBe('把登录页改成两栏布局并兼容移动端');
+    expect(resolveTaskTitle(noMission, [])).toBe('把登录页改成两栏布局并…');
+  });
+
+  test('任务 → 单位 id：优先同 mission 上的那个单位，其次同角色的任意单位', () => {
+    const units: UnitView[] = [
+      { id: 'u-other', name: 'A', status: 'idle', missionId: null, power: 1, characterId: 'ch-1' },
+      { id: 'u-on', name: 'B', status: 'busy', missionId: 'm1', power: 1, characterId: 'ch-1' },
+      { id: 'u-other-char', name: 'C', status: 'idle', missionId: 'm1', power: 1, characterId: 'ch-9' },
+    ];
+    expect(resolveUnitIdForTask(units, task)).toBe('u-on');
+    expect(resolveUnitIdForTask(units, { ...task, missionId: 'm-zz' })).toBe('u-other');
+    expect(resolveUnitIdForTask(units, { ...task, characterId: 'ch-none' })).toBeNull();
+  });
+
+  test('详情句式与短句同款，只是标题不截断', () => {
+    expect(marqueeDetailFor('complete', '小王', '把登录页改成两栏布局并兼容移动端')).toBe(
+      '小王 完成了「把登录页改成两栏布局并兼容移动端」',
+    );
+    expect(marqueeDetailFor('milestone', '小王', '标题')).toBe('');
+  });
+
+  test('事件 → 条目：带上详情全文与关联单位 id', () => {
+    const entry = marqueeEntryForEvent(
+      { type: 'task.completed', task },
+      {
+        characterName: '小王',
+        taskTitle: '登录页改版',
+        taskTitleFull: '把登录页改成两栏布局并兼容移动端',
+        unitId: 'u-1',
+      },
+      1000,
+    );
+    expect(entry?.text).toBe('小王 完成了「登录页改版」');
+    expect(entry?.detail).toBe('小王 完成了「把登录页改成两栏布局并兼容移动端」');
+    expect(entry?.unitId).toBe('u-1');
   });
 });

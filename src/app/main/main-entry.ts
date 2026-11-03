@@ -212,6 +212,8 @@ import {
   marqueeEntryForEvent,
   milestoneEntryText,
   resolveTaskTitle,
+  resolveTaskTitleFull,
+  resolveUnitIdForTask,
   type MarqueeEventContext,
 } from '../../hud/components/marquee/marquee-catalog';
 // 快捷键系统（@since v3.34，task_058）：window keydown → 命令 + 帮助浮层（键位表见 hud/shortcuts）。
@@ -814,7 +816,11 @@ async function boot(): Promise<void> {
   //   marquee-catalog（纯逻辑，单测直打）。
   // 里程碑的镜头震动走 HudCommand camera.shake（core 钳制 → world 通道 → 场景相机）——
   //   HUD 绝不直接调 world（铁律），与 camera.center 同一两段式。
-  const { element: marquee, unmount: unmountMarquee } = mountMarquee(hudRoot);
+  const { element: marquee, unmount: unmountMarquee } = mountMarquee(hudRoot, {
+    // 条目点击 → focus.unit（HUD → core → world 通道；world 侧消费在 task_092）。
+    // 派发经 adapter（hud 唯一的总线出口），组件自己不碰总线 —— 铁律。
+    dispatch: (command) => adapter.dispatch(command),
+  });
   // 跑马灯引用位回填（task_082）：回放重演的事件要进同一条跑马灯。
   marqueeEl = marquee;
   const { element: milestone, unmount: unmountMilestone } = mountMilestone(hudRoot, {
@@ -843,6 +849,10 @@ async function boot(): Promise<void> {
       // 角色查不到（极端时序：角色已删但事件在飞）→ 留空，模板走兜底句式（不猜名字）。
       characterName: character?.name ?? null,
       taskTitle: resolveTaskTitle(event.task, state.missions ?? []),
+      // Z2 事件轨（@since v3.4，task_091）：详情行用完整标题（短标题放不下）；
+      // 关联单位 id 供「点击条目 → focus.unit」用（查不到就是 null —— 那条不可点）。
+      taskTitleFull: resolveTaskTitleFull(event.task, state.missions ?? []),
+      unitId: resolveUnitIdForTask(state.units ?? [], event.task),
     };
   };
   const stopMarqueeFeed = onWorldEvent((event) => {
