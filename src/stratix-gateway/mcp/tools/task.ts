@@ -35,12 +35,18 @@ import { guardCharacter } from './common';
  */
 const EFFECTIVE_TASK_TIMEOUT_MS = 600_000;
 
-/** 审计来源的合法显式取值（spec §2.0：只允许 agent 与 script；ui 拒绝，mcp 冗余）。 */
-const EXPLICIT_ORIGINS = ['agent', 'script'] as const;
+/**
+ * 审计来源的合法取值全集（spec §2.0：ui | mcp | script | agent）。
+ * why mcp 也在里面：schema 的 `default` 必须在自己的 `enum` 内 —— default 不在 enum 里 = 自相矛盾，
+ * 严格模式的 schema 校验器会直接拒收这张 schema（P4 缺口，2026-11-03 MCP 评估）。
+ * why 显式传 mcp 也合法：它与缺省同义（这条单本来就是经 MCP 进来的），记 mcp 不算撒谎。
+ * ui 仍然拒绝：界面派的单不经 MCP 进来，认它等于替调用方伪造来源。
+ */
+const ORIGIN_VALUES = ['mcp', 'agent', 'script'] as const;
 /** 缺省来源：经 MCP 进来的派单一律记 mcp。 */
 const DEFAULT_ORIGIN = 'mcp';
 
-type Origin = (typeof EXPLICIT_ORIGINS)[number] | 'mcp';
+type Origin = (typeof ORIGIN_VALUES)[number];
 
 export const taskAssignTool: ToolSpec = {
   name: 'stratix_task_assign',
@@ -54,7 +60,7 @@ export const taskAssignTool: ToolSpec = {
     '边界：每个角色串行执行（并发 1），入队即返回、不等执行完。任务最长 timeout_ms（缺省 600000，上限 600000），',
     '超时判失败 —— 当前执行器尚未支持单任务超时，实际生效超时恒为 600000（回执回显生效值）。',
     'mission_id 给了就把该任务挂在这条编组任务上，任务终态自动回报给它（完成 → 编组任务收尾；失败 → 按中止收尾）。',
-    'origin 是审计来源：缺省记 mcp；由 agent 经 MCP 派单时必须显式传 origin="agent"（区分"人派的单"与"agent 派的单"）。',
+    'origin 是审计来源（合法取值 mcp / agent / script）：缺省记 mcp；由 agent 经 MCP 派单时必须显式传 origin="agent"（区分"人派的单"与"agent 派的单"）。',
     '错误：unknown_character / character_unbound / agent_not_installed / character_offline（可重试）/',
     'task_capacity_exceeded（可重试）/ invalid_arguments（prompt 为空或超长、origin 非法）。',
   ].join('\n'),
@@ -84,9 +90,10 @@ export const taskAssignTool: ToolSpec = {
       },
       origin: {
         type: 'string',
-        enum: [...EXPLICIT_ORIGINS],
+        enum: [...ORIGIN_VALUES],
         default: DEFAULT_ORIGIN,
-        description: '审计来源。缺省按调用通道记为 mcp；agent 经 MCP 派单必须显式传 agent。',
+        description:
+          '审计来源（取值 mcp / agent / script；ui 不接受）。缺省按调用通道记为 mcp；agent 经 MCP 派单必须显式传 agent。',
       },
     },
     required: ['character', 'prompt'],
@@ -108,13 +115,13 @@ export const taskAssignTool: ToolSpec = {
     const missionId = optionalStringOrNull(args, 'mission_id') ?? null;
     const requestedTimeout = optionalInteger(args, 'timeout_ms', { min: 1000, max: 600_000 });
 
-    // origin：显式值只允许 agent / script；缺省 = mcp。
+    // origin：显式值必须在合法取值集内（mcp / agent / script）；缺省 = mcp。
     const originRaw = optionalString(args, 'origin');
     let origin: Origin = DEFAULT_ORIGIN;
     if (originRaw !== undefined) {
-      if (!EXPLICIT_ORIGINS.includes(originRaw as (typeof EXPLICIT_ORIGINS)[number])) {
+      if (!ORIGIN_VALUES.includes(originRaw as (typeof ORIGIN_VALUES)[number])) {
         throw new McpToolError('invalid_arguments', `origin「${originRaw}」不合法`, {
-          hint: 'origin 只能是 agent 或 script；经 MCP 派单缺省即记 mcp',
+          hint: 'origin 只能是 mcp / agent / script；经 MCP 派单缺省即记 mcp',
         });
       }
       origin = originRaw as Origin;

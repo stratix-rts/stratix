@@ -296,7 +296,8 @@ export const missionStatusTool: ToolSpec = {
     '何时用：查一条编组任务的进展与它下面的角色任务；回话前确认"这件事推进到哪了"。',
     '何时不用：查单个角色的任务 —— 用 stratix_task_status；查全场忙闲 —— 用 stratix_world_snapshot。',
     '边界：只读。列模式默认返回最近 20 条（limit 可调，上限 100），按创建时间倒序；被截断时 truncated=true。',
-    '单条模式附带该任务下的角色任务摘要（任务 id、承接角色、状态）。',
+    '单条模式附带该任务下的角色任务摘要（任务 id、承接角色、状态），并读回 brief（结构化正文）与 checkpoints（append-only 记账行，全量，上限 64 条）——',
+    '写进去的契约与记账都读得回来，不必只靠 create 回执里那句"记了哪几段"猜正文。',
     '错误：mission_not_found / invalid_arguments。',
   ].join('\n'),
   inputSchema: {
@@ -333,6 +334,10 @@ export const missionStatusTool: ToolSpec = {
         });
       }
       const tasks = (state.tasks ?? []).filter((task) => task.missionId === mission.id);
+      // checkpoints 全量（core 上限 64 条、超限丢最旧）—— 这里再兜一层尾截断，
+      // why：读面是"给人看的那一份"，万一状态里出现了超量条目，只回最新的 64 条，
+      // 不把一份无界的数组塞进模型上下文（状态广播的体积纪律，docs/PERFORMANCE_GUIDELINES.md）。
+      const checkpoints = (mission.checkpoints ?? []).slice(-MAX_MISSION_CHECKPOINTS);
       return toToolResult({
         ok: true,
         data: {
@@ -346,6 +351,16 @@ export const missionStatusTool: ToolSpec = {
               id: unitId,
               name: unitName(state, unitId),
             })),
+            // brief 正文（create 的回执只报段名 —— 那是给"刚发来的人"看的；
+            // status 是**读回面**，读者可能是另一个 agent，正文必须给全）。
+            ...(mission.brief ? { brief: { ...mission.brief } } : {}),
+            // 记账行全量（append-only，顺序即记账顺序：旧 → 新）。
+            checkpoints: checkpoints.map((checkpoint) => ({
+              at: checkpoint.at,
+              note: checkpoint.note,
+            })),
+            checkpoint_count: checkpoints.length,
+            checkpoint_limit: MAX_MISSION_CHECKPOINTS,
           },
           tasks: tasks.map((task) => ({
             id: task.id,

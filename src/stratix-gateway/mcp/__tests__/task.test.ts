@@ -194,6 +194,17 @@ describe('stratix_task_assign / stratix_task_status', () => {
     }
   });
 
+  it('origin 显式传 mcp 也合法（与缺省同义；schema 的 default 必须在 enum 内）', async () => {
+    const host = makeHost();
+
+    const explicit = await callAssign(host, {
+      character: 'ch_kimi',
+      prompt: '显式标 mcp 的单子',
+      origin: 'mcp',
+    });
+    expect(explicit.origin).toBe('mcp');
+  });
+
   it('角色不在档 → unknown_character；未绑 agent → character_unbound', async () => {
     const host = makeHost();
 

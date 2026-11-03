@@ -103,6 +103,15 @@ interface StatusData {
     unit_count: number;
     created_at: number;
     units: Array<{ id: string; name: string | null }>;
+    brief?: {
+      requirements?: string;
+      acceptance?: string;
+      deliverables?: string;
+      constraints?: string;
+    };
+    checkpoints?: Array<{ at: number; note: string }>;
+    checkpoint_count?: number;
+    checkpoint_limit?: number;
   };
   tasks?: Array<{ id: string; character: { id: string; name: string | null }; status: string }>;
   task_totals?: { total: number; completed: number; running: number; failed: number };
@@ -574,5 +583,97 @@ describe('stratix_mission_checkpoint', () => {
     } catch (error) {
       expect((error as McpToolError).code).toBe('internal_error');
     }
+  });
+});
+
+/**
+ * mission_status 的**读回面**（task_119 / MCP 评估 P2）：
+ *   经 MCP 写进去的 brief 与 checkpoints 必须读得回来 —— 否则记账流与契约正文都是"只写不读"。
+ */
+describe('mission_status 读回面：brief / checkpoints', () => {
+  let store: CoreStore;
+  let stopRuntime: () => void;
+
+  beforeEach(() => {
+    store = makeStore();
+    const runtime = createCoreRuntime({ store });
+    stopRuntime = runtime.start();
+  });
+
+  afterEach(() => {
+    stopRuntime();
+  });
+
+  const makeHost = (overrides: Partial<CoreMcpHostOptions> = {}): McpHost =>
+    createCoreMcpHost({ store, dispatch: emitCommand, ...overrides });
+
+  it('brief 正文读得回来（create 回执只报段名，status 给全文）', async () => {
+    const host = makeHost();
+    const created = await callCreate(host, {
+      title: '带正文的编组',
+      units: ['unit_kimi'],
+      brief: {
+        requirements: '拆掉旧总线',
+        acceptance: '单测全绿',
+        deliverables: '一份迁移说明',
+        constraints: '不碰 core',
+      },
+    });
+
+    const data = await callStatus(host, { mission_id: created.mission_id });
+    expect(data.mission?.brief).toEqual({
+      requirements: '拆掉旧总线',
+      acceptance: '单测全绿',
+      deliverables: '一份迁移说明',
+      constraints: '不碰 core',
+    });
+  });
+
+  it('checkpoints 全量读得回来（append-only，顺序即记账顺序，带 at 与计数）', async () => {
+    const host = makeHost();
+    const created = await callCreate(host, { title: '长任务', units: ['unit_kimi'] });
+
+    const first = await callCheckpoint(host, {
+      mission_id: created.mission_id,
+      note: '第一步：派两人出门',
+    });
+    await callCheckpoint(host, { mission_id: created.mission_id, note: '第二步：北门有情况' });
+
+    const data = await callStatus(host, { mission_id: created.mission_id });
+    expect(data.mission?.checkpoints).toHaveLength(2);
+    expect(data.mission?.checkpoints?.map((checkpoint) => checkpoint.note)).toEqual([
+      '第一步：派两人出门',
+      '第二步：北门有情况',
+    ]);
+    expect(data.mission?.checkpoints?.[0]?.at).toBe(first.at);
+    expect(data.mission?.checkpoint_count).toBe(2);
+    expect(data.mission?.checkpoint_limit).toBe(64);
+  });
+
+  it('裸任务（无 brief / 无记账）：brief 不出现，checkpoints 为空数组', async () => {
+    const host = makeHost();
+    const created = await callCreate(host, { title: '裸任务', units: ['unit_kimi'] });
+
+    const data = await callStatus(host, { mission_id: created.mission_id });
+    expect(data.mission?.brief).toBeUndefined();
+    expect(data.mission?.checkpoints).toEqual([]);
+    expect(data.mission?.checkpoint_count).toBe(0);
+  });
+
+  it('读回面与状态里的事实一致（不是回执自说自话）', async () => {
+    const host = makeHost();
+    const created = await callCreate(host, {
+      title: '一致性核对',
+      units: ['unit_kimi'],
+      brief: { requirements: '读回必须准' },
+    });
+    await callCheckpoint(host, { mission_id: created.mission_id, note: '记一笔' });
+
+    const mission = store.getState().missions.find((item) => item.id === created.mission_id);
+    const data = await callStatus(host, { mission_id: created.mission_id });
+    expect(data.mission?.brief).toEqual(mission?.brief);
+    expect(data.mission?.checkpoints).toEqual(
+      mission?.checkpoints?.map((checkpoint) => ({ at: checkpoint.at, note: checkpoint.note }))
+    );
   });
 });

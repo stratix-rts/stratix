@@ -230,7 +230,7 @@ Stratix 是本地 agent 团队指挥台：角色绑定 CLI agent（Claude Code /
 
 - 缺省时服务端按**调用通道**自动标注：经 MCP 进来的记 `mcp`。
 - **经 MCP 派单且派单方本身是 agent 时，必须显式传 `origin='agent'`** —— 审计面要能区分"人派的单"和"agent 派的单"；这是审计要求而非装饰，不显式标注则所有经 MCP 的派单都记成 `mcp`，事后无法追责。
-- 传其它值 → `invalid_arguments`。**允许的显式值只有 `agent` 与 `script`**：`mcp` 冗余（缺省即它），`ui` 拒绝 —— UI 通道的事实不许由 MCP 冒充。
+- 传其它值 → `invalid_arguments`。**允许的显式值是 `mcp` / `agent` / `script`**：`mcp` 与缺省同义（显式传它也合法 —— schema 的 `default` 必须在自己的 `enum` 内，否则那张 schema 自相矛盾、严格模式的校验器会直接拒收），`ui` 拒绝 —— UI 通道的事实不许由 MCP 冒充。
 
 ### 2.1 `stratix_world_snapshot`
 
@@ -303,7 +303,7 @@ Stratix 是本地 agent 团队指挥台：角色绑定 CLI agent（Claude Code /
     "prompt": { "type": "string", "minLength": 1, "maxLength": 20000, "description": "任务指令原文。上限 20000 码点（MAX_TASK_PROMPT_LEN）。" },
     "mission_id": { "type": ["string", "null"], "description": "关联的编组任务 id；缺省 = 普通派发。" },
     "timeout_ms": { "type": "integer", "minimum": 1000, "maximum": 600000, "default": 600000, "description": "执行超时（毫秒）。" },
-    "origin": { "type": "string", "enum": ["agent", "script"], "default": "mcp", "description": "审计来源。缺省按调用通道记为 mcp；agent 经 MCP 派单必须显式传 agent。" }
+    "origin": { "type": "string", "enum": ["mcp", "agent", "script"], "default": "mcp", "description": "审计来源（取值 mcp / agent / script；ui 不接受）。缺省按调用通道记为 mcp；agent 经 MCP 派单必须显式传 agent。" }
   },
   "required": ["character", "prompt"],
   "additionalProperties": false
@@ -475,7 +475,7 @@ mission.create ──▶ mission.assign ──▶ mission.confirm(accept)
 > 读取编组任务（mission）的状态；带 `mission_id` 读单条，不带则列出最近的编组任务。
 > **何时用**：查一条编组任务的进展与它下面的角色任务；回话前确认"这件事推进到哪了"。
 > **何时不用**：查单个角色的任务 —— 用 `stratix_task_status`；查全场忙闲 —— 用 `stratix_world_snapshot`。
-> **边界**：只读。列模式默认返回最近 20 条（`limit` 可调，上限 100），按创建时间倒序；被截断时 `truncated=true`。单条模式附带该任务下的角色任务摘要（任务 id、承接角色、状态）。
+> **边界**：只读。列模式默认返回最近 20 条（`limit` 可调，上限 100），按创建时间倒序；被截断时 `truncated=true`。单条模式附带该任务下的角色任务摘要（任务 id、承接角色、状态），并读回 `brief`（结构化正文）与 `checkpoints`（append-only 记账行，全量，上限 64 条）—— 写进去的契约与记账都读得回来。
 > **错误**：`mission_not_found` / `invalid_arguments`。
 
 **inputSchema**
@@ -496,7 +496,10 @@ mission.create ──▶ mission.assign ──▶ mission.confirm(accept)
 ```json
 { "ok": true, "data": {
   "mission": { "id": "mission_1753..._1", "title": "重构路由层", "phase": "running", "unit_count": 2, "created_at": 1754000000000,
-    "units": [ { "id": "unit_kimi", "name": "Kimi" }, { "id": "unit_codex", "name": "Codex" } ] },
+    "units": [ { "id": "unit_kimi", "name": "Kimi" }, { "id": "unit_codex", "name": "Codex" } ],
+    "brief": { "requirements": "拆掉旧总线", "acceptance": "单测全绿" },
+    "checkpoints": [ { "at": 1754000000000, "note": "派两人出门，先探北门" } ],
+    "checkpoint_count": 1, "checkpoint_limit": 64 },
   "tasks": [
     { "id": "task_1754..._3", "character": { "id": "ch_kimi", "name": "Kimi" }, "status": "completed" },
     { "id": "task_1754..._4", "character": { "id": "ch_codex", "name": "Codex" }, "status": "running" } ],
@@ -505,6 +508,8 @@ mission.create ──▶ mission.assign ──▶ mission.confirm(accept)
 
 **映射**：只读 `WorldState.missions` + 按 `CharacterTask.missionId` 关联 `WorldState.tasks`。
 
+**读回面（v1.8 补齐）**：单条模式回 `brief` 正文与 `checkpoints` 全量（`brief` 缺省时该字段不出现；`checkpoints` 恒为数组，未记账时为空数组；顺序即记账顺序，旧 → 新）。why 必须有这一面：经 MCP 写进去的契约与记账若读不回来，就成了"只写不读"的审计流 —— 调用方只能靠 create 回执里那句 `brief_fields`（只报段名）猜正文。`checkpoint_limit` 与 `stratix_mission_checkpoint` 回执里的 `checkpoint_limit` 同值（core 的 `MAX_MISSION_CHECKPOINTS` = 64，超限丢最旧；读面另兜一层尾截断，只回最新 64 条）。
+
 ### 2.7 `stratix_chat_send`
 
 **description**
@@ -512,7 +517,9 @@ mission.create ──▶ mission.assign ──▶ mission.confirm(accept)
 > 给指定角色发一轮对话，等这一轮回复回来。
 > **何时用**：提问、讨论、澄清需求 —— 需要来回对话而不是一次性交付。
 > **何时不用**：要一份确定的产出物 —— 用 `stratix_task_assign`（任务有结果摘要、有超时、有归档）；要多人讨论 —— 先 `stratix_mission_create` 编组，再各自发消息。
-> **边界**：本工具**同步等一轮**（受服务端单轮超时约束），返回该轮回复文本（超过 2000 码点截断并标 `reply_truncated`）。同一角色同时只允许一轮在跑；已有轮次在跑时返回 `chat_busy`，**不静默丢弃**。对话历史不随本工具返回（历史在 UI 抽屉与落库表里），需要历史请用扩展位 `stratix_chat_history`。
+> **边界**：本工具**同步等一轮**（受服务端单轮超时约束），返回该轮回复文本（超过 2000 码点截断并标 `reply_truncated`）。同一角色同时只允许一轮在跑；已有轮次在跑时返回 `chat_busy`，**不静默丢弃**。对话历史不随本工具返回（历史在 UI 抽屉与落库表里）；MCP 侧目前没有读对话历史的工具，别去找不存在的名字。
+>
+> **注（v1.8 修正）**：本描述原先指向"扩展位 `stratix_chat_history`" —— 该工具只在 §4.2 的**预留命名位**表里登记，**尚未实现**，tools/list 里没有它（悬空引用：agent 会按图索骥扑空）。也不能改指 `stratix_session_get`：角色对话的消息本体在 `chat_messages` 表里，不在会话事件流里（会话侧只有一条空的 `round` 记账事件），`session_get` 读不到对话正文。
 > **错误**：`unknown_character` / `character_unbound` / `agent_not_installed` / `character_offline`（可重试）/ `chat_busy`（可重试）/ `invalid_arguments`。
 
 **inputSchema**
@@ -613,7 +620,7 @@ mission.create ──▶ mission.assign ──▶ mission.confirm(accept)
 
 **映射**：`HudCommand` 的 `mission.checkpoint`（`src/core/types.ts`）→ core 的 `mission.checkpointMission`（追加一条 `{ at, note }`，不改相位，终态由 core 拒绝）。**回执自己核实**：core 的记账是**静默**的（成功与否都不发通知），所以工具在命令之后**回读状态**核对这条记账真的落上了 —— 没落上就如实报 `internal_error`，绝不假装成功（与 `stratix_mission_create` 的"回读核对"同一口径）。
 
-**已知缺口（读侧）**：只读面暂未暴露 `checkpoints` 全量 —— 模型能拿到**计数**（本工具回执）与**相位**，但读不到历史条目全文。补齐它要动 `stratix_mission_status` 的返回形状（§5.1 的"加参数优于改语义"允许加字段，但那是既有工具的契约变更，留待与其它读面需求一并评审）。
+**读侧缺口已补齐（v1.8）**：本节原先记着"只读面暂未暴露 `checkpoints` 全量"的缺口 —— `stratix_mission_status` 的单条模式现已回 `checkpoints` 全量（与 `brief` 正文一起，见 §2.6），记账不再是只写不读的审计流。
 
 ---
 
@@ -1015,6 +1022,7 @@ src/stratix-gateway/mcp/
 
 | 版本 | 日期 | 变更 | 兼容性 |
 |------|------|------|--------|
+| v1.8 | 2026-11-03 | **只写不读补读回** —— `stratix_mission_status`（§2.6）单条模式新增 `brief`（结构化正文全文）与 `checkpoints`（append-only 记账行全量，上限 64）两段读回面，附 `checkpoint_count` / `checkpoint_limit`（§2.9 的读侧缺口结清）；**悬空引用修正** —— `stratix_chat_send`（§2.7）描述不再指向尚未实现的 `stratix_chat_history`（也不改指 `stratix_session_get`：角色对话的消息本体在 `chat_messages` 表里，会话事件流里只有一条空的 `round` 记账事件）；**schema 自洽修正** —— `stratix_task_assign`（§2.2）的 `origin` 取值域补 `mcp`（`default: "mcp"` 原先不在自己的 `enum` 内，严格模式的校验器会拒收那张 schema），`ui` 仍拒绝 | ⚠️ **既有工具的返回形状变宽**：`mission_status` 单条模式的 `data.mission` 多出 `brief` / `checkpoints` / `checkpoint_count` / `checkpoint_limit` 四个字段（**加字段，不改语义**，既有字段逐字未动、列模式未动）；`origin` 显式取值集由 `{agent, script}` 扩为 `{mcp, agent, script}`（`mcp` 与缺省同义，`ui` 的拒绝口径未变）；工具名 / 参数名 / 错误码 / `tools/list` 顺序全部未动 |
 | v1.7 | 2026-11-03 | **传输层错误信封收敛**（§4.4 新增「传输层错误信封」小节 + 附录 A 新增协议层错误表）—— 畸形 JSON 不再漏宿主框架的裸 `{"code":500}`，改回 JSON-RPC `-32700`（id=null）；工具抛未捕获异常不再冒充业务失败信封，改回 `-32603`；`/mcp` 的挂载位次固化为硬约束（必须排在全局 body 解析器之前）；`invalid_arguments` 的 message 区分为「参数缺失」与「类型不对」（`requireString` 少数字段文案） | ✅ 协议层修正，工具面**零变更** —— 十四件工具的名字、参数、语义、返回形状、`tools/list` 顺序全部未动；成功路径逐字未变；业务失败仍走失败信封 + `isError`（错误码总表除 `internal_error` 的「典型触发」描述澄清外未动）；仅未捕获异常的形状从 `internal_error` 信封改为 `-32603` JSON-RPC error |
 | v1.6 | 2026-11-02 | **新增工具** `stratix_session_resume`（§2.13）—— 会话域写面的**第二件**（把一条被中断的互聊会话接回进行中：回灌上文 + 重启轮转，落点 = 既有的 `HudCommand.session.resume`）；**新增动词** `resume` 登记（§4.2）；`tools/list` 新增一件（十二件 → 十三件），排在 `session_interrupt` 之后（既有工具之间的相对次序不变） | ✅ 纯增量：既有十二件工具的名字、参数、语义与缺省行为**均未变**；`tools/list` 的既有十二件次序逐字未动；不新增任何状态通道 / 持久化表 / 状态机（写面走既有 `session.resume` 命令与既有会话状态机；§2.13 的 kind 边界与 §2.12 同一口径） |
 | v1.5 | 2026-11-02 | **新增工具** `stratix_session_interrupt`（§2.12）—— 会话域的**写面第一件**（把一条在办会话转 interrupted 并落中断标记，落点 = 既有的 `HudCommand.session.interrupt`）；**新增错误码** `unsupported_kind`（附录 A）；**新增动词** `interrupt` 登记（§4.2）；`tools/list` 新增一件（十一件 → 十二件），排在 `session_get` 之后（既有工具之间的相对次序不变） | ✅ 纯增量：既有十一件工具的名字、参数、语义与缺省行为**均未变**；`tools/list` 的既有十一件次序逐字未动；不新增任何状态通道 / 持久化表 / 状态机（写面走既有 `session.interrupt` 命令与既有会话状态机） |

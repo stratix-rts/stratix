@@ -42,7 +42,7 @@ export const chatSendTool: ToolSpec = {
     '要多人讨论 —— 先 stratix_mission_create 编组，再各自发消息。',
     '边界：本工具**同步等一轮**（受服务端单轮超时约束），返回该轮回复文本（超过 2000 码点截断并标 reply_truncated）。',
     '同一角色同时只允许一轮在跑；已有轮次在跑时返回 chat_busy，**不静默丢弃**。',
-    '对话历史不随本工具返回（历史在 UI 抽屉与落库表里），需要历史请用扩展位 stratix_chat_history。',
+    '对话历史不随本工具返回（历史在 UI 抽屉与落库表里）；MCP 侧目前没有读对话历史的工具，别去找不存在的名字。',
     '错误：unknown_character / character_unbound / agent_not_installed / character_offline（可重试）/',
     'chat_busy（可重试）/ invalid_arguments。',
   ].join('\n'),
