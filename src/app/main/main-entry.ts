@@ -86,8 +86,8 @@
  *   里程碑组件与回放控制器各发一条 HudCommand `hud.layer.hold`（组合根只接线），
  *   导演开关那条由 core 的 setDirectorEnabled 自动同步占用（两条入口同一落点）。
  *
- * 加载路径：dev 走 vite dev server 的 /src/app/main/index.html；
- *   正式构建走 dist/frontend/src/app/main/index.html（由 vite.config.ts 的 input 产出）。
+ * 加载路径：dev 走 vite dev server 的站点根 /（task_122 起入口 HTML 在站点根）；
+ *   正式构建走 dist/frontend/index.html（由 vite.config.ts 的 input 产出）。
  *   本页是**唯一**入口：旧 Vue 入口链随 task_017 退役，STRATIX_LEGACY 开关已下线，
  *   回退手段为 git 历史（见 src/app/entry-paths.ts）。
  */

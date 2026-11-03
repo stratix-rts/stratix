@@ -16,7 +16,7 @@
  *     - dev server：http://127.0.0.1:7523/spritesheets/**（publicDir 挂在站点根）；
  *     - 构建产物：publicDir 被拷进 outDir，即 `dist/frontend/spritesheets/**`（与真源同构）。
  *   故 `SPRITESHEET_BASE_PATH = '/spritesheets'` 对 **http(s) 部署**开箱即用。
- *   但 electron 正式包用 `file://` 加载 `dist/frontend/src/app/main/index.html`，
+ *   但 electron 正式包用 `file://` 加载 `dist/frontend/index.html`，
  *   此时绝对路径 `/spritesheets` 会被解析到文件系统根 —— 必须改用相对基址。
  *   相对基址的算法见 spritesheet-path.ts，绑定见 src/app/services/appearance-environment.ts。
  */

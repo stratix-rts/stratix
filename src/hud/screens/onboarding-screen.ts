@@ -1966,7 +1966,7 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       // 多个 agent 的人设全文加起来很长，全部展开确认页就不可读了。
       const personaBlocks = this._identities.map((identity) => {
         const persona = (this._personaDrafts.get(identity.kind)?.persona ?? '').trim();
-        const body = persona.length > 0 ? escapeHtml(persona) : '（空：建档时套 core 默认模板）';
+        const body = persona.length > 0 ? escapeHtml(persona) : '（空：建档时套用默认模板）';
         return `
           <details class="persona-details" data-role="persona-details" data-kind="${escapeHtml(identity.kind)}">
             <summary data-role="persona-summary">人设 · ${escapeHtml(identity.name)}：${escapeHtml(this.personaSectionSummary(persona))}</summary>
@@ -1989,7 +1989,7 @@ export function defineOnboardingScreen(): typeof HTMLElement {
         .split('\n')
         .filter((line) => line.startsWith('# '))
         .map((line) => line.slice(2).trim());
-      if (headers.length === 0) return '（空：建档时套 core 默认模板）';
+      if (headers.length === 0) return '（空：建档时套用默认模板）';
       return headers.join(' · ');
     }
 

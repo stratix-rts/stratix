@@ -19,12 +19,12 @@ import {
 describe('素材基址：相对规则覆盖三种部署形态', () => {
   test('dev server（vite publicDir 挂在站点根）', () => {
     expect(
-      spritesheetBaseUrl('http://127.0.0.1:7523/src/app/main/index.html', ENTRY_PATH_DEPTH)
+      spritesheetBaseUrl('http://127.0.0.1:7523/index.html', ENTRY_PATH_DEPTH)
     ).toBe('http://127.0.0.1:7523/spritesheets');
   });
 
   test('http 部署（入口与素材同在站点根下）', () => {
-    expect(spritesheetBaseUrl('https://example.com/src/app/main/index.html', ENTRY_PATH_DEPTH)).toBe(
+    expect(spritesheetBaseUrl('https://example.com/index.html', ENTRY_PATH_DEPTH)).toBe(
       'https://example.com/spritesheets'
     );
   });
@@ -32,7 +32,7 @@ describe('素材基址：相对规则覆盖三种部署形态', () => {
   test('electron 正式包（file:// 加载 dist/frontend 下的入口页）', () => {
     expect(
       spritesheetBaseUrl(
-        'file:///Applications/Stratix.app/Contents/Resources/app/dist/frontend/src/app/main/index.html',
+        'file:///Applications/Stratix.app/Contents/Resources/app/dist/frontend/index.html',
         ENTRY_PATH_DEPTH
       )
     ).toBe(
@@ -54,7 +54,7 @@ describe('素材基址：相对规则覆盖三种部署形态', () => {
 
 describe('素材基址：入口深度的事实源', () => {
   test('默认深度与入口路径一致（入口挪位置时不会算错基址）', () => {
-    // NEW_ENTRY_HTML = 'src/app/main/index.html' → 目录层数 = 3
+    // NEW_ENTRY_HTML = 'index.html' → 目录层数 = 0（入口就在站点根，task_122）
     expect(ENTRY_PATH_DEPTH).toBe(DEFAULT_ENTRY_DEPTH);
     expect(ENTRY_PATH_DEPTH).toBe(NEW_ENTRY_HTML.split('/').length - 1);
   });

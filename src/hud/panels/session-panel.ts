@@ -273,7 +273,7 @@ export function defineSessionPanel(): typeof HTMLElement {
         switch (session.kind) {
           case 'character_chat': {
             const reader = port?.loadCharacterChat;
-            if (!reader) return { kind: 'unattached', reason: '角色对话历史读取器未附着' };
+            if (!reader) return { kind: 'unattached', reason: '对话历史暂时读不到（服务未接入）' };
             const characterId = session.participants[0] ?? session.refId ?? '';
             if (!characterId) return { kind: 'unattached', reason: '这条会话没有角色标识，读不到历史' };
             return { kind: 'ok', entries: await reader(characterId, SESSION_HISTORY_PAGE_SIZE, before) };
@@ -281,7 +281,7 @@ export function defineSessionPanel(): typeof HTMLElement {
           case 'peer_chat':
           case 'task_run': {
             const reader = port?.loadSessionEvents;
-            if (!reader) return { kind: 'unattached', reason: '会话事件读取器未附着' };
+            if (!reader) return { kind: 'unattached', reason: '这段会话的记录暂时读不到（服务未接入）' };
             return { kind: 'ok', entries: await reader(session.id, SESSION_HISTORY_PAGE_SIZE, before) };
           }
           case 'mission_run':
@@ -725,7 +725,7 @@ export function defineSessionPanel(): typeof HTMLElement {
       if (!history || history.status === 'idle' || history.status === 'loading') {
         bodyHtml = '<div class="drawer-note" data-role="drawer-note">读取中…</div>';
       } else if (history.status === 'unattached') {
-        bodyHtml = `<div class="drawer-note" data-role="drawer-note">${escapeHtml(history.error ?? '历史读取器未附着')}</div>`;
+        bodyHtml = `<div class="drawer-note" data-role="drawer-note">${escapeHtml(history.error ?? '历史记录暂时读不到（服务未接入）')}</div>`;
       } else if (history.status === 'error') {
         bodyHtml = `
           <div class="drawer-note" data-role="drawer-note">读取失败：${escapeHtml(history.error ?? '')}</div>

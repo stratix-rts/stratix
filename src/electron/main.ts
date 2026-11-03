@@ -202,7 +202,7 @@ async function initializeServices() {
 /**
  * 创建主窗口
  *
- * 单入口（v3 Phase 3 / task_017）：只加载新游戏化 UI（src/app/main/index.html）。
+ * 单入口（v3 Phase 3 / task_017）：只加载新游戏化 UI（入口 HTML = index.html，站点根；task_122 起）。
  * 旧 Vue 入口链已随 Zone 退役整体删除，原 STRATIX_LEGACY 回退开关随之失效 ——
  * 仍在环境里设了它的话这里只打印一句提示，回退手段是 git 历史（git checkout master / git revert），
  * 见 src/app/entry-paths.ts 的「回退策略变更」。
@@ -261,7 +261,7 @@ function createWindow() {
     }
     for (const port of DEV_PORTS) {
       try {
-        // why 带入口路径而不是只探端口根：单入口后 dev server 的端口根没有 index.html，
+        // why 带入口路径而不是只探端口根：入口 HTML 的路径由 entry-paths 说了算，
         // 不显式指向入口的话 electron:dev 会"连上了"却拿到 404。
         const url = `http://127.0.0.1:${port}/${entryPath}`;
         const response = await fetch(url, { method: 'HEAD' });

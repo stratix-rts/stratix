@@ -1,7 +1,7 @@
 /**
  * 文件职责：状态屏 Web Component（`<strat-status-screen>`）—— 全局态势总览的**纯展示**屏：
  *   ① 四张核心指标卡（单位总数 / 活跃任务 / 进行中会话 / 未读通知，全部由 WorldState 派生）；
- *   ② 系统状态区（gateway 连接态读 agent-link 会话相位、总线活跃度、运行时长）；
+ *   ② 系统状态区（gateway 连接态读 agent-link 会话相位、系统心跳活跃度、运行时长）；
  *   ③ 最近事件列表（复用 notices 的渲染，与 log-drawer 同源但紧凑形态）。
  *   视图模型派生全在 status-catalog.ts（纯逻辑），本文件只负责把模型画成 Shadow DOM。
  *   来源：docs/REFACTOR_PLAN_V3.md §2 screens/ 层级；语义只读提取自
@@ -23,7 +23,7 @@
  *
  * 渲染策略（perf，与 command-panel / log-drawer 同一口径）：
  *   core 每次状态变更都全量广播，本屏用 statusSignature 判掉与显示无关的广播；
- *   总线活跃度与运行时长按秒自走（唯一例外：一个 1s tick，只改两个文本节点）。
+ *   心跳活跃度与运行时长按秒自走（唯一例外：一个 1s tick，只改两个文本节点）。
  *   tick 只在 isConnected 且已注入 adapter 时存在，disconnectedCallback 必停 —— 反复挂卸不留定时器。
  */
 
@@ -33,6 +33,8 @@ import { defineStratButton, STRAT_BUTTON_TAG } from '../widgets/strat-button';
 
 import type { StatusMetricId, StatusModel, StatusTone } from './status-catalog';
 import {
+  BUS_WINDOW_MS,
+  MAX_BUS_SAMPLES,
   STATUS_METRIC_IDS,
   formatEventTime,
   pushBusSample,
@@ -96,7 +98,7 @@ export function defineStatusScreen(): typeof HTMLElement {
   }
 
   class StatusScreen extends HTMLElement implements StratStatusScreenElement {
-    /** tick 周期（ms）：只驱动"运行时长"与"总线活跃度"两个读数，1s 足够且开销可忽略。 */
+    /** tick 周期（ms）：只驱动"运行时长"与"系统心跳"两个读数，1s 足够且开销可忽略。 */
     private static readonly TICK_MS = 1000;
 
     private _adapter: StatusScreenDeps | null = null;
@@ -105,6 +107,8 @@ export function defineStatusScreen(): typeof HTMLElement {
     private _busSamples: readonly number[] = [];
     private _observedSince: number | null = null;
     private _model: StatusModel = resolveStatusModel(null, 0, [], null);
+    /** 上一次记进 console.debug 的窗口内投递数（变了才记，避免每秒刷屏）。 */
+    private _lastBusCount: number | null = null;
     private _lastSignature: string | null = null;
     private _unsubscribe: (() => void) | null = null;
     private _timer: ReturnType<typeof setInterval> | null = null;
@@ -167,7 +171,7 @@ export function defineStatusScreen(): typeof HTMLElement {
     }
 
     /**
-     * 一次广播：记一个投递时刻（总线活跃度的真实观测量）+ 首帧锚定观测起点，然后照常走签名判重。
+     * 一次广播：记一个投递时刻（心跳活跃度的真实观测量）+ 首帧锚定观测起点，然后照常走签名判重。
      */
     private onState(state: WorldState): void {
       const at = Date.now();
@@ -189,6 +193,7 @@ export function defineStatusScreen(): typeof HTMLElement {
           this._busSamples,
           this._observedSince,
         );
+        this.logBusDetail();
         this.renderTickables();
       }, StatusScreen.TICK_MS);
     }
@@ -323,7 +328,7 @@ export function defineStatusScreen(): typeof HTMLElement {
       `;
     }
 
-    /** 系统状态区：连接态随状态重绘；总线/运行时长两行走独立通道（renderTickables）。 */
+    /** 系统状态区：连接态随状态重绘；心跳/运行时长两行走独立通道（renderTickables）。 */
     private renderConnection(): void {
       const box = this.shadowRoot?.querySelector('[data-role="system"]');
       if (!box) return;
@@ -339,16 +344,32 @@ export function defineStatusScreen(): typeof HTMLElement {
       // 占位行先建好：renderTickables 只改文本，不建 DOM，tick 因此是廉价的。
       box.insertAdjacentHTML(
         'beforeend',
-        sysRow('bus', '总线活跃', this._model.bus.tone, this._model.bus.label, this._model.bus.detail),
+        sysRow('bus', '系统心跳', this._model.bus.tone, this._model.bus.label, this._model.bus.detail),
       );
       box.insertAdjacentHTML(
         'beforeend',
-        sysRow('uptime', this._model.uptime.label, this._model.uptime.tone, this._model.uptime.value, '自首次收到世界状态起'),
+        sysRow('uptime', this._model.uptime.label, this._model.uptime.tone, this._model.uptime.value, '自首次收到状态起'),
       );
     }
 
     /**
-     * 每秒走一次的两行（总线活跃 / 运行时长）。
+     * 心跳的**技术细节**只进 console.debug（task_122）。
+     * why：界面那行只说"最近 60 秒更新 N 次"（用户看得懂），但排障时需要知道
+     *   窗口内的真实投递数与样本环的占用 —— 埋在 console 里，不占界面、不吓人。
+     *   只在数字变化时记一次，避免每秒刷屏。
+     */
+    private logBusDetail(): void {
+      const count = this._model.bus.recentCount;
+      if (count === this._lastBusCount) return;
+      this._lastBusCount = count;
+      console.debug(
+        `[stratix] 系统心跳：近 ${Math.round(BUS_WINDOW_MS / 1000)} 秒 ${count} 次状态投递` +
+          `（样本环 ${this._busSamples.length}/${MAX_BUS_SAMPLES}）`,
+      );
+    }
+
+    /**
+     * 每秒走一次的两行（系统心跳 / 运行时长）。
      * why 单独一条通道：这两项按秒变化，若并进状态签名，则每次投递都会强制重绘整屏。
      */
     private renderTickables(): void {
@@ -356,7 +377,7 @@ export function defineStatusScreen(): typeof HTMLElement {
       if (!root) return;
       for (const [id, tone, value, detail] of [
         ['bus', this._model.bus.tone, this._model.bus.label, this._model.bus.detail],
-        ['uptime', this._model.uptime.tone, this._model.uptime.value, '自首次收到世界状态起'],
+        ['uptime', this._model.uptime.tone, this._model.uptime.value, '自首次收到状态起'],
       ] as const) {
         const row = root.querySelector<HTMLElement>(`[data-sys="${id}"]`);
         if (!row) continue;

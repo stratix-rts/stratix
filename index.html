@@ -3,7 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Stratix v3</title>
+    <!-- 产品名不带版本号：版本是发布节奏，不是名字（task_122）。 -->
+    <title>Stratix · 指挥台</title>
     <style>
       /*
         页面骨架 = **全屏战场 + 悬浮 HUD 覆盖层**（RTS 形态，不再是左右分屏）：
@@ -96,6 +97,12 @@
 
     <pre id="boot-error" hidden></pre>
 
-    <script type="module" src="./main-entry.ts"></script>
+    <!--
+      入口脚本走**站点绝对路径**：本文件住在站点根（index.html），组合根仍在 src/app/main/ 下。
+      why 不用相对路径 './main-entry.ts' —— 那样会解析成 <站点根>/main-entry.ts（404）。
+      why 不用相对路径 '../main/main-entry.ts' —— 入口一旦再挪位置，相对层级就得跟着改。
+      绝对路径只在源码里出现一次，构建产物由 vite 改写为 ./assets/xxx.js（相对产物根，file:// 下也能用）。
+    -->
+    <script type="module" src="/src/app/main/main-entry.ts"></script>
   </body>
 </html>

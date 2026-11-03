@@ -11,8 +11,15 @@
  */
 
 /**
- * 新入口（也是当前**唯一**入口）：src/app/main/index.html
+ * 新入口（也是当前**唯一**入口）：index.html（**站点根**）
  * （core runtime + world BattlefieldScene + hud main-screen 同屏装配）。
+ *
+ * ## 入口挪到站点根（task_122）
+ * 入口原先住在 `src/app/main/index.html` —— 后果是站点根 404、真实入口路径（含源码目录名）
+ * 暴露在浏览器地址栏与正式产物路径里。入口 HTML 因此上移到 vite root 的 `index.html`：
+ *   - dev：`http://127.0.0.1:7523/` 直接是应用（不再需要知道源码目录）；
+ *   - 构建产物：`dist/frontend/index.html`（与站点根同构，无 src/ 段）；
+ *   - 组合根仍在 `src/app/main/main-entry.ts`（代码不搬，只搬 HTML 壳）。
  *
  * ## 回退策略变更（task_017，原 STRATIX_LEGACY 开关已下线）
  * 旧入口（index.html → src/main.ts → App.vue → stratix-rts 的 Vue 战场链）随本任务整体退役，
@@ -22,15 +29,15 @@
  * **回退手段改为 git 历史**：`git checkout master`（或 `git revert` 本次提交）即可回到旧版可运行状态，
  * 详见 docs/REFACTOR_PLAN_V3.md §6 Phase 3。electron 主进程检测到 STRATIX_LEGACY 时会打印该提示。
  */
-export const NEW_ENTRY_HTML = 'src/app/main/index.html';
+export const NEW_ENTRY_HTML = 'index.html';
 
 /** 已退役的回退开关环境变量名：仅用于"用户还留着旧环境变量时给一句提示"，不再参与入口判定。 */
 export const RETIRED_LEGACY_ENV_FLAG = 'STRATIX_LEGACY';
 
 /**
- * 入口 HTML 相对**站点根**的目录层数（'src/app/main/index.html' → 3 层）。
+ * 入口 HTML 相对**站点根**的目录层数（'index.html' → 0 层 = 就在站点根）。
  *
- * why 需要它：LPC 素材根在站点根下一层（`spritesheets/`），而入口 HTML 在 3 层目录下。
+ * why 需要它：LPC 素材根在站点根下一层（`spritesheets/`）。
  * 渲染层要用**相对**基址去取素材（electron 正式包走 file://，绝对路径 '/spritesheets'
  * 会被解析到文件系统根），于是需要知道"入口深了几层"才能算出相对路径。
  * 事实源是本文件的 NEW_ENTRY_HTML —— 入口挪位置时这里自动跟着变，别处不要再写死层数。

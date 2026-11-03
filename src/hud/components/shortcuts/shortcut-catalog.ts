@@ -96,19 +96,19 @@ export const SHORTCUT_CATALOG: readonly ShortcutDoc[] = [
   {
     id: 'box-select',
     keys: ['左键拖拽'],
-    description: '框选单位（task_045）',
+    description: '框选单位',
     category: 'mouse',
   },
   {
     id: 'add-to-selection',
     keys: ['Shift + 点击'],
-    description: '加选 / 减选单位（task_045）',
+    description: '加选 / 减选单位',
     category: 'mouse',
   },
   {
     id: 'move-command',
     keys: ['右键'],
-    description: '把选中编队移动到目标点（task_045）',
+    description: '把选中编队移动到目标点',
     category: 'mouse',
   },
   {

@@ -850,7 +850,7 @@ export function defineSettingsScreen(): typeof HTMLElement {
         : '';
       return `
         <div class="group" data-group="custom-agents">
-          <div class="group-name">自定义 agent 注册（task_056）</div>
+          <div class="group-name">自定义 agent 注册</div>
           <div class="row-hint">移除注册只断探测与执行接入：已建的角色档案保留（kind 还在档案里，不再参与检测与健康监测）。新增注册入口在首启向导的扫描步。</div>
           ${notice}
           ${list}

@@ -1,8 +1,8 @@
 # src/app —— 应用组合根（v3 新 UI 的两个渲染入口）
 
 **职责**：唯一允许同时认识 `hud/` 与 `world/` 的地方（组装、生命周期、dev 入口）。
-- `main/index.html` + `main/main-entry.ts`：**正式渲染入口**（Phase 3 起是 Electron 主窗口默认加载页），
-  同屏装配 core runtime + world 战场 + hud 主屏；
+- `main/main-entry.ts`：**正式渲染入口的组合根**（Phase 3 起是 Electron 主窗口默认加载页），
+  同屏装配 core runtime + world 战场 + hud 主屏；入口 HTML 本身在**站点根** `index.html`（task_122 起）；
 - `entry-paths.ts`：入口 HTML 路径的唯一定义处，被 electron 主进程与 vite 配置共同消费；
   旧入口链已随 task_017 退役，`STRATIX_LEGACY` 回退开关已下线（回退手段 = git 历史）；
 - `dev/hello-loop.html` + `dev/hello-loop-entry.ts`：Phase 1 的 HelloLoop 联调页

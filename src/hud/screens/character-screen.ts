@@ -1431,7 +1431,7 @@ export function defineCharacterScreen(): typeof HTMLElement {
         return `
           <div class="group" data-group="cards">
             <div class="group-name">全场总览</div>
-            <div class="empty" data-role="cards-empty">尚无角色档案：角色由 core 写入 WorldState.characters 后在此显示</div>
+            <div class="empty" data-role="cards-empty">尚无角色档案：建好角色后，这里会显示全部角色</div>
           </div>
         `;
       }
@@ -1475,7 +1475,7 @@ export function defineCharacterScreen(): typeof HTMLElement {
       }
       const row = this._growthRows.find((r) => r.characterId === cardId) ?? null;
       if (!row) {
-        return '<span class="card-stats muted" data-role="card-stats">暂无统计（档案未落库）</span>';
+        return '<span class="card-stats muted" data-role="card-stats">暂无统计</span>';
       }
       const rate = successRate(row.taskCounts);
       const rateText = rate === null ? '完成率 —' : `完成率 ${Math.round(rate * 100)}%`;

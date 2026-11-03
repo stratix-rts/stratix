@@ -87,7 +87,7 @@ export interface ConnectionStatus {
 export interface BusStatus {
   readonly tone: StatusTone;
   readonly label: string;
-  /** 如「近 60 秒 12 次投递」。 */
+  /** 如「最近 60 秒更新 12 次」（用户视角，架构词不外露）。 */
   readonly detail: string;
   readonly recentCount: number;
 }
@@ -298,7 +298,8 @@ export function summarizeBus(
   return {
     tone,
     label,
-    detail: `近 ${seconds} 秒 ${recent} 次投递`,
+    // 用户视角：这是"系统还在动"的信号，不该出现"投递/总线"这类架构词（task_122）。
+    detail: recent === 0 ? `最近 ${seconds} 秒没有更新` : `最近 ${seconds} 秒更新 ${recent} 次`,
     recentCount: recent,
   };
 }

@@ -14,6 +14,14 @@ const ANALYZE = process.env.ANALYZE === 'true';
 const FULL_RELOAD_DIRS = ['src/app', 'src/hud', 'src/core', 'src/world'];
 
 /**
+ * 入口 HTML 的**旧路径**（task_122 之前入口住在 src/app/main/ 下）。
+ * why 留这一行：入口挪到站点根后，旧书签 / 旧 e2e 脚本 / 别人分享的链接仍可能指着它，
+ *   直接 404 会让人以为服务挂了 —— 这里 302 到站点根即可。
+ * why 用 302 而不是 404：入口路径变了，**东西没变**，跳转才是如实的表达。
+ */
+const LEGACY_ENTRY_URL = '/src/app/main/index.html';
+
+/**
  * HMR 半更新防护（task_067）。
  *
  * why 局部 HMR 对本仓库天然不安全 —— 本仓库是 Web Components + 组合根装配架构：
@@ -38,9 +46,9 @@ function hmrFullReloadGuard(root: string): Plugin {
       // vite 传进来的是归一化后的绝对路径；统一成 posix 风格相对路径再比对目录前缀
       const rel = relative(root, ctx.file).split(sep).join('/');
       if (!rel || rel.startsWith('..') || isAbsolute(rel)) return undefined;
-      const guarded = FULL_RELOAD_DIRS.some(
-        (dir) => rel === dir || rel.startsWith(`${dir}/`),
-      );
+      const guarded =
+        rel === NEW_ENTRY_HTML ||
+        FULL_RELOAD_DIRS.some((dir) => rel === dir || rel.startsWith(`${dir}/`));
       if (!guarded) return undefined;
       ctx.server.ws.send({ type: 'full-reload', path: '*' });
       // 留一行日志：让"这次是强制整页刷新（而非局部 HMR）"在 dev 终端里可见、可追溯
@@ -55,8 +63,32 @@ function hmrFullReloadGuard(root: string): Plugin {
 }
 
 /**
+ * 旧入口路径 → 站点根 的跳转（task_122）。
+ *
+ * why 需要：入口 HTML 从 `src/app/main/index.html` 上移到站点根 `index.html` 之后，
+ *   旧地址（书签、e2e 脚本、历史分享链接）会直接 404 —— 看着像"服务挂了"。
+ *   这里 302 到 '/'，让旧链接继续能用，同时正式入口只剩一个（站点根）。
+ * 仅 dev 生效（apply: 'serve'）：正式产物里根本没有 src/ 段，无从兼容。
+ */
+function legacyEntryRedirect(): Plugin {
+  return {
+    name: 'stratix:legacy-entry-redirect',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const url = (req.url ?? '').split('?')[0];
+        if (url !== LEGACY_ENTRY_URL) return next();
+        res.statusCode = 302;
+        res.setHeader('Location', '/');
+        res.end();
+      });
+    },
+  };
+}
+
+/**
  * 真实音源供给（task_087）：public/sfx/ 下的 mp3 要能在 dev server 与构建产物里
- * 以**站点根下的 /sfx/*** 取到（渲染层按 '../../../sfx' 相对基址拼 URL，
+ * 以**站点根下的 /sfx/*** 取到（渲染层按 'sfx' 相对基址拼 URL —— 入口在站点根，深度 0），
  * 见 src/hud/sound-engine.ts 的 sfxBaseUrl）。
  *
  * why 不用 vite 的 publicDir —— 它已被 'assets' 占用：LPC 素材（1.3G，真源
@@ -101,7 +133,12 @@ function sfxAssetsPlugin(root: string): Plugin {
 }
 
 export default defineConfig(async () => {
-  const plugins = [vue(), hmrFullReloadGuard(__dirname), sfxAssetsPlugin(__dirname)];
+  const plugins = [
+    vue(),
+    hmrFullReloadGuard(__dirname),
+    legacyEntryRedirect(),
+    sfxAssetsPlugin(__dirname),
+  ];
 
   if (ANALYZE) {
     // why 用变量形式的 specifier：rollup-plugin-visualizer 是可选的按需依赖（ANALYZE=true 才需要），

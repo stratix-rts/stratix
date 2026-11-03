@@ -54,7 +54,7 @@ export function createDemoOnSend(
   return (_characterId: string, text: string): void => {
     const drawer = getDrawer();
     drawer.setSending(true);
-    const reply = `${DEMO_REPLY_PREFIX}收到「${text}」。这是定时器假流的演示回显，正式回复由 task_035 的 chat-service 接线后产出。`;
+    const reply = `${DEMO_REPLY_PREFIX}收到「${text}」。这是定时器假流的演示回显，正式回复由后端服务产出。`;
     const chunks = splitDemoReply(reply);
     let at = timing.startDelayMs;
     for (const chunk of chunks) {

@@ -353,7 +353,7 @@ describe('resolveStatusModel：组装', () => {
 
     expect(model.metrics.missions.value).toBe(3);
     expect(model.connection.label).toBe('连接中');
-    expect(model.bus.detail).toBe('近 60 秒 1 次投递');
+    expect(model.bus.detail).toBe('最近 60 秒更新 1 次');
     expect(model.uptime.value).toBe('1 分 05 秒');
     expect(model.events.total).toBe(2);
   });
@@ -407,13 +407,15 @@ describe('状态屏：Shadow DOM 渲染', () => {
       .toBe('已连接 1 · 连接中 1');
   });
 
-  test('系统状态区有总线活跃与运行时长两项', () => {
+  test('系统状态区有系统心跳与运行时长两项（task_122：文案不出现架构词）', () => {
     h = mountScreen();
     h.emit(makeState());
 
     expect(sysValue(h.screen, 'bus')).toBe('正常');
     expect(sysRow(h.screen, 'bus')?.querySelector('[data-role="sys-detail"]')?.textContent)
-      .toContain('次投递');
+      .toContain('更新');
+    expect(sysRow(h.screen, 'bus')?.querySelector('[data-role="sys-detail"]')?.textContent)
+      .not.toContain('投递');
     expect(sysValue(h.screen, 'uptime')).toBe('0 秒');
   });
 
@@ -537,6 +539,9 @@ describe('装配进 main-screen', () => {
       },
       mount: () => () => { /* 本用例不关心 core 订阅 */ },
       latest: null,
+      // 皮肤真相（@since task_115）：主屏要读当前皮肤，装配用的假 adapter 也要给一份。
+      themeId: 'default' as const,
+      subscribeTheme: () => () => undefined,
     };
 
     const host = document.createElement('div');

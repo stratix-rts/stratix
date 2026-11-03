@@ -643,7 +643,9 @@ describe('历史抽屉：kind 路由（四路）', () => {
     await flush();
 
     expect(entries(harness.panel)).toHaveLength(0);
-    expect(textOf(harness.panel, 'drawer-note')).toContain('未附着');
+    // task_122：文案走用户视角（"服务未接入"），不出现"未附着"这类架构词。
+    expect(textOf(harness.panel, 'drawer-note')).toContain('服务未接入');
+    expect(textOf(harness.panel, 'drawer-note')).not.toContain('未附着');
   });
 
   test('读取失败 → 抽屉说失败并给重试，不显示空历史冒充正常', async () => {
@@ -764,6 +766,9 @@ describe('装配进 main-screen（dev 页走的就是这条路径）', () => {
       },
       mount: () => () => { subs.clear(); },
       latest: null,
+      // 皮肤真相（@since task_115）：主屏要读当前皮肤，装配用的假 adapter 也要给一份。
+      themeId: 'default',
+      subscribeTheme: () => () => undefined,
     };
 
     const host = document.createElement('div');

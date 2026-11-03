@@ -14,7 +14,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-const MAIN_HTML = path.join(__dirname, '..', 'main', 'index.html');
+// 入口 HTML 住在站点根（task_122）：从 src/app/__tests__ 上溯三层到项目根。
+const MAIN_HTML = path.join(__dirname, '..', '..', '..', 'index.html');
 const MAIN_ENTRY = path.join(__dirname, '..', 'main', 'main-entry.ts');
 
 const html = fs.readFileSync(MAIN_HTML, 'utf-8');

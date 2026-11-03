@@ -544,11 +544,12 @@ describe('声音包：真实音源优先（task_087）', () => {
 
   test('音频根 URL 按入口深度算相对基址（http 与 file:// 同一条规则）', () => {
     expect(sfxRelativeBase(3)).toBe('../../../sfx');
-    expect(sfxBaseUrl('http://127.0.0.1:7523/src/app/main/index.html', 3)).toBe(
+    // 入口在站点根（task_122）→ 深度 0，相对片段就是 'sfx'。
+    expect(sfxBaseUrl('http://127.0.0.1:7523/index.html', 0)).toBe(
       'http://127.0.0.1:7523/sfx',
     );
     // electron 正式包走 file://：相对规则落回 dist/frontend 下的 sfx/。
-    expect(sfxBaseUrl('file:///app/dist/frontend/src/app/main/index.html', 3)).toBe(
+    expect(sfxBaseUrl('file:///app/dist/frontend/index.html', 0)).toBe(
       'file:///app/dist/frontend/sfx',
     );
     expect(sfxFileUrl('http://127.0.0.1:7523/sfx', 'select.mp3')).toBe(

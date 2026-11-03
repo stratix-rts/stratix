@@ -139,12 +139,12 @@ export const SFX_FILES: Readonly<Record<SoundId, SfxFileSpec>> = Object.freeze({
 export const SFX_DIR_NAME = 'sfx';
 
 /**
- * 入口 HTML 相对站点根的目录层数（缺省 3 = src/app/main/）。
+ * 入口 HTML 相对站点根的目录层数（缺省 0 = 入口就在站点根，task_122 起）。
  * 事实源是 src/app/entry-paths.ts 的 ENTRY_PATH_DEPTH —— 组合根（main-entry）会显式传进来，
  * 这里的缺省值只是「按默认入口布局」的兜底（同 src/world/appearance/spritesheet-path.ts 的做法：
  * 事实源在 app 层，纯函数层留一个缺省值 + 单测断言两处一致）。
  */
-export const DEFAULT_SFX_DEPTH = 3;
+export const DEFAULT_SFX_DEPTH = 0;
 
 /** 按入口深度算出音频根的**相对** URL 片段（不带前导斜杠），如 '../../../sfx'。 */
 export function sfxRelativeBase(depth: number = DEFAULT_SFX_DEPTH): string {
@@ -161,8 +161,8 @@ export function sfxRelativeBase(depth: number = DEFAULT_SFX_DEPTH): string {
  *
  * why 用相对规则而不是"http 就用绝对路径、file:// 才特殊"：
  *   两条分支要维护两个真相（还得判断协议），而相对规则在 http 与 file:// 下是同一条 ——
- *   URL 解析会把 '../' 归一化，dev 的 '/src/app/main/xxx.html' 与 prod 的
- *   '/dist/frontend/src/app/main/xxx.html' 都能落回各自的站点根（file:// 下绝对路径
+ *   URL 解析会把 '../' 归一化，dev 的 '/' 与 prod 的 '/dist/frontend/index.html'
+ *   都能落回各自的站点根（file:// 下绝对路径
  *   '/sfx' 会被解析到文件系统根，正式包必须走相对基址）。
  */
 export function sfxBaseUrl(baseUri: string, depth: number = DEFAULT_SFX_DEPTH): string {
