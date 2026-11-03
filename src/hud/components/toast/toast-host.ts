@@ -15,7 +15,12 @@
  *   5. 泄漏计时器 —— disconnectedCallback 必须清光（元素反复挂卸不积累定时器，perf 硬约束）。
  *
  * @since v3.18（task_039）。
+ * @since v3.6（task_116）通知总开关：show() 受设置页「通知提示」偏好门控
+ *   （localStorage 键 stratix.notifications.enabled，'0' = 关）——
+ *   让那个开关有真实消费者，而不是一个只翻文字的假控件。
  */
+
+import { STRATIX_NOTIFICATIONS_TOGGLE_KEY } from '../../../core/types';
 
 export const TOAST_HOST_TAG = 'strat-toast-host';
 
@@ -48,6 +53,19 @@ function escapeAttr(s: string): string {
     '"': '&quot;',
     "'": '&#39;',
   })[c] as string);
+}
+
+/**
+ * 通知总开关是否打开（@since v3.6，task_116）。
+ * 口径：值为 '0' = 关，其它（'1' / 缺键 / 读失败）= 开 —— 与设置页写入口径一致
+ *   （settings-screen 的「通知提示」行写的就是这个键）。
+ */
+function notificationsEnabled(): boolean {
+  try {
+    return globalThis.localStorage?.getItem(STRATIX_NOTIFICATIONS_TOGGLE_KEY) !== '0';
+  } catch {
+    return true; // 隐私模式 / 读失败：不让提示静默消失（宁多不少）
+  }
 }
 
 /**
@@ -130,6 +148,8 @@ export function defineToastHost(): typeof HTMLElement {
     show(text: string, tone: ToastTone = 'info'): void {
       const stack = this._stack;
       if (!stack) return; // 未连接（理论上组合根挂载后才会被调）：安全跳过
+      // 通知总开关关着 → 不出提示（@since v3.6，task_116：让设置页那个开关有真实消费者）。
+      if (!notificationsEnabled()) return;
       const toast = document.createElement('div');
       toast.className = 'toast';
       toast.setAttribute('data-tone', escapeAttr(tone));

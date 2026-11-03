@@ -78,6 +78,33 @@ export const SOUND_ENABLED_KEY = 'stratix.sound.enabled';
 /** 音量的 localStorage 键（0-100 的整数字符串）。 */
 export const SOUND_VOLUME_KEY = 'stratix.sound.volume';
 
+/**
+ * 音量档位（@since v3.6，task_116）：静音 / 30 / 70 / 100 —— 点击循环切档。
+ * why 有档位而不是连续调：顶栏那个 20×6px 的小条上连续调无从下手，
+ *   「点一下换一个值」才是能被点出来的交互（死功能报告 #5：点了音量永远不变）。
+ */
+export const VOLUME_PRESETS: readonly number[] = Object.freeze([0, 30, 70, 100]);
+
+/**
+ * 下一档音量：找**严格大于**当前值的档位；没有（已到顶或超出）则回到静音档。
+ * @since v3.6（task_116）
+ */
+export function nextVolumePreset(current: number): number {
+  for (const preset of VOLUME_PRESETS) {
+    if (preset > current) return preset;
+  }
+  return VOLUME_PRESETS[0] ?? 0;
+}
+
+/**
+ * 音量的文字标签：0 → 「静音」，其余 → 「N%」。
+ * why 单独抽：标题 / aria-label / 按钮文字三处用同一口径，
+ *   免得出现「静音 0%」这类自相矛盾的文案（@since v3.6，task_116）。
+ */
+export function volumeLabel(volume: number): string {
+  return volume <= 0 ? '静音' : `${Math.round(volume)}%`;
+}
+
 // ============================================================================
 // 真实音源：文件清单 + 基址解析
 // ============================================================================
