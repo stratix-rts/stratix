@@ -27,6 +27,9 @@
  *   ④ **L2 收起用 visibility（不是 display）**：display 会与各元素自身的 display 规则打架
  *      （`display: none` 覆盖 flex 布局、`display: var(...)` 又会回退成 block）；
  *      visibility 是**独立属性**、不吃布局、且连带禁掉子元素的指针事件 —— 正是「收起」要的。
+ *   ⑤ **L1 通道对外只开一个口**（@since v3.5，task_099）：别的机制要「再叠一层降对比」
+ *      （如全屏弹窗打开时四角常驻件让位）时，经 setDimSource 登记自己的触发源，
+ *      由本控制器合成（取最暗）后写进同一个变量 —— 通道只有一条，触发源可以多个。
  *
  * ★ 与「层级状态放哪」的关系：状态的**真相**在 core（WorldState.infoLayer，见 core/types.ts）——
  *   因为 world 侧也要订阅它（导演取景框等 L3 元素）。本文件是 HUD 侧对那份真相的**呈现层**：
@@ -97,12 +100,46 @@ export const INFO_LAYER_LABELS: Readonly<Record<InfoLayer, string>> = Object.fre
 export { INFO_LAYERS };
 
 /**
+ * L1 降对比通道的**写入口**（@since v3.5，task_099）—— 别的机制（如「全屏弹窗打开 →
+ * 四角常驻件降对比」的遮挡规则）要再叠一层降对比时，经这个口登记自己的触发源，
+ * **而不是另造一条 CSS 变量通道**。
+ *
+ * why 是「口」而不是「变量」：通道只有一条（--srf-layer-l1-opacity），谁写、写成多少
+ * 由通道主人（= 本控制器）裁决 —— 多个触发源叠加时取**最暗**的那个
+ * （弹窗压着 L3 演出时，L1 仍然是暗的；演出结束、弹窗还在 → 仍是弹窗那档）。
+ * 触发源是**独立**的（演出占用是一种、弹窗是另一种），但出口只有这一个。
+ */
+export interface L1DimSink {
+  /** 登记一个独立触发源的降对比因子（0-1）；传 null = 撤掉这个源。 */
+  setDimSource(source: string, opacity: number | null): void;
+}
+
+/**
+ * 层级口径 + 叠加触发源的**有效 L1 对比因子**（纯函数）。
+ * 取最暗的那个：层级口径（L3 = 0.18）与触发源（弹窗 = 0.18）谁更暗听谁的。
+ */
+export function composeL1Opacity(
+  layer: InfoLayer,
+  dimSources?: ReadonlyMap<string, number>
+): number {
+  let opacity = layerL1Opacity(layer);
+  if (dimSources) {
+    for (const value of dimSources.values()) opacity = Math.min(opacity, value);
+  }
+  return opacity;
+}
+
+/**
  * 解析某层级下的 CSS 变量取值（纯函数 —— 单测直接断言，不起浏览器）。
  * 返回值即「写进根元素上的那几行」。
+ * @param dimSources 叠加的独立降对比触发源（task_099：弹窗那路）—— 缺省 = 只有层级口径。
  */
-export function infoLayerVars(layer: InfoLayer): Record<string, string> {
+export function infoLayerVars(
+  layer: InfoLayer,
+  dimSources?: ReadonlyMap<string, number>
+): Record<string, string> {
   return {
-    [INFO_LAYER_CSS_VARS.l1Opacity]: String(layerL1Opacity(layer)),
+    [INFO_LAYER_CSS_VARS.l1Opacity]: String(composeL1Opacity(layer, dimSources)),
     [INFO_LAYER_CSS_VARS.l2Opacity]: String(layerL2Opacity(layer)),
     [INFO_LAYER_CSS_VARS.l2Visibility]: layerL2Collapsed(layer) ? 'hidden' : 'visible',
     [INFO_LAYER_CSS_VARS.transitionMs]: `${HUD_LAYER_METRICS.transitionMs}ms`,
@@ -156,6 +193,11 @@ export interface InfoLayerController {
   readonly current: InfoLayer;
   /** 切档：改根上的 CSS 变量 + 标记属性；同档重复调用是 no-op（不重复通知）。 */
   apply(layer: InfoLayer): void;
+  /**
+   * 叠加一个独立的降对比触发源（@since v3.5，task_099）—— 弹窗遮挡规则经这条口
+   * 复用 L1 通道，不另造 CSS 变量。传 null = 撤掉该源（弹窗关闭 → 全恢复）。
+   */
+  setDimSource(source: string, opacity: number | null): void;
   /** 订阅层级变化；返回退订函数。 */
   subscribe(listener: (layer: InfoLayer) => void): () => void;
   /** 卸载：撤样式表、撤变量、撤标记、清订阅者（资源必须可清理 —— perf 铁律）。 */
@@ -171,6 +213,12 @@ export function createInfoLayerController(deps: InfoLayerControllerDeps = {}): I
   const root = deps.root ?? doc?.documentElement ?? null;
   const listeners = new Set<(layer: InfoLayer) => void>();
   let current: InfoLayer = DEFAULT_INFO_LAYER;
+  /**
+   * 叠加的独立降对比触发源（@since v3.5，task_099）—— key = 源名（'modal' 等），value = 对比因子。
+   * why 是 Map 而不是单个布尔：触发源可能不止一个（弹窗 + 演出各自一路），但**出口只有一条**
+   * （--srf-layer-l1-opacity），合成时取最暗的那个（见 composeL1Opacity）。
+   */
+  const dimSources = new Map<string, number>();
   /** 卸载标记：destroy 之后 apply 一律 no-op（别把刚撤掉的样式表与变量又写回去）。 */
   let destroyed = false;
 
@@ -187,7 +235,7 @@ export function createInfoLayerController(deps: InfoLayerControllerDeps = {}): I
 
   const writeVars = (layer: InfoLayer): void => {
     if (!root) return;
-    const vars = infoLayerVars(layer);
+    const vars = infoLayerVars(layer, dimSources);
     for (const [name, value] of Object.entries(vars)) {
       root.style.setProperty(name, value);
     }
@@ -216,9 +264,27 @@ export function createInfoLayerController(deps: InfoLayerControllerDeps = {}): I
     };
   };
 
+  /**
+   * 叠加 / 撤掉一个独立降对比触发源（@since v3.5，task_099）。
+   * why 不通知层级订阅者：层级本身没变（还是那一档），变的只是「有多暗」——
+   *   订阅者（三档开关）只关心「当前是第几档」，多此一举的通知会让它白重绘。
+   */
+  const setDimSource = (source: string, opacity: number | null): void => {
+    if (destroyed) return;
+    if (opacity === null) {
+      if (!dimSources.delete(source)) return;
+    } else {
+      const clamped = Math.min(1, Math.max(0, opacity));
+      if (dimSources.get(source) === clamped) return;
+      dimSources.set(source, clamped);
+    }
+    writeVars(current);
+  };
+
   const destroy = (): void => {
     destroyed = true;
     listeners.clear();
+    dimSources.clear();
     style?.remove();
     style = null;
     if (!root) return;
@@ -235,6 +301,7 @@ export function createInfoLayerController(deps: InfoLayerControllerDeps = {}): I
       return current;
     },
     apply,
+    setDimSource,
     subscribe,
     destroy,
   };

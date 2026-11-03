@@ -28,6 +28,7 @@ import {
 import {
   mountShortcutHelp,
   SHORTCUT_HELP_CLOSE_REQUEST,
+  SHORTCUT_HELP_OCCLUSION_ID,
   type StratShortcutHelpElement,
 } from './shortcut-help';
 
@@ -36,6 +37,18 @@ export type ShortcutDispatchCommand = Extract<
   HudCommand,
   { type: 'unit.select' | 'unit.group.assign' | 'unit.group.recall' | 'camera.center' }
 >;
+
+/**
+ * 遮挡登记口（@since v3.5，task_099）—— 遮挡控制器（hud/layers/occlusion.ts）实现。
+ * why 是一行接口而不是直接 import 控制器：组件只认「开 / 关」这一个动作，
+ *   「谁压着谁、要不要禁点」归机制层管（与 chat-drawer 的抽屉口同口径）。
+ */
+export interface ShortcutOcclusionPort {
+  /** 登记「有一个全屏弹窗开着」（requestClose = ESC 统一路由到栈顶时请它关）。 */
+  openModal(id: string, requestClose?: () => void): void;
+  /** 撤掉登记（浮层关上 → 四角全恢复）。 */
+  closeModal(id: string): void;
+}
 
 /** 组合根注入的端口（全部显式注入，测试与生产共用同一份逻辑）。 */
 export interface ShortcutPorts {
@@ -48,6 +61,12 @@ export interface ShortcutPorts {
    * 事件累积喂（与 minimap 的数据面同一份累积表）。查不到返回 null（按未知处理）。
    */
   readonly getUnitPosition: (unitId: string) => Point | null;
+  /**
+   * 遮挡登记口（@since v3.5，task_099；遮挡规则 R1）——
+   *   帮助浮层是全屏弹窗：开着时四角常驻件统一降对比 + 禁点，关掉即全恢复。
+   *   缺省 = 不登记（浮层照常开合，只是四角不降对比）。
+   */
+  readonly occlusion?: ShortcutOcclusionPort | null;
 }
 
 /**
@@ -104,6 +123,17 @@ export function createShortcutManager(
     helpOpen = open;
     if (open) help.open();
     else help.close();
+    // 遮挡登记（@since v3.5，task_099；遮挡规则 R1）：帮助浮层是**全屏弹窗** ——
+    //   开着时四角常驻件统一降对比 + 禁点，关掉即全恢复。
+    // why 不交 requestClose：帮助浮层的 ESC 归**快捷键管理器**自己（解析表里 Escape =
+    //   closeHelp —— 浮层开着时 ESC 只关浮层，不清选择）。若把 requestClose 也交出去，
+    //   遮挡控制器的 ESC 路由会先把浮层从栈里摘掉（helpOpen 变 false），
+    //   紧接着管理器会按「浮层没开」把同一次 ESC 解析成 deselect —— 多清一次选择。
+    if (open) {
+      ports.occlusion?.openModal(SHORTCUT_HELP_OCCLUSION_ID);
+    } else {
+      ports.occlusion?.closeModal(SHORTCUT_HELP_OCCLUSION_ID);
+    }
   };
 
   const execute = (action: ShortcutAction): void => {

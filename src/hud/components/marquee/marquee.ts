@@ -249,8 +249,11 @@ export function defineStratMarquee(): typeof HTMLElement {
           }
           /* Z2 折叠态：超出的条目留在 DOM 里但不出场（展开时原位出现）。 */
           .entry.is-hidden { display: none; }
-          /* 可点条目（有关联单位）：指针 + 悬停提亮。 */
-          .entry[data-clickable="true"] { pointer-events: auto; cursor: pointer; }
+          /* 可点条目（有关联单位）：指针 + 悬停提亮。
+             pointer-events 走自定义属性：条目在**影子树内部**，外层样式表穿不进来 ——
+             全屏弹窗开着时要禁掉它们（v3.5 遮挡规则 R1），只能靠自定义属性穿透影子边界
+             （由 hud/layers/occlusion.ts 在弹窗时把 --srf-marquee-pe 翻成 none）。 */
+          .entry[data-clickable="true"] { pointer-events: var(--srf-marquee-pe, auto); cursor: pointer; }
           .entry[data-clickable="true"]:hover,
           .entry[data-hover="true"] { background: var(--srf-panel-solid, var(--srf-panel-overlay)); }
           /* hover 详情板：绝对定位 → 不占布局流 → 悬停时下方条目不挪位（布局不跳动）。
@@ -284,9 +287,9 @@ export function defineStratMarquee(): typeof HTMLElement {
           /* 栈最底下那条：详情翻到上方（往下翻会出屏）。 */
           .entry[data-detail-above="true"] .detail { top: auto; bottom: 100%; margin-top: 0; margin-bottom: 3px; }
           .detail-time { color: var(--srf-text-muted); }
-          /* Z2 折叠 / 展开按钮。 */
+          /* Z2 折叠 / 展开按钮（同上：开关走自定义属性，弹窗期间禁点）。 */
           .toggle {
-            pointer-events: auto;
+            pointer-events: var(--srf-marquee-pe, auto);
             display: block;
             width: 100%;
             margin-top: 4px;

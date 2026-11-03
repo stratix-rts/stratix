@@ -27,6 +27,13 @@ export const SHORTCUT_HELP_TAG = 'strat-shortcut-help';
 /** 遮罩关闭请求的事件名（manager 在 window 上监听 —— composed 事件能穿出 Shadow DOM）。 */
 export const SHORTCUT_HELP_CLOSE_REQUEST = 'shortcut-help-close-request';
 
+/**
+ * 帮助浮层在遮挡栈里的登记名（@since v3.5，task_099；遮挡规则 R1）。
+ * why 要登记：帮助浮层是**全屏弹窗**（fixed 遮罩铺满视口）—— 按 R1，
+ *   全屏弹窗开着时四角常驻件（顶栏 / 控制岛 / 事件轨 / 小地图）统一降对比 + 禁点。
+ */
+export const SHORTCUT_HELP_OCCLUSION_ID = 'shortcut-help';
+
 /** 分组渲染顺序（= 类型词表顺序，抽成数组避免 Object.keys 的实现顺序耦合）。 */
 const CATEGORY_ORDER: readonly ShortcutCategoryId[] = ['selection', 'groups', 'camera', 'help', 'mouse'];
 
@@ -51,6 +58,10 @@ export function defineShortcutHelp(): typeof HTMLElement {
     return customElements.get(SHORTCUT_HELP_TAG) as unknown as typeof HTMLElement;
   }
 
+  /**
+   * 快捷键帮助浮层本体（纯展示）：开 / 关由 manager 驱动，关闭请求经 composed 事件冒泡出去。
+   * 不自持「打开」真相（opened 只是渲染态镜像 —— 真相位在 shortcut-manager）。
+   */
   class StratShortcutHelp extends HTMLElement implements StratShortcutHelpElement {
     private _opened = false;
     private _domBuilt = false;

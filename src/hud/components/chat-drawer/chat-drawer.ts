@@ -74,11 +74,31 @@ import {
 export const CHARACTER_CHAT_DRAWER_TAG = 'strat-character-chat-drawer';
 
 /**
+ * 半模态抽屉的状态出口（@since v3.5，task_099）—— 由遮挡控制器实现
+ *   （hud/layers/occlusion.ts 的 setDrawer）。
+ * why 是一行接口而不是直接 import 控制器：组件只认「开 / 关」这一个动作，
+ *   机制（谁在压着谁、要不要禁点）归机制层管 —— 依赖注入口径同 toast-host / sfx-service。
+ */
+export interface DrawerOcclusionPort {
+  /** 登记 / 注销「有一个半模态抽屉开着」（null = 关上了）。 */
+  setDrawer(id: string | null): void;
+}
+
+/** 抽屉在遮挡栈里的登记名（R2：半模态 —— 只压暗对侧，不锁四角、不接管全屏）。 */
+export const CHAT_DRAWER_OCCLUSION_ID = 'chat-drawer';
+
+/**
  * 面板需要的最小能力面：subscribe（吃总线状态）+ onSend（发送回调）。
  * why 不含 dispatch：角色对话没有对应的 HudCommand（契约的 chat.send 服务外部 agent 会话），
  * 发送走回调由组合根桥接（035 的 chat-service），把 dispatch 声明进来只会诱使后来者塞命令。
  */
 export type CharacterChatDrawerDeps = Pick<HudBusAdapter, 'subscribe'> & {
+  /**
+   * 半模态状态出口（@since v3.5，task_099）：抽屉开合报给遮挡控制器 ——
+   *   控制器据此知道「现在有个半模态抽屉」，但**不锁四角、不接管全屏**（R2）。
+   *   缺省 = 不报（抽屉照样开合，只是没人知道它开着）。
+   */
+  readonly occlusion?: DrawerOcclusionPort | null;
   /**
    * 发送回调：用户消息已落进会话存储并渲染（user 气泡出现），由桥接方驱动 transport、
    * 再通过 setSending / appendStream / finalizeStream 把应答喂回来。缺省 = 无桥接（演示接假流）。
@@ -211,6 +231,11 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
     return customElements.get(CHARACTER_CHAT_DRAWER_TAG) as unknown as typeof HTMLElement;
   }
 
+  /**
+   * 角色聊天抽屉本体（Shadow DOM 呈现面）——
+   *   数据面全部由注入的会话仓给出，本类只负责呈现与交互；
+   *   开合状态同时报给遮挡控制器（半模态：只压暗对侧，不锁四角 —— 遮挡规则 R2）。
+   */
   class CharacterChatDrawer extends HTMLElement implements StratCharacterChatDrawerElement {
     private _deps: CharacterChatDrawerDeps | null = null;
     private _unsubscribe: (() => void) | null = null;
@@ -295,6 +320,8 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
     disconnectedCallback(): void {
       // 资源必须可清理：不退订的话，反复挂卸会把订阅堆成 O(n)，且元素已不在文档里仍在收广播。
       this.releaseDeps();
+      // 半模态状态也要撤（@since v3.5，task_099）：元素走了就别在机制层留个「抽屉开着」。
+      this._deps?.occlusion?.setDrawer(null);
     }
 
     // —— 流式公开接口（035 组合根桥接的调用面）——
@@ -652,7 +679,25 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
             transition: transform var(--srf-transition), visibility var(--srf-transition);
             visibility: hidden;
             pointer-events: none;
+            z-index: 1;
           }
+          /* 对侧压暗（@since v3.5，task_099；遮挡规则 R2）：抽屉是**半模态** ——
+             只把对侧（抽屉左边那一大片）压暗，不锁四角、不接管全屏。
+             why pointer-events:none：压暗是「视觉让位」，不是「挡住」——
+             四角常驻件（顶栏 / 控制岛 / 事件轨 / 小地图）在抽屉开着时照样点得动。
+             why 固定定位 + right 与宿主同宽：宿主就是抽屉那一条（fixed 在无 transform 的祖先下
+             以视口为定位基准）—— 压暗区正好是「视口减去抽屉那一条」。 */
+          .rail-dim {
+            position: fixed;
+            inset: 0;
+            right: min(360px, 92vw);
+            background: var(--srf-backdrop);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity var(--srf-transition);
+            z-index: 0;
+          }
+          .rail-dim[data-active="true"] { opacity: 1; }
           .rail[data-open="true"] { transform: translateX(0); visibility: visible; pointer-events: auto; }
           .head { display: flex; align-items: center; gap: var(--srf-spacing-sm); padding-bottom: var(--srf-spacing-sm); border-bottom: var(--srf-border-width) solid var(--srf-border); }
           .char-name { font-size: var(--srf-font-size-lg); font-weight: var(--srf-font-weight-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -736,6 +781,7 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
           button.peer-begin:disabled, button.peer-cancel:disabled, button.peer-exit:disabled, button.peer-open:disabled, button.stop:disabled, button.retry:disabled { background: var(--srf-panel-elevated); color: var(--srf-text-disabled); border-color: var(--srf-border); cursor: not-allowed; opacity: 0.6; }
           button.peer-cancel { padding-inline: var(--srf-spacing-md); }
         </style>
+        <div class="rail-dim" data-role="rail-dim" data-active="false"></div>
         <div class="rail" data-role="rail" data-open="false">
           <div class="head">
             <span class="char-name" data-role="char-name">未选择角色</span>
@@ -851,6 +897,11 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
     private syncRail(): void {
       const rail = this.shadowRoot?.querySelector('[data-role="rail"]');
       rail?.setAttribute('data-open', this._open ? 'true' : 'false');
+      // 对侧压暗（@since v3.5，task_099；R2）：抽屉开着 → 压暗对侧；关 → 撤。
+      const dim = this.shadowRoot?.querySelector('[data-role="rail-dim"]');
+      dim?.setAttribute('data-active', this._open ? 'true' : 'false');
+      // 半模态状态报给遮挡控制器（机制层知道「有个抽屉开着」—— 但它**不锁四角**）。
+      this._deps?.occlusion?.setDrawer(this._open ? CHAT_DRAWER_OCCLUSION_ID : null);
     }
 
     /**

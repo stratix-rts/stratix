@@ -37,6 +37,11 @@
  *   绝不重写宿主（host.innerHTML）。组合根把覆盖层（小地图 / 事件轨 / toast / 聊天抽屉 /
  *   里程碑 / 快捷键帮助）挂在同一个宿主下 —— 宿主被重写 = 那些覆盖层当场消失且永不重挂，
  *   真机表现是「点一下演示开关，之后小地图、事件轨、聊天入口全部没反应」。
+ *
+ * ★ 子屏 = 全屏弹窗（@since v3.5，task_099）：settings / character 两个子屏走
+ *   **全屏弹窗壳**（遮罩 + 居中面板，hud/layers/occlusion.ts）——
+ *   ① 弹窗开着时，四角常驻件（顶栏 / 控制岛 / 事件轨 / 小地图）统一降对比 + 禁点（遮挡规则 R1）；
+ *   ② ESC 可关 + 点遮罩可关（双关闭途径必齐 —— 方案 §二 R4），两条都收口到「回主屏」这条命令。
  */
 
 // 顶栏度量（@since v3.4，task_089）：Z1 的高度与「7 元素封顶」口径 —— 数字取自唯一事实源。
@@ -54,6 +59,9 @@ import type { ReplayController } from '../components/replay/replay-controller';
 import { mountAgentPanel, type AgentPanelDeps } from '../panels/agent-panel';
 import { mountCommandPanel } from '../panels/command-panel';
 import { mountLogDrawer } from '../panels/log-drawer';
+// 遮挡规则（@since v3.5，task_099）：全屏弹窗壳（遮罩 + 居中面板 + ESC/遮罩双关闭）
+//   + 遮挡控制器（弹窗开着 → 四角常驻件降对比禁点）。
+import { mountModalShell, type OcclusionController } from '../layers/occlusion';
 import type { PipelineFeedInput } from '../panels/pipeline-catalog';
 import type { SessionHistoryPort } from '../panels/session-catalog';
 import {
@@ -310,7 +318,10 @@ const MAIN_SCREEN_STYLE = `
     inset: 0;
     z-index: 50;
     pointer-events: auto;
-    background: var(--srf-bg);
+    /* 透明：这层只是**弹窗宿主** —— 底色由弹窗壳的遮罩（--srf-backdrop）给。
+       why 不是不透明：全屏弹窗开着时，四角常驻件要在遮罩**之下**可见并降对比
+       （v3.5 遮挡规则 R1）—— 铺一层不透明底色会把它们整个盖掉，降对比就白做了。 */
+    background: transparent;
   }
   @container (max-width: 700px) {
     .hud-topbar { position: static; }
@@ -421,6 +432,12 @@ export interface MainScreenOptions {
    * （「今天还没有任务记录」—— 观众看得见这条时间轴在哪儿，而不是组件凭空消失）。
    */
   readonly replay?: ReplaySlotOptions | null;
+  /**
+   * 遮挡控制器（@since v3.5，task_099）—— 全屏弹窗（设置屏 / 角色屏）登记进去，
+   * 于是弹窗开着时**四角常驻件统一降对比 + 禁点**（R1），ESC 也由它统一路由到栈顶（R4）。
+   * 缺省 = 只接双关闭途径（ESC + 遮罩），不做四角降对比（单屏单测用的最小形态）。
+   */
+  readonly occlusion?: OcclusionController | null;
 }
 
 /** 工厂：构造 main-screen 句柄；接受一个已建好的 bus-adapter（依赖注入）。 */
@@ -817,10 +834,24 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       subHost.className = 'hud-sub-screen';
       host.appendChild(subHost);
       subHostEl = subHost;
+      // 全屏弹窗壳（@since v3.5，task_099）：遮罩 + 居中面板；ESC 与点遮罩都收口到
+      //   「回主屏」这一条命令（双关闭途径必齐 —— 方案 §二 R4）。
+      const shell = mountModalShell(
+        {
+          id: 'settings',
+          onClose: () => adapter.dispatch({ type: 'ui.navigate', screen: 'main' }),
+          occlusion: options.occlusion ?? null,
+        },
+        subHost
+      );
       // settings-screen 自带 topbar + 返回按钮 → ui.navigate(main)。
-      unmountSubScreen = mountSettingsScreen(adapter, subHost, {
+      const unmountSettings = mountSettingsScreen(adapter, shell.panel, {
         customAgents: options.customAgents ?? null,
       });
+      unmountSubScreen = () => {
+        unmountSettings();
+        shell.unmount();
+      };
       currentScreen = 'settings';
     };
 
@@ -835,12 +866,25 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       subHost.className = 'hud-sub-screen';
       host.appendChild(subHost);
       subHostEl = subHost;
+      // 同设置屏：全屏弹窗壳（遮罩 + 面板 + ESC/遮罩双关闭，task_099）。
+      const shell = mountModalShell(
+        {
+          id: 'character',
+          onClose: () => adapter.dispatch({ type: 'ui.navigate', screen: 'main' }),
+          occlusion: options.occlusion ?? null,
+        },
+        subHost
+      );
       // character-screen 自带 topbar + 返回按钮 → ui.navigate(main) 或 ui.navigate(chat) 打开聊天抽屉。
       // @since v3.20（task_041）：形象编辑面板的预览端口随屏位注入（没给 = 面板降级，屏照常可用）。
-      unmountSubScreen = mountCharacterScreen(adapter, subHost, {
+      const unmountCharacter = mountCharacterScreen(adapter, shell.panel, {
         appearance: options.appearance,
         growth: options.growth,
       });
+      unmountSubScreen = () => {
+        unmountCharacter();
+        shell.unmount();
+      };
       currentScreen = 'character';
     };
 

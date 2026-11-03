@@ -107,6 +107,8 @@ import { createHudBusAdapter } from '../../hud/bridge/bus-adapter';
 //   视觉口径与分区映射在 hud/layers/info-layer.ts；真相在 core（WorldState.infoLayer）。
 import { createInfoLayerController } from '../../hud/layers/info-layer';
 import { mountLayerSwitch } from '../../hud/layers/layer-switch';
+// 遮挡规则（@since v3.5，task_099）：全屏弹窗 ↔ 四角常驻件的遮挡关系（模态 / 半模态 / 双关闭）。
+import { createOcclusionController } from '../../hud/layers/occlusion';
 // 当日回放（@since v3.3，task_082）：底栏时间轴 scrubber + 左上角时间戳角标 + 战场重演。
 //   数据流：读取口（app/services/day-replay.ts 读 service 的只读 REST）→ 回放控制器
 //   （hud/components/replay/replay-controller.ts，编排 seek / 60 秒倍速）→
@@ -467,6 +469,19 @@ async function boot(): Promise<void> {
   // 读不到就是空态（控制器内部如实呈现，不编数据）。
   void replayController.load();
 
+  // ===== 信息三层级 + 遮挡规则（@since v3.4 task_096 / @since v3.5 task_099）=====
+  // 两个都是**机制层**的单一实例（全屏各一份，不允许各面板各存一份）：
+  //   ① 层级控制器（L1 常驻 / L2 事件 / L3 沉浸）—— 真相在 core（WorldState.infoLayer），
+  //      这里只做呈现：改根上的 CSS 变量（--srf-layer-*）。
+  //   ② 遮挡控制器（谁压着谁）—— 全屏弹窗登记进去 → 弹窗开着时四角常驻件降对比 + 禁点（R1），
+  //      ESC 由它统一路由到栈顶（R4）。
+  // why 建在这里（而不是下面那段）：main-screen 要拿遮挡控制器（子屏登记成全屏弹窗），
+  //   而创建顺序上 main-screen 在前 —— 控制器必须先于它。
+  // ★ task_099 硬要求：弹窗的降对比**复用** 096 的 L1 通道（--srf-layer-l1-opacity），
+  //   不另造变量 —— 所以遮挡控制器拿的是层级控制器这个写入口（l1Dim）。
+  const layerController = createInfoLayerController();
+  const occlusionController = createOcclusionController({ l1Dim: layerController });
+
   const screen = createMainScreen(adapter, {
     appearance: appearancePreview,
     taskStats: makeTaskStatsProvider(taskRecordApi()),
@@ -487,6 +502,9 @@ async function boot(): Promise<void> {
     }),
     // task_082：当日回放条（底栏时间轴 scrubber）—— 控制器在组合根建（它要读取口）。
     replay: { controller: replayController },
+    // task_099：遮挡控制器 —— 子屏（设置 / 角色）以全屏弹窗形态登记进去，
+    //   于是弹窗开着时四角常驻件降对比 + 禁点，ESC 与点遮罩双关闭。
+    occlusion: occlusionController,
   });
   const unmountScreen = screen.mount(hudRoot);
   const unmountAdapter = adapter.mount();
@@ -500,7 +518,11 @@ async function boot(): Promise<void> {
   const chatHost = document.createElement('div');
   hudRoot.appendChild(chatHost);
   const unmountCharacterDrawer = mountCharacterChatDrawer(
-    { subscribe: (handler) => adapter.subscribe(handler) },
+    {
+      subscribe: (handler) => adapter.subscribe(handler),
+      // task_099：抽屉是**半模态**（R2）—— 只压暗对侧、不锁四角；开合状态报给遮挡控制器。
+      occlusion: occlusionController,
+    },
     chatHost
   );
   const characterDrawer = chatHost.querySelector(CHARACTER_CHAT_DRAWER_TAG) as StratCharacterChatDrawerElement | null;
@@ -1027,6 +1049,8 @@ async function boot(): Promise<void> {
     dispatch: (command) => adapter.dispatch(command),
     getState: () => worldStore.getState(),
     getUnitPosition: (unitId) => minimapPositions.get(unitId) ?? null,
+    // task_099（R1）：帮助浮层是全屏弹窗 → 开着时四角常驻件降对比 + 禁点。
+    occlusion: occlusionController,
   });
 
   // ===== 信息三层级（@since v3.4，task_096）=====
@@ -1040,7 +1064,8 @@ async function boot(): Promise<void> {
   // 挂 #hud-side 而不是 #hud-root（与 task_086 同一口径）：主屏每次重绘都重写 #hud-root。
   // ★ task_094：state.infoLayer 现在是**有效档**（= 手动档 + 演出占用裁决）——
   //   演出（里程碑大字 / ▶60 秒重演 / 导演取景框）在演时它锁 L3，演完回手动档。
-  const layerController = createInfoLayerController();
+  // 注：层级控制器本体已在上方（createMainScreen 之前）建好 —— 主屏要拿它的兄弟
+  //   遮挡控制器（task_099），两者同批建、同批销毁。
   const stopLayerState = adapter.subscribe((state) => {
     layerController.apply(state.infoLayer ?? 'L1');
   });
@@ -1273,6 +1298,9 @@ async function boot(): Promise<void> {
       // 信息三层级（task_096）：退状态订阅 + 卸三档开关 + 卸层级控制器（撤样式表与 CSS 变量）。
       stopLayerState();
       unmountLayerSwitch();
+      // 遮挡规则（task_099）：先卸遮挡控制器（撤 ESC 监听、撤 L1 通道上的降对比触发源），
+      //   再卸层级控制器 —— 顺序反了会把 L1 留在暗处（控制器销毁时先撤触发源）。
+      occlusionController.destroy();
       layerController.destroy();
       // 流水线编排器总线订阅（task_051）：在跑的线随页面一起终止（库里的 running 行是停机
       // 遗骸，审计可见、不复活 —— 见 pipeline-record-dao 文件头存活语义注）。

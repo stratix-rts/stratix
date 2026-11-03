@@ -18,6 +18,8 @@ import { createHudBusAdapter } from '../bridge/bus-adapter';
 // 信息三层级（@since v3.4，task_096）：层级状态机 + 三档演示开关。
 import { createInfoLayerController } from '../layers/info-layer';
 import { mountLayerSwitch } from '../layers/layer-switch';
+// 遮挡规则（@since v3.5，task_099）：全屏弹窗登记 → 四角常驻件降对比禁点；ESC 统一路由。
+import { createOcclusionController } from '../layers/occlusion';
 // ⚠️ DEMO（task_034 演示路径，正式接线走 task_035 组合根）：角色聊天抽屉 + 定时器假流。
 // 生产链路（main-entry）不得 import demo-fake-stream。
 import {
@@ -68,7 +70,18 @@ function boot(): void {
     themeController,
   });
 
-  const screen = createMainScreen(adapter);
+  // ===== 信息三层级 + 遮挡规则（@since v3.4 task_096 / @since v3.5 task_099）=====
+  // 两个机制层单一实例：层级控制器（CSS 变量通道）+ 遮挡控制器（谁压着谁）。
+  // why 建在 createMainScreen 之前：主屏要拿遮挡控制器（子屏登记成全屏弹窗）。
+  const layerController = createInfoLayerController();
+  // task_099 硬要求：弹窗降对比复用 096 的 L1 通道（l1Dim = 层级控制器），不另造变量。
+  const occlusionController = createOcclusionController({ l1Dim: layerController });
+
+  const screen = createMainScreen(adapter, {
+    // 遮挡规则（@since v3.5，task_099）：dev 页与生产入口同一套接线 —— 子屏是全屏弹窗，
+    //   开着时四角常驻件降对比 + 禁点，ESC / 点遮罩双关闭。
+    occlusion: occlusionController,
+  });
   const unmount = screen.mount(root);
   adapter.mount();
 
@@ -76,7 +89,6 @@ function boot(): void {
   // dev 页里没有 world，层级状态照样能切：开关发 HudCommand `hud.layer.set` → core 写
   //   WorldState.infoLayer → state 广播回来 → 控制器改根上的 CSS 变量（L1 降对比 / L2 收起）。
   // 真相在 core，HUD 不存第二份 —— 与生产入口同一套接线。
-  const layerController = createInfoLayerController();
   const stopLayerState = adapter.subscribe((state) => {
     layerController.apply(state.infoLayer ?? 'L1');
   });
@@ -97,6 +109,8 @@ function boot(): void {
   let characterDrawer: StratCharacterChatDrawerElement | null = null;
   const unmountCharacterDrawer = mountCharacterChatDrawer({
     subscribe: (handler) => adapter.subscribe(handler),
+    // task_099：抽屉是半模态（只压暗对侧、不锁四角）—— 开合状态报给遮挡控制器。
+    occlusion: occlusionController,
     onSend: createDemoOnSend((): StratCharacterChatDrawerElement => {
       if (!characterDrawer) throw new Error('hud-dev: 角色聊天抽屉尚未挂载');
       return characterDrawer;
@@ -119,6 +133,8 @@ function boot(): void {
     layerController,
     unmountLayerSwitch,
     stopLayerState,
+    // 遮挡规则（task_099）：遮挡控制器（调试脚本可看当前有没有模态弹窗）。
+    occlusionController,
   };
 }
 
