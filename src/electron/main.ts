@@ -231,7 +231,7 @@ function createWindow() {
   console.log(`[Electron] Entry: ${entryPath} (v3 new UI, 单入口)`);
   if (isRetiredLegacyFlagSet()) {
     console.warn(
-      '[Electron] STRATIX_LEGACY 已失效：旧 Vue 入口链随 task_017 退役（Zone 模型是旧链的地基），' +
+      '[Electron] STRATIX_LEGACY 已失效：旧 Vue 入口链已退役（Zone 模型是旧链的地基），' +
       '本次仍加载新入口。回退请用 git 历史（git checkout master 或 git revert 该次提交）。'
     );
   }
