@@ -469,18 +469,15 @@ describe('体检 · 事件轨（Z2）', () => {
 // ============================================================================
 
 describe('体检 · 小地图（Z3）', () => {
-  test('19. 折叠钮：点 shadow 内真按钮 → data-collapsed 翻转 + aria-expanded 跟随', () => {
+  test('19. 小地图固定展开：没有折叠钮 / 没有折叠态（任何场景都是展开态）', () => {
     const h = mountHud();
-    const toggle = inShadow<HTMLButtonElement>(h.minimap, '[data-role="toggle"]');
-    expect(toggle).not.toBeNull();
-    expect(h.minimap.collapsed).toBe(false);
-
-    toggle?.click();
-
-    expect(h.minimap.collapsed).toBe(true);
-    expect(h.minimap.hasAttribute('data-collapsed')).toBe(true);
-    expect(toggle?.getAttribute('aria-expanded')).toBe('false');
-    expect(toggle?.textContent).toBe('▸');
+    // 折叠路径已整体解除（v3.5 / task_098）：shadow 里没有折叠钮，元素上没有折叠属性。
+    expect(inShadow<HTMLButtonElement>(h.minimap, '[data-role="toggle"]')).toBeNull();
+    expect(h.minimap.hasAttribute('data-collapsed')).toBe(false);
+    // 画布在、尺寸在 —— 展开态的实体。
+    const canvas = inShadow<HTMLCanvasElement>(h.minimap, '[data-role="canvas"]');
+    expect(canvas).not.toBeNull();
+    expect(canvas?.getAttribute('width')).toBe(String(MINIMAP_WIDTH_PX));
     h.unmount();
   });
 

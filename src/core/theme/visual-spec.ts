@@ -539,7 +539,7 @@ export const MINIMAP_METRICS = Object.freeze({
    *   （事件轨 16 / 小地图 12），间距推导就对不上唯一事实源 —— 版面计算要能算出来。
    */
   cornerMarginPx: 16,
-  /** 小地图标题栏（「小地图」+ 折叠按钮）的高度（px）。 */
+  /** 小地图标题栏（「小地图」标签）的高度（px）—— @since v3.5（task_098）折叠按钮已摘，只剩标签。 */
   headHeightPx: 20,
   /** 外框描边宽度（px）—— 外框总宽 = 画布宽 + 2 × 此值。 */
   frameBorderPx: 1,

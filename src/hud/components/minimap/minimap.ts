@@ -5,7 +5,9 @@
  *   + 当前视野白框 + 外框描边 + 「MAP」角标；
  *   视口矩形（相机事件驱动刷新）；点击单位点 = 选中该单位（unit.select），
  *   点击 / 拖拽任意处 = 相机对中该世界点（camera.center 命令，core 钳制后转发 world 落位）。
- *   可折叠（localStorage 记忆：stratix.minimap.collapsed）。
+ *   **固定展开**（@since v3.5，task_098）：200×120 常驻展开 —— 不折叠、不自动收起。
+ *   折叠按钮与折叠记忆（localStorage `stratix.minimap.collapsed`）已整体解除：
+ *   任何场景（hover / L3 演出 / 全屏弹窗 / 窄屏）下都保持展开态。
  * 输入：注入的 ports.dispatch（命令出口 —— 组合根喂 adapter.dispatch，组件零 import core/bus）；
  *   setUnits(snapshot) / setViewport(rect)（数据入口 —— 组合根从 WorldState + unit.position /
  *   camera.moved 事件喂；**hud 不 import world**，坐标语义见各口注记）。
@@ -32,7 +34,8 @@
  * @since v3.33（task_057）；@since v3.3（task_079：尺寸 200×120 / 岛屿轮廓 / 状态光点 /
  *   视野白框 / 外框描边 / MAP 角标）；@since v3.4（task_093：hover 提升亮度 + 过渡，
  *   贴边留边提为常量 MINIMAP_METRICS.cornerMarginPx —— 与事件轨同一口径，
- *   Z3 与 Z4 的「≥40px 间距」才推得出来）。
+ *   Z3 与 Z4 的「≥40px 间距」才推得出来）；@since v3.5（task_098：**固定展开** ——
+ *   折叠按钮 / 折叠记忆 / 折叠态 DOM 全解除，只剩「常驻展开」一条路）。
  */
 
 import { resolveAccent } from '../../../core/theme/skin-registry';
@@ -41,9 +44,6 @@ import { WORLD_BOUNDS } from '../../../core/types';
 import type { Bounds, HudCommand, Point, UnitStatus } from '../../../core/types';
 
 export const MINIMAP_TAG = 'strat-minimap';
-
-/** 折叠记忆键（task_057 规格④；与 settings 屏 context 开关同一 localStorage 直写口径）。 */
-export const MINIMAP_COLLAPSED_KEY = 'stratix.minimap.collapsed';
 
 /** 画布逻辑尺寸（CSS px = canvas px；数值取自唯一事实源 core/theme/visual-spec 的 MINIMAP_METRICS）。 */
 export const MINIMAP_WIDTH_PX = MINIMAP_METRICS.widthPx;
@@ -202,14 +202,10 @@ export interface StratMinimapElement extends HTMLElement {
   setUnits(units: readonly MinimapUnit[]): void;
   /** 视口矩形喂入口（世界坐标；null = 未知视口，不画框）。 */
   setViewport(rect: Bounds | null): void;
-  /** 折叠态。 */
-  readonly collapsed: boolean;
-  /** 手动切换折叠（写 localStorage 记忆）。 */
-  toggleCollapsed(): void;
   // —— 观察口（测试 / 调试断言用，不外泄渲染内部态）——
   readonly unitCount: number;
   readonly viewport: Bounds | null;
-  /** 重绘计数（测试断言「喂入必重绘」；不跨折叠 / 挂卸清零）。 */
+  /** 重绘计数（测试断言「喂入必重绘」；不跨挂卸清零）。 */
   readonly drawCount: number;
 }
 
@@ -226,7 +222,6 @@ export function defineStratMinimap(): typeof HTMLElement {
     private _ports: MinimapPorts | null = null;
     private _units: readonly MinimapUnit[] = [];
     private _viewport: Bounds | null = null;
-    private _collapsed = false;
     private _drawCount = 0;
     private _dragging = false;
     private _domBuilt = false;
@@ -234,8 +229,6 @@ export function defineStratMinimap(): typeof HTMLElement {
     // —— 属性面 ——
     get ports(): MinimapPorts | null { return this._ports; }
     set ports(value: MinimapPorts | null) { this._ports = value; }
-
-    get collapsed(): boolean { return this._collapsed; }
 
     get unitCount(): number { return this._units.length; }
     get viewport(): Bounds | null { return this._viewport; }
@@ -246,10 +239,8 @@ export function defineStratMinimap(): typeof HTMLElement {
         this._domBuilt = true;
         this.buildDom();
       }
-      // 折叠记忆（规格④）：挂载时现读 localStorage —— 无存储环境（隐私模式 / 部分 jsdom）
-      // 视为展开；读取失败（被禁）也回落展开，不绑架可用性（与 settings 屏同口径）。
-      this._collapsed = readCollapsed();
-      this.syncCollapsedDom();
+      // 固定展开（@since v3.5，task_098）：这里**不再读任何折叠记忆** ——
+      // 挂载即展开，唯一状态就是「展开」。
       this.draw();
     }
 
@@ -268,14 +259,8 @@ export function defineStratMinimap(): typeof HTMLElement {
       this.draw();
     }
 
-    toggleCollapsed(): void {
-      this._collapsed = !this._collapsed;
-      writeCollapsed(this._collapsed);
-      this.syncCollapsedDom();
-    }
-
     // ==========================================================================
-    // DOM 构建与同步
+    // DOM 构建
     // ==========================================================================
 
     private buildDom(): void {
@@ -306,58 +291,26 @@ export function defineStratMinimap(): typeof HTMLElement {
           .head {
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            gap: var(--srf-spacing-sm);
             padding: var(--srf-spacing-xs) var(--srf-spacing-sm);
             border-bottom: var(--srf-border-width) solid var(--srf-border);
           }
           .label { font-size: var(--srf-font-size-xs); color: var(--srf-text-muted); font-weight: var(--srf-font-weight-semibold); user-select: none; }
-          button {
-            all: unset;
-            cursor: pointer;
-            font-size: var(--srf-font-size-sm);
-            color: var(--srf-text-muted);
-            padding: var(--srf-spacing-xxs) var(--srf-spacing-xs);
-            border-radius: var(--srf-radius);
-            transition: color var(--srf-transition), background var(--srf-transition);
-          }
-          button:hover { color: var(--srf-text); background: var(--srf-panel-elevated); }
-          button:active { color: var(--srf-accent); }
-          button:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
           canvas { display: block; touch-action: none; }
-          :host([data-collapsed]) canvas { display: none; }
-          :host([data-collapsed]) .head { border-bottom: none; }
         </style>
         <div class="frame" part="frame">
           <div class="head">
             <span class="label">小地图</span>
-            <button type="button" data-role="toggle" aria-expanded="true" title="折叠 / 展开">▾</button>
           </div>
           <canvas data-role="canvas" width="${MINIMAP_WIDTH_PX}" height="${MINIMAP_HEIGHT_PX}"
                   role="img" aria-label="战场小地图"></canvas>
         </div>
       `;
 
-      this.shadowRoot
-        ?.querySelector('[data-role="toggle"]')
-        ?.addEventListener('click', () => this.toggleCollapsed());
-
       const canvas = this.canvas();
       canvas.addEventListener('pointerdown', (event) => this.onPointerDown(event));
       canvas.addEventListener('pointermove', (event) => this.onPointerMove(event));
       canvas.addEventListener('pointerup', () => this.endDrag());
       canvas.addEventListener('pointercancel', () => this.endDrag());
-    }
-
-    /** 折叠态同步到 DOM（属性选择器驱动 CSS，按钮文案 / aria 跟随）。 */
-    private syncCollapsedDom(): void {
-      if (this._collapsed) this.setAttribute('data-collapsed', '');
-      else this.removeAttribute('data-collapsed');
-      const toggle = this.shadowRoot?.querySelector<HTMLButtonElement>('[data-role="toggle"]');
-      if (toggle) {
-        toggle.textContent = this._collapsed ? '▸' : '▾';
-        toggle.setAttribute('aria-expanded', this._collapsed ? 'false' : 'true');
-      }
     }
 
     private canvas(): HTMLCanvasElement {
@@ -542,24 +495,8 @@ export function defineStratMinimap(): typeof HTMLElement {
 }
 
 // ============================================================================
-// 折叠记忆（localStorage 直写 —— 只在本机渲染进程生效，不进总线；同 settings 屏口径）
+// 挂载工厂
 // ============================================================================
-
-function readCollapsed(): boolean {
-  try {
-    return localStorage.getItem(MINIMAP_COLLAPSED_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
-function writeCollapsed(collapsed: boolean): void {
-  try {
-    localStorage.setItem(MINIMAP_COLLAPSED_KEY, collapsed ? '1' : '0');
-  } catch {
-    // 写不进就算了：下次读仍回落展开（默认展开，不绑架可用性）。
-  }
-}
 
 /**
  * 挂载工厂（仓库统一装配口径，与 mountToastHost 一致）：建元素、注入 ports、挂进容器。

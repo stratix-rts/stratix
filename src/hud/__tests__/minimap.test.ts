@@ -3,7 +3,8 @@
  * jsdom + canvas 2d 上下文 mock（jsdom 无 canvas 实现，stub 只记录绘制调用 —— 断言语义面：
  * 画了几个点 / 画没画视口框 / 光点按什么色上色）。
  * 覆盖：映射纯函数（世界↔画布往返 / letterbox / 钳制 / 坏尺寸回落）、点命中、
- * 点击/拖拽 → 命令分发（camera.center / unit.select）、折叠记忆（localStorage）、挂卸，
+ * 点击/拖拽 → 命令分发（camera.center / unit.select）、固定展开（v3.5：折叠钮 / 折叠记忆
+ * 全解除）、挂卸，
  * 以及 v3.3 的视觉面：岛屿轮廓 + 视野白框 + 外框 + MAP 角标 + 状态着色光点。
  * @jest-environment jsdom
  */
@@ -12,7 +13,6 @@ import {
   clampToCanvas,
   defineStratMinimap,
   hitTestUnit,
-  MINIMAP_COLLAPSED_KEY,
   MINIMAP_HEIGHT_PX,
   MINIMAP_TAG,
   MINIMAP_WIDTH_PX,
@@ -350,10 +350,10 @@ describe('组件：点击 / 拖拽 → 命令分发', () => {
 });
 
 // ============================================================================
-// 折叠记忆（localStorage）
+// 固定展开（@since v3.5，task_098）
 // ============================================================================
 
-describe('组件：折叠与记忆', () => {
+describe('组件：固定展开（一切折叠路径已解除）', () => {
   beforeEach(() => {
     document.body.innerHTML = '<div id="mm-host"></div>';
     try {
@@ -363,25 +363,33 @@ describe('组件：折叠与记忆', () => {
     }
   });
 
-  test('默认展开；点折叠钮 → 收起 + localStorage 记忆；再点 → 展开 + 记忆清除位', () => {
+  test('没有折叠钮：shadow 里不存在 toggle 按钮（唯一可点的只有画布）', () => {
     const { el } = host();
-    expect(el.collapsed).toBe(false);
-
-    el.shadowRoot?.querySelector<HTMLButtonElement>('[data-role="toggle"]')?.click();
-    expect(el.collapsed).toBe(true);
-    expect(localStorage.getItem(MINIMAP_COLLAPSED_KEY)).toBe('1');
-    expect(el.hasAttribute('data-collapsed')).toBe(true);
-
-    el.shadowRoot?.querySelector<HTMLButtonElement>('[data-role="toggle"]')?.click();
-    expect(el.collapsed).toBe(false);
-    expect(localStorage.getItem(MINIMAP_COLLAPSED_KEY)).toBe('0');
-    expect(el.hasAttribute('data-collapsed')).toBe(false);
+    expect(el.shadowRoot?.querySelector('[data-role="toggle"]')).toBeNull();
   });
 
-  test('重挂读取记忆：上次收起 → 新元素初始即收起', () => {
-    localStorage.setItem(MINIMAP_COLLAPSED_KEY, '1');
+  test('画布常驻：样式表里没有任何隐藏画布的规则（无折叠属性选择器 / display:none）', () => {
     const { el } = host();
-    expect(el.collapsed).toBe(true);
+    const css = el.shadowRoot?.querySelector('style')?.textContent ?? '';
+    expect(css).not.toContain('data-collapsed');
+    expect(css).not.toMatch(/display:\s*none/);
+    // 画布本身照常显示（展开态的实体）。
+    expect(css).toMatch(/canvas\s*\{[^}]*display:\s*block/);
+  });
+
+  test('遗留折叠记忆键不再生效：旧值 stratix.minimap.collapsed=1 也照常展开', () => {
+    localStorage.setItem('stratix.minimap.collapsed', '1');
+    const { el } = host();
+    expect(el.hasAttribute('data-collapsed')).toBe(false);
+    const canvas = el.shadowRoot?.querySelector('canvas');
+    expect(canvas).not.toBeNull();
+    expect(canvas?.getAttribute('width')).toBe(String(MINIMAP_WIDTH_PX));
+    expect(canvas?.getAttribute('height')).toBe(String(MINIMAP_HEIGHT_PX));
+  });
+
+  test('标题栏保留（「小地图」标签仍在，折叠钮已摘）', () => {
+    const { el } = host();
+    expect(el.shadowRoot?.querySelector('.label')?.textContent).toBe('小地图');
   });
 
   test('拖拽残留复位：拖拽中卸载 → 重挂不携带 _dragging（先卸载再重挂安全）', () => {

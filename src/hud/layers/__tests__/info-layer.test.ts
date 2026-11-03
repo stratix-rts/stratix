@@ -94,6 +94,18 @@ describe('hud/layers/info-layer：CSS 变量驱动的层级切换', () => {
     expect(css).toContain('[data-srf-layer="L2"]');
   });
 
+  test('小地图（L1）在 L3 期间只降对比、不收起（展开态不被禁 —— v3.5 / task_098）', () => {
+    const css = document.getElementById(INFO_LAYER_STYLE_ID)?.textContent ?? '';
+    // 小地图是 L1 件：L3 激活时走「L1 降对比」这条路，**不是** L2 的「收起」那条路。
+    expect(HUD_LAYER_REGIONS.L1).toContain('strat-minimap');
+    expect(HUD_LAYER_REGIONS.L2).not.toContain('strat-minimap');
+    // L1 规则块里只有 opacity / transition —— 没有 display:none、没有 visibility:hidden。
+    const l1Block = css.slice(css.indexOf('strat-minimap')).match(/^[\s\S]*?\}/)?.[0] ?? '';
+    expect(l1Block).toContain('opacity');
+    expect(l1Block).not.toContain('display');
+    expect(l1Block).not.toContain('visibility');
+  });
+
   test('初始态是 L1（对比不降、L2 不收起）', () => {
     expect(controller.current).toBe('L1');
     expect(readVar(INFO_LAYER_CSS_VARS.l1Opacity)).toBe('1');
