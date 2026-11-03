@@ -5,6 +5,11 @@
  *   屏位路由（@since v3.6）：依据 WorldState.currentScreen 切换 main / settings / character
  *   三屏之一的渲染；status-screen 不占独立屏位，仍以"主屏浮动区块"形态挂载，
  *   跳转出去走 ui.navigate，落到 store.currentScreen 后由本屏切换渲染。
+ *   顶栏形态（@since v3.4，task_089；docs/hud-redesign-proposal.html §2.5 Z1 规格）：
+ *     19 个元素 → **7 个元素封顶** = 品牌 + 态势胶囊（单位/任务/会话三值合一）+ 通知徽标
+ *     + 🔊 声音（音量滑条收进它的弹出层）+ 🎬 导演 + ▶ 演示 + ⋯ 溢出菜单（收纳 5 项低频操作：
+ *     聊天 / 会话 / 角色 / 设置 / 像素风）。三个 on/off 文本标签（theme/demo/director-tag）删除 ——
+ *     **开关点亮即状态**，不再有第二份文本（§4 A13）。
  *   布局形态（@since v3.7，task_020）：**RTS 悬浮布局** —— 战场占满视口，HUD 环绕四周悬浮
  *   （顶栏态势摘要 / 左单位竖栏 / 右态势总览+日志抽屉 / 底命令横条），子屏与抽屉覆盖在最上层。
  *   交互铁律：除 HUD 实体面板外，空白区域的 pointer-events 必须穿透到 Phaser 画布
@@ -55,6 +60,8 @@ import {
 } from '../sound-engine';
 import { demoMode } from '../theme/demo-mode';
 import { defineStratButton, STRAT_BUTTON_TAG } from '../widgets/strat-button';
+// 顶栏度量（@since v3.4，task_089）：Z1 的高度与「7 元素封顶」口径 —— 数字取自唯一事实源。
+import { TOPBAR_METRICS } from '../../core/theme/visual-spec';
 
 import { mountCharacterScreen } from './character-screen';
 import type { AppearancePreviewPort } from './appearance-preview-port';
@@ -89,7 +96,7 @@ const MAIN_SCREEN_STYLE = `
     overflow: auto;
     pointer-events: none;
     container-type: size;
-    --hud-topbar-h: 48px;
+    --hud-topbar-h: ${TOPBAR_METRICS.heightPx}px;
     --hud-bottom-h: min(34cqh, 300px);
     --hud-gap: var(--srf-spacing-md);
     color: var(--srf-text);
@@ -124,10 +131,34 @@ const MAIN_SCREEN_STYLE = `
     pointer-events: auto;
   }
   .hud-brand { font-size: var(--srf-font-size-lg); font-weight: var(--srf-font-weight-bold); letter-spacing: 0.04em; white-space: nowrap; }
-  .hud-stats { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--srf-spacing-lg); flex: 1 1 auto; min-width: 0; }
-  .hud-stat { display: flex; align-items: baseline; gap: var(--srf-spacing-xs); color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); white-space: nowrap; }
-  .hud-stat-value { color: var(--srf-text); font-size: var(--srf-font-size-md); font-weight: var(--srf-font-weight-semibold); font-variant-numeric: tabular-nums; }
-  .hud-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--srf-spacing-sm); }
+  /* 态势胶囊（@since v3.4，task_089）：单位 / 任务 / 会话三值合一 —— Z1 只占一个元素位。 */
+  .hud-capsule {
+    display: flex;
+    align-items: center;
+    gap: var(--srf-spacing-xs);
+    padding: var(--srf-spacing-xxs) var(--srf-spacing-sm);
+    border-radius: var(--srf-radius-pill);
+    border: var(--srf-border-width) solid var(--srf-border);
+    background: var(--srf-panel);
+    color: var(--srf-text-muted);
+    font-size: var(--srf-font-size-xs);
+    white-space: nowrap;
+  }
+  .hud-capsule-item { display: inline-flex; align-items: baseline; gap: var(--srf-spacing-xxs); }
+  .hud-capsule-value {
+    color: var(--srf-text);
+    font-size: var(--srf-font-size-sm);
+    font-weight: var(--srf-font-weight-semibold);
+    font-variant-numeric: tabular-nums;
+  }
+  .hud-actions {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--srf-spacing-sm);
+    margin-left: auto;
+  }
   .hud-notice-badge {
     min-width: 18px;
     height: 18px;
@@ -142,8 +173,39 @@ const MAIN_SCREEN_STYLE = `
     text-align: center;
   }
   .hud-notice-badge[hidden] { display: none; }
-  .hud-theme-tag { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); white-space: nowrap; }
-  /* 音量滑条（@since v3.3，task_083）：顶栏里的声音包音量（0-100）—— 直播时一眼能调。 */
+  /* 弹出层（@since v3.4，task_089）：音量层 + ⋯ 溢出菜单共用一套外观；默认 hidden（不占顶栏宽度）。 */
+  .hud-popover {
+    position: absolute;
+    top: calc(100% + var(--srf-spacing-xs));
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    gap: var(--srf-spacing-xs);
+    padding: var(--srf-spacing-xs) var(--srf-spacing-sm);
+    border-radius: var(--srf-radius);
+    border: var(--srf-border-width) solid var(--srf-border-strong);
+    background: var(--srf-panel-elevated);
+    box-shadow: var(--srf-shadow);
+    pointer-events: auto;
+  }
+  .hud-popover[hidden] { display: none; }
+  .hud-menu { right: 0; flex-direction: column; align-items: stretch; }
+  .hud-popover-value { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); font-variant-numeric: tabular-nums; }
+  /* 声音件（@since v3.4，task_089）：🔊 开关 + 音量计（音量层的入口，见 §4 A7/A8）。 */
+  .hud-sound-slot { position: relative; display: flex; align-items: center; gap: var(--srf-spacing-xxs); }
+  .hud-sound-popover { left: 0; }
+  .hud-sound-level {
+    width: 20px;
+    height: 6px;
+    padding: 0;
+    border-radius: var(--srf-radius-pill);
+    border: var(--srf-border-width) solid var(--srf-border);
+    background: var(--srf-panel);
+    cursor: pointer;
+    overflow: hidden;
+  }
+  .hud-sound-level-fill { display: block; height: 100%; width: 0%; background: var(--srf-accent); }
+  /* 音量滑条（@since v3.3，task_083；@since v3.4 task_089 收进 🔊 弹出层）：0-100。 */
   .hud-volume {
     width: 84px;
     accent-color: var(--srf-accent);
@@ -231,6 +293,48 @@ const MAIN_SCREEN_STYLE = `
 export const MAIN_SCREEN_TAG = 'strat-main-screen';
 
 /**
+ * 顶栏可见元素位（@since v3.4，task_089；docs/hud-redesign-proposal.html §2.5 Z1 规格）。
+ *
+ * why 是一张显式清单而不是「数 DOM 节点」：验收口径是「顶栏可见元素 ≤7」，
+ *   而顶栏内部本来就有子节点（胶囊里 3 个计数、弹出层里的 5 个菜单项）—— 不先定义
+ *   「一个元素位 = 一个可见件」，这个数字就没法数、也没法回归。
+ *   渲染时每个元素位都打 `data-topbar-item="<位名>"`，单测按这张清单逐位核对。
+ *
+ * 7 位（= Z1 规格封顶）：
+ *   brand    品牌标识（§4 A1）
+ *   capsule  态势胶囊：单位 / 任务 / 会话三值合一（§4 A2）
+ *   badge    通知徽标（§4 A3，贴在胶囊右侧）
+ *   sound    🔊 声音（音量滑条收进它的弹出层，§4 A7 / A8）
+ *   director 🎬 导演（§4 A6）
+ *   demo     ▶ 演示（§4 A5）
+ *   overflow ⋯ 溢出菜单（收纳 5 项，§4 A4 / A9 / A10 / A11 / A12）
+ */
+export const TOPBAR_ITEM_ROLES = Object.freeze([
+  'brand',
+  'capsule',
+  'badge',
+  'sound',
+  'director',
+  'demo',
+  'overflow',
+] as const);
+
+/** 顶栏元素位名（TOPBAR_ITEM_ROLES 的元素类型）。 */
+export type TopbarItemRole = (typeof TOPBAR_ITEM_ROLES)[number];
+
+/**
+ * ⋯ 溢出菜单收纳的 5 项（@since v3.4，task_089；§4 功能对照表 A4 / A9 / A10 / A11 / A12）。
+ *   why 是一张清单：功能零删减是本任务的硬验收（40/40），清单让"哪 5 项"可核对、可回归。
+ */
+export const TOPBAR_OVERFLOW_ROLES = Object.freeze([
+  'chat',
+  'sessions',
+  'character',
+  'settings',
+  'theme',
+] as const);
+
+/**
  * 回放条槽位（@since v3.3，task_082）—— 本屏只认「一个控制器」，不认数据源。
  * controller = null → 挂空条（显示「今天还没有任务记录」，不显示假时间轴）。
  */
@@ -312,32 +416,44 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       // 声音包开关与音量（@since v3.3，task_083）：状态真源是 localStorage
       //   （hud/sound-engine.ts 每次播放现读）—— 顶栏只做读写与回显，不存第二份真相。
       const soundVolume = readSoundVolume();
+      // 皮肤开关的显示名（@since v3.4，task_089）：像素风收进 ⋯ 菜单后，菜单项自带当前皮肤名 ——
+      //   不再另挂一个 theme-tag 文本（§4 A13：状态不写第二遍）。
+      const themeLabel = currentTheme === 'pixel' ? '像素' : '默认';
       host.innerHTML = `
       <style>${MAIN_SCREEN_STYLE}</style>
       <div class="hud-root" part="root">
         <header class="hud-topbar" data-role="topbar">
-          <span class="hud-brand">Stratix</span>
-          <div class="hud-stats" data-role="stats">
-            <span class="hud-stat">单位 <b class="hud-stat-value" data-role="unit-count">0</b></span>
-            <span class="hud-stat">任务 <b class="hud-stat-value" data-role="mission-count">0</b></span>
-            <span class="hud-stat">会话 <b class="hud-stat-value" data-role="link-count">0</b></span>
+          <span class="hud-brand" data-topbar-item="brand">Stratix</span>
+          <div class="hud-capsule" data-topbar-item="capsule" data-role="status-capsule" title="单位 / 任务 / 会话">
+            <span class="hud-capsule-item"><b class="hud-capsule-value" data-role="mission-count">0</b> 任务</span>
+            <span class="hud-capsule-item"><b class="hud-capsule-value" data-role="unit-count">0</b> 单位</span>
+            <span class="hud-capsule-item"><b class="hud-capsule-value" data-role="link-count">0</b> 会话</span>
           </div>
+          <span class="hud-notice-badge" data-topbar-item="badge" data-role="notice-badge" hidden title="待处理通知">0</span>
           <div class="hud-actions">
-            <span class="hud-notice-badge" data-role="notice-badge" hidden title="待处理通知">0</span>
-            <${STRAT_BUTTON_TAG} label="切换像素风" variant="default" data-role="theme"></${STRAT_BUTTON_TAG}>
-            <${STRAT_BUTTON_TAG} label="演示" variant="default" data-role="demo"></${STRAT_BUTTON_TAG}>
-            <${STRAT_BUTTON_TAG} label="🎬 导演" variant="default" data-role="director"></${STRAT_BUTTON_TAG}>
-            <${STRAT_BUTTON_TAG} label="🔊 声音" variant="default" data-role="sound"></${STRAT_BUTTON_TAG}>
-            <input class="hud-volume" type="range" min="0" max="100" step="5"
-                   value="${soundVolume}" data-role="sound-volume"
-                   aria-label="音效音量" title="音量 ${soundVolume}%">
-            <${STRAT_BUTTON_TAG} label="打开聊天" variant="default" data-role="chat"></${STRAT_BUTTON_TAG}>
-            <${STRAT_BUTTON_TAG} label="会话面板" variant="default" data-role="sessions"></${STRAT_BUTTON_TAG}>
-            <${STRAT_BUTTON_TAG} label="看角色" variant="default" data-role="character"></${STRAT_BUTTON_TAG}>
-            <${STRAT_BUTTON_TAG} label="去设置" variant="primary" data-role="settings"></${STRAT_BUTTON_TAG}>
-            <span class="hud-theme-tag" data-role="theme-tag">default</span>
-            <span class="hud-theme-tag" data-role="demo-tag">off</span>
-            <span class="hud-theme-tag" data-role="director-tag">off</span>
+            <div class="hud-sound-slot" data-topbar-item="sound" data-role="sound-slot">
+              <${STRAT_BUTTON_TAG} label="🔊" variant="default" title="声音开关" aria-label="声音开关" data-role="sound"></${STRAT_BUTTON_TAG}>
+              <button class="hud-sound-level" type="button" data-role="sound-volume-open"
+                      title="音量（点击调节）" aria-label="音量">
+                <span class="hud-sound-level-fill" data-role="sound-level-fill"></span>
+              </button>
+              <div class="hud-popover hud-sound-popover" data-role="sound-popover" hidden>
+                <input class="hud-volume" type="range" min="0" max="100" step="5"
+                       value="${soundVolume}" data-role="sound-volume"
+                       aria-label="音效音量" title="音量 ${soundVolume}%">
+                <span class="hud-popover-value" data-role="sound-volume-value">${soundVolume}%</span>
+              </div>
+            </div>
+            <${STRAT_BUTTON_TAG} label="🎬" variant="default" title="导演镜头" aria-label="导演镜头" data-topbar-item="director" data-role="director"></${STRAT_BUTTON_TAG}>
+            <${STRAT_BUTTON_TAG} label="▶" variant="default" title="演示模式" aria-label="演示模式" data-topbar-item="demo" data-role="demo"></${STRAT_BUTTON_TAG}>
+            <${STRAT_BUTTON_TAG} label="⋯" variant="default" title="更多" aria-label="更多" data-topbar-item="overflow" data-role="overflow"></${STRAT_BUTTON_TAG}>
+            <div class="hud-popover hud-menu" data-role="overflow-menu" hidden>
+              <${STRAT_BUTTON_TAG} label="打开聊天" variant="default" data-role="chat"></${STRAT_BUTTON_TAG}>
+              <${STRAT_BUTTON_TAG} label="会话面板" variant="default" data-role="sessions"></${STRAT_BUTTON_TAG}>
+              <${STRAT_BUTTON_TAG} label="看角色" variant="default" data-role="character"></${STRAT_BUTTON_TAG}>
+              <${STRAT_BUTTON_TAG} label="去设置" variant="default" data-role="settings"></${STRAT_BUTTON_TAG}>
+              <${STRAT_BUTTON_TAG} label="像素风 · ${themeLabel}" variant="default" title="切换像素风" aria-label="切换像素风" aria-pressed="${currentTheme === 'pixel' ? 'true' : 'false'}" data-role="theme"></${STRAT_BUTTON_TAG}>
+            </div>
           </div>
         </header>
         <div class="hud-rail-left hud-surface" data-role="agent-panel"></div>
@@ -359,35 +475,88 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       const linkCounter = host.querySelector('[data-role="link-count"]');
       const noticeBadge = host.querySelector<HTMLElement>('[data-role="notice-badge"]');
 
-      const demoTag = host.querySelector('[data-role="demo-tag"]');
-      if (demoTag) demoTag.textContent = demoMode.enabled ? 'on' : 'off';
-      // 导演开关（@since v3.3，task_081）：按钮与状态标签都读 core 广播的同一份真相
+      /**
+       * 开关态回显（@since v3.4，task_089）：**点亮即状态** —— 顶栏不再挂 on/off 文本标签
+       *   （§4 A13：那是"把开关状态用文字再写一遍"）。视觉用 variant（primary = 亮），
+       *   可访问用 aria-pressed（读屏能听出"开/关"）。
+       */
+      const applySwitchState = (el: HTMLElement | null, on: boolean): void => {
+        if (!el) return;
+        el.setAttribute('variant', on ? 'primary' : 'default');
+        el.setAttribute('aria-pressed', on ? 'true' : 'false');
+      };
+
+      // 导演开关（@since v3.3，task_081）：按钮读 core 广播的同一份真相
       //   （WorldState.directorEnabled）—— HUD 不自己存一份「导演开着吗」。
-      const directorTag = host.querySelector('[data-role="director-tag"]');
-      const directorButton = host.querySelector('[data-role="director"]');
-      const directorEnabled = adapter.latest?.directorEnabled === true;
-      if (directorTag) directorTag.textContent = directorEnabled ? 'on' : 'off';
-      if (directorButton) directorButton.setAttribute('variant', directorEnabled ? 'primary' : 'default');
+      const directorButton = host.querySelector<HTMLElement>('[data-role="director"]');
+      applySwitchState(directorButton, adapter.latest?.directorEnabled === true);
+
+      // 演示开关（@since v3.3，task_110）：本地展示态（demo-mode 是唯一真相源）。
+      const demoButton = host.querySelector<HTMLElement>('[data-role="demo"]');
+      applySwitchState(demoButton, demoMode.enabled);
 
       // 声音包开关与音量（@since v3.3，task_083）：纯本地展示态 —— 不发 HudCommand、
       //   不进总线（与演示模式同一口径：音效不进 WorldState）。真源是 localStorage，
       //   声音引擎每次播放现读 → 这里改完立即生效，不留第二份真相。
-      const soundButton = host.querySelector('[data-role="sound"]');
+      const soundButton = host.querySelector<HTMLElement>('[data-role="sound"]');
       const volumeInput = host.querySelector<HTMLInputElement>('[data-role="sound-volume"]');
-      /** 把当前开关 / 音量状态回显到顶栏（按钮点亮 + 滑条可用性）。 */
+      const volumeValue = host.querySelector<HTMLElement>('[data-role="sound-volume-value"]');
+      const levelFill = host.querySelector<HTMLElement>('[data-role="sound-level-fill"]');
+      const soundPopover = host.querySelector<HTMLElement>('[data-role="sound-popover"]');
+      /** 把当前开关 / 音量状态回显到顶栏（按钮点亮 + 滑条可用性 + 音量计 + 数值）。 */
       const applySoundState = (): void => {
         const enabled = readSoundEnabled();
-        if (soundButton) soundButton.setAttribute('variant', enabled ? 'primary' : 'default');
+        applySwitchState(soundButton, enabled);
         if (volumeInput) volumeInput.disabled = !enabled;
+        const volume = readSoundVolume();
+        if (levelFill) levelFill.style.width = `${volume}%`;
+        if (volumeValue) volumeValue.textContent = `${volume}%`;
       };
       applySoundState();
+
+      // ── 弹出层开合（@since v3.4，task_089）────────────────────────────────
+      //   两个弹层：🔊 音量层（§4 A8）与 ⋯ 溢出菜单（§4 A4/A9/A10/A11/A12）。
+      //   why 不用 <details>：弹层要能被「点外面关掉 / Esc 关掉」，且开合态要在 DOM 上可断言。
+      const overflowMenu = host.querySelector<HTMLElement>('[data-role="overflow-menu"]');
+      const setPopover = (el: HTMLElement | null, open: boolean): void => {
+        if (!el) return;
+        el.hidden = !open;
+      };
+      const closePopovers = (): void => {
+        setPopover(overflowMenu, false);
+        setPopover(soundPopover, false);
+      };
+      // 点顶栏以外 → 弹层收起（顶栏内部的开合由顶栏自己管）。
+      // why 挂 document 而不是 host：顶栏是浮层，点空白（战场画布）也得能收起它。
+      const onDocumentClick = (e: Event): void => {
+        const target = e.target as HTMLElement | null;
+        // closest?.：target 未必是 Element（点 document 本身时就是）—— 别在这儿抛。
+        if (!target?.closest?.('.hud-topbar')) closePopovers();
+      };
+      // Esc → 收起（键盘可达：图标开关也得能用键盘操作）。
+      const onDocumentKeydown = (e: KeyboardEvent): void => {
+        if (e.key === 'Escape') closePopovers();
+      };
+      document.addEventListener('click', onDocumentClick);
+      document.addEventListener('keydown', onDocumentKeydown);
+
+      // 音量层的入口 = 声音件里的音量计（§4 A7：「点击旁边的音量区 = 弹出音量层」）。
+      const volumeOpenButton = host.querySelector<HTMLElement>('[data-role="sound-volume-open"]');
+      const onVolumeOpenClick = (): void => {
+        setPopover(soundPopover, true);
+      };
+      volumeOpenButton?.addEventListener('click', onVolumeOpenClick);
 
       const onThemeClick = (): void => {
         const next = currentTheme === 'default' ? 'pixel' : 'default';
         currentTheme = next;
         adapter.dispatch({ type: 'theme.set', themeId: next });
-        const tag = host.querySelector('[data-role="theme-tag"]');
-        if (tag) tag.textContent = next;
+        // 菜单项自带当前皮肤名（@since v3.4，task_089）—— 不再另挂 theme-tag 文本。
+        const themeButton = host.querySelector<HTMLElement>('[data-role="theme"]');
+        if (themeButton) {
+          themeButton.setAttribute('label', `像素风 · ${next === 'pixel' ? '像素' : '默认'}`);
+          themeButton.setAttribute('aria-pressed', next === 'pixel' ? 'true' : 'false');
+        }
       };
       const onDemoClick = (): void => {
         // 演示模式是纯本地展示态：不发 HudCommand、不进总线（见 demo-mode.ts 文件头）。
@@ -416,6 +585,9 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         if (!Number.isFinite(value)) return;
         writeSoundVolume(value);
         volumeInput.title = `音量 ${value}%`;
+        // 音量计与数值同步（@since v3.4，task_089）：拖条时顶栏立刻看出音量到哪了。
+        if (levelFill) levelFill.style.width = `${value}%`;
+        if (volumeValue) volumeValue.textContent = `${value}%`;
       };
       volumeInput?.addEventListener('input', onVolumeInput);
       const onSettingsClick = (): void => {
@@ -443,16 +615,28 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         sessionPanelEl?.toggleCollapsed();
       };
 
+      /**
+       * ⋯ 溢出菜单开合（@since v3.4，task_089）：收纳 5 项低频操作
+       *   （聊天 / 会话 / 角色 / 设置 / 像素风 —— §4 A4 / A9 / A10 / A11 / A12，功能零删减）。
+       *   开菜单时顺手收起音量层：两个弹层不叠着（省一层视觉噪音）。
+       */
+      const onOverflowClick = (): void => {
+        const nextOpen = overflowMenu?.hidden ?? true;
+        setPopover(overflowMenu, nextOpen);
+        setPopover(soundPopover, false);
+      };
+
       const themeHandler = (e: Event): void => {
         const target = e.target as HTMLElement | null;
-        if (target?.closest('[data-role="theme"]')) onThemeClick();
+        if (target?.closest('[data-role="overflow"]')) onOverflowClick();
+        else if (target?.closest('[data-role="theme"]')) { onThemeClick(); closePopovers(); }
         else if (target?.closest('[data-role="demo"]')) onDemoClick();
         else if (target?.closest('[data-role="director"]')) onDirectorClick();
         else if (target?.closest('[data-role="sound"]')) onSoundClick();
-        else if (target?.closest('[data-role="chat"]')) onChatClick();
-        else if (target?.closest('[data-role="sessions"]')) onSessionsClick();
-        else if (target?.closest('[data-role="character"]')) onCharacterClick();
-        else if (target?.closest('[data-role="settings"]')) onSettingsClick();
+        else if (target?.closest('[data-role="chat"]')) { onChatClick(); closePopovers(); }
+        else if (target?.closest('[data-role="sessions"]')) { onSessionsClick(); closePopovers(); }
+        else if (target?.closest('[data-role="character"]')) { onCharacterClick(); closePopovers(); }
+        else if (target?.closest('[data-role="settings"]')) { onSettingsClick(); closePopovers(); }
       };
       host.addEventListener('strat-button-click', themeHandler);
 
@@ -522,11 +706,9 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
           noticeBadge.textContent = String(pending);
           noticeBadge.hidden = pending === 0;
         }
-        // 导演开关回显（task_081）：按钮点亮 / 标签 on-off 都跟 core 广播的同一份真相走。
-        if (directorTag) directorTag.textContent = state.directorEnabled ? 'on' : 'off';
-        if (directorButton) {
-          directorButton.setAttribute('variant', state.directorEnabled ? 'primary' : 'default');
-        }
+        // 导演开关回显（task_081 / task_089）：点亮即状态 —— 读 core 广播的同一份真相，
+        //   不再另写一份 on/off 文本。
+        applySwitchState(directorButton, state.directorEnabled === true);
       });
 
       // 工程件过滤（骨架机制）：标了 data-engineering 的节点在演示模式下隐藏。
@@ -547,6 +729,11 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         // 音量滑条的 input 监听（task_083）：随本屏布局一起拆（滑条节点本也会被丢弃，
         //   但显式摘掉更符合本文件的卸载纪律）。
         volumeInput?.removeEventListener('input', onVolumeInput);
+        // 音量层入口的 click 监听（task_089）+ document 上的「点外面关 / Esc 关」监听：
+        //   同样随本屏布局一起摘 —— 监听器留在 document 上就是泄漏（perf 铁律）。
+        volumeOpenButton?.removeEventListener('click', onVolumeOpenClick);
+        document.removeEventListener('click', onDocumentClick);
+        document.removeEventListener('keydown', onDocumentKeydown);
         host.removeEventListener('strat-button-click', themeHandler);
         // 这里不置空 host.innerHTML —— renderMain 自身会立刻重写。
       };

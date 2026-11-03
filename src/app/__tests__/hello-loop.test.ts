@@ -163,12 +163,16 @@ function clickPanelButton(host: HTMLElement, unitId: string, mode: 'set' | 'togg
   (inner as HTMLButtonElement).click();
 }
 
-/** 点 main-screen 顶栏的第 index 个 strat-button（0=切皮肤，1=去设置）。 */
-function clickScreenButton(host: HTMLElement, index: number): void {
-  const btn = host.querySelectorAll<HTMLElement>(STRAT_BUTTON_TAG).item(index);
-  if (!btn) throw new Error(`main-screen 第 ${index} 个按钮不存在`);
+/**
+ * 点 main-screen 顶栏里某个 data-role 的 strat-button。
+ * why 按 role 而不是按下标（@since v3.4，task_089）：顶栏瘦身后按钮数量变了
+ *   （像素风收进 ⋯ 溢出菜单），按下标会指错人 —— role 才是稳定的身份。
+ */
+function clickScreenRole(host: HTMLElement, role: string): void {
+  const btn = host.querySelector<HTMLElement>(`${STRAT_BUTTON_TAG}[data-role="${role}"]`);
+  if (!btn) throw new Error(`main-screen 没有 data-role="${role}" 的按钮`);
   const inner = btn.shadowRoot?.querySelector('button');
-  if (!inner) throw new Error(`main-screen 第 ${index} 个 strat-button 未 upgrade`);
+  if (!inner) throw new Error(`main-screen 的 ${role} 按钮未 upgrade`);
   (inner as HTMLButtonElement).click();
 }
 
@@ -314,10 +318,12 @@ describe('尚未落地的命令：走对上总线，不静默吞掉', () => {
     const app = bootApp();
     apps.push(app);
 
-    clickScreenButton(app.screenHost, 0); // 顶栏「切换像素风」
+    clickScreenRole(app.screenHost, 'theme'); // ⋯ 溢出菜单里的「切换像素风」
 
     expect(app.screen.currentThemeId).toBe('pixel');
-    expect(app.screenHost.querySelector('[data-role="theme-tag"]')?.textContent).toBe('pixel');
+    // 状态不再由第二份文本标签承载（@since v3.4，task_089）：菜单项自带当前皮肤名。
+    expect(app.screenHost.querySelector('[data-role="theme-tag"]')).toBeNull();
+    expect(app.screenHost.querySelector('[data-role="theme"]')?.getAttribute('label')).toContain('像素');
     expect(document.getElementById('srf-theme-pixel')?.hasAttribute('disabled')).toBe(false);
     expect(app.unhandled).toContainEqual({ channel: 'command', type: 'theme.set' });
   });

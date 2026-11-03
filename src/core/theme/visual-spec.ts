@@ -4,6 +4,7 @@
  * 输入：无（纯静态常量；零 IO、零 DOM、零 import）。
  * 输出：VISUAL_PALETTE（色值）/ VISUAL_METRICS（尺寸·时长·easing）/ UNIT_ANIMATION_METRICS（单位动画八态度量）
  *      / DEMO_MODE（演示模式参数）/ HUD_LAYER_METRICS（信息三层级的对比口径）
+ *      / TOPBAR_METRICS（顶栏 Z1 的高度与元素封顶口径）
  *      / PALETTE_CSS_VARS（语义色 → CSS 变量名的映射）/ hexToNumber（色值换算）
  *      / blendOver（前景按 alpha 叠背景）/ contrastRatio（WCAG 对比度）。
  * 禁止事项：
@@ -155,6 +156,22 @@ export const HUD_LAYER_METRICS = Object.freeze({
   l2DimOpacity: 0,
   /** 层级切换的过渡时长（ms）—— 只动 opacity / visibility，不触发布局重排。 */
   transitionMs: 200,
+});
+
+/**
+ * 顶栏（Z1）的度量（@since v3.4，task_089；docs/hud-redesign-proposal.html §2.5 分区规格表 Z1 行）。
+ *
+ * why 落在唯一事实源：Z1 的三个数字（高 40px / 可见元素封顶 7 个 / ⋯ 收纳 5 项）是**验收数字** ——
+ *   HUD 侧按它写样式与结构，单测按它断言，评审按它核对；抄成两份必然对不上。
+ *   「7 元素」的计数口径见 hud/screens/main-screen.ts 的 TOPBAR_ITEM_ROLES（一个元素位 = 一个可见件）。
+ */
+export const TOPBAR_METRICS = Object.freeze({
+  /** 顶栏高度（px）—— Z1 规格「顶 0，全宽，高 40px」。 */
+  heightPx: 40,
+  /** 顶栏可见元素上限（个）—— Z1 规格「7 元素封顶」。 */
+  maxVisibleItems: 7,
+  /** ⋯ 溢出菜单收纳项数（个）—— Z1 规格「⋯ 收纳 5 项」（§4 的 A4 / A9 / A10 / A11 / A12）。 */
+  overflowItemCount: 5,
 });
 
 /** 尺寸 / 时长 / easing 规范（DEMO-PLAN §1「尺寸/时长规范」）。 */

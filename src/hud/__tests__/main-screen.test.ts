@@ -13,12 +13,17 @@
 
 import { createStore } from '../../core/store';
 import type { HudCommand, ScreenId, UnitView, WorldState } from '../../core/types';
+import { TOPBAR_METRICS } from '../../core/theme/visual-spec';
 import { createHudBusAdapter, type HudBusAdapter } from '../bridge/bus-adapter';
 import type { ThemeController, ThemeId } from '../theme/theme-controller';
 
 import { LOG_DRAWER_TAG } from '../panels/log-drawer';
 import { CHARACTER_SCREEN_TAG } from '../screens/character-screen';
-import { createMainScreen } from '../screens/main-screen';
+import {
+  createMainScreen,
+  TOPBAR_ITEM_ROLES,
+  TOPBAR_OVERFLOW_ROLES,
+} from '../screens/main-screen';
 import { demoMode } from '../theme/demo-mode';
 import { SETTINGS_SCREEN_TAG } from '../screens/settings-screen';
 import { STATUS_SCREEN_TAG } from '../screens/status-screen';
@@ -390,20 +395,24 @@ describe('演示模式：顶栏开关', () => {
     demoMode.set(false);
   });
 
-  test('默认关：日志抽屉（工程件）在位，顶栏标签是 off', () => {
+  test('默认关：日志抽屉（工程件）在位，演示开关未点亮', () => {
     const h = mountHarness(makeState());
     expect(h.host.querySelector(LOG_DRAWER_TAG)).not.toBeNull();
-    expect(h.host.querySelector('[data-role="demo-tag"]')?.textContent).toBe('off');
+    const btn = h.host.querySelector('[data-role="demo"]');
+    expect(btn?.getAttribute('variant')).toBe('default');
+    expect(btn?.getAttribute('aria-pressed')).toBe('false');
     h.unmount();
   });
 
-  test('点开演示：日志抽屉隐藏、顶栏标签转 on、html 上打标记', () => {
+  test('点开演示：日志抽屉隐藏、开关点亮、html 上打标记', () => {
     const h = mountHarness(makeState());
     h.host.querySelector<HTMLElement>('[data-role="demo"]')
       ?.dispatchEvent(new CustomEvent('strat-button-click', { bubbles: true }));
 
     expect(h.host.querySelector(LOG_DRAWER_TAG)).toBeNull();
-    expect(h.host.querySelector('[data-role="demo-tag"]')?.textContent).toBe('on');
+    const btn = h.host.querySelector('[data-role="demo"]');
+    expect(btn?.getAttribute('variant')).toBe('primary');
+    expect(btn?.getAttribute('aria-pressed')).toBe('true');
     expect(document.documentElement.getAttribute('data-demo-mode')).toBe('on');
     h.unmount();
   });
@@ -416,7 +425,7 @@ describe('演示模式：顶栏开关', () => {
     h.unmount();
   });
 
-  test('再点一次关掉：工程件回到画面上', () => {
+  test('再点一次关掉：工程件回到画面上、开关熄灭', () => {
     const h = mountHarness(makeState());
     const demoBtn = (): void => {
       h.host.querySelector<HTMLElement>('[data-role="demo"]')
@@ -425,7 +434,7 @@ describe('演示模式：顶栏开关', () => {
     demoBtn();
     demoBtn();
     expect(h.host.querySelector(LOG_DRAWER_TAG)).not.toBeNull();
-    expect(h.host.querySelector('[data-role="demo-tag"]')?.textContent).toBe('off');
+    expect(h.host.querySelector('[data-role="demo"]')?.getAttribute('variant')).toBe('default');
     h.unmount();
   });
 });
@@ -468,6 +477,134 @@ describe('声音包：顶栏总开关与音量', () => {
     slider.value = '35';
     slider.dispatchEvent(new Event('input', { bubbles: true }));
     expect(window.localStorage.getItem('stratix.sound.volume')).toBe('35');
+    h.unmount();
+  });
+
+  test('音量滑条收进 🔊 弹出层：默认收起，点音量计才展开', () => {
+    const h = mountHarness(makeState());
+    const popover = h.host.querySelector<HTMLElement>('[data-role="sound-popover"]');
+    expect(popover?.hidden).toBe(true);
+
+    // 音量计（声音件里的音量区）点击 → 弹出层展开，滑条 therein 可调。
+    h.host.querySelector<HTMLElement>('[data-role="sound-volume-open"]')?.click();
+    expect(h.host.querySelector<HTMLElement>('[data-role="sound-popover"]')?.hidden).toBe(false);
+
+    const slider = h.host.querySelector<HTMLInputElement>('[data-role="sound-volume"]');
+    expect(slider).not.toBeNull();
+    slider!.value = '42';
+    slider!.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(window.localStorage.getItem('stratix.sound.volume')).toBe('42');
+    h.unmount();
+  });
+
+  test('🔊 开关只切静音，不改音量（音量归弹出层）', () => {
+    const h = mountHarness(makeState());
+    h.host.querySelector<HTMLElement>('[data-role="sound"]')
+      ?.dispatchEvent(new CustomEvent('strat-button-click', { bubbles: true }));
+    expect(window.localStorage.getItem('stratix.sound.enabled')).toBe('0');
+    h.unmount();
+  });
+});
+
+// ============================================================================
+// 9. Z1 顶栏瘦身（@since v3.4，task_089；docs/hud-redesign-proposal.html §2.5 / §4）
+//   验收：顶栏可见元素 ≤7 / 音量在 🔊 弹层可调 / ⋯ 收纳 5 项全部可达 /
+//        开关点亮即状态（无重复文本）。
+// ============================================================================
+
+describe('Z1 顶栏瘦身：19 元素降 7', () => {
+  afterEach(() => {
+    window.localStorage.clear();
+    demoMode.set(false);
+  });
+
+  test('顶栏可见元素 ≤7，且与 TOPBAR_ITEM_ROLES 逐位对上', () => {
+    const h = mountHarness(makeState());
+    const topbar = h.host.querySelector<HTMLElement>('.hud-topbar');
+    expect(topbar).not.toBeNull();
+
+    const items = Array.from(topbar!.querySelectorAll<HTMLElement>('[data-topbar-item]'));
+    expect(items.length).toBeLessThanOrEqual(TOPBAR_METRICS.maxVisibleItems);
+    expect(items.map((el) => el.getAttribute('data-topbar-item'))).toEqual([...TOPBAR_ITEM_ROLES]);
+    h.unmount();
+  });
+
+  test('三个 on/off 文本标签已删除（theme-tag / demo-tag / director-tag 不复存在）', () => {
+    const h = mountHarness(makeState());
+    const topbar = h.host.querySelector<HTMLElement>('.hud-topbar');
+    expect(topbar?.querySelector('[data-role="theme-tag"]')).toBeNull();
+    expect(topbar?.querySelector('[data-role="demo-tag"]')).toBeNull();
+    expect(topbar?.querySelector('[data-role="director-tag"]')).toBeNull();
+    h.unmount();
+  });
+
+  test('开关点亮即状态：🎬 / ▶ / 🔊 用 variant + aria-pressed 表达，无第二份文本', () => {
+    const h = mountHarness(makeState());
+    // 声音缺省开（演示模式默认有声）→ 点亮；导演 / 演示缺省关 → 熄灭。
+    expect(h.host.querySelector('[data-role="sound"]')?.getAttribute('aria-pressed')).toBe('true');
+    for (const role of ['director', 'demo']) {
+      const btn = h.host.querySelector<HTMLElement>(`[data-role="${role}"]`);
+      expect(btn?.getAttribute('aria-pressed')).toBe('false');
+      expect(btn?.getAttribute('variant')).toBe('default');
+    }
+    h.emit(makeState({ directorEnabled: true }));
+    const director = h.host.querySelector<HTMLElement>('[data-role="director"]');
+    expect(director?.getAttribute('variant')).toBe('primary');
+    expect(director?.getAttribute('aria-pressed')).toBe('true');
+    h.unmount();
+  });
+
+  test('⋯ 溢出菜单收纳 5 项：默认收起，展开后 5 项全在', () => {
+    const h = mountHarness(makeState());
+    const menu = h.host.querySelector<HTMLElement>('[data-role="overflow-menu"]');
+    expect(menu?.hidden).toBe(true);
+
+    h.host.querySelector<HTMLElement>('[data-role="overflow"]')
+      ?.dispatchEvent(new CustomEvent('strat-button-click', { bubbles: true }));
+    expect(h.host.querySelector<HTMLElement>('[data-role="overflow-menu"]')?.hidden).toBe(false);
+
+    const roles = Array.from(
+      h.host.querySelectorAll<HTMLElement>('[data-role="overflow-menu"] [data-role]'),
+    ).map((el) => el.getAttribute('data-role'));
+    expect(roles).toEqual([...TOPBAR_OVERFLOW_ROLES]);
+    expect(roles.length).toBe(TOPBAR_METRICS.overflowItemCount);
+    h.unmount();
+  });
+
+  test('收纳项仍各行其职：聊天 / 角色 / 设置 照旧派发 ui.navigate', () => {
+    const h = mountHarness(makeState());
+    const click = (role: string): void => {
+      h.host.querySelector<HTMLElement>(`[data-role="${role}"]`)
+        ?.dispatchEvent(new CustomEvent('strat-button-click', { bubbles: true }));
+    };
+    click('chat');
+    expect(h.commands).toContainEqual({ type: 'ui.navigate', screen: 'chat' });
+    click('character');
+    expect(h.commands).toContainEqual({ type: 'ui.navigate', screen: 'character' });
+    click('settings');
+    expect(h.commands).toContainEqual({ type: 'ui.navigate', screen: 'settings' });
+    h.unmount();
+  });
+
+  test('像素风收进菜单：菜单项带当前皮肤名，点击照旧切皮肤', () => {
+    const h = mountHarness(makeState());
+    const themeBtn = h.host.querySelector<HTMLElement>('[data-role="theme"]');
+    expect(themeBtn?.getAttribute('label')).toContain('默认');
+
+    themeBtn?.dispatchEvent(new CustomEvent('strat-button-click', { bubbles: true }));
+    expect(h.commands).toContainEqual({ type: 'theme.set', themeId: 'pixel' });
+    expect(h.host.querySelector('[data-role="theme"]')?.getAttribute('label')).toContain('像素');
+    h.unmount();
+  });
+
+  test('点顶栏以外：两个弹出层都收起', () => {
+    const h = mountHarness(makeState());
+    h.host.querySelector<HTMLElement>('[data-role="overflow"]')
+      ?.dispatchEvent(new CustomEvent('strat-button-click', { bubbles: true }));
+    expect(h.host.querySelector<HTMLElement>('[data-role="overflow-menu"]')?.hidden).toBe(false);
+
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(h.host.querySelector<HTMLElement>('[data-role="overflow-menu"]')?.hidden).toBe(true);
     h.unmount();
   });
 });

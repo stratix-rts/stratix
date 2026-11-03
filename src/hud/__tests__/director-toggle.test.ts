@@ -42,8 +42,11 @@ interface Harness {
   emit(state: WorldState): void;
   /** 导演开关按钮。 */
   button(): HTMLElement | null;
-  /** 导演开关的状态标签（on / off）。 */
+  /** 导演开关的状态标签（on / off）—— @since v3.4 task_089 起**已删除**：
+   *  顶栏不再有第二份状态文本，开关点亮即状态（aria-pressed 承担可访问口径）。 */
   tag(): HTMLElement | null;
+  /** 导演开关的点亮态（variant=primary 即亮）。 */
+  lit(): boolean;
   unmount(): void;
   host: HTMLElement;
 }
@@ -74,6 +77,7 @@ function mountHarness(initial?: WorldState): Harness {
     emit: (state) => { store.patch(state); },
     button: () => host.querySelector<HTMLElement>('[data-role="director"]'),
     tag: () => host.querySelector<HTMLElement>('[data-role="director-tag"]'),
+    lit: () => host.querySelector<HTMLElement>('[data-role="director"]')?.getAttribute('variant') === 'primary',
     unmount: () => {
       unmountScreen();
       host.remove();
@@ -83,10 +87,12 @@ function mountHarness(initial?: WorldState): Harness {
 }
 
 describe('顶栏「🎬 导演」开关', () => {
-  test('顶栏有导演开关按钮与状态标签', () => {
+  test('顶栏有导演开关按钮；状态不再用第二份文本表达（点亮即状态）', () => {
     const h = mountHarness();
     expect(h.button()).not.toBeNull();
-    expect(h.tag()?.textContent).toBe('off');
+    expect(h.tag()).toBeNull();
+    expect(h.lit()).toBe(false);
+    expect(h.button()?.getAttribute('aria-pressed')).toBe('false');
     h.unmount();
   });
 
@@ -104,21 +110,22 @@ describe('顶栏「🎬 导演」开关', () => {
     h.unmount();
   });
 
-  test('core 广播开启 → 标签 on、按钮点亮', () => {
+  test('core 广播开启 → 按钮点亮', () => {
     const h = mountHarness();
     h.emit(makeState({ directorEnabled: true }));
-    expect(h.tag()?.textContent).toBe('on');
+    expect(h.lit()).toBe(true);
     expect(h.button()?.getAttribute('variant')).toBe('primary');
+    expect(h.button()?.getAttribute('aria-pressed')).toBe('true');
     h.unmount();
   });
 
   test('手动介入后 core 把状态写回 false → 按钮熄灭（手动优先）', () => {
     const h = mountHarness(makeState({ directorEnabled: true }));
-    expect(h.tag()?.textContent).toBe('on');
+    expect(h.lit()).toBe(true);
 
     // world 侧手动介入 → 发 camera.director=false → core 写回状态 → 广播。
     h.emit(makeState({ directorEnabled: false }));
-    expect(h.tag()?.textContent).toBe('off');
+    expect(h.lit()).toBe(false);
     expect(h.button()?.getAttribute('variant')).toBe('default');
     h.unmount();
   });
@@ -129,7 +136,7 @@ describe('顶栏「🎬 导演」开关', () => {
     h.button()?.dispatchEvent(new CustomEvent('strat-button-click', { bubbles: true }));
     h.button()?.dispatchEvent(new CustomEvent('strat-button-click', { bubbles: true }));
     expect(h.commands.filter((c) => c.type === 'camera.director')).toHaveLength(2);
-    expect(h.tag()?.textContent).toBe('off');
+    expect(h.lit()).toBe(false);
     h.unmount();
   });
 });

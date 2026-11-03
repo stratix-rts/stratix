@@ -1,7 +1,7 @@
 /**
  * 文件职责：HUD 通用按钮基类（Web Component）—— 全部视觉属性走 CSS 变量，组件零硬编码样式。
  *   来源：docs/REFACTOR_PLAN_V3.md §2 screens/widgets 层级 + §3 token 体系。
- * 输入：HTML 属性 `label` / `variant`；用户点击事件（click）。
+ * 输入：HTML 属性 `label` / `variant` / `disabled` / `aria-label` / `aria-pressed`；用户点击事件（click）。
  * 输出：标准 `<button>` 子树（Shadow DOM 内）+ CustomEvent `strat-button-click`。
  * 禁止事项：
  *   1. 硬编码任何颜色 / 字体 / 边框 / 圆角 —— 全部走 var(--srf-*)；
@@ -26,12 +26,20 @@ interface StratButtonAttrs {
   label: string;
   variant: StratButtonVariant;
   disabled: boolean;
+  /** 无障碍名（@since v3.4，task_089）：图标按钮（🔊 / 🎬 / ▶ / ⋯）的可见文本只有一个字形，
+   *  读屏需要一个真正的名字 —— 由宿主透传到内部 <button> 的 aria-label。 */
+  ariaLabel: string | null;
+  /** 开关态（@since v3.4，task_089）：true / false / null（非开关）。
+   *  「开关点亮即状态」的可访问口径：视觉用 variant，点亮态用 aria-pressed。 */
+  ariaPressed: string | null;
 }
 
 const DEFAULT_ATTRS: StratButtonAttrs = {
   label: '',
   variant: 'default',
   disabled: false,
+  ariaLabel: null,
+  ariaPressed: null,
 };
 
 /**
@@ -47,7 +55,7 @@ export function defineStratButton(): typeof HTMLElement {
     private _attrs: StratButtonAttrs = { ...DEFAULT_ATTRS };
 
     static get observedAttributes(): readonly string[] {
-      return ['label', 'variant', 'disabled'];
+      return ['label', 'variant', 'disabled', 'aria-label', 'aria-pressed'];
     }
 
     connectedCallback(): void {
@@ -62,6 +70,8 @@ export function defineStratButton(): typeof HTMLElement {
         label: this.getAttribute('label') ?? DEFAULT_ATTRS.label,
         variant: (this.getAttribute('variant') as StratButtonVariant) ?? DEFAULT_ATTRS.variant,
         disabled: this.hasAttribute('disabled'),
+        ariaLabel: this.getAttribute('aria-label'),
+        ariaPressed: this.getAttribute('aria-pressed'),
       };
       if (this.isConnected) this.render();
     }
@@ -69,6 +79,15 @@ export function defineStratButton(): typeof HTMLElement {
     private render(): void {
       const root = this.shadowRoot;
       if (!root) return;
+
+      // 无障碍属性透传（@since v3.4，task_089）：宿主写 aria-label / aria-pressed，
+      // 内部 <button> 原样带上 —— 图标按钮才有读得出来的名字与开关态。
+      const ariaLabelAttr = this._attrs.ariaLabel
+        ? ` aria-label="${escapeHtml(this._attrs.ariaLabel)}"`
+        : '';
+      const ariaPressedAttr = this._attrs.ariaPressed !== null
+        ? ` aria-pressed="${escapeHtml(this._attrs.ariaPressed)}"`
+        : '';
 
       // 全部颜色 / 字体 / 边框 / 圆角都走变量。组件零硬编码：grep 不到任何颜色字面量。
       root.innerHTML = `
@@ -106,7 +125,7 @@ export function defineStratButton(): typeof HTMLElement {
           :host([variant="primary"]) button:hover:not(:disabled) { background: var(--srf-accent-hover); }
           :host([variant="danger"]) button { color: var(--srf-danger); }
         </style>
-        <button type="button" ${this._attrs.disabled ? 'disabled' : ''}>${escapeHtml(this._attrs.label)}</button>
+        <button type="button" ${this._attrs.disabled ? 'disabled' : ''}${ariaLabelAttr}${ariaPressedAttr}>${escapeHtml(this._attrs.label)}</button>
       `;
 
       const btn = root.querySelector('button');
