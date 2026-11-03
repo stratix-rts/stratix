@@ -46,6 +46,7 @@ import { mountDayReplay } from '../components/replay/day-replay';
 import { REPLAY_EMPTY_TEXT } from '../components/replay/replay-catalog';
 import { createReplayController } from '../components/replay/replay-controller';
 import { mountReplayClock } from '../components/replay/replay-clock';
+import { MODE_STRIP_CSS_VAR } from '../components/mode-strip/mode-strip';
 import { mountErrorGlow } from '../components/screen-fx/error-glow';
 import { errorGlowTrigger } from '../components/screen-fx/screen-fx-catalog';
 import { mountToastHost } from '../components/toast/toast-host';
@@ -749,7 +750,10 @@ describe('§4 D 组 · 当日回放与角标（v3.4 task_090 / 093 / 094）', ()
     expect(element.shadowRoot?.querySelector('.tag')?.textContent).toContain('回放中');
 
     // 落点：顶部 inset 56px（> 顶栏 40px）+ 字号 44px。
-    expect(element.style.getPropertyValue('--replay-clock-inset-top')).toBe('56px');
+    // 模式状态条（@since v3.6，task_117）亮出时角标整体下移一条（不压住状态条）。
+    expect(element.style.getPropertyValue('--replay-clock-inset-top')).toBe(
+      `calc(var(${MODE_STRIP_CSS_VAR}, 0px) + 56px)`
+    );
     expect(element.style.getPropertyValue('--replay-clock-font')).toBe(
       `${REPLAY_METRICS.clockFontPx}px`
     );

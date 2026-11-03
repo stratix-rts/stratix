@@ -103,6 +103,8 @@ import { expWeightFor } from '../../core/progression';
 import { worldStore } from '../../core/store';
 import type { DetectedAgent, HudCommand, Point, WorldEvent } from '../../core/types';
 import { createHudBusAdapter } from '../../hud/bridge/bus-adapter';
+// 模式状态条（@since v3.6，task_117）：演示模式 / 导演镜头的全局指示（开着的是什么 + 怎么关）。
+import { mountModeStrip, type ModeStripDirectorPort } from '../../hud/components/mode-strip/mode-strip';
 // 信息三层级（@since v3.4，task_096）：HUD 侧层级状态机 + 三档演示开关。
 //   视觉口径与分区映射在 hud/layers/info-layer.ts；真相在 core（WorldState.infoLayer）。
 import { createInfoLayerController } from '../../hud/layers/info-layer';
@@ -450,6 +452,32 @@ async function boot(): Promise<void> {
   });
   const { unmount: unmountGatewayBanner } = mountGatewayBanner(hudSide, { link: gatewayLink });
   const stopGatewayLink = gatewayLink.start();
+
+  // ===== 模式状态条（@since v3.6，task_117）=====
+  // 顶栏下方的一条全局细条：演示模式 / 导演镜头任一开启就亮出「开着的是什么 + 怎么关」。
+  // why 挂 #hud-side（同网关横幅 / 回放角标的理由）：#hud-root 每次重绘都被 innerHTML 重写。
+  // 两个端口的真相各不相同，组件自己分清楚：
+  //   演示态 —— demo-mode 单例（本地展示态 + localStorage 记忆；刷新后仍在 → 细条也仍在）；
+  //   导演态 —— core 广播的 WorldState.directorEnabled（core 是唯一真相；退出走 camera.director 命令）。
+  // 导演态只在**值变了**时回调：总线每次状态广播都会触发订阅，无谓的 DOM 写不做（perf 纪律）。
+  let directorOn = worldStore.getState().directorEnabled === true;
+  const directorPort: ModeStripDirectorPort = {
+    get enabled(): boolean {
+      return worldStore.getState().directorEnabled === true;
+    },
+    subscribe: (listener) =>
+      adapter.subscribe((state) => {
+        const next = state.directorEnabled === true;
+        if (next === directorOn) return;
+        directorOn = next;
+        listener(next);
+      }),
+    disable: () => adapter.dispatch({ type: 'camera.director', enabled: false }),
+  };
+  const { unmount: unmountModeStrip } = mountModeStrip(hudSide, {
+    demo: demoMode,
+    director: directorPort,
+  });
   // 跑马灯引用位（回放重演的事件也要进跑马灯 —— 跑马灯本体在下方挂载，这里先留引用）。
   let marqueeEl: StratMarqueeElement | null = null;
   // 单位位置累积表（单位 id → 世界坐标）：小地图与快捷键居中共用同一份 ——
@@ -1333,6 +1361,8 @@ async function boot(): Promise<void> {
       // 网关连通性横幅（task_114）：停周期探测（清定时器）+ 卸横幅宿主（退订）。
       stopGatewayLink();
       unmountGatewayBanner();
+      // 模式状态条（task_117）：卸宿主（退订两个端口 + 撤版面让位变量）。
+      unmountModeStrip();
       // 屏幕空间特效（task_086）：退总线订阅 + 卸两个覆盖层宿主（同卸载纪律；
       // 卸宿主触发 disconnectedCallback → 光晕的 animationend 监听随之摘掉）。
       stopErrorGlowFeed();

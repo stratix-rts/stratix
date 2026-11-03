@@ -12,6 +12,7 @@
 
 import { mountReplayClock, REPLAY_CLOCK_TAG } from '../components/replay/replay-clock';
 import { formatReplayClock, formatReplayDate } from '../components/replay/replay-catalog';
+import { MODE_STRIP_CSS_VAR } from '../components/mode-strip/mode-strip';
 import { REPLAY_CLOCK_TOP_INSET_PX, REPLAY_METRICS } from '../../core/theme/visual-spec';
 
 function mount(): { element: ReturnType<typeof mountReplayClock>['element']; host: HTMLElement } {
@@ -69,10 +70,12 @@ describe('回放时间戳角标：信息完整', () => {
 });
 
 describe('回放时间戳角标：落点避让顶栏（@since v3.4，task_093）', () => {
-  test('顶部 inset 是 56px（顶栏 40 + 间距 16），不再是压住顶栏的 24px', () => {
+  test('顶部 inset 是 56px（顶栏 40 + 间距 16）+ 模式状态条让位，不再是压住顶栏的 24px', () => {
     const { element, host } = mount();
+    // 基准 inset 仍是 56px；模式状态条（@since v3.6，task_117）亮出时整体下移一条 ——
+    //   否则角标会压在状态条上（两者都在顶栏正下方）。
     expect(element.style.getPropertyValue('--replay-clock-inset-top')).toBe(
-      `${REPLAY_CLOCK_TOP_INSET_PX}px`
+      `calc(var(${MODE_STRIP_CSS_VAR}, 0px) + ${REPLAY_CLOCK_TOP_INSET_PX}px)`
     );
     expect(REPLAY_CLOCK_TOP_INSET_PX).toBe(56);
     const css = element.shadowRoot?.querySelector('style')?.textContent ?? '';

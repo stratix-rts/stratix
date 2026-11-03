@@ -110,7 +110,11 @@ export function defineStratReplayClock(): typeof HTMLElement {
       this._root = root.querySelector('[data-role="badge"]');
       this._time = root.querySelector('[data-role="time"]');
       this._date = root.querySelector('[data-role="date"]');
-      this.style.setProperty('--replay-clock-inset-top', `${REPLAY_CLOCK_TOP_INSET_PX}px`);
+      this.style.setProperty(
+        '--replay-clock-inset-top',
+        // 模式状态条（@since v3.6，task_117）亮出时让位一条 —— 否则回放角标会压在状态条上。
+        `calc(var(--srf-mode-strip-h, 0px) + ${REPLAY_CLOCK_TOP_INSET_PX}px)`
+      );
       this.style.setProperty('--replay-clock-inset-left', `${REPLAY_METRICS.clockInsetPx}px`);
       this.style.setProperty('--replay-clock-font', `${REPLAY_METRICS.clockFontPx}px`);
       // 入层：角标属 L3（沉浸层）——「通用属性口径」标记（hud/layers/info-layer.ts 的
