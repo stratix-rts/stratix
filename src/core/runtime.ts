@@ -47,12 +47,16 @@
  * @since v3.43(task_093)追加 session.interrupt 命令接线:落到 session manager
  *   (core/session,同 mission / task 口径直调);会话域的持久化口由组合根注入
  *   (命令落点与业务侧记账共用同一个 manager 实例)。
+ * @since v3.4(task_096)追加 hud.layer.set 命令接线:写 WorldState.infoLayer
+ *   (HUD 信息三层级 L1 常驻 / L2 事件 / L3 沉浸)→ state 广播给 HUD 与 world;
+ *   层级语义在 core/info-layer.ts 的纯函数里,视觉呈现全在 hud 侧(core 零 DOM)。
  */
 
 import type { AgentLinkManager } from './agent-link';
 import { clampShake, clampWorldPoint } from './camera';
 import { emitState, emitWorldEvent, onCommand, onWorldEvent, type Unsubscribe } from './bus';
 import { createCharacterManager, type CharacterManager } from './character';
+import { normalizeInfoLayer } from './info-layer';
 import { createMissionManager, type MissionManager } from './mission';
 import { createSessionManager, type SessionManager } from './session';
 import type { CoreStore } from './store';
@@ -533,6 +537,14 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
       //   'settings' / 'character' 落到 currentScreen,供 main-screen 据此切换渲染。
       case 'ui.navigate':
         store.setCurrentScreen(command.screen === 'main' || command.screen === 'chat' ? null : command.screen);
+        return;
+      // @since v3.4（task_096）HUD 信息层级三档:
+      //   HUD 的三档开关发这条命令 → core 写 WorldState.infoLayer → state 广播回两侧。
+      //   HUD 侧据此降 L1 对比 / 收起 L2（CSS 变量切换）；world 侧据此让位（L3 元素订阅这条广播）。
+      //   core 只做「记状态 + 广播」—— 层级语义（哪档降多少）在 core/info-layer.ts 的纯函数里，
+      //   视觉呈现全在 hud 侧；core 不认识 DOM（铁律：core 零 IO）。
+      case 'hud.layer.set':
+        store.setInfoLayer(normalizeInfoLayer(command.layer));
         return;
       default:
         if (isAgentLinkCommand(command)) return; // agent-link 已订阅处理

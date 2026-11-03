@@ -15,6 +15,9 @@
 import { onState, emitCommand } from '../../core/bus';
 import { type SkinId } from '../../core/theme/skin-registry';
 import { createHudBusAdapter } from '../bridge/bus-adapter';
+// 信息三层级（@since v3.4，task_096）：层级状态机 + 三档演示开关。
+import { createInfoLayerController } from '../layers/info-layer';
+import { mountLayerSwitch } from '../layers/layer-switch';
 // ⚠️ DEMO（task_034 演示路径，正式接线走 task_035 组合根）：角色聊天抽屉 + 定时器假流。
 // 生产链路（main-entry）不得 import demo-fake-stream。
 import {
@@ -69,6 +72,22 @@ function boot(): void {
   const unmount = screen.mount(root);
   adapter.mount();
 
+  // ===== 信息三层级三档开关（@since v3.4，task_096）=====
+  // dev 页里没有 world，层级状态照样能切：开关发 HudCommand `hud.layer.set` → core 写
+  //   WorldState.infoLayer → state 广播回来 → 控制器改根上的 CSS 变量（L1 降对比 / L2 收起）。
+  // 真相在 core，HUD 不存第二份 —— 与生产入口同一套接线。
+  const layerController = createInfoLayerController();
+  const stopLayerState = adapter.subscribe((state) => {
+    layerController.apply(state.infoLayer ?? 'L1');
+  });
+  const { unmount: unmountLayerSwitch } = mountLayerSwitch(
+    {
+      controller: layerController,
+      dispatch: (command) => adapter.dispatch(command),
+    },
+    root,
+  );
+
   // ⚠️ DEMO（task_034 演示路径）：挂上角色聊天抽屉并接定时器假流，肉眼验证
   //   右侧滑入滑出 / 流式回显 / setSending 禁用态。dev 总线里没有真实角色，
   //   给一个假角色 id 直接开抽屉；点战场单位切真实角色的链路（selection 广播驱动）
@@ -96,6 +115,10 @@ function boot(): void {
     unmount,
     characterDrawer,
     unmountCharacterDrawer,
+    // 信息层级（task_096）：控制器可被调试脚本直接驱动（__srfHud.layerController.apply('L3')）。
+    layerController,
+    unmountLayerSwitch,
+    stopLayerState,
   };
 }
 

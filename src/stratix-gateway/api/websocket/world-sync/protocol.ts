@@ -302,6 +302,9 @@ const HUD_COMMAND_TYPE_FLAGS: Readonly<Record<HudCommand['type'], true>> = {
   'session.resume': true,
   // @since v3.48（task_102 / v3.2b-B3）会话分叉（从某条事件另起一条会话）：同一模式入册。
   'session.fork': true,
+  // @since v3.4（task_096）HUD 信息层级三档：远程模式下渲染进程不起 core runtime，
+  //   真相在 service 侧的 core —— 故这条命令必须入册（否则远程切档发不出去）。
+  'hud.layer.set': true,
 };
 
 /**

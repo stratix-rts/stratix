@@ -3,8 +3,9 @@
  *   来源：docs/DEMO-PLAN.md §1（调色板与 Design Token）+ §8（演示模式）。
  * 输入：无（纯静态常量；零 IO、零 DOM、零 import）。
  * 输出：VISUAL_PALETTE（色值）/ VISUAL_METRICS（尺寸·时长·easing）/ UNIT_ANIMATION_METRICS（单位动画八态度量）
- *      / DEMO_MODE（演示模式参数）
- *      / PALETTE_CSS_VARS（语义色 → CSS 变量名的映射）/ hexToNumber（色值换算）。
+ *      / DEMO_MODE（演示模式参数）/ HUD_LAYER_METRICS（信息三层级的对比口径）
+ *      / PALETTE_CSS_VARS（语义色 → CSS 变量名的映射）/ hexToNumber（色值换算）
+ *      / blendOver（前景按 alpha 叠背景）/ contrastRatio（WCAG 对比度）。
  * 禁止事项：
  *   1. import world / hud / phaser / 任何 DOM —— 本模块是**叶子常量**，谁都能引，谁都不许它引；
  *   2. 依赖运行时状态（时间、随机、localStorage）—— 常量必须是常量；
@@ -91,6 +92,70 @@ export function hexToRgba(hex: string, alpha: number): string {
   const b = value & 0xff;
   return `rgba(${r},${g},${b},${alpha})`;
 }
+
+/**
+ * 十六进制色 → `[r, g, b]`（0-255）。色值解析的共同入口。
+ * 只吃 6 位 `#rrggbb`（本模块的色值都是这个形态）；不合法输入抛错 —— 静默吞掉会算出一个
+ *   说不出来源的颜色，比报错难查得多。
+ */
+function hexToRgb(hex: string): [number, number, number] {
+  const value = hexToNumber(hex);
+  return [(value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff];
+}
+
+/**
+ * 两色按 sRGB 直接混合（前景以 alpha 叠在背景上）→ `#rrggbb`。
+ * 用于「元素整体降不透明度后**实际渲染成什么颜色**」的换算 ——
+ *   信息层级把 L1 降到 18% 对比（不透明度 0.18）后，文字与底色要按 0.18 混一次，
+ *   才能算出真实对比度（不混就是拿「理论对比」自欺欺人）。
+ */
+export function blendOver(fg: string, bg: string, alpha: number): string {
+  const [fr, fg_, fb] = hexToRgb(fg);
+  const [br, bg_, bb] = hexToRgb(bg);
+  const a = Math.min(1, Math.max(0, alpha));
+  const mix = (f: number, b: number): number => Math.round(f * a + b * (1 - a));
+  const hex = (n: number): string => n.toString(16).padStart(2, '0');
+  return `#${hex(mix(fr, br))}${hex(mix(fg_, bg_))}${hex(mix(fb, bb))}`;
+}
+
+/**
+ * WCAG 对比度（1:1 ~ 21:1）—— 给定前景色与背景色，算人眼读起来差多少。
+ * why 落在唯一事实源：本仓的「对比度」口径（降对比 / 提对比 / 无障碍校验）都该用同一个公式，
+ *   免得各处各算一套（尤其「L1 降到 18% 对比」这条验收要一个可复算的数字）。
+ * 相对亮度按 WCAG 2.1 的 sRGB 线性化公式。
+ */
+export function contrastRatio(fg: string, bg: string): number {
+  const luminance = (hex: string): number => {
+    const [r, g, b] = hexToRgb(hex).map((c) => {
+      const s = c / 255;
+      return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const l1 = luminance(fg);
+  const l2 = luminance(bg);
+  const [hi, lo] = l1 >= l2 ? [l1, l2] : [l2, l1];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/**
+ * HUD 信息层级的度量（@since v3.4，task_096；docs/hud-redesign-proposal.html §2.3）。
+ *
+ * why 也落在唯一事实源：「L1 降到 18% 对比」是一个**规格数字** —— HUD 侧的视觉层按它写 CSS 变量，
+ *   单测按它算实测对比度，两边必须读同一份，否则「降到了 18%」这句话没人能复算。
+ * 口径说明：18% 以**元素整体不透明度**实现（opacity 0.18）——
+ *   元素与背景按 18% 混合后，实测对比度随之下降（见 blendOver / contrastRatio）。
+ */
+export const HUD_LAYER_METRICS = Object.freeze({
+  /** L1 正常态的不透明度（1 = 完全不透明）。 */
+  l1Opacity: 1,
+  /** L3 激活时 L1 的不透明度（0.18 = 对比降到 18%）。 */
+  l1DimOpacity: 0.18,
+  /** L3 激活时 L2 的不透明度（0 = 让位）。 */
+  l2DimOpacity: 0,
+  /** 层级切换的过渡时长（ms）—— 只动 opacity / visibility，不触发布局重排。 */
+  transitionMs: 200,
+});
 
 /** 尺寸 / 时长 / easing 规范（DEMO-PLAN §1「尺寸/时长规范」）。 */
 export const VISUAL_METRICS = Object.freeze({

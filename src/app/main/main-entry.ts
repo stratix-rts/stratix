@@ -75,6 +75,12 @@
  *   接进 hud-root。命令走 adapter.dispatch；居中要的单位坐标复用小地图的同一份位置累积表
  *   （minimapPositions）—— 位置真相在世界层，组合根是唯一能拿到它的地方，仍是只接线。
  *
+ * @since v3.4（task_096）信息三层级：createInfoLayerController（hud/layers/info-layer）+
+ *   mountLayerSwitch（三档演示开关）接进 #hud-side。core 广播 WorldState.infoLayer →
+ *   控制器写根上的 CSS 变量 → 样式表把 L1 分区降对比 / L2 分区收起；开关发
+ *   HudCommand `hud.layer.set` → core 写状态 → 广播回来。仍然只接线：层级语义在
+ *   core/info-layer.ts，视觉呈现全在 hud 侧。
+ *
  * 加载路径：dev 走 vite dev server 的 /src/app/main/index.html；
  *   正式构建走 dist/frontend/src/app/main/index.html（由 vite.config.ts 的 input 产出）。
  *   本页是**唯一**入口：旧 Vue 入口链随 task_017 退役，STRATIX_LEGACY 开关已下线，
@@ -92,6 +98,10 @@ import { expWeightFor } from '../../core/progression';
 import { worldStore } from '../../core/store';
 import type { DetectedAgent, HudCommand, Point, WorldEvent } from '../../core/types';
 import { createHudBusAdapter } from '../../hud/bridge/bus-adapter';
+// 信息三层级（@since v3.4，task_096）：HUD 侧层级状态机 + 三档演示开关。
+//   视觉口径与分区映射在 hud/layers/info-layer.ts；真相在 core（WorldState.infoLayer）。
+import { createInfoLayerController } from '../../hud/layers/info-layer';
+import { mountLayerSwitch } from '../../hud/layers/layer-switch';
 // 当日回放（@since v3.3，task_082）：底栏时间轴 scrubber + 左上角时间戳角标 + 战场重演。
 //   数据流：读取口（app/services/day-replay.ts 读 service 的只读 REST）→ 回放控制器
 //   （hud/components/replay/replay-controller.ts，编排 seek / 60 秒倍速）→
@@ -998,6 +1008,27 @@ async function boot(): Promise<void> {
     getUnitPosition: (unitId) => minimapPositions.get(unitId) ?? null,
   });
 
+  // ===== 信息三层级（@since v3.4，task_096）=====
+  // HUD 的全局层级状态机（L1 常驻 / L2 事件 / L3 沉浸）+ 三档演示开关。
+  // 数据流（组合根只接线）：core 广播 WorldState.infoLayer → 层级控制器（hud/layers/info-layer）
+  //   → 根元素上的 CSS 变量（--srf-layer-*）→ 样式表把顶栏 / 控制岛 / 小地图（L1）降对比、
+  //   事件轨 / toast（L2）收起。开关点一下 → 发 HudCommand `hud.layer.set` → core 写状态 →
+  //   广播回来（两端同一份真相，HUD 不存第二份）。
+  // 为什么层级状态要进 core：world 侧将来也要订阅它（导演取景框等 L3 元素据此让位），
+  //   而 HUD ↔ world 零直接调用（铁律）—— 唯一合法通道就是 core 的 state 广播。
+  // 挂 #hud-side 而不是 #hud-root（与 task_086 同一口径）：主屏每次重绘都重写 #hud-root。
+  const layerController = createInfoLayerController();
+  const stopLayerState = adapter.subscribe((state) => {
+    layerController.apply(state.infoLayer ?? 'L1');
+  });
+  const { unmount: unmountLayerSwitch } = mountLayerSwitch(
+    {
+      controller: layerController,
+      dispatch: (command) => adapter.dispatch(command),
+    },
+    hudSide,
+  );
+
   // ===== world 侧：Phaser 战场（BattlefieldScene 内部自带 world ↔ core 桥接层）=====
   const game = new Phaser.Game({
     type: Phaser.AUTO,
@@ -1216,6 +1247,10 @@ async function boot(): Promise<void> {
       // 健康监测（task_054）：停周期探测 + 退恢复 toast 订阅。
       stopHealthToast();
       stopHealthMonitor();
+      // 信息三层级（task_096）：退状态订阅 + 卸三档开关 + 卸层级控制器（撤样式表与 CSS 变量）。
+      stopLayerState();
+      unmountLayerSwitch();
+      layerController.destroy();
       // 流水线编排器总线订阅（task_051）：在跑的线随页面一起终止（库里的 running 行是停机
       // 遗骸，审计可见、不复活 —— 见 pipeline-record-dao 文件头存活语义注）。
       stopPipelineBus();

@@ -1028,6 +1028,20 @@ export interface SessionRecord {
   readonly eventCount: number;
 }
 
+/**
+ * HUD 信息层级（@since v3.4，task_096）—— 三档全局显示密度。
+ *   L1 常驻：解释画面的基准信息（顶栏态势胶囊 / 小地图 / 控制岛 / 事件轨静默态）。
+ *   L2 事件：随总线事件出现的瞬时件（跑马灯条目 / toast / 报错 vignette / 单位气泡）。
+ *   L3 沉浸：打断式演出（里程碑大字 / 回放重演 / 时间戳角标）—— 激活时 L1 让位、L2 收起。
+ * 来源：docs/hud-redesign-proposal.html §2.3（信息三层级）+ §2.5（分区规格表的「层级」列）。
+ * why 进 core 契约：层级状态要**被 world 侧订阅**（导演取景框等 L3 元素据此让位），
+ *   而 HUD ↔ world 零直接调用（总线铁律）—— 唯一合法通道就是 core 广播的 WorldState。
+ *   故它是「可选增补」字段（与 settings / currentScreen / directorEnabled 同一口径）：
+ *   契约增补不许打破既有 WorldState 构造点（core / hud 单测夹具）的编译；
+ *   读取方缺省时按 'L1'（常驻档 = 无任何特殊状态）处理。
+ */
+export type InfoLayer = 'L1' | 'L2' | 'L3';
+
 // ============================================================================
 // ★ 总线契约：core → 两层广播的完整世界快照
 // ============================================================================
@@ -1102,6 +1116,15 @@ export interface WorldState {
    *   缺省 = 导演模式关闭。
    */
   directorEnabled?: boolean;
+  /**
+   * @since v3.4（task_096）HUD 信息层级（L1 常驻 / L2 事件 / L3 沉浸）。
+   * 真相在 core：HUD 的三档开关发 `hud.layer.set` 命令 → core 写这里 → 广播回 HUD
+   *   （HUD 侧据此降对比 / 收起 L2）与 world（world 侧的 L3 元素据此让位）。
+   * 刻意可选：与 settings / currentScreen / directorEnabled 同理走可选增补 ——
+   *   契约增补不破既有 WorldState 构造点；读取方缺省时按 'L1' 处理。
+   * 体积天然有界：单词表三值（不是数组），不存在增长问题（perf：广播数据必须有界）。
+   */
+  infoLayer?: InfoLayer;
 }
 
 // ============================================================================
@@ -1283,6 +1306,16 @@ export type HudCommand =
    */
   | { type: 'ui.navigate'; screen: ScreenId }
   | { type: 'theme.set'; themeId: 'default' | 'pixel' }
+  /**
+   * @since v3.4（task_096）切 HUD 信息层级（三档：L1 常驻 / L2 事件 / L3 沉浸）。
+   * 发出方：HUD 侧的三档开关（本任务交付的演示开关；后续任务接真实触发源 ——
+   *   回放播放中 / 里程碑触发 / 导演取景 —— 同一口径）。
+   * 接线：core/runtime.ts 收到本命令 → 写 WorldState.infoLayer → 广播回两侧。
+   *   HUD 侧据此降 L1 对比 / 收起 L2；world 侧据此让位（导演取景框等 L3 元素）。
+   * why 是命令而不是 HUD 本地态：层级要被 **world 侧订阅**，而 HUD ↔ world 零直接调用
+   *   （总线铁律）—— 唯一合法通道是 core 的 state 广播。
+   */
+  | { type: 'hud.layer.set'; layer: InfoLayer }
   // @since v3.1 外部 agent 会话生命周期（core/agent-link 消费，见 §2 目录职责）
   | { type: 'link.open'; kind: AgentLinkKind; endpoint: string; displayName?: string; apiKey?: string }
   | { type: 'link.resume'; linkId: string }

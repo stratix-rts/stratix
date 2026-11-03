@@ -14,6 +14,7 @@ import {
   MAX_NOTICES,
   type BooleanPreferenceKey,
   type DetectedAgent,
+  type InfoLayer,
   type Notice,
   type ScreenId,
   type SelectionState,
@@ -50,6 +51,13 @@ export interface CoreStore {
    * 广播是必须的：HUD 顶栏按钮要靠它回显，且 world 侧手动介入会把开关写回 false。
    */
   setDirectorEnabled(enabled: boolean): WorldState;
+  /**
+   * @since v3.4（task_096）写 HUD 信息层级（WorldState.infoLayer 的落库入口）。
+   * why 放 store 而不放 runtime：层级**不经状态机**、只是「换一个字段」（与 currentScreen /
+   *   directorEnabled 同一口径），由 store 统一承担「值没变就不广播」。
+   * 广播是必须的：HUD 侧据此降 L1 对比 / 收起 L2，world 侧据此让位（L3 元素）。
+   */
+  setInfoLayer(layer: InfoLayer): WorldState;
   /**
    * @since v3.8 写本地 CLI agent 检测结果（WorldState.detectedAgents 的落库入口）。
    * 语义：**整份替换**（调用方给的是当前快照，不是增量补丁）——
@@ -137,6 +145,20 @@ export function applyDirectorEnabled(
   return nextValue;
 }
 
+/**
+ * HUD 信息层级写入（纯函数，@since v3.4，task_096）—— 与 applyDirectorEnabled 同一口径：
+ *   值没变就**原样返回同一引用** → store 的「引用未变即不广播」约定自动生效。
+ * 缺省（undefined）按 L1（常驻档）处理 —— 层级默认无特殊状态。
+ */
+export function applyInfoLayer(
+  current: InfoLayer | undefined,
+  next: InfoLayer
+): InfoLayer | undefined {
+  // 值没变就**原样返回当前引用**（含 undefined）—— 让 store 的「引用未变即不广播」生效。
+  if ((current ?? 'L1') === next) return current;
+  return next;
+}
+
 /** 剔除已过期通知，并按时间倒序截断到 MAX_NOTICES（每次写入都做，队列长度天然有界）。 */
 function pruneNotices(notices: readonly Notice[], now: number): Notice[] {
   return notices.filter((n) => n.expiresAt > now).slice(0, MAX_NOTICES);
@@ -218,6 +240,13 @@ export function createStore(initial?: Partial<WorldState>): CoreStore {
       const next = applyDirectorEnabled(state.directorEnabled, enabled);
       if (next === state.directorEnabled) return state;
       return notify({ ...state, directorEnabled: next });
+    },
+
+    // @since v3.4（task_096）HUD 信息层级：同 setCurrentScreen 口径 —— 值没变不广播。
+    setInfoLayer: (layer) => {
+      const next = applyInfoLayer(state.infoLayer, layer);
+      if (next === state.infoLayer) return state;
+      return notify({ ...state, infoLayer: next });
     },
 
     // @since v3.8 本地 CLI agent 检测结果：整份替换；内容没变就不广播（同上口径）。
