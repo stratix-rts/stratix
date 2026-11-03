@@ -1,6 +1,6 @@
 # Stratix MCP 接口设计规范（第一期工具面 + 扩展规范）
 
-> **状态**：第一期工具面冻结（Spec v1.6）＋ §6 v2 设计章（**未实现**，见 §6 抬头）　**性质**：规范文档（不含实现代码）
+> **状态**：第一期工具面冻结（Spec v1.7）＋ §6 v2 设计章（**未实现**，见 §6 抬头）　**性质**：规范文档（不含实现代码）
 > **适用范围**：Stratix 对外提供的 MCP server 及其工具面（tool surface）
 > **取代**：`docs/MCP_SERVER_DESIGN.md`（v2 Zone 时代草案 —— Zone 已按 `docs/REFACTOR_PLAN_V3.md` D5 决策砍掉，其中 `stratix.list_zones` 等工具面不再成立）
 > **维护责任**：见 [§5.4](#54-规范文档的维护责任)
@@ -198,7 +198,7 @@ Stratix 是本地 agent 团队指挥台：角色绑定 CLI agent（Claude Code /
 
 **排序位 ≠ 本文档的条目号**：两者**不再逐一对应**，是两套编号。条目号按「只加不删」递增（新条目永远追加在末尾，如 §2.9）；排序位按**域聚拢**（`mission` 域的工具挨在一起）。新增工具时：条目号取当前最大条目号 +1，排序位插进自己域的位置 —— 既有工具之间的相对次序不变。
 
-**返回信封**：统一信封，成功 `ok=true`；失败 `ok=false` 且 MCP 结果带 `isError=true`（业务失败），**协议级/参数级失败**走 JSON-RPC error（不设 `isError`）。完整定义见[附录 A](#附录-a返回信封与错误码总表)。
+**返回信封**：统一信封，成功 `ok=true`；失败 `ok=false` 且 MCP 结果带 `isError=true`（业务失败），**协议级/参数级失败**走 JSON-RPC error（不设 `isError`）。完整定义见[附录 A](#附录-a返回信封与错误码总表)；传输层各类失败的具体错误码见 [§4.4 传输层错误信封](#44-mcp-server-的接入方式)。
 
 ```jsonc
 // 成功
@@ -957,6 +957,25 @@ src/stratix-gateway/mcp/
 
 **安全边界**（第一期）：MCP client 与 Stratix 同机同用户，**不做多租户鉴权**；但 HTTP 端点**必须**绑 `127.0.0.1`（不绑 `0.0.0.0`）—— 工作台的数据面（角色档案、任务内容）不应暴露到局域网。工具入参一律走 schema 校验后再落命令，不允许"万能透传"绕过 core 的守门；origin 字段用于审计留痕，但**不作为信任凭据**（它由调用方自称，不构成鉴权）。
 
+**传输层错误信封（协议级失败一律 JSON-RPC 帧）**：MCP 端点上的**任何**失败都必须长成 JSON-RPC 帧 —— 绝不允许把宿主框架的裸错误体（如 `{"code":500,"message":"Internal server error"}`）漏给 client。漏出去等于把"可判定的错误码"降级成一句"内部错误"，agent 无法据此决定"重试 / 改参 / 查日志"，只能盲重试。
+
+| 失败点 | 响应形状 | 错误码 |
+|--------|----------|--------|
+| 请求体不是合法 JSON（截断 / 畸形） | JSON-RPC error 帧，`id: null` | `-32700` Parse error |
+| 请求体超上限（MCP 侧 1mb） | JSON-RPC error 帧，`id: null` | `-32600` Invalid Request |
+| 帧不是合法 JSON-RPC 2.0 请求 | JSON-RPC error 帧，`id: null` | `-32600` Invalid Request |
+| 未知方法 | JSON-RPC error 帧 | `-32601` Method not found |
+| `tools/call` 缺工具名 / 未知工具 | JSON-RPC error 帧 | `-32602` Invalid params |
+| 工具抛**未捕获异常**（不是 `McpToolError`） | JSON-RPC error 帧 | `-32603` Internal error |
+| 工具**主动**抛 `McpToolError`（含 `internal_error`） | 失败信封 + `isError: true` | 附录 A 的业务码 |
+
+三条硬约束：
+
+1. **HTTP 状态码恒 200**（通知类请求 202 空体）—— 判据是帧里的错误码；用 4xx/5xx 承载协议错误会让部分 client 直接判"传输失败"，连帧都读不到。
+2. **未捕获异常 ≠ 业务失败** —— 只有工具主动抛的 `McpToolError` 才走失败信封；崩溃一律 `-32603`。把崩溃报成 `internal_error` 会让 agent 以为"业务上拒绝"，从而去改参数重试，而不是查服务端日志。
+3. **挂载位次是硬约束** —— `/mcp` 必须挂在宿主的全局 body 解析器**之前**：否则畸形 JSON 在到达 MCP 路由之前就被全局解析器抛掉，错误绕过 MCP 路由、落到宿主 app 级错误处理器（裸 500）。MCP 路由自带解析器（1mb 上限）并自己把解析错误读成 `-32700`。
+
+
 ---
 
 ## 5. 版本与演进
@@ -996,6 +1015,7 @@ src/stratix-gateway/mcp/
 
 | 版本 | 日期 | 变更 | 兼容性 |
 |------|------|------|--------|
+| v1.7 | 2026-11-03 | **传输层错误信封收敛**（§4.4 新增「传输层错误信封」小节 + 附录 A 新增协议层错误表）—— 畸形 JSON 不再漏宿主框架的裸 `{"code":500}`，改回 JSON-RPC `-32700`（id=null）；工具抛未捕获异常不再冒充业务失败信封，改回 `-32603`；`/mcp` 的挂载位次固化为硬约束（必须排在全局 body 解析器之前）；`invalid_arguments` 的 message 区分为「参数缺失」与「类型不对」（`requireString` 少数字段文案） | ✅ 协议层修正，工具面**零变更** —— 十四件工具的名字、参数、语义、返回形状、`tools/list` 顺序全部未动；成功路径逐字未变；业务失败仍走失败信封 + `isError`（错误码总表除 `internal_error` 的「典型触发」描述澄清外未动）；仅未捕获异常的形状从 `internal_error` 信封改为 `-32603` JSON-RPC error |
 | v1.6 | 2026-11-02 | **新增工具** `stratix_session_resume`（§2.13）—— 会话域写面的**第二件**（把一条被中断的互聊会话接回进行中：回灌上文 + 重启轮转，落点 = 既有的 `HudCommand.session.resume`）；**新增动词** `resume` 登记（§4.2）；`tools/list` 新增一件（十二件 → 十三件），排在 `session_interrupt` 之后（既有工具之间的相对次序不变） | ✅ 纯增量：既有十二件工具的名字、参数、语义与缺省行为**均未变**；`tools/list` 的既有十二件次序逐字未动；不新增任何状态通道 / 持久化表 / 状态机（写面走既有 `session.resume` 命令与既有会话状态机；§2.13 的 kind 边界与 §2.12 同一口径） |
 | v1.5 | 2026-11-02 | **新增工具** `stratix_session_interrupt`（§2.12）—— 会话域的**写面第一件**（把一条在办会话转 interrupted 并落中断标记，落点 = 既有的 `HudCommand.session.interrupt`）；**新增错误码** `unsupported_kind`（附录 A）；**新增动词** `interrupt` 登记（§4.2）；`tools/list` 新增一件（十一件 → 十二件），排在 `session_get` 之后（既有工具之间的相对次序不变） | ✅ 纯增量：既有十一件工具的名字、参数、语义与缺省行为**均未变**；`tools/list` 的既有十一件次序逐字未动；不新增任何状态通道 / 持久化表 / 状态机（写面走既有 `session.interrupt` 命令与既有会话状态机） |
 | v1.4 | 2026-11-02 | **新增工具** `stratix_session_list`（§2.10）与 `stratix_session_get`（§2.11）—— 会话域的**只读面**（外部 agent 由此看见会话）；**新增错误码** `session_not_found`（附录 A）；**新增域** `session`（§4.2 域表）；`tools/list` 新增两件（九件 → 十一件），排在既有九件之后（既有工具之间的相对次序不变） | ✅ 纯增量：既有九件工具的名字、参数、语义与缺省行为**均未变**；`tools/list` 的既有九件次序逐字未动；新增两件**只读**（不新增任何状态通道 / 持久化表 / 状态机） |
@@ -1472,7 +1492,19 @@ offConsumer();   // 后  ❌ 应当逆序：offConsumer(); offProvider();
 | `illegal_transition` | 状态机拒绝该迁移 | ❌ | `MissionErrorCode.illegal-transition` |
 | `session_not_found` | 会话 id 不存在 | ❌ | `SessionReadPort.readSession` 回 null（`src/app/services/persistence/session-reader.ts:44`）/ `SessionRejectionCode.not-found` |
 | `unsupported_kind` | 该类会话不支持此操作 | ❌ | 会话 kind 不在工具面允许的集合内（`stratix_session_interrupt` / `stratix_session_resume` 只认 `peer_chat`，见 §2.12 / §2.13） |
-| `internal_error` | 内部异常 | ✅ | 未归类的异常 |
+| `internal_error` | 内部异常 | ✅ | 工具**主动判定**的内部失败：数据面端口未接（`sendChatRound` / `readSessions`）、命令没人接管、状态在操作中消失 |
+
+**协议层错误（JSON-RPC error，不套失败信封）**：失败发生在"帧进不来 / 方法不在 / 崩了"这一层，不套上面的信封，直接回 JSON-RPC error 帧（错误码与触发点见 [§4.4 传输层错误信封](#44-mcp-server-的接入方式)）：
+
+| JSON-RPC code | 含义 | 典型触发 |
+|---------------|------|---------|
+| `-32700` | Parse error | 请求体不是合法 JSON |
+| `-32600` | Invalid Request | 帧不是合法 JSON-RPC 2.0 请求 / body 超限 / `GET /mcp` |
+| `-32601` | Method not found | 未知方法 |
+| `-32602` | Invalid params | `tools/call` 缺工具名 / 未知工具 |
+| `-32603` | Internal error | 工具抛未捕获异常 / 传输层兜底 |
+
+**边界**：`internal_error`（信封）与 `-32603`（JSON-RPC error）的分界是**谁判定的** —— 工具主动判定并给了下一步（"端口没接""命令没人接管"）→ 信封 + `internal_error`；没人判定、只是崩了 → `-32603`。把崩溃包成 `internal_error` 会让 agent 误以为是业务拒绝。
 
 **错误语义约定**：`message` 是**面向人的一句话**（可直接转述给用户），不是堆栈；`hint` 是**面向模型的下一步**（该调什么、该改什么、该等什么）；`retryable` 只表达"同样的输入重试是否可能成功"（如离线恢复后重试），不表达"该不该重试"（该不该由模型按场景判断）。
 

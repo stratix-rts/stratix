@@ -45,7 +45,7 @@ import { attachWorldSyncEndpoint, type WorldSyncEndpoint } from './api/websocket
 import { WORLD_SYNC_PATH } from './api/websocket/world-sync/protocol';
 import { dataStoreService } from './dataStoreService';
 import { createCoreMcpHost } from './mcp/context';
-import { createDefaultMcpServer } from './mcp/server';
+import { createDefaultMcpServer, JSON_RPC_ERRORS, jsonRpcError } from './mcp/server';
 import { createMcpHttpRouter } from './mcp/transport/http';
 import { openClawProxyManager } from './openclaw/OpenClawProxyManager';
 import { bootStratixService, type BootedStratixService } from './service/boot';
@@ -127,8 +127,10 @@ export async function startGatewayService(
   
   // 配置中间件
   app.use(cors());
-  app.use(express.json({ limit: '5mb' }));
-  
+  // 注：全局 body 解析器**不在这里**挂 —— 它必须排在 /mcp 路由**之后**，
+  // 否则畸形 JSON 会先被它解析掉 → 错误跳过 /mcp 路由 → 落到 app 级错误处理器
+  // → 客户端收到裸 {"code":500}（违反 JSON-RPC 2.0）。见下方 MCP 挂载处的说明。
+
   // 敏感 query 参数列表（日志脱敏）
   const SENSITIVE_PARAMS = ['apiKey', 'token', 'password', 'secret', 'auth'];
 
@@ -194,7 +196,19 @@ export async function startGatewayService(
       `records=${booted.restore.records} runtime=${service.runtime.running ? 'running' : 'stopped'}）`
   );
 
+  // MCP server（docs/MCP-SPEC.md §4.4）：HTTP 端点挂在 /mcp，与 stdio 入口共享同一份注册表与 handler。
+  // 数据面复用 **service 的那份** core store + core 总线（不新开状态通道）——
+  //   A4 起两者同进程同实例：MCP 看到的就是 service 持有的世界态（不再 units 0）。
+  //
+  // 挂载位次是**硬约束**（task_118）：/mcp 必须排在全局 express.json() **之前** ——
+  //   全局解析器若先解析，畸形 JSON 会在到达本路由之前抛错 → 跳过 /mcp 路由 →
+  //   落到 app 级错误处理器 → 客户端收到裸 {"code":500}（违反 JSON-RPC 2.0 的 -32700）。
+  //   MCP 路由自带解析器（transport/http.ts，1mb 上限）并自己把解析错误读成 JSON-RPC 帧。
+  app.use('/mcp', createMcpHttpRouter(createDefaultMcpServer(createCoreMcpHost({ store: service.store }))));
+
   // 注册路由
+  // （全局 body 解析器挂在 /mcp 之后：MCP 自己解析，其余路由仍吃这一份 5mb 解析器）
+  app.use(express.json({ limit: '5mb' }));
   app.use('/api/stratix/agent', agentRoutes);
   app.use('/api/stratix/config/agent', agentRoutes);
   app.use('/api/agent', agentTaskRoutes);
@@ -209,10 +223,6 @@ export async function startGatewayService(
   app.use('/api/storage', createStorageRoutes(serviceStorage));
   // 会话读 API（task_092）：同一前缀下的会话那半边（摘要列表 + 事件流；同样只读）。
   app.use('/api/storage', createSessionStorageRoutes(serviceStorage));
-  // MCP server（docs/MCP-SPEC.md §4.4）：HTTP 端点挂在 /mcp，与 stdio 入口共享同一份注册表与 handler。
-  // 数据面复用 **service 的那份** core store + core 总线（不新开状态通道）——
-  //   A4 起两者同进程同实例：MCP 看到的就是 service 持有的世界态（不再 units 0）。
-  app.use('/mcp', createMcpHttpRouter(createDefaultMcpServer(createCoreMcpHost({ store: service.store }))));
   // 健康检查
   app.get('/health', (req, res) => {
     res.json({
@@ -231,6 +241,21 @@ export async function startGatewayService(
   // 错误处理
   app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
     console.error('Error:', err);
+    // /mcp 端点**绝不**漏裸错误体（task_118）：MCP 走 JSON-RPC 2.0，
+    // 客户端要的是错误码（-32700 / -32603 之类），不是一句 "Internal server error"。
+    // 这里只兜住"绕过 MCP 路由、才落到 app 级"的漏网异常 → -32603。
+    if (req.originalUrl?.startsWith('/mcp')) {
+      if (res.headersSent) {
+        next(err);
+        return;
+      }
+      res.status(200).json(
+        jsonRpcError(null, JSON_RPC_ERRORS.internalError, 'Internal error', {
+          detail: err instanceof Error ? err.message : String(err),
+        })
+      );
+      return;
+    }
     res.status(500).json({
       code: 500,
       message: 'Internal server error',

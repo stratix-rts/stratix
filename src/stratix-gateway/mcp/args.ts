@@ -21,6 +21,11 @@ function invalid(message: string, hint?: string): McpToolError {
 /** 必填字符串（trim 后非空）。 */
 export function requireString(args: Args, key: string): string {
   const value = args[key];
+  if (value === undefined || value === null) {
+    // 缺失与类型错是两回事：说"必须是字符串"会让 agent 以为"我传了但类型不对"，
+    // 于是去改一个根本没传的参数（报告 §3-P1 记的原话就是不准）。
+    throw invalid(`参数 ${key} 缺失`, `补齐必填参数 ${key} 后重试`);
+  }
   if (typeof value !== 'string') {
     throw invalid(`参数 ${key} 必须是字符串`);
   }

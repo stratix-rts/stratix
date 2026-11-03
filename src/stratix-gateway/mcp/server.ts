@@ -7,10 +7,12 @@
  *   2. 在协议层做业务判断 —— 业务失败一律走信封 + isError，协议层只管"帧对不对、方法在不在"；
  *   3. 吞掉未知方法 —— 未知方法回 -32601（静默忽略会让 client 一直等一个不会来的响应）；
  *   4. 让传输层各写一套分发 —— stdio 与 HTTP 必须共用本文件（§4.4：stdio 跑通的行为 HTTP 必须一样）；
- *   5. 在本文件里拉数据面依赖 —— 协议层不认识 core / SQLite，状态从哪来由组合根注入。
+ *   5. 在本文件里拉数据面依赖 —— 协议层不认识 core / SQLite，状态从哪来由组合根注入；
+ *   6. 把未捕获异常包成 internal_error 信封 —— 崩溃不是业务失败：未捕获异常一律回
+ *      JSON-RPC -32603（业务失败只有工具主动抛的 McpToolError 才算数）。
  */
 
-import { McpToolError, fail, toToolResult } from './envelope';
+import { McpToolError, toToolResult } from './envelope';
 import { buildToolRegistry, type ToolRegistry } from './registry';
 import { chatSendTool } from './tools/chat';
 import { missionCreateTool, missionCheckpointTool, missionStatusTool } from './tools/mission';
@@ -87,7 +89,12 @@ function success(id: JsonRpcId, result: unknown): JsonRpcResponse {
   return { jsonrpc: '2.0', id, result };
 }
 
-function failure(
+/**
+ * JSON-RPC error 帧（协议级失败的标准形状）。
+ * why 导出：传输层与宿主装配点也要吐同一形状的帧 —— MCP 端点上**任何**失败都必须长成
+ * JSON-RPC error，绝不能漏出宿主框架自己的裸错误体（docs/MCP-SPEC.md §4.4 传输层错误信封）。
+ */
+export function jsonRpcError(
   id: JsonRpcId,
   code: number,
   message: string,
@@ -157,14 +164,14 @@ export function createMcpServer(options: McpServerOptions): McpServer {
         if (typeof params.name !== 'string' || params.name.length === 0) {
           return isNotification
             ? null
-            : failure(id, JSON_RPC_ERRORS.invalidParams, 'tools/call 缺少工具名');
+            : jsonRpcError(id, JSON_RPC_ERRORS.invalidParams, 'tools/call 缺少工具名');
         }
         const tool = registry.getTool(params.name);
         if (!tool) {
           // 工具名不存在 = 参数级错误 → JSON-RPC error（不进 isError 信封）。
           return isNotification
             ? null
-            : failure(id, JSON_RPC_ERRORS.invalidParams, `未知工具「${params.name}」`);
+            : jsonRpcError(id, JSON_RPC_ERRORS.invalidParams, `未知工具「${params.name}」`);
         }
         const toolArgs =
           typeof params.arguments === 'object' &&
@@ -180,20 +187,27 @@ export function createMcpServer(options: McpServerOptions): McpServer {
             // 工具层失败 = 业务失败：走信封 + isError（不进 JSON-RPC error 层）。
             return respond(toToolResult(error.toEnvelope()));
           }
+          // 未捕获异常（工具没主动抛 McpToolError 的那种崩溃）→ 协议层 -32603。
+          // why 不套 internal_error 信封：那个码是工具**主动判定**的内部失败（端口未接、
+          // 命令没人接管）；把崩溃也报成它，等于把"没跑起来"说成"业务上拒绝"，
+          // agent 会照着业务语义去重试/改参数，而不是查服务端日志（docs/MCP-SPEC.md §4.4）。
+          if (isNotification) return null;
           const message = error instanceof Error ? error.message : String(error);
-          return respond(toToolResult(fail('internal_error', message)));
+          return jsonRpcError(id, JSON_RPC_ERRORS.internalError, 'Internal error', {
+            detail: message,
+          });
         }
       }
       default:
         return isNotification
           ? null
-          : failure(id, JSON_RPC_ERRORS.methodNotFound, `未知方法「${request.method}」`);
+          : jsonRpcError(id, JSON_RPC_ERRORS.methodNotFound, `未知方法「${request.method}」`);
     }
   };
 
   const handlePayload = async (payload: unknown): Promise<JsonRpcResponse | null> => {
     if (!isRequest(payload)) {
-      return failure(
+      return jsonRpcError(
         null,
         JSON_RPC_ERRORS.invalidRequest,
         '请求帧不是合法的 JSON-RPC 2.0 请求',
@@ -211,7 +225,7 @@ export function createMcpServer(options: McpServerOptions): McpServer {
         parsed = JSON.parse(line);
       } catch (error) {
         return JSON.stringify(
-          failure(null, JSON_RPC_ERRORS.parseError, 'JSON 解析失败', {
+          jsonRpcError(null, JSON_RPC_ERRORS.parseError, 'Parse error', {
             detail: error instanceof Error ? error.message : String(error),
           })
         );
