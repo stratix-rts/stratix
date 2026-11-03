@@ -34,6 +34,8 @@
  *   若仍渲染主屏 topbar/抽屉会出现双 topbar 与抽屉占视野；直接换内容区更稳。
  */
 
+// 顶栏度量（@since v3.4，task_089）：Z1 的高度与「7 元素封顶」口径 —— 数字取自唯一事实源。
+import { TOPBAR_METRICS } from '../../core/theme/visual-spec';
 import type { WorldState } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
 // 当日回放（@since v3.3，task_082）：底栏时间轴 scrubber（组件 + 控制器口径）。
@@ -42,14 +44,14 @@ import type { ReplayController } from '../components/replay/replay-controller';
 import { mountAgentPanel, type AgentPanelDeps } from '../panels/agent-panel';
 import { mountCommandPanel } from '../panels/command-panel';
 import { mountLogDrawer } from '../panels/log-drawer';
+import type { PipelineFeedInput } from '../panels/pipeline-catalog';
+import type { SessionHistoryPort } from '../panels/session-catalog';
 import {
   mountSessionPanel,
   SESSION_PANEL_TAG,
   type StratSessionPanelElement,
 } from '../panels/session-panel';
-import type { SessionHistoryPort } from '../panels/session-catalog';
 import type { TaskStatsProvider } from '../panels/task-assign-catalog';
-import type { PipelineFeedInput } from '../panels/pipeline-catalog';
 // 声音包（@since v3.3，task_083）：顶栏的总开关 + 音量滑条 —— 读写 localStorage
 //   （真源在 hud/sound-engine.ts，引擎每次播放现读，这里只做读写与回显）。
 import {
@@ -60,14 +62,12 @@ import {
 } from '../sound-engine';
 import { demoMode } from '../theme/demo-mode';
 import { defineStratButton, STRAT_BUTTON_TAG } from '../widgets/strat-button';
-// 顶栏度量（@since v3.4，task_089）：Z1 的高度与「7 元素封顶」口径 —— 数字取自唯一事实源。
-import { TOPBAR_METRICS } from '../../core/theme/visual-spec';
 
-import { mountCharacterScreen } from './character-screen';
 import type { AppearancePreviewPort } from './appearance-preview-port';
+import { mountCharacterScreen } from './character-screen';
+import type { CustomAgentsPort } from './custom-agents-port';
 import type { GrowthStatsPort } from './growth-catalog';
 import { mountSettingsScreen } from './settings-screen';
-import type { CustomAgentsPort } from './custom-agents-port';
 import { mountStatusScreen } from './status-screen';
 
 /** currentScreen 缺省回落（与读取 WorldState.currentScreen 的各处共用）。 */
