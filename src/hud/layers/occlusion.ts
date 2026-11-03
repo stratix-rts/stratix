@@ -315,6 +315,12 @@ export const MODAL_SHELL_STYLE_ID = 'srf-modal-shell';
  * why 面板不是「铺满全屏」：铺满就没有遮罩了 —— 没有遮罩就没有「点遮罩可关」这条路（R4）。
  *   所以形态是「全屏遮罩 + 居中面板」：遮罩吃掉全屏点击（顺带把后面的画面压暗），
  *   面板是内容面（弹窗本体）。
+ *
+ * ============ 出入场过渡（@since v3.6，task_121）============
+ *   入场：遮罩淡入 + 面板「升起」（140ms）—— 纯 CSS（@starting-style），零 JS 计时器。
+ *   退场：**同步摘除**（不是过渡）—— 遮挡契约要求遮罩一关就消失、
+ *     四角常驻件的降对比立刻解除（见 interaction-occlusion 单测的同步断言），
+ *     所以这一层不能延迟卸载。退场的"余韵"交给各子屏自己的内容过渡。
  */
 const MODAL_SHELL_STYLE = `
 .hud-modal-mask {
@@ -322,6 +328,8 @@ const MODAL_SHELL_STYLE = `
   inset: 0;
   background: var(--srf-backdrop);
   pointer-events: auto;
+  opacity: 1;
+  transition: opacity 140ms ease-out;
 }
 .hud-modal-panel {
   position: absolute;
@@ -336,6 +344,13 @@ const MODAL_SHELL_STYLE = `
   border-radius: var(--srf-radius);
   box-shadow: var(--srf-shadow-lg);
   pointer-events: auto;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition: opacity 140ms ease-out, transform 140ms ease-out;
+}
+@starting-style {
+  .hud-modal-mask { opacity: 0; }
+  .hud-modal-panel { opacity: 0; transform: translateY(10px) scale(0.985); }
 }
 `;
 

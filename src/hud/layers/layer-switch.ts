@@ -89,11 +89,23 @@ const LAYER_SWITCH_STYLE = `
   background: transparent;
   color: var(--srf-text-muted);
   font: inherit;
+  /* 微交互（@since v3.6，task_121）：hover 变亮 + 上浮 1px；按下压回。 */
+  transition: color 140ms ease-out, background 140ms ease-out, border-color 140ms ease-out, transform 140ms ease-out;
 }
+.hud-layer-switch-btn:hover { color: var(--srf-text); border-color: var(--srf-border-strong); transform: translateY(-1px); }
+.hud-layer-switch-btn:active { transform: translateY(0); }
+/* 当前档的激活态（@since v3.6，task_121）：**点亮即当前档** —— 底色换成主色，
+   一眼看出"现在是哪一档"。此前的弱高亮（只换描边）在深色底上几乎看不出来
+   （死功能报告 P3#11：「L2 点了没反应」）。 */
 .hud-layer-switch-btn[aria-pressed="true"] {
-  color: var(--srf-text);
+  color: var(--srf-bg);
   border-color: var(--srf-accent);
-  background: var(--srf-panel-elevated);
+  background: var(--srf-accent);
+  font-weight: var(--srf-font-weight-semibold, 600);
+}
+.hud-layer-switch-btn:focus-visible {
+  outline: var(--srf-border-width) solid var(--srf-accent);
+  outline-offset: 1px;
 }
 .hud-layer-switch-samples { display: flex; gap: var(--srf-spacing-xs); }
 .hud-layer-sample {

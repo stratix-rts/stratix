@@ -469,8 +469,21 @@ export function defineSessionPanel(): typeof HTMLElement {
             color: var(--srf-accent);
             border-color: var(--srf-accent);
           }
-          .body { display: grid; gap: var(--srf-spacing-sm); min-height: 0; }
-          :host([collapsed]) .body { display: none; }
+          .body {
+            display: grid;
+            gap: var(--srf-spacing-sm);
+            min-height: 0;
+            /* 出入场过渡（@since v3.6，task_121）：展开 / 收起各有 140ms 淡入淡出。
+               why 用 allow-discrete + @starting-style：display:none 会掐断过渡，
+               改成离散过渡后收起能播完淡出、展开能播淡入（纯 CSS，无 JS 计时器）。 */
+            opacity: 1;
+            transform: translateY(0);
+            transition: opacity 140ms ease-out, transform 140ms ease-out, display 140ms allow-discrete;
+          }
+          :host([collapsed]) .body { display: none; opacity: 0; transform: translateY(-6px); }
+          @starting-style {
+            .body { opacity: 0; transform: translateY(-6px); }
+          }
           .filters { display: flex; flex-wrap: wrap; gap: var(--srf-spacing-xs); }
           .rows { display: grid; gap: var(--srf-spacing-xxs); max-height: 16em; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--srf-border-strong) transparent; }
           .rows::-webkit-scrollbar { width: var(--srf-spacing-sm); }

@@ -543,6 +543,25 @@ export const STRATIX_CONTEXT_TOGGLE_KEY = 'stratix.context.enabled';
  */
 export const STRATIX_NAMETAGS_TOGGLE_KEY = 'stratix.unit.nametags';
 
+/**
+ * 通知提示（轻提示 toast）全局开关的 localStorage 键（@since v3.6，task_116）。
+ * 值 '0' = 关；无键 / 其它值 = 开。why 冻结在 core：写入方（hud/settings-screen 的
+ * 「通知提示」行）与读取方（hud/components/toast 的 toast-host）都在 core 之上，
+ * 公共底座冻结一份键名，两侧不各抄字面量（与上面两个键同一取舍）。
+ *
+ * ★ 为什么它**不**走 SettingsView / BooleanPreferenceKey（task_116 的取舍，重要）：
+ *   ① WorldState 是**进程内**状态 —— 刷新即回默认值。偏好要「刷新后仍保持」，
+ *      真相必须落在本机持久层（localStorage），这是三个偏好行统一口径的根本原因；
+ *   ② core/runtime.ts 从未接线 settings.set（store.setPreference 是 v3.5 就有的落库入口，
+ *      但命令分发那一段一直是 TODO）—— HUD 派发出去只会让 core 报一条「未处理 command」，
+ *      界面等不到广播回来，看着就像"点不动"（死功能报告 #4）。
+ *   ⇒ 偏好四行（通知 / 音效 / 上下文注入 / 单位名字）统一走 localStorage 直写，
+ *     读写口径一致（'0' = 关，其余 = 开；读失败回落开）。
+ *   未尽事项（需要动 core 存取 + app 层落库，另开任务）：让 SettingsView 重新有意义
+ *     —— 契约里的 soundEnabled / notificationsEnabled 目前**没有消费方**（音效一行早已如此）。
+ */
+export const STRATIX_NOTIFICATIONS_TOGGLE_KEY = 'stratix.notifications.enabled';
+
 // ============================================================================
 // 角色
 // ============================================================================
@@ -1426,7 +1445,7 @@ export type HudCommand =
    * @since v3.5 危险区：重置编组（清空当前选择集）。
    *   为什么不复用 unit.select 配空数组：重置编组是一次显式的破坏性动作，
    *   让调用方去拼一个空数组会把"清空"这个意图摊平成普通选择，审计日志里也认不出。
-   *   TODO(v3.Phase2): core/runtime.ts 接线到 core/unit/selection（当前按未落地处理）。
+   *   @since v3.6（task_116）core/runtime.ts 已接线：清空选择集 + 编组槽位（同一次广播）。
    */
   | { type: 'selection.reset' }
   /**

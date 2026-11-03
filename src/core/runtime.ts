@@ -180,6 +180,27 @@ function isAdditiveClick(mods: { shift: boolean; ctrl: boolean; meta: boolean })
 }
 
 /**
+ * 重置编组（@since v3.6，task_116）：清空当前选择集 + 清空已存入的编组槽位。
+ *
+ * why 一次 setState：选择集与编组槽位是同一份「选择语义」的两个面（同一次破坏性动作），
+ *   分两次广播会让 HUD 先看到「选集空了、编组还在」的中间态。
+ * why 幂等（无变化即零广播）：与 store.setState 的约定一致 —— 重复点「重置编组」不该刷屏。
+ */
+function applySelectionReset(store: CoreStore): void {
+  store.setState((state) => {
+    const applied = applySelectionAction(state.selection, { type: 'clear' });
+    const groups = state.selectionGroups ?? new Map<number, readonly string[]>();
+    const groupsEmpty = groups.size === 0;
+    if (!applied.changed && groupsEmpty) return state;
+    return {
+      ...state,
+      selection: applied.next,
+      selectionGroups: groupsEmpty ? groups : new Map<number, readonly string[]>(),
+    };
+  });
+}
+
+/**
  * 把一次选择变更写进 store:应用动作后立刻与已知单位对账,合并成**一次** setState。
  * why 要对账:HUD / world 都有可能发来已经消失的单位 id(快照与输入天然存在时间差),
  * 悬空 id 留在选择集里会让"编组 = 多选集合"失去意义(core/unit/group.ts 直接取选择集当成员)。
@@ -376,6 +397,12 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
       case 'unit.select':
         // HudCommand 的 mode 只有 set / toggle,与选择状态机的动作同名,直接映射,不做二次翻译
         applySelection(store, { type: command.mode, unitIds: command.unitIds });
+        return;
+      // @since v3.6(task_116)危险区「重置编组」:设置页确认框点「确认执行」后发这条命令 →
+      //   core 清空选择集 + 编组槽位(同一次广播)。此前该命令无人处理,core 只报「未处理 command」。
+      //   why 不让 HUD 自己清:铁律是 hud 只发命令、不改 WorldState(否则 HUD 与 world 两侧状态会分叉)。
+      case 'selection.reset':
+        applySelectionReset(store);
         return;
       // @since v3.21 右击移动(task_045):HUD 入口。编队终值广播见 applyUnitMove ——
       // 位置立即生效于状态(世界层 UnitObject),动画只是渲染过渡;落库链路由 unit.position 自动跟随。

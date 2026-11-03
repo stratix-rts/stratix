@@ -7,9 +7,12 @@
  *   跳转出去走 ui.navigate，落到 store.currentScreen 后由本屏切换渲染。
  *   顶栏形态（@since v3.4，task_089；docs/hud-redesign-proposal.html §2.5 Z1 规格）：
  *     19 个元素 → **7 个元素封顶** = 品牌 + 态势胶囊（单位/任务/会话三值合一）+ 通知徽标
- *     + 🔊 声音（音量滑条收进它的弹出层）+ 🎬 导演 + ▶ 演示 + ⋯ 溢出菜单（收纳 5 项低频操作：
+ *     + 声音（音量滑条收进它的弹出层）+ 导演 + 演示 + 溢出菜单（收纳 5 项低频操作：
  *     聊天 / 会话 / 角色 / 设置 / 像素风）。三个 on/off 文本标签（theme/demo/director-tag）删除 ——
  *     **开关点亮即状态**，不再有第二份文本（§4 A13）。
+ *   顶栏图标（@since v3.6，task_121）：四件按钮与溢出菜单五项**全部换成 SVG 图标**
+ *     （widgets/icon-set.ts 的线条图标组）—— 原来的 🔊 / 🎬 / ▶ / ⋯ 是 **emoji（字形）**，
+ *     跟"战术线条风"对不上（审美评估：西装配拖鞋）。图标走 currentColor → 随皮肤换色。
  *   布局形态（@since v3.7，task_020）：**RTS 悬浮布局** —— 战场占满视口，HUD 环绕四周悬浮
  *   （顶栏态势摘要 / 左单位竖栏 / 右态势总览+日志抽屉 / 底命令横条），子屏与抽屉覆盖在最上层。
  *   交互铁律：除 HUD 实体面板外，空白区域的 pointer-events 必须穿透到 Phaser 画布
@@ -215,8 +218,17 @@ const MAIN_SCREEN_STYLE = `
     background: var(--srf-panel-elevated);
     box-shadow: var(--srf-shadow);
     pointer-events: auto;
+    /* 出入场过渡（@since v3.6，task_121）：140ms 淡入淡出 + 轻微上浮。
+       why 用 allow-discrete + @starting-style：hidden 属性的 display:none 会**掐断**过渡，
+       改成"display 离散过渡"后收起时能播完淡出、展开时能播淡入（纯 CSS，无 JS 计时器）。 */
+    opacity: 1;
+    transform: translateY(0);
+    transition: opacity 140ms ease-out, transform 140ms ease-out, display 140ms allow-discrete;
   }
-  .hud-popover[hidden] { display: none; }
+  .hud-popover[hidden] { display: none; opacity: 0; transform: translateY(-6px); }
+  @starting-style {
+    .hud-popover { opacity: 0; transform: translateY(-6px); }
+  }
   .hud-menu { right: 0; flex-direction: column; align-items: stretch; }
   .hud-popover-value { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); font-variant-numeric: tabular-nums; }
   /* 声音件（@since v3.4，task_089）：🔊 开关 + 音量计（音量层的入口，见 §4 A7/A8）。 */
@@ -356,10 +368,11 @@ export const MAIN_SCREEN_TAG = 'strat-main-screen';
  *   brand    品牌标识（§4 A1）
  *   capsule  态势胶囊：单位 / 任务 / 会话三值合一（§4 A2）
  *   badge    通知徽标（§4 A3，贴在胶囊右侧）
- *   sound    🔊 声音（音量滑条收进它的弹出层，§4 A7 / A8）
- *   director 🎬 导演（§4 A6）
- *   demo     ▶ 演示（§4 A5）
- *   overflow ⋯ 溢出菜单（收纳 5 项，§4 A4 / A9 / A10 / A11 / A12）
+ *   sound    声音（音量滑条收进它的弹出层，§4 A7 / A8）
+ *   director 导演（§4 A6）
+ *   demo     演示（§4 A5）
+ *   overflow 溢出菜单（收纳 5 项，§4 A4 / A9 / A10 / A11 / A12）
+ *   （@since v3.6，task_121：四件按钮的图标已是 SVG —— 此处不再列 emoji 字形。）
  */
 export const TOPBAR_ITEM_ROLES = Object.freeze([
   'brand',
@@ -515,7 +528,7 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
           <span class="hud-notice-badge" data-topbar-item="badge" data-role="notice-badge" hidden title="待处理通知">0</span>
           <div class="hud-actions">
             <div class="hud-sound-slot" data-topbar-item="sound" data-role="sound-slot">
-              <${STRAT_BUTTON_TAG} label="🔊" variant="default" title="声音开关" aria-label="声音开关" data-role="sound"></${STRAT_BUTTON_TAG}>
+              <${STRAT_BUTTON_TAG} icon="sound" variant="default" title="声音开关" aria-label="声音开关" data-role="sound"></${STRAT_BUTTON_TAG}>
               <button class="hud-sound-level" type="button" data-role="sound-volume-open"
                       title="音量（点击调节）" aria-label="音量">
                 <span class="hud-sound-level-fill" data-role="sound-level-fill"></span>
@@ -527,15 +540,15 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
                 <span class="hud-popover-value" data-role="sound-volume-value">${soundVolume}%</span>
               </div>
             </div>
-            <${STRAT_BUTTON_TAG} label="🎬" variant="default" title="导演镜头" aria-label="导演镜头" data-topbar-item="director" data-role="director"></${STRAT_BUTTON_TAG}>
-            <${STRAT_BUTTON_TAG} label="▶" variant="default" title="演示模式" aria-label="演示模式" data-topbar-item="demo" data-role="demo"></${STRAT_BUTTON_TAG}>
-            <${STRAT_BUTTON_TAG} label="⋯" variant="default" title="更多" aria-label="更多" data-topbar-item="overflow" data-role="overflow"></${STRAT_BUTTON_TAG}>
+            <${STRAT_BUTTON_TAG} icon="director" variant="default" title="导演镜头" aria-label="导演镜头" data-topbar-item="director" data-role="director"></${STRAT_BUTTON_TAG}>
+            <${STRAT_BUTTON_TAG} icon="demo" variant="default" title="演示模式" aria-label="演示模式" data-topbar-item="demo" data-role="demo"></${STRAT_BUTTON_TAG}>
+            <${STRAT_BUTTON_TAG} icon="more" variant="default" title="更多" aria-label="更多" data-topbar-item="overflow" data-role="overflow"></${STRAT_BUTTON_TAG}>
             <div class="hud-popover hud-menu" data-role="overflow-menu" hidden>
-              <${STRAT_BUTTON_TAG} label="打开聊天" variant="default" data-role="chat"></${STRAT_BUTTON_TAG}>
-              <${STRAT_BUTTON_TAG} label="会话面板" variant="default" data-role="sessions"></${STRAT_BUTTON_TAG}>
-              <${STRAT_BUTTON_TAG} label="看角色" variant="default" data-role="character"></${STRAT_BUTTON_TAG}>
-              <${STRAT_BUTTON_TAG} label="去设置" variant="default" data-role="settings"></${STRAT_BUTTON_TAG}>
-              <${STRAT_BUTTON_TAG} label="像素风 · ${themeLabel}" variant="default" title="切换像素风" aria-label="切换像素风" aria-pressed="${currentTheme === 'pixel' ? 'true' : 'false'}" data-role="theme"></${STRAT_BUTTON_TAG}>
+              <${STRAT_BUTTON_TAG} icon="chat" label="打开聊天" variant="default" stretch data-role="chat"></${STRAT_BUTTON_TAG}>
+              <${STRAT_BUTTON_TAG} icon="sessions" label="会话面板" variant="default" stretch data-role="sessions"></${STRAT_BUTTON_TAG}>
+              <${STRAT_BUTTON_TAG} icon="character" label="看角色" variant="default" stretch data-role="character"></${STRAT_BUTTON_TAG}>
+              <${STRAT_BUTTON_TAG} icon="settings" label="去设置" variant="default" stretch data-role="settings"></${STRAT_BUTTON_TAG}>
+              <${STRAT_BUTTON_TAG} icon="palette" label="像素风 · ${themeLabel}" variant="default" stretch title="切换像素风" aria-label="切换像素风" aria-pressed="${currentTheme === 'pixel' ? 'true' : 'false'}" data-role="theme"></${STRAT_BUTTON_TAG}>
             </div>
           </div>
         </header>
@@ -589,6 +602,10 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       const applySoundState = (): void => {
         const enabled = readSoundEnabled();
         applySwitchState(soundButton, enabled);
+        // 图标随开关换形（@since v3.6，task_121）：静音 = 喇叭上打斜杠。
+        //   why 要换形而不只是变亮：亮/暗在小图标上分不清"开着"还是"关了"，
+        //   形状差（斜杠）才是一眼可辨的状态差。
+        soundButton?.setAttribute('icon', enabled ? 'sound' : 'sound-muted');
         if (volumeInput) volumeInput.disabled = !enabled;
         const volume = readSoundVolume();
         if (levelFill) levelFill.style.width = `${volume}%`;

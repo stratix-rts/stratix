@@ -32,6 +32,10 @@
  */
 
 import { TOPBAR_METRICS } from '../../../core/theme/visual-spec';
+// 图标组（@since v3.6，task_121）：细条上的两个图标从 emoji（▶ / 🎬）换成 SVG ——
+//   emoji 是字形不是图标，跟线条风对不上；SVG 走 currentColor → 自动继承条目的语义色
+//   （演示 = 主色 / 导演 = 警示色），不另抄一份色值。
+import { iconSvg } from '../../widgets/icon-set';
 
 export const MODE_STRIP_TAG = 'strat-mode-strip';
 
@@ -164,6 +168,8 @@ export function defineStratModeStrip(): typeof HTMLElement {
             white-space: nowrap;
           }
           .item[hidden] { display: none; }
+          .icon { display: inline-flex; align-items: center; }
+          .icon svg { width: 1.15em; height: 1.15em; display: block; }
           .item:hover { background: color-mix(in srgb, var(--srf-accent, #6ea8ff) 18%, transparent); }
           .item:focus-visible {
             outline: var(--srf-border-width, 1px) solid var(--srf-accent, #6ea8ff);
@@ -178,10 +184,10 @@ export function defineStratModeStrip(): typeof HTMLElement {
           <!-- label 与 hint 之间那个空格：flex 容器里纯空白的匿名项不渲染（不撑版面），
                但 textContent 里保留 —— e2e / 单测按整句文案断言时能对上。 -->
           <button class="item" type="button" data-role="mode-item" data-mode="demo" hidden>
-            <span class="icon" aria-hidden="true">▶</span><span class="label">${MODE_STRIP_DEMO_LABEL}</span> <span class="hint">${MODE_STRIP_HINT}</span>
+            <span class="icon" aria-hidden="true">${iconSvg('demo')}</span><span class="label">${MODE_STRIP_DEMO_LABEL}</span> <span class="hint">${MODE_STRIP_HINT}</span>
           </button>
           <button class="item" type="button" data-role="mode-item" data-mode="director" hidden>
-            <span class="icon" aria-hidden="true">🎬</span><span class="label">${MODE_STRIP_DIRECTOR_LABEL}</span> <span class="hint">${MODE_STRIP_HINT}</span>
+            <span class="icon" aria-hidden="true">${iconSvg('director')}</span><span class="label">${MODE_STRIP_DIRECTOR_LABEL}</span> <span class="hint">${MODE_STRIP_HINT}</span>
           </button>
         </div>
       `;
