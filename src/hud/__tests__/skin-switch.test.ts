@@ -26,7 +26,13 @@ import { createThemeController, STYLE_ID_PREFIX } from '../theme/theme-controlle
 const readCss = (name: string): string =>
   fs.readFileSync(path.join(__dirname, '..', 'theme', name), 'utf-8');
 
-const SOURCES = { default: readCss('tokens-default.css'), pixel: readCss('tokens-pixel.css') };
+// 皮肤源与生产入口同口径（@since v3.7，task_128）：
+// 像素皮肤 = token 表 + **像素专属视觉层**（字距 / 无抗锯齿 / 扫描线 / 按压位移 / 图标硬笔）。
+// 两者拼成同一张 <style id="srf-theme-pixel"> —— 切走像素即整张 disabled，现代皮肤零残留。
+const SOURCES = {
+  default: readCss('tokens-default.css'),
+  pixel: readCss('tokens-pixel.css') + readCss('skin-pixel-layer.css'),
+};
 
 /** 当前生效的 token 样式表（= 皮肤真正在起作用的那张）。 */
 function activeSheet(): HTMLStyleElement | null {
@@ -145,5 +151,59 @@ describe('皮肤切换：token 真换 + 记忆真写 + core 真接地', () => {
 
     expect(controller.current).toBe('default');
     expect(activeSheet()?.id).toBe(`${STYLE_ID_PREFIX}default`);
+  });
+});
+
+/**
+ * 像素皮肤专属视觉层（@since v3.7，task_128）。
+ * why 这组断言住在「切换」测试里而不是皮肤 token 测试里：层的**开关**跟皮肤切换是同一件事
+ * （拼在同一张 <style> 上），断言「切走就没了」才能证明现代皮肤零残留。
+ */
+describe('像素皮肤专属视觉层：随皮肤一起启停（现代皮肤零残留）', () => {
+  let harness: ReturnType<typeof boot> | undefined;
+  afterEach(() => {
+    harness?.stop();
+    harness = undefined;
+    document.head.querySelectorAll(`style[id^="${STYLE_ID_PREFIX}"]`).forEach((node) => node.remove());
+    window.localStorage.clear();
+  });
+
+  test('像素皮生效时：字体栈 / 字距 / 扫描线 / 按压位移 / 图标硬笔全部到位', () => {
+    harness = boot();
+    harness.adapter.dispatch({ type: 'theme.set', themeId: 'pixel' });
+
+    const css = activeSheet()?.textContent ?? '';
+    // ① 像素字体优先链（不引字体文件，缺了自动落到系统等宽）。
+    expect(css).toContain('"Press Start 2P"');
+    expect(css).toContain('--srf-font-ui: "Press Start 2P"');
+    // ② 字距 + 关抗锯齿（字形硬边 = 像素感的来源）。
+    expect(css).toContain('letter-spacing: 0.06em');
+    expect(css).toContain('-webkit-font-smoothing: none');
+    // ③ 扫描线 / 像素网格（v3.6 起这个 token 一直没人消费，现在接上了）。
+    expect(css).toContain('repeating-linear-gradient');
+    expect(css).toContain('--srf-scanline-opacity');
+    // ④ 按钮按压位移 2px + ⑤ 图标硬笔（crispEdges + 2px）。
+    expect(css).toContain('--srf-press-offset: 2px');
+    expect(css).toContain('--srf-icon-rendering: crispEdges');
+    expect(css).toContain('--srf-icon-stroke: 2px');
+  });
+
+  test('切回现代皮：像素层整张消失（现代皮肤一个像素都不变）', () => {
+    harness = boot();
+    harness.adapter.dispatch({ type: 'theme.set', themeId: 'pixel' });
+    harness.adapter.dispatch({ type: 'theme.set', themeId: 'default' });
+
+    const css = activeSheet()?.textContent ?? '';
+    expect(activeSheet()?.id).toBe(`${STYLE_ID_PREFIX}default`);
+    // 现代皮的源里根本没有这些像素层规则 —— 切回来即复原，无残留。
+    expect(css).not.toContain('Press Start 2P');
+    expect(css).not.toContain('letter-spacing: 0.06em');
+    expect(css).not.toContain('repeating-linear-gradient');
+    expect(css).not.toContain('--srf-press-offset');
+    expect(css).not.toContain('crispEdges');
+    // 现代皮的 token 一个都没被像素皮改过。
+    expect(css).toContain('--srf-radius: 6px');
+    expect(css).toContain('--srf-border-width: 1px');
+    expect(css).toContain('--srf-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);');
   });
 });

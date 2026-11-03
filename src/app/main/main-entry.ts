@@ -141,6 +141,10 @@ import { createThemeController } from '../../hud/theme/theme-controller';
 import { demoMode } from '../../hud/theme/demo-mode';
 import defaultCss from '../../hud/theme/tokens-default.css?inline';
 import pixelCss from '../../hud/theme/tokens-pixel.css?inline';
+// 像素皮肤专属视觉层（@since v3.7，task_128）：字距 / 无抗锯齿 / 扫描线 / 按压位移 / 图标硬笔。
+// why 拼进 pixel 源而不是单独一张表：主题控制器按 id 整张启停 —— 拼一起才能「切走像素 = 整层消失」，
+// 现代皮肤因此一个像素都不会变（现代源里没有这张表）。
+import pixelLayerCss from '../../hud/theme/skin-pixel-layer.css?inline';
 import { installVisualTokens } from '../../hud/theme/visual-tokens';
 import { defineStratButton } from '../../hud/widgets/strat-button';
 import { mountCharacterChatDrawer, CHARACTER_CHAT_DRAWER_TAG, type StratCharacterChatDrawerElement } from '../../hud/components/chat-drawer/chat-drawer';
@@ -369,7 +373,7 @@ async function boot(): Promise<void> {
   // 七色语义色注入成 CSS 变量（--srf-visual-*）—— HUD 与战场读同一份色值。
   installVisualTokens();
   const themeController = createThemeController({
-    sources: { default: defaultCss, pixel: pixelCss },
+    sources: { default: defaultCss, pixel: pixelCss + pixelLayerCss },
     initial: 'default',
   });
   const adapter = createHudBusAdapter({

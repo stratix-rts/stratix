@@ -1,0 +1,88 @@
+/**
+ * 文件职责：**像素皮肤的专属视觉层**（@since v3.7，task_128）—— 那些**不属于 token**
+ *   却必须随皮肤切换的东西：字距、字体抗锯齿、扫描线 / 像素网格、按钮按压位移、图标笔触。
+ *
+ * ★ 为什么单独一张表，而不是塞进 tokens-pixel.css：
+ *   1. tokens-*.css 的键集合受单测严格约束（40 个，多一个就红）—— 组件级效果塞不进去；
+ *   2. token 只发「值」，发不了「选择器」；字距 / 抗锯齿 / 扫描线都要选择器；
+ *   3. **现代皮肤必须一个像素都不变** —— 这张表只挂在像素皮肤那一侧（见 theme-controller）：
+ *      它和 tokens-pixel.css 拼成同一张 <style id="srf-theme-pixel">，切走即整张 disabled。
+ *
+ * 输入：无（纯 CSS）。
+ * 输出：像素皮肤独有的整屏质感（字距 / 无抗锯齿 / 扫描线 / 像素网格 / 按压位移 / 图标硬笔）。
+ * 禁止事项：
+ *   1. 写死颜色 —— 颜色一律取 token（--srf-*），否则换色板时会漏；
+ *   2. 引入字体文件 / 图标库 —— 零新增依赖；
+ *   3. 吃事件 —— 覆盖层必须 pointer-events:none（否则会挡住 HUD 点击）。
+ */
+
+/* —— ① 字体质感：像素风 = 关闭抗锯齿（字形硬边）+ 加宽字距（方块感）——
+   why 放 :root：这两条都是**继承属性**，从根上一路继承进 shadow DOM（跨 shadow 边界仍继承），
+   所以全站文字（含 shadow 组件内部）一次到位，组件零改动。 */
+:root {
+  /* 关闭字体抗锯齿 —— 这是「像素」最直接的兑现：字形边缘不再被灰边抹圆。 */
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+  /* 字距：像素字体的方块感主要来自字距（0 = 字符挤成一团）。 */
+  letter-spacing: 0.06em;
+
+  /* —— ② 组件级行为参数（只在像素皮存在，其它皮走 var() 的兜底值）——
+     why 放这里而不是 tokens-*.css：这些是**行为**不是**外观**，
+     放 token 会逼所有皮肤补齐同一批键（现代皮会被无意义地改一行）。 */
+  --srf-press-offset: 2px;   /* 按钮按压位移（现代皮兜底 0px = 原地按压） */
+  --srf-icon-stroke: 2px;    /* 图标描边（现代皮兜底 1.5px） */
+  --srf-icon-rendering: crispEdges; /* 图标渲染（现代皮兜底 geometricPrecision） */
+}
+
+/* —— ③ 扫描线 + 像素网格：整屏 CRT 质感 ——
+   why 覆盖到 body 而不是某个面板：像素风是「整屏」皮肤（战场也一起复古）；
+   pointer-events:none → 不吃任何点击（覆盖层纯装饰）。 */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  pointer-events: none;
+  background:
+    /* 扫描线：每 4px 一道（2px 亮 / 2px 暗） */
+    repeating-linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0) 0 2px,
+      rgba(0, 0, 0, var(--srf-scanline-opacity, 0.32)) 2px 4px
+    ),
+    /* 像素网格：竖向同理，弱一档（避免太脏） */
+    repeating-linear-gradient(
+      to right,
+      rgba(0, 0, 0, 0) 0 2px,
+      rgba(0, 0, 0, calc(var(--srf-scanline-opacity, 0.32) * 0.55)) 2px 4px
+    );
+}
+
+/* —— ④ 字体桥：把字体与字距「接回」各组件 ——
+   why 需要这一步：绝大多数组件的宿主写着 `:host { all: initial }`（防外部样式漏进来），
+   而 all 会把**继承属性**（font-family / letter-spacing / font-size）一并复位 →
+   字体栈进不到 shadow DOM 内部（这正是 v3.6「切像素字体完全没变」的根因之一）。
+   从文档侧给宿主补回继承属性即可，组件仍零改动：
+   特异性 (0,1,1) > `:host` 的 (0,1,0) → 组件自己的规则不变，只补回被 all 复位的那几项。
+   why 不写在 token 里：token 只发值、发不了选择器；字距是「像素层」独有的行为。 */
+body #hud-side *,
+body #hud-root * {
+  font-family: var(--srf-font-ui);
+  letter-spacing: 0.06em;
+}
+
+/* —— ⑤ 浮层容器（顶栏 / 侧栏 / 底栏）：直角 + 无阴影 ——
+   why 用 body 前缀提高特异性：主屏样式表（MAIN_SCREEN_STYLE）与本表同在 document.head，
+   挂载先后不定 —— 抬一级特异性保证「像素层说了算」，不必依赖 !important。 */
+body .hud-topbar,
+body .hud-surface,
+body .hud-bottom-bar {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* 焦点圈：像素风用「方框」而不是现代的柔和外发光。 */
+body :focus-visible {
+  outline: var(--srf-border-width) solid var(--srf-accent);
+  outline-offset: 2px;
+}

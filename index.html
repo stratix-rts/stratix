@@ -22,7 +22,9 @@
         overflow: hidden;
         background: #0f1116;
         color: #e6e9ef;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        /* 字体走皮肤 token（@since v3.7，task_128）：写死系统字体会让像素皮肤「字体完全没变」。
+           var() 的兜底值 = 现代皮的字体栈（token 还没注入时用），现代皮渲染结果与原先逐像素一致。 */
+        font-family: var(--srf-font-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
       }
       #app {
         position: relative;

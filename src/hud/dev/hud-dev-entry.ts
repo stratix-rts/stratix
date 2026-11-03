@@ -36,7 +36,9 @@ import defaultCss from '../theme/tokens-default.css';
 import forestCss from '../theme/tokens-forest.css';
 import monoCss from '../theme/tokens-mono.css';
 import oceanCss from '../theme/tokens-ocean.css';
-import pixelCss from '../theme/tokens-pixel.css';
+import pixelCss from '../theme/tokens-pixel.css?inline';
+// 像素皮肤专属视觉层（@since v3.7，task_128）：与生产入口同一口径（拼进 pixel 源）。
+import pixelLayerCss from '../theme/skin-pixel-layer.css?inline';
 import sunsetCss from '../theme/tokens-sunset.css';
 import { defineStratButton } from '../widgets/strat-button';
 
@@ -46,7 +48,7 @@ import { defineStratButton } from '../widgets/strat-button';
  */
 const SKIN_CSS: Record<SkinId, string> = {
   default: defaultCss,
-  pixel: pixelCss,
+  pixel: pixelCss + pixelLayerCss,
   crimson: crimsonCss,
   forest: forestCss,
   ocean: oceanCss,

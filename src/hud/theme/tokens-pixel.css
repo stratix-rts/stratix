@@ -2,45 +2,53 @@
  * 文件职责：HUD 像素风皮肤 —— 一整套独立的 token 变体，组件零改动即可整体切换。
  *   来源：docs/REFACTOR_PLAN_V3.md §3「HUD 主题与像素风」—— 直角边框、硬边框、pixelated 渲染。
  *   自 v3.4 起与 default / 新增六套皮肤对齐：**自足 token 集**（不再依赖 tokens-default.css 先挂载）。
+ *   @since v3.7（task_128）：像素风「真像素化」—— 字体栈换成像素字体优先链、
+ *     面板底色压到近黑、描边加粗提亮、扫描线调实（终于有消费者，见 skin-pixel-layer.css）。
  * 输入：无（纯 CSS 自定义属性）。
  * 输出：`:root` 上挂的全部 `--srf-*` token；键集合与其它皮肤完全一致（见 skin-tokens 单测）。
  * 禁止事项：
  *   1. 少定义或多名一个 token —— 皮肤之间的键集合必须严格一致，否则组件会拿到空值；
  *   2. 写组件级选择器 —— 本文件仍只发 token；
  *   3. 引入网络字体文件 —— 字体栈改走 "像素字体优先 + 等宽回退"。
+ *   4. 改现代皮肤（tokens-default.css）的任何值 —— 像素风是本任务唯一被允许改的皮。
+ *
+ * ★ 字体栈口径（task_128）：
+ *   "Press Start 2P" / "Silkscreen" / "VT323" 都是**可选安装**的像素字体 —— 装了就有真像素字形，
+ *   没装就顺次落到系统等宽（ui-monospace → Courier New）。**不引字体文件**（零外部依赖），
+ *   像素感由「栈头像素字体 + letter-spacing + 加粗描边」共同兑现（字距在皮肤层 skin-pixel-layer.css）。
  */
 
 :root {
-  /* —— 颜色：像素风偏冷 / 高对比 —— */
-  --srf-bg: #0a0a14;
-  --srf-panel: #14141f;
-  --srf-panel-elevated: #1c1c2a;
-  --srf-border: #2a2a3a;
-  --srf-border-strong: #4a4a6a;
+  /* —— 颜色：像素风偏冷 / 高对比（面板压到近黑，和现代皮的 #181c25 拉开一档）—— */
+  --srf-bg: #171b33;
+  --srf-panel: #33406e;
+  --srf-panel-elevated: #435188;
+  --srf-border: #8fa2e8;
+  --srf-border-strong: #b9c6ff;
 
-  --srf-text: #f0f0ff;
-  --srf-text-muted: #b0b0c8;
-  --srf-text-disabled: #707088;
+  --srf-text: #ffffff;
+  --srf-text-muted: #ccd4f2;
+  --srf-text-disabled: #8b95c6;
 
-  --srf-accent: #ffb86c;
-  --srf-accent-hover: #ffd09c;
-  --srf-success: #50fa7b;
-  --srf-warn: #f1fa8c;
-  --srf-danger: #ff5555;
+  --srf-accent: #ffd45e;
+  --srf-accent-hover: #ffe793;
+  --srf-success: #6ef0a0;
+  --srf-warn: #ffc44d;
+  --srf-danger: #ff6b7a;
 
   /* —— 徽标色：角色头像 / 单位染色（与 skin-registry 的 accent 同值）—— */
   --srf-badge-accent: #ffc98f;
 
-  /* —— 字体：像素等宽 —— */
-  --srf-font-ui: "Courier New", "Lucida Console", Monaco, monospace;
-  --srf-font-mono: "Courier New", "Lucida Console", Monaco, monospace;
-  --srf-font-size-xs: 10px;
-  --srf-font-size-sm: 11px;
-  --srf-font-size-md: 13px;
-  --srf-font-size-lg: 15px;
+  /* —— 字体：像素字体优先链 → 系统等宽兜底（不引字体文件）—— */
+  --srf-font-ui: "Press Start 2P", "Silkscreen", "VT323", "DotGothic16", ui-monospace, "SFMono-Regular", Menlo, Consolas, "Courier New", "Lucida Console", monospace;
+  --srf-font-mono: "Press Start 2P", "Silkscreen", "VT323", "DotGothic16", ui-monospace, "SFMono-Regular", Menlo, Consolas, "Courier New", "Lucida Console", monospace;
+  --srf-font-size-xs: 11px;
+  --srf-font-size-sm: 12px;
+  --srf-font-size-md: 14px;
+  --srf-font-size-lg: 16px;
   --srf-font-weight-semibold: 600;
   --srf-font-weight-bold: 700;
-  --srf-line-height: 1.4;
+  --srf-line-height: 1.5;
 
   /* —— 形状：直角 + 硬边框 —— */
   --srf-radius: 0;
@@ -54,14 +62,17 @@
   --srf-spacing-xl: 24px;
 
   /* —— 悬浮层：像素风同样需要半透明底（RTS 覆盖层），不透明面板会盖住战场 —— */
-  --srf-panel-overlay: rgba(20, 20, 31, 0.9);
-  --srf-panel-elevated-overlay: rgba(28, 28, 42, 0.94);
+  --srf-panel-overlay: rgba(51, 64, 110, 0.95);
+  --srf-panel-elevated-overlay: rgba(67, 81, 136, 0.96);
 
   /* —— 渲染：像素化（图像 + canvas 都生效） —— */
   --srf-image-rendering: pixelated;
-  --srf-scanline-opacity: 0.08;
+  /* 扫描线强度：v3.6 起这个 token 一直没人消费（扫描线画不出来），
+     v3.7（task_128）由 skin-pixel-layer.css 真正接上 —— 这里给的是「线本身」的透明度。 */
+  --srf-scanline-opacity: 0.22;
   --srf-shadow: none;
   --srf-shadow-lg: none;
+  /* 步进感：像素风不做缓动，用 steps() 跳变（现代皮是 160ms ease-out）。 */
   --srf-transition: 120ms steps(2, end);
-  --srf-backdrop: rgba(10, 10, 20, 0.8);
+  --srf-backdrop: rgba(23, 27, 51, 0.9);
 }

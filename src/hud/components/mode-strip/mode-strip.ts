@@ -169,7 +169,14 @@ export function defineStratModeStrip(): typeof HTMLElement {
           }
           .item[hidden] { display: none; }
           .icon { display: inline-flex; align-items: center; }
-          .icon svg { width: 1.15em; height: 1.15em; display: block; }
+          /* 图标硬笔（@since v3.7，task_128）：像素皮 2px + crispEdges，现代皮兜底 1.5px（零变化）。 */
+          .icon svg {
+            width: 1.15em;
+            height: 1.15em;
+            display: block;
+            stroke-width: var(--srf-icon-stroke, 1.5);
+            shape-rendering: var(--srf-icon-rendering, geometricPrecision);
+          }
           .item:hover { background: color-mix(in srgb, var(--srf-accent, #6ea8ff) 18%, transparent); }
           .item:focus-visible {
             outline: var(--srf-border-width, 1px) solid var(--srf-accent, #6ea8ff);

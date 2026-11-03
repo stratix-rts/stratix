@@ -154,8 +154,15 @@ export function defineStratButton(): typeof HTMLElement {
             border-color: var(--srf-border-strong);
             transform: translateY(-1px);
           }
-          /* active：压回原位 + 底色回落 —— 一次"按下去"的手感。 */
-          button:active:not(:disabled) { box-shadow: none; transform: translateY(0); background: var(--srf-panel); }
+          /* active：压回原位 + 底色回落 —— 一次"按下去"的手感。
+             @since v3.7（task_128）：像素皮的"按下去"是**真硬位移**（2px 右下），
+             不是现代皮的原地压回。--srf-press-offset 只在像素皮存在（skin-pixel-layer.css），
+             现代皮走 var() 兜底 0px —— 等价于原来的 translateY(0)，现代皮一个像素都不变。 */
+          button:active:not(:disabled) {
+            box-shadow: none;
+            transform: translate(var(--srf-press-offset, 0px), var(--srf-press-offset, 0px));
+            background: var(--srf-panel);
+          }
           button:focus-visible {
             outline: var(--srf-border-width) solid var(--srf-accent);
             outline-offset: var(--srf-spacing-xxs);
@@ -168,8 +175,18 @@ export function defineStratButton(): typeof HTMLElement {
           }
           :host([variant="primary"]) button:hover:not(:disabled) { background: var(--srf-accent-hover); color: var(--srf-bg); }
           :host([variant="danger"]) button { color: var(--srf-danger); }
-          /* 图标尺寸跟着字号走（1em）：按钮 12px → 约 14px；小字处自动变小。 */
-          svg.srf-icon { width: 1.15em; height: 1.15em; display: block; flex: none; }
+          /* 图标尺寸跟着字号走（1em）：按钮 12px → 约 14px；小字处自动变小。
+             @since v3.7（task_128）：像素皮下图标换**硬笔**——描边加粗到 2px + crispEdges 渲染
+             （CSS 的 stroke-width 覆盖 SVG 的 presentation attribute，故图标组零改动）。
+             现代皮走 var() 兜底（1.5px / geometricPrecision）—— 与 task_121 的现代图标完全一致。 */
+          svg.srf-icon {
+            width: 1.15em;
+            height: 1.15em;
+            display: block;
+            flex: none;
+            stroke-width: var(--srf-icon-stroke, 1.5);
+            shape-rendering: var(--srf-icon-rendering, geometricPrecision);
+          }
         </style>
         <button type="button" ${this._attrs.disabled ? 'disabled' : ''}${ariaLabelAttr}${ariaPressedAttr}>${content}</button>
       `;
