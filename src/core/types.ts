@@ -1387,6 +1387,17 @@ export type HudCommand =
       appearance?: CharacterAppearance;
     }
   /**
+   * @since v3.7（task_129）删除角色档案（名册清理 —— `character.create` 的逆向命令）。
+   * 载荷口径：characterId 必须命中 WorldState.characters。
+   * 拒绝口径（裁决在 core/character/manager.ts 的 deleteCharacter，占用判定在 delete-guard.ts）：
+   *   - 在任务中（还有未收尾的 queued / running / awaiting_approval 任务，或战场单位仍在执行
+   *     编组任务）→ 拒发 + Notice（删了会留下"任务在跑、承人没了"的孤儿单）；
+   *   - 在线（该角色有在办会话 —— 对话正在跑）→ 拒发 + Notice。
+   * 成功 → 角色从名册移除，同一次 setState 里一并撤下它的战场单位（不留幽灵单位）；
+   * core 侧落库后由 WorldState.characters 全量广播。
+   */
+  | { type: 'character.delete'; characterId: string }
+  /**
    * @since v3.1 新增可选 linkId：缺省表示"投给当前唯一的已连接会话"；
    * 会话不唯一时不猜，走 onUnhandled 上报（宁可让调用方显式指定，也不投错 agent）。
    */

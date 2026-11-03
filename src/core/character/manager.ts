@@ -45,6 +45,7 @@ import {
   type NoticeLevel,
 } from '../types';
 
+import { findCharacterDeleteBlock, type CharacterDeleteBlockReason } from './delete-guard';
 import { grantExperience as applyExperience, type GrowthErrorCode } from './growth';
 import { updatePersona as applyPersona, type PersonaErrorCode } from './persona';
 import {
@@ -94,6 +95,29 @@ export type CharacterCreateResult =
     }
   | { readonly ok: false; readonly code: CharacterCreateRejectionCode };
 
+
+/**
+ * 删除被拒的机器可读原因（@since v3.7，task_129）。
+ * - not-found：名册里没有这个角色（不存在 ≠ 占用）；
+ * - character-busy：角色有未收尾的任务 / 战场单位还在执行编组任务（删了会留孤儿单）；
+ * - character-online：角色有在办会话（在线对话中，删了等于中途掐掉一轮对话）。
+ *
+ * why 占用判定放在纯函数（delete-guard.ts）：manager 与 MCP 工具共用同一份口径，
+ * 两处各写一份必然漂移（一个说"在任务中"、一个说"在忙"）。
+ */
+export type CharacterDeleteRejectionCode =
+  | 'not-found'
+  | CharacterDeleteBlockReason;
+
+export type CharacterDeleteResult =
+  | {
+      readonly ok: true;
+      /** 被删掉的角色（删除前那一份 —— 回执要能说清"删的是谁"）。 */
+      readonly character: CharacterView;
+      /** 一并撤下的战场单位 id（没有上场就是 null —— 不编造）。 */
+      readonly removedUnitId: string | null;
+    }
+  | { readonly ok: false; readonly code: CharacterDeleteRejectionCode; readonly characterId: string };
 
 export type CharacterGrantResult =
   | {
@@ -220,6 +244,18 @@ export interface CharacterManager {
    * 与自己当前名字相同（trim / 大小写不敏感）→ 幂等成功，不写库不广播。
    */
   updateName(characterId: string, name: unknown): CharacterNameResult;
+  /**
+   * 删除角色档案（对应 HudCommand 'character.delete'，@since v3.7 task_129）。
+   * 名册供给（character.create）的逆向面：把试错 / 废弃的角色从名册里清掉。
+   * 成功 → 角色从 WorldState.characters 移除，**同一次 setState** 里一并撤下它的战场单位
+   * （角色没了还留个单位在战场上 = 幽灵单位，渲染侧会当成没档案的野单位画着）。
+   * 拒绝 → 状态不变 + Notice（source = 'core/character'）：
+   *   - not-found：名册里没这个角色；
+   *   - character-busy：有未收尾的任务 / 单位还在执行编组任务；
+   *   - character-online：有在办会话（在线对话中）。
+   * 占用判定在 delete-guard.ts（纯函数，manager 与 MCP 工具共用同一份口径）。
+   */
+  deleteCharacter(characterId: string): CharacterDeleteResult;
 }
 
 /**
@@ -621,6 +657,56 @@ export function createCharacterManager(options: CharacterManagerOptions = {}): C
     return settled;
   };
 
+  /**
+   * 删除角色（@since v3.7，task_129）—— 与其它写入面同一写入口径（一次 setState 内原子化）。
+   * 为什么删除必须一次写完：角色与它的战场单位是**同一次广播里的一对**，分两次写会广播两遍，
+   * 且中间那一帧会出现"名册里没角色、战场上还有单位"的幽灵态。
+   *
+   * 占用判定（delete-guard.ts）在**同一次** setState 内判：判在前、写在后，中间没有别的写入插进来
+   * —— 别的域（任务域）也在写同一个 store，基于陈旧快照判出的"不占用"可能已被一条新派单抢跑。
+   */
+  const deleteCharacter = (characterId: string): CharacterDeleteResult => {
+    let result: CharacterDeleteResult | null = null;
+
+    store.setState((current) => {
+      const index = current.characters.findIndex((c) => c.id === characterId);
+      if (index < 0) {
+        result = { ok: false, code: 'not-found', characterId };
+        return current;
+      }
+
+      const block = findCharacterDeleteBlock(current, characterId);
+      if (block) {
+        result = { ok: false, code: block.reason, characterId };
+        return current;
+      }
+
+      const character = current.characters[index] as CharacterView;
+      const unit = current.units.find((item) => item.characterId === characterId);
+      result = { ok: true, character, removedUnitId: unit?.id ?? null };
+      // 同一次 setState 里撤下角色与它的战场单位：名册与战场同一帧对齐，不留幽灵单位。
+      return {
+        ...current,
+        characters: current.characters.filter((c) => c.id !== characterId),
+        units: current.units.filter((item) => item.characterId !== characterId),
+      };
+    });
+
+    // setState 是同步的，返回时 result 必已赋值；保底兜一层（只可能是编程错误，不是用户路径）。
+    if (result === null) return { ok: false, code: 'not-found', characterId };
+    const settled = result as CharacterDeleteResult;
+    if (!settled.ok) {
+      const text =
+        settled.code === 'not-found'
+          ? `未找到角色：${characterId}`
+          : settled.code === 'character-busy'
+            ? '角色仍在任务中，暂不能删除'
+            : '角色仍有在办会话，暂不能删除';
+      reportFailure(store, `character-delete-rejected:${characterId}:${settled.code}`, text, 'warn');
+    }
+    return settled;
+  };
+
   return {
     store,
     createCharacter,
@@ -629,5 +715,6 @@ export function createCharacterManager(options: CharacterManagerOptions = {}): C
     updateAppearance,
     updateContextEnabled,
     updateName,
+    deleteCharacter,
   };
 }

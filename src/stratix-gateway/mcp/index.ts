@@ -24,7 +24,7 @@ export {
   missionCancelTool,
 } from './tools/mission';
 export { chatSendTool } from './tools/chat';
-export { characterCreateTool } from './tools/character';
+export { characterCreateTool, characterDeleteTool } from './tools/character';
 export { registryTool } from './tools/registry';
 export { sessionListTool, sessionGetTool, sessionInterruptTool, sessionResumeTool, sessionForkTool } from './tools/session';
 export { guardCharacter, characterOnline, characterName } from './tools/common';

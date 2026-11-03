@@ -514,6 +514,12 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
           appearance: command.appearance,
         });
         return;
+      // @since v3.7(task_129) 名册清理:删除角色档案 —— 落到 character manager(不再走 onUnhandled)。
+      // 占用判定(在任务中 / 在线)与落库都在 manager 内的一次 setState 里完成;
+      // 被拒(不在档 / 占用中)走 Notice(manager 内部完成),状态不变。
+      case 'character.delete':
+        character.deleteCharacter(command.characterId);
+        return;
       // @since v3.16 角色任务派发(task_037):落到 task manager(不再走 onUnhandled)。
       // prompt 合法性与角色在档由 manager 裁决;agent 绑定 / 检出的守门在 app 层 task-service
       // 出队时做(不满足 → failTask 直达 failed,状态里看得见原因)。

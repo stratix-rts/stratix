@@ -284,6 +284,8 @@ const HUD_COMMAND_TYPE_FLAGS: Readonly<Record<HudCommand['type'], true>> = {
   'character.contextEnabled.update': true,
   'character.name.update': true,
   'character.create': true,
+  // @since v3.7(task_129):删除角色档案（名册清理 —— core/character/manager.ts 的 deleteCharacter）。
+  'character.delete': true,
   'chat.send': true,
   'ui.navigate': true,
   'theme.set': true,

@@ -28,6 +28,7 @@
  *   于是「建了角色」与「战场上多了这个 agent 单位」是一次广播里的同一件事。
  */
 
+export * from './delete-guard';
 export * from './growth';
 export * from './persona';
 export * from './profile';
