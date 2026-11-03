@@ -174,12 +174,17 @@ export async function startGatewayService(
   // core 运行时（A1 组合根 + A2 执行环 + A3 存储），此后 MCP 与 service 同进程见真状态
   //   （改造前 /mcp 挂在一个没人写过的 store 上 —— units 恒为 0）。
   // boot 失败即退出：半启动的 gateway（路由已挂但大脑没醒）比不启动更糟。
+  //
+  // 世界态快照（task_133）：missions + 角色名册落盘在 dataDir 下的 world-snapshot.json ——
+  //   纯文本、可人工检查；坏档降级成空世界（不崩），进程照常服务。
+  const snapshotPath = path.join(dataDir, 'world-snapshot.json');
   console.log('[service] boot start...');
   const booted = ((): BootedStratixService => {
     try {
       return bootStratixService({
         storage: serviceStorage,
         db: db.getDatabase() as unknown as SqliteDatabaseLike,
+        snapshotPath,
         ...(options.serviceTransport ? { createTransport: options.serviceTransport } : {}),
       });
     } catch (error) {
@@ -194,6 +199,10 @@ export async function startGatewayService(
   console.log(
     `[service] boot ok（characters=${booted.restore.characters} units=${booted.restore.units} ` +
       `records=${booted.restore.records} runtime=${service.runtime.running ? 'running' : 'stopped'}）`
+  );
+  console.log(
+    `[service] 世界态快照：missions=${booted.snapshot.missions} characters=${booted.snapshot.characters} ` +
+      `units=${booted.snapshot.units} skipped=${booted.snapshot.skipped} path=${snapshotPath}`
   );
 
   // MCP server（docs/MCP-SPEC.md §4.4）：HTTP 端点挂在 /mcp，与 stdio 入口共享同一份注册表与 handler。

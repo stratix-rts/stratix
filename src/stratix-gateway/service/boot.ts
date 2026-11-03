@@ -28,6 +28,12 @@ import type { CoreStore } from '../../core/store';
 import { startAgentDetection, type ServiceAgentDetection } from './agent-detection';
 import type { ServiceStorage } from './storage';
 import { createStratixService, type StratixService } from './stratix-service';
+import {
+  createWorldPersister,
+  readWorldSnapshotFile,
+  type WorldPersister,
+} from './world-persist';
+import { restoreWorldFromSnapshot, type WorldSnapshotRestoreResult } from './world-snapshot';
 import { restoreWorldFromDatabase, type WorldRestoreResult } from './world-restore';
 
 /** 启动接线的参数（全部可缺席；缺席即降级，不报错）。 */
@@ -36,6 +42,13 @@ export interface ServiceBootOptions {
   readonly storage?: ServiceStorage;
   /** 库句柄（恢复世界态用）。缺省 = 不恢复（空世界起步）。 */
   readonly db?: SqliteDatabaseLike;
+  /**
+   * 世界态快照文件路径（@since v3.7 / task_133：missions + characters 落盘，重启可恢复）。
+   *
+   * 给出即：启动时读回快照（missions + 角色名册）写进 store，并在运行期把状态变化
+   * 防抖落盘。缺省 = 不落盘（内存世界态，重启即失 —— 单测与嵌入式用法走这条）。
+   */
+  readonly snapshotPath?: string;
   /** 世界态持有者（缺省 = core/store 的 worldStore 单例，与 MCP 数据面同一份）。 */
   readonly store?: CoreStore;
   /** 是否起本地 CLI agent 探测（缺省 = 起；执行环的出队守门依赖它）。 */
@@ -60,6 +73,10 @@ export interface BootedStratixService {
   readonly service: StratixService;
   /** 世界态恢复结果（角色数 / 单位数 / 读到的行数）。 */
   readonly restore: WorldRestoreResult;
+  /** 快照恢复结果（missions + characters；没给快照路径时全 0）。 */
+  readonly snapshot: WorldSnapshotRestoreResult;
+  /** 落盘件（未给快照路径时为 null）；stop 时会落最后一次盘。 */
+  readonly persister: WorldPersister | null;
   /** agent 探测句柄（未起探测时为 null）。 */
   readonly detection: ServiceAgentDetection | null;
   /** 收干净：停探测 → 退 service（执行环 / 养成回路 / runtime 依次退订）。幂等。 */
@@ -86,12 +103,24 @@ export function bootStratixService(options: ServiceBootOptions = {}): BootedStra
     logger,
   });
 
-  // ===== ② 世界态恢复（A4）：角色档案 → store（角色 + 战场单位）=====
+  // ===== ② 世界态恢复（A4）：快照（missions + 角色）→ store；再从库里补角色档案 =====
+  // 快照是 gateway 自己的世界态真相（missions 与 characters 一起存一起读）；
+  // 库里的 characters 表是**渲染侧**那条路径的存档 —— 两条来源都按 id 去重，谁先到谁先占位。
+  const snapshotFile = options.snapshotPath ? readWorldSnapshotFile(options.snapshotPath, logger) : null;
+  const snapshot: WorldSnapshotRestoreResult = snapshotFile
+    ? restoreWorldFromSnapshot(service.store, snapshotFile)
+    : { characters: 0, units: 0, missions: 0, skipped: 0 };
   const restore = options.db
     ? restoreWorldFromDatabase(service.store, options.db, logger)
     : { characters: 0, units: 0, records: 0 };
 
-  // ===== ③ agent 探测（A4，后台跑；不挡 boot）=====
+  // ===== ③ 落盘件（task_133）：状态变化防抖落盘；stop 时落最后一次 =====
+  const persister: WorldPersister | null = options.snapshotPath
+    ? createWorldPersister({ store: service.store, filePath: options.snapshotPath, logger })
+    : null;
+  persister?.start();
+
+  // ===== ④ agent 探测（A4，后台跑；不挡 boot）=====
   const detection =
     options.detectAgents === false ? null : startAgentDetection(service.store, { logger });
 
@@ -100,8 +129,10 @@ export function bootStratixService(options: ServiceBootOptions = {}): BootedStra
     if (stopped) return;
     stopped = true;
     detection?.stop();
+    // 先落盘再退 service：退订 runtime 之后 store 不再变化，此刻的快照就是最后的真相。
+    persister?.stop();
     service.stop();
   };
 
-  return { service, restore, detection, stop };
+  return { service, restore, snapshot, persister, detection, stop };
 }
