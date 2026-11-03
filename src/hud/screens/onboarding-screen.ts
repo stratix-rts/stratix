@@ -310,7 +310,7 @@ const ONBOARDING_STYLE = `
   }
   .identity-head { display: flex; align-items: center; gap: var(--srf-spacing-sm); flex-wrap: wrap; }
   .identity-label { font-weight: 600; }
-  /* agent 切换条（@since v3.14，task_044）：identity / persona 两步共用，选中谁配置谁。 */
+  /* agent 切换条（@since v3.14）：identity / persona 两步共用，选中谁配置谁。 */
   .switcher { display: flex; gap: var(--srf-spacing-sm); flex-wrap: wrap; }
   .switcher-tab {
     display: inline-flex;
@@ -358,7 +358,7 @@ const ONBOARDING_STYLE = `
   .question-prompt { color: var(--srf-text); font-size: var(--srf-font-size-sm); }
   .options { display: flex; gap: var(--srf-spacing-sm); flex-wrap: wrap; }
   .option { display: inline-flex; align-items: center; gap: var(--srf-spacing-xs); font-size: var(--srf-font-size-sm); }
-  /* 预设卡片行（@since v3.13，task_043）：横向排列的快速开始入口 */
+  /* 预设卡片行（@since v3.13）：横向排列的快速开始入口 */
   .preset-row { display: flex; gap: var(--srf-spacing-sm); flex-wrap: wrap; }
   .preset-card {
     display: grid;
@@ -388,7 +388,7 @@ const ONBOARDING_STYLE = `
     color: var(--srf-text-muted);
     font-size: var(--srf-font-size-sm);
   }
-  /* 「推荐」角标（@since v3.14，task_044）：suitableKinds 点名当前 agent 的预设。 */
+  /* 「推荐」角标（@since v3.14）：suitableKinds 点名当前 agent 的预设。 */
   .preset-recommend {
     color: var(--srf-accent);
     border: var(--srf-border-width) solid var(--srf-accent);
@@ -417,9 +417,9 @@ const ONBOARDING_STYLE = `
     font-family: var(--srf-font-ui);
     font-size: var(--srf-font-size-sm);
   }
-  /* 扫描步勾选导入（@since v3.14，task_044） */
+  /* 扫描步勾选导入（@since v3.14） */
   .scan-select { display: inline-flex; align-items: center; gap: var(--srf-spacing-xs); cursor: pointer; }
-  /* 确认页逐 agent 人设预览（@since v3.14，task_044）：默认折叠，摘要行 = 分节头列表。 */
+  /* 确认页逐 agent 人设预览（@since v3.14）：默认折叠，摘要行 = 分节头列表。 */
   .persona-details {
     border: var(--srf-border-width) solid var(--srf-border);
     border-radius: var(--srf-radius);

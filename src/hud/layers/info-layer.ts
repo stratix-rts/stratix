@@ -170,7 +170,7 @@ ${l2} {
   visibility: var(${INFO_LAYER_CSS_VARS.l2Visibility}, visible);
   transition: opacity ${transition} ease, visibility ${transition} ease;
 }
-/* L3 沉浸层元素（@since v3.4，task_093）：始终满对比 —— L3 期间 L1 降对比、L2 收起，
+/* L3 沉浸层元素（@since v3.4）：始终满对比 —— L3 期间 L1 降对比、L2 收起，
    沉浸的那几件（回放时间戳角标）必须是画面里最清楚的东西。 */
 ${l3} {
   opacity: 1;

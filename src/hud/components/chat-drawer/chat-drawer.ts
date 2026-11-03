@@ -681,7 +681,7 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
             pointer-events: none;
             z-index: 1;
           }
-          /* 对侧压暗（@since v3.5，task_099；遮挡规则 R2）：抽屉是**半模态** ——
+          /* 对侧压暗（@since v3.5，遮挡规则 R2）：抽屉是**半模态** ——
              只把对侧（抽屉左边那一大片）压暗，不锁四角、不接管全屏。
              why pointer-events:none：压暗是「视觉让位」，不是「挡住」——
              四角常驻件（顶栏 / 控制岛 / 事件轨 / 小地图）在抽屉开着时照样点得动。

@@ -475,7 +475,7 @@ export function defineMissionConfirm(): typeof HTMLElement {
           .phase[data-phase="done"] { color: var(--srf-success); border-color: var(--srf-success); }
           .phase[data-phase="cancelled"] { color: var(--srf-danger); border-color: var(--srf-danger); }
           .units { color: var(--srf-text-muted); font-size: var(--srf-font-size-sm); }
-          /* —— 正文 / 依赖 / 检查点（@since v3.39，task_078）：信息密度优先，克制不加动画 —— */
+          /* —— 正文 / 依赖 / 检查点（@since v3.39）：信息密度优先，克制不加动画 —— */
           .brief { display: grid; gap: var(--srf-spacing-xxs); }
           .brief-item { display: grid; grid-template-columns: 4.5em 1fr; gap: var(--srf-spacing-xs); font-size: var(--srf-font-size-sm); }
           .brief-label { color: var(--srf-text-muted); }

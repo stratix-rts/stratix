@@ -475,7 +475,7 @@ export function defineAgentPanel(): typeof HTMLElement {
           <div class="pipelines" data-role="pipelines" hidden></div>
           <div class="task-form" data-role="task-form" hidden>
             <div class="task-form-title">派任务 · <span data-role="task-form-name"></span></div>
-            <!-- 模式切换（task_051）：单任务（038 缺省）↔ 流水线（预设/自定义两站）。
+            <!-- 模式切换：单任务（缺省）↔ 流水线（预设/自定义两站）。
                  两套控件的显示互斥在 setFormMode 里收口，这里只是骨架。 -->
             <div class="form-modes">
               <button type="button" class="mode-toggle" data-action="form-mode-single">单任务</button>

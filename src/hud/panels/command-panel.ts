@@ -574,7 +574,7 @@ export function defineCommandPanel(): typeof HTMLElement {
           .cmd-label { font-weight: var(--srf-font-weight-semibold); }
           .cmd-hint { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); }
           button.command:disabled .cmd-hint { color: var(--srf-text-disabled); }
-          /* —— 紧凑条形态（@since v3.4，task_090）：控制岛内的 1 行命令条 ——
+          /* —— 紧凑条形态（@since v3.4）：控制岛内的 1 行命令条 ——
              排版差异全部收在这里；命令清单、可用性判定与派发与完整形态完全一致。
              why 抬头与通知列表在紧凑形态下沉：控制岛的高度预算是 100px（硬验收），
              抬头 / 通知 / 两个输入框一行摆不下 —— 通知的「计数」仍由顶栏徽标承担。 */

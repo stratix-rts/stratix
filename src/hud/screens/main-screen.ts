@@ -162,7 +162,7 @@ const MAIN_SCREEN_STYLE = `
     pointer-events: auto;
   }
   .hud-brand { font-size: var(--srf-font-size-lg); font-weight: var(--srf-font-weight-bold); letter-spacing: 0.04em; white-space: nowrap; }
-  /* 态势胶囊（@since v3.4，task_089）：单位 / 任务 / 会话三值合一 —— Z1 只占一个元素位。 */
+  /* 态势胶囊（@since v3.4）：单位 / 任务 / 会话三值合一 —— Z1 只占一个元素位。 */
   .hud-capsule {
     display: flex;
     align-items: center;
@@ -204,7 +204,7 @@ const MAIN_SCREEN_STYLE = `
     text-align: center;
   }
   .hud-notice-badge[hidden] { display: none; }
-  /* 弹出层（@since v3.4，task_089）：音量层 + ⋯ 溢出菜单共用一套外观；默认 hidden（不占顶栏宽度）。 */
+  /* 弹出层（@since v3.4）：音量层 + ⋯ 溢出菜单共用一套外观；默认 hidden（不占顶栏宽度）。 */
   .hud-popover {
     position: absolute;
     top: calc(100% + var(--srf-spacing-xs));
@@ -231,7 +231,7 @@ const MAIN_SCREEN_STYLE = `
   }
   .hud-menu { right: 0; flex-direction: column; align-items: stretch; }
   .hud-popover-value { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); font-variant-numeric: tabular-nums; }
-  /* 声音件（@since v3.4，task_089）：🔊 开关 + 音量计（音量层的入口，见 §4 A7/A8）。 */
+  /* 声音件（@since v3.4）：🔊 开关 + 音量计（音量层的入口，见 §4 A7/A8）。 */
   .hud-sound-slot { position: relative; display: flex; align-items: center; gap: var(--srf-spacing-xxs); }
   .hud-sound-popover { left: 0; }
   .hud-sound-level {
@@ -245,7 +245,7 @@ const MAIN_SCREEN_STYLE = `
     overflow: hidden;
   }
   .hud-sound-level-fill { display: block; height: 100%; width: 0%; background: var(--srf-accent); }
-  /* 音量滑条（@since v3.3，task_083；@since v3.4 task_089 收进 🔊 弹出层）：0-100。 */
+  /* 音量滑条（@since v3.3，@since v3.4 收进 🔊 弹出层）：0-100。 */
   .hud-volume {
     width: 84px;
     accent-color: var(--srf-accent);
@@ -283,7 +283,7 @@ const MAIN_SCREEN_STYLE = `
   .hud-status-slot { flex: 1 1 auto; min-height: 0; overflow: auto; }
   .hud-drawer-slot { flex: 0 0 auto; max-height: 45%; overflow: auto; }
   .hud-session-slot { flex: 0 0 auto; max-height: 45%; overflow: auto; }
-  /* 控制岛（Z4；@since v3.4，task_090）：贴底居中一块，内容自适应、高度封顶。
+  /* 控制岛（Z4；@since v3.4）：贴底居中一块，内容自适应、高度封顶。
      why 不再是「通栏底栏」：通栏底栏在 720p 下高 245px（34% 视口高），中轴只剩 66%；
      岛收成 56% 屏宽、约 60-90px 高之后，中轴在 720p 下回到 85% 以上。 */
   .hud-bottom-bar {
@@ -299,7 +299,7 @@ const MAIN_SCREEN_STYLE = `
     z-index: 25;
     box-sizing: border-box;
     display: flex;
-    /* 回放条（task_082）在上、命令面板在下：岛内竖排（列方向 flex）—— 同岛上下分层。 */
+    /* 回放条在上、命令面板在下：岛内竖排（列方向 flex）—— 同岛上下分层。 */
     flex-direction: column;
     align-items: stretch;
     justify-content: flex-end;
@@ -313,7 +313,7 @@ const MAIN_SCREEN_STYLE = `
   }
   /* 命令面板槽位：整行铺满岛的宽度（面板本体在 strip 形态里自己排成 1 行）。 */
   .hud-bottom-bar > .hud-surface { width: 100%; flex: 0 0 auto; min-height: 0; }
-  /* 回放条槽位（task_082）：自己接指针事件（岛内其余部分让位给画布）。
+  /* 回放条槽位：自己接指针事件（岛内其余部分让位给画布）。
      底色 / 边框由岛统一提供 —— 槽位只管排版。
      why 热力条变矮：岛的高度预算是 100px（硬验收），且 720p 下中轴可用高度要 ≥85% ——
        留 14px 给热力条（96 根柱子仍是缩略图口径），剩下的留给命令行。 */

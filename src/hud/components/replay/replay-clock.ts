@@ -63,7 +63,7 @@ export function defineStratReplayClock(): typeof HTMLElement {
             all: initial;
             position: fixed;
             /* 顶部 inset 56px = 顶栏高 40 + 间距 16（Z5 规格）——
-               原来的 24px 会让角标直接压在顶栏上（task_093 修的正是这一处）。 */
+               原来的 24px 会让角标直接压在顶栏上（修的正是这一处）。 */
             top: var(--replay-clock-inset-top, ${REPLAY_CLOCK_TOP_INSET_PX}px);
             left: var(--replay-clock-inset-left, ${REPLAY_METRICS.clockInsetPx}px);
             z-index: 40;

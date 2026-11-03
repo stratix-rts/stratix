@@ -122,7 +122,7 @@ export function defineStratDayReplay(): typeof HTMLElement {
             all: initial;
             display: block;
             box-sizing: border-box;
-            /* 内边距与热力条高度都可被宿主覆盖（@since v3.4，task_090 控制岛）：
+            /* 内边距与热力条高度都可被宿主覆盖（@since v3.4，控制岛）：
                岛有 100px 高度预算，热力条得让位给命令行 —— 高度口径由宿主给，
                组件只提供默认值（REPLAY_METRICS 的折算值）。 */
             padding: var(--replay-pad-y, 6px) var(--replay-pad-x, 10px);

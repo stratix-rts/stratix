@@ -77,8 +77,8 @@ export function createHelloLoopPanel(
       </style>
       <div class="panel" part="panel">
         <p class="hint">
-          HUD 按钮 → HudCommand → core 选择状态机 → WorldState → world 场景高亮。
-          下面按钮全部是真实的 strat-button，点击经 hud bus-adapter 发出 unit.select。
+          HUD 按钮 → 指令 → 选择状态机 → 世界状态 → 战场高亮。
+          下面按钮全部是真实的 strat-button，点击经总线发出 unit.select。
         </p>
         <div class="row" data-role="row-set">
           <span class="row-title">选中（set）</span>
