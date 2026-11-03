@@ -45,6 +45,11 @@ import {
 import { mountDayReplay, DAY_REPLAY_TAG, type StratDayReplayElement } from '../components/replay/day-replay';
 import { createReplayController, type ReplayController } from '../components/replay/replay-controller';
 import { createHudBusAdapter } from '../bridge/bus-adapter';
+import {
+  mountNewTaskDialog,
+  NEW_TASK_OPEN_EVENT,
+  type StratNewTaskDialogElement,
+} from '../components/new-task-dialog/new-task-dialog';
 import { createMainScreen } from '../screens/main-screen';
 import { demoMode } from '../theme/demo-mode';
 import type { ThemeController, ThemeId } from '../theme/theme-controller';
@@ -86,6 +91,10 @@ interface Hud {
   readonly marquee: StratMarqueeElement;
   readonly replay: StratDayReplayElement;
   readonly replayController: ReplayController;
+  /** 新建任务对话框（@since v3.6 task_112；与组合根同口径挂在 #hud-root）。 */
+  readonly newTaskDialog: StratNewTaskDialogElement;
+  /** 对话框发出的 toast 文案。 */
+  readonly toasts: string[];
   /** 主屏里当前的命令面板元素（重渲后节点会换 —— 每次都现查，别缓存）。 */
   commandPanel(): HTMLElement;
   unmount(): void;
@@ -161,6 +170,24 @@ function mountHud(): Hud {
     hudSide,
   );
 
+  // —— 新建任务对话框（@since v3.6 task_112；与 app/main/main-entry.ts 同口径）——
+  // 挂 #hud-root；命令面板的 NEW_TASK_OPEN_EVENT 由「组合根」收口转成 open()。
+  const toasts: string[] = [];
+  const { element: newTaskDialog, unmount: unmountNewTaskDialog } = mountNewTaskDialog(
+    {
+      dispatch: (command) => adapter.dispatch(command),
+      subscribe: (handler) => adapter.subscribe(handler),
+      notify: (text) => { toasts.push(text); },
+      occlusion: null,
+    },
+    hudRoot,
+  );
+  const onNewTaskOpen = (event: Event): void => {
+    const title = (event as CustomEvent<{ title?: string }>).detail?.title ?? '';
+    newTaskDialog.open({ title });
+  };
+  hudRoot.addEventListener(NEW_TASK_OPEN_EVENT, onNewTaskOpen);
+
   return {
     hudSide,
     hudRoot,
@@ -172,8 +199,12 @@ function mountHud(): Hud {
     marquee,
     replay: hudRoot.querySelector(DAY_REPLAY_TAG) as StratDayReplayElement,
     replayController,
+    newTaskDialog,
+    toasts,
     commandPanel: () => hudRoot.querySelector('strat-command-panel') as HTMLElement,
     unmount: () => {
+      hudRoot.removeEventListener(NEW_TASK_OPEN_EVENT, onNewTaskOpen);
+      unmountNewTaskDialog();
       unmountLayerSwitch();
       stopLayerState();
       unmountMarquee();
@@ -577,7 +608,7 @@ describe('体检 · 控制岛命令面板（6 条）', () => {
     h.unmount();
   });
 
-  test('29. 填了标题 → 「新建任务」解禁，点击真的派发 mission.create', () => {
+  test('29. 填了标题 → 「新建任务」解禁，点击打开对话框；再点「单任务」才派发 mission.create', () => {
     const h = mountHud();
     const draft = inShadow<HTMLInputElement>(h.commandPanel(), '[data-role="draft"]');
     expect(draft).not.toBeNull();
@@ -589,7 +620,25 @@ describe('体检 · 控制岛命令面板（6 条）', () => {
     expect(button?.disabled).toBe(false);
     button?.click();
 
+    // ① 点「新建任务」不再直发命令 —— 弹对话框（@since v3.6 task_112）。
+    expect(h.newTaskDialog.opened).toBe(true);
+    expect(h.commands.some((c) => c.type === 'mission.create')).toBe(false);
+
+    // ② 对话框里四个动作按钮都在。
+    const actions = Array.from(
+      h.newTaskDialog.shadowRoot?.querySelectorAll('button.option[data-action]') ?? [],
+    ).map((b) => b.getAttribute('data-action'));
+    expect(actions).toEqual(expect.arrayContaining(['single', 'pipeline', 'dispatch', 'cancel']));
+
+    // ③ 点「单任务」→ 真派发 mission.create。
+    const single = h.newTaskDialog.shadowRoot?.querySelector<HTMLButtonElement>(
+      'button.option[data-action="single"]',
+    );
+    single?.click();
     expect(h.commands).toContainEqual({ type: 'mission.create', title: '去侦察', unitIds: [] });
+
+    // ④ 草稿被清掉（再建一条要用新标题）+ 标题回显在对话框里。
+    expect(draft.value).toBe('');
     h.unmount();
   });
 });

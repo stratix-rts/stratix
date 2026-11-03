@@ -16,6 +16,7 @@ import {
   type StratCommandPanelElement,
 } from '../panels/command-panel';
 import { createMainScreen } from '../screens/main-screen';
+import { NEW_TASK_OPEN_EVENT } from '../components/new-task-dialog/new-task-dialog';
 
 const UNITS: UnitView[] = [
   { id: 'u-neo', name: 'Neo', status: 'idle', missionId: null, power: 3 },
@@ -170,16 +171,25 @@ describe('命令派发：一切经注入的 adapter，不碰 core 内部', () =>
     ]);
   });
 
-  test('未选中时点全局「新建任务」→ unitIds 为空的待指派草稿', () => {
+  test('未选中时点全局「新建任务」→ 不直发命令，改为请求打开新建任务对话框（task_112）', () => {
     const { panel, harness } = mountPanel();
     mounted.push(harness.unmount);
 
-    setDraft(panel, '待指派的任务');
-    clickCommand(panel, 'mission.create', 'global');
+    const opened: string[] = [];
+    const onOpen = (event: Event): void => {
+      opened.push((event as CustomEvent<{ title?: string }>).detail?.title ?? '');
+    };
+    document.addEventListener(NEW_TASK_OPEN_EVENT, onOpen);
+    try {
+      setDraft(panel, '待指派的任务');
+      clickCommand(panel, 'mission.create', 'global');
 
-    expect(harness.commands).toEqual([
-      { type: 'mission.create', title: '待指派的任务', unitIds: [] },
-    ]);
+      // 面板只发「开对话框」的 DOM 事件 —— 任务由用户在对话框里选一种发起方式。
+      expect(harness.commands).toEqual([]);
+      expect(opened).toEqual(['待指派的任务']);
+    } finally {
+      document.removeEventListener(NEW_TASK_OPEN_EVENT, onOpen);
+    }
   });
 
   test('有 pending 任务时点确认 → mission.confirm 带真实 missionId', () => {

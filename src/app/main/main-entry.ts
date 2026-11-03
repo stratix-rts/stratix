@@ -208,6 +208,12 @@ import {
 } from '../services/persistence/pipeline-record';
 import { createPipelineService } from '../services/pipeline-service';
 import { mountToastHost } from '../../hud/components/toast/toast-host';
+// 新建任务对话框（@since v3.6，task_112）：底栏「新建任务」的落地面板（单任务 / 流水线 / 派发 / 取消）。
+// 与「打开聊天」同一装配口径 —— 命令面板发 DOM 事件，组合根开面板。
+import {
+  mountNewTaskDialog,
+  NEW_TASK_OPEN_EVENT,
+} from '../../hud/components/new-task-dialog/new-task-dialog';
 // 小地图宿主（@since v3.33，task_057）：右下角战场缩略图（单位点 / 视口框 / 点击跳转）。
 import { mountMinimap } from '../../hud/components/minimap/minimap';
 // 事件跑马灯 + 里程碑大字（@since v3.3，task_080）：左下角最近 5 条事件流 + 每 10 个完成任务
@@ -762,6 +768,26 @@ async function boot(): Promise<void> {
     toastHost.show(text, tone);
   };
 
+  // ===== 新建任务对话框（@since v3.6，task_112）=====
+  // 底栏「新建任务」→ 命令面板发 NEW_TASK_OPEN_EVENT（标题在 detail 里）→ 这里开对话框。
+  // 与「打开聊天」同一装配口径：hud 发事件，组合根开面板（面板本体不认 core/bus，只认注入的接口）。
+  // 依赖三件套：dispatch（同一个 adapter）/ subscribe（读 WorldState）/ notify（toast 轻提示）。
+  const { element: newTaskDialog, unmount: unmountNewTaskDialog } = mountNewTaskDialog(
+    {
+      dispatch: (command) => adapter.dispatch(command),
+      subscribe: (handler) => adapter.subscribe(handler),
+      notify: (text, tone) => toastHost.show(text, tone),
+      // task_099（R1/R4）：对话框是全屏弹窗 → 开着时四角常驻件降对比 + 禁点，ESC 统一关闭。
+      occlusion: occlusionController,
+    },
+    hudRoot
+  );
+  const onNewTaskOpen = (event: Event): void => {
+    const title = (event as CustomEvent<{ title?: string }>).detail?.title ?? '';
+    newTaskDialog.open({ title });
+  };
+  hudRoot.addEventListener(NEW_TASK_OPEN_EVENT, onNewTaskOpen);
+
   // ===== 恢复在线轻提示（@since v3.30，task_054）=====
   // agent.online（health-monitor 防抖判定恢复）→ toast「XX 已恢复在线」（成功 tone：
   // 它又能干活了是好消息，与掉线的灰显冷色相反）。kind 级文案：同 kind 可绑多个角色，
@@ -1309,6 +1335,9 @@ async function boot(): Promise<void> {
       hudRoot.removeEventListener('stratix:chat-open', onChatOpen);
       unmountCharacterDrawer();
       unmountToastHost();
+      // 新建任务对话框（task_112）：撤事件监听 + 卸元素（元素内部退订总线与遮挡登记）。
+      hudRoot.removeEventListener(NEW_TASK_OPEN_EVENT, onNewTaskOpen);
+      unmountNewTaskDialog();
       stopAgentDetection();
       // 远程 store（task_083）：退订快照广播 + 关连接 + 停重连定时器（资源必须可清理）。
       stopRemoteFeed?.();

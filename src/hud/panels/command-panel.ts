@@ -30,10 +30,23 @@
  *   而「1 行 6 条 + 其余横向滚动」要求把两个分组摊平成一条流 —— 那是结构，不是皮肤。
  *   ★ 命令一条不减：12 条命令仍在（滚动可达），搜索框与任务标题草稿框仍在（压成行内窄控件）。
  *   ★ 行为零差异：判定 / 构造 / 派发全走同一份 command-catalog，本形态只改排版。
+ *
+ * 「新建任务」的去向（@since v3.6，task_112）：global 组的「新建任务」**不再直发** mission.create ——
+ *   它派发 DOM 事件 NEW_TASK_OPEN_EVENT，由组合根打开新建任务对话框（单任务 / 流水线 / 派发 / 取消）。
+ *   why：发起方式有四种，命令条只能给一个按钮 —— 走对话框才让用户选；
+ *   why 走 DOM 事件而不是总线命令：开对话框是纯 UI 动作，core 不该为它加一条命令
+ *   （与「打开聊天」stratix:chat-open 同一口径）。命令的**构造**仍出自 command-catalog
+ *   （对话框拿同一份构造器用），判定口径一字未改。
+ *   副产物：对话框建完任务会派发 NEW_TASK_SUBMITTED_EVENT → 本面板清掉标题草稿
+ *   （否则再点一次「新建任务」会用同一句话再建一条）。
  */
 
 import type { HudCommand, WorldState } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
+import {
+  NEW_TASK_OPEN_EVENT,
+  NEW_TASK_SUBMITTED_EVENT,
+} from '../components/new-task-dialog/new-task-dialog';
 
 import type {
   CommandContext,
@@ -140,6 +153,9 @@ export function defineCommandPanel(): typeof HTMLElement {
       // 清签名强制首绘：挂载前 adapter setter 里那次 refresh 已经把签名记下了，
       // 而那时还没有 shadowRoot、列表根本没画 —— 不清掉的话这次 refresh 会被判重跳过，列表就空了。
       this._lastSignature = null;
+      // 「已提交任务」事件（@since v3.6，task_112）：对话框建完任务后清标题草稿。
+      // 挂在 document 上 —— 对话框与本面板是兄弟组件（互不持有引用，事件是唯一通道）。
+      document.addEventListener(NEW_TASK_SUBMITTED_EVENT, this.onNewTaskSubmitted);
       this.bindAdapter();
       this.refresh();
     }
@@ -147,6 +163,7 @@ export function defineCommandPanel(): typeof HTMLElement {
     disconnectedCallback(): void {
       // 资源必须可清理：不退订的话，反复挂卸会把订阅堆成 O(n)，且组件已不在文档里仍在收广播。
       this.releaseAdapter();
+      document.removeEventListener(NEW_TASK_SUBMITTED_EVENT, this.onNewTaskSubmitted);
       this._lastSignature = null;
     }
 
@@ -186,15 +203,53 @@ export function defineCommandPanel(): typeof HTMLElement {
      * scope 一并传进来：同一个 id 在两个分组下入参不同（发起任务带指派对象 / 新建任务是草稿），
      * 用点击时携带的 scope 定位目录项，保证"点到的"与"构造出的"严格一致。
      * 构造不出来就什么都不发 —— 不发半截命令给 core。
+     *
+     * 例外（@since v3.6，task_112）：global 组的「新建任务」**不发命令**，改为打开新建任务对话框
+     * （单任务 / 流水线 / 派发 / 取消 四选一）。selection 组的「发起任务」照旧直发 mission.create。
      */
     private runCommand(id: PanelCommandId, scope: CommandScope): void {
       if (!this._adapter) return;
+      if (id === 'mission.create' && scope === 'global') {
+        this.requestNewTaskDialog();
+        return;
+      }
       const spec = findCommandSpec(id, scope);
       if (!spec) return;
       const command: HudCommand | null = buildCommand(spec, this.context());
       if (!command) return;
       this._adapter.dispatch(command);
     }
+
+    /**
+     * 请求打开新建任务对话框（@since v3.6，task_112）。
+     * 事件带标题（组合根据此预填对话框）；标题为空时什么都不做
+     * —— 按钮此刻是禁用态，走不到这里；这里再挡一道是防「事件被外部伪造」。
+     */
+    private requestNewTaskDialog(): void {
+      const title = this._draftTitle.trim();
+      if (title.length === 0) return;
+      this.dispatchEvent(
+        new CustomEvent(NEW_TASK_OPEN_EVENT, {
+          bubbles: true,
+          composed: true,
+          detail: { title },
+        })
+      );
+    }
+
+    /**
+     * 对话框建完任务后的回调（@since v3.6，task_112）：清掉标题草稿。
+     * 只在草稿**还是**刚提交的那句时才清 —— 用户若已经改写了输入框，别把他的新字抹掉。
+     * why 是箭头函数字段：它要当 document 的事件监听用（普通方法被摘下来当监听时 this 会指向 document）。
+     */
+    private readonly onNewTaskSubmitted = (event: Event): void => {
+      const title = (event as CustomEvent<{ title?: string }>).detail?.title ?? '';
+      if (title.length === 0 || title !== this._draftTitle.trim()) return;
+      this._draftTitle = '';
+      const input = this.shadowRoot?.querySelector('[data-role="draft"]') as HTMLInputElement | null;
+      if (input) input.value = '';
+      this.refresh();
+    };
 
     // —— 渲染 ——
     private renderChrome(): void {
