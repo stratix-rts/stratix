@@ -31,6 +31,7 @@
 
 import type { HudCommand, SessionRecord, WorldState } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
+import { defineEmptyState, EMPTY_STATE_TAG } from '../components/empty-state/empty-state';
 
 import {
   SESSION_KIND_FILTERS,
@@ -172,6 +173,8 @@ export function defineSessionPanel(): typeof HTMLElement {
     connectedCallback(): void {
       // 幂等：hot-reload / 反复挂卸会重复进入，必须能安全重建。
       if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
+      // 统一空态组件（task_136）：先注册再渲染（幂等，重复 define 不抛）。
+      defineEmptyState();
       this.renderChrome();
       // 折叠态同时挂 host 属性（面板外也能看到；CSS 的 :host([collapsed]) 靠它生效）。
       this.toggleAttribute('collapsed', this._collapsed);
@@ -688,10 +691,11 @@ export function defineSessionPanel(): typeof HTMLElement {
     /** 会话行列表（含空态）。 */
     private renderRows(visible: readonly SessionRecord[], total: number): string {
       if (total === 0) {
-        return `<div class="empty" data-role="empty">还没有会话。<br/>发起角色对话、互聊或任务后，会话会出现在这里（可中断、可查历史）。</div>`;
+        // 统一空态组件（@since v3.8，task_136）：与会话/日志/角色各面板同一套版式。
+        return `<${EMPTY_STATE_TAG} data-role="empty">还没有会话。<br/>发起角色对话、互聊或任务后，会话会出现在这里（可中断、可查历史）。</${EMPTY_STATE_TAG}>`;
       }
       if (visible.length === 0) {
-        return `<div class="empty" data-role="empty">该筛选下没有会话</div>`;
+        return `<${EMPTY_STATE_TAG} data-role="empty">该筛选下没有会话</${EMPTY_STATE_TAG}>`;
       }
       const now = Date.now();
       const rows = visible.map((record) => this.renderRow(record, now)).join('');

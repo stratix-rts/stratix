@@ -29,6 +29,7 @@
 
 import type { ScreenId, WorldState } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
+import { defineEmptyState, EMPTY_STATE_TAG } from '../components/empty-state/empty-state';
 import type { GatewayConnectionState, GatewayLinkPort } from '../bridge/gateway-link-port';
 import { defineStratButton, STRAT_BUTTON_TAG } from '../widgets/strat-button';
 
@@ -149,6 +150,8 @@ export function defineStatusScreen(): typeof HTMLElement {
 
     connectedCallback(): void {
       if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
+      // 统一空态组件（task_136）：先注册再渲染（幂等，重复 define 不抛）。
+      defineEmptyState();
       this.renderChrome();
       // 清签名强制首绘：挂载前 adapter setter 那次 refresh 已记下签名，而那时还没有 DOM 可画
       this._lastSignature = null;
@@ -456,7 +459,8 @@ export function defineStatusScreen(): typeof HTMLElement {
       const { rows, total } = this._model.events;
 
       if (rows.length === 0) {
-        box.innerHTML = `<div class="empty" data-role="empty">暂无事件</div>`;
+        // 统一空态组件（@since v3.8，task_136）：与其它面板同一套版式。
+        box.innerHTML = `<${EMPTY_STATE_TAG} data-role="empty">暂无事件</${EMPTY_STATE_TAG}>`;
         return;
       }
 

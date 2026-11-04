@@ -230,6 +230,10 @@ import {
 } from '../../hud/components/new-task-dialog/new-task-dialog';
 // 小地图宿主（@since v3.33，task_057）：右下角战场缩略图（单位点 / 视口框 / 点击跳转）。
 import { mountMinimap } from '../../hud/components/minimap/minimap';
+// 战场空态覆盖层（@since v3.8，task_136）：0 单位时的「待部署」层（雷达 + 人话 + 两个动作）。
+// 装在 hud-root（画布之上的一层）：按钮要走 HUD 侧的既有能力（向导建档 / 命令行），
+// world 侧没有这条通道（world 只发 WorldEvent）—— 明确不在 world 侧做按钮。
+import { mountBattlefieldEmpty } from '../../hud/components/battlefield-empty/battlefield-empty';
 // 事件跑马灯 + 里程碑大字（@since v3.3，task_080）：左下角最近 5 条事件流 + 每 10 个完成任务
 // 一次的中央金色大字（文案模板与分级配色在 marquee-catalog，纯逻辑）。
 import { mountMarquee, type StratMarqueeElement } from '../../hud/components/marquee/marquee';
@@ -396,6 +400,15 @@ async function boot(): Promise<void> {
     emitCommand: remote ? (command) => { remote.emitCommand(command); } : emitCommand,
     themeController,
   });
+
+  // ===== dev-only 调试句柄（@since v3.8，task_136）=====
+  // why 需要：浏览器里没有 Electron 的 agent 探测 → 首启向导起不来 → 自动化没法自己建角色，
+  //   而"建一个角色 → 战场空态消失"这条联动必须用**真命令**验（造假数据等于没验）。
+  // 暴露面：只有命令口与状态快照（都走既有通道，不开后门）。
+  (window as unknown as { __srfApp?: unknown }).__srfApp = {
+    emitCommand: (command: HudCommand) => adapter.dispatch(command),
+    snapshot: () => worldStore.getState(),
+  };
 
   // ===== 形象预览（@since v3.10，task_028）=====
   // 组合根是唯一能同时认识 hud 与 world 的地方：向导屏要 canvas 预览（hud），
@@ -1043,6 +1056,29 @@ async function boot(): Promise<void> {
     },
   });
 
+  // ===== 战场空态覆盖层（@since v3.8，task_136）=====
+  // 0 单位 → 亮出「战场待命中」；建了角色（core 投影出单位）→ 消失；删了 → 回来。
+  // 两个动作都走**既有能力**：新建角色 = 既有首启向导（建档正路）；打开命令行 = 既有命令面板输入框。
+  const { unmount: unmountBattlefieldEmpty } = mountBattlefieldEmpty(hudRoot, {
+    subscribe: (handler) => adapter.subscribe(handler),
+    onCreateCharacter: () => {
+      // 向导是「新建角色」的正路（core/character 的建档口径在向导里）。
+      onboarding.reopen();
+      // 向导起不来（没探到可建档的 agent）→ 退到角色中心（既有路由 ui.navigate），不给死按钮。
+      if (!onboarding.mounted) {
+        adapter.dispatch({ type: 'ui.navigate', screen: 'character' });
+      }
+    },
+    onOpenCommand: () => {
+      // 命令行输入框在命令面板的 shadow 里（主屏自己装的 strip 形态）—— 这里只做一次聚焦。
+      const panel = hudRoot.querySelector('strat-command-panel') as
+        | (HTMLElement & { shadowRoot?: ShadowRoot | null })
+        | null;
+      const input = panel?.shadowRoot?.querySelector('[data-role="query"]') as HTMLInputElement | null;
+      input?.focus();
+    },
+  });
+
   // ===== 启动恢复（@since v3.12，task_033）=====
   // 读档必须先于 Phaser 创建：站位种子要在 preBoot 前就绪，恢复的单位也要赶在
   // 首次 state 广播前进 store（否则场景先按网格落位、后到注入，同一单位出现两次落位事件）。
@@ -1361,6 +1397,8 @@ async function boot(): Promise<void> {
       stopMinimapStateFeed();
       stopMinimapWorldFeed();
       unmountMinimap();
+      // 战场空态覆盖层（task_136）：退总线订阅 + 卸覆盖层（与上面同一卸载纪律）。
+      unmountBattlefieldEmpty();
       // 快捷键（task_058）：退 window keydown 监听 + 关浮层 + 卸宿主（同卸载纪律）。
       unmountShortcuts();
       // 音效（task_060）：退总线订阅再释放服务（丢 AudioContext 引用，页面即将销毁）。

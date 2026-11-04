@@ -75,6 +75,7 @@ import type { CharacterView } from '../../core/types';
 import { PERSONA_MAX_LEN } from '../../core/character/persona';
 import { hasDuplicateCharacterName } from '../../core/character/profile';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
+import { defineEmptyState, EMPTY_STATE_TAG } from '../components/empty-state/empty-state';
 import { defineStratButton, escapeHtml, STRAT_BUTTON_TAG } from '../widgets/strat-button';
 
 import {
@@ -341,6 +342,8 @@ export function defineCharacterScreen(): typeof HTMLElement {
 
     connectedCallback(): void {
       if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
+      // 统一空态组件（task_136）：先注册再渲染（幂等，重复 define 不抛）。
+      defineEmptyState();
       this.renderChrome();
       // 清键强制首绘：挂载前 adapter setter 那次 refresh 已记过键，而那时还没有内容可画
       this._lastRenderKey = null;
@@ -1003,13 +1006,13 @@ export function defineCharacterScreen(): typeof HTMLElement {
       // 上部：经验曲线（空事件 → 引导语；有事件才画 —— 全零折线不算「成长记录」）。
       const curveSection =
         events.length === 0
-          ? '<div class="empty" data-role="growth-curve-empty">还没有成长记录：完成任务或对话拿到经验后，这里会长出曲线</div>'
+          ? `<${EMPTY_STATE_TAG} data-role="growth-curve-empty">还没有成长记录：完成任务或对话拿到经验后，这里会长出曲线</${EMPTY_STATE_TAG}>`
           : `<${GROWTH_CHART_TAG} data-role="growth-chart"></${GROWTH_CHART_TAG}>`;
 
       // 中部：任务状态分布条（六态色块 + 计数；零计数态不占位 —— 色块只报实有）。
       const distSection =
         !counts || taskTotal === 0
-          ? '<div class="empty" data-role="growth-tasks-empty">还没有任务记录，派一个试试</div>'
+          ? `<${EMPTY_STATE_TAG} data-role="growth-tasks-empty">还没有任务记录，派一个试试</${EMPTY_STATE_TAG}>`
           : `<div class="task-dist" data-role="growth-task-dist">${([
               ['queued', '排队', counts.queued],
               ['running', '执行', counts.running],
@@ -1027,7 +1030,7 @@ export function defineCharacterScreen(): typeof HTMLElement {
       const heatMax = Math.max(0, ...heat.map((cell) => cell.count));
       const heatSection =
         heatMax === 0
-          ? '<div class="empty" data-role="growth-heat-empty">近 7 天暂无活动：派任务或聊一轮就会点亮</div>'
+          ? `<${EMPTY_STATE_TAG} data-role="growth-heat-empty">近 7 天暂无活动：派任务或聊一轮就会点亮</${EMPTY_STATE_TAG}>`
           : `<div class="heat-row" data-role="growth-heat">${heat
               .map((cell) => {
                 const level = Math.max(1, Math.ceil((cell.count / heatMax) * 4));
@@ -1039,7 +1042,7 @@ export function defineCharacterScreen(): typeof HTMLElement {
       const timeline = buildGrowthTimeline(row?.createdAt ?? null, events, tasks);
       const timelineSection =
         timeline.length === 0
-          ? '<div class="empty" data-role="growth-timeline-empty">暂无履历：完成第一个任务，这里会记下每一步</div>'
+          ? `<${EMPTY_STATE_TAG} data-role="growth-timeline-empty">暂无履历：完成第一个任务，这里会记下每一步</${EMPTY_STATE_TAG}>`
           : `<div class="growth-timeline" data-role="growth-timeline">${timeline
               .map(
                 (entry) =>
@@ -1431,7 +1434,7 @@ export function defineCharacterScreen(): typeof HTMLElement {
         return `
           <div class="group" data-group="cards">
             <div class="group-name">全场总览</div>
-            <div class="empty" data-role="cards-empty">尚无角色档案：建好角色后，这里会显示全部角色</div>
+            <${EMPTY_STATE_TAG} data-role="cards-empty">尚无角色档案：建好角色后，这里会显示全部角色</${EMPTY_STATE_TAG}>
           </div>
         `;
       }

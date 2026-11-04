@@ -53,6 +53,7 @@
 
 import type { WorldState } from '../../../core/types';
 import type { HudBusAdapter } from '../../bridge/bus-adapter';
+import { defineEmptyState, EMPTY_STATE_TAG } from '../empty-state/empty-state';
 import {
   defineTaskOutputPanel,
   TASK_OUTPUT_PANEL_TAG,
@@ -305,6 +306,8 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
     get peerTopicDraft(): string { return this._peerTopicDraft; }
 
     connectedCallback(): void {
+      // 统一空态组件（task_136）：先注册再渲染（幂等，重复 define 不抛）。
+      defineEmptyState();
       // 幂等：hot-reload / 反复挂卸会重复进入，必须能安全重建。
       if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
       this.renderChrome();
@@ -989,7 +992,8 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
       if (!box) return;
       const viewing = this._sessions.viewing;
       if (!viewing) {
-        box.innerHTML = `<div class="empty" data-role="empty">点选战场上的角色单位，开始对话</div>`;
+        // 统一空态组件（@since v3.8，task_136）。
+        box.innerHTML = `<${EMPTY_STATE_TAG} data-role="empty">点选战场上的角色单位，开始对话</${EMPTY_STATE_TAG}>`;
         return;
       }
       const peer = this._peerChat;
@@ -1006,7 +1010,7 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
           peer && viewing === peer.jointId
             ? `与 ${escapeHtml(this.headerNameOf(peer.aId))}、${escapeHtml(this.headerNameOf(peer.bId))} 的讨论还是空的`
             : `与 ${escapeHtml(this.headerNameOf(viewing))} 的对话还是空的`;
-        box.innerHTML = `<div class="empty" data-role="empty">${emptyText}</div>`;
+        box.innerHTML = `<${EMPTY_STATE_TAG} data-role="empty">${emptyText}</${EMPTY_STATE_TAG}>`;
       } else {
         const historyEnd = !peer && this._historyExhausted.has(viewing)
           ? '<div class="history-end" data-role="history-end">没有更早的聊天记录了</div>'

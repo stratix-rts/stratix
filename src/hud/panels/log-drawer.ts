@@ -25,6 +25,7 @@
 
 import type { WorldState } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
+import { defineEmptyState, EMPTY_STATE_TAG } from '../components/empty-state/empty-state';
 
 import type { LogEntryView, LogFilter, LogLevel, LogModel, MissionOption } from './log-catalog';
 import {
@@ -133,6 +134,8 @@ export function defineLogDrawer(): typeof HTMLElement {
     connectedCallback(): void {
       // 幂等：hot-reload / 反复挂卸会重复进入，必须能安全重建。
       if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
+      // 统一空态组件（task_136）：先注册再渲染（幂等，重复 define 不抛）。
+      defineEmptyState();
       this.renderChrome();
       // 清签名强制首绘：挂载前 adapter setter 那次 refresh 已把签名记下，
       // 而那时还没有 shadowRoot —— 不清掉这次就会被判重跳过。
@@ -431,7 +434,8 @@ export function defineLogDrawer(): typeof HTMLElement {
     private renderRows(): string {
       if (this._model.entries.length === 0) {
         const hint = this._model.totalCount > 0 ? '当前筛选下没有日志' : '暂无日志';
-        return `<div class="empty" data-role="empty">${hint}</div>`;
+        // 统一空态组件（@since v3.8，task_136）：与其它面板同一套版式。
+        return `<${EMPTY_STATE_TAG} data-role="empty">${hint}</${EMPTY_STATE_TAG}>`;
       }
 
       const rows = this._model.entries.map((entry) => {

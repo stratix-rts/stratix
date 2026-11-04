@@ -51,6 +51,14 @@ export interface OnboardingHostOptions {
 export interface OnboardingHost {
   /** 按最新状态评估是否该挂向导（幂等：已挂 / 已结束都不再动作）。 */
   evaluate(state: WorldState): void;
+  /**
+   * 重新拉起向导（@since v3.8，task_136）—— 用户从别处（战场空态的「新建角色」）主动要建档时用。
+   * why 需要它：向导原本只在"首启"这一次性判定里挂（settled 之后永不再弹），
+   *   但"新建角色"是**随时可发起**的动作，不该被首启语义锁死。
+   * 口径：清掉 settled 态 → 按最近一次见到的状态重新判定（characters 非空 / 没探到 agent → 不挂，
+   *   由调用方兜底；这里绝不硬挂一个走不通的向导）。
+   */
+  reopen(): void;
   /** 当前是否挂着向导。 */
   readonly mounted: boolean;
   /** 用户是否已经结束引导（完成或跳过）—— 结束过就不再弹。 */
@@ -69,6 +77,8 @@ export interface OnboardingHost {
 export function createOnboardingHost(options: OnboardingHostOptions): OnboardingHost {
   let unmount: (() => void) | null = null;
   let settled = false;
+  /** 最近一次见到的状态（reopen 时按它重新判定 —— 不重新读总线，避免多一份真相）。 */
+  let lastState: WorldState | null = null;
 
   const close = (): void => {
     if (!unmount) return;
@@ -77,6 +87,7 @@ export function createOnboardingHost(options: OnboardingHostOptions): Onboarding
   };
 
   const evaluate = (state: WorldState): void => {
+    lastState = state;
     if (settled || unmount) return;
     const should = shouldStartOnboarding({
       characters: state.characters,
@@ -115,6 +126,16 @@ export function createOnboardingHost(options: OnboardingHostOptions): Onboarding
 
   return {
     evaluate,
+    /**
+     * 重新拉起向导（task_136）：清 settled → 按最近状态重判。
+     * why 不绕过 shouldStartOnboarding 硬挂：没探到可建档的 agent 时向导走不通，
+     *   宁可不起（调用方另有兜底），也不给用户一个点不动的按钮。
+     */
+    reopen: () => {
+      close();
+      settled = false;
+      if (lastState) evaluate(lastState);
+    },
     get mounted() {
       return unmount !== null;
     },

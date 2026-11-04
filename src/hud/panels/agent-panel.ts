@@ -38,6 +38,7 @@
 
 import { MAX_TASK_PROMPT_LEN, type AgentKind, type CharacterView, type HudCommand, type WorldState } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
+import { defineEmptyState, EMPTY_STATE_TAG } from '../components/empty-state/empty-state';
 
 import type {
   AgentPanelAction,
@@ -173,6 +174,8 @@ export function defineAgentPanel(): typeof HTMLElement {
     connectedCallback(): void {
       // 幂等：hot-reload / 反复挂卸会重复进入，必须能安全重建。
       if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
+      // 统一空态组件（task_136）：先注册再渲染（幂等，重复 define 不抛）。
+      defineEmptyState();
       this.renderChrome();
       // 清签名强制首绘：挂载前 adapter setter 那次 refresh 已把签名记下，
       // 而那时还没有 shadowRoot、列表根本没画 —— 不清掉这次就会被判重跳过。
@@ -934,7 +937,8 @@ export function defineAgentPanel(): typeof HTMLElement {
 
       switch (this._model.mode) {
         case 'empty':
-          box.innerHTML = `<div class="empty" data-role="empty">在战场上点选单位，这里显示它的业务态</div>`;
+          // 空态走统一组件（@since v3.8，task_136）：图标位 + 一句话 + 可选动作，各面板同一套版式。
+          box.innerHTML = `<${EMPTY_STATE_TAG} data-role="empty">在战场上点选单位，这里显示它的业务态</${EMPTY_STATE_TAG}>`;
           return;
         case 'single':
           box.innerHTML = this._model.detail ? this.renderDetail(this._model.detail) : '';

@@ -116,9 +116,6 @@ const BOUNDS_COLOR = WORLD_PALETTE.accent;
  *   调色板的语义本就是「背景基底 = 地面 / 网格线 = 低亮度网格」（§1 表），改回基底色即回到该语义。
  */
 const BOUNDS_FILL = WORLD_PALETTE.background;
-/** 空状态提示文字（世界坐标层，随镜头移动；有单位后自动隐藏）。 */
-const EMPTY_HINT = '空战场 · 0 单位接入（单位来自 gateway 真实数据流）\n左键拖框选 · 右键短按移动选中 · 右/中键拖平移 · 滚轮缩放 · 双击单位跟随 · ESC 回全景';
-
 /** 超过该屏幕位移才算"拖拽"，否则按点击处理。 */
 const DRAG_THRESHOLD_PX = 4;
 
@@ -156,7 +153,6 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   /** 任务表现状态板（task_038）：瞬态浮标（✓/!）的唯一真相，环由 busy 派生裁决。 */
   private readonly taskFx = new TaskFxBoard();
   private taskFxLayer!: TaskFxLayer;
-  private emptyHint?: Phaser.GameObjects.Text;
   private selectionBox!: SelectionBox;
   /** 地面层（@since v3.3，task_078）：格网 + 四角刻度 + 边缘渐晕（扫描光带已于 task_086 迁到 HUD）。 */
   private groundLayer!: GroundLayer;
@@ -241,7 +237,9 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     // 地面层（@since v3.3，task_078）：格网 / 四角刻度 / 边缘渐晕。
     // 必须在底板之后建（渲染次序靠 depth 与添加序双保险）。
     this.groundLayer = new GroundLayer(this, { bounds: DEFAULT_WORLD_BOUNDS });
-    this.drawEmptyHint();
+    // 空状态不再画在世界层（@since v3.8，task_136）：战场空态改由 HUD 的专用空态层承担
+    //   （雷达 + 人话 + 行动引导 + 皮肤 token）。why 挪走：世界层的提示是开发者口径
+    //   （"单位来自 gateway 真实数据流"），且它没法承载可点击的行动引导。
 
     // 单位联动层（@since v3.4，task_092）：引导弧线（屏幕空间）+ 焦点裁决的渲染兑现。
     // 导演取景框层（task_092）：导演模式开启时中屏四角的取景框。
@@ -343,7 +341,6 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
       this.speechLayer.clearUnit(id);
     }
     this.taskFxLayer.sync();
-    this.emptyHint?.setVisible(units.length === 0);
     // 失焦（@since v3.4，task_092）：被锁定的单位离场 → 弧线与描边一并收掉
     // （表现不许指着一个已经不存在的单位）。
     const focusedId = this.focusLink.unitId;
@@ -399,22 +396,6 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   }
 
   /** 空状态提示：居中置于世界中心，首单位接入即隐藏（零假数据，不是种子单位）。 */
-  private drawEmptyHint(): void {
-    this.emptyHint = this.add
-      .text(
-        DEFAULT_WORLD_BOUNDS.x + DEFAULT_WORLD_BOUNDS.width / 2,
-        DEFAULT_WORLD_BOUNDS.y + DEFAULT_WORLD_BOUNDS.height / 2,
-        EMPTY_HINT,
-        {
-          fontFamily: 'monospace',
-          fontSize: '20px',
-          color: '#8fa0b8',
-          align: 'center',
-        }
-      )
-      .setOrigin(0.5)
-      .setDepth(1);
-  }
 
   syncSelection(selection: SelectionState): void {
     // 选择集镜像（task_045）：右键移动的载荷来源，与广播严格一致。
