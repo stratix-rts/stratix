@@ -24,10 +24,11 @@
 import { INFO_LAYERS } from '../../core/info-layer';
 import { HUD_OVERLAY_BAND_METRICS } from '../../core/theme/visual-spec';
 import type { HudCommand, InfoLayer } from '../../core/types';
-
-import { INFO_LAYER_LABELS, type InfoLayerController } from './info-layer';
+import { demoMode } from '../theme/demo-mode';
 import { zVar } from '../theme/layer-tokens';
 import { MOTION_REDUCED_CSS } from '../theme/motion-tokens';
+
+import { INFO_LAYER_LABELS, type InfoLayerController } from './info-layer';
 
 /** 开关里按钮的稳定角色（测试 / 调试按它定位）。 */
 export const LAYER_SWITCH_BUTTON_ROLE = 'layer-switch-button';
@@ -41,6 +42,15 @@ export interface LayerSwitchOptions {
   readonly controller: InfoLayerController;
   /** 命令出口：把 `hud.layer.set` 发给 core（组合根注入 adapter.dispatch）。 */
   readonly dispatch: (command: HudCommand) => void;
+  /**
+   * 是否显示**脚手架样例区**（@since v3.9，task_148）。
+   *
+   * why 需要这个开关：「L1 样例 · 常驻 / L2 样例 · 事件」是**演示机制的脚手架**，
+   *   不是产品内容 —— r5 连续三轮点名它仍在生产界面上（唯一「该修没修」的遗留）。
+   *   治理口径：样例只在**演示模式**下出现（那是它该待的地方），
+   *   生产界面里一律不见；缺省 = 不显示（安全默认）。
+   */
+  readonly showSamples?: boolean;
 }
 
 /** 挂载句柄。 */
@@ -114,6 +124,9 @@ const LAYER_SWITCH_STYLE = `
   outline-offset: 1px;
 }
 .hud-layer-switch-samples { display: flex; gap: var(--srf-spacing-xs); }
+/* hidden 属性必须真生效：上面的 display:flex 会盖掉 UA 的 [hidden]{display:none} ——
+   不写这一条，样例区在生产界面照样露脸（[since v3.9，task_148]）。 */
+.hud-layer-switch-samples[hidden] { display: none; }
 .hud-layer-sample {
   padding: 2px var(--srf-spacing-xs);
   border-radius: var(--srf-radius-pill);
@@ -146,7 +159,7 @@ export function mountLayerSwitch(options: LayerSwitchOptions, host: HTMLElement)
           `<button class="hud-layer-switch-btn" type="button" data-role="${LAYER_SWITCH_BUTTON_ROLE}" data-layer="${layer}">${INFO_LAYER_LABELS[layer]}</button>`,
       ).join('')}
     </div>
-    <div class="hud-layer-switch-samples">
+    <div class="hud-layer-switch-samples" data-role="samples">
       <div class="hud-layer-sample" data-role="${LAYER_SWITCH_SAMPLE_ROLE}" data-srf-layer="L1">L1 样例 · 常驻</div>
       <div class="hud-layer-sample" data-role="${LAYER_SWITCH_SAMPLE_ROLE}" data-srf-layer="L2">L2 样例 · 事件</div>
     </div>
@@ -155,6 +168,28 @@ export function mountLayerSwitch(options: LayerSwitchOptions, host: HTMLElement)
   const buttons = Array.from(
     element.querySelectorAll<HTMLButtonElement>(`[data-role="${LAYER_SWITCH_BUTTON_ROLE}"]`),
   );
+
+  /**
+   * 样例区的显隐（@since v3.9，task_148）：脚手架只在演示模式下露脸。
+   *
+   * why 用 hidden 而不是不渲染：样例区本身带 `data-srf-layer` 标记，
+   *   机制演示时它得在 DOM 里（不然「切到 L3 它降对比」这一课没法上）；
+   *   但生产界面里它一个字都不该露 —— hidden = 不可见、不占位、不可点。
+   */
+  const samples = element.querySelector<HTMLElement>('[data-role="samples"]');
+  const syncSamples = (): void => {
+    if (samples) samples.hidden = resolveShowSamples() !== true;
+  };
+  /**
+   * 样例区该不该露：显式注入优先；没注入就跟着**演示模式**走（那是脚手架该待的地方）。
+   * why 跟着演示模式而不是砍掉：机制本身还要能当场演示（切 L3 时看 L1 降对比），
+   *   只是不该出现在生产界面里。
+   */
+  const resolveShowSamples = (): boolean =>
+    typeof options.showSamples === 'boolean' ? options.showSamples : demoMode.enabled;
+  syncSamples();
+  // 演示模式开关会切 —— 样例区跟着切（订阅必须能退订：perf 硬约束）。
+  const unsubscribeSamples = demoMode.subscribe(syncSamples);
 
   /** 回显当前档（按钮点亮 = 状态；不给「开/关」文本标签 —— 与新版顶栏同一口径）。 */
   const render = (layer: InfoLayer): void => {
@@ -181,6 +216,7 @@ export function mountLayerSwitch(options: LayerSwitchOptions, host: HTMLElement)
     element,
     unmount: (): void => {
       unsubscribe();
+      unsubscribeSamples();
       element.removeEventListener('click', onClick);
       element.remove();
     },

@@ -33,7 +33,7 @@ import { PIPELINE_PRESETS, buildPipelineStartCommand } from '../../panels/pipeli
 import { recommendAssignees } from '../../panels/task-assign-catalog';
 import type { ToastTone } from '../toast/toast-host';
 import { zVar } from '../../theme/layer-tokens';
-import { MOTION_REDUCED_CSS } from '../../theme/motion-tokens';
+import { MOTION_CLASS, MOTION_COMPONENT_CSS } from '../../theme/motion-tokens';
 
 export const NEW_TASK_DIALOG_TAG = 'strat-new-task-dialog';
 
@@ -62,8 +62,14 @@ export const NEW_TASK_OCCLUSION_ID = 'new-task-dialog';
  */
 export const FEEDBACK_WINDOW_MS = 8_000;
 
-/** 动作 id（DOM 上的 data-action）。四个动作 = 任务书要求的「四按钮组」。 */
-export type NewTaskAction = 'single' | 'pipeline' | 'dispatch' | 'cancel';
+/**
+ * 动作 id（DOM 上的 data-action）。四个动作 = 任务书要求的「四按钮组」。
+ *
+ * @since v3.9（task_148）新增 'create-character'：**死按钮的出口** ——
+ *   0 角色时「派发」不可用（禁用态 + 原因说明），必须同时给一条**真能走的路**：
+ *   点「去新建角色」→ 建档向导（建完就能派发）。
+ */
+export type NewTaskAction = 'single' | 'pipeline' | 'dispatch' | 'cancel' | 'create-character';
 
 /** 打开对话框时带的入参。 */
 export interface NewTaskOpenOptions {
@@ -81,6 +87,15 @@ export interface NewTaskDialogDeps {
   readonly notify?: (text: string, tone?: ToastTone) => void;
   /** 遮挡控制器（全屏弹窗登记：四角降对比禁点 + ESC 统一关闭）。 */
   readonly occlusion?: OcclusionController | null;
+  /**
+   * 「去新建角色」出口（@since v3.9，task_148）—— 组合根接既有建档向导。
+   *
+   * why 需要它：0 角色时「派发」是**死按钮**（点了永远没有结果）。
+   *   治理口径不是「点一下给个 toast 就算了」，而是**禁用 + 说清原因 + 给一条真能走的路**：
+   *   禁用的按钮配一条能点通的「去新建角色」，墙后面才有门。
+   *   缺省 = 没有出口（此时只显示禁用态与原因，不假装有路可走）。
+   */
+  readonly onCreateCharacter?: () => void;
 }
 
 /** 自定义元素的对外形状（组合根与测试按它操作）。 */
@@ -177,6 +192,29 @@ export function defineNewTaskDialog(): typeof HTMLElement {
       this._feedbackUntil = Date.now() + FEEDBACK_WINDOW_MS;
       this.syncOpened(true);
       this.renderPanel();
+      this.playEntrance();
+    }
+
+    /**
+     * 任务单的入场强调（@since v3.9，task_148）—— 恢复「任务单开了」的存在感。
+     *
+     * why 需要：r5 实测「多行提示词回车后，用户不知道任务单已经开了」——
+     *   反馈链只有底部输出区一行小字，任务单本身没有一点动静。
+     *   治理口径：**开单这一刻必须被看见**（入场落位 + 一次微脉冲）。
+     *
+     * why 走既有动效 token（138）：入场用 MOTION_CLASS.enter（位移淡入），
+     *   脉冲用 MOTION_CLASS.pulse（scale 微脉冲）—— 不自造关键帧、不写野值
+     *   （147 的纪律：全应用一个节拍）。
+     *
+     * why 要强制重排：同一个元素反复 open 时，动画已在播 → 直接加类不会重播；
+     *   摘类 + 读一次布局（offsetWidth）强制回流，再加类 = 重播。
+     */
+    private playEntrance(): void {
+      const panel = this.shadowRoot?.querySelector<HTMLElement>('[data-role="panel"]');
+      if (!panel) return;
+      panel.classList.remove(MOTION_CLASS.enter, MOTION_CLASS.pulse);
+      void panel.offsetWidth; // 强制回流：让摘掉的类真正失效（否则加回去不重播）
+      panel.classList.add(MOTION_CLASS.enter, MOTION_CLASS.pulse);
     }
 
     close(): void {
@@ -337,6 +375,19 @@ export function defineNewTaskDialog(): typeof HTMLElement {
           button.option:active { border-color: var(--srf-accent); }
           button.option:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
           button.option[data-action="single"] { border-color: var(--srf-accent); }
+          /* 死按钮的禁用态（@since v3.9，task_148）：灰掉 + not-allowed —— 一眼看得出点不了。 */
+          button.option:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+            border-color: var(--srf-border);
+            background: transparent;
+            color: var(--srf-text-muted);
+          }
+          button.option:disabled:hover { border-color: var(--srf-border); background: transparent; }
+          button.option:disabled .opt-title { text-decoration: line-through; }
+          /* 出口按钮（task_148）：唯一「能走通」的那条路 —— 描边点亮。 */
+          button.option[data-action="create-character"] { border-color: var(--srf-accent); }
+          button.option[data-action="create-character"] .opt-title { color: var(--srf-accent); }
           .opt-title { font-weight: var(--srf-font-weight-semibold); }
           .opt-desc { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); }
           button.close {
@@ -349,7 +400,7 @@ export function defineNewTaskDialog(): typeof HTMLElement {
           }
           button.close:hover { color: var(--srf-text); background: var(--srf-panel-elevated); }
           button.close:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
-        ${MOTION_REDUCED_CSS}
+        ${MOTION_COMPONENT_CSS}
         </style>
         <div class="backdrop" data-role="backdrop">
           <div class="panel" data-role="panel">
@@ -398,21 +449,39 @@ export function defineNewTaskDialog(): typeof HTMLElement {
         ? `建一条战场任务 · 指派给选中的 ${selected} 个单位`
         : '建一条战场任务 · 待指派（之后可在任务面板里指派）';
       const pipelineDesc = `多 agent 串行协作 · 预设「${PIPELINE_PRESETS[0]?.label ?? '实现+审阅'}」`;
-      const dispatchDesc = assignee
-        ? `交给一个角色执行 · 推荐「${assignee.name}」（${assignee.reason}）`
-        : '交给一个角色执行 · 当前没有可派发的角色';
+      // 死按钮治理（@since v3.9，task_148）：0 角色 ⇒「派发」没有任何承接人 ⇒
+      //   它是个**点了永远不产生结果**的按钮。此时给三件套：禁用态 + 原因 + 出口。
+      //   why 不做成「可点但点了弹 toast」：那还是死按钮（用户以为能派，实际派不出去），
+      //   只会把「没出口」藏在一个 toast 里。
+      const canDispatch = assignee !== null;
+      const dispatchDesc = canDispatch
+        ? `交给一个角色执行 · 推荐「${assignee!.name}」（${assignee!.reason}）`
+        : '当前没有可派发的角色 · 先建一个角色，建完就能派出去';
 
-      const buttons: Array<{ action: NewTaskAction; title: string; desc: string }> = [
+      // 出口按钮：只在「派发」不可用时出现，紧贴死按钮 —— 墙后面必须有门（task_148 验收①）。
+      const exit: Array<{ action: NewTaskAction; title: string; desc: string; disabled?: boolean }> =
+        canDispatch
+          ? []
+          : [
+              {
+                action: 'create-character',
+                title: '去新建角色',
+                desc: '建一个角色 · 建完这条任务就能派出去',
+              },
+            ];
+
+      const rows: Array<{ action: NewTaskAction; title: string; desc: string; disabled?: boolean }> = [
         { action: 'single', title: '单任务', desc: singleDesc },
         { action: 'pipeline', title: '流水线', desc: pipelineDesc },
-        { action: 'dispatch', title: '派发', desc: dispatchDesc },
+        { action: 'dispatch', title: '派发', desc: dispatchDesc, disabled: !canDispatch },
+        ...exit,
         { action: 'cancel', title: '取消', desc: '什么都不做 · 关掉这个对话框' },
       ];
 
-      options.innerHTML = buttons
+      options.innerHTML = rows
         .map(
           (b) => `
-            <button type="button" class="option" data-action="${b.action}">
+            <button type="button" class="option" data-action="${b.action}"${b.disabled ? ' disabled aria-disabled="true"' : ''}>
               <span class="opt-title">${escapeHtml(b.title)}</span>
               <span class="opt-desc">${escapeHtml(b.desc)}</span>
             </button>
@@ -434,6 +503,12 @@ export function defineNewTaskDialog(): typeof HTMLElement {
           return;
         case 'dispatch':
           this.runDispatch(deps);
+          return;
+        case 'create-character':
+          // 死按钮的出口（@since v3.9，task_148）：关掉本对话框 → 走既有建档向导。
+          // why 先关再走：对话框是全屏模态，不关它的话向导会被压在下面（遮挡栈只认栈顶）。
+          this.close();
+          deps.onCreateCharacter?.();
           return;
         case 'cancel':
           this.close();

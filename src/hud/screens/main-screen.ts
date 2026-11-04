@@ -64,6 +64,7 @@ import type { ReplayController } from '../components/replay/replay-controller';
 import { mountAgentPanel, type AgentPanelDeps } from '../panels/agent-panel';
 import { mountCommandPanel } from '../panels/command-panel';
 import { mountLogDrawer } from '../panels/log-drawer';
+import { mountMissionConfirm } from '../panels/mission-confirm';
 // 遮挡规则（@since v3.5，task_099）：全屏弹窗壳（遮罩 + 居中面板 + ESC/遮罩双关闭）
 //   + 遮挡控制器（弹窗开着 → 四角常驻件降对比禁点）。
 import { mountModalShell, type OcclusionController } from '../layers/occlusion';
@@ -354,7 +355,18 @@ const MAIN_SCREEN_STYLE = `
     width: min(320px, 28vw);
     z-index: ${zVar('panel')};
     overflow: auto;
+    /* 左栏改成竖向两段（@since v3.9，task_148）：
+       ① Agent 侧栏（选中单位的业务态，高度随内容）；
+       ② 任务确认单（mission-confirm）—— **恢复它的存在感**：
+          146 的堆叠重构把它从界面上撤掉了，任务单从此「开了也没人看见」。
+          why 放左栏：左栏本来就是「人 / 事」两根竖条，任务单归在下面不抢战场视线；
+          why 不动 146 的堆叠秩序：两段都在同一条栏里顺序排列，不叠、不压角件。 */
+    display: flex;
+    flex-direction: column;
+    gap: var(--srf-gap);
   }
+  .hud-rail-left-agent { flex: 0 0 auto; }
+  .hud-mission-slot { flex: 1 1 auto; min-height: 0; overflow: auto; }
   .hud-rail-right {
     position: absolute;
     right: var(--hud-gap);
@@ -679,7 +691,10 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
             </div>
           </div>
         </header>
-        <div class="hud-rail-left hud-surface" data-role="agent-panel"></div>
+        <div class="hud-rail-left">
+          <div class="hud-rail-left-agent hud-surface" data-role="agent-panel"></div>
+          <div class="hud-mission-slot hud-surface" data-role="mission-confirm"></div>
+        </div>
         <div class="hud-rail-right">
           <div class="hud-status-slot hud-surface" data-role="status-screen"></div>
           <div class="hud-session-slot hud-surface" data-role="session-panel"></div>
@@ -932,6 +947,11 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
           : adapter;
       const unmountAgentPanel = agentHost ? mountAgentPanel(agentDeps, agentHost) : null;
 
+      // 任务确认单（@since v3.9，task_148）：**恢复它在场** —— 任务单从「开了也没人看见」
+      // 回到左栏的常驻一段。与 Agent 侧栏共用同一个 adapter（同一份真相、同一套派发通道）。
+      const missionHost = rootEl.querySelector<HTMLElement>('[data-role="mission-confirm"]');
+      const unmountMissionConfirm = missionHost ? mountMissionConfirm(adapter, missionHost) : null;
+
       // 日志抽屉：纯展示，不发命令 —— 只把同一个 adapter 的 subscribe 能力给它。
       // 演示模式（@since v3.3，task_110）：日志抽屉是工程件（时间戳 / 来源 / 级别四列），
       //   演示时不挂载 —— 既不占画面也不订阅总线（省一份无谓的订阅）。
@@ -1007,6 +1027,7 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         unmountDrawer?.();
         unmountStatus?.();
         unmountAgentPanel?.();
+        unmountMissionConfirm?.();
         unmountPanel?.();
         unmountReplay?.unmount();
         // 音量滑条的 input 监听（task_083）：随本屏布局一起拆（滑条节点本也会被丢弃，

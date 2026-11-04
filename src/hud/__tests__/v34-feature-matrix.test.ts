@@ -820,7 +820,7 @@ describe('§4 E 组 · 命令与面板（v3.4 task_089 / 090）', () => {
 
   test('E2 Agent 侧栏：仍在左列，选中单位时渲染单选形态', () => {
     const h = mountScreen();
-    const slot = h.host.querySelector('.hud-rail-left[data-role="agent-panel"]');
+    const slot = h.host.querySelector('.hud-rail-left [data-role="agent-panel"]');
     expect(slot).not.toBeNull();
     const panel = h.host.querySelector(AGENT_PANEL_TAG) as (HTMLElement & { mode: string }) | null;
     expect(panel).not.toBeNull();

@@ -340,3 +340,35 @@ describe('闭环：HudCommand → core 状态机 → WorldState 广播 → 面�
     }
   });
 });
+// ============================================================================
+// 入场存在感（@since v3.9，task_148）：新任务单进面板时「被看见」
+// ============================================================================
+
+describe('任务单入场：刚到达的任务行有一次入场动效', () => {
+  test('新到达的待确认任务行带入场标记 + 动效 token 类', () => {
+    const harness = mountPanel();
+    harness.emit(makeState({ missions: [mission({ id: 'm1', phase: 'pending' })] }));
+
+    const row = rowOf(harness.panel, 'm1');
+    expect(row?.getAttribute('data-arriving')).toBe('true');
+    expect(row?.className).toContain('srf-motion-enter');
+
+    harness.unmount();
+  });
+
+  test('入场标记只此一次（下一轮重画不再重放）', () => {
+    const harness = mountPanel();
+    harness.emit(makeState({ missions: [mission({ id: 'm1', phase: 'pending' })] }));
+    expect(rowOf(harness.panel, 'm1')?.getAttribute('data-arriving')).toBe('true');
+
+    // 再来一条任务 → 整块重画；m1 不再是「刚到达」。
+    harness.emit(makeState({
+      missions: [mission({ id: 'm1', phase: 'pending' }), mission({ id: 'm2', phase: 'pending' })],
+    }));
+
+    expect(rowOf(harness.panel, 'm1')?.getAttribute('data-arriving')).toBeNull();
+    expect(rowOf(harness.panel, 'm2')?.getAttribute('data-arriving')).toBe('true');
+
+    harness.unmount();
+  });
+});

@@ -686,3 +686,25 @@ describe('Z1 顶栏瘦身：19 元素降 7', () => {
 // 进一层断言：mountSettingsScreen / mountCharacterScreen 的 tidiness 与主屏一致 —— 这里直接复用
 // 已有 settings-screen / character-screen / status-screen 测试用例（每个屏均独立验证过
 // disconnectedCallback 释放订阅与定时器）。本文件专注壳层路由。
+
+// ============================================================================
+// 任务确认单的装配（@since v3.9，task_148）
+// ============================================================================
+
+describe('任务单存在感：主屏挂着任务确认面板', () => {
+  test('主屏左栏挂着任务确认面板（此前只在单测里存在，生产界面根本没挂）', () => {
+    const h = mountHarness(makeState());
+    const slot = h.host.querySelector<HTMLElement>('[data-role="mission-confirm"]');
+    expect(slot).not.toBeNull();
+    expect(slot?.querySelector('strat-mission-confirm')).not.toBeNull();
+    h.unmount();
+  });
+
+  test('任务单面板在左栏 agent 面板之下（同栏堆叠，各占一段）', () => {
+    const h = mountHarness(makeState());
+    const left = h.host.querySelector<HTMLElement>('.hud-rail-left');
+    const children = Array.from(left?.children ?? []).map((c) => c.getAttribute('data-role'));
+    expect(children).toEqual(['agent-panel', 'mission-confirm']);
+    h.unmount();
+  });
+});

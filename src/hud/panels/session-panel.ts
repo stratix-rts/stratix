@@ -32,8 +32,11 @@
 import type { HudCommand, SessionRecord, WorldState } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
 import { defineEmptyState, EMPTY_STATE_TAG } from '../components/empty-state/empty-state';
+// markdown 管线（@since v3.9，task_145）：示例会话的正文走同一条管线（marked → DOMPurify → DOM）。
+import { enhanceMarkdown, MARKDOWN_CLASS, MARKDOWN_CSS, renderMarkdown } from '../lib/markdown';
 import { MOTION_REDUCED_CSS } from '../theme/motion-tokens';
 
+import { DEMO_SESSION_BADGE, DEMO_SESSION_MESSAGES } from './demo-session';
 import {
   SESSION_KIND_FILTERS,
   activeCount,
@@ -107,6 +110,12 @@ export interface StratSessionPanelElement extends HTMLElement {
   readonly historyStatus: SessionHistoryStatus;
   /** 抽屉错误说明（读失败时）。 */
   readonly historyError: string | null;
+  /**
+   * 示例会话是否展开（@since v3.9，task_148）—— 内置**演示数据**，让阅读面在任何环境先亮灯。
+   */
+  readonly demoOpen: boolean;
+  /** 展开 / 收起示例会话（展开时顺带把面板展开，否则藏在折叠态里看不见）。 */
+  toggleDemo(): void;
   /** 强制重算重渲染。 */
   refresh(): void;
   /** 最近一次收到的 WorldState。 */
@@ -144,6 +153,8 @@ export function defineSessionPanel(): typeof HTMLElement {
     private _state: WorldState | null = null;
     private _kindFilter: SessionKindFilter = 'all';
     private _collapsed = true;
+    /** 示例会话展开态（@since v3.9，task_148）：内置演示数据，默认收起。 */
+    private _demoOpen = false;
     private _expandedId: string | null = null;
     private _history: HistoryState | null = null;
     /** 竞态守卫：切会话后，旧请求的结果必须丢弃（否则会把上一条会话的历史画到新会话下）。 */
@@ -170,6 +181,7 @@ export function defineSessionPanel(): typeof HTMLElement {
     get historyStatus(): SessionHistoryStatus { return this._history?.status ?? 'idle'; }
     get historyError(): string | null { return this._history?.error ?? null; }
     get lastState(): WorldState | null { return this._state; }
+    get demoOpen(): boolean { return this._demoOpen; }
 
     connectedCallback(): void {
       // 幂等：hot-reload / 反复挂卸会重复进入，必须能安全重建。
@@ -197,6 +209,21 @@ export function defineSessionPanel(): typeof HTMLElement {
       this._collapsed = !this._collapsed;
       // 同时挂 host 属性：面板外（样式 / 测试 / 布局）也能看到折叠态。
       this.toggleAttribute('collapsed', this._collapsed);
+      this.refresh();
+    }
+
+    /**
+     * 展开 / 收起示例会话（@since v3.9，task_148）。
+     *
+     * why 顺带把面板展开：面板默认是折叠的（只有标题栏），
+     *   折叠态里展开的示例会话根本看不见 —— 用户会以为按钮没生效。
+     */
+    toggleDemo(): void {
+      this._demoOpen = !this._demoOpen;
+      if (this._demoOpen && this._collapsed) {
+        this._collapsed = false;
+        this.toggleAttribute('collapsed', false);
+      }
       this.refresh();
     }
 
@@ -423,7 +450,7 @@ export function defineSessionPanel(): typeof HTMLElement {
         : '-';
       return `${sessions
         .map((r) => `${r.id}:${r.kind}:${r.status}:${r.title}:${r.lastEventAt}:${r.eventCount}`)
-        .join('|')}#${this._kindFilter}#${this._collapsed ? 'c' : 'e'}#${this._expandedId ?? '-'}#${historyPart}`;
+        .join('|')}#${this._kindFilter}#${this._collapsed ? 'c' : 'e'}#${this._expandedId ?? '-'}#${historyPart}#${this._demoOpen ? 'demo' : '-'}`;
     }
 
     private renderChrome(): void {
@@ -597,12 +624,43 @@ export function defineSessionPanel(): typeof HTMLElement {
           .entry[data-tone="warn"] .entry-text { color: var(--srf-warn); }
           .entry[data-tone="error"] .entry-text { color: var(--srf-danger); }
           .drawer-note { color: var(--srf-text-muted); font-size: var(--srf-font-size-caption); text-align: center; padding: var(--srf-spacing-xs); }
+          /* —— 示例会话（@since v3.9，task_148）：内置演示数据 + 阅读面预览 —— */
+          button.chip.demo { color: var(--srf-accent); border-color: var(--srf-accent); }
+          button.chip.demo[aria-pressed="true"] { color: var(--srf-bg); background: var(--srf-accent); }
+          .demo-session {
+            display: grid;
+            gap: var(--srf-spacing-xs);
+            padding: var(--srf-spacing-sm);
+            border: var(--srf-border-width) solid var(--srf-accent);
+            border-radius: var(--srf-radius);
+            background: var(--srf-panel-elevated);
+          }
+          .demo-head { display: flex; align-items: center; gap: var(--srf-spacing-xs); }
+          .demo-title { font-size: var(--srf-font-size-body); font-weight: var(--srf-font-weight-semibold); }
+          .demo-badge {
+            padding: 0 var(--srf-spacing-xs);
+            border: var(--srf-border-width) solid var(--srf-warn);
+            border-radius: var(--srf-radius-pill);
+            color: var(--srf-warn);
+            font-size: var(--srf-font-size-caption);
+            white-space: nowrap;
+          }
+          .demo-note { color: var(--srf-text-muted); font-size: var(--srf-font-size-caption); }
+          .demo-list { display: grid; gap: var(--srf-spacing-xs); max-height: 22em; overflow: auto; scrollbar-width: thin; }
+          .demo-msg { display: grid; gap: var(--srf-spacing-xxs); padding: var(--srf-spacing-xs); border-radius: var(--srf-radius); background: var(--srf-panel); }
+          .demo-msg[data-demo-role="user"] { border-left: var(--srf-spacing-xxs) solid var(--srf-border-strong); }
+          .demo-msg[data-demo-role="assistant"] { border-left: var(--srf-spacing-xxs) solid var(--srf-accent); }
+          .demo-msg-head { display: flex; align-items: center; gap: var(--srf-spacing-xs); }
+          .demo-author { font-size: var(--srf-font-size-caption); font-weight: var(--srf-font-weight-semibold); }
+          .demo-text { font-size: var(--srf-font-size-body); overflow-wrap: anywhere; }
+        ${MARKDOWN_CSS}
         ${MOTION_REDUCED_CSS}
         </style>
         <div class="panel" part="panel">
           <div class="head">
             <span class="title">会话</span>
             <span class="summary" data-role="summary">等待世界状态…</span>
+            <button type="button" class="chip demo" data-action="demo-session" aria-pressed="false" title="内置演示会话 —— 一键看见阅读面（markdown 代码块 / 表格 / 列表）">示例会话</button>
             <button type="button" class="chip" data-action="collapse">展开</button>
           </div>
           <div class="body" data-role="body"></div>
@@ -621,6 +679,7 @@ export function defineSessionPanel(): typeof HTMLElement {
           const action = holder.getAttribute('data-action');
           const sessionId = holder.getAttribute('data-session') ?? '';
           if (action === 'collapse') this.toggleCollapsed();
+          else if (action === 'demo-session') this.toggleDemo();
           else if (action === 'filter') {
             const kind = holder.getAttribute('data-kind') as SessionKindFilter | null;
             if (kind) this.setKindFilter(kind);
@@ -657,6 +716,8 @@ export function defineSessionPanel(): typeof HTMLElement {
       const summary = root.querySelector('[data-role="summary"]');
       const collapseBtn = root.querySelector<HTMLButtonElement>('button[data-action="collapse"]');
       if (collapseBtn) collapseBtn.textContent = this._collapsed ? '展开' : '收起';
+      const demoBtn = root.querySelector<HTMLButtonElement>('button[data-action="demo-session"]');
+      if (demoBtn) demoBtn.setAttribute('aria-pressed', this._demoOpen ? 'true' : 'false');
 
       const sessions = this._state?.sessions ?? [];
       const visible = this.visibleSessions;
@@ -675,9 +736,45 @@ export function defineSessionPanel(): typeof HTMLElement {
       }
 
       body.innerHTML = `
+        ${this._demoOpen ? this.renderDemoSession() : ''}
         ${this.renderFilters()}
         ${this.renderRows(visible, sessions.length)}
         ${this.renderDrawer()}
+      `;
+      // markdown 增强（代码块外框 / 语言标签 / 复制按钮）—— 必须在 innerHTML 之后。
+      // why 只在示例会话展开时做：真实会话条目走的是纯文本投影（entry-text），
+      //   扫描整棵子树找代码块是白干活（perf 硬约束：别做无谓的全树查询）。
+      if (this._demoOpen) enhanceMarkdown(body);
+    }
+
+    /**
+     * 示例会话区块（@since v3.9，task_148）—— 内置**演示数据**。
+     *
+     * why 放在会话面板：会话面板是「多会话管理」的入口，而阅读面（markdown 渲染）
+     *   正是会话内容的最终形态 —— 样例放这儿，一键就能看见它长什么样。
+     * why 每条都挂「演示数据」徽标：演示数据与真实数据的**唯一区别就是它自己说出来了**；
+     *   没有这个徽标，样例就会被误读成真数据（那才是拿 mock 冒充实现）。
+     */
+    private renderDemoSession(): string {
+      const messages = DEMO_SESSION_MESSAGES.map(
+        (message) => `
+          <div class="demo-msg" data-role="demo-message" data-demo-role="${escapeHtml(message.role)}">
+            <div class="demo-msg-head">
+              <span class="demo-author">${escapeHtml(message.author)}</span>
+              <span class="demo-badge" data-role="demo-badge">${escapeHtml(DEMO_SESSION_BADGE)}</span>
+            </div>
+            <div class="demo-text ${MARKDOWN_CLASS}">${renderMarkdown(message.text)}</div>
+          </div>`
+      ).join('');
+      return `
+        <div class="demo-session" data-role="demo-session">
+          <div class="demo-head">
+            <span class="demo-title">示例会话</span>
+            <span class="demo-badge" data-role="demo-badge">${escapeHtml(DEMO_SESSION_BADGE)}</span>
+          </div>
+          <p class="demo-note">内置演示内容 —— 用来预览阅读面（markdown 代码块 / 表格 / 列表）。真实会话请新建角色后派发。</p>
+          <div class="demo-list" data-role="demo-list">${messages}</div>
+        </div>
       `;
     }
 

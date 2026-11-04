@@ -379,6 +379,8 @@ export function defineMissionConfirm(): typeof HTMLElement {
     private _phases = new Map<string, string>();
     /** 本轮需要播确认动效的任务 id（一次性，渲染后清空）。 */
     private _celebrating = new Set<string>();
+    /** 本轮需要播入场动效的任务 id（@since v3.9，task_148；一次性，渲染后清空）。 */
+    private _arriving = new Set<string>();
     private _unsubscribe: (() => void) | null = null;
     private _listenersBound = false;
 
@@ -425,20 +427,30 @@ export function defineMissionConfirm(): typeof HTMLElement {
      *   面板每次状态变化都整块重画 HTML —— 若按「当前是 done」挂确认类，
      *   确认动效会被无限重放（每次重画都从 0% 弹一次），用户看到的是一行在发抖。
      *   只有**相位发生跃迁的那一次**（非 done → done）才是「完成瞬间」。
+     *
+     * @since v3.9（task_148）同法判定「刚刚到达」的任务（此前不在 pending → 现在 pending）：
+     *   新任务单进面板时给一次入场落位 —— 任务单的存在感不能靠「它在那儿」，
+     *   得靠「它刚来的时候被看见」。
      */
     private detectCompletions(): void {
       const previous = this._phases;
       const next = new Map<string, string>();
       const justDone: string[] = [];
+      const justArrived: string[] = [];
       for (const mission of this._state?.missions ?? []) {
         next.set(mission.id, mission.phase);
         const before = previous.get(mission.id);
         if (mission.phase === 'done' && before !== undefined && before !== 'done') {
           justDone.push(mission.id);
         }
+        // 新到达：之前不在待确认队列（或压根没见过这条），现在在。
+        if (mission.phase === 'pending' && before !== 'pending') {
+          justArrived.push(mission.id);
+        }
       }
       this._phases = next;
       this._celebrating = new Set(justDone);
+      this._arriving = new Set(justArrived);
     }
 
     // —— 订阅生命周期 ——
@@ -631,6 +643,7 @@ export function defineMissionConfirm(): typeof HTMLElement {
       if (this._model.pending.length === 0 && others.length === 0) {
         box.innerHTML = `<div class="empty" data-role="empty">暂无任务。在命令面板发起任务后会出现在这里。</div>`;
         this._celebrating.clear();
+        this._arriving.clear();
         return;
       }
 
@@ -656,6 +669,8 @@ export function defineMissionConfirm(): typeof HTMLElement {
       enhanceMarkdown(box);
       // 确认动效只在本轮渲染里生效（一次性）：下一轮重画不再重放。
       this._celebrating.clear();
+      // 入场动效同理（一次性）：下一轮重画不再重放（否则新任务单会一直抖）。
+      this._arriving.clear();
     }
 
     private renderRow(row: MissionRow, withActions: boolean): string {
@@ -672,13 +687,15 @@ export function defineMissionConfirm(): typeof HTMLElement {
       // 签名瞬间（@since v3.8，task_138）：这一行刚刚完成 → 一次性脉冲 + 对勾描边（360ms）。
       // why 只在「刚刚」挂：面板整块重画，每次重画都弹 = 一行在发抖（见 detectCompletions）。
       const celebrating = this._celebrating.has(row.id);
+      // 入场（@since v3.9，task_148）：新任务单进面板时落位一次 —— 走既有入场动效 token。
+      const arriving = this._arriving.has(row.id);
       const confirmMark = celebrating
         ? `<span class="row-check" aria-hidden="true">
              <svg viewBox="0 0 16 16" focusable="false"><path class="${MOTION_CLASS.check}" d="M3 8.5 L6.5 12 L13 4.5"></path></svg>
            </span>`
         : '';
       return `
-        <div class="row${celebrating ? ` ${MOTION_CLASS.confirm}` : ''}" data-mission-row="${escapeHtml(row.id)}" data-phase="${escapeHtml(row.phase)}" data-locked="${row.unlocked ? 'false' : 'true'}"${celebrating ? ' data-confirmed="true"' : ''}>
+        <div class="row${celebrating ? ` ${MOTION_CLASS.confirm}` : ''}${arriving ? ` ${MOTION_CLASS.enter}` : ''}" data-mission-row="${escapeHtml(row.id)}" data-phase="${escapeHtml(row.phase)}" data-locked="${row.unlocked ? 'false' : 'true'}"${celebrating ? ' data-confirmed="true"' : ''}${arriving ? ' data-arriving="true"' : ''}>
           <div class="row-head">
             <span class="row-title">${escapeHtml(row.title)}</span>
             ${confirmMark}

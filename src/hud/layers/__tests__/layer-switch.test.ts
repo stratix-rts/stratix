@@ -70,6 +70,22 @@ describe('hud/layers/layer-switch：三档开关', () => {
     expect(Array.from(samples).map((s) => (s as HTMLElement).dataset.srfLayer)).toEqual(['L1', 'L2']);
   });
 
+  // —— 脚手架清除（@since v3.9，task_148）：「L1 样例」不该出现在生产界面 ——
+  test('生产态：样例区默认隐藏（「L1 样例」不在生产界面露脸）', () => {
+    const { element } = mount();
+    const row = element.querySelector<HTMLElement>('[data-role="samples"]');
+    expect(row?.hidden).toBe(true);
+  });
+
+  test('显式注入 showSamples=true → 样例区露脸（机制仍可当场演示）', () => {
+    const { element } = mountLayerSwitch(
+      { controller, dispatch: (command) => dispatched.push(command), showSamples: true },
+      host,
+    );
+    const row = element.querySelector<HTMLElement>('[data-role="samples"]');
+    expect(row?.hidden).toBe(false);
+  });
+
   test('卸载：撤 DOM 与订阅（撤后点击不再发命令）', () => {
     const { element, unmount } = mount();
     unmount();

@@ -866,10 +866,23 @@ async function boot(): Promise<void> {
     toastHost.show(text, tone);
   };
 
+  // ===== 建档向导入口（@since v3.9，task_148）=====
+  // 「去新建角色」的**唯一**通路：既有首启向导（core/character 的建档口径在向导里）；
+  //   向导起不来（没探到可建档的 agent）→ 退到角色中心（既有路由 ui.navigate）。
+  // why 前向声明：新建任务对话框（死按钮的出口）与战场空态（空态出口）都挂得比向导早，
+  //   但它们指向的是**同一条路** —— 一处口径，别写两份。
+  let openCharacterWizard: () => void = (): void => {
+    adapter.dispatch({ type: 'ui.navigate', screen: 'character' });
+  };
+
   // ===== 新建任务对话框（@since v3.6，task_112）=====
   // 底栏「新建任务」→ 命令面板发 NEW_TASK_OPEN_EVENT（标题在 detail 里）→ 这里开对话框。
   // 与「打开聊天」同一装配口径：hud 发事件，组合根开面板（面板本体不认 core/bus，只认注入的接口）。
   // 依赖三件套：dispatch（同一个 adapter）/ subscribe（读 WorldState）/ notify（toast 轻提示）。
+  //
+  // @since v3.9（task_148）「去新建角色」出口：0 角色时「派发」是死按钮 —— 对话框把它禁用，
+  //   并给一条「去新建角色」的路。这条路必须指向**既有建档向导**（与战场空态的「新建角色」同一条），
+  //   所以这里用一个前向闭包：向导在下面才创建，但对话框挂得更早。
   const { element: newTaskDialog, unmount: unmountNewTaskDialog } = mountNewTaskDialog(
     {
       dispatch: (command) => adapter.dispatch(command),
@@ -1091,6 +1104,15 @@ async function boot(): Promise<void> {
     },
   });
 
+  // 向导建好了 → 把「去新建角色」的出口指向**真正的**建档向导（task_148）。
+  openCharacterWizard = (): void => {
+    onboarding.reopen();
+    // 向导起不来（没探到可建档的 agent）→ 退到角色中心（既有路由 ui.navigate），不给死按钮。
+    if (!onboarding.mounted) {
+      adapter.dispatch({ type: 'ui.navigate', screen: 'character' });
+    }
+  };
+
   // ===== 战场空态覆盖层（@since v3.8，task_136）=====
   // 0 单位 → 亮出「战场待命中」；建了角色（core 投影出单位）→ 消失；删了 → 回来。
   // 两个动作都走**既有能力**：新建角色 = 既有首启向导（建档正路）；打开命令行 = 既有命令面板输入框。
@@ -1098,11 +1120,8 @@ async function boot(): Promise<void> {
     subscribe: (handler) => adapter.subscribe(handler),
     onCreateCharacter: () => {
       // 向导是「新建角色」的正路（core/character 的建档口径在向导里）。
-      onboarding.reopen();
-      // 向导起不来（没探到可建档的 agent）→ 退到角色中心（既有路由 ui.navigate），不给死按钮。
-      if (!onboarding.mounted) {
-        adapter.dispatch({ type: 'ui.navigate', screen: 'character' });
-      }
+      // @since v3.9（task_148）：与新建任务对话框的死按钮出口**同一条路**（一处口径）。
+      openCharacterWizard();
     },
     onOpenCommand: () => {
       // 命令行输入框在命令面板的 shadow 里（主屏自己装的 strip 形态）—— 这里只做一次聚焦。

@@ -793,3 +793,92 @@ describe('装配进 main-screen（dev 页走的就是这条路径）', () => {
     expect(subs.size).toBe(0);
   });
 });
+
+// ============================================================================
+// 示例会话（@since v3.9，task_148）：阅读面在任何环境先亮灯
+// ============================================================================
+
+describe('示例会话：内置演示输出', () => {
+  test('面板上有一个「示例会话」入口（默认收起）', () => {
+    const harness = mountPanel();
+    mounted.push(harness.unmount);
+
+    expect(harness.panel.demoOpen).toBe(false);
+    const chip = harness.panel.shadowRoot?.querySelector<HTMLButtonElement>(
+      'button[data-action="demo-session"]',
+    );
+    expect(chip?.textContent).toContain('示例会话');
+    expect(harness.panel.shadowRoot?.querySelector('[data-role="demo-session"]')).toBeNull();
+  });
+
+  test('点入口 → 灌入 4 条演示消息，每条都带「演示数据」徽标', () => {
+    const harness = mountPanel();
+    mounted.push(harness.unmount);
+    expand(harness.panel);
+
+    click(harness.panel, 'button[data-action="demo-session"]');
+
+    expect(harness.panel.demoOpen).toBe(true);
+    const messages = Array.from(
+      harness.panel.shadowRoot?.querySelectorAll('[data-role="demo-message"]') ?? [],
+    );
+    expect(messages).toHaveLength(4);
+    for (const msg of messages) {
+      expect(msg.querySelector('[data-role="demo-badge"]')?.textContent).toBe('演示数据');
+    }
+  });
+
+  test('markdown 真渲染：代码块 / 表格 / 列表都在（145 管线的效果当场可见）', () => {
+    const harness = mountPanel();
+    mounted.push(harness.unmount);
+    expand(harness.panel);
+
+    click(harness.panel, 'button[data-action="demo-session"]');
+
+    const body = harness.panel.shadowRoot?.querySelector('[data-role="demo-list"]');
+    // 代码块：patch 那条消息里有 ```ts 围栏。
+    expect(body?.querySelector('pre code')).not.toBeNull();
+    expect(body?.querySelector('pre')?.textContent).toContain('buildTaskCommand');
+    // 表格：结论那条消息里有 GFM 表格。
+    expect(body?.querySelector('table')).not.toBeNull();
+    // 列表：结论里有序列表，补丁那条里有无序列表。
+    expect(body?.querySelector('ol')).not.toBeNull();
+    expect(body?.querySelector('ul')).not.toBeNull();
+  });
+
+  test('演示数据不进业务通路：不发任何命令、不混进真实会话列表', () => {
+    const harness = mountPanel();
+    mounted.push(harness.unmount);
+    expand(harness.panel);
+
+    harness.emit(makeState({ sessions: [session({ id: 's-1', kind: 'peer_chat' })] }));
+    click(harness.panel, 'button[data-action="demo-session"]');
+
+    expect(harness.commands).toHaveLength(0);
+    // 真实会话行仍然只有一条（演示消息用的是 demo-message 角色，不占会话行）。
+    expect(rows(harness.panel)).toHaveLength(1);
+  });
+
+  test('再点一次 → 收起示例会话', () => {
+    const harness = mountPanel();
+    mounted.push(harness.unmount);
+    expand(harness.panel);
+
+    click(harness.panel, 'button[data-action="demo-session"]');
+    click(harness.panel, 'button[data-action="demo-session"]');
+
+    expect(harness.panel.demoOpen).toBe(false);
+    expect(harness.panel.shadowRoot?.querySelector('[data-role="demo-session"]')).toBeNull();
+  });
+
+  test('面板折叠时点入口 → 顺手展开（否则点了什么都看不见）', () => {
+    const harness = mountPanel();
+    mounted.push(harness.unmount);
+
+    expect(harness.panel.collapsed).toBe(true);
+    click(harness.panel, 'button[data-action="demo-session"]');
+
+    expect(harness.panel.collapsed).toBe(false);
+    expect(harness.panel.shadowRoot?.querySelector('[data-role="demo-session"]')).not.toBeNull();
+  });
+});

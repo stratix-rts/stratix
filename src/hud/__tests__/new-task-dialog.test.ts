@@ -41,6 +41,8 @@ interface Harness {
   readonly commands: HudCommand[];
   readonly toasts: Array<{ text: string; tone?: ToastTone }>;
   readonly occlusion: OcclusionController;
+  /** 「去新建角色」出口被点了几次（死按钮治理的出口断言）。 */
+  readonly createCharacterCalls: number;
   /** 推一次状态广播（模拟 core 广播）。 */
   push(state: WorldState): void;
   /** 组件是否已退订总线（资源清理断言）。 */
@@ -52,6 +54,7 @@ function mount(state: WorldState = makeState()): Harness {
   const commands: HudCommand[] = [];
   const toasts: Array<{ text: string; tone?: ToastTone }> = [];
   let unsubscribed = false;
+  let createCharacterCalls = 0;
   let handler: ((s: WorldState) => void) | null = null;
 
   // 真实遮挡控制器（不造桩）：断言的是「全屏弹窗真的进了模态栈」。
@@ -70,6 +73,7 @@ function mount(state: WorldState = makeState()): Harness {
       },
       notify: (text: string, tone?: ToastTone): void => { toasts.push({ text, tone }); },
       occlusion,
+      onCreateCharacter: (): void => { createCharacterCalls += 1; },
     },
     container
   );
@@ -79,6 +83,7 @@ function mount(state: WorldState = makeState()): Harness {
     commands,
     toasts,
     occlusion,
+    get createCharacterCalls(): number { return createCharacterCalls; },
     push: (s: WorldState): void => { handler?.(s); },
     unsubscribed: (): boolean => unsubscribed,
     unmount: (): void => { unmount(); occlusion.destroy(); container.remove(); },
@@ -174,8 +179,20 @@ describe('四按钮组', () => {
     document.body.innerHTML = '';
   });
 
-  test('单任务 / 流水线 / 派发 / 取消 各有一个按钮', () => {
+  test('单任务 / 流水线 / 派发 / 去新建角色 / 取消 各有一个按钮（0 角色时多一个出口）', () => {
     const h = mount();
+    h.element.open({ title: '去侦察' });
+    expect(actionLabels(h.element)).toEqual(['单任务', '流水线', '派发', '去新建角色', '取消']);
+    h.unmount();
+  });
+
+  test('有候选角色时按钮组是四个（不出现多余的出口）', () => {
+    const state = makeState({
+      characters: [
+        { id: 'c1', name: '小虎', persona: '执行', level: 1, experience: 0, agentKind: 'claude-code' },
+      ],
+    });
+    const h = mount(state);
     h.element.open({ title: '去侦察' });
     expect(actionLabels(h.element)).toEqual(['单任务', '流水线', '派发', '取消']);
     h.unmount();
@@ -244,12 +261,18 @@ describe('动作口径', () => {
     h.unmount();
   });
 
-  test('派发（无候选角色）→ 不发半截命令，warn 提示且对话框留着', () => {
+  test('派发（无候选角色）→ 按钮禁用 + 写明原因 + 不发半截命令，对话框留着', () => {
     const h = mount();
     h.element.open({ title: '走查验收' });
+    const btn = h.element.shadowRoot?.querySelector<HTMLButtonElement>(
+      'button.option[data-action="dispatch"]'
+    );
+    expect(btn?.disabled).toBe(true);
+    expect(btn?.getAttribute('aria-disabled')).toBe('true');
+    expect(btn?.textContent).toContain('当前没有可派发的角色');
+
     clickAction(h.element, 'dispatch');
     expect(h.commands).toHaveLength(0);
-    expect(h.toasts.some((t) => t.tone === 'warn')).toBe(true);
     expect(h.element.opened).toBe(true);
     h.unmount();
   });
@@ -282,6 +305,25 @@ describe('动作口径', () => {
     expect(h.commands).toHaveLength(0);
     expect(h.element.opened).toBe(false);
     expect(h.toasts.some((t) => t.text.includes('取消'))).toBe(true);
+    h.unmount();
+  });
+
+  // —— 死按钮治理（@since v3.9，task_148）——
+  test('死按钮出口：点「去新建角色」→ 关对话框 + 走建档向导（不发命令）', () => {
+    const h = mount();
+    h.element.open({ title: '走查验收' });
+    clickAction(h.element, 'create-character');
+    expect(h.createCharacterCalls).toBe(1);
+    expect(h.element.opened).toBe(false);
+    expect(h.commands).toHaveLength(0);
+    h.unmount();
+  });
+
+  test('死按钮出口：对话框关闭后不再占模态栈（向导不会被压在下面）', () => {
+    const h = mount();
+    h.element.open({ title: '走查验收' });
+    clickAction(h.element, 'create-character');
+    expect(h.occlusion.state.modals).not.toContain('new-task-dialog');
     h.unmount();
   });
 });
