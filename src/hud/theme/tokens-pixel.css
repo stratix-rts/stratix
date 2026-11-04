@@ -4,18 +4,25 @@
  *   自 v3.4 起与 default / 新增六套皮肤对齐：**自足 token 集**（不再依赖 tokens-default.css 先挂载）。
  *   @since v3.7（task_128）：像素风「真像素化」—— 字体栈换成像素字体优先链、
  *     面板底色压到近黑、描边加粗提亮、扫描线调实（终于有消费者，见 skin-pixel-layer.css）。
+ *   @since v3.8（task_134）：像素风「字骨落地」—— 字体栈首位换成**内嵌的 Fusion Pixel**
+ *     （缝合像素字体，OFL 许可 = 可商用，资产在 assets/fonts/），并把扫描线/网格压回「氛围档」。
  * 输入：无（纯 CSS 自定义属性）。
  * 输出：`:root` 上挂的全部 `--srf-*` token；键集合与其它皮肤完全一致（见 skin-tokens 单测）。
  * 禁止事项：
  *   1. 少定义或多名一个 token —— 皮肤之间的键集合必须严格一致，否则组件会拿到空值；
  *   2. 写组件级选择器 —— 本文件仍只发 token；
- *   3. 引入网络字体文件 —— 字体栈改走 "像素字体优先 + 等宽回退"。
+ *   3. 引入**网络**字体（CDN / 外链）—— 字体一律走仓库内资产（assets/fonts/），
+ *      离线可加载、许可可追溯；内嵌字体的 @font-face 由 hud/theme/pixel-font.ts 在运行时拼进本表源。
  *   4. 改现代皮肤（tokens-default.css）的任何值 —— 像素风是本任务唯一被允许改的皮。
  *
- * ★ 字体栈口径（task_128）：
- *   "Press Start 2P" / "Silkscreen" / "VT323" 都是**可选安装**的像素字体 —— 装了就有真像素字形，
- *   没装就顺次落到系统等宽（ui-monospace → Courier New）。**不引字体文件**（零外部依赖），
- *   像素感由「栈头像素字体 + letter-spacing + 加粗描边」共同兑现（字距在皮肤层 skin-pixel-layer.css）。
+ * ★ 字体栈口径（task_128 → task_134 修订）：
+ *   task_128 时栈头是 "Press Start 2P" / "Silkscreen" / "VT323" 这类**需用户自行安装**的字体 ——
+ *   绝大多数机器没装，于是整条栈顺次落到系统等宽，"像素感"只剩字距和描边（用户验收反馈：
+ *   「现在的像素感没有字骨支撑」）。
+ *   task_134 起栈头是 **"Fusion Pixel"**（本仓库内嵌的子集，见 assets/fonts/README.md）：
+ *   缝合像素字体、OFL 许可可商用、**自带 CJK** —— 拉丁与中文都是真像素字形，不再依赖用户装字体。
+ *   后面的 Press Start 2P / Silkscreen / VT323 保留为「用户自装」的补充（若恰好装了且 Fusion Pixel
+ *   缺某个字形，可兜底）；再后面是系统等宽（ui-monospace → Courier New）作为最终兜底。
  */
 
 :root {
@@ -39,9 +46,10 @@
   /* —— 徽标色：角色头像 / 单位染色（与 skin-registry 的 accent 同值）—— */
   --srf-badge-accent: #ffc98f;
 
-  /* —— 字体：像素字体优先链 → 系统等宽兜底（不引字体文件）—— */
-  --srf-font-ui: "Press Start 2P", "Silkscreen", "VT323", "DotGothic16", ui-monospace, "SFMono-Regular", Menlo, Consolas, "Courier New", "Lucida Console", monospace;
-  --srf-font-mono: "Press Start 2P", "Silkscreen", "VT323", "DotGothic16", ui-monospace, "SFMono-Regular", Menlo, Consolas, "Courier New", "Lucida Console", monospace;
+  /* —— 字体：内嵌像素字体（Fusion Pixel，含中文）→ 用户自装的像素字体 → 系统等宽兜底 ——
+     why 栈头是 Fusion Pixel：它随仓库分发（assets/fonts/），不依赖用户装字体 —— 这是"字骨"的来源。 */
+  --srf-font-ui: "Fusion Pixel", "Press Start 2P", "Silkscreen", "VT323", "DotGothic16", ui-monospace, "SFMono-Regular", Menlo, Consolas, "Courier New", "Lucida Console", monospace;
+  --srf-font-mono: "Fusion Pixel", "Press Start 2P", "Silkscreen", "VT323", "DotGothic16", ui-monospace, "SFMono-Regular", Menlo, Consolas, "Courier New", "Lucida Console", monospace;
   --srf-font-size-xs: 11px;
   --srf-font-size-sm: 12px;
   --srf-font-size-md: 14px;
@@ -68,8 +76,10 @@
   /* —— 渲染：像素化（图像 + canvas 都生效） —— */
   --srf-image-rendering: pixelated;
   /* 扫描线强度：v3.6 起这个 token 一直没人消费（扫描线画不出来），
-     v3.7（task_128）由 skin-pixel-layer.css 真正接上 —— 这里给的是「线本身」的透明度。 */
-  --srf-scanline-opacity: 0.22;
+     v3.7（task_128）由 skin-pixel-layer.css 真正接上 —— 这里给的是「线本身」的透明度。
+     v3.8（task_134）下调：真像素字体落地后，扫描线/网格退回「氛围档」——
+     对比度交给字体与色板本身，覆盖层只留 CRT 味道（0.22 → 0.10，网格再按 0.55 折一档）。 */
+  --srf-scanline-opacity: 0.10;
   --srf-shadow: none;
   --srf-shadow-lg: none;
   /* 步进感：像素风不做缓动，用 steps() 跳变（现代皮是 160ms ease-out）。 */

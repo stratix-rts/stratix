@@ -39,16 +39,31 @@ import oceanCss from '../theme/tokens-ocean.css';
 import pixelCss from '../theme/tokens-pixel.css?inline';
 // 像素皮肤专属视觉层（@since v3.7，task_128）：与生产入口同一口径（拼进 pixel 源）。
 import pixelLayerCss from '../theme/skin-pixel-layer.css?inline';
+// 像素皮肤的真像素字体（@since v3.8，task_134）：与生产入口同一口径（@font-face 拼进 pixel 源）。
+import { pixelFontFaceCss, pixelFontUrl } from '../theme/pixel-font';
 import sunsetCss from '../theme/tokens-sunset.css';
 import { defineStratButton } from '../widgets/strat-button';
 
 /**
+ * dev 页面（src/hud/dev/hud-dev.html）相对**站点根**的目录层数。
+ * why 写死 3 而不是 import app/entry-paths：hud 层不许反向依赖 app 层（分层铁律）。
+ * 页面挪位置时这里要跟着改（生产入口走 ENTRY_PATH_DEPTH，自动跟随）。
+ */
+const HUD_DEV_ENTRY_DEPTH = 3;
+
+/**
  * 皮肤 id → token 样式表。
  * 类型写成 Record<SkinId, string>：新增皮肤时若忘了引样式表，tsc 立刻报错（而不是运行时掉 token）。
+ *
+ * 字体基址：dev 页面在 src/hud/dev/hud-dev.html → 相对站点根 **3 层**（src/ hud/ dev/），
+ * 字体在站点根下的 fonts/ → 相对路径要回退三层（与生产入口同一套相对规则）。
  */
 const SKIN_CSS: Record<SkinId, string> = {
   default: defaultCss,
-  pixel: pixelCss + pixelLayerCss,
+  pixel:
+    pixelCss +
+    pixelLayerCss +
+    pixelFontFaceCss(pixelFontUrl(document.baseURI, HUD_DEV_ENTRY_DEPTH)),
   crimson: crimsonCss,
   forest: forestCss,
   ocean: oceanCss,

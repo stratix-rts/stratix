@@ -145,6 +145,10 @@ import pixelCss from '../../hud/theme/tokens-pixel.css?inline';
 // why 拼进 pixel 源而不是单独一张表：主题控制器按 id 整张启停 —— 拼一起才能「切走像素 = 整层消失」，
 // 现代皮肤因此一个像素都不会变（现代源里没有这张表）。
 import pixelLayerCss from '../../hud/theme/skin-pixel-layer.css?inline';
+// 像素皮肤的真像素字体（@since v3.8，task_134）：Fusion Pixel（OFL，可商用，内嵌于 assets/fonts/）。
+// why @font-face 在运行时拼：像素源是**注入 document 的 <style> 文本**，字体 URL 必须按
+//   文档基址算（dev http / 正式包 file:// 同一条相对规则，见 hud/theme/pixel-font.ts）。
+import { pixelFontFaceCss, pixelFontUrl } from '../../hud/theme/pixel-font';
 import { installVisualTokens } from '../../hud/theme/visual-tokens';
 import { defineStratButton } from '../../hud/widgets/strat-button';
 import { mountCharacterChatDrawer, CHARACTER_CHAT_DRAWER_TAG, type StratCharacterChatDrawerElement } from '../../hud/components/chat-drawer/chat-drawer';
@@ -373,7 +377,16 @@ async function boot(): Promise<void> {
   // 七色语义色注入成 CSS 变量（--srf-visual-*）—— HUD 与战场读同一份色值。
   installVisualTokens();
   const themeController = createThemeController({
-    sources: { default: defaultCss, pixel: pixelCss + pixelLayerCss },
+    sources: {
+      default: defaultCss,
+      // 像素皮肤 = token 表 + 像素专属视觉层 + **真像素字体的 @font-face**（task_134）。
+      // 三者拼成同一张 <style id="srf-theme-pixel"> —— 切走像素即整张 disabled，
+      // 字体也从文档里消失（现代皮肤既不加载字体、也不受任何影响）。
+      pixel:
+        pixelCss +
+        pixelLayerCss +
+        pixelFontFaceCss(pixelFontUrl(document.baseURI, ENTRY_PATH_DEPTH)),
+    },
     initial: 'default',
   });
   const adapter = createHudBusAdapter({

@@ -12,19 +12,23 @@
  * 输出：像素皮肤独有的整屏质感（字距 / 无抗锯齿 / 扫描线 / 像素网格 / 按压位移 / 图标硬笔）。
  * 禁止事项：
  *   1. 写死颜色 —— 颜色一律取 token（--srf-*），否则换色板时会漏；
- *   2. 引入字体文件 / 图标库 —— 零新增依赖；
+ *   2. 引入**网络**字体 / 图标库 —— 字体走仓库内资产（assets/fonts/，@font-face 由
+ *      hud/theme/pixel-font.ts 在运行时拼进像素皮肤源），图标零新增依赖；
  *   3. 吃事件 —— 覆盖层必须 pointer-events:none（否则会挡住 HUD 点击）。
  */
 
-/* —— ① 字体质感：像素风 = 关闭抗锯齿（字形硬边）+ 加宽字距（方块感）——
+/* —— ① 字体质感：像素风 = 关闭抗锯齿（字形硬边）+ **零额外字距**（守住像素栅格）——
    why 放 :root：这两条都是**继承属性**，从根上一路继承进 shadow DOM（跨 shadow 边界仍继承），
    所以全站文字（含 shadow 组件内部）一次到位，组件零改动。 */
 :root {
   /* 关闭字体抗锯齿 —— 这是「像素」最直接的兑现：字形边缘不再被灰边抹圆。 */
   -webkit-font-smoothing: none;
   font-smooth: never;
-  /* 字距：像素字体的方块感主要来自字距（0 = 字符挤成一团）。 */
-  letter-spacing: 0.06em;
+  /* 字距：@since v3.8（task_134）由 0.06em 改为 **0** ——
+     Fusion Pixel 是等宽像素字体，自带节奏；再叠 0.06em（12px 下 ≈ 0.72px）会让每个字形的
+     起始位置落在小数像素上，浏览器按亚像素排版 = 字骨发虚（正是"没有字骨支撑"的另一半）。
+     零字距 = 每个字形都落在整数像素上 = 硬边。 */
+  letter-spacing: 0;
 
   /* —— ② 组件级行为参数（只在像素皮存在，其它皮走 var() 的兜底值）——
      why 放这里而不是 tokens-*.css：这些是**行为**不是**外观**，
@@ -44,17 +48,17 @@ body::after {
   z-index: 999;
   pointer-events: none;
   background:
-    /* 扫描线：每 4px 一道（2px 亮 / 2px 暗） */
+    /* 扫描线：每 4px 一道（2px 亮 / 2px 暗）—— 强度由 token 给（task_134 起降到「氛围档」0.10） */
     repeating-linear-gradient(
       to bottom,
       rgba(0, 0, 0, 0) 0 2px,
-      rgba(0, 0, 0, var(--srf-scanline-opacity, 0.32)) 2px 4px
+      rgba(0, 0, 0, var(--srf-scanline-opacity, 0.10)) 2px 4px
     ),
     /* 像素网格：竖向同理，弱一档（避免太脏） */
     repeating-linear-gradient(
       to right,
       rgba(0, 0, 0, 0) 0 2px,
-      rgba(0, 0, 0, calc(var(--srf-scanline-opacity, 0.32) * 0.55)) 2px 4px
+      rgba(0, 0, 0, calc(var(--srf-scanline-opacity, 0.10) * 0.55)) 2px 4px
     );
 }
 
@@ -68,7 +72,7 @@ body::after {
 body #hud-side *,
 body #hud-root * {
   font-family: var(--srf-font-ui);
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
 }
 
 /* —— ⑤ 浮层容器（顶栏 / 侧栏 / 底栏）：直角 + 无阴影 ——

@@ -26,6 +26,8 @@ import { createMainScreen } from '../../hud/screens/main-screen';
 import { createThemeController } from '../../hud/theme/theme-controller';
 import defaultCss from '../../hud/theme/tokens-default.css?inline';
 import pixelCss from '../../hud/theme/tokens-pixel.css?inline';
+// 像素皮肤的真像素字体（@since v3.8，task_134）：与生产入口同一口径。
+import { pixelFontFaceCss, pixelFontUrl } from '../../hud/theme/pixel-font';
 import { defineStratButton } from '../../hud/widgets/strat-button';
 import { BattlefieldScene, BATTLEFIELD_SCENE_KEY } from '../../world/scenes/BattlefieldScene';
 
@@ -100,7 +102,12 @@ function boot(): void {
   // ===== HUD 侧：真实 main-screen + 真实操作面板，共用一个 bus-adapter =====
   defineStratButton();
   const themeController = createThemeController({
-    sources: { default: defaultCss, pixel: pixelCss },
+    sources: {
+      default: defaultCss,
+      // 像素皮肤的真像素字体（@since v3.8，task_134）：@font-face 随像素源一起启停。
+      // why 深度 3：本页在 src/app/dev/hello-loop.html（相对站点根 3 层：src/app/dev/），字体在站点根下 fonts/。
+      pixel: pixelCss + pixelFontFaceCss(pixelFontUrl(document.baseURI, 3)),
+    },
     initial: 'default',
   });
   const adapter = createHudBusAdapter({ onState, emitCommand, themeController });

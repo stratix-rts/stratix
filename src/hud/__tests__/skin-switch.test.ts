@@ -21,6 +21,7 @@ import { createStore } from '../../core/store';
 import type { HudCommand } from '../../core/types';
 import { SKIN_STORAGE_KEY } from '../../core/theme/skin-registry';
 import { createHudBusAdapter } from '../bridge/bus-adapter';
+import { pixelFontFaceCss, pixelFontUrl } from '../theme/pixel-font';
 import { createThemeController, STYLE_ID_PREFIX } from '../theme/theme-controller';
 
 const readCss = (name: string): string =>
@@ -29,9 +30,14 @@ const readCss = (name: string): string =>
 // 皮肤源与生产入口同口径（@since v3.7，task_128）：
 // 像素皮肤 = token 表 + **像素专属视觉层**（字距 / 无抗锯齿 / 扫描线 / 按压位移 / 图标硬笔）。
 // 两者拼成同一张 <style id="srf-theme-pixel"> —— 切走像素即整张 disabled，现代皮肤零残留。
+// @since v3.8（task_134）：再加一段 **真像素字体的 @font-face**（Fusion Pixel，OFL 可商用）——
+// 字体随像素源一起启停：切走像素 = 字体从文档里消失（现代皮肤不加载、不受影响）。
 const SOURCES = {
   default: readCss('tokens-default.css'),
-  pixel: readCss('tokens-pixel.css') + readCss('skin-pixel-layer.css'),
+  pixel:
+    readCss('tokens-pixel.css') +
+    readCss('skin-pixel-layer.css') +
+    pixelFontFaceCss(pixelFontUrl('http://127.0.0.1:7523/index.html', 0)),
 };
 
 /** 当前生效的 token 样式表（= 皮肤真正在起作用的那张）。 */
@@ -173,11 +179,17 @@ describe('像素皮肤专属视觉层：随皮肤一起启停（现代皮肤零�
     harness.adapter.dispatch({ type: 'theme.set', themeId: 'pixel' });
 
     const css = activeSheet()?.textContent ?? '';
-    // ① 像素字体优先链（不引字体文件，缺了自动落到系统等宽）。
+    // ① 字体栈首位 = 内嵌的真像素字体（Fusion Pixel，@since v3.8，task_134）；
+    //    用户自装的像素字体仍在链上（缺字兜底），系统等宽兜底在最后。
+    expect(css).toContain('--srf-font-ui: "Fusion Pixel"');
     expect(css).toContain('"Press Start 2P"');
-    expect(css).toContain('--srf-font-ui: "Press Start 2P"');
+    // @font-face 随像素源一起注入 —— 这是「字体真的能被命中」的来源。
+    expect(css).toContain('@font-face');
+    expect(css).toContain('font-family: "Fusion Pixel"');
+    expect(css).toContain('format("woff2")');
     // ② 字距 + 关抗锯齿（字形硬边 = 像素感的来源）。
-    expect(css).toContain('letter-spacing: 0.06em');
+    //    字距为 0：Fusion Pixel 自带节奏，额外字距会把字形推到亚像素（字骨发虚）。
+    expect(css).toMatch(/letter-spacing:\s*0\s*;/);
     expect(css).toContain('-webkit-font-smoothing: none');
     // ③ 扫描线 / 像素网格（v3.6 起这个 token 一直没人消费，现在接上了）。
     expect(css).toContain('repeating-linear-gradient');
@@ -197,7 +209,8 @@ describe('像素皮肤专属视觉层：随皮肤一起启停（现代皮肤零�
     expect(activeSheet()?.id).toBe(`${STYLE_ID_PREFIX}default`);
     // 现代皮的源里根本没有这些像素层规则 —— 切回来即复原，无残留。
     expect(css).not.toContain('Press Start 2P');
-    expect(css).not.toContain('letter-spacing: 0.06em');
+    expect(css).not.toContain('Fusion Pixel');
+    expect(css).not.toContain('@font-face');
     expect(css).not.toContain('repeating-linear-gradient');
     expect(css).not.toContain('--srf-press-offset');
     expect(css).not.toContain('crispEdges');
