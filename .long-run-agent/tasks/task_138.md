@@ -5,6 +5,26 @@
 动效系统——签名瞬间 + 生产级节奏。目标 bar：`production`。
 动效是「工具感」到「产品感」的分界线，但**每个动效必须有存在理由**。
 
+## requirements
+
+- 统一动效 token：`--motion-fast(120ms)` / `--motion-base(200ms)` / `--motion-slow(360ms)`
+  + 统一 easing（进入 ease-out / 退出 ease-in / 强调 spring `cubic-bezier(0.34,1.56,0.64,1)`），
+  进双 token 体系（core 唯一事实源 + HUD 侧 CSS 翻译），数值只有一份。
+- 签名瞬间一：任务 `running→done` 时有确认动效（一次性 scale+brightness 脉冲 + 对勾描边，600ms 内完成、不阻塞）。
+- 签名瞬间二：网关横幅与大面板（设置 / 会话）从「瞬现」改为位移 8px + 透明度入场（200ms）。
+- 微动效补齐：列表项 hover 光标过渡、命令行提交时输入行微脉冲（按钮按压 2px 位移已由 135 落地）。
+- 动效全部走 CSS 类 / token，不引 JS 动画引擎、不引新依赖；`prefers-reduced-motion: reduce` 下**全量禁用**。
+- 像素皮肤下动效可加重帧感（`steps()`），形成皮肤语言差异（加分项）。
+
+## acceptance
+
+- [x] 动效 token 在双 token 体系可查（computed style 断言：`--srf-motion-*` 六项取值 + shadow 内同源）。
+- [x] 任务完成瞬间有确认动效（类切换断言 + 动画名断言 + 截图）。
+- [x] 横幅与 ≥2 个面板有位移入场而非瞬现（class + animationName 断言）。
+- [x] `prefers-reduced-motion: reduce` 模拟下全部动效禁用（animation=none / transition=0s）。
+- [x] `npx tsc --noEmit` + 相关 jest 绿；playwright e2e 绿。
+- [x] 截图 `-r5` 前缀 + `-motion` 后缀。
+
 ## 交付物
 
 | 文件 | 职责 |
