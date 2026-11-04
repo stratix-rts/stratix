@@ -783,9 +783,18 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         if (!el) return;
         el.hidden = !open;
       };
-      const closePopovers = (): void => {
-        setPopover(overflowMenu, false);
-        setPopover(soundPopover, false);
+      /** 收起弹层；返回「刚才确实开着某个弹层吗」（给 ESC 的栈顶语义用）。 */
+      const closePopovers = (): boolean => {
+        let closed = false;
+        if (overflowMenu && !overflowMenu.hidden) {
+          setPopover(overflowMenu, false);
+          closed = true;
+        }
+        if (soundPopover && !soundPopover.hidden) {
+          setPopover(soundPopover, false);
+          closed = true;
+        }
+        return closed;
       };
       // 点顶栏以外 → 弹层收起（顶栏内部的开合由顶栏自己管）。
       // why 挂 document 而不是 host：顶栏是浮层，点空白（战场画布）也得能收起它。
@@ -796,7 +805,11 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       };
       // Esc → 收起（键盘可达：图标开关也得能用键盘操作）。
       const onDocumentKeydown = (e: KeyboardEvent): void => {
-        if (e.key === 'Escape') closePopovers();
+        if (e.key !== 'Escape') return;
+        // 栈顶语义（@since v3.9，task_152）：弹层开着时，这一下 ESC **归弹层** ——
+        //   吃掉事件，别让下层（onboarding 聚光引导的 ESC 退场）跟着一起关。
+        //   why 用 stopImmediatePropagation：同一节点（document）上的后注册监听器会被挡掉。
+        if (closePopovers()) e.stopImmediatePropagation();
       };
       document.addEventListener('click', onDocumentClick);
       document.addEventListener('keydown', onDocumentKeydown);

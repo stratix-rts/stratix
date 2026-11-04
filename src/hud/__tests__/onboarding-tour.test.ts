@@ -1,11 +1,13 @@
 /**
- * 单测：轻引导三步（@since v3.8，task_139）。
+ * 单测：轻引导三步（@since v3.8，task_139；退场语义 @since v3.9，task_152）。
  *
  * 覆盖口径：
  *   ① 首开出现 → 三步依次走完（1/3 → 2/3 → 3/3）→ 走完收起 + 写一次性标记；
  *   ② 跳过路径 → 收起 + 写标记 + 派 done 事件；
  *   ③ 二次打开不再现（标记已写 → start() 不显示）；
- *   ④ 目标元素在 → 挖洞（有尺寸）；不在 → 退成居中气泡（流程不中断）。
+ *   ④ 目标元素在 → 挖洞（有尺寸）；不在 → 退成居中气泡（流程不中断）；
+ *   ⑤ task_152：跳过 / 完成 / ESC 三条退场路径都要**当场拆掉浮层本体**（不是只隐藏）；
+ *      ESC 在**没有焦点落在引导里**时也要生效（监听挂在 document 上）。
  *
  * @jest-environment jsdom
  */
@@ -141,5 +143,85 @@ describe('轻引导三步（task_139）', () => {
       defineOnboardingTour();
     }).not.toThrow();
     expect(customElements.get(ONBOARDING_TOUR_TAG)).toBeTruthy();
+  });
+});
+
+/**
+ * task_152：退场语义 —— 浮层必须**当场消失**（DOM 里不再有这个浮层），
+ * 三条路径（跳过 / 完成 / ESC）一致，且 ESC 不依赖焦点落在引导里。
+ */
+describe('轻引导退场（task_152）', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    document.body.innerHTML = '';
+  });
+
+  test('跳过 → 浮层本体当场拆掉（不只是隐藏）+ 写标记 + 派事件', () => {
+    const { host, element } = mount(fakeSteps(() => visibleBox()));
+    const done = jest.fn();
+    document.addEventListener(ONBOARDING_TOUR_DONE_EVENT, done);
+    element.start();
+    expect(element.isConnected).toBe(true);
+
+    clickBubble(element, 'skip');
+
+    // 退场 = DOM 里没有它了（不是 hidden 的空壳）。
+    expect(element.isConnected).toBe(false);
+    expect(host.querySelector(ONBOARDING_TOUR_TAG)).toBeNull();
+    expect(window.localStorage.getItem(ONBOARDING_TOUR_DONE_KEY)).toBe('1');
+    expect(done).toHaveBeenCalledTimes(1);
+    document.removeEventListener(ONBOARDING_TOUR_DONE_EVENT, done);
+  });
+
+  test('三步走完「完成」→ 同样当场拆掉', () => {
+    const { host, element } = mount(fakeSteps(() => visibleBox()));
+    element.start();
+
+    clickBubble(element, 'next');
+    clickBubble(element, 'next');
+    expect(readBubble(element).next).toBe('完成');
+    clickBubble(element, 'next');
+
+    expect(element.isConnected).toBe(false);
+    expect(host.querySelector(ONBOARDING_TOUR_TAG)).toBeNull();
+    expect(window.localStorage.getItem(ONBOARDING_TOUR_DONE_KEY)).toBe('1');
+  });
+
+  test('ESC → 退场（焦点不在引导里也生效：监听挂在 document 上）', () => {
+    const { host, element } = mount(fakeSteps(() => visibleBox()));
+    element.start();
+    expect(element.isConnected).toBe(true);
+    // 焦点留在 body（用户没点过引导里的按钮）—— 这正是 ESC 之前关不掉的原因。
+    (document.body as HTMLElement).focus?.();
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    expect(element.isConnected).toBe(false);
+    expect(host.querySelector(ONBOARDING_TOUR_TAG)).toBeNull();
+    expect(window.localStorage.getItem(ONBOARDING_TOUR_DONE_KEY)).toBe('1');
+  });
+
+  test('ESC 在已退场后不再重复收场（不重复派事件）', () => {
+    const { element } = mount(fakeSteps(() => visibleBox()));
+    const done = jest.fn();
+    document.addEventListener(ONBOARDING_TOUR_DONE_EVENT, done);
+    element.start();
+    clickBubble(element, 'skip');
+    expect(done).toHaveBeenCalledTimes(1);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(done).toHaveBeenCalledTimes(1);
+    document.removeEventListener(ONBOARDING_TOUR_DONE_EVENT, done);
+  });
+
+  test('重复挂载 → 宿主里只留一个浮层（杜绝「点掉一层还有一层」）', () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const first = mountOnboardingTour(host, { steps: fakeSteps(() => visibleBox()) });
+    const second = mountOnboardingTour(host, { steps: fakeSteps(() => visibleBox()) });
+
+    expect(first.isConnected).toBe(false);
+    expect(second.isConnected).toBe(true);
+    expect(host.querySelectorAll(ONBOARDING_TOUR_TAG).length).toBe(1);
   });
 });

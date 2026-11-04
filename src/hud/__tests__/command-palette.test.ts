@@ -291,6 +291,46 @@ describe('不可用命令：灰态 + 原因', () => {
   });
 });
 
+describe('关着的时候不能挡页面（@since v3.9，task_152）', () => {
+  test('挂载即关闭态：遮罩与面板都带 hidden（不铺在全屏上）', () => {
+    const harness = mount();
+    mounted.push(harness.unmount);
+
+    // 遮罩是全屏 + pointer-events:auto —— 一旦它是可见态，整个页面就被它罩住
+    // （全屏发暗 + 所有点击被吃掉 = 用户实测的「模态框遮挡页面」）。
+    const backdrop = harness.element.shadowRoot?.querySelector('[data-role="backdrop"]');
+    const panel = harness.element.shadowRoot?.querySelector('[data-role="panel"]');
+    expect((backdrop as HTMLElement | null)?.hidden).toBe(true);
+    expect((panel as HTMLElement | null)?.hidden).toBe(true);
+  });
+
+  test('样式表里显式压掉 hidden 的 display（作者样式压过 UA 的 [hidden]）', () => {
+    const harness = mount();
+    mounted.push(harness.unmount);
+
+    // .panel 自带 display:grid —— 作者样式压过 UA 的 [hidden]{display:none}，
+    //   光打 hidden 属性不够，组件自己的样式表必须再压一条 display:none。
+    const css = harness.element.shadowRoot?.querySelector('style')?.textContent ?? '';
+    expect(css).toMatch(/\.panel\[hidden\][^{]*\{[^}]*display:\s*none/);
+    expect(css).toMatch(/\.backdrop\[hidden\][^{]*\{[^}]*display:\s*none/);
+  });
+
+  test('打开 → 遮罩与面板现身；关闭 → 又藏回去', () => {
+    const harness = mount();
+    mounted.push(harness.unmount);
+
+    harness.pressPaletteKey();
+    const backdrop = harness.element.shadowRoot?.querySelector('[data-role="backdrop"]') as HTMLElement;
+    const panel = harness.element.shadowRoot?.querySelector('[data-role="panel"]') as HTMLElement;
+    expect(backdrop.hidden).toBe(false);
+    expect(panel.hidden).toBe(false);
+
+    harness.press('Escape');
+    expect(backdrop.hidden).toBe(true);
+    expect(panel.hidden).toBe(true);
+  });
+});
+
 describe('ESC 栈语义（@since v3.9，task_146）：顺序按栈', () => {
   test('面板在栈顶 → 第一次 ESC 只关面板，下面的对话框还在', () => {
     const harness = mount();

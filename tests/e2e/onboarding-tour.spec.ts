@@ -131,11 +131,13 @@ test.describe('轻引导 + 声音图标 + 开发者口径（task_139）', () => 
     await page.click('[data-menu-item="theme"]');
     await page.waitForTimeout(700);
     expect(await activeSkin(page)).toBe('pixel');
-    await page.keyboard.press('Escape');
-    await page.waitForTimeout(300);
-    // 切皮后引导仍在（切皮不重开引导，也不该把引导吃掉）。
+    // 切皮后引导仍在（切皮不重开引导，也不该把引导吃掉）—— 先截图，别急着收场。
     expect(await tourVisible(page)).toBe(true);
     await page.screenshot({ path: `${SHOTS}/onboarding-tour-r5-onb-pixel.png` });
+    // ESC → 引导退场（@since v3.9，task_152：ESC 关引导；此前这条口径是「ESC 关不掉引导」）。
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+    expect(await tourVisible(page)).toBe(false);
   });
 
   test('声音图标：设置页开关后 aria-pressed 与图标真实翻转（开 / 关截图对比）', async ({ page }) => {

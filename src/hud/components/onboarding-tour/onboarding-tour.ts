@@ -51,6 +51,10 @@ export class StratOnboardingTourElement extends HTMLElement {
   private _ready = false;
   /** 本实例的「已走过」记忆（localStorage 写不进时的兜底 —— 隐私模式下别反复弹）。 */
   private _done = false;
+  /** 已收场（幂等：重复收场不重复派事件、不重复拆）。 */
+  private _finished = false;
+  /** ESC 监听挂在哪（ownerDocument —— 元素自己收不到未聚焦时的事件，见 onKeydown 注释）。 */
+  private _keydownHost: Document | null = null;
 
   connectedCallback(): void {
     if (this._ready) return;
@@ -69,17 +73,26 @@ export class StratOnboardingTourElement extends HTMLElement {
       </div>`;
     root.querySelector('[data-role="next"]')?.addEventListener('click', () => this.next());
     root.querySelector('[data-role="skip"]')?.addEventListener('click', () => this.finish(true));
-    this.addEventListener('keydown', this.onKeydown);
+    // ESC 挂在 ownerDocument 上，**不挂元素自己**。
+    // why：keydown 从「焦点所在元素」向上冒泡 —— 引导没被点过（焦点还在 body）时，
+    //   事件永远不会流到这个未聚焦的兄弟节点 → 挂在元素上等于 ESC 永远关不掉引导。
+    //   挂在 document 上 = 焦点在哪都能收（与遮挡控制器的 ESC 路由同一条思路）。
+    this._keydownHost = this.ownerDocument;
+    this._keydownHost?.addEventListener('keydown', this.onKeydown);
     window.addEventListener('resize', this.onResize);
   }
 
   disconnectedCallback(): void {
-    this.removeEventListener('keydown', this.onKeydown);
+    this._keydownHost?.removeEventListener('keydown', this.onKeydown);
+    this._keydownHost = null;
     window.removeEventListener('resize', this.onResize);
   }
 
   private onKeydown = (ev: KeyboardEvent): void => {
-    if (ev.key === 'Escape') this.finish(true);
+    if (ev.key !== 'Escape') return;
+    // 已退场（隐藏 / 已拆）→ 不再重复收场（免得把标记又写一遍、把已拆的元素再动一次）。
+    if (this.hidden || this._finished) return;
+    this.finish(true);
   };
 
   private onResize = (): void => this.layout();
@@ -98,7 +111,12 @@ export class StratOnboardingTourElement extends HTMLElement {
 
   /** 开始走三步（宿主决定何时开始 —— 首启向导走完之后）。已走过 = 不出现。 */
   start(): void {
-    if (this.isDone() || this.steps.length === 0) return;
+    // 已走过 / 没有步骤 → 不出现，**并把本体拆掉**（@since v3.9，task_152）：
+    //   宿主里不留一个「永远不出现、却还在的全屏浮层壳」。
+    if (this.isDone() || this.steps.length === 0) {
+      this.remove();
+      return;
+    }
     this._index = 0;
     this.hidden = false;
     this.renderStep();
@@ -119,13 +137,23 @@ export class StratOnboardingTourElement extends HTMLElement {
     this.renderStep();
   }
 
-  /** 收场：写标记 + 收起 + 派事件（skipped=true 表示中途跳过）。 */
+  /** 收场：写标记 + 收起 + 派事件 + **把浮层本体拆掉**（skipped=true 表示中途跳过）。 */
   private finish(skipped: boolean): void {
+    // 幂等：跳过 / 完成 / ESC 三条路都可能撞上同一个收场动作，只走一遍。
+    if (this._finished) return;
+    this._finished = true;
     this.markDone();
     this.hidden = true;
+    // 派事件在拆之前 —— 监听者在 document 上，靠冒泡收到；先拆就再也冒不上去。
     this.dispatchEvent(
       new CustomEvent(ONBOARDING_TOUR_DONE_EVENT, { bubbles: true, composed: true, detail: { skipped } })
     );
+    // ★ 真拆 DOM（@since v3.9，task_152）：只写标记 + hidden 是不够的 ——
+    //   宿主里会永久留下一个 `position:fixed; inset:0` 的全屏宿主（显示层虽已隐藏，
+    //   但它仍是「一层浮层」：任何按存在性判断的逻辑都会认它；重复挂载时更是两层叠着，
+    //   点掉一层还有一层 = 用户看到的「点了跳过浮层不拆」）。
+    //   拆掉 = 退场即彻底不存在，底下的交互也就自然全恢复。
+    this.remove();
   }
 
   /** 渲染当前步的文案 + 位置（spotlight 洞 + 气泡）。 */
@@ -212,6 +240,12 @@ export function mountOnboardingTour(
   options: { readonly steps: readonly OnboardingTourStep[] }
 ): StratOnboardingTourElement {
   defineOnboardingTour();
+  // 幂等：同一宿主里只留一个引导。
+  // why 必须清旧实例：重复挂（重挂载 / HMR 后再挂）会叠出两层聚光 ——
+  //   两层一模一样地点同一个「跳过」，点掉上层还剩一层罩着页面（用户实测的「浮层不拆」）。
+  for (const stale of Array.from(host.querySelectorAll(ONBOARDING_TOUR_TAG))) {
+    stale.remove();
+  }
   const element = document.createElement(ONBOARDING_TOUR_TAG) as StratOnboardingTourElement;
   element.steps = options.steps;
   element.hidden = true;

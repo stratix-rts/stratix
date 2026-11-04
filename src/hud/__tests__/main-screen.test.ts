@@ -681,6 +681,35 @@ describe('Z1 顶栏瘦身：19 元素降 7', () => {
     expect(h.host.querySelector<HTMLElement>('[data-role="overflow-menu"]')?.hidden).toBe(true);
     h.unmount();
   });
+
+  // ESC 栈顶语义（@since v3.9，task_152）：弹层开着 → 这一下归弹层，下层浮层不跟着关。
+  test('ESC 收起弹出层，并把这次键击吃掉（下层浮层不跟着退场）', () => {
+    const h = mountHarness(makeState());
+    h.host.querySelector<HTMLElement>('[data-role="overflow"]')
+      ?.dispatchEvent(new CustomEvent('strat-button-click', { bubbles: true }));
+    expect(h.host.querySelector<HTMLElement>('[data-role="overflow-menu"]')?.hidden).toBe(false);
+
+    // 下层监听器（后注册 —— 如 onboarding 聚光引导的 ESC 退场）。
+    const lower = jest.fn();
+    document.addEventListener('keydown', lower);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    document.removeEventListener('keydown', lower);
+
+    expect(h.host.querySelector<HTMLElement>('[data-role="overflow-menu"]')?.hidden).toBe(true);
+    expect(lower).not.toHaveBeenCalled();
+    h.unmount();
+  });
+
+  test('没有弹层开着：ESC 不被吃掉（下层浮层照常能收场）', () => {
+    const h = mountHarness(makeState());
+    const lower = jest.fn();
+    document.addEventListener('keydown', lower);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    document.removeEventListener('keydown', lower);
+
+    expect(lower).toHaveBeenCalledTimes(1);
+    h.unmount();
+  });
 });
 
 // 进一层断言：mountSettingsScreen / mountCharacterScreen 的 tidiness 与主屏一致 —— 这里直接复用

@@ -165,6 +165,11 @@ export function defineCommandPalette(): typeof HTMLElement {
       this._storage = browserStorage();
       this._recent = readRecentCommands(this._storage);
       this.renderChrome();
+      // ★ 落一次关闭态（@since v3.9，task_152）：render() 才是唯一给遮罩 / 面板打上 hidden 的地方。
+      //   只 renderChrome() 的话，遮罩是**可见且铺满全屏**的（pointer-events:auto）——
+      //   于是「关着的命令面板」把整个页面罩住：全屏发暗 + 所有点击被它吃掉
+      //   （用户实测的「模态框遮挡页面 / 糊屏」）。
+      this.render();
       // 全局 ⌘K 监听挂在 window 上（不在影子树里 —— 焦点在哪都能唤起）。
       window.addEventListener('keydown', this.onGlobalKeydown);
       this.bindAdapter();
@@ -375,6 +380,14 @@ export function defineCommandPalette(): typeof HTMLElement {
             inset: 0;
             background: var(--srf-backdrop);
             pointer-events: auto;
+          }
+          /* 关闭态必须真的不画（@since v3.9，task_152）：
+             面板自己带 display:grid（作者样式）—— 作者样式压过 UA 的 [hidden]{display:none}，
+             光打 hidden 属性不够，得显式压一条 display:none。
+             遮罩同理（两条一起写：谁先长出 display 都不会漏）。 */
+          .backdrop[hidden],
+          .panel[hidden] {
+            display: none;
           }
           .panel {
             position: absolute;
