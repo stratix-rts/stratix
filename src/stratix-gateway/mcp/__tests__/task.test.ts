@@ -52,6 +52,7 @@ function makeStore(overrides: Partial<WorldState> = {}): CoreStore {
       },
     ],
     tasks: [],
+    missions: [],
     ...overrides,
   });
 }
@@ -326,6 +327,56 @@ describe('stratix_task_assign / stratix_task_status', () => {
       throw new Error('应当抛错');
     } catch (error) {
       expect((error as McpToolError).code).toBe('task_not_found');
+    }
+  });
+
+  // ── mission_id 存在性校验（@since v3.8 / task_143）──
+  it('mission_id 不存在 → mission_not_found（不可重试 + hint 指路），零副作用', async () => {
+    const host = makeHost();
+    const before = store.getState().tasks ?? [];
+
+    try {
+      await callAssign(host, {
+        character: 'ch_kimi',
+        prompt: '挂在一个不存在的编组任务上',
+        mission_id: 'mission_R1_ID',
+      });
+      throw new Error('应当抛错');
+    } catch (error) {
+      const failure = error as McpToolError;
+      expect(failure.code).toBe('mission_not_found');
+      expect(failure.retryable).toBe(false);
+      // hint 必须指向"真 id 从哪来"（mission_create 回执 / snapshot），不是一句"参数错了"。
+      expect(failure.hint).toContain('stratix_mission_create');
+      expect(failure.hint).toContain('stratix_world_snapshot');
+    }
+
+    // 零副作用：一条单都没建（不建任务 = 不派 CLI）。
+    expect(store.getState().tasks ?? []).toHaveLength(before.length);
+  });
+
+  it('mission_id 存在 → 派单落地，回执回显该 id（真链路不回归）', async () => {
+    const withMission = makeStore({
+      missions: [
+        { id: 'mission_ok_1', title: '真编组', phase: 'running', unitIds: [], createdAt: 1 },
+      ],
+    });
+    const runtime = createCoreRuntime({ store: withMission });
+    const stop = runtime.start();
+    try {
+      const host = createCoreMcpHost({ store: withMission, dispatch: emitCommand });
+      const data = await callAssign(host, {
+        character: 'ch_kimi',
+        prompt: '挂在真编组上的单',
+        mission_id: 'mission_ok_1',
+      });
+      expect(data.mission_id).toBe('mission_ok_1');
+      // 真的挂上去了（core 状态里的 missionId 与回执一致 —— 不是回执自说自话）。
+      expect(withMission.getState().tasks?.find((task) => task.id === data.task_id)?.missionId).toBe(
+        'mission_ok_1'
+      );
+    } finally {
+      stop();
     }
   });
 

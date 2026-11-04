@@ -76,6 +76,7 @@ import { createTaskManager, type PipelineRunnerPort, type TaskManager } from '..
 import type { HudCommand, WorldEvent } from '../../core/types';
 
 import { createServiceTaskExecution, type ServiceTaskExecutionPorts } from './task-execution';
+import { settleMissionFromTaskReport } from './mission-report';
 import type { ServiceStorage } from './storage';
 
 /**
@@ -314,10 +315,20 @@ export function createStratixService(options: StratixServiceOptions = {}): Strat
       onMissionSettled:
         options.taskExecution.onMissionSettled ??
         ((record) => {
-          if (!record.missionId) return;
-          if (record.status === 'completed') mission.completeMission(record.missionId);
-          else if (record.status === 'failed') mission.cancelMission(record.missionId);
+          // 回报落点 + 兜底（@since v3.8 / task_143）：编组任务已被撤掉 / 删除时，
+          //   回报无处可落 —— 由 settleMissionFromTaskReport 留痕（warn 日志 + Notice），
+          //   不再"静默蒸发"（评估报告 r4 P1：任务跑完了，编组那边一声不响）。
+          settleMissionFromTaskReport(
+            { store, mission, logger: warn },
+            { taskId: record.id, status: record.status, missionId: record.missionId ?? null }
+          );
         }),
+      // 编组任务存在性读口（@since v3.8 / task_143）：任务收尾时给 mission_run 会话
+      //   标出"回报落空"（编组已被删）—— 这条会话是 MCP 侧唯一查得到的回报去向痕迹。
+      missionExists:
+        options.taskExecution.missionExists ??
+        ((missionId: string) =>
+          (store.getState().missions ?? []).some((missionItem) => missionItem.id === missionId)),
       store,
       taskManager: task,
       // 会话域写入面（@since v3.43，task_093）：任务收尾时记 task_run / mission_run 会话

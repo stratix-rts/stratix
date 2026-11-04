@@ -217,6 +217,82 @@ describe('service 组合根的会话域接线（task_093）', () => {
       'created',
       'closed',
     ]);
+
+    // 回报去向可追踪（@since v3.8 / task_143）：本例的 mission-1 **并不存在**（回报无处可落），
+    //   故 mission_run 会话的收尾原因如实标出 unknown_mission —— 回报不再"静默蒸发"。
+    const closedEvent = storage
+      .readSessionEvents(missionRun[0]!.id, {})
+      .find((event) => event.type === 'closed');
+    const reason = String(
+      (closedEvent?.payload as { reason?: string } | undefined)?.reason ?? ''
+    );
+    expect(reason).toContain('unknown_mission');
+  });
+
+  // --------------------------------------------------------------------------
+  // ③' 回报落点：编组任务在 → 收尾真的落地（回归：兜底不能误伤正常路径）
+  // --------------------------------------------------------------------------
+
+  it('编组任务在 → 终态回报真的把它收尾（done），会话收尾原因不带 unknown_mission', async () => {
+    const service = boot({
+      storage,
+      taskExecution: {
+        createTransport: () => ({
+          spawn: (prompt: string): AsyncIterable<TransportEvent> => {
+            const run = (async function* (): AsyncGenerator<TransportEvent> {
+              yield { type: 'message', text: `echo:${prompt}` };
+              yield { type: 'done', exitCode: 0, text: `echo:${prompt}`, sessionId: null };
+            })();
+            return { [Symbol.asyncIterator]: () => run };
+          },
+        }),
+      },
+    });
+
+    // 直接往世界态里放一条**在办**编组任务（store 是真相源）。
+    service.store.setState((state) => ({
+      ...state,
+      missions: [
+        ...state.missions,
+        { id: 'mission-live', title: '在办编组', phase: 'running', unitIds: [], createdAt: Date.now() },
+      ],
+    }));
+
+    const created = service.character.createCharacter({
+      name: '贝塔',
+      agentKind: 'claude-code',
+      skinId: 'skin-default',
+    });
+    if (!created.ok) throw new Error(`建档失败：${created.code}`);
+    service.store.setDetectedAgents([
+      { kind: 'claude-code', tier: 'T1', installed: true, status: 'installed', version: null, path: null },
+    ]);
+
+    const task = service.task.assignTask({
+      characterId: created.character.id,
+      prompt: '跑一单（带真编组）',
+      missionId: 'mission-live',
+    });
+    expect(task).not.toBeNull();
+    await waitFor(
+      () => (service.store.getState().tasks ?? []).some((item) => item.id === task!.id && item.status === 'completed'),
+      '任务跑完'
+    );
+
+    // 编组任务真的被收尾了（回报落到了它身上）。
+    expect(service.store.getState().missions.find((m) => m.id === 'mission-live')?.phase).toBe('done');
+
+    // 会话收尾原因：正常路径**不带** unknown_mission 标记。
+    const missionRun = sessionsOf(service).filter((item) => item.kind === 'mission_run');
+    expect(missionRun).toHaveLength(1);
+    const closedEvent = storage
+      .readSessionEvents(missionRun[0]!.id, {})
+      .find((event) => event.type === 'closed');
+    const reason = String(
+      (closedEvent?.payload as { reason?: string } | undefined)?.reason ?? ''
+    );
+    expect(reason).toContain('任务单完成');
+    expect(reason).not.toContain('unknown_mission');
   });
 
   // --------------------------------------------------------------------------

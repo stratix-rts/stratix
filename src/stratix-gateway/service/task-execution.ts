@@ -140,6 +140,9 @@ export function createServiceTaskExecution(deps: ServiceTaskExecutionDeps): Task
     sessions: deps.sessions,
     onTaskSettled: deps.onTaskSettled,
     onMissionSettled: deps.onMissionSettled,
+    // 编组任务存在性读口（@since v3.8 / task_143）：任务收尾时标出"回报落空"，
+    //   让 mission_run 会话的收尾原因如实写明（回报去向可追踪）。
+    missionExists: deps.missionExists,
     pushNotice: deps.pushNotice,
     onTaskChunk: deps.onTaskChunk,
     expWeight: deps.expWeight,

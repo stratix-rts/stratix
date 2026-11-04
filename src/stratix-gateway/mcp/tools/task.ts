@@ -11,6 +11,10 @@
  *   3. 回显角色人设全文 —— 人设不进回执（那是角色自己的设定，不是这次派单的结果）；
  *   4. 把 origin 当鉴权凭据 —— origin 是审计留痕（调用方自称），不构成任何信任；
  *   5. 在工具侧另写一套相位判定 —— 取消能不能成由 core 状态机裁决，工具只读回结果。
+ *
+ * @since v3.8（task_143）**mission_id 存在性先验**：派单前查名册 —— 编组任务不存在时拒收
+ *   （mission_not_found / 不可重试 / hint 指 mission_create 或 snapshot），零副作用（不建单不派活）。
+ *   why：此前 mission_id 是裸通道（假 id 照收、任务照跑、终态回报静默蒸发，评估报告 r4 P1）。
  */
 
 import { MAX_TASKS, MAX_TASK_PROMPT_LEN, MAX_TASK_SUMMARY_LEN } from '../../../core/types';
@@ -60,9 +64,11 @@ export const taskAssignTool: ToolSpec = {
     '边界：每个角色串行执行（并发 1），入队即返回、不等执行完。任务最长 timeout_ms（缺省 600000，上限 600000），',
     '超时判失败 —— 当前执行器尚未支持单任务超时，实际生效超时恒为 600000（回执回显生效值）。',
     'mission_id 给了就把该任务挂在这条编组任务上，任务终态自动回报给它（完成 → 编组任务收尾；失败 → 按中止收尾）。',
+    'mission_id 必须来自 stratix_mission_create 的回执（或 stratix_world_snapshot 的 missions 列表）—— 编组任务不存在时一律拒收（mission_not_found），零副作用：不建单、不派活、不起 CLI。',
     'origin 是审计来源（合法取值 mcp / agent / script）：缺省记 mcp；由 agent 经 MCP 派单时必须显式传 origin="agent"（区分"人派的单"与"agent 派的单"）。',
     '错误：unknown_character / character_unbound / agent_not_installed / character_offline（可重试）/',
-    'task_capacity_exceeded（可重试）/ invalid_arguments（prompt 为空或超长、origin 非法）。',
+    'task_capacity_exceeded（可重试）/ mission_not_found（mission_id 不存在，不可重试）/',
+    'invalid_arguments（prompt 为空或超长、origin 非法）。',
   ].join('\n'),
   inputSchema: {
     type: 'object',
@@ -79,7 +85,8 @@ export const taskAssignTool: ToolSpec = {
       },
       mission_id: {
         type: ['string', 'null'],
-        description: '关联的编组任务 id；缺省 = 普通派发。',
+        description:
+          '关联的编组任务 id（必须来自 stratix_mission_create 的回执或 stratix_world_snapshot 的 missions 列表）；缺省 = 普通派发。id 不存在 → mission_not_found（拒收，不建单）。',
       },
       timeout_ms: {
         type: 'integer',
@@ -106,6 +113,7 @@ export const taskAssignTool: ToolSpec = {
     'agent_not_installed',
     'character_offline',
     'task_capacity_exceeded',
+    'mission_not_found',
     'internal_error',
   ],
   readOnly: false,
@@ -144,6 +152,23 @@ export const taskAssignTool: ToolSpec = {
     void requestedTimeout;
 
     const state = host.getWorldState();
+
+    // ── mission_id 存在性校验（@since v3.8 / task_143）：**先验后派**，零副作用 ──
+    // why 必须先验：mission_id 是**引用型入参**，此前是裸通道 —— 手滑一位（mission_R1_ID）
+    //   照收照跑，任务真执行、产出可取，但终态回报无处可落（编组永远等不到回报），
+    //   且全程零信号（评估报告 r4 P1：假 id 照收 / 回执回显 / 回报静默蒸发）。
+    // why 判据是**查**出来的不是算出来的：不在名册里就是不存在（与 mission_cancel 的 unknown 拒绝同口径）。
+    // why 放在派单命令**之前**：拒收时一条单都不建、一次 CLI 都不起（零副作用铁律）。
+    if (missionId !== null) {
+      const missions = state.missions ?? [];
+      if (!missions.some((mission) => mission.id === missionId)) {
+        throw new McpToolError('mission_not_found', `编组任务「${missionId}」不存在`, {
+          retryable: false,
+          hint:
+            'mission_id 必须来自 stratix_mission_create 的回执（或 stratix_world_snapshot 的 missions 列表）：先用 mission_create 建一条，或用 snapshot 查真实 id 后重试',
+        });
+      }
+    }
 
     // ── 前置守门（与 app 层 guardTaskCharacter 同一份判定口径；app 层出队时仍会再守一次）──
     const character = guardCharacter(state, characterId, 'assign');

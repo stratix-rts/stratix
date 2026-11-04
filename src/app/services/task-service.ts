@@ -365,6 +365,27 @@ function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/**
+ * mission_run 会话的收尾原因（@since v3.8 / task_143）。
+ *
+ * why 要在这里标「回报未送达」：任务跑完时关联的编组任务可能**已被撤掉 / 删除**（竞态）——
+ *   终态回报就无处可落。这条会话的 closed 事件是 MCP 侧唯一查得到的回报去向痕迹，
+ *   所以原因里如实写出来（unknown_mission），而不是写一句"任务单完成"了事。
+ *
+ * @param record 任务终态记录。
+ * @param missionExists 编组任务存在性读口（缺省 = 一律认为存在 → 旧文案）。
+ */
+function missionCloseReason(
+  record: TaskPersistRecord,
+  missionExists?: (missionId: string) => boolean
+): string {
+  const base = record.status === 'completed' ? '任务单完成' : '任务单中止';
+  const missionId = record.missionId;
+  if (!missionId || !missionExists) return base;
+  if (missionExists(missionId)) return base;
+  return `${base}（unknown_mission：编组任务已不存在，回报未送达）`;
+}
+
 // ============================================================================
 // 服务
 // ============================================================================
@@ -394,6 +415,16 @@ export interface TaskServiceDeps {
    * 且 record.missionId 非空时调用；组合根分别接 completeMission / cancelMission。
    */
   readonly onMissionSettled?: (record: TaskPersistRecord) => void;
+  /**
+   * 编组任务存在性读口（@since v3.8 / task_143；缺省 = 一律认为存在）。
+   *
+   * why 需要它：任务跑完时关联的编组任务可能**已被撤掉 / 删除**（竞态）——
+   *   那时终态回报无处可落（mission-report 的兜底会留痕：日志 + Notice）。
+   *   本口让这条 mission_run 会话的收尾原因如实写上「回报未送达」，
+   *   使回报去向**可追踪**（会话事件流是 MCP 侧唯一查得到的痕迹）。
+   * 缺省 = 不问（行为与旧版一致）；接线方给的是"名册里有没有这条"。
+   */
+  readonly missionExists?: (missionId: string) => boolean;
   /** mission 回报 Notice 写入口（source / missionId 由本服务补齐）；缺省不发 Notice。 */
   readonly pushNotice?: (notice: Notice) => void;
   /**
@@ -630,7 +661,7 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
       if (!session) return;
       deps.sessions.closeSession(
         session.id,
-        record.status === 'completed' ? '任务单完成' : '任务单中止'
+        missionCloseReason(record, deps.missionExists)
       );
     } catch (error) {
       logger(`[task-service] 任务单会话记账抛错（${missionId}）：${describe(error)}`);
