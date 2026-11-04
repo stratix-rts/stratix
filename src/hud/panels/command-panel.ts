@@ -64,6 +64,9 @@ import {
   NEW_TASK_SUBMITTED_EVENT,
 } from '../components/new-task-dialog/new-task-dialog';
 import type { ReplayController } from '../components/replay/replay-controller';
+// 动效层（@since v3.8，task_138）：面板入场（位移 + 淡入）/ 列表项 hover 光标过渡 /
+//   命令行提交时输入行微脉冲 —— 全部走共享动效工具类，时长缓动取 --srf-motion-* token。
+import { MOTION_CLASS, MOTION_COMPONENT_CSS, installMotionTokens } from '../theme/motion-tokens';
 
 import type {
   CommandContext,
@@ -82,9 +85,6 @@ import {
   resolveCommands,
 } from './command-catalog';
 import type { CliCommandSpec } from './command-registry';
-// 动效层（@since v3.8，task_138）：面板入场（位移 + 淡入）/ 列表项 hover 光标过渡 /
-//   命令行提交时输入行微脉冲 —— 全部走共享动效工具类，时长缓动取 --srf-motion-* token。
-import { MOTION_CLASS, MOTION_COMPONENT_CSS, installMotionTokens } from '../theme/motion-tokens';
 import {
   cliHelpText,
   cliUnknownText,
