@@ -145,7 +145,9 @@ function evaluate(spec: CommandSpec, ctx: CommandContext): ResolvedCommand {
       if (spec.scope === 'selection' && !hasSelection) {
         return { spec, enabled: false, reason: '未选中单位' };
       }
-      if (!isUsableTitle(title)) return { spec, enabled: false, reason: '请先填写任务标题' };
+      // @since v3.10（task_154）：常驻的「任务标题」输入框已删（底栏双框合一）——
+      //   标题从任务条上来，所以这句提示指向**唯一的那块输入面**，别再指向一个不存在的框。
+      if (!isUsableTitle(title)) return { spec, enabled: false, reason: '先在下方写任务标题' };
       return { spec, enabled: true, hint: `「${title}」${target.length > 0 ? ` · 指派给 ${target.length} 个单位` : ' · 待指派'}` };
     }
 

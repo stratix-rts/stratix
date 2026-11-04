@@ -591,7 +591,7 @@ describe('Z1 顶栏瘦身：19 元素降 7', () => {
     demoMode.set(false);
   });
 
-  test('顶栏可见元素 ≤4（task_137 减密度），且与 TOPBAR_ITEM_ROLES 逐位对上', () => {
+  test('顶栏可见元素 ≤5（task_154 加回「+ 角色」一级入口），且与 TOPBAR_ITEM_ROLES 逐位对上', () => {
     const h = mountHarness(makeState());
     const topbar = h.host.querySelector<HTMLElement>('.hud-topbar');
     expect(topbar).not.toBeNull();

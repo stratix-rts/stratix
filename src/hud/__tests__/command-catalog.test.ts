@@ -97,7 +97,8 @@ describe('WorldState 驱动的可用性', () => {
   test('发起任务没有标题时禁用 —— 空标题的任务 core 侧也无从拒绝', () => {
     const commands = resolveCommands(ctx(selected('u-neo'), '   '));
     expect(commandOf('mission.create', commands).enabled).toBe(false);
-    expect(commandOf('mission.create', commands).reason).toBe('请先填写任务标题');
+    // @since v3.10（task_154）：常驻的「任务标题」框已删 —— 原因指向唯一那块输入面。
+    expect(commandOf('mission.create', commands).reason).toBe('先在下方写任务标题');
   });
 
   test('没有待确认 / 在办任务时，对应命令禁用', () => {

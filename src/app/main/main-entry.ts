@@ -623,6 +623,9 @@ async function boot(): Promise<void> {
     // task_099：遮挡控制器 —— 子屏（设置 / 角色）以全屏弹窗形态登记进去，
     //   于是弹窗开着时四角常驻件降对比 + 禁点，ESC 与点遮罩双关闭。
     occlusion: occlusionController,
+    // task_154：顶栏「+ 角色」一级入口 → 既有建档向导（与战场空态 CTA / ⌘K 同一条路）。
+    //   openCharacterWizard 是前向闭包（向导在下面才创建），这里只捕获引用 —— 点击时才求值。
+    onCreateCharacter: () => openCharacterWizard(),
   });
   const unmountScreen = screen.mount(hudRoot);
   const unmountAdapter = adapter.mount();
@@ -1113,7 +1116,16 @@ async function boot(): Promise<void> {
     appearance: appearancePreview,
     customAgents: customAgentsIpcPort(),
     force: isOnboardingForced(),
-    onComplete: () => {
+    onComplete: (detail) => {
+      // task_154：建档完成 = 「单位上场」的那一声轻提示 ——
+      //   用户反馈「不知道如何添加 agent」，那就让**加完当场看得见结果**：
+      //   角色落库 → core 同一次广播里投影出战场单位（task_153 已通）→ 这里报一声「已上场」。
+      //   why 用 toast 不用别的面：toast 是跨面板的顶层反馈面，且浮在弹窗之上（刻度表 toast=55 > modal=50）。
+      const names = detail.created.map((c) => c.name).filter((n) => n.length > 0);
+      toastHost.show(
+        names.length > 0 ? `「${names.join('、')}」已上场` : '新角色已上场',
+        'success'
+      );
       // 引导走完落在角色屏：用户第一眼看到自己刚建的角色（而不是空荡荡的主屏）。
       // why 排到微任务里：向导屏在完成事件之后还会派发 ui.navigate('main')，
       //   同步跳转会被它盖掉 —— 微任务保证最终停在角色屏。
@@ -1125,7 +1137,11 @@ async function boot(): Promise<void> {
 
   // 向导建好了 → 把「去新建角色」的出口指向**真正的**建档向导（task_148）。
   openCharacterWizard = (): void => {
-    onboarding.reopen();
+    // @since v3.10（task_154）：force = 用户**主动**要建档（顶栏「+ 角色」/ 空态 CTA / ⌘K）——
+    //   忽略"已经有角色了"这道首启门槛（建第 2 个角色同样要向导），但仍要求探得到可建档的 agent。
+    //   why 不 force 的话：只要建过一个角色，reopen 就永远挂不上向导 → 顶栏按钮成了死路
+    //   （用户原话「不知道如何添加 agent」正是这么来的）。
+    onboarding.reopen({ force: true });
     // 向导起不来（没探到可建档的 agent）→ 退到角色中心（既有路由 ui.navigate），不给死按钮。
     if (!onboarding.mounted) {
       adapter.dispatch({ type: 'ui.navigate', screen: 'character' });

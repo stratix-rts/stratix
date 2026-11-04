@@ -431,11 +431,21 @@ const ONBOARDING_STYLE = `
   .footer {
     display: flex;
     justify-content: flex-end;
+    align-items: center;
     gap: var(--srf-spacing-sm);
     padding: var(--srf-spacing-sm) var(--srf-spacing-md);
     background: var(--srf-panel);
     border-top: var(--srf-border-width) solid var(--srf-border);
   }
+  /* 必填项缺失时的原因（@since v3.10，task_154）——
+     禁用态的按钮必须**说清为什么**（task_148 的死按钮语言）：灰着不解释 = 死按钮。 */
+  .footer-reason {
+    flex: 1 1 auto;
+    color: var(--srf-warn);
+    font-size: var(--srf-font-size-xs);
+    text-align: left;
+  }
+  .footer-reason[hidden] { display: none; }
   /* 形象预览（@since v3.10）：画布宿主 + 部件选择器 */
   .canvas-slot { display: flex; justify-content: center; padding: var(--srf-spacing-sm); }
   .canvas {
@@ -916,6 +926,8 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       // 并轻量同步切换条上的标题与「已配置」状态（不重画，保住正在输入的焦点）。
       this.setError(`name:${kind}`, null);
       this.refreshSwitcherTab(kind);
+      // task_154：名字一变 → 页脚主按钮的可用性与原因跟着变（禁用态要说清为什么）。
+      this.refreshFooter();
     }
 
     /** 校验全部名字（空 / 超长 / 重复）。 */
@@ -1999,11 +2011,43 @@ export function defineOnboardingScreen(): typeof HTMLElement {
         this._step === 'scan'
           ? ''
           : `<${STRAT_BUTTON_TAG} label="上一步" variant="default" data-action="back"></${STRAT_BUTTON_TAG}>`;
+      // 必填校验（@since v3.10，task_154）：名字没起好 → 主按钮**禁用**并给出原因，
+      //   而不是让人点下去、再弹一串报错（点前就说清 = 少一轮来回）。
+      const reason = this.stepBlockReason();
+      const disabled = reason !== null || this._submitted;
       const primary =
         this._step === 'confirm'
-          ? `<${STRAT_BUTTON_TAG} label="完成建档" variant="primary" data-action="submit"${this._submitted ? ' disabled' : ''}></${STRAT_BUTTON_TAG}>`
-          : `<${STRAT_BUTTON_TAG} label="下一步" variant="primary" data-action="next"></${STRAT_BUTTON_TAG}>`;
-      return `${back}${primary}`;
+          ? `<${STRAT_BUTTON_TAG} label="完成建档" variant="primary" data-action="submit"${disabled ? ' disabled' : ''} title="${escapeHtml(reason ?? '完成建档')}"></${STRAT_BUTTON_TAG}>`
+          : `<${STRAT_BUTTON_TAG} label="下一步" variant="primary" data-action="next"${disabled ? ' disabled' : ''} title="${escapeHtml(reason ?? '下一步')}"></${STRAT_BUTTON_TAG}>`;
+      const reasonMarkup = `<span class="footer-reason" data-role="footer-reason"${reason ? '' : ' hidden'}>${escapeHtml(reason ?? '')}</span>`;
+      return `${reasonMarkup}${back}${primary}`;
+    }
+
+    /**
+     * 当前步骤的主按钮被什么挡住了（@since v3.10，task_154）：null = 可以走。
+     * 口径：起名步 / 确认步要求**每个** agent 都有合法且不重复的名字；
+     *   其它步骤（扫描 / 人设）不挡（人设步有它自己的问卷校验）。
+     */
+    private stepBlockReason(): string | null {
+      if (this._step !== 'identity' && this._step !== 'confirm') return null;
+      if (this._identities.length === 0) return null;
+      const names = this._identities.map((item) => item.name);
+      const duplicated = new Set(findDuplicateNames(names));
+      for (const identity of this._identities) {
+        const result = validateAgentName(identity.name);
+        if (!result.ok) return NAME_ERROR_MESSAGES[result.code ?? 'empty-name'];
+        if (duplicated.has(result.value)) return NAME_ERROR_MESSAGES['duplicate-name'];
+      }
+      return null;
+    }
+
+    /**
+     * 轻量刷新页脚（@since v3.10，task_154）：名字改了 → 主按钮的可用性与原因跟着变。
+     * why 不重画整步：正在输入的焦点会丢（与 setError 同一理由）。
+     */
+    private refreshFooter(): void {
+      const footer = this.shadowRoot?.querySelector('[data-role="footer"]');
+      if (footer) footer.innerHTML = this.renderFooter();
     }
 
     /** 把 active agent 的问卷答案重算成人设并写回预览框（不重画整屏，保住输入焦点）。 */

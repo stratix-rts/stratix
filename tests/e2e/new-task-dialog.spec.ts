@@ -42,11 +42,19 @@ async function toastTexts(page: Page): Promise<string[]> {
   });
 }
 
-/** 填标题 → 点「新建任务」。 */
+/**
+ * 走**唯一**的输入面开对话框（@since v3.10，task_154：底部双框合一，常驻的「任务标题」框已删）。
+ * 路径：composer 输大段提示词（多行 → 判定为大段提示词）→ 任务条浮现 → 行内改标题 → 点「发起」。
+ */
 async function openDialog(page: Page, title: string): Promise<void> {
   const panel = page.locator('strat-command-panel');
-  await panel.locator('input[data-role="draft"]').fill(title);
-  await panel.locator('button[data-command="mission.create"][data-scope="global"]').click();
+  const composer = panel.locator('textarea[data-role="query"]');
+  await composer.click();
+  await composer.fill(`${title}\n（补一句说明，让这段输入被判定为大段提示词 —— 多行即触发任务条。）`);
+  const chip = panel.locator('input[data-role="task-title"]');
+  await expect(chip).toBeVisible({ timeout: 3000 });
+  await chip.fill(title);
+  await panel.locator('[data-role="task-submit"]').click();
 }
 
 test.describe('新建任务对话框', () => {

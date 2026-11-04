@@ -178,4 +178,58 @@ describe('首启向导覆盖层', () => {
     expect(h.screen()).toBeNull();
     expect(h.controller.mounted).toBe(false);
   });
+
+  /**
+   * 主动建档（@since v3.10，task_154）：顶栏「+ 角色」/ 空态 CTA / ⌘K 都要能**再次**拉起向导 ——
+   * 哪怕已经建过角色（建第 2 个角色同样要向导），否则一级入口就成了死路。
+   */
+  describe('主动建档：reopen({ force: true })', () => {
+    test('已经有角色 + 探到可建档的 agent → 仍挂上向导（不守首启门槛）', () => {
+      const h = setup();
+      h.controller.evaluate(
+        stateWith({
+          detectedAgents: [CLAUDE],
+          characters: [{ id: 'c1', name: 'Neo', persona: '', level: 1, experience: 0 }],
+        })
+      );
+      expect(h.screen()).toBeNull();
+
+      h.controller.reopen({ force: true });
+
+      expect(h.screen()).not.toBeNull();
+      expect(h.controller.mounted).toBe(true);
+    });
+
+    test('跳过之后还能再拉起（主动建档不受"本次会话已结束"限制）', () => {
+      const h = setup();
+      h.controller.evaluate(stateWith({ detectedAgents: [CLAUDE] }));
+      (h.screen() as HTMLElement & { skip: () => void }).skip();
+      expect(h.controller.settled).toBe(true);
+
+      h.controller.reopen({ force: true });
+
+      expect(h.screen()).not.toBeNull();
+    });
+
+    test('没探到可建档的 agent → 不挂（挂了也是走不通的死路，由调用方兜底）', () => {
+      const h = setup();
+      h.controller.evaluate(stateWith({ detectedAgents: [] }));
+
+      h.controller.reopen({ force: true });
+
+      expect(h.screen()).toBeNull();
+      expect(h.controller.mounted).toBe(false);
+    });
+
+    test('探到的 agent 不可建档（T2/T3 只探测）→ 不挂', () => {
+      const h = setup();
+      h.controller.evaluate(
+        stateWith({ detectedAgents: [detected({ kind: 'gemini', tier: 'T2', installed: true, status: 'installed' })] })
+      );
+
+      h.controller.reopen({ force: true });
+
+      expect(h.screen()).toBeNull();
+    });
+  });
 });

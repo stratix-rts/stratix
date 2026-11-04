@@ -480,11 +480,18 @@ export const MAIN_SCREEN_TAG = 'strat-main-screen';
  *   overflow 溢出菜单（收纳 8 项：声音 / 导演 / 演示 + 聊天 / 会话 / 角色 / 设置 / 像素风）
  *   why 从 7 位降到 4 位：声音 / 导演 / 演示是**低频开关**，常驻顶栏只是占位 ——
  *     收进 ⋯ 菜单后功能一条不少（点亮即状态的语义不变），同屏可见元素数 7 → 4（-43%）。
+ *
+ * 5 位（@since v3.10，task_154 —— 加回一个「+ 角色」）：
+ *   create-character  新建角色一级入口（图标 + 文字）—— 用户原话「不知道如何添加 agent」：
+ *     建角色的入口原先只在 ⌘K 与战场空态里，等于**藏起来**。
+ *     新建角色是产品的主动作之一（agent 是被指挥的对象），它值得一个常驻位；
+ *     低频开关（声音 / 导演 / 演示）仍然收在 ⋯ 菜单里 —— 密度没失控，只是把主角放对位置。
  */
 export const TOPBAR_ITEM_ROLES = Object.freeze([
   'brand',
   'task',
   'capsule',
+  'create-character',
   'overflow',
 ] as const);
 
@@ -588,6 +595,12 @@ export interface MainScreenOptions {
    *   缺省 = 未接入探测（那一行如实说「未探测」，不谎报在线）。
    */
   readonly gateway?: GatewayLinkPort | null;
+  /**
+   * 「新建角色」一级入口（@since v3.10，task_154）：顶栏「+ 角色」按钮的落地面 ——
+   *   直达**既有建档向导**（与战场空态 CTA / ⌘K「新建角色」同一条路，一处口径）。
+   *   缺省 = 没注入 → 按钮退到角色中心（既有路由），不留死按钮。
+   */
+  readonly onCreateCharacter?: (() => void) | null;
 }
 
 /** 工厂：构造 main-screen 句柄；接受一个已建好的 bus-adapter（依赖注入）。 */
@@ -669,6 +682,7 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
             <span class="hud-notice-badge" data-role="notice-badge" hidden title="待处理通知">0</span>
           </div>
           <div class="hud-actions">
+            <${STRAT_BUTTON_TAG} icon="plus" label="角色" variant="default" title="新建角色" aria-label="新建角色" data-topbar-item="create-character" data-role="create-character"></${STRAT_BUTTON_TAG}>
             <${STRAT_BUTTON_TAG} icon="more" variant="default" title="更多" aria-label="更多" data-topbar-item="overflow" data-role="overflow"></${STRAT_BUTTON_TAG}>
             <div class="hud-popover hud-menu" data-role="overflow-menu" hidden>
               <div class="hud-sound-slot" data-role="sound-slot">
@@ -914,8 +928,22 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         setPopover(soundPopover, false);
       };
 
-      const themeHandler = (e: Event): void => {
-        const target = e.target as HTMLElement | null;
+      /**
+       * 顶栏「+ 角色」→ 建档向导（@since v3.10，task_154）。
+       * why 走注入的回调而不是本屏自己开面板：向导由组合根持有（app 层的事），
+       *   HUD 这一层只负责「有人点了 → 告诉宿主一声」（与 agent-panel 的端口同一口径）。
+       * 缺省（没注入回调）→ 退到角色中心（既有路由）：宁可去「看角色」那页，
+       *   也不留一个点了没反应的按钮（死按钮治理，task_148 同一口径）。
+       */
+      const onCreateCharacterClick = (): void => {
+        if (options.onCreateCharacter) {
+          options.onCreateCharacter();
+          return;
+        }
+        adapter.dispatch({ type: 'ui.navigate', screen: 'character' });
+      };
+
+      const themeHandler = (e: Event): void => {        const target = e.target as HTMLElement | null;
         if (target?.closest('[data-role="overflow"]')) onOverflowClick();
         else if (target?.closest('[data-role="theme"]')) { onThemeClick(); closePopovers(); }
         else if (target?.closest('[data-role="demo"]')) onDemoClick();
@@ -925,6 +953,10 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         else if (target?.closest('[data-role="sessions"]')) { onSessionsClick(); closePopovers(); }
         else if (target?.closest('[data-role="character"]')) { onCharacterClick(); closePopovers(); }
         else if (target?.closest('[data-role="settings"]')) { onSettingsClick(); closePopovers(); }
+        // 顶栏「+ 角色」（@since v3.10，task_154）：**一级入口** ——
+        //   用户原话「不知道如何添加 agent」：新建角色原先只藏在 ⌘K 与战场空态里。
+        //   这里给它一个常驻按钮，点击直达既有建档向导（与空态 CTA / ⌘K 同一条路）。
+        else if (target?.closest('[data-role="create-character"]')) onCreateCharacterClick();
       };
       host.addEventListener('strat-button-click', themeHandler);
 

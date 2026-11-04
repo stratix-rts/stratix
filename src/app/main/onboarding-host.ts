@@ -15,6 +15,7 @@
 import type { WorldState } from '../../core/types';
 import type { AppearancePreviewPort } from '../../hud/screens/appearance-preview-port';
 import type { CustomAgentsPort } from '../../hud/screens/custom-agents-port';
+import { resolveBindableKinds } from '../../hud/screens/onboarding-catalog';
 import {
   ONBOARDING_COMPLETE_EVENT,
   ONBOARDING_SKIPPED_EVENT,
@@ -57,8 +58,12 @@ export interface OnboardingHost {
    *   但"新建角色"是**随时可发起**的动作，不该被首启语义锁死。
    * 口径：清掉 settled 态 → 按最近一次见到的状态重新判定（characters 非空 / 没探到 agent → 不挂，
    *   由调用方兜底；这里绝不硬挂一个走不通的向导）。
+   *
+   * @since v3.10（task_154）：`force: true` = **用户主动要建档**（顶栏「+ 角色」/ 空态 CTA / ⌘K）——
+   *   忽略"已有角色"这道首启门槛（建第 2 个角色同样要向导），但仍要求「探到可建档的 agent」，
+   *   否则向导第二步没名字可起（挂了也是死路，由调用方退到角色中心）。
    */
-  reopen(): void;
+  reopen(options?: { readonly force?: boolean }): void;
   /** 当前是否挂着向导。 */
   readonly mounted: boolean;
   /** 用户是否已经结束引导（完成或跳过）—— 结束过就不再弹。 */
@@ -86,16 +91,12 @@ export function createOnboardingHost(options: OnboardingHostOptions): Onboarding
     unmount = null;
   };
 
-  const evaluate = (state: WorldState): void => {
-    lastState = state;
-    if (settled || unmount) return;
-    const should = shouldStartOnboarding({
-      characters: state.characters,
-      detectedAgents: state.detectedAgents ?? [],
-      force: options.force,
-    });
-    if (!should) return;
-
+  /**
+   * 真正把向导挂上（挂载 + 收完成/跳过事件）。
+   * why 抽出来：首启判定（evaluate）与「用户主动要建档」（reopen({force})）两条路共用同一份挂载逻辑 ——
+   *   差别只在**要不要挂**，不在怎么挂。
+   */
+  const mount = (): void => {
     unmount = mountOnboardingScreen(options.deps, options.host, {
       ...(options.appearance ? { appearance: options.appearance } : {}),
       ...(options.customAgents ? { customAgents: options.customAgents } : {}),
@@ -124,17 +125,39 @@ export function createOnboardingHost(options: OnboardingHostOptions): Onboarding
     };
   };
 
+  const evaluate = (state: WorldState): void => {
+    lastState = state;
+    if (settled || unmount) return;
+    const should = shouldStartOnboarding({
+      characters: state.characters,
+      detectedAgents: state.detectedAgents ?? [],
+      force: options.force,
+    });
+    if (!should) return;
+    mount();
+  };
+
   return {
     evaluate,
     /**
      * 重新拉起向导（task_136）：清 settled → 按最近状态重判。
      * why 不绕过 shouldStartOnboarding 硬挂：没探到可建档的 agent 时向导走不通，
      *   宁可不起（调用方另有兜底），也不给用户一个点不动的按钮。
+     *
+     * @since v3.10（task_154）：`force: true`（用户主动要建档）时忽略"已有角色"这道首启门槛，
+     *   但仍要求「探到 ≥1 个可建档的 agent」—— 没有它，向导第二步没名字可起。
      */
-    reopen: () => {
+    reopen: (options) => {
       close();
       settled = false;
-      if (lastState) evaluate(lastState);
+      if (!lastState) return;
+      if (options?.force === true) {
+        // 主动建档：只要还有能建档的 agent 就挂向导（哪怕已经有角色了 —— 建第 2 个角色同样要向导）。
+        if (resolveBindableKinds(lastState).length === 0) return;
+        mount();
+        return;
+      }
+      evaluate(lastState);
     },
     get mounted() {
       return unmount !== null;

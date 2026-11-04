@@ -66,6 +66,20 @@
  *     composer 铺满整行宽度 —— 输入面终于是个「一眼看得见」的面。
  *   why 多行 / 长自由文本回车走**任务通路**（不是新造命令）：面板能落地的出口只有既有契约，
  *     大段提示词先当任务标题带进新建任务对话框，由用户选发起方式。
+ *
+ * 双框合一（@since v3.10，task_154）：底部**只剩一个输入框**（composer）。
+ *   用户原话：「底部 hud 两个文本框作用似乎不同？」—— 常驻的「任务标题」小单行框与
+ *   「命令 / 提示词」大编辑区并排，两个框抢同一个注意力、谁也说不清自己管什么。
+ *   改法（破坏式授权，限本文件）：删掉常驻标题框；composer 一块打天下 ——
+ *     · 短输入 = 命令模式（回车执行既有命令，行为零回归）；
+ *     · 长文本 / 多行 = 提示词模式 → composer 下方**浮现**一条紧凑任务条：
+ *         「将发起为任务 · 标题：[首行截断·行内可编辑] · [发起] [取消]」
+ *       标题自动取首行（≤30 字），行内 chip 可改 —— 第二个框被**行内 chip**取代，不是搬家。
+ *   why 任务条是「浮现」而不是「常驻」：常驻的第二个框就是本次要消灭的东西；
+ *     只有当输入被判定为大段提示词时它才有意义 —— 那时才出现，用完即收。
+ *   why 标题取首行：任务标题要短（一行标题栏），提示词正文留到对话框里选发起方式时再带走。
+ *   draft-store 语义保持：任务条上的标题就是那份共享草稿（⌘K 面板读的是同一句），
+ *     两块面说的仍然是同一句话 —— 合一的是**输入面**，不是事实源。
  */
 
 import type { HudCommand, WorldState } from '../../core/types';
@@ -106,7 +120,6 @@ import {
 } from './command-catalog';
 import type { CliCommandSpec } from './command-registry';
 import {
-  CLI_COMMANDS,
   cliHelpText,
   cliUnknownText,
   cliUsageHint,
@@ -157,6 +170,33 @@ const SECTION_LABELS: Record<'selection' | 'global', string> = {
  *   才当提示词处理（粘贴一大段进来的人，敲回车是想把这段话送出去，不是想看命令清单）。
  */
 const PROMPT_TEXT_MIN_LENGTH = 80;
+
+/**
+ * 任务标题自动截断长度（@since v3.10，task_154）：提示词首行再长，标题也只取 ≤30 字。
+ * why 要截：标题栏只有一行，30 字以上必然被裁；与其让 UI 裁，不如口径先裁（两边一致）。
+ */
+const TASK_TITLE_MAX_LENGTH = 30;
+
+/**
+ * 这段输入是不是「大段提示词」（@since v3.10，task_154）。
+ * 口径与既有提示词启发式一致（>80 字 / 含换行）：命令都是一行的，
+ * 多行或明显长于命令的自由文本 = 用户粘进来的一段话，不是命令。
+ */
+function isPromptText(raw: string): boolean {
+  const trimmed = raw.trim();
+  return trimmed.includes('\n') || trimmed.length > PROMPT_TEXT_MIN_LENGTH;
+}
+
+/**
+ * 从提示词里取任务标题（@since v3.10，task_154）：**首行**，截断到 ≤30 字。
+ * why 取首行：用户粘进来的第一行通常就是「要干什么」；
+ *   正文留在 composer 里随任务带过去，标题只负责让人一眼认出这是哪条任务。
+ */
+function deriveTaskTitle(raw: string): string {
+  const first = (raw.split('\n')[0] ?? '').trim();
+  if (first.length <= TASK_TITLE_MAX_LENGTH) return first;
+  return `${first.slice(0, TASK_TITLE_MAX_LENGTH - 1)}…`;
+}
 
 /** HTML 文本转义。hint / 通知文本含用户输入（任务标题、单位名），必须转义后才进 innerHTML。 */
 function escapeHtml(s: string): string {
@@ -218,6 +258,12 @@ export function defineCommandPanel(): typeof HTMLElement {
     private _composer: PromptComposer | null = null;
     /** 宿主动作注销闭包（@since v3.9，task_150：⌘K 的「清空任务草稿」）。 */
     private _unregisterDraftAction: (() => void) | null = null;
+    /** 任务条是否已浮现（@since v3.10，task_154）：composer 里是长文本时才为 true。 */
+    private _taskBarOpen = false;
+    /** 用户手动改过任务条上的标题（改过就不再被「首行自动取」覆盖）。 */
+    private _taskTitleTouched = false;
+    /** 任务条是不是当前草稿的「所有者」（是的话，收起任务条时把草稿一并清掉）。 */
+    private _taskBarOwnsDraft = false;
 
     // —— 属性面 ——
     get adapter(): CommandPanelDeps | null { return this._adapter; }
@@ -295,6 +341,9 @@ export function defineCommandPanel(): typeof HTMLElement {
       this._lastSignature = signature;
       this.renderSections();
       this.renderOutput();
+      // 任务条（@since v3.10，task_154）：可见性跟 composer 的内容走 —— 签名里带着 query，
+      //   所以「输入变了 → 任务条该出现/该收起」这件事必然被这一行看到。
+      this.renderTaskBar();
     }
 
     // —— 订阅生命周期 ——
@@ -318,7 +367,12 @@ export function defineCommandPanel(): typeof HTMLElement {
     }
 
     private contextualCommands(): ResolvedCommand[] {
-      return filterCommands(resolveCommands(this.context()), this._query);
+      // 长文本 / 多行 = **提示词**，不是搜索词（@since v3.10，task_154）。
+      // why 不拿它筛命令：一段几百字的提示词去模糊匹配命令名，结果一定是「一条都不剩」——
+      //   命令条会当场消失，用户连「发起任务」都点不到（双框合一后唯一的出口被自己筛没了）。
+      //   提示词模式下的命令清单保持完整（用户想点哪条点哪条）。
+      const filter = isPromptText(this._query) ? '' : this._query;
+      return filterCommands(resolveCommands(this.context()), filter);
     }
 
     /**
@@ -327,9 +381,9 @@ export function defineCommandPanel(): typeof HTMLElement {
      */
     private emptyHintText(): string {
       const q = this._query.trim();
-      // 提示词（多行 / 长文本）：引导语要说「回车能把它送出去」，别再摆命令清单。
+      // 提示词（多行 / 长文本）：引导语要说「任务条已经在那儿了」，别再摆命令清单。
       if (q.includes('\n') || q.length > PROMPT_TEXT_MIN_LENGTH) {
-        return '提示词已就绪 · 回车提交（走新建任务通路）';
+        return '提示词已就绪 · 任务条已浮现，改完标题点「发起」';
       }
       const parsed = parseCliInput(this._query);
       if (parsed.kind === 'matched' && parsed.spec) {
@@ -396,13 +450,13 @@ export function defineCommandPanel(): typeof HTMLElement {
       const trimmed = raw.trim();
       // 多行 = 提示词（@since v3.9，task_144）：命令都是一行的，多行一定是粘进来的正文。
       if (trimmed.includes('\n')) {
-        await this.submitPromptAsTask(trimmed);
+        this.openTaskBar(trimmed);
         return;
       }
       const parsed = parseCliInput(raw);
       // 未命中且**明显是长文本** → 当提示词走任务通路（别拿「没有匹配的命令」糊一脸）。
       if (parsed.kind === 'unknown' && trimmed.length > PROMPT_TEXT_MIN_LENGTH) {
-        await this.submitPromptAsTask(trimmed);
+        this.openTaskBar(trimmed);
         return;
       }
       switch (parsed.kind) {
@@ -466,23 +520,46 @@ export function defineCommandPanel(): typeof HTMLElement {
     }
 
     /**
-     * 自由文本提示词 → 任务通路（@since v3.9，task_144）。
-     * why 走任务通路而不是新造一条命令：面板能落地的出口只有既有契约
-     *   （mission.create / ui.navigate / theme.set / 回放控制器），
-     *   新造一条「发提示词」的契约要动 core —— 那是另一个任务的地盘。
-     *   任务标题带整段提示词过去，由用户在新建任务对话框里选发起方式（单任务 / 流水线 / 派发）。
+     * 自由文本提示词 → 任务条浮现（@since v3.10，task_154）。
+     * why 不是「立刻开对话框」（task_144 的旧口径）：单框合一下来，用户手里只有一块输入面，
+     *   直接弹窗等于替他做了「这段话就是标题」的决定 —— 而标题是要给他改的。
+     *   现在：提示词进 composer → 任务条浮现（标题取首行、行内可改）→ 他点「发起」才走任务通路。
+     *   why 仍走既有任务通路而不是新造命令：面板能落地的出口只有既有契约
+     *   （mission.create / ui.navigate / theme.set / 回放控制器）。
      */
-    private async submitPromptAsTask(prompt: string): Promise<void> {
-      if (!this._adapter) return;
-      const spec = CLI_COMMANDS.find((c) => c.id === 'mission');
-      if (!spec) {
-        this.setOutput('提示词已收到，但任务通路没接线。');
+    private openTaskBar(prompt: string): void {
+      this._taskBarOpen = true;
+      // 用户没手动改过标题 → 跟着首行走（改过就保留他的字）。
+      if (!this._taskTitleTouched) {
+        const title = deriveTaskTitle(prompt);
+        this._taskBarOwnsDraft = true;
+        this.setDraftTitle(title);
+      }
+      this.renderTaskBar();
+      this.setOutput('提示词已就绪 · 确认标题后点「发起」');
+      // 焦点交给标题 chip：用户按下回车就是想确认这件事 —— 让他当场能改标题。
+      this.shadowRoot?.querySelector<HTMLInputElement>('[data-role="task-title"]')?.focus();
+    }
+
+    /**
+     * 任务条「发起」：标题 → 新建任务对话框（既有通路，四种发起方式由用户选）。
+     * 标题为空 = 必填项缺失 → 按钮本来就该是禁用的；这里再挡一道（防事件被伪造）。
+     */
+    private submitTaskBar(): void {
+      const title = this._draftTitle.trim();
+      if (title.length === 0) {
+        this.setOutput('先给任务起个标题');
         return;
       }
-      this.setDraftTitle(prompt);
-      this.requestNewTaskDialog(prompt);
-      this.setOutput(`已打开新建任务对话框，提示词已预填（${prompt.length} 字）`);
+      this.requestNewTaskDialog(title);
+      this.setOutput(`已打开新建任务对话框，标题「${title}」`);
       this.clearQuery();
+    }
+
+    /** 任务条「取消」：丢掉这段提示词与它的标题（回到「只有一个空输入框」的状态）。 */
+    private cancelTaskBar(): void {
+      this.clearQuery();
+      this.setOutput('已取消这条任务草稿');
     }
 
     /**
@@ -560,22 +637,38 @@ export function defineCommandPanel(): typeof HTMLElement {
       this._composer?.clear();
       const input = this.shadowRoot?.querySelector('[data-role="query"]') as HTMLTextAreaElement | null;
       if (input) input.value = '';
+      // 输入面空了 → 提示词判定不再成立 → 任务条收起（它只在大段提示词时才有意义）。
+      this.closeTaskBarIfOpen();
       this.refresh();
     }
 
-    /** 标题草稿同步（草稿框 + 面板瞬时态是同一份，不留两份真相）。 */
+    /**
+     * 收起任务条（@since v3.10，task_154）。
+     * 草稿的归属：任务条自己写进去的草稿（首行自动取的那句）随任务条一起没；
+     * 别的来源写的草稿（命令行 `mission <标题>` / ⌘K 面板）不受影响 —— 不抢别人的字。
+     */
+    private closeTaskBarIfOpen(): void {
+      if (!this._taskBarOpen) return;
+      this._taskBarOpen = false;
+      this._taskTitleTouched = false;
+      if (this._taskBarOwnsDraft) {
+        this._taskBarOwnsDraft = false;
+        this._draftTitle = '';
+        publishDraftTitle('');
+      }
+    }
+
+    /** 标题草稿同步（任务条上的 chip + 面板瞬时态是同一份，不留两份真相）。 */
     private setDraftTitle(title: string): void {
       this._draftTitle = title;
       // 共享面（@since v3.9，task_150）：⌘K 面板读到的是同一句草稿。
       publishDraftTitle(title);
-      const input = this.shadowRoot?.querySelector('[data-role="draft"]') as HTMLInputElement | null;
-      if (input) input.value = title;
       this.refresh();
     }
 
     /**
      * 对话框建完任务后的回调（@since v3.6，task_112）：清掉标题草稿。
-     * 只在草稿**还是**刚提交的那句时才清 —— 用户若已经改写了输入框，别把他的新字抹掉。
+     * 只在草稿**还是**刚提交的那句时才清 —— 用户若已经改写了标题，别把他的新字抹掉。
      * why 是箭头函数字段：它要当 document 的事件监听用（普通方法被摘下来当监听时 this 会指向 document）。
      */
     private readonly onNewTaskSubmitted = (event: Event): void => {
@@ -583,8 +676,8 @@ export function defineCommandPanel(): typeof HTMLElement {
       if (title.length === 0 || title !== this._draftTitle.trim()) return;
       this._draftTitle = '';
       publishDraftTitle('');
-      const input = this.shadowRoot?.querySelector('[data-role="draft"]') as HTMLInputElement | null;
-      if (input) input.value = '';
+      this._taskTitleTouched = false;
+      this._taskBarOwnsDraft = false;
       this.refresh();
     };
 
@@ -654,6 +747,54 @@ export function defineCommandPanel(): typeof HTMLElement {
           }
           input:hover { border-color: var(--srf-border-strong); }
           input:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
+          /* —— 任务条（@since v3.10，task_154）——
+             单框合一下来的第二面：composer 里是**大段提示词**时，它从 composer 下方浮现 ——
+             「将发起为任务 · 标题：[行内 chip] · [发起] [取消]」。
+             why 是 chip 而不是又一个方框：它替代的是被删掉的那个「任务标题」输入框，
+               但形态必须是**行内的一小段**（占一行、不占位、不与 composer 抢注意力）。
+             why 标题行内可编辑：任务标题是要给他改的（自动取首行只是个起点）。
+             why 提交按钮带禁用态 + 原因：标题是必填项，空标题发出去就是一条没有语义的任务
+               （task_148 的死按钮语言：禁用要说清为什么）。 */
+          .task-bar {
+            display: flex;
+            align-items: center;
+            gap: var(--srf-spacing-xs);
+            padding: var(--srf-spacing-xs) var(--srf-spacing-sm);
+            /* border-box：紧凑形态里任务条是 flex-basis 100% 的一整行 —— content-box 会
+               把内边距 + 边框算到 100% 之外（实测底栏横向溢出 11px）。 */
+            box-sizing: border-box;
+            background: var(--srf-panel-elevated);
+            border: var(--srf-border-width) solid var(--srf-border-strong);
+            border-radius: var(--srf-radius);
+            color: var(--srf-text-muted);
+            font-size: var(--srf-font-size-xs);
+          }
+          .task-bar[hidden] { display: none; }
+          .task-bar-label { white-space: nowrap; }
+          .task-title {
+            flex: 0 1 auto;
+            width: 220px;
+            min-width: 80px;
+            padding: 2px var(--srf-spacing-xs);
+            font-size: var(--srf-font-size-xs);
+          }
+          .task-title:focus { border-color: var(--srf-accent); outline: none; }
+          .task-reason { color: var(--srf-warn); white-space: nowrap; }
+          .task-btn {
+            padding: 2px var(--srf-spacing-sm);
+            background: var(--srf-panel);
+            color: var(--srf-text);
+            border: var(--srf-border-width) solid var(--srf-border);
+            border-radius: var(--srf-radius);
+            font-family: var(--srf-font-ui);
+            font-size: var(--srf-font-size-xs);
+            cursor: pointer;
+            white-space: nowrap;
+          }
+          .task-btn:hover:not(:disabled) { border-color: var(--srf-border-strong); }
+          .task-btn:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
+          .task-btn[data-primary="true"] { border-color: var(--srf-accent); color: var(--srf-accent); }
+          .task-btn:disabled { color: var(--srf-text-disabled); cursor: not-allowed; opacity: 0.65; }
           /* —— 提示词 composer（@since v3.9，task_144）——
              输入面重造：单行 <input> → 多行 <textarea>。
              ① 字号升到 md（14px）：提示词是产品本体，输入面不能比回执还小；
@@ -772,7 +913,8 @@ export function defineCommandPanel(): typeof HTMLElement {
           }
           :host([variant="strip"]) .head,
           :host([variant="strip"]) .notices { display: none; }
-          /* 两个输入框压成行内窄控件（搜索 + 任务标题草稿都还在，一项功能不减）。 */
+          /* 单框合一后（@since v3.10，task_154）：紧凑形态里也只剩 composer 一个输入面 ——
+             「任务标题」框已删（它的位置由任务条上的行内 chip 接替）。 */
           :host([variant="strip"]) label.field {
             display: flex;
             align-items: center;
@@ -781,9 +923,15 @@ export function defineCommandPanel(): typeof HTMLElement {
             min-width: 0;
           }
           :host([variant="strip"]) .field-name { display: none; }
-          :host([variant="strip"]) input {
-            width: var(--command-strip-input-w, 96px);
-            height: 22px;
+          /* 任务条：独占一行（basis 100%），紧跟在 composer 下面 ——
+             控制岛高度预算 100px：composer 32px + 任务条 ~26px + 命令行 ~24px = 82px（够）。 */
+          :host([variant="strip"]) .task-bar {
+            flex: 0 0 100%;
+            order: 0;
+          }
+          :host([variant="strip"]) .task-title {
+            width: 160px;
+            height: 20px;
             padding: 0 var(--srf-spacing-xs);
             font-size: var(--srf-font-size-xs);
           }
@@ -803,7 +951,6 @@ export function defineCommandPanel(): typeof HTMLElement {
                32px = 1 行（21px）+ 上下内边距（4+4）+ 边框（2）+ 余量。 */
             min-height: 32px;
           }
-          :host([variant="strip"]) .field-draft { flex: 0 0 auto; }
           /* 命令流：两个 scope 分组的按钮摊平成一条横排（group-name 在紧凑形态下沉）。 */
           :host([variant="strip"]) .sections {
             flex: 1 1 auto;
@@ -888,10 +1035,6 @@ export function defineCommandPanel(): typeof HTMLElement {
             <span class="selection" data-role="selection">未选中单位</span>
           </div>
           <div class="notices" data-role="notices"></div>
-          <label class="field field-draft">
-            <span class="field-name">任务标题</span>
-            <input type="text" data-role="draft" placeholder="输入后「发起任务」才可用" />
-          </label>
           <label class="field field-composer">
             <span class="field-name">命令 / 提示词</span>
             <textarea
@@ -903,6 +1046,13 @@ export function defineCommandPanel(): typeof HTMLElement {
               placeholder="输入命令，或直接粘贴大段任务提示词…"
             ></textarea>
           </label>
+          <div class="task-bar" data-role="task-bar" hidden>
+            <span class="task-bar-label">将发起为任务</span>
+            <input class="task-title" type="text" data-role="task-title" title="任务标题（行内可改）" />
+            <span class="task-reason" data-role="task-reason" hidden>先给任务起个标题</span>
+            <button type="button" class="task-btn" data-role="task-submit" data-primary="true">发起</button>
+            <button type="button" class="task-btn" data-role="task-cancel">取消</button>
+          </div>
           <div class="sections" data-role="sections"></div>
           <div class="output ${MARKDOWN_CLASS}" data-role="output" hidden></div>
         </div>
@@ -915,18 +1065,46 @@ export function defineCommandPanel(): typeof HTMLElement {
         root.addEventListener('input', (ev: Event) => {
           const target = ev.target as HTMLInputElement | HTMLTextAreaElement | null;
           if (!target) return;
-          if (target.dataset.role === 'draft') {
+          if (target.dataset.role === 'task-title') {
+            // 任务条上的行内标题（@since v3.10，task_154）：改了就是用户的字 ——
+            // 不再被「首行自动取」覆盖，且草稿共享面同步成同一句。
+            this._taskTitleTouched = true;
+            this._taskBarOwnsDraft = true;
             this._draftTitle = target.value;
-            // 共享面（@since v3.9，task_150）：草稿是跨面共享的一句。
             publishDraftTitle(target.value);
-          } else if (target.dataset.role === 'query') this._query = target.value;
-          else return;
+          } else if (target.dataset.role === 'query') {
+            this._query = target.value;
+            // composer 里的内容变了 → 提示词判定重算 → 任务条该出现/该收起。
+            this.syncTaskBarWithQuery(target.value);
+          } else return;
           this.refresh();
+        });
+
+        // 任务条上的行内标题：回车 = 发起（@since v3.10，task_154）。
+        // why 事件委托：chip 元素随外壳重建会换节点，绑在节点上会丢。
+        root.addEventListener('keydown', (ev: Event) => {
+          const target = ev.target as HTMLElement | null;
+          if (target?.dataset?.role !== 'task-title') return;
+          if ((ev as KeyboardEvent).key !== 'Enter') return;
+          ev.preventDefault();
+          ev.stopPropagation();
+          this.submitTaskBar();
         });
 
         // 命令点击：data-command / data-scope 上的目录项坐标 → HudCommand。
         root.addEventListener('click', (ev: Event) => {
           const target = ev.target as HTMLElement | null;
+          // 任务条的两个按钮（@since v3.10，task_154）：发起 / 取消 —— 不是目录项，先分流。
+          const taskAction = target?.closest?.('[data-role="task-submit"],[data-role="task-cancel"]') as HTMLElement | null;
+          const taskRole = taskAction?.getAttribute('data-role');
+          if (taskRole === 'task-submit') {
+            this.submitTaskBar();
+            return;
+          }
+          if (taskRole === 'task-cancel') {
+            this.cancelTaskBar();
+            return;
+          }
           const host = target?.closest?.('[data-command]') as HTMLElement | null;
           const id = host?.getAttribute('data-command');
           const scope = host?.getAttribute('data-scope');
@@ -982,6 +1160,52 @@ export function defineCommandPanel(): typeof HTMLElement {
         },
         { once: true },
       );
+    }
+
+    /**
+     * composer 内容变化 → 任务条开合（@since v3.10，task_154）。
+     * 口径与提示词启发式一致：多行 / 明显长于命令 = 大段提示词 → 任务条浮现；
+     * 其余 = 命令模式 → 任务条收起（它只在大段提示词时才有意义）。
+     */
+    private syncTaskBarWithQuery(raw: string): void {
+      if (!isPromptText(raw)) {
+        this.closeTaskBarIfOpen();
+        return;
+      }
+      if (this._taskBarOpen) return;
+      this._taskBarOpen = true;
+      // 用户没手动改过标题 → 跟着首行走（改过就保留他的字）。
+      if (!this._taskTitleTouched) {
+        this._taskBarOwnsDraft = true;
+        this.setDraftTitle(deriveTaskTitle(raw));
+      }
+    }
+
+    /**
+     * 任务条渲染（@since v3.10，task_154）：只改属性与按钮态，**不重建 DOM** ——
+     *   chip 正在被编辑时重建会把焦点与光标位置一起弄丢。
+     * 必填校验：标题为空 → 「发起」禁用 + 给出原因（task_148 的死按钮语言）。
+     */
+    private renderTaskBar(): void {
+      const root = this.shadowRoot;
+      if (!root) return;
+      const bar = root.querySelector<HTMLElement>('[data-role="task-bar"]');
+      if (!bar) return;
+      bar.hidden = !this._taskBarOpen;
+
+      const title = this._draftTitle.trim();
+      const chip = root.querySelector<HTMLInputElement>('[data-role="task-title"]');
+      // 用户正在 chip 里打字时不要回写（会打断输入法 / 移动光标）。
+      if (chip && root.activeElement !== chip && chip.value !== this._draftTitle) {
+        chip.value = this._draftTitle;
+      }
+      const submit = root.querySelector<HTMLButtonElement>('[data-role="task-submit"]');
+      if (submit) {
+        submit.disabled = title.length === 0;
+        submit.title = title.length === 0 ? '先给任务起个标题' : `发起任务「${title}」`;
+      }
+      const reason = root.querySelector<HTMLElement>('[data-role="task-reason"]');
+      if (reason) reason.hidden = title.length > 0;
     }
 
     private renderNotices(): void {

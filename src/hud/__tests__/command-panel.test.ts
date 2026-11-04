@@ -88,11 +88,17 @@ function clickCommand(panel: StratCommandPanelElement, id: string, scope: string
   btn.click();
 }
 
+/**
+ * 写任务标题（@since v3.10，task_154 后的新路径）。
+ * 常驻的「任务标题」输入框已删（底栏双框合一）：标题现在住在**任务条的行内 chip** 上，
+ *   而任务条只在 composer 里是「大段提示词」时浮现 —— 所以先写一段提示词，再改 chip。
+ */
 function setDraft(panel: StratCommandPanelElement, title: string): void {
-  const input = panel.shadowRoot?.querySelector<HTMLInputElement>('[data-role="draft"]');
-  if (!input) throw new Error('任务标题输入框未渲染');
-  input.value = title;
-  input.dispatchEvent(new Event('input', { bubbles: true }));
+  setQuery(panel, `${title}\n（测试用第二行：让输入被判为提示词）`);
+  const chip = panel.shadowRoot?.querySelector<HTMLInputElement>('[data-role="task-title"]');
+  if (!chip) throw new Error('任务条未浮现（长文本输入后应出现）');
+  chip.value = title;
+  chip.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 function setQuery(panel: StratCommandPanelElement, query: string): void {
@@ -398,7 +404,7 @@ describe('提示词 composer（@since v3.9，task_144）', () => {
     expect(output).toContain('没有匹配的命令');
   });
 
-  test('多行提示词回车 → 走任务通路（新建任务对话框，标题带整段提示词）', async () => {
+  test('多行提示词 → 任务条浮现（标题取首行、行内可改），点「发起」才走任务通路', () => {
     const { panel, harness } = mountPanel();
     mounted.push(harness.unmount);
 
@@ -410,14 +416,57 @@ describe('提示词 composer（@since v3.9，task_144）', () => {
     try {
       const prompt = `第一行：把总线重构一遍\n第二行：记得补测试\n第三行：跑一遍 jest`;
       setQuery(panel, prompt);
-      pressInComposer(panel, { key: 'Enter' });
 
-      expect(opened).toEqual([prompt]);
-      const output = panel.shadowRoot?.querySelector('[data-role="output"]')?.textContent ?? '';
-      expect(output).toContain('提示词已预填');
+      // ① 任务条浮现，标题自动取首行（≤30 字）。
+      const bar = panel.shadowRoot?.querySelector<HTMLElement>('[data-role="task-bar"]');
+      expect(bar?.hidden).toBe(false);
+      const chip = panel.shadowRoot?.querySelector<HTMLInputElement>('[data-role="task-title"]');
+      expect(chip?.value).toBe('第一行：把总线重构一遍');
+      // 回车 = 确认提示词就绪（不直接弹窗：标题要先给他改）。
+      pressInComposer(panel, { key: 'Enter' });
+      expect(opened).toEqual([]);
+
+      // ② 行内改标题 → ③ 点「发起」→ 走既有任务通路（新建任务对话框）。
+      chip!.value = '重构总线';
+      chip!.dispatchEvent(new Event('input', { bubbles: true }));
+      const submit = panel.shadowRoot?.querySelector<HTMLButtonElement>('[data-role="task-submit"]');
+      expect(submit?.disabled).toBe(false);
+      submit!.click();
+
+      expect(opened).toEqual(['重构总线']);
     } finally {
       document.removeEventListener(NEW_TASK_OPEN_EVENT, onOpen);
     }
+  });
+
+  test('标题为空 → 「发起」禁用并给出原因（必填校验，task_154）', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    setQuery(panel, '一段足够长的提示词，长度超过八十个字符才会被判定为提示词模式，所以这里多写一点内容凑够长度。');
+    const chip = panel.shadowRoot?.querySelector<HTMLInputElement>('[data-role="task-title"]');
+    expect(chip).not.toBeNull();
+    chip!.value = '';
+    chip!.dispatchEvent(new Event('input', { bubbles: true }));
+
+    const submit = panel.shadowRoot?.querySelector<HTMLButtonElement>('[data-role="task-submit"]');
+    expect(submit?.disabled).toBe(true);
+    expect(submit?.title).toBe('先给任务起个标题');
+    const reason = panel.shadowRoot?.querySelector<HTMLElement>('[data-role="task-reason"]');
+    expect(reason?.hidden).toBe(false);
+    expect(reason?.textContent).toBe('先给任务起个标题');
+  });
+
+  test('底部只有一个输入框：常驻的「任务标题」框已删（双框合一，task_154）', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    const inputs = panel.shadowRoot?.querySelectorAll('input');
+    // 唯一的一个 input 是任务条上的行内 chip（未浮现时它也在 DOM 里，但任务条是隐藏的）。
+    const roles = Array.from(inputs ?? []).map((el) => (el as HTMLElement).dataset.role);
+    expect(roles).toEqual(['task-title']);
+    expect(panel.shadowRoot?.querySelector('[data-role="draft"]')).toBeNull();
+    expect(panel.shadowRoot?.querySelectorAll('textarea')).toHaveLength(1);
   });
 
   test('卸载后 composer 的监听被摘（反复挂卸不累积）', () => {

@@ -206,8 +206,9 @@ describe('命令面板：回车即执行', () => {
       expect(harness.commands).toEqual([]);
       expect(harness.output()).toContain('走查验收任务');
       // 标题草稿同步成同一句（面板内不留两份真相）。
-      const draft = harness.panel.shadowRoot?.querySelector<HTMLInputElement>('[data-role="draft"]');
-      expect(draft?.value).toBe('走查验收任务');
+      // @since v3.10（task_154）：常驻的「任务标题」输入框已删（双框合一）——
+      //   草稿住在面板的 draftTitle 上（与 ⌘K 面板共享的那一份）。
+      expect(harness.panel.draftTitle).toBe('走查验收任务');
     } finally {
       document.removeEventListener(NEW_TASK_OPEN_EVENT, onOpen);
     }
