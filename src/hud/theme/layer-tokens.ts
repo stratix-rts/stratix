@@ -259,6 +259,14 @@ export const OVERLAY_REGISTRY: readonly OverlayRegistration[] = Object.freeze([
     note: '角色聊天抽屉：右侧滑出（半模态，只压暗对侧）。',
   },
   {
+    id: 'reading-column-jump',
+    layer: 'localTop',
+    zone: 'right-column',
+    host: '会话面板内（阅读列的「回到最新」浮标）',
+    note: '阅读列浮标：**面板内局部层**（只在阅读列自己的 stacking context 内比较）——'
+      + '它只压住读面本身，不许压到面板外的任何东西。',
+  },
+  {
     id: 'replay-clock',
     layer: 'sticky',
     zone: 'bottom-center',

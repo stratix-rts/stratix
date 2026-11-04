@@ -32,11 +32,13 @@
 import type { HudCommand, SessionRecord, WorldState } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
 import { defineEmptyState, EMPTY_STATE_TAG } from '../components/empty-state/empty-state';
+// 阅读列（@since v3.9，task_149）：消息分野 / 连续分组 / 时间线 / 滚动记忆 / 长会话窗口化。
+import { ReadingColumn } from '../components/reading-column/reading-column';
 // markdown 管线（@since v3.9，task_145）：示例会话的正文走同一条管线（marked → DOMPurify → DOM）。
-import { enhanceMarkdown, MARKDOWN_CLASS, MARKDOWN_CSS, renderMarkdown } from '../lib/markdown';
+import { MARKDOWN_CSS } from '../lib/markdown';
 import { MOTION_REDUCED_CSS } from '../theme/motion-tokens';
 
-import { DEMO_SESSION_BADGE, DEMO_SESSION_MESSAGES } from './demo-session';
+import { buildDemoReadingMessages, DEMO_SESSION_BADGE } from './demo-session';
 import {
   SESSION_KIND_FILTERS,
   activeCount,
@@ -162,6 +164,11 @@ export function defineSessionPanel(): typeof HTMLElement {
     private _unsubscribe: (() => void) | null = null;
     private _listenersBound = false;
     private _lastSignature: string | null = null;
+    /** 示例会话块（@since v3.9，task_149）：**持久件** —— 反复重画时复用同一个节点，
+     *  阅读列的滚动位置与「新消息不打扰」状态才不会被重画冲掉。 */
+    private _demoBlock: HTMLElement | null = null;
+    /** 示例会话的阅读列实例（重画时复用，折叠再展开后按记忆恢复位置）。 */
+    private _demoColumn: ReadingColumn | null = null;
 
     // —— 属性面 ——
     get deps(): SessionPanelDeps | null { return this._deps; }
@@ -202,6 +209,10 @@ export function defineSessionPanel(): typeof HTMLElement {
       // 资源必须可清理：不退订的话，反复挂卸会把订阅堆成 O(n)。
       this.releaseDeps();
       this._lastSignature = null;
+      // 阅读列也要拆（它自己持滚动监听器）。
+      this._demoColumn?.destroy();
+      this._demoColumn = null;
+      this._demoBlock = null;
     }
 
     // —— 交互 ——
@@ -210,6 +221,10 @@ export function defineSessionPanel(): typeof HTMLElement {
       // 同时挂 host 属性：面板外（样式 / 测试 / 布局）也能看到折叠态。
       this.toggleAttribute('collapsed', this._collapsed);
       this.refresh();
+      if (!this._collapsed) {
+        // 折叠期间容器 display:none → 浏览器把滚动位置清零；按记忆放回去。
+        this._demoColumn?.restorePosition();
+      }
     }
 
     /**
@@ -646,13 +661,9 @@ export function defineSessionPanel(): typeof HTMLElement {
             white-space: nowrap;
           }
           .demo-note { color: var(--srf-text-muted); font-size: var(--srf-font-size-caption); }
-          .demo-list { display: grid; gap: var(--srf-spacing-xs); max-height: 22em; overflow: auto; scrollbar-width: thin; }
-          .demo-msg { display: grid; gap: var(--srf-spacing-xxs); padding: var(--srf-spacing-xs); border-radius: var(--srf-radius); background: var(--srf-panel); }
-          .demo-msg[data-demo-role="user"] { border-left: var(--srf-spacing-xxs) solid var(--srf-border-strong); }
-          .demo-msg[data-demo-role="assistant"] { border-left: var(--srf-spacing-xxs) solid var(--srf-accent); }
-          .demo-msg-head { display: flex; align-items: center; gap: var(--srf-spacing-xs); }
-          .demo-author { font-size: var(--srf-font-size-caption); font-weight: var(--srf-font-weight-semibold); }
-          .demo-text { font-size: var(--srf-font-size-body); overflow-wrap: anywhere; }
+          /* 阅读列的滚动容器由阅读列自己管（.rc-list）—— 这里只给它一个高度与位置。 */
+          .demo-list { display: block; height: 22em; min-height: 0; }
+          .demo-slot:empty { display: none; }
         ${MARKDOWN_CSS}
         ${MOTION_REDUCED_CSS}
         </style>
@@ -660,10 +671,13 @@ export function defineSessionPanel(): typeof HTMLElement {
           <div class="head">
             <span class="title">会话</span>
             <span class="summary" data-role="summary">等待世界状态…</span>
-            <button type="button" class="chip demo" data-action="demo-session" aria-pressed="false" title="内置演示会话 —— 一键看见阅读面（markdown 代码块 / 表格 / 列表）">示例会话</button>
+            <button type="button" class="chip demo" data-action="demo-session" aria-pressed="false" title="内置演示会话 —— 一键看见阅读面（消息分野 / 时间线 / markdown）">示例会话</button>
             <button type="button" class="chip" data-action="collapse">展开</button>
           </div>
-          <div class="body" data-role="body"></div>
+          <div class="body" data-role="body">
+            <div class="demo-slot" data-role="demo-slot"></div>
+            <div class="body-main" data-role="body-main"></div>
+          </div>
         </div>
       `;
 
@@ -730,52 +744,81 @@ export function defineSessionPanel(): typeof HTMLElement {
 
       const body = root.querySelector('[data-role="body"]');
       if (!body) return;
+      const main = root.querySelector<HTMLElement>('[data-role="body-main"]');
+      const slot = root.querySelector<HTMLElement>('[data-role="demo-slot"]');
+      if (!main) return;
+
       if (this._collapsed) {
-        body.innerHTML = ''; // 折叠时连 DOM 都不建（省内存，也不占布局）
+        main.innerHTML = ''; // 折叠时连 DOM 都不建（省内存，也不占布局）
         return;
       }
 
-      body.innerHTML = `
-        ${this._demoOpen ? this.renderDemoSession() : ''}
+      main.innerHTML = `
         ${this.renderFilters()}
         ${this.renderRows(visible, sessions.length)}
         ${this.renderDrawer()}
       `;
-      // markdown 增强（代码块外框 / 语言标签 / 复制按钮）—— 必须在 innerHTML 之后。
-      // why 只在示例会话展开时做：真实会话条目走的是纯文本投影（entry-text），
-      //   扫描整棵子树找代码块是白干活（perf 硬约束：别做无谓的全树查询）。
-      if (this._demoOpen) enhanceMarkdown(body);
+
+      // 示例会话（@since v3.9，task_149）：**持久件** —— 复用同一个块，
+      //   重画不冲掉阅读列的滚动位置与「新消息不打扰」状态。
+      if (slot) {
+        if (this._demoOpen) {
+          if (!this._demoBlock) {
+            this._demoBlock = this.buildDemoBlock();
+            // **先进 DOM 再挂阅读列** —— 样式要注入到面板的 Shadow Root 里，
+            //   容器还游离在文档外时注入会落错地方（样式进不了 Shadow DOM）。
+            slot.appendChild(this._demoBlock);
+            this.mountDemoColumn();
+          } else if (this._demoBlock.parentElement !== slot) {
+            slot.appendChild(this._demoBlock);
+          }
+        } else if (this._demoBlock) {
+          this._demoBlock.remove();
+          this._demoBlock = null;
+          this._demoColumn?.destroy();
+          this._demoColumn = null;
+        }
+      }
     }
 
     /**
-     * 示例会话区块（@since v3.9，task_148）—— 内置**演示数据**。
+     * 示例会话区块（@since v3.9，task_148 / task_149）—— 内置**演示数据** + 阅读列。
      *
-     * why 放在会话面板：会话面板是「多会话管理」的入口，而阅读面（markdown 渲染）
-     *   正是会话内容的最终形态 —— 样例放这儿，一键就能看见它长什么样。
+     * why 放在会话面板：会话面板是「多会话管理」的入口，而阅读面（消息分野 / 时间线 /
+     *   markdown 渲染）正是会话内容的最终形态 —— 样例放这儿，一键就能看见它长什么样。
      * why 每条都挂「演示数据」徽标：演示数据与真实数据的**唯一区别就是它自己说出来了**；
      *   没有这个徽标，样例就会被误读成真数据（那才是拿 mock 冒充实现）。
+     * why 做成持久件：重画时复用同一个 DOM 节点 —— 阅读列的滚动位置与
+     *   「用户上翻时不打扰」状态才不会每次重画就被冲掉。
      */
-    private renderDemoSession(): string {
-      const messages = DEMO_SESSION_MESSAGES.map(
-        (message) => `
-          <div class="demo-msg" data-role="demo-message" data-demo-role="${escapeHtml(message.role)}">
-            <div class="demo-msg-head">
-              <span class="demo-author">${escapeHtml(message.author)}</span>
-              <span class="demo-badge" data-role="demo-badge">${escapeHtml(DEMO_SESSION_BADGE)}</span>
-            </div>
-            <div class="demo-text ${MARKDOWN_CLASS}">${renderMarkdown(message.text)}</div>
-          </div>`
-      ).join('');
-      return `
-        <div class="demo-session" data-role="demo-session">
-          <div class="demo-head">
-            <span class="demo-title">示例会话</span>
-            <span class="demo-badge" data-role="demo-badge">${escapeHtml(DEMO_SESSION_BADGE)}</span>
-          </div>
-          <p class="demo-note">内置演示内容 —— 用来预览阅读面（markdown 代码块 / 表格 / 列表）。真实会话请新建角色后派发。</p>
-          <div class="demo-list" data-role="demo-list">${messages}</div>
+    private buildDemoBlock(): HTMLElement {
+      const block = document.createElement('div');
+      block.className = 'demo-session';
+      block.setAttribute('data-role', 'demo-session');
+      block.innerHTML = `
+        <div class="demo-head">
+          <span class="demo-title">示例会话</span>
+          <span class="demo-badge" data-role="demo-badge">${escapeHtml(DEMO_SESSION_BADGE)}</span>
         </div>
+        <p class="demo-note">内置演示内容 —— 用来预览阅读面（消息分野 / 连续分组 / 跨分钟时间线 / markdown）。真实会话请新建角色后派发。</p>
+        <div class="demo-list" data-role="demo-list"></div>
       `;
+      return block;
+    }
+
+    /** 给示例会话块挂上阅读列（**块必须已经在 DOM 里** —— 样式要落进面板的 Shadow Root）。 */
+    private mountDemoColumn(): void {
+      const host = this._demoBlock?.querySelector<HTMLElement>('[data-role="demo-list"]');
+      if (!host || this._demoColumn) return;
+      const column = new ReadingColumn(host, {
+        contextKey: 'demo',
+        memoryScope: 'session-panel',
+        markdown: true,
+        messageRole: 'demo-message',
+        badgeRole: 'demo-badge',
+      });
+      column.setMessages(buildDemoReadingMessages());
+      this._demoColumn = column;
     }
 
     /** 筛选筹码行（全部 + 五种 kind）。 */

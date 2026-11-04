@@ -21,6 +21,7 @@ import {
   type SessionPanelDeps,
   type StratSessionPanelElement,
 } from '../panels/session-panel';
+import { DEMO_SESSION_MESSAGES } from '../panels/demo-session';
 import { createMainScreen } from '../screens/main-screen';
 
 function makeState(partial: Partial<WorldState> = {}): WorldState {
@@ -811,7 +812,7 @@ describe('示例会话：内置演示输出', () => {
     expect(harness.panel.shadowRoot?.querySelector('[data-role="demo-session"]')).toBeNull();
   });
 
-  test('点入口 → 灌入 4 条演示消息，每条都带「演示数据」徽标', () => {
+  test('点入口 → 灌入演示消息，每条都带「演示数据」徽标', () => {
     const harness = mountPanel();
     mounted.push(harness.unmount);
     expand(harness.panel);
@@ -822,10 +823,70 @@ describe('示例会话：内置演示输出', () => {
     const messages = Array.from(
       harness.panel.shadowRoot?.querySelectorAll('[data-role="demo-message"]') ?? [],
     );
-    expect(messages).toHaveLength(4);
+    // 演示数据现在是 7 条（task_149 加了系统事件与时刻）—— 数量对齐 demo-session.ts。
+    expect(messages).toHaveLength(DEMO_SESSION_MESSAGES.length);
     for (const msg of messages) {
       expect(msg.querySelector('[data-role="demo-badge"]')?.textContent).toBe('演示数据');
     }
+  });
+
+  /**
+   * 阅读列的三种身份（@since v3.9，task_149）：用户 / agent / 系统事件 —— 分野一眼可辨。
+   */
+  test('阅读列：三种消息身份都在（用户 / agent / 系统事件）', () => {
+    const harness = mountPanel();
+    mounted.push(harness.unmount);
+    expand(harness.panel);
+
+    click(harness.panel, 'button[data-action="demo-session"]');
+
+    const roles = Array.from(
+      harness.panel.shadowRoot?.querySelectorAll('[data-role="demo-message"]') ?? [],
+    ).map((el) => el.getAttribute('data-rc-role'));
+    expect(roles).toContain('user');
+    expect(roles).toContain('agent');
+    expect(roles).toContain('system');
+  });
+
+  /**
+   * 连续同 agent 消息**合组**（task_149）：第二句不再重复头像 / 名字。
+   */
+  test('阅读列：连续同 agent 的两条合成一组（不重复头像/名字）', () => {
+    const harness = mountPanel();
+    mounted.push(harness.unmount);
+    expand(harness.panel);
+
+    click(harness.panel, 'button[data-action="demo-session"]');
+
+    const rows = Array.from(
+      harness.panel.shadowRoot?.querySelectorAll('[data-role="demo-message"]') ?? [],
+    );
+    const agents = rows.filter((el) => el.getAttribute('data-rc-role') === 'agent');
+    expect(agents.length).toBeGreaterThanOrEqual(2);
+    const opens = agents.map((el) => el.getAttribute('data-opens-group'));
+    // 最后两条 agent 是连续的 → 第一条开组、第二条不开组。
+    expect(opens[opens.length - 1]).toBe('false');
+    expect(opens[opens.length - 2]).toBe('true');
+    // 不开组的那条没有头像（不重复）。
+    const last = agents[agents.length - 1]!;
+    expect(last.querySelector('[data-role="rc-avatar"]')).toBeNull();
+  });
+
+  /**
+   * 跨分钟时间分隔条（task_149）：演示数据时刻跨了分钟 → 分隔条当场可见。
+   */
+  test('阅读列：跨分钟插入时间分隔条', () => {
+    const harness = mountPanel();
+    mounted.push(harness.unmount);
+    expand(harness.panel);
+
+    click(harness.panel, 'button[data-action="demo-session"]');
+
+    const separators = Array.from(
+      harness.panel.shadowRoot?.querySelectorAll('[data-role="rc-separator"]') ?? [],
+    );
+    expect(separators.length).toBeGreaterThanOrEqual(2);
+    expect(separators[0]?.textContent?.trim()).toMatch(/^\d{2}:\d{2}$/);
   });
 
   test('markdown 真渲染：代码块 / 表格 / 列表都在（145 管线的效果当场可见）', () => {
