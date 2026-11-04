@@ -8,6 +8,7 @@
  * 禁止事项：① import core / world / app（组件不认识业务）；② 写死色值（一律 --srf-* token）；
  *   ③ 拦底下界面（蒙层 pointer-events:none，用户可照着提示直接点）；④ 漏写一次性标记。
  */
+import { zVar } from '../../theme/layer-tokens';
 
 export const ONBOARDING_TOUR_TAG = 'strat-onboarding-tour';
 /** 一次性标记键（localStorage）：写过 = 不再出现（首开只走一次）。 */
@@ -26,7 +27,7 @@ export interface OnboardingTourStep {
 
 /** 组件样式表（shadow DOM 内）。全走 --srf-* token；动效只有 ring 一条 transition。 */
 const TOUR_STYLE = `
-  :host { position: fixed; inset: 0; z-index: 55; pointer-events: none; font-family: var(--srf-font-ui); }
+  :host { position: fixed; inset: 0; z-index: ${zVar('spotlight')}; pointer-events: none; font-family: var(--srf-font-ui); }
   :host([hidden]) { display: none; }
   .veil { position: fixed; display: none; background: rgba(0, 0, 0, 0.62); }
   .ring { position: fixed; display: none; box-sizing: border-box; border: var(--srf-border-width) solid var(--srf-accent); border-radius: var(--srf-radius); transition: left var(--srf-transition), top var(--srf-transition), width var(--srf-transition), height var(--srf-transition); }

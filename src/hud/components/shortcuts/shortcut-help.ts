@@ -21,6 +21,7 @@ import {
   formatShortcutDisplay,
   type ShortcutCategoryId,
 } from './shortcut-catalog';
+import { zVar } from '../../theme/layer-tokens';
 
 export const SHORTCUT_HELP_TAG = 'strat-shortcut-help';
 
@@ -143,14 +144,14 @@ export function defineShortcutHelp(): typeof HTMLElement {
            * ':not()' 必须放进 ':host()' 的参数里，写成 ':host(:not([open]))'。
            *
            * 失效后果（P0 根因）：宿主永远 display:inline → shadow 内
-           * 'position:fixed; inset:0; z-index:60' 的遮罩从页面启动起就铺满全屏并吞掉
+           * 'position:fixed; inset:0' 的遮罩从页面启动起就铺满全屏并吞掉
            * 所有鼠标点击（键盘不受影响）——表现为「弹窗关不掉」+ 顶栏/面板/战场全部鼠标失灵。
            */
           :host(:not([open])) { display: none; }
           .backdrop {
             position: fixed;
             inset: 0;
-            z-index: 60; /* toast(50) 之上：浮层打开时它是唯一焦点，反馈层不再抢戏 */
+            z-index: ${zVar('spotlight')}; /* toast(50) 之上：浮层打开时它是唯一焦点，反馈层不再抢戏 */
             display: flex;
             align-items: center;
             justify-content: center;

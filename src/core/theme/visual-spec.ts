@@ -234,6 +234,51 @@ export const MARQUEE_METRICS = Object.freeze({
 });
 
 /**
+ * **左下角浮层带**的度量（@since v3.9，task_146）—— 浮层堆叠登记制度的「象限归属」侧。
+ *
+ * ============ 病灶 ============
+ *   用户报告「信息层级框和 agent 事件列表压在一起」。根因不是 z-index 的大小，
+ *   而是**位置**：左下角这一小块屏幕同时被三件东西惦记着 ——
+ *     ① 左栏（agent 侧栏，下边界原先在「控制岛高度 + 缝」= 视口底往上 112px）；
+ *     ② 事件轨（左下最近事件流，展开到 5 条时占高 175px）；
+ *     ③ 信息层级开关（固定浮层，原先贴在「控制岛高度 + 8px」= 往上 108px）。
+ *   三者的纵向区间互相咬合 → 压在一起。
+ *
+ * ============ 口径 ============
+ *   本表把左下角**切成两条互不重叠的带**（从视口底边往上数）：
+ *     · 事件轨带：事件轨主人位，含它的底边留边；
+ *     · 信息层级开关带：开关的固定位，压在事件轨带之上；
+ *     · 两者之和 = 左栏（agent 侧栏）的下边界（cornerBandPx）——
+ *       左栏的内容到此为止，**不再伸进角件带**。
+ *   why 落在 core：这份数字是 HUD 的**布局契约**（屏幕哪一块归谁），
+ *     与 CONTROL_ISLAND_METRICS / TOPBAR_METRICS 同族。
+ */
+export const HUD_OVERLAY_BAND_METRICS = Object.freeze({
+  /** 事件轨单行高（px）—— 与 marquee 组件的 --marquee-row-h 同源（26）。 */
+  marqueeRowHeightPx: 26,
+  /** 事件轨行间距（px）—— 与 --marquee-gap 同源（4）。 */
+  marqueeRowGapPx: 4,
+  /** 事件轨「展开 N 条」按钮高（px）—— 事件轨最底下那一行。 */
+  marqueeToggleHeightPx: 25,
+  /** 事件轨最大占高（px）—— 展开到 MARQUEE_METRICS.maxEntries 条时的总高。 */
+  marqueeMaxHeightPx: MARQUEE_METRICS.maxEntries * (26 + 4) + 25,
+  /** 角件贴边留边（px）—— 事件轨的底边留边（与 MARQUEE_METRICS.cornerMargin 同值）。 */
+  cornerMarginPx: 16,
+  /** 信息层级开关带高（px）—— 开关实际高 78 + 与事件轨的 8px 缝 + 余量。 */
+  layerSwitchBandPx: 92,
+  /**
+   * 信息层级开关的下边界（px，从视口底边起算）——
+   * 压在事件轨最大占高之上，两者之间留 8px 缝。
+   */
+  layerSwitchBottomPx: 16 + MARQUEE_METRICS.maxEntries * (26 + 4) + 25 + 8,
+  /**
+   * 左栏（agent 侧栏）的下边界（px，从视口底边起算）——
+   * 事件轨带 + 信息层级开关带之和。这是「左栏不再压角件」的硬边界。
+   */
+  cornerBandPx: 16 + MARQUEE_METRICS.maxEntries * (26 + 4) + 25 + 92,
+});
+
+/**
  * 单位联动（@since v3.4，task_092；docs/hud-redesign-proposal.html §2.2「视线动线」/ §2.5 Z2）的度量。
  *
  * why 也落在唯一事实源：描边高亮的粗细 / 呼吸周期与引导弧线的淡入时长 / 贝塞尔形状

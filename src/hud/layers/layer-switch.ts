@@ -22,10 +22,11 @@
  */
 
 import { INFO_LAYERS } from '../../core/info-layer';
-import { CONTROL_ISLAND_METRICS } from '../../core/theme/visual-spec';
+import { HUD_OVERLAY_BAND_METRICS } from '../../core/theme/visual-spec';
 import type { HudCommand, InfoLayer } from '../../core/types';
 
 import { INFO_LAYER_LABELS, type InfoLayerController } from './info-layer';
+import { zVar } from '../theme/layer-tokens';
 
 /** 开关里按钮的稳定角色（测试 / 调试按它定位）。 */
 export const LAYER_SWITCH_BUTTON_ROLE = 'layer-switch-button';
@@ -51,19 +52,23 @@ export interface LayerSwitchHandle {
 
 /**
  * 开关的样式（模块级常量，随浮层一起挂 —— 浮层是独立于主屏的覆盖物，不吃主屏样式表）。
- * 位置：左侧、**控制岛之上**的一条空带里（bottom = 控制岛高度上限 + 8px；
- *   口径取自唯一事实源 CONTROL_ISLAND_METRICS.maxHeightPx —— @since v3.4 task_090，
- *   底栏改成贴底居中的控制岛后，旧口径 min(34vh, 300px) 会把开关甩到半空里）。
+ *
+ * ★ 位置口径（@since v3.9，task_146）：左下角被切成**两条互不重叠的带** ——
+ *   ① 事件轨带（主人位：事件轨 / 跑马灯，展开 5 条时最高 175px + 16px 底边留边）；
+ *   ② 信息层级开关带（本件：压在事件轨带**之上**，两者留 8px 缝）。
+ *   底边位置取自唯一事实源 HUD_OVERLAY_BAND_METRICS.layerSwitchBottomPx；
+ *   左栏（agent 侧栏）的下边界则按整条带高（cornerBandPx）让开 ——
+ *   **三者各占一段、互不重叠**（用户报告的「信息层级框和 agent 事件列表压在一起」即此病灶：
+ *   开关原贴在「控制岛高度 + 8px」，而左栏的下边界也在那一带 → 两者咬合）。
  *   开关挂在 #hud-side，不在 .hud-root 的容器查询上下文里，用不了 cqh —— 直接用常量。
- * why 不用右下角：小地图在那儿（200×120 + 标题栏）；为什么不在左下角贴边：事件轨
- *   （跑马灯）占左下角 16px 起的一条带，两者会重叠。
+ * why 不用右下角：小地图在那儿（200×120 + 标题栏）。
  */
 const LAYER_SWITCH_STYLE = `
 .hud-layer-switch {
   position: fixed;
   left: 16px;
-  bottom: calc(${CONTROL_ISLAND_METRICS.maxHeightPx}px + 8px);
-  z-index: 28;
+  bottom: ${HUD_OVERLAY_BAND_METRICS.layerSwitchBottomPx}px;
+  z-index: ${zVar('sticky')};
   pointer-events: auto;
   box-sizing: border-box;
   display: flex;

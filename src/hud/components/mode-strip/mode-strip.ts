@@ -36,6 +36,7 @@ import { TOPBAR_METRICS } from '../../../core/theme/visual-spec';
 //   emoji 是字形不是图标，跟线条风对不上；SVG 走 currentColor → 自动继承条目的语义色
 //   （演示 = 主色 / 导演 = 警示色），不另抄一份色值。
 import { iconSvg } from '../../widgets/icon-set';
+import { zVar } from '../../theme/layer-tokens';
 
 export const MODE_STRIP_TAG = 'strat-mode-strip';
 
@@ -134,7 +135,7 @@ export function defineStratModeStrip(): typeof HTMLElement {
             top: ${TOPBAR_METRICS.heightPx}px;
             left: 0;
             right: 0;
-            z-index: 32;
+            z-index: ${zVar('strip')};
             pointer-events: none;
             font-family: var(--srf-font-ui, system-ui, -apple-system, sans-serif);
           }

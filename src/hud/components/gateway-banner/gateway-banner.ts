@@ -34,6 +34,7 @@ import {
 // 动效层（@since v3.8，task_138）：横幅从「瞬现」改为「落位」——
 //   入场动效走共享工具类（位移 8px + 淡入，200ms），时长 / 缓动取 --srf-motion-* token。
 import { MOTION_CLASS, MOTION_COMPONENT_CSS, installMotionTokens } from '../../theme/motion-tokens';
+import { zVar } from '../../theme/layer-tokens';
 
 export const GATEWAY_BANNER_TAG = 'strat-gateway-banner';
 
@@ -112,7 +113,7 @@ export function defineStratGatewayBanner(): typeof HTMLElement {
             left: 50%;
             transform: translateX(-50%);
             max-width: min(560px, calc(100% - 32px));
-            z-index: 31;
+            z-index: ${zVar('banner')};
             pointer-events: none;
             font-family: var(--srf-font-ui, system-ui, -apple-system, sans-serif);
           }

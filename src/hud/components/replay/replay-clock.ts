@@ -21,6 +21,7 @@ import {
 } from '../../../core/theme/visual-spec';
 
 import { formatReplayClock, formatReplayDate } from './replay-catalog';
+import { zVar } from '../../theme/layer-tokens';
 
 export const REPLAY_CLOCK_TAG = 'strat-replay-clock';
 
@@ -66,7 +67,7 @@ export function defineStratReplayClock(): typeof HTMLElement {
                原来的 24px 会让角标直接压在顶栏上（修的正是这一处）。 */
             top: var(--replay-clock-inset-top, ${REPLAY_CLOCK_TOP_INSET_PX}px);
             left: var(--replay-clock-inset-left, ${REPLAY_METRICS.clockInsetPx}px);
-            z-index: 40;
+            z-index: ${zVar('sticky')};
             pointer-events: none;
             font-family: var(--srf-font-ui, system-ui, -apple-system, sans-serif);
           }

@@ -17,7 +17,7 @@
  *   task_027（world/appearance 的 LPC 合成栈，**只经端口消费**）。
  * 输入：注入的 HudBusAdapter（dispatch / subscribe 两个能力，与 screens / panels 同口径）；
  *   WorldState 快照；注入的形象预览端口（AppearancePreviewPort）。
- * 输出：Shadow DOM 向导屏（覆盖层，z-index 50，与 main-screen 的 .hud-sub-screen 同规范）；
+ * 输出：Shadow DOM 向导屏（覆盖层，z-index 取 modal 档，与 main-screen 的 .hud-sub-screen 同规范）；
  *   交互 → HudCommand（character.create / ui.navigate）；完成 → 自定义 DOM 事件 `onboarding-complete`。
  * 禁止事项：
  *   1. import world/、phaser、vue、任何 UI 库 —— 铁律；
@@ -107,6 +107,7 @@ import {
   type OnboardingStep,
 } from './onboarding-catalog';
 import { PERSONA_PRESETS, presetMatchingKind, presetsForKind, type PersonaPreset } from './persona-presets';
+import { zVar } from '../theme/layer-tokens';
 
 export const ONBOARDING_SCREEN_TAG = 'strat-onboarding-screen';
 
@@ -232,7 +233,7 @@ function stepState(step: OnboardingStep, current: OnboardingStep): 'done' | 'act
  * 30 个 token，见 hud/theme/__tests__/skin-tokens.test.ts），写兜底色值等于把旧皮肤钉死在第一套。
  */
 const ONBOARDING_STYLE = `
-  :host { all: initial; display: block; position: absolute; inset: 0; z-index: 50; }
+  :host { all: initial; display: block; position: absolute; inset: 0; z-index: ${zVar('modal')}; }
   .screen {
     display: grid;
     grid-template-rows: auto 1fr auto;

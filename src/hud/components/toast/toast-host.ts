@@ -1,6 +1,6 @@
 /**
- * 文件职责：**轻提示 toast 宿主** Web Component（`<strat-toast-host>`，task_039）—— 右上角
- *   轻提示的极简实现：show(text, tone) 追加一条气泡，TOAST_TTL_MS（3s）后自动移除；
+ * 文件职责：**轻提示 toast 宿主** Web Component（`<strat-toast-host>`，task_039）—— 底中
+ *   （控制岛之上，@since v3.9 task_146 从右上角迁走）轻提示的极简实现：show(text, tone) 追加一条气泡，TOAST_TTL_MS（3s）后自动移除；
  *   多条并排堆叠（新的在下面），元素离场时清空全部计时器。
  *   why 独立组件而不是塞进某个面板：toast 是**跨面板**的顶层反馈面（任务完成 / 失败来自
  *   任意角色的任意时刻），挂在 hud 根容器上，谁都能借组合根的接线借道它说话。
@@ -25,6 +25,8 @@ import { STRATIX_NOTIFICATIONS_TOGGLE_KEY } from '../../../core/types';
 //   成功类 toast 额外走**签名瞬间**（对勾描边 + scale/brightness 脉冲）——
 //   「成功」不该只是绿边框，应该是一个能被眼睛抓住的瞬间。
 import { MOTION_CLASS, MOTION_COMPONENT_CSS, installMotionTokens } from '../../theme/motion-tokens';
+import { zVar } from '../../theme/layer-tokens';
+import { CONTROL_ISLAND_METRICS } from '../../../core/theme/visual-spec';
 
 export const TOAST_HOST_TAG = 'strat-toast-host';
 
@@ -105,19 +107,26 @@ export function defineToastHost(): typeof HTMLElement {
       root.innerHTML = `
         <style>
           ${MOTION_COMPONENT_CSS}
-          /* 顶层反馈面：压在抽屉（z-index 40）之上；宿主不拦事件，交互留给气泡外的世界 */
+          /* 顶层反馈面：压在抽屉（sticky 档）之上；宿主不拦事件，交互留给气泡外的世界。
+             ★ 落位（@since v3.9，task_146）：**底中 · 控制岛之上**。
+             why 不再是右上角：右上角是顶栏的 ⋯ 按钮 + 右栏「态势总览」的操作行 ——
+               气泡压上去 = 用户报告的「压在一起」（实测与顶栏重叠 32×32px）。
+               底中这块是战场里唯一常年空着的带（控制岛上方），且左右都离角件远。
+             why 用 transform 居中：left:50% + translateX(-50%)（不用 margin:auto ——
+               fixed 元素的 margin:auto 在 auto 宽高下不居中）。 */
           :host {
             all: initial;
             position: fixed;
-            top: 0;
-            right: 0;
-            z-index: 50;
+            left: 50%;
+            bottom: ${CONTROL_ISLAND_METRICS.maxHeightPx + 12}px;
+            transform: translateX(-50%);
+            z-index: ${zVar('toast')};
             pointer-events: none;
           }
           .stack {
             display: flex;
             flex-direction: column;
-            align-items: flex-end;
+            align-items: center;
             gap: var(--srf-spacing-sm);
             padding: var(--srf-spacing-lg);
             font-family: var(--srf-font-ui);

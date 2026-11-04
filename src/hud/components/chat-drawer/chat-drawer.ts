@@ -72,6 +72,7 @@ import {
   type CharacterChatSessions,
   type StreamBuffer,
 } from './chat-catalog';
+import { zVar } from '../../theme/layer-tokens';
 
 export const CHARACTER_CHAT_DRAWER_TAG = 'strat-character-chat-drawer';
 
@@ -662,7 +663,7 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
             right: 0;
             bottom: 0;
             width: min(360px, 92vw);
-            z-index: 40;
+            z-index: ${zVar('overlay')};
             pointer-events: none;
           }
           .rail {
@@ -683,7 +684,7 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
             transition: transform var(--srf-transition), visibility var(--srf-transition);
             visibility: hidden;
             pointer-events: none;
-            z-index: 1;
+            z-index: ${zVar('localMid')};
           }
           /* 对侧压暗（@since v3.5，遮挡规则 R2）：抽屉是**半模态** ——
              只把对侧（抽屉左边那一大片）压暗，不锁四角、不接管全屏。
@@ -699,7 +700,7 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
             opacity: 0;
             pointer-events: none;
             transition: opacity var(--srf-transition);
-            z-index: 0;
+            z-index: ${zVar('localBase')};
           }
           .rail-dim[data-active="true"] { opacity: 1; }
           .rail[data-open="true"] { transform: translateX(0); visibility: visible; pointer-events: auto; }

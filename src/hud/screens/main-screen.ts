@@ -52,6 +52,7 @@
 import {
   CONTROL_ISLAND_METRICS,
   CONTROL_ISLAND_SIDE_INSET_PX,
+  HUD_OVERLAY_BAND_METRICS,
   TOPBAR_METRICS,
 } from '../../core/theme/visual-spec';
 import type { MissionView, WorldState } from '../../core/types';
@@ -84,6 +85,8 @@ import {
   writeSoundVolume,
 } from '../sound-engine';
 import { demoMode } from '../theme/demo-mode';
+// 浮层堆叠登记制度（@since v3.9，task_146）：z-index 一律取刻度表（不再有裸数字）。
+import { zVar } from '../theme/layer-tokens';
 // 排版字阶与截断规则（@since v3.8，task_137）：字阶 token 走皮肤层（theme-controller 注入），
 //   截断规则是文档级工具类（各表面共用同一份文案，见 theme/type-scale.ts）。
 import { TRUNCATE_CSS } from '../theme/type-scale';
@@ -161,6 +164,11 @@ const MAIN_SCREEN_STYLE = `
     --hud-island-inset: ${CONTROL_ISLAND_SIDE_INSET_PX}px;
     /* 右下角件（小地图）占高 —— 右竖栏的下边界按它让开。 */
     --hud-corner-stack-h: ${CONTROL_ISLAND_METRICS.cornerStackHeightPx}px;
+    /* 左下角浮层带高（@since v3.9，task_146）：事件轨带 + 信息层级开关带 ——
+       左栏（agent 侧栏）的下边界按它让开，于是三者各占一段、互不重叠
+       （用户报告的「信息层级框和 agent 事件列表压在一起」即此病灶）。
+       唯一事实源：core/theme/visual-spec.ts 的 HUD_OVERLAY_BAND_METRICS。 */
+    --hud-corner-band-h: ${HUD_OVERLAY_BAND_METRICS.cornerBandPx}px;
     color: var(--srf-text);
     font-family: var(--srf-font-ui);
     font-size: var(--srf-font-size-md);
@@ -180,7 +188,7 @@ const MAIN_SCREEN_STYLE = `
     left: 0;
     right: 0;
     min-height: var(--hud-topbar-h);
-    z-index: 30;
+    z-index: ${zVar('raised')};
     box-sizing: border-box;
     display: flex;
     align-items: center;
@@ -272,7 +280,7 @@ const MAIN_SCREEN_STYLE = `
   .hud-popover {
     position: absolute;
     top: calc(100% + var(--srf-spacing-xs));
-    z-index: 40;
+    z-index: ${zVar('sticky')};
     display: flex;
     align-items: center;
     gap: var(--srf-spacing-xs);
@@ -336,12 +344,14 @@ const MAIN_SCREEN_STYLE = `
     /* 模式状态条（@since v3.6）：细条亮出时下方版面整体下移一条 ——
        让位量由 mode-strip 组件写在 <html> 上的 --srf-mode-strip-h 给（没亮 = 0）。 */
     top: calc(var(--hud-topbar-h) + var(--srf-mode-strip-h, 0px) + var(--hud-gap));
-    /* 下边界避开两件：控制岛（居中，与左栏只有一条窄带重叠）与左下事件轨。
-       why 用「岛的高度上限」而不是实测高度：岛高随内容变，栏的下边界得按上限留 —— 宁可空一截，
-       也不能让栏压到岛或事件轨上。 */
-    bottom: calc(var(--hud-island-max-h) + var(--hud-gap));
+    /* 下边界避开三件：控制岛（居中，与左栏只有一条窄带重叠）、左下事件轨、信息层级开关。
+       why 用「角件带高」而不是「岛的高度上限」（@since v3.9，task_146）：
+       左下角现在有**两件**角件（事件轨 + 信息层级开关），它们合计占高 = --hud-corner-band-h；
+       栏的下边界按这条带留 —— 宁可空一截，也不能让栏压到角件上（那正是用户报告的重叠）。
+       why 用带高上限而不是实测高度：角件带高随事件条数变（展开态最高），按上限留才稳。 */
+    bottom: var(--hud-corner-band-h);
     width: min(320px, 28vw);
-    z-index: 20;
+    z-index: ${zVar('panel')};
     overflow: auto;
   }
   .hud-rail-right {
@@ -352,7 +362,7 @@ const MAIN_SCREEN_STYLE = `
     /* 右下角是小地图（200×120 + 标题栏）—— 右栏的下边界按它的高度让开。 */
     bottom: calc(var(--hud-corner-stack-h) + var(--hud-gap));
     width: min(360px, 30vw);
-    z-index: 20;
+    z-index: ${zVar('panel')};
     display: flex;
     flex-direction: column;
     gap: var(--hud-gap);
@@ -374,7 +384,7 @@ const MAIN_SCREEN_STYLE = `
        留边 = 角件留边 + 角件宽 + ≥40px 间距（CONTROL_ISLAND_SIDE_INSET_PX）。 */
     width: min(var(--hud-island-w), calc(100% - 2 * var(--hud-island-inset)));
     max-height: var(--hud-island-max-h);
-    z-index: 25;
+    z-index: ${zVar('island')};
     box-sizing: border-box;
     display: flex;
     /* 回放条在上、命令面板在下：岛内竖排（列方向 flex）—— 同岛上下分层。 */
@@ -409,7 +419,7 @@ const MAIN_SCREEN_STYLE = `
   .hud-sub-screen {
     position: absolute;
     inset: 0;
-    z-index: 50;
+    z-index: ${zVar('modal')};
     pointer-events: auto;
     /* 透明：这层只是**弹窗宿主** —— 底色由弹窗壳的遮罩（--srf-backdrop）给。
        why 不是不透明：全屏弹窗开着时，四角常驻件要在遮罩**之下**可见并降对比

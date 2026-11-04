@@ -88,6 +88,7 @@ import { defineStratButton, escapeHtml, STRAT_BUTTON_TAG } from '../widgets/stra
 
 // 自定义 agent 注册端口（@since v3.32，task_056）：类型 only —— hud 不 import electron（铁律）。
 import type { CustomAgentsPort, CustomAgentView } from './custom-agents-port';
+import { zVar } from '../theme/layer-tokens';
 
 export const SETTINGS_SCREEN_TAG = 'strat-settings-screen';
 
@@ -604,7 +605,7 @@ export function defineSettingsScreen(): typeof HTMLElement {
           .confirm-layer {
             position: fixed;
             inset: 0;
-            z-index: 70; /* 高于 modal shell 与 toast(50)：确认框是当前焦点面 */
+            z-index: ${zVar('max')}; /* 高于 modal shell 与 toast(50)：确认框是当前焦点面 */
             display: flex;
             align-items: center;
             justify-content: center;

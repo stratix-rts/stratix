@@ -48,6 +48,7 @@ import {
   marqueeToneColor,
   type MarqueeEntry,
 } from './marquee-catalog';
+import { zVar } from '../../theme/layer-tokens';
 
 export const MARQUEE_TAG = 'strat-marquee';
 
@@ -195,7 +196,7 @@ export function defineStratMarquee(): typeof HTMLElement {
             position: fixed;
             left: 16px;
             bottom: 16px;
-            z-index: 21;
+            z-index: ${zVar('track')};
             pointer-events: none;
             font-family: var(--srf-font-ui, system-ui, -apple-system, sans-serif);
             /* Z2 宽度上限（≤260px，proposal §2.5）—— 数值由 MARQUEE_METRICS 注入。 */
@@ -263,7 +264,7 @@ export function defineStratMarquee(): typeof HTMLElement {
             left: 0;
             right: 0;
             top: 100%;
-            z-index: 3;
+            z-index: ${zVar('localTop')};
             display: flex;
             flex-direction: column;
             gap: 2px;

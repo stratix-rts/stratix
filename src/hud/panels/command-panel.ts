@@ -109,6 +109,7 @@ import {
 // 提示词 composer（@since v3.9，task_144）：输入面的键位 / IME / 历史 / 自动长高全在那边，
 //   本面板只负责「拿到原文 → 走命令注册表 / 任务通路」。
 import { PromptComposer } from './prompt-composer';
+import { zVar } from '../theme/layer-tokens';
 
 export const COMMAND_PANEL_TAG = 'strat-command-panel';
 
@@ -818,7 +819,7 @@ export function defineCommandPanel(): typeof HTMLElement {
             left: 0;
             right: 0;
             bottom: calc(100% + 4px);
-            z-index: 3;
+            z-index: ${zVar('localTop')};
             background: var(--srf-panel);
             border-color: var(--srf-border-strong);
             box-shadow: var(--srf-shadow);
@@ -854,7 +855,7 @@ export function defineCommandPanel(): typeof HTMLElement {
             background: var(--srf-panel);
             border: var(--srf-border-width) solid var(--srf-border);
             border-radius: var(--srf-radius);
-            z-index: 2;
+            z-index: ${zVar('localMid')};
           }
           :host([variant="strip"]) .empty-hint { white-space: nowrap; }
           ${MARKDOWN_CSS}

@@ -22,6 +22,7 @@
  */
 
 import type { WorldState } from '../../../core/types';
+import { zVar } from '../../theme/layer-tokens';
 
 export const BATTLEFIELD_EMPTY_TAG = 'strat-battlefield-empty';
 
@@ -55,7 +56,7 @@ const BATTLEFIELD_EMPTY_STYLE = `
     justify-content: center;
     /* 空态层不拦画布事件（战场要能拖 / 框选 / 缩放）；只有按钮自己开事件。 */
     pointer-events: none;
-    z-index: 15;
+    z-index: ${zVar('underlay')};
   }
   :host([hidden]) { display: none; }
   .stage {

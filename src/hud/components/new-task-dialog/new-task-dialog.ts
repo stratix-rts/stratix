@@ -32,6 +32,7 @@ import { buildCommand, findCommandSpec } from '../../panels/command-catalog';
 import { PIPELINE_PRESETS, buildPipelineStartCommand } from '../../panels/pipeline-catalog';
 import { recommendAssignees } from '../../panels/task-assign-catalog';
 import type { ToastTone } from '../toast/toast-host';
+import { zVar } from '../../theme/layer-tokens';
 
 export const NEW_TASK_DIALOG_TAG = 'strat-new-task-dialog';
 
@@ -251,7 +252,7 @@ export function defineNewTaskDialog(): typeof HTMLElement {
             all: initial;
             position: fixed;
             inset: 0;
-            z-index: 60; /* toast(50) 之上：对话框打开时它是当前焦点面 */
+            z-index: ${zVar('spotlight')}; /* toast(50) 之上：对话框打开时它是当前焦点面 */
             display: block;
             pointer-events: auto;
             font-family: var(--srf-font-ui);

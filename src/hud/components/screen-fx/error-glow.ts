@@ -18,6 +18,7 @@
  */
 
 import { SCREEN_FX_METRICS, VISUAL_PALETTE } from '../../../core/theme/visual-spec';
+import { zVar } from '../../theme/layer-tokens';
 
 export const ERROR_GLOW_TAG = 'strat-error-glow';
 
@@ -65,7 +66,7 @@ export function defineStratErrorGlow(): typeof HTMLElement {
             all: initial;
             position: fixed;
             inset: 0;
-            z-index: 2;
+            z-index: ${zVar('fxRaised')};
             pointer-events: none;
           }
           /* 光晕本体：径向 alpha 渐变 —— 中心透明 → 边缘红。

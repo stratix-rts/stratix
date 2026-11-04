@@ -14,6 +14,7 @@
  */
 
 import { SCREEN_FX_METRICS } from '../../../core/theme/visual-spec';
+import { zVar } from '../../theme/layer-tokens';
 
 export const SCAN_BAND_TAG = 'strat-scan-band';
 
@@ -59,12 +60,12 @@ export function defineStratScanBand(): typeof HTMLElement {
       root.innerHTML = `
         <style>
           /* 整屏覆盖层：fixed 定位 = 屏幕空间坐标，与镜头缩放 / 平移无关。
-             z-index 1 —— 压在战场画布之上、HUD 面板之下（面板 20+），故它只是背景感。 */
+             z-index 取 fx 档 —— 压在战场画布之上、HUD 面板之下（面板 panel 档起），故它只是背景感。 */
           :host {
             all: initial;
             position: fixed;
             inset: 0;
-            z-index: 1;
+            z-index: ${zVar('fx')};
             pointer-events: none;
             overflow: hidden;
           }

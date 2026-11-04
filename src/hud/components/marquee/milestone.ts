@@ -22,6 +22,7 @@
 import { MARQUEE_METRICS, VISUAL_PALETTE, hexToRgba } from '../../../core/theme/visual-spec';
 import type { HudCommand } from '../../../core/types';
 import { isMilestoneCount, milestoneText } from './marquee-catalog';
+import { zVar } from '../../theme/layer-tokens';
 
 export const MILESTONE_TAG = 'strat-milestone';
 
@@ -124,7 +125,7 @@ export function defineStratMilestone(): typeof HTMLElement {
             all: initial;
             position: fixed;
             inset: 0;
-            z-index: 45;
+            z-index: ${zVar('overlay')};
             pointer-events: none;
             display: grid;
             place-items: center;

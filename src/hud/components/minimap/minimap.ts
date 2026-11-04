@@ -42,6 +42,7 @@ import { resolveAccent } from '../../../core/theme/skin-registry';
 import { MINIMAP_METRICS, VISUAL_PALETTE } from '../../../core/theme/visual-spec';
 import { WORLD_BOUNDS } from '../../../core/types';
 import type { Bounds, HudCommand, Point, UnitStatus } from '../../../core/types';
+import { zVar } from '../../theme/layer-tokens';
 
 export const MINIMAP_TAG = 'strat-minimap';
 
@@ -272,7 +273,7 @@ export function defineStratMinimap(): typeof HTMLElement {
             position: fixed;
             right: ${MINIMAP_METRICS.cornerMarginPx}px;
             bottom: ${MINIMAP_METRICS.cornerMarginPx}px;
-            z-index: 45; /* 抽屉(40)之上、toast(50)之下：控制件，不遮反馈层 */
+            z-index: ${zVar('sticky')}; /* 抽屉(overlay 档)之下：角件不压半模态抽屉，也不遮反馈层 */
             pointer-events: auto; /* hud-root 整层 none，本组件自接交互 */
             font-family: var(--srf-font-ui);
           }

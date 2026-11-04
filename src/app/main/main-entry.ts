@@ -153,6 +153,7 @@ import pixelLayerCss from '../../hud/theme/skin-pixel-layer.css?inline';
 // why @font-face 在运行时拼：像素源是**注入 document 的 <style> 文本**，字体 URL 必须按
 //   文档基址算（dev http / 正式包 file:// 同一条相对规则，见 hud/theme/pixel-font.ts）。
 import { pixelFontFaceCss, pixelFontUrl } from '../../hud/theme/pixel-font';
+import { installLayerTokens } from '../../hud/theme/layer-tokens';
 import { installVisualTokens } from '../../hud/theme/visual-tokens';
 import { defineStratButton } from '../../hud/widgets/strat-button';
 import { mountCharacterChatDrawer, CHARACTER_CHAT_DRAWER_TAG, type StratCharacterChatDrawerElement } from '../../hud/components/chat-drawer/chat-drawer';
@@ -386,6 +387,9 @@ async function boot(): Promise<void> {
 
   // ===== HUD 侧：真实 main-screen + 主题控制器，走注入的 bus-adapter =====
   defineStratButton();
+  // 浮层堆叠刻度表（@since v3.9，task_146）：z-index 的唯一刻度 —— 注入成 :root 上的
+  //   --srf-z-* 变量。**必须早于任何浮层挂载**（第一帧就不能有 auto 层序）。
+  installLayerTokens();
   // 视觉调色板 token（@since v3.3，task_110）：把唯一事实源（core/theme/visual-spec.ts）的
   // 七色语义色注入成 CSS 变量（--srf-visual-*）—— HUD 与战场读同一份色值。
   installVisualTokens();
