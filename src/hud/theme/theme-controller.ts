@@ -32,6 +32,8 @@
 
 import { SKIN_STORAGE_KEY } from '../../core/theme/skin-registry';
 import { syncIconsForSkin } from './skin-icons';
+// 排版字阶（@since v3.8，task_137）：字阶随皮肤走 —— 像素皮用 +1px 的那套（像素网格对齐）。
+import { typeScaleCssFor } from './type-scale';
 
 /**
  * core 的 `theme.set` 命令载荷里认的皮肤 id（窄口径，见 core/types.ts）。
@@ -151,7 +153,10 @@ export function createThemeController<Id extends string = string>(
   const effectiveInitial = rememberedValid ? (remembered as Id) : options.initial;
 
   for (const id of Object.keys(options.sources) as Id[]) {
-    const node = inject(STYLE_ID_PREFIX + id, options.sources[id]);
+    // 字阶层随皮肤一起注入（@since v3.8，task_137）：皮肤表管颜色 / 形状，字阶管排版 ——
+    //   两者拼成同一张 <style>，切皮即整张换（切走像素 = 连像素字阶一起消失）。
+    const css = `${options.sources[id]}\n${typeScaleCssFor(id)}`;
+    const node = inject(STYLE_ID_PREFIX + id, css);
     if (effectiveInitial !== id) node.disabled = true;
     styles.set(id, node);
   }

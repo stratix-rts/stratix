@@ -129,9 +129,17 @@ function mountScreen(): ScreenHarness {
   document.body.appendChild(host);
   const commands: HudCommand[] = [];
   const subscribers = new Set<(next: WorldState) => void>();
+  // 皮肤真相（@since task_115）：真链路里 theme.set 由主题控制器落地 + 订阅回显，
+  //   这里假 adapter 照样回写并通知订阅者（否则回显断言测的是个不会变的桩）。
+  const themeListeners = new Set<(themeId: 'default' | 'pixel') => void>();
+  let themeId: 'default' | 'pixel' = 'default';
   const adapter = {
     dispatch: (command: HudCommand) => {
       commands.push(command);
+      if (command.type === 'theme.set') {
+        themeId = command.themeId;
+        themeListeners.forEach((listener) => listener(themeId));
+      }
     },
     subscribe: (handler: (next: WorldState) => void) => {
       subscribers.add(handler);
@@ -141,6 +149,11 @@ function mountScreen(): ScreenHarness {
     },
     mount: () => () => undefined,
     latest: null as WorldState | null,
+    get themeId(): 'default' | 'pixel' { return themeId; },
+    subscribeTheme: (listener: (themeId: 'default' | 'pixel') => void) => {
+      themeListeners.add(listener);
+      return () => { themeListeners.delete(listener); };
+    },
   };
   const unmount = createMainScreen(adapter).mount(host);
   return {
@@ -257,7 +270,7 @@ describe('§4 A 组 · 顶栏 7 元素位（v3.4 task_089）', () => {
 
   test('A5 演示模式开关：顶栏 ▶ 图标开关，切换后工程件（日志抽屉）不再挂载', () => {
     const h = mountScreen();
-    const demoButton = h.host.querySelector('[data-topbar-item="demo"]');
+    const demoButton = h.host.querySelector('[data-role="demo"]');
     expect(demoButton).not.toBeNull();
     expect(h.host.querySelector(LOG_DRAWER_TAG)).not.toBeNull();
 
@@ -265,13 +278,13 @@ describe('§4 A 组 · 顶栏 7 元素位（v3.4 task_089）', () => {
     expect(demoMode.enabled).toBe(true);
     // 演示模式下重渲主屏：工程件不挂载（既不占画面也不订阅总线）。
     expect(h.host.querySelector(LOG_DRAWER_TAG)).toBeNull();
-    expect(h.host.querySelector('[data-topbar-item="demo"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(h.host.querySelector('[data-role="demo"]')?.getAttribute('aria-pressed')).toBe('true');
     h.unmount();
   });
 
   test('A6 🎬 导演开关：顶栏图标开关，点击发 camera.director，状态回显靠 core 广播', () => {
     const h = mountScreen();
-    const directorButton = h.host.querySelector('[data-topbar-item="director"]');
+    const directorButton = h.host.querySelector('[data-role="director"]');
     expect(directorButton).not.toBeNull();
 
     pressButton(directorButton);
@@ -279,7 +292,7 @@ describe('§4 A 组 · 顶栏 7 元素位（v3.4 task_089）', () => {
 
     // 真相在 core：广播 directorEnabled=true 后按钮才点亮。
     h.push(state({ directorEnabled: true }));
-    expect(h.host.querySelector('[data-topbar-item="director"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(h.host.querySelector('[data-role="director"]')?.getAttribute('aria-pressed')).toBe('true');
     h.unmount();
   });
 
@@ -857,7 +870,7 @@ describe('§4 E 组 · 命令与面板（v3.4 task_089 / 090）', () => {
     expect(h.host.querySelector(LOG_DRAWER_TAG)).not.toBeNull();
 
     // 演示模式：工程件隐藏（既不占画面也不订阅总线）。
-    pressButton(h.host.querySelector('[data-topbar-item="demo"]'));
+    pressButton(h.host.querySelector('[data-role="demo"]'));
     expect(demoMode.enabled).toBe(true);
     expect(h.host.querySelector(LOG_DRAWER_TAG)).toBeNull();
     h.unmount();

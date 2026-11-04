@@ -54,7 +54,7 @@ import {
   CONTROL_ISLAND_SIDE_INSET_PX,
   TOPBAR_METRICS,
 } from '../../core/theme/visual-spec';
-import type { WorldState } from '../../core/types';
+import type { MissionView, WorldState } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
 import type { GatewayLinkPort } from '../bridge/gateway-link-port';
 // 当日回放（@since v3.3，task_082）：底栏时间轴 scrubber（组件 + 控制器口径）。
@@ -83,7 +83,10 @@ import {
   writeSoundVolume,
 } from '../sound-engine';
 import { demoMode } from '../theme/demo-mode';
-import { defineStratButton, STRAT_BUTTON_TAG } from '../widgets/strat-button';
+// 排版字阶与截断规则（@since v3.8，task_137）：字阶 token 走皮肤层（theme-controller 注入），
+//   截断规则是文档级工具类（各表面共用同一份文案，见 theme/type-scale.ts）。
+import { TRUNCATE_CSS } from '../theme/type-scale';
+import { defineStratButton, escapeHtml, STRAT_BUTTON_TAG } from '../widgets/strat-button';
 
 import type { AppearancePreviewPort } from './appearance-preview-port';
 import { mountCharacterScreen } from './character-screen';
@@ -102,6 +105,32 @@ function resolveCurrentScreen(state: WorldState | null): CurrentScreen {
   const screen = state?.currentScreen ?? DEFAULT_SCREEN;
   // 'chat' 由 core/types 注释说明不由 currentScreen 承载；runtime 也不会写它进来 —— 落到 'main'。
   return screen === 'settings' || screen === 'character' ? screen : 'main';
+}
+
+/**
+ * 音量档位（@since v3.6，task_116）：点顶栏音量计 = 循环切到下一档。
+ * why 有档位而不是连续调：20×6px 的小条上连续调无从下手，循环档位是能被「点出来」的交互。
+ */
+export const VOLUME_PRESETS: readonly number[] = [0, 30, 70, 100];
+
+/**
+ * 下一档音量：找**严格大于**当前值的档位；没有（已到顶或超出）则回到静音档。
+ * @since v3.6，task_116
+ */
+export function nextVolumePreset(current: number): number {
+  for (const preset of VOLUME_PRESETS) {
+    if (preset > current) return preset;
+  }
+  return VOLUME_PRESETS[0] ?? 0;
+}
+
+/**
+ * 音量的文字标签：0 → 「静音」，其余 → 「N%」。
+ * why 单独抽：标题、aria-label、数值文本三处用同一口径，避免出现「静音 0%」这类自相矛盾。
+ * @since v3.6，task_116
+ */
+export function volumeLabel(volume: number): string {
+  return volume <= 0 ? '静音' : `${Math.round(volume)}%`;
 }
 
 /**
@@ -155,14 +184,47 @@ const MAIN_SCREEN_STYLE = `
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: var(--srf-spacing-md);
-    padding: var(--srf-spacing-xs) var(--srf-spacing-md);
+    gap: var(--srf-space-room);
+    padding: var(--srf-space-tight) var(--srf-space-room);
     background: var(--srf-panel-overlay);
     border-bottom: var(--srf-border-width) solid var(--srf-border);
     box-shadow: var(--srf-shadow);
     pointer-events: auto;
   }
-  .hud-brand { font-size: var(--srf-font-size-lg); font-weight: var(--srf-font-weight-bold); letter-spacing: 0.04em; white-space: nowrap; }
+  /* 品牌（@since v3.8，task_137）：降为**辅助级** —— 顶栏的视觉主角是「当前任务一句话」，
+     品牌退到第二梯队（辅助字号 + 弱化色），信息层级才立得住。 */
+  .hud-brand {
+    font-size: var(--srf-font-size-caption);
+    font-weight: var(--srf-font-weight-semibold);
+    letter-spacing: 0.08em;
+    color: var(--srf-text-muted);
+    white-space: nowrap;
+  }
+  /* 当前任务一句话（@since v3.8，task_137）：顶栏的**视觉主角** —— 标题级字号 + 单行截断。
+     why 放在品牌之后、态势之前：一眼看到的是「现在在干什么」，而不是「这是哪个产品 /
+     有几个单位」—— 那是评估 r1-r3 反复点的「顶栏信息密度偏高」的正解。 */
+  .hud-task {
+    display: flex;
+    align-items: baseline;
+    gap: var(--srf-space-tight);
+    flex: 1 1 auto;
+    /* 上限：任务标题不许吃掉态势胶囊与右侧操作区的位置（长标题靠截断收敛，不靠挤压别人）。 */
+    max-width: 48%;
+    min-width: 0;
+  }
+  .hud-task-kicker {
+    color: var(--srf-text-disabled);
+    font-size: var(--srf-font-size-caption);
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+  }
+  .hud-task-title {
+    color: var(--srf-text);
+    font-size: var(--srf-font-size-title);
+    line-height: var(--srf-line-height-title);
+    font-weight: var(--srf-font-weight-semibold);
+    min-width: 0;
+  }
   /* 态势胶囊（@since v3.4）：单位 / 任务 / 会话三值合一 —— Z1 只占一个元素位。 */
   .hud-capsule {
     display: flex;
@@ -173,13 +235,13 @@ const MAIN_SCREEN_STYLE = `
     border: var(--srf-border-width) solid var(--srf-border);
     background: var(--srf-panel);
     color: var(--srf-text-muted);
-    font-size: var(--srf-font-size-xs);
+    font-size: var(--srf-font-size-caption);
     white-space: nowrap;
   }
   .hud-capsule-item { display: inline-flex; align-items: baseline; gap: var(--srf-spacing-xxs); }
   .hud-capsule-value {
     color: var(--srf-text);
-    font-size: var(--srf-font-size-sm);
+    font-size: var(--srf-font-size-body);
     font-weight: var(--srf-font-weight-semibold);
     font-variant-numeric: tabular-nums;
   }
@@ -199,7 +261,7 @@ const MAIN_SCREEN_STYLE = `
     border-radius: var(--srf-radius-pill);
     background: var(--srf-danger);
     color: var(--srf-bg);
-    font-size: var(--srf-font-size-xs);
+    font-size: var(--srf-font-size-caption);
     font-weight: var(--srf-font-weight-semibold);
     line-height: 18px;
     text-align: center;
@@ -230,14 +292,28 @@ const MAIN_SCREEN_STYLE = `
   @starting-style {
     .hud-popover { opacity: 0; transform: translateY(-6px); }
   }
-  .hud-menu { right: 0; flex-direction: column; align-items: stretch; }
+  .hud-menu { right: 0; flex-direction: column; align-items: stretch; min-width: 200px; }
+  /* 菜单分组隔断（@since v3.8，task_137）：收纳项按「开关 / 导航」两段分组。 */
+  .hud-menu-divider { height: 1px; background: var(--srf-border); margin: var(--srf-space-xxs) 0; }
+  /* 声音段（@since v3.8，task_137）：音量滑条从「顶栏浮层」改成「菜单内行内展开」——
+     声音件已经收进 ⋯ 菜单，浮层再浮一层就是两层套娃。 */
+  .hud-menu .hud-sound-slot { width: 100%; }
+  .hud-menu .hud-sound-popover {
+    position: static;
+    padding: 0;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+  }
   .hud-popover-value { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); font-variant-numeric: tabular-nums; }
   /* 声音件（@since v3.4）：🔊 开关 + 音量计（音量层的入口，见 §4 A7/A8）。 */
   .hud-sound-slot { position: relative; display: flex; align-items: center; gap: var(--srf-spacing-xxs); }
   .hud-sound-popover { left: 0; }
   .hud-sound-level {
-    width: 20px;
-    height: 6px;
+    /* @since v3.6：20×6px 的小条看不出是音量、也不知道能点 ——
+       放大到 28×8px（顶栏高度不变，仍在一行内），并把 fill 做成可读的档位指示。 */
+    width: 28px;
+    height: 8px;
     padding: 0;
     border-radius: var(--srf-radius-pill);
     border: var(--srf-border-width) solid var(--srf-border);
@@ -353,35 +429,33 @@ const MAIN_SCREEN_STYLE = `
     .hud-bottom-bar { display: block; padding: var(--hud-gap); transform: none; }
     .hud-bottom-bar > .hud-surface { width: auto; height: auto; overflow: visible; }
   }
+  /* 统一截断规则（@since v3.8，task_137）：单行 ellipsis，完整文本由 title 属性兜底。 */
+${TRUNCATE_CSS}
 `;
 
 export const MAIN_SCREEN_TAG = 'strat-main-screen';
 
 /**
- * 顶栏可见元素位（@since v3.4，task_089；docs/hud-redesign-proposal.html §2.5 Z1 规格）。
+ * 顶栏可见元素位（@since v3.4，task_089；docs/hud-redesign-proposal.html §2.5 Z1 规格；
+ *   @since v3.8，task_137：**7 位 → 4 位**的减密度改版）。
  *
- * why 是一张显式清单而不是「数 DOM 节点」：验收口径是「顶栏可见元素 ≤7」，
- *   而顶栏内部本来就有子节点（胶囊里 3 个计数、弹出层里的 5 个菜单项）—— 不先定义
+ * why 是一张显式清单而不是「数 DOM 节点」：验收口径是「顶栏可见元素 ≤N」，
+ *   而顶栏内部本来就有子节点（胶囊里 3 个计数、弹出层里的 8 个菜单项）—— 不先定义
  *   「一个元素位 = 一个可见件」，这个数字就没法数、也没法回归。
  *   渲染时每个元素位都打 `data-topbar-item="<位名>"`，单测按这张清单逐位核对。
  *
- * 7 位（= Z1 规格封顶）：
- *   brand    品牌标识（§4 A1）
- *   capsule  态势胶囊：单位 / 任务 / 会话三值合一（§4 A2）
- *   badge    通知徽标（§4 A3，贴在胶囊右侧）
- *   sound    声音（音量滑条收进它的弹出层，§4 A7 / A8）
- *   director 导演（§4 A6）
- *   demo     演示（§4 A5）
- *   overflow 溢出菜单（收纳 5 项，§4 A4 / A9 / A10 / A11 / A12）
- *   （@since v3.6，task_121：四件按钮的图标已是 SVG —— 此处不再列 emoji 字形。）
+ * 4 位（@since v3.8，task_137 —— 视觉权重：当前任务一句话 > 战场态势 > 其余收纳）：
+ *   brand    品牌标识（§4 A1）—— 降为辅助级字号（不再是顶栏主角）
+ *   task     **当前任务一句话**（新增）—— 标题级字号，顶栏的视觉主角
+ *   capsule  态势胶囊：单位 / 任务 / 会话三值合一（§4 A2）+ 通知徽标（§4 A3，收进胶囊内）
+ *   overflow 溢出菜单（收纳 8 项：声音 / 导演 / 演示 + 聊天 / 会话 / 角色 / 设置 / 像素风）
+ *   why 从 7 位降到 4 位：声音 / 导演 / 演示是**低频开关**，常驻顶栏只是占位 ——
+ *     收进 ⋯ 菜单后功能一条不少（点亮即状态的语义不变），同屏可见元素数 7 → 4（-43%）。
  */
 export const TOPBAR_ITEM_ROLES = Object.freeze([
   'brand',
+  'task',
   'capsule',
-  'badge',
-  'sound',
-  'director',
-  'demo',
   'overflow',
 ] as const);
 
@@ -389,16 +463,40 @@ export const TOPBAR_ITEM_ROLES = Object.freeze([
 export type TopbarItemRole = (typeof TOPBAR_ITEM_ROLES)[number];
 
 /**
- * ⋯ 溢出菜单收纳的 5 项（@since v3.4，task_089；§4 功能对照表 A4 / A9 / A10 / A11 / A12）。
- *   why 是一张清单：功能零删减是本任务的硬验收（40/40），清单让"哪 5 项"可核对、可回归。
+ * ⋯ 溢出菜单收纳的项（@since v3.4，task_089；§4 功能对照表 A4 / A9 / A10 / A11 / A12；
+ *   @since v3.8，task_137：5 项 → 8 项 —— 声音 / 导演 / 演示三个低频开关也收进来）。
+ *   why 是一张清单：功能零删减是硬验收，清单让"哪几项"可核对、可回归。
  */
 export const TOPBAR_OVERFLOW_ROLES = Object.freeze([
+  'sound',
+  'director',
+  'demo',
   'chat',
   'sessions',
   'character',
   'settings',
   'theme',
 ] as const);
+
+/**
+ * 顶栏「当前任务一句话」的取词口径（@since v3.8，task_137）。
+ *
+ * why 要一个明确口径而不是「随便取一条」：顶栏的主角位只能有一条真相 ——
+ *   取「最近创建且**未终结**」的那条（running / pending / confirmed / draft 都算在跑）；
+ *   一条都没在跑时明说「暂无进行中的任务」（不拿已完成的旧任务冒充当前任务）。
+ *
+ * @param missions 世界态里的任务列表（core 保留最近 MAX_MISSIONS 条）。
+ * @returns 顶栏显示的一句话（空列表 → 明确的空态文案，不留空白）。
+ */
+export function currentTaskLine(missions: readonly MissionView[]): string {
+  const TERMINAL: readonly MissionView['phase'][] = ['done', 'cancelled'];
+  let active: MissionView | null = null;
+  for (const mission of missions) {
+    if (TERMINAL.includes(mission.phase)) continue;
+    if (!active || mission.createdAt >= active.createdAt) active = mission;
+  }
+  return active ? active.title : '暂无进行中的任务';
+}
 
 /**
  * 回放条槽位（@since v3.3，task_082）—— 本屏只认「一个控制器」，不认数据源。
@@ -466,7 +564,6 @@ export interface MainScreenOptions {
 /** 工厂：构造 main-screen 句柄；接受一个已建好的 bus-adapter（依赖注入）。 */
 export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOptions = {}): MainScreenHandle {
   defineStratButton();
-  let currentTheme: 'default' | 'pixel' = 'default';
 
   const renderTo = (host: HTMLElement): () => void => {
     let currentScreen: CurrentScreen = 'main';
@@ -476,6 +573,8 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
     let unmountMain: (() => void) | null = null;
     /** 演示模式订阅的退订闭包（演示开关变化 → 主屏布局重渲）。 */
     let unsubscribeDemo: (() => void) | null = null;
+    /** 皮肤订阅的退订闭包（皮肤变化 → ⋯ 菜单项回显）。 */
+    let unsubscribeTheme: (() => void) | null = null;
     /** core 订阅闭包（订阅 WorldState.currentScreen 变化）；只在 mount 期间存在。 */
     let unsubscribeState: (() => void) | null = null;
 
@@ -521,41 +620,49 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       // 声音包开关与音量（@since v3.3，task_083）：状态真源是 localStorage
       //   （hud/sound-engine.ts 每次播放现读）—— 顶栏只做读写与回显，不存第二份真相。
       const soundVolume = readSoundVolume();
+      const soundVolumeLabel = volumeLabel(soundVolume);
       // 皮肤开关的显示名（@since v3.4，task_089）：像素风收进 ⋯ 菜单后，菜单项自带当前皮肤名 ——
       //   不再另挂一个 theme-tag 文本（§4 A13：状态不写第二遍）。
-      const themeLabel = currentTheme === 'pixel' ? '像素' : '默认';
+      const themeLabel = adapter.themeId === 'pixel' ? '像素' : '默认';
+      // 顶栏主角位的一句话（@since v3.8，task_137）：初始取世界态最新快照，订阅后再刷新。
+      const initialTask = currentTaskLine(adapter.latest?.missions ?? []);
       rootEl.innerHTML = `
         <header class="hud-topbar" data-role="topbar">
           <span class="hud-brand" data-topbar-item="brand">Stratix</span>
+          <div class="hud-task" data-topbar-item="task" data-role="current-task">
+            <span class="hud-task-kicker">当前任务</span>
+            <span class="hud-task-title truncate" data-role="current-task-title" title="${escapeHtml(initialTask)}">${escapeHtml(initialTask)}</span>
+          </div>
           <div class="hud-capsule" data-topbar-item="capsule" data-role="status-capsule" title="单位 / 任务 / 会话">
             <span class="hud-capsule-item"><b class="hud-capsule-value" data-role="mission-count">0</b> 任务</span>
             <span class="hud-capsule-item"><b class="hud-capsule-value" data-role="unit-count">0</b> 单位</span>
             <span class="hud-capsule-item"><b class="hud-capsule-value" data-role="link-count">0</b> 会话</span>
+            <span class="hud-notice-badge" data-role="notice-badge" hidden title="待处理通知">0</span>
           </div>
-          <span class="hud-notice-badge" data-topbar-item="badge" data-role="notice-badge" hidden title="待处理通知">0</span>
           <div class="hud-actions">
-            <div class="hud-sound-slot" data-topbar-item="sound" data-role="sound-slot">
-              <${STRAT_BUTTON_TAG} icon="sound" variant="default" title="声音开关" aria-label="声音开关" data-role="sound"></${STRAT_BUTTON_TAG}>
-              <button class="hud-sound-level" type="button" data-role="sound-volume-open"
-                      title="音量（点击调节）" aria-label="音量">
-                <span class="hud-sound-level-fill" data-role="sound-level-fill"></span>
-              </button>
-              <div class="hud-popover hud-sound-popover" data-role="sound-popover" hidden>
-                <input class="hud-volume" type="range" min="0" max="100" step="5"
-                       value="${soundVolume}" data-role="sound-volume"
-                       aria-label="音效音量" title="音量 ${soundVolume}%">
-                <span class="hud-popover-value" data-role="sound-volume-value">${soundVolume}%</span>
-              </div>
-            </div>
-            <${STRAT_BUTTON_TAG} icon="director" variant="default" title="导演镜头" aria-label="导演镜头" data-topbar-item="director" data-role="director"></${STRAT_BUTTON_TAG}>
-            <${STRAT_BUTTON_TAG} icon="demo" variant="default" title="演示模式" aria-label="演示模式" data-topbar-item="demo" data-role="demo"></${STRAT_BUTTON_TAG}>
             <${STRAT_BUTTON_TAG} icon="more" variant="default" title="更多" aria-label="更多" data-topbar-item="overflow" data-role="overflow"></${STRAT_BUTTON_TAG}>
             <div class="hud-popover hud-menu" data-role="overflow-menu" hidden>
-              <${STRAT_BUTTON_TAG} icon="chat" label="打开聊天" variant="default" stretch data-role="chat"></${STRAT_BUTTON_TAG}>
-              <${STRAT_BUTTON_TAG} icon="sessions" label="会话面板" variant="default" stretch data-role="sessions"></${STRAT_BUTTON_TAG}>
-              <${STRAT_BUTTON_TAG} icon="character" label="看角色" variant="default" stretch data-role="character"></${STRAT_BUTTON_TAG}>
-              <${STRAT_BUTTON_TAG} icon="settings" label="去设置" variant="default" stretch data-role="settings"></${STRAT_BUTTON_TAG}>
-              <${STRAT_BUTTON_TAG} icon="palette" label="像素风 · ${themeLabel}" variant="default" stretch title="切换像素风" aria-label="切换像素风" aria-pressed="${currentTheme === 'pixel' ? 'true' : 'false'}" data-role="theme"></${STRAT_BUTTON_TAG}>
+              <div class="hud-sound-slot" data-role="sound-slot">
+                <${STRAT_BUTTON_TAG} icon="sound" label="声音" variant="default" stretch title="声音开关" aria-label="声音开关" data-role="sound" data-menu-item="sound"></${STRAT_BUTTON_TAG}>
+                <button class="hud-sound-level" type="button" data-role="sound-volume-open"
+                        title="音量 ${soundVolumeLabel}（点击切换档位）" aria-label="音量 ${soundVolumeLabel}">
+                  <span class="hud-sound-level-fill" data-role="sound-level-fill"></span>
+                </button>
+                <div class="hud-popover hud-sound-popover" data-role="sound-popover" hidden>
+                  <input class="hud-volume" type="range" min="0" max="100" step="5"
+                         value="${soundVolume}" data-role="sound-volume"
+                         aria-label="音效音量" title="音量 ${soundVolumeLabel}">
+                  <span class="hud-popover-value" data-role="sound-volume-value">${soundVolumeLabel}</span>
+                </div>
+              </div>
+              <${STRAT_BUTTON_TAG} icon="director" label="导演镜头" variant="default" stretch title="导演镜头" aria-label="导演镜头" data-role="director" data-menu-item="director"></${STRAT_BUTTON_TAG}>
+              <${STRAT_BUTTON_TAG} icon="demo" label="演示模式" variant="default" stretch title="演示模式" aria-label="演示模式" data-role="demo" data-menu-item="demo"></${STRAT_BUTTON_TAG}>
+              <div class="hud-menu-divider"></div>
+              <${STRAT_BUTTON_TAG} icon="chat" label="打开聊天" variant="default" stretch data-role="chat" data-menu-item="chat"></${STRAT_BUTTON_TAG}>
+              <${STRAT_BUTTON_TAG} icon="sessions" label="会话面板" variant="default" stretch data-role="sessions" data-menu-item="sessions"></${STRAT_BUTTON_TAG}>
+              <${STRAT_BUTTON_TAG} icon="character" label="看角色" variant="default" stretch data-role="character" data-menu-item="character"></${STRAT_BUTTON_TAG}>
+              <${STRAT_BUTTON_TAG} icon="settings" label="去设置" variant="default" stretch data-role="settings" data-menu-item="settings"></${STRAT_BUTTON_TAG}>
+              <${STRAT_BUTTON_TAG} icon="palette" label="像素风 · ${themeLabel}" variant="default" stretch title="切换像素风" aria-label="切换像素风" aria-pressed="${adapter.themeId === 'pixel' ? 'true' : 'false'}" data-role="theme" data-menu-item="theme"></${STRAT_BUTTON_TAG}>
             </div>
           </div>
         </header>
@@ -576,6 +683,9 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       const missionCounter = rootEl.querySelector('[data-role="mission-count"]');
       const linkCounter = rootEl.querySelector('[data-role="link-count"]');
       const noticeBadge = rootEl.querySelector<HTMLElement>('[data-role="notice-badge"]');
+      // 顶栏主角位：当前任务一句话（@since v3.8，task_137）—— 文本 + title 双写，
+      // 省略号截断后仍可悬停读到完整标题（截断规则的一半是"被截掉的内容还在"）。
+      const taskTitle = rootEl.querySelector<HTMLElement>('[data-role="current-task-title"]');
 
       /**
        * 开关态回显（@since v3.4，task_089）：**点亮即状态** —— 顶栏不再挂 on/off 文本标签
@@ -605,7 +715,8 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       const volumeValue = rootEl.querySelector<HTMLElement>('[data-role="sound-volume-value"]');
       const levelFill = rootEl.querySelector<HTMLElement>('[data-role="sound-level-fill"]');
       const soundPopover = rootEl.querySelector<HTMLElement>('[data-role="sound-popover"]');
-      /** 把当前开关 / 音量状态回显到顶栏（按钮点亮 + 滑条可用性 + 音量计 + 数值）。 */
+      const volumeOpenButton = rootEl.querySelector<HTMLElement>('[data-role="sound-volume-open"]');
+      /** 把当前开关 / 音量状态回显到顶栏（按钮点亮 + 滑条可用性 + 音量计 + 数值 + 标题）。 */
       const applySoundState = (): void => {
         const enabled = readSoundEnabled();
         applySwitchState(soundButton, enabled);
@@ -615,8 +726,16 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         soundButton?.setAttribute('icon', enabled ? 'sound' : 'sound-muted');
         if (volumeInput) volumeInput.disabled = !enabled;
         const volume = readSoundVolume();
+        const label = volumeLabel(volume);
         if (levelFill) levelFill.style.width = `${volume}%`;
-        if (volumeValue) volumeValue.textContent = `${volume}%`;
+        if (volumeValue) volumeValue.textContent = label;
+        // 标题同步（@since v3.6，task_116）：音量变了，title 必须跟着变 ——
+        //   否则点完还是「音量 70%」，正是死功能报告里「点了没反应」的观感来源。
+        if (volumeOpenButton) {
+          volumeOpenButton.title = `音量 ${label}（点击切换档位）`;
+          volumeOpenButton.setAttribute('aria-label', `音量 ${label}`);
+        }
+        if (volumeInput) volumeInput.title = `音量 ${label}`;
       };
       applySoundState();
 
@@ -647,22 +766,37 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       document.addEventListener('keydown', onDocumentKeydown);
 
       // 音量层的入口 = 声音件里的音量计（§4 A7：「点击旁边的音量区 = 弹出音量层」）。
-      const volumeOpenButton = rootEl.querySelector<HTMLElement>('[data-role="sound-volume-open"]');
+      // why 顺带循环档位（@since v3.6，task_116）：原实现点了只弹层、不改音量，
+      //   20×6px 的小条既看不出是音量也不知道能点 —— 现在点击 = 切到下一档
+      //   （静音/30/70/100）并同步标题，同时展开滑条供细调（老行为保留）。
       const onVolumeOpenClick = (): void => {
+        const next = nextVolumePreset(readSoundVolume());
+        writeSoundVolume(next);
         setPopover(soundPopover, true);
+        applySoundState();
       };
       volumeOpenButton?.addEventListener('click', onVolumeOpenClick);
 
-      const onThemeClick = (): void => {
-        const next = currentTheme === 'default' ? 'pixel' : 'default';
-        currentTheme = next;
-        adapter.dispatch({ type: 'theme.set', themeId: next });
-        // 菜单项自带当前皮肤名（@since v3.4，task_089）—— 不再另挂 theme-tag 文本。
+      /**
+       * 皮肤菜单项的回显（@since v3.6，task_115）：菜单项自带当前皮肤名（@since v3.4，task_089）。
+       * why 从 adapter 读而不是本屏存一份：皮肤真源是主题控制器（token + localStorage 记忆）——
+       *   本屏另存一份必然和「刷新后恢复的皮肤」对不上（那正是死功能报告里点不动的症状之一）。
+       */
+      const syncThemeButton = (): void => {
         const themeButton = rootEl.querySelector<HTMLElement>('[data-role="theme"]');
-        if (themeButton) {
-          themeButton.setAttribute('label', `像素风 · ${next === 'pixel' ? '像素' : '默认'}`);
-          themeButton.setAttribute('aria-pressed', next === 'pixel' ? 'true' : 'false');
-        }
+        if (!themeButton) return;
+        const themeId = adapter.themeId;
+        themeButton.setAttribute('label', `像素风 · ${themeId === 'pixel' ? '像素' : '默认'}`);
+        themeButton.setAttribute('aria-pressed', themeId === 'pixel' ? 'true' : 'false');
+      };
+
+      const onThemeClick = (): void => {
+        // 下一套皮肤 = 当前皮肤的对面（真源在 adapter，不在本屏）。
+        const next = adapter.themeId === 'default' ? 'pixel' : 'default';
+        adapter.dispatch({ type: 'theme.set', themeId: next });
+        // 回显由皮肤订阅统一驱动（dispatch → 落 token → 订阅回调 → 菜单项改名）；
+        // 这里再补一次是为了「派发即回显」，不等订阅那一拍。
+        syncThemeButton();
       };
       const onDemoClick = (): void => {
         // 演示模式是纯本地展示态：不发 HudCommand、不进总线（见 demo-mode.ts 文件头）。
@@ -690,10 +824,9 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         const value = Number.parseInt(volumeInput.value, 10);
         if (!Number.isFinite(value)) return;
         writeSoundVolume(value);
-        volumeInput.title = `音量 ${value}%`;
-        // 音量计与数值同步（@since v3.4，task_089）：拖条时顶栏立刻看出音量到哪了。
-        if (levelFill) levelFill.style.width = `${value}%`;
-        if (volumeValue) volumeValue.textContent = `${value}%`;
+        // 音量计、数值与标题同步（@since v3.4 task_089 / v3.6 task_116）：
+        //   拖条时顶栏立刻看出音量到哪了，标题也跟着变。
+        applySoundState();
       };
       volumeInput?.addEventListener('input', onVolumeInput);
       const onSettingsClick = (): void => {
@@ -805,12 +938,20 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       // 态势屏：同为纯展示区块（指标卡 / 系统状态 / 最近事件全由 WorldState 派生），
       // 复用同一个 adapter —— 它唯一的出口是导航 ui.navigate，不发任何业务命令。
       const statusHost = rootEl.querySelector<HTMLElement>('[data-role="status-screen"]');
-      const unmountStatus = statusHost ? mountStatusScreen(adapter, statusHost, options.gateway ?? null) : null;
+      const unmountStatus = statusHost
+        ? mountStatusScreen(adapter, statusHost, options.gateway ?? null)
+        : null;
 
       // 演示模式开关 → 主屏布局重渲（工程件显隐 + 顶栏标签同步）。
       // why 重渲而不是局部改：工程件可能出现在任何面板里，重渲一次最不容易漏。
       unsubscribeDemo?.();
       unsubscribeDemo = demoMode.subscribe(() => renderMain());
+
+      // 皮肤变化 → ⋯ 菜单项改名 / aria-pressed（@since v3.6，task_115）。
+      // why 订阅而不是各入口自己改：皮肤可能从设置页 / 底栏命令 / 本菜单三处任一处切，
+      //   菜单项只有一个真相来源（主题控制器）。
+      unsubscribeTheme?.();
+      unsubscribeTheme = adapter.subscribeTheme(() => syncThemeButton());
 
       const unsubscribe = adapter.subscribe((state) => {
         if (unitCounter) unitCounter.textContent = String(state.units.length);
@@ -820,6 +961,12 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
           const pending = state.notices.length;
           noticeBadge.textContent = String(pending);
           noticeBadge.hidden = pending === 0;
+        }
+        // 顶栏主角位刷新（@since v3.8，task_137）：当前任务一句话随世界态走。
+        if (taskTitle) {
+          const line = currentTaskLine(state.missions);
+          taskTitle.textContent = line;
+          taskTitle.setAttribute('title', line);
         }
         // 导演开关回显（task_081 / task_089）：点亮即状态 —— 读 core 广播的同一份真相，
         //   不再另写一份 on/off 文本。
@@ -837,6 +984,8 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         unsubscribe();
         unsubscribeDemo?.();
         unsubscribeDemo = null;
+        unsubscribeTheme?.();
+        unsubscribeTheme = null;
         unmountSession?.();
         unmountDrawer?.();
         unmountStatus?.();
@@ -881,6 +1030,10 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       // settings-screen 自带 topbar + 返回按钮 → ui.navigate(main)。
       const unmountSettings = mountSettingsScreen(adapter, shell.panel, {
         customAgents: options.customAgents ?? null,
+        // 遮挡控制器（@since v3.6，task_116）：设置页的危险区确认框复用 task_112 的
+        //   全屏弹窗模式（遮罩 + 居中面板 + ESC/点遮罩双关闭），需登记进遮挡栈 ——
+        //   否则 ESC 会把设置页一起关掉（栈顶即当前模态）。
+        occlusion: options.occlusion ?? null,
       });
       unmountSubScreen = () => {
         unmountSettings();
@@ -957,6 +1110,6 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
 
   return {
     mount: renderTo,
-    get currentThemeId() { return currentTheme; },
+    get currentThemeId() { return adapter.themeId; },
   };
 }

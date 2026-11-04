@@ -454,12 +454,12 @@ export function defineSessionPanel(): typeof HTMLElement {
             background-repeat: no-repeat;
             color: var(--srf-text);
             font-family: var(--srf-font-ui);
-            font-size: var(--srf-font-size-md);
-            line-height: var(--srf-line-height);
+            font-size: var(--srf-font-size-body);
+            line-height: var(--srf-line-height-body);
           }
           .head { display: flex; align-items: center; gap: var(--srf-spacing-sm); min-width: 0; }
-          .title { font-size: var(--srf-font-size-lg); font-weight: var(--srf-font-weight-semibold); }
-          .summary { flex: 1; color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+          .title { font-size: var(--srf-font-size-title); font-weight: var(--srf-font-weight-semibold); }
+          .summary { flex: 1; color: var(--srf-text-muted); font-size: var(--srf-font-size-caption); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
           button.chip {
             flex: none;
             padding: var(--srf-spacing-xs) var(--srf-spacing-sm);
@@ -468,7 +468,7 @@ export function defineSessionPanel(): typeof HTMLElement {
             border: var(--srf-border-width) solid var(--srf-border);
             border-radius: var(--srf-radius);
             font-family: var(--srf-font-ui);
-            font-size: var(--srf-font-size-xs);
+            font-size: var(--srf-font-size-caption);
             cursor: pointer;
             transition: color var(--srf-transition), background var(--srf-transition), border-color var(--srf-transition);
           }
@@ -481,7 +481,7 @@ export function defineSessionPanel(): typeof HTMLElement {
             margin-left: auto;
             align-self: center;
             padding: var(--srf-spacing-xxs) var(--srf-spacing-xs);
-            font-size: var(--srf-font-size-xs);
+            font-size: var(--srf-font-size-caption);
             color: var(--srf-accent);
             border-color: var(--srf-accent);
           }
@@ -527,14 +527,14 @@ export function defineSessionPanel(): typeof HTMLElement {
             border: none;
             color: inherit;
             font-family: var(--srf-font-ui);
-            font-size: var(--srf-font-size-sm);
+            font-size: var(--srf-font-size-body);
             text-align: left;
             cursor: pointer;
           }
           .row-main:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
           .row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-          .row-meta { grid-column: 1 / -1; color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); }
-          .badge { padding: var(--srf-spacing-xxs) var(--srf-spacing-xs); border: var(--srf-border-width) solid var(--srf-border-strong); border-radius: var(--srf-radius-pill); font-size: var(--srf-font-size-xs); white-space: nowrap; }
+          .row-meta { grid-column: 1 / -1; color: var(--srf-text-muted); font-size: var(--srf-font-size-caption); }
+          .badge { padding: var(--srf-spacing-xxs) var(--srf-spacing-xs); border: var(--srf-border-width) solid var(--srf-border-strong); border-radius: var(--srf-radius-pill); font-size: var(--srf-font-size-caption); white-space: nowrap; }
           .badge[data-kind="character_chat"] { color: var(--srf-accent); border-color: var(--srf-accent); }
           .badge[data-kind="peer_chat"] { color: var(--srf-success); border-color: var(--srf-success); }
           .badge[data-kind="task_run"] { color: var(--srf-badge-accent, var(--srf-accent)); border-color: var(--srf-border-strong); }
@@ -544,7 +544,7 @@ export function defineSessionPanel(): typeof HTMLElement {
           .badge.status[data-status="idle"] { color: var(--srf-text-muted); }
           .badge.status[data-status="interrupted"] { color: var(--srf-warn); border-color: var(--srf-warn); }
           .badge.status[data-status="closed"] { color: var(--srf-text-disabled); }
-          .row-hint { grid-column: 1 / -1; color: var(--srf-warn); font-size: var(--srf-font-size-xs); }
+          .row-hint { grid-column: 1 / -1; color: var(--srf-warn); font-size: var(--srf-font-size-caption); }
           button.interrupt {
             grid-column: 2;
             padding: var(--srf-spacing-xxs) var(--srf-spacing-xs);
@@ -553,7 +553,7 @@ export function defineSessionPanel(): typeof HTMLElement {
             border: var(--srf-border-width) solid var(--srf-danger);
             border-radius: var(--srf-radius);
             font-family: var(--srf-font-ui);
-            font-size: var(--srf-font-size-xs);
+            font-size: var(--srf-font-size-caption);
             cursor: pointer;
           }
           button.interrupt:hover { background: var(--srf-danger); color: var(--srf-bg); }
@@ -566,7 +566,7 @@ export function defineSessionPanel(): typeof HTMLElement {
             border: var(--srf-border-width) solid var(--srf-success);
             border-radius: var(--srf-radius);
             font-family: var(--srf-font-ui);
-            font-size: var(--srf-font-size-xs);
+            font-size: var(--srf-font-size-caption);
             cursor: pointer;
           }
           button.resume:hover { background: var(--srf-success); color: var(--srf-bg); }
@@ -581,18 +581,18 @@ export function defineSessionPanel(): typeof HTMLElement {
             background: var(--srf-panel-elevated);
           }
           .drawer-head { display: flex; align-items: center; gap: var(--srf-spacing-xs); min-width: 0; }
-          .drawer-title { flex: 1; font-size: var(--srf-font-size-sm); font-weight: var(--srf-font-weight-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+          .drawer-title { flex: 1; font-size: var(--srf-font-size-body); font-weight: var(--srf-font-weight-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
           .drawer-body { display: grid; gap: var(--srf-spacing-xxs); max-height: 14em; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--srf-border-strong) transparent; }
           .drawer-body::-webkit-scrollbar { width: var(--srf-spacing-sm); }
           .drawer-body::-webkit-scrollbar-thumb { background: var(--srf-border-strong); border-radius: var(--srf-radius-pill); }
           .entry { display: grid; gap: var(--srf-spacing-xxs); padding: var(--srf-spacing-xxs); border-radius: var(--srf-radius); background: var(--srf-panel); }
           .entry-head { display: flex; gap: var(--srf-spacing-xs); align-items: baseline; }
-          .entry-author { font-size: var(--srf-font-size-xs); font-weight: var(--srf-font-weight-semibold); }
-          .entry-time { color: var(--srf-text-disabled); font-size: var(--srf-font-size-xs); font-family: var(--srf-font-mono); }
-          .entry-text { font-size: var(--srf-font-size-xs); white-space: pre-wrap; word-break: break-word; }
+          .entry-author { font-size: var(--srf-font-size-caption); font-weight: var(--srf-font-weight-semibold); }
+          .entry-time { color: var(--srf-text-disabled); font-size: var(--srf-font-size-caption); font-family: var(--srf-font-mono); }
+          .entry-text { font-size: var(--srf-font-size-caption); white-space: pre-wrap; word-break: break-word; }
           .entry[data-tone="warn"] .entry-text { color: var(--srf-warn); }
           .entry[data-tone="error"] .entry-text { color: var(--srf-danger); }
-          .drawer-note { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); text-align: center; padding: var(--srf-spacing-xs); }
+          .drawer-note { color: var(--srf-text-muted); font-size: var(--srf-font-size-caption); text-align: center; padding: var(--srf-spacing-xs); }
         </style>
         <div class="panel" part="panel">
           <div class="head">

@@ -286,13 +286,13 @@ export function defineStatusScreen(): typeof HTMLElement {
             border-radius: var(--srf-radius);
             color: var(--srf-text);
             font-family: var(--srf-font-ui);
-            font-size: var(--srf-font-size-md);
-            line-height: var(--srf-line-height);
+            font-size: var(--srf-font-size-body);
+            line-height: var(--srf-line-height-body);
           }
           .head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--srf-spacing-sm); }
-          .title { font-size: var(--srf-font-size-lg); font-weight: var(--srf-font-weight-semibold); }
+          .title { font-size: var(--srf-font-size-title); font-weight: var(--srf-font-weight-semibold); }
           .nav { display: flex; gap: var(--srf-spacing-xs); }
-          .section-name { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); font-weight: var(--srf-font-weight-semibold); letter-spacing: 0.04em; }
+          .section-name { color: var(--srf-text-muted); font-size: var(--srf-font-size-caption); font-weight: var(--srf-font-weight-semibold); letter-spacing: 0.04em; }
           .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(9em, 1fr)); gap: var(--srf-spacing-sm); }
           .metric {
             display: grid;
@@ -302,9 +302,9 @@ export function defineStatusScreen(): typeof HTMLElement {
             border: var(--srf-border-width) solid var(--srf-border);
             border-radius: var(--srf-radius);
           }
-          .metric-label { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); }
-          .metric-value { font-size: var(--srf-font-size-lg); font-weight: var(--srf-font-weight-semibold); font-variant-numeric: tabular-nums; }
-          .metric-hint { color: var(--srf-text-disabled); font-size: var(--srf-font-size-xs); overflow-wrap: anywhere; }
+          .metric-label { color: var(--srf-text-muted); font-size: var(--srf-font-size-caption); }
+          .metric-value { font-size: var(--srf-font-size-body); font-weight: var(--srf-font-weight-semibold); font-variant-numeric: tabular-nums; }
+          .metric-hint { color: var(--srf-text-disabled); font-size: var(--srf-font-size-caption); overflow-wrap: anywhere; }
           .metric[data-tone="busy"] .metric-value { color: var(--srf-accent); }
           .system, .events { display: grid; gap: var(--srf-spacing-xxs); }
           .sys-row, .event {
@@ -314,7 +314,7 @@ export function defineStatusScreen(): typeof HTMLElement {
             padding: var(--srf-spacing-xs);
             background: var(--srf-panel-elevated);
             border-radius: var(--srf-radius);
-            font-size: var(--srf-font-size-xs);
+            font-size: var(--srf-font-size-caption);
           }
           .sys-row { grid-template-columns: 6em 5em 1fr; }
           .sys-name { color: var(--srf-text-muted); }
@@ -336,7 +336,7 @@ export function defineStatusScreen(): typeof HTMLElement {
           .event-source { color: var(--srf-text-muted); overflow-wrap: anywhere; }
           .event-text { overflow-wrap: anywhere; }
           .empty { color: var(--srf-text-muted); font-size: var(--srf-font-size-sm); padding: var(--srf-spacing-md); text-align: center; }
-          .truncated { color: var(--srf-warn); font-size: var(--srf-font-size-xs); }
+          .truncated { color: var(--srf-warn); font-size: var(--srf-font-size-caption); }
         </style>
         <div class="screen" part="screen">
           <div class="head">

@@ -33,6 +33,8 @@ function stubThemeController(): ThemeController {
   return {
     apply: (_id: ThemeId) => undefined,
     get current(): ThemeId | null { return null; },
+    // 皮肤订阅（@since task_115）：路由测试用不到皮肤变化，订阅给个空实现。
+    subscribe: () => () => undefined,
   };
 }
 
@@ -507,6 +509,77 @@ describe('声音包：顶栏总开关与音量', () => {
 });
 
 // ============================================================================
+// 8b. 音量计点击循环档位（@since v3.6，task_116）：死功能 #5 的修法 ——
+//     20×6px 的音量计点了永远停在「音量 70%」，现在点击 = 切下一档（静音/30/70/100），
+//     标题与数值同步（真源是 localStorage，声音引擎每次播放现读 → 立即联动）。
+// ============================================================================
+
+describe('音量计：点击循环档位 + 标题同步（task_116）', () => {
+  afterEach(() => {
+    window.localStorage.clear();
+  });
+
+  /** 顶栏音量计（🔊 旁的小条）。 */
+  const bar = (h: Harness): HTMLElement | null =>
+    h.host.querySelector('[data-role="sound-volume-open"]');
+
+  test('缺省 70 → 点一下切到 100（下一档）+ 标题/数值/音量计三处同步', () => {
+    const h = mountHarness(makeState());
+    expect(bar(h)?.title).toBe('音量 70%（点击切换档位）');
+
+    bar(h)?.click();
+
+    expect(window.localStorage.getItem('stratix.sound.volume')).toBe('100');
+    expect(bar(h)?.title).toBe('音量 100%（点击切换档位）');
+    expect(bar(h)?.getAttribute('aria-label')).toBe('音量 100%');
+    expect(h.host.querySelector<HTMLElement>('[data-role="sound-level-fill"]')?.style.width).toBe('100%');
+    expect(h.host.querySelector('[data-role="sound-volume-value"]')?.textContent).toBe('100%');
+    h.unmount();
+  });
+
+  test('循环一圈：70 → 100 → 静音 → 30 → 70', () => {
+    const h = mountHarness(makeState());
+    const seen: string[] = [];
+    for (let i = 0; i < 4; i += 1) {
+      bar(h)?.click();
+      seen.push(window.localStorage.getItem('stratix.sound.volume') ?? '');
+    }
+    expect(seen).toEqual(['100', '0', '30', '70']);
+    h.unmount();
+  });
+
+  test('档位 0 = 静音：标题写「静音」而不是「0%」', () => {
+    const h = mountHarness(makeState());
+    bar(h)?.click(); // 100
+    bar(h)?.click(); // 0 = 静音
+    expect(window.localStorage.getItem('stratix.sound.volume')).toBe('0');
+    expect(bar(h)?.title).toBe('音量 静音（点击切换档位）');
+    expect(h.host.querySelector('[data-role="sound-volume-value"]')?.textContent).toBe('静音');
+    h.unmount();
+  });
+
+  test('拖滑条后标题跟着新值走（即拖即写 + 标题同步）', () => {
+    const h = mountHarness(makeState());
+    const slider = h.host.querySelector<HTMLInputElement>('[data-role="sound-volume"]');
+    if (!slider) throw new Error('音量滑条未渲染');
+    slider.value = '35';
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(window.localStorage.getItem('stratix.sound.volume')).toBe('35');
+    expect(bar(h)?.title).toBe('音量 35%（点击切换档位）');
+    h.unmount();
+  });
+
+  test('点音量计同时展开滑条弹出层（老行为保留：档位切换后还能细调）', () => {
+    const h = mountHarness(makeState());
+    const popover = h.host.querySelector<HTMLElement>('[data-role="sound-popover"]');
+    expect(popover?.hidden).toBe(true);
+    bar(h)?.click();
+    expect(popover?.hidden).toBe(false);
+    h.unmount();
+  });
+});
+
+// ============================================================================
 // 9. Z1 顶栏瘦身（@since v3.4，task_089；docs/hud-redesign-proposal.html §2.5 / §4）
 //   验收：顶栏可见元素 ≤7 / 音量在 🔊 弹层可调 / ⋯ 收纳 5 项全部可达 /
 //        开关点亮即状态（无重复文本）。
@@ -518,7 +591,7 @@ describe('Z1 顶栏瘦身：19 元素降 7', () => {
     demoMode.set(false);
   });
 
-  test('顶栏可见元素 ≤7，且与 TOPBAR_ITEM_ROLES 逐位对上', () => {
+  test('顶栏可见元素 ≤4（task_137 减密度），且与 TOPBAR_ITEM_ROLES 逐位对上', () => {
     const h = mountHarness(makeState());
     const topbar = h.host.querySelector<HTMLElement>('.hud-topbar');
     expect(topbar).not.toBeNull();
@@ -554,7 +627,7 @@ describe('Z1 顶栏瘦身：19 元素降 7', () => {
     h.unmount();
   });
 
-  test('⋯ 溢出菜单收纳 5 项：默认收起，展开后 5 项全在', () => {
+  test('⋯ 溢出菜单收纳 8 项（含收进来的声音 / 导演 / 演示）：默认收起，展开后全在', () => {
     const h = mountHarness(makeState());
     const menu = h.host.querySelector<HTMLElement>('[data-role="overflow-menu"]');
     expect(menu?.hidden).toBe(true);
@@ -563,9 +636,10 @@ describe('Z1 顶栏瘦身：19 元素降 7', () => {
       ?.dispatchEvent(new CustomEvent('strat-button-click', { bubbles: true }));
     expect(h.host.querySelector<HTMLElement>('[data-role="overflow-menu"]')?.hidden).toBe(false);
 
+    // 只数「菜单项位」（data-menu-item）—— 声音段里的滑条等子控件不算独立菜单项。
     const roles = Array.from(
-      h.host.querySelectorAll<HTMLElement>('[data-role="overflow-menu"] [data-role]'),
-    ).map((el) => el.getAttribute('data-role'));
+      h.host.querySelectorAll<HTMLElement>('[data-role="overflow-menu"] [data-menu-item]'),
+    ).map((el) => el.getAttribute('data-menu-item'));
     expect(roles).toEqual([...TOPBAR_OVERFLOW_ROLES]);
     expect(roles.length).toBe(TOPBAR_METRICS.overflowItemCount);
     h.unmount();

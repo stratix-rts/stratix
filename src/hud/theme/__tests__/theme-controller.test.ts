@@ -57,11 +57,20 @@ describe('createThemeController', () => {
     expect(records.map((r) => r.id)).toEqual(['srf-theme-default', 'srf-theme-pixel']);
   });
 
-  test('注入内容与源文件一致（确保 import 生效）', () => {
+  test('注入内容含源文件全文 + 对应皮肤的排版字阶（task_137）', () => {
     const { inject, getNode } = makeRecorder();
     createThemeController({ inject, sources: SOURCES });
-    expect(getNode('srf-theme-default').css).toBe(defaultCss);
-    expect(getNode('srf-theme-pixel').css).toBe(pixelCss);
+    // 皮肤 token 表（颜色 / 形状）原文必须完整保留 —— 字阶是**追加**的一层，不是替换。
+    expect(getNode('srf-theme-default').css).toContain(defaultCss);
+    expect(getNode('srf-theme-pixel').css).toContain(pixelCss);
+    // 现代皮 = 现代字阶（18 / 14 / 12）
+    expect(getNode('srf-theme-default').css).toContain('--srf-font-size-title: 18px');
+    expect(getNode('srf-theme-default').css).toContain('--srf-font-size-body: 14px');
+    expect(getNode('srf-theme-default').css).toContain('--srf-font-size-caption: 12px');
+    // 像素皮 = 整体 +1px 的那套（像素网格对齐）
+    expect(getNode('srf-theme-pixel').css).toContain('--srf-font-size-title: 19px');
+    expect(getNode('srf-theme-pixel').css).toContain('--srf-font-size-body: 15px');
+    expect(getNode('srf-theme-pixel').css).toContain('--srf-font-size-caption: 13px');
   });
 
   test('无 initial 时两套样式均 disable，等待首次 apply', () => {

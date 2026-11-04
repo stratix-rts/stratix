@@ -210,24 +210,29 @@ describe('顶栏：emoji → SVG 图标（@since v3.6，task_121）', () => {
     expect(found).toEqual([]);
   });
 
-  test('顶栏四件按钮（声音 / 导演 / 演示 / 更多）都是 inline SVG 图标', () => {
-    for (const role of ['sound', 'director', 'demo', 'overflow']) {
+  test('顶栏按钮（更多 = 纯图标；声音 / 导演 / 演示已收进 ⋯ 菜单）都是 inline SVG 图标', () => {
+    // ⋯ 按钮仍是顶栏上的纯图标钮：没有可见文字（可访问名由 aria-label 给）。
+    const overflow = host.querySelector<HTMLElement>('[data-role="overflow"]');
+    expect(overflow).not.toBeNull();
+    expect(overflow?.shadowRoot?.querySelector('svg.srf-icon')).not.toBeNull();
+    expect(overflow?.getAttribute('label')).toBeNull();
+    expect(overflow?.getAttribute('aria-label')).toBeTruthy();
+
+    // @since v3.8（task_137）：声音 / 导演 / 演示收进 ⋯ 菜单 → 变成「图标 + 文字」的菜单项。
+    for (const role of ['sound', 'director', 'demo']) {
       const btn = host.querySelector<HTMLElement>(`[data-role="${role}"]`);
       expect(btn).not.toBeNull();
-      const svg = btn?.shadowRoot?.querySelector('svg.srf-icon');
-      expect(svg).not.toBeNull();
-      expect(svg?.getAttribute('stroke')).toBe('currentColor');
-      // 纯图标钮：没有可见文字（可访问名由 aria-label 给）。
-      expect(btn?.getAttribute('label')).toBeNull();
-      expect(btn?.getAttribute('aria-label')).toBeTruthy();
+      expect(btn?.shadowRoot?.querySelector('svg.srf-icon')).not.toBeNull();
+      expect(btn?.getAttribute('label')).toBeTruthy();
     }
   });
 
-  test('溢出菜单五项：图标 + 文字（文字没丢，只是多了图标）', () => {
+  test('溢出菜单八项：图标 + 文字（文字没丢，只是多了图标）', () => {
     const menu = host.querySelector('[data-role="overflow-menu"]');
     expect(menu).not.toBeNull();
-    const items = Array.from(menu!.querySelectorAll<HTMLElement>('[data-role]'));
-    expect(items).toHaveLength(5);
+    // 只数菜单项位（data-menu-item）—— 声音段里的滑条等子控件不是菜单项。
+    const items = Array.from(menu!.querySelectorAll<HTMLElement>('[data-menu-item]'));
+    expect(items).toHaveLength(8);
     for (const item of items) {
       expect(item.shadowRoot?.querySelector('svg.srf-icon')).not.toBeNull();
       expect(item.getAttribute('label')).toBeTruthy();

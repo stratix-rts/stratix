@@ -512,8 +512,8 @@ export function defineSettingsScreen(): typeof HTMLElement {
             background: var(--srf-bg);
             color: var(--srf-text);
             font-family: var(--srf-font-ui);
-            font-size: var(--srf-font-size-md);
-            line-height: var(--srf-line-height);
+            font-size: var(--srf-font-size-body);
+            line-height: var(--srf-line-height-body);
           }
           .topbar {
             display: flex;
@@ -524,7 +524,7 @@ export function defineSettingsScreen(): typeof HTMLElement {
             background: var(--srf-panel);
             border-bottom: var(--srf-border-width) solid var(--srf-border);
           }
-          .title { font-size: var(--srf-font-size-lg); font-weight: var(--srf-font-weight-semibold); }
+          .title { font-size: var(--srf-font-size-title); font-weight: var(--srf-font-weight-semibold); }
           .body {
             display: grid;
             gap: var(--srf-spacing-lg);
@@ -549,7 +549,7 @@ export function defineSettingsScreen(): typeof HTMLElement {
             border: var(--srf-border-width) solid var(--srf-border);
             border-radius: var(--srf-radius);
           }
-          .group-name { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); font-weight: var(--srf-font-weight-semibold); letter-spacing: 0.04em; }
+          .group-name { color: var(--srf-text-muted); font-size: var(--srf-font-size-caption); font-weight: var(--srf-font-weight-semibold); letter-spacing: 0.04em; }
           .group[data-group="danger"] { border-color: var(--srf-danger); }
           .row {
             display: grid;
@@ -563,7 +563,7 @@ export function defineSettingsScreen(): typeof HTMLElement {
           }
           .row-text { display: grid; gap: var(--srf-spacing-xs); min-width: 0; }
           .row-label { font-weight: var(--srf-font-weight-semibold); }
-          .row-hint { color: var(--srf-text-muted); font-size: var(--srf-font-size-sm); }
+          .row-hint { color: var(--srf-text-muted); font-size: var(--srf-font-size-caption); }
           .row-ctl { display: flex; align-items: center; gap: var(--srf-spacing-sm); }
           button.ctl {
             padding: var(--srf-spacing-xs) var(--srf-spacing-md);
@@ -572,7 +572,7 @@ export function defineSettingsScreen(): typeof HTMLElement {
             border: var(--srf-border-width) solid var(--srf-border-strong);
             border-radius: var(--srf-radius);
             font-family: var(--srf-font-ui);
-            font-size: var(--srf-font-size-sm);
+            font-size: var(--srf-font-size-body);
             cursor: pointer;
             transition: color var(--srf-transition), background var(--srf-transition), border-color var(--srf-transition);
           }
@@ -591,7 +591,7 @@ export function defineSettingsScreen(): typeof HTMLElement {
             color: var(--srf-text-muted);
             border: var(--srf-border-width) solid var(--srf-border);
             border-radius: var(--srf-radius);
-            font-size: var(--srf-font-size-sm);
+            font-size: var(--srf-font-size-body);
           }
           /* 危险区确认框（@since v3.6）：全屏遮罩 + 居中面板 —— 与 
              新建任务对话框同一模式（R1 模态 + R4 双关闭途径）。
@@ -619,8 +619,8 @@ export function defineSettingsScreen(): typeof HTMLElement {
             border-radius: var(--srf-radius);
             box-shadow: var(--srf-shadow-lg);
           }
-          .confirm-title { font-size: var(--srf-font-size-lg); font-weight: var(--srf-font-weight-semibold); }
-          .confirm-hint { color: var(--srf-text-muted); font-size: var(--srf-font-size-sm); }
+          .confirm-title { font-size: var(--srf-font-size-title); font-weight: var(--srf-font-weight-semibold); }
+          .confirm-hint { color: var(--srf-text-muted); font-size: var(--srf-font-size-caption); }
           .confirm-actions { display: flex; justify-content: flex-end; gap: var(--srf-spacing-sm); }
         </style>
         <div class="screen" part="screen">

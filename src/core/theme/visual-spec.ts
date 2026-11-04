@@ -168,10 +168,18 @@ export const HUD_LAYER_METRICS = Object.freeze({
 export const TOPBAR_METRICS = Object.freeze({
   /** 顶栏高度（px）—— Z1 规格「顶 0，全宽，高 40px」。 */
   heightPx: 40,
-  /** 顶栏可见元素上限（个）—— Z1 规格「7 元素封顶」。 */
-  maxVisibleItems: 7,
-  /** ⋯ 溢出菜单收纳项数（个）—— Z1 规格「⋯ 收纳 5 项」（§4 的 A4 / A9 / A10 / A11 / A12）。 */
-  overflowItemCount: 5,
+  /**
+   * 顶栏可见元素上限（个）—— @since v3.8（task_137）由 7 收到 4。
+   * why 收紧：评估 r1-r3 反复点「顶栏信息密度偏高」。低频开关（声音 / 导演 / 演示）
+   *   收进 ⋯ 菜单后，**功能零删减**，但同屏可见元素位 7 → 4（-43%）。
+   */
+  maxVisibleItems: 4,
+  /**
+   * ⋯ 溢出菜单收纳项数（个）—— @since v3.8（task_137）由 5 增到 8。
+   * why 增：多出来的 3 项正是从顶栏收进来的低频开关（声音 / 导演 / 演示）——
+   *   收纳 ≠ 删减（这是"功能零丢失"的实现方式）。
+   */
+  overflowItemCount: 8,
 });
 
 /** 尺寸 / 时长 / easing 规范（DEMO-PLAN §1「尺寸/时长规范」）。 */
