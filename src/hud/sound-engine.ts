@@ -256,6 +256,32 @@ export function readSoundEnabled(storage: SoundStorage | null = defaultStorage()
   }
 }
 
+/**
+ * 声音偏好变化事件名（@since v3.8，task_139）。
+ * why 需要它：总开关与音量**共用一把闸**（同一对 localStorage 键），但**有两处 UI** 读它 ——
+ *   顶栏的声音钮（⋯ 菜单里）与设置页的「音效」行。以前两处各写各的：设置页改了，
+ *   顶栏图标不动（aria-pressed 还停在旧值）—— 看着像"开关没生效"。
+ * ⇒ 写完键就广播一声，两处 UI 各自重读同一把闸（真源仍是 localStorage，不是事件里的载荷）。
+ */
+export const SOUND_CHANGED_EVENT = 'stratix:sound-changed';
+
+/** 广播"声音偏好变了"。写完 localStorage 后调（订阅方自己重读真源）。 */
+export function notifySoundChanged(): void {
+  try {
+    const target = globalThis as unknown as EventTarget;
+    target.dispatchEvent(new CustomEvent(SOUND_CHANGED_EVENT));
+  } catch {
+    // 无 DOM 环境（node 单测）→ 没有订阅方，忽略。
+  }
+}
+
+/** 订阅声音偏好变化；返回退订闭包（perf 铁律：监听器必须能摘）。 */
+export function subscribeSoundChanges(listener: () => void): () => void {
+  const target = globalThis as unknown as EventTarget;
+  target.addEventListener(SOUND_CHANGED_EVENT, listener);
+  return () => target.removeEventListener(SOUND_CHANGED_EVENT, listener);
+}
+
 /** 写总开关（顶栏 toggle 用）；写失败不抛（隐私模式下次读回落缺省开）。 */
 export function writeSoundEnabled(enabled: boolean, storage: SoundStorage | null = defaultStorage()): void {
   try {
@@ -263,6 +289,7 @@ export function writeSoundEnabled(enabled: boolean, storage: SoundStorage | null
   } catch {
     // 写不进去就算了：音效缺省开，可用性不受影响。
   }
+  notifySoundChanged();
 }
 
 /** 读音量（0-100）：非法值 / 缺键 / 异常回落缺省音量；越界钳回 [0, volumeMax]。 */
@@ -293,6 +320,7 @@ export function writeSoundVolume(volume: number, storage: SoundStorage | null = 
   } catch {
     // 同 writeSoundEnabled：写丢弃。
   }
+  notifySoundChanged();
 }
 
 // ============================================================================

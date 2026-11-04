@@ -79,7 +79,7 @@ export const CLI_COMMANDS: readonly CliCommandSpec[] = Object.freeze([
     name: 'replay',
     aliases: ['回放'],
     usage: 'replay',
-    summary: '回放今天（网关没连上会给出重试指引）',
+    summary: '回放今天（服务没连上会给出重试指引）',
   },
   {
     id: 'help',

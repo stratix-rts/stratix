@@ -105,6 +105,10 @@ import type { DetectedAgent, HudCommand, Point, WorldEvent } from '../../core/ty
 import { createHudBusAdapter } from '../../hud/bridge/bus-adapter';
 // 模式状态条（@since v3.6，task_117）：演示模式 / 导演镜头的全局指示（开着的是什么 + 怎么关）。
 import { mountModeStrip, type ModeStripDirectorPort } from '../../hud/components/mode-strip/mode-strip';
+// 轻引导三步（@since v3.8，task_139）：首开时指一下「从哪开始」（命令行 → 建角色 → 看态势）。
+// 与首启向导分工：向导管建档流程，本组件管三句话指路（两层叠着会互相挡 —— 下面等向导走完）。
+import { mountOnboardingTour } from '../../hud/components/onboarding-tour/onboarding-tour';
+import { ONBOARDING_TOUR_STEPS } from '../../hud/components/onboarding-tour/onboarding-tour-catalog';
 // 信息三层级（@since v3.4，task_096）：HUD 侧层级状态机 + 三档演示开关。
 //   视觉口径与分区映射在 hud/layers/info-layer.ts；真相在 core（WorldState.infoLayer）。
 import { createInfoLayerController } from '../../hud/layers/info-layer';
@@ -1079,6 +1083,22 @@ async function boot(): Promise<void> {
     },
   });
 
+  // ===== 轻引导三步（@since v3.8，task_139）=====
+  // 首开指路：命令行 → 建角色 → 看态势。走完 / 跳过都写一次性标记（组件自己管）。
+  // why 要等首启向导（重流程那套）走完再上：两层都是全屏覆盖，叠着会互相挡 ——
+  //   向导在时轮询等它消失，最多等 15 秒（超时也上，别让引导永远等不到）。
+  const tour = mountOnboardingTour(hudRoot, { steps: ONBOARDING_TOUR_STEPS });
+  let tourWaitTicks = 0;
+  let tourTimer: number | null = window.setTimeout(function waitForWizard(): void {
+    tourTimer = null;
+    if (document.querySelector('strat-onboarding-screen') && tourWaitTicks < 30) {
+      tourWaitTicks += 1;
+      tourTimer = window.setTimeout(waitForWizard, 500);
+      return;
+    }
+    tour.start();
+  }, 800);
+
   // ===== 启动恢复（@since v3.12，task_033）=====
   // 读档必须先于 Phaser 创建：站位种子要在 preBoot 前就绪，恢复的单位也要赶在
   // 首次 state 广播前进 store（否则场景先按网格落位、后到注入，同一单位出现两次落位事件）。
@@ -1399,6 +1419,12 @@ async function boot(): Promise<void> {
       unmountMinimap();
       // 战场空态覆盖层（task_136）：退总线订阅 + 卸覆盖层（与上面同一卸载纪律）。
       unmountBattlefieldEmpty();
+      // 轻引导三步（task_139）：停等向导的定时器 + 卸覆盖层（不留悬垂定时器）。
+      if (tourTimer !== null) {
+        window.clearTimeout(tourTimer);
+        tourTimer = null;
+      }
+      tour.unmount();
       // 快捷键（task_058）：退 window keydown 监听 + 关浮层 + 卸宿主（同卸载纪律）。
       unmountShortcuts();
       // 音效（task_060）：退总线订阅再释放服务（丢 AudioContext 引用，页面即将销毁）。

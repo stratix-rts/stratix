@@ -446,7 +446,7 @@ export function defineCommandPanel(): typeof HTMLElement {
       }
       if (state.failed) {
         this.setOutput(
-          '回放失败：回放服务（网关）没连上 —— 确认它已启动（npm run dev），再敲一次「replay」重试。'
+          '回放失败：回放服务没连上 —— 确认它已启动（npm run dev），再敲一次「replay」重试。'
         );
         return;
       }

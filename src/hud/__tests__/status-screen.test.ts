@@ -237,19 +237,19 @@ describe('指标卡：与 WorldState 派生一致', () => {
 });
 
 describe('系统状态：gateway 连接态三级（@since v3.7，task_127）', () => {
-  test('在线 → 已连接（ok），说明「数据与实时通道均可用」', () => {
+  test('在线 → 已连接（ok），说明「数据和实时消息都正常」', () => {
     const conn = resolveConnection('online');
     expect(conn.tone).toBe('ok');
     expect(conn.label).toBe('已连接');
-    expect(conn.detail).toBe('数据与实时通道均可用');
+    expect(conn.detail).toBe('数据和实时消息都正常');
     expect(conn.state).toBe('online');
   });
 
-  test('降级 → 连接降级（warn），说明「数据可用，实时通道断开」—— 不出现「未连接」', () => {
+  test('降级 → 连接降级（warn），说明「数据能看，实时更新断了」—— 不出现「未连接」', () => {
     const conn = resolveConnection('degraded');
     expect(conn.tone).toBe('warn');
     expect(conn.label).toBe('连接降级');
-    expect(conn.detail).toBe('数据可用，实时通道断开');
+    expect(conn.detail).toBe('数据能看，实时更新断了');
     expect(conn.label).not.toContain('未连接');
   });
 
@@ -436,7 +436,7 @@ describe('状态屏：Shadow DOM 渲染', () => {
     expect(sysValue(h.screen, 'connection')).toBe('已连接');
     expect(sysRow(h.screen, 'connection')?.getAttribute('data-tone')).toBe('ok');
     expect(sysRow(h.screen, 'connection')?.querySelector('[data-role="sys-detail"]')?.textContent)
-      .toBe('数据与实时通道均可用');
+      .toBe('数据和实时消息都正常');
   });
 
   test('连通性变降级 → 只重画连接行（横幅与这一行同一真相源）', () => {
@@ -448,7 +448,7 @@ describe('状态屏：Shadow DOM 渲染', () => {
     expect(sysValue(h.screen, 'connection')).toBe('连接降级');
     expect(sysRow(h.screen, 'connection')?.getAttribute('data-tone')).toBe('warn');
     expect(sysRow(h.screen, 'connection')?.querySelector('[data-role="sys-detail"]')?.textContent)
-      .toBe('数据可用，实时通道断开');
+      .toBe('数据能看，实时更新断了');
   });
 
   test('没有会话但网关在线 → 不再显示「未连接」（task_127 的病根）', () => {

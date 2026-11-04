@@ -79,6 +79,7 @@ import type { TaskStatsProvider } from '../panels/task-assign-catalog';
 import {
   readSoundEnabled,
   readSoundVolume,
+  subscribeSoundChanges,
   writeSoundEnabled,
   writeSoundVolume,
 } from '../sound-engine';
@@ -738,6 +739,10 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         if (volumeInput) volumeInput.title = `音量 ${label}`;
       };
       applySoundState();
+      // 声音偏好跨组件同步（@since v3.8，task_139）：设置页改「音效」开关 → 顶栏声音钮
+      //   必须立刻跟上（图标换形 + aria-pressed 翻转）。真源仍是 localStorage ——
+      //   事件只是"有人改了，重读一遍"的信号，载荷里不带状态（不带第二份真相）。
+      const unsubscribeSound = subscribeSoundChanges(() => applySoundState());
 
       // ── 弹出层开合（@since v3.4，task_089）────────────────────────────────
       //   两个弹层：🔊 音量层（§4 A8）与 ⋯ 溢出菜单（§4 A4/A9/A10/A11/A12）。
@@ -1000,6 +1005,8 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         volumeOpenButton?.removeEventListener('click', onVolumeOpenClick);
         document.removeEventListener('click', onDocumentClick);
         document.removeEventListener('keydown', onDocumentKeydown);
+        // 声音偏好订阅（task_139）：摘掉 —— 监听器留着就是泄漏（perf 铁律）。
+        unsubscribeSound();
         host.removeEventListener('strat-button-click', themeHandler);
         // 这里不置空 rootEl —— renderMain 自身会立刻重写（rootEl 是本屏自有的那块）。
       };

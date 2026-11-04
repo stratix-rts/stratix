@@ -80,6 +80,7 @@ import {
   nextVolumePreset,
   readSoundVolume,
   volumeLabel,
+  writeSoundEnabled,
   writeSoundVolume,
 } from '../sound-engine';
 import type { ThemeId } from '../theme/theme-controller';
@@ -410,7 +411,11 @@ export function defineSettingsScreen(): typeof HTMLElement {
      */
     private togglePreference(row: PreferenceRowSpec): void {
       const next = !readPreference(row.storageKey);
-      writePreference(row.storageKey, next);
+      // 音效行走声音引擎的写入口（@since v3.8，task_139）：写完广播一声，
+      //   顶栏那个声音钮立刻跟着变（图标 / aria-pressed）—— 以前两处各写各的，
+      //   这里改了顶栏不动，看着像"开关没生效"。
+      if (row.storageKey === SOUND_ENABLED_KEY) writeSoundEnabled(next);
+      else writePreference(row.storageKey, next);
       this.renderBody();
     }
 
@@ -791,7 +796,7 @@ export function defineSettingsScreen(): typeof HTMLElement {
         .then((result) => {
           this._customRows = result.ok && result.agents ? result.agents : [];
           this._customRowsLoaded = true;
-          this._customNotice = result.ok ? null : result.error ?? '注册表读取失败';
+          this._customNotice = result.ok ? null : result.error ?? '读取自定义 agent 列表失败';
         })
         .catch((error: unknown) => {
           this._customRowsLoaded = true;
@@ -822,7 +827,7 @@ export function defineSettingsScreen(): typeof HTMLElement {
     private renderCustomAgents(): string {
       const rows = this._customRows;
       const list = !this._customRowsLoaded
-        ? '<div class="row-hint">正在读取注册表…</div>'
+        ? '<div class="row-hint">正在读取自定义 agent 列表…</div>'
         : rows.length === 0
           ? '<div class="row-hint">还没有自定义 agent 注册（首启向导的扫描步里添加）</div>'
           : rows
@@ -844,8 +849,8 @@ export function defineSettingsScreen(): typeof HTMLElement {
         : '';
       return `
         <div class="group" data-group="custom-agents">
-          <div class="group-name">自定义 agent 注册</div>
-          <div class="row-hint">移除注册只断探测与执行接入：已建的角色档案保留（kind 还在档案里，不再参与检测与健康监测）。新增注册入口在首启向导的扫描步。</div>
+          <div class="group-name">自定义 agent</div>
+          <div class="row-hint">移除注册只是不再检测它、也不再派活给它：已建的角色档案保留（不再参与检测与健康监测）。新增注册在首启向导的扫描步。</div>
           ${notice}
           ${list}
         </div>
@@ -865,7 +870,7 @@ export function defineSettingsScreen(): typeof HTMLElement {
           <div class="row">
             <div class="row-text">
               <span class="row-label">皮肤</span>
-              <span class="row-hint">整屏 token 一起切换，组件零改动</span>
+              <span class="row-hint">整屏配色与字号一起切换，界面各处自动跟着变</span>
             </div>
             <div class="row-ctl">${skins}</div>
           </div>

@@ -2,7 +2,7 @@
  * 单元测试：网关连通性全局横幅（task_114；@since v3.7 task_127 升级为三级）——
  *   顶栏下方的断连/降级提示 +「重试」按钮。
  * 覆盖：在线 → 横幅隐藏；离线 → 横幅亮出（文案人话，task_114 原文案不变）；
- *   **降级 → 横幅亮出且说清「数据可用，实时通道断开」（不谎报「未连接」）**；
+ *   **降级 → 横幅亮出且说清「数据能看，实时更新断了」（不谎报「未连接」）**；
  *   「重试」→ 转交 refresh；卸载 → 退订（不留悬挂订阅）。
  * @jest-environment jsdom
  */
@@ -81,7 +81,7 @@ describe('网关连通性横幅（task_114 / task_127 三级）', () => {
     host.remove();
   });
 
-  test('降级（HTTP 可用、实时通道断）→ 横幅亮出，文案说清「数据可用」而非「未连接」', () => {
+  test('降级（HTTP 可用、实时通道断）→ 横幅亮出，文案说清「数据能看」而非「未连接」', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const fake = fakePort('degraded');
@@ -96,7 +96,7 @@ describe('网关连通性横幅（task_114 / task_127 三级）', () => {
     expect(detail.textContent).toBe(GATEWAY_BANNER_DEGRADED_DETAIL);
     // 关键：降级态不得出现「未连接」—— 那与「数据照样可用」自相矛盾（task_127 的病根）。
     expect(title.textContent).not.toContain('未连接');
-    expect(detail.textContent).toContain('数据可用');
+    expect(detail.textContent).toContain('数据能看');
     host.remove();
   });
 

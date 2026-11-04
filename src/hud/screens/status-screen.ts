@@ -403,11 +403,11 @@ export function defineStatusScreen(): typeof HTMLElement {
           <span class="sys-detail" data-role="sys-detail">${escapeHtml(detail)}</span>
         </div>
       `;
-      box.innerHTML = sysRow('connection', '网关连接', connection.tone, connection.label, connection.detail);
+      box.innerHTML = sysRow('connection', '服务连接', connection.tone, connection.label, connection.detail);
       // 占位行先建好：renderTickables 只改文本，不建 DOM，tick 因此是廉价的。
       box.insertAdjacentHTML(
         'beforeend',
-        sysRow('bus', '系统心跳', this._model.bus.tone, this._model.bus.label, this._model.bus.detail),
+        sysRow('bus', '状态更新', this._model.bus.tone, this._model.bus.label, this._model.bus.detail),
       );
       box.insertAdjacentHTML(
         'beforeend',

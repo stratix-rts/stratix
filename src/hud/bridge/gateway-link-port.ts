@@ -50,17 +50,17 @@ export interface GatewayStateText {
 export const GATEWAY_STATE_TEXT: Readonly<Record<GatewayConnectionState, GatewayStateText>> = {
   online: {
     label: '已连接',
-    detail: '数据与实时通道均可用',
-    bannerTitle: '网关已连接',
+    detail: '数据和实时消息都正常',
+    bannerTitle: '服务已连接',
   },
   degraded: {
     label: '连接降级',
-    detail: '数据可用，实时通道断开',
+    detail: '数据能看，实时更新断了',
     bannerTitle: '连接降级',
   },
   offline: {
     label: '未连接',
     detail: '多数功能暂时没有数据',
-    bannerTitle: '网关未连接',
+    bannerTitle: '服务未连接',
   },
 };

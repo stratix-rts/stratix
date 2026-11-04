@@ -45,7 +45,7 @@ export function customAgentsIpcPort(): CustomAgentsPort | null {
     async list() {
       const result = await api.list();
       if (!result.ok || !Array.isArray(result.agents)) {
-        return { ok: false, error: result.error ?? '注册表读取失败' };
+        return { ok: false, error: result.error ?? '读取自定义 agent 列表失败' };
       }
       return { ok: true, agents: result.agents as readonly CustomAgentView[] };
     },
