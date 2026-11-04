@@ -139,6 +139,12 @@ export interface ShortcutManager {
   ): ShortcutAction | null;
   /** 帮助浮层是否打开（真相位在管理器，浮层元素只是渲染镜像）。 */
   readonly helpOpen: boolean;
+  /**
+   * 开关帮助浮层（@since v3.9，task_150：⌘K 命令面板的「快捷键帮助」走这条）。
+   * why 要公开出口：快捷键帮助的**开合**归管理器（它是 ESC 栈上的一个焦点面），
+   *   但「谁来开它」不只键盘 —— ⌘K 面板也能开。两边都调同一个开关，才不会开成两个。
+   */
+  toggleHelp(): void;
 }
 
 /**
@@ -248,6 +254,7 @@ export function createShortcutManager(
   return {
     attach,
     handleKeydown,
+    toggleHelp: () => { setHelpOpen(!helpOpen); },
     get helpOpen() {
       return helpOpen;
     },

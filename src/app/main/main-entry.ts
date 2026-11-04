@@ -103,6 +103,9 @@ import { expWeightFor } from '../../core/progression';
 import { worldStore } from '../../core/store';
 import type { DetectedAgent, HudCommand, Point, WorldEvent } from '../../core/types';
 import { createHudBusAdapter } from '../../hud/bridge/bus-adapter';
+// ⌘K 命令面板（@since v3.9，task_150）：全应用键盘可达 —— 命令定义在共享注册表
+//   （hud/lib/command-registry.ts），底栏 composer 与本面板共用一份事实源。
+import { mountCommandPalette } from '../../hud/components/command-palette/command-palette';
 // 模式状态条（@since v3.6，task_117）：演示模式 / 导演镜头的全局指示（开着的是什么 + 怎么关）。
 import { mountModeStrip, type ModeStripDirectorPort } from '../../hud/components/mode-strip/mode-strip';
 // 轻引导三步（@since v3.8，task_139）：首开时指一下「从哪开始」（命令行 → 建角色 → 看态势）。
@@ -132,6 +135,9 @@ import { mountGatewayBanner } from '../../hud/components/gateway-banner/gateway-
 import { mountErrorGlow } from '../../hud/components/screen-fx/error-glow';
 import { mountScanBand } from '../../hud/components/screen-fx/scan-band';
 import { errorGlowTrigger } from '../../hud/components/screen-fx/screen-fx-catalog';
+// 宿主动作登记口（@since v3.9，task_150）：⌘K 面板要能叫到组合根这一层的能力
+//   （建档向导 / 回放控制器 / 快捷键帮助浮层）—— 它们不落总线契约，走这张动作表登记。
+import { registerAppAction } from '../../hud/lib/app-actions';
 import { createMainScreen } from '../../hud/screens/main-screen';
 import { levelUpToastText } from '../../hud/screens/appearance-unlock-catalog';
 // 演示声音包（@since v3.3，task_083 建 / task_087 升级）：五音（选中 ack / 派活哒 / 完成 /
@@ -897,7 +903,10 @@ async function boot(): Promise<void> {
     const title = (event as CustomEvent<{ title?: string }>).detail?.title ?? '';
     newTaskDialog.open({ title });
   };
-  hudRoot.addEventListener(NEW_TASK_OPEN_EVENT, onNewTaskOpen);
+  // 监听挂在 **#hud-side**（不是 #hud-root）：⌘K 面板（@since v3.9，task_150）挂在 hud-side，
+  //   它发的 NEW_TASK_OPEN_EVENT 冒不到 hud-root（两者是兄弟）。hud-side 是 hud-root 的父级 ——
+  //   底栏命令面板（住在 hud-root 里）发的事件照样冒上来（同一份通路，一个监听器）。
+  hudSide.addEventListener(NEW_TASK_OPEN_EVENT, onNewTaskOpen);
 
   // ===== 恢复在线轻提示（@since v3.30，task_054）=====
   // agent.online（health-monitor 防抖判定恢复）→ toast「XX 已恢复在线」（成功 tone：
@@ -1242,13 +1251,58 @@ async function boot(): Promise<void> {
   //   坐标 → 复用小地图的 minimapPositions 累积表（同一份位置真相，不另建第二份 ——
   //     空格居中的质心算的就是这些点，两处数据源漂移会让小地图点与居中点对不上）。
   // 输入框聚焦时快捷键自动让路（isEditableTarget，在 hud 侧判定）；卸载随 pagehide。
-  const { unmount: unmountShortcuts } = mountShortcuts(hudRoot, {
+  const { unmount: unmountShortcuts, manager: shortcutManager } = mountShortcuts(hudRoot, {
     dispatch: (command) => adapter.dispatch(command),
     getState: () => worldStore.getState(),
     getUnitPosition: (unitId) => minimapPositions.get(unitId) ?? null,
     // task_099（R1）：帮助浮层是全屏弹窗 → 开着时四角常驻件降对比 + 禁点。
     occlusion: occlusionController,
   });
+
+  // ===== ⌘K 命令面板（@since v3.9，task_150）=====
+  // 送给「每天用 8 小时的操作员」的礼物：任何动作两击键盘可达，手不离键盘。
+  //   ⌘K / Ctrl+K 全局唤起（输入态聚焦时也生效）→ 输两个字模糊命中 → ↑↓ 选 → Enter 执行。
+  // 挂 #hud-side 而不是 #hud-root：主屏每次重绘都重写 #hud-root —— 挂里面会被抹掉
+  //   （与 task_084 / task_086 逮到的坑同一口径）。
+  // 遮挡口（146 刻度表的 modal 档）：面板登记进遮挡栈 → ESC 由控制器**统一路由到栈顶**
+  //   （栈里有对话框时：先关面板，再关对话框 —— 顺序按栈，不抢）。
+  const unmountCommandPalette = mountCommandPalette(
+    {
+      dispatch: (command) => adapter.dispatch(command),
+      subscribe: (handler) => adapter.subscribe(handler),
+    },
+    hudSide,
+    { occlusion: occlusionController },
+  );
+
+  // 宿主动作（组合根这一层的能力 —— 不落总线契约，core 不该知道 HUD 有向导 / 回放）。
+  //   注销随 pagehide（动作表是全局单例 —— 留着会变成「永远可用但点了没反应」的幽灵）。
+  const unregisterAppActions: Array<() => void> = [];
+  unregisterAppActions.push(registerAppAction('open-character-wizard', () => {
+    openCharacterWizard();
+  }));
+  unregisterAppActions.push(registerAppAction('toggle-shortcut-help', () => {
+    shortcutManager.toggleHelp();
+  }));
+  unregisterAppActions.push(registerAppAction('replay-today', () => {
+    // 回放与底栏命令行的 `replay` 同一控制器、同一份当天记录（不另开一条路）。
+    void (async () => {
+      let state = replayController.state;
+      if (!state.loaded) {
+        await replayController.load();
+        state = replayController.state;
+      }
+      if (state.failed) {
+        toastHost.show('回放失败：回放服务没连上 —— 确认它已启动（npm run dev），再试一次', 'warn');
+        return;
+      }
+      if (state.entries.length === 0) {
+        toastHost.show('今天还没有任务记录 · 跑一条任务就有回放了', 'warn');
+        return;
+      }
+      replayController.play();
+    })();
+  }));
 
   // ===== 信息三层级（@since v3.4，task_096）=====
   // HUD 的全局层级状态机（L1 常驻 / L2 事件 / L3 沉浸）+ 三档演示开关。
@@ -1480,6 +1534,10 @@ async function boot(): Promise<void> {
       tour.unmount();
       // 快捷键（task_058）：退 window keydown 监听 + 关浮层 + 卸宿主（同卸载纪律）。
       unmountShortcuts();
+      // ⌘K 命令面板（task_150）：退 window keydown 监听 + 卸宿主 + 注销宿主动作。
+      unmountCommandPalette();
+      unregisterAppActions.forEach((dispose) => { dispose(); });
+      unregisterAppActions.length = 0;
       // 音效（task_060）：退总线订阅再释放服务（丢 AudioContext 引用，页面即将销毁）。
       stopSfxFeed();
       sfx.dispose();
@@ -1523,7 +1581,7 @@ async function boot(): Promise<void> {
       unmountCharacterDrawer();
       unmountToastHost();
       // 新建任务对话框（task_112）：撤事件监听 + 卸元素（元素内部退订总线与遮挡登记）。
-      hudRoot.removeEventListener(NEW_TASK_OPEN_EVENT, onNewTaskOpen);
+      hudSide.removeEventListener(NEW_TASK_OPEN_EVENT, onNewTaskOpen);
       unmountNewTaskDialog();
       stopAgentDetection();
       // 远程 store（task_083）：退订快照广播 + 关连接 + 停重连定时器（资源必须可清理）。

@@ -61,9 +61,13 @@ import type { GatewayLinkPort } from '../bridge/gateway-link-port';
 // 当日回放（@since v3.3，task_082）：底栏时间轴 scrubber（组件 + 控制器口径）。
 import { mountDayReplay } from '../components/replay/day-replay';
 import type { ReplayController } from '../components/replay/replay-controller';
+// 宿主动作登记口（@since v3.9，task_150）：⌘K 面板要能叫到本屏的私有能力
+//   （示例会话 / 日志抽屉 / 态势屏）—— 它们不落总线契约（core 不该知道 HUD 有个抽屉），
+//   走这张动作表登记；注销随本屏卸载（全局单例 —— 留着会变成「永远可用但点了没反应」的幽灵）。
+import { registerAppAction } from '../lib/app-actions';
 import { mountAgentPanel, type AgentPanelDeps } from '../panels/agent-panel';
 import { mountCommandPanel } from '../panels/command-panel';
-import { mountLogDrawer } from '../panels/log-drawer';
+import { mountLogDrawer, LOG_DRAWER_TAG, type StratLogDrawerElement } from '../panels/log-drawer';
 import { mountMissionConfirm } from '../panels/mission-confirm';
 // 遮挡规则（@since v3.5，task_099）：全屏弹窗壳（遮罩 + 居中面板 + ESC/遮罩双关闭）
 //   + 遮挡控制器（弹窗开着 → 四角常驻件降对比禁点）。
@@ -979,6 +983,29 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
         ? mountStatusScreen(adapter, statusHost, options.gateway ?? null)
         : null;
 
+      // 宿主动作登记（@since v3.9，task_150）：⌘K 面板的三条本屏私有能力。
+      //   · 示例会话 → 会话面板的公开方法；
+      //   · 日志抽屉 → 抽屉的公开方法（折叠中才展开 —— 命令说的是「打开」）；
+      //   · 态势屏   → 滚到右栏的态势区块（它是纯展示区块，没有契约命令可派）。
+      // why 演示模式不登记日志抽屉：演示时它压根没挂 —— 没挂的动作就是死按钮（灰态 + 原因）。
+      const unregisterAppActions: Array<() => void> = [];
+      if (sessionPanelEl) {
+        unregisterAppActions.push(registerAppAction('toggle-demo-session', () => {
+          sessionPanelEl?.toggleDemo();
+        }));
+      }
+      if (unmountDrawer) {
+        const drawerEl = drawerHost?.querySelector(LOG_DRAWER_TAG) as StratLogDrawerElement | null;
+        unregisterAppActions.push(registerAppAction('toggle-log-drawer', () => {
+          if (drawerEl?.collapsed) drawerEl.toggleCollapsed();
+        }));
+      }
+      if (statusHost) {
+        unregisterAppActions.push(registerAppAction('focus-status-screen', () => {
+          statusHost.scrollIntoView({ block: 'nearest' });
+        }));
+      }
+
       // 演示模式开关 → 主屏布局重渲（工程件显隐 + 顶栏标签同步）。
       // why 重渲而不是局部改：工程件可能出现在任何面板里，重渲一次最不容易漏。
       unsubscribeDemo?.();
@@ -1019,6 +1046,10 @@ export function createMainScreen(adapter: HudBusAdapter, options: MainScreenOpti
       // 主屏布局内所有挂载闭包打包到一个闭包里：renderScreen 拆主屏布局时一次性释放。
       unmountMain = () => {
         unsubscribe();
+        // 宿主动作注销（@since v3.9，task_150）：动作表是全局单例 —— 本屏拆了就该注销，
+        //   否则 ⌘K 面板会列出「点了没反应」的动作（那正是死按钮的定义）。
+        unregisterAppActions.forEach((dispose) => { dispose(); });
+        unregisterAppActions.length = 0;
         unsubscribeDemo?.();
         unsubscribeDemo = null;
         unsubscribeTheme?.();

@@ -316,6 +316,14 @@ export const OVERLAY_REGISTRY: readonly OverlayRegistration[] = Object.freeze([
     note: '危险区确认框：全场最高 —— 压在一切之上。',
   },
   {
+    id: 'command-palette',
+    layer: 'modal',
+    zone: 'full-screen',
+    host: '#hud-side',
+    note: '⌘K 命令面板（@since v3.9，task_150）：焦点浮层 —— 居中偏上的检索面，'
+      + '登记进遮挡栈（ESC 统一路由到栈顶：面板下面还有对话框时先关面板）。',
+  },
+  {
     id: 'battlefield-empty',
     layer: 'underlay',
     zone: 'screen-space',

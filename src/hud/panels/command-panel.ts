@@ -75,8 +75,15 @@ import {
   NEW_TASK_SUBMITTED_EVENT,
 } from '../components/new-task-dialog/new-task-dialog';
 import type { ReplayController } from '../components/replay/replay-controller';
+// 宿主动作登记口 + 草稿共享面（@since v3.9，task_150）：
+//   ⌘K 面板与底栏 composer 共用**一份事实源** —— 命令定义在 hud/lib/command-registry.ts，
+//   草稿（用户正在敲的任务标题）经 draft-store 共享（两块面说的必须是同一句话）。
+import { registerAppAction } from '../lib/app-actions';
+import { setDraftTitle as publishDraftTitle } from '../lib/draft-store';
 // markdown 管线（@since v3.9，task_145）：回执区按 markdown 渲染（marked → DOMPurify → DOM）。
 import { enhanceMarkdown, MARKDOWN_CLASS, MARKDOWN_CSS, renderMarkdown } from '../lib/markdown';
+// 浮层刻度（@since v3.9，task_146）：z-index 一律走刻度表，不写死数字。
+import { zVar } from '../theme/layer-tokens';
 // 动效层（@since v3.8，task_138）：面板入场（位移 + 淡入）/ 列表项 hover 光标过渡 /
 //   命令行提交时输入行微脉冲 —— 全部走共享动效工具类，时长缓动取 --srf-motion-* token。
 import { MOTION_CLASS, MOTION_COMPONENT_CSS, installMotionTokens } from '../theme/motion-tokens';
@@ -109,7 +116,6 @@ import {
 // 提示词 composer（@since v3.9，task_144）：输入面的键位 / IME / 历史 / 自动长高全在那边，
 //   本面板只负责「拿到原文 → 走命令注册表 / 任务通路」。
 import { PromptComposer } from './prompt-composer';
-import { zVar } from '../theme/layer-tokens';
 
 export const COMMAND_PANEL_TAG = 'strat-command-panel';
 
@@ -210,6 +216,8 @@ export function defineCommandPanel(): typeof HTMLElement {
     private _listenersBound = false;
     /** 提示词 composer（@since v3.9，task_144）：输入面的键位 / IME / 历史 / 长高都在那边。 */
     private _composer: PromptComposer | null = null;
+    /** 宿主动作注销闭包（@since v3.9，task_150：⌘K 的「清空任务草稿」）。 */
+    private _unregisterDraftAction: (() => void) | null = null;
 
     // —— 属性面 ——
     get adapter(): CommandPanelDeps | null { return this._adapter; }
@@ -235,6 +243,8 @@ export function defineCommandPanel(): typeof HTMLElement {
     get draftTitle(): string { return this._draftTitle; }
     set draftTitle(value: string) {
       this._draftTitle = value;
+      // 草稿是**跨面共享**的事实（@since v3.9，task_150）：⌘K 面板的「派发任务」要拿到同一句。
+      publishDraftTitle(value);
       this.refresh();
     }
 
@@ -256,6 +266,12 @@ export function defineCommandPanel(): typeof HTMLElement {
       // 「已提交任务」事件（@since v3.6，task_112）：对话框建完任务后清标题草稿。
       // 挂在 document 上 —— 对话框与本面板是兄弟组件（互不持有引用，事件是唯一通道）。
       document.addEventListener(NEW_TASK_SUBMITTED_EVENT, this.onNewTaskSubmitted);
+      // 宿主动作（@since v3.9，task_150）：⌘K 面板的「清空任务草稿」走这条 ——
+      //   草稿住在本面板里，别的面板只能**请求**清空，不能直接改本面板的私有态。
+      this._unregisterDraftAction?.();
+      this._unregisterDraftAction = registerAppAction('clear-draft', () => {
+        this.setDraftTitle('');
+      });
       this.bindAdapter();
       this.refresh();
     }
@@ -264,6 +280,9 @@ export function defineCommandPanel(): typeof HTMLElement {
       // 资源必须可清理：不退订的话，反复挂卸会把订阅堆成 O(n)，且组件已不在文档里仍在收广播。
       this.releaseAdapter();
       document.removeEventListener(NEW_TASK_SUBMITTED_EVENT, this.onNewTaskSubmitted);
+      // 宿主动作注销（动作表是全局单例 —— 不注销会留下一个「永远可用但点了没反应」的幽灵）。
+      this._unregisterDraftAction?.();
+      this._unregisterDraftAction = null;
       // composer 的监听同样必须摘（perf 硬约束：反复挂卸不累积监听器）。
       this._composer?.destroy();
       this._composer = null;
@@ -547,6 +566,8 @@ export function defineCommandPanel(): typeof HTMLElement {
     /** 标题草稿同步（草稿框 + 面板瞬时态是同一份，不留两份真相）。 */
     private setDraftTitle(title: string): void {
       this._draftTitle = title;
+      // 共享面（@since v3.9，task_150）：⌘K 面板读到的是同一句草稿。
+      publishDraftTitle(title);
       const input = this.shadowRoot?.querySelector('[data-role="draft"]') as HTMLInputElement | null;
       if (input) input.value = title;
       this.refresh();
@@ -561,6 +582,7 @@ export function defineCommandPanel(): typeof HTMLElement {
       const title = (event as CustomEvent<{ title?: string }>).detail?.title ?? '';
       if (title.length === 0 || title !== this._draftTitle.trim()) return;
       this._draftTitle = '';
+      publishDraftTitle('');
       const input = this.shadowRoot?.querySelector('[data-role="draft"]') as HTMLInputElement | null;
       if (input) input.value = '';
       this.refresh();
@@ -893,8 +915,11 @@ export function defineCommandPanel(): typeof HTMLElement {
         root.addEventListener('input', (ev: Event) => {
           const target = ev.target as HTMLInputElement | HTMLTextAreaElement | null;
           if (!target) return;
-          if (target.dataset.role === 'draft') this._draftTitle = target.value;
-          else if (target.dataset.role === 'query') this._query = target.value;
+          if (target.dataset.role === 'draft') {
+            this._draftTitle = target.value;
+            // 共享面（@since v3.9，task_150）：草稿是跨面共享的一句。
+            publishDraftTitle(target.value);
+          } else if (target.dataset.role === 'query') this._query = target.value;
           else return;
           this.refresh();
         });
