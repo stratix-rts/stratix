@@ -31,6 +31,7 @@
  */
 
 import { SKIN_STORAGE_KEY } from '../../core/theme/skin-registry';
+import { syncIconsForSkin } from './skin-icons';
 
 /**
  * core 的 `theme.set` 命令载荷里认的皮肤 id（窄口径，见 core/types.ts）。
@@ -155,6 +156,9 @@ export function createThemeController<Id extends string = string>(
     styles.set(id, node);
   }
   if (effectiveInitial) current = effectiveInitial;
+  // 图标集随皮肤一起到位（@since v3.8，task_135）：像素皮 = 真像素图形图标，
+  // 其余皮 = 现代线条图标。必须在 HUD 挂载**之前**定好 —— HUD 首次渲染就用当前图标集画图标。
+  if (effectiveInitial) syncIconsForSkin(effectiveInitial);
 
   const persist = (themeId: Id): void => {
     if (!storage) return;
@@ -172,6 +176,9 @@ export function createThemeController<Id extends string = string>(
     for (const [id, node] of styles) node.disabled = id !== themeId;
     current = themeId;
     persist(themeId);
+    // 图标集跟着皮肤换（@since v3.8，task_135）：切皮 = 换图标集 + 就地刷新已画好的图标
+    //（不重建 DOM → 布局骨架零变化）。
+    syncIconsForSkin(themeId);
     // 快照后再回调：订阅者可能在回调里退订 / 重新订阅，直接遍历 Set 会多调一轮。
     for (const listener of Array.from(listeners)) listener(themeId);
   };

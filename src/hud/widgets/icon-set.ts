@@ -62,17 +62,31 @@ export type IconName =
   | 'replay';
 
 /**
+ * 渲染模式（@since v3.8，task_135）。
+ *   stroke = 线条描边（现代风：fill:none + currentColor 描边）；
+ *   fill   = 实心方块（像素风：每个美术像素是**填色的方块**，不是描边 —— 描边出来的
+ *            "像素" 仍然是矢量线条，只是拐角变方 —— 这正是用户验收退回的那一版）。
+ */
+export type IconRenderMode = 'stroke' | 'fill';
+
+/**
  * 一套图标（同构的一组路径数据）。
  * why 路径存"内联片段"而不是裸 `d`：有些图标要 mix 路径 / 圆 / 矩形
  *   （如 more 用三个圆点、settings 用三条滑杆 + 三个旋钮），存片段最省事。
  */
 export interface IconSet {
-  /** 图标集 id（"modern" / 未来的 "pixel"）。 */
+  /** 图标集 id（"modern" / "pixel"）。 */
   readonly id: string;
   /** 描边宽度（px）—— 像素图标集用更粗的笔（2）以免在低分辨率下消失。 */
   readonly strokeWidth: number;
   /** 图标名 → 内联 SVG 片段（不含 <svg> 外壳）。 */
   readonly paths: Readonly<Record<IconName, string>>;
+  /** 渲染模式（缺省 = stroke = 线条风）。 */
+  readonly mode?: IconRenderMode;
+  /** viewBox（缺省 = 24×24；像素风 = 16×16 网格）。 */
+  readonly viewBox?: string;
+  /** shape-rendering（缺省 = 不写；像素风 = crispEdges，硬边不插值）。 */
+  readonly shapeRendering?: string;
 }
 
 /**
@@ -134,6 +148,133 @@ export const MODERN_ICON_SET: IconSet = Object.freeze({
   }),
 });
 
+// ============================================================================
+// 像素风图标集（@since v3.8，task_135）—— 填上 task_121 预留的那个空位
+// ============================================================================
+
+/**
+ * 一个"方块"（像素风的最小绘制单位）。
+ * 坐标单位 = **美术像素**（8×8 美术网格），不是 SVG 单位。
+ */
+type PixelRect = readonly [x: number, y: number, w: number, h: number];
+
+/** 美术网格边长（8×8 —— 8 位机的标准画布；下面的坐标都落在这个网格里）。 */
+/** 1 个美术像素 = 多少 SVG 单位（viewBox 16×16 / 美术 8×8 → 每像素 2 单位）。 */
+const PIXEL_ART_SCALE = 2;
+
+/**
+ * 把美术方块表烘成 inline SVG 片段（每块一个 `<path>`）。
+ *
+ * why 每个方块是**一条 path**（而不是一个大 path + 多个子路径）：
+ *   断言「像素图标 = 方块坐标组合」时，DOM 里能逐条数出方块（现代图标是一条含曲线的大 path）。
+ * why 路径只用 M/h/v/z：**没有任何曲线指令（C/Q/A）** —— 曲线 = 矢量，
+ *   曲线插值出来的边缘会糊，这正是「现代 SVG 换描边不算像素艺术」的根因。
+ * why 坐标全是整数：块与块严丝合缝，不出现半像素缝。
+ */
+function pixelArt(rects: readonly PixelRect[]): string {
+  return rects
+    .map(([x, y, w, h]) => {
+      const sx = x * PIXEL_ART_SCALE;
+      const sy = y * PIXEL_ART_SCALE;
+      const sw = w * PIXEL_ART_SCALE;
+      const sh = h * PIXEL_ART_SCALE;
+      return `<path d="M${sx} ${sy}h${sw}v${sh}h-${sw}z"/>`;
+    })
+    .join('');
+}
+
+/**
+ * 像素风图标集：与 MODERN_ICON_SET **同构同名**（23 个图标一一对应），
+ * 画法是 8×8 美术网格上的实心方块。
+ */
+export const PIXEL_ICON_SET: IconSet = Object.freeze({
+  id: 'pixel',
+  strokeWidth: 0,
+  mode: 'fill',
+  viewBox: '0 0 16 16',
+  shapeRendering: 'crispEdges',
+  paths: Object.freeze({
+    // 喇叭（声音开）：喇叭体 + 阶梯喇叭口 + 两道声波。
+    sound: pixelArt([
+      [0, 2, 2, 4], [2, 3, 1, 2], [3, 2, 1, 4], [4, 1, 1, 6],
+      [6, 2, 1, 4], [7, 1, 1, 6],
+    ]),
+    // 喇叭（静音）：喇叭体 + 阶梯喇叭口 + 叉号。
+    'sound-muted': pixelArt([
+      [0, 2, 2, 4], [2, 3, 1, 2], [3, 2, 1, 4], [4, 1, 1, 6],
+      [5, 1, 1, 1], [6, 2, 1, 1], [7, 3, 1, 1], [7, 1, 1, 1], [5, 3, 1, 1],
+    ]),
+    // 导演镜头：机身 + 阶梯镜头仓。
+    director: pixelArt([
+      [0, 2, 4, 4], [4, 3, 1, 2], [5, 2, 1, 4], [6, 1, 1, 6],
+    ]),
+    // 演示模式：播放三角（右指阶梯）。
+    demo: pixelArt([
+      [2, 1, 2, 1], [2, 2, 3, 1], [2, 3, 4, 2], [2, 5, 3, 1], [2, 6, 2, 1],
+    ]),
+    // 更多：三个 1×2 方块（拉开间距 —— 挨太近在 14px 下会连成一条横杠）。
+    more: pixelArt([[0, 3, 1, 2], [3, 3, 1, 2], [6, 3, 1, 2]]),
+    // 聊天：对话气泡 + 尾巴。
+    chat: pixelArt([
+      [1, 1, 6, 1], [1, 2, 1, 3], [6, 2, 1, 3], [1, 5, 4, 1], [2, 6, 2, 1],
+    ]),
+    // 会话：面板框 + 两行条目。
+    sessions: pixelArt([
+      [1, 1, 6, 1], [1, 2, 1, 4], [6, 2, 1, 4], [1, 6, 6, 1],
+      [2, 3, 4, 1], [2, 5, 3, 1],
+    ]),
+    // 角色：头 + 肩。
+    character: pixelArt([[2, 1, 4, 3], [1, 5, 6, 2]]),
+    // 设置：三条滑杆 + 三个旋钮方块。
+    settings: pixelArt([
+      [0, 1, 6, 1], [5, 0, 2, 3],
+      [1, 4, 6, 1], [1, 3, 2, 3],
+      [0, 7, 6, 1], [4, 6, 2, 2],
+    ]),
+    // 皮肤：2×2 像素格。
+    palette: pixelArt([[0, 0, 3, 3], [4, 0, 3, 3], [0, 4, 3, 3], [4, 4, 3, 3]]),
+    // 关闭：叉（2×2 方块阶梯）。
+    close: pixelArt([[1, 1, 2, 2], [3, 3, 2, 2], [5, 5, 2, 2], [5, 1, 2, 2], [1, 5, 2, 2]]),
+    // 完成：对勾（阶梯）。
+    check: pixelArt([[0, 4, 2, 2], [2, 5, 2, 2], [4, 3, 2, 2], [6, 1, 2, 2]]),
+    // 下拉箭头：V 形阶梯。
+    'chevron-down': pixelArt([[0, 2, 2, 2], [2, 3, 2, 2], [4, 3, 2, 2], [6, 2, 2, 2]]),
+    // 信息层级：三层叠板。
+    layers: pixelArt([[2, 1, 4, 1], [1, 3, 6, 1], [0, 5, 8, 1]]),
+    // 新建：加号。
+    plus: pixelArt([[3, 1, 2, 6], [1, 3, 6, 2]]),
+    // 命令行：终端框 + 提示符。
+    command: pixelArt([
+      [0, 1, 8, 1], [0, 6, 8, 1], [0, 2, 1, 4], [7, 2, 1, 4],
+      [1, 3, 1, 1], [2, 4, 1, 1], [1, 5, 1, 1], [4, 4, 3, 1],
+    ]),
+    // 返回：左箭头。
+    back: pixelArt([[1, 2, 2, 2], [0, 3, 2, 2], [1, 4, 2, 2], [2, 3, 5, 2]]),
+    // 搜索：放大镜。
+    search: pixelArt([
+      [1, 1, 4, 1], [1, 4, 4, 1], [1, 2, 1, 2], [4, 2, 1, 2],
+      [5, 5, 1, 1], [6, 6, 1, 1], [7, 7, 1, 1],
+    ]),
+    // 过滤：漏斗。
+    filter: pixelArt([[0, 1, 8, 1], [1, 2, 6, 1], [2, 3, 4, 1], [3, 4, 2, 3]]),
+    // 警告：三角 + 感叹号。
+    warning: pixelArt([
+      [3, 0, 2, 1], [2, 1, 1, 1], [5, 1, 1, 1], [1, 2, 1, 1], [6, 2, 1, 1],
+      [0, 3, 1, 2], [7, 3, 1, 2], [0, 5, 8, 1], [3, 2, 2, 2], [3, 4, 2, 1],
+    ]),
+    // 信息：圆 + 感叹号。
+    info: pixelArt([
+      [2, 1, 4, 1], [1, 2, 1, 4], [6, 2, 1, 4], [2, 6, 4, 1],
+      [3, 2, 2, 1], [3, 4, 2, 2],
+    ]),
+    // 回放：环形箭头。
+    replay: pixelArt([
+      [2, 1, 4, 1], [1, 2, 1, 3], [6, 3, 1, 2], [2, 5, 4, 1],
+      [5, 0, 2, 2], [6, 1, 1, 1], [7, 2, 1, 1],
+    ]),
+  }),
+});
+
 /**
  * 图标集注册表（按 id 取一套）。
  * why 是一张表而不是一个常量：像素皮肤将来加一套**同构**图标（同名不同形），
@@ -141,6 +282,7 @@ export const MODERN_ICON_SET: IconSet = Object.freeze({
  */
 export const ICON_SETS: Readonly<Record<string, IconSet>> = Object.freeze({
   modern: MODERN_ICON_SET,
+  pixel: PIXEL_ICON_SET,
 });
 
 /** 缺省图标集 id（认不出的 id 一律回落这套 —— 图标永不画不出来）。 */
@@ -150,6 +292,98 @@ export const DEFAULT_ICON_SET_ID = 'modern';
 export function resolveIconSet(setId?: string | null): IconSet {
   if (!setId) return MODERN_ICON_SET;
   return ICON_SETS[setId] ?? MODERN_ICON_SET;
+}
+
+// ============================================================================
+// 当前生效的图标集（@since v3.8，task_135）—— 皮肤 → 图标集的联动
+// ============================================================================
+
+/**
+ * 模块级「当前图标集」id。
+ * why 是模块级而不是逐个组件传参：组件只认图标名（`iconSvg('demo')`），
+ *   换皮时不该有 23 个调用点各改一遍 —— **换图标集 = 换一张表**（本文件的设计初衷）。
+ * why 默认 modern：没切过皮肤时按现代线条渲染（= 旧行为，一字不差）。
+ */
+let activeIconSetId: string = DEFAULT_ICON_SET_ID;
+
+/** 切当前图标集（认不出的 id → 缺省集，绝不抛错）。 */
+export function setActiveIconSet(setId?: string | null): void {
+  activeIconSetId = resolveIconSet(setId).id;
+}
+
+/** 当前图标集 id。 */
+export function getActiveIconSetId(): string {
+  return activeIconSetId;
+}
+
+/** 当前图标集（= 新建图标时的缺省来源）。 */
+export function getActiveIconSet(): IconSet {
+  return resolveIconSet(activeIconSetId);
+}
+
+/**
+ * 把一套图标集刷到某个已渲染的 `<svg>` 上（换皮时用）。
+ * why 直接改属性而不是重建元素：重建会丢引用（测试 / 事件），改属性最省。
+ */
+function applyIconSetTo(svg: SVGSVGElement, name: IconName, set: IconSet): void {
+  svg.setAttribute('viewBox', set.viewBox ?? ICON_VIEW_BOX);
+  if ((set.mode ?? 'stroke') === 'fill') {
+    svg.setAttribute('fill', 'currentColor');
+    svg.setAttribute('stroke', 'none');
+    svg.removeAttribute('stroke-width');
+    svg.removeAttribute('stroke-linecap');
+    svg.removeAttribute('stroke-linejoin');
+  } else {
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', String(set.strokeWidth));
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+  }
+  if (set.shapeRendering) svg.setAttribute('shape-rendering', set.shapeRendering);
+  else svg.removeAttribute('shape-rendering');
+  const body = set.paths[name];
+  if (!body) return;
+  // innerHTML：SVG 元素的子内容就是 markup（textContent 会把标签当纯文本，丢图形）。
+  svg.innerHTML = body;
+}
+
+/**
+ * 收集一棵子树里所有**已渲染**的图标 `<svg>`（含 shadow DOM 内部）。
+ * why 要钻 shadow DOM：按钮的图标在 shadow 里（widgets/strat-button.ts），
+ *   只扫 light DOM 会漏掉顶栏的全部图标 —— 换皮后图标不变 = 用户验收退回。
+ */
+function collectIconElements(root: ParentNode): SVGSVGElement[] {
+  const found: SVGSVGElement[] = [];
+  const visit = (scope: ParentNode): void => {
+    scope.querySelectorAll('svg.srf-icon[data-icon]').forEach((el) => {
+      found.push(el as SVGSVGElement);
+    });
+    scope.querySelectorAll('*').forEach((el) => {
+      const shadow = (el as HTMLElement).shadowRoot;
+      if (shadow) visit(shadow);
+    });
+  };
+  visit(root);
+  return found;
+}
+
+/**
+ * 把当前图标集刷到 DOM 里已经画好的图标上（切皮肤后调用）。
+ *
+ * why 需要这一步：切皮肤只换 stylesheet，**不重建 DOM**（重建会丢状态、动布局），
+ *   所以已画好的图标还拿着旧图形 —— 必须就地换图形，这一步就是「图标真像素路径」的落点。
+ * why 幂等：同一个皮肤反复切不会重复刷（刷一遍结果一样）。
+ */
+export function refreshIconsInDom(root?: ParentNode): void {
+  const scope = root ?? (typeof document !== 'undefined' ? document : null);
+  if (!scope) return;
+  const set = getActiveIconSet();
+  for (const svg of collectIconElements(scope)) {
+    const name = svg.getAttribute('data-icon');
+    if (!name || !isIconName(name)) continue;
+    applyIconSetTo(svg, name, set);
+  }
 }
 
 /** 图标名清单（运行时可枚举 —— 测试按它逐个断言"都有路径"）。 */
@@ -174,7 +408,7 @@ function escapeAttr(value: string): string {
 
 /** 图标渲染选项。 */
 export interface IconSvgOptions {
-  /** 图标集 id（缺省 = modern）。 */
+  /** 图标集 id（缺省 = **当前生效**的图标集；切皮肤时由 hud/theme/skin-icons.ts 设定）。 */
   readonly setId?: string | null;
   /** 追加的 class（srf-icon 始终带上）。 */
   readonly className?: string;
@@ -187,16 +421,25 @@ export interface IconSvgOptions {
  *   小字处 11px → 图标 ~12.6px），一处规则全屏自适应，不必逐处写死像素。
  * why `aria-hidden`：图标是**装饰**，读屏的名字由按钮的 aria-label 给
  *   （图标按钮没有可见文字，必须有 aria-label —— 见 widgets/strat-button.ts）。
+ * why 带 `data-icon`（@since task_135）：切皮肤时要**就地**把已画好的图标换成另一套图形
+ *   （不重建 DOM → 不动布局），靠这个属性认出「这个 svg 是哪个图标」。
  */
 export function iconSvg(name: IconName, options: IconSvgOptions = {}): string {
-  const set = resolveIconSet(options.setId);
+  const set = options.setId === undefined ? getActiveIconSet() : resolveIconSet(options.setId);
   const body = set.paths[name];
   if (!body) return '';
   const extra = options.className ? ` ${escapeAttr(options.className)}` : '';
+  const viewBox = set.viewBox ?? ICON_VIEW_BOX;
+  const isFill = (set.mode ?? 'stroke') === 'fill';
+  // 像素集：实心方块（fill=currentColor，stroke=none）；现代集：线条（fill=none + 描边）。
+  const paint = isFill
+    ? 'fill="currentColor" stroke="none"'
+    : `fill="none" stroke="currentColor" stroke-width="${set.strokeWidth}" ` +
+      'stroke-linecap="round" stroke-linejoin="round"';
+  const rendering = set.shapeRendering ? ` shape-rendering="${set.shapeRendering}"` : '';
   return (
-    `<svg class="srf-icon${extra}" viewBox="${ICON_VIEW_BOX}" width="1em" height="1em" ` +
-    `fill="none" stroke="currentColor" stroke-width="${set.strokeWidth}" ` +
-    `stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">` +
+    `<svg class="srf-icon${extra}" data-icon="${escapeAttr(name)}" viewBox="${viewBox}" ` +
+    `width="1em" height="1em" ${paint}${rendering} aria-hidden="true" focusable="false">` +
     `${body}</svg>`
   );
 }

@@ -503,8 +503,24 @@ export function defineCommandPanel(): typeof HTMLElement {
             gap: var(--srf-spacing-sm);
             padding: var(--srf-spacing-md);
             background: var(--srf-panel);
-            border: var(--srf-border-width) solid var(--srf-border);
+            /* 外圈宽度走 var（@since v3.8，task_135）：像素皮 = 1px 外实 + 1px 内衬线（双线），
+               总厚度不变、**外框尺寸与现代皮一致**（布局骨架零变化）；
+               现代皮拿不到本变量 → 兜底 var(--srf-border-width) = 原样零变化。 */
+            border: var(--srf-outer-border-width, var(--srf-border-width)) solid var(--srf-border);
             border-radius: var(--srf-radius);
+            /* 像素细节（@since v3.8，task_135）：双线边框（外实 + 内侧亮线）+ 四角角块
+               （background 定位的 2×2 方块 = 直角缺角感）。
+               why 都是「不占位」的绘制：inset 阴影画在边框内侧、background 不参与布局 ——
+               外框尺寸一分不变。现代皮拿不到变量 → 什么都不画。 */
+            box-shadow: var(--srf-double-shadow, var(--srf-shadow));
+            background-image:
+              linear-gradient(var(--srf-notch-color, transparent), var(--srf-notch-color, transparent)),
+              linear-gradient(var(--srf-notch-color, transparent), var(--srf-notch-color, transparent)),
+              linear-gradient(var(--srf-notch-color, transparent), var(--srf-notch-color, transparent)),
+              linear-gradient(var(--srf-notch-color, transparent), var(--srf-notch-color, transparent));
+            background-size: var(--srf-notch-size, 0px) var(--srf-notch-size, 0px);
+            background-position: left top, right top, left bottom, right bottom;
+            background-repeat: no-repeat;
             color: var(--srf-text);
             font-family: var(--srf-font-ui);
             font-size: var(--srf-font-size-md);

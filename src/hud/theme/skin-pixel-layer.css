@@ -36,6 +36,27 @@
   --srf-press-offset: 2px;   /* 按钮按压位移（现代皮兜底 0px = 原地按压） */
   --srf-icon-stroke: 2px;    /* 图标描边（现代皮兜底 1.5px） */
   --srf-icon-rendering: crispEdges; /* 图标渲染（现代皮兜底 geometricPrecision） */
+
+  /* —— ②' 组件像素细节参数（@since v3.8，task_135）——
+     为什么用「变量」而不是把规则写死在组件里：组件大多住在 shadow DOM 里
+     （strat-button / gateway-banner / new-task-dialog），
+     document 层的样式表**进不去 shadow DOM**（只有继承属性能穿过）。
+     所以规矩是：**像素层发值，组件自己消费**（组件 CSS 里写 var(--srf-xxx, 兜底值)）——
+     现代皮拿不到这些变量 → 兜底值让绘制完全落空 → 现代皮一个像素都不变。 */
+  --srf-inner-line: var(--srf-border-strong);   /* 双线边框：内侧第二道线（1px 亮线） */
+  /* 双线边框的**整体**阴影值（组件用它顶替 --srf-shadow）：
+     why 单独一个变量而不是 `var(--srf-shadow), inset ...`：
+     CSS 里 `none` 不能与别的阴影并列（`none, inset ...` 是**非法值**，整条声明作废）——
+     而像素皮的 --srf-shadow 恰好是 none。所以这里发一个「整条替换」的值：
+     像素皮 = 内衬线；现代皮拿不到本变量 → 组件回落 var(--srf-shadow) = 原样零变化。 */
+  --srf-double-shadow: inset 0 0 0 1px var(--srf-border-strong);
+  --srf-notch-color: var(--srf-accent);          /* 四角角块颜色（主色：与边框同色就看不见了） */
+  --srf-notch-size: 2px;                        /* 角块边长（2×2 方块） */
+  --srf-press-shadow: inset 0 0 0 1px var(--srf-border-strong); /* 按压：硬边内衬（压进 1px） */
+  /* 组件外圈宽度（@since v3.8，task_135）：像素皮按钮 / 面板 = **1px 外实线 + 1px 内衬线**（双线），
+     总厚度与「2px 单线」相同 —— 但**外框尺寸**与现代皮（1px 外圈）一致，
+     于是两皮肤下这些元素的 boundingRect 完全相同（验收：坐标差 ≤ 1px）。 */
+  --srf-outer-border-width: 1px;
 }
 
 /* —— ③ 扫描线 + 像素网格：整屏 CRT 质感 ——
@@ -89,4 +110,33 @@ body .hud-bottom-bar {
 body :focus-visible {
   outline: var(--srf-border-width) solid var(--srf-accent);
   outline-offset: 2px;
+}
+
+/* —— ⑥ 组件像素细节：双线边框 + 四角角块（@since v3.8，task_135）——
+   手法全是「不参与布局」的绘制：
+     · 双线边框 = inset 阴影（画在边框**内侧**，不占位）；
+     · 四角角块 = background 定位的 2×2 方块（background 不占位）；
+     · 按压 = inset 阴影 + 位移（transform 不影响布局）。
+   why 这么讲究：验收要求「像素/现代两皮肤同页面关键元素位置一致（差 ≤ 1px）」——
+   任何 border 加粗 / padding 变化都会顶开版面，所以只用不占位的绘制手段。
+   why 放在文件**末尾**：本表内部同特异性的规则按出现顺序生效 ——
+   ⑤ 里的 `box-shadow: none` 必须先被本节的 inset 线覆盖掉。 */
+body .hud-topbar,
+body .hud-surface,
+body .hud-bottom-bar {
+  /* 外圈收成 1px（原来跟着 token 走 2px）：2px 单线 → 1px 外实 + 1px 内衬（双线），
+     视觉总厚度不变，但**外框尺寸**与现代皮一致（布局骨架零变化的硬要求）。
+     why 安全：没有 border-style 的元素（如 .hud-surface）设 border-width 不会画出边框。 */
+  border-width: 1px;
+  /* 双线边框：外圈是元素自己的 border，这层是贴着 border 内侧的 1px 亮线。 */
+  box-shadow: inset 0 0 0 1px var(--srf-inner-line, transparent);
+  /* 四角角块：直角缺角感（2×2 小方块钉在四个角上）。 */
+  background-image:
+    linear-gradient(var(--srf-notch-color, transparent), var(--srf-notch-color, transparent)),
+    linear-gradient(var(--srf-notch-color, transparent), var(--srf-notch-color, transparent)),
+    linear-gradient(var(--srf-notch-color, transparent), var(--srf-notch-color, transparent)),
+    linear-gradient(var(--srf-notch-color, transparent), var(--srf-notch-color, transparent));
+  background-size: var(--srf-notch-size, 0px) var(--srf-notch-size, 0px);
+  background-position: left top, right top, left bottom, right bottom;
+  background-repeat: no-repeat;
 }

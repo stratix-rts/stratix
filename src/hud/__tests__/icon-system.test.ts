@@ -93,8 +93,10 @@ describe('图标组（hud/widgets/icon-set.ts）', () => {
   });
 
   test('图标集回落：认不出的皮肤 id 回落缺省集（图标永不画不出来）', () => {
-    expect(resolveIconSet('pixel').id).toBe('modern');
+    // @since v3.8（task_135）：pixel 位不再是空槽 —— 像素皮有自己的图标集。
+    expect(resolveIconSet('pixel').id).toBe('pixel');
     expect(resolveIconSet(null).id).toBe('modern');
+    expect(resolveIconSet('no-such-set').id).toBe('modern');
   });
 });
 

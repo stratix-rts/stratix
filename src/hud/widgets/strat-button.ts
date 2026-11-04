@@ -139,14 +139,29 @@ export function defineStratButton(): typeof HTMLElement {
             padding: var(--srf-spacing-xs) var(--srf-spacing-md);
             background: var(--srf-panel);
             color: inherit;
-            border: var(--srf-border-width) solid var(--srf-border);
+            /* 外圈宽度走 var（@since task_135）：像素皮 = 1px 外实 + 1px 内衬线（双线，
+               外框尺寸与现代皮一致）；现代皮拿不到本变量 → 兜底 var(--srf-border-width) = 原样。 */
+            border: var(--srf-outer-border-width, var(--srf-border-width)) solid var(--srf-border);
             border-radius: var(--srf-radius);
             font-family: var(--srf-font-ui);
             font-size: var(--srf-font-size-sm);
             font-weight: var(--srf-font-weight-semibold);
             line-height: var(--srf-line-height);
             cursor: pointer;
-            box-shadow: var(--srf-shadow);
+            /* 双线边框（@since v3.8，task_135）：外圈是元素自己的 border，
+               这层是贴着 border **内侧**的 1px 亮线（inset 阴影 = 不占位 = 不动布局）。
+               现代皮拿不到 --srf-inner-line → transparent → 与 task_121 一字不差。 */
+            box-shadow: var(--srf-double-shadow, var(--srf-shadow));
+            /* 四角角块（task_135）：直角缺角感 —— 2×2 方块钉在四角（background 不占位）。
+               现代皮：--srf-notch-size 兜底 0px + 颜色 transparent = 什么都不画。 */
+            background-image:
+              linear-gradient(var(--srf-notch-color, transparent), var(--srf-notch-color, transparent)),
+              linear-gradient(var(--srf-notch-color, transparent), var(--srf-notch-color, transparent)),
+              linear-gradient(var(--srf-notch-color, transparent), var(--srf-notch-color, transparent)),
+              linear-gradient(var(--srf-notch-color, transparent), var(--srf-notch-color, transparent));
+            background-size: var(--srf-notch-size, 0px) var(--srf-notch-size, 0px);
+            background-position: left top, right top, left bottom, right bottom;
+            background-repeat: no-repeat;
             transition: background var(--srf-transition), border-color var(--srf-transition), color var(--srf-transition), box-shadow var(--srf-transition), transform var(--srf-transition);
           }
           button:hover:not(:disabled) {
@@ -159,7 +174,9 @@ export function defineStratButton(): typeof HTMLElement {
              不是现代皮的原地压回。--srf-press-offset 只在像素皮存在（skin-pixel-layer.css），
              现代皮走 var() 兜底 0px —— 等价于原来的 translateY(0)，现代皮一个像素都不变。 */
           button:active:not(:disabled) {
-            box-shadow: none;
+            /* 按压（@since v3.8，task_135）：像素皮 = **压进 1px 的硬边**（inset 内衬线），
+               现代皮 = 兜底 none = 与 task_121 完全一致（原地压回、阴影清零）。 */
+            box-shadow: var(--srf-press-shadow, none);
             transform: translate(var(--srf-press-offset, 0px), var(--srf-press-offset, 0px));
             background: var(--srf-panel);
           }

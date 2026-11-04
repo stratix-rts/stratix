@@ -125,7 +125,17 @@ export function defineStratGatewayBanner(): typeof HTMLElement {
             color: var(--srf-text, #e6e9ef);
             font-size: var(--srf-font-size-xs, 11px);
             line-height: var(--srf-line-height, 1.5);
-            box-shadow: var(--srf-shadow, 0 4px 16px rgba(0, 0, 0, 0.35));
+            box-shadow: var(--srf-double-shadow, var(--srf-shadow, 0 4px 16px rgba(0, 0, 0, 0.35)));
+            /* 四角角块（@since v3.8，task_135）：与按钮 / 面板同一套像素语言
+               （background 定位的 2×2 方块 = 直角缺角感；现代皮兜底 0px = 什么都不画）。 */
+            background-image:
+              linear-gradient(var(--srf-notch-color, transparent), var(--srf-notch-color, transparent)),
+              linear-gradient(var(--srf-notch-color, transparent), var(--srf-notch-color, transparent)),
+              linear-gradient(var(--srf-notch-color, transparent), var(--srf-notch-color, transparent)),
+              linear-gradient(var(--srf-notch-color, transparent), var(--srf-notch-color, transparent));
+            background-size: var(--srf-notch-size, 0px) var(--srf-notch-size, 0px);
+            background-position: left top, right top, left bottom, right bottom;
+            background-repeat: no-repeat;
             pointer-events: auto;
           }
           .banner[hidden] { display: none; }

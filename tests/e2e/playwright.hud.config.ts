@@ -15,7 +15,8 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: '.',
-  testMatch: '**/icon-microinteraction.spec.ts',
+  // @since v3.8（task_135）：像素图标验收（pixel-icons.spec.ts）也走这套「不杀端口」的规矩。
+  testMatch: ['**/icon-microinteraction.spec.ts', '**/pixel-icons.spec.ts'],
   // 单文件、单 worker —— e2e 起浏览器是 CPU 大户，别并发（见 PERFORMANCE_GUIDELINES）。
   fullyParallel: false,
   workers: 1,
