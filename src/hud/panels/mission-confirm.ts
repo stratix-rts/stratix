@@ -37,6 +37,8 @@ import type {
   WorldState,
 } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
+// markdown 管线（@since v3.9，task_145）：brief 正文按 markdown 渲染（marked → DOMPurify → DOM）。
+import { enhanceMarkdown, MARKDOWN_CLASS, MARKDOWN_CSS, renderMarkdown } from '../lib/markdown';
 // 动效层（@since v3.8，task_138）：面板入场 + **签名瞬间（任务完成确认）** ——
 //   行从「非 done」跃迁到 done 的那一次，行上播一次 scale/brightness 脉冲 + 对勾描边（360ms）。
 import { MOTION_CLASS, MOTION_COMPONENT_CSS, installMotionTokens } from '../theme/motion-tokens';
@@ -193,7 +195,11 @@ export function formatCheckpointTime(at: number): string {
   return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-/** 正文区块（@since v3.39，task_078）：有内容才画，没内容连容器都不出现。 */
+/**
+ * 正文区块（@since v3.39，task_078）：有内容才画，没内容连容器都不出现。
+ * @since v3.9（task_145）：brief 正文按 markdown 渲染（marked → DOMPurify → DOM）——
+ *   mission brief 是 agent 写的规格文本，常带列表 / 引用 / 行内 code。
+ */
 function renderBrief(sections: readonly MissionBriefSection[]): string {
   if (sections.length === 0) return '';
   const items = sections
@@ -201,7 +207,7 @@ function renderBrief(sections: readonly MissionBriefSection[]): string {
       (section) => `
         <div class="brief-item" data-brief="${escapeHtml(section.label)}">
           <span class="brief-label">${escapeHtml(section.label)}</span>
-          <span class="brief-text">${escapeHtml(section.text)}</span>
+          <div class="brief-text ${MARKDOWN_CLASS}">${renderMarkdown(section.text)}</div>
         </div>`,
     )
     .join('');
@@ -546,7 +552,9 @@ export function defineMissionConfirm(): typeof HTMLElement {
           .brief { display: grid; gap: var(--srf-spacing-xxs); }
           .brief-item { display: grid; grid-template-columns: 4.5em 1fr; gap: var(--srf-spacing-xs); font-size: var(--srf-font-size-sm); }
           .brief-label { color: var(--srf-text-muted); }
-          .brief-text { color: var(--srf-text); white-space: pre-wrap; overflow-wrap: anywhere; }
+          /* @since v3.9（task_145）：brief 正文是 markdown 内容 —— 容器不再自己 pre-wrap
+             （块级结构的块间换行会变成多余空行），段内换行由 .md-content p 负责。 */
+          .brief-text { color: var(--srf-text); white-space: normal; overflow-wrap: anywhere; }
           .deps { display: flex; flex-wrap: wrap; align-items: center; gap: var(--srf-spacing-xs); font-size: var(--srf-font-size-sm); }
           .deps[data-state="warn"] { color: var(--srf-warn); }
           .deps[data-state="ready"] { color: var(--srf-success); }
@@ -581,6 +589,7 @@ export function defineMissionConfirm(): typeof HTMLElement {
           button.decision:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
           button.decision[data-decision="accept"] { color: var(--srf-success); border-color: var(--srf-success); }
           button.decision[data-decision="reject"] { color: var(--srf-danger); border-color: var(--srf-danger); }
+          ${MARKDOWN_CSS}
           .empty { color: var(--srf-text-muted); font-size: var(--srf-font-size-sm); padding: var(--srf-spacing-lg); text-align: center; border: var(--srf-border-width) dashed var(--srf-border); border-radius: var(--srf-radius); }
         </style>
         <div class="panel ${MOTION_CLASS.enter}" part="panel">
@@ -643,6 +652,8 @@ export function defineMissionConfirm(): typeof HTMLElement {
         );
       }
       box.innerHTML = sections.join('');
+      // markdown 增强（代码块外框 / 语言标签 / 复制按钮）—— 必须在 innerHTML 之后。
+      enhanceMarkdown(box);
       // 确认动效只在本轮渲染里生效（一次性）：下一轮重画不再重放。
       this._celebrating.clear();
     }

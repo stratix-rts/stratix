@@ -53,6 +53,7 @@
 
 import type { WorldState } from '../../../core/types';
 import type { HudBusAdapter } from '../../bridge/bus-adapter';
+import { enhanceMarkdown, MARKDOWN_CLASS, MARKDOWN_CSS, renderMarkdown } from '../../lib/markdown';
 import { defineEmptyState, EMPTY_STATE_TAG } from '../empty-state/empty-state';
 import {
   defineTaskOutputPanel,
@@ -743,7 +744,9 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
           .bubble[data-error="true"] .bubble-text { color: var(--srf-danger); }
           button.retry { display: block; margin-top: var(--srf-spacing-xs); color: var(--srf-danger); border-color: var(--srf-danger); }
           button.retry:hover { background: var(--srf-danger); color: var(--srf-bg); }
-          .bubble-text { font-size: var(--srf-font-size-sm); white-space: pre-wrap; word-break: break-word; }
+          .bubble-text { font-size: var(--srf-font-size-content, var(--srf-font-size-body, 14px)); line-height: var(--srf-line-height-content, 1.6); word-break: break-word; }
+          /* 流式气泡还没成型（纯文本增量）—— 保留 pre-wrap 语义；定稿后才按 markdown 渲染 */
+          .bubble[data-streaming="true"] .bubble-text { white-space: pre-wrap; }
           .system-message { align-self: center; max-width: 92%; color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); text-align: center; white-space: pre-wrap; word-break: break-word; padding: var(--srf-spacing-xxs) var(--srf-spacing-sm); }
           .caret { display: inline-block; width: var(--srf-spacing-xxs); height: 1em; margin-left: var(--srf-spacing-xxs); vertical-align: text-bottom; background: var(--srf-accent); animation: caret-blink 900ms step-end infinite; }
           @keyframes caret-blink { 50% { opacity: 0; } }
@@ -783,6 +786,7 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
           button.peer-begin { padding-inline: var(--srf-spacing-md); background: var(--srf-success); color: var(--srf-bg); border-color: var(--srf-success); font-weight: var(--srf-font-weight-semibold); }
           button.peer-begin:disabled, button.peer-cancel:disabled, button.peer-exit:disabled, button.peer-open:disabled, button.stop:disabled, button.retry:disabled { background: var(--srf-panel-elevated); color: var(--srf-text-disabled); border-color: var(--srf-border); cursor: not-allowed; opacity: 0.6; }
           button.peer-cancel { padding-inline: var(--srf-spacing-md); }
+          ${MARKDOWN_CSS}
         </style>
         <div class="rail-dim" data-role="rail-dim" data-active="false"></div>
         <div class="rail" data-role="rail" data-open="false">
@@ -1016,6 +1020,9 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
           ? '<div class="history-end" data-role="history-end">没有更早的聊天记录了</div>'
           : '';
         box.innerHTML = historyEnd + messages.map((message) => this.renderBubble(message)).join('');
+        // markdown 增强（代码块外框 / 语言标签 / 复制按钮 / 链接新窗口）——
+        // 必须在 innerHTML 之后做：按钮要挂真实事件，标签要从 DOM 里读。
+        enhanceMarkdown(box);
       }
       // 流缓冲若属于当前角色，接在末尾（增量更新由 updateStreamBubble 接管）
       this.updateStreamBubble();
@@ -1038,7 +1045,7 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
       if (message.error) {
         return `
           <div class="bubble" data-role="bubble" data-message="${escapeHtml(message.id)}" data-side="assistant" data-error="true">
-            <div class="bubble-text">${escapeHtml(message.text)}</div>
+            <div class="bubble-text ${MARKDOWN_CLASS}">${renderMarkdown(message.text)}</div>
             <button type="button" class="retry" data-role="retry" data-character="${escapeHtml(message.characterId)}">重试</button>
           </div>
         `;
@@ -1049,13 +1056,13 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
         return `
           <div class="bubble" data-role="bubble" data-message="${escapeHtml(message.id)}" data-side="peer">
             ${peerName ? `<div class="bubble-name">${escapeHtml(peerName)}</div>` : ''}
-            <div class="bubble-text">${escapeHtml(message.text)}</div>
+            <div class="bubble-text ${MARKDOWN_CLASS}">${renderMarkdown(message.text)}</div>
           </div>
         `;
       }
       return `
         <div class="bubble" data-role="bubble" data-message="${escapeHtml(message.id)}" data-side="${escapeHtml(message.role)}">
-          <div class="bubble-text">${escapeHtml(message.text)}</div>
+          <div class="bubble-text ${MARKDOWN_CLASS}">${renderMarkdown(message.text)}</div>
         </div>
       `;
     }

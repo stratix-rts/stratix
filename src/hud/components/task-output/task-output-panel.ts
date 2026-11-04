@@ -41,6 +41,7 @@
 
 import type { TaskStatus, WorldState } from '../../../core/types';
 import type { HudBusAdapter } from '../../bridge/bus-adapter';
+import { enhanceMarkdown, MARKDOWN_CLASS, MARKDOWN_CSS, renderMarkdown } from '../../lib/markdown';
 
 import {
   TASK_PHASE_LABELS,
@@ -303,16 +304,20 @@ export function defineTaskOutputPanel(): typeof HTMLElement {
             background: var(--srf-bg);
             border: var(--srf-border-width) solid var(--srf-border);
             border-radius: var(--srf-radius);
+            /* 内容字号（@since v3.9，task_145）：CLI 输出是「读」的内容 —— 起步 14px / 行高 1.6，
+               与 UI 铬（标签 / 徽标）分级。字体仍走等宽：这是终端输出面，不是散文面。 */
             font-family: var(--srf-font-mono);
-            font-size: var(--srf-font-size-xs);
-            line-height: var(--srf-line-height);
-            white-space: pre-wrap;
+            font-size: var(--srf-font-size-content, var(--srf-font-size-body, 14px));
+            line-height: var(--srf-line-height-content, 1.6);
+            /* white-space 不设 pre-wrap：markdown 是块级结构，块间换行会变成多余空行；
+               段内换行由 .md-content p 的 pre-wrap 负责（纯文本逐字无损）。 */
             word-break: break-word;
             scrollbar-width: thin;
             scrollbar-color: var(--srf-border-strong) transparent;
           }
           .output::-webkit-scrollbar { width: var(--srf-spacing-sm); }
           .output::-webkit-scrollbar-thumb { background: var(--srf-border-strong); border-radius: var(--srf-radius-pill); }
+          ${MARKDOWN_CSS}
         </style>
         <section class="section" data-role="root" data-expanded="false" hidden>
           <div class="head" data-role="toggle">
@@ -324,7 +329,7 @@ export function defineTaskOutputPanel(): typeof HTMLElement {
             <button type="button" class="follow" data-role="follow" data-following="true">暂停跟随</button>
           </div>
           <div class="body" data-role="body">
-            <pre class="output" data-role="output" aria-live="polite"></pre>
+            <div class="output ${MARKDOWN_CLASS}" data-role="output" aria-live="polite"></div>
           </div>
         </section>
       `;
@@ -419,7 +424,13 @@ export function defineTaskOutputPanel(): typeof HTMLElement {
       }
     }
 
-    /** 正文同步：文本没变不碰 DOM；变了 textContent 直写（零 XSS 面）+ 跟随滚底。 */
+    /**
+     * 正文同步：文本没变不碰 DOM；变了走 markdown 管线（marked → DOMPurify → DOM）+ 跟随滚底。
+     *
+     * why 从 textContent 改成 markdown（@since v3.9，task_145）：
+     *   CLI 输出天然是 markdown（代码块 / 列表 / 表格），按纯文本渲染等于把最核心的阅读面做瞎。
+     *   XSS 面没有变大：renderMarkdown 内部先转义原始 HTML、再过 DOMPurify，输出可整块赋给 innerHTML。
+     */
     private syncAll(): void {
       this.syncHead();
       const box = this.shadowRoot?.querySelector('[data-role="output"]');
@@ -428,7 +439,8 @@ export function defineTaskOutputPanel(): typeof HTMLElement {
       const text = view.text.length > 0 ? view.text : view.visible ? EMPTY_OUTPUT_PLACEHOLDER : '';
       if (text !== this._renderedText) {
         this._renderedText = text;
-        box.textContent = text; // CLI 输出是外部输入：textContent 直写，绝不 innerHTML
+        box.innerHTML = renderMarkdown(text); // 已消毒的 HTML：可整块赋值
+        enhanceMarkdown(box); // 代码块外框 / 语言标签 / 复制按钮 / 链接新窗口
         if (this._following && this._expanded && view.visible) this.syncScroll();
       }
     }

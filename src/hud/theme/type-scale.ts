@@ -40,6 +40,12 @@ export const TYPE_SCALE_CSS = `
   --srf-line-height-body: 1.5;
   --srf-line-height-caption: 1.4;
 
+  /* —— 内容字号（@since v3.9，task_145）：**内容 ≠ 铬** ——
+     agent / CLI 输出是「读」的，字号起步 md(14px)、行高 1.6；
+     UI 铬（标签 / 按钮 / 角标）仍走 caption/body，与内容分级。 */
+  --srf-font-size-content: 14px;
+  --srf-line-height-content: 1.6;
+
   /* —— 间距节奏（4 的倍数；语义别名，组件按「关系」取用而不是按数字取用）——
      组内紧贴 4 / 元素之间 8 / 行间字段 12 / 区块内边距 16 / 区块之间 24 / 大留白 32 */
   --srf-space-tight: 4px;
@@ -63,6 +69,10 @@ export const PIXEL_TYPE_SCALE_CSS = `
   --srf-line-height-title: 1.25;
   --srf-line-height-body: 1.5;
   --srf-line-height-caption: 1.4;
+
+  /* 内容字号（task_145）：像素皮同样 +1px（正文 15px），行高节奏不变。 */
+  --srf-font-size-content: 15px;
+  --srf-line-height-content: 1.6;
 
   --srf-space-tight: 4px;
   --srf-space-base: 8px;

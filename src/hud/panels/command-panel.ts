@@ -75,6 +75,8 @@ import {
   NEW_TASK_SUBMITTED_EVENT,
 } from '../components/new-task-dialog/new-task-dialog';
 import type { ReplayController } from '../components/replay/replay-controller';
+// markdown 管线（@since v3.9，task_145）：回执区按 markdown 渲染（marked → DOMPurify → DOM）。
+import { enhanceMarkdown, MARKDOWN_CLASS, MARKDOWN_CSS, renderMarkdown } from '../lib/markdown';
 // 动效层（@since v3.8，task_138）：面板入场（位移 + 淡入）/ 列表项 hover 光标过渡 /
 //   命令行提交时输入行微脉冲 —— 全部走共享动效工具类，时长缓动取 --srf-motion-* token。
 import { MOTION_CLASS, MOTION_COMPONENT_CSS, installMotionTokens } from '../theme/motion-tokens';
@@ -681,7 +683,9 @@ export function defineCommandPanel(): typeof HTMLElement {
             font-size: var(--srf-font-size-sm);
             line-height: var(--srf-line-height);
             border-left: var(--srf-spacing-xxs) solid var(--srf-border-strong);
-            white-space: pre-wrap;
+            /* @since v3.9（task_145）：回执按 markdown 渲染 —— 容器不再自己 pre-wrap
+               （markdown 是块级结构，块间换行会变成多余空行），段内换行由 .md-content p 负责。 */
+            white-space: normal;
             max-height: 220px;
             overflow-y: auto;
           }
@@ -844,7 +848,7 @@ export function defineCommandPanel(): typeof HTMLElement {
             max-width: none;
             max-height: 160px;
             padding: var(--srf-spacing-xs);
-            white-space: pre-wrap;
+            white-space: normal;
             overflow-x: hidden;
             overflow-y: auto;
             background: var(--srf-panel);
@@ -853,6 +857,7 @@ export function defineCommandPanel(): typeof HTMLElement {
             z-index: 2;
           }
           :host([variant="strip"]) .empty-hint { white-space: nowrap; }
+          ${MARKDOWN_CSS}
         </style>
         <div class="panel ${MOTION_CLASS.enter}" part="panel">
           <div class="head">
@@ -876,7 +881,7 @@ export function defineCommandPanel(): typeof HTMLElement {
             ></textarea>
           </label>
           <div class="sections" data-role="sections"></div>
-          <div class="output" data-role="output" hidden></div>
+          <div class="output ${MARKDOWN_CLASS}" data-role="output" hidden></div>
         </div>
       `;
 
@@ -965,11 +970,15 @@ export function defineCommandPanel(): typeof HTMLElement {
         .join('');
     }
 
-    /** 回执区（@since v3.6，task_113）：textContent 写入 —— 回执含用户输入，不走 innerHTML。 */
+    /**
+     * 回执区（@since v3.6，task_113；@since v3.9 task_145 改走 markdown 管线）：
+     * 回执含用户输入，走 marked → DOMPurify → innerHTML —— 已消毒，可整块赋值。
+     */
     private renderOutput(): void {
       const box = this.shadowRoot?.querySelector<HTMLElement>('[data-role="output"]');
       if (!box) return;
-      box.textContent = this._output;
+      box.innerHTML = renderMarkdown(this._output);
+      enhanceMarkdown(box);
       box.hidden = this._output.length === 0;
       // 多行回执（help 清单 / 未匹配清单）打个标记：紧凑形态据此把回执浮到命令条上方，
       // 而不是压成一行被裁掉 —— 裁掉 = 用户看不见 = 等于没反馈（复测 P2：help 静默）。

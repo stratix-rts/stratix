@@ -351,7 +351,7 @@ describe('组件：卸载退订', () => {
 describe('组件：成果物摘要块（task_048）', () => {
   const BLOCK = ['📂 2 个文件 · +42/-8 行', '- src/a.ts（+30/-2）', '- src/b.ts（+12/-6）'].join('\n');
 
-  test('completed 后 setTaskArtifacts → 块附在展示文本尾部（textContent 直写，XSS 零面）', () => {
+  test('completed 后 setTaskArtifacts → 块附在展示文本尾部（markdown 渲染，XSS 零面）', () => {
     const h = mountPanel();
     h.emit(makeState([task('task-1')]));
     h.panel.showFor('ch-1');
@@ -359,8 +359,13 @@ describe('组件：成果物摘要块（task_048）', () => {
     h.emit(makeState([task('task-1', { status: 'completed', endedAt: 200, output: '摘要' })]));
     h.panel.setTaskArtifacts('ch-1', `<img src=x onerror=alert(1)>${BLOCK}`);
     expect(h.panel.outputText).toBe(`执行的流\n<img src=x onerror=alert(1)>${BLOCK}`);
-    expect(part(h.panel, 'output')?.querySelector('img')).toBeNull();
-    expect(part(h.panel, 'output')?.textContent).toBe(`执行的流\n<img src=x onerror=alert(1)>${BLOCK}`);
+    // 视图模型里原文逐字保留；DOM 是 markdown 渲染后的结果（@since v3.9 task_145）：
+    //   "- xxx" 行被解析成列表项（列表标记由渲染器消费），原始 HTML 当文本留作文本。
+    const box = part(h.panel, 'output');
+    expect(box?.querySelector('img')).toBeNull();
+    expect(box?.textContent).toContain('<img src=x onerror=alert(1)>');
+    expect(box?.textContent).toContain('src/a.ts（+30/-2）');
+    expect(box?.querySelectorAll('li').length).toBe(2);
     h.unmount();
   });
 
